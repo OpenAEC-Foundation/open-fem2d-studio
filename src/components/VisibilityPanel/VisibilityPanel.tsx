@@ -11,18 +11,10 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
   const { state, dispatch } = useFEM();
   const {
     showDeformed,
-    deformationScale,
-    showMoment,
-    showShear,
-    showNormal,
-    showDeflections,
-    diagramScale,
     result,
-    analysisType,
     gridSize,
     snapToGrid,
     showProfileNames,
-    showReactions,
     showDimensions,
     showNodes,
     showMembers,
@@ -202,10 +194,11 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
             <select
               className="unit-select"
               value={forceUnit}
-              onChange={(e) => dispatch({ type: 'SET_FORCE_UNIT', payload: e.target.value as 'N' | 'kN' })}
+              onChange={(e) => dispatch({ type: 'SET_FORCE_UNIT', payload: e.target.value as 'N' | 'kN' | 'MN' })}
             >
               <option value="kN">kN</option>
               <option value="N">N</option>
+              <option value="MN">MN</option>
             </select>
           </div>
           <div className="slider-row">
@@ -236,56 +229,6 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
                 <span className="toggle-text">Deformed Shape</span>
               </label>
             </div>
-
-            {showDeformed && (
-              <div className="slider-row">
-                <span className="slider-label">Scale</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="500"
-                  value={deformationScale}
-                  onChange={(e) => dispatch({ type: 'SET_DEFORMATION_SCALE', payload: parseInt(e.target.value) })}
-                />
-                <span className="slider-value">{deformationScale}x</span>
-              </div>
-            )}
-
-            <div className="toggle-row">
-              <label className="toggle-label">
-                <input
-                  type="checkbox"
-                  checked={showReactions}
-                  onChange={(e) => dispatch({ type: 'SET_SHOW_REACTIONS', payload: e.target.checked })}
-                />
-                <span className="toggle-text">Reactions</span>
-              </label>
-            </div>
-
-            <div className="toggle-row">
-              <label className="toggle-label">
-                <input
-                  type="checkbox"
-                  checked={state.showDisplacements}
-                  onChange={(e) => dispatch({ type: 'SET_SHOW_DISPLACEMENTS', payload: e.target.checked })}
-                />
-                <span className="toggle-text">Displacements</span>
-              </label>
-            </div>
-
-            {analysisType === 'frame' && (showMoment || showShear || showNormal || showDeflections) && (
-              <div className="slider-row">
-                <span className="slider-label">Diagram Scale</span>
-                <input
-                  type="range"
-                  min="10"
-                  max="200"
-                  value={diagramScale}
-                  onChange={(e) => dispatch({ type: 'SET_DIAGRAM_SCALE', payload: parseInt(e.target.value) })}
-                />
-                <span className="slider-value">{diagramScale}</span>
-              </div>
-            )}
           </div>
         )}
 

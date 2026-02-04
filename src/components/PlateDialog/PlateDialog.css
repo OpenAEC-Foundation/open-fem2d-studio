@@ -56,41 +56,6 @@
   margin: 0;
 }
 
-.plate-dialog-draw-mode {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 2px;
-}
-
-.plate-dialog-element-type-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.plate-dialog-radio-group {
-  display: flex;
-  gap: 16px;
-}
-
-.plate-dialog-radio {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center;
-  gap: 6px !important;
-  font-size: 11px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.plate-dialog-radio input[type="radio"] {
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
 .plate-dialog-polygon-info {
   display: flex;
   flex-direction: column;

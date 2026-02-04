@@ -63,6 +63,9 @@ interface LineLoadDialogProps {
   onCancel: () => void;
   /** Called on every value change so the canvas can show a live preview of the load arrows */
   onPreview?: (qx: number, qy: number, coordSystem: 'local' | 'global', startT: number, endT: number, qxEnd?: number, qyEnd?: number) => void;
+  edgeMode?: boolean;
+  edgeId?: number;
+  edgeLength?: number;
 }
 
 export function LineLoadDialog({
@@ -80,11 +83,14 @@ export function LineLoadDialog({
   onApply,
   onCancel,
   onPreview,
+  edgeMode,
+  // edgeId not used internally — available via props for potential future use
+  edgeLength,
 }: LineLoadDialogProps) {
   const [qy, setQy] = useState((initialQy / 1000).toString());
   const [qx, setQx] = useState((initialQx / 1000).toString());
   const [selectedLC, setSelectedLC] = useState(activeLoadCase);
-  const [coordSystem, setCoordSystem] = useState<'local' | 'global'>(initialCoordSystem ?? 'local');
+  const [coordSystem, setCoordSystem] = useState<'local' | 'global'>(initialCoordSystem ?? (edgeMode ? 'global' : 'local'));
   const [description, setDescription] = useState(initialDescription ?? '');
 
   // Variable load (trapezoidal): q1 = start, q2 = end
@@ -162,8 +168,9 @@ export function LineLoadDialog({
   };
 
   // Store positions as absolute mm values when beam length is known
-  const L = beamLength ?? 1;
-  const hasLength = beamLength !== undefined && beamLength > 0;
+  const effectiveLength = edgeMode ? edgeLength : beamLength;
+  const L = effectiveLength ?? 1;
+  const hasLength = effectiveLength !== undefined && effectiveLength > 0;
   const [startMm, setStartMm] = useState(
     hasLength ? ((initialStartT ?? 0) * L * 1000).toFixed(0) : (initialStartT ?? 0).toString()
   );
@@ -273,7 +280,7 @@ export function LineLoadDialog({
   return (
     <div className="line-load-dialog-overlay" onClick={onCancel}>
       <div className="line-load-dialog" onClick={e => e.stopPropagation()}>
-        <div className="line-load-dialog-header">Distributed Load</div>
+        <div className="line-load-dialog-header">{edgeMode ? 'Edge Load' : 'Distributed Load'}</div>
         <div className="line-load-dialog-body">
           <label>
             <span>Load Case</span>
@@ -313,7 +320,7 @@ export function LineLoadDialog({
 
             <div className="line-load-row">
               <label>
-                <span>{variableUnlocked ? 'qz;start (kN/m)' : 'qz (kN/m)'}</span>
+                <span>{variableUnlocked ? 'q\u2081 (kN/m)' : 'qz (kN/m)'}</span>
                 <input
                   type="text"
                   value={qy}
@@ -328,7 +335,7 @@ export function LineLoadDialog({
               </label>
               {variableUnlocked && (
                 <label>
-                  <span>qz;end (kN/m)</span>
+                  <span>q{'\u2082'} (kN/m)</span>
                   <input
                     type="text"
                     value={qyEnd}
@@ -342,7 +349,7 @@ export function LineLoadDialog({
 
             <div className="line-load-row">
               <label>
-                <span>{variableUnlocked ? 'qx;start (kN/m)' : 'qx (kN/m)'}</span>
+                <span>{variableUnlocked ? 'qx\u2081 (kN/m)' : 'qx (kN/m)'}</span>
                 <input
                   type="text"
                   value={qx}
@@ -355,7 +362,7 @@ export function LineLoadDialog({
               </label>
               {variableUnlocked && (
                 <label>
-                  <span>qx;end (kN/m)</span>
+                  <span>qx{'\u2082'} (kN/m)</span>
                   <input
                     type="text"
                     value={qxEnd}
@@ -368,7 +375,7 @@ export function LineLoadDialog({
             </div>
           </div>
 
-          <p className="line-load-hint">Negative qz = downward (e.g. -5 kN/m){variableUnlocked ? '. start = begin of beam, end = end of beam.' : ''}</p>
+          <p className="line-load-hint">Negative qz = downward (e.g. -5 kN/m){variableUnlocked ? `. start = begin of ${edgeMode ? 'edge' : 'beam'}, end = end of ${edgeMode ? 'edge' : 'beam'}.` : ''}</p>
 
           {/* -- OpenReport Integration -- */}
           <div className="line-load-openreport-section">
@@ -483,35 +490,37 @@ export function LineLoadDialog({
               </label>
             </div>
             {hasLength && (
-              <p className="line-load-hint">Beam length: {(L * 1000).toFixed(0)} mm</p>
+              <p className="line-load-hint">{edgeMode ? 'Edge' : 'Beam'} length: {(L * 1000).toFixed(0)} mm</p>
             )}
           </div>
 
-          <div className="line-load-subsection">
-            <span className="line-load-subsection-title">Direction</span>
-            <div className="line-load-radio-group">
-              <label className="line-load-radio-label">
-                <input
-                  type="radio"
-                  name="coordSystem"
-                  value="local"
-                  checked={coordSystem === 'local'}
-                  onChange={() => setCoordSystem('local')}
-                />
-                <span>Perpendicular to beam</span>
-              </label>
-              <label className="line-load-radio-label">
-                <input
-                  type="radio"
-                  name="coordSystem"
-                  value="global"
-                  checked={coordSystem === 'global'}
-                  onChange={() => setCoordSystem('global')}
-                />
-                <span>Global Z-axis</span>
-              </label>
+          {!edgeMode && (
+            <div className="line-load-subsection">
+              <span className="line-load-subsection-title">Direction</span>
+              <div className="line-load-radio-group">
+                <label className="line-load-radio-label">
+                  <input
+                    type="radio"
+                    name="coordSystem"
+                    value="local"
+                    checked={coordSystem === 'local'}
+                    onChange={() => setCoordSystem('local')}
+                  />
+                  <span>Perpendicular to beam</span>
+                </label>
+                <label className="line-load-radio-label">
+                  <input
+                    type="radio"
+                    name="coordSystem"
+                    value="global"
+                    checked={coordSystem === 'global'}
+                    onChange={() => setCoordSystem('global')}
+                  />
+                  <span>Global Z-axis</span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="line-load-dialog-footer">
           <button className="line-load-btn cancel" onClick={onCancel}>Cancel</button>

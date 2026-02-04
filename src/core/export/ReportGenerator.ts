@@ -14,15 +14,17 @@ interface ReportOptions {
   result: ISolverResult | null;
   projectInfo: IProjectInfo;
   steelGrade: ISteelGrade;
-  forceUnit: 'N' | 'kN';
+  forceUnit: 'N' | 'kN' | 'MN';
 }
 
-function fmtForce(n: number, unit: 'N' | 'kN'): string {
+function fmtForce(n: number, unit: 'N' | 'kN' | 'MN'): string {
+  if (unit === 'MN') return (n / 1e6).toFixed(3) + ' MN';
   if (unit === 'kN') return (n / 1000).toFixed(1) + ' kN';
   return n.toFixed(0) + ' N';
 }
 
-function fmtMoment(nm: number, unit: 'N' | 'kN'): string {
+function fmtMoment(nm: number, unit: 'N' | 'kN' | 'MN'): string {
+  if (unit === 'MN') return (nm / 1e6).toFixed(3) + ' MNm';
   if (unit === 'kN') return (nm / 1000).toFixed(2) + ' kNm';
   return nm.toFixed(0) + ' Nm';
 }
@@ -56,19 +58,20 @@ function fmtVal(v: number, decimals: number = 2): string {
  * Render a transparent steel check detail block for one member,
  * showing EN 1993-1-1 norm formulas with filled-in values.
  */
-function renderSteelCheckDetail(r: ISteelCheckResult, grade: ISteelGrade, forceUnit: 'N' | 'kN'): string {
+function renderSteelCheckDetail(r: ISteelCheckResult, grade: ISteelGrade, forceUnit: 'N' | 'kN' | 'MN'): string {
   const fy = grade.fy;
   const gM0 = grade.gammaM0;
 
   // Convert to display units
-  const NEd_d = forceUnit === 'kN' ? (r.NEd / 1000) : r.NEd;
-  const VEd_d = forceUnit === 'kN' ? (r.VEd / 1000) : r.VEd;
-  const MEd_d = forceUnit === 'kN' ? (r.MEd / 1000) : r.MEd;
-  const NcRd_d = forceUnit === 'kN' ? (r.NcRd / 1000) : r.NcRd;
-  const VcRd_d = forceUnit === 'kN' ? (r.VcRd / 1000) : r.VcRd;
-  const McRd_d = forceUnit === 'kN' ? (r.McRd / 1000) : r.McRd;
-  const fUnit = forceUnit === 'kN' ? 'kN' : 'N';
-  const mUnit = forceUnit === 'kN' ? 'kNm' : 'Nm';
+  const divisor = forceUnit === 'MN' ? 1e6 : forceUnit === 'kN' ? 1000 : 1;
+  const NEd_d = r.NEd / divisor;
+  const VEd_d = r.VEd / divisor;
+  const MEd_d = r.MEd / divisor;
+  const NcRd_d = r.NcRd / divisor;
+  const VcRd_d = r.VcRd / divisor;
+  const McRd_d = r.McRd / divisor;
+  const fUnit = forceUnit === 'MN' ? 'MN' : forceUnit === 'kN' ? 'kN' : 'N';
+  const mUnit = forceUnit === 'MN' ? 'MNm' : forceUnit === 'kN' ? 'kNm' : 'Nm';
 
   return `
   <div class="steel-detail">

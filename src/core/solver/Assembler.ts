@@ -1,8 +1,8 @@
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
 import { AnalysisType } from '../fem/types';
-import { calculateElementStiffness } from '../fem/Triangle';
-import { calculateQuadStiffness } from '../fem/Quad4';
+import { calculateElementStiffness, calculateTriangleStiffnessExpanded } from '../fem/Triangle';
+import { calculateQuadStiffness, calculateQuadStiffnessExpanded } from '../fem/Quad4';
 import { calculateDKTStiffness } from '../fem/DKT';
 import { calculateBeamGlobalStiffness, calculateDistributedLoadVector, calculatePartialDistributedLoadVector, calculateTrapezoidalLoadVector, calculatePartialTrapezoidalLoadVector, transformLocalToGlobal, calculateBeamLength, calculateBeamAngle } from '../fem/Beam';
 
@@ -17,6 +17,14 @@ function getActiveNodeIds(mesh: Mesh, analysisType: AnalysisType): Set<number> {
   if (analysisType === 'frame') {
     for (const beam of mesh.beamElements.values()) {
       for (const nid of beam.nodeIds) activeIds.add(nid);
+    }
+  } else if (analysisType === 'mixed_beam_plate') {
+    // Include nodes from BOTH beams and plate elements
+    for (const beam of mesh.beamElements.values()) {
+      for (const nid of beam.nodeIds) activeIds.add(nid);
+    }
+    for (const elem of mesh.elements.values()) {
+      for (const nid of elem.nodeIds) activeIds.add(nid);
     }
   } else {
     for (const elem of mesh.elements.values()) {
@@ -46,6 +54,7 @@ export function buildNodeIdToIndex(mesh: Mesh, analysisType: AnalysisType): Map<
 export function getDofsPerNode(analysisType: AnalysisType): number {
   if (analysisType === 'frame') return 3;  // u, v, θ
   if (analysisType === 'plate_bending') return 3;  // w, θx, θy
+  if (analysisType === 'mixed_beam_plate') return 3;  // u, v, θ (unified for beams + plates)
   return 2;  // u, v
 }
 
@@ -144,6 +153,98 @@ export function assembleGlobalStiffnessMatrix(
         console.warn(`Skipping DKT element ${element.id}: ${e}`);
       }
     }
+  } else if (analysisType === 'mixed_beam_plate') {
+    // MIXED ANALYSIS: Assemble both beams (3 DOF/node) and plates (expanded to 3 DOF/node)
+
+    // 1. Assemble beam elements (6×6, 3 DOF/node - same as frame analysis)
+    for (const beam of mesh.beamElements.values()) {
+      const nodes = mesh.getBeamElementNodes(beam);
+      if (!nodes) continue;
+
+      const material = mesh.getMaterial(beam.materialId);
+      if (!material) continue;
+
+      const [n1, n2] = nodes;
+
+      try {
+        const Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
+
+        // Apply static condensation for end releases (hinges)
+        if (beam.endReleases) {
+          const releasedLocalDofs: number[] = [];
+          if (beam.endReleases.startMoment) releasedLocalDofs.push(2);
+          if (beam.endReleases.endMoment) releasedLocalDofs.push(5);
+
+          if (releasedLocalDofs.length > 0) {
+            applyEndReleases(Ke, releasedLocalDofs);
+          }
+        }
+
+        const idx1 = nodeIdToIndex.get(n1.id)!;
+        const idx2 = nodeIdToIndex.get(n2.id)!;
+        const dofIndices = [
+          idx1 * 3, idx1 * 3 + 1, idx1 * 3 + 2,
+          idx2 * 3, idx2 * 3 + 1, idx2 * 3 + 2
+        ];
+
+        for (let i = 0; i < 6; i++) {
+          for (let j = 0; j < 6; j++) {
+            K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
+          }
+        }
+      } catch (e) {
+        console.warn(`Skipping beam element ${beam.id} in mixed analysis: ${e}`);
+      }
+    }
+
+    // 2. Assemble plate elements (EXPANDED to 3 DOF/node)
+    for (const element of mesh.elements.values()) {
+      const nodes = mesh.getElementNodes(element);
+      const material = mesh.getMaterial(element.materialId);
+      if (!material) continue;
+
+      try {
+        if (nodes.length === 4) {
+          // 4-node quad: expand 8×8 → 12×12
+          const [n1, n2, n3, n4] = nodes;
+          const Ke = calculateQuadStiffnessExpanded(n1, n2, n3, n4, material, element.thickness, 'plane_stress');
+
+          const dofIndices: number[] = [];
+          for (const node of nodes) {
+            const nodeIndex = nodeIdToIndex.get(node.id)!;
+            dofIndices.push(nodeIndex * 3);     // u
+            dofIndices.push(nodeIndex * 3 + 1); // v
+            dofIndices.push(nodeIndex * 3 + 2); // θ (zero stiffness)
+          }
+
+          for (let i = 0; i < 12; i++) {
+            for (let j = 0; j < 12; j++) {
+              K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
+            }
+          }
+        } else if (nodes.length === 3) {
+          // 3-node triangle: expand 6×6 → 9×9
+          const [n1, n2, n3] = nodes;
+          const Ke = calculateTriangleStiffnessExpanded(n1, n2, n3, material, element.thickness, 'plane_stress');
+
+          const dofIndices: number[] = [];
+          for (const node of nodes) {
+            const nodeIndex = nodeIdToIndex.get(node.id)!;
+            dofIndices.push(nodeIndex * 3);     // u
+            dofIndices.push(nodeIndex * 3 + 1); // v
+            dofIndices.push(nodeIndex * 3 + 2); // θ (zero stiffness)
+          }
+
+          for (let i = 0; i < 9; i++) {
+            for (let j = 0; j < 9; j++) {
+              K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Skipping element ${element.id} in mixed analysis: ${e}`);
+      }
+    }
   } else {
     // Assemble triangle and quad elements for plane stress/strain
     for (const element of mesh.elements.values()) {
@@ -229,7 +330,7 @@ export function assembleForceVector(mesh: Mesh, analysisType: AnalysisType = 'pl
   }
 
   // Add equivalent nodal forces from distributed loads on beams
-  if (analysisType === 'frame') {
+  if (analysisType === 'frame' || analysisType === 'mixed_beam_plate') {
     for (const beam of mesh.beamElements.values()) {
       if (!beam.distributedLoad) continue;
 

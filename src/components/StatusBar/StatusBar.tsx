@@ -4,7 +4,7 @@ import './StatusBar.css';
 
 export function StatusBar() {
   const { state } = useFEM();
-  const { mesh, result, selectedTool, viewState, mouseWorldPos, solverError } = state;
+  const { mesh, result, selectedTool, viewState, mouseWorldPos, solverError, stressUnit } = state;
 
   const toolHints: Record<string, string> = {
     select: 'Click to select nodes/elements. Shift+click to multi-select. Drag to move nodes.',
@@ -15,7 +15,7 @@ export function StatusBar() {
     delete: 'Click a node or element to delete it.',
     pan: 'Drag to pan the view. Scroll to zoom.',
     addBeam: 'Click two nodes to create a beam element.',
-    addLineLoad: 'Click a beam to apply a distributed load.',
+    addLineLoad: 'Click a beam or plate edge to apply a distributed load.',
     addPinned: 'Click a node to add a pinned support.',
     addXRoller: 'Click a node to add an X-roller support.',
     addZRoller: 'Click a node to add a Z-roller support.',
@@ -24,9 +24,9 @@ export function StatusBar() {
     addXSpring: 'Click a node to add an X-spring support.',
     addFixed: 'Click a node to add a fixed support.',
     addPlate: 'Click two corners to create a plate element.',
-    addEdgeLoad: 'Click a plate edge to apply an edge load.',
     addThermalLoad: 'Click elements to apply a thermal load.',
-    addSubNode: 'Click a beam to add a sub-node.'
+    addSubNode: 'Click a beam to add a sub-node.',
+    rotate: 'Click rotation center, then enter angle.'
   };
 
   const zoomPercent = Math.round(viewState.scale);
@@ -70,7 +70,7 @@ export function StatusBar() {
           <>
             <span className="status-solved">Solved</span>
             <span>
-              <strong>Max Stress:</strong> {formatStress(result.maxVonMises)}
+              <strong>Max Stress:</strong> {formatStress(result.maxVonMises, stressUnit)}
             </span>
           </>
         )}

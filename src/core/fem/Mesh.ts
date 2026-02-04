@@ -1,4 +1,4 @@
-import { INode, IElement, IMaterial, IMesh, ITriangleElement, IQuadElement, IBeamElement, IBeamSection, IPlateRegion, ISubNode } from './types';
+import { INode, IElement, IMaterial, IMesh, ITriangleElement, IQuadElement, IBeamElement, IBeamSection, IPlateRegion, ISubNode, IEdge } from './types';
 import { DEFAULT_MATERIALS } from './Material';
 import { DEFAULT_SECTIONS } from './Beam';
 
@@ -10,12 +10,14 @@ export class Mesh implements IMesh {
   sections: Map<string, IBeamSection>;
   plateRegions: Map<number, IPlateRegion>;
   subNodes: Map<number, ISubNode>;
+  edges: Map<number, IEdge>;
   private nextNodeId: number;
   private nextElementId: number;
   private nextMaterialId: number;
   private nextPlateId: number;
   private nextPlateNodeId: number;
   private nextSubNodeId: number;
+  private nextEdgeId: number;
 
   constructor() {
     this.nodes = new Map();
@@ -25,12 +27,14 @@ export class Mesh implements IMesh {
     this.sections = new Map();
     this.plateRegions = new Map();
     this.subNodes = new Map();
+    this.edges = new Map();
     this.nextNodeId = 1;
     this.nextElementId = 1;
     this.nextMaterialId = 10;
     this.nextPlateId = 1;
     this.nextPlateNodeId = 1000;
     this.nextSubNodeId = 1;
+    this.nextEdgeId = 1;
 
     // Add default materials
     DEFAULT_MATERIALS.forEach(m => this.materials.set(m.id, { ...m }));
@@ -602,6 +606,7 @@ export class Mesh implements IMesh {
   }
 
   removePlateRegion(plateId: number): boolean {
+    this.removeEdgesForPlate(plateId);
     return this.plateRegions.delete(plateId);
   }
 
@@ -618,16 +623,57 @@ export class Mesh implements IMesh {
     return undefined;
   }
 
+  // --- Edge CRUD ---
+
+  addEdge(edge: Omit<IEdge, 'id'>): IEdge {
+    const newEdge: IEdge = { ...edge, id: this.nextEdgeId++ };
+    this.edges.set(newEdge.id, newEdge);
+    return newEdge;
+  }
+
+  getEdge(id: number): IEdge | undefined {
+    return this.edges.get(id);
+  }
+
+  getEdgesForPlate(plateId: number): IEdge[] {
+    const result: IEdge[] = [];
+    for (const edge of this.edges.values()) {
+      if (edge.plateId === plateId) result.push(edge);
+    }
+    return result;
+  }
+
+  removeEdge(id: number): boolean {
+    return this.edges.delete(id);
+  }
+
+  removeEdgesForPlate(plateId: number): void {
+    for (const [edgeId, edge] of this.edges) {
+      if (edge.plateId === plateId) {
+        this.edges.delete(edgeId);
+      }
+    }
+  }
+
+  updateEdgeNodes(edgeId: number, nodeIds: number[]): void {
+    const edge = this.edges.get(edgeId);
+    if (edge) {
+      edge.nodeIds = nodeIds;
+    }
+  }
+
   clear(): void {
     this.nodes.clear();
     this.elements.clear();
     this.beamElements.clear();
     this.plateRegions.clear();
     this.subNodes.clear();
+    this.edges.clear();
     this.nextNodeId = 1;
     this.nextElementId = 1;
     this.nextPlateId = 1;
     this.nextSubNodeId = 1;
+    this.nextEdgeId = 1;
   }
 
   getElementNodes(element: IElement): INode[] {
@@ -663,7 +709,8 @@ export class Mesh implements IMesh {
       materials: Array.from(this.materials.values()),
       sections: Array.from(this.sections.entries()).map(([name, section]) => ({ name, section })),
       plateRegions: Array.from(this.plateRegions.values()),
-      subNodes: Array.from(this.subNodes.values())
+      subNodes: Array.from(this.subNodes.values()),
+      edges: Array.from(this.edges.values())
     };
   }
 
@@ -675,6 +722,7 @@ export class Mesh implements IMesh {
     sections?: { name: string; section: IBeamSection }[];
     plateRegions?: IPlateRegion[];
     subNodes?: ISubNode[];
+    edges?: IEdge[];
   }): Mesh {
     const mesh = new Mesh();
     mesh.nodes.clear();
@@ -683,6 +731,7 @@ export class Mesh implements IMesh {
     mesh.materials.clear();
     mesh.plateRegions.clear();
     mesh.subNodes.clear();
+    mesh.edges.clear();
 
     data.materials.forEach(m => mesh.materials.set(m.id, m));
 
@@ -723,6 +772,10 @@ export class Mesh implements IMesh {
       data.subNodes.forEach(sn => mesh.subNodes.set(sn.id, sn));
     }
 
+    if (data.edges) {
+      data.edges.forEach(e => mesh.edges.set(e.id, e));
+    }
+
     const allElementIds = [
       ...data.elements.map(e => e.id),
       ...(data.beamElements || []).map(b => b.id)
@@ -730,12 +783,14 @@ export class Mesh implements IMesh {
 
     const allPlateIds = (data.plateRegions || []).map(p => p.id);
     const allSubNodeIds = (data.subNodes || []).map(sn => sn.id);
+    const allEdgeIds = (data.edges || []).map(e => e.id);
 
     mesh.nextNodeId = Math.max(...data.nodes.map(n => n.id), 0) + 1;
     mesh.nextElementId = Math.max(...allElementIds, 0) + 1;
     mesh.nextMaterialId = Math.max(...data.materials.map(m => m.id), 10) + 1;
     mesh.nextPlateId = Math.max(...allPlateIds, 0) + 1;
     mesh.nextSubNodeId = Math.max(...allSubNodeIds, 0) + 1;
+    mesh.nextEdgeId = Math.max(...allEdgeIds, 0) + 1;
 
     // Restore nextPlateNodeId from plate node IDs (IDs >= 1000)
     const plateNodeIds = data.nodes.filter(n => n.id >= 1000).map(n => n.id);

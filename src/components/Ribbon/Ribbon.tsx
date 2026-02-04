@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { applyLoadCaseToMesh } from '../../context/FEMContext';
-import { Tool, AnalysisType } from '../../core/fem/types';
+import { Tool } from '../../core/fem/types';
 import { solve } from '../../core/solver/SolverService';
-import { runAllVerificationTests, printVerificationReport } from '../../core/solver/VerificationTests';
-import { exportToIfc, downloadIfc } from '../../core/export/IfcExporter';
 import { downloadReport } from '../../core/export/ReportGenerator';
 import { STEEL_GRADES } from '../../core/standards/EurocodeNL';
 import { checkSteelSection } from '../../core/standards/SteelCheck';
@@ -13,18 +11,18 @@ import {
   MousePointer2, Hand, CircleDot,
   Triangle, ArrowLeftFromLine, Circle, ArrowDownUp, RotateCcw, ArrowLeftRight, Square,
   ArrowDown, Trash2, Move, Thermometer,
-  Play, FastForward, CheckCircle,
-  FileText, Copy,
+  Play, CheckCircle,
+  FileText, Copy, FileDown, Printer,
   Undo2, Redo2, Layers, Combine,
-  Settings, Info, Download, Save, FolderOpen, Grid3X3, Bot, Box,
-  Sun, Moon, Maximize2
+  Settings, Info, Save, FolderOpen, Grid3X3, Bot,
+  Sun, Moon, Maximize2, Box, ClipboardList, Table2, Workflow
 } from 'lucide-react';
 import { serializeProject } from '../../core/io/ProjectSerializer';
 import { deserializeProject } from '../../core/io/ProjectSerializer';
 import { Mesh } from '../../core/fem/Mesh';
 import './Ribbon.css';
 
-type RibbonTab = 'home' | 'settings' | 'standards' | '3d' | 'code-check';
+type RibbonTab = 'home' | 'settings' | 'standards' | 'code-check' | '3d' | 'report' | 'table' | 'graph';
 
 interface RibbonProps {
   onShowLoadCaseDialog?: () => void;
@@ -38,13 +36,24 @@ interface RibbonProps {
   onShowCalculationSettings?: () => void;
   onToggleAgent?: () => void;
   showAgentPanel?: boolean;
+  onShowReportSettings?: () => void;
+  onExportReportHTML?: () => void;
+  onExportReportPDF?: () => void;
+  onPrintReport?: () => void;
+  activeRibbonTab?: RibbonTab;
+  onRibbonTabChange?: (tab: RibbonTab) => void;
 }
 
-export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowProjectInfoDialog, onShowStandardsDialog, onShowGridsDialog, onShowSteelCheck, onShowConcreteCheck, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel }: RibbonProps) {
+export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowProjectInfoDialog, onShowStandardsDialog, onShowGridsDialog, onShowSteelCheck, onShowConcreteCheck, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onShowReportSettings, onExportReportHTML, onExportReportPDF, onPrintReport, activeRibbonTab, onRibbonTabChange }: RibbonProps) {
   const { state, dispatch } = useFEM();
   const { selectedTool, mesh, analysisType, undoStack, redoStack, loadCases, activeLoadCase,
-    result, codeCheckBeamId } = state;
-  const [activeTab, setActiveTab] = useState<RibbonTab>('home');
+    result, codeCheckBeamId, plateEditMode } = state;
+  const [localActiveTab, setLocalActiveTab] = useState<RibbonTab>('home');
+  const activeTab = activeRibbonTab ?? localActiveTab;
+  const setActiveTab = (tab: RibbonTab) => {
+    setLocalActiveTab(tab);
+    onRibbonTabChange?.(tab);
+  };
   const [solving, setSolving] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const stored = localStorage.getItem('fem2d-theme');
@@ -64,6 +73,8 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
     setActiveTab(tab);
     if (tab === '3d') {
       dispatch({ type: 'SET_VIEW_MODE', payload: '3d' });
+    } else if (tab === 'report') {
+      // Report tab has its own view, don't change viewMode
     } else if (state.viewMode === '3d') {
       dispatch({ type: 'SET_VIEW_MODE', payload: 'geometry' });
     } else if (state.viewMode === 'results' && tab !== 'code-check') {
@@ -79,19 +90,26 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
   const handleSolve = async (geometric: boolean = false) => {
     setSolving(true);
     try {
-      // Apply active load case to mesh before solving
+      // Apply active load case to mesh before solving (include edge→nodal conversion)
       const activeLc = loadCases.find(lc => lc.id === activeLoadCase);
       if (activeLc) {
-        applyLoadCaseToMesh(mesh, activeLc);
+        applyLoadCaseToMesh(mesh, activeLc, false);
       }
 
       const result = await solve(mesh, {
         analysisType,
         geometricNonlinear: geometric
       });
+
+      // Reset loads for visualization (don't show edge-converted nodal forces as point loads)
+      if (activeLc) {
+        applyLoadCaseToMesh(mesh, activeLc); // default: skip edge-to-node conversion
+      }
+
       dispatch({ type: 'SET_RESULT', payload: result });
       dispatch({ type: 'SET_SHOW_DEFORMED', payload: true });
       dispatch({ type: 'SET_VIEW_MODE', payload: 'results' });
+      dispatch({ type: 'SET_BROWSER_TAB', payload: 'results' });
       if (analysisType === 'frame') {
         dispatch({ type: 'SET_SHOW_MOMENT', payload: true });
       }
@@ -151,7 +169,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
     dispatch({ type: 'SET_VIEW_STATE', payload: { scale: newScale, offsetX, offsetY } });
   };
 
-  const loadTools: Tool[] = ['addLoad', 'addLineLoad', 'addEdgeLoad', 'addThermalLoad'];
+  const loadTools: Tool[] = ['addLoad', 'addLineLoad', 'addThermalLoad'];
 
   const selectTool = (tool: Tool) => {
     dispatch({ type: 'SET_TOOL', payload: tool });
@@ -161,18 +179,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
     }
   };
 
-  const handleExportIfc = () => {
-    const content = exportToIfc(mesh, state.projectInfo, loadCases);
-    const filename = (state.projectInfo.name || 'project').replace(/\s+/g, '-').toLowerCase() + '.ifc';
-    downloadIfc(content, filename);
-  };
-
-  const handleImportIfc = () => {
-    // Switch to 3D view and dispatch a custom event that Preview3D listens for
-    dispatch({ type: 'SET_VIEW_MODE', payload: '3d' });
-    setActiveTab('3d');
-    window.dispatchEvent(new CustomEvent('fem2d-import-ifc'));
-  };
 
   const handleGenerateReport = () => {
     downloadReport({
@@ -242,7 +248,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
       const newMesh = new Mesh();
       dispatch({ type: 'LOAD_PROJECT', payload: {
         mesh: newMesh,
-        loadCases: [{ id: 1, name: 'Dead Load (G)', type: 'dead' as const, pointLoads: [], distributedLoads: [], edgeLoads: [], thermalLoads: [], color: '#6b7280' }],
+        loadCases: [{ id: 1, name: 'Dead Load (G)', type: 'dead' as const, pointLoads: [], distributedLoads: [], thermalLoads: [], color: '#6b7280' }],
         loadCombinations: [],
         projectInfo: { name: 'New Project', projectNumber: '', engineer: '', company: '', date: new Date().toISOString().slice(0, 10), description: '', notes: '', location: '' },
       }});
@@ -278,6 +284,27 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
           <Box size={14} style={{ marginRight: 4 }} />
           3D
         </button>
+        <button
+          className={`ribbon-tab ${activeTab === 'report' ? 'active' : ''}`}
+          onClick={() => handleTabClick('report')}
+        >
+          <ClipboardList size={14} style={{ marginRight: 4 }} />
+          Report
+        </button>
+        <button
+          className={`ribbon-tab ${activeTab === 'table' ? 'active' : ''}`}
+          onClick={() => handleTabClick('table')}
+        >
+          <Table2 size={14} style={{ marginRight: 4 }} />
+          Table
+        </button>
+        <button
+          className={`ribbon-tab ${activeTab === 'graph' ? 'active' : ''}`}
+          onClick={() => handleTabClick('graph')}
+        >
+          <Workflow size={14} style={{ marginRight: 4 }} />
+          Graph
+        </button>
         {codeCheckBeamId && (
           <button
             className={`ribbon-tab ${activeTab === 'code-check' ? 'active' : ''}`}
@@ -308,10 +335,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 <button className="ribbon-button small" onClick={handleOpenProject} title="Open Project">
                   <span className="ribbon-icon"><FolderOpen size={14} /></span>
                   <span>Open</span>
-                </button>
-                <button className="ribbon-button small" onClick={handleExportIfc} title="Export IFC">
-                  <span className="ribbon-icon"><Download size={14} /></span>
-                  <span>IFC</span>
                 </button>
               </div>
             </div>
@@ -469,7 +492,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 <button
                   className={`ribbon-button small ${selectedTool === 'addLineLoad' ? 'active' : ''}`}
                   onClick={() => selectTool('addLineLoad')}
-                  title="Line Load (L)"
+                  title="Distributed Load - beam or plate edge (L)"
                 >
                   <span className="ribbon-icon line-load-icon">
                     <svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -498,14 +521,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 <button className="ribbon-button small" title="Moment Load">
                   <span className="ribbon-icon"><RotateCcw size={14} /></span>
                   <span>Moment</span>
-                </button>
-                <button
-                  className={`ribbon-button small ${selectedTool === 'addEdgeLoad' ? 'active' : ''}`}
-                  onClick={() => selectTool('addEdgeLoad')}
-                  title="Edge Load on Plate"
-                >
-                  <span className="ribbon-icon"><ArrowDown size={14} /></span>
-                  <span>Edge Load</span>
                 </button>
                 <button
                   className={`ribbon-button small ${selectedTool === 'addThermalLoad' ? 'active' : ''}`}
@@ -545,6 +560,14 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   <span>Move</span>
                 </button>
                 <button
+                  className={`ribbon-button small ${selectedTool === 'rotate' ? 'active' : ''}`}
+                  onClick={() => selectTool('rotate')}
+                  title="Rotate (R)"
+                >
+                  <span className="ribbon-icon"><RotateCcw size={14} /></span>
+                  <span>Rotate</span>
+                </button>
+                <button
                   className="ribbon-button small"
                   onClick={() => dispatch({ type: 'UNDO' })}
                   disabled={undoStack.length === 0}
@@ -576,6 +599,28 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 </button>
               </div>
             </div>
+
+            {/* Finish button - shown when editing plate/void */}
+            {plateEditMode && (
+              <>
+                <div className="ribbon-separator" />
+                <div className="ribbon-group highlight">
+                  <div className="ribbon-group-title">
+                    {plateEditMode.mode === 'void' ? 'Void Edit' : 'Plate Edit'}
+                  </div>
+                  <div className="ribbon-group-content">
+                    <button
+                      className="ribbon-button small accent"
+                      onClick={() => dispatch({ type: 'TRIGGER_FINISH_EDIT' })}
+                      title="Finish editing (Tab/Enter)"
+                    >
+                      <span className="ribbon-icon"><CheckCircle size={14} /></span>
+                      <span>Finish</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="ribbon-separator" />
 
@@ -640,48 +685,9 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
             <div className="ribbon-group">
               <div className="ribbon-group-title">Calculation</div>
               <div className="ribbon-group-content">
-                <select
-                  className="ribbon-select"
-                  value={analysisType}
-                  onChange={(e) => {
-                    dispatch({ type: 'SET_ANALYSIS_TYPE', payload: e.target.value as AnalysisType });
-                    dispatch({ type: 'SET_RESULT', payload: null });
-                  }}
-                >
-                  <option value="frame">2D Frame Analysis</option>
-                  <option value="plane_stress">Plane Stress</option>
-                  <option value="plane_strain">Plane Strain</option>
-                  <option value="plate_bending">Plate Bending (DKT)</option>
-                </select>
-                <button className="ribbon-button small" onClick={() => handleSolve(false)} disabled={solving} title="Linear Analysis (F5)">
+                <button className="ribbon-button small" onClick={() => handleSolve(false)} disabled={solving} title="Calculate (F5)">
                   <span className="ribbon-icon"><Play size={14} /></span>
-                  <span>{solving ? 'Solving...' : 'Linear'}</span>
-                </button>
-                <button className="ribbon-button small" onClick={() => handleSolve(true)} disabled={solving} title="P-Delta Analysis">
-                  <span className="ribbon-icon"><FastForward size={14} /></span>
-                  <span>{solving ? 'Solving...' : 'P-Delta'}</span>
-                </button>
-                <label className="ribbon-toggle" title="Auto-recalculate on model changes">
-                  <input
-                    type="checkbox"
-                    checked={state.autoRecalculate}
-                    onChange={(e) => dispatch({ type: 'SET_AUTO_RECALCULATE', payload: e.target.checked })}
-                  />
-                  <span>Auto</span>
-                </label>
-                <button
-                  className="ribbon-button small"
-                  onClick={() => {
-                    const results = runAllVerificationTests();
-                    const report = printVerificationReport(results);
-                    console.log(report);
-                    const passed = results.filter(r => r.passed).length;
-                    alert(`${passed}/${results.length} tests passed.\nSee console for details.`);
-                  }}
-                  title="Run Verification Tests"
-                >
-                  <span className="ribbon-icon"><CheckCircle size={14} /></span>
-                  <span>Run Tests</span>
+                  <span>{solving ? 'Solving...' : 'Calculate'}</span>
                 </button>
                 <button
                   className="ribbon-button small"
@@ -689,7 +695,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   title="Calculation Settings"
                 >
                   <span className="ribbon-icon"><Settings size={14} /></span>
-                  <span>Calc Settings</span>
+                  <span>Calculation Settings</span>
                 </button>
               </div>
             </div>
@@ -700,10 +706,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
             <div className="ribbon-group">
               <div className="ribbon-group-title">Export</div>
               <div className="ribbon-group-content">
-                <button className="ribbon-button small" onClick={handleExportIfc} title="Export IFC File">
-                  <span className="ribbon-icon"><Download size={14} /></span>
-                  <span>Save IFC</span>
-                </button>
                 <button className="ribbon-button small" onClick={handleGenerateReport} title="Generate HTML Report">
                   <span className="ribbon-icon"><FileText size={14} /></span>
                   <span>Report</span>
@@ -728,31 +730,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
               </div>
             </div>
 
-          </>
-        )}
-
-        {activeTab === '3d' && (
-          <>
-            <div className="ribbon-group">
-              <div className="ribbon-group-title">3D Preview</div>
-              <div className="ribbon-group-content">
-                <span style={{ color: 'var(--text-muted)', fontSize: 11, padding: '0 8px' }}>
-                  3D visualization of the structure
-                </span>
-              </div>
-            </div>
-
-            <div className="ribbon-separator" />
-
-            <div className="ribbon-group">
-              <div className="ribbon-group-title">IFC</div>
-              <div className="ribbon-group-content">
-                <button className="ribbon-button small" onClick={handleImportIfc} title="Import IFC file into 3D view">
-                  <span className="ribbon-icon"><Download size={14} /></span>
-                  <span>Import IFC</span>
-                </button>
-              </div>
-            </div>
           </>
         )}
 
@@ -956,6 +933,111 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   <span className="ribbon-icon"><CheckCircle size={14} /></span>
                   <span>Concrete</span>
                 </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === '3d' && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">View</div>
+              <div className="ribbon-group-content">
+                <button className="ribbon-button icon-only" title="Zoom to Fit">
+                  <Maximize2 size={18} />
+                </button>
+                <button className="ribbon-button icon-only" title="Reset View">
+                  <RotateCcw size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Display</div>
+              <div className="ribbon-group-content">
+                <button className="ribbon-button icon-only" title="Wireframe">
+                  <Grid3X3 size={18} />
+                </button>
+                <button className="ribbon-button icon-only" title="Shaded">
+                  <Box size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Info</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6 }}>
+                  <b>Rotate:</b> Left-click drag<br />
+                  <b>Pan:</b> Right-click drag<br />
+                  <b>Zoom:</b> Scroll wheel
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'report' && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Report Sections</div>
+              <div className="ribbon-group-content">
+                <button
+                  className="ribbon-button small"
+                  onClick={onShowReportSettings}
+                  title="Configure report sections and styling"
+                >
+                  <span className="ribbon-icon"><Settings size={14} /></span>
+                  <span>Report Settings</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Export</div>
+              <div className="ribbon-group-content">
+                <button
+                  className="ribbon-button small"
+                  onClick={onExportReportHTML}
+                  title="Download report as HTML file"
+                >
+                  <span className="ribbon-icon"><FileText size={14} /></span>
+                  <span>HTML</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  onClick={onExportReportPDF}
+                  title="Download report as PDF file"
+                >
+                  <span className="ribbon-icon"><FileDown size={14} /></span>
+                  <span>PDF</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  onClick={onPrintReport}
+                  title="Print report"
+                >
+                  <span className="ribbon-icon"><Printer size={14} /></span>
+                  <span>Print</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Info</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6 }}>
+                  Live preview shows your report.<br />
+                  Configure sections using Settings.
+                </span>
               </div>
             </div>
           </>

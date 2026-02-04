@@ -21,19 +21,6 @@ const GAUSS_POINTS: { xi: number; eta: number; w: number }[] = [
 ];
 
 /**
- * Shape functions for a 4-node quad at (xi, eta) in natural coordinates.
- * N_i = 0.25 * (1 + xi_i * xi) * (1 + eta_i * eta)
- */
-export function shapeFunctions(xi: number, eta: number): number[] {
-  return [
-    0.25 * (1 - xi) * (1 - eta),  // N1 at (-1,-1) = BL
-    0.25 * (1 + xi) * (1 - eta),  // N2 at ( 1,-1) = BR
-    0.25 * (1 + xi) * (1 + eta),  // N3 at ( 1, 1) = TR
-    0.25 * (1 - xi) * (1 + eta),  // N4 at (-1, 1) = TL
-  ];
-}
-
-/**
  * Derivatives of shape functions w.r.t. natural coordinates.
  * Returns { dNdxi: number[4], dNdeta: number[4] }
  */
@@ -199,4 +186,35 @@ export function calculateQuadStress(
   );
 
   return { sigmaX, sigmaY, tauXY, vonMises };
+}
+
+/**
+ * Calculate expanded 12x12 stiffness matrix for mixed beam+plate analysis.
+ * Expands the original 8x8 (2 DOF/node) to 12x12 (3 DOF/node) with zero rotational stiffness.
+ * DOF mapping: [u1,v1,θ1, u2,v2,θ2, u3,v3,θ3, u4,v4,θ4]
+ */
+export function calculateQuadStiffnessExpanded(
+  n1: INode, n2: INode, n3: INode, n4: INode,
+  material: IMaterial,
+  thickness: number,
+  analysisType: AnalysisType
+): Matrix {
+  // Get original 8x8 stiffness (2 DOF/node: u, v)
+  const Ke8 = calculateQuadStiffness(n1, n2, n3, n4, material, thickness, analysisType);
+
+  // Expand to 12x12: insert zero rows/columns for θ DOFs at positions 2, 5, 8, 11
+  const Ke12 = new Matrix(12, 12);
+
+  // Mapping from 2-DOF indices to 3-DOF indices
+  // Original: [u1,v1, u2,v2, u3,v3, u4,v4] → indices [0,1,2,3,4,5,6,7]
+  // Expanded: [u1,v1,θ1, u2,v2,θ2, u3,v3,θ3, u4,v4,θ4] → u,v at [0,1,3,4,6,7,9,10]
+  const mapping = [0, 1, 3, 4, 6, 7, 9, 10];
+
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 8; j++) {
+      Ke12.set(mapping[i], mapping[j], Ke8.get(i, j));
+    }
+  }
+
+  return Ke12;
 }

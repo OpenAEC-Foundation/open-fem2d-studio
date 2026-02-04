@@ -13,9 +13,10 @@ export interface IPointLoad {
 
 export interface IDistributedLoad {
   id?: number;     // Unique identifier within a load case (auto-generated)
-  elementId: number;
-  qx: number;      // N/m (local) — at start (or uniform)
-  qy: number;      // N/m (local) — at start (or uniform)
+  elementId: number;    // beam element ID (0 when edgeId is set)
+  edgeId?: number;      // IEdge ID — when set, targets a plate edge instead of a beam
+  qx: number;      // N/m (local/global) — at start (or uniform)
+  qy: number;      // N/m (local/global) — at start (or uniform)
   qxEnd?: number;  // N/m at end (if different from qx → trapezoidal)
   qyEnd?: number;  // N/m at end (if different from qy → trapezoidal)
   startT?: number;  // Partial load start position (0-1), default 0
@@ -30,7 +31,8 @@ export interface ILoadCase {
   type: 'dead' | 'live' | 'wind' | 'snow' | 'other';
   pointLoads: IPointLoad[];
   distributedLoads: IDistributedLoad[];
-  edgeLoads: IEdgeLoad[];
+  /** @deprecated Use distributedLoads with edgeId instead */
+  edgeLoads?: IEdgeLoad[];
   thermalLoads: IThermalLoad[];
   color: string;
 }
@@ -49,7 +51,6 @@ export const DEFAULT_LOAD_CASES: ILoadCase[] = [
     type: 'dead',
     pointLoads: [],
     distributedLoads: [],
-    edgeLoads: [],
     thermalLoads: [],
     color: '#6b7280'
   },
@@ -59,7 +60,6 @@ export const DEFAULT_LOAD_CASES: ILoadCase[] = [
     type: 'live',
     pointLoads: [],
     distributedLoads: [],
-    edgeLoads: [],
     thermalLoads: [],
     color: '#3b82f6'
   },
@@ -69,7 +69,6 @@ export const DEFAULT_LOAD_CASES: ILoadCase[] = [
     type: 'wind',
     pointLoads: [],
     distributedLoads: [],
-    edgeLoads: [],
     thermalLoads: [],
     color: '#22c55e'
   }
@@ -94,7 +93,6 @@ export function createLoadCase(
     type,
     pointLoads: [],
     distributedLoads: [],
-    edgeLoads: [],
     thermalLoads: [],
     color: colors[type]
   };

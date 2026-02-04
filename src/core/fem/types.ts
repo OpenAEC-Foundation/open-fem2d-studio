@@ -2,6 +2,7 @@ export interface INode {
   id: number;
   x: number;
   y: number;
+  gridLineId?: number;  // ID of structural grid line this node is snapped to
   constraints: {
     x: boolean;
     y: boolean;
@@ -83,7 +84,7 @@ export interface IBeamElement extends IElement {
   };
   // Point loads on the beam (will cause automatic beam splitting)
   pointLoads?: IBeamPointLoad[];
-  // Beam end releases (hinges)
+  // Beam end releases (hinges) - legacy boolean format
   endReleases?: {
     startMoment: boolean;  // Release rotation at start node
     endMoment: boolean;    // Release rotation at end node
@@ -92,10 +93,44 @@ export interface IBeamElement extends IElement {
     startShear?: boolean;  // Release shear at start (Tz)
     endShear?: boolean;    // Release shear at end (Tz)
   };
+  // DOF constraints at beam ends - new format with constraint types
+  // ' ' = Free, 'A' = Absolute (fixed), 'P' = Positive only, 'N' = Negative only, 'S' = Spring
+  dofConstraints?: {
+    start: {
+      Tx: IDofConstraint;  // Axial (translation X along beam)
+      Tz: IDofConstraint;  // Shear (translation Z perpendicular)
+      Rx: IDofConstraint;  // Rotation about X (torsion)
+      Rz: IDofConstraint;  // Rotation about Z (bending moment)
+    };
+    end: {
+      Tx: IDofConstraint;
+      Tz: IDofConstraint;
+      Rx: IDofConstraint;
+      Rz: IDofConstraint;
+    };
+  };
+}
+
+// DOF constraint type: ' '=Free, 'A'=Absolute, 'P'=Positive, 'N'=Negative, 'S'=Spring
+export type DofConstraintType = ' ' | 'A' | 'P' | 'N' | 'S';
+
+export interface IDofConstraint {
+  type: DofConstraintType;
+  springValue?: number;  // Only used when type='S', in N/m or Nm/rad
 }
 
 export interface IPlateEdge {
   nodeIds: number[];  // ordered node IDs along edge
+}
+
+export interface IEdge {
+  id: number;
+  plateId: number;
+  vertexStart: { x: number; y: number };  // geometric start (polygon vertex)
+  vertexEnd: { x: number; y: number };    // geometric end
+  nodeIds: number[];                       // ordered mesh nodes along this edge
+  polygonEdgeIndex?: number;               // for polygon: which edge (0-based)
+  namedEdge?: 'bottom' | 'top' | 'left' | 'right';  // for rectangular
 }
 
 export interface IPlateRegion {
@@ -106,7 +141,7 @@ export interface IPlateRegion {
   divisionsY: number;              // mesh divisions in Y (rectangular mode)
   materialId: number;
   thickness: number;               // plate thickness (meters)
-  elementType?: 'triangle' | 'quad'; // element type (default: quad)
+  elementType?: 'triangle' | 'quad' | 'mixed'; // element type (default: quad)
   nodeIds: number[];               // all generated node IDs
   cornerNodeIds: [number, number, number, number]; // BL, BR, TR, TL
   elementIds: number[];            // all generated element IDs (triangles or quads)
@@ -116,6 +151,7 @@ export interface IPlateRegion {
     left: IPlateEdge;
     right: IPlateEdge;
   };
+  edgeIds?: number[];              // IEdge IDs for boundary edges
   // Polygon plate fields (optional — rectangular plates omit these)
   isPolygon?: boolean;
   polygon?: { x: number; y: number }[];
@@ -123,11 +159,13 @@ export interface IPlateRegion {
   maxArea?: number;
   meshSize?: number;               // element edge length for polygon quad mesh (meters)
   boundaryNodeIds?: number[];
+  quadOnly?: boolean;              // if true, mesh is quad-only (no remaining triangles)
 }
 
 export interface IEdgeLoad {
   plateId: number;
   edge: 'top' | 'bottom' | 'left' | 'right' | number;  // number = polygon edge index (0-based)
+  edgeId?: number;  // IEdge id — primary coupling (when available)
   px: number;  // N/m global X
   py: number;  // N/m global Y
 }
@@ -174,6 +212,8 @@ export interface ISolverResult {
   beamForces: Map<number, IBeamForces>;  // Internal forces for beam elements
   maxVonMises: number;
   minVonMises: number;
+  loadCaseId?: number;              // Which load case was solved (optional)
+  combinationId?: number;           // Which load combination was solved (optional)
   maxMoment?: number;               // For plate bending color scale
   minMoment?: number;
   // Per-component min/max for stress contour scaling
@@ -235,7 +275,7 @@ export interface IElementStress {
   nxy?: number;
 }
 
-export type AnalysisType = 'plane_stress' | 'plane_strain' | 'frame' | 'plate_bending';
+export type AnalysisType = 'plane_stress' | 'plane_strain' | 'frame' | 'plate_bending' | 'mixed_beam_plate';
 
 export interface IAnalysisSettings {
   type: AnalysisType;
@@ -244,9 +284,9 @@ export interface IAnalysisSettings {
 
 export type Tool = 'select' | 'addNode' | 'addSubNode' | 'addElement' | 'addBeam' | 'delete' | 'pan' | 'addLoad' | 'addConstraint'
   | 'addPinned' | 'addXRoller' | 'addZRoller' | 'addZSpring' | 'addRotSpring' | 'addXSpring' | 'addFixed'
-  | 'addLineLoad' | 'addPlate' | 'addEdgeLoad' | 'addThermalLoad';
+  | 'addLineLoad' | 'addPlate' | 'addThermalLoad' | 'rotate';
 
-export type StressType = 'vonMises' | 'sigmaX' | 'sigmaY' | 'tauXY' | 'mx' | 'my' | 'mxy' | 'vx' | 'vy' | 'nx' | 'ny' | 'nxy';
+export type StressType = 'vonMises' | 'sigmaX' | 'sigmaY' | 'tauXY' | 'mx' | 'my' | 'mxy' | 'vx' | 'vy' | 'nx' | 'ny' | 'nxy' | 'normals' | 'shearTrajectory' | 'momentTrajectory';
 
 export interface IViewState {
   offsetX: number;
@@ -261,4 +301,5 @@ export interface ISelection {
   distLoadBeamIds: Set<number>;     // beams with selected distributed load
   selectedDistLoadIds: Set<number>; // individual distributed load IDs (from IDistributedLoad.id)
   plateIds: Set<number>;            // selected plate regions
+  edgeIds: Set<number>;             // selected IEdge IDs
 }

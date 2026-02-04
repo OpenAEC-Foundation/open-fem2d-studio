@@ -372,6 +372,11 @@ export function solveNonlinear(
 ): ISolverResult {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
+  // Mixed beam+plate analysis: beams AND plates together
+  if (opts.analysisType === 'mixed_beam_plate') {
+    return solveMixed(mesh, opts);
+  }
+
   // For plate-related analyses, delegate to the Assembler-based path
   // But if there are no plate/triangle elements, fall back to frame analysis for beams
   if (opts.analysisType === 'plate_bending' || opts.analysisType === 'plane_stress' || opts.analysisType === 'plane_strain') {
@@ -706,6 +711,199 @@ function solvePlateOrPlane(
     minVonMises,
     maxMoment: analysisType === 'plate_bending' ? maxMoment : undefined,
     minMoment: analysisType === 'plate_bending' ? minMoment : undefined,
+    stressRanges: ranges,
+  };
+}
+
+/**
+ * Solve mixed beam+plate analysis.
+ * Uses unified 3 DOFs per node (u, v, θ) with expanded plate stiffness matrices.
+ * Beam elements use their native 6×6 (3 DOF/node) stiffness.
+ * Plate elements are expanded from 6×6 or 8×8 to 9×9 or 12×12 (3 DOF/node).
+ */
+function solveMixed(
+  mesh: Mesh,
+  _opts: NonlinearSolverOptions  // Reserved for future nonlinear mixed analysis
+): ISolverResult {
+  const analysisType = 'mixed_beam_plate';
+  const dofsPerNode = 3; // u, v, θ for all nodes
+
+  // Validate model
+  if (mesh.elements.size < 1 && mesh.getBeamCount() < 1) {
+    throw new Error('Mixed analysis requires at least one plate or beam element');
+  }
+
+  let hasConstraints = false;
+  for (const node of mesh.nodes.values()) {
+    if (node.constraints.x || node.constraints.y || node.constraints.rotation) {
+      hasConstraints = true;
+      break;
+    }
+  }
+  if (!hasConstraints) {
+    throw new Error('Model has no constraints - add boundary conditions');
+  }
+
+  // Assemble global matrices using the mixed_beam_plate mode
+  const K = assembleGlobalStiffnessMatrix(mesh, analysisType);
+  const F = assembleForceVectorNew(mesh, analysisType);
+  const { dofs: constrainedDofs, nodeIdToIndex } = getConstrainedDofs(mesh, analysisType);
+
+  const hasLoads = F.some(f => f !== 0);
+  if (!hasLoads) {
+    throw new Error('No loads applied - add forces to nodes or elements');
+  }
+
+  // Apply boundary conditions (penalty method)
+  const Kmod = K.clone();
+  const Fmod = [...F];
+  const penalty = 1e20;
+  for (const dof of constrainedDofs) {
+    Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
+    Fmod[dof] = 0;
+  }
+
+  // Solve linear system
+  const displacements = solveLinearSystem(Kmod, Fmod);
+
+  // Calculate reactions: R = K·u - F
+  const reactions = K.multiplyVector(displacements);
+  for (let i = 0; i < reactions.length; i++) {
+    reactions[i] = reactions[i] - F[i];
+  }
+
+  // =====================
+  // POST-PROCESSING: BEAMS
+  // =====================
+  const beamForces = new Map<number, IBeamForces>();
+
+  for (const beam of mesh.beamElements.values()) {
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (!nodes) continue;
+
+    const material = mesh.getMaterial(beam.materialId);
+    if (!material) continue;
+
+    const [n1, n2] = nodes;
+    const idx1 = nodeIdToIndex.get(n1.id);
+    const idx2 = nodeIdToIndex.get(n2.id);
+    if (idx1 === undefined || idx2 === undefined) continue;
+
+    // Extract 6-DOF global displacements for beam (3 DOF per node)
+    const globalDisp = [
+      displacements[idx1 * dofsPerNode],      // u1
+      displacements[idx1 * dofsPerNode + 1],  // v1
+      displacements[idx1 * dofsPerNode + 2],  // θ1
+      displacements[idx2 * dofsPerNode],      // u2
+      displacements[idx2 * dofsPerNode + 1],  // v2
+      displacements[idx2 * dofsPerNode + 2],  // θ2
+    ];
+
+    const forces = calculateBeamInternalForces(beam, n1, n2, material, globalDisp);
+    beamForces.set(beam.id, forces);
+  }
+
+  // ======================
+  // POST-PROCESSING: PLATES
+  // ======================
+  const elementStresses = new Map<number, IElementStress>();
+  let maxVonMises = 0;
+  let minVonMises = Infinity;
+
+  // Per-component range tracking
+  const ranges = {
+    sigmaX: { min: Infinity, max: -Infinity },
+    sigmaY: { min: Infinity, max: -Infinity },
+    tauXY: { min: Infinity, max: -Infinity },
+    mx: { min: Infinity, max: -Infinity },
+    my: { min: Infinity, max: -Infinity },
+    mxy: { min: Infinity, max: -Infinity },
+    vx: { min: Infinity, max: -Infinity },
+    vy: { min: Infinity, max: -Infinity },
+    nx: { min: Infinity, max: -Infinity },
+    ny: { min: Infinity, max: -Infinity },
+    nxy: { min: Infinity, max: -Infinity },
+  };
+
+  for (const element of mesh.elements.values()) {
+    const nodes = mesh.getElementNodes(element);
+    if (nodes.length < 3 || nodes.length > 4) continue;
+
+    const material = mesh.getMaterial(element.materialId);
+    if (!material) continue;
+
+    // Extract element displacements: only u, v (skip θ) for plate stress calculation
+    // Plates in mixed analysis use plane stress formulation
+    const elemDisp: number[] = [];
+    for (const node of nodes) {
+      const idx = nodeIdToIndex.get(node.id);
+      if (idx === undefined) continue;
+      // Only u and v (indices 0 and 1 within each node's 3 DOFs)
+      elemDisp.push(displacements[idx * dofsPerNode]);     // u
+      elemDisp.push(displacements[idx * dofsPerNode + 1]); // v
+    }
+
+    // Calculate stresses using plane_stress formulation
+    let stress: { sigmaX: number; sigmaY: number; tauXY: number; vonMises: number };
+
+    if (nodes.length === 4) {
+      const [n1, n2, n3, n4] = nodes;
+      stress = calculateQuadStress(n1, n2, n3, n4, material, elemDisp, 'plane_stress');
+    } else {
+      const [n1, n2, n3] = nodes;
+      stress = calculateElementStress(n1, n2, n3, material, elemDisp, 'plane_stress');
+    }
+
+    const principal = calculatePrincipalStresses(stress.sigmaX, stress.sigmaY, stress.tauXY);
+
+    // Membrane forces: N = stress × thickness (N/m)
+    const thickness = element.thickness || 1;
+    const nx = stress.sigmaX * thickness;
+    const ny = stress.sigmaY * thickness;
+    const nxy = stress.tauXY * thickness;
+
+    elementStresses.set(element.id, {
+      elementId: element.id,
+      ...stress,
+      principalStresses: principal,
+      nx,
+      ny,
+      nxy,
+    });
+
+    maxVonMises = Math.max(maxVonMises, stress.vonMises);
+    minVonMises = Math.min(minVonMises, stress.vonMises);
+
+    // Track per-component ranges
+    ranges.sigmaX.min = Math.min(ranges.sigmaX.min, stress.sigmaX);
+    ranges.sigmaX.max = Math.max(ranges.sigmaX.max, stress.sigmaX);
+    ranges.sigmaY.min = Math.min(ranges.sigmaY.min, stress.sigmaY);
+    ranges.sigmaY.max = Math.max(ranges.sigmaY.max, stress.sigmaY);
+    ranges.tauXY.min = Math.min(ranges.tauXY.min, stress.tauXY);
+    ranges.tauXY.max = Math.max(ranges.tauXY.max, stress.tauXY);
+    ranges.nx.min = Math.min(ranges.nx.min, nx);
+    ranges.nx.max = Math.max(ranges.nx.max, nx);
+    ranges.ny.min = Math.min(ranges.ny.min, ny);
+    ranges.ny.max = Math.max(ranges.ny.max, ny);
+    ranges.nxy.min = Math.min(ranges.nxy.min, nxy);
+    ranges.nxy.max = Math.max(ranges.nxy.max, nxy);
+  }
+
+  if (minVonMises === Infinity) minVonMises = 0;
+
+  // Finalize ranges (replace Infinity with 0 for unused components)
+  for (const key of Object.keys(ranges) as (keyof typeof ranges)[]) {
+    if (ranges[key].min === Infinity) ranges[key].min = 0;
+    if (ranges[key].max === -Infinity) ranges[key].max = 0;
+  }
+
+  return {
+    displacements,
+    reactions,
+    elementStresses,
+    beamForces,
+    maxVonMises,
+    minVonMises,
     stressRanges: ranges,
   };
 }

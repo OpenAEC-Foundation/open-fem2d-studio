@@ -1,12 +1,24 @@
 import { useState, useMemo } from 'react';
-import { IBeamElement, IBeamSection, IBeamForces, IMaterial } from '../../core/fem/types';
-import { SectionDialog } from '../SectionDialog/SectionDialog';
+import { IBeamElement, IBeamSection, IBeamForces, IMaterial, DofConstraintType, IDofConstraint } from '../../core/fem/types';
+import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { checkSteelSection, ISteelCheckResult } from '../../core/standards/SteelCheck';
 import { STEEL_GRADES, ISteelGrade } from '../../core/standards/EurocodeNL';
 import { SteelCheckReport } from '../SteelCheckReport/SteelCheckReport';
 import './BarPropertiesDialog.css';
 
 type BarDialogTab = 'properties' | 'en1993';
+
+// DOF constraint options
+const DOF_OPTIONS: { value: DofConstraintType; label: string; description: string }[] = [
+  { value: ' ', label: ' ', description: 'Free - no limitation' },
+  { value: 'A', label: 'A', description: 'Fully limited (Absolute)' },
+  { value: 'P', label: 'P', description: 'Limited for Positive reaction' },
+  { value: 'N', label: 'N', description: 'Limited for Negative reaction' },
+  { value: 'S', label: 'S', description: 'Spring' },
+];
+
+// Default constraint (fixed/absolute)
+const defaultConstraint = (): IDofConstraint => ({ type: 'A' });
 
 interface BarPropertiesDialogProps {
   beam: IBeamElement;
@@ -17,16 +29,40 @@ interface BarPropertiesDialogProps {
   onClose: () => void;
 }
 
-export function BarPropertiesDialog({ beam, length, material, beamForces, onUpdate, onClose }: BarPropertiesDialogProps) {
+export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClose }: BarPropertiesDialogProps) {
   const [activeTab, setActiveTab] = useState<BarDialogTab>('properties');
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [section, setSection] = useState<IBeamSection>(beam.section);
-  const [startMomentRelease, setStartMomentRelease] = useState(beam.endReleases?.startMoment ?? false);
-  const [endMomentRelease, setEndMomentRelease] = useState(beam.endReleases?.endMoment ?? false);
-  const [startAxialRelease, setStartAxialRelease] = useState(beam.endReleases?.startAxial ?? false);
-  const [endAxialRelease, setEndAxialRelease] = useState(beam.endReleases?.endAxial ?? false);
-  const [startShearRelease, setStartShearRelease] = useState(beam.endReleases?.startShear ?? false);
-  const [endShearRelease, setEndShearRelease] = useState(beam.endReleases?.endShear ?? false);
+
+  // Initialize DOF constraints from beam or default to 'A' (Absolute/fixed)
+  const getInitialConstraint = (end: 'start' | 'end', dof: 'Tx' | 'Tz' | 'Rx' | 'Rz'): IDofConstraint => {
+    if (beam.dofConstraints?.[end]?.[dof]) {
+      return beam.dofConstraints[end][dof];
+    }
+    // Legacy conversion from old boolean releases
+    if (beam.endReleases) {
+      if (end === 'start') {
+        if (dof === 'Rz' && beam.endReleases.startMoment) return { type: ' ' };
+        if (dof === 'Tx' && beam.endReleases.startAxial) return { type: ' ' };
+        if (dof === 'Tz' && beam.endReleases.startShear) return { type: ' ' };
+      } else {
+        if (dof === 'Rz' && beam.endReleases.endMoment) return { type: ' ' };
+        if (dof === 'Tx' && beam.endReleases.endAxial) return { type: ' ' };
+        if (dof === 'Tz' && beam.endReleases.endShear) return { type: ' ' };
+      }
+    }
+    return defaultConstraint();
+  };
+
+  // DOF constraint states
+  const [startTx, setStartTx] = useState<IDofConstraint>(getInitialConstraint('start', 'Tx'));
+  const [startTz, setStartTz] = useState<IDofConstraint>(getInitialConstraint('start', 'Tz'));
+  const [startRx, setStartRx] = useState<IDofConstraint>(getInitialConstraint('start', 'Rx'));
+  const [startRz, setStartRz] = useState<IDofConstraint>(getInitialConstraint('start', 'Rz'));
+  const [endTx, setEndTx] = useState<IDofConstraint>(getInitialConstraint('end', 'Tx'));
+  const [endTz, setEndTz] = useState<IDofConstraint>(getInitialConstraint('end', 'Tz'));
+  const [endRx, setEndRx] = useState<IDofConstraint>(getInitialConstraint('end', 'Rx'));
+  const [endRz, setEndRz] = useState<IDofConstraint>(getInitialConstraint('end', 'Rz'));
 
   // EN 1993-1 tab state
   const [steelGradeName, setSteelGradeName] = useState('S355');
@@ -70,34 +106,42 @@ export function BarPropertiesDialog({ beam, length, material, beamForces, onUpda
     return checkSteelSection(sectionProps, beamForces, selectedGrade);
   }, [section, beamForces, selectedGrade, beam.profileName]);
 
-  const setAllReleases = (val: boolean) => {
-    setStartMomentRelease(val);
-    setEndMomentRelease(val);
-    setStartAxialRelease(val);
-    setEndAxialRelease(val);
-    setStartShearRelease(val);
-    setEndShearRelease(val);
+  // Preset functions
+  const setAllFixed = () => {
+    const fixed: IDofConstraint = { type: 'A' };
+    setStartTx(fixed); setStartTz(fixed); setStartRx(fixed); setStartRz(fixed);
+    setEndTx(fixed); setEndTz(fixed); setEndRx(fixed); setEndRz(fixed);
+  };
+
+  const setAllFree = () => {
+    const free: IDofConstraint = { type: ' ' };
+    setStartTx(free); setStartTz(free); setStartRx(free); setStartRz(free);
+    setEndTx(free); setEndTz(free); setEndRx(free); setEndRz(free);
   };
 
   const applyHingePreset = () => {
-    setStartMomentRelease(true);
-    setEndMomentRelease(true);
-    setStartAxialRelease(false);
-    setEndAxialRelease(false);
-    setStartShearRelease(false);
-    setEndShearRelease(false);
+    // Hinge: moment (Rz) free at both ends, rest fixed
+    const fixed: IDofConstraint = { type: 'A' };
+    const free: IDofConstraint = { type: ' ' };
+    setStartTx(fixed); setStartTz(fixed); setStartRx(fixed); setStartRz(free);
+    setEndTx(fixed); setEndTz(fixed); setEndRx(fixed); setEndRz(free);
   };
 
   const handleApply = () => {
     onUpdate({
       section,
+      dofConstraints: {
+        start: { Tx: startTx, Tz: startTz, Rx: startRx, Rz: startRz },
+        end: { Tx: endTx, Tz: endTz, Rx: endRx, Rz: endRz },
+      },
+      // Also update legacy format for backward compatibility
       endReleases: {
-        startMoment: startMomentRelease,
-        endMoment: endMomentRelease,
-        startAxial: startAxialRelease,
-        endAxial: endAxialRelease,
-        startShear: startShearRelease,
-        endShear: endShearRelease,
+        startMoment: startRz.type === ' ',
+        endMoment: endRz.type === ' ',
+        startAxial: startTx.type === ' ',
+        endAxial: endTx.type === ' ',
+        startShear: startTz.type === ' ',
+        endShear: endTz.type === ' ',
       }
     });
     onClose();
@@ -105,15 +149,48 @@ export function BarPropertiesDialog({ beam, length, material, beamForces, onUpda
 
   if (showSectionPicker) {
     return (
-      <SectionDialog
-        onSelect={(newSection) => {
+      <SectionPropertiesDialog
+        isNew
+        onSave={(profileName, newSection) => {
           setSection(newSection);
+          onUpdate({ profileName });
           setShowSectionPicker(false);
         }}
-        onCancel={() => setShowSectionPicker(false)}
+        onClose={() => setShowSectionPicker(false)}
       />
     );
   }
+
+  // Helper to render a DOF constraint dropdown with optional spring input
+  const renderDofSelect = (
+    value: IDofConstraint,
+    onChange: (c: IDofConstraint) => void
+  ) => (
+    <div className="bar-props-dof-cell">
+      <select
+        className="bar-props-dof-select"
+        value={value.type}
+        onChange={e => onChange({ type: e.target.value as DofConstraintType, springValue: value.springValue })}
+        title={DOF_OPTIONS.find(o => o.value === value.type)?.description}
+      >
+        {DOF_OPTIONS.map(opt => (
+          <option key={opt.value} value={opt.value} title={opt.description}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      {value.type === 'S' && (
+        <input
+          type="number"
+          className="bar-props-spring-input"
+          placeholder="k"
+          value={value.springValue ?? ''}
+          onChange={e => onChange({ type: 'S', springValue: parseFloat(e.target.value) || 0 })}
+          title="Spring stiffness (N/m or Nm/rad)"
+        />
+      )}
+    </div>
+  );
 
   const renderPropertiesTab = () => (
     <>
@@ -130,125 +207,69 @@ export function BarPropertiesDialog({ beam, length, material, beamForces, onUpda
         <span className="bar-props-value">{beam.nodeIds[0]} — {beam.nodeIds[1]}</span>
       </div>
 
-      {material && (
-        <>
-          <div className="bar-props-section-title">Material</div>
-          <div className="bar-props-row">
-            <span className="bar-props-label">Name</span>
-            <span className="bar-props-value">{material.name}</span>
-          </div>
-          <div className="bar-props-row">
-            <span className="bar-props-label">E</span>
-            <span className="bar-props-value">{(material.E / 1e9).toFixed(1)} GPa</span>
-          </div>
-          <div className="bar-props-row">
-            <span className="bar-props-label">&nu;</span>
-            <span className="bar-props-value">{material.nu.toFixed(2)}</span>
-          </div>
-        </>
-      )}
-
+      {/* Section - simplified: Name, A, Iy only */}
       <div className="bar-props-section-title">Section</div>
       {beam.profileName && (
         <div className="bar-props-row">
-          <span className="bar-props-label">Profile</span>
+          <span className="bar-props-label">Name</span>
           <span className="bar-props-value">{beam.profileName}</span>
         </div>
       )}
       <div className="bar-props-row">
         <span className="bar-props-label">A</span>
-        <span className="bar-props-value">{section.A.toExponential(3)} m²</span>
+        <span className="bar-props-value">{(section.A * 1e6).toFixed(0)} mm²</span>
       </div>
       <div className="bar-props-row">
         <span className="bar-props-label">Iy</span>
-        <span className="bar-props-value">{(section.Iy ?? section.I).toExponential(3)} m⁴</span>
-      </div>
-      {section.Iz != null && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">Iz</span>
-          <span className="bar-props-value">{section.Iz.toExponential(3)} m⁴</span>
-        </div>
-      )}
-      {section.Wy != null && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">Wy</span>
-          <span className="bar-props-value">{section.Wy.toExponential(3)} m³</span>
-        </div>
-      )}
-      {section.Wz != null && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">Wz</span>
-          <span className="bar-props-value">{section.Wz.toExponential(3)} m³</span>
-        </div>
-      )}
-      {section.Wply != null && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">Wpl,y</span>
-          <span className="bar-props-value">{section.Wply.toExponential(3)} m³</span>
-        </div>
-      )}
-      {section.Wplz != null && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">Wpl,z</span>
-          <span className="bar-props-value">{section.Wplz.toExponential(3)} m³</span>
-        </div>
-      )}
-      <div className="bar-props-row">
-        <span className="bar-props-label">h</span>
-        <span className="bar-props-value">{(section.h * 1000).toFixed(0)} mm</span>
+        <span className="bar-props-value">{((section.Iy ?? section.I) * 1e12).toExponential(3)} mm⁴</span>
       </div>
       <button className="bar-props-change-btn" onClick={() => setShowSectionPicker(true)}>
         Change Section...
       </button>
 
-      <div className="bar-props-section-title">End Releases</div>
+      {/* DOF Constraints */}
+      <div className="bar-props-section-title">DOF Constraints</div>
       <div className="bar-props-preset-row">
-        <button
-          className="bar-props-preset-btn"
-          onClick={() => setAllReleases(false)}
-          title="All DOFs fixed (no releases)"
-        >
-          Fully Fixed
+        <button className="bar-props-preset-btn" onClick={setAllFixed} title="All DOFs fixed (Absolute)">
+          All Fixed
         </button>
-        <button
-          className="bar-props-preset-btn"
-          onClick={applyHingePreset}
-          title="Moment released at both ends"
-        >
+        <button className="bar-props-preset-btn" onClick={setAllFree} title="All DOFs free">
+          All Free
+        </button>
+        <button className="bar-props-preset-btn" onClick={applyHingePreset} title="Moment (Rz) free at both ends">
           Hinge
         </button>
       </div>
 
-      <div className="bar-props-release-grid">
-        <div className="bar-props-release-header">
+      <div className="bar-props-dof-legend">
+        <span title="Free - no limitation">' ' Free</span>
+        <span title="Fully limited (Absolute)">A Fixed</span>
+        <span title="Limited for Positive reaction">P Pos</span>
+        <span title="Limited for Negative reaction">N Neg</span>
+        <span title="Spring">S Spring</span>
+      </div>
+
+      <div className="bar-props-dof-grid">
+        <div className="bar-props-dof-header">
           <span></span>
-          <span className="bar-props-release-col-label" title="Translation X (axial)">Tx</span>
-          <span className="bar-props-release-col-label" title="Translation Z (shear)">Tz</span>
-          <span className="bar-props-release-col-label" title="Rotation Y (moment)">Ry</span>
+          <span title="Translation X (axial)">Tx</span>
+          <span title="Translation Z (shear)">Tz</span>
+          <span title="Rotation about X (torsion)">Rx</span>
+          <span title="Rotation about Z (moment)">Rz</span>
         </div>
-        <div className="bar-props-release-row">
-          <span className="bar-props-release-row-label">Start</span>
-          <label className="bar-props-cb-cell">
-            <input type="checkbox" checked={startAxialRelease} onChange={e => setStartAxialRelease(e.target.checked)} />
-          </label>
-          <label className="bar-props-cb-cell">
-            <input type="checkbox" checked={startShearRelease} onChange={e => setStartShearRelease(e.target.checked)} />
-          </label>
-          <label className="bar-props-cb-cell">
-            <input type="checkbox" checked={startMomentRelease} onChange={e => setStartMomentRelease(e.target.checked)} />
-          </label>
+        <div className="bar-props-dof-row">
+          <span className="bar-props-dof-row-label">Start</span>
+          {renderDofSelect(startTx, setStartTx)}
+          {renderDofSelect(startTz, setStartTz)}
+          {renderDofSelect(startRx, setStartRx)}
+          {renderDofSelect(startRz, setStartRz)}
         </div>
-        <div className="bar-props-release-row">
-          <span className="bar-props-release-row-label">End</span>
-          <label className="bar-props-cb-cell">
-            <input type="checkbox" checked={endAxialRelease} onChange={e => setEndAxialRelease(e.target.checked)} />
-          </label>
-          <label className="bar-props-cb-cell">
-            <input type="checkbox" checked={endShearRelease} onChange={e => setEndShearRelease(e.target.checked)} />
-          </label>
-          <label className="bar-props-cb-cell">
-            <input type="checkbox" checked={endMomentRelease} onChange={e => setEndMomentRelease(e.target.checked)} />
-          </label>
+        <div className="bar-props-dof-row">
+          <span className="bar-props-dof-row-label">End</span>
+          {renderDofSelect(endTx, setEndTx)}
+          {renderDofSelect(endTz, setEndTz)}
+          {renderDofSelect(endRx, setEndRx)}
+          {renderDofSelect(endRz, setEndRz)}
         </div>
       </div>
     </>

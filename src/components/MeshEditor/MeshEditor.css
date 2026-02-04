@@ -132,6 +132,32 @@
   background: var(--bg-elevated);
 }
 
+/* Floating "+" button for adding void to selected plate */
+.plate-add-void-floating-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid #e94560;
+  border-radius: 50%;
+  background: rgba(233, 69, 96, 0.9);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: all 0.15s ease;
+}
+
+.plate-add-void-floating-btn:hover {
+  transform: scale(1.15);
+  background: #e94560;
+  box-shadow: 0 4px 12px rgba(233, 69, 96, 0.5);
+}
+
 /* Zoom controls */
 .zoom-controls {
   position: absolute;

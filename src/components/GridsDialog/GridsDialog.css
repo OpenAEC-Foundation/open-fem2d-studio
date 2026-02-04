@@ -12,8 +12,8 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  width: 500px;
-  max-height: 600px;
+  width: 620px;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -158,6 +158,26 @@
 
 .grids-delete-btn:hover {
   color: var(--danger);
+}
+
+.grids-lock-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  opacity: 0.5;
+  transition: all 0.15s ease;
+}
+
+.grids-lock-btn:hover {
+  opacity: 1;
+}
+
+.grids-lock-btn.locked {
+  color: var(--accent);
+  opacity: 1;
 }
 
 .grids-empty {

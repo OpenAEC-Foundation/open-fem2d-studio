@@ -69,7 +69,7 @@
 
 .ribbon-group-content {
   display: flex;
-  gap: 2px;
+  gap: 1px;
   flex: 1;
   align-items: flex-start;
 }
@@ -83,21 +83,21 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 2px;
+  gap: 1px;
 }
 
 .ribbon-group-content.grid-3x2 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 2px;
+  gap: 1px;
 }
 
 .ribbon-group-content.grid-4x2 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 2px;
+  gap: 1px;
 }
 
 .ribbon-group-content.wrap {
@@ -126,8 +126,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4px 6px;
-  min-width: 40px;
+  padding: 4px 4px;
+  min-width: 36px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -135,7 +135,7 @@
   font-size: 9px;
   cursor: pointer;
   transition: all 0.15s ease;
-  gap: 1px;
+  gap: 0px;
 }
 
 .ribbon-button:hover {
@@ -151,15 +151,25 @@
 }
 
 .ribbon-button.small {
-  min-width: 44px;
-  width: 44px;
-  padding: 4px 4px;
+  min-width: 38px;
+  width: 38px;
+  padding: 3px 3px;
   font-size: 9px;
 }
 
 .ribbon-button.large {
   min-width: 52px;
   padding: 6px 10px;
+}
+
+.ribbon-button.icon-only {
+  min-width: 36px;
+  width: 36px;
+  padding: 8px;
+}
+
+.ribbon-button.icon-only span {
+  display: none;
 }
 
 .ribbon-button.large span:not(.ribbon-icon) {
@@ -181,11 +191,27 @@
   border-color: var(--danger);
 }
 
+.ribbon-button.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.ribbon-button.accent:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 .ribbon-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+}
+
+.ribbon-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .ribbon-select {

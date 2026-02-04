@@ -1,25 +1,94 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useFEM, applyLoadCaseToMesh } from '../../context/FEMContext';
 import { INode, IBeamElement, IBeamSection } from '../../core/fem/types';
 import { getStressColor, generateColorScale, formatResultValue } from '../../utils/colors';
 import { calculateBeamLength, calculateBeamAngle } from '../../core/fem/Beam';
 import { formatForce, formatMoment } from '../../core/fem/BeamForces';
-import { SectionDialog } from '../SectionDialog/SectionDialog';
+import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { LoadDialog } from '../LoadDialog/LoadDialog';
 import { BarPropertiesDialog } from '../BarPropertiesDialog/BarPropertiesDialog';
 import { NodePropertiesDialog } from '../NodePropertiesDialog/NodePropertiesDialog';
 import { LineLoadDialog } from '../LineLoadDialog/LineLoadDialog';
 import { PlateDialog } from '../PlateDialog/PlateDialog';
-import { EdgeLoadDialog } from '../EdgeLoadDialog/EdgeLoadDialog';
 import { ThermalLoadDialog } from '../ThermalLoadDialog/ThermalLoadDialog';
 import { PlatePropertiesDialog } from '../PlatePropertiesDialog/PlatePropertiesDialog';
-import { generatePlateRegionMesh, generatePolygonPlateMesh, removePlateRegion, remeshPlateRegion, remeshPolygonPlateRegion, findPlateCornerForNode, pointInPolygon, polygonCentroid } from '../../core/fem/PlateRegion';
+import { DimensionEditDialog } from '../DimensionEditDialog/DimensionEditDialog';
+import { generatePolygonPlateMesh, generatePolygonPlateMeshV2, fixupEdgePlateIds, createEdgesForRectPlate, removePlateRegion, remeshPlateRegion, remeshPolygonPlateRegion, remeshPolygonPlateRegionFromContour, findPlateCornerForNode, pointInPolygon, polygonCentroid } from '../../core/fem/PlateRegion';
 import { buildNodeIdToIndex } from '../../core/solver/Assembler';
 import { checkSteelSection } from '../../core/standards/SteelCheck';
 import { STEEL_GRADES } from '../../core/standards/EurocodeNL';
 import './MeshEditor.css';
+import { IGridLine } from '../../core/fem/StructuralGrid';
 
-export function MeshEditor() {
+interface MeshEditorProps {
+  onShowGridsDialog?: () => void;
+}
+
+/**
+ * Check if two line segments intersect (excluding shared endpoints)
+ */
+function segmentsIntersectPoints(
+  p1: { x: number; y: number }, p2: { x: number; y: number },
+  p3: { x: number; y: number }, p4: { x: number; y: number }
+): boolean {
+  const d1 = direction(p3, p4, p1);
+  const d2 = direction(p3, p4, p2);
+  const d3 = direction(p1, p2, p3);
+  const d4 = direction(p1, p2, p4);
+
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    return true;
+  }
+  return false;
+}
+
+function direction(pi: { x: number; y: number }, pj: { x: number; y: number }, pk: { x: number; y: number }): number {
+  return (pk.x - pi.x) * (pj.y - pi.y) - (pj.x - pi.x) * (pk.y - pi.y);
+}
+
+/**
+ * Check if a polygon is self-intersecting (edges cross each other)
+ */
+function isPolygonSelfIntersecting(polygon: { x: number; y: number }[]): boolean {
+  const n = polygon.length;
+  if (n < 4) return false; // Triangle can't self-intersect
+
+  for (let i = 0; i < n; i++) {
+    const p1 = polygon[i];
+    const p2 = polygon[(i + 1) % n];
+
+    // Check against all non-adjacent edges
+    for (let j = i + 2; j < n; j++) {
+      // Skip if the edges share a vertex
+      if (j === (i + n - 1) % n) continue;
+
+      const p3 = polygon[j];
+      const p4 = polygon[(j + 1) % n];
+
+      // Skip if edges share a vertex
+      if ((j + 1) % n === i) continue;
+
+      if (segmentsIntersectPoints(p1, p2, p3, p4)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if polygon has valid winding (positive area = counter-clockwise)
+ */
+function polygonArea(polygon: { x: number; y: number }[]): number {
+  let area = 0;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    area += (polygon[j].x + polygon[i].x) * (polygon[j].y - polygon[i].y);
+  }
+  return area / 2;
+}
+
+export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { state, dispatch, pushUndo } = useFEM();
@@ -60,7 +129,14 @@ export function MeshEditor() {
     showDeflections,
     autoRecalculate,
     showEnvelope,
-    envelopeResult
+    envelopeResult,
+    showStressGradient,
+    stressDisplayMode,
+    stressUnit,
+    plateBendingMomentUnit,
+    plateShearForceUnit,
+    plateMembraneForceUnit,
+    finishEditTrigger
   } = state;
 
   const [isDragging, setIsDragging] = useState(false);
@@ -79,6 +155,9 @@ export function MeshEditor() {
     currentLength: number;
   } | null>(null);
 
+  // Dimension edit dialog (double-click on dimension line)
+  const [dimDialogBeamId, setDimDialogBeamId] = useState<number | null>(null);
+
   // Pending beam awaiting section profile selection
   const [pendingBeamNodeIds, setPendingBeamNodeIds] = useState<[number, number] | null>(null);
   const [showSectionDialog, setShowSectionDialog] = useState(false);
@@ -92,8 +171,9 @@ export function MeshEditor() {
   // Bar properties dialog (double-click on bar)
   const [editingBarId, setEditingBarId] = useState<number | null>(null);
 
-  // Line load input dialog
+  // Line load input dialog (beam or plate edge)
   const [lineLoadBeamId, setLineLoadBeamId] = useState<number | null>(null);
+  const [lineLoadEdgeId, setLineLoadEdgeId] = useState<number | null>(null); // IEdge ID when targeting a plate edge
   // When editing an existing distributed load (double-click), track its id
   const [editingDistLoadId, setEditingDistLoadId] = useState<number | null>(null);
 
@@ -105,6 +185,9 @@ export function MeshEditor() {
 
   // Hovered beam for line load / addLoad tool highlight
   const [hoveredBeamId, setHoveredBeamId] = useState<number | null>(null);
+
+  // Hovered plate edge for addLineLoad tool
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<number | null>(null);
 
   // Hovered node for pre-highlight
   const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null);
@@ -133,13 +216,8 @@ export function MeshEditor() {
   // Length input for beam drawing (triggered by typing a number while placing beam)
   const [beamLengthInput, setBeamLengthInput] = useState<string | null>(null);
 
-  // Plate drawing tool state
-  const [plateFirstCorner, setPlateFirstCorner] = useState<{x: number, y: number} | null>(null);
+  // Plate drawing tool state (polygon mode only)
   const [showPlateDialog, setShowPlateDialog] = useState(false);
-  const [pendingPlateRect, setPendingPlateRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
-
-  // Polygon plate drawing mode
-  const [plateDrawMode, setPlateDrawMode] = useState<'rectangle' | 'polygon'>('rectangle');
   const [platePolygonPoints, setPlatePolygonPoints] = useState<{x: number, y: number}[]>([]);
   const [plateVoids, setPlateVoids] = useState<{x: number, y: number}[][]>([]);
   const [plateEditState, setPlateEditState] = useState<'outline' | 'void' | null>(null);
@@ -150,13 +228,135 @@ export function MeshEditor() {
     bbox: {x: number, y: number, w: number, h: number};
   } | null>(null);
 
-  // Edge load dialog
-  const [edgeLoadPlateId, setEdgeLoadPlateId] = useState<number | null>(null);
-  const [edgeLoadEdge, setEdgeLoadEdge] = useState<'top' | 'bottom' | 'left' | 'right' | number>('bottom');
+  // Void drawing on existing plate (from PlatePropertiesDialog "+" button)
+  const [voidTargetPlateId, setVoidTargetPlateId] = useState<number | null>(null);
+
+  // Arc mode for polygon/void drawing
+  const [arcMode, setArcMode] = useState(false);
+
+  // Rotate tool state
+  const [rotateCenter, setRotateCenter] = useState<{x: number, y: number} | null>(null);
+  const [rotateAngleInput, setRotateAngleInput] = useState<string | null>(null);
+
+  // Polygon contour edge dragging (grab edge midpoint to move both vertices)
+  const [contourEdgeDrag, setContourEdgeDrag] = useState<{
+    plateId: number;
+    edgeIndex: number;  // polygon edge index (v[i] -> v[i+1])
+    originV1: { x: number; y: number };
+    originV2: { x: number; y: number };
+  } | null>(null);
+
 
   // Thermal load dialog
   const [thermalLoadElementIds, setThermalLoadElementIds] = useState<number[]>([]);
   const [thermalLoadPlateId, setThermalLoadPlateId] = useState<number | undefined>(undefined);
+
+  // Arc discretization helper: semicircular arc from start to end
+  const discretizeArc = useCallback((start: {x:number, y:number}, end: {x:number, y:number}, numSegments = 12): {x:number, y:number}[] => {
+    const mx = (start.x + end.x) / 2;
+    const my = (start.y + end.y) / 2;
+    const halfChord = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2) / 2;
+    if (halfChord < 1e-6) return [end];
+    const startAngle = Math.atan2(start.y - my, start.x - mx);
+    const pts: {x:number, y:number}[] = [];
+    for (let i = 1; i <= numSegments; i++) {
+      const angle = startAngle + (i / numSegments) * Math.PI;
+      pts.push({ x: mx + halfChord * Math.cos(angle), y: my + halfChord * Math.sin(angle) });
+    }
+    return pts;
+  }, []);
+
+  // Canvas capture function for report images
+  const captureCanvas = useCallback((key: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const dataUrl = canvas.toDataURL('image/png');
+      dispatch({ type: 'SET_CANVAS_CAPTURE', payload: { key, dataUrl } });
+    } catch (e) {
+      console.error('Failed to capture canvas:', e);
+    }
+  }, [dispatch]);
+
+  // Capture current canvas state on every render (for report use)
+  // This ensures the latest view is always available
+  useEffect(() => {
+    // Capture after draw completes
+    const timer = setTimeout(() => {
+      if (viewMode === 'geometry') {
+        captureCanvas('geometry');
+      } else if (viewMode === 'results' && result) {
+        captureCanvas('results');
+        // Also capture specific diagram states if enabled
+        if (showMoment) captureCanvas('moment');
+        if (showShear) captureCanvas('shear');
+        if (showNormal) captureCanvas('normal');
+        if (showDeformed) captureCanvas('deformed');
+        if (showReactions) captureCanvas('reactions');
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [viewMode, result, showMoment, showShear, showNormal, showDeformed, showReactions, captureCanvas, meshVersion]);
+
+  // Capture load case specific view when activeLoadCase changes
+  useEffect(() => {
+    if (viewMode === 'geometry' && activeLoadCase) {
+      const timer = setTimeout(() => {
+        captureCanvas(`loadcase_${activeLoadCase}`);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [activeLoadCase, viewMode, captureCanvas, meshVersion]);
+
+  // Global max values for force diagrams - use ONE scale for all beams
+  const globalForceMaxes = useMemo(() => {
+    if (!result || result.beamForces.size === 0) {
+      return { maxM: 1, maxV: 1, maxN: 1 };
+    }
+    let maxM = 0, maxV = 0, maxN = 0;
+    for (const forces of result.beamForces.values()) {
+      // Check detailed station values if available
+      if (forces.bendingMoment) {
+        for (const m of forces.bendingMoment) maxM = Math.max(maxM, Math.abs(m));
+      } else {
+        maxM = Math.max(maxM, Math.abs(forces.M1), Math.abs(forces.M2), Math.abs(forces.maxM || 0));
+      }
+      if (forces.shearForce) {
+        for (const v of forces.shearForce) maxV = Math.max(maxV, Math.abs(v));
+      } else {
+        maxV = Math.max(maxV, Math.abs(forces.V1), Math.abs(forces.V2), Math.abs(forces.maxV || 0));
+      }
+      if (forces.normalForce) {
+        for (const n of forces.normalForce) maxN = Math.max(maxN, Math.abs(n));
+      } else {
+        maxN = Math.max(maxN, Math.abs(forces.N1), Math.abs(forces.N2), Math.abs(forces.maxN || 0));
+      }
+    }
+    return { maxM: maxM || 1, maxV: maxV || 1, maxN: maxN || 1 };
+  }, [result]);
+
+  // Global max q-load for distributed load scaling - use ONE scale for all loads
+  const globalMaxQ = useMemo(() => {
+    let maxQ = 0;
+    // Check beam's own distributedLoad (applied directly to beam)
+    for (const beam of mesh.beamElements.values()) {
+      if (beam.distributedLoad) {
+        const { qy } = beam.distributedLoad;
+        const qyE = beam.distributedLoad.qyEnd ?? qy;
+        maxQ = Math.max(maxQ, Math.abs(qy), Math.abs(qyE));
+      }
+    }
+    // Check all load cases for stored distributed loads
+    for (const lc of loadCases) {
+      if (lc.distributedLoads) {
+        for (const dl of lc.distributedLoads) {
+          const qyE = dl.qyEnd ?? dl.qy;
+          maxQ = Math.max(maxQ, Math.abs(dl.qy), Math.abs(qyE));
+        }
+      }
+    }
+    return maxQ || 1;
+  }, [mesh.beamElements, loadCases, meshVersion]);
 
   // Draw gizmo for selected node
   const drawGizmo = useCallback((
@@ -395,6 +595,25 @@ export function MeshEditor() {
     return null;
   }, [mesh, worldToScreen]);
 
+  // Find structural grid line at screen position
+  const findGridLineAtScreen = useCallback((sx: number, sy: number): { line: IGridLine; type: 'vertical' | 'horizontal' } | null => {
+    if (!structuralGrid.showGridLines) return null;
+    const world = screenToWorld(sx, sy);
+    const threshold = 10 / viewState.scale; // 10 pixels in world coords
+
+    for (const line of structuralGrid.verticalLines) {
+      if (Math.abs(world.x - line.position) < threshold) {
+        return { line, type: 'vertical' };
+      }
+    }
+    for (const line of structuralGrid.horizontalLines) {
+      if (Math.abs(world.y - line.position) < threshold) {
+        return { line, type: 'horizontal' };
+      }
+    }
+    return null;
+  }, [structuralGrid, screenToWorld, viewState.scale]);
+
   // Find load resize handle at screen position (for selected beams with distributed loads)
   const findLoadHandleAtScreen = useCallback((screenX: number, screenY: number): {
     beamId: number; end: 'start' | 'end';
@@ -421,7 +640,7 @@ export function MeshEditor() {
       const coordSystem = beam.distributedLoad.coordSystem ?? 'local';
       const isGlobal = coordSystem === 'global';
       const screenAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const perpAngle = isGlobal ? Math.PI / 2 : screenAngle + Math.PI / 2;
+      const perpAngle = isGlobal ? -Math.PI / 2 : screenAngle - Math.PI / 2;
       const arrowLength = Math.min(40, Math.abs(qy) / 500 * 40 + 20);
 
       const loadP1 = {
@@ -434,12 +653,12 @@ export function MeshEditor() {
       };
 
       const startTop = {
-        x: loadP1.x + Math.cos(perpAngle) * arrowLength * (qy > 0 ? 1 : -1),
-        y: loadP1.y + Math.sin(perpAngle) * arrowLength * (qy > 0 ? 1 : -1)
+        x: loadP1.x + Math.cos(perpAngle) * arrowLength,
+        y: loadP1.y + Math.sin(perpAngle) * arrowLength
       };
       const endTop = {
-        x: loadP2.x + Math.cos(perpAngle) * arrowLength * (qy > 0 ? 1 : -1),
-        y: loadP2.y + Math.sin(perpAngle) * arrowLength * (qy > 0 ? 1 : -1)
+        x: loadP2.x + Math.cos(perpAngle) * arrowLength,
+        y: loadP2.y + Math.sin(perpAngle) * arrowLength
       };
 
       const dStart = Math.sqrt((screenX - startTop.x) ** 2 + (screenY - startTop.y) ** 2);
@@ -507,7 +726,7 @@ export function MeshEditor() {
         const qyE = dl.qyEnd ?? qy;
         const coordSystem = dl.coordSystem ?? 'local';
         const isGlobal = coordSystem === 'global';
-        const perpAngle = isGlobal ? Math.PI / 2 : screenAngle + Math.PI / 2;
+        const perpAngle = isGlobal ? -Math.PI / 2 : screenAngle - Math.PI / 2;
         const maxQ = Math.max(Math.abs(qy), Math.abs(qyE));
         const baseLen = Math.min(40, maxQ / 500 * 40 + 20);
         const arrowHeight = Math.max(Math.abs(qy) / maxQ, Math.abs(qyE) / maxQ) * baseLen;
@@ -825,10 +1044,10 @@ export function MeshEditor() {
 
     // Use screen-space angle (Y flipped vs world coords) for correct perpendicular direction
     const screenAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const perpAngle = isGlobal ? Math.PI / 2 : screenAngle + Math.PI / 2;
+    const perpAngle = isGlobal ? -Math.PI / 2 : screenAngle - Math.PI / 2;
 
-    // Apply stacking offset: shift arrow bases perpendicular to the beam
-    // All loads stack in the SAME positive perpendicular direction from the beam
+    // Apply stacking offset: shift arrow bases perpendicular to the beam (upward in screen space)
+    // All loads stack in the SAME direction away from the beam
     const sOffset = stackOffset ?? 0;
 
     // Compute start and end points on beam for partial loads (with stacking offset)
@@ -841,11 +1060,10 @@ export function MeshEditor() {
       y: p1.y + (p2.y - p1.y) * endT + Math.sin(perpAngle) * sOffset
     };
 
-    // Arrow lengths: for trapezoidal loads, interpolate between start and end
-    const maxQ = Math.max(Math.abs(qy), Math.abs(qyE));
-    const baseLen = Math.min(40, maxQ / 500 * 40 + 20);
-    const startLen = maxQ === 0 ? 20 : (Math.abs(qy) / maxQ) * baseLen;
-    const endLen = maxQ === 0 ? 20 : (Math.abs(qyE) / maxQ) * baseLen;
+    // Arrow lengths: use GLOBAL max q-load so all loads share the same scale
+    const baseLen = Math.min(60, globalMaxQ / 500 * 40 + 20);
+    const startLen = globalMaxQ === 0 ? 20 : (Math.abs(qy) / globalMaxQ) * baseLen;
+    const endLen = globalMaxQ === 0 ? 20 : (Math.abs(qyE) / globalMaxQ) * baseLen;
 
     const numArrows = Math.max(2, Math.round(8 * (endT - startT)));
 
@@ -878,27 +1096,15 @@ export function MeshEditor() {
         ctx.lineTo(px, py);
         ctx.stroke();
 
-        // Arrow head: for positive qy, arrowhead at base (pointing toward beam = compression)
-        // For negative qy, arrowhead at top (pointing away from beam = tension/uplift)
-        if (currentQ >= 0) {
-          // Arrowhead at base (px, py) — points toward beam
-          const arrowDir = Math.atan2(py - topY, px - topX);
-          ctx.beginPath();
-          ctx.moveTo(px, py);
-          ctx.lineTo(px - 8 * Math.cos(arrowDir - 0.4), py - 8 * Math.sin(arrowDir - 0.4));
-          ctx.lineTo(px - 8 * Math.cos(arrowDir + 0.4), py - 8 * Math.sin(arrowDir + 0.4));
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          // Arrowhead at top (topX, topY) — points away from beam (tension)
-          const arrowDir = Math.atan2(topY - py, topX - px);
-          ctx.beginPath();
-          ctx.moveTo(topX, topY);
-          ctx.lineTo(topX - 8 * Math.cos(arrowDir - 0.4), topY - 8 * Math.sin(arrowDir - 0.4));
-          ctx.lineTo(topX - 8 * Math.cos(arrowDir + 0.4), topY - 8 * Math.sin(arrowDir + 0.4));
-          ctx.closePath();
-          ctx.fill();
-        }
+        // Arrow head: always at base (beam side), pointing from top toward beam
+        // This shows force direction: arrows point toward the beam (compression/gravity)
+        const arrowDir = Math.atan2(py - topY, px - topX);
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px - 8 * Math.cos(arrowDir - 0.4), py - 8 * Math.sin(arrowDir - 0.4));
+        ctx.lineTo(px - 8 * Math.cos(arrowDir + 0.4), py - 8 * Math.sin(arrowDir + 0.4));
+        ctx.closePath();
+        ctx.fill();
       }
     }
 
@@ -1055,7 +1261,7 @@ export function MeshEditor() {
 
     // Return the max arrow height for stacking purposes (always positive)
     return Math.max(startLen, endLen);
-  }, [worldToScreen, loadCases, activeLoadCase]);
+  }, [worldToScreen, loadCases, activeLoadCase, globalMaxQ]);
 
   const constraintTools = ['addPinned', 'addXRoller', 'addZRoller', 'addZSpring', 'addRotSpring', 'addXSpring', 'addFixed'] as const;
   const isConstraintTool = constraintTools.includes(selectedTool as typeof constraintTools[number]);
@@ -1299,23 +1505,24 @@ export function MeshEditor() {
       let color: string;
       let fillColor: string;
 
+      // Use GLOBAL max values so all beams share the same scale
       switch (diagramType) {
         case 'normal':
           values = forces.normalForce;
-          maxVal = forces.maxN || 1;
+          maxVal = globalForceMaxes.maxN;
           color = '#22c55e';
           fillColor = 'rgba(34, 197, 94, 0.3)';
           break;
         case 'shear':
           values = forces.shearForce;
-          maxVal = forces.maxV || 1;
+          maxVal = globalForceMaxes.maxV;
           color = '#3b82f6';
           fillColor = 'rgba(59, 130, 246, 0.3)';
           break;
         case 'moment':
         default:
           values = forces.bendingMoment;
-          maxVal = forces.maxM || 1;
+          maxVal = globalForceMaxes.maxM;
           color = '#ef4444';
           fillColor = 'rgba(239, 68, 68, 0.3)';
           break;
@@ -1539,7 +1746,7 @@ export function MeshEditor() {
         tryPlaceLabel(label, labelOffsetX, labelOffsetY, _diagLabelBg);
       }
     }
-  }, [result, mesh, worldToScreen, diagramScale]);
+  }, [result, mesh, worldToScreen, diagramScale, globalForceMaxes]);
 
   /** Draw envelope force diagram (min/max curves) for a given diagram type. */
   const drawEnvelopeDiagram = useCallback((
@@ -1651,10 +1858,12 @@ export function MeshEditor() {
 
     const fmtForce = (val: number) => {
       if (forceUnit === 'N') return `${val.toFixed(0)} N`;
+      if (forceUnit === 'MN') return `${(val / 1e6).toFixed(3)} MN`;
       return `${(val / 1000).toFixed(1)} kN`;
     };
     const fmtMoment = (val: number) => {
       if (forceUnit === 'N') return `${val.toFixed(0)} N·m`;
+      if (forceUnit === 'MN') return `${(val / 1e6).toFixed(4)} MN·m`;
       return `${(val / 1000).toFixed(2)} kN·m`;
     };
 
@@ -2005,9 +2214,112 @@ export function MeshEditor() {
 
     const nodeIdToIndex = result ? getNodeIdToIndex() : null;
     const dofsPerNode = analysisType === 'frame' ? 3 : analysisType === 'plate_bending' ? 3 : 2;
+    // For plate elements, DOFs per node is always 2 (plane_stress) or 3 (plate_bending)
+    const plateDofsPerNode = analysisType === 'plate_bending' ? 3 : 2;
+
+    // Pre-compute nodal stress values for smoothed rendering (average stress at each node)
+    const nodalStressValues = new Map<number, number>();
+    let smoothedMinVal = 0;
+    let smoothedMaxVal = 1;
+    if (showStress && result && stressDisplayMode === 'smoothed' && stressType !== 'normals') {
+      const nodeStressSums = new Map<number, number>();
+      const nodeStressCounts = new Map<number, number>();
+      const sr = result.stressRanges;
+
+      // Determine min/max for the current stress type
+      switch (stressType) {
+        case 'sigmaX':
+          smoothedMinVal = sr?.sigmaX.min ?? result.minVonMises;
+          smoothedMaxVal = sr?.sigmaX.max ?? result.maxVonMises;
+          break;
+        case 'sigmaY':
+          smoothedMinVal = sr?.sigmaY.min ?? result.minVonMises;
+          smoothedMaxVal = sr?.sigmaY.max ?? result.maxVonMises;
+          break;
+        case 'tauXY':
+          smoothedMinVal = sr?.tauXY.min ?? result.minVonMises;
+          smoothedMaxVal = sr?.tauXY.max ?? result.maxVonMises;
+          break;
+        case 'mx':
+          smoothedMinVal = sr?.mx.min ?? result.minMoment ?? 0;
+          smoothedMaxVal = sr?.mx.max ?? result.maxMoment ?? 1;
+          break;
+        case 'my':
+          smoothedMinVal = sr?.my.min ?? result.minMoment ?? 0;
+          smoothedMaxVal = sr?.my.max ?? result.maxMoment ?? 1;
+          break;
+        case 'mxy':
+          smoothedMinVal = sr?.mxy.min ?? result.minMoment ?? 0;
+          smoothedMaxVal = sr?.mxy.max ?? result.maxMoment ?? 1;
+          break;
+        case 'vx':
+          smoothedMinVal = sr?.vx.min ?? 0;
+          smoothedMaxVal = sr?.vx.max ?? 1;
+          break;
+        case 'vy':
+          smoothedMinVal = sr?.vy.min ?? 0;
+          smoothedMaxVal = sr?.vy.max ?? 1;
+          break;
+        case 'nx':
+          smoothedMinVal = sr?.nx.min ?? 0;
+          smoothedMaxVal = sr?.nx.max ?? 1;
+          break;
+        case 'ny':
+          smoothedMinVal = sr?.ny.min ?? 0;
+          smoothedMaxVal = sr?.ny.max ?? 1;
+          break;
+        case 'nxy':
+          smoothedMinVal = sr?.nxy.min ?? 0;
+          smoothedMaxVal = sr?.nxy.max ?? 1;
+          break;
+        default:
+          smoothedMinVal = result.minVonMises;
+          smoothedMaxVal = result.maxVonMises;
+      }
+
+      // Sum stress values at each node from connected elements
+      for (const element of mesh.elements.values()) {
+        const stress = result.elementStresses.get(element.id);
+        if (!stress) continue;
+
+        let value: number;
+        switch (stressType) {
+          case 'sigmaX': value = stress.sigmaX; break;
+          case 'sigmaY': value = stress.sigmaY; break;
+          case 'tauXY': value = stress.tauXY; break;
+          case 'mx': value = stress.mx ?? 0; break;
+          case 'my': value = stress.my ?? 0; break;
+          case 'mxy': value = stress.mxy ?? 0; break;
+          case 'vx': value = stress.vx ?? 0; break;
+          case 'vy': value = stress.vy ?? 0; break;
+          case 'nx': value = stress.nx ?? 0; break;
+          case 'ny': value = stress.ny ?? 0; break;
+          case 'nxy': value = stress.nxy ?? 0; break;
+          default: value = stress.vonMises;
+        }
+
+        for (const nodeId of element.nodeIds) {
+          nodeStressSums.set(nodeId, (nodeStressSums.get(nodeId) ?? 0) + value);
+          nodeStressCounts.set(nodeId, (nodeStressCounts.get(nodeId) ?? 0) + 1);
+        }
+      }
+
+      // Compute averaged nodal values
+      for (const [nodeId, sum] of nodeStressSums) {
+        nodalStressValues.set(nodeId, sum / (nodeStressCounts.get(nodeId) ?? 1));
+      }
+    }
+
+    // Check if we're in void edit mode for a specific plate
+    const isVoidEditMode = voidTargetPlateId !== null && plateEditState === 'void';
+    const voidEditPlate = isVoidEditMode ? mesh.getPlateRegion(voidTargetPlateId) : null;
+    const voidEditElementIds = voidEditPlate ? new Set(voidEditPlate.elementIds) : null;
 
     // Draw elements (triangles and quads) for plane stress/strain
     for (const element of mesh.elements.values()) {
+      // Skip elements of the plate being edited (void edit mode)
+      if (voidEditElementIds && voidEditElementIds.has(element.id)) continue;
+
       const nodes = mesh.getElementNodes(element);
       if (nodes.length < 3) continue;
 
@@ -2022,8 +2334,9 @@ export function MeshEditor() {
             const w = result.displacements[idx * 3] * deformationScale;
             return { ...n, y: n.y + w };
           }
-          const u = result.displacements[idx * 2] * deformationScale;
-          const v = result.displacements[idx * 2 + 1] * deformationScale;
+          // plane_stress/plane_strain: 2 DOFs per node (u, v)
+          const u = result.displacements[idx * plateDofsPerNode] * deformationScale;
+          const v = result.displacements[idx * plateDofsPerNode + 1] * deformationScale;
           return { ...n, x: n.x + u, y: n.y + v };
         });
       }
@@ -2039,75 +2352,108 @@ export function MeshEditor() {
       ctx.closePath();
 
       // Fill with stress color or material color
-      if (showStress && result) {
+      if (showStress && result && showStressGradient && stressType !== 'normals') {
         const stress = result.elementStresses.get(element.id);
         if (stress) {
-          let value: number;
-          let minVal: number;
-          let maxVal: number;
-          const sr = result.stressRanges;
-          switch (stressType) {
-            case 'sigmaX':
-              value = stress.sigmaX;
-              minVal = sr?.sigmaX.min ?? result.minVonMises;
-              maxVal = sr?.sigmaX.max ?? result.maxVonMises;
-              break;
-            case 'sigmaY':
-              value = stress.sigmaY;
-              minVal = sr?.sigmaY.min ?? result.minVonMises;
-              maxVal = sr?.sigmaY.max ?? result.maxVonMises;
-              break;
-            case 'tauXY':
-              value = stress.tauXY;
-              minVal = sr?.tauXY.min ?? result.minVonMises;
-              maxVal = sr?.tauXY.max ?? result.maxVonMises;
-              break;
-            case 'mx':
-              value = stress.mx ?? 0;
-              minVal = sr?.mx.min ?? result.minMoment ?? 0;
-              maxVal = sr?.mx.max ?? result.maxMoment ?? 1;
-              break;
-            case 'my':
-              value = stress.my ?? 0;
-              minVal = sr?.my.min ?? result.minMoment ?? 0;
-              maxVal = sr?.my.max ?? result.maxMoment ?? 1;
-              break;
-            case 'mxy':
-              value = stress.mxy ?? 0;
-              minVal = sr?.mxy.min ?? result.minMoment ?? 0;
-              maxVal = sr?.mxy.max ?? result.maxMoment ?? 1;
-              break;
-            case 'vx':
-              value = stress.vx ?? 0;
-              minVal = sr?.vx.min ?? 0;
-              maxVal = sr?.vx.max ?? 1;
-              break;
-            case 'vy':
-              value = stress.vy ?? 0;
-              minVal = sr?.vy.min ?? 0;
-              maxVal = sr?.vy.max ?? 1;
-              break;
-            case 'nx':
-              value = stress.nx ?? 0;
-              minVal = sr?.nx.min ?? 0;
-              maxVal = sr?.nx.max ?? 1;
-              break;
-            case 'ny':
-              value = stress.ny ?? 0;
-              minVal = sr?.ny.min ?? 0;
-              maxVal = sr?.ny.max ?? 1;
-              break;
-            case 'nxy':
-              value = stress.nxy ?? 0;
-              minVal = sr?.nxy.min ?? 0;
-              maxVal = sr?.nxy.max ?? 1;
-              break;
-            default:
-              value = stress.vonMises;
-              minVal = result.minVonMises;
-              maxVal = result.maxVonMises;
+          // Check if smoothed mode with pre-computed nodal values
+          if (stressDisplayMode === 'smoothed' && nodalStressValues.size > 0) {
+            // Get nodal stress values for this element's corners
+            const cornerValues = element.nodeIds.map(nid => nodalStressValues.get(nid) ?? 0);
+
+            // Compute center point (screen coords) and center value
+            const cx = screenPts.reduce((s, p) => s + p.x, 0) / screenPts.length;
+            const cy = screenPts.reduce((s, p) => s + p.y, 0) / screenPts.length;
+            const centerValue = cornerValues.reduce((s, v) => s + v, 0) / cornerValues.length;
+
+            // Draw sub-triangles from center to each edge with interpolated colors
+            for (let si = 0; si < screenPts.length; si++) {
+              const sj = (si + 1) % screenPts.length;
+              const p0 = screenPts[si];
+              const p1 = screenPts[sj];
+              const v0 = cornerValues[si];
+              const v1 = cornerValues[sj];
+
+              // Average value for this sub-triangle
+              const avgVal = (v0 + v1 + centerValue) / 3;
+
+              ctx.beginPath();
+              ctx.moveTo(cx, cy);
+              ctx.lineTo(p0.x, p0.y);
+              ctx.lineTo(p1.x, p1.y);
+              ctx.closePath();
+              ctx.fillStyle = getStressColor(avgVal, smoothedMinVal, smoothedMaxVal);
+              ctx.fill();
+            }
+          } else {
+            // Per-element (integration point) mode - single color for entire element
+            let value: number;
+            let minVal: number;
+            let maxVal: number;
+            const sr = result.stressRanges;
+            switch (stressType) {
+              case 'sigmaX':
+                value = stress.sigmaX;
+                minVal = sr?.sigmaX.min ?? result.minVonMises;
+                maxVal = sr?.sigmaX.max ?? result.maxVonMises;
+                break;
+              case 'sigmaY':
+                value = stress.sigmaY;
+                minVal = sr?.sigmaY.min ?? result.minVonMises;
+                maxVal = sr?.sigmaY.max ?? result.maxVonMises;
+                break;
+              case 'tauXY':
+                value = stress.tauXY;
+                minVal = sr?.tauXY.min ?? result.minVonMises;
+                maxVal = sr?.tauXY.max ?? result.maxVonMises;
+                break;
+              case 'mx':
+                value = stress.mx ?? 0;
+                minVal = sr?.mx.min ?? result.minMoment ?? 0;
+                maxVal = sr?.mx.max ?? result.maxMoment ?? 1;
+                break;
+              case 'my':
+                value = stress.my ?? 0;
+                minVal = sr?.my.min ?? result.minMoment ?? 0;
+                maxVal = sr?.my.max ?? result.maxMoment ?? 1;
+                break;
+              case 'mxy':
+                value = stress.mxy ?? 0;
+                minVal = sr?.mxy.min ?? result.minMoment ?? 0;
+                maxVal = sr?.mxy.max ?? result.maxMoment ?? 1;
+                break;
+              case 'vx':
+                value = stress.vx ?? 0;
+                minVal = sr?.vx.min ?? 0;
+                maxVal = sr?.vx.max ?? 1;
+                break;
+              case 'vy':
+                value = stress.vy ?? 0;
+                minVal = sr?.vy.min ?? 0;
+                maxVal = sr?.vy.max ?? 1;
+                break;
+              case 'nx':
+                value = stress.nx ?? 0;
+                minVal = sr?.nx.min ?? 0;
+                maxVal = sr?.nx.max ?? 1;
+                break;
+              case 'ny':
+                value = stress.ny ?? 0;
+                minVal = sr?.ny.min ?? 0;
+                maxVal = sr?.ny.max ?? 1;
+                break;
+              case 'nxy':
+                value = stress.nxy ?? 0;
+                minVal = sr?.nxy.min ?? 0;
+                maxVal = sr?.nxy.max ?? 1;
+                break;
+              default:
+                value = stress.vonMises;
+                minVal = result.minVonMises;
+                maxVal = result.maxVonMises;
+            }
+            ctx.fillStyle = getStressColor(value, minVal, maxVal);
+            ctx.fill();
           }
-          ctx.fillStyle = getStressColor(value, minVal, maxVal);
         }
       } else {
         const material = mesh.getMaterial(element.materialId);
@@ -2119,14 +2465,203 @@ export function MeshEditor() {
         } else {
           ctx.fillStyle = material ? material.color + '40' : '#3b82f640';
         }
+        ctx.fill();
       }
-      ctx.fill();
 
       // Stroke
       const isSelected = selection.elementIds.has(element.id);
+      if (isSelected) {
+        ctx.save();
+        ctx.shadowColor = '#e94560';
+        ctx.shadowBlur = 12;
+      }
       ctx.strokeStyle = isSelected ? '#e94560' : '#3b82f6';
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.stroke();
+      if (isSelected) {
+        ctx.restore();
+      }
+    }
+
+    // Draw normals arrows (after element rendering)
+    if (stressType === 'normals' && result && viewMode === 'results') {
+      let maxMag = 0;
+      const arrowData: {cx: number, cy: number, angle: number, mag: number}[] = [];
+      for (const [elemId, stress] of result.elementStresses) {
+        const nxVal = stress.nx ?? 0;
+        const nyVal = stress.ny ?? 0;
+        const mag = Math.sqrt(nxVal * nxVal + nyVal * nyVal);
+        if (mag > maxMag) maxMag = mag;
+        const elem = mesh.getElement(elemId);
+        if (!elem) continue;
+        let cx = 0, cy = 0;
+        const elemNodes = mesh.getElementNodes(elem);
+        for (const nd of elemNodes) {
+          cx += nd.x; cy += nd.y;
+        }
+        cx /= elemNodes.length;
+        cy /= elemNodes.length;
+        arrowData.push({ cx, cy, angle: Math.atan2(nyVal, nxVal), mag });
+      }
+      if (maxMag > 0) {
+        const maxLen = 35;
+        for (const { cx, cy, angle, mag } of arrowData) {
+          const scr = worldToScreen(cx, cy);
+          const len = (mag / maxMag) * maxLen;
+          const t = mag / maxMag;
+          const r = Math.round(t * 255);
+          const b = Math.round((1 - t) * 255);
+          ctx.strokeStyle = `rgb(${r}, 50, ${b})`;
+          ctx.fillStyle = `rgb(${r}, 50, ${b})`;
+          ctx.lineWidth = 1.5;
+          const dx = Math.cos(angle) * len;
+          const dy = -Math.sin(angle) * len;
+          ctx.beginPath();
+          ctx.moveTo(scr.x - dx / 2, scr.y - dy / 2);
+          ctx.lineTo(scr.x + dx / 2, scr.y + dy / 2);
+          ctx.stroke();
+          const headLen = 5;
+          const headAngle = 0.4;
+          const tipX = scr.x + dx / 2;
+          const tipY = scr.y + dy / 2;
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(tipX - headLen * Math.cos(angle - headAngle), tipY + headLen * Math.sin(angle - headAngle));
+          ctx.lineTo(tipX - headLen * Math.cos(angle + headAngle), tipY + headLen * Math.sin(angle + headAngle));
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    // Draw shear trajectory arrows (vx, vy direction)
+    if (stressType === 'shearTrajectory' && result && viewMode === 'results') {
+      let maxMag = 0;
+      const arrowData: {cx: number, cy: number, angle: number, mag: number}[] = [];
+      for (const [elemId, stress] of result.elementStresses) {
+        const vxVal = stress.vx ?? 0;
+        const vyVal = stress.vy ?? 0;
+        const mag = Math.sqrt(vxVal * vxVal + vyVal * vyVal);
+        if (mag > maxMag) maxMag = mag;
+        const elem = mesh.getElement(elemId);
+        if (!elem) continue;
+        let cx = 0, cy = 0;
+        const elemNodes = mesh.getElementNodes(elem);
+        for (const nd of elemNodes) {
+          cx += nd.x; cy += nd.y;
+        }
+        cx /= elemNodes.length;
+        cy /= elemNodes.length;
+        arrowData.push({ cx, cy, angle: Math.atan2(vyVal, vxVal), mag });
+      }
+      if (maxMag > 0) {
+        const maxLen = 35;
+        for (const { cx, cy, angle, mag } of arrowData) {
+          const scr = worldToScreen(cx, cy);
+          const len = (mag / maxMag) * maxLen;
+          const t = mag / maxMag;
+          // Green-cyan gradient for shear
+          const g = Math.round(150 + t * 105);
+          const b = Math.round(200 - t * 100);
+          ctx.strokeStyle = `rgb(50, ${g}, ${b})`;
+          ctx.fillStyle = `rgb(50, ${g}, ${b})`;
+          ctx.lineWidth = 1.5;
+          const dx = Math.cos(angle) * len;
+          const dy = -Math.sin(angle) * len;
+          ctx.beginPath();
+          ctx.moveTo(scr.x - dx / 2, scr.y - dy / 2);
+          ctx.lineTo(scr.x + dx / 2, scr.y + dy / 2);
+          ctx.stroke();
+          const headLen = 5;
+          const headAngle = 0.4;
+          const tipX = scr.x + dx / 2;
+          const tipY = scr.y + dy / 2;
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(tipX - headLen * Math.cos(angle - headAngle), tipY + headLen * Math.sin(angle - headAngle));
+          ctx.lineTo(tipX - headLen * Math.cos(angle + headAngle), tipY + headLen * Math.sin(angle + headAngle));
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    // Draw moment principal direction trajectories (mx, my, mxy → principal angles)
+    if (stressType === 'momentTrajectory' && result && viewMode === 'results') {
+      let maxMag = 0;
+      const trajectoryData: {cx: number, cy: number, angle1: number, angle2: number, mag1: number, mag2: number}[] = [];
+      for (const [elemId, stress] of result.elementStresses) {
+        const mxVal = stress.mx ?? 0;
+        const myVal = stress.my ?? 0;
+        const mxyVal = stress.mxy ?? 0;
+
+        // Compute principal moments and directions
+        // Principal values: M1, M2 = (mx + my)/2 ± sqrt(((mx-my)/2)^2 + mxy^2)
+        const avg = (mxVal + myVal) / 2;
+        const diff = (mxVal - myVal) / 2;
+        const radius = Math.sqrt(diff * diff + mxyVal * mxyVal);
+        const m1 = avg + radius;  // Maximum principal moment
+        const m2 = avg - radius;  // Minimum principal moment
+
+        // Principal angle (angle of M1 direction from x-axis)
+        // tan(2θ) = 2*mxy / (mx - my)
+        const theta = mxyVal === 0 && diff === 0 ? 0 : Math.atan2(2 * mxyVal, mxVal - myVal) / 2;
+
+        const mag = Math.max(Math.abs(m1), Math.abs(m2));
+        if (mag > maxMag) maxMag = mag;
+
+        const elem = mesh.getElement(elemId);
+        if (!elem) continue;
+        let cx = 0, cy = 0;
+        const elemNodes = mesh.getElementNodes(elem);
+        for (const nd of elemNodes) {
+          cx += nd.x; cy += nd.y;
+        }
+        cx /= elemNodes.length;
+        cy /= elemNodes.length;
+
+        trajectoryData.push({
+          cx, cy,
+          angle1: theta,
+          angle2: theta + Math.PI / 2,  // Perpendicular direction
+          mag1: Math.abs(m1),
+          mag2: Math.abs(m2)
+        });
+      }
+      if (maxMag > 0) {
+        const maxLen = 30;
+        for (const { cx, cy, angle1, angle2, mag1, mag2 } of trajectoryData) {
+          const scr = worldToScreen(cx, cy);
+
+          // Draw principal direction 1 (M1) - red/orange for tension, blue for compression
+          const len1 = (mag1 / maxMag) * maxLen;
+          if (len1 > 2) {
+            const t1 = mag1 / maxMag;
+            ctx.strokeStyle = `rgb(${Math.round(200 + t1 * 55)}, ${Math.round(100 - t1 * 50)}, 50)`;
+            ctx.lineWidth = 2;
+            const dx1 = Math.cos(angle1) * len1;
+            const dy1 = -Math.sin(angle1) * len1;
+            ctx.beginPath();
+            ctx.moveTo(scr.x - dx1 / 2, scr.y - dy1 / 2);
+            ctx.lineTo(scr.x + dx1 / 2, scr.y + dy1 / 2);
+            ctx.stroke();
+          }
+
+          // Draw principal direction 2 (M2) - perpendicular, cyan/blue
+          const len2 = (mag2 / maxMag) * maxLen;
+          if (len2 > 2) {
+            const t2 = mag2 / maxMag;
+            ctx.strokeStyle = `rgb(50, ${Math.round(150 + t2 * 100)}, ${Math.round(200 + t2 * 55)})`;
+            ctx.lineWidth = 1.5;
+            const dx2 = Math.cos(angle2) * len2;
+            const dy2 = -Math.sin(angle2) * len2;
+            ctx.beginPath();
+            ctx.moveTo(scr.x - dx2 / 2, scr.y - dy2 / 2);
+            ctx.lineTo(scr.x + dx2 / 2, scr.y + dy2 / 2);
+            ctx.stroke();
+          }
+        }
+      }
     }
 
     // Draw plate region boundaries
@@ -2145,6 +2680,11 @@ export function MeshEditor() {
         ctx.fill();
 
         // Stroke
+        if (isPlateSelected) {
+          ctx.save();
+          ctx.shadowColor = '#e94560';
+          ctx.shadowBlur = 14;
+        }
         ctx.strokeStyle = isPlateSelected ? '#e94560' : '#3b82f680';
         ctx.lineWidth = isPlateSelected ? 2 : 1.5;
         ctx.setLineDash([6, 4]);
@@ -2153,6 +2693,9 @@ export function MeshEditor() {
         ctx.closePath();
         ctx.stroke();
         ctx.setLineDash([]);
+        if (isPlateSelected) {
+          ctx.restore();
+        }
 
         // Draw voids
         if (plate.voids) {
@@ -2186,6 +2729,11 @@ export function MeshEditor() {
         ctx.fill();
 
         // Dashed boundary rectangle
+        if (isPlateSelected) {
+          ctx.save();
+          ctx.shadowColor = '#e94560';
+          ctx.shadowBlur = 14;
+        }
         ctx.strokeStyle = isPlateSelected ? '#e94560' : '#3b82f680';
         ctx.lineWidth = isPlateSelected ? 2 : 1.5;
         ctx.setLineDash([6, 4]);
@@ -2197,47 +2745,98 @@ export function MeshEditor() {
         ctx.closePath();
         ctx.stroke();
         ctx.setLineDash([]);
+        if (isPlateSelected) {
+          ctx.restore();
+        }
       }
 
-      // Draw edge load as distributed q-load visualization
+      // Draw IEdge boundary segments (colored lines on polygon edges) - only when addLineLoad tool is active
+      if (selectedTool === 'addLineLoad' && plate.edgeIds && plate.edgeIds.length > 0) {
+        const edgeColors = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+        for (let eIdx = 0; eIdx < plate.edgeIds.length; eIdx++) {
+          const edge = mesh.getEdge(plate.edgeIds[eIdx]);
+          if (!edge || edge.nodeIds.length < 2) continue;
+          ctx.strokeStyle = edgeColors[eIdx % edgeColors.length];
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          for (let ni = 0; ni < edge.nodeIds.length; ni++) {
+            const node = mesh.getNode(edge.nodeIds[ni]);
+            if (!node) continue;
+            const sp = worldToScreen(node.x, node.y);
+            if (ni === 0) ctx.moveTo(sp.x, sp.y);
+            else ctx.lineTo(sp.x, sp.y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // Highlight hovered edge for addLineLoad tool
+      if (hoveredEdgeId !== null && selectedTool === 'addLineLoad') {
+        const hovEdge = mesh.getEdge(hoveredEdgeId);
+        if (hovEdge && (plate.edgeIds ?? []).concat(
+          Array.from(mesh.edges.values()).filter(e => e.plateId === plate.id).map(e => e.id)
+        ).includes(hoveredEdgeId)) {
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 4;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          const hv1 = worldToScreen(hovEdge.vertexStart.x, hovEdge.vertexStart.y);
+          const hv2 = worldToScreen(hovEdge.vertexEnd.x, hovEdge.vertexEnd.y);
+          ctx.moveTo(hv1.x, hv1.y);
+          ctx.lineTo(hv2.x, hv2.y);
+          ctx.stroke();
+        }
+      }
+
+      // Draw edge-based distributed loads (unified system: distributedLoads with edgeId)
       if (showLoads && viewMode !== 'geometry') {
         const activeLc = loadCases.find(lc => lc.id === activeLoadCase);
-        if (activeLc && activeLc.edgeLoads) {
-          for (const el of activeLc.edgeLoads) {
-            if (el.plateId !== plate.id) continue;
+        if (activeLc) {
+          // Find distributed loads targeting edges of this plate
+          const plateEdgeIds = new Set((plate.edgeIds ?? []).concat(
+            Array.from(mesh.edges.values()).filter(e => e.plateId === plate.id).map(e => e.id)
+          ));
+          const edgeLoads = activeLc.distributedLoads.filter(dl => dl.edgeId !== undefined && plateEdgeIds.has(dl.edgeId!));
+          for (const dl of edgeLoads) {
+            const iedge = mesh.getEdge(dl.edgeId!);
+            if (!iedge) continue;
 
-            // Collect edge screen positions: polygon edge index or named edge
+            // Collect edge screen positions from IEdge nodeIds
             const edgeScreenPts: { x: number; y: number }[] = [];
-            if (typeof el.edge === 'number' && plate.isPolygon && plate.polygon) {
-              // Polygon edge: use the two polygon vertices as endpoints
-              const n = plate.polygon.length;
-              const v1 = plate.polygon[el.edge % n];
-              const v2 = plate.polygon[(el.edge + 1) % n];
-              edgeScreenPts.push(worldToScreen(v1.x, v1.y));
-              edgeScreenPts.push(worldToScreen(v2.x, v2.y));
-            } else if (typeof el.edge === 'string') {
-              const edgeNodes = plate.edges[el.edge].nodeIds;
-              if (edgeNodes.length < 2) continue;
-              for (const nodeId of edgeNodes) {
+            if (iedge.nodeIds.length >= 2) {
+              for (const nodeId of iedge.nodeIds) {
                 const node = mesh.getNode(nodeId);
-                if (!node) continue;
-                edgeScreenPts.push(worldToScreen(node.x, node.y));
+                if (node) edgeScreenPts.push(worldToScreen(node.x, node.y));
               }
+            }
+            // Fallback to edge vertices
+            if (edgeScreenPts.length < 2) {
+              edgeScreenPts.length = 0;
+              edgeScreenPts.push(worldToScreen(iedge.vertexStart.x, iedge.vertexStart.y));
+              edgeScreenPts.push(worldToScreen(iedge.vertexEnd.x, iedge.vertexEnd.y));
             }
             if (edgeScreenPts.length < 2) continue;
 
-            const mag = Math.sqrt(el.px ** 2 + el.py ** 2);
+            const mag = Math.sqrt(dl.qx ** 2 + dl.qy ** 2);
             if (mag < 0.01) continue;
 
+            const isThisLoadSelected = dl.id != null && selection.selectedDistLoadIds.has(dl.id);
             const arrowLen = Math.min(35, mag / 500 * 30 + 18);
-            const edgeColor = '#3b82f6';
+            const edgeColor = isThisLoadSelected ? '#ef4444' : (activeLc.color ?? '#3b82f6');
             ctx.strokeStyle = edgeColor;
             ctx.fillStyle = edgeColor;
             ctx.lineWidth = 1.5;
 
+            if (isThisLoadSelected) {
+              ctx.save();
+              ctx.shadowColor = '#ef4444';
+              ctx.shadowBlur = 12;
+            }
+
             // Normalized load direction in screen coords
-            const ndx = el.px / mag;
-            const ndy = -(el.py / mag); // flip Y
+            const ndx = dl.qx / mag;
+            const ndy = -(dl.qy / mag); // flip Y
 
             // Draw connecting line at arrow tails (offset from edge)
             ctx.beginPath();
@@ -2253,19 +2852,21 @@ export function MeshEditor() {
               const tailX = sp.x - ndx * arrowLen;
               const tailY = sp.y - ndy * arrowLen;
 
-              // Arrow shaft
               ctx.beginPath();
               ctx.moveTo(tailX, tailY);
               ctx.lineTo(sp.x, sp.y);
               ctx.stroke();
 
-              // Arrow head
               ctx.beginPath();
               ctx.moveTo(sp.x, sp.y);
               ctx.lineTo(sp.x - 7 * Math.cos(arrowAngle - 0.4), sp.y - 7 * Math.sin(arrowAngle - 0.4));
               ctx.lineTo(sp.x - 7 * Math.cos(arrowAngle + 0.4), sp.y - 7 * Math.sin(arrowAngle + 0.4));
               ctx.closePath();
               ctx.fill();
+            }
+
+            if (isThisLoadSelected) {
+              ctx.restore();
             }
 
             // Label at midpoint of edge, offset along arrow direction
@@ -2276,11 +2877,77 @@ export function MeshEditor() {
             ctx.fillStyle = edgeColor;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            const pxKN = (el.px / 1000).toFixed(1);
-            const pzKN = (el.py / 1000).toFixed(1);
-            ctx.fillText(`p = (${pxKN}, ${pzKN}) kN/m`, labelX, labelY);
+            const qxKN = (dl.qx / 1000).toFixed(1);
+            const qzKN = (dl.qy / 1000).toFixed(1);
+            const desc = dl.description ? `${dl.description}: ` : '';
+            ctx.fillText(`${desc}q = (${qxKN}, ${qzKN}) kN/m`, labelX, labelY);
             ctx.textAlign = 'start';
             ctx.textBaseline = 'alphabetic';
+          }
+        }
+      }
+    }
+
+    // Draw polygon contour outlines and edge midpoint handles
+    for (const plate of mesh.plateRegions.values()) {
+      if (!plate.isPolygon || !plate.polygon || plate.polygon.length < 3) continue;
+
+      // Draw solid contour outline (the persistent geometry)
+      const polyPts = plate.polygon.map(p => worldToScreen(p.x, p.y));
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      polyPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.stroke();
+
+      // Draw edge midpoint handles (circles, like beam mid-gizmo)
+      const isEdgeActive = contourEdgeDrag?.plateId === plate.id;
+      for (let ei = 0; ei < plate.polygon.length; ei++) {
+        const p1 = polyPts[ei];
+        const p2 = polyPts[(ei + 1) % polyPts.length];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const isDraggedEdge = isEdgeActive && contourEdgeDrag?.edgeIndex === ei;
+        const handleR = isDraggedEdge ? 8 : 6;
+
+        ctx.fillStyle = isDraggedEdge ? '#60a5fa' : '#4299e1';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(midX, midY, handleR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw move arrows inside
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        const ar = 3;
+        ctx.beginPath();
+        ctx.moveTo(midX - ar, midY); ctx.lineTo(midX + ar, midY);
+        ctx.moveTo(midX, midY - ar); ctx.lineTo(midX, midY + ar);
+        ctx.stroke();
+      }
+
+      // Draw void contour vertex handles
+      if (plate.voids) {
+        for (const voidPoly of plate.voids) {
+          const voidPts = voidPoly.map(p => worldToScreen(p.x, p.y));
+          ctx.strokeStyle = '#f87171';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          voidPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+          ctx.closePath();
+          ctx.stroke();
+
+          for (const sp of voidPts) {
+            ctx.fillStyle = '#ef4444';
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(sp.x - 4, sp.y - 4, 8, 8);
+            ctx.strokeRect(sp.x - 4, sp.y - 4, 8, 8);
           }
         }
       }
@@ -2439,6 +3106,11 @@ export function MeshEditor() {
       }
 
       if (showMembers) {
+        if (isSelected) {
+          ctx.save();
+          ctx.shadowColor = '#e94560';
+          ctx.shadowBlur = 14;
+        }
         ctx.strokeStyle = isSelected ? '#e94560' : isHovered ? '#fbbf24' : '#60a5fa';
         ctx.lineWidth = isSelected ? 6 : isHovered ? 5 : 4;
         ctx.lineCap = 'round';
@@ -2471,6 +3143,9 @@ export function MeshEditor() {
         ctx.arc(p2.x, p2.y, circleR, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+        if (isSelected) {
+          ctx.restore();
+        }
       }
 
       // Draw distributed loads if present (only in loads/results view)
@@ -2478,27 +3153,43 @@ export function MeshEditor() {
       // Stacking: offset subsequent loads by the arrow height of previous loads
       // Each load can be individually selected via selectedDistLoadIds
       if (showLoads && viewMode !== 'geometry') {
-        const beamLevelSelected = isSelected || selection.distLoadBeamIds.has(beam.id);
+        // Only highlight ALL loads when the beam element itself is selected (not when an individual load is)
         const activeLc = loadCases.find(lc => lc.id === activeLoadCase);
         const beamLoads = activeLc?.distributedLoads.filter(dl => dl.elementId === beam.id) ?? [];
         if (beamLoads.length > 0) {
           let cumulativeOffset = 0;
           for (const dl of beamLoads) {
-            // Check if this specific load is individually selected
-            const isThisLoadSelected = beamLevelSelected || (dl.id != null && selection.selectedDistLoadIds.has(dl.id));
+            // Individual load selection: only this specific load, OR all loads when beam element is selected
+            const isThisLoadSelected = isSelected || (dl.id != null && selection.selectedDistLoadIds.has(dl.id));
             // Use a brighter/highlighted color when individually selected
             const loadColor = isThisLoadSelected ? '#ef4444' : (activeLc?.color ?? '#3b82f6');
+            if (isThisLoadSelected) {
+              ctx.save();
+              ctx.shadowColor = '#ef4444';
+              ctx.shadowBlur = 12;
+            }
             const arrowHeight = drawDistributedLoad(ctx, beam, n1, n2, isThisLoadSelected, {
               qx: dl.qx, qy: dl.qy, qxEnd: dl.qxEnd, qyEnd: dl.qyEnd,
               startT: dl.startT, endT: dl.endT, coordSystem: dl.coordSystem,
               description: dl.description
             }, cumulativeOffset, loadColor);
+            if (isThisLoadSelected) {
+              ctx.restore();
+            }
             // Stack next load after this one's arrows (always positive direction)
             cumulativeOffset += arrowHeight + 4; // 4px gap between stacked loads
           }
         } else {
           // Fallback: draw from beam.distributedLoad (e.g. during live preview)
-          drawDistributedLoad(ctx, beam, n1, n2, beamLevelSelected);
+          if (isSelected) {
+            ctx.save();
+            ctx.shadowColor = '#ef4444';
+            ctx.shadowBlur = 12;
+          }
+          drawDistributedLoad(ctx, beam, n1, n2, isSelected);
+          if (isSelected) {
+            ctx.restore();
+          }
         }
       }
 
@@ -2943,42 +3634,8 @@ export function MeshEditor() {
       ctx.setLineDash([]);
     }
 
-    // Draw plate rubber-band preview (rectangle mode)
-    if (selectedTool === 'addPlate' && plateDrawMode === 'rectangle' && plateFirstCorner && cursorPos) {
-      const cursorWorld = screenToWorld(cursorPos.x, cursorPos.y);
-      const snappedCursor = snapToGridFn(cursorWorld.x, cursorWorld.y);
-      const p1 = worldToScreen(plateFirstCorner.x, plateFirstCorner.y);
-      const p2 = worldToScreen(snappedCursor.x, plateFirstCorner.y);
-      const p3 = worldToScreen(snappedCursor.x, snappedCursor.y);
-      const p4 = worldToScreen(plateFirstCorner.x, snappedCursor.y);
-
-      ctx.strokeStyle = '#3b82f6';
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.lineTo(p3.x, p3.y);
-      ctx.lineTo(p4.x, p4.y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Show dimensions
-      const w = Math.abs(snappedCursor.x - plateFirstCorner.x);
-      const h = Math.abs(snappedCursor.y - plateFirstCorner.y);
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillStyle = '#3b82f6';
-      const midX = (p1.x + p3.x) / 2;
-      const midY = (p1.y + p3.y) / 2;
-      ctx.fillText(`${(w * 1000).toFixed(0)} x ${(h * 1000).toFixed(0)} mm`, midX + 5, midY - 5);
-    }
-
-    // Draw plate polygon preview (polygon mode)
-    if (selectedTool === 'addPlate' && plateDrawMode === 'polygon' && platePolygonPoints.length > 0) {
+    // Draw plate polygon preview
+    if (selectedTool === 'addPlate' && platePolygonPoints.length > 0) {
       const isOutlineClosed = plateEditState !== 'outline';
       const outlinePts = platePolygonPoints.map(p => worldToScreen(p.x, p.y));
 
@@ -2997,14 +3654,34 @@ export function MeshEditor() {
       outlinePts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
       if (isOutlineClosed) ctx.closePath();
 
-      // If still drawing outline, add rubber-band line to cursor
+      // If still drawing outline, add rubber-band line (or arc preview) to cursor
       if (plateEditState === 'outline' && cursorPos) {
         const cursorWorld = screenToWorld(cursorPos.x, cursorPos.y);
         const snappedCursor = snapToGridFn(cursorWorld.x, cursorWorld.y);
         const cursorScreen = worldToScreen(snappedCursor.x, snappedCursor.y);
-        ctx.lineTo(cursorScreen.x, cursorScreen.y);
+        if (arcMode && platePolygonPoints.length > 0) {
+          // Draw arc preview
+          ctx.stroke(); // stroke what we have so far
+          ctx.setLineDash([4, 3]);
+          ctx.strokeStyle = '#06b6d4'; // cyan for arc
+          ctx.beginPath();
+          const lastPt = platePolygonPoints[platePolygonPoints.length - 1];
+          const arcPts = discretizeArc(lastPt, snappedCursor);
+          const lastScreen = worldToScreen(lastPt.x, lastPt.y);
+          ctx.moveTo(lastScreen.x, lastScreen.y);
+          for (const ap of arcPts) {
+            const sp = worldToScreen(ap.x, ap.y);
+            ctx.lineTo(sp.x, sp.y);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          ctx.lineTo(cursorScreen.x, cursorScreen.y);
+          ctx.stroke();
+        }
+      } else {
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.setLineDash([]);
 
       // Draw outline vertex dots
@@ -3047,6 +3724,68 @@ export function MeshEditor() {
         }
       }
 
+      // Draw target plate in void edit mode - enhanced visualization
+      if (voidTargetPlateId !== null && plateEditState === 'void') {
+        const targetPlate = mesh.getPlateRegion(voidTargetPlateId);
+        if (targetPlate && targetPlate.polygon) {
+          const tgtPts = targetPlate.polygon.map(p => worldToScreen(p.x, p.y));
+
+          // Semi-transparent fill for the plate area
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+          ctx.beginPath();
+          tgtPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+          ctx.closePath();
+          ctx.fill();
+
+          // Solid blue outline for the plate contour
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          tgtPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+          ctx.closePath();
+          ctx.stroke();
+
+          // Corner vertex dots (blue)
+          ctx.fillStyle = '#3b82f6';
+          for (const p of tgtPts) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Draw existing voids of this plate in pink/light red
+          if (targetPlate.voids && targetPlate.voids.length > 0) {
+            for (const existingVoid of targetPlate.voids) {
+              const voidScreenPts = existingVoid.map(p => worldToScreen(p.x, p.y));
+
+              // Pink fill for existing voids
+              ctx.fillStyle = 'rgba(236, 72, 153, 0.25)';
+              ctx.beginPath();
+              voidScreenPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+              ctx.closePath();
+              ctx.fill();
+
+              // Pink outline for existing voids
+              ctx.strokeStyle = '#ec4899';
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              voidScreenPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+              ctx.closePath();
+              ctx.stroke();
+
+              // Void vertex dots (pink)
+              ctx.fillStyle = '#ec4899';
+              for (const p of voidScreenPts) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+      }
+
       // Draw current void being drawn
       if (plateEditState === 'void' && currentVoidPoints.length > 0) {
         const voidPts = currentVoidPoints.map(p => worldToScreen(p.x, p.y));
@@ -3056,14 +3795,33 @@ export function MeshEditor() {
         ctx.beginPath();
         voidPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
 
-        // Rubber-band line to cursor
+        // Rubber-band line (or arc preview) to cursor
         if (cursorPos) {
           const cursorWorld = screenToWorld(cursorPos.x, cursorPos.y);
           const snappedCursor = snapToGridFn(cursorWorld.x, cursorWorld.y);
           const cursorScreen = worldToScreen(snappedCursor.x, snappedCursor.y);
-          ctx.lineTo(cursorScreen.x, cursorScreen.y);
+          if (arcMode && currentVoidPoints.length > 0) {
+            ctx.stroke();
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = '#06b6d4';
+            ctx.beginPath();
+            const lastPt = currentVoidPoints[currentVoidPoints.length - 1];
+            const arcPts = discretizeArc(lastPt, snappedCursor);
+            const lastScreen = worldToScreen(lastPt.x, lastPt.y);
+            ctx.moveTo(lastScreen.x, lastScreen.y);
+            for (const ap of arcPts) {
+              const sp = worldToScreen(ap.x, ap.y);
+              ctx.lineTo(sp.x, sp.y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else {
+            ctx.lineTo(cursorScreen.x, cursorScreen.y);
+            ctx.stroke();
+          }
+        } else {
+          ctx.stroke();
         }
-        ctx.stroke();
 
         // Void vertex dots
         ctx.fillStyle = '#e94560';
@@ -3104,16 +3862,28 @@ export function MeshEditor() {
       }
     }
 
+    // Prepare set of node IDs to hide in void edit mode (all nodes of the plate being edited)
+    const voidEditNodeIds = voidEditPlate ? new Set(voidEditPlate.nodeIds) : null;
+
     // Draw nodes
     for (const node of mesh.nodes.values()) {
+      // Skip nodes of the plate being edited (void edit mode) - but allow corner nodes
+      if (voidEditNodeIds && voidEditNodeIds.has(node.id) && !voidEditPlate?.cornerNodeIds.includes(node.id)) continue;
+
       let drawNode = node;
 
       if (viewMode === 'results' && showDeformed && result && nodeIdToIndex) {
         const idx = nodeIdToIndex.get(node.id);
         if (idx !== undefined) {
-          const u = result.displacements[idx * dofsPerNode] * deformationScale;
-          const v = result.displacements[idx * dofsPerNode + 1] * deformationScale;
-          drawNode = { ...node, x: node.x + u, y: node.y + v };
+          if (analysisType === 'plate_bending') {
+            // w (deflection) mapped to y-offset for 2D visualization
+            const w = result.displacements[idx * 3] * deformationScale;
+            drawNode = { ...node, y: node.y + w };
+          } else {
+            const u = result.displacements[idx * dofsPerNode] * deformationScale;
+            const v = result.displacements[idx * dofsPerNode + 1] * deformationScale;
+            drawNode = { ...node, x: node.x + u, y: node.y + v };
+          }
         }
       }
 
@@ -3123,7 +3893,15 @@ export function MeshEditor() {
 
       // Draw constraint symbol FIRST (behind node)
       if (showSupports && (node.constraints.x || node.constraints.y || node.constraints.rotation)) {
-        drawSupportSymbol(ctx, screen, node);
+        if (isSelected) {
+          ctx.save();
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 14;
+          drawSupportSymbol(ctx, screen, node);
+          ctx.restore();
+        } else {
+          drawSupportSymbol(ctx, screen, node);
+        }
       }
 
       // Draw load arrow (only in loads/results view)
@@ -3151,12 +3929,20 @@ export function MeshEditor() {
         ctx.stroke();
       }
 
+      // Check if this is a plate mesh node (belongs to a plate region) - used for both node dot and label
+      const isPlateNode = Array.from(mesh.plateRegions.values()).some(pr => pr.nodeIds.includes(node.id) && !pr.cornerNodeIds.includes(node.id));
+
       // Draw node
       if (showNodes) {
-        // Check if this is a plate mesh node (belongs to a plate region)
-        const isPlateNode = Array.from(mesh.plateRegions.values()).some(pr => pr.nodeIds.includes(node.id) && !pr.cornerNodeIds.includes(node.id));
         const isSubNodeFlag = mesh.isSubNode(node.id);
         const nodeRadius = isPlateNode ? 3 : isSubNodeFlag ? 4 : 6;
+
+        if (isSelected) {
+          ctx.save();
+          ctx.shadowColor = '#e94560';
+          ctx.shadowBlur = 12;
+        }
+
         ctx.beginPath();
         ctx.arc(screen.x, screen.y, nodeRadius, 0, Math.PI * 2);
 
@@ -3176,12 +3962,21 @@ export function MeshEditor() {
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = isSubNodeFlag ? 1.5 : 2;
         ctx.stroke();
+
+        if (isSelected) {
+          ctx.restore();
+        }
       }
 
       // Node label
       if (showNodeLabels) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 11px sans-serif';
+        if (isPlateNode) {
+          ctx.fillStyle = 'rgba(139, 148, 158, 0.6)';
+          ctx.font = '8px sans-serif';
+        } else {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px sans-serif';
+        }
         ctx.fillText(`${node.id}`, screen.x + 10, screen.y - 10);
       }
 
@@ -3189,19 +3984,31 @@ export function MeshEditor() {
       if (showDisplacements && viewMode === 'results' && result && nodeIdToIndex) {
         const idx = nodeIdToIndex.get(node.id);
         if (idx !== undefined) {
-          const ux = result.displacements[idx * dofsPerNode];
-          const uz = result.displacements[idx * dofsPerNode + 1];
-          if (ux !== undefined && uz !== undefined && (Math.abs(ux) > 1e-10 || Math.abs(uz) > 1e-10)) {
-            const uxMM = ux * 1000; // convert m to mm
-            const uzMM = uz * 1000;
-            ctx.font = '9px monospace';
-            ctx.fillStyle = '#a78bfa'; // purple tint
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            const label = `ux=${uxMM.toFixed(2)} uz=${uzMM.toFixed(2)}`;
-            ctx.fillText(label, screen.x + 10, screen.y + 6);
-            ctx.textBaseline = 'alphabetic';
+          ctx.font = '9px monospace';
+          ctx.fillStyle = '#a78bfa'; // purple tint
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          let label = '';
+          if (analysisType === 'plate_bending') {
+            // Plate bending: DOFs are w, θx, θy
+            const w = result.displacements[idx * 3];
+            if (w !== undefined && Math.abs(w) > 1e-10) {
+              const wMM = w * 1000; // convert m to mm
+              label = `w=${wMM.toFixed(2)}mm`;
+            }
+          } else {
+            const ux = result.displacements[idx * dofsPerNode];
+            const uz = result.displacements[idx * dofsPerNode + 1];
+            if (ux !== undefined && uz !== undefined && (Math.abs(ux) > 1e-10 || Math.abs(uz) > 1e-10)) {
+              const uxMM = ux * 1000; // convert m to mm
+              const uzMM = uz * 1000;
+              label = `ux=${uxMM.toFixed(2)}mm uz=${uzMM.toFixed(2)}mm`;
+            }
           }
+          if (label) {
+            ctx.fillText(label, screen.x + 10, screen.y + 6);
+          }
+          ctx.textBaseline = 'alphabetic';
         }
       }
     }
@@ -3341,7 +4148,7 @@ export function MeshEditor() {
     }
 
     // Draw reaction forces if result exists (only in results view)
-    if (viewMode === 'results' && result && analysisType === 'frame' && showReactions) {
+    if (viewMode === 'results' && result && showReactions) {
       const reactionFont = 'bold 11px sans-serif';
       ctx.font = reactionFont;
 
@@ -3369,73 +4176,78 @@ export function MeshEditor() {
 
         const screen = worldToScreen(node.x, node.y);
 
-        // Reaction forces
-        const Rx = node.constraints.x ? result.reactions[idx * 3] : 0;
-        const Ry = node.constraints.y ? result.reactions[idx * 3 + 1] : 0;
-        const Rm = node.constraints.rotation ? result.reactions[idx * 3 + 2] : 0;
+        // Reaction forces - depends on analysis type
+        let Rx = 0, Ry = 0, Rm = 0;
+        if (analysisType === 'frame') {
+          // Frame: 3 DOFs (u, v, theta)
+          Rx = node.constraints.x ? result.reactions[idx * 3] : 0;
+          Ry = node.constraints.y ? result.reactions[idx * 3 + 1] : 0;
+          Rm = node.constraints.rotation ? result.reactions[idx * 3 + 2] : 0;
+        } else if (analysisType === 'plane_stress' || analysisType === 'plane_strain') {
+          // Plane stress/strain: 2 DOFs (u, v)
+          Rx = node.constraints.x ? result.reactions[idx * 2] : 0;
+          Ry = node.constraints.y ? result.reactions[idx * 2 + 1] : 0;
+        } else if (analysisType === 'plate_bending') {
+          // Plate bending: 3 DOFs (w, theta_x, theta_y) - reaction is vertical force at constrained nodes
+          Ry = node.constraints.y ? result.reactions[idx * 3] : 0; // w (deflection) constrained gives Rz
+          // theta_x and theta_y constraints would give moment reactions but we show Rz primarily
+        }
 
         const reactionColor = '#10b981';
-        const arrowLen = 40;
-        const supportOffset = 30; // offset below support symbol
-        let labelY = screen.y + supportOffset + arrowLen + 14;
+        const arrowLen = 35;
+        const supportOffset = 35; // offset from node for reactions
+        let labelOffsetX = 0;
 
-        // Draw Rx arrow (horizontal, positioned below support symbol)
+        // Draw Rx arrow (horizontal, to the side of support)
         if (Math.abs(Rx) > 0.01) {
           const dir = Rx > 0 ? 1 : -1;
           ctx.strokeStyle = reactionColor;
           ctx.fillStyle = reactionColor;
-          ctx.lineWidth = 2;
-          const rxY = screen.y + supportOffset + 10;
-          const startX = screen.x - dir * arrowLen;
-          const tipX = screen.x;
+          ctx.lineWidth = 2.5;
+          // Arrow positioned to the left/right of the node
+          const arrowY = screen.y;
+          const startX = screen.x + dir * supportOffset + dir * arrowLen;
+          const tipX = screen.x + dir * supportOffset;
           ctx.beginPath();
-          ctx.moveTo(startX, rxY);
-          ctx.lineTo(tipX, rxY);
+          ctx.moveTo(startX, arrowY);
+          ctx.lineTo(tipX, arrowY);
           ctx.stroke();
+          // Arrowhead pointing toward node
           ctx.beginPath();
-          ctx.moveTo(tipX, rxY);
-          ctx.lineTo(tipX - dir * 8, rxY - 4);
-          ctx.lineTo(tipX - dir * 8, rxY + 4);
+          ctx.moveTo(tipX, arrowY);
+          ctx.lineTo(tipX + dir * 8, arrowY - 5);
+          ctx.lineTo(tipX + dir * 8, arrowY + 5);
           ctx.closePath();
           ctx.fill();
-          drawReactionLabel(`Rx = ${fmtForce(Rx)}`, screen.x, labelY, reactionColor);
-          labelY += 18;
+          // Label at the tail of the arrow
+          drawReactionLabel(`Rx = ${fmtForce(Rx)}`, startX + dir * 5, arrowY - 14, reactionColor);
+          labelOffsetX = dir * 60;
         }
 
-        // Draw Ry arrow (vertical, starting below support)
+        // Draw Ry arrow (vertical, below or above support)
         if (Math.abs(Ry) > 0.01) {
           ctx.strokeStyle = reactionColor;
           ctx.fillStyle = reactionColor;
-          ctx.lineWidth = 2;
-          if (Ry > 0) {
-            const startY = screen.y + supportOffset + arrowLen;
-            const tipY = screen.y + supportOffset;
-            ctx.beginPath();
-            ctx.moveTo(screen.x, startY);
-            ctx.lineTo(screen.x, tipY);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(screen.x, tipY);
-            ctx.lineTo(screen.x - 4, tipY + 8);
-            ctx.lineTo(screen.x + 4, tipY + 8);
-            ctx.closePath();
-            ctx.fill();
-          } else {
-            const startY = screen.y + supportOffset;
-            const tipY = screen.y + supportOffset + arrowLen;
-            ctx.beginPath();
-            ctx.moveTo(screen.x, startY);
-            ctx.lineTo(screen.x, tipY);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(screen.x, tipY);
-            ctx.lineTo(screen.x - 4, tipY - 8);
-            ctx.lineTo(screen.x + 4, tipY - 8);
-            ctx.closePath();
-            ctx.fill();
-          }
-          drawReactionLabel(`Rz = ${fmtForce(Ry)}`, screen.x, labelY, reactionColor);
-          labelY += 18;
+          ctx.lineWidth = 2.5;
+          const dir = Ry > 0 ? -1 : 1; // positive Ry means upward force (screen y inverted)
+          // Arrow positioned below/above the node
+          const arrowX = screen.x;
+          const startY = screen.y + dir * supportOffset + dir * arrowLen;
+          const tipY = screen.y + dir * supportOffset;
+          ctx.beginPath();
+          ctx.moveTo(arrowX, startY);
+          ctx.lineTo(arrowX, tipY);
+          ctx.stroke();
+          // Arrowhead pointing toward node
+          ctx.beginPath();
+          ctx.moveTo(arrowX, tipY);
+          ctx.lineTo(arrowX - 5, tipY + dir * 8);
+          ctx.lineTo(arrowX + 5, tipY + dir * 8);
+          ctx.closePath();
+          ctx.fill();
+          // Label at the tail of the arrow
+          const labelY = startY + dir * 14;
+          drawReactionLabel(`Rz = ${fmtForce(Ry)}`, arrowX + labelOffsetX, labelY, reactionColor);
         }
 
         // Draw Rm arc arrow (moment) with arc symbol
@@ -3586,14 +4398,41 @@ export function MeshEditor() {
       drawConstraintPreview(ctx, cursorPos, selectedTool);
     }
 
+    // Draw rotation center marker
+    if (selectedTool === 'rotate' && rotateCenter) {
+      const rcScreen = worldToScreen(rotateCenter.x, rotateCenter.y);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      // Crosshair
+      ctx.beginPath();
+      ctx.moveTo(rcScreen.x - 10, rcScreen.y);
+      ctx.lineTo(rcScreen.x + 10, rcScreen.y);
+      ctx.moveTo(rcScreen.x, rcScreen.y - 10);
+      ctx.lineTo(rcScreen.x, rcScreen.y + 10);
+      ctx.stroke();
+      // Circle
+      ctx.beginPath();
+      ctx.arc(rcScreen.x, rcScreen.y, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // Draw move preview (ghost of selected elements at new position)
-    if (moveMode && cursorPos && selection.nodeIds.size > 0) {
+    if (moveMode && cursorPos && (selection.nodeIds.size > 0 || selection.plateIds.size > 0)) {
       const world = screenToWorld(cursorPos.x, cursorPos.y);
       const snapped = snapToGridFn(world.x, world.y);
 
-      // Calculate centroid of selected nodes
+      // Collect all movable node IDs
+      const previewNodeIds = new Set(selection.nodeIds);
+      for (const plateId of selection.plateIds) {
+        const plate = mesh.getPlateRegion(plateId);
+        if (plate) {
+          for (const nid of plate.nodeIds) previewNodeIds.add(nid);
+        }
+      }
+
+      // Calculate centroid of movable nodes
       let sumX = 0, sumY = 0, count = 0;
-      for (const nodeId of selection.nodeIds) {
+      for (const nodeId of previewNodeIds) {
         const node = mesh.getNode(nodeId);
         if (node) { sumX += node.x; sumY += node.y; count++; }
       }
@@ -3603,13 +4442,13 @@ export function MeshEditor() {
 
         ctx.globalAlpha = 0.4;
 
-        // Draw ghost beams connected to selected nodes
+        // Draw ghost beams connected to movable nodes
         for (const beam of mesh.beamElements.values()) {
           const n1 = mesh.getNode(beam.nodeIds[0]);
           const n2 = mesh.getNode(beam.nodeIds[1]);
           if (!n1 || !n2) continue;
-          const sel1 = selection.nodeIds.has(n1.id);
-          const sel2 = selection.nodeIds.has(n2.id);
+          const sel1 = previewNodeIds.has(n1.id);
+          const sel2 = previewNodeIds.has(n2.id);
           if (!sel1 && !sel2) continue;
           const gp1 = worldToScreen(sel1 ? n1.x + deltaX : n1.x, sel1 ? n1.y + deltaY : n1.y);
           const gp2 = worldToScreen(sel2 ? n2.x + deltaX : n2.x, sel2 ? n2.y + deltaY : n2.y);
@@ -3623,7 +4462,34 @@ export function MeshEditor() {
           ctx.setLineDash([]);
         }
 
-        // Draw ghost nodes
+        // Draw ghost plate outlines
+        for (const plateId of selection.plateIds) {
+          const plate = mesh.getPlateRegion(plateId);
+          if (plate && plate.polygon) {
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            plate.polygon.forEach((p, i) => {
+              const sp = worldToScreen(p.x + deltaX, p.y + deltaY);
+              if (i === 0) ctx.moveTo(sp.x, sp.y);
+              else ctx.lineTo(sp.x, sp.y);
+            });
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else if (plate) {
+            const bl = worldToScreen(plate.x + deltaX, plate.y + deltaY);
+            const tr = worldToScreen(plate.x + plate.width + deltaX, plate.y + plate.height + deltaY);
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.strokeRect(bl.x, tr.y, tr.x - bl.x, bl.y - tr.y);
+            ctx.setLineDash([]);
+          }
+        }
+
+        // Draw ghost nodes (only corner/selected, not all mesh nodes to reduce clutter)
         for (const nodeId of selection.nodeIds) {
           const node = mesh.getNode(nodeId);
           if (!node) continue;
@@ -3688,8 +4554,8 @@ export function MeshEditor() {
       }
     }
 
-    // Draw color scale legend for stress contours
-    if (showStress && result && result.elementStresses.size > 0) {
+    // Draw color scale legend for stress contours (skip for normals arrow mode)
+    if (showStress && result && result.elementStresses.size > 0 && stressType !== 'normals') {
       const sr = result.stressRanges;
       let legendMin: number;
       let legendMax: number;
@@ -3708,16 +4574,17 @@ export function MeshEditor() {
         default: legendMin = result.minVonMises; legendMax = result.maxVonMises;
       }
       const stressLabels: Record<string, string> = {
-        vonMises: 'Von Mises', sigmaX: '\u03C3x', sigmaY: '\u03C3y', tauXY: '\u03C4xy',
-        mx: 'mx', my: 'my', mxy: 'mxy', vx: 'vx', vy: 'vy',
-        nx: 'Nx', ny: 'Ny', nxy: 'Nxy',
+        vonMises: '\u03C3 Von Mises', sigmaX: '\u03C3x', sigmaY: '\u03C3y', tauXY: '\u03C4xy',
+        mx: 'mxx', my: 'myy', mxy: 'mxy', vx: 'vx', vy: 'vy',
+        nx: 'nxx', ny: 'nyy', nxy: 'nxy', normals: 'Normal forces',
+        shearTrajectory: 'Shear trajectory', momentTrajectory: 'Moment trajectory',
       };
       const legendWidth = 30;
       const legendHeight = 200;
-      const legendRight = 20;
-      const legendBottom = 30;
-      const legendX = canvas.width - legendRight - legendWidth;
-      const legendY = canvas.height - legendBottom - legendHeight;
+      const legendLeft = 20;
+      const legendTop = 25;
+      const legendX = legendLeft;
+      const legendY = legendTop + 25;
       const numSteps = 10;
       const stepHeight = legendHeight / numSteps;
       const colorScale = generateColorScale(legendMin, legendMax, numSteps);
@@ -3727,6 +4594,7 @@ export function MeshEditor() {
       const panelH = legendHeight + 30 + panelPad * 2;
       const panelX = legendX - panelPad;
       const panelY = legendY - 25 - panelPad;
+      // Legend is now positioned at top-left
       ctx.beginPath();
       if (typeof ctx.roundRect === 'function') {
         ctx.roundRect(panelX, panelY, panelW, panelH, 6);
@@ -3759,7 +4627,12 @@ export function MeshEditor() {
       for (const t of lblPositions) {
         const yPos = legendY + t * legendHeight;
         const val = legendMax - t * (legendMax - legendMin);
-        ctx.fillText(formatResultValue(val, stressType), lblX, yPos);
+        ctx.fillText(formatResultValue(val, stressType, {
+          stress: stressUnit,
+          bendingMoment: plateBendingMomentUnit,
+          shearForce: plateShearForceUnit,
+          membraneForce: plateMembraneForceUnit
+        }), lblX, yPos);
       }
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
@@ -3801,12 +4674,12 @@ export function MeshEditor() {
     showStress, stressType, pendingNodes, selectedTool, gridSize, analysisType,
     showMoment, showShear, showNormal, showDeflections, diagramScale, viewMode, showProfileNames, showReactions, meshVersion,
     showNodes, showMembers, showSupports, showLoads, showNodeLabels, showMemberLabels, showDimensions, showDisplacements, forceUnit,
-    isConstraintTool, cursorPos, snapNodeId, hoveredBeamId, hoveredNodeId, moveMode, selectionBox, draggedBeamId, draggedNode,
-    structuralGrid, plateFirstCorner, loadCases, activeLoadCase,
-    plateDrawMode, platePolygonPoints, plateVoids, plateEditState, currentVoidPoints,
+    isConstraintTool, cursorPos, snapNodeId, hoveredBeamId, hoveredNodeId, hoveredEdgeId, moveMode, rotateCenter, selectionBox, draggedBeamId, draggedNode,
+    structuralGrid, loadCases, activeLoadCase,
+    platePolygonPoints, plateVoids, plateEditState, currentVoidPoints, voidTargetPlateId, arcMode, discretizeArc,
     screenToWorld, worldToScreen, snapToGridFn, getNodeIdToIndex, drawSupportSymbol, drawLoadArrow,
     drawDistributedLoad, drawForceDiagram, drawEnvelopeDiagram, drawGizmo, drawDimensions, drawConstraintPreview,
-    showEnvelope, envelopeResult
+    showEnvelope, envelopeResult, showStressGradient
   ]);
 
   useEffect(() => {
@@ -3877,16 +4750,79 @@ export function MeshEditor() {
   }, [selectedTool]);
 
   // Clear polygon plate state when switching away from addPlate tool
+  // BUT preserve void drawing state if we're drawing a void on an existing plate
   useEffect(() => {
-    if (selectedTool !== 'addPlate') {
+    console.log('[Clear State Effect] selectedTool:', selectedTool, 'voidTargetPlateId:', voidTargetPlateId);
+    if (selectedTool !== 'addPlate' && voidTargetPlateId === null) {
+      console.log('[Clear State Effect] CLEARING polygon plate state');
       setPlatePolygonPoints([]);
       setPlateVoids([]);
       setCurrentVoidPoints([]);
       setPlateEditState(null);
       setPendingPolygonPlate(null);
-      setPlateFirstCorner(null);
     }
-  }, [selectedTool]);
+  }, [selectedTool, voidTargetPlateId]);
+
+  // Auto-start outline mode when switching to addPlate tool
+  useEffect(() => {
+    if (selectedTool === 'addPlate' && plateEditState === null && platePolygonPoints.length === 0) {
+      setPlateEditState('outline');
+    }
+  }, [selectedTool, plateEditState, platePolygonPoints.length]);
+
+  // Sync plate edit mode to global state for Ribbon visibility
+  useEffect(() => {
+    if (voidTargetPlateId !== null && plateEditState === 'void') {
+      dispatch({ type: 'SET_PLATE_EDIT_MODE', payload: { mode: 'void', plateId: voidTargetPlateId } });
+    } else if (selectedTool === 'addPlate') {
+      if (plateEditState === 'outline') {
+        dispatch({ type: 'SET_PLATE_EDIT_MODE', payload: { mode: 'polygon-outline' } });
+      } else if (plateEditState === 'void') {
+        dispatch({ type: 'SET_PLATE_EDIT_MODE', payload: { mode: 'polygon-void' } });
+      } else {
+        dispatch({ type: 'SET_PLATE_EDIT_MODE', payload: null });
+      }
+    } else {
+      dispatch({ type: 'SET_PLATE_EDIT_MODE', payload: null });
+    }
+  }, [voidTargetPlateId, plateEditState, selectedTool, dispatch]);
+
+  // Respond to Ribbon "Finish" button (finishEditTrigger)
+  const prevFinishTriggerRef = useRef(finishEditTrigger);
+  useEffect(() => {
+    if (finishEditTrigger !== prevFinishTriggerRef.current) {
+      prevFinishTriggerRef.current = finishEditTrigger;
+      // Finish void drawing on existing plate
+      if (voidTargetPlateId !== null && plateEditState === 'void' && currentVoidPoints.length >= 3) {
+        const plate = mesh.getPlateRegion(voidTargetPlateId);
+        if (plate) {
+          pushUndo();
+          if (!plate.voids) plate.voids = [];
+          plate.voids.push([...currentVoidPoints]);
+          const capturedPlateId = voidTargetPlateId;
+          remeshPolygonPlateRegionFromContour(mesh, capturedPlateId).then(() => {
+            dispatch({ type: 'REFRESH_MESH' });
+          });
+        }
+        setCurrentVoidPoints([]);
+        setPlateEditState(null);
+        setVoidTargetPlateId(null);
+        return;
+      }
+      // Finish polygon outline
+      if (selectedTool === 'addPlate' && plateEditState === 'outline' && platePolygonPoints.length >= 3) {
+        setPlateEditState(null);
+        return;
+      }
+      // Finish void in polygon plate mode
+      if (selectedTool === 'addPlate' && plateEditState === 'void' && currentVoidPoints.length >= 3) {
+        setPlateVoids(prev => [...prev, [...currentVoidPoints]]);
+        setCurrentVoidPoints([]);
+        setPlateEditState(null);
+        return;
+      }
+    }
+  }, [finishEditTrigger, voidTargetPlateId, plateEditState, currentVoidPoints, selectedTool, platePolygonPoints, mesh, pushUndo, dispatch]);
 
   // Keyboard handling
   useEffect(() => {
@@ -3921,6 +4857,71 @@ export function MeshEditor() {
         return;
       }
 
+      // Tab key - intercept early to prevent browser focus navigation
+      if (e.key === 'Tab') {
+        // Tab enters edit mode for selected plate
+        if (selection.plateIds.size === 1 && selectedTool === 'select' && voidTargetPlateId === null && plateEditState === null) {
+          e.preventDefault();
+          const selectedPlateId = Array.from(selection.plateIds)[0];
+          setEditingPlateId(selectedPlateId);
+          return;
+        }
+        // Tab closes void on existing plate
+        if (voidTargetPlateId !== null && plateEditState === 'void' && currentVoidPoints.length >= 3) {
+          e.preventDefault();
+          const plate = mesh.getPlateRegion(voidTargetPlateId);
+          if (plate) {
+            pushUndo();
+            if (!plate.voids) plate.voids = [];
+            plate.voids.push([...currentVoidPoints]);
+            const oldEdgeMap = new Map<number, number>();
+            for (const edge of mesh.edges.values()) {
+              if (edge.plateId === voidTargetPlateId && edge.polygonEdgeIndex !== undefined) {
+                oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+              }
+            }
+            const capturedPlateId = voidTargetPlateId;
+            remeshPolygonPlateRegionFromContour(mesh, capturedPlateId).then(() => {
+              const newEdgeByPolyIdx = new Map<number, number>();
+              for (const edge of mesh.edges.values()) {
+                if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+                  newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+                }
+              }
+              for (const lc of loadCases) {
+                for (const dl of lc.distributedLoads) {
+                  if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                    const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                    const newId = newEdgeByPolyIdx.get(polyIdx);
+                    if (newId !== undefined) dl.edgeId = newId;
+                  }
+                }
+              }
+              dispatch({ type: 'REFRESH_MESH' });
+            });
+          }
+          setCurrentVoidPoints([]);
+          setPlateEditState(null);
+          setVoidTargetPlateId(null);
+          return;
+        }
+        // Tab closes polygon outline or void in polygon plate mode
+        if (selectedTool === 'addPlate') {
+          if (plateEditState === 'outline' && platePolygonPoints.length >= 3) {
+            e.preventDefault();
+            setPlateEditState(null);
+            return;
+          }
+          if (plateEditState === 'void' && currentVoidPoints.length >= 3) {
+            e.preventDefault();
+            setPlateVoids(prev => [...prev, [...currentVoidPoints]]);
+            setCurrentVoidPoints([]);
+            setPlateEditState(null);
+            return;
+          }
+        }
+      }
+
       // Handle 'F' key - zoom to fit
       if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const nodes = Array.from(mesh.nodes.values());
@@ -3951,10 +4952,29 @@ export function MeshEditor() {
       }
 
       // Handle 'M' key - immediately activate move mode
-      if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        if (selection.nodeIds.size > 0) {
+      // M or G key - activate move mode (G is common in Blender/CAD)
+      if ((e.key.toLowerCase() === 'm' || e.key.toLowerCase() === 'g') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (selection.nodeIds.size > 0 || selection.plateIds.size > 0) {
           setMoveMode(true);
           dispatch({ type: 'SET_TOOL', payload: 'select' });
+        }
+      }
+
+      // Handle 'R' key - activate rotate tool
+      if (e.key.toLowerCase() === 'r' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (selection.nodeIds.size > 0 || selection.plateIds.size > 0) {
+          dispatch({ type: 'SET_TOOL', payload: 'rotate' });
+          setRotateCenter(null);
+          setRotateAngleInput(null);
+        }
+      }
+
+      // Handle 'A' key - toggle arc mode during polygon/void drawing
+      if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const isDrawingPolygon = (selectedTool === 'addPlate' && (plateEditState === 'outline' || plateEditState === 'void'));
+        const isDrawingVoidOnPlate = (voidTargetPlateId !== null && plateEditState === 'void');
+        if (isDrawingPolygon || isDrawingVoidOnPlate) {
+          setArcMode(prev => !prev);
         }
       }
 
@@ -3967,31 +4987,55 @@ export function MeshEditor() {
         }
       }
 
-      // Toggle polygon mode when addPlate tool is active and P is pressed
-      if (e.key.toLowerCase() === 'p' && selectedTool === 'addPlate' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        if (plateDrawMode === 'rectangle') {
-          setPlateDrawMode('polygon');
-          setPlateEditState('outline');
-          setPlateFirstCorner(null); // cancel any rectangle in progress
-        } else {
-          setPlateDrawMode('rectangle');
-          setPlateEditState(null);
-          setPlatePolygonPoints([]);
-          setPlateVoids([]);
-          setCurrentVoidPoints([]);
+      // Enter key closes void on existing plate
+      if (e.key === 'Enter' && voidTargetPlateId !== null && plateEditState === 'void' && currentVoidPoints.length >= 3) {
+        e.preventDefault();
+        const plate = mesh.getPlateRegion(voidTargetPlateId);
+        if (plate) {
+          pushUndo();
+          if (!plate.voids) plate.voids = [];
+          plate.voids.push([...currentVoidPoints]);
+          const oldEdgeMap = new Map<number, number>();
+          for (const edge of mesh.edges.values()) {
+            if (edge.plateId === voidTargetPlateId && edge.polygonEdgeIndex !== undefined) {
+              oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+            }
+          }
+          const capturedPlateId = voidTargetPlateId;
+          remeshPolygonPlateRegionFromContour(mesh, capturedPlateId).then(() => {
+            const newEdgeByPolyIdx = new Map<number, number>();
+            for (const edge of mesh.edges.values()) {
+              if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+                newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+              }
+            }
+            for (const lc of loadCases) {
+              for (const dl of lc.distributedLoads) {
+                if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                  const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                  const newId = newEdgeByPolyIdx.get(polyIdx);
+                  if (newId !== undefined) dl.edgeId = newId;
+                }
+              }
+            }
+            dispatch({ type: 'REFRESH_MESH' });
+          });
         }
+        setCurrentVoidPoints([]);
+        setPlateEditState(null);
+        setVoidTargetPlateId(null);
         return;
       }
 
       // Enter key closes polygon outline or void in polygon plate mode
-      if (e.key === 'Enter' && selectedTool === 'addPlate' && plateDrawMode === 'polygon') {
+      if (e.key === 'Enter' && selectedTool === 'addPlate') {
         if (plateEditState === 'outline' && platePolygonPoints.length >= 3) {
-          // Close the outline polygon - show toolbar for Add Void / Finish / Cancel
+          e.preventDefault();
           setPlateEditState(null);
           return;
         }
         if (plateEditState === 'void' && currentVoidPoints.length >= 3) {
-          // Close the current void polygon
+          e.preventDefault();
           setPlateVoids(prev => [...prev, [...currentVoidPoints]]);
           setCurrentVoidPoints([]);
           setPlateEditState(null);
@@ -4001,12 +5045,26 @@ export function MeshEditor() {
 
       // Handle Escape - cancel current tool / move mode
       if (e.key === 'Escape') {
+        // Cancel rotate tool
+        if (selectedTool === 'rotate') {
+          setRotateCenter(null);
+          setRotateAngleInput(null);
+          dispatch({ type: 'SET_TOOL', payload: 'select' });
+          return;
+        }
+        // Cancel void drawing on existing plate
+        if (voidTargetPlateId !== null) {
+          setCurrentVoidPoints([]);
+          setPlateEditState(null);
+          setVoidTargetPlateId(null);
+          return;
+        }
         if (beamLengthInput !== null) {
           setBeamLengthInput(null);
           return;
         }
         // Cancel polygon plate drawing states
-        if (selectedTool === 'addPlate' && plateDrawMode === 'polygon') {
+        if (selectedTool === 'addPlate') {
           if (plateEditState === 'void' && currentVoidPoints.length > 0) {
             // Cancel current void, go back to toolbar
             setCurrentVoidPoints([]);
@@ -4027,10 +5085,6 @@ export function MeshEditor() {
             setPlateEditState(null);
             return;
           }
-        }
-        if (plateFirstCorner) {
-          setPlateFirstCorner(null);
-          return;
         }
         setPendingCommand(null);
         setMoveMode(false);
@@ -4071,7 +5125,7 @@ export function MeshEditor() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selection, pendingCommand, mesh, dispatch, selectedTool, pushUndo, pendingNodes, beamLengthInput,
-      plateDrawMode, plateEditState, platePolygonPoints, plateVoids, currentVoidPoints]);
+      plateEditState, platePolygonPoints, plateVoids, currentVoidPoints, voidTargetPlateId, arcMode, discretizeArc]);
 
   // LC filtering: apply active load case to mesh when LC tab changes
   useEffect(() => {
@@ -4087,35 +5141,102 @@ export function MeshEditor() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Handle move mode (M+Enter)
-    if (moveMode && selection.nodeIds.size > 0) {
+    // Handle rotate tool: click sets rotation center, then show angle input
+    if (selectedTool === 'rotate' && (selection.nodeIds.size > 0 || selection.plateIds.size > 0)) {
+      if (!rotateCenter) {
+        const world = screenToWorld(x, y);
+        const snapped = snapToGridFn(world.x, world.y);
+        setRotateCenter(snapped);
+        setRotateAngleInput('');
+        return;
+      }
+      // If center already set, ignore further clicks (angle input handles it)
+      return;
+    }
+
+    // Handle move mode (M+click)
+    if (moveMode && (selection.nodeIds.size > 0 || selection.plateIds.size > 0)) {
       pushUndo();
       const world = screenToWorld(x, y);
       const snapped = snapToGridFn(world.x, world.y);
 
-      // Calculate the centroid of selected nodes
-      let sumX = 0, sumY = 0;
-      for (const nodeId of selection.nodeIds) {
+      // Collect all movable node IDs (selected nodes + all nodes from selected plates)
+      const moveNodeIds = new Set(selection.nodeIds);
+      for (const plateId of selection.plateIds) {
+        const plate = mesh.getPlateRegion(plateId);
+        if (plate) {
+          for (const nid of plate.nodeIds) moveNodeIds.add(nid);
+        }
+      }
+
+      // Calculate the centroid of movable nodes
+      let sumX = 0, sumY = 0, count = 0;
+      for (const nodeId of moveNodeIds) {
         const node = mesh.getNode(nodeId);
         if (node) {
           sumX += node.x;
           sumY += node.y;
+          count++;
         }
       }
-      const centroidX = sumX / selection.nodeIds.size;
-      const centroidY = sumY / selection.nodeIds.size;
+      if (count === 0) { setMoveMode(false); return; }
+      const centroidX = sumX / count;
+      const centroidY = sumY / count;
 
-      // Move all selected nodes by the delta
+      // Move all movable nodes by the delta
       const deltaX = snapped.x - centroidX;
       const deltaY = snapped.y - centroidY;
 
-      for (const nodeId of selection.nodeIds) {
+      for (const nodeId of moveNodeIds) {
         const node = mesh.getNode(nodeId);
         if (node) {
           mesh.updateNode(nodeId, {
             x: node.x + deltaX,
             y: node.y + deltaY
           });
+        }
+      }
+
+      // Break grid line association when manually moving nodes via Move function
+      for (const nodeId of moveNodeIds) {
+        const node = mesh.getNode(nodeId);
+        if (node) {
+          node.gridLineId = undefined;
+        }
+      }
+
+      // Update plate geometry for selected plates
+      for (const plateId of selection.plateIds) {
+        const plate = mesh.getPlateRegion(plateId);
+        if (plate) {
+          plate.x += deltaX;
+          plate.y += deltaY;
+          if (plate.polygon) {
+            for (const v of plate.polygon) {
+              v.x += deltaX;
+              v.y += deltaY;
+            }
+          }
+          if (plate.voids) {
+            for (const voidPoly of plate.voids) {
+              for (const v of voidPoly) {
+                v.x += deltaX;
+                v.y += deltaY;
+              }
+            }
+          }
+          // Update IEdge vertex positions for moved plate
+          if (plate.edgeIds) {
+            for (const edgeId of plate.edgeIds) {
+              const edge = mesh.getEdge(edgeId);
+              if (edge) {
+                edge.vertexStart.x += deltaX;
+                edge.vertexStart.y += deltaY;
+                edge.vertexEnd.x += deltaX;
+                edge.vertexEnd.y += deltaY;
+              }
+            }
+          }
         }
       }
 
@@ -4132,6 +5253,67 @@ export function MeshEditor() {
 
     // Right-click is handled by onContextMenu, not here
     if (e.button === 2) return;
+
+    // Handle void drawing on existing plate (from "+" button) - VERY EARLY to prevent other handlers
+    if (voidTargetPlateId !== null && plateEditState === 'void') {
+      console.log('[Void Click] Adding point, voidTargetPlateId:', voidTargetPlateId);
+      const world = screenToWorld(x, y);
+      const snapped = snapToGridFn(world.x, world.y);
+      console.log('[Void Click] snapped:', snapped);
+      if (currentVoidPoints.length >= 3) {
+        const first = currentVoidPoints[0];
+        const dist = Math.sqrt((snapped.x - first.x) ** 2 + (snapped.y - first.y) ** 2);
+        if (dist < 0.05) {
+          // Close the void polygon and add to plate
+          const plate = mesh.getPlateRegion(voidTargetPlateId);
+          if (plate) {
+            pushUndo();
+            if (!plate.voids) plate.voids = [];
+            plate.voids.push([...currentVoidPoints]);
+            // Save old edge mapping before remesh
+            const oldEdgeMap = new Map<number, number>();
+            for (const edge of mesh.edges.values()) {
+              if (edge.plateId === voidTargetPlateId && edge.polygonEdgeIndex !== undefined) {
+                oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+              }
+            }
+            const capturedPlateId = voidTargetPlateId;
+            remeshPolygonPlateRegionFromContour(mesh, capturedPlateId).then(() => {
+              // Re-map distributed load edgeIds
+              const newEdgeByPolyIdx = new Map<number, number>();
+              for (const edge of mesh.edges.values()) {
+                if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+                  newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+                }
+              }
+              for (const lc of loadCases) {
+                for (const dl of lc.distributedLoads) {
+                  if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                    const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                    const newId = newEdgeByPolyIdx.get(polyIdx);
+                    if (newId !== undefined) dl.edgeId = newId;
+                  }
+                }
+              }
+              dispatch({ type: 'REFRESH_MESH' });
+            });
+          }
+          setCurrentVoidPoints([]);
+          setPlateEditState(null);
+          setVoidTargetPlateId(null);
+          return;
+        }
+      }
+      if (arcMode && currentVoidPoints.length > 0) {
+        const lastPt = currentVoidPoints[currentVoidPoints.length - 1];
+        const arcPts = discretizeArc(lastPt, { x: snapped.x, y: snapped.y });
+        setCurrentVoidPoints(prev => [...prev, ...arcPts]);
+        setArcMode(false);
+      } else {
+        setCurrentVoidPoints(prev => [...prev, { x: snapped.x, y: snapped.y }]);
+      }
+      return;
+    }
 
     // Check grid line label click (circles) for dragging
     if (structuralGrid.showGridLines) {
@@ -4425,6 +5607,30 @@ export function MeshEditor() {
         }
       }
 
+      // Check polygon contour edge midpoint handles (before nodes)
+      for (const plate of mesh.plateRegions.values()) {
+        if (!plate.isPolygon || !plate.polygon || plate.polygon.length < 3) continue;
+        for (let ei = 0; ei < plate.polygon.length; ei++) {
+          const v1 = plate.polygon[ei];
+          const v2 = plate.polygon[(ei + 1) % plate.polygon.length];
+          const midWorld = { x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2 };
+          const midScreen = worldToScreen(midWorld.x, midWorld.y);
+          const dist = Math.sqrt((x - midScreen.x) ** 2 + (y - midScreen.y) ** 2);
+          if (dist <= 10) {
+            pushUndo();
+            setContourEdgeDrag({
+              plateId: plate.id,
+              edgeIndex: ei,
+              originV1: { x: v1.x, y: v1.y },
+              originV2: { x: v2.x, y: v2.y },
+            });
+            setIsDragging(true);
+            setDragStart({ x: e.clientX, y: e.clientY });
+            return;
+          }
+        }
+      }
+
       // Check node selection FIRST (nodes have priority over loads)
       const node = findNodeAtScreen(x, y);
       if (node) {
@@ -4445,6 +5651,7 @@ export function MeshEditor() {
           );
           const canDrag = !isPlateNode || plateCornerInfo !== null;
           if (canDrag) {
+            pushUndo();
             setDraggedNode(node.id);
             setDragNodeOrigin({ x: node.x, y: node.y });
             setIsDragging(true);
@@ -4581,7 +5788,23 @@ export function MeshEditor() {
       pushUndo();
       const world = screenToWorld(x, y);
       const snapped = snapToGridFn(world.x, world.y);
-      mesh.addNode(snapped.x, snapped.y);
+      const newNode = mesh.addNode(snapped.x, snapped.y);
+      // Associate node with structural grid line if placed on one
+      const GRID_SNAP_TOL = 0.001; // 1mm tolerance
+      for (const gl of structuralGrid.verticalLines) {
+        if (Math.abs(snapped.x - gl.position) < GRID_SNAP_TOL) {
+          newNode.gridLineId = gl.id;
+          break;
+        }
+      }
+      if (!newNode.gridLineId) {
+        for (const gl of structuralGrid.horizontalLines) {
+          if (Math.abs(snapped.y - gl.position) < GRID_SNAP_TOL) {
+            newNode.gridLineId = gl.id;
+            break;
+          }
+        }
+      }
       dispatch({ type: 'REFRESH_MESH' });
     }
 
@@ -4625,6 +5848,22 @@ export function MeshEditor() {
           }
         }
         node = mesh.addNode(snapped.x, snapped.y);
+        // Associate node with structural grid line if placed on one
+        const GRID_SNAP_TOL_BEAM = 0.001;
+        for (const gl of structuralGrid.verticalLines) {
+          if (Math.abs(snapped.x - gl.position) < GRID_SNAP_TOL_BEAM) {
+            node.gridLineId = gl.id;
+            break;
+          }
+        }
+        if (!node.gridLineId) {
+          for (const gl of structuralGrid.horizontalLines) {
+            if (Math.abs(snapped.y - gl.position) < GRID_SNAP_TOL_BEAM) {
+              node.gridLineId = gl.id;
+              break;
+            }
+          }
+        }
         dispatch({ type: 'REFRESH_MESH' });
       }
 
@@ -4742,7 +5981,41 @@ export function MeshEditor() {
         if (viewMode === 'geometry') {
           dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
         }
+        setLineLoadEdgeId(null);
         setLineLoadBeamId(beam.id);
+      } else {
+        // No beam found — check for plate edge
+        const world = screenToWorld(x, y);
+        const tolerance = 15 / viewState.scale;
+        let closestEdgeId: number | null = null;
+        let closestDist = Infinity;
+
+        for (const edge of mesh.edges.values()) {
+          const v1 = edge.vertexStart;
+          const v2 = edge.vertexEnd;
+          const dx = v2.x - v1.x;
+          const dy = v2.y - v1.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq === 0) continue;
+          let t = ((world.x - v1.x) * dx + (world.y - v1.y) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          const cx = v1.x + t * dx;
+          const cy = v1.y + t * dy;
+          const dist = Math.sqrt((world.x - cx) ** 2 + (world.y - cy) ** 2);
+          if (dist < closestDist && dist < tolerance) {
+            closestDist = dist;
+            closestEdgeId = edge.id;
+          }
+        }
+
+        if (closestEdgeId !== null) {
+          if (viewMode === 'geometry') {
+            dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
+          }
+          setLineLoadEdgeId(closestEdgeId);
+          // Use a dummy beam id of -1 to trigger dialog rendering
+          setLineLoadBeamId(-1);
+        }
       }
     }
 
@@ -4750,117 +6023,52 @@ export function MeshEditor() {
       const world = screenToWorld(x, y);
       const snapped = snapToGridFn(world.x, world.y);
 
-      if (plateDrawMode === 'polygon') {
-        // Polygon plate drawing mode
-        if (plateEditState === 'outline') {
-          // Add vertex to outline polygon
-          // Check if clicking near first point to close the polygon
-          if (platePolygonPoints.length >= 3) {
-            const first = platePolygonPoints[0];
-            const dist = Math.sqrt((snapped.x - first.x) ** 2 + (snapped.y - first.y) ** 2);
-            if (dist < 0.05) { // close tolerance ~50mm
-              // Close the polygon
-              setPlateEditState(null);
-              return;
-            }
+      // Polygon plate drawing mode
+      if (plateEditState === 'outline') {
+        // Add vertex to outline polygon
+        // Check if clicking near first point to close the polygon
+        if (platePolygonPoints.length >= 3) {
+          const first = platePolygonPoints[0];
+          const dist = Math.sqrt((snapped.x - first.x) ** 2 + (snapped.y - first.y) ** 2);
+          if (dist < 0.05) { // close tolerance ~50mm
+            // Close the polygon
+            setPlateEditState(null);
+            return;
           }
+        }
+        if (arcMode && platePolygonPoints.length > 0) {
+          const lastPt = platePolygonPoints[platePolygonPoints.length - 1];
+          const arcPts = discretizeArc(lastPt, { x: snapped.x, y: snapped.y });
+          setPlatePolygonPoints(prev => [...prev, ...arcPts]);
+          setArcMode(false);
+        } else {
           setPlatePolygonPoints(prev => [...prev, { x: snapped.x, y: snapped.y }]);
-        } else if (plateEditState === 'void') {
-          // Add vertex to current void polygon
-          if (currentVoidPoints.length >= 3) {
-            const first = currentVoidPoints[0];
-            const dist = Math.sqrt((snapped.x - first.x) ** 2 + (snapped.y - first.y) ** 2);
-            if (dist < 0.05) {
-              // Close the void polygon
-              setPlateVoids(prev => [...prev, [...currentVoidPoints]]);
-              setCurrentVoidPoints([]);
-              setPlateEditState(null);
-              return;
-            }
+        }
+      } else if (plateEditState === 'void') {
+        // Add vertex to current void polygon
+        if (currentVoidPoints.length >= 3) {
+          const first = currentVoidPoints[0];
+          const dist = Math.sqrt((snapped.x - first.x) ** 2 + (snapped.y - first.y) ** 2);
+          if (dist < 0.05) {
+            // Close the void polygon
+            setPlateVoids(prev => [...prev, [...currentVoidPoints]]);
+            setCurrentVoidPoints([]);
+            setPlateEditState(null);
+            return;
           }
+        }
+        if (arcMode && currentVoidPoints.length > 0) {
+          const lastPt = currentVoidPoints[currentVoidPoints.length - 1];
+          const arcPts = discretizeArc(lastPt, { x: snapped.x, y: snapped.y });
+          setCurrentVoidPoints(prev => [...prev, ...arcPts]);
+          setArcMode(false);
+        } else {
           setCurrentVoidPoints(prev => [...prev, { x: snapped.x, y: snapped.y }]);
         }
-        // If plateEditState is null (toolbar showing), ignore clicks on canvas
-      } else {
-        // Rectangle plate drawing mode (existing behavior)
-        if (!plateFirstCorner) {
-          setPlateFirstCorner(snapped);
-        } else {
-          // Compute rectangle from two corners
-          const x0 = Math.min(plateFirstCorner.x, snapped.x);
-          const y0 = Math.min(plateFirstCorner.y, snapped.y);
-          const w = Math.abs(snapped.x - plateFirstCorner.x);
-          const h = Math.abs(snapped.y - plateFirstCorner.y);
-          if (w > 0.001 && h > 0.001) {
-            setPendingPlateRect({ x: x0, y: y0, w, h });
-            setShowPlateDialog(true);
-          }
-          setPlateFirstCorner(null);
-        }
       }
+      // If plateEditState is null (toolbar showing), ignore clicks on canvas
     }
 
-    if (selectedTool === 'addEdgeLoad') {
-      const world = screenToWorld(x, y);
-      // Find closest plate edge within tolerance
-      const tolerance = 15 / viewState.scale;
-      let closestPlateId: number | null = null;
-      let closestEdge: 'top' | 'bottom' | 'left' | 'right' | number = 'bottom';
-      let closestDist = Infinity;
-
-      for (const plate of mesh.plateRegions.values()) {
-        if (plate.isPolygon && plate.polygon && plate.polygon.length >= 3) {
-          // Polygon plate: check each polygon edge
-          for (let ei = 0; ei < plate.polygon.length; ei++) {
-            const v1 = plate.polygon[ei];
-            const v2 = plate.polygon[(ei + 1) % plate.polygon.length];
-            const dx = v2.x - v1.x;
-            const dy = v2.y - v1.y;
-            const lenSq = dx * dx + dy * dy;
-            if (lenSq === 0) continue;
-            let t = ((world.x - v1.x) * dx + (world.y - v1.y) * dy) / lenSq;
-            t = Math.max(0, Math.min(1, t));
-            const cx = v1.x + t * dx;
-            const cy = v1.y + t * dy;
-            const dist = Math.sqrt((world.x - cx) ** 2 + (world.y - cy) ** 2);
-            if (dist < closestDist && dist < tolerance) {
-              closestDist = dist;
-              closestPlateId = plate.id;
-              closestEdge = ei;  // polygon edge index
-            }
-          }
-        } else {
-          // Rectangular plate: check bounding box edges
-          const edges: Array<{ edge: 'top' | 'bottom' | 'left' | 'right'; x1: number; y1: number; x2: number; y2: number }> = [
-            { edge: 'bottom', x1: plate.x, y1: plate.y, x2: plate.x + plate.width, y2: plate.y },
-            { edge: 'top', x1: plate.x, y1: plate.y + plate.height, x2: plate.x + plate.width, y2: plate.y + plate.height },
-            { edge: 'left', x1: plate.x, y1: plate.y, x2: plate.x, y2: plate.y + plate.height },
-            { edge: 'right', x1: plate.x + plate.width, y1: plate.y, x2: plate.x + plate.width, y2: plate.y + plate.height },
-          ];
-          for (const e of edges) {
-            const dx = e.x2 - e.x1;
-            const dy = e.y2 - e.y1;
-            const lenSq = dx * dx + dy * dy;
-            if (lenSq === 0) continue;
-            let t = ((world.x - e.x1) * dx + (world.y - e.y1) * dy) / lenSq;
-            t = Math.max(0, Math.min(1, t));
-            const cx = e.x1 + t * dx;
-            const cy = e.y1 + t * dy;
-            const dist = Math.sqrt((world.x - cx) ** 2 + (world.y - cy) ** 2);
-            if (dist < closestDist && dist < tolerance) {
-              closestDist = dist;
-              closestPlateId = plate.id;
-              closestEdge = e.edge;
-            }
-          }
-        }
-      }
-
-      if (closestPlateId !== null) {
-        setEdgeLoadPlateId(closestPlateId);
-        setEdgeLoadEdge(closestEdge);
-      }
-    }
 
     if (selectedTool === 'addThermalLoad') {
       const world = screenToWorld(x, y);
@@ -5047,14 +6255,40 @@ export function MeshEditor() {
         setCursorPos(null);
       }
       setSnapNodeId(null);
-    } else if (selectedTool === 'addNode' || selectedTool === 'addLoad' || selectedTool === 'addLineLoad' || selectedTool === 'addPlate') {
-      // Snap cursor preview to grid for addNode/addLoad/addPlate tools
+    } else if (selectedTool === 'addNode' || selectedTool === 'addLoad' || selectedTool === 'addLineLoad' || selectedTool === 'addPlate' || (voidTargetPlateId !== null && plateEditState === 'void')) {
+      // Snap cursor preview to grid for addNode/addLoad/addPlate tools and void edit mode
       const world = screenToWorld(mx, my);
       const snapped = snapToGridFn(world.x, world.y);
       const screenSnapped = worldToScreen(snapped.x, snapped.y);
       setCursorPos({ x: screenSnapped.x, y: screenSnapped.y });
       setHoveredBeamId(nearBeam?.id ?? null);
       setSnapNodeId(null);
+      // Edge hover detection for addLineLoad tool
+      if (selectedTool === 'addLineLoad' && !nearBeam) {
+        const tolerance = 15 / viewState.scale;
+        let closestEdge: number | null = null;
+        let closestDist = Infinity;
+        for (const edge of mesh.edges.values()) {
+          const v1 = edge.vertexStart;
+          const v2 = edge.vertexEnd;
+          const edx = v2.x - v1.x;
+          const edy = v2.y - v1.y;
+          const lenSq = edx * edx + edy * edy;
+          if (lenSq === 0) continue;
+          let t = ((world.x - v1.x) * edx + (world.y - v1.y) * edy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          const cx = v1.x + t * edx;
+          const cy = v1.y + t * edy;
+          const dist = Math.sqrt((world.x - cx) ** 2 + (world.y - cy) ** 2);
+          if (dist < closestDist && dist < tolerance) {
+            closestDist = dist;
+            closestEdge = edge.id;
+          }
+        }
+        setHoveredEdgeId(closestEdge);
+      } else {
+        setHoveredEdgeId(null);
+      }
     } else {
       if (snapNodeId !== null) setSnapNodeId(null);
       if (cursorPos !== null) setCursorPos(null);
@@ -5136,6 +6370,17 @@ export function MeshEditor() {
     if (draggedGridLineId !== null && draggedGridLineType) {
       const world = screenToWorld(mx, my);
       const snapped = snapToGridFn(world.x, world.y);
+      const newPos = draggedGridLineType === 'vertical' ? snapped.x : snapped.y;
+      // Move all nodes associated with this grid line
+      for (const [nodeId, node] of mesh.nodes) {
+        if (node.gridLineId === draggedGridLineId) {
+          if (draggedGridLineType === 'vertical') {
+            mesh.updateNode(nodeId, { x: newPos });
+          } else {
+            mesh.updateNode(nodeId, { y: newPos });
+          }
+        }
+      }
       if (draggedGridLineType === 'vertical') {
         const updated = structuralGrid.verticalLines.map(l =>
           l.id === draggedGridLineId ? { ...l, position: snapped.x } : l
@@ -5147,6 +6392,7 @@ export function MeshEditor() {
         );
         dispatch({ type: 'SET_STRUCTURAL_GRID', payload: { ...structuralGrid, horizontalLines: updated } });
       }
+      dispatch({ type: 'REFRESH_MESH' });
       return;
     }
 
@@ -5176,6 +6422,34 @@ export function MeshEditor() {
           mesh.updateNode(beamNodes[1].id, { x: newN2X + snapDx, y: newN2Y + snapDy });
           dispatch({ type: 'REFRESH_MESH' });
         }
+      }
+      return;
+    }
+
+    // Contour edge drag: move both edge vertices by the same delta
+    if (contourEdgeDrag !== null) {
+      const plate = mesh.getPlateRegion(contourEdgeDrag.plateId);
+      if (plate?.polygon) {
+        const totalDx = (e.clientX - dragStart.x) / viewState.scale;
+        const totalDy = -(e.clientY - dragStart.y) / viewState.scale;
+
+        const newV1X = contourEdgeDrag.originV1.x + totalDx;
+        const newV1Y = contourEdgeDrag.originV1.y + totalDy;
+        const newV2X = contourEdgeDrag.originV2.x + totalDx;
+        const newV2Y = contourEdgeDrag.originV2.y + totalDy;
+
+        // Snap the midpoint to grid, apply same offset to both vertices
+        const midX = (newV1X + newV2X) / 2;
+        const midY = (newV1Y + newV2Y) / 2;
+        const snapped = snapToGridFn(midX, midY);
+        const snapDx = snapped.x - midX;
+        const snapDy = snapped.y - midY;
+
+        const ei = contourEdgeDrag.edgeIndex;
+        const ei2 = (ei + 1) % plate.polygon.length;
+        plate.polygon[ei] = { x: newV1X + snapDx, y: newV1Y + snapDy };
+        plate.polygon[ei2] = { x: newV2X + snapDx, y: newV2Y + snapDy };
+        dispatch({ type: 'REFRESH_MESH' });
       }
       return;
     }
@@ -5215,7 +6489,68 @@ export function MeshEditor() {
           }
         }
 
-        mesh.updateNode(draggedNode, { x: newX, y: newY });
+        // Sync polygon vertex position if this node is a polygon corner
+        // First check if the new position would create a self-intersecting polygon
+        let isValidMove = true;
+        if (!draggedSubNode) {
+          const cornerInfo = findPlateCornerForNode(mesh, draggedNode);
+          if (cornerInfo?.isPolygonVertex) {
+            const plate = mesh.getPlateRegion(cornerInfo.plateId);
+            if (plate?.polygon) {
+              const boundaryNodeIds = plate.boundaryNodeIds ?? plate.nodeIds;
+              // Find which vertex index this node corresponds to
+              let targetVertexIndex = -1;
+              for (let vi = 0; vi < plate.polygon.length; vi++) {
+                const vx = plate.polygon[vi].x;
+                const vy = plate.polygon[vi].y;
+                let bestDist = Infinity;
+                let bestNodeId = -1;
+                for (const bid of boundaryNodeIds) {
+                  if (bid === draggedNode) {
+                    const ox = dragNodeOrigin?.x ?? newX;
+                    const oy = dragNodeOrigin?.y ?? newY;
+                    const d = (ox - vx) ** 2 + (oy - vy) ** 2;
+                    if (d < bestDist) { bestDist = d; bestNodeId = bid; }
+                  } else {
+                    const bn = mesh.getNode(bid);
+                    if (!bn) continue;
+                    const d = (bn.x - vx) ** 2 + (bn.y - vy) ** 2;
+                    if (d < bestDist) { bestDist = d; bestNodeId = bid; }
+                  }
+                }
+                if (bestNodeId === draggedNode) {
+                  targetVertexIndex = vi;
+                  break;
+                }
+              }
+
+              // Check if the new polygon would be self-intersecting
+              if (targetVertexIndex >= 0) {
+                const testPolygon = plate.polygon.map((p, i) =>
+                  i === targetVertexIndex ? { x: newX, y: newY } : { ...p }
+                );
+                if (isPolygonSelfIntersecting(testPolygon) || polygonArea(testPolygon) >= 0) {
+                  // Invalid: polygon would self-intersect or have wrong winding
+                  isValidMove = false;
+                } else {
+                  // Valid: update the polygon
+                  plate.polygon[targetVertexIndex] = { x: newX, y: newY };
+                }
+              }
+            }
+          }
+        }
+
+        // Only update node position if move is valid (or not a polygon corner)
+        if (isValidMove) {
+          mesh.updateNode(draggedNode, { x: newX, y: newY });
+        } else {
+          // Reset to origin if invalid
+          if (dragNodeOrigin) {
+            newX = dragNodeOrigin.x;
+            newY = dragNodeOrigin.y;
+          }
+        }
 
         // Update sub-node positions if this node is an endpoint of beams with sub-nodes
         if (!draggedSubNode) {
@@ -5316,7 +6651,7 @@ export function MeshEditor() {
             for (const dl of beamLoadsForBox) {
               if (dl.qy === 0 && (dl.qyEnd ?? dl.qy) === 0) continue;
               const isGlobal = (dl.coordSystem ?? 'local') === 'global';
-              const perpAngle = isGlobal ? Math.PI / 2 : screenAngle + Math.PI / 2;
+              const perpAngle = isGlobal ? -Math.PI / 2 : screenAngle - Math.PI / 2;
               const maxQ = Math.max(Math.abs(dl.qy), Math.abs(dl.qyEnd ?? dl.qy));
               const arrowLen = Math.min(40, maxQ / 500 * 40 + 20);
               const offset = cumulativeOff + arrowLen / 2;
@@ -5424,16 +6759,160 @@ export function MeshEditor() {
       setResizingLoadEnd(null);
     }
 
+    // Contour edge drag release: regenerate mesh inside the new polygon contour
+    if (contourEdgeDrag !== null) {
+      const plate = mesh.getPlateRegion(contourEdgeDrag.plateId);
+      if (plate?.polygon) {
+        pushUndo();
+        const capturedPlateId = contourEdgeDrag.plateId;
+        const ei = contourEdgeDrag.edgeIndex;
+        // Compute the total delta this edge was dragged
+        const dx = plate.polygon[ei].x - contourEdgeDrag.originV1.x;
+        const dy = plate.polygon[ei].y - contourEdgeDrag.originV1.y;
+        const hasDelta = Math.abs(dx) > 1e-9 || Math.abs(dy) > 1e-9;
+
+        // Save old edgeId → polygonEdgeIndex mapping before remesh destroys old edges
+        const oldEdgeMap = new Map<number, number>(); // oldEdgeId → polygonEdgeIndex
+        for (const edge of mesh.edges.values()) {
+          if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+            oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+          }
+        }
+
+        remeshPolygonPlateRegionFromContour(
+          mesh,
+          capturedPlateId,
+          hasDelta ? { edgeIndex: ei, dx, dy } : undefined
+        ).then(() => {
+          // Re-map distributed load edgeIds from old edge IDs to new ones
+          const newEdgeByPolyIdx = new Map<number, number>(); // polygonEdgeIndex → newEdgeId
+          for (const edge of mesh.edges.values()) {
+            if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+              newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+            }
+          }
+          for (const lc of loadCases) {
+            for (const dl of lc.distributedLoads) {
+              if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                const newId = newEdgeByPolyIdx.get(polyIdx);
+                if (newId !== undefined) {
+                  dl.edgeId = newId;
+                }
+              }
+            }
+          }
+          dispatch({ type: 'CLEAR_SELECTION' });
+          dispatch({ type: 'REFRESH_MESH' });
+        }).catch(err => {
+          console.error('[Edge Drag] Remesh failed:', err);
+        });
+      }
+      setContourEdgeDrag(null);
+      setIsDragging(false);
+      setDragStart({ x: 0, y: 0 });
+      return;
+    }
+
     // Re-mesh plate region if a corner/vertex node was dragged
     if (draggedNode !== null) {
       const plateCornerInfo = findPlateCornerForNode(mesh, draggedNode);
       if (plateCornerInfo) {
+        const draggedNodeCapture = draggedNode;
         if (plateCornerInfo.isPolygonVertex) {
-          remeshPolygonPlateRegion(mesh, plateCornerInfo.plateId, draggedNode);
+          // Save old edgeId → polygonEdgeIndex mapping before remesh
+          const oldEdgeMap = new Map<number, number>();
+          for (const edge of mesh.edges.values()) {
+            if (edge.plateId === plateCornerInfo.plateId && edge.polygonEdgeIndex !== undefined) {
+              oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+            }
+          }
+          // Async CDT boundary-conforming remesh
+          remeshPolygonPlateRegion(mesh, plateCornerInfo.plateId, draggedNodeCapture).then(() => {
+            // Re-map distributed load edgeIds
+            const newEdgeByPolyIdx = new Map<number, number>();
+            for (const edge of mesh.edges.values()) {
+              if (edge.plateId === plateCornerInfo.plateId && edge.polygonEdgeIndex !== undefined) {
+                newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+              }
+            }
+            for (const lc of loadCases) {
+              for (const dl of lc.distributedLoads) {
+                if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                  const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                  const newId = newEdgeByPolyIdx.get(polyIdx);
+                  if (newId !== undefined) dl.edgeId = newId;
+                }
+              }
+            }
+            dispatch({ type: 'SET_SELECTION', payload: { nodeIds: new Set([draggedNodeCapture]), elementIds: new Set(), pointLoadNodeIds: new Set(), distLoadBeamIds: new Set() } });
+            dispatch({ type: 'REFRESH_MESH' });
+          });
         } else {
           remeshPlateRegion(mesh, plateCornerInfo.plateId);
+          // Clear selection to avoid stale references to deleted interior node IDs
+          dispatch({ type: 'SET_SELECTION', payload: { nodeIds: new Set([draggedNodeCapture]), elementIds: new Set(), pointLoadNodeIds: new Set(), distLoadBeamIds: new Set() } });
+          dispatch({ type: 'REFRESH_MESH' });
         }
-        dispatch({ type: 'REFRESH_MESH' });
+      }
+    }
+
+    // Lock node to grid line if drag ended on a grid line
+    if (draggedNode !== null) {
+      const node = mesh.getNode(draggedNode);
+      if (node) {
+        const GRID_SNAP_TOL = 0.001; // 1mm
+        let newGridLineId: number | undefined = undefined;
+
+        for (const gl of structuralGrid.verticalLines) {
+          if (Math.abs(node.x - gl.position) < GRID_SNAP_TOL) {
+            newGridLineId = gl.id;
+            break;
+          }
+        }
+        if (!newGridLineId) {
+          for (const gl of structuralGrid.horizontalLines) {
+            if (Math.abs(node.y - gl.position) < GRID_SNAP_TOL) {
+              newGridLineId = gl.id;
+              break;
+            }
+          }
+        }
+
+        // Update gridLineId (may be undefined to clear old lock)
+        node.gridLineId = newGridLineId;
+      }
+    }
+
+    // Lock beam nodes to grid lines if beam drag ended on a grid line
+    if (draggedBeamId !== null) {
+      const beam = mesh.getBeamElement(draggedBeamId);
+      if (beam) {
+        const beamNodes = mesh.getBeamElementNodes(beam);
+        if (beamNodes) {
+          const GRID_SNAP_TOL = 0.001; // 1mm
+          for (const node of beamNodes) {
+            let newGridLineId: number | undefined = undefined;
+
+            for (const gl of structuralGrid.verticalLines) {
+              if (Math.abs(node.x - gl.position) < GRID_SNAP_TOL) {
+                newGridLineId = gl.id;
+                break;
+              }
+            }
+            if (!newGridLineId) {
+              for (const gl of structuralGrid.horizontalLines) {
+                if (Math.abs(node.y - gl.position) < GRID_SNAP_TOL) {
+                  newGridLineId = gl.id;
+                  break;
+                }
+              }
+            }
+
+            // Update gridLineId (may be undefined to clear old lock)
+            node.gridLineId = newGridLineId;
+          }
+        }
       }
     }
 
@@ -5444,6 +6923,7 @@ export function MeshEditor() {
     setBeamDragOrigins(null);
     setDraggedGridLineId(null);
     setDraggedGridLineType(null);
+    setContourEdgeDrag(null);
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -5452,7 +6932,7 @@ export function MeshEditor() {
     const y = e.clientY - rect.top;
 
     // Double-click closes polygon in plate polygon drawing mode
-    if (selectedTool === 'addPlate' && plateDrawMode === 'polygon') {
+    if (selectedTool === 'addPlate') {
       if (plateEditState === 'outline' && platePolygonPoints.length >= 3) {
         setPlateEditState(null); // close outline, show toolbar
         return;
@@ -5465,11 +6945,27 @@ export function MeshEditor() {
       }
     }
 
+    // Double-click on grid line -> open grids dialog
+    const gridLine = findGridLineAtScreen(x, y);
+    if (gridLine && onShowGridsDialog) {
+      onShowGridsDialog();
+      return;
+    }
+
     // Double-click on a node -> open node properties dialog
     const node = findNodeAtScreen(x, y);
     if (node) {
       setEditingNodeId(node.id);
       return;
+    }
+
+    // Double-click on a dimension line -> open dimension edit dialog
+    if (showDimensions && viewMode === 'geometry') {
+      const dim = findDimensionAtScreen(x, y);
+      if (dim) {
+        setDimDialogBeamId(dim.beamId);
+        return;
+      }
     }
 
     // Double-click on a bar -> open bar properties (always takes priority over line load)
@@ -5567,6 +7063,54 @@ export function MeshEditor() {
         onWheel={handleWheel}
         onContextMenu={e => {
           e.preventDefault();
+          // Cancel contour edge drag — restore both vertices to original positions
+          if (isDragging && contourEdgeDrag !== null) {
+            const plate = mesh.getPlateRegion(contourEdgeDrag.plateId);
+            if (plate?.polygon) {
+              const ei = contourEdgeDrag.edgeIndex;
+              const ei2 = (ei + 1) % plate.polygon.length;
+              plate.polygon[ei] = { ...contourEdgeDrag.originV1 };
+              plate.polygon[ei2] = { ...contourEdgeDrag.originV2 };
+            }
+            setContourEdgeDrag(null);
+            setIsDragging(false);
+            setDragStart({ x: 0, y: 0 });
+            dispatch({ type: 'UNDO' });
+            return;
+          }
+          // Cancel any in-progress drag first — restore node to pre-drag position
+          if (isDragging && draggedNode !== null && dragNodeOrigin) {
+            const node = mesh.getNode(draggedNode);
+            if (node) {
+              mesh.updateNode(draggedNode, { x: dragNodeOrigin.x, y: dragNodeOrigin.y });
+              mesh.updateSubNodePositions(draggedNode);
+            }
+            setIsDragging(false);
+            setDraggedNode(null);
+            setDragNodeOrigin(null);
+            setGizmoAxis(null);
+            dispatch({ type: 'UNDO' }); // Restore the pre-drag snapshot
+            return;
+          }
+          if (isDragging && draggedBeamId !== null && beamDragOrigins) {
+            setIsDragging(false);
+            setDraggedBeamId(null);
+            setBeamDragOrigins(null);
+            dispatch({ type: 'UNDO' });
+            return;
+          }
+          if (isDragging) {
+            setIsDragging(false);
+            setDraggedNode(null);
+            setDragNodeOrigin(null);
+            setDraggedBeamId(null);
+            setBeamDragOrigins(null);
+            setDraggedGridLineId(null);
+            setDraggedGridLineType(null);
+            setResizingLoadBeamId(null);
+            setGizmoAxis(null);
+            return;
+          }
           // Right-click cancels active tool / mode (like Escape)
           if (moveMode) {
             setMoveMode(false);
@@ -5574,7 +7118,49 @@ export function MeshEditor() {
             setPendingCommand(null);
           } else if (editingDimension) {
             setEditingDimension(null);
-          } else if (selectedTool === 'addPlate' && plateDrawMode === 'polygon' && (plateEditState !== null || platePolygonPoints.length > 0)) {
+          } else if (voidTargetPlateId !== null && plateEditState === 'void') {
+            // Right-click closes void on existing plate (from "+" button)
+            if (currentVoidPoints.length >= 3) {
+              const plate = mesh.getPlateRegion(voidTargetPlateId);
+              if (plate) {
+                pushUndo();
+                if (!plate.voids) plate.voids = [];
+                plate.voids.push([...currentVoidPoints]);
+                const oldEdgeMap = new Map<number, number>();
+                for (const edge of mesh.edges.values()) {
+                  if (edge.plateId === voidTargetPlateId && edge.polygonEdgeIndex !== undefined) {
+                    oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+                  }
+                }
+                const capturedPlateId = voidTargetPlateId;
+                remeshPolygonPlateRegionFromContour(mesh, capturedPlateId).then(() => {
+                  const newEdgeByPolyIdx = new Map<number, number>();
+                  for (const edge of mesh.edges.values()) {
+                    if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+                      newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+                    }
+                  }
+                  for (const lc of loadCases) {
+                    for (const dl of lc.distributedLoads) {
+                      if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                        const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                        const newId = newEdgeByPolyIdx.get(polyIdx);
+                        if (newId !== undefined) dl.edgeId = newId;
+                      }
+                    }
+                  }
+                  dispatch({ type: 'REFRESH_MESH' });
+                });
+              }
+              setCurrentVoidPoints([]);
+              setPlateEditState(null);
+              setVoidTargetPlateId(null);
+            } else {
+              setCurrentVoidPoints([]);
+              setPlateEditState(null);
+              setVoidTargetPlateId(null);
+            }
+          } else if (selectedTool === 'addPlate' && (plateEditState !== null || platePolygonPoints.length > 0)) {
             // Right-click closes polygon if >= 3 points, cancels if < 3
             if (plateEditState === 'outline' && platePolygonPoints.length >= 3) {
               // Close the outline polygon — same as Enter/double-click
@@ -5592,8 +7178,8 @@ export function MeshEditor() {
               // Cancel outline (< 3 points)
               setPlatePolygonPoints([]);
               setPlateEditState(null);
-            } else {
-              // Cancel the whole polygon plate
+            } else if (plateEditState === null && platePolygonPoints.length > 0) {
+              // Outline complete, toolbar showing — cancel the whole polygon plate
               setPlatePolygonPoints([]);
               setPlateVoids([]);
               setCurrentVoidPoints([]);
@@ -5608,12 +7194,14 @@ export function MeshEditor() {
         }}
         style={{
           cursor: moveMode ? 'move'
+            : selectedTool === 'rotate' ? 'crosshair'
             : isConstraintTool ? 'none'
-            : (selectedTool === 'addLoad' || selectedTool === 'addLineLoad' || selectedTool === 'addPlate' || selectedTool === 'addEdgeLoad' || selectedTool === 'addThermalLoad' || selectedTool === 'addSubNode') ? 'crosshair'
+            : (selectedTool === 'addLoad' || selectedTool === 'addLineLoad' || selectedTool === 'addPlate' || selectedTool === 'addThermalLoad' || selectedTool === 'addSubNode') ? 'crosshair'
             : gizmoAxis === 'x' ? 'ew-resize'
             : gizmoAxis === 'y' ? 'ns-resize'
             : gizmoAxis === 'free' ? 'grab'
             : (isDragging && draggedNode !== null) ? 'grabbing'
+            : (isDragging && contourEdgeDrag !== null) ? 'grabbing'
             : 'default'
         }}
       />
@@ -5700,27 +7288,32 @@ export function MeshEditor() {
           </div>
         );
       })()}
+      {selectedTool === 'rotate' && !rotateCenter && (
+        <div className="command-indicator">
+          Click to set rotation center.
+        </div>
+      )}
+      {voidTargetPlateId !== null && plateEditState === 'void' && (
+        <div className="command-indicator" style={{ backgroundColor: 'rgba(59, 130, 246, 0.9)' }}>
+          Void Edit Mode (Plate {voidTargetPlateId}): Click vertices to draw opening, A for arc, Tab/Enter/Right-click to close, Esc to cancel.{arcMode ? ' [Arc mode ON]' : ''}
+        </div>
+      )}
       {moveMode && (
         <div className="command-indicator">
           Click to place, Escape to cancel
         </div>
       )}
-      {selectedTool === 'addPlate' && plateDrawMode === 'rectangle' && !showPlateDialog && (
+      {selectedTool === 'addPlate' && plateEditState === 'outline' && (
         <div className="command-indicator">
-          Click two corners for rectangle. Press P for polygon mode.
+          Click to add vertices. A for arc. Tab/Enter/Right-click to close polygon. Esc to cancel.{arcMode ? ' [Arc mode ON]' : ''}
         </div>
       )}
-      {selectedTool === 'addPlate' && plateDrawMode === 'polygon' && plateEditState === 'outline' && (
+      {selectedTool === 'addPlate' && plateEditState === 'void' && !voidTargetPlateId && (
         <div className="command-indicator">
-          Click to add vertices. Double-click or Enter to close polygon. Esc to cancel.
+          Drawing void: Click to add vertices. A for arc. Tab/Enter/Right-click to close. Esc to cancel.{arcMode ? ' [Arc mode ON]' : ''}
         </div>
       )}
-      {selectedTool === 'addPlate' && plateDrawMode === 'polygon' && plateEditState === 'void' && (
-        <div className="command-indicator">
-          Drawing void: Click to add vertices. Double-click or Enter to close. Esc to cancel.
-        </div>
-      )}
-      {selectedTool === 'addPlate' && plateDrawMode === 'polygon' && plateEditState === null && platePolygonPoints.length >= 3 && !showPlateDialog && (
+      {selectedTool === 'addPlate' && plateEditState === null && platePolygonPoints.length >= 3 && !showPlateDialog && (
         <div className="plate-polygon-toolbar">
           <span className="plate-polygon-toolbar-label">
             Polygon plate ({platePolygonPoints.length} vertices{plateVoids.length > 0 ? `, ${plateVoids.length} void(s)` : ''})
@@ -5749,7 +7342,6 @@ export function MeshEditor() {
                   voids: [...plateVoids],
                   bbox: { x: minXP, y: minYP, w: bboxW, h: bboxH }
                 });
-                setPendingPlateRect({ x: minXP, y: minYP, w: bboxW, h: bboxH });
                 setShowPlateDialog(true);
               }
             }}
@@ -5769,6 +7361,38 @@ export function MeshEditor() {
           </button>
         </div>
       )}
+      {/* Floating "+" button to add void when a polygon plate is selected */}
+      {(() => {
+        if (selection.plateIds.size !== 1) return null;
+        const selectedPlateId = Array.from(selection.plateIds)[0];
+        const selectedPlate = mesh.getPlateRegion(selectedPlateId);
+        if (!selectedPlate?.isPolygon) return null;
+        // Compute plate centroid for button position
+        const centroid = selectedPlate.polygon
+          ? polygonCentroid(selectedPlate.polygon)
+          : { x: selectedPlate.x + selectedPlate.width / 2, y: selectedPlate.y + selectedPlate.height / 2 };
+        const screenPos = worldToScreen(centroid.x, centroid.y);
+        return (
+          <button
+            className="plate-add-void-floating-btn"
+            style={{
+              position: 'absolute',
+              left: screenPos.x + 20,
+              top: screenPos.y - 30,
+              zIndex: 100
+            }}
+            onClick={() => {
+              setVoidTargetPlateId(selectedPlateId);
+              setCurrentVoidPoints([]);
+              setPlateEditState('void');
+              dispatch({ type: 'CLEAR_SELECTION' });
+            }}
+            title="Add void opening"
+          >
+            +
+          </button>
+        );
+      })()}
       {beamLengthInput !== null && selectedTool === 'addBeam' && pendingNodes.length === 1 && (
         <div className="beam-length-input-overlay">
           <label>Length (mm):</label>
@@ -5824,6 +7448,109 @@ export function MeshEditor() {
           />
         </div>
       )}
+      {rotateAngleInput !== null && rotateCenter && selectedTool === 'rotate' && (
+        <div className="beam-length-input-overlay">
+          <label>Rotation angle (°):</label>
+          <input
+            className="dimension-input"
+            type="text"
+            autoFocus
+            value={rotateAngleInput}
+            onChange={(e) => setRotateAngleInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const angleDeg = parseFloat(rotateAngleInput || '0');
+                if (!isNaN(angleDeg) && angleDeg !== 0) {
+                  pushUndo();
+                  const rad = angleDeg * Math.PI / 180;
+                  const cos = Math.cos(rad);
+                  const sin = Math.sin(rad);
+                  const cx = rotateCenter.x;
+                  const cy = rotateCenter.y;
+
+                  // Collect all rotatable node IDs
+                  const rotateNodeIds = new Set(selection.nodeIds);
+                  for (const plateId of selection.plateIds) {
+                    const plate = mesh.getPlateRegion(plateId);
+                    if (plate) {
+                      for (const nid of plate.nodeIds) rotateNodeIds.add(nid);
+                    }
+                  }
+
+                  // Rotate all nodes
+                  for (const nodeId of rotateNodeIds) {
+                    const node = mesh.getNode(nodeId);
+                    if (node) {
+                      const dx = node.x - cx;
+                      const dy = node.y - cy;
+                      mesh.updateNode(nodeId, {
+                        x: cx + dx * cos - dy * sin,
+                        y: cy + dx * sin + dy * cos
+                      });
+                    }
+                  }
+
+                  // Update plate geometry for selected plates
+                  for (const plateId of selection.plateIds) {
+                    const plate = mesh.getPlateRegion(plateId);
+                    if (plate) {
+                      // Rotate plate origin
+                      const pdx = plate.x - cx;
+                      const pdy = plate.y - cy;
+                      plate.x = cx + pdx * cos - pdy * sin;
+                      plate.y = cy + pdx * sin + pdy * cos;
+                      if (plate.polygon) {
+                        for (const v of plate.polygon) {
+                          const vdx = v.x - cx;
+                          const vdy = v.y - cy;
+                          v.x = cx + vdx * cos - vdy * sin;
+                          v.y = cy + vdx * sin + vdy * cos;
+                        }
+                      }
+                      if (plate.voids) {
+                        for (const voidPoly of plate.voids) {
+                          for (const v of voidPoly) {
+                            const vdx = v.x - cx;
+                            const vdy = v.y - cy;
+                            v.x = cx + vdx * cos - vdy * sin;
+                            v.y = cy + vdx * sin + vdy * cos;
+                          }
+                        }
+                      }
+                      if (plate.edgeIds) {
+                        for (const edgeId of plate.edgeIds) {
+                          const edge = mesh.getEdge(edgeId);
+                          if (edge) {
+                            const sdx = edge.vertexStart.x - cx;
+                            const sdy = edge.vertexStart.y - cy;
+                            edge.vertexStart.x = cx + sdx * cos - sdy * sin;
+                            edge.vertexStart.y = cy + sdx * sin + sdy * cos;
+                            const edx = edge.vertexEnd.x - cx;
+                            const edy = edge.vertexEnd.y - cy;
+                            edge.vertexEnd.x = cx + edx * cos - edy * sin;
+                            edge.vertexEnd.y = cy + edx * sin + edy * cos;
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  dispatch({ type: 'REFRESH_MESH' });
+                  dispatch({ type: 'SET_RESULT', payload: null });
+                }
+                setRotateCenter(null);
+                setRotateAngleInput(null);
+                dispatch({ type: 'SET_TOOL', payload: 'select' });
+              }
+              if (e.key === 'Escape') {
+                setRotateCenter(null);
+                setRotateAngleInput(null);
+                dispatch({ type: 'SET_TOOL', payload: 'select' });
+              }
+            }}
+          />
+        </div>
+      )}
       {editingDimension && (
         <input
           className="dimension-input"
@@ -5853,8 +7580,9 @@ export function MeshEditor() {
         />
       )}
       {showSectionDialog && pendingBeamNodeIds && (
-        <SectionDialog
-          onSelect={(section: IBeamSection, profileName: string) => {
+        <SectionPropertiesDialog
+          isNew
+          onSave={(profileName: string, section: IBeamSection) => {
             pushUndo();
             mesh.addBeamElement(pendingBeamNodeIds, 1, section, profileName);
             dispatch({ type: 'REFRESH_MESH' });
@@ -5867,7 +7595,7 @@ export function MeshEditor() {
             setShowSectionDialog(false);
             setPendingBeamNodeIds(null);
           }}
-          onCancel={() => {
+          onClose={() => {
             setShowSectionDialog(false);
             setPendingBeamNodeIds(null);
           }}
@@ -5951,11 +7679,50 @@ export function MeshEditor() {
           />
         );
       })()}
-      {lineLoadBeamId !== null && (() => {
-        const beam = mesh.getBeamElement(lineLoadBeamId);
+      {dimDialogBeamId !== null && (() => {
+        const beam = mesh.getBeamElement(dimDialogBeamId);
         if (!beam) return null;
-        const beamNodes = mesh.getBeamElementNodes(beam);
-        const beamLen = beamNodes ? calculateBeamLength(beamNodes[0], beamNodes[1]) : undefined;
+        const nodes = mesh.getBeamElementNodes(beam);
+        if (!nodes) return null;
+        const [n1, n2] = nodes;
+        const currentLength = calculateBeamLength(n1, n2);
+        // Determine which node to move: prefer moving the unconstrained end (n2)
+        const n2Constrained = n2.constraints.x || n2.constraints.y || n2.constraints.rotation;
+        const n1Constrained = n1.constraints.x || n1.constraints.y || n1.constraints.rotation;
+        const movingNodeId = (n2Constrained && !n1Constrained) ? n1.id : n2.id;
+        return (
+          <DimensionEditDialog
+            beamId={dimDialogBeamId}
+            node1={n1}
+            node2={n2}
+            currentLength={currentLength}
+            movingNodeId={movingNodeId}
+            onApply={(newLength) => {
+              pushUndo();
+              applyNewDimension(dimDialogBeamId, newLength);
+            }}
+            onClose={() => setDimDialogBeamId(null)}
+          />
+        );
+      })()}
+      {lineLoadBeamId !== null && (() => {
+        const isEdgeMode = lineLoadEdgeId !== null;
+        const beam = isEdgeMode ? null : mesh.getBeamElement(lineLoadBeamId);
+        if (!isEdgeMode && !beam) return null;
+
+        // Compute length: beam length or edge length
+        let effectiveLength: number | undefined;
+        if (isEdgeMode) {
+          const iedge = mesh.getEdge(lineLoadEdgeId!);
+          if (iedge) {
+            const dx = iedge.vertexEnd.x - iedge.vertexStart.x;
+            const dy = iedge.vertexEnd.y - iedge.vertexStart.y;
+            effectiveLength = Math.sqrt(dx * dx + dy * dy);
+          }
+        } else if (beam) {
+          const beamNodes = mesh.getBeamElementNodes(beam);
+          effectiveLength = beamNodes ? calculateBeamLength(beamNodes[0], beamNodes[1]) : undefined;
+        }
 
         // If editingDistLoadId is set, find the existing load to pre-fill the dialog
         const editingLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
@@ -5971,9 +7738,12 @@ export function MeshEditor() {
             initialQyEnd={existingLoad?.qyEnd}
             initialStartT={existingLoad?.startT ?? 0}
             initialEndT={existingLoad?.endT ?? 1}
-            initialCoordSystem={existingLoad?.coordSystem ?? 'local'}
+            initialCoordSystem={existingLoad?.coordSystem ?? (isEdgeMode ? 'global' : 'local')}
             initialDescription={existingLoad?.description ?? ''}
-            beamLength={beamLen}
+            beamLength={isEdgeMode ? undefined : effectiveLength}
+            edgeMode={isEdgeMode}
+            edgeId={lineLoadEdgeId ?? undefined}
+            edgeLength={isEdgeMode ? effectiveLength : undefined}
             loadCases={state.loadCases}
             activeLoadCase={state.activeLoadCase}
             onApply={(qx, qy, lcId, startT, endT, coordSystem, qxEnd, qyEnd, description) => {
@@ -5984,52 +7754,55 @@ export function MeshEditor() {
                   type: 'UPDATE_DISTRIBUTED_LOAD',
                   payload: { lcId, loadId: existingLoad.id, qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description }
                 });
+              } else if (isEdgeMode) {
+                // Add new edge load
+                dispatch({
+                  type: 'ADD_DISTRIBUTED_LOAD',
+                  payload: { lcId, beamId: 0, edgeId: lineLoadEdgeId!, qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description }
+                });
               } else {
-                // Add new load
+                // Add new beam load
                 dispatch({
                   type: 'ADD_DISTRIBUTED_LOAD',
                   payload: { lcId, beamId: lineLoadBeamId, qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description }
                 });
               }
-              // Re-apply load case to mesh for rendering (combines all loads)
-              const updatedLc = state.loadCases.find(lc => lc.id === lcId);
-              if (updatedLc) {
-                // Clear beam's distributed load first, then re-apply all loads for this beam
-                mesh.updateBeamElement(lineLoadBeamId, { distributedLoad: undefined });
-                const allLoadsForBeam = [...updatedLc.distributedLoads.filter(dl => dl.elementId === lineLoadBeamId)];
-                if (existingLoad && existingLoad.id != null) {
-                  // Replace the existing load in the combined list
-                  const idx = allLoadsForBeam.findIndex(dl => dl.id === existingLoad.id);
-                  if (idx >= 0) {
-                    allLoadsForBeam[idx] = { ...allLoadsForBeam[idx], qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description };
+              // Re-apply load case to mesh for rendering (combines all loads) — beam path only
+              if (!isEdgeMode) {
+                const updatedLc = state.loadCases.find(lc => lc.id === lcId);
+                if (updatedLc) {
+                  mesh.updateBeamElement(lineLoadBeamId, { distributedLoad: undefined });
+                  const allLoadsForBeam = [...updatedLc.distributedLoads.filter(dl => dl.elementId === lineLoadBeamId)];
+                  if (existingLoad && existingLoad.id != null) {
+                    const idx = allLoadsForBeam.findIndex(dl => dl.id === existingLoad.id);
+                    if (idx >= 0) {
+                      allLoadsForBeam[idx] = { ...allLoadsForBeam[idx], qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description };
+                    }
+                  } else {
+                    allLoadsForBeam.push({ elementId: lineLoadBeamId, qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description });
                   }
-                } else {
-                  // Also include the new load being added (since state hasn't updated yet)
-                  allLoadsForBeam.push({ elementId: lineLoadBeamId, qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description });
+                  let combined = { qx: 0, qy: 0, qxEnd: 0, qyEnd: 0, startT: 0 as number, endT: 1 as number, coordSystem: coordSystem as 'local' | 'global' | undefined };
+                  for (const dl of allLoadsForBeam) {
+                    combined.qx += dl.qx;
+                    combined.qy += dl.qy;
+                    combined.qxEnd += (dl.qxEnd ?? dl.qx);
+                    combined.qyEnd += (dl.qyEnd ?? dl.qy);
+                    combined.startT = Math.min(combined.startT, dl.startT ?? 0);
+                    combined.endT = Math.max(combined.endT, dl.endT ?? 1);
+                    if (dl.coordSystem) combined.coordSystem = dl.coordSystem;
+                  }
+                  mesh.updateBeamElement(lineLoadBeamId, { distributedLoad: combined });
                 }
-                let combined = { qx: 0, qy: 0, qxEnd: 0, qyEnd: 0, startT: 0 as number, endT: 1 as number, coordSystem: coordSystem as 'local' | 'global' | undefined };
-                for (const dl of allLoadsForBeam) {
-                  combined.qx += dl.qx;
-                  combined.qy += dl.qy;
-                  combined.qxEnd += (dl.qxEnd ?? dl.qx);
-                  combined.qyEnd += (dl.qyEnd ?? dl.qy);
-                  combined.startT = Math.min(combined.startT, dl.startT ?? 0);
-                  combined.endT = Math.max(combined.endT, dl.endT ?? 1);
-                  if (dl.coordSystem) combined.coordSystem = dl.coordSystem;
-                }
-                mesh.updateBeamElement(lineLoadBeamId, { distributedLoad: combined });
               }
               dispatch({ type: 'REFRESH_MESH' });
               dispatch({ type: 'SET_RESULT', payload: null });
               dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
               setLineLoadBeamId(null);
+              setLineLoadEdgeId(null);
               setEditingDistLoadId(null);
             }}
-            onCancel={() => { setLineLoadBeamId(null); setEditingDistLoadId(null); }}
-            onPreview={(pQx, pQy, pCoord, pStartT, pEndT, pQxEnd, pQyEnd) => {
-              // Live preview: show existing loads + new preview load combined on the mesh
-              // Note: existing loads from load case are drawn separately per-load in the render loop
-              // This preview updates beam.distributedLoad for the fallback path
+            onCancel={() => { setLineLoadBeamId(null); setLineLoadEdgeId(null); setEditingDistLoadId(null); }}
+            onPreview={isEdgeMode ? undefined : (pQx, pQy, pCoord, pStartT, pEndT, pQxEnd, pQyEnd) => {
               mesh.updateBeamElement(lineLoadBeamId, {
                 distributedLoad: { qx: pQx, qy: pQy, qxEnd: pQxEnd, qyEnd: pQyEnd, startT: pStartT, endT: pEndT, coordSystem: pCoord }
               });
@@ -6038,29 +7811,26 @@ export function MeshEditor() {
           />
         );
       })()}
-      {showPlateDialog && pendingPlateRect && (
+      {showPlateDialog && pendingPolygonPlate && (
         <PlateDialog
-          rectWidth={pendingPlateRect.w}
-          rectHeight={pendingPlateRect.h}
-          drawMode={plateDrawMode}
-          polygonVertices={pendingPolygonPlate?.outline}
-          polygonVoids={pendingPolygonPlate?.voids}
-          onDrawModeChange={(mode) => {
-            setPlateDrawMode(mode);
-            if (mode === 'polygon' && !pendingPolygonPlate) {
-              // Switch to polygon mode but cancel the current rect flow
-              setShowPlateDialog(false);
-              setPendingPlateRect(null);
-              setPlateEditState('outline');
-            }
-          }}
+          polygonVertices={pendingPolygonPlate.outline}
+          polygonVoids={pendingPolygonPlate.voids}
           materials={Array.from(mesh.materials.values()).map(m => ({ id: m.id, name: m.name }))}
-          onConfirm={(config) => {
+          onConfirm={async (config) => {
             pushUndo();
 
             let plate;
-            if (pendingPolygonPlate && config.meshSize !== undefined) {
-              // Polygon mode: voxelized quad grid
+            // Polygon mode: boundary-conforming CDT + tri-to-quad pairing
+            try {
+              plate = await generatePolygonPlateMeshV2(mesh, {
+                outline: pendingPolygonPlate.outline,
+                voids: pendingPolygonPlate.voids.length > 0 ? pendingPolygonPlate.voids : undefined,
+                meshSize: config.meshSize,
+                materialId: config.materialId,
+                thickness: config.thickness,
+              });
+            } catch {
+              // Fallback to voxelized quad grid if CDT fails
               plate = generatePolygonPlateMesh(mesh, {
                 outline: pendingPolygonPlate.outline,
                 voids: pendingPolygonPlate.voids.length > 0 ? pendingPolygonPlate.voids : undefined,
@@ -6068,18 +7838,11 @@ export function MeshEditor() {
                 materialId: config.materialId,
                 thickness: config.thickness,
               });
-            } else {
-              // Rectangle mode: grid-based quad mesh
-              plate = generatePlateRegionMesh(mesh, {
-                x: pendingPlateRect.x,
-                y: pendingPlateRect.y,
-                width: pendingPlateRect.w,
-                height: pendingPlateRect.h,
-                ...config
-              });
             }
 
             mesh.addPlateRegion(plate);
+            // Create IEdge objects and fix plateId references
+            fixupEdgePlateIds(mesh, plate);
             dispatch({ type: 'REFRESH_MESH' });
             dispatch({ type: 'SET_RESULT', payload: null });
             // Switch to plane_stress if currently in frame mode
@@ -6087,7 +7850,6 @@ export function MeshEditor() {
               dispatch({ type: 'SET_ANALYSIS_TYPE', payload: 'plane_stress' });
             }
             setShowPlateDialog(false);
-            setPendingPlateRect(null);
             // Clear polygon state
             setPlatePolygonPoints([]);
             setPlateVoids([]);
@@ -6097,39 +7859,10 @@ export function MeshEditor() {
           }}
           onCancel={() => {
             setShowPlateDialog(false);
-            setPendingPlateRect(null);
             setPendingPolygonPlate(null);
           }}
         />
       )}
-      {edgeLoadPlateId !== null && (() => {
-        const edgePlate = mesh.plateRegions.get(edgeLoadPlateId);
-        return (
-        <EdgeLoadDialog
-          edge={edgeLoadEdge}
-          loadCases={state.loadCases}
-          activeLoadCase={state.activeLoadCase}
-          polygon={edgePlate?.isPolygon ? edgePlate.polygon : undefined}
-          onApply={(px, py, lcId, edge) => {
-            pushUndo();
-            dispatch({
-              type: 'ADD_EDGE_LOAD',
-              payload: { lcId, plateId: edgeLoadPlateId, edge, px: px * 1000, py: py * 1000 } // kN/m to N/m
-            });
-            // Re-apply load case to mesh for rendering
-            const activeLc = state.loadCases.find(lc => lc.id === lcId);
-            if (activeLc) {
-              applyLoadCaseToMesh(mesh, { ...activeLc, edgeLoads: [...(activeLc.edgeLoads || []), { plateId: edgeLoadPlateId, edge, px: px * 1000, py: py * 1000 }] });
-            }
-            dispatch({ type: 'REFRESH_MESH' });
-            dispatch({ type: 'SET_RESULT', payload: null });
-            dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
-            setEdgeLoadPlateId(null);
-          }}
-          onCancel={() => setEdgeLoadPlateId(null)}
-        />
-        );
-      })()}
       {editingPlateId !== null && (() => {
         const plate = mesh.plateRegions.get(editingPlateId);
         if (!plate) return null;
@@ -6137,6 +7870,15 @@ export function MeshEditor() {
           <PlatePropertiesDialog
             plate={plate}
             materials={Array.from(mesh.materials.values())}
+            onAddVoid={plate.isPolygon ? () => {
+              const capturedPlateId = editingPlateId;
+              console.log('[Add Void] Starting void edit mode for plate', capturedPlateId);
+              // First close the dialog, then set void drawing state
+              setEditingPlateId(null);
+              setVoidTargetPlateId(capturedPlateId);
+              setCurrentVoidPoints([]);
+              setPlateEditState('void');
+            } : undefined}
             onUpdate={(updates) => {
               pushUndo();
               const p = mesh.plateRegions.get(editingPlateId);
@@ -6154,6 +7896,47 @@ export function MeshEditor() {
                 for (const elemId of p.elementIds) {
                   const elem = mesh.getElement(elemId);
                   if (elem) elem.materialId = updates.materialId;
+                }
+              }
+              if (updates.meshSize !== undefined) {
+                if (p.isPolygon) {
+                  p.meshSize = updates.meshSize;
+                  // Save old edge mapping before remesh
+                  const oldEdgeMap3 = new Map<number, number>();
+                  for (const edge of mesh.edges.values()) {
+                    if (edge.plateId === editingPlateId && edge.polygonEdgeIndex !== undefined) {
+                      oldEdgeMap3.set(edge.id, edge.polygonEdgeIndex);
+                    }
+                  }
+                  const capturedPlateId3 = editingPlateId;
+                  remeshPolygonPlateRegionFromContour(mesh, capturedPlateId3).then(() => {
+                    const newEdgeByPolyIdx3 = new Map<number, number>();
+                    for (const edge of mesh.edges.values()) {
+                      if (edge.plateId === capturedPlateId3 && edge.polygonEdgeIndex !== undefined) {
+                        newEdgeByPolyIdx3.set(edge.polygonEdgeIndex, edge.id);
+                      }
+                    }
+                    for (const lc of loadCases) {
+                      for (const dl of lc.distributedLoads) {
+                        if (dl.edgeId !== undefined && oldEdgeMap3.has(dl.edgeId)) {
+                          const polyIdx = oldEdgeMap3.get(dl.edgeId)!;
+                          const newId = newEdgeByPolyIdx3.get(polyIdx);
+                          if (newId !== undefined) dl.edgeId = newId;
+                        }
+                      }
+                    }
+                    dispatch({ type: 'REFRESH_MESH' });
+                  });
+                } else {
+                  // Rectangular: compute new divisions from mesh size
+                  const newDivX = Math.max(1, Math.round(p.width / updates.meshSize));
+                  const newDivY = Math.max(1, Math.round(p.height / updates.meshSize));
+                  p.divisionsX = newDivX;
+                  p.divisionsY = newDivY;
+                  remeshPlateRegion(mesh, editingPlateId);
+                  // Recreate IEdge objects for rect plate
+                  mesh.removeEdgesForPlate(editingPlateId);
+                  createEdgesForRectPlate(mesh, p);
                 }
               }
               mesh.plateRegions.set(editingPlateId, p);

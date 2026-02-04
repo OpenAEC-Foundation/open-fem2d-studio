@@ -142,3 +142,36 @@ export function calculatePrincipalStresses(
 
   return { sigma1, sigma2, angle };
 }
+
+/**
+ * Calculate expanded 9x9 stiffness matrix for mixed beam+plate analysis.
+ * Expands the original 6x6 (2 DOF/node) to 9x9 (3 DOF/node) with zero rotational stiffness.
+ * DOF mapping: [u1,v1,θ1, u2,v2,θ2, u3,v3,θ3]
+ */
+export function calculateTriangleStiffnessExpanded(
+  n1: INode,
+  n2: INode,
+  n3: INode,
+  material: IMaterial,
+  thickness: number,
+  analysisType: AnalysisType
+): Matrix {
+  // Get original 6x6 stiffness (2 DOF/node: u, v)
+  const Ke6 = calculateElementStiffness(n1, n2, n3, material, thickness, analysisType);
+
+  // Expand to 9x9: insert zero rows/columns for θ DOFs at positions 2, 5, 8
+  const Ke9 = new Matrix(9, 9);
+
+  // Mapping from 2-DOF indices to 3-DOF indices
+  // Original: [u1,v1, u2,v2, u3,v3] → indices [0,1,2,3,4,5]
+  // Expanded: [u1,v1,θ1, u2,v2,θ2, u3,v3,θ3] → u,v at [0,1,3,4,6,7]
+  const mapping = [0, 1, 3, 4, 6, 7];
+
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      Ke9.set(mapping[i], mapping[j], Ke6.get(i, j));
+    }
+  }
+
+  return Ke9;
+}

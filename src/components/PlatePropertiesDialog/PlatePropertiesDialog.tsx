@@ -6,13 +6,20 @@ import './PlatePropertiesDialog.css';
 interface PlatePropertiesDialogProps {
   plate: IPlateRegion;
   materials: IMaterial[];
-  onUpdate: (updates: { thickness?: number; materialId?: number }) => void;
+  onUpdate: (updates: { thickness?: number; materialId?: number; meshSize?: number }) => void;
   onClose: () => void;
+  onAddVoid?: () => void;
 }
 
-export function PlatePropertiesDialog({ plate, materials, onUpdate, onClose }: PlatePropertiesDialogProps) {
+export function PlatePropertiesDialog({ plate, materials, onUpdate, onClose, onAddVoid }: PlatePropertiesDialogProps) {
   const [thickness, setThickness] = useState((plate.thickness * 1000).toFixed(0));
   const [materialId, setMaterialId] = useState(plate.materialId);
+
+  // Mesh size: for polygon plates use plate.meshSize, for rectangular use width/divisionsX
+  const currentMeshSize = plate.isPolygon
+    ? (plate.meshSize ?? 0.5)
+    : (plate.divisionsX > 0 ? plate.width / plate.divisionsX : 0.5);
+  const [meshSize, setMeshSize] = useState((currentMeshSize * 1000).toFixed(0));
 
   const material = materials.find(m => m.id === materialId);
 
@@ -26,7 +33,9 @@ export function PlatePropertiesDialog({ plate, materials, onUpdate, onClose }: P
   const handleApply = () => {
     const t = parseFloat(thickness) / 1000;
     if (isNaN(t) || t <= 0) return;
-    onUpdate({ thickness: t, materialId });
+    const ms = parseFloat(meshSize) / 1000;
+    const meshSizeChanged = !isNaN(ms) && ms > 0 && Math.abs(ms - currentMeshSize) > 1e-6;
+    onUpdate({ thickness: t, materialId, meshSize: meshSizeChanged ? ms : undefined });
     onClose();
   };
 
@@ -62,10 +71,23 @@ export function PlatePropertiesDialog({ plate, materials, onUpdate, onClose }: P
               <span className="plate-props-value">{plate.polygon.length}</span>
             </div>
           )}
-          {plate.voids && plate.voids.length > 0 && (
+          {plate.isPolygon && (
             <div className="plate-props-row">
               <span className="plate-props-label">Voids</span>
-              <span className="plate-props-value">{plate.voids.length}</span>
+              <span className="plate-props-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {plate.voids?.length ?? 0}
+                {onAddVoid && (
+                  <button
+                    className="plate-props-add-void-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onAddVoid();
+                    }}
+                    title="Add void opening"
+                  >+</button>
+                )}
+              </span>
             </div>
           )}
 
@@ -84,6 +106,17 @@ export function PlatePropertiesDialog({ plate, materials, onUpdate, onClose }: P
               <span className="plate-props-value">{plate.divisionsX} × {plate.divisionsY}</span>
             </div>
           )}
+
+          <label className="plate-props-input-row">
+            <span>Mesh Size (mm)</span>
+            <input
+              type="text"
+              value={meshSize}
+              onChange={e => setMeshSize(e.target.value)}
+              onFocus={e => e.target.select()}
+              onKeyDown={e => { if (e.key === 'Enter') handleApply(); if (e.key === 'Escape') onClose(); }}
+            />
+          </label>
 
           <div className="plate-props-section-title">Properties</div>
           <label className="plate-props-input-row">

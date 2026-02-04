@@ -1,16 +1,201 @@
+import { useState } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { formatModulus } from '../../core/fem/Material';
 import { formatStress, formatDisplacement, formatMomentPerLength, generateColorScale } from '../../utils/colors';
 import { formatForce, formatMoment } from '../../core/fem/BeamForces';
 import { DEFAULT_SECTIONS } from '../../core/fem/Beam';
 import { buildNodeIdToIndex } from '../../core/solver/Assembler';
+import { IDistributedLoad } from '../../core/fem/LoadCase';
 import './PropertiesPanel.css';
+
+// Inline sub-component: editable properties for a selected distributed load
+function DistLoadProperties({
+  load,
+  lcId,
+  dispatch,
+  pushUndo
+}: {
+  load: IDistributedLoad;
+  lcId: number;
+  dispatch: (action: any) => void;
+  pushUndo: () => void;
+}) {
+  // Local editing state, initialised from the load
+  const [qz1, setQz1] = useState(() => ((load.qy || 0) / 1000).toFixed(2));
+  const [qz2, setQz2] = useState(() => (((load.qyEnd ?? load.qy) || 0) / 1000).toFixed(2));
+  const [startT, setStartT] = useState(() => (load.startT ?? 0).toFixed(3));
+  const [endT, setEndT] = useState(() => (load.endT ?? 1).toFixed(3));
+  const [coordSystem, setCoordSystem] = useState<'local' | 'global'>(load.coordSystem ?? 'local');
+  const [description, setDescription] = useState(load.description ?? '');
+
+  // Re-sync local state when the load identity changes
+  const [prevLoadId, setPrevLoadId] = useState(load.id);
+  if (load.id !== prevLoadId) {
+    setPrevLoadId(load.id);
+    setQz1(((load.qy || 0) / 1000).toFixed(2));
+    setQz2((((load.qyEnd ?? load.qy) || 0) / 1000).toFixed(2));
+    setStartT((load.startT ?? 0).toFixed(3));
+    setEndT((load.endT ?? 1).toFixed(3));
+    setCoordSystem(load.coordSystem ?? 'local');
+    setDescription(load.description ?? '');
+  }
+
+  const dispatchUpdate = (overrides: Partial<{
+    qy: number; qyEnd: number; qx: number; qxEnd: number;
+    startT: number; endT: number; coordSystem: 'local' | 'global'; description: string;
+  }>) => {
+    if (load.id == null) return;
+    pushUndo();
+
+    const qyVal = overrides.qy ?? (parseFloat(qz1) || 0) * 1000;
+    const qyEndVal = overrides.qyEnd ?? (parseFloat(qz2) || 0) * 1000;
+    const startTVal = overrides.startT ?? (parseFloat(startT) || 0);
+    const endTVal = overrides.endT ?? (parseFloat(endT) || 1);
+    const cs = overrides.coordSystem ?? coordSystem;
+    const desc = overrides.description ?? description;
+
+    dispatch({
+      type: 'UPDATE_DISTRIBUTED_LOAD',
+      payload: {
+        lcId,
+        loadId: load.id,
+        qx: load.qx,
+        qy: qyVal,
+        qxEnd: load.qxEnd,
+        qyEnd: qyEndVal,
+        startT: startTVal,
+        endT: endTVal,
+        coordSystem: cs,
+        description: desc || undefined
+      }
+    });
+  };
+
+  const commitQz1 = () => {
+    const val = parseFloat(qz1);
+    if (isNaN(val)) return;
+    dispatchUpdate({ qy: val * 1000 });
+  };
+
+  const commitQz2 = () => {
+    const val = parseFloat(qz2);
+    if (isNaN(val)) return;
+    dispatchUpdate({ qyEnd: val * 1000 });
+  };
+
+  const commitStartT = () => {
+    const val = parseFloat(startT);
+    if (isNaN(val)) return;
+    dispatchUpdate({ startT: Math.max(0, Math.min(1, val)) });
+  };
+
+  const commitEndT = () => {
+    const val = parseFloat(endT);
+    if (isNaN(val)) return;
+    dispatchUpdate({ endT: Math.max(0, Math.min(1, val)) });
+  };
+
+  const commitCoordSystem = (cs: 'local' | 'global') => {
+    setCoordSystem(cs);
+    dispatchUpdate({ coordSystem: cs });
+  };
+
+  const commitDescription = () => {
+    dispatchUpdate({ description });
+  };
+
+  const keyHandler = (e: React.KeyboardEvent, commitFn: () => void) => {
+    if (e.key === 'Enter') commitFn();
+  };
+
+  return (
+    <div className="panel-section">
+      <h3>Distributed Load #{load.id}</h3>
+      <div className="form-group">
+        <label>Beam #{load.elementId}</label>
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label>q{'\u2081'} (kN/m)</label>
+          <input
+            type="number"
+            step="0.1"
+            value={qz1}
+            onChange={(e) => setQz1(e.target.value)}
+            onBlur={commitQz1}
+            onKeyDown={(e) => keyHandler(e, commitQz1)}
+          />
+        </div>
+        <div className="form-group">
+          <label>q{'\u2082'} (kN/m)</label>
+          <input
+            type="number"
+            step="0.1"
+            value={qz2}
+            onChange={(e) => setQz2(e.target.value)}
+            onBlur={commitQz2}
+            onKeyDown={(e) => keyHandler(e, commitQz2)}
+          />
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label>Start (0-1)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="1"
+            value={startT}
+            onChange={(e) => setStartT(e.target.value)}
+            onBlur={commitStartT}
+            onKeyDown={(e) => keyHandler(e, commitStartT)}
+          />
+        </div>
+        <div className="form-group">
+          <label>End (0-1)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="1"
+            value={endT}
+            onChange={(e) => setEndT(e.target.value)}
+            onBlur={commitEndT}
+            onKeyDown={(e) => keyHandler(e, commitEndT)}
+          />
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Direction</label>
+        <select
+          value={coordSystem}
+          onChange={(e) => commitCoordSystem(e.target.value as 'local' | 'global')}
+        >
+          <option value="local">Perpendicular to beam</option>
+          <option value="global">Global Z-axis</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label>Description</label>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={commitDescription}
+          onKeyDown={(e) => keyHandler(e, commitDescription)}
+          placeholder="e.g. Self-weight, Wind load..."
+        />
+      </div>
+    </div>
+  );
+}
 
 // This component is now largely replaced by ProjectBrowser and VisibilityPanel
 // but kept for backward compatibility
 
 export function PropertiesPanel() {
-  const { state, dispatch } = useFEM();
+  const { state, dispatch, pushUndo } = useFEM();
   const {
     mesh,
     result,
@@ -22,7 +207,10 @@ export function PropertiesPanel() {
     stressType,
     gridSize,
     snapToGrid,
-    diagramScale
+    diagramScale,
+    loadCases,
+    stressUnit,
+    plateBendingMomentUnit
   } = state;
 
   const selectedNodeId = selection.nodeIds.size === 1 ? Array.from(selection.nodeIds)[0] : null;
@@ -35,6 +223,25 @@ export function PropertiesPanel() {
   const nodeIdToIndex = buildNodeIdToIndex(mesh, analysisType);
 
   const dofsPerNode = analysisType === 'frame' ? 3 : analysisType === 'plate_bending' ? 3 : 2;
+
+  // Find selected distributed load (from selectedDistLoadIds)
+  const selectedDistLoadId = selection.selectedDistLoadIds.size === 1
+    ? Array.from(selection.selectedDistLoadIds)[0]
+    : null;
+
+  // Look up the load data across all load cases
+  let selectedDistLoad: IDistributedLoad | null = null;
+  let selectedDistLoadLcId: number | null = null;
+  if (selectedDistLoadId !== null) {
+    for (const lc of loadCases) {
+      const found = lc.distributedLoads.find(dl => dl.id === selectedDistLoadId);
+      if (found) {
+        selectedDistLoad = found;
+        selectedDistLoadLcId = lc.id;
+        break;
+      }
+    }
+  }
 
   return (
     <div className="properties-panel">
@@ -270,41 +477,46 @@ export function PropertiesPanel() {
             {selectedBeam.section.Wz != null && <p><strong>Wz:</strong> {selectedBeam.section.Wz.toExponential(3)} m³</p>}
           </div>
 
-          <h4>Distributed Load (kN/m)</h4>
-          <div className="form-row">
-            <div className="form-group">
-              <label>qx</label>
-              <input
-                type="number"
-                value={((selectedBeam.distributedLoad?.qx || 0) / 1000).toFixed(1)}
-                step="1"
-                onChange={(e) => {
-                  const qx = (parseFloat(e.target.value) || 0) * 1000;
-                  const qy = selectedBeam.distributedLoad?.qy || 0;
-                  mesh.updateBeamElement(selectedBeam.id, {
-                    distributedLoad: { qx, qy }
-                  });
-                  dispatch({ type: 'REFRESH_MESH' });
-                }}
-              />
-            </div>
-            <div className="form-group">
-              <label>qy</label>
-              <input
-                type="number"
-                value={((selectedBeam.distributedLoad?.qy || 0) / 1000).toFixed(1)}
-                step="1"
-                onChange={(e) => {
-                  const qx = selectedBeam.distributedLoad?.qx || 0;
-                  const qy = (parseFloat(e.target.value) || 0) * 1000;
-                  mesh.updateBeamElement(selectedBeam.id, {
-                    distributedLoad: { qx, qy }
-                  });
-                  dispatch({ type: 'REFRESH_MESH' });
-                }}
-              />
-            </div>
-          </div>
+          {/* Distributed loads from active load case */}
+          {(() => {
+            const activeLc = loadCases.find(lc => lc.id === state.activeLoadCase);
+            const beamLoads = activeLc?.distributedLoads.filter(dl => dl.elementId === selectedBeam.id) ?? [];
+            if (beamLoads.length === 0) return <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>No distributed loads</p>;
+            return (
+              <>
+                <h4>Distributed Loads ({beamLoads.length})</h4>
+                {beamLoads.map((dl, idx) => {
+                  const isIndSel = dl.id != null && selection.selectedDistLoadIds.has(dl.id);
+                  return (
+                    <div
+                      key={dl.id ?? idx}
+                      className={`result-info${isIndSel ? ' selected-load' : ''}`}
+                      style={{ cursor: 'pointer', padding: '2px 4px', borderRadius: '3px', background: isIndSel ? 'var(--bg-tertiary)' : 'transparent', marginBottom: '2px' }}
+                      onClick={() => {
+                        dispatch({
+                          type: 'SET_SELECTION',
+                          payload: {
+                            nodeIds: new Set(),
+                            elementIds: new Set(),
+                            pointLoadNodeIds: new Set(),
+                            distLoadBeamIds: new Set([dl.elementId]),
+                            selectedDistLoadIds: new Set(dl.id != null ? [dl.id] : [])
+                          }
+                        });
+                      }}
+                    >
+                      <p><strong>{dl.description || `Load #${dl.id ?? idx + 1}`}:</strong> qy={(dl.qy / 1000).toFixed(1)} kN/m
+                        {dl.qyEnd != null && dl.qyEnd !== dl.qy ? ` → ${(dl.qyEnd / 1000).toFixed(1)} kN/m` : ''}
+                        {(dl.startT != null && dl.startT > 0) || (dl.endT != null && dl.endT < 1)
+                          ? ` (${((dl.startT ?? 0) * 100).toFixed(0)}%-${((dl.endT ?? 1) * 100).toFixed(0)}%)`
+                          : ''}
+                      </p>
+                    </div>
+                  );
+                })}
+              </>
+            );
+          })()}
 
           {result && result.beamForces.has(selectedBeam.id) && (
             <div className="result-info">
@@ -322,6 +534,15 @@ export function PropertiesPanel() {
             </div>
           )}
         </div>
+      )}
+
+      {selectedDistLoad && selectedDistLoadLcId !== null && (
+        <DistLoadProperties
+          load={selectedDistLoad}
+          lcId={selectedDistLoadLcId}
+          dispatch={dispatch}
+          pushUndo={pushUndo}
+        />
       )}
 
       {selectedElement && !selectedBeam && (
@@ -363,18 +584,18 @@ export function PropertiesPanel() {
                 if (analysisType === 'plate_bending') {
                   return (
                     <>
-                      <p><strong>mx:</strong> {formatMomentPerLength(stress.mx ?? 0)}</p>
-                      <p><strong>my:</strong> {formatMomentPerLength(stress.my ?? 0)}</p>
-                      <p><strong>mxy:</strong> {formatMomentPerLength(stress.mxy ?? 0)}</p>
+                      <p><strong>mx:</strong> {formatMomentPerLength(stress.mx ?? 0, plateBendingMomentUnit)}</p>
+                      <p><strong>my:</strong> {formatMomentPerLength(stress.my ?? 0, plateBendingMomentUnit)}</p>
+                      <p><strong>mxy:</strong> {formatMomentPerLength(stress.mxy ?? 0, plateBendingMomentUnit)}</p>
                     </>
                   );
                 }
                 return (
                   <>
-                    <p><strong>sigma_x:</strong> {formatStress(stress.sigmaX)}</p>
-                    <p><strong>sigma_y:</strong> {formatStress(stress.sigmaY)}</p>
-                    <p><strong>tau_xy:</strong> {formatStress(stress.tauXY)}</p>
-                    <p><strong>Von Mises:</strong> {formatStress(stress.vonMises)}</p>
+                    <p><strong>sigma_x:</strong> {formatStress(stress.sigmaX, stressUnit)}</p>
+                    <p><strong>sigma_y:</strong> {formatStress(stress.sigmaY, stressUnit)}</p>
+                    <p><strong>tau_xy:</strong> {formatStress(stress.tauXY, stressUnit)}</p>
+                    <p><strong>Von Mises:</strong> {formatStress(stress.vonMises, stressUnit)}</p>
                   </>
                 );
               })()}
@@ -470,8 +691,8 @@ export function PropertiesPanel() {
                   ))}
                 </div>
                 <div className="scale-labels">
-                  <span>{formatStress(result.minVonMises)}</span>
-                  <span>{formatStress(result.maxVonMises)}</span>
+                  <span>{formatStress(result.minVonMises, stressUnit)}</span>
+                  <span>{formatStress(result.maxVonMises, stressUnit)}</span>
                 </div>
               </div>
             </>

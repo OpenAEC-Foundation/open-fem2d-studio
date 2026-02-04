@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { IGridLine, IStructuralGrid } from '../../core/fem/StructuralGrid';
-import { Plus, Minus, Trash2 } from 'lucide-react';
+import { Plus, Minus, Trash2, Lock, Unlock } from 'lucide-react';
 import './GridsDialog.css';
 
 interface GridsDialogProps {
@@ -98,10 +98,12 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
   const distributeVertical = () => {
     if (grid.verticalLines.length < 2) return;
     const sorted = [...grid.verticalLines].sort((a, b) => a.position - b.position);
+    const unlocked = sorted.filter(l => !l.locked);
+    if (unlocked.length < 2) return;
     const start = sorted[0].position;
     const end = sorted[sorted.length - 1].position;
     const spacing = (end - start) / (sorted.length - 1);
-    const updated = sorted.map((l, i) => ({ ...l, position: start + i * spacing }));
+    const updated = sorted.map((l, i) => l.locked ? l : { ...l, position: start + i * spacing });
     setGrid({ ...grid, verticalLines: updated });
   };
 
@@ -126,8 +128,8 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
       const sorted = [...grid.verticalLines].sort((a, b) => a.position - b.position);
       const oldSpacing = sorted[index + 1].position - sorted[index].position;
       const delta = newSpacingM - oldSpacing;
-      // Shift all lines after index by delta
-      const shiftedIds = new Set(sorted.slice(index + 1).map(l => l.id));
+      // Shift all lines after index by delta (skip locked)
+      const shiftedIds = new Set(sorted.slice(index + 1).filter(l => !l.locked).map(l => l.id));
       setGrid({
         ...grid,
         verticalLines: grid.verticalLines.map(l =>
@@ -138,7 +140,7 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
       const sorted = [...grid.horizontalLines].sort((a, b) => a.position - b.position);
       const oldSpacing = sorted[index + 1].position - sorted[index].position;
       const delta = newSpacingM - oldSpacing;
-      const shiftedIds = new Set(sorted.slice(index + 1).map(l => l.id));
+      const shiftedIds = new Set(sorted.slice(index + 1).filter(l => !l.locked).map(l => l.id));
       setGrid({
         ...grid,
         horizontalLines: grid.horizontalLines.map(l =>
@@ -158,7 +160,9 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
   };
 
   const handleApply = () => {
-    dispatch({ type: 'SET_STRUCTURAL_GRID', payload: grid });
+    // Enable showGridLines automatically after using the grid dialog
+    const updatedGrid = { ...grid, showGridLines: true };
+    dispatch({ type: 'SET_STRUCTURAL_GRID', payload: updatedGrid });
     dispatch({ type: 'REFRESH_MESH' });
     onClose();
   };
@@ -192,7 +196,17 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
               onChange={e => updateFn(line.id, { position: toM(parseFloat(e.target.value) || 0) })}
               className="grids-input"
               step="500"
+              disabled={line.locked}
             />
+          </td>
+          <td>
+            <button
+              className={`grids-lock-btn ${line.locked ? 'locked' : ''}`}
+              onClick={() => updateFn(line.id, { locked: !line.locked })}
+              title={line.locked ? 'Unlock position' : 'Lock position'}
+            >
+              {line.locked ? <Lock size={12} /> : <Unlock size={12} />}
+            </button>
           </td>
           <td>
             <button className="grids-delete-btn" onClick={() => removeFn(line.id)}>
@@ -210,7 +224,7 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
 
         rows.push(
           <tr key={`spacing-${line.id}`} className="grids-spacing-row">
-            <td colSpan={3}>
+            <td colSpan={4}>
               {isEditing ? (
                 <div className="grids-spacing-indicator">
                   <span className="grids-spacing-line" />
@@ -274,13 +288,14 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
                 <tr>
                   <th>Name</th>
                   <th>X-position (mm)</th>
+                  <th style={{width: 28}}></th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {grid.verticalLines.length > 0
                   ? renderGridRows(grid.verticalLines, 'vertical', updateVertical, removeVertical)
-                  : <tr><td colSpan={3} className="grids-empty">No grid lines. Click + to create.</td></tr>
+                  : <tr><td colSpan={4} className="grids-empty">No grid lines. Click + to create.</td></tr>
                 }
               </tbody>
             </table>
@@ -304,13 +319,14 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
                 <tr>
                   <th>Elevation</th>
                   <th>Z-elevation (mm)</th>
+                  <th style={{width: 28}}></th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {grid.horizontalLines.length > 0
                   ? renderGridRows(grid.horizontalLines, 'horizontal', updateHorizontal, removeHorizontal)
-                  : <tr><td colSpan={3} className="grids-empty">No levels. Click + to create.</td></tr>
+                  : <tr><td colSpan={4} className="grids-empty">No levels. Click + to create.</td></tr>
                 }
               </tbody>
             </table>

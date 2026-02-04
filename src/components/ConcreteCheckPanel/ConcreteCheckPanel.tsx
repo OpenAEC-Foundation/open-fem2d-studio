@@ -31,11 +31,13 @@ export function ConcreteCheckPanel({ onClose }: ConcreteCheckPanelProps) {
   };
 
   const formatForce = (n: number): string => {
+    if (forceUnit === 'MN') return (n / 1e6).toFixed(3);
     if (forceUnit === 'kN') return (n / 1000).toFixed(1);
     return n.toFixed(0);
   };
 
   const formatMoment = (nm: number): string => {
+    if (forceUnit === 'MN') return (nm / 1e6).toFixed(4);
     if (forceUnit === 'kN') return (nm / 1000).toFixed(2);
     return nm.toFixed(0);
   };

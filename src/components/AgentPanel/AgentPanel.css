@@ -385,3 +385,55 @@
 .agent-msg-assistant .agent-msg-content {
   border-left: 2px solid var(--success, #22c55e);
 }
+
+/* Connection indicator */
+.agent-connection-indicator {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.agent-connection-indicator.connected {
+  color: #22c55e;
+}
+
+.agent-connection-indicator.offline {
+  color: var(--text-muted);
+}
+
+/* Tool call display in details */
+.agent-tool-call {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.agent-tool-call:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.agent-tool-name {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.agent-tool-args {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  margin-bottom: 2px;
+}
+
+.agent-tool-result {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  padding-left: 8px;
+  border-left: 1px solid var(--success, #22c55e);
+}

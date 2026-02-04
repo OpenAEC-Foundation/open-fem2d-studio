@@ -1,0 +1,476 @@
+/* ReportPanel.css — Professional report preview styling */
+
+.report-panel {
+  display: flex;
+  height: 100%;
+  background: var(--bg-secondary);
+}
+
+/* Left navigation sidebar */
+.report-nav {
+  width: 200px;
+  min-width: 200px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+}
+
+.report-nav h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.report-nav-category {
+  margin-bottom: 16px;
+}
+
+.report-nav-category-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.report-nav-item {
+  display: block;
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: 4px;
+  margin-bottom: 2px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.report-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.report-nav-item.active {
+  background: var(--accent-color);
+  color: white;
+}
+
+/* Preview container - dark background like PDF viewers */
+.report-preview-container {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #525659;
+}
+
+/* A4 Paper styling */
+.report-page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  margin-bottom: 24px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 10pt;
+  color: #333;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Content wrapper to allow footer to stick to bottom */
+.report-page-content {
+  flex: 1;
+}
+
+/* Report section styling */
+.report-section {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+}
+
+.report-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* Section headings */
+.report-section-title {
+  font-size: 14pt;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  padding-bottom: 6px;
+  border-bottom: 2px solid currentColor;
+}
+
+.report-subsection-title {
+  font-size: 11pt;
+  font-weight: 600;
+  margin: 20px 0 12px 0;
+}
+
+/* Diagram container for SVG graphics */
+.diagram-container {
+  margin: 12px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fafbfc;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.diagram-container svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+}
+
+/* Tables */
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 9pt;
+}
+
+.report-table th {
+  color: white;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 500;
+}
+
+.report-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.report-table tr:nth-child(even) {
+  background: #f9f9f9;
+}
+
+.report-table td.numeric {
+  text-align: right;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Page header */
+.report-page-header {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 20px;
+  font-size: 9pt;
+  color: #666;
+}
+
+/* Page footer - positioned at bottom */
+.report-page-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid #ccc;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9pt;
+  color: #666;
+}
+
+/* Cover page specific styling */
+.report-page.cover-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.cover-stripe {
+  height: 8px;
+  margin: -20mm -20mm 40px -20mm;
+  width: calc(100% + 40mm);
+}
+
+.cover-title {
+  font-size: 24pt;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.cover-subtitle {
+  font-size: 16pt;
+  margin-bottom: 60px;
+}
+
+.cover-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cover-table td {
+  padding: 4px 0;
+  vertical-align: top;
+  border: none;
+  background: transparent !important;
+}
+
+.cover-table td:first-child {
+  width: 180px;
+  font-weight: 600;
+}
+
+.cover-footer {
+  margin-top: auto;
+  text-align: right;
+}
+
+/* Unity check bars */
+.uc-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.uc-bar-track {
+  flex: 1;
+  height: 14px;
+  background: #e5e5e5;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.uc-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.uc-bar-fill.ok { background: #22c55e; }
+.uc-bar-fill.warning { background: #f59e0b; }
+.uc-bar-fill.fail { background: #ef4444; }
+
+.uc-value {
+  min-width: 50px;
+  text-align: right;
+  font-weight: 600;
+  font-size: 10pt;
+}
+
+.uc-value.ok { color: #22c55e; }
+.uc-value.warning { color: #f59e0b; }
+.uc-value.fail { color: #ef4444; }
+
+/* Formula display */
+.report-formula {
+  font-family: 'Times New Roman', serif;
+  font-size: 11pt;
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: #f5f5f5;
+  border-left: 3px solid;
+  border-radius: 0 4px 4px 0;
+}
+
+.report-formula-result {
+  font-weight: bold;
+  color: #333;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+.status-badge.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.fail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Check detail block */
+.check-detail {
+  background: #fafbfc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  page-break-inside: avoid;
+}
+
+.check-detail h4 {
+  font-size: 11pt;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.check-block {
+  margin: 8px 0;
+  padding: 6px 0;
+}
+
+.check-block-title {
+  font-size: 10pt;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.check-result {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 10pt;
+  font-weight: 600;
+  margin-top: 12px;
+}
+
+.check-result.ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.check-result.fail {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+/* Table of Contents */
+.toc-entry {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px dotted #ccc;
+}
+
+.toc-entry-title {
+  flex: 1;
+}
+
+.toc-entry-page {
+  margin-left: 16px;
+}
+
+.toc-section {
+  margin-bottom: 16px;
+}
+
+.toc-section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+/* Empty state */
+.report-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #999;
+  text-align: center;
+  background: #3a3a3e;
+  border-radius: 8px;
+}
+
+.report-empty svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.report-empty h3 {
+  margin: 0 0 8px 0;
+  color: #ccc;
+}
+
+.report-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Print styles */
+@media print {
+  .report-panel {
+    display: block;
+  }
+
+  .report-nav {
+    display: none;
+  }
+
+  .report-preview-container {
+    padding: 0;
+    background: white;
+    display: block;
+  }
+
+  .report-page {
+    box-shadow: none;
+    margin: 0;
+    page-break-after: always;
+    page-break-inside: avoid;
+    min-height: auto;
+    width: 100%;
+    padding: 15mm;
+  }
+
+  .report-page:last-child {
+    page-break-after: avoid;
+  }
+
+  .report-section {
+    page-break-inside: avoid;
+  }
+
+  .diagram-container {
+    page-break-inside: avoid;
+  }
+
+  .report-table {
+    page-break-inside: avoid;
+  }
+
+  .check-detail {
+    page-break-inside: avoid;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+  .report-page {
+    width: 190mm;
+    padding: 15mm;
+  }
+}
+
+@media (max-width: 1200px) {
+  .report-page {
+    width: 170mm;
+    min-height: auto;
+    padding: 12mm;
+  }
+
+  .report-nav {
+    width: 160px;
+    min-width: 160px;
+  }
+}

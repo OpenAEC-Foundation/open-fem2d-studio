@@ -134,6 +134,26 @@
   border-color: var(--accent);
 }
 
+.results-values-toggle {
+  padding: 4px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.results-values-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.results-values-toggle .toggle-text {
+  display: flex;
+  align-items: center;
+}
+
 /* Diagram scale slider */
 .results-scale-row {
   padding: 8px 16px;
@@ -286,6 +306,33 @@
   white-space: nowrap;
 }
 
+.tree-add-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin-left: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.tree-item:hover .tree-add-btn {
+  opacity: 1;
+}
+
+.tree-add-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 /* Scrollbar styling */
 .browser-tree::-webkit-scrollbar {
   width: 8px;
@@ -334,4 +381,64 @@
 .browser-collapse-btn:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+/* Distributed Load inline properties panel */
+.dist-load-properties {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.dist-load-props-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+  padding: 0;
+}
+
+.dist-load-props-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.dist-load-props-grid label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.dist-load-props-grid input[type="number"],
+.dist-load-props-grid input[type="text"],
+.dist-load-props-grid select {
+  font-size: 11px;
+  padding: 2px 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dist-load-props-grid input:focus,
+.dist-load-props-grid select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dist-load-props-value {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dist-load-props-hint {
+  font-size: 9px;
+  color: var(--text-muted);
+  grid-column: 1 / -1;
+  text-align: right;
+  margin-top: -2px;
 }
