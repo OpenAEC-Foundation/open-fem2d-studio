@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { IBeamElement, IBeamSection, IBeamForces, IMaterial, DofConstraintType, IDofConstraint } from '../../core/fem/types';
+import { useState, useMemo, Fragment } from 'react';
+import { IBeamElement, IBeamSection, IBeamForces, IMaterial, ConnectionType, IDOFConnections, getDOFConnectionTypes } from '../../core/fem/types';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { checkSteelSection, ISteelCheckResult } from '../../core/standards/SteelCheck';
 import { STEEL_GRADES, ISteelGrade } from '../../core/standards/EurocodeNL';
@@ -8,17 +8,12 @@ import './BarPropertiesDialog.css';
 
 type BarDialogTab = 'properties' | 'en1993';
 
-// DOF constraint options
-const DOF_OPTIONS: { value: DofConstraintType; label: string; description: string }[] = [
-  { value: ' ', label: ' ', description: 'Free - no limitation' },
-  { value: 'A', label: 'A', description: 'Fully limited (Absolute)' },
-  { value: 'P', label: 'P', description: 'Limited for Positive reaction' },
-  { value: 'N', label: 'N', description: 'Limited for Negative reaction' },
-  { value: 'S', label: 'S', description: 'Spring' },
+const CONNECTION_OPTIONS: { value: ConnectionType; label: string }[] = [
+  { value: 'fixed', label: 'Fully Fixed' },
+  { value: 'hinge', label: 'Hinge' },
+  { value: 'tension_only', label: 'Tension only' },
+  { value: 'pressure_only', label: 'Pressure only' },
 ];
-
-// Default constraint (fixed/absolute)
-const defaultConstraint = (): IDofConstraint => ({ type: 'A' });
 
 interface BarPropertiesDialogProps {
   beam: IBeamElement;
@@ -34,35 +29,10 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [section, setSection] = useState<IBeamSection>(beam.section);
 
-  // Initialize DOF constraints from beam or default to 'A' (Absolute/fixed)
-  const getInitialConstraint = (end: 'start' | 'end', dof: 'Tx' | 'Tz' | 'Rx' | 'Rz'): IDofConstraint => {
-    if (beam.dofConstraints?.[end]?.[dof]) {
-      return beam.dofConstraints[end][dof];
-    }
-    // Legacy conversion from old boolean releases
-    if (beam.endReleases) {
-      if (end === 'start') {
-        if (dof === 'Rz' && beam.endReleases.startMoment) return { type: ' ' };
-        if (dof === 'Tx' && beam.endReleases.startAxial) return { type: ' ' };
-        if (dof === 'Tz' && beam.endReleases.startShear) return { type: ' ' };
-      } else {
-        if (dof === 'Rz' && beam.endReleases.endMoment) return { type: ' ' };
-        if (dof === 'Tx' && beam.endReleases.endAxial) return { type: ' ' };
-        if (dof === 'Tz' && beam.endReleases.endShear) return { type: ' ' };
-      }
-    }
-    return defaultConstraint();
-  };
-
-  // DOF constraint states
-  const [startTx, setStartTx] = useState<IDofConstraint>(getInitialConstraint('start', 'Tx'));
-  const [startTz, setStartTz] = useState<IDofConstraint>(getInitialConstraint('start', 'Tz'));
-  const [startRx, setStartRx] = useState<IDofConstraint>(getInitialConstraint('start', 'Rx'));
-  const [startRz, setStartRz] = useState<IDofConstraint>(getInitialConstraint('start', 'Rz'));
-  const [endTx, setEndTx] = useState<IDofConstraint>(getInitialConstraint('end', 'Tx'));
-  const [endTz, setEndTz] = useState<IDofConstraint>(getInitialConstraint('end', 'Tz'));
-  const [endRx, setEndRx] = useState<IDofConstraint>(getInitialConstraint('end', 'Rx'));
-  const [endRz, setEndRz] = useState<IDofConstraint>(getInitialConstraint('end', 'Rz'));
+  // Per-DOF connection type state
+  const dofConns = getDOFConnectionTypes(beam);
+  const [startConns, setStartConns] = useState<IDOFConnections>(dofConns.start);
+  const [endConns, setEndConns] = useState<IDOFConnections>(dofConns.end);
 
   // EN 1993-1 tab state
   const [steelGradeName, setSteelGradeName] = useState('S355');
@@ -106,42 +76,21 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
     return checkSteelSection(sectionProps, beamForces, selectedGrade);
   }, [section, beamForces, selectedGrade, beam.profileName]);
 
-  // Preset functions
-  const setAllFixed = () => {
-    const fixed: IDofConstraint = { type: 'A' };
-    setStartTx(fixed); setStartTz(fixed); setStartRx(fixed); setStartRz(fixed);
-    setEndTx(fixed); setEndTz(fixed); setEndRx(fixed); setEndRz(fixed);
-  };
-
-  const setAllFree = () => {
-    const free: IDofConstraint = { type: ' ' };
-    setStartTx(free); setStartTz(free); setStartRx(free); setStartRz(free);
-    setEndTx(free); setEndTz(free); setEndRx(free); setEndRz(free);
-  };
-
-  const applyHingePreset = () => {
-    // Hinge: moment (Rz) free at both ends, rest fixed
-    const fixed: IDofConstraint = { type: 'A' };
-    const free: IDofConstraint = { type: ' ' };
-    setStartTx(fixed); setStartTz(fixed); setStartRx(fixed); setStartRz(free);
-    setEndTx(fixed); setEndTz(fixed); setEndRx(fixed); setEndRz(free);
-  };
-
   const handleApply = () => {
     onUpdate({
       section,
-      dofConstraints: {
-        start: { Tx: startTx, Tz: startTz, Rx: startRx, Rz: startRz },
-        end: { Tx: endTx, Tz: endTz, Rx: endRx, Rz: endRz },
-      },
-      // Also update legacy format for backward compatibility
+      startConnections: startConns,
+      endConnections: endConns,
+      // Also update legacy formats for backward compatibility
+      startConnection: startConns.Rz,
+      endConnection: endConns.Rz,
       endReleases: {
-        startMoment: startRz.type === ' ',
-        endMoment: endRz.type === ' ',
-        startAxial: startTx.type === ' ',
-        endAxial: endTx.type === ' ',
-        startShear: startTz.type === ' ',
-        endShear: endTz.type === ' ',
+        startMoment: startConns.Rz === 'hinge',
+        endMoment: endConns.Rz === 'hinge',
+        startAxial: startConns.Tx !== 'fixed',
+        endAxial: endConns.Tx !== 'fixed',
+        startShear: startConns.Tz !== 'fixed',
+        endShear: endConns.Tz !== 'fixed',
       }
     });
     onClose();
@@ -150,47 +99,16 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
   if (showSectionPicker) {
     return (
       <SectionPropertiesDialog
-        isNew
+        section={beam.profileName ? { name: beam.profileName, section } : undefined}
         onSave={(profileName, newSection) => {
           setSection(newSection);
-          onUpdate({ profileName });
+          onUpdate({ profileName, section: newSection });
           setShowSectionPicker(false);
         }}
         onClose={() => setShowSectionPicker(false)}
       />
     );
   }
-
-  // Helper to render a DOF constraint dropdown with optional spring input
-  const renderDofSelect = (
-    value: IDofConstraint,
-    onChange: (c: IDofConstraint) => void
-  ) => (
-    <div className="bar-props-dof-cell">
-      <select
-        className="bar-props-dof-select"
-        value={value.type}
-        onChange={e => onChange({ type: e.target.value as DofConstraintType, springValue: value.springValue })}
-        title={DOF_OPTIONS.find(o => o.value === value.type)?.description}
-      >
-        {DOF_OPTIONS.map(opt => (
-          <option key={opt.value} value={opt.value} title={opt.description}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-      {value.type === 'S' && (
-        <input
-          type="number"
-          className="bar-props-spring-input"
-          placeholder="k"
-          value={value.springValue ?? ''}
-          onChange={e => onChange({ type: 'S', springValue: parseFloat(e.target.value) || 0 })}
-          title="Spring stiffness (N/m or Nm/rad)"
-        />
-      )}
-    </div>
-  );
 
   const renderPropertiesTab = () => (
     <>
@@ -227,50 +145,35 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
         Change Section...
       </button>
 
-      {/* DOF Constraints */}
-      <div className="bar-props-section-title">DOF Constraints</div>
-      <div className="bar-props-preset-row">
-        <button className="bar-props-preset-btn" onClick={setAllFixed} title="All DOFs fixed (Absolute)">
-          All Fixed
-        </button>
-        <button className="bar-props-preset-btn" onClick={setAllFree} title="All DOFs free">
-          All Free
-        </button>
-        <button className="bar-props-preset-btn" onClick={applyHingePreset} title="Moment (Rz) free at both ends">
-          Hinge
-        </button>
-      </div>
-
-      <div className="bar-props-dof-legend">
-        <span title="Free - no limitation">' ' Free</span>
-        <span title="Fully limited (Absolute)">A Fixed</span>
-        <span title="Limited for Positive reaction">P Pos</span>
-        <span title="Limited for Negative reaction">N Neg</span>
-        <span title="Spring">S Spring</span>
-      </div>
-
+      {/* Connection Type - per DOF */}
+      <div className="bar-props-section-title">Connection Type</div>
       <div className="bar-props-dof-grid">
-        <div className="bar-props-dof-header">
-          <span></span>
-          <span title="Translation X (axial)">Tx</span>
-          <span title="Translation Z (shear)">Tz</span>
-          <span title="Rotation about X (torsion)">Rx</span>
-          <span title="Rotation about Z (moment)">Rz</span>
-        </div>
-        <div className="bar-props-dof-row">
-          <span className="bar-props-dof-row-label">Start</span>
-          {renderDofSelect(startTx, setStartTx)}
-          {renderDofSelect(startTz, setStartTz)}
-          {renderDofSelect(startRx, setStartRx)}
-          {renderDofSelect(startRz, setStartRz)}
-        </div>
-        <div className="bar-props-dof-row">
-          <span className="bar-props-dof-row-label">End</span>
-          {renderDofSelect(endTx, setEndTx)}
-          {renderDofSelect(endTz, setEndTz)}
-          {renderDofSelect(endRx, setEndRx)}
-          {renderDofSelect(endRz, setEndRz)}
-        </div>
+        <span className="bar-props-dof-header"></span>
+        <span className="bar-props-dof-header">Start</span>
+        <span className="bar-props-dof-header">End</span>
+        {(['Tx', 'Tz', 'Rx', 'Rz'] as const).map(dof => (
+          <Fragment key={dof}>
+            <span className="bar-props-dof-label">{dof}</span>
+            <select
+              className="bar-props-select bar-props-select-compact"
+              value={startConns[dof]}
+              onChange={e => setStartConns(prev => ({ ...prev, [dof]: e.target.value as ConnectionType }))}
+            >
+              {CONNECTION_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              className="bar-props-select bar-props-select-compact"
+              value={endConns[dof]}
+              onChange={e => setEndConns(prev => ({ ...prev, [dof]: e.target.value as ConnectionType }))}
+            >
+              {CONNECTION_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </Fragment>
+        ))}
       </div>
     </>
   );
@@ -294,19 +197,19 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
         </select>
       </div>
       <div className="bar-props-row">
-        <span className="bar-props-label">fy</span>
+        <span className="bar-props-label">f<sub>y</sub></span>
         <span className="bar-props-value">{selectedGrade.fy} MPa</span>
       </div>
       <div className="bar-props-row">
-        <span className="bar-props-label">fu</span>
+        <span className="bar-props-label">f<sub>u</sub></span>
         <span className="bar-props-value">{selectedGrade.fu} MPa</span>
       </div>
       <div className="bar-props-row">
-        <span className="bar-props-label">&gamma;M0</span>
+        <span className="bar-props-label">&gamma;<sub>M0</sub></span>
         <span className="bar-props-value">{selectedGrade.gammaM0.toFixed(2)}</span>
       </div>
       <div className="bar-props-row">
-        <span className="bar-props-label">&gamma;M1</span>
+        <span className="bar-props-label">&gamma;<sub>M1</sub></span>
         <span className="bar-props-value">{selectedGrade.gammaM1.toFixed(2)}</span>
       </div>
 

@@ -3,30 +3,28 @@ import { useFEM } from '../../context/FEMContext';
 import { applyLoadCaseToMesh } from '../../context/FEMContext';
 import { Tool } from '../../core/fem/types';
 import { solve } from '../../core/solver/SolverService';
-import { downloadReport } from '../../core/export/ReportGenerator';
 import { STEEL_GRADES } from '../../core/standards/EurocodeNL';
 import { checkSteelSection } from '../../core/standards/SteelCheck';
 import { calculateBeamLength } from '../../core/fem/Beam';
 import {
-  MousePointer2, Hand, CircleDot,
+  MousePointer2, CircleDot,
   Triangle, ArrowLeftFromLine, Circle, ArrowDownUp, RotateCcw, ArrowLeftRight, Square,
-  ArrowDown, Trash2, Move, Thermometer,
+  ArrowDown, Move, Thermometer,
   Play, CheckCircle,
   FileText, Copy, FileDown, Printer,
-  Undo2, Redo2, Layers, Combine,
+  Undo2, Redo2, Layers,
   Settings, Info, Save, FolderOpen, Grid3X3, Bot,
-  Sun, Moon, Maximize2, Box, ClipboardList, Table2, Workflow
+  Sun, Moon, Maximize2, Box
 } from 'lucide-react';
 import { serializeProject } from '../../core/io/ProjectSerializer';
 import { deserializeProject } from '../../core/io/ProjectSerializer';
 import { Mesh } from '../../core/fem/Mesh';
 import './Ribbon.css';
 
-type RibbonTab = 'home' | 'settings' | 'standards' | 'code-check' | '3d' | 'report' | 'table' | 'graph';
+type RibbonTab = 'home' | 'settings' | 'code-check' | '3d' | 'report' | 'table' | 'graph' | 'steel' | 'concrete' | 'timber' | 'other-materials';
 
 interface RibbonProps {
   onShowLoadCaseDialog?: () => void;
-  onShowCombinationDialog?: () => void;
   onShowProjectInfoDialog?: () => void;
   onShowStandardsDialog?: () => void;
   onShowGridsDialog?: () => void;
@@ -44,7 +42,7 @@ interface RibbonProps {
   onRibbonTabChange?: (tab: RibbonTab) => void;
 }
 
-export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowProjectInfoDialog, onShowStandardsDialog, onShowGridsDialog, onShowSteelCheck, onShowConcreteCheck, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onShowReportSettings, onExportReportHTML, onExportReportPDF, onPrintReport, activeRibbonTab, onRibbonTabChange }: RibbonProps) {
+export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowStandardsDialog, onShowGridsDialog, onShowSteelCheck, onShowConcreteCheck, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onShowReportSettings, onExportReportHTML, onExportReportPDF, onPrintReport, activeRibbonTab, onRibbonTabChange }: RibbonProps) {
   const { state, dispatch } = useFEM();
   const { selectedTool, mesh, analysisType, undoStack, redoStack, loadCases, activeLoadCase,
     result, codeCheckBeamId, plateEditMode } = state;
@@ -128,47 +126,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
     }
   };
 
-  const handleZoomToFit = () => {
-    const nodes = Array.from(mesh.nodes.values());
-    if (nodes.length === 0) return;
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const node of nodes) {
-      if (node.x < minX) minX = node.x;
-      if (node.x > maxX) maxX = node.x;
-      if (node.y < minY) minY = node.y;
-      if (node.y > maxY) maxY = node.y;
-    }
-
-    // If all nodes at same point, use a default range
-    if (maxX - minX < 0.001) { minX -= 1; maxX += 1; }
-    if (maxY - minY < 0.001) { minY -= 1; maxY += 1; }
-
-    const { width: canvasW, height: canvasH } = state.canvasSize;
-    const padding = 0.1; // 10% padding
-    const availW = canvasW * (1 - 2 * padding);
-    const availH = canvasH * (1 - 2 * padding);
-
-    const rangeX = maxX - minX;
-    const rangeY = maxY - minY;
-
-    const scaleX = availW / rangeX;
-    const scaleY = availH / rangeY;
-    const newScale = Math.min(scaleX, scaleY);
-
-    // Center of the bounding box in world coords
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    // Pan so that center of bounding box maps to center of canvas
-    // screenX = worldX * scale + offsetX  =>  offsetX = screenCenterX - centerX * scale
-    // screenY = -worldY * scale + offsetY  =>  offsetY = screenCenterY + centerY * scale
-    const offsetX = canvasW / 2 - centerX * newScale;
-    const offsetY = canvasH / 2 + centerY * newScale;
-
-    dispatch({ type: 'SET_VIEW_STATE', payload: { scale: newScale, offsetX, offsetY } });
-  };
-
   const loadTools: Tool[] = ['addLoad', 'addLineLoad', 'addThermalLoad'];
 
   const selectTool = (tool: Tool) => {
@@ -179,16 +136,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
     }
   };
 
-
-  const handleGenerateReport = () => {
-    downloadReport({
-      mesh,
-      result: state.result,
-      projectInfo: state.projectInfo,
-      steelGrade: STEEL_GRADES[2], // S355 default
-      forceUnit: state.forceUnit,
-    });
-  };
 
   const handleSaveProject = async () => {
     const json = serializeProject(
@@ -259,58 +206,38 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
     <div className="ribbon">
       {/* Ribbon Tabs */}
       <div className="ribbon-tabs">
-        <button
-          className={`ribbon-tab ${activeTab === 'home' ? 'active' : ''}`}
-          onClick={() => handleTabClick('home')}
-        >
+        <button className={`ribbon-tab ${activeTab === 'home' ? 'active' : ''}`} onClick={() => handleTabClick('home')}>
           Home
         </button>
-        <button
-          className={`ribbon-tab ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => handleTabClick('settings')}
-        >
-          Settings
-        </button>
-        <button
-          className={`ribbon-tab ${activeTab === 'standards' ? 'active' : ''}`}
-          onClick={() => handleTabClick('standards')}
-        >
-          Standards
-        </button>
-        <button
-          className={`ribbon-tab ${activeTab === '3d' ? 'active' : ''}`}
-          onClick={() => handleTabClick('3d')}
-        >
-          <Box size={14} style={{ marginRight: 4 }} />
+        <button className={`ribbon-tab ${activeTab === '3d' ? 'active' : ''}`} onClick={() => handleTabClick('3d')}>
           3D
         </button>
-        <button
-          className={`ribbon-tab ${activeTab === 'report' ? 'active' : ''}`}
-          onClick={() => handleTabClick('report')}
-        >
-          <ClipboardList size={14} style={{ marginRight: 4 }} />
-          Report
-        </button>
-        <button
-          className={`ribbon-tab ${activeTab === 'table' ? 'active' : ''}`}
-          onClick={() => handleTabClick('table')}
-        >
-          <Table2 size={14} style={{ marginRight: 4 }} />
+        <button className={`ribbon-tab ${activeTab === 'table' ? 'active' : ''}`} onClick={() => handleTabClick('table')}>
           Table
         </button>
-        <button
-          className={`ribbon-tab ${activeTab === 'graph' ? 'active' : ''}`}
-          onClick={() => handleTabClick('graph')}
-        >
-          <Workflow size={14} style={{ marginRight: 4 }} />
+        <button className={`ribbon-tab ${activeTab === 'graph' ? 'active' : ''}`} onClick={() => handleTabClick('graph')}>
           Graph
         </button>
+        <button className={`ribbon-tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => handleTabClick('settings')}>
+          Settings
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'steel' ? 'active' : ''}`} onClick={() => handleTabClick('steel')}>
+          Steel
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'concrete' ? 'active' : ''}`} onClick={() => handleTabClick('concrete')}>
+          Concrete
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'timber' ? 'active' : ''}`} onClick={() => handleTabClick('timber')}>
+          Timber
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'other-materials' ? 'active' : ''}`} onClick={() => handleTabClick('other-materials')}>
+          Other Materials
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'report' ? 'active' : ''}`} onClick={() => handleTabClick('report')}>
+          Report
+        </button>
         {codeCheckBeamId && (
-          <button
-            className={`ribbon-tab ${activeTab === 'code-check' ? 'active' : ''}`}
-            onClick={() => handleTabClick('code-check')}
-          >
-            <CheckCircle size={14} style={{ marginRight: 4 }} />
+          <button className={`ribbon-tab ${activeTab === 'code-check' ? 'active' : ''}`} onClick={() => handleTabClick('code-check')}>
             Code-Check
           </button>
         )}
@@ -344,7 +271,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
             {/* Draw */}
             <div className="ribbon-group">
               <div className="ribbon-group-title">Draw</div>
-              <div className="ribbon-group-content grid-4x2">
+              <div className="ribbon-group-content wrap">
                 <button
                   className={`ribbon-button small ${selectedTool === 'select' ? 'active' : ''}`}
                   onClick={() => selectTool('select')}
@@ -368,28 +295,12 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   <span>Bar</span>
                 </button>
                 <button
-                  className={`ribbon-button small ${selectedTool === 'pan' ? 'active' : ''}`}
-                  onClick={() => selectTool('pan')}
-                  title="Pan (H)"
-                >
-                  <span className="ribbon-icon"><Hand size={14} /></span>
-                  <span>Pan</span>
-                </button>
-                <button
                   className={`ribbon-button small ${selectedTool === 'addNode' ? 'active' : ''}`}
                   onClick={() => selectTool('addNode')}
                   title="Add Node (N)"
                 >
                   <span className="ribbon-icon"><CircleDot size={14} /></span>
                   <span>Node</span>
-                </button>
-                <button
-                  className={`ribbon-button small ${selectedTool === 'addElement' ? 'active' : ''}`}
-                  onClick={() => selectTool('addElement')}
-                  title="Add Triangle Element"
-                >
-                  <span className="ribbon-icon"><Triangle size={14} /></span>
-                  <span>Element</span>
                 </button>
                 <button
                   className={`ribbon-button small ${selectedTool === 'addPlate' ? 'active' : ''}`}
@@ -406,14 +317,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 >
                   <span className="ribbon-icon"><Grid3X3 size={14} /></span>
                   <span>Grids</span>
-                </button>
-                <button
-                  className="ribbon-button small"
-                  onClick={handleZoomToFit}
-                  title="Zoom to Fit (F)"
-                >
-                  <span className="ribbon-icon"><Maximize2 size={14} /></span>
-                  <span>Fit</span>
                 </button>
               </div>
             </div>
@@ -488,7 +391,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
             {/* Loads */}
             <div className="ribbon-group">
               <div className="ribbon-group-title">Loads</div>
-              <div className="ribbon-group-content grid-4x2">
+              <div className="ribbon-group-content grid-3x2">
                 <button
                   className={`ribbon-button small ${selectedTool === 'addLineLoad' ? 'active' : ''}`}
                   onClick={() => selectTool('addLineLoad')}
@@ -538,14 +441,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   <span className="ribbon-icon"><Layers size={14} /></span>
                   <span>Load Cases</span>
                 </button>
-                <button
-                  className="ribbon-button small"
-                  title="Load Combinations"
-                  onClick={onShowCombinationDialog}
-                >
-                  <span className="ribbon-icon"><Combine size={14} /></span>
-                  <span>Combinations</span>
-                </button>
               </div>
             </div>
 
@@ -588,14 +483,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 >
                   <span className="ribbon-icon"><Redo2 size={14} /></span>
                   <span>Redo</span>
-                </button>
-                <button
-                  className={`ribbon-button small danger ${selectedTool === 'delete' ? 'active' : ''}`}
-                  onClick={() => selectTool('delete')}
-                  title="Delete (Del)"
-                >
-                  <span className="ribbon-icon"><Trash2 size={14} /></span>
-                  <span>Delete</span>
                 </button>
               </div>
             </div>
@@ -663,10 +550,10 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 <button
                   className="ribbon-button small"
                   onClick={onShowProjectInfoDialog}
-                  title="Project Information"
+                  title="Project Settings"
                 >
                   <span className="ribbon-icon"><Info size={14} /></span>
-                  <span>Project Info</span>
+                  <span>Project Settings</span>
                 </button>
                 <button
                   className="ribbon-button small"
@@ -681,14 +568,27 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
 
             <div className="ribbon-separator" />
 
+            {/* Standards */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Standards</div>
+              <div className="ribbon-group-content">
+                <button
+                  className="ribbon-button small"
+                  onClick={onShowStandardsDialog}
+                  title="Standards & National Annex"
+                >
+                  <span className="ribbon-icon"><FileText size={14} /></span>
+                  <span>Standards</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
             {/* Calculation */}
             <div className="ribbon-group">
               <div className="ribbon-group-title">Calculation</div>
               <div className="ribbon-group-content">
-                <button className="ribbon-button small" onClick={() => handleSolve(false)} disabled={solving} title="Calculate (F5)">
-                  <span className="ribbon-icon"><Play size={14} /></span>
-                  <span>{solving ? 'Solving...' : 'Calculate'}</span>
-                </button>
                 <button
                   className="ribbon-button small"
                   onClick={onShowCalculationSettings}
@@ -696,19 +596,6 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                 >
                   <span className="ribbon-icon"><Settings size={14} /></span>
                   <span>Calculation Settings</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="ribbon-separator" />
-
-            {/* Export */}
-            <div className="ribbon-group">
-              <div className="ribbon-group-title">Export</div>
-              <div className="ribbon-group-content">
-                <button className="ribbon-button small" onClick={handleGenerateReport} title="Generate HTML Report">
-                  <span className="ribbon-icon"><FileText size={14} /></span>
-                  <span>Report</span>
                 </button>
               </div>
             </div>
@@ -862,58 +749,10 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
           );
         })()}
 
-        {activeTab === 'standards' && (
+        {activeTab === 'steel' && (
           <>
             <div className="ribbon-group">
-              <div className="ribbon-group-title">Eurocode</div>
-              <div className="ribbon-group-content">
-                <button className="ribbon-button small" onClick={onShowStandardsDialog} title="Eurocode NL Standards">
-                  <span className="ribbon-icon"><Settings size={14} /></span>
-                  <span>NL (NEN)</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="ribbon-separator" />
-
-            <div className="ribbon-group">
-              <div className="ribbon-group-title">Load Factors</div>
-              <div className="ribbon-group-content">
-                <button className="ribbon-button small" title="EN 1990 - Basis">
-                  <span className="ribbon-icon"><FileText size={14} /></span>
-                  <span>EN 1990</span>
-                </button>
-                <button className="ribbon-button small" title="EN 1991 - Actions">
-                  <span className="ribbon-icon"><FileText size={14} /></span>
-                  <span>EN 1991</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="ribbon-separator" />
-
-            <div className="ribbon-group">
-              <div className="ribbon-group-title">Material</div>
-              <div className="ribbon-group-content">
-                <button className="ribbon-button small" title="EN 1993 - Steel">
-                  <span className="ribbon-icon"><FileText size={14} /></span>
-                  <span>EN 1993</span>
-                </button>
-                <button className="ribbon-button small" title="EN 1995 - Timber">
-                  <span className="ribbon-icon"><FileText size={14} /></span>
-                  <span>EN 1995</span>
-                </button>
-                <button className="ribbon-button small" title="EN 1992 - Concrete">
-                  <span className="ribbon-icon"><FileText size={14} /></span>
-                  <span>EN 1992</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="ribbon-separator" />
-
-            <div className="ribbon-group">
-              <div className="ribbon-group-title">Section Checks</div>
+              <div className="ribbon-group-title">EN 1993 - Steel</div>
               <div className="ribbon-group-content">
                 <button
                   className="ribbon-button small"
@@ -924,6 +763,28 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   <span className="ribbon-icon"><CheckCircle size={14} /></span>
                   <span>Steel Check</span>
                 </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Info</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6 }}>
+                  EN 1993-1-1 cross-section checks.<br />
+                  Run analysis first, then check beams.
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'concrete' && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">EN 1992 - Concrete</div>
+              <div className="ribbon-group-content">
                 <button
                   className="ribbon-button small"
                   onClick={onShowConcreteCheck}
@@ -931,8 +792,48 @@ export function Ribbon({ onShowLoadCaseDialog, onShowCombinationDialog, onShowPr
                   disabled={!state.result}
                 >
                   <span className="ribbon-icon"><CheckCircle size={14} /></span>
-                  <span>Concrete</span>
+                  <span>Concrete Check</span>
                 </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Info</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6 }}>
+                  EN 1992-1-1 section design.<br />
+                  Run analysis first, then check sections.
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'timber' && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">EN 1995 - Timber</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6 }}>
+                  Timber checks according to EN 1995-1-1.<br />
+                  Coming soon.
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'other-materials' && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">Other Materials</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6 }}>
+                  Aluminium (EN 1999), Masonry (EN 1996),<br />
+                  and other material checks. Coming soon.
+                </span>
               </div>
             </div>
           </>

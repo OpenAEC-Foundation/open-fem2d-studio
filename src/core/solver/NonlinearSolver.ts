@@ -7,7 +7,7 @@
 
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { ISolverResult, IBeamForces, IElementStress, AnalysisType } from '../fem/types';
+import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes } from '../fem/types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -21,7 +21,7 @@ import { calculateBeamInternalForces } from '../fem/BeamForces';
 import { calculateElementStress, calculatePrincipalStresses } from '../fem/Triangle';
 import { calculateQuadStress } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
-import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode } from './Assembler';
+import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases } from './Assembler';
 import { solveLinearSystem } from '../math/GaussElimination';
 
 export interface NonlinearSolverOptions {
@@ -128,6 +128,15 @@ function assembleGlobalStiffnessWithGeometric(
 
     // Linear elastic stiffness
     const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+
+    // Apply static condensation for connection types (hinges)
+    const { start, end } = getConnectionTypes(beam);
+    const releasedLocalDofs: number[] = [];
+    if (start === 'hinge') releasedLocalDofs.push(2); // θ1
+    if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+    if (releasedLocalDofs.length > 0) {
+      applyEndReleases(Kl, releasedLocalDofs);
+    }
 
     // Add geometric stiffness if requested
     if (includeGeometric) {
@@ -242,6 +251,20 @@ function assembleForceVector(mesh: Mesh): number[] {
         qy * L / 2,
         -qy * L * L / 12
       ];
+    }
+
+    // Apply force condensation for beam end releases (hinges)
+    // The equivalent nodal forces must be condensed consistently with the stiffness
+    const { start, end } = getConnectionTypes(beam);
+    const releasedLocalDofs: number[] = [];
+    if (start === 'hinge') releasedLocalDofs.push(2); // θ1
+    if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+    if (releasedLocalDofs.length > 0) {
+      const material = mesh.getMaterial(beam.materialId);
+      if (material) {
+        const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+        applyEndReleases(Kl, releasedLocalDofs, fLocal);
+      }
     }
 
     // Transform to global
@@ -422,8 +445,23 @@ export function solveNonlinear(
   let displacements = new Array(numDofs).fill(0);
   let axialForces = new Map<number, number>();
 
-  // For linear analysis, just solve once
+  // Check if any beam has tension/pressure-only connections
+  let hasAxialConstraints = false;
+  for (const beam of mesh.beamElements.values()) {
+    const { start, end } = getConnectionTypes(beam);
+    if (start === 'tension_only' || start === 'pressure_only' ||
+        end === 'tension_only' || end === 'pressure_only') {
+      hasAxialConstraints = true;
+      break;
+    }
+  }
+
+  // For linear analysis, just solve once (or iteratively for axial constraints)
   if (!opts.geometricNonlinear) {
+    if (hasAxialConstraints) {
+      return solveWithAxialConstraints(mesh, F, opts);
+    }
+
     const K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, false);
     const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
     displacements = solveLinearSystem(Kbc, Fbc);
@@ -905,5 +943,102 @@ function solveMixed(
     maxVonMises,
     minVonMises,
     stressRanges: ranges,
+  };
+}
+
+/**
+ * Iterative solver for tension-only and pressure-only beam connections.
+ * Beams that violate their axial constraint are released (axial DOFs zeroed)
+ * and the system is re-solved until convergence.
+ */
+function solveWithAxialConstraints(
+  mesh: Mesh,
+  F: number[],
+  opts: NonlinearSolverOptions
+): ISolverResult {
+  const maxIter = opts.maxIterations || 20;
+  const axialReleasedBeamIds = new Set<number>();
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    // Assemble with current axial releases using the Assembler
+    const K = assembleGlobalStiffnessMatrix(mesh, 'frame', axialReleasedBeamIds);
+    const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
+    const displacements = solveLinearSystem(Kbc, Fbc);
+
+    const { beamForces, axialForces } = calculateAllInternalForces(mesh, displacements);
+
+    // Check each beam with tension/pressure-only connections
+    let changed = false;
+    for (const beam of mesh.beamElements.values()) {
+      const { start, end } = getConnectionTypes(beam);
+      const hasTensionOnly = start === 'tension_only' || end === 'tension_only';
+      const hasPressureOnly = start === 'pressure_only' || end === 'pressure_only';
+
+      if (!hasTensionOnly && !hasPressureOnly) continue;
+
+      const N = axialForces.get(beam.id) ?? 0;
+      const shouldRelease =
+        (hasTensionOnly && N < 0) ||   // compression in tension-only → release
+        (hasPressureOnly && N > 0);     // tension in pressure-only → release
+
+      const isReleased = axialReleasedBeamIds.has(beam.id);
+
+      if (shouldRelease && !isReleased) {
+        axialReleasedBeamIds.add(beam.id);
+        changed = true;
+      } else if (!shouldRelease && isReleased) {
+        axialReleasedBeamIds.delete(beam.id);
+        changed = true;
+      }
+    }
+
+    // Converged — return this result
+    if (!changed) {
+      const reactions = K.multiplyVector(displacements);
+      for (let i = 0; i < reactions.length; i++) {
+        reactions[i] = reactions[i] - F[i];
+      }
+
+      let maxVonMises = 0;
+      for (const forces of beamForces.values()) {
+        maxVonMises = Math.max(maxVonMises, Math.abs(forces.maxM));
+      }
+
+      return {
+        displacements,
+        reactions,
+        elementStresses: new Map(),
+        beamForces,
+        maxVonMises,
+        minVonMises: 0
+      };
+    }
+  }
+
+  // If not converged, solve one final time with current releases
+  const K = assembleGlobalStiffnessMatrix(mesh, 'frame', axialReleasedBeamIds);
+  const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
+  const displacements = solveLinearSystem(Kbc, Fbc);
+  const { beamForces } = calculateAllInternalForces(mesh, displacements);
+
+  const reactions = K.multiplyVector(displacements);
+  for (let i = 0; i < reactions.length; i++) {
+    reactions[i] = reactions[i] - F[i];
+  }
+
+  let maxVonMises = 0;
+  for (const forces of beamForces.values()) {
+    maxVonMises = Math.max(maxVonMises, Math.abs(forces.maxM));
+  }
+
+  console.warn('Axial constraint iteration did not converge within', maxIter, 'iterations');
+
+  return {
+    displacements,
+    reactions,
+    elementStresses: new Map(),
+    beamForces,
+    maxVonMises,
+    minVonMises: 0
   };
 }

@@ -19,6 +19,11 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
+.standards-dialog-wide {
+  width: 680px;
+  max-height: 620px;
+}
+
 .standards-dialog-header {
   padding: 12px 16px;
   font-size: 13px;
@@ -128,4 +133,228 @@
 
 .standards-btn:hover {
   background: var(--bg-elevated);
+}
+
+
+/* ── Wind Load Tab ─────────────────────────────────────────── */
+
+.wind-load-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wind-section {
+  padding: 8px 0;
+}
+
+.wind-section + .wind-section {
+  border-top: 1px solid var(--border);
+}
+
+.wind-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+/* Form rows: label + input/select side by side */
+
+.wind-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.wind-form-row label {
+  min-width: 100px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.wind-select {
+  flex: 1;
+  padding: 5px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.wind-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.wind-select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.wind-input {
+  width: 100px;
+  padding: 5px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.wind-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.wind-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #fbbf24;
+  font-style: italic;
+  padding-left: 110px;
+}
+
+/* Results section */
+
+.wind-results {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 10px 12px !important;
+  margin-top: 4px;
+}
+
+.wind-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+.wind-results-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wind-results-table tr:last-child td {
+  border-bottom: none;
+}
+
+.wind-param {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--accent) !important;
+  white-space: nowrap;
+  width: 70px;
+}
+
+.wind-desc {
+  color: var(--text-secondary) !important;
+  font-size: 11px;
+}
+
+.wind-val {
+  font-family: monospace;
+  text-align: right;
+  color: var(--text-primary) !important;
+  font-weight: 500;
+  width: 80px;
+}
+
+.wind-unit {
+  color: var(--text-muted) !important;
+  font-size: 10px;
+  width: 40px;
+  text-align: left;
+  padding-left: 4px;
+}
+
+/* Highlighted rows (intermediate results) */
+
+.wind-row-highlight td {
+  background: rgba(99, 102, 241, 0.08);
+  font-weight: 600;
+}
+
+.wind-row-highlight .wind-val {
+  font-weight: 700 !important;
+}
+
+/* Separator rows (visual section break in the table) */
+
+.wind-row-sep td {
+  border-top: 2px solid var(--border-light);
+}
+
+/* Final qp result banner */
+
+.wind-qp-result {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.wind-qp-label {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--text-primary);
+}
+
+.wind-qp-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: monospace;
+  color: #4ade80;
+}
+
+.wind-qp-unit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.wind-qp-alt {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Formula reference */
+
+.wind-formula-note {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-muted);
+  text-align: center;
+  padding-top: 2px;
+}
+
+/* Scrollbar for wind content */
+
+.standards-dialog-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.standards-dialog-body::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+.standards-dialog-body::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
 }

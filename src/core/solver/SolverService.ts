@@ -106,6 +106,9 @@ function meshToSolverPayload(mesh: Mesh, options: SolveOptions) {
       };
     }
 
+    if (b.startConnection) beam.startConnection = b.startConnection;
+    if (b.endConnection) beam.endConnection = b.endConnection;
+
     beams.push(beam);
   }
 

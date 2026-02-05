@@ -12,7 +12,7 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  width: 460px;
+  width: 780px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -34,10 +34,16 @@
 
 .calc-settings-body {
   padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+  overflow-y: auto;
+}
+
+.calc-settings-column {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
 }
 
 .calc-settings-section {

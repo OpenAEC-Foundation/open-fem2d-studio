@@ -604,7 +604,7 @@ function createTruss(
   for (let i = 0; i < numPanels; i++) {
     const beam = mesh.addBeamElement([bottomNodes[i], bottomNodes[i + 1]], 1, section, profileName);
     if (beam) {
-      mesh.updateBeamElement(beam.id, { endReleases: { startMoment: true, endMoment: true } });
+      mesh.updateBeamElement(beam.id, { startConnection: 'hinge', endConnection: 'hinge', endReleases: { startMoment: true, endMoment: true } });
       elementCount++;
     }
   }
@@ -613,7 +613,7 @@ function createTruss(
   for (let i = 0; i < numPanels; i++) {
     const beam = mesh.addBeamElement([topNodes[i], topNodes[i + 1]], 1, section, profileName);
     if (beam) {
-      mesh.updateBeamElement(beam.id, { endReleases: { startMoment: true, endMoment: true } });
+      mesh.updateBeamElement(beam.id, { startConnection: 'hinge', endConnection: 'hinge', endReleases: { startMoment: true, endMoment: true } });
       elementCount++;
     }
   }
@@ -622,7 +622,7 @@ function createTruss(
   for (let i = 0; i <= numPanels; i++) {
     const beam = mesh.addBeamElement([bottomNodes[i], topNodes[i]], 1, section, profileName);
     if (beam) {
-      mesh.updateBeamElement(beam.id, { endReleases: { startMoment: true, endMoment: true } });
+      mesh.updateBeamElement(beam.id, { startConnection: 'hinge', endConnection: 'hinge', endReleases: { startMoment: true, endMoment: true } });
       elementCount++;
     }
   }
@@ -631,7 +631,7 @@ function createTruss(
   for (let i = 0; i < numPanels; i++) {
     const beam = mesh.addBeamElement([bottomNodes[i], topNodes[i + 1]], 1, section, profileName);
     if (beam) {
-      mesh.updateBeamElement(beam.id, { endReleases: { startMoment: true, endMoment: true } });
+      mesh.updateBeamElement(beam.id, { startConnection: 'hinge', endConnection: 'hinge', endReleases: { startMoment: true, endMoment: true } });
       elementCount++;
     }
   }

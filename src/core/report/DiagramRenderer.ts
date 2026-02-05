@@ -4,7 +4,7 @@
  */
 
 import { Mesh } from '../fem/Mesh';
-import { ISolverResult, INode } from '../fem/types';
+import { ISolverResult, INode, getConnectionTypes } from '../fem/types';
 import { ILoadCase } from '../fem/LoadCase';
 import { calculateBeamLength } from '../fem/Beam';
 
@@ -533,30 +533,46 @@ export function renderGeometry(
   }
   svg += '</g>';
 
-  // Hinge symbols at beam ends
+  // Connection symbols at beam ends
   for (const beam of mesh.beamElements.values()) {
-    if (!beam.endReleases) continue;
+    const { start, end } = getConnectionTypes(beam);
+    if (start === 'fixed' && end === 'fixed') continue;
     const nodes = mesh.getBeamElementNodes(beam);
     if (!nodes) continue;
 
     const [x1, y1] = transform.worldToScreen(nodes[0].x, nodes[0].y);
     const [x2, y2] = transform.worldToScreen(nodes[1].x, nodes[1].y);
 
-    // Offset hinge symbols slightly along beam direction
     const dx = x2 - x1;
     const dy = y2 - y1;
     const len = Math.sqrt(dx * dx + dy * dy);
     const offset = 15;
 
-    if (beam.endReleases.startMoment) {
+    if (start === 'hinge') {
+      svg += generateHingeSVG(x1 + (dx / len) * offset, y1 + (dy / len) * offset);
+    } else if (start === 'tension_only') {
       const hx = x1 + (dx / len) * offset;
       const hy = y1 + (dy / len) * offset;
-      svg += generateHingeSVG(hx, hy);
+      svg += `<line x1="${hx - 6}" y1="${hy}" x2="${hx + 6}" y2="${hy}" stroke="#22c55e" stroke-width="2"/>`;
+      svg += `<line x1="${hx}" y1="${hy - 6}" x2="${hx}" y2="${hy + 6}" stroke="#22c55e" stroke-width="2"/>`;
+    } else if (start === 'pressure_only') {
+      const hx = x1 + (dx / len) * offset;
+      const hy = y1 + (dy / len) * offset;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      svg += `<polyline points="${hx - 9},${hy} ${hx - 6},${hy - 5} ${hx},${hy + 5} ${hx + 6},${hy - 5} ${hx + 9},${hy}" fill="none" stroke="#ef4444" stroke-width="2" transform="rotate(${angle},${hx},${hy})"/>`;
     }
-    if (beam.endReleases.endMoment) {
+    if (end === 'hinge') {
+      svg += generateHingeSVG(x2 - (dx / len) * offset, y2 - (dy / len) * offset);
+    } else if (end === 'tension_only') {
       const hx = x2 - (dx / len) * offset;
       const hy = y2 - (dy / len) * offset;
-      svg += generateHingeSVG(hx, hy);
+      svg += `<line x1="${hx - 6}" y1="${hy}" x2="${hx + 6}" y2="${hy}" stroke="#22c55e" stroke-width="2"/>`;
+      svg += `<line x1="${hx}" y1="${hy - 6}" x2="${hx}" y2="${hy + 6}" stroke="#22c55e" stroke-width="2"/>`;
+    } else if (end === 'pressure_only') {
+      const hx = x2 - (dx / len) * offset;
+      const hy = y2 - (dy / len) * offset;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      svg += `<polyline points="${hx - 9},${hy} ${hx - 6},${hy - 5} ${hx},${hy + 5} ${hx + 6},${hy - 5} ${hx + 9},${hy}" fill="none" stroke="#ef4444" stroke-width="2" transform="rotate(${angle},${hx},${hy})"/>`;
     }
   }
 
@@ -783,9 +799,10 @@ export function renderForceDiagram(
   }
   svg += '</g>';
 
-  // Hinges
+  // Connection symbols
   for (const beam of mesh.beamElements.values()) {
-    if (!beam.endReleases) continue;
+    const { start, end } = getConnectionTypes(beam);
+    if (start === 'fixed' && end === 'fixed') continue;
     const nodes = mesh.getBeamElementNodes(beam);
     if (!nodes) continue;
 
@@ -796,10 +813,10 @@ export function renderForceDiagram(
     const len = Math.sqrt(dx * dx + dy * dy);
     const offset = 12;
 
-    if (beam.endReleases.startMoment) {
+    if (start === 'hinge') {
       svg += generateHingeSVG(x1 + (dx / len) * offset, y1 + (dy / len) * offset, 5);
     }
-    if (beam.endReleases.endMoment) {
+    if (end === 'hinge') {
       svg += generateHingeSVG(x2 - (dx / len) * offset, y2 - (dy / len) * offset, 5);
     }
   }

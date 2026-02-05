@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useFEM, applyLoadCaseToMesh } from '../../context/FEMContext';
-import { INode, IBeamElement, IBeamSection } from '../../core/fem/types';
+import { INode, IBeamElement, IBeamSection, ConnectionType, getConnectionTypes } from '../../core/fem/types';
 import { getStressColor, generateColorScale, formatResultValue } from '../../utils/colors';
 import { calculateBeamLength, calculateBeamAngle } from '../../core/fem/Beam';
 import { formatForce, formatMoment } from '../../core/fem/BeamForces';
@@ -91,6 +91,7 @@ function polygonArea(polygon: { x: number; y: number }[]): number {
 export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const captureModeRef = useRef(false);
   const { state, dispatch, pushUndo } = useFEM();
   const {
     mesh,
@@ -278,25 +279,66 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     }
   }, [dispatch]);
 
+  // Track viewState via ref so captureCanvasForReport doesn't depend on state.viewState
+  const viewStateRef = useRef(state.viewState);
+  viewStateRef.current = state.viewState;
+
+  // Capture with zoom-to-fit and no grid (for report use)
+  const captureCanvasForReport = useCallback((key: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas || mesh.nodes.size === 0) return;
+    // Prevent re-entrancy (avoid infinite loop when SET_VIEW_STATE re-triggers useEffect)
+    if (captureModeRef.current) return;
+    // Calculate zoom-to-fit bounds
+    const nodes = Array.from(mesh.nodes.values());
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const node of nodes) {
+      if (node.x < minX) minX = node.x;
+      if (node.x > maxX) maxX = node.x;
+      if (node.y < minY) minY = node.y;
+      if (node.y > maxY) maxY = node.y;
+    }
+    if (maxX - minX < 0.001) { minX -= 1; maxX += 1; }
+    if (maxY - minY < 0.001) { minY -= 1; maxY += 1; }
+    const { width: cw, height: ch } = state.canvasSize;
+    const padding = 0.12;
+    const availW = cw * (1 - 2 * padding);
+    const availH = ch * (1 - 2 * padding);
+    const scaleX = availW / (maxX - minX);
+    const scaleY = availH / (maxY - minY);
+    const newScale = Math.min(scaleX, scaleY);
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const offsetX = cw / 2 - centerX * newScale;
+    const offsetY = ch / 2 + centerY * newScale;
+    // Save current viewport via ref, set capture mode, zoom-to-fit
+    const savedViewState = { ...viewStateRef.current };
+    captureModeRef.current = true;
+    dispatch({ type: 'SET_VIEW_STATE', payload: { scale: newScale, offsetX, offsetY } });
+    // Wait for redraw, then capture, then restore
+    setTimeout(() => {
+      captureCanvas(key);
+      captureModeRef.current = false;
+      dispatch({ type: 'SET_VIEW_STATE', payload: savedViewState });
+    }, 100);
+  }, [dispatch, captureCanvas, mesh, state.canvasSize]);
+
   // Capture current canvas state on every render (for report use)
-  // This ensures the latest view is always available
   useEffect(() => {
-    // Capture after draw completes
     const timer = setTimeout(() => {
       if (viewMode === 'geometry') {
-        captureCanvas('geometry');
+        captureCanvasForReport('geometry');
       } else if (viewMode === 'results' && result) {
-        captureCanvas('results');
-        // Also capture specific diagram states if enabled
-        if (showMoment) captureCanvas('moment');
-        if (showShear) captureCanvas('shear');
-        if (showNormal) captureCanvas('normal');
-        if (showDeformed) captureCanvas('deformed');
-        if (showReactions) captureCanvas('reactions');
+        captureCanvasForReport('results');
+        if (showMoment) captureCanvasForReport('moment');
+        if (showShear) captureCanvasForReport('shear');
+        if (showNormal) captureCanvasForReport('normal');
+        if (showDeformed) captureCanvasForReport('deformed');
+        if (showReactions) captureCanvasForReport('reactions');
       }
     }, 200);
     return () => clearTimeout(timer);
-  }, [viewMode, result, showMoment, showShear, showNormal, showDeformed, showReactions, captureCanvas, meshVersion]);
+  }, [viewMode, result, showMoment, showShear, showNormal, showDeformed, showReactions, captureCanvasForReport, meshVersion]);
 
   // Capture load case specific view when activeLoadCase changes
   useEffect(() => {
@@ -861,16 +903,52 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         ctx.lineTo(screen.x + i - 6, screen.y + 30);
         ctx.stroke();
       }
+    } else if (constraints.y && constraints.springY != null) {
+      // Z-Spring — vertical zigzag spring with ground line
+      const sx = screen.x;
+      const sy = screen.y;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+
+      // Vertical line from node to spring start
+      const springTop = sy + 6;
+      const springBot = sy + 28;
+      const numZigs = 3;
+      const segH = (springBot - springTop) / (numZigs * 2);
+
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx, springTop);
+      for (let i = 0; i < numZigs; i++) {
+        ctx.lineTo(sx + 8, springTop + segH * (i * 2 + 1));
+        ctx.lineTo(sx - 8, springTop + segH * (i * 2 + 2));
+      }
+      ctx.lineTo(sx, springBot);
+      ctx.stroke();
+
+      // Ground line below spring
+      ctx.strokeStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(sx - 14, springBot + 2);
+      ctx.lineTo(sx + 14, springBot + 2);
+      ctx.stroke();
+
+      // Hatch marks
+      for (let i = -12; i <= 12; i += 6) {
+        ctx.beginPath();
+        ctx.moveTo(sx + i, springBot + 2);
+        ctx.lineTo(sx + i - 5, springBot + 9);
+        ctx.stroke();
+      }
     } else if (constraints.y) {
       // Roloplegging (Z-roller) - standard structural engineering roller symbol
-      // Triangle dimensions (~12px equilateral)
       const triHalfBase = 7;
       const triHeight = 12;
       const circleRadius = 3.5;
-      const circleSpacing = 5; // horizontal offset from center for each circle
-      const circleTopY = screen.y + triHeight + 1; // 1px gap below triangle base
+      const circleSpacing = 5;
+      const circleTopY = screen.y + triHeight + 1;
       const circleCenterY = circleTopY + circleRadius;
-      const groundLineY = circleCenterY + circleRadius + 1; // 1px gap below circles
+      const groundLineY = circleCenterY + circleRadius + 1;
 
       // 1. Equilateral triangle pointing down (apex at node)
       ctx.fillStyle = '#f59e0b';
@@ -908,6 +986,43 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         ctx.lineTo(screen.x + i - 5, groundLineY + 7);
         ctx.stroke();
       }
+    } else if (constraints.x && constraints.springX != null) {
+      // X-Spring — horizontal zigzag spring with wall line
+      const sx = screen.x;
+      const sy = screen.y;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+
+      // Horizontal line from node to spring start
+      const springLeft = sx - 6;
+      const springRight = sx - 28;
+      const numZigs = 3;
+      const segW = (springLeft - springRight) / (numZigs * 2);
+
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(springLeft, sy);
+      for (let i = 0; i < numZigs; i++) {
+        ctx.lineTo(springLeft - segW * (i * 2 + 1), sy + 8);
+        ctx.lineTo(springLeft - segW * (i * 2 + 2), sy - 8);
+      }
+      ctx.lineTo(springRight, sy);
+      ctx.stroke();
+
+      // Wall line
+      ctx.strokeStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(springRight - 2, sy - 14);
+      ctx.lineTo(springRight - 2, sy + 14);
+      ctx.stroke();
+
+      // Hatch marks
+      for (let i = -12; i <= 12; i += 6) {
+        ctx.beginPath();
+        ctx.moveTo(springRight - 2, sy + i);
+        ctx.lineTo(springRight - 9, sy + i - 5);
+        ctx.stroke();
+      }
     } else if (constraints.x) {
       // Horizontal roller - vertical triangle
       ctx.fillStyle = '#f59e0b';
@@ -925,6 +1040,16 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       ctx.arc(screen.x - 21, screen.y - 6, 4, 0, Math.PI * 2);
       ctx.arc(screen.x - 21, screen.y + 6, 4, 0, Math.PI * 2);
       ctx.fill();
+      ctx.stroke();
+    } else if (constraints.rotation && constraints.springRot != null) {
+      // Rotational spring — curved arcs
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, 14, 0.3 * Math.PI, 0.7 * Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, 14, 1.3 * Math.PI, 1.7 * Math.PI);
       ctx.stroke();
     }
   }, []);
@@ -1383,25 +1508,19 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   ) => {
     ctx.globalAlpha = 0.5;
 
-    // Create a mock node for drawing
-    let constraints = { x: false, y: false, rotation: false };
+    // Create a mock node with spring stiffness where applicable
+    let constraints: INode['constraints'] = { x: false, y: false, rotation: false };
     switch (tool) {
       case 'addPinned': constraints = { x: true, y: true, rotation: false }; break;
       case 'addXRoller': constraints = { x: true, y: false, rotation: false }; break;
       case 'addZRoller': constraints = { x: false, y: true, rotation: false }; break;
       case 'addFixed': constraints = { x: true, y: true, rotation: true }; break;
-      case 'addZSpring':
-        constraints = { x: false, y: true, rotation: false };
-        break;
-      case 'addXSpring':
-        constraints = { x: true, y: false, rotation: false };
-        break;
-      case 'addRotSpring':
-        constraints = { x: false, y: false, rotation: true };
-        break;
+      case 'addZSpring': constraints = { x: false, y: true, rotation: false, springY: 1e6 }; break;
+      case 'addXSpring': constraints = { x: true, y: false, rotation: false, springX: 1e6 }; break;
+      case 'addRotSpring': constraints = { x: false, y: false, rotation: true, springRot: 1e6 }; break;
     }
 
-    const mockNode = {
+    const mockNode: INode = {
       id: -1,
       x: 0, y: 0,
       constraints,
@@ -1409,64 +1528,6 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     };
 
     drawSupportSymbol(ctx, screenPos, mockNode);
-
-    // For spring types, draw a spring symbol overlay
-    if (tool === 'addZSpring' || tool === 'addXSpring' || tool === 'addRotSpring') {
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2;
-      const sx = screenPos.x;
-      const sy = screenPos.y;
-
-      if (tool === 'addZSpring') {
-        // Vertical spring zigzag below
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        const springTop = sy + 8;
-        const springBot = sy + 28;
-        const numZigs = 3;
-        const segH = (springBot - springTop) / (numZigs * 2);
-        ctx.lineTo(sx, springTop);
-        for (let i = 0; i < numZigs; i++) {
-          ctx.lineTo(sx + 8, springTop + segH * (i * 2 + 1));
-          ctx.lineTo(sx - 8, springTop + segH * (i * 2 + 2));
-        }
-        ctx.lineTo(sx, springBot);
-        ctx.stroke();
-        // Ground line
-        ctx.beginPath();
-        ctx.moveTo(sx - 12, springBot + 2);
-        ctx.lineTo(sx + 12, springBot + 2);
-        ctx.stroke();
-      } else if (tool === 'addXSpring') {
-        // Horizontal spring zigzag to the left
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        const springLeft = sx - 8;
-        const springRight = sx - 28;
-        const numZigs = 3;
-        const segW = (springLeft - springRight) / (numZigs * 2);
-        ctx.lineTo(springLeft, sy);
-        for (let i = 0; i < numZigs; i++) {
-          ctx.lineTo(springLeft - segW * (i * 2 + 1), sy + 8);
-          ctx.lineTo(springLeft - segW * (i * 2 + 2), sy - 8);
-        }
-        ctx.lineTo(springRight, sy);
-        ctx.stroke();
-        // Wall line
-        ctx.beginPath();
-        ctx.moveTo(springRight - 2, sy - 12);
-        ctx.lineTo(springRight - 2, sy + 12);
-        ctx.stroke();
-      } else if (tool === 'addRotSpring') {
-        // Rotational spring - arc with zigzag
-        ctx.beginPath();
-        ctx.arc(sx, sy, 14, 0.3 * Math.PI, 0.7 * Math.PI);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(sx, sy, 14, 1.3 * Math.PI, 1.7 * Math.PI);
-        ctx.stroke();
-      }
-    }
 
     ctx.globalAlpha = 1.0;
   }, [drawSupportSymbol]);
@@ -1564,7 +1625,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       if (diagramType === 'shear') {
         ctx.strokeStyle = color;
         ctx.lineWidth = 0.8;
-        const hatchSpacing = 6;
+        const hatchSpacing = 14;
         const beamScreenLen = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
         const numHatches = Math.floor(beamScreenLen / hatchSpacing);
         for (let h = 1; h < numHatches; h++) {
@@ -1879,50 +1940,52 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, width, height);
 
-    // Draw grid
-    ctx.strokeStyle = canvasGrid;
-    ctx.lineWidth = 1;
+    // Draw grid and axes (skip in capture mode for clean report images)
+    if (!captureModeRef.current) {
+      ctx.strokeStyle = canvasGrid;
+      ctx.lineWidth = 1;
 
-    const topLeft = screenToWorld(0, 0);
-    const bottomRight = screenToWorld(width, height);
+      const topLeft = screenToWorld(0, 0);
+      const bottomRight = screenToWorld(width, height);
 
-    const startX = Math.floor(topLeft.x / gridSize) * gridSize;
-    const endX = Math.ceil(bottomRight.x / gridSize) * gridSize;
-    const startY = Math.floor(bottomRight.y / gridSize) * gridSize;
-    const endY = Math.ceil(topLeft.y / gridSize) * gridSize;
+      const startX = Math.floor(topLeft.x / gridSize) * gridSize;
+      const endX = Math.ceil(bottomRight.x / gridSize) * gridSize;
+      const startY = Math.floor(bottomRight.y / gridSize) * gridSize;
+      const endY = Math.ceil(topLeft.y / gridSize) * gridSize;
 
-    for (let x = startX; x <= endX; x += gridSize) {
-      const screen = worldToScreen(x, 0);
+      for (let x = startX; x <= endX; x += gridSize) {
+        const screen = worldToScreen(x, 0);
+        ctx.beginPath();
+        ctx.moveTo(screen.x, 0);
+        ctx.lineTo(screen.x, height);
+        ctx.stroke();
+      }
+
+      for (let y = startY; y <= endY; y += gridSize) {
+        const screen = worldToScreen(0, y);
+        ctx.beginPath();
+        ctx.moveTo(0, screen.y);
+        ctx.lineTo(width, screen.y);
+        ctx.stroke();
+      }
+
+      // Draw axes
+      ctx.strokeStyle = canvasAxis;
+      ctx.lineWidth = 2;
+      const origin = worldToScreen(0, 0);
+
+      // X axis
       ctx.beginPath();
-      ctx.moveTo(screen.x, 0);
-      ctx.lineTo(screen.x, height);
+      ctx.moveTo(0, origin.y);
+      ctx.lineTo(width, origin.y);
+      ctx.stroke();
+
+      // Y axis
+      ctx.beginPath();
+      ctx.moveTo(origin.x, 0);
+      ctx.lineTo(origin.x, height);
       ctx.stroke();
     }
-
-    for (let y = startY; y <= endY; y += gridSize) {
-      const screen = worldToScreen(0, y);
-      ctx.beginPath();
-      ctx.moveTo(0, screen.y);
-      ctx.lineTo(width, screen.y);
-      ctx.stroke();
-    }
-
-    // Draw axes
-    ctx.strokeStyle = canvasAxis;
-    ctx.lineWidth = 2;
-    const origin = worldToScreen(0, 0);
-
-    // X axis
-    ctx.beginPath();
-    ctx.moveTo(0, origin.y);
-    ctx.lineTo(width, origin.y);
-    ctx.stroke();
-
-    // Y axis
-    ctx.beginPath();
-    ctx.moveTo(origin.x, 0);
-    ctx.lineTo(origin.x, height);
-    ctx.stroke();
 
     // Draw structural grid lines (stramienen / levels)
     if (structuralGrid.showGridLines) {
@@ -2987,6 +3050,9 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
+    // Deferred connection symbols (drawn after nodes so they appear on top)
+    const deferredConnectionSymbols: { px: number; py: number; type: ConnectionType; beamAngle: number }[] = [];
+
     // Draw beam elements
     for (const beam of mesh.beamElements.values()) {
       const nodes = mesh.getBeamElementNodes(beam);
@@ -3238,22 +3304,25 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         ctx.restore();
       }
 
-      // Draw hinge symbols (small circles) at released beam ends
-      if (beam.endReleases) {
-        ctx.fillStyle = canvasBg;
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2;
-        if (beam.endReleases.startMoment) {
-          ctx.beginPath();
-          ctx.arc(p1.x, p1.y, 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+      // Collect connection symbols for deferred drawing (after nodes)
+      // Symbols are offset along the beam away from the node
+      {
+        const { start: startConn, end: endConn } = getConnectionTypes(beam);
+        const beamAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const offset = 14; // px offset along beam from node center
+        if (startConn !== 'fixed') {
+          deferredConnectionSymbols.push({
+            px: p1.x + Math.cos(beamAngle) * offset,
+            py: p1.y + Math.sin(beamAngle) * offset,
+            type: startConn, beamAngle,
+          });
         }
-        if (beam.endReleases.endMoment) {
-          ctx.beginPath();
-          ctx.arc(p2.x, p2.y, 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+        if (endConn !== 'fixed') {
+          deferredConnectionSymbols.push({
+            px: p2.x - Math.cos(beamAngle) * offset,
+            py: p2.y - Math.sin(beamAngle) * offset,
+            type: endConn, beamAngle,
+          });
         }
       }
 
@@ -4023,6 +4092,46 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
+    // Draw deferred connection symbols next to nodes on the beam
+    for (const sym of deferredConnectionSymbols) {
+      const { px, py, type, beamAngle } = sym;
+      if (type === 'hinge') {
+        // Small filled circle, slightly smaller than node (node=6, this=4)
+        ctx.fillStyle = canvasBg;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (type === 'tension_only') {
+        // + cross symbol
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px - 6, py);
+        ctx.lineTo(px + 6, py);
+        ctx.moveTo(px, py - 6);
+        ctx.lineTo(px, py + 6);
+        ctx.stroke();
+      } else if (type === 'pressure_only') {
+        // Zigzag/spring symbol along beam axis
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(beamAngle);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-8, 0);
+        ctx.lineTo(-5, -5);
+        ctx.lineTo(0, 5);
+        ctx.lineTo(5, -5);
+        ctx.lineTo(8, 0);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // Draw beam mid-gizmo for single selected beam
     if (selection.elementIds.size === 1 && selection.nodeIds.size === 0 && selectedTool === 'select') {
       const selectedBeamId = Array.from(selection.elementIds)[0];
@@ -4278,16 +4387,16 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
-    // Draw navigation cube (top-left overlay)
-    {
+    // Draw navigation cube (top-left overlay) - skip in capture mode
+    if (!captureModeRef.current) {
       const cubeX = 16;
       const cubeY = 16;
       const cubeW = 130;
       const cubeH = 90;
 
       // Background
-      ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillStyle = 'rgba(30, 35, 50, 0.6)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(cubeX, cubeY, cubeW, cubeH, 6);
@@ -5920,7 +6029,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       const node = findNodeAtScreen(x, y);
       if (node) {
         pushUndo();
-        let newConstraints = { x: false, y: false, rotation: false };
+        let newConstraints: INode['constraints'] = { x: false, y: false, rotation: false };
         switch (selectedTool) {
           case 'addPinned':
             newConstraints = { x: true, y: true, rotation: false };
@@ -5935,13 +6044,13 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             newConstraints = { x: true, y: true, rotation: true };
             break;
           case 'addZSpring':
-            newConstraints = { x: false, y: true, rotation: false };
+            newConstraints = { x: false, y: true, rotation: false, springY: 1e6 };
             break;
           case 'addXSpring':
-            newConstraints = { x: true, y: false, rotation: false };
+            newConstraints = { x: true, y: false, rotation: false, springX: 1e6 };
             break;
           case 'addRotSpring':
-            newConstraints = { x: false, y: false, rotation: true };
+            newConstraints = { x: false, y: false, rotation: true, springRot: 1e6 };
             break;
         }
         mesh.updateNode(node.id, { constraints: newConstraints });

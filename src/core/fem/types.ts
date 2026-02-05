@@ -7,6 +7,9 @@ export interface INode {
     x: boolean;
     y: boolean;
     rotation: boolean;  // For frame analysis
+    springX?: number;    // Spring stiffness X direction (N/m) — if set, X-constraint is a spring
+    springY?: number;    // Spring stiffness Y direction (N/m) — if set, Y-constraint is a spring
+    springRot?: number;  // Rotational spring stiffness (Nm/rad) — if set, rotation constraint is a spring
   };
   loads: {
     fx: number;
@@ -93,30 +96,73 @@ export interface IBeamElement extends IElement {
     startShear?: boolean;  // Release shear at start (Tz)
     endShear?: boolean;    // Release shear at end (Tz)
   };
-  // DOF constraints at beam ends - new format with constraint types
-  // ' ' = Free, 'A' = Absolute (fixed), 'P' = Positive only, 'N' = Negative only, 'S' = Spring
-  dofConstraints?: {
-    start: {
-      Tx: IDofConstraint;  // Axial (translation X along beam)
-      Tz: IDofConstraint;  // Shear (translation Z perpendicular)
-      Rx: IDofConstraint;  // Rotation about X (torsion)
-      Rz: IDofConstraint;  // Rotation about Z (bending moment)
+  // Connection type at beam ends (legacy single-value)
+  startConnection?: ConnectionType;
+  endConnection?: ConnectionType;
+  // Per-DOF connection types (overrides startConnection/endConnection when present)
+  startConnections?: IDOFConnections;
+  endConnections?: IDOFConnections;
+}
+
+// Connection type for beam ends
+export type ConnectionType = 'fixed' | 'hinge' | 'tension_only' | 'pressure_only';
+
+// Per-DOF connection types for beam ends
+export interface IDOFConnections {
+  Tx: ConnectionType;  // Axial (along beam)
+  Tz: ConnectionType;  // Transverse (perpendicular)
+  Rx: ConnectionType;  // Rotation about X
+  Rz: ConnectionType;  // Rotation about Z
+}
+
+const DEFAULT_DOF_CONNECTIONS: IDOFConnections = { Tx: 'fixed', Tz: 'fixed', Rx: 'fixed', Rz: 'fixed' };
+
+/**
+ * Get per-DOF connection types for a beam, with backward compatibility.
+ */
+export function getDOFConnectionTypes(beam: IBeamElement): { start: IDOFConnections; end: IDOFConnections } {
+  if (beam.startConnections || beam.endConnections) {
+    return {
+      start: beam.startConnections ?? { ...DEFAULT_DOF_CONNECTIONS },
+      end: beam.endConnections ?? { ...DEFAULT_DOF_CONNECTIONS },
     };
-    end: {
-      Tx: IDofConstraint;
-      Tz: IDofConstraint;
-      Rx: IDofConstraint;
-      Rz: IDofConstraint;
-    };
+  }
+  // Fall back to legacy single connection type (applied to Rz/moment)
+  const conn = getConnectionTypes(beam);
+  return {
+    start: { ...DEFAULT_DOF_CONNECTIONS, Rz: conn.start },
+    end: { ...DEFAULT_DOF_CONNECTIONS, Rz: conn.end },
   };
 }
 
-// DOF constraint type: ' '=Free, 'A'=Absolute, 'P'=Positive, 'N'=Negative, 'S'=Spring
-export type DofConstraintType = ' ' | 'A' | 'P' | 'N' | 'S';
-
-export interface IDofConstraint {
-  type: DofConstraintType;
-  springValue?: number;  // Only used when type='S', in N/m or Nm/rad
+/**
+ * Get connection types for a beam, with backward compatibility from legacy endReleases.
+ * Returns the primary (Rz/moment) connection type for rendering symbols.
+ */
+export function getConnectionTypes(beam: IBeamElement): { start: ConnectionType; end: ConnectionType } {
+  if (beam.startConnections || beam.endConnections) {
+    const start = beam.startConnections ?? DEFAULT_DOF_CONNECTIONS;
+    const end = beam.endConnections ?? DEFAULT_DOF_CONNECTIONS;
+    // Return the first non-fixed DOF, prioritizing Rz (moment)
+    const pickPrimary = (c: IDOFConnections): ConnectionType => {
+      if (c.Rz !== 'fixed') return c.Rz;
+      if (c.Tx !== 'fixed') return c.Tx;
+      if (c.Tz !== 'fixed') return c.Tz;
+      if (c.Rx !== 'fixed') return c.Rx;
+      return 'fixed';
+    };
+    return { start: pickPrimary(start), end: pickPrimary(end) };
+  }
+  if (beam.startConnection || beam.endConnection) {
+    return { start: beam.startConnection ?? 'fixed', end: beam.endConnection ?? 'fixed' };
+  }
+  if (beam.endReleases) {
+    return {
+      start: beam.endReleases.startMoment ? 'hinge' : 'fixed',
+      end: beam.endReleases.endMoment ? 'hinge' : 'fixed',
+    };
+  }
+  return { start: 'fixed', end: 'fixed' };
 }
 
 export interface IPlateEdge {

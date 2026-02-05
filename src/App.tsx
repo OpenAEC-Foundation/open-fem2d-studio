@@ -20,6 +20,7 @@ import { ConcreteCheckPanel } from './components/ConcreteCheckPanel/ConcreteChec
 import { CalculationSettingsDialog } from './components/CalculationSettingsDialog/CalculationSettingsDialog';
 import { FileTabs, FileTab } from './components/FileTabs/FileTabs';
 import { StatusBar } from './components/StatusBar/StatusBar';
+import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { ModelViewer3D } from './components/ModelViewer3D/ModelViewer3D';
 import { ReportPanel } from './components/ReportPanel/ReportPanel';
 import { ReportSettingsDialog } from './components/ReportPanel/ReportSettingsDialog';
@@ -304,7 +305,6 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       </div>
       <Ribbon
         onShowLoadCaseDialog={() => setShowLoadCaseDialog(true)}
-        onShowCombinationDialog={() => setShowCombinationDialog(true)}
         onShowProjectInfoDialog={() => setShowProjectInfoDialog(true)}
         onShowStandardsDialog={() => setShowStandardsDialog(true)}
         onShowGridsDialog={() => setShowGridsDialog(true)}
@@ -339,6 +339,25 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
           ) : (
             <MeshEditor onShowGridsDialog={() => setShowGridsDialog(true)} />
           )}
+          <CommandPalette onToggleDialog={(dialog) => {
+            switch (dialog) {
+              case 'loadCases': setShowLoadCaseDialog(true); break;
+              case 'materials': setShowMaterialsDialog(true); break;
+              case 'projectInfo': setShowProjectInfoDialog(true); break;
+              case 'grids': setShowGridsDialog(true); break;
+              case 'standards': setShowStandardsDialog(true); break;
+              case 'calcSettings': setShowCalculationSettings(true); break;
+              case 'steelCheck': setShowSteelCheck(true); break;
+              case 'solve': handleSolve(); break;
+              case 'selectAll': {
+                // Select all nodes and beams
+                const allNodeIds = new Set(state.mesh.nodes.keys());
+                const allBeamIds = new Set(Array.from(state.mesh.beamElements.keys()));
+                dispatch({ type: 'SET_SELECTION', payload: { nodeIds: allNodeIds, elementIds: allBeamIds, pointLoadNodeIds: new Set(), distLoadBeamIds: new Set(), selectedDistLoadIds: new Set(), plateIds: new Set(), edgeIds: new Set() } });
+                break;
+              }
+            }
+          }} />
         </div>
         {/* Hide Display Settings for report/table/graph tabs */}
         {activeRibbonTab !== 'report' && activeRibbonTab !== 'table' && activeRibbonTab !== 'graph' && (

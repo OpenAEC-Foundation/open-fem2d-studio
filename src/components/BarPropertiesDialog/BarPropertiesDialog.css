@@ -77,6 +77,7 @@
 .bar-props-body-scrollable {
   overflow-y: auto;
   max-height: 60vh;
+  min-height: 420px;
 }
 
 .bar-props-row {
@@ -174,6 +175,35 @@
   border-color: var(--accent);
 }
 
+.bar-props-select-compact {
+  padding: 2px 4px;
+  font-size: 10px;
+  min-width: 0;
+}
+
+/* DOF connection grid (3 columns: label, start, end) */
+.bar-props-dof-grid {
+  display: grid;
+  grid-template-columns: 28px 1fr 1fr;
+  gap: 4px 6px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.bar-props-dof-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.bar-props-dof-label {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--text-primary);
+}
+
 .bar-props-footer {
   display: flex;
   justify-content: flex-end;
@@ -212,167 +242,6 @@
   background: var(--accent-hover);
 }
 
-/* Preset buttons row */
-.bar-props-preset-row {
-  display: flex;
-  gap: 6px;
-  margin: 4px 0 8px;
-}
-
-.bar-props-preset-btn {
-  padding: 4px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.bar-props-preset-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-
-/* End releases grid */
-.bar-props-release-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-}
-
-.bar-props-release-header,
-.bar-props-release-row {
-  display: grid;
-  grid-template-columns: 50px 1fr 1fr 1fr;
-  align-items: center;
-  gap: 2px;
-}
-
-.bar-props-release-col-label {
-  text-align: center;
-  font-weight: 600;
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.bar-props-release-row-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.bar-props-cb-cell {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  cursor: pointer;
-  padding: 3px 0;
-}
-
-.bar-props-cb-cell input[type="checkbox"] {
-  cursor: pointer;
-  width: 14px;
-  height: 14px;
-  accent-color: var(--accent);
-}
-
-/* ── DOF Constraints Grid ──────────────────────────────────── */
-
-.bar-props-dof-legend {
-  display: flex;
-  gap: 10px;
-  font-size: 9px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-
-.bar-props-dof-legend span {
-  padding: 2px 4px;
-  background: var(--bg-tertiary);
-  border-radius: 3px;
-}
-
-.bar-props-dof-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-}
-
-.bar-props-dof-header,
-.bar-props-dof-row {
-  display: grid;
-  grid-template-columns: 40px 1fr 1fr 1fr 1fr;
-  align-items: center;
-  gap: 4px;
-}
-
-.bar-props-dof-header span {
-  text-align: center;
-  font-weight: 600;
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.bar-props-dof-row-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.bar-props-dof-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.bar-props-dof-select {
-  width: 100%;
-  padding: 4px 2px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-family: monospace;
-  text-align: center;
-  cursor: pointer;
-}
-
-.bar-props-dof-select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.bar-props-spring-input {
-  width: 100%;
-  padding: 2px 4px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--accent);
-  border-radius: 3px;
-  color: var(--text-primary);
-  font-size: 10px;
-  font-family: monospace;
-  text-align: center;
-}
-
-.bar-props-spring-input:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-subtle);
-}
 
 /* ── EN 1993-1 Tab Styles ──────────────────────────────────── */
 

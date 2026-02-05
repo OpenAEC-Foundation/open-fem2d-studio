@@ -1,4 +1,4 @@
-import { INode, IBeamElement, IBeamForces, IMaterial } from './types';
+import { INode, IBeamElement, IBeamForces, IMaterial, getConnectionTypes } from './types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -9,6 +9,7 @@ import {
   calculateDistributedLoadVector,
   calculatePartialDistributedLoadVector,
 } from './Beam';
+import { applyEndReleases } from '../solver/Assembler';
 
 const NUM_STATIONS = 21; // Number of points along beam for diagrams
 
@@ -60,15 +61,7 @@ export function calculateBeamInternalForces(
   // Calculate local stiffness matrix
   const Kl = calculateBeamLocalStiffness(L, material.E, element.section.A, element.section.I);
 
-  // Calculate local element forces from displacements: f_local = K_local * d_local
-  const localForces = new Array(6).fill(0);
-  for (let i = 0; i < 6; i++) {
-    for (let j = 0; j < 6; j++) {
-      localForces[i] += Kl.get(i, j) * localDisp[j];
-    }
-  }
-
-  // Subtract equivalent nodal forces to get actual internal forces
+  // Compute equivalent nodal forces from distributed loads
   let equivalentNodalForces: number[];
   if (isTrapezoidal) {
     equivalentNodalForces = isPartial
@@ -80,7 +73,26 @@ export function calculateBeamInternalForces(
     equivalentNodalForces = calculateDistributedLoadVector(L, qxS, qyS);
   }
 
-  // Internal forces = stiffness forces - equivalent nodal forces
+  // Apply static condensation for hinges — must be done BEFORE computing forces.
+  // This ensures moment = 0 at hinged ends and correctly redistributes
+  // fixed-end forces from distributed loads to the remaining DOFs.
+  const { start, end } = getConnectionTypes(element);
+  const releasedLocalDofs: number[] = [];
+  if (start === 'hinge') releasedLocalDofs.push(2); // θ1
+  if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+  if (releasedLocalDofs.length > 0) {
+    applyEndReleases(Kl, releasedLocalDofs, equivalentNodalForces);
+  }
+
+  // Calculate local element forces from displacements: f_local = K_condensed * d_local
+  const localForces = new Array(6).fill(0);
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      localForces[i] += Kl.get(i, j) * localDisp[j];
+    }
+  }
+
+  // Internal forces = condensed stiffness forces - condensed equivalent nodal forces
   for (let i = 0; i < 6; i++) {
     localForces[i] -= equivalentNodalForces[i];
   }

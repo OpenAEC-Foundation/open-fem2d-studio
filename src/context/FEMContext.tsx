@@ -1232,11 +1232,13 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
           );
           if (newBeam) {
             newElementIds.add(newBeam.id);
-            // Copy end releases if present
-            if (clipBeam.endReleases) {
-              state.mesh.updateBeamElement(newBeam.id, {
-                endReleases: { ...clipBeam.endReleases }
-              });
+            // Copy connection types and end releases if present
+            const updates: Partial<typeof clipBeam> = {};
+            if (clipBeam.startConnection) updates.startConnection = clipBeam.startConnection;
+            if (clipBeam.endConnection) updates.endConnection = clipBeam.endConnection;
+            if (clipBeam.endReleases) updates.endReleases = { ...clipBeam.endReleases };
+            if (Object.keys(updates).length > 0) {
+              state.mesh.updateBeamElement(newBeam.id, updates);
             }
           }
         }

@@ -9,7 +9,7 @@
  * - Section properties with proper units and subscripts
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { IBeamSection } from '../../core/fem/types';
 import { rectangularSection, iProfileSection, tubularSection } from '../../core/fem/Beam';
 import {
@@ -45,16 +45,32 @@ interface SectionPropertiesDialogProps {
 type SectionType = 'library' | 'custom' | 'rectangular' | 'i-profile' | 'tube' | 'rhs' | 'channel';
 
 export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: SectionPropertiesDialogProps) {
-  const [name, setName] = useState(section?.name || '');
+  const initialProfileName = section?.name || 'HEA100';
+  const [name, setName] = useState(initialProfileName);
   const [sectionType, setSectionType] = useState<SectionType>('library');
 
   // Library selection state
-  const [selectedCategory, setSelectedCategory] = useState<ProfileCategory>('I-Profiles');
+  const [selectedCategory, setSelectedCategory] = useState<ProfileCategory>(() => {
+    // Find the category of the current profile via its shape name
+    const profile = SteelProfileLibrary.findProfile(initialProfileName);
+    if (profile) {
+      const cats = SteelProfileLibrary.getCategories();
+      for (const cat of cats) {
+        const series = SteelProfileLibrary.getSeriesByCategory(cat);
+        if (series.some(s => s.profiles.some(p => p.name === profile.name))) return cat;
+      }
+    }
+    return 'I-Profiles';
+  });
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProfile, setSelectedProfile] = useState<ProfileEntry | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<ProfileEntry | null>(() => {
+    const profile = SteelProfileLibrary.findProfile(initialProfileName);
+    return profile ?? SteelProfileLibrary.findProfile('HEA100') ?? null;
+  });
 
   // Display options
   const [showNeutralAxes, setShowNeutralAxes] = useState(true);
+  const showFilletLines = false; // Hoeklijnen disabled
   const [rotation, setRotation] = useState(0); // degrees
 
   // Custom section properties (in mm² and mm⁴)
@@ -104,6 +120,14 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
     return profiles.slice(0, 100);
   }, [searchQuery, selectedCategory]);
 
+  // Auto-select first search result when typing
+  useEffect(() => {
+    if (searchQuery.length >= 2 && searchResults.length > 0) {
+      setSelectedProfile(searchResults[0]);
+      setName(searchResults[0].name);
+    }
+  }, [searchResults, searchQuery]);
+
   // Live calculation of section properties
   const computedProps = useMemo((): { geom: SectionGeometry | null; props: SectionPropertiesResult | null; wplX: number; wplY: number } => {
     let geom: SectionGeometry | null = null;
@@ -134,6 +158,14 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
           );
         } else if (shapeName === 'Rectangle') {
           geom = createRectangle(dims.h * 1000, dims.b * 1000);
+        } else if (shapeName.includes('Cold-Formed') || shapeName === 'Sigma' || shapeName === 'LAngle') {
+          // Use channel approximation for cold-formed C/Z/Sigma and angle profiles
+          geom = createChannel(
+            dims.h * 1000,
+            dims.b * 1000,
+            (dims.tw || 0.003) * 1000,
+            (dims.tf || 0.003) * 1000
+          );
         }
       } else {
         switch (sectionType) {
@@ -218,6 +250,48 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
     }
   }, [sectionType, selectedProfile, rectB, rectH, iH, iB, iTw, iTf, iR, tubeD, tubeT, rhsH, rhsB, rhsT, chH, chB, chTw, chTf]);
 
+  // Rotated section properties using Mohr's circle of inertia
+  const rotatedProps = useMemo(() => {
+    if (rotation === 0 || !computedProps.props) return null;
+    const theta = rotation * Math.PI / 180;
+    const Iy = computedProps.props.Ixx_c;  // strong axis
+    const Iz = computedProps.props.Iyy_c;  // weak axis
+
+    // Mohr's circle transformation
+    const Iy_rot = (Iy + Iz) / 2 + (Iy - Iz) / 2 * Math.cos(2 * theta);
+    const Iz_rot = (Iy + Iz) / 2 - (Iy - Iz) / 2 * Math.cos(2 * theta);
+
+    // Rotated bounding box dimensions
+    const hVal = computedProps.props.h;  // profile height in mm
+    const bVal = computedProps.props.b;  // profile width in mm
+    const h_rot = hVal * Math.abs(Math.cos(theta)) + bVal * Math.abs(Math.sin(theta));
+    const b_rot = hVal * Math.abs(Math.sin(theta)) + bVal * Math.abs(Math.cos(theta));
+
+    // Approximate section moduli for rotated section
+    const Wy_rot = h_rot > 0 ? Iy_rot / (h_rot / 2) : 0;
+    const Wz_rot = b_rot > 0 ? Iz_rot / (b_rot / 2) : 0;
+
+    // Approximate plastic moduli (scale proportionally)
+    const Wply_rot = computedProps.wplX > 0 && computedProps.props.Wx > 0
+      ? computedProps.wplX * (Wy_rot / computedProps.props.Wx) : 0;
+    const Wplz_rot = computedProps.wplY > 0 && computedProps.props.Wy > 0
+      ? computedProps.wplY * (Wz_rot / computedProps.props.Wy) : 0;
+
+    return {
+      A: computedProps.props.A, // unchanged
+      Iy: Iy_rot,
+      Iz: Iz_rot,
+      Wy: Wy_rot,
+      Wz: Wz_rot,
+      Wply: Wply_rot,
+      Wplz: Wplz_rot,
+      h: h_rot,
+      b: b_rot,
+      iy: Iy_rot > 0 && computedProps.props.A > 0 ? Math.sqrt(Iy_rot / computedProps.props.A) : 0,
+      iz: Iz_rot > 0 && computedProps.props.A > 0 ? Math.sqrt(Iz_rot / computedProps.props.A) : 0,
+    };
+  }, [rotation, computedProps]);
+
   const handleProfileSelect = useCallback((profile: ProfileEntry) => {
     setSelectedProfile(profile);
     setName(profile.name);
@@ -297,6 +371,19 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
             Wz: parseFloat(I) * 1e-12 * 0.1 / (parseFloat(h) / 4000),
           };
       }
+    }
+
+    // Override with rotated properties when profile is rotated
+    if (rotation !== 0 && rotatedProps) {
+      newSection.I = rotatedProps.Iy * 1e-12;
+      newSection.Iy = rotatedProps.Iy * 1e-12;
+      newSection.Iz = rotatedProps.Iz * 1e-12;
+      newSection.Wy = rotatedProps.Wy * 1e-9;
+      newSection.Wz = rotatedProps.Wz * 1e-9;
+      newSection.Wply = rotatedProps.Wply * 1e-9;
+      newSection.Wplz = rotatedProps.Wplz * 1e-9;
+      newSection.h = rotatedProps.h / 1000;
+      newSection.b = rotatedProps.b / 1000;
     }
 
     onSave(name.trim(), newSection);
@@ -601,6 +688,7 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
                     showDimensions={true}
                     showAxes={true}
                     showNeutralAxes={showNeutralAxes}
+                    showFilletLines={showFilletLines}
                     rotation={rotation}
                   />
                 </div>
@@ -648,6 +736,38 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
                       <span className="prop-value">{computedProps.props.ry.toFixed(1)} mm</span>
                     </div>
                   </div>
+
+                  {rotatedProps && (
+                    <div className="computed-props" style={{ marginTop: '8px' }}>
+                      <div className="computed-props-title">Rotated Properties ({rotation}°)</div>
+                      <div className="computed-props-grid">
+                        <div className="prop-row">
+                          <span className="prop-label">I<sub>y,rot</sub></span>
+                          <span className="prop-value">{formatValue(rotatedProps.Iy, 'mm⁴')}</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label">I<sub>z,rot</sub></span>
+                          <span className="prop-value">{formatValue(rotatedProps.Iz, 'mm⁴')}</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label">W<sub>el,y,rot</sub></span>
+                          <span className="prop-value">{formatValue(rotatedProps.Wy, 'mm³')}</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label">W<sub>el,z,rot</sub></span>
+                          <span className="prop-value">{formatValue(rotatedProps.Wz, 'mm³')}</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label">h<sub>rot</sub></span>
+                          <span className="prop-value">{rotatedProps.h.toFixed(1)} mm</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label">b<sub>rot</sub></span>
+                          <span className="prop-value">{rotatedProps.b.toFixed(1)} mm</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {selectedProfile && (
                     <div className="ifc-info">

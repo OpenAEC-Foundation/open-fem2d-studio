@@ -1,10 +1,10 @@
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { AnalysisType } from '../fem/types';
+import { AnalysisType, getConnectionTypes } from '../fem/types';
 import { calculateElementStiffness, calculateTriangleStiffnessExpanded } from '../fem/Triangle';
 import { calculateQuadStiffness, calculateQuadStiffnessExpanded } from '../fem/Quad4';
 import { calculateDKTStiffness } from '../fem/DKT';
-import { calculateBeamGlobalStiffness, calculateDistributedLoadVector, calculatePartialDistributedLoadVector, calculateTrapezoidalLoadVector, calculatePartialTrapezoidalLoadVector, transformLocalToGlobal, calculateBeamLength, calculateBeamAngle } from '../fem/Beam';
+import { calculateBeamGlobalStiffness, calculateBeamLocalStiffness, calculateDistributedLoadVector, calculatePartialDistributedLoadVector, calculateTrapezoidalLoadVector, calculatePartialTrapezoidalLoadVector, transformLocalToGlobal, calculateBeamLength, calculateBeamAngle } from '../fem/Beam';
 
 /**
  * Collect only the nodes that participate in the current analysis type.
@@ -60,7 +60,8 @@ export function getDofsPerNode(analysisType: AnalysisType): number {
 
 export function assembleGlobalStiffnessMatrix(
   mesh: Mesh,
-  analysisType: AnalysisType
+  analysisType: AnalysisType,
+  axialReleasedBeamIds?: Set<number>
 ): Matrix {
   const dofsPerNode = getDofsPerNode(analysisType);
 
@@ -85,17 +86,17 @@ export function assembleGlobalStiffnessMatrix(
       try {
         const Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
 
-        // Apply static condensation for end releases (hinges)
-        if (beam.endReleases) {
-          const releasedLocalDofs: number[] = [];
-          if (beam.endReleases.startMoment) releasedLocalDofs.push(2); // θ1
-          if (beam.endReleases.endMoment) releasedLocalDofs.push(5); // θ2
-
-          if (releasedLocalDofs.length > 0) {
-            // Apply static condensation: zero out rows and cols for released DOFs
-            // and modify remaining stiffness
-            applyEndReleases(Ke, releasedLocalDofs);
-          }
+        // Apply static condensation for end releases (hinges / axial releases)
+        const { start, end } = getConnectionTypes(beam);
+        const releasedLocalDofs: number[] = [];
+        if (start === 'hinge') releasedLocalDofs.push(2); // θ1
+        if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+        // Axial release for tension/pressure-only beams that are in the released set
+        if (axialReleasedBeamIds?.has(beam.id)) {
+          releasedLocalDofs.push(0, 3); // u1, u2 (axial DOFs)
+        }
+        if (releasedLocalDofs.length > 0) {
+          applyEndReleases(Ke, releasedLocalDofs);
         }
 
         // Get global DOF indices for this beam element
@@ -169,15 +170,16 @@ export function assembleGlobalStiffnessMatrix(
       try {
         const Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
 
-        // Apply static condensation for end releases (hinges)
-        if (beam.endReleases) {
-          const releasedLocalDofs: number[] = [];
-          if (beam.endReleases.startMoment) releasedLocalDofs.push(2);
-          if (beam.endReleases.endMoment) releasedLocalDofs.push(5);
-
-          if (releasedLocalDofs.length > 0) {
-            applyEndReleases(Ke, releasedLocalDofs);
-          }
+        // Apply static condensation for end releases (hinges / axial releases)
+        const { start, end } = getConnectionTypes(beam);
+        const releasedLocalDofs: number[] = [];
+        if (start === 'hinge') releasedLocalDofs.push(2);
+        if (end === 'hinge') releasedLocalDofs.push(5);
+        if (axialReleasedBeamIds?.has(beam.id)) {
+          releasedLocalDofs.push(0, 3);
+        }
+        if (releasedLocalDofs.length > 0) {
+          applyEndReleases(Ke, releasedLocalDofs);
         }
 
         const idx1 = nodeIdToIndex.get(n1.id)!;
@@ -378,6 +380,20 @@ export function assembleForceVector(mesh: Mesh, analysisType: AnalysisType = 'pl
         localForces = calculateDistributedLoadVector(L, qx, qy);
       }
 
+      // Apply force condensation for beam end releases (hinges)
+      // The equivalent nodal forces must be condensed consistently with the stiffness
+      const { start, end } = getConnectionTypes(beam);
+      const releasedLocalDofs: number[] = [];
+      if (start === 'hinge') releasedLocalDofs.push(2); // θ1
+      if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+      if (releasedLocalDofs.length > 0) {
+        const material = mesh.getMaterial(beam.materialId);
+        if (material) {
+          const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+          applyEndReleases(Kl, releasedLocalDofs, localForces);
+        }
+      }
+
       // Transform to global coordinates
       const globalForces = transformLocalToGlobal(localForces, angle);
 
@@ -435,9 +451,10 @@ export function getConstrainedDofs(
 /**
  * Apply static condensation for beam end releases (hinges).
  * Modifies the stiffness matrix in place.
+ * Optionally also condenses a force vector (e.g. equivalent nodal forces).
  * releasedDofs: indices of released DOFs in the 6x6 element matrix
  */
-function applyEndReleases(Ke: Matrix, releasedDofs: number[]): void {
+export function applyEndReleases(Ke: Matrix, releasedDofs: number[], F?: number[]): void {
   const n = 6;
   const retained: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -449,6 +466,16 @@ function applyEndReleases(Ke: Matrix, releasedDofs: number[]): void {
   for (const c of releasedDofs) {
     const kcc = Ke.get(c, c);
     if (Math.abs(kcc) < 1e-20) continue;
+
+    // Condense force vector FIRST (uses original K values before modification)
+    // F_i -= K_ic / K_cc * F_c
+    if (F) {
+      const fc = F[c];
+      for (const i of retained) {
+        F[i] -= Ke.get(i, c) / kcc * fc;
+      }
+      F[c] = 0;
+    }
 
     // Modify retained entries: K_ij -= K_ic * K_cj / K_cc
     for (const i of retained) {

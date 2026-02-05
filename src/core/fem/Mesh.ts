@@ -453,7 +453,7 @@ export class Mesh implements IMesh {
     const newNode = this.addNode(newX, newY);
 
     // Store original beam properties
-    const { materialId, section, distributedLoad, profileName, endReleases } = beam;
+    const { materialId, section, distributedLoad, profileName, endReleases, startConnection, endConnection } = beam;
 
     // Remove the original beam
     this.beamElements.delete(beamId);
@@ -470,13 +470,17 @@ export class Mesh implements IMesh {
       this.updateBeamElement(beam2.id, { distributedLoad: { ...distributedLoad } });
     }
 
-    // Copy end releases if present
-    if (endReleases) {
+    // Copy connection types to the outer ends; inner ends stay fixed
+    if (startConnection || endConnection || endReleases) {
       this.updateBeamElement(beam1.id, {
-        endReleases: { startMoment: endReleases.startMoment, endMoment: false }
+        startConnection: startConnection ?? (endReleases?.startMoment ? 'hinge' : undefined),
+        endConnection: 'fixed',
+        endReleases: endReleases ? { startMoment: endReleases.startMoment, endMoment: false } : undefined,
       });
       this.updateBeamElement(beam2.id, {
-        endReleases: { startMoment: false, endMoment: endReleases.endMoment }
+        startConnection: 'fixed',
+        endConnection: endConnection ?? (endReleases?.endMoment ? 'hinge' : undefined),
+        endReleases: endReleases ? { startMoment: false, endMoment: endReleases.endMoment } : undefined,
       });
     }
 
@@ -511,7 +515,9 @@ export class Mesh implements IMesh {
     const profileName = childBeam1?.profileName ?? childBeam2?.profileName;
     const distributedLoad = childBeam1?.distributedLoad ?? childBeam2?.distributedLoad;
 
-    // Gather end releases from the outer ends
+    // Gather connection types and end releases from the outer ends
+    const startConn = childBeam1?.startConnection;
+    const endConn = childBeam2?.endConnection;
     const startRelease = childBeam1?.endReleases;
     const endRelease = childBeam2?.endReleases;
 
@@ -531,13 +537,17 @@ export class Mesh implements IMesh {
         if (distributedLoad) {
           this.updateBeamElement(newBeam.id, { distributedLoad: { ...distributedLoad } });
         }
+        const updates: Record<string, unknown> = {};
+        if (startConn) updates.startConnection = startConn;
+        if (endConn) updates.endConnection = endConn;
         if (startRelease || endRelease) {
-          this.updateBeamElement(newBeam.id, {
-            endReleases: {
-              startMoment: startRelease?.startMoment ?? false,
-              endMoment: endRelease?.endMoment ?? false
-            }
-          });
+          updates.endReleases = {
+            startMoment: startRelease?.startMoment ?? false,
+            endMoment: endRelease?.endMoment ?? false
+          };
+        }
+        if (Object.keys(updates).length > 0) {
+          this.updateBeamElement(newBeam.id, updates);
         }
       }
     }

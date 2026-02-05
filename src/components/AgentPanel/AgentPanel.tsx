@@ -68,6 +68,8 @@ function buildModelState(state: ReturnType<typeof useFEM>['state']): Record<stri
       profile: b.profileName,
       has_distributed_load: !!b.distributedLoad,
       end_releases: b.endReleases,
+      start_connection: b.startConnection,
+      end_connection: b.endConnection,
     })),
     load_cases: state.loadCases.map(lc => ({
       id: lc.id,

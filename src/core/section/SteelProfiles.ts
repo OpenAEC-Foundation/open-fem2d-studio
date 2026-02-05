@@ -256,9 +256,13 @@ export function createRectangleHollowSection(
   r2: number     // inner corner radius
 ): ProfileGeometry {
   const dr = r1 - r1 / SQRT2;
-  const dri = r2 - r2 / SQRT2;
-  const bi = width - t;
-  const hi = height - t;
+  const bi = width - 2 * t;
+  const hi = height - 2 * t;
+
+  // Clamp inner corner radius so it doesn't exceed available inner space
+  const maxR2 = Math.min(bi / 2, hi / 2);
+  const r2c = Math.min(r2, Math.max(0, maxR2));
+  const dri = r2c - r2c / SQRT2;
 
   // Outer contour
   const p1 = new Point2D(-width / 2 + r1, -height / 2);
@@ -275,10 +279,10 @@ export function createRectangleHollowSection(
   const p12 = new Point2D(p9.x, -p9.y);
 
   // Inner contour
-  const p13 = new Point2D(-bi / 2 + r2, -hi / 2);
-  const p14 = new Point2D(bi / 2 - r2, -hi / 2);
+  const p13 = new Point2D(-bi / 2 + r2c, -hi / 2);
+  const p14 = new Point2D(bi / 2 - r2c, -hi / 2);
   const p15 = new Point2D(bi / 2 - dri, -hi / 2 + dri);
-  const p16 = new Point2D(bi / 2, -hi / 2 + r2);
+  const p16 = new Point2D(bi / 2, -hi / 2 + r2c);
   const p17 = new Point2D(p16.x, -p16.y);
   const p18 = new Point2D(p15.x, -p15.y);
   const p19 = new Point2D(p14.x, -p14.y);

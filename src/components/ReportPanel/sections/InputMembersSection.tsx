@@ -5,6 +5,7 @@
 import React from 'react';
 import { ReportSectionProps } from '../ReportPreview';
 import { calculateBeamLength } from '../../../core/fem/Beam';
+import { getConnectionTypes } from '../../../core/fem/types';
 
 export const InputMembersSection: React.FC<ReportSectionProps> = ({ config, mesh, sectionNumber }) => {
   const beams = Array.from(mesh.beamElements.values());
@@ -40,7 +41,7 @@ export const InputMembersSection: React.FC<ReportSectionProps> = ({ config, mesh
             <th>End Node</th>
             <th>Length (m)</th>
             <th>Profile</th>
-            <th>Releases</th>
+            <th>Connection</th>
           </tr>
         </thead>
         <tbody>
@@ -48,12 +49,13 @@ export const InputMembersSection: React.FC<ReportSectionProps> = ({ config, mesh
             const nodes = mesh.getBeamElementNodes(beam);
             const length = nodes ? calculateBeamLength(nodes[0], nodes[1]) : 0;
 
-            // Format end releases
-            const releases: string[] = [];
-            if (beam.endReleases?.startMoment) releases.push('Mi');
-            if (beam.endReleases?.endMoment) releases.push('Mj');
-            if (beam.endReleases?.startAxial) releases.push('Ni');
-            if (beam.endReleases?.endAxial) releases.push('Nj');
+            const { start, end } = getConnectionTypes(beam);
+            const connLabel = (s: string, e: string) => {
+              const parts: string[] = [];
+              if (s !== 'fixed') parts.push(`i:${s}`);
+              if (e !== 'fixed') parts.push(`j:${e}`);
+              return parts.length > 0 ? parts.join(', ') : '—';
+            };
 
             return (
               <tr key={beam.id}>
@@ -62,7 +64,7 @@ export const InputMembersSection: React.FC<ReportSectionProps> = ({ config, mesh
                 <td className="numeric">{beam.nodeIds[1]}</td>
                 <td className="numeric">{length.toFixed(3)}</td>
                 <td>{beam.profileName || '—'}</td>
-                <td>{releases.length > 0 ? releases.join(', ') : '—'}</td>
+                <td>{connLabel(start, end)}</td>
               </tr>
             );
           })}
@@ -70,7 +72,7 @@ export const InputMembersSection: React.FC<ReportSectionProps> = ({ config, mesh
       </table>
 
       <p style={{ color: '#666', fontSize: '9pt' }}>
-        Releases: Mi/Mj = moment release at start/end, Ni/Nj = axial release at start/end
+        Connection types: fixed, hinge, tension_only, pressure_only (i=start, j=end)
       </p>
     </div>
   );

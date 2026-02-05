@@ -113,7 +113,7 @@ export function ProjectInfoDialog({ onClose }: ProjectInfoDialogProps) {
     <div className="proj-info-overlay" onClick={onClose}>
       <div className="proj-info-dialog" onClick={e => e.stopPropagation()}>
         <div className="proj-info-header">
-          Project Information
+          Project Settings
           <button
             className="proj-info-erp-btn"
             onClick={() => setShowErpSearch(!showErpSearch)}

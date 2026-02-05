@@ -994,6 +994,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
           isNew
           onSave={(name, section) => {
             setCustomSections(prev => [...prev, { name, section }]);
+            mesh.sections.set(name, section);
           }}
           onClose={() => setShowNewSectionDialog(false)}
         />
