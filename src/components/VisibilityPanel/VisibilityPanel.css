@@ -286,6 +286,117 @@
   border-color: var(--border-accent);
 }
 
+/* Layers section */
+.layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.layer-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.layer-row.active {
+  background: rgba(59, 130, 246, 0.15);
+  outline: 1px solid var(--accent);
+}
+
+.layer-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.layer-name {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+
+.layer-icon-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.layer-icon-btn.danger:hover {
+  color: var(--danger);
+}
+
+.layer-add-row {
+  display: flex;
+  gap: 4px;
+}
+
+.layer-add-input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.layer-add-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.layer-add-input::placeholder {
+  color: var(--text-muted);
+}
+
+.layer-add-btn {
+  padding: 4px 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.layer-add-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.layer-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Scrollbar styling */
 .panel-content::-webkit-scrollbar {
   width: 8px;

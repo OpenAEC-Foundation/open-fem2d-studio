@@ -220,3 +220,36 @@
   border: 1px solid var(--border-light);
   font-family: 'JetBrains Mono', monospace;
 }
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  min-width: 160px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.context-menu-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+
+.context-menu-item:hover {
+  background: var(--accent-subtle);
+}
+
+.context-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+}

@@ -107,6 +107,128 @@ function generateTocHTML(data: ReportData): string {
   </div>`;
 }
 
+function generateSummaryHTML(data: ReportData): string {
+  const { config, mesh, result, loadCases } = data;
+  if (!result || result.beamForces.size === 0) {
+    return `<div class="report-page"><h2 class="section-title" style="color:${config.primaryColor}">Executive Summary</h2><p>No analysis results available.</p></div>`;
+  }
+
+  const grade = STEEL_GRADES.find(g => g.name === config.steelGrade) || STEEL_GRADES[2];
+  const fy = grade.fy * 1e6;
+  const gammaM0 = grade.gammaM0;
+
+  // Find max M, V, displacement
+  let maxM = 0, maxMBeam = 0, maxV = 0, maxVBeam = 0;
+  for (const [beamId, forces] of result.beamForces) {
+    const absM = Math.max(Math.abs(forces.maxM), Math.abs(forces.M1), Math.abs(forces.M2));
+    const absV = Math.max(Math.abs(forces.maxV), Math.abs(forces.V1), Math.abs(forces.V2));
+    if (absM > maxM) { maxM = absM; maxMBeam = beamId; }
+    if (absV > maxV) { maxV = absV; maxVBeam = beamId; }
+  }
+
+  const beams = Array.from(mesh.beamElements.values());
+  const dofsPerNode = beams.length > 0 ? 3 : 2;
+  const nodeIds = Array.from(mesh.nodes.keys());
+  let maxDisp = 0, maxDispNode = 0;
+  for (let i = 0; i < nodeIds.length; i++) {
+    const uy = Math.abs(result.displacements[i * dofsPerNode + 1] ?? 0);
+    if (uy > maxDisp) { maxDisp = uy; maxDispNode = nodeIds[i]; }
+  }
+
+  // Moment check
+  const mBeam = mesh.getBeamElement(maxMBeam);
+  let mUC = '—', mStatus = '';
+  if (mBeam) {
+    const Wy = mBeam.section.Wy ?? (mBeam.section.I / (mBeam.section.h / 2));
+    const MRd = (Wy * fy) / gammaM0;
+    const uc = MRd > 0 ? maxM / MRd : 0;
+    mUC = uc.toFixed(2);
+    mStatus = uc <= 1.0 ? 'ok' : 'fail';
+  }
+
+  // Shear check
+  const vBeam = mesh.getBeamElement(maxVBeam);
+  let vUC = '—', vStatus = '';
+  if (vBeam) {
+    const sec = vBeam.section;
+    let Av: number;
+    if (sec.tw && sec.h) {
+      const twM = sec.tw; const tfM = sec.tf ?? 0; const hw = sec.h - 2 * tfM;
+      Av = Math.max(hw * twM, sec.A * 0.5);
+    } else { Av = sec.A * 0.6; }
+    const VRd = (Av * (fy / Math.sqrt(3))) / gammaM0;
+    const uc = VRd > 0 ? maxV / VRd : 0;
+    vUC = uc.toFixed(2);
+    vStatus = uc <= 1.0 ? 'ok' : 'fail';
+  }
+
+  // Displacement check
+  let maxSpan = 0;
+  for (const beam of beams) {
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (nodes) { const L = calculateBeamLength(nodes[0], nodes[1]); if (L > maxSpan) maxSpan = L; }
+  }
+  const dLimit = maxSpan / (config.deflectionLimit || 250);
+  const dUC = dLimit > 0 ? (maxDisp / dLimit).toFixed(2) : '—';
+  const dStatus = dLimit > 0 && maxDisp / dLimit <= 1.0 ? 'ok' : (dLimit > 0 ? 'fail' : '');
+
+  // Collect loads
+  let plRows = '', dlRows = '';
+  for (const lc of loadCases) {
+    for (const pl of lc.pointLoads) {
+      plRows += `<tr><td>${pl.nodeId}</td><td class="numeric">${formatForce(pl.fx)}</td><td class="numeric">${formatForce(pl.fy)}</td><td class="numeric">${formatMoment(pl.mz)}</td></tr>`;
+    }
+    for (const dl of lc.distributedLoads) {
+      dlRows += `<tr><td>${dl.edgeId !== undefined ? `Edge ${dl.edgeId}` : `Beam ${dl.elementId}`}</td><td class="numeric">${formatForce(dl.qy)}</td><td class="numeric">${formatForce(dl.qyEnd ?? dl.qy)}</td></tr>`;
+    }
+  }
+
+  return `
+  <div class="report-page">
+    <h2 class="section-title" style="color:${config.primaryColor}">Executive Summary</h2>
+
+    <div style="padding:12px;border-radius:6px;margin-bottom:20px;background:${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? '#f0fdf4' : '#fef2f2'};border:1px solid ${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? '#bbf7d0' : '#fecaca'};color:${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? '#166534' : '#991b1b'};font-weight:600;font-size:11pt;text-align:center">
+      ${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? 'ALL QUICK CHECKS PASSED' : 'ONE OR MORE CHECKS EXCEED UNITY'}
+    </div>
+
+    <div style="display:flex;gap:12px;margin-bottom:20px">
+      <div style="flex:1;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;border-left:4px solid ${config.primaryColor}">
+        <div style="font-size:8pt;color:#64748b;font-weight:600">MAX BENDING MOMENT</div>
+        <div style="font-size:13pt;font-weight:700;color:#1e293b;margin-top:4px">${formatMoment(maxM)} kNm</div>
+        <div style="font-size:8pt;color:#94a3b8;margin-top:2px">at Beam ${maxMBeam}</div>
+      </div>
+      <div style="flex:1;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;border-left:4px solid ${config.primaryColor}">
+        <div style="font-size:8pt;color:#64748b;font-weight:600">MAX SHEAR FORCE</div>
+        <div style="font-size:13pt;font-weight:700;color:#1e293b;margin-top:4px">${formatForce(maxV)} kN</div>
+        <div style="font-size:8pt;color:#94a3b8;margin-top:2px">at Beam ${maxVBeam}</div>
+      </div>
+      <div style="flex:1;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;border-left:4px solid ${config.primaryColor}">
+        <div style="font-size:8pt;color:#64748b;font-weight:600">MAX DISPLACEMENT</div>
+        <div style="font-size:13pt;font-weight:700;color:#1e293b;margin-top:4px">${formatDisp(maxDisp)} mm</div>
+        <div style="font-size:8pt;color:#94a3b8;margin-top:2px">at Node ${maxDispNode}</div>
+      </div>
+    </div>
+
+    <h3 class="subsection-title" style="color:${config.primaryColor}">Applied Loads</h3>
+    ${plRows ? `<p style="font-weight:600;font-size:9pt;margin-bottom:6px;color:#475569">Point Loads</p>
+    <table class="data-table"><thead><tr style="background:${config.primaryColor}"><th>Node</th><th>Fx (kN)</th><th>Fy (kN)</th><th>Mz (kNm)</th></tr></thead><tbody>${plRows}</tbody></table>` : ''}
+    ${dlRows ? `<p style="font-weight:600;font-size:9pt;margin-bottom:6px;color:#475569">Distributed Loads</p>
+    <table class="data-table"><thead><tr style="background:${config.primaryColor}"><th>Element</th><th>qy Start (kN/m)</th><th>qy End (kN/m)</th></tr></thead><tbody>${dlRows}</tbody></table>` : ''}
+    ${!plRows && !dlRows ? '<p style="color:#666;font-style:italic">No loads applied.</p>' : ''}
+
+    <h3 class="subsection-title" style="color:${config.primaryColor}">Quick Checks (${grade.name}, f<sub>y</sub> = ${grade.fy} MPa)</h3>
+    <table class="data-table">
+      <thead><tr style="background:${config.primaryColor}"><th>Check</th><th>Reference</th><th>Unity Check</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>M<sub>Ed</sub> / M<sub>el,Rd</sub></td><td>EN 1993-1-1, 6.2.5</td><td class="numeric">${mUC}</td><td><span class="status-badge ${mStatus}">${mStatus === 'ok' ? 'OK' : mStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
+        <tr><td>V<sub>Ed</sub> / V<sub>c,Rd</sub></td><td>EN 1993-1-1, 6.2.6</td><td class="numeric">${vUC}</td><td><span class="status-badge ${vStatus}">${vStatus === 'ok' ? 'OK' : vStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
+        <tr><td>&delta;<sub>max</sub> / (L/${config.deflectionLimit || 250})</td><td>SLS limit</td><td class="numeric">${dUC}</td><td><span class="status-badge ${dStatus}">${dStatus === 'ok' ? 'OK' : dStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:8pt;color:#94a3b8;margin-top:16px;font-style:italic">Note: Simplified quick check using elastic section properties. See detailed steel check section for full EN 1993-1-1 verification.</p>
+  </div>`;
+}
+
 function generateInputNodesHTML(data: ReportData, sectionNum: number): string {
   const { config, mesh } = data;
   const nodes = Array.from(mesh.nodes.values());
@@ -309,14 +431,27 @@ function generateInputProfilesHTML(data: ReportData, sectionNum: number): string
     return `<div class="report-page"><h2 class="section-title" style="color:${config.primaryColor}">${sectionNum}. Profile Properties</h2><p>No profiles defined.</p></div>`;
   }
 
-  const profiles = new Map<string, { A: number; I: number; h: number; count: number }>();
+  interface ProfileEntry {
+    A: number; I: number; h: number; count: number;
+    b?: number; tw?: number; tf?: number;
+    Iy?: number; Iz?: number; Wy?: number; Wz?: number;
+    Wply?: number; Wplz?: number; It?: number;
+  }
+  const profiles = new Map<string, ProfileEntry>();
   for (const beam of beams) {
     const key = beam.profileName || `Custom-${beam.section.A.toExponential(2)}`;
     const existing = profiles.get(key);
     if (existing) {
       existing.count++;
     } else {
-      profiles.set(key, { A: beam.section.A, I: beam.section.I, h: beam.section.h, count: 1 });
+      profiles.set(key, {
+        A: beam.section.A, I: beam.section.I, h: beam.section.h, count: 1,
+        b: beam.section.b, tw: beam.section.tw, tf: beam.section.tf,
+        Iy: beam.section.Iy, Iz: beam.section.Iz,
+        Wy: beam.section.Wy, Wz: beam.section.Wz,
+        Wply: beam.section.Wply, Wplz: beam.section.Wplz,
+        It: beam.section.It,
+      });
     }
   }
 
@@ -325,14 +460,18 @@ function generateInputProfilesHTML(data: ReportData, sectionNum: number): string
     <h2 class="section-title" style="color:${config.primaryColor}">${sectionNum}. Profile Properties</h2>
     <p>The following section profiles are used in the structural model.</p>
     <table class="data-table">
-      <thead><tr style="background:${config.primaryColor}"><th>Profile</th><th>A (cm²)</th><th>I (cm⁴)</th><th>h (mm)</th><th>Used</th></tr></thead>
+      <thead><tr style="background:${config.primaryColor}"><th>Profile</th><th>A (cm²)</th><th>I<sub>y</sub> (cm⁴)</th><th>I<sub>z</sub> (cm⁴)</th><th>W<sub>el,y</sub> (cm³)</th><th>W<sub>pl,y</sub> (cm³)</th><th>h (mm)</th><th>Used</th></tr></thead>
       <tbody>
-        ${Array.from(profiles.entries()).map(([name, p]) => `
-          <tr><td>${name}</td><td class="numeric">${(p.A * 1e4).toFixed(2)}</td><td class="numeric">${(p.I * 1e8).toFixed(1)}</td><td class="numeric">${(p.h * 1000).toFixed(0)}</td><td class="numeric">${p.count}×</td></tr>
-        `).join('\n')}
+        ${Array.from(profiles.entries()).map(([name, p]) => {
+          const Iy = ((p.Iy ?? p.I) * 1e8).toFixed(1);
+          const Iz = p.Iz ? (p.Iz * 1e8).toFixed(1) : '—';
+          const Wy = p.Wy ? (p.Wy * 1e6).toFixed(1) : '—';
+          const Wply = p.Wply ? (p.Wply * 1e6).toFixed(1) : '—';
+          return `<tr><td>${name}</td><td class="numeric">${(p.A * 1e4).toFixed(2)}</td><td class="numeric">${Iy}</td><td class="numeric">${Iz}</td><td class="numeric">${Wy}</td><td class="numeric">${Wply}</td><td class="numeric">${(p.h * 1000).toFixed(0)}</td><td class="numeric">${p.count}×</td></tr>`;
+        }).join('\n')}
       </tbody>
     </table>
-    <p style="font-size:9pt;color:#666">A = cross-sectional area, I = second moment of area, h = section height</p>
+    <p style="font-size:9pt;color:#666">A = cross-sectional area, I<sub>y</sub>/I<sub>z</sub> = second moment of area (strong/weak axis), W<sub>el,y</sub> = elastic section modulus, W<sub>pl,y</sub> = plastic section modulus, h = section height</p>
   </div>`;
 }
 
@@ -586,6 +725,7 @@ function getReportFooter(): string {
 const SECTION_GENERATORS: Partial<Record<ReportSectionType, (data: ReportData, sectionNum: number) => string>> = {
   'cover': (data) => generateCoverHTML(data),
   'toc': (data) => generateTocHTML(data),
+  'summary': (data) => generateSummaryHTML(data),
   'input_geometry': (data, num) => generateInputGeometryHTML(data, num),
   'input_nodes': (data, num) => generateInputNodesHTML(data, num),
   'input_members': (data, num) => generateInputMembersHTML(data, num),

@@ -299,6 +299,31 @@ export function assembleGlobalStiffnessMatrix(
     }
   }
 
+  // Add spring support stiffness to diagonal
+  for (const node of mesh.nodes.values()) {
+    const nodeIndex = nodeIdToIndex.get(node.id);
+    if (nodeIndex === undefined) continue;
+    const c = node.constraints;
+    if (dofsPerNode === 3) {
+      if (c.springX != null && c.x) {
+        K.addAt(nodeIndex * 3, nodeIndex * 3, c.springX);
+      }
+      if (c.springY != null && c.y) {
+        K.addAt(nodeIndex * 3 + 1, nodeIndex * 3 + 1, c.springY);
+      }
+      if (c.springRot != null && c.rotation) {
+        K.addAt(nodeIndex * 3 + 2, nodeIndex * 3 + 2, c.springRot);
+      }
+    } else if (dofsPerNode === 2) {
+      if (c.springX != null && c.x) {
+        K.addAt(nodeIndex * 2, nodeIndex * 2, c.springX);
+      }
+      if (c.springY != null && c.y) {
+        K.addAt(nodeIndex * 2 + 1, nodeIndex * 2 + 1, c.springY);
+      }
+    }
+  }
+
   return K;
 }
 
@@ -436,12 +461,13 @@ export function getConstrainedDofs(
         dofs.push(nodeIndex * 3 + 2);
       }
     } else if (dofsPerNode === 3) {
-      if (node.constraints.x) dofs.push(nodeIndex * 3);
-      if (node.constraints.y) dofs.push(nodeIndex * 3 + 1);
-      if (node.constraints.rotation) dofs.push(nodeIndex * 3 + 2);
+      // Spring DOFs are NOT constrained - stiffness is added to K diagonal instead
+      if (node.constraints.x && node.constraints.springX == null) dofs.push(nodeIndex * 3);
+      if (node.constraints.y && node.constraints.springY == null) dofs.push(nodeIndex * 3 + 1);
+      if (node.constraints.rotation && node.constraints.springRot == null) dofs.push(nodeIndex * 3 + 2);
     } else {
-      if (node.constraints.x) dofs.push(nodeIndex * 2);
-      if (node.constraints.y) dofs.push(nodeIndex * 2 + 1);
+      if (node.constraints.x && node.constraints.springX == null) dofs.push(nodeIndex * 2);
+      if (node.constraints.y && node.constraints.springY == null) dofs.push(nodeIndex * 2 + 1);
     }
   }
 

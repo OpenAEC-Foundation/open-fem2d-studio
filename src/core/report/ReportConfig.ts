@@ -7,6 +7,7 @@ export type ReportSectionType =
   // Header & Metadata
   | 'cover'           // Title page with project info
   | 'toc'             // Table of contents
+  | 'summary'         // Executive summary with key results and quick checks
 
   // Input Data
   | 'input_geometry'  // Model geometry graphic
@@ -79,6 +80,7 @@ export const DEFAULT_REPORT_CONFIG: IReportConfig = {
     // Header sections
     { id: 'cover', name: 'Cover Page', category: 'header', enabled: true, order: 0 },
     { id: 'toc', name: 'Table of Contents', category: 'header', enabled: true, order: 1 },
+    { id: 'summary', name: 'Executive Summary', category: 'header', enabled: true, order: 2 },
 
     // Input sections
     { id: 'input_geometry', name: 'Model Geometry', category: 'input', enabled: true, order: 10 },

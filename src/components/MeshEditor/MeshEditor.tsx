@@ -19,6 +19,14 @@ import { checkSteelSection } from '../../core/standards/SteelCheck';
 import { STEEL_GRADES } from '../../core/standards/EurocodeNL';
 import './MeshEditor.css';
 import { IGridLine } from '../../core/fem/StructuralGrid';
+import { useI18n } from '../../i18n/i18n';
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  type: 'node' | 'beam' | 'canvas';
+  id?: number;
+}
 
 interface MeshEditorProps {
   onShowGridsDialog?: () => void;
@@ -78,7 +86,8 @@ function isPolygonSelfIntersecting(polygon: { x: number; y: number }[]): boolean
 }
 
 /**
- * Check if polygon has valid winding (positive area = counter-clockwise)
+ * Compute signed area of a polygon using the trapezoidal/shoelace formula.
+ * In a Y-up coordinate system: negative = CCW, positive = CW.
  */
 function polygonArea(polygon: { x: number; y: number }[]): number {
   let area = 0;
@@ -92,6 +101,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const captureModeRef = useRef(false);
+  const drawRef = useRef<(() => void) | null>(null);
   const { state, dispatch, pushUndo } = useFEM();
   const {
     mesh,
@@ -125,6 +135,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     showLoads,
     showNodeLabels,
     showMemberLabels,
+    showElementTypes,
     forceUnit,
     showDisplacements,
     showDeflections,
@@ -137,7 +148,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     plateBendingMomentUnit,
     plateShearForceUnit,
     plateMembraneForceUnit,
-    finishEditTrigger
+    finishEditTrigger,
+    activeLayerId
   } = state;
 
   const [isDragging, setIsDragging] = useState(false);
@@ -199,7 +211,12 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   // Line load shape handle resizing
   const [resizingLoadBeamId, setResizingLoadBeamId] = useState<number | null>(null);
   const [resizeStartQy, setResizeStartQy] = useState<number>(0);
+  const [resizeStartQyEnd, setResizeStartQyEnd] = useState<number>(0);
   const [resizingLoadEnd, setResizingLoadEnd] = useState<'start' | 'end' | null>(null);
+  // Handle type: 'magnitude' for qy/qyEnd adjustment, 'length' for startT/endT adjustment
+  const [resizingLoadHandleType, setResizingLoadHandleType] = useState<'magnitude' | 'length'>('magnitude');
+  const [resizeStartT, setResizeStartT] = useState<number>(0);
+  const [resizeEndT, setResizeEndT] = useState<number>(1);
 
   // Beam mid-gizmo dragging
   const [draggedBeamId, setDraggedBeamId] = useState<number | null>(null);
@@ -239,6 +256,18 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   const [rotateCenter, setRotateCenter] = useState<{x: number, y: number} | null>(null);
   const [rotateAngleInput, setRotateAngleInput] = useState<string | null>(null);
 
+  // Angle dimension for selected beam (click to edit angle, rotates around first node)
+  const [angleEditBeamId, setAngleEditBeamId] = useState<number | null>(null);
+  const [angleEditInput, setAngleEditInput] = useState<string>('');
+
+  // Polygon corner vertex dragging (drag a polygon vertex without moving mesh nodes until mouseUp)
+  const [polygonCornerDrag, setPolygonCornerDrag] = useState<{
+    plateId: number;
+    vertexIndex: number;
+    nodeId: number;
+    originVertex: { x: number; y: number };
+  } | null>(null);
+
   // Polygon contour edge dragging (grab edge midpoint to move both vertices)
   const [contourEdgeDrag, setContourEdgeDrag] = useState<{
     plateId: number;
@@ -251,6 +280,12 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   // Thermal load dialog
   const [thermalLoadElementIds, setThermalLoadElementIds] = useState<number[]>([]);
   const [thermalLoadPlateId, setThermalLoadPlateId] = useState<number | undefined>(undefined);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // i18n hook
+  const { t } = useI18n();
 
   // Arc discretization helper: semicircular arc from start to end
   const discretizeArc = useCallback((start: {x:number, y:number}, end: {x:number, y:number}, numSegments = 12): {x:number, y:number}[] => {
@@ -284,11 +319,12 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   viewStateRef.current = state.viewState;
 
   // Capture with zoom-to-fit and no grid (for report use)
+  // Uses viewStateRef override to render offscreen without modifying real viewport (prevents flicker)
   const captureCanvasForReport = useCallback((key: string) => {
     const canvas = canvasRef.current;
     if (!canvas || mesh.nodes.size === 0) return;
-    // Prevent re-entrancy (avoid infinite loop when SET_VIEW_STATE re-triggers useEffect)
     if (captureModeRef.current) return;
+
     // Calculate zoom-to-fit bounds
     const nodes = Array.from(mesh.nodes.values());
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -311,17 +347,20 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     const centerY = (minY + maxY) / 2;
     const offsetX = cw / 2 - centerX * newScale;
     const offsetY = ch / 2 + centerY * newScale;
-    // Save current viewport via ref, set capture mode, zoom-to-fit
+
+    // Override viewStateRef temporarily (no dispatch = no React re-render = no flicker)
     const savedViewState = { ...viewStateRef.current };
     captureModeRef.current = true;
-    dispatch({ type: 'SET_VIEW_STATE', payload: { scale: newScale, offsetX, offsetY } });
-    // Wait for redraw, then capture, then restore
-    setTimeout(() => {
-      captureCanvas(key);
-      captureModeRef.current = false;
-      dispatch({ type: 'SET_VIEW_STATE', payload: savedViewState });
-    }, 100);
-  }, [dispatch, captureCanvas, mesh, state.canvasSize]);
+    viewStateRef.current = { scale: newScale, offsetX, offsetY };
+
+    // Synchronously redraw at zoom-to-fit, capture, then restore
+    drawRef.current?.();
+    captureCanvas(key);
+
+    viewStateRef.current = savedViewState;
+    captureModeRef.current = false;
+    drawRef.current?.();
+  }, [captureCanvas, mesh, state.canvasSize]);
 
   // Capture current canvas state on every render (for report use)
   useEffect(() => {
@@ -477,17 +516,20 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     return null;
   }, []);
 
+  // Use viewStateRef so these callbacks are stable and don't trigger draw() recreation on every pan/zoom
   const screenToWorld = useCallback((screenX: number, screenY: number) => {
-    const x = (screenX - viewState.offsetX) / viewState.scale;
-    const y = -(screenY - viewState.offsetY) / viewState.scale;
+    const vs = viewStateRef.current;
+    const x = (screenX - vs.offsetX) / vs.scale;
+    const y = -(screenY - vs.offsetY) / vs.scale;
     return { x, y };
-  }, [viewState]);
+  }, []);
 
   const worldToScreen = useCallback((worldX: number, worldY: number) => {
-    const x = worldX * viewState.scale + viewState.offsetX;
-    const y = -worldY * viewState.scale + viewState.offsetY;
+    const vs = viewStateRef.current;
+    const x = worldX * vs.scale + vs.offsetX;
+    const y = -worldY * vs.scale + vs.offsetY;
     return { x, y };
-  }, [viewState]);
+  }, []);
 
   const snapToGridFn = useCallback((x: number, y: number, useBarSnap?: boolean) => {
     let snappedX = x;
@@ -616,9 +658,9 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       const length = calculateBeamLength(n1, n2);
 
-      // Compute perpendicular in screen space (Y is flipped vs world)
+      // Compute perpendicular in screen space (+ PI/2 = below beam in screen coords)
       const screenAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const perpAngle = screenAngle - Math.PI / 2;
+      const perpAngle = screenAngle + Math.PI / 2;
 
       const offsetX = Math.cos(perpAngle) * dimOffset;
       const offsetY = Math.sin(perpAngle) * dimOffset;
@@ -658,17 +700,17 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
   // Find load resize handle at screen position (for selected beams with distributed loads)
   const findLoadHandleAtScreen = useCallback((screenX: number, screenY: number): {
-    beamId: number; end: 'start' | 'end';
+    beamId: number; end: 'start' | 'end'; handleType: 'magnitude' | 'length';
   } | null => {
-    const handleHitRadius = 8;
+    const handleHitRadius = 10;
 
     // Check both element selection and dist load selection
     const beamIdsToCheck = new Set([...selection.elementIds, ...selection.distLoadBeamIds]);
     for (const beamId of beamIdsToCheck) {
       const beam = mesh.getBeamElement(beamId);
-      if (!beam || !beam.distributedLoad) continue;
+      if (!beam?.distributedLoad) continue;
       const { qy } = beam.distributedLoad;
-      if (qy === 0) continue;
+      const qyEnd = beam.distributedLoad.qyEnd ?? qy;
 
       const nodes = mesh.getBeamElementNodes(beam);
       if (!nodes) continue;
@@ -683,7 +725,12 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       const isGlobal = coordSystem === 'global';
       const screenAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
       const perpAngle = isGlobal ? -Math.PI / 2 : screenAngle - Math.PI / 2;
-      const arrowLength = Math.min(40, Math.abs(qy) / 500 * 40 + 20);
+
+      // Calculate arrow lengths based on qy values
+      const startArrowLen = Math.min(60, Math.abs(qy) / 500 * 40 + 20);
+      const endArrowLen = Math.min(60, Math.abs(qyEnd) / 500 * 40 + 20);
+      const signStart = qy >= 0 ? -1 : 1;
+      const signEnd = qyEnd >= 0 ? -1 : 1;
 
       const loadP1 = {
         x: p1.x + (p2.x - p1.x) * startT,
@@ -694,20 +741,31 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         y: p1.y + (p2.y - p1.y) * endT
       };
 
+      // Magnitude handles (at arrow tips)
       const startTop = {
-        x: loadP1.x + Math.cos(perpAngle) * arrowLength,
-        y: loadP1.y + Math.sin(perpAngle) * arrowLength
+        x: loadP1.x + Math.cos(perpAngle) * startArrowLen * signStart,
+        y: loadP1.y + Math.sin(perpAngle) * startArrowLen * signStart
       };
       const endTop = {
-        x: loadP2.x + Math.cos(perpAngle) * arrowLength,
-        y: loadP2.y + Math.sin(perpAngle) * arrowLength
+        x: loadP2.x + Math.cos(perpAngle) * endArrowLen * signEnd,
+        y: loadP2.y + Math.sin(perpAngle) * endArrowLen * signEnd
       };
 
-      const dStart = Math.sqrt((screenX - startTop.x) ** 2 + (screenY - startTop.y) ** 2);
-      if (dStart < handleHitRadius) return { beamId: beam.id, end: 'start' };
+      // Check magnitude handles first (prioritize over length handles)
+      if (qy !== 0 || qyEnd !== 0) {
+        const dStartMag = Math.sqrt((screenX - startTop.x) ** 2 + (screenY - startTop.y) ** 2);
+        if (dStartMag < handleHitRadius) return { beamId: beam.id, end: 'start', handleType: 'magnitude' };
 
-      const dEnd = Math.sqrt((screenX - endTop.x) ** 2 + (screenY - endTop.y) ** 2);
-      if (dEnd < handleHitRadius) return { beamId: beam.id, end: 'end' };
+        const dEndMag = Math.sqrt((screenX - endTop.x) ** 2 + (screenY - endTop.y) ** 2);
+        if (dEndMag < handleHitRadius) return { beamId: beam.id, end: 'end', handleType: 'magnitude' };
+      }
+
+      // Length handles (on the beam, at loadP1 and loadP2)
+      const dStartLen = Math.sqrt((screenX - loadP1.x) ** 2 + (screenY - loadP1.y) ** 2);
+      if (dStartLen < handleHitRadius) return { beamId: beam.id, end: 'start', handleType: 'length' };
+
+      const dEndLen = Math.sqrt((screenX - loadP2.x) ** 2 + (screenY - loadP2.y) ** 2);
+      if (dEndLen < handleHitRadius) return { beamId: beam.id, end: 'end', handleType: 'length' };
     }
 
     return null;
@@ -1208,10 +1266,11 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       const currentQ = qy + (qyE - qy) * t;
       const currentLen = startLen + (endLen - startLen) * t;
 
-      // Always extend arrow in the positive perpendicular direction (consistent stacking)
-      // The arrow shaft goes from base (on beam/stack) to top (away from beam)
-      const topX = px + Math.cos(perpAngle) * currentLen;
-      const topY = py + Math.sin(perpAngle) * currentLen;
+      // Extend arrow perpendicular to beam; flip direction based on load sign
+      // Negative qy (gravity) → arrows above beam pointing down; Positive qy (upward) → arrows below beam pointing up
+      const signFactor = currentQ >= 0 ? -1 : 1;
+      const topX = px + Math.cos(perpAngle) * currentLen * signFactor;
+      const topY = py + Math.sin(perpAngle) * currentLen * signFactor;
       topPoints.push({ x: topX, y: topY });
 
       // Only draw arrow if load is non-zero at this point
@@ -1292,19 +1351,33 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
     // Draw resize handles on selected beams with loads
     if (isSelected) {
-      const handleSize = 6;
+      const handleSize = 7;
       const half = handleSize / 2;
+
+      // Magnitude handles (square, at arrow tips) - for adjusting qy/qyEnd
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = loadColorVal;
       ctx.lineWidth = 2;
-
-      // Start handle
       ctx.fillRect(startTop.x - half, startTop.y - half, handleSize, handleSize);
       ctx.strokeRect(startTop.x - half, startTop.y - half, handleSize, handleSize);
-
-      // End handle
       ctx.fillRect(endTop.x - half, endTop.y - half, handleSize, handleSize);
       ctx.strokeRect(endTop.x - half, endTop.y - half, handleSize, handleSize);
+
+      // Length handles (circles, on the beam) - for adjusting startT/endT
+      const lengthHandleR = 5;
+      ctx.fillStyle = '#fbbf24'; // yellow/amber to distinguish from magnitude handles
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      // Start length handle
+      ctx.beginPath();
+      ctx.arc(loadP1.x, loadP1.y, lengthHandleR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // End length handle
+      ctx.beginPath();
+      ctx.arc(loadP2.x, loadP2.y, lengthHandleR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
 
     // Draw Qx (axial load) as separate block with parallel arrows in different color
@@ -1394,7 +1467,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   const drawDimensions = useCallback((ctx: CanvasRenderingContext2D) => {
     const _rs = getComputedStyle(document.documentElement);
     const dimColor = _rs.getPropertyValue('--canvas-dim-color').trim() || '#718096';
-    const dimBg = _rs.getPropertyValue('--canvas-bg').trim() || '#1a1a2e';
+    const dimBg = captureModeRef.current ? '#ffffff' : (_rs.getPropertyValue('--canvas-bg').trim() || '#1a1a2e');
     const dimOffset = 30; // px offset perpendicular to beam
 
     for (const beam of mesh.beamElements.values()) {
@@ -1407,9 +1480,9 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       const length = calculateBeamLength(n1, n2);
 
-      // Compute perpendicular direction in screen space (Y is flipped vs world)
+      // Compute perpendicular direction in screen space (+ PI/2 = below beam in screen coords)
       const screenAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const perpAngle = screenAngle - Math.PI / 2;
+      const perpAngle = screenAngle + Math.PI / 2;
 
       const offsetX = Math.cos(perpAngle) * dimOffset;
       const offsetY = Math.sin(perpAngle) * dimOffset;
@@ -1473,7 +1546,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       ctx.closePath();
       ctx.fill();
 
-      // Label centered on dimension line
+      // Label centered on dimension line, rotated parallel to the beam
       const labelText = `${(length * 1000).toFixed(0)} mm`;
       ctx.font = 'bold 11px sans-serif';
       const textMetrics = ctx.measureText(labelText);
@@ -1483,21 +1556,28 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       const midX = (d1.x + d2.x) / 2;
       const midY = (d1.y + d2.y) / 2;
 
-      // Background for readability
+      // Calculate rotation angle for text (keep text readable: flip if upside down)
+      let textAngle = beamScreenAngle;
+      if (textAngle > Math.PI / 2) textAngle -= Math.PI;
+      if (textAngle < -Math.PI / 2) textAngle += Math.PI;
+
+      ctx.save();
+      ctx.translate(midX, midY);
+      ctx.rotate(textAngle);
+
+      // Background for readability (now drawn at origin after translate/rotate)
       ctx.fillStyle = dimBg;
-      ctx.fillRect(midX - textWidth / 2 - 3, midY - textHeight / 2 - 1, textWidth + 6, textHeight + 2);
+      ctx.fillRect(-textWidth / 2 - 3, -textHeight / 2 - 1, textWidth + 6, textHeight + 2);
       ctx.strokeStyle = dimColor;
       ctx.lineWidth = 0.5;
-      ctx.strokeRect(midX - textWidth / 2 - 3, midY - textHeight / 2 - 1, textWidth + 6, textHeight + 2);
+      ctx.strokeRect(-textWidth / 2 - 3, -textHeight / 2 - 1, textWidth + 6, textHeight + 2);
 
       ctx.fillStyle = dimColor;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(labelText, midX, midY);
+      ctx.fillText(labelText, 0, 0);
 
-      // Reset text alignment
-      ctx.textAlign = 'start';
-      ctx.textBaseline = 'alphabetic';
+      ctx.restore();
     }
   }, [mesh, worldToScreen]);
 
@@ -1515,9 +1595,9 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       case 'addXRoller': constraints = { x: true, y: false, rotation: false }; break;
       case 'addZRoller': constraints = { x: false, y: true, rotation: false }; break;
       case 'addFixed': constraints = { x: true, y: true, rotation: true }; break;
-      case 'addZSpring': constraints = { x: false, y: true, rotation: false, springY: 1e6 }; break;
-      case 'addXSpring': constraints = { x: true, y: false, rotation: false, springX: 1e6 }; break;
-      case 'addRotSpring': constraints = { x: false, y: false, rotation: true, springRot: 1e6 }; break;
+      case 'addZSpring': constraints = { x: false, y: true, rotation: false, springY: 1e5 }; break;
+      case 'addXSpring': constraints = { x: true, y: false, rotation: false, springX: 1e5 }; break;
+      case 'addRotSpring': constraints = { x: false, y: false, rotation: true, springRot: 1e5 }; break;
     }
 
     const mockNode: INode = {
@@ -1937,7 +2017,14 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     const canvasGrid = rootStyle.getPropertyValue('--canvas-grid').trim() || '#2a2a4a';
     const canvasAxis = rootStyle.getPropertyValue('--canvas-axis').trim() || '#4a4a6a';
 
-    ctx.fillStyle = canvasBg;
+    // Build set of hidden layer IDs for fast lookup
+    const hiddenLayerIds = new Set<number>();
+    for (const layer of mesh.layers.values()) {
+      if (!layer.visible) hiddenLayerIds.add(layer.id);
+    }
+    const isBeamHidden = (beam: { layerId?: number }) => hiddenLayerIds.has(beam.layerId ?? 0);
+
+    ctx.fillStyle = captureModeRef.current ? '#ffffff' : canvasBg;
     ctx.fillRect(0, 0, width, height);
 
     // Draw grid and axes (skip in capture mode for clean report images)
@@ -2775,11 +2862,16 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           }
         }
       } else {
-        // Rectangular plate: draw bounding box
-        const bl = worldToScreen(plate.x, plate.y);
-        const br = worldToScreen(plate.x + plate.width, plate.y);
-        const tr = worldToScreen(plate.x + plate.width, plate.y + plate.height);
-        const tl = worldToScreen(plate.x, plate.y + plate.height);
+        // Rectangular plate: draw using corner node positions (so contour follows during drag)
+        const [blId, brId, trId, tlId] = plate.cornerNodeIds;
+        const blNode = mesh.getNode(blId);
+        const brNode = mesh.getNode(brId);
+        const trNode = mesh.getNode(trId);
+        const tlNode = mesh.getNode(tlId);
+        const bl = worldToScreen(blNode?.x ?? plate.x, blNode?.y ?? plate.y);
+        const br = worldToScreen(brNode?.x ?? plate.x + plate.width, brNode?.y ?? plate.y);
+        const tr = worldToScreen(trNode?.x ?? plate.x + plate.width, trNode?.y ?? plate.y + plate.height);
+        const tl = worldToScreen(tlNode?.x ?? plate.x, tlNode?.y ?? plate.y + plate.height);
 
         // Light background fill
         ctx.fillStyle = isPlateSelected ? 'rgba(233, 69, 96, 0.08)' : 'rgba(59, 130, 246, 0.05)';
@@ -3055,6 +3147,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
     // Draw beam elements
     for (const beam of mesh.beamElements.values()) {
+      if (isBeamHidden(beam)) continue;
       const nodes = mesh.getBeamElementNodes(beam);
       if (!nodes) continue;
       const [n1, n2] = nodes;
@@ -3128,7 +3221,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       // Draw profile width outline when showProfileNames is enabled and section.h is available
       if (showProfileNames && beam.section && beam.section.h && showMembers) {
-        const hPixels = beam.section.h * viewState.scale; // section height in pixels
+        const hPixels = beam.section.h * viewStateRef.current.scale; // section height in pixels
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const len = Math.sqrt(dx * dx + dy * dy);
@@ -3339,6 +3432,64 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         ctx.textBaseline = 'alphabetic';
       }
 
+      // Draw element type label (colored pill badge)
+      if (showElementTypes && beam.elementType && beam.elementType !== 'none') {
+        const elTypeColorMap: Record<string, string> = {
+          roof_left: '#f59e0b',
+          roof_right: '#f59e0b',
+          flat_roof: '#f59e0b',
+          facade_left: '#3b82f6',
+          facade_right: '#3b82f6',
+          floor: '#10b981',
+          column: '#8b5cf6',
+        };
+        const elTypeLabelMap: Record<string, string> = {
+          roof_left: 'Roof\u2197',
+          roof_right: 'Roof\u2198',
+          flat_roof: 'Flat Rf',
+          facade_left: 'Facade\u2190',
+          facade_right: 'Facade\u2192',
+          floor: 'Floor',
+          column: 'Column',
+        };
+        const elColor = elTypeColorMap[beam.elementType] || '#6b7280';
+        const elLabel = elTypeLabelMap[beam.elementType] || beam.elementType;
+
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        // Offset perpendicular to beam direction
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const perpX = -dy / len;
+        const perpY = dx / len;
+        const offsetPx = 16;
+        const labelX = midX + perpX * offsetPx;
+        const labelY = midY + perpY * offsetPx;
+
+        ctx.font = 'bold 9px sans-serif';
+        const tw = ctx.measureText(elLabel).width + 10;
+        const th = 14;
+        const rx = labelX - tw / 2;
+        const ry = labelY - th / 2;
+
+        // Pill background
+        ctx.fillStyle = elColor;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.roundRect(rx, ry, tw, th, 7);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+
+        // Pill text
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(elLabel, labelX, labelY);
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+      }
+
       // Draw UC badge when results are available
       if (viewMode === 'results' && result && beam.section) {
         const forces = result.beamForces.get(beam.id);
@@ -3467,6 +3618,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         const deflFill = 'rgba(139, 92, 246, 0.25)';
 
         for (const beam of mesh.beamElements.values()) {
+          if (isBeamHidden(beam)) continue;
           const nodes = mesh.getBeamElementNodes(beam);
           if (!nodes) continue;
           const [n1, n2] = nodes;
@@ -3934,10 +4086,34 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     // Prepare set of node IDs to hide in void edit mode (all nodes of the plate being edited)
     const voidEditNodeIds = voidEditPlate ? new Set(voidEditPlate.nodeIds) : null;
 
+    // Precompute set of polygon vertex node IDs (so they are drawn as normal nodes, not small gray plate nodes)
+    const polygonVertexNodeIds = new Set<number>();
+    for (const plate of mesh.plateRegions.values()) {
+      // Include bounding box corner node IDs
+      for (const cid of plate.cornerNodeIds) polygonVertexNodeIds.add(cid);
+      // For polygon plates, also include actual polygon vertex nodes
+      if (plate.isPolygon && plate.polygon) {
+        const bNodeIds = plate.boundaryNodeIds ?? plate.nodeIds;
+        for (let vi = 0; vi < plate.polygon.length; vi++) {
+          const vx = plate.polygon[vi].x;
+          const vy = plate.polygon[vi].y;
+          let bestDist = Infinity;
+          let bestNodeId = -1;
+          for (const bid of bNodeIds) {
+            const bn = mesh.getNode(bid);
+            if (!bn) continue;
+            const d = (bn.x - vx) ** 2 + (bn.y - vy) ** 2;
+            if (d < bestDist) { bestDist = d; bestNodeId = bid; }
+          }
+          if (bestNodeId >= 0) polygonVertexNodeIds.add(bestNodeId);
+        }
+      }
+    }
+
     // Draw nodes
     for (const node of mesh.nodes.values()) {
-      // Skip nodes of the plate being edited (void edit mode) - but allow corner nodes
-      if (voidEditNodeIds && voidEditNodeIds.has(node.id) && !voidEditPlate?.cornerNodeIds.includes(node.id)) continue;
+      // Skip nodes of the plate being edited (void edit mode) - but allow corner/vertex nodes
+      if (voidEditNodeIds && voidEditNodeIds.has(node.id) && !polygonVertexNodeIds.has(node.id)) continue;
 
       let drawNode = node;
 
@@ -3998,8 +4174,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         ctx.stroke();
       }
 
-      // Check if this is a plate mesh node (belongs to a plate region) - used for both node dot and label
-      const isPlateNode = Array.from(mesh.plateRegions.values()).some(pr => pr.nodeIds.includes(node.id) && !pr.cornerNodeIds.includes(node.id));
+      // Check if this is a plate mesh node (belongs to a plate region but NOT a corner/vertex node)
+      const isPlateNode = Array.from(mesh.plateRegions.values()).some(pr => pr.nodeIds.includes(node.id)) && !polygonVertexNodeIds.has(node.id);
 
       // Draw node
       if (showNodes) {
@@ -4097,7 +4273,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       const { px, py, type, beamAngle } = sym;
       if (type === 'hinge') {
         // Small filled circle, slightly smaller than node (node=6, this=4)
-        ctx.fillStyle = canvasBg;
+        ctx.fillStyle = captureModeRef.current ? '#ffffff' : canvasBg;
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -4193,6 +4369,58 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           ctx.moveTo(midSX, midSY + arrowR);
           ctx.lineTo(midSX + 2, midSY + arrowR - 3);
           ctx.stroke();
+
+          // Draw angle dimension arc at first node (showing beam angle relative to horizontal)
+          const beamAngle = Math.atan2(bn2.y - bn1.y, bn2.x - bn1.x);
+          const angleDeg = beamAngle * 180 / Math.PI;
+          const arcRadius = 40;
+
+          // Draw horizontal reference line (dashed)
+          ctx.save();
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(sp1.x, sp1.y);
+          ctx.lineTo(sp1.x + arcRadius + 10, sp1.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Draw arc from 0 to beamAngle (note: canvas y is inverted so we negate)
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          // Canvas arc goes clockwise when angle increases, but our world Y is up
+          // So we draw from 0 to -beamAngle (in screen coords, Y is down)
+          const screenBeamAngle = -beamAngle; // flip for screen coordinates
+          if (screenBeamAngle >= 0) {
+            ctx.arc(sp1.x, sp1.y, arcRadius, 0, screenBeamAngle, false);
+          } else {
+            ctx.arc(sp1.x, sp1.y, arcRadius, screenBeamAngle, 0, false);
+          }
+          ctx.stroke();
+
+          // Draw angle label near the arc
+          const labelAngle = screenBeamAngle / 2;
+          const labelR = arcRadius + 15;
+          const labelX = sp1.x + labelR * Math.cos(labelAngle);
+          const labelY = sp1.y + labelR * Math.sin(labelAngle);
+
+          ctx.font = 'bold 11px sans-serif';
+          ctx.fillStyle = '#fbbf24';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const angleText = `${Math.abs(angleDeg).toFixed(1)}°`;
+          ctx.fillText(angleText, labelX, labelY);
+
+          // Draw small clickable circle at the arc label position
+          ctx.beginPath();
+          ctx.arc(labelX, labelY, 8, 0, Math.PI * 2);
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.restore();
         }
       }
     }
@@ -4338,7 +4566,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           ctx.strokeStyle = reactionColor;
           ctx.fillStyle = reactionColor;
           ctx.lineWidth = 2.5;
-          const dir = Ry > 0 ? -1 : 1; // positive Ry means upward force (screen y inverted)
+          const dir = Ry > 0 ? 1 : -1; // positive Ry: arrow below support pointing up
           // Arrow positioned below/above the node
           const arrowX = screen.x;
           const startY = screen.y + dir * supportOffset + dir * arrowLen;
@@ -4747,6 +4975,58 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       ctx.textBaseline = 'alphabetic';
     }
 
+    // Draw XZ axis indicator in bottom-left corner (skip in capture mode)
+    if (!captureModeRef.current) {
+      const axLen = 36; // axis length in px
+      const axMargin = 20;
+      const axX = axMargin + axLen + 4;
+      const axY = height - axMargin - 4;
+
+      // Arrow: X (horizontal right)
+      ctx.strokeStyle = '#ef4444'; // red for X
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(axX, axY);
+      ctx.lineTo(axX + axLen, axY);
+      ctx.stroke();
+      // arrowhead
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.moveTo(axX + axLen + 1, axY);
+      ctx.lineTo(axX + axLen - 5, axY - 3.5);
+      ctx.lineTo(axX + axLen - 5, axY + 3.5);
+      ctx.fill();
+
+      // Arrow: Z (vertical down = positive Z in structural convention)
+      ctx.strokeStyle = '#3b82f6'; // blue for Z
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(axX, axY);
+      ctx.lineTo(axX, axY - axLen);
+      ctx.stroke();
+      // arrowhead
+      ctx.fillStyle = '#3b82f6';
+      ctx.beginPath();
+      ctx.moveTo(axX, axY - axLen - 1);
+      ctx.lineTo(axX - 3.5, axY - axLen + 5);
+      ctx.lineTo(axX + 3.5, axY - axLen + 5);
+      ctx.fill();
+
+      // Labels
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('X', axX + axLen + 1, axY + 4);
+      ctx.fillStyle = '#3b82f6';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Z', axX - 10, axY - axLen + 2);
+
+      // Reset text alignment
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+    }
+
     // Draw selection box (window vs crossing)
     if (selectionBox) {
       const { startX, startY, endX, endY } = selectionBox;
@@ -4779,10 +5059,10 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     }
 
   }, [
-    mesh, result, selection, viewState, showDeformed, deformationScale,
+    mesh, result, selection, showDeformed, deformationScale,
     showStress, stressType, pendingNodes, selectedTool, gridSize, analysisType,
     showMoment, showShear, showNormal, showDeflections, diagramScale, viewMode, showProfileNames, showReactions, meshVersion,
-    showNodes, showMembers, showSupports, showLoads, showNodeLabels, showMemberLabels, showDimensions, showDisplacements, forceUnit,
+    showNodes, showMembers, showSupports, showLoads, showNodeLabels, showMemberLabels, showElementTypes, showDimensions, showDisplacements, forceUnit,
     isConstraintTool, cursorPos, snapNodeId, hoveredBeamId, hoveredNodeId, hoveredEdgeId, moveMode, rotateCenter, selectionBox, draggedBeamId, draggedNode,
     structuralGrid, loadCases, activeLoadCase,
     platePolygonPoints, plateVoids, plateEditState, currentVoidPoints, voidTargetPlateId, arcMode, discretizeArc,
@@ -4811,6 +5091,14 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   useEffect(() => {
     draw();
   }, [draw]);
+
+  // Keep drawRef in sync so captureCanvasForReport and viewState effect can call draw
+  drawRef.current = draw;
+  // Redraw when viewState changes (viewState is read via ref to keep draw() stable and prevent capture flicker)
+  useEffect(() => {
+    drawRef.current?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewState]);
 
   // Auto-recalculate when geometry changes (meshVersion increments on REFRESH_MESH)
   const autoSolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -5197,6 +5485,24 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         }
         setPendingCommand(null);
         setMoveMode(false);
+        // Remove orphaned nodes created during aborted bar placement
+        if (selectedTool === 'addBeam' && pendingNodes.length > 0) {
+          for (const nodeId of pendingNodes) {
+            const node = mesh.getNode(nodeId);
+            if (node) {
+              // Check if this node is orphaned (not connected to any element)
+              const isConnected = Array.from(mesh.beamElements.values()).some(b =>
+                b.nodeIds.includes(nodeId)
+              ) || Array.from(mesh.elements.values()).some(e =>
+                e.nodeIds.includes(nodeId)
+              );
+              if (!isConnected) {
+                mesh.removeNode(nodeId);
+              }
+            }
+          }
+          dispatch({ type: 'REFRESH_MESH' });
+        }
         // Return to select tool from any placement tool
         if (selectedTool !== 'select') {
           dispatch({ type: 'SET_TOOL', payload: 'select' });
@@ -5650,7 +5956,11 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             pushUndo();
             setResizingLoadBeamId(handle.beamId);
             setResizingLoadEnd(handle.end);
+            setResizingLoadHandleType(handle.handleType);
             setResizeStartQy(beam.distributedLoad.qy);
+            setResizeStartQyEnd(beam.distributedLoad.qyEnd ?? beam.distributedLoad.qy);
+            setResizeStartT(beam.distributedLoad.startT ?? 0);
+            setResizeEndT(beam.distributedLoad.endT ?? 1);
             setIsDragging(true);
             setDragStart({ x: e.clientX, y: e.clientY });
             return;
@@ -5677,6 +5987,23 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
               setBeamDragOrigins({ n1: { x: bn1.x, y: bn1.y }, n2: { x: bn2.x, y: bn2.y } });
               setIsDragging(true);
               setDragStart({ x: e.clientX, y: e.clientY });
+              return;
+            }
+
+            // Check angle label click (circle near the arc)
+            const beamAngle = Math.atan2(bn2.y - bn1.y, bn2.x - bn1.x);
+            const screenBeamAngle = -beamAngle; // flip for screen coordinates
+            const arcRadius = 40;
+            const labelAngle = screenBeamAngle / 2;
+            const labelR = arcRadius + 15;
+            const angleLabelX = sp1.x + labelR * Math.cos(labelAngle);
+            const angleLabelY = sp1.y + labelR * Math.sin(labelAngle);
+            const angleDist = Math.sqrt((x - angleLabelX) ** 2 + (y - angleLabelY) ** 2);
+            if (angleDist <= 12) {
+              // Open angle edit input
+              const currentAngleDeg = beamAngle * 180 / Math.PI;
+              setAngleEditBeamId(selectedBeamId);
+              setAngleEditInput(currentAngleDeg.toFixed(1));
               return;
             }
           }
@@ -5761,6 +6088,43 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           const canDrag = !isPlateNode || plateCornerInfo !== null;
           if (canDrag) {
             pushUndo();
+            // If dragging a polygon vertex, use special mode that only updates contour during drag
+            if (plateCornerInfo?.isPolygonVertex) {
+              const plate = mesh.getPlateRegion(plateCornerInfo.plateId);
+              if (plate?.polygon) {
+                // Find which vertex index this node corresponds to
+                const boundaryNodeIds = plate.boundaryNodeIds ?? plate.nodeIds;
+                let targetVertexIndex = -1;
+                for (let vi = 0; vi < plate.polygon.length; vi++) {
+                  const vx = plate.polygon[vi].x;
+                  const vy = plate.polygon[vi].y;
+                  let bestDist = Infinity;
+                  let bestNodeId = -1;
+                  for (const bid of boundaryNodeIds) {
+                    const bn = mesh.getNode(bid);
+                    if (!bn) continue;
+                    const d = (bn.x - vx) ** 2 + (bn.y - vy) ** 2;
+                    if (d < bestDist) { bestDist = d; bestNodeId = bid; }
+                  }
+                  if (bestNodeId === node.id) {
+                    targetVertexIndex = vi;
+                    break;
+                  }
+                }
+                if (targetVertexIndex >= 0) {
+                  setPolygonCornerDrag({
+                    plateId: plateCornerInfo.plateId,
+                    vertexIndex: targetVertexIndex,
+                    nodeId: node.id,
+                    originVertex: { ...plate.polygon[targetVertexIndex] }
+                  });
+                  setDragNodeOrigin({ x: node.x, y: node.y });
+                  setIsDragging(true);
+                  setDragStart({ x: e.clientX, y: e.clientY });
+                  return;
+                }
+              }
+            }
             setDraggedNode(node.id);
             setDragNodeOrigin({ x: node.x, y: node.y });
             setIsDragging(true);
@@ -5986,7 +6350,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         if (lastUsedSection) {
           // Reuse last section: create beam immediately and continue chain
           pushUndo();
-          mesh.addBeamElement(nodeIds, 1, lastUsedSection.section, lastUsedSection.profileName);
+          const newBeam = mesh.addBeamElement(nodeIds, 1, lastUsedSection.section, lastUsedSection.profileName);
+          if (newBeam) newBeam.layerId = activeLayerId;
           dispatch({ type: 'REFRESH_MESH' });
           dispatch({ type: 'SET_RESULT', payload: null });
           // Continue chain: end node becomes start of next beam
@@ -6044,13 +6409,13 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             newConstraints = { x: true, y: true, rotation: true };
             break;
           case 'addZSpring':
-            newConstraints = { x: false, y: true, rotation: false, springY: 1e6 };
+            newConstraints = { x: false, y: true, rotation: false, springY: 1e5 };
             break;
           case 'addXSpring':
-            newConstraints = { x: true, y: false, rotation: false, springX: 1e6 };
+            newConstraints = { x: true, y: false, rotation: false, springX: 1e5 };
             break;
           case 'addRotSpring':
-            newConstraints = { x: false, y: false, rotation: true, springRot: 1e6 };
+            newConstraints = { x: false, y: false, rotation: true, springRot: 1e5 };
             break;
         }
         mesh.updateNode(node.id, { constraints: newConstraints });
@@ -6436,8 +6801,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           const p2 = worldToScreen(n2.x, n2.y);
           const beamScreenLen = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
 
-          if (resizingLoadEnd && beamScreenLen > 0) {
-            // Dragging start or end handle along beam axis → change startT/endT
+          if (resizingLoadHandleType === 'length' && resizingLoadEnd && beamScreenLen > 0) {
+            // Dragging length handle along beam axis → change startT/endT
             const beamDirX = (p2.x - p1.x) / beamScreenLen;
             const beamDirY = (p2.y - p1.y) / beamScreenLen;
 
@@ -6449,25 +6814,32 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             const proj = (relX * beamDirX + relY * beamDirY) / beamScreenLen;
             const t = Math.max(0, Math.min(1, proj));
 
-            const currentStartT = beam.distributedLoad.startT ?? 0;
-            const currentEndT = beam.distributedLoad.endT ?? 1;
-
             if (resizingLoadEnd === 'start') {
-              const newStartT = Math.min(t, currentEndT - 0.01);
+              const newStartT = Math.min(t, resizeEndT - 0.01);
               beam.distributedLoad = { ...beam.distributedLoad, startT: Math.max(0, newStartT) };
             } else {
-              const newEndT = Math.max(t, currentStartT + 0.01);
+              const newEndT = Math.max(t, resizeStartT + 0.01);
               beam.distributedLoad = { ...beam.distributedLoad, endT: Math.min(1, newEndT) };
             }
             dispatch({ type: 'REFRESH_MESH' });
-          } else {
-            // Fallback: magnitude resize (perpendicular drag)
+          } else if (resizingLoadHandleType === 'magnitude' && resizingLoadEnd) {
+            // Dragging magnitude handle perpendicular to beam → change qy or qyEnd
             const angle = calculateBeamAngle(n1, n2);
             const perpAngle = angle + Math.PI / 2;
+            // Calculate perpendicular distance from drag start
             const perpDist = dx * Math.cos(perpAngle) + dy * Math.sin(perpAngle);
-            const sign = resizeStartQy >= 0 ? 1 : -1;
-            const newQy = resizeStartQy + sign * perpDist * 100;
-            beam.distributedLoad = { ...beam.distributedLoad, qy: newQy };
+
+            if (resizingLoadEnd === 'start') {
+              // Adjust qy (start magnitude)
+              const sign = resizeStartQy >= 0 ? 1 : -1;
+              const newQy = resizeStartQy + sign * perpDist * 100;
+              beam.distributedLoad = { ...beam.distributedLoad, qy: newQy };
+            } else {
+              // Adjust qyEnd (end magnitude) - creates trapezoidal load
+              const sign = resizeStartQyEnd >= 0 ? 1 : -1;
+              const newQyEnd = resizeStartQyEnd + sign * perpDist * 100;
+              beam.distributedLoad = { ...beam.distributedLoad, qyEnd: newQyEnd };
+            }
             dispatch({ type: 'REFRESH_MESH' });
           }
         }
@@ -6529,6 +6901,30 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
           mesh.updateNode(beamNodes[0].id, { x: newN1X + snapDx, y: newN1Y + snapDy });
           mesh.updateNode(beamNodes[1].id, { x: newN2X + snapDx, y: newN2Y + snapDy });
+          dispatch({ type: 'REFRESH_MESH' });
+        }
+      }
+      return;
+    }
+
+    // Polygon corner vertex drag: move only the polygon vertex (contour preview), not the mesh node
+    if (polygonCornerDrag !== null) {
+      const plate = mesh.getPlateRegion(polygonCornerDrag.plateId);
+      if (plate?.polygon) {
+        const world = screenToWorld(mx, my);
+        const snapped = snapToGridFn(world.x, world.y);
+
+        // Check if the new position would create a self-intersecting polygon or flip winding
+        const testPolygon = plate.polygon.map((p, i) =>
+          i === polygonCornerDrag.vertexIndex ? { x: snapped.x, y: snapped.y } : { ...p }
+        );
+        const originalArea = polygonArea(plate.polygon);
+        const newArea = polygonArea(testPolygon);
+        const windingFlipped = (originalArea > 0 && newArea <= 0) || (originalArea < 0 && newArea >= 0) || (originalArea === 0);
+
+        if (!isPolygonSelfIntersecting(testPolygon) && !windingFlipped) {
+          // Valid: update the polygon vertex only (not the mesh node)
+          plate.polygon[polygonCornerDrag.vertexIndex] = { x: snapped.x, y: snapped.y };
           dispatch({ type: 'REFRESH_MESH' });
         }
       }
@@ -6633,12 +7029,16 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
                 }
               }
 
-              // Check if the new polygon would be self-intersecting
+              // Check if the new polygon would be self-intersecting or flip winding
               if (targetVertexIndex >= 0) {
                 const testPolygon = plate.polygon.map((p, i) =>
                   i === targetVertexIndex ? { x: newX, y: newY } : { ...p }
                 );
-                if (isPolygonSelfIntersecting(testPolygon) || polygonArea(testPolygon) >= 0) {
+                const originalArea = polygonArea(plate.polygon);
+                const newArea = polygonArea(testPolygon);
+                // Reject if self-intersecting or if winding direction flipped (sign of area changed)
+                const windingFlipped = (originalArea > 0 && newArea <= 0) || (originalArea < 0 && newArea >= 0) || (originalArea === 0);
+                if (isPolygonSelfIntersecting(testPolygon) || windingFlipped) {
                   // Invalid: polygon would self-intersect or have wrong winding
                   isValidMove = false;
                 } else {
@@ -6865,7 +7265,65 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
       setResizingLoadBeamId(null);
       setResizeStartQy(0);
+      setResizeStartQyEnd(0);
       setResizingLoadEnd(null);
+      setResizingLoadHandleType('magnitude');
+      setResizeStartT(0);
+      setResizeEndT(1);
+    }
+
+    // Polygon corner vertex drag release: update the mesh node and remesh
+    if (polygonCornerDrag !== null) {
+      const plate = mesh.getPlateRegion(polygonCornerDrag.plateId);
+      if (plate?.polygon) {
+        const vi = polygonCornerDrag.vertexIndex;
+        const newX = plate.polygon[vi].x;
+        const newY = plate.polygon[vi].y;
+        const hasDelta = Math.abs(newX - polygonCornerDrag.originVertex.x) > 1e-9 ||
+                         Math.abs(newY - polygonCornerDrag.originVertex.y) > 1e-9;
+
+        if (hasDelta) {
+          // Now update the node position to match the polygon vertex
+          mesh.updateNode(polygonCornerDrag.nodeId, { x: newX, y: newY });
+
+          // Save old edgeId → polygonEdgeIndex mapping before remesh
+          const capturedPlateId = polygonCornerDrag.plateId;
+          const draggedNodeCapture = polygonCornerDrag.nodeId;
+          const oldEdgeMap = new Map<number, number>();
+          for (const edge of mesh.edges.values()) {
+            if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+              oldEdgeMap.set(edge.id, edge.polygonEdgeIndex);
+            }
+          }
+
+          // Async CDT boundary-conforming remesh
+          remeshPolygonPlateRegion(mesh, capturedPlateId, draggedNodeCapture).then(() => {
+            // Re-map distributed load edgeIds
+            const newEdgeByPolyIdx = new Map<number, number>();
+            for (const edge of mesh.edges.values()) {
+              if (edge.plateId === capturedPlateId && edge.polygonEdgeIndex !== undefined) {
+                newEdgeByPolyIdx.set(edge.polygonEdgeIndex, edge.id);
+              }
+            }
+            for (const lc of loadCases) {
+              for (const dl of lc.distributedLoads) {
+                if (dl.edgeId !== undefined && oldEdgeMap.has(dl.edgeId)) {
+                  const polyIdx = oldEdgeMap.get(dl.edgeId)!;
+                  const newId = newEdgeByPolyIdx.get(polyIdx);
+                  if (newId !== undefined) dl.edgeId = newId;
+                }
+              }
+            }
+            dispatch({ type: 'SET_SELECTION', payload: { nodeIds: new Set([draggedNodeCapture]), elementIds: new Set(), pointLoadNodeIds: new Set(), distLoadBeamIds: new Set() } });
+            dispatch({ type: 'REFRESH_MESH' });
+          });
+        }
+      }
+      setPolygonCornerDrag(null);
+      setDragNodeOrigin(null);
+      setIsDragging(false);
+      setDragStart({ x: 0, y: 0 });
+      return;
     }
 
     // Contour edge drag release: regenerate mesh inside the new polygon contour
@@ -7033,6 +7491,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     setDraggedGridLineId(null);
     setDraggedGridLineType(null);
     setContourEdgeDrag(null);
+    setPolygonCornerDrag(null);
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -7172,6 +7631,19 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         onWheel={handleWheel}
         onContextMenu={e => {
           e.preventDefault();
+          // Cancel polygon corner drag — restore vertex to original position
+          if (isDragging && polygonCornerDrag !== null) {
+            const plate = mesh.getPlateRegion(polygonCornerDrag.plateId);
+            if (plate?.polygon) {
+              plate.polygon[polygonCornerDrag.vertexIndex] = { ...polygonCornerDrag.originVertex };
+            }
+            setPolygonCornerDrag(null);
+            setDragNodeOrigin(null);
+            setIsDragging(false);
+            setDragStart({ x: 0, y: 0 });
+            dispatch({ type: 'UNDO' });
+            return;
+          }
           // Cancel contour edge drag — restore both vertices to original positions
           if (isDragging && contourEdgeDrag !== null) {
             const plate = mesh.getPlateRegion(contourEdgeDrag.plateId);
@@ -7218,6 +7690,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             setDraggedGridLineType(null);
             setResizingLoadBeamId(null);
             setGizmoAxis(null);
+            setPolygonCornerDrag(null);
             return;
           }
           // Right-click cancels active tool / mode (like Escape)
@@ -7296,9 +7769,43 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             }
           } else if (pendingNodes.length > 0) {
             // Right-click with pending nodes: cancel the current chain but stay in the tool
+            // Remove orphaned nodes created during aborted bar placement
+            if (selectedTool === 'addBeam') {
+              for (const nodeId of pendingNodes) {
+                const node = mesh.getNode(nodeId);
+                if (node) {
+                  const isConnected = Array.from(mesh.beamElements.values()).some(b =>
+                    b.nodeIds.includes(nodeId)
+                  ) || Array.from(mesh.elements.values()).some(e =>
+                    e.nodeIds.includes(nodeId)
+                  );
+                  if (!isConnected) {
+                    mesh.removeNode(nodeId);
+                  }
+                }
+              }
+              dispatch({ type: 'REFRESH_MESH' });
+            }
             dispatch({ type: 'CLEAR_PENDING_NODES' });
           } else if (selectedTool !== 'select') {
             dispatch({ type: 'SET_TOOL', payload: 'select' });
+          } else {
+            // No pending operation — show context menu
+            const rect = canvasRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const node = findNodeAtScreen(x, y);
+            if (node) {
+              setContextMenu({ x: e.clientX, y: e.clientY, type: 'node', id: node.id });
+              return;
+            }
+            const beam = findBeamAtScreen(x, y);
+            if (beam) {
+              setContextMenu({ x: e.clientX, y: e.clientY, type: 'beam', id: beam.id });
+              return;
+            }
+            setContextMenu({ x: e.clientX, y: e.clientY, type: 'canvas' });
           }
         }}
         style={{
@@ -7535,7 +8042,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
                     const newNode = mesh.addNode(newX, newY);
                     const nodeIds: [number, number] = [pendingNodes[0], newNode.id];
                     if (lastUsedSection) {
-                      mesh.addBeamElement(nodeIds, 1, lastUsedSection.section, lastUsedSection.profileName);
+                      const nb = mesh.addBeamElement(nodeIds, 1, lastUsedSection.section, lastUsedSection.profileName);
+                      if (nb) nb.layerId = activeLayerId;
                       dispatch({ type: 'REFRESH_MESH' });
                       dispatch({ type: 'SET_RESULT', payload: null });
                       dispatch({ type: 'CLEAR_PENDING_NODES' });
@@ -7660,6 +8168,65 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           />
         </div>
       )}
+      {angleEditBeamId !== null && (() => {
+        const beam = mesh.getBeamElement(angleEditBeamId);
+        const beamNodes = beam ? mesh.getBeamElementNodes(beam) : null;
+        if (!beamNodes) return null;
+        const [bn1, bn2] = beamNodes;
+        const sp1 = worldToScreen(bn1.x, bn1.y);
+        const beamAngle = Math.atan2(bn2.y - bn1.y, bn2.x - bn1.x);
+        const screenBeamAngle = -beamAngle;
+        const arcRadius = 40;
+        const labelAngle = screenBeamAngle / 2;
+        const labelR = arcRadius + 15;
+        const inputX = sp1.x + labelR * Math.cos(labelAngle);
+        const inputY = sp1.y + labelR * Math.sin(labelAngle);
+        return (
+          <input
+            className="dimension-input"
+            type="text"
+            autoFocus
+            value={angleEditInput}
+            onChange={(e) => setAngleEditInput(e.target.value)}
+            style={{
+              position: 'absolute',
+              left: inputX - 25,
+              top: inputY - 12,
+              width: 50,
+            }}
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const newAngleDeg = parseFloat(angleEditInput);
+                if (!isNaN(newAngleDeg) && beam && beamNodes) {
+                  pushUndo();
+                  // Calculate current beam length
+                  const dx = bn2.x - bn1.x;
+                  const dy = bn2.y - bn1.y;
+                  const length = Math.sqrt(dx * dx + dy * dy);
+                  // Calculate new position for node 2 (rotate around node 1)
+                  const newAngleRad = newAngleDeg * Math.PI / 180;
+                  const newX2 = bn1.x + length * Math.cos(newAngleRad);
+                  const newY2 = bn1.y + length * Math.sin(newAngleRad);
+                  mesh.updateNode(bn2.id, { x: newX2, y: newY2 });
+                  dispatch({ type: 'REFRESH_MESH' });
+                  dispatch({ type: 'SET_RESULT', payload: null });
+                }
+                setAngleEditBeamId(null);
+                setAngleEditInput('');
+              }
+              if (e.key === 'Escape') {
+                setAngleEditBeamId(null);
+                setAngleEditInput('');
+              }
+            }}
+            onBlur={() => {
+              setAngleEditBeamId(null);
+              setAngleEditInput('');
+            }}
+          />
+        );
+      })()}
       {editingDimension && (
         <input
           className="dimension-input"
@@ -7693,7 +8260,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           isNew
           onSave={(profileName: string, section: IBeamSection) => {
             pushUndo();
-            mesh.addBeamElement(pendingBeamNodeIds, 1, section, profileName);
+            const nb = mesh.addBeamElement(pendingBeamNodeIds, 1, section, profileName);
+            if (nb) nb.layerId = activeLayerId;
             dispatch({ type: 'REFRESH_MESH' });
             dispatch({ type: 'SET_RESULT', payload: null });
             // Remember section for continuous beam drawing
@@ -7778,6 +8346,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             length={length}
             material={beamMaterial}
             beamForces={editBarForces}
+            layers={Array.from(mesh.layers.values())}
             onUpdate={(updates) => {
               pushUndo();
               mesh.updateBeamElement(editingBarId, updates);
@@ -7842,7 +8411,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         return (
           <LineLoadDialog
             initialQx={existingLoad ? existingLoad.qx : 0}
-            initialQy={existingLoad ? existingLoad.qy : 0}
+            initialQy={existingLoad ? existingLoad.qy : -3000}
             initialQxEnd={existingLoad?.qxEnd}
             initialQyEnd={existingLoad?.qyEnd}
             initialStartT={existingLoad?.startT ?? 0}
@@ -8077,6 +8646,111 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
             setThermalLoadElementIds([]);
             setThermalLoadPlateId(undefined);
           }}
+        />
+      )}
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={() => setContextMenu(null)}
+        >
+          {contextMenu.type === 'node' && (
+            <>
+              <div
+                className="context-menu-item"
+                onClick={() => {
+                  setEditingNodeId(contextMenu.id!);
+                  setContextMenu(null);
+                }}
+              >
+                {t('context.properties')}
+              </div>
+              <div
+                className="context-menu-item"
+                onClick={() => {
+                  if (contextMenu.id !== undefined) {
+                    pushUndo();
+                    mesh.removeNode(contextMenu.id);
+                    dispatch({ type: 'REFRESH_MESH' });
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                {t('context.deleteNode')}
+              </div>
+              <div
+                className="context-menu-item"
+                onClick={() => {
+                  if (contextMenu.id !== undefined) {
+                    const node = mesh.getNode(contextMenu.id);
+                    if (node && !node.constraints.x && !node.constraints.y) {
+                      pushUndo();
+                      mesh.updateNode(contextMenu.id, {
+                        constraints: { x: true, y: true, rotation: false }
+                      });
+                      dispatch({ type: 'REFRESH_MESH' });
+                    }
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                {t('context.addSupport')}
+              </div>
+            </>
+          )}
+          {contextMenu.type === 'beam' && (
+            <>
+              <div
+                className="context-menu-item"
+                onClick={() => {
+                  setEditingBarId(contextMenu.id!);
+                  setContextMenu(null);
+                }}
+              >
+                {t('context.properties')}
+              </div>
+              <div
+                className="context-menu-item"
+                onClick={() => {
+                  if (contextMenu.id !== undefined) {
+                    pushUndo();
+                    mesh.removeElement(contextMenu.id);
+                    dispatch({ type: 'REFRESH_MESH' });
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                {t('context.deleteBeam')}
+              </div>
+            </>
+          )}
+          {contextMenu.type === 'canvas' && (
+            <>
+              <div
+                className="context-menu-item"
+                onClick={() => {
+                  const allNodeIds = new Set(Array.from(mesh.nodes.keys()));
+                  const allElementIds = new Set(Array.from(mesh.beamElements.keys()));
+                  dispatch({
+                    type: 'SET_SELECTION',
+                    payload: { nodeIds: allNodeIds, elementIds: allElementIds, pointLoadNodeIds: new Set(), distLoadBeamIds: new Set() }
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                {t('context.selectAll')}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {/* Click outside context menu to close */}
+      {contextMenu && (
+        <div
+          className="context-menu-overlay"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
         />
       )}
     </div>

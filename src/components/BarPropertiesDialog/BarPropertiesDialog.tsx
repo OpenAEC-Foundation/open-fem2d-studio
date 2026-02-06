@@ -1,5 +1,5 @@
 import { useState, useMemo, Fragment } from 'react';
-import { IBeamElement, IBeamSection, IBeamForces, IMaterial, ConnectionType, IDOFConnections, getDOFConnectionTypes } from '../../core/fem/types';
+import { IBeamElement, IBeamSection, IBeamForces, IMaterial, ILayer, ConnectionType, IDOFConnections, getDOFConnectionTypes, StructuralElementType } from '../../core/fem/types';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { checkSteelSection, ISteelCheckResult } from '../../core/standards/SteelCheck';
 import { STEEL_GRADES, ISteelGrade } from '../../core/standards/EurocodeNL';
@@ -15,19 +15,35 @@ const CONNECTION_OPTIONS: { value: ConnectionType; label: string }[] = [
   { value: 'pressure_only', label: 'Pressure only' },
 ];
 
+const ELEMENT_TYPE_OPTIONS: { value: StructuralElementType; label: string }[] = [
+  { value: 'none', label: '— None —' },
+  { value: 'roof_left', label: 'Roof Left' },
+  { value: 'roof_right', label: 'Roof Right' },
+  { value: 'flat_roof', label: 'Flat Roof' },
+  { value: 'facade_left', label: 'Facade Left' },
+  { value: 'facade_right', label: 'Facade Right' },
+  { value: 'floor', label: 'Floor' },
+  { value: 'column', label: 'Column' },
+];
+
 interface BarPropertiesDialogProps {
   beam: IBeamElement;
   length: number;
   material?: IMaterial;
   beamForces?: IBeamForces;
+  layers?: ILayer[];
   onUpdate: (updates: Partial<IBeamElement>) => void;
   onClose: () => void;
 }
 
-export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClose }: BarPropertiesDialogProps) {
+export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate, onClose }: BarPropertiesDialogProps) {
   const [activeTab, setActiveTab] = useState<BarDialogTab>('properties');
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [section, setSection] = useState<IBeamSection>(beam.section);
+  const [elementType, setElementType] = useState<StructuralElementType>(beam.elementType ?? 'none');
+  const [onGrade, setOnGrade] = useState(beam.onGrade?.enabled ?? false);
+  const [gradeK, setGradeK] = useState(String((beam.onGrade?.k ?? 10000) / 1000)); // display in kN/m/m
+  const [layerId, setLayerId] = useState(beam.layerId ?? 0);
 
   // Per-DOF connection type state
   const dofConns = getDOFConnectionTypes(beam);
@@ -79,6 +95,9 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
   const handleApply = () => {
     onUpdate({
       section,
+      elementType: elementType === 'none' ? undefined : elementType,
+      onGrade: onGrade ? { enabled: true, k: (parseFloat(gradeK) || 10) * 1000 } : undefined,
+      layerId,
       startConnections: startConns,
       endConnections: endConns,
       // Also update legacy formats for backward compatibility
@@ -124,6 +143,32 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
         <span className="bar-props-label">Nodes</span>
         <span className="bar-props-value">{beam.nodeIds[0]} — {beam.nodeIds[1]}</span>
       </div>
+      <div className="bar-props-row">
+        <span className="bar-props-label">Element Type</span>
+        <select
+          className="bar-props-select"
+          value={elementType}
+          onChange={e => setElementType(e.target.value as StructuralElementType)}
+        >
+          {ELEMENT_TYPE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+      {layers && layers.length > 1 && (
+        <div className="bar-props-row">
+          <span className="bar-props-label">Layer</span>
+          <select
+            className="bar-props-select"
+            value={layerId}
+            onChange={e => setLayerId(parseInt(e.target.value))}
+          >
+            {layers.map(l => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Section - simplified: Name, A, Iy only */}
       <div className="bar-props-section-title">Section</div>
@@ -144,6 +189,25 @@ export function BarPropertiesDialog({ beam, length, beamForces, onUpdate, onClos
       <button className="bar-props-change-btn" onClick={() => setShowSectionPicker(true)}>
         Change Section...
       </button>
+
+      {/* Beam on elastic foundation */}
+      <div className="bar-props-section-title">Foundation</div>
+      <label className="bar-props-toggle">
+        <input type="checkbox" checked={onGrade} onChange={e => setOnGrade(e.target.checked)} />
+        Beam on grade (elastic foundation)
+      </label>
+      {onGrade && (
+        <div className="bar-props-row">
+          <span className="bar-props-label">k (kN/m/m)</span>
+          <input
+            className="bar-props-input"
+            type="text"
+            value={gradeK}
+            onChange={e => setGradeK(e.target.value)}
+            onFocus={e => e.target.select()}
+          />
+        </div>
+      )}
 
       {/* Connection Type - per DOF */}
       <div className="bar-props-section-title">Connection Type</div>

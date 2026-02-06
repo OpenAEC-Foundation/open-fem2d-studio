@@ -32,8 +32,55 @@ import {
   createRectangle as createRectangleProfile,
 } from '../../core/section/SteelProfiles';
 import { SteelProfileLibrary, ProfileEntry, ProfileCategory } from '../../core/section/SteelProfileLibrary';
-import { ProfileSvgPreview } from './ProfileSvgPreview';
+import { ProfileSvgPreview, DimensionKey } from './ProfileSvgPreview';
+import { useI18n } from '../../i18n/i18n';
+import timberData from '../../data/timberprofile.json';
 import './SectionPropertiesDialog.css';
+
+type MaterialTab = 'steel' | 'concrete' | 'timber' | 'composite';
+
+// Timber profile types
+interface TimberProfileData {
+  shape_coords: number[];
+  shape_name: string;
+  synonyms: string[];
+  area: number;
+  iy: number;
+  iz: number;
+  wy: number;
+  wz: number;
+}
+
+interface TimberProfileEntry {
+  name: string;
+  data: TimberProfileData;
+}
+
+// Parse timber data from JSON
+function getTimberProfiles(): TimberProfileEntry[] {
+  const profiles: TimberProfileEntry[] = [];
+  for (const entry of timberData as unknown as Record<string, TimberProfileData[]>[]) {
+    for (const [name, dataArr] of Object.entries(entry)) {
+      if (dataArr && dataArr.length > 0) {
+        profiles.push({ name, data: dataArr[0] });
+      }
+    }
+  }
+  return profiles;
+}
+
+// Timber categories derived from name suffixes
+type TimberCategory = 'SLS' | 'EU' | 'CLS' | 'GL';
+
+function getTimberCategory(name: string): TimberCategory {
+  if (name.endsWith(' SLS')) return 'SLS';
+  if (name.endsWith(' EU')) return 'EU';
+  if (name.endsWith(' CLS')) return 'CLS';
+  if (name.endsWith(' GL')) return 'GL';
+  return 'GL';
+}
+
+const TIMBER_CATEGORIES: TimberCategory[] = ['SLS', 'EU', 'CLS', 'GL'];
 
 interface SectionPropertiesDialogProps {
   section?: { name: string; section: IBeamSection };
@@ -45,9 +92,23 @@ interface SectionPropertiesDialogProps {
 type SectionType = 'library' | 'custom' | 'rectangular' | 'i-profile' | 'tube' | 'rhs' | 'channel';
 
 export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: SectionPropertiesDialogProps) {
+  const { t } = useI18n();
   const initialProfileName = section?.name || 'HEA100';
   const [name, setName] = useState(initialProfileName);
   const [sectionType, setSectionType] = useState<SectionType>('library');
+  const [materialTab, setMaterialTab] = useState<MaterialTab>('steel');
+
+  // Concrete section state
+  const [concreteShape, setConcreteShape] = useState<'rectangular' | 'circular'>('rectangular');
+  const [concB, setConcB] = useState('300');
+  const [concH, setConcH] = useState('500');
+  const [concD, setConcD] = useState('400');
+
+  // Timber state
+  const allTimberProfiles = useMemo(() => getTimberProfiles(), []);
+  const [timberCategory, setTimberCategory] = useState<TimberCategory>('GL');
+  const [timberSearch, setTimberSearch] = useState('');
+  const [selectedTimber, setSelectedTimber] = useState<TimberProfileEntry | null>(null);
 
   // Library selection state
   const [selectedCategory, setSelectedCategory] = useState<ProfileCategory>(() => {
@@ -127,6 +188,22 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
       setName(searchResults[0].name);
     }
   }, [searchResults, searchQuery]);
+
+  // Timber profile filtering
+  const timberResults = useMemo(() => {
+    if (timberSearch.length >= 2) {
+      const q = timberSearch.toLowerCase();
+      return allTimberProfiles.filter(p => p.name.toLowerCase().includes(q)).slice(0, 100);
+    }
+    return allTimberProfiles.filter(p => getTimberCategory(p.name) === timberCategory).slice(0, 100);
+  }, [timberSearch, timberCategory, allTimberProfiles]);
+
+  useEffect(() => {
+    if (timberSearch.length >= 2 && timberResults.length > 0) {
+      setSelectedTimber(timberResults[0]);
+      setName(timberResults[0].name);
+    }
+  }, [timberResults, timberSearch]);
 
   // Live calculation of section properties
   const computedProps = useMemo((): { geom: SectionGeometry | null; props: SectionPropertiesResult | null; wplX: number; wplY: number } => {
@@ -297,10 +374,106 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
     setName(profile.name);
   }, []);
 
+  /** Handle dimension edit from ProfileSvgPreview - clone to custom parametric profile */
+  const handleDimensionEdit = useCallback((key: DimensionKey, value: number) => {
+    // Get current profile dimensions
+    let curH = 200, curB = 100, curTw = 6, curTf = 10, curR = 12;
+    const baseName = name.replace(/_custom$/, '');
+
+    if (sectionType === 'library' && selectedProfile) {
+      const dims = SteelProfileLibrary.getBeamSection(selectedProfile);
+      curH = dims.h * 1000;
+      curB = (dims.b ?? 0.1) * 1000;
+      curTw = (dims.tw ?? 0.006) * 1000;
+      curTf = (dims.tf ?? 0.01) * 1000;
+      // Estimate fillet radius from profile shape
+      const sc = selectedProfile.data.shape_coords;
+      if (selectedProfile.data.shape_name.includes('I-shape') && sc.length >= 5) {
+        curR = sc[4]; // r value for I-shapes
+      }
+    } else if (sectionType === 'i-profile') {
+      curH = parseFloat(iH) || 200;
+      curB = parseFloat(iB) || 100;
+      curTw = parseFloat(iTw) || 6;
+      curTf = parseFloat(iTf) || 10;
+      curR = parseFloat(iR) || 12;
+    } else if (sectionType === 'rectangular') {
+      curH = parseFloat(rectH) || 200;
+      curB = parseFloat(rectB) || 100;
+    }
+
+    // Apply the edited dimension
+    if (key === 'h') curH = value;
+    if (key === 'b') curB = value;
+    if (key === 'tw') curTw = value;
+    if (key === 'tf') curTf = value;
+
+    // Switch to i-profile parametric mode with updated values
+    setSectionType('i-profile');
+    setIH(curH.toFixed(1));
+    setIB(curB.toFixed(1));
+    setITw(curTw.toFixed(1));
+    setITf(curTf.toFixed(1));
+    setIR(curR.toFixed(1));
+    setName(baseName + '_custom');
+  }, [sectionType, selectedProfile, name, iH, iB, iTw, iTf, iR, rectH, rectB]);
+
+  const handleTimberSelect = useCallback((timber: TimberProfileEntry) => {
+    setSelectedTimber(timber);
+    setName(timber.name);
+  }, []);
+
   const handleSave = () => {
     if (!name.trim() || !onSave) return;
 
     let newSection: IBeamSection;
+
+    // Handle concrete tab
+    if (materialTab === 'concrete') {
+      if (concreteShape === 'rectangular') {
+        const bMm = parseFloat(concB) || 300;
+        const hMm = parseFloat(concH) || 500;
+        newSection = rectangularSection(bMm / 1000, hMm / 1000);
+      } else {
+        const dMm = parseFloat(concD) || 400;
+        const r = dMm / 2;
+        const areaVal = Math.PI * r * r; // mm²
+        const iyVal = Math.PI * Math.pow(r, 4) / 4; // mm⁴
+        newSection = {
+          A: areaVal * 1e-6,
+          I: iyVal * 1e-12,
+          h: dMm / 1000,
+          b: dMm / 1000,
+          Iy: iyVal * 1e-12,
+          Iz: iyVal * 1e-12,
+          Wy: iyVal / r * 1e-9,
+          Wz: iyVal / r * 1e-9,
+        };
+      }
+      onSave(name.trim(), newSection);
+      onClose();
+      return;
+    }
+
+    // Handle timber tab
+    if (materialTab === 'timber' && selectedTimber) {
+      const td = selectedTimber.data;
+      const hMm = td.shape_coords[0];
+      const bMm = td.shape_coords[1];
+      newSection = {
+        A: td.area * 1e-6,
+        I: td.iy * 1e-12,
+        h: hMm / 1000,
+        b: bMm / 1000,
+        Iy: td.iy * 1e-12,
+        Iz: td.iz * 1e-12,
+        Wy: td.wy * 1e-9,
+        Wz: td.wz * 1e-9,
+      };
+      onSave(name.trim(), newSection);
+      onClose();
+      return;
+    }
 
     if (sectionType === 'library' && selectedProfile && computedProps.props) {
       const { props, wplX, wplY } = computedProps;
@@ -398,15 +571,272 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
     return `${val.toFixed(decimals)} ${unit}`;
   };
 
+  // Concrete section SVG preview
+  const concreteSvgPreview = useMemo(() => {
+    if (materialTab !== 'concrete') return null;
+    const svgW = 200;
+    const svgH = 200;
+    const pad = 30;
+
+    if (concreteShape === 'rectangular') {
+      const bMm = parseFloat(concB) || 300;
+      const hMm = parseFloat(concH) || 500;
+      const maxDim = Math.max(bMm, hMm);
+      const scale = (Math.min(svgW, svgH) - 2 * pad) / maxDim;
+      const rw = bMm * scale;
+      const rh = hMm * scale;
+      const rx = (svgW - rw) / 2;
+      const ry = (svgH - rh) / 2;
+      return (
+        <svg className="concrete-preview-svg" width={svgW} height={svgH}>
+          <rect x={rx} y={ry} width={rw} height={rh} fill="none" stroke="var(--text-secondary, #a0a0c0)" strokeWidth={2} />
+          {/* Dimension lines */}
+          <line x1={rx} y1={ry + rh + 15} x2={rx + rw} y2={ry + rh + 15} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
+          <text x={rx + rw / 2} y={ry + rh + 25} textAnchor="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{bMm} mm</text>
+          <line x1={rx + rw + 15} y1={ry} x2={rx + rw + 15} y2={ry + rh} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
+          <text x={rx + rw + 20} y={ry + rh / 2} textAnchor="start" dominantBaseline="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{hMm} mm</text>
+        </svg>
+      );
+    } else {
+      const dMm = parseFloat(concD) || 400;
+      const scale = (Math.min(svgW, svgH) - 2 * pad) / dMm;
+      const cr = (dMm * scale) / 2;
+      return (
+        <svg className="concrete-preview-svg" width={svgW} height={svgH}>
+          <circle cx={svgW / 2} cy={svgH / 2} r={cr} fill="none" stroke="var(--text-secondary, #a0a0c0)" strokeWidth={2} />
+          <line x1={svgW / 2 - cr} y1={svgH / 2 + cr + 15} x2={svgW / 2 + cr} y2={svgH / 2 + cr + 15} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
+          <text x={svgW / 2} y={svgH / 2 + cr + 25} textAnchor="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{dMm} mm</text>
+        </svg>
+      );
+    }
+  }, [materialTab, concreteShape, concB, concH, concD]);
+
+  // Timber section properties for display
+  const timberProps = useMemo(() => {
+    if (!selectedTimber) return null;
+    const td = selectedTimber.data;
+    return {
+      A: td.area,
+      Iy: td.iy,
+      Iz: td.iz,
+      Wy: td.wy,
+      Wz: td.wz,
+      h: td.shape_coords[0],
+      b: td.shape_coords[1],
+    };
+  }, [selectedTimber]);
+
+  // Render concrete tab content
+  const renderConcreteContent = () => (
+    <div className="section-dialog-layout">
+      <div className="section-input-panel">
+        <div className="section-edit">
+          <div className="form-group">
+            <label>{t('sectionProps.name')}</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. C30/37 300x500"
+            />
+          </div>
+          <div className="concrete-section-inputs">
+            <div className="form-group">
+              <label>{t('sectionProps.concreteShape')}</label>
+              <select value={concreteShape} onChange={e => setConcreteShape(e.target.value as 'rectangular' | 'circular')}>
+                <option value="rectangular">{t('sectionProps.rectangular')}</option>
+                <option value="circular">{t('sectionProps.circular')}</option>
+              </select>
+            </div>
+            {concreteShape === 'rectangular' && (
+              <div className="form-row">
+                <div className="form-group half">
+                  <label>{t('sectionProps.width')}</label>
+                  <input type="number" value={concB} onChange={e => setConcB(e.target.value)} />
+                </div>
+                <div className="form-group half">
+                  <label>{t('sectionProps.height_mm')}</label>
+                  <input type="number" value={concH} onChange={e => setConcH(e.target.value)} />
+                </div>
+              </div>
+            )}
+            {concreteShape === 'circular' && (
+              <div className="form-group">
+                <label>{t('sectionProps.diameter')}</label>
+                <input type="number" value={concD} onChange={e => setConcD(e.target.value)} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="section-preview-panel">
+        {concreteSvgPreview}
+        <div className="computed-props">
+          <div className="computed-props-title">Section Properties</div>
+          <div className="computed-props-grid">
+            {concreteShape === 'rectangular' ? (() => {
+              const bMm = parseFloat(concB) || 300;
+              const hMm = parseFloat(concH) || 500;
+              const areaVal = bMm * hMm;
+              const iyVal = bMm * Math.pow(hMm, 3) / 12;
+              const izVal = hMm * Math.pow(bMm, 3) / 12;
+              return (
+                <>
+                  <div className="prop-row"><span className="prop-label">A</span><span className="prop-value">{formatValue(areaVal, 'mm\u00B2')}</span></div>
+                  <div className="prop-row"><span className="prop-label">I<sub>y</sub></span><span className="prop-value">{formatValue(iyVal, 'mm\u2074')}</span></div>
+                  <div className="prop-row"><span className="prop-label">I<sub>z</sub></span><span className="prop-value">{formatValue(izVal, 'mm\u2074')}</span></div>
+                  <div className="prop-row"><span className="prop-label">W<sub>el,y</sub></span><span className="prop-value">{formatValue(iyVal / (hMm / 2), 'mm\u00B3')}</span></div>
+                  <div className="prop-row"><span className="prop-label">W<sub>el,z</sub></span><span className="prop-value">{formatValue(izVal / (bMm / 2), 'mm\u00B3')}</span></div>
+                </>
+              );
+            })() : (() => {
+              const dMm = parseFloat(concD) || 400;
+              const r = dMm / 2;
+              const areaVal = Math.PI * r * r;
+              const iyVal = Math.PI * Math.pow(r, 4) / 4;
+              return (
+                <>
+                  <div className="prop-row"><span className="prop-label">A</span><span className="prop-value">{formatValue(areaVal, 'mm\u00B2')}</span></div>
+                  <div className="prop-row"><span className="prop-label">I<sub>y</sub></span><span className="prop-value">{formatValue(iyVal, 'mm\u2074')}</span></div>
+                  <div className="prop-row"><span className="prop-label">I<sub>z</sub></span><span className="prop-value">{formatValue(iyVal, 'mm\u2074')}</span></div>
+                  <div className="prop-row"><span className="prop-label">W<sub>el</sub></span><span className="prop-value">{formatValue(iyVal / r, 'mm\u00B3')}</span></div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render timber tab content
+  const renderTimberContent = () => (
+    <div className="section-dialog-layout">
+      <div className="section-input-panel">
+        <div className="section-edit">
+          <div className="form-group">
+            <label>{t('sectionProps.name')}</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. 100x300 GL"
+            />
+          </div>
+          <div className="timber-selector">
+            <div className="timber-header">
+              <span className="timber-count">{allTimberProfiles.length} profiles available</span>
+            </div>
+            <div className="form-group">
+              <label>{t('sectionProps.timberSearch')}</label>
+              <input
+                type="text"
+                value={timberSearch}
+                onChange={e => setTimberSearch(e.target.value)}
+                placeholder="e.g. 100x300, GL..."
+              />
+            </div>
+            {!timberSearch && (
+              <div className="form-group">
+                <label>{t('sectionProps.timberCategory')}</label>
+                <select value={timberCategory} onChange={e => setTimberCategory(e.target.value as TimberCategory)}>
+                  {TIMBER_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="profile-list">
+              {timberResults.map(tp => (
+                <div
+                  key={tp.name}
+                  className={`profile-item ${selectedTimber?.name === tp.name ? 'selected' : ''}`}
+                  onClick={() => handleTimberSelect(tp)}
+                >
+                  <span className="profile-name">{tp.name}</span>
+                  <span className="profile-type">{tp.data.shape_coords[0]}x{tp.data.shape_coords[1]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="section-preview-panel">
+        {/* Timber rectangle preview */}
+        {selectedTimber && (() => {
+          const hMm = selectedTimber.data.shape_coords[0];
+          const bMm = selectedTimber.data.shape_coords[1];
+          const svgW = 200;
+          const svgH = 200;
+          const pad = 30;
+          const maxDim = Math.max(hMm, bMm);
+          const scale = (Math.min(svgW, svgH) - 2 * pad) / maxDim;
+          const rw = bMm * scale;
+          const rh = hMm * scale;
+          const rx = (svgW - rw) / 2;
+          const ry = (svgH - rh) / 2;
+          return (
+            <svg className="concrete-preview-svg" width={svgW} height={svgH}>
+              <rect x={rx} y={ry} width={rw} height={rh} fill="none" stroke="#C4A35A" strokeWidth={2} />
+              <line x1={rx} y1={ry + rh + 15} x2={rx + rw} y2={ry + rh + 15} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
+              <text x={rx + rw / 2} y={ry + rh + 25} textAnchor="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{bMm} mm</text>
+              <line x1={rx + rw + 15} y1={ry} x2={rx + rw + 15} y2={ry + rh} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
+              <text x={rx + rw + 20} y={ry + rh / 2} textAnchor="start" dominantBaseline="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{hMm} mm</text>
+            </svg>
+          );
+        })()}
+        {timberProps && (
+          <div className="computed-props">
+            <div className="computed-props-title">Section Properties</div>
+            <div className="computed-props-grid">
+              <div className="prop-row"><span className="prop-label">A</span><span className="prop-value">{formatValue(timberProps.A, 'mm\u00B2')}</span></div>
+              <div className="prop-row"><span className="prop-label">I<sub>y</sub></span><span className="prop-value">{formatValue(timberProps.Iy, 'mm\u2074')}</span></div>
+              <div className="prop-row"><span className="prop-label">I<sub>z</sub></span><span className="prop-value">{formatValue(timberProps.Iz, 'mm\u2074')}</span></div>
+              <div className="prop-row"><span className="prop-label">W<sub>el,y</sub></span><span className="prop-value">{formatValue(timberProps.Wy, 'mm\u00B3')}</span></div>
+              <div className="prop-row"><span className="prop-label">W<sub>el,z</sub></span><span className="prop-value">{formatValue(timberProps.Wz, 'mm\u00B3')}</span></div>
+              <div className="prop-row"><span className="prop-label">h</span><span className="prop-value">{timberProps.h} mm</span></div>
+              <div className="prop-row"><span className="prop-label">b</span><span className="prop-value">{timberProps.b} mm</span></div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Determine if save should be disabled based on active tab
+  const isSaveDisabled = () => {
+    if (!name.trim()) return true;
+    if (materialTab === 'composite') return true;
+    if (materialTab === 'timber' && !selectedTimber) return true;
+    return false;
+  };
+
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="section-properties-dialog wide" onClick={e => e.stopPropagation()}>
         <div className="dialog-header">
-          <h3>{isNew ? 'New Section' : 'Section Properties'}</h3>
+          <h3>{isNew ? 'New Section' : t('sectionProps.title')}</h3>
           <button className="dialog-close" onClick={onClose}>×</button>
         </div>
 
+        {/* Material category tabs */}
+        {isNew && (
+          <div className="section-dialog-tabs">
+            {(['steel', 'concrete', 'timber', 'composite'] as MaterialTab[]).map(tab => (
+              <button
+                key={tab}
+                className={`section-dialog-tab ${materialTab === tab ? 'active' : ''}`}
+                onClick={() => setMaterialTab(tab)}
+              >
+                {t(`sectionProps.tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`)}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="dialog-content">
+          {/* Steel tab: existing content */}
+          {(materialTab === 'steel' || !isNew) && (
           <div className="section-dialog-layout">
             {/* Left: Profile Selection */}
             <div className="section-input-panel">
@@ -690,6 +1120,7 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
                     showNeutralAxes={showNeutralAxes}
                     showFilletLines={showFilletLines}
                     rotation={rotation}
+                    onDimensionEdit={onSave ? handleDimensionEdit : undefined}
                   />
                 </div>
               )}
@@ -779,16 +1210,31 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
               )}
             </div>
           </div>
+          )}
+
+          {/* Concrete tab */}
+          {materialTab === 'concrete' && isNew && renderConcreteContent()}
+
+          {/* Timber tab */}
+          {materialTab === 'timber' && isNew && renderTimberContent()}
+
+          {/* Composite tab - placeholder */}
+          {materialTab === 'composite' && isNew && (
+            <div className="section-tab-placeholder">
+              <div className="placeholder-icon">&#9881;</div>
+              <div>{t('sectionProps.comingSoon')}</div>
+            </div>
+          )}
         </div>
 
         <div className="dialog-footer">
           {isNew && onSave && (
-            <button className="btn-primary" onClick={handleSave} disabled={!name.trim()}>
-              Add
+            <button className="btn-primary" onClick={handleSave} disabled={isSaveDisabled()}>
+              {t('common.add')}
             </button>
           )}
           <button className="btn-secondary" onClick={onClose}>
-            {isNew ? 'Cancel' : 'Close'}
+            {isNew ? t('common.cancel') : t('common.close')}
           </button>
         </div>
       </div>

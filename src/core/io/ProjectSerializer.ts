@@ -1,6 +1,6 @@
 import { Mesh } from '../fem/Mesh';
 import { ILoadCase, ILoadCombination } from '../fem/LoadCase';
-import { IProjectInfo } from '../../context/FEMContext';
+import { IProjectInfo, IGraphState } from '../../context/FEMContext';
 import { IStructuralGrid } from '../fem/StructuralGrid';
 
 export interface IProjectFile {
@@ -10,6 +10,7 @@ export interface IProjectFile {
   loadCases: ILoadCase[];
   loadCombinations: { id: number; name: string; type: string; factors: [number, number][] }[];
   structuralGrid?: IStructuralGrid;
+  graphState?: IGraphState | null;
 }
 
 export function serializeProject(
@@ -17,7 +18,8 @@ export function serializeProject(
   loadCases: ILoadCase[],
   loadCombinations: ILoadCombination[],
   projectInfo: IProjectInfo,
-  structuralGrid?: IStructuralGrid
+  structuralGrid?: IStructuralGrid,
+  graphState?: IGraphState | null
 ): string {
   const file: IProjectFile = {
     version: '1.0.0',
@@ -30,7 +32,8 @@ export function serializeProject(
       type: lc.type,
       factors: Array.from(lc.factors.entries())
     })),
-    structuralGrid
+    structuralGrid,
+    graphState: graphState ?? undefined,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -41,6 +44,7 @@ export function deserializeProject(json: string): {
   loadCombinations: ILoadCombination[];
   projectInfo: IProjectInfo;
   structuralGrid?: IStructuralGrid;
+  graphState?: IGraphState | null;
 } {
   const file: IProjectFile = JSON.parse(json);
 
@@ -58,5 +62,7 @@ export function deserializeProject(json: string): {
   const projectInfo = file.projectInfo;
   const structuralGrid = file.structuralGrid;
 
-  return { mesh, loadCases, loadCombinations, projectInfo, structuralGrid };
+  const graphState = file.graphState ?? null;
+
+  return { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState };
 }

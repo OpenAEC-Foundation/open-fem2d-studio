@@ -12,7 +12,7 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
   const { state, dispatch } = useFEM();
 
   const [analysisType, setAnalysisType] = useState<AnalysisType>(state.analysisType);
-  const [solverMethod, setSolverMethod] = useState<'linear' | 'pdelta'>(
+  const [solverMethod, setSolverMethod] = useState<'linear' | 'pdelta' | 'fnl' | 'fnl_plate'>(
     'linear'
   );
   const [forceUnit, setForceUnit] = useState<'kN' | 'N' | 'MN'>(state.forceUnit);
@@ -99,10 +99,12 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
                 <span>Solver Method</span>
                 <select
                   value={solverMethod}
-                  onChange={e => setSolverMethod(e.target.value as 'linear' | 'pdelta')}
+                  onChange={e => setSolverMethod(e.target.value as 'linear' | 'pdelta' | 'fnl' | 'fnl_plate')}
                 >
                   <option value="linear">Linear (GL - Geometrisch Lineair)</option>
                   <option value="pdelta">P-Delta (2nd order, GNL)</option>
+                  <option value="fnl">FNL - Physically Nonlinear (M-kappa)</option>
+                  <option value="fnl_plate">FNL Plate - Layered Concrete Model</option>
                 </select>
               </div>
             </div>

@@ -12,6 +12,7 @@ import { IReportConfig, getEnabledSections, ReportSectionType } from '../../core
 // Import section components
 import { CoverSection } from './sections/CoverSection';
 import { TocSection } from './sections/TocSection';
+import { SummarySection } from './sections/SummarySection';
 import { InputGeometrySection } from './sections/InputGeometrySection';
 import { InputNodesSection } from './sections/InputNodesSection';
 import { InputMembersSection } from './sections/InputMembersSection';
@@ -47,6 +48,7 @@ interface ReportPreviewProps {
 const SECTION_COMPONENTS: Partial<Record<ReportSectionType, React.FC<ReportSectionProps>>> = {
   'cover': CoverSection,
   'toc': TocSection,
+  'summary': SummarySection,
   'input_geometry': InputGeometrySection,
   'input_nodes': InputNodesSection,
   'input_members': InputMembersSection,
@@ -72,13 +74,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 }) => {
   const enabledSections = getEnabledSections(config);
 
-  // Track section numbers (skip cover and TOC)
+  // Track section numbers (skip cover, TOC, and summary)
   let sectionNumber = 0;
 
-  // Separate cover from other sections
+  // Separate header pages from numbered content sections
   const coverSection = enabledSections.find(s => s.id === 'cover');
   const tocSection = enabledSections.find(s => s.id === 'toc');
-  const contentSections = enabledSections.filter(s => s.id !== 'cover' && s.id !== 'toc');
+  const summarySection = enabledSections.find(s => s.id === 'summary');
+  const contentSections = enabledSections.filter(s => s.id !== 'cover' && s.id !== 'toc' && s.id !== 'summary');
 
   const sharedProps = {
     config,
@@ -102,6 +105,27 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
       {tocSection && (
         <div className="report-page" id="section-toc">
           <TocSection {...sharedProps} />
+        </div>
+      )}
+
+      {/* Executive Summary - separate page */}
+      {summarySection && (
+        <div className="report-page" id="section-summary">
+          {config.showHeader && (
+            <div className="report-page-header">
+              <span>{projectInfo.name || 'Structural Report'}</span>
+              <span>{config.companyName}</span>
+            </div>
+          )}
+          <div className="report-page-content">
+            <SummarySection {...sharedProps} sectionNumber={0} />
+          </div>
+          {config.showFooter && (
+            <div className="report-page-footer">
+              <span>{projectInfo.date || new Date().toLocaleDateString('nl-NL')}</span>
+              <span>Generated with Open FEM2D Studio</span>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import { INode, IElement, IMaterial, IMesh, ITriangleElement, IQuadElement, IBeamElement, IBeamSection, IPlateRegion, ISubNode, IEdge } from './types';
+import { INode, IElement, IMaterial, IMesh, ITriangleElement, IQuadElement, IBeamElement, IBeamSection, IPlateRegion, ISubNode, IEdge, ILayer } from './types';
 import { DEFAULT_MATERIALS } from './Material';
 import { DEFAULT_SECTIONS } from './Beam';
 
@@ -11,6 +11,7 @@ export class Mesh implements IMesh {
   plateRegions: Map<number, IPlateRegion>;
   subNodes: Map<number, ISubNode>;
   edges: Map<number, IEdge>;
+  layers: Map<number, ILayer>;
   private nextNodeId: number;
   private nextElementId: number;
   private nextMaterialId: number;
@@ -18,6 +19,7 @@ export class Mesh implements IMesh {
   private nextPlateNodeId: number;
   private nextSubNodeId: number;
   private nextEdgeId: number;
+  private nextLayerId: number;
 
   constructor() {
     this.nodes = new Map();
@@ -28,6 +30,7 @@ export class Mesh implements IMesh {
     this.plateRegions = new Map();
     this.subNodes = new Map();
     this.edges = new Map();
+    this.layers = new Map();
     this.nextNodeId = 1;
     this.nextElementId = 1;
     this.nextMaterialId = 10;
@@ -35,12 +38,16 @@ export class Mesh implements IMesh {
     this.nextPlateNodeId = 1000;
     this.nextSubNodeId = 1;
     this.nextEdgeId = 1;
+    this.nextLayerId = 1;
 
     // Add default materials
     DEFAULT_MATERIALS.forEach(m => this.materials.set(m.id, { ...m }));
 
     // Add default sections
     DEFAULT_SECTIONS.forEach(s => this.sections.set(s.name, s.section));
+
+    // Add default layer
+    this.layers.set(0, { id: 0, name: 'Default', color: '#3b82f6', visible: true, locked: false });
   }
 
   addNode(x: number, y: number): INode {
@@ -672,6 +679,49 @@ export class Mesh implements IMesh {
     }
   }
 
+  // --- Layer CRUD ---
+
+  addLayer(name: string, color: string = '#6b7280'): ILayer {
+    const layer: ILayer = { id: this.nextLayerId++, name, color, visible: true, locked: false };
+    this.layers.set(layer.id, layer);
+    return layer;
+  }
+
+  getLayer(id: number): ILayer | undefined {
+    return this.layers.get(id);
+  }
+
+  updateLayer(id: number, updates: Partial<Omit<ILayer, 'id'>>): ILayer | null {
+    const layer = this.layers.get(id);
+    if (!layer) return null;
+    const updated = { ...layer, ...updates };
+    this.layers.set(id, updated);
+    return updated;
+  }
+
+  removeLayer(id: number): boolean {
+    if (id === 0) return false; // Cannot delete default layer
+    // Move all beams on this layer to default layer
+    for (const beam of this.beamElements.values()) {
+      if (beam.layerId === id) {
+        beam.layerId = 0;
+      }
+    }
+    return this.layers.delete(id);
+  }
+
+  isLayerVisible(layerId: number | undefined): boolean {
+    const lid = layerId ?? 0;
+    const layer = this.layers.get(lid);
+    return layer ? layer.visible : true;
+  }
+
+  isLayerLocked(layerId: number | undefined): boolean {
+    const lid = layerId ?? 0;
+    const layer = this.layers.get(lid);
+    return layer ? layer.locked : false;
+  }
+
   clear(): void {
     this.nodes.clear();
     this.elements.clear();
@@ -679,11 +729,14 @@ export class Mesh implements IMesh {
     this.plateRegions.clear();
     this.subNodes.clear();
     this.edges.clear();
+    this.layers.clear();
+    this.layers.set(0, { id: 0, name: 'Default', color: '#3b82f6', visible: true, locked: false });
     this.nextNodeId = 1;
     this.nextElementId = 1;
     this.nextPlateId = 1;
     this.nextSubNodeId = 1;
     this.nextEdgeId = 1;
+    this.nextLayerId = 1;
   }
 
   getElementNodes(element: IElement): INode[] {
@@ -711,6 +764,68 @@ export class Mesh implements IMesh {
     return dofs;
   }
 
+  /**
+   * Auto-detect beam groups: beams that are collinear and share nodes form a group.
+   * Assigns sequential beamGroup IDs to each group of connected collinear beams.
+   */
+  detectBeamGroups(): Map<number, number[]> {
+    const beams = Array.from(this.beamElements.values());
+    const visited = new Set<number>();
+    const groups = new Map<number, number[]>();
+    let groupId = 1;
+
+    const getAngle = (b: IBeamElement): number => {
+      const n1 = this.nodes.get(b.nodeIds[0]);
+      const n2 = this.nodes.get(b.nodeIds[1]);
+      if (!n1 || !n2) return 0;
+      return Math.atan2(n2.y - n1.y, n2.x - n1.x);
+    };
+
+    const anglesEqual = (a1: number, a2: number): boolean => {
+      // Normalize to [0, PI) for collinear check (opposite directions are same line)
+      const norm = (a: number) => {
+        let n = a % Math.PI;
+        if (n < 0) n += Math.PI;
+        return n;
+      };
+      return Math.abs(norm(a1) - norm(a2)) < 0.01; // ~0.6 degree tolerance
+    };
+
+    for (const beam of beams) {
+      if (visited.has(beam.id)) continue;
+      const group = [beam.id];
+      visited.add(beam.id);
+      const angle = getAngle(beam);
+
+      // BFS: find all collinear connected beams
+      const queue = [beam];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const nodeId of current.nodeIds) {
+          for (const other of beams) {
+            if (visited.has(other.id)) continue;
+            if (!other.nodeIds.includes(nodeId)) continue;
+            if (!anglesEqual(getAngle(other), angle)) continue;
+            visited.add(other.id);
+            group.push(other.id);
+            queue.push(other);
+          }
+        }
+      }
+
+      if (group.length > 1) {
+        groups.set(groupId, group);
+        for (const bid of group) {
+          const b = this.beamElements.get(bid);
+          if (b) b.beamGroup = groupId;
+        }
+        groupId++;
+      }
+    }
+
+    return groups;
+  }
+
   toJSON(): object {
     return {
       nodes: Array.from(this.nodes.values()),
@@ -720,7 +835,8 @@ export class Mesh implements IMesh {
       sections: Array.from(this.sections.entries()).map(([name, section]) => ({ name, section })),
       plateRegions: Array.from(this.plateRegions.values()),
       subNodes: Array.from(this.subNodes.values()),
-      edges: Array.from(this.edges.values())
+      edges: Array.from(this.edges.values()),
+      layers: Array.from(this.layers.values())
     };
   }
 
@@ -733,6 +849,7 @@ export class Mesh implements IMesh {
     plateRegions?: IPlateRegion[];
     subNodes?: ISubNode[];
     edges?: IEdge[];
+    layers?: ILayer[];
   }): Mesh {
     const mesh = new Mesh();
     mesh.nodes.clear();
@@ -786,6 +903,11 @@ export class Mesh implements IMesh {
       data.edges.forEach(e => mesh.edges.set(e.id, e));
     }
 
+    if (data.layers && data.layers.length > 0) {
+      mesh.layers.clear();
+      data.layers.forEach(l => mesh.layers.set(l.id, l));
+    }
+
     const allElementIds = [
       ...data.elements.map(e => e.id),
       ...(data.beamElements || []).map(b => b.id)
@@ -801,6 +923,9 @@ export class Mesh implements IMesh {
     mesh.nextPlateId = Math.max(...allPlateIds, 0) + 1;
     mesh.nextSubNodeId = Math.max(...allSubNodeIds, 0) + 1;
     mesh.nextEdgeId = Math.max(...allEdgeIds, 0) + 1;
+
+    const allLayerIds = (data.layers || []).map(l => l.id);
+    mesh.nextLayerId = Math.max(...allLayerIds, 0) + 1;
 
     // Restore nextPlateNodeId from plate node IDs (IDs >= 1000)
     const plateNodeIds = data.nodes.filter(n => n.id >= 1000).map(n => n.id);

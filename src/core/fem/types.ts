@@ -71,10 +71,15 @@ export interface IBeamPointLoad {
   moment: number;       // Moment (Nm)
 }
 
+// Element types for load generation and code checking
+export type StructuralElementType = 'none' | 'roof_left' | 'roof_right' | 'flat_roof' | 'facade_left' | 'facade_right' | 'floor' | 'column';
+
 export interface IBeamElement extends IElement {
   nodeIds: [number, number];
   section: IBeamSection;
   profileName?: string;   // Display name of the profile (e.g. "IPE 200")
+  elementType?: StructuralElementType;  // Structural function for load generation
+  beamGroup?: number;     // Beam group ID (beams in extension form a group)
   // Distributed loads (local coordinates)
   distributedLoad?: {
     qx: number;       // Axial load at start (N/m)
@@ -102,6 +107,13 @@ export interface IBeamElement extends IElement {
   // Per-DOF connection types (overrides startConnection/endConnection when present)
   startConnections?: IDOFConnections;
   endConnections?: IDOFConnections;
+  // Beam on elastic foundation (Winkler support)
+  onGrade?: {
+    enabled: boolean;
+    k: number;  // Spring stiffness (N/m per m length = N/m²)
+  };
+  // Layer assignment
+  layerId?: number;
 }
 
 // Connection type for beam ends
@@ -319,6 +331,15 @@ export interface IElementStress {
   nx?: number;
   ny?: number;
   nxy?: number;
+}
+
+// Layer for grouping elements
+export interface ILayer {
+  id: number;
+  name: string;
+  color: string;    // Display color (hex)
+  visible: boolean;
+  locked: boolean;
 }
 
 export type AnalysisType = 'plane_stress' | 'plane_strain' | 'frame' | 'plate_bending' | 'mixed_beam_plate';

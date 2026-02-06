@@ -2,13 +2,18 @@
  * NodeEditorPanel — Visual programming interface like Grasshopper
  * Nodes connected with wires for parametric structural modeling
  * Connected to FEM model for live structural analysis
+ *
+ * Bidirectional coupling:
+ * - Graph → Model: auto-execute on value changes (debounced)
+ * - State persistence via FEMContext (save/load with project)
+ * - Sync status indicator
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { solve } from '../../core/solver/SolverService';
 import { ALL_STEEL_PROFILES, ISteelProfile } from '../../core/data/SteelSections';
-import { Plus, Trash2, Play, ZoomIn, ZoomOut, Maximize, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Play, ZoomIn, ZoomOut, Maximize, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import './NodeEditorPanel.css';
 
 // Node types for structural modeling
@@ -246,6 +251,85 @@ const NODE_CATEGORIES = [
 let nextNodeId = 1;
 let nextWireId = 1;
 
+// Create default demo graph
+function createDemoGraph(): { nodes: GraphNode[]; wires: Wire[] } {
+  const demoNodes: GraphNode[] = [
+    { ...NODE_TEMPLATES.slider, id: 'node_1', x: 50, y: 50,
+      inputs: [],
+      outputs: [{ id: 'out_1', name: 'N', type: 'output', dataType: 'number' }],
+      data: { value: 6000, min: 1000, max: 12000, step: 500 } },
+    { ...NODE_TEMPLATES.point, id: 'node_2', x: 50, y: 180,
+      inputs: [
+        { id: 'x_2', name: 'X (mm)', type: 'input', dataType: 'number' },
+        { id: 'y_2', name: 'Y (mm)', type: 'input', dataType: 'number' },
+      ],
+      outputs: [{ id: 'pt_2', name: 'Pt', type: 'output', dataType: 'point' }],
+      data: { x: 0, y: 0 } },
+    { ...NODE_TEMPLATES.point, id: 'node_3', x: 50, y: 320,
+      inputs: [
+        { id: 'x_3', name: 'X (mm)', type: 'input', dataType: 'number' },
+        { id: 'y_3', name: 'Y (mm)', type: 'input', dataType: 'number' },
+      ],
+      outputs: [{ id: 'pt_3', name: 'Pt', type: 'output', dataType: 'point' }],
+      data: { x: 6000, y: 0 } },
+    { ...NODE_TEMPLATES.line, id: 'node_4', x: 250, y: 230,
+      inputs: [
+        { id: 'start_4', name: 'Start', type: 'input', dataType: 'point' },
+        { id: 'end_4', name: 'End', type: 'input', dataType: 'point' },
+      ],
+      outputs: [{ id: 'line_4', name: 'Line', type: 'output', dataType: 'geometry' }],
+      data: {} },
+    { ...NODE_TEMPLATES.beam, id: 'node_5', x: 430, y: 230,
+      inputs: [{ id: 'line_5', name: 'Line', type: 'input', dataType: 'geometry' }],
+      outputs: [{ id: 'beam_5', name: 'Beam', type: 'output', dataType: 'geometry' }],
+      data: { profile: 'IPE 200' } },
+    { ...NODE_TEMPLATES.support, id: 'node_6', x: 250, y: 80,
+      inputs: [{ id: 'point_6', name: 'Point', type: 'input', dataType: 'point' }],
+      outputs: [{ id: 'node_6', name: 'Node', type: 'output', dataType: 'any' }],
+      data: { type: 'pinned' } },
+    { ...NODE_TEMPLATES.support, id: 'node_7', x: 250, y: 380,
+      inputs: [{ id: 'point_7', name: 'Point', type: 'input', dataType: 'point' }],
+      outputs: [{ id: 'node_7', name: 'Node', type: 'output', dataType: 'any' }],
+      data: { type: 'roller' } },
+    { ...NODE_TEMPLATES.lineLoad, id: 'node_8', x: 620, y: 180,
+      inputs: [
+        { id: 'beam_8', name: 'Beam', type: 'input', dataType: 'geometry' },
+        { id: 'qy_8', name: 'qy (kN/m)', type: 'input', dataType: 'number' },
+      ],
+      outputs: [],
+      data: { qy: -10 } },
+    { ...NODE_TEMPLATES.solve, id: 'node_9', x: 620, y: 300,
+      inputs: [],
+      outputs: [{ id: 'result_9', name: 'Result', type: 'output', dataType: 'any' }],
+      data: { status: 'ready' } },
+    { ...NODE_TEMPLATES.maxDisp, id: 'node_10', x: 800, y: 250,
+      inputs: [{ id: 'result_10', name: 'Result', type: 'input', dataType: 'any' }],
+      outputs: [{ id: 'value_10', name: 'mm', type: 'output', dataType: 'number' }],
+      data: { value: null } },
+    { ...NODE_TEMPLATES.maxMoment, id: 'node_11', x: 800, y: 350,
+      inputs: [{ id: 'result_11', name: 'Result', type: 'input', dataType: 'any' }],
+      outputs: [{ id: 'value_11', name: 'kNm', type: 'output', dataType: 'number' }],
+      data: { value: null } },
+  ];
+
+  const demoWires: Wire[] = [
+    { id: 'wire_1', fromNode: 'node_1', fromPort: 'out_1', toNode: 'node_3', toPort: 'x_3' },
+    { id: 'wire_2', fromNode: 'node_2', fromPort: 'pt_2', toNode: 'node_4', toPort: 'start_4' },
+    { id: 'wire_3', fromNode: 'node_3', fromPort: 'pt_3', toNode: 'node_4', toPort: 'end_4' },
+    { id: 'wire_4', fromNode: 'node_4', fromPort: 'line_4', toNode: 'node_5', toPort: 'line_5' },
+    { id: 'wire_5', fromNode: 'node_2', fromPort: 'pt_2', toNode: 'node_6', toPort: 'point_6' },
+    { id: 'wire_6', fromNode: 'node_3', fromPort: 'pt_3', toNode: 'node_7', toPort: 'point_7' },
+    { id: 'wire_7', fromNode: 'node_5', fromPort: 'beam_5', toNode: 'node_8', toPort: 'beam_8' },
+    { id: 'wire_8', fromNode: 'node_9', fromPort: 'result_9', toNode: 'node_10', toPort: 'result_10' },
+    { id: 'wire_9', fromNode: 'node_9', fromPort: 'result_9', toNode: 'node_11', toPort: 'result_11' },
+  ];
+
+  nextNodeId = 12;
+  nextWireId = 10;
+
+  return { nodes: demoNodes, wires: demoWires };
+}
+
 export const NodeEditorPanel: React.FC = () => {
   const { state, dispatch } = useFEM();
   const { mesh } = state;
@@ -266,6 +350,59 @@ export const NodeEditorPanel: React.FC = () => {
   const [palettePos, setPalettePos] = useState({ x: 0, y: 0 });
   const [executing, setExecuting] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Track data version to trigger auto-execute
+  const [dataVersion, setDataVersion] = useState(0);
+  // Ref to prevent initial load from triggering auto-execute
+  const initialLoadDone = useRef(false);
+  // Ref to track if graph execution caused the mesh change (prevents sync loop)
+  const executingRef = useRef(false);
+
+  // Restore graph state from context on mount
+  useEffect(() => {
+    if (state.graphState && state.graphState.nodes.length > 0) {
+      setNodes(state.graphState.nodes);
+      setWires(state.graphState.wires);
+      // Restore nextNodeId/nextWireId from loaded state
+      let maxNId = 0, maxWId = 0;
+      for (const n of state.graphState.nodes) {
+        const num = parseInt(n.id.replace('node_', ''));
+        if (num > maxNId) maxNId = num;
+      }
+      for (const w of state.graphState.wires) {
+        const num = parseInt(w.id.replace('wire_', ''));
+        if (num > maxWId) maxWId = num;
+      }
+      nextNodeId = maxNId + 1;
+      nextWireId = maxWId + 1;
+      initialLoadDone.current = true;
+    } else if (nodes.length === 0) {
+      // Create demo graph on first load
+      const demo = createDemoGraph();
+      setNodes(demo.nodes);
+      setWires(demo.wires);
+      initialLoadDone.current = true;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist graph state to context whenever nodes/wires change
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    dispatch({ type: 'SET_GRAPH_STATE', payload: { nodes, wires } });
+  }, [nodes, wires, dispatch]);
+
+  // Auto-execute on data version change (debounced)
+  useEffect(() => {
+    if (!initialLoadDone.current || dataVersion === 0 || !state.graphAutoRun) return;
+
+    setIsDirty(true);
+    const timer = setTimeout(() => {
+      executeGraphRef.current?.();
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [dataVersion, state.graphAutoRun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get input value for a node
   const getInputValue = useCallback((
@@ -605,6 +742,8 @@ export const NodeEditorPanel: React.FC = () => {
 
   // Execute entire graph
   const executeGraph = useCallback(async () => {
+    if (executingRef.current) return;
+    executingRef.current = true;
     setExecuting(true);
     setExecutionError(null);
 
@@ -644,13 +783,22 @@ export const NodeEditorPanel: React.FC = () => {
       // Force update nodes to show display values
       setNodes(prev => [...prev]);
 
+      setIsDirty(false);
+
     } catch (error: any) {
       setExecutionError(error.message);
       console.error('Graph execution failed:', error);
     } finally {
       setExecuting(false);
+      executingRef.current = false;
     }
   }, [nodes, wires, mesh, topologicalSort, executeNode, dispatch]);
+
+  // Store ref for debounced auto-execute
+  const executeGraphRef = useRef(executeGraph);
+  useEffect(() => {
+    executeGraphRef.current = executeGraph;
+  }, [executeGraph]);
 
   // Add a node
   const addNode = useCallback((type: NodeType, x: number, y: number) => {
@@ -667,6 +815,7 @@ export const NodeEditorPanel: React.FC = () => {
     };
     setNodes(prev => [...prev, newNode]);
     setShowPalette(false);
+    setIsDirty(true);
   }, []);
 
   // Delete selected node
@@ -674,6 +823,8 @@ export const NodeEditorPanel: React.FC = () => {
     setNodes(prev => prev.filter(n => n.id !== nodeId));
     setWires(prev => prev.filter(w => w.fromNode !== nodeId && w.toNode !== nodeId));
     if (selectedNode === nodeId) setSelectedNode(null);
+    setIsDirty(true);
+    setDataVersion(v => v + 1);
   }, [selectedNode]);
 
   // Handle canvas mouse down
@@ -760,6 +911,8 @@ export const NodeEditorPanel: React.FC = () => {
             toNode: nodeId,
             toPort: portId,
           }]);
+          setIsDirty(true);
+          setDataVersion(v => v + 1);
         }
       } else if (connecting.type === 'input' && portType === 'output' && connecting.node !== nodeId) {
         const exists = wires.some(w =>
@@ -775,6 +928,8 @@ export const NodeEditorPanel: React.FC = () => {
             toNode: connecting.node,
             toPort: connecting.port,
           }]);
+          setIsDirty(true);
+          setDataVersion(v => v + 1);
         }
       }
       setConnecting(null);
@@ -823,6 +978,8 @@ export const NodeEditorPanel: React.FC = () => {
       }
       return n;
     }));
+    setIsDirty(true);
+    setDataVersion(v => v + 1);
   }, []);
 
   const zoomIn = () => setZoom(prev => Math.min(2, prev * 1.2));
@@ -850,88 +1007,6 @@ export const NodeEditorPanel: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNode, deleteNode, executeGraph]);
 
-  // Create demo graph on first load
-  useEffect(() => {
-    if (nodes.length === 0) {
-      // Create a simple beam example
-      const demoNodes: GraphNode[] = [
-        { ...NODE_TEMPLATES.slider, id: 'node_1', x: 50, y: 50,
-          inputs: [],
-          outputs: [{ id: 'out_1', name: 'N', type: 'output', dataType: 'number' }],
-          data: { value: 6000, min: 1000, max: 12000, step: 500 } },
-        { ...NODE_TEMPLATES.point, id: 'node_2', x: 50, y: 180,
-          inputs: [
-            { id: 'x_2', name: 'X (mm)', type: 'input', dataType: 'number' },
-            { id: 'y_2', name: 'Y (mm)', type: 'input', dataType: 'number' },
-          ],
-          outputs: [{ id: 'pt_2', name: 'Pt', type: 'output', dataType: 'point' }],
-          data: { x: 0, y: 0 } },
-        { ...NODE_TEMPLATES.point, id: 'node_3', x: 50, y: 320,
-          inputs: [
-            { id: 'x_3', name: 'X (mm)', type: 'input', dataType: 'number' },
-            { id: 'y_3', name: 'Y (mm)', type: 'input', dataType: 'number' },
-          ],
-          outputs: [{ id: 'pt_3', name: 'Pt', type: 'output', dataType: 'point' }],
-          data: { x: 6000, y: 0 } },
-        { ...NODE_TEMPLATES.line, id: 'node_4', x: 250, y: 230,
-          inputs: [
-            { id: 'start_4', name: 'Start', type: 'input', dataType: 'point' },
-            { id: 'end_4', name: 'End', type: 'input', dataType: 'point' },
-          ],
-          outputs: [{ id: 'line_4', name: 'Line', type: 'output', dataType: 'geometry' }],
-          data: {} },
-        { ...NODE_TEMPLATES.beam, id: 'node_5', x: 430, y: 230,
-          inputs: [{ id: 'line_5', name: 'Line', type: 'input', dataType: 'geometry' }],
-          outputs: [{ id: 'beam_5', name: 'Beam', type: 'output', dataType: 'geometry' }],
-          data: { profile: 'IPE 200' } },
-        { ...NODE_TEMPLATES.support, id: 'node_6', x: 250, y: 80,
-          inputs: [{ id: 'point_6', name: 'Point', type: 'input', dataType: 'point' }],
-          outputs: [{ id: 'node_6', name: 'Node', type: 'output', dataType: 'any' }],
-          data: { type: 'pinned' } },
-        { ...NODE_TEMPLATES.support, id: 'node_7', x: 250, y: 380,
-          inputs: [{ id: 'point_7', name: 'Point', type: 'input', dataType: 'point' }],
-          outputs: [{ id: 'node_7', name: 'Node', type: 'output', dataType: 'any' }],
-          data: { type: 'roller' } },
-        { ...NODE_TEMPLATES.lineLoad, id: 'node_8', x: 620, y: 180,
-          inputs: [
-            { id: 'beam_8', name: 'Beam', type: 'input', dataType: 'geometry' },
-            { id: 'qy_8', name: 'qy (kN/m)', type: 'input', dataType: 'number' },
-          ],
-          outputs: [],
-          data: { qy: -10 } },
-        { ...NODE_TEMPLATES.solve, id: 'node_9', x: 620, y: 300,
-          inputs: [],
-          outputs: [{ id: 'result_9', name: 'Result', type: 'output', dataType: 'any' }],
-          data: { status: 'ready' } },
-        { ...NODE_TEMPLATES.maxDisp, id: 'node_10', x: 800, y: 250,
-          inputs: [{ id: 'result_10', name: 'Result', type: 'input', dataType: 'any' }],
-          outputs: [{ id: 'value_10', name: 'mm', type: 'output', dataType: 'number' }],
-          data: { value: null } },
-        { ...NODE_TEMPLATES.maxMoment, id: 'node_11', x: 800, y: 350,
-          inputs: [{ id: 'result_11', name: 'Result', type: 'input', dataType: 'any' }],
-          outputs: [{ id: 'value_11', name: 'kNm', type: 'output', dataType: 'number' }],
-          data: { value: null } },
-      ];
-
-      const demoWires: Wire[] = [
-        { id: 'wire_1', fromNode: 'node_1', fromPort: 'out_1', toNode: 'node_3', toPort: 'x_3' },
-        { id: 'wire_2', fromNode: 'node_2', fromPort: 'pt_2', toNode: 'node_4', toPort: 'start_4' },
-        { id: 'wire_3', fromNode: 'node_3', fromPort: 'pt_3', toNode: 'node_4', toPort: 'end_4' },
-        { id: 'wire_4', fromNode: 'node_4', fromPort: 'line_4', toNode: 'node_5', toPort: 'line_5' },
-        { id: 'wire_5', fromNode: 'node_2', fromPort: 'pt_2', toNode: 'node_6', toPort: 'point_6' },
-        { id: 'wire_6', fromNode: 'node_3', fromPort: 'pt_3', toNode: 'node_7', toPort: 'point_7' },
-        { id: 'wire_7', fromNode: 'node_5', fromPort: 'beam_5', toNode: 'node_8', toPort: 'beam_8' },
-        { id: 'wire_8', fromNode: 'node_9', fromPort: 'result_9', toNode: 'node_10', toPort: 'result_10' },
-        { id: 'wire_9', fromNode: 'node_9', fromPort: 'result_9', toNode: 'node_11', toPort: 'result_11' },
-      ];
-
-      setNodes(demoNodes);
-      setWires(demoWires);
-      nextNodeId = 12;
-      nextWireId = 10;
-    }
-  }, []);
-
   return (
     <div className="node-editor-panel">
       {/* Toolbar */}
@@ -954,6 +1029,20 @@ export const NodeEditorPanel: React.FC = () => {
             {executing ? <RefreshCw size={16} className="spin" /> : <Play size={16} />}
             <span style={{ marginLeft: 4 }}>Run</span>
           </button>
+          <button
+            onClick={() => dispatch({ type: 'SET_GRAPH_AUTO_RUN', payload: !state.graphAutoRun })}
+            className={state.graphAutoRun ? 'active' : ''}
+            title={state.graphAutoRun ? 'Auto-run enabled: graph re-executes on changes' : 'Auto-run disabled: manual Run only'}
+          >
+            {state.graphAutoRun ? <Zap size={16} /> : <ZapOff size={16} />}
+            <span style={{ marginLeft: 4 }}>Auto</span>
+          </button>
+          {isDirty && !state.graphAutoRun && (
+            <span className="sync-indicator dirty" title="Graph has unsaved changes — click Run">modified</span>
+          )}
+          {executing && (
+            <span className="sync-indicator running">running...</span>
+          )}
         </div>
         <div className="toolbar-group">
           <button onClick={zoomOut} title="Zoom Out">
@@ -1012,7 +1101,11 @@ export const NodeEditorPanel: React.FC = () => {
                 key={wire.id}
                 d={path}
                 className="wire"
-                onClick={() => setWires(prev => prev.filter(w => w.id !== wire.id))}
+                onClick={() => {
+                  setWires(prev => prev.filter(w => w.id !== wire.id));
+                  setIsDirty(true);
+                  setDataVersion(v => v + 1);
+                }}
               />
             );
           })}
@@ -1202,6 +1295,7 @@ export const NodeEditorPanel: React.FC = () => {
       <div className="node-editor-status">
         <span>Nodes: {nodes.length}</span>
         <span>Wires: {wires.length}</span>
+        {state.graphAutoRun && <span className="auto-indicator">Auto</span>}
         {connecting && <span className="connecting-hint">Click a port to connect</span>}
         <span className="hint">Double-click to add | Ctrl+Enter to run | Alt+drag to pan</span>
       </div>

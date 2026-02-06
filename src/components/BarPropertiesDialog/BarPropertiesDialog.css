@@ -128,6 +128,36 @@
   color: var(--text-primary);
 }
 
+.bar-props-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bar-props-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.bar-props-input {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.bar-props-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
 .bar-props-input-row {
   display: flex;
   align-items: center;

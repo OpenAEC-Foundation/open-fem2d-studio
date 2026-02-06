@@ -1,0 +1,177 @@
+.console-panel {
+  width: 380px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.console-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+  gap: 8px;
+}
+
+.console-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.console-lang-select {
+  padding: 2px 6px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.console-header-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.console-header-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+/* Log body */
+.console-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.console-entry {
+  padding: 2px 4px;
+  border-radius: 2px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.console-entry-input {
+  color: var(--accent);
+}
+
+.console-entry-input::before {
+  content: '> ';
+  color: var(--text-muted);
+}
+
+.console-entry-output {
+  color: var(--text-primary);
+}
+
+.console-entry-error {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.console-entry-system {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.console-entry-dispatch {
+  color: #a78bfa;
+  font-size: 10px;
+}
+
+.console-entry-dispatch::before {
+  content: '⚡ ';
+}
+
+.console-entry-timestamp {
+  color: var(--text-muted);
+  font-size: 9px;
+  margin-right: 4px;
+  user-select: none;
+}
+
+/* Input area */
+.console-input-area {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.console-input-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.console-prompt {
+  padding: 6px 4px 6px 8px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 12px;
+  user-select: none;
+  line-height: 1.4;
+}
+
+.console-input {
+  flex: 1;
+  padding: 6px 8px 6px 2px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  min-height: 20px;
+  max-height: 120px;
+}
+
+.console-input-wrapper:focus-within {
+  border-color: var(--accent);
+}
+
+.console-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+  padding: 20px;
+}
+
+.console-empty p {
+  margin: 0;
+  line-height: 1.6;
+}

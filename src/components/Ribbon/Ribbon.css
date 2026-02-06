@@ -38,8 +38,8 @@
 .ribbon-content {
   display: flex;
   padding: 6px 10px;
-  height: 160px;
-  overflow: hidden;
+  min-height: 130px;
+  overflow: visible;
   gap: 4px;
 }
 

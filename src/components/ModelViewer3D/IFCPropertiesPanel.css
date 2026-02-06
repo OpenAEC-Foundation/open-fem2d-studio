@@ -1,0 +1,76 @@
+.ifc-props-panel {
+  position: absolute;
+  top: 60px;
+  right: 190px;
+  width: 220px;
+  background: var(--bg-secondary, #16213e);
+  border: 1px solid var(--border, #2a2a4a);
+  border-radius: 6px;
+  overflow: hidden;
+  z-index: 6;
+  font-size: 11px;
+}
+
+.ifc-props-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #252550);
+  border-bottom: 1px solid var(--border, #2a2a4a);
+}
+
+.ifc-props-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #3b82f6);
+}
+
+.ifc-props-close {
+  background: none;
+  border: none;
+  color: var(--text-muted, #6a6a8a);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.ifc-props-close:hover {
+  color: var(--danger, #e74c3c);
+}
+
+.ifc-props-section {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #2a2a4a);
+}
+
+.ifc-props-section:last-child {
+  border-bottom: none;
+}
+
+.ifc-props-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #6a6a8a);
+  margin-bottom: 6px;
+}
+
+.ifc-props-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.ifc-props-label {
+  color: var(--text-secondary, #a0a0c0);
+}
+
+.ifc-props-value {
+  color: var(--text-primary, #fff);
+  font-weight: 500;
+  text-align: right;
+}

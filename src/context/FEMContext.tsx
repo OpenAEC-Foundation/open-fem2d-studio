@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useMemo, ReactNode } from 'react';
 import { Mesh } from '../core/fem/Mesh';
 import { INode, IBeamElement, ISolverResult, IEnvelopeResult, Tool, IViewState, ISelection, AnalysisType, StressType } from '../core/fem/types';
 import { ILoadCase, ILoadCombination } from '../core/fem/LoadCase';
@@ -6,6 +6,7 @@ import { convertEdgeLoadToNodalForces, convertEdgeNodeIdsToNodalForces } from '.
 import { IStructuralGrid } from '../core/fem/StructuralGrid';
 import { calculateThermalNodalForces } from '../core/fem/ThermalLoad';
 import { IReportConfig, DEFAULT_REPORT_CONFIG } from '../core/report/ReportConfig';
+import { ConsoleService } from '../core/console/ConsoleService';
 
 export type ViewMode = 'geometry' | 'loads' | 'results' | '3d';
 export type BrowserTab = 'project' | 'results';
@@ -57,6 +58,7 @@ interface FEMState {
   showLoads: boolean;
   showNodeLabels: boolean;
   showMemberLabels: boolean;
+  showElementTypes: boolean;
   // Force unit
   forceUnit: 'N' | 'kN' | 'MN';
   // Length unit
@@ -128,7 +130,24 @@ interface FEMState {
   reportConfig: IReportConfig;
   // Canvas captures for report (data URLs keyed by capture type)
   canvasCaptures: Map<string, string>;
+  // Insights panel active view
+  insightsView: InsightsView | null;
+  // Active layer for new elements
+  activeLayerId: number;
+  // Concrete beam view panel visibility
+  showConcreteBeamView: boolean;
+  // Graph editor state (nodes + wires for persistence)
+  graphState: IGraphState | null;
+  // Auto-run graph on value changes
+  graphAutoRun: boolean;
 }
+
+export interface IGraphState {
+  nodes: any[];
+  wires: any[];
+}
+
+export type InsightsView = 'element-matrix' | 'system-matrix' | 'solver-info' | 'dof-mapping' | 'logs' | 'errors';
 
 type FEMAction =
   | { type: 'SET_MESH'; payload: Mesh }
@@ -185,7 +204,7 @@ type FEMAction =
   | { type: 'ADD_THERMAL_LOAD'; payload: { lcId: number; elementId: number; plateId?: number; deltaT: number } }
   | { type: 'REMOVE_THERMAL_LOAD'; payload: { lcId: number; elementId: number } }
   | { type: 'SET_PROJECT_INFO'; payload: Partial<IProjectInfo> }
-  | { type: 'LOAD_PROJECT'; payload: { mesh: Mesh; loadCases: ILoadCase[]; loadCombinations: ILoadCombination[]; projectInfo: IProjectInfo; structuralGrid?: IStructuralGrid } }
+  | { type: 'LOAD_PROJECT'; payload: { mesh: Mesh; loadCases: ILoadCase[]; loadCombinations: ILoadCombination[]; projectInfo: IProjectInfo; structuralGrid?: IStructuralGrid; graphState?: IGraphState | null } }
   | { type: 'SET_STRUCTURAL_GRID'; payload: IStructuralGrid }
   | { type: 'SET_SHOW_GRID_LINES'; payload: boolean }
   | { type: 'SET_SNAP_TO_GRID_LINES'; payload: boolean }
@@ -195,6 +214,7 @@ type FEMAction =
   | { type: 'SET_SHOW_LOADS'; payload: boolean }
   | { type: 'SET_SHOW_NODE_LABELS'; payload: boolean }
   | { type: 'SET_SHOW_MEMBER_LABELS'; payload: boolean }
+  | { type: 'SET_SHOW_ELEMENT_TYPES'; payload: boolean }
   | { type: 'SET_FORCE_UNIT'; payload: 'N' | 'kN' | 'MN' }
   | { type: 'SET_LENGTH_UNIT'; payload: 'm' | 'mm' | 'cm' }
   | { type: 'SET_DISPLACEMENT_UNIT'; payload: 'mm' | 'm' }
@@ -225,7 +245,15 @@ type FEMAction =
   | { type: 'TRIGGER_FINISH_EDIT' }
   | { type: 'SET_REPORT_CONFIG'; payload: Partial<IReportConfig> }
   | { type: 'SET_CANVAS_CAPTURE'; payload: { key: string; dataUrl: string } }
-  | { type: 'CLEAR_CANVAS_CAPTURES' };
+  | { type: 'CLEAR_CANVAS_CAPTURES' }
+  | { type: 'SET_INSIGHTS_VIEW'; payload: InsightsView | null }
+  | { type: 'ADD_LAYER'; payload: { name: string; color?: string } }
+  | { type: 'UPDATE_LAYER'; payload: { id: number; updates: Partial<{ name: string; color: string; visible: boolean; locked: boolean }> } }
+  | { type: 'REMOVE_LAYER'; payload: number }
+  | { type: 'SET_ACTIVE_LAYER'; payload: number }
+  | { type: 'SET_SHOW_CONCRETE_BEAM_VIEW'; payload: boolean }
+  | { type: 'SET_GRAPH_STATE'; payload: IGraphState | null }
+  | { type: 'SET_GRAPH_AUTO_RUN'; payload: boolean };
 
 function createEmptySelection(): ISelection {
   return {
@@ -242,20 +270,23 @@ function createEmptySelection(): ISelection {
 function createDemoBeamModel(): Mesh {
   const mesh = new Mesh();
 
-  // Simple beam on two supports: 6 meter span
+  // Continuous beam on 3 supports: two 5m spans
   const n1 = mesh.addNode(0, 0);
-  const n2 = mesh.addNode(3, 0);  // Midpoint for point load
-  const n3 = mesh.addNode(6, 0);
+  const n2 = mesh.addNode(5, 0);
+  const n3 = mesh.addNode(10, 0);
 
-  // Supports: left pinned, right roller
+  // Supports: left pinned, middle roller, right roller
   mesh.updateNode(n1.id, {
     constraints: { x: true, y: true, rotation: false } // Pinned
+  });
+  mesh.updateNode(n2.id, {
+    constraints: { x: false, y: true, rotation: false } // Roller
   });
   mesh.updateNode(n3.id, {
     constraints: { x: false, y: true, rotation: false } // Roller
   });
 
-  // Beam element: IPE 200 steel
+  // Beam elements: IPE 200 steel
   const ipe200 = { A: 28.5e-4, I: 1940e-8, h: 0.200 };
   mesh.addBeamElement([n1.id, n2.id], 1, ipe200, 'IPE 200');
   mesh.addBeamElement([n2.id, n3.id], 1, ipe200, 'IPE 200');
@@ -263,16 +294,16 @@ function createDemoBeamModel(): Mesh {
   return mesh;
 }
 
-function createDefaultLoadCases(demoNodeId: number): ILoadCase[] {
+function createDefaultLoadCases(beamElementId: number): ILoadCase[] {
   return [
     {
       id: 1,
       name: 'Dead Load (G)',
       type: 'dead',
-      pointLoads: [
-        { nodeId: demoNodeId, fx: 0, fy: -10000, mz: 0 }
+      pointLoads: [],
+      distributedLoads: [
+        { id: 1, elementId: beamElementId, qx: 0, qy: -3000, coordSystem: 'local' }
       ],
-      distributedLoads: [],
       thermalLoads: [],
       color: '#6b7280'
     },
@@ -601,8 +632,8 @@ export function applyCombinedLoadsToMesh(mesh: Mesh, loadCases: ILoadCase[], com
 }
 
 const demoMesh = createDemoBeamModel();
-// The demo model has node IDs starting at 1; node 2 is the midpoint
-const demoLoadCases = createDefaultLoadCases(2);
+// The demo model has beam element IDs starting at 1; beam 1 is the first span
+const demoLoadCases = createDefaultLoadCases(1);
 
 const initialState: FEMState = {
   mesh: demoMesh,
@@ -617,7 +648,7 @@ const initialState: FEMState = {
   stressType: 'vonMises',
   pendingNodes: [],
   gridSize: 0.5,
-  snapToGrid: true,
+  snapToGrid: false,
   showMoment: true,
   showShear: false,
   showNormal: false,
@@ -636,6 +667,7 @@ const initialState: FEMState = {
   showLoads: true,
   showNodeLabels: true,
   showMemberLabels: true,
+  showElementTypes: false,
   forceUnit: 'kN',
   lengthUnit: 'm',
   displacementUnit: 'mm',
@@ -680,7 +712,12 @@ const initialState: FEMState = {
   plateEditMode: null,
   finishEditTrigger: 0,
   reportConfig: DEFAULT_REPORT_CONFIG,
-  canvasCaptures: new Map<string, string>()
+  canvasCaptures: new Map<string, string>(),
+  insightsView: null,
+  activeLayerId: 0,
+  showConcreteBeamView: false,
+  graphState: null,
+  graphAutoRun: true,
 };
 
 // Apply demo load case loads to mesh so they render on first load
@@ -692,7 +729,13 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, mesh: action.payload, result: null };
 
     case 'SET_RESULT':
-      return { ...state, result: action.payload, solverError: null };
+      return {
+        ...state,
+        result: action.payload,
+        solverError: null,
+        // Auto-switch ProjectBrowser to Results tab when solve completes
+        browserTab: action.payload !== null ? 'results' as BrowserTab : state.browserTab
+      };
 
     case 'SET_SOLVER_ERROR':
       return { ...state, solverError: action.payload };
@@ -1010,7 +1053,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, projectInfo: { ...state.projectInfo, ...action.payload } };
 
     case 'LOAD_PROJECT': {
-      const { mesh, loadCases, loadCombinations, projectInfo, structuralGrid } = action.payload;
+      const { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState } = action.payload;
       // Migrate: ensure all distributed loads have IDs (backward compat with old projects)
       migrateDistributedLoadIds(loadCases);
       migrateEdgeLoads(loadCases, mesh);
@@ -1021,6 +1064,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         loadCombinations,
         projectInfo,
         structuralGrid: structuralGrid ?? createDefaultStructuralGrid(),
+        graphState: graphState ?? null,
         result: null,
         undoStack: [],
         redoStack: [],
@@ -1077,6 +1121,9 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
 
     case 'SET_SHOW_MEMBER_LABELS':
       return { ...state, showMemberLabels: action.payload };
+
+    case 'SET_SHOW_ELEMENT_TYPES':
+      return { ...state, showElementTypes: action.payload };
 
     case 'SET_FORCE_UNIT':
       return { ...state, forceUnit: action.payload };
@@ -1303,6 +1350,37 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
     case 'CLEAR_CANVAS_CAPTURES':
       return { ...state, canvasCaptures: new Map<string, string>() };
 
+    case 'SET_INSIGHTS_VIEW':
+      return { ...state, insightsView: action.payload };
+
+    case 'ADD_LAYER': {
+      const layer = state.mesh.addLayer(action.payload.name, action.payload.color);
+      return { ...state, meshVersion: state.meshVersion + 1, activeLayerId: layer.id };
+    }
+
+    case 'UPDATE_LAYER': {
+      state.mesh.updateLayer(action.payload.id, action.payload.updates);
+      return { ...state, meshVersion: state.meshVersion + 1 };
+    }
+
+    case 'REMOVE_LAYER': {
+      state.mesh.removeLayer(action.payload);
+      const newActiveLayer = state.activeLayerId === action.payload ? 0 : state.activeLayerId;
+      return { ...state, meshVersion: state.meshVersion + 1, activeLayerId: newActiveLayer };
+    }
+
+    case 'SET_ACTIVE_LAYER':
+      return { ...state, activeLayerId: action.payload };
+
+    case 'SET_SHOW_CONCRETE_BEAM_VIEW':
+      return { ...state, showConcreteBeamView: action.payload };
+
+    case 'SET_GRAPH_STATE':
+      return { ...state, graphState: action.payload };
+
+    case 'SET_GRAPH_AUTO_RUN':
+      return { ...state, graphAutoRun: action.payload };
+
     default:
       return state;
   }
@@ -1317,11 +1395,18 @@ interface FEMContextType {
 const FEMContext = createContext<FEMContextType | null>(null);
 
 export function FEMProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(femReducer, initialState);
+  const [state, rawDispatch] = useReducer(femReducer, initialState);
+
+  const dispatch = useMemo(() => {
+    return (action: FEMAction) => {
+      ConsoleService.logDispatch(action.type, (action as any).payload);
+      rawDispatch(action);
+    };
+  }, []);
 
   const pushUndo = useCallback(() => {
     dispatch({ type: 'PUSH_UNDO' });
-  }, []);
+  }, [dispatch]);
 
   return (
     <FEMContext.Provider value={{ state, dispatch, pushUndo }}>

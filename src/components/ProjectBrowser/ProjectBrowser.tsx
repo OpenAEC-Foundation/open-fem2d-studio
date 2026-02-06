@@ -5,6 +5,7 @@ import { IBeamSection } from '../../core/fem/types';
 import { NodePropertiesDialog } from '../NodePropertiesDialog/NodePropertiesDialog';
 import { BarPropertiesDialog } from '../BarPropertiesDialog/BarPropertiesDialog';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
+import { useI18n } from '../../i18n/i18n';
 import {
   ChevronRight, ChevronLeft, FolderOpen, CircleDot, Circle, Minus,
   Triangle, Diamond, Palette, Square, Box, RectangleHorizontal,
@@ -19,6 +20,7 @@ interface ProjectBrowserProps {
 }
 
 export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserProps) {
+  const { t } = useI18n();
   const { state, dispatch, pushUndo } = useFEM();
   const { mesh, selection, result, showMoment, showShear, showNormal, showDeflections, showDeformed, showReactions, loadCases, activeLoadCase, loadCombinations, activeCombination, stressType, showDiagramValues, analysisType, deformationScale, diagramScale, browserTab: activeTab } = state;
 
@@ -115,11 +117,11 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
             <ChevronLeft size={14} />
           </button>
         )}
-        <span className="browser-title">Browser</span>
+        <span className="browser-title">{t('browser.title')}</span>
         <button
           className="project-info-btn"
           onClick={() => setShowProjectInfo(!showProjectInfo)}
-          title="Project Information"
+          title={t('browser.projectInfo')}
         >
           <Info size={14} />
         </button>
@@ -131,41 +133,41 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
           className={`browser-tab ${activeTab === 'project' ? 'active' : ''}`}
           onClick={() => setActiveTab('project')}
         >
-          Project
+          {t('browser.title')}
         </button>
         <button
           className={`browser-tab ${activeTab === 'results' ? 'active' : ''}`}
           onClick={() => setActiveTab('results')}
         >
-          Results
+          {t('loadCaseTabs.results')}
         </button>
       </div>
 
       {showProjectInfo && (
         <div className="project-info-panel">
           <div className="project-info-row">
-            <span className="project-info-label">Project</span>
-            <span className="project-info-value">Untitled</span>
+            <span className="project-info-label">{t('browser.title')}</span>
+            <span className="project-info-value">{t('browser.untitled')}</span>
           </div>
           <div className="project-info-row">
-            <span className="project-info-label">Nodes</span>
+            <span className="project-info-label">{t('browser.nodes')}</span>
             <span className="project-info-value">{nodes.length}</span>
           </div>
           <div className="project-info-row">
-            <span className="project-info-label">Members</span>
+            <span className="project-info-label">{t('browser.members')}</span>
             <span className="project-info-value">{beams.length}</span>
           </div>
           <div className="project-info-row">
-            <span className="project-info-label">Supports</span>
+            <span className="project-info-label">{t('browser.supports')}</span>
             <span className="project-info-value">{supportedNodes.length}</span>
           </div>
           <div className="project-info-row">
-            <span className="project-info-label">Analysis</span>
+            <span className="project-info-label">{t('browser.analysis')}</span>
             <span className="project-info-value">{state.analysisType}</span>
           </div>
           <div className="project-info-row">
-            <span className="project-info-label">Status</span>
-            <span className="project-info-value">{result ? 'Solved' : 'Not solved'}</span>
+            <span className="project-info-label">{t('browser.status')}</span>
+            <span className="project-info-value">{result ? t('browser.solved') : t('browser.notSolved')}</span>
           </div>
         </div>
       )}
@@ -178,7 +180,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
               <div className="tree-item root" onClick={() => toggleExpand('model')}>
                 <span className={`tree-arrow ${expanded.model ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                 <span className="tree-icon"><FolderOpen size={14} /></span>
-                <span className="tree-label">Model</span>
+                <span className="tree-label">{t('browser.model')}</span>
               </div>
 
               {expanded.model && (
@@ -187,7 +189,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item" onClick={() => toggleExpand('nodes')}>
                     <span className={`tree-arrow ${expanded.nodes ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><CircleDot size={14} /></span>
-                    <span className="tree-label">Nodes</span>
+                    <span className="tree-label">{t('browser.nodes')}</span>
                     <span className="tree-count">{structuralNodes.length}</span>
                   </div>
                   {expanded.nodes && (
@@ -213,7 +215,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                       <div className="tree-item" onClick={() => toggleExpand('plateNodes' as keyof typeof expanded)}>
                         <span className={`tree-arrow ${(expanded as Record<string, boolean>)['plateNodes'] ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                         <span className="tree-icon" style={{ color: '#8b949e' }}><CircleDot size={14} /></span>
-                        <span className="tree-label" style={{ color: '#8b949e' }}>Plate Nodes</span>
+                        <span className="tree-label" style={{ color: '#8b949e' }}>{t('browser.plateNodes')}</span>
                         <span className="tree-count">{plateNodes.length}</span>
                       </div>
                       {(expanded as Record<string, boolean>)['plateNodes'] && (
@@ -240,7 +242,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                       <div className="tree-item" onClick={() => toggleExpand('plates' as keyof typeof expanded)}>
                         <span className={`tree-arrow ${(expanded as Record<string, boolean>)['plates'] ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                         <span className="tree-icon"><RectangleHorizontal size={14} /></span>
-                        <span className="tree-label">Plates</span>
+                        <span className="tree-label">{t('browser.plates')}</span>
                         <span className="tree-count">{mesh.plateRegions.size}</span>
                       </div>
                       {(expanded as Record<string, boolean>)['plates'] && (
@@ -265,7 +267,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item" onClick={() => toggleExpand('members')}>
                     <span className={`tree-arrow ${expanded.members ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><Minus size={14} /></span>
-                    <span className="tree-label">Members</span>
+                    <span className="tree-label">{t('browser.members')}</span>
                     <span className="tree-count">{beams.length}</span>
                   </div>
                   {expanded.members && (
@@ -293,21 +295,21 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item" onClick={() => toggleExpand('supports')}>
                     <span className={`tree-arrow ${expanded.supports ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><Triangle size={14} /></span>
-                    <span className="tree-label">Supports</span>
+                    <span className="tree-label">{t('browser.supports')}</span>
                     <span className="tree-count">{supportedNodes.length}</span>
                   </div>
                   {expanded.supports && (
                     <div className="tree-children">
                       {supportedNodes.map(node => {
-                        let type = 'Custom';
+                        let type = t('browser.custom');
                         if (node.constraints.x && node.constraints.y && node.constraints.rotation) {
-                          type = 'Fixed';
+                          type = t('browser.fixed');
                         } else if (node.constraints.x && node.constraints.y) {
-                          type = 'Pinned';
+                          type = t('browser.pinned');
                         } else if (node.constraints.y) {
-                          type = 'Roller Z';
+                          type = t('browser.rollerZ');
                         } else if (node.constraints.x) {
-                          type = 'Roller X';
+                          type = t('browser.rollerX');
                         }
                         return (
                           <div
@@ -328,7 +330,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item" onClick={() => toggleExpand('materials')}>
                     <span className={`tree-arrow ${expanded.materials ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><Palette size={14} /></span>
-                    <span className="tree-label">Materials</span>
+                    <span className="tree-label">{t('browser.materials')}</span>
                     <span className="tree-count">{materials.length}</span>
                   </div>
                   {expanded.materials && (
@@ -347,7 +349,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item" onClick={() => toggleExpand('sections')}>
                     <span className={`tree-arrow ${expanded.sections ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><Box size={14} /></span>
-                    <span className="tree-label">Sections</span>
+                    <span className="tree-label">{t('browser.sections')}</span>
                     <span className="tree-count">{DEFAULT_SECTIONS.length + customSections.length}</span>
                     <button
                       className="tree-add-btn"
@@ -367,7 +369,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                           key={sec.name}
                           className="tree-item leaf"
                           onDoubleClick={() => setViewingSection(sec)}
-                          title="Double-click to view properties"
+                          title={t('browser.doubleClickProps')}
                         >
                           <span className="tree-icon small"><RectangleHorizontal size={10} /></span>
                           <span className="tree-label">{sec.name}</span>
@@ -384,7 +386,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
               <div className="tree-item root" onClick={() => toggleExpand('loads')}>
                 <span className={`tree-arrow ${expanded.loads ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                 <span className="tree-icon"><ArrowDown size={14} /></span>
-                <span className="tree-label">Loads</span>
+                <span className="tree-label">{t('ribbon.loads')}</span>
               </div>
 
               {expanded.loads && (
@@ -594,7 +596,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
           <>
             {/* Load Case / Combination Selector */}
             <div className="results-lc-selector">
-              <span className="results-lc-label">Load Case</span>
+              <span className="results-lc-label">{t('browser.loadCases')}</span>
               <select
                 className="results-lc-select"
                 value={activeCombination !== null ? `combo-${activeCombination}` : `lc-${activeLoadCase}`}
@@ -632,15 +634,15 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   checked={showDiagramValues}
                   onChange={(e) => dispatch({ type: 'SET_SHOW_DIAGRAM_VALUES', payload: e.target.checked })}
                 />
-                <span className="toggle-text"><Hash size={10} style={{ marginRight: 4 }} />Show Values</span>
+                <span className="toggle-text"><Hash size={10} style={{ marginRight: 4 }} />{t('browser.showValues')}</span>
               </label>
             </div>
 
             {!result && (
               <div className="results-empty">
                 <BarChart3 size={24} />
-                <span>No results available</span>
-                <span className="results-empty-hint">Run analysis to see results</span>
+                <span>{t('browser.noResults')}</span>
+                <span className="results-empty-hint">{t('browser.runAnalysis')}</span>
               </div>
             )}
 
@@ -652,7 +654,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                     <div className="tree-item root" onClick={() => toggleExpand('diagrams')}>
                       <span className={`tree-arrow ${expanded.diagrams ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                       <span className="tree-icon"><BarChart3 size={14} /></span>
-                      <span className="tree-label">Diagrams</span>
+                      <span className="tree-label">{t('browser.diagrams')}</span>
                     </div>
 
                     {expanded.diagrams && (
@@ -662,28 +664,28 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                           onClick={() => activateResultView({ moment: !showMoment })}
                         >
                           <span className="tree-icon small" style={{ color: '#ef4444' }}><TrendingUp size={10} /></span>
-                          <span className="tree-label">Bending Moment (M)</span>
+                          <span className="tree-label">{t('browser.bendingMoment')}</span>
                         </div>
                         <div
                           className={`tree-item leaf result-option ${isResultActive('shear') ? 'active-result' : ''}`}
                           onClick={() => activateResultView({ shear: !showShear })}
                         >
                           <span className="tree-icon small" style={{ color: '#3b82f6' }}><TrendingUp size={10} /></span>
-                          <span className="tree-label">Shear Force (V)</span>
+                          <span className="tree-label">{t('browser.shearForce')}</span>
                         </div>
                         <div
                           className={`tree-item leaf result-option ${isResultActive('normal') ? 'active-result' : ''}`}
                           onClick={() => activateResultView({ normal: !showNormal })}
                         >
                           <span className="tree-icon small" style={{ color: '#22c55e' }}><TrendingUp size={10} /></span>
-                          <span className="tree-label">Normal Force (N)</span>
+                          <span className="tree-label">{t('browser.normalForce')}</span>
                         </div>
                         <div
                           className={`tree-item leaf result-option ${isResultActive('deflections') ? 'active-result' : ''}`}
                           onClick={() => activateResultView({ deflections: !showDeflections })}
                         >
                           <span className="tree-icon small" style={{ color: '#8b5cf6' }}><Move size={10} /></span>
-                          <span className="tree-label">Deflections ({'\u03B4'})</span>
+                          <span className="tree-label">{t('browser.deflections')} ({'\u03B4'})</span>
                         </div>
                       </div>
                     )}
@@ -716,7 +718,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                         onChange={() => dispatch({ type: 'TOGGLE_STRESS_GRADIENT' })}
                         style={{ margin: 0 }}
                       />
-                      <span className="tree-label" onClick={() => toggleExpand('stresses')}>Plate stresses/forces</span>
+                      <span className="tree-label" onClick={() => toggleExpand('stresses')}>{t('browser.plateStresses')}</span>
                     </label>
                   </div>
 
@@ -724,7 +726,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                     <div className="tree-children">
                       {/* Display mode toggle */}
                       <div className="tree-item" style={{ paddingLeft: 12, gap: 8 }}>
-                        <span className="tree-label" style={{ fontSize: 10, color: 'var(--text-muted)' }}>Display:</span>
+                        <span className="tree-label" style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t('browser.display')}</span>
                         <select
                           value={state.stressDisplayMode}
                           onChange={(e) => dispatch({ type: 'SET_STRESS_DISPLAY_MODE', payload: e.target.value as 'element' | 'smoothed' })}
@@ -739,15 +741,15 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                             cursor: 'pointer'
                           }}
                         >
-                          <option value="element">Per element</option>
-                          <option value="smoothed">Smoothed</option>
+                          <option value="element">{t('browser.perElement')}</option>
+                          <option value="smoothed">{t('browser.smoothed')}</option>
                         </select>
                       </div>
 
                       {/* Stresses sub-group */}
                       <div className="tree-item root" onClick={() => toggleExpand('stressesStress')} style={{ paddingLeft: 8 }}>
                         <span className={`tree-arrow ${expanded.stressesStress ? 'expanded' : ''}`}><ChevronRight size={10} /></span>
-                        <span className="tree-label" style={{ fontSize: 11 }}>Stresses</span>
+                        <span className="tree-label" style={{ fontSize: 11 }}>{t('browser.stresses')}</span>
                       </div>
                       {expanded.stressesStress && (
                         <div className="tree-children" style={{ paddingLeft: 12 }}>
@@ -776,7 +778,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                       {/* Bending moments sub-group */}
                       <div className="tree-item root" onClick={() => toggleExpand('stressesBending')} style={{ paddingLeft: 8 }}>
                         <span className={`tree-arrow ${expanded.stressesBending ? 'expanded' : ''}`}><ChevronRight size={10} /></span>
-                        <span className="tree-label" style={{ fontSize: 11 }}>Bending moments</span>
+                        <span className="tree-label" style={{ fontSize: 11 }}>{t('browser.bendingMoments')}</span>
                       </div>
                       {expanded.stressesBending && (
                         <div className="tree-children" style={{ paddingLeft: 12 }}>
@@ -805,7 +807,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                       {/* Shear forces sub-group */}
                       <div className="tree-item root" onClick={() => toggleExpand('stressesShear')} style={{ paddingLeft: 8 }}>
                         <span className={`tree-arrow ${expanded.stressesShear ? 'expanded' : ''}`}><ChevronRight size={10} /></span>
-                        <span className="tree-label" style={{ fontSize: 11 }}>Shear forces</span>
+                        <span className="tree-label" style={{ fontSize: 11 }}>{t('browser.shearForces')}</span>
                       </div>
                       {expanded.stressesShear && (
                         <div className="tree-children" style={{ paddingLeft: 12 }}>
@@ -833,7 +835,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                       {/* Membrane forces sub-group */}
                       <div className="tree-item root" onClick={() => toggleExpand('stressesMembrane')} style={{ paddingLeft: 8 }}>
                         <span className={`tree-arrow ${expanded.stressesMembrane ? 'expanded' : ''}`}><ChevronRight size={10} /></span>
-                        <span className="tree-label" style={{ fontSize: 11 }}>Membrane forces</span>
+                        <span className="tree-label" style={{ fontSize: 11 }}>{t('browser.membraneForces')}</span>
                       </div>
                       {expanded.stressesMembrane && (
                         <div className="tree-children" style={{ paddingLeft: 12 }}>
@@ -867,7 +869,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item root" onClick={() => toggleExpand('reactions')}>
                     <span className={`tree-arrow ${expanded.reactions ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><Triangle size={14} /></span>
-                    <span className="tree-label">Reactions</span>
+                    <span className="tree-label">{t('browser.reactions')}</span>
                   </div>
 
                   {expanded.reactions && (
@@ -877,7 +879,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                         onClick={() => activateResultView({ reactions: !showReactions })}
                       >
                         <span className="tree-icon small" style={{ color: '#10b981' }}><Triangle size={10} /></span>
-                        <span className="tree-label">Show Reactions</span>
+                        <span className="tree-label">{t('browser.showReactions')}</span>
                       </div>
                     </div>
                   )}
@@ -888,7 +890,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                   <div className="tree-item root" onClick={() => toggleExpand('displacements')}>
                     <span className={`tree-arrow ${expanded.displacements ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
                     <span className="tree-icon"><Move size={14} /></span>
-                    <span className="tree-label">Displacements</span>
+                    <span className="tree-label">{t('browser.displacements')}</span>
                   </div>
 
                   {expanded.displacements && (
@@ -900,7 +902,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                             checked={state.showDisplacements}
                             onChange={(e) => dispatch({ type: 'SET_SHOW_DISPLACEMENTS', payload: e.target.checked })}
                           />
-                          <span className="toggle-text">Show Displacements</span>
+                          <span className="toggle-text">{t('browser.showDisplacements')}</span>
                         </label>
                       </div>
                       <div
@@ -908,11 +910,11 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                         onClick={() => activateResultView({ deformed: !showDeformed })}
                       >
                         <span className="tree-icon small" style={{ color: '#f59e0b' }}><Move size={10} /></span>
-                        <span className="tree-label">Deformed Shape</span>
+                        <span className="tree-label">{t('browser.deformedShape')}</span>
                       </div>
                       {showDeformed && (
                         <div className="results-scale-row">
-                          <span>Deformation Scale</span>
+                          <span>{t('browser.deformationScale')}</span>
                           <input
                             type="range"
                             min="1"
@@ -969,6 +971,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
             length={length}
             material={beamMaterial}
             beamForces={editBarForces}
+            layers={Array.from(mesh.layers.values())}
             onUpdate={(updates) => {
               pushUndo();
               mesh.updateBeamElement(editingBarId, updates);

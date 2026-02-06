@@ -91,6 +91,55 @@ body {
   background: var(--bg-dark);
 }
 
+.split-view-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.split-view-top {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.split-view-divider {
+  flex-shrink: 0;
+  height: 6px;
+  background: var(--border, #2a2a4a);
+  cursor: row-resize;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.split-view-divider:hover,
+.split-view-divider:active {
+  background: var(--accent, #3b82f6);
+}
+
+.split-view-divider::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 2px;
+  background: var(--text-muted, #6a6a8a);
+  border-radius: 1px;
+}
+
+.split-view-bottom {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* Title Bar */
 .title-bar {
   display: flex;

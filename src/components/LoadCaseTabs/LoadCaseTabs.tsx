@@ -1,4 +1,5 @@
 import { useFEM, ViewMode } from '../../context/FEMContext';
+import { useI18n } from '../../i18n/i18n';
 import { Ruler, ArrowDown, BarChart3 } from 'lucide-react';
 import './LoadCaseTabs.css';
 
@@ -7,6 +8,7 @@ interface LoadCaseTabsProps {
 }
 
 export function LoadCaseTabs({ onSolve }: LoadCaseTabsProps) {
+  const { t } = useI18n();
   const { state, dispatch } = useFEM();
   const {
     viewMode, activeLoadCase, mesh, result, loadCases
@@ -43,23 +45,23 @@ export function LoadCaseTabs({ onSolve }: LoadCaseTabsProps) {
           onClick={() => setViewMode('geometry')}
         >
           <span className="tab-icon"><Ruler size={14} /></span>
-          <span className="tab-name">Geometry</span>
+          <span className="tab-name">{t('tabs.geometry')}</span>
         </button>
         <button
           className={`view-mode-tab ${viewMode === 'loads' ? 'active' : ''}`}
           onClick={() => setViewMode('loads')}
         >
           <span className="tab-icon"><ArrowDown size={14} /></span>
-          <span className="tab-name">Loads</span>
+          <span className="tab-name">{t('tabs.loads')}</span>
         </button>
         <button
           className={`view-mode-tab ${viewMode === 'results' ? 'active' : ''}`}
           onClick={handleResultsClick}
           disabled={mesh.getNodeCount() < 2}
-          title="View results"
+          title={t('tabs.viewResults')}
         >
           <span className="tab-icon"><BarChart3 size={14} /></span>
-          <span className="tab-name">Results</span>
+          <span className="tab-name">{t('tabs.resultsCalc')}</span>
         </button>
       </div>
 
@@ -82,23 +84,23 @@ export function LoadCaseTabs({ onSolve }: LoadCaseTabsProps) {
       {/* Status Info */}
       <div className="tabs-info">
         <span className="info-item">
-          <span className="info-label">Nodes:</span>
+          <span className="info-label">{t('browser.nodes')}:</span>
           <span className="info-value">{nodeCount}</span>
         </span>
         <span className="info-separator">|</span>
         <span className="info-item">
-          <span className="info-label">Members:</span>
+          <span className="info-label">{t('tabs.members')}</span>
           <span className="info-value">{elementCount}</span>
         </span>
         <span className="info-separator">|</span>
         <span className="info-item">
-          <span className="info-label">Supports:</span>
+          <span className="info-label">{t('tabs.supports')}</span>
           <span className="info-value">{supportCount}</span>
         </span>
         <span className="info-separator">|</span>
         <span className="info-item status-ready">
           <span className="status-dot" style={{ background: result ? 'var(--success)' : 'var(--warning)' }} />
-          <span>{result ? 'Solved' : 'Ready'}</span>
+          <span>{result ? t('browser.solved') : t('tabs.ready')}</span>
         </span>
       </div>
     </div>

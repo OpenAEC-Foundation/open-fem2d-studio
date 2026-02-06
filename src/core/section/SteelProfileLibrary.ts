@@ -178,7 +178,7 @@ class SteelProfileLibraryClass {
    * Get all categories
    */
   getCategories(): ProfileCategory[] {
-    return ['I-Profiles', 'Hollow Sections', 'Channels', 'Angles', 'T-Profiles', 'Solid Sections'];
+    return ['I-Profiles', 'Hollow Sections', 'Channels', 'Angles', 'T-Profiles', 'Solid Sections', 'Cold-Formed'];
   }
 
   /**

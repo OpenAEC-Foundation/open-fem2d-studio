@@ -1,0 +1,291 @@
+/* ---- Load Generator Dialog ---- */
+
+.loadgen-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loadgen-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  width: 500px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- Header ---- */
+
+.loadgen-header {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.loadgen-close-x {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.loadgen-close-x:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+/* ---- Body ---- */
+
+.loadgen-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- Sections ---- */
+
+.loadgen-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loadgen-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.loadgen-section-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+/* ---- Input rows ---- */
+
+.loadgen-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadgen-input-row label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.loadgen-input-row input {
+  flex: 1;
+  padding: 5px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: monospace;
+  max-width: 100px;
+}
+
+.loadgen-input-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.loadgen-input-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 40px;
+}
+
+.loadgen-input-row input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Checkbox toggle ---- */
+
+.loadgen-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.loadgen-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ---- Preview table ---- */
+
+.loadgen-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.loadgen-preview-table thead th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.loadgen-preview-table thead th.num {
+  text-align: right;
+}
+
+.loadgen-preview-table tbody tr {
+  transition: background 0.1s;
+}
+
+.loadgen-preview-table tbody tr:hover {
+  background: var(--bg-secondary);
+}
+
+.loadgen-preview-table td {
+  padding: 4px 6px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.loadgen-preview-table td.num {
+  text-align: right;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.loadgen-preview-table td.type-cell {
+  font-weight: 500;
+}
+
+.loadgen-group-header td {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding-top: 8px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+/* ---- Empty state ---- */
+
+.loadgen-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 20px 0;
+  font-style: italic;
+}
+
+/* ---- Summary ---- */
+
+.loadgen-summary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 6px 0 0;
+}
+
+.loadgen-summary strong {
+  color: var(--text-primary);
+}
+
+/* ---- Footer ---- */
+
+.loadgen-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.loadgen-footer-info {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.loadgen-footer-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.loadgen-btn {
+  padding: 6px 20px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.loadgen-btn.cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.loadgen-btn.cancel:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.loadgen-btn.generate {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.loadgen-btn.generate:hover {
+  background: var(--accent-hover);
+}
+
+.loadgen-btn.generate:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

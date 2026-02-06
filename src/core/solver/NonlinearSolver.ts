@@ -173,6 +173,22 @@ function assembleGlobalStiffnessWithGeometric(
     }
   }
 
+  // Add spring support stiffness to diagonal
+  for (const node of mesh.nodes.values()) {
+    const nodeIndex = nodeIdToIndex.get(node.id);
+    if (nodeIndex === undefined) continue;
+    const c = node.constraints;
+    if (c.springX != null && c.x) {
+      K.addAt(nodeIndex * 3, nodeIndex * 3, c.springX);
+    }
+    if (c.springY != null && c.y) {
+      K.addAt(nodeIndex * 3 + 1, nodeIndex * 3 + 1, c.springY);
+    }
+    if (c.springRot != null && c.rotation) {
+      K.addAt(nodeIndex * 3 + 2, nodeIndex * 3 + 2, c.springRot);
+    }
+  }
+
   return K;
 }
 
@@ -315,20 +331,22 @@ function applyBoundaryConditions(
 
   for (const node of mesh.nodes.values()) {
     const idx = nodeIdToIndex.get(node.id)!;
+    const c = node.constraints;
 
-    if (node.constraints.x) {
+    // Spring DOFs are NOT constrained with penalty — stiffness is added to K diagonal instead
+    if (c.x && c.springX == null) {
       const dof = idx * 3;
       Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
       Fmod[dof] = 0;
       fixedDofs.push(dof);
     }
-    if (node.constraints.y) {
+    if (c.y && c.springY == null) {
       const dof = idx * 3 + 1;
       Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
       Fmod[dof] = 0;
       fixedDofs.push(dof);
     }
-    if (node.constraints.rotation) {
+    if (c.rotation && c.springRot == null) {
       const dof = idx * 3 + 2;
       Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
       Fmod[dof] = 0;
@@ -590,6 +608,8 @@ function solvePlateOrPlane(
   }
 
   // Apply boundary conditions (penalty method)
+  // Note: getConstrainedDofs already excludes spring DOFs — springs have their stiffness
+  // added to K diagonal in assembleGlobalStiffnessMatrix instead
   const Kmod = K.clone();
   const Fmod = [...F];
   const penalty = 1e20;

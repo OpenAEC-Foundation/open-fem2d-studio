@@ -373,6 +373,162 @@
   color: var(--text-secondary, #a0a0c0);
 }
 
+/* Material category tabs */
+.section-dialog-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  background: var(--bg-tertiary, #252550);
+  border-bottom: 1px solid var(--border, #2a2a4a);
+}
+
+.section-dialog-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted, #6a6a8a);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.section-dialog-tab:hover {
+  color: var(--text-secondary, #a0a0c0);
+}
+
+.section-dialog-tab.active {
+  color: var(--accent, #3b82f6);
+  border-bottom-color: var(--accent, #3b82f6);
+}
+
+/* Placeholder for coming-soon tabs */
+.section-tab-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--text-muted, #6a6a8a);
+  font-size: 14px;
+  text-align: center;
+  min-height: 200px;
+}
+
+.section-tab-placeholder .placeholder-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+/* Concrete section inputs */
+.concrete-section-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.concrete-section-inputs .form-group {
+  margin-bottom: 0;
+}
+
+.concrete-section-inputs .form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #a0a0c0);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.concrete-section-inputs .form-group input,
+.concrete-section-inputs .form-group select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-tertiary, #252550);
+  border: 1px solid var(--border, #2a2a4a);
+  border-radius: 4px;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+}
+
+.concrete-section-inputs .form-group input:focus,
+.concrete-section-inputs .form-group select:focus {
+  outline: none;
+  border-color: var(--accent, #3b82f6);
+}
+
+.concrete-section-inputs .form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.concrete-section-inputs .form-group.half {
+  flex: 1;
+}
+
+/* Concrete SVG preview */
+.concrete-preview-svg {
+  display: block;
+  margin: 16px auto;
+}
+
+/* Timber library selector */
+.timber-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timber-selector .form-group {
+  margin-bottom: 0;
+}
+
+.timber-selector .form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #a0a0c0);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.timber-selector .form-group input,
+.timber-selector .form-group select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-tertiary, #252550);
+  border: 1px solid var(--border, #2a2a4a);
+  border-radius: 4px;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+}
+
+.timber-selector .form-group input:focus,
+.timber-selector .form-group select:focus {
+  outline: none;
+  border-color: var(--accent, #3b82f6);
+}
+
+.timber-selector .timber-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #8B6914;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+.timber-selector .timber-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+
 /* Footer */
 .section-properties-dialog .dialog-footer {
   display: flex;

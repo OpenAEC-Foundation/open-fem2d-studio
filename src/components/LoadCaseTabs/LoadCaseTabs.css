@@ -4,7 +4,7 @@
   align-items: center;
   background: var(--bg-primary);
   border-top: 1px solid var(--border);
-  padding: 0 12px;
+  padding: 0 12px 0 0;
   height: 44px;
   gap: 16px;
   flex-shrink: 0;

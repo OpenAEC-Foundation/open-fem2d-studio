@@ -1,10 +1,13 @@
 /**
  * SVG Preview Component for Steel Profiles
  * Renders parametric profiles with proper fillets and arcs
+ * Dimension labels are clickable for editing
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { ProfileGeometry } from '../../core/section/SteelProfiles';
+
+export type DimensionKey = 'h' | 'b' | 'tw' | 'tf';
 
 interface ProfileSvgPreviewProps {
   profile: ProfileGeometry;
@@ -17,6 +20,7 @@ interface ProfileSvgPreviewProps {
   rotation?: number;
   strokeColor?: string;
   fillColor?: string;
+  onDimensionEdit?: (key: DimensionKey, value: number) => void;
 }
 
 export function ProfileSvgPreview({
@@ -29,8 +33,36 @@ export function ProfileSvgPreview({
   showFilletLines = true,
   rotation = 0,
   strokeColor = '#4a90d9',
-  fillColor = '#4a90d920'
+  fillColor = '#4a90d920',
+  onDimensionEdit
 }: ProfileSvgPreviewProps) {
+  const [editingDim, setEditingDim] = useState<DimensionKey | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (editingDim && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingDim]);
+
+  const handleDimClick = (key: DimensionKey, currentValue: number) => {
+    if (!onDimensionEdit) return;
+    setEditingDim(key);
+    setEditValue(currentValue.toFixed(1));
+  };
+
+  const commitEdit = () => {
+    if (editingDim && onDimensionEdit) {
+      const val = parseFloat(editValue);
+      if (!isNaN(val) && val > 0) {
+        onDimensionEdit(editingDim, val);
+      }
+    }
+    setEditingDim(null);
+  };
   const { svgPath, viewBox, scale, bbox } = useMemo(() => {
     const bbox = profile.curve.getBoundingBox();
     const padding = 0.2;
@@ -90,12 +122,14 @@ export function ProfileSvgPreview({
   const rotationTransform = rotation !== 0 ? `rotate(${-rotation})` : '';
 
   return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
     <svg
+      ref={svgRef}
       width={width}
       height={height}
       viewBox={viewBox}
       className="profile-svg-preview"
-      style={{ background: '#ffffff' }}
+      style={{ background: 'var(--bg-primary, #ffffff)' }}
     >
       {/* Definitions */}
       <defs>
@@ -319,6 +353,10 @@ export function ProfileSvgPreview({
             x={bbox.maxX + 22 / scale}
             y={-(bbox.minY + bbox.maxY) / 2 + 3 / scale}
             textAnchor="start"
+            style={onDimensionEdit ? { cursor: 'pointer' } : undefined}
+            onClick={() => handleDimClick('h', profile.height)}
+            fill={editingDim === 'h' ? '#3b82f6' : '#333'}
+            fontWeight={editingDim === 'h' ? 'bold' : undefined}
           >
             h={profile.height.toFixed(0)}
           </text>
@@ -352,6 +390,10 @@ export function ProfileSvgPreview({
             x={(bbox.minX + bbox.maxX) / 2}
             y={-bbox.minY + 28 / scale}
             textAnchor="middle"
+            style={onDimensionEdit ? { cursor: 'pointer' } : undefined}
+            onClick={() => handleDimClick('b', profile.width)}
+            fill={editingDim === 'b' ? '#3b82f6' : '#333'}
+            fontWeight={editingDim === 'b' ? 'bold' : undefined}
           >
             b={profile.width.toFixed(0)}
           </text>
@@ -388,7 +430,10 @@ export function ProfileSvgPreview({
                 x={bbox.minX - 18 / scale}
                 y={-(bbox.maxY - profile.tf / 2) + 3 / scale}
                 textAnchor="end"
-                fill="#e07020"
+                fill={editingDim === 'tf' ? '#3b82f6' : '#e07020'}
+                fontWeight={editingDim === 'tf' ? 'bold' : undefined}
+                style={onDimensionEdit ? { cursor: 'pointer' } : undefined}
+                onClick={() => handleDimClick('tf', profile.tf!)}
               >
                 t&#x2082;={profile.tf.toFixed(1)}
               </text>
@@ -427,7 +472,10 @@ export function ProfileSvgPreview({
                 x={0}
                 y={-bbox.maxY - 18 / scale}
                 textAnchor="middle"
-                fill="#e07020"
+                fill={editingDim === 'tw' ? '#3b82f6' : '#e07020'}
+                fontWeight={editingDim === 'tw' ? 'bold' : undefined}
+                style={onDimensionEdit ? { cursor: 'pointer' } : undefined}
+                onClick={() => handleDimClick('tw', profile.tw!)}
               >
                 t&#x2091;={profile.tw.toFixed(1)}
               </text>
@@ -448,5 +496,49 @@ export function ProfileSvgPreview({
         </text>
       )}
     </svg>
+    {editingDim && (
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'var(--bg-secondary, #fff)',
+          border: '2px solid #3b82f6',
+          borderRadius: 6,
+          padding: '4px 8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          zIndex: 10,
+        }}
+      >
+        <span style={{ fontSize: 11, color: '#666', fontWeight: 600 }}>
+          {editingDim === 'tf' ? 'tf' : editingDim === 'tw' ? 'tw' : editingDim}
+        </span>
+        <input
+          ref={inputRef}
+          type="text"
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commitEdit();
+            if (e.key === 'Escape') setEditingDim(null);
+          }}
+          onBlur={commitEdit}
+          style={{
+            width: 60,
+            padding: '2px 4px',
+            fontSize: 12,
+            border: '1px solid #ccc',
+            borderRadius: 3,
+            textAlign: 'right',
+          }}
+        />
+        <span style={{ fontSize: 10, color: '#999' }}>mm</span>
+      </div>
+    )}
+    </div>
   );
 }

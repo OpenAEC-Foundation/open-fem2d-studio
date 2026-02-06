@@ -1,32 +1,34 @@
 import { useFEM } from '../../context/FEMContext';
+import { useI18n } from '../../i18n/i18n';
 import { formatStress } from '../../utils/colors';
 import './StatusBar.css';
 
 export function StatusBar() {
+  const { t } = useI18n();
   const { state } = useFEM();
   const { mesh, result, selectedTool, viewState, mouseWorldPos, solverError, stressUnit } = state;
 
   const toolHints: Record<string, string> = {
-    select: 'Click to select nodes/elements. Shift+click to multi-select. Drag to move nodes.',
-    addNode: 'Click to place a new node on the grid.',
-    addElement: 'Click 3 nodes to create a triangular element.',
-    addConstraint: 'Click a node to toggle fixed constraint.',
-    addLoad: 'Click a node to apply a force.',
-    delete: 'Click a node or element to delete it.',
-    pan: 'Drag to pan the view. Scroll to zoom.',
-    addBeam: 'Click two nodes to create a beam element.',
-    addLineLoad: 'Click a beam or plate edge to apply a distributed load.',
-    addPinned: 'Click a node to add a pinned support.',
-    addXRoller: 'Click a node to add an X-roller support.',
-    addZRoller: 'Click a node to add a Z-roller support.',
-    addZSpring: 'Click a node to add a Z-spring support.',
-    addRotSpring: 'Click a node to add a rotational spring.',
-    addXSpring: 'Click a node to add an X-spring support.',
-    addFixed: 'Click a node to add a fixed support.',
-    addPlate: 'Click two corners to create a plate element.',
-    addThermalLoad: 'Click elements to apply a thermal load.',
-    addSubNode: 'Click a beam to add a sub-node.',
-    rotate: 'Click rotation center, then enter angle.'
+    select: t('status.clickSelect'),
+    addNode: t('status.clickNode'),
+    addElement: t('status.clickTriangle'),
+    addConstraint: t('status.clickConstraint'),
+    addLoad: t('status.clickForce'),
+    delete: t('status.clickDelete'),
+    pan: t('status.dragPan'),
+    addBeam: t('status.clickBeam'),
+    addLineLoad: t('status.clickDistLoad'),
+    addPinned: t('status.clickPinned'),
+    addXRoller: t('status.clickXRoller'),
+    addZRoller: t('status.clickZRoller'),
+    addZSpring: t('status.clickZSpring'),
+    addRotSpring: t('status.clickRotSpring'),
+    addXSpring: t('status.clickXSpring'),
+    addFixed: t('status.clickFixed'),
+    addPlate: t('status.clickPlate'),
+    addThermalLoad: t('status.clickThermal'),
+    addSubNode: t('status.clickSubNode'),
+    rotate: t('status.clickRotate')
   };
 
   const zoomPercent = Math.round(viewState.scale);
@@ -34,7 +36,7 @@ export function StatusBar() {
   return (
     <div className="status-bar">
       <div className="status-section">
-        <span className="status-label">Tool:</span>
+        <span className="status-label">{t('status.tool')}</span>
         <span className="status-hint">{toolHints[selectedTool] ?? selectedTool}</span>
       </div>
 
@@ -52,13 +54,13 @@ export function StatusBar() {
 
       <div className="status-section status-stats">
         <span>
-          <strong>Nodes:</strong> {mesh.getNodeCount()}
+          <strong>{t('statusBar.nodes')}:</strong> {mesh.getNodeCount()}
         </span>
         <span>
-          <strong>Beams:</strong> {mesh.getBeamCount()}
+          <strong>{t('statusBar.beams')}:</strong> {mesh.getBeamCount()}
         </span>
         <span>
-          <strong>Elements:</strong> {mesh.getElementCount()}
+          <strong>{t('status.elements')}</strong> {mesh.getElementCount()}
         </span>
         <span className="status-zoom">
           <strong>Zoom:</strong> {zoomPercent}%
@@ -68,7 +70,7 @@ export function StatusBar() {
         )}
         {result && !solverError && (
           <>
-            <span className="status-solved">Solved</span>
+            <span className="status-solved">{t('browser.solved')}</span>
             <span>
               <strong>Max Stress:</strong> {formatStress(result.maxVonMises, stressUnit)}
             </span>

@@ -13,10 +13,13 @@ import { ProjectInfoDialog } from './components/ProjectInfoDialog/ProjectInfoDia
 import { StandardsDialog } from './components/StandardsDialog/StandardsDialog';
 import { GridsDialog } from './components/GridsDialog/GridsDialog';
 import { AgentPanel } from './components/AgentPanel/AgentPanel';
+import { ConsolePanel } from './components/ConsolePanel/ConsolePanel';
 import { MaterialsDialog } from './components/MaterialsDialog/MaterialsDialog';
 import { SteelCheckPanel } from './components/SteelCheckPanel/SteelCheckPanel';
 import { SteelCheckReport } from './components/SteelCheckReport/SteelCheckReport';
 import { ConcreteCheckPanel } from './components/ConcreteCheckPanel/ConcreteCheckPanel';
+import { ConcreteDesignDialog } from './components/ConcreteDesignDialog/ConcreteDesignDialog';
+import { ConcreteBeamView } from './components/ConcreteBeamView/ConcreteBeamView';
 import { CalculationSettingsDialog } from './components/CalculationSettingsDialog/CalculationSettingsDialog';
 import { FileTabs, FileTab } from './components/FileTabs/FileTabs';
 import { StatusBar } from './components/StatusBar/StatusBar';
@@ -26,9 +29,23 @@ import { ReportPanel } from './components/ReportPanel/ReportPanel';
 import { ReportSettingsDialog } from './components/ReportPanel/ReportSettingsDialog';
 import { TableEditorPanel } from './components/TableEditorPanel/TableEditorPanel';
 import { NodeEditorPanel } from './components/NodeEditorPanel/NodeEditorPanel';
+import { InsightsPanel } from './components/InsightsPanel/InsightsPanel';
+import { LoadGeneratorDialog } from './components/LoadGeneratorDialog/LoadGeneratorDialog';
+import { SteelConnectionDialog } from './components/SteelConnectionDialog/SteelConnectionDialog';
+import { VersionsPanel } from './components/VersionsPanel/VersionsPanel';
 import { downloadReportHTML, printReport } from './core/report/ReportGenerator';
 import { serializeProject, deserializeProject } from './core/io/ProjectSerializer';
+import {
+  IVersionStore,
+  createVersionStore,
+  commit as vcCommit,
+  createBranch as vcCreateBranch,
+  switchBranch as vcSwitchBranch,
+  checkoutCommit as vcCheckout,
+  deleteBranch as vcDeleteBranch,
+} from './core/io/VersionControl';
 import { Box } from 'lucide-react';
+import { I18nProvider } from './i18n/I18nProvider';
 
 /** Hook used inside FEMProvider to serialize current project state */
 function useProjectSnapshot() {
@@ -39,9 +56,10 @@ function useProjectSnapshot() {
       state.loadCases,
       state.loadCombinations,
       state.projectInfo,
-      state.structuralGrid
+      state.structuralGrid,
+      state.graphState
     );
-  }, [state.mesh, state.loadCases, state.loadCombinations, state.projectInfo, state.structuralGrid]);
+  }, [state.mesh, state.loadCases, state.loadCombinations, state.projectInfo, state.structuralGrid, state.graphState]);
 }
 
 interface AppContentProps {
@@ -57,15 +75,25 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const [showStandardsDialog, setShowStandardsDialog] = useState(false);
   const [showGridsDialog, setShowGridsDialog] = useState(false);
   const [showAgentPanel, setShowAgentPanel] = useState(false);
+  const [showConsolePanel, setShowConsolePanel] = useState(false);
   const [showSteelCheck, setShowSteelCheck] = useState(false);
   const [showSteelCheckReport, setShowSteelCheckReport] = useState(false);
   const [showConcreteCheck, setShowConcreteCheck] = useState(false);
   const [showMaterialsDialog, setShowMaterialsDialog] = useState(false);
   const [showCalculationSettings, setShowCalculationSettings] = useState(false);
   const [showReportSettings, setShowReportSettings] = useState(false);
+  const [showLoadGenerator, setShowLoadGenerator] = useState(false);
+  const [showConcreteDesign, setShowConcreteDesign] = useState(false);
+  const [showSteelConnection, setShowSteelConnection] = useState(false);
+  const [showGraphSplit, setShowGraphSplit] = useState(false);
+  const [graphSplitHeight, setGraphSplitHeight] = useState(280);
+  const splitDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const [browserCollapsed, setBrowserCollapsed] = useState(false);
   const [displayCollapsed, setDisplayCollapsed] = useState(false);
   const [activeRibbonTab, setActiveRibbonTab] = useState<string>('home');
+
+  // Version control state
+  const [versionStore, setVersionStore] = useState<IVersionStore | null>(null);
 
   // Expose snapshot function to parent
   const getSnapshot = useProjectSnapshot();
@@ -247,6 +275,108 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     });
   };
 
+  // ─── Version control callbacks ──────────────────────────────────────
+  const handleVCCommit = useCallback((message: string) => {
+    const snapshot = getSnapshot();
+    const author = state.projectInfo.engineer || 'User';
+    if (!versionStore) {
+      // First commit: initialise store
+      setVersionStore(createVersionStore(snapshot, author));
+    } else {
+      setVersionStore(vcCommit(versionStore, snapshot, message, author));
+    }
+  }, [versionStore, getSnapshot, state.projectInfo.engineer]);
+
+  const handleVCCreateBranch = useCallback((name: string, description?: string) => {
+    if (!versionStore) {
+      // Auto-create initial commit first
+      const snapshot = getSnapshot();
+      const author = state.projectInfo.engineer || 'User';
+      const store = createVersionStore(snapshot, author);
+      setVersionStore(vcCreateBranch(store, name, description));
+    } else {
+      setVersionStore(vcCreateBranch(versionStore, name, description));
+    }
+  }, [versionStore, getSnapshot, state.projectInfo.engineer]);
+
+  const handleVCSwitchBranch = useCallback((name: string) => {
+    if (!versionStore) return;
+    const { store, snapshot } = vcSwitchBranch(versionStore, name);
+    setVersionStore(store);
+    const data = deserializeProject(snapshot);
+    dispatch({ type: 'LOAD_PROJECT', payload: data });
+  }, [versionStore, dispatch]);
+
+  const handleVCCheckout = useCallback((commitId: string) => {
+    if (!versionStore) return;
+    const { store, snapshot } = vcCheckout(versionStore, commitId);
+    setVersionStore(store);
+    const data = deserializeProject(snapshot);
+    dispatch({ type: 'LOAD_PROJECT', payload: data });
+  }, [versionStore, dispatch]);
+
+  const handleVCDeleteBranch = useCallback((name: string) => {
+    if (!versionStore) return;
+    setVersionStore(vcDeleteBranch(versionStore, name));
+  }, [versionStore]);
+
+  // Mark uncommitted changes when mesh changes
+  useEffect(() => {
+    if (versionStore && !versionStore.hasUncommittedChanges) {
+      setVersionStore(prev => prev ? { ...prev, hasUncommittedChanges: true } : null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.meshVersion]);
+
+  // ─── Escape key closes dialogs (outermost first) ────────────────────
+  useEffect(() => {
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Close first open dialog in z-index priority order (outermost first)
+      if (showConcreteDesign) { setShowConcreteDesign(false); return; }
+      if (showSteelConnection) { setShowSteelConnection(false); return; }
+      if (showSteelCheckReport) { setShowSteelCheckReport(false); return; }
+      if (showSteelCheck) { setShowSteelCheck(false); return; }
+      if (showConcreteCheck) { setShowConcreteCheck(false); return; }
+      if (showLoadGenerator) { setShowLoadGenerator(false); return; }
+      if (showReportSettings) { setShowReportSettings(false); return; }
+      if (showCalculationSettings) { setShowCalculationSettings(false); return; }
+      if (showMaterialsDialog) { setShowMaterialsDialog(false); return; }
+      if (showStandardsDialog) { setShowStandardsDialog(false); return; }
+      if (showGridsDialog) { setShowGridsDialog(false); return; }
+      if (showProjectInfoDialog) { setShowProjectInfoDialog(false); return; }
+      if (showCombinationDialog) { setShowCombinationDialog(false); return; }
+      if (showLoadCaseDialog) { setShowLoadCaseDialog(false); return; }
+      if (showConsolePanel) { setShowConsolePanel(false); return; }
+      if (showAgentPanel) { setShowAgentPanel(false); return; }
+    };
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [
+    showConcreteDesign, showSteelConnection, showSteelCheckReport,
+    showSteelCheck, showConcreteCheck, showLoadGenerator,
+    showReportSettings, showCalculationSettings, showMaterialsDialog,
+    showStandardsDialog, showGridsDialog, showProjectInfoDialog,
+    showCombinationDialog, showLoadCaseDialog, showConsolePanel, showAgentPanel,
+  ]);
+
+  // Graph split-view drag handlers
+  const handleSplitDragStart = useCallback((e: React.PointerEvent) => {
+    splitDragRef.current = { startY: e.clientY, startHeight: graphSplitHeight };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [graphSplitHeight]);
+
+  const handleSplitDragMove = useCallback((e: React.PointerEvent) => {
+    if (!splitDragRef.current) return;
+    const delta = splitDragRef.current.startY - e.clientY;
+    const newHeight = Math.max(120, Math.min(600, splitDragRef.current.startHeight + delta));
+    setGraphSplitHeight(newHeight);
+  }, []);
+
+  const handleSplitDragEnd = useCallback(() => {
+    splitDragRef.current = null;
+  }, []);
+
   // Envelope computation: when showEnvelope is toggled on and combinations exist,
   // solve for each combination and compute the envelope of results.
   useEffect(() => {
@@ -309,11 +439,19 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         onShowStandardsDialog={() => setShowStandardsDialog(true)}
         onShowGridsDialog={() => setShowGridsDialog(true)}
         onShowSteelCheck={() => setShowSteelCheck(true)}
+        onShowSteelConnection={() => setShowSteelConnection(true)}
         onShowConcreteCheck={() => setShowConcreteCheck(true)}
+        onShowConcreteDesign={() => setShowConcreteDesign(true)}
         onShowMaterialsDialog={() => setShowMaterialsDialog(true)}
         onShowCalculationSettings={() => setShowCalculationSettings(true)}
+        onShowCombinationDialog={() => setShowCombinationDialog(true)}
+        onShowLoadGenerator={() => setShowLoadGenerator(true)}
         onToggleAgent={() => setShowAgentPanel(!showAgentPanel)}
         showAgentPanel={showAgentPanel}
+        onToggleConsole={() => setShowConsolePanel(!showConsolePanel)}
+        showConsolePanel={showConsolePanel}
+        onToggleGraphSplit={() => setShowGraphSplit(!showGraphSplit)}
+        showGraphSplit={showGraphSplit}
         onShowReportSettings={() => setShowReportSettings(true)}
         onExportReportHTML={handleExportReportHTML}
         onExportReportPDF={handleExportReportPDF}
@@ -330,45 +468,93 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
           {fileTabs}
           {activeRibbonTab === 'report' ? (
             <ReportPanel />
+          ) : activeRibbonTab === 'insights' ? (
+            <InsightsPanel />
           ) : activeRibbonTab === 'table' ? (
             <TableEditorPanel />
-          ) : activeRibbonTab === 'graph' ? (
-            <NodeEditorPanel />
+          ) : activeRibbonTab === 'versions' ? (
+            <VersionsPanel
+              versionStore={versionStore}
+              onCommit={handleVCCommit}
+              onCreateBranch={handleVCCreateBranch}
+              onSwitchBranch={handleVCSwitchBranch}
+              onCheckout={handleVCCheckout}
+              onDeleteBranch={handleVCDeleteBranch}
+            />
           ) : state.viewMode === '3d' ? (
             <ModelViewer3D />
+          ) : showGraphSplit ? (
+            <div className="split-view-container">
+              <div className="split-view-top">
+                <MeshEditor onShowGridsDialog={() => setShowGridsDialog(true)} />
+              </div>
+              <div
+                className="split-view-divider"
+                onPointerDown={handleSplitDragStart}
+                onPointerMove={handleSplitDragMove}
+                onPointerUp={handleSplitDragEnd}
+              />
+              <div className="split-view-bottom" style={{ height: graphSplitHeight }}>
+                <NodeEditorPanel />
+              </div>
+            </div>
           ) : (
             <MeshEditor onShowGridsDialog={() => setShowGridsDialog(true)} />
           )}
           <CommandPalette onToggleDialog={(dialog) => {
             switch (dialog) {
               case 'loadCases': setShowLoadCaseDialog(true); break;
+              case 'combinations': setShowCombinationDialog(true); break;
               case 'materials': setShowMaterialsDialog(true); break;
               case 'projectInfo': setShowProjectInfoDialog(true); break;
               case 'grids': setShowGridsDialog(true); break;
               case 'standards': setShowStandardsDialog(true); break;
               case 'calcSettings': setShowCalculationSettings(true); break;
               case 'steelCheck': setShowSteelCheck(true); break;
+              case 'steelConnection': setShowSteelConnection(true); break;
+              case 'concreteCheck': setShowConcreteCheck(true); break;
+              case 'concreteDesign': setShowConcreteDesign(true); break;
+              case 'reportSettings': setShowReportSettings(true); break;
+              case 'loadGenerator': setShowLoadGenerator(true); break;
               case 'solve': handleSolve(); break;
               case 'selectAll': {
-                // Select all nodes and beams
                 const allNodeIds = new Set(state.mesh.nodes.keys());
                 const allBeamIds = new Set(Array.from(state.mesh.beamElements.keys()));
                 dispatch({ type: 'SET_SELECTION', payload: { nodeIds: allNodeIds, elementIds: allBeamIds, pointLoadNodeIds: new Set(), distLoadBeamIds: new Set(), selectedDistLoadIds: new Set(), plateIds: new Set(), edgeIds: new Set() } });
                 break;
               }
+              case 'view3d': setActiveRibbonTab('3d'); break;
+              case 'viewReport': setActiveRibbonTab('report'); break;
+              case 'viewTable': setActiveRibbonTab('table'); break;
+              case 'viewInsights': setActiveRibbonTab('insights'); break;
+              case 'viewVersions': setActiveRibbonTab('versions'); break;
+              case 'viewGraph': setShowGraphSplit(g => !g); break;
+              case 'viewAgent': setShowAgentPanel(a => !a); break;
+              case 'viewConsole': setShowConsolePanel(c => !c); break;
+              case 'zoomToFit': dispatch({ type: 'SET_VIEW_STATE', payload: { scale: 100, offsetX: 400, offsetY: 300 } }); break;
+              case 'resetView': dispatch({ type: 'SET_VIEW_STATE', payload: { scale: 100, offsetX: 400, offsetY: 300 } }); break;
+              case 'exportHtml': handleExportReportHTML(); break;
+              case 'exportPdf': handleExportReportPDF(); break;
+              case 'print': handlePrintReport(); break;
             }
           }} />
         </div>
-        {/* Hide Display Settings for report/table/graph tabs */}
-        {activeRibbonTab !== 'report' && activeRibbonTab !== 'table' && activeRibbonTab !== 'graph' && (
+        {/* Hide Display Settings for report/table tabs */}
+        {activeRibbonTab !== 'report' && activeRibbonTab !== 'table' && activeRibbonTab !== 'insights' && (
           <VisibilityPanel
             collapsed={displayCollapsed}
             onToggleCollapse={() => setDisplayCollapsed(!displayCollapsed)}
           />
         )}
         {showAgentPanel && <AgentPanel onClose={() => setShowAgentPanel(false)} />}
+        {showConsolePanel && <ConsolePanel onClose={() => setShowConsolePanel(false)} />}
       </div>
       <LoadCaseTabs onSolve={handleSolve} />
+      {state.showConcreteBeamView && activeRibbonTab === 'concrete' && (
+        <ConcreteBeamView
+          onClose={() => dispatch({ type: 'SET_SHOW_CONCRETE_BEAM_VIEW', payload: false })}
+        />
+      )}
       <StatusBar />
 
       {showLoadCaseDialog && (
@@ -386,6 +572,9 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       {showGridsDialog && (
         <GridsDialog onClose={() => setShowGridsDialog(false)} />
       )}
+      {showLoadGenerator && (
+        <LoadGeneratorDialog onClose={() => setShowLoadGenerator(false)} />
+      )}
       {showSteelCheck && (
         <SteelCheckPanel onClose={() => setShowSteelCheck(false)} />
       )}
@@ -394,6 +583,12 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       )}
       {showConcreteCheck && (
         <ConcreteCheckPanel onClose={() => setShowConcreteCheck(false)} />
+      )}
+      {showConcreteDesign && (
+        <ConcreteDesignDialog onClose={() => setShowConcreteDesign(false)} />
+      )}
+      {showSteelConnection && (
+        <SteelConnectionDialog onClose={() => setShowSteelConnection(false)} />
       )}
       {showMaterialsDialog && (
         <MaterialsDialog
@@ -524,11 +719,13 @@ function App() {
   );
 
   return (
-    <FEMProvider>
-      <TabNameSync onNameChange={updateTabName} />
-      {pendingSnapshot && <ProjectLoader snapshot={pendingSnapshot} />}
-      <AppContent onSnapshotRef={snapshotRef} fileTabs={fileTabsElement} />
-    </FEMProvider>
+    <I18nProvider>
+      <FEMProvider>
+        <TabNameSync onNameChange={updateTabName} />
+        {pendingSnapshot && <ProjectLoader snapshot={pendingSnapshot} />}
+        <AppContent onSnapshotRef={snapshotRef} fileTabs={fileTabsElement} />
+      </FEMProvider>
+    </I18nProvider>
   );
 }
 
