@@ -1,6 +1,6 @@
 export const fr: Record<string, string> = {
   // App title
-  'app.title': 'Open FEM2D Studio',
+  'app.title': 'Open FEM Studio',
   'app.untitledProject': 'Projet sans titre',
   'app.newProject': 'Nouveau projet',
 
@@ -651,7 +651,7 @@ export const fr: Record<string, string> = {
   'report.noModelDataAvailable': 'Aucune donnée de modèle disponible',
   'report.createModelToGenerate': 'Créez un modèle structurel pour générer un rapport.',
   'report.structuralReport': 'Rapport de calcul',
-  'report.generatedWith': 'Généré avec Open FEM2D Studio',
+  'report.generatedWith': 'Généré avec Open FEM Studio',
   'report.sectionNotImplemented': 'Cette section n\'est pas encore implémentée.',
 
   // Report Settings Dialog

@@ -6,7 +6,7 @@ import { checkSteelSection } from '../../core/standards/SteelCheck';
 import { calculateBeamLength } from '../../core/fem/Beam';
 import {
   MousePointer2, CircleDot,
-  Triangle, ArrowLeftFromLine, Circle, ArrowDownUp, RotateCcw, ArrowLeftRight, Square,
+  RotateCcw, Square,
   ArrowDown, Move, Thermometer,
   CheckCircle,
   FileText, Copy, FileDown, Printer,
@@ -127,7 +127,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
         const handle = await (window as any).showSaveFilePicker({
           suggestedName: filename,
           types: [{
-            description: 'FEM2D Project',
+            description: 'FEM Project',
             accept: { 'application/json': ['.fem2d.json', '.json'] }
           }]
         });
@@ -316,7 +316,17 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addPinned')}
                   title={t('ribbon.pinned.title')}
                 >
-                  <span className="ribbon-icon"><Triangle size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* Pinned: triangle with ground line and hatches */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <polygon points="8,1 2,11 14,11" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <line x1="1" y1="13" x2="15" y2="13" stroke="#333" strokeWidth="1.5"/>
+                      <line x1="3" y1="13" x2="1" y2="15" stroke="#333" strokeWidth="1"/>
+                      <line x1="6" y1="13" x2="4" y2="15" stroke="#333" strokeWidth="1"/>
+                      <line x1="9" y1="13" x2="7" y2="15" stroke="#333" strokeWidth="1"/>
+                      <line x1="12" y1="13" x2="10" y2="15" stroke="#333" strokeWidth="1"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.pinned')}</span>
                 </button>
                 <button
@@ -324,7 +334,15 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addXRoller')}
                   title={t('ribbon.xRoller.title')}
                 >
-                  <span className="ribbon-icon"><ArrowLeftFromLine size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* X-Roller: vertical triangle with circles on left */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <polygon points="14,8 5,2 5,14" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <circle cx="3" cy="5" r="2" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <circle cx="3" cy="11" r="2" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <line x1="1" y1="1" x2="1" y2="15" stroke="#333" strokeWidth="1.5"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.xRoller')}</span>
                 </button>
                 <button
@@ -332,7 +350,15 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addZRoller')}
                   title={t('ribbon.zRoller.title')}
                 >
-                  <span className="ribbon-icon"><Circle size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* Z-Roller: triangle with two circles below and ground */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <polygon points="8,1 3,8 13,8" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <circle cx="5" cy="11" r="2" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <circle cx="11" cy="11" r="2" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <line x1="1" y1="14" x2="15" y2="14" stroke="#333" strokeWidth="1.5"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.zRoller')}</span>
                 </button>
                 <button
@@ -340,7 +366,13 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addZSpring')}
                   title={t('ribbon.zSpring.title')}
                 >
-                  <span className="ribbon-icon"><ArrowDownUp size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* Z-Spring: vertical zigzag spring */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8,1 L8,3 L12,4.5 L4,6.5 L12,8.5 L4,10.5 L8,12 L8,13"/>
+                      <line x1="2" y1="15" x2="14" y2="15" stroke="#333"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.zSpring')}</span>
                 </button>
                 <button
@@ -348,7 +380,14 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addRotSpring')}
                   title={t('ribbon.rotSpring.title')}
                 >
-                  <span className="ribbon-icon"><RotateCcw size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* Rot-Spring: curved arcs */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round">
+                      <path d="M4,4 A5,5 0 0,1 12,4"/>
+                      <path d="M12,12 A5,5 0 0,1 4,12"/>
+                      <circle cx="8" cy="8" r="1.5" fill="#f59e0b"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.rotSpring')}</span>
                 </button>
                 <button
@@ -356,7 +395,13 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addXSpring')}
                   title={t('ribbon.xSpring.title')}
                 >
-                  <span className="ribbon-icon"><ArrowLeftRight size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* X-Spring: horizontal zigzag spring */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15,8 L13,8 L11.5,4 L9.5,12 L7.5,4 L5.5,12 L4,8 L3,8"/>
+                      <line x1="1" y1="2" x2="1" y2="14" stroke="#333"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.xSpring')}</span>
                 </button>
                 <button
@@ -364,7 +409,16 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
                   onClick={() => selectTool('addFixed')}
                   title={t('ribbon.fixed.title')}
                 >
-                  <span className="ribbon-icon"><Square size={14} /></span>
+                  <span className="ribbon-icon">
+                    {/* Fixed: filled rectangle with hatch pattern */}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="2" y="4" width="12" height="6" fill="#f59e0b" stroke="#333" strokeWidth="1"/>
+                      <line x1="3" y1="10" x2="1" y2="14" stroke="#333" strokeWidth="1"/>
+                      <line x1="6" y1="10" x2="4" y2="14" stroke="#333" strokeWidth="1"/>
+                      <line x1="9" y1="10" x2="7" y2="14" stroke="#333" strokeWidth="1"/>
+                      <line x1="12" y1="10" x2="10" y2="14" stroke="#333" strokeWidth="1"/>
+                    </svg>
+                  </span>
                   <span>{t('ribbon.fixed')}</span>
                 </button>
               </div>

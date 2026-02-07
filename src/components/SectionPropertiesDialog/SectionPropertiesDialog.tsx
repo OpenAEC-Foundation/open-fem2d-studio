@@ -840,57 +840,7 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
           <div className="section-dialog-layout">
             {/* Left: Profile Selection */}
             <div className="section-input-panel">
-              {!isNew && section && (
-                <div className="section-view">
-                  <div className="section-name">{section.name}</div>
-                  <div className="section-props-grid">
-                    <div className="prop-row">
-                      <span className="prop-label">A</span>
-                      <span className="prop-value">{formatValue(section.section.A * 1e6, 'mm²')}</span>
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label">I<sub>y</sub></span>
-                      <span className="prop-value">{formatValue(section.section.Iy ? section.section.Iy * 1e12 : section.section.I * 1e12, 'mm⁴')}</span>
-                    </div>
-                    {section.section.Iz && (
-                      <div className="prop-row">
-                        <span className="prop-label">I<sub>z</sub></span>
-                        <span className="prop-value">{formatValue(section.section.Iz * 1e12, 'mm⁴')}</span>
-                      </div>
-                    )}
-                    <div className="prop-row">
-                      <span className="prop-label">h</span>
-                      <span className="prop-value">{(section.section.h * 1000).toFixed(1)} mm</span>
-                    </div>
-                    {section.section.Wy && (
-                      <div className="prop-row">
-                        <span className="prop-label">W<sub>el,y</sub></span>
-                        <span className="prop-value">{formatValue(section.section.Wy * 1e9, 'mm³')}</span>
-                      </div>
-                    )}
-                    {section.section.Wz && (
-                      <div className="prop-row">
-                        <span className="prop-label">W<sub>el,z</sub></span>
-                        <span className="prop-value">{formatValue(section.section.Wz * 1e9, 'mm³')}</span>
-                      </div>
-                    )}
-                    {section.section.Wply && (
-                      <div className="prop-row">
-                        <span className="prop-label">W<sub>pl,y</sub></span>
-                        <span className="prop-value">{formatValue(section.section.Wply * 1e9, 'mm³')}</span>
-                      </div>
-                    )}
-                    {section.section.Wplz && (
-                      <div className="prop-row">
-                        <span className="prop-label">W<sub>pl,z</sub></span>
-                        <span className="prop-value">{formatValue(section.section.Wplz * 1e9, 'mm³')}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {isNew && (
+              {(isNew || section) && (
                 <div className="section-edit">
                   <div className="form-group">
                     <label>Section Name</label>

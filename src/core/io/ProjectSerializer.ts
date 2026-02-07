@@ -1,5 +1,5 @@
 import { Mesh } from '../fem/Mesh';
-import { ILoadCase, ILoadCombination } from '../fem/LoadCase';
+import { ILoadCase, ILoadCombination, LoadCombinationType } from '../fem/LoadCase';
 import { IProjectInfo, IGraphState, IVersioningState } from '../../context/FEMContext';
 import { IStructuralGrid } from '../fem/StructuralGrid';
 
@@ -56,10 +56,17 @@ export function deserializeProject(json: string): {
 
   const loadCases = file.loadCases;
 
+  // Backward compatibility: convert old 'ULS'/'SLS' to new Eurocode types
+  const mapLegacyType = (t: string): LoadCombinationType => {
+    if (t === 'ULS') return '6.10b';
+    if (t === 'SLS') return '6.16';
+    return t as LoadCombinationType;
+  };
+
   const loadCombinations: ILoadCombination[] = file.loadCombinations.map(lc => ({
     id: lc.id,
     name: lc.name,
-    type: lc.type as 'ULS' | 'SLS',
+    type: mapLegacyType(lc.type),
     factors: new Map(lc.factors)
   }));
 

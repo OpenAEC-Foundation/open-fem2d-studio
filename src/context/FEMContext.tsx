@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useCallback, useMemo, ReactNode } from 'react';
 import { Mesh } from '../core/fem/Mesh';
-import { INode, IBeamElement, ISolverResult, IEnvelopeResult, Tool, IViewState, ISelection, AnalysisType, StressType } from '../core/fem/types';
+import { INode, IBeamElement, ISolverResult, IEnvelopeResult, Tool, IViewState, ISelection, AnalysisType, StressType, IPlateReinforcement } from '../core/fem/types';
 import { ILoadCase, ILoadCombination } from '../core/fem/LoadCase';
 import { convertEdgeLoadToNodalForces, convertEdgeNodeIdsToNodalForces } from '../core/fem/PlateRegion';
 import { IStructuralGrid } from '../core/fem/StructuralGrid';
@@ -94,6 +94,8 @@ interface FEMState {
   // Envelope results (min/max across all combinations)
   showEnvelope: boolean;
   envelopeResult: IEnvelopeResult | null;
+  // Active envelope type: 'uls' = ULS envelope (6.10a/b), 'sls' = SLS envelope (6.16/17/18), 'all' = all combinations
+  activeEnvelope: 'uls' | 'sls' | 'all' | null;
   // Show displacement values at nodes in results view
   showDisplacements: boolean;
   // Show numerical values on diagrams and stress results
@@ -265,6 +267,7 @@ type FEMAction =
   | { type: 'SET_AUTO_RECALCULATE'; payload: boolean }
   | { type: 'SET_SHOW_ENVELOPE'; payload: boolean }
   | { type: 'SET_ENVELOPE_RESULT'; payload: IEnvelopeResult | null }
+  | { type: 'SET_ACTIVE_ENVELOPE'; payload: 'uls' | 'sls' | 'all' | null }
   | { type: 'SET_SHOW_DEFLECTIONS'; payload: boolean }
   | { type: 'SET_CODE_CHECK_BEAM'; payload: number | null }
   | { type: 'CLEANUP_PLATE_LOADS'; payload: { plateId: number; elementIds: number[] } }
@@ -296,7 +299,8 @@ type FEMAction =
   | { type: 'CREATE_BRANCH'; payload: { branchName: string } }
   | { type: 'SWITCH_BRANCH'; payload: { branchName: string } }
   | { type: 'DELETE_VERSION'; payload: { versionId: string } }
-  | { type: 'DELETE_BRANCH'; payload: { branchName: string } };
+  | { type: 'DELETE_BRANCH'; payload: { branchName: string } }
+  | { type: 'UPDATE_PLATE_REINFORCEMENT'; plateId: number; reinforcement: IPlateReinforcement };
 
 function createEmptySelection(): ISelection {
   return {
@@ -314,78 +318,163 @@ function createEmptySelection(): ISelection {
 function createDemoBeamModel(): Mesh {
   const mesh = new Mesh();
 
-  // Continuous beam on 3 supports: two 5m spans
-  const n1 = mesh.addNode(0, 0);
-  const n2 = mesh.addNode(5, 0);
-  const n3 = mesh.addNode(10, 0);
+  // Unbraced portal frame: 12m span, 5m height
+  // Nodes: base left, base right, top left, top right
+  const n1 = mesh.addNode(0, 0);     // Base left
+  const n2 = mesh.addNode(12, 0);    // Base right
+  const n3 = mesh.addNode(0, 5);     // Top left
+  const n4 = mesh.addNode(12, 5);    // Top right
 
-  // Supports: left pinned, middle roller, right roller
+  // Fixed supports at column bases
   mesh.updateNode(n1.id, {
-    constraints: { x: true, y: true, rotation: false } // Pinned
+    constraints: { x: true, y: true, rotation: true } // Fixed
   });
   mesh.updateNode(n2.id, {
-    constraints: { x: false, y: true, rotation: false } // Roller
-  });
-  mesh.updateNode(n3.id, {
-    constraints: { x: false, y: true, rotation: false } // Roller
+    constraints: { x: true, y: true, rotation: true } // Fixed
   });
 
-  // Beam elements: IPE 200 steel
-  const ipe200 = { A: 28.5e-4, I: 1940e-8, h: 0.200 };
-  mesh.addBeamElement([n1.id, n2.id], 1, ipe200, 'IPE 200');
-  mesh.addBeamElement([n2.id, n3.id], 1, ipe200, 'IPE 200');
+  // HEA 160 columns (A=38.77 cm², Iy=1673 cm⁴, h=152mm)
+  const hea160 = { A: 38.77e-4, I: 1673e-8, h: 0.152 };
+  mesh.addBeamElement([n1.id, n3.id], 1, hea160, 'HEA 160');
+  mesh.addBeamElement([n2.id, n4.id], 1, hea160, 'HEA 160');
+
+  // IPE 360 beam (A=72.73 cm², Iy=16270 cm⁴, h=360mm)
+  const ipe360 = { A: 72.73e-4, I: 16270e-8, h: 0.360 };
+  mesh.addBeamElement([n3.id, n4.id], 1, ipe360, 'IPE 360');
 
   return mesh;
 }
 
-function createDefaultLoadCases(beamElementId: number): ILoadCase[] {
+function createDefaultLoadCases(_beamElementId: number): ILoadCase[] {
+  // Load cases for portal frame: G, Q, S, W
+  // Beam element 3 is the roof beam (IPE 360)
+  const roofBeamId = 3;
   return [
     {
       id: 1,
-      name: 'Dead Load (G)',
+      name: 'Permanent (G)',
       type: 'dead',
       pointLoads: [],
       distributedLoads: [
-        { id: 1, elementId: beamElementId, qx: 0, qy: -3000, coordSystem: 'local' }
+        { id: 1, elementId: roofBeamId, qx: 0, qy: -5000, coordSystem: 'global' } // 5 kN/m self weight + cladding
       ],
       thermalLoads: [],
       color: '#6b7280'
     },
     {
       id: 2,
-      name: 'Live Load (Q)',
+      name: 'Variable (Q)',
       type: 'live',
       pointLoads: [],
-      distributedLoads: [],
+      distributedLoads: [
+        { id: 1, elementId: roofBeamId, qx: 0, qy: -2500, coordSystem: 'global' } // 2.5 kN/m live load
+      ],
       thermalLoads: [],
       color: '#3b82f6'
+    },
+    {
+      id: 3,
+      name: 'Snow (S)',
+      type: 'snow',
+      pointLoads: [],
+      distributedLoads: [
+        { id: 1, elementId: roofBeamId, qx: 0, qy: -4000, coordSystem: 'global' } // 4 kN/m snow load
+      ],
+      thermalLoads: [],
+      color: '#60a5fa'
+    },
+    {
+      id: 4,
+      name: 'Wind (W)',
+      type: 'wind',
+      pointLoads: [],
+      distributedLoads: [
+        { id: 1, elementId: 1, qx: 1500, qy: 0, coordSystem: 'global' }, // 1.5 kN/m wind on left column
+        { id: 2, elementId: 2, qx: -750, qy: 0, coordSystem: 'global' }  // -0.75 kN/m suction on right column
+      ],
+      thermalLoads: [],
+      color: '#22c55e'
     }
   ];
 }
 
 function createDefaultCombinations(): ILoadCombination[] {
+  // EN 1990 combinations for G (1), Q (2), S (3), W (4)
+  // ψ₀: Q=0.7, S=0.5, W=0.6
+  // ψ₁: Q=0.5, S=0.2, W=0.2
+  // ψ₂: Q=0.3, S=0.0, W=0.0
   return [
+    // ULS combinations (6.10a and 6.10b)
     {
       id: 1,
-      name: 'ULS: 1.08G + 1.35Q',
-      type: 'ULS',
-      factors: new Map([[1, 1.08], [2, 1.35]])
+      name: 'ULS 6.10a: 1.08G + 1.35ψ₀Q + 1.35ψ₀S',
+      type: '6.10a',
+      factors: new Map([[1, 1.08], [2, 1.35 * 0.7], [3, 1.35 * 0.5]])
     },
     {
       id: 2,
-      name: 'SLS: 1.0G + 1.0Q',
-      type: 'SLS',
-      factors: new Map([[1, 1.0], [2, 1.0]])
+      name: 'ULS 6.10b: 1.35G + 1.50Q + 1.50ψ₀S',
+      type: '6.10b',
+      factors: new Map([[1, 1.35], [2, 1.50], [3, 1.50 * 0.5]])
+    },
+    {
+      id: 3,
+      name: 'ULS 6.10b: 1.35G + 1.50S + 1.50ψ₀Q',
+      type: '6.10b',
+      factors: new Map([[1, 1.35], [2, 1.50 * 0.7], [3, 1.50]])
+    },
+    {
+      id: 4,
+      name: 'ULS 6.10b: 1.35G + 1.50W + 1.50ψ₀Q',
+      type: '6.10b',
+      factors: new Map([[1, 1.35], [2, 1.50 * 0.7], [4, 1.50]])
+    },
+    {
+      id: 5,
+      name: 'ULS 6.10b: 1.00G + 1.50W (uplift)',
+      type: '6.10b',
+      factors: new Map([[1, 1.00], [4, 1.50]])
+    },
+    {
+      id: 6,
+      name: 'ULS 6.10b: 1.35G + 1.50Q + 1.50ψ₀S + 1.50ψ₀W',
+      type: '6.10b',
+      factors: new Map([[1, 1.35], [2, 1.50], [3, 1.50 * 0.5], [4, 1.50 * 0.6]])
+    },
+    // SLS combinations
+    {
+      id: 7,
+      name: 'SLS 6.16 Characteristic: G + Q + S',
+      type: '6.16',
+      factors: new Map([[1, 1.0], [2, 1.0], [3, 1.0]])
+    },
+    {
+      id: 8,
+      name: 'SLS 6.17 Frequent: G + ψ₁Q + ψ₂S',
+      type: '6.17',
+      factors: new Map([[1, 1.0], [2, 0.5], [3, 0.0]])
+    },
+    {
+      id: 9,
+      name: 'SLS 6.18 Quasi-perm: G + ψ₂Q + ψ₂S',
+      type: '6.18',
+      factors: new Map([[1, 1.0], [2, 0.3], [3, 0.0]])
     }
   ];
 }
 
 function createDefaultStructuralGrid(): IStructuralGrid {
   return {
-    verticalLines: [],
-    horizontalLines: [],
-    showGridLines: false,
-    snapToGridLines: false
+    verticalLines: [
+      { id: 1, name: 'A', position: 0, orientation: 'vertical' },
+      { id: 2, name: 'B', position: 12, orientation: 'vertical' }
+    ],
+    horizontalLines: [
+      { id: 3, name: '1', position: 0, orientation: 'horizontal' },
+      { id: 4, name: '2', position: 5, orientation: 'horizontal' }
+    ],
+    showGridLines: true,
+    snapToGridLines: true
   };
 }
 
@@ -491,15 +580,91 @@ export function applyLoadCaseToMesh(mesh: Mesh, loadCase: ILoadCase, skipEdgeToN
 
   // Apply point loads from load case
   for (const pl of loadCase.pointLoads) {
-    const node = mesh.getNode(pl.nodeId);
-    if (node) {
-      mesh.updateNode(pl.nodeId, {
-        loads: {
-          fx: node.loads.fx + pl.fx,
-          fy: node.loads.fy + pl.fy,
-          moment: node.loads.moment + pl.mz
-        }
-      });
+    // Check if this is a beam point load (has beamId and position)
+    if (pl.beamId !== undefined && pl.position !== undefined) {
+      // Beam point load: convert to equivalent nodal forces using fixed-end moment formulas
+      const beam = mesh.getBeamElement(pl.beamId);
+      if (!beam) continue;
+      const nodes = mesh.getBeamElementNodes(beam);
+      if (!nodes) continue;
+      const [n1, n2] = nodes;
+
+      // Beam length and load position
+      const L = Math.sqrt((n2.x - n1.x) ** 2 + (n2.y - n1.y) ** 2);
+      const a = pl.position * L;  // distance from start to load
+      const b = L - a;            // distance from load to end
+
+      // Fixed-end reactions for point load at position a from start:
+      // For vertical load P at position a:
+      //   R1 = P * b^2 * (3a + b) / L^3
+      //   R2 = P * a^2 * (a + 3b) / L^3
+      //   M1 = P * a * b^2 / L^2  (clockwise positive)
+      //   M2 = -P * a^2 * b / L^2 (counterclockwise positive)
+
+      // Transform global loads (fx, fy) to beam local coordinates
+      const cosA = (n2.x - n1.x) / L;
+      const sinA = (n2.y - n1.y) / L;
+      // Local: fx_local = fx*cos + fy*sin (axial), fy_local = -fx*sin + fy*cos (transverse)
+      const fxLocal = pl.fx * cosA + pl.fy * sinA;  // axial
+      const fyLocal = -pl.fx * sinA + pl.fy * cosA; // transverse
+
+      // Equivalent nodal forces for transverse load
+      const L3 = L * L * L;
+      const L2 = L * L;
+      const b2 = b * b;
+      const a2 = a * a;
+
+      // Transverse reactions (in local Y)
+      const R1y = fyLocal * b2 * (3 * a + b) / L3;
+      const R2y = fyLocal * a2 * (a + 3 * b) / L3;
+      // Fixed-end moments
+      const M1 = fyLocal * a * b2 / L2;
+      const M2 = -fyLocal * a2 * b / L2;
+
+      // Axial reactions (simple: proportional to position)
+      const R1x = fxLocal * (1 - pl.position);
+      const R2x = fxLocal * pl.position;
+
+      // Transform back to global and apply to nodes
+      // Node 1
+      const fx1Global = R1x * cosA - R1y * sinA;
+      const fy1Global = R1x * sinA + R1y * cosA;
+      const node1 = mesh.getNode(n1.id);
+      if (node1) {
+        mesh.updateNode(n1.id, {
+          loads: {
+            fx: node1.loads.fx + fx1Global,
+            fy: node1.loads.fy + fy1Global,
+            moment: node1.loads.moment + M1 + pl.mz * (1 - pl.position)
+          }
+        });
+      }
+
+      // Node 2
+      const fx2Global = R2x * cosA - R2y * sinA;
+      const fy2Global = R2x * sinA + R2y * cosA;
+      const node2 = mesh.getNode(n2.id);
+      if (node2) {
+        mesh.updateNode(n2.id, {
+          loads: {
+            fx: node2.loads.fx + fx2Global,
+            fy: node2.loads.fy + fy2Global,
+            moment: node2.loads.moment + M2 + pl.mz * pl.position
+          }
+        });
+      }
+    } else {
+      // Regular node-based point load
+      const node = mesh.getNode(pl.nodeId);
+      if (node) {
+        mesh.updateNode(pl.nodeId, {
+          loads: {
+            fx: node.loads.fx + pl.fx,
+            fy: node.loads.fy + pl.fy,
+            moment: node.loads.moment + pl.mz
+          }
+        });
+      }
     }
   }
 
@@ -819,6 +984,7 @@ const initialState: FEMState = {
   activeCombination: null,
   showEnvelope: false,
   envelopeResult: null,
+  activeEnvelope: null,
   autoRecalculate: true,
   meshVersion: 0,
   undoStack: [],
@@ -1114,15 +1280,44 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, activeCombination: action.payload };
 
     case 'ADD_POINT_LOAD': {
-      const { lcId, nodeId, fx, fy, mz } = action.payload;
+      const { lcId, nodeId, fx, fy, mz, beamId, position } = action.payload;
       const newLoadCases = state.loadCases.map(lc => {
         if (lc.id !== lcId) return lc;
-        // Replace existing load for this node or add new
-        const filtered = lc.pointLoads.filter(pl => pl.nodeId !== nodeId);
+        // For beam point loads (beamId set), use beamId:nodeId as unique key
+        // For node-based loads, use nodeId as key
+        const isBeamLoad = beamId !== undefined && position !== undefined;
+        const filtered = lc.pointLoads.filter(pl => {
+          if (isBeamLoad) {
+            // Remove if same beamId and nodeId
+            return !(pl.beamId === beamId && pl.nodeId === nodeId);
+          } else {
+            // Remove if same nodeId (old behavior for node-based loads)
+            return pl.nodeId !== nodeId || pl.beamId !== undefined;
+          }
+        });
         if (fx !== 0 || fy !== 0 || mz !== 0) {
-          filtered.push({ nodeId, fx, fy, mz });
+          if (isBeamLoad) {
+            filtered.push({ nodeId, fx, fy, mz, beamId, position });
+          } else {
+            filtered.push({ nodeId, fx, fy, mz });
+          }
         }
         return { ...lc, pointLoads: filtered };
+      });
+      return { ...state, loadCases: newLoadCases };
+    }
+
+    case 'UPDATE_BEAM_POINT_LOAD': {
+      const { lcId, beamId, nodeId, position } = action.payload;
+      const newLoadCases = state.loadCases.map(lc => {
+        if (lc.id !== lcId) return lc;
+        const updatedLoads = lc.pointLoads.map(pl => {
+          if (pl.beamId === beamId && pl.nodeId === nodeId) {
+            return { ...pl, position };
+          }
+          return pl;
+        });
+        return { ...lc, pointLoads: updatedLoads };
       });
       return { ...state, loadCases: newLoadCases };
     }
@@ -1348,6 +1543,15 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
 
     case 'SET_ENVELOPE_RESULT':
       return { ...state, envelopeResult: action.payload };
+
+    case 'SET_ACTIVE_ENVELOPE':
+      return {
+        ...state,
+        activeEnvelope: action.payload,
+        // When activating envelope, clear individual combination selection
+        activeCombination: action.payload ? null : state.activeCombination,
+        showEnvelope: action.payload !== null
+      };
 
     case 'SET_SHOW_DEFLECTIONS':
       return { ...state, showDeflections: action.payload };
@@ -1691,6 +1895,21 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
           branches: versioning.branches.filter(b => b !== branchName),
           versions: versioning.versions.filter(v => v.branchName !== branchName)
         }
+      };
+    }
+
+    case 'UPDATE_PLATE_REINFORCEMENT': {
+      const { plateId, reinforcement } = action;
+      const plate = state.mesh.plateRegions.get(plateId);
+      if (!plate) return state;
+
+      // Update plate with reinforcement config
+      const updatedPlate = { ...plate, reinforcement };
+      state.mesh.plateRegions.set(plateId, updatedPlate);
+
+      return {
+        ...state,
+        meshVersion: state.meshVersion + 1
       };
     }
 

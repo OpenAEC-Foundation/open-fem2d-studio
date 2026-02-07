@@ -22,7 +22,7 @@ interface ProjectBrowserProps {
 export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserProps) {
   const { t } = useI18n();
   const { state, dispatch, pushUndo } = useFEM();
-  const { mesh, selection, result, showMoment, showShear, showNormal, showRotation, showDeflections, showDeformed, showReactions, loadCases, activeLoadCase, loadCombinations, activeCombination, stressType, showDiagramValues, analysisType, deformationScale, diagramScale, browserTab: activeTab } = state;
+  const { mesh, selection, result, showMoment, showShear, showNormal, showRotation, showDeflections, showDeformed, showReactions, loadCases, activeLoadCase, loadCombinations, activeCombination, activeEnvelope, stressType, showDiagramValues, analysisType, deformationScale, diagramScale, browserTab: activeTab } = state;
 
   const setActiveTab = (tab: BrowserTab) => dispatch({ type: 'SET_BROWSER_TAB', payload: tab });
 
@@ -799,13 +799,22 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
               <span className="results-lc-label">{t('browser.loadCases')}</span>
               <select
                 className="results-lc-select"
-                value={activeCombination !== null ? `combo-${activeCombination}` : `lc-${activeLoadCase}`}
+                value={
+                  activeEnvelope !== null ? `envelope-${activeEnvelope}` :
+                  activeCombination !== null ? `combo-${activeCombination}` :
+                  `lc-${activeLoadCase}`
+                }
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (val.startsWith('combo-')) {
+                  if (val.startsWith('envelope-')) {
+                    const envType = val.replace('envelope-', '') as 'uls' | 'sls' | 'all';
+                    dispatch({ type: 'SET_ACTIVE_ENVELOPE', payload: envType });
+                  } else if (val.startsWith('combo-')) {
+                    dispatch({ type: 'SET_ACTIVE_ENVELOPE', payload: null });
                     const comboId = parseInt(val.replace('combo-', ''));
                     dispatch({ type: 'SET_ACTIVE_COMBINATION', payload: comboId });
                   } else {
+                    dispatch({ type: 'SET_ACTIVE_ENVELOPE', payload: null });
                     dispatch({ type: 'SET_ACTIVE_COMBINATION', payload: null });
                     dispatch({ type: 'SET_ACTIVE_LOAD_CASE', payload: parseInt(val.replace('lc-', '')) });
                   }
@@ -821,6 +830,17 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                     {loadCombinations.map(combo => (
                       <option key={`combo-${combo.id}`} value={`combo-${combo.id}`}>{combo.name}</option>
                     ))}
+                  </optgroup>
+                )}
+                {loadCombinations.length > 0 && (
+                  <optgroup label="Envelope">
+                    {loadCombinations.some(c => c.type === '6.10a' || c.type === '6.10b') && (
+                      <option value="envelope-uls">ULS Envelope (6.10a/b)</option>
+                    )}
+                    {loadCombinations.some(c => c.type === '6.16' || c.type === '6.17' || c.type === '6.18') && (
+                      <option value="envelope-sls">SLS Envelope (6.16/17/18)</option>
+                    )}
+                    <option value="envelope-all">All Combinations</option>
                   </optgroup>
                 )}
               </select>

@@ -111,6 +111,7 @@ export interface IBeamElement extends IElement {
   onGrade?: {
     enabled: boolean;
     k: number;  // Spring stiffness (N/m per m length = N/m²)
+    b?: number; // Foundation width (m), defaults to 1.0 if not specified
   };
   // Lateral bracing (kipsteunen) - positions along beam as fraction (0-1)
   lateralBracing?: {
@@ -244,6 +245,7 @@ export interface IPlateRegion {
   meshSize?: number;               // element edge length for polygon quad mesh (meters)
   boundaryNodeIds?: number[];
   quadOnly?: boolean;              // if true, mesh is quad-only (no remaining triangles)
+  reinforcement?: IPlateReinforcement;  // Reinforcement configuration for concrete plates
 }
 
 /**
@@ -272,6 +274,42 @@ export interface IThermalLoad {
   plateId?: number;    // if applied to whole plate
   deltaT: number;      // temperature change (°C)
 }
+
+// ============ Reinforcement types for concrete plates ============
+
+/**
+ * Mesh reinforcement layer (rebar net in one direction)
+ */
+export interface IReinforcementMesh {
+  direction: 'X' | 'Y';           // Rebar direction
+  barDiameter: number;            // mm
+  spacing: number;                // mm c/c
+  cover: number;                  // mm from surface to bar center
+  position: 'top' | 'bottom';     // Layer position
+}
+
+/**
+ * Individual reinforcement bar (additional rebar)
+ */
+export interface IReinforcementBar {
+  barDiameter: number;                     // mm
+  cover: number;                           // mm
+  position: 'top' | 'bottom';
+  coordinates: { x: number; y: number }[]; // Bar path (at least 2 points)
+}
+
+/**
+ * Complete reinforcement configuration for a plate region
+ */
+export interface IPlateReinforcement {
+  topX?: IReinforcementMesh;      // Top layer, X direction
+  topY?: IReinforcementMesh;      // Top layer, Y direction
+  bottomX?: IReinforcementMesh;   // Bottom layer, X direction
+  bottomY?: IReinforcementMesh;   // Bottom layer, Y direction
+  additionalBars?: IReinforcementBar[];
+}
+
+// ============================================================
 
 export interface IEnvelopeResult {
   minDisplacements: number[];

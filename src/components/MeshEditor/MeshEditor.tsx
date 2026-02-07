@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useFEM, applyLoadCaseToMesh } from '../../context/FEMContext';
 import { INode, IBeamElement, IBeamSection, ConnectionType, getConnectionTypes } from '../../core/fem/types';
 import { getStressColor, generateColorScale, formatResultValue } from '../../utils/colors';
-import { calculateBeamLength, calculateBeamAngle } from '../../core/fem/Beam';
+import { calculateBeamLength, calculateBeamAngle, DEFAULT_SECTIONS } from '../../core/fem/Beam';
 import { formatForce, formatMoment } from '../../core/fem/BeamForces';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { LoadDialog } from '../LoadDialog/LoadDialog';
@@ -194,6 +194,11 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
   // Load dialog for editing point loads
   const [editingLoadNodeId, setEditingLoadNodeId] = useState<number | null>(null);
+
+  // Beam point load dialog - for loads placed on beams (with beamId and position)
+  const [editingBeamPointLoad, setEditingBeamPointLoad] = useState<{ beamId: number; position: number; existingNodeId?: number } | null>(null);
+  // Silence unused warning - will be used when beam point load dialog is implemented
+  void editingBeamPointLoad; void setEditingBeamPointLoad;
 
   // Bar properties dialog (double-click on bar)
   const [editingBarId, setEditingBarId] = useState<number | null>(null);
@@ -1046,7 +1051,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         // Skip if click is close to the beam line — let beam handler take priority
         // This applies to ALL loads to prevent load from "stealing" beam clicks
         const distToBeam = pointToSegmentDist(screenX, screenY, p1.x, p1.y, p2.x, p2.y);
-        if (distToBeam < 12) continue;
+        if (distToBeam < 20) continue;
 
         // Add a small margin around edges for easier selection (only for top/sides, not base near beam)
         if (!inside) {
@@ -1067,6 +1072,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   }, [mesh, worldToScreen, loadCases, activeLoadCase]);
 
   // Find beam point load at screen position - returns load key "beamId:nodeId" and the load
+  // Will be used when beam point load dragging is implemented
   const findBeamPointLoadAtScreen = useCallback((screenX: number, screenY: number): { loadKey: string; load: IPointLoad; beam: IBeamElement } | null => {
     const activeLc = loadCases.find(lc => lc.id === activeLoadCase);
     if (!activeLc) return null;
@@ -1095,6 +1101,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     }
     return null;
   }, [mesh, worldToScreen, loadCases, activeLoadCase]);
+  // Silence unused warning - will be used when beam point load dragging is implemented
+  void findBeamPointLoadAtScreen;
 
   const applyNewDimension = useCallback((beamId: number, newLength: number) => {
     if (isNaN(newLength) || newLength <= 0) return;
@@ -1727,7 +1735,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   // Draw a beam point load (point load at a position along a beam)
   const drawBeamPointLoad = useCallback((
     ctx: CanvasRenderingContext2D,
-    beam: IBeamElement,
+    _beam: IBeamElement,
     n1: INode,
     n2: INode,
     position: number,
@@ -4067,6 +4075,47 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
           ctx.textAlign = 'start';
           ctx.textBaseline = 'alphabetic';
+        }
+      }
+
+      // Draw beam on grade springs (decorative, not selectable)
+      if (beam.onGrade?.enabled && beam.onGrade.k > 0) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 20) {
+          const numSprings = Math.max(3, Math.min(10, Math.floor(len / 40)));
+          const perpX = -dy / len;
+          const perpY = dx / len;
+
+          ctx.save();
+          ctx.strokeStyle = '#10b981'; // Green color for foundation springs
+          ctx.lineWidth = 1.5;
+
+          for (let i = 0; i <= numSprings; i++) {
+            const t = i / numSprings;
+            const sx = p1.x + dx * t;
+            const sy = p1.y + dy * t;
+
+            // Draw small zigzag spring
+            const springLen = 16;
+            const zigWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + perpX * 4, sy + perpY * 4);
+            ctx.lineTo(sx + perpX * 6 + (dx / len) * zigWidth, sy + perpY * 6 + (dy / len) * zigWidth);
+            ctx.lineTo(sx + perpX * 10 - (dx / len) * zigWidth, sy + perpY * 10 - (dy / len) * zigWidth);
+            ctx.lineTo(sx + perpX * 14 + (dx / len) * zigWidth, sy + perpY * 14 + (dy / len) * zigWidth);
+            ctx.lineTo(sx + perpX * springLen, sy + perpY * springLen);
+            ctx.stroke();
+
+            // Ground line
+            ctx.beginPath();
+            ctx.moveTo(sx + perpX * (springLen + 2) - (dx / len) * 5, sy + perpY * (springLen + 2) - (dy / len) * 5);
+            ctx.lineTo(sx + perpX * (springLen + 2) + (dx / len) * 5, sy + perpY * (springLen + 2) + (dy / len) * 5);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
       }
     }
@@ -6471,6 +6520,35 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       // Handle Delete key
       if (e.key === 'Delete') {
+        // Delete selected point loads (including beam point loads)
+        if (selection.pointLoadNodeIds.size > 0) {
+          pushUndo();
+          for (const nodeId of selection.pointLoadNodeIds) {
+            dispatch({ type: 'REMOVE_POINT_LOAD', payload: { lcId: activeLoadCase, nodeId } });
+            // Also clear loads from mesh node if it's a real node
+            const node = mesh.getNode(nodeId);
+            if (node) {
+              mesh.updateNode(nodeId, { loads: { fx: 0, fy: 0, moment: 0 } });
+            }
+          }
+          dispatch({ type: 'CLEAR_SELECTION' });
+          dispatch({ type: 'SET_RESULT', payload: null });
+          dispatch({ type: 'REFRESH_MESH' });
+          return;
+        }
+
+        // Delete selected distributed loads
+        if (selection.selectedDistLoadIds.size > 0) {
+          pushUndo();
+          for (const loadId of selection.selectedDistLoadIds) {
+            dispatch({ type: 'REMOVE_DISTRIBUTED_LOAD', payload: { lcId: activeLoadCase, loadId } });
+          }
+          dispatch({ type: 'CLEAR_SELECTION' });
+          dispatch({ type: 'SET_RESULT', payload: null });
+          dispatch({ type: 'REFRESH_MESH' });
+          return;
+        }
+
         if (selection.nodeIds.size > 0 || selection.elementIds.size > 0 || selection.plateIds.size > 0) {
           pushUndo();
           // Delete selected plates first (removes their elements/nodes)
@@ -6501,7 +6579,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selection, pendingCommand, mesh, dispatch, selectedTool, pushUndo, pendingNodes, beamLengthInput,
       plateEditState, platePolygonPoints, plateVoids, currentVoidPoints, voidTargetPlateId, arcMode, discretizeArc,
-      moveMode, moveDistanceInput, moveAxisConstraint, moveOriginalPositions, moveOriginalVertexPositions]);
+      moveMode, moveDistanceInput, moveAxisConstraint, moveOriginalPositions, moveOriginalVertexPositions, activeLoadCase]);
 
   // LC filtering: apply active load case to mesh when LC tab changes
   useEffect(() => {
@@ -6516,6 +6594,13 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     const rect = canvasRef.current!.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    // PRIORITY: Middle mouse button (button === 1) always starts panning, regardless of tool/mode
+    if (e.button === 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
 
     // Handle rotate tool: click sets rotation center, then show angle input
     if (selectedTool === 'rotate' && (selection.nodeIds.size > 0 || selection.plateIds.size > 0)) {
@@ -6583,7 +6668,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       return;
     }
 
-    if (selectedTool === 'pan' || e.button === 1) {
+    if (selectedTool === 'pan') {
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
       return;
@@ -7134,6 +7219,29 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           }
           return;
         }
+
+        // Check for beam point load selection/dragging
+        const bplHit = findBeamPointLoadAtScreen(x, y);
+        if (bplHit !== null) {
+          const { loadKey, load } = bplHit;
+          // Select the load using nodeId (for compatibility with existing selection system)
+          if (!e.shiftKey) {
+            dispatch({
+              type: 'SET_SELECTION',
+              payload: {
+                nodeIds: new Set(),
+                elementIds: new Set(),
+                pointLoadNodeIds: new Set([load.nodeId]),
+                distLoadBeamIds: new Set()
+              }
+            });
+          }
+          // Start dragging
+          setDraggedBeamPointLoadKey(loadKey);
+          setBeamPointLoadDragOrigin({ position: load.position! });
+          pushUndo();
+          return;
+        }
       }
 
       // Check for beam selection
@@ -7317,10 +7425,23 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           // Clear pending created nodes since the bar was successfully created
           setPendingCreatedNodeIds([]);
         } else {
-          // First beam: show section dialog
-          setPendingBeamNodeIds(nodeIds);
-          setShowSectionDialog(true);
+          // First beam: create with default section and open BarPropertiesDialog
+          const defaultSection = DEFAULT_SECTIONS[0]; // IPE 100
+          pushUndo();
+          const newBeam = mesh.addBeamElement(nodeIds, 1, defaultSection.section, defaultSection.name);
+          if (newBeam) {
+            newBeam.layerId = activeLayerId;
+            setEditingBarId(newBeam.id); // Open BarPropertiesDialog
+          }
+          dispatch({ type: 'REFRESH_MESH' });
+          dispatch({ type: 'SET_RESULT', payload: null });
+          // Continue chain: end node becomes start of next beam
           dispatch({ type: 'CLEAR_PENDING_NODES' });
+          dispatch({ type: 'ADD_PENDING_NODE', payload: node.id });
+          // Remember section for subsequent beams
+          setLastUsedSection({ section: defaultSection.section, profileName: defaultSection.name });
+          // Clear pending created nodes since the bar was successfully created
+          setPendingCreatedNodeIds([]);
         }
       }
     }
@@ -7413,6 +7534,21 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     }
 
     if (selectedTool === 'addLoad') {
+      // First check if clicking on an existing beam point load marker
+      const bplHit = findBeamPointLoadAtScreen(x, y);
+      if (bplHit) {
+        // Open dialog to edit this beam point load
+        if (viewMode === 'geometry') {
+          dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
+        }
+        setEditingBeamPointLoad({
+          beamId: bplHit.load.beamId!,
+          position: bplHit.load.position!,
+          existingNodeId: bplHit.load.nodeId
+        });
+        return;
+      }
+
       const node = findNodeAtScreen(x, y);
       if (node) {
         // Open load dialog for existing node
@@ -7423,18 +7559,17 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         return;
       }
 
-      // If clicking on a bar, split it and apply load at that point
+      // If clicking on a beam, create a beam point load (without splitting)
       const hit = findBeamAtScreenWithPosition(x, y);
       if (hit) {
-        pushUndo();
-        const newNode = mesh.splitBeamAt(hit.beam.id, hit.t);
-        if (newNode) {
-          dispatch({ type: 'REFRESH_MESH' });
-          if (viewMode === 'geometry') {
-            dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
-          }
-          setEditingLoadNodeId(newNode.id);
+        if (viewMode === 'geometry') {
+          dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
         }
+        // Open beam point load dialog for new load
+        setEditingBeamPointLoad({
+          beamId: hit.beam.id,
+          position: hit.t
+        });
       }
     }
 
@@ -7724,6 +7859,45 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       setHoveredDistLoadId(distLoadHit?.loadId ?? null);
     } else {
       setHoveredDistLoadId(null);
+    }
+
+    // Detect beam point load hover (only in non-geometry view)
+    if (viewMode !== 'geometry' && (selectedTool === 'select' || selectedTool === 'addLoad')) {
+      const bplHit = findBeamPointLoadAtScreen(mx, my);
+      setHoveredBeamPointLoadKey(bplHit?.loadKey ?? null);
+    } else {
+      setHoveredBeamPointLoadKey(null);
+    }
+
+    // Handle dragging beam point load along beam
+    if (draggedBeamPointLoadKey && beamPointLoadDragOrigin) {
+      const [beamIdStr, nodeIdStr] = draggedBeamPointLoadKey.split(':');
+      const beamId = parseInt(beamIdStr);
+      const nodeId = parseInt(nodeIdStr);
+      const beam = mesh.beamElements.get(beamId);
+      if (beam) {
+        const nodes = mesh.getBeamElementNodes(beam);
+        if (nodes) {
+          const [n1, n2] = nodes;
+          const world = screenToWorld(mx, my);
+
+          // Project cursor onto beam line to get new position
+          const dx = n2.x - n1.x;
+          const dy = n2.y - n1.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq > 0) {
+            let t = ((world.x - n1.x) * dx + (world.y - n1.y) * dy) / lenSq;
+            t = Math.max(0.01, Math.min(0.99, t)); // Keep within beam, not at endpoints
+
+            // Update the point load position in the load case
+            dispatch({
+              type: 'UPDATE_BEAM_POINT_LOAD',
+              payload: { lcId: activeLoadCase, beamId, nodeId, position: t }
+            });
+          }
+        }
+      }
+      return;
     }
 
     // Track tooltip position when hovering over a beam or node
@@ -8448,6 +8622,12 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       setResizeEndT(1);
     }
 
+    // Finalize beam point load drag
+    if (draggedBeamPointLoadKey !== null) {
+      setDraggedBeamPointLoadKey(null);
+      setBeamPointLoadDragOrigin(null);
+    }
+
     // Polygon corner vertex drag release: update the mesh node and remesh
     if (polygonCornerDrag !== null) {
       const plate = mesh.getPlateRegion(polygonCornerDrag.plateId);
@@ -8762,14 +8942,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
-    // Double-click on grid line -> open grids dialog
-    const gridLine = findGridLineAtScreen(x, y);
-    if (gridLine && onShowGridsDialog) {
-      onShowGridsDialog();
-      return;
-    }
-
-    // Double-click on a node -> open node properties dialog
+    // Double-click on a node -> open node properties dialog (priority over grid lines)
     const node = findNodeAtScreen(x, y);
     if (node) {
       setEditingNodeId(node.id);
@@ -8829,6 +9002,13 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         setEditingDistLoadId(loadId);
         return;
       }
+    }
+
+    // Double-click on grid line -> open grids dialog (after node/beam checks so elements have priority)
+    const gridLine = findGridLineAtScreen(x, y);
+    if (gridLine && onShowGridsDialog) {
+      onShowGridsDialog();
+      return;
     }
 
     // Double-click on a plate region -> open plate properties dialog
@@ -9669,6 +9849,54 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
               setEditingLoadNodeId(null);
             }}
             onCancel={() => setEditingLoadNodeId(null)}
+          />
+        );
+      })()}
+      {editingBeamPointLoad !== null && (() => {
+        const beam = mesh.getBeamElement(editingBeamPointLoad.beamId);
+        if (!beam) return null;
+        const nodes = mesh.getBeamElementNodes(beam);
+        if (!nodes) return null;
+        const beamLength = calculateBeamLength(nodes[0], nodes[1]);
+
+        // Find existing beam point load if editing
+        const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
+        const existingBpl = editingBeamPointLoad.existingNodeId !== undefined
+          ? activeLc?.pointLoads.find(pl => pl.beamId === editingBeamPointLoad.beamId && pl.nodeId === editingBeamPointLoad.existingNodeId)
+          : null;
+
+        return (
+          <LoadDialog
+            initialFx={existingBpl?.fx ?? 0}
+            initialFy={existingBpl?.fy ?? -10000} // Default to -10kN downward
+            initialMoment={existingBpl?.mz ?? 0}
+            loadCases={state.loadCases}
+            activeLoadCase={state.activeLoadCase}
+            beamId={editingBeamPointLoad.beamId}
+            beamLength={beamLength}
+            initialPosition={existingBpl?.position ?? editingBeamPointLoad.position}
+            onApply={(fx, fy, moment, lcId, beamIdVal, positionVal) => {
+              pushUndo();
+              // Generate a unique nodeId for this beam point load (negative to avoid collision with real nodes)
+              const nodeId = editingBeamPointLoad.existingNodeId ?? -(Date.now() % 1000000);
+              dispatch({
+                type: 'ADD_POINT_LOAD',
+                payload: {
+                  lcId,
+                  nodeId,
+                  fx,
+                  fy,
+                  mz: moment,
+                  beamId: beamIdVal,
+                  position: positionVal
+                }
+              });
+              dispatch({ type: 'REFRESH_MESH' });
+              dispatch({ type: 'SET_RESULT', payload: null });
+              dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' });
+              setEditingBeamPointLoad(null);
+            }}
+            onCancel={() => setEditingBeamPointLoad(null)}
           />
         );
       })()}

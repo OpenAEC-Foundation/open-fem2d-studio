@@ -325,17 +325,39 @@ function SystemMatrixView() {
   const totalEntries = dofCount * dofCount;
   const sparsity = totalEntries > 0 ? (1 - nonZeroEstimate / totalEntries) * 100 : 0;
 
-  // Compute actual K and F
-  const systemData = useMemo(() => {
+  // Compute actual K and F with error tracking
+  const systemData = useMemo<{ K: ReturnType<typeof assembleGlobalStiffnessMatrix>; F: number[]; error?: string } | { error: string } | null>(() => {
     if (mesh.getBeamCount() === 0 && mesh.elements.size === 0) return null;
     try {
       const K = assembleGlobalStiffnessMatrix(mesh, state.analysisType);
       const F = assembleForceVector(mesh, state.analysisType);
       return { K, F };
-    } catch {
-      return null;
+    } catch (e) {
+      return { error: String(e) };
     }
   }, [mesh, state.analysisType, state.meshVersion]);
+
+  // Build element DOF ranges for highlighting
+  const elementDofRanges = useMemo(() => {
+    const ranges: { beamId: number; dofs: number[]; color: string }[] = [];
+    const colors = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+    let colorIdx = 0;
+    for (const beam of mesh.beamElements.values()) {
+      const i1 = nodeIdToIndex.get(beam.nodeIds[0]);
+      const i2 = nodeIdToIndex.get(beam.nodeIds[1]);
+      if (i1 !== undefined && i2 !== undefined) {
+        const dofs = [
+          i1 * dofsPerNode, i1 * dofsPerNode + 1, i1 * dofsPerNode + 2,
+          i2 * dofsPerNode, i2 * dofsPerNode + 1, i2 * dofsPerNode + 2
+        ];
+        ranges.push({ beamId: beam.id, dofs, color: colors[colorIdx % colors.length] });
+        colorIdx++;
+      }
+    }
+    return ranges;
+  }, [mesh.beamElements, nodeIdToIndex, dofsPerNode]);
+
+  const [hoveredElement, setHoveredElement] = useState<number | null>(null);
 
   // Generate DOF labels
   const dofLabels = useMemo(() => {
@@ -347,7 +369,17 @@ function SystemMatrixView() {
   }, [dofCount, dofsPerNode, sortedActiveNodeIds, state.analysisType]);
 
   const isLargeMatrix = dofCount > LARGE_MATRIX_THRESHOLD;
-  const shouldShowMatrix = systemData && (!isLargeMatrix || showFullMatrix);
+  const hasError = systemData && 'error' in systemData && !('K' in systemData);
+  const hasMatrix = systemData && 'K' in systemData;
+  const shouldShowMatrix = hasMatrix && (!isLargeMatrix || showFullMatrix);
+
+  // Helper: check if a DOF is part of the hovered element
+  const isDofHighlighted = (dof: number): string | null => {
+    if (hoveredElement === null) return null;
+    const range = elementDofRanges.find(r => r.beamId === hoveredElement);
+    if (range && range.dofs.includes(dof)) return range.color;
+    return null;
+  };
 
   return (
     <>
@@ -419,8 +451,38 @@ function SystemMatrixView() {
         </div>
       )}
 
+      {/* Error display */}
+      {hasError && (
+        <div className="insights-error-card">
+          <div className="insights-error-title">Matrix Assembly Error</div>
+          <div className="insights-error-message">{(systemData as { error: string }).error}</div>
+        </div>
+      )}
+
+      {/* Element legend for matrix highlighting */}
+      {elementDofRanges.length > 0 && (
+        <div className="insights-element-legend">
+          <div className="insights-element-legend-title">Element DOF Ranges (hover to highlight)</div>
+          <div className="insights-element-legend-items">
+            {elementDofRanges.map(({ beamId, dofs, color }) => (
+              <div
+                key={beamId}
+                className={`insights-element-legend-item${hoveredElement === beamId ? ' active' : ''}`}
+                style={{ borderColor: color }}
+                onMouseEnter={() => setHoveredElement(beamId)}
+                onMouseLeave={() => setHoveredElement(null)}
+              >
+                <span className="insights-element-legend-color" style={{ backgroundColor: color }} />
+                <span>Beam {beamId}</span>
+                <span className="insights-element-legend-dofs">DOFs {Math.min(...dofs)}–{Math.max(...dofs)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Actual stiffness matrix display */}
-      {systemData && (
+      {hasMatrix && (
         <>
           <h4 className="insights-section-title">Stiffness Matrix [K] &amp; Load Vector {'{F}'}</h4>
 
@@ -439,42 +501,71 @@ function SystemMatrixView() {
             </div>
           )}
 
-          {shouldShowMatrix && (
+          {shouldShowMatrix && hasMatrix && (
             <div className="insights-system-matrix-wrapper">
               <div className="insights-matrix-container insights-system-matrix-scroll">
                 <table className="insights-matrix-table insights-system-matrix-table">
                   <thead>
                     <tr>
                       <th className="insights-system-matrix-corner"></th>
-                      {dofLabels.map((label, i) => (
-                        <th key={i} className="insights-system-matrix-col-header">{label}</th>
-                      ))}
+                      {dofLabels.map((label, i) => {
+                        const highlightColor = isDofHighlighted(i);
+                        return (
+                          <th
+                            key={i}
+                            className={`insights-system-matrix-col-header${highlightColor ? ' insights-dof-highlighted' : ''}`}
+                            style={highlightColor ? { backgroundColor: highlightColor + '40' } : undefined}
+                          >
+                            {label}
+                          </th>
+                        );
+                      })}
                       <th className="insights-system-matrix-fv-header">F</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: dofCount }, (_, i) => (
-                      <tr key={i}>
-                        <td className="insights-matrix-header insights-system-matrix-row-header">{dofLabels[i]}</td>
-                        {Array.from({ length: dofCount }, (_, j) => {
-                          const val = systemData.K.get(i, j);
-                          const isZero = Math.abs(val) < 1e-20;
-                          const isDiag = i === j;
-                          let cls = 'insights-system-matrix-cell';
-                          if (isZero) cls += ' insights-matrix-zero';
-                          else if (isDiag) cls += ' insights-matrix-diagonal';
-                          else cls += ' insights-system-matrix-nonzero';
-                          return (
-                            <td key={j} className={cls}>
-                              {isZero ? '0' : fmtMatrix(val)}
-                            </td>
-                          );
-                        })}
-                        <td className={`insights-system-matrix-fv-cell${Math.abs(systemData.F[i]) < 1e-20 ? ' insights-matrix-zero' : ''}`}>
-                          {Math.abs(systemData.F[i]) < 1e-20 ? '0' : fmtMatrix(systemData.F[i])}
-                        </td>
-                      </tr>
-                    ))}
+                    {Array.from({ length: dofCount }, (_, i) => {
+                      const rowHighlight = isDofHighlighted(i);
+                      return (
+                        <tr key={i}>
+                          <td
+                            className={`insights-matrix-header insights-system-matrix-row-header${rowHighlight ? ' insights-dof-highlighted' : ''}`}
+                            style={rowHighlight ? { backgroundColor: rowHighlight + '40' } : undefined}
+                          >
+                            {dofLabels[i]}
+                          </td>
+                          {Array.from({ length: dofCount }, (_, j) => {
+                            const K = (systemData as { K: ReturnType<typeof assembleGlobalStiffnessMatrix>; F: number[] }).K;
+                            const val = K.get(i, j);
+                            const isZero = Math.abs(val) < 1e-20;
+                            const isDiag = i === j;
+                            const rowHi = isDofHighlighted(i);
+                            const colHi = isDofHighlighted(j);
+                            const isHighlighted = rowHi && colHi && rowHi === colHi;
+                            let cls = 'insights-system-matrix-cell';
+                            if (isHighlighted) cls += ' insights-cell-highlighted';
+                            else if (isZero) cls += ' insights-matrix-zero';
+                            else if (isDiag) cls += ' insights-matrix-diagonal';
+                            else cls += ' insights-system-matrix-nonzero';
+                            // Check for NaN or Infinity (error indicators)
+                            const hasError = !isFinite(val) || isNaN(val);
+                            if (hasError) cls += ' insights-matrix-error';
+                            return (
+                              <td
+                                key={j}
+                                className={cls}
+                                style={isHighlighted ? { backgroundColor: rowHi + '30', borderColor: rowHi } : undefined}
+                              >
+                                {hasError ? (isNaN(val) ? 'NaN' : '∞') : (isZero ? '0' : fmtMatrix(val))}
+                              </td>
+                            );
+                          })}
+                          <td className={`insights-system-matrix-fv-cell${Math.abs((systemData as { F: number[] }).F[i]) < 1e-20 ? ' insights-matrix-zero' : ''}`}>
+                            {Math.abs((systemData as { F: number[] }).F[i]) < 1e-20 ? '0' : fmtMatrix((systemData as { F: number[] }).F[i])}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

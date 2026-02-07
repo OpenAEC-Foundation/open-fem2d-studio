@@ -423,6 +423,33 @@
   color: var(--text-primary);
 }
 
+.bar-props-btn-small:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bar-props-btn-small:disabled:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.bar-props-btn-danger {
+  color: #f87171;
+}
+
+.bar-props-btn-danger:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* Section buttons row */
+.bar-props-section-buttons {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0;
+}
+
 /* Preset buttons container (Fixed/Hinge) within DOF grid */
 .bar-props-preset-btns {
   display: flex;

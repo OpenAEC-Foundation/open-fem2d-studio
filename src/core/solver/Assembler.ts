@@ -117,6 +117,28 @@ export function assembleGlobalStiffnessMatrix(
             K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
           }
         }
+
+        // Add Winkler foundation stiffness for beam on grade
+        if (beam.onGrade?.enabled && beam.onGrade.k > 0) {
+          const L = calculateBeamLength(n1, n2);
+          const k = beam.onGrade.k; // N/m² (spring stiffness per unit area)
+          const b = beam.onGrade.b ?? 1.0; // Foundation width in m (default 1.0m if not specified)
+          const kL = k * b * L; // Total spring stiffness along beam
+
+          // Vertical stiffness (primary Winkler stiffness)
+          const v1Dof = dofIndices[1]; // v1
+          const v2Dof = dofIndices[4]; // v2
+          K.addAt(v1Dof, v1Dof, kL / 2);
+          K.addAt(v2Dof, v2Dof, kL / 2);
+
+          // Small horizontal friction stiffness to prevent singularity (0.1% of vertical)
+          // This represents soil friction resistance
+          const u1Dof = dofIndices[0]; // u1
+          const u2Dof = dofIndices[3]; // u2
+          const kFriction = kL * 0.001;
+          K.addAt(u1Dof, u1Dof, kFriction / 2);
+          K.addAt(u2Dof, u2Dof, kFriction / 2);
+        }
       } catch (e) {
         console.warn(`Skipping beam element ${beam.id}: ${e}`);
       }
@@ -193,6 +215,27 @@ export function assembleGlobalStiffnessMatrix(
           for (let j = 0; j < 6; j++) {
             K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
           }
+        }
+
+        // Add Winkler foundation stiffness for beam on grade
+        if (beam.onGrade?.enabled && beam.onGrade.k > 0) {
+          const L = calculateBeamLength(n1, n2);
+          const k = beam.onGrade.k;
+          const b = beam.onGrade.b ?? 1.0; // Foundation width in m (default 1.0m)
+          const kL = k * b * L;
+
+          // Vertical stiffness
+          const v1Dof = dofIndices[1];
+          const v2Dof = dofIndices[4];
+          K.addAt(v1Dof, v1Dof, kL / 2);
+          K.addAt(v2Dof, v2Dof, kL / 2);
+
+          // Horizontal friction stiffness (0.1% of vertical)
+          const u1Dof = dofIndices[0];
+          const u2Dof = dofIndices[3];
+          const kFriction = kL * 0.001;
+          K.addAt(u1Dof, u1Dof, kFriction / 2);
+          K.addAt(u2Dof, u2Dof, kFriction / 2);
         }
       } catch (e) {
         console.warn(`Skipping beam element ${beam.id} in mixed analysis: ${e}`);
@@ -304,7 +347,19 @@ export function assembleGlobalStiffnessMatrix(
     const nodeIndex = nodeIdToIndex.get(node.id);
     if (nodeIndex === undefined) continue;
     const c = node.constraints;
-    if (dofsPerNode === 3) {
+    if (analysisType === 'plate_bending') {
+      // plate_bending: DOFs are w, θx, θy
+      // DOF 0 = w (vertical) → springY
+      if (c.springY != null && c.y) {
+        K.addAt(nodeIndex * 3, nodeIndex * 3, c.springY);
+      }
+      // DOF 1,2 = θx, θy → springRot (split between both rotation DOFs)
+      if (c.springRot != null && c.rotation) {
+        K.addAt(nodeIndex * 3 + 1, nodeIndex * 3 + 1, c.springRot / 2);
+        K.addAt(nodeIndex * 3 + 2, nodeIndex * 3 + 2, c.springRot / 2);
+      }
+    } else if (dofsPerNode === 3) {
+      // frame/mixed: DOFs are u, v, θ
       if (c.springX != null && c.x) {
         K.addAt(nodeIndex * 3, nodeIndex * 3, c.springX);
       }
@@ -315,6 +370,7 @@ export function assembleGlobalStiffnessMatrix(
         K.addAt(nodeIndex * 3 + 2, nodeIndex * 3 + 2, c.springRot);
       }
     } else if (dofsPerNode === 2) {
+      // plane_stress/plane_strain: DOFs are u, v
       if (c.springX != null && c.x) {
         K.addAt(nodeIndex * 2, nodeIndex * 2, c.springX);
       }
@@ -454,9 +510,10 @@ export function getConstrainedDofs(
     if (analysisType === 'plate_bending') {
       // plate_bending: DOFs are w, θx, θy
       // y constraint → w fixed (vertical displacement constrained)
-      if (node.constraints.y) dofs.push(nodeIndex * 3);
+      // Spring DOFs are NOT constrained - stiffness is added to K diagonal instead
+      if (node.constraints.y && node.constraints.springY == null) dofs.push(nodeIndex * 3);
       // rotation constraint → θx and θy fixed
-      if (node.constraints.rotation) {
+      if (node.constraints.rotation && node.constraints.springRot == null) {
         dofs.push(nodeIndex * 3 + 1);
         dofs.push(nodeIndex * 3 + 2);
       }

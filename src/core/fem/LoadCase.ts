@@ -40,11 +40,21 @@ export interface ILoadCase {
   color: string;
 }
 
+// Eurocode NEN-EN 1990 load combination types
+export type LoadCombinationType =
+  | '6.10a'   // ULS: Permanent dominant (ξ·γG·Gk + γQ·ψ0·Qk)
+  | '6.10b'   // ULS: Variable dominant (γG·Gk + γQ·Qk)
+  | '6.14'    // Accidental combination
+  | '6.15'    // Seismic combination
+  | '6.16'    // SLS: Characteristic (Gk + Qk)
+  | '6.17'    // SLS: Frequent (Gk + ψ1·Qk)
+  | '6.18';   // SLS: Quasi-permanent (Gk + ψ2·Qk)
+
 export interface ILoadCombination {
   id: number;
   name: string;
   factors: Map<number, number>;  // loadCaseId -> factor
-  type: 'ULS' | 'SLS';
+  type: LoadCombinationType;
 }
 
 export const DEFAULT_LOAD_CASES: ILoadCase[] = [
@@ -104,7 +114,7 @@ export function createLoadCase(
 export function createLoadCombination(
   id: number,
   name: string,
-  type: 'ULS' | 'SLS' = 'ULS'
+  type: LoadCombinationType = '6.10b'
 ): ILoadCombination {
   return {
     id,

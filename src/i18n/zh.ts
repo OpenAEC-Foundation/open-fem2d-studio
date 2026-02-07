@@ -1,6 +1,6 @@
 export const zh: Record<string, string> = {
   // App title
-  'app.title': 'Open FEM2D Studio',
+  'app.title': 'Open FEM Studio',
   'app.untitledProject': '未命名项目',
   'app.newProject': '新建项目',
 

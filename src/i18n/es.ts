@@ -1,6 +1,6 @@
 export const es: Record<string, string> = {
   // App title
-  'app.title': 'Open FEM2D Studio',
+  'app.title': 'Open FEM Studio',
   'app.untitledProject': 'Proyecto sin nombre',
   'app.newProject': 'Nuevo Proyecto',
 

@@ -139,7 +139,7 @@ export function Toolbar() {
   return (
     <div className="toolbar">
       <div className="toolbar-section">
-        <span className="toolbar-title">Open FEM2D Studio</span>
+        <span className="toolbar-title">Open FEM Studio</span>
       </div>
 
       <div className="toolbar-section">

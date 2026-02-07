@@ -214,3 +214,168 @@
   color: var(--text-muted);
   font-weight: 500;
 }
+
+/* Unit suffix */
+.steel-conn-row .unit {
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+/* Connection SVG */
+.connection-svg {
+  background: #ffffff;
+  border-radius: 4px;
+}
+
+/* Result cards */
+.steel-conn-result-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.result-card {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+
+.result-card.ok {
+  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.result-card.fail {
+  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.result-card .value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.result-card .label {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Component checks */
+.component-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.component-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.component-check .name {
+  min-width: 140px;
+  color: var(--text-secondary);
+}
+
+.component-check .article {
+  min-width: 60px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.component-check .uc-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.component-check .uc-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.component-check .uc-bar-fill.ok {
+  background: var(--success);
+}
+
+.component-check .uc-bar-fill.warn {
+  background: #f59e0b;
+}
+
+.component-check .uc-bar-fill.fail {
+  background: var(--danger);
+}
+
+.component-check .uc-value {
+  min-width: 32px;
+  text-align: right;
+  font-weight: 600;
+}
+
+.component-check .uc-value.ok {
+  color: var(--success);
+}
+
+.component-check .uc-value.warn {
+  color: #f59e0b;
+}
+
+.component-check .uc-value.fail {
+  color: var(--danger);
+}
+
+.component-check .status-icon {
+  width: 14px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.component-check .status-icon.ok {
+  color: var(--success);
+}
+
+.component-check .status-icon.fail {
+  color: var(--danger);
+}
+
+/* Bolt row table */
+.bolt-row-table {
+  margin-bottom: 12px;
+}
+
+.bolt-row-table h5 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* M-φ diagram section */
+.m-phi-section {
+  margin-bottom: 8px;
+}
+
+.m-phi-section h5 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.m-phi-svg {
+  background: #ffffff;
+  border-radius: 4px;
+  width: 200px;
+}

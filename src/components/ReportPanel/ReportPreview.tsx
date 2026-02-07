@@ -157,7 +157,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
       {config.showFooter && (
         <div className="report-document-footer">
           <span>{projectInfo.date || new Date().toLocaleDateString('nl-NL')}</span>
-          <span>Generated with Open FEM2D Studio</span>
+          <span>Generated with Open FEM Studio</span>
         </div>
       )}
     </div>

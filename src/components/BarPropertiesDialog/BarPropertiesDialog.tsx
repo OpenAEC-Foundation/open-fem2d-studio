@@ -40,37 +40,22 @@ interface BarPropertiesDialogProps {
 
 export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate, onClose }: BarPropertiesDialogProps) {
   const { state } = useFEM();
-  const { mesh, forceUnit, stressUnit, lengthUnit, momentUnit, areaUnit, momentOfInertiaUnit, steelCheckInterval } = state;
+  const { mesh, forceUnit, stressUnit, lengthUnit, momentUnit, steelCheckInterval } = state;
 
   const [activeTab, setActiveTab] = useState<BarDialogTab>('properties');
   const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const [showNewSection, setShowNewSection] = useState(false);
   const [section, setSection] = useState<IBeamSection>(beam.section);
+  const [profileName, setProfileName] = useState<string>(beam.profileName ?? '');
   const [startNodeId, setStartNodeId] = useState<number>(beam.nodeIds[0]);
   const [endNodeId, setEndNodeId] = useState<number>(beam.nodeIds[1]);
   const [elementType, setElementType] = useState<StructuralElementType>(beam.elementType ?? 'none');
   const [onGrade, setOnGrade] = useState(beam.onGrade?.enabled ?? false);
   const [gradeK, setGradeK] = useState(String((beam.onGrade?.k ?? 10000) / 1000)); // display in kN/m/m
+  const [gradeB, setGradeB] = useState(String((beam.onGrade?.b ?? 1.0) * 1000)); // display in mm
   const [layerId, setLayerId] = useState(beam.layerId ?? 0);
 
   // Unit conversion helpers
-  const convertArea = (areaM2: number): number => {
-    switch (areaUnit) {
-      case 'mm²': return areaM2 * 1e6;
-      case 'cm²': return areaM2 * 1e4;
-      case 'm²': return areaM2;
-      default: return areaM2 * 1e6;
-    }
-  };
-
-  const convertMomentOfInertia = (Im4: number): number => {
-    switch (momentOfInertiaUnit) {
-      case 'mm⁴': return Im4 * 1e12;
-      case 'cm⁴': return Im4 * 1e8;
-      case 'm⁴': return Im4;
-      default: return Im4 * 1e12;
-    }
-  };
-
   const convertLength = (lengthM: number): number => {
     switch (lengthUnit) {
       case 'm': return lengthM;
@@ -158,6 +143,16 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
     return nodes.sort((a, b) => a.id - b.id);
   }, [mesh.nodes]);
 
+  // Get all available sections from the project
+  const availableSections = useMemo((): { name: string; section: IBeamSection }[] => {
+    const sections: { name: string; section: IBeamSection }[] = [];
+    for (const [name, sect] of mesh.sections.entries()) {
+      sections.push({ name, section: sect });
+    }
+    // Sort by name
+    return sections.sort((a, b) => a.name.localeCompare(b.name));
+  }, [mesh.sections]);
+
   // Calculate current beam length based on selected nodes
   const currentLength = useMemo(() => {
     const n1 = mesh.nodes.get(startNodeId);
@@ -229,8 +224,9 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
       // Update nodeIds if changed
       ...(nodesChanged ? { nodeIds: [startNodeId, endNodeId] as [number, number] } : {}),
       section,
+      profileName: profileName || undefined,
       elementType: elementType === 'none' ? undefined : elementType,
-      onGrade: onGrade ? { enabled: true, k: (parseFloat(gradeK) || 10) * 1000 } : undefined,
+      onGrade: onGrade ? { enabled: true, k: (parseFloat(gradeK) || 10) * 1000, b: (parseFloat(gradeB) || 1000) / 1000 } : undefined,
       layerId,
       startConnections: startConns,
       endConnections: endConns,
@@ -257,16 +253,24 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
     onClose();
   };
 
-  if (showSectionPicker) {
+  if (showSectionPicker || showNewSection) {
     return (
       <SectionPropertiesDialog
-        section={beam.profileName ? { name: beam.profileName, section } : undefined}
-        onSave={(profileName, newSection) => {
+        section={showNewSection ? undefined : (profileName ? { name: profileName, section } : undefined)}
+        isNew={showNewSection}
+        onSave={(newProfileName, newSection) => {
+          // Add/update section in project
+          mesh.sections.set(newProfileName, newSection);
           setSection(newSection);
-          onUpdate({ profileName, section: newSection });
+          setProfileName(newProfileName);
+          onUpdate({ profileName: newProfileName, section: newSection });
           setShowSectionPicker(false);
+          setShowNewSection(false);
         }}
-        onClose={() => setShowSectionPicker(false)}
+        onClose={() => {
+          setShowSectionPicker(false);
+          setShowNewSection(false);
+        }}
       />
     );
   }
@@ -286,22 +290,25 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
       </div>
       <div className="bar-props-row">
         <span className="bar-props-label">Start Node</span>
-        <select
-          className="bar-props-select"
-          value={startNodeId}
-          onChange={e => {
-            const newId = parseInt(e.target.value);
-            if (newId !== endNodeId) {
-              setStartNodeId(newId);
-            }
-          }}
-        >
-          {availableNodes.map(node => (
-            <option key={node.id} value={node.id} disabled={node.id === endNodeId}>
-              {node.id} ({node.x.toFixed(2)}, {node.y.toFixed(2)})
-            </option>
-          ))}
-        </select>
+        <span className="bar-props-value" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <select
+            className="bar-props-select"
+            style={{ flex: 1 }}
+            value={startNodeId}
+            onChange={e => {
+              const newId = parseInt(e.target.value);
+              if (newId !== endNodeId) {
+                setStartNodeId(newId);
+              }
+            }}
+          >
+            {availableNodes.map(node => (
+              <option key={node.id} value={node.id} disabled={node.id === endNodeId}>
+                {node.id} ({node.x.toFixed(2)}, {node.y.toFixed(2)})
+              </option>
+            ))}
+          </select>
+        </span>
       </div>
       <div className="bar-props-row">
         <span className="bar-props-label">End Node</span>
@@ -366,25 +373,94 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
         </div>
       )}
 
-      {/* Section - simplified: Name, A, Iy only */}
+      {/* Section - with project section selector */}
       <div className="bar-props-section-title">Section</div>
-      {beam.profileName && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">Name</span>
-          <span className="bar-props-value">{beam.profileName}</span>
-        </div>
-      )}
       <div className="bar-props-row">
-        <span className="bar-props-label">A</span>
-        <span className="bar-props-value">{convertArea(section.A).toFixed(areaUnit === 'm²' ? 6 : 0)} {areaUnit}</span>
+        <span className="bar-props-label">Profile</span>
+        <select
+          className="bar-props-select"
+          value={profileName}
+          onChange={e => {
+            const selectedName = e.target.value;
+            setProfileName(selectedName);
+            const found = availableSections.find(s => s.name === selectedName);
+            if (found) {
+              setSection(found.section);
+            }
+          }}
+        >
+          {!profileName && <option value="">— Select —</option>}
+          {availableSections.map(s => (
+            <option key={s.name} value={s.name}>{s.name}</option>
+          ))}
+        </select>
       </div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">Iy</span>
-        <span className="bar-props-value">{convertMomentOfInertia(section.Iy ?? section.I).toExponential(3)} {momentOfInertiaUnit}</span>
+      <div className="bar-props-section-buttons">
+        <button
+          className="bar-props-btn-small"
+          title="New section"
+          onClick={() => setShowNewSection(true)}
+        >
+          New
+        </button>
+        <button
+          className="bar-props-btn-small"
+          title="Duplicate current section"
+          disabled={!profileName}
+          onClick={() => {
+            if (!profileName) return;
+            // Find a unique name
+            let newName = profileName + ' (copy)';
+            let counter = 2;
+            while (mesh.sections.has(newName)) {
+              newName = `${profileName} (copy ${counter})`;
+              counter++;
+            }
+            mesh.sections.set(newName, { ...section });
+            setProfileName(newName);
+          }}
+        >
+          Duplicate
+        </button>
+        <button
+          className="bar-props-btn-small bar-props-btn-danger"
+          title="Delete section from project"
+          disabled={!profileName}
+          onClick={() => {
+            if (!profileName) return;
+            // Check if other beams use this section
+            let usageCount = 0;
+            for (const b of mesh.beamElements.values()) {
+              if (b.profileName === profileName && b.id !== beam.id) {
+                usageCount++;
+              }
+            }
+            if (usageCount > 0) {
+              alert(`Cannot delete: ${usageCount} other beam(s) use this section.`);
+              return;
+            }
+            mesh.sections.delete(profileName);
+            // Select first available section or clear
+            const remaining = Array.from(mesh.sections.keys());
+            if (remaining.length > 0) {
+              const firstSection = mesh.sections.get(remaining[0])!;
+              setProfileName(remaining[0]);
+              setSection(firstSection);
+            } else {
+              setProfileName('');
+            }
+          }}
+        >
+          Delete
+        </button>
+        <button
+          className="bar-props-btn-small"
+          title="Edit section properties"
+          onClick={() => setShowSectionPicker(true)}
+        >
+          Edit...
+        </button>
       </div>
-      <button className="bar-props-change-btn" onClick={() => setShowSectionPicker(true)}>
-        Change Section...
-      </button>
 
       {/* Beam on elastic foundation */}
       <div className="bar-props-section-title">Foundation</div>
@@ -393,16 +469,28 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
         Beam on grade (elastic foundation)
       </label>
       {onGrade && (
-        <div className="bar-props-row">
-          <span className="bar-props-label">k (kN/m/m)</span>
-          <input
-            className="bar-props-input"
-            type="text"
-            value={gradeK}
-            onChange={e => setGradeK(e.target.value)}
-            onFocus={e => e.target.select()}
-          />
-        </div>
+        <>
+          <div className="bar-props-row">
+            <span className="bar-props-label">k (kN/m/m)</span>
+            <input
+              className="bar-props-input"
+              type="text"
+              value={gradeK}
+              onChange={e => setGradeK(e.target.value)}
+              onFocus={e => e.target.select()}
+            />
+          </div>
+          <div className="bar-props-row">
+            <span className="bar-props-label">Width (mm)</span>
+            <input
+              className="bar-props-input"
+              type="text"
+              value={gradeB}
+              onChange={e => setGradeB(e.target.value)}
+              onFocus={e => e.target.select()}
+            />
+          </div>
+        </>
       )}
 
       {/* Connection Type - per DOF */}

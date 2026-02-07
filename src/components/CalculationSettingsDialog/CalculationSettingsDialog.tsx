@@ -32,6 +32,11 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
   const [maxIterations, setMaxIterations] = useState(10);
   const [steelCheckInterval, setSteelCheckInterval] = useState(state.steelCheckInterval);
 
+  // FNL material settings
+  const [fnlMaterialType, setFnlMaterialType] = useState<'steel' | 'concrete'>('steel');
+  const [steelFy, setSteelFy] = useState(235); // S235 default (MPa)
+  const [concreteFck, setConcreteFck] = useState(30); // C30/37 default (MPa)
+
   const handleApply = async () => {
     dispatch({ type: 'SET_ANALYSIS_TYPE', payload: analysisType });
     dispatch({ type: 'SET_FORCE_UNIT', payload: forceUnit });
@@ -57,8 +62,14 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
         try {
           applyLoadCaseToMesh(state.mesh, activeLc, false);
           const newResult = await solve(state.mesh, {
-            analysisType: analysisType, // Use the NEW analysis type
-            geometricNonlinear: false
+            analysisType: analysisType,
+            geometricNonlinear: solverMethod === 'pdelta' || solverMethod === 'fnl',
+            materialNonlinear: solverMethod === 'fnl' || solverMethod === 'fnl_plate',
+            materialType: fnlMaterialType,
+            steelFy: steelFy * 1e6, // Convert MPa to Pa
+            concreteFck: concreteFck * 1e6, // Convert MPa to Pa
+            maxIterations,
+            tolerance: convergenceTolerance,
           });
           // Reset loads for visualization (don't show edge-converted nodal forces as point loads)
           applyLoadCaseToMesh(state.mesh, activeLc); // default: skip edge-to-node conversion
@@ -109,6 +120,75 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
                   <option value="fnl_plate">FNL Plate - Layered Concrete Model</option>
                 </select>
               </div>
+
+              {/* FNL Material settings - only show when FNL is selected */}
+              {(solverMethod === 'fnl' || solverMethod === 'fnl_plate') && (
+                <>
+                  <div className="calc-settings-field">
+                    <span>Material Model</span>
+                    <select
+                      value={fnlMaterialType}
+                      onChange={e => setFnlMaterialType(e.target.value as 'steel' | 'concrete')}
+                    >
+                      <option value="steel">Steel (M-kappa)</option>
+                      <option value="concrete">Concrete (Fiber)</option>
+                    </select>
+                  </div>
+                  {fnlMaterialType === 'steel' && (
+                    <div className="calc-settings-field">
+                      <span>Steel Grade fy</span>
+                      <select
+                        value={steelFy}
+                        onChange={e => setSteelFy(Number(e.target.value))}
+                      >
+                        <option value={235}>S235 (235 MPa)</option>
+                        <option value={275}>S275 (275 MPa)</option>
+                        <option value={355}>S355 (355 MPa)</option>
+                        <option value={460}>S460 (460 MPa)</option>
+                      </select>
+                    </div>
+                  )}
+                  {fnlMaterialType === 'concrete' && (
+                    <div className="calc-settings-field">
+                      <span>Concrete Grade fck</span>
+                      <select
+                        value={concreteFck}
+                        onChange={e => setConcreteFck(Number(e.target.value))}
+                      >
+                        <option value={20}>C20/25 (20 MPa)</option>
+                        <option value={25}>C25/30 (25 MPa)</option>
+                        <option value={30}>C30/37 (30 MPa)</option>
+                        <option value={35}>C35/45 (35 MPa)</option>
+                        <option value={40}>C40/50 (40 MPa)</option>
+                        <option value={45}>C45/55 (45 MPa)</option>
+                        <option value={50}>C50/60 (50 MPa)</option>
+                      </select>
+                    </div>
+                  )}
+                  <div className="calc-settings-field">
+                    <span>Max Iterations</span>
+                    <input
+                      type="number"
+                      min={5}
+                      max={100}
+                      value={maxIterations}
+                      onChange={e => setMaxIterations(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="calc-settings-field">
+                    <span>Tolerance</span>
+                    <select
+                      value={convergenceTolerance}
+                      onChange={e => setConvergenceTolerance(Number(e.target.value))}
+                    >
+                      <option value={1e-4}>1e-4 (coarse)</option>
+                      <option value={1e-5}>1e-5 (medium)</option>
+                      <option value={1e-6}>1e-6 (fine)</option>
+                      <option value={1e-8}>1e-8 (very fine)</option>
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Units */}

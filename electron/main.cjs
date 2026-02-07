@@ -9,7 +9,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 600,
-    title: 'Open FEM2D Studio',
+    title: 'Open FEM Studio',
     icon: path.join(__dirname, '..', 'public', 'favicon.ico'),
     webPreferences: {
       nodeIntegration: false,

@@ -12,6 +12,13 @@ import './PlateVerificationTests';
 export interface SolveOptions {
   analysisType: AnalysisType;
   geometricNonlinear: boolean;
+  // FNL (Physical Nonlinearity) options
+  materialNonlinear?: boolean;
+  materialType?: 'steel' | 'concrete';
+  steelFy?: number;       // Steel yield strength (Pa)
+  concreteFck?: number;   // Concrete characteristic strength (Pa)
+  maxIterations?: number;
+  tolerance?: number;
 }
 
 /**

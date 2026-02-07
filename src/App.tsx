@@ -32,7 +32,9 @@ import { NodeEditorPanel } from './components/NodeEditorPanel/NodeEditorPanel';
 import { InsightsPanel } from './components/InsightsPanel/InsightsPanel';
 import { LoadGeneratorDialog } from './components/LoadGeneratorDialog/LoadGeneratorDialog';
 import { SteelConnectionDialog } from './components/SteelConnectionDialog/SteelConnectionDialog';
+import { ConcreteReinforcementDialog } from './components/ConcreteReinforcementDialog/ConcreteReinforcementDialog';
 import { VersionsPanel } from './components/VersionsPanel/VersionsPanel';
+import { DrawingView } from './components/DrawingView/DrawingView';
 import { downloadReportHTML, printReport } from './core/report/ReportGenerator';
 import { serializeProject, deserializeProject } from './core/io/ProjectSerializer';
 import {
@@ -86,6 +88,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const [showLoadGenerator, setShowLoadGenerator] = useState(false);
   const [showConcreteDesign, setShowConcreteDesign] = useState(false);
   const [showSteelConnection, setShowSteelConnection] = useState(false);
+  const [showReinforcementDialog, setShowReinforcementDialog] = useState(false);
   const [showGraphSplit, setShowGraphSplit] = useState(false);
   const [graphSplitHeight, setGraphSplitHeight] = useState(280);
   const splitDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -372,6 +375,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       // Close first open dialog in z-index priority order (outermost first)
       if (showConcreteDesign) { setShowConcreteDesign(false); return; }
       if (showSteelConnection) { setShowSteelConnection(false); return; }
+      if (showReinforcementDialog) { setShowReinforcementDialog(false); return; }
       if (showSteelCheckReport) { setShowSteelCheckReport(false); return; }
       if (showSteelCheck) { setShowSteelCheck(false); return; }
       if (showConcreteCheck) { setShowConcreteCheck(false); return; }
@@ -390,7 +394,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     window.addEventListener('keydown', handleEscapeKey);
     return () => window.removeEventListener('keydown', handleEscapeKey);
   }, [
-    showConcreteDesign, showSteelConnection, showSteelCheckReport,
+    showConcreteDesign, showSteelConnection, showReinforcementDialog, showSteelCheckReport,
     showSteelCheck, showConcreteCheck, showLoadGenerator,
     showReportSettings, showCalculationSettings, showMaterialsDialog,
     showStandardsDialog, showGridsDialog, showProjectInfoDialog,
@@ -414,21 +418,32 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     splitDragRef.current = null;
   }, []);
 
-  // Envelope computation: when showEnvelope is toggled on and combinations exist,
-  // solve for each combination and compute the envelope of results.
+  // Envelope computation: when activeEnvelope is set and combinations exist,
+  // solve for each relevant combination and compute the envelope of results.
   useEffect(() => {
-    if (!state.showEnvelope) {
+    if (!state.activeEnvelope && !state.showEnvelope) {
       dispatch({ type: 'SET_ENVELOPE_RESULT', payload: null });
       return;
     }
     if (state.loadCombinations.length === 0 || state.mesh.getNodeCount() < 2) return;
+
+    // Filter combinations based on envelope type
+    let combosToUse = state.loadCombinations;
+    if (state.activeEnvelope === 'uls') {
+      combosToUse = state.loadCombinations.filter(c => c.type === '6.10a' || c.type === '6.10b');
+    } else if (state.activeEnvelope === 'sls') {
+      combosToUse = state.loadCombinations.filter(c => c.type === '6.16' || c.type === '6.17' || c.type === '6.18');
+    }
+    // 'all' uses all combinations
+
+    if (combosToUse.length === 0) return;
 
     let cancelled = false;
 
     const computeEnvelope = async () => {
       const effectiveAnalysisType = getEffectiveAnalysisType();
       const results = [];
-      for (const combo of state.loadCombinations) {
+      for (const combo of combosToUse) {
         if (cancelled) return;
         try {
           applyCombinedLoadsToMesh(state.mesh, state.loadCases, combo);
@@ -458,14 +473,14 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     computeEnvelope();
 
     return () => { cancelled = true; };
-  }, [state.showEnvelope, state.loadCombinations, state.meshVersion, state.analysisType, getEffectiveAnalysisType]);
+  }, [state.showEnvelope, state.activeEnvelope, state.loadCombinations, state.meshVersion, state.analysisType, getEffectiveAnalysisType]);
 
   return (
     <div className="app">
       <div className="title-bar">
         <div className="title-bar-left">
           <Box size={14} />
-          <span>Open FEM2D Studio</span>
+          <span>Open FEM Studio</span>
         </div>
         <div className="title-bar-center">{state.projectInfo.name || 'Untitled Project'}</div>
         <div className="title-bar-right" />
@@ -479,6 +494,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         onShowSteelConnection={() => setShowSteelConnection(true)}
         onShowConcreteCheck={() => setShowConcreteCheck(true)}
         onShowConcreteDesign={() => setShowConcreteDesign(true)}
+        onShowReinforcementDialog={() => setShowReinforcementDialog(true)}
         onShowMaterialsDialog={() => setShowMaterialsDialog(true)}
         onShowCalculationSettings={() => setShowCalculationSettings(true)}
         onShowCombinationDialog={() => setShowCombinationDialog(true)}
@@ -520,6 +536,8 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
             />
           ) : state.viewMode === '3d' ? (
             <ModelViewer3D />
+          ) : state.viewMode === 'drawing' ? (
+            <DrawingView />
           ) : showGraphSplit ? (
             <div className="split-view-container">
               <div className="split-view-top">
@@ -626,6 +644,12 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       )}
       {showSteelConnection && (
         <SteelConnectionDialog onClose={() => setShowSteelConnection(false)} />
+      )}
+      {showReinforcementDialog && state.selection.plateIds.size > 0 && (
+        <ConcreteReinforcementDialog
+          plateId={Array.from(state.selection.plateIds)[0]}
+          onClose={() => setShowReinforcementDialog(false)}
+        />
       )}
       {showMaterialsDialog && (
         <MaterialsDialog

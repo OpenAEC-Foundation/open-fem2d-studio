@@ -35,7 +35,7 @@ try:
 except ImportError:
     OPENSEES_AVAILABLE = False
 
-app = FastAPI(title="Open FEM2D Solver Backend")
+app = FastAPI(title="Open FEM Solver Backend")
 
 # -- ERPNext configuration ---------------------------------------------------
 ERPNEXT_URL = os.environ.get("ERPNEXT_URL", "")
@@ -56,7 +56,7 @@ _solver_lock = threading.Lock()
 
 # -- Virtual Terminal System Prompt ------------------------------------------
 
-SYSTEM_PROMPT = """You are a structural engineering AI assistant integrated into Open-FEM2D-Studio, a 2D finite element analysis application.
+SYSTEM_PROMPT = """You are a structural engineering AI assistant integrated into Open-FEM-Studio, a finite element analysis application.
 
 You operate as a virtual terminal: you receive the current model state and user instructions, and you respond with both explanatory text AND structured commands that the application executes.
 

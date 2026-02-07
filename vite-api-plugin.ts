@@ -26,7 +26,7 @@ export function apiPlugin(): Plugin {
       server.middlewares.use('/api/info', (_req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({
-          name: 'Open-FEM2D-Studio',
+          name: 'Open-FEM-Studio',
           version: '0.2.0',
           endpoints: [
             { path: '/api/health', method: 'GET', description: 'Health check' },

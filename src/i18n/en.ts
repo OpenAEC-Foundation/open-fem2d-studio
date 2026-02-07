@@ -1,6 +1,6 @@
 export const en: Record<string, string> = {
   // App title
-  'app.title': 'Open FEM2D Studio',
+  'app.title': 'Open FEM Studio',
   'app.untitledProject': 'Untitled Project',
   'app.newProject': 'New Project',
 
@@ -684,7 +684,7 @@ export const en: Record<string, string> = {
   // ── Help Commands ───────────────────────────────────────────────────
   'cmd.helpDocs': 'Documentation',
   'cmd.helpShortcuts': 'Keyboard Shortcuts',
-  'cmd.helpAbout': 'About Open FEM2D Studio',
+  'cmd.helpAbout': 'About Open FEM Studio',
   'cmd.helpTutorial': 'Getting Started Tutorial',
   'cmd.helpEurocodes': 'Eurocode References',
   'cmd.helpFEMTheory': 'FEM Theory Guide',
@@ -837,7 +837,7 @@ export const en: Record<string, string> = {
   'report.noModelDataAvailable': 'No model data available',
   'report.createModelToGenerate': 'Create a structural model to generate a report.',
   'report.structuralReport': 'Structural Report',
-  'report.generatedWith': 'Generated with Open FEM2D Studio',
+  'report.generatedWith': 'Generated with Open FEM Studio',
   'report.sectionNotImplemented': 'This section is not yet implemented.',
 
   // Report Settings Dialog

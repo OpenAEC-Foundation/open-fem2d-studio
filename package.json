@@ -1,5 +1,5 @@
 {
-  "name": "open-fem2d-studio",
+  "name": "open-fem-studio",
   "version": "1.0.0",
   "description": "Web-based 2D Finite Element Method application for structural analysis",
   "type": "module",

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useFEM } from '../../context/FEMContext';
-import { ILoadCombination, createLoadCombination } from '../../core/fem/LoadCase';
+import { ILoadCombination, createLoadCombination, LoadCombinationType } from '../../core/fem/LoadCase';
 import './LoadCombinationDialog.css';
 
 interface LoadCombinationDialogProps {
@@ -53,7 +53,7 @@ export function LoadCombinationDialog({ onClose }: LoadCombinationDialogProps) {
 
   function handleAdd() {
     const id = nextId();
-    const combo = createLoadCombination(id, `Combination ${id}`, 'ULS');
+    const combo = createLoadCombination(id, `Combination ${id}`, '6.10b');
     // Initialise every existing load case with factor 1.0
     for (const lc of loadCases) {
       combo.factors.set(lc.id, 1.0);
@@ -145,12 +145,21 @@ export function LoadCombinationDialog({ onClose }: LoadCombinationDialogProps) {
                       value={selectedCombo.type}
                       onChange={e =>
                         updateCombination(selectedCombo.id, {
-                          type: e.target.value as 'ULS' | 'SLS'
+                          type: e.target.value as LoadCombinationType
                         })
                       }
                     >
-                      <option value="ULS">ULS</option>
-                      <option value="SLS">SLS</option>
+                      <optgroup label="ULS">
+                        <option value="6.10a">6.10a (permanent dominant)</option>
+                        <option value="6.10b">6.10b (variable dominant)</option>
+                        <option value="6.14">6.14 (accidental)</option>
+                        <option value="6.15">6.15 (seismic)</option>
+                      </optgroup>
+                      <optgroup label="SLS">
+                        <option value="6.16">6.16 (characteristic)</option>
+                        <option value="6.17">6.17 (frequent)</option>
+                        <option value="6.18">6.18 (quasi-permanent)</option>
+                      </optgroup>
                     </select>
                   </label>
                 </div>

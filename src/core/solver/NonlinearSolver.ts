@@ -23,10 +23,29 @@ import { calculateQuadStress } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
 import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, buildNodeIdToIndex } from './Assembler';
 import { solveLinearSystem } from '../math/GaussElimination';
+import {
+  ISectionState,
+  ICrackedSectionState,
+  createSteelMaterial,
+  createConcreteMaterial,
+  initSectionState,
+  updateSectionState,
+  initCrackedSectionState,
+  updateCrackedSectionState,
+  calculateCrackingMoment,
+  calculateCrackedI,
+  calculateEffectiveI,
+  calculateBeamSegments,
+  IBeamSegment,
+} from './NonlinearMaterial';
 
 export interface NonlinearSolverOptions {
   analysisType: AnalysisType;
   geometricNonlinear: boolean;
+  materialNonlinear: boolean;          // Enable physical nonlinearity (FNL)
+  materialType: 'steel' | 'concrete';  // Material model for FNL
+  steelFy: number;                     // Steel yield strength (Pa)
+  concreteFck: number;                 // Concrete characteristic strength (Pa)
   maxIterations: number;
   tolerance: number;
   loadSteps: number;
@@ -35,6 +54,10 @@ export interface NonlinearSolverOptions {
 const DEFAULT_OPTIONS: NonlinearSolverOptions = {
   analysisType: 'frame',
   geometricNonlinear: false,
+  materialNonlinear: false,
+  materialType: 'steel',
+  steelFy: 235e6,        // S235
+  concreteFck: 30e6,     // C30/37
   maxIterations: 20,
   tolerance: 1e-6,
   loadSteps: 1
@@ -171,6 +194,26 @@ function assembleGlobalStiffnessWithGeometric(
         K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
       }
     }
+
+    // Add Winkler foundation stiffness for beam on grade
+    if (beam.onGrade?.enabled && beam.onGrade.k > 0) {
+      const k = beam.onGrade.k; // N/m² (spring stiffness per unit area)
+      const b = beam.onGrade.b ?? 1.0; // Foundation width in m (default 1.0m)
+      const kL = k * b * L; // Total spring stiffness along beam
+
+      // Vertical stiffness (primary Winkler stiffness)
+      const v1Dof = dofIndices[1]; // v1
+      const v2Dof = dofIndices[4]; // v2
+      K.addAt(v1Dof, v1Dof, kL / 2);
+      K.addAt(v2Dof, v2Dof, kL / 2);
+
+      // Small horizontal friction stiffness to prevent singularity (0.1% of vertical)
+      const u1Dof = dofIndices[0]; // u1
+      const u2Dof = dofIndices[3]; // u2
+      const kFriction = kL * 0.001;
+      K.addAt(u1Dof, u1Dof, kFriction / 2);
+      K.addAt(u2Dof, u2Dof, kFriction / 2);
+    }
   }
 
   // Add spring support stiffness to diagonal
@@ -190,6 +233,281 @@ function assembleGlobalStiffnessWithGeometric(
   }
 
   return K;
+}
+
+/**
+ * Calculate beam element stiffness with reduced EI from material nonlinearity
+ * Uses the tangent stiffness EI_tangent from M-κ relationship
+ */
+function calculateBeamLocalStiffnessFNL(
+  L: number,
+  E: number,
+  A: number,
+  _I: number,          // Not used directly - EI_tangent provides the stiffness
+  EI_tangent: number   // From M-κ relationship
+): Matrix {
+  const Kl = new Matrix(6, 6);
+
+  // Axial stiffness (unchanged - assuming axial remains elastic)
+  const EA_L = E * A / L;
+  Kl.set(0, 0, EA_L);
+  Kl.set(0, 3, -EA_L);
+  Kl.set(3, 0, -EA_L);
+  Kl.set(3, 3, EA_L);
+
+  // Bending stiffness using tangent EI
+  const EI = EI_tangent;
+  const EI_L3 = EI / (L * L * L);
+  const EI_L2 = EI / (L * L);
+  const EI_L = EI / L;
+
+  // v1, v1
+  Kl.set(1, 1, 12 * EI_L3);
+  // v1, θ1
+  Kl.set(1, 2, 6 * EI_L2);
+  Kl.set(2, 1, 6 * EI_L2);
+  // v1, v2
+  Kl.set(1, 4, -12 * EI_L3);
+  Kl.set(4, 1, -12 * EI_L3);
+  // v1, θ2
+  Kl.set(1, 5, 6 * EI_L2);
+  Kl.set(5, 1, 6 * EI_L2);
+
+  // θ1, θ1
+  Kl.set(2, 2, 4 * EI_L);
+  // θ1, v2
+  Kl.set(2, 4, -6 * EI_L2);
+  Kl.set(4, 2, -6 * EI_L2);
+  // θ1, θ2
+  Kl.set(2, 5, 2 * EI_L);
+  Kl.set(5, 2, 2 * EI_L);
+
+  // v2, v2
+  Kl.set(4, 4, 12 * EI_L3);
+  // v2, θ2
+  Kl.set(4, 5, -6 * EI_L2);
+  Kl.set(5, 4, -6 * EI_L2);
+
+  // θ2, θ2
+  Kl.set(5, 5, 4 * EI_L);
+
+  return Kl;
+}
+
+/**
+ * Assemble global stiffness matrix with material nonlinearity (FNL)
+ * For steel: uses tangent stiffness from M-κ section states
+ * For concrete: uses effective EI from cracked section analysis (EC2 tension stiffening)
+ */
+function assembleGlobalStiffnessFNL(
+  mesh: Mesh,
+  sectionStates: Map<number, ISectionState>,
+  crackedStates: Map<number, ICrackedSectionState>,
+  axialForces: Map<number, number>,
+  includeGeometric: boolean,
+  materialType: 'steel' | 'concrete'
+): Matrix {
+  const numNodes = mesh.getNodeCount();
+  const numDofs = numNodes * 3;
+  const K = new Matrix(numDofs, numDofs);
+
+  const nodeIdToIndex = new Map<number, number>();
+  let index = 0;
+  for (const node of mesh.nodes.values()) {
+    nodeIdToIndex.set(node.id, index);
+    index++;
+  }
+
+  for (const beam of mesh.beamElements.values()) {
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (!nodes) continue;
+
+    const material = mesh.getMaterial(beam.materialId);
+    if (!material) continue;
+
+    const [n1, n2] = nodes;
+    const L = calculateBeamLength(n1, n2);
+    const angle = calculateBeamAngle(n1, n2);
+
+    if (L < 1e-10) continue;
+
+    // Get effective EI based on material type
+    let EI_eff: number;
+    if (materialType === 'concrete') {
+      // Concrete: use EIeff from cracked section analysis
+      const crackedState = crackedStates.get(beam.id);
+      if (crackedState && crackedState.isCracked) {
+        // Use effective EI with tension stiffening
+        EI_eff = crackedState.EIeff;
+      } else {
+        // Uncracked: use full EI
+        EI_eff = material.E * beam.section.I;
+      }
+    } else {
+      // Steel: use tangent stiffness from M-κ relationship
+      const sectionState = sectionStates.get(beam.id);
+      EI_eff = sectionState?.tangentStiffness ?? (material.E * beam.section.I);
+    }
+
+    // Local stiffness with effective EI
+    const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
+
+    // Apply end releases
+    const { start, end } = getConnectionTypes(beam);
+    const releasedLocalDofs: number[] = [];
+    if (start === 'hinge') releasedLocalDofs.push(2);
+    if (end === 'hinge') releasedLocalDofs.push(5);
+    if (releasedLocalDofs.length > 0) {
+      applyEndReleases(Kl, releasedLocalDofs);
+    }
+
+    // Add geometric stiffness
+    if (includeGeometric) {
+      const N = axialForces.get(beam.id) || 0;
+      const Kg = calculateGeometricStiffness(L, N);
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 6; j++) {
+          Kl.addAt(i, j, Kg.get(i, j));
+        }
+      }
+    }
+
+    // Transform to global
+    const T = createTransformationMatrix(angle);
+    const TT = T.transpose();
+    const temp = Kl.multiply(T);
+    const Ke = TT.multiply(temp);
+
+    // Get DOF indices
+    const idx1 = nodeIdToIndex.get(n1.id)!;
+    const idx2 = nodeIdToIndex.get(n2.id)!;
+    const dofIndices = [
+      idx1 * 3, idx1 * 3 + 1, idx1 * 3 + 2,
+      idx2 * 3, idx2 * 3 + 1, idx2 * 3 + 2
+    ];
+
+    // Assemble
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) {
+        K.addAt(dofIndices[i], dofIndices[j], Ke.get(i, j));
+      }
+    }
+  }
+
+  // Add spring support stiffness
+  for (const node of mesh.nodes.values()) {
+    const nodeIndex = nodeIdToIndex.get(node.id);
+    if (nodeIndex === undefined) continue;
+    const c = node.constraints;
+    if (c.springX != null && c.x) {
+      K.addAt(nodeIndex * 3, nodeIndex * 3, c.springX);
+    }
+    if (c.springY != null && c.y) {
+      K.addAt(nodeIndex * 3 + 1, nodeIndex * 3 + 1, c.springY);
+    }
+    if (c.springRot != null && c.rotation) {
+      K.addAt(nodeIndex * 3 + 2, nodeIndex * 3 + 2, c.springRot);
+    }
+  }
+
+  return K;
+}
+
+/**
+ * Update section states based on current displacements
+ * For concrete: updates cracked section state based on moments (EC2 tension stiffening)
+ * For steel: updates M-κ state for plastic hinge tracking
+ */
+function updateAllSectionStates(
+  mesh: Mesh,
+  displacements: number[],
+  sectionStates: Map<number, ISectionState>,
+  crackedStates: Map<number, ICrackedSectionState>,
+  beamForces: Map<number, IBeamForces>,
+  opts: NonlinearSolverOptions
+): { sectionStates: Map<number, ISectionState>; crackedStates: Map<number, ICrackedSectionState> } {
+  const nodeIdToIndex = new Map<number, number>();
+  let index = 0;
+  for (const node of mesh.nodes.values()) {
+    nodeIdToIndex.set(node.id, index);
+    index++;
+  }
+
+  const steel = opts.materialType === 'steel' ? createSteelMaterial(opts.steelFy) : undefined;
+  const concrete = opts.materialType === 'concrete' ? createConcreteMaterial(opts.concreteFck) : undefined;
+
+  for (const beam of mesh.beamElements.values()) {
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (!nodes) continue;
+
+    const material = mesh.getMaterial(beam.materialId);
+    if (!material) continue;
+
+    const [n1, n2] = nodes;
+    const L = calculateBeamLength(n1, n2);
+    const angle = calculateBeamAngle(n1, n2);
+
+    if (L < 1e-10) continue;
+
+    const idx1 = nodeIdToIndex.get(n1.id)!;
+    const idx2 = nodeIdToIndex.get(n2.id)!;
+
+    // Extract local displacements
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    const u1 = displacements[idx1 * 3];
+    const v1 = displacements[idx1 * 3 + 1];
+    const theta1 = displacements[idx1 * 3 + 2];
+    const u2 = displacements[idx2 * 3];
+    const v2 = displacements[idx2 * 3 + 1];
+    const theta2 = displacements[idx2 * 3 + 2];
+
+    // Transform to local (only transverse displacements needed for curvature)
+    const vL1 = -u1 * sin + v1 * cos;
+    const vL2 = -u2 * sin + v2 * cos;
+
+    // Calculate curvature at mid-span (approximate)
+    // κ ≈ (θ2 - θ1) / L + 6*(vL2 - vL1) / L²
+    const kappa = (theta2 - theta1) / L + 6 * (vL2 - vL1) / (L * L);
+
+    if (opts.materialType === 'concrete') {
+      // Concrete: use cracked section analysis with EC2 tension stiffening
+      // Get maximum moment from beam forces
+      const forces = beamForces.get(beam.id);
+      const M = forces ? Math.max(Math.abs(forces.M1), Math.abs(forces.M2), Math.abs(forces.maxM)) : 0;
+
+      let crackedState = crackedStates.get(beam.id);
+      if (crackedState) {
+        // Get uncracked I from section or calculate
+        const h = beam.section.h || 0.5;  // Default height if not specified
+        const b = h / 2;  // Approximate width for rectangular section
+        const Iunc = beam.section.I;
+        const Ecm = material.E;
+        const beta = 0.5;  // EC2 tension stiffening factor for sustained loading
+
+        crackedState = updateCrackedSectionState(crackedState, M, Iunc, Ecm, beta);
+        crackedStates.set(beam.id, crackedState);
+      }
+    } else {
+      // Steel: use M-κ relationship for plastic hinge tracking
+      let state = sectionStates.get(beam.id);
+      if (!state) {
+        state = initSectionState(beam.section, opts.materialType, steel, concrete);
+      }
+
+      state = updateSectionState(
+        state, kappa, beam.section, opts.materialType,
+        steel, concrete,
+        undefined, // rebarTop
+        undefined  // rebarBot
+      );
+
+      sectionStates.set(beam.id, state);
+    }
+  }
+
+  return { sectionStates, crackedStates };
 }
 
 /**
@@ -474,8 +792,42 @@ export function solveNonlinear(
     }
   }
 
+  // Initialize section states for material nonlinearity
+  let sectionStates = new Map<number, ISectionState>();
+  let crackedStates = new Map<number, ICrackedSectionState>();
+
+  if (opts.materialNonlinear) {
+    const steel = opts.materialType === 'steel' ? createSteelMaterial(opts.steelFy) : undefined;
+    const concrete = opts.materialType === 'concrete' ? createConcreteMaterial(opts.concreteFck) : undefined;
+
+    for (const beam of mesh.beamElements.values()) {
+      const material = mesh.getMaterial(beam.materialId);
+      if (!material) continue;
+
+      if (opts.materialType === 'concrete') {
+        // Initialize cracked section state for concrete beams
+        // Estimate section dimensions from section properties
+        const h = beam.section.h || Math.sqrt(beam.section.I * 12 / 1);  // Approximate h for rectangular
+        const b = h > 0 ? beam.section.A / h : 0.3;  // Approximate b
+        const d = h * 0.9;  // Effective depth (assuming 10% cover)
+
+        // Estimate reinforcement area from section (default: 0.5% of concrete area)
+        const As = beam.section.A * 0.005;
+
+        // Use concrete material properties
+        const concMat = concrete!;
+        const crackedState = initCrackedSectionState(b, h, d, As, concMat, 200e9);  // Es = 200 GPa
+        crackedStates.set(beam.id, crackedState);
+      } else {
+        // Steel: use M-κ section state
+        const state = initSectionState(beam.section, opts.materialType, steel, concrete);
+        sectionStates.set(beam.id, state);
+      }
+    }
+  }
+
   // For linear analysis, just solve once (or iteratively for axial constraints)
-  if (!opts.geometricNonlinear) {
+  if (!opts.geometricNonlinear && !opts.materialNonlinear) {
     if (hasAxialConstraints) {
       return solveWithAxialConstraints(mesh, F, opts);
     }
@@ -509,14 +861,22 @@ export function solveNonlinear(
     };
   }
 
-  // Nonlinear iteration (P-Delta analysis)
+  // Nonlinear iteration (P-Delta and/or FNL analysis)
   for (let step = 1; step <= opts.loadSteps; step++) {
     const loadFactor = step / opts.loadSteps;
     const scaledF = F.map(f => f * loadFactor);
 
     for (let iter = 0; iter < opts.maxIterations; iter++) {
-      // Assemble stiffness with current geometric stiffness
-      const K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, true);
+      // Assemble stiffness with current state
+      let K: Matrix;
+      if (opts.materialNonlinear) {
+        // Use tangent stiffness from M-κ relationship
+        K = assembleGlobalStiffnessFNL(mesh, sectionStates, axialForces, opts.geometricNonlinear);
+      } else {
+        // Geometric nonlinearity only
+        K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, true);
+      }
+
       const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, scaledF, mesh);
 
       // Calculate residual
@@ -542,6 +902,11 @@ export function solveNonlinear(
       // Update axial forces
       const { axialForces: newAxial } = calculateAllInternalForces(mesh, displacements);
       axialForces = newAxial;
+
+      // Update section states for material nonlinearity
+      if (opts.materialNonlinear) {
+        sectionStates = updateAllSectionStates(mesh, displacements, sectionStates, opts);
+      }
     }
   }
 

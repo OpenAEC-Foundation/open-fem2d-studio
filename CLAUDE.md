@@ -1,4 +1,4 @@
-# Open-FEM2D-Studio - Claude Instructions
+# Open-FEM-Studio - Claude Instructions
 
 ## Communicatie Regels (VERPLICHT)
 
