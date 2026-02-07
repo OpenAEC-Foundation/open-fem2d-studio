@@ -3,6 +3,7 @@ import { useFEM } from '../../context/FEMContext';
 import { formatModulus } from '../../core/fem/Material';
 import { formatStress, formatDisplacement, formatMomentPerLength, generateColorScale } from '../../utils/colors';
 import { formatForce, formatMoment } from '../../core/fem/BeamForces';
+import { convertArea, convertMomentOfInertia, convertSectionModulus } from '../../utils/units';
 import { DEFAULT_SECTIONS } from '../../core/fem/Beam';
 import { buildNodeIdToIndex } from '../../core/solver/Assembler';
 import { IDistributedLoad } from '../../core/fem/LoadCase';
@@ -210,7 +211,10 @@ export function PropertiesPanel() {
     diagramScale,
     loadCases,
     stressUnit,
-    plateBendingMomentUnit
+    plateBendingMomentUnit,
+    areaUnit,
+    momentOfInertiaUnit,
+    sectionModulusUnit
   } = state;
 
   const selectedNodeId = selection.nodeIds.size === 1 ? Array.from(selection.nodeIds)[0] : null;
@@ -470,11 +474,11 @@ export function PropertiesPanel() {
             <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}><strong>Profile:</strong> {selectedBeam.profileName}</p>
           )}
           <div className="result-info">
-            <p><strong>A:</strong> {selectedBeam.section.A.toExponential(3)} m²</p>
-            <p><strong>Iy:</strong> {(selectedBeam.section.Iy ?? selectedBeam.section.I).toExponential(3)} m⁴</p>
-            {selectedBeam.section.Iz != null && <p><strong>Iz:</strong> {selectedBeam.section.Iz.toExponential(3)} m⁴</p>}
-            {selectedBeam.section.Wy != null && <p><strong>Wy:</strong> {selectedBeam.section.Wy.toExponential(3)} m³</p>}
-            {selectedBeam.section.Wz != null && <p><strong>Wz:</strong> {selectedBeam.section.Wz.toExponential(3)} m³</p>}
+            <p><strong>A:</strong> {convertArea(selectedBeam.section.A, areaUnit).toExponential(3)} {areaUnit}</p>
+            <p><strong>Iy:</strong> {convertMomentOfInertia(selectedBeam.section.Iy ?? selectedBeam.section.I, momentOfInertiaUnit).toExponential(3)} {momentOfInertiaUnit}</p>
+            {selectedBeam.section.Iz != null && <p><strong>Iz:</strong> {convertMomentOfInertia(selectedBeam.section.Iz, momentOfInertiaUnit).toExponential(3)} {momentOfInertiaUnit}</p>}
+            {selectedBeam.section.Wy != null && <p><strong>Wy:</strong> {convertSectionModulus(selectedBeam.section.Wy, sectionModulusUnit).toExponential(3)} {sectionModulusUnit}</p>}
+            {selectedBeam.section.Wz != null && <p><strong>Wz:</strong> {convertSectionModulus(selectedBeam.section.Wz, sectionModulusUnit).toExponential(3)} {sectionModulusUnit}</p>}
           </div>
 
           {/* Distributed loads from active load case */}

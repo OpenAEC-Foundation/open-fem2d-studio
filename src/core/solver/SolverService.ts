@@ -6,6 +6,8 @@
 import { Mesh } from '../fem/Mesh';
 import { ISolverResult, IBeamForces, AnalysisType } from '../fem/types';
 import { solveNonlinear } from './NonlinearSolver';
+// Import plate tests so they're available in browser console
+import './PlateVerificationTests';
 
 export interface SolveOptions {
   analysisType: AnalysisType;

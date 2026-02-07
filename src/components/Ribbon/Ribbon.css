@@ -408,3 +408,135 @@
 .theme-toggle-btn svg {
   flex-shrink: 0;
 }
+
+/* Unit selectors in Settings tab */
+.ribbon-unit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.ribbon-unit-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 70px;
+}
+
+.ribbon-unit-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  min-width: 60px;
+}
+
+.ribbon-unit-select:hover {
+  border-color: var(--accent);
+}
+
+.ribbon-unit-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Selection filter toggles */
+.ribbon-group-content.filter-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 70px;
+}
+
+.ribbon-button.filter-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  border: 1px solid transparent;
+}
+
+.ribbon-button.filter-toggle.active {
+  opacity: 1;
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+}
+
+.ribbon-button.filter-toggle:hover {
+  opacity: 0.8;
+  background: var(--bg-tertiary);
+}
+
+/* Filter dropdown */
+.filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.filter-dropdown-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.filter-dropdown-item:hover {
+  background: var(--bg-elevated);
+}
+
+.filter-dropdown-item:hover .remove-icon {
+  color: #e94560;
+}
+
+.filter-dropdown-item span {
+  flex: 1;
+}
+
+.filter-dropdown-item .remove-icon {
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+
+.filter-dropdown-empty {
+  padding: 16px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.ribbon-button.has-selection {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--accent);
+}

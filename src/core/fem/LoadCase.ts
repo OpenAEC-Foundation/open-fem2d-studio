@@ -5,10 +5,13 @@
 import { IEdgeLoad, IThermalLoad } from './types';
 
 export interface IPointLoad {
-  nodeId: number;
-  fx: number;      // N
-  fy: number;      // N
-  mz: number;      // Nm
+  nodeId: number;       // Node ID for node-based point loads (0 if beam-based)
+  fx: number;           // N (global X)
+  fy: number;           // N (global Y)
+  mz: number;           // Nm
+  // Beam point load fields (optional - when set, load is on beam, not node)
+  beamId?: number;      // Beam element ID
+  position?: number;    // Position along beam (0 to 1, where 0 = start node, 1 = end node)
 }
 
 export interface IDistributedLoad {

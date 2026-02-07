@@ -57,9 +57,10 @@ function useProjectSnapshot() {
       state.loadCombinations,
       state.projectInfo,
       state.structuralGrid,
-      state.graphState
+      state.graphState,
+      state.versioning
     );
-  }, [state.mesh, state.loadCases, state.loadCombinations, state.projectInfo, state.structuralGrid, state.graphState]);
+  }, [state.mesh, state.loadCases, state.loadCombinations, state.projectInfo, state.structuralGrid, state.graphState, state.versioning]);
 }
 
 interface AppContentProps {
@@ -92,12 +93,48 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const [displayCollapsed, setDisplayCollapsed] = useState(false);
   const [activeRibbonTab, setActiveRibbonTab] = useState<string>('home');
 
+  // Track previous browser collapsed state to restore when leaving Report tab
+  const browserCollapsedBeforeReportRef = useRef(false);
+
   // Version control state
   const [versionStore, setVersionStore] = useState<IVersionStore | null>(null);
+
+  // Track the previous ribbon tab to detect tab changes
+  const prevRibbonTabRef = useRef(activeRibbonTab);
+
+  // Collapse browser when switching to Report tab, restore when leaving
+  useEffect(() => {
+    const prevTab = prevRibbonTabRef.current;
+    prevRibbonTabRef.current = activeRibbonTab;
+
+    if (activeRibbonTab === 'report' && prevTab !== 'report') {
+      // Entering Report tab: save current state and collapse
+      browserCollapsedBeforeReportRef.current = browserCollapsed;
+      setBrowserCollapsed(true);
+    } else if (prevTab === 'report' && activeRibbonTab !== 'report') {
+      // Leaving Report tab: restore previous state
+      setBrowserCollapsed(browserCollapsedBeforeReportRef.current);
+    }
+  }, [activeRibbonTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Expose snapshot function to parent
   const getSnapshot = useProjectSnapshot();
   onSnapshotRef.current = getSnapshot;
+
+  // Show Project Info dialog at startup for new projects
+  const hasShownStartupDialog = useRef(false);
+  useEffect(() => {
+    if (!hasShownStartupDialog.current) {
+      hasShownStartupDialog.current = true;
+      // Check if this is a new/empty project
+      const isNewProject = state.projectInfo.name === 'New Project' || state.projectInfo.name === '';
+      const isEmpty = state.mesh.getNodeCount() === 0 && state.mesh.getBeamCount() === 0;
+      if (isNewProject && isEmpty) {
+        // Small delay to ensure UI is ready
+        setTimeout(() => setShowProjectInfoDialog(true), 300);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-detect appropriate analysis type based on mesh content
   const getEffectiveAnalysisType = useCallback(() => {

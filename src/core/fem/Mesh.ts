@@ -1,4 +1,4 @@
-import { INode, IElement, IMaterial, IMesh, ITriangleElement, IQuadElement, IBeamElement, IBeamSection, IPlateRegion, ISubNode, IEdge, ILayer } from './types';
+import { INode, IElement, IMaterial, IMesh, ITriangleElement, IQuadElement, IBeamElement, IBeamSection, IPlateRegion, ISubNode, IEdge, ILayer, IPlateVertex } from './types';
 import { DEFAULT_MATERIALS } from './Material';
 import { DEFAULT_SECTIONS } from './Beam';
 
@@ -12,6 +12,7 @@ export class Mesh implements IMesh {
   subNodes: Map<number, ISubNode>;
   edges: Map<number, IEdge>;
   layers: Map<number, ILayer>;
+  plateVertices: Map<number, IPlateVertex>;
   private nextNodeId: number;
   private nextElementId: number;
   private nextMaterialId: number;
@@ -20,6 +21,7 @@ export class Mesh implements IMesh {
   private nextSubNodeId: number;
   private nextEdgeId: number;
   private nextLayerId: number;
+  private nextVertexId: number;
 
   constructor() {
     this.nodes = new Map();
@@ -31,6 +33,7 @@ export class Mesh implements IMesh {
     this.subNodes = new Map();
     this.edges = new Map();
     this.layers = new Map();
+    this.plateVertices = new Map();
     this.nextNodeId = 1;
     this.nextElementId = 1;
     this.nextMaterialId = 10;
@@ -39,6 +42,7 @@ export class Mesh implements IMesh {
     this.nextSubNodeId = 1;
     this.nextEdgeId = 1;
     this.nextLayerId = 1;
+    this.nextVertexId = 1;
 
     // Add default materials
     DEFAULT_MATERIALS.forEach(m => this.materials.set(m.id, { ...m }));
@@ -624,6 +628,7 @@ export class Mesh implements IMesh {
 
   removePlateRegion(plateId: number): boolean {
     this.removeEdgesForPlate(plateId);
+    this.removeVerticesForPlate(plateId);
     return this.plateRegions.delete(plateId);
   }
 
@@ -722,6 +727,72 @@ export class Mesh implements IMesh {
     return layer ? layer.locked : false;
   }
 
+  // ─── Plate Vertex Methods ───────────────────────────────────────────────────
+
+  addPlateVertex(plateId: number, x: number, y: number, index: number): IPlateVertex {
+    const vertex: IPlateVertex = {
+      id: this.nextVertexId++,
+      plateId,
+      x,
+      y,
+      index
+    };
+    this.plateVertices.set(vertex.id, vertex);
+    return vertex;
+  }
+
+  getPlateVertex(id: number): IPlateVertex | undefined {
+    return this.plateVertices.get(id);
+  }
+
+  updatePlateVertex(id: number, updates: Partial<Omit<IPlateVertex, 'id' | 'plateId'>>): IPlateVertex | null {
+    const vertex = this.plateVertices.get(id);
+    if (!vertex) return null;
+    const updated = { ...vertex, ...updates };
+    this.plateVertices.set(id, updated);
+    return updated;
+  }
+
+  removePlateVertex(id: number): boolean {
+    return this.plateVertices.delete(id);
+  }
+
+  getVerticesForPlate(plateId: number): IPlateVertex[] {
+    const vertices: IPlateVertex[] = [];
+    for (const v of this.plateVertices.values()) {
+      if (v.plateId === plateId) vertices.push(v);
+    }
+    return vertices.sort((a, b) => a.index - b.index);
+  }
+
+  removeVerticesForPlate(plateId: number): void {
+    for (const [id, v] of this.plateVertices) {
+      if (v.plateId === plateId) this.plateVertices.delete(id);
+    }
+  }
+
+  /**
+   * Create vertices for a plate's polygon. Call this when creating a new polygon plate.
+   */
+  createVerticesForPlate(plateId: number, polygon: { x: number; y: number }[]): IPlateVertex[] {
+    // Remove any existing vertices for this plate
+    this.removeVerticesForPlate(plateId);
+    // Create new vertices
+    return polygon.map((p, index) => this.addPlateVertex(plateId, p.x, p.y, index));
+  }
+
+  /**
+   * Sync plate polygon from vertices. Call after moving vertices.
+   */
+  syncPlatePolygonFromVertices(plateId: number): void {
+    const plate = this.plateRegions.get(plateId);
+    if (!plate || !plate.isPolygon) return;
+    const vertices = this.getVerticesForPlate(plateId);
+    if (vertices.length > 0) {
+      plate.polygon = vertices.map(v => ({ x: v.x, y: v.y }));
+    }
+  }
+
   clear(): void {
     this.nodes.clear();
     this.elements.clear();
@@ -730,6 +801,7 @@ export class Mesh implements IMesh {
     this.subNodes.clear();
     this.edges.clear();
     this.layers.clear();
+    this.plateVertices.clear();
     this.layers.set(0, { id: 0, name: 'Default', color: '#3b82f6', visible: true, locked: false });
     this.nextNodeId = 1;
     this.nextElementId = 1;
@@ -737,6 +809,7 @@ export class Mesh implements IMesh {
     this.nextSubNodeId = 1;
     this.nextEdgeId = 1;
     this.nextLayerId = 1;
+    this.nextVertexId = 1;
   }
 
   getElementNodes(element: IElement): INode[] {
@@ -836,7 +909,8 @@ export class Mesh implements IMesh {
       plateRegions: Array.from(this.plateRegions.values()),
       subNodes: Array.from(this.subNodes.values()),
       edges: Array.from(this.edges.values()),
-      layers: Array.from(this.layers.values())
+      layers: Array.from(this.layers.values()),
+      plateVertices: Array.from(this.plateVertices.values())
     };
   }
 
@@ -850,6 +924,7 @@ export class Mesh implements IMesh {
     subNodes?: ISubNode[];
     edges?: IEdge[];
     layers?: ILayer[];
+    plateVertices?: IPlateVertex[];
   }): Mesh {
     const mesh = new Mesh();
     mesh.nodes.clear();
@@ -859,6 +934,7 @@ export class Mesh implements IMesh {
     mesh.plateRegions.clear();
     mesh.subNodes.clear();
     mesh.edges.clear();
+    mesh.plateVertices.clear();
 
     data.materials.forEach(m => mesh.materials.set(m.id, m));
 
@@ -908,6 +984,10 @@ export class Mesh implements IMesh {
       data.layers.forEach(l => mesh.layers.set(l.id, l));
     }
 
+    if (data.plateVertices) {
+      data.plateVertices.forEach(v => mesh.plateVertices.set(v.id, v));
+    }
+
     const allElementIds = [
       ...data.elements.map(e => e.id),
       ...(data.beamElements || []).map(b => b.id)
@@ -926,6 +1006,9 @@ export class Mesh implements IMesh {
 
     const allLayerIds = (data.layers || []).map(l => l.id);
     mesh.nextLayerId = Math.max(...allLayerIds, 0) + 1;
+
+    const allVertexIds = (data.plateVertices || []).map(v => v.id);
+    mesh.nextVertexId = Math.max(...allVertexIds, 0) + 1;
 
     // Restore nextPlateNodeId from plate node IDs (IDs >= 1000)
     const plateNodeIds = data.nodes.filter(n => n.id >= 1000).map(n => n.id);

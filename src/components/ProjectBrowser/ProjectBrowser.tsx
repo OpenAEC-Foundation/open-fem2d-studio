@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useFEM, BrowserTab } from '../../context/FEMContext';
+import { useState, useCallback } from 'react';
+import { useFEM, BrowserTab, IVersion } from '../../context/FEMContext';
 import { DEFAULT_SECTIONS, calculateBeamLength } from '../../core/fem/Beam';
 import { IBeamSection } from '../../core/fem/types';
 import { NodePropertiesDialog } from '../NodePropertiesDialog/NodePropertiesDialog';
@@ -9,8 +9,8 @@ import { useI18n } from '../../i18n/i18n';
 import {
   ChevronRight, ChevronLeft, FolderOpen, CircleDot, Circle, Minus,
   Triangle, Diamond, Palette, Square, Box, RectangleHorizontal,
-  ArrowDown, ClipboardList, BarChart3, TrendingUp, Move,
-  Info, Hash, Layers, Plus
+  ArrowDown, ClipboardList, BarChart3, TrendingUp, Move, RotateCw,
+  Info, Hash, Layers, Plus, GitBranch, Clock, Save, Trash2, Eye
 } from 'lucide-react';
 import './ProjectBrowser.css';
 
@@ -22,7 +22,7 @@ interface ProjectBrowserProps {
 export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserProps) {
   const { t } = useI18n();
   const { state, dispatch, pushUndo } = useFEM();
-  const { mesh, selection, result, showMoment, showShear, showNormal, showDeflections, showDeformed, showReactions, loadCases, activeLoadCase, loadCombinations, activeCombination, stressType, showDiagramValues, analysisType, deformationScale, diagramScale, browserTab: activeTab } = state;
+  const { mesh, selection, result, showMoment, showShear, showNormal, showRotation, showDeflections, showDeformed, showReactions, loadCases, activeLoadCase, loadCombinations, activeCombination, stressType, showDiagramValues, analysisType, deformationScale, diagramScale, browserTab: activeTab } = state;
 
   const setActiveTab = (tab: BrowserTab) => dispatch({ type: 'SET_BROWSER_TAB', payload: tab });
 
@@ -41,7 +41,8 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
     stressesShear: false,
     stressesMembrane: false,
     reactions: true,
-    displacements: true
+    displacements: true,
+    versions: true
   });
 
   const [showProjectInfo, setShowProjectInfo] = useState(false);
@@ -50,6 +51,72 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
   const [viewingSection, setViewingSection] = useState<{ name: string; section: IBeamSection } | null>(null);
   const [showNewSectionDialog, setShowNewSectionDialog] = useState(false);
   const [customSections, setCustomSections] = useState<{ name: string; section: IBeamSection }[]>([]);
+
+  // Versioning state
+  const [showNewBranchInput, setShowNewBranchInput] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [previewVersion, setPreviewVersion] = useState<IVersion | null>(null);
+  const { versioning } = state;
+
+  // Get versions for current branch, sorted by timestamp (newest first)
+  const currentBranchVersions = versioning.versions
+    .filter(v => v.branchName === versioning.currentBranch)
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  // Format timestamp for display
+  const formatTimestamp = useCallback((timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  }, []);
+
+  // Create a new version (commit)
+  const createVersion = useCallback(() => {
+    const versionName = `Save ${currentBranchVersions.length + 1}`;
+    dispatch({ type: 'CREATE_VERSION', payload: { name: versionName } });
+  }, [dispatch, currentBranchVersions.length]);
+
+  // Restore a version
+  const restoreVersion = useCallback((versionId: string) => {
+    dispatch({ type: 'RESTORE_VERSION', payload: { versionId } });
+  }, [dispatch]);
+
+  // Create new branch
+  const handleCreateBranch = useCallback(() => {
+    if (newBranchName.trim()) {
+      dispatch({ type: 'CREATE_BRANCH', payload: { branchName: newBranchName.trim() } });
+      setNewBranchName('');
+      setShowNewBranchInput(false);
+    }
+  }, [dispatch, newBranchName]);
+
+  // Switch branch
+  const switchBranch = useCallback((branchName: string) => {
+    dispatch({ type: 'SWITCH_BRANCH', payload: { branchName } });
+  }, [dispatch]);
+
+  // Delete version
+  const deleteVersion = useCallback((versionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    dispatch({ type: 'DELETE_VERSION', payload: { versionId } });
+  }, [dispatch]);
+
+  // Delete branch
+  const deleteBranch = useCallback((branchName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (branchName !== 'main' && branchName !== versioning.currentBranch) {
+      dispatch({ type: 'DELETE_BRANCH', payload: { branchName } });
+    }
+  }, [dispatch, versioning.currentBranch]);
 
   const toggleExpand = (key: string) => {
     setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
@@ -69,11 +136,12 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
     });
   };
 
-  const activateResultView = (opts: { moment?: boolean; shear?: boolean; normal?: boolean; deflections?: boolean; deformed?: boolean; reactions?: boolean }) => {
+  const activateResultView = (opts: { moment?: boolean; shear?: boolean; normal?: boolean; rotation?: boolean; deflections?: boolean; deformed?: boolean; reactions?: boolean }) => {
     dispatch({ type: 'SET_VIEW_MODE', payload: 'results' });
     if (opts.moment !== undefined) dispatch({ type: 'SET_SHOW_MOMENT', payload: opts.moment });
     if (opts.shear !== undefined) dispatch({ type: 'SET_SHOW_SHEAR', payload: opts.shear });
     if (opts.normal !== undefined) dispatch({ type: 'SET_SHOW_NORMAL', payload: opts.normal });
+    if (opts.rotation !== undefined) dispatch({ type: 'SET_SHOW_ROTATION', payload: opts.rotation });
     if (opts.deflections !== undefined) dispatch({ type: 'SET_SHOW_DEFLECTIONS', payload: opts.deflections });
     if (opts.deformed !== undefined) dispatch({ type: 'SET_SHOW_DEFORMED', payload: opts.deformed });
     if (opts.reactions !== undefined) dispatch({ type: 'SET_SHOW_REACTIONS', payload: opts.reactions });
@@ -93,6 +161,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
       case 'moment': return showMoment;
       case 'shear': return showShear;
       case 'normal': return showNormal;
+      case 'rotation': return showRotation;
       case 'deflections': return showDeflections;
       case 'reactions': return showReactions;
       case 'displacement': return showDeformed;
@@ -460,6 +529,137 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
               )}
             </div>
 
+            {/* Versions Section */}
+            <div className="tree-section">
+              <div className="tree-item root" onClick={() => toggleExpand('versions')}>
+                <span className={`tree-arrow ${expanded.versions ? 'expanded' : ''}`}><ChevronRight size={12} /></span>
+                <span className="tree-icon"><GitBranch size={14} /></span>
+                <span className="tree-label">Versions</span>
+                <span className="tree-count">{currentBranchVersions.length}</span>
+              </div>
+
+              {expanded.versions && (
+                <div className="tree-children">
+                  {/* Branch selector */}
+                  <div className="version-branch-selector">
+                    <select
+                      className="version-branch-select"
+                      value={versioning.currentBranch}
+                      onChange={(e) => switchBranch(e.target.value)}
+                    >
+                      {versioning.branches.map(branch => (
+                        <option key={branch} value={branch}>{branch}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="version-btn version-btn-new-branch"
+                      onClick={() => setShowNewBranchInput(!showNewBranchInput)}
+                      title="Create new branch"
+                    >
+                      <Plus size={12} />
+                    </button>
+                    {versioning.currentBranch !== 'main' && (
+                      <button
+                        className="version-btn version-btn-delete-branch"
+                        onClick={(e) => deleteBranch(versioning.currentBranch, e)}
+                        title="Delete branch"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* New branch input */}
+                  {showNewBranchInput && (
+                    <div className="version-new-branch-input">
+                      <input
+                        type="text"
+                        placeholder="Branch name..."
+                        value={newBranchName}
+                        onChange={(e) => setNewBranchName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleCreateBranch();
+                          if (e.key === 'Escape') {
+                            setShowNewBranchInput(false);
+                            setNewBranchName('');
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <button onClick={handleCreateBranch}>Create</button>
+                    </div>
+                  )}
+
+                  {/* Save/Commit button */}
+                  <div className="version-save-row">
+                    <button className="version-save-btn" onClick={createVersion}>
+                      <Save size={12} />
+                      <span>Save Version</span>
+                    </button>
+                  </div>
+
+                  {/* Version list */}
+                  {currentBranchVersions.length === 0 ? (
+                    <div className="version-empty">
+                      <Clock size={16} />
+                      <span>No versions yet</span>
+                      <span className="version-empty-hint">Click "Save Version" to create a snapshot</span>
+                    </div>
+                  ) : (
+                    <div className="version-list">
+                      {currentBranchVersions.map((version) => (
+                        <div
+                          key={version.id}
+                          className="version-item"
+                          onClick={() => restoreVersion(version.id)}
+                          onMouseEnter={() => setPreviewVersion(version)}
+                          onMouseLeave={() => setPreviewVersion(null)}
+                        >
+                          <div className="version-item-main">
+                            <span className="version-icon"><Clock size={12} /></span>
+                            <span className="version-name">{version.name}</span>
+                          </div>
+                          <div className="version-item-meta">
+                            <span className="version-time">{formatTimestamp(version.timestamp)}</span>
+                            <button
+                              className="version-delete-btn"
+                              onClick={(e) => deleteVersion(version.id, e)}
+                              title="Delete version"
+                            >
+                              <Trash2 size={10} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Version preview tooltip */}
+                  {previewVersion && (
+                    <div className="version-preview">
+                      <div className="version-preview-header">
+                        <Eye size={12} />
+                        <span>Preview: {previewVersion.name}</span>
+                      </div>
+                      <div className="version-preview-content">
+                        <div className="version-preview-row">
+                          <span>Branch:</span>
+                          <span>{previewVersion.branchName}</span>
+                        </div>
+                        <div className="version-preview-row">
+                          <span>Created:</span>
+                          <span>{new Date(previewVersion.timestamp).toLocaleString()}</span>
+                        </div>
+                        <div className="version-preview-row">
+                          <span>Click to restore</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Inline properties for individually selected distributed load */}
             {(() => {
               if (selection.selectedDistLoadIds.size !== 1) return null;
@@ -681,6 +881,13 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                           <span className="tree-label">{t('browser.normalForce')}</span>
                         </div>
                         <div
+                          className={`tree-item leaf result-option ${isResultActive('rotation') ? 'active-result' : ''}`}
+                          onClick={() => activateResultView({ rotation: !showRotation })}
+                        >
+                          <span className="tree-icon small" style={{ color: '#f97316' }}><RotateCw size={10} /></span>
+                          <span className="tree-label">{t('browser.rotation')} ({'\u03B8'})</span>
+                        </div>
+                        <div
                           className={`tree-item leaf result-option ${isResultActive('deflections') ? 'active-result' : ''}`}
                           onClick={() => activateResultView({ deflections: !showDeflections })}
                         >
@@ -690,7 +897,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                       </div>
                     )}
 
-                    {(showMoment || showShear || showNormal || showDeflections) && (
+                    {(showMoment || showShear || showNormal || showRotation || showDeflections) && (
                       <div className="results-scale-row">
                         <span>Diagram Scale</span>
                         <input

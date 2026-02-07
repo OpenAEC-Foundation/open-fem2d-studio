@@ -4,11 +4,11 @@ import { INode, IBeamElement, ISolverResult, IEnvelopeResult, Tool, IViewState, 
 import { ILoadCase, ILoadCombination } from '../core/fem/LoadCase';
 import { convertEdgeLoadToNodalForces, convertEdgeNodeIdsToNodalForces } from '../core/fem/PlateRegion';
 import { IStructuralGrid } from '../core/fem/StructuralGrid';
-import { calculateThermalNodalForces } from '../core/fem/ThermalLoad';
+import { calculateThermalNodalForces, calculateBeamThermalNodalForces, calculateBeamThermalLoadForces } from '../core/fem/ThermalLoad';
 import { IReportConfig, DEFAULT_REPORT_CONFIG } from '../core/report/ReportConfig';
 import { ConsoleService } from '../core/console/ConsoleService';
 
-export type ViewMode = 'geometry' | 'loads' | 'results' | '3d';
+export type ViewMode = 'geometry' | 'loads' | 'results' | '3d' | 'drawing';
 export type BrowserTab = 'project' | 'results';
 
 export interface IProjectInfo {
@@ -29,6 +29,13 @@ interface FEMState {
   result: ISolverResult | null;
   selectedTool: Tool;
   selection: ISelection;
+  selectionFilter: {
+    nodes: boolean;
+    beams: boolean;
+    plates: boolean;
+    loads: boolean;
+    vertices: boolean;
+  };
   viewState: IViewState;
   analysisType: AnalysisType;
   showDeformed: boolean;
@@ -42,6 +49,7 @@ interface FEMState {
   showMoment: boolean;
   showShear: boolean;
   showNormal: boolean;
+  showRotation: boolean;
   diagramScale: number;
   selectedSection: string;
   // View mode (bottom tabs)
@@ -140,11 +148,33 @@ interface FEMState {
   graphState: IGraphState | null;
   // Auto-run graph on value changes
   graphAutoRun: boolean;
+  // Steel check interval (mm) — how often to check steel sections along beams
+  steelCheckInterval: number;
+  // Internal versioning system
+  versioning: IVersioningState;
 }
 
 export interface IGraphState {
   nodes: any[];
   wires: any[];
+}
+
+// Internal versioning system types
+export interface IVersion {
+  id: string;
+  name: string;
+  timestamp: number;
+  branchName: string;
+  meshSnapshot: string;   // JSON stringified mesh
+  loadCasesSnapshot: string;  // JSON stringified load cases
+  loadCombinationsSnapshot: string;  // JSON stringified load combinations
+  projectInfoSnapshot: string;  // JSON stringified project info
+}
+
+export interface IVersioningState {
+  versions: IVersion[];
+  currentBranch: string;
+  branches: string[];
 }
 
 export type InsightsView = 'element-matrix' | 'system-matrix' | 'solver-info' | 'dof-mapping' | 'logs' | 'errors';
@@ -153,6 +183,7 @@ type FEMAction =
   | { type: 'SET_MESH'; payload: Mesh }
   | { type: 'SET_RESULT'; payload: ISolverResult | null }
   | { type: 'SET_TOOL'; payload: Tool }
+  | { type: 'TOGGLE_SELECTION_FILTER'; payload: 'nodes' | 'beams' | 'plates' | 'loads' | 'vertices' }
   | { type: 'SET_SELECTION'; payload: Partial<ISelection> & { nodeIds: Set<number>; elementIds: Set<number> } }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SELECT_NODE'; payload: number }
@@ -177,6 +208,7 @@ type FEMAction =
   | { type: 'SET_SHOW_MOMENT'; payload: boolean }
   | { type: 'SET_SHOW_SHEAR'; payload: boolean }
   | { type: 'SET_SHOW_NORMAL'; payload: boolean }
+  | { type: 'SET_SHOW_ROTATION'; payload: boolean }
   | { type: 'SET_DIAGRAM_SCALE'; payload: number }
   | { type: 'SET_SELECTED_SECTION'; payload: string }
   | { type: 'SET_VIEW_MODE'; payload: ViewMode }
@@ -192,7 +224,8 @@ type FEMAction =
   | { type: 'SET_LOAD_CASES'; payload: ILoadCase[] }
   | { type: 'SET_LOAD_COMBINATIONS'; payload: ILoadCombination[] }
   | { type: 'SET_ACTIVE_COMBINATION'; payload: number | null }
-  | { type: 'ADD_POINT_LOAD'; payload: { lcId: number; nodeId: number; fx: number; fy: number; mz: number } }
+  | { type: 'ADD_POINT_LOAD'; payload: { lcId: number; nodeId: number; fx: number; fy: number; mz: number; beamId?: number; position?: number } }
+  | { type: 'UPDATE_BEAM_POINT_LOAD'; payload: { lcId: number; beamId: number; nodeId: number; position: number } }
   | { type: 'ADD_DISTRIBUTED_LOAD'; payload: { lcId: number; beamId: number; edgeId?: number; qx: number; qy: number; qxEnd?: number; qyEnd?: number; startT?: number; endT?: number; coordSystem?: 'local' | 'global'; description?: string } }
   | { type: 'UPDATE_DISTRIBUTED_LOAD'; payload: { lcId: number; loadId: number; qx: number; qy: number; qxEnd?: number; qyEnd?: number; startT?: number; endT?: number; coordSystem?: 'local' | 'global'; description?: string } }
   | { type: 'REMOVE_POINT_LOAD'; payload: { lcId: number; nodeId: number } }
@@ -201,10 +234,12 @@ type FEMAction =
   | { type: 'DESELECT_INDIVIDUAL_DIST_LOAD'; payload: number }
   | { type: 'SELECT_PLATE'; payload: number }
   | { type: 'DESELECT_PLATE'; payload: number }
+  | { type: 'SELECT_VERTEX'; payload: number }
+  | { type: 'DESELECT_VERTEX'; payload: number }
   | { type: 'ADD_THERMAL_LOAD'; payload: { lcId: number; elementId: number; plateId?: number; deltaT: number } }
   | { type: 'REMOVE_THERMAL_LOAD'; payload: { lcId: number; elementId: number } }
   | { type: 'SET_PROJECT_INFO'; payload: Partial<IProjectInfo> }
-  | { type: 'LOAD_PROJECT'; payload: { mesh: Mesh; loadCases: ILoadCase[]; loadCombinations: ILoadCombination[]; projectInfo: IProjectInfo; structuralGrid?: IStructuralGrid; graphState?: IGraphState | null } }
+  | { type: 'LOAD_PROJECT'; payload: { mesh: Mesh; loadCases: ILoadCase[]; loadCombinations: ILoadCombination[]; projectInfo: IProjectInfo; structuralGrid?: IStructuralGrid; graphState?: IGraphState | null; versioning?: IVersioningState } }
   | { type: 'SET_STRUCTURAL_GRID'; payload: IStructuralGrid }
   | { type: 'SET_SHOW_GRID_LINES'; payload: boolean }
   | { type: 'SET_SNAP_TO_GRID_LINES'; payload: boolean }
@@ -253,7 +288,15 @@ type FEMAction =
   | { type: 'SET_ACTIVE_LAYER'; payload: number }
   | { type: 'SET_SHOW_CONCRETE_BEAM_VIEW'; payload: boolean }
   | { type: 'SET_GRAPH_STATE'; payload: IGraphState | null }
-  | { type: 'SET_GRAPH_AUTO_RUN'; payload: boolean };
+  | { type: 'SET_GRAPH_AUTO_RUN'; payload: boolean }
+  | { type: 'SET_STEEL_CHECK_INTERVAL'; payload: number }
+  // Versioning actions
+  | { type: 'CREATE_VERSION'; payload: { name: string } }
+  | { type: 'RESTORE_VERSION'; payload: { versionId: string } }
+  | { type: 'CREATE_BRANCH'; payload: { branchName: string } }
+  | { type: 'SWITCH_BRANCH'; payload: { branchName: string } }
+  | { type: 'DELETE_VERSION'; payload: { versionId: string } }
+  | { type: 'DELETE_BRANCH'; payload: { branchName: string } };
 
 function createEmptySelection(): ISelection {
   return {
@@ -263,6 +306,7 @@ function createEmptySelection(): ISelection {
     distLoadBeamIds: new Set(),
     selectedDistLoadIds: new Set(),
     plateIds: new Set(),
+    vertexIds: new Set(),
     edgeIds: new Set()
   };
 }
@@ -405,6 +449,35 @@ function deserializeLoadCases(data: object[]): ILoadCase[] {
   return lcs;
 }
 
+// Generate a unique version ID
+function generateVersionId(): string {
+  return `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Serialize load combinations for versioning
+function serializeLoadCombinations(combinations: ILoadCombination[]): string {
+  return JSON.stringify(combinations.map(lc => ({
+    id: lc.id,
+    name: lc.name,
+    type: lc.type,
+    factors: Array.from(lc.factors.entries())
+  })));
+}
+
+// Deserialize load combinations from versioning
+function deserializeLoadCombinations(json: string): ILoadCombination[] {
+  const data = JSON.parse(json);
+  return data.map((lc: any) => ({
+    id: lc.id,
+    name: lc.name,
+    type: lc.type as 'ULS' | 'SLS',
+    factors: new Map(lc.factors)
+  }));
+}
+
+// Maximum versions per branch to prevent memory issues
+const MAX_VERSIONS_PER_BRANCH = 20;
+
 // Helper: apply a load case's loads onto the mesh (for solving)
 export function applyLoadCaseToMesh(mesh: Mesh, loadCase: ILoadCase, skipEdgeToNodeConversion = true): void {
   // Clear all existing loads on nodes
@@ -512,6 +585,37 @@ export function applyLoadCaseToMesh(mesh: Mesh, loadCase: ILoadCase, skipEdgeToN
   // Apply thermal loads from load case
   if (loadCase.thermalLoads) {
     for (const tl of loadCase.thermalLoads) {
+      // Check if it's a beam element first
+      const beam = mesh.getBeamElement(tl.elementId);
+      if (beam) {
+        const beamNodes = mesh.getBeamElementNodes(beam);
+        if (!beamNodes) continue;
+        const [n1, n2] = beamNodes;
+        const material = mesh.getMaterial(beam.materialId);
+        if (!material) continue;
+
+        const F = calculateBeamThermalNodalForces(n1, n2, beam, material, tl.deltaT);
+
+        // Apply to node 1
+        mesh.updateNode(n1.id, {
+          loads: {
+            fx: n1.loads.fx + F[0],
+            fy: n1.loads.fy + F[1],
+            moment: n1.loads.moment + F[2]
+          }
+        });
+        // Apply to node 2
+        mesh.updateNode(n2.id, {
+          loads: {
+            fx: n2.loads.fx + F[3],
+            fy: n2.loads.fy + F[4],
+            moment: n2.loads.moment + F[5]
+          }
+        });
+        continue;
+      }
+
+      // Otherwise, check for plate/triangle element
       const element = mesh.getElement(tl.elementId);
       if (!element) continue;
       const nodes = mesh.getElementNodes(element);
@@ -537,6 +641,36 @@ export function applyLoadCaseToMesh(mesh: Mesh, loadCase: ILoadCase, skipEdgeToN
         }
       }
     }
+  }
+
+  // Apply thermal loads from beam element's thermalLoad property
+  for (const beam of mesh.beamElements.values()) {
+    if (!beam.thermalLoad) continue;
+    const beamNodes = mesh.getBeamElementNodes(beam);
+    if (!beamNodes) continue;
+    const [n1, n2] = beamNodes;
+    const material = mesh.getMaterial(beam.materialId);
+    if (!material) continue;
+
+    const F = calculateBeamThermalLoadForces(n1, n2, beam, material);
+    if (F.every(v => v === 0)) continue;
+
+    // Apply to node 1
+    mesh.updateNode(n1.id, {
+      loads: {
+        fx: n1.loads.fx + F[0],
+        fy: n1.loads.fy + F[1],
+        moment: n1.loads.moment + F[2]
+      }
+    });
+    // Apply to node 2
+    mesh.updateNode(n2.id, {
+      loads: {
+        fx: n2.loads.fx + F[3],
+        fy: n2.loads.fy + F[4],
+        moment: n2.loads.moment + F[5]
+      }
+    });
   }
 }
 
@@ -640,10 +774,11 @@ const initialState: FEMState = {
   result: null,
   selectedTool: 'select',
   selection: createEmptySelection(),
+  selectionFilter: { nodes: true, beams: true, plates: true, loads: true, vertices: true },
   viewState: { offsetX: 150, offsetY: 350, scale: 80 },
   analysisType: 'frame',
   showDeformed: false,
-  deformationScale: 100,
+  deformationScale: 20,
   showStress: false,
   stressType: 'vonMises',
   pendingNodes: [],
@@ -652,6 +787,7 @@ const initialState: FEMState = {
   showMoment: true,
   showShear: false,
   showNormal: false,
+  showRotation: false,
   diagramScale: 50,
   selectedSection: 'IPE 200',
   viewMode: 'geometry',
@@ -718,6 +854,12 @@ const initialState: FEMState = {
   showConcreteBeamView: false,
   graphState: null,
   graphAutoRun: true,
+  steelCheckInterval: 100, // mm
+  versioning: {
+    versions: [],
+    currentBranch: 'main',
+    branches: ['main']
+  }
 };
 
 // Apply demo load case loads to mesh so they render on first load
@@ -743,6 +885,15 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
     case 'SET_TOOL':
       return { ...state, selectedTool: action.payload, pendingNodes: [] };
 
+    case 'TOGGLE_SELECTION_FILTER':
+      return {
+        ...state,
+        selectionFilter: {
+          ...state.selectionFilter,
+          [action.payload]: !state.selectionFilter[action.payload]
+        }
+      };
+
     case 'SET_SELECTION':
       return {
         ...state,
@@ -753,6 +904,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
           distLoadBeamIds: action.payload.distLoadBeamIds ?? new Set(),
           selectedDistLoadIds: action.payload.selectedDistLoadIds ?? new Set(),
           plateIds: action.payload.plateIds ?? new Set(),
+          vertexIds: action.payload.vertexIds ?? new Set(),
           edgeIds: action.payload.edgeIds ?? new Set()
         }
       };
@@ -862,6 +1014,9 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
     case 'SET_SHOW_NORMAL':
       return { ...state, showNormal: action.payload };
 
+    case 'SET_SHOW_ROTATION':
+      return { ...state, showRotation: action.payload };
+
     case 'SET_DIAGRAM_SCALE':
       return { ...state, diagramScale: action.payload };
 
@@ -869,7 +1024,12 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, selectedSection: action.payload };
 
     case 'SET_VIEW_MODE':
-      return { ...state, viewMode: action.payload };
+      return {
+        ...state,
+        viewMode: action.payload,
+        // Auto-switch browser tab to 'results' when entering results view mode
+        browserTab: action.payload === 'results' ? 'results' as BrowserTab : state.browserTab
+      };
 
     case 'SET_ACTIVE_LOAD_CASE':
       return { ...state, activeLoadCase: action.payload };
@@ -1027,6 +1187,18 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, selection: { ...state.selection, plateIds: newPlateIds } };
     }
 
+    case 'SELECT_VERTEX': {
+      const newVertexIds = new Set(state.selection.vertexIds);
+      newVertexIds.add(action.payload);
+      return { ...state, selection: { ...state.selection, vertexIds: newVertexIds } };
+    }
+
+    case 'DESELECT_VERTEX': {
+      const newVertexIds = new Set(state.selection.vertexIds);
+      newVertexIds.delete(action.payload);
+      return { ...state, selection: { ...state.selection, vertexIds: newVertexIds } };
+    }
+
     case 'ADD_THERMAL_LOAD': {
       const { lcId, elementId, plateId, deltaT } = action.payload;
       const newLoadCases = state.loadCases.map(lc => {
@@ -1053,10 +1225,16 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, projectInfo: { ...state.projectInfo, ...action.payload } };
 
     case 'LOAD_PROJECT': {
-      const { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState } = action.payload;
+      const { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState, versioning } = action.payload;
       // Migrate: ensure all distributed loads have IDs (backward compat with old projects)
       migrateDistributedLoadIds(loadCases);
       migrateEdgeLoads(loadCases, mesh);
+      // Migrate: create plate vertices for polygon plates that don't have them
+      for (const plate of mesh.plateRegions.values()) {
+        if (plate.isPolygon && plate.polygon && mesh.getVerticesForPlate(plate.id).length === 0) {
+          mesh.createVerticesForPlate(plate.id, plate.polygon);
+        }
+      }
       return {
         ...state,
         mesh,
@@ -1065,6 +1243,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         projectInfo,
         structuralGrid: structuralGrid ?? createDefaultStructuralGrid(),
         graphState: graphState ?? null,
+        versioning: versioning ?? { versions: [], currentBranch: 'main', branches: ['main'] },
         result: null,
         undoStack: [],
         redoStack: [],
@@ -1300,6 +1479,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
           distLoadBeamIds: new Set(),
           selectedDistLoadIds: new Set(),
           plateIds: new Set(),
+          vertexIds: new Set(),
           edgeIds: new Set()
         },
         undoStack: newUndoStack,
@@ -1380,6 +1560,139 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
 
     case 'SET_GRAPH_AUTO_RUN':
       return { ...state, graphAutoRun: action.payload };
+
+    case 'SET_STEEL_CHECK_INTERVAL':
+      return { ...state, steelCheckInterval: action.payload };
+
+    // Versioning actions
+    case 'CREATE_VERSION': {
+      const { name } = action.payload;
+      const { versioning, mesh, loadCases, loadCombinations, projectInfo } = state;
+
+      const newVersion: IVersion = {
+        id: generateVersionId(),
+        name,
+        timestamp: Date.now(),
+        branchName: versioning.currentBranch,
+        meshSnapshot: JSON.stringify(mesh.toJSON()),
+        loadCasesSnapshot: JSON.stringify(serializeLoadCases(loadCases)),
+        loadCombinationsSnapshot: serializeLoadCombinations(loadCombinations),
+        projectInfoSnapshot: JSON.stringify(projectInfo)
+      };
+
+      // Get versions for the current branch and limit to MAX_VERSIONS_PER_BRANCH
+      const branchVersions = versioning.versions.filter(v => v.branchName === versioning.currentBranch);
+      const otherBranchVersions = versioning.versions.filter(v => v.branchName !== versioning.currentBranch);
+
+      // Add new version and trim oldest if over limit
+      let updatedBranchVersions = [...branchVersions, newVersion];
+      if (updatedBranchVersions.length > MAX_VERSIONS_PER_BRANCH) {
+        updatedBranchVersions = updatedBranchVersions.slice(-MAX_VERSIONS_PER_BRANCH);
+      }
+
+      return {
+        ...state,
+        versioning: {
+          ...versioning,
+          versions: [...otherBranchVersions, ...updatedBranchVersions]
+        }
+      };
+    }
+
+    case 'RESTORE_VERSION': {
+      const { versionId } = action.payload;
+      const { versioning } = state;
+
+      const version = versioning.versions.find(v => v.id === versionId);
+      if (!version) return state;
+
+      const restoredMesh = Mesh.fromJSON(JSON.parse(version.meshSnapshot));
+      const restoredLoadCases = deserializeLoadCases(JSON.parse(version.loadCasesSnapshot));
+      const restoredLoadCombinations = deserializeLoadCombinations(version.loadCombinationsSnapshot);
+      const restoredProjectInfo = JSON.parse(version.projectInfoSnapshot) as IProjectInfo;
+
+      return {
+        ...state,
+        mesh: restoredMesh,
+        loadCases: restoredLoadCases,
+        loadCombinations: restoredLoadCombinations,
+        projectInfo: restoredProjectInfo,
+        result: null,
+        meshVersion: state.meshVersion + 1,
+        selection: createEmptySelection(),
+        // Also switch to the branch this version belongs to
+        versioning: {
+          ...versioning,
+          currentBranch: version.branchName
+        }
+      };
+    }
+
+    case 'CREATE_BRANCH': {
+      const { branchName } = action.payload;
+      const { versioning } = state;
+
+      // Don't create duplicate branches
+      if (versioning.branches.includes(branchName)) return state;
+
+      return {
+        ...state,
+        versioning: {
+          ...versioning,
+          branches: [...versioning.branches, branchName],
+          currentBranch: branchName
+        }
+      };
+    }
+
+    case 'SWITCH_BRANCH': {
+      const { branchName } = action.payload;
+      const { versioning } = state;
+
+      // Only switch to existing branches
+      if (!versioning.branches.includes(branchName)) return state;
+
+      return {
+        ...state,
+        versioning: {
+          ...versioning,
+          currentBranch: branchName
+        }
+      };
+    }
+
+    case 'DELETE_VERSION': {
+      const { versionId } = action.payload;
+      const { versioning } = state;
+
+      return {
+        ...state,
+        versioning: {
+          ...versioning,
+          versions: versioning.versions.filter(v => v.id !== versionId)
+        }
+      };
+    }
+
+    case 'DELETE_BRANCH': {
+      const { branchName } = action.payload;
+      const { versioning } = state;
+
+      // Cannot delete main branch
+      if (branchName === 'main') return state;
+
+      // Cannot delete current branch
+      if (branchName === versioning.currentBranch) return state;
+
+      return {
+        ...state,
+        versioning: {
+          ...versioning,
+          branches: versioning.branches.filter(b => b !== branchName),
+          versions: versioning.versions.filter(v => v.branchName !== branchName)
+        }
+      };
+    }
 
     default:
       return state;

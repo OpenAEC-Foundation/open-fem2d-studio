@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { INode } from '../../core/fem/types';
 import './NodePropertiesDialog.css';
 
@@ -65,6 +65,15 @@ export function NodePropertiesDialog({ node, onUpdate, onClose }: NodeProperties
   // Get initial spring value from the node (convert N/m to kN/m for display)
   const initSpring = node.constraints.springY ?? node.constraints.springX ?? node.constraints.springRot ?? 1e5;
   const [springVal, setSpringVal] = useState(String(initSpring / 1000));
+
+  // Close dialog on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const handleApply = () => {
     const x = parseFloat(xVal) / 1000;

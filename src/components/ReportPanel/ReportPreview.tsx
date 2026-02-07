@@ -1,5 +1,5 @@
 /**
- * ReportPreview — Renders all enabled report sections in A4 paper format
+ * ReportPreview — Renders all enabled report sections as one continuous document
  */
 
 import React from 'react';
@@ -93,91 +93,73 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
   };
 
   return (
-    <>
-      {/* Cover Page - separate page */}
+    <div className="report-document">
+      {/* Document header - only at the very top if enabled */}
+      {config.showHeader && (
+        <div className="report-document-header">
+          <span>{projectInfo.name || 'Structural Report'}</span>
+          <span>{config.companyName}</span>
+        </div>
+      )}
+
+      {/* Cover Section */}
       {coverSection && (
-        <div className="report-page cover-page" id="section-cover">
+        <div className="report-content-section" id="section-cover">
           <CoverSection {...sharedProps} />
         </div>
       )}
 
-      {/* Table of Contents - separate page */}
+      {/* Table of Contents */}
       {tocSection && (
-        <div className="report-page" id="section-toc">
+        <div className="report-content-section" id="section-toc">
           <TocSection {...sharedProps} />
         </div>
       )}
 
-      {/* Executive Summary - separate page */}
+      {/* Executive Summary */}
       {summarySection && (
-        <div className="report-page" id="section-summary">
-          {config.showHeader && (
-            <div className="report-page-header">
-              <span>{projectInfo.name || 'Structural Report'}</span>
-              <span>{config.companyName}</span>
-            </div>
-          )}
-          <div className="report-page-content">
-            <SummarySection {...sharedProps} sectionNumber={0} />
-          </div>
-          {config.showFooter && (
-            <div className="report-page-footer">
-              <span>{projectInfo.date || new Date().toLocaleDateString('nl-NL')}</span>
-              <span>Generated with Open FEM2D Studio</span>
-            </div>
-          )}
+        <div className="report-content-section" id="section-summary">
+          <SummarySection {...sharedProps} sectionNumber={0} />
         </div>
       )}
 
-      {/* Content sections - each section can trigger page breaks */}
-      {contentSections.map((section, index) => {
+      {/* Content sections - continuous flow */}
+      {contentSections.map((section) => {
         const Component = SECTION_COMPONENTS[section.id];
         sectionNumber++;
-        const isFirstContent = index === 0;
 
         return (
           <div
             key={section.id}
-            className={`report-page ${isFirstContent ? 'first-content-page' : ''}`}
+            className="report-content-section"
             id={`section-${section.id}`}
           >
-            {/* Page header */}
-            {config.showHeader && (
-              <div className="report-page-header">
-                <span>{projectInfo.name || 'Structural Report'}</span>
-                <span>{config.companyName}</span>
+            {!Component ? (
+              <div className="report-section">
+                <h2 className="report-section-title" style={{ color: config.primaryColor }}>
+                  {sectionNumber}. {section.name}
+                </h2>
+                <p style={{ color: '#666', fontStyle: 'italic' }}>
+                  This section is not yet implemented.
+                </p>
               </div>
-            )}
-
-            {/* Content wrapper */}
-            <div className="report-page-content">
-              {!Component ? (
-                <div className="report-section">
-                  <h2 className="report-section-title" style={{ color: config.primaryColor }}>
-                    {sectionNumber}. {section.name}
-                  </h2>
-                  <p style={{ color: '#666', fontStyle: 'italic' }}>
-                    This section is not yet implemented.
-                  </p>
-                </div>
-              ) : (
-                <Component
-                  {...sharedProps}
-                  sectionNumber={sectionNumber}
-                />
-              )}
-            </div>
-
-            {/* Page footer */}
-            {config.showFooter && (
-              <div className="report-page-footer">
-                <span>{projectInfo.date || new Date().toLocaleDateString('nl-NL')}</span>
-                <span>Generated with Open FEM2D Studio</span>
-              </div>
+            ) : (
+              <Component
+                {...sharedProps}
+                sectionNumber={sectionNumber}
+              />
             )}
           </div>
         );
       })}
-    </>
+
+      {/* Document footer - only at the very bottom if enabled */}
+      {config.showFooter && (
+        <div className="report-document-footer">
+          <span>{projectInfo.date || new Date().toLocaleDateString('nl-NL')}</span>
+          <span>Generated with Open FEM2D Studio</span>
+        </div>
+      )}
+    </div>
   );
 };

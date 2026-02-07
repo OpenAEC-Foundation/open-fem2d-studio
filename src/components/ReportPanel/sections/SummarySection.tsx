@@ -313,7 +313,7 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
               </>
             }
             uc={summary.momentCheck.UC}
-            reference="EN 1993-1-1, 6.2.5"
+            reference="NEN-EN 1993-1-1, 6.2.5"
             primaryColor={config.primaryColor}
           />
         )}
@@ -328,7 +328,7 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
               </>
             }
             uc={summary.shearCheck.UC}
-            reference={<>EN 1993-1-1, 6.2.6 (A<sub>v</sub> &middot; f<sub>y</sub> / &radic;3)</>}
+            reference={<>NEN-EN 1993-1-1, 6.2.6 (A<sub>v</sub> &middot; f<sub>y</sub> / &radic;3)</>}
             primaryColor={config.primaryColor}
           />
         )}
@@ -351,7 +351,7 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
 
       <p style={{ color: '#888', fontSize: '8pt', marginTop: 16, fontStyle: 'italic' }}>
         Note: This is a simplified quick check using elastic section properties.
-        Refer to the detailed steel check section for full EN 1993-1-1 verification including
+        Refer to the detailed steel check section for full NEN-EN 1993-1-1 verification including
         buckling and lateral torsional buckling.
       </p>
     </div>

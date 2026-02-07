@@ -17,12 +17,20 @@ async function ensureInit(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const lib = await import('triangle-wasm');
-    const mod = lib.default ?? lib;
-    // The WASM file is served from public/
-    const wasmPath = new URL('/triangle.out.wasm', window.location.origin).href;
-    await mod.init(wasmPath);
-    triangleLib = mod;
+    console.log('[TriangleService] Initializing WASM module...');
+    try {
+      const lib = await import('triangle-wasm');
+      const mod = lib.default ?? lib;
+      // The WASM file is served from public/
+      const wasmPath = new URL('/triangle.out.wasm', window.location.origin).href;
+      console.log('[TriangleService] Loading WASM from:', wasmPath);
+      await mod.init(wasmPath);
+      triangleLib = mod;
+      console.log('[TriangleService] WASM module initialized successfully');
+    } catch (err) {
+      console.error('[TriangleService] WASM initialization failed:', err);
+      throw err;
+    }
   })();
 
   return initPromise;
@@ -290,7 +298,9 @@ function pointInPolygonLocal(px: number, py: number, polygon: { x: number; y: nu
  * When meshSize is provided, boundary edges are subdivided for conforming mesh.
  */
 export async function triangulatePolygon(input: TriangulateInput): Promise<TriangulateResult> {
+  console.log('[TriangleService] triangulatePolygon called with outline:', input.outline.length, 'vertices');
   await ensureInit();
+  console.log('[TriangleService] WASM initialized, triangleLib:', triangleLib ? 'loaded' : 'null');
 
   const useMeshSize = input.meshSize !== undefined && input.meshSize > 0;
   const { pointlist, segmentlist, segmentmarkerlist, holelist } = useMeshSize
@@ -332,7 +342,14 @@ export async function triangulatePolygon(input: TriangulateInput): Promise<Trian
   }
 
   try {
+    console.log('[TriangleService] Input PSLG:', {
+      pointCount: pointlist.length / 2,
+      segmentCount: segmentlist.length / 2,
+      holeCount: holelist.length / 2,
+      switches,
+    });
     triangleLib.triangulate(switches, inputIO, outputIO);
+    console.log('[TriangleService] Triangulation completed');
 
     // Read results
     const outPoints = outputIO.pointlist;
@@ -367,6 +384,11 @@ export async function triangulatePolygon(input: TriangulateInput): Promise<Trian
       }
     }
 
+    console.log('[TriangleService] triangulatePolygon result:', {
+      points: points.length,
+      triangles: triangles.length,
+      segments: segments.length,
+    });
     return { points, triangles, segments, segmentMarkers };
   } finally {
     // Free memory

@@ -220,12 +220,12 @@ function generateSummaryHTML(data: ReportData): string {
     <table class="data-table">
       <thead><tr style="background:${config.primaryColor}"><th>Check</th><th>Reference</th><th>Unity Check</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td>M<sub>Ed</sub> / M<sub>el,Rd</sub></td><td>EN 1993-1-1, 6.2.5</td><td class="numeric">${mUC}</td><td><span class="status-badge ${mStatus}">${mStatus === 'ok' ? 'OK' : mStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
-        <tr><td>V<sub>Ed</sub> / V<sub>c,Rd</sub></td><td>EN 1993-1-1, 6.2.6</td><td class="numeric">${vUC}</td><td><span class="status-badge ${vStatus}">${vStatus === 'ok' ? 'OK' : vStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
+        <tr><td>M<sub>Ed</sub> / M<sub>el,Rd</sub></td><td>NEN-EN 1993-1-1, 6.2.5</td><td class="numeric">${mUC}</td><td><span class="status-badge ${mStatus}">${mStatus === 'ok' ? 'OK' : mStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
+        <tr><td>V<sub>Ed</sub> / V<sub>c,Rd</sub></td><td>NEN-EN 1993-1-1, 6.2.6</td><td class="numeric">${vUC}</td><td><span class="status-badge ${vStatus}">${vStatus === 'ok' ? 'OK' : vStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
         <tr><td>&delta;<sub>max</sub> / (L/${config.deflectionLimit || 250})</td><td>SLS limit</td><td class="numeric">${dUC}</td><td><span class="status-badge ${dStatus}">${dStatus === 'ok' ? 'OK' : dStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
       </tbody>
     </table>
-    <p style="font-size:8pt;color:#94a3b8;margin-top:16px;font-style:italic">Note: Simplified quick check using elastic section properties. See detailed steel check section for full EN 1993-1-1 verification.</p>
+    <p style="font-size:8pt;color:#94a3b8;margin-top:16px;font-style:italic">Note: Simplified quick check using elastic section properties. See detailed steel check section for full NEN-EN 1993-1-1 verification.</p>
   </div>`;
 }
 
@@ -373,7 +373,7 @@ function generateSteelCheckOverviewHTML(data: ReportData, sectionNum: number): s
   return `
   <div class="report-page">
     <h2 class="section-title" style="color:${config.primaryColor}">${sectionNum}. Steel Section Checks — Overview</h2>
-    <p>Cross-section resistance checks according to EN 1993-1-1. Steel grade: <strong>${grade.name}</strong> (f<sub>y</sub> = ${grade.fy} MPa)</p>
+    <p>Cross-section resistance checks according to NEN-EN 1993-1-1. Steel grade: <strong>${grade.name}</strong> (f<sub>y</sub> = ${grade.fy} MPa)</p>
 
     <div class="${allOk ? 'result-ok' : 'result-fail'}" style="padding:12px;border-radius:4px;margin:16px 0">
       ${steelResults.length} member${steelResults.length !== 1 ? 's' : ''} checked — Max UC = ${worstUC.toFixed(2)} — <strong>${allOk ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}</strong>
@@ -648,25 +648,25 @@ function generateSteelCheckDetailedHTML(data: ReportData, sectionNum: number): s
         <p style="font-size:9pt;color:#666">L = ${(length * 1000).toFixed(0)} mm | f<sub>y</sub> = ${grade.fy} MPa | γ<sub>M0</sub> = ${grade.gammaM0}</p>
 
         <div class="check-block">
-          <div class="check-block-title">Axial Resistance — EN 1993-1-1, 6.2.4</div>
+          <div class="check-block-title">Axial Resistance — NEN-EN 1993-1-1, 6.2.4</div>
           <div class="formula" style="border-left-color:${config.primaryColor}">N<sub>c,Rd</sub> = A · f<sub>y</sub> / γ<sub>M0</sub> = ${formatForce(r.NcRd)} kN</div>
           <p>UC = N<sub>Ed</sub> / N<sub>c,Rd</sub> = <strong style="color:${ucColor(r.UC_N)}">${r.UC_N.toFixed(3)}</strong></p>
         </div>
 
         <div class="check-block">
-          <div class="check-block-title">Bending Resistance — EN 1993-1-1, 6.2.5</div>
+          <div class="check-block-title">Bending Resistance — NEN-EN 1993-1-1, 6.2.5</div>
           <div class="formula" style="border-left-color:${config.primaryColor}">M<sub>c,Rd</sub> = W<sub>el</sub> · f<sub>y</sub> / γ<sub>M0</sub> = ${formatMoment(r.McRd)} kNm</div>
           <p>UC = M<sub>Ed</sub> / M<sub>c,Rd</sub> = <strong style="color:${ucColor(r.UC_M)}">${r.UC_M.toFixed(3)}</strong></p>
         </div>
 
         <div class="check-block">
-          <div class="check-block-title">Shear Resistance — EN 1993-1-1, 6.2.6</div>
+          <div class="check-block-title">Shear Resistance — NEN-EN 1993-1-1, 6.2.6</div>
           <div class="formula" style="border-left-color:${config.primaryColor}">V<sub>c,Rd</sub> = A<sub>v</sub> · (f<sub>y</sub> / √3) / γ<sub>M0</sub> = ${formatForce(r.VcRd)} kN</div>
           <p>UC = V<sub>Ed</sub> / V<sub>c,Rd</sub> = <strong style="color:${ucColor(r.UC_V)}">${r.UC_V.toFixed(3)}</strong></p>
         </div>
 
         <div class="${r.status === 'OK' ? 'result-ok' : 'result-fail'}" style="padding:8px 12px;border-radius:4px;margin-top:12px">
-          Governing: ${r.governingCheck} — UC<sub>max</sub> = ${r.UC_max.toFixed(3)} — <strong>${r.status}</strong>
+          Governing: ${r.governingCheck}${r.governingLocation ? ` at x = ${(r.governingLocation.position * 1000).toFixed(0)}mm (${r.governingLocation.locationType})` : ''} — UC<sub>max</sub> = ${r.UC_max.toFixed(3)} — <strong>${r.status}</strong>
         </div>
       </div>
     </div>`;

@@ -12,7 +12,7 @@ interface SteelCheckPanelProps {
 
 export function SteelCheckPanel({ onClose }: SteelCheckPanelProps) {
   const { state } = useFEM();
-  const { mesh, result, forceUnit } = state;
+  const { mesh, result, forceUnit, stressUnit, momentUnit, lengthUnit } = state;
   const [gradeIdx, setGradeIdx] = useState(2); // Default S355
   const [deflLimitDivisor, setDeflLimitDivisor] = useState(250);
   const [showReport, setShowReport] = useState(false);
@@ -26,10 +26,12 @@ export function SteelCheckPanel({ onClose }: SteelCheckPanelProps) {
   };
 
   const formatMoment = (nm: number): string => {
-    if (forceUnit === 'MN') return (nm / 1e6).toFixed(4);
-    if (forceUnit === 'kN') return (nm / 1000).toFixed(2);
-    return nm.toFixed(0);
+    if (momentUnit === 'kNm') return (nm / 1000).toFixed(2);
+    return nm.toFixed(0); // Nm
   };
+
+  // lengthUnit is available for future use if needed
+  void lengthUnit;
 
   const results = useMemo<ISteelCheckResult[]>(() => {
     if (!result || !result.beamForces || result.beamForces.size === 0) return [];
@@ -161,7 +163,7 @@ export function SteelCheckPanel({ onClose }: SteelCheckPanelProps) {
     <div className="steel-check-overlay" onClick={onClose}>
       <div className="steel-check-dialog" onClick={e => e.stopPropagation()}>
         <div className="steel-check-header">
-          <span>Steel Section Check — EN 1993-1-1</span>
+          <span>Steel Section Check — NEN-EN 1993-1-1</span>
           <div className="steel-check-controls">
             <select
               className="steel-check-grade-select"
@@ -169,7 +171,7 @@ export function SteelCheckPanel({ onClose }: SteelCheckPanelProps) {
               onChange={e => setGradeIdx(parseInt(e.target.value))}
             >
               {STEEL_GRADES.map((g, i) => (
-                <option key={g.name} value={i}>{g.name} (fy={g.fy} MPa)</option>
+                <option key={g.name} value={i}>{g.name} (fy={g.fy} {stressUnit})</option>
               ))}
             </select>
             <label className="defl-limit-label">
@@ -199,7 +201,7 @@ export function SteelCheckPanel({ onClose }: SteelCheckPanelProps) {
                   <th>Profile</th>
                   <th>N<sub>Ed</sub> ({forceUnit})</th>
                   <th>V<sub>Ed</sub> ({forceUnit})</th>
-                  <th>M<sub>Ed</sub> ({forceUnit}m)</th>
+                  <th>M<sub>Ed</sub> ({momentUnit})</th>
                   <th title="UC Buiging — MEd / Mc,Rd (6.2.5)">UC Buiging</th>
                   <th title="UC Kip — MEd / Mb,Rd (6.3.2 LTB)">UC Kip</th>
                   <th title="UC Doorbuiging — delta / delta_limit (SLS)">UC Doorb.</th>
@@ -237,7 +239,14 @@ export function SteelCheckPanel({ onClose }: SteelCheckPanelProps) {
                       <UCCell value={r.UC_deflection} isGoverning={gov === 'deflection'} />
                       <UCCell value={r.UC_buckling} isGoverning={gov === 'buckling'} />
                       <td><UCBar value={r.UC_max} /></td>
-                      <td className="governing-label">{r.governingCheck}</td>
+                      <td className="governing-label">
+                        {r.governingCheck}
+                        {r.governingLocation && (
+                          <span className="governing-location" title={`at x = ${(r.governingLocation.position * 1000).toFixed(0)}mm`}>
+                            @{(r.governingLocation.positionRatio * 100).toFixed(0)}%
+                          </span>
+                        )}
+                      </td>
                       <td style={{ color: r.status === 'OK' ? 'var(--success)' : '#ef4444', fontWeight: 600 }}>
                         {r.status}
                       </td>

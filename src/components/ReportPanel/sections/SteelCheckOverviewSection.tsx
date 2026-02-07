@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { ReportSectionProps } from '../ReportPreview';
+import { useFEM } from '../../../context/FEMContext';
 import { STEEL_GRADES } from '../../../core/standards/EurocodeNL';
 import { checkAllBeams, ISectionProperties } from '../../../core/standards/SteelCheck';
 import { calculateBeamLength } from '../../../core/fem/Beam';
@@ -14,6 +15,9 @@ export const SteelCheckOverviewSection: React.FC<ReportSectionProps> = ({
   result,
   sectionNumber,
 }) => {
+  const { state } = useFEM();
+  const { stressUnit, forceUnit, momentUnit } = state;
+
   if (!result || result.beamForces.size === 0) {
     return (
       <div className="report-section" id="section-check_steel_overview">
@@ -79,8 +83,8 @@ export const SteelCheckOverviewSection: React.FC<ReportSectionProps> = ({
       </h2>
 
       <p style={{ marginBottom: 16 }}>
-        Cross-section resistance checks according to EN 1993-1-1.
-        Steel grade: <strong>{grade.name}</strong> (f<sub>y</sub> = {grade.fy} MPa, γ<sub>M0</sub> = {grade.gammaM0})
+        Cross-section resistance checks according to NEN-EN 1993-1-1.
+        Steel grade: <strong>{grade.name}</strong> (f<sub>y</sub> = {grade.fy} {stressUnit}, γ<sub>M0</sub> = {grade.gammaM0})
       </p>
 
       {/* Summary box */}
@@ -99,9 +103,9 @@ export const SteelCheckOverviewSection: React.FC<ReportSectionProps> = ({
           <tr style={{ background: config.primaryColor }}>
             <th>Beam</th>
             <th>Profile</th>
-            <th>N<sub>Ed</sub> (kN)</th>
-            <th>V<sub>Ed</sub> (kN)</th>
-            <th>M<sub>Ed</sub> (kNm)</th>
+            <th>N<sub>Ed</sub> ({forceUnit})</th>
+            <th>V<sub>Ed</sub> ({forceUnit})</th>
+            <th>M<sub>Ed</sub> ({momentUnit})</th>
             <th style={{ width: 150 }}>UC max</th>
             <th>Governing</th>
             <th>Status</th>

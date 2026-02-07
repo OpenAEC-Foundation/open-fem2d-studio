@@ -13,22 +13,26 @@
   padding: 8px 12px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .table-selector {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .table-selector button {
-  padding: 6px 14px;
+  padding: 6px 12px;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 
 .table-selector button:hover {
@@ -45,6 +49,7 @@
 .table-actions {
   display: flex;
   gap: 4px;
+  align-items: center;
 }
 
 .table-actions button {
@@ -57,12 +62,46 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   transition: all 0.15s;
 }
 
 .table-actions button:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.table-actions .add-btn {
+  color: var(--success-color, #22c55e);
+  border-color: var(--success-color, #22c55e);
+}
+
+.table-actions .add-btn:hover {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.table-actions .delete-selected-btn {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.table-actions .delete-selected-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.table-actions .delete-selected-btn span {
+  font-size: 11px;
+}
+
+.table-actions .select-all-btn,
+.table-actions .clear-selection-btn {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.table-actions .select-all-btn:hover,
+.table-actions .clear-selection-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
 }
 
 .table-loadcase-info {
@@ -99,10 +138,16 @@
   color: var(--text-secondary);
   border-bottom: 2px solid var(--border-color);
   white-space: nowrap;
+  z-index: 1;
 }
 
-.data-table th:nth-child(n+2) {
+.data-table th:nth-child(n+3) {
   text-align: right;
+}
+
+.data-table th.checkbox-col {
+  width: 32px;
+  text-align: center;
 }
 
 .data-table td {
@@ -113,6 +158,20 @@
 
 .data-table tr:hover {
   background: var(--bg-hover);
+}
+
+.data-table tr.selected {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.data-table tr.selected:hover {
+  background: rgba(59, 130, 246, 0.25);
+}
+
+.data-table .checkbox-col {
+  width: 32px;
+  text-align: center;
+  padding: 4px 6px;
 }
 
 .data-table .id-cell {
@@ -129,6 +188,28 @@
 .data-table .actions-cell {
   width: 40px;
   text-align: center;
+}
+
+.row-checkbox {
+  padding: 2px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.row-checkbox:hover {
+  color: var(--accent-color);
+  background: var(--bg-hover);
+}
+
+.data-table tr.selected .row-checkbox {
+  color: var(--accent-color);
 }
 
 .delete-btn {
@@ -199,7 +280,27 @@
   border-top: 1px solid var(--border-color);
 }
 
+/* Zebra striping for better readability */
+.data-table tbody tr:nth-child(even) {
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.02));
+}
+
+.data-table tbody tr:nth-child(even):hover {
+  background: var(--bg-hover);
+}
+
+.data-table tbody tr.selected:nth-child(even) {
+  background: rgba(59, 130, 246, 0.15);
+}
+
 /* Responsive adjustments */
+@media (max-width: 1400px) {
+  .table-selector button {
+    padding: 5px 10px;
+    font-size: 10px;
+  }
+}
+
 @media (max-width: 1200px) {
   .data-table {
     font-size: 11px;
@@ -208,5 +309,22 @@
   .data-table th,
   .data-table td {
     padding: 5px 8px;
+  }
+
+  .table-editor-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .table-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .data-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
   }
 }

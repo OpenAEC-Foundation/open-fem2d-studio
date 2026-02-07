@@ -273,7 +273,7 @@
 }
 
 
-/* ── EN 1993-1 Tab Styles ──────────────────────────────────── */
+/* ── NEN-EN 1993-1 Tab Styles ──────────────────────────────────── */
 
 /* Cross-section class badge */
 .bar-props-class {
@@ -403,4 +403,155 @@
 .bar-props-body-scrollable::-webkit-scrollbar-thumb {
   background: var(--bg-tertiary);
   border-radius: 3px;
+}
+
+/* Small preset buttons for connection types */
+.bar-props-btn-small {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bar-props-btn-small:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+/* Preset buttons container (Fixed/Hinge) within DOF grid */
+.bar-props-preset-btns {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+/* Lateral bracing chips */
+.bar-props-bracing-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.bar-props-bracing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.bar-props-bracing-chip {
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bar-props-bracing-chip:hover {
+  background: #5c1a1a;
+  border-color: #991b1b;
+  color: #f87171;
+}
+
+.bar-props-bracing-input {
+  width: 48px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.bar-props-bracing-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.bar-props-bracing-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Hint text */
+.bar-props-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: -2px;
+  padding-left: 2px;
+}
+
+/* DOF cell for connection type + optional spring input */
+.bar-props-dof-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Spring stiffness input row (appears below dropdown when spring is selected) */
+.bar-props-spring-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bar-props-spring-stiffness {
+  width: 60px;
+  padding: 2px 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 10px;
+  font-family: monospace;
+}
+
+.bar-props-spring-stiffness:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-subtle);
+}
+
+.bar-props-spring-stiffness::placeholder {
+  color: var(--text-muted);
+}
+
+.bar-props-spring-unit {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Thermal load radio buttons */
+.bar-props-thermal-type {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.bar-props-radio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bar-props-radio input[type="radio"] {
+  accent-color: var(--accent);
+  margin: 0;
+  cursor: pointer;
 }

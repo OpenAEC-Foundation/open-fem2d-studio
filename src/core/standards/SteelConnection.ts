@@ -1,5 +1,5 @@
 /**
- * Steel Moment Connection Design — EN 1993-1-8
+ * Steel Moment Connection Design — NEN-EN 1993-1-8
  *
  * Simplified end-plate moment connection:
  *   - Extended / flush end-plate

@@ -132,6 +132,57 @@
   background: var(--bg-elevated);
 }
 
+/* Plate draw toolbar (shown during outline drawing) */
+.plate-draw-toolbar {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--bg-primary);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  z-index: 200;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.plate-draw-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.plate-draw-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+}
+
+.plate-draw-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.plate-draw-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 8px;
+  border-left: 1px solid var(--border-light);
+}
+
 /* Floating "+" button for adding void to selected plate */
 .plate-add-void-floating-btn {
   width: 28px;

@@ -112,22 +112,46 @@ export interface IBeamElement extends IElement {
     enabled: boolean;
     k: number;  // Spring stiffness (N/m per m length = N/m²)
   };
+  // Lateral bracing (kipsteunen) - positions along beam as fraction (0-1)
+  lateralBracing?: {
+    top: number[];     // Bracing positions at top flange (e.g., [0, 0.5, 1] = at supports and mid-span)
+    bottom: number[];  // Bracing positions at bottom flange
+  };
+  // Pre-camber - pre-deflection at mid-span (m, positive = upward)
+  camber?: number;
+  // Deflection limit for SLS check
+  deflectionLimit?: 'L/500' | 'L/333' | 'L/250';  // 0.002L, 0.003L, 0.004L
   // Layer assignment
   layerId?: number;
+  // Thermal load on beam element
+  thermalLoad?: {
+    deltaT?: number;        // Uniform temperature change (C)
+    deltaTTop?: number;     // Temperature at top fiber (C)
+    deltaTBottom?: number;  // Temperature at bottom fiber (C)
+  };
 }
 
-// Connection type for beam ends
-export type ConnectionType = 'fixed' | 'hinge' | 'tension_only' | 'pressure_only';
+// Connection type for beam ends: 'fixed' (A), 'free' (hinge), 'spring' (S), or special
+export type ConnectionType = 'fixed' | 'hinge' | 'spring' | 'tension_only' | 'pressure_only';
 
-// Per-DOF connection types for beam ends
+// Per-DOF connection types for beam ends (6 DOF for 3D, Ty/Ry optional for 2D)
 export interface IDOFConnections {
   Tx: ConnectionType;  // Axial (along beam)
-  Tz: ConnectionType;  // Transverse (perpendicular)
-  Rx: ConnectionType;  // Rotation about X
-  Rz: ConnectionType;  // Rotation about Z
+  Ty?: ConnectionType; // Lateral (out of plane, for 3D)
+  Tz: ConnectionType;  // Transverse (perpendicular in plane)
+  Rx?: ConnectionType; // Torsion (about beam axis, for 3D)
+  Ry?: ConnectionType; // Bending about Y (for 3D)
+  Rz: ConnectionType;  // Bending about Z (in-plane rotation)
+  // Spring stiffnesses (only used when connection type is 'spring')
+  springTx?: number;   // N/m
+  springTy?: number;   // N/m
+  springTz?: number;   // N/m
+  springRx?: number;   // Nm/rad
+  springRy?: number;   // Nm/rad
+  springRz?: number;   // Nm/rad
 }
 
-const DEFAULT_DOF_CONNECTIONS: IDOFConnections = { Tx: 'fixed', Tz: 'fixed', Rx: 'fixed', Rz: 'fixed' };
+const DEFAULT_DOF_CONNECTIONS: IDOFConnections = { Tx: 'fixed', Tz: 'fixed', Rz: 'fixed' };
 
 /**
  * Get per-DOF connection types for a beam, with backward compatibility.
@@ -160,7 +184,9 @@ export function getConnectionTypes(beam: IBeamElement): { start: ConnectionType;
       if (c.Rz !== 'fixed') return c.Rz;
       if (c.Tx !== 'fixed') return c.Tx;
       if (c.Tz !== 'fixed') return c.Tz;
-      if (c.Rx !== 'fixed') return c.Rx;
+      if (c.Rx && c.Rx !== 'fixed') return c.Rx;
+      if (c.Ry && c.Ry !== 'fixed') return c.Ry;
+      if (c.Ty && c.Ty !== 'fixed') return c.Ty;
       return 'fixed';
     };
     return { start: pickPrimary(start), end: pickPrimary(end) };
@@ -218,6 +244,19 @@ export interface IPlateRegion {
   meshSize?: number;               // element edge length for polygon quad mesh (meters)
   boundaryNodeIds?: number[];
   quadOnly?: boolean;              // if true, mesh is quad-only (no remaining triangles)
+}
+
+/**
+ * Plate vertex: defines a corner point of a plate's geometric contour.
+ * Separate from mesh nodes - moving a vertex only affects the plate contour,
+ * not the FEM mesh nodes directly (mesh is regenerated after vertex move).
+ */
+export interface IPlateVertex {
+  id: number;
+  plateId: number;
+  x: number;
+  y: number;
+  index: number;  // Position in the plate's polygon array
 }
 
 export interface IEdgeLoad {
@@ -368,5 +407,6 @@ export interface ISelection {
   distLoadBeamIds: Set<number>;     // beams with selected distributed load
   selectedDistLoadIds: Set<number>; // individual distributed load IDs (from IDistributedLoad.id)
   plateIds: Set<number>;            // selected plate regions
+  vertexIds: Set<number>;           // selected plate vertices
   edgeIds: Set<number>;             // selected IEdge IDs
 }

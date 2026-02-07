@@ -1,5 +1,5 @@
 /**
- * SteelCheckReport — Detailed EN 1993-1-1 steel check report for a single beam element.
+ * SteelCheckReport — Detailed NEN-EN 1993-1-1 steel check report for a single beam element.
  *
  * Section A: Cross-section & material properties
  * Section B: Internal forces from analysis
@@ -18,6 +18,7 @@ import {
 } from '../../core/standards/SteelCheck';
 import { calculateBeamLength } from '../../core/fem/Beam';
 import { IBeamForces, IBeamSection } from '../../core/fem/types';
+import { convertArea } from '../../utils/units';
 import './SteelCheckReport.css';
 
 /* ──────────────────────────────────────────────────────────── */
@@ -424,6 +425,8 @@ function useBeamDataMap(): Map<number, BeamReportData> {
 /* ──────────────────────────────────────────────────────────── */
 
 export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportProps) {
+  const { state } = useFEM();
+  const { stressUnit, lengthUnit, forceUnit, momentUnit, areaUnit, steelCheckInterval } = state;
   const beamDataMap = useBeamDataMap();
   const beamIds = useMemo(() => Array.from(beamDataMap.keys()).sort((a, b) => a - b), [beamDataMap]);
 
@@ -446,9 +449,11 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
       grade,
       beamData.length,
       beamData.maxDeflection,
-      deflLimitDivisor
+      deflLimitDivisor,
+      false,
+      steelCheckInterval
     );
-  }, [beamData, grade, deflLimitDivisor]);
+  }, [beamData, grade, deflLimitDivisor, steelCheckInterval]);
 
   // Detailed calc data for formula display
   const calcData: IDetailedCalcData | null = useMemo(() => {
@@ -474,7 +479,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
           <div className="scr-header">
             <div>
               <div className="scr-header-title">Steel Check Report</div>
-              <div className="scr-header-subtitle">NEN-EN 1993-1-1</div>
+              <div className="scr-header-subtitle">NEN-NEN-EN 1993-1-1</div>
             </div>
           </div>
           <div className="scr-body">
@@ -497,7 +502,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
         {/* Header */}
         <div className="scr-header">
           <div>
-            <div className="scr-header-title">Steel Check Report — EN 1993-1-1</div>
+            <div className="scr-header-title">Steel Check Report — NEN-EN 1993-1-1</div>
             <div className="scr-header-subtitle">Detailed unity checks with formulas (NL National Annex)</div>
           </div>
           <div className="scr-header-controls">
@@ -555,6 +560,9 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                 {' — '}UC<sub>max</sub> = {fix(checkResult.UC_max, 3)}
                 <span className="scr-status-governing">
                   Governing: {checkResult.governingCheck}
+                  {checkResult.governingLocation && (
+                    <> at x = {(checkResult.governingLocation.position * 1000).toFixed(0)}mm ({checkResult.governingLocation.locationType})</>
+                  )}
                 </span>
               </div>
 
@@ -568,7 +576,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                   </tr>
                   <tr>
                     <td>A (cross-section area)</td>
-                    <td>{eng(calcData.A)} m{'\u00B2'}</td>
+                    <td>{eng(convertArea(calcData.A, areaUnit))} {areaUnit}</td>
                   </tr>
                   <tr>
                     <td>I<sub>y</sub> (strong axis)</td>
@@ -643,19 +651,19 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                   </tr>
                   <tr>
                     <td>f<sub>y</sub> (yield strength)</td>
-                    <td>{grade.fy} MPa</td>
+                    <td>{grade.fy} {stressUnit}</td>
                   </tr>
                   <tr>
                     <td>f<sub>u</sub> (ultimate strength)</td>
-                    <td>{grade.fu} MPa</td>
+                    <td>{grade.fu} {stressUnit}</td>
                   </tr>
                   <tr>
                     <td>E (modulus of elasticity)</td>
-                    <td>210 000 MPa</td>
+                    <td>210 000 {stressUnit}</td>
                   </tr>
                   <tr>
                     <td>G (shear modulus)</td>
-                    <td>81 000 MPa</td>
+                    <td>81 000 {stressUnit}</td>
                   </tr>
                   <tr>
                     <td>{'\u03B3'}<sub>M0</sub></td>
@@ -684,23 +692,23 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                 <tbody>
                   <tr>
                     <td>M<sub>Ed</sub> (design bending moment)</td>
-                    <td>{fkNm(checkResult.MEd)} kNm</td>
+                    <td>{fkNm(checkResult.MEd)} {momentUnit}</td>
                   </tr>
                   <tr>
                     <td>V<sub>Ed</sub> (design shear force)</td>
-                    <td>{fkN(checkResult.VEd)} kN</td>
+                    <td>{fkN(checkResult.VEd)} {forceUnit}</td>
                   </tr>
                   <tr>
                     <td>N<sub>Ed</sub> (design normal force)</td>
-                    <td>{fkN(checkResult.NEd)} kN</td>
+                    <td>{fkN(checkResult.NEd)} {forceUnit}</td>
                   </tr>
                   <tr>
                     <td>{'\u03B4'}<sub>max</sub> (maximum deflection)</td>
-                    <td>{fix(beamData.maxDeflection * 1000, 2)} mm</td>
+                    <td>{fix(beamData.maxDeflection * 1000, 2)} {lengthUnit === 'm' ? 'mm' : lengthUnit}</td>
                   </tr>
                   <tr>
                     <td>L (beam span)</td>
-                    <td>{fix(beamData.length, 3)} m</td>
+                    <td>{fix(beamData.length, 3)} {lengthUnit === 'mm' ? 'm' : lengthUnit}</td>
                   </tr>
                 </tbody>
               </table>
@@ -718,7 +726,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                   <span className="fm-label">{'// Bending resistance (elastic section modulus)'}</span>{'\n'}
                   {'M'}<sub>{'c,Rd'}</sub>{' = W'}<sub>{'el,y'}</sub>{' \u00D7 f'}<sub>{'y'}</sub>{' / \u03B3'}<sub>{'M0'}</sub>{'\n'}
                   {'M'}<sub>{'c,Rd'}</sub>{' = '}<span className="fm-value">{eng(calcData.Wy)}</span>{' \u00D7 '}<span className="fm-value">{fMPa(calcData.fy)}</span>{'\u00D710\u2076 / '}<span className="fm-value">{fix(calcData.gammaM0)}</span>{'\n'}
-                  {'M'}<sub>{'c,Rd'}</sub>{' = '}<span className="fm-value">{fkNm(calcData.McRd)}</span>{' kNm'}{'\n\n'}
+                  {'M'}<sub>{'c,Rd'}</sub>{' = '}<span className="fm-value">{fkNm(calcData.McRd)}</span>{` ${momentUnit}`}{'\n\n'}
                   <span className="fm-label">{'// Unity check'}</span>{'\n'}
                   {'UC = M'}<sub>{'Ed'}</sub>{' / M'}<sub>{'c,Rd'}</sub>{' = '}<span className="fm-value">{fkNm(checkResult.MEd)}</span>{' / '}<span className="fm-value">{fkNm(calcData.McRd)}</span>{' = '}
                   <span className={`fm-result ${ucColorClass(checkResult.UC_M)}`}>{fix(checkResult.UC_M, 3)}</span>
@@ -733,12 +741,12 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
               >
                 <div className="scr-formula-block">
                   <span className="fm-label">{'// Shear area'}</span>{'\n'}
-                  {'A'}<sub>{'v'}</sub>{' = '}<span className="fm-value">{eng(calcData.Av)}</span>{' m\u00B2'}
+                  {'A'}<sub>{'v'}</sub>{' = '}<span className="fm-value">{areaUnit === 'm²' ? eng(calcData.Av) : convertArea(calcData.Av, areaUnit).toFixed(0)}</span>{` ${areaUnit}`}
                   {(calcData.tw != null) && (<>{' (h'}<sub>{'w'}</sub>{'\u00D7t'}<sub>{'w'}</sub>{' approximation for I-sections)'}</>)}{'\n\n'}
                   <span className="fm-label">{'// Shear resistance'}</span>{'\n'}
                   {'V'}<sub>{'pl,Rd'}</sub>{' = A'}<sub>{'v'}</sub>{' \u00D7 (f'}<sub>{'y'}</sub>{' / \u221A3) / \u03B3'}<sub>{'M0'}</sub>{'\n'}
-                  {'V'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{eng(calcData.Av)}</span>{' \u00D7 ('}<span className="fm-value">{fMPa(calcData.fy)}</span>{'\u00D710\u2076 / \u221A3) / '}<span className="fm-value">{fix(calcData.gammaM0)}</span>{'\n'}
-                  {'V'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{fkN(calcData.VcRd)}</span>{' kN'}{'\n\n'}
+                  {'V'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{areaUnit === 'm²' ? eng(calcData.Av) : convertArea(calcData.Av, areaUnit).toFixed(0)}</span>{` ${areaUnit}`}{' \u00D7 ('}<span className="fm-value">{fMPa(calcData.fy)}</span>{` ${stressUnit}`}{' / \u221A3) / '}<span className="fm-value">{fix(calcData.gammaM0)}</span>{'\n'}
+                  {'V'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{fkN(calcData.VcRd)}</span>{` ${forceUnit}`}{'\n\n'}
                   <span className="fm-label">{'// Unity check'}</span>{'\n'}
                   {'UC = V'}<sub>{'Ed'}</sub>{' / V'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{fkN(checkResult.VEd)}</span>{' / '}<span className="fm-value">{fkN(calcData.VcRd)}</span>{' = '}
                   <span className={`fm-result ${ucColorClass(checkResult.UC_V)}`}>{fix(checkResult.UC_V, 3)}</span>
@@ -755,7 +763,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                   <span className="fm-label">{'// Plastic axial resistance'}</span>{'\n'}
                   {'N'}<sub>{'pl,Rd'}</sub>{' = A \u00D7 f'}<sub>{'y'}</sub>{' / \u03B3'}<sub>{'M0'}</sub>{'\n'}
                   {'N'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{eng(calcData.A)}</span>{' \u00D7 '}<span className="fm-value">{fMPa(calcData.fy)}</span>{'\u00D710\u2076 / '}<span className="fm-value">{fix(calcData.gammaM0)}</span>{'\n'}
-                  {'N'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{fkN(calcData.NplRd)}</span>{' kN'}{'\n\n'}
+                  {'N'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{fkN(calcData.NplRd)}</span>{` ${forceUnit}`}{'\n\n'}
                   <span className="fm-label">{'// Unity check'}</span>{'\n'}
                   {'UC = N'}<sub>{'Ed'}</sub>{' / N'}<sub>{'pl,Rd'}</sub>{' = '}<span className="fm-value">{fkN(checkResult.NEd)}</span>{' / '}<span className="fm-value">{fkN(calcData.NplRd)}</span>{' = '}
                   <span className={`fm-result ${ucColorClass(checkResult.UC_N)}`}>{fix(checkResult.UC_N, 3)}</span>
@@ -774,7 +782,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                     <span className="fm-label">{'// Elastic critical moment for LTB'}</span>{'\n'}
                     {'M'}<sub>{'cr'}</sub>{' = C'}<sub>{'1'}</sub>{' \u00D7 (\u03C0\u00B2EI'}<sub>{'z'}</sub>{'/L\u00B2) \u00D7 \u221A(I'}<sub>{'w'}</sub>{'/I'}<sub>{'z'}</sub>{' + L\u00B2GI'}<sub>{'t'}</sub>{'/(\u03C0\u00B2EI'}<sub>{'z'}</sub>{'))'}{'\n'}
                     {'C'}<sub>{'1'}</sub>{' = '}<span className="fm-value">{fix(calcData.ltb.C1)}</span>{'\n'}
-                    {'M'}<sub>{'cr'}</sub>{' = '}<span className="fm-value">{fkNm(calcData.ltb.Mcr)}</span>{' kNm'}{'\n\n'}
+                    {'M'}<sub>{'cr'}</sub>{' = '}<span className="fm-value">{fkNm(calcData.ltb.Mcr)}</span>{` ${momentUnit}`}{'\n\n'}
                     <span className="fm-label">{'// Non-dimensional slenderness'}</span>{'\n'}
                     {'\u03BB\u0304'}<sub>{'LT'}</sub>{' = \u221A(W'}<sub>{'el,y'}</sub>{' \u00D7 f'}<sub>{'y'}</sub>{' / M'}<sub>{'cr'}</sub>{')'}{'\n'}
                     {'\u03BB\u0304'}<sub>{'LT'}</sub>{' = '}<span className="fm-value">{fix(calcData.ltb.lambdaLT, 3)}</span>{'\n\n'}
@@ -786,7 +794,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                     <span className="fm-label">{'// LTB resistance'}</span>{'\n'}
                     {'M'}<sub>{'b,Rd'}</sub>{' = \u03C7'}<sub>{'LT'}</sub>{' \u00D7 W'}<sub>{'el,y'}</sub>{' \u00D7 f'}<sub>{'y'}</sub>{' / \u03B3'}<sub>{'M1'}</sub>{'\n'}
                     {'M'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fix(calcData.ltb.chiLT, 4)}</span>{' \u00D7 '}<span className="fm-value">{eng(calcData.Wy)}</span>{' \u00D7 '}<span className="fm-value">{fMPa(calcData.fy)}</span>{'\u00D710\u2076 / '}<span className="fm-value">{fix(calcData.gammaM1)}</span>{'\n'}
-                    {'M'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fkNm(calcData.ltb.MbRd)}</span>{' kNm'}{'\n\n'}
+                    {'M'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fkNm(calcData.ltb.MbRd)}</span>{` ${momentUnit}`}{'\n\n'}
                     <span className="fm-label">{'// Unity check'}</span>{'\n'}
                     {'UC = M'}<sub>{'Ed'}</sub>{' / M'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fkNm(checkResult.MEd)}</span>{' / '}<span className="fm-value">{fkNm(calcData.ltb.MbRd)}</span>{' = '}
                     <span className={`fm-result ${ucColorClass(checkResult.UC_LTB)}`}>{fix(checkResult.UC_LTB, 3)}</span>
@@ -810,7 +818,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                     <span className="fm-label">{'// Euler critical force (strong axis)'}</span>{'\n'}
                     {'N'}<sub>{'cr'}</sub>{' = \u03C0\u00B2EI'}<sub>{'y'}</sub>{' / L'}<sub>{'cr'}</sub>{'\u00B2'}{'\n'}
                     {'N'}<sub>{'cr'}</sub>{' = \u03C0\u00B2 \u00D7 210000 \u00D7 '}<span className="fm-value">{eng(calcData.Iy)}</span>{' / '}<span className="fm-value">{fix(beamData.length, 3)}</span>{'\u00B2'}{'\n'}
-                    {'N'}<sub>{'cr'}</sub>{' = '}<span className="fm-value">{fkN(calcData.buckling.Ncr)}</span>{' kN'}{'\n\n'}
+                    {'N'}<sub>{'cr'}</sub>{' = '}<span className="fm-value">{fkN(calcData.buckling.Ncr)}</span>{` ${forceUnit}`}{'\n\n'}
                     <span className="fm-label">{'// Non-dimensional slenderness'}</span>{'\n'}
                     {'\u03BB\u0304 = \u221A(A \u00D7 f'}<sub>{'y'}</sub>{' / N'}<sub>{'cr'}</sub>{')'}{'\n'}
                     {'\u03BB\u0304 = '}<span className="fm-value">{fix(calcData.buckling.lambda, 3)}</span>{'\n\n'}
@@ -822,7 +830,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                     <span className="fm-label">{'// Buckling resistance'}</span>{'\n'}
                     {'N'}<sub>{'b,Rd'}</sub>{' = \u03C7 \u00D7 A \u00D7 f'}<sub>{'y'}</sub>{' / \u03B3'}<sub>{'M1'}</sub>{'\n'}
                     {'N'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fix(calcData.buckling.chi, 4)}</span>{' \u00D7 '}<span className="fm-value">{eng(calcData.A)}</span>{' \u00D7 '}<span className="fm-value">{fMPa(calcData.fy)}</span>{'\u00D710\u2076 / '}<span className="fm-value">{fix(calcData.gammaM1)}</span>{'\n'}
-                    {'N'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fkN(calcData.buckling.NbRd)}</span>{' kN'}{'\n\n'}
+                    {'N'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fkN(calcData.buckling.NbRd)}</span>{` ${forceUnit}`}{'\n\n'}
                     <span className="fm-label">{'// Unity check'}</span>{'\n'}
                     {'UC = N'}<sub>{'Ed'}</sub>{' / N'}<sub>{'b,Rd'}</sub>{' = '}<span className="fm-value">{fkN(checkResult.NEd)}</span>{' / '}<span className="fm-value">{fkN(calcData.buckling.NbRd)}</span>{' = '}
                     <span className={`fm-result ${ucColorClass(checkResult.UC_buckling)}`}>{fix(checkResult.UC_buckling, 3)}</span>
@@ -845,9 +853,9 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
                   <div className="scr-formula-block">
                     <span className="fm-label">{'// Deflection limit'}</span>{'\n'}
                     {'\u03B4'}<sub>{'lim'}</sub>{' = L / '}<span className="fm-value">{deflLimitDivisor}</span>{'\n'}
-                    {'\u03B4'}<sub>{'lim'}</sub>{' = '}<span className="fm-value">{fix(beamData.length, 3)}</span>{' / '}<span className="fm-value">{deflLimitDivisor}</span>{' = '}<span className="fm-value">{fix(calcData.deflection.limit * 1000, 2)}</span>{' mm'}{'\n\n'}
+                    {'\u03B4'}<sub>{'lim'}</sub>{' = '}<span className="fm-value">{fix(beamData.length, 3)}</span>{' / '}<span className="fm-value">{deflLimitDivisor}</span>{' = '}<span className="fm-value">{fix(calcData.deflection.limit * 1000, 2)}</span>{` ${lengthUnit === 'm' ? 'mm' : lengthUnit}`}{'\n\n'}
                     <span className="fm-label">{'// Actual deflection'}</span>{'\n'}
-                    {'\u03B4'}<sub>{'max'}</sub>{' = '}<span className="fm-value">{fix(calcData.deflection.actual * 1000, 2)}</span>{' mm'}{'\n\n'}
+                    {'\u03B4'}<sub>{'max'}</sub>{' = '}<span className="fm-value">{fix(calcData.deflection.actual * 1000, 2)}</span>{` ${lengthUnit === 'm' ? 'mm' : lengthUnit}`}{'\n\n'}
                     <span className="fm-label">{'// Unity check'}</span>{'\n'}
                     {'UC = \u03B4'}<sub>{'max'}</sub>{' / \u03B4'}<sub>{'lim'}</sub>{' = '}<span className="fm-value">{fix(calcData.deflection.actual * 1000, 2)}</span>{' / '}<span className="fm-value">{fix(calcData.deflection.limit * 1000, 2)}</span>{' = '}
                     <span className={`fm-result ${ucColorClass(checkResult.UC_deflection)}`}>{fix(checkResult.UC_deflection, 3)}</span>
@@ -865,7 +873,7 @@ export function SteelCheckReport({ initialBeamId, onClose }: SteelCheckReportPro
         {/* Footer */}
         <div className="scr-footer">
           <span className="scr-footer-info">
-            NEN-EN 1993-1-1 | Dutch National Annex | {'\u03B3'}M0 = {fix(grade.gammaM0)} | {'\u03B3'}M1 = {fix(grade.gammaM1)}
+            NEN-NEN-EN 1993-1-1 | Dutch National Annex | {'\u03B3'}M0 = {fix(grade.gammaM0)} | {'\u03B3'}M1 = {fix(grade.gammaM1)}
           </span>
           <button onClick={onClose}>Close</button>
         </div>

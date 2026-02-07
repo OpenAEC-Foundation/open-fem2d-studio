@@ -241,14 +241,17 @@ export function getMaxStress(
 
 /**
  * Get the maximum unity check ratio for a beam or all beams.
- * Uses EN 1993-1-1 cross-section checks.
+ * Uses NEN-EN 1993-1-1 cross-section checks.
+ *
+ * @param checkIntervalMm - Interval for checks along beam (mm, default 100)
  */
 export function getUCRatio(
   mesh: Mesh,
   result: ISolverResult,
   grade: ISteelGrade,
   beamId?: number,
-  deflectionLimitDivisor: number = 250
+  deflectionLimitDivisor: number = 250,
+  checkIntervalMm: number = 100
 ): { maxUC: number; checkResults: ISteelCheckResult[] } {
   const beams = beamId
     ? [mesh.getBeamElement(beamId)].filter(Boolean)
@@ -292,7 +295,9 @@ export function getUCRatio(
       grade,
       length,
       deflection,
-      deflectionLimitDivisor
+      deflectionLimitDivisor,
+      false,
+      checkIntervalMm
     );
     checkResults.push(checkResult);
     maxUC = Math.max(maxUC, checkResult.UC_max);

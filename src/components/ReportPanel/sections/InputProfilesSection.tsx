@@ -134,79 +134,96 @@ function ProfileCard({ profile, primaryColor }: { profile: ProfileInfo; primaryC
         borderRadius: 6,
         marginBottom: 14,
         padding: 12,
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 16,
         pageBreakInside: 'avoid',
       }}
     >
-      <div style={{ flexShrink: 0 }}>
-        {profile.geometry ? (
-          <ProfileSvgPreview
-            profile={profile.geometry}
-            width={120}
-            height={120}
-            showDimensions={true}
-            showAxes={false}
-            showNeutralAxes={false}
-            showFilletLines={false}
-            strokeColor={primaryColor}
-            fillColor={primaryColor + '18'}
-          />
-        ) : (
-          <div
-            style={{
-              width: 120,
-              height: 120,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: '#f5f5f5',
-              borderRadius: 4,
-              color: '#999',
-              fontSize: '9pt',
-            }}
-          >
-            No preview
-          </div>
-        )}
+      {/* Profile name header */}
+      <div
+        style={{
+          fontWeight: 600,
+          fontSize: '11pt',
+          marginBottom: 10,
+          color: primaryColor,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          borderBottom: `1px solid ${primaryColor}30`,
+          paddingBottom: 8,
+        }}
+      >
+        <span>{profile.profileName}</span>
+        <span style={{ fontSize: '9pt', color: '#888', fontWeight: 400 }}>
+          used {profile.count}&times;
+        </span>
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontWeight: 600,
-            fontSize: '11pt',
-            marginBottom: 6,
-            color: primaryColor,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-          }}
-        >
-          <span>{profile.profileName}</span>
-          <span style={{ fontSize: '9pt', color: '#888', fontWeight: 400 }}>
-            used {profile.count}&times;
-          </span>
+      {/* Main content: SVG on left, properties on right */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'auto 1fr',
+          gap: 20,
+          alignItems: 'start',
+        }}
+      >
+        {/* Left: SVG Preview */}
+        <div style={{ flexShrink: 0 }}>
+          {profile.geometry ? (
+            <ProfileSvgPreview
+              profile={profile.geometry}
+              width={140}
+              height={140}
+              showDimensions={true}
+              showAxes={false}
+              showNeutralAxes={false}
+              showFilletLines={false}
+              strokeColor={primaryColor}
+              fillColor={primaryColor + '18'}
+            />
+          ) : (
+            <div
+              style={{
+                width: 140,
+                height: 140,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f5f5f5',
+                borderRadius: 4,
+                color: '#999',
+                fontSize: '9pt',
+              }}
+            >
+              No preview
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: 16 }}>
+        {/* Right: Properties and Dimensions tables side by side */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: dimRows.length > 0 ? '1fr 1fr' : '1fr',
+            gap: 16,
+            minWidth: 0,
+          }}
+        >
           {/* Section properties */}
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '8pt', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>
+          <div>
+            <div style={{ fontSize: '8pt', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 6 }}>
               Properties
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
               <tbody>
                 {propRows.map((row, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '2px 8px 2px 0', color: '#555', whiteSpace: 'nowrap', width: '40%' }}>
+                    <td style={{ padding: '3px 8px 3px 0', color: '#555', whiteSpace: 'nowrap', width: '50%' }}>
                       {row.label}
                     </td>
-                    <td style={{ padding: '2px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    <td style={{ padding: '3px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                       {row.value}
                     </td>
-                    <td style={{ padding: '2px 0 2px 4px', color: '#888', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '3px 0 3px 4px', color: '#888', whiteSpace: 'nowrap' }}>
                       {row.unit}
                     </td>
                   </tr>
@@ -214,23 +231,24 @@ function ProfileCard({ profile, primaryColor }: { profile: ProfileInfo; primaryC
               </tbody>
             </table>
           </div>
+
           {/* Dimensions */}
           {dimRows.length > 0 && (
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '8pt', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>
+            <div>
+              <div style={{ fontSize: '8pt', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 6 }}>
                 Dimensions
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
                 <tbody>
                   {dimRows.map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '2px 8px 2px 0', color: '#555', whiteSpace: 'nowrap', width: '40%' }}>
+                      <td style={{ padding: '3px 8px 3px 0', color: '#555', whiteSpace: 'nowrap', width: '50%' }}>
                         {row.label}
                       </td>
-                      <td style={{ padding: '2px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      <td style={{ padding: '3px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                         {row.value}
                       </td>
-                      <td style={{ padding: '2px 0 2px 4px', color: '#888', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '3px 0 3px 4px', color: '#888', whiteSpace: 'nowrap' }}>
                         {row.unit}
                       </td>
                     </tr>

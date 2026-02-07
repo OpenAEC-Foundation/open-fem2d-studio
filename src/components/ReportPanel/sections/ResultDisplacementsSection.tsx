@@ -36,16 +36,42 @@ export const ResultDisplacementsSection: React.FC<ReportSectionProps> = ({ confi
   const nodeIdToIndex = new Map<number, number>();
   nodeIds.forEach((id, idx) => nodeIdToIndex.set(id, idx));
 
-  // Find max displacements
+  // Find max displacements at nodes
   let maxUy = 0;
   let maxUyNode = 0;
 
-  nodes.forEach(node => {
+  // Only consider regular nodes (not plate mesh nodes)
+  const regularNodes = nodes.filter(n => n.id < 1000);
+
+  regularNodes.forEach(node => {
     const idx = nodeIdToIndex.get(node.id);
     if (idx === undefined) return;
 
     const uy = Math.abs(result.displacements[idx * dofsPerNode + 1] ?? 0);
     if (uy > maxUy) { maxUy = uy; maxUyNode = node.id; }
+  });
+
+  // Find max displacement along beams (interpolated)
+  let maxBeamDisp = 0;
+
+  beams.forEach(beam => {
+    const beamNodes = mesh.getBeamElementNodes(beam);
+    if (!beamNodes) return;
+
+    const idx1 = nodeIdToIndex.get(beamNodes[0].id);
+    const idx2 = nodeIdToIndex.get(beamNodes[1].id);
+    if (idx1 === undefined || idx2 === undefined) return;
+
+    const uy1 = Math.abs(result.displacements[idx1 * dofsPerNode + 1] ?? 0);
+    const uy2 = Math.abs(result.displacements[idx2 * dofsPerNode + 1] ?? 0);
+
+    // Approximate mid-span displacement (parabolic for uniform load)
+    // Max is typically at mid-span for simply supported beams
+    const midDisp = Math.max(uy1, uy2, (uy1 + uy2) / 2 * 1.25); // Approximate
+
+    if (midDisp > maxBeamDisp) {
+      maxBeamDisp = midDisp;
+    }
   });
 
   const formatDisp = (value: number): string => {

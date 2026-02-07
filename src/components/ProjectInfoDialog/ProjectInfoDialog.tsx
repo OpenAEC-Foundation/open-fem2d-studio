@@ -1,7 +1,27 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import type { IProjectInfo } from '../../context/FEMContext';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import './ProjectInfoDialog.css';
+
+// Fix Leaflet default marker icon issue in React
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+// Component to handle map view changes
+function MapUpdater({ center, zoom }: { center: [number, number]; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [map, center, zoom]);
+  return null;
+}
 
 interface ProjectInfoDialogProps {
   onClose: () => void;
@@ -36,7 +56,7 @@ export function ProjectInfoDialog({ onClose }: ProjectInfoDialogProps) {
   const mapLat = latitude ?? defaultLat;
   const mapLon = longitude ?? defaultLon;
   const mapZoom = latitude != null ? 14 : 7;
-  const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${mapLon - 0.02 / (mapZoom / 7)},${mapLat - 0.01 / (mapZoom / 7)},${mapLon + 0.02 / (mapZoom / 7)},${mapLat + 0.01 / (mapZoom / 7)}&layer=mapnik&marker=${mapLat},${mapLon}`;
+  const mapCenter: [number, number] = [mapLat, mapLon];
 
   const handleGeocode = useCallback(async () => {
     if (!location.trim()) return;
@@ -223,13 +243,23 @@ export function ProjectInfoDialog({ onClose }: ProjectInfoDialogProps) {
                 </span>
               )}
             </div>
-            <iframe
-              className="proj-info-map-iframe"
-              title="Project Location"
-              src={mapSrc}
-              width="300"
-              height="200"
-            />
+            <div className="proj-info-map-container">
+              <MapContainer
+                center={mapCenter}
+                zoom={mapZoom}
+                scrollWheelZoom={true}
+                style={{ height: '200px', width: '100%' }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <MapUpdater center={mapCenter} zoom={mapZoom} />
+                {latitude != null && longitude != null && (
+                  <Marker position={[latitude, longitude]} />
+                )}
+              </MapContainer>
+            </div>
             <div className="proj-info-coord-fields">
               <label className="proj-info-field">
                 <span>Latitude</span>

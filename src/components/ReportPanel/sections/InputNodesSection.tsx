@@ -6,7 +6,8 @@ import React from 'react';
 import { ReportSectionProps } from '../ReportPreview';
 
 export const InputNodesSection: React.FC<ReportSectionProps> = ({ config, mesh, sectionNumber }) => {
-  const nodes = Array.from(mesh.nodes.values());
+  // Only show regular nodes (ID < 1000), not plate mesh nodes
+  const nodes = Array.from(mesh.nodes.values()).filter(n => n.id < 1000);
 
   const formatSupport = (node: typeof nodes[0]): string => {
     const constraints: string[] = [];

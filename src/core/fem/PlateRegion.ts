@@ -565,6 +565,7 @@ export function generatePolygonPlateMesh(mesh: Mesh, config: PolygonPlateConfig)
  */
 export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlateConfig): Promise<IPlateRegion> {
   const { outline, voids, meshSize, materialId, thickness, quadOnly } = config;
+  console.log('[generatePolygonPlateMeshV2] Starting CDT with outline:', outline.length, 'vertices, meshSize:', meshSize);
 
   // Compute bounding box
   const xs = outline.map(p => p.x);
@@ -586,6 +587,11 @@ export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlat
     maxArea,
     minAngle: 20,
     meshSize,
+  });
+  console.log('[generatePolygonPlateMeshV2] CDT result:', {
+    points: triResult.points.length,
+    triangles: triResult.triangles.length,
+    segments: triResult.segments.length,
   });
 
   // Pair triangles into quads (optionally subdivide remaining triangles for quad-only mesh)
@@ -1131,10 +1137,15 @@ export function remeshPlateRegion(mesh: Mesh, plateId: number): void {
  * @param draggedNodeId The node that was dragged (must be a polygon vertex node)
  */
 export async function remeshPolygonPlateRegion(mesh: Mesh, plateId: number, draggedNodeId: number): Promise<void> {
+  console.log('[remeshPolygonPlateRegion] Called for plate:', plateId, 'draggedNode:', draggedNodeId);
   const plate = mesh.getPlateRegion(plateId);
-  if (!plate || !plate.isPolygon || !plate.polygon) return;
+  if (!plate || !plate.isPolygon || !plate.polygon) {
+    console.log('[remeshPolygonPlateRegion] Aborting: not a polygon plate');
+    return;
+  }
 
   const polygon = plate.polygon;
+  console.log('[remeshPolygonPlateRegion] Polygon has', polygon.length, 'vertices');
   const boundaryNodeIds = plate.boundaryNodeIds ?? plate.nodeIds;
 
   // Find which polygon vertex corresponds to the dragged node.
@@ -1236,6 +1247,7 @@ export async function remeshPolygonPlateRegion(mesh: Mesh, plateId: number, drag
   // --- Regenerate using boundary-conforming CDT + tri-to-quad pairing ---
   const meshSizeVal = plate.meshSize ?? 0.5;
   const maxArea = (meshSizeVal * meshSizeVal * Math.sqrt(3)) / 4 * 2;
+  console.log('[remeshPolygonPlateRegion] Starting CDT with meshSize:', meshSizeVal);
 
   const triResult = await triangulatePolygon({
     outline: polygon,
@@ -1244,10 +1256,18 @@ export async function remeshPolygonPlateRegion(mesh: Mesh, plateId: number, drag
     minAngle: 20,
     meshSize: meshSizeVal,
   });
+  console.log('[remeshPolygonPlateRegion] CDT result:', {
+    points: triResult.points.length,
+    triangles: triResult.triangles.length,
+  });
 
   const pairResult = pairTrianglesToQuads({
     points: triResult.points,
     triangles: triResult.triangles,
+  });
+  console.log('[remeshPolygonPlateRegion] Pair result:', {
+    quads: pairResult.quads.length,
+    remainingTriangles: pairResult.remainingTriangles.length,
   });
 
   // Create mesh nodes (reuse existing via findNodeAt)
@@ -1478,11 +1498,14 @@ export function isPointOnSegment(px: number, py: number, x1: number, y1: number,
  *
  * @param edgeDragDelta When provided, constraints/loads on the old edge position
  *   are saved at their new (shifted) position to preserve them after remeshing.
+ * @param vertexDragDelta When provided, constraints/loads on the old vertex position
+ *   are saved at their new (shifted) position to preserve them after remeshing.
  */
 export async function remeshPolygonPlateRegionFromContour(
   mesh: Mesh,
   plateId: number,
-  edgeDragDelta?: { edgeIndex: number; dx: number; dy: number }
+  edgeDragDelta?: { edgeIndex: number; dx: number; dy: number },
+  vertexDragDelta?: { vertexIndex: number; oldX: number; oldY: number; newX: number; newY: number }
 ): Promise<void> {
   const plate = mesh.getPlateRegion(plateId);
   if (!plate || !plate.isPolygon || !plate.polygon) {
@@ -1494,6 +1517,8 @@ export async function remeshPolygonPlateRegionFromContour(
   // Save constraints/loads on all current nodes
   // When edgeDragDelta is provided, nodes on the old edge (before drag) have their
   // save position shifted by (dx, dy) so they match the new edge after remeshing.
+  // When vertexDragDelta is provided, the node at the old vertex position has its
+  // save position shifted to the new vertex position.
   const nodeConstraints = new Map<string, { constraints: INode['constraints']; loads: INode['loads'] }>();
   for (const nodeId of plate.nodeIds) {
     const n = mesh.getNode(nodeId);
@@ -1515,6 +1540,15 @@ export async function remeshPolygonPlateRegionFromContour(
         if (isPointOnSegment(n.x, n.y, oldV1x, oldV1y, oldV2x, oldV2y, tol)) {
           saveX = n.x + edgeDragDelta.dx;
           saveY = n.y + edgeDragDelta.dy;
+        }
+      }
+
+      // Check if this node is at the old vertex position being dragged
+      if (vertexDragDelta) {
+        const tol = 0.001;
+        if (Math.abs(n.x - vertexDragDelta.oldX) < tol && Math.abs(n.y - vertexDragDelta.oldY) < tol) {
+          saveX = vertexDragDelta.newX;
+          saveY = vertexDragDelta.newY;
         }
       }
 
@@ -1564,6 +1598,7 @@ export async function remeshPolygonPlateRegionFromContour(
   // --- Regenerate using CDT + tri-to-quad ---
   const meshSizeVal = plate.meshSize ?? 0.5;
   const maxArea = (meshSizeVal * meshSizeVal * Math.sqrt(3)) / 4 * 2;
+  console.log('[remeshPolygonPlateRegionFromContour] Starting CDT with polygon:', polygon.length, 'vertices, meshSize:', meshSizeVal);
 
   const triResult = await triangulatePolygon({
     outline: polygon,
@@ -1572,10 +1607,19 @@ export async function remeshPolygonPlateRegionFromContour(
     minAngle: 20,
     meshSize: meshSizeVal,
   });
+  console.log('[remeshPolygonPlateRegionFromContour] CDT result:', {
+    points: triResult.points.length,
+    triangles: triResult.triangles.length,
+    segments: triResult.segments.length,
+  });
 
   const pairResult = pairTrianglesToQuads({
     points: triResult.points,
     triangles: triResult.triangles,
+  });
+  console.log('[remeshPolygonPlateRegionFromContour] Pair result:', {
+    quads: pairResult.quads.length,
+    remainingTriangles: pairResult.remainingTriangles.length,
   });
 
   // Create mesh nodes
@@ -1841,6 +1885,9 @@ export function removePlateRegion(mesh: Mesh, plateId: number): void {
 
   // Remove edges for this plate
   mesh.removeEdgesForPlate(plateId);
+
+  // Remove vertices for this plate
+  mesh.removeVerticesForPlate(plateId);
 
   // Remove the plate region itself
   mesh.plateRegions.delete(plateId);

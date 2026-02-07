@@ -30,15 +30,14 @@ export const ResultCombinationsSection: React.FC<ReportSectionProps> = ({ config
       </h2>
 
       <p style={{ marginBottom: 16 }}>
-        Load combinations according to EN 1990 for Ultimate Limit State (ULS) and Serviceability Limit State (SLS).
+        Load combinations according to EN 1990 (Eurocode 0).
       </p>
 
       <table className="report-table">
         <thead>
           <tr style={{ background: config.primaryColor }}>
-            <th>ID</th>
             <th>Name</th>
-            <th>Type</th>
+            <th>Eurocode</th>
             <th>Combination Expression</th>
           </tr>
         </thead>
@@ -52,23 +51,28 @@ export const ResultCombinationsSection: React.FC<ReportSectionProps> = ({ config
                 // Extract short name (e.g., "G" from "Dead Load (G)")
                 const match = lcName.match(/\(([^)]+)\)/);
                 const shortName = match ? match[1] : lcName;
-                terms.push(`${factor}${shortName}`);
+                terms.push(`${factor.toFixed(2)} × ${shortName}`);
               }
             });
 
+            // Map combo type to Eurocode reference
+            const getEurocodeRef = (type: string, name: string): string => {
+              const nameLower = name.toLowerCase();
+              if (nameLower.includes('6.10a')) return 'EN 1990, 6.10a';
+              if (nameLower.includes('6.10b')) return 'EN 1990, 6.10b';
+              if (nameLower.includes('6.14')) return 'EN 1990, 6.14';
+              if (nameLower.includes('6.16')) return 'EN 1990, 6.16';
+              if (type === 'ULS') return 'EN 1990, 6.10';
+              if (type === 'SLS') return 'EN 1990, 6.14';
+              return type;
+            };
+
             return (
               <tr key={combo.id}>
-                <td>{combo.id}</td>
                 <td>{combo.name}</td>
                 <td>
-                  <span
-                    className="status-badge"
-                    style={{
-                      background: combo.type === 'ULS' ? '#fee2e2' : '#dbeafe',
-                      color: combo.type === 'ULS' ? '#991b1b' : '#1e40af',
-                    }}
-                  >
-                    {combo.type}
+                  <span style={{ fontSize: '9pt', color: '#475569' }}>
+                    {getEurocodeRef(combo.type, combo.name)}
                   </span>
                 </td>
                 <td>{terms.join(' + ')}</td>

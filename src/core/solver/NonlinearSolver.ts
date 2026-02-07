@@ -21,7 +21,7 @@ import { calculateBeamInternalForces } from '../fem/BeamForces';
 import { calculateElementStress, calculatePrincipalStresses } from '../fem/Triangle';
 import { calculateQuadStress } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
-import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases } from './Assembler';
+import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, buildNodeIdToIndex } from './Assembler';
 import { solveLinearSystem } from '../math/GaussElimination';
 
 export interface NonlinearSolverOptions {
@@ -586,21 +586,110 @@ function solvePlateOrPlane(
     throw new Error('Model must have at least 1 plate element');
   }
 
-  let hasConstraints = false;
-  for (const node of mesh.nodes.values()) {
-    if (node.constraints.x || node.constraints.y || node.constraints.rotation) {
-      hasConstraints = true;
-      break;
+  // Get active nodes (nodes connected to elements) - IMPORTANT: only these are used by the solver
+  const activeNodeIds = buildNodeIdToIndex(mesh, analysisType);
+
+  // Collect all node IDs that are connected to elements
+  const elementNodeIds = new Set<number>();
+  for (const element of mesh.elements.values()) {
+    for (const nid of element.nodeIds) {
+      elementNodeIds.add(nid);
     }
   }
-  if (!hasConstraints) {
+
+  // === CONSTRAINT TRANSLATION ===
+  // If constraints are on nodes NOT connected to elements, transfer them to the nearest active node
+  // This handles the case where the UI places constraints on polygon vertices that don't match mesh nodes
+  const constraintTransfers: Array<{ fromId: number; toId: number; dist: number }> = [];
+
+  for (const node of mesh.nodes.values()) {
+    const hasConstraint = node.constraints.x || node.constraints.y || node.constraints.rotation;
+    const hasLoad = node.loads.fx !== 0 || node.loads.fy !== 0 || (node.loads.moment && node.loads.moment !== 0);
+
+    if ((hasConstraint || hasLoad) && !activeNodeIds.has(node.id)) {
+      // This node has constraints/loads but is not connected to any element
+      // Find the nearest active node and transfer the constraint/load
+      let nearestActiveId: number | null = null;
+      let nearestDist = Infinity;
+
+      for (const activeId of activeNodeIds.keys()) {
+        const activeNode = mesh.getNode(activeId);
+        if (!activeNode) continue;
+        const dist = Math.sqrt((node.x - activeNode.x) ** 2 + (node.y - activeNode.y) ** 2);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestActiveId = activeId;
+        }
+      }
+
+      if (nearestActiveId !== null && nearestDist < 0.5) { // 0.5m tolerance
+        const targetNode = mesh.getNode(nearestActiveId);
+        if (targetNode) {
+          // Transfer constraints
+          if (hasConstraint) {
+            targetNode.constraints = {
+              x: targetNode.constraints.x || node.constraints.x,
+              y: targetNode.constraints.y || node.constraints.y,
+              rotation: targetNode.constraints.rotation || node.constraints.rotation,
+              springX: node.constraints.springX ?? targetNode.constraints.springX,
+              springY: node.constraints.springY ?? targetNode.constraints.springY,
+              springRot: node.constraints.springRot ?? targetNode.constraints.springRot,
+            };
+          }
+          // Transfer loads
+          if (hasLoad) {
+            targetNode.loads = {
+              fx: targetNode.loads.fx + node.loads.fx,
+              fy: targetNode.loads.fy + node.loads.fy,
+              moment: (targetNode.loads.moment || 0) + (node.loads.moment || 0),
+            };
+          }
+          constraintTransfers.push({ fromId: node.id, toId: nearestActiveId, dist: nearestDist });
+        }
+      }
+    }
+  }
+
+  if (constraintTransfers.length > 0) {
+    console.log(`[Plate Solver] Transferred ${constraintTransfers.length} constraint(s) to mesh nodes`);
+  }
+
+  // Re-check constraints after transfer
+  let hasActiveConstraints = false;
+  let hasAnyConstraints = false;
+  for (const node of mesh.nodes.values()) {
+    if (node.constraints.x || node.constraints.y || node.constraints.rotation) {
+      hasAnyConstraints = true;
+      if (activeNodeIds.has(node.id)) {
+        hasActiveConstraints = true;
+      }
+    }
+  }
+
+  if (!hasAnyConstraints) {
     throw new Error('Model has no constraints - add boundary conditions');
+  }
+
+  if (!hasActiveConstraints) {
+    // List nodes with constraints that couldn't be transferred
+    const problemNodes: string[] = [];
+    for (const node of mesh.nodes.values()) {
+      if ((node.constraints.x || node.constraints.y || node.constraints.rotation) && !activeNodeIds.has(node.id)) {
+        problemNodes.push(`Node ${node.id} at (${node.x.toFixed(3)}, ${node.y.toFixed(3)})`);
+      }
+    }
+    throw new Error(`Constraints are not on mesh nodes and couldn't be transferred. Problem nodes: ${problemNodes.join('; ')}`);
   }
 
   // Assemble
   const K = assembleGlobalStiffnessMatrix(mesh, analysisType);
   const F = assembleForceVectorNew(mesh, analysisType);
   const { dofs: constrainedDofs, nodeIdToIndex } = getConstrainedDofs(mesh, analysisType);
+
+  // Check for sufficient constraints to prevent rigid body motion (need at least 3 DOFs constrained for 2D)
+  if (constrainedDofs.length < 3) {
+    throw new Error(`Insufficient constraints: ${constrainedDofs.length} DOFs constrained, need at least 3 to prevent rigid body motion`);
+  }
 
   const hasLoads = F.some(f => f !== 0);
   if (!hasLoads) {
@@ -791,21 +880,38 @@ function solveMixed(
     throw new Error('Mixed analysis requires at least one plate or beam element');
   }
 
-  let hasConstraints = false;
+  // Get active nodes (nodes connected to elements/beams) - IMPORTANT: only these are used by the solver
+  const activeNodeIds = buildNodeIdToIndex(mesh, analysisType);
+
+  // Check that constraints are on ACTIVE nodes
+  let hasActiveConstraints = false;
+  let hasAnyConstraints = false;
   for (const node of mesh.nodes.values()) {
     if (node.constraints.x || node.constraints.y || node.constraints.rotation) {
-      hasConstraints = true;
-      break;
+      hasAnyConstraints = true;
+      if (activeNodeIds.has(node.id)) {
+        hasActiveConstraints = true;
+      }
     }
   }
-  if (!hasConstraints) {
+
+  if (!hasAnyConstraints) {
     throw new Error('Model has no constraints - add boundary conditions');
+  }
+
+  if (!hasActiveConstraints) {
+    throw new Error('Constraints are not on mesh nodes - place supports on plate corner/edge nodes or beam nodes');
   }
 
   // Assemble global matrices using the mixed_beam_plate mode
   const K = assembleGlobalStiffnessMatrix(mesh, analysisType);
   const F = assembleForceVectorNew(mesh, analysisType);
   const { dofs: constrainedDofs, nodeIdToIndex } = getConstrainedDofs(mesh, analysisType);
+
+  // Check for sufficient constraints to prevent rigid body motion
+  if (constrainedDofs.length < 3) {
+    throw new Error(`Insufficient constraints: ${constrainedDofs.length} DOFs constrained, need at least 3 to prevent rigid body motion`);
+  }
 
   const hasLoads = F.some(f => f !== 0);
   if (!hasLoads) {

@@ -143,9 +143,17 @@
   color: var(--text-secondary);
   text-align: left !important;
   white-space: nowrap;
-  max-width: 120px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.governing-location {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 .uc-bar {

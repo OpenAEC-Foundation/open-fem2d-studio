@@ -13,7 +13,8 @@ import {
   Undo2, Redo2, Layers,
   Settings, Info, Save, FolderOpen, Grid3X3, Bot,
   Sun, Moon, Maximize2, Box, BarChart3, Zap,
-  Search, AlertTriangle, Terminal, Table2, Network, Link2
+  Search, AlertTriangle, Terminal, Table2, Network, Link2, Filter, X,
+  Ruler, Type, PenLine, Eye, Pencil
 } from 'lucide-react';
 import { serializeProject } from '../../core/io/ProjectSerializer';
 import { deserializeProject } from '../../core/io/ProjectSerializer';
@@ -22,7 +23,7 @@ import { useI18n } from '../../i18n/i18n';
 import type { Locale } from '../../i18n/i18n';
 import './Ribbon.css';
 
-type RibbonTab = 'home' | 'settings' | 'code-check' | '3d' | 'report' | 'table' | 'insights' | 'steel' | 'concrete' | 'timber' | 'other-materials' | 'versions' | 'extensions';
+type RibbonTab = 'home' | 'settings' | 'code-check' | '3d' | 'report' | 'table' | 'insights' | 'steel' | 'concrete' | 'timber' | 'other-materials' | 'versions' | 'extensions' | 'drawing';
 
 interface RibbonProps {
   onShowLoadCaseDialog?: () => void;
@@ -56,7 +57,8 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
   const { state, dispatch } = useFEM();
   const { t, locale, setLocale } = useI18n();
   const { selectedTool, mesh, undoStack, redoStack, loadCases,
-    result, codeCheckBeamId, plateEditMode } = state;
+    result, codeCheckBeamId, plateEditMode, selection } = state;
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [localActiveTab, setLocalActiveTab] = useState<RibbonTab>('home');
   const activeTab = activeRibbonTab ?? localActiveTab;
   const setActiveTab = (tab: RibbonTab) => {
@@ -81,9 +83,11 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
     setActiveTab(tab);
     if (tab === '3d') {
       dispatch({ type: 'SET_VIEW_MODE', payload: '3d' });
+    } else if (tab === 'drawing') {
+      dispatch({ type: 'SET_VIEW_MODE', payload: 'drawing' });
     } else if (tab === 'report') {
       // Report tab has its own view, don't change viewMode
-    } else if (state.viewMode === '3d') {
+    } else if (state.viewMode === '3d' || state.viewMode === 'drawing') {
       dispatch({ type: 'SET_VIEW_MODE', payload: 'geometry' });
     } else if (state.viewMode === 'results' && tab !== 'code-check') {
       dispatch({ type: 'SET_VIEW_MODE', payload: 'geometry' });
@@ -113,7 +117,8 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
       state.loadCombinations,
       state.projectInfo,
       state.structuralGrid,
-      state.graphState
+      state.graphState,
+      state.versioning
     );
     const filename = (state.projectInfo.name || 'project').replace(/\s+/g, '-').toLowerCase() + '.fem2d.json';
 
@@ -202,6 +207,9 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
         </button>
         <button className={`ribbon-tab ${activeTab === 'report' ? 'active' : ''}`} onClick={() => handleTabClick('report')}>
           {t('ribbon.report')}
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'drawing' ? 'active' : ''}`} onClick={() => handleTabClick('drawing')}>
+          {t('ribbon.drawing')}
         </button>
         <button className={`ribbon-tab ${activeTab === 'insights' ? 'active' : ''}`} onClick={() => handleTabClick('insights')}>
           {t('ribbon.insights')}
@@ -512,6 +520,95 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
 
             <div className="ribbon-separator" />
 
+            {/* Selection Filter */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('ribbon.filter')}</div>
+              <div className="ribbon-group-content" style={{ position: 'relative' }}>
+                <button
+                  className={`ribbon-button small ${(selection.nodeIds.size + selection.elementIds.size + selection.plateIds.size + (selection.vertexIds?.size || 0) + selection.pointLoadNodeIds.size + selection.distLoadBeamIds.size) > 0 ? 'has-selection' : ''}`}
+                  onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                  title={t('ribbon.filterSelection.title')}
+                >
+                  <span className="ribbon-icon"><Filter size={16} /></span>
+                  <span className="ribbon-label">{t('ribbon.filterSelection.label')}</span>
+                </button>
+                {showFilterDropdown && (
+                  <div className="filter-dropdown" onMouseLeave={() => setShowFilterDropdown(false)}>
+                    <div className="filter-dropdown-header">{t('ribbon.filterSelection.removeFrom')}</div>
+                    {selection.nodeIds.size > 0 && (
+                      <button
+                        className="filter-dropdown-item"
+                        onClick={() => {
+                          dispatch({ type: 'SET_SELECTION', payload: { ...selection, nodeIds: new Set() } });
+                        }}
+                      >
+                        <CircleDot size={14} />
+                        <span>{selection.nodeIds.size} {selection.nodeIds.size === 1 ? 'node' : 'nodes'}</span>
+                        <X size={12} className="remove-icon" />
+                      </button>
+                    )}
+                    {selection.elementIds.size > 0 && (
+                      <button
+                        className="filter-dropdown-item"
+                        onClick={() => {
+                          dispatch({ type: 'SET_SELECTION', payload: { ...selection, elementIds: new Set() } });
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <line x1="2" y1="7" x2="12" y2="7" />
+                        </svg>
+                        <span>{selection.elementIds.size} {selection.elementIds.size === 1 ? 'beam' : 'beams'}</span>
+                        <X size={12} className="remove-icon" />
+                      </button>
+                    )}
+                    {selection.plateIds.size > 0 && (
+                      <button
+                        className="filter-dropdown-item"
+                        onClick={() => {
+                          dispatch({ type: 'SET_SELECTION', payload: { ...selection, plateIds: new Set() } });
+                        }}
+                      >
+                        <Square size={14} />
+                        <span>{selection.plateIds.size} {selection.plateIds.size === 1 ? 'plate' : 'plates'}</span>
+                        <X size={12} className="remove-icon" />
+                      </button>
+                    )}
+                    {(selection.vertexIds?.size || 0) > 0 && (
+                      <button
+                        className="filter-dropdown-item"
+                        onClick={() => {
+                          dispatch({ type: 'SET_SELECTION', payload: { ...selection, vertexIds: new Set() } });
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="4" y="4" width="6" height="6" />
+                        </svg>
+                        <span>{selection.vertexIds?.size || 0} {(selection.vertexIds?.size || 0) === 1 ? 'vertex' : 'vertices'}</span>
+                        <X size={12} className="remove-icon" />
+                      </button>
+                    )}
+                    {(selection.pointLoadNodeIds.size + selection.distLoadBeamIds.size) > 0 && (
+                      <button
+                        className="filter-dropdown-item"
+                        onClick={() => {
+                          dispatch({ type: 'SET_SELECTION', payload: { ...selection, pointLoadNodeIds: new Set(), distLoadBeamIds: new Set(), selectedDistLoadIds: new Set() } });
+                        }}
+                      >
+                        <ArrowDown size={14} />
+                        <span>{selection.pointLoadNodeIds.size + selection.distLoadBeamIds.size} {(selection.pointLoadNodeIds.size + selection.distLoadBeamIds.size) === 1 ? 'load' : 'loads'}</span>
+                        <X size={12} className="remove-icon" />
+                      </button>
+                    )}
+                    {(selection.nodeIds.size + selection.elementIds.size + selection.plateIds.size + (selection.vertexIds?.size || 0) + selection.pointLoadNodeIds.size + selection.distLoadBeamIds.size) === 0 && (
+                      <div className="filter-dropdown-empty">{t('ribbon.filterSelection.noSelection')}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
             {/* View */}
             <div className="ribbon-group">
               <div className="ribbon-group-title">{t('ribbon.view')}</div>
@@ -649,6 +746,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
               </div>
             </div>
 
+
           </>
         )}
 
@@ -673,13 +771,19 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
           const forces = result.beamForces.get(codeCheckBeamId)!;
           const grade = STEEL_GRADES[2]; // S355
           const section = beam.section;
+          const nodes = mesh.getBeamElementNodes(beam);
+          const beamLength = nodes ? calculateBeamLength(nodes[0], nodes[1]) : 0;
           const check = checkSteelSection(
             { A: section.A, I: section.I, h: section.h, profileName: beam.profileName },
             forces,
-            grade
+            grade,
+            beamLength,
+            0,
+            250,
+            false,
+            state.steelCheckInterval
           );
-          const nodes = mesh.getBeamElementNodes(beam);
-          const L = nodes ? calculateBeamLength(nodes[0], nodes[1]) : 0;
+          const L = beamLength;
           const fmtN = (v: number) => `${(v / 1000).toFixed(1)} kN`;
           const fmtM = (v: number) => `${(v / 1000).toFixed(1)} kNm`;
           const ucColor = (uc: number) => uc <= 1.0 ? 'var(--success)' : 'var(--danger)';
@@ -749,7 +853,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
 
               {/* Unity Checks */}
               <div className="ribbon-group" style={{ minWidth: 220 }}>
-                <div className="ribbon-group-title">Unity Checks (EN 1993-1-1)</div>
+                <div className="ribbon-group-title">Unity Checks (NEN-EN 1993-1-1)</div>
                 <div className="ribbon-group-content code-check-ucs">
                   {ucBar(check.UC_N, 'N (6.2.4)')}
                   {ucBar(check.UC_V, 'V (6.2.6)')}
@@ -1151,6 +1255,151 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowSt
               <div className="ribbon-group-content">
                 <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
                   {t('extensions.graphSyncInfo')}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'drawing' && (
+          <>
+            {/* View - Toggle element visibility */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('drawing.view')}</div>
+              <div className="ribbon-group-content grid-3x2">
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.toggleSteel.title')}
+                >
+                  <span className="ribbon-icon"><Eye size={14} /></span>
+                  <span>{t('drawing.steel')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.toggleConcrete.title')}
+                >
+                  <span className="ribbon-icon"><Eye size={14} /></span>
+                  <span>{t('drawing.concrete')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.toggleTimber.title')}
+                >
+                  <span className="ribbon-icon"><Eye size={14} /></span>
+                  <span>{t('drawing.timber')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.toggleGridLines.title')}
+                >
+                  <span className="ribbon-icon"><Grid3X3 size={14} /></span>
+                  <span>{t('drawing.gridLines')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.toggleDimensions.title')}
+                >
+                  <span className="ribbon-icon"><Ruler size={14} /></span>
+                  <span>{t('drawing.dimensions')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.toggleCenterlines.title')}
+                >
+                  <span className="ribbon-icon">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3,2">
+                      <line x1="1" y1="7" x2="13" y2="7" />
+                    </svg>
+                  </span>
+                  <span>{t('drawing.centerlines')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            {/* Dimensions */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('drawing.dimensionsGroup')}</div>
+              <div className="ribbon-group-content">
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.addDimension.title')}
+                >
+                  <span className="ribbon-icon"><Ruler size={14} /></span>
+                  <span>{t('drawing.addDimension')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.addGridDimension.title')}
+                >
+                  <span className="ribbon-icon"><Grid3X3 size={14} /></span>
+                  <span>{t('drawing.gridDimension')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            {/* Annotation */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('drawing.annotation')}</div>
+              <div className="ribbon-group-content">
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.addText.title')}
+                >
+                  <span className="ribbon-icon"><Type size={14} /></span>
+                  <span>{t('drawing.addText')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.addLeader.title')}
+                >
+                  <span className="ribbon-icon"><PenLine size={14} /></span>
+                  <span>{t('drawing.addLeader')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.profileAnnotation.title')}
+                >
+                  <span className="ribbon-icon"><Pencil size={14} /></span>
+                  <span>{t('drawing.profileAnnotation')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            {/* Export */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('drawing.export')}</div>
+              <div className="ribbon-group-content">
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.exportDXF.title')}
+                >
+                  <span className="ribbon-icon"><FileDown size={14} /></span>
+                  <span>{t('drawing.dxf')}</span>
+                </button>
+                <button
+                  className="ribbon-button small"
+                  title={t('drawing.exportPDF.title')}
+                >
+                  <span className="ribbon-icon"><FileText size={14} /></span>
+                  <span>{t('drawing.pdf')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="ribbon-separator" />
+
+            {/* Info */}
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('ribbon.info')}</div>
+              <div className="ribbon-group-content">
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, padding: '0 8px', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+                  {t('drawing.info')}
                 </span>
               </div>
             </div>

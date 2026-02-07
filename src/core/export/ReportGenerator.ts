@@ -56,7 +56,7 @@ function fmtVal(v: number, decimals: number = 2): string {
 
 /**
  * Render a transparent steel check detail block for one member,
- * showing EN 1993-1-1 norm formulas with filled-in values.
+ * showing NEN-EN 1993-1-1 norm formulas with filled-in values.
  */
 function renderSteelCheckDetail(r: ISteelCheckResult, grade: ISteelGrade, forceUnit: 'N' | 'kN' | 'MN'): string {
   const fy = grade.fy;
@@ -78,40 +78,40 @@ function renderSteelCheckDetail(r: ISteelCheckResult, grade: ISteelGrade, forceU
     <h4>Member ${r.elementId} — ${r.profileName} (${grade.name})</h4>
 
     <div class="check-block">
-      <div class="check-title">Axial Resistance — EN 1993-1-1, 6.2.4</div>
+      <div class="check-title">Axial Resistance — NEN-EN 1993-1-1, 6.2.4</div>
       <div class="formula">N<sub>c,Rd</sub> = A &middot; f<sub>y</sub> / &gamma;<sub>M0</sub></div>
       <div class="formula-filled">N<sub>c,Rd</sub> = ${fmtVal(NcRd_d, 1)} ${fUnit} &nbsp; (f<sub>y</sub> = ${fy} MPa, &gamma;<sub>M0</sub> = ${gM0})</div>
       <div class="formula">UC = N<sub>Ed</sub> / N<sub>c,Rd</sub> = ${fmtVal(NEd_d, 1)} / ${fmtVal(NcRd_d, 1)} = <strong style="color:${ucColor(r.UC_N)}">${fmtVal(r.UC_N)}</strong></div>
     </div>
 
     <div class="check-block">
-      <div class="check-title">Bending Resistance — EN 1993-1-1, 6.2.5</div>
+      <div class="check-title">Bending Resistance — NEN-EN 1993-1-1, 6.2.5</div>
       <div class="formula">M<sub>c,Rd</sub> = W<sub>el</sub> &middot; f<sub>y</sub> / &gamma;<sub>M0</sub></div>
       <div class="formula-filled">M<sub>c,Rd</sub> = ${fmtVal(McRd_d, 2)} ${mUnit}</div>
       <div class="formula">UC = M<sub>Ed</sub> / M<sub>c,Rd</sub> = ${fmtVal(MEd_d, 2)} / ${fmtVal(McRd_d, 2)} = <strong style="color:${ucColor(r.UC_M)}">${fmtVal(r.UC_M)}</strong></div>
     </div>
 
     <div class="check-block">
-      <div class="check-title">Shear Resistance — EN 1993-1-1, 6.2.6</div>
+      <div class="check-title">Shear Resistance — NEN-EN 1993-1-1, 6.2.6</div>
       <div class="formula">V<sub>c,Rd</sub> = A<sub>v</sub> &middot; (f<sub>y</sub> / &radic;3) / &gamma;<sub>M0</sub></div>
       <div class="formula-filled">V<sub>c,Rd</sub> = ${fmtVal(VcRd_d, 1)} ${fUnit}</div>
       <div class="formula">UC = V<sub>Ed</sub> / V<sub>c,Rd</sub> = ${fmtVal(VEd_d, 1)} / ${fmtVal(VcRd_d, 1)} = <strong style="color:${ucColor(r.UC_V)}">${fmtVal(r.UC_V)}</strong></div>
     </div>
 
     <div class="check-block">
-      <div class="check-title">Combined M + N — EN 1993-1-1, 6.2.8</div>
+      <div class="check-title">Combined M + N — NEN-EN 1993-1-1, 6.2.8</div>
       <div class="formula">N<sub>Ed</sub> / N<sub>c,Rd</sub> + M<sub>Ed</sub> / M<sub>c,Rd</sub> &le; 1.0</div>
       <div class="formula-filled">${fmtVal(r.UC_N)} + ${fmtVal(r.UC_M)} = <strong style="color:${ucColor(r.UC_MN)}">${fmtVal(r.UC_MN)}</strong></div>
     </div>
 
     <div class="check-block">
-      <div class="check-title">Combined M + V — EN 1993-1-1, 6.2.10</div>
+      <div class="check-title">Combined M + V — NEN-EN 1993-1-1, 6.2.10</div>
       <div class="formula">${r.UC_MV > r.UC_M ? `V<sub>Ed</sub> &gt; 0.5 V<sub>c,Rd</sub> &rarr; reduced M<sub>v,Rd</sub>` : `V<sub>Ed</sub> &le; 0.5 V<sub>c,Rd</sub> &rarr; no reduction needed`}</div>
       <div class="formula-filled">UC = <strong style="color:${ucColor(r.UC_MV)}">${fmtVal(r.UC_MV)}</strong></div>
     </div>
 
     <div class="check-result ${r.status === 'OK' ? 'result-ok' : 'result-fail'}">
-      Governing: ${r.governingCheck} &mdash; UC<sub>max</sub> = ${fmtVal(r.UC_max)} &mdash; <strong>${r.status}</strong>
+      Governing: ${r.governingCheck}${r.governingLocation ? ` at x = ${(r.governingLocation.position * 1000).toFixed(0)}mm (${r.governingLocation.locationType})` : ''} &mdash; UC<sub>max</sub> = ${fmtVal(r.UC_max)} &mdash; <strong>${r.status}</strong>
     </div>
   </div>`;
 }
@@ -299,7 +299,7 @@ ${Array.from(result.beamForces.values()).map(f => {
 ` : `<h2>${nextSection()}. Analysis Results</h2><p style="color:#94a3b8">No analysis results available. Run the solver first.</p>`}
 
 ${steelResults.length > 0 ? `
-<h2>${nextSection()}. Steel Section Check — EN 1993-1-1</h2>
+<h2>${nextSection()}. Steel Section Check — NEN-EN 1993-1-1</h2>
 <p style="color:#64748b;margin-bottom:8px">Steel grade: ${steelGrade.name}, f<sub>y</sub> = ${steelGrade.fy} MPa, &gamma;<sub>M0</sub> = ${steelGrade.gammaM0}</p>
 
 <h3>Summary</h3>

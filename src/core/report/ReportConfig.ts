@@ -26,7 +26,7 @@ export type ReportSectionType =
   | 'result_forces_M'     // Bending moment diagram
   | 'result_envelope'     // Envelope diagrams
 
-  // Steel Checks (EN 1993-1-1)
+  // Steel Checks (NEN-EN 1993-1-1)
   | 'check_steel_overview'  // UC overview with graphics
   | 'check_steel_detailed'  // Full formula derivations
 
@@ -37,7 +37,7 @@ export type ReportSectionType =
   // Future
   | 'check_timber'          // EN 1995
   | 'check_masonry'         // EN 1996
-  | 'check_connections'     // EN 1993-1-8
+  | 'check_connections'     // NEN-EN 1993-1-8
   | 'plates_stress'         // Plate stress contours
   | 'plates_reinforcement'; // Plate reinforcement design
 

@@ -15,9 +15,9 @@ export const InputGeometrySection: React.FC<ReportSectionProps & { canvasCapture
   const { state } = useFEM();
   const geometryCapture = state.canvasCaptures.get('geometry');
 
-  // Count elements
-  const triangleCount = Array.from(mesh.elements.values()).filter(e => e.nodeIds.length === 3).length;
-  const quadCount = Array.from(mesh.elements.values()).filter(e => e.nodeIds.length === 4).length;
+  // Element counting available if needed for summary
+  // const triangleCount = Array.from(mesh.elements.values()).filter(e => e.nodeIds.length === 3).length;
+  // const quadCount = Array.from(mesh.elements.values()).filter(e => e.nodeIds.length === 4).length;
 
   // Count loads
   let pointLoadCount = 0;
@@ -62,55 +62,23 @@ export const InputGeometrySection: React.FC<ReportSectionProps & { canvasCapture
         </p>
       )}
 
-      {/* Model summary */}
-      <div style={{ marginTop: 16 }}>
-        <table className="report-table" style={{ maxWidth: 400 }}>
-          <thead>
-            <tr style={{ background: config.primaryColor }}>
-              <th colSpan={2}>Model Summary</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Nodes</td>
-              <td className="numeric">{mesh.nodes.size}</td>
-            </tr>
-            {mesh.beamElements.size > 0 && (
-              <tr>
-                <td>Beam Elements</td>
-                <td className="numeric">{mesh.beamElements.size}</td>
-              </tr>
-            )}
-            {triangleCount > 0 && (
-              <tr>
-                <td>Triangle Elements</td>
-                <td className="numeric">{triangleCount}</td>
-              </tr>
-            )}
-            {quadCount > 0 && (
-              <tr>
-                <td>Quad Elements</td>
-                <td className="numeric">{quadCount}</td>
-              </tr>
-            )}
-            <tr>
-              <td>Supports</td>
-              <td className="numeric">{supportCount}</td>
-            </tr>
-            {pointLoadCount > 0 && (
-              <tr>
-                <td>Point Loads</td>
-                <td className="numeric">{pointLoadCount}</td>
-              </tr>
-            )}
-            {distLoadCount > 0 && (
-              <tr>
-                <td>Distributed Loads</td>
-                <td className="numeric">{distLoadCount}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* Axis system and sign conventions */}
+      <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+        <p style={{ fontWeight: 600, fontSize: '10pt', marginBottom: 8, color: config.primaryColor }}>
+          Coordinate System &amp; Sign Conventions
+        </p>
+        <div style={{ display: 'flex', gap: 24, fontSize: '9pt' }}>
+          <div>
+            <strong>Global Axes:</strong><br/>
+            X = horizontal (positive right)<br/>
+            Y = vertical (positive up)
+          </div>
+          <div>
+            <strong>Sign Conventions:</strong><br/>
+            Positive moment = tension at bottom<br/>
+            Positive shear = clockwise rotation
+          </div>
+        </div>
       </div>
 
       {/* Legend */}

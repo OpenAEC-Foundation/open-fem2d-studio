@@ -14,8 +14,6 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
   const { t } = useI18n();
   const { state, dispatch } = useFEM();
   const {
-    showDeformed,
-    result,
     gridSize,
     snapToGrid,
     showProfileNames,
@@ -27,8 +25,6 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
     showNodeLabels,
     showMemberLabels,
     showElementTypes,
-    forceUnit,
-    displacementUnit,
     structuralGrid,
     activeLayerId,
     mesh
@@ -282,51 +278,6 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
           </div>
         </div>
 
-        {/* Units */}
-        <div className="panel-section">
-          <div className="section-title">{t('display.units')}</div>
-          <div className="slider-row">
-            <span className="slider-label">{t('display.force')}</span>
-            <select
-              className="unit-select"
-              value={forceUnit}
-              onChange={(e) => dispatch({ type: 'SET_FORCE_UNIT', payload: e.target.value as 'N' | 'kN' | 'MN' })}
-            >
-              <option value="kN">kN</option>
-              <option value="N">N</option>
-              <option value="MN">MN</option>
-            </select>
-          </div>
-          <div className="slider-row">
-            <span className="slider-label">{t('display.displacement')}</span>
-            <select
-              className="unit-select"
-              value={displacementUnit}
-              onChange={(e) => dispatch({ type: 'SET_DISPLACEMENT_UNIT', payload: e.target.value as 'mm' | 'm' })}
-            >
-              <option value="mm">mm</option>
-              <option value="m">m</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Results Visibility */}
-        {result && (
-          <div className="panel-section">
-            <div className="section-title">{t('display.results')}</div>
-
-            <div className="toggle-row">
-              <label className="toggle-label">
-                <input
-                  type="checkbox"
-                  checked={showDeformed}
-                  onChange={(e) => dispatch({ type: 'SET_SHOW_DEFORMED', payload: e.target.checked })}
-                />
-                <span className="toggle-text">{t('display.deformedShape')}</span>
-              </label>
-            </div>
-          </div>
-        )}
 
 
       </div>

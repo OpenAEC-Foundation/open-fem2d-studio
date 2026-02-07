@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { ReportSectionProps } from '../ReportPreview';
+import { useFEM } from '../../../context/FEMContext';
 import { STEEL_GRADES } from '../../../core/standards/EurocodeNL';
 import { checkAllBeams, ISectionProperties } from '../../../core/standards/SteelCheck';
 import { calculateBeamLength } from '../../../core/fem/Beam';
@@ -14,6 +15,9 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
   result,
   sectionNumber,
 }) => {
+  const { state } = useFEM();
+  const { stressUnit, forceUnit, momentUnit, lengthUnit } = state;
+
   if (!result || result.beamForces.size === 0) {
     return (
       <div className="report-section" id="section-check_steel_detailed">
@@ -107,19 +111,19 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
               </h4>
 
               <p style={{ fontSize: '9pt', color: '#666', marginBottom: 12 }}>
-                L = {(length * 1000).toFixed(0)} mm |{' '}
-                f<sub>y</sub> = {grade.fy} MPa |{' '}
+                L = {(length * 1000).toFixed(0)} {lengthUnit === 'm' ? 'mm' : lengthUnit} |{' '}
+                f<sub>y</sub> = {grade.fy} {stressUnit} |{' '}
                 γ<sub>M0</sub> = {grade.gammaM0}
               </p>
 
               {/* 6.2.4 Axial */}
               <div className="check-block">
-                <div className="check-block-title">Axial Resistance — EN 1993-1-1, 6.2.4</div>
+                <div className="check-block-title">Axial Resistance — NEN-EN 1993-1-1, 6.2.4</div>
                 <div className="report-formula" style={{ borderLeftColor: config.primaryColor }}>
-                  N<sub>c,Rd</sub> = A · f<sub>y</sub> / γ<sub>M0</sub> = {formatForce(r.NcRd)} kN
+                  N<sub>c,Rd</sub> = A · f<sub>y</sub> / γ<sub>M0</sub> = {formatForce(r.NcRd)} {forceUnit}
                 </div>
                 <p>
-                  N<sub>Ed</sub> = {formatForce(r.NEd)} kN →
+                  N<sub>Ed</sub> = {formatForce(r.NEd)} {forceUnit} →
                   UC = N<sub>Ed</sub> / N<sub>c,Rd</sub> ={' '}
                   <strong style={{ color: getUCColor(r.UC_N) }}>{r.UC_N.toFixed(3)}</strong>
                 </p>
@@ -127,12 +131,12 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
 
               {/* 6.2.5 Bending */}
               <div className="check-block">
-                <div className="check-block-title">Bending Resistance — EN 1993-1-1, 6.2.5</div>
+                <div className="check-block-title">Bending Resistance — NEN-EN 1993-1-1, 6.2.5</div>
                 <div className="report-formula" style={{ borderLeftColor: config.primaryColor }}>
-                  M<sub>c,Rd</sub> = W<sub>el</sub> · f<sub>y</sub> / γ<sub>M0</sub> = {formatMoment(r.McRd)} kNm
+                  M<sub>c,Rd</sub> = W<sub>el</sub> · f<sub>y</sub> / γ<sub>M0</sub> = {formatMoment(r.McRd)} {momentUnit}
                 </div>
                 <p>
-                  M<sub>Ed</sub> = {formatMoment(r.MEd)} kNm →
+                  M<sub>Ed</sub> = {formatMoment(r.MEd)} {momentUnit} →
                   UC = M<sub>Ed</sub> / M<sub>c,Rd</sub> ={' '}
                   <strong style={{ color: getUCColor(r.UC_M) }}>{r.UC_M.toFixed(3)}</strong>
                 </p>
@@ -140,12 +144,12 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
 
               {/* 6.2.6 Shear */}
               <div className="check-block">
-                <div className="check-block-title">Shear Resistance — EN 1993-1-1, 6.2.6</div>
+                <div className="check-block-title">Shear Resistance — NEN-EN 1993-1-1, 6.2.6</div>
                 <div className="report-formula" style={{ borderLeftColor: config.primaryColor }}>
-                  V<sub>c,Rd</sub> = A<sub>v</sub> · (f<sub>y</sub> / √3) / γ<sub>M0</sub> = {formatForce(r.VcRd)} kN
+                  V<sub>c,Rd</sub> = A<sub>v</sub> · (f<sub>y</sub> / √3) / γ<sub>M0</sub> = {formatForce(r.VcRd)} {forceUnit}
                 </div>
                 <p>
-                  V<sub>Ed</sub> = {formatForce(r.VEd)} kN →
+                  V<sub>Ed</sub> = {formatForce(r.VEd)} {forceUnit} →
                   UC = V<sub>Ed</sub> / V<sub>c,Rd</sub> ={' '}
                   <strong style={{ color: getUCColor(r.UC_V) }}>{r.UC_V.toFixed(3)}</strong>
                 </p>
@@ -153,7 +157,7 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
 
               {/* 6.2.8 Combined M+N */}
               <div className="check-block">
-                <div className="check-block-title">Combined Bending + Axial — EN 1993-1-1, 6.2.8</div>
+                <div className="check-block-title">Combined Bending + Axial — NEN-EN 1993-1-1, 6.2.8</div>
                 <div className="report-formula" style={{ borderLeftColor: config.primaryColor }}>
                   N<sub>Ed</sub>/N<sub>c,Rd</sub> + M<sub>Ed</sub>/M<sub>c,Rd</sub> ≤ 1.0
                 </div>
@@ -165,7 +169,7 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
 
               {/* 6.2.10 Combined M+V */}
               <div className="check-block">
-                <div className="check-block-title">Combined Bending + Shear — EN 1993-1-1, 6.2.10</div>
+                <div className="check-block-title">Combined Bending + Shear — NEN-EN 1993-1-1, 6.2.10</div>
                 <p style={{ fontSize: '9pt' }}>
                   {r.VEd > 0.5 * r.VcRd
                     ? `V_Ed > 0.5·V_c,Rd → reduced bending resistance`
@@ -180,9 +184,9 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
               {/* Buckling check (if applicable) */}
               {r.UC_buckling > 0 && (
                 <div className="check-block">
-                  <div className="check-block-title">Member Buckling — EN 1993-1-1, 6.3.1</div>
+                  <div className="check-block-title">Member Buckling — NEN-EN 1993-1-1, 6.3.1</div>
                   <div className="report-formula" style={{ borderLeftColor: config.primaryColor }}>
-                    N<sub>b,Rd</sub> = χ · A · f<sub>y</sub> / γ<sub>M1</sub> = {formatForce(r.NbRd)} kN
+                    N<sub>b,Rd</sub> = χ · A · f<sub>y</sub> / γ<sub>M1</sub> = {formatForce(r.NbRd)} {forceUnit}
                   </div>
                   <p>
                     UC = N<sub>Ed</sub> / N<sub>b,Rd</sub> ={' '}
@@ -194,9 +198,9 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
               {/* LTB check (if applicable) */}
               {r.UC_LTB > 0 && (
                 <div className="check-block">
-                  <div className="check-block-title">Lateral Torsional Buckling — EN 1993-1-1, 6.3.2</div>
+                  <div className="check-block-title">Lateral Torsional Buckling — NEN-EN 1993-1-1, 6.3.2</div>
                   <div className="report-formula" style={{ borderLeftColor: config.primaryColor }}>
-                    M<sub>b,Rd</sub> = χ<sub>LT</sub> · W<sub>y</sub> · f<sub>y</sub> / γ<sub>M1</sub> = {formatMoment(r.MbRd)} kNm
+                    M<sub>b,Rd</sub> = χ<sub>LT</sub> · W<sub>y</sub> · f<sub>y</sub> / γ<sub>M1</sub> = {formatMoment(r.MbRd)} {momentUnit}
                   </div>
                   <p>
                     UC = M<sub>Ed</sub> / M<sub>b,Rd</sub> ={' '}
@@ -207,7 +211,10 @@ export const SteelCheckDetailedSection: React.FC<ReportSectionProps> = ({
 
               {/* Result */}
               <div className={`check-result ${r.status === 'OK' ? 'ok' : 'fail'}`}>
-                Governing: {r.governingCheck} —
+                Governing: {r.governingCheck}
+                {r.governingLocation && (
+                  <> at x = {(r.governingLocation.position * 1000).toFixed(0)}mm ({r.governingLocation.locationType})</>
+                )} —
                 UC<sub>max</sub> = {r.UC_max.toFixed(3)} —{' '}
                 <strong>{r.status}</strong>
               </div>

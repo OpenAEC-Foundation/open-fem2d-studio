@@ -1,6 +1,6 @@
 import { Mesh } from '../fem/Mesh';
 import { ILoadCase, ILoadCombination } from '../fem/LoadCase';
-import { IProjectInfo, IGraphState } from '../../context/FEMContext';
+import { IProjectInfo, IGraphState, IVersioningState } from '../../context/FEMContext';
 import { IStructuralGrid } from '../fem/StructuralGrid';
 
 export interface IProjectFile {
@@ -11,6 +11,7 @@ export interface IProjectFile {
   loadCombinations: { id: number; name: string; type: string; factors: [number, number][] }[];
   structuralGrid?: IStructuralGrid;
   graphState?: IGraphState | null;
+  versioning?: IVersioningState;
 }
 
 export function serializeProject(
@@ -19,7 +20,8 @@ export function serializeProject(
   loadCombinations: ILoadCombination[],
   projectInfo: IProjectInfo,
   structuralGrid?: IStructuralGrid,
-  graphState?: IGraphState | null
+  graphState?: IGraphState | null,
+  versioning?: IVersioningState
 ): string {
   const file: IProjectFile = {
     version: '1.0.0',
@@ -34,6 +36,7 @@ export function serializeProject(
     })),
     structuralGrid,
     graphState: graphState ?? undefined,
+    versioning,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -45,6 +48,7 @@ export function deserializeProject(json: string): {
   projectInfo: IProjectInfo;
   structuralGrid?: IStructuralGrid;
   graphState?: IGraphState | null;
+  versioning?: IVersioningState;
 } {
   const file: IProjectFile = JSON.parse(json);
 
@@ -64,5 +68,12 @@ export function deserializeProject(json: string): {
 
   const graphState = file.graphState ?? null;
 
-  return { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState };
+  // Versioning state with defaults
+  const versioning = file.versioning ?? {
+    versions: [],
+    currentBranch: 'main',
+    branches: ['main']
+  };
+
+  return { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState, versioning };
 }
