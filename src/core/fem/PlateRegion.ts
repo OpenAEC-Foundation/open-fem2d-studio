@@ -6,7 +6,7 @@
 import { Mesh } from './Mesh';
 import { INode, IPlateRegion, IEdgeLoad } from './types';
 import { triangulatePolygon } from '../mesher/TriangleService';
-import { pairTrianglesToQuads, pairTrianglesToQuadsOnly } from '../mesher/TriToQuad';
+// Triangle meshing only - no quad pairing
 
 export interface PlateRegionConfig {
   x: number;
@@ -26,7 +26,7 @@ export interface PlateRegionConfig {
  */
 export function generatePlateRegionMesh(mesh: Mesh, config: PlateRegionConfig): IPlateRegion {
   const { x, y, width, height, divisionsX, divisionsY, materialId, thickness } = config;
-  const elementType = config.elementType ?? 'quad';
+  const elementType = config.elementType ?? 'triangle';
   const nx = divisionsX;
   const ny = divisionsY;
 
@@ -432,7 +432,7 @@ export function generatePolygonPlateMesh(mesh: Mesh, config: PolygonPlateConfig)
     }
   }
 
-  // Create quad elements for kept cells
+  // Create triangle elements for kept cells (2 triangles per grid cell)
   const allElementIds: number[] = [];
   for (let j = 0; j < ny; j++) {
     for (let i = 0; i < nx; i++) {
@@ -442,8 +442,10 @@ export function generatePolygonPlateMesh(mesh: Mesh, config: PolygonPlateConfig)
       const n2 = nodeGrid[j + 1][i + 1]!; // TR
       const n3 = nodeGrid[j + 1][i]!;   // TL
 
-      const q = mesh.addQuadElement([n0, n1, n2, n3], materialId, thickness);
-      if (q) allElementIds.push(q.id);
+      const t1 = mesh.addTriangleElement([n0, n1, n2], materialId, thickness);
+      if (t1) allElementIds.push(t1.id);
+      const t2 = mesh.addTriangleElement([n0, n2, n3], materialId, thickness);
+      if (t2) allElementIds.push(t2.id);
     }
   }
 
@@ -540,7 +542,7 @@ export function generatePolygonPlateMesh(mesh: Mesh, config: PolygonPlateConfig)
     divisionsY: ny,
     materialId,
     thickness,
-    elementType: 'quad',
+    elementType: 'triangle',
     nodeIds: allNodeIds,
     cornerNodeIds,
     elementIds: allElementIds,
@@ -564,7 +566,7 @@ export function generatePolygonPlateMesh(mesh: Mesh, config: PolygonPlateConfig)
  * Also creates IEdge objects for each polygon edge.
  */
 export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlateConfig): Promise<IPlateRegion> {
-  const { outline, voids, meshSize, materialId, thickness, quadOnly } = config;
+  const { outline, voids, meshSize, materialId, thickness } = config;
   console.log('[generatePolygonPlateMeshV2] Starting CDT with outline:', outline.length, 'vertices, meshSize:', meshSize);
 
   // Compute bounding box
@@ -594,28 +596,9 @@ export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlat
     segments: triResult.segments.length,
   });
 
-  // Pair triangles into quads (optionally subdivide remaining triangles for quad-only mesh)
-  let meshPoints: { x: number; y: number }[];
-  let quads: [number, number, number, number][];
-  let remainingTriangles: [number, number, number][];
-
-  if (quadOnly) {
-    const quadOnlyResult = pairTrianglesToQuadsOnly({
-      points: triResult.points,
-      triangles: triResult.triangles,
-    });
-    meshPoints = quadOnlyResult.points;
-    quads = quadOnlyResult.quads;
-    remainingTriangles = [];
-  } else {
-    const pairResult = pairTrianglesToQuads({
-      points: triResult.points,
-      triangles: triResult.triangles,
-    });
-    meshPoints = triResult.points;
-    quads = pairResult.quads;
-    remainingTriangles = pairResult.remainingTriangles;
-  }
+  // Use triangles directly from CDT (no quad pairing)
+  const meshPoints = triResult.points;
+  const triangles = triResult.triangles;
 
   // Create mesh nodes (reuse existing via findNodeAt)
   const pointToNodeId = new Map<number, number>();
@@ -636,21 +619,9 @@ export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlat
     }
   }
 
-  // Create quad elements
+  // Create triangle elements
   const allElementIds: number[] = [];
-  for (const quad of quads) {
-    const nids: [number, number, number, number] = [
-      pointToNodeId.get(quad[0])!,
-      pointToNodeId.get(quad[1])!,
-      pointToNodeId.get(quad[2])!,
-      pointToNodeId.get(quad[3])!,
-    ];
-    const q = mesh.addQuadElement(nids, materialId, thickness);
-    if (q) allElementIds.push(q.id);
-  }
-
-  // Create triangle elements for remaining unpaired triangles (only in mixed mode)
-  for (const tri of remainingTriangles) {
+  for (const tri of triangles) {
     const nids: [number, number, number] = [
       pointToNodeId.get(tri[0])!,
       pointToNodeId.get(tri[1])!,
@@ -786,7 +757,7 @@ export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlat
     divisionsY: 0,
     materialId,
     thickness,
-    elementType: quadOnly ? 'quad' : 'mixed',
+    elementType: 'triangle',
     nodeIds: allNodeIds,
     cornerNodeIds,
     elementIds: allElementIds,
@@ -802,7 +773,7 @@ export async function generatePolygonPlateMeshV2(mesh: Mesh, config: PolygonPlat
     voids: voids ? voids.map(v => [...v]) : undefined,
     meshSize,
     boundaryNodeIds,
-    quadOnly,
+    quadOnly: false,
   };
 
   return plate;
@@ -1261,15 +1232,6 @@ export async function remeshPolygonPlateRegion(mesh: Mesh, plateId: number, drag
     triangles: triResult.triangles.length,
   });
 
-  const pairResult = pairTrianglesToQuads({
-    points: triResult.points,
-    triangles: triResult.triangles,
-  });
-  console.log('[remeshPolygonPlateRegion] Pair result:', {
-    quads: pairResult.quads.length,
-    remainingTriangles: pairResult.remainingTriangles.length,
-  });
-
   // Create mesh nodes (reuse existing via findNodeAt)
   const pointToNodeId = new Map<number, number>();
   const allNodeIds: number[] = [];
@@ -1289,21 +1251,9 @@ export async function remeshPolygonPlateRegion(mesh: Mesh, plateId: number, drag
     }
   }
 
-  // Create quad elements
+  // Create triangle elements
   const allElementIds: number[] = [];
-  for (const quad of pairResult.quads) {
-    const nids: [number, number, number, number] = [
-      pointToNodeId.get(quad[0])!,
-      pointToNodeId.get(quad[1])!,
-      pointToNodeId.get(quad[2])!,
-      pointToNodeId.get(quad[3])!,
-    ];
-    const q = mesh.addQuadElement(nids, plate.materialId, plate.thickness);
-    if (q) allElementIds.push(q.id);
-  }
-
-  // Create triangle elements for remaining unpaired triangles
-  for (const tri of pairResult.remainingTriangles) {
+  for (const tri of triResult.triangles) {
     const nids: [number, number, number] = [
       pointToNodeId.get(tri[0])!,
       pointToNodeId.get(tri[1])!,
@@ -1447,7 +1397,7 @@ export async function remeshPolygonPlateRegion(mesh: Mesh, plateId: number, drag
   plate.nodeIds = allNodeIds;
   plate.cornerNodeIds = newCornerNodeIds;
   plate.elementIds = allElementIds;
-  plate.elementType = 'mixed';
+  plate.elementType = 'triangle';
   plate.edges = {
     bottom: { nodeIds: bottomEdge },
     top: { nodeIds: topEdge },
@@ -1613,15 +1563,6 @@ export async function remeshPolygonPlateRegionFromContour(
     segments: triResult.segments.length,
   });
 
-  const pairResult = pairTrianglesToQuads({
-    points: triResult.points,
-    triangles: triResult.triangles,
-  });
-  console.log('[remeshPolygonPlateRegionFromContour] Pair result:', {
-    quads: pairResult.quads.length,
-    remainingTriangles: pairResult.remainingTriangles.length,
-  });
-
   // Create mesh nodes
   const pointToNodeId = new Map<number, number>();
   const allNodeIds: number[] = [];
@@ -1650,17 +1591,9 @@ export async function remeshPolygonPlateRegionFromContour(
     }
   }
 
-  // Create elements
+  // Create triangle elements
   const allElementIds: number[] = [];
-  for (const quad of pairResult.quads) {
-    const nids: [number, number, number, number] = [
-      pointToNodeId.get(quad[0])!, pointToNodeId.get(quad[1])!,
-      pointToNodeId.get(quad[2])!, pointToNodeId.get(quad[3])!,
-    ];
-    const q = mesh.addQuadElement(nids, plate.materialId, plate.thickness);
-    if (q) allElementIds.push(q.id);
-  }
-  for (const tri of pairResult.remainingTriangles) {
+  for (const tri of triResult.triangles) {
     const nids: [number, number, number] = [
       pointToNodeId.get(tri[0])!, pointToNodeId.get(tri[1])!, pointToNodeId.get(tri[2])!,
     ];
@@ -1788,7 +1721,7 @@ export async function remeshPolygonPlateRegionFromContour(
     findClosest(maxX, maxY), findClosest(minX, maxY),
   ];
   plate.elementIds = allElementIds;
-  plate.elementType = 'mixed';
+  plate.elementType = 'triangle';
   plate.edges = {
     bottom: { nodeIds: bottomEdge }, top: { nodeIds: topEdge },
     left: { nodeIds: leftEdge }, right: { nodeIds: rightEdge },

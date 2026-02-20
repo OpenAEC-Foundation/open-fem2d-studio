@@ -290,6 +290,29 @@ export function assembleGlobalStiffnessMatrix(
         console.warn(`Skipping element ${element.id} in mixed analysis: ${e}`);
       }
     }
+    // 3. Stabilize rotational DOFs for plate-only nodes (no beam connected)
+    // Plate elements expanded to 3-DOF have zero θ-stiffness; add small penalty
+    // to prevent singularity for nodes not connected to any beam
+    const beamNodeIds = new Set<number>();
+    for (const beam of mesh.beamElements.values()) {
+      for (const nid of beam.nodeIds) beamNodeIds.add(nid);
+    }
+    // Find a representative stiffness magnitude for scaling
+    let maxDiag = 0;
+    for (let i = 0; i < numDofs; i++) {
+      const d = Math.abs(K.get(i, i));
+      if (d > maxDiag) maxDiag = d;
+    }
+    const rotStab = maxDiag * 1e-6; // small stabilization
+    for (const [nodeId, nodeIndex] of nodeIdToIndex.entries()) {
+      if (!beamNodeIds.has(nodeId)) {
+        // This node has no beam connection → θ DOF has zero stiffness
+        const thetaDof = nodeIndex * 3 + 2;
+        if (Math.abs(K.get(thetaDof, thetaDof)) < 1e-20) {
+          K.addAt(thetaDof, thetaDof, rotStab);
+        }
+      }
+    }
   } else {
     // Assemble triangle and quad elements for plane stress/strain
     for (const element of mesh.elements.values()) {

@@ -56,9 +56,6 @@ export function CommandPalette({ onToggleDialog }: CommandPaletteProps) {
     { id: 'importIFC', label: t('cmd.importIFC'), category: t('cmd.catFile'), action: () => dialog('importIFC') },
     { id: 'exportDXF', label: t('cmd.exportDXF'), category: t('cmd.catFile'), action: () => dialog('exportDXF') },
     { id: 'exportIFC', label: t('cmd.exportIFC'), category: t('cmd.catFile'), action: () => dialog('exportIFC') },
-    { id: 'exportHtml', label: t('cmd.exportHTML'), category: t('cmd.catFile'), action: () => dialog('exportHtml') },
-    { id: 'exportPdf', label: t('cmd.exportPDF'), category: t('cmd.catFile'), action: () => dialog('exportPdf') },
-    { id: 'print', label: t('cmd.print'), category: t('cmd.catFile'), shortcut: 'Ctrl+P', action: () => dialog('print') },
 
     // ══════════════════════════════════════════════════════════════════
     // ── DRAWING TOOLS ─────────────────────────────────────────────────
@@ -92,7 +89,6 @@ export function CommandPalette({ onToggleDialog }: CommandPaletteProps) {
     { id: 'addMoment', label: t('cmd.addMoment'), category: t('cmd.catLoads'), action: () => setTool('addLoad') },
     { id: 'addThermalLoad', label: t('cmd.addThermalLoad'), category: t('cmd.catLoads'), action: () => setTool('addThermalLoad') },
     { id: 'removeLoads', label: t('cmd.removeLoads'), category: t('cmd.catLoads'), action: () => dialog('removeLoads') },
-    { id: 'loadGenerator', label: t('cmd.loadGenerator'), category: t('cmd.catLoads'), action: () => dialog('loadGenerator') },
 
     // ══════════════════════════════════════════════════════════════════
     // ── EDIT OPERATIONS ───────────────────────────────────────────────
@@ -132,7 +128,6 @@ export function CommandPalette({ onToggleDialog }: CommandPaletteProps) {
     { id: 'viewGeometry', label: t('cmd.viewGeometry'), category: t('cmd.catView'), shortcut: '1', action: () => closeAndRun(() => dispatch({ type: 'SET_VIEW_MODE', payload: 'geometry' })) },
     { id: 'viewLoads', label: t('cmd.viewLoads'), category: t('cmd.catView'), shortcut: '2', action: () => closeAndRun(() => dispatch({ type: 'SET_VIEW_MODE', payload: 'loads' })) },
     { id: 'viewResults', label: t('cmd.viewResults'), category: t('cmd.catView'), shortcut: '3', action: () => closeAndRun(() => dispatch({ type: 'SET_VIEW_MODE', payload: 'results' })) },
-    { id: 'view3dMode', label: t('cmd.view3DMode'), category: t('cmd.catView'), shortcut: '4', action: () => closeAndRun(() => dispatch({ type: 'SET_VIEW_MODE', payload: '3d' })) },
 
     // ══════════════════════════════════════════════════════════════════
     // ── VIEW OPERATIONS ───────────────────────────────────────────────
@@ -208,26 +203,14 @@ export function CommandPalette({ onToggleDialog }: CommandPaletteProps) {
     { id: 'analysisMixed', label: t('cmd.analysisMixed'), category: t('cmd.catAnalysis'), action: () => closeAndRun(() => dispatch({ type: 'SET_ANALYSIS_TYPE', payload: 'mixed_beam_plate' })) },
 
     // ══════════════════════════════════════════════════════════════════
-    // ── CODE CHECKS ───────────────────────────────────────────────────
-    // ══════════════════════════════════════════════════════════════════
-    { id: 'steelCheck', label: t('cmd.steelCheck'), category: t('cmd.catCodeCheck'), action: () => dialog('steelCheck') },
-    { id: 'steelConnection', label: t('cmd.steelConnection'), category: t('cmd.catCodeCheck'), action: () => dialog('steelConnection') },
-    { id: 'concreteCheck', label: t('cmd.concreteCheck'), category: t('cmd.catCodeCheck'), action: () => dialog('concreteCheck') },
-    { id: 'concreteDesign', label: t('cmd.concreteDesign'), category: t('cmd.catCodeCheck'), action: () => dialog('concreteDesign') },
-    { id: 'checkAllBeams', label: t('cmd.checkAllBeams'), category: t('cmd.catCodeCheck'), action: () => dialog('checkAllBeams') },
-    { id: 'setCodeCheckBeam', label: t('cmd.setCodeCheckBeam'), category: t('cmd.catCodeCheck'), action: () => dialog('setCodeCheckBeam') },
-
-    // ══════════════════════════════════════════════════════════════════
     // ── LOAD CASES ────────────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════════════
     { id: 'loadCases', label: t('cmd.loadCases'), category: t('cmd.catLoadCases'), action: () => dialog('loadCases') },
-    { id: 'combinations', label: t('cmd.combinations'), category: t('cmd.catLoadCases'), action: () => dialog('combinations') },
     { id: 'addLoadCase', label: t('cmd.addLoadCase'), category: t('cmd.catLoadCases'), action: () => dialog('addLoadCase') },
     { id: 'deleteLoadCase', label: t('cmd.deleteLoadCase'), category: t('cmd.catLoadCases'), action: () => dialog('deleteLoadCase') },
     { id: 'renameLoadCase', label: t('cmd.renameLoadCase'), category: t('cmd.catLoadCases'), action: () => dialog('renameLoadCase') },
     { id: 'nextLoadCase', label: t('cmd.nextLoadCase'), category: t('cmd.catLoadCases'), shortcut: 'Ctrl+Right', action: () => dialog('nextLoadCase') },
     { id: 'prevLoadCase', label: t('cmd.prevLoadCase'), category: t('cmd.catLoadCases'), shortcut: 'Ctrl+Left', action: () => dialog('prevLoadCase') },
-    { id: 'addCombination', label: t('cmd.addCombination'), category: t('cmd.catLoadCases'), action: () => dialog('addCombination') },
 
     // ══════════════════════════════════════════════════════════════════
     // ── DIALOGS ───────────────────────────────────────────────────────
@@ -235,18 +218,14 @@ export function CommandPalette({ onToggleDialog }: CommandPaletteProps) {
     { id: 'materials', label: t('cmd.materials'), category: t('cmd.catDialogs'), action: () => dialog('materials') },
     { id: 'projectInfo', label: t('cmd.projectInfo'), category: t('cmd.catDialogs'), action: () => dialog('projectInfo') },
     { id: 'grids', label: t('cmd.grids'), category: t('cmd.catDialogs'), action: () => dialog('grids') },
-    { id: 'standards', label: t('cmd.standards'), category: t('cmd.catDialogs'), action: () => dialog('standards') },
     { id: 'calcSettings', label: t('cmd.calcSettings'), category: t('cmd.catDialogs'), action: () => dialog('calcSettings') },
-    { id: 'reportSettings', label: t('cmd.reportSettings'), category: t('cmd.catDialogs'), action: () => dialog('reportSettings') },
 
     // ══════════════════════════════════════════════════════════════════
     // ── VIEWS / PANELS ────────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════════════
-    { id: 'view3d', label: t('cmd.view3D'), category: t('cmd.catViews'), action: () => dialog('view3d') },
-    { id: 'viewReport', label: t('cmd.viewReport'), category: t('cmd.catViews'), action: () => dialog('viewReport') },
     { id: 'viewTable', label: t('cmd.viewTable'), category: t('cmd.catViews'), action: () => dialog('viewTable') },
     { id: 'viewInsights', label: t('cmd.viewInsights'), category: t('cmd.catViews'), action: () => dialog('viewInsights') },
-    { id: 'viewVersions', label: t('cmd.viewVersions'), category: t('cmd.catViews'), action: () => dialog('viewVersions') },
+
     { id: 'viewGraph', label: t('cmd.viewGraph'), category: t('cmd.catViews'), action: () => dialog('viewGraph') },
     { id: 'viewAgent', label: t('cmd.viewAgent'), category: t('cmd.catViews'), action: () => dialog('viewAgent') },
     { id: 'viewConsole', label: t('cmd.viewConsole'), category: t('cmd.catViews'), action: () => dialog('viewConsole') },

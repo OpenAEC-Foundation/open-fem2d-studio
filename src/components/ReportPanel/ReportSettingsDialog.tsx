@@ -43,7 +43,7 @@ export const ReportSettingsDialog: React.FC<Props> = ({ onClose }) => {
     onClose();
   };
 
-  const categories: ReportSectionCategory[] = ['header', 'input', 'results', 'checks'];
+  const categories: ReportSectionCategory[] = ['header', 'input', 'results'];
 
   // Group sections by category
   const sectionsByCategory = config.sections.reduce((acc, section) => {
@@ -192,32 +192,6 @@ export const ReportSettingsDialog: React.FC<Props> = ({ onClose }) => {
                 <span>Show page footer</span>
               </label>
 
-              <h3>Check Settings</h3>
-              <label className="settings-field">
-                <span>Steel Grade</span>
-                <select
-                  value={config.steelGrade}
-                  onChange={e => setConfig({ ...config, steelGrade: e.target.value })}
-                >
-                  <option value="S235">S235 (fy = 235 MPa)</option>
-                  <option value="S275">S275 (fy = 275 MPa)</option>
-                  <option value="S355">S355 (fy = 355 MPa)</option>
-                  <option value="S450">S450 (fy = 440 MPa)</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>Deflection Limit (L/n)</span>
-                <select
-                  value={config.deflectionLimit}
-                  onChange={e => setConfig({ ...config, deflectionLimit: parseInt(e.target.value) })}
-                >
-                  <option value="150">L/150 (Industrial)</option>
-                  <option value="200">L/200 (Normal)</option>
-                  <option value="250">L/250 (Standard)</option>
-                  <option value="300">L/300 (Strict)</option>
-                  <option value="350">L/350 (Very Strict)</option>
-                </select>
-              </label>
             </div>
           </div>
         </div>

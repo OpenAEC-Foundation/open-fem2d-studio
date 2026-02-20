@@ -1,19 +1,18 @@
 /**
- * ReportPanel — Main report preview panel with navigation and A4-styled preview
+ * ReportPanel — Main report preview panel with navigation and settings sidebar
  */
 
 import React, { useState, useRef } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { ReportPreview } from './ReportPreview';
 import { getEnabledSections, CATEGORY_NAMES, ReportSectionCategory, IReportSection } from '../../core/report/ReportConfig';
-import { FileText, Settings, ChevronRight } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import './ReportPanel.css';
 
 export const ReportPanel: React.FC = () => {
   const { state, dispatch } = useFEM();
   const { reportConfig, mesh, result, projectInfo, loadCases, loadCombinations } = state;
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   const enabledSections = getEnabledSections(reportConfig);
@@ -80,20 +79,13 @@ export const ReportPanel: React.FC = () => {
     return acc;
   }, {} as Record<ReportSectionCategory, IReportSection[]>);
 
-  const categories: ReportSectionCategory[] = ['header', 'input', 'results', 'checks'];
+  const categories: ReportSectionCategory[] = ['header', 'input', 'results'];
 
-  // Settings sidebar component
+  // Settings sidebar component - always visible
   const SettingsSidebar = () => (
-    <div className={`report-settings-sidebar ${showSettings ? 'open' : ''}`}>
+    <div className="report-settings-sidebar visible">
       <div className="report-settings-sidebar-header">
         <h3>Report Settings</h3>
-        <button
-          className="report-settings-close"
-          onClick={() => setShowSettings(false)}
-          title="Close settings"
-        >
-          <ChevronRight size={16} />
-        </button>
       </div>
       <div className="report-settings-sidebar-content">
         {/* Section toggles */}
@@ -229,35 +221,6 @@ export const ReportPanel: React.FC = () => {
           </label>
         </div>
 
-        {/* Check Settings */}
-        <div className="settings-group">
-          <h4>Check Settings</h4>
-          <label className="settings-field">
-            <span>Steel Grade</span>
-            <select
-              value={reportConfig.steelGrade}
-              onChange={e => updateConfig({ steelGrade: e.target.value })}
-            >
-              <option value="S235">S235 (fy = 235 MPa)</option>
-              <option value="S275">S275 (fy = 275 MPa)</option>
-              <option value="S355">S355 (fy = 355 MPa)</option>
-              <option value="S450">S450 (fy = 440 MPa)</option>
-            </select>
-          </label>
-          <label className="settings-field">
-            <span>Deflection Limit (L/n)</span>
-            <select
-              value={reportConfig.deflectionLimit}
-              onChange={e => updateConfig({ deflectionLimit: parseInt(e.target.value) })}
-            >
-              <option value="150">L/150 (Industrial)</option>
-              <option value="200">L/200 (Normal)</option>
-              <option value="250">L/250 (Standard)</option>
-              <option value="300">L/300 (Strict)</option>
-              <option value="350">L/350 (Very Strict)</option>
-            </select>
-          </label>
-        </div>
       </div>
     </div>
   );
@@ -278,14 +241,6 @@ export const ReportPanel: React.FC = () => {
             <p>Create a structural model to generate a report.</p>
           </div>
         </div>
-        {/* Settings toggle button */}
-        <button
-          className={`report-settings-toggle ${showSettings ? 'hidden' : ''}`}
-          onClick={() => setShowSettings(true)}
-          title="Report Settings"
-        >
-          <Settings size={16} />
-        </button>
         <SettingsSidebar />
       </div>
     );
@@ -331,16 +286,7 @@ export const ReportPanel: React.FC = () => {
         />
       </div>
 
-      {/* Settings toggle button */}
-      <button
-        className={`report-settings-toggle ${showSettings ? 'hidden' : ''}`}
-        onClick={() => setShowSettings(true)}
-        title="Report Settings"
-      >
-        <Settings size={16} />
-      </button>
-
-      {/* Right: Settings sidebar */}
+      {/* Right: Settings sidebar - always visible */}
       <SettingsSidebar />
     </div>
   );

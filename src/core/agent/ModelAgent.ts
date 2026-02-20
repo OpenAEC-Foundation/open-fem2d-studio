@@ -11,11 +11,6 @@
  * - Concrete walls with openings (betonwand / concrete wall / shear wall)
  * - Pitched roof structures (dakconstructie / pitched roof / zadeldak)
  *
- * Also supports profile optimization commands:
- * - "Optimaliseer op doorbuiging" / "Optimize for deflection"
- * - "Optimaliseer op gewicht" / "Optimize for weight"
- * - "Optimaliseer UC" / "Optimize UC ratio"
- *
  * No external LLM required - uses regex-based pattern matching.
  */
 
@@ -23,11 +18,6 @@ import { Mesh } from '../fem/Mesh';
 import { IBeamSection } from '../fem/types';
 import { ILoadCase } from '../fem/LoadCase';
 import { DEFAULT_SECTIONS } from '../fem/Beam';
-import {
-  optimizeProfile,
-  OptimizationCriterion,
-  OptimizationConstraint,
-} from './ProfileOptimizer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,19 +61,6 @@ export interface AgentResult {
   nodeCount?: number;
   elementCount?: number;
 }
-
-// Optimization command types
-export interface OptimizeAgentCommand {
-  criterion: OptimizationCriterion;
-  beamId?: number;
-  constraints?: OptimizationConstraint;
-}
-
-/**
- * Type for the apply-load-case function the agent needs.
- * This decouples the agent from the FEMContext module.
- */
-export type ApplyLoadCaseFn = (mesh: Mesh, lc: ILoadCase) => void;
 
 // ---------------------------------------------------------------------------
 // Section lookup helper
@@ -137,81 +114,6 @@ function extractNumber(text: string, pattern: RegExp): number | null {
 // ---------------------------------------------------------------------------
 // Optimization Command Parser
 // ---------------------------------------------------------------------------
-
-/**
- * Parse an optimization command from natural language (Dutch + English).
- * Returns null if the input is not an optimization command.
- */
-export function parseOptimizeCommand(input: string): OptimizeAgentCommand | null {
-  const text = input.toLowerCase().trim();
-
-  // Must contain "optimaliseer" / "optimize" / "optimaal" / "optimal" / "best" / "beste"
-  if (!/optimali[sz]e|optimaal|optimal|beste?\b|minimali[sz]e|minimaliseer|lichtste|lightest/.test(text)) {
-    return null;
-  }
-
-  // Determine criterion
-  let criterion: OptimizationCriterion = 'weight'; // default
-
-  // Deflection: doorbuiging, vervorming, deflection, deformation
-  if (/doorbuiging|vervorming|deflect|deformation|stijf|stiff|rigidity/.test(text)) {
-    criterion = 'deflection';
-  }
-  // Weight: gewicht, weight, licht, light, massa, mass
-  else if (/gewicht|weight|licht|light|massa|mass|kosten|cost/.test(text)) {
-    criterion = 'weight';
-  }
-  // UC ratio: unity check, uc, utilization, bezettingsgraad, benutting
-  else if (/unity\s*check|uc\s*ratio|uc\b|utiliz|bezetting|benutting/.test(text)) {
-    criterion = 'UC';
-  }
-  // Stress: spanning, stress
-  else if (/spanning|stress|sigma/.test(text)) {
-    criterion = 'stress';
-  }
-
-  // Parse constraints
-  const constraints: OptimizationConstraint = {};
-
-  // Series filter: "IPE", "HEA", "HEB", "HEM"
-  const seriesMatch = text.match(/\b(ipe|hea|heb|hem|rhs|chs|shs|unp)\b/i);
-  if (seriesMatch) {
-    constraints.series = seriesMatch[1].toUpperCase();
-  }
-
-  // Steel grade: "S235", "S355"
-  const gradeMatch = text.match(/\b(s\s*(?:235|275|355|420|460))\b/i);
-  if (gradeMatch) {
-    constraints.steelGrade = gradeMatch[1].replace(/\s/g, '').toUpperCase();
-  }
-
-  // Max UC: "UC max 0.8", "UC < 0.9"
-  const ucMatch = text.match(/uc\s*(?:max|<|<=|limit)?\s*(\d+[.,]?\d*)/);
-  if (ucMatch) {
-    constraints.maxUC = parseFloat(ucMatch[1].replace(',', '.'));
-  }
-
-  // Max deflection in mm: "max doorbuiging 10mm", "deflection limit 15 mm"
-  const deflMatch = text.match(/(?:max\s*)?(?:doorbuiging|deflect\w*)\s*(?:max|limit|<|<=)?\s*(\d+[.,]?\d*)\s*mm/);
-  if (deflMatch) {
-    constraints.maxDeflectionMm = parseFloat(deflMatch[1].replace(',', '.'));
-  }
-
-  // Deflection limit divisor: "L/300", "L/500"
-  const limMatch = text.match(/l\s*\/\s*(\d+)/);
-  if (limMatch) {
-    constraints.deflectionLimitDivisor = parseInt(limMatch[1]);
-  }
-
-  // Beam ID: "beam 3", "staaf 5", "element 2"
-  let beamId: number | undefined;
-  const beamIdMatch = text.match(/(?:beam|staaf|element|balk|ligger)\s*(?:nr\.?\s*)?(\d+)/);
-  if (beamIdMatch) {
-    beamId = parseInt(beamIdMatch[1]);
-  }
-
-  return { criterion, beamId, constraints };
-}
 
 // ---------------------------------------------------------------------------
 // Command Parser
@@ -1318,14 +1220,6 @@ Example commands:
   "Zadeldak 12m overspanning goothoogte 4m met 5 kN/m"
   "Create a pitched roof 10m span 3m high eave height 4m"
 
-Profile optimization:
-  "Optimaliseer op doorbuiging" — find stiffest profile
-  "Optimaliseer op gewicht" — find lightest feasible profile
-  "Optimaliseer op gewicht IPE S355" — lightest IPE in S355
-  "Optimize for deflection HEA" — stiffen with HEA series
-  "Optimaliseer UC ratio" — best material utilization
-  "Optimize for weight L/300" — lightest profile with L/300 limit
-
 Parameters I understand:
   - Span/width (in meters)
   - Height (for portals, trusses, walls, roofs)
@@ -1335,8 +1229,7 @@ Parameters I understand:
   - Number of spans (for continuous beams)
   - Number of stories, story height, bays, bay width (for multi-story frames)
   - Number of openings, opening dimensions, wall thickness (for concrete walls)
-  - Eave height, ridge height (for pitched roofs)
-  - Optimization: criterion, series, steel grade, UC limit, deflection limit`;
+  - Eave height, ridge height (for pitched roofs)`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1381,16 +1274,6 @@ export function processAgentInput(
     return { success: true, message: 'Model cleared.' };
   }
 
-  // Check for optimization commands (will be handled by async version)
-  const optCmd = parseOptimizeCommand(input);
-  if (optCmd) {
-    return {
-      success: false,
-      message: '__OPTIMIZE__',  // Sentinel: AgentPanel will call the async version
-      details: JSON.stringify(optCmd),
-    };
-  }
-
   // Try to parse as a structural command
   const cmd = parseCommand(input);
   if (!cmd) {
@@ -1406,110 +1289,10 @@ I need a structure type keyword like:
   - continuous beam / doorlopende ligger
   - multi-story frame / kantoor / etages
   - concrete wall / betonwand / shear wall
-  - pitched roof / dakconstructie / zadeldak
-  - optimaliseer / optimize (profile optimization)`
+  - pitched roof / dakconstructie / zadeldak`
     };
   }
 
   return executeCommand(cmd, mesh, dispatch, loadCases);
 }
 
-// ---------------------------------------------------------------------------
-// Async Agent Input: handles optimization (requires solver calls)
-// ---------------------------------------------------------------------------
-
-/**
- * Process agent input that may require async operations (optimization).
- * This should be called from the UI when the sync version returns '__OPTIMIZE__'.
- */
-export async function processAgentOptimize(
-  input: string,
-  mesh: Mesh,
-  dispatch: (action: any) => void,
-  loadCases: ILoadCase[],
-  applyLoadCaseFn: ApplyLoadCaseFn,
-  onProgress?: (message: string) => void,
-): Promise<AgentResult> {
-  const optCmd = parseOptimizeCommand(input);
-  if (!optCmd) {
-    return { success: false, message: 'Not an optimization command.' };
-  }
-
-  // Verify there are beam elements to optimize
-  if (mesh.beamElements.size === 0) {
-    return {
-      success: false,
-      message: 'No beam elements in the model. Create a structure first, then optimize.',
-    };
-  }
-
-  // Get the active load case
-  const activeLc = loadCases.find(lc => lc.id === 1) ?? loadCases[0];
-  if (!activeLc) {
-    return {
-      success: false,
-      message: 'No load case available. Add loads before optimizing.',
-    };
-  }
-
-  // Check if there are any loads
-  const hasLoads = loadCases.some(lc =>
-    lc.pointLoads.length > 0 || lc.distributedLoads.length > 0
-  );
-  if (!hasLoads) {
-    return {
-      success: false,
-      message: 'No loads defined. Apply loads to the model before optimizing.',
-    };
-  }
-
-  dispatch({ type: 'PUSH_UNDO' });
-
-  onProgress?.('Starting profile optimization...');
-
-  try {
-    const result = await optimizeProfile(
-      mesh,
-      activeLc,
-      applyLoadCaseFn,
-      optCmd.beamId,
-      optCmd.criterion,
-      optCmd.constraints,
-      onProgress,
-    );
-
-    if (result.success) {
-      // Update the UI
-      dispatch({ type: 'SET_MESH', payload: mesh });
-      dispatch({ type: 'REFRESH_MESH' });
-
-      // Also re-run the solver one final time with the optimal profile
-      // so results are up-to-date
-      try {
-        applyLoadCaseFn(mesh, activeLc);
-        const { solve: solveFn } = await import('../solver/SolverService');
-        const solverResult = await solveFn(mesh, {
-          analysisType: 'frame',
-          geometricNonlinear: false,
-        });
-        dispatch({ type: 'SET_RESULT', payload: solverResult });
-        dispatch({ type: 'SET_SHOW_DEFORMED', payload: true });
-        dispatch({ type: 'SET_VIEW_MODE', payload: 'results' });
-        dispatch({ type: 'SET_SHOW_MOMENT', payload: true });
-      } catch {
-        // Final solve failed, but optimization result is still valid
-      }
-    }
-
-    return {
-      success: result.success,
-      message: result.message,
-      details: result.details,
-    };
-  } catch (e) {
-    return {
-      success: false,
-      message: `Optimization failed: ${(e as Error).message}`,
-    };
-  }
-}

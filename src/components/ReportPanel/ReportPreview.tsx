@@ -22,9 +22,6 @@ import { ResultCombinationsSection } from './sections/ResultCombinationsSection'
 import { ResultReactionsSection } from './sections/ResultReactionsSection';
 import { ResultDisplacementsSection } from './sections/ResultDisplacementsSection';
 import { ResultForcesSection } from './sections/ResultForcesSection';
-import { SteelCheckOverviewSection } from './sections/SteelCheckOverviewSection';
-import { SteelCheckDetailedSection } from './sections/SteelCheckDetailedSection';
-
 export interface ReportSectionProps {
   config: IReportConfig;
   mesh: Mesh;
@@ -60,8 +57,6 @@ const SECTION_COMPONENTS: Partial<Record<ReportSectionType, React.FC<ReportSecti
   'result_forces_M': (props) => <ResultForcesSection {...props} forceType="M" />,
   'result_forces_V': (props) => <ResultForcesSection {...props} forceType="V" />,
   'result_forces_N': (props) => <ResultForcesSection {...props} forceType="N" />,
-  'check_steel_overview': SteelCheckOverviewSection,
-  'check_steel_detailed': SteelCheckDetailedSection,
 };
 
 export const ReportPreview: React.FC<ReportPreviewProps> = ({

@@ -8,8 +8,6 @@ import { ISolverResult } from '../fem/types';
 import { IProjectInfo } from '../../context/FEMContext';
 import { ILoadCase, ILoadCombination } from '../fem/LoadCase';
 import { IReportConfig, getEnabledSections, ReportSectionType } from './ReportConfig';
-import { STEEL_GRADES } from '../standards/EurocodeNL';
-import { checkAllBeams, ISectionProperties } from '../standards/SteelCheck';
 import { calculateBeamLength } from '../fem/Beam';
 import { renderGeometry, renderForceDiagram } from './DiagramRenderer';
 
@@ -33,23 +31,6 @@ function formatMoment(n: number): string {
 
 function formatDisp(val: number): string {
   return (val * 1000).toFixed(3);
-}
-
-function ucColor(uc: number): string {
-  if (uc <= 0.85) return '#22c55e';
-  if (uc <= 1.0) return '#f59e0b';
-  return '#ef4444';
-}
-
-function ucBar(uc: number): string {
-  const pct = Math.min(uc * 100, 100);
-  const color = ucColor(uc);
-  return `<div style="display:inline-flex;align-items:center;gap:6px;width:140px">
-    <div style="flex:1;height:14px;background:#e5e5e5;border-radius:2px;overflow:hidden">
-      <div style="width:${pct}%;height:100%;background:${color};border-radius:2px"></div>
-    </div>
-    <span style="font-weight:600;color:${color};min-width:40px;text-align:right">${uc.toFixed(2)}</span>
-  </div>`;
 }
 
 // Section generators
@@ -113,10 +94,6 @@ function generateSummaryHTML(data: ReportData): string {
     return `<div class="report-page"><h2 class="section-title" style="color:${config.primaryColor}">Executive Summary</h2><p>No analysis results available.</p></div>`;
   }
 
-  const grade = STEEL_GRADES.find(g => g.name === config.steelGrade) || STEEL_GRADES[2];
-  const fy = grade.fy * 1e6;
-  const gammaM0 = grade.gammaM0;
-
   // Find max M, V, displacement
   let maxM = 0, maxMBeam = 0, maxV = 0, maxVBeam = 0;
   for (const [beamId, forces] of result.beamForces) {
@@ -135,43 +112,6 @@ function generateSummaryHTML(data: ReportData): string {
     if (uy > maxDisp) { maxDisp = uy; maxDispNode = nodeIds[i]; }
   }
 
-  // Moment check
-  const mBeam = mesh.getBeamElement(maxMBeam);
-  let mUC = '—', mStatus = '';
-  if (mBeam) {
-    const Wy = mBeam.section.Wy ?? (mBeam.section.I / (mBeam.section.h / 2));
-    const MRd = (Wy * fy) / gammaM0;
-    const uc = MRd > 0 ? maxM / MRd : 0;
-    mUC = uc.toFixed(2);
-    mStatus = uc <= 1.0 ? 'ok' : 'fail';
-  }
-
-  // Shear check
-  const vBeam = mesh.getBeamElement(maxVBeam);
-  let vUC = '—', vStatus = '';
-  if (vBeam) {
-    const sec = vBeam.section;
-    let Av: number;
-    if (sec.tw && sec.h) {
-      const twM = sec.tw; const tfM = sec.tf ?? 0; const hw = sec.h - 2 * tfM;
-      Av = Math.max(hw * twM, sec.A * 0.5);
-    } else { Av = sec.A * 0.6; }
-    const VRd = (Av * (fy / Math.sqrt(3))) / gammaM0;
-    const uc = VRd > 0 ? maxV / VRd : 0;
-    vUC = uc.toFixed(2);
-    vStatus = uc <= 1.0 ? 'ok' : 'fail';
-  }
-
-  // Displacement check
-  let maxSpan = 0;
-  for (const beam of beams) {
-    const nodes = mesh.getBeamElementNodes(beam);
-    if (nodes) { const L = calculateBeamLength(nodes[0], nodes[1]); if (L > maxSpan) maxSpan = L; }
-  }
-  const dLimit = maxSpan / (config.deflectionLimit || 250);
-  const dUC = dLimit > 0 ? (maxDisp / dLimit).toFixed(2) : '—';
-  const dStatus = dLimit > 0 && maxDisp / dLimit <= 1.0 ? 'ok' : (dLimit > 0 ? 'fail' : '');
-
   // Collect loads
   let plRows = '', dlRows = '';
   for (const lc of loadCases) {
@@ -186,10 +126,6 @@ function generateSummaryHTML(data: ReportData): string {
   return `
   <div class="report-page">
     <h2 class="section-title" style="color:${config.primaryColor}">Executive Summary</h2>
-
-    <div style="padding:12px;border-radius:6px;margin-bottom:20px;background:${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? '#f0fdf4' : '#fef2f2'};border:1px solid ${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? '#bbf7d0' : '#fecaca'};color:${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? '#166534' : '#991b1b'};font-weight:600;font-size:11pt;text-align:center">
-      ${mStatus !== 'fail' && vStatus !== 'fail' && dStatus !== 'fail' ? 'ALL QUICK CHECKS PASSED' : 'ONE OR MORE CHECKS EXCEED UNITY'}
-    </div>
 
     <div style="display:flex;gap:12px;margin-bottom:20px">
       <div style="flex:1;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;border-left:4px solid ${config.primaryColor}">
@@ -215,17 +151,6 @@ function generateSummaryHTML(data: ReportData): string {
     ${dlRows ? `<p style="font-weight:600;font-size:9pt;margin-bottom:6px;color:#475569">Distributed Loads</p>
     <table class="data-table"><thead><tr style="background:${config.primaryColor}"><th>Element</th><th>qy Start (kN/m)</th><th>qy End (kN/m)</th></tr></thead><tbody>${dlRows}</tbody></table>` : ''}
     ${!plRows && !dlRows ? '<p style="color:#666;font-style:italic">No loads applied.</p>' : ''}
-
-    <h3 class="subsection-title" style="color:${config.primaryColor}">Quick Checks (${grade.name}, f<sub>y</sub> = ${grade.fy} MPa)</h3>
-    <table class="data-table">
-      <thead><tr style="background:${config.primaryColor}"><th>Check</th><th>Reference</th><th>Unity Check</th><th>Status</th></tr></thead>
-      <tbody>
-        <tr><td>M<sub>Ed</sub> / M<sub>el,Rd</sub></td><td>NEN-EN 1993-1-1, 6.2.5</td><td class="numeric">${mUC}</td><td><span class="status-badge ${mStatus}">${mStatus === 'ok' ? 'OK' : mStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
-        <tr><td>V<sub>Ed</sub> / V<sub>c,Rd</sub></td><td>NEN-EN 1993-1-1, 6.2.6</td><td class="numeric">${vUC}</td><td><span class="status-badge ${vStatus}">${vStatus === 'ok' ? 'OK' : vStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
-        <tr><td>&delta;<sub>max</sub> / (L/${config.deflectionLimit || 250})</td><td>SLS limit</td><td class="numeric">${dUC}</td><td><span class="status-badge ${dStatus}">${dStatus === 'ok' ? 'OK' : dStatus === 'fail' ? 'FAIL' : '—'}</span></td></tr>
-      </tbody>
-    </table>
-    <p style="font-size:8pt;color:#94a3b8;margin-top:16px;font-style:italic">Note: Simplified quick check using elastic section properties. See detailed steel check section for full NEN-EN 1993-1-1 verification.</p>
   </div>`;
 }
 
@@ -340,59 +265,6 @@ function generateResultDisplacementsHTML(data: ReportData, sectionNum: number): 
           const rz = isFrame ? (result.displacements[idx * dofsPerNode + 2] ?? 0) : 0;
           return `<tr><td>${n.id}</td><td class="numeric">${formatDisp(ux)}</td><td class="numeric">${formatDisp(uy)}</td>${isFrame ? `<td class="numeric">${(rz * 1000).toFixed(3)}</td>` : ''}</tr>`;
         }).join('\n')}
-      </tbody>
-    </table>
-  </div>`;
-}
-
-function generateSteelCheckOverviewHTML(data: ReportData, sectionNum: number): string {
-  const { config, mesh, result } = data;
-  if (!result || result.beamForces.size === 0) {
-    return `<div class="report-page"><h2 class="section-title" style="color:${config.primaryColor}">${sectionNum}. Steel Section Checks — Overview</h2><p>No beam force results available.</p></div>`;
-  }
-
-  const grade = STEEL_GRADES.find(g => g.name === config.steelGrade) || STEEL_GRADES[2];
-  const sectionMap = new Map<number, ISectionProperties>();
-  const beamLengths = new Map<number, number>();
-
-  for (const beam of mesh.beamElements.values()) {
-    sectionMap.set(beam.id, {
-      A: beam.section.A,
-      I: beam.section.I,
-      h: beam.section.h,
-      profileName: beam.profileName,
-    });
-    const nodes = mesh.getBeamElementNodes(beam);
-    if (nodes) beamLengths.set(beam.id, calculateBeamLength(nodes[0], nodes[1]));
-  }
-
-  const steelResults = checkAllBeams(result.beamForces, sectionMap, grade, beamLengths, undefined, config.deflectionLimit);
-  const allOk = steelResults.every(r => r.status === 'OK');
-  const worstUC = steelResults.length > 0 ? Math.max(...steelResults.map(r => r.UC_max)) : 0;
-
-  return `
-  <div class="report-page">
-    <h2 class="section-title" style="color:${config.primaryColor}">${sectionNum}. Steel Section Checks — Overview</h2>
-    <p>Cross-section resistance checks according to NEN-EN 1993-1-1. Steel grade: <strong>${grade.name}</strong> (f<sub>y</sub> = ${grade.fy} MPa)</p>
-
-    <div class="${allOk ? 'result-ok' : 'result-fail'}" style="padding:12px;border-radius:4px;margin:16px 0">
-      ${steelResults.length} member${steelResults.length !== 1 ? 's' : ''} checked — Max UC = ${worstUC.toFixed(2)} — <strong>${allOk ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}</strong>
-    </div>
-
-    <table class="data-table">
-      <thead><tr style="background:${config.primaryColor}"><th>Beam</th><th>Profile</th><th>N<sub>Ed</sub> (kN)</th><th>V<sub>Ed</sub> (kN)</th><th>M<sub>Ed</sub> (kNm)</th><th>UC max</th><th>Status</th></tr></thead>
-      <tbody>
-        ${steelResults.map(r => `
-          <tr>
-            <td>${r.elementId}</td>
-            <td>${r.profileName}</td>
-            <td class="numeric">${formatForce(r.NEd)}</td>
-            <td class="numeric">${formatForce(r.VEd)}</td>
-            <td class="numeric">${formatMoment(r.MEd)}</td>
-            <td>${ucBar(r.UC_max)}</td>
-            <td><span class="status-badge ${r.status === 'OK' ? 'ok' : 'fail'}">${r.status}</span></td>
-          </tr>
-        `).join('\n')}
       </tbody>
     </table>
   </div>`;
@@ -616,64 +488,6 @@ function generateResultForcesHTML(data: ReportData, sectionNum: number, forceTyp
   </div>`;
 }
 
-function generateSteelCheckDetailedHTML(data: ReportData, sectionNum: number): string {
-  const { config, mesh, result } = data;
-  if (!result || result.beamForces.size === 0 || !config.includeFormulas) {
-    return '';
-  }
-
-  const grade = STEEL_GRADES.find(g => g.name === config.steelGrade) || STEEL_GRADES[2];
-  const sectionMap = new Map<number, ISectionProperties>();
-  const beamLengths = new Map<number, number>();
-
-  for (const beam of mesh.beamElements.values()) {
-    sectionMap.set(beam.id, {
-      A: beam.section.A,
-      I: beam.section.I,
-      h: beam.section.h,
-      profileName: beam.profileName,
-    });
-    const nodes = mesh.getBeamElementNodes(beam);
-    if (nodes) beamLengths.set(beam.id, calculateBeamLength(nodes[0], nodes[1]));
-  }
-
-  const steelResults = checkAllBeams(result.beamForces, sectionMap, grade, beamLengths, undefined, config.deflectionLimit);
-
-  return steelResults.map((r, idx) => {
-    const length = beamLengths.get(r.elementId) || 0;
-    return `
-    <div class="report-page">
-      ${idx === 0 ? `<h2 class="section-title" style="color:${config.primaryColor}">${sectionNum}. Steel Section Checks — Details</h2>` : ''}
-      <div class="check-detail">
-        <h4 style="color:${config.primaryColor}">Member ${r.elementId} — ${r.profileName} (${grade.name})</h4>
-        <p style="font-size:9pt;color:#666">L = ${(length * 1000).toFixed(0)} mm | f<sub>y</sub> = ${grade.fy} MPa | γ<sub>M0</sub> = ${grade.gammaM0}</p>
-
-        <div class="check-block">
-          <div class="check-block-title">Axial Resistance — NEN-EN 1993-1-1, 6.2.4</div>
-          <div class="formula" style="border-left-color:${config.primaryColor}">N<sub>c,Rd</sub> = A · f<sub>y</sub> / γ<sub>M0</sub> = ${formatForce(r.NcRd)} kN</div>
-          <p>UC = N<sub>Ed</sub> / N<sub>c,Rd</sub> = <strong style="color:${ucColor(r.UC_N)}">${r.UC_N.toFixed(3)}</strong></p>
-        </div>
-
-        <div class="check-block">
-          <div class="check-block-title">Bending Resistance — NEN-EN 1993-1-1, 6.2.5</div>
-          <div class="formula" style="border-left-color:${config.primaryColor}">M<sub>c,Rd</sub> = W<sub>el</sub> · f<sub>y</sub> / γ<sub>M0</sub> = ${formatMoment(r.McRd)} kNm</div>
-          <p>UC = M<sub>Ed</sub> / M<sub>c,Rd</sub> = <strong style="color:${ucColor(r.UC_M)}">${r.UC_M.toFixed(3)}</strong></p>
-        </div>
-
-        <div class="check-block">
-          <div class="check-block-title">Shear Resistance — NEN-EN 1993-1-1, 6.2.6</div>
-          <div class="formula" style="border-left-color:${config.primaryColor}">V<sub>c,Rd</sub> = A<sub>v</sub> · (f<sub>y</sub> / √3) / γ<sub>M0</sub> = ${formatForce(r.VcRd)} kN</div>
-          <p>UC = V<sub>Ed</sub> / V<sub>c,Rd</sub> = <strong style="color:${ucColor(r.UC_V)}">${r.UC_V.toFixed(3)}</strong></p>
-        </div>
-
-        <div class="${r.status === 'OK' ? 'result-ok' : 'result-fail'}" style="padding:8px 12px;border-radius:4px;margin-top:12px">
-          Governing: ${r.governingCheck}${r.governingLocation ? ` at x = ${(r.governingLocation.position * 1000).toFixed(0)}mm (${r.governingLocation.locationType})` : ''} — UC<sub>max</sub> = ${r.UC_max.toFixed(3)} — <strong>${r.status}</strong>
-        </div>
-      </div>
-    </div>`;
-  }).join('\n');
-}
-
 // Main report header
 function getReportHeader(_config: IReportConfig): string {
   return `<!DOCTYPE html>
@@ -738,8 +552,6 @@ const SECTION_GENERATORS: Partial<Record<ReportSectionType, (data: ReportData, s
   'result_forces_M': (data, num) => generateResultForcesHTML(data, num, 'M'),
   'result_forces_V': (data, num) => generateResultForcesHTML(data, num, 'V'),
   'result_forces_N': (data, num) => generateResultForcesHTML(data, num, 'N'),
-  'check_steel_overview': (data, num) => generateSteelCheckOverviewHTML(data, num),
-  'check_steel_detailed': (data, num) => generateSteelCheckDetailedHTML(data, num),
 };
 
 /**

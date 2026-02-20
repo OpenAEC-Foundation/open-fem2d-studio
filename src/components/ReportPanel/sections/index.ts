@@ -13,5 +13,3 @@ export { ResultCombinationsSection } from './ResultCombinationsSection';
 export { ResultReactionsSection } from './ResultReactionsSection';
 export { ResultDisplacementsSection } from './ResultDisplacementsSection';
 export { ResultForcesSection } from './ResultForcesSection';
-export { SteelCheckOverviewSection } from './SteelCheckOverviewSection';
-export { SteelCheckDetailedSection } from './SteelCheckDetailedSection';

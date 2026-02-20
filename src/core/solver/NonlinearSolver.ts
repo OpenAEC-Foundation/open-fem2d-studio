@@ -32,11 +32,6 @@ import {
   updateSectionState,
   initCrackedSectionState,
   updateCrackedSectionState,
-  calculateCrackingMoment,
-  calculateCrackedI,
-  calculateEffectiveI,
-  calculateBeamSegments,
-  IBeamSegment,
 } from './NonlinearMaterial';
 
 export interface NonlinearSolverOptions {
@@ -479,9 +474,7 @@ function updateAllSectionStates(
 
       let crackedState = crackedStates.get(beam.id);
       if (crackedState) {
-        // Get uncracked I from section or calculate
-        const h = beam.section.h || 0.5;  // Default height if not specified
-        const b = h / 2;  // Approximate width for rectangular section
+        // Get uncracked I from section
         const Iunc = beam.section.I;
         const Ecm = material.E;
         const beta = 0.5;  // EC2 tension stiffening factor for sustained loading
@@ -862,6 +855,8 @@ export function solveNonlinear(
   }
 
   // Nonlinear iteration (P-Delta and/or FNL analysis)
+  let beamForces = new Map<number, IBeamForces>();
+
   for (let step = 1; step <= opts.loadSteps; step++) {
     const loadFactor = step / opts.loadSteps;
     const scaledF = F.map(f => f * loadFactor);
@@ -870,8 +865,11 @@ export function solveNonlinear(
       // Assemble stiffness with current state
       let K: Matrix;
       if (opts.materialNonlinear) {
-        // Use tangent stiffness from M-κ relationship
-        K = assembleGlobalStiffnessFNL(mesh, sectionStates, axialForces, opts.geometricNonlinear);
+        // Use effective stiffness from material state (M-κ for steel, cracked I for concrete)
+        K = assembleGlobalStiffnessFNL(
+          mesh, sectionStates, crackedStates, axialForces,
+          opts.geometricNonlinear, opts.materialType
+        );
       } else {
         // Geometric nonlinearity only
         K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, true);
@@ -899,22 +897,40 @@ export function solveNonlinear(
         displacements[i] += deltaU[i];
       }
 
-      // Update axial forces
-      const { axialForces: newAxial } = calculateAllInternalForces(mesh, displacements);
-      axialForces = newAxial;
+      // Update internal forces
+      const forcesResult = calculateAllInternalForces(mesh, displacements);
+      axialForces = forcesResult.axialForces;
+      beamForces = forcesResult.beamForces;
 
       // Update section states for material nonlinearity
       if (opts.materialNonlinear) {
-        sectionStates = updateAllSectionStates(mesh, displacements, sectionStates, opts);
+        const statesResult = updateAllSectionStates(
+          mesh, displacements, sectionStates, crackedStates, beamForces, opts
+        );
+        sectionStates = statesResult.sectionStates;
+        crackedStates = statesResult.crackedStates;
       }
     }
   }
 
-  // Final internal forces calculation
-  const { beamForces } = calculateAllInternalForces(mesh, displacements);
+  // Final internal forces calculation (if not already calculated)
+  if (beamForces.size === 0) {
+    const forcesResult = calculateAllInternalForces(mesh, displacements);
+    beamForces = forcesResult.beamForces;
+    axialForces = forcesResult.axialForces;
+  }
 
-  // Calculate reactions
-  const K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, opts.geometricNonlinear);
+  // Calculate reactions using the final stiffness matrix
+  let K: Matrix;
+  if (opts.materialNonlinear) {
+    K = assembleGlobalStiffnessFNL(
+      mesh, sectionStates, crackedStates, axialForces,
+      opts.geometricNonlinear, opts.materialType
+    );
+  } else {
+    K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, opts.geometricNonlinear);
+  }
+
   const reactions = K.multiplyVector(displacements);
   for (let i = 0; i < reactions.length; i++) {
     reactions[i] = reactions[i] - F[i];
@@ -926,13 +942,24 @@ export function solveNonlinear(
     maxVonMises = Math.max(maxVonMises, Math.abs(forces.maxM));
   }
 
+  // Log cracked section info for concrete analysis
+  if (opts.materialNonlinear && opts.materialType === 'concrete') {
+    let crackedCount = 0;
+    for (const state of crackedStates.values()) {
+      if (state.isCracked) crackedCount++;
+    }
+    console.log(`[FNL Concrete] ${crackedCount}/${crackedStates.size} beams cracked`);
+  }
+
   return {
     displacements,
     reactions,
     elementStresses: new Map(),
     beamForces,
     maxVonMises,
-    minVonMises: 0
+    minVonMises: 0,
+    // Include cracked section info in result for concrete FNL
+    crackedSectionStates: opts.materialNonlinear && opts.materialType === 'concrete' ? crackedStates : undefined,
   };
 }
 
@@ -1058,7 +1085,40 @@ function solvePlateOrPlane(
 
   const hasLoads = F.some(f => f !== 0);
   if (!hasLoads) {
+    // Debug: check if loads exist but on inactive nodes
+    const inactiveLoads: string[] = [];
+    const activeLoads: string[] = [];
+    for (const node of mesh.nodes.values()) {
+      const hasLoad = node.loads.fx !== 0 || node.loads.fy !== 0 || (node.loads.moment && node.loads.moment !== 0);
+      if (hasLoad) {
+        const isActive = activeNodeIds.has(node.id);
+        const info = `Node ${node.id} at (${node.x.toFixed(3)}, ${node.y.toFixed(3)}): fx=${node.loads.fx}, fy=${node.loads.fy}`;
+        if (isActive) activeLoads.push(info); else inactiveLoads.push(info);
+      }
+    }
+    if (inactiveLoads.length > 0) {
+      throw new Error(`Loads on ${inactiveLoads.length} node(s) not connected to elements (inactive). Loads: ${inactiveLoads.join('; ')}. Total elements: ${mesh.elements.size}`);
+    }
     throw new Error('No loads applied - add forces to nodes or elements');
+  }
+
+  // Diagnostic & auto-fix: check for zero-stiffness DOFs and auto-constrain them
+  const numDofs = K.rows;
+  const indexToNodeId = new Map<number, number>();
+  for (const [nodeId, idx] of nodeIdToIndex.entries()) indexToNodeId.set(idx, nodeId);
+  const constrainedSet = new Set(constrainedDofs);
+  for (let d = 0; d < numDofs; d++) {
+    if (Math.abs(K.get(d, d)) < 1e-20 && !constrainedSet.has(d)) {
+      const nodeIdx = Math.floor(d / dofsPerNode);
+      const localDof = d % dofsPerNode;
+      const nodeId = indexToNodeId.get(nodeIdx);
+      const node = nodeId !== undefined ? mesh.getNode(nodeId) : null;
+      const dofLabel = dofsPerNode === 2 ? ['u', 'v'][localDof] : ['u/w', 'v/θx', 'θ/θy'][localDof];
+      console.warn(`[Plate Solver] Zero stiffness at DOF ${d} (node ${nodeId} at (${node?.x.toFixed(3)}, ${node?.y.toFixed(3)}), dof=${dofLabel}) — auto-constraining`);
+      // Auto-constrain this DOF to prevent singularity
+      constrainedDofs.push(d);
+      constrainedSet.add(d);
+    }
   }
 
   // Apply boundary conditions (penalty method)
@@ -1073,7 +1133,26 @@ function solvePlateOrPlane(
   }
 
   // Solve
-  const displacements = solveLinearSystem(Kmod, Fmod);
+  let displacements: number[];
+  try {
+    displacements = solveLinearSystem(Kmod, Fmod);
+  } catch (e) {
+    // Enhanced error message with DOF diagnosis
+    const msg = (e as Error).message;
+    const colMatch = msg.match(/column (\d+)/);
+    if (colMatch) {
+      const col = parseInt(colMatch[1]);
+      const nodeIdx = Math.floor(col / dofsPerNode);
+      const localDof = col % dofsPerNode;
+      const nodeId = indexToNodeId.get(nodeIdx);
+      const node = nodeId !== undefined ? mesh.getNode(nodeId) : null;
+      const dofLabel = dofsPerNode === 2 ? ['u', 'v'][localDof] : ['u/w', 'v/θx', 'θ/θy'][localDof];
+      throw new Error(`Singular matrix at DOF ${col}: node ${nodeId} at (${node?.x.toFixed(3)}, ${node?.y.toFixed(3)}), direction=${dofLabel}. Check boundary conditions and element connectivity.`);
+    }
+    throw e;
+  }
+
+  // Solve succeeded
 
   // Reactions: R = K·u - F
   const reactions = K.multiplyVector(displacements);
@@ -1213,6 +1292,8 @@ function solvePlateOrPlane(
     if (ranges[key].min === Infinity) ranges[key].min = 0;
     if (ranges[key].max === -Infinity) ranges[key].max = 0;
   }
+
+  // Result ready
 
   return {
     displacements,

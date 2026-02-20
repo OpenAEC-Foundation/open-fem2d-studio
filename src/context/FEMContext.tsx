@@ -8,7 +8,7 @@ import { calculateThermalNodalForces, calculateBeamThermalNodalForces, calculate
 import { IReportConfig, DEFAULT_REPORT_CONFIG } from '../core/report/ReportConfig';
 import { ConsoleService } from '../core/console/ConsoleService';
 
-export type ViewMode = 'geometry' | 'loads' | 'results' | '3d' | 'drawing';
+export type ViewMode = 'geometry' | 'loads' | 'results';
 export type BrowserTab = 'project' | 'results';
 
 export interface IProjectInfo {
@@ -116,8 +116,6 @@ interface FEMState {
   structuralGrid: IStructuralGrid;
   // Deflection diagram toggle
   showDeflections: boolean;
-  // Code-check: beam ID for which to show the steel check report
-  codeCheckBeamId: number | null;
   // Clipboard for copy/paste
   clipboard: { nodes: INode[]; beamElements: IBeamElement[] } | null;
   // Mouse world position for status bar display
@@ -144,14 +142,10 @@ interface FEMState {
   insightsView: InsightsView | null;
   // Active layer for new elements
   activeLayerId: number;
-  // Concrete beam view panel visibility
-  showConcreteBeamView: boolean;
   // Graph editor state (nodes + wires for persistence)
   graphState: IGraphState | null;
   // Auto-run graph on value changes
   graphAutoRun: boolean;
-  // Steel check interval (mm) — how often to check steel sections along beams
-  steelCheckInterval: number;
   // Internal versioning system
   versioning: IVersioningState;
 }
@@ -269,7 +263,6 @@ type FEMAction =
   | { type: 'SET_ENVELOPE_RESULT'; payload: IEnvelopeResult | null }
   | { type: 'SET_ACTIVE_ENVELOPE'; payload: 'uls' | 'sls' | 'all' | null }
   | { type: 'SET_SHOW_DEFLECTIONS'; payload: boolean }
-  | { type: 'SET_CODE_CHECK_BEAM'; payload: number | null }
   | { type: 'CLEANUP_PLATE_LOADS'; payload: { plateId: number; elementIds: number[] } }
   | { type: 'COPY_SELECTED' }
   | { type: 'PASTE'; payload?: { offsetX: number; offsetY: number } }
@@ -289,10 +282,8 @@ type FEMAction =
   | { type: 'UPDATE_LAYER'; payload: { id: number; updates: Partial<{ name: string; color: string; visible: boolean; locked: boolean }> } }
   | { type: 'REMOVE_LAYER'; payload: number }
   | { type: 'SET_ACTIVE_LAYER'; payload: number }
-  | { type: 'SET_SHOW_CONCRETE_BEAM_VIEW'; payload: boolean }
   | { type: 'SET_GRAPH_STATE'; payload: IGraphState | null }
   | { type: 'SET_GRAPH_AUTO_RUN'; payload: boolean }
-  | { type: 'SET_STEEL_CHECK_INTERVAL'; payload: number }
   // Versioning actions
   | { type: 'CREATE_VERSION'; payload: { name: string } }
   | { type: 'RESTORE_VERSION'; payload: { versionId: string } }
@@ -1003,7 +994,6 @@ const initialState: FEMState = {
   },
   structuralGrid: createDefaultStructuralGrid(),
   showDeflections: false,
-  codeCheckBeamId: null,
   clipboard: null,
   mouseWorldPos: null,
   canvasSize: { width: 800, height: 600 },
@@ -1017,10 +1007,8 @@ const initialState: FEMState = {
   canvasCaptures: new Map<string, string>(),
   insightsView: null,
   activeLayerId: 0,
-  showConcreteBeamView: false,
   graphState: null,
   graphAutoRun: true,
-  steelCheckInterval: 100, // mm
   versioning: {
     versions: [],
     currentBranch: 'main',
@@ -1556,9 +1544,6 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
     case 'SET_SHOW_DEFLECTIONS':
       return { ...state, showDeflections: action.payload };
 
-    case 'SET_CODE_CHECK_BEAM':
-      return { ...state, codeCheckBeamId: action.payload };
-
     case 'CLEANUP_PLATE_LOADS': {
       const { plateId, elementIds } = action.payload;
       const elementIdSet = new Set(elementIds);
@@ -1756,17 +1741,11 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
     case 'SET_ACTIVE_LAYER':
       return { ...state, activeLayerId: action.payload };
 
-    case 'SET_SHOW_CONCRETE_BEAM_VIEW':
-      return { ...state, showConcreteBeamView: action.payload };
-
     case 'SET_GRAPH_STATE':
       return { ...state, graphState: action.payload };
 
     case 'SET_GRAPH_AUTO_RUN':
       return { ...state, graphAutoRun: action.payload };
-
-    case 'SET_STEEL_CHECK_INTERVAL':
-      return { ...state, steelCheckInterval: action.payload };
 
     // Versioning actions
     case 'CREATE_VERSION': {

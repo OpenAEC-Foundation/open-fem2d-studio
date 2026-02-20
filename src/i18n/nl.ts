@@ -15,7 +15,6 @@ export const nl: Record<string, string> = {
   'ribbon.otherMaterials': 'Overige Materialen',
   'ribbon.report': 'Rapport',
   'ribbon.insights': 'FEM Inzichten',
-  'ribbon.codeCheck': 'Toetsing',
 
   // Ribbon groups: File
   'ribbon.file': 'Bestand',
@@ -120,7 +119,6 @@ export const nl: Record<string, string> = {
   'ribbon.project': 'Project',
   'ribbon.projectSettings': 'Projectinstellingen',
   'ribbon.materials': 'Materialen',
-  'ribbon.standards': 'Normen',
   'ribbon.calculation': 'Berekening',
   'ribbon.calculationSettings': 'Berekeningsinstellingen',
   'ribbon.appearance': 'Uiterlijk',
@@ -130,42 +128,7 @@ export const nl: Record<string, string> = {
   'ribbon.units': 'Eenheden',
   'ribbon.projectSettings.title': 'Projectinstellingen',
   'ribbon.materials.title': 'Materialen Beheren',
-  'ribbon.standards.title': 'Normen & Nationale Bijlage',
   'ribbon.calculationSettings.title': 'Berekeningsinstellingen',
-
-  // Ribbon groups: Code-Check tab
-  'ribbon.codeCheck.noResults': 'Geen resultaten beschikbaar. Voer eerst een analyse uit.',
-  'ribbon.codeCheck.close': 'Sluiten',
-  'ribbon.codeCheck.beam': 'Balk',
-  'ribbon.codeCheck.designForces': 'Ed (Ontwerp Krachten)',
-  'ribbon.codeCheck.resistance': 'Rd (Weerstand)',
-  'ribbon.codeCheck.unityChecks': 'Unity Checks (NEN-EN 1993-1-1)',
-  'ribbon.codeCheck.result': 'Resultaat',
-  'ribbon.codeCheck.pass': 'VOLDOET',
-  'ribbon.codeCheck.fail': 'VOLDOET NIET',
-
-  // Ribbon groups: Steel tab
-  'ribbon.steelEN': 'EN 1993 - Staal',
-  'ribbon.steelCheck': 'Staaltoets',
-  'ribbon.steelCheck.title': 'Staaldoorsnede toetsing (NEN-EN 1993-1-1)',
-  'ribbon.steelConnection': 'Verbinding',
-  'ribbon.steelConnection.title': 'Momentverbinding ontwerp (NEN-EN 1993-1-8)',
-  'ribbon.steelInfo': 'NEN-EN 1993-1-1 dwarsdoorsnede toetsing.\nVoer eerst analyse uit, controleer daarna balken.',
-  'ribbon.info': 'Info',
-
-  // Ribbon groups: Concrete tab
-  'ribbon.concreteEN': 'EN 1992 - Beton',
-  'ribbon.concreteCheck': 'Toetsing',
-  'ribbon.concreteDesign': 'Ontwerp',
-  'ribbon.concreteCheck.title': 'Betondoorsnede toetsing (EN 1992-1-1)',
-  'ribbon.concreteDesign.title': 'Betonwapening ontwerpdialoog',
-  'ribbon.beamView': 'Balkweergave',
-  'ribbon.beamView.title': 'Schakel betonbalk aanzicht',
-  'ribbon.concreteGrade': 'Betonsterkteklasse',
-  'ribbon.concreteGrade.title': 'Selecteer betonsterkteklasse',
-  'ribbon.concreteInfo': 'EN 1992-1-1 wapeningsontwerp.\nRechthoek, T-profiel, L-profiel doorsneden.',
-  'ribbon.reinforcement': 'Wapening',
-  'ribbon.reinforcement.title': 'Wapeningstekening- en staafconfiguratie',
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Hout',
@@ -375,16 +338,6 @@ export const nl: Record<string, string> = {
   'projectInfo.save': 'Opslaan',
   'projectInfo.cancel': 'Annuleren',
 
-  // Standards Dialog
-  'standards.title': 'Normen & Nationale Bijlage',
-  'standards.nationalAnnex': 'Nationale Bijlage',
-  'standards.windLoad': 'Windbelasting (NEN-EN 1991-1-4)',
-  'standards.windZone': 'Windgebied',
-  'standards.terrain': 'Terreincategorie',
-  'standards.buildingHeight': 'Gebouwhoogte (m)',
-  'standards.calculate': 'Berekenen',
-  'standards.results': 'Resultaten',
-
   // Grids Dialog
   'grids.title': 'Constructierasters',
   'grids.addGrid': 'Raster Toevoegen',
@@ -480,12 +433,7 @@ export const nl: Record<string, string> = {
   'cmd.materials': 'Materialen',
   'cmd.projectInfo': 'Projectinfo',
   'cmd.grids': 'Constructierasters',
-  'cmd.standards': 'Normen & Toetsing',
   'cmd.calcSettings': 'Berekeningsinstellingen',
-  'cmd.steelCheck': 'Staaltoets (NEN-EN 1993-1)',
-  'cmd.steelConnection': 'Staalverbinding (NEN-EN 1993-1-8)',
-  'cmd.concreteCheck': 'Betontoets (EN 1992-1-1)',
-  'cmd.concreteDesign': 'Betonontwerp',
   'cmd.reportSettings': 'Rapportinstellingen',
   'cmd.loadGenerator': 'Belastinggenerator',
   'cmd.view3D': '3D Weergave',
@@ -532,55 +480,6 @@ export const nl: Record<string, string> = {
   'statusBar.analysisType': 'Analyse',
   'statusBar.ready': 'Gereed',
 
-  // Steel Check Panel
-  'steelCheck.title': 'Staaltoets (NEN-EN 1993-1-1)',
-  'steelCheck.selectBeam': 'Selecteer een balk om te toetsen',
-  'steelCheck.grade': 'Staalsoort',
-  'steelCheck.noResults': 'Voer eerst analyse uit',
-  'steelCheck.close': 'Sluiten',
-
-  // Concrete Check Panel
-  'concreteCheck.title': 'Betontoets (EN 1992-1-1)',
-  'concreteCheck.close': 'Sluiten',
-
-  // Concrete Design Dialog
-  'concreteDesign.title': 'Betonwapening Ontwerp',
-  'concreteDesign.close': 'Sluiten',
-
-  // Concrete Beam View
-  'concreteBeam.title': 'Betonbalk Aanzicht',
-  'concreteBeam.close': 'Sluiten',
-  'concreteBeam.mainReinf': 'Hoofdwapening',
-  'concreteBeam.stirrups': 'Beugels',
-  'concreteBeam.diameter': 'Diameter',
-  'concreteBeam.spacing': 'Tussenafstand',
-  'concreteBeam.count': 'Aantal',
-  'concreteBeam.cover': 'Dekking',
-  'concreteBeam.momentDiagram': 'Momentenlijn',
-  'concreteBeam.coverageLine': 'As,ben / As,aanw',
-  'concreteBeam.top': 'Boven',
-  'concreteBeam.bottom': 'Onder',
-
-  // Steel Connection Dialog
-  'steelConn.title': 'Momentverbinding (NEN-EN 1993-1-8)',
-  'steelConn.beamProfile': 'Balkprofiel',
-  'steelConn.columnProfile': 'Kolomprofiel',
-  'steelConn.boltConfig': 'Boutconfiguratie',
-  'steelConn.boltDiameter': 'Boutdiameter',
-  'steelConn.boltClass': 'Boutklasse',
-  'steelConn.boltRows': 'Boutrijen',
-  'steelConn.endPlate': 'Kopplaat',
-  'steelConn.plateThickness': 'Plaatdikte (mm)',
-  'steelConn.plateWidth': 'Plaatbreedte (mm)',
-  'steelConn.plateHeight': 'Plaathoogte (mm)',
-  'steelConn.results': 'Resultaten',
-  'steelConn.momentCapacity': 'Momentcapaciteit',
-  'steelConn.shearCapacity': 'Dwarskrachtcapaciteit',
-  'steelConn.failureMode': 'Maatgevend Faalmechanisme',
-  'steelConn.uc': 'Unity Check',
-  'steelConn.close': 'Sluiten',
-  'steelConn.calculate': 'Berekenen',
-
   // Reinforcement Dialog
   'reinforcement.title': 'Wapeningsconfiguratie',
   'reinforcement.meshTop': 'Bovennet',
@@ -623,6 +522,35 @@ export const nl: Record<string, string> = {
   'ifcProps.normalForce': 'Normaalkracht',
   'ifcProps.shearForce': 'Dwarskracht',
   'ifcProps.bendingMoment': 'Buigend Moment',
+
+  // IFC Panel
+  'ifc.noModel': 'Geen Model',
+  'ifc.createModelFirst': 'Maak een constructief model om IFC te exporteren.',
+  'ifc.code': 'Code',
+  'ifc.graph': 'Grafiek',
+  'ifc.codeView': 'Bekijk IFC STEP code',
+  'ifc.graphView': 'Bekijk entiteitsrelatie grafiek',
+  'ifc.searchEntities': 'Zoek entiteiten...',
+  'ifc.includeResults': 'Inclusief Resultaten',
+  'ifc.copy': 'Kopieer',
+  'ifc.copied': 'Gekopieerd!',
+  'ifc.copyToClipboard': 'Kopieer IFC naar klembord',
+  'ifc.download': 'Downloaden',
+  'ifc.downloadIFC': 'Download IFC bestand',
+  'ifc.statistics': 'Statistieken',
+  'ifc.entities': 'Entiteiten',
+  'ifc.nodes': 'Knopen',
+  'ifc.beams': 'Balken',
+  'ifc.plates': 'Platen',
+  'ifc.loadCases': 'Belastinggevallen',
+  'ifc.entityTypes': 'Entiteitstypen',
+  'ifc.schema': 'Schema',
+  'ifc.ifcStepFormat': 'IFC STEP Formaat',
+  'ifc.lines': 'regels',
+  'ifc.zoomIn': 'Inzoomen',
+  'ifc.zoomOut': 'Uitzoomen',
+  'ifc.fitView': 'Passend Weergeven',
+  'ifc.noEntities': 'Geen entiteiten om weer te geven',
 
   // Agent Panel
   'agent.title': 'AI Agent',
@@ -681,15 +609,11 @@ export const nl: Record<string, string> = {
   'report.showPageNumbers': 'Paginanummers tonen',
   'report.showPageHeader': 'Paginakop tonen',
   'report.showPageFooter': 'Paginavoet tonen',
-  'report.checkSettings': 'Toetsinstellingen',
-  'report.steelGrade': 'Staalsoort',
-  'report.deflectionLimit': 'Doorbuigingslimiet (L/n)',
 
   // Report Category Names
   'report.category.header': 'Koptekst',
   'report.category.input': 'Invoergegevens',
   'report.category.results': 'Resultaten',
-  'report.category.checks': 'Normatieve Toetsen',
 
   // Report Section Names
   'report.section.cover': 'Voorblad',
@@ -708,10 +632,6 @@ export const nl: Record<string, string> = {
   'report.section.resultForcesV': 'Dwarskrachten',
   'report.section.resultForcesN': 'Normaalkrachten',
   'report.section.resultEnvelope': 'Omhullende Diagrammen',
-  'report.section.checkSteelOverview': 'Staaltoets Overzicht',
-  'report.section.checkSteelDetailed': 'Staaltoets Details',
-  'report.section.checkConcreteOverview': 'Betontoets Overzicht',
-  'report.section.checkConcreteDetailed': 'Betontoets Details',
 
   // Cover Section
   'report.cover.structuralAdvice': 'Constructieadvies & berekeningen',
@@ -732,8 +652,6 @@ export const nl: Record<string, string> = {
   // Summary Section
   'report.summary.title': 'Samenvatting',
   'report.summary.noResults': 'Geen analyseresultaten beschikbaar. Voer de analyse uit om de samenvatting te genereren.',
-  'report.summary.allChecksPassed': 'ALLE SNELLE TOETSEN VOLDOEN',
-  'report.summary.checksExceedUnity': 'E\u00c9N OF MEER TOETSEN OVERSCHRIJDEN UNITY',
   'report.summary.maxBendingMoment': 'Max Buigend Moment',
   'report.summary.maxShearForce': 'Max Dwarskracht',
   'report.summary.maxDisplacement': 'Max Verplaatsing',
@@ -743,11 +661,6 @@ export const nl: Record<string, string> = {
   'report.summary.pointLoads': 'Puntlasten',
   'report.summary.distributedLoads': 'Verdeelde Belastingen',
   'report.summary.noLoads': 'Geen belastingen aangebracht.',
-  'report.summary.quickChecks': 'Snelle Toetsen',
-  'report.summary.bendingResistance': 'Buigweerstand',
-  'report.summary.shearResistance': 'Dwarskrachtweerstand',
-  'report.summary.deflectionSLS': 'Doorbuiging (BGT)',
-  'report.summary.note': 'Opmerking: Dit is een vereenvoudigde snelle toets op basis van elastische doorsnede-eigenschappen. Raadpleeg de gedetailleerde staaltoetssectie voor volledige NEN-EN 1993-1-1 verificatie inclusief knik en kipcontrole.',
 
   // Geometry Section
   'report.geometry.title': 'Modelgeometrie',
@@ -833,30 +746,6 @@ export const nl: Record<string, string> = {
   'report.forces.signN': 'Tekenconventie: positief = trek, negatief = druk',
   'report.forces.signV': 'Tekenconventie: positief = kloksgewijze rotatie van doorsnede',
   'report.forces.signM': 'Tekenconventie: positief = trek aan onderzijde (veldmoment)',
-
-  // Steel Check Overview Section
-  'report.steelOverview.title': 'Staal Doorsnede Toetsen \u2014 Overzicht',
-  'report.steelOverview.noResults': 'Geen balkkrachtresultaten beschikbaar. Voer eerst de berekening uit.',
-  'report.steelOverview.description': 'Dwarsdoorsnede-weerstandstoetsen volgens NEN-EN 1993-1-1.',
-  'report.steelOverview.membersChecked': '{count} sta(a)f(ven) getoetst',
-  'report.steelOverview.allPassed': 'ALLE TOETSEN VOLDOEN',
-  'report.steelOverview.someFailed': 'SOMMIGE TOETSEN VOLDOEN NIET',
-  'report.steelOverview.governing': 'Maatgevend',
-  'report.steelOverview.status': 'Status',
-
-  // Steel Check Detailed Section
-  'report.steelDetailed.title': 'Staal Doorsnede Toetsen \u2014 Details',
-  'report.steelDetailed.noResults': 'Geen balkkrachtresultaten beschikbaar.',
-  'report.steelDetailed.formulasDisabled': 'Gedetailleerde formules zijn uitgeschakeld in rapportinstellingen.',
-  'report.steelDetailed.member': 'Staaf',
-  'report.steelDetailed.axialResistance': 'Axiale Weerstand \u2014 NEN-EN 1993-1-1, 6.2.4',
-  'report.steelDetailed.bendingResistance': 'Buigweerstand \u2014 NEN-EN 1993-1-1, 6.2.5',
-  'report.steelDetailed.shearResistance': 'Dwarskrachtweerstand \u2014 NEN-EN 1993-1-1, 6.2.6',
-  'report.steelDetailed.combinedMN': 'Gecombineerd Buigen + Normaalkracht \u2014 NEN-EN 1993-1-1, 6.2.8',
-  'report.steelDetailed.combinedMV': 'Gecombineerd Buigen + Dwarskracht \u2014 NEN-EN 1993-1-1, 6.2.10',
-  'report.steelDetailed.buckling': 'Knikcontrole \u2014 NEN-EN 1993-1-1, 6.3.1',
-  'report.steelDetailed.ltb': 'Laterale Torsiekip \u2014 NEN-EN 1993-1-1, 6.3.2',
-  'report.steelDetailed.governing': 'Maatgevend',
 
   // Common
   'common.ok': 'OK',

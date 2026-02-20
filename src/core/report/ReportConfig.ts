@@ -26,22 +26,11 @@ export type ReportSectionType =
   | 'result_forces_M'     // Bending moment diagram
   | 'result_envelope'     // Envelope diagrams
 
-  // Steel Checks (NEN-EN 1993-1-1)
-  | 'check_steel_overview'  // UC overview with graphics
-  | 'check_steel_detailed'  // Full formula derivations
-
-  // Concrete Checks (EN 1992-1-1)
-  | 'check_concrete_overview'
-  | 'check_concrete_detailed'
-
   // Future
-  | 'check_timber'          // EN 1995
-  | 'check_masonry'         // EN 1996
-  | 'check_connections'     // NEN-EN 1993-1-8
   | 'plates_stress'         // Plate stress contours
   | 'plates_reinforcement'; // Plate reinforcement design
 
-export type ReportSectionCategory = 'header' | 'input' | 'results' | 'checks';
+export type ReportSectionCategory = 'header' | 'input' | 'results';
 
 export interface IReportSection {
   id: ReportSectionType;
@@ -65,10 +54,6 @@ export interface IReportConfig {
   includeFormulas: boolean;
   includeGraphics: boolean;
   unitSystem: 'metric' | 'imperial';
-
-  // Check settings
-  steelGrade: string;
-  deflectionLimit: number;
 
   // Styling
   primaryColor: string;  // For headers, accents
@@ -99,11 +84,6 @@ export const DEFAULT_REPORT_CONFIG: IReportConfig = {
     { id: 'result_forces_N', name: 'Axial Forces', category: 'results', enabled: true, order: 25 },
     { id: 'result_envelope', name: 'Envelope Diagrams', category: 'results', enabled: false, order: 26 },
 
-    // Checks sections
-    { id: 'check_steel_overview', name: 'Steel Check Overview', category: 'checks', enabled: true, order: 30 },
-    { id: 'check_steel_detailed', name: 'Steel Check Details', category: 'checks', enabled: true, order: 31 },
-    { id: 'check_concrete_overview', name: 'Concrete Check Overview', category: 'checks', enabled: false, order: 40 },
-    { id: 'check_concrete_detailed', name: 'Concrete Check Details', category: 'checks', enabled: false, order: 41 },
   ],
 
   companyName: '3BM Bouwtechniek V.O.F.',
@@ -113,8 +93,6 @@ export const DEFAULT_REPORT_CONFIG: IReportConfig = {
   includeFormulas: true,
   includeGraphics: true,
   unitSystem: 'metric',
-  steelGrade: 'S355',
-  deflectionLimit: 250,
   primaryColor: '#00a8a8',  // Teal
   accentColor: '#8b5cf6',   // Purple
 };
@@ -147,5 +125,4 @@ export const CATEGORY_NAMES: Record<ReportSectionCategory, string> = {
   header: 'Header',
   input: 'Input Data',
   results: 'Results',
-  checks: 'Code Checks',
 };

@@ -603,7 +603,7 @@ export function initCrackedSectionState(
   concrete: IConcreteMaterial,
   Es: number = 200e9
 ): ICrackedSectionState {
-  const { Mcr, Iunc, x0 } = calculateCrackingMoment(b, h, concrete.fctm, concrete.Ecm, As, d, Es);
+  const { Mcr, Iunc } = calculateCrackingMoment(b, h, concrete.fctm, concrete.Ecm, As, d, Es);
   const { Icr, xCr } = calculateCrackedI(b, d, As, concrete.Ecm, Es);
 
   return {
@@ -659,7 +659,7 @@ export interface IBeamSegment {
  * Splits at locations where cracking state changes or moment varies significantly
  */
 export function determineBeamSplitPoints(
-  L: number,
+  _L: number,          // Beam length (for future distance-based splitting)
   M1: number,          // Moment at start (Nm)
   M2: number,          // Moment at end (Nm)
   Mmax: number,        // Maximum moment (Nm)

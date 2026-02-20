@@ -4,8 +4,6 @@
 
 import React, { useMemo } from 'react';
 import { ReportSectionProps } from '../ReportPreview';
-import { STEEL_GRADES } from '../../../core/standards/EurocodeNL';
-import { calculateBeamLength } from '../../../core/fem/Beam';
 
 interface SummaryData {
   // Loads
@@ -18,26 +16,6 @@ interface SummaryData {
   maxShearBeamId: number;
   maxDisplacement: number;
   maxDisplacementNodeId: number;
-  // Checks
-  momentCheck: { MEd: number; MRd: number; UC: number } | null;
-  shearCheck: { VEd: number; VRd: number; UC: number } | null;
-  displacementCheck: { delta: number; limit: number; span: number; UC: number } | null;
-  // Info
-  steelGrade: string;
-  fy: number;
-  allOk: boolean;
-}
-
-function ucColorClass(uc: number): string {
-  if (uc <= 0.85) return 'ok';
-  if (uc <= 1.0) return 'warning';
-  return 'fail';
-}
-
-function ucColor(uc: number): string {
-  if (uc <= 0.85) return '#22c55e';
-  if (uc <= 1.0) return '#f59e0b';
-  return '#ef4444';
 }
 
 export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, result, loadCases, sectionNumber }) => {
@@ -81,77 +59,6 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
       }
     }
 
-    // Steel grade
-    const grade = STEEL_GRADES.find(g => g.name === config.steelGrade) || STEEL_GRADES[2]; // S355 default
-    const fy = grade.fy * 1e6; // Pa
-    const gammaM0 = grade.gammaM0;
-
-    // Find the beam with the max moment for M check
-    const maxMBeam = mesh.getBeamElement(maxMomentBeamId);
-    let momentCheck: SummaryData['momentCheck'] = null;
-    if (maxMBeam) {
-      const section = maxMBeam.section;
-      // Elastic section modulus Wy = I / (h/2)
-      const Wy = section.Wy ?? (section.I / (section.h / 2));
-      const MRd = (Wy * fy) / gammaM0;
-      momentCheck = {
-        MEd: maxMoment,
-        MRd,
-        UC: MRd > 0 ? maxMoment / MRd : 0,
-      };
-    }
-
-    // Find the beam with the max shear for V check
-    const maxVBeam = mesh.getBeamElement(maxShearBeamId);
-    let shearCheck: SummaryData['shearCheck'] = null;
-    if (maxVBeam) {
-      const section = maxVBeam.section;
-      // Shear area estimation
-      let Av: number;
-      if (section.tw && section.h) {
-        const twM = section.tw;
-        const tfM = section.tf ?? 0;
-        const hw = section.h - 2 * tfM;
-        Av = Math.max(hw * twM, section.A * 0.5);
-      } else {
-        Av = section.A * 0.6;
-      }
-      const VRd = (Av * (fy / Math.sqrt(3))) / gammaM0;
-      shearCheck = {
-        VEd: maxShear,
-        VRd,
-        UC: VRd > 0 ? maxShear / VRd : 0,
-      };
-    }
-
-    // Displacement check: find longest span
-    let maxSpan = 0;
-    for (const beam of beams) {
-      const nodes = mesh.getBeamElementNodes(beam);
-      if (nodes) {
-        const L = calculateBeamLength(nodes[0], nodes[1]);
-        if (L > maxSpan) maxSpan = L;
-      }
-    }
-    const deflLimit = config.deflectionLimit || 250;
-    const displacementLimit = maxSpan / deflLimit;
-    let displacementCheck: SummaryData['displacementCheck'] = null;
-    if (maxSpan > 0) {
-      displacementCheck = {
-        delta: maxDisplacement,
-        limit: displacementLimit,
-        span: maxSpan,
-        UC: displacementLimit > 0 ? maxDisplacement / displacementLimit : 0,
-      };
-    }
-
-    // Overall pass/fail
-    const allOk = (
-      (!momentCheck || momentCheck.UC <= 1.0) &&
-      (!shearCheck || shearCheck.UC <= 1.0) &&
-      (!displacementCheck || displacementCheck.UC <= 1.0)
-    );
-
     return {
       pointLoads: allPointLoads,
       distributedLoads: allDistLoads,
@@ -161,14 +68,8 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
       maxShearBeamId,
       maxDisplacement,
       maxDisplacementNodeId,
-      momentCheck,
-      shearCheck,
-      displacementCheck,
-      steelGrade: grade.name,
-      fy: grade.fy,
-      allOk,
     };
-  }, [mesh, result, loadCases, config]);
+  }, [mesh, result, loadCases]);
 
   if (!summary) {
     return (
@@ -192,25 +93,6 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
       <h2 className="report-section-title" style={{ color: config.primaryColor }}>
         {sectionNumber ? `${sectionNumber}. ` : ''}Executive Summary
       </h2>
-
-      {/* Overall status banner */}
-      <div
-        style={{
-          padding: '12px 16px',
-          borderRadius: 6,
-          marginBottom: 20,
-          background: summary.allOk ? '#f0fdf4' : '#fef2f2',
-          border: `1px solid ${summary.allOk ? '#bbf7d0' : '#fecaca'}`,
-          color: summary.allOk ? '#166534' : '#991b1b',
-          fontWeight: 600,
-          fontSize: '11pt',
-          textAlign: 'center',
-        }}
-      >
-        {summary.allOk
-          ? 'ALL QUICK CHECKS PASSED'
-          : 'ONE OR MORE CHECKS EXCEED UNITY'}
-      </div>
 
       {/* Key results grid */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -297,63 +179,6 @@ export const SummarySection: React.FC<ReportSectionProps> = ({ config, mesh, res
         <p style={{ color: '#666', fontStyle: 'italic', marginBottom: 12 }}>No loads applied.</p>
       )}
 
-      {/* Quick checks */}
-      <h3 className="report-subsection-title" style={{ color: config.primaryColor }}>
-        Quick Checks ({summary.steelGrade}, f<sub>y</sub> = {summary.fy} MPa)
-      </h3>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Moment check */}
-        {summary.momentCheck && (
-          <CheckRow
-            title="Bending Resistance"
-            formula={
-              <>
-                M<sub>Ed</sub> / M<sub>el,Rd</sub> = {fmtMoment(summary.momentCheck.MEd)} / {fmtMoment(summary.momentCheck.MRd)} kNm
-              </>
-            }
-            uc={summary.momentCheck.UC}
-            reference="NEN-EN 1993-1-1, 6.2.5"
-            primaryColor={config.primaryColor}
-          />
-        )}
-
-        {/* Shear check */}
-        {summary.shearCheck && (
-          <CheckRow
-            title="Shear Resistance"
-            formula={
-              <>
-                V<sub>Ed</sub> / V<sub>c,Rd</sub> = {fmtForce(summary.shearCheck.VEd)} / {fmtForce(summary.shearCheck.VRd)} kN
-              </>
-            }
-            uc={summary.shearCheck.UC}
-            reference={<>NEN-EN 1993-1-1, 6.2.6 (A<sub>v</sub> &middot; f<sub>y</sub> / &radic;3)</>}
-            primaryColor={config.primaryColor}
-          />
-        )}
-
-        {/* Displacement check */}
-        {summary.displacementCheck && (
-          <CheckRow
-            title="Deflection (SLS)"
-            formula={
-              <>
-                &delta;<sub>max</sub> / (L/{config.deflectionLimit || 250}) = {fmtDisp(summary.displacementCheck.delta)} / {fmtDisp(summary.displacementCheck.limit)} mm
-              </>
-            }
-            uc={summary.displacementCheck.UC}
-            reference={`L = ${(summary.displacementCheck.span * 1000).toFixed(0)} mm, limit = L/${config.deflectionLimit || 250}`}
-            primaryColor={config.primaryColor}
-          />
-        )}
-      </div>
-
-      <p style={{ color: '#888', fontSize: '8pt', marginTop: 16, fontStyle: 'italic' }}>
-        Note: This is a simplified quick check using elastic section properties.
-        Refer to the detailed steel check section for full NEN-EN 1993-1-1 verification including
-        buckling and lateral torsional buckling.
-      </p>
     </div>
   );
 };
@@ -391,79 +216,3 @@ function ResultCard({ label, value, detail, color }: {
   );
 }
 
-function CheckRow({ title, formula, uc, reference, primaryColor }: {
-  title: string;
-  formula: React.ReactNode;
-  uc: number;
-  reference: React.ReactNode;
-  primaryColor: string;
-}) {
-  const cls = ucColorClass(uc);
-  const color = ucColor(uc);
-  const pct = Math.min(uc * 100, 100);
-
-  return (
-    <div
-      style={{
-        padding: '10px 14px',
-        background: '#fafbfc',
-        border: '1px solid #e2e8f0',
-        borderRadius: 6,
-        pageBreakInside: 'avoid',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-        <span style={{ fontWeight: 600, fontSize: '10pt', color: primaryColor }}>{title}</span>
-        <span className={`status-badge ${cls === 'warning' ? 'ok' : cls}`}>
-          {uc <= 1.0 ? 'OK' : 'FAIL'}
-        </span>
-      </div>
-
-      {/* Formula line */}
-      <div
-        style={{
-          fontFamily: "'Times New Roman', serif",
-          fontSize: '9.5pt',
-          padding: '6px 10px',
-          background: '#f5f5f5',
-          borderLeft: `3px solid ${primaryColor}`,
-          borderRadius: '0 4px 4px 0',
-          marginBottom: 8,
-        }}
-      >
-        {formula}
-      </div>
-
-      {/* UC bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 1, height: 14, background: '#e5e5e5', borderRadius: 2, overflow: 'hidden' }}>
-          <div
-            style={{
-              width: `${pct}%`,
-              height: '100%',
-              background: color,
-              borderRadius: 2,
-              transition: 'width 0.3s ease',
-            }}
-          />
-        </div>
-        <span
-          style={{
-            minWidth: 50,
-            textAlign: 'right',
-            fontWeight: 600,
-            fontSize: '10pt',
-            color,
-          }}
-        >
-          {uc.toFixed(2)}
-        </span>
-      </div>
-
-      {/* Reference */}
-      <div style={{ fontSize: '7.5pt', color: '#94a3b8', marginTop: 4 }}>
-        {reference}
-      </div>
-    </div>
-  );
-}

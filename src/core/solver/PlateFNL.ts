@@ -10,8 +10,7 @@
  */
 
 import { Matrix } from '../math/Matrix';
-import { Mesh } from '../fem/Mesh';
-import { IPlateRegion, IPlateReinforcement, IReinforcementMesh } from '../fem/types';
+import type { IPlateRegion, IPlateReinforcement, IReinforcementMesh } from '../fem/types';
 
 // ============================================================================
 // Material Interfaces
@@ -67,7 +66,7 @@ export interface IPlateFNLOptions {
   beta: number;                      // Tension stiffening factor
 }
 
-const DEFAULT_PLATE_FNL_OPTIONS: IPlateFNLOptions = {
+export const DEFAULT_PLATE_FNL_OPTIONS: IPlateFNLOptions = {
   nLayers: 10,
   fck: 30e6,
   fctm: 2.9e6,
@@ -346,8 +345,6 @@ export function updatePlateElementState(
   gamma0XY: number,     // Membrane shear strain
   opts: IPlateFNLOptions
 ): IPlateElementState {
-  const { nLayers } = opts;
-
   // Integrate through thickness
   let DmemSum = new Matrix(3, 3);
   let DbendSum = new Matrix(3, 3);

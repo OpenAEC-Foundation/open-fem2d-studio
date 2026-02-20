@@ -365,6 +365,15 @@ export interface ISolverResult {
     ny: { min: number; max: number };
     nxy: { min: number; max: number };
   };
+  // FNL concrete: cracked section states per beam (Map<beamId, ICrackedSectionState>)
+  crackedSectionStates?: Map<number, {
+    isCracked: boolean;
+    Mcr: number;        // Cracking moment (Nm)
+    Icr: number;        // Cracked second moment of area (m⁴)
+    Ieff: number;       // Effective I with tension stiffening (m⁴)
+    xCr: number;        // Neutral axis depth when cracked (m)
+    EIeff: number;      // Effective bending stiffness (Nm²)
+  }>;
 }
 
 export interface IBeamForces {

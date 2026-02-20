@@ -1,19 +1,16 @@
 /**
- * Report Generator — HTML report with project info, results, and steel checks
+ * Report Generator — HTML report with project info and results
  */
 
 import { Mesh } from '../fem/Mesh';
 import { ISolverResult } from '../fem/types';
 import { IProjectInfo } from '../../context/FEMContext';
-import { ISteelGrade } from '../standards/EurocodeNL';
-import { checkAllBeams, ISectionProperties, ISteelCheckResult } from '../standards/SteelCheck';
 import { calculateBeamLength } from '../fem/Beam';
 
 interface ReportOptions {
   mesh: Mesh;
   result: ISolverResult | null;
   projectInfo: IProjectInfo;
-  steelGrade: ISteelGrade;
   forceUnit: 'N' | 'kN' | 'MN';
 }
 
@@ -33,109 +30,8 @@ function fmtDisp(val: number): string {
   return (val * 1000).toFixed(3); // m -> mm
 }
 
-function ucColor(uc: number): string {
-  if (uc <= 0.85) return '#22c55e';
-  if (uc <= 1.0) return '#f59e0b';
-  return '#ef4444';
-}
-
-function ucBar(uc: number): string {
-  const pct = Math.min(uc * 100, 100);
-  const color = ucColor(uc);
-  return `<div style="display:inline-flex;align-items:center;gap:6px;width:120px">
-    <div style="flex:1;height:8px;background:#333;border-radius:4px;overflow:hidden">
-      <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
-    </div>
-    <span style="font-weight:700;color:${color}">${uc.toFixed(2)}</span>
-  </div>`;
-}
-
-function fmtVal(v: number, decimals: number = 2): string {
-  return v.toFixed(decimals);
-}
-
-/**
- * Render a transparent steel check detail block for one member,
- * showing NEN-EN 1993-1-1 norm formulas with filled-in values.
- */
-function renderSteelCheckDetail(r: ISteelCheckResult, grade: ISteelGrade, forceUnit: 'N' | 'kN' | 'MN'): string {
-  const fy = grade.fy;
-  const gM0 = grade.gammaM0;
-
-  // Convert to display units
-  const divisor = forceUnit === 'MN' ? 1e6 : forceUnit === 'kN' ? 1000 : 1;
-  const NEd_d = r.NEd / divisor;
-  const VEd_d = r.VEd / divisor;
-  const MEd_d = r.MEd / divisor;
-  const NcRd_d = r.NcRd / divisor;
-  const VcRd_d = r.VcRd / divisor;
-  const McRd_d = r.McRd / divisor;
-  const fUnit = forceUnit === 'MN' ? 'MN' : forceUnit === 'kN' ? 'kN' : 'N';
-  const mUnit = forceUnit === 'MN' ? 'MNm' : forceUnit === 'kN' ? 'kNm' : 'Nm';
-
-  return `
-  <div class="steel-detail">
-    <h4>Member ${r.elementId} — ${r.profileName} (${grade.name})</h4>
-
-    <div class="check-block">
-      <div class="check-title">Axial Resistance — NEN-EN 1993-1-1, 6.2.4</div>
-      <div class="formula">N<sub>c,Rd</sub> = A &middot; f<sub>y</sub> / &gamma;<sub>M0</sub></div>
-      <div class="formula-filled">N<sub>c,Rd</sub> = ${fmtVal(NcRd_d, 1)} ${fUnit} &nbsp; (f<sub>y</sub> = ${fy} MPa, &gamma;<sub>M0</sub> = ${gM0})</div>
-      <div class="formula">UC = N<sub>Ed</sub> / N<sub>c,Rd</sub> = ${fmtVal(NEd_d, 1)} / ${fmtVal(NcRd_d, 1)} = <strong style="color:${ucColor(r.UC_N)}">${fmtVal(r.UC_N)}</strong></div>
-    </div>
-
-    <div class="check-block">
-      <div class="check-title">Bending Resistance — NEN-EN 1993-1-1, 6.2.5</div>
-      <div class="formula">M<sub>c,Rd</sub> = W<sub>el</sub> &middot; f<sub>y</sub> / &gamma;<sub>M0</sub></div>
-      <div class="formula-filled">M<sub>c,Rd</sub> = ${fmtVal(McRd_d, 2)} ${mUnit}</div>
-      <div class="formula">UC = M<sub>Ed</sub> / M<sub>c,Rd</sub> = ${fmtVal(MEd_d, 2)} / ${fmtVal(McRd_d, 2)} = <strong style="color:${ucColor(r.UC_M)}">${fmtVal(r.UC_M)}</strong></div>
-    </div>
-
-    <div class="check-block">
-      <div class="check-title">Shear Resistance — NEN-EN 1993-1-1, 6.2.6</div>
-      <div class="formula">V<sub>c,Rd</sub> = A<sub>v</sub> &middot; (f<sub>y</sub> / &radic;3) / &gamma;<sub>M0</sub></div>
-      <div class="formula-filled">V<sub>c,Rd</sub> = ${fmtVal(VcRd_d, 1)} ${fUnit}</div>
-      <div class="formula">UC = V<sub>Ed</sub> / V<sub>c,Rd</sub> = ${fmtVal(VEd_d, 1)} / ${fmtVal(VcRd_d, 1)} = <strong style="color:${ucColor(r.UC_V)}">${fmtVal(r.UC_V)}</strong></div>
-    </div>
-
-    <div class="check-block">
-      <div class="check-title">Combined M + N — NEN-EN 1993-1-1, 6.2.8</div>
-      <div class="formula">N<sub>Ed</sub> / N<sub>c,Rd</sub> + M<sub>Ed</sub> / M<sub>c,Rd</sub> &le; 1.0</div>
-      <div class="formula-filled">${fmtVal(r.UC_N)} + ${fmtVal(r.UC_M)} = <strong style="color:${ucColor(r.UC_MN)}">${fmtVal(r.UC_MN)}</strong></div>
-    </div>
-
-    <div class="check-block">
-      <div class="check-title">Combined M + V — NEN-EN 1993-1-1, 6.2.10</div>
-      <div class="formula">${r.UC_MV > r.UC_M ? `V<sub>Ed</sub> &gt; 0.5 V<sub>c,Rd</sub> &rarr; reduced M<sub>v,Rd</sub>` : `V<sub>Ed</sub> &le; 0.5 V<sub>c,Rd</sub> &rarr; no reduction needed`}</div>
-      <div class="formula-filled">UC = <strong style="color:${ucColor(r.UC_MV)}">${fmtVal(r.UC_MV)}</strong></div>
-    </div>
-
-    <div class="check-result ${r.status === 'OK' ? 'result-ok' : 'result-fail'}">
-      Governing: ${r.governingCheck}${r.governingLocation ? ` at x = ${(r.governingLocation.position * 1000).toFixed(0)}mm (${r.governingLocation.locationType})` : ''} &mdash; UC<sub>max</sub> = ${fmtVal(r.UC_max)} &mdash; <strong>${r.status}</strong>
-    </div>
-  </div>`;
-}
-
 export function generateReport(opts: ReportOptions): string {
-  const { mesh, result, projectInfo, steelGrade, forceUnit } = opts;
-
-  // Steel checks
-  let steelResults: ISteelCheckResult[] = [];
-  if (result && result.beamForces.size > 0) {
-    const sectionMap = new Map<number, ISectionProperties>();
-    for (const beam of mesh.beamElements.values()) {
-      sectionMap.set(beam.id, {
-        A: beam.section.A,
-        I: beam.section.I,
-        h: beam.section.h,
-        profileName: beam.profileName,
-      });
-    }
-    steelResults = checkAllBeams(result.beamForces, sectionMap, steelGrade);
-  }
-
-  const allOk = steelResults.every(r => r.status === 'OK');
-  const worstUC = steelResults.length > 0 ? Math.max(...steelResults.map(r => r.UC_max)) : 0;
+  const { mesh, result, projectInfo, forceUnit } = opts;
 
   // Node summary
   const nodes = Array.from(mesh.nodes.values());
@@ -178,17 +74,6 @@ export function generateReport(opts: ReportOptions): string {
   .meta-label { color: #64748b; font-weight: 600; }
   .meta-value { color: #1a1a2e; }
   .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center; }
-  .summary-box { padding: 10px 16px; border-radius: 6px; margin: 12px 0; font-weight: 600; font-size: 13px; }
-  .summary-ok { background: #f0fdf4; border: 1px solid #22c55e; color: #166534; }
-  .summary-fail { background: #fef2f2; border: 1px solid #ef4444; color: #991b1b; }
-  .steel-detail { background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 12px 0; page-break-inside: avoid; }
-  .check-block { margin: 8px 0; padding: 6px 0; }
-  .check-title { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 2px; }
-  .formula { font-size: 11px; color: #64748b; font-style: italic; margin: 1px 0; padding-left: 12px; }
-  .formula-filled { font-size: 11px; color: #1a1a2e; margin: 1px 0; padding-left: 12px; }
-  .check-result { padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 8px; }
-  .result-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
-  .result-fail { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
   .beam-forces-detail { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 10px 0; page-break-inside: avoid; }
   .beam-forces-detail h4 { border-bottom: none; margin-bottom: 6px; }
   .inline-table { width: auto; margin: 4px 0 8px; }
@@ -209,7 +94,6 @@ export function generateReport(opts: ReportOptions): string {
   <span class="meta-label">Date:</span><span class="meta-value">${projectInfo.date || '—'}</span>
   <span class="meta-label">Location:</span><span class="meta-value">${projectInfo.location || '—'}</span>
   <span class="meta-label">Description:</span><span class="meta-value">${projectInfo.description || '—'}</span>
-  <span class="meta-label">Steel Grade:</span><span class="meta-value">${steelGrade.name} (f<sub>y</sub> = ${steelGrade.fy} MPa)</span>
 </div>
 
 <h2>${nextSection()}. Model Summary</h2>
@@ -297,26 +181,6 @@ ${Array.from(result.beamForces.values()).map(f => {
   </div>`;
 }).join('\n')}
 ` : `<h2>${nextSection()}. Analysis Results</h2><p style="color:#94a3b8">No analysis results available. Run the solver first.</p>`}
-
-${steelResults.length > 0 ? `
-<h2>${nextSection()}. Steel Section Check — NEN-EN 1993-1-1</h2>
-<p style="color:#64748b;margin-bottom:8px">Steel grade: ${steelGrade.name}, f<sub>y</sub> = ${steelGrade.fy} MPa, &gamma;<sub>M0</sub> = ${steelGrade.gammaM0}</p>
-
-<h3>Summary</h3>
-<table>
-  <tr><th>ID</th><th>Profile</th><th>N<sub>Ed</sub></th><th>V<sub>Ed</sub></th><th>M<sub>Ed</sub></th><th>UC M</th><th>UC V</th><th>UC M+N</th><th>UC max</th><th>Governing</th><th>Status</th></tr>
-  ${steelResults.map(r =>
-    `<tr><td>${r.elementId}</td><td>${r.profileName}</td><td>${fmtForce(r.NEd, forceUnit)}</td><td>${fmtForce(r.VEd, forceUnit)}</td><td>${fmtMoment(r.MEd, forceUnit)}</td><td>${r.UC_M.toFixed(2)}</td><td>${r.UC_V.toFixed(2)}</td><td>${r.UC_MN.toFixed(2)}</td><td>${ucBar(r.UC_max)}</td><td>${r.governingCheck}</td><td class="${r.status === 'OK' ? 'ok' : 'fail'}">${r.status}</td></tr>`
-  ).join('\n  ')}
-</table>
-
-<div class="summary-box ${allOk ? 'summary-ok' : 'summary-fail'}">
-  ${steelResults.length} members checked — Max UC = ${worstUC.toFixed(2)} — ${allOk ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}
-</div>
-
-<h3>Detailed Checks per Member</h3>
-${steelResults.map(r => renderSteelCheckDetail(r, steelGrade, forceUnit)).join('\n')}
-` : ''}
 
 ${projectInfo.notes ? `<h2>Notes</h2><p style="white-space:pre-wrap;color:#475569">${projectInfo.notes}</p>` : ''}
 

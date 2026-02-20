@@ -29,6 +29,11 @@ export async function solve(
   options: SolveOptions,
   signal?: AbortSignal
 ): Promise<ISolverResult> {
+  // Skip remote solver for plate analysis - use local solver directly
+  if (options.analysisType !== 'frame') {
+    console.log('[SolverService] Using local solver for', options.analysisType);
+    return solveNonlinear(mesh, options);
+  }
   try {
     return await solveRemote(mesh, options, signal);
   } catch (e) {

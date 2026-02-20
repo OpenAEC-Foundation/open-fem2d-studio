@@ -15,8 +15,6 @@ import { PlatePropertiesDialog } from '../PlatePropertiesDialog/PlatePropertiesD
 import { DimensionEditDialog } from '../DimensionEditDialog/DimensionEditDialog';
 import { generatePolygonPlateMesh, generatePolygonPlateMeshV2, fixupEdgePlateIds, createEdgesForRectPlate, removePlateRegion, remeshPlateRegion, remeshPolygonPlateRegion, remeshPolygonPlateRegionFromContour, findPlateCornerForNode, pointInPolygon, polygonCentroid } from '../../core/fem/PlateRegion';
 import { buildNodeIdToIndex } from '../../core/solver/Assembler';
-import { checkSteelSection } from '../../core/standards/SteelCheck';
-import { STEEL_GRADES } from '../../core/standards/EurocodeNL';
 import './MeshEditor.css';
 import { IGridLine } from '../../core/fem/StructuralGrid';
 import { IPointLoad } from '../../core/fem/LoadCase';
@@ -154,8 +152,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     plateMembraneForceUnit,
     finishEditTrigger,
     activeLayerId,
-    selectionFilter,
-    steelCheckInterval
+    selectionFilter
   } = state;
 
   const [isDragging, setIsDragging] = useState(false);
@@ -2932,7 +2929,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       let drawNodes = nodes;
 
-      if (viewMode === 'results' && showDeformed && result && nodeIdToIndex) {
+      if ((viewMode === 'results' || viewMode === 'loads') && showDeformed && result && nodeIdToIndex) {
         drawNodes = nodes.map(n => {
           const idx = nodeIdToIndex.get(n.id);
           if (idx === undefined) return n;
@@ -3617,7 +3614,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       // Track cubic deformation curve points for drawing
       let deformedCurvePoints: { x: number; y: number }[] | null = null;
 
-      if (viewMode === 'results' && showDeformed && result && nodeIdToIndex) {
+      if ((viewMode === 'results' || viewMode === 'loads') && showDeformed && result && nodeIdToIndex) {
         const idx1 = nodeIdToIndex.get(n1.id);
         const idx2 = nodeIdToIndex.get(n2.id);
         if (idx1 !== undefined && idx2 !== undefined) {
@@ -4009,73 +4006,6 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         ctx.fillText(elLabel, labelX, labelY);
         ctx.textAlign = 'start';
         ctx.textBaseline = 'alphabetic';
-      }
-
-      // Draw UC badge when results are available
-      if (viewMode === 'results' && result && beam.section) {
-        const forces = result.beamForces.get(beam.id);
-        if (forces) {
-          const grade = STEEL_GRADES[2]; // S355
-          const sectionProps = {
-            A: beam.section.A,
-            I: beam.section.I,
-            h: beam.section.h,
-            profileName: beam.profileName,
-          };
-          const dx = n2.x - n1.x;
-          const dy = n2.y - n1.y;
-          const beamLen = Math.sqrt(dx * dx + dy * dy);
-          const check = checkSteelSection(sectionProps, forces, grade, beamLen, 0, 250, false, steelCheckInterval);
-          const uc = check.UC_max;
-          const isOk = uc <= 1.0;
-
-          // Position: offset from beam end (3/4 along beam)
-          const t = 0.75;
-          const bx = p1.x + (p2.x - p1.x) * t;
-          const by = p1.y + (p2.y - p1.y) * t;
-
-          const label = `UC ${uc.toFixed(2)}`;
-          ctx.font = 'bold 9px sans-serif';
-          const tw = ctx.measureText(label).width + 8;
-          const th = 14;
-
-          // Badge background
-          ctx.fillStyle = isOk ? 'rgba(34, 197, 94, 0.9)' : 'rgba(239, 68, 68, 0.9)';
-          const rx = bx - tw / 2;
-          const ry = by - th - 4;
-          ctx.beginPath();
-          ctx.roundRect(rx, ry, tw, th, 3);
-          ctx.fill();
-
-          // Badge text
-          ctx.fillStyle = '#fff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(label, bx, ry + th / 2);
-
-          // Checkmark or cross icon
-          const iconX = bx - tw / 2 + 8;
-          const iconY = ry + th / 2;
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 1.5;
-          if (isOk) {
-            ctx.beginPath();
-            ctx.moveTo(iconX - 3, iconY);
-            ctx.lineTo(iconX - 1, iconY + 2);
-            ctx.lineTo(iconX + 3, iconY - 2);
-            ctx.stroke();
-          } else {
-            ctx.beginPath();
-            ctx.moveTo(iconX - 2, iconY - 2);
-            ctx.lineTo(iconX + 2, iconY + 2);
-            ctx.moveTo(iconX + 2, iconY - 2);
-            ctx.lineTo(iconX - 2, iconY + 2);
-            ctx.stroke();
-          }
-
-          ctx.textAlign = 'start';
-          ctx.textBaseline = 'alphabetic';
-        }
       }
 
       // Draw beam on grade springs (decorative, not selectable)
@@ -4789,7 +4719,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       let drawNode = node;
 
-      if (viewMode === 'results' && showDeformed && result && nodeIdToIndex) {
+      if ((viewMode === 'results' || viewMode === 'loads') && showDeformed && result && nodeIdToIndex) {
         const idx = nodeIdToIndex.get(node.id);
         if (idx !== undefined) {
           if (analysisType === 'plate_bending') {
@@ -4898,7 +4828,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
 
       // Displacement values at node (results view only)
-      if (showDisplacements && viewMode === 'results' && result && nodeIdToIndex) {
+      if (showDisplacements && (viewMode === 'results' || viewMode === 'loads') && result && nodeIdToIndex) {
         const idx = nodeIdToIndex.get(node.id);
         if (idx !== undefined) {
           ctx.font = '9px monospace';
@@ -5191,7 +5121,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     }
 
     // Draw reaction forces if result exists (only in results view)
-    if (viewMode === 'results' && result && showReactions) {
+    if ((viewMode === 'results' || viewMode === 'loads') && result && showReactions) {
       const reactionFont = 'bold 11px sans-serif';
       ctx.font = reactionFont;
 
@@ -7476,7 +7406,21 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       const snapped = snapToGridFn(worldPos.x, worldPos.y);
       console.log('[Support Tool] Clicked at screen:', x, y, '-> world:', worldPos.x.toFixed(3), worldPos.y.toFixed(3), '-> found node:', node?.id);
 
-      // If no node found, try to find a plate boundary node at this position
+      // If no node found at click position, search for ANY node at the snapped position
+      // This handles the case where user clicks near a node and it snaps to an existing node's position
+      if (!node) {
+        const snapTolerance = 0.001; // 1mm - effectively "same position"
+        for (const n of mesh.nodes.values()) {
+          const dist = Math.sqrt((n.x - snapped.x) ** 2 + (n.y - snapped.y) ** 2);
+          if (dist < snapTolerance) {
+            node = n;
+            console.log('[Support Tool] Found existing node at snapped position:', n.id);
+            break;
+          }
+        }
+      }
+
+      // If still no node found, try to find a plate boundary node at this position
       if (!node) {
         const tolerance = 0.1; // 10cm tolerance
         for (const plate of mesh.plateRegions.values()) {
@@ -8961,24 +8905,6 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     // Double-click on a bar -> open bar properties (always takes priority over line load)
     const beam = findBeamAtScreen(x, y);
     if (beam) {
-      // Check if click is near the UC badge (75% along beam)
-      if (viewMode === 'results' && result && beam.section) {
-        const nodes = mesh.getBeamElementNodes(beam);
-        if (nodes) {
-          const [n1, n2] = nodes;
-          const p1 = worldToScreen(n1.x, n1.y);
-          const p2 = worldToScreen(n2.x, n2.y);
-          const t = 0.75;
-          const bx = p1.x + (p2.x - p1.x) * t;
-          const by = p1.y + (p2.y - p1.y) * t;
-          const dist = Math.sqrt((x - bx) ** 2 + (y - by) ** 2);
-          if (dist < 20) {
-            // Open code-check tab
-            dispatch({ type: 'SET_CODE_CHECK_BEAM', payload: beam.id });
-            return;
-          }
-        }
-      }
       setEditingBarId(beam.id);
       return;
     }
@@ -10270,6 +10196,28 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
               >
                 {t('context.addSupport')}
               </div>
+              {(() => {
+                if (contextMenu.id === undefined) return null;
+                const node = mesh.getNode(contextMenu.id);
+                if (!node) return null;
+                const hasLoad = node.loads.fx !== 0 || node.loads.fy !== 0 || (node.loads.moment && node.loads.moment !== 0);
+                if (!hasLoad) return null;
+                return (
+                  <div
+                    className="context-menu-item"
+                    onClick={() => {
+                      pushUndo();
+                      dispatch({ type: 'REMOVE_POINT_LOAD', payload: { lcId: activeLoadCase, nodeId: contextMenu.id! } });
+                      mesh.updateNode(contextMenu.id!, { loads: { fx: 0, fy: 0, moment: 0 } });
+                      dispatch({ type: 'REFRESH_MESH' });
+                      dispatch({ type: 'SET_RESULT', payload: null });
+                      setContextMenu(null);
+                    }}
+                  >
+                    {t('context.deleteLoad') || 'Delete load'}
+                  </div>
+                );
+              })()}
             </>
           )}
           {contextMenu.type === 'beam' && (

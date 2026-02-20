@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useFEM, applyLoadCaseToMesh } from '../../context/FEMContext';
 import { solve } from '../../core/solver/SolverService';
-import { processAgentInput, processAgentOptimize } from '../../core/agent/ModelAgent';
+import { processAgentInput } from '../../core/agent/ModelAgent';
 import { DEFAULT_SECTIONS } from '../../core/fem/Beam';
 import './AgentPanel.css';
 
@@ -602,14 +602,6 @@ export function AgentPanel({ onClose }: AgentPanelProps) {
           if (cmd.tool === 'run_analysis') {
             setLoadingMessage('Running analysis...');
             result = await runAnalysis();
-          } else if (cmd.tool === 'optimize_profile') {
-            setLoadingMessage('Optimizing profile...');
-            const optMsg = `Optimaliseer op ${(cmd.args.criterion as string) ?? 'weight'}${cmd.args.series ? ` ${cmd.args.series}` : ''}`;
-            const optResult = await processAgentOptimize(
-              optMsg, state.mesh, dispatch, state.loadCases, applyLoadCaseToMesh,
-              (progress: string) => setLoadingMessage(progress),
-            );
-            result = { success: optResult.success, message: optResult.message, details: optResult.details };
           } else {
             result = executeToolCommand(cmd, state, dispatch);
           }
@@ -661,24 +653,11 @@ export function AgentPanel({ onClose }: AgentPanelProps) {
 
     const result = processAgentInput(msg, state.mesh, dispatch, state.loadCases);
 
-    if (result.message === '__OPTIMIZE__') {
-      setLoadingMessage('Optimizing profile...');
-      const optResult = await processAgentOptimize(
-        msg, state.mesh, dispatch, state.loadCases, applyLoadCaseToMesh,
-        (progress: string) => setLoadingMessage(progress),
-      );
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: optResult.message,
-        details: optResult.details,
-      }]);
-    } else {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: result.message,
-        details: result.details,
-      }]);
-    }
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: result.message,
+      details: result.details,
+    }]);
   };
 
   const handleSend = async () => {

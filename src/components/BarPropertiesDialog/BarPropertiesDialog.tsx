@@ -1,13 +1,10 @@
 import { useState, useMemo, Fragment, useEffect } from 'react';
 import { INode, IBeamElement, IBeamSection, IBeamForces, IMaterial, ILayer, ConnectionType, IDOFConnections, getDOFConnectionTypes, StructuralElementType } from '../../core/fem/types';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
-import { checkSteelSection, ISteelCheckResult } from '../../core/standards/SteelCheck';
-import { STEEL_GRADES, ISteelGrade } from '../../core/standards/EurocodeNL';
-import { SteelCheckReport } from '../SteelCheckReport/SteelCheckReport';
 import { useFEM } from '../../context/FEMContext';
 import './BarPropertiesDialog.css';
 
-type BarDialogTab = 'properties' | 'en1993';
+// Single-tab dialog (normtoetsing tabs removed)
 
 const CONNECTION_OPTIONS: { value: ConnectionType; label: string }[] = [
   { value: 'fixed', label: 'A (Fixed)' },
@@ -38,11 +35,10 @@ interface BarPropertiesDialogProps {
   onClose: () => void;
 }
 
-export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate, onClose }: BarPropertiesDialogProps) {
+export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }: BarPropertiesDialogProps) {
   const { state } = useFEM();
-  const { mesh, forceUnit, stressUnit, lengthUnit, momentUnit, steelCheckInterval } = state;
+  const { mesh, lengthUnit } = state;
 
-  const [activeTab, setActiveTab] = useState<BarDialogTab>('properties');
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [showNewSection, setShowNewSection] = useState(false);
   const [section, setSection] = useState<IBeamSection>(beam.section);
@@ -65,54 +61,16 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
     }
   };
 
-  // Convert force from N to display unit
-  const convertForce = (forceN: number): number => {
-    switch (forceUnit) {
-      case 'N': return forceN;
-      case 'kN': return forceN / 1000;
-      case 'MN': return forceN / 1e6;
-      default: return forceN / 1000;
-    }
-  };
-
-  // Convert moment from Nm to display unit
-  const convertMoment = (momentNm: number): number => {
-    switch (momentUnit) {
-      case 'Nm': return momentNm;
-      case 'kNm': return momentNm / 1000;
-      default: return momentNm / 1000;
-    }
-  };
-
-  // Convert stress from Pa to display unit
-  const convertStress = (stressPa: number): number => {
-    switch (stressUnit) {
-      case 'Pa': return stressPa;
-      case 'kPa': return stressPa / 1000;
-      case 'MPa': return stressPa / 1e6;
-      case 'N/mm²': return stressPa / 1e6;
-      default: return stressPa / 1e6;
-    }
-  };
-
   // Per-DOF connection type state
   const dofConns = getDOFConnectionTypes(beam);
   const [startConns, setStartConns] = useState<IDOFConnections>(dofConns.start);
   const [endConns, setEndConns] = useState<IDOFConnections>(dofConns.end);
 
-  // NEN-EN 1993-1 tab state
-  const [steelGradeName, setSteelGradeName] = useState('S355');
-  const [lcrY, setLcrY] = useState(length.toFixed(3));
-  const [lcrZ, setLcrZ] = useState(length.toFixed(3));
-  const [showReport, setShowReport] = useState(false);
-
   // Lateral bracing, camber, and deflection limit state
-  const [bracingTop, setBracingTop] = useState<number[]>(beam.lateralBracing?.top ?? [0, 1]);
-  const [bracingBottom, setBracingBottom] = useState<number[]>(beam.lateralBracing?.bottom ?? [0, 1]);
-  const [camberMm, setCamberMm] = useState(String((beam.camber ?? 0) * 1000)); // store in mm
-  const [deflectionLimit, setDeflectionLimit] = useState<'L/500' | 'L/333' | 'L/250'>(beam.deflectionLimit ?? 'L/250');
-  const [newBracingTop, setNewBracingTop] = useState('');
-  const [newBracingBottom, setNewBracingBottom] = useState('');
+  const [bracingTop] = useState<number[]>(beam.lateralBracing?.top ?? [0, 1]);
+  const [bracingBottom] = useState<number[]>(beam.lateralBracing?.bottom ?? [0, 1]);
+  const [camberMm] = useState(String((beam.camber ?? 0) * 1000)); // store in mm
+  const [deflectionLimit] = useState<'L/500' | 'L/333' | 'L/250'>(beam.deflectionLimit ?? 'L/250');
 
   // Thermal load state
   type ThermalLoadType = 'none' | 'uniform' | 'gradient';
@@ -165,42 +123,6 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
 
   // Check if nodes have changed from original
   const nodesChanged = startNodeId !== beam.nodeIds[0] || endNodeId !== beam.nodeIds[1];
-
-  const selectedGrade: ISteelGrade = useMemo(
-    () => STEEL_GRADES.find(g => g.name === steelGradeName) || STEEL_GRADES[2],
-    [steelGradeName]
-  );
-
-  // Cross-section classification (simplified for I-sections based on c/t ratios)
-  const crossSectionClass = useMemo(() => {
-    const profileEntry = beam.profileName || '';
-    // Simplified classification based on available section moduli ratios
-    // If Wply is available and > Wy, likely Class 1 or 2
-    if (section.Wply && section.Wy) {
-      const ratio = section.Wply / section.Wy;
-      if (ratio >= 1.10) return 1;
-      if (ratio >= 1.05) return 2;
-      return 3;
-    }
-    // Default: Class 2 for standard hot-rolled sections
-    if (profileEntry.includes('IPE') || profileEntry.includes('HEA') || profileEntry.includes('HEB')) {
-      return 1; // Standard hot-rolled I-sections are usually Class 1 or 2
-    }
-    return 3; // Conservative default
-  }, [section, beam.profileName]);
-
-  // Steel check results
-  const steelCheck: ISteelCheckResult | null = useMemo(() => {
-    if (!beamForces) return null;
-    const sectionProps = {
-      A: section.A,
-      I: section.Iy ?? section.I,
-      h: section.h,
-      Wel: section.Wy,
-      profileName: beam.profileName,
-    };
-    return checkSteelSection(sectionProps, beamForces, selectedGrade, length, 0, 250, false, steelCheckInterval);
-  }, [section, beamForces, selectedGrade, beam.profileName, length, steelCheckInterval]);
 
   const handleApply = () => {
     const camberValue = parseFloat(camberMm) || 0;
@@ -668,312 +590,18 @@ export function BarPropertiesDialog({ beam, length, beamForces, layers, onUpdate
     </>
   );
 
-  const formatUC = (uc: number) => uc.toFixed(3);
-
-  const renderEN1993Tab = () => (
-    <>
-      {/* Steel grade selector */}
-      <div className="bar-props-section-title">Steel Grade</div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">Grade</span>
-        <select
-          className="bar-props-select"
-          value={steelGradeName}
-          onChange={e => setSteelGradeName(e.target.value)}
-        >
-          {STEEL_GRADES.map(g => (
-            <option key={g.name} value={g.name}>{g.name}</option>
-          ))}
-        </select>
-      </div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">f<sub>y</sub></span>
-        <span className="bar-props-value">{convertStress(selectedGrade.fy * 1e6).toFixed(stressUnit === 'Pa' ? 0 : stressUnit === 'kPa' ? 0 : 0)} {stressUnit}</span>
-      </div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">f<sub>u</sub></span>
-        <span className="bar-props-value">{convertStress(selectedGrade.fu * 1e6).toFixed(stressUnit === 'Pa' ? 0 : stressUnit === 'kPa' ? 0 : 0)} {stressUnit}</span>
-      </div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">&gamma;<sub>M0</sub></span>
-        <span className="bar-props-value">{selectedGrade.gammaM0.toFixed(2)}</span>
-      </div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">&gamma;<sub>M1</sub></span>
-        <span className="bar-props-value">{selectedGrade.gammaM1.toFixed(2)}</span>
-      </div>
-
-      {/* Cross-section classification */}
-      <div className="bar-props-section-title">Cross-Section Classification</div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">Class</span>
-        <span className={`bar-props-value bar-props-class bar-props-class-${crossSectionClass}`}>
-          Class {crossSectionClass}
-        </span>
-      </div>
-
-      {/* Buckling lengths */}
-      <div className="bar-props-section-title">Buckling Length</div>
-      <div className="bar-props-input-row">
-        <span>Lcr,y (m)</span>
-        <input
-          type="number"
-          min="0"
-          step="0.1"
-          value={lcrY}
-          onChange={e => setLcrY(e.target.value)}
-        />
-      </div>
-      <div className="bar-props-input-row">
-        <span>Lcr,z (m)</span>
-        <input
-          type="number"
-          min="0"
-          step="0.1"
-          value={lcrZ}
-          onChange={e => setLcrZ(e.target.value)}
-        />
-      </div>
-
-      {/* Lateral Bracing */}
-      <div className="bar-props-section-title">Kipsteunen (Lateral Bracing)</div>
-      <div className="bar-props-bracing-row">
-        <span className="bar-props-label">Bovenzijde (Top)</span>
-        <div className="bar-props-bracing-chips">
-          {bracingTop.map((pos, i) => (
-            <span
-              key={i}
-              className="bar-props-bracing-chip"
-              title="Click to remove"
-              onClick={() => setBracingTop(bracingTop.filter((_, j) => j !== i))}
-            >
-              {Math.round(pos * 100)}%
-            </span>
-          ))}
-          <input
-            type="number"
-            className="bar-props-bracing-input"
-            placeholder="%"
-            min="0"
-            max="100"
-            value={newBracingTop}
-            onChange={e => setNewBracingTop(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const val = parseFloat(newBracingTop);
-                if (!isNaN(val) && val >= 0 && val <= 100) {
-                  const frac = val / 100;
-                  if (!bracingTop.some(p => Math.abs(p - frac) < 0.001)) {
-                    setBracingTop([...bracingTop, frac].sort((a, b) => a - b));
-                  }
-                  setNewBracingTop('');
-                }
-              }
-            }}
-          />
-          <button
-            className="bar-props-btn-small"
-            onClick={() => {
-              const val = parseFloat(newBracingTop);
-              if (!isNaN(val) && val >= 0 && val <= 100) {
-                const frac = val / 100;
-                if (!bracingTop.some(p => Math.abs(p - frac) < 0.001)) {
-                  setBracingTop([...bracingTop, frac].sort((a, b) => a - b));
-                }
-                setNewBracingTop('');
-              }
-            }}
-          >+</button>
-        </div>
-      </div>
-      <div className="bar-props-bracing-row">
-        <span className="bar-props-label">Onderzijde (Bottom)</span>
-        <div className="bar-props-bracing-chips">
-          {bracingBottom.map((pos, i) => (
-            <span
-              key={i}
-              className="bar-props-bracing-chip"
-              title="Click to remove"
-              onClick={() => setBracingBottom(bracingBottom.filter((_, j) => j !== i))}
-            >
-              {Math.round(pos * 100)}%
-            </span>
-          ))}
-          <input
-            type="number"
-            className="bar-props-bracing-input"
-            placeholder="%"
-            min="0"
-            max="100"
-            value={newBracingBottom}
-            onChange={e => setNewBracingBottom(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const val = parseFloat(newBracingBottom);
-                if (!isNaN(val) && val >= 0 && val <= 100) {
-                  const frac = val / 100;
-                  if (!bracingBottom.some(p => Math.abs(p - frac) < 0.001)) {
-                    setBracingBottom([...bracingBottom, frac].sort((a, b) => a - b));
-                  }
-                  setNewBracingBottom('');
-                }
-              }
-            }}
-          />
-          <button
-            className="bar-props-btn-small"
-            onClick={() => {
-              const val = parseFloat(newBracingBottom);
-              if (!isNaN(val) && val >= 0 && val <= 100) {
-                const frac = val / 100;
-                if (!bracingBottom.some(p => Math.abs(p - frac) < 0.001)) {
-                  setBracingBottom([...bracingBottom, frac].sort((a, b) => a - b));
-                }
-                setNewBracingBottom('');
-              }
-            }}
-          >+</button>
-        </div>
-      </div>
-
-      {/* Deflection Limit */}
-      <div className="bar-props-section-title">SLS - Doorbuiging</div>
-      <div className="bar-props-row">
-        <span className="bar-props-label">Max doorbuiging</span>
-        <select
-          className="bar-props-select"
-          value={deflectionLimit}
-          onChange={e => setDeflectionLimit(e.target.value as typeof deflectionLimit)}
-        >
-          <option value="L/500">L/500 (0.002L)</option>
-          <option value="L/333">L/333 (0.003L)</option>
-          <option value="L/250">L/250 (0.004L)</option>
-        </select>
-      </div>
-
-      {/* Camber */}
-      <div className="bar-props-input-row">
-        <span>Pre-camber (mm)</span>
-        <input
-          type="number"
-          min="0"
-          step="1"
-          value={camberMm}
-          onChange={e => setCamberMm(e.target.value)}
-          title="Voorwaartse bomming om doorbuiging te compenseren"
-        />
-      </div>
-      <div className="bar-props-hint">
-        Voorwaartse bomming om doorbuiging te compenseren
-      </div>
-
-      {/* Unity Checks */}
-      <div className="bar-props-section-title">Unity Checks (NEN-EN 1993-1-1)</div>
-      {!steelCheck ? (
-        <div className="bar-props-no-results">
-          No analysis results available. Run the solver first.
-        </div>
-      ) : (
-        <>
-          <div className={`bar-props-status ${steelCheck.status === 'OK' ? 'pass' : 'fail'}`}>
-            {steelCheck.status === 'OK' ? 'PASS' : 'FAIL'} — UC max = {formatUC(steelCheck.UC_max)}
-            <span className="bar-props-status-governing">
-              ({steelCheck.governingCheck}
-              {steelCheck.governingLocation && (
-                <> @ x={(steelCheck.governingLocation.position * 1000).toFixed(0)}mm</>
-              )})
-            </span>
-          </div>
-
-          <table className="bar-props-uc-table">
-            <thead>
-              <tr>
-                <th>Check</th>
-                <th>Ed</th>
-                <th>Rd</th>
-                <th>UC</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className={steelCheck.UC_M > 1 ? 'uc-fail' : ''}>
-                <td>Bending (M)</td>
-                <td>{convertMoment(steelCheck.MEd).toFixed(2)} {momentUnit}</td>
-                <td>{convertMoment(steelCheck.McRd).toFixed(2)} {momentUnit}</td>
-                <td className="uc-value">{formatUC(steelCheck.UC_M)}</td>
-              </tr>
-              <tr className={steelCheck.UC_V > 1 ? 'uc-fail' : ''}>
-                <td>Shear (V)</td>
-                <td>{convertForce(steelCheck.VEd).toFixed(2)} {forceUnit}</td>
-                <td>{convertForce(steelCheck.VcRd).toFixed(2)} {forceUnit}</td>
-                <td className="uc-value">{formatUC(steelCheck.UC_V)}</td>
-              </tr>
-              <tr className={steelCheck.UC_N > 1 ? 'uc-fail' : ''}>
-                <td>Normal (N)</td>
-                <td>{convertForce(steelCheck.NEd).toFixed(2)} {forceUnit}</td>
-                <td>{convertForce(steelCheck.NcRd).toFixed(2)} {forceUnit}</td>
-                <td className="uc-value">{formatUC(steelCheck.UC_N)}</td>
-              </tr>
-              <tr className={steelCheck.UC_MN > 1 ? 'uc-fail' : ''}>
-                <td>M+N (6.2.8)</td>
-                <td></td>
-                <td></td>
-                <td className="uc-value">{formatUC(steelCheck.UC_MN)}</td>
-              </tr>
-              <tr className={steelCheck.UC_MV > 1 ? 'uc-fail' : ''}>
-                <td>M+V (6.2.10)</td>
-                <td></td>
-                <td></td>
-                <td className="uc-value">{formatUC(steelCheck.UC_MV)}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Detailed report button */}
-          <button
-            className="bar-props-change-btn"
-            style={{ marginTop: '10px', width: '100%', textAlign: 'center' }}
-            onClick={() => setShowReport(true)}
-          >
-            Detailed Report (with formulas)...
-          </button>
-        </>
-      )}
-    </>
-  );
-
   return (
     <div className="bar-props-overlay" onClick={onClose}>
       <div className="bar-props-dialog bar-props-dialog-tabbed" onClick={e => e.stopPropagation()}>
         <div className="bar-props-header">Bar Properties</div>
-        <div className="bar-props-tabs">
-          <button
-            className={`bar-props-tab ${activeTab === 'properties' ? 'active' : ''}`}
-            onClick={() => setActiveTab('properties')}
-          >
-            Properties
-          </button>
-          <button
-            className={`bar-props-tab ${activeTab === 'en1993' ? 'active' : ''}`}
-            onClick={() => setActiveTab('en1993')}
-          >
-            NEN-EN 1993-1
-          </button>
-        </div>
         <div className="bar-props-body bar-props-body-scrollable">
-          {activeTab === 'properties' && renderPropertiesTab()}
-          {activeTab === 'en1993' && renderEN1993Tab()}
+          {renderPropertiesTab()}
         </div>
         <div className="bar-props-footer">
           <button className="bar-props-btn cancel" onClick={onClose}>Cancel</button>
           <button className="bar-props-btn confirm" onClick={handleApply}>OK</button>
         </div>
       </div>
-      {showReport && (
-        <SteelCheckReport
-          initialBeamId={beam.id}
-          onClose={() => setShowReport(false)}
-        />
-      )}
     </div>
   );
 }

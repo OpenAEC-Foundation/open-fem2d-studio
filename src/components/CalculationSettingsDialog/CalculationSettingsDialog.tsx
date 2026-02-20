@@ -30,8 +30,6 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
   const [autoRecalculate, setAutoRecalculate] = useState(state.autoRecalculate);
   const [convergenceTolerance, setConvergenceTolerance] = useState(1e-6);
   const [maxIterations, setMaxIterations] = useState(10);
-  const [steelCheckInterval, setSteelCheckInterval] = useState(state.steelCheckInterval);
-
   // FNL material settings
   const [fnlMaterialType, setFnlMaterialType] = useState<'steel' | 'concrete'>('steel');
   const [steelFy, setSteelFy] = useState(235); // S235 default (MPa)
@@ -52,7 +50,6 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
     dispatch({ type: 'SET_PLATE_SHEAR_FORCE_UNIT', payload: plateShearForceUnit });
     dispatch({ type: 'SET_PLATE_MEMBRANE_FORCE_UNIT', payload: plateMembraneForceUnit });
     dispatch({ type: 'SET_AUTO_RECALCULATE', payload: autoRecalculate });
-    dispatch({ type: 'SET_STEEL_CHECK_INTERVAL', payload: steelCheckInterval });
     dispatch({ type: 'REFRESH_MESH' });
 
     // If we have results and autoRecalculate is on, re-solve with new settings
@@ -372,22 +369,6 @@ export function CalculationSettingsDialog({ onClose }: CalculationSettingsDialog
               </div>
             </div>
 
-            {/* Code Check Settings */}
-            <div className="calc-settings-section">
-              <div className="calc-settings-section-title">Code Check Settings</div>
-              <div className="calc-settings-field">
-                <span>Check Interval (mm)</span>
-                <input
-                  type="number"
-                  value={steelCheckInterval}
-                  onChange={e => setSteelCheckInterval(Math.max(10, Math.min(1000, parseInt(e.target.value) || 100)))}
-                  step="10"
-                  min="10"
-                  max="1000"
-                  title="Interval at which steel checks are performed along beams"
-                />
-              </div>
-            </div>
           </div>
         </div>
 

@@ -15,7 +15,6 @@ export const en: Record<string, string> = {
   'ribbon.otherMaterials': 'Other Materials',
   'ribbon.report': 'Report',
   'ribbon.insights': 'FEM Insights',
-  'ribbon.codeCheck': 'Code-Check',
 
   // Ribbon groups: File
   'ribbon.file': 'File',
@@ -120,7 +119,6 @@ export const en: Record<string, string> = {
   'ribbon.project': 'Project',
   'ribbon.projectSettings': 'Project Settings',
   'ribbon.materials': 'Materials',
-  'ribbon.standards': 'Standards',
   'ribbon.calculation': 'Calculation',
   'ribbon.calculationSettings': 'Calculation Settings',
   'ribbon.appearance': 'Appearance',
@@ -130,42 +128,7 @@ export const en: Record<string, string> = {
   'ribbon.units': 'Units',
   'ribbon.projectSettings.title': 'Project Settings',
   'ribbon.materials.title': 'Manage Materials',
-  'ribbon.standards.title': 'Standards & National Annex',
   'ribbon.calculationSettings.title': 'Calculation Settings',
-
-  // Ribbon groups: Code-Check tab
-  'ribbon.codeCheck.noResults': 'No results available. Run analysis first.',
-  'ribbon.codeCheck.close': 'Close',
-  'ribbon.codeCheck.beam': 'Beam',
-  'ribbon.codeCheck.designForces': 'Ed (Design Forces)',
-  'ribbon.codeCheck.resistance': 'Rd (Resistance)',
-  'ribbon.codeCheck.unityChecks': 'Unity Checks (NEN-EN 1993-1-1)',
-  'ribbon.codeCheck.result': 'Result',
-  'ribbon.codeCheck.pass': 'PASS',
-  'ribbon.codeCheck.fail': 'FAIL',
-
-  // Ribbon groups: Steel tab
-  'ribbon.steelEN': 'EN 1993 - Steel',
-  'ribbon.steelCheck': 'Steel Check',
-  'ribbon.steelCheck.title': 'Steel section check (NEN-EN 1993-1-1)',
-  'ribbon.steelConnection': 'Connection',
-  'ribbon.steelConnection.title': 'Moment connection design (NEN-EN 1993-1-8)',
-  'ribbon.steelInfo': 'NEN-EN 1993-1-1 cross-section checks.\nRun analysis first, then check beams.',
-  'ribbon.info': 'Info',
-
-  // Ribbon groups: Concrete tab
-  'ribbon.concreteEN': 'EN 1992 - Concrete',
-  'ribbon.concreteCheck': 'Check',
-  'ribbon.concreteDesign': 'Design',
-  'ribbon.concreteCheck.title': 'Concrete section check (EN 1992-1-1)',
-  'ribbon.concreteDesign.title': 'Concrete reinforcement design dialog',
-  'ribbon.beamView': 'Beam View',
-  'ribbon.beamView.title': 'Toggle concrete beam elevation view',
-  'ribbon.concreteGrade': 'Concrete Grade',
-  'ribbon.concreteGrade.title': 'Select concrete grade',
-  'ribbon.concreteInfo': 'EN 1992-1-1 reinforcement design.\nRect, T-profile, L-profile sections.',
-  'ribbon.reinforcement': 'Reinforcement',
-  'ribbon.reinforcement.title': 'Reinforcement mesh/bar configuration',
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Timber',
@@ -375,16 +338,6 @@ export const en: Record<string, string> = {
   'projectInfo.save': 'Save',
   'projectInfo.cancel': 'Cancel',
 
-  // Standards Dialog
-  'standards.title': 'Standards & National Annex',
-  'standards.nationalAnnex': 'National Annex',
-  'standards.windLoad': 'Wind Load (NEN-EN 1991-1-4)',
-  'standards.windZone': 'Wind Zone',
-  'standards.terrain': 'Terrain Category',
-  'standards.buildingHeight': 'Building Height (m)',
-  'standards.calculate': 'Calculate',
-  'standards.results': 'Results',
-
   // Grids Dialog
   'grids.title': 'Structural Grids',
   'grids.addGrid': 'Add Grid',
@@ -451,7 +404,6 @@ export const en: Record<string, string> = {
   'cmd.catDisplay': 'Display',
   'cmd.catStress': 'Stress Display',
   'cmd.catAnalysis': 'Analysis',
-  'cmd.catCodeCheck': 'Code Checks',
   'cmd.catLoadCases': 'Load Cases',
   'cmd.catDialogs': 'Dialogs',
   'cmd.catViews': 'Views & Panels',
@@ -600,14 +552,6 @@ export const en: Record<string, string> = {
   'cmd.analysisPlateBending': 'Set Analysis: Plate Bending',
   'cmd.analysisMixed': 'Set Analysis: Mixed Beam+Plate',
 
-  // ── Code Check Commands ─────────────────────────────────────────────
-  'cmd.steelCheck': 'Steel Section Check (NEN-EN 1993-1-1)',
-  'cmd.steelConnection': 'Steel Connection Design (NEN-EN 1993-1-8)',
-  'cmd.concreteCheck': 'Concrete Section Check (EN 1992-1-1)',
-  'cmd.concreteDesign': 'Concrete Reinforcement Design',
-  'cmd.checkAllBeams': 'Check All Beams',
-  'cmd.setCodeCheckBeam': 'Set Code Check Beam...',
-
   // ── Load Case Commands ──────────────────────────────────────────────
   'cmd.loadCases': 'Manage Load Cases',
   'cmd.combinations': 'Manage Load Combinations',
@@ -622,7 +566,6 @@ export const en: Record<string, string> = {
   'cmd.materials': 'Materials Manager',
   'cmd.projectInfo': 'Project Information',
   'cmd.grids': 'Structural Grids',
-  'cmd.standards': 'Standards & National Annex',
   'cmd.calcSettings': 'Calculation Settings',
   'cmd.reportSettings': 'Report Settings',
 
@@ -705,55 +648,6 @@ export const en: Record<string, string> = {
   'statusBar.analysisType': 'Analysis',
   'statusBar.ready': 'Ready',
 
-  // Steel Check Panel
-  'steelCheck.title': 'Steel Check (NEN-EN 1993-1-1)',
-  'steelCheck.selectBeam': 'Select a beam to check',
-  'steelCheck.grade': 'Steel Grade',
-  'steelCheck.noResults': 'Run analysis first',
-  'steelCheck.close': 'Close',
-
-  // Concrete Check Panel
-  'concreteCheck.title': 'Concrete Check (EN 1992-1-1)',
-  'concreteCheck.close': 'Close',
-
-  // Concrete Design Dialog
-  'concreteDesign.title': 'Concrete Reinforcement Design',
-  'concreteDesign.close': 'Close',
-
-  // Concrete Beam View
-  'concreteBeam.title': 'Concrete Beam View',
-  'concreteBeam.close': 'Close',
-  'concreteBeam.mainReinf': 'Main Reinforcement',
-  'concreteBeam.stirrups': 'Stirrups',
-  'concreteBeam.diameter': 'Diameter',
-  'concreteBeam.spacing': 'Spacing',
-  'concreteBeam.count': 'Count',
-  'concreteBeam.cover': 'Cover',
-  'concreteBeam.momentDiagram': 'Moment Diagram',
-  'concreteBeam.coverageLine': 'As,req / As,prov',
-  'concreteBeam.top': 'Top',
-  'concreteBeam.bottom': 'Bottom',
-
-  // Steel Connection Dialog
-  'steelConn.title': 'Moment Connection (NEN-EN 1993-1-8)',
-  'steelConn.beamProfile': 'Beam Profile',
-  'steelConn.columnProfile': 'Column Profile',
-  'steelConn.boltConfig': 'Bolt Configuration',
-  'steelConn.boltDiameter': 'Bolt Diameter',
-  'steelConn.boltClass': 'Bolt Class',
-  'steelConn.boltRows': 'Bolt Rows',
-  'steelConn.endPlate': 'End Plate',
-  'steelConn.plateThickness': 'Plate Thickness (mm)',
-  'steelConn.plateWidth': 'Plate Width (mm)',
-  'steelConn.plateHeight': 'Plate Height (mm)',
-  'steelConn.results': 'Results',
-  'steelConn.momentCapacity': 'Moment Capacity',
-  'steelConn.shearCapacity': 'Shear Capacity',
-  'steelConn.failureMode': 'Governing Failure Mode',
-  'steelConn.uc': 'Unity Check',
-  'steelConn.close': 'Close',
-  'steelConn.calculate': 'Calculate',
-
   // Reinforcement Dialog
   'reinforcement.title': 'Reinforcement Configuration',
   'reinforcement.meshTop': 'Top Mesh',
@@ -796,6 +690,35 @@ export const en: Record<string, string> = {
   'ifcProps.normalForce': 'Normal Force',
   'ifcProps.shearForce': 'Shear Force',
   'ifcProps.bendingMoment': 'Bending Moment',
+
+  // IFC Panel
+  'ifc.noModel': 'No Model',
+  'ifc.createModelFirst': 'Create a structural model to export IFC.',
+  'ifc.code': 'Code',
+  'ifc.graph': 'Graph',
+  'ifc.codeView': 'View IFC STEP code',
+  'ifc.graphView': 'View entity relationship graph',
+  'ifc.searchEntities': 'Search entities...',
+  'ifc.includeResults': 'Include Results',
+  'ifc.copy': 'Copy',
+  'ifc.copied': 'Copied!',
+  'ifc.copyToClipboard': 'Copy IFC to clipboard',
+  'ifc.download': 'Download',
+  'ifc.downloadIFC': 'Download IFC file',
+  'ifc.statistics': 'Statistics',
+  'ifc.entities': 'Entities',
+  'ifc.nodes': 'Nodes',
+  'ifc.beams': 'Beams',
+  'ifc.plates': 'Plates',
+  'ifc.loadCases': 'Load Cases',
+  'ifc.entityTypes': 'Entity Types',
+  'ifc.schema': 'Schema',
+  'ifc.ifcStepFormat': 'IFC STEP Format',
+  'ifc.lines': 'lines',
+  'ifc.zoomIn': 'Zoom In',
+  'ifc.zoomOut': 'Zoom Out',
+  'ifc.fitView': 'Fit View',
+  'ifc.noEntities': 'No entities to display',
 
   // Agent Panel
   'agent.title': 'AI Agent',
@@ -854,15 +777,11 @@ export const en: Record<string, string> = {
   'report.showPageNumbers': 'Show page numbers',
   'report.showPageHeader': 'Show page header',
   'report.showPageFooter': 'Show page footer',
-  'report.checkSettings': 'Check Settings',
-  'report.steelGrade': 'Steel Grade',
-  'report.deflectionLimit': 'Deflection Limit (L/n)',
 
   // Report Category Names
   'report.category.header': 'Header',
   'report.category.input': 'Input Data',
   'report.category.results': 'Results',
-  'report.category.checks': 'Code Checks',
 
   // Report Section Names
   'report.section.cover': 'Cover Page',
@@ -881,10 +800,6 @@ export const en: Record<string, string> = {
   'report.section.resultForcesV': 'Shear Forces',
   'report.section.resultForcesN': 'Axial Forces',
   'report.section.resultEnvelope': 'Envelope Diagrams',
-  'report.section.checkSteelOverview': 'Steel Check Overview',
-  'report.section.checkSteelDetailed': 'Steel Check Details',
-  'report.section.checkConcreteOverview': 'Concrete Check Overview',
-  'report.section.checkConcreteDetailed': 'Concrete Check Details',
 
   // Cover Section
   'report.cover.structuralAdvice': 'Structural Advice & Calculations',
@@ -905,8 +820,6 @@ export const en: Record<string, string> = {
   // Summary Section
   'report.summary.title': 'Executive Summary',
   'report.summary.noResults': 'No analysis results available. Run the analysis to generate the summary.',
-  'report.summary.allChecksPassed': 'ALL QUICK CHECKS PASSED',
-  'report.summary.checksExceedUnity': 'ONE OR MORE CHECKS EXCEED UNITY',
   'report.summary.maxBendingMoment': 'Max Bending Moment',
   'report.summary.maxShearForce': 'Max Shear Force',
   'report.summary.maxDisplacement': 'Max Displacement',
@@ -916,11 +829,6 @@ export const en: Record<string, string> = {
   'report.summary.pointLoads': 'Point Loads',
   'report.summary.distributedLoads': 'Distributed Loads',
   'report.summary.noLoads': 'No loads applied.',
-  'report.summary.quickChecks': 'Quick Checks',
-  'report.summary.bendingResistance': 'Bending Resistance',
-  'report.summary.shearResistance': 'Shear Resistance',
-  'report.summary.deflectionSLS': 'Deflection (SLS)',
-  'report.summary.note': 'Note: This is a simplified quick check using elastic section properties. Refer to the detailed steel check section for full NEN-EN 1993-1-1 verification including buckling and lateral torsional buckling.',
 
   // Geometry Section
   'report.geometry.title': 'Model Geometry',
@@ -1006,30 +914,6 @@ export const en: Record<string, string> = {
   'report.forces.signN': 'Sign convention: positive = tension, negative = compression',
   'report.forces.signV': 'Sign convention: positive = clockwise rotation of cross-section',
   'report.forces.signM': 'Sign convention: positive = tension at bottom fiber (sagging)',
-
-  // Steel Check Overview Section
-  'report.steelOverview.title': 'Steel Section Checks \u2014 Overview',
-  'report.steelOverview.noResults': 'No beam force results available. Run the solver first.',
-  'report.steelOverview.description': 'Cross-section resistance checks according to NEN-EN 1993-1-1.',
-  'report.steelOverview.membersChecked': '{count} member(s) checked',
-  'report.steelOverview.allPassed': 'ALL CHECKS PASSED',
-  'report.steelOverview.someFailed': 'SOME CHECKS FAILED',
-  'report.steelOverview.governing': 'Governing',
-  'report.steelOverview.status': 'Status',
-
-  // Steel Check Detailed Section
-  'report.steelDetailed.title': 'Steel Section Checks \u2014 Details',
-  'report.steelDetailed.noResults': 'No beam force results available.',
-  'report.steelDetailed.formulasDisabled': 'Detailed formulas are disabled in report settings.',
-  'report.steelDetailed.member': 'Member',
-  'report.steelDetailed.axialResistance': 'Axial Resistance \u2014 NEN-EN 1993-1-1, 6.2.4',
-  'report.steelDetailed.bendingResistance': 'Bending Resistance \u2014 NEN-EN 1993-1-1, 6.2.5',
-  'report.steelDetailed.shearResistance': 'Shear Resistance \u2014 NEN-EN 1993-1-1, 6.2.6',
-  'report.steelDetailed.combinedMN': 'Combined Bending + Axial \u2014 NEN-EN 1993-1-1, 6.2.8',
-  'report.steelDetailed.combinedMV': 'Combined Bending + Shear \u2014 NEN-EN 1993-1-1, 6.2.10',
-  'report.steelDetailed.buckling': 'Member Buckling \u2014 NEN-EN 1993-1-1, 6.3.1',
-  'report.steelDetailed.ltb': 'Lateral Torsional Buckling \u2014 NEN-EN 1993-1-1, 6.3.2',
-  'report.steelDetailed.governing': 'Governing',
 
   // Common
   'common.ok': 'OK',
