@@ -32,6 +32,10 @@ import { Backstage, BackstageAction } from './components/Backstage/Backstage';
 import { SettingsDialog, Theme, Locale } from './components/SettingsDialog/SettingsDialog';
 import { AboutDialog } from './components/AboutDialog/AboutDialog';
 import { useI18n } from './i18n/i18n';
+import { fileApi } from './lib/fileApi';
+import { windowApi } from './lib/windowApi';
+import { migrateLocalStorageToTauriStore } from './lib/migrateLocalStorage';
+import { Mesh } from './core/fem/Mesh';
 
 /** Hook used inside FEMProvider to serialize current project state */
 function useProjectSnapshot() {
@@ -75,11 +79,18 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const [showBackstage, setShowBackstage] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
-
+  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
 
   // Expose snapshot function to parent
   const getSnapshot = useProjectSnapshot();
   onSnapshotRef.current = getSnapshot;
+
+  // One-shot localStorage → Tauri Store migration on first mount
+  useEffect(() => {
+    migrateLocalStorageToTauriStore().catch(err =>
+      console.error('[OpenAEC] Migration failed:', err)
+    );
+  }, []);
 
   // Show Project Info dialog at startup for new projects
   const hasShownStartupDialog = useRef(false);
@@ -248,26 +259,65 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     splitDragRef.current = null;
   }, []);
 
-  const handleBackstageAction = useCallback((action: BackstageAction) => {
+  const handleBackstageAction = useCallback(async (action: BackstageAction) => {
     switch (action) {
-      case 'new':
-        // Stub — will be wired to existing Ribbon "New" handler in Phase C
-        console.log('[Backstage] New (stub — wire in Phase C)');
+      case 'new': {
+        // Reset to blank project by loading an empty serialized snapshot
+        const blankSnapshot = serializeProject(
+          new Mesh(),
+          [],
+          [],
+          { name: 'New Project', projectNumber: '', engineer: '', company: '', date: new Date().toISOString().slice(0, 10), description: '', notes: '', location: '' },
+        );
+        try {
+          const project = deserializeProject(blankSnapshot);
+          dispatch({ type: 'LOAD_PROJECT', payload: project });
+        } catch (e) {
+          console.error('[Backstage] Failed to reset to blank project:', e);
+        }
+        setCurrentFilePath(null);
+        setShowBackstage(false);
         break;
-      case 'open':
-        console.log('[Backstage] Open (stub — wire in Phase C via Tauri fileApi)');
+      }
+      case 'open': {
+        const opened = await fileApi.openProject();
+        if (opened) {
+          try {
+            const project = deserializeProject(opened.content);
+            dispatch({ type: 'LOAD_PROJECT', payload: project });
+            setCurrentFilePath(opened.path);
+            setShowBackstage(false);
+          } catch (e) {
+            console.error('[Backstage] Failed to load project:', e);
+          }
+        }
         break;
-      case 'save':
-        console.log('[Backstage] Save (stub — wire in Phase C via Tauri fileApi)');
+      }
+      case 'save': {
+        const snapshot = getSnapshot();
+        if (currentFilePath) {
+          await fileApi.saveProject(snapshot, currentFilePath);
+        } else {
+          const path = await fileApi.saveProjectAs(snapshot, state.projectInfo.name || 'project.femp');
+          if (path) setCurrentFilePath(path);
+        }
+        setShowBackstage(false);
         break;
-      case 'saveAs':
-        console.log('[Backstage] Save As (stub — wire in Phase C via Tauri fileApi)');
+      }
+      case 'saveAs': {
+        const snapshot = getSnapshot();
+        const path = await fileApi.saveProjectAs(snapshot, state.projectInfo.name || 'project.femp');
+        if (path) {
+          setCurrentFilePath(path);
+          setShowBackstage(false);
+        }
         break;
+      }
       case 'preferences': setShowSettings(true); break;
       case 'about':       setShowAbout(true); break;
-      case 'exit':        window.close(); break;
+      case 'exit':        windowApi.close(); break;
     }
-  }, []);
+  }, [currentFilePath, dispatch, getSnapshot, state.projectInfo.name]);
 
 
   return (
