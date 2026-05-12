@@ -5,8 +5,10 @@
 import React from 'react';
 import { ReportSectionProps } from '../ReportPreview';
 import { getEnabledSections, CATEGORY_NAMES, ReportSectionCategory } from '../../../core/report/ReportConfig';
+import { useI18n } from '../../../i18n/i18n';
 
 export const TocSection: React.FC<ReportSectionProps> = ({ config }) => {
+  const { t } = useI18n();
   const enabledSections = getEnabledSections(config);
 
   // Group sections by category
@@ -29,7 +31,7 @@ export const TocSection: React.FC<ReportSectionProps> = ({ config }) => {
   return (
     <div className="report-section">
       <h2 className="report-section-title" style={{ color: config.primaryColor }}>
-        Inhoudsopgave
+        {t('report.toc')}
       </h2>
 
       {(['header', 'input', 'results', 'checks'] as ReportSectionCategory[]).map(category => {
