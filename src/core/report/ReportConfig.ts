@@ -58,6 +58,10 @@ export interface IReportConfig {
   // Styling
   primaryColor: string;  // For headers, accents
   accentColor: string;   // For highlights
+
+  // OpenAEC §4.3 fields
+  documentTitle?: string;  // Header banner subtitle, e.g. "Constructieadvies & berekeningen"
+  tagline?: string;        // Header tagline under logo, default "Build free. Build together."
 }
 
 export const DEFAULT_REPORT_CONFIG: IReportConfig = {
@@ -95,6 +99,8 @@ export const DEFAULT_REPORT_CONFIG: IReportConfig = {
   unitSystem: 'metric',
   primaryColor: '#D97706',  // OpenAEC amber
   accentColor: '#F59E0B',   // OpenAEC warm-gold
+  documentTitle: 'Constructieadvies & berekeningen',
+  tagline: 'Build free. Build together.',
 };
 
 /**
