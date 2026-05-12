@@ -25,6 +25,16 @@ export interface ReportData {
   projectInfo: IProjectInfo;
   loadCases: ILoadCase[];
   loadCombinations: ILoadCombination[];
+  /** i18n function — added in D.10. Falls back to NL if absent. */
+  t?: (key: string) => string;
+}
+
+/** Translate a key via data.t if present; otherwise return the NL fallback string. */
+function tr(data: ReportData, key: string, fallback: string): string {
+  if (!data.t) return fallback;
+  const translated = data.t(key);
+  // If the key is returned verbatim (untranslated), use the fallback
+  return translated !== key ? translated : fallback;
 }
 
 // Format helpers
@@ -48,26 +58,26 @@ function generateCoverHTML(data: ReportData): string {
   return `
   <div class="report-page cover-page">
     <div style="background:${config.primaryColor};height:8px;margin:-20mm -20mm 40px -20mm;width:calc(100% + 40mm)"></div>
-    <h1 style="color:${config.primaryColor};font-size:24pt;margin-bottom:8px">Constructieadvies & berekeningen</h1>
+    <h1 style="color:${config.primaryColor};font-size:24pt;margin-bottom:8px">${tr(data, 'report.coverTitle', 'Constructieadvies')} &amp; ${tr(data, 'report.coverSubtitle', 'berekeningen')}</h1>
     <h2 style="color:${config.accentColor};font-size:16pt;margin-bottom:60px">${projectInfo.name || 'Untitled Project'}</h2>
 
     <table class="cover-table" style="margin-bottom:40px">
-      <tr><td style="color:${config.primaryColor};width:180px;font-weight:600">Project</td><td>${projectInfo.projectNumber ? `${projectInfo.projectNumber} - ` : ''}${projectInfo.name || 'Untitled Project'}</td></tr>
-      ${projectInfo.company ? `<tr><td style="color:${config.primaryColor};font-weight:600">In opdracht van</td><td>${projectInfo.company}</td></tr>` : ''}
+      <tr><td style="color:${config.primaryColor};width:180px;font-weight:600">${tr(data, 'report.project', 'Project')}</td><td>${projectInfo.projectNumber ? `${projectInfo.projectNumber} - ` : ''}${projectInfo.name || 'Untitled Project'}</td></tr>
+      ${projectInfo.company ? `<tr><td style="color:${config.primaryColor};font-weight:600">${tr(data, 'report.client', 'In opdracht van')}</td><td>${projectInfo.company}</td></tr>` : ''}
       ${projectInfo.location ? `<tr><td></td><td>${projectInfo.location}</td></tr>` : ''}
-      ${projectInfo.description ? `<tr><td style="color:${config.primaryColor};font-weight:600">Omschrijving</td><td>${projectInfo.description}</td></tr>` : ''}
+      ${projectInfo.description ? `<tr><td style="color:${config.primaryColor};font-weight:600">${tr(data, 'report.description', 'Omschrijving')}</td><td>${projectInfo.description}</td></tr>` : ''}
     </table>
 
     <table class="cover-table" style="margin-bottom:40px">
-      <tr><td style="color:${config.primaryColor};width:180px;font-weight:600">Adviseur</td><td>${config.companyName}</td></tr>
-      ${projectInfo.engineer ? `<tr><td style="color:${config.primaryColor};font-weight:600">Verantwoordelijk constructeur</td><td>${projectInfo.engineer}</td></tr>` : ''}
-      <tr><td style="color:${config.primaryColor};font-weight:600">Toegepaste Normen</td><td>NEN-EN 1990 t/m 1997</td></tr>
+      <tr><td style="color:${config.primaryColor};width:180px;font-weight:600">${tr(data, 'report.consultant', 'Adviseur')}</td><td>${config.companyName}</td></tr>
+      ${projectInfo.engineer ? `<tr><td style="color:${config.primaryColor};font-weight:600">${tr(data, 'report.engineer', 'Verantwoordelijk constructeur')}</td><td>${projectInfo.engineer}</td></tr>` : ''}
+      <tr><td style="color:${config.primaryColor};font-weight:600">${tr(data, 'report.appliedStandards', 'Toegepaste Normen')}</td><td>NEN-EN 1990 t/m 1997</td></tr>
     </table>
 
     <div style="border-top:1px solid ${config.primaryColor};padding-top:16px">
       <table class="cover-table">
-        <tr><td style="color:${config.primaryColor};width:180px;font-weight:600">Datum rapport</td><td>${today}</td></tr>
-        <tr><td style="color:${config.primaryColor};font-weight:600">Rapportstatus</td><td>Ter goedkeuring</td></tr>
+        <tr><td style="color:${config.primaryColor};width:180px;font-weight:600">${tr(data, 'report.date', 'Datum rapport')}</td><td>${today}</td></tr>
+        <tr><td style="color:${config.primaryColor};font-weight:600">${tr(data, 'report.status', 'Rapportstatus')}</td><td>${tr(data, 'report.statusForApproval', 'Ter goedkeuring')}</td></tr>
       </table>
     </div>
 
@@ -84,7 +94,7 @@ function generateTocHTML(data: ReportData): string {
 
   return `
   <div class="report-page">
-    <h2 class="section-title" style="color:${config.primaryColor}">Inhoudsopgave</h2>
+    <h2 class="section-title" style="color:${config.primaryColor}">${tr(data, 'report.toc', 'Inhoudsopgave')}</h2>
     <div style="margin-top:20px">
       ${enabledSections.map(s => {
         if (s.category !== 'header') sectionNum++;
