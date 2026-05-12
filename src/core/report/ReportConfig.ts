@@ -86,15 +86,15 @@ export const DEFAULT_REPORT_CONFIG: IReportConfig = {
 
   ],
 
-  companyName: '3BM Bouwtechniek V.O.F.',
+  companyName: 'OpenAEC Foundation',
   showPageNumbers: true,
   showHeader: true,
   showFooter: true,
   includeFormulas: true,
   includeGraphics: true,
   unitSystem: 'metric',
-  primaryColor: '#00a8a8',  // Teal
-  accentColor: '#8b5cf6',   // Purple
+  primaryColor: '#D97706',  // OpenAEC amber
+  accentColor: '#F59E0B',   // OpenAEC warm-gold
 };
 
 /**
