@@ -1152,4 +1152,34 @@ export const en: Record<string, string> = {
   'drawing.pdf': 'PDF',
   'drawing.exportPDF.title': 'Export drawing to PDF format',
   'drawing.info': 'Construction drawing view.\nNo loads, supports, or FEM results.\nMain dimensions, grids, profiles.',
+
+  // Backstage (File menu overlay)
+  'backstage.new': 'New',
+  'backstage.newDesc': 'Start a new empty FEM project.',
+  'backstage.open': 'Open',
+  'backstage.openDesc': 'Open an existing project file.',
+  'backstage.save': 'Save',
+  'backstage.saveDesc': 'Save the current project to disk.',
+  'backstage.saveAs': 'Save As',
+  'backstage.saveAsDesc': 'Save the current project under a new name.',
+  'backstage.preferences': 'Preferences',
+  'backstage.preferencesDesc': 'Open the settings dialog (theme, language).',
+  'backstage.about': 'About',
+  'backstage.aboutDesc': 'Information about Open FEM2D Studio.',
+  'backstage.exit': 'Exit',
+  'backstage.exitDesc': 'Close the application.',
+
+  // Settings Dialog
+  'settings.title': 'Preferences',
+  'settings.appearance': 'Appearance',
+  'settings.language': 'Language',
+  'settings.languageHelp': 'Choose your interface language.',
+  'settings.theme.label': 'Theme',
+  'settings.theme.help': 'Choose your visual theme.',
+  'settings.theme.light': 'Light',
+  'settings.theme.openaec': 'OpenAEC',
+
+  // About Dialog
+  'about.title': 'About Open FEM2D Studio',
+  'about.builtOn': 'Built on the OpenAEC platform',
 };

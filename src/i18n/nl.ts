@@ -984,4 +984,34 @@ export const nl: Record<string, string> = {
   'drawing.pdf': 'PDF',
   'drawing.exportPDF.title': 'Exporteer tekening naar PDF-formaat',
   'drawing.info': 'Constructietekeningweergave.\nGeen belastingen, opleggingen of FEM-resultaten.\nMaatvoering, stramien, profielen.',
+
+  // Backstage (bestandsmenu overlay)
+  'backstage.new': 'Nieuw',
+  'backstage.newDesc': 'Begin met een nieuw, leeg FEM-project.',
+  'backstage.open': 'Openen',
+  'backstage.openDesc': 'Open een bestaand projectbestand.',
+  'backstage.save': 'Opslaan',
+  'backstage.saveDesc': 'Sla het huidige project op naar schijf.',
+  'backstage.saveAs': 'Opslaan als',
+  'backstage.saveAsDesc': 'Sla het huidige project op onder een nieuwe naam.',
+  'backstage.preferences': 'Voorkeuren',
+  'backstage.preferencesDesc': 'Open het instellingenvenster (thema, taal).',
+  'backstage.about': 'Over',
+  'backstage.aboutDesc': 'Informatie over Open FEM2D Studio.',
+  'backstage.exit': 'Afsluiten',
+  'backstage.exitDesc': 'Sluit de applicatie.',
+
+  // Instellingenvenster
+  'settings.title': 'Voorkeuren',
+  'settings.appearance': 'Uiterlijk',
+  'settings.language': 'Taal',
+  'settings.languageHelp': 'Kies je interfacetaal.',
+  'settings.theme.label': 'Thema',
+  'settings.theme.help': 'Kies je visuele thema.',
+  'settings.theme.light': 'Licht',
+  'settings.theme.openaec': 'OpenAEC',
+
+  // Over-venster
+  'about.title': 'Over Open FEM2D Studio',
+  'about.builtOn': 'Gebouwd op het OpenAEC platform',
 };

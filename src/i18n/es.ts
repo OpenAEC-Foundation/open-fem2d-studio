@@ -1076,4 +1076,34 @@ export const es: Record<string, string> = {
   'drawing.pdf': 'PDF',
   'drawing.exportPDF.title': 'Exportar dibujo a formato PDF',
   'drawing.info': 'Vista de plano constructivo.\nSin cargas, apoyos o resultados FEM.\nCotas, ejes, perfiles.',
+
+  // Backstage (menú de archivo)
+  'backstage.new': 'Nuevo',
+  'backstage.newDesc': 'Iniciar un nuevo proyecto FEM vacío.',
+  'backstage.open': 'Abrir',
+  'backstage.openDesc': 'Abrir un archivo de proyecto existente.',
+  'backstage.save': 'Guardar',
+  'backstage.saveDesc': 'Guardar el proyecto actual en disco.',
+  'backstage.saveAs': 'Guardar como',
+  'backstage.saveAsDesc': 'Guardar el proyecto actual con un nuevo nombre.',
+  'backstage.preferences': 'Preferencias',
+  'backstage.preferencesDesc': 'Abrir el cuadro de diálogo de configuración (tema, idioma).',
+  'backstage.about': 'Acerca de',
+  'backstage.aboutDesc': 'Información sobre Open FEM2D Studio.',
+  'backstage.exit': 'Salir',
+  'backstage.exitDesc': 'Cerrar la aplicación.',
+
+  // Diálogo de configuración
+  'settings.title': 'Preferencias',
+  'settings.appearance': 'Apariencia',
+  'settings.language': 'Idioma',
+  'settings.languageHelp': 'Elige tu idioma de interfaz.',
+  'settings.theme.label': 'Tema',
+  'settings.theme.help': 'Elige tu tema visual.',
+  'settings.theme.light': 'Claro',
+  'settings.theme.openaec': 'OpenAEC',
+
+  // Diálogo Acerca de
+  'about.title': 'Acerca de Open FEM2D Studio',
+  'about.builtOn': 'Construido sobre la plataforma OpenAEC',
 };
