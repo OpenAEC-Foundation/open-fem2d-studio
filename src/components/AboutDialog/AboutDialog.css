@@ -1,0 +1,54 @@
+.about-content {
+  text-align: center;
+}
+
+.about-logo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--sp-4);
+  color: var(--theme-accent);
+}
+
+.about-name {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--theme-fg);
+  margin-bottom: var(--sp-1);
+}
+
+.about-version {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--theme-fg-muted);
+  margin-bottom: var(--sp-5);
+}
+
+.about-tagline {
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--theme-fg-muted);
+  margin-bottom: var(--sp-4);
+}
+
+.about-meta {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--theme-fg-muted);
+  line-height: 1.8;
+}
+
+.about-meta a {
+  color: var(--theme-accent);
+  text-decoration: none;
+}
+.about-meta a:hover { text-decoration: underline; }
+
+.about-license {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--theme-fg-subtle);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--theme-border);
+}
