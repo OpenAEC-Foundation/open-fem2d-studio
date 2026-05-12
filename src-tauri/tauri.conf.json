@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Open FEM2D Studio",
+  "version": "1.0.0",
+  "identifier": "org.openaec.fem2d-studio",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Open FEM2D Studio",
+        "label": "main",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 600,
+        "decorations": false,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://nominatim.openstreetmap.org http://localhost:* ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "OpenAEC Foundation",
+    "copyright": "© 2026 OpenAEC Foundation. CC BY-SA 4.0",
+    "category": "Productivity",
+    "shortDescription": "2D Finite Element Method solver",
+    "longDescription": "Open FEM2D Studio — open-source 2D Finite Element Method solver for structural analysis. Part of the OpenAEC Foundation portfolio."
+  },
+  "plugins": {
+    "store": {},
+    "dialog": {},
+    "fs": {
+      "scope": ["$DOCUMENT/*", "$DESKTOP/*", "$DOWNLOAD/*", "$HOME/*"]
+    }
+  }
+}
