@@ -8,7 +8,12 @@ edition = "2021"
 
 [lib]
 name = "open_fem2d_studio_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop-only Windows build: use "lib" (rlib) only.
+# Tauri's default scaffold suggests cdylib + staticlib for mobile (iOS/Android),
+# but on Windows cdylib re-exports every transitive crate symbol (~95k) which
+# overflows the PE/COFF DLL 64K export limit. Add cdylib back when we add
+# mobile targets. See README "Windows toolchain note".
+crate-type = ["lib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

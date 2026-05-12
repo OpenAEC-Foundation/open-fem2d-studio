@@ -44,11 +44,5 @@
     "shortDescription": "2D Finite Element Method solver",
     "longDescription": "Open FEM2D Studio — open-source 2D Finite Element Method solver for structural analysis. Part of the OpenAEC Foundation portfolio."
   },
-  "plugins": {
-    "store": {},
-    "dialog": {},
-    "fs": {
-      "scope": ["$DOCUMENT/*", "$DESKTOP/*", "$DOWNLOAD/*", "$HOME/*"]
-    }
-  }
+  "plugins": {}
 }
