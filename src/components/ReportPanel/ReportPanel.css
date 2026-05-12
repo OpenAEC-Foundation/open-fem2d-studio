@@ -676,8 +676,12 @@
   accent-color: var(--accent-color);
 }
 
-/* Print styles */
+/* Print styles — A4 page layout with fixed headers/footers (D.9) */
 @media print {
+  body {
+    background: white !important;
+  }
+
   .report-panel {
     display: block;
   }
@@ -695,7 +699,7 @@
 
   .report-document {
     max-width: 100%;
-    padding: 15mm;
+    padding: 50mm 12mm 25mm 12mm;
     margin: 0;
   }
 
@@ -709,17 +713,21 @@
     margin: 0;
     page-break-after: always;
     page-break-inside: avoid;
-    min-height: auto;
+    min-height: calc(297mm - 75mm);
     width: 100%;
-    padding: 15mm;
+    padding: 50mm 12mm 25mm 12mm;
   }
 
   .report-page:last-child {
-    page-break-after: avoid;
+    page-break-after: auto;
   }
 
   .report-section {
     page-break-inside: avoid;
+  }
+
+  .report-section:last-child {
+    margin-bottom: 0;
   }
 
   .diagram-container {
