@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { Tool } from '../../core/fem/types';
 import {
@@ -19,7 +19,7 @@ import { useI18n } from '../../i18n/i18n';
 import type { Locale } from '../../i18n/i18n';
 import './Ribbon.css';
 
-type RibbonTab = 'home' | 'settings' | 'table' | 'insights' | 'ifc';
+type RibbonTab = 'file' | 'home' | 'settings' | 'table' | 'insights' | 'ifc';
 
 interface RibbonProps {
   onShowLoadCaseDialog?: () => void;
@@ -36,9 +36,10 @@ interface RibbonProps {
   showGraphSplit?: boolean;
   activeRibbonTab?: RibbonTab;
   onRibbonTabChange?: (tab: RibbonTab) => void;
+  onFileTabClick?: () => void;
 }
 
-export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGridsDialog, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onToggleConsole, showConsolePanel, onToggleGraphSplit, showGraphSplit, activeRibbonTab, onRibbonTabChange }: RibbonProps) {
+export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGridsDialog, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onToggleConsole, showConsolePanel, onToggleGraphSplit, showGraphSplit, activeRibbonTab, onRibbonTabChange, onFileTabClick }: RibbonProps) {
   const { state, dispatch } = useFEM();
   const { t, locale, setLocale } = useI18n();
   const { selectedTool, mesh, undoStack, redoStack, loadCases,
@@ -68,6 +69,20 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
   const toggleTheme = () => {
     setTheme(prev => prev === 'openaec' ? 'light' : 'openaec');
   };
+
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const indicatorRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const container = tabsRef.current;
+    const indicator = indicatorRef.current;
+    if (!container || !indicator) return;
+    const activeEl = container.querySelector<HTMLElement>('.ribbon-tab.active');
+    if (activeEl) {
+      indicator.style.transform = `translateX(${activeEl.offsetLeft}px)`;
+      indicator.style.width = `${activeEl.offsetWidth}px`;
+    }
+  }, [activeTab]);
 
   const handleTabClick = (tab: RibbonTab) => {
     setActiveTab(tab);
@@ -154,7 +169,19 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
   return (
     <div className="ribbon">
       {/* Ribbon Tabs */}
-      <div className="ribbon-tabs">
+      <div ref={tabsRef} className="ribbon-tabs">
+        <button
+          className={`ribbon-tab is-file-tab ${activeTab === 'file' ? 'active' : ''}`}
+          onClick={() => {
+            if (onFileTabClick) {
+              onFileTabClick();
+              return;
+            }
+            handleTabClick('file');
+          }}
+        >
+          {t('ribbon.file')}
+        </button>
         <button className={`ribbon-tab ${activeTab === 'home' ? 'active' : ''}`} onClick={() => handleTabClick('home')}>
           {t('ribbon.home')}
         </button>
@@ -170,6 +197,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
         <button className={`ribbon-tab ${activeTab === 'ifc' ? 'active' : ''}`} onClick={() => handleTabClick('ifc')}>
           IFC
         </button>
+        <div ref={indicatorRef} className="ribbon-tab-indicator" />
       </div>
 
       {/* Ribbon Content */}

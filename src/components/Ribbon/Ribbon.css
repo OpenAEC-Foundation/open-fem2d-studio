@@ -9,6 +9,11 @@
   background: var(--bg-primary);
   padding: 0 8px;
   gap: 2px;
+  position: relative; /* anchor for animated indicator */
+  border-bottom: 3px solid transparent;
+  border-image: var(--grad-accent) 1;
+  border-image-slice: 1;
+  border-image-width: 0 0 3px 0;
 }
 
 .ribbon-tab {
@@ -38,7 +43,8 @@
 .ribbon-content {
   display: flex;
   padding: 6px 10px;
-  min-height: 130px;
+  min-height: 94px;
+  height: 94px;
   overflow: visible;
   gap: 4px;
 }
@@ -539,4 +545,24 @@
 .ribbon-button.has-selection {
   background: rgba(59, 130, 246, 0.15);
   border-color: var(--accent);
+}
+
+/* OpenAEC: File tab amber styling */
+.ribbon-tab.is-file-tab {
+  background: var(--theme-accent);
+  color: white;
+}
+
+.ribbon-tab.is-file-tab:hover {
+  background: var(--theme-accent-hover);
+}
+
+/* OpenAEC: Animated tab underline indicator */
+.ribbon-tab-indicator {
+  position: absolute;
+  bottom: 0;
+  height: 2px;
+  background: var(--theme-accent);
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
 }
