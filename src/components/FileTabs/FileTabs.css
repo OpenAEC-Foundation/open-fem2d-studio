@@ -38,7 +38,7 @@
 .file-tab.active {
   color: var(--text-primary);
   background: var(--bg-dark);
-  border-top-color: var(--accent);
+  border-top-color: var(--theme-accent);
 }
 
 .file-tab-name {
