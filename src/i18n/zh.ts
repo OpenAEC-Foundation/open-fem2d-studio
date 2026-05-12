@@ -1076,4 +1076,34 @@ export const zh: Record<string, string> = {
   'drawing.pdf': 'PDF',
   'drawing.exportPDF.title': '导出为PDF格式',
   'drawing.info': '施工图视图。\n无荷载、支座或有限元结果。\n尺寸标注、轴网、截面。',
+
+  // Backstage（文件菜单）
+  'backstage.new': '新建',
+  'backstage.newDesc': '开始一个新的空白 FEM 项目。',
+  'backstage.open': '打开',
+  'backstage.openDesc': '打开现有的项目文件。',
+  'backstage.save': '保存',
+  'backstage.saveDesc': '将当前项目保存到磁盘。',
+  'backstage.saveAs': '另存为',
+  'backstage.saveAsDesc': '将当前项目以新名称保存。',
+  'backstage.preferences': '首选项',
+  'backstage.preferencesDesc': '打开设置对话框（主题、语言）。',
+  'backstage.about': '关于',
+  'backstage.aboutDesc': '关于 Open FEM2D Studio 的信息。',
+  'backstage.exit': '退出',
+  'backstage.exitDesc': '关闭应用程序。',
+
+  // 设置对话框
+  'settings.title': '首选项',
+  'settings.appearance': '外观',
+  'settings.language': '语言',
+  'settings.languageHelp': '选择您的界面语言。',
+  'settings.theme.label': '主题',
+  'settings.theme.help': '选择您的视觉主题。',
+  'settings.theme.light': '浅色',
+  'settings.theme.openaec': 'OpenAEC',
+
+  // 关于对话框
+  'about.title': '关于 Open FEM2D Studio',
+  'about.builtOn': '构建于 OpenAEC 平台之上',
 };
