@@ -1,7 +1,10 @@
 {
-  "name": "open-fem-studio",
+  "name": "open-fem2d-studio",
   "version": "1.0.0",
-  "description": "Web-based 2D Finite Element Method application for structural analysis",
+  "description": "Open FEM2D Studio — 2D Finite Element Method solver. Part of the OpenAEC Foundation portfolio.",
+  "author": "OpenAEC Foundation",
+  "license": "CC-BY-SA-4.0",
+  "homepage": "https://github.com/OpenAEC-Foundation",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
