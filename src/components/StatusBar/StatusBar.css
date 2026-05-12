@@ -6,9 +6,9 @@
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   font-size: 12px;
-  height: 32px;
-  min-height: 32px;
-  max-height: 32px;
+  height: 22px;
+  min-height: 22px;
+  max-height: 22px;
   flex-shrink: 0;
 }
 
