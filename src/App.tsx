@@ -28,6 +28,10 @@ import { IFCPanel } from './components/IFCPanel/IFCPanel';
 import { serializeProject, deserializeProject } from './core/io/ProjectSerializer';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { I18nProvider } from './i18n/I18nProvider';
+import { Backstage, BackstageAction } from './components/Backstage/Backstage';
+import { SettingsDialog, Theme, Locale } from './components/SettingsDialog/SettingsDialog';
+import { AboutDialog } from './components/AboutDialog/AboutDialog';
+import { useI18n } from './i18n/i18n';
 
 /** Hook used inside FEMProvider to serialize current project state */
 function useProjectSnapshot() {
@@ -52,6 +56,7 @@ interface AppContentProps {
 
 function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const { state, dispatch } = useFEM();
+  const { t, locale, setLocale } = useI18n();
   const [showLoadCaseDialog, setShowLoadCaseDialog] = useState(false);
   const [showProjectInfoDialog, setShowProjectInfoDialog] = useState(false);
   const [showGridsDialog, setShowGridsDialog] = useState(false);
@@ -67,6 +72,9 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const [browserCollapsed, setBrowserCollapsed] = useState(false);
   const [displayCollapsed, setDisplayCollapsed] = useState(false);
   const [activeRibbonTab, setActiveRibbonTab] = useState<string>('home');
+  const [showBackstage, setShowBackstage] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
 
   // Expose snapshot function to parent
@@ -200,6 +208,9 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     const handleEscapeKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // Close first open dialog in z-index priority order (outermost first)
+      if (showAbout)     { setShowAbout(false); return; }
+      if (showSettings)  { setShowSettings(false); return; }
+      if (showBackstage) { setShowBackstage(false); return; }
       if (showReinforcementDialog) { setShowReinforcementDialog(false); return; }
 
       if (showCalculationSettings) { setShowCalculationSettings(false); return; }
@@ -213,6 +224,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     window.addEventListener('keydown', handleEscapeKey);
     return () => window.removeEventListener('keydown', handleEscapeKey);
   }, [
+    showAbout, showSettings, showBackstage,
     showReinforcementDialog,
     showCalculationSettings, showMaterialsDialog,
     showGridsDialog, showProjectInfoDialog,
@@ -236,6 +248,27 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     splitDragRef.current = null;
   }, []);
 
+  const handleBackstageAction = useCallback((action: BackstageAction) => {
+    switch (action) {
+      case 'new':
+        // Stub — will be wired to existing Ribbon "New" handler in Phase C
+        console.log('[Backstage] New (stub — wire in Phase C)');
+        break;
+      case 'open':
+        console.log('[Backstage] Open (stub — wire in Phase C via Tauri fileApi)');
+        break;
+      case 'save':
+        console.log('[Backstage] Save (stub — wire in Phase C via Tauri fileApi)');
+        break;
+      case 'saveAs':
+        console.log('[Backstage] Save As (stub — wire in Phase C via Tauri fileApi)');
+        break;
+      case 'preferences': setShowSettings(true); break;
+      case 'about':       setShowAbout(true); break;
+      case 'exit':        window.close(); break;
+    }
+  }, []);
+
 
   return (
     <div className="app">
@@ -255,6 +288,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         showGraphSplit={showGraphSplit}
         activeRibbonTab={activeRibbonTab as any}
         onRibbonTabChange={setActiveRibbonTab}
+        onFileTabClick={() => setShowBackstage(true)}
       />
       <div className="main-content">
         <ProjectBrowser
@@ -376,6 +410,30 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       {showCalculationSettings && (
         <CalculationSettingsDialog onClose={() => setShowCalculationSettings(false)} />
       )}
+
+      <Backstage
+        isOpen={showBackstage}
+        onClose={() => setShowBackstage(false)}
+        onAction={handleBackstageAction}
+        t={t}
+      />
+      <SettingsDialog
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        theme={(document.documentElement.dataset.theme as Theme) ?? 'light'}
+        onThemeChange={(theme) => {
+          document.documentElement.dataset.theme = theme;
+          localStorage.setItem('fem2d-theme', theme);
+        }}
+        locale={locale as Locale}
+        onLocaleChange={(l) => setLocale(l)}
+        t={t}
+      />
+      <AboutDialog
+        isOpen={showAbout}
+        onClose={() => setShowAbout(false)}
+        t={t}
+      />
     </div>
   );
 }
