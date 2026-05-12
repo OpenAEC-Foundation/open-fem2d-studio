@@ -50,9 +50,14 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
     setLocalActiveTab(tab);
     onRibbonTabChange?.(tab);
   };
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+  const [theme, setTheme] = useState<'openaec' | 'light'>(() => {
     const stored = localStorage.getItem('fem2d-theme');
-    return (stored === 'light' || stored === 'dark') ? stored : 'dark';
+    // One-shot migration: 'dark' → 'openaec'
+    if (stored === 'dark') {
+      localStorage.setItem('fem2d-theme', 'openaec');
+      return 'openaec';
+    }
+    return (stored === 'light' || stored === 'openaec') ? stored : 'openaec';
   });
 
   useEffect(() => {
@@ -61,7 +66,7 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    setTheme(prev => prev === 'openaec' ? 'light' : 'openaec');
   };
 
   const handleTabClick = (tab: RibbonTab) => {
@@ -663,10 +668,10 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
                 <button
                   className="theme-toggle-btn"
                   onClick={toggleTheme}
-                  title={theme === 'dark' ? t('ribbon.lightMode') : t('ribbon.darkMode')}
+                  title={theme === 'openaec' ? t('ribbon.lightMode') : t('ribbon.darkMode')}
                 >
-                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-                  <span>{theme === 'dark' ? t('ribbon.lightMode') : t('ribbon.darkMode')}</span>
+                  {theme === 'openaec' ? <Sun size={14} /> : <Moon size={14} />}
+                  <span>{theme === 'openaec' ? t('ribbon.lightMode') : t('ribbon.darkMode')}</span>
                 </button>
               </div>
             </div>

@@ -265,8 +265,8 @@ export function CommandPalette({ onToggleDialog }: CommandPaletteProps) {
     // ══════════════════════════════════════════════════════════════════
     // ── SETTINGS ──────────────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════════════
-    { id: 'lightMode', label: t('cmd.lightMode'), category: t('cmd.catSettings'), action: () => closeAndRun(() => document.documentElement.setAttribute('data-theme', 'light')) },
-    { id: 'darkMode', label: t('cmd.darkMode'), category: t('cmd.catSettings'), action: () => closeAndRun(() => document.documentElement.setAttribute('data-theme', 'dark')) },
+    { id: 'lightMode', label: t('cmd.lightMode'), category: t('cmd.catSettings'), action: () => closeAndRun(() => { document.documentElement.setAttribute('data-theme', 'light'); localStorage.setItem('fem2d-theme', 'light'); }) },
+    { id: 'darkMode', label: t('cmd.darkMode'), category: t('cmd.catSettings'), action: () => closeAndRun(() => { document.documentElement.setAttribute('data-theme', 'openaec'); localStorage.setItem('fem2d-theme', 'openaec'); }) },
     { id: 'langEN', label: t('cmd.langEN'), category: t('cmd.catSettings'), action: () => closeAndRun(() => setLocale('en')) },
     { id: 'langNL', label: t('cmd.langNL'), category: t('cmd.catSettings'), action: () => closeAndRun(() => setLocale('nl')) },
     { id: 'langFR', label: t('cmd.langFR'), category: t('cmd.catSettings'), action: () => closeAndRun(() => setLocale('fr')) },

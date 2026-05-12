@@ -123,7 +123,7 @@ export const en: Record<string, string> = {
   'ribbon.calculationSettings': 'Calculation Settings',
   'ribbon.appearance': 'Appearance',
   'ribbon.lightMode': 'Light Mode',
-  'ribbon.darkMode': 'Dark Mode',
+  'ribbon.darkMode': 'OpenAEC Mode',
   'ribbon.language': 'Language',
   'ribbon.units': 'Units',
   'ribbon.projectSettings.title': 'Project Settings',
@@ -607,7 +607,7 @@ export const en: Record<string, string> = {
 
   // ── Settings Commands ───────────────────────────────────────────────
   'cmd.lightMode': 'Theme: Light Mode',
-  'cmd.darkMode': 'Theme: Dark Mode',
+  'cmd.darkMode': 'Theme: OpenAEC Mode',
   'cmd.langEN': 'Language: English',
   'cmd.langNL': 'Language: Nederlands',
   'cmd.langFR': 'Language: Francais',
