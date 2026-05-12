@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Save, Undo, Redo } from 'lucide-react';
+import { Box, Save, Undo, Redo, Minus, Square, X } from 'lucide-react';
+import { windowApi } from '../../lib/windowApi';
 import './TitleBar.css';
 
 interface TitleBarProps {
@@ -22,8 +23,8 @@ export function TitleBar({
   rightSlot,
 }: TitleBarProps) {
   return (
-    <div className="title-bar">
-      <div className="title-bar-left">
+    <div className="title-bar" data-tauri-drag-region>
+      <div className="title-bar-left" data-tauri-drag-region>
         <Box size={14} />
         <span>Open FEM2D Studio</span>
         {(onSave || onUndo || onRedo) && (
@@ -46,8 +47,21 @@ export function TitleBar({
           </div>
         )}
       </div>
-      <div className="title-bar-center">{projectName || 'Untitled Project'}</div>
-      <div className="title-bar-right">{rightSlot}</div>
+      <div className="title-bar-center" data-tauri-drag-region>{projectName || 'Untitled Project'}</div>
+      <div className="title-bar-right">
+        {rightSlot}
+        <div className="title-bar-window-controls">
+          <button className="title-bar-wc-btn" onClick={() => windowApi.minimize()} aria-label="Minimize" title="Minimize">
+            <Minus size={14} />
+          </button>
+          <button className="title-bar-wc-btn" onClick={() => windowApi.toggleMaximize()} aria-label="Maximize" title="Maximize">
+            <Square size={12} />
+          </button>
+          <button className="title-bar-wc-btn is-close" onClick={() => windowApi.close()} aria-label="Close" title="Close">
+            <X size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
