@@ -1,0 +1,91 @@
+.backstage-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--theme-bg);
+  z-index: 1000;
+  display: flex;
+  animation: backstage-slide-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes backstage-slide-in {
+  from { transform: translateX(-30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.backstage-sidebar {
+  width: 260px;
+  background: var(--theme-bg-elevated);
+  border-right: 1px solid var(--theme-border);
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--sp-3);
+}
+
+.backstage-back {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  margin-bottom: var(--sp-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--theme-fg-muted);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.backstage-back:hover { color: var(--theme-accent); }
+
+.backstage-menu {
+  display: flex;
+  flex-direction: column;
+}
+
+.backstage-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  color: var(--theme-fg);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+}
+.backstage-item:hover { background: var(--theme-bg-subtle); }
+.backstage-item.is-active {
+  background: var(--theme-bg-subtle);
+  border-left-color: var(--theme-accent);
+  color: var(--theme-accent);
+}
+.backstage-item:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.backstage-content {
+  flex: 1;
+  padding: var(--sp-12);
+  overflow-y: auto;
+  background: var(--theme-bg);
+}
+
+.backstage-content h2 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--theme-fg);
+  margin-bottom: var(--sp-4);
+}
+
+.backstage-content p {
+  font-family: var(--font-body);
+  color: var(--theme-fg-muted);
+  line-height: 1.6;
+  max-width: 70ch;
+}
