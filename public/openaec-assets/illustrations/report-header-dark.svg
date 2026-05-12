@@ -1,0 +1,92 @@
+<svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMaxYMid slice">
+  <rect width="520" height="200" fill="#36363E"/>
+
+  <!-- Blueprint grid -->
+  <defs>
+    <pattern id="rptGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#FAFAF9" stroke-width="0.6"/>
+    </pattern>
+  </defs>
+  <rect width="520" height="200" fill="url(#rptGrid)" opacity="0.35"/>
+
+  <!-- Isometric building block 1 -->
+  <g transform="translate(60,110)" opacity="0.35">
+    <polygon points="0,-40 40,-20 40,20 0,40 -40,20 -40,-20" fill="none" stroke="#D97706" stroke-width="2.5"/>
+    <line x1="0" y1="-40" x2="0" y2="0" stroke="#D97706" stroke-width="1.8"/>
+    <line x1="40" y1="-20" x2="0" y2="0" stroke="#D97706" stroke-width="1.8"/>
+    <line x1="-40" y1="-20" x2="0" y2="0" stroke="#D97706" stroke-width="1.8"/>
+    <polygon points="0,-40 40,-20 0,0 -40,-20" fill="#D97706" opacity="0.15"/>
+  </g>
+
+  <!-- Isometric building block 2 (taller) -->
+  <g transform="translate(150,80)" opacity="0.35">
+    <polygon points="0,-60 35,-40 35,20 0,40 -35,20 -35,-40" fill="none" stroke="#F59E0B" stroke-width="2.5"/>
+    <line x1="0" y1="-60" x2="0" y2="0" stroke="#F59E0B" stroke-width="1.8"/>
+    <line x1="35" y1="-40" x2="0" y2="0" stroke="#F59E0B" stroke-width="1.8"/>
+    <line x1="-35" y1="-40" x2="0" y2="0" stroke="#F59E0B" stroke-width="1.8"/>
+    <polygon points="0,-60 35,-40 0,0 -35,-40" fill="#F59E0B" opacity="0.12"/>
+    <!-- windows -->
+    <rect x="-20" y="-30" width="8" height="6" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.2"/>
+    <rect x="-8" y="-30" width="8" height="6" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.2"/>
+    <rect x="-20" y="-18" width="8" height="6" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.2"/>
+    <rect x="-8" y="-18" width="8" height="6" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.2"/>
+    <rect x="-20" y="-6" width="8" height="6" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.2"/>
+    <rect x="-8" y="-6" width="8" height="6" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.2"/>
+  </g>
+
+  <!-- Isometric building block 3 (small, bridging) -->
+  <g transform="translate(105,135)" opacity="0.35">
+    <polygon points="0,-25 25,-12 25,12 0,25 -25,12 -25,-12" fill="none" stroke="#D97706" stroke-width="1.8"/>
+    <polygon points="0,-25 25,-12 0,0 -25,-12" fill="#D97706" opacity="0.1"/>
+  </g>
+
+  <!-- Code brackets -->
+  <g transform="translate(240,60)" font-family="'JetBrains Mono', monospace" font-size="64" fill="#D97706" opacity="0.32">
+    <text x="0" y="0">{</text>
+    <text x="100" y="0">}</text>
+  </g>
+
+  <!-- Code lines inside brackets -->
+  <g transform="translate(278,38)" stroke="#FAFAF9" stroke-width="2" opacity="0.25">
+    <line x1="0" y1="0" x2="45" y2="0"/>
+    <line x1="6" y1="10" x2="36" y2="10"/>
+    <line x1="6" y1="20" x2="50" y2="20"/>
+    <line x1="6" y1="30" x2="28" y2="30"/>
+    <line x1="0" y1="40" x2="40" y2="40"/>
+  </g>
+
+  <!-- BIM cube (3D wireframe) -->
+  <g transform="translate(370,50)" opacity="0.35">
+    <rect x="14" y="-14" width="55" height="55" fill="none" stroke="#FAFAF9" stroke-width="1.2" opacity="0.5"/>
+    <rect x="0" y="0" width="55" height="55" fill="none" stroke="#D97706" stroke-width="2"/>
+    <line x1="0" y1="0" x2="14" y2="-14" stroke="#FAFAF9" stroke-width="1.2" opacity="0.7"/>
+    <line x1="55" y1="0" x2="69" y2="-14" stroke="#FAFAF9" stroke-width="1.2" opacity="0.7"/>
+    <line x1="55" y1="55" x2="69" y2="41" stroke="#FAFAF9" stroke-width="1.2" opacity="0.7"/>
+    <line x1="0" y1="55" x2="14" y2="41" stroke="#FAFAF9" stroke-width="1.2" opacity="0.7"/>
+    <polygon points="0,0 14,-14 69,-14 55,0" fill="#D97706" opacity="0.12"/>
+    <text x="10" y="35" font-family="'JetBrains Mono', monospace" font-size="15" fill="#D97706" font-weight="bold">BIM</text>
+  </g>
+
+  <!-- Structural beam cross-section (I-profile) -->
+  <g transform="translate(470,70)" opacity="0.35">
+    <path d="M-20,0 L20,0 L20,4 L8,4 L8,36 L20,36 L20,40 L-20,40 L-20,36 L-8,36 L-8,4 L-20,4 Z" fill="#F59E0B" fill-opacity="0.2" stroke="#F59E0B" stroke-width="1.8"/>
+  </g>
+
+  <!-- Skyline silhouette at bottom -->
+  <g transform="translate(0,140)" opacity="0.18">
+    <path d="M0,60 L0,40 L15,40 L15,25 L25,25 L25,35 L40,35 L40,15 L45,15 L45,8 L50,8 L50,15 L60,15 L60,28 L75,28 L75,10 L80,10 L80,0 L90,0 L90,3 L95,3 L95,0 L105,0 L105,10 L110,10 L110,28 L125,28 L125,18 L140,18 L140,28 L155,28 L155,8 L160,8 L160,3 L165,3 L165,8 L170,8 L170,28 L185,28 L185,35 L200,35 L200,25 L210,25 L210,35 L230,35 L230,20 L238,15 L246,20 L246,35 L265,35 L265,30 L280,30 L280,22 L295,22 L295,30 L310,30 L310,20 L325,20 L325,10 L330,10 L330,5 L335,5 L335,10 L345,10 L345,20 L360,20 L360,30 L380,30 L380,25 L400,25 L400,35 L420,35 L420,28 L440,28 L440,18 L450,18 L450,28 L465,28 L465,35 L490,35 L490,30 L520,30 L520,60 Z" fill="#FAFAF9"/>
+  </g>
+
+  <!-- Network connection dots -->
+  <g opacity="0.35">
+    <circle cx="60" cy="110" r="4.5" fill="#D97706"/>
+    <circle cx="150" cy="80" r="4.5" fill="#F59E0B"/>
+    <circle cx="105" cy="135" r="3.5" fill="#D97706"/>
+    <circle cx="370" cy="50" r="4" fill="#D97706"/>
+    <circle cx="470" cy="90" r="3.5" fill="#F59E0B"/>
+    <line x1="65" y1="108" x2="100" y2="133" stroke="#D97706" stroke-width="1" stroke-dasharray="4,3"/>
+    <line x1="110" y1="133" x2="145" y2="83" stroke="#D97706" stroke-width="1" stroke-dasharray="4,3"/>
+    <line x1="155" y1="80" x2="365" y2="53" stroke="#F59E0B" stroke-width="1" stroke-dasharray="4,3"/>
+    <line x1="375" y1="52" x2="465" y2="87" stroke="#F59E0B" stroke-width="1" stroke-dasharray="4,3"/>
+  </g>
+</svg>
