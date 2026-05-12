@@ -10,6 +10,13 @@ import { ILoadCase, ILoadCombination } from '../fem/LoadCase';
 import { IReportConfig, getEnabledSections, ReportSectionType } from './ReportConfig';
 import { calculateBeamLength } from '../fem/Beam';
 import { renderGeometry, renderForceDiagram } from './DiagramRenderer';
+import { generateHeaderHTML } from './ReportHeader';
+import { generateFooterHTML } from './ReportFooter';
+import { ReportColors, ReportFonts } from './ReportTheme';
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
 
 export interface ReportData {
   config: IReportConfig;
@@ -488,95 +495,172 @@ function generateResultForcesHTML(data: ReportData, sectionNum: number, forceTyp
   </div>`;
 }
 
-// Main report header
-function getReportHeader(_config: IReportConfig): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Structural Report</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: #f8f9fa; color: #333; padding: 24px; font-size: 10pt; line-height: 1.5; }
-  .report-page { max-width: 210mm; margin: 0 auto 24px; background: white; padding: 20mm; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-  .cover-page { min-height: 297mm; position: relative; }
-  .cover-table { width: 100%; border-collapse: collapse; }
-  .cover-table td { padding: 4px 0; vertical-align: top; }
-  .section-title { font-size: 16pt; font-weight: bold; margin-bottom: 16px; padding-bottom: 4px; border-bottom: 2px solid currentColor; }
-  .subsection-title { font-size: 12pt; font-weight: bold; margin: 20px 0 12px; }
-  .data-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9pt; }
-  .data-table th { color: white; padding: 6px 8px; text-align: left; font-weight: 500; }
-  .data-table td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; }
-  .data-table tr:nth-child(even) { background: #f9f9f9; }
-  .numeric { text-align: right; font-feature-settings: "tnum"; }
-  .status-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 9pt; font-weight: 600; }
-  .status-badge.ok { background: #dcfce7; color: #166534; }
-  .status-badge.fail { background: #fee2e2; color: #991b1b; }
-  .result-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
-  .result-fail { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
-  .check-detail { background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 12px 0; page-break-inside: avoid; }
-  .check-detail h4 { font-size: 11pt; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
-  .check-block { margin: 8px 0; padding: 6px 0; }
-  .check-block-title { font-size: 10pt; font-weight: 600; color: #475569; margin-bottom: 4px; }
-  .formula { font-family: 'Times New Roman', serif; font-size: 10pt; margin: 8px 0; padding: 8px 12px; background: #f5f5f5; border-left: 3px solid; border-radius: 0 4px 4px 0; }
-  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 9pt; color: #94a3b8; text-align: center; }
-  @media print { body { padding: 0; background: white; } .report-page { box-shadow: none; margin: 0; page-break-after: always; } }
-</style>
-</head>
-<body>`;
+/**
+ * Dispatch a section id to its HTML generator function and wrap it in a page div.
+ */
+function generateSectionHTML(id: ReportSectionType, data: ReportData, sectionNum: number): string {
+  const inner = (() => {
+    switch (id) {
+      case 'cover':                return generateCoverHTML(data);
+      case 'toc':                  return generateTocHTML(data);
+      case 'summary':              return generateSummaryHTML(data);
+      case 'input_geometry':       return generateInputGeometryHTML(data, sectionNum);
+      case 'input_nodes':          return generateInputNodesHTML(data, sectionNum);
+      case 'input_members':        return generateInputMembersHTML(data, sectionNum);
+      case 'input_profiles':       return generateInputProfilesHTML(data, sectionNum);
+      case 'input_loadcases':      return generateInputLoadCasesHTML(data, sectionNum);
+      case 'input_loads':          return '';
+      case 'result_combinations':  return generateResultCombinationsHTML(data, sectionNum);
+      case 'result_reactions':     return generateResultReactionsHTML(data, sectionNum);
+      case 'result_displacements': return generateResultDisplacementsHTML(data, sectionNum);
+      case 'result_forces_M':      return generateResultForcesHTML(data, sectionNum, 'M');
+      case 'result_forces_V':      return generateResultForcesHTML(data, sectionNum, 'V');
+      case 'result_forces_N':      return generateResultForcesHTML(data, sectionNum, 'N');
+      case 'result_envelope':      return '';
+      default:                     return '';
+    }
+  })();
+  if (!inner) return '';
+  return `<div class="report-page" id="section-${id}"><div class="report-content">${inner}</div></div>`;
 }
-
-function getReportFooter(): string {
-  return `
-<div class="footer">
-  Generated by Open FEM Studio | ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}
-</div>
-</body>
-</html>`;
-}
-
-// Section generator map
-const SECTION_GENERATORS: Partial<Record<ReportSectionType, (data: ReportData, sectionNum: number) => string>> = {
-  'cover': (data) => generateCoverHTML(data),
-  'toc': (data) => generateTocHTML(data),
-  'summary': (data) => generateSummaryHTML(data),
-  'input_geometry': (data, num) => generateInputGeometryHTML(data, num),
-  'input_nodes': (data, num) => generateInputNodesHTML(data, num),
-  'input_members': (data, num) => generateInputMembersHTML(data, num),
-  'input_profiles': (data, num) => generateInputProfilesHTML(data, num),
-  'input_loadcases': (data, num) => generateInputLoadCasesHTML(data, num),
-  'result_combinations': (data, num) => generateResultCombinationsHTML(data, num),
-  'result_reactions': (data, num) => generateResultReactionsHTML(data, num),
-  'result_displacements': (data, num) => generateResultDisplacementsHTML(data, num),
-  'result_forces_M': (data, num) => generateResultForcesHTML(data, num, 'M'),
-  'result_forces_V': (data, num) => generateResultForcesHTML(data, num, 'V'),
-  'result_forces_N': (data, num) => generateResultForcesHTML(data, num, 'N'),
-};
 
 /**
  * Generate complete report HTML
  */
 export function generateReportHTML(data: ReportData): string {
-  const { config } = data;
-  const enabledSections = getEnabledSections(config);
+  const { config, projectInfo } = data;
+  const sections = getEnabledSections(config);
 
-  let html = getReportHeader(config);
   let sectionNum = 0;
+  const sectionHTMLs = sections.map(s => {
+    if (s.category !== 'header') sectionNum++;
+    return generateSectionHTML(s.id, data, sectionNum);
+  }).filter(Boolean).join('\n');
 
-  for (const section of enabledSections) {
-    if (section.category !== 'header') {
-      sectionNum++;
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(projectInfo.name || 'Untitled Project')} — Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: ${ReportFonts.body};
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: ${ReportColors.deepForge};
+      background: ${ReportColors.blueprintWhite};
+    }
+    body {
+      counter-reset: page;
+    }
+    h1, h2, h3 {
+      font-family: ${ReportFonts.heading};
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: ${ReportColors.deepForge};
+    }
+    h2 { font-size: 1.5rem; margin-top: 8mm; }
+    h3 { font-size: 1.1rem; margin-top: 6mm; }
+    code, pre { font-family: ${ReportFonts.mono}; }
+
+    .report-page {
+      page-break-after: always;
+      padding: 50mm 12mm 25mm 12mm;
+      min-height: calc(297mm - 53mm - 25mm);
+    }
+    .report-page:last-child { page-break-after: auto; }
+
+    .report-content p {
+      text-align: justify;
+      hyphens: auto;
+      -webkit-hyphens: auto;
     }
 
-    const generator = SECTION_GENERATORS[section.id];
-    if (generator) {
-      html += generator(data, sectionNum);
-    }
-  }
+    /* Legacy section generator classes */
+    .cover-page { position: relative; }
+    .cover-table { width: 100%; border-collapse: collapse; }
+    .cover-table td { padding: 4px 0; vertical-align: top; }
+    .section-title { font-size: 16pt; font-weight: bold; margin-bottom: 16px; padding-bottom: 4px; border-bottom: 2px solid currentColor; }
+    .subsection-title { font-size: 12pt; font-weight: bold; margin: 20px 0 12px; }
+    .data-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9pt; }
+    .data-table th { color: white; padding: 6px 8px; text-align: left; font-weight: 500; }
+    .data-table td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; }
+    .data-table tr:nth-child(even) { background: #f9f9f9; }
+    .numeric { text-align: right; font-feature-settings: "tnum"; }
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 9pt; font-weight: 600; }
+    .status-badge.ok { background: #dcfce7; color: #166534; }
+    .status-badge.fail { background: #fee2e2; color: #991b1b; }
+    .result-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .result-fail { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .check-detail { background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 12px 0; page-break-inside: avoid; }
+    .check-detail h4 { font-size: 11pt; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+    .check-block { margin: 8px 0; padding: 6px 0; }
+    .check-block-title { font-size: 10pt; font-weight: 600; color: #475569; margin-bottom: 4px; }
+    .formula { font-family: 'Times New Roman', serif; font-size: 10pt; margin: 8px 0; padding: 8px 12px; background: #f5f5f5; border-left: 3px solid; border-radius: 0 4px 4px 0; }
 
-  html += getReportFooter();
-  return html;
+    table.report-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid ${ReportColors.borderLight};
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 0.85rem;
+      margin: 4mm 0;
+    }
+    table.report-table thead {
+      background: ${ReportColors.concrete};
+      border-bottom: 2px solid ${ReportColors.borderLight};
+    }
+    table.report-table th {
+      padding: 3mm 4mm;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: ${ReportColors.textMuted};
+      font-weight: 600;
+      text-align: left;
+    }
+    table.report-table td {
+      padding: 3mm 4mm;
+      border-bottom: 1px solid ${ReportColors.concrete};
+    }
+    table.report-table tr:hover td { background: ${ReportColors.blueprintWhite}; }
+
+    .section-number {
+      font-family: ${ReportFonts.mono};
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: ${ReportColors.amber};
+    }
+
+    /* Page counter for footer (Chromium-only) */
+    .pgnum::before { content: counter(page); }
+
+    @media print {
+      .report-page { padding-top: 50mm; padding-bottom: 25mm; }
+    }
+  </style>
+</head>
+<body>
+  ${generateHeaderHTML(config, projectInfo)}
+  ${generateFooterHTML(config)}
+  <main>
+    ${sectionHTMLs}
+  </main>
+</body>
+</html>`;
 }
 
 /**
