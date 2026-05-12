@@ -45,6 +45,25 @@ npm run tauri:build  # Production desktop installer
 - Rust toolchain (for Tauri builds — install via [rustup](https://rustup.rs/))
 - WebView2 runtime (Windows — included in Win11 by default)
 
+### Windows toolchain note
+
+This project builds on both `x86_64-pc-windows-gnu` (MinGW, no extra
+install) and `x86_64-pc-windows-msvc` (Visual Studio Build Tools).
+
+The Tauri dependency tree (~366 crates) can overflow the GNU `ld.exe`
+symbol table — `src-tauri/Cargo.toml` ships profile tweaks
+(`debug=0`, `strip="debuginfo"`) that keep MinGW happy at the cost
+of slightly less dev debug info.
+
+For full debug builds, switch to MSVC:
+
+```bash
+rustup default stable-x86_64-pc-windows-msvc
+```
+
+This requires Visual Studio Build Tools 2022 (or full VS) with the
+"Desktop development with C++" workload.
+
 ## License
 
 CC BY-SA 4.0 — see [LICENSE.md](LICENSE.md)
