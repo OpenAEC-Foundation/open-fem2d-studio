@@ -16,6 +16,10 @@
     "electron:preview": "npm run build && electron ."
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-store": "^2.4.3",
     "@types/leaflet": "^1.9.21",
     "@types/three": "^0.182.0",
     "leaflet": "^1.9.4",
@@ -28,6 +32,7 @@
     "web-ifc": "^0.0.75"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.1",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
