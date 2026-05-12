@@ -75,7 +75,7 @@
   margin: 0 auto;
   padding: 20mm;
   background: white;
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: var(--font-body);
   font-size: 10pt;
   color: #333;
   box-sizing: border-box;
@@ -124,7 +124,7 @@
   background: white;
   box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   margin-bottom: 24px;
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: var(--font-body);
   font-size: 10pt;
   color: #333;
   position: relative;
@@ -151,14 +151,25 @@
 
 /* Section headings */
 .report-section-title {
+  font-family: var(--font-heading);
   font-size: 14pt;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0 0 16px 0;
   padding-bottom: 6px;
   border-bottom: 2px solid currentColor;
 }
 
+.report-section-number {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-amber);
+  margin-bottom: var(--sp-1);
+}
+
 .report-subsection-title {
+  font-family: var(--font-heading);
   font-size: 11pt;
   font-weight: 600;
   margin: 20px 0 12px 0;
@@ -187,26 +198,43 @@
   border-collapse: collapse;
   margin-bottom: 16px;
   font-size: 9pt;
+  font-family: var(--font-body);
+  border: 1px solid #e0e0e0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.report-table thead {
+  border-bottom: 2px solid rgba(0,0,0,0.15);
 }
 
 .report-table th {
   color: white;
-  padding: 6px 10px;
+  padding: 7px 10px;
   text-align: left;
-  font-weight: 500;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .report-table td {
   padding: 5px 10px;
   border-bottom: 1px solid #e0e0e0;
+  font-family: var(--font-body);
 }
 
-.report-table tr:nth-child(even) {
+.report-table tr:nth-child(even) td {
   background: #f9f9f9;
+}
+
+.report-table tbody tr:hover td {
+  background: #f5f4f2;
 }
 
 .report-table td.numeric {
   text-align: right;
+  font-family: var(--font-mono);
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
 }
