@@ -26,7 +26,7 @@ import { ConcreteReinforcementDialog } from './components/ConcreteReinforcementD
 import { IFCPanel } from './components/IFCPanel/IFCPanel';
 
 import { serializeProject, deserializeProject } from './core/io/ProjectSerializer';
-import { Box } from 'lucide-react';
+import { TitleBar } from './components/TitleBar/TitleBar';
 import { I18nProvider } from './i18n/I18nProvider';
 
 /** Hook used inside FEMProvider to serialize current project state */
@@ -239,14 +239,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
 
   return (
     <div className="app">
-      <div className="title-bar">
-        <div className="title-bar-left">
-          <Box size={14} />
-          <span>Open FEM Studio</span>
-        </div>
-        <div className="title-bar-center">{state.projectInfo.name || 'Untitled Project'}</div>
-        <div className="title-bar-right" />
-      </div>
+      <TitleBar projectName={state.projectInfo.name || ''} />
       <Ribbon
         onShowLoadCaseDialog={() => setShowLoadCaseDialog(true)}
         onShowProjectInfoDialog={() => setShowProjectInfoDialog(true)}
