@@ -611,6 +611,3 @@ export function printReport(data: ReportData): void {
     }, 500);
   }
 }
-
-// Re-export the old interface for backward compatibility
-export { generateReport, downloadReport } from './LegacyReportGenerator';
