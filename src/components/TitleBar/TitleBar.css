@@ -52,3 +52,24 @@
 }
 .title-bar-qa-btn:hover { background: var(--theme-bg-subtle); color: var(--theme-fg); }
 .title-bar-qa-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.title-bar-window-controls {
+  display: flex;
+  margin-left: var(--sp-3);
+}
+
+.title-bar-wc-btn {
+  width: 46px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--theme-fg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  padding: 0;
+}
+.title-bar-wc-btn:hover { background: var(--theme-bg-subtle); color: var(--theme-fg); }
+.title-bar-wc-btn.is-close:hover { background: #DC2626; color: white; }
