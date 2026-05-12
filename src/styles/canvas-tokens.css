@@ -1,0 +1,39 @@
+/* src/styles/canvas-tokens.css
+ * Canvas-specific tokens for MeshEditor (~10k LOC) and other canvas renderers.
+ * Aligned with OpenAEC palette. MeshEditor reads these via
+ * getComputedStyle(document.documentElement).getPropertyValue().
+ */
+
+:root,
+[data-theme="light"] {
+  --canvas-bg:           var(--theme-bg);
+  --canvas-grid:         rgba(161, 161, 170, 0.15);
+  --canvas-axis:         var(--c-scaffold-gray);
+  --canvas-baseline:     #71717A;
+  --canvas-dim-color:    var(--theme-fg-muted);
+  --canvas-label-bg:     rgba(255, 255, 255, 0.90);
+
+  /* Element-class tokens — used by MeshEditor draw functions */
+  --canvas-beam:         var(--c-amber);
+  --canvas-plate:        var(--c-warm-gold);
+  --canvas-load:         var(--c-signal-orange);
+  --canvas-reaction:     var(--c-info);
+  --canvas-support:      var(--c-deep-forge);
+  --canvas-selection:    var(--c-amber);
+}
+
+[data-theme="openaec"] {
+  --canvas-bg:           var(--theme-bg);
+  --canvas-grid:         rgba(161, 161, 170, 0.10);
+  --canvas-axis:         #71717A;
+  --canvas-baseline:     #52525B;
+  --canvas-dim-color:    var(--theme-fg-subtle);
+  --canvas-label-bg:     rgba(42, 42, 50, 0.90);
+
+  --canvas-beam:         var(--c-amber);
+  --canvas-plate:        var(--c-warm-gold);
+  --canvas-load:         var(--c-signal-orange);
+  --canvas-reaction:     #60A5FA;
+  --canvas-support:      var(--c-blueprint-white);
+  --canvas-selection:    var(--c-warm-gold);
+}
