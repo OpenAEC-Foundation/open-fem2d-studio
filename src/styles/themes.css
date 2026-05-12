@@ -1,0 +1,71 @@
+/* src/styles/themes.css
+ * Semantic theme tokens that reference raw tokens from tokens.css.
+ * Includes backwards-compat shim for existing component CSS that uses
+ * --accent / --bg-primary / --text-primary / etc. — those keep working.
+ */
+
+:root,
+[data-theme="light"] {
+  /* ─── Semantic theme vars (preferred for new code) ─── */
+  --theme-bg:             var(--c-blueprint-white);
+  --theme-bg-elevated:    white;
+  --theme-bg-subtle:      var(--c-concrete);
+  --theme-fg:             var(--c-deep-forge);
+  --theme-fg-muted:       #57534E;
+  --theme-fg-subtle:      var(--c-scaffold-gray);
+  --theme-accent:         var(--c-amber);
+  --theme-accent-hover:   var(--c-signal-orange);
+  --theme-accent-subtle:  rgba(217, 119, 6, 0.15);
+  --theme-border:         var(--c-border);
+  --theme-border-hover:   var(--c-border-hover);
+  --theme-status-bg:      var(--c-deep-forge);
+  --theme-status-fg:      var(--c-blueprint-white);
+  --theme-success:        var(--c-success);
+  --theme-error:          var(--c-error);
+  --theme-warning:        var(--c-warm-gold);
+  --theme-info:           var(--c-info);
+}
+
+[data-theme="openaec"] {
+  --theme-bg:             var(--c-night-build);
+  --theme-bg-elevated:    var(--c-deep-forge);
+  --theme-bg-subtle:      #27272A;
+  --theme-fg:             var(--c-blueprint-white);
+  --theme-fg-muted:       var(--c-scaffold-gray);
+  --theme-fg-subtle:      #71717A;
+  --theme-accent:         var(--c-amber);
+  --theme-accent-hover:   var(--c-warm-gold);
+  --theme-accent-subtle:  rgba(217, 119, 6, 0.20);
+  --theme-border:         #27272A;
+  --theme-border-hover:   #3F3F46;
+  --theme-status-bg:      #1F1F25;
+  --theme-status-fg:      var(--c-blueprint-white);
+  --theme-success:        var(--c-success);
+  --theme-error:          var(--c-error);
+  --theme-warning:        var(--c-warm-gold);
+  --theme-info:           var(--c-info);
+}
+
+/* ─── Legacy compat shim — keeps existing 42 component CSS working unchanged ─── */
+:root,
+[data-theme="light"],
+[data-theme="openaec"] {
+  --accent:          var(--theme-accent);
+  --accent-hover:    var(--theme-accent-hover);
+  --accent-subtle:   var(--theme-accent-subtle);
+  --bg-primary:      var(--theme-bg-elevated);
+  --bg-secondary:    var(--theme-bg-subtle);
+  --bg-tertiary:     var(--theme-bg-subtle);
+  --bg-elevated:     var(--theme-bg-elevated);
+  --bg-dark:         var(--theme-bg);
+  --text-primary:    var(--theme-fg);
+  --text-secondary:  var(--theme-fg-muted);
+  --text-muted:      var(--theme-fg-subtle);
+  --success:         var(--c-success);
+  --success-hover:   #15803d;
+  --warning:         var(--c-warm-gold);
+  --danger:          var(--c-error);
+  --border:          var(--theme-border);
+  --border-light:    var(--theme-border);
+  --border-accent:   rgba(217, 119, 6, 0.3);
+}
