@@ -19,7 +19,7 @@ import { useI18n } from '../../i18n/i18n';
 import type { Locale } from '../../i18n/i18n';
 import './Ribbon.css';
 
-type RibbonTab = 'file' | 'home' | 'settings' | 'table' | 'insights' | 'ifc';
+type RibbonTab = 'file' | 'home' | 'settings' | 'table' | 'insights' | 'ifc' | 'report';
 
 interface RibbonProps {
   onShowLoadCaseDialog?: () => void;
@@ -196,6 +196,9 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
         </button>
         <button className={`ribbon-tab ${activeTab === 'ifc' ? 'active' : ''}`} onClick={() => handleTabClick('ifc')}>
           IFC
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'report' ? 'active' : ''}`} onClick={() => handleTabClick('report')}>
+          {t('ribbon.report')}
         </button>
         <div ref={indicatorRef} className="ribbon-tab-indicator" />
       </div>

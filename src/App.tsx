@@ -21,6 +21,7 @@ import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { TableEditorPanel } from './components/TableEditorPanel/TableEditorPanel';
 import { NodeEditorPanel } from './components/NodeEditorPanel/NodeEditorPanel';
 import { InsightsPanel } from './components/InsightsPanel/InsightsPanel';
+import { ReportPanel } from './components/ReportPanel/ReportPanel';
 
 import { ConcreteReinforcementDialog } from './components/ConcreteReinforcementDialog/ConcreteReinforcementDialog';
 import { IFCPanel } from './components/IFCPanel/IFCPanel';
@@ -351,6 +352,8 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
             <InsightsPanel />
           ) : activeRibbonTab === 'table' ? (
             <TableEditorPanel />
+          ) : activeRibbonTab === 'report' ? (
+            <ReportPanel />
           ) : activeRibbonTab === 'ifc' ? (
             <IFCPanel>
               <MeshEditor onShowGridsDialog={() => setShowGridsDialog(true)} />
