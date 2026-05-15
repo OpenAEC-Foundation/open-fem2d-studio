@@ -7,9 +7,25 @@ import { IStructuralGrid } from '../core/fem/StructuralGrid';
 import { calculateThermalNodalForces, calculateBeamThermalNodalForces, calculateBeamThermalLoadForces } from '../core/fem/ThermalLoad';
 import { IReportConfig, DEFAULT_REPORT_CONFIG } from '../core/report/ReportConfig';
 import { ConsoleService } from '../core/console/ConsoleService';
+import type { BeamCheckResult } from '../lib/types/steel/BeamCheckResult';
 
 export type ViewMode = 'geometry' | 'loads' | 'results';
 export type BrowserTab = 'project' | 'results';
+
+export interface IBeamSteelConfig {
+  beamId: number;
+  profileName: string;
+  steelGrade: string;
+  lateralBracing: {
+    topFlangePositions: number[];
+    bottomFlangePositions: number[];
+  };
+  bucklingLengthY: number;
+  bucklingLengthZ: number;
+  deflectionClass: 'floor' | 'roof' | 'cantilever' | 'custom';
+  deflectionLimitNumerator: number;
+  isCantilever: boolean;
+}
 
 export interface IProjectInfo {
   name: string;
@@ -148,6 +164,11 @@ interface FEMState {
   graphAutoRun: boolean;
   // Internal versioning system
   versioning: IVersioningState;
+  // Steel check configs per beam
+  beamSteelConfigs: Map<number, IBeamSteelConfig>;
+  steelCheckResults: BeamCheckResult[] | null;
+  steelCheckError: string | null;
+  steelCheckAutoRun: boolean;
 }
 
 export interface IGraphState {
@@ -1013,7 +1034,11 @@ const initialState: FEMState = {
     versions: [],
     currentBranch: 'main',
     branches: ['main']
-  }
+  },
+  beamSteelConfigs: new Map<number, IBeamSteelConfig>(),
+  steelCheckResults: null,
+  steelCheckError: null,
+  steelCheckAutoRun: localStorage.getItem('fem2d-steel-autorun') !== 'false', // default true
 };
 
 // Apply demo load case loads to mesh so they render on first load
