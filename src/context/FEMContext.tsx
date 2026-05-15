@@ -1323,7 +1323,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         }
         return { ...lc, pointLoads: filtered };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'UPDATE_BEAM_POINT_LOAD': {
@@ -1338,7 +1338,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         });
         return { ...lc, pointLoads: updatedLoads };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'ADD_DISTRIBUTED_LOAD': {
@@ -1354,7 +1354,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         const newLoad = { id: maxId + 1, elementId: effectiveElementId, edgeId, qx, qy, qxEnd, qyEnd, startT, endT, coordSystem, description };
         return { ...lc, distributedLoads: [...lc.distributedLoads, newLoad] };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'UPDATE_DISTRIBUTED_LOAD': {
@@ -1368,7 +1368,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         });
         return { ...lc, distributedLoads: updatedLoads };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'REMOVE_POINT_LOAD': {
@@ -1377,7 +1377,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         if (lc.id !== lcId) return lc;
         return { ...lc, pointLoads: lc.pointLoads.filter(pl => pl.nodeId !== nodeId) };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'REMOVE_DISTRIBUTED_LOAD': {
@@ -1386,7 +1386,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         if (lc.id !== lcId) return lc;
         return { ...lc, distributedLoads: lc.distributedLoads.filter(dl => dl.id !== loadId) };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'SELECT_PLATE': {
@@ -1423,7 +1423,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         }
         return { ...lc, thermalLoads: filtered };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'REMOVE_THERMAL_LOAD': {
@@ -1432,7 +1432,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         if (lc.id !== lcId) return lc;
         return { ...lc, thermalLoads: (lc.thermalLoads || []).filter(tl => tl.elementId !== elementId) };
       });
-      return { ...state, loadCases: newLoadCases };
+      return { ...state, loadCases: newLoadCases, meshVersion: state.meshVersion + 1 };
     }
 
     case 'SET_PROJECT_INFO':
