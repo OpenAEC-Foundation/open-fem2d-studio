@@ -158,6 +158,16 @@ export const en: Record<string, string> = {
   'ribbon.print.title': 'Print report',
   'ribbon.reportInfo': 'Live preview shows your report.\nConfigure sections using Settings.',
 
+  // Ribbon tab: Check
+  'ribbon.check': 'Check',
+  'ribbon.check.runGroup': 'Run',
+  'ribbon.check.run': 'Run Checks',
+  'ribbon.check.run.title': 'Run EN 1993-1-1 steel checks for all steel beams',
+  'ribbon.check.viewGroup': 'View',
+  'ribbon.check.viewPanel': 'Results Panel',
+  'ribbon.check.settingsGroup': 'Options',
+  'ribbon.check.autoRun': 'Auto-run after solve',
+
   // Ribbon groups: Insights tab
   'ribbon.matrices': 'Matrices',
   'ribbon.elementK': 'Element K',
