@@ -72,6 +72,21 @@ pub fn m_cr_i_section(c: f64, l_g_mm: f64, iz_mm4: f64, it_mm4: f64, k_red: f64)
     k_red * (c / l_g_mm) * (e_mpa * iz_mm4 * g_mpa * it_mm4).sqrt() * 1e-6
 }
 
+/// Monosymmetric (channel) Mcr — simplified per Annex F approach.
+/// Uses I-section formula with monosym warping reduction.
+/// Returns Mcr in kNm.
+///
+/// For mono-symmetric channels (UNP, UPE), the shear center is offset from
+/// the centroid by ~0.4-0.5·b. The actual Mcr involves the monosymmetry
+/// parameter zj. This v1 implementation applies a conservative ~0.7 factor
+/// to the I-section Mcr to approximate the reduction without the full
+/// Annex F derivation.
+pub fn m_cr_channel_section(c: f64, l_g_mm: f64, iz_mm4: f64, it_mm4: f64, k_red: f64) -> f64 {
+    let m_cr_isection = m_cr_i_section(c, l_g_mm, iz_mm4, it_mm4, k_red);
+    // Conservative reduction for monosymmetric channel
+    m_cr_isection * 0.7
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +128,15 @@ mod tests {
         // Out-of-range should clamp to endpoint values
         assert_relative_eq!(c1_from_psi(-2.0), 2.752, max_relative = 1e-3);
         assert_relative_eq!(c1_from_psi(2.0), 1.000, max_relative = 1e-3);
+    }
+
+    #[test]
+    fn unp350_channel_mcr_reduced_vs_isection() {
+        let c1 = c1_from_psi(0.0);
+        let c = c_coefficient(c1, 5000.0, 5000.0, 100.0, 0.0);
+        let m_cr_iso = m_cr_i_section(c, 5000.0, 5703000.0, 605000.0, 1.0);
+        let m_cr_chan = m_cr_channel_section(c, 5000.0, 5703000.0, 605000.0, 1.0);
+        assert!(m_cr_chan < m_cr_iso, "channel Mcr should be reduced vs I-section");
+        assert!((m_cr_chan / m_cr_iso - 0.7).abs() < 0.01, "channel Mcr ≈ 0.7 × isection");
     }
 }

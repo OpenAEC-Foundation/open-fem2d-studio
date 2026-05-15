@@ -513,13 +513,13 @@ expression: run()
       }
     },
     {
-      "id": "6.3.2_ltb",
+      "id": "6.3.2_ltb_channel",
       "kind": {
         "type": "Stability",
         "data": {
-          "id": "6.3.2_ltb",
-          "title": "Lateral-torsional buckling resistance",
-          "article": "art. 6.3.2.1",
+          "id": "6.3.2_ltb_channel",
+          "title": "Lateral-torsional buckling (channel, monosym)",
+          "article": "art. 6.3.2.1 + Annex F (simplified)",
           "force_state": {
             "combination_id": 21,
             "position_mm": 3900.0,
@@ -533,14 +533,76 @@ expression: run()
             }
           },
           "formula_latex": "M_{b,Rd} = \\chi_{LT} \\cdot W_{pl,y} \\cdot f_y / \\gamma_{M1}",
-          "variables": [],
-          "intermediate_values": [],
-          "value": 0.0,
-          "unit": "kNm",
-          "uc": null,
-          "status": "NotApplicable",
+          "variables": [
+            {
+              "symbol": "W_{pl,y}",
+              "value": 845000.0,
+              "unit": "mm³"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M1}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "intermediate_values": [
+            {
+              "symbol": "L_{st}",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "\\beta",
+              "value": 0.09016612250764906,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_1",
+              "value": 1.6544062301073943,
+              "unit": "-"
+            },
+            {
+              "symbol": "S",
+              "value": 866.3618930023543,
+              "unit": "mm"
+            },
+            {
+              "symbol": "C",
+              "value": 5.917630572604903,
+              "unit": "-"
+            },
+            {
+              "symbol": "M_{cr}",
+              "value": 200.4182467140368,
+              "unit": "kNm"
+            },
+            {
+              "symbol": "\\bar{\\lambda}_{LT}",
+              "value": 0.9953908777490349,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\chi_{LT}",
+              "value": 0.6419169928682781,
+              "unit": "-"
+            }
+          ],
+          "value": 0.6419169928682781,
+          "unit": "-",
+          "uc": {
+            "ed": 194.796,
+            "rd": 127.46866685881831,
+            "uc": 1.5281873169329687,
+            "formula_latex": "M_{y,Ed} / M_{b,Rd}"
+          },
+          "status": "NotOk",
           "notes": [
-            "LTB not implemented for channel sections in v1 (monosymmetric Mcr formula needed)"
+            "Conservative monosymmetric reduction (Mcr × 0.7) — full Annex F not implemented v1"
           ]
         }
       }
@@ -586,7 +648,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.5899719102231256,
+              "value": 0.9190781935635536,
               "unit": "-"
             },
             {
@@ -595,12 +657,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.6010260439489524,
+          "value": 0.9301323272893804,
           "unit": "-",
           "uc": {
-            "ed": 0.6010260439489524,
+            "ed": 0.9301323272893804,
             "rd": 1.0,
-            "uc": 0.6010260439489524,
+            "uc": 0.9301323272893804,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -649,7 +711,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.35398314613387527,
+              "value": 0.551446916138132,
               "unit": "-"
             },
             {
@@ -658,12 +720,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.40397586422142295,
+          "value": 0.6014396342256797,
           "unit": "-",
           "uc": {
-            "ed": 0.40397586422142295,
+            "ed": 0.6014396342256797,
             "rd": 1.0,
-            "uc": 0.40397586422142295,
+            "uc": 0.6014396342256797,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -718,7 +780,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 0.9809694070250535,
-  "status": "Ok",
-  "governing_check_id": "6.2.5_bending_y"
+  "uc_max": 1.5281873169329687,
+  "status": "NotOk",
+  "governing_check_id": "6.3.2_ltb_channel"
 }

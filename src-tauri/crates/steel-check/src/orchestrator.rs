@@ -20,7 +20,7 @@ use nen_en_1993_1_1_stability::{
     interaction_factors::{interaction_factors_method_2, cm_uniform_or_psi},
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
-use nen_en_1993_1_1_ltb::m_b_rd;
+use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel};
 use steel_profiles::{db, ProfileKind};
 use crate::input::BeamCheckInput;
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
@@ -208,39 +208,31 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         .map(|v| v.value).unwrap_or(0.0);
     checks.push(make_stability(buckling));
 
-    // 7. LTB 6.3.2 — skip for channel sections (monosymmetric Mcr not implemented in v1)
+    // 7. LTB 6.3.2 — channel sections use monosymmetric (conservative) Mcr × 0.7.
+    //    Doubly-symmetric I/H sections use the standard I-section formula.
     let is_channel = matches!(profile.kind, ProfileKind::Channel);
     let m_b_rd_knm: f64;
-    let ltb_check = if is_channel {
-        // Channel sections need the monosymmetric Mcr formula; use M_y,c,Rd as fallback
-        // so that 6.3.3 interaction check is still evaluated conservatively.
-        m_b_rd_knm = m_y_c_rd_knm;
-        let na = StabilityCalc {
-            id: "6.3.2_ltb".to_string(),
-            title: "Lateral-torsional buckling resistance".to_string(),
-            article: "art. 6.3.2.1".to_string(),
-            force_state: bend_state,
-            formula_latex: r"M_{b,Rd} = \chi_{LT} \cdot W_{pl,y} \cdot f_y / \gamma_{M1}".to_string(),
-            variables: vec![],
-            intermediate_values: vec![],
-            value: 0.0,
-            unit: "kNm".to_string(),
-            uc: None,
-            status: CheckStatus::NotApplicable,
-            notes: vec![
-                "LTB not implemented for channel sections in v1 (monosymmetric Mcr formula needed)".to_string(),
-            ],
-        };
-        make_stability(na)
-    } else {
-        // Interpolate M_y at L_st/4 and L_st/2 for accurate beta / C1 calculation.
-        let l_st_mm = nen_en_1993_1_1_ltb::lambda_chi::unbraced_length_mm(
-            input.length_m, &input.lateral_bracing,
-        );
-        let combo_id = gov_bending.combination_id;
-        let my_at_quarter = interpolate_my_at(&input.forces_envelope, l_st_mm / 4.0, combo_id);
-        let my_at_half    = interpolate_my_at(&input.forces_envelope, l_st_mm / 2.0, combo_id);
 
+    // Interpolate M_y at L_st/4 and L_st/2 for accurate beta / C1 calculation.
+    let l_st_mm = nen_en_1993_1_1_ltb::lambda_chi::unbraced_length_mm(
+        input.length_m, &input.lateral_bracing,
+    );
+    let combo_id = gov_bending.combination_id;
+    let my_at_quarter = interpolate_my_at(&input.forces_envelope, l_st_mm / 4.0, combo_id);
+    let my_at_half    = interpolate_my_at(&input.forces_envelope, l_st_mm / 2.0, combo_id);
+
+    let ltb_check = if is_channel {
+        let ltb = m_b_rd_channel(
+            p, &grade, input.length_m, &input.lateral_bracing,
+            gov_bending.forces.my_ed,
+            my_at_quarter,
+            my_at_half,
+            bend_state,
+        );
+        let chi_lt = ltb.value;
+        m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
+        make_stability(ltb)
+    } else {
         let ltb = m_b_rd(
             p, &grade, input.length_m, &input.lateral_bracing,
             gov_bending.forces.my_ed,
