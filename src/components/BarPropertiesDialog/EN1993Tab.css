@@ -1,0 +1,88 @@
+.en1993-tab {
+  padding: var(--sp-4, 16px);
+  font-family: var(--font-body);
+}
+
+.en1993-section-title {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--text-muted, var(--theme-fg-muted));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 16px 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border, var(--theme-border));
+}
+
+.en1993-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.en1993-row label {
+  color: var(--text-primary, var(--theme-fg));
+  font-weight: 500;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.en1993-row input[type="number"],
+.en1993-row select {
+  width: 130px;
+  padding: 4px 6px;
+  border: 1.5px solid var(--border, var(--theme-border));
+  border-radius: 4px;
+  background: var(--bg-secondary, var(--theme-bg-elevated));
+  color: var(--text-primary, var(--theme-fg));
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.en1993-row input[type="number"]:focus,
+.en1993-row select:focus {
+  outline: none;
+  border-color: var(--accent, var(--theme-accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--theme-accent)) 20%, transparent);
+}
+
+.en1993-row input[type="checkbox"] {
+  accent-color: var(--accent, var(--theme-accent));
+}
+
+.en1993-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, var(--theme-border));
+}
+
+.en1993-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border, var(--theme-border));
+  background: var(--bg-secondary, var(--theme-bg-elevated));
+  color: var(--text-primary, var(--theme-fg));
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.en1993-btn.confirm {
+  background: var(--accent, var(--theme-accent));
+  color: white;
+  border-color: var(--accent, var(--theme-accent));
+}
+
+.en1993-btn:hover {
+  border-color: var(--accent, var(--theme-accent));
+}

@@ -2,6 +2,7 @@ import { useState, useMemo, Fragment, useEffect } from 'react';
 import { INode, IBeamElement, IBeamSection, IBeamForces, IMaterial, ILayer, ConnectionType, IDOFConnections, getDOFConnectionTypes, StructuralElementType } from '../../core/fem/types';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { useFEM } from '../../context/FEMContext';
+import { EN1993Tab } from './EN1993Tab';
 import './BarPropertiesDialog.css';
 
 // Single-tab dialog (normtoetsing tabs removed)
@@ -37,6 +38,7 @@ interface BarPropertiesDialogProps {
 
 export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }: BarPropertiesDialogProps) {
   const { state } = useFEM();
+  const [activeTab, setActiveTab] = useState<'general' | 'en1993'>('general');
   const { mesh, lengthUnit } = state;
 
   const [showSectionPicker, setShowSectionPicker] = useState(false);
@@ -594,13 +596,32 @@ export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }:
     <div className="bar-props-overlay" onClick={onClose}>
       <div className="bar-props-dialog bar-props-dialog-tabbed" onClick={e => e.stopPropagation()}>
         <div className="bar-props-header">Bar Properties</div>
+        <div className="bar-props-tabs">
+          <button
+            className={`bar-props-tab ${activeTab === 'general' ? 'active' : ''}`}
+            onClick={() => setActiveTab('general')}
+          >
+            General
+          </button>
+          <button
+            className={`bar-props-tab ${activeTab === 'en1993' ? 'active' : ''}`}
+            onClick={() => setActiveTab('en1993')}
+          >
+            EN 1993
+          </button>
+        </div>
         <div className="bar-props-body bar-props-body-scrollable">
-          {renderPropertiesTab()}
+          {activeTab === 'general' && renderPropertiesTab()}
+          {activeTab === 'en1993' && (
+            <EN1993Tab beamId={beam.id} onClose={onClose} />
+          )}
         </div>
-        <div className="bar-props-footer">
-          <button className="bar-props-btn cancel" onClick={onClose}>Cancel</button>
-          <button className="bar-props-btn confirm" onClick={handleApply}>OK</button>
-        </div>
+        {activeTab === 'general' && (
+          <div className="bar-props-footer">
+            <button className="bar-props-btn cancel" onClick={onClose}>Cancel</button>
+            <button className="bar-props-btn confirm" onClick={handleApply}>OK</button>
+          </div>
+        )}
       </div>
     </div>
   );
