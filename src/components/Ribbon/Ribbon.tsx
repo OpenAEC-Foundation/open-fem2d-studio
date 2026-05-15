@@ -10,7 +10,8 @@ import {
   Undo2, Redo2, Layers,
   Settings, Info, Save, FolderOpen, Grid3X3, Bot,
   Sun, Moon, BarChart3,
-  Search, AlertTriangle, Terminal, Table2, Network, Filter, X
+  Search, AlertTriangle, Terminal, Table2, Network, Filter, X,
+  ShieldCheck, Sidebar,
 } from 'lucide-react';
 import { serializeProject } from '../../core/io/ProjectSerializer';
 import { deserializeProject } from '../../core/io/ProjectSerializer';
@@ -19,7 +20,7 @@ import { useI18n } from '../../i18n/i18n';
 import type { Locale } from '../../i18n/i18n';
 import './Ribbon.css';
 
-type RibbonTab = 'file' | 'home' | 'settings' | 'table' | 'insights' | 'ifc' | 'report';
+type RibbonTab = 'file' | 'home' | 'settings' | 'table' | 'insights' | 'ifc' | 'report' | 'check';
 
 interface RibbonProps {
   onShowLoadCaseDialog?: () => void;
@@ -37,9 +38,11 @@ interface RibbonProps {
   activeRibbonTab?: RibbonTab;
   onRibbonTabChange?: (tab: RibbonTab) => void;
   onFileTabClick?: () => void;
+  onRunSteelChecks?: () => void;
+  onToggleSteelCheckPanel?: () => void;
 }
 
-export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGridsDialog, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onToggleConsole, showConsolePanel, onToggleGraphSplit, showGraphSplit, activeRibbonTab, onRibbonTabChange, onFileTabClick }: RibbonProps) {
+export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGridsDialog, onShowMaterialsDialog, onShowCalculationSettings, onToggleAgent, showAgentPanel, onToggleConsole, showConsolePanel, onToggleGraphSplit, showGraphSplit, activeRibbonTab, onRibbonTabChange, onFileTabClick, onRunSteelChecks, onToggleSteelCheckPanel }: RibbonProps) {
   const { state, dispatch } = useFEM();
   const { t, locale, setLocale } = useI18n();
   const { selectedTool, mesh, undoStack, redoStack, loadCases,
@@ -196,6 +199,9 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
         </button>
         <button className={`ribbon-tab ${activeTab === 'ifc' ? 'active' : ''}`} onClick={() => handleTabClick('ifc')}>
           IFC
+        </button>
+        <button className={`ribbon-tab ${activeTab === 'check' ? 'active' : ''}`} onClick={() => handleTabClick('check')}>
+          {t('ribbon.check')}
         </button>
         <button className={`ribbon-tab ${activeTab === 'report' ? 'active' : ''}`} onClick={() => handleTabClick('report')}>
           {t('ribbon.report')}
@@ -827,6 +833,49 @@ export function Ribbon({ onShowLoadCaseDialog, onShowProjectInfoDialog, onShowGr
           </>
         )}
 
+        {activeTab === 'check' && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('ribbon.check.runGroup')}</div>
+              <div className="ribbon-group-content grid-1">
+                <button
+                  className="ribbon-button large"
+                  onClick={onRunSteelChecks}
+                  disabled={state.result === null}
+                  title={t('ribbon.check.run.title')}
+                >
+                  <span className="ribbon-icon"><ShieldCheck size={28} /></span>
+                  <span>{t('ribbon.check.run')}</span>
+                </button>
+              </div>
+            </div>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('ribbon.check.viewGroup')}</div>
+              <div className="ribbon-group-content grid-1">
+                <button
+                  className="ribbon-button medium"
+                  onClick={onToggleSteelCheckPanel}
+                >
+                  <span className="ribbon-icon"><Sidebar size={20} /></span>
+                  <span>{t('ribbon.check.viewPanel')}</span>
+                </button>
+              </div>
+            </div>
+            <div className="ribbon-group">
+              <div className="ribbon-group-title">{t('ribbon.check.settingsGroup')}</div>
+              <div className="ribbon-group-content grid-1">
+                <label className="ribbon-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={state.steelCheckAutoRun}
+                    onChange={e => dispatch({ type: 'SET_STEEL_CHECK_AUTO_RUN', payload: e.target.checked })}
+                  />
+                  {t('ribbon.check.autoRun')}
+                </label>
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
     </div>
