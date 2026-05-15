@@ -1,0 +1,22 @@
+[package]
+name = "steel-check"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+mechanics = { path = "../mechanics" }
+section-properties = { path = "../section-properties" }
+steel-profiles = { path = "../steel-profiles" }
+nen-en-1990 = { path = "../nen-en-1990" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
+nen-en-1993-1-1-ltb = { path = "../nen-en-1993-1-1-ltb" }
+
+[dev-dependencies]
+approx = { workspace = true }
+insta = { workspace = true }
