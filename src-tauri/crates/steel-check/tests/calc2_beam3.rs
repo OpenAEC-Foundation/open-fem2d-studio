@@ -106,13 +106,12 @@ fn calc2_beam3_shear() {
     let r = run();
     // XFrame: V_c,z,Rd = 780.2 kN (Av=5751 mm²), UC = 0.31 (at x=5000 mm where Vz=-241.739 kN)
     // Our profile DB: Av_z=5640 mm² → V_c,z,Rd = 765.2 kN
-    // HOWEVER: the orchestrator picks x=2402 mm as governing point (max My), where Vz=0.
-    // So shear UC at governing point = 0. The 0.31 XFrame UC is at x=5000 mm (different point).
-    // SKIP UC assertion: known single-governing-point limitation (Phase 13: per-check governing).
-    // Only assert V_c,Rd value is correct for our section properties.
+    // Phase 13-A fix: orchestrator now picks max |Vz| as governing for shear check.
+    // → position x=5000 mm, Vz=-241.739 kN, UC = 241.739 / 765.2 = 0.316
+    // (XFrame: 0.31 — small delta due to profile DB Av_z difference)
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 765.2, max_relative = 1e-3);
-    // UC will be 0 (Vz=0 at governing point); just verify it is non-negative
-    assert!(uc_value(r, "6.2.6_shear_z") >= 0.0);
+    // UC = 241.739 / 765.22 ≈ 0.316 — close to XFrame 0.31 (profile DB delta only)
+    assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.316, max_relative = 0.02);
 }
 
 #[test]

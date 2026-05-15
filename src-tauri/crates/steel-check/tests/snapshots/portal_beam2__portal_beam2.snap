@@ -1,6 +1,5 @@
 ---
 source: crates/steel-check/tests/portal_beam2.rs
-assertion_line: 116
 expression: run()
 ---
 {
@@ -18,14 +17,14 @@ expression: run()
           "title": "Compression",
           "article": "art. 6.2.4 (6.10)",
           "force_state": {
-            "combination_id": 21,
+            "combination_id": 22,
             "position_mm": 0.0,
             "forces": {
-              "n_ed": -232.435,
+              "n_ed": -233.911,
               "vy_ed": 0.0,
-              "vz_ed": 19.817,
+              "vz_ed": 17.357,
               "mt_ed": 0.0,
-              "my_ed": -66.036,
+              "my_ed": -63.139,
               "mz_ed": 0.0
             }
           },
@@ -50,9 +49,9 @@ expression: run()
           "value": 1275.4625,
           "unit": "kN",
           "uc": {
-            "ed": 232.435,
+            "ed": 233.911,
             "rd": 1275.4625,
-            "uc": 0.18223585562100023,
+            "uc": 0.1833930829013005,
             "formula_latex": "N_{Ed} / N_{c,Rd}"
           },
           "status": "Ok",
@@ -432,14 +431,14 @@ expression: run()
           "title": "Column buckling",
           "article": "art. 6.3.1 (6.46)",
           "force_state": {
-            "combination_id": 21,
+            "combination_id": 22,
             "position_mm": 0.0,
             "forces": {
-              "n_ed": -232.435,
+              "n_ed": -233.911,
               "vy_ed": 0.0,
-              "vz_ed": 19.817,
+              "vz_ed": 17.357,
               "mt_ed": 0.0,
-              "my_ed": -66.036,
+              "my_ed": -63.139,
               "mz_ed": 0.0
             }
           },
@@ -501,9 +500,9 @@ expression: run()
           "value": 957.7842586134847,
           "unit": "kN",
           "uc": {
-            "ed": 232.435,
+            "ed": 233.911,
             "rd": 957.7842586134847,
-            "uc": 0.24267991242253178,
+            "uc": 0.24422096928030132,
             "formula_latex": "N_{Ed} / N_{b,Rd}"
           },
           "status": "Ok",
@@ -559,12 +558,12 @@ expression: run()
             },
             {
               "symbol": "\\beta",
-              "value": 0.5,
+              "value": 1.0,
               "unit": "-"
             },
             {
               "symbol": "C_1",
-              "value": 1.31,
+              "value": 1.0,
               "unit": "-"
             },
             {
@@ -579,7 +578,7 @@ expression: run()
             },
             {
               "symbol": "C",
-              "value": 5.436445803020116,
+              "value": 4.149958628259631,
               "unit": "-"
             },
             {
@@ -589,26 +588,26 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 472.99197412508704,
+              "value": 361.06257566800537,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.41944015842056687,
+              "value": 0.480071203999563,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.9924517868785481,
+              "value": 0.9683382622783002,
               "unit": "-"
             }
           ],
-          "value": 0.9924517868785481,
+          "value": 0.9683382622783002,
           "unit": "-",
           "uc": {
             "ed": 66.036,
-            "rd": 82.58538676741806,
-            "uc": 0.7996087756539128,
+            "rd": 80.57881598809533,
+            "uc": 0.8195206046432368,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "Ok",
@@ -657,7 +656,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.49789451053235606,
+              "value": 0.5102930617367697,
               "unit": "-"
             },
             {
@@ -666,12 +665,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.6940608351660987,
+          "value": 0.7064593863705124,
           "unit": "-",
           "uc": {
-            "ed": 0.6940608351660987,
+            "ed": 0.7064593863705124,
             "rd": 1.0,
-            "uc": 0.6940608351660987,
+            "uc": 0.7064593863705124,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -720,7 +719,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.2987367063194136,
+              "value": 0.30617583704206175,
               "unit": "-"
             },
             {
@@ -729,12 +728,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.5414166187419454,
+          "value": 0.5488557494645936,
           "unit": "-",
           "uc": {
-            "ed": 0.5414166187419454,
+            "ed": 0.5488557494645936,
             "rd": 1.0,
-            "uc": 0.5414166187419454,
+            "uc": 0.5488557494645936,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -789,7 +788,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 0.7996087756539128,
+  "uc_max": 0.8195206046432368,
   "status": "Ok",
   "governing_check_id": "6.3.2_ltb"
 }
