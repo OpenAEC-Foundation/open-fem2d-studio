@@ -43,8 +43,9 @@
 .ribbon-content {
   display: flex;
   padding: 6px 10px;
-  min-height: 94px;
-  height: 94px;
+  /* Bumped from 94 to 110px for icon clearance — UX > strict OpenAEC §6.1 spec */
+  min-height: 110px;
+  height: 110px;
   overflow: visible;
   gap: 4px;
 }
