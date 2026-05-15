@@ -1,7 +1,7 @@
 //! Top-level orchestrator: take BeamCheckInput, run all EN 1993 checks,
 //! return BeamCheckResult with full derivation trace.
 
-use mechanics::{ForceStateSnapshot, ForcePoint};
+use mechanics::{ForceStateSnapshot, ForcePoint, InternalForces};
 use nen_en_1993_1_1_section::{
     grade_by_name, S235, SteelGrade,
     ResistanceCalc, CheckStatus,
@@ -21,14 +21,17 @@ use nen_en_1993_1_1_stability::{
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
 use nen_en_1993_1_1_ltb::m_b_rd;
-use steel_profiles::db;
-
+use steel_profiles::{db, ProfileKind};
 use crate::input::BeamCheckInput;
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
 use crate::deflection::check_deflection;
 
-fn governing_force_point(env: &[ForcePoint]) -> ForcePoint {
-    // Pick the point with the highest combined |My| + |N| ratio as governing.
+/// Find the force point that maximises `score(forces)`.
+/// Falls back to a zero-force point if the envelope is empty.
+fn governing_for<F>(env: &[ForcePoint], score: F) -> ForcePoint
+where
+    F: Fn(&InternalForces) -> f64,
+{
     if env.is_empty() {
         return ForcePoint {
             combination_id: 0,
@@ -37,15 +40,52 @@ fn governing_force_point(env: &[ForcePoint]) -> ForcePoint {
         };
     }
     let mut best = env[0];
-    let mut best_score = best.forces.my_ed.abs() + best.forces.n_ed.abs() * 0.01;
+    let mut best_score = score(&best.forces);
     for p in &env[1..] {
-        let score = p.forces.my_ed.abs() + p.forces.n_ed.abs() * 0.01;
-        if score > best_score {
+        let s = score(&p.forces);
+        if s > best_score {
             best = *p;
-            best_score = score;
+            best_score = s;
         }
     }
     best
+}
+
+/// Linear interpolation of M_y at a given position within an unbraced segment.
+/// Filters envelope to `combo_id`, sorts by position, and interpolates.
+fn interpolate_my_at(envelope: &[ForcePoint], position_mm: f64, combo_id: u32) -> f64 {
+    let mut pts: Vec<&ForcePoint> = envelope
+        .iter()
+        .filter(|p| p.combination_id == combo_id)
+        .collect();
+    if pts.is_empty() {
+        // Fall back to all points if no points match the combination
+        pts = envelope.iter().collect();
+    }
+    pts.sort_by(|a, b| a.position_mm.partial_cmp(&b.position_mm).unwrap());
+    if pts.is_empty() {
+        return 0.0;
+    }
+    if pts.len() == 1 {
+        return pts[0].forces.my_ed;
+    }
+    let first = pts[0];
+    let last = pts[pts.len() - 1];
+    if position_mm <= first.position_mm {
+        return first.forces.my_ed;
+    }
+    if position_mm >= last.position_mm {
+        return last.forces.my_ed;
+    }
+    for w in pts.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        if position_mm >= a.position_mm && position_mm <= b.position_mm {
+            let span = (b.position_mm - a.position_mm).max(1e-9);
+            let t = (position_mm - a.position_mm) / span;
+            return a.forces.my_ed + t * (b.forces.my_ed - a.forces.my_ed);
+        }
+    }
+    last.forces.my_ed
 }
 
 fn make_resistance(check: ResistanceCalc) -> NamedCheck {
@@ -84,51 +124,69 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     // 2. Look up grade (default to S235 if unknown)
     let grade: SteelGrade = grade_by_name(&input.steel_grade).unwrap_or(S235);
 
-    // 3. Find governing force point
-    let governing = governing_force_point(&input.forces_envelope);
-    let governing_state = ForceStateSnapshot {
-        combination_id: governing.combination_id,
-        position_mm: governing.position_mm,
-        forces: governing.forces,
+    // 3. Find per-check governing force points.
+    //    - Compression: max |N|
+    //    - Bending:     max |M_y| (+ small N weight for combined checks)
+    //    - Shear:       max |V_z|
+    //    - Combined/stability: max |M_y| + 0.01 * |N| (bending-driven)
+    let gov_compression = governing_for(&input.forces_envelope, |f| f.n_ed.abs());
+    let gov_bending = governing_for(&input.forces_envelope, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
+    let gov_shear    = governing_for(&input.forces_envelope, |f| f.vz_ed.abs());
+
+    let comp_state = ForceStateSnapshot {
+        combination_id: gov_compression.combination_id,
+        position_mm: gov_compression.position_mm,
+        forces: gov_compression.forces,
+    };
+    let bend_state = ForceStateSnapshot {
+        combination_id: gov_bending.combination_id,
+        position_mm: gov_bending.position_mm,
+        forces: gov_bending.forces,
+    };
+    let shear_state = ForceStateSnapshot {
+        combination_id: gov_shear.combination_id,
+        position_mm: gov_shear.position_mm,
+        forces: gov_shear.forces,
     };
 
-    // 4. Classify section
-    let classification = classify_section(p, &grade, &governing.forces);
+    // 4. Classify section (use bending-governing forces — bending drives classification)
+    let classification = classify_section(p, &grade, &gov_bending.forces);
 
     // 5. Run cross-section resistance checks
     let mut checks: Vec<NamedCheck> = Vec::new();
 
-    let comp = n_c_rd(p, &grade, governing_state);
+    let comp = n_c_rd(p, &grade, comp_state);
     let n_c_rd_kn = comp.value;
     checks.push(make_resistance(comp));
 
-    let bend_y = m_y_c_rd(p, &grade, classification, governing_state);
+    let bend_y = m_y_c_rd(p, &grade, classification, bend_state);
     let m_y_c_rd_knm = bend_y.value;
     checks.push(make_resistance(bend_y));
 
-    let bend_z = m_z_c_rd(p, &grade, classification, governing_state);
+    let bend_z = m_z_c_rd(p, &grade, classification, bend_state);
     checks.push(make_resistance(bend_z));
 
-    let shear_z = v_z_c_rd(p, &grade, governing_state);
+    let shear_z = v_z_c_rd(p, &grade, shear_state);
     let v_z_pl_rd = shear_z.value;
     checks.push(make_resistance(shear_z));
 
-    let shear_y = v_y_c_rd(p, &grade, governing_state);
+    let shear_y = v_y_c_rd(p, &grade, shear_state);
     checks.push(make_resistance(shear_y));
 
-    let mv = check_combined_mv(p, &grade, classification, v_z_pl_rd, m_y_c_rd_knm, governing_state);
+    // Combined M+V and M+N checks use bending-governing location
+    let mv = check_combined_mv(p, &grade, classification, v_z_pl_rd, m_y_c_rd_knm, bend_state);
     checks.push(make_resistance(mv));
 
-    let mn = check_combined_mn(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, governing_state);
+    let mn = check_combined_mn(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, bend_state);
     checks.push(make_resistance(mn));
 
-    let mnv = check_combined_mnv(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, v_z_pl_rd, governing_state);
+    let mnv = check_combined_mnv(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, v_z_pl_rd, bend_state);
     checks.push(make_resistance(mnv));
 
-    // 6. Member stability — column buckling 6.3.1
+    // 6. Member stability — column buckling 6.3.1 (compression-governing location)
     let curve_y = BucklingCurve::from_char(profile.buckling_curves.y_axis).unwrap_or(BucklingCurve::B);
     let curve_z = BucklingCurve::from_char(profile.buckling_curves.z_axis).unwrap_or(BucklingCurve::C);
-    let buckling = n_b_rd(p, &grade, input.buckling_length_y_m, input.buckling_length_z_m, curve_y, curve_z, governing_state);
+    let buckling = n_b_rd(p, &grade, input.buckling_length_y_m, input.buckling_length_z_m, curve_y, curve_z, comp_state);
 
     // Extract chi_y, chi_z and lambda_bar values from intermediate_values for use in §6.3.3.
     // Symbols match exactly what column_buckling.rs stores: r"\chi_y", r"\chi_z",
@@ -150,25 +208,58 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         .map(|v| v.value).unwrap_or(0.0);
     checks.push(make_stability(buckling));
 
-    // 7. LTB 6.3.2
-    let ltb = m_b_rd(
-        p, &grade, input.length_m, &input.lateral_bracing,
-        governing.forces.my_ed,
-        governing.forces.my_ed * 0.5,
-        governing.forces.my_ed * 0.5,
-        governing_state,
-    );
-    // ltb.value is chi_LT; M_b,Rd = chi_LT * W_pl,y * fy / gamma_M1
-    let chi_lt = ltb.value;
-    let m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
-    checks.push(make_stability(ltb));
+    // 7. LTB 6.3.2 — skip for channel sections (monosymmetric Mcr not implemented in v1)
+    let is_channel = matches!(profile.kind, ProfileKind::Channel);
+    let m_b_rd_knm: f64;
+    let ltb_check = if is_channel {
+        // Channel sections need the monosymmetric Mcr formula; use M_y,c,Rd as fallback
+        // so that 6.3.3 interaction check is still evaluated conservatively.
+        m_b_rd_knm = m_y_c_rd_knm;
+        let na = StabilityCalc {
+            id: "6.3.2_ltb".to_string(),
+            title: "Lateral-torsional buckling resistance".to_string(),
+            article: "art. 6.3.2.1".to_string(),
+            force_state: bend_state,
+            formula_latex: r"M_{b,Rd} = \chi_{LT} \cdot W_{pl,y} \cdot f_y / \gamma_{M1}".to_string(),
+            variables: vec![],
+            intermediate_values: vec![],
+            value: 0.0,
+            unit: "kNm".to_string(),
+            uc: None,
+            status: CheckStatus::NotApplicable,
+            notes: vec![
+                "LTB not implemented for channel sections in v1 (monosymmetric Mcr formula needed)".to_string(),
+            ],
+        };
+        make_stability(na)
+    } else {
+        // Interpolate M_y at L_st/4 and L_st/2 for accurate beta / C1 calculation.
+        let l_st_mm = nen_en_1993_1_1_ltb::lambda_chi::unbraced_length_mm(
+            input.length_m, &input.lateral_bracing,
+        );
+        let combo_id = gov_bending.combination_id;
+        let my_at_quarter = interpolate_my_at(&input.forces_envelope, l_st_mm / 4.0, combo_id);
+        let my_at_half    = interpolate_my_at(&input.forces_envelope, l_st_mm / 2.0, combo_id);
 
-    // 8. Combined N+M 6.3.3
+        let ltb = m_b_rd(
+            p, &grade, input.length_m, &input.lateral_bracing,
+            gov_bending.forces.my_ed,
+            my_at_quarter,
+            my_at_half,
+            bend_state,
+        );
+        let chi_lt = ltb.value;
+        m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
+        make_stability(ltb)
+    };
+    checks.push(ltb_check);
+
+    // 8. Combined N+M 6.3.3 (bending-governing location)
     let cm_y = cm_uniform_or_psi(0.0);
     let cm_z = cm_uniform_or_psi(0.0);
     let is_class_1_or_2 = matches!(classification, CrossSectionClass::Class1 | CrossSectionClass::Class2);
     let factors = interaction_factors_method_2(
-        governing.forces.n_ed.abs(), n_b_rd_y_kn, n_b_rd_z_kn,
+        gov_bending.forces.n_ed.abs(), n_b_rd_y_kn, n_b_rd_z_kn,
         lambda_bar_y, lambda_bar_z, cm_y, cm_z, is_class_1_or_2,
     );
     let m_z_c_rd_knm = if is_class_1_or_2 {
@@ -177,17 +268,17 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         p.wel_z_mm3 * grade.fy_mpa / grade.gamma_m0 * 1e-6
     };
     let n_my = check_combined_n_my(
-        governing.forces.n_ed.abs(), n_b_rd_y_kn,
-        governing.forces.my_ed, m_b_rd_knm.max(1e-9),
-        governing.forces.mz_ed, m_z_c_rd_knm,
-        factors, governing_state,
+        gov_bending.forces.n_ed.abs(), n_b_rd_y_kn,
+        gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
+        gov_bending.forces.mz_ed, m_z_c_rd_knm,
+        factors, bend_state,
     );
     checks.push(make_stability(n_my));
     let n_mz = check_combined_n_mz(
-        governing.forces.n_ed.abs(), n_b_rd_z_kn,
-        governing.forces.my_ed, m_b_rd_knm.max(1e-9),
-        governing.forces.mz_ed, m_z_c_rd_knm,
-        factors, governing_state,
+        gov_bending.forces.n_ed.abs(), n_b_rd_z_kn,
+        gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
+        gov_bending.forces.mz_ed, m_z_c_rd_knm,
+        factors, bend_state,
     );
     checks.push(make_stability(n_mz));
 
