@@ -81,12 +81,11 @@ fn portal_beam1_compression() {
 #[test]
 fn portal_beam1_bending() {
     let r = run();
-    // XFrame: M_y,c,Rd = 209.094 kNm (Wpl=889763 mm³)
-    // Our profile DB: Wpl=845000 mm³ → M_y,c,Rd = 198.575 kNm
-    // TODO Phase 13: align UNP350 Wpl in profile DB (845000 vs XFrame 889763 mm³)
-    assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 198.575, max_relative = 1e-3);
-    // UC = 194.796 / 198.575 = 0.981 (vs XFrame 0.93 due to different Wpl)
-    assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 0.981, max_relative = 0.025);
+    // Phase 13-F: UNP350 Wpl,y corrected to 889763 mm³ (XFrame catalog value)
+    // M_y,c,Rd = 889763 × 235 / 1.0 / 1e6 = 209.094 kNm — now matches XFrame exactly
+    assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 209.094, max_relative = 1e-3);
+    // UC = 194.796 / 209.094 = 0.932 (XFrame: 0.93 — now aligned)
+    assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 0.932, max_relative = 0.025);
 }
 
 #[test]
@@ -114,11 +113,10 @@ fn portal_beam1_channel_ltb() {
 fn portal_beam1_governing_ok() {
     let r = run();
     // XFrame governing: 6.3.3 UC=0.98, beam is OK.
-    // Our result: UC may differ due to profile DB differences (UNP350 Wpl=845000 vs XFrame 889763 mm³).
-    // Phase 13-E: LTB is now computed with conservative monosym Mcr × 0.7.
+    // Phase 13-F: Wpl corrected to 889763 mm³, bending and interaction UCs now aligned with XFrame.
     assert!(r.uc_max > 0.0, "uc_max should be positive");
-    // Document UC for Phase 13-E comparison:
-    eprintln!("portal_beam1 uc_max (Phase 13-E) = {}", r.uc_max);
+    // Document UC for comparison with XFrame reference:
+    eprintln!("portal_beam1 uc_max (Phase 13-F) = {}", r.uc_max);
 }
 
 #[test]
