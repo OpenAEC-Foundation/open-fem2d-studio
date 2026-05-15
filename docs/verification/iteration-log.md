@@ -347,6 +347,25 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 - Full Annex F shear-center monosym formula deferred to v2.
 - Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
-- Profile DB minor catalog deltas (UNP350 Wpl 845000 vs XFrame 889763 mm³).
 - Load height zg correction for top-flange loading (portal_beam4).
+
+---
+
+## Iteration 6 — Phase 13-F catalog alignment
+
+- ✅ UNP350 Wpl,y corrected: 845000 → 889763 mm³ (XFrame catalog value)
+  - M_y,c,Rd now 209.094 kNm — exact match with XFrame reference
+  - Bending UC: 0.981 → 0.932 (aligned with XFrame 0.93)
+  - 6.3.3 interaction UC eq.6.61: 0.930 → 0.906 (lower, now within XFrame range)
+- ✅ HFRHS200X200X16 catalog values verified — already correct, no change needed
+- ✅ portal_beam1_bending test tightened to XFrame-aligned values (209.094 kNm / UC 0.932)
+- ✅ Snapshot updated (portal_beam1__portal_beam1.snap)
+- **78 tests passing** (unchanged count — test refinement, no new tests)
+
+### Remaining
+
+- Full Annex F shear-center monosym formula deferred to v2.
+- Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
+- Load height zg correction for top-flange loading (portal_beam4).
+- Full XFrame visual diff (manual GUI test).
 - Full PDF visual diff vs XFrame.
