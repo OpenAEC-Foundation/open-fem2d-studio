@@ -272,10 +272,29 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 ### Remaining for future iterations
 
-- **C1 from NB.153 simplified formula** still in use — referentie uses full omega-table lookup
-  (e.g. beta=0 → C1=1.803 referentie vs ~1.88 simplified). Minor Mcr discrepancy.
+- ~~**C1 from NB.153 simplified formula**~~ — **FIXED in Iteration 3** (NB.153 lookup table).
 - **UNP monosymmetric Mcr** — needs dedicated formula for channel sections (Phase 13-B+).
 - **Cmy table B.3** for parabolic/distributed loading — currently cm_uniform_or_psi only.
 - **Load height zg correction** for top-flange loading (portal_beam4).
 - **Profile DB minor deltas**: HFRHS200x200x16 area 11280 vs 11501 mm², UNP350 Wpl 845000 vs 889763 mm³.
 - **Full PDF visual diff vs referentie** — requires manual GUI test in Phase 13-B.
+
+---
+
+## Iteration 3 — Phase 13-C C1 NB.153 lookup table
+
+### Fixed
+
+- C1 from NEN-EN 1993-1-1 NB.153 Tabel NB.27/NB.28 lookup with linear interpolation.
+  Replaced simplified parabolic formula `1.88 - 1.40*psi + 0.52*psi²`.
+- `c1_from_psi(0.0)` now returns **1.803** (referentie value) vs old 1.88.
+- `nb_annex` unit tests: 4 tests pass covering endpoints, interpolation midpoint, clamping, and full Calc 2 Beam 1 chain (C1=1.803, C=7.481, M_cr=650.886 kNm).
+- `calc2_beam1` integration snapshot updated to reflect new C1=1.219 at actual beta=0.5 (orchestrator beta from force envelope); previously simplified gave 1.31.
+- All 7 acceptance beam snapshots still pass.
+
+### Remaining
+
+- Monosymmetric Mcr for channel sections (UNP350).
+- Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
+- Profile DB minor catalog deltas (HFRHS area, UNP Wpl).
+- Load height zg correction for top-flange loading (portal_beam4).
