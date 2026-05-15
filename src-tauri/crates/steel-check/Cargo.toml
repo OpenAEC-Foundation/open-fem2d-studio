@@ -20,3 +20,31 @@ nen-en-1993-1-1-ltb = { path = "../nen-en-1993-1-1-ltb" }
 [dev-dependencies]
 approx = { workspace = true }
 insta = { workspace = true }
+
+[[test]]
+name = "calc2_beam1"
+path = "tests/calc2_beam1.rs"
+
+[[test]]
+name = "calc2_beam2"
+path = "tests/calc2_beam2.rs"
+
+[[test]]
+name = "calc2_beam3"
+path = "tests/calc2_beam3.rs"
+
+[[test]]
+name = "portal_beam1"
+path = "tests/portal_beam1.rs"
+
+[[test]]
+name = "portal_beam2"
+path = "tests/portal_beam2.rs"
+
+[[test]]
+name = "portal_beam3"
+path = "tests/portal_beam3.rs"
+
+[[test]]
+name = "portal_beam4"
+path = "tests/portal_beam4.rs"

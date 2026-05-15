@@ -1,0 +1,795 @@
+---
+source: crates/steel-check/tests/calc2_beam3.rs
+assertion_line: 129
+expression: run()
+---
+{
+  "beam_id": 3,
+  "profile_name": "HFRHS200X200X16",
+  "steel_grade": "S235",
+  "classification": "Class1",
+  "checks": [
+    {
+      "id": "6.2.4_compression",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.4_compression",
+          "title": "Compression",
+          "article": "art. 6.2.4 (6.10)",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "N_{c,Rd} = \\frac{A \\cdot f_y}{\\gamma_{M0}}",
+          "variables": [
+            {
+              "symbol": "A",
+              "value": 11280.0,
+              "unit": "mm²"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M0}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "value": 2650.8,
+          "unit": "kN",
+          "uc": {
+            "ed": 48.228,
+            "rd": 2650.8,
+            "uc": 0.01819375282933454,
+            "formula_latex": "N_{Ed} / N_{c,Rd}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.2.5_bending_y",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.5_bending_y",
+          "title": "Bending moment (decisive)",
+          "article": "art. 6.2.5 (6.13)",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "M_{y,c,Rd} = M_{pl,y,Rd} = \\frac{W_{pl,y} \\cdot f_y}{\\gamma_{M0}}",
+          "variables": [
+            {
+              "symbol": "W_{pl,y}",
+              "value": 768000.0,
+              "unit": "mm³"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M0}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "value": 180.48,
+          "unit": "kNm",
+          "uc": {
+            "ed": 187.327,
+            "rd": 180.48,
+            "uc": 1.0379377216312058,
+            "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
+          },
+          "status": "NotOk",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.2.5_bending_z",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.5_bending_z",
+          "title": "Bending moment (z-axis)",
+          "article": "art. 6.2.5",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "M_{z,c,Rd} = \\frac{W_{pl,z} \\cdot f_y}{\\gamma_{M0}}",
+          "variables": [
+            {
+              "symbol": "W_{pl,z}",
+              "value": 768000.0,
+              "unit": "mm³"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M0}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "value": 180.48,
+          "unit": "kNm",
+          "uc": {
+            "ed": 0.0,
+            "rd": 180.48,
+            "uc": 0.0,
+            "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.2.6_shear_z",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.6_shear_z",
+          "title": "Shear",
+          "article": "art. 6.2.6 (6.18)",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "V_{c,z,Rd} = V_{pl,z,Rd} = \\frac{A_v \\cdot (f_y / \\sqrt{3})}{\\gamma_{M0}}",
+          "variables": [
+            {
+              "symbol": "A_v",
+              "value": 5640.0,
+              "unit": "mm²"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M0}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "value": 765.22004678393,
+          "unit": "kN",
+          "uc": {
+            "ed": 0.0,
+            "rd": 765.22004678393,
+            "uc": 0.0,
+            "formula_latex": "V_{z,Ed} / V_{c,z,Rd}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.2.6_shear_y",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.6_shear_y",
+          "title": "Shear (y-axis)",
+          "article": "art. 6.2.6",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "V_{c,y,Rd} = \\frac{A_v \\cdot (f_y/\\sqrt{3})}{\\gamma_{M0}}",
+          "variables": [
+            {
+              "symbol": "A_v",
+              "value": 5640.0,
+              "unit": "mm²"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M0}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "value": 765.22004678393,
+          "unit": "kN",
+          "uc": {
+            "ed": 0.0,
+            "rd": 765.22004678393,
+            "uc": 0.0,
+            "formula_latex": "V_{y,Ed}/V_{c,y,Rd}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.2.8_combined_mv",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.8_combined_mv",
+          "title": "Bending and shear",
+          "article": "art. 6.2.8",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "M_{y,V,Rd} = M_{y,c,Rd} \\text{ if } V_{z,Ed} \\leq V_{z,pl,Rd}/2",
+          "variables": [
+            {
+              "symbol": "V_{z,Ed}",
+              "value": 0.0,
+              "unit": "kN"
+            },
+            {
+              "symbol": "V_{z,pl,Rd}",
+              "value": 765.22004678393,
+              "unit": "kN"
+            },
+            {
+              "symbol": "M_{y,c,Rd}",
+              "value": 180.48,
+              "unit": "kNm"
+            }
+          ],
+          "value": 180.48,
+          "unit": "kNm",
+          "uc": {
+            "ed": 187.327,
+            "rd": 180.48,
+            "uc": 1.0379377216312058,
+            "formula_latex": "M_{y,Ed} / M_{y,V,Rd}"
+          },
+          "status": "NotOk",
+          "notes": [
+            "V_z,Ed = 0.000 kN < V_z,pl,Rd / 2 = 382.610 kN — The effect of shear on the moment resistance can be neglected."
+          ]
+        }
+      }
+    },
+    {
+      "id": "6.2.9_combined_mn",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.9_combined_mn",
+          "title": "Bending and axial force",
+          "article": "art. 6.2.9",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "M_{N,y,Rd} = M_{pl,y,Rd} \\cdot (1-n)/(1-0.5a)",
+          "variables": [
+            {
+              "symbol": "N_{Ed}",
+              "value": 48.228,
+              "unit": "kN"
+            },
+            {
+              "symbol": "N_{pl,Rd}",
+              "value": 2650.8,
+              "unit": "kN"
+            },
+            {
+              "symbol": "M_{pl,y,Rd}",
+              "value": 180.48,
+              "unit": "kNm"
+            }
+          ],
+          "value": 180.48,
+          "unit": "kNm",
+          "uc": {
+            "ed": 187.327,
+            "rd": 180.48,
+            "uc": 1.0379377216312058,
+            "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
+          },
+          "status": "NotOk",
+          "notes": [
+            "n = 0.018 <= a = 0.433 -> M_N,y,Rd = M_pl,y,Rd (no reduction)"
+          ]
+        }
+      }
+    },
+    {
+      "id": "6.2.10_combined_mnv",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "6.2.10_combined_mnv",
+          "title": "Bending, axial, shear (no shear effect)",
+          "article": "art. 6.2.10",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "M_{N,y,Rd} = M_{pl,y,Rd} \\cdot (1-n)/(1-0.5a)",
+          "variables": [
+            {
+              "symbol": "N_{Ed}",
+              "value": 48.228,
+              "unit": "kN"
+            },
+            {
+              "symbol": "N_{pl,Rd}",
+              "value": 2650.8,
+              "unit": "kN"
+            },
+            {
+              "symbol": "M_{pl,y,Rd}",
+              "value": 180.48,
+              "unit": "kNm"
+            }
+          ],
+          "value": 180.48,
+          "unit": "kNm",
+          "uc": {
+            "ed": 187.327,
+            "rd": 180.48,
+            "uc": 1.0379377216312058,
+            "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
+          },
+          "status": "NotOk",
+          "notes": [
+            "n = 0.018 <= a = 0.433 -> M_N,y,Rd = M_pl,y,Rd (no reduction)"
+          ]
+        }
+      }
+    },
+    {
+      "id": "6.3.1_buckling",
+      "kind": {
+        "type": "Stability",
+        "data": {
+          "id": "6.3.1_buckling",
+          "title": "Column buckling",
+          "article": "art. 6.3.1 (6.46)",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "N_{b,Rd} = \\chi \\cdot A \\cdot f_y / \\gamma_{M1}",
+          "variables": [
+            {
+              "symbol": "A",
+              "value": 11280.0,
+              "unit": "mm²"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M1}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "intermediate_values": [
+            {
+              "symbol": "\\lambda_y",
+              "value": 66.13756613756614,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\lambda_z",
+              "value": 22.046296296296298,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\bar{\\lambda}_y",
+              "value": 0.7042431313630171,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\bar{\\lambda}_z",
+              "value": 0.23475240540854814,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\chi_y",
+              "value": 0.7220604582475908,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\chi_z",
+              "value": 0.9823151162691106,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\chi",
+              "value": 0.7220604582475908,
+              "unit": "-"
+            }
+          ],
+          "value": 1914.0378627227137,
+          "unit": "kN",
+          "uc": {
+            "ed": 48.228,
+            "rd": 1914.0378627227137,
+            "uc": 0.02519699371641259,
+            "formula_latex": "N_{Ed} / N_{b,Rd}"
+          },
+          "status": "Ok",
+          "notes": [
+            "Governing axis: y"
+          ]
+        }
+      }
+    },
+    {
+      "id": "6.3.2_ltb",
+      "kind": {
+        "type": "Stability",
+        "data": {
+          "id": "6.3.2_ltb",
+          "title": "Lateral-torsional buckling resistance",
+          "article": "art. 6.3.2.1",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "M_{b,Rd} = \\chi_{LT} \\cdot W_{pl,y} \\cdot f_y / \\gamma_{M1}",
+          "variables": [
+            {
+              "symbol": "W_{pl,y}",
+              "value": 768000.0,
+              "unit": "mm³"
+            },
+            {
+              "symbol": "f_y",
+              "value": 235.0,
+              "unit": "MPa"
+            },
+            {
+              "symbol": "\\gamma_{M1}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "intermediate_values": [
+            {
+              "symbol": "L_{st}",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "\\beta",
+              "value": 0.5,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_1",
+              "value": 1.31,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_2",
+              "value": 0.0,
+              "unit": "-"
+            },
+            {
+              "symbol": "S",
+              "value": 128.12389775761815,
+              "unit": "mm"
+            },
+            {
+              "symbol": "C",
+              "value": 4.128800398124481,
+              "unit": "-"
+            },
+            {
+              "symbol": "k_{red}",
+              "value": 1.0,
+              "unit": "-"
+            },
+            {
+              "symbol": "M_{cr}",
+              "value": 8716.234451416445,
+              "unit": "kNm"
+            },
+            {
+              "symbol": "\\bar{\\lambda}_{LT}",
+              "value": 0.1438964531832208,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\chi_{LT}",
+              "value": 1.0,
+              "unit": "-"
+            }
+          ],
+          "value": 1.0,
+          "unit": "-",
+          "uc": {
+            "ed": 187.327,
+            "rd": 180.48,
+            "uc": 1.0379377216312058,
+            "formula_latex": "M_{y,Ed} / M_{b,Rd}"
+          },
+          "status": "NotOk",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.3.3_eq_6_61",
+      "kind": {
+        "type": "Stability",
+        "data": {
+          "id": "6.3.3_eq_6_61",
+          "title": "Combined N + M (member y)",
+          "article": "art. 6.3.3 (6.61)",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "\\frac{N_{Ed}}{\\chi_y N_{Rk}/\\gamma_{M1}} + k_{yy}\\frac{M_{y,Ed}}{\\chi_{LT} M_{y,Rk}/\\gamma_{M1}} + k_{yz}\\frac{M_{z,Ed}}{M_{z,Rk}/\\gamma_{M1}} \\leq 1",
+          "variables": [
+            {
+              "symbol": "k_{yy}",
+              "value": 0.6076232466074989,
+              "unit": "-"
+            },
+            {
+              "symbol": "k_{yz}",
+              "value": 0.35912990140932144,
+              "unit": "-"
+            }
+          ],
+          "intermediate_values": [
+            {
+              "symbol": "term_N",
+              "value": 0.02519699371641259,
+              "unit": "-"
+            },
+            {
+              "symbol": "term_{M_y}",
+              "value": 0.6306750881939437,
+              "unit": "-"
+            },
+            {
+              "symbol": "term_{M_z}",
+              "value": 0.0,
+              "unit": "-"
+            }
+          ],
+          "value": 0.6558720819103563,
+          "unit": "-",
+          "uc": {
+            "ed": 0.6558720819103563,
+            "rd": 1.0,
+            "uc": 0.6558720819103563,
+            "formula_latex": "Sum of terms"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "6.3.3_eq_6_62",
+      "kind": {
+        "type": "Stability",
+        "data": {
+          "id": "6.3.3_eq_6_62",
+          "title": "Combined N + M (member z)",
+          "article": "art. 6.3.3 (6.62)",
+          "force_state": {
+            "combination_id": 2,
+            "position_mm": 2402.0,
+            "forces": {
+              "n_ed": -48.228,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 187.327,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "\\frac{N_{Ed}}{\\chi_z N_{Rk}/\\gamma_{M1}} + k_{zy}\\frac{M_{y,Ed}}{\\chi_{LT} M_{y,Rk}/\\gamma_{M1}} + k_{zz}\\frac{M_{z,Ed}}{M_{z,Rk}/\\gamma_{M1}} \\leq 1",
+          "variables": [
+            {
+              "symbol": "k_{zy}",
+              "value": 0.3645739479644993,
+              "unit": "-"
+            },
+            {
+              "symbol": "k_{zz}",
+              "value": 0.5985498356822024,
+              "unit": "-"
+            }
+          ],
+          "intermediate_values": [
+            {
+              "symbol": "term_N",
+              "value": 0.018521299863973856,
+              "unit": "-"
+            },
+            {
+              "symbol": "term_{M_y}",
+              "value": 0.3784050529163662,
+              "unit": "-"
+            },
+            {
+              "symbol": "term_{M_z}",
+              "value": 0.0,
+              "unit": "-"
+            }
+          ],
+          "value": 0.39692635278034005,
+          "unit": "-",
+          "uc": {
+            "ed": 0.39692635278034005,
+            "rd": 1.0,
+            "uc": 0.39692635278034005,
+            "formula_latex": "Sum of terms"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "sls_deflection",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "sls_deflection",
+          "title": "Deflection (SLS)",
+          "article": "NEN-EN 1990 (SLS)",
+          "force_state": {
+            "combination_id": 0,
+            "position_mm": 0.0,
+            "forces": {
+              "n_ed": 0.0,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 0.0,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "\\delta_{lim} = L / 333",
+          "variables": [
+            {
+              "symbol": "L",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "L_{type}",
+              "value": 333.0,
+              "unit": "(Floor)"
+            }
+          ],
+          "value": 15.015015015015015,
+          "unit": "mm",
+          "uc": {
+            "ed": 0.0,
+            "rd": 15.015015015015015,
+            "uc": 0.0,
+            "formula_latex": "\\delta / \\delta_{lim}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    }
+  ],
+  "uc_max": 1.0379377216312058,
+  "status": "NotOk",
+  "governing_check_id": "6.2.5_bending_y"
+}
