@@ -97,11 +97,11 @@ fn portal_beam4_shear() {
     let r = run();
     // referentie: V_c,z,Rd = 643.8 kN (Av=4745 mm²), UC = 0.36 (at x=5000 mm, Vz=-234.164 kN)
     // Our profile DB: Av_z=4742 mm² → V_c,z,Rd = 643.4 kN
+    // Phase 13-A fix: orchestrator now picks max |Vz| as governing for shear check.
+    // → position x=5000 mm, Vz=-234.164 kN, UC = 234.164 / 643.4 ≈ 0.364
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 643.4, max_relative = 1e-2);
-    // Governing point is x=2491 (max My) where Vz=0 → UC = 0.
-    // SKIP UC assertion: known single-governing-point limitation.
-    // TODO Phase 13: per-check governing points.
-    assert!(uc_value(r, "6.2.6_shear_z") >= 0.0);
+    // UC close to referentie 0.36 (small delta due to profile DB Av_z: 4742 vs referentie 4745 mm²)
+    assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.364, max_relative = 0.02);
 }
 
 #[test]

@@ -1,6 +1,5 @@
 ---
 source: crates/steel-check/tests/calc2_beam2.rs
-assertion_line: 120
 expression: run()
 ---
 {
@@ -19,13 +18,13 @@ expression: run()
           "article": "art. 6.2.4 (6.10)",
           "force_state": {
             "combination_id": 2,
-            "position_mm": 2500.0,
+            "position_mm": 0.0,
             "forces": {
               "n_ed": -241.496,
               "vy_ed": 0.0,
               "vz_ed": 50.669,
               "mt_ed": 0.0,
-              "my_ed": 126.672,
+              "my_ed": 0.0,
               "mz_ed": 0.0
             }
           },
@@ -172,13 +171,13 @@ expression: run()
           "article": "art. 6.2.6 (6.18)",
           "force_state": {
             "combination_id": 2,
-            "position_mm": 2500.0,
+            "position_mm": 0.0,
             "forces": {
               "n_ed": -241.496,
               "vy_ed": 0.0,
               "vz_ed": 50.669,
               "mt_ed": 0.0,
-              "my_ed": 126.672,
+              "my_ed": 0.0,
               "mz_ed": 0.0
             }
           },
@@ -223,13 +222,13 @@ expression: run()
           "article": "art. 6.2.6",
           "force_state": {
             "combination_id": 2,
-            "position_mm": 2500.0,
+            "position_mm": 0.0,
             "forces": {
               "n_ed": -241.496,
               "vy_ed": 0.0,
               "vz_ed": 50.669,
               "mt_ed": 0.0,
-              "my_ed": 126.672,
+              "my_ed": 0.0,
               "mz_ed": 0.0
             }
           },
@@ -433,13 +432,13 @@ expression: run()
           "article": "art. 6.3.1 (6.46)",
           "force_state": {
             "combination_id": 2,
-            "position_mm": 2500.0,
+            "position_mm": 0.0,
             "forces": {
               "n_ed": -241.496,
               "vy_ed": 0.0,
               "vz_ed": 50.669,
               "mt_ed": 0.0,
-              "my_ed": 126.672,
+              "my_ed": 0.0,
               "mz_ed": 0.0
             }
           },
