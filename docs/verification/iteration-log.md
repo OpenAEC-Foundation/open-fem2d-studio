@@ -325,3 +325,28 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 - Profile DB minor catalog deltas (HFRHS area, UNP Wpl).
 - Load height zg correction for top-flange loading (portal_beam4).
 - Full PDF visual diff vs referentie.
+
+---
+
+## Iteration 5 — Phase 13-E channel LTB
+
+### Done
+
+- **UNP350 LTB no longer NotApplicable**: `m_b_rd_channel` added to `nen-en-1993-1-1-ltb`.
+  Uses I-section Mcr formula × 0.7 conservative reduction for monosymmetric warping.
+  Buckling curve c (alpha_LT=0.49) per Annex F approach — more conservative than I-section curve b.
+- **`nb_annex::m_cr_channel_section`**: new function with unit test verifying ratio vs I-section ≈ 0.7.
+- **Orchestrator** dispatches `m_b_rd_channel` for `ProfileKind::Channel` profiles.
+  The LTB check id is now `"6.3.2_ltb_channel"` (distinct from I-section `"6.3.2_ltb"`).
+- **portal_beam1 test**: `portal_beam1_channel_ltb` added asserting LTB UC is finite and positive.
+  Computed UC = 1.528 (NotOk — conservative due to Mcr × 0.7 + profile DB Wpl delta).
+  Snapshot updated.
+- **78 tests passing** (up from 76 in iteration 4).
+
+### Remaining
+
+- Full Annex F shear-center monosym formula deferred to v2.
+- Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
+- Profile DB minor catalog deltas (UNP350 Wpl 845000 vs referentie 889763 mm³).
+- Load height zg correction for top-flange loading (portal_beam4).
+- Full PDF visual diff vs referentie.
