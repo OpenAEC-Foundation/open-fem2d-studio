@@ -169,6 +169,9 @@ interface FEMState {
   steelCheckResults: BeamCheckResult[] | null;
   steelCheckError: string | null;
   steelCheckAutoRun: boolean;
+  // Blender-style 2D cursor (world coordinates)
+  cursor2D: { x: number; y: number };
+  cursor2DVisible: boolean;
 }
 
 export interface IGraphState {
@@ -318,7 +321,9 @@ type FEMAction =
   | { type: 'SET_STEEL_CHECK_RESULTS'; payload: BeamCheckResult[] }
   | { type: 'CLEAR_STEEL_CHECK_RESULTS' }
   | { type: 'SET_STEEL_CHECK_ERROR'; payload: string | null }
-  | { type: 'SET_STEEL_CHECK_AUTO_RUN'; payload: boolean };
+  | { type: 'SET_STEEL_CHECK_AUTO_RUN'; payload: boolean }
+  | { type: 'SET_CURSOR_2D'; payload: { x: number; y: number } }
+  | { type: 'TOGGLE_CURSOR_2D_VISIBLE' };
 
 function createEmptySelection(): ISelection {
   return {
@@ -1045,6 +1050,8 @@ const initialState: FEMState = {
   steelCheckResults: null,
   steelCheckError: null,
   steelCheckAutoRun: localStorage.getItem('fem2d-steel-autorun') !== 'false', // default true
+  cursor2D: { x: 0, y: 0 },
+  cursor2DVisible: true,
 };
 
 // Apply demo load case loads to mesh so they render on first load
@@ -1941,6 +1948,12 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
     case 'SET_STEEL_CHECK_AUTO_RUN':
       localStorage.setItem('fem2d-steel-autorun', String(action.payload));
       return { ...state, steelCheckAutoRun: action.payload };
+
+    case 'SET_CURSOR_2D':
+      return { ...state, cursor2D: action.payload };
+
+    case 'TOGGLE_CURSOR_2D_VISIBLE':
+      return { ...state, cursor2DVisible: !state.cursor2DVisible };
 
     default:
       return state;
