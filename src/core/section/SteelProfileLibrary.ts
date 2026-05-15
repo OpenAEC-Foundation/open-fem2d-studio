@@ -26,6 +26,25 @@ import {
 // Import the profile database
 import steelProfilesJson from '../../data/steelprofile.json';
 
+import profilesData from '@profiles';
+
+export interface SharedSteelProfile {
+  name: string;
+  kind: 'ISection' | 'Channel' | 'Rhs' | 'Shs' | 'Chs';
+  geometry: { h: number; b: number; tw?: number; tf?: number; t?: number; r?: number };
+  properties: {
+    area_mm2: number; iy_mm4: number; iz_mm4: number;
+    wel_y_mm3: number; wel_z_mm3: number; wpl_y_mm3: number; wpl_z_mm3: number;
+    av_y_mm2: number; av_z_mm2: number;
+    it_mm4: number; iw_mm6: number;
+    iy_radius_mm: number; iz_radius_mm: number;
+    h_mm: number; b_mm: number; tw_mm: number; tf_mm: number; r_mm: number;
+  };
+  buckling_curves: { y_axis: string; z_axis: string };
+}
+
+export const SHARED_PROFILES: SharedSteelProfile[] = profilesData as SharedSteelProfile[];
+
 /** Profile data from JSON */
 export interface ProfileData {
   shape_coords: number[];
