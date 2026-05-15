@@ -1,19 +1,23 @@
 /**
- * ReportPanel — Main report preview panel with navigation and settings sidebar
+ * ReportPanel — WYSIWYG iframe preview (Phase 14)
+ * The preview is an iframe loaded with the actual generateReportHTML output,
+ * so preview === printed PDF. Save-as-PDF triggers iframe.contentWindow.print().
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useFEM } from '../../context/FEMContext';
-import { ReportPreview } from './ReportPreview';
+import { useI18n } from '../../i18n/i18n';
+import { generateReportHTML } from '../../core/report/ReportGenerator';
 import { getEnabledSections, CATEGORY_NAMES, ReportSectionCategory, IReportSection } from '../../core/report/ReportConfig';
-import { FileText } from 'lucide-react';
+import { FileText, Printer } from 'lucide-react';
 import './ReportPanel.css';
 
 export const ReportPanel: React.FC = () => {
   const { state, dispatch } = useFEM();
+  const { t } = useI18n();
   const { reportConfig, mesh, result, projectInfo, loadCases, loadCombinations } = state;
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const enabledSections = getEnabledSections(reportConfig);
 
@@ -26,17 +30,39 @@ export const ReportPanel: React.FC = () => {
     return acc;
   }, {} as Record<ReportSectionCategory, typeof enabledSections>);
 
+  // Check if we have enough data to show a report
+  const hasData = mesh.getNodeCount() > 0;
+
+  // Generate the actual print-ready HTML (WYSIWYG)
+  const reportHtml = useMemo(() => {
+    if (!hasData) return '';
+    return generateReportHTML({
+      config: reportConfig,
+      mesh,
+      result,
+      projectInfo,
+      loadCases,
+      loadCombinations,
+      t,
+      steelCheckResults: state.steelCheckResults,
+    });
+  }, [reportConfig, mesh, result, projectInfo, loadCases, loadCombinations, t, state.steelCheckResults, hasData]);
+
+  // Navigate to a section inside the iframe
   const handleNavClick = (sectionId: string) => {
     setActiveSection(sectionId);
-    // Scroll to section in preview
-    const element = document.getElementById(`section-${sectionId}`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const iframeDoc = iframeRef.current?.contentDocument;
+    if (iframeDoc) {
+      const el = iframeDoc.getElementById(`section-${sectionId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   };
 
-  // Check if we have enough data to show a report
-  const hasData = mesh.getNodeCount() > 0;
+  const handlePrintPdf = () => {
+    iframeRef.current?.contentWindow?.print();
+  };
 
   // Settings sidebar handlers
   const handleSectionToggle = (id: string) => {
@@ -274,15 +300,28 @@ export const ReportPanel: React.FC = () => {
         })}
       </div>
 
-      {/* Center: Preview (A4 paper style) */}
-      <div className="report-preview-container" ref={previewRef}>
-        <ReportPreview
-          config={reportConfig}
-          mesh={mesh}
-          result={result}
-          projectInfo={projectInfo}
-          loadCases={loadCases}
-          loadCombinations={loadCombinations}
+      {/* Center: WYSIWYG iframe preview */}
+      <div className="report-preview-container" style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Toolbar */}
+        <div className="report-iframe-toolbar">
+          <button
+            className="rp-print-btn"
+            onClick={handlePrintPdf}
+            title="Open print dialog — save as PDF from there"
+          >
+            <Printer size={14} style={{ marginRight: 6 }} />
+            Save as PDF
+          </button>
+          <span className="rp-wysiwyg-hint">Preview matches printed output</span>
+        </div>
+
+        {/* Iframe: loads actual generated HTML */}
+        <iframe
+          ref={iframeRef}
+          className="report-iframe"
+          srcDoc={reportHtml}
+          title="Report preview"
+          sandbox="allow-same-origin allow-popups allow-scripts"
         />
       </div>
 
