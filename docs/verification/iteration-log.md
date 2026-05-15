@@ -247,3 +247,35 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 3. **Load height zg correction** (Portal Beam 4): Top-flange loading reduces Mcr.
 4. **Beta diagram from multi-point envelope** (all beams): Currently LTB uses a single governing force point for beta. Ideally we pass the full moment diagram to get accurate C1.
 5. **Governing point selection**: The orchestrator picks one governing point via `governing_force_point()`. Some checks (shear vs bending) are decisive at different positions. Phase 13 should consider per-check governing points.
+
+---
+
+## Iteration 2 — fixes from Phase 13-A
+
+### Fixed
+
+- **LTB beta calculation** now uses linearly interpolated M_y at L_st/4 and L_st/2
+  from the force envelope of the governing combination (was M_y_max * 0.5 hardcoded).
+  This produces the correct moment gradient ratio beta and C1 factor per NB annex §NB.153.
+  Commits: `b48e4be`
+
+- **UNP350 LTB skipped** (NotApplicable) — channel-section monosymmetric Mcr formula
+  not implemented in v1. M_y,c,Rd used as fallback M_b,Rd for 6.3.3 interaction.
+  Commit: `91d20af`
+
+- **Per-check governing force points** — compression uses max |N|, shear uses max |Vz|,
+  bending/stability/combined use max |My|+0.01*|N|. Shear UC is no longer always 0.
+  - calc2_beam3: shear UC 0.316 (XFrame 0.31) at x=5000 mm, Vz=-241.739 kN
+  - portal_beam4: shear UC 0.364 (XFrame 0.36) at x=5000 mm, Vz=-234.164 kN
+  - Both deltas traceable to profile DB Av_z differences (not formula error)
+  Commit: `199eb50`
+
+### Remaining for future iterations
+
+- **C1 from NB.153 simplified formula** still in use — XFrame uses full omega-table lookup
+  (e.g. beta=0 → C1=1.803 XFrame vs ~1.88 simplified). Minor Mcr discrepancy.
+- **UNP monosymmetric Mcr** — needs dedicated formula for channel sections (Phase 13-B+).
+- **Cmy table B.3** for parabolic/distributed loading — currently cm_uniform_or_psi only.
+- **Load height zg correction** for top-flange loading (portal_beam4).
+- **Profile DB minor deltas**: HFRHS200x200x16 area 11280 vs 11501 mm², UNP350 Wpl 845000 vs 889763 mm³.
+- **Full PDF visual diff vs XFrame** — requires manual GUI test in Phase 13-B.
