@@ -312,7 +312,13 @@ type FEMAction =
   | { type: 'SWITCH_BRANCH'; payload: { branchName: string } }
   | { type: 'DELETE_VERSION'; payload: { versionId: string } }
   | { type: 'DELETE_BRANCH'; payload: { branchName: string } }
-  | { type: 'UPDATE_PLATE_REINFORCEMENT'; plateId: number; reinforcement: IPlateReinforcement };
+  | { type: 'UPDATE_PLATE_REINFORCEMENT'; plateId: number; reinforcement: IPlateReinforcement }
+  // Steel check actions
+  | { type: 'SET_BEAM_STEEL_CONFIG'; payload: IBeamSteelConfig }
+  | { type: 'SET_STEEL_CHECK_RESULTS'; payload: BeamCheckResult[] }
+  | { type: 'CLEAR_STEEL_CHECK_RESULTS' }
+  | { type: 'SET_STEEL_CHECK_ERROR'; payload: string | null }
+  | { type: 'SET_STEEL_CHECK_AUTO_RUN'; payload: boolean };
 
 function createEmptySelection(): ISelection {
   return {
@@ -1916,6 +1922,22 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         meshVersion: state.meshVersion + 1
       };
     }
+
+    // Steel check cases
+    case 'SET_BEAM_STEEL_CONFIG': {
+      const newMap = new Map(state.beamSteelConfigs);
+      newMap.set(action.payload.beamId, action.payload);
+      return { ...state, beamSteelConfigs: newMap };
+    }
+    case 'SET_STEEL_CHECK_RESULTS':
+      return { ...state, steelCheckResults: action.payload, steelCheckError: null };
+    case 'CLEAR_STEEL_CHECK_RESULTS':
+      return { ...state, steelCheckResults: null };
+    case 'SET_STEEL_CHECK_ERROR':
+      return { ...state, steelCheckError: action.payload };
+    case 'SET_STEEL_CHECK_AUTO_RUN':
+      localStorage.setItem('fem2d-steel-autorun', String(action.payload));
+      return { ...state, steelCheckAutoRun: action.payload };
 
     default:
       return state;
