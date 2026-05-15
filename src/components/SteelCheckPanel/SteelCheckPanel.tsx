@@ -2,6 +2,8 @@ import React from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
 import { ShieldCheck, ShieldAlert, X } from 'lucide-react';
+import type { BeamCheckResult } from '../../lib/types/steel/BeamCheckResult';
+import { generateSingleBeamReportHTML } from '../../core/report/ReportGenerator';
 import './SteelCheckPanel.css';
 
 interface SteelCheckPanelProps {
@@ -47,6 +49,22 @@ export const SteelCheckPanel: React.FC<SteelCheckPanelProps> = ({ onClose }) => 
     });
   };
 
+  const handleDoubleClick = (beamResult: BeamCheckResult) => {
+    const html = generateSingleBeamReportHTML(
+      beamResult,
+      state.reportConfig,
+      state.projectInfo,
+    );
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank', 'width=920,height=1200,menubar=yes,toolbar=yes');
+    if (!win) {
+      alert('Pop-up blocked. Please allow pop-ups for this app to view per-beam PDF.');
+    }
+    // Revoke the object URL after the window has had time to load it
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
+
   return (
     <div className="steel-check-panel">
       <div className="scp-header">
@@ -68,9 +86,13 @@ export const SteelCheckPanel: React.FC<SteelCheckPanelProps> = ({ onClose }) => 
             key={r.beam_id}
             className={`scp-card scp-status-${r.status.toLowerCase()}`}
             onClick={() => handleClick(r.beam_id)}
+            onDoubleClick={() => handleDoubleClick(r)}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(r.beam_id); }}
+            title="Single-click: select beam  ·  Double-click: open EN 1993 PDF"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') handleClick(r.beam_id);
+            }}
           >
             <div className="scp-card-main">
               <div className="scp-card-id">Beam {r.beam_id}</div>
