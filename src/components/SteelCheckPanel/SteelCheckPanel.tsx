@@ -1,9 +1,9 @@
 import React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useFEM } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
 import { ShieldCheck, ShieldAlert, X } from 'lucide-react';
 import type { BeamCheckResult } from '../../lib/types/steel/BeamCheckResult';
-import { generateSingleBeamReportHTML } from '../../core/report/ReportGenerator';
 import './SteelCheckPanel.css';
 
 interface SteelCheckPanelProps {
@@ -49,20 +49,28 @@ export const SteelCheckPanel: React.FC<SteelCheckPanelProps> = ({ onClose }) => 
     });
   };
 
-  const handleDoubleClick = (beamResult: BeamCheckResult) => {
-    const html = generateSingleBeamReportHTML(
-      beamResult,
-      state.reportConfig,
-      state.projectInfo,
-    );
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank', 'width=920,height=1200,menubar=yes,toolbar=yes');
-    if (!win) {
-      alert('Pop-up blocked. Please allow pop-ups for this app to view per-beam PDF.');
+  const handleDoubleClick = async (beamResult: BeamCheckResult) => {
+    const reportInput = {
+      project_name:        state.projectInfo.name         || 'Untitled',
+      project_number:      state.projectInfo.projectNumber || '',
+      engineer:            state.projectInfo.engineer      || '',
+      company:             state.projectInfo.company       || '',
+      date:                state.projectInfo.date          || new Date().toISOString().slice(0, 10),
+      steel_check_results: [beamResult],
+    };
+    try {
+      const bytes = await invoke<number[]>('generate_steel_report_pdf', { input: reportInput });
+      const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank', 'width=900,height=1200');
+      if (!win) {
+        alert('Pop-up blocked. Please allow pop-ups for this app to view the PDF.');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      alert(`PDF generation failed: ${err}`);
     }
-    // Revoke the object URL after the window has had time to load it
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   };
 
   return (

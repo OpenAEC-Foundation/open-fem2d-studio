@@ -28,6 +28,7 @@ serde_json = "1"
 steel-check = { path = "crates/steel-check" }
 steel-profiles = { path = "crates/steel-profiles" }
 nen-en-1993-1-1-section = { path = "crates/nen-en-1993-1-1-section" }
+report = { path = "crates/report" }
 
 # Workaround for GNU linker "export ordinal too large" on Windows.
 # Tauri pulls in 366+ crates and the GNU ld.exe symbol table overflows.
