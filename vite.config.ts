@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { apiPlugin } from './vite-api-plugin';
+import path from 'node:path';
 
 const TAURI_DEV_HOST = process.env.TAURI_DEV_HOST;
 
@@ -24,4 +25,9 @@ export default defineConfig({
     exclude: ['web-ifc'],
   },
   assetsInclude: ['**/*.wasm'],
+  resolve: {
+    alias: {
+      '@profiles': path.resolve(__dirname, 'src-tauri/crates/steel-profiles/data/profiles.json'),
+    },
+  },
 });
