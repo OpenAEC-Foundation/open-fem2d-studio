@@ -1,1 +1,62 @@
-[]
+[
+  {
+    "name": "HEB160",
+    "kind": "ISection",
+    "geometry": { "h": 160, "b": 160, "tw": 8.0, "tf": 13.0, "r": 15 },
+    "properties": {
+      "area_mm2": 5427.5, "iy_mm4": 24920000, "iz_mm4": 8892600,
+      "wel_y_mm3": 311500, "wel_z_mm3": 111200,
+      "wpl_y_mm3": 354100, "wpl_z_mm3": 170000,
+      "av_y_mm2": 4160, "av_z_mm2": 1762,
+      "it_mm4": 313664, "iw_mm6": 47940000000,
+      "iy_radius_mm": 67.8, "iz_radius_mm": 40.5,
+      "h_mm": 160, "b_mm": 160, "tw_mm": 8.0, "tf_mm": 13.0, "r_mm": 15
+    },
+    "buckling_curves": { "y_axis": "b", "z_axis": "c" }
+  },
+  {
+    "name": "HEB300",
+    "kind": "ISection",
+    "geometry": { "h": 300, "b": 300, "tw": 11.0, "tf": 19.0, "r": 27 },
+    "properties": {
+      "area_mm2": 14910, "iy_mm4": 251700000, "iz_mm4": 85630000,
+      "wel_y_mm3": 1678000, "wel_z_mm3": 570900,
+      "wpl_y_mm3": 1869000, "wpl_z_mm3": 870100,
+      "av_y_mm2": 11400, "av_z_mm2": 4742,
+      "it_mm4": 1851000, "iw_mm6": 1688000000000,
+      "iy_radius_mm": 129.9, "iz_radius_mm": 75.8,
+      "h_mm": 300, "b_mm": 300, "tw_mm": 11.0, "tf_mm": 19.0, "r_mm": 27
+    },
+    "buckling_curves": { "y_axis": "b", "z_axis": "c" }
+  },
+  {
+    "name": "UNP350",
+    "kind": "Channel",
+    "geometry": { "h": 350, "b": 100, "tw": 14.0, "tf": 16.0, "r": 16 },
+    "properties": {
+      "area_mm2": 7727, "iy_mm4": 128100000, "iz_mm4": 5703000,
+      "wel_y_mm3": 734400, "wel_z_mm3": 75100,
+      "wpl_y_mm3": 845000, "wpl_z_mm3": 144800,
+      "av_y_mm2": 3200, "av_z_mm2": 4900,
+      "it_mm4": 605000, "iw_mm6": 110600000000,
+      "iy_radius_mm": 128.7, "iz_radius_mm": 27.2,
+      "h_mm": 350, "b_mm": 100, "tw_mm": 14.0, "tf_mm": 16.0, "r_mm": 16
+    },
+    "buckling_curves": { "y_axis": "b", "z_axis": "c" }
+  },
+  {
+    "name": "HFRHS200X200X16",
+    "kind": "Shs",
+    "geometry": { "h": 200, "b": 200, "t": 16.0, "r": 24 },
+    "properties": {
+      "area_mm2": 11280, "iy_mm4": 64400000, "iz_mm4": 64400000,
+      "wel_y_mm3": 644000, "wel_z_mm3": 644000,
+      "wpl_y_mm3": 768000, "wpl_z_mm3": 768000,
+      "av_y_mm2": 5640, "av_z_mm2": 5640,
+      "it_mm4": 102000000, "iw_mm6": 0,
+      "iy_radius_mm": 75.6, "iz_radius_mm": 75.6,
+      "h_mm": 200, "b_mm": 200, "tw_mm": 16.0, "tf_mm": 16.0, "r_mm": 24
+    },
+    "buckling_curves": { "y_axis": "c", "z_axis": "c" }
+  }
+]
