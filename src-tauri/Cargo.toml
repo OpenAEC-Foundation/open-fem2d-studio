@@ -37,3 +37,7 @@ incremental = false
 [profile.release]
 strip = "symbols"
 lto = "thin"
+
+[workspace]
+resolver = "2"
+members = [".", "crates/*"]
