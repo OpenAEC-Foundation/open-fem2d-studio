@@ -26,6 +26,10 @@ export type ReportSectionType =
   | 'result_forces_M'     // Bending moment diagram
   | 'result_envelope'     // Envelope diagrams
 
+  // EN 1993 Steel Checks
+  | 'en1993_summary'        // EN 1993-1-1 unity check summary table
+  | 'en1993_calculations'   // EN 1993-1-1 per-beam derivation
+
   // Future
   | 'plates_stress'         // Plate stress contours
   | 'plates_reinforcement'; // Plate reinforcement design
@@ -88,6 +92,9 @@ export const DEFAULT_REPORT_CONFIG: IReportConfig = {
     { id: 'result_forces_N', name: 'Axial Forces', category: 'results', enabled: true, order: 25 },
     { id: 'result_envelope', name: 'Envelope Diagrams', category: 'results', enabled: false, order: 26 },
 
+    // EN 1993 sections
+    { id: 'en1993_summary', name: 'EN 1993 Summary', category: 'results', enabled: true, order: 30 },
+    { id: 'en1993_calculations', name: 'EN 1993 Calculations', category: 'results', enabled: true, order: 31 },
   ],
 
   companyName: 'OpenAEC Foundation',

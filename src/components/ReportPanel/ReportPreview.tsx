@@ -24,6 +24,8 @@ import { ResultCombinationsSection } from './sections/ResultCombinationsSection'
 import { ResultReactionsSection } from './sections/ResultReactionsSection';
 import { ResultDisplacementsSection } from './sections/ResultDisplacementsSection';
 import { ResultForcesSection } from './sections/ResultForcesSection';
+import { EN1993SummarySection } from './sections/EN1993SummarySection';
+import { EN1993CalculationsSection } from './sections/EN1993CalculationsSection';
 export interface ReportSectionProps {
   config: IReportConfig;
   mesh: Mesh;
@@ -59,6 +61,8 @@ const SECTION_COMPONENTS: Partial<Record<ReportSectionType, React.FC<ReportSecti
   'result_forces_M': (props) => <ResultForcesSection {...props} forceType="M" />,
   'result_forces_V': (props) => <ResultForcesSection {...props} forceType="V" />,
   'result_forces_N': (props) => <ResultForcesSection {...props} forceType="N" />,
+  'en1993_summary': EN1993SummarySection,
+  'en1993_calculations': EN1993CalculationsSection,
 };
 
 export const ReportPreview: React.FC<ReportPreviewProps> = ({
