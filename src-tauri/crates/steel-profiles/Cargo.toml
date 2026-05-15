@@ -1,0 +1,21 @@
+[package]
+name = "steel-profiles"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+serde_json = { workspace = true }
+section-properties = { path = "../section-properties" }
+
+[dev-dependencies]
+approx = { workspace = true }
+insta = { workspace = true }
+
+[build-dependencies]
+serde_json = { workspace = true }
