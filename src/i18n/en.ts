@@ -1221,4 +1221,38 @@ export const en: Record<string, string> = {
   // About Dialog
   'about.title': 'About Open FEM2D Studio',
   'about.builtOn': 'Built on the OpenAEC platform',
+
+  // EN 1993 Check panel
+  'check.panel.title': 'EN 1993 Check Results',
+  'check.panel.empty': 'No steel checks yet — solve the model and click Run all checks',
+  'check.panel.totalBeams': 'Total beams',
+  'check.status.ok': 'OK',
+  'check.status.notOk': 'NOT OK',
+  'check.governing': 'Governing:',
+
+  // Settings: Checks tab
+  'settings.checks.title': 'EN 1993 Checks',
+  'settings.checks.autoRun': 'Auto-run checks after solver completes',
+
+  // Report: EN 1993 sections
+  'report.en1993Summary': 'EN 1993 Steel Checks – Summary',
+  'report.en1993Calculations': 'EN 1993 Steel Checks – Calculations',
+
+  // Beam properties: EN 1993 inputs
+  'beam.props.en1993': 'EN 1993',
+  'beam.props.steelGrade': 'Steel grade',
+  'beam.props.cantilever': 'Cantilever',
+  'beam.props.consequenceClass': 'Consequence class',
+  'beam.props.lateralBracing.title': 'Lateral-torsional buckling (art. 6.3.2)',
+  'beam.props.lateralBracing.top': 'Lateral supports at top flange',
+  'beam.props.lateralBracing.bottom': 'Lateral supports at bottom flange',
+  'beam.props.lateralBracing.asTop': 'as top flange',
+  'beam.props.lateralBracing.number': 'Number',
+  'beam.props.bucklingLength.title': 'Buckling (art. 6.3.3)',
+  'beam.props.bucklingLength.y': 'Buckling length Y-axis',
+  'beam.props.bucklingLength.z': 'Buckling length Z-axis',
+  'beam.props.deflection.check': 'Check deflection',
+  'beam.props.deflection.type': 'Type',
+  'beam.props.deflection.limit': 'Limit L /',
+  'beam.props.inputPerBeam': 'Input per beam',
 };

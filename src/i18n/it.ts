@@ -1135,4 +1135,48 @@ export const it: Record<string, string> = {
   // Finestra Informazioni
   'about.title': 'Informazioni su Open FEM2D Studio',
   'about.builtOn': 'Costruito sulla piattaforma OpenAEC',
+
+  // Scheda Verifica
+  'ribbon.check': 'Verifica',
+  'ribbon.check.runGroup': 'Verifica',
+  'ribbon.check.run': 'Esegui tutte le verifiche',
+  'ribbon.check.run.title': 'Esegui verifiche EN 1993-1-1 per tutte le travi in acciaio',
+  'ribbon.check.viewGroup': 'Visualizza',
+  'ribbon.check.viewPanel': 'Mostra pannello',
+  'ribbon.check.settingsGroup': 'Impostazioni',
+  'ribbon.check.autoRun': 'Auto-esegui dopo il calcolo',
+
+  // Pannello di verifica EN 1993
+  'check.panel.title': 'Risultati verifica EN 1993',
+  'check.panel.empty': 'Nessuna verifica — calcola il modello e clicca Esegui tutte le verifiche',
+  'check.panel.totalBeams': 'Totale travi',
+  'check.status.ok': 'OK',
+  'check.status.notOk': 'NON OK',
+  'check.governing': 'Determinante:',
+
+  // Impostazioni: scheda Verifiche
+  'settings.checks.title': 'Verifiche EN 1993',
+  'settings.checks.autoRun': 'Auto-esegui verifiche dopo il calcolo',
+
+  // Rapporto: sezioni EN 1993
+  'report.en1993Summary': 'Verifiche EN 1993 – Riepilogo',
+  'report.en1993Calculations': 'Verifiche EN 1993 – Calcoli',
+
+  // Proprietà trave: dati EN 1993
+  'beam.props.en1993': 'EN 1993',
+  'beam.props.steelGrade': 'Classe di acciaio',
+  'beam.props.cantilever': 'Mensola',
+  'beam.props.consequenceClass': 'Classe di conseguenza',
+  'beam.props.lateralBracing.title': 'Instabilità flesso-torsionale (art. 6.3.2)',
+  'beam.props.lateralBracing.top': 'Vincoli laterali all\'ala superiore',
+  'beam.props.lateralBracing.bottom': 'Vincoli laterali all\'ala inferiore',
+  'beam.props.lateralBracing.asTop': 'come ala superiore',
+  'beam.props.lateralBracing.number': 'Numero',
+  'beam.props.bucklingLength.title': 'Instabilità (art. 6.3.3)',
+  'beam.props.bucklingLength.y': 'Lunghezza libera di inflessione asse Y',
+  'beam.props.bucklingLength.z': 'Lunghezza libera di inflessione asse Z',
+  'beam.props.deflection.check': 'Verifica freccia',
+  'beam.props.deflection.type': 'Tipo',
+  'beam.props.deflection.limit': 'Limite L /',
+  'beam.props.inputPerBeam': 'Dati per trave',
 };

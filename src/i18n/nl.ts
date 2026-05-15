@@ -1043,4 +1043,48 @@ export const nl: Record<string, string> = {
   // Over-venster
   'about.title': 'Over Open FEM2D Studio',
   'about.builtOn': 'Gebouwd op het OpenAEC platform',
+
+  // Ribbon tab: Toetsing
+  'ribbon.check': 'Toetsing',
+  'ribbon.check.runGroup': 'Toets',
+  'ribbon.check.run': 'Voer alle toetsen uit',
+  'ribbon.check.run.title': 'Voer EN 1993-1-1 staaltoetsen uit voor alle stalen balken',
+  'ribbon.check.viewGroup': 'Weergave',
+  'ribbon.check.viewPanel': 'Toon paneel',
+  'ribbon.check.settingsGroup': 'Instellingen',
+  'ribbon.check.autoRun': 'Automatisch na oplossen',
+
+  // EN 1993 Toetspaneel
+  'check.panel.title': 'EN 1993 Toetsresultaten',
+  'check.panel.empty': 'Nog geen staaltoetsen — los het model op en klik Voer alle toetsen uit',
+  'check.panel.totalBeams': 'Aantal staven',
+  'check.status.ok': 'OK',
+  'check.status.notOk': 'NIET OK',
+  'check.governing': 'Maatgevend:',
+
+  // Instellingen: Toetsing-tabblad
+  'settings.checks.title': 'EN 1993 Toetsing',
+  'settings.checks.autoRun': 'Automatisch na oplosser uitvoeren',
+
+  // Rapport: EN 1993-secties
+  'report.en1993Summary': 'EN 1993 Staaltoetsen – Samenvatting',
+  'report.en1993Calculations': 'EN 1993 Staaltoetsen – Berekeningen',
+
+  // Balkeigenschappen: EN 1993-invoer
+  'beam.props.en1993': 'EN 1993',
+  'beam.props.steelGrade': 'Staalsoort',
+  'beam.props.cantilever': 'Uitkraging',
+  'beam.props.consequenceClass': 'Gevolgklasse',
+  'beam.props.lateralBracing.title': 'Kip (art. 6.3.2)',
+  'beam.props.lateralBracing.top': 'Kipsteunen bovenflens',
+  'beam.props.lateralBracing.bottom': 'Kipsteunen onderflens',
+  'beam.props.lateralBracing.asTop': 'als bovenflens',
+  'beam.props.lateralBracing.number': 'Aantal',
+  'beam.props.bucklingLength.title': 'Knik (art. 6.3.3)',
+  'beam.props.bucklingLength.y': 'Kniklengte Y-as',
+  'beam.props.bucklingLength.z': 'Kniklengte Z-as',
+  'beam.props.deflection.check': 'Toets doorbuiging',
+  'beam.props.deflection.type': 'Type',
+  'beam.props.deflection.limit': 'Limiet L /',
+  'beam.props.inputPerBeam': 'Invoer per staaf',
 };

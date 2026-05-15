@@ -1135,4 +1135,48 @@ export const zh: Record<string, string> = {
   // 关于对话框
   'about.title': '关于 Open FEM2D Studio',
   'about.builtOn': '构建于 OpenAEC 平台之上',
+
+  // 检查选项卡
+  'ribbon.check': '检查',
+  'ribbon.check.runGroup': '运行',
+  'ribbon.check.run': '运行所有检查',
+  'ribbon.check.run.title': '对所有钢梁运行 EN 1993-1-1 检查',
+  'ribbon.check.viewGroup': '视图',
+  'ribbon.check.viewPanel': '显示面板',
+  'ribbon.check.settingsGroup': '设置',
+  'ribbon.check.autoRun': '求解后自动运行',
+
+  // EN 1993 检查面板
+  'check.panel.title': 'EN 1993 检查结果',
+  'check.panel.empty': '尚无检查结果 — 求解模型后点击运行所有检查',
+  'check.panel.totalBeams': '梁总数',
+  'check.status.ok': 'OK',
+  'check.status.notOk': '不通过',
+  'check.governing': '控制工况：',
+
+  // 设置：检查选项卡
+  'settings.checks.title': 'EN 1993 检查',
+  'settings.checks.autoRun': '求解完成后自动运行检查',
+
+  // 报告：EN 1993 章节
+  'report.en1993Summary': 'EN 1993 钢结构检查 – 汇总',
+  'report.en1993Calculations': 'EN 1993 钢结构检查 – 计算',
+
+  // 梁属性：EN 1993 输入
+  'beam.props.en1993': 'EN 1993',
+  'beam.props.steelGrade': '钢材牌号',
+  'beam.props.cantilever': '悬臂',
+  'beam.props.consequenceClass': '后果等级',
+  'beam.props.lateralBracing.title': '侧向扭转屈曲（第 6.3.2 条）',
+  'beam.props.lateralBracing.top': '上翼缘侧向支撑',
+  'beam.props.lateralBracing.bottom': '下翼缘侧向支撑',
+  'beam.props.lateralBracing.asTop': '同上翼缘',
+  'beam.props.lateralBracing.number': '数量',
+  'beam.props.bucklingLength.title': '整体稳定（第 6.3.3 条）',
+  'beam.props.bucklingLength.y': 'Y 轴计算长度',
+  'beam.props.bucklingLength.z': 'Z 轴计算长度',
+  'beam.props.deflection.check': '验算挠度',
+  'beam.props.deflection.type': '类型',
+  'beam.props.deflection.limit': '限值 L /',
+  'beam.props.inputPerBeam': '按梁输入',
 };
