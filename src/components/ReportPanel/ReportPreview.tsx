@@ -8,6 +8,8 @@ import { ISolverResult } from '../../core/fem/types';
 import { IProjectInfo } from '../../context/FEMContext';
 import { ILoadCase, ILoadCombination } from '../../core/fem/LoadCase';
 import { IReportConfig, getEnabledSections, ReportSectionType } from '../../core/report/ReportConfig';
+import { generateHeaderHTML } from '../../core/report/ReportHeader';
+import { generateFooterHTML } from '../../core/report/ReportFooter';
 
 // Import section components
 import { CoverSection } from './sections/CoverSection';
@@ -89,12 +91,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 
   return (
     <div className="report-document">
-      {/* Document header - only at the very top if enabled */}
+      {/* OpenAEC §4.3 header banner - inline (static) for live preview */}
       {config.showHeader && (
-        <div className="report-document-header">
-          <span>{projectInfo.name || 'Structural Report'}</span>
-          <span>{config.companyName}</span>
-        </div>
+        <div
+          className="report-document-header openaec-header-banner"
+          dangerouslySetInnerHTML={{
+            __html: generateHeaderHTML(config, projectInfo, 'static'),
+          }}
+        />
       )}
 
       {/* Cover Section */}
@@ -148,12 +152,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         );
       })}
 
-      {/* Document footer - only at the very bottom if enabled */}
+      {/* OpenAEC §4.3 footer - inline (static) for live preview */}
       {config.showFooter && (
-        <div className="report-document-footer">
-          <span>{projectInfo.date || new Date().toLocaleDateString('nl-NL')}</span>
-          <span>Generated with Open FEM Studio</span>
-        </div>
+        <div
+          className="report-document-footer openaec-footer-banner"
+          dangerouslySetInnerHTML={{
+            __html: generateFooterHTML(config, 'static'),
+          }}
+        />
       )}
     </div>
   );

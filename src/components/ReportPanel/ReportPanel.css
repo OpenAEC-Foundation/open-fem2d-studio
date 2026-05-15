@@ -103,6 +103,21 @@
   color: #666;
 }
 
+/* OpenAEC §4.3 banners — bypass legacy header/footer padding/border */
+.report-document-header.openaec-header-banner,
+.report-document-footer.openaec-footer-banner {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: none;
+}
+.report-document-header.openaec-header-banner {
+  margin-bottom: var(--sp-6);
+}
+.report-document-footer.openaec-footer-banner {
+  margin-top: var(--sp-6);
+}
+
 /* Content section - continuous flow with dividers */
 .report-content-section {
   margin-bottom: 32px;

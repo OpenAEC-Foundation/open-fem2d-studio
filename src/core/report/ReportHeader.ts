@@ -11,21 +11,29 @@ import { IReportConfig } from './ReportConfig';
 import { IProjectInfo } from '../../context/FEMContext';
 import { ReportColors, ReportFonts, ReportAssets } from './ReportTheme';
 
-export function generateHeaderHTML(config: IReportConfig, projectInfo: IProjectInfo): string {
+export type HeaderPosition = 'fixed' | 'static';
+
+export function generateHeaderHTML(
+  config: IReportConfig,
+  projectInfo: IProjectInfo,
+  position: HeaderPosition = 'fixed',
+): string {
   const projNumber = projectInfo.projectNumber ?? '';
   const engineer = projectInfo.engineer ?? '';
   const date = projectInfo.date ?? new Date().toLocaleDateString();
   const projectName = projectInfo.name || 'Untitled Project';
   const tagline = (config as any).tagline ?? 'Build free. Build together.';
+  const positionStyle = position === 'fixed'
+    ? 'position: fixed; top: 0; left: 0; right: 0; z-index: 100;'
+    : 'position: relative; width: 100%;';
 
   return `
   <header class="report-header" style="
-    position: fixed; top: 0; left: 0; right: 0;
+    ${positionStyle}
     height: 38mm;
     background: ${ReportColors.deepForge};
     color: ${ReportColors.blueprintWhite};
     overflow: hidden;
-    z-index: 100;
   ">
     <div style="
       position: absolute; right: 0; top: 0; bottom: 0;
