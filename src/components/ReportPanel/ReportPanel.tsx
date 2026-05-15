@@ -1,10 +1,12 @@
 /**
- * ReportPanel — WYSIWYG iframe preview (Phase 14)
- * The preview is an iframe loaded with the actual generateReportHTML output,
- * so preview === printed PDF. Save-as-PDF triggers iframe.contentWindow.print().
+ * ReportPanel — True PDF preview (Phase 15)
+ * Generates a real PDF binary from the report HTML via html2pdf.js and embeds
+ * it in an iframe using a blob: URL so Chrome/WebView2 renders it with the
+ * native PDF viewer. Save/Print opens the blob URL in a new window.
  */
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import html2pdf from 'html2pdf.js';
 import { useFEM } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
 import { generateReportHTML } from '../../core/report/ReportGenerator';
@@ -18,6 +20,9 @@ export const ReportPanel: React.FC = () => {
   const { reportConfig, mesh, result, projectInfo, loadCases, loadCombinations } = state;
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const generationKey = useRef(0);
 
   const enabledSections = getEnabledSections(reportConfig);
 
@@ -48,20 +53,82 @@ export const ReportPanel: React.FC = () => {
     });
   }, [reportConfig, mesh, result, projectInfo, loadCases, loadCombinations, t, state.steelCheckResults, hasData]);
 
-  // Navigate to a section inside the iframe
+  // Generate PDF binary whenever report HTML changes
+  useEffect(() => {
+    if (!hasData || !reportHtml) {
+      setPdfBlobUrl(null);
+      return;
+    }
+
+    const myKey = ++generationKey.current;
+    setIsGenerating(true);
+
+    // Create a hidden container for html2pdf to rasterize from
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '-99999px';
+    container.style.width = '210mm';
+    container.innerHTML = reportHtml;
+    document.body.appendChild(container);
+
+    const opts = {
+      margin: 0,
+      filename: 'report.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+      pagebreak: { mode: ['css', 'legacy'] },
+    };
+
+    html2pdf().set(opts).from(container).outputPdf('blob').then((blob: Blob) => {
+      if (myKey !== generationKey.current) {
+        // Newer generation started while we waited — discard this result
+        try { document.body.removeChild(container); } catch { /* already removed */ }
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      setPdfBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setIsGenerating(false);
+      try { document.body.removeChild(container); } catch { /* already removed */ }
+    }).catch((err: unknown) => {
+      console.error('PDF generation failed:', err);
+      setIsGenerating(false);
+      try { document.body.removeChild(container); } catch { /* already removed */ }
+    });
+
+    return () => {
+      try { if (container.parentNode) container.parentNode.removeChild(container); } catch { /* already removed */ }
+    };
+  }, [reportHtml, hasData]);
+
+  // Revoke blob URL on unmount
+  useEffect(() => {
+    return () => {
+      setPdfBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, []);
+
+  // Section nav — just highlights the active item; scroll inside a PDF blob is handled by the viewer
   const handleNavClick = (sectionId: string) => {
     setActiveSection(sectionId);
-    const iframeDoc = iframeRef.current?.contentDocument;
-    if (iframeDoc) {
-      const el = iframeDoc.getElementById(`section-${sectionId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
   };
 
   const handlePrintPdf = () => {
-    iframeRef.current?.contentWindow?.print();
+    if (!pdfBlobUrl) return;
+    const win = window.open(pdfBlobUrl, '_blank');
+    if (!win) {
+      // Fallback: trigger download
+      const a = document.createElement('a');
+      a.href = pdfBlobUrl;
+      a.download = `${state.projectInfo.name || 'report'}.pdf`;
+      a.click();
+    }
   };
 
   // Settings sidebar handlers
@@ -300,29 +367,43 @@ export const ReportPanel: React.FC = () => {
         })}
       </div>
 
-      {/* Center: WYSIWYG iframe preview */}
+      {/* Center: True PDF preview via blob URL */}
       <div className="report-preview-container" style={{ display: 'flex', flexDirection: 'column' }}>
         {/* Toolbar */}
         <div className="report-iframe-toolbar">
           <button
             className="rp-print-btn"
             onClick={handlePrintPdf}
-            title="Open print dialog — save as PDF from there"
+            disabled={!pdfBlobUrl || isGenerating}
+            title="Open PDF in new window — use browser Save to save the file"
           >
             <Printer size={14} style={{ marginRight: 6 }} />
-            Save as PDF
+            Save / Print PDF
           </button>
-          <span className="rp-wysiwyg-hint">Preview matches printed output</span>
+          <span className="rp-wysiwyg-hint">
+            {isGenerating ? 'Generating PDF…' : 'Preview is the actual PDF'}
+          </span>
         </div>
 
-        {/* Iframe: loads actual generated HTML */}
-        <iframe
-          ref={iframeRef}
-          className="report-iframe"
-          srcDoc={reportHtml}
-          title="Report preview"
-          sandbox="allow-same-origin allow-popups allow-scripts"
-        />
+        {/* PDF blob iframe — Chrome/WebView2 renders with native PDF viewer */}
+        {pdfBlobUrl ? (
+          <iframe
+            ref={iframeRef}
+            className="report-iframe"
+            src={pdfBlobUrl}
+            title="Report PDF preview"
+          />
+        ) : (
+          <div className="report-empty" style={{ padding: 32, textAlign: 'center' }}>
+            <FileText size={48} />
+            <h3>{isGenerating ? 'Generating PDF…' : 'Building report…'}</h3>
+            {isGenerating && (
+              <p style={{ color: '#666' }}>
+                First generation may take 10–20 seconds for large reports.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right: Settings sidebar - always visible */}
