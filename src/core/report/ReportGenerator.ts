@@ -13,6 +13,7 @@ import { renderGeometry, renderForceDiagram } from './DiagramRenderer';
 import { generateHeaderHTML } from './ReportHeader';
 import { generateFooterHTML } from './ReportFooter';
 import { ReportColors, ReportFonts } from './ReportTheme';
+import type { BeamCheckResult } from '../../lib/types/steel/BeamCheckResult';
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -27,6 +28,8 @@ export interface ReportData {
   loadCombinations: ILoadCombination[];
   /** i18n function — added in D.10. Falls back to NL if absent. */
   t?: (key: string) => string;
+  /** EN 1993-1-1 steel check results — Phase 14 */
+  steelCheckResults?: BeamCheckResult[] | null;
 }
 
 /** Translate a key via data.t if present; otherwise return the NL fallback string. */
@@ -505,6 +508,103 @@ function generateResultForcesHTML(data: ReportData, sectionNum: number, forceTyp
   </div>`;
 }
 
+// ---------------------------------------------------------------------------
+// EN 1993-1-1 section generators
+// ---------------------------------------------------------------------------
+
+function generateEN1993SummaryHTML(steelResults: BeamCheckResult[] | null, sectionNum: number): string {
+  if (!steelResults || steelResults.length === 0) {
+    return `<div class="report-page" id="section-en1993-summary">
+      <h2 class="section-title" style="color:#D97706">${sectionNum}. EN 1993 Steel Checks – Summary</h2>
+      <p><em>No steel check results. Run the solver and click Run all checks.</em></p>
+    </div>`;
+  }
+  const rows = steelResults.map(r => `
+    <tr style="background-color:${r.status === 'NotOk' ? 'rgba(220,38,38,0.08)' : 'transparent'}">
+      <td style="padding:5px 8px">${r.beam_id}</td>
+      <td style="padding:5px 8px">${escapeHtml(r.profile_name)}</td>
+      <td style="padding:5px 8px">${escapeHtml(r.steel_grade)}</td>
+      <td style="padding:5px 8px">${escapeHtml(r.classification.replace('Class', 'Class '))}</td>
+      <td style="padding:5px 8px;text-align:right;font-family:monospace"><strong>${r.uc_max.toFixed(2)}</strong></td>
+      <td style="padding:5px 8px">${escapeHtml(r.governing_check_id)}</td>
+      <td style="padding:5px 8px">${
+        r.status === 'Ok'
+          ? '<span style="color:#16A34A">&#x2713; OK</span>'
+          : r.status === 'NotOk'
+          ? '<span style="color:#DC2626">&#x2717; NOT OK</span>'
+          : '<span style="color:#888">&#x2014;</span>'
+      }</td>
+    </tr>`).join('');
+  return `
+    <div class="report-page" id="section-en1993-summary">
+      <h2 class="section-title" style="color:#D97706">${sectionNum}. EN 1993 Steel Checks – Summary</h2>
+      <table class="data-table" style="font-size:9pt">
+        <thead>
+          <tr style="background:#D97706">
+            <th style="padding:6px 8px;color:white">Beam</th>
+            <th style="padding:6px 8px;color:white">Profile</th>
+            <th style="padding:6px 8px;color:white">Grade</th>
+            <th style="padding:6px 8px;color:white">Class</th>
+            <th style="padding:6px 8px;color:white;text-align:right">UC<sub>max</sub></th>
+            <th style="padding:6px 8px;color:white">Governing</th>
+            <th style="padding:6px 8px;color:white">Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+/** Renders per-beam derivation blocks for one or more beams (used by both full report and single-beam popup). */
+function generateEN1993CalculationsHTML(steelResults: BeamCheckResult[], sectionNum: number, sectionOffset: number = 0): string {
+  return steelResults.map((r, idx) => {
+    const checks = r.checks.map(nc => {
+      const c = nc.kind.data as any;
+      const varsLine = (c.variables as any[]).map((v: any) =>
+        `<span style="margin-right:12px;display:inline-block"><em>${escapeHtml(v.symbol)}</em> = ${(v.value as number).toFixed(3)}${v.unit && v.unit !== '-' ? ' ' + escapeHtml(v.unit) : ''}</span>`
+      ).join('');
+      const intermediates: any[] = c.intermediate_values ?? [];
+      const intermediatesLine = intermediates.map((v: any) =>
+        `<span style="margin-right:12px;display:inline-block"><em>${escapeHtml(v.symbol)}</em> = ${(v.value as number).toFixed(3)}${v.unit && v.unit !== '-' ? ' ' + escapeHtml(v.unit) : ''}</span>`
+      ).join('');
+      const ucBlock = c.uc ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #E7E5E4;font-family:monospace;font-size:0.85rem">
+          ${escapeHtml(c.uc.formula_latex)} = ${(c.uc.ed as number).toFixed(3)} / ${(c.uc.rd as number).toFixed(3)} = <strong>${(c.uc.uc as number).toFixed(2)}</strong>
+          ${c.status === 'Ok'
+            ? '<span style="color:#16A34A;margin-left:8px">&#x2713; OK</span>'
+            : c.status === 'NotOk'
+            ? '<span style="color:#DC2626;margin-left:8px">&#x2717; NOT OK</span>'
+            : '<span style="color:#888;margin-left:8px">N.A.</span>'}
+        </div>` : '';
+      const forceState = c.force_state;
+      const forces = forceState.forces;
+      return `
+        <div style="border-left:4px solid #D97706;padding:10px 12px;margin:10px 0;background:#FAFAF9;font-size:0.85rem;page-break-inside:avoid">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <strong style="font-size:0.9rem">${escapeHtml(c.title)}</strong>
+            <span style="font-family:monospace;color:#D97706;font-size:0.72rem">${escapeHtml(c.article)}</span>
+          </div>
+          <div style="font-family:monospace;font-size:0.75rem;color:#57534E;background:#F5F5F4;padding:3px 6px;margin-bottom:6px">
+            Comb: ${escapeHtml(String(forceState.combination_id))}, x = ${(forceState.position_mm as number).toFixed(0)} mm,
+            N<sub>x</sub> = ${(forces.n_ed as number).toFixed(2)} kN,
+            V<sub>z</sub> = ${(forces.vz_ed as number).toFixed(2)} kN,
+            M<sub>y</sub> = ${(forces.my_ed as number).toFixed(2)} kNm
+          </div>
+          ${varsLine ? `<div style="font-family:monospace;font-size:0.8rem;margin-bottom:4px">${varsLine}</div>` : ''}
+          <div style="font-family:monospace;font-size:0.9rem">=&nbsp;<strong style="color:#D97706">${(c.value as number).toFixed(3)} ${escapeHtml(c.unit)}</strong></div>
+          ${ucBlock}
+          ${intermediates.length > 0 ? `<details style="margin-top:6px;font-size:0.78rem"><summary style="cursor:pointer">Intermediate values (${intermediates.length})</summary><div style="margin-top:4px">${intermediatesLine}</div></details>` : ''}
+          ${(c.notes as string[]).length > 0 ? `<ul style="font-size:0.78rem;font-style:italic;color:#666;margin:6px 0 0 0;padding-left:16px">${(c.notes as string[]).map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="report-page" id="section-en1993-calc-${r.beam_id}">
+        <h2 class="section-title" style="color:#D97706">${sectionNum}.${sectionOffset + idx + 1}. Beam ${r.beam_id} – ${escapeHtml(r.profile_name)} (${escapeHtml(r.steel_grade)})</h2>
+        ${checks || '<p><em>No checks available.</em></p>'}
+      </div>`;
+  }).join('\n');
+}
+
 /**
  * Dispatch a section id to its HTML generator function and wrap it in a page div.
  */
@@ -527,10 +627,16 @@ function generateSectionHTML(id: ReportSectionType, data: ReportData, sectionNum
       case 'result_forces_V':      return generateResultForcesHTML(data, sectionNum, 'V');
       case 'result_forces_N':      return generateResultForcesHTML(data, sectionNum, 'N');
       case 'result_envelope':      return '';
+      case 'en1993_summary':       return generateEN1993SummaryHTML(data.steelCheckResults ?? null, sectionNum);
+      case 'en1993_calculations':  return data.steelCheckResults && data.steelCheckResults.length > 0
+                                     ? generateEN1993CalculationsHTML(data.steelCheckResults, sectionNum)
+                                     : `<div class="report-page"><h2 class="section-title" style="color:#D97706">${sectionNum}. EN 1993 Calculations</h2><p><em>No results.</em></p></div>`;
       default:                     return '';
     }
   })();
   if (!inner) return '';
+  // EN 1993 sections already produce their own .report-page wrappers with correct ids
+  if (id === 'en1993_summary' || id === 'en1993_calculations') return inner;
   return `<div class="report-page" id="section-${id}"><div class="report-content">${inner}</div></div>`;
 }
 
@@ -669,6 +775,71 @@ export function generateReportHTML(data: ReportData): string {
   <main>
     ${sectionHTMLs}
   </main>
+</body>
+</html>`;
+}
+
+/**
+ * Generate a standalone HTML document for a single beam's full EN 1993 derivation.
+ * Used by SteelCheckPanel double-click → opens in a new window with auto-print.
+ */
+export function generateSingleBeamReportHTML(
+  beamResult: BeamCheckResult,
+  config: IReportConfig,
+  projectInfo: IProjectInfo,
+): string {
+  const headerHtml = generateHeaderHTML(config, projectInfo, 'fixed');
+  const footerHtml = generateFooterHTML(config, 'fixed');
+  const beamHtml = generateEN1993CalculationsHTML([beamResult], 1, 0);
+
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>EN 1993 Beam ${beamResult.beam_id} – ${escapeHtml(beamResult.profile_name)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      font-family: ${ReportFonts.body};
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: ${ReportColors.deepForge};
+      background: ${ReportColors.blueprintWhite};
+    }
+    body { counter-reset: page; }
+    .report-page {
+      page-break-after: always;
+      padding: 50mm 12mm 25mm 12mm;
+      min-height: calc(297mm - 65mm);
+    }
+    .report-page:last-child { page-break-after: auto; }
+    h2.section-title {
+      font-family: ${ReportFonts.heading};
+      font-weight: 700;
+      font-size: 1.4rem;
+      margin-top: 4mm;
+      padding-bottom: 4px;
+      border-bottom: 2px solid #D97706;
+    }
+    .pgnum::before { content: counter(page); }
+    @media print {
+      .report-page { padding-top: 50mm; padding-bottom: 25mm; }
+    }
+  </style>
+</head>
+<body>
+  ${headerHtml}
+  ${footerHtml}
+  <main>${beamHtml}</main>
+  <script>
+    // Auto-trigger print after fonts have had time to load
+    setTimeout(function() { window.print(); }, 600);
+  </script>
 </body>
 </html>`;
 }
