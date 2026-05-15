@@ -256,7 +256,7 @@ type FEMAction =
   | { type: 'ADD_THERMAL_LOAD'; payload: { lcId: number; elementId: number; plateId?: number; deltaT: number } }
   | { type: 'REMOVE_THERMAL_LOAD'; payload: { lcId: number; elementId: number } }
   | { type: 'SET_PROJECT_INFO'; payload: Partial<IProjectInfo> }
-  | { type: 'LOAD_PROJECT'; payload: { mesh: Mesh; loadCases: ILoadCase[]; loadCombinations: ILoadCombination[]; projectInfo: IProjectInfo; structuralGrid?: IStructuralGrid; graphState?: IGraphState | null; versioning?: IVersioningState } }
+  | { type: 'LOAD_PROJECT'; payload: { mesh: Mesh; loadCases: ILoadCase[]; loadCombinations: ILoadCombination[]; projectInfo: IProjectInfo; structuralGrid?: IStructuralGrid; graphState?: IGraphState | null; versioning?: IVersioningState; beamSteelConfigs?: Map<number, IBeamSteelConfig> } }
   | { type: 'SET_STRUCTURAL_GRID'; payload: IStructuralGrid }
   | { type: 'SET_SHOW_GRID_LINES'; payload: boolean }
   | { type: 'SET_SNAP_TO_GRID_LINES'; payload: boolean }
@@ -1439,7 +1439,7 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
       return { ...state, projectInfo: { ...state.projectInfo, ...action.payload } };
 
     case 'LOAD_PROJECT': {
-      const { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState, versioning } = action.payload;
+      const { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState, versioning, beamSteelConfigs } = action.payload;
       // Migrate: ensure all distributed loads have IDs (backward compat with old projects)
       migrateDistributedLoadIds(loadCases);
       migrateEdgeLoads(loadCases, mesh);
@@ -1458,6 +1458,9 @@ function femReducer(state: FEMState, action: FEMAction): FEMState {
         structuralGrid: structuralGrid ?? createDefaultStructuralGrid(),
         graphState: graphState ?? null,
         versioning: versioning ?? { versions: [], currentBranch: 'main', branches: ['main'] },
+        beamSteelConfigs: beamSteelConfigs ?? new Map<number, IBeamSteelConfig>(),
+        steelCheckResults: null,
+        steelCheckError: null,
         result: null,
         undoStack: [],
         redoStack: [],

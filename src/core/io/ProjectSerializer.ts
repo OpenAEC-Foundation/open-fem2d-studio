@@ -1,6 +1,6 @@
 import { Mesh } from '../fem/Mesh';
 import { ILoadCase, ILoadCombination, LoadCombinationType } from '../fem/LoadCase';
-import { IProjectInfo, IGraphState, IVersioningState } from '../../context/FEMContext';
+import { IProjectInfo, IGraphState, IVersioningState, IBeamSteelConfig } from '../../context/FEMContext';
 import { IStructuralGrid } from '../fem/StructuralGrid';
 
 export interface IProjectFile {
@@ -12,6 +12,7 @@ export interface IProjectFile {
   structuralGrid?: IStructuralGrid;
   graphState?: IGraphState | null;
   versioning?: IVersioningState;
+  beamSteelConfigs?: IBeamSteelConfig[];
 }
 
 export function serializeProject(
@@ -21,10 +22,11 @@ export function serializeProject(
   projectInfo: IProjectInfo,
   structuralGrid?: IStructuralGrid,
   graphState?: IGraphState | null,
-  versioning?: IVersioningState
+  versioning?: IVersioningState,
+  beamSteelConfigs?: Map<number, IBeamSteelConfig>
 ): string {
   const file: IProjectFile = {
-    version: '1.0.0',
+    version: '1.1.0',
     projectInfo,
     mesh: mesh.toJSON(),
     loadCases,
@@ -37,6 +39,7 @@ export function serializeProject(
     structuralGrid,
     graphState: graphState ?? undefined,
     versioning,
+    beamSteelConfigs: beamSteelConfigs ? Array.from(beamSteelConfigs.values()) : [],
   };
   return JSON.stringify(file, null, 2);
 }
@@ -49,6 +52,7 @@ export function deserializeProject(json: string): {
   structuralGrid?: IStructuralGrid;
   graphState?: IGraphState | null;
   versioning?: IVersioningState;
+  beamSteelConfigs: Map<number, IBeamSteelConfig>;
 } {
   const file: IProjectFile = JSON.parse(json);
 
@@ -82,5 +86,13 @@ export function deserializeProject(json: string): {
     branches: ['main']
   };
 
-  return { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState, versioning };
+  // Backwards compat: v1.0.0 files don't have beamSteelConfigs
+  const beamSteelConfigs = new Map<number, IBeamSteelConfig>();
+  if (file.beamSteelConfigs && Array.isArray(file.beamSteelConfigs)) {
+    for (const config of file.beamSteelConfigs) {
+      beamSteelConfigs.set(config.beamId, config);
+    }
+  }
+
+  return { mesh, loadCases, loadCombinations, projectInfo, structuralGrid, graphState, versioning, beamSteelConfigs };
 }
