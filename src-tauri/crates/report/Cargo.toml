@@ -9,9 +9,8 @@ crate-type = ["lib"]
 [dependencies]
 serde = { workspace = true }
 ts-rs = { workspace = true }
-# printpdf 0.7 — classic stable API (0.9 requires azul-layout, too heavy)
-# default feature pulls in js-sys; on Windows desktop this is fine.
-printpdf = { version = "0.7", default-features = false }
+# genpdf 0.2 — purpose-built Rust layout library (bundles printpdf 0.3 internally)
+genpdf = "0.2"
 steel-check = { path = "../steel-check" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
