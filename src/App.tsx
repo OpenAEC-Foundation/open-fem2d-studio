@@ -37,6 +37,10 @@ import { fileApi } from './lib/fileApi';
 import { windowApi } from './lib/windowApi';
 import { migrateLocalStorageToTauriStore } from './lib/migrateLocalStorage';
 import { Mesh } from './core/fem/Mesh';
+import { invoke } from '@tauri-apps/api/core';
+import { buildSteelCheckInputs } from './lib/steelCheckBuilder';
+import type { BeamCheckResult } from './lib/types/steel/BeamCheckResult';
+import { SteelCheckPanel } from './components/SteelCheckPanel/SteelCheckPanel';
 
 /** Hook used inside FEMProvider to serialize current project state */
 function useProjectSnapshot() {
@@ -71,6 +75,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const [showCalculationSettings, setShowCalculationSettings] = useState(false);
 
   const [showReinforcementDialog, setShowReinforcementDialog] = useState(false);
+  const [showSteelCheckPanel, setShowSteelCheckPanel] = useState(true);
   const [showGraphSplit, setShowGraphSplit] = useState(false);
   const [graphSplitHeight, setGraphSplitHeight] = useState(280);
   const splitDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -130,6 +135,41 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     return state.analysisType;
   }, [state.mesh, state.analysisType]);
 
+  // Ref kept current so solver callbacks can read the live autoRun flag without
+  // creating circular callback dependencies.
+  const steelCheckAutoRunRef = useRef(state.steelCheckAutoRun);
+  steelCheckAutoRunRef.current = state.steelCheckAutoRun;
+
+  // Steel check runner — invokes Tauri command.
+  // Accepts an optional freshResult to avoid stale-closure issues when called
+  // immediately after SET_RESULT (before React has re-rendered with the new value).
+  const handleRunSteelChecks = useCallback(async (freshResult?: import('./core/fem/types').ISolverResult) => {
+    const solverResult = freshResult ?? state.result;
+    if (!solverResult) return;
+    const inputs = buildSteelCheckInputs(
+      state.mesh,
+      state.beamSteelConfigs,
+      solverResult,
+      state.projectInfo,
+    );
+    if (inputs.length === 0) {
+      dispatch({ type: 'SET_STEEL_CHECK_RESULTS', payload: [] });
+      return;
+    }
+    try {
+      const results = await invoke<BeamCheckResult[]>('check_steel_beams', { inputs });
+      dispatch({ type: 'SET_STEEL_CHECK_RESULTS', payload: results });
+    } catch (err) {
+      dispatch({ type: 'SET_STEEL_CHECK_ERROR', payload: String(err) });
+    }
+  }, [state.mesh, state.beamSteelConfigs, state.result, state.projectInfo, dispatch]);
+
+  // Keep a stable ref to handleRunSteelChecks so solver callbacks can call it
+  // without needing it in their dep arrays (avoids re-creating solve callbacks
+  // every time the steel check runner changes).
+  const handleRunSteelChecksRef = useRef(handleRunSteelChecks);
+  handleRunSteelChecksRef.current = handleRunSteelChecks;
+
   // Solve handler for on-demand solving (e.g. clicking Results tab)
   const handleSolve = useCallback(() => {
     if (state.mesh.getNodeCount() < 2) return;
@@ -158,6 +198,10 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         dispatch({ type: 'SET_SHOW_DEFORMED', payload: true });
         if (effectiveAnalysisType === 'frame') {
           dispatch({ type: 'SET_SHOW_MOMENT', payload: true });
+        }
+        if (steelCheckAutoRunRef.current) {
+          // fire-and-forget; pass result directly to avoid stale closure
+          handleRunSteelChecksRef.current(result);
         }
       })
       .catch((err: Error) => {
@@ -200,6 +244,9 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
             if (effectiveAnalysisType !== state.analysisType) {
               dispatch({ type: 'SET_ANALYSIS_TYPE', payload: effectiveAnalysisType });
             }
+            if (steelCheckAutoRunRef.current) {
+              handleRunSteelChecksRef.current(result);
+            }
           }
         })
         .catch((err: Error) => {
@@ -232,6 +279,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       if (showLoadCaseDialog) { setShowLoadCaseDialog(false); return; }
       if (showConsolePanel) { setShowConsolePanel(false); return; }
       if (showAgentPanel) { setShowAgentPanel(false); return; }
+      if (showSteelCheckPanel && state.steelCheckResults) { setShowSteelCheckPanel(false); return; }
     };
     window.addEventListener('keydown', handleEscapeKey);
     return () => window.removeEventListener('keydown', handleEscapeKey);
@@ -241,6 +289,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
     showCalculationSettings, showMaterialsDialog,
     showGridsDialog, showProjectInfoDialog,
     showLoadCaseDialog, showConsolePanel, showAgentPanel,
+    showSteelCheckPanel, state.steelCheckResults,
   ]);
 
   // Graph split-view drag handlers
@@ -340,6 +389,8 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         activeRibbonTab={activeRibbonTab as any}
         onRibbonTabChange={setActiveRibbonTab}
         onFileTabClick={() => setShowBackstage(true)}
+        onRunSteelChecks={handleRunSteelChecks}
+        onToggleSteelCheckPanel={() => setShowSteelCheckPanel(s => !s)}
       />
       <div className="main-content">
         <ProjectBrowser
@@ -410,6 +461,9 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         )}
         {showAgentPanel && <AgentPanel onClose={() => setShowAgentPanel(false)} />}
         {showConsolePanel && <ConsolePanel onClose={() => setShowConsolePanel(false)} />}
+        {showSteelCheckPanel && state.steelCheckResults && (
+          <SteelCheckPanel onClose={() => setShowSteelCheckPanel(false)} />
+        )}
       </div>
       <LoadCaseTabs onSolve={handleSolve} />
       <StatusBar />
