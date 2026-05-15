@@ -152,8 +152,13 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     plateMembraneForceUnit,
     finishEditTrigger,
     activeLayerId,
-    selectionFilter
+    selectionFilter,
+    cursor2D,
+    cursor2DVisible
   } = state;
+
+  // Drag-state ref for Blender-style 2D cursor (Shift + RMB)
+  const cursor2DDragRef = useRef<{ active: boolean }>({ active: false });
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -5732,6 +5737,35 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
+    // Draw Blender-style 2D cursor (always on top, last drawn)
+    if (cursor2DVisible) {
+      const vs = viewStateRef.current;
+      const sx = cursor2D.x * vs.scale + vs.offsetX;
+      const sy = -cursor2D.y * vs.scale + vs.offsetY;
+      const r = 12;
+      ctx.save();
+      // White outer ring
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Red inner ring (Blender-style)
+      ctx.strokeStyle = '#FF4040';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Crosshair through center
+      ctx.strokeStyle = '#FF4040';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx - r * 1.5, sy); ctx.lineTo(sx + r * 1.5, sy);
+      ctx.moveTo(sx, sy - r * 1.5); ctx.lineTo(sx, sy + r * 1.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
   }, [
     mesh, result, selection, showDeformed, deformationScale,
     showStress, stressType, pendingNodes, selectedTool, gridSize, analysisType,
@@ -5742,7 +5776,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     platePolygonPoints, plateVoids, plateEditState, currentVoidPoints, voidTargetPlateId, arcMode, discretizeArc,
     screenToWorld, worldToScreen, snapToGridFn, getNodeIdToIndex, drawSupportSymbol, drawLoadArrow,
     drawDistributedLoad, drawForceDiagram, drawEnvelopeDiagram, drawGizmo, drawDimensions, drawConstraintPreview,
-    showEnvelope, envelopeResult, showStressGradient
+    showEnvelope, envelopeResult, showStressGradient, cursor2D, cursor2DVisible
   ]);
 
   useEffect(() => {
@@ -6601,6 +6635,16 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     if (selectedTool === 'pan') {
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
+    // Shift + Right Mouse Button: position the 2D cursor (Blender-style)
+    if (e.shiftKey && e.button === 2) {
+      e.preventDefault();
+      cursor2DDragRef.current.active = true;
+      const world = screenToWorld(x, y);
+      const snapped = snapToGridFn(world.x, world.y);
+      dispatch({ type: 'SET_CURSOR_2D', payload: snapped });
       return;
     }
 
@@ -7726,6 +7770,14 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
     const worldPos = screenToWorld(mx, my);
     dispatch({ type: 'SET_MOUSE_WORLD_POS', payload: worldPos });
 
+    // 2D cursor drag (Shift + RMB held)
+    if (cursor2DDragRef.current.active) {
+      const world = screenToWorld(mx, my);
+      const snapped = snapToGridFn(world.x, world.y);
+      dispatch({ type: 'SET_CURSOR_2D', payload: snapped });
+      return;
+    }
+
     // Move nodes/vertices in real-time during move mode (like dragging)
     if (moveMode && moveCentroid && (moveOriginalPositions || moveOriginalVertexPositions)) {
       setCursorPos({ x: mx, y: my });
@@ -8350,6 +8402,12 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   };
 
   const handleMouseUp = () => {
+    // Stop 2D cursor drag if active
+    if (cursor2DDragRef.current.active) {
+      cursor2DDragRef.current.active = false;
+      return;
+    }
+
     // Finalize selection box
     if (selectionBox) {
       const { startX, startY, endX, endY } = selectionBox;
