@@ -9,7 +9,6 @@ use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
 use nen_en_1993_1_1_ltb::LateralBracing;
 use nen_en_1990::ConsequenceClass;
-use nen_en_1993_1_1_section::{CheckStatus, classification::CrossSectionClass};
 use approx::assert_relative_eq;
 use std::sync::OnceLock;
 
@@ -102,17 +101,24 @@ fn portal_beam1_shear() {
 }
 
 #[test]
+fn portal_beam1_channel_ltb() {
+    let r = run();
+    // Phase 13-E: UNP350 LTB is now computed (no longer NotApplicable).
+    // Uses conservative monosym Mcr (× 0.7) with buckling curve c (alpha_LT=0.49).
+    let ltb_uc = uc_value(r, "6.3.2_ltb_channel");
+    assert!(ltb_uc > 0.0 && ltb_uc < 5.0, "LTB UC should be a finite positive value, got {}", ltb_uc);
+    eprintln!("portal_beam1 channel LTB UC (Phase 13-E) = {}", ltb_uc);
+}
+
+#[test]
 fn portal_beam1_governing_ok() {
     let r = run();
     // referentie governing: 6.3.3 UC=0.98, beam is OK.
-    // Our result: UC~1.33 due to profile DB differences (UNP350 Wpl=845000 vs referentie 889763 mm³)
-    // AND LTB Mcr for monosymmetric UNP section is calculated with doubly-symmetric formula.
-    // TODO Phase 13: 1) align UNP350 profile properties, 2) add monosymmetric LTB correction.
-    // SKIP status assertion: KNOWN profile DB discrepancy makes our result conservative.
+    // Our result: UC may differ due to profile DB differences (UNP350 Wpl=845000 vs referentie 889763 mm³).
+    // Phase 13-E: LTB is now computed with conservative monosym Mcr × 0.7.
     assert!(r.uc_max > 0.0, "uc_max should be positive");
-    // Document baseline UC for Phase 13 comparison:
-    eprintln!("portal_beam1 uc_max (baseline Phase 10) = {}", r.uc_max);
-    // referentie expects Ok but we currently compute NotOk due to profile DB delta — not a bug per se.
+    // Document UC for Phase 13-E comparison:
+    eprintln!("portal_beam1 uc_max (Phase 13-E) = {}", r.uc_max);
 }
 
 #[test]
