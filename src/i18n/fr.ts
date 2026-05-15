@@ -1140,4 +1140,48 @@ export const fr: Record<string, string> = {
   // Boîte de dialogue À propos
   'about.title': "À propos d'Open FEM2D Studio",
   'about.builtOn': 'Construit sur la plateforme OpenAEC',
+
+  // Onglet Vérification
+  'ribbon.check': 'Vérification',
+  'ribbon.check.runGroup': 'Vérifier',
+  'ribbon.check.run': 'Exécuter toutes les vérifications',
+  'ribbon.check.run.title': 'Exécuter les vérifications EN 1993-1-1 pour toutes les poutres en acier',
+  'ribbon.check.viewGroup': 'Affichage',
+  'ribbon.check.viewPanel': 'Afficher le panneau',
+  'ribbon.check.settingsGroup': 'Paramètres',
+  'ribbon.check.autoRun': 'Auto-exécuter après le calcul',
+
+  // Panneau de vérification EN 1993
+  'check.panel.title': 'Résultats vérification EN 1993',
+  'check.panel.empty': 'Aucune vérification — calculez le modèle et cliquez sur Exécuter toutes les vérifications',
+  'check.panel.totalBeams': 'Total des poutres',
+  'check.status.ok': 'OK',
+  'check.status.notOk': 'NON OK',
+  'check.governing': 'Déterminant :',
+
+  // Paramètres : onglet Vérifications
+  'settings.checks.title': 'Vérifications EN 1993',
+  'settings.checks.autoRun': 'Auto-exécuter les vérifications après le calcul',
+
+  // Rapport : sections EN 1993
+  'report.en1993Summary': 'Vérifications EN 1993 – Résumé',
+  'report.en1993Calculations': 'Vérifications EN 1993 – Calculs',
+
+  // Propriétés de poutre : saisies EN 1993
+  'beam.props.en1993': 'EN 1993',
+  'beam.props.steelGrade': 'Nuance d\'acier',
+  'beam.props.cantilever': 'Console',
+  'beam.props.consequenceClass': 'Classe de conséquence',
+  'beam.props.lateralBracing.title': 'Déversement (art. 6.3.2)',
+  'beam.props.lateralBracing.top': 'Maintiens latéraux à la semelle supérieure',
+  'beam.props.lateralBracing.bottom': 'Maintiens latéraux à la semelle inférieure',
+  'beam.props.lateralBracing.asTop': 'comme semelle supérieure',
+  'beam.props.lateralBracing.number': 'Nombre',
+  'beam.props.bucklingLength.title': 'Flambement (art. 6.3.3)',
+  'beam.props.bucklingLength.y': 'Longueur de flambement axe Y',
+  'beam.props.bucklingLength.z': 'Longueur de flambement axe Z',
+  'beam.props.deflection.check': 'Vérifier la flèche',
+  'beam.props.deflection.type': 'Type',
+  'beam.props.deflection.limit': 'Limite L /',
+  'beam.props.inputPerBeam': 'Saisie par poutre',
 };

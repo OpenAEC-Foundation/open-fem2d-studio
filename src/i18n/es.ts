@@ -1135,4 +1135,48 @@ export const es: Record<string, string> = {
   // Diálogo Acerca de
   'about.title': 'Acerca de Open FEM2D Studio',
   'about.builtOn': 'Construido sobre la plataforma OpenAEC',
+
+  // Pestaña de verificación
+  'ribbon.check': 'Verificación',
+  'ribbon.check.runGroup': 'Verificar',
+  'ribbon.check.run': 'Ejecutar todas las verificaciones',
+  'ribbon.check.run.title': 'Ejecutar verificaciones EN 1993-1-1 para todas las vigas de acero',
+  'ribbon.check.viewGroup': 'Ver',
+  'ribbon.check.viewPanel': 'Mostrar panel',
+  'ribbon.check.settingsGroup': 'Configuración',
+  'ribbon.check.autoRun': 'Auto-ejecutar tras cálculo',
+
+  // Panel de verificación EN 1993
+  'check.panel.title': 'Resultados verificación EN 1993',
+  'check.panel.empty': 'Sin verificaciones aún — calcule el modelo y haga clic en Ejecutar todas las verificaciones',
+  'check.panel.totalBeams': 'Total de barras',
+  'check.status.ok': 'OK',
+  'check.status.notOk': 'NO OK',
+  'check.governing': 'Condicionante:',
+
+  // Configuración: pestaña Verificaciones
+  'settings.checks.title': 'Verificaciones EN 1993',
+  'settings.checks.autoRun': 'Auto-ejecutar verificaciones tras el cálculo',
+
+  // Informe: secciones EN 1993
+  'report.en1993Summary': 'Verificaciones EN 1993 – Resumen',
+  'report.en1993Calculations': 'Verificaciones EN 1993 – Cálculos',
+
+  // Propiedades de barra: entradas EN 1993
+  'beam.props.en1993': 'EN 1993',
+  'beam.props.steelGrade': 'Grado de acero',
+  'beam.props.cantilever': 'Voladizo',
+  'beam.props.consequenceClass': 'Clase de consecuencia',
+  'beam.props.lateralBracing.title': 'Pandeo lateral-torsional (art. 6.3.2)',
+  'beam.props.lateralBracing.top': 'Arriostramientos laterales en ala superior',
+  'beam.props.lateralBracing.bottom': 'Arriostramientos laterales en ala inferior',
+  'beam.props.lateralBracing.asTop': 'como ala superior',
+  'beam.props.lateralBracing.number': 'Número',
+  'beam.props.bucklingLength.title': 'Pandeo (art. 6.3.3)',
+  'beam.props.bucklingLength.y': 'Longitud de pandeo eje Y',
+  'beam.props.bucklingLength.z': 'Longitud de pandeo eje Z',
+  'beam.props.deflection.check': 'Verificar flecha',
+  'beam.props.deflection.type': 'Tipo',
+  'beam.props.deflection.limit': 'Límite L /',
+  'beam.props.inputPerBeam': 'Entrada por barra',
 };
