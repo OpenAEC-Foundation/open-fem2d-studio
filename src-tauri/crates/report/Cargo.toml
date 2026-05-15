@@ -1,0 +1,17 @@
+[package]
+name = "report"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+# printpdf 0.7 — classic stable API (0.9 requires azul-layout, too heavy)
+# default feature pulls in js-sys; on Windows desktop this is fine.
+printpdf = { version = "0.7", default-features = false }
+steel-check = { path = "../steel-check" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }

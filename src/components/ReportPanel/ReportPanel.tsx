@@ -1,23 +1,22 @@
 /**
- * ReportPanel — True PDF preview (Phase 15)
- * Generates a real PDF binary from the report HTML via html2pdf.js and embeds
- * it in an iframe using a blob: URL so Chrome/WebView2 renders it with the
- * native PDF viewer. Save/Print opens the blob URL in a new window.
+ * ReportPanel — Native Rust PDF preview
+ * Calls Tauri command generate_steel_report_pdf (printpdf-based), receives
+ * PDF bytes, embeds as blob: URL in an iframe — Chrome/WebView2 native viewer.
+ * No html2pdf.js, no HTML rendering.
  */
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import html2pdf from 'html2pdf.js';
+import React, { useState, useRef, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useFEM } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
-import { generateReportHTML } from '../../core/report/ReportGenerator';
 import { getEnabledSections, CATEGORY_NAMES, ReportSectionCategory, IReportSection } from '../../core/report/ReportConfig';
 import { FileText, Printer } from 'lucide-react';
 import './ReportPanel.css';
 
 export const ReportPanel: React.FC = () => {
   const { state, dispatch } = useFEM();
-  const { t } = useI18n();
-  const { reportConfig, mesh, result, projectInfo, loadCases, loadCombinations } = state;
+  const { t: _t } = useI18n();
+  const { reportConfig, mesh, projectInfo } = state;
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
@@ -38,24 +37,9 @@ export const ReportPanel: React.FC = () => {
   // Check if we have enough data to show a report
   const hasData = mesh.getNodeCount() > 0;
 
-  // Generate the actual print-ready HTML (WYSIWYG)
-  const reportHtml = useMemo(() => {
-    if (!hasData) return '';
-    return generateReportHTML({
-      config: reportConfig,
-      mesh,
-      result,
-      projectInfo,
-      loadCases,
-      loadCombinations,
-      t,
-      steelCheckResults: state.steelCheckResults,
-    });
-  }, [reportConfig, mesh, result, projectInfo, loadCases, loadCombinations, t, state.steelCheckResults, hasData]);
-
-  // Generate PDF binary whenever report HTML changes
+  // Generate PDF via native Rust whenever check results or project info change
   useEffect(() => {
-    if (!hasData || !reportHtml) {
+    if (!hasData || !state.steelCheckResults || state.steelCheckResults.length === 0) {
       setPdfBlobUrl(null);
       return;
     }
@@ -63,46 +47,31 @@ export const ReportPanel: React.FC = () => {
     const myKey = ++generationKey.current;
     setIsGenerating(true);
 
-    // Create a hidden container for html2pdf to rasterize from
-    const container = document.createElement('div');
-    container.style.position = 'absolute';
-    container.style.left = '-99999px';
-    container.style.width = '210mm';
-    container.innerHTML = reportHtml;
-    document.body.appendChild(container);
-
-    const opts = {
-      margin: 0,
-      filename: 'report.pdf',
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      pagebreak: { mode: ['css', 'legacy'] },
+    const reportInput = {
+      project_name:        projectInfo.name         || 'Untitled',
+      project_number:      projectInfo.projectNumber || '',
+      engineer:            projectInfo.engineer      || '',
+      company:             projectInfo.company       || '',
+      date:                projectInfo.date          || new Date().toISOString().slice(0, 10),
+      steel_check_results: state.steelCheckResults,
     };
 
-    html2pdf().set(opts).from(container).outputPdf('blob').then((blob: Blob) => {
-      if (myKey !== generationKey.current) {
-        // Newer generation started while we waited — discard this result
-        try { document.body.removeChild(container); } catch { /* already removed */ }
-        return;
-      }
-      const url = URL.createObjectURL(blob);
-      setPdfBlobUrl(prev => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
+    invoke<number[]>('generate_steel_report_pdf', { input: reportInput })
+      .then(bytes => {
+        if (myKey !== generationKey.current) return; // stale
+        const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        setPdfBlobUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+        setIsGenerating(false);
+      })
+      .catch((err: unknown) => {
+        console.error('PDF generation failed:', err);
+        setIsGenerating(false);
       });
-      setIsGenerating(false);
-      try { document.body.removeChild(container); } catch { /* already removed */ }
-    }).catch((err: unknown) => {
-      console.error('PDF generation failed:', err);
-      setIsGenerating(false);
-      try { document.body.removeChild(container); } catch { /* already removed */ }
-    });
-
-    return () => {
-      try { if (container.parentNode) container.parentNode.removeChild(container); } catch { /* already removed */ }
-    };
-  }, [reportHtml, hasData]);
+  }, [projectInfo, state.steelCheckResults, hasData]);
 
   // Revoke blob URL on unmount
   useEffect(() => {

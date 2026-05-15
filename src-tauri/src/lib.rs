@@ -1,6 +1,7 @@
 use steel_check::{BeamCheckInput, BeamCheckResult};
 use steel_profiles::SteelProfile;
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
+use report::{ReportInput, generate_report_pdf};
 
 #[tauri::command]
 fn list_steel_profiles() -> Vec<SteelProfile> {
@@ -17,6 +18,11 @@ async fn check_steel_beams(inputs: Vec<BeamCheckInput>) -> Result<Vec<BeamCheckR
     Ok(steel_check::check_all_beams(inputs))
 }
 
+#[tauri::command]
+async fn generate_steel_report_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
+    Ok(generate_report_pdf(input))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -27,6 +33,7 @@ pub fn run() {
             list_steel_profiles,
             list_steel_grades,
             check_steel_beams,
+            generate_steel_report_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
