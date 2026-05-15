@@ -41,3 +41,10 @@ lto = "thin"
 [workspace]
 resolver = "2"
 members = [".", "crates/*"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = "10"
+approx = "0.5"
+insta = { version = "1", features = ["json"] }
