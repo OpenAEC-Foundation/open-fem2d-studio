@@ -1,6 +1,7 @@
 import { Mesh } from '../core/fem/Mesh';
 import { ISolverResult } from '../core/fem/types';
 import { IProjectInfo, IBeamSteelConfig } from '../context/FEMContext';
+import { buildNodeIdToIndex, getDofsPerNode } from '../core/solver/Assembler';
 import { calculateBeamLength } from '../core/fem/Beam';
 import type { BeamCheckInput } from './types/steel/BeamCheckInput';
 import type { ForcePoint } from './types/steel/ForcePoint';
@@ -50,6 +51,48 @@ function configToDeflectionClass(config: IBeamSteelConfig): DeflectionClass {
     case 'roof':      return 'Roof';
     case 'cantilever': return 'Cantilever';
     case 'custom':    return 'Custom';
+  }
+}
+
+/**
+ * Extract the maximum absolute vertical displacement for a beam element from a
+ * solver result, in mm.
+ *
+ * The ISolverResult.displacements flat array uses 3 DOFs per node (u, v, θ)
+ * for frame analyses. Node ordering matches the iteration order of mesh.nodes,
+ * filtered to active (connected) nodes only — identical to buildNodeIdToIndex.
+ *
+ * DOF layout per node: index*3+0 = u (horizontal), index*3+1 = v (vertical), index*3+2 = θ
+ *
+ * Returns 0.0 if the displacement vector is empty or the nodes cannot be located.
+ */
+function extractMaxDeflection(
+  beam: { nodeIds: number[] },
+  mesh: Mesh,
+  result: ISolverResult,
+): number {
+  const disp = result.displacements;
+  if (!disp || disp.length === 0) return 0.0;
+
+  // Frame analysis: 3 DOFs per node
+  try {
+    const nodeIdToIndex = buildNodeIdToIndex(mesh, 'frame');
+    const dofsPerNode = getDofsPerNode('frame'); // 3
+
+    let maxAbs = 0.0;
+    for (const nodeId of beam.nodeIds) {
+      const idx = nodeIdToIndex.get(nodeId);
+      if (idx === undefined) continue;
+      const vDof = idx * dofsPerNode + 1; // v (vertical) DOF index
+      if (vDof < disp.length) {
+        const absV = Math.abs(disp[vDof]);
+        if (absV > maxAbs) maxAbs = absV;
+      }
+    }
+    // Solver result is in metres; return mm
+    return maxAbs * 1000.0;
+  } catch {
+    return 0.0;
   }
 }
 
@@ -141,7 +184,7 @@ export function buildSteelCheckInputs(
       buckling_length_z_m: config.bucklingLengthZ / 1000.0,
       deflection_limit_class: configToDeflectionClass(config),
       deflection_limit_numerator: config.deflectionLimitNumerator,
-      deflection_actual_max_mm: 0.0,   // TODO: extract from SLS solver result
+      deflection_actual_max_mm: extractMaxDeflection(beam, mesh, result),
       is_cantilever: config.isCantilever,
       consequence_class: consequenceClass,
     });
