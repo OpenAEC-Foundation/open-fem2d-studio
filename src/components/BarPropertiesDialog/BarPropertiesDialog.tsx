@@ -37,9 +37,9 @@ interface BarPropertiesDialogProps {
 }
 
 export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }: BarPropertiesDialogProps) {
-  const { state } = useFEM();
+  const { state, dispatch } = useFEM();
   const [activeTab, setActiveTab] = useState<'general' | 'en1993'>('general');
-  const { mesh, lengthUnit } = state;
+  const { mesh, lengthUnit, meshVersion } = state;
 
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [showNewSection, setShowNewSection] = useState(false);
@@ -103,7 +103,9 @@ export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }:
     return nodes.sort((a, b) => a.id - b.id);
   }, [mesh.nodes]);
 
-  // Get all available sections from the project
+  // Get all available sections from the project.
+  // Keyed on meshVersion (in addition to the map ref) so the list refreshes when
+  // a new section is added via mesh.sections.set() + REFRESH_MESH dispatch.
   const availableSections = useMemo((): { name: string; section: IBeamSection }[] => {
     const sections: { name: string; section: IBeamSection }[] = [];
     for (const [name, sect] of mesh.sections.entries()) {
@@ -111,7 +113,8 @@ export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }:
     }
     // Sort by name
     return sections.sort((a, b) => a.name.localeCompare(b.name));
-  }, [mesh.sections]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesh.sections, meshVersion]);
 
   // Calculate current beam length based on selected nodes
   const currentLength = useMemo(() => {
@@ -185,6 +188,9 @@ export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }:
         onSave={(newProfileName, newSection) => {
           // Add/update section in project
           mesh.sections.set(newProfileName, newSection);
+          // Bump meshVersion so availableSections useMemo recomputes and the
+          // profile dropdown reflects the newly added section.
+          dispatch({ type: 'REFRESH_MESH' });
           setSection(newSection);
           setProfileName(newProfileName);
           onUpdate({ profileName: newProfileName, section: newSection });
@@ -341,6 +347,8 @@ export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }:
               counter++;
             }
             mesh.sections.set(newName, { ...section });
+            // Bump meshVersion so availableSections useMemo recomputes.
+            dispatch({ type: 'REFRESH_MESH' });
             setProfileName(newName);
           }}
         >
@@ -364,6 +372,8 @@ export function BarPropertiesDialog({ beam, length, layers, onUpdate, onClose }:
               return;
             }
             mesh.sections.delete(profileName);
+            // Bump meshVersion so availableSections useMemo recomputes.
+            dispatch({ type: 'REFRESH_MESH' });
             // Select first available section or clear
             const remaining = Array.from(mesh.sections.keys());
             if (remaining.length > 0) {
