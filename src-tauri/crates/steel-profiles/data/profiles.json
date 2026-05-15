@@ -2,61 +2,3596 @@
   {
     "name": "HEB160",
     "kind": "ISection",
-    "geometry": { "h": 160, "b": 160, "tw": 8.0, "tf": 13.0, "r": 15 },
-    "properties": {
-      "area_mm2": 5427.5, "iy_mm4": 24920000, "iz_mm4": 8892600,
-      "wel_y_mm3": 311500, "wel_z_mm3": 111200,
-      "wpl_y_mm3": 354100, "wpl_z_mm3": 170000,
-      "av_y_mm2": 4160, "av_z_mm2": 1762,
-      "it_mm4": 313664, "iw_mm6": 47940000000,
-      "iy_radius_mm": 67.8, "iz_radius_mm": 40.5,
-      "h_mm": 160, "b_mm": 160, "tw_mm": 8.0, "tf_mm": 13.0, "r_mm": 15
+    "geometry": {
+      "h": 160,
+      "b": 160,
+      "tw": 8,
+      "tf": 13,
+      "r": 15
     },
-    "buckling_curves": { "y_axis": "b", "z_axis": "c" }
+    "properties": {
+      "area_mm2": 5427.5,
+      "iy_mm4": 24920000,
+      "iz_mm4": 8892600,
+      "wel_y_mm3": 311500,
+      "wel_z_mm3": 111200,
+      "wpl_y_mm3": 354100,
+      "wpl_z_mm3": 170000,
+      "av_y_mm2": 4160,
+      "av_z_mm2": 1762,
+      "it_mm4": 313664,
+      "iw_mm6": 47940000000,
+      "iy_radius_mm": 67.8,
+      "iz_radius_mm": 40.5,
+      "h_mm": 160,
+      "b_mm": 160,
+      "tw_mm": 8,
+      "tf_mm": 13,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
   },
   {
     "name": "HEB300",
     "kind": "ISection",
-    "geometry": { "h": 300, "b": 300, "tw": 11.0, "tf": 19.0, "r": 27 },
-    "properties": {
-      "area_mm2": 14910, "iy_mm4": 251700000, "iz_mm4": 85630000,
-      "wel_y_mm3": 1678000, "wel_z_mm3": 570900,
-      "wpl_y_mm3": 1869000, "wpl_z_mm3": 870100,
-      "av_y_mm2": 11400, "av_z_mm2": 4742,
-      "it_mm4": 1851000, "iw_mm6": 1688000000000,
-      "iy_radius_mm": 129.9, "iz_radius_mm": 75.8,
-      "h_mm": 300, "b_mm": 300, "tw_mm": 11.0, "tf_mm": 19.0, "r_mm": 27
+    "geometry": {
+      "h": 300,
+      "b": 300,
+      "tw": 11,
+      "tf": 19,
+      "r": 27
     },
-    "buckling_curves": { "y_axis": "b", "z_axis": "c" }
+    "properties": {
+      "area_mm2": 14910,
+      "iy_mm4": 251700000,
+      "iz_mm4": 85630000,
+      "wel_y_mm3": 1678000,
+      "wel_z_mm3": 570900,
+      "wpl_y_mm3": 1869000,
+      "wpl_z_mm3": 870100,
+      "av_y_mm2": 11400,
+      "av_z_mm2": 4742,
+      "it_mm4": 1851000,
+      "iw_mm6": 1688000000000,
+      "iy_radius_mm": 129.9,
+      "iz_radius_mm": 75.8,
+      "h_mm": 300,
+      "b_mm": 300,
+      "tw_mm": 11,
+      "tf_mm": 19,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
   },
   {
     "name": "UNP350",
     "kind": "Channel",
-    "geometry": { "h": 350, "b": 100, "tw": 14.0, "tf": 16.0, "r": 16 },
-    "properties": {
-      "area_mm2": 7727, "iy_mm4": 128100000, "iz_mm4": 5703000,
-      "wel_y_mm3": 734400, "wel_z_mm3": 75100,
-      "wpl_y_mm3": 845000, "wpl_z_mm3": 144800,
-      "av_y_mm2": 3200, "av_z_mm2": 4900,
-      "it_mm4": 605000, "iw_mm6": 110600000000,
-      "iy_radius_mm": 128.7, "iz_radius_mm": 27.2,
-      "h_mm": 350, "b_mm": 100, "tw_mm": 14.0, "tf_mm": 16.0, "r_mm": 16
+    "geometry": {
+      "h": 350,
+      "b": 100,
+      "tw": 14,
+      "tf": 16,
+      "r": 16
     },
-    "buckling_curves": { "y_axis": "b", "z_axis": "c" }
+    "properties": {
+      "area_mm2": 7727,
+      "iy_mm4": 128100000,
+      "iz_mm4": 5703000,
+      "wel_y_mm3": 734400,
+      "wel_z_mm3": 75100,
+      "wpl_y_mm3": 845000,
+      "wpl_z_mm3": 144800,
+      "av_y_mm2": 3200,
+      "av_z_mm2": 4900,
+      "it_mm4": 605000,
+      "iw_mm6": 110600000000,
+      "iy_radius_mm": 128.7,
+      "iz_radius_mm": 27.2,
+      "h_mm": 350,
+      "b_mm": 100,
+      "tw_mm": 14,
+      "tf_mm": 16,
+      "r_mm": 16
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
   },
   {
     "name": "HFRHS200X200X16",
     "kind": "Shs",
-    "geometry": { "h": 200, "b": 200, "t": 16.0, "r": 24 },
-    "properties": {
-      "area_mm2": 11280, "iy_mm4": 64400000, "iz_mm4": 64400000,
-      "wel_y_mm3": 644000, "wel_z_mm3": 644000,
-      "wpl_y_mm3": 768000, "wpl_z_mm3": 768000,
-      "av_y_mm2": 5640, "av_z_mm2": 5640,
-      "it_mm4": 102000000, "iw_mm6": 0,
-      "iy_radius_mm": 75.6, "iz_radius_mm": 75.6,
-      "h_mm": 200, "b_mm": 200, "tw_mm": 16.0, "tf_mm": 16.0, "r_mm": 24
+    "geometry": {
+      "h": 200,
+      "b": 200,
+      "t": 16,
+      "r": 24
     },
-    "buckling_curves": { "y_axis": "c", "z_axis": "c" }
+    "properties": {
+      "area_mm2": 11280,
+      "iy_mm4": 64400000,
+      "iz_mm4": 64400000,
+      "wel_y_mm3": 644000,
+      "wel_z_mm3": 644000,
+      "wpl_y_mm3": 768000,
+      "wpl_z_mm3": 768000,
+      "av_y_mm2": 5640,
+      "av_z_mm2": 5640,
+      "it_mm4": 102000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 75.6,
+      "iz_radius_mm": 75.6,
+      "h_mm": 200,
+      "b_mm": 200,
+      "tw_mm": 16,
+      "tf_mm": 16,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "c",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "IPE 80",
+    "kind": "ISection",
+    "geometry": {
+      "h": 80,
+      "b": 46,
+      "tw": 3.8,
+      "tf": 5.2,
+      "t": 3.8,
+      "r": 5
+    },
+    "properties": {
+      "area_mm2": 764,
+      "iy_mm4": 801000,
+      "iz_mm4": 84900,
+      "wel_y_mm3": 20000,
+      "wel_z_mm3": 3690,
+      "wpl_y_mm3": 23200,
+      "wpl_z_mm3": 5820,
+      "av_y_mm2": 478.40000000000003,
+      "av_z_mm2": 304,
+      "it_mm4": 7000,
+      "iw_mm6": 118000000,
+      "iy_radius_mm": 32.37945829336445,
+      "iz_radius_mm": 10.541615362469917,
+      "h_mm": 80,
+      "b_mm": 46,
+      "tw_mm": 3.8,
+      "tf_mm": 5.2,
+      "r_mm": 5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 100",
+    "kind": "ISection",
+    "geometry": {
+      "h": 100,
+      "b": 55,
+      "tw": 4.1,
+      "tf": 5.7,
+      "t": 4.1,
+      "r": 7
+    },
+    "properties": {
+      "area_mm2": 1030,
+      "iy_mm4": 1710000,
+      "iz_mm4": 159000,
+      "wel_y_mm3": 34200,
+      "wel_z_mm3": 5790,
+      "wpl_y_mm3": 39400,
+      "wpl_z_mm3": 9150,
+      "av_y_mm2": 627,
+      "av_z_mm2": 409.99999999999994,
+      "it_mm4": 12000,
+      "iw_mm6": 351000000,
+      "iy_radius_mm": 40.745480421235456,
+      "iz_radius_mm": 12.424529449393042,
+      "h_mm": 100,
+      "b_mm": 55,
+      "tw_mm": 4.1,
+      "tf_mm": 5.7,
+      "r_mm": 7
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 120",
+    "kind": "ISection",
+    "geometry": {
+      "h": 120,
+      "b": 64,
+      "tw": 4.4,
+      "tf": 6.3,
+      "t": 4.4,
+      "r": 7
+    },
+    "properties": {
+      "area_mm2": 1320,
+      "iy_mm4": 3180000,
+      "iz_mm4": 277000,
+      "wel_y_mm3": 53000,
+      "wel_z_mm3": 8650,
+      "wpl_y_mm3": 60700,
+      "wpl_z_mm3": 13600,
+      "av_y_mm2": 806.4,
+      "av_z_mm2": 528,
+      "it_mm4": 17400,
+      "iw_mm6": 890000000,
+      "iy_radius_mm": 49.08249086070214,
+      "iz_radius_mm": 14.486148033500308,
+      "h_mm": 120,
+      "b_mm": 64,
+      "tw_mm": 4.4,
+      "tf_mm": 6.3,
+      "r_mm": 7
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 140",
+    "kind": "ISection",
+    "geometry": {
+      "h": 140,
+      "b": 73,
+      "tw": 4.7,
+      "tf": 6.9,
+      "t": 4.7,
+      "r": 7
+    },
+    "properties": {
+      "area_mm2": 1639.9999999999998,
+      "iy_mm4": 5410000,
+      "iz_mm4": 449000,
+      "wel_y_mm3": 77300,
+      "wel_z_mm3": 12300,
+      "wpl_y_mm3": 88300,
+      "wpl_z_mm3": 19300,
+      "av_y_mm2": 1007.4000000000001,
+      "av_z_mm2": 658,
+      "it_mm4": 24500,
+      "iw_mm6": 1980000000,
+      "iy_radius_mm": 57.43501099333819,
+      "iz_radius_mm": 16.5463134203628,
+      "h_mm": 140,
+      "b_mm": 73,
+      "tw_mm": 4.7,
+      "tf_mm": 6.9,
+      "r_mm": 7
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 160",
+    "kind": "ISection",
+    "geometry": {
+      "h": 160,
+      "b": 82,
+      "tw": 5,
+      "tf": 7.4,
+      "t": 5,
+      "r": 9
+    },
+    "properties": {
+      "area_mm2": 2010.0000000000002,
+      "iy_mm4": 8690000,
+      "iz_mm4": 683000,
+      "wel_y_mm3": 109000,
+      "wel_z_mm3": 16700,
+      "wpl_y_mm3": 124000,
+      "wpl_z_mm3": 26100,
+      "av_y_mm2": 1213.6000000000001,
+      "av_z_mm2": 800,
+      "it_mm4": 36000,
+      "iw_mm6": 3960000000,
+      "iy_radius_mm": 65.75243786033423,
+      "iz_radius_mm": 18.43369184468688,
+      "h_mm": 160,
+      "b_mm": 82,
+      "tw_mm": 5,
+      "tf_mm": 7.4,
+      "r_mm": 9
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 180",
+    "kind": "ISection",
+    "geometry": {
+      "h": 180,
+      "b": 91,
+      "tw": 5.3,
+      "tf": 8,
+      "t": 5.3,
+      "r": 9
+    },
+    "properties": {
+      "area_mm2": 2390,
+      "iy_mm4": 13200000,
+      "iz_mm4": 1010000,
+      "wel_y_mm3": 146000,
+      "wel_z_mm3": 22200,
+      "wpl_y_mm3": 166000,
+      "wpl_z_mm3": 34600,
+      "av_y_mm2": 1456,
+      "av_z_mm2": 954,
+      "it_mm4": 47900,
+      "iw_mm6": 7430000000,
+      "iy_radius_mm": 74.31697351413912,
+      "iz_radius_mm": 20.55709469403238,
+      "h_mm": 180,
+      "b_mm": 91,
+      "tw_mm": 5.3,
+      "tf_mm": 8,
+      "r_mm": 9
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 200",
+    "kind": "ISection",
+    "geometry": {
+      "h": 200,
+      "b": 100,
+      "tw": 5.6,
+      "tf": 8.5,
+      "t": 5.6,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 2850,
+      "iy_mm4": 19400000,
+      "iz_mm4": 1420000,
+      "wel_y_mm3": 194000,
+      "wel_z_mm3": 28500,
+      "wpl_y_mm3": 221000,
+      "wpl_z_mm3": 44600,
+      "av_y_mm2": 1700,
+      "av_z_mm2": 1120,
+      "it_mm4": 69800,
+      "iw_mm6": 13000000000,
+      "iy_radius_mm": 82.50465164982911,
+      "iz_radius_mm": 22.321416040096732,
+      "h_mm": 200,
+      "b_mm": 100,
+      "tw_mm": 5.6,
+      "tf_mm": 8.5,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 220",
+    "kind": "ISection",
+    "geometry": {
+      "h": 220,
+      "b": 110,
+      "tw": 5.9,
+      "tf": 9.2,
+      "t": 5.9,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 3340,
+      "iy_mm4": 27700000,
+      "iz_mm4": 2050000,
+      "wel_y_mm3": 252000,
+      "wel_z_mm3": 37300,
+      "wpl_y_mm3": 285000,
+      "wpl_z_mm3": 58100,
+      "av_y_mm2": 2023.9999999999998,
+      "av_z_mm2": 1298,
+      "it_mm4": 90700,
+      "iw_mm6": 22700000000,
+      "iy_radius_mm": 91.06817871052816,
+      "iz_radius_mm": 24.774431478639833,
+      "h_mm": 220,
+      "b_mm": 110,
+      "tw_mm": 5.9,
+      "tf_mm": 9.2,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 240",
+    "kind": "ISection",
+    "geometry": {
+      "h": 240,
+      "b": 120,
+      "tw": 6.2,
+      "tf": 9.8,
+      "t": 6.2,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 3910,
+      "iy_mm4": 38900000,
+      "iz_mm4": 2840000,
+      "wel_y_mm3": 324000,
+      "wel_z_mm3": 47300,
+      "wpl_y_mm3": 367000,
+      "wpl_z_mm3": 73900,
+      "av_y_mm2": 2352,
+      "av_z_mm2": 1488,
+      "it_mm4": 129000,
+      "iw_mm6": 37400000000,
+      "iy_radius_mm": 99.74391763340427,
+      "iz_radius_mm": 26.950746019311644,
+      "h_mm": 240,
+      "b_mm": 120,
+      "tw_mm": 6.2,
+      "tf_mm": 9.8,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 270",
+    "kind": "ISection",
+    "geometry": {
+      "h": 270,
+      "b": 135,
+      "tw": 6.6,
+      "tf": 10.2,
+      "t": 6.6,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 4590,
+      "iy_mm4": 57900000,
+      "iz_mm4": 4200000,
+      "wel_y_mm3": 429000,
+      "wel_z_mm3": 62200,
+      "wpl_y_mm3": 484000,
+      "wpl_z_mm3": 97000,
+      "av_y_mm2": 2754,
+      "av_z_mm2": 1782,
+      "it_mm4": 159000,
+      "iw_mm6": 70600000000,
+      "iy_radius_mm": 112.31375287544851,
+      "iz_radius_mm": 30.249507099101006,
+      "h_mm": 270,
+      "b_mm": 135,
+      "tw_mm": 6.6,
+      "tf_mm": 10.2,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 300",
+    "kind": "ISection",
+    "geometry": {
+      "h": 300,
+      "b": 150,
+      "tw": 7.1,
+      "tf": 10.7,
+      "t": 7.1,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 5380,
+      "iy_mm4": 83600000,
+      "iz_mm4": 6040000,
+      "wel_y_mm3": 557000,
+      "wel_z_mm3": 80500,
+      "wpl_y_mm3": 628000,
+      "wpl_z_mm3": 125000,
+      "av_y_mm2": 3210,
+      "av_z_mm2": 2130,
+      "it_mm4": 201000,
+      "iw_mm6": 126000000000,
+      "iy_radius_mm": 124.65565954760767,
+      "iz_radius_mm": 33.50636625964759,
+      "h_mm": 300,
+      "b_mm": 150,
+      "tw_mm": 7.1,
+      "tf_mm": 10.7,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 330",
+    "kind": "ISection",
+    "geometry": {
+      "h": 330,
+      "b": 160,
+      "tw": 7.5,
+      "tf": 11.5,
+      "t": 7.5,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 6260,
+      "iy_mm4": 117700000,
+      "iz_mm4": 7880000,
+      "wel_y_mm3": 713000,
+      "wel_z_mm3": 98500,
+      "wpl_y_mm3": 804000,
+      "wpl_z_mm3": 154000,
+      "av_y_mm2": 3680,
+      "av_z_mm2": 2475,
+      "it_mm4": 282000,
+      "iw_mm6": 199000000000,
+      "iy_radius_mm": 137.12008216489426,
+      "iz_radius_mm": 35.47937347941777,
+      "h_mm": 330,
+      "b_mm": 160,
+      "tw_mm": 7.5,
+      "tf_mm": 11.5,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 360",
+    "kind": "ISection",
+    "geometry": {
+      "h": 360,
+      "b": 170,
+      "tw": 8,
+      "tf": 12.7,
+      "t": 8,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 7270,
+      "iy_mm4": 162700000,
+      "iz_mm4": 10400000,
+      "wel_y_mm3": 904000,
+      "wel_z_mm3": 123000,
+      "wpl_y_mm3": 1020000,
+      "wpl_z_mm3": 191000,
+      "av_y_mm2": 4318,
+      "av_z_mm2": 2880,
+      "it_mm4": 373000,
+      "iw_mm6": 314000000000,
+      "iy_radius_mm": 149.59826992945878,
+      "iz_radius_mm": 37.82243317357027,
+      "h_mm": 360,
+      "b_mm": 170,
+      "tw_mm": 8,
+      "tf_mm": 12.7,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 400",
+    "kind": "ISection",
+    "geometry": {
+      "h": 400,
+      "b": 180,
+      "tw": 8.6,
+      "tf": 13.5,
+      "t": 8.6,
+      "r": 21
+    },
+    "properties": {
+      "area_mm2": 8450,
+      "iy_mm4": 231300000,
+      "iz_mm4": 13200000,
+      "wel_y_mm3": 1160000,
+      "wel_z_mm3": 146000,
+      "wpl_y_mm3": 1310000,
+      "wpl_z_mm3": 229000,
+      "av_y_mm2": 4860,
+      "av_z_mm2": 3440,
+      "it_mm4": 511000,
+      "iw_mm6": 490000000000,
+      "iy_radius_mm": 165.44721534401467,
+      "iz_radius_mm": 39.52379254973886,
+      "h_mm": 400,
+      "b_mm": 180,
+      "tw_mm": 8.6,
+      "tf_mm": 13.5,
+      "r_mm": 21
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 450",
+    "kind": "ISection",
+    "geometry": {
+      "h": 450,
+      "b": 190,
+      "tw": 9.4,
+      "tf": 14.6,
+      "t": 9.4,
+      "r": 21
+    },
+    "properties": {
+      "area_mm2": 9880,
+      "iy_mm4": 337400000,
+      "iz_mm4": 16800000,
+      "wel_y_mm3": 1500000,
+      "wel_z_mm3": 176000,
+      "wpl_y_mm3": 1700000,
+      "wpl_z_mm3": 276000,
+      "av_y_mm2": 5548,
+      "av_z_mm2": 4230,
+      "it_mm4": 669000,
+      "iw_mm6": 791000000000,
+      "iy_radius_mm": 184.79663841869584,
+      "iz_radius_mm": 41.23596559193922,
+      "h_mm": 450,
+      "b_mm": 190,
+      "tw_mm": 9.4,
+      "tf_mm": 14.6,
+      "r_mm": 21
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 500",
+    "kind": "ISection",
+    "geometry": {
+      "h": 500,
+      "b": 200,
+      "tw": 10.2,
+      "tf": 16,
+      "t": 10.2,
+      "r": 21
+    },
+    "properties": {
+      "area_mm2": 11600,
+      "iy_mm4": 482000000,
+      "iz_mm4": 21400000,
+      "wel_y_mm3": 1930000,
+      "wel_z_mm3": 214000,
+      "wpl_y_mm3": 2190000,
+      "wpl_z_mm3": 336000,
+      "av_y_mm2": 6400,
+      "av_z_mm2": 5100,
+      "it_mm4": 893000,
+      "iw_mm6": 1249000000000,
+      "iy_radius_mm": 203.84240024570707,
+      "iz_radius_mm": 42.951456159330576,
+      "h_mm": 500,
+      "b_mm": 200,
+      "tw_mm": 10.2,
+      "tf_mm": 16,
+      "r_mm": 21
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 550",
+    "kind": "ISection",
+    "geometry": {
+      "h": 550,
+      "b": 210,
+      "tw": 11.1,
+      "tf": 17.2,
+      "t": 11.1,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 13400,
+      "iy_mm4": 671200000,
+      "iz_mm4": 26700000,
+      "wel_y_mm3": 2440000,
+      "wel_z_mm3": 254000,
+      "wpl_y_mm3": 2780000,
+      "wpl_z_mm3": 401000,
+      "av_y_mm2": 7224,
+      "av_z_mm2": 6105,
+      "it_mm4": 1230000,
+      "iw_mm6": 1884000000000,
+      "iy_radius_mm": 223.80695306179825,
+      "iz_radius_mm": 44.63784620064946,
+      "h_mm": 550,
+      "b_mm": 210,
+      "tw_mm": 11.1,
+      "tf_mm": 17.2,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "IPE 600",
+    "kind": "ISection",
+    "geometry": {
+      "h": 600,
+      "b": 220,
+      "tw": 12,
+      "tf": 19,
+      "t": 12,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 15600,
+      "iy_mm4": 920800000,
+      "iz_mm4": 33900000,
+      "wel_y_mm3": 3070000,
+      "wel_z_mm3": 308000,
+      "wpl_y_mm3": 3510000,
+      "wpl_z_mm3": 486000,
+      "av_y_mm2": 8360,
+      "av_z_mm2": 7200,
+      "it_mm4": 1650000,
+      "iw_mm6": 2846000000000,
+      "iy_radius_mm": 242.95193151247227,
+      "iz_radius_mm": 46.616273157309806,
+      "h_mm": 600,
+      "b_mm": 220,
+      "tw_mm": 12,
+      "tf_mm": 19,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "HEA 100",
+    "kind": "ISection",
+    "geometry": {
+      "h": 96,
+      "b": 100,
+      "tw": 5,
+      "tf": 8,
+      "t": 5,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 2120,
+      "iy_mm4": 3490000,
+      "iz_mm4": 1340000,
+      "wel_y_mm3": 72800,
+      "wel_z_mm3": 26800,
+      "wpl_y_mm3": 83000,
+      "wpl_z_mm3": 41100,
+      "av_y_mm2": 1600,
+      "av_z_mm2": 480,
+      "it_mm4": 52400,
+      "iw_mm6": 5750000000,
+      "iy_radius_mm": 40.57371581571424,
+      "iz_radius_mm": 25.141111186622464,
+      "h_mm": 96,
+      "b_mm": 100,
+      "tw_mm": 5,
+      "tf_mm": 8,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 120",
+    "kind": "ISection",
+    "geometry": {
+      "h": 114,
+      "b": 120,
+      "tw": 5,
+      "tf": 8,
+      "t": 5,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 2530,
+      "iy_mm4": 6060000,
+      "iz_mm4": 2310000,
+      "wel_y_mm3": 106000,
+      "wel_z_mm3": 38500,
+      "wpl_y_mm3": 119000,
+      "wpl_z_mm3": 58900,
+      "av_y_mm2": 1920,
+      "av_z_mm2": 570,
+      "it_mm4": 59900,
+      "iw_mm6": 13280000000,
+      "iy_radius_mm": 48.941362026368324,
+      "iz_radius_mm": 30.216609311120095,
+      "h_mm": 114,
+      "b_mm": 120,
+      "tw_mm": 5,
+      "tf_mm": 8,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 140",
+    "kind": "ISection",
+    "geometry": {
+      "h": 133,
+      "b": 140,
+      "tw": 5.5,
+      "tf": 8.5,
+      "t": 5.5,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 3140,
+      "iy_mm4": 10300000,
+      "iz_mm4": 3890000,
+      "wel_y_mm3": 155000,
+      "wel_z_mm3": 55600,
+      "wpl_y_mm3": 174000,
+      "wpl_z_mm3": 85200,
+      "av_y_mm2": 2380,
+      "av_z_mm2": 731.5,
+      "it_mm4": 81300.00000000001,
+      "iw_mm6": 28500000000,
+      "iy_radius_mm": 57.273508510218434,
+      "iz_radius_mm": 35.197350797818764,
+      "h_mm": 133,
+      "b_mm": 140,
+      "tw_mm": 5.5,
+      "tf_mm": 8.5,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 160",
+    "kind": "ISection",
+    "geometry": {
+      "h": 152,
+      "b": 160,
+      "tw": 6,
+      "tf": 9,
+      "t": 6,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 3879.9999999999995,
+      "iy_mm4": 16700000,
+      "iz_mm4": 6160000,
+      "wel_y_mm3": 220000,
+      "wel_z_mm3": 77000,
+      "wpl_y_mm3": 245000,
+      "wpl_z_mm3": 118000,
+      "av_y_mm2": 2880,
+      "av_z_mm2": 912,
+      "it_mm4": 122000,
+      "iw_mm6": 54400000000,
+      "iy_radius_mm": 65.60582071234386,
+      "iz_radius_mm": 39.84506074759307,
+      "h_mm": 152,
+      "b_mm": 160,
+      "tw_mm": 6,
+      "tf_mm": 9,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 180",
+    "kind": "ISection",
+    "geometry": {
+      "h": 171,
+      "b": 180,
+      "tw": 6,
+      "tf": 9.5,
+      "t": 6,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 4530,
+      "iy_mm4": 25100000,
+      "iz_mm4": 9250000,
+      "wel_y_mm3": 294000,
+      "wel_z_mm3": 103000,
+      "wpl_y_mm3": 325000,
+      "wpl_z_mm3": 157000,
+      "av_y_mm2": 3420,
+      "av_z_mm2": 1026,
+      "it_mm4": 148000,
+      "iw_mm6": 94580000000,
+      "iy_radius_mm": 74.43681113600401,
+      "iz_radius_mm": 45.18785904262905,
+      "h_mm": 171,
+      "b_mm": 180,
+      "tw_mm": 6,
+      "tf_mm": 9.5,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 200",
+    "kind": "ISection",
+    "geometry": {
+      "h": 190,
+      "b": 200,
+      "tw": 6.5,
+      "tf": 10,
+      "t": 6.5,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 5380,
+      "iy_mm4": 36900000,
+      "iz_mm4": 13400000,
+      "wel_y_mm3": 389000,
+      "wel_z_mm3": 134000,
+      "wpl_y_mm3": 430000,
+      "wpl_z_mm3": 204000,
+      "av_y_mm2": 4000,
+      "av_z_mm2": 1235,
+      "it_mm4": 209800,
+      "iw_mm6": 155000000000,
+      "iy_radius_mm": 82.81748643541141,
+      "iz_radius_mm": 49.9069766636149,
+      "h_mm": 190,
+      "b_mm": 200,
+      "tw_mm": 6.5,
+      "tf_mm": 10,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 220",
+    "kind": "ISection",
+    "geometry": {
+      "h": 210,
+      "b": 220,
+      "tw": 7,
+      "tf": 11,
+      "t": 7,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 6430,
+      "iy_mm4": 54100000,
+      "iz_mm4": 19500000,
+      "wel_y_mm3": 515000,
+      "wel_z_mm3": 177000,
+      "wpl_y_mm3": 569000,
+      "wpl_z_mm3": 271000,
+      "av_y_mm2": 4840,
+      "av_z_mm2": 1470,
+      "it_mm4": 285000,
+      "iw_mm6": 267000000000,
+      "iy_radius_mm": 91.72614593227726,
+      "iz_radius_mm": 55.06958696976234,
+      "h_mm": 210,
+      "b_mm": 220,
+      "tw_mm": 7,
+      "tf_mm": 11,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 240",
+    "kind": "ISection",
+    "geometry": {
+      "h": 230,
+      "b": 240,
+      "tw": 7.5,
+      "tf": 12,
+      "t": 7.5,
+      "r": 21
+    },
+    "properties": {
+      "area_mm2": 7680,
+      "iy_mm4": 77600000,
+      "iz_mm4": 27700000,
+      "wel_y_mm3": 675000,
+      "wel_z_mm3": 231000,
+      "wpl_y_mm3": 745000,
+      "wpl_z_mm3": 352000,
+      "av_y_mm2": 5760,
+      "av_z_mm2": 1725,
+      "it_mm4": 416000,
+      "iw_mm6": 449000000000,
+      "iy_radius_mm": 100.51948401512348,
+      "iz_radius_mm": 60.056397105831564,
+      "h_mm": 230,
+      "b_mm": 240,
+      "tw_mm": 7.5,
+      "tf_mm": 12,
+      "r_mm": 21
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 260",
+    "kind": "ISection",
+    "geometry": {
+      "h": 250,
+      "b": 260,
+      "tw": 7.5,
+      "tf": 12.5,
+      "t": 7.5,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 8680,
+      "iy_mm4": 104500000,
+      "iz_mm4": 36700000,
+      "wel_y_mm3": 836000,
+      "wel_z_mm3": 282000,
+      "wpl_y_mm3": 920000,
+      "wpl_z_mm3": 430000,
+      "av_y_mm2": 6500,
+      "av_z_mm2": 1875,
+      "it_mm4": 524000,
+      "iw_mm6": 682000000000,
+      "iy_radius_mm": 109.72315392346522,
+      "iz_radius_mm": 65.02392328272988,
+      "h_mm": 250,
+      "b_mm": 260,
+      "tw_mm": 7.5,
+      "tf_mm": 12.5,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 280",
+    "kind": "ISection",
+    "geometry": {
+      "h": 270,
+      "b": 280,
+      "tw": 8,
+      "tf": 13,
+      "t": 8,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 9730,
+      "iy_mm4": 136700000,
+      "iz_mm4": 47600000,
+      "wel_y_mm3": 1010000,
+      "wel_z_mm3": 340000,
+      "wpl_y_mm3": 1110000,
+      "wpl_z_mm3": 518000,
+      "av_y_mm2": 7280,
+      "av_z_mm2": 2160,
+      "it_mm4": 621000,
+      "iw_mm6": 1000000000000,
+      "iy_radius_mm": 118.52987793379789,
+      "iz_radius_mm": 69.9434509510022,
+      "h_mm": 270,
+      "b_mm": 280,
+      "tw_mm": 8,
+      "tf_mm": 13,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 300",
+    "kind": "ISection",
+    "geometry": {
+      "h": 290,
+      "b": 300,
+      "tw": 8.5,
+      "tf": 14,
+      "t": 8.5,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 11200,
+      "iy_mm4": 182600000,
+      "iz_mm4": 63100000,
+      "wel_y_mm3": 1260000,
+      "wel_z_mm3": 421000,
+      "wpl_y_mm3": 1380000,
+      "wpl_z_mm3": 641000,
+      "av_y_mm2": 8400,
+      "av_z_mm2": 2465,
+      "it_mm4": 852000,
+      "iw_mm6": 1520000000000,
+      "iy_radius_mm": 127.68543937572298,
+      "iz_radius_mm": 75.05950020769238,
+      "h_mm": 290,
+      "b_mm": 300,
+      "tw_mm": 8.5,
+      "tf_mm": 14,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 320",
+    "kind": "ISection",
+    "geometry": {
+      "h": 310,
+      "b": 300,
+      "tw": 9,
+      "tf": 15.5,
+      "t": 9,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 12440,
+      "iy_mm4": 229300000,
+      "iz_mm4": 69900000,
+      "wel_y_mm3": 1480000,
+      "wel_z_mm3": 466000,
+      "wpl_y_mm3": 1630000,
+      "wpl_z_mm3": 709000,
+      "av_y_mm2": 9300,
+      "av_z_mm2": 2790,
+      "it_mm4": 1080000,
+      "iw_mm6": 1960000000000,
+      "iy_radius_mm": 135.76625458575623,
+      "iz_radius_mm": 74.95979629837082,
+      "h_mm": 310,
+      "b_mm": 300,
+      "tw_mm": 9,
+      "tf_mm": 15.5,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 340",
+    "kind": "ISection",
+    "geometry": {
+      "h": 330,
+      "b": 300,
+      "tw": 9.5,
+      "tf": 16.5,
+      "t": 9.5,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 13350,
+      "iy_mm4": 276900000,
+      "iz_mm4": 74400000,
+      "wel_y_mm3": 1680000,
+      "wel_z_mm3": 496000,
+      "wpl_y_mm3": 1850000,
+      "wpl_z_mm3": 756000,
+      "av_y_mm2": 9900,
+      "av_z_mm2": 3135,
+      "it_mm4": 1270000,
+      "iw_mm6": 2450000000000,
+      "iy_radius_mm": 144.01934951147317,
+      "iz_radius_mm": 74.65275418807512,
+      "h_mm": 330,
+      "b_mm": 300,
+      "tw_mm": 9.5,
+      "tf_mm": 16.5,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 360",
+    "kind": "ISection",
+    "geometry": {
+      "h": 350,
+      "b": 300,
+      "tw": 10,
+      "tf": 17.5,
+      "t": 10,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 14280.000000000002,
+      "iy_mm4": 330900000,
+      "iz_mm4": 78900000,
+      "wel_y_mm3": 1890000,
+      "wel_z_mm3": 526000,
+      "wpl_y_mm3": 2090000,
+      "wpl_z_mm3": 803000,
+      "av_y_mm2": 10500,
+      "av_z_mm2": 3500,
+      "it_mm4": 1490000,
+      "iw_mm6": 2990000000000,
+      "iy_radius_mm": 152.2244031276294,
+      "iz_radius_mm": 74.33175690129767,
+      "h_mm": 350,
+      "b_mm": 300,
+      "tw_mm": 10,
+      "tf_mm": 17.5,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEA 400",
+    "kind": "ISection",
+    "geometry": {
+      "h": 390,
+      "b": 300,
+      "tw": 11,
+      "tf": 19,
+      "t": 11,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 15900,
+      "iy_mm4": 450700000,
+      "iz_mm4": 85600000,
+      "wel_y_mm3": 2310000,
+      "wel_z_mm3": 571000,
+      "wpl_y_mm3": 2560000,
+      "wpl_z_mm3": 873000,
+      "av_y_mm2": 11400,
+      "av_z_mm2": 4290,
+      "it_mm4": 1890000,
+      "iw_mm6": 4320000000000,
+      "iy_radius_mm": 168.36244221822614,
+      "iz_radius_mm": 73.37334528793231,
+      "h_mm": 390,
+      "b_mm": 300,
+      "tw_mm": 11,
+      "tf_mm": 19,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "HEB 100",
+    "kind": "ISection",
+    "geometry": {
+      "h": 100,
+      "b": 100,
+      "tw": 6,
+      "tf": 10,
+      "t": 6,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 2600,
+      "iy_mm4": 4500000,
+      "iz_mm4": 1670000,
+      "wel_y_mm3": 89900,
+      "wel_z_mm3": 33500,
+      "wpl_y_mm3": 104000,
+      "wpl_z_mm3": 51400,
+      "av_y_mm2": 2000,
+      "av_z_mm2": 600,
+      "it_mm4": 92500,
+      "iw_mm6": 8460000000,
+      "iy_radius_mm": 41.60251471689218,
+      "iz_radius_mm": 25.34379001467011,
+      "h_mm": 100,
+      "b_mm": 100,
+      "tw_mm": 6,
+      "tf_mm": 10,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 120",
+    "kind": "ISection",
+    "geometry": {
+      "h": 120,
+      "b": 120,
+      "tw": 6.5,
+      "tf": 11,
+      "t": 6.5,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 3400,
+      "iy_mm4": 8640000,
+      "iz_mm4": 3180000,
+      "wel_y_mm3": 144000,
+      "wel_z_mm3": 53000,
+      "wpl_y_mm3": 165000,
+      "wpl_z_mm3": 81000,
+      "av_y_mm2": 2640,
+      "av_z_mm2": 780,
+      "it_mm4": 138000,
+      "iw_mm6": 22400000000,
+      "iy_radius_mm": 50.410083025008355,
+      "iz_radius_mm": 30.582578662484607,
+      "h_mm": 120,
+      "b_mm": 120,
+      "tw_mm": 6.5,
+      "tf_mm": 11,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 140",
+    "kind": "ISection",
+    "geometry": {
+      "h": 140,
+      "b": 140,
+      "tw": 7,
+      "tf": 12,
+      "t": 7,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 4300,
+      "iy_mm4": 15100000,
+      "iz_mm4": 5500000,
+      "wel_y_mm3": 216000,
+      "wel_z_mm3": 78500,
+      "wpl_y_mm3": 246000,
+      "wpl_z_mm3": 120000,
+      "av_y_mm2": 3360,
+      "av_z_mm2": 980,
+      "it_mm4": 201000,
+      "iw_mm6": 48700000000,
+      "iy_radius_mm": 59.25899009413461,
+      "iz_radius_mm": 35.764084881929534,
+      "h_mm": 140,
+      "b_mm": 140,
+      "tw_mm": 7,
+      "tf_mm": 12,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 160",
+    "kind": "ISection",
+    "geometry": {
+      "h": 160,
+      "b": 160,
+      "tw": 8,
+      "tf": 13,
+      "t": 8,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 5430,
+      "iy_mm4": 24900000,
+      "iz_mm4": 8890000,
+      "wel_y_mm3": 311000,
+      "wel_z_mm3": 111000,
+      "wpl_y_mm3": 354000,
+      "wpl_z_mm3": 170000,
+      "av_y_mm2": 4160,
+      "av_z_mm2": 1280,
+      "it_mm4": 312000,
+      "iw_mm6": 93750000000,
+      "iy_radius_mm": 67.71731949151578,
+      "iz_radius_mm": 40.46233726131315,
+      "h_mm": 160,
+      "b_mm": 160,
+      "tw_mm": 8,
+      "tf_mm": 13,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 180",
+    "kind": "ISection",
+    "geometry": {
+      "h": 180,
+      "b": 180,
+      "tw": 8.5,
+      "tf": 14,
+      "t": 8.5,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 6530,
+      "iy_mm4": 38300000,
+      "iz_mm4": 13600000,
+      "wel_y_mm3": 426000,
+      "wel_z_mm3": 151000,
+      "wpl_y_mm3": 481000,
+      "wpl_z_mm3": 231000,
+      "av_y_mm2": 5040,
+      "av_z_mm2": 1530,
+      "it_mm4": 422000,
+      "iw_mm6": 167000000000,
+      "iy_radius_mm": 76.58483770305361,
+      "iz_radius_mm": 45.6365561001259,
+      "h_mm": 180,
+      "b_mm": 180,
+      "tw_mm": 8.5,
+      "tf_mm": 14,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 200",
+    "kind": "ISection",
+    "geometry": {
+      "h": 200,
+      "b": 200,
+      "tw": 9,
+      "tf": 15,
+      "t": 9,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 7809.999999999999,
+      "iy_mm4": 57000000,
+      "iz_mm4": 20000000,
+      "wel_y_mm3": 570000,
+      "wel_z_mm3": 200000,
+      "wpl_y_mm3": 642000,
+      "wpl_z_mm3": 306000,
+      "av_y_mm2": 6000,
+      "av_z_mm2": 1800,
+      "it_mm4": 593000,
+      "iw_mm6": 283000000000,
+      "iy_radius_mm": 85.43029595728645,
+      "iz_radius_mm": 50.604539936925754,
+      "h_mm": 200,
+      "b_mm": 200,
+      "tw_mm": 9,
+      "tf_mm": 15,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 220",
+    "kind": "ISection",
+    "geometry": {
+      "h": 220,
+      "b": 220,
+      "tw": 9.5,
+      "tf": 16,
+      "t": 9.5,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 9100,
+      "iy_mm4": 80900000,
+      "iz_mm4": 28400000,
+      "wel_y_mm3": 736000,
+      "wel_z_mm3": 258000,
+      "wpl_y_mm3": 827000,
+      "wpl_z_mm3": 396000,
+      "av_y_mm2": 7040,
+      "av_z_mm2": 2090,
+      "it_mm4": 766000,
+      "iw_mm6": 466000000000,
+      "iy_radius_mm": 94.28737927267832,
+      "iz_radius_mm": 55.86482901503522,
+      "h_mm": 220,
+      "b_mm": 220,
+      "tw_mm": 9.5,
+      "tf_mm": 16,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 240",
+    "kind": "ISection",
+    "geometry": {
+      "h": 240,
+      "b": 240,
+      "tw": 10,
+      "tf": 17,
+      "t": 10,
+      "r": 21
+    },
+    "properties": {
+      "area_mm2": 10600,
+      "iy_mm4": 112600000,
+      "iz_mm4": 39200000,
+      "wel_y_mm3": 938000,
+      "wel_z_mm3": 327000,
+      "wpl_y_mm3": 1050000,
+      "wpl_z_mm3": 500000,
+      "av_y_mm2": 8160,
+      "av_z_mm2": 2400,
+      "it_mm4": 1030000,
+      "iw_mm6": 753000000000,
+      "iy_radius_mm": 103.06619964582939,
+      "iz_radius_mm": 60.81211398682971,
+      "h_mm": 240,
+      "b_mm": 240,
+      "tw_mm": 10,
+      "tf_mm": 17,
+      "r_mm": 21
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 260",
+    "kind": "ISection",
+    "geometry": {
+      "h": 260,
+      "b": 260,
+      "tw": 10,
+      "tf": 17.5,
+      "t": 10,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 11800,
+      "iy_mm4": 149200000,
+      "iz_mm4": 51300000,
+      "wel_y_mm3": 1150000,
+      "wel_z_mm3": 395000,
+      "wpl_y_mm3": 1280000,
+      "wpl_z_mm3": 602000,
+      "av_y_mm2": 9100,
+      "av_z_mm2": 2600,
+      "it_mm4": 1240000,
+      "iw_mm6": 1130000000000,
+      "iy_radius_mm": 112.4458438387572,
+      "iz_radius_mm": 65.93525329532483,
+      "h_mm": 260,
+      "b_mm": 260,
+      "tw_mm": 10,
+      "tf_mm": 17.5,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 280",
+    "kind": "ISection",
+    "geometry": {
+      "h": 280,
+      "b": 280,
+      "tw": 10.5,
+      "tf": 18,
+      "t": 10.5,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 13100,
+      "iy_mm4": 192700000,
+      "iz_mm4": 65900000,
+      "wel_y_mm3": 1380000,
+      "wel_z_mm3": 471000,
+      "wpl_y_mm3": 1530000,
+      "wpl_z_mm3": 718000,
+      "av_y_mm2": 10080,
+      "av_z_mm2": 2940,
+      "it_mm4": 1440000,
+      "iw_mm6": 1680000000000,
+      "iy_radius_mm": 121.28447412641957,
+      "iz_radius_mm": 70.92625995458268,
+      "h_mm": 280,
+      "b_mm": 280,
+      "tw_mm": 10.5,
+      "tf_mm": 18,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 300",
+    "kind": "ISection",
+    "geometry": {
+      "h": 300,
+      "b": 300,
+      "tw": 11,
+      "tf": 19,
+      "t": 11,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 14900,
+      "iy_mm4": 251700000,
+      "iz_mm4": 85600000,
+      "wel_y_mm3": 1680000,
+      "wel_z_mm3": 571000,
+      "wpl_y_mm3": 1870000,
+      "wpl_z_mm3": 871000,
+      "av_y_mm2": 11400,
+      "av_z_mm2": 3300,
+      "it_mm4": 1850000,
+      "iw_mm6": 2530000000000,
+      "iy_radius_mm": 129.97160247401902,
+      "iz_radius_mm": 75.79555688134378,
+      "h_mm": 300,
+      "b_mm": 300,
+      "tw_mm": 11,
+      "tf_mm": 19,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 320",
+    "kind": "ISection",
+    "geometry": {
+      "h": 320,
+      "b": 300,
+      "tw": 11.5,
+      "tf": 20.5,
+      "t": 11.5,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 16130.000000000002,
+      "iy_mm4": 308200000,
+      "iz_mm4": 92400000,
+      "wel_y_mm3": 1930000,
+      "wel_z_mm3": 616000,
+      "wpl_y_mm3": 2150000,
+      "wpl_z_mm3": 940000,
+      "av_y_mm2": 12300,
+      "av_z_mm2": 3680,
+      "it_mm4": 2250000,
+      "iw_mm6": 3260000000000,
+      "iy_radius_mm": 138.22898959619909,
+      "iz_radius_mm": 75.68656613047285,
+      "h_mm": 320,
+      "b_mm": 300,
+      "tw_mm": 11.5,
+      "tf_mm": 20.5,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 340",
+    "kind": "ISection",
+    "geometry": {
+      "h": 340,
+      "b": 300,
+      "tw": 12,
+      "tf": 21.5,
+      "t": 12,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 17090,
+      "iy_mm4": 366600000,
+      "iz_mm4": 96900000,
+      "wel_y_mm3": 2160000,
+      "wel_z_mm3": 646000,
+      "wpl_y_mm3": 2410000,
+      "wpl_z_mm3": 986000,
+      "av_y_mm2": 12900,
+      "av_z_mm2": 4080,
+      "it_mm4": 2570000,
+      "iw_mm6": 4060000000000,
+      "iy_radius_mm": 146.46208047866608,
+      "iz_radius_mm": 75.29928582579505,
+      "h_mm": 340,
+      "b_mm": 300,
+      "tw_mm": 12,
+      "tf_mm": 21.5,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 360",
+    "kind": "ISection",
+    "geometry": {
+      "h": 360,
+      "b": 300,
+      "tw": 12.5,
+      "tf": 22.5,
+      "t": 12.5,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 18060,
+      "iy_mm4": 431900000,
+      "iz_mm4": 101400000,
+      "wel_y_mm3": 2400000,
+      "wel_z_mm3": 676000,
+      "wpl_y_mm3": 2680000,
+      "wpl_z_mm3": 1030000,
+      "av_y_mm2": 13500,
+      "av_z_mm2": 4500,
+      "it_mm4": 2930000,
+      "iw_mm6": 4970000000000,
+      "iy_radius_mm": 154.64387696307455,
+      "iz_radius_mm": 74.93075430155055,
+      "h_mm": 360,
+      "b_mm": 300,
+      "tw_mm": 12.5,
+      "tf_mm": 22.5,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEB 400",
+    "kind": "ISection",
+    "geometry": {
+      "h": 400,
+      "b": 300,
+      "tw": 13.5,
+      "tf": 24,
+      "t": 13.5,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 19780,
+      "iy_mm4": 576800000,
+      "iz_mm4": 108200000,
+      "wel_y_mm3": 2880000,
+      "wel_z_mm3": 721000,
+      "wpl_y_mm3": 3230000,
+      "wpl_z_mm3": 1100000,
+      "av_y_mm2": 14400,
+      "av_z_mm2": 5400,
+      "it_mm4": 3560000,
+      "iw_mm6": 7160000000000,
+      "iy_radius_mm": 170.76524369139878,
+      "iz_radius_mm": 73.96061040039345,
+      "h_mm": 400,
+      "b_mm": 300,
+      "tw_mm": 13.5,
+      "tf_mm": 24,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "HEM 100",
+    "kind": "ISection",
+    "geometry": {
+      "h": 120,
+      "b": 106,
+      "tw": 12,
+      "tf": 20,
+      "t": 12,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 5320,
+      "iy_mm4": 11400000,
+      "iz_mm4": 3990000,
+      "wel_y_mm3": 190000,
+      "wel_z_mm3": 75300,
+      "wpl_y_mm3": 235000,
+      "wpl_z_mm3": 117000,
+      "av_y_mm2": 4240,
+      "av_z_mm2": 1440,
+      "it_mm4": 1180000,
+      "iw_mm6": 25370000000,
+      "iy_radius_mm": 46.29100498862757,
+      "iz_radius_mm": 27.386127875258307,
+      "h_mm": 120,
+      "b_mm": 106,
+      "tw_mm": 12,
+      "tf_mm": 20,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 120",
+    "kind": "ISection",
+    "geometry": {
+      "h": 140,
+      "b": 126,
+      "tw": 12.5,
+      "tf": 21,
+      "t": 12.5,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 6640.000000000001,
+      "iy_mm4": 20200000,
+      "iz_mm4": 7030000,
+      "wel_y_mm3": 288000,
+      "wel_z_mm3": 112000,
+      "wpl_y_mm3": 350000,
+      "wpl_z_mm3": 172000,
+      "av_y_mm2": 5292,
+      "av_z_mm2": 1750,
+      "it_mm4": 1530000,
+      "iw_mm6": 60560000000,
+      "iy_radius_mm": 55.15585802703821,
+      "iz_radius_mm": 32.53820738392077,
+      "h_mm": 140,
+      "b_mm": 126,
+      "tw_mm": 12.5,
+      "tf_mm": 21,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 140",
+    "kind": "ISection",
+    "geometry": {
+      "h": 160,
+      "b": 146,
+      "tw": 13,
+      "tf": 22,
+      "t": 13,
+      "r": 12
+    },
+    "properties": {
+      "area_mm2": 8059.999999999999,
+      "iy_mm4": 32900000,
+      "iz_mm4": 11400000,
+      "wel_y_mm3": 411000,
+      "wel_z_mm3": 156000,
+      "wpl_y_mm3": 496000,
+      "wpl_z_mm3": 241000,
+      "av_y_mm2": 6424,
+      "av_z_mm2": 2080,
+      "it_mm4": 1930000,
+      "iw_mm6": 128400000000,
+      "iy_radius_mm": 63.88963809632517,
+      "iz_radius_mm": 37.60840410803615,
+      "h_mm": 160,
+      "b_mm": 146,
+      "tw_mm": 13,
+      "tf_mm": 22,
+      "r_mm": 12
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 160",
+    "kind": "ISection",
+    "geometry": {
+      "h": 180,
+      "b": 166,
+      "tw": 14,
+      "tf": 23,
+      "t": 14,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 9710,
+      "iy_mm4": 51000000,
+      "iz_mm4": 17600000,
+      "wel_y_mm3": 566000,
+      "wel_z_mm3": 212000,
+      "wpl_y_mm3": 675000,
+      "wpl_z_mm3": 327000,
+      "av_y_mm2": 7636,
+      "av_z_mm2": 2520,
+      "it_mm4": 2580000,
+      "iw_mm6": 246100000000,
+      "iy_radius_mm": 72.47287215754707,
+      "iz_radius_mm": 42.57422185586412,
+      "h_mm": 180,
+      "b_mm": 166,
+      "tw_mm": 14,
+      "tf_mm": 23,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 180",
+    "kind": "ISection",
+    "geometry": {
+      "h": 200,
+      "b": 186,
+      "tw": 14.5,
+      "tf": 24,
+      "t": 14.5,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 11300,
+      "iy_mm4": 74800000,
+      "iz_mm4": 25800000,
+      "wel_y_mm3": 748000,
+      "wel_z_mm3": 277000,
+      "wpl_y_mm3": 884000,
+      "wpl_z_mm3": 428000,
+      "av_y_mm2": 8928,
+      "av_z_mm2": 2900,
+      "it_mm4": 3240000,
+      "iw_mm6": 439400000000,
+      "iy_radius_mm": 81.36011938627347,
+      "iz_radius_mm": 47.78269394569507,
+      "h_mm": 200,
+      "b_mm": 186,
+      "tw_mm": 14.5,
+      "tf_mm": 24,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 200",
+    "kind": "ISection",
+    "geometry": {
+      "h": 220,
+      "b": 206,
+      "tw": 15,
+      "tf": 25,
+      "t": 15,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 13100,
+      "iy_mm4": 106400000,
+      "iz_mm4": 36500000,
+      "wel_y_mm3": 967000,
+      "wel_z_mm3": 354000,
+      "wpl_y_mm3": 1140000,
+      "wpl_z_mm3": 549000,
+      "av_y_mm2": 10300,
+      "av_z_mm2": 3300,
+      "it_mm4": 4060000,
+      "iw_mm6": 727000000000,
+      "iy_radius_mm": 90.12290166533784,
+      "iz_radius_mm": 52.78503141975699,
+      "h_mm": 220,
+      "b_mm": 206,
+      "tw_mm": 15,
+      "tf_mm": 25,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 220",
+    "kind": "ISection",
+    "geometry": {
+      "h": 240,
+      "b": 226,
+      "tw": 15.5,
+      "tf": 26,
+      "t": 15.5,
+      "r": 18
+    },
+    "properties": {
+      "area_mm2": 14900,
+      "iy_mm4": 146000000,
+      "iz_mm4": 50200000,
+      "wel_y_mm3": 1220000,
+      "wel_z_mm3": 444000,
+      "wpl_y_mm3": 1430000,
+      "wpl_z_mm3": 690000,
+      "av_y_mm2": 11752,
+      "av_z_mm2": 3720,
+      "it_mm4": 4950000,
+      "iw_mm6": 1160000000000,
+      "iy_radius_mm": 98.9881695866774,
+      "iz_radius_mm": 58.04418589986876,
+      "h_mm": 240,
+      "b_mm": 226,
+      "tw_mm": 15.5,
+      "tf_mm": 26,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 240",
+    "kind": "ISection",
+    "geometry": {
+      "h": 270,
+      "b": 248,
+      "tw": 18,
+      "tf": 32,
+      "t": 18,
+      "r": 21
+    },
+    "properties": {
+      "area_mm2": 20000,
+      "iy_mm4": 242900000,
+      "iz_mm4": 81500000,
+      "wel_y_mm3": 1800000,
+      "wel_z_mm3": 657000,
+      "wpl_y_mm3": 2120000,
+      "wpl_z_mm3": 1020000,
+      "av_y_mm2": 15872,
+      "av_z_mm2": 4860,
+      "it_mm4": 9260000,
+      "iw_mm6": 2380000000000,
+      "iy_radius_mm": 110.20435563080073,
+      "iz_radius_mm": 63.835726674018524,
+      "h_mm": 270,
+      "b_mm": 248,
+      "tw_mm": 18,
+      "tf_mm": 32,
+      "r_mm": 21
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 260",
+    "kind": "ISection",
+    "geometry": {
+      "h": 290,
+      "b": 268,
+      "tw": 18,
+      "tf": 32.5,
+      "t": 18,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 22000,
+      "iy_mm4": 313100000,
+      "iz_mm4": 104500000,
+      "wel_y_mm3": 2160000,
+      "wel_z_mm3": 780000,
+      "wpl_y_mm3": 2530000,
+      "wpl_z_mm3": 1210000,
+      "av_y_mm2": 17420,
+      "av_z_mm2": 5220,
+      "it_mm4": 10300000,
+      "iw_mm6": 3700000000000,
+      "iy_radius_mm": 119.29718429962286,
+      "iz_radius_mm": 68.92024376045111,
+      "h_mm": 290,
+      "b_mm": 268,
+      "tw_mm": 18,
+      "tf_mm": 32.5,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 280",
+    "kind": "ISection",
+    "geometry": {
+      "h": 310,
+      "b": 288,
+      "tw": 18.5,
+      "tf": 33,
+      "t": 18.5,
+      "r": 24
+    },
+    "properties": {
+      "area_mm2": 24000,
+      "iy_mm4": 395500000,
+      "iz_mm4": 131600000,
+      "wel_y_mm3": 2550000,
+      "wel_z_mm3": 914000,
+      "wpl_y_mm3": 2970000,
+      "wpl_z_mm3": 1420000,
+      "av_y_mm2": 19008,
+      "av_z_mm2": 5735,
+      "it_mm4": 11300000,
+      "iw_mm6": 5590000000000,
+      "iy_radius_mm": 128.3712065327216,
+      "iz_radius_mm": 74.04953297174353,
+      "h_mm": 310,
+      "b_mm": 288,
+      "tw_mm": 18.5,
+      "tf_mm": 33,
+      "r_mm": 24
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "HEM 300",
+    "kind": "ISection",
+    "geometry": {
+      "h": 340,
+      "b": 310,
+      "tw": 21,
+      "tf": 39,
+      "t": 21,
+      "r": 27
+    },
+    "properties": {
+      "area_mm2": 30300,
+      "iy_mm4": 592000000,
+      "iz_mm4": 194000000,
+      "wel_y_mm3": 3480000,
+      "wel_z_mm3": 1250000,
+      "wpl_y_mm3": 4080000,
+      "wpl_z_mm3": 1950000,
+      "av_y_mm2": 24180,
+      "av_z_mm2": 7140,
+      "it_mm4": 19300000,
+      "iw_mm6": 10290000000000,
+      "iy_radius_mm": 139.77823076351888,
+      "iz_radius_mm": 80.01649994861312,
+      "h_mm": 340,
+      "b_mm": 310,
+      "tw_mm": 21,
+      "tf_mm": 39,
+      "r_mm": 27
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "SHS 80x80x4",
+    "kind": "Shs",
+    "geometry": {
+      "h": 80,
+      "b": 80,
+      "tw": 4,
+      "tf": 4,
+      "t": 4,
+      "r": 4
+    },
+    "properties": {
+      "area_mm2": 1170,
+      "iy_mm4": 1150000,
+      "iz_mm4": 1150000,
+      "wel_y_mm3": 28700,
+      "wel_z_mm3": 28700,
+      "wpl_y_mm3": 34100,
+      "wpl_z_mm3": 34100,
+      "av_y_mm2": 585,
+      "av_z_mm2": 585,
+      "it_mm4": 1820000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 31.35133143753201,
+      "iz_radius_mm": 31.35133143753201,
+      "h_mm": 80,
+      "b_mm": 80,
+      "tw_mm": 4,
+      "tf_mm": 4,
+      "r_mm": 4
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "SHS 100x100x5",
+    "kind": "Shs",
+    "geometry": {
+      "h": 100,
+      "b": 100,
+      "tw": 5,
+      "tf": 5,
+      "t": 5,
+      "r": 5
+    },
+    "properties": {
+      "area_mm2": 1870,
+      "iy_mm4": 2930000,
+      "iz_mm4": 2930000,
+      "wel_y_mm3": 58600,
+      "wel_z_mm3": 58600,
+      "wpl_y_mm3": 69600,
+      "wpl_z_mm3": 69600,
+      "av_y_mm2": 935,
+      "av_z_mm2": 935,
+      "it_mm4": 4670000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 39.583391969184454,
+      "iz_radius_mm": 39.583391969184454,
+      "h_mm": 100,
+      "b_mm": 100,
+      "tw_mm": 5,
+      "tf_mm": 5,
+      "r_mm": 5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "SHS 120x120x5",
+    "kind": "Shs",
+    "geometry": {
+      "h": 120,
+      "b": 120,
+      "tw": 5,
+      "tf": 5,
+      "t": 5,
+      "r": 5
+    },
+    "properties": {
+      "area_mm2": 2270,
+      "iy_mm4": 5180000,
+      "iz_mm4": 5180000,
+      "wel_y_mm3": 86300,
+      "wel_z_mm3": 86300,
+      "wpl_y_mm3": 102000,
+      "wpl_z_mm3": 102000,
+      "av_y_mm2": 1135,
+      "av_z_mm2": 1135,
+      "it_mm4": 8180000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 47.76963811869616,
+      "iz_radius_mm": 47.76963811869616,
+      "h_mm": 120,
+      "b_mm": 120,
+      "tw_mm": 5,
+      "tf_mm": 5,
+      "r_mm": 5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "SHS 150x150x6",
+    "kind": "Shs",
+    "geometry": {
+      "h": 150,
+      "b": 150,
+      "tw": 6,
+      "tf": 6,
+      "t": 6,
+      "r": 6
+    },
+    "properties": {
+      "area_mm2": 3340,
+      "iy_mm4": 12000000,
+      "iz_mm4": 12000000,
+      "wel_y_mm3": 160000,
+      "wel_z_mm3": 160000,
+      "wpl_y_mm3": 189000,
+      "wpl_z_mm3": 189000,
+      "av_y_mm2": 1670,
+      "av_z_mm2": 1670,
+      "it_mm4": 19000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 59.94008985026203,
+      "iz_radius_mm": 59.94008985026203,
+      "h_mm": 150,
+      "b_mm": 150,
+      "tw_mm": 6,
+      "tf_mm": 6,
+      "r_mm": 6
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "SHS 200x200x8",
+    "kind": "Shs",
+    "geometry": {
+      "h": 200,
+      "b": 200,
+      "tw": 8,
+      "tf": 8,
+      "t": 8,
+      "r": 8
+    },
+    "properties": {
+      "area_mm2": 5880,
+      "iy_mm4": 37200000,
+      "iz_mm4": 37200000,
+      "wel_y_mm3": 372000,
+      "wel_z_mm3": 372000,
+      "wpl_y_mm3": 440000,
+      "wpl_z_mm3": 440000,
+      "av_y_mm2": 2940,
+      "av_z_mm2": 2940,
+      "it_mm4": 58800000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 79.53949089757174,
+      "iz_radius_mm": 79.53949089757174,
+      "h_mm": 200,
+      "b_mm": 200,
+      "tw_mm": 8,
+      "tf_mm": 8,
+      "r_mm": 8
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "SHS 250x250x10",
+    "kind": "Shs",
+    "geometry": {
+      "h": 250,
+      "b": 250,
+      "tw": 10,
+      "tf": 10,
+      "t": 10,
+      "r": 10
+    },
+    "properties": {
+      "area_mm2": 9100,
+      "iy_mm4": 90600000,
+      "iz_mm4": 90600000,
+      "wel_y_mm3": 725000,
+      "wel_z_mm3": 725000,
+      "wpl_y_mm3": 860000,
+      "wpl_z_mm3": 860000,
+      "av_y_mm2": 4550,
+      "av_z_mm2": 4550,
+      "it_mm4": 143000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 99.779977731226,
+      "iz_radius_mm": 99.779977731226,
+      "h_mm": 250,
+      "b_mm": 250,
+      "tw_mm": 10,
+      "tf_mm": 10,
+      "r_mm": 10
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "SHS 300x300x10",
+    "kind": "Shs",
+    "geometry": {
+      "h": 300,
+      "b": 300,
+      "tw": 10,
+      "tf": 10,
+      "t": 10,
+      "r": 10
+    },
+    "properties": {
+      "area_mm2": 11000,
+      "iy_mm4": 157000000,
+      "iz_mm4": 157000000,
+      "wel_y_mm3": 1050000,
+      "wel_z_mm3": 1050000,
+      "wpl_y_mm3": 1240000,
+      "wpl_z_mm3": 1240000,
+      "av_y_mm2": 5500,
+      "av_z_mm2": 5500,
+      "it_mm4": 247000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 119.46852000726916,
+      "iz_radius_mm": 119.46852000726916,
+      "h_mm": 300,
+      "b_mm": 300,
+      "tw_mm": 10,
+      "tf_mm": 10,
+      "r_mm": 10
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "RHS 100x50x4",
+    "kind": "Rhs",
+    "geometry": {
+      "h": 100,
+      "b": 50,
+      "tw": 4,
+      "tf": 4,
+      "t": 4,
+      "r": 4
+    },
+    "properties": {
+      "area_mm2": 1100,
+      "iy_mm4": 1690000,
+      "iz_mm4": 553000,
+      "wel_y_mm3": 33800,
+      "wel_z_mm3": 22100,
+      "wpl_y_mm3": 41500,
+      "wpl_z_mm3": 24600,
+      "av_y_mm2": 366.6666666666667,
+      "av_z_mm2": 733.3333333333334,
+      "it_mm4": 1220000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 39.19647479510927,
+      "iz_radius_mm": 22.421580513587188,
+      "h_mm": 100,
+      "b_mm": 50,
+      "tw_mm": 4,
+      "tf_mm": 4,
+      "r_mm": 4
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "RHS 120x60x5",
+    "kind": "Rhs",
+    "geometry": {
+      "h": 120,
+      "b": 60,
+      "tw": 5,
+      "tf": 5,
+      "t": 5,
+      "r": 5
+    },
+    "properties": {
+      "area_mm2": 1670,
+      "iy_mm4": 3610000,
+      "iz_mm4": 1180000,
+      "wel_y_mm3": 60200,
+      "wel_z_mm3": 39400,
+      "wpl_y_mm3": 74100,
+      "wpl_z_mm3": 43800,
+      "av_y_mm2": 556.6666666666666,
+      "av_z_mm2": 1113.3333333333333,
+      "it_mm4": 2680000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 46.49383450207766,
+      "iz_radius_mm": 26.581700967908457,
+      "h_mm": 120,
+      "b_mm": 60,
+      "tw_mm": 5,
+      "tf_mm": 5,
+      "r_mm": 5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "RHS 150x100x6",
+    "kind": "Rhs",
+    "geometry": {
+      "h": 150,
+      "b": 100,
+      "tw": 6,
+      "tf": 6,
+      "t": 6,
+      "r": 6
+    },
+    "properties": {
+      "area_mm2": 2810,
+      "iy_mm4": 10400000,
+      "iz_mm4": 5480000,
+      "wel_y_mm3": 139000,
+      "wel_z_mm3": 110000,
+      "wpl_y_mm3": 165000,
+      "wpl_z_mm3": 126000,
+      "av_y_mm2": 1124,
+      "av_z_mm2": 1686,
+      "it_mm4": 11300000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 60.83640041667787,
+      "iz_radius_mm": 44.16081901349952,
+      "h_mm": 150,
+      "b_mm": 100,
+      "tw_mm": 6,
+      "tf_mm": 6,
+      "r_mm": 6
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "RHS 200x100x8",
+    "kind": "Rhs",
+    "geometry": {
+      "h": 200,
+      "b": 100,
+      "tw": 8,
+      "tf": 8,
+      "t": 8,
+      "r": 8
+    },
+    "properties": {
+      "area_mm2": 4320,
+      "iy_mm4": 25900000,
+      "iz_mm4": 8830000,
+      "wel_y_mm3": 259000,
+      "wel_z_mm3": 177000,
+      "wpl_y_mm3": 316000,
+      "wpl_z_mm3": 198000,
+      "av_y_mm2": 1440,
+      "av_z_mm2": 2880,
+      "it_mm4": 22600000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 77.42977702647974,
+      "iz_radius_mm": 45.21041341860835,
+      "h_mm": 200,
+      "b_mm": 100,
+      "tw_mm": 8,
+      "tf_mm": 8,
+      "r_mm": 8
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "RHS 250x150x8",
+    "kind": "Rhs",
+    "geometry": {
+      "h": 250,
+      "b": 150,
+      "tw": 8,
+      "tf": 8,
+      "t": 8,
+      "r": 8
+    },
+    "properties": {
+      "area_mm2": 5840,
+      "iy_mm4": 64600000,
+      "iz_mm4": 28100000,
+      "wel_y_mm3": 517000,
+      "wel_z_mm3": 375000,
+      "wpl_y_mm3": 618000,
+      "wpl_z_mm3": 432000,
+      "av_y_mm2": 2190,
+      "av_z_mm2": 3650,
+      "it_mm4": 65000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 105.17434970379631,
+      "iz_radius_mm": 69.36601354854146,
+      "h_mm": 250,
+      "b_mm": 150,
+      "tw_mm": 8,
+      "tf_mm": 8,
+      "r_mm": 8
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "RHS 300x200x10",
+    "kind": "Rhs",
+    "geometry": {
+      "h": 300,
+      "b": 200,
+      "tw": 10,
+      "tf": 10,
+      "t": 10,
+      "r": 10
+    },
+    "properties": {
+      "area_mm2": 9100,
+      "iy_mm4": 144000000,
+      "iz_mm4": 72200000,
+      "wel_y_mm3": 960000,
+      "wel_z_mm3": 722000,
+      "wpl_y_mm3": 1140000,
+      "wpl_z_mm3": 831000,
+      "av_y_mm2": 3640,
+      "av_z_mm2": 5460,
+      "it_mm4": 152000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 125.79418040663019,
+      "iz_radius_mm": 89.07337387831413,
+      "h_mm": 300,
+      "b_mm": 200,
+      "tw_mm": 10,
+      "tf_mm": 10,
+      "r_mm": 10
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 42.4x3.2",
+    "kind": "Chs",
+    "geometry": {
+      "h": 42.4,
+      "b": 42.4,
+      "tw": 3.2,
+      "tf": 3.2,
+      "t": 3.2,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 394,
+      "iy_mm4": 80000,
+      "iz_mm4": 80000,
+      "wel_y_mm3": 3770,
+      "wel_z_mm3": 3770,
+      "wpl_y_mm3": 5040,
+      "wpl_z_mm3": 5040,
+      "av_y_mm2": 250.82819031282705,
+      "av_z_mm2": 250.82819031282705,
+      "it_mm4": 160000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 14.249409997581928,
+      "iz_radius_mm": 14.249409997581928,
+      "h_mm": 42.4,
+      "b_mm": 42.4,
+      "tw_mm": 3.2,
+      "tf_mm": 3.2,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 48.3x3.2",
+    "kind": "Chs",
+    "geometry": {
+      "h": 48.3,
+      "b": 48.3,
+      "tw": 3.2,
+      "tf": 3.2,
+      "t": 3.2,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 453,
+      "iy_mm4": 122000,
+      "iz_mm4": 122000,
+      "wel_y_mm3": 5050,
+      "wel_z_mm3": 5050,
+      "wpl_y_mm3": 6750,
+      "wpl_z_mm3": 6750,
+      "av_y_mm2": 288.3887568825144,
+      "av_z_mm2": 288.3887568825144,
+      "it_mm4": 244000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 16.41084011527695,
+      "iz_radius_mm": 16.41084011527695,
+      "h_mm": 48.3,
+      "b_mm": 48.3,
+      "tw_mm": 3.2,
+      "tf_mm": 3.2,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 60.3x4.0",
+    "kind": "Chs",
+    "geometry": {
+      "h": 60.3,
+      "b": 60.3,
+      "tw": 4,
+      "tf": 4,
+      "t": 4,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 707,
+      "iy_mm4": 295000,
+      "iz_mm4": 295000,
+      "wel_y_mm3": 9780,
+      "wel_z_mm3": 9780,
+      "wpl_y_mm3": 13100,
+      "wpl_z_mm3": 13100,
+      "av_y_mm2": 450.09017906388004,
+      "av_z_mm2": 450.09017906388004,
+      "it_mm4": 590000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 20.42684535887559,
+      "iz_radius_mm": 20.42684535887559,
+      "h_mm": 60.3,
+      "b_mm": 60.3,
+      "tw_mm": 4,
+      "tf_mm": 4,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 76.1x5.0",
+    "kind": "Chs",
+    "geometry": {
+      "h": 76.1,
+      "b": 76.1,
+      "tw": 5,
+      "tf": 5,
+      "t": 5,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 1120,
+      "iy_mm4": 737000,
+      "iz_mm4": 737000,
+      "wel_y_mm3": 19400,
+      "wel_z_mm3": 19400,
+      "wpl_y_mm3": 26000,
+      "wpl_z_mm3": 26000,
+      "av_y_mm2": 713.0141450516911,
+      "av_z_mm2": 713.0141450516911,
+      "it_mm4": 1470000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 25.652206811222193,
+      "iz_radius_mm": 25.652206811222193,
+      "h_mm": 76.1,
+      "b_mm": 76.1,
+      "tw_mm": 5,
+      "tf_mm": 5,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 88.9x5.0",
+    "kind": "Chs",
+    "geometry": {
+      "h": 88.9,
+      "b": 88.9,
+      "tw": 5,
+      "tf": 5,
+      "t": 5,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 1320,
+      "iy_mm4": 1210000,
+      "iz_mm4": 1210000,
+      "wel_y_mm3": 27200,
+      "wel_z_mm3": 27200,
+      "wpl_y_mm3": 36500,
+      "wpl_z_mm3": 36500,
+      "av_y_mm2": 840.3380995252074,
+      "av_z_mm2": 840.3380995252074,
+      "it_mm4": 2420000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 30.276503540974915,
+      "iz_radius_mm": 30.276503540974915,
+      "h_mm": 88.9,
+      "b_mm": 88.9,
+      "tw_mm": 5,
+      "tf_mm": 5,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 114.3x6.3",
+    "kind": "Chs",
+    "geometry": {
+      "h": 114.3,
+      "b": 114.3,
+      "tw": 6.3,
+      "tf": 6.3,
+      "t": 6.3,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 2140,
+      "iy_mm4": 3260000,
+      "iz_mm4": 3260000,
+      "wel_y_mm3": 57100,
+      "wel_z_mm3": 57100,
+      "wpl_y_mm3": 76500,
+      "wpl_z_mm3": 76500,
+      "av_y_mm2": 1362.3663128666242,
+      "av_z_mm2": 1362.3663128666242,
+      "it_mm4": 6520000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 39.03030215078162,
+      "iz_radius_mm": 39.03030215078162,
+      "h_mm": 114.3,
+      "b_mm": 114.3,
+      "tw_mm": 6.3,
+      "tf_mm": 6.3,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 139.7x8.0",
+    "kind": "Chs",
+    "geometry": {
+      "h": 139.7,
+      "b": 139.7,
+      "tw": 8,
+      "tf": 8,
+      "t": 8,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 3310,
+      "iy_mm4": 7660000,
+      "iz_mm4": 7660000,
+      "wel_y_mm3": 110000,
+      "wel_z_mm3": 110000,
+      "wpl_y_mm3": 147000,
+      "wpl_z_mm3": 147000,
+      "av_y_mm2": 2107.2114465366944,
+      "av_z_mm2": 2107.2114465366944,
+      "it_mm4": 15320000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 48.10612638500831,
+      "iz_radius_mm": 48.10612638500831,
+      "h_mm": 139.7,
+      "b_mm": 139.7,
+      "tw_mm": 8,
+      "tf_mm": 8,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 168.3x8.0",
+    "kind": "Chs",
+    "geometry": {
+      "h": 168.3,
+      "b": 168.3,
+      "tw": 8,
+      "tf": 8,
+      "t": 8,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 4029.9999999999995,
+      "iy_mm4": 14000000,
+      "iz_mm4": 14000000,
+      "wel_y_mm3": 166000,
+      "wel_z_mm3": 166000,
+      "wpl_y_mm3": 222000,
+      "wpl_z_mm3": 222000,
+      "av_y_mm2": 2565.5776826413526,
+      "av_z_mm2": 2565.5776826413526,
+      "it_mm4": 28000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 58.94018501353114,
+      "iz_radius_mm": 58.94018501353114,
+      "h_mm": 168.3,
+      "b_mm": 168.3,
+      "tw_mm": 8,
+      "tf_mm": 8,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 219.1x10",
+    "kind": "Chs",
+    "geometry": {
+      "h": 219.1,
+      "b": 219.1,
+      "tw": 10,
+      "tf": 10,
+      "t": 10,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 6570,
+      "iy_mm4": 38700000,
+      "iz_mm4": 38700000,
+      "wel_y_mm3": 353000,
+      "wel_z_mm3": 353000,
+      "wpl_y_mm3": 473000,
+      "wpl_z_mm3": 473000,
+      "av_y_mm2": 4182.591904455009,
+      "av_z_mm2": 4182.591904455009,
+      "it_mm4": 77400000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 76.74901275524077,
+      "iz_radius_mm": 76.74901275524077,
+      "h_mm": 219.1,
+      "b_mm": 219.1,
+      "tw_mm": 10,
+      "tf_mm": 10,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 273x10",
+    "kind": "Chs",
+    "geometry": {
+      "h": 273,
+      "b": 273,
+      "tw": 10,
+      "tf": 10,
+      "t": 10,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 8260,
+      "iy_mm4": 76800000,
+      "iz_mm4": 76800000,
+      "wel_y_mm3": 563000,
+      "wel_z_mm3": 563000,
+      "wpl_y_mm3": 754000,
+      "wpl_z_mm3": 754000,
+      "av_y_mm2": 5258.479319756222,
+      "av_z_mm2": 5258.479319756222,
+      "it_mm4": 154000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 96.42520844283693,
+      "iz_radius_mm": 96.42520844283693,
+      "h_mm": 273,
+      "b_mm": 273,
+      "tw_mm": 10,
+      "tf_mm": 10,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 323.9x12.5",
+    "kind": "Chs",
+    "geometry": {
+      "h": 323.9,
+      "b": 323.9,
+      "tw": 12.5,
+      "tf": 12.5,
+      "t": 12.5,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 12200,
+      "iy_mm4": 155000000,
+      "iz_mm4": 155000000,
+      "wel_y_mm3": 957000,
+      "wel_z_mm3": 957000,
+      "wpl_y_mm3": 1280000,
+      "wpl_z_mm3": 1280000,
+      "av_y_mm2": 7766.761222884493,
+      "av_z_mm2": 7766.761222884493,
+      "it_mm4": 310000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 112.71609482583614,
+      "iz_radius_mm": 112.71609482583614,
+      "h_mm": 323.9,
+      "b_mm": 323.9,
+      "tw_mm": 12.5,
+      "tf_mm": 12.5,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "CHS 406.4x16",
+    "kind": "Chs",
+    "geometry": {
+      "h": 406.4,
+      "b": 406.4,
+      "tw": 16,
+      "tf": 16,
+      "t": 16,
+      "r": 0
+    },
+    "properties": {
+      "area_mm2": 19600,
+      "iy_mm4": 395000000,
+      "iz_mm4": 395000000,
+      "wel_y_mm3": 1940000,
+      "wel_z_mm3": 1940000,
+      "wpl_y_mm3": 2600000,
+      "wpl_z_mm3": 2600000,
+      "av_y_mm2": 12477.747538404596,
+      "av_z_mm2": 12477.747538404596,
+      "it_mm4": 790000000,
+      "iw_mm6": 0,
+      "iy_radius_mm": 141.96147795965564,
+      "iz_radius_mm": 141.96147795965564,
+      "h_mm": 406.4,
+      "b_mm": 406.4,
+      "tw_mm": 16,
+      "tf_mm": 16,
+      "r_mm": 0
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "a"
+    }
+  },
+  {
+    "name": "UNP 80",
+    "kind": "Channel",
+    "geometry": {
+      "h": 80,
+      "b": 45,
+      "tw": 6,
+      "tf": 8,
+      "t": 6,
+      "r": 8
+    },
+    "properties": {
+      "area_mm2": 1100,
+      "iy_mm4": 1060000,
+      "iz_mm4": 194000,
+      "wel_y_mm3": 26500,
+      "wel_z_mm3": 6360,
+      "wpl_y_mm3": 31000,
+      "wpl_z_mm3": 11200,
+      "av_y_mm2": 720,
+      "av_z_mm2": 480,
+      "it_mm4": 29500,
+      "iw_mm6": 1120000000,
+      "iy_radius_mm": 31.042492870843404,
+      "iz_radius_mm": 13.280197150781925,
+      "h_mm": 80,
+      "b_mm": 45,
+      "tw_mm": 6,
+      "tf_mm": 8,
+      "r_mm": 8
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 100",
+    "kind": "Channel",
+    "geometry": {
+      "h": 100,
+      "b": 50,
+      "tw": 6,
+      "tf": 8.5,
+      "t": 6,
+      "r": 8.5
+    },
+    "properties": {
+      "area_mm2": 1350,
+      "iy_mm4": 2060000,
+      "iz_mm4": 293000,
+      "wel_y_mm3": 41200,
+      "wel_z_mm3": 8490,
+      "wpl_y_mm3": 48400,
+      "wpl_z_mm3": 14800,
+      "av_y_mm2": 850,
+      "av_z_mm2": 600,
+      "it_mm4": 39100,
+      "iw_mm6": 2520000000,
+      "iy_radius_mm": 39.063101847215435,
+      "iz_radius_mm": 14.732176927970864,
+      "h_mm": 100,
+      "b_mm": 50,
+      "tw_mm": 6,
+      "tf_mm": 8.5,
+      "r_mm": 8.5
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 120",
+    "kind": "Channel",
+    "geometry": {
+      "h": 120,
+      "b": 55,
+      "tw": 7,
+      "tf": 9,
+      "t": 7,
+      "r": 9
+    },
+    "properties": {
+      "area_mm2": 1700,
+      "iy_mm4": 3640000,
+      "iz_mm4": 432000,
+      "wel_y_mm3": 60700,
+      "wel_z_mm3": 11100,
+      "wpl_y_mm3": 71900,
+      "wpl_z_mm3": 19300,
+      "av_y_mm2": 990,
+      "av_z_mm2": 840,
+      "it_mm4": 57900,
+      "iw_mm6": 4950000000,
+      "iy_radius_mm": 46.272848092463846,
+      "iz_radius_mm": 15.941067939721716,
+      "h_mm": 120,
+      "b_mm": 55,
+      "tw_mm": 7,
+      "tf_mm": 9,
+      "r_mm": 9
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 140",
+    "kind": "Channel",
+    "geometry": {
+      "h": 140,
+      "b": 60,
+      "tw": 7,
+      "tf": 10,
+      "t": 7,
+      "r": 10
+    },
+    "properties": {
+      "area_mm2": 2039.9999999999998,
+      "iy_mm4": 6050000,
+      "iz_mm4": 627000,
+      "wel_y_mm3": 86400,
+      "wel_z_mm3": 14800,
+      "wpl_y_mm3": 103000,
+      "wpl_z_mm3": 25100,
+      "av_y_mm2": 1200,
+      "av_z_mm2": 980,
+      "it_mm4": 84600.00000000001,
+      "iw_mm6": 9120000000,
+      "iy_radius_mm": 54.45811486371709,
+      "iz_radius_mm": 17.531484283324975,
+      "h_mm": 140,
+      "b_mm": 60,
+      "tw_mm": 7,
+      "tf_mm": 10,
+      "r_mm": 10
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 160",
+    "kind": "Channel",
+    "geometry": {
+      "h": 160,
+      "b": 65,
+      "tw": 7.5,
+      "tf": 10.5,
+      "t": 7.5,
+      "r": 10.5
+    },
+    "properties": {
+      "area_mm2": 2400,
+      "iy_mm4": 9250000,
+      "iz_mm4": 853000,
+      "wel_y_mm3": 116000,
+      "wel_z_mm3": 18300,
+      "wpl_y_mm3": 138000,
+      "wpl_z_mm3": 31300,
+      "av_y_mm2": 1365,
+      "av_z_mm2": 1200,
+      "it_mm4": 110000,
+      "iw_mm6": 15400000000,
+      "iy_radius_mm": 62.08193510729725,
+      "iz_radius_mm": 18.852497624099218,
+      "h_mm": 160,
+      "b_mm": 65,
+      "tw_mm": 7.5,
+      "tf_mm": 10.5,
+      "r_mm": 10.5
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 180",
+    "kind": "Channel",
+    "geometry": {
+      "h": 180,
+      "b": 70,
+      "tw": 8,
+      "tf": 11,
+      "t": 8,
+      "r": 11
+    },
+    "properties": {
+      "area_mm2": 2800,
+      "iy_mm4": 13500000,
+      "iz_mm4": 1140000,
+      "wel_y_mm3": 150000,
+      "wel_z_mm3": 22400,
+      "wpl_y_mm3": 180000,
+      "wpl_z_mm3": 38400,
+      "av_y_mm2": 1540,
+      "av_z_mm2": 1440,
+      "it_mm4": 145000,
+      "iw_mm6": 24300000000,
+      "iy_radius_mm": 69.43650748294137,
+      "iz_radius_mm": 20.177781274036477,
+      "h_mm": 180,
+      "b_mm": 70,
+      "tw_mm": 8,
+      "tf_mm": 11,
+      "r_mm": 11
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 200",
+    "kind": "Channel",
+    "geometry": {
+      "h": 200,
+      "b": 75,
+      "tw": 8.5,
+      "tf": 11.5,
+      "t": 8.5,
+      "r": 11.5
+    },
+    "properties": {
+      "area_mm2": 3220.0000000000005,
+      "iy_mm4": 19100000,
+      "iz_mm4": 1480000,
+      "wel_y_mm3": 191000,
+      "wel_z_mm3": 27000,
+      "wpl_y_mm3": 228000,
+      "wpl_z_mm3": 46400,
+      "av_y_mm2": 1725,
+      "av_z_mm2": 1700,
+      "it_mm4": 184000,
+      "iw_mm6": 36700000000,
+      "iy_radius_mm": 77.01738127613493,
+      "iz_radius_mm": 21.438920896177272,
+      "h_mm": 200,
+      "b_mm": 75,
+      "tw_mm": 8.5,
+      "tf_mm": 11.5,
+      "r_mm": 11.5
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 220",
+    "kind": "Channel",
+    "geometry": {
+      "h": 220,
+      "b": 80,
+      "tw": 9,
+      "tf": 12.5,
+      "t": 9,
+      "r": 12.5
+    },
+    "properties": {
+      "area_mm2": 3740,
+      "iy_mm4": 26900000,
+      "iz_mm4": 1970000,
+      "wel_y_mm3": 245000,
+      "wel_z_mm3": 33600,
+      "wpl_y_mm3": 292000,
+      "wpl_z_mm3": 57400,
+      "av_y_mm2": 2000,
+      "av_z_mm2": 1980,
+      "it_mm4": 245000,
+      "iw_mm6": 55500000000,
+      "iy_radius_mm": 84.80868687218283,
+      "iz_radius_mm": 22.95077270843922,
+      "h_mm": 220,
+      "b_mm": 80,
+      "tw_mm": 9,
+      "tf_mm": 12.5,
+      "r_mm": 12.5
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 240",
+    "kind": "Channel",
+    "geometry": {
+      "h": 240,
+      "b": 85,
+      "tw": 9.5,
+      "tf": 13,
+      "t": 9.5,
+      "r": 13
+    },
+    "properties": {
+      "area_mm2": 4230,
+      "iy_mm4": 36000000,
+      "iz_mm4": 2480000,
+      "wel_y_mm3": 300000,
+      "wel_z_mm3": 39600,
+      "wpl_y_mm3": 358000,
+      "wpl_z_mm3": 67800,
+      "av_y_mm2": 2210,
+      "av_z_mm2": 2280,
+      "it_mm4": 294000,
+      "iw_mm6": 79000000000,
+      "iy_radius_mm": 92.2531208028885,
+      "iz_radius_mm": 24.2133933201369,
+      "h_mm": 240,
+      "b_mm": 85,
+      "tw_mm": 9.5,
+      "tf_mm": 13,
+      "r_mm": 13
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 260",
+    "kind": "Channel",
+    "geometry": {
+      "h": 260,
+      "b": 90,
+      "tw": 10,
+      "tf": 14,
+      "t": 10,
+      "r": 14
+    },
+    "properties": {
+      "area_mm2": 4840,
+      "iy_mm4": 48200000,
+      "iz_mm4": 3170000,
+      "wel_y_mm3": 371000,
+      "wel_z_mm3": 47700,
+      "wpl_y_mm3": 442000,
+      "wpl_z_mm3": 81200,
+      "av_y_mm2": 2520,
+      "av_z_mm2": 2600,
+      "it_mm4": 395000,
+      "iw_mm6": 109000000000,
+      "iy_radius_mm": 99.79317454590976,
+      "iz_radius_mm": 25.592160473198632,
+      "h_mm": 260,
+      "b_mm": 90,
+      "tw_mm": 10,
+      "tf_mm": 14,
+      "r_mm": 14
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 280",
+    "kind": "Channel",
+    "geometry": {
+      "h": 280,
+      "b": 95,
+      "tw": 10,
+      "tf": 15,
+      "t": 10,
+      "r": 15
+    },
+    "properties": {
+      "area_mm2": 5330,
+      "iy_mm4": 62800000,
+      "iz_mm4": 3990000,
+      "wel_y_mm3": 448000,
+      "wel_z_mm3": 57200,
+      "wpl_y_mm3": 532000,
+      "wpl_z_mm3": 96900,
+      "av_y_mm2": 2850,
+      "av_z_mm2": 2800,
+      "it_mm4": 510000,
+      "iw_mm6": 148000000000,
+      "iy_radius_mm": 108.54659818477008,
+      "iz_radius_mm": 27.360425262486146,
+      "h_mm": 280,
+      "b_mm": 95,
+      "tw_mm": 10,
+      "tf_mm": 15,
+      "r_mm": 15
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
+  },
+  {
+    "name": "UNP 300",
+    "kind": "Channel",
+    "geometry": {
+      "h": 300,
+      "b": 100,
+      "tw": 10,
+      "tf": 16,
+      "t": 10,
+      "r": 16
+    },
+    "properties": {
+      "area_mm2": 5880,
+      "iy_mm4": 80300000,
+      "iz_mm4": 4950000,
+      "wel_y_mm3": 535000,
+      "wel_z_mm3": 67800,
+      "wpl_y_mm3": 633000,
+      "wpl_z_mm3": 114000,
+      "av_y_mm2": 3200,
+      "av_z_mm2": 3000,
+      "it_mm4": 630000,
+      "iw_mm6": 200000000000,
+      "iy_radius_mm": 116.86086849340978,
+      "iz_radius_mm": 29.01442287369986,
+      "h_mm": 300,
+      "b_mm": 100,
+      "tw_mm": 10,
+      "tf_mm": 16,
+      "r_mm": 16
+    },
+    "buckling_curves": {
+      "y_axis": "b",
+      "z_axis": "c"
+    }
   }
 ]
