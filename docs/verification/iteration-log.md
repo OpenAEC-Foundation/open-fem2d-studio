@@ -298,3 +298,30 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 - Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
 - Profile DB minor catalog deltas (HFRHS area, UNP Wpl).
 - Load height zg correction for top-flange loading (portal_beam4).
+
+---
+
+## Iteration 4 — Phase 13-D
+
+### Done
+
+- **Profile DB expanded** from 4 seeds to 100 profiles via `scripts/migrate-profiles.mjs`.
+  Migration reads `src/core/data/SteelSections.ts` (IPE 18, HEA 15, HEB 15, HEM 10, RHS/SHS 13, CHS 12, UNP 12)
+  and converts cm-unit catalog values to mm SI units for profiles.json.
+  Seed entries (HEB160, HEB300, UNP350, HFRHS200X200X16) preserved at their hand-tuned values.
+  Buckling curves assigned per EN 1993-1-1 Tabel 6.2 (h/b > 1.2 rule for I-sections, Shs/Rhs: a).
+  `cargo build -p steel-profiles` validates JSON at compile time — PASS.
+
+- **SLS deflection extraction wired** in `src/lib/steelCheckBuilder.ts`.
+  `extractMaxDeflection()` rebuilds `nodeIdToIndex` from the mesh at extraction time (same
+  insertion-order iteration as the solver), reads DOF index `nodeIdx*3+1` (vertical v),
+  takes the maximum absolute value at beam endpoint nodes, and converts m → mm.
+  Falls back to 0.0 if displacement vector is empty or analysis type cannot be resolved.
+
+### Remaining
+
+- Monosymmetric Mcr for channel sections (UNP350).
+- Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
+- Profile DB minor catalog deltas (HFRHS area, UNP Wpl).
+- Load height zg correction for top-flange loading (portal_beam4).
+- Full PDF visual diff vs referentie.
