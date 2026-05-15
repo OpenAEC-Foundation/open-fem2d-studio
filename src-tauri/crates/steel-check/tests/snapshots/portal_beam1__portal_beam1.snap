@@ -1,6 +1,5 @@
 ---
 source: crates/steel-check/tests/portal_beam1.rs
-assertion_line: 120
 expression: run()
 ---
 {
@@ -19,13 +18,13 @@ expression: run()
           "article": "art. 6.2.4 (6.10)",
           "force_state": {
             "combination_id": 21,
-            "position_mm": 3900.0,
+            "position_mm": 0.0,
             "forces": {
               "n_ed": -18.479,
               "vy_ed": 0.0,
-              "vz_ed": 235.084,
+              "vz_ed": -232.736,
               "mt_ed": 0.0,
-              "my_ed": -194.796,
+              "my_ed": 66.036,
               "mz_ed": 0.0
             }
           },
@@ -433,13 +432,13 @@ expression: run()
           "article": "art. 6.3.1 (6.46)",
           "force_state": {
             "combination_id": 21,
-            "position_mm": 3900.0,
+            "position_mm": 0.0,
             "forces": {
               "n_ed": -18.479,
               "vy_ed": 0.0,
-              "vz_ed": 235.084,
+              "vz_ed": -232.736,
               "mt_ed": 0.0,
-              "my_ed": -194.796,
+              "my_ed": 66.036,
               "mz_ed": 0.0
             }
           },
@@ -534,85 +533,15 @@ expression: run()
             }
           },
           "formula_latex": "M_{b,Rd} = \\chi_{LT} \\cdot W_{pl,y} \\cdot f_y / \\gamma_{M1}",
-          "variables": [
-            {
-              "symbol": "W_{pl,y}",
-              "value": 845000.0,
-              "unit": "mm³"
-            },
-            {
-              "symbol": "f_y",
-              "value": 235.0,
-              "unit": "MPa"
-            },
-            {
-              "symbol": "\\gamma_{M1}",
-              "value": 1.0,
-              "unit": "-"
-            }
-          ],
-          "intermediate_values": [
-            {
-              "symbol": "L_{st}",
-              "value": 5000.0,
-              "unit": "mm"
-            },
-            {
-              "symbol": "\\beta",
-              "value": 0.5,
-              "unit": "-"
-            },
-            {
-              "symbol": "C_1",
-              "value": 1.31,
-              "unit": "-"
-            },
-            {
-              "symbol": "C_2",
-              "value": 0.0,
-              "unit": "-"
-            },
-            {
-              "symbol": "S",
-              "value": 866.3618930023543,
-              "unit": "mm"
-            },
-            {
-              "symbol": "C",
-              "value": 4.685727065721459,
-              "unit": "-"
-            },
-            {
-              "symbol": "k_{red}",
-              "value": 1.0,
-              "unit": "-"
-            },
-            {
-              "symbol": "M_{cr}",
-              "value": 226.70878911760485,
-              "unit": "kNm"
-            },
-            {
-              "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.9358971116194389,
-              "unit": "-"
-            },
-            {
-              "symbol": "\\chi_{LT}",
-              "value": 0.7385888858849399,
-              "unit": "-"
-            }
-          ],
-          "value": 0.7385888858849399,
-          "unit": "-",
-          "uc": {
-            "ed": 194.796,
-            "rd": 146.66528801460194,
-            "uc": 1.3281670300923978,
-            "formula_latex": "M_{y,Ed} / M_{b,Rd}"
-          },
-          "status": "NotOk",
-          "notes": []
+          "variables": [],
+          "intermediate_values": [],
+          "value": 0.0,
+          "unit": "kNm",
+          "uc": null,
+          "status": "NotApplicable",
+          "notes": [
+            "LTB not implemented for channel sections in v1 (monosymmetric Mcr formula needed)"
+          ]
         }
       }
     },
@@ -657,7 +586,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.7987825453347446,
+              "value": 0.5899719102231256,
               "unit": "-"
             },
             {
@@ -666,12 +595,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.8098366790605714,
+          "value": 0.6010260439489524,
           "unit": "-",
           "uc": {
-            "ed": 0.8098366790605714,
+            "ed": 0.6010260439489524,
             "rd": 1.0,
-            "uc": 0.8098366790605714,
+            "uc": 0.6010260439489524,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -720,7 +649,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.47926952720084665,
+              "value": 0.35398314613387527,
               "unit": "-"
             },
             {
@@ -729,12 +658,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.5292622452883944,
+          "value": 0.40397586422142295,
           "unit": "-",
           "uc": {
-            "ed": 0.5292622452883944,
+            "ed": 0.40397586422142295,
             "rd": 1.0,
-            "uc": 0.5292622452883944,
+            "uc": 0.40397586422142295,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -789,7 +718,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.3281670300923978,
-  "status": "NotOk",
-  "governing_check_id": "6.3.2_ltb"
+  "uc_max": 0.9809694070250535,
+  "status": "Ok",
+  "governing_check_id": "6.2.5_bending_y"
 }
