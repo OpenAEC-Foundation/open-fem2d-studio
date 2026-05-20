@@ -862,6 +862,45 @@ export function applyLoadCaseToMesh(mesh: Mesh, loadCase: ILoadCase, skipEdgeToN
   }
 }
 
+/**
+ * Detect whether multiple load cases each contain non-trivial loads.
+ * Returns true when ≥2 load cases have at least one pointLoad / distributedLoad / nodeLoad.
+ * Used by handleSolve to decide between "active-case-only" and "combine-all" semantics.
+ */
+export function hasMultipleActiveLoadCases(loadCases: ILoadCase[]): boolean {
+  let casesWithLoads = 0;
+  for (const lc of loadCases) {
+    const hasAny =
+      (lc.pointLoads && lc.pointLoads.length > 0) ||
+      (lc.distributedLoads && lc.distributedLoads.length > 0) ||
+      (lc.edgeLoads && lc.edgeLoads.length > 0) ||
+      (lc.thermalLoads && lc.thermalLoads.length > 0);
+    if (hasAny) casesWithLoads++;
+    if (casesWithLoads >= 2) return true;
+  }
+  return false;
+}
+
+/**
+ * Apply ALL load cases additively (factor 1.0 each) onto the mesh.
+ * Used by handleSolve when multiple load cases each have loads — so the user
+ * sees the combined effect of e.g. gravity + wind in a single diagram instead
+ * of only the active case.
+ */
+export function applyAllLoadCasesToMesh(mesh: Mesh, loadCases: ILoadCase[], skipEdgeToNodeConversion = true): void {
+  // Build synthetic combination with factor 1.0 for every case
+  const factors = new Map<number, number>();
+  for (const lc of loadCases) factors.set(lc.id, 1.0);
+  const syntheticCombination: ILoadCombination = {
+    id: -1,
+    name: '__auto_all_cases__',
+    type: '6.16', // SLS characteristic combo (factor 1.0 per load case)
+    factors,
+  };
+  applyCombinedLoadsToMesh(mesh, loadCases, syntheticCombination);
+  void skipEdgeToNodeConversion; // applyCombinedLoadsToMesh handles edges per case already
+}
+
 // Apply combined loads from multiple load cases with factors
 export function applyCombinedLoadsToMesh(mesh: Mesh, loadCases: ILoadCase[], combination: ILoadCombination): void {
   // Clear all existing loads
