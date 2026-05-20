@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FEMProvider, useFEM, applyLoadCaseToMesh } from './context/FEMContext';
+import { FEMProvider, useFEM, applyLoadCaseToMesh, applyAllLoadCasesToMesh, hasMultipleActiveLoadCases } from './context/FEMContext';
 import { solve } from './core/solver/SolverService';
 import { Ribbon } from './components/Ribbon/Ribbon';
 import { ProjectBrowser } from './components/ProjectBrowser/ProjectBrowser';
@@ -171,13 +171,31 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   handleRunSteelChecksRef.current = handleRunSteelChecks;
 
   // Solve handler for on-demand solving (e.g. clicking Results tab)
+  //
+  // Multi-case behavior: when >1 load case has loads (e.g. "Dead" + "Wind"),
+  // we automatically combine ALL cases (factor 1.0 each) so the resulting
+  // diagram shows the full superposition. Single-case projects keep the
+  // original active-case-only semantics.
   const handleSolve = useCallback(() => {
     if (state.mesh.getNodeCount() < 2) return;
 
-    const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
-    if (activeLc) {
-      applyLoadCaseToMesh(state.mesh, activeLc, false);
-    }
+    const combineAll = hasMultipleActiveLoadCases(state.loadCases);
+    const applyForSolve = () => {
+      if (combineAll) {
+        applyAllLoadCasesToMesh(state.mesh, state.loadCases, false);
+      } else {
+        const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
+        if (activeLc) applyLoadCaseToMesh(state.mesh, activeLc, false);
+      }
+    };
+    const applyForCanvas = () => {
+      // After solving, restore mesh to ACTIVE case so canvas keeps showing
+      // per-case load arrows (only the diagram reflects combined result).
+      const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
+      if (activeLc) applyLoadCaseToMesh(state.mesh, activeLc);
+    };
+
+    applyForSolve();
 
     const effectiveAnalysisType = getEffectiveAnalysisType();
 
@@ -190,10 +208,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       geometricNonlinear: false
     })
       .then(result => {
-        const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
-        if (activeLc) {
-          applyLoadCaseToMesh(state.mesh, activeLc);
-        }
+        applyForCanvas();
         dispatch({ type: 'SET_RESULT', payload: result });
         dispatch({ type: 'SET_SHOW_DEFORMED', payload: true });
         if (effectiveAnalysisType === 'frame') {
@@ -223,9 +238,13 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       const controller = new AbortController();
       autoRecalcAbort.current = controller;
 
-      const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
-      if (activeLc) {
-        applyLoadCaseToMesh(state.mesh, activeLc, false);
+      // Mirror handleSolve: combine all cases if multiple have loads.
+      const combineAll = hasMultipleActiveLoadCases(state.loadCases);
+      if (combineAll) {
+        applyAllLoadCasesToMesh(state.mesh, state.loadCases, false);
+      } else {
+        const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
+        if (activeLc) applyLoadCaseToMesh(state.mesh, activeLc, false);
       }
 
       const effectiveAnalysisType = getEffectiveAnalysisType();
@@ -236,6 +255,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
       }, controller.signal)
         .then(result => {
           if (!controller.signal.aborted) {
+            // Restore active case for canvas load display.
             const activeLc = state.loadCases.find(lc => lc.id === state.activeLoadCase);
             if (activeLc) {
               applyLoadCaseToMesh(state.mesh, activeLc);
