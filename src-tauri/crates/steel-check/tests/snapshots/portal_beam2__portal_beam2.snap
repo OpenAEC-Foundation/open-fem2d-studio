@@ -1,5 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam2.rs
+assertion_line: 116
 expression: run()
 ---
 {
@@ -83,7 +84,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,y}",
-              "value": 354100.0,
+              "value": 354113.0,
               "unit": "mm³"
             },
             {
@@ -97,12 +98,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 66.036,
-            "rd": 83.2135,
-            "uc": 0.7935731582014938,
+            "rd": 83.216555,
+            "uc": 0.793544024983971,
             "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
           },
           "status": "Ok",
@@ -134,7 +135,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,z}",
-              "value": 170000.0,
+              "value": 169986.0,
               "unit": "mm³"
             },
             {
@@ -148,11 +149,11 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 39.949999999999996,
+          "value": 39.946709999999996,
           "unit": "kNm",
           "uc": {
             "ed": 0.0,
-            "rd": 39.949999999999996,
+            "rd": 39.946709999999996,
             "uc": 0.0,
             "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
           },
@@ -297,16 +298,16 @@ expression: run()
             },
             {
               "symbol": "M_{y,c,Rd}",
-              "value": 83.2135,
+              "value": 83.216555,
               "unit": "kNm"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 66.036,
-            "rd": 83.2135,
-            "uc": 0.7935731582014938,
+            "rd": 83.216555,
+            "uc": 0.793544024983971,
             "formula_latex": "M_{y,Ed} / M_{y,V,Rd}"
           },
           "status": "Ok",
@@ -350,16 +351,16 @@ expression: run()
             },
             {
               "symbol": "M_{pl,y,Rd}",
-              "value": 83.2135,
+              "value": 83.216555,
               "unit": "kNm"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 66.036,
-            "rd": 83.2135,
-            "uc": 0.7935731582014938,
+            "rd": 83.216555,
+            "uc": 0.793544024983971,
             "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
           },
           "status": "Ok",
@@ -403,16 +404,16 @@ expression: run()
             },
             {
               "symbol": "M_{pl,y,Rd}",
-              "value": 83.2135,
+              "value": 83.216555,
               "unit": "kNm"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 66.036,
-            "rd": 83.2135,
-            "uc": 0.7935731582014938,
+            "rd": 83.216555,
+            "uc": 0.793544024983971,
             "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
           },
           "status": "Ok",
@@ -536,7 +537,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,y}",
-              "value": 354100.0,
+              "value": 354113.0,
               "unit": "mm³"
             },
             {
@@ -573,12 +574,12 @@ expression: run()
             },
             {
               "symbol": "S",
-              "value": 686.8459187094345,
+              "value": 686.8464207557247,
               "unit": "mm"
             },
             {
               "symbol": "C",
-              "value": 4.149958628259631,
+              "value": 4.149959923286805,
               "unit": "-"
             },
             {
@@ -588,26 +589,26 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 361.06257566800537,
+              "value": 361.06295225722613,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.480071203999563,
+              "value": 0.4800797659338835,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.9683382622783002,
+              "value": 0.9683347861846971,
               "unit": "-"
             }
           ],
-          "value": 0.9683382622783002,
+          "value": 0.9683347861846971,
           "unit": "-",
           "uc": {
             "ed": 66.036,
-            "rd": 80.57881598809533,
-            "uc": 0.8195206046432368,
+            "rd": 80.58148499295208,
+            "uc": 0.8194934606352281,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "Ok",
@@ -656,7 +657,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.5102930617367697,
+              "value": 0.5102761599055331,
               "unit": "-"
             },
             {
@@ -665,12 +666,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.7064593863705124,
+          "value": 0.7064424845392758,
           "unit": "-",
           "uc": {
-            "ed": 0.7064593863705124,
+            "ed": 0.7064424845392758,
             "rd": 1.0,
-            "uc": 0.7064593863705124,
+            "uc": 0.7064424845392758,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -719,7 +720,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.30617583704206175,
+              "value": 0.3061656959433198,
               "unit": "-"
             },
             {
@@ -728,12 +729,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.5488557494645936,
+          "value": 0.5488456083658516,
           "unit": "-",
           "uc": {
-            "ed": 0.5488557494645936,
+            "ed": 0.5488456083658516,
             "rd": 1.0,
-            "uc": 0.5488557494645936,
+            "uc": 0.5488456083658516,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -788,7 +789,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 0.8195206046432368,
+  "uc_max": 0.8194934606352281,
   "status": "Ok",
   "governing_check_id": "6.3.2_ltb"
 }

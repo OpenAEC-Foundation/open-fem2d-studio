@@ -71,10 +71,9 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn portal_beam1_compression() {
     let r = run();
-    // referentie: N_c,Rd = 1801.43 kN (A=7665.7 mm²)
-    // Our profile DB: A=7727 mm² → N_c,Rd = 1815.845 kN
-    // TODO Phase 13: align UNP350 area in profile DB (7727 vs referentie 7665.7 mm²)
-    assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 1815.845, max_relative = 1e-3);
+    // Phase 13-G: UNP350 area aligned with referentie (A=7665.7 mm²)
+    // N_c,Rd = 7665.7 × 235 / 1.0 / 1000 = 1801.44 kN — matches referentie exactly
+    assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 1801.44, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.01, max_relative = 0.15); // very small UC, wider tolerance
 }
 
@@ -91,12 +90,11 @@ fn portal_beam1_bending() {
 #[test]
 fn portal_beam1_shear() {
     let r = run();
-    // referentie: V_c,z,Rd = 671.1 kN (Av=4946 mm²)
-    // Our profile DB: Av_z=4900 mm² → V_c,z,Rd = 664.8 kN
-    // TODO Phase 13: align UNP350 Av in profile DB (4900 vs referentie 4946 mm²)
-    assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 664.82, max_relative = 1e-3);
-    // UC = 235.084 / 664.82 = 0.354
-    assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.354, max_relative = 0.025);
+    // Phase 13-G: UNP350 Av_z aligned with referentie (Av=4946 mm²)
+    // V_c,z,Rd = 4946 × (235/√3) / 1.0 / 1000 = 671.06 kN — matches referentie 671.1 kN
+    assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 671.06, max_relative = 1e-3);
+    // UC = 235.084 / 671.06 = 0.350 (referentie: 0.35)
+    assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.350, max_relative = 0.025);
 }
 
 #[test]
