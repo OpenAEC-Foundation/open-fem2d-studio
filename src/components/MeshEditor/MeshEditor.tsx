@@ -461,22 +461,26 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   }, [result]);
 
   // Global max q-load for distributed load scaling - use ONE scale for all loads
+  // BUGFIX: also include qx / qxEnd so horizontal line loads (wind) get visible
+  // arrow lengths instead of being scaled to zero.
   const globalMaxQ = useMemo(() => {
     let maxQ = 0;
     // Check beam's own distributedLoad (applied directly to beam)
     for (const beam of mesh.beamElements.values()) {
       if (beam.distributedLoad) {
-        const { qy } = beam.distributedLoad;
+        const { qx, qy } = beam.distributedLoad;
+        const qxE = beam.distributedLoad.qxEnd ?? qx;
         const qyE = beam.distributedLoad.qyEnd ?? qy;
-        maxQ = Math.max(maxQ, Math.abs(qy), Math.abs(qyE));
+        maxQ = Math.max(maxQ, Math.abs(qx), Math.abs(qxE), Math.abs(qy), Math.abs(qyE));
       }
     }
     // Check all load cases for stored distributed loads
     for (const lc of loadCases) {
       if (lc.distributedLoads) {
         for (const dl of lc.distributedLoads) {
+          const qxE = dl.qxEnd ?? dl.qx;
           const qyE = dl.qyEnd ?? dl.qy;
-          maxQ = Math.max(maxQ, Math.abs(dl.qy), Math.abs(qyE));
+          maxQ = Math.max(maxQ, Math.abs(dl.qx), Math.abs(qxE), Math.abs(dl.qy), Math.abs(qyE));
         }
       }
     }
