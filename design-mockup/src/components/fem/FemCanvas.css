@@ -358,6 +358,20 @@
   text-anchor: middle;
 }
 
+/* Waarde-labels op de extreme punten van een krachtsdiagram (piek + hoeken).
+   Kleur volgt het diagram-type; lichte halo zodat het leesbaar blijft boven
+   het gevulde diagram-vlak. */
+.fem-diagram-value {
+  font: 700 10px/1 "JetBrains Mono", monospace;
+  paint-order: stroke;
+  stroke: var(--theme-bg, #fff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.fem-diagram-value.fem-diagram-M { fill: #1d4ed8; }
+.fem-diagram-value.fem-diagram-V { fill: #047857; }
+.fem-diagram-value.fem-diagram-N { fill: #d97706; }
+
 .fem-result-label-bg {
   fill: var(--theme-bg-lighter);
   fill-opacity: 0.85;
