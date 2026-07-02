@@ -1,0 +1,159 @@
+.lcd-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.lcd-dialog {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-radius: 8px;
+  width: min(900px, 92vw);
+  max-height: 88vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  font: 12.5px/1.4 "Inter", system-ui, sans-serif;
+}
+
+.lcd-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--theme-border);
+}
+.lcd-title { font: 600 14px/1 "Inter", system-ui, sans-serif; }
+.lcd-close {
+  background: transparent; border: none; cursor: pointer;
+  font-size: 22px; line-height: 1; color: var(--theme-text-faint);
+  padding: 0 6px;
+}
+.lcd-close:hover { color: var(--theme-text); }
+
+.lcd-tabs {
+  display: flex; gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-lighter);
+}
+.lcd-tab {
+  padding: 8px 14px;
+  background: transparent; border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+  font: 500 12px/1 "Inter", system-ui, sans-serif;
+}
+.lcd-tab:hover { color: var(--theme-text); }
+.lcd-tab.active {
+  color: var(--theme-accent);
+  border-bottom-color: var(--theme-accent);
+  font-weight: 600;
+}
+
+.lcd-body {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 14px 16px;
+}
+
+.lcd-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+.lcd-table th, .lcd-table td {
+  text-align: left;
+  padding: 5px 6px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+.lcd-table th {
+  font: 600 10.5px/1.2 "Inter", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--theme-text-faint);
+  background: var(--theme-bg-lighter);
+}
+.lcd-td-id {
+  color: var(--theme-text-faint);
+  font: 500 11px/1 "JetBrains Mono", monospace;
+  text-align: center;
+}
+.lcd-table-combo th, .lcd-table-combo td { padding: 3px 4px; }
+
+.lcd-input {
+  width: 100%;
+  padding: 4px 8px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  font: 500 12px/1.2 "Inter", system-ui, sans-serif;
+}
+.lcd-input:focus { outline: none; border-color: var(--theme-accent); }
+.lcd-input-factor {
+  text-align: right;
+  font: 500 11.5px/1.2 "JetBrains Mono", monospace;
+}
+
+.lcd-row-btn {
+  width: 24px; height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font: 700 14px/1 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-faint);
+}
+.lcd-row-btn:hover { background: var(--theme-hover); color: var(--theme-text); }
+.lcd-row-btn-danger:hover { background: #fee; color: #c00; border-color: #fcc; }
+
+.lcd-add-row {
+  display: flex; gap: 6px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--theme-border-subtle);
+}
+.lcd-add-input { flex: 1; }
+
+.lcd-btn-primary {
+  padding: 5px 14px;
+  background: var(--theme-accent);
+  color: var(--theme-accent-text, white);
+  border: 1px solid var(--theme-accent);
+  border-radius: 3px;
+  cursor: pointer;
+  font: 600 12px/1.2 "Inter", system-ui, sans-serif;
+}
+.lcd-btn-primary:hover { filter: brightness(1.08); }
+
+.lcd-btn-secondary {
+  padding: 6px 14px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  cursor: pointer;
+  font: 500 12px/1.2 "Inter", system-ui, sans-serif;
+}
+.lcd-btn-secondary:hover { background: var(--theme-hover); }
+
+.lcd-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--theme-border);
+}
+
+.lcd-hint {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: var(--theme-text-faint);
+  background: var(--theme-bg-lighter);
+  border-radius: 4px;
+}
+.lcd-hint code {
+  font: 500 11px/1 "JetBrains Mono", monospace;
+  background: var(--theme-bg);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
