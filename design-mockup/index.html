@@ -9,6 +9,26 @@
 
   <body>
     <div id="root"></div>
+    <script>
+      // Dev-diagnose: vang bootstrap-crashes en toon ze op het scherm i.p.v.
+      // een white screen. Alleen actief als #root na de fout nog leeg is.
+      (function () {
+        function show(msg) {
+          var root = document.getElementById("root");
+          if (root && root.childElementCount > 0) return; // app draait al — laat React error-UI het doen
+          document.body.innerHTML =
+            '<pre style="color:#b91c1c;background:#fef2f2;padding:24px;margin:0;font:12px/1.5 Consolas,monospace;white-space:pre-wrap;">' +
+            "APP BOOTSTRAP ERROR\n\n" + msg + "</pre>";
+        }
+        window.addEventListener("error", function (e) {
+          show((e.error && e.error.stack) || e.message || "onbekende fout");
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason;
+          show("Unhandled promise rejection:\n" + ((r && r.stack) || String(r)));
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
