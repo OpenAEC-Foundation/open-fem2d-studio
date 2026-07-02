@@ -3,7 +3,7 @@
  *
  * Floating modal with tabs to edit beam properties:
  * (Algemeen / EN 1993), section accordion-style content, footer with
- * Annuleer/OK. State is local-only for now (releases/material/profile
+ * Annuleer/OK. OK persists edits via onUpdate → updateBeam (releases/material/profile
  * aren't yet stored on the Beam type in v2).
  */
 import { useState } from "react";
