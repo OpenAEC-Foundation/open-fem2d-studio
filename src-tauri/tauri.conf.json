@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "identifier": "org.openaec.fem2d-studio",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "frontendDist": "../design-mockup/dist",
+    "devUrl": "http://localhost:1440",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "cd design-mockup && npm run build"
   },
   "app": {
     "windows": [
@@ -31,6 +31,15 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      }
+    },
+    "resources": [
+      "WebView2Loader.dll"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
