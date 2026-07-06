@@ -167,6 +167,11 @@ export default function FemCanvas(props: FemCanvasProps) {
   // zowel canvas-size als nodes hebben. Daarna respecteer user pan/zoom.
   const initialFitDoneRef = useRef(false);
 
+  // Multi-key command sequence buffer (CAD-stijl): bv. "M" gevolgd door "V"
+  // activeert het Verplaats-gereedschap. { key, t } = laatst ingedrukte
+  // prefix + tijdstip (ms) zodat oude prefixes na een timeout vervallen.
+  const keySeqRef = useRef<{ key: string; t: number } | null>(null);
+
   // Pan-drag state
   const panRef = useRef<{ active: boolean; startSX: number; startSY: number; startOX: number; startOY: number }>({
     active: false, startSX: 0, startSY: 0, startOX: 0, startOY: 0,
@@ -947,6 +952,24 @@ export default function FemCanvas(props: FemCanvasProps) {
         }
       }
 
+      // ── Multi-key commando-sequences (CAD-stijl) ─────────────────────
+      // "MV" (M gevolgd door V binnen 1,2 s) activeert het Verplaats-tool.
+      if (!grabMode && !rotateMode && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase();
+        const pending = keySeqRef.current;
+        const fresh = pending !== null && Date.now() - pending.t < 1200;
+        if (fresh && pending!.key === "m") {
+          keySeqRef.current = null;
+          if (k === "v") { e.preventDefault(); onToolChange?.("move"); return; }
+          // andere tweede toets: prefix vervalt, val door naar normale afhandeling
+        }
+        if (k === "m") {
+          keySeqRef.current = { key: "m", t: Date.now() };
+          e.preventDefault();
+          return;
+        }
+      }
+
       // G / R / D — only if there's a selection and no modal is active.
       if (!grabMode && !rotateMode && !e.ctrlKey && !e.altKey && !e.metaKey) {
         if ((e.key === "g" || e.key === "G") && selection) {
@@ -1069,7 +1092,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     };
   }, [selection, deleteSelected, setSelection, nodes, size, hoverModel,
       grabMode, rotateMode, cancelGrab, commitGrab, cancelRotate, commitRotate,
-      selectionNodeIds, copySelection]);
+      selectionNodeIds, copySelection, onToolChange, tool]);
 
   // ── Wheel event listener (non-passive so preventDefault works) ──────────
   useEffect(() => {

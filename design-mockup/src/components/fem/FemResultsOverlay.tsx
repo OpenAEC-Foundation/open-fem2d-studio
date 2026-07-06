@@ -68,7 +68,6 @@ export default function FemResultsOverlay({
   const showN = displayFlags.N;
   const showV = displayFlags.V;
   const showM = displayFlags.M;
-  const anyForceLabel = showN || showV || showM;
   // ── Auto-scale the deflection so the biggest sample is visible. ─────────
   // We sample every beam and find the max curve offset (mm), then scale so
   // it shows as ~60px on screen.
@@ -196,17 +195,24 @@ export default function FemResultsOverlay({
 
     // ── Verticaal (Fz) ────────────────────────────────────────────────
     if (Math.abs(r.fz) / 1000 > REACTION_MIN_KN) {
-      const ay = -r.fz * reactionScale;     // flip for screen-y
-      // Head zit altijd GAP BOVEN het support (negatieve screen-y), zodat
-      // de pijl-tip nooit door de driehoek/hatching heen loopt.
-      const headY = p.y - REACTION_GAP_PX;
-      const tailY = headY - ay;
-      const midY = (tailY + headY) / 2;
+      // Klassieke weergave: de verticale reactiepijl staat ONDER het
+      // support-symbool (driehoek + grondlijn + hatching ≈ 34 px hoog),
+      // volledig vrij van knoop, staaf en diagrammen. Pijlrichting = de
+      // krachtrichting: Fz > 0 (omhoog) → pijl wijst omhoog richting het
+      // support; Fz < 0 (uplift-anker) → pijl wijst omlaag.
+      const SUPPORT_CLEAR_PX = 38;         // ruimte voor het support-symbool
+      const len = Math.abs(-r.fz * reactionScale);
+      const topY = p.y + SUPPORT_CLEAR_PX; // bovenkant van de pijl-as
+      const botY = topY + len;
+      const up = r.fz > 0;                 // kracht omhoog?
+      const y1 = up ? botY : topY;         // tail
+      const y2 = up ? topY : botY;         // head (marker-end)
+      const midY = (topY + botY) / 2;
       const labelX = p.x + 30;
       const kN = (r.fz / 1000).toFixed(1);
       out.push(
         <g key={`rx-fz-${nodeId}`}>
-          <line x1={p.x} y1={tailY} x2={p.x} y2={headY}
+          <line x1={p.x} y1={y1} x2={p.x} y2={y2}
             className="fem-reaction-arrow"
             markerEnd="url(#fem-reaction-head)" />
           <rect x={labelX - 24} y={midY - 8} width={48} height={15} rx={3}
@@ -320,9 +326,16 @@ export default function FemResultsOverlay({
    */
   const renderForceDiagram = (which: "N" | "V" | "M", scale: number, classKey: string) => {
     if (scale === 0) return null;
+    const showValues = displayFlags.showExtremes ?? false;
+    const fmtValue = (raw: number): string =>
+      which === "M" ? `${(raw / 1e6).toFixed(1)}` : `${(raw / 1000).toFixed(1)}`;
+
     return beamDiagrams.map(({ beam, samples }) => {
       if (samples.length === 0) return null;
       const offset: string[] = [];
+      // Bijhouden voor waarde-labels: per sample de geplotte offset-positie
+      // + de vlip-waarde (voor label-offset-richting) + de raw waarde.
+      const pts: { ox: number; oy: number; vFlip: number; raw: number; nxW: number; nzW: number }[] = [];
       for (const sm of samples) {
         const raw = which === "N" ? sm.N : which === "V" ? sm.V : sm.M;
         // M flips for tension-side rendering; N/V plot in raw direction.
@@ -330,6 +343,7 @@ export default function FemResultsOverlay({
         const ox = sm.px + sm.nxW * v * scale;
         const oy = sm.py - sm.nzW * v * scale;
         offset.push(`${ox.toFixed(2)},${oy.toFixed(2)}`);
+        pts.push({ ox, oy, vFlip: v, raw, nxW: sm.nxW, nzW: sm.nzW });
       }
       // Closing polygon: back to beam (endpoint → startpoint along axis)
       const startBase = `${samples[0].px.toFixed(2)},${samples[0].py.toFixed(2)}`;
@@ -340,75 +354,76 @@ export default function FemResultsOverlay({
       // diagram-top, langs de top, naar diagram-eind, en terug naar baseline-
       // eind. Zo sluit de lijn netjes aan op de staaf bij hoeken / knopen.
       const linePts = [startBase, ...offset, endBase].join(" ");
+
+      // ── Waarde-labels op extreme punten (knop "Extreme waarden tonen") ──
+      //  1. Uiteinden (hoeken / steunmomenten): sample 0 en laatste.
+      //  2. Lokale extrema: elk punt waar de helling van teken wisselt —
+      //     dit vangt het VELDMOMENT (max in het veld, waar V door nul gaat).
+      //     Bij een UDL-lijn wordt de piekwaarde parabolisch verfijnd zodat
+      //     het getoonde max exact is, niet de dichtstbijzijnde sample-waarde.
+      const valueLabels: React.ReactNode[] = [];
+      if (showValues) {
+        let globalPeak = 0;
+        for (const p of pts) globalPeak = Math.max(globalPeak, Math.abs(p.raw));
+        const minShow = Math.max(globalPeak * 0.02, 1e-6); // ruis-drempel
+
+        // label-index → weer te geven waarde (kan parabolisch verfijnd zijn)
+        const labelVal = new Map<number, number>();
+        const consider = (i: number, value: number) => {
+          if (Math.abs(value) <= minShow) return;
+          // Bij bijna-samenvallende indices houd de grootste |waarde|.
+          const prev = labelVal.get(i);
+          if (prev === undefined || Math.abs(value) > Math.abs(prev)) labelVal.set(i, value);
+        };
+
+        // Uiteinden (steunmomenten / hoekwaarden)
+        consider(0, pts[0].raw);
+        consider(pts.length - 1, pts[pts.length - 1].raw);
+
+        // Lokale extrema (veldmoment, tussensteunpunten)
+        for (let i = 1; i < pts.length - 1; i++) {
+          const dPrev = pts[i].raw - pts[i - 1].raw;
+          const dNext = pts[i + 1].raw - pts[i].raw;
+          if (dPrev === 0 && dNext === 0) continue;
+          const slopeFlips = (dPrev >= 0 && dNext <= 0) || (dPrev <= 0 && dNext >= 0);
+          if (!slopeFlips) continue;
+          // Parabolische verfijning van het extremum via 3 gelijk-afstand punten.
+          const y0 = pts[i - 1].raw, y1 = pts[i].raw, y2 = pts[i + 1].raw;
+          const denom = y0 - 2 * y1 + y2;
+          let peakVal = y1;
+          if (Math.abs(denom) > 1e-9) {
+            const t = 0.5 * (y0 - y2) / denom;         // -0.5..0.5 vertex-offset
+            peakVal = y1 - 0.25 * (y0 - y2) * t;       // vertex-waarde
+          }
+          consider(i, peakVal);
+        }
+
+        for (const [i, value] of labelVal) {
+          const pt = pts[i];
+          // Label net voorbij de diagram-lijn, in de plot-richting van het
+          // diagram op dat punt (of een vaste kant bij ~0-waarde).
+          const dir = Math.sign(pt.vFlip) || 1;
+          const lx = pt.ox + pt.nxW * dir * 13;
+          const ly = pt.oy - pt.nzW * dir * 13;
+          valueLabels.push(
+            <text
+              key={`val-${which}-${beam.id}-${i}`}
+              x={lx} y={ly}
+              className={`fem-diagram-value ${classKey}`}
+              textAnchor="middle"
+              dominantBaseline="middle"
+            >
+              {fmtValue(value)}
+            </text>
+          );
+        }
+      }
+
       return (
         <g key={`dgm-${which}-${beam.id}`}>
           <polygon points={polyPts} className={`fem-diagram-fill ${classKey}`} />
           <polyline points={linePts} className={`fem-diagram-line ${classKey}`} fill="none" />
-        </g>
-      );
-    });
-  };
-
-  // Per-element label at midspan: shows only the toggled-on force components.
-  const renderForceLabels = () => {
-    if (!anyForceLabel || !(displayFlags.showExtremes ?? true)) return null;
-    return beams.map(beam => {
-      const nA = nodes.find(n => n.id === beam.from);
-      const nB = nodes.find(n => n.id === beam.to);
-      const ef = result.elements.get(beam.id);
-      if (!nA || !nB || !ef) return null;
-      const midX = (nA.x + nB.x) / 2;
-      const midZ = (nA.z + nB.z) / 2;
-      const p = worldToScreen(midX, midZ);
-      // Offset perpendicular to beam axis a bit
-      const dx = nB.x - nA.x, dz = nB.z - nA.z;
-      const L = Math.hypot(dx, dz);
-      const nx = L > 0 ? -dz / L : 0;
-      const nz = L > 0 ?  dx / L : 1;
-      const offsetPx = 18;
-      const labelX = p.x + nx * offsetPx;
-      const labelY = p.y - nz * offsetPx;
-
-      // Per-component peak uit de echte stations-arrays (niet endpoint
-      // benadering — die zou voor staven met UDL de midden-bulge missen,
-      // en voor combinaties zou het verschil tussen LCs onzichtbaar zijn).
-      const peakFromArr = (arr: number[] | undefined, fallback: number): number => {
-        if (arr && arr.length > 0) {
-          let m = 0;
-          for (const v of arr) if (Math.abs(v) > m) m = Math.abs(v);
-          return m;
-        }
-        return Math.abs(fallback);
-      };
-      const Npeak = peakFromArr(ef.normalForce,  ef.N);
-      const Vpeak = peakFromArr(ef.shearForce,   ef.V);
-      const Mpeak = peakFromArr(ef.bendingMoment, Math.max(Math.abs(ef.M_start), Math.abs(ef.M_end)));
-
-      // Collect only the active lines
-      const lines: { text: string }[] = [];
-      if (showN) lines.push({ text: `|N|ₘₐₓ = ${(Npeak / 1000).toFixed(2)} kN` });
-      if (showV) lines.push({ text: `|V|ₘₐₓ = ${(Vpeak / 1000).toFixed(2)} kN` });
-      if (showM) lines.push({ text: `|M|ₘₐₓ = ${(Mpeak / 1e6).toFixed(2)} kNm` });
-      if (lines.length === 0) return null;
-
-      const lineHeight = 11;
-      const boxHeight = lines.length * lineHeight + 10;
-      const boxTop = labelY - boxHeight / 2;
-      const textBaseline = boxTop + 14;   // first line baseline
-
-      return (
-        <g key={`forces${beam.id}`}>
-          <rect
-            x={labelX - 56} y={boxTop}
-            width={112} height={boxHeight}
-            rx={3}
-            className="fem-result-label-bg"
-          />
-          {lines.map((l, i) => (
-            <text key={i} x={labelX} y={textBaseline + i * lineHeight} className="fem-force-label">
-              {l.text}
-            </text>
-          ))}
+          {valueLabels}
         </g>
       );
     });
@@ -437,7 +452,6 @@ export default function FemResultsOverlay({
       {showV && renderForceDiagram("V", scaleV, "fem-diagram-V")}
       {showN && renderForceDiagram("N", scaleN, "fem-diagram-N")}
       {showReactions && renderReactions()}
-      {renderForceLabels()}
 
       {/* HUD-like banner so the user knows scale used — only when deflection shown */}
       {showDeflection && maxOffsetMm > 0 && (
