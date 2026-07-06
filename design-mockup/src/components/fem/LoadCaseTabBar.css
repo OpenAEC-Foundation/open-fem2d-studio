@@ -15,17 +15,6 @@
 }
 .lc-tab-bar::-webkit-scrollbar { height: 0; }
 
-.lc-tab-bar-prefix {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 8px 0 4px;
-  font: 600 10.5px/1 "Inter", system-ui, sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--theme-text-faint);
-  flex-shrink: 0;
-}
-
 /* Tab-look: trapezoid-style sheet — top-rounded, geen onderrand op de
  * actieve tab (verbindt visueel met content erboven), inactive tabs zitten
  * iets terug met dimmed background + smalle bovenkleur. */
@@ -82,8 +71,10 @@
 .lc-tab-type-other { background: #f59e0b; color: white; }   /* — oranje */
 .lc-tab-type-model { background: var(--theme-text-secondary); color: var(--theme-bg); }
 .lc-tab-model.active .lc-tab-type-model { background: var(--theme-accent); color: var(--theme-accent-text, white); }
+/* Model-tab sluit direct aan op het eerste belastinggeval (geen prefix of
+   extra marge ertussen — de tabs vormen één doorlopende rij). */
 .lc-tab-model {
-  margin-right: 6px;
+  margin-right: 0;
 }
 
 /* Resultaten-tab — eigen accent (amber/oranje) en spacing-divider links. */

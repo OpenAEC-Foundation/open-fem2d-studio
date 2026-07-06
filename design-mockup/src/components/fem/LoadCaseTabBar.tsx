@@ -75,8 +75,6 @@ export default function LoadCaseTabBar({
         <span className="lc-tab-name">Model</span>
       </button>
 
-      <span className="lc-tab-bar-prefix">Belasting:</span>
-
       {loadCases.map(lc => {
         const isActive = showLoads && lc.id === activeLoadCaseId;
         const count = loads.filter(l => l.caseId === lc.id).length;
