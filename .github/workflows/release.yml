@@ -104,6 +104,11 @@ jobs:
         run: npm ci
         working-directory: design-mockup
 
+      # tauri-action draait `npm run tauri build` in de projectroot; daarvoor
+      # moet @tauri-apps/cli uit de root-dependencies beschikbaar zijn.
+      - name: Install root dependencies
+        run: npm ci
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
