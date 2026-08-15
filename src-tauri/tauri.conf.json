@@ -30,16 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
-    "windows": {
-      "webviewInstallMode": {
-        "type": "embedBootstrapper",
-        "silent": true
-      }
-    },
-    "resources": [
-      "WebView2Loader.dll"
-    ],
+    "targets": ["msi", "nsis", "deb", "appimage", "app", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
