@@ -2315,6 +2315,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nen-en-1995-1-1"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nen-en-1993-1-1-section",
+ "nen-en-1993-1-1-stability",
+ "serde",
+ "ts-rs",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4306,6 +4318,20 @@ dependencies = [
  "quick-error",
  "weezl",
  "zune-jpeg",
+]
+
+[[package]]
+name = "timber-check"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nen-en-1993-1-1-section",
+ "nen-en-1993-1-1-stability",
+ "nen-en-1995-1-1",
+ "serde",
+ "steel-check",
+ "ts-rs",
 ]
 
 [[package]]

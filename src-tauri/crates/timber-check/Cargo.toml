@@ -1,0 +1,23 @@
+[package]
+name = "timber-check"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+mechanics = { path = "../mechanics" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
+steel-check = { path = "../steel-check" }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[[test]]
+name = "referentie_raamwerk"
+path = "tests/referentie_raamwerk.rs"
