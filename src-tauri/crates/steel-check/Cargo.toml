@@ -48,3 +48,11 @@ path = "tests/portal_beam3.rs"
 [[test]]
 name = "portal_beam4"
 path = "tests/portal_beam4.rs"
+
+[[test]]
+name = "doorbuiging_2867"
+path = "tests/doorbuiging_2867.rs"
+
+[[test]]
+name = "galerij_2867"
+path = "tests/galerij_2867.rs"

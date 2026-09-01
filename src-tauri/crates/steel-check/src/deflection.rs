@@ -50,3 +50,81 @@ pub fn check_deflection(
         notes: vec![],
     }
 }
+
+/// Eindzakking: w_fin = w_z − w_zeeg.
+///
+/// Beide in mm met teken (negatief = naar beneden). Een zeeg (pre-camber)
+/// wordt in dezelfde tekenconventie opgegeven en compenseert de zakking.
+pub fn w_fin_mm(w_z_mm: f64, w_pre_camber_mm: f64) -> f64 {
+    w_z_mm - w_pre_camber_mm
+}
+
+/// Bijkomende zakking na oplevering: w_add = w_fin − w_BGT,permanent.
+pub fn w_add_mm(w_fin_mm: f64, w_sls_permanent_mm: f64) -> f64 {
+    w_fin_mm - w_sls_permanent_mm
+}
+
+/// Grenswaarde L/noemer in mm (bijv. noemer = 333 voor w_fin, 150 voor w_add).
+pub fn grens_mm(lengte_mm: f64, noemer: f64) -> f64 {
+    if noemer.abs() < 1e-9 { return f64::INFINITY; }
+    lengte_mm / noemer
+}
+
+/// Noemer voor de bijkomende zakking w_add. Vast op 150 conform de
+/// referentie-uitwerking (L/150), onafhankelijk van de klasse voor w_fin.
+const W_ADD_NOEMER: f64 = 150.0;
+
+/// Beide doorbuigingstoetsen: eindzakking w_fin (L/klasse) en bijkomende
+/// zakking w_add (L/150).
+pub fn check_deflection_pair(
+    w_z_mm: f64,
+    w_pre_camber_mm: f64,
+    w_sls_permanent_mm: f64,
+    length_m: f64,
+    class: DeflectionClass,
+    limit_numerator: u32,
+) -> (ResistanceCalc, ResistanceCalc) {
+    let lengte_mm = length_m * 1000.0;
+    let noemer_fin = default_numerator(class, limit_numerator) as f64;
+
+    let w_fin = w_fin_mm(w_z_mm, w_pre_camber_mm);
+    let w_add = w_add_mm(w_fin, w_sls_permanent_mm);
+
+    let calc = |id: &str, titel: &str, w: f64, noemer: f64, latex: &str| {
+        let grens = grens_mm(lengte_mm, noemer);
+        let uc = if grens.is_finite() && grens > 0.0 { w.abs() / grens } else { 0.0 };
+        ResistanceCalc {
+            id: id.to_string(),
+            title: titel.to_string(),
+            article: "NEN-EN 1990 (BGT)".to_string(),
+            force_state: ForceStateSnapshot {
+                combination_id: 0, position_mm: 0.0, forces: InternalForces::default(),
+            },
+            formula_latex: latex.to_string(),
+            variables: vec![
+                NamedValue { symbol: "L".to_string(), value: lengte_mm, unit: "mm".to_string() },
+                NamedValue { symbol: "w".to_string(), value: w, unit: "mm".to_string() },
+                NamedValue { symbol: "L/n".to_string(), value: noemer, unit: "-".to_string() },
+            ],
+            value: grens,
+            unit: "mm".to_string(),
+            uc: Some(UnityCheck {
+                ed: w.abs(), rd: grens, uc,
+                formula_latex: r"|w| / w_{max}".to_string(),
+            }),
+            status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
+            notes: vec![],
+        }
+    };
+
+    (
+        calc(
+            "deflection_w_fin", "Deflection w_fin (BGT)", w_fin, noemer_fin,
+            r"w_{fin,z} = w_z - w_{zeeg,z}",
+        ),
+        calc(
+            "deflection_w_add", "Deflection w_add (BGT)", w_add, W_ADD_NOEMER,
+            r"w_{add,z} = w_{fin,z} - w_{BGT,perm,z}",
+        ),
+    )
+}

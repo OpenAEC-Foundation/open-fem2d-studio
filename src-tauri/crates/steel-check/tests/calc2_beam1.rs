@@ -1,7 +1,7 @@
 //! Calc 2 Beam 1 acceptance test — HEB160 S235.
 //!
 //! Reference: verificatie calculations/original/Calc 2.pdf §2.6.1 (page 50-53)
-//! referentie model: 5 m beam, check at x=2500 mm.
+//! Reference model: 5 m beam, check at x=2500 mm.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
@@ -44,6 +44,10 @@ fn run() -> &'static BeamCheckResult {
             deflection_actual_max_mm: 0.0,
             is_cantilever: false,
             consequence_class: ConsequenceClass::CC1,
+            pre_camber_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            q_equiv_n_per_mm: 0.0,
+            z_a_mm: 0.0,
         };
         check_beam(input)
     })
@@ -72,7 +76,7 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn calc2_beam1_compression() {
     let r = run();
-    // referentie: N_c,Rd = 1275.472 kN, UC = 0.18
+    // Reference: N_c,Rd = 1275.472 kN, UC = 0.18
     assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 1275.472, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.18, max_relative = 0.025);
 }
@@ -80,7 +84,7 @@ fn calc2_beam1_compression() {
 #[test]
 fn calc2_beam1_bending() {
     let r = run();
-    // referentie: M_y,c,Rd = 83.217 kNm, UC = 1.06 NOT OK
+    // Reference: M_y,c,Rd = 83.217 kNm, UC = 1.06 NOT OK
     assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 83.217, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 1.06, max_relative = 0.02);
     let bend = find_check(r, "6.2.5_bending_y");
@@ -92,7 +96,7 @@ fn calc2_beam1_bending() {
 #[test]
 fn calc2_beam1_shear() {
     let r = run();
-    // referentie: V_c,z,Rd = 239.1 kN, UC = 0.15
+    // Reference: V_c,z,Rd = 239.1 kN, UC = 0.15
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 239.1, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.15, max_relative = 0.025);
 }
@@ -109,7 +113,7 @@ fn calc2_beam1_governing_is_bending() {
     // Governing should be 6.2.5_bending_y with UC ~1.06
     // NOTE: Phase 13 may reveal that one of the 6.3.3 interaction equations gives higher UC
     // due to C1 approximation; if so, this test will need adjustment per iteration-log.md.
-    assert!(r.uc_max >= 1.0, "expected uc_max >= 1.0 (referentie: 1.06), got {}", r.uc_max);
+    assert!(r.uc_max >= 1.0, "expected uc_max >= 1.0 (reference: 1.06), got {}", r.uc_max);
     assert_eq!(r.status, CheckStatus::NotOk);
 }
 

@@ -3,6 +3,7 @@ import { ISolverResult } from '../core/fem/types';
 import { IProjectInfo, IBeamSteelConfig } from '../context/FEMContext';
 import { buildNodeIdToIndex, getDofsPerNode } from '../core/solver/Assembler';
 import { calculateBeamLength } from '../core/fem/Beam';
+import { findProfileByName } from '../core/data/SteelSections';
 import type { BeamCheckInput } from './types/steel/BeamCheckInput';
 import type { ForcePoint } from './types/steel/ForcePoint';
 import type { LateralBracing } from './types/steel/LateralBracing';
@@ -110,6 +111,52 @@ function extractMaxDeflection(
  *   We map them to the 3D EN1993 force vector accordingly.
  * - All results are for a single load combination (combinationId = result.combinationId ?? 1).
  */
+/**
+ * Equivalente gelijkmatig verdeelde belasting uit de momentenlijn, in N/mm.
+ *
+ * De momentenlijn van een veld met eindmomenten plus een verdeelde belasting is
+ * de som van een rechte lijn tussen de eindmomenten en een parabool met pijl
+ * q·L²/8 in het midden. Door die pijl terug te rekenen komt q eruit:
+ *
+ *   q = 8 · (M_midden − (M_begin + M_eind)/2) / L²
+ *
+ * De referentie-uitwerking bepaalt de "berekende equivalente belasting" op
+ * dezelfde manier. De waarde voedt B* volgens NB.NB.4.3(3); is er geen
+ * veldbelasting, dan komt hier 0 uit en geldt B* = ±1 (alleen eindmomenten).
+ */
+function equivalentUdlFromMoments(env: ForcePoint[], lengthMm: number): number {
+  if (env.length < 3 || lengthMm <= 0) return 0;
+  const sorted = [...env].sort((a, b) => a.position_mm - b.position_mm);
+  const mStart = sorted[0].forces.my_ed;
+  const mEnd = sorted[sorted.length - 1].forces.my_ed;
+
+  // Station het dichtst bij het midden.
+  const mid = lengthMm / 2;
+  let best = sorted[0];
+  for (const p of sorted) {
+    if (Math.abs(p.position_mm - mid) < Math.abs(best.position_mm - mid)) best = p;
+  }
+
+  const pijlKnm = best.forces.my_ed - (mStart + mEnd) / 2; // kNm
+  const qKnPerM = (8 * pijlKnm) / Math.pow(lengthMm / 1000, 2); // kN/m
+  // kN/m → N/mm is factor 1; negatieve pijl (hogging) telt niet als veldlast.
+  return Math.max(0, qKnPerM);
+}
+
+/**
+ * Hoogte waarop de belasting aangrijpt, gemeten vanaf het zwaartepunt (mm).
+ *
+ * Het model legt niet vast op welke hoogte een last op de staaf aangrijpt.
+ * Voor liggers die een vloer of dak dragen is dat vrijwel altijd de bovenflens,
+ * en dat is bovendien de ongunstige aanname: een last boven het zwaartepunt
+ * werkt destabiliserend en verlaagt M_cr. We nemen daarom h/2. Grijpt de last
+ * in werkelijkheid op het zwaartepunt aan, dan is deze aanname conservatief.
+ */
+function loadApplicationHeightMm(profileName: string): number {
+  const p = findProfileByName(profileName);
+  return p ? p.h / 2 : 0;
+}
+
 export function buildSteelCheckInputs(
   mesh: Mesh,
   configs: Map<number, IBeamSteelConfig>,
@@ -187,6 +234,14 @@ export function buildSteelCheckInputs(
       deflection_actual_max_mm: extractMaxDeflection(beam, mesh, result),
       is_cantilever: config.isCantilever,
       consequence_class: consequenceClass,
+      // Zeeg wordt nog niet in het model vastgelegd; 0 = geen compensatie.
+      pre_camber_mm: 0,
+      // De permanente BGT-doorbuiging vereist een aparte oplossing per
+      // combinatie, die er nog niet is. Met 0 geldt w_add = w_fin, wat de
+      // zwaarste van de twee toetsen is — dus veilig-zijdig.
+      deflection_permanent_mm: 0,
+      q_equiv_n_per_mm: equivalentUdlFromMoments(forcesEnvelope, lengthMm),
+      z_a_mm: loadApplicationHeightMm(profileName!),
     });
   }
 

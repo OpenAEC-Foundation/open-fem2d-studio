@@ -43,6 +43,18 @@ pub struct SteelProfile {
 pub struct SteelProfileDb {
     profiles: Vec<SteelProfile>,
     by_name: HashMap<String, usize>,
+    by_key: HashMap<String, usize>,
+}
+
+/// Zoeksleutel voor een profielnaam: spaties, koppeltekens en punten eruit,
+/// alles naar hoofdletters. Zo vindt "HEA 320" hetzelfde profiel als "HEA320"
+/// of "hea-320". De database schrijft de namen met spatie, maar de frontend en
+/// externe aanroepers doen dat niet altijd.
+fn lookup_key(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_whitespace() && *c != '-' && *c != '.')
+        .flat_map(|c| c.to_uppercase())
+        .collect()
 }
 
 impl SteelProfileDb {
@@ -52,11 +64,23 @@ impl SteelProfileDb {
         let by_name = profiles.iter().enumerate()
             .map(|(i, p)| (p.name.clone(), i))
             .collect();
-        Self { profiles, by_name }
+        // Eerste treffer wint, zodat een later profiel met dezelfde
+        // genormaliseerde sleutel een eerder profiel niet overschrijft.
+        let mut by_key: HashMap<String, usize> = HashMap::new();
+        for (i, p) in profiles.iter().enumerate() {
+            by_key.entry(lookup_key(&p.name)).or_insert(i);
+        }
+        Self { profiles, by_name, by_key }
     }
+
+    /// Zoekt eerst op exacte naam, daarna op de genormaliseerde sleutel.
     pub fn find(&self, name: &str) -> Option<&SteelProfile> {
-        self.by_name.get(name).map(|&i| &self.profiles[i])
+        self.by_name
+            .get(name)
+            .or_else(|| self.by_key.get(&lookup_key(name)))
+            .map(|&i| &self.profiles[i])
     }
+
     pub fn all(&self) -> &[SteelProfile] { &self.profiles }
 }
 

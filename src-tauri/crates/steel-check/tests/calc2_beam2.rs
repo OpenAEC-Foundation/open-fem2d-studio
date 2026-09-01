@@ -1,7 +1,7 @@
 //! Calc 2 Beam 2 acceptance test — HEB160 S235.
 //!
 //! Reference: verificatie calculations/original/Calc 2.pdf §2.6.2 (page 53-57)
-//! referentie model: 5 m beam, check at x=2500 mm.
+//! Reference model: 5 m beam, check at x=2500 mm.
 //! This beam has HIGHER forces than Beam 1 and higher governing UC (1.52 bending).
 
 use steel_check::*;
@@ -48,6 +48,10 @@ fn run() -> &'static BeamCheckResult {
             deflection_actual_max_mm: 0.0,
             is_cantilever: false,
             consequence_class: ConsequenceClass::CC1,
+            pre_camber_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            q_equiv_n_per_mm: 0.0,
+            z_a_mm: 0.0,
         };
         check_beam(input)
     })
@@ -76,7 +80,7 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn calc2_beam2_compression() {
     let r = run();
-    // referentie: N_c,Rd = 1275.472 kN, UC = 0.19
+    // Reference: N_c,Rd = 1275.472 kN, UC = 0.19
     assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 1275.472, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.19, max_relative = 0.025);
 }
@@ -84,7 +88,7 @@ fn calc2_beam2_compression() {
 #[test]
 fn calc2_beam2_bending() {
     let r = run();
-    // referentie: M_y,c,Rd = 83.217 kNm, UC = 1.52 NOT OK
+    // Reference: M_y,c,Rd = 83.217 kNm, UC = 1.52 NOT OK
     assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 83.217, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 1.52, max_relative = 0.02);
     let bend = find_check(r, "6.2.5_bending_y");
@@ -96,7 +100,7 @@ fn calc2_beam2_bending() {
 #[test]
 fn calc2_beam2_shear() {
     let r = run();
-    // referentie: V_c,z,Rd = 239.1 kN, UC = 0.21
+    // Reference: V_c,z,Rd = 239.1 kN, UC = 0.21
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 239.1, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.21, max_relative = 0.025);
 }
@@ -110,8 +114,8 @@ fn calc2_beam2_classification_class1() {
 #[test]
 fn calc2_beam2_governing_not_ok() {
     let r = run();
-    // referentie governing: 6.2.9.1 (bending+axial) with UC 1.52 (same as pure bending since M >> limit)
-    assert!(r.uc_max >= 1.0, "expected uc_max >= 1.0 (referentie: 1.52), got {}", r.uc_max);
+    // Reference governing: 6.2.9.1 (bending+axial) with UC 1.52 (same as pure bending since M >> limit)
+    assert!(r.uc_max >= 1.0, "expected uc_max >= 1.0 (reference: 1.52), got {}", r.uc_max);
     assert_eq!(r.status, CheckStatus::NotOk);
 }
 
