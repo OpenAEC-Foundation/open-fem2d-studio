@@ -1,4 +1,4 @@
-.calc-settings-overlay {
+﻿.calc-settings-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -9,8 +9,8 @@
 }
 
 .calc-settings-dialog {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
   border-radius: 8px;
   width: 780px;
   max-height: 85vh;
@@ -26,9 +26,9 @@
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
   border-radius: 8px 8px 0 0;
 }
 
@@ -55,11 +55,11 @@
 .calc-settings-section-title {
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .calc-settings-field {
@@ -67,7 +67,7 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .calc-settings-field span {
@@ -79,18 +79,18 @@
 .calc-settings-field input[type="number"] {
   flex: 1;
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
 .calc-settings-field select:focus,
 .calc-settings-field input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle);
 }
 
 .calc-settings-field input[type="number"] {
@@ -102,12 +102,12 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   cursor: pointer;
 }
 
 .calc-settings-toggle input[type="checkbox"] {
-  accent-color: var(--accent);
+  accent-color: var(--theme-accent);
   cursor: pointer;
 }
 
@@ -121,12 +121,12 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
 }
 
 .calc-settings-btn {
   padding: 6px 20px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -135,21 +135,21 @@
 }
 
 .calc-settings-btn.cancel {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
 }
 
 .calc-settings-btn.cancel:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
 }
 
 .calc-settings-btn.confirm {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: #fff;
 }
 
 .calc-settings-btn.confirm:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }

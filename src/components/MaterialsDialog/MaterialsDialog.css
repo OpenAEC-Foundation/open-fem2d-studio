@@ -1,4 +1,4 @@
-.materials-overlay {
+﻿.materials-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -9,8 +9,8 @@
 }
 
 .materials-dialog {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
   border-radius: 8px;
   width: 620px;
   max-height: 80vh;
@@ -23,9 +23,9 @@
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
   border-radius: 8px 8px 0 0;
   display: flex;
   justify-content: space-between;
@@ -36,8 +36,8 @@
 
 .materials-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
   padding: 0 12px;
   gap: 0;
 }
@@ -46,7 +46,7 @@
   padding: 8px 18px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -55,12 +55,12 @@
 }
 
 .materials-tab:hover {
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .materials-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--theme-accent);
+  border-bottom-color: var(--theme-accent);
   font-weight: 600;
 }
 
@@ -70,15 +70,15 @@
   display: flex;
   padding: 0 12px;
   gap: 0;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border);
+  background: var(--theme-bg-subtle);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .library-subtab {
   padding: 6px 14px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -87,12 +87,12 @@
 }
 
 .library-subtab:hover {
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .library-subtab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent);
+  color: var(--theme-fg);
+  border-bottom-color: var(--theme-accent);
   font-weight: 600;
 }
 
@@ -119,18 +119,18 @@
   gap: 10px;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--theme-border);
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .material-item:hover {
-  background: var(--bg-secondary);
+  background: var(--theme-bg-elevated);
 }
 
 .material-item.selected {
-  border-color: var(--accent);
-  background: var(--bg-secondary);
+  border-color: var(--theme-accent);
+  background: var(--theme-bg-elevated);
 }
 
 .material-color {
@@ -149,19 +149,19 @@
 .material-name {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .material-details {
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   margin-top: 2px;
 }
 
 .material-delete-btn {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -177,14 +177,14 @@
 /* ---- Edit section ---- */
 
 .materials-edit-section {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
   padding-top: 12px;
 }
 
 .materials-edit-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -199,24 +199,24 @@
 
 .materials-edit-grid label {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   font-weight: 500;
 }
 
 .materials-edit-grid input {
   padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
   font-family: monospace;
 }
 
 .materials-edit-grid input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle);
 }
 
 .materials-edit-grid input[type="color"] {
@@ -233,28 +233,28 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
 }
 
 .materials-add-btn {
   padding: 6px 14px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   font-size: 12px;
   cursor: pointer;
 }
 
 .materials-add-btn:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
 }
 
 .materials-close-btn {
   padding: 6px 20px;
-  background: var(--accent);
-  border: 1px solid var(--accent);
+  background: var(--theme-accent);
+  border: 1px solid var(--theme-accent);
   border-radius: 6px;
   color: #fff;
   font-size: 12px;
@@ -263,7 +263,7 @@
 }
 
 .materials-close-btn:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }
 
 /* ---- Library content ---- */
@@ -277,13 +277,13 @@
 .library-section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 12px;
   margin-bottom: 4px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .library-section-title:first-child {
@@ -301,9 +301,9 @@
   text-align: left;
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
   white-space: nowrap;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -319,13 +319,13 @@
 }
 
 .library-table tbody tr:hover {
-  background: var(--bg-secondary);
+  background: var(--theme-bg-elevated);
 }
 
 .library-table td {
   padding: 4px 6px;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
   white-space: nowrap;
 }
 
@@ -333,7 +333,7 @@
   text-align: right;
   font-family: monospace;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .library-table td.name-cell {
@@ -362,10 +362,10 @@
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
@@ -377,15 +377,15 @@
 }
 
 .library-add-btn:hover {
-  background: var(--accent);
+  background: var(--theme-accent);
   color: #fff;
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
 }
 
 /* ---- Library hint ---- */
 
 .library-hint {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   font-style: italic;
 }

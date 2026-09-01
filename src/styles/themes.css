@@ -46,26 +46,19 @@
   --theme-info:           var(--c-info);
 }
 
-/* ─── Legacy compat shim — keeps existing 42 component CSS working unchanged ─── */
+/*
+   Phase 8 residual compat — semantic aliases that have no clean theme-X equivalent.
+   Down to ~6 vars; the rest of the legacy --accent / --bg / --text tokens have been
+   migrated to --theme- across src/components. Kept here so 3rd-party CSS in
+   @openaec packages keeps working.
+*/
 :root,
 [data-theme="light"],
 [data-theme="openaec"] {
-  --accent:          var(--theme-accent);
-  --accent-hover:    var(--theme-accent-hover);
-  --accent-subtle:   var(--theme-accent-subtle);
-  --bg-primary:      var(--theme-bg-elevated);
-  --bg-secondary:    var(--theme-bg-subtle);
-  --bg-tertiary:     var(--theme-bg-subtle);
-  --bg-elevated:     var(--theme-bg-elevated);
-  --bg-dark:         var(--theme-bg);
-  --text-primary:    var(--theme-fg);
-  --text-secondary:  var(--theme-fg-muted);
-  --text-muted:      var(--theme-fg-subtle);
   --success:         var(--c-success);
   --success-hover:   #15803d;
   --warning:         var(--c-warm-gold);
   --danger:          var(--c-error);
-  --border:          var(--theme-border);
-  --border-light:    var(--theme-border);
+  --bg-dark:         var(--theme-bg);
   --border-accent:   rgba(217, 119, 6, 0.3);
 }

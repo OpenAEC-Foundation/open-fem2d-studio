@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Send, X, Loader2, Mic, MicOff, Trash2,
+  Send, Loader2, Mic, MicOff, Trash2,
   Play, BarChart3,
   HelpCircle, Eraser, Building2, Columns, PanelTop, Box, Zap, Wifi, WifiOff
 } from 'lucide-react';
@@ -8,6 +8,7 @@ import { useFEM, applyLoadCaseToMesh } from '../../context/FEMContext';
 import { solve } from '../../core/solver/SolverService';
 import { processAgentInput } from '../../core/agent/ModelAgent';
 import { DEFAULT_SECTIONS } from '../../core/fem/Beam';
+import { SidePanel } from '../openaec/SidePanel';
 import './AgentPanel.css';
 
 interface AgentPanelProps {
@@ -799,28 +800,30 @@ export function AgentPanel({ onClose }: AgentPanelProps) {
   const summary = getModelSummary();
 
   return (
-    <div className="agent-panel">
-      <div className="agent-panel-header">
-        <span>AI Model Agent</span>
-        <div className="agent-header-actions">
-          <span className={`agent-connection-indicator ${backendAvailable ? 'connected' : 'offline'}`} title={backendAvailable ? 'Connected to Claude API' : 'Offline mode (regex fallback)'}>
-            {backendAvailable ? <Wifi size={10} /> : <WifiOff size={10} />}
-          </span>
-          {messages.length > 0 && (
-            <button
-              className="agent-clear-btn"
-              onClick={handleClearChat}
-              title="Clear chat"
-            >
-              <Trash2 size={12} />
-            </button>
-          )}
-          <button className="agent-panel-close" onClick={onClose}>
-            <X size={14} />
-          </button>
-        </div>
-      </div>
-
+    <SidePanel
+      side="right"
+      title="AI Model Agent"
+      defaultWidth={340}
+      minWidth={260}
+      maxWidth={500}
+      onClose={onClose}
+      actions={[
+        ...(messages.length > 0 ? [{
+          id: 'clear',
+          label: 'Clear chat',
+          icon: <Trash2 size={12} />,
+          onClick: handleClearChat,
+        }] : []),
+        {
+          id: 'connection',
+          label: backendAvailable ? 'Connected to Claude API' : 'Offline mode (regex fallback)',
+          icon: backendAvailable ? <Wifi size={12} /> : <WifiOff size={12} />,
+          onClick: () => {},
+          active: !!backendAvailable,
+        },
+      ]}
+      bodyClassName="agent-panel-body-wrap"
+    >
       {/* Backend status notice */}
       {backendAvailable === false && (
         <div className="agent-backend-notice">
@@ -1017,6 +1020,6 @@ export function AgentPanel({ onClose }: AgentPanelProps) {
           <Send size={14} />
         </button>
       </div>
-    </div>
+    </SidePanel>
   );
 }

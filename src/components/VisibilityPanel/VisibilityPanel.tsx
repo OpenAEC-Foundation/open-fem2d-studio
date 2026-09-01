@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Unlock, Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, Plus, Trash2 } from 'lucide-react';
 import { ILayer } from '../../core/fem/types';
+import { SidePanel } from '../openaec/SidePanel';
 import './VisibilityPanel.css';
 
 interface VisibilityPanelProps {
@@ -33,26 +34,17 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
   const [newLayerName, setNewLayerName] = useState('');
   const layers: ILayer[] = Array.from(mesh.layers.values());
 
-  if (collapsed) {
-    return (
-      <div className="visibility-panel collapsed-panel" onClick={onToggleCollapse}>
-        <span className="collapsed-label">{t('display.title')}</span>
-        <ChevronLeft size={14} />
-      </div>
-    );
-  }
-
   return (
-    <div className="visibility-panel">
-      <div className="panel-header">
-        <span className="panel-title">{t('display.title')}</span>
-        {onToggleCollapse && (
-          <button className="panel-collapse-btn" onClick={onToggleCollapse} title={t('display.collapse')}>
-            <ChevronRight size={14} />
-          </button>
-        )}
-      </div>
-
+    <SidePanel
+      side="right"
+      title={t('display.title')}
+      defaultWidth={260}
+      minWidth={220}
+      maxWidth={400}
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
+      bodyClassName="visibility-panel-body"
+    >
       <div className="panel-content">
         {/* Grid Settings */}
         <div className="panel-section">
@@ -281,6 +273,6 @@ export function VisibilityPanel({ collapsed, onToggleCollapse }: VisibilityPanel
 
 
       </div>
-    </div>
+    </SidePanel>
   );
 }

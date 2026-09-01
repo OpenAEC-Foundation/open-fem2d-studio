@@ -1,144 +1,31 @@
-.ribbon {
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  user-select: none;
-}
+﻿/* src/components/Ribbon/Ribbon.css
+ *
+ * Phase 2.3 â€” local styles only for button JSX still rendered inside
+ * @openaec/ribbon RibbonGroup children. Tab/group/container styling
+ * comes from @openaec/ribbon/css (loaded in main.tsx).
+ */
 
-.ribbon-tabs {
+/* Local button-row wrapper inside a RibbonGroup */
+.ribbon-button-row {
   display: flex;
-  background: var(--bg-primary);
-  padding: 0 8px;
   gap: 2px;
-  position: relative; /* anchor for animated indicator */
-  border-bottom: 3px solid transparent;
-  border-image: var(--grad-accent) 1;
-  border-image-slice: 1;
-  border-image-width: 0 0 3px 0;
-}
-
-.ribbon-tab {
-  padding: 6px 16px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  transition: all 0.15s ease;
-}
-
-.ribbon-tab:hover {
-  color: var(--text-primary);
-  background: rgba(128, 128, 128, 0.08);
-}
-
-.ribbon-tab.active {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-  border-bottom-color: var(--accent);
-}
-
-.ribbon-content {
-  display: flex;
-  padding: 6px 10px;
-  /* Bumped from 94 to 110px for icon clearance — UX > strict OpenAEC §6.1 spec */
-  min-height: 110px;
-  height: 110px;
-  overflow: visible;
-  gap: 4px;
-}
-
-.ribbon-group {
-  display: flex;
-  flex-direction: column;
-  padding: 2px 8px;
-  min-width: 60px;
-}
-
-.ribbon-group.highlight {
-  background: var(--accent-subtle);
-  border-radius: 6px;
-}
-
-.ribbon-group-title {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-align: center;
-  margin-top: auto;
-  padding-top: 2px;
-  padding-bottom: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-top: 1px solid var(--border);
-}
-
-.ribbon-group-content {
-  display: flex;
-  gap: 1px;
-  flex: 1;
-  align-items: flex-start;
-}
-
-.ribbon-group-content.vertical {
-  flex-direction: column;
-  justify-content: center;
-}
-
-.ribbon-group-content.grid-2x2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 1px;
-}
-
-.ribbon-group-content.grid-3x2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 1px;
-}
-
-.ribbon-group-content.grid-4x2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 1px;
-}
-
-.ribbon-group-content.wrap {
-  flex-wrap: wrap;
-  max-width: 200px;
   align-items: stretch;
+  flex-wrap: wrap;
+  max-width: 220px;
 }
 
-.ribbon-group-content.wrap .ribbon-button.small {
-  min-width: 44px;
-  width: 44px;
-  padding: 4px 4px;
-  font-size: 9px;
-  box-sizing: border-box;
-}
-
-.ribbon-separator {
-  width: 1px;
-  background: var(--border-light);
-  margin: 2px 6px;
-}
-
-/* Ribbon buttons */
+/* Ribbon buttons (FEM Studio's compact button style) */
 .ribbon-button {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 4px 4px;
-  min-width: 36px;
+  min-width: 38px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: var(--text-primary);
+  color: var(--theme-fg, var(--theme-fg));
   font-size: 9px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -146,15 +33,14 @@
 }
 
 .ribbon-button:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--border-light);
+  background: var(--theme-bg-subtle, var(--theme-bg-subtle));
+  border-color: var(--theme-border, var(--theme-border));
 }
 
 .ribbon-button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+  background: var(--theme-accent, var(--theme-accent));
+  border-color: var(--theme-accent, var(--theme-accent));
+  color: var(--theme-accent-text, #fff);
 }
 
 .ribbon-button.small {
@@ -164,49 +50,36 @@
   font-size: 9px;
 }
 
-.ribbon-button.large {
+.ribbon-button.medium {
   min-width: 52px;
   padding: 6px 10px;
+  font-size: 10px;
 }
 
-.ribbon-button.icon-only {
-  min-width: 36px;
-  width: 36px;
-  padding: 8px;
-}
-
-.ribbon-button.icon-only span {
-  display: none;
+.ribbon-button.large {
+  min-width: 64px;
+  padding: 8px 12px;
+  font-size: 11px;
 }
 
 .ribbon-button.large span:not(.ribbon-icon) {
   font-size: 10px;
 }
 
-.ribbon-button.primary {
-  background: var(--success);
-  border-color: var(--success);
-}
-
-.ribbon-button.primary:hover {
-  background: var(--success-hover);
-  border-color: var(--success-hover);
-}
-
-.ribbon-button.danger:hover {
-  background: var(--danger);
-  border-color: var(--danger);
-}
-
 .ribbon-button.accent {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--theme-accent, var(--theme-accent));
+  border-color: var(--theme-accent, var(--theme-accent));
+  color: var(--theme-accent-text, #fff);
 }
 
 .ribbon-button.accent:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: var(--theme-accent-hover, var(--theme-accent-hover));
+  border-color: var(--theme-accent-hover, var(--theme-accent-hover));
+}
+
+.ribbon-button.has-selection {
+  background: var(--theme-accent-subtle, rgba(217, 119, 6, 0.15));
+  border-color: var(--theme-accent, var(--theme-accent));
 }
 
 .ribbon-icon {
@@ -221,186 +94,16 @@
   height: 20px;
 }
 
-.ribbon-select {
-  padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 11px;
-  min-width: 140px;
-}
-
-.ribbon-select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
-}
-
-.ribbon-slider {
-  width: 100px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.line-load-icon svg {
-  display: block;
-}
-
-/* Ribbon toggles (checkbox labels) */
-.ribbon-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: 3px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.ribbon-toggle:hover {
-  background: var(--bg-tertiary);
-}
-
-.ribbon-toggle input[type="checkbox"] {
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-/* Ribbon range slider */
-.ribbon-range {
-  width: 100px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.ribbon-range-value {
-  font-size: 10px;
-  color: var(--text-muted);
-  min-width: 30px;
-  text-align: center;
-}
-
-/* Code-Check styles */
-.code-check-info {
-  font-size: 11px;
-  color: var(--text-secondary);
-  padding: 4px 0;
-  white-space: nowrap;
-}
-
-.code-check-forces {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-}
-
-.code-check-force-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.code-check-force-label {
-  min-width: 36px;
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.code-check-force-value {
-  color: var(--text-primary);
-  font-weight: 500;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-}
-
-.code-check-ucs {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-}
-
-.code-check-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-}
-
-.code-check-label {
-  min-width: 64px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.code-check-bar-track {
-  flex: 1;
-  height: 8px;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  overflow: hidden;
-  min-width: 60px;
-}
-
-.code-check-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.code-check-uc {
-  min-width: 38px;
-  text-align: right;
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 600;
-  font-size: 10px;
-}
-
-.code-check-result {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
-}
-
-.code-check-status {
-  text-align: center;
-  font-size: 11px;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.code-check-status.pass {
-  background: rgba(34, 197, 94, 0.15);
-  color: var(--success);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.code-check-status.fail {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--danger);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.ribbon-dropdown {
-  position: relative;
-}
-
 /* Theme toggle button */
 .theme-toggle-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle, var(--theme-bg-subtle));
+  border: 1px solid var(--theme-border, var(--theme-border));
   border-radius: 6px;
-  color: var(--text-primary);
+  color: var(--theme-fg, var(--theme-fg));
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -408,76 +111,29 @@
 }
 
 .theme-toggle-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--accent);
+  background: var(--theme-bg-elevated, var(--theme-bg-elevated));
+  border-color: var(--theme-accent, var(--theme-accent));
 }
 
 .theme-toggle-btn svg {
   flex-shrink: 0;
 }
 
-/* Unit selectors in Settings tab */
-.ribbon-unit-row {
-  display: flex;
+/* Ribbon checkbox label */
+.ribbon-checkbox {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 0;
-}
-
-.ribbon-unit-label {
   font-size: 11px;
-  color: var(--text-secondary);
-  min-width: 70px;
-}
-
-.ribbon-unit-select {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 11px;
-  padding: 4px 8px;
+  color: var(--theme-fg, var(--theme-fg));
   cursor: pointer;
-  min-width: 60px;
+  padding: 3px 6px;
+  border-radius: 4px;
 }
 
-.ribbon-unit-select:hover {
-  border-color: var(--accent);
-}
-
-.ribbon-unit-select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-/* Selection filter toggles */
-.ribbon-group-content.filter-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  max-width: 70px;
-}
-
-.ribbon-button.filter-toggle {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.5;
-  border: 1px solid transparent;
-}
-
-.ribbon-button.filter-toggle.active {
-  opacity: 1;
-  background: var(--bg-elevated);
-  border-color: var(--accent);
-}
-
-.ribbon-button.filter-toggle:hover {
-  opacity: 0.8;
-  background: var(--bg-tertiary);
+.ribbon-checkbox input[type="checkbox"] {
+  accent-color: var(--theme-accent, var(--theme-accent));
+  cursor: pointer;
 }
 
 /* Filter dropdown */
@@ -487,8 +143,8 @@
   left: 0;
   margin-top: 4px;
   min-width: 180px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  border: 1px solid var(--theme-border, var(--theme-border));
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 1000;
@@ -499,9 +155,9 @@
   padding: 8px 12px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border);
+  color: var(--theme-fg-muted, var(--theme-fg-subtle));
+  background: var(--theme-bg-subtle, var(--theme-bg-subtle));
+  border-bottom: 1px solid var(--theme-border, var(--theme-border));
 }
 
 .filter-dropdown-item {
@@ -512,7 +168,7 @@
   padding: 8px 12px;
   background: transparent;
   border: none;
-  color: var(--text-primary);
+  color: var(--theme-fg, var(--theme-fg));
   font-size: 12px;
   cursor: pointer;
   text-align: left;
@@ -520,11 +176,11 @@
 }
 
 .filter-dropdown-item:hover {
-  background: var(--bg-elevated);
+  background: var(--theme-bg-subtle, var(--theme-bg-elevated));
 }
 
 .filter-dropdown-item:hover .remove-icon {
-  color: #e94560;
+  color: var(--theme-danger, #e94560);
 }
 
 .filter-dropdown-item span {
@@ -532,38 +188,13 @@
 }
 
 .filter-dropdown-item .remove-icon {
-  color: var(--text-muted);
+  color: var(--theme-fg-muted, var(--theme-fg-subtle));
   transition: color 0.15s;
 }
 
 .filter-dropdown-empty {
   padding: 16px 12px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--theme-fg-muted, var(--theme-fg-subtle));
   text-align: center;
-}
-
-.ribbon-button.has-selection {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: var(--accent);
-}
-
-/* OpenAEC: File tab amber styling */
-.ribbon-tab.is-file-tab {
-  background: var(--theme-accent);
-  color: white;
-}
-
-.ribbon-tab.is-file-tab:hover {
-  background: var(--theme-accent-hover);
-}
-
-/* OpenAEC: Animated tab underline indicator */
-.ribbon-tab-indicator {
-  position: absolute;
-  bottom: 0;
-  height: 2px;
-  background: var(--theme-accent);
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), width 300ms cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
 }

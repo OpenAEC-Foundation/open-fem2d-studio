@@ -6,6 +6,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useI18n } from '../../i18n/i18n';
 import { IVersionStore, ICommit, getHistory, getBranches } from '../../core/io/VersionControl';
+import { SidePanel } from '../openaec/SidePanel';
 import './VersionsPanel.css';
 
 export interface VersionsPanelProps {
@@ -231,16 +232,12 @@ export function VersionsPanel({
     setConfirmAction(null);
   }, []);
 
+  const sidePanelTitle = t('versions.title') !== 'versions.title' ? t('versions.title') : 'Versions';
+
   // Empty state when no version store exists
   if (!versionStore) {
     return (
-      <div className="versions-panel">
-        <div className="versions-header">
-          <span className="versions-header-title">
-            <BranchIcon className="versions-header-icon" />
-            {t('versions.title') !== 'versions.title' ? t('versions.title') : 'Versions'}
-          </span>
-        </div>
+      <SidePanel side="right" title={sidePanelTitle} defaultWidth={280} bodyClassName="versions-panel-body">
         <div className="versions-content">
           <div className="versions-empty">
             <svg className="versions-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -253,20 +250,12 @@ export function VersionsPanel({
             <p>{t('versions.noStoreHint') !== 'versions.noStoreHint' ? t('versions.noStoreHint') : 'Save a version to start tracking changes'}</p>
           </div>
         </div>
-      </div>
+      </SidePanel>
     );
   }
 
   return (
-    <div className="versions-panel">
-      {/* Header */}
-      <div className="versions-header">
-        <span className="versions-header-title">
-          <BranchIcon className="versions-header-icon" />
-          {t('versions.title') !== 'versions.title' ? t('versions.title') : 'Versions'}
-        </span>
-      </div>
-
+    <SidePanel side="right" title={sidePanelTitle} defaultWidth={280} bodyClassName="versions-panel-body">
       {/* Current branch indicator */}
       <div className="versions-branch-indicator">
         <BranchIcon className="versions-branch-icon" />
@@ -507,6 +496,6 @@ export function VersionsPanel({
           onCancel={handleCancelConfirm}
         />
       )}
-    </div>
+    </SidePanel>
   );
 }

@@ -1,5 +1,9 @@
 /**
  * IFCPanel - IFC view with 4 panels: Canvas, Code, Graph, Node Tree (side by side)
+ *
+ * TODO(phase-9): This is a fullscreen quad-grid view, not a side dock. Migrating
+ * it to <SidePanel> would break the quad-canvas layout. Keep stand-alone for now
+ * and re-evaluate when the IFC viewer gets its own shell.
  */
 
 import React, { useState, useMemo, useCallback } from 'react';

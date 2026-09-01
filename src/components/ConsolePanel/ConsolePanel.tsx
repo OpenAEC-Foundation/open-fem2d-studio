@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { ConsoleService, ConsoleEntry } from '../../core/console/ConsoleService';
-import { X, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import { SidePanel } from '../openaec/SidePanel';
 import './ConsolePanel.css';
 
 interface ConsolePanelProps {
@@ -110,28 +111,33 @@ export function ConsolePanel({ onClose }: ConsolePanelProps) {
   };
 
   return (
-    <div className="console-panel">
-      <div className="console-panel-header">
-        <div className="console-header-left">
-          <span>Console</span>
-          <select
-            className="console-lang-select"
-            value={language}
-            onChange={e => setLanguage(e.target.value as any)}
-          >
-            <option value="javascript">JavaScript</option>
-            <option value="python">Python</option>
-            <option value="rust">Rust</option>
-          </select>
-        </div>
-        <div className="console-header-right">
-          <button className="console-header-btn" onClick={() => ConsoleService.clear()} title="Clear console">
-            <Trash2 size={14} />
-          </button>
-          <button className="console-header-btn" onClick={onClose} title="Close console">
-            <X size={14} />
-          </button>
-        </div>
+    <SidePanel
+      dockEdge="bottom"
+      title="Console"
+      defaultWidth={220}
+      minWidth={120}
+      maxWidth={600}
+      onClose={onClose}
+      actions={[
+        {
+          id: 'clear',
+          label: 'Clear console',
+          icon: <Trash2 size={12} />,
+          onClick: () => ConsoleService.clear(),
+        },
+      ]}
+      bodyClassName="console-panel-body-wrap"
+    >
+      <div className="console-lang-row">
+        <select
+          className="console-lang-select"
+          value={language}
+          onChange={e => setLanguage(e.target.value as any)}
+        >
+          <option value="javascript">JavaScript</option>
+          <option value="python">Python</option>
+          <option value="rust">Rust</option>
+        </select>
       </div>
 
       <div className="console-body" ref={bodyRef}>
@@ -164,6 +170,6 @@ export function ConsolePanel({ onClose }: ConsolePanelProps) {
           />
         </div>
       </div>
-    </div>
+    </SidePanel>
   );
 }

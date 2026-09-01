@@ -6,19 +6,21 @@ import { calculateBeamLength, calculateBeamAngle, DEFAULT_SECTIONS } from '../..
 import { formatForce, formatMoment } from '../../core/fem/BeamForces';
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { LoadDialog } from '../LoadDialog/LoadDialog';
-import { BarPropertiesDialog } from '../BarPropertiesDialog/BarPropertiesDialog';
-import { NodePropertiesDialog } from '../NodePropertiesDialog/NodePropertiesDialog';
 import { LineLoadDialog } from '../LineLoadDialog/LineLoadDialog';
 import { PlateDialog } from '../PlateDialog/PlateDialog';
 import { ThermalLoadDialog } from '../ThermalLoadDialog/ThermalLoadDialog';
-import { PlatePropertiesDialog } from '../PlatePropertiesDialog/PlatePropertiesDialog';
 import { DimensionEditDialog } from '../DimensionEditDialog/DimensionEditDialog';
-import { generatePolygonPlateMesh, generatePolygonPlateMeshV2, fixupEdgePlateIds, createEdgesForRectPlate, removePlateRegion, remeshPlateRegion, remeshPolygonPlateRegion, remeshPolygonPlateRegionFromContour, findPlateCornerForNode, pointInPolygon, polygonCentroid } from '../../core/fem/PlateRegion';
+// Bar/Node/Plate property dialogs were removed in the OpenAEC big-bang.
+// Their content now lives in the right-hand PropertiesPanel and is driven
+// purely from `state.selection`. Canvas double-click now routes to selection,
+// never to a modal.
+import { generatePolygonPlateMesh, generatePolygonPlateMeshV2, fixupEdgePlateIds, removePlateRegion, remeshPlateRegion, remeshPolygonPlateRegion, remeshPolygonPlateRegionFromContour, findPlateCornerForNode, pointInPolygon, polygonCentroid } from '../../core/fem/PlateRegion';
 import { buildNodeIdToIndex } from '../../core/solver/Assembler';
 import './MeshEditor.css';
 import { IGridLine } from '../../core/fem/StructuralGrid';
 import { IPointLoad } from '../../core/fem/LoadCase';
 import { useI18n } from '../../i18n/i18n';
+import { ToolHud, ZoomHud, CoordsHud, SnapHud } from './overlays';
 
 interface ContextMenuState {
   x: number;
@@ -202,8 +204,49 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   // Silence unused warning - will be used when beam point load dialog is implemented
   void editingBeamPointLoad; void setEditingBeamPointLoad;
 
-  // Bar properties dialog (double-click on bar)
-  const [editingBarId, setEditingBarId] = useState<number | null>(null);
+  // Bar/Node/Plate property dialogs were removed in the OpenAEC big-bang
+  // — the right-hand PropertiesPanel now edits the selected element.
+  // These helper functions replace the legacy `setEditingXxxId` calls and
+  // emit a SET_SELECTION dispatch instead of opening a modal.
+  const selectBar = useCallback((beamId: number) => {
+    dispatch({
+      type: 'SET_SELECTION',
+      payload: {
+        nodeIds: new Set(),
+        elementIds: new Set([beamId]),
+        plateIds: new Set(),
+        pointLoadNodeIds: new Set(),
+        distLoadBeamIds: new Set(),
+        selectedDistLoadIds: new Set(),
+      },
+    });
+  }, [dispatch]);
+  const selectNode = useCallback((nodeId: number) => {
+    dispatch({
+      type: 'SET_SELECTION',
+      payload: {
+        nodeIds: new Set([nodeId]),
+        elementIds: new Set(),
+        plateIds: new Set(),
+        pointLoadNodeIds: new Set(),
+        distLoadBeamIds: new Set(),
+        selectedDistLoadIds: new Set(),
+      },
+    });
+  }, [dispatch]);
+  const selectPlate = useCallback((plateId: number) => {
+    dispatch({
+      type: 'SET_SELECTION',
+      payload: {
+        nodeIds: new Set(),
+        elementIds: new Set(),
+        plateIds: new Set([plateId]),
+        pointLoadNodeIds: new Set(),
+        distLoadBeamIds: new Set(),
+        selectedDistLoadIds: new Set(),
+      },
+    });
+  }, [dispatch]);
 
   // Line load input dialog (beam or plate edge)
   const [lineLoadBeamId, setLineLoadBeamId] = useState<number | null>(null);
@@ -211,11 +254,9 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
   // When editing an existing distributed load (double-click), track its id
   const [editingDistLoadId, setEditingDistLoadId] = useState<number | null>(null);
 
-  // Node properties dialog (double-click on node)
-  const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
-
-  // Plate properties dialog (double-click on plate)
-  const [editingPlateId, setEditingPlateId] = useState<number | null>(null);
+  // Node/Plate property editors now live in the PropertiesPanel — the
+  // double-click handlers above simply emit a SET_SELECTION dispatch
+  // through selectNode / selectPlate helpers.
 
   // Hovered beam for line load / addLoad tool highlight
   const [hoveredBeamId, setHoveredBeamId] = useState<number | null>(null);
@@ -5964,11 +6005,11 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
 
       // Tab key - intercept early to prevent browser focus navigation
       if (e.key === 'Tab') {
-        // Tab enters edit mode for selected plate
+        // Tab focuses the selected plate in the PropertiesPanel
         if (selection.plateIds.size === 1 && selectedTool === 'select' && voidTargetPlateId === null && plateEditState === null) {
           e.preventDefault();
           const selectedPlateId = Array.from(selection.plateIds)[0];
-          setEditingPlateId(selectedPlateId);
+          selectPlate(selectedPlateId);
           return;
         }
         // Tab closes void on existing plate
@@ -7399,13 +7440,14 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           // Clear pending created nodes since the bar was successfully created
           setPendingCreatedNodeIds([]);
         } else {
-          // First beam: create with default section and open BarPropertiesDialog
+          // First beam: create with default section, then select it so the
+          // user can refine it in the right-hand PropertiesPanel.
           const defaultSection = DEFAULT_SECTIONS[0]; // IPE 100
           pushUndo();
           const newBeam = mesh.addBeamElement(nodeIds, 1, defaultSection.section, defaultSection.name);
           if (newBeam) {
             newBeam.layerId = activeLayerId;
-            setEditingBarId(newBeam.id); // Open BarPropertiesDialog
+            selectBar(newBeam.id);
           }
           dispatch({ type: 'REFRESH_MESH' });
           dispatch({ type: 'SET_RESULT', payload: null });
@@ -8944,10 +8986,10 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
-    // Double-click on a node -> open node properties dialog (priority over grid lines)
+    // Double-click on a node -> select it (panel-driven editing).
     const node = findNodeAtScreen(x, y);
     if (node) {
-      setEditingNodeId(node.id);
+      selectNode(node.id);
       return;
     }
 
@@ -8960,10 +9002,10 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       }
     }
 
-    // Double-click on a bar -> open bar properties (always takes priority over line load)
+    // Double-click on a bar -> select it (panel-driven editing).
     const beam = findBeamAtScreen(x, y);
     if (beam) {
-      setEditingBarId(beam.id);
+      selectBar(beam.id);
       return;
     }
 
@@ -8995,7 +9037,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
       return;
     }
 
-    // Double-click on a plate region -> open plate properties dialog
+    // Double-click on a plate region -> select it (panel-driven editing).
     const world = screenToWorld(x, y);
     for (const plate of mesh.plateRegions.values()) {
       const inPlate = plate.isPolygon && plate.polygon
@@ -9003,7 +9045,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
         : world.x >= plate.x && world.x <= plate.x + plate.width &&
           world.y >= plate.y && world.y <= plate.y + plate.height;
       if (inPlate) {
-        setEditingPlateId(plate.id);
+        selectPlate(plate.id);
         return;
       }
     }
@@ -9782,30 +9824,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           }}
         />
       )}
-      {editingNodeId !== null && (() => {
-        const node = mesh.getNode(editingNodeId);
-        if (!node) return null;
-        return (
-          <NodePropertiesDialog
-            node={node}
-            onUpdate={(updates) => {
-              pushUndo();
-              if (updates.x !== undefined || updates.y !== undefined) {
-                mesh.updateNode(editingNodeId, {
-                  x: updates.x ?? node.x,
-                  y: updates.y ?? node.y
-                });
-              }
-              if (updates.constraints) {
-                mesh.updateNode(editingNodeId, { constraints: updates.constraints });
-              }
-              dispatch({ type: 'REFRESH_MESH' });
-              dispatch({ type: 'SET_RESULT', payload: null });
-            }}
-            onClose={() => setEditingNodeId(null)}
-          />
-        );
-      })()}
+      {/* Legacy NodePropertiesDialog removed — node editing happens in the
+          right-hand PropertiesPanel driven by state.selection. */}
       {editingLoadNodeId !== null && (() => {
         const node = mesh.getNode(editingLoadNodeId);
         if (!node) return null;
@@ -9884,31 +9904,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           />
         );
       })()}
-      {editingBarId !== null && (() => {
-        const beam = mesh.getBeamElement(editingBarId);
-        if (!beam) return null;
-        const nodes = mesh.getBeamElementNodes(beam);
-        if (!nodes) return null;
-        const length = calculateBeamLength(nodes[0], nodes[1]);
-        const beamMaterial = mesh.getMaterial(beam.materialId);
-        const editBarForces = result?.beamForces.get(editingBarId);
-        return (
-          <BarPropertiesDialog
-            beam={beam}
-            length={length}
-            material={beamMaterial}
-            beamForces={editBarForces}
-            layers={Array.from(mesh.layers.values())}
-            onUpdate={(updates) => {
-              pushUndo();
-              mesh.updateBeamElement(editingBarId, updates);
-              dispatch({ type: 'REFRESH_MESH' });
-              dispatch({ type: 'SET_RESULT', payload: null });
-            }}
-            onClose={() => setEditingBarId(null)}
-          />
-        );
-      })()}
+      {/* Legacy BarPropertiesDialog removed — beam editing happens in the
+          right-hand PropertiesPanel driven by state.selection. */}
       {dimDialogBeamId !== null && (() => {
         const beam = mesh.getBeamElement(dimDialogBeamId);
         if (!beam) return null;
@@ -10098,90 +10095,8 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           }}
         />
       )}
-      {editingPlateId !== null && (() => {
-        const plate = mesh.plateRegions.get(editingPlateId);
-        if (!plate) return null;
-        return (
-          <PlatePropertiesDialog
-            plate={plate}
-            materials={Array.from(mesh.materials.values())}
-            onAddVoid={plate.isPolygon ? () => {
-              const capturedPlateId = editingPlateId;
-              console.log('[Add Void] Starting void edit mode for plate', capturedPlateId);
-              // First close the dialog, then set void drawing state
-              setEditingPlateId(null);
-              setVoidTargetPlateId(capturedPlateId);
-              setCurrentVoidPoints([]);
-              setPlateEditState('void');
-            } : undefined}
-            onUpdate={(updates) => {
-              pushUndo();
-              const p = mesh.plateRegions.get(editingPlateId);
-              if (!p) return;
-              if (updates.thickness !== undefined) {
-                p.thickness = updates.thickness;
-                // Also update thickness on all plate elements
-                for (const elemId of p.elementIds) {
-                  const elem = mesh.getElement(elemId);
-                  if (elem) elem.thickness = updates.thickness;
-                }
-              }
-              if (updates.materialId !== undefined) {
-                p.materialId = updates.materialId;
-                for (const elemId of p.elementIds) {
-                  const elem = mesh.getElement(elemId);
-                  if (elem) elem.materialId = updates.materialId;
-                }
-              }
-              if (updates.meshSize !== undefined) {
-                if (p.isPolygon) {
-                  p.meshSize = updates.meshSize;
-                  // Save old edge mapping before remesh
-                  const oldEdgeMap3 = new Map<number, number>();
-                  for (const edge of mesh.edges.values()) {
-                    if (edge.plateId === editingPlateId && edge.polygonEdgeIndex !== undefined) {
-                      oldEdgeMap3.set(edge.id, edge.polygonEdgeIndex);
-                    }
-                  }
-                  const capturedPlateId3 = editingPlateId;
-                  remeshPolygonPlateRegionFromContour(mesh, capturedPlateId3).then(() => {
-                    const newEdgeByPolyIdx3 = new Map<number, number>();
-                    for (const edge of mesh.edges.values()) {
-                      if (edge.plateId === capturedPlateId3 && edge.polygonEdgeIndex !== undefined) {
-                        newEdgeByPolyIdx3.set(edge.polygonEdgeIndex, edge.id);
-                      }
-                    }
-                    for (const lc of loadCases) {
-                      for (const dl of lc.distributedLoads) {
-                        if (dl.edgeId !== undefined && oldEdgeMap3.has(dl.edgeId)) {
-                          const polyIdx = oldEdgeMap3.get(dl.edgeId)!;
-                          const newId = newEdgeByPolyIdx3.get(polyIdx);
-                          if (newId !== undefined) dl.edgeId = newId;
-                        }
-                      }
-                    }
-                    dispatch({ type: 'REFRESH_MESH' });
-                  });
-                } else {
-                  // Rectangular: compute new divisions from mesh size
-                  const newDivX = Math.max(1, Math.round(p.width / updates.meshSize));
-                  const newDivY = Math.max(1, Math.round(p.height / updates.meshSize));
-                  p.divisionsX = newDivX;
-                  p.divisionsY = newDivY;
-                  remeshPlateRegion(mesh, editingPlateId);
-                  // Recreate IEdge objects for rect plate
-                  mesh.removeEdgesForPlate(editingPlateId);
-                  createEdgesForRectPlate(mesh, p);
-                }
-              }
-              mesh.plateRegions.set(editingPlateId, p);
-              dispatch({ type: 'REFRESH_MESH' });
-              dispatch({ type: 'SET_RESULT', payload: null });
-            }}
-            onClose={() => setEditingPlateId(null)}
-          />
-        );
-      })()}
+      {/* Legacy PlatePropertiesDialog removed — plate editing happens in the
+          right-hand PropertiesPanel driven by state.selection. */}
       {thermalLoadElementIds.length > 0 && (
         <ThermalLoadDialog
           elementIds={thermalLoadElementIds}
@@ -10217,7 +10132,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
               <div
                 className="context-menu-item"
                 onClick={() => {
-                  setEditingNodeId(contextMenu.id!);
+                  selectNode(contextMenu.id!);
                   setContextMenu(null);
                 }}
               >
@@ -10283,7 +10198,7 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
               <div
                 className="context-menu-item"
                 onClick={() => {
-                  setEditingBarId(contextMenu.id!);
+                  selectBar(contextMenu.id!);
                   setContextMenu(null);
                 }}
               >
@@ -10332,6 +10247,11 @@ export function MeshEditor({ onShowGridsDialog }: MeshEditorProps = {}) {
           onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
         />
       )}
+      {/* OpenAEC HUD overlays (Phase 7) */}
+      <ToolHud />
+      <ZoomHud />
+      <CoordsHud />
+      <SnapHud />
     </div>
   );
 }

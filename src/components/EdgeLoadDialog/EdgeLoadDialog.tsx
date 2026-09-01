@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Sheet } from '../openaec/Sheet';
 import './EdgeLoadDialog.css';
 
 interface EdgeLoadDialogProps {
@@ -42,10 +43,15 @@ export function EdgeLoadDialog({
   const fmtCoord = (v: number) => v.toFixed(2);
 
   return (
-    <div className="edge-load-dialog-overlay" onClick={onCancel}>
-      <div className="edge-load-dialog" onClick={e => e.stopPropagation()}>
-        <div className="edge-load-dialog-header">Edge Load</div>
-        <div className="edge-load-dialog-body">
+    <Sheet
+      open
+      onClose={onCancel}
+      title="Edge Load"
+      footer={
+        <button className="edge-load-btn confirm" onClick={handleApply}>Add Edge Load</button>
+      }
+    >
+      <div className="edge-load-dialog-body">
           <label>
             <span>Load Case</span>
             <select
@@ -118,11 +124,6 @@ export function EdgeLoadDialog({
             Negative pz = downward. Load is applied uniformly along the selected edge.
           </p>
         </div>
-        <div className="edge-load-dialog-footer">
-          <button className="edge-load-btn cancel" onClick={onCancel}>Cancel</button>
-          <button className="edge-load-btn confirm" onClick={handleApply}>OK</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

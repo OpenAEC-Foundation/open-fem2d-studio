@@ -1,4 +1,4 @@
-.grids-dialog-overlay {
+﻿.grids-dialog-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -9,8 +9,8 @@
 }
 
 .grids-dialog {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
   border-radius: 8px;
   width: 620px;
   max-height: 80vh;
@@ -23,9 +23,9 @@
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
   border-radius: 8px 8px 0 0;
 }
 
@@ -40,7 +40,7 @@
 }
 
 .grids-section {
-  border: 1px solid var(--border);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -50,12 +50,12 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  background: var(--bg-secondary);
+  background: var(--theme-bg-elevated);
   font-size: 14px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   letter-spacing: 0.3px;
-  border-bottom: 2px solid var(--accent);
+  border-bottom: 2px solid var(--theme-accent);
 }
 
 .grids-section-actions {
@@ -70,10 +70,10 @@
   justify-content: center;
   gap: 3px;
   padding: 2px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 3px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   font-size: 11px;
   cursor: pointer;
   min-width: 24px;
@@ -81,18 +81,18 @@
 }
 
 .grids-action-btn:hover {
-  background: var(--accent);
+  background: var(--theme-accent);
   color: #fff;
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
 }
 
 .grids-action-btn.add-btn {
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-weight: 700;
 }
 
 .grids-action-btn.remove-btn {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-weight: 700;
 }
 
@@ -117,23 +117,23 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .grids-table td {
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .grids-input {
   width: 100%;
   padding: 3px 6px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
@@ -145,13 +145,13 @@
 
 .grids-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
 }
 
 .grids-delete-btn {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   cursor: pointer;
   padding: 2px;
   display: flex;
@@ -164,7 +164,7 @@
 .grids-lock-btn {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   cursor: pointer;
   padding: 2px;
   display: flex;
@@ -177,14 +177,14 @@
 }
 
 .grids-lock-btn.locked {
-  color: var(--accent);
+  color: var(--theme-accent);
   opacity: 1;
 }
 
 .grids-empty {
   padding: 12px !important;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 11px;
 }
 
@@ -206,24 +206,24 @@
 .grids-spacing-line {
   flex: 1;
   height: 0;
-  border-top: 1px dashed var(--border-light);
+  border-top: 1px dashed var(--theme-border);
 }
 
 .grids-spacing-label {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   padding: 1px 6px;
   border-radius: 3px;
   white-space: nowrap;
-  background: var(--bg-secondary);
+  background: var(--theme-bg-elevated);
   border: 1px solid transparent;
   transition: all 0.15s ease;
 }
 
 .grids-spacing-indicator:hover .grids-spacing-label {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--bg-tertiary);
+  color: var(--theme-accent);
+  border-color: var(--theme-accent);
+  background: var(--theme-bg-subtle);
 }
 
 .grids-spacing-input {
@@ -231,10 +231,10 @@
   padding: 1px 4px;
   font-size: 10px;
   text-align: center;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--accent);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-accent);
   border-radius: 3px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   outline: none;
 }
 
@@ -249,7 +249,7 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   cursor: pointer;
 }
 
@@ -258,12 +258,12 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
 }
 
 .grids-btn {
   padding: 6px 20px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -271,20 +271,20 @@
 }
 
 .grids-btn.cancel {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
 }
 
 .grids-btn.cancel:hover {
-  background: var(--bg-elevated);
+  background: var(--theme-bg-elevated);
 }
 
 .grids-btn.confirm {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: #fff;
 }
 
 .grids-btn.confirm:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }

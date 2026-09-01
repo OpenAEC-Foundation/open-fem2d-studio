@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ILoadCase } from '../../core/fem/LoadCase';
+import { Sheet } from '../openaec/Sheet';
 import './LoadDialog.css';
 
 interface LoadDialogProps {
@@ -46,10 +47,15 @@ export function LoadDialog({ initialFx, initialFy, initialMoment, loadCases, act
   const distanceFromStart = isBeamLoad && beamLength ? (parseFloat(position) / 100 * beamLength) : null;
 
   return (
-    <div className="load-dialog-overlay" onClick={onCancel}>
-      <div className="load-dialog" onClick={e => e.stopPropagation()}>
-        <div className="load-dialog-header">{isBeamLoad ? 'Point Load on Beam' : 'Point Load'}</div>
-        <div className="load-dialog-body">
+    <Sheet
+      open
+      onClose={onCancel}
+      title={isBeamLoad ? 'Point Load on Beam' : 'Point Load'}
+      footer={
+        <button className="load-btn confirm" onClick={handleApply}>Add Load</button>
+      }
+    >
+      <div className="load-dialog-body">
           <label>
             <span>Load Case</span>
             <select
@@ -111,11 +117,6 @@ export function LoadDialog({ initialFx, initialFy, initialMoment, loadCases, act
             {isBeamLoad && <><br/>Position: 0% = start node, 100% = end node</>}
           </p>
         </div>
-        <div className="load-dialog-footer">
-          <button className="load-btn cancel" onClick={onCancel}>Cancel</button>
-          <button className="load-btn confirm" onClick={handleApply}>OK</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

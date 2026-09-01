@@ -195,11 +195,27 @@ function App() {
     }
   }, [fem]);
 
+  // Bestand → Nieuw: direct een LEEG project (geen confirm, geen reload,
+  // geen demo-model). Standaard belastinggevallen blijven beschikbaar zodat
+  // de tab-bar en de solver-flow meteen bruikbaar zijn; undo-history wordt
+  // door loadProjectState gereset. Ctrl+Z kan dus niet terug — maar het oude
+  // model is via Recent/opslaan altijd nog te openen.
   const handleNewProject = useCallback(() => {
-    if (confirm("Nieuw project starten? Niet-opgeslagen wijzigingen gaan verloren.")) {
-      window.location.reload();
-    }
-  }, []);
+    fem.loadProjectState({
+      nodes: [], beams: [], supports: [], plates: [], loads: [],
+      loadCases: [
+        { id: 1, name: "Permanent (G)", type: "dead" },
+        { id: 2, name: "Variabel (Q)",  type: "live" },
+        { id: 3, name: "Sneeuw (S)",    type: "snow" },
+        { id: 4, name: "Wind (W)",      type: "wind" },
+      ],
+      activeLoadCaseId: 1,
+      selfWeightEnabled: false,
+      nonlinearEnabled: false,
+    });
+    setProjectPath("");
+    setActiveView("default");
+  }, [fem, setActiveView]);
 
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
 

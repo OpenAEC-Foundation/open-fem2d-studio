@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Sheet } from '../openaec/Sheet';
 import './PlateDialog.css';
 
 interface PlateDialogProps {
@@ -87,10 +88,15 @@ export function PlateDialog({
   }, [meshSize, polyArea, polygonVoids]);
 
   return (
-    <div className="plate-dialog-overlay" onClick={onCancel}>
-      <div className="plate-dialog" onClick={e => e.stopPropagation()}>
-        <div className="plate-dialog-header">Plate Element</div>
-        <div className="plate-dialog-body">
+    <Sheet
+      open
+      onClose={onCancel}
+      title="Plate Element"
+      footer={
+        <button className="plate-dialog-btn confirm" onClick={handleConfirm}>Create Plate</button>
+      }
+    >
+      <div className="plate-dialog-body">
           <div className="plate-dialog-polygon-info">
             <p className="plate-dialog-hint">
               Polygon outline: {polygonVertices.length} vertices, area {(polyArea * 1e6).toFixed(0)} mm² ({polyArea.toFixed(4)} m²)
@@ -144,11 +150,6 @@ export function PlateDialog({
             {' '}Use "Plane Stress" for membrane or "Plate Bending (DKT)" for bending analysis.
           </p>
         </div>
-        <div className="plate-dialog-footer">
-          <button className="plate-dialog-btn cancel" onClick={onCancel}>Cancel</button>
-          <button className="plate-dialog-btn confirm" onClick={handleConfirm}>OK</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

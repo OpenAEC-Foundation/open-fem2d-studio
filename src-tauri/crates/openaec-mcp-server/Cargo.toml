@@ -1,0 +1,27 @@
+[package]
+name = "openaec-mcp-server"
+version = "0.1.0"
+edition = "2021"
+description = "MCP (Model Context Protocol) server exposing the OpenAEC steel-check engine"
+license = "CC-BY-SA-4.0"
+
+[[bin]]
+name = "openaec-mcp-server"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+base64 = "0.22"
+# Engine crates
+steel-check = { path = "../steel-check" }
+steel-profiles = { path = "../steel-profiles" }
+section-properties = { path = "../section-properties" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+report = { path = "../report" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "process", "time"] }

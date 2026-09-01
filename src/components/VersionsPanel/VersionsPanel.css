@@ -1,42 +1,7 @@
-/* VersionsPanel.css -- Version control panel (dark theme) */
+﻿/* VersionsPanel.css -- Version control panel (dark theme) */
 
-.versions-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  overflow: hidden;
-}
-
-/* Header bar */
-.versions-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  min-height: 36px;
-  flex-shrink: 0;
-}
-
-.versions-header-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.versions-header-icon {
-  width: 14px;
-  height: 14px;
-  opacity: 0.7;
-}
+/* Outer chrome moved to SidePanel primitive. Inner content rules retained below. */
+.versions-panel-body { padding: 0; }
 
 /* Current branch indicator */
 .versions-branch-indicator {
@@ -44,15 +9,15 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
+  background: var(--theme-bg-elevated);
+  border-bottom: 1px solid var(--theme-border);
   flex-shrink: 0;
 }
 
 .versions-branch-icon {
   width: 16px;
   height: 16px;
-  color: var(--accent);
+  color: var(--theme-accent);
   flex-shrink: 0;
 }
 
@@ -60,7 +25,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--theme-accent);
 }
 
 .versions-uncommitted-badge {
@@ -95,12 +60,12 @@
 .versions-section-title {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 10px 0;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -123,9 +88,9 @@
 .versions-commit-input {
   flex: 1;
   min-width: 0;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   padding: 6px 10px;
   font-size: 12px;
@@ -135,16 +100,16 @@
 }
 
 .versions-commit-input::placeholder {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 .versions-commit-input:focus {
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .versions-commit-btn {
-  background: var(--accent);
+  background: var(--theme-accent);
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -176,7 +141,7 @@
 
 .versions-new-branch-btn {
   background: none;
-  color: var(--accent);
+  color: var(--theme-accent);
   border: none;
   font-size: 11px;
   font-weight: 600;
@@ -201,30 +166,30 @@
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   transition: border-color 0.15s ease;
 }
 
 .versions-branch-card:hover {
-  border-color: var(--text-muted);
+  border-color: var(--theme-fg-subtle);
 }
 
 .versions-branch-card.active {
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
   background: rgba(59, 130, 246, 0.06);
 }
 
 .versions-branch-card-icon {
   width: 14px;
   height: 14px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   flex-shrink: 0;
 }
 
 .versions-branch-card.active .versions-branch-card-icon {
-  color: var(--accent);
+  color: var(--theme-accent);
 }
 
 .versions-branch-card-info {
@@ -235,19 +200,19 @@
 .versions-branch-card-name {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .versions-branch-card.active .versions-branch-card-name {
-  color: var(--accent);
+  color: var(--theme-accent);
 }
 
 .versions-branch-card-meta {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   margin-top: 2px;
 }
 
@@ -265,7 +230,7 @@
   height: 24px;
   background: none;
   border: 1px solid transparent;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   cursor: pointer;
   border-radius: 4px;
   font-size: 11px;
@@ -273,9 +238,9 @@
 }
 
 .versions-branch-action-btn:hover {
-  background: var(--bg-primary);
-  border-color: var(--border);
-  color: var(--text-primary);
+  background: var(--theme-bg);
+  border-color: var(--theme-border);
+  color: var(--theme-fg);
 }
 
 .versions-branch-action-btn.danger:hover {
@@ -290,8 +255,8 @@
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--accent);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-accent);
   border-radius: 6px;
   margin-bottom: 6px;
 }
@@ -304,9 +269,9 @@
 .versions-new-branch-input {
   flex: 1;
   min-width: 0;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg);
+  color: var(--theme-fg);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 11px;
@@ -316,15 +281,15 @@
 }
 
 .versions-new-branch-input::placeholder {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 .versions-new-branch-input:focus {
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
 }
 
 .versions-new-branch-create-btn {
-  background: var(--accent);
+  background: var(--theme-accent);
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -347,8 +312,8 @@
 
 .versions-new-branch-cancel-btn {
   background: none;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
+  color: var(--theme-fg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   padding: 5px 10px;
   font-size: 11px;
@@ -357,8 +322,8 @@
 }
 
 .versions-new-branch-cancel-btn:hover {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--theme-bg);
+  color: var(--theme-fg);
 }
 
 /* -------------------------------------------------------- */
@@ -382,7 +347,7 @@
   top: 4px;
   bottom: 4px;
   width: 2px;
-  background: var(--border);
+  background: var(--theme-border);
   border-radius: 1px;
 }
 
@@ -406,14 +371,14 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--bg-secondary);
-  border: 2px solid var(--text-muted);
+  background: var(--theme-bg-elevated);
+  border: 2px solid var(--theme-fg-subtle);
   z-index: 1;
 }
 
 .versions-commit-entry.current .versions-commit-dot {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   box-shadow: 0 0 6px rgba(59, 130, 246, 0.5);
 }
 
@@ -435,7 +400,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--theme-accent);
   background: rgba(59, 130, 246, 0.1);
   padding: 1px 6px;
   border-radius: 3px;
@@ -445,7 +410,7 @@
 .versions-commit-message {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -458,21 +423,21 @@
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 .versions-commit-author {
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .versions-commit-time {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 .versions-commit-checkout-btn {
   background: none;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
+  color: var(--theme-fg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 3px;
   padding: 2px 8px;
   font-size: 10px;
@@ -488,9 +453,9 @@
 }
 
 .versions-commit-checkout-btn:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-color: var(--accent);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
+  border-color: var(--theme-accent);
 }
 
 /* -------------------------------------------------------- */
@@ -511,8 +476,8 @@
 }
 
 .versions-confirm-dialog {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-border);
   border-radius: 8px;
   padding: 20px 24px;
   min-width: 320px;
@@ -523,13 +488,13 @@
 .versions-confirm-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   margin: 0 0 8px 0;
 }
 
 .versions-confirm-message {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   margin: 0 0 8px 0;
   line-height: 1.5;
 }
@@ -561,8 +526,8 @@
 
 .versions-confirm-cancel-btn {
   background: none;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
+  color: var(--theme-fg-muted);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   padding: 6px 14px;
   font-size: 11px;
@@ -571,12 +536,12 @@
 }
 
 .versions-confirm-cancel-btn:hover {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--theme-bg);
+  color: var(--theme-fg);
 }
 
 .versions-confirm-proceed-btn {
-  background: var(--accent);
+  background: var(--theme-accent);
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -598,7 +563,7 @@
 .versions-empty {
   text-align: center;
   padding: 24px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 12px;
 }
 
@@ -606,7 +571,7 @@
   width: 48px;
   height: 48px;
   opacity: 0.3;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   margin: 0 auto 12px auto;
   display: block;
 }
@@ -615,7 +580,7 @@
   margin: 0 0 4px 0;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .versions-empty p {

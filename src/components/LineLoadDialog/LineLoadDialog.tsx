@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Lock, Unlock, CloudDownload, Loader2, AlertCircle, Check } from 'lucide-react';
+import { Sheet } from '../openaec/Sheet';
 import './LineLoadDialog.css';
 
 // -- OpenReport integration types & helper --
@@ -278,10 +279,16 @@ export function LineLoadDialog({
   };
 
   return (
-    <div className="line-load-dialog-overlay" onClick={onCancel}>
-      <div className="line-load-dialog" onClick={e => e.stopPropagation()}>
-        <div className="line-load-dialog-header">{edgeMode ? 'Edge Load' : 'Distributed Load'}</div>
-        <div className="line-load-dialog-body">
+    <Sheet
+      open
+      onClose={onCancel}
+      title={edgeMode ? 'Edge Load' : 'Distributed Load'}
+      width={420}
+      footer={
+        <button className="line-load-btn confirm" onClick={handleApply}>Add Load</button>
+      }
+    >
+      <div className="line-load-dialog-body">
           <label>
             <span>Load Case</span>
             <select
@@ -522,11 +529,6 @@ export function LineLoadDialog({
             </div>
           )}
         </div>
-        <div className="line-load-dialog-footer">
-          <button className="line-load-btn cancel" onClick={onCancel}>Cancel</button>
-          <button className="line-load-btn confirm" onClick={handleApply}>OK</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

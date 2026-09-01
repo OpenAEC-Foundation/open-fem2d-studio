@@ -1,6 +1,9 @@
-/**
+﻿/**
  * InsightsPanel -- Calculation model insights: element stiffness matrices,
  * system stiffness matrix info, solver info, DOF mapping, logs, and errors.
+ *
+ * TODO(phase-9): This is a fullscreen view (replaces the canvas area when
+ * activeView === 'insights'), not a side dock. SidePanel migration deferred.
  */
 
 import { useMemo, useState } from 'react';
@@ -142,7 +145,7 @@ function ElementMatrixView() {
         >
           {beamList.map((b) => (
             <option key={b.id} value={b.id}>
-              Beam {b.id} — {b.profileName ?? 'Custom section'}
+              Beam {b.id} â€” {b.profileName ?? 'Custom section'}
             </option>
           ))}
         </select>
@@ -474,7 +477,7 @@ function SystemMatrixView() {
               >
                 <span className="insights-element-legend-color" style={{ backgroundColor: color }} />
                 <span>Beam {beamId}</span>
-                <span className="insights-element-legend-dofs">DOFs {Math.min(...dofs)}–{Math.max(...dofs)}</span>
+                <span className="insights-element-legend-dofs">DOFs {Math.min(...dofs)}â€“{Math.max(...dofs)}</span>
               </div>
             ))}
           </div>
@@ -556,7 +559,7 @@ function SystemMatrixView() {
                                 className={cls}
                                 style={isHighlighted ? { backgroundColor: rowHi + '30', borderColor: rowHi } : undefined}
                               >
-                                {hasError ? (isNaN(val) ? 'NaN' : '∞') : (isZero ? '0' : fmtMatrix(val))}
+                                {hasError ? (isNaN(val) ? 'NaN' : 'âˆž') : (isZero ? '0' : fmtMatrix(val))}
                               </td>
                             );
                           })}
@@ -746,7 +749,7 @@ function DofMappingView() {
   return (
     <>
       <h4 className="insights-section-title">Node &rarr; DOF Index Mapping</h4>
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
+      <p style={{ fontSize: 11, color: 'var(--theme-fg-subtle)', margin: '0 0 10px 0' }}>
         Each node has 3 DOFs: u (horizontal), v (vertical), {'\u03B8'} (rotation).
       </p>
       <div className="insights-matrix-container">

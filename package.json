@@ -14,6 +14,10 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@openaec/design-tokens": "file:../../../../OpenAEC-style-book/packages/tokens",
+    "@openaec/shell": "file:../../../../OpenAEC-style-book/packages/shell",
+    "@openaec/ribbon": "file:../../../../OpenAEC-style-book/packages/ribbon",
+    "@openaec/ui-primitives": "file:../../../../OpenAEC-style-book/packages/ui-primitives",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",

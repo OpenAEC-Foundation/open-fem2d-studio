@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { ILoadCombination, createLoadCombination, LoadCombinationType } from '../../core/fem/LoadCase';
+import { Sheet } from '../openaec/Sheet';
 import './LoadCombinationDialog.css';
 
 interface LoadCombinationDialogProps {
@@ -74,24 +75,15 @@ export function LoadCombinationDialog({ onClose }: LoadCombinationDialogProps) {
     );
   }
 
-  function handleApply() {
+  // Auto-apply on every change (sheet has no OK button)
+  useEffect(() => {
     dispatch({ type: 'SET_LOAD_COMBINATIONS', payload: combinations });
-  }
-
-  function handleOk() {
-    handleApply();
-    onClose();
-  }
+  }, [combinations, dispatch]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="lc-combo-overlay" onClick={onClose}>
-      <div className="lc-combo-dialog" onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="lc-combo-header">Load Combinations</div>
-
+    <Sheet open onClose={onClose} title="Load Combinations" width={520}>
         <div className="lc-combo-body">
           {/* Left: combination list */}
           <div className="lc-combo-sidebar">
@@ -223,13 +215,6 @@ export function LoadCombinationDialog({ onClose }: LoadCombinationDialogProps) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="lc-combo-footer">
-          <button className="lc-combo-btn cancel" onClick={onClose}>Cancel</button>
-          <button className="lc-combo-btn apply" onClick={handleApply}>Apply</button>
-          <button className="lc-combo-btn confirm" onClick={handleOk}>OK</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

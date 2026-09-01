@@ -7,6 +7,10 @@
  * - Graph → Model: auto-execute on value changes (debounced)
  * - State persistence via FEMContext (save/load with project)
  * - Sync status indicator
+ *
+ * TODO(phase-9): Used as a canvas-replacement view (activeView === 'graph') and
+ * inside the split-view bottom slot. Both are non-side-panel contexts, so the
+ * SidePanel primitive doesn't fit. Migration deferred.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';

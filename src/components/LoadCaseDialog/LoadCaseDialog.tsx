@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { ILoadCase, createLoadCase } from '../../core/fem/LoadCase';
+import { Sheet } from '../openaec/Sheet';
 import './LoadCaseDialog.css';
 
 interface LoadCaseDialogProps {
@@ -85,17 +86,14 @@ export function LoadCaseDialog({ onClose }: LoadCaseDialogProps) {
     );
   };
 
-  const handleApply = () => {
+  // Auto-apply on every change (sheet has no OK button)
+  useEffect(() => {
     dispatch({ type: 'SET_LOAD_CASES', payload: loadCases });
-    onClose();
-  };
+  }, [loadCases, dispatch]);
 
   return (
-    <div className="lc-dialog-overlay" onClick={onClose}>
-      <div className="lc-dialog" onClick={e => e.stopPropagation()}>
-        <div className="lc-dialog-header">Load Cases</div>
-
-        <div className="lc-dialog-body">
+    <Sheet open onClose={onClose} title="Load Cases">
+      <div className="lc-dialog-body">
           {/* Action buttons */}
           <div className="lc-actions">
             <button className="lc-action-btn" onClick={handleAdd}>Add</button>
@@ -176,12 +174,6 @@ export function LoadCaseDialog({ onClose }: LoadCaseDialogProps) {
             </div>
           )}
         </div>
-
-        <div className="lc-dialog-footer">
-          <button className="lc-btn cancel" onClick={onClose}>Cancel</button>
-          <button className="lc-btn confirm" onClick={handleApply}>OK</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

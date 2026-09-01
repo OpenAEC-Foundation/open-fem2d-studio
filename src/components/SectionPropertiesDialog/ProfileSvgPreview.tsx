@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SVG Preview Component for Steel Profiles
  * Renders parametric profiles with proper fillets and arcs
  * Dimension labels are clickable for editing
@@ -129,7 +129,7 @@ export function ProfileSvgPreview({
       height={height}
       viewBox={viewBox}
       className="profile-svg-preview"
-      style={{ background: 'var(--bg-primary, #ffffff)' }}
+      style={{ background: 'var(--theme-bg)' }}
     >
       {/* Definitions */}
       <defs>
@@ -492,7 +492,7 @@ export function ProfileSvgPreview({
           fontSize={9 / scale}
           fill="#555"
         >
-          {rotation}°
+          {rotation}Â°
         </text>
       )}
     </svg>
@@ -503,7 +503,7 @@ export function ProfileSvgPreview({
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          background: 'var(--bg-secondary, #fff)',
+          background: 'var(--theme-bg-elevated)',
           border: '2px solid #3b82f6',
           borderRadius: 6,
           padding: '4px 8px',
