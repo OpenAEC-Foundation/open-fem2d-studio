@@ -171,7 +171,7 @@ pub fn check_column_stability(
 
 /// Belastinggeval voor de effectieve kiplengte (tabel 6.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/timber/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub enum LtbLoadCase {
     /// Vrij opgelegd, constant moment: l_ef/l = 1,0.
     ConstantMoment,
@@ -188,7 +188,7 @@ pub enum LtbLoadCase {
 /// Aangrijpingspunt van de belasting t.o.v. het zwaartepunt (tabel 6.1,
 /// voetnoot): drukzijde → l_ef + 2h; trekzijde → l_ef − 0,5h.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/timber/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub enum LtbLoadPosition {
     CentreOfGravity,
     CompressionEdge,

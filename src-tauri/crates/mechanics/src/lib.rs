@@ -8,7 +8,7 @@ use ts_rs::TS;
 /// Sign convention: N positive = tension; My positive = bottom fibre tension.
 /// Units: kN (forces), kNm (moments).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct InternalForces {
     pub n_ed: f64,
     pub vy_ed: f64,
@@ -20,7 +20,7 @@ pub struct InternalForces {
 
 /// Beam local axis frame.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct BeamAxis {
     pub length_m: f64,
     pub orientation_rad: f64,
@@ -29,7 +29,7 @@ pub struct BeamAxis {
 /// One sample point along a beam: position (mm from start) + governing
 /// internal forces at that location for some load combination.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct ForcePoint {
     pub combination_id: u32,
     pub position_mm: f64,
@@ -38,7 +38,7 @@ pub struct ForcePoint {
 
 /// Snapshot of force state at a single check location — used in derivation reports.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct ForceStateSnapshot {
     pub combination_id: u32,
     pub position_mm: f64,

@@ -32,7 +32,7 @@ fn default_ltb_load_position() -> LtbLoadPosition {
 
 /// Invoer voor één houten staaf (rechthoekige doorsnede b × h).
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/timber/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub struct TimberBeamCheckInput {
     pub beam_id: u32,
     /// Doorsnedebreedte b in mm.

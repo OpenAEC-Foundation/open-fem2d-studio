@@ -9,6 +9,11 @@ import type {
   BrandConfig,
 } from '../types/report';
 import { createBlankReport } from '../types/report';
+import type { ReportInput } from '../lib/types/steel/ReportInput';
+import { useCheckStore } from './checkStore';
+import { isSteelCheckResult } from '../lib/checkTypes';
+import { isTauriApp, DESKTOP_ONLY_MSG } from '../lib/tauri';
+import { getSetting } from '../store';
 
 export type ReportPageSize = 'A4' | 'A3';
 export type ReportOrientation = 'portrait' | 'landscape';
@@ -204,47 +209,69 @@ export const useReportStore = create<ReportState>((set, get) => ({
     get().loadBrand();
   },
 
+  // De tenant/template/brand-commands hoorden bij de standalone mockup-shell
+  // (design-mockup/src-tauri). De app draait nu tegen de root-backend
+  // (src-tauri/src/lib.rs), die deze commands niet heeft — stil overslaan
+  // zodat de Rapport-tab er geen foutmeldingen door toont.
   loadTenants: async () => {
-    try {
-      const tenants = await invoke<TenantInfo[]>('list_tenants');
-      set({ tenants });
-    } catch (e) {
-      set({ error: String(e) });
-    }
+    set({ tenants: [] });
   },
 
   loadTemplates: async () => {
-    try {
-      const { tenant } = get();
-      const templates = await invoke<TemplateInfo[]>('list_templates', { tenant });
-      set({ templates });
-    } catch (e) {
-      set({ error: String(e) });
-    }
+    set({ templates: [] });
   },
 
   loadBrand: async () => {
-    try {
-      const { tenant } = get();
-      const brand = await invoke<BrandConfig>('get_brand', { tenant });
-      set({ brand });
-    } catch (e) {
-      set({ error: String(e) });
-    }
+    set({ brand: null });
   },
 
   generatePdf: async () => {
     set({ isGenerating: true, error: null });
     try {
-      const { report, tenant, engine, pdfBlobUrl: oldUrl } = get();
+      if (!isTauriApp()) {
+        throw new Error(DESKTOP_ONLY_MSG);
+      }
 
-      // Route through the chosen engine. 'openaec' is the production
-      // engine from openaec-reports; 'local' uses the bundled minimal one.
-      const bytes =
-        engine === 'openaec'
-          ? await invoke<number[]>('engine_generate_pdf', { report })
-          : await invoke<number[]>('generate_pdf', { report, tenant });
+      // PDF-route: het staaltoetsingsrapport uit de Rust report-crate
+      // (generate_steel_report_pdf). Die dekt nu alleen staal (EN 1993);
+      // houtresultaten (EN 1995) worden gefilterd met melding.
+      const { results } = useCheckStore.getState();
+      const steelResults = results.filter(isSteelCheckResult);
+      const timberCount = results.length - steelResults.length;
 
+      if (results.length === 0) {
+        throw new Error(
+          'Geen toetsingsresultaten. Voer eerst de normtoetsing uit (tabblad Toetsing) — het PDF-rapport bevat de EN 1993-afleidingen per staaf.',
+        );
+      }
+      if (steelResults.length === 0) {
+        throw new Error(
+          'Alleen houtresultaten aanwezig — het PDF-rapport dekt momenteel uitsluitend staal (EN 1993). Een houtrapport (EN 1995) bestaat nog niet.',
+        );
+      }
+      if (timberCount > 0) {
+        const { notifyInfo } = await import('../io/notify');
+        notifyInfo(
+          'Houtresultaten niet in PDF',
+          `${timberCount} houtresultaat/-resultaten (EN 1995) zijn niet opgenomen — het PDF-rapport dekt nu alleen staal (EN 1993).`,
+        );
+      }
+
+      const projectInfo = await getSetting('projectInfo', {
+        name: '', projectNumber: '', engineer: '', company: '', date: '',
+      } as { name: string; projectNumber: string; engineer: string; company: string; date: string });
+
+      const { report, pdfBlobUrl: oldUrl } = get();
+      const input: ReportInput = {
+        project_name: report.project || projectInfo.name || 'Naamloos project',
+        project_number: report.project_number || projectInfo.projectNumber || '',
+        engineer: report.author || projectInfo.engineer || '',
+        company: projectInfo.company || '',
+        date: report.date || projectInfo.date || new Date().toISOString().slice(0, 10),
+        steel_check_results: steelResults,
+      };
+
+      const bytes = await invoke<number[]>('generate_steel_report_pdf', { input });
       const byteArray = new Uint8Array(bytes);
 
       if (oldUrl) URL.revokeObjectURL(oldUrl);
@@ -259,22 +286,47 @@ export const useReportStore = create<ReportState>((set, get) => ({
         isGenerating: false,
       });
     } catch (e) {
-      set({ error: String(e), isGenerating: false });
+      set({ error: e instanceof Error ? e.message : String(e), isGenerating: false });
     }
   },
 
   savePdf: async (path: string) => {
     set({ isGenerating: true, error: null });
     try {
-      const { report, tenant, engine } = get();
-      if (engine === 'openaec') {
-        await invoke('engine_save_pdf', { report, path });
-      } else {
-        await invoke('save_pdf', { report, tenant, path });
+      // Hergebruik de laatst gegenereerde bytes; genereer anders eerst.
+      let bytes = get().pdfBytes;
+      if (!bytes) {
+        await get().generatePdf();
+        bytes = get().pdfBytes;
+        const err = get().error;
+        if (err) throw new Error(err);
+      }
+      if (!bytes) throw new Error('Geen PDF beschikbaar om op te slaan.');
+
+      try {
+        const { writeFile } = await import('@tauri-apps/plugin-fs');
+        await writeFile(path, bytes);
+        const { notifySuccess } = await import('../io/notify');
+        notifySuccess('PDF opgeslagen', path);
+      } catch {
+        // fs-permissie voor binaire writes kan ontbreken → val terug op een
+        // browser-download zodat de gebruiker de PDF alsnog krijgt.
+        const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = path.split(/[\\/]/).pop() || 'rapport.pdf';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+        const { notifyWarning } = await import('../io/notify');
+        notifyWarning(
+          'Direct opslaan niet mogelijk',
+          'De PDF is als download aangeboden in plaats van op het gekozen pad geschreven.',
+        );
       }
       set({ isGenerating: false });
     } catch (e) {
-      set({ error: String(e), isGenerating: false });
+      set({ error: e instanceof Error ? e.message : String(e), isGenerating: false });
     }
   },
 

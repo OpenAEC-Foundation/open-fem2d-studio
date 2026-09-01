@@ -11,7 +11,7 @@ pub mod channel;
 /// All cross-sectional properties needed for EN 1993 checks.
 /// Units: mm² for areas, mm⁴ for I, mm³ for W, mm for radii.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct SectionProperties {
     pub area_mm2: f64,
     pub iy_mm4: f64,

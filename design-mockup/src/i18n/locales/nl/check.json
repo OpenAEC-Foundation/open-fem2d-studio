@@ -1,0 +1,18 @@
+{
+  "title": "Normtoetsing — EN 1993 (staal) + EN 1995 (hout)",
+  "beam": "Staaf",
+  "governing": "Maatgevend",
+  "statusOk": "OK",
+  "statusNotOk": "Niet OK",
+  "statusNa": "N.v.t.",
+  "total": "Staven",
+  "run": "Toetsing uitvoeren",
+  "running": "Bezig met toetsen…",
+  "skippedTitle": "Overgeslagen staven",
+  "emptyTitle": "Nog geen toetsing uitgevoerd",
+  "emptyHint": "Klik op \"Toetsing uitvoeren\" — het model wordt zo nodig eerst doorgerekend, daarna toetsen staal en hout samen in één run.",
+  "noCheckable": "Geen toetsbare staven: geen staalprofielen (HEA/HEB/IPE/…) en geen houtklassen (C24, GL28h, …) in het model.",
+  "solverFailed": "Doorrekenen mislukt — controleer het model (opleggingen, belastingen).",
+  "timberFiltered": "{{count}} houtresultaat/-resultaten niet in de PDF opgenomen — het PDF-rapport dekt nu alleen staal (EN 1993).",
+  "runFirst": "Voer eerst de normtoetsing uit (tabblad Toetsing) voordat je een PDF genereert."
+}

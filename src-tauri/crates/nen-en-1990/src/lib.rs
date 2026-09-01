@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct LoadFactors {
     pub name: &'static str,
     pub gamma_g: f64,
@@ -24,7 +24,7 @@ pub const EQU: LoadFactors = LoadFactors {
 };
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct PsiFactors {
     pub category: &'static str,
     pub description: &'static str,
@@ -45,7 +45,7 @@ pub const PSI_WIND: PsiFactors = PsiFactors { category: "Wind", description: "Wi
 pub const PSI_SNOW: PsiFactors = PsiFactors { category: "Sneeuw", description: "Sneeuwbelasting NL", psi0: 0.0, psi1: 0.2, psi2: 0.0 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum ConsequenceClass { CC1, CC2, CC3 }
 
 impl ConsequenceClass {

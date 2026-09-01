@@ -26,7 +26,9 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 4. ignore the ts-rs generated types — `cargo test` rewrites them on
+      //    every run, which would otherwise cause an HMR flicker storm.
+      ignored: ["**/src-tauri/**", "**/src/lib/types/**"],
     },
   },
 }));

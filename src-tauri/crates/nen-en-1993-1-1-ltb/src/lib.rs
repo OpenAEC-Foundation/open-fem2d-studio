@@ -12,7 +12,7 @@ pub mod lambda_chi;
 pub mod en_general;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct LateralBracing {
     pub top_flange_positions: Vec<f64>,
     pub bottom_flange_positions: Vec<f64>,

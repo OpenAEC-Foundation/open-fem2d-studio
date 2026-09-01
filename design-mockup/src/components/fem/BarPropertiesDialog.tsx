@@ -8,7 +8,22 @@
  */
 import { useState } from "react";
 import type { Beam, BeamReleases, Node } from "./femTypes";
+import { useCheckStore } from "../../stores/checkStore";
+import { isSteelCheckResult } from "../../lib/checkTypes";
+import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import "./BarPropertiesDialog.css";
+
+const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
+
+/** Suggesties voor de profiel-combobox: staalprofielen + houtdoorsneden. */
+const PROFILE_SUGGESTIONS = [
+  "HEA100", "HEA140", "HEA160", "HEA200", "HEA240", "HEA300",
+  "HEB160", "HEB200", "HEB240", "HEB300",
+  "IPE160", "IPE200", "IPE240", "IPE300", "IPE360",
+  "UNP160", "UNP200", "UNP240",
+  // Houtdoorsneden — conventie b×h in mm; vrij typbaar (bijv. "96x450 GL").
+  "38x89", "44x146", "60x100", "71x171", "96x281", "96x450 GL",
+];
 
 interface Props {
   beam: Beam;
@@ -22,6 +37,10 @@ interface Props {
 
 export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate, onClose }: Props) {
   const [tab, setTab] = useState<"general" | "en1993">("general");
+  // Normtoetsingsresultaat van deze staaf (staal of hout) uit de laatste run.
+  const memberResult = useCheckStore(
+    (s) => s.results.find((r) => r.beam_id === beam.id) ?? null,
+  );
   // Hydrate from the beam so re-opening shows previously-saved values.
   const [material, setMaterial] = useState(beam.material ?? "S235");
   const [profile, setProfile]   = useState(beam.profile  ?? "HEA160");
@@ -60,7 +79,7 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
           <button
             className={`bar-props-tab${tab === "en1993" ? " active" : ""}`}
             onClick={() => setTab("en1993")}
-          >EN 1993</button>
+          >{memberResult && !isSteelCheckResult(memberResult) ? "EN 1995" : "EN 1993"}</button>
         </div>
 
         <div className="bar-props-body">
@@ -81,29 +100,35 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
                   <span>Materiaal</span>
                   <select className="bar-props-select" value={material}
                     onChange={(e) => setMaterial(e.target.value)}>
-                    <option value="S235">S235</option>
-                    <option value="S275">S275</option>
-                    <option value="S355">S355</option>
-                    <option value="S420">S420</option>
-                    <option value="S460">S460</option>
+                    <optgroup label="Staal (EN 1993)">
+                      {STEEL_GRADES.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Hout (EN 1995)">
+                      {SUPPORTED_TIMBER_GRADES.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </optgroup>
                   </select>
                 </div>
                 <div className="bar-props-row">
                   <span>Profiel</span>
-                  <select className="bar-props-select" value={profile}
-                    onChange={(e) => setProfile(e.target.value)}>
-                    <option value="HEA100">HEA 100</option>
-                    <option value="HEA140">HEA 140</option>
-                    <option value="HEA160">HEA 160</option>
-                    <option value="HEA200">HEA 200</option>
-                    <option value="HEA240">HEA 240</option>
-                    <option value="HEB200">HEB 200</option>
-                    <option value="HEB240">HEB 240</option>
-                    <option value="IPE200">IPE 200</option>
-                    <option value="IPE240">IPE 240</option>
-                    <option value="IPE300">IPE 300</option>
-                    <option value="UNP200">UNP 200</option>
-                  </select>
+                  {/* Combobox: staalprofiel (HEA160, IPE 200, …) of een
+                      rechthoekige houtdoorsnede b×h ("60x100", "96x450 GL"). */}
+                  <input
+                    className="bar-props-select"
+                    type="text"
+                    list="bar-props-profile-list"
+                    value={profile}
+                    onChange={(e) => setProfile(e.target.value)}
+                    spellCheck={false}
+                  />
+                  <datalist id="bar-props-profile-list">
+                    {PROFILE_SUGGESTIONS.map((p) => (
+                      <option key={p} value={p} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -152,12 +177,15 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
           {tab === "en1993" && (
             <>
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Staalsoort + partiële factoren</div>
-                <div className="bar-props-row"><span>fy</span><code>235 N/mm²</code></div>
-                <div className="bar-props-row"><span>fu</span><code>360 N/mm²</code></div>
-                <div className="bar-props-row"><span>γM0</span><code>1.00</code></div>
-                <div className="bar-props-row"><span>γM1</span><code>1.00</code></div>
-                <div className="bar-props-row"><span>γM2</span><code>1.25</code></div>
+                <div className="bar-props-section-title">Materiaal + doorsnede</div>
+                <div className="bar-props-row"><span>Materiaal</span><code>{material}</code></div>
+                <div className="bar-props-row"><span>Profiel</span><code>{profile}</code></div>
+                {memberResult && (
+                  <div className="bar-props-row">
+                    <span>Norm</span>
+                    <code>{isSteelCheckResult(memberResult) ? "NEN-EN 1993-1-1" : "NEN-EN 1995-1-1"}</code>
+                  </div>
+                )}
               </div>
 
               <div className="bar-props-section">
@@ -178,16 +206,41 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
 
               <div className="bar-props-section">
                 <div className="bar-props-section-title">Toetsing (UC)</div>
-                <table className="bar-props-uc-table">
-                  <thead><tr><th>Toets</th><th>UC</th><th>Status</th></tr></thead>
-                  <tbody>
-                    <tr><td>Druk Nc,Rd (6.46)</td><td>—</td><td className="bar-props-uc-pending">⊘ wacht op Stap 3</td></tr>
-                    <tr><td>Buiging Mc,Rd (6.12)</td><td>—</td><td className="bar-props-uc-pending">⊘ wacht op Stap 3</td></tr>
-                    <tr><td>Dwarskracht Vc,Rd (6.17)</td><td>—</td><td className="bar-props-uc-pending">⊘ wacht op Stap 3</td></tr>
-                    <tr><td>Kip Mb,Rd (6.55)</td><td>—</td><td className="bar-props-uc-pending">⊘ wacht op Stap 3</td></tr>
-                    <tr><td>M+N interactie (6.61)</td><td>—</td><td className="bar-props-uc-pending">⊘ wacht op Stap 3</td></tr>
-                  </tbody>
-                </table>
+                {memberResult ? (
+                  <>
+                    <table className="bar-props-uc-table">
+                      <thead><tr><th>Toets</th><th>UC</th><th>Status</th></tr></thead>
+                      <tbody>
+                        {memberResult.checks.map((named) => {
+                          const calc = named.kind.data;
+                          const uc = calc.uc?.uc ?? null;
+                          const status = calc.status;
+                          return (
+                            <tr key={named.id}>
+                              <td>{calc.title} ({calc.article})</td>
+                              <td>{uc !== null ? uc.toFixed(2) : "—"}</td>
+                              <td className={
+                                status === "Ok" ? "bar-props-uc-ok" :
+                                status === "NotOk" ? "bar-props-uc-notok" : "bar-props-uc-pending"
+                              }>
+                                {status === "Ok" ? "✓ OK" : status === "NotOk" ? "✗ Niet OK" : "N.v.t."}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="bar-props-hint">
+                      Maatgevend: {memberResult.governing_check_id} — UC {memberResult.uc_max.toFixed(2)}.
+                      Volledige afleiding: tabblad Toetsing → Toetsingspaneel.
+                    </div>
+                  </>
+                ) : (
+                  <div className="bar-props-hint">
+                    Nog niet getoetst — draai de normtoetsing via het ribbon-tabblad
+                    "Toetsing" (knop "Staal + hout toetsen").
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum BucklingCurve { A0, A, B, C, D }
 
 impl BucklingCurve {

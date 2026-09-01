@@ -45,6 +45,11 @@ interface RibbonProps {
   /** Export all stiffness matrices as CSV. */
   onExportMatrixCsv?: () => void;
   // ── Check-tab wiring ──────────────────────────────────────────────────
+  /** Normtoetsing: EN 1993 + EN 1995 samen in één run (Rust-backend). */
+  onRunMemberChecks?: () => void;
+  checksRunning?: boolean;
+  onOpenCheckPanel?: () => void;
+  checkPanelActive?: boolean;
   activeCode?: "EN1993" | "EN1995" | "EN1992";
   onSelectCode?: (c: "EN1993" | "EN1995" | "EN1992") => void;
   onToggleResultsPanel?: () => void;
@@ -85,6 +90,7 @@ export default function Ribbon({
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject, onSaveProjectAs,
   onShowInsightsMode, onExportMatrixCsv,
+  onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
   activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
   autoRunEnabled, onToggleAutoRun, onExportCheck,
   onFilterSelection, graphSplitOn, onToggleGraphSplit,
@@ -205,6 +211,10 @@ export default function Ribbon({
           onSolve={onSolve}
           onShowEnvelope={onShowEnvelope}
           hasEnvelope={hasEnvelope}
+          onRunMemberChecks={onRunMemberChecks}
+          checksRunning={checksRunning}
+          onOpenCheckPanel={onOpenCheckPanel}
+          checkPanelActive={checkPanelActive}
           activeCode={activeCode}
           onSelectCode={onSelectCode}
           onToggleResultsPanel={onToggleResultsPanel}

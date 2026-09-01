@@ -15,6 +15,7 @@ import ProjectSettingsDialog from "./components/project/ProjectSettingsDialog";
 import IfcViewerPanel from "./components/panels/IfcViewerPanel";
 import ReportPreview from "./components/panels/ReportPreview";
 import InsightsView from "./components/panels/InsightsView";
+import CheckPanel from "./components/panels/CheckPanel";
 import FemProjectTree from "./components/fem/FemProjectTree";
 import FemProperties from "./components/fem/FemProperties";
 import FemCanvas from "./components/fem/FemCanvas";
@@ -30,6 +31,8 @@ import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/s
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { selfWeightPerMeter } from "./components/fem/profileData";
+import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
+import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
 import { getSetting, setSetting } from "./store";
 import "./themes.css";
 import "./App.css";
@@ -127,6 +130,10 @@ function App() {
   // FEM model state lifted to App.tsx via useFemStore.
   const fem = useFemStore();
   const { addRecentFile } = useRecentFiles();
+  // Normtoetsing (EN 1993 staal + EN 1995 hout) — resultaten in checkStore.
+  const checkRun = useCheckStore((s) => s.run);
+  const checksRunning = useCheckStore((s) => s.isRunning);
+  const checkClear = useCheckStore((s) => s.clear);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
   const buildProjectSnapshot = useCallback(() => ({
@@ -254,6 +261,8 @@ function App() {
     // envelope colors after editing the model.
     fem.setEnvelopeView(false);
     fem.setActiveCombinationId(null);
+    // Normtoetsingsresultaten horen bij het oude model → wissen.
+    checkClear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.loads]);
 
@@ -283,28 +292,16 @@ function App() {
   // Last solver error text — shown in InsightsView Errors-tab.
   const [solverErrorText] = useState<string | null>(null);
   const [loadCasesTab, setLoadCasesTab] = useState<"cases" | "combos">("cases");
-  // FEM solve trigger — increments on each "Toetsen uitvoeren" click. FemCanvas
+  // FEM solve trigger — increments on each "Berekenen" click. FemCanvas
   // watches this and re-runs the solver against the current model.
   const [solveTrigger, setSolveTrigger] = useState(0);
-  const handleSolve = useCallback(() => {
-    setSolveTrigger((n) => n + 1);
-    // Make sure the user is looking at the canvas (not the report/IFC view).
-    setActiveView("default");
-    // Spring direct naar de Resultaten-tab in BEIDE plekken:
-    //   1. verkenner (FemProjectTree) — links
-    //   2. belastinggevallen-strip (LoadCaseTabBar) — onder
-    setTreeTab("results");
-    setResultsTabActive(true);
-    // Zet alle resultaten-overlays standaard aan zodat M/V/N + reacties +
-    // vervorming meteen zichtbaar zijn op de canvas.
-    setDisplayFlags(prev => ({ ...prev, M: true, V: true, N: true, deflection: true, reactions: true }));
-    // Clear selection so the results overlay isn't visually competing with
-    // selection-halos. User wants a clean view after computing.
-    fem.setSelection(null);
-    // Also run the multi-LC pipeline so the Combinaties tree + Envelope view
-    // become usable without an extra click. Errors here are non-fatal — we
-    // simply skip filling the store; FemCanvas still shows its single-LC
-    // solver result for the active load case.
+  /**
+   * Draai de multi-LC pipeline (alle belastinggevallen + combinaties +
+   * envelope) en schrijf de uitkomst in de fem-store. Retourneert de verse
+   * outputs zodat aanroepers (normtoetsing) niet op een React re-render
+   * hoeven te wachten. Fouten zijn non-fataal → null.
+   */
+  const computeAndStoreSolverOutputs = useCallback(() => {
     try {
       const multiInput: MultiInput = {
         nodes: fem.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
@@ -377,12 +374,85 @@ function App() {
         fem.combinations.map(c => [c.id, combineResults(c, perCase)])
       );
       const envelope = computeEnvelope(fem.combinations, perCase);
-      fem.setSolverOutputs({ perCase, combinationResults, envelope });
+      const outputs = { perCase, combinationResults, envelope };
+      fem.setSolverOutputs(outputs);
+      return outputs;
     } catch (e) {
       console.warn("[FEM multi-LC]", e);
       fem.setSolverOutputs(null);
+      return null;
     }
   }, [fem]);
+
+  /**
+   * Eén run voor staal én hout: zorgt eerst voor verse combinatieresultaten
+   * (zo nodig wordt het model direct doorgerekend), bouwt daarna de
+   * check-inputs en invoket beide Rust-commands parallel (checkStore.run).
+   * In de browser (zonder Tauri) volgt een nette melding i.p.v. een kale
+   * invoke-fout.
+   */
+  const handleRunMemberChecks = useCallback(async (opts?: {
+    openPanel?: boolean;
+    outputs?: { combinationResults: Map<number, SolverResult> } | null;
+  }) => {
+    const openPanel = opts?.openPanel ?? true;
+    const { notifyWarning, notifyInfo } = await import("./io/notify");
+    if (!isTauriApp()) {
+      notifyWarning("Toetsing vereist de desktop-app", DESKTOP_ONLY_MSG);
+      if (openPanel) setActiveView("check");
+      return;
+    }
+    if (!anyCheckableBeams(fem.beams)) {
+      notifyInfo(
+        "Geen toetsbare staven",
+        "Het model bevat geen staalprofielen (HEA/HEB/IPE/…) en geen houtklassen (C24, GL28h, …).",
+      );
+      if (openPanel) setActiveView("check");
+      return;
+    }
+    let combinationResults = opts?.outputs?.combinationResults ?? fem.combinationResults;
+    if (!combinationResults) {
+      combinationResults = computeAndStoreSolverOutputs()?.combinationResults ?? null;
+    }
+    if (!combinationResults) {
+      notifyWarning(
+        "Toetsing",
+        "Doorrekenen mislukt — controleer het model (opleggingen, belastingen).",
+      );
+      return;
+    }
+    if (openPanel) setActiveView("check");
+    await checkRun({
+      nodes: fem.nodes,
+      beams: fem.beams,
+      combinations: fem.combinations,
+      combinationResults,
+    });
+  }, [fem, computeAndStoreSolverOutputs, checkRun]);
+
+  const handleSolve = useCallback(() => {
+    setSolveTrigger((n) => n + 1);
+    // Make sure the user is looking at the canvas (not the report/IFC view).
+    setActiveView("default");
+    // Spring direct naar de Resultaten-tab in BEIDE plekken:
+    //   1. verkenner (FemProjectTree) — links
+    //   2. belastinggevallen-strip (LoadCaseTabBar) — onder
+    setTreeTab("results");
+    setResultsTabActive(true);
+    // Zet alle resultaten-overlays standaard aan zodat M/V/N + reacties +
+    // vervorming meteen zichtbaar zijn op de canvas.
+    setDisplayFlags(prev => ({ ...prev, M: true, V: true, N: true, deflection: true, reactions: true }));
+    // Clear selection so the results overlay isn't visually competing with
+    // selection-halos. User wants a clean view after computing.
+    fem.setSelection(null);
+    // Multi-LC pipeline zodat Combinaties + Envelope direct bruikbaar zijn.
+    const outputs = computeAndStoreSolverOutputs();
+    // Auto-uitvoeren: normtoetsing meteen achter de berekening aan (zonder
+    // van weergave te wisselen — de gebruiker kijkt naar de canvas).
+    if (autoRunCheck && outputs && isTauriApp()) {
+      void handleRunMemberChecks({ openPanel: false, outputs });
+    }
+  }, [fem, computeAndStoreSolverOutputs, autoRunCheck, handleRunMemberChecks]);
 
   // Keyboard: Ctrl+Z / Ctrl+Y for undo/redo
   useEffect(() => {
@@ -496,8 +566,8 @@ function App() {
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
-  // Full-width views (3D viewer, IFC viewer, report, insights) hide the side panels
-  const isFullWidthView = activeView === "viewer" || activeView === "ifc" || activeView === "report" || activeView === "insights";
+  // Full-width views (3D viewer, IFC viewer, report, insights, toetsing) hide the side panels
+  const isFullWidthView = activeView === "viewer" || activeView === "ifc" || activeView === "report" || activeView === "insights" || activeView === "check";
 
   const renderMainContent = () => {
     switch (activeView) {
@@ -505,6 +575,8 @@ function App() {
         return <IfcViewerPanel />;
       case "report":
         return <ReportPreview />;
+      case "check":
+        return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} />;
       case "insights":
         return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} />;
       case "viewer":
@@ -601,6 +673,10 @@ function App() {
         graphSplitOn={graphSplitOn}     onToggleGraphSplit={() => setGraphSplitOn(v => !v)}
         agentPanelOn={agentPanelOn}     onToggleAgentPanel={() => setAgentPanelOn(v => !v)}
         consoleOn={consoleOn}           onToggleConsole={() => setConsoleOn(v => !v)}
+        onRunMemberChecks={() => { void handleRunMemberChecks(); }}
+        checksRunning={checksRunning}
+        onOpenCheckPanel={() => setActiveView(activeView === "check" ? "default" : "check")}
+        checkPanelActive={activeView === "check"}
         activeCode={activeCode}
         onSelectCode={setActiveCode}
         resultsPanelActive={resultsTabActive}

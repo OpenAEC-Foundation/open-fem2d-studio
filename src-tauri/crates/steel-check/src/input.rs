@@ -7,11 +7,11 @@ use nen_en_1990::ConsequenceClass;
 use nen_en_1993_1_1_ltb::LateralBracing;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum DeflectionClass { Floor, Roof, Cantilever, Custom }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct BeamCheckInput {
     pub beam_id: u32,
     pub profile_name: String,

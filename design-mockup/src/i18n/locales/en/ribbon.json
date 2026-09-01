@@ -137,7 +137,10 @@
   },
   "check": {
     "runGroup": "Run",
-    "run": "Run Checks",
+    "run": "Solve (FEM)",
+    "memberChecks": "Code checks",
+    "memberChecksRun": "Check steel + timber",
+    "checkPanel": "Check panel",
     "standards": "Standards",
     "en1993": "EN 1993",
     "en1995": "EN 1995",

@@ -1,0 +1,18 @@
+{
+  "title": "Code checks — EN 1993 (steel) + EN 1995 (timber)",
+  "beam": "Member",
+  "governing": "Governing",
+  "statusOk": "OK",
+  "statusNotOk": "Not OK",
+  "statusNa": "N/A",
+  "total": "Members",
+  "run": "Run checks",
+  "running": "Running checks…",
+  "skippedTitle": "Skipped members",
+  "emptyTitle": "No checks run yet",
+  "emptyHint": "Click \"Run checks\" — the model is solved first if needed, then steel and timber are checked together in one run.",
+  "noCheckable": "No checkable members: no steel profiles (HEA/HEB/IPE/…) and no timber grades (C24, GL28h, …) in the model.",
+  "solverFailed": "Solving failed — check the model (supports, loads).",
+  "timberFiltered": "{{count}} timber result(s) not included in the PDF — the PDF report currently covers steel (EN 1993) only.",
+  "runFirst": "Run the code checks first (Check tab) before generating a PDF."
+}

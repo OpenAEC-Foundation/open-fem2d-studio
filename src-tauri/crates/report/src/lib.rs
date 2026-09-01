@@ -46,7 +46,7 @@ const C_DIVIDER: Color = Color::rgb(217, 119, 6); //  amber rule
 // ── Input types ───────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct ReportInput {
     pub project_name: String,
     pub project_number: String,

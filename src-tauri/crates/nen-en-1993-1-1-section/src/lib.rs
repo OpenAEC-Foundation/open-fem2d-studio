@@ -14,7 +14,7 @@ pub mod combined_mn;
 pub mod combined_mnv;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct SteelGrade {
     pub name: &'static str,
     pub fy_mpa: f64,
@@ -38,11 +38,11 @@ pub fn grade_by_name(name: &str) -> Option<SteelGrade> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum CheckStatus { Ok, NotOk, NotApplicable }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct NamedValue {
     pub symbol: String,
     pub value: f64,
@@ -50,7 +50,7 @@ pub struct NamedValue {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct UnityCheck {
     pub ed: f64,
     pub rd: f64,
@@ -59,7 +59,7 @@ pub struct UnityCheck {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct ResistanceCalc {
     pub id: String,
     pub title: String,

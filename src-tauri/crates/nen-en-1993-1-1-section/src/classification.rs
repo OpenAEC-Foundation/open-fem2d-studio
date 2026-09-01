@@ -7,7 +7,7 @@ use mechanics::InternalForces;
 use crate::SteelGrade;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum CrossSectionClass { Class1, Class2, Class3, Class4 }
 
 pub fn epsilon(grade: &SteelGrade) -> f64 {

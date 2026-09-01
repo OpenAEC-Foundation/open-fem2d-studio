@@ -200,6 +200,14 @@
   color: var(--theme-text-faint);
   font-style: italic;
 }
+.bar-props-uc-ok {
+  color: #16a34a;
+  font-weight: 600;
+}
+.bar-props-uc-notok {
+  color: var(--theme-danger-color, #dc2626);
+  font-weight: 600;
+}
 
 /* Footer */
 .bar-props-footer {

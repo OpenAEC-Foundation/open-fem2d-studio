@@ -12,7 +12,7 @@ pub mod combined_n_m;
 
 /// Mirror of ResistanceCalc but for stability checks.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct StabilityCalc {
     pub id: String,
     pub title: String,

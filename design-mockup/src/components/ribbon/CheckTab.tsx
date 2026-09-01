@@ -15,8 +15,19 @@ const stub = (label: string) => () => console.log(`TODO: ${label}`);
 export type StandardCode = "EN1993" | "EN1995" | "EN1992";
 
 interface CheckTabProps {
-  /** Fires when the user clicks the "Toetsen uitvoeren" button — runs FEM solver. */
+  /** Fires when the user clicks the "Berekenen (FEM)" button — runs FEM solver. */
   onSolve?: () => void;
+  /**
+   * Draait de gecombineerde normtoetsing (EN 1993 staal + EN 1995 hout)
+   * tegen de Rust-backend en opent het toetsingspaneel.
+   */
+  onRunMemberChecks?: () => void;
+  /** True zolang de normtoetsing loopt (invoke onderweg). */
+  checksRunning?: boolean;
+  /** Opent/sluit het toetsingspaneel (volledige-breedte weergave). */
+  onOpenCheckPanel?: () => void;
+  /** True wanneer het toetsingspaneel de actieve weergave is. */
+  checkPanelActive?: boolean;
   /** Fires when the user clicks the "Maatgevend (envelope)" button. */
   onShowEnvelope?: () => void;
   /** True after `onSolve` has produced multi-LC results. */
@@ -36,6 +47,7 @@ interface CheckTabProps {
 
 export default function CheckTab({
   onSolve, onShowEnvelope, hasEnvelope,
+  onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
   activeCode = "EN1993", onSelectCode,
   onToggleResultsPanel, resultsPanelActive,
   autoRunEnabled, onToggleAutoRun,
@@ -46,14 +58,33 @@ export default function CheckTab({
   return (
     <div className="ribbon-content">
       <div className="ribbon-groups">
-        {/* Run — primary action: wired to the plane-frame solver + envelope */}
+        {/* Normtoetsing — primary action: EN 1993 + EN 1995 in één run
+            tegen de Rust-backend (desktop-app). */}
+        <RibbonGroup label={t("check.memberChecks")}>
+          <RibbonButton
+            icon={checkRunIcon}
+            label={checksRunning ? "…" : t("check.memberChecksRun")}
+            size="large"
+            active
+            disabled={checksRunning}
+            onClick={onRunMemberChecks ?? stub("Run member checks")}
+          />
+          <RibbonButton
+            icon={checkPanelIcon}
+            label={t("check.checkPanel")}
+            size="large"
+            active={checkPanelActive}
+            onClick={onOpenCheckPanel ?? stub("Open check panel")}
+          />
+        </RibbonGroup>
+
+        {/* Run — FEM solver + envelope */}
         <RibbonGroup label={t("check.runGroup")}>
           <RibbonButton
             icon={checkRunIcon}
             label={t("check.run")}
             size="large"
-            active
-            onClick={onSolve ?? stub("Run EN 1993 checks")}
+            onClick={onSolve ?? stub("Run FEM solve")}
           />
           <RibbonButton
             icon={checkRunIcon}

@@ -10,11 +10,11 @@ use section_properties::SectionProperties;
 const PROFILES_JSON: &str = include_str!("../data/profiles.json");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum ProfileKind { ISection, Channel, Rhs, Shs, Chs }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct ProfileGeometry {
     pub h: f64, pub b: f64,
     #[serde(default)] pub tw: f64,
@@ -24,14 +24,14 @@ pub struct ProfileGeometry {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct BucklingCurves {
     pub y_axis: char,
     pub z_axis: char,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../src/lib/types/steel/")]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct SteelProfile {
     pub name: String,
     pub kind: ProfileKind,

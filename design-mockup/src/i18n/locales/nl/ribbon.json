@@ -137,7 +137,10 @@
   },
   "check": {
     "runGroup": "Uitvoeren",
-    "run": "Toetsen uitvoeren",
+    "run": "Berekenen (FEM)",
+    "memberChecks": "Normtoetsing",
+    "memberChecksRun": "Staal + hout toetsen",
+    "checkPanel": "Toetsingspaneel",
     "standards": "Normen",
     "en1993": "EN 1993",
     "en1995": "EN 1995",
