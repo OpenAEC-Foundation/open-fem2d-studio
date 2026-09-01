@@ -14,9 +14,9 @@ env:
 
 jobs:
   # ── 1. Pre-flight check ───────────────────────────────────
-  # De frontend staat in de projectroot (zie build.frontendDist in
-  # src-tauri/tauri.conf.json). Faalt die build, dan heeft het geen zin
-  # om drie platformen te bouwen.
+  # De frontend van het programma staat in design-mockup/ (zie
+  # build.frontendDist in src-tauri/tauri.conf.json). Faalt die build,
+  # dan heeft het geen zin om drie platformen te bouwen.
   check:
     name: Check
     runs-on: ubuntu-latest
@@ -28,10 +28,12 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('design-mockup/package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
+        working-directory: design-mockup
       - run: npm run build
+        working-directory: design-mockup
 
   # ── 2. Installers bouwen ──────────────────────────────────
   build:
@@ -69,7 +71,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('design-mockup/package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
 
       - name: Install Rust
@@ -96,10 +98,15 @@ jobs:
             libgtk-3-dev \
             patchelf
 
-      # tauri-action draait `npm run tauri build` in de projectroot; de
-      # beforeBuildCommand in tauri.conf.json (`npm run build`) gebruikt
-      # dezelfde root-dependencies.
-      - name: Install dependencies
+      # beforeBuildCommand in tauri.conf.json draait `cd design-mockup &&
+      # npm run build`; de dependencies daarvan moeten dus vooraf staan.
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: design-mockup
+
+      # tauri-action draait `npm run tauri build` in de projectroot; daarvoor
+      # moet @tauri-apps/cli uit de root-dependencies beschikbaar zijn.
+      - name: Install root dependencies
         run: npm ci
 
       - name: Build Tauri app

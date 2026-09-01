@@ -1,0 +1,171 @@
+/* LoadCaseTabBar — Excel-style horizontal tab strip below the canvas. */
+
+.lc-tab-bar {
+  display: flex;
+  align-items: flex-end;          /* tabs zitten op de bovenrand van de bar */
+  gap: 3px;
+  height: 34px;
+  padding: 4px 8px 0;
+  background: var(--theme-bg-lighter);
+  border-top: 1px solid var(--theme-border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  user-select: none;
+}
+.lc-tab-bar::-webkit-scrollbar { height: 0; }
+
+/* Tab-look: trapezoid-style sheet — top-rounded, geen onderrand op de
+ * actieve tab (verbindt visueel met content erboven), inactive tabs zitten
+ * iets terug met dimmed background + smalle bovenkleur. */
+.lc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 26px;                                          /* iets korter dan bar — actieve tab "pops up" */
+  background: var(--theme-bg-lighter);
+  border: 1px solid var(--theme-border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;                            /* top-rounded zoals een echte tab */
+  color: var(--theme-text-secondary);
+  font: 500 11.5px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-bottom: -1px;                                   /* overlap bar's top-border */
+  position: relative;
+}
+.lc-tab:hover {
+  color: var(--theme-text);
+  background: var(--theme-hover);
+}
+.lc-tab.active {
+  color: var(--theme-accent);
+  background: var(--theme-bg);
+  height: 30px;                                          /* 4px hoger dan inactive — duidelijke "pop" */
+  border-color: var(--theme-border);
+  border-top: 2px solid var(--theme-accent);            /* amber bovenrand markeert actief */
+  z-index: 2;
+  font-weight: 600;
+}
+
+.lc-tab-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font: 700 9px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0;
+  background: var(--theme-text-faint);
+  color: var(--theme-bg);
+}
+.lc-tab.active .lc-tab-type { background: var(--theme-accent); }
+/* Type colour tags */
+.lc-tab-type-dead  { background: #6b7280; color: white; }   /* G — grijs */
+.lc-tab-type-live  { background: #2563eb; color: white; }   /* Q — blauw */
+.lc-tab-type-snow  { background: #06b6d4; color: white; }   /* S — cyaan */
+.lc-tab-type-wind  { background: #10b981; color: white; }   /* W — groen */
+.lc-tab-type-other { background: #f59e0b; color: white; }   /* — oranje */
+.lc-tab-type-model { background: var(--theme-text-secondary); color: var(--theme-bg); }
+.lc-tab-model.active .lc-tab-type-model { background: var(--theme-accent); color: var(--theme-accent-text, white); }
+/* Model-tab sluit direct aan op het eerste belastinggeval (geen prefix of
+   extra marge ertussen — de tabs vormen één doorlopende rij). */
+.lc-tab-model {
+  margin-right: 0;
+}
+
+/* Resultaten-tab — eigen accent (amber/oranje) en spacing-divider links. */
+.lc-tab-type-results { background: #f59e0b; color: white; }
+.lc-tab-results {
+  margin-left: 8px;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+.lc-tab-results.active {
+  border-top-color: #f59e0b;
+  color: #f59e0b;
+}
+.lc-tab-results.active .lc-tab-type-results { background: #f59e0b; }
+
+.lc-tab-name {
+  font-weight: inherit;
+}
+.lc-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 14px;
+  padding: 0 5px;
+  background: var(--theme-hover);
+  color: var(--theme-text-faint);
+  font: 600 9px/1 "JetBrains Mono", monospace;
+  border-radius: 7px;
+}
+.lc-tab.active .lc-tab-count {
+  background: var(--theme-accent);
+  color: var(--theme-accent-text, white);
+}
+
+.lc-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--theme-text-secondary);
+  font: 700 14px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lc-tab-add:hover { color: var(--theme-accent); background: var(--theme-hover); }
+
+.lc-tab-add-form {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+.lc-tab-add-input {
+  width: 140px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-accent);
+  border-radius: 3px;
+  font: 500 11.5px/1 "Inter", system-ui, sans-serif;
+}
+.lc-tab-add-input:focus { outline: none; }
+
+/* Right-side solver toggles (Eigen gewicht, P-Δ) */
+.lc-tab-spacer {
+  flex: 1;
+  min-width: 12px;
+}
+.lc-tab-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  height: 100%;
+  cursor: pointer;
+  color: var(--theme-text-secondary);
+  font: 500 11px/1 "Inter", system-ui, sans-serif;
+  user-select: none;
+  flex-shrink: 0;
+  border-left: 1px solid var(--theme-border-subtle);
+}
+.lc-tab-toggle:hover { color: var(--theme-text); background: var(--theme-hover); }
+.lc-tab-toggle.active { color: var(--theme-accent); }
+.lc-tab-toggle input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--theme-accent);
+  cursor: pointer;
+}

@@ -1,0 +1,379 @@
+/**
+ * engine.ts — FEM solver entry point for v2.
+ *
+ *   UI state (SolverInput / SolverResult, units mm / N / N·mm)
+ *      │
+ *      ▼
+ *   unit conversion → Mesh (units m / Pa / m² / m⁴ / N·m)
+ *      │
+ *      ▼
+ *   solveNonlinear(mesh, { analysisType: 'frame' })
+ *      │
+ *      ▼
+ *   unit conversion → SolverResult
+ *
+ * The FEM engine lives in `src/core/` (own code of this app — fem / solver /
+ * math / mesher: Newton-Raphson, mixed analyses, FNL materials, Winkler
+ * foundations). This file is the unit-conversion + type-adapter layer
+ * between the UI's compact data shape and the engine's Mesh class. It does
+ * NO FEM math itself — that all sits in `src/core/`.
+ */
+import { Mesh } from "../../../core/fem/Mesh";
+import { solveNonlinear } from "../../../core/solver/NonlinearSolver";
+import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode } from "../../../core/solver/Assembler";
+import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
+import type {
+  SolverInput,
+  SolverResult,
+  MultiInput,
+  MultiLcResult,
+  NodalDisp,
+  NodalReaction,
+  ElementForces,
+} from "./types";
+
+type AnyMesh = any; // structural typing — Mesh shape from core/fem/Mesh
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function applySupportToMesh(mesh: AnyMesh, meshNodeId: number, support: SolverInput["supports"][number]): void {
+  const k = support.k ?? 0;
+  switch (support.type) {
+    case "pinned":
+      mesh.updateNode(meshNodeId, { constraints: { x: true, y: true, rotation: false } });
+      break;
+    case "fixed":
+      mesh.updateNode(meshNodeId, { constraints: { x: true, y: true, rotation: true } });
+      break;
+    case "xRoller":
+      mesh.updateNode(meshNodeId, { constraints: { x: true, y: false, rotation: false } });
+      break;
+    case "zRoller":
+      mesh.updateNode(meshNodeId, { constraints: { x: false, y: true, rotation: false } });
+      break;
+    case "zSpring":
+      // canonical k (N/mm) → mesh (N/m): × 1000
+      mesh.updateNode(meshNodeId, { constraints: { x: false, y: true, rotation: false, springY: k * 1000 } });
+      break;
+    case "xSpring":
+      mesh.updateNode(meshNodeId, { constraints: { x: true, y: false, rotation: false, springX: k * 1000 } });
+      break;
+    case "rotSpring":
+      // canonical k (N·mm/rad) → mesh (N·m/rad): / 1000
+      mesh.updateNode(meshNodeId, { constraints: { x: false, y: false, rotation: true, springRot: k / 1000 } });
+      break;
+  }
+}
+
+/**
+ * Build a Mesh from a SolverInput, returning the mesh + id maps so the
+ * caller can convert results back. Caller is responsible for invoking
+ * solveNonlinear and reading from result via the id maps.
+ */
+function buildMesh(input: SolverInput | MultiInput, loadsFilter?: (caseId?: number) => boolean): {
+  mesh: AnyMesh;
+  nodeIdMap: Map<number, number>;
+  beamIdMap: Map<number, number>;
+} {
+  const mesh = new Mesh();
+  const nodeIdMap = new Map<number, number>();
+  const beamIdMap = new Map<number, number>();
+
+  // Material: mutate default material 1's E from the first beam's E.
+  // All beams share material 1 (same E); per-beam section overrides A/I/h.
+  const E_Nmm2 = input.beams[0]?.E ?? 210000;
+  const mat = mesh.getMaterial(1);
+  if (mat) mat.E = E_Nmm2 * 1e6; // N/mm² → Pa
+
+  // Nodes: mm → m
+  for (const n of input.nodes) {
+    const meshNode = mesh.addNode(n.x / 1000, n.z / 1000);
+    nodeIdMap.set(n.id, meshNode.id);
+  }
+
+  // Supports
+  for (const s of input.supports) {
+    const meshNid = nodeIdMap.get(s.nodeId);
+    if (meshNid === undefined) continue;
+    applySupportToMesh(mesh, meshNid, s);
+  }
+
+  // Beams: mm² → m², mm⁴ → m⁴; preserve scharnier (startConnection/endConnection)
+  for (const b of input.beams) {
+    const fromId = nodeIdMap.get(b.from);
+    const toId   = nodeIdMap.get(b.to);
+    if (fromId === undefined || toId === undefined) continue;
+    const section = {
+      A: (b.A ?? 3877) * 1e-6,
+      I: (b.I ?? 1.673e7) * 1e-12,
+      h: 0.2, // default depth — only used for plate analysis
+    };
+    const meshBeam = mesh.addBeamElement([fromId, toId], 1, section);
+    if (!meshBeam) continue;
+    beamIdMap.set(b.id, meshBeam.id);
+
+    // Scharnier-aansluiting: forward hinge state to the mesh (which natively
+    // condenses moments at hinged ends via applyEndReleases).
+    const updates: any = {};
+    if ((b as any).startConnection === "hinge") updates.startConnection = "hinge";
+    if ((b as any).endConnection === "hinge")   updates.endConnection   = "hinge";
+    if (Object.keys(updates).length > 0) mesh.updateBeamElement(meshBeam.id, updates);
+  }
+
+  // Distributed loads: N/mm → N/m, project qDir into qx/qy global axes
+  const loads = (input as any).loads as Array<any> | undefined;
+  if (loads) {
+    for (const ld of loads) {
+      if (loadsFilter && !loadsFilter(ld.caseId)) continue;
+      const beamMeshId = beamIdMap.get(ld.beamId);
+      if (beamMeshId === undefined) continue;
+      const qa = (ld.qStart ?? ld.q ?? 0) * 1000;
+      const qb = (ld.qEnd   ?? ld.q ?? 0) * 1000;
+      const dir = ld.qDir ?? "z";
+      const qxA = dir === "x" ? qa : 0, qyA = dir === "z" ? qa : 0;
+      const qxB = dir === "x" ? qb : 0, qyB = dir === "z" ? qb : 0;
+
+      // Combine additively if a load already exists on this beam (multi-case)
+      const beam = mesh.getBeamElement(beamMeshId);
+      const ex = beam?.distributedLoad;
+      mesh.updateBeamElement(beamMeshId, {
+        distributedLoad: {
+          qx: (ex?.qx ?? 0) + qxA,
+          qy: (ex?.qy ?? 0) + qyA,
+          qxEnd: (ex?.qxEnd ?? ex?.qx ?? 0) + qxB,
+          qyEnd: (ex?.qyEnd ?? ex?.qy ?? 0) + qyB,
+          coordSystem: "global",
+        },
+      });
+    }
+  }
+
+  // Point loads on nodes
+  const pls = (input as any).pointLoads as Array<any> | undefined;
+  if (pls) {
+    for (const pl of pls) {
+      if (loadsFilter && !loadsFilter(pl.caseId)) continue;
+      const meshNid = nodeIdMap.get(pl.nodeId);
+      if (meshNid === undefined) continue;
+      const node = mesh.getNode(meshNid);
+      const ex = node?.loads ?? { fx: 0, fy: 0, moment: 0 };
+      mesh.updateNode(meshNid, {
+        loads: {
+          fx: ex.fx + (pl.fx ?? 0),
+          fy: ex.fy + (pl.fz ?? 0),
+          // my in N·mm → mesh moment in N·m  → /1000
+          moment: ex.moment + (pl.my ?? 0) / 1000,
+        },
+      });
+    }
+  }
+
+  return { mesh, nodeIdMap, beamIdMap };
+}
+
+/**
+ * Convert engine ISolverResult → UI SolverResult, using the id maps from buildMesh.
+ */
+function convertResult(
+  mesh: AnyMesh,
+  engineResult: any,
+  nodeIdMap: Map<number, number>,
+  beamIdMap: Map<number, number>,
+  supports: SolverInput["supports"],
+): SolverResult {
+  const displacements = new Map<number, NodalDisp>();
+  const reactions = new Map<number, NodalReaction>();
+  const elements = new Map<number, ElementForces>();
+
+  // Build mesh-id → array-index lookup (matches order in Mesh.nodes Map)
+  const meshNodes = Array.from(mesh.nodes.values());
+  const indexById = new Map<number, number>();
+  meshNodes.forEach((n: any, i: number) => indexById.set(n.id, i));
+
+  let maxDisp = 0;
+  for (const [uiId, meshId] of nodeIdMap) {
+    const idx = indexById.get(meshId);
+    if (idx === undefined) continue;
+    const base = idx * 3;
+    const ux_m = engineResult.displacements[base + 0] ?? 0;
+    const uz_m = engineResult.displacements[base + 1] ?? 0;
+    const ry   = engineResult.displacements[base + 2] ?? 0;
+    const ux = ux_m * 1000, uz = uz_m * 1000;
+    displacements.set(uiId, { ux, uz, ry });
+    maxDisp = Math.max(maxDisp, Math.abs(ux), Math.abs(uz));
+
+    const support = supports.find(s => s.nodeId === uiId);
+    if (support) {
+      const fx = engineResult.reactions[base + 0] ?? 0;
+      const fz = engineResult.reactions[base + 1] ?? 0;
+      const my_Nm = engineResult.reactions[base + 2] ?? 0;
+      reactions.set(uiId, { fx, fz, my: my_Nm * 1000 }); // N·m → N·mm
+    }
+  }
+
+  // Beam internal forces — engineResult.beamForces[meshId] has:
+  //   endpoint values N1/V1/M1/N2/V2/M2 (local, N en N·m)
+  //   AND 21-station arrays stations[], normalForce[], shearForce[], bendingMoment[]
+  // We forward ALL of it (with mm/N·mm units for the UI) so the canvas
+  // can draw real parabola / step shapes instead of linear interpolation.
+  for (const [uiId, meshId] of beamIdMap) {
+    const bf = engineResult.beamForces.get(meshId);
+    if (!bf) continue;
+    const stations_m: number[] = bf.stations ?? [];
+    const L_m: number = stations_m.length > 0 ? stations_m[stations_m.length - 1] : 0;
+    elements.set(uiId, {
+      N: bf.N1,
+      V: bf.V1,
+      M_start: bf.M1 * 1000, // N·m → N·mm
+      M_end:   bf.M2 * 1000,
+      L_mm: L_m * 1000,
+      stations_mm:  stations_m.map((x: number) => x * 1000),
+      normalForce:  bf.normalForce  ?? [],
+      shearForce:   bf.shearForce   ?? [],
+      bendingMoment: (bf.bendingMoment ?? []).map((m: number) => m * 1000), // N·m → N·mm
+    });
+  }
+
+  return { displacements, reactions, elements, maxDisplacement: maxDisp };
+}
+
+// ── Public engine functions ─────────────────────────────────────────────────
+
+export function solve(input: SolverInput): SolverResult {
+  const { mesh, nodeIdMap, beamIdMap } = buildMesh(input);
+  const engineResult = solveNonlinear(mesh, { analysisType: "frame", geometricNonlinear: false });
+  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports);
+}
+
+export function solveAllCases(input: MultiInput): MultiLcResult {
+  const perCase = new Map<number, SolverResult>();
+  for (const c of input.cases) {
+    const { mesh, nodeIdMap, beamIdMap } = buildMesh(input, (caseId) => caseId === c.id);
+    const engineResult = solveNonlinear(mesh, { analysisType: "frame", geometricNonlinear: false });
+    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports));
+  }
+  return { perCase };
+}
+
+export function solveAllCasesNonlinear(input: MultiInput): MultiLcResult {
+  // For now: same as linear unless materialNonlinear option is enabled.
+  // The engine supports tension-only/compression-only natively if
+  // beam.startConnection/endConnection is set to 'tension_only' or
+  // 'pressure_only'. Delegating to linear is the conservative default.
+  return solveAllCases(input);
+}
+
+// ── Inspection helpers — for the Insights matrix viewer ────────────────────
+// (Not the solver. These rebuild K/per-beam-K via core utilities for display.)
+
+export interface ExposedBeamCache {
+  id: number;
+  E: number; A: number; L: number; c: number; s: number;
+  kLocal: number[][];
+  T: number[][];
+  fromIdx: number;
+  toIdx: number;
+}
+
+export interface Assembly {
+  nodeIndex: Map<number, number>;
+  nDof: number;
+  K: number[][];
+  beamCache: ExposedBeamCache[];
+  rigidConstraints: { dof: number; supRef: number }[];
+  springs: { dof: number; k: number; nodeId: number; axis: 0 | 1 | 2 }[];
+}
+
+/**
+ * Build matrices WITHOUT solving — used by the Insights panel.
+ * Delegates to core Assembler so the displayed K is identical to what the
+ * solver internally uses.
+ */
+export function buildMatrices(input: { nodes: { id: number; x: number; z: number }[]; beams: { id: number; from: number; to: number; E?: number; A?: number; I?: number }[]; supports: { nodeId: number; type: string; k?: number }[] }): {
+  K: number[][]; nDof: number; nodeIndex: Map<number, number>;
+  beams: ExposedBeamCache[];
+  rigidConstraints: { dof: number; supRef: number }[];
+  springs: { dof: number; k: number; nodeId: number; axis: 0 | 1 | 2 }[];
+} {
+  // Reuse buildMesh (no loads).
+  const { mesh, nodeIdMap, beamIdMap } = buildMesh(
+    { ...input, loads: [], supports: input.supports as any } as any
+  );
+
+  // Ask the engine's Assembler for the global K
+  const engineK = assembleGlobalStiffnessMatrix(mesh, "frame");
+  const dofsPerNode = getDofsPerNode("frame");
+  const nodeIdToIndex = buildNodeIdToIndex(mesh, "frame");
+  const nDof = nodeIdToIndex.size * dofsPerNode;
+
+  // Convert sparse K (with .get(i,j)) to dense 2D array for display.
+  const K: number[][] = [];
+  for (let i = 0; i < nDof; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < nDof; j++) row.push(engineK.get(i, j));
+    K.push(row);
+  }
+
+  // Build per-beam matrices for the matrix viewer
+  const beamCache: ExposedBeamCache[] = [];
+  for (const [uiId, meshId] of beamIdMap) {
+    const beam = mesh.getBeamElement(meshId);
+    if (!beam) continue;
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (!nodes) continue;
+    const [n1, n2] = nodes;
+    const L = calculateBeamLength(n1, n2);
+    const angle = calculateBeamAngle(n1, n2);
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const mat = mesh.getMaterial(beam.materialId);
+    const E = mat?.E ?? 210e9;
+    const A = beam.section.A;
+    const I = beam.section.I;
+    // Get the engine's local K (returns SparseMatrix-like with .get())
+    const KlSparse = calculateBeamLocalStiffness(L, E, A, I);
+    const kLocal: number[][] = [];
+    for (let i = 0; i < 6; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < 6; j++) row.push(KlSparse.get(i, j));
+      kLocal.push(row);
+    }
+    // Transformation matrix (6x6) for 2D frame element with angle θ
+    const T: number[][] = [
+      [ c,  s, 0,  0,  0, 0],
+      [-s,  c, 0,  0,  0, 0],
+      [ 0,  0, 1,  0,  0, 0],
+      [ 0,  0, 0,  c,  s, 0],
+      [ 0,  0, 0, -s,  c, 0],
+      [ 0,  0, 0,  0,  0, 1],
+    ];
+    const fromIdx = (nodeIdToIndex.get(n1.id) ?? 0) * dofsPerNode;
+    const toIdx   = (nodeIdToIndex.get(n2.id) ?? 0) * dofsPerNode;
+    beamCache.push({ id: uiId, E, A, L, c, s, kLocal, T, fromIdx, toIdx });
+  }
+
+  // Constraints + springs for the viewer
+  const rigidConstraints: { dof: number; supRef: number }[] = [];
+  const springs: { dof: number; k: number; nodeId: number; axis: 0 | 1 | 2 }[] = [];
+  for (const node of mesh.nodes.values() as any) {
+    const idx = nodeIdToIndex.get(node.id);
+    if (idx === undefined) continue;
+    const base = idx * dofsPerNode;
+    const cstr = node.constraints ?? {};
+    if (cstr.x) rigidConstraints.push({ dof: base + 0, supRef: node.id });
+    if (cstr.y) rigidConstraints.push({ dof: base + 1, supRef: node.id });
+    if (cstr.rotation) rigidConstraints.push({ dof: base + 2, supRef: node.id });
+    if (cstr.springX) springs.push({ dof: base + 0, k: cstr.springX, nodeId: node.id, axis: 0 });
+    if (cstr.springY) springs.push({ dof: base + 1, k: cstr.springY, nodeId: node.id, axis: 1 });
+    if (cstr.springRot) springs.push({ dof: base + 2, k: cstr.springRot, nodeId: node.id, axis: 2 });
+  }
+
+  // Convert mesh nodeId map back for the viewer (UI talks in UI ids).
+  // Display shows UI node ids, so map mesh index → UI nodeId for the panel.
+  const uiNodeIndex = new Map<number, number>();
+  for (const [uiId, meshId] of nodeIdMap) {
+    const idx = nodeIdToIndex.get(meshId);
+    if (idx !== undefined) uiNodeIndex.set(uiId, idx);
+  }
+
+  return { K, nDof, nodeIndex: uiNodeIndex, beams: beamCache, rigidConstraints, springs };
+}

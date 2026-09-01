@@ -4,10 +4,10 @@
   "version": "2.0.1",
   "identifier": "org.openaec.fem2d-studio",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1430",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "frontendDist": "../design-mockup/dist",
+    "devUrl": "http://localhost:1440",
+    "beforeDevCommand": "cd design-mockup && npm run dev",
+    "beforeBuildCommand": "cd design-mockup && npm run build"
   },
   "app": {
     "windows": [

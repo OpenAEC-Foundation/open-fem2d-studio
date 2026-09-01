@@ -1,0 +1,67 @@
+/* InlinePopover — small anchored floating panel */
+.oa-inline-popover {
+  position: fixed;
+  z-index: 100;
+  background: var(--theme-bg-lighter);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  padding: 10px 12px;
+  min-width: 200px;
+  font: 400 12px/1.4 "Inter", system-ui, sans-serif;
+  color: var(--theme-text);
+}
+
+.fem-popover-form { display: flex; flex-direction: column; gap: 6px; }
+.fem-popover-title {
+  font: 600 11px/1 "Inter", system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--theme-accent);
+  margin-bottom: 4px;
+}
+.fem-popover-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.fem-popover-row > span {
+  color: var(--theme-text-secondary);
+  font-size: 11px;
+}
+.fem-popover-row input {
+  height: 24px;
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  color: var(--theme-text);
+  padding: 0 6px;
+  font: 400 11.5px/1 "JetBrains Mono", monospace;
+}
+.fem-popover-row input:focus {
+  outline: none;
+  border-color: var(--theme-accent);
+}
+.fem-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fem-popover-actions button {
+  height: 24px;
+  padding: 0 12px;
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  color: var(--theme-text);
+  font: 500 11px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.fem-popover-primary {
+  background: var(--theme-accent) !important;
+  border-color: var(--theme-accent) !important;
+  color: var(--theme-accent-text, white) !important;
+}
+.fem-popover-primary:hover { filter: brightness(1.08); }
