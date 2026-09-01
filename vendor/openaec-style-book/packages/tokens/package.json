@@ -1,0 +1,48 @@
+{
+  "name": "@openaec/design-tokens",
+  "version": "0.1.0",
+  "description": "Gedeelde design tokens, layout CSS en Tailwind preset voor alle OpenAEC applicaties",
+  "private": false,
+  "license": "MIT",
+  "author": "OpenAEC Foundation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenAEC-Foundation/openaec-design-tokens"
+  },
+  "keywords": [
+    "design-tokens",
+    "openaec",
+    "tailwind",
+    "design-system",
+    "aec",
+    "bim"
+  ],
+  "main": "dist/tokens.js",
+  "style": "dist/tokens.css",
+  "files": [
+    "dist/",
+    "src/",
+    "tokens/",
+    "extensions/",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/tokens.js",
+      "require": "./dist/tokens.js"
+    },
+    "./css": "./dist/tokens.css",
+    "./tailwind": "./dist/tailwind.preset.js",
+    "./layouts": "./src/layouts.css",
+    "./components": "./src/components.css",
+    "./extensions/warmteverlies": "./extensions/warmteverlies.json"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "preview": "node -e \"const p=require('path');const u=require('url').pathToFileURL(p.resolve('preview/index.html')).href;require('child_process').exec((process.platform==='win32'?'start ':process.platform==='darwin'?'open ':'xdg-open ')+u)\""
+  },
+  "devDependencies": {
+    "style-dictionary": "^4.0.0"
+  }
+}

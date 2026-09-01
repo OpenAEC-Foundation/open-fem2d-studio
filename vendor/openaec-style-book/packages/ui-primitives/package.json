@@ -1,0 +1,41 @@
+{
+  "name": "@openaec/ui-primitives",
+  "version": "0.1.0",
+  "description": "Basis UI primitives (Modal, ThemedSelect) voor OpenAEC desktop tools",
+  "private": false,
+  "license": "MIT",
+  "author": "OpenAEC Foundation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenAEC-Foundation/OpenAEC-style-book",
+    "directory": "packages/ui-primitives"
+  },
+  "keywords": [
+    "openaec",
+    "ui-primitives",
+    "modal",
+    "select",
+    "react"
+  ],
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./css": "./src/styles.css",
+    "./Modal": "./src/Modal.tsx",
+    "./ThemedSelect": "./src/ThemedSelect.tsx"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}

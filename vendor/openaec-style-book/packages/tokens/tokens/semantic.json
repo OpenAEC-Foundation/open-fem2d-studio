@@ -1,0 +1,30 @@
+{
+  "color": {
+    "semantic": {
+      "light": {
+        "success":    { "value": "#16A34A", "comment": "DESIGN-SYSTEM.md §2.1 success" },
+        "success-bg": { "value": "#F0FDF4", "comment": "Alert background (§3.5)" },
+        "error":      { "value": "#DC2626", "comment": "DESIGN-SYSTEM.md §2.1 error" },
+        "error-bg":   { "value": "#FEF2F2", "comment": "Alert background (§3.5)" },
+        "danger":     { "value": "#DC2626", "comment": "Alias voor error — backwards compat" },
+        "danger-bg":  { "value": "#FEF2F2", "comment": "Alias voor error-bg" },
+        "warning":    { "value": "#F59E0B", "comment": "Warm-gold — DESIGN-SYSTEM.md §2.1" },
+        "warning-bg": { "value": "#FFFBEB", "comment": "Alert background (§3.5)" },
+        "info":       { "value": "#2563EB", "comment": "DESIGN-SYSTEM.md §2.1 info" },
+        "info-bg":    { "value": "#EFF6FF", "comment": "Alert background (§3.5)" }
+      },
+      "dark": {
+        "success":    { "value": "#4ADE80", "comment": "Green 400 — lichter voor dark bg contrast" },
+        "success-bg": { "value": "#14532D" },
+        "error":      { "value": "#F87171", "comment": "Red 400" },
+        "error-bg":   { "value": "#7F1D1D" },
+        "danger":     { "value": "#F87171", "comment": "Alias voor error" },
+        "danger-bg":  { "value": "#7F1D1D" },
+        "warning":    { "value": "#FBBF24", "comment": "Amber 400" },
+        "warning-bg": { "value": "#78350F" },
+        "info":       { "value": "#60A5FA", "comment": "Blue 400" },
+        "info-bg":    { "value": "#1E3A8A" }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp
+
+# dist/ is WEL gecommit zodat consumers zonder build-stap kunnen gebruiken.
+# !dist/

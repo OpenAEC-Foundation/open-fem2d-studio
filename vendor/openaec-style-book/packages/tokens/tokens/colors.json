@@ -1,0 +1,76 @@
+{
+  "color": {
+    "brand": {
+      "amber":           { "value": "#D97706", "comment": "Primary brand — buttons, links, accents. Nooit als grote achtergrondvlak (DESIGN-SYSTEM.md §2.1)" },
+      "deep-forge":      { "value": "#36363E", "comment": "Dark backgrounds, text on light" },
+      "signal-orange":   { "value": "#EA580C", "comment": "Hover states, CTAs, warnings" },
+      "warm-gold":       { "value": "#F59E0B", "comment": "Highlights, badges, secondary accents" },
+      "scaffold-gray":   { "value": "#A1A1AA", "comment": "Secondary text, borders, subtle UI" },
+      "blueprint-white": { "value": "#FAFAF9", "comment": "Light background (warm, not clinical)" },
+      "concrete":        { "value": "#F5F5F4", "comment": "Cards, code blocks, sections" },
+      "night-build":     { "value": "#2A2A32", "comment": "Darkest background, hero sections" },
+
+      "primary":       { "value": "#D97706", "comment": "Alias voor amber — makkelijk voor apps die primary-naming gewend zijn" },
+      "primary-hover": { "value": "#EA580C", "comment": "Alias voor signal-orange — DESIGN-SYSTEM.md §3.1 schrijft bg → signal-orange op hover" },
+      "accent":        { "value": "#EA580C", "comment": "Alias voor signal-orange — backwards compat voor bestaande apps" }
+    },
+
+    "neutral": {
+      "0":   { "value": "#FFFFFF" },
+      "50":  { "value": "#FAFAF9", "comment": "Blueprint white" },
+      "100": { "value": "#F5F5F4", "comment": "Concrete" },
+      "200": { "value": "#E7E5E4", "comment": "Default border (DESIGN-SYSTEM.md §2.6)" },
+      "300": { "value": "#D6D3D1", "comment": "Hover border" },
+      "400": { "value": "#A1A1AA", "comment": "Scaffold gray" },
+      "500": { "value": "#71717A" },
+      "600": { "value": "#57534E", "comment": "Secondary text / table headings" },
+      "700": { "value": "#3F3F46" },
+      "800": { "value": "#27272A", "comment": "Dark separator / dark button hover" },
+      "900": { "value": "#2A2A32", "comment": "Night build" },
+      "950": { "value": "#36363E", "comment": "Deep forge" }
+    },
+
+    "surface": {
+      "light": {
+        "bg":        { "value": "#FAFAF9", "comment": "App shell background (blueprint-white)" },
+        "panel":     { "value": "#FFFFFF", "comment": "Card / panel background" },
+        "elevated": { "value": "#FFFFFF", "comment": "Modal / dropdown" },
+        "muted":     { "value": "#F5F5F4", "comment": "Subtle input background / concrete" }
+      },
+      "dark": {
+        "bg":        { "value": "#36363E", "comment": "App shell background (deep-forge)" },
+        "panel":     { "value": "#2A2A32", "comment": "Card / panel (night-build)" },
+        "elevated": { "value": "#3F3F46", "comment": "Modal / dropdown (dark)" },
+        "muted":     { "value": "#27272A", "comment": "Subtle input bg (dark)" }
+      }
+    },
+
+    "text": {
+      "light": {
+        "primary":   { "value": "#36363E", "comment": "Hoofdtekst — deep-forge (DESIGN-SYSTEM.md color rule #3)" },
+        "secondary": { "value": "#57534E", "comment": "Hulptekst" },
+        "muted":     { "value": "#A1A1AA", "comment": "Captions, placeholder (scaffold-gray)" },
+        "inverse":   { "value": "#FAFAF9", "comment": "Tekst op gekleurde achtergrond (blueprint-white)" }
+      },
+      "dark": {
+        "primary":   { "value": "#FAFAF9", "comment": "Blueprint white op dark bg (rule #2)" },
+        "secondary": { "value": "#D6D3D1" },
+        "muted":     { "value": "#A1A1AA", "comment": "Scaffold gray" },
+        "inverse":   { "value": "#36363E" }
+      }
+    },
+
+    "border": {
+      "light": {
+        "default": { "value": "#E7E5E4", "comment": "DESIGN-SYSTEM.md §2.6 default border" },
+        "strong":  { "value": "#D6D3D1", "comment": "Hover border" },
+        "focus":   { "value": "#D97706", "comment": "Amber focus ring" }
+      },
+      "dark": {
+        "default": { "value": "#27272A", "comment": "Dark separator" },
+        "strong":  { "value": "#3F3F46" },
+        "focus":   { "value": "#F59E0B", "comment": "Warm gold focus ring op dark bg" }
+      }
+    }
+  }
+}

@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="nl" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenAEC Design Tokens — Preview</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="../dist/tokens.css" />
+    <link rel="stylesheet" href="../src/layouts.css" />
+    <link rel="stylesheet" href="../src/components.css" />
+
+    <style>
+      /* Preview-only styling */
+      body {
+        margin: 0;
+        font-family: var(--font-family-body);
+        background: var(--color-bg);
+        color: var(--color-text);
+      }
+      h1,
+      h2,
+      h3,
+      h4 {
+        font-family: var(--font-family-heading);
+        margin: 0 0 var(--spacing-2) 0;
+        color: var(--color-text);
+      }
+      h1 {
+        font-size: var(--font-size-3xl);
+      }
+      h2 {
+        font-size: var(--font-size-2xl);
+        margin-top: var(--spacing-8);
+      }
+      h3 {
+        font-size: var(--font-size-lg);
+        margin-top: var(--spacing-6);
+      }
+      p {
+        color: var(--color-text-secondary);
+        margin: 0 0 var(--spacing-3) 0;
+      }
+
+      .swatch-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: var(--spacing-3);
+      }
+      .swatch {
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        background: var(--color-panel);
+      }
+      .swatch__color {
+        height: 72px;
+      }
+      .swatch__meta {
+        padding: var(--spacing-2) var(--spacing-3);
+        font-size: var(--font-size-xs);
+      }
+      .swatch__name {
+        font-weight: var(--font-weight-medium);
+        color: var(--color-text);
+        display: block;
+      }
+      .swatch__hex {
+        font-family: var(--font-family-mono);
+        color: var(--color-text-muted);
+      }
+
+      .spacing-row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-3);
+        margin-bottom: var(--spacing-2);
+      }
+      .spacing-label {
+        min-width: 80px;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
+      }
+      .spacing-bar {
+        height: 18px;
+        background: var(--color-brand-primary);
+        border-radius: var(--radius-sm);
+      }
+
+      .radius-row {
+        display: flex;
+        gap: var(--spacing-4);
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+      .radius-box {
+        width: 80px;
+        height: 80px;
+        background: var(--color-brand-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-text-inverse);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+      }
+
+      .shadow-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: var(--spacing-6);
+        padding: var(--spacing-4);
+      }
+      .shadow-box {
+        background: var(--color-panel);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-4);
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
+      }
+      .shadow-box--sm    { box-shadow: var(--shadow-sm); }
+      .shadow-box--md    { box-shadow: var(--shadow-md); }
+      .shadow-box--lg    { box-shadow: var(--shadow-lg); }
+      .shadow-box--focus { box-shadow: var(--shadow-focus); }
+
+      .type-sample {
+        margin-bottom: var(--spacing-3);
+      }
+      .type-sample__label {
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
+        margin-bottom: 2px;
+      }
+      .type-sample__value {
+        color: var(--color-text);
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-2);
+        align-items: center;
+      }
+
+      .theme-toggle {
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-panel);
+        color: var(--color-text);
+        padding: var(--spacing-2) var(--spacing-3);
+        border-radius: var(--radius-sm);
+        font-family: var(--font-family-body);
+        font-size: var(--font-size-sm);
+        cursor: pointer;
+      }
+
+      .preview-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: var(--spacing-6);
+      }
+
+      .shell-demo {
+        height: 460px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+      }
+      .shell-demo .oa-app-shell {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="preview-container">
+      <header class="row" style="justify-content: space-between; margin-bottom: var(--spacing-6);">
+        <div>
+          <h1>OpenAEC Design Tokens</h1>
+          <p>Fase 1 preview — tokens, layouts, components.</p>
+        </div>
+        <button class="theme-toggle" id="themeToggle" type="button">
+          Toggle dark / light
+        </button>
+      </header>
+
+      <!-- ================================================================ -->
+      <h2>Brand &amp; neutral colors</h2>
+      <h3>Brand</h3>
+      <div class="swatch-grid" id="brandGrid"></div>
+
+      <h3>Neutral</h3>
+      <div class="swatch-grid" id="neutralGrid"></div>
+
+      <h3>Surface / text / border (theme-aware)</h3>
+      <p>Waarden kantelen bij toggle tussen light en dark theme.</p>
+      <div class="swatch-grid" id="themeGrid"></div>
+
+      <h3>Semantic</h3>
+      <div class="swatch-grid" id="semanticGrid"></div>
+
+      <h3>Warmteverlies extension (domain-specifiek)</h3>
+      <p>Aparte extension — importeer alleen in warmteverlies-app.</p>
+      <div class="swatch-grid" id="wvGrid"></div>
+
+      <!-- ================================================================ -->
+      <h2>Typography</h2>
+      <div class="type-sample">
+        <div class="type-sample__label">font-family-heading — Space Grotesk</div>
+        <div class="type-sample__value" style="font-family: var(--font-family-heading); font-size: var(--font-size-2xl); font-weight: 600;">
+          De snelle bruine vos — heading sample
+        </div>
+      </div>
+      <div class="type-sample">
+        <div class="type-sample__label">font-family-body — Inter</div>
+        <div class="type-sample__value" style="font-family: var(--font-family-body); font-size: var(--font-size-base);">
+          De snelle bruine vos springt over de luie hond. Body text sample met Inter op 1rem.
+        </div>
+      </div>
+      <div class="type-sample">
+        <div class="type-sample__label">font-family-mono — JetBrains Mono</div>
+        <div class="type-sample__value" style="font-family: var(--font-family-mono); font-size: var(--font-size-sm);">
+          const token = "#D97706"; // primary
+        </div>
+      </div>
+
+      <h3>Size scale</h3>
+      <div class="type-sample" style="font-size: var(--font-size-xs);">xs — 12px</div>
+      <div class="type-sample" style="font-size: var(--font-size-sm);">sm — 14px</div>
+      <div class="type-sample" style="font-size: var(--font-size-base);">base — 16px</div>
+      <div class="type-sample" style="font-size: var(--font-size-lg);">lg — 18px</div>
+      <div class="type-sample" style="font-size: var(--font-size-xl);">xl — 20px</div>
+      <div class="type-sample" style="font-size: var(--font-size-2xl);">2xl — 24px</div>
+      <div class="type-sample" style="font-size: var(--font-size-3xl);">3xl — 30px</div>
+      <div class="type-sample" style="font-size: var(--font-size-4xl);">4xl — 36px</div>
+
+      <!-- ================================================================ -->
+      <h2>Spacing</h2>
+      <div id="spacingList"></div>
+
+      <!-- ================================================================ -->
+      <h2>Radius</h2>
+      <div class="radius-row">
+        <div class="radius-box" style="border-radius: var(--radius-none);">none</div>
+        <div class="radius-box" style="border-radius: var(--radius-sm);">sm</div>
+        <div class="radius-box" style="border-radius: var(--radius-md);">md</div>
+        <div class="radius-box" style="border-radius: var(--radius-lg);">lg</div>
+        <div class="radius-box" style="border-radius: var(--radius-full);">full</div>
+      </div>
+
+      <!-- ================================================================ -->
+      <h2>Shadow</h2>
+      <div class="shadow-row">
+        <div class="shadow-box shadow-box--sm">shadow-sm</div>
+        <div class="shadow-box shadow-box--md">shadow-md</div>
+        <div class="shadow-box shadow-box--lg">shadow-lg</div>
+        <div class="shadow-box shadow-box--focus">shadow-focus</div>
+      </div>
+
+      <!-- ================================================================ -->
+      <h2>Buttons</h2>
+      <div class="row">
+        <button class="oa-btn oa-btn--primary">Primary</button>
+        <button class="oa-btn oa-btn--secondary">Secondary</button>
+        <button class="oa-btn oa-btn--danger">Danger</button>
+        <button class="oa-btn oa-btn--ghost">Ghost</button>
+        <button class="oa-btn oa-btn--primary" disabled>Disabled</button>
+      </div>
+      <div class="row" style="margin-top: var(--spacing-3);">
+        <button class="oa-btn oa-btn--primary oa-btn--sm">Primary sm</button>
+        <button class="oa-btn oa-btn--primary">Primary md</button>
+        <button class="oa-btn oa-btn--primary oa-btn--lg">Primary lg</button>
+      </div>
+
+      <!-- ================================================================ -->
+      <h2>Input &amp; card</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-4);">
+        <div class="oa-card">
+          <h3 class="oa-card__title">Project details</h3>
+          <div class="oa-field">
+            <label class="oa-label" for="demo-name">Projectnaam</label>
+            <input class="oa-input" id="demo-name" type="text" placeholder="bv. Warmteverlies Noordwijk" />
+          </div>
+          <div class="oa-field">
+            <label class="oa-label" for="demo-adres">Adres</label>
+            <input class="oa-input" id="demo-adres" type="text" value="Hoofdstraat 123" />
+          </div>
+          <div class="oa-field">
+            <label class="oa-label" for="demo-disabled">Disabled veld</label>
+            <input class="oa-input" id="demo-disabled" type="text" value="Readonly" disabled />
+          </div>
+        </div>
+        <div class="oa-card">
+          <h3 class="oa-card__title">Badges</h3>
+          <div class="oa-card__body">
+            <div class="row" style="margin-bottom: var(--spacing-3);">
+              <span class="oa-badge oa-badge--success">Success</span>
+              <span class="oa-badge oa-badge--danger">Danger</span>
+              <span class="oa-badge oa-badge--warning">Warning</span>
+              <span class="oa-badge oa-badge--info">Info</span>
+              <span class="oa-badge oa-badge--neutral">Neutral</span>
+            </div>
+            <p>
+              Code-inline: <code class="oa-code">oa-btn--primary</code> voor de primary
+              knop, of via Tailwind <code class="oa-code">bg-primary</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================ -->
+      <h2>App shell layout</h2>
+      <p>Complete layout in een box — topbar + sidebar + ribbon + main met panels.</p>
+      <div class="shell-demo">
+        <div class="oa-app-shell">
+          <aside class="oa-sidebar">
+            <div class="oa-sidebar__header">
+              <div class="oa-topbar__brand">
+                <div class="oa-topbar__brand-mark"></div>
+                <span>OpenAEC</span>
+              </div>
+            </div>
+            <div class="oa-sidebar__section-label">Apps</div>
+            <nav class="oa-sidebar__nav">
+              <button class="oa-sidebar__nav-item is-active" type="button">Warmteverlies</button>
+              <button class="oa-sidebar__nav-item" type="button">BIM Validator</button>
+              <button class="oa-sidebar__nav-item" type="button">BCF Platform</button>
+              <button class="oa-sidebar__nav-item" type="button">Cutlist</button>
+              <button class="oa-sidebar__nav-item" type="button">Reports</button>
+            </nav>
+            <div class="oa-sidebar__section-label">Projecten</div>
+            <nav class="oa-sidebar__nav">
+              <button class="oa-sidebar__nav-item" type="button">Noordwijk-123</button>
+              <button class="oa-sidebar__nav-item" type="button">Amsterdam-Zuid</button>
+            </nav>
+          </aside>
+
+          <div class="oa-main-col">
+            <header class="oa-topbar">
+              <div class="oa-topbar__brand">
+                <span>Warmteverlies — Noordwijk 123</span>
+              </div>
+              <div class="oa-topbar__actions">
+                <button class="oa-btn oa-btn--ghost oa-btn--sm">Opslaan</button>
+                <button class="oa-btn oa-btn--primary oa-btn--sm">Genereer rapport</button>
+              </div>
+            </header>
+
+            <nav class="oa-ribbon">
+              <div class="oa-ribbon__group">
+                <div class="oa-ribbon__group-buttons">
+                  <button class="oa-ribbon__button">
+                    <span class="oa-ribbon__button-icon">+</span>
+                    Nieuw
+                  </button>
+                  <button class="oa-ribbon__button">
+                    <span class="oa-ribbon__button-icon">&#8634;</span>
+                    Laden
+                  </button>
+                </div>
+                <div class="oa-ribbon__group-label">Bestand</div>
+              </div>
+              <div class="oa-ribbon__group">
+                <div class="oa-ribbon__group-buttons">
+                  <button class="oa-ribbon__button">
+                    <span class="oa-ribbon__button-icon">&#9641;</span>
+                    Vertrekken
+                  </button>
+                  <button class="oa-ribbon__button">
+                    <span class="oa-ribbon__button-icon">&#9633;</span>
+                    Begrenzingen
+                  </button>
+                  <button class="oa-ribbon__button">
+                    <span class="oa-ribbon__button-icon">&#9737;</span>
+                    Constructies
+                  </button>
+                </div>
+                <div class="oa-ribbon__group-label">Bewerken</div>
+              </div>
+              <div class="oa-ribbon__group">
+                <div class="oa-ribbon__group-buttons">
+                  <button class="oa-ribbon__button">
+                    <span class="oa-ribbon__button-icon">&#9776;</span>
+                    Rapport
+                  </button>
+                </div>
+                <div class="oa-ribbon__group-label">Output</div>
+              </div>
+            </nav>
+
+            <main class="oa-main">
+              <section class="oa-panel">
+                <header class="oa-panel__header">
+                  <h3 class="oa-panel__title">Status</h3>
+                  <span class="oa-badge oa-badge--success">Berekening OK</span>
+                </header>
+                <div class="oa-panel__body">
+                  <p>Totaal warmteverlies: <strong>8.4 kW</strong> bij ontwerp-buitentemperatuur -10&nbsp;&deg;C.</p>
+                  <p>Per vertrek zie onderstaande tabel.</p>
+                </div>
+              </section>
+              <section class="oa-panel">
+                <header class="oa-panel__header">
+                  <h3 class="oa-panel__title">Waarschuwingen</h3>
+                  <span class="oa-badge oa-badge--warning">2 open</span>
+                </header>
+                <div class="oa-panel__body">
+                  <p>Vertrek "Bijkeuken" heeft geen verwarmingssysteem toegekend — default radiator HT.</p>
+                </div>
+              </section>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin-top: var(--spacing-8); color: var(--color-text-muted); font-size: var(--font-size-sm);">
+        Preview gegenereerd uit <code class="oa-code">dist/tokens.css</code> + <code class="oa-code">src/layouts.css</code> + <code class="oa-code">src/components.css</code>.
+        Theme-toggle schakelt <code class="oa-code">data-theme</code> op het <code class="oa-code">&lt;html&gt;</code> element.
+      </p>
+    </div>
+
+    <script>
+      // ---------- Theme toggle ----------
+      const html = document.documentElement;
+      const toggleBtn = document.getElementById("themeToggle");
+      toggleBtn.addEventListener("click", () => {
+        const current = html.getAttribute("data-theme") || "light";
+        html.setAttribute("data-theme", current === "light" ? "dark" : "light");
+      });
+
+      // ---------- Render swatches ----------
+      function swatch(name, cssVar) {
+        // Peil current computed value
+        const computed = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
+        return `
+          <div class="swatch">
+            <div class="swatch__color" style="background: var(${cssVar});"></div>
+            <div class="swatch__meta">
+              <span class="swatch__name">${name}</span>
+              <span class="swatch__hex">${cssVar}<br>${computed || "(computed)"}</span>
+            </div>
+          </div>`;
+      }
+
+      function renderGroup(containerId, list) {
+        document.getElementById(containerId).innerHTML = list
+          .map(([name, v]) => swatch(name, v))
+          .join("");
+      }
+
+      renderGroup("brandGrid", [
+        ["Amber", "--color-brand-amber"],
+        ["Deep forge", "--color-brand-deep-forge"],
+        ["Signal orange", "--color-brand-signal-orange"],
+        ["Warm gold", "--color-brand-warm-gold"],
+        ["Scaffold gray", "--color-brand-scaffold-gray"],
+        ["Blueprint white", "--color-brand-blueprint-white"],
+        ["Concrete", "--color-brand-concrete"],
+        ["Night build", "--color-brand-night-build"],
+      ]);
+
+      renderGroup(
+        "neutralGrid",
+        ["0", "50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"].map((k) => [
+          `Neutral ${k}`,
+          `--color-neutral-${k}`,
+        ])
+      );
+
+      renderGroup("themeGrid", [
+        ["Surface bg", "--color-surface-bg"],
+        ["Surface panel", "--color-surface-panel"],
+        ["Surface elevated", "--color-surface-elevated"],
+        ["Surface muted", "--color-surface-muted"],
+        ["Text primary", "--color-text-primary"],
+        ["Text secondary", "--color-text-secondary"],
+        ["Text muted", "--color-text-muted"],
+        ["Border default", "--color-border-default"],
+        ["Border strong", "--color-border-strong"],
+        ["Border focus", "--color-border-focus"],
+      ]);
+
+      renderGroup("semanticGrid", [
+        ["Success", "--color-semantic-success"],
+        ["Danger", "--color-semantic-danger"],
+        ["Warning", "--color-semantic-warning"],
+        ["Info", "--color-semantic-info"],
+      ]);
+
+      // ---------- Warmteverlies extension ----------
+      // Hardcoded hex uit extensions/warmteverlies.json (geen fetch om dubbelklik te laten werken zonder server)
+      const wvContainer = document.getElementById("wvGrid");
+      const wv = [
+        ["Exterior", "#3B82F6"],
+        ["Unheated", "#A855F7"],
+        ["Adjacent room", "#EAB308"],
+        ["Heated zone", "#EF4444"],
+        ["Ground", "#92400E"],
+        ["Water", "#0EA5E9"],
+      ];
+      wvContainer.innerHTML = wv
+        .map(
+          ([name, hex]) => `
+        <div class="swatch">
+          <div class="swatch__color" style="background: ${hex};"></div>
+          <div class="swatch__meta">
+            <span class="swatch__name">${name}</span>
+            <span class="swatch__hex">${hex}</span>
+          </div>
+        </div>`
+        )
+        .join("");
+
+      // ---------- Spacing list ----------
+      const spacing = [
+        ["0", "0"],
+        ["1", "4px"],
+        ["2", "8px"],
+        ["3", "12px"],
+        ["4", "16px"],
+        ["5", "20px"],
+        ["6", "24px"],
+        ["8", "32px"],
+        ["10", "40px"],
+        ["12", "48px"],
+      ];
+      document.getElementById("spacingList").innerHTML = spacing
+        .map(
+          ([k, px]) => `
+        <div class="spacing-row">
+          <div class="spacing-label">spacing-${k}</div>
+          <div class="spacing-bar" style="width: var(--spacing-${k});"></div>
+          <div class="swatch__hex">${px}</div>
+        </div>`
+        )
+        .join("");
+    </script>
+  </body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "name": "@openaec/ribbon",
+  "version": "0.1.0",
+  "description": "Office-style ribbon UI componenten voor OpenAEC desktop tools",
+  "private": false,
+  "license": "MIT",
+  "author": "OpenAEC Foundation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenAEC-Foundation/OpenAEC-style-book",
+    "directory": "packages/ribbon"
+  },
+  "keywords": [
+    "openaec",
+    "ribbon",
+    "office",
+    "ui",
+    "react"
+  ],
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./css": "./src/Ribbon.css",
+    "./icons": "./src/icons.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "typescript": "^5.9.3"
+  }
+}

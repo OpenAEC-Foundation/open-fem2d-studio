@@ -1,0 +1,198 @@
+/**
+ * @openaec/design-tokens — components.css
+ *
+ * Primitive component-klassen. Framework-agnostisch, theme-aware via CSS vars.
+ * Bedoeld voor apps die GEEN Tailwind gebruiken (Askama/Jinja/vanilla HTML).
+ * Tailwind-apps kunnen deze ook benutten maar gebruiken meestal @apply.
+ */
+
+/* ==== Button ============================================================== */
+.oa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.oa-btn:disabled,
+.oa-btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.oa-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Primary */
+.oa-btn--primary {
+  background: var(--color-brand-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-brand-primary);
+}
+.oa-btn--primary:hover:not(:disabled) {
+  background: var(--color-brand-primary-hover);
+  border-color: var(--color-brand-primary-hover);
+}
+
+/* Secondary */
+.oa-btn--secondary {
+  background: var(--color-panel);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+.oa-btn--secondary:hover:not(:disabled) {
+  background: var(--color-muted);
+}
+
+/* Danger */
+.oa-btn--danger {
+  background: var(--color-semantic-danger);
+  color: var(--color-text-inverse);
+  border-color: var(--color-semantic-danger);
+}
+.oa-btn--danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* Ghost */
+.oa-btn--ghost {
+  background: transparent;
+  color: var(--color-text);
+  border-color: transparent;
+}
+.oa-btn--ghost:hover:not(:disabled) {
+  background: var(--color-muted);
+}
+
+/* Size modifiers */
+.oa-btn--sm {
+  padding: var(--spacing-1) var(--spacing-3);
+  font-size: var(--font-size-xs);
+}
+.oa-btn--lg {
+  padding: var(--spacing-3) var(--spacing-6);
+  font-size: var(--font-size-base);
+}
+
+/* ==== Card ================================================================ */
+.oa-card {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.oa-card__title {
+  margin: 0 0 var(--spacing-2) 0;
+  font-family: var(--font-family-heading);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.oa-card__body {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-relaxed);
+}
+
+/* ==== Input =============================================================== */
+.oa-input {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.oa-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.oa-input:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+  box-shadow: var(--shadow-focus);
+}
+
+.oa-input:disabled {
+  background: var(--color-muted);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.oa-label {
+  display: block;
+  margin-bottom: var(--spacing-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.oa-field {
+  margin-bottom: var(--spacing-4);
+}
+
+/* ==== Badge =============================================================== */
+.oa-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-full);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.oa-badge--success {
+  background: var(--color-semantic-success-bg);
+  color: var(--color-semantic-success);
+}
+.oa-badge--danger {
+  background: var(--color-semantic-danger-bg);
+  color: var(--color-semantic-danger);
+}
+.oa-badge--warning {
+  background: var(--color-semantic-warning-bg);
+  color: var(--color-semantic-warning);
+}
+.oa-badge--info {
+  background: var(--color-semantic-info-bg);
+  color: var(--color-semantic-info);
+}
+.oa-badge--neutral {
+  background: var(--color-muted);
+  color: var(--color-text-secondary);
+}
+
+/* ==== Utility: kbd / code =============================================== */
+.oa-code {
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+  background: var(--color-muted);
+  color: var(--color-text);
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}

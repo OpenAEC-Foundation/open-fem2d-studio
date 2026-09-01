@@ -1,0 +1,9 @@
+{
+  "radius": {
+    "none": { "value": "0" },
+    "sm":   { "value": "4px",  "comment": "Inputs, small buttons" },
+    "md":   { "value": "8px",  "comment": "Cards, panels, buttons" },
+    "lg":   { "value": "12px", "comment": "Modals, large cards" },
+    "full": { "value": "9999px", "comment": "Pills, avatars" }
+  }
+}

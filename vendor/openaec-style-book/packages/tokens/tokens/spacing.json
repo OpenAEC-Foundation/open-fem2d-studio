@@ -1,0 +1,21 @@
+{
+  "spacing": {
+    "0":  { "value": "0" },
+    "1":  { "value": "0.25rem", "comment": "4px" },
+    "2":  { "value": "0.5rem",  "comment": "8px" },
+    "3":  { "value": "0.75rem", "comment": "12px" },
+    "4":  { "value": "1rem",    "comment": "16px" },
+    "5":  { "value": "1.25rem", "comment": "20px" },
+    "6":  { "value": "1.5rem",  "comment": "24px" },
+    "8":  { "value": "2rem",    "comment": "32px" },
+    "10": { "value": "2.5rem",  "comment": "40px" },
+    "12": { "value": "3rem",    "comment": "48px" },
+    "16": { "value": "4rem",    "comment": "64px" },
+    "20": { "value": "5rem",    "comment": "80px" },
+    "24": { "value": "6rem",    "comment": "96px" },
+
+    "sidebar-width":  { "value": "280px", "comment": "Hoofdnavigatie sidebar breedte (app layout). DESIGN-SYSTEM website-sidebar = 260px, apps gebruiken 280px." },
+    "topbar-height":  { "value": "48px",  "comment": "Topbar hoogte (desktop app)" },
+    "ribbon-height":  { "value": "96px",  "comment": "MS Office stijl command ribbon hoogte" }
+  }
+}

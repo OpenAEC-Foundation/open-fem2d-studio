@@ -1,0 +1,22 @@
+{
+  "$meta": {
+    "extension": "warmteverlies",
+    "description": "Domein-specifieke kleuren voor ISSO 51 warmteverliesberekening — begrenzingstypes en thermische zones. Importeer apart, deze zijn niet onderdeel van de core OpenAEC palette."
+  },
+  "color": {
+    "warmteverlies": {
+      "exterior":        { "value": "#3B82F6", "comment": "Buitenlucht begrenzing — Blue 500" },
+      "exterior-bg":     { "value": "#DBEAFE" },
+      "unheated":        { "value": "#A855F7", "comment": "Onverwarmde ruimte — Purple 500" },
+      "unheated-bg":     { "value": "#F3E8FF" },
+      "adjacent-room":   { "value": "#EAB308", "comment": "Aangrenzend vertrek (verwarmd) — Yellow 500" },
+      "adjacent-room-bg":{ "value": "#FEF9C3" },
+      "heated-zone":     { "value": "#EF4444", "comment": "Verwarmde zone — Red 500" },
+      "heated-zone-bg":  { "value": "#FEE2E2" },
+      "ground":          { "value": "#92400E", "comment": "Grondcontact — Amber 800 / bruin" },
+      "ground-bg":       { "value": "#FEF3C7" },
+      "water":           { "value": "#0EA5E9", "comment": "Water begrenzing (θ_water engineering-aanname) — Sky 500" },
+      "water-bg":        { "value": "#E0F2FE" }
+    }
+  }
+}
