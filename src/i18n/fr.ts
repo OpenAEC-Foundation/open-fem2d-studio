@@ -156,7 +156,7 @@ export const fr: Record<string, string> = {
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Bois',
-  'ribbon.timberInfo': 'Vérifications bois selon EN 1995-1-1.\nBientôt disponible.',
+  'ribbon.timberInfo': 'Exécuter les vérifications bois EN 1995-1-1.\nIntégré à la vérification combinée : chaque barre est vérifiée comme acier ou bois selon son matériau et sa section.',
 
   // Ribbon groups: Other Materials tab
   'ribbon.otherMaterialsInfo': 'Aluminium (EN 1999), Maçonnerie (EN 1996),\net autres vérifications matériaux. Bientôt disponible.',
@@ -1145,14 +1145,14 @@ export const fr: Record<string, string> = {
   'ribbon.check': 'Vérification',
   'ribbon.check.runGroup': 'Vérifier',
   'ribbon.check.run': 'Exécuter toutes les vérifications',
-  'ribbon.check.run.title': 'Exécuter les vérifications EN 1993-1-1 pour toutes les poutres en acier',
+  'ribbon.check.run.title': 'Exécuter les vérifications des barres : EN 1993-1-1 pour l\'acier et EN 1995-1-1 pour le bois',
   'ribbon.check.viewGroup': 'Affichage',
   'ribbon.check.viewPanel': 'Afficher le panneau',
   'ribbon.check.settingsGroup': 'Paramètres',
   'ribbon.check.autoRun': 'Auto-exécuter après le calcul',
 
   // Panneau de vérification EN 1993
-  'check.panel.title': 'Résultats vérification EN 1993',
+  'check.panel.title': 'Résultats de vérification (EN 1993 / EN 1995)',
   'check.panel.empty': 'Aucune vérification — calculez le modèle et cliquez sur Exécuter toutes les vérifications',
   'check.panel.totalBeams': 'Total des poutres',
   'check.status.ok': 'OK',

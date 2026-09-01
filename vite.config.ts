@@ -25,6 +25,7 @@ export default defineConfig({
         // veranderen alleen als de Rust-structs veranderen; ververs het
         // venster daarna handmatig.
         '**/src/lib/types/steel/**',
+        '**/src/lib/types/timber/**',
       ],
     },
   },

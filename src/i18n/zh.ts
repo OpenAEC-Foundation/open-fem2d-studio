@@ -156,7 +156,7 @@ export const zh: Record<string, string> = {
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - 木结构',
-  'ribbon.timberInfo': '根据 EN 1995-1-1 进行木结构验算。\n即将推出。',
+  'ribbon.timberInfo': '运行 EN 1995-1-1 木结构验算。\n属于组合验算流程：每根构件根据其材料和截面按钢或木进行验算。',
 
   // Ribbon groups: Other Materials tab
   'ribbon.otherMaterialsInfo': '铝合金 (EN 1999)、砌体 (EN 1996)\n及其他材料验算。即将推出。',
@@ -1140,14 +1140,14 @@ export const zh: Record<string, string> = {
   'ribbon.check': '检查',
   'ribbon.check.runGroup': '运行',
   'ribbon.check.run': '运行所有检查',
-  'ribbon.check.run.title': '对所有钢梁运行 EN 1993-1-1 检查',
+  'ribbon.check.run.title': '运行构件验算：钢构件按 EN 1993-1-1，木构件按 EN 1995-1-1',
   'ribbon.check.viewGroup': '视图',
   'ribbon.check.viewPanel': '显示面板',
   'ribbon.check.settingsGroup': '设置',
   'ribbon.check.autoRun': '求解后自动运行',
 
   // EN 1993 检查面板
-  'check.panel.title': 'EN 1993 检查结果',
+  'check.panel.title': '验算结果（EN 1993 / EN 1995）',
   'check.panel.empty': '尚无检查结果 — 求解模型后点击运行所有检查',
   'check.panel.totalBeams': '梁总数',
   'check.status.ok': 'OK',

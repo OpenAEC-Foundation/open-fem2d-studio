@@ -156,7 +156,7 @@ export const es: Record<string, string> = {
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Madera',
-  'ribbon.timberInfo': 'Verificaciones de madera seg\u00fan EN 1995-1-1.\nPr\u00f3ximamente.',
+  'ribbon.timberInfo': 'Ejecutar verificaciones de madera EN 1995-1-1.\nParte de la verificaci\u00f3n combinada: cada barra se verifica como acero o madera seg\u00fan su material y secci\u00f3n.',
 
   // Ribbon groups: Other Materials tab
   'ribbon.otherMaterialsInfo': 'Aluminio (EN 1999), F\u00e1brica de ladrillo (EN 1996),\ny otras verificaciones de materiales. Pr\u00f3ximamente.',
@@ -1140,14 +1140,14 @@ export const es: Record<string, string> = {
   'ribbon.check': 'Verificación',
   'ribbon.check.runGroup': 'Verificar',
   'ribbon.check.run': 'Ejecutar todas las verificaciones',
-  'ribbon.check.run.title': 'Ejecutar verificaciones EN 1993-1-1 para todas las vigas de acero',
+  'ribbon.check.run.title': 'Ejecutar verificaciones de barras: EN 1993-1-1 para acero y EN 1995-1-1 para madera',
   'ribbon.check.viewGroup': 'Ver',
   'ribbon.check.viewPanel': 'Mostrar panel',
   'ribbon.check.settingsGroup': 'Configuración',
   'ribbon.check.autoRun': 'Auto-ejecutar tras cálculo',
 
   // Panel de verificación EN 1993
-  'check.panel.title': 'Resultados verificación EN 1993',
+  'check.panel.title': 'Resultados de verificación (EN 1993 / EN 1995)',
   'check.panel.empty': 'Sin verificaciones aún — calcule el modelo y haga clic en Ejecutar todas las verificaciones',
   'check.panel.totalBeams': 'Total de barras',
   'check.status.ok': 'OK',

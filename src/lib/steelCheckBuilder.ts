@@ -66,8 +66,10 @@ function configToDeflectionClass(config: IBeamSteelConfig): DeflectionClass {
  * DOF layout per node: index*3+0 = u (horizontal), index*3+1 = v (vertical), index*3+2 = θ
  *
  * Returns 0.0 if the displacement vector is empty or the nodes cannot be located.
+ *
+ * Shared by the steel (EN 1993) and timber (EN 1995) check builders.
  */
-function extractMaxDeflection(
+export function extractMaxDeflection(
   beam: { nodeIds: number[] },
   mesh: Mesh,
   result: ISolverResult,
@@ -124,6 +126,57 @@ function extractMaxDeflection(
  * dezelfde manier. De waarde voedt B* volgens NB.NB.4.3(3); is er geen
  * veldbelasting, dan komt hier 0 uit en geldt B* = ±1 (alleen eindmomenten).
  */
+/**
+ * Krachtsverloop (envelop) van één staaf uit het solver-resultaat, in het
+ * gedeelde EN-krachtencontract (kN / kN·m, posities in mm).
+ *
+ * De 2D-framesolver levert N (normaalkracht), V (dwarskracht in het vlak) en
+ * M (moment in het vlak); mapping naar de 3D-conventie: n_ed=N, vz_ed=V,
+ * my_ed=M, overige nul. Levert altijd minstens één (nul)punt zodat de
+ * Rust-orchestrators niet op een lege envelop hoeven te rekenen.
+ *
+ * Shared by the steel (EN 1993) and timber (EN 1995) check builders.
+ */
+export function buildForcesEnvelope(
+  beamId: number,
+  result: ISolverResult,
+  combinationId: number,
+): ForcePoint[] {
+  const forcesEnvelope: ForcePoint[] = [];
+  const bf = result.beamForces.get(beamId);
+  if (bf && bf.stations.length > 0) {
+    for (let i = 0; i < bf.stations.length; i++) {
+      const posM = bf.stations[i];                         // metres from start
+      const N    = bf.normalForce[i] ?? 0;                 // N (Newtons)
+      const V    = bf.shearForce[i]  ?? 0;                 // N
+      const M    = bf.bendingMoment[i] ?? 0;               // N·m
+
+      forcesEnvelope.push({
+        combination_id: combinationId,
+        position_mm: posM * 1000.0,
+        forces: {
+          n_ed:  N / 1000.0,   // N → kN
+          vy_ed: 0,             // 2D: no lateral shear
+          vz_ed: V / 1000.0,   // N → kN
+          mt_ed: 0,             // 2D: no torsion
+          my_ed: M / 1000.0,   // N·m → kN·m
+          mz_ed: 0,             // 2D: no weak-axis bending
+        },
+      });
+    }
+  }
+
+  if (forcesEnvelope.length === 0) {
+    forcesEnvelope.push({
+      combination_id: combinationId,
+      position_mm: 0,
+      forces: { n_ed: 0, vy_ed: 0, vz_ed: 0, mt_ed: 0, my_ed: 0, mz_ed: 0 },
+    });
+  }
+
+  return forcesEnvelope;
+}
+
 function equivalentUdlFromMoments(env: ForcePoint[], lengthMm: number): number {
   if (env.length < 3 || lengthMm <= 0) return 0;
   const sorted = [...env].sort((a, b) => a.position_mm - b.position_mm);
@@ -182,41 +235,8 @@ export function buildSteelCheckInputs(
 
     const config = configs.get(beam.id) ?? defaultConfigForBeam(beam.id, profileName!, lengthMm);
 
-    // Build force envelope from solver result.
-    // The 2D frame solver produces: N (axial), V (in-plane shear), M (in-plane moment).
-    // Map to EN1993 3D convention: n_ed=N, vy_ed=0, vz_ed=V, mt_ed=0, my_ed=M, mz_ed=0.
-    const forcesEnvelope: ForcePoint[] = [];
-    const bf = result.beamForces.get(beam.id);
-    if (bf && bf.stations.length > 0) {
-      for (let i = 0; i < bf.stations.length; i++) {
-        const posM = bf.stations[i];                         // metres from start
-        const N    = bf.normalForce[i] ?? 0;                 // N (Newtons)
-        const V    = bf.shearForce[i]  ?? 0;                 // N
-        const M    = bf.bendingMoment[i] ?? 0;               // N·m
-
-        forcesEnvelope.push({
-          combination_id: combinationId,
-          position_mm: posM * 1000.0,
-          forces: {
-            n_ed:  N / 1000.0,   // N → kN
-            vy_ed: 0,             // 2D: no lateral shear
-            vz_ed: V / 1000.0,   // N → kN
-            mt_ed: 0,             // 2D: no torsion
-            my_ed: M / 1000.0,   // N·m → kN·m
-            mz_ed: 0,             // 2D: no weak-axis bending
-          },
-        });
-      }
-    }
-
-    // Fallback: single zero-force point so the Rust orchestrator does not crash
-    if (forcesEnvelope.length === 0) {
-      forcesEnvelope.push({
-        combination_id: combinationId,
-        position_mm: 0,
-        forces: { n_ed: 0, vy_ed: 0, vz_ed: 0, mt_ed: 0, my_ed: 0, mz_ed: 0 },
-      });
-    }
+    // Build force envelope from solver result (shared with the timber builder).
+    const forcesEnvelope = buildForcesEnvelope(beam.id, result, combinationId);
 
     const consequenceClass: ConsequenceClass = 'CC1';
 

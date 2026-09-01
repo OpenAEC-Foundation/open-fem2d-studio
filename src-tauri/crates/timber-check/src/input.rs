@@ -31,10 +31,8 @@ fn default_ltb_load_position() -> LtbLoadPosition {
 }
 
 /// Invoer voor één houten staaf (rechthoekige doorsnede b × h).
-// TODO: ts-rs-export bewust uitgeschakeld (geen #[ts(export)]) zolang de
-// TypeScript-typen voor hout nog niet worden gegenereerd; inschakelen samen
-// met de frontend-koppeling.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../src/lib/types/timber/")]
 pub struct TimberBeamCheckInput {
     pub beam_id: u32,
     /// Doorsnedebreedte b in mm.

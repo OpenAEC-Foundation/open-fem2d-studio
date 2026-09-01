@@ -132,7 +132,7 @@ export const en: Record<string, string> = {
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Timber',
-  'ribbon.timberInfo': 'Timber checks according to EN 1995-1-1.\nComing soon.',
+  'ribbon.timberInfo': 'Run EN 1995-1-1 timber checks.\nPart of the combined check run: each member is checked as steel or timber based on its material and section.',
 
   // Ribbon groups: Other Materials tab
   'ribbon.otherMaterialsInfo': 'Aluminium (EN 1999), Masonry (EN 1996),\nand other material checks. Coming soon.',
@@ -162,7 +162,7 @@ export const en: Record<string, string> = {
   'ribbon.check': 'Check',
   'ribbon.check.runGroup': 'Run',
   'ribbon.check.run': 'Run Checks',
-  'ribbon.check.run.title': 'Run EN 1993-1-1 steel checks for all steel beams',
+  'ribbon.check.run.title': 'Run member checks: EN 1993-1-1 for steel and EN 1995-1-1 for timber members',
   'ribbon.check.viewGroup': 'View',
   'ribbon.check.viewPanel': 'Results Panel',
   'ribbon.check.settingsGroup': 'Options',
@@ -1223,8 +1223,8 @@ export const en: Record<string, string> = {
   'about.builtOn': 'Built on the OpenAEC platform',
 
   // EN 1993 Check panel
-  'check.panel.title': 'EN 1993 Check Results',
-  'check.panel.empty': 'No steel checks yet — solve the model and click Run all checks',
+  'check.panel.title': 'Check Results (EN 1993 / EN 1995)',
+  'check.panel.empty': 'No member checks yet — solve the model and click Run Checks',
   'check.panel.totalBeams': 'Total beams',
   'check.status.ok': 'OK',
   'check.status.notOk': 'NOT OK',

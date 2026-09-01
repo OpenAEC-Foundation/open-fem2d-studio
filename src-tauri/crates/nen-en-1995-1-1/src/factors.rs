@@ -23,6 +23,7 @@ pub enum TimberType {
 
 /// Klimaatklasse (service class) volgens §2.3.1.3.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../src/lib/types/timber/")]
 pub enum ServiceClass {
     Sc1,
     Sc2,
@@ -31,6 +32,7 @@ pub enum ServiceClass {
 
 /// Belastingduurklasse volgens §2.3.1.2.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../src/lib/types/timber/")]
 pub enum LoadDurationClass {
     Permanent,
     LongTerm,

@@ -132,7 +132,7 @@ export const nl: Record<string, string> = {
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Hout',
-  'ribbon.timberInfo': 'Houttoetsing volgens EN 1995-1-1.\nBinnenkort beschikbaar.',
+  'ribbon.timberInfo': 'Voer EN 1995-1-1 houttoetsen uit.\nOnderdeel van de gecombineerde toetsrun: elke staaf wordt als staal of hout getoetst op basis van materiaal en doorsnede.',
 
   // Ribbon groups: Other Materials tab
   'ribbon.otherMaterialsInfo': 'Aluminium (EN 1999), Metselwerk (EN 1996),\nen overige materiaaltoetsingen. Binnenkort beschikbaar.',
@@ -1048,15 +1048,15 @@ export const nl: Record<string, string> = {
   'ribbon.check': 'Toetsing',
   'ribbon.check.runGroup': 'Toets',
   'ribbon.check.run': 'Voer alle toetsen uit',
-  'ribbon.check.run.title': 'Voer EN 1993-1-1 staaltoetsen uit voor alle stalen balken',
+  'ribbon.check.run.title': 'Voer staaftoetsen uit: EN 1993-1-1 voor staal en EN 1995-1-1 voor hout',
   'ribbon.check.viewGroup': 'Weergave',
   'ribbon.check.viewPanel': 'Toon paneel',
   'ribbon.check.settingsGroup': 'Instellingen',
   'ribbon.check.autoRun': 'Automatisch na oplossen',
 
   // EN 1993 Toetspaneel
-  'check.panel.title': 'EN 1993 Toetsresultaten',
-  'check.panel.empty': 'Nog geen staaltoetsen — los het model op en klik Voer alle toetsen uit',
+  'check.panel.title': 'Toetsresultaten (EN 1993 / EN 1995)',
+  'check.panel.empty': 'Nog geen staaftoetsen — los het model op en klik Voer toetsen uit',
   'check.panel.totalBeams': 'Aantal staven',
   'check.status.ok': 'OK',
   'check.status.notOk': 'NIET OK',

@@ -8,6 +8,20 @@ import { calculateThermalNodalForces, calculateBeamThermalNodalForces, calculate
 import { IReportConfig, DEFAULT_REPORT_CONFIG } from '../core/report/ReportConfig';
 import { ConsoleService } from '../core/console/ConsoleService';
 import type { BeamCheckResult } from '../lib/types/steel/BeamCheckResult';
+import type { TimberBeamCheckResult } from '../lib/types/timber/TimberBeamCheckResult';
+
+/**
+ * Toetsresultaat van één staaf: staal (EN 1993) of hout (EN 1995).
+ * Beide delen hetzelfde check-contract (NamedCheck/CheckStatus); alleen de
+ * kopvelden verschillen (profile_name/steel_grade vs section_name/
+ * strength_class). Onderscheid via `'profile_name' in result`.
+ */
+export type MemberCheckResult = BeamCheckResult | TimberBeamCheckResult;
+
+/** Type-guard: staal (EN 1993)? Anders hout (EN 1995). */
+export function isSteelCheckResult(r: MemberCheckResult): r is BeamCheckResult {
+  return 'profile_name' in r;
+}
 
 export type ViewMode = 'geometry' | 'loads' | 'results';
 export type BrowserTab = 'project' | 'results';
@@ -166,7 +180,8 @@ interface FEMState {
   versioning: IVersioningState;
   // Steel check configs per beam
   beamSteelConfigs: Map<number, IBeamSteelConfig>;
-  steelCheckResults: BeamCheckResult[] | null;
+  // Gecombineerde toetsresultaten (staal EN 1993 + hout EN 1995)
+  steelCheckResults: MemberCheckResult[] | null;
   steelCheckError: string | null;
   steelCheckAutoRun: boolean;
   // Blender-style 2D cursor (world coordinates)
@@ -318,7 +333,7 @@ type FEMAction =
   | { type: 'UPDATE_PLATE_REINFORCEMENT'; plateId: number; reinforcement: IPlateReinforcement }
   // Steel check actions
   | { type: 'SET_BEAM_STEEL_CONFIG'; payload: IBeamSteelConfig }
-  | { type: 'SET_STEEL_CHECK_RESULTS'; payload: BeamCheckResult[] }
+  | { type: 'SET_STEEL_CHECK_RESULTS'; payload: MemberCheckResult[] }
   | { type: 'CLEAR_STEEL_CHECK_RESULTS' }
   | { type: 'SET_STEEL_CHECK_ERROR'; payload: string | null }
   | { type: 'SET_STEEL_CHECK_AUTO_RUN'; payload: boolean }

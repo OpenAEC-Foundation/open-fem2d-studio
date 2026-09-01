@@ -22,7 +22,7 @@
  */
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useFEM } from '../../context/FEMContext';
+import { useFEM, isSteelCheckResult } from '../../context/FEMContext';
 import { Tool } from '../../core/fem/types';
 import {
   MousePointer2, CircleDot,
@@ -898,7 +898,7 @@ export function Ribbon({
    * ──────────────────────────────────────────────────────────────────── */
   const checkContent = (
     <div className="ribbon-content">
-      <RibbonGroup label="EN 1993 — Steel">
+      <RibbonGroup label="EN 1993 / EN 1995">
         <div className="ribbon-button-row">
           <button
             className="ribbon-button medium accent"
@@ -912,12 +912,12 @@ export function Ribbon({
           <button
             className={`ribbon-button small ${state.steelCheckResults ? 'active' : ''}`}
             onClick={onToggleSteelCheckPanel}
-            title="Toggle steel-check results panel"
+            title="Toggle check results panel"
           >
             <span className="ribbon-icon"><Sidebar size={14} /></span>
             <span>{t('ribbon.check.viewPanel')}</span>
           </button>
-          <label className="ribbon-checkbox" title="Re-run steel checks after every solve">
+          <label className="ribbon-checkbox" title="Re-run member checks after every solve">
             <input
               type="checkbox"
               checked={state.steelCheckAutoRun}
@@ -948,7 +948,12 @@ export function Ribbon({
 
       <RibbonGroup label={t('ribbon.timberEN') || 'Timber'}>
         <div className="ribbon-button-row">
-          <button className="ribbon-button small" disabled title={t('ribbon.timberInfo')}>
+          <button
+            className="ribbon-button small"
+            onClick={onRunSteelChecks}
+            disabled={state.result === null}
+            title={t('ribbon.timberInfo')}
+          >
             <span className="ribbon-icon"><Box size={14} /></span>
             <span>EN 1995</span>
           </button>
@@ -1175,7 +1180,9 @@ export function Ribbon({
                     engineer: state.projectInfo?.engineer ?? '',
                     company: state.projectInfo?.company ?? '',
                     date: state.projectInfo?.date ?? new Date().toISOString().slice(0, 10),
-                    steel_check_results: state.steelCheckResults ?? [],
+                    // Het PDF-rapport dekt nu alleen staal (EN 1993);
+                    // houtresultaten (EN 1995) worden hier bewust gefilterd.
+                    steel_check_results: (state.steelCheckResults ?? []).filter(isSteelCheckResult),
                   },
                 });
                 const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
@@ -1189,8 +1196,10 @@ export function Ribbon({
                 console.error('PDF generation failed:', e);
               }
             }}
-            disabled={!state.steelCheckResults?.length}
-            title={state.steelCheckResults?.length ? 'Generate + download PDF' : 'Run steel checks first'}
+            disabled={!state.steelCheckResults?.some(isSteelCheckResult)}
+            title={state.steelCheckResults?.some(isSteelCheckResult)
+              ? 'Generate + download PDF (steel EN 1993 results only)'
+              : 'Run member checks first — PDF report covers steel (EN 1993) results only'}
           >
             <span className="ribbon-icon"><Download size={16} /></span>
             <span>Generate PDF</span>
@@ -1218,7 +1227,7 @@ export function Ribbon({
 
       <RibbonGroup label="Status">
         <div className="ribbon-button-row">
-          <span className="ribbon-button small" title="Steel check beams">
+          <span className="ribbon-button small" title="Members with check results">
             <span style={{ fontSize: 11, color: 'var(--theme-text-muted)' }}>
               Beams: {state.steelCheckResults?.length ?? 0}
             </span>

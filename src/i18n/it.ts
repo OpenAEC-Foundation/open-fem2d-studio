@@ -156,7 +156,7 @@ export const it: Record<string, string> = {
 
   // Ribbon groups: Timber tab
   'ribbon.timberEN': 'EN 1995 - Legno',
-  'ribbon.timberInfo': 'Verifiche del legno secondo EN 1995-1-1.\nIn arrivo.',
+  'ribbon.timberInfo': 'Esegui le verifiche del legno EN 1995-1-1.\nParte della verifica combinata: ogni asta viene verificata come acciaio o legno in base a materiale e sezione.',
 
   // Ribbon groups: Other Materials tab
   'ribbon.otherMaterialsInfo': 'Alluminio (EN 1999), Muratura (EN 1996),\ne altre verifiche materiali. In arrivo.',
@@ -1140,14 +1140,14 @@ export const it: Record<string, string> = {
   'ribbon.check': 'Verifica',
   'ribbon.check.runGroup': 'Verifica',
   'ribbon.check.run': 'Esegui tutte le verifiche',
-  'ribbon.check.run.title': 'Esegui verifiche EN 1993-1-1 per tutte le travi in acciaio',
+  'ribbon.check.run.title': 'Esegui verifiche delle aste: EN 1993-1-1 per l\'acciaio e EN 1995-1-1 per il legno',
   'ribbon.check.viewGroup': 'Visualizza',
   'ribbon.check.viewPanel': 'Mostra pannello',
   'ribbon.check.settingsGroup': 'Impostazioni',
   'ribbon.check.autoRun': 'Auto-esegui dopo il calcolo',
 
   // Pannello di verifica EN 1993
-  'check.panel.title': 'Risultati verifica EN 1993',
+  'check.panel.title': 'Risultati verifica (EN 1993 / EN 1995)',
   'check.panel.empty': 'Nessuna verifica — calcola il modello e clicca Esegui tutte le verifiche',
   'check.panel.totalBeams': 'Totale travi',
   'check.status.ok': 'OK',

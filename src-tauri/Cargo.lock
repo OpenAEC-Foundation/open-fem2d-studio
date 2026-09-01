@@ -2650,6 +2650,7 @@ name = "open-fem2d-studio"
 version = "1.0.0"
 dependencies = [
  "nen-en-1993-1-1-section",
+ "nen-en-1995-1-1",
  "report",
  "serde",
  "serde_json",
@@ -2660,6 +2661,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-store",
+ "timber-check",
 ]
 
 [[package]]

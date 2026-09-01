@@ -1,5 +1,5 @@
 import React from 'react';
-import { useFEM } from '../../../context/FEMContext';
+import { useFEM, isSteelCheckResult } from '../../../context/FEMContext';
 import { ReportSectionProps } from '../ReportPreview';
 
 export const EN1993SummarySection: React.FC<ReportSectionProps> = (props) => {
@@ -10,9 +10,9 @@ export const EN1993SummarySection: React.FC<ReportSectionProps> = (props) => {
   if (!results || results.length === 0) {
     return (
       <div className="report-section">
-        <h2 className="report-section-title">{sectionNumber}. EN 1993 Steel Checks – Summary</h2>
+        <h2 className="report-section-title">{sectionNumber}. EN 1993 / EN 1995 Member Checks – Summary</h2>
         <p style={{ fontStyle: 'italic', color: '#666' }}>
-          No steel check results yet. Run the solver and click Run all checks.
+          No member check results yet. Run the solver and click Run Checks.
         </p>
       </div>
     );
@@ -20,7 +20,7 @@ export const EN1993SummarySection: React.FC<ReportSectionProps> = (props) => {
 
   return (
     <div className="report-section">
-      <h2 className="report-section-title">{sectionNumber}. EN 1993 Steel Checks – Summary</h2>
+      <h2 className="report-section-title">{sectionNumber}. EN 1993 / EN 1995 Member Checks – Summary</h2>
       <table className="report-table">
         <thead>
           <tr>
@@ -40,9 +40,9 @@ export const EN1993SummarySection: React.FC<ReportSectionProps> = (props) => {
               style={r.status === 'NotOk' ? { backgroundColor: 'rgba(220, 38, 38, 0.08)' } : undefined}
             >
               <td>{r.beam_id}</td>
-              <td>{r.profile_name}</td>
-              <td>{r.steel_grade}</td>
-              <td>{r.classification.replace('Class', 'Class ')}</td>
+              <td>{isSteelCheckResult(r) ? r.profile_name : r.section_name}</td>
+              <td>{isSteelCheckResult(r) ? r.steel_grade : r.strength_class}</td>
+              <td>{isSteelCheckResult(r) ? r.classification.replace('Class', 'Class ') : '—'}</td>
               <td className="numeric"><strong>{r.uc_max.toFixed(2)}</strong></td>
               <td>{r.governing_check_id}</td>
               <td>

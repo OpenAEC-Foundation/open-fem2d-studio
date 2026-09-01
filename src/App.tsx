@@ -40,7 +40,11 @@ import { migrateLocalStorageToTauriStore } from './lib/migrateLocalStorage';
 import { Mesh } from './core/fem/Mesh';
 import { invoke } from '@tauri-apps/api/core';
 import { buildSteelCheckInputs } from './lib/steelCheckBuilder';
+import { buildTimberCheckInputs } from './lib/timberCheckBuilder';
 import type { BeamCheckResult } from './lib/types/steel/BeamCheckResult';
+import type { TimberBeamCheckResult } from './lib/types/timber/TimberBeamCheckResult';
+import type { MemberCheckResult } from './context/FEMContext';
+import { ConsoleService } from './core/console/ConsoleService';
 import { SteelCheckPanel } from './components/SteelCheckPanel/SteelCheckPanel';
 
 /** Hook used inside FEMProvider to serialize current project state */
@@ -143,25 +147,43 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const steelCheckAutoRunRef = useRef(state.steelCheckAutoRun);
   steelCheckAutoRunRef.current = state.steelCheckAutoRun;
 
-  // Steel check runner — invokes Tauri command.
+  // Combined member-check runner (steel EN 1993 + timber EN 1995) — invokes
+  // Tauri commands per material and merges the results into one list.
   // Accepts an optional freshResult to avoid stale-closure issues when called
   // immediately after SET_RESULT (before React has re-rendered with the new value).
   const handleRunSteelChecks = useCallback(async (freshResult?: import('./core/fem/types').ISolverResult) => {
     const solverResult = freshResult ?? state.result;
     if (!solverResult) return;
-    const inputs = buildSteelCheckInputs(
+    const steelInputs = buildSteelCheckInputs(
       state.mesh,
       state.beamSteelConfigs,
       solverResult,
       state.projectInfo,
     );
-    if (inputs.length === 0) {
+    const timber = buildTimberCheckInputs(state.mesh, solverResult);
+
+    // Houtstaven die herkend maar niet toetsbaar zijn: expliciet melden in de
+    // console i.p.v. stilzwijgend overslaan.
+    for (const skip of timber.skipped) {
+      ConsoleService.log(`EN 1995: staaf ${skip.beamId} overgeslagen — ${skip.reason}`, 'system');
+    }
+
+    if (steelInputs.length === 0 && timber.inputs.length === 0) {
       dispatch({ type: 'SET_STEEL_CHECK_RESULTS', payload: [] });
       return;
     }
     try {
-      const results = await invoke<BeamCheckResult[]>('check_steel_beams', { inputs });
-      dispatch({ type: 'SET_STEEL_CHECK_RESULTS', payload: results });
+      const [steelResults, timberResults] = await Promise.all([
+        steelInputs.length > 0
+          ? invoke<BeamCheckResult[]>('check_steel_beams', { inputs: steelInputs })
+          : Promise.resolve<BeamCheckResult[]>([]),
+        timber.inputs.length > 0
+          ? invoke<TimberBeamCheckResult[]>('check_timber_beams', { inputs: timber.inputs })
+          : Promise.resolve<TimberBeamCheckResult[]>([]),
+      ]);
+      const merged: MemberCheckResult[] = [...steelResults, ...timberResults]
+        .sort((a, b) => a.beam_id - b.beam_id);
+      dispatch({ type: 'SET_STEEL_CHECK_RESULTS', payload: merged });
     } catch (err) {
       dispatch({ type: 'SET_STEEL_CHECK_ERROR', payload: String(err) });
     }

@@ -12,6 +12,7 @@ use ts_rs::TS;
 
 /// Volledig toetsresultaat van één houten staaf.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../src/lib/types/timber/")]
 pub struct TimberBeamCheckResult {
     pub beam_id: u32,
     /// Doorsnedenaam, bijv. "96 x 450".

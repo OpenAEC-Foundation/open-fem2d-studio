@@ -1,9 +1,8 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useFEM } from '../../context/FEMContext';
+import { useFEM, MemberCheckResult, isSteelCheckResult } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
 import { ShieldCheck, ShieldAlert } from 'lucide-react';
-import type { BeamCheckResult } from '../../lib/types/steel/BeamCheckResult';
 import { SidePanel } from '../openaec/SidePanel';
 import { usePersistedDockSize, DOCK_KEYS } from '../openaec/DockSplitter';
 import './SteelCheckPanel.css';
@@ -11,6 +10,8 @@ import './SteelCheckPanel.css';
 interface SteelCheckPanelProps {
   onClose: () => void;
 }
+
+
 
 export const SteelCheckPanel: React.FC<SteelCheckPanelProps> = ({ onClose }) => {
   const { state, dispatch } = useFEM();
@@ -35,7 +36,10 @@ export const SteelCheckPanel: React.FC<SteelCheckPanelProps> = ({ onClose }) => 
     });
   };
 
-  const handleDoubleClick = async (beamResult: BeamCheckResult) => {
+  const handleDoubleClick = async (beamResult: MemberCheckResult) => {
+    // Het PDF-rapport bestaat nog alleen voor staal (EN 1993); voor hout is
+    // er bewust geen aanname-rapport.
+    if (!isSteelCheckResult(beamResult)) return;
     const reportInput = {
       project_name:        state.projectInfo.name         || 'Untitled',
       project_number:      state.projectInfo.projectNumber || '',
@@ -82,14 +86,19 @@ export const SteelCheckPanel: React.FC<SteelCheckPanelProps> = ({ onClose }) => 
               onDoubleClick={() => handleDoubleClick(r)}
               role="button"
               tabIndex={0}
-              title="Single-click: select beam  ·  Double-click: open EN 1993 PDF"
+              title={isSteelCheckResult(r)
+                ? 'Single-click: select beam  ·  Double-click: open EN 1993 PDF'
+                : 'Single-click: select beam  ·  EN 1995 PDF report not available yet'}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') handleClick(r.beam_id);
               }}
             >
               <div className="scp-card-main">
                 <div className="scp-card-id">Beam {r.beam_id}</div>
-                <div className="scp-card-profile">{r.profile_name} <span className="scp-grade">({r.steel_grade})</span></div>
+                <div className="scp-card-profile">
+                  {isSteelCheckResult(r) ? r.profile_name : r.section_name}{' '}
+                  <span className="scp-grade">({isSteelCheckResult(r) ? r.steel_grade : r.strength_class})</span>
+                </div>
                 <div className="scp-card-governing">
                   {r.status === 'Ok' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
                   {' '}{t('check.governing')} {r.governing_check_id}

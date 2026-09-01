@@ -7,7 +7,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useFEM } from '../../context/FEMContext';
+import { useFEM, isSteelCheckResult } from '../../context/FEMContext';
 import { useI18n } from '../../i18n/i18n';
 import { getEnabledSections, CATEGORY_NAMES, ReportSectionCategory, IReportSection } from '../../core/report/ReportConfig';
 import { FileText, Printer } from 'lucide-react';
@@ -37,9 +37,12 @@ export const ReportPanel: React.FC = () => {
   // Check if we have enough data to show a report
   const hasData = mesh.getNodeCount() > 0;
 
-  // Generate PDF via native Rust whenever check results or project info change
+  // Generate PDF via native Rust whenever check results or project info change.
+  // De native PDF dekt nu alleen staal (EN 1993); houtresultaten (EN 1995)
+  // worden gefilterd tot er een houtrapport bestaat.
+  const steelResults = state.steelCheckResults?.filter(isSteelCheckResult) ?? [];
   useEffect(() => {
-    if (!hasData || !state.steelCheckResults || state.steelCheckResults.length === 0) {
+    if (!hasData || steelResults.length === 0) {
       setPdfBlobUrl(null);
       return;
     }
@@ -53,7 +56,7 @@ export const ReportPanel: React.FC = () => {
       engineer:            projectInfo.engineer      || '',
       company:             projectInfo.company       || '',
       date:                projectInfo.date          || new Date().toISOString().slice(0, 10),
-      steel_check_results: state.steelCheckResults,
+      steel_check_results: steelResults,
     };
 
     invoke<number[]>('generate_steel_report_pdf', { input: reportInput })
