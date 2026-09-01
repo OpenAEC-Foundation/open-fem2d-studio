@@ -1,148 +1,95 @@
-.steel-check-panel {
-  width: 320px;
-  display: flex;
-  flex-direction: column;
-  background: var(--theme-bg-elevated);
-  border-left: 1px solid var(--theme-border);
-  font-family: var(--font-body);
-  flex-shrink: 0;
-  overflow: hidden;
-}
+/* Phase 3 — outer .steel-check-panel + .scp-header now provided by SidePanel.
+ * Keep only inner content styles below.
+ */
 
-.scp-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.scp-empty {
   padding: var(--sp-4);
-  border-bottom: 1px solid var(--theme-border);
-}
-
-.scp-header h2 {
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 700;
-  margin: 0;
-  color: var(--theme-fg);
-}
-
-.scp-close {
-  background: transparent;
-  border: none;
-  cursor: pointer;
   color: var(--theme-fg-muted);
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  display: flex;
-}
-
-.scp-close:hover {
-  background: var(--theme-bg-subtle);
-  color: var(--theme-fg);
+  font-size: 0.875rem;
+  text-align: center;
+  font-style: italic;
 }
 
 .scp-stats {
   display: flex;
-  gap: var(--sp-3);
+  flex-direction: column;
+  gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
-  background: var(--theme-bg-subtle);
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
+  color: var(--theme-fg-muted);
   border-bottom: 1px solid var(--theme-border);
 }
 
-.scp-stats span {
-  color: var(--theme-fg-muted);
-}
-
-.scp-stats strong {
-  color: var(--theme-fg);
-  font-weight: 600;
-}
-
-.scp-ok strong {
-  color: #16A34A;
-}
-
-.scp-notok strong {
-  color: #DC2626;
-}
-
-.scp-empty {
-  padding: var(--sp-6);
-  color: var(--theme-fg-muted);
-  font-style: italic;
-  text-align: center;
-}
+.scp-stats strong { color: var(--theme-fg); }
+.scp-stats .scp-ok { color: var(--theme-success, #16a34a); }
+.scp-stats .scp-notok { color: var(--theme-danger, #dc2626); }
 
 .scp-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  padding: var(--sp-2);
 }
 
 .scp-card {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-3);
   align-items: center;
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--theme-bg);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-1);
   border: 1px solid var(--theme-border);
-  border-radius: var(--radius-md);
+  border-radius: 4px;
+  background: var(--theme-bg);
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .scp-card:hover {
+  background: var(--theme-bg-subtle);
   border-color: var(--theme-accent);
 }
 
-.scp-card-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.scp-card-id {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  color: var(--theme-fg-muted);
 }
 
-.scp-card-id {
-  font-family: var(--font-heading);
+.scp-card-profile {
   font-weight: 600;
   font-size: 0.875rem;
   color: var(--theme-fg);
 }
 
-.scp-card-profile {
-  font-size: 0.85rem;
-  color: var(--theme-fg);
-}
-
-.scp-grade {
+.scp-card-profile .scp-grade {
+  font-weight: 400;
   color: var(--theme-fg-muted);
   font-size: 0.75rem;
 }
 
 .scp-card-governing {
-  font-size: 0.7rem;
-  color: var(--theme-fg-muted);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-size: 0.75rem;
+  color: var(--theme-fg-muted);
+  margin-top: 2px;
 }
 
 .scp-card-uc {
-  font-family: var(--font-mono);
-  font-size: 1.5rem;
+  font-family: var(--font-mono, monospace);
   font-weight: 700;
+  font-size: 1.125rem;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: 4px;
 }
 
 .scp-status-ok .scp-card-uc {
-  color: #16A34A;
+  background: var(--theme-success-subtle, rgba(22, 163, 74, 0.15));
+  color: var(--theme-success, #16a34a);
 }
 
 .scp-status-notok .scp-card-uc {
-  color: #DC2626;
-}
-
-.scp-status-notapplicable .scp-card-uc {
-  color: var(--theme-fg-muted);
+  background: var(--theme-danger-subtle, rgba(220, 38, 38, 0.15));
+  color: var(--theme-danger, #dc2626);
 }

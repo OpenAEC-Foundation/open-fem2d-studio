@@ -1,4 +1,4 @@
-.proj-info-overlay {
+﻿.proj-info-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -9,8 +9,8 @@
 }
 
 .proj-info-dialog {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
   border-radius: 8px;
   width: 480px;
   max-height: 90vh;
@@ -26,32 +26,32 @@
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
   border-radius: 8px 8px 0 0;
 }
 
 .proj-info-erp-btn {
   padding: 3px 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--accent);
+  color: var(--theme-accent);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .proj-info-erp-btn:hover {
-  background: var(--accent-subtle);
-  border-color: var(--accent);
+  background: var(--theme-accent-subtle);
+  border-color: var(--theme-accent);
 }
 
 .erp-search-section {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-dark);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg);
 }
 
 .erp-search-row {
@@ -62,21 +62,21 @@
 .erp-search-row input {
   flex: 1;
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
 .erp-search-row input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
 }
 
 .erp-search-row button {
   padding: 5px 12px;
-  background: var(--accent);
+  background: var(--theme-accent);
   border: none;
   border-radius: 4px;
   color: #fff;
@@ -109,18 +109,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 6px 8px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 11px;
   cursor: pointer;
   text-align: left;
 }
 
 .erp-result-item:hover {
-  background: var(--accent-subtle);
-  border-color: var(--accent);
+  background: var(--theme-accent-subtle);
+  border-color: var(--theme-accent);
 }
 
 .erp-result-name {
@@ -128,7 +128,7 @@
 }
 
 .erp-result-meta {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 10px;
 }
 
@@ -145,7 +145,7 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .proj-info-field span {
@@ -156,17 +156,17 @@
 .proj-info-field input {
   flex: 1;
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
 .proj-info-field input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle);
 }
 
 /* Date input color-scheme override for dark theme */
@@ -185,10 +185,10 @@
 .proj-info-field textarea {
   flex: 1;
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
   font-family: inherit;
   resize: vertical;
@@ -197,8 +197,8 @@
 
 .proj-info-field textarea:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle);
 }
 
 .proj-info-footer {
@@ -206,12 +206,12 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
 }
 
 .proj-info-btn {
   padding: 6px 20px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -220,23 +220,23 @@
 }
 
 .proj-info-btn.cancel {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
 }
 
 .proj-info-btn.cancel:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
 }
 
 .proj-info-btn.confirm {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: #fff;
 }
 
 .proj-info-btn.confirm:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }
 
 /* Map section */
@@ -255,10 +255,10 @@
 
 .proj-info-map-btn {
   padding: 4px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--accent);
+  color: var(--theme-accent);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -266,8 +266,8 @@
 }
 
 .proj-info-map-btn:hover:not(:disabled) {
-  background: var(--accent-subtle);
-  border-color: var(--accent);
+  background: var(--theme-accent-subtle);
+  border-color: var(--theme-accent);
 }
 
 .proj-info-map-btn:disabled {
@@ -277,19 +277,19 @@
 
 .proj-info-coords {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .proj-info-map-iframe {
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   width: 300px;
   height: 200px;
 }
 
 .proj-info-map-container {
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   overflow: hidden;
   width: 100%;
@@ -297,28 +297,28 @@
 }
 
 .proj-info-map-container .leaflet-container {
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
 }
 
 /* Leaflet control styling for dark theme */
 .proj-info-map-container .leaflet-control-zoom a {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-color: var(--border-light);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
+  border-color: var(--theme-border);
 }
 
 .proj-info-map-container .leaflet-control-zoom a:hover {
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
 }
 
 .proj-info-map-container .leaflet-control-attribution {
   background: rgba(0, 0, 0, 0.6);
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 9px;
 }
 
 .proj-info-map-container .leaflet-control-attribution a {
-  color: var(--accent);
+  color: var(--theme-accent);
 }
 
 .proj-info-coord-fields {
@@ -338,6 +338,6 @@
 .proj-info-coord-fields .proj-info-field input {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  background: var(--bg-secondary);
-  color: var(--text-muted);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg-subtle);
 }

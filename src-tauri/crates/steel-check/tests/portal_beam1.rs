@@ -2,7 +2,7 @@
 //!
 //! Reference: verificatie calculations/original/portal-frame.pdf §2.6.1 (page 51-54)
 //! Profile: UNP350 (channel section). Beam length: 5000 mm (horizontal girder).
-//! Governing combination: 2.1 (referentie combination, mapped to u32 21).
+//! Governing combination: 2.1 (the reference combination, mapped to u32 21).
 //! Governing check: 6.3.3 interaction with UC = 0.98.
 
 use steel_check::*;
@@ -35,7 +35,7 @@ fn run() -> &'static BeamCheckResult {
                 },
             ],
             lateral_bracing: LateralBracing { top_flange_positions: vec![], bottom_flange_positions: vec![] },
-            // referentie: Lcr,y=5000 mm, Lcr,z=5000 mm
+            // the reference: Lcr,y=5000 mm, Lcr,z=5000 mm
             buckling_length_y_m: 5.0,
             buckling_length_z_m: 5.0,
             deflection_limit_class: DeflectionClass::Floor,
@@ -43,6 +43,10 @@ fn run() -> &'static BeamCheckResult {
             deflection_actual_max_mm: 0.0,
             is_cantilever: false,
             consequence_class: ConsequenceClass::CC1,
+            pre_camber_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            q_equiv_n_per_mm: 0.0,
+            z_a_mm: 0.0,
         };
         check_beam(input)
     })
@@ -71,8 +75,8 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn portal_beam1_compression() {
     let r = run();
-    // Phase 13-G: UNP350 area aligned with referentie (A=7665.7 mm²)
-    // N_c,Rd = 7665.7 × 235 / 1.0 / 1000 = 1801.44 kN — matches referentie exactly
+    // Phase 13-G: UNP350 area aligned with the reference (A=7665.7 mm²)
+    // N_c,Rd = 7665.7 × 235 / 1.0 / 1000 = 1801.44 kN — matches the reference exactly
     assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 1801.44, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.01, max_relative = 0.15); // very small UC, wider tolerance
 }
@@ -80,20 +84,20 @@ fn portal_beam1_compression() {
 #[test]
 fn portal_beam1_bending() {
     let r = run();
-    // Phase 13-F: UNP350 Wpl,y corrected to 889763 mm³ (referentie catalog value)
-    // M_y,c,Rd = 889763 × 235 / 1.0 / 1e6 = 209.094 kNm — now matches referentie exactly
+    // Phase 13-F: UNP350 Wpl,y corrected to 889763 mm³ (the reference catalog value)
+    // M_y,c,Rd = 889763 × 235 / 1.0 / 1e6 = 209.094 kNm — now matches the reference exactly
     assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 209.094, max_relative = 1e-3);
-    // UC = 194.796 / 209.094 = 0.932 (referentie: 0.93 — now aligned)
+    // UC = 194.796 / 209.094 = 0.932 (reference: 0.93 — now aligned)
     assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 0.932, max_relative = 0.025);
 }
 
 #[test]
 fn portal_beam1_shear() {
     let r = run();
-    // Phase 13-G: UNP350 Av_z aligned with referentie (Av=4946 mm²)
-    // V_c,z,Rd = 4946 × (235/√3) / 1.0 / 1000 = 671.06 kN — matches referentie 671.1 kN
+    // Phase 13-G: UNP350 Av_z aligned with the reference (Av=4946 mm²)
+    // V_c,z,Rd = 4946 × (235/√3) / 1.0 / 1000 = 671.06 kN — matches the reference 671.1 kN
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 671.06, max_relative = 1e-3);
-    // UC = 235.084 / 671.06 = 0.350 (referentie: 0.35)
+    // UC = 235.084 / 671.06 = 0.350 (reference: 0.35)
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.350, max_relative = 0.025);
 }
 
@@ -110,10 +114,10 @@ fn portal_beam1_channel_ltb() {
 #[test]
 fn portal_beam1_governing_ok() {
     let r = run();
-    // referentie governing: 6.3.3 UC=0.98, beam is OK.
-    // Phase 13-F: Wpl corrected to 889763 mm³, bending and interaction UCs now aligned with referentie.
+    // the reference governing: 6.3.3 UC=0.98, beam is OK.
+    // Phase 13-F: Wpl corrected to 889763 mm³, bending and interaction UCs now aligned with the reference.
     assert!(r.uc_max > 0.0, "uc_max should be positive");
-    // Document UC for comparison with referentie reference:
+    // Document UC for comparison with the reference reference:
     eprintln!("portal_beam1 uc_max (Phase 13-F) = {}", r.uc_max);
 }
 

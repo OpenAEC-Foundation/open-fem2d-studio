@@ -1087,4 +1087,59 @@ export const nl: Record<string, string> = {
   'beam.props.deflection.type': 'Type',
   'beam.props.deflection.limit': 'Limiet L /',
   'beam.props.inputPerBeam': 'Invoer per staaf',
+
+  // ─── Fase 8: Lint IA herstructurering (tabs) ────────────────────────
+  'ribbon.tabs.file': 'Bestand',
+  'ribbon.tabs.home': 'Start',
+  'ribbon.tabs.geometry': 'Geometrie',
+  'ribbon.tabs.loads': 'Belastingen',
+  'ribbon.tabs.analyze': 'Analyseren',
+  'ribbon.tabs.check': 'Toetsen',
+  'ribbon.tabs.view': 'Weergave',
+
+  // ─── Fase 8: Lint groep labels ──────────────────────────────────────
+  'ribbon.groups.clipboard': 'Klembord',
+  'ribbon.groups.selection': 'Selectie',
+  'ribbon.groups.layouts': 'Indelingen',
+  'ribbon.groups.panels': 'Panelen',
+  'ribbon.groups.modify': 'Wijzigen',
+  'ribbon.groups.points': 'Puntlasten',
+  'ribbon.groups.distributed': 'Verdeeld',
+  'ribbon.groups.special': 'Speciaal',
+  'ribbon.groups.cases': 'Gevallen',
+  'ribbon.groups.solve': 'Oplossen',
+  'ribbon.groups.sections': 'Profielen',
+  'ribbon.groups.validation': 'Validatie',
+  'ribbon.groups.properties': 'Eigenschappen',
+  'ribbon.groups.browser': 'Browser',
+  'ribbon.groups.display': 'Weergave',
+  'ribbon.groups.info': 'Info',
+  'ribbon.groups.view': 'Beeld',
+
+  // ─── Fase 8: Eigenschappen-paneel ───────────────────────────────────
+  'properties.empty': 'Selecteer een element om eigenschappen te bewerken.',
+  'properties.multiSelect': 'elementen geselecteerd',
+  'properties.bar': 'Staaf',
+  'properties.node': 'Knoop',
+  'properties.plate': 'Plaat',
+  'properties.section': 'Profiel',
+  'properties.loads': 'Belastingen',
+
+  // ─── Fase 8: Sheet-titels ───────────────────────────────────────────
+  'sheets.loadCase': 'Belastinggevallen',
+  'sheets.loadCombination': 'Belastingcombinaties',
+  'sheets.load': 'Puntlast',
+  'sheets.lineLoad': 'Verdeelde Belasting',
+  'sheets.edgeLoad': 'Randbelasting',
+  'sheets.grids': 'Constructieve Stramienen',
+  'sheets.materials': 'Materialen',
+  'sheets.plate': 'Plaatelement',
+  'sheets.sectionProperties': 'Profieleigenschappen',
+  'sheets.thermalLoad': 'Thermische Belasting',
+  'sheets.concreteReinforcement': 'Plaatwapening',
+
+  // ─── Fase 8: Statusbalk ─────────────────────────────────────────────
+  'status.nodes': 'Knopen',
+  'status.zoom': 'Zoom',
+  'status.project': 'Project',
 };

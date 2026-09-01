@@ -1,4 +1,4 @@
-/* ── Overlay ─────────────────────────────────────────────────────────── */
+﻿/* â”€â”€ Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .lc-combo-overlay {
   position: fixed;
@@ -10,11 +10,11 @@
   z-index: 1000;
 }
 
-/* ── Dialog shell ────────────────────────────────────────────────────── */
+/* â”€â”€ Dialog shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .lc-combo-dialog {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
   border-radius: 8px;
   width: 620px;
   max-height: 540px;
@@ -27,13 +27,13 @@
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
   border-radius: 8px 8px 0 0;
 }
 
-/* ── Body: sidebar + detail ──────────────────────────────────────────── */
+/* â”€â”€ Body: sidebar + detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .lc-combo-body {
   flex: 1;
@@ -48,8 +48,8 @@
   min-width: 200px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
-  background: var(--bg-secondary);
+  border-right: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
 }
 
 .lc-combo-list {
@@ -67,7 +67,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.1s ease;
@@ -75,12 +75,12 @@
 }
 
 .lc-combo-list-item:hover {
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
 }
 
 .lc-combo-list-item.active {
-  background: var(--accent-subtle);
-  border-color: var(--accent);
+  background: var(--theme-accent-subtle);
+  border-color: var(--theme-accent);
 }
 
 .lc-combo-list-name {
@@ -115,7 +115,7 @@
 .lc-combo-empty {
   padding: 16px 10px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   text-align: center;
 }
 
@@ -123,7 +123,7 @@
   display: flex;
   gap: 6px;
   padding: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
 }
 
 /* -- Detail (right) -------------------------------------------------- */
@@ -148,7 +148,7 @@
   gap: 4px;
   flex: 1;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   font-weight: 500;
 }
 
@@ -159,18 +159,18 @@
 .lc-combo-field input,
 .lc-combo-field select {
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
 .lc-combo-field input:focus,
 .lc-combo-field select:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle);
 }
 
 .lc-combo-field select {
@@ -183,7 +183,7 @@
 .lc-combo-factors-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   margin-top: 4px;
@@ -192,7 +192,7 @@
 .lc-combo-factors-table-wrap {
   flex: 1;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
 }
 
@@ -215,15 +215,15 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  color: var(--text-muted);
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
+  color: var(--theme-fg-subtle);
+  background: var(--theme-bg-elevated);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .lc-combo-factors-table td {
   padding: 5px 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-primary);
+  border-bottom: 1px solid var(--theme-border);
+  color: var(--theme-fg);
 }
 
 .lc-combo-factors-table tr:last-child td {
@@ -246,7 +246,7 @@
 
 .lc-combo-factor-type {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   text-transform: capitalize;
 }
 
@@ -257,10 +257,10 @@
 .lc-combo-factor-input-cell input {
   width: 100%;
   padding: 3px 6px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
   font-family: monospace;
   text-align: right;
@@ -268,13 +268,13 @@
 
 .lc-combo-factor-input-cell input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle);
 }
 
 .lc-combo-empty-row {
   text-align: center;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 11px;
   padding: 12px 10px !important;
 }
@@ -285,27 +285,27 @@
   justify-content: center;
   height: 100%;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   text-align: center;
   padding: 24px;
   line-height: 1.5;
 }
 
-/* ── Footer ──────────────────────────────────────────────────────────── */
+/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .lc-combo-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--theme-border);
 }
 
-/* ── Buttons ─────────────────────────────────────────────────────────── */
+/* â”€â”€ Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .lc-combo-btn {
   padding: 6px 20px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -321,19 +321,19 @@
 /* Sidebar add / delete */
 .lc-combo-btn.add {
   flex: 1;
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: #fff;
 }
 
 .lc-combo-btn.add:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }
 
 .lc-combo-btn.delete {
   flex: 1;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
 }
 
 .lc-combo-btn.delete:hover:not(:disabled) {
@@ -344,36 +344,36 @@
 
 /* Footer cancel / apply / confirm */
 .lc-combo-btn.cancel {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
 }
 
 .lc-combo-btn.cancel:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
 }
 
 .lc-combo-btn.apply {
-  background: var(--bg-tertiary);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--theme-bg-subtle);
+  border-color: var(--theme-accent);
+  color: var(--theme-accent);
 }
 
 .lc-combo-btn.apply:hover {
-  background: var(--accent-subtle);
+  background: var(--theme-accent-subtle);
 }
 
 .lc-combo-btn.confirm {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: #fff;
 }
 
 .lc-combo-btn.confirm:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────── */
+/* â”€â”€ Scrollbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .lc-combo-list::-webkit-scrollbar,
 .lc-combo-detail::-webkit-scrollbar,
@@ -384,12 +384,12 @@
 .lc-combo-list::-webkit-scrollbar-track,
 .lc-combo-detail::-webkit-scrollbar-track,
 .lc-combo-factors-table-wrap::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: var(--theme-bg);
 }
 
 .lc-combo-list::-webkit-scrollbar-thumb,
 .lc-combo-detail::-webkit-scrollbar-thumb,
 .lc-combo-factors-table-wrap::-webkit-scrollbar-thumb {
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
   border-radius: 3px;
 }

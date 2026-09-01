@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Section Properties Dialog
  *
  * Shows steel profile properties with SVG visualization including:
@@ -10,6 +10,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Sheet } from '../openaec/Sheet';
 import { IBeamSection } from '../../core/fem/types';
 import { rectangularSection, iProfileSection, tubularSection } from '../../core/fem/Beam';
 import {
@@ -134,7 +135,7 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
   const showFilletLines = false; // Hoeklijnen disabled
   const [rotation, setRotation] = useState(0); // degrees
 
-  // Custom section properties (in mm² and mm⁴)
+  // Custom section properties (in mmÂ² and mmâ´)
   const [A, setA] = useState(section ? (section.section.A * 1e6).toFixed(1) : '1000');
   const [I, setI] = useState(section ? (section.section.I * 1e12).toFixed(1) : '1000000');
   const [h, setH] = useState(section ? (section.section.h * 1000).toFixed(1) : '100');
@@ -437,8 +438,8 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
       } else {
         const dMm = parseFloat(concD) || 400;
         const r = dMm / 2;
-        const areaVal = Math.PI * r * r; // mm²
-        const iyVal = Math.PI * Math.pow(r, 4) / 4; // mm⁴
+        const areaVal = Math.PI * r * r; // mmÂ²
+        const iyVal = Math.PI * Math.pow(r, 4) / 4; // mmâ´
         newSection = {
           A: areaVal * 1e-6,
           I: iyVal * 1e-12,
@@ -565,9 +566,9 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
 
   const formatValue = (val: number, unit: string, decimals = 2) => {
     if (Math.abs(val) < 1e-9) return `0 ${unit}`;
-    if (Math.abs(val) >= 1e6) return `${(val / 1e6).toFixed(decimals)}×10⁶ ${unit}`;
-    if (Math.abs(val) >= 1e3) return `${(val / 1e3).toFixed(decimals)}×10³ ${unit}`;
-    if (Math.abs(val) < 0.01) return `${(val * 1e3).toFixed(decimals)}×10⁻³ ${unit}`;
+    if (Math.abs(val) >= 1e6) return `${(val / 1e6).toFixed(decimals)}Ã—10â¶ ${unit}`;
+    if (Math.abs(val) >= 1e3) return `${(val / 1e3).toFixed(decimals)}Ã—10Â³ ${unit}`;
+    if (Math.abs(val) < 0.01) return `${(val * 1e3).toFixed(decimals)}Ã—10â»Â³ ${unit}`;
     return `${val.toFixed(decimals)} ${unit}`;
   };
 
@@ -589,12 +590,12 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
       const ry = (svgH - rh) / 2;
       return (
         <svg className="concrete-preview-svg" width={svgW} height={svgH}>
-          <rect x={rx} y={ry} width={rw} height={rh} fill="none" stroke="var(--text-secondary, #a0a0c0)" strokeWidth={2} />
+          <rect x={rx} y={ry} width={rw} height={rh} fill="none" stroke="var(--theme-fg-muted)" strokeWidth={2} />
           {/* Dimension lines */}
-          <line x1={rx} y1={ry + rh + 15} x2={rx + rw} y2={ry + rh + 15} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
-          <text x={rx + rw / 2} y={ry + rh + 25} textAnchor="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{bMm} mm</text>
-          <line x1={rx + rw + 15} y1={ry} x2={rx + rw + 15} y2={ry + rh} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
-          <text x={rx + rw + 20} y={ry + rh / 2} textAnchor="start" dominantBaseline="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{hMm} mm</text>
+          <line x1={rx} y1={ry + rh + 15} x2={rx + rw} y2={ry + rh + 15} stroke="var(--theme-fg-subtle)" strokeWidth={1} />
+          <text x={rx + rw / 2} y={ry + rh + 25} textAnchor="middle" fill="var(--theme-fg-subtle)" fontSize={10}>{bMm} mm</text>
+          <line x1={rx + rw + 15} y1={ry} x2={rx + rw + 15} y2={ry + rh} stroke="var(--theme-fg-subtle)" strokeWidth={1} />
+          <text x={rx + rw + 20} y={ry + rh / 2} textAnchor="start" dominantBaseline="middle" fill="var(--theme-fg-subtle)" fontSize={10}>{hMm} mm</text>
         </svg>
       );
     } else {
@@ -603,9 +604,9 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
       const cr = (dMm * scale) / 2;
       return (
         <svg className="concrete-preview-svg" width={svgW} height={svgH}>
-          <circle cx={svgW / 2} cy={svgH / 2} r={cr} fill="none" stroke="var(--text-secondary, #a0a0c0)" strokeWidth={2} />
-          <line x1={svgW / 2 - cr} y1={svgH / 2 + cr + 15} x2={svgW / 2 + cr} y2={svgH / 2 + cr + 15} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
-          <text x={svgW / 2} y={svgH / 2 + cr + 25} textAnchor="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{dMm} mm</text>
+          <circle cx={svgW / 2} cy={svgH / 2} r={cr} fill="none" stroke="var(--theme-fg-muted)" strokeWidth={2} />
+          <line x1={svgW / 2 - cr} y1={svgH / 2 + cr + 15} x2={svgW / 2 + cr} y2={svgH / 2 + cr + 15} stroke="var(--theme-fg-subtle)" strokeWidth={1} />
+          <text x={svgW / 2} y={svgH / 2 + cr + 25} textAnchor="middle" fill="var(--theme-fg-subtle)" fontSize={10}>{dMm} mm</text>
         </svg>
       );
     }
@@ -778,10 +779,10 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
           return (
             <svg className="concrete-preview-svg" width={svgW} height={svgH}>
               <rect x={rx} y={ry} width={rw} height={rh} fill="none" stroke="#C4A35A" strokeWidth={2} />
-              <line x1={rx} y1={ry + rh + 15} x2={rx + rw} y2={ry + rh + 15} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
-              <text x={rx + rw / 2} y={ry + rh + 25} textAnchor="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{bMm} mm</text>
-              <line x1={rx + rw + 15} y1={ry} x2={rx + rw + 15} y2={ry + rh} stroke="var(--text-muted, #6a6a8a)" strokeWidth={1} />
-              <text x={rx + rw + 20} y={ry + rh / 2} textAnchor="start" dominantBaseline="middle" fill="var(--text-muted, #6a6a8a)" fontSize={10}>{hMm} mm</text>
+              <line x1={rx} y1={ry + rh + 15} x2={rx + rw} y2={ry + rh + 15} stroke="var(--theme-fg-subtle)" strokeWidth={1} />
+              <text x={rx + rw / 2} y={ry + rh + 25} textAnchor="middle" fill="var(--theme-fg-subtle)" fontSize={10}>{bMm} mm</text>
+              <line x1={rx + rw + 15} y1={ry} x2={rx + rw + 15} y2={ry + rh} stroke="var(--theme-fg-subtle)" strokeWidth={1} />
+              <text x={rx + rw + 20} y={ry + rh / 2} textAnchor="start" dominantBaseline="middle" fill="var(--theme-fg-subtle)" fontSize={10}>{hMm} mm</text>
             </svg>
           );
         })()}
@@ -812,13 +813,19 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
   };
 
   return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div className="section-properties-dialog wide" onClick={e => e.stopPropagation()}>
-        <div className="dialog-header">
-          <h3>{isNew ? 'New Section' : t('sectionProps.title')}</h3>
-          <button className="dialog-close" onClick={onClose}>×</button>
-        </div>
-
+    <Sheet
+      open
+      onClose={onClose}
+      title={isNew ? 'New Section' : t('sectionProps.title')}
+      width={620}
+      footer={
+        isNew && onSave ? (
+          <button className="btn-primary" onClick={handleSave} disabled={isSaveDisabled()}>
+            {t('common.add')}
+          </button>
+        ) : undefined
+      }
+    >
         {/* Material category tabs */}
         {isNew && (
           <div className="section-dialog-tabs">
@@ -910,11 +917,11 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
                     <div className="custom-props">
                       <div className="form-row">
                         <div className="form-group half">
-                          <label>A (mm²)</label>
+                          <label>A (mmÂ²)</label>
                           <input type="number" value={A} onChange={e => setA(e.target.value)} />
                         </div>
                         <div className="form-group half">
-                          <label>I<sub>y</sub> (mm⁴)</label>
+                          <label>I<sub>y</sub> (mmâ´)</label>
                           <input type="number" value={I} onChange={e => setI(e.target.value)} />
                         </div>
                       </div>
@@ -1057,7 +1064,7 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
                           max="180"
                           step="15"
                         />
-                        <span>°</span>
+                        <span>Â°</span>
                       </label>
                     </div>
                   </div>
@@ -1082,31 +1089,31 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
                   <div className="computed-props-grid">
                     <div className="prop-row">
                       <span className="prop-label">A</span>
-                      <span className="prop-value">{formatValue(computedProps.props.A, 'mm²')}</span>
+                      <span className="prop-value">{formatValue(computedProps.props.A, 'mmÂ²')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">I<sub>y</sub></span>
-                      <span className="prop-value">{formatValue(computedProps.props.Ixx_c, 'mm⁴')}</span>
+                      <span className="prop-value">{formatValue(computedProps.props.Ixx_c, 'mmâ´')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">I<sub>z</sub></span>
-                      <span className="prop-value">{formatValue(computedProps.props.Iyy_c, 'mm⁴')}</span>
+                      <span className="prop-value">{formatValue(computedProps.props.Iyy_c, 'mmâ´')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">W<sub>el,y</sub></span>
-                      <span className="prop-value">{formatValue(computedProps.props.Wx, 'mm³')}</span>
+                      <span className="prop-value">{formatValue(computedProps.props.Wx, 'mmÂ³')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">W<sub>el,z</sub></span>
-                      <span className="prop-value">{formatValue(computedProps.props.Wy, 'mm³')}</span>
+                      <span className="prop-value">{formatValue(computedProps.props.Wy, 'mmÂ³')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">W<sub>pl,y</sub></span>
-                      <span className="prop-value">{formatValue(computedProps.wplX, 'mm³')}</span>
+                      <span className="prop-value">{formatValue(computedProps.wplX, 'mmÂ³')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">W<sub>pl,z</sub></span>
-                      <span className="prop-value">{formatValue(computedProps.wplY, 'mm³')}</span>
+                      <span className="prop-value">{formatValue(computedProps.wplY, 'mmÂ³')}</span>
                     </div>
                     <div className="prop-row">
                       <span className="prop-label">i<sub>y</sub></span>
@@ -1120,23 +1127,23 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
 
                   {rotatedProps && (
                     <div className="computed-props" style={{ marginTop: '8px' }}>
-                      <div className="computed-props-title">Rotated Properties ({rotation}°)</div>
+                      <div className="computed-props-title">Rotated Properties ({rotation}Â°)</div>
                       <div className="computed-props-grid">
                         <div className="prop-row">
                           <span className="prop-label">I<sub>y,rot</sub></span>
-                          <span className="prop-value">{formatValue(rotatedProps.Iy, 'mm⁴')}</span>
+                          <span className="prop-value">{formatValue(rotatedProps.Iy, 'mmâ´')}</span>
                         </div>
                         <div className="prop-row">
                           <span className="prop-label">I<sub>z,rot</sub></span>
-                          <span className="prop-value">{formatValue(rotatedProps.Iz, 'mm⁴')}</span>
+                          <span className="prop-value">{formatValue(rotatedProps.Iz, 'mmâ´')}</span>
                         </div>
                         <div className="prop-row">
                           <span className="prop-label">W<sub>el,y,rot</sub></span>
-                          <span className="prop-value">{formatValue(rotatedProps.Wy, 'mm³')}</span>
+                          <span className="prop-value">{formatValue(rotatedProps.Wy, 'mmÂ³')}</span>
                         </div>
                         <div className="prop-row">
                           <span className="prop-label">W<sub>el,z,rot</sub></span>
-                          <span className="prop-value">{formatValue(rotatedProps.Wz, 'mm³')}</span>
+                          <span className="prop-value">{formatValue(rotatedProps.Wz, 'mmÂ³')}</span>
                         </div>
                         <div className="prop-row">
                           <span className="prop-label">h<sub>rot</sub></span>
@@ -1177,17 +1184,6 @@ export function SectionPropertiesDialog({ section, isNew, onSave, onClose }: Sec
           )}
         </div>
 
-        <div className="dialog-footer">
-          {isNew && onSave && (
-            <button className="btn-primary" onClick={handleSave} disabled={isSaveDisabled()}>
-              {t('common.add')}
-            </button>
-          )}
-          <button className="btn-secondary" onClick={onClose}>
-            {isNew ? t('common.cancel') : t('common.close')}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

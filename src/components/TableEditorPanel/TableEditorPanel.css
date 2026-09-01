@@ -1,9 +1,9 @@
-.table-editor-panel {
+﻿.table-editor-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--theme-bg);
+  color: var(--theme-fg);
 }
 
 .table-editor-toolbar {
@@ -11,8 +11,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--theme-bg-elevated);
+  border-bottom: 1px solid var(--theme-border);
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -26,9 +26,9 @@
 .table-selector button {
   padding: 6px 12px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   cursor: pointer;
   font-size: 11px;
   transition: all 0.15s;
@@ -37,12 +37,12 @@
 
 .table-selector button:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .table-selector button.active {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: white;
 }
 
@@ -55,9 +55,9 @@
 .table-actions button {
   padding: 6px 8px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -68,7 +68,7 @@
 
 .table-actions button:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .table-actions .add-btn {
@@ -95,8 +95,8 @@
 
 .table-actions .select-all-btn,
 .table-actions .clear-selection-btn {
-  color: var(--accent-color);
-  border-color: var(--accent-color);
+  color: var(--theme-accent);
+  border-color: var(--theme-accent);
 }
 
 .table-actions .select-all-btn:hover,
@@ -106,14 +106,14 @@
 
 .table-loadcase-info {
   padding: 6px 12px;
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
   font-size: 11px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-color);
+  color: var(--theme-fg-muted);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .table-loadcase-info strong {
-  color: var(--accent-color);
+  color: var(--theme-accent);
 }
 
 .table-container {
@@ -131,12 +131,12 @@
 .data-table th {
   position: sticky;
   top: 0;
-  background: var(--bg-secondary);
+  background: var(--theme-bg-elevated);
   padding: 8px 10px;
   text-align: left;
   font-weight: 500;
-  color: var(--text-secondary);
-  border-bottom: 2px solid var(--border-color);
+  color: var(--theme-fg-muted);
+  border-bottom: 2px solid var(--theme-border);
   white-space: nowrap;
   z-index: 1;
 }
@@ -152,7 +152,7 @@
 
 .data-table td {
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--theme-border);
   vertical-align: middle;
 }
 
@@ -176,7 +176,7 @@
 
 .data-table .id-cell {
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--theme-accent);
   width: 50px;
 }
 
@@ -204,12 +204,12 @@
 }
 
 .row-checkbox:hover {
-  color: var(--accent-color);
+  color: var(--theme-accent);
   background: var(--bg-hover);
 }
 
 .data-table tr.selected .row-checkbox {
-  color: var(--accent-color);
+  color: var(--theme-accent);
 }
 
 .delete-btn {
@@ -248,10 +248,10 @@
   padding: 2px 4px;
   font-size: 12px;
   font-family: inherit;
-  background: var(--bg-primary);
-  border: 1px solid var(--accent-color);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-accent);
   border-radius: 3px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   outline: none;
   text-align: right;
 }
@@ -268,7 +268,7 @@
   width: 18px;
   height: 18px;
   border-radius: 3px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--theme-border);
   vertical-align: middle;
 }
 
@@ -276,13 +276,13 @@
   padding: 8px 12px;
   font-size: 11px;
   color: var(--text-tertiary);
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
+  background: var(--theme-bg-elevated);
+  border-top: 1px solid var(--theme-border);
 }
 
 /* Zebra striping for better readability */
 .data-table tbody tr:nth-child(even) {
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.02));
+  background: var(--theme-bg-subtle));
 }
 
 .data-table tbody tr:nth-child(even):hover {

@@ -24,7 +24,7 @@ use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel};
 use steel_profiles::{db, ProfileKind};
 use crate::input::BeamCheckInput;
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
-use crate::deflection::check_deflection;
+use crate::deflection::check_deflection_pair;
 
 /// Find the force point that maximises `score(forces)`.
 /// Falls back to a zero-force point if the envelope is empty.
@@ -238,6 +238,8 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             gov_bending.forces.my_ed,
             my_at_quarter,
             my_at_half,
+            input.q_equiv_n_per_mm,
+            input.z_a_mm,
             bend_state,
         );
         let chi_lt = ltb.value;
@@ -274,12 +276,18 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     );
     checks.push(make_stability(n_mz));
 
-    // 9. SLS Deflection
-    let defl = check_deflection(
-        input.deflection_actual_max_mm, input.length_m,
-        input.deflection_limit_class, input.deflection_limit_numerator,
+    // 9. Doorbuiging (BGT): eindzakking w_fin (L/klasse) en bijkomende
+    //    zakking w_add (L/150), conform de referentie-uitwerking.
+    let (defl_fin, defl_add) = check_deflection_pair(
+        input.deflection_actual_max_mm,
+        input.pre_camber_mm,
+        input.deflection_permanent_mm,
+        input.length_m,
+        input.deflection_limit_class,
+        input.deflection_limit_numerator,
     );
-    checks.push(make_resistance(defl));
+    checks.push(make_resistance(defl_fin));
+    checks.push(make_resistance(defl_add));
 
     // Apply consequence class factor (KFI) — for v1, just note; not yet applied to individual UCs
     let _k_fi: f64 = input.consequence_class.k_fi();

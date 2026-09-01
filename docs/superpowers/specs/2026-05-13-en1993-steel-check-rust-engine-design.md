@@ -2,24 +2,24 @@
 
 **Date**: 2026-05-13
 **Status**: Approved (sections 1-7)
-**Scope**: Reproduce de referentie-style steel checks (NEN-EN 1993-1-1+C2+A1/NB:2016 nl) in a 8-crate Rust workspace, exposed via Tauri commands to the React UI, with OpenAEC §4.3 reporting.
+**Scope**: Reproduce steel checks matching the reference calculation's style (NEN-EN 1993-1-1+C2+A1/NB:2016 nl) in a 8-crate Rust workspace, exposed via Tauri commands to the React UI, with OpenAEC §4.3 reporting.
 **Source-of-truth references**:
-- `verificatie calculations/original/Calc 2.pdf` — de referentie output, 3 beams (HEB160, HEB160, HFRHS200×200×16, S 235), 59 pages, full art. 6.2 + 6.3 + LTB-NB derivation
-- `verificatie calculations/original/portal-frame.pdf` — de referentie output, 4 beams (UNP350, HEB160×2, HEB300, S 235)
-- `verificatie calculations/Steel Properties.png` — extern-style Beam Properties dialog with EN 1993-1-1 tab
+- `verificatie calculations/original/Calc 2.pdf` — reference calculation output, 3 beams (HEB160, HEB160, HFRHS200×200×16, S 235), 59 pages, full art. 6.2 + 6.3 + LTB-NB derivation
+- `verificatie calculations/original/portal-frame.pdf` — reference calculation output, 4 beams (UNP350, HEB160×2, HEB300, S 235)
+- `verificatie calculations/Steel Properties.png` — Beam Properties dialog from the reference, with EN 1993-1-1 tab
 
 ---
 
 ## 1. Goal & Acceptance Criteria
 
-Build a complete, **systematically-applicable** EN 1993-1-1 steel check engine that reproduces — to 3 decimal places — every Unity Check value in the two reference de referentie calculations, presented in OpenAEC-styled reports with full step-by-step derivation matching the referentie layout (option (a) from brainstorming).
+Build a complete, **systematically-applicable** EN 1993-1-1 steel check engine that reproduces — to 3 decimal places — every Unity Check value in the two reference calculations, presented in OpenAEC-styled reports with full step-by-step derivation matching the reference layout (option (a) from brainstorming).
 
 The original normtoetsing functionality was stripped in commit `87377a6` (Feb 2026). Old code recoverable from `87377a6^:src/core/standards/{EurocodeNL,SteelCheck,SteelConnection,ConcreteCheck}.ts` (~1957 deleted lines) — used as design reference but the new implementation lives in **Rust crates**, not TypeScript, for reusability + performance + Tauri-native architecture.
 
 ### Success criteria (HARD)
 
-- All 7 reference beams (3 from Calc 2, 4 from portal-frame) reproduce in automated Rust tests with `assert_relative_eq!` matching referentie numbers to within 0.1% on resistances and 1% on UCs.
-- Status verdicts (OK/NotOk) match referentie exactly.
+- All 7 reference beams (3 from Calc 2, 4 from portal-frame) reproduce in automated Rust tests with `assert_relative_eq!` matching the reference numbers to within 0.1% on resistances and 1% on UCs.
+- Status verdicts (OK/NotOk) match the reference exactly.
 - Generated report (PDF via browser print or HTML via tauri:build) contains step-by-step derivation per beam, OpenAEC §4.3 styled (header banner + footer + Space Grotesk titles).
 - New checks (additional EN articles, alternative materials) can be added without touching unrelated crates — proven by the 8-crate dependency DAG.
 
@@ -335,7 +335,7 @@ Path: `src/components/SteelCheckPanel/SteelCheckPanel.tsx + .css`. Compact card-
 
 Two new entries in `ReportSectionType`:
 - `'en1993_summary'` → table with Beam | Profile | Grade | UC_max | Governing | Status
-- `'en1993_calculations'` → per-beam page with full referentie-style derivation
+- `'en1993_calculations'` → per-beam page with full reference-style derivation
 
 Per-beam render iterates `BeamCheckResult.checks[]` with reusable `<CheckBlock>` component:
 ```tsx
@@ -499,7 +499,7 @@ pub struct ForceStateSnapshot { combination_id, position_mm, forces }
 7. Aggregate max UC + governing check id
 8. Return `BeamCheckResult` with all `NamedCheck` entries (one per article)
 
-Order matches referentie layout. Notes rendered inline (e.g., "V_z,Ed < V_z,pl,Rd / 2 — shear effect on moment can be neglected").
+Order matches the reference layout. Notes rendered inline (e.g., "V_z,Ed < V_z,pl,Rd / 2 — shear effect on moment can be neglected").
 
 ### 8.4 Numerical conventions
 
@@ -531,8 +531,8 @@ Each test file ≈ 5-7 individual assertions per beam (compression, bending, she
 
 | Type | Tolerance | Reason |
 |------|-----------|--------|
-| Resistance values | `max_relative = 1e-3` (0.1%) | referentie shows 3 decimals |
-| Unity checks | `max_relative = 0.01` (1%) | referentie rounds to 2 decimals |
+| Resistance values | `max_relative = 1e-3` (0.1%) | Reference shows 3 decimals |
+| Unity checks | `max_relative = 0.01` (1%) | Reference rounds to 2 decimals |
 | Geometric properties | `max_relative = 0.005` (0.5%) | Catalog values are hand-rounded |
 | LTB intermediate (S, C, λ_LT) | `max_relative = 0.005` (0.5%) | Multi-step accumulated rounding |
 | Status enum | exact | Hard threshold |
@@ -565,7 +565,7 @@ GitHub Actions (extending existing):
 - `calc2-beam1.md`, `calc2-beam2.md`, `calc2-beam3.md`
 - `portal-beam1.md`, `portal-beam2.md`, `portal-beam3.md`, `portal-beam4.md`
 
-Each file: snippet from referentie PDF → corresponding Rust test → explanation of any deviations (e.g. NB.157 √-rounding). Provides audit trail for structural-engineering review.
+Each file: snippet from the reference PDF → corresponding Rust test → explanation of any deviations (e.g. NB.157 √-rounding). Provides audit trail for structural-engineering review.
 
 ## 10. Definition of Done
 

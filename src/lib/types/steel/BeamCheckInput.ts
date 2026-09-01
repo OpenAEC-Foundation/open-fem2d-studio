@@ -4,4 +4,23 @@ import type { DeflectionClass } from "./DeflectionClass";
 import type { ForcePoint } from "./ForcePoint";
 import type { LateralBracing } from "./LateralBracing";
 
-export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, buckling_length_y_m: number, buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, is_cantilever: boolean, consequence_class: ConsequenceClass, };
+export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, buckling_length_y_m: number, buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, is_cantilever: boolean, consequence_class: ConsequenceClass, 
+/**
+ * Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.
+ */
+pre_camber_mm: number, 
+/**
+ * Doorbuiging onder de permanente BGT-combinatie (mm), voor w_add.
+ */
+deflection_permanent_mm: number, 
+/**
+ * Equivalente gelijkmatig verdeelde belasting in het kipveld (N/mm),
+ * voor B* volgens NB.NB.4.3(3). 0 = alleen eindmomenten.
+ */
+q_equiv_n_per_mm: number, 
+/**
+ * Afstand zwaartepunt → aangrijpingspunt van de belasting (mm).
+ * Positief = boven het zwaartepunt (destabiliserend, bijvoorbeeld een
+ * belasting op de bovenflens: z_a ≈ h/2).
+ */
+z_a_mm: number, };

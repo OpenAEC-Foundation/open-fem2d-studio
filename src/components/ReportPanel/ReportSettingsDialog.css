@@ -1,4 +1,4 @@
-/* ReportSettingsDialog.css */
+﻿/* ReportSettingsDialog.css */
 
 .report-settings-dialog {
   width: 700px;
@@ -24,7 +24,7 @@
 .settings-general h3 {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   margin: 0 0 12px 0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -41,7 +41,7 @@
 /* Section category */
 .section-category {
   margin-bottom: 16px;
-  background: var(--bg-secondary);
+  background: var(--theme-bg-elevated);
   border-radius: 6px;
   padding: 12px;
 }
@@ -63,18 +63,18 @@
 .section-category-toggle input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: var(--accent-color);
+  accent-color: var(--theme-accent);
 }
 
 .section-category-name {
   font-weight: 600;
   font-size: 11px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .section-category-count {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 /* Section items */
@@ -89,17 +89,17 @@
   padding: 4px 0;
   cursor: pointer;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .section-toggle:hover {
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .section-toggle input[type="checkbox"] {
   width: 12px;
   height: 12px;
-  accent-color: var(--accent-color);
+  accent-color: var(--theme-accent);
 }
 
 /* Settings fields */
@@ -113,23 +113,23 @@
 .settings-field > span {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .settings-field input[type="text"],
 .settings-field select {
   padding: 8px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--theme-bg);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
 .settings-field input[type="text"]:focus,
 .settings-field select:focus {
   outline: none;
-  border-color: var(--accent-color);
+  border-color: var(--theme-accent);
 }
 
 .settings-row {
@@ -149,7 +149,7 @@
   width: 32px;
   height: 32px;
   padding: 2px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   cursor: pointer;
 }
@@ -157,7 +157,7 @@
 .color-input-wrapper .color-value {
   font-size: 11px;
   font-family: monospace;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 /* Checkbox settings */
@@ -168,17 +168,17 @@
   padding: 4px 0;
   cursor: pointer;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .settings-checkbox:hover {
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .settings-checkbox input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: var(--accent-color);
+  accent-color: var(--theme-accent);
 }
 
 /* Dialog footer buttons */
@@ -187,8 +187,8 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 20px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  border-top: 1px solid var(--theme-border);
+  background: var(--theme-bg-elevated);
 }
 
 .btn {
@@ -201,9 +201,9 @@
 }
 
 .btn-secondary {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg);
+  border: 1px solid var(--theme-border);
 }
 
 .btn-secondary:hover {
@@ -211,7 +211,7 @@
 }
 
 .btn-primary {
-  background: var(--accent-color);
+  background: var(--theme-accent);
   color: white;
   border: none;
 }

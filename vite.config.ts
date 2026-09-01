@@ -10,19 +10,36 @@ export default defineConfig({
   // Vite options tailored for Tauri development
   clearScreen: false,
   server: {
-    port: 1420,
+    port: 1430,
     strictPort: true,
     host: TAURI_DEV_HOST || false,
     hmr: TAURI_DEV_HOST
       ? { protocol: 'ws', host: TAURI_DEV_HOST, port: 1421 }
       : undefined,
-    watch: { ignored: ['**/src-tauri/**'] },
+    watch: {
+      ignored: [
+        '**/src-tauri/**',
+        // ts-rs schrijft deze .ts-bestanden opnieuw weg bij ELKE `cargo test`
+        // (de export_bindings_*-tests). Zonder deze regel hot-reload't de app
+        // tijdens een testrun om de paar seconden. De gegenereerde types
+        // veranderen alleen als de Rust-structs veranderen; ververs het
+        // venster daarna handmatig.
+        '**/src/lib/types/steel/**',
+      ],
+    },
   },
   envPrefix: ['VITE_', 'TAURI_'],
   optimizeDeps: {
     // Exclude web-ifc from Vite's dependency optimization so the WASM
     // module is loaded at runtime from public/ rather than pre-bundled.
-    exclude: ['web-ifc'],
+    // Exclude OpenAEC packages so Vite compiles their .tsx sources at
+    // dev time rather than pre-bundling (they ship raw src/, no dist/).
+    exclude: [
+      'web-ifc',
+      '@openaec/shell',
+      '@openaec/ribbon',
+      '@openaec/ui-primitives',
+    ],
   },
   assetsInclude: ['**/*.wasm'],
   resolve: {

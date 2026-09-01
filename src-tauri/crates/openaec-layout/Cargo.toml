@@ -1,0 +1,19 @@
+[package]
+name = "openaec-layout"
+description = "PDF layout engine — Rust equivalent of ReportLab Platypus (vendored from OpenAEC Foundation crates-warehouse)"
+version = "0.1.1"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+printpdf = "0.7"
+ttf-parser = "0.25"
+image = "0.25"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

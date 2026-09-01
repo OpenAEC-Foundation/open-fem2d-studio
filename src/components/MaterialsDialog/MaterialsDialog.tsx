@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Sheet } from '../openaec/Sheet';
 import { IMaterial } from '../../core/fem/types';
 import {
   GENERIC_MATERIALS,
@@ -335,12 +336,7 @@ export function MaterialsDialog({ materials, onAdd, onUpdate, onDelete, onClose 
   };
 
   return (
-    <div className="materials-overlay" onClick={onClose}>
-      <div className="materials-dialog" onClick={e => e.stopPropagation()}>
-        <div className="materials-header">
-          <span>Materialen</span>
-        </div>
-
+    <Sheet open onClose={onClose} title="Materialen" width={560}>
         {/* Main tabs */}
         <div className="materials-tabs">
           <button
@@ -447,7 +443,6 @@ export function MaterialsDialog({ materials, onAdd, onUpdate, onDelete, onClose 
             </div>
             <div className="materials-footer">
               <button className="materials-add-btn" onClick={handleAdd}>+ Add Material</button>
-              <button className="materials-close-btn" onClick={onClose}>Close</button>
             </div>
           </>
         ) : (
@@ -469,11 +464,9 @@ export function MaterialsDialog({ materials, onAdd, onUpdate, onDelete, onClose 
             </div>
             <div className="materials-footer">
               <span className="library-hint">Klik + om materiaal aan het model toe te voegen</span>
-              <button className="materials-close-btn" onClick={onClose}>Close</button>
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Sheet>
   );
 }

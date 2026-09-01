@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam1.rs
-assertion_line: 124
+assertion_line: 126
 expression: run()
 ---
 {
@@ -564,7 +564,7 @@ expression: run()
             },
             {
               "symbol": "C_1",
-              "value": 1.6544062301073943,
+              "value": 1.6688504897431158,
               "unit": "-"
             },
             {
@@ -574,31 +574,31 @@ expression: run()
             },
             {
               "symbol": "C",
-              "value": 5.90584712114422,
+              "value": 5.957409783103699,
               "unit": "-"
             },
             {
               "symbol": "M_{cr}",
-              "value": 198.27085237027615,
+              "value": 200.00191189949842,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 1.0269319487257706,
+              "value": 1.0224781322420138,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.6228626483494212,
+              "value": 0.6255354078103588,
               "unit": "-"
             }
           ],
-          "value": 0.6228626483494212,
+          "value": 0.6255354078103588,
           "unit": "-",
           "uc": {
             "ed": 194.796,
-            "rd": 130.2370325670816,
-            "uc": 1.4957036117946392,
+            "rd": 130.79589134899854,
+            "uc": 1.4893128369012143,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "NotOk",
@@ -649,7 +649,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.8995588844274139,
+              "value": 0.8957152898218903,
               "unit": "-"
             },
             {
@@ -658,12 +658,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.9107014143071984,
+          "value": 0.9068578197016748,
           "unit": "-",
           "uc": {
-            "ed": 0.9107014143071984,
+            "ed": 0.9068578197016748,
             "rd": 1.0,
-            "uc": 0.9107014143071984,
+            "uc": 0.9068578197016748,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -712,7 +712,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.5397353306564484,
+              "value": 0.5374291738931343,
               "unit": "-"
             },
             {
@@ -721,12 +721,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.5907679919478981,
+          "value": 0.588461835184584,
           "unit": "-",
           "uc": {
-            "ed": 0.5907679919478981,
+            "ed": 0.588461835184584,
             "rd": 1.0,
-            "uc": 0.5907679919478981,
+            "uc": 0.588461835184584,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -735,13 +735,13 @@ expression: run()
       }
     },
     {
-      "id": "sls_deflection",
+      "id": "deflection_w_fin",
       "kind": {
         "type": "Resistance",
         "data": {
-          "id": "sls_deflection",
-          "title": "Deflection (SLS)",
-          "article": "NEN-EN 1990 (SLS)",
+          "id": "deflection_w_fin",
+          "title": "Deflection w_fin (BGT)",
+          "article": "NEN-EN 1990 (BGT)",
           "force_state": {
             "combination_id": 0,
             "position_mm": 0.0,
@@ -754,7 +754,7 @@ expression: run()
               "mz_ed": 0.0
             }
           },
-          "formula_latex": "\\delta_{lim} = L / 333",
+          "formula_latex": "w_{fin,z} = w_z - w_{zeeg,z}",
           "variables": [
             {
               "symbol": "L",
@@ -762,9 +762,14 @@ expression: run()
               "unit": "mm"
             },
             {
-              "symbol": "L_{type}",
+              "symbol": "w",
+              "value": 0.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "L/n",
               "value": 333.0,
-              "unit": "(Floor)"
+              "unit": "-"
             }
           ],
           "value": 15.015015015015015,
@@ -773,7 +778,58 @@ expression: run()
             "ed": 0.0,
             "rd": 15.015015015015015,
             "uc": 0.0,
-            "formula_latex": "\\delta / \\delta_{lim}"
+            "formula_latex": "|w| / w_{max}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "deflection_w_add",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "deflection_w_add",
+          "title": "Deflection w_add (BGT)",
+          "article": "NEN-EN 1990 (BGT)",
+          "force_state": {
+            "combination_id": 0,
+            "position_mm": 0.0,
+            "forces": {
+              "n_ed": 0.0,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 0.0,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "w_{add,z} = w_{fin,z} - w_{BGT,perm,z}",
+          "variables": [
+            {
+              "symbol": "L",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "w",
+              "value": 0.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "L/n",
+              "value": 150.0,
+              "unit": "-"
+            }
+          ],
+          "value": 33.333333333333336,
+          "unit": "mm",
+          "uc": {
+            "ed": 0.0,
+            "rd": 33.333333333333336,
+            "uc": 0.0,
+            "formula_latex": "|w| / w_{max}"
           },
           "status": "Ok",
           "notes": []
@@ -781,7 +837,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.4957036117946392,
+  "uc_max": 1.4893128369012143,
   "status": "NotOk",
   "governing_check_id": "6.3.2_ltb_channel"
 }

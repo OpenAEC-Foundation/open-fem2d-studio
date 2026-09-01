@@ -1,4 +1,4 @@
-/* Command Palette - bottom search bar */
+﻿/* Command Palette - bottom search bar */
 
 .command-palette-hint {
   position: absolute;
@@ -9,10 +9,10 @@
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-border);
   border-radius: 20px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -23,8 +23,8 @@
 
 .command-palette-hint:hover {
   opacity: 1;
-  border-color: var(--accent);
-  color: var(--text-primary);
+  border-color: var(--theme-accent);
+  color: var(--theme-fg);
 }
 
 .command-palette-hint-icon {
@@ -34,10 +34,10 @@
 .command-palette-hint-shortcut {
   font-size: 10px;
   padding: 1px 6px;
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
   border-radius: 4px;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-fg-subtle);
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -57,8 +57,8 @@
 .command-palette {
   width: 480px;
   max-width: 90vw;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-border);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   overflow: hidden;
@@ -68,17 +68,17 @@
 .command-palette-input {
   width: 100%;
   padding: 12px 16px;
-  background: var(--bg-primary);
+  background: var(--theme-bg);
   border: none;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-primary);
+  border-bottom: 1px solid var(--theme-border);
+  color: var(--theme-fg);
   font-size: 14px;
   outline: none;
   box-sizing: border-box;
 }
 
 .command-palette-input::placeholder {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 /* Results list */
@@ -100,11 +100,11 @@
 
 .command-palette-item:hover,
 .command-palette-item.selected {
-  background: var(--accent-subtle, rgba(59, 130, 246, 0.1));
+  background: var(--theme-accent-subtle);
 }
 
 .command-palette-item.selected {
-  background: var(--accent-subtle, rgba(59, 130, 246, 0.15));
+  background: var(--theme-accent-subtle);
 }
 
 .command-palette-item-category {
@@ -112,7 +112,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   min-width: 60px;
   flex-shrink: 0;
 }
@@ -120,16 +120,16 @@
 .command-palette-item-label {
   flex: 1;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
 }
 
 .command-palette-item-shortcut {
   font-size: 10px;
   padding: 2px 6px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-family: 'JetBrains Mono', monospace;
   flex-shrink: 0;
 }
@@ -138,6 +138,6 @@
 .command-palette-empty {
   padding: 16px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-size: 13px;
 }

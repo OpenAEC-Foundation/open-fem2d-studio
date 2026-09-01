@@ -1,8 +1,8 @@
-.mesh-editor {
+﻿.mesh-editor {
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: var(--bg-dark);
+  background: var(--theme-bg);
 }
 
 .mesh-editor canvas {
@@ -31,15 +31,15 @@
 .dimension-input {
   width: 76px;
   padding: 2px 6px;
-  background: var(--bg-dark);
-  border: 2px solid var(--accent);
+  background: var(--theme-bg);
+  border: 2px solid var(--theme-accent);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font: bold 11px sans-serif;
   text-align: center;
   z-index: 200;
   outline: none;
-  box-shadow: 0 0 0 3px var(--accent-subtle), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 3px var(--theme-accent-subtle), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .beam-length-input-overlay {
@@ -51,9 +51,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--bg-primary);
+  background: var(--theme-bg);
   backdrop-filter: blur(4px);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--theme-accent);
   border-radius: 6px;
   z-index: 200;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
@@ -76,9 +76,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: var(--bg-primary);
+  background: var(--theme-bg);
   backdrop-filter: blur(4px);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--theme-accent);
   border-radius: 6px;
   z-index: 200;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
@@ -87,14 +87,14 @@
 .plate-polygon-toolbar-label {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   margin-right: 4px;
   white-space: nowrap;
 }
 
 .plate-polygon-toolbar-btn {
   padding: 5px 14px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
@@ -114,22 +114,22 @@
 }
 
 .plate-polygon-toolbar-btn.finish-btn {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
   color: #fff;
 }
 
 .plate-polygon-toolbar-btn.finish-btn:hover {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }
 
 .plate-polygon-toolbar-btn.cancel-btn {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
 }
 
 .plate-polygon-toolbar-btn.cancel-btn:hover {
-  background: var(--bg-elevated);
+  background: var(--theme-bg-elevated);
 }
 
 /* Plate draw toolbar (shown during outline drawing) */
@@ -142,9 +142,9 @@
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
-  background: var(--bg-primary);
+  background: var(--theme-bg);
   backdrop-filter: blur(4px);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--theme-accent);
   border-radius: 6px;
   z-index: 200;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
@@ -155,32 +155,32 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--theme-bg-subtle);
+  color: var(--theme-fg-muted);
   transition: all 0.15s;
 }
 
 .plate-draw-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--accent);
+  background: var(--theme-bg-elevated);
+  border-color: var(--theme-accent);
 }
 
 .plate-draw-btn.active {
   background: rgba(59, 130, 246, 0.2);
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--theme-accent);
+  color: var(--theme-accent);
 }
 
 .plate-draw-info {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   padding-left: 8px;
-  border-left: 1px solid var(--border-light);
+  border-left: 1px solid var(--theme-border);
 }
 
 /* Floating "+" button for adding void to selected plate */
@@ -218,9 +218,9 @@
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  background: var(--bg-primary);
+  background: var(--theme-bg);
   backdrop-filter: blur(4px);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   z-index: 100;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -232,10 +232,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -245,14 +245,14 @@
 }
 
 .zoom-control-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--accent);
+  background: var(--theme-bg-elevated);
+  border-color: var(--theme-accent);
 }
 
 .zoom-level {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   min-width: 36px;
   text-align: center;
   font-family: 'JetBrains Mono', monospace;
@@ -260,15 +260,15 @@
 
 .mesh-tooltip {
   position: absolute;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  background: var(--theme-bg-elevated);
+  color: var(--theme-fg);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 11px;
   pointer-events: none;
   z-index: 100;
   white-space: nowrap;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--theme-border);
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -276,8 +276,8 @@
 .context-menu {
   position: fixed;
   min-width: 160px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-elevated);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 1000;
@@ -288,12 +288,12 @@
 .context-menu-item {
   padding: 8px 14px;
   cursor: pointer;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   transition: background 0.15s;
 }
 
 .context-menu-item:hover {
-  background: var(--accent-subtle);
+  background: var(--theme-accent-subtle);
 }
 
 .context-menu-overlay {

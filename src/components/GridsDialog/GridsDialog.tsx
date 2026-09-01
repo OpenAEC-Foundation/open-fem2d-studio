@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFEM } from '../../context/FEMContext';
 import { IGridLine, IStructuralGrid } from '../../core/fem/StructuralGrid';
 import { Plus, Minus, Trash2, Lock, Unlock } from 'lucide-react';
+import { Sheet } from '../openaec/Sheet';
 import './GridsDialog.css';
 
 interface GridsDialogProps {
@@ -159,13 +160,12 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
     }
   };
 
-  const handleApply = () => {
-    // Enable showGridLines automatically after using the grid dialog
+  // Auto-apply on every change (sheet has no OK button)
+  useEffect(() => {
     const updatedGrid = { ...grid, showGridLines: true };
     dispatch({ type: 'SET_STRUCTURAL_GRID', payload: updatedGrid });
     dispatch({ type: 'REFRESH_MESH' });
-    onClose();
-  };
+  }, [grid, dispatch]);
 
   /** Render table rows with spacing indicators between consecutive lines */
   const renderGridRows = (
@@ -261,10 +261,8 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
   };
 
   return (
-    <div className="grids-dialog-overlay" onClick={onClose}>
-      <div className="grids-dialog" onClick={e => e.stopPropagation()}>
-        <div className="grids-dialog-header">Structural Grids</div>
-        <div className="grids-dialog-body">
+    <Sheet open onClose={onClose} title="Structural Grids" width={440}>
+      <div className="grids-dialog-body">
           {/* Vertical grid lines (stramienen) */}
           <div className="grids-section">
             <div className="grids-section-header">
@@ -333,11 +331,6 @@ export function GridsDialog({ onClose }: GridsDialogProps) {
           </div>
 
         </div>
-        <div className="grids-dialog-footer">
-          <button className="grids-btn cancel" onClick={onClose}>Cancel</button>
-          <button className="grids-btn confirm" onClick={handleApply}>Apply</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

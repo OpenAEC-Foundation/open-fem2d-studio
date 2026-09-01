@@ -1255,4 +1255,59 @@ export const en: Record<string, string> = {
   'beam.props.deflection.type': 'Type',
   'beam.props.deflection.limit': 'Limit L /',
   'beam.props.inputPerBeam': 'Input per beam',
+
+  // ─── Phase 8: Ribbon IA restructure (tabs) ──────────────────────────
+  'ribbon.tabs.file': 'File',
+  'ribbon.tabs.home': 'Home',
+  'ribbon.tabs.geometry': 'Geometry',
+  'ribbon.tabs.loads': 'Loads',
+  'ribbon.tabs.analyze': 'Analyze',
+  'ribbon.tabs.check': 'Check',
+  'ribbon.tabs.view': 'View',
+
+  // ─── Phase 8: Ribbon group labels ───────────────────────────────────
+  'ribbon.groups.clipboard': 'Clipboard',
+  'ribbon.groups.selection': 'Selection',
+  'ribbon.groups.layouts': 'Layouts',
+  'ribbon.groups.panels': 'Panels',
+  'ribbon.groups.modify': 'Modify',
+  'ribbon.groups.points': 'Points',
+  'ribbon.groups.distributed': 'Distributed',
+  'ribbon.groups.special': 'Special',
+  'ribbon.groups.cases': 'Cases',
+  'ribbon.groups.solve': 'Solve',
+  'ribbon.groups.sections': 'Sections',
+  'ribbon.groups.validation': 'Validation',
+  'ribbon.groups.properties': 'Properties',
+  'ribbon.groups.browser': 'Browser',
+  'ribbon.groups.display': 'Display',
+  'ribbon.groups.info': 'Info',
+  'ribbon.groups.view': 'View',
+
+  // ─── Phase 8: Properties panel ──────────────────────────────────────
+  'properties.empty': 'Select an element to edit its properties.',
+  'properties.multiSelect': 'elements selected',
+  'properties.bar': 'Beam',
+  'properties.node': 'Node',
+  'properties.plate': 'Plate',
+  'properties.section': 'Section',
+  'properties.loads': 'Loads',
+
+  // ─── Phase 8: Sheet titles ──────────────────────────────────────────
+  'sheets.loadCase': 'Load Cases',
+  'sheets.loadCombination': 'Load Combinations',
+  'sheets.load': 'Point Load',
+  'sheets.lineLoad': 'Distributed Load',
+  'sheets.edgeLoad': 'Edge Load',
+  'sheets.grids': 'Structural Grids',
+  'sheets.materials': 'Materials',
+  'sheets.plate': 'Plate Element',
+  'sheets.sectionProperties': 'Section Properties',
+  'sheets.thermalLoad': 'Thermal Load',
+  'sheets.concreteReinforcement': 'Plate Reinforcement',
+
+  // ─── Phase 8: Status bar ────────────────────────────────────────────
+  'status.nodes': 'Nodes',
+  'status.zoom': 'Zoom',
+  'status.project': 'Project',
 };

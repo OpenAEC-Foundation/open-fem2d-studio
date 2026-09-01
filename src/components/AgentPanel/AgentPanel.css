@@ -1,66 +1,11 @@
-.agent-panel {
-  width: 320px;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.agent-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-primary);
-}
-
-.agent-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.agent-clear-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  border-radius: 3px;
-  transition: all 0.15s;
-}
-
-.agent-clear-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-
-.agent-panel-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-}
-
-.agent-panel-close:hover {
-  color: var(--text-primary);
-}
+﻿/* Outer chrome moved to SidePanel primitive. Inner content rules retained below. */
+.agent-panel-body-wrap { padding: 0; display: flex; flex-direction: column; }
 
 /* Context Section */
 .agent-context {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-primary);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg);
 }
 
 .agent-context-title {
@@ -68,7 +13,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   margin-bottom: 8px;
 }
 
@@ -84,20 +29,20 @@
   flex-direction: column;
   align-items: center;
   padding: 4px 2px;
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
   border-radius: 4px;
 }
 
 .agent-context-value {
   font-size: 14px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   line-height: 1.2;
 }
 
 .agent-context-label {
   font-size: 9px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -107,7 +52,7 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .agent-status-dot {
@@ -123,17 +68,17 @@
 }
 
 .agent-status-dot.unsolved {
-  background: var(--text-muted);
+  background: var(--theme-fg-subtle);
 }
 
 .agent-context-sep {
-  color: var(--border-light);
+  color: var(--theme-border);
 }
 
 /* Quick Actions */
 .agent-quick-actions {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .agent-quick-title {
@@ -141,7 +86,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   margin-bottom: 6px;
 }
 
@@ -156,19 +101,19 @@
   align-items: center;
   gap: 5px;
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .agent-quick-btn:hover {
-  background: var(--accent-subtle, rgba(59, 130, 246, 0.1));
-  border-color: var(--accent);
-  color: var(--text-primary);
+  background: var(--theme-accent-subtle);
+  border-color: var(--theme-accent);
+  color: var(--theme-fg);
 }
 
 .agent-quick-btn:active {
@@ -179,9 +124,9 @@
 .agent-backend-notice {
   padding: 6px 12px;
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   background: rgba(245, 158, 11, 0.08);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--theme-border);
   text-align: center;
   line-height: 1.4;
 }
@@ -218,26 +163,26 @@
   margin-bottom: 2px;
 }
 
-.agent-msg-user .agent-msg-label { color: var(--accent); }
+.agent-msg-user .agent-msg-label { color: var(--theme-accent); }
 .agent-msg-assistant .agent-msg-label { color: var(--success); }
-.agent-msg-system .agent-msg-label { color: var(--text-muted); }
+.agent-msg-system .agent-msg-label { color: var(--theme-fg-subtle); }
 
 .agent-msg-content {
-  color: var(--text-primary);
+  color: var(--theme-fg);
   white-space: pre-wrap;
   word-break: break-word;
-  background: var(--bg-tertiary);
+  background: var(--theme-bg-subtle);
   border-radius: 6px;
   padding: 8px 10px;
 }
 
 .agent-msg-user .agent-msg-content {
-  background: var(--accent-subtle, rgba(59, 130, 246, 0.08));
+  background: var(--theme-accent-subtle);
 }
 
 .agent-msg-system .agent-msg-content {
   background: transparent;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   font-style: italic;
   font-size: 11px;
   padding: 4px 0;
@@ -247,7 +192,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -255,19 +200,19 @@
 
 .agent-panel-placeholder {
   text-align: center;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   padding: 12px;
 }
 
 .agent-panel-placeholder p {
   margin: 0 0 8px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
 }
 
 .agent-hint {
   font-size: 11px !important;
-  color: var(--text-muted) !important;
+  color: var(--theme-fg-subtle) !important;
   line-height: 1.5;
 }
 
@@ -276,27 +221,27 @@
   display: flex;
   gap: 6px;
   padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-primary);
+  border-top: 1px solid var(--theme-border);
+  background: var(--theme-bg);
 }
 
 .agent-panel-input-area input {
   flex: 1;
   padding: 6px 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: var(--text-primary);
+  color: var(--theme-fg);
   font-size: 12px;
 }
 
 .agent-panel-input-area input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--theme-accent);
 }
 
 .agent-send-btn {
-  background: var(--accent);
+  background: var(--theme-accent);
   border: none;
   color: #fff;
   padding: 6px 10px;
@@ -312,13 +257,13 @@
 }
 
 .agent-send-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--theme-accent-hover);
 }
 
 .agent-mic-btn {
   background: transparent;
-  border: 1px solid var(--border-light);
-  color: var(--text-muted);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-fg-subtle);
   padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
@@ -328,8 +273,8 @@
 }
 
 .agent-mic-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
+  color: var(--theme-fg);
+  border-color: var(--theme-fg-muted);
 }
 
 .agent-mic-btn.active {
@@ -350,16 +295,16 @@
   margin-top: 6px;
   padding: 2px 8px;
   font-size: 10px;
-  color: var(--accent);
+  color: var(--theme-accent);
   background: transparent;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--theme-accent);
   border-radius: 3px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .agent-details-toggle:hover {
-  background: var(--accent-subtle, rgba(59, 130, 246, 0.1));
+  background: var(--theme-accent-subtle);
 }
 
 /* Expanded details block */
@@ -371,14 +316,14 @@
   font-size: 11px;
   font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
   line-height: 1.6;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   white-space: pre-wrap;
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--theme-accent);
 }
 
 /* Tool actions section (slightly different bg for separation) */
 .agent-tool-actions {
-  background: var(--bg-primary);
+  background: var(--theme-bg);
 }
 
 /* Success message highlight */
@@ -400,7 +345,7 @@
 }
 
 .agent-connection-indicator.offline {
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
 }
 
 /* Tool call display in details */
@@ -418,21 +363,21 @@
 
 .agent-tool-name {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--theme-accent);
   font-size: 11px;
   margin-bottom: 2px;
 }
 
 .agent-tool-args {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--theme-fg-subtle);
   white-space: pre-wrap;
   margin-bottom: 2px;
 }
 
 .agent-tool-result {
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--theme-fg-muted);
   white-space: pre-wrap;
   padding-left: 8px;
   border-left: 1px solid var(--success, #22c55e);

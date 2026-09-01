@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ReportPanel — Native Rust PDF preview
  * Calls Tauri command generate_steel_report_pdf (printpdf-based), receives
  * PDF bytes, embeds as blob: URL in an iframe — Chrome/WebView2 native viewer.
@@ -292,7 +292,7 @@ export const ReportPanel: React.FC = () => {
       <div className="report-panel">
         <div className="report-nav">
           <h3>Report Sections</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          <p style={{ color: 'var(--theme-fg-subtle)', fontSize: 11 }}>
             No model data available
           </p>
         </div>
@@ -368,7 +368,7 @@ export const ReportPanel: React.FC = () => {
             <h3>{isGenerating ? 'Generating PDF…' : 'Building report…'}</h3>
             {isGenerating && (
               <p style={{ color: '#666' }}>
-                First generation may take 10–20 seconds for large reports.
+                First generation may take 10â€“20 seconds for large reports.
               </p>
             )}
           </div>

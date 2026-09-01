@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build an 8-crate Rust workspace that performs NEN-EN 1993-1-1+C2+A1/NB:2016 nl steel checks, exposed via Tauri commands to the React UI, that reproduces de referentie output for 7 reference beams (Calc 2: 3 beams + portal-frame: 4 beams) to within 0.1% on resistances and 1% on UCs.
+**Goal:** Build an 8-crate Rust workspace that performs NEN-EN 1993-1-1+C2+A1/NB:2016 nl steel checks, exposed via Tauri commands to the React UI, that reproduces the reference calculation's output for 7 reference beams (Calc 2: 3 beams + portal-frame: 4 beams) to within 0.1% on resistances and 1% on UCs.
 
 **Architecture:** Workspace with 8 path-deps crates (mechanics → section-properties → steel-profiles + nen-en-1990 → nen-en-1993-1-1-{section,stability,ltb} → steel-check). Tauri main package depends on steel-check, exposes 3 commands. Frontend uses ts-rs-generated TypeScript types. Single source of truth for steel profiles in JSON loaded by both Rust (`include_str!`) and TS (Vite alias).
 
@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-13-en1993-steel-check-rust-engine-design.md` (commit 2cdd0de)
 
-**Verify-iterate loop is mandatory:** Phase 13 generates real PDF reports from the Tauri app and diffs them against the original referentie PDFs. Iterate until match.
+**Verify-iterate loop is mandatory:** Phase 13 generates real PDF reports from the Tauri app and diffs them against the original reference PDFs. Iterate until match.
 
 ---
 
@@ -1201,7 +1201,7 @@ source of truth. Existing SteelProfileLibrary class untouched
   8. Compute interaction factors, run 6.3.3 (eqs 6.61 + 6.62).
   9. Run SLS deflection.
   10. Aggregate: max UC across all checks, governing check id, status.
-- [ ] Order matches referentie: Compression, Bending decisive, Shear, M+V, M+N, LTB, 6.3.3 N+M, Deflection.
+- [ ] Order matches the reference: Compression, Bending decisive, Shear, M+V, M+N, LTB, 6.3.3 N+M, Deflection.
 - [ ] `pub fn check_all_beams(inputs: Vec<BeamCheckInput>) -> Vec<BeamCheckResult>` — simple `inputs.into_iter().map(check_beam).collect()` (parallelize later with rayon).
 - [ ] Commit: `feat(steel-check): orchestrator check_beam + check_all_beams`
 
@@ -1260,7 +1260,7 @@ source of truth. Existing SteelProfileLibrary class untouched
 
 **Files:** Create `src-tauri/crates/steel-check/tests/calc2_beam1.rs`
 
-- [ ] Build BeamCheckInput from referentie Calc 2 PDF: profile=HEB160, grade=S235, length=5.0 m, forces_envelope from PDF (3 force points: x=0 combo 2, x=2500 combo 2, x=2500 combo 1), lateral_bracing=empty, buckling_length=5.0 both axes, deflection_class=Floor 333.
+- [ ] Build BeamCheckInput from the reference Calc 2 PDF: profile=HEB160, grade=S235, length=5.0 m, forces_envelope from PDF (3 force points: x=0 combo 2, x=2500 combo 2, x=2500 combo 1), lateral_bracing=empty, buckling_length=5.0 both axes, deflection_class=Floor 333.
 - [ ] Run `check_beam(input)`. Verify with assert_relative_eq:
   - compression: value=1275.472 (max_rel=1e-3), uc=0.18 (max_rel=0.01), status=Ok
   - bending_y: value=83.217 (max_rel=1e-3), uc=1.06 (max_rel=0.005), status=NotOk
@@ -1272,13 +1272,13 @@ source of truth. Existing SteelProfileLibrary class untouched
 
 ### Task 10.2: calc2_beam2.rs (HEB160 S235 — page 53)
 
-- [ ] Read referentie Calc 2 PDF page 53 for Beam 2 inputs (similar structure to Beam 1 but different forces). Use `pdftotext -layout` on calc2.pdf, extract section 2.6.2.
+- [ ] Read the reference Calc 2 PDF page 53 for Beam 2 inputs (similar structure to Beam 1 but different forces). Use `pdftotext -layout` on calc2.pdf, extract section 2.6.2.
 - [ ] Build BeamCheckInput, run check_beam, verify all UC values from PDF match.
 - [ ] Commit: `test(steel-check): calc2_beam2 acceptance`
 
 ### Task 10.3: calc2_beam3.rs (HFRHS200X200X16 S235 — page 57)
 
-- [ ] Read referentie Calc 2 PDF page 57 for Beam 3 (hollow section). Note: no LTB applies for closed hollow (M_b,Rd should equal M_c,Rd).
+- [ ] Read the reference Calc 2 PDF page 57 for Beam 3 (hollow section). Note: no LTB applies for closed hollow (M_b,Rd should equal M_c,Rd).
 - [ ] Build input, verify all UCs.
 - [ ] Commit: `test(steel-check): calc2_beam3 acceptance — HFRHS hollow section`
 
@@ -1286,7 +1286,7 @@ source of truth. Existing SteelProfileLibrary class untouched
 
 - [ ] Run `pdftotext -layout` on portal-frame.pdf, extract 2.6.1 (UNP350), 2.6.2 (HEB160), 2.6.3 (HEB160), 2.6.4 (HEB300).
 - [ ] One test file per beam, same pattern as Task 10.1.
-- [ ] Special attention for portal_beam1 (UNP350): channel section asymmetry affects LTB Mcr formula — verify Channel-specific S/C results match referentie.
+- [ ] Special attention for portal_beam1 (UNP350): channel section asymmetry affects LTB Mcr formula — verify Channel-specific S/C results match the reference.
 - [ ] Commit per file: `test(steel-check): portal_beamN acceptance — <PROFILE>`
 
 ### Task 10.8: insta snapshot tests
@@ -1346,7 +1346,7 @@ Files: Modify src/core/io/ProjectSerializer.ts
 Files: Create src/components/ReportPanel/sections/CheckBlock.tsx + .css
 
 - [ ] CheckBlock takes props from a single check (title, article, forceState, formulaLatex, variables, value, unit, uc, status, notes, intermediateValues).
-- [ ] Render structure referentie-style: title + article (top right), force state line, KaTeX formula, variables expanded with arithmetic, UC formula with values, status badge, intermediate values list, notes (italic).
+- [ ] Render structure reference-style: title + article (top right), force state line, KaTeX formula, variables expanded with arithmetic, UC formula with values, status badge, intermediate values list, notes (italic).
 - [ ] Use katex.renderToString(formulaLatex) then dangerouslySetInnerHTML.
 - [ ] CSS: OpenAEC styling, Space Grotesk h3 for title, JetBrains Mono for numbers, amber accent.
 - [ ] Commit: feat(report) CheckBlock with KaTeX formula rendering
@@ -1441,57 +1441,57 @@ Files: Modify src/components/SettingsDialog/SettingsDialog.tsx
 
 ## Phase 13 - Verify-iterate loop (THE acceptance phase)
 
-This is where we close the loop: build real test fixtures, run end-to-end, generate PDFs, diff against referentie originals, fix any discrepancies, repeat until match.
+This is where we close the loop: build real test fixtures, run end-to-end, generate PDFs, diff against the reference originals, fix any discrepancies, repeat until match.
 
 ### Task 13.1: Build calc2.femp fixture
 Files: Create tests/fixtures/calc2.femp
 
-- [ ] Open npm run tauri:dev. Build the Calc 2 model manually: 3 beams matching referentie Calc 2 layout (read pages 2-4 of the PDF for exact node coords, beam connectivity, profiles, supports).
+- [ ] Open npm run tauri:dev. Build the Calc 2 model manually: 3 beams matching the reference Calc 2 layout (read pages 2-4 of the PDF for exact node coords, beam connectivity, profiles, supports).
 - [ ] Add load cases per PDF pages 5-6: Dead load (with self-weight), Live load.
 - [ ] Set per-beam EN 1993 config (lateral bracing 0, S235 grade) for each of the 3 beams.
 - [ ] Save project as tests/fixtures/calc2.femp.
-- [ ] Commit: test(fixtures) add calc2.femp matching referentie Calc 2 model
+- [ ] Commit: test(fixtures) add calc2.femp matching reference Calc 2 model
 
 ### Task 13.2: Build portal_frame.femp fixture
 - [ ] Same as 13.1 but for portal-frame.pdf - 4 beams (UNP350, HEB160 x2, HEB300).
 - [ ] Save as tests/fixtures/portal_frame.femp.
-- [ ] Commit: test(fixtures) add portal_frame.femp matching referentie model
+- [ ] Commit: test(fixtures) add portal_frame.femp matching reference model
 
 ### Task 13.3: First end-to-end test (Calc 2)
 - [ ] Open tests/fixtures/calc2.femp in tauri:dev.
 - [ ] Solve the model.
 - [ ] Auto-run triggers, SteelCheckPanel shows results.
-- [ ] Verify panel shows 3 beams with UC values matching referentie:
+- [ ] Verify panel shows 3 beams with UC values matching the reference:
   - Beam 1: UC about 1.06 (governing 6.2.5 bending)
   - Beam 2: UC value per PDF page 53
   - Beam 3: UC value per PDF page 57
-- [ ] Open Report tab, scroll to EN 1993 Calculations section, verify per-beam derivation matches referentie layout.
+- [ ] Open Report tab, scroll to EN 1993 Calculations section, verify per-beam derivation matches the reference layout.
 - [ ] DOCUMENT discrepancies (if any) in docs/verification/iteration-log.md.
 - [ ] Commit verification log: docs(verification) first iteration end-to-end log for calc2
 
-### Task 13.4: Generate PDF and compare against referentie
+### Task 13.4: Generate PDF and compare against the reference
 - [ ] In Report tab, Print to PDF (Ctrl+P, Save as PDF). Save as tests/output/calc2-iteration-1.pdf.
 - [ ] Open both PDFs side-by-side: verificatie calculations/original/Calc 2.pdf vs tests/output/calc2-iteration-1.pdf.
 - [ ] Visual + numeric diff: header, footer, all UC values per beam, intermediate values for LTB.
-- [ ] Document EVERY discrepancy in docs/verification/iteration-log.md with location, referentie value vs Our value, hypothesized cause.
+- [ ] Document EVERY discrepancy in docs/verification/iteration-log.md with location, reference value vs Our value, hypothesized cause.
 - [ ] Commit: docs(verification) calc2 iteration-1 PDF diff log
 
 ### Task 13.5: Iteration loop - fix discrepancies
 For each discrepancy in iteration-log.md:
 - [ ] Identify the responsible Rust crate (e.g., NB.153 C1 formula for LTB).
-- [ ] Write a failing unit test in that crate using the referentie value as expected.
+- [ ] Write a failing unit test in that crate using the reference value as expected.
 - [ ] Fix the implementation. Test passes.
 - [ ] Re-run the orchestrator, BeamCheckResult should now match.
 - [ ] Update iteration-log.md: mark the discrepancy resolved, note the fix commit.
-- [ ] Commit per fix: fix(crate-name) align function-name with referentie value-N (issue from calc2 iter 1)
+- [ ] Commit per fix: fix(crate-name) align function-name with reference value-N (issue from calc2 iter 1)
 - [ ] Re-generate PDF after each batch of fixes, new iteration: tests/output/calc2-iteration-N.pdf.
 
-Continue until ALL 7 reference beams UC values match referentie within tolerance (max_relative 0.01).
+Continue until ALL 7 reference beams UC values match the reference within tolerance (max_relative 0.01).
 
 ### Task 13.6: Per-beam verification log files
 - [ ] For each of the 7 acceptance beams, create docs/verification/{calc2|portal}-beamN.md:
   - Brief summary of beam (profile, grade, length, key forces)
-  - For each check (6.2.4, 6.2.5, ..., LTB, 6.3.3): referentie value | Our value | Difference | Status
+  - For each check (6.2.4, 6.2.5, ..., LTB, 6.3.3): reference value | Our value | Difference | Status
   - Reference to the integration test file
   - Notes on any approximations or known minor deviations
 - [ ] Commit: docs(verification) per-beam verification logs for 7 acceptance beams
@@ -1515,8 +1515,8 @@ After each phase commit, can stop. Resume by reading the plan + last commit mess
 Phase 13 verify-iterate is where implementation correctness is proven. Do not declare done until the PDFs match. If a formula needs revisiting (e.g., C1/C2 from NB.153 needs more precise table interpolation), log the issue, fix the crate, re-test. Each fix should add a test case that pins the correct value forever.
 
 ### Tolerance philosophy
-- Resistance values (kN/kNm): match referentie to 0.1% (3 significant decimals)
-- Unity checks: match to 1% (referentie rounds to 2 decimals)
+- Resistance values (kN/kNm): match the reference to 0.1% (3 significant decimals)
+- Unity checks: match to 1% (the reference rounds to 2 decimals)
 - LTB intermediates (S, C, M_cr): match to 0.5%
 - Status verdict (Ok/NotOk): exact
 

@@ -5,6 +5,15 @@ use mechanics::ForceStateSnapshot;
 use crate::{SteelGrade, ResistanceCalc, UnityCheck, CheckStatus, NamedValue};
 use crate::classification::CrossSectionClass;
 
+/// EN 1993-1-1 art. 6.2.8(2) — mag het dwarskracht-effect op de
+/// momentweerstand worden verwaarloosd?
+///
+/// Ja wanneer V_Ed ≤ V_pl,Rd/2. Alleen daarboven moet f_y in het lijf worden
+/// gereduceerd met (1 − ρ).
+pub fn dwarskracht_verwaarloosbaar(v_ed_kn: f64, v_pl_rd_kn: f64) -> bool {
+    v_ed_kn.abs() <= v_pl_rd_kn.abs() / 2.0
+}
+
 pub fn check_combined_mv(
     _p: &SectionProperties, _grade: &SteelGrade, _class: CrossSectionClass,
     v_pl_rd_kn: f64, m_c_rd_knm: f64,
@@ -15,7 +24,7 @@ pub fn check_combined_mv(
     let v_threshold = v_pl_rd_kn / 2.0;
     let mut notes = Vec::new();
 
-    let m_v_rd = if v_ed <= v_threshold {
+    let m_v_rd = if dwarskracht_verwaarloosbaar(v_ed, v_pl_rd_kn) {
         notes.push(format!(
             "V_z,Ed = {:.3} kN < V_z,pl,Rd / 2 = {:.3} kN — The effect of shear on the moment resistance can be neglected.",
             v_ed, v_threshold

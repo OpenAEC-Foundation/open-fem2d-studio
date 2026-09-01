@@ -1,13 +1,15 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import { useFEM, BrowserTab, IVersion } from '../../context/FEMContext';
 import { DEFAULT_SECTIONS, calculateBeamLength } from '../../core/fem/Beam';
 import { IBeamSection } from '../../core/fem/types';
-import { NodePropertiesDialog } from '../NodePropertiesDialog/NodePropertiesDialog';
-import { BarPropertiesDialog } from '../BarPropertiesDialog/BarPropertiesDialog';
+// Bar/Node property dialogs were removed in the OpenAEC big-bang.
+// Double-clicking a tree item now selects it (which routes the editor into
+// the right-hand PropertiesPanel).
 import { SectionPropertiesDialog } from '../SectionPropertiesDialog/SectionPropertiesDialog';
 import { useI18n } from '../../i18n/i18n';
+import { SidePanel } from '../openaec/SidePanel';
 import {
-  ChevronRight, ChevronLeft, FolderOpen, CircleDot, Circle, Minus,
+  ChevronRight, FolderOpen, CircleDot, Circle, Minus,
   Triangle, Diamond, Palette, Square, Box, RectangleHorizontal,
   ArrowDown, ClipboardList, BarChart3, TrendingUp, Move, RotateCw,
   Info, Hash, Layers, Plus, GitBranch, Clock, Save, Trash2, Eye
@@ -46,8 +48,8 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
   });
 
   const [showProjectInfo, setShowProjectInfo] = useState(false);
-  const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
-  const [editingBarId, setEditingBarId] = useState<number | null>(null);
+  // Legacy editingNodeId/editingBarId state removed — selection now
+  // drives the right-hand PropertiesPanel directly.
   const [viewingSection, setViewingSection] = useState<{ name: string; section: IBeamSection } | null>(null);
   const [showNewSectionDialog, setShowNewSectionDialog] = useState(false);
   const [customSections, setCustomSections] = useState<{ name: string; section: IBeamSection }[]>([]);
@@ -169,33 +171,26 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
     }
   };
 
-  if (collapsed) {
-    return (
-      <div className="project-browser collapsed-panel" onClick={onToggleCollapse}>
-        <ChevronRight size={14} />
-        <span className="collapsed-label">Browser</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="project-browser">
-      <div className="browser-header">
-        {onToggleCollapse && (
-          <button className="browser-collapse-btn" onClick={onToggleCollapse} title="Collapse">
-            <ChevronLeft size={14} />
-          </button>
-        )}
-        <span className="browser-title">{t('browser.title')}</span>
-        <button
-          className="project-info-btn"
-          onClick={() => setShowProjectInfo(!showProjectInfo)}
-          title={t('browser.projectInfo')}
-        >
-          <Info size={14} />
-        </button>
-      </div>
-
+    <SidePanel
+      side="left"
+      title={t('browser.title')}
+      defaultWidth={300}
+      minWidth={240}
+      maxWidth={480}
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
+      actions={[
+        {
+          id: 'project-info',
+          label: t('browser.projectInfo'),
+          icon: <Info size={12} />,
+          onClick: () => setShowProjectInfo(!showProjectInfo),
+          active: showProjectInfo,
+        },
+      ]}
+      bodyClassName="project-browser-body"
+    >
       {/* Horizontal tabs */}
       <div className="browser-tabs">
         <button
@@ -268,7 +263,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                           key={node.id}
                           className={`tree-item leaf ${selection.nodeIds.has(node.id) ? 'selected' : ''}`}
                           onClick={() => selectNode(node.id)}
-                          onDoubleClick={() => setEditingNodeId(node.id)}
+                          onDoubleClick={() => selectNode(node.id)}
                         >
                           <span className="tree-icon small"><Circle size={10} /></span>
                           <span className="tree-label">Node {node.id}</span>
@@ -349,7 +344,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                             key={beam.id}
                             className={`tree-item leaf ${selection.elementIds.has(beam.id) ? 'selected' : ''}`}
                             onClick={() => selectElement(beam.id)}
-                            onDoubleClick={() => setEditingBarId(beam.id)}
+                            onDoubleClick={() => selectElement(beam.id)}
                           >
                             <span className="tree-icon small"><Minus size={10} /></span>
                             <span className="tree-label">Beam {beam.id}</span>
@@ -512,7 +507,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                                   </span>
                                   <span className="tree-info">
                                     qy={(dl.qy / 1000).toFixed(1)}kN/m
-                                    {dl.qyEnd != null && dl.qyEnd !== dl.qy ? `→${(dl.qyEnd / 1000).toFixed(1)}` : ''}
+                                    {dl.qyEnd != null && dl.qyEnd !== dl.qy ? `â†’${(dl.qyEnd / 1000).toFixed(1)}` : ''}
                                     {(dl.startT != null && dl.startT > 0) || (dl.endT != null && dl.endT < 1)
                                       ? ` (${((dl.startT ?? 0) * 100).toFixed(0)}%-${((dl.endT ?? 1) * 100).toFixed(0)}%)`
                                       : ''}
@@ -673,7 +668,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
               return (
                 <div className="tree-section dist-load-properties">
                   <h4 className="dist-load-props-title">
-                    Distributed Load{dl.description ? `: ${dl.description}` : ''} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>(Beam {dl.elementId})</span>
+                    Distributed Load{dl.description ? `: ${dl.description}` : ''} <span style={{ color: 'var(--theme-fg-muted)', fontWeight: 400 }}>(Beam {dl.elementId})</span>
                   </h4>
                   <div className="dist-load-props-grid">
                     <label>Description</label>
@@ -953,7 +948,7 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                     <div className="tree-children">
                       {/* Display mode toggle */}
                       <div className="tree-item" style={{ paddingLeft: 12, gap: 8 }}>
-                        <span className="tree-label" style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t('browser.display')}</span>
+                        <span className="tree-label" style={{ fontSize: 10, color: 'var(--theme-fg-subtle)' }}>{t('browser.display')}</span>
                         <select
                           value={state.stressDisplayMode}
                           onChange={(e) => dispatch({ type: 'SET_STRESS_DISPLAY_MODE', payload: e.target.value as 'element' | 'smoothed' })}
@@ -961,10 +956,10 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
                             flex: 1,
                             padding: '2px 4px',
                             fontSize: 10,
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--border)',
+                            background: 'var(--theme-bg-subtle)',
+                            border: '1px solid var(--theme-border)',
                             borderRadius: 3,
-                            color: 'var(--text-primary)',
+                            color: 'var(--theme-fg)',
                             cursor: 'pointer'
                           }}
                         >
@@ -1160,55 +1155,8 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
           </>
         )}
       </div>
-      {editingNodeId !== null && (() => {
-        const node = mesh.getNode(editingNodeId);
-        if (!node) return null;
-        return (
-          <NodePropertiesDialog
-            node={node}
-            onUpdate={(updates) => {
-              pushUndo();
-              if (updates.x !== undefined || updates.y !== undefined) {
-                mesh.updateNode(editingNodeId, {
-                  x: updates.x ?? node.x,
-                  y: updates.y ?? node.y
-                });
-              }
-              if (updates.constraints) {
-                mesh.updateNode(editingNodeId, { constraints: updates.constraints });
-              }
-              dispatch({ type: 'REFRESH_MESH' });
-              dispatch({ type: 'SET_RESULT', payload: null });
-            }}
-            onClose={() => setEditingNodeId(null)}
-          />
-        );
-      })()}
-      {editingBarId !== null && (() => {
-        const beam = mesh.getBeamElement(editingBarId);
-        if (!beam) return null;
-        const nodes = mesh.getBeamElementNodes(beam);
-        if (!nodes) return null;
-        const length = calculateBeamLength(nodes[0], nodes[1]);
-        const beamMaterial = mesh.getMaterial(beam.materialId);
-        const editBarForces = result?.beamForces.get(editingBarId);
-        return (
-          <BarPropertiesDialog
-            beam={beam}
-            length={length}
-            material={beamMaterial}
-            beamForces={editBarForces}
-            layers={Array.from(mesh.layers.values())}
-            onUpdate={(updates) => {
-              pushUndo();
-              mesh.updateBeamElement(editingBarId, updates);
-              dispatch({ type: 'REFRESH_MESH' });
-              dispatch({ type: 'SET_RESULT', payload: null });
-            }}
-            onClose={() => setEditingBarId(null)}
-          />
-        );
-      })()}
+      {/* Legacy Node/Bar dialog blocks removed — selection drives the
+          right-hand PropertiesPanel directly. */}
 
       {/* Section properties dialog (view) */}
       {viewingSection && (
@@ -1229,6 +1177,6 @@ export function ProjectBrowser({ collapsed, onToggleCollapse }: ProjectBrowserPr
           onClose={() => setShowNewSectionDialog(false)}
         />
       )}
-    </div>
+    </SidePanel>
   );
 }

@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { useI18n } from '../../i18n/i18n';
 import { useFEM } from '../../context/FEMContext';
 import { IPlateReinforcement } from '../../core/fem/types';
-import { X } from 'lucide-react';
+import { Sheet } from '../openaec/Sheet';
 import './ConcreteReinforcementDialog.css';
 
 interface Props {
@@ -229,18 +229,9 @@ export function ConcreteReinforcementDialog({ plateId, onClose }: Props) {
 
   if (!plate) {
     return (
-      <>
-        <div className="reinforcement-overlay" onClick={onClose} />
-        <div className="reinforcement-dialog">
-          <div className="reinforcement-dialog-header">
-            <span>Plate Reinforcement</span>
-            <button onClick={onClose}><X size={14} /></button>
-          </div>
-          <div className="reinforcement-dialog-body">
-            <p>Plate not found.</p>
-          </div>
-        </div>
-      </>
+      <Sheet open onClose={onClose} title="Plate Reinforcement">
+        <p>Plate not found.</p>
+      </Sheet>
     );
   }
 
@@ -275,14 +266,15 @@ export function ConcreteReinforcementDialog({ plateId, onClose }: Props) {
   );
 
   return (
-    <>
-      <div className="reinforcement-overlay" onClick={onClose} />
-      <div className="reinforcement-dialog">
-        <div className="reinforcement-dialog-header">
-          <span>Plate Reinforcement — Plate #{plateId}</span>
-          <button onClick={onClose}><X size={14} /></button>
-        </div>
-
+    <Sheet
+      open
+      onClose={onClose}
+      title={`Plate Reinforcement — Plate #${plateId}`}
+      width={680}
+      footer={
+        <button className="btn-primary" onClick={handleApply}>{t('common.apply')}</button>
+      }
+    >
         <div className="reinforcement-dialog-body">
           <div className="reinforcement-layout">
             <div className="reinforcement-inputs">
@@ -317,11 +309,6 @@ export function ConcreteReinforcementDialog({ plateId, onClose }: Props) {
           </div>
         </div>
 
-        <div className="reinforcement-dialog-footer">
-          <button className="btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="btn-primary" onClick={handleApply}>{t('common.apply')}</button>
-        </div>
-      </div>
-    </>
+    </Sheet>
   );
 }

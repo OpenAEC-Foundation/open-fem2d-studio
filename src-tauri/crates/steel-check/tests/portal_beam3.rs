@@ -5,7 +5,7 @@
 //! Governing check: 6.3.3 with UC=0.78 (or 0.62 for other combination).
 //!
 //! LTB: C1=1.485 (beta=0.326), M_cr=536.275 kNm, lambda_LT=0.394, chi_LT=1.00
-//! referentie: Combination 2.2 (id=22) governs bending; 1.1 (id=11) for LTB.
+//! Reference: Combination 2.2 (id=22) governs bending; 1.1 (id=11) for LTB.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
@@ -44,7 +44,7 @@ fn run() -> &'static BeamCheckResult {
                 },
             ],
             lateral_bracing: LateralBracing { top_flange_positions: vec![], bottom_flange_positions: vec![] },
-            // referentie: Lcr,y=2500 mm, Lcr,z=2500 mm
+            // Reference: Lcr,y=2500 mm, Lcr,z=2500 mm
             buckling_length_y_m: 2.5,
             buckling_length_z_m: 2.5,
             deflection_limit_class: DeflectionClass::Floor,
@@ -52,6 +52,10 @@ fn run() -> &'static BeamCheckResult {
             deflection_actual_max_mm: 0.0,
             is_cantilever: false,
             consequence_class: ConsequenceClass::CC1,
+            pre_camber_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            q_equiv_n_per_mm: 0.0,
+            z_a_mm: 0.0,
         };
         check_beam(input)
     })
@@ -80,7 +84,7 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn portal_beam3_compression() {
     let r = run();
-    // referentie: N_c,Rd = 1275.472 kN, UC = 0.18
+    // Reference: N_c,Rd = 1275.472 kN, UC = 0.18
     assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 1275.472, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.18, max_relative = 0.025);
 }
@@ -88,7 +92,7 @@ fn portal_beam3_compression() {
 #[test]
 fn portal_beam3_bending() {
     let r = run();
-    // referentie: M_y,c,Rd = 83.217 kNm, UC = 0.80
+    // Reference: M_y,c,Rd = 83.217 kNm, UC = 0.80
     assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 83.217, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 0.80, max_relative = 0.02);
 }
@@ -96,7 +100,7 @@ fn portal_beam3_bending() {
 #[test]
 fn portal_beam3_shear() {
     let r = run();
-    // referentie: V_c,z,Rd = 239.1 kN, UC = 0.08
+    // Reference: V_c,z,Rd = 239.1 kN, UC = 0.08
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 239.1, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.08, max_relative = 0.03);
 }
@@ -104,8 +108,8 @@ fn portal_beam3_shear() {
 #[test]
 fn portal_beam3_governing_ok() {
     let r = run();
-    // referentie governing: 6.3.3 UC=0.78; beam is OK.
-    assert!(r.uc_max < 1.0, "expected uc_max < 1.0 (referentie: 0.78), got {}", r.uc_max);
+    // Reference governing: 6.3.3 UC=0.78; beam is OK.
+    assert!(r.uc_max < 1.0, "expected uc_max < 1.0 (reference: 0.78), got {}", r.uc_max);
     assert_eq!(r.status, CheckStatus::Ok);
 }
 

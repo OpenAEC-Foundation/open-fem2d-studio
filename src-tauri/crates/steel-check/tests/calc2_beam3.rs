@@ -42,7 +42,7 @@ fn run() -> &'static BeamCheckResult {
             ],
             // Hollow section has no LTB per EN 1993-1-1 §6.3.2 — but bracing still empty
             lateral_bracing: LateralBracing { top_flange_positions: vec![], bottom_flange_positions: vec![] },
-            // referentie: Lcr,z = 1666.7 mm => 1.667 m, Lcr,y = 5000 mm => 5.0 m
+            // Reference: Lcr,z = 1666.7 mm => 1.667 m, Lcr,y = 5000 mm => 5.0 m
             buckling_length_y_m: 5.0,
             buckling_length_z_m: 1.6667,
             deflection_limit_class: DeflectionClass::Floor,
@@ -50,6 +50,10 @@ fn run() -> &'static BeamCheckResult {
             deflection_actual_max_mm: 0.0,
             is_cantilever: false,
             consequence_class: ConsequenceClass::CC1,
+            pre_camber_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            q_equiv_n_per_mm: 0.0,
+            z_a_mm: 0.0,
         };
         check_beam(input)
     })
@@ -78,9 +82,9 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn calc2_beam3_compression() {
     let r = run();
-    // referentie: N_c,Rd = 2702.808 kN (A=11501.3 mm²), UC = 0.02
+    // Reference: N_c,Rd = 2702.808 kN (A=11501.3 mm²), UC = 0.02
     // Our profile DB: A=11280 mm² → N_c,Rd = 2650.8 kN
-    // TODO Phase 13: align HFRHS200X200X16 area in profile DB (11280 vs referentie 11501.3 mm²)
+    // TODO Phase 13: align HFRHS200X200X16 area in profile DB (11280 vs reference 11501.3 mm²)
     assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 2650.8, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.02, max_relative = 0.10); // wider: small UC
 }
@@ -88,9 +92,9 @@ fn calc2_beam3_compression() {
 #[test]
 fn calc2_beam3_bending() {
     let r = run();
-    // referentie: M_y,c,Rd = 184.579 kNm (Wpl=785442 mm³), UC = 1.01 NOT OK
+    // Reference: M_y,c,Rd = 184.579 kNm (Wpl=785442 mm³), UC = 1.01 NOT OK
     // Our profile DB: Wpl=768000 mm³ → M_y,c,Rd = 180.48 kNm
-    // TODO Phase 13: align HFRHS200X200X16 Wpl in profile DB (768000 vs referentie 785442 mm³)
+    // TODO Phase 13: align HFRHS200X200X16 Wpl in profile DB (768000 vs reference 785442 mm³)
     assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 180.48, max_relative = 1e-3);
     // UC = 187.327 / 180.48 = 1.038 ≥ 1.0 — still NOT OK
     assert!(uc_value(r, "6.2.5_bending_y") >= 1.0,
@@ -104,22 +108,22 @@ fn calc2_beam3_bending() {
 #[test]
 fn calc2_beam3_shear() {
     let r = run();
-    // referentie: V_c,z,Rd = 780.2 kN (Av=5751 mm²), UC = 0.31 (at x=5000 mm where Vz=-241.739 kN)
+    // Reference: V_c,z,Rd = 780.2 kN (Av=5751 mm²), UC = 0.31 (at x=5000 mm where Vz=-241.739 kN)
     // Our profile DB: Av_z=5640 mm² → V_c,z,Rd = 765.2 kN
     // Phase 13-A fix: orchestrator now picks max |Vz| as governing for shear check.
     // → position x=5000 mm, Vz=-241.739 kN, UC = 241.739 / 765.2 = 0.316
-    // (referentie: 0.31 — small delta due to profile DB Av_z difference)
+    // (reference: 0.31 — small delta due to profile DB Av_z difference)
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 765.2, max_relative = 1e-3);
-    // UC = 241.739 / 765.22 ≈ 0.316 — close to referentie 0.31 (profile DB delta only)
+    // UC = 241.739 / 765.22 ≈ 0.316 — close to reference 0.31 (profile DB delta only)
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.316, max_relative = 0.02);
 }
 
 #[test]
 fn calc2_beam3_governing_not_ok() {
     let r = run();
-    // referentie governing: 6.3.3 with UC 1.05 (not just bending UC 1.01, but also interaction)
+    // Reference governing: 6.3.3 with UC 1.05 (not just bending UC 1.01, but also interaction)
     // We just assert >= 1.0 since interaction details depend on our 6.3.3 implementation.
-    assert!(r.uc_max >= 1.0, "expected uc_max >= 1.0 (referentie: 1.05 via 6.3.3), got {}", r.uc_max);
+    assert!(r.uc_max >= 1.0, "expected uc_max >= 1.0 (reference: 1.05 via 6.3.3), got {}", r.uc_max);
     assert_eq!(r.status, CheckStatus::NotOk);
 }
 

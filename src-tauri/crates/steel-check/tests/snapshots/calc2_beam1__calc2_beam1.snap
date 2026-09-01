@@ -1,5 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam1.rs
+assertion_line: 122
 expression: run()
 ---
 {
@@ -83,7 +84,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,y}",
-              "value": 354100.0,
+              "value": 354113.0,
               "unit": "mm³"
             },
             {
@@ -97,12 +98,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 87.84,
-            "rd": 83.2135,
-            "uc": 1.055597949851887,
+            "rd": 83.216555,
+            "uc": 1.0555591973255802,
             "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
           },
           "status": "NotOk",
@@ -134,7 +135,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,z}",
-              "value": 170000.0,
+              "value": 169986.0,
               "unit": "mm³"
             },
             {
@@ -148,11 +149,11 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 39.949999999999996,
+          "value": 39.946709999999996,
           "unit": "kNm",
           "uc": {
             "ed": 0.0,
-            "rd": 39.949999999999996,
+            "rd": 39.946709999999996,
             "uc": 0.0,
             "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
           },
@@ -297,16 +298,16 @@ expression: run()
             },
             {
               "symbol": "M_{y,c,Rd}",
-              "value": 83.2135,
+              "value": 83.216555,
               "unit": "kNm"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 87.84,
-            "rd": 83.2135,
-            "uc": 1.055597949851887,
+            "rd": 83.216555,
+            "uc": 1.0555591973255802,
             "formula_latex": "M_{y,Ed} / M_{y,V,Rd}"
           },
           "status": "NotOk",
@@ -350,16 +351,16 @@ expression: run()
             },
             {
               "symbol": "M_{pl,y,Rd}",
-              "value": 83.2135,
+              "value": 83.216555,
               "unit": "kNm"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 87.84,
-            "rd": 83.2135,
-            "uc": 1.055597949851887,
+            "rd": 83.216555,
+            "uc": 1.0555591973255802,
             "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
           },
           "status": "NotOk",
@@ -403,16 +404,16 @@ expression: run()
             },
             {
               "symbol": "M_{pl,y,Rd}",
-              "value": 83.2135,
+              "value": 83.216555,
               "unit": "kNm"
             }
           ],
-          "value": 83.2135,
+          "value": 83.216555,
           "unit": "kNm",
           "uc": {
             "ed": 87.84,
-            "rd": 83.2135,
-            "uc": 1.055597949851887,
+            "rd": 83.216555,
+            "uc": 1.0555591973255802,
             "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
           },
           "status": "NotOk",
@@ -519,7 +520,7 @@ expression: run()
         "data": {
           "id": "6.3.2_ltb",
           "title": "Lateral-torsional buckling resistance",
-          "article": "art. 6.3.2.1",
+          "article": "art. 6.3.2.1 + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
           "force_state": {
             "combination_id": 2,
             "position_mm": 2500.0,
@@ -536,7 +537,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,y}",
-              "value": 354100.0,
+              "value": 354113.0,
               "unit": "mm³"
             },
             {
@@ -552,7 +553,17 @@ expression: run()
           ],
           "intermediate_values": [
             {
+              "symbol": "L_g",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
               "symbol": "L_{st}",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "L_{kip}",
               "value": 5000.0,
               "unit": "mm"
             },
@@ -562,23 +573,28 @@ expression: run()
               "unit": "-"
             },
             {
+              "symbol": "B^*",
+              "value": -1.0,
+              "unit": "-"
+            },
+            {
               "symbol": "C_1",
-              "value": 1.219,
+              "value": 1.3,
               "unit": "-"
             },
             {
               "symbol": "C_2",
-              "value": 0.0,
+              "value": -0.0,
               "unit": "-"
             },
             {
               "symbol": "S",
-              "value": 686.8459187094345,
+              "value": 686.8464207557247,
               "unit": "mm"
             },
             {
               "symbol": "C",
-              "value": 4.171000921361847,
+              "value": 4.448155717827936,
               "unit": "-"
             },
             {
@@ -588,30 +604,32 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 181.44666859150115,
+              "value": 193.5035838016959,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.6772084915186379,
+              "value": 0.6557833108581156,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.8808854866235294,
+              "value": 0.891225666704428,
               "unit": "-"
             }
           ],
-          "value": 0.8808854866235294,
+          "value": 0.891225666704428,
           "unit": "-",
           "uc": {
             "ed": 87.84,
-            "rd": 73.30156444114705,
-            "uc": 1.1983373161227096,
+            "rd": 74.1647297107207,
+            "uc": 1.1843904824115135,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "B* < 0: C₁ en C₂ zijn afgelezen bij |B*|. De negatieve tak van figuur NB.NB.5/NB.NB.6 is niet gedigitaliseerd; deze benadering ligt onder de werkelijke waarden en is dus veilig-zijdig, maar nog niet geverifieerd."
+          ]
         }
       }
     },
@@ -656,7 +674,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.8206674260392017,
+              "value": 0.8111160985714089,
               "unit": "-"
             },
             {
@@ -665,12 +683,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 1.0622640003452533,
+          "value": 1.0527126728774605,
           "unit": "-",
           "uc": {
-            "ed": 1.0622640003452533,
+            "ed": 1.0527126728774605,
             "rd": 1.0,
-            "uc": 1.0622640003452533,
+            "uc": 1.0527126728774605,
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
@@ -719,7 +737,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.492400455623521,
+              "value": 0.4866696591428452,
               "unit": "-"
             },
             {
@@ -728,12 +746,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.9554370731127817,
+          "value": 0.9497062766321058,
           "unit": "-",
           "uc": {
-            "ed": 0.9554370731127817,
+            "ed": 0.9497062766321058,
             "rd": 1.0,
-            "uc": 0.9554370731127817,
+            "uc": 0.9497062766321058,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -742,13 +760,13 @@ expression: run()
       }
     },
     {
-      "id": "sls_deflection",
+      "id": "deflection_w_fin",
       "kind": {
         "type": "Resistance",
         "data": {
-          "id": "sls_deflection",
-          "title": "Deflection (SLS)",
-          "article": "NEN-EN 1990 (SLS)",
+          "id": "deflection_w_fin",
+          "title": "Deflection w_fin (BGT)",
+          "article": "NEN-EN 1990 (BGT)",
           "force_state": {
             "combination_id": 0,
             "position_mm": 0.0,
@@ -761,7 +779,7 @@ expression: run()
               "mz_ed": 0.0
             }
           },
-          "formula_latex": "\\delta_{lim} = L / 333",
+          "formula_latex": "w_{fin,z} = w_z - w_{zeeg,z}",
           "variables": [
             {
               "symbol": "L",
@@ -769,9 +787,14 @@ expression: run()
               "unit": "mm"
             },
             {
-              "symbol": "L_{type}",
+              "symbol": "w",
+              "value": 0.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "L/n",
               "value": 333.0,
-              "unit": "(Floor)"
+              "unit": "-"
             }
           ],
           "value": 15.015015015015015,
@@ -780,7 +803,58 @@ expression: run()
             "ed": 0.0,
             "rd": 15.015015015015015,
             "uc": 0.0,
-            "formula_latex": "\\delta / \\delta_{lim}"
+            "formula_latex": "|w| / w_{max}"
+          },
+          "status": "Ok",
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "deflection_w_add",
+      "kind": {
+        "type": "Resistance",
+        "data": {
+          "id": "deflection_w_add",
+          "title": "Deflection w_add (BGT)",
+          "article": "NEN-EN 1990 (BGT)",
+          "force_state": {
+            "combination_id": 0,
+            "position_mm": 0.0,
+            "forces": {
+              "n_ed": 0.0,
+              "vy_ed": 0.0,
+              "vz_ed": 0.0,
+              "mt_ed": 0.0,
+              "my_ed": 0.0,
+              "mz_ed": 0.0
+            }
+          },
+          "formula_latex": "w_{add,z} = w_{fin,z} - w_{BGT,perm,z}",
+          "variables": [
+            {
+              "symbol": "L",
+              "value": 5000.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "w",
+              "value": 0.0,
+              "unit": "mm"
+            },
+            {
+              "symbol": "L/n",
+              "value": 150.0,
+              "unit": "-"
+            }
+          ],
+          "value": 33.333333333333336,
+          "unit": "mm",
+          "uc": {
+            "ed": 0.0,
+            "rd": 33.333333333333336,
+            "uc": 0.0,
+            "formula_latex": "|w| / w_{max}"
           },
           "status": "Ok",
           "notes": []
@@ -788,7 +862,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.1983373161227096,
+  "uc_max": 1.1843904824115135,
   "status": "NotOk",
   "governing_check_id": "6.3.2_ltb"
 }

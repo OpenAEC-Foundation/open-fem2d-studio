@@ -9,8 +9,12 @@ crate-type = ["lib"]
 [dependencies]
 serde = { workspace = true }
 ts-rs = { workspace = true }
-# genpdf 0.2 — purpose-built Rust layout library (bundles printpdf 0.3 internally)
-genpdf = "0.2"
+# OpenAEC Foundation report layout engine — Rust equivalent of ReportLab Platypus.
+# Vendored from crates-warehouse/openaec-layout (May 2026) into ../openaec-layout.
+openaec-layout = { path = "../openaec-layout" }
 steel-check = { path = "../steel-check" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
+
+[dev-dependencies]
+mechanics = { path = "../mechanics" }

@@ -5,7 +5,6 @@ import { Ribbon } from './components/Ribbon/Ribbon';
 import { ProjectBrowser } from './components/ProjectBrowser/ProjectBrowser';
 import { MeshEditor } from './components/MeshEditor/MeshEditor';
 import { VisibilityPanel } from './components/VisibilityPanel/VisibilityPanel';
-import { LoadCaseTabs } from './components/LoadCaseTabs/LoadCaseTabs';
 import { LoadCaseDialog } from './components/LoadCaseDialog/LoadCaseDialog';
 import { ProjectInfoDialog } from './components/ProjectInfoDialog/ProjectInfoDialog';
 import { GridsDialog } from './components/GridsDialog/GridsDialog';
@@ -13,8 +12,9 @@ import { AgentPanel } from './components/AgentPanel/AgentPanel';
 import { ConsolePanel } from './components/ConsolePanel/ConsolePanel';
 import { MaterialsDialog } from './components/MaterialsDialog/MaterialsDialog';
 import { CalculationSettingsDialog } from './components/CalculationSettingsDialog/CalculationSettingsDialog';
-import { FileTabs, FileTab } from './components/FileTabs/FileTabs';
-import { StatusBar } from './components/StatusBar/StatusBar';
+import { AppDocumentBar } from './components/openaec/AppDocumentBar';
+import type { FileTab } from './components/openaec/types';
+import { AppStatusBar } from './components/openaec/AppStatusBar';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 
 
@@ -25,13 +25,14 @@ import { ReportPanel } from './components/ReportPanel/ReportPanel';
 
 import { ConcreteReinforcementDialog } from './components/ConcreteReinforcementDialog/ConcreteReinforcementDialog';
 import { IFCPanel } from './components/IFCPanel/IFCPanel';
+import { AppPropertiesPanel } from './components/openaec/AppPropertiesPanel';
 
 import { serializeProject, deserializeProject } from './core/io/ProjectSerializer';
-import { TitleBar } from './components/TitleBar/TitleBar';
+import { AppTitleBar } from './components/openaec/AppTitleBar';
 import { I18nProvider } from './i18n/I18nProvider';
-import { Backstage, BackstageAction } from './components/Backstage/Backstage';
-import { SettingsDialog, Theme, Locale } from './components/SettingsDialog/SettingsDialog';
-import { AboutDialog } from './components/AboutDialog/AboutDialog';
+import { Backstage, BackstageAction } from './components/openaec/Backstage/Backstage';
+import { SettingsDialog, Theme, Locale } from './components/openaec/SettingsDialog/SettingsDialog';
+import { AboutDialog } from './components/openaec/AboutDialog/AboutDialog';
 import { useI18n } from './i18n/i18n';
 import { fileApi } from './lib/fileApi';
 import { windowApi } from './lib/windowApi';
@@ -81,7 +82,9 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   const splitDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const [browserCollapsed, setBrowserCollapsed] = useState(false);
   const [displayCollapsed, setDisplayCollapsed] = useState(false);
-  const [activeRibbonTab, setActiveRibbonTab] = useState<string>('home');
+  const [activeRibbonTab, setActiveRibbonTab] = useState<import('./components/Ribbon/Ribbon').RibbonTabId>('home');
+  const [activeView, setActiveView] = useState<import('./components/Ribbon/Ribbon').AppView>('mesh');
+  const [showProperties, setShowProperties] = useState(false);
   const [showBackstage, setShowBackstage] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -390,9 +393,55 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
   }, [currentFilePath, dispatch, getSnapshot, state.projectInfo.name]);
 
 
+  const handleQuickSave = useCallback(async () => {
+    const snapshot = getSnapshot();
+    if (currentFilePath) {
+      await fileApi.saveProject(snapshot, currentFilePath);
+    } else {
+      const path = await fileApi.saveProjectAs(snapshot, state.projectInfo.name || 'project.femp');
+      if (path) setCurrentFilePath(path);
+    }
+  }, [currentFilePath, getSnapshot, state.projectInfo.name]);
+
+  // Global shortcuts for File operations + Preferences (Phase 2.6).
+  // We swallow keys only when no input/textarea/contenteditable has focus, so
+  // typing in dialogs/panels still works normally.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const tgt = e.target as HTMLElement | null;
+      const inEditable =
+        tgt?.tagName === 'INPUT' ||
+        tgt?.tagName === 'TEXTAREA' ||
+        tgt?.tagName === 'SELECT' ||
+        tgt?.isContentEditable;
+      if (inEditable) return;
+
+      const k = e.key.toLowerCase();
+      if (k === 's' && !e.shiftKey) {
+        e.preventDefault();
+        void handleBackstageAction('save');
+      } else if (k === 's' && e.shiftKey) {
+        e.preventDefault();
+        void handleBackstageAction('saveAs');
+      } else if (k === 'n') {
+        e.preventDefault();
+        void handleBackstageAction('new');
+      } else if (k === 'o') {
+        e.preventDefault();
+        void handleBackstageAction('open');
+      } else if (e.key === ',') {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleBackstageAction]);
+
   return (
-    <div className="app">
-      <TitleBar projectName={state.projectInfo.name || ''} />
+    <div className="oa-app-shell app" data-theme={document.documentElement.dataset.theme ?? 'openaec'}>
+      <AppTitleBar onSave={handleQuickSave} />
       <Ribbon
         onShowLoadCaseDialog={() => setShowLoadCaseDialog(true)}
         onShowProjectInfoDialog={() => setShowProjectInfoDialog(true)}
@@ -406,26 +455,44 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         showConsolePanel={showConsolePanel}
         onToggleGraphSplit={() => setShowGraphSplit(!showGraphSplit)}
         showGraphSplit={showGraphSplit}
-        activeRibbonTab={activeRibbonTab as any}
-        onRibbonTabChange={setActiveRibbonTab}
+        onToggleBrowser={() => setBrowserCollapsed(c => !c)}
+        showBrowser={!browserCollapsed}
+        onToggleVisibility={() => setDisplayCollapsed(c => !c)}
+        showVisibility={!displayCollapsed}
+        onToggleProperties={() => setShowProperties(p => !p)}
+        showProperties={showProperties}
+        activeRibbonTab={activeRibbonTab}
+        onRibbonTabChange={(tab) => {
+          setActiveRibbonTab(tab);
+          // Report tab also flips the central view to ReportPanel so the
+          // ribbon controls match what's shown in the canvas area.
+          if (tab === 'report') setActiveView('report');
+        }}
+        activeView={activeView}
+        onViewChange={setActiveView}
         onFileTabClick={() => setShowBackstage(true)}
         onRunSteelChecks={handleRunSteelChecks}
         onToggleSteelCheckPanel={() => setShowSteelCheckPanel(s => !s)}
+        onSolve={handleSolve}
       />
       <div className="main-content">
-        <ProjectBrowser
-          collapsed={browserCollapsed}
-          onToggleCollapse={() => setBrowserCollapsed(!browserCollapsed)}
-        />
+        {/* ProjectBrowser is hidden in report/ifc/insights/table views — those
+            views own the full canvas area and have their own sub-panels. */}
+        {activeView === 'mesh' && (
+          <ProjectBrowser
+            collapsed={browserCollapsed}
+            onToggleCollapse={() => setBrowserCollapsed(!browserCollapsed)}
+          />
+        )}
         <div className="canvas-area">
           {fileTabs}
-          {activeRibbonTab === 'insights' ? (
+          {activeView === 'insights' ? (
             <InsightsPanel />
-          ) : activeRibbonTab === 'table' ? (
+          ) : activeView === 'table' ? (
             <TableEditorPanel />
-          ) : activeRibbonTab === 'report' ? (
+          ) : activeView === 'report' ? (
             <ReportPanel />
-          ) : activeRibbonTab === 'ifc' ? (
+          ) : activeView === 'ifc' ? (
             <IFCPanel>
               <MeshEditor onShowGridsDialog={() => setShowGridsDialog(true)} />
             </IFCPanel>
@@ -463,8 +530,8 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
                 dispatch({ type: 'SET_SELECTION', payload: { nodeIds: allNodeIds, elementIds: allBeamIds, pointLoadNodeIds: new Set(), distLoadBeamIds: new Set(), selectedDistLoadIds: new Set(), plateIds: new Set(), edgeIds: new Set() } });
                 break;
               }
-              case 'viewTable': setActiveRibbonTab('table'); break;
-              case 'viewInsights': setActiveRibbonTab('insights'); break;
+              case 'viewTable': setActiveView('table'); break;
+              case 'viewInsights': setActiveView('insights'); break;
               case 'viewGraph': setShowGraphSplit(g => !g); break;
               case 'viewAgent': setShowAgentPanel(a => !a); break;
               case 'viewConsole': setShowConsolePanel(c => !c); break;
@@ -473,7 +540,7 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
             }
           }} />
         </div>
-        {activeRibbonTab !== 'table' && activeRibbonTab !== 'insights' && activeRibbonTab !== 'ifc' && (
+        {activeView === 'mesh' && !showProperties && (
           <VisibilityPanel
             collapsed={displayCollapsed}
             onToggleCollapse={() => setDisplayCollapsed(!displayCollapsed)}
@@ -484,9 +551,14 @@ function AppContent({ onSnapshotRef, fileTabs }: AppContentProps) {
         {showSteelCheckPanel && state.steelCheckResults && (
           <SteelCheckPanel onClose={() => setShowSteelCheckPanel(false)} />
         )}
+        {showProperties && (
+          <AppPropertiesPanel onClose={() => setShowProperties(false)} />
+        )}
       </div>
-      <LoadCaseTabs onSolve={handleSolve} />
-      <StatusBar />
+      {/* LoadCaseTabs bar removed in OpenAEC big-bang — the workflow it
+          gated (Geometry / Loads / Results) is now reached via the new
+          ribbon tabs (Geometry, Loads, Analyze → Solve, Check). */}
+      <AppStatusBar />
 
       {showLoadCaseDialog && (
         <LoadCaseDialog onClose={() => setShowLoadCaseDialog(false)} />
@@ -645,7 +717,7 @@ function App() {
   }, [activeTabId]);
 
   const fileTabsElement = (
-    <FileTabs
+    <AppDocumentBar
       tabs={tabs}
       activeTabId={activeTabId}
       onSelectTab={handleSelectTab}

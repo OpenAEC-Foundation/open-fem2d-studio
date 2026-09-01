@@ -1,149 +1,290 @@
+/* PropertiesPanel.css
+ *
+ * OpenAEC-tokened styles for the right-side properties panel.
+ * Every selector is local to this panel — no legacy `.bar-props-*`,
+ * `.node-props-*`, `.plate-props-*`, `.modal-*` etc. The OpenAEC theme
+ * tokens (`--theme-*`) drive every colour, so the whole panel re-skins
+ * automatically with the light/openaec toggle on the View ribbon.
+ */
+
+/* ───── outer panel ──────────────────────────────────────────────── */
 .properties-panel {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  color: var(--theme-fg);
+  font-family: var(--theme-font-sans, "Inter", system-ui, sans-serif);
   overflow-y: auto;
-  padding: 12px;
 }
 
-.panel-section {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+.properties-empty,
+.properties-multi-select {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--theme-fg-muted);
+  font-size: 12px;
 }
 
-.panel-section:last-child {
+.properties-multi-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ───── section accordions ───────────────────────────────────────── */
+.oa-props-section {
+  border-bottom: 1px solid var(--theme-border-subtle, var(--theme-border));
+  background: var(--theme-bg-elevated, var(--theme-bg));
+}
+
+.oa-props-section:last-child {
   border-bottom: none;
 }
 
-.panel-section h3 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: var(--text-primary);
-}
-
-.panel-section h4 {
-  font-size: 12px;
-  font-weight: 500;
-  margin: 12px 0 8px;
-  color: var(--text-secondary);
-}
-
-.form-group {
-  margin-bottom: 10px;
-}
-
-.form-row {
-  display: flex;
-  gap: 10px;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.checkbox-row {
-  display: flex;
-  gap: 16px;
-}
-
-.result-info {
-  background: var(--bg-primary);
-  padding: 10px;
-  border-radius: 4px;
-  margin-top: 12px;
-}
-
-.result-info p {
-  font-size: 12px;
-  margin: 4px 0;
-}
-
-.result-info strong {
-  color: var(--text-secondary);
-}
-
-.scale-value {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-left: 8px;
-}
-
-input[type="range"] {
-  width: 100%;
-  margin-top: 4px;
-}
-
-.color-scale {
-  margin-top: 12px;
-}
-
-.scale-bar {
-  display: flex;
-  height: 20px;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.scale-segment {
-  flex: 1;
-}
-
-.scale-labels {
-  display: flex;
-  justify-content: space-between;
+.oa-props-section-title {
+  padding: 8px 12px 6px;
   font-size: 10px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--theme-accent);
+  background: transparent;
+  user-select: none;
 }
 
-.material-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  background: var(--bg-primary);
-  border-radius: 4px;
-  margin-bottom: 6px;
-}
-
-.material-color {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-}
-
-.material-info {
+.oa-props-section-body {
+  padding: 4px 12px 12px;
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
-.material-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.material-props {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.constraint-grid {
+/* ───── field rows (label + control) ─────────────────────────────── */
+.oa-props-row {
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.reaction-item {
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
   font-size: 11px;
-  padding: 6px;
-  background: var(--bg-primary);
-  border-radius: 4px;
-  margin-bottom: 4px;
 }
 
-.reaction-item span {
-  margin-left: 4px;
-  color: var(--success);
+.oa-props-label {
+  flex: 0 0 90px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--theme-fg-muted);
+}
+
+.oa-props-value {
+  flex: 1;
+  color: var(--theme-fg);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-props-input,
+.oa-props-select {
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  color: var(--theme-fg);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.oa-props-input:focus,
+.oa-props-select:focus {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-subtle, rgba(217, 119, 6, 0.18));
+}
+
+.oa-props-input:disabled,
+.oa-props-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* multi-column row used for X/Z pairs */
+.oa-props-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* checkbox row */
+.oa-props-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--theme-fg);
+  cursor: pointer;
+}
+
+.oa-props-checkbox input[type="checkbox"] {
+  accent-color: var(--theme-accent);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+/* radio group used by thermal-load mode */
+.oa-props-radio-row {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.oa-props-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.oa-props-radio input[type="radio"] {
+  accent-color: var(--theme-accent);
+  margin: 0;
+}
+
+/* tab bar inside Bar properties (General / EN 1993) */
+.oa-props-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--theme-border);
+  padding: 0 8px;
+  background: var(--theme-bg);
+}
+
+.oa-props-tab {
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--theme-fg-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.oa-props-tab:hover {
+  color: var(--theme-fg);
+}
+
+.oa-props-tab.active {
+  color: var(--theme-accent);
+  border-bottom-color: var(--theme-accent);
+}
+
+/* compact action buttons next to the profile selector */
+.oa-props-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.oa-props-btn {
+  padding: 4px 10px;
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--theme-fg);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.oa-props-btn:hover {
+  background: var(--theme-bg-subtle);
+  border-color: var(--theme-accent);
+}
+
+.oa-props-btn.is-accent {
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+  color: var(--theme-accent-text, #fff);
+}
+
+.oa-props-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* DOF connection grid (Tx/Tz/Rz × start/end) */
+.oa-dof-grid {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.oa-dof-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.oa-dof-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--theme-fg-muted);
+}
+
+.oa-dof-spring-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.oa-dof-spring-row .oa-props-input { flex: 1; }
+
+.oa-dof-spring-unit {
+  font-size: 10px;
+  color: var(--theme-fg-muted);
+}
+
+/* read-only fact list (Materials, Internal forces, etc.) */
+.oa-props-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border-subtle, var(--theme-border));
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.oa-props-facts p {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.oa-props-facts strong {
+  font-weight: 500;
+  color: var(--theme-fg-muted);
+}
+
+/* hint text under groups */
+.oa-props-hint {
+  font-size: 10px;
+  color: var(--theme-fg-muted);
+  font-style: italic;
+  margin-top: 4px;
 }

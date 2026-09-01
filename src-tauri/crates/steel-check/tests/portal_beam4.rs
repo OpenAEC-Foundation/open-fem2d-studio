@@ -6,7 +6,7 @@
 //!
 //! LTB: 2 lateral restraints at 1667 mm spacing, C1=1.582, M_cr=7883.581 kNm,
 //!       lambda_LT=0.236 < 0.4, chi_LT=1.00
-//! referentie: Combination 2.1 (id=21) governs bending; 1.1 (id=11) for LTB.
+//! Reference: Combination 2.1 (id=21) governs bending; 1.1 (id=11) for LTB.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
@@ -51,7 +51,7 @@ fn run() -> &'static BeamCheckResult {
                 top_flange_positions: vec![0.3334, 0.6666],
                 bottom_flange_positions: vec![],
             },
-            // referentie: Lcr,y=5000 mm, Lcr,z (not critical: chi_LT=1.0)
+            // Reference: Lcr,y=5000 mm, Lcr,z (not critical: chi_LT=1.0)
             buckling_length_y_m: 5.0,
             buckling_length_z_m: 5.0,
             deflection_limit_class: DeflectionClass::Floor,
@@ -59,6 +59,10 @@ fn run() -> &'static BeamCheckResult {
             deflection_actual_max_mm: 0.0,
             is_cantilever: false,
             consequence_class: ConsequenceClass::CC1,
+            pre_camber_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            q_equiv_n_per_mm: 0.0,
+            z_a_mm: 0.0,
         };
         check_beam(input)
     })
@@ -87,7 +91,7 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn portal_beam4_bending() {
     let r = run();
-    // referentie: M_y,c,Rd = 439.199 kNm, UC = 0.62
+    // Reference: M_y,c,Rd = 439.199 kNm, UC = 0.62
     assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 439.199, max_relative = 1e-3);
     assert_relative_eq!(uc_value(r, "6.2.5_bending_y"), 0.62, max_relative = 0.02);
 }
@@ -95,25 +99,25 @@ fn portal_beam4_bending() {
 #[test]
 fn portal_beam4_shear() {
     let r = run();
-    // referentie: V_c,z,Rd = 643.8 kN (Av=4745 mm²), UC = 0.36 (at x=5000 mm, Vz=-234.164 kN)
+    // Reference: V_c,z,Rd = 643.8 kN (Av=4745 mm²), UC = 0.36 (at x=5000 mm, Vz=-234.164 kN)
     // Our profile DB: Av_z=4742 mm² → V_c,z,Rd = 643.4 kN
     // Phase 13-A fix: orchestrator now picks max |Vz| as governing for shear check.
     // → position x=5000 mm, Vz=-234.164 kN, UC = 234.164 / 643.4 ≈ 0.364
     assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 643.4, max_relative = 1e-2);
-    // UC close to referentie 0.36 (small delta due to profile DB Av_z: 4742 vs referentie 4745 mm²)
+    // UC close to reference 0.36 (small delta due to profile DB Av_z: 4742 vs reference 4745 mm²)
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.364, max_relative = 0.02);
 }
 
 #[test]
 fn portal_beam4_ltb_chi_is_one() {
     let r = run();
-    // referentie: lambda_LT = 0.236 < 0.4, so chi_LT = 1.00.
+    // Reference: lambda_LT = 0.236 < 0.4, so chi_LT = 1.00.
     // The LTB result value IS chi_LT per the orchestrator convention.
     // We check that M_b,Rd (indirectly via 6.3.2_ltb value or UC) reflects chi_LT=1.0.
     // UC_LTB = M_y,Ed / M_b,Rd = 273.135 / 439.199 = 0.622 (same as pure bending since chi_LT=1)
     let ltb_uc = uc_value(r, "6.3.2_ltb");
     // TODO Phase 13: tighten tolerance once LTB Mcr for HEB300 with bracing is verified
-    // LTB UC should ~= bending UC when chi_LT=1.0 (referentie: lambda_LT=0.236 < 0.4)
+    // LTB UC should ~= bending UC when chi_LT=1.0 (reference: lambda_LT=0.236 < 0.4)
     // TODO Phase 13: tighten once LTB Mcr for HEB300 with bracing is verified
     assert_relative_eq!(ltb_uc, 0.622, max_relative = 0.05);
 }
@@ -121,8 +125,8 @@ fn portal_beam4_ltb_chi_is_one() {
 #[test]
 fn portal_beam4_governing_ok() {
     let r = run();
-    // referentie: all checks OK, UC_max = 0.62 (bending governs)
-    assert!(r.uc_max < 1.0, "expected uc_max < 1.0 (referentie: 0.62), got {}", r.uc_max);
+    // Reference: all checks OK, UC_max = 0.62 (bending governs)
+    assert!(r.uc_max < 1.0, "expected uc_max < 1.0 (reference: 0.62), got {}", r.uc_max);
     assert_eq!(r.status, CheckStatus::Ok);
 }
 
