@@ -1,6 +1,9 @@
 /**
  * TableEditorPanel — Spreadsheet-style editor for nodes, elements, loads, supports, etc.
- * Like een extern pakket or extern table view
+ * A familiar spreadsheet-like table view of the model data.
+ *
+ * TODO(phase-9): Canvas-replacement view (activeView === 'table'), not a side
+ * dock. SidePanel migration deferred.
  */
 
 import React, { useState, useMemo, useCallback } from 'react';

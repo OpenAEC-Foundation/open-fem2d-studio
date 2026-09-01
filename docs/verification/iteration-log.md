@@ -1,6 +1,6 @@
 # Steel Check Engine — Verify-Iterate Log
 
-This log records the first-run acceptance test results for each beam against referentie reference.
+This log records the first-run acceptance test results for each beam against the reference calculation.
 Phase 10 goal: establish baseline. Phase 13 goal: close remaining discrepancies.
 
 ---
@@ -9,9 +9,9 @@ Phase 10 goal: establish baseline. Phase 13 goal: close remaining discrepancies.
 
 **File:** `src-tauri/crates/steel-check/tests/calc2_beam1.rs`
 **Forces:** Comb 2, x=2500 mm: N=-226.027 kN, V=-35.136 kN, My=-87.84 kNm
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.4 compression | N_c,Rd=1275.472 kN, UC=0.18 | ⏳ TBD |
 | 6.2.5 bending | M_y,c,Rd=83.217 kNm, UC=1.06 NOT OK | ⏳ TBD |
@@ -35,10 +35,10 @@ Phase 10 goal: establish baseline. Phase 13 goal: close remaining discrepancies.
 | uc_max >= 1.0 + status = NotOk | ✅ PASS |
 | snapshot | ✅ ACCEPTED |
 
-**LTB discrepancy (known):** Our M_cr = 194.99 kNm vs referentie 650.886 kNm.
+**LTB discrepancy (known):** Our M_cr = 194.99 kNm vs reference 650.886 kNm.
 Root cause: `m_b_rd()` receives `m_y_ed * 0.5` as quarter-span moment, giving beta=0.5 → C1=1.31.
-referentie uses beta=0 (zero moment at one end) → C1=1.803. LTB UC higher (1.18 vs referentie N/A since chi_LT=1).
-The 6.3.3 governing UC (0.85 from referentie) differs from our computation. Bending (1.06) still governs.
+The reference uses beta=0 (zero moment at one end) → C1=1.803. LTB UC higher (1.18 vs reference N/A since chi_LT=1).
+The 6.3.3 governing UC (0.85 from the reference) differs from our computation. Bending (1.06) still governs.
 TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 ---
@@ -47,9 +47,9 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 **File:** `src-tauri/crates/steel-check/tests/calc2_beam2.rs`
 **Forces:** Comb 2, x=2500 mm: N=-241.496 kN, V=50.669 kN, My=126.672 kNm
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.4 compression | N_c,Rd=1275.472 kN, UC=0.19 | ⏳ TBD |
 | 6.2.5 bending | M_y,c,Rd=83.217 kNm, UC=1.52 NOT OK | ⏳ TBD |
@@ -79,9 +79,9 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 **File:** `src-tauri/crates/steel-check/tests/calc2_beam3.rs`
 **Forces:** Comb 2, x=2402 mm: N=-48.228 kN, Vz=0 kN, My=187.327 kNm
 **Profile type:** Hollow square (no LTB per EN 1993-1-1 §6.3.2.1 exception)
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.4 compression | N_c,Rd=2702.808 kN, UC=0.02 | ⏳ TBD |
 | 6.2.5 bending | M_y,c,Rd=184.579 kNm, UC=1.01 NOT OK | ⏳ TBD |
@@ -99,11 +99,11 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 | Check | Assert value | Status |
 |-------|-------------|--------|
-| 6.2.4 N_c,Rd = 2650.8 kN (our DB) | ✅ PASS (referentie: 2702.8 — profile DB delta) |
+| 6.2.4 N_c,Rd = 2650.8 kN (our DB) | ✅ PASS (reference: 2702.8 — profile DB delta) |
 | 6.2.4 UC = 0.02 | ✅ PASS (wider tol) |
-| 6.2.5 M_y,c,Rd = 180.48 kNm (our DB) | ✅ PASS (referentie: 184.6 — profile DB delta) |
+| 6.2.5 M_y,c,Rd = 180.48 kNm (our DB) | ✅ PASS (reference: 184.6 — profile DB delta) |
 | 6.2.5 UC >= 1.0 + status = NotOk | ✅ PASS |
-| 6.2.6 V_c,z,Rd = 765.2 kN (our DB) | ✅ PASS (referentie: 780.2 — profile DB delta) |
+| 6.2.6 V_c,z,Rd = 765.2 kN (our DB) | ✅ PASS (reference: 780.2 — profile DB delta) |
 | 6.2.6 UC SKIP (Vz=0 at governing x=2402) | ✅ PASS (documented limitation) |
 | uc_max >= 1.0 + status = NotOk | ✅ PASS |
 | snapshot | ✅ ACCEPTED |
@@ -114,9 +114,9 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 **File:** `src-tauri/crates/steel-check/tests/portal_beam1.rs`
 **Forces:** Comb 2.1, x=3900 mm: N=-18.479 kN, Vz=235.084 kN, My=-194.796 kNm
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.4 compression | N_c,Rd=1801.43 kN, UC=0.01 | ⏳ TBD |
 | 6.2.5 bending | M_y,c,Rd=209.094 kNm, UC=0.93 | ⏳ TBD |
@@ -128,19 +128,19 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 - UNP350 is a channel (monosymmetric). Our LTB Mcr formula assumes doubly-symmetric I-sections.
   For channel sections, Mcr calculation differs. The LTB check result may be inaccurate.
   TODO Phase 13: add monosymmetric correction factor for UNP profiles.
-- combination_id mapping: referentie uses "2.1", "2.2" etc; we map to u32 21, 22 etc.
+- combination_id mapping: the reference uses "2.1", "2.2" etc; we map to u32 21, 22 etc.
 
 **First run (Phase 10) results:**
 
 | Check | Assert value | Status |
 |-------|-------------|--------|
-| 6.2.4 N_c,Rd = 1815.845 kN (our DB) | ✅ PASS (referentie: 1801.4 — profile DB delta) |
+| 6.2.4 N_c,Rd = 1815.845 kN (our DB) | ✅ PASS (reference: 1801.4 — profile DB delta) |
 | 6.2.4 UC = 0.01 | ✅ PASS (wider tol) |
-| 6.2.5 M_y,c,Rd = 198.575 kNm (our DB) | ✅ PASS (referentie: 209.1 — profile DB delta) |
+| 6.2.5 M_y,c,Rd = 198.575 kNm (our DB) | ✅ PASS (reference: 209.1 — profile DB delta) |
 | 6.2.5 UC = 0.981 (our DB) | ✅ PASS |
-| 6.2.6 V_c,z,Rd = 664.82 kN (our DB) | ✅ PASS (referentie: 671.1 — profile DB delta) |
+| 6.2.6 V_c,z,Rd = 664.82 kN (our DB) | ✅ PASS (reference: 671.1 — profile DB delta) |
 | 6.2.6 UC = 0.354 | ✅ PASS |
-| governing status: SKIP | ✅ PASS (our UC=1.33 due to profile DB, referentie: 0.98 OK) |
+| governing status: SKIP | ✅ PASS (our UC=1.33 due to profile DB, reference: 0.98 OK) |
 | snapshot | ✅ ACCEPTED |
 
 ---
@@ -149,9 +149,9 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 **File:** `src-tauri/crates/steel-check/tests/portal_beam2.rs`
 **Forces:** Comb 2.1, x=0 mm: N=-232.435 kN, Vz=19.817 kN, My=-66.036 kNm
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.4 compression | N_c,Rd=1275.472 kN, UC=0.18 | ⏳ TBD |
 | 6.2.5 bending | M_y,c,Rd=83.217 kNm, UC=0.79 | ⏳ TBD |
@@ -176,9 +176,9 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 **File:** `src-tauri/crates/steel-check/tests/portal_beam3.rs`
 **Forces:** Comb 2.2, x=0 mm: N=-232.768 kN, Vz=-19.519 kN, My=66.192 kNm
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.4 compression | N_c,Rd=1275.472 kN, UC=0.18 | ⏳ TBD |
 | 6.2.5 bending | M_y,c,Rd=83.217 kNm, UC=0.80 | ⏳ TBD |
@@ -189,7 +189,7 @@ TODO Phase 13: pass correct moment diagram to m_b_rd for accurate beta/C1.
 
 **Note:** C1=1.485 for beam 3 vs C1=1.803 for beam 2 (different moment gradient beta).
 Our Mcr uses mid-span moment as m_y_ed_at_lst_quarter — this approximation may cause
-M_cr discrepancy vs referentie (which uses full beta diagram).
+M_cr discrepancy vs the reference (which uses full beta diagram).
 TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 **First run (Phase 10) results:**
@@ -209,9 +209,9 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 **File:** `src-tauri/crates/steel-check/tests/portal_beam4.rs`
 **Forces:** Comb 2.1, x=2491 mm: N=+18.479 kN (TENSION), My=273.135 kNm
 **Lateral bracing:** 2 intermediate restraints at 1667 mm and 3333 mm
-**referentie results:**
+**Reference results:**
 
-| Check     | Expected (referentie)       | Status |
+| Check     | Expected (reference)       | Status |
 |-----------|------------------------|--------|
 | 6.2.5 bending | M_y,c,Rd=439.199 kNm, UC=0.62 | ⏳ TBD |
 | 6.2.6 shear | V_c,z,Rd=643.8 kN, UC=0.36 | ⏳ TBD |
@@ -220,11 +220,11 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 **Known potential discrepancies:**
 - N is tension (+18.479 kN). Our compression checks will yield NotApplicable. This is correct.
-- LTB Mcr with 2 lateral braces: referentie uses L_st=1667 mm (segment length).
+- LTB Mcr with 2 lateral braces: the reference uses L_st=1667 mm (segment length).
   Our LTB implementation uses `unbraced_length_mm` from top_flange_positions — this correctly
   picks the shorter unbraced length. Verify it equals 1667 mm.
-- referentie uses C1=1.582 (beta=-0.069), C2=-0.082, load at z=150 mm (top flange).
-  Our implementation uses C2=0 and load at centroid. This may give a higher Mcr than referentie.
+- The reference uses C1=1.582 (beta=-0.069), C2=-0.082, load at z=150 mm (top flange).
+  Our implementation uses C2=0 and load at centroid. This may give a higher Mcr than the reference.
   TODO Phase 13: implement z_g (load height above centroid) correction in Mcr formula.
 - top_flange_positions must be fractions (0.0-1.0) not absolute mm. Used 0.3334, 0.6666.
 
@@ -265,8 +265,8 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 - **Per-check governing force points** — compression uses max |N|, shear uses max |Vz|,
   bending/stability/combined use max |My|+0.01*|N|. Shear UC is no longer always 0.
-  - calc2_beam3: shear UC 0.316 (referentie 0.31) at x=5000 mm, Vz=-241.739 kN
-  - portal_beam4: shear UC 0.364 (referentie 0.36) at x=5000 mm, Vz=-234.164 kN
+  - calc2_beam3: shear UC 0.316 (reference 0.31) at x=5000 mm, Vz=-241.739 kN
+  - portal_beam4: shear UC 0.364 (reference 0.36) at x=5000 mm, Vz=-234.164 kN
   - Both deltas traceable to profile DB Av_z differences (not formula error)
   Commit: `199eb50`
 
@@ -277,7 +277,7 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 - **Cmy table B.3** for parabolic/distributed loading — currently cm_uniform_or_psi only.
 - **Load height zg correction** for top-flange loading (portal_beam4).
 - **Profile DB minor deltas**: HFRHS200x200x16 area 11280 vs 11501 mm², UNP350 Wpl 845000 vs 889763 mm³.
-- **Full PDF visual diff vs referentie** — requires manual GUI test in Phase 13-B.
+- **Full PDF visual diff vs reference** — requires manual GUI test in Phase 13-B.
 
 ---
 
@@ -287,7 +287,7 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 - C1 from NEN-EN 1993-1-1 NB.153 Tabel NB.27/NB.28 lookup with linear interpolation.
   Replaced simplified parabolic formula `1.88 - 1.40*psi + 0.52*psi²`.
-- `c1_from_psi(0.0)` now returns **1.803** (referentie value) vs old 1.88.
+- `c1_from_psi(0.0)` now returns **1.803** (reference value) vs old 1.88.
 - `nb_annex` unit tests: 4 tests pass covering endpoints, interpolation midpoint, clamping, and full Calc 2 Beam 1 chain (C1=1.803, C=7.481, M_cr=650.886 kNm).
 - `calc2_beam1` integration snapshot updated to reflect new C1=1.219 at actual beta=0.5 (orchestrator beta from force envelope); previously simplified gave 1.31.
 - All 7 acceptance beam snapshots still pass.
@@ -324,7 +324,7 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 - Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
 - Profile DB minor catalog deltas (HFRHS area, UNP Wpl).
 - Load height zg correction for top-flange loading (portal_beam4).
-- Full PDF visual diff vs referentie.
+- Full PDF visual diff vs reference.
 
 ---
 
@@ -353,12 +353,12 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 
 ## Iteration 6 — Phase 13-F catalog alignment
 
-- ✅ UNP350 Wpl,y corrected: 845000 → 889763 mm³ (referentie catalog value)
-  - M_y,c,Rd now 209.094 kNm — exact match with referentie reference
-  - Bending UC: 0.981 → 0.932 (aligned with referentie 0.93)
-  - 6.3.3 interaction UC eq.6.61: 0.930 → 0.906 (lower, now within referentie range)
+- ✅ UNP350 Wpl,y corrected: 845000 → 889763 mm³ (reference catalog value)
+  - M_y,c,Rd now 209.094 kNm — exact match with the reference
+  - Bending UC: 0.981 → 0.932 (aligned with reference 0.93)
+  - 6.3.3 interaction UC eq.6.61: 0.930 → 0.906 (lower, now within reference range)
 - ✅ HFRHS200X200X16 catalog values verified — already correct, no change needed
-- ✅ portal_beam1_bending test tightened to referentie-aligned values (209.094 kNm / UC 0.932)
+- ✅ portal_beam1_bending test tightened to reference-aligned values (209.094 kNm / UC 0.932)
 - ✅ Snapshot updated (portal_beam1__portal_beam1.snap)
 - **78 tests passing** (unchanged count — test refinement, no new tests)
 
@@ -367,5 +367,5 @@ TODO Phase 13: tighten if M_cr comes out 536 vs our calculation.
 - Full Annex F shear-center monosym formula deferred to v2.
 - Cmy Tabel B.3 for non-uniform load distributions (parabolic loading).
 - Load height zg correction for top-flange loading (portal_beam4).
-- Full referentie visual diff (manual GUI test).
-- Full PDF visual diff vs referentie.
+- Full reference visual diff (manual GUI test).
+- Full PDF visual diff vs reference.
