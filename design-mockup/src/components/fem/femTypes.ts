@@ -134,6 +134,17 @@ export interface Load {
   /** Direction of the line load in GLOBAL axes. Default "z" = vertical (gravity-style).
    *  "x" = horizontal (wind-style). Affects projection to local-axial + local-transverse. */
   qDir?: "x" | "z";
+  /**
+   * Deellast (partiële lijnlast): begin van het belaste deel als FRACTIE
+   * 0..1 van de staaflengte, gemeten vanaf de startknoop (`Beam.from`).
+   * Ontbreekt het veld (oude bestanden) dan geldt de volle lengte (0).
+   * De UI voert dit in als afstand in m vanaf de startknoop en rekent om.
+   * Bij een trapezium (qStart/qEnd) lopen de waarden lineair over het
+   * BELASTE interval.
+   */
+  startFrac?: number;
+  /** Deellast: einde van het belaste deel als fractie 0..1. Default 1. */
+  endFrac?: number;
   deltaT?: number; // K
 }
 

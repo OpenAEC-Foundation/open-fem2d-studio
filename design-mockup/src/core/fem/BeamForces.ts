@@ -1,4 +1,4 @@
-import { INode, IBeamElement, IBeamForces, IMaterial, getConnectionTypes } from './types';
+import { INode, IBeamElement, IBeamForces, IMaterial, getConnectionTypes, getBeamDistributedLoads } from './types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -8,11 +8,87 @@ import {
   calculatePartialTrapezoidalLoadVector,
   calculateDistributedLoadVector,
   calculatePartialDistributedLoadVector,
+  projectDistributedLoadToLocal,
 } from './Beam';
 import { applyEndReleases } from '../solver/Assembler';
 import { calculateBeamThermalLocalForces } from './ThermalLoad';
 
 const NUM_STATIONS = 21; // Number of points along beam for diagrams
+
+/** Eén verdeelde last, geprojecteerd naar lokale staafcomponenten. */
+interface ILocalDistLoad {
+  qxS: number; qyS: number;   // waarde op het lastBEGIN (lokaal)
+  qxE: number; qyE: number;   // waarde op het lastEINDE (lokaal)
+  startT: number; endT: number; // fracties 0..1 op de staaf
+}
+
+/**
+ * EXACTE particuliere oplossing (ingeklemde randen: w = w' = 0 en u = 0 op
+ * beide staafeinden) voor een PARTIËLE, eventueel trapeziumvormige last op
+ * [a, b] ⊂ [0, L] — stuksgewijs: vóór, onder en na het belaste deel.
+ *
+ * Afleiding (transversaal): EI·w'''' = q(x) met q(x) = qS + m·(x−a) op
+ * [a, b] en 0 daarbuiten (m = (qE−qS)/(b−a)). Vier keer integreren vanaf
+ * x = 0 met w(0) = w'(0) = 0 geeft
+ *   EI·w(x) = V₀·x³/6 + M₀·x²/2 + R₃(x),
+ *   EI·w'(x) = V₀·x²/2 + M₀·x + R₂(x),
+ * met de lastintegralen (u₁ = x − min(x, b), u₂ = x − a, beide 0 vóór a):
+ *   R₃(x) = ∫ₐ^{min(x,b)} q(s)·(x−s)³/6 ds
+ *         = ([qS + m(x−a)]·(u₂⁴−u₁⁴)/4 − m·(u₂⁵−u₁⁵)/5) / 6,
+ *   R₂(x) = ([qS + m(x−a)]·(u₂³−u₁³)/3 − m·(u₂⁴−u₁⁴)/4) / 2.
+ * De randvoorwaarden w(L) = w'(L) = 0 leveren
+ *   V₀ = (12·R₃(L) − 6·L·R₂(L)) / L³,   M₀ = (−R₂(L) − V₀·L²/2) / L.
+ * Voor a = 0, b = L reduceert dit exact tot de bekende gesloten vormen
+ * q·x²(L−x)²/(24EI) (uniform) en Δq·(x⁵/(120L) − Lx³/40 + L²x²/60)/EI
+ * (driehoek) — algebraïsch geverifieerd.
+ *
+ * Axiaal analoog: EA·u'' = −qx(x), u(0) = u(L) = 0:
+ *   EA·u(x) = C₁·x − Rx₁(x),  Rx₁(x) = [qxS + mx(x−a)]·(u₂²−u₁²)/2
+ *             − mx·(u₂³−u₁³)/3,  C₁ = Rx₁(L)/L.
+ */
+function makePartialParticular(
+  L: number, EI: number, EA: number, ld: ILocalDistLoad,
+): { wAt: (x: number) => number; uAt: (x: number) => number } {
+  const a = ld.startT * L;
+  const b = ld.endT * L;
+  const span = b - a;
+  if (span <= 0 || EI <= 0 || EA <= 0) {
+    return { wAt: () => 0, uAt: () => 0 };
+  }
+  const my = (ld.qyE - ld.qyS) / span;
+  const mx = (ld.qxE - ld.qxS) / span;
+
+  const R3 = (x: number): number => {
+    if (x <= a) return 0;
+    const u1 = x - Math.min(x, b);
+    const u2 = x - a;
+    const c = ld.qyS + my * (x - a);
+    return (c * (u2 ** 4 - u1 ** 4) / 4 - my * (u2 ** 5 - u1 ** 5) / 5) / 6;
+  };
+  const R2 = (x: number): number => {
+    if (x <= a) return 0;
+    const u1 = x - Math.min(x, b);
+    const u2 = x - a;
+    const c = ld.qyS + my * (x - a);
+    return (c * (u2 ** 3 - u1 ** 3) / 3 - my * (u2 ** 4 - u1 ** 4) / 4) / 2;
+  };
+  const V0 = (12 * R3(L) - 6 * L * R2(L)) / (L ** 3);
+  const M0 = (-R2(L) - V0 * L * L / 2) / L;
+
+  const Rx1 = (x: number): number => {
+    if (x <= a) return 0;
+    const u1 = x - Math.min(x, b);
+    const u2 = x - a;
+    const cx = ld.qxS + mx * (x - a);
+    return cx * (u2 * u2 - u1 * u1) / 2 - mx * (u2 ** 3 - u1 ** 3) / 3;
+  };
+  const C1 = Rx1(L) / L;
+
+  return {
+    wAt: (x: number) => (V0 * x ** 3 / 6 + M0 * x * x / 2 + R3(x)) / EI,
+    uAt: (x: number) => (C1 * x - Rx1(x)) / EA,
+  };
+}
 
 /**
  * Calculate internal forces (N, V, M) for a beam element
@@ -35,43 +111,34 @@ export function calculateBeamInternalForces(
   // Transform global displacements to local coordinates
   const localDisp = transformGlobalToLocal(globalDisplacements, angle);
 
-  // Get distributed loads (in local coordinates)
-  let qxS = element.distributedLoad?.qx ?? 0;
-  let qyS = element.distributedLoad?.qy ?? 0;
-  let qxE = element.distributedLoad?.qxEnd ?? qxS;
-  let qyE = element.distributedLoad?.qyEnd ?? qyS;
-  const coordSystem = element.distributedLoad?.coordSystem ?? 'local';
-  const startT = element.distributedLoad?.startT ?? 0;
-  const endT = element.distributedLoad?.endT ?? 1;
-
-  // If global coordinate system, project to local axes
-  if (coordSystem === 'global') {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const qxSL = qxS * cos + qyS * sin;
-    const qySL = -qxS * sin + qyS * cos;
-    const qxEL = qxE * cos + qyE * sin;
-    const qyEL = -qxE * sin + qyE * cos;
-    qxS = qxSL; qyS = qySL;
-    qxE = qxEL; qyE = qyEL;
-  }
-
-  const isTrapezoidal = qxE !== qxS || qyE !== qyS;
-  const isPartial = startT > 0 || endT < 1;
+  // Alle verdeelde lasten op deze staaf (enkelvoudig veld + deellasten-array),
+  // per last geprojecteerd naar lokale componenten — zelfde operatievolgorde
+  // als het vroegere één-last-pad (zie projectDistributedLoadToLocal).
+  const dLoads: ILocalDistLoad[] = getBeamDistributedLoads(element).map(dl => {
+    const p = projectDistributedLoadToLocal(dl, angle);
+    return { qxS: p.qxS, qyS: p.qyS, qxE: p.qxE, qyE: p.qyE, startT: p.startT, endT: p.endT };
+  });
 
   // Calculate local stiffness matrix
   const Kl = calculateBeamLocalStiffness(L, material.E, element.section.A, element.section.I);
 
-  // Compute equivalent nodal forces from distributed loads
-  let equivalentNodalForces: number[];
-  if (isTrapezoidal) {
-    equivalentNodalForces = isPartial
-      ? calculatePartialTrapezoidalLoadVector(L, qxS, qyS, qxE, qyE, startT, endT)
-      : calculateTrapezoidalLoadVector(L, qxS, qyS, qxE, qyE);
-  } else if (isPartial) {
-    equivalentNodalForces = calculatePartialDistributedLoadVector(L, qxS, qyS, startT, endT);
-  } else {
-    equivalentNodalForces = calculateDistributedLoadVector(L, qxS, qyS);
+  // Equivalente knoopkrachten: SOM over alle lasten, per last dezelfde
+  // dispatch (uniform / trapezium / partieel) als voorheen.
+  const equivalentNodalForces: number[] = [0, 0, 0, 0, 0, 0];
+  for (const dl of dLoads) {
+    const isTrap = dl.qxE !== dl.qxS || dl.qyE !== dl.qyS;
+    const isPart = dl.startT > 0 || dl.endT < 1;
+    let f: number[];
+    if (isTrap) {
+      f = isPart
+        ? calculatePartialTrapezoidalLoadVector(L, dl.qxS, dl.qyS, dl.qxE, dl.qyE, dl.startT, dl.endT)
+        : calculateTrapezoidalLoadVector(L, dl.qxS, dl.qyS, dl.qxE, dl.qyE);
+    } else if (isPart) {
+      f = calculatePartialDistributedLoadVector(L, dl.qxS, dl.qyS, dl.startT, dl.endT);
+    } else {
+      f = calculateDistributedLoadVector(L, dl.qxS, dl.qyS);
+    }
+    for (let i = 0; i < 6; i++) equivalentNodalForces[i] += f[i];
   }
 
   // Thermische equivalente knoopkrachten (lokaal) meenemen in F_eq zodat de
@@ -161,42 +228,45 @@ export function calculateBeamInternalForces(
     const x = (i / (NUM_STATIONS - 1)) * L;
     stations.push(x);
 
-    // N(x) = N1 + integral of qx from 0 to x
-    // For trapezoidal partial: integrate piecewise
+    // N(x) = N1 + ∫qx, V(x) = V1 + ∫qy, M(x) = M1 + V1·x + ∫qy·(x−s) —
+    // stuksgewijs en gesommeerd over ALLE lasten. Per last dezelfde
+    // integralen als voorheen; de Simpson-som over q(s)·(x−s) is voor een
+    // lineaire q (integrand kwadratisch) exact — dus ook deellast-stations
+    // zijn exact.
     let intQx = 0;
     let intQy = 0;
-    let intQyMoment = 0; // integral of qy*(x-s) ds from load start to x
+    let intQyMoment = 0;
 
-    if (x > startT * L) {
-      const loadStart = startT * L;
-      const loadEnd = Math.min(x, endT * L);
-      if (loadEnd > loadStart) {
-        const span = (endT - startT) * L;
-        const tStart = 0; // at loadStart, t=0
-        const tEnd = span > 0 ? (loadEnd - loadStart) / span : 0;
-        // q(s) = qxS + (qxE - qxS) * ((s - loadStart) / span)
-        // integral from loadStart to loadEnd = qxS*(loadEnd-loadStart) + (qxE-qxS)*(loadEnd-loadStart)^2/(2*span)
-        const ds = loadEnd - loadStart;
-        intQx = qxS * ds + (qxE - qxS) * ds * (tStart + tEnd) / 2;
-        intQy = qyS * ds + (qyE - qyS) * ds * (tStart + tEnd) / 2;
+    for (const dl of dLoads) {
+      if (x <= dl.startT * L) continue;
+      const loadStart = dl.startT * L;
+      const loadEnd = Math.min(x, dl.endT * L);
+      if (loadEnd <= loadStart) continue;
+      const span = (dl.endT - dl.startT) * L;
+      const tStart = 0; // at loadStart, t=0
+      const tEnd = span > 0 ? (loadEnd - loadStart) / span : 0;
+      // q(s) = qxS + (qxE - qxS) * ((s - loadStart) / span)
+      // integral from loadStart to loadEnd = qxS*ds + (qxE-qxS)*ds*(tStart+tEnd)/2
+      const ds = loadEnd - loadStart;
+      intQx += dl.qxS * ds + (dl.qxE - dl.qxS) * ds * (tStart + tEnd) / 2;
+      intQy += dl.qyS * ds + (dl.qyE - dl.qyS) * ds * (tStart + tEnd) / 2;
 
-        // For moment: integral of qy(s) * (x - s) ds from loadStart to loadEnd
-        // Using numerical integration (Simpson's rule, 10 intervals)
-        const nSub = 10;
-        const hSub = ds / nSub;
-        let sum = 0;
-        for (let k = 0; k <= nSub; k++) {
-          const s = loadStart + k * hSub;
-          const tK = span > 0 ? (s - loadStart) / span : 0;
-          const qy_s = qyS + (qyE - qyS) * tK;
-          let w: number;
-          if (k === 0 || k === nSub) w = 1;
-          else if (k % 2 === 1) w = 4;
-          else w = 2;
-          sum += w * qy_s * (x - s);
-        }
-        intQyMoment = sum * hSub / 3;
+      // For moment: integral of qy(s) * (x - s) ds from loadStart to loadEnd
+      // Using numerical integration (Simpson's rule, 10 intervals)
+      const nSub = 10;
+      const hSub = ds / nSub;
+      let sum = 0;
+      for (let k = 0; k <= nSub; k++) {
+        const s = loadStart + k * hSub;
+        const tK = span > 0 ? (s - loadStart) / span : 0;
+        const qy_s = dl.qyS + (dl.qyE - dl.qyS) * tK;
+        let w: number;
+        if (k === 0 || k === nSub) w = 1;
+        else if (k % 2 === 1) w = 4;
+        else w = 2;
+        sum += w * qy_s * (x - s);
       }
+      intQyMoment += sum * hSub / 3;
     }
 
     const N_x = N1 + intQx;
@@ -224,16 +294,25 @@ export function calculateBeamInternalForces(
   // u positief langs de staafas richting node2.
   //
   // GEDEKTE elementbelastingen (particulier deel): volledige-lengte uniforme
-  // en trapeziumvormige q (lokaal én globaal opgegeven; qx en qy).
-  // NIET gedekt: partiële q (startT > 0 of endT < 1) — daarvoor wordt alleen
-  // het homogene deel gebruikt (exact óp de knopen, tussenliggend benaderd).
+  // en trapeziumvormige q via de gesloten vormen hieronder, én PARTIËLE
+  // (deellast-)q via de exacte stuksgewijze oplossing in
+  // makePartialParticular — daarmee is w(x)/u(x) op de stations voor alle
+  // ondersteunde verdeelde lasten exact (het vroegere gedocumenteerde gat
+  // "partiële q alleen homogeen benaderd" is gedicht).
   // Puntlasten grijpen in deze core altijd op knopen aan en zitten daarmee
   // volledig in het homogene deel.
   const EI = material.E * element.section.I;
   const EA = material.E * element.section.A;
-  const dqy = qyE - qyS;
-  const dqx = qxE - qxS;
-  const hasFullSpanLoad = !isPartial && (qyS !== 0 || qyE !== 0 || qxS !== 0 || qxE !== 0);
+  // Per last: volle lengte → gesloten vormen (bit-identiek aan voorheen);
+  // partieel → exacte stuksgewijze particulier.
+  const particulars = dLoads.map(dl => {
+    const isPart = dl.startT > 0 || dl.endT < 1;
+    if (!isPart) {
+      const hasLoad = dl.qyS !== 0 || dl.qyE !== 0 || dl.qxS !== 0 || dl.qxE !== 0;
+      return { kind: hasLoad ? ('full' as const) : ('none' as const), dl, partial: null };
+    }
+    return { kind: 'partial' as const, dl, partial: makePartialParticular(L, EI, EA, dl) };
+  });
 
   const deflection: number[] = [];
   const axialDisp: number[] = [];
@@ -249,16 +328,24 @@ export function calculateBeamInternalForces(
     const H4 = x * xi * (xi - 1);
     let w = H1 * v1L + H2 * t1L + H3 * v2L + H4 * t2L;
     let u = u1L + (u2L - u1L) * xi;
-    if (hasFullSpanLoad && EI > 0 && EA > 0) {
-      // Particuliere oplossing met ingeklemde randen:
-      //  uniform:   w_p = qyS·x²(L−x)²/(24EI)
-      //  driehoek:  w_p = Δqy·(x⁵/(120L) − L·x³/40 + L²·x²/60)/EI
-      w += qyS * x * x * (L - x) * (L - x) / (24 * EI);
-      w += dqy * (Math.pow(x, 5) / (120 * L) - L * x * x * x / 40 + L * L * x * x / 60) / EI;
-      //  axiaal uniform:  u_p = qxS·x(L−x)/(2EA)
-      //  axiaal driehoek: u_p = Δqx·x(L²−x²)/(6L·EA)
-      u += qxS * x * (L - x) / (2 * EA);
-      u += dqx * x * (L * L - x * x) / (6 * L * EA);
+    for (const p of particulars) {
+      if (p.kind === 'full' && EI > 0 && EA > 0) {
+        const dl = p.dl;
+        const dqy = dl.qyE - dl.qyS;
+        const dqx = dl.qxE - dl.qxS;
+        // Particuliere oplossing met ingeklemde randen:
+        //  uniform:   w_p = qyS·x²(L−x)²/(24EI)
+        //  driehoek:  w_p = Δqy·(x⁵/(120L) − L·x³/40 + L²·x²/60)/EI
+        w += dl.qyS * x * x * (L - x) * (L - x) / (24 * EI);
+        w += dqy * (Math.pow(x, 5) / (120 * L) - L * x * x * x / 40 + L * L * x * x / 60) / EI;
+        //  axiaal uniform:  u_p = qxS·x(L−x)/(2EA)
+        //  axiaal driehoek: u_p = Δqx·x(L²−x²)/(6L·EA)
+        u += dl.qxS * x * (L - x) / (2 * EA);
+        u += dqx * x * (L * L - x * x) / (6 * L * EA);
+      } else if (p.kind === 'partial' && p.partial) {
+        w += p.partial.wAt(x);
+        u += p.partial.uAt(x);
+      }
     }
     deflection.push(w);
     axialDisp.push(u);

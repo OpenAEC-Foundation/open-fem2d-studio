@@ -260,13 +260,23 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (solveTrigger === undefined || solveTrigger === 0) return;
     try {
       const activeLoads = loads.filter(l => l.caseId === activeLoadCaseId);
-      const distLoads: { beamId: number; q: number }[] = [];
+      const distLoads: {
+        beamId: number; q: number;
+        qStart?: number; qEnd?: number; qDir?: "x" | "z";
+        startFrac?: number; endFrac?: number;
+      }[] = [];
       const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
       const thermalLoads: { beamId: number; deltaT: number }[] = [];
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
-          // q in kN/m → N/mm: 1 kN/m = 1 N/mm
-          distLoads.push({ beamId: l.beamId, q: l.q });
+          // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
+          // richting (qDir) en deellast-fracties (startFrac/endFrac) gaan
+          // mee — zelfde velden als het multi-LC-pad in App.tsx.
+          distLoads.push({
+            beamId: l.beamId, q: l.q,
+            qStart: l.qStart, qEnd: l.qEnd, qDir: l.qDir,
+            startFrac: l.startFrac, endFrac: l.endFrac,
+          });
         } else if (l.type === "pointForce" && l.nodeId !== undefined) {
           // Fx, Fz in kN → N (×1000)
           pointLoads.push({
@@ -1380,7 +1390,15 @@ export default function FemCanvas(props: FemCanvasProps) {
       const L = Math.hypot(dxs, dys);
       if (L < 1) return null;
       const nx = -dys / L, ny = dxs / L;            // perpendicular (left)
-      // Trapezium vs uniform: when qStart/qEnd defined, varies linearly.
+      // Deellast: pijlen + lastblok alleen over het belaste deel
+      // [startFrac, endFrac] van de staaf (default volle lengte).
+      const aF = Math.min(1, Math.max(0, l.startFrac ?? 0));
+      const bF = Math.min(1, Math.max(aF, l.endFrac ?? 1));
+      const pS = { x: pA.x + dxs * aF, y: pA.y + dys * aF };
+      const pE = { x: pA.x + dxs * bF, y: pA.y + dys * bF };
+      const sdx = pE.x - pS.x, sdy = pE.y - pS.y;   // belaste segment (px)
+      // Trapezium vs uniform: when qStart/qEnd defined, varies linearly
+      // (over het BELASTE deel).
       const qa = l.qStart ?? l.q ?? 0;
       const qb = l.qEnd   ?? l.q ?? 0;
       const isTrap = l.qStart !== undefined || l.qEnd !== undefined;
@@ -1395,13 +1413,15 @@ export default function FemCanvas(props: FemCanvasProps) {
       const lenA = Math.min(LINE_LOAD_MAX_PX, Math.max(LINE_LOAD_MIN_PX, Math.abs(qa) * lineLoadPxPerKnm || LINE_LOAD_MIN_PX));
       const lenB = Math.min(LINE_LOAD_MAX_PX, Math.max(LINE_LOAD_MIN_PX, Math.abs(qb) * lineLoadPxPerKnm || LINE_LOAD_MIN_PX));
       const arrows: React.ReactNode[] = [];
-      const N = 8;
+      // Pijldichtheid gelijk houden: volle lengte → 8 tussenstappen,
+      // deellast naar rato (minimaal 2).
+      const N = Math.max(2, Math.round(8 * (bF - aF)));
       // Build the polyline along the arrow tails so we can draw a connecting
       // "load envelope" (silhouette) + clickable hit-region.
       const tailPts: { x: number; y: number }[] = [];
       for (let i = 0; i <= N; i++) {
         const t = i / N;
-        const cx = pA.x + dxs * t, cy = pA.y + dys * t;
+        const cx = pS.x + sdx * t, cy = pS.y + sdy * t;
         // Linear interpolation of arrow length + direction
         const lenT = lenA + (lenB - lenA) * t;
         const dirT = dirA + (dirB - dirA) * t;       // smooth interp for sign
@@ -1415,17 +1435,18 @@ export default function FemCanvas(props: FemCanvasProps) {
             className="fem-load-vec" markerEnd="url(#fem-load-head)" />
         );
       }
-      // Label position (midspan) — use average length for offset.
-      const midX = (pA.x + pB.x) / 2, midY = (pA.y + pB.y) / 2;
+      // Label position: midden van het BELASTE deel — use average length for offset.
+      const midX = (pS.x + pE.x) / 2, midY = (pS.y + pE.y) / 2;
       const avgLen = (lenA + lenB) / 2;
       const avgDir = ((qa + qb) / 2) < 0 ? 1 : -1;     // same flipped convention
       const labelX = midX + nx * (avgLen + 14) * -avgDir;
       const labelY = midY + ny * (avgLen + 14) * -avgDir;
-      // Closed polygon (beam-baseline → tails) for a clickable hit-region + halo.
+      // Closed polygon (baseline van het belaste deel → tails) for a
+      // clickable hit-region + halo.
       const polyPoints = [
-        `${pA.x},${pA.y}`,
+        `${pS.x},${pS.y}`,
         ...tailPts.map(p => `${p.x},${p.y}`),
-        `${pB.x},${pB.y}`,
+        `${pE.x},${pE.y}`,
       ].join(" ");
       const isSel = selection?.type === "load" && selection.id === l.id;
       return (
@@ -2490,8 +2511,15 @@ export default function FemCanvas(props: FemCanvasProps) {
       />;
     }
     if (p.kind === "lineLoad") {
+      // Staaflengte (m) voor de begin/eind-invoer van een deellast.
+      const beam = beams.find(b => b.id === p.beamId);
+      const nA = beam ? nodes.find(n => n.id === beam.from) : undefined;
+      const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
+      const lenM = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
       return <PopoverLineLoadForm
-        onSubmit={(q, qDir) => cbs.onAddLoad({ type: "lineLoad", beamId: p.beamId, q, qDir })}
+        beamLenM={lenM}
+        onSubmit={(q, qDir, startFrac, endFrac) =>
+          cbs.onAddLoad({ type: "lineLoad", beamId: p.beamId, q, qDir, startFrac, endFrac })}
       />;
     }
     if (p.kind === "thermal") {
@@ -2600,9 +2628,31 @@ function PopoverSingleNumberForm({ title, label, defaultValue, onSubmit }:
   );
 }
 
-function PopoverLineLoadForm({ onSubmit }: { onSubmit: (q: number, qDir: "x" | "z") => void }) {
+function PopoverLineLoadForm({ beamLenM, onSubmit }: {
+  /** Staaflengte in m — begrenst de begin/eind-invoer van een deellast. */
+  beamLenM: number;
+  /** startFrac/endFrac zijn undefined bij volle lengte (default-gedrag). */
+  onSubmit: (q: number, qDir: "x" | "z", startFrac?: number, endFrac?: number) => void;
+}) {
   const [q, setQ]     = useState("-5");
   const [dir, setDir] = useState<"x" | "z">("z");
+  // Deellast-invoer in m VANAF DE STARTKNOOP (zelfde eenheid als de
+  // maatvoering elders in de UI); intern omgerekend naar fracties 0..1.
+  const [beginM, setBeginM] = useState("0");
+  const [endM, setEndM]     = useState(beamLenM > 0 ? beamLenM.toFixed(2) : "0");
+  const b0 = Number(beginM), b1 = Number(endM);
+  const rangeValid = beamLenM > 0
+    && Number.isFinite(b0) && Number.isFinite(b1)
+    && b0 >= 0 && b0 < b1 && b1 <= beamLenM + 1e-9;
+  const commit = () => {
+    if (!rangeValid) return;
+    const aF = b0 / beamLenM;
+    const bF = Math.min(1, b1 / beamLenM);
+    const isFull = aF <= 0 && bF >= 1;
+    onSubmit(Number(q) || 0, dir,
+      isFull ? undefined : aF,
+      isFull ? undefined : bF);
+  };
   return (
     <div className="fem-popover-form">
       <div className="fem-popover-title">Lijnlast toevoegen</div>
@@ -2618,14 +2668,36 @@ function PopoverLineLoadForm({ onSubmit }: { onSubmit: (q: number, qDir: "x" | "
         <input
           type="number" step="0.1" value={q} autoFocus
           onChange={e => setQ(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") onSubmit(Number(q) || 0, dir); }}
+          onKeyDown={e => { if (e.key === "Enter") commit(); }}
+        />
+      </label>
+      <label className="fem-popover-row">
+        <span>Begin (m)</span>
+        <input
+          type="number" step="0.1" min="0" max={beamLenM} value={beginM}
+          onChange={e => setBeginM(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") commit(); }}
+        />
+      </label>
+      <label className="fem-popover-row">
+        <span>Einde (m)</span>
+        <input
+          type="number" step="0.1" min="0" max={beamLenM} value={endM}
+          onChange={e => setEndM(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
       <div className="fem-popover-hint">
-        Negatief = tegen +richting in (downward voor Z, links voor X)
+        Negatief = tegen +richting in (downward voor Z, links voor X).
+        Begin/einde vanaf de startknoop; 0 t/m {beamLenM.toFixed(2)} m = volle lengte.
       </div>
+      {!rangeValid && (
+        <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
+          Ongeldig bereik: 0 ≤ begin &lt; einde ≤ {beamLenM.toFixed(2)} m
+        </div>
+      )}
       <div className="fem-popover-actions">
-        <button onClick={() => onSubmit(Number(q) || 0, dir)} className="fem-popover-primary">OK</button>
+        <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>OK</button>
       </div>
     </div>
   );

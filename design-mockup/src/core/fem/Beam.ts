@@ -344,6 +344,60 @@ export function calculatePartialTrapezoidalLoadVector(
 }
 
 /**
+ * Projecteer één verdeelde last naar LOKALE componenten van de staaf.
+ * Zelfde operatievolgorde als de (voorheen inline) code in Assembler/
+ * NonlinearSolver/BeamForces, zodat resultaten bit-identiek blijven.
+ */
+export function projectDistributedLoadToLocal(
+  load: import('./types').IBeamDistributedLoad,
+  angle: number,
+): { qxS: number; qyS: number; qxE: number; qyE: number; startT: number; endT: number } {
+  let qxS = load.qx;
+  let qyS = load.qy;
+  let qxE = load.qxEnd ?? qxS;
+  let qyE = load.qyEnd ?? qyS;
+  const coordSystem = load.coordSystem ?? 'local';
+  const startT = load.startT ?? 0;
+  const endT = load.endT ?? 1;
+  if (coordSystem === 'global') {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const qxSL = qxS * cos + qyS * sin;
+    const qySL = -qxS * sin + qyS * cos;
+    const qxEL = qxE * cos + qyE * sin;
+    const qyEL = -qxE * sin + qyE * cos;
+    qxS = qxSL; qyS = qySL;
+    qxE = qxEL; qyE = qyEL;
+  }
+  return { qxS, qyS, qxE, qyE, startT, endT };
+}
+
+/**
+ * Lokale equivalente knoopkrachtvector [Fx1,Fy1,M1,Fx2,Fy2,M2] van één
+ * verdeelde last: projectie + dispatch naar uniform / trapezium /
+ * partieel — exact dezelfde keuzelogica als voorheen inline in de
+ * Assembler en de NonlinearSolver.
+ */
+export function calculateDistributedLoadLocalForces(
+  L: number,
+  angle: number,
+  load: import('./types').IBeamDistributedLoad,
+): number[] {
+  const { qxS, qyS, qxE, qyE, startT, endT } = projectDistributedLoadToLocal(load, angle);
+  const isTrapezoidal = qxE !== qxS || qyE !== qyS;
+  const isPartial = startT > 0 || endT < 1;
+  if (isTrapezoidal) {
+    return isPartial
+      ? calculatePartialTrapezoidalLoadVector(L, qxS, qyS, qxE, qyE, startT, endT)
+      : calculateTrapezoidalLoadVector(L, qxS, qyS, qxE, qyE);
+  }
+  if (isPartial) {
+    return calculatePartialDistributedLoadVector(L, qxS, qyS, startT, endT);
+  }
+  return calculateDistributedLoadVector(L, qxS, qyS);
+}
+
+/**
  * Transform local forces to global coordinates
  */
 export function transformLocalToGlobal(localForces: number[], angle: number): number[] {

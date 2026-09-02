@@ -73,6 +73,11 @@ const HISTORY_LIMIT = 100;
  *  - Lijnlasten op de gesplitste staaf gaan over op beide delen: uniform →
  *    zelfde q op beide delen; trapezium (qStart ≠ qEnd) → lineair
  *    geïnterpoleerd op het splitspunt (deel 1: qStart→qMid, deel 2: qMid→qEnd).
+ *    Deellasten (startFrac/endFrac) worden HERMAPT naar de delen: het belaste
+ *    interval wordt met het splitspunt gesneden en per deel opnieuw als
+ *    fracties uitgedrukt; een deel zonder belast interval krijgt geen last.
+ *    Trapeziumwaarden worden daarbij op de snijgrens geïnterpoleerd over het
+ *    belaste interval.
  *  - Temperatuurlasten (deltaT) worden op beide delen gedupliceerd.
  *  - Knoopgebonden lasten (pointForce/pointMoment) verwijzen naar knopen, niet
  *    naar staven, en blijven ongemoeid. Een eventueel toekomstig staafgebonden
@@ -121,14 +126,38 @@ export function computeBeamSplit(
   for (const l of cur.loads) {
     if (l.beamId !== beamId) { loads.push(l); continue; }
     if (l.type === "lineLoad") {
+      // Belast interval als fracties op de OORSPRONKELIJKE staaf.
+      const a = Math.min(1, Math.max(0, l.startFrac ?? 0));
+      const b = Math.min(1, Math.max(0, l.endFrac ?? 1));
       const isTrapezium = l.qStart !== undefined && l.qEnd !== undefined && l.qStart !== l.qEnd;
-      if (isTrapezium) {
-        const qMid = l.qStart! + t * (l.qEnd! - l.qStart!);
-        loads.push({ ...l, id: nextLoadId++, beamId: beam1.id, qStart: l.qStart, qEnd: qMid });
-        loads.push({ ...l, id: nextLoadId++, beamId: beam2.id, qStart: qMid, qEnd: l.qEnd });
-      } else {
-        loads.push({ ...l, id: nextLoadId++, beamId: beam1.id });
-        loads.push({ ...l, id: nextLoadId++, beamId: beam2.id });
+      // q op een fractie s van het BELASTE interval [a,b] (trapezium
+      // loopt lineair over het belaste deel, niet over de hele staaf).
+      const qAt = (s: number) => {
+        if (!isTrapezium) return undefined;
+        const rel = b > a ? (s - a) / (b - a) : 0;
+        return l.qStart! + rel * (l.qEnd! - l.qStart!);
+      };
+      // Deel 1 (0..t): belast interval [a, min(b,t)] → fracties /t.
+      if (a < t && t > 1e-12) {
+        const b1 = Math.min(b, t);
+        const full1 = a <= 0 && b1 >= t; // dekt deel 1 volledig
+        loads.push({
+          ...l, id: nextLoadId++, beamId: beam1.id,
+          ...(isTrapezium ? { qStart: l.qStart, qEnd: qAt(b1) } : {}),
+          startFrac: full1 ? undefined : a / t,
+          endFrac:   full1 ? undefined : b1 / t,
+        });
+      }
+      // Deel 2 (t..1): belast interval [max(a,t), b] → fracties −t, /(1−t).
+      if (b > t && 1 - t > 1e-12) {
+        const a2 = Math.max(a, t);
+        const full2 = a2 <= t && b >= 1; // dekt deel 2 volledig
+        loads.push({
+          ...l, id: nextLoadId++, beamId: beam2.id,
+          ...(isTrapezium ? { qStart: qAt(a2), qEnd: l.qEnd } : {}),
+          startFrac: full2 ? undefined : (a2 - t) / (1 - t),
+          endFrac:   full2 ? undefined : (b - t) / (1 - t),
+        });
       }
     } else if (l.type === "thermal") {
       loads.push({ ...l, id: nextLoadId++, beamId: beam1.id });

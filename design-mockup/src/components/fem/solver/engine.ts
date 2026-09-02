@@ -154,18 +154,39 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       const qxA = dir === "x" ? qa : 0, qyA = dir === "z" ? qa : 0;
       const qxB = dir === "x" ? qb : 0, qyB = dir === "z" ? qb : 0;
 
-      // Combine additively if a load already exists on this beam (multi-case)
+      // Deellast? (startFrac/endFrac, fracties 0..1; ontbreken = volle lengte)
+      const aFrac = Math.min(1, Math.max(0, ld.startFrac ?? 0));
+      const bFrac = Math.min(1, Math.max(0, ld.endFrac ?? 1));
+      const isPartial = aFrac > 0 || bFrac < 1;
+
       const beam = mesh.getBeamElement(beamMeshId);
-      const ex = beam?.distributedLoad;
-      mesh.updateBeamElement(beamMeshId, {
-        distributedLoad: {
-          qx: (ex?.qx ?? 0) + qxA,
-          qy: (ex?.qy ?? 0) + qyA,
-          qxEnd: (ex?.qxEnd ?? ex?.qx ?? 0) + qxB,
-          qyEnd: (ex?.qyEnd ?? ex?.qy ?? 0) + qyB,
-          coordSystem: "global",
-        },
-      });
+      if (!isPartial) {
+        // Volle lengte: additief samenvoegen in het enkelvoudige
+        // distributedLoad-veld — ONGEWIJZIGD pad (bit-stabiel regressie-anker).
+        const ex = beam?.distributedLoad;
+        mesh.updateBeamElement(beamMeshId, {
+          distributedLoad: {
+            qx: (ex?.qx ?? 0) + qxA,
+            qy: (ex?.qy ?? 0) + qyA,
+            qxEnd: (ex?.qxEnd ?? ex?.qx ?? 0) + qxB,
+            qyEnd: (ex?.qyEnd ?? ex?.qy ?? 0) + qyB,
+            coordSystem: "global",
+          },
+        });
+      } else {
+        // Deellast: eigen record in de distributedLoads-array — extents
+        // verschillen per last en zijn dus niet additief samen te voegen.
+        // De core sommeert over alle records (getBeamDistributedLoads).
+        if (bFrac - aFrac <= 0) continue; // leeg belast deel → geen last
+        const arr = beam?.distributedLoads ?? [];
+        mesh.updateBeamElement(beamMeshId, {
+          distributedLoads: [...arr, {
+            qx: qxA, qy: qyA, qxEnd: qxB, qyEnd: qyB,
+            startT: aFrac, endT: bFrac,
+            coordSystem: "global" as const,
+          }],
+        });
+      }
     }
   }
 
@@ -390,6 +411,9 @@ export function solveCombinationSecondOrder(
     for (const beam of (mesh as any).beamElements.values()) {
       const d = beam.distributedLoad;
       if (d && (d.qx !== 0 || d.qy !== 0 || (d.qxEnd ?? 0) !== 0 || (d.qyEnd ?? 0) !== 0)) { hasLoads = true; break; }
+      // Deellasten staan in de distributedLoads-array (eigen record per last).
+      const dArr = beam.distributedLoads as Array<{ qx: number; qy: number; qxEnd?: number; qyEnd?: number }> | undefined;
+      if (dArr && dArr.some(p => p.qx !== 0 || p.qy !== 0 || (p.qxEnd ?? 0) !== 0 || (p.qyEnd ?? 0) !== 0)) { hasLoads = true; break; }
       // Thermische last telt ook: een verhinderde ΔT levert normaalkracht
       // (en dus K_G-effect) zonder dat er knoop- of q-lasten bestaan.
       const t = beam.thermalLoad;

@@ -60,6 +60,15 @@ export interface SolverDistLoadInput {
   qEnd?: number;
   /** Direction of the load in GLOBAL axes. Default "z" = vertical (gravity). "x" = horizontal (wind). */
   qDir?: "x" | "z";
+  /**
+   * Deellast: begin van het belaste deel als FRACTIE 0..1 van de staaflengte,
+   * gemeten vanaf de startknoop. Default 0 (last begint bij de startknoop).
+   * Bij een trapezium (qStart/qEnd) lopen de waarden lineair over het
+   * BELASTE interval [startFrac·L, endFrac·L].
+   */
+  startFrac?: number;
+  /** Deellast: einde van het belaste deel als fractie 0..1. Default 1. */
+  endFrac?: number;
 }
 
 /** Point force/moment applied directly on a node — added in step 1c. */

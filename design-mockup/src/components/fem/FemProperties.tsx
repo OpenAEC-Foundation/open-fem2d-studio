@@ -461,6 +461,41 @@ function LoadProperties({
     if (nA && nB) beamLen = Math.hypot(nB.x - nA.x, nB.z - nA.z);
   }
 
+  // ── Deellast (begin/eind) — invoer in m vanaf de startknoop, intern
+  //    opgeslagen als fracties 0..1 (Load.startFrac/endFrac). ──────────────
+  const lenM = beamLen / 1000;
+  const fracA = Math.min(1, Math.max(0, load.startFrac ?? 0));
+  const fracB = Math.min(1, Math.max(0, load.endFrac ?? 1));
+  const [beginStr, setBeginStr] = useState((fracA * lenM).toFixed(2));
+  const [endStr, setEndStr]     = useState((fracB * lenM).toFixed(2));
+  useEffect(() => {
+    setBeginStr((Math.min(1, Math.max(0, load.startFrac ?? 0)) * lenM).toFixed(2));
+    setEndStr((Math.min(1, Math.max(0, load.endFrac ?? 1)) * lenM).toFixed(2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load.id, load.startFrac, load.endFrac, lenM]);
+  /** Commit begin/eind (m) → fracties; ongeldig bereik wordt genegeerd
+   *  (validatie: 0 ≤ begin < eind ≤ L) en de invoer springt terug. */
+  const commitRange = (rawBegin: string, rawEnd: string) => {
+    if (!updateLoad || lenM <= 0) return;
+    const b0 = Number(rawBegin), b1 = Number(rawEnd);
+    const valid = Number.isFinite(b0) && Number.isFinite(b1)
+      && b0 >= 0 && b0 < b1 && b1 <= lenM + 1e-9;
+    if (!valid) {
+      // terugspringen naar de huidige (geldige) waarden
+      setBeginStr((fracA * lenM).toFixed(2));
+      setEndStr((fracB * lenM).toFixed(2));
+      return;
+    }
+    const aF = b0 / lenM;
+    const bF = Math.min(1, b1 / lenM);
+    const isFull = aF <= 0 && bF >= 1;
+    updateLoad(load.id, {
+      startFrac: isFull ? undefined : aF,
+      endFrac:   isFull ? undefined : bF,
+    });
+  };
+  const isPartial = fracA > 0 || fracB < 1;
+
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
@@ -537,16 +572,45 @@ function LoadProperties({
               </>
             )}
             {beamLen > 0 && (
-              <Row label="Totaal">
-                <code>
-                  {(() => {
-                    // Uniform: q·L. Trapezium: (qa+qb)/2 · L.
-                    const qa = load.qStart ?? load.q ?? 0;
-                    const qb = load.qEnd   ?? load.q ?? 0;
-                    return ((qa + qb) / 2 * beamLen / 1000).toFixed(2);
-                  })()} kN
-                </code>
-              </Row>
+              <>
+                <Row label="Begin (m)">
+                  <input
+                    type="number" step="0.1" min="0" max={lenM}
+                    className="fem-prop-input fem-prop-input-mono"
+                    value={beginStr}
+                    onChange={e => setBeginStr(e.target.value)}
+                    onBlur={() => commitRange(beginStr, endStr)}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    title={`Afstand vanaf de startknoop (0 – ${lenM.toFixed(2)} m); 0 t/m ${lenM.toFixed(2)} = volle lengte`}
+                  />
+                </Row>
+                <Row label="Einde (m)">
+                  <input
+                    type="number" step="0.1" min="0" max={lenM}
+                    className="fem-prop-input fem-prop-input-mono"
+                    value={endStr}
+                    onChange={e => setEndStr(e.target.value)}
+                    onBlur={() => commitRange(beginStr, endStr)}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    title={`Afstand vanaf de startknoop (0 – ${lenM.toFixed(2)} m)`}
+                  />
+                </Row>
+                {isPartial && (
+                  <Row label="Belast deel">
+                    <code>{((fracB - fracA) * lenM).toFixed(2)} m</code>
+                  </Row>
+                )}
+                <Row label="Totaal">
+                  <code>
+                    {(() => {
+                      // Uniform: q·L_belast. Trapezium: (qa+qb)/2 · L_belast.
+                      const qa = load.qStart ?? load.q ?? 0;
+                      const qb = load.qEnd   ?? load.q ?? 0;
+                      return ((qa + qb) / 2 * (fracB - fracA) * lenM).toFixed(2);
+                    })()} kN
+                  </code>
+                </Row>
+              </>
             )}
             <Row label="Richting"><code>Globale +Z (gravitatie: negatief)</code></Row>
           </Section>

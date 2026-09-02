@@ -74,6 +74,22 @@ export interface IBeamPointLoad {
 // Element types for load generation and code checking
 export type StructuralElementType = 'none' | 'roof_left' | 'roof_right' | 'flat_roof' | 'facade_left' | 'facade_right' | 'floor' | 'column';
 
+/**
+ * Eén verdeelde last op een staafelement. `startT`/`endT` (fracties 0..1)
+ * begrenzen het belaste deel; ontbreken ze dan geldt de volle lengte.
+ * Bij een trapezium lopen qx→qxEnd / qy→qyEnd lineair over het BELASTE
+ * interval [startT·L, endT·L] (niet over de hele staaf).
+ */
+export interface IBeamDistributedLoad {
+  qx: number;       // Axial load at start (N/m)
+  qy: number;       // Transverse load at start (N/m)
+  qxEnd?: number;   // Axial load at end (N/m), if different → trapezoidal
+  qyEnd?: number;   // Transverse load at end (N/m), if different → trapezoidal
+  startT?: number;  // Partial load start position (0-1), default 0
+  endT?: number;    // Partial load end position (0-1), default 1
+  coordSystem?: 'local' | 'global'; // Load direction, default 'local'
+}
+
 export interface IBeamElement extends IElement {
   nodeIds: [number, number];
   section: IBeamSection;
@@ -81,15 +97,16 @@ export interface IBeamElement extends IElement {
   elementType?: StructuralElementType;  // Structural function for load generation
   beamGroup?: number;     // Beam group ID (beams in extension form a group)
   // Distributed loads (local coordinates)
-  distributedLoad?: {
-    qx: number;       // Axial load at start (N/m)
-    qy: number;       // Transverse load at start (N/m)
-    qxEnd?: number;   // Axial load at end (N/m), if different → trapezoidal
-    qyEnd?: number;   // Transverse load at end (N/m), if different → trapezoidal
-    startT?: number;  // Partial load start position (0-1), default 0
-    endT?: number;    // Partial load end position (0-1), default 1
-    coordSystem?: 'local' | 'global'; // Load direction, default 'local'
-  };
+  distributedLoad?: IBeamDistributedLoad;
+  /**
+   * Extra verdeelde lasten NAAST `distributedLoad` — nodig zodra meerdere
+   * lasten met verschillende extents (deellasten) op dezelfde staaf staan:
+   * die zijn niet additief samen te voegen in één record. Consumenten
+   * (Assembler, NonlinearSolver, BeamForces) sommeren over
+   * `getBeamDistributedLoads()`; het enkelvoudige veld blijft het
+   * ongewijzigde (bit-stabiele) pad voor volle-lengte lasten.
+   */
+  distributedLoads?: IBeamDistributedLoad[];
   // Point loads on the beam (will cause automatic beam splitting)
   pointLoads?: IBeamPointLoad[];
   // Beam end releases (hinges) - legacy boolean format
@@ -130,6 +147,20 @@ export interface IBeamElement extends IElement {
     deltaTTop?: number;     // Temperature at top fiber (C)
     deltaTBottom?: number;  // Temperature at bottom fiber (C)
   };
+}
+
+/**
+ * Alle verdeelde lasten op een staaf, in vaste volgorde: eerst het
+ * enkelvoudige `distributedLoad`-veld (indien aanwezig), dan de
+ * `distributedLoads`-array. Consumenten sommeren de bijdragen; met alleen
+ * het enkelvoudige veld is het resultaat bit-identiek aan het oude
+ * één-last-pad (optellen bij 0 is exact in IEEE 754).
+ */
+export function getBeamDistributedLoads(beam: IBeamElement): IBeamDistributedLoad[] {
+  const out: IBeamDistributedLoad[] = [];
+  if (beam.distributedLoad) out.push(beam.distributedLoad);
+  if (beam.distributedLoads) out.push(...beam.distributedLoads);
+  return out;
 }
 
 // Connection type for beam ends: 'fixed' (A), 'free' (hinge), 'spring' (S), or special

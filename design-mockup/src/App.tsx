@@ -462,6 +462,8 @@ function App() {
             qStart: l.qStart,
             qEnd: l.qEnd,
             qDir: l.qDir,
+            startFrac: l.startFrac,
+            endFrac: l.endFrac,
             caseId: l.caseId,
           });
         } else if (l.type === "pointForce" && l.nodeId !== undefined) {

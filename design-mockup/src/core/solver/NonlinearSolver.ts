@@ -7,15 +7,13 @@
 
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes } from '../fem/types';
+import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes, getBeamDistributedLoads } from '../fem/types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
   calculateBeamLocalStiffness,
   createTransformationMatrix,
-  calculateTrapezoidalLoadVector,
-  calculatePartialTrapezoidalLoadVector,
-  calculatePartialDistributedLoadVector,
+  calculateDistributedLoadLocalForces,
 } from '../fem/Beam';
 import { calculateBeamInternalForces } from '../fem/BeamForces';
 import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
@@ -546,7 +544,8 @@ function assembleForceVector(mesh: Mesh): number[] {
       : [0, 0, 0, 0, 0, 0];
     const hasThermal = fThermal.some(v => v !== 0);
 
-    if (!beam.distributedLoad && !hasThermal) continue;
+    const dLoads = getBeamDistributedLoads(beam);
+    if (dLoads.length === 0 && !hasThermal) continue;
 
     const nodes = mesh.getBeamElementNodes(beam);
     if (!nodes) continue;
@@ -555,50 +554,15 @@ function assembleForceVector(mesh: Mesh): number[] {
     const L = calculateBeamLength(n1, n2);
     const angle = calculateBeamAngle(n1, n2);
 
-    // Equivalent nodal forces in local coordinates
-    let fLocal: number[] = [0, 0, 0, 0, 0, 0];
-    if (beam.distributedLoad) {
-      let qx = beam.distributedLoad.qx;
-      let qy = beam.distributedLoad.qy;
-      let qxE = beam.distributedLoad.qxEnd ?? qx;
-      let qyE = beam.distributedLoad.qyEnd ?? qy;
-      const coordSystem = beam.distributedLoad.coordSystem ?? 'local';
-      const startT = beam.distributedLoad.startT ?? 0;
-      const endT = beam.distributedLoad.endT ?? 1;
-
-      // If global coordinate system, project to local axes
-      if (coordSystem === 'global') {
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        const qxLocal = qx * cos + qy * sin;
-        const qyLocal = -qx * sin + qy * cos;
-        const qxELocal = qxE * cos + qyE * sin;
-        const qyELocal = -qxE * sin + qyE * cos;
-        qx = qxLocal;
-        qy = qyLocal;
-        qxE = qxELocal;
-        qyE = qyELocal;
-      }
-
-      const isTrapezoidal = qxE !== qx || qyE !== qy;
-      if (isTrapezoidal) {
-        if (startT > 0 || endT < 1) {
-          fLocal = calculatePartialTrapezoidalLoadVector(L, qx, qy, qxE, qyE, startT, endT);
-        } else {
-          fLocal = calculateTrapezoidalLoadVector(L, qx, qy, qxE, qyE);
-        }
-      } else if (startT > 0 || endT < 1) {
-        fLocal = calculatePartialDistributedLoadVector(L, qx, qy, startT, endT);
-      } else {
-        fLocal = [
-          qx * L / 2,
-          qy * L / 2,
-          qy * L * L / 12,
-          qx * L / 2,
-          qy * L / 2,
-          -qy * L * L / 12
-        ];
-      }
+    // Equivalente knoopkrachten (lokaal): SOM over alle verdeelde lasten op
+    // deze staaf (enkelvoudig veld + deellasten-array). Per last exact
+    // dezelfde projectie/dispatch als voorheen inline — zie Beam.ts.
+    // (De vroegere inline uniforme tak was formule-identiek aan
+    //  calculateDistributedLoadVector.)
+    const fLocal: number[] = [0, 0, 0, 0, 0, 0];
+    for (const dl of dLoads) {
+      const f = calculateDistributedLoadLocalForces(L, angle, dl);
+      for (let i = 0; i < 6; i++) fLocal[i] += f[i];
     }
 
     // Thermiek optellen vóór de scharniercondensatie, zodat beide
