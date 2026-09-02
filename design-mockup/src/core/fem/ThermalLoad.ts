@@ -158,6 +158,50 @@ export function calculateBeamThermalGradientForces(
 }
 
 /**
+ * Equivalente knoopkrachten uit beam.thermalLoad in LOKALE assen:
+ * [fx1, fy1, m1, fx2, fy2, m2].
+ *
+ * Uniforme ΔT:  N_th = E·A·α·ΔT  →  [−N_th, 0, 0, +N_th, 0, 0]
+ *   (duwt de uiteinden uit elkaar; géén momenten — uniforme ΔT geeft geen
+ *    kromming, dus ook geen bijdrage aan w(x) of M(x)).
+ * Gradient (ΔT_top ≠ ΔT_bottom): axiaal uit ΔT_gemiddeld plus eindmomenten
+ *   ±M_th = ±E·I·α·(ΔT_top − ΔT_bottom)/h.
+ *
+ * De lokale vorm is nodig voor (a) scharniercondensatie samen met de
+ * stijfheid en (b) de mechanische krachtterugrekening
+ *   f_intern = K·d − f_eq  ⇒  N = E·A·(ε − α·ΔT).
+ */
+export function calculateBeamThermalLocalForces(
+  beam: IBeamElement,
+  material: IMaterial
+): number[] {
+  const tl = beam.thermalLoad;
+  if (!tl) return [0, 0, 0, 0, 0, 0];
+
+  const alpha = material.alpha ?? 12e-6; // default staal: 12×10⁻⁶ /K
+  const E = material.E;
+  const A = beam.section.A;
+
+  // Gradient over de hoogte
+  if (tl.deltaTTop !== undefined && tl.deltaTBottom !== undefined) {
+    const I = beam.section.Iy ?? beam.section.I;
+    const h = beam.section.h;
+    const deltaTAvg = (tl.deltaTTop + tl.deltaTBottom) / 2;
+    const N_th = E * A * alpha * deltaTAvg;
+    const M_th = h > 0 ? E * I * alpha * (tl.deltaTTop - tl.deltaTBottom) / h : 0;
+    return [-N_th, 0, M_th, N_th, 0, -M_th];
+  }
+
+  // Uniforme temperatuurverandering
+  if (tl.deltaT !== undefined && tl.deltaT !== 0) {
+    const N_th = E * A * alpha * tl.deltaT;
+    return [-N_th, 0, 0, N_th, 0, 0];
+  }
+
+  return [0, 0, 0, 0, 0, 0];
+}
+
+/**
  * Calculate equivalent nodal forces from beam's thermalLoad property.
  * Handles both uniform ΔT and temperature gradient cases.
  * Returns array of 6 values: [fx1, fy1, m1, fx2, fy2, m2] in global coordinates

@@ -190,6 +190,42 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
   }
 
+  // Thermische lasten: uniforme ΔT per staaf (K — geen eenheidsconversie),
+  // additief over gevallen en gefactoreerd via loadFactor, net als q en F.
+  // Thermiek is lineair in ΔT: in het 1e-orde-pad superponeert de combinatie
+  // de per-geval-resultaten; in het 2e-orde-pad gaat de gefactoreerde ΔT hier
+  // met de combinatie-mesh mee.
+  //
+  // α-KEUZE: de core rekent met material.alpha, en elk via materialIdForE
+  // aangemaakte mesh-materiaal draagt de staal-default 12e-6 /K (matTemplate).
+  // De UI geeft (nog) geen α per staaf door, dus élk materiaal — ook hout —
+  // krijgt de default α = 1,2e-5 /K, tenzij de last zelf `alpha` meegeeft
+  // (SolverThermalLoadInput.alpha). Voor hout (α∥ ≈ 3–5e-6 /K) overschat die
+  // default de verhinderde thermische krachten circa factor 2,5–4 —
+  // conservatief voor de toetsing van gedwongen vervormingen. Materiaal→α
+  // doorgeven vanuit App.tsx is een gedocumenteerde vervolgtaak.
+  //
+  // Een per-last α wordt exact gehonoreerd via equivalent-ΔT-schaling:
+  // de core gebruikt ΔT uitsluitend in α_mat·ΔT-producten, dus
+  // ΔT_mesh = ΔT·(α_last/α_mat) geeft identiek E·A·α_last·ΔT.
+  const tls = (input as any).thermalLoads as Array<any> | undefined;
+  if (tls) {
+    for (const tl of tls) {
+      const f = loadFactor ? loadFactor(tl.caseId) : 1;
+      if (f === 0 || !tl.deltaT) continue;
+      const beamMeshId = beamIdMap.get(tl.beamId);
+      if (beamMeshId === undefined) continue;
+      const beam = mesh.getBeamElement(beamMeshId);
+      if (!beam) continue;
+      const alphaMat = mesh.getMaterial(beam.materialId)?.alpha ?? 12e-6;
+      const alphaLoad = tl.alpha ?? 1.2e-5; // default staal — zie types.ts
+      const ex = beam.thermalLoad?.deltaT ?? 0;
+      mesh.updateBeamElement(beamMeshId, {
+        thermalLoad: { deltaT: ex + tl.deltaT * (alphaLoad / alphaMat) * f },
+      });
+    }
+  }
+
   return { mesh, nodeIdMap, beamIdMap };
 }
 
@@ -354,6 +390,10 @@ export function solveCombinationSecondOrder(
     for (const beam of (mesh as any).beamElements.values()) {
       const d = beam.distributedLoad;
       if (d && (d.qx !== 0 || d.qy !== 0 || (d.qxEnd ?? 0) !== 0 || (d.qyEnd ?? 0) !== 0)) { hasLoads = true; break; }
+      // Thermische last telt ook: een verhinderde ΔT levert normaalkracht
+      // (en dus K_G-effect) zonder dat er knoop- of q-lasten bestaan.
+      const t = beam.thermalLoad;
+      if (t && ((t.deltaT ?? 0) !== 0 || t.deltaTTop !== undefined || t.deltaTBottom !== undefined)) { hasLoads = true; break; }
     }
   }
   if (!hasLoads) return null;

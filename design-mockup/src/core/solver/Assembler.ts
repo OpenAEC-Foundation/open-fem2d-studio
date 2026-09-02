@@ -5,6 +5,7 @@ import { calculateElementStiffness, calculateTriangleStiffnessExpanded } from '.
 import { calculateQuadStiffness, calculateQuadStiffnessExpanded } from '../fem/Quad4';
 import { calculateDKTStiffness } from '../fem/DKT';
 import { calculateBeamGlobalStiffness, calculateBeamLocalStiffness, calculateDistributedLoadVector, calculatePartialDistributedLoadVector, calculateTrapezoidalLoadVector, calculatePartialTrapezoidalLoadVector, transformLocalToGlobal, calculateBeamLength, calculateBeamAngle } from '../fem/Beam';
+import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
 
 /**
  * Collect only the nodes that participate in the current analysis type.
@@ -435,10 +436,18 @@ export function assembleForceVector(mesh: Mesh, analysisType: AnalysisType = 'pl
     }
   }
 
-  // Add equivalent nodal forces from distributed loads on beams
+  // Add equivalent nodal forces from distributed loads + thermal loads on beams
   if (analysisType === 'frame' || analysisType === 'mixed_beam_plate') {
     for (const beam of mesh.beamElements.values()) {
-      if (!beam.distributedLoad) continue;
+      const material = mesh.getMaterial(beam.materialId);
+
+      // Thermische equivalente knoopkrachten (lokaal) — zie ThermalLoad.ts
+      const fThermal = material
+        ? calculateBeamThermalLocalForces(beam, material)
+        : [0, 0, 0, 0, 0, 0];
+      const hasThermal = fThermal.some(v => v !== 0);
+
+      if (!beam.distributedLoad && !hasThermal) continue;
 
       const nodes = mesh.getBeamElementNodes(beam);
       if (!nodes) continue;
@@ -447,41 +456,48 @@ export function assembleForceVector(mesh: Mesh, analysisType: AnalysisType = 'pl
       const L = calculateBeamLength(n1, n2);
       const angle = calculateBeamAngle(n1, n2);
 
-      let qx = beam.distributedLoad.qx;
-      let qy = beam.distributedLoad.qy;
-      let qxE = beam.distributedLoad.qxEnd ?? qx;
-      let qyE = beam.distributedLoad.qyEnd ?? qy;
-      const coordSystem = beam.distributedLoad.coordSystem ?? 'local';
-      const startT = beam.distributedLoad.startT ?? 0;
-      const endT = beam.distributedLoad.endT ?? 1;
+      // Get equivalent nodal forces in local coordinates
+      let localForces: number[] = [0, 0, 0, 0, 0, 0];
+      if (beam.distributedLoad) {
+        let qx = beam.distributedLoad.qx;
+        let qy = beam.distributedLoad.qy;
+        let qxE = beam.distributedLoad.qxEnd ?? qx;
+        let qyE = beam.distributedLoad.qyEnd ?? qy;
+        const coordSystem = beam.distributedLoad.coordSystem ?? 'local';
+        const startT = beam.distributedLoad.startT ?? 0;
+        const endT = beam.distributedLoad.endT ?? 1;
 
-      // If global coordinate system, project to local axes
-      if (coordSystem === 'global') {
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        const qxLocal = qx * cos + qy * sin;
-        const qyLocal = -qx * sin + qy * cos;
-        const qxELocal = qxE * cos + qyE * sin;
-        const qyELocal = -qxE * sin + qyE * cos;
-        qx = qxLocal;
-        qy = qyLocal;
-        qxE = qxELocal;
-        qyE = qyELocal;
+        // If global coordinate system, project to local axes
+        if (coordSystem === 'global') {
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const qxLocal = qx * cos + qy * sin;
+          const qyLocal = -qx * sin + qy * cos;
+          const qxELocal = qxE * cos + qyE * sin;
+          const qyELocal = -qxE * sin + qyE * cos;
+          qx = qxLocal;
+          qy = qyLocal;
+          qxE = qxELocal;
+          qyE = qyELocal;
+        }
+
+        const isTrapezoidal = qxE !== qx || qyE !== qy;
+        if (isTrapezoidal) {
+          if (startT > 0 || endT < 1) {
+            localForces = calculatePartialTrapezoidalLoadVector(L, qx, qy, qxE, qyE, startT, endT);
+          } else {
+            localForces = calculateTrapezoidalLoadVector(L, qx, qy, qxE, qyE);
+          }
+        } else if (startT > 0 || endT < 1) {
+          localForces = calculatePartialDistributedLoadVector(L, qx, qy, startT, endT);
+        } else {
+          localForces = calculateDistributedLoadVector(L, qx, qy);
+        }
       }
 
-      // Get equivalent nodal forces in local coordinates
-      const isTrapezoidal = qxE !== qx || qyE !== qy;
-      let localForces: number[];
-      if (isTrapezoidal) {
-        if (startT > 0 || endT < 1) {
-          localForces = calculatePartialTrapezoidalLoadVector(L, qx, qy, qxE, qyE, startT, endT);
-        } else {
-          localForces = calculateTrapezoidalLoadVector(L, qx, qy, qxE, qyE);
-        }
-      } else if (startT > 0 || endT < 1) {
-        localForces = calculatePartialDistributedLoadVector(L, qx, qy, startT, endT);
-      } else {
-        localForces = calculateDistributedLoadVector(L, qx, qy);
+      // Thermiek optellen vóór de scharniercondensatie (consistent met stijfheid)
+      if (hasThermal) {
+        for (let i = 0; i < 6; i++) localForces[i] += fThermal[i];
       }
 
       // Apply force condensation for beam end releases (hinges)

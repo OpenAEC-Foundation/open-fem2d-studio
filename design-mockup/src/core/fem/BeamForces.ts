@@ -10,6 +10,7 @@ import {
   calculatePartialDistributedLoadVector,
 } from './Beam';
 import { applyEndReleases } from '../solver/Assembler';
+import { calculateBeamThermalLocalForces } from './ThermalLoad';
 
 const NUM_STATIONS = 21; // Number of points along beam for diagrams
 
@@ -71,6 +72,18 @@ export function calculateBeamInternalForces(
     equivalentNodalForces = calculatePartialDistributedLoadVector(L, qxS, qyS, startT, endT);
   } else {
     equivalentNodalForces = calculateDistributedLoadVector(L, qxS, qyS);
+  }
+
+  // Thermische equivalente knoopkrachten (lokaal) meenemen in F_eq zodat de
+  // terugrekening f_intern = K·d − F_eq de MECHANISCHE snedekrachten geeft:
+  //   N = E·A·(ε − α·ΔT)
+  // Vrij uitzetbare staaf: ε = α·ΔT → N = 0; volledig verhinderd: ε = 0 →
+  // |N| = E·A·α·ΔT (druk bij opwarming). Uniforme ΔT heeft géén invloed op
+  // M(x) of w(x) — geen kromming — dus de deflectie-particulier blijft
+  // ongewijzigd; gradient-ΔT levert via de eindmomenten in F_eq wél M.
+  const thermalLocal = calculateBeamThermalLocalForces(element, material);
+  for (let i = 0; i < 6; i++) {
+    equivalentNodalForces[i] += thermalLocal[i];
   }
 
   // Apply static condensation for hinges — must be done BEFORE computing forces.
