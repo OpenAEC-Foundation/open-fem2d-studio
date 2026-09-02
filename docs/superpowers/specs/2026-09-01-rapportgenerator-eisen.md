@@ -1,10 +1,23 @@
 # Rapportgenerator — eisen (verzameld)
 
-Status: eisenverzameling. Het implementatieplan volgt na de v1-opschoning.
+Status: eisenverzameling. Doel-app: `design-mockup/` (het programma).
 Bron: opdrachten van de gebruiker, 2026-09-01.
 
 ## Functionele eisen
 
+0. **LIVE HTML-rapport als primaire vorm** (toegevoegd later op 2026-09-01):
+   - Geen genereer-knop of PDF-cyclus: het rapport ís een live weergave die
+     zich abonneert op de model- en resultatenstate. Constructie aanpassen →
+     rapport is direct bijgewerkt (herrekenen + hertoetsen automatisch of met
+     duidelijke "verouderd"-markering totdat herrekend is).
+   - **Naast het scherm te zetten**: het rapport moet in een eigen venster
+     kunnen (tweede Tauri-WebView-venster of los browservenster op de
+     dev-server), synchroon met de app-state.
+   - PDF wordt een export van hetzelfde live rapport, geen aparte pijplijn.
+   - Dit vervangt de oude rapportmodule in het programma: die is rommelig,
+     met kloppende hoogtes als expliciet pijnpunt — **herontwerp**, geen
+     opknapbeurt. Paginahoogtes/A4-weergave moeten exact kloppen (ook als
+     basis voor de latere PDF-export).
 1. **Modulair.** De generator is opgebouwd uit losse, herbruikbare secties;
    secties aan/uit zetten mag de rest niet raken.
 2. **Parametrisch met live preview.** De gebruiker ziet een preview en stelt
