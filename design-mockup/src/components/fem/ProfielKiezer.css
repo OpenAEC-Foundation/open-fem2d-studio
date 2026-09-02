@@ -40,8 +40,19 @@
 
 .pk-stap2 {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   min-height: 260px;
+}
+/* Smalle vensters: kolommen onder elkaar in plaats van horizontaal afsnijden. */
+@media (max-width: 700px) {
+  .pk-kolom-reeks,
+  .pk-kolom-maat {
+    flex: 1 1 45%;
+  }
+  .pk-kolom-detail {
+    flex: 1 1 100%;
+  }
 }
 .pk-kolom {
   display: flex;
@@ -104,6 +115,23 @@
   font-size: 11px;
   color: var(--theme-text-muted, var(--theme-text));
   margin-bottom: 4px;
+}
+
+/* Doorsnede-tekening van het gekozen profiel. */
+.pk-tekening {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+  padding: 6px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+}
+.pk-tekening svg {
+  width: 100%;
+  max-width: 150px;
+  height: auto;
 }
 
 .pk-eigenschappen {

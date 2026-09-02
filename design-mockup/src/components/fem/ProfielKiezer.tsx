@@ -16,6 +16,8 @@ import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
 import { TIMBER_E_MEAN, parseRechthoek } from "../../lib/sectionResolver";
 import Modal from "../Modal";
+import ProfielMiniatuur from "../shared/ProfielMiniatuur";
+import { shapeVanProfiel } from "../shared/profielVorm";
 import "./ProfielKiezer.css";
 
 export interface ProfielKeuze {
@@ -94,6 +96,11 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
 
   const dims = staalProfiel ? STEEL_SECTION_DIMS[staalProfiel] : undefined;
   const sectie = staalProfiel ? STEEL_SECTIONS[staalProfiel] : undefined;
+  const staalVorm = useMemo(() => shapeVanProfiel(staalProfiel), [staalProfiel]);
+  const houtVorm = useMemo(
+    () => (houtB > 0 && houtH > 0 ? ({ type: "rect", b: houtB, h: houtH } as const) : null),
+    [houtB, houtH],
+  );
 
   const houtGeldig = houtB > 0 && houtH > 0;
   const staalGeldig = !!staalProfiel && !!STEEL_SECTION_DIMS[staalProfiel];
@@ -167,6 +174,13 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
             <select value={staalKlasse} onChange={(e) => setStaalKlasse(e.target.value)}>
               {STEEL_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
+            {/* Tekening van het gekozen profiel — zelfde contourwiskunde als
+                het rapport (mét walsuitrondingen), compact en thema-volgend. */}
+            {staalVorm && (
+              <div className="pk-tekening">
+                <ProfielMiniatuur shape={staalVorm} titel={`Doorsnede ${staalProfiel}`} />
+              </div>
+            )}
             {dims && (
               <div className="pk-eigenschappen">
                 <div className="pk-kolom-kop">Eigenschappen</div>
@@ -213,6 +227,11 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
               <input type="number" min={10} step={1} value={houtH}
                 onChange={(e) => setHoutH(Number(e.target.value))} />
             </label>
+            {houtVorm && (
+              <div className="pk-tekening">
+                <ProfielMiniatuur shape={houtVorm} titel={`Doorsnede ${houtB}×${houtH} mm`} />
+              </div>
+            )}
             {houtGeldig && (
               <div className="pk-eigenschappen">
                 <div className="pk-eig-rij"><span>A</span><code>{(houtB * houtH).toLocaleString("nl-NL")} mm²</code></div>

@@ -19,13 +19,11 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { resolveSection, parseRechthoek } from "../../../lib/sectionResolver";
 import { profileLookupKey } from "../../../lib/steelCheckBuilder";
-import {
-  STEEL_SECTION_DIMS,
-  type SteelSectionDims,
-} from "../../../lib/steelSectionDims.generated";
+import { STEEL_SECTION_DIMS } from "../../../lib/steelSectionDims.generated";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
-import SectionSketch, { type SectionShape } from "./SectionSketch";
+import SectionSketch from "./SectionSketch";
+import { steelShape, type SectionShape } from "../../shared/profielVorm";
 
 interface ProfileUse {
   profile: string;
@@ -35,22 +33,6 @@ interface ProfileUse {
 
 /** Soortelijke massa constructiestaal in kg/m³ (voor G = A·ρ). */
 const DICHTHEID_STAAL = 7850;
-
-/** Staaldims → tekenvorm; null wanneer we de vorm niet kennen. */
-function steelShape(dims: SteelSectionDims | undefined): SectionShape | null {
-  if (!dims) return null;
-  switch (dims.kind) {
-    case "ISection":
-      return { type: "isection", h: dims.h, b: dims.b, tw: dims.tw, tf: dims.tf, r: dims.r };
-    case "Channel":
-      return { type: "channel", h: dims.h, b: dims.b, tw: dims.tw, tf: dims.tf, r: dims.r };
-    case "Shs":
-    case "Rhs":
-      return { type: "box", h: dims.h, b: dims.b, t: dims.tw, r: dims.r };
-    case "Chs":
-      return { type: "tube", d: dims.h, t: dims.tw };
-  }
-}
 
 /** Staaf-ids compact: "1, 2, 5" — boven de 12 alleen een aantal. */
 function beamIdsText(ids: number[], manyLabel: string): string {
