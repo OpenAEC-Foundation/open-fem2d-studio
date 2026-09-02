@@ -51,6 +51,9 @@ import { Mesh } from "../../core/fem/Mesh";
 import { generatePolygonPlateMeshV2 } from "../../core/fem/PlateRegion";
 import InlinePopover from "../openaec/InlinePopover";
 import { notifyWarning } from "../../io/notify";
+// Pure stramien-helper (zelfde tolerantie als de store-mutator) — alleen om
+// in de maat-popover te tonen hoeveel knopen mee gaan schuiven.
+import { knopenOpStramienAs } from "../../hooks/useFemStore";
 
 // Re-export Tool so older imports (Ribbon, HomeTab) keep working.
 export type { Tool } from "./femTypes";
@@ -328,6 +331,13 @@ interface FemCanvasProps {
   structuralGrid?: StructuralGrid;
   /** Mutate the stramien (for + button to add new axes on canvas). */
   setStructuralGrid?: (g: StructuralGrid | ((prev: StructuralGrid) => StructuralGrid)) => void;
+  /**
+   * Verplaats één stramienas naar een nieuwe positie (mm) én neem de knopen
+   * die op die as liggen mee — samen één undo-stap. Wordt gebruikt door de
+   * maat-popover onder/naast het model. Retourneert het aantal meegeschoven
+   * knopen (null = niets gedaan).
+   */
+  verplaatsStramienAs?: (as: "x" | "z", axisId: string, nieuwePositie: number) => number | null;
   /** Bulk node translate — used by drag-to-move and G-grab. */
   translateNodes?: (nodeIds: number[], dx: number, dz: number) => void;
 
@@ -371,6 +381,12 @@ const SCALE_MAX = 1 / 2;          // 12 500 px/m
 const ORIGIN_X = 80;
 const ORIGIN_Y_FROM_BOTTOM = 60;
 
+// Maatvoering-opmaak (px, schermruimte — niet meeschalend met de zoom)
+/** Straal van het open cirkeltje op het snijpunt maatlijn × stramienlijn. */
+const DIM_KNOOP_R = 3.5;
+/** Verspringing van het maat-label t.o.v. de maatlijn (boven / ernaast). */
+const DIM_LABEL_DY = 13;
+
 export default function FemCanvas(props: FemCanvasProps) {
   const {
     tool, onToolChange, nodes, beams, supports, plates, loads, selection, activeLoadCaseId,
@@ -379,7 +395,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     deleteSelected, splitBeamAt,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     translateNodes,
-    grid, structuralGrid, setStructuralGrid,
+    grid, structuralGrid, setStructuralGrid, verplaatsStramienAs,
     solveTrigger, onSolveResult, scheefstand,
     combinations, activeCombinationId, envelopeView,
     combinationResults, envelope,
@@ -424,6 +440,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     fixedPos: number;          // mm, position of the unchanged axis
     currentMm: number;         // current distance in mm
     sx: number; sy: number;    // popover anchor position (screen)
+    meeschuivendeKnopen: number; // aantal knopen ÓP de bewegende as
   } | null>(null);
 
   // Pan/zoom view transform
@@ -2892,7 +2909,11 @@ export default function FemCanvas(props: FemCanvasProps) {
 
               {/* Dimensions BELOW the model (horizontal distance between consecutive X-axes).
                   Klik op de tekst opent een popover om een nieuwe maat in te voeren — de
-                  RECHTER as schuift mee, de linker blijft op zijn plek (vast referentiepunt). */}
+                  RECHTER as schuift mee (mét de knopen die erop liggen), de linker blijft
+                  op zijn plek (vast referentiepunt).
+                  Opmaak: op het snijpunt met de stramienlijn een open cirkeltje (gevuld met
+                  de achtergrondkleur, zodat de maatlijn er niet doorheen loopt) en de maat
+                  BOVEN de maatlijn. */}
               {xSorted.length > 1 && (() => {
                 const dimZ = zLo - DIM_PAD;
                 const items: React.ReactNode[] = [];
@@ -2901,13 +2922,14 @@ export default function FemCanvas(props: FemCanvasProps) {
                   const pa = worldToScreen(a.position, dimZ);
                   const pb = worldToScreen(b.position, dimZ);
                   const midX = (pa.x + pb.x) / 2, midY = pa.y;
+                  const labelCY = midY - DIM_LABEL_DY;   // boven de maatlijn
                   const distMm = b.position - a.position;
                   const distM  = distMm / 1000;
                   items.push(
                     <g key={`dimx${i}`}>
                       <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} className="fem-dim-line" pointerEvents="none" />
-                      <line x1={pa.x} y1={pa.y - 6} x2={pa.x} y2={pa.y + 6} className="fem-dim-tick" pointerEvents="none" />
-                      <line x1={pb.x} y1={pb.y - 6} x2={pb.x} y2={pb.y + 6} className="fem-dim-tick" pointerEvents="none" />
+                      <circle cx={pa.x} cy={pa.y} r={DIM_KNOOP_R} className="fem-dim-knoop" pointerEvents="none" />
+                      <circle cx={pb.x} cy={pb.y} r={DIM_KNOOP_R} className="fem-dim-knoop" pointerEvents="none" />
                       <g
                         className="fem-dim-label-group"
                         onClick={(e) => {
@@ -2918,12 +2940,13 @@ export default function FemCanvas(props: FemCanvasProps) {
                             movingAxisId: b.id,
                             fixedPos: a.position,
                             currentMm: distMm,
-                            sx: midX, sy: midY,
+                            sx: midX, sy: labelCY,
+                            meeschuivendeKnopen: knopenOpStramienAs(nodes, "x", b.position).length,
                           });
                         }}
                       >
-                        <rect x={midX - 28} y={midY - 8} width={56} height={16} rx={3} className="fem-dim-label-bg" />
-                        <text x={midX} y={midY + 4} className="fem-dim-text">{distM.toFixed(2)} m</text>
+                        <rect x={midX - 30} y={labelCY - 9} width={60} height={18} rx={4} className="fem-dim-label-bg" />
+                        <text x={midX} y={labelCY} className="fem-dim-text">{distM.toFixed(2)} m</text>
                       </g>
                     </g>
                   );
@@ -2931,7 +2954,11 @@ export default function FemCanvas(props: FemCanvasProps) {
                 return items;
               })()}
 
-              {/* Dimensions RIGHT of the model (vertical distance between consecutive Z-axes) */}
+              {/* Dimensions RIGHT of the model (vertical distance between consecutive Z-axes).
+                  Zelfde opmaak als de horizontale maatvoering: open cirkeltje op het
+                  snijpunt met de niveaulijn en de maat NAAST de maatlijn in plaats van
+                  eróp. De tekst gaat naar de buitenzijde (rechts van de lijn) — de
+                  binnenzijde is bezet door de peilmaten van de niveaus. */}
               {zSorted.length > 1 && (() => {
                 const dimX = xHi + DIM_PAD;
                 const items: React.ReactNode[] = [];
@@ -2940,13 +2967,14 @@ export default function FemCanvas(props: FemCanvasProps) {
                   const pa = worldToScreen(dimX, a.position);
                   const pb = worldToScreen(dimX, b.position);
                   const midX = pa.x, midY = (pa.y + pb.y) / 2;
+                  const labelCX = midX + DIM_LABEL_DY + 22;  // naast de maatlijn
                   const distMm = b.position - a.position;
                   const distM  = distMm / 1000;
                   items.push(
                     <g key={`dimz${i}`}>
                       <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} className="fem-dim-line" pointerEvents="none" />
-                      <line x1={pa.x - 6} y1={pa.y} x2={pa.x + 6} y2={pa.y} className="fem-dim-tick" pointerEvents="none" />
-                      <line x1={pb.x - 6} y1={pb.y} x2={pb.x + 6} y2={pb.y} className="fem-dim-tick" pointerEvents="none" />
+                      <circle cx={pa.x} cy={pa.y} r={DIM_KNOOP_R} className="fem-dim-knoop" pointerEvents="none" />
+                      <circle cx={pb.x} cy={pb.y} r={DIM_KNOOP_R} className="fem-dim-knoop" pointerEvents="none" />
                       <g
                         className="fem-dim-label-group"
                         onClick={(e) => {
@@ -2957,12 +2985,13 @@ export default function FemCanvas(props: FemCanvasProps) {
                             movingAxisId: b.id,
                             fixedPos: a.position,
                             currentMm: distMm,
-                            sx: midX, sy: midY,
+                            sx: labelCX, sy: midY,
+                            meeschuivendeKnopen: knopenOpStramienAs(nodes, "z", b.position).length,
                           });
                         }}
                       >
-                        <rect x={midX - 28} y={midY - 8} width={56} height={16} rx={3} className="fem-dim-label-bg" />
-                        <text x={midX} y={midY + 4} className="fem-dim-text">{distM.toFixed(2)} m</text>
+                        <rect x={labelCX - 30} y={midY - 9} width={60} height={18} rx={4} className="fem-dim-label-bg" />
+                        <text x={labelCX} y={midY} className="fem-dim-text">{distM.toFixed(2)} m</text>
                       </g>
                     </g>
                   );
@@ -3740,25 +3769,36 @@ export default function FemCanvas(props: FemCanvasProps) {
         </div>
       )}
 
-      {/* Maatlijn-edit popover — opent als je op een maat-label klikt. Vul
-          nieuwe afstand in mm of m in. De bewegende as schuift mee, de
-          referentie-as blijft op zijn plek. */}
+      {/* Maatlijn-edit popover — opent als je op een maat-label klikt. Vul de
+          nieuwe afstand in m in. De bewegende as schuift mee, de referentie-as
+          blijft op zijn plek, en de knopen ÓP de bewegende as schuiven mee
+          zodat staven en lasten aan het stramien vast blijven zitten. */}
       {dimEdit && setStructuralGrid && (
         <InlinePopover x={dimEdit.sx} y={dimEdit.sy} onClose={() => setDimEdit(null)}>
           <DimEditForm
             axis={dimEdit.axis}
             currentMm={dimEdit.currentMm}
+            /* Aantal knopen dat mee gaat schuiven — puur informatief in de
+               popover, zodat de gebruiker vooraf ziet wat er gebeurt. */
+            meeschuivendeKnopen={dimEdit.meeschuivendeKnopen}
             onSubmit={(newMm) => {
               const newPos = dimEdit.fixedPos + newMm;
-              setStructuralGrid(prev => ({
-                ...prev,
-                xAxes: dimEdit.axis === "x"
-                  ? prev.xAxes.map(a => a.id === dimEdit.movingAxisId ? { ...a, position: newPos } : a)
-                  : prev.xAxes,
-                zAxes: dimEdit.axis === "z"
-                  ? prev.zAxes.map(a => a.id === dimEdit.movingAxisId ? { ...a, position: newPos } : a)
-                  : prev.zAxes,
-              }));
+              if (verplaatsStramienAs) {
+                // Voorkeurspad: as + knopen in één undo-stap (store-mutator).
+                verplaatsStramienAs(dimEdit.axis, dimEdit.movingAxisId, newPos);
+              } else {
+                // Fallback wanneer de mutator niet is doorgegeven (standalone
+                // gebruik van het canvas): alleen de as verschuiven.
+                setStructuralGrid(prev => ({
+                  ...prev,
+                  xAxes: dimEdit.axis === "x"
+                    ? prev.xAxes.map(a => a.id === dimEdit.movingAxisId ? { ...a, position: newPos } : a)
+                    : prev.xAxes,
+                  zAxes: dimEdit.axis === "z"
+                    ? prev.zAxes.map(a => a.id === dimEdit.movingAxisId ? { ...a, position: newPos } : a)
+                    : prev.zAxes,
+                }));
+              }
               setDimEdit(null);
             }}
             onCancel={() => setDimEdit(null)}
@@ -3908,10 +3948,13 @@ function toolLabel(t: Tool): string {
 
 /** Form to enter a new distance for a clicked dimension line.
  *  Input is in METERS (matches the on-canvas label format), commit converts
- *  to mm and forwards to the parent which updates the moving axis position. */
-function DimEditForm({ axis, currentMm, onSubmit, onCancel }: {
+ *  to mm and forwards to the parent which updates the moving axis position.
+ *  De knopen die OP de bewegende as liggen schuiven mee; het aantal staat als
+ *  hint in de popover zodat de gebruiker vooraf weet wat er meebeweegt. */
+function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCancel }: {
   axis: "x" | "z";
   currentMm: number;
+  meeschuivendeKnopen?: number;
   onSubmit: (newMm: number) => void;
   onCancel: () => void;
 }) {
@@ -3938,6 +3981,14 @@ function DimEditForm({ axis, currentMm, onSubmit, onCancel }: {
           onFocus={e => e.target.select()}
         />
       </label>
+      <div className="fem-popover-hint">
+        {meeschuivendeKnopen > 0
+          ? (meeschuivendeKnopen === 1
+            ? `1 knoop op ${axis === "x" ? "deze as" : "dit niveau"} schuift mee.`
+            : `${meeschuivendeKnopen} knopen op ${axis === "x" ? "deze as" : "dit niveau"} schuiven mee.`)
+          : `Geen knopen op ${axis === "x" ? "deze as" : "dit niveau"} — alleen de `
+            + `${axis === "x" ? "stramienlijn" : "niveaulijn"} verschuift.`}
+      </div>
       <div className="fem-popover-actions">
         <button onClick={onCancel}>Annuleer</button>
         <button onClick={commit} className="fem-popover-primary">OK</button>

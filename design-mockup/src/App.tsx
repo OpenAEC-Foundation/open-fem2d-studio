@@ -1045,6 +1045,7 @@ function App() {
                 translateNodes={fem.translateNodes}
                 structuralGrid={fem.structuralGrid}
                 setStructuralGrid={fem.setStructuralGrid}
+                verplaatsStramienAs={fem.verplaatsStramienAs}
                 grid={grid}
                 combinations={fem.combinations}
                 activeCombinationId={fem.activeCombinationId}

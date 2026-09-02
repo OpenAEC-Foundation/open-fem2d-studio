@@ -524,15 +524,19 @@
   stroke: var(--theme-text-secondary);
   stroke-width: 0.8;
 }
-.fem-dim-tick {
+/* Snijpunt maatlijn × stramienlijn: open cirkeltje. De vulling is de
+   canvas-achtergrond zodat de maatlijn er niet doorheen loopt. */
+.fem-dim-knoop {
+  fill: var(--theme-bg);
   stroke: var(--theme-text-secondary);
-  stroke-width: 1.2;
+  stroke-width: 1.1;
 }
+/* Achtergrond van het maat-label — volledig dekkend zodat de tekst leesbaar
+   blijft waar hij over de maatlijn of een stramienlijn valt. */
 .fem-dim-label-bg {
   fill: var(--theme-bg);
   stroke: var(--theme-border);
   stroke-width: 0.5;
-  opacity: 0.92;
 }
 .fem-dim-text {
   font: 500 10.5px/1 "JetBrains Mono", monospace;

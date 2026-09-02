@@ -57,17 +57,94 @@ const DEFAULT_LOADS: Load[] = [
   { id: 1, type: "lineLoad", caseId: 1, beamId: 3, q: -5 /* kN/m */ },
 ];
 
-function makeInitialSnapshot(): Snapshot {
+/**
+ * Snapshot zoals de undo-historie hem bewaart: het model PLUS het stramien.
+ * Het stramien zit bewust in de historie sinds een as-verplaatsing de knopen
+ * op die as meeneemt (zie `verplaatsStramienAs`): as en knopen horen dan bij
+ * elkaar en moeten met één Ctrl+Z samen terug. Het veld is optioneel zodat
+ * bestaande snapshot-constructies (en `Snapshot` zelf, dat het model-contract
+ * voor de solver/IO beschrijft) ongewijzigd blijven werken.
+ */
+type HistorieSnapshot = Snapshot & { structuralGrid?: StructuralGrid };
+
+function makeInitialSnapshot(): HistorieSnapshot {
   return {
     nodes: [...DEFAULT_NODES],
     beams: [...DEFAULT_BEAMS],
     supports: [...DEFAULT_SUPPORTS],
     plates: [...DEFAULT_PLATES],
     loads: [...DEFAULT_LOADS],
+    structuralGrid: DEFAULT_STRUCTURAL_GRID,
   };
 }
 
 const HISTORY_LIMIT = 100;
+
+/** Tolerantie waarmee een knoop "op" een stramienas ligt (mm). */
+export const STRAMIEN_TOL_MM = 1;
+
+/**
+ * Knoop-ids die op een stramienas liggen.
+ *  - `as: "x"` → verticale stramienas: knopen met x ≈ `positieMm`.
+ *  - `as: "z"` → niveau (horizontale as): knopen met z ≈ `positieMm`.
+ * De tolerantie is standaard 1 mm; het model rekent in mm en assen worden op
+ * hele mm gezet, dus dat vangt afrondingsruis zonder buurknopen op te pikken.
+ */
+export function knopenOpStramienAs(
+  nodes: Pick<Node, "id" | "x" | "z">[],
+  as: "x" | "z",
+  positieMm: number,
+  tolMm: number = STRAMIEN_TOL_MM,
+): number[] {
+  return nodes
+    .filter(n => Math.abs((as === "x" ? n.x : n.z) - positieMm) <= tolMm)
+    .map(n => n.id);
+}
+
+/** Resultaat van `berekenStramienVerplaatsing`. */
+export interface StramienVerplaatsing {
+  /** Verplaatsing van de as zelf (mm), positief = naar +x resp. +z. */
+  delta: number;
+  /** Zelfde verplaatsing uitgesplitst voor `translateNodes`. */
+  dx: number;
+  dz: number;
+  /** Knopen die op de as liggen en dus meebewegen. */
+  nodeIds: number[];
+}
+
+/**
+ * Pure rekenkern achter het verslepen van een stramienas via de maatlijn.
+ *
+ * GEKOZEN GEDRAG — "lokale maat", niet "kettingmaat":
+ * alléén de as die bij de bewerkte maat hoort verschuift. Staat het stramien
+ * A-B-C en wijzig je de maat A-B, dan schuift B (plus alles wat OP B staat);
+ * C blijft op zijn absolute positie en de maat B-C verandert dus zichtbaar
+ * mee. Reden: de bewerking blijft lokaal en volledig zichtbaar — er verplaatst
+ * nooit een deel van het model dat je niet in beeld had. Bij de kettingvariant
+ * (C schuift mee) zou ook alles rechts van C verschuiven, inclusief knopen die
+ * NIET op een as liggen en dus achterblijven — precies de stille vervorming
+ * die deze functie moet voorkomen. Hetzelfde geldt één-op-één voor niveaus:
+ * alleen het bewerkte niveau schuift, hogere niveaus blijven staan.
+ *
+ * Knopen "verderop" (voorbij de verplaatste as) blijven staan, tenzij ze zelf
+ * exact op de verplaatste as liggen. Meerdere knopen op dezelfde as (een
+ * kolomlijn over meerdere verdiepingen) gaan allemaal mee.
+ */
+export function berekenStramienVerplaatsing(
+  nodes: Pick<Node, "id" | "x" | "z">[],
+  as: "x" | "z",
+  huidigePositie: number,
+  nieuwePositie: number,
+  tolMm: number = STRAMIEN_TOL_MM,
+): StramienVerplaatsing {
+  const delta = nieuwePositie - huidigePositie;
+  return {
+    delta,
+    dx: as === "x" ? delta : 0,
+    dz: as === "z" ? delta : 0,
+    nodeIds: knopenOpStramienAs(nodes, as, huidigePositie, tolMm),
+  };
+}
 
 /**
  * Pure splitslogica voor `splitBeamAt` — losgetrokken uit de hook zodat hij
@@ -480,6 +557,11 @@ export interface FemStore {
   /** Structural grid (stramien) — defaults are 2×2 letters/numbers for the default portal. */
   structuralGrid: StructuralGrid;
   setStructuralGrid: (g: StructuralGrid | ((prev: StructuralGrid) => StructuralGrid)) => void;
+  /**
+   * Verplaats een stramienas én de knopen die erop liggen, als één undo-stap.
+   * Retourneert het aantal meegeschoven knopen (null = as onbekend of delta 0).
+   */
+  verplaatsStramienAs: (as: "x" | "z", axisId: string, nieuwePositie: number) => number | null;
 
   /** Solver options. */
   selfWeightEnabled: boolean;
@@ -592,7 +674,7 @@ export function useFemStore(): FemStore {
   const [selection, setSelection] = useState<Selection>(null);
 
   // History — stack of Snapshots, plus pointer.
-  const [history, setHistory] = useState<Snapshot[]>([makeInitialSnapshot()]);
+  const [history, setHistory] = useState<HistorieSnapshot[]>([makeInitialSnapshot()]);
   const [historyIdx, setHistoryIdx] = useState(0);
 
   // We use a ref for the latest model so the snapshot push always grabs
@@ -601,6 +683,15 @@ export function useFemStore(): FemStore {
   useEffect(() => {
     latestRef.current = { nodes, beams, supports, plates, loads };
   }, [nodes, beams, supports, plates, loads]);
+
+  // Zelfde truc voor het stramien: `verplaatsStramienAs` en `setStructuralGrid`
+  // hebben de verse waarde nodig binnen één event, vóór de re-render.
+  const gridRef = useRef(structuralGrid);
+  useEffect(() => { gridRef.current = structuralGrid; }, [structuralGrid]);
+  // Idem voor de historie-pointer, zodat setStructuralGrid de JUISTE snapshot
+  // bijwerkt zonder als dependency op historyIdx te hangen.
+  const historyIdxRef = useRef(0);
+  useEffect(() => { historyIdxRef.current = historyIdx; }, [historyIdx]);
 
   // ── Doorgeefluik-sync (P4.2/P4.3) ────────────────────────────────────────
   // De multi-LC-invoer wordt in App.tsx veld-voor-veld opgebouwd en draagt
@@ -625,10 +716,16 @@ export function useFemStore(): FemStore {
   }, [plates, loads]);
 
   /** Push a new history snapshot AFTER a mutation completes. */
-  const pushHistory = useCallback((next: Snapshot) => {
+  const pushHistory = useCallback((next: HistorieSnapshot) => {
+    // Elke snapshot draagt het stramien mee; roept een mutator alleen model-
+    // velden aan, dan vullen we het actuele stramien aan. Zo hoort bij iedere
+    // undo-stap altijd het bijbehorende stramien.
+    const snap: HistorieSnapshot = next.structuralGrid
+      ? next
+      : { ...next, structuralGrid: gridRef.current };
     setHistory((prev) => {
       const truncated = prev.slice(0, historyIdx + 1);
-      const updated = [...truncated, next];
+      const updated = [...truncated, snap];
       // Cap memory usage
       const trimmed = updated.length > HISTORY_LIMIT
         ? updated.slice(updated.length - HISTORY_LIMIT)
@@ -636,15 +733,23 @@ export function useFemStore(): FemStore {
       return trimmed;
     });
     setHistoryIdx((i) => Math.min(i + 1, HISTORY_LIMIT - 1));
+    // Direct bijwerken: een setStructuralGrid later in hetzelfde event moet de
+    // ZOJUIST gepushte snapshot bijwerken, niet de vorige.
+    historyIdxRef.current = Math.min(historyIdx + 1, HISTORY_LIMIT - 1);
   }, [historyIdx]);
 
   // Helper: produce next snapshot from a partial change
-  const applySnapshot = useCallback((next: Snapshot) => {
+  const applySnapshot = useCallback((next: HistorieSnapshot) => {
     setNodes(next.nodes);
     setBeams(next.beams);
     setSupports(next.supports);
     setPlates(next.plates);
     setLoads(next.loads);
+    // Stramien hoort bij de snapshot sinds een as-verplaatsing knopen meeneemt.
+    if (next.structuralGrid) {
+      gridRef.current = next.structuralGrid;
+      setStructuralGridState(next.structuralGrid);
+    }
   }, []);
 
   // ── Mutations ────────────────────────────────────────────────────────────
@@ -990,8 +1095,60 @@ export function useFemStore(): FemStore {
   }, [pushHistory]);
 
   const setStructuralGrid = useCallback((g: StructuralGrid | ((prev: StructuralGrid) => StructuralGrid)) => {
-    setStructuralGridState(prev => typeof g === "function" ? (g as (p: StructuralGrid) => StructuralGrid)(prev) : g);
+    const next = typeof g === "function"
+      ? (g as (p: StructuralGrid) => StructuralGrid)(gridRef.current)
+      : g;
+    gridRef.current = next;
+    setStructuralGridState(next);
+    // Losse stramien-bewerkingen (as toevoegen, hernoemen, verwijderen) zijn
+    // geen eigen undo-stap — net als voorheen. We schrijven ze wél in de
+    // HUIDIGE snapshot, anders zou een undo van een latere modelwijziging ze
+    // stilletjes terugdraaien.
+    setHistory(prev => prev.map((s, i) =>
+      i === historyIdxRef.current ? { ...s, structuralGrid: next } : s));
   }, []);
+
+  /**
+   * Verplaats één stramienas naar `nieuwePositie` (mm) en neem de knopen die
+   * OP die as liggen mee, zodat staven, opleggingen en lasten meeschuiven en
+   * het model aan het stramien vast blijft zitten.
+   *
+   * As-verplaatsing en knoopverplaatsing vormen SAMEN één undo-stap: de
+   * snapshot bevat zowel de nieuwe knopen als het nieuwe stramien.
+   * Zie `berekenStramienVerplaatsing` voor het gekozen gedrag (lokale maat:
+   * alleen de bewerkte as schuift, verdere assen blijven staan).
+   *
+   * Retourneert het aantal meegeschoven knopen, of null als de as niet bestaat
+   * of de verplaatsing nul is.
+   */
+  const verplaatsStramienAs = useCallback((
+    as: "x" | "z", axisId: string, nieuwePositie: number,
+  ): number | null => {
+    const cur = latestRef.current;
+    const grid = gridRef.current;
+    const doelAs = (as === "x" ? grid.xAxes : grid.zAxes).find(a => a.id === axisId);
+    if (!doelAs) return null;
+    const v = berekenStramienVerplaatsing(cur.nodes, as, doelAs.position, nieuwePositie);
+    if (v.delta === 0) return null;
+
+    const idSet = new Set(v.nodeIds);
+    const nextNodes = v.nodeIds.length === 0
+      ? cur.nodes
+      : cur.nodes.map(n => idSet.has(n.id) ? { ...n, x: n.x + v.dx, z: n.z + v.dz } : n);
+    const verplaatsAs = (lijst: StructuralGrid["xAxes"]) =>
+      lijst.map(a => a.id === axisId ? { ...a, position: nieuwePositie } : a);
+    const nextGrid: StructuralGrid = {
+      ...grid,
+      xAxes: as === "x" ? verplaatsAs(grid.xAxes) : grid.xAxes,
+      zAxes: as === "z" ? verplaatsAs(grid.zAxes) : grid.zAxes,
+    };
+
+    if (v.nodeIds.length > 0) setNodes(nextNodes);
+    gridRef.current = nextGrid;
+    setStructuralGridState(nextGrid);
+    pushHistory({ ...cur, nodes: nextNodes, structuralGrid: nextGrid });
+    return v.nodeIds.length;
+  }, [pushHistory]);
 
   // ── Undo / Redo ──────────────────────────────────────────────────────────
   const canUndo = historyIdx > 0;
@@ -1001,6 +1158,7 @@ export function useFemStore(): FemStore {
     const newIdx = historyIdx - 1;
     applySnapshot(history[newIdx]);
     setHistoryIdx(newIdx);
+    historyIdxRef.current = newIdx;
     setSelection(null);
   }, [canUndo, historyIdx, history, applySnapshot]);
 
@@ -1009,6 +1167,7 @@ export function useFemStore(): FemStore {
     const newIdx = historyIdx + 1;
     applySnapshot(history[newIdx]);
     setHistoryIdx(newIdx);
+    historyIdxRef.current = newIdx;
     setSelection(null);
   }, [canRedo, historyIdx, history, applySnapshot]);
 
@@ -1041,7 +1200,7 @@ export function useFemStore(): FemStore {
     deleteSelected, splitBeamAt, addLoadCase,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     translateNodes,
-    structuralGrid, setStructuralGrid,
+    structuralGrid, setStructuralGrid, verplaatsStramienAs,
     selfWeightEnabled, setSelfWeightEnabled,
     nonlinearEnabled,  setNonlinearEnabled,
     scheefstandEnabled, setScheefstandEnabled,
@@ -1112,14 +1271,20 @@ export function useFemStore(): FemStore {
       setScheefstandRichting(p.scheefstandRichting === -1 ? -1 : 1);
       // v2-velden; v1-bestanden (of Nieuw) vallen terug op de defaults.
       setCombinations(p.combinations ?? defaultCombinations());
-      setStructuralGridState(p.structuralGrid ?? DEFAULT_STRUCTURAL_GRID);
+      const nieuwGrid = p.structuralGrid ?? DEFAULT_STRUCTURAL_GRID;
+      gridRef.current = nieuwGrid;
+      setStructuralGridState(nieuwGrid);
       // Combinatie-ids uit het bestand hoeven niet overeen te komen met de
       // vorige selectie — selectie resetten voorkomt een dangling id.
       setActiveCombinationId(null);
       setSelection(null);
       // Reset history so undo can't time-travel back to the previous model.
-      setHistory([{ nodes: p.nodes, beams: p.beams, supports: p.supports, plates, loads: p.loads }]);
+      setHistory([{
+        nodes: p.nodes, beams: p.beams, supports: p.supports, plates,
+        loads: p.loads, structuralGrid: nieuwGrid,
+      }]);
       setHistoryIdx(0);
+      historyIdxRef.current = 0;
     },
   };
 }
