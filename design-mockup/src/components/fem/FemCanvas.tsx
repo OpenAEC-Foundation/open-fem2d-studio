@@ -37,11 +37,131 @@ import type {
   Tool, Node, Beam, Plate, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
 } from "./femTypes";
+import { withPlateDefaults } from "./femTypes";
 import InlinePopover from "../openaec/InlinePopover";
 import { notifyWarning } from "../../io/notify";
 
 // Re-export Tool so older imports (Ribbon, HomeTab) keep working.
 export type { Tool } from "./femTypes";
+
+/** Benoemde plaatrand in modelassen — zelfde namen als het rekenmesh. */
+type PlaatRand = "bottom" | "top" | "left" | "right";
+
+const RAND_LABEL: Record<PlaatRand, string> = {
+  bottom: "onderrand", top: "bovenrand", left: "linkerrand", right: "rechterrand",
+};
+
+/**
+ * Contourcomponenten voor de plaatspanningsweergave (P3.2): label + eenheid
+ * per kiesbare component. Gedeeld met de Resultaten-tab (FemProjectTree)
+ * zodat select en legenda dezelfde teksten tonen.
+ */
+export const PLAAT_COMPONENTEN = {
+  vonMises: { label: "von Mises", eenheid: "N/mm²" },
+  sigmaX:   { label: "σx",        eenheid: "N/mm²" },
+  sigmaY:   { label: "σy",        eenheid: "N/mm²" },
+  tauXY:    { label: "τxy",       eenheid: "N/mm²" },
+  nx:       { label: "nx",        eenheid: "kN/m" },
+  ny:       { label: "ny",        eenheid: "kN/m" },
+  nxy:      { label: "nxy",       eenheid: "kN/m" },
+} as const;
+export type PlaatComponent = keyof typeof PLAAT_COMPONENTEN;
+
+/**
+ * Kleurschaal voor de contouren: blauw → cyaan → groen → amber → rood over
+ * t ∈ [0, 1] (lineaire interpolatie tussen de stops). De legenda gebruikt
+ * dezelfde stops als CSS-gradient, dus balk en vlakken matchen exact.
+ */
+const CONTOUR_STOPS: [number, number, number][] = [
+  [37, 99, 235],   // blauw  (min)
+  [6, 182, 212],   // cyaan
+  [16, 185, 129],  // groen
+  [245, 158, 11],  // amber
+  [220, 38, 38],   // rood   (max)
+];
+function contourKleur(t: number): string {
+  const tt = Math.min(1, Math.max(0, t));
+  const seg = Math.min(CONTOUR_STOPS.length - 2, Math.floor(tt * (CONTOUR_STOPS.length - 1)));
+  const f = tt * (CONTOUR_STOPS.length - 1) - seg;
+  const a = CONTOUR_STOPS[seg], b = CONTOUR_STOPS[seg + 1];
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * f));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+const CONTOUR_GRADIENT_CSS = `linear-gradient(to top, ${
+  CONTOUR_STOPS.map(([r, g, b]) => `rgb(${r}, ${g}, ${b})`).join(", ")})`;
+
+/** Legenda-getal: precisie afhankelijk van de orde van grootte. */
+function fmtLegenda(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1000) return v.toFixed(0);
+  if (a >= 100)  return v.toFixed(1);
+  if (a >= 1)    return v.toFixed(2);
+  return v.toFixed(3);
+}
+
+/**
+ * Validatie van de vier hoekknopen van de plaattool (P3.1): de punten moeten
+ * een asgelijnde rechthoek vormen — zelfde regels en tolerantie (1 mm) als de
+ * adapter-validatie in solver/engine.ts, maar hier VÓÓR het aanmaken zodat er
+ * nooit een kapotte (collineaire, samenvallende of gedraaide) plaat in het
+ * model komt. Retourneert een NL-foutmelding, of null wanneer de vorm geldig is.
+ */
+export function valideerPlaatHoeken(
+  punten: { x: number; z: number }[],
+): string | null {
+  const TOL = 1; // mm
+  if (punten.length !== 4) return "Een plaat heeft precies vier hoeken nodig.";
+  const xs = punten.map(p => p.x), zs = punten.map(p => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  if (maxX - minX < TOL || maxZ - minZ < TOL) {
+    return "De hoeken vallen samen of liggen (vrijwel) op één lijn — teken een echte rechthoek.";
+  }
+  // Elk van de vier bbox-hoeken moet door precies één hoekknoop bezet zijn.
+  const doelen: [number, number][] = [
+    [minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ],
+  ];
+  const bezet = [false, false, false, false];
+  for (const p of punten) {
+    const hit = doelen.findIndex(([tx, tz], i) =>
+      !bezet[i] && Math.abs(p.x - tx) <= TOL && Math.abs(p.z - tz) <= TOL);
+    if (hit < 0) {
+      return "De vier hoeken vormen geen asgelijnde rechthoek — gedraaide of scheve platen worden nog niet ondersteund.";
+    }
+    bezet[hit] = true;
+  }
+  return null;
+}
+
+/** Asgelijnde bounding box van de vier hoekknopen van een plaat (mm). */
+function plaatBBox(
+  pl: Plate, nodes: Node[],
+): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const pts = pl.nodeIds
+    .map(id => nodes.find(n => n.id === id))
+    .filter((n): n is Node => !!n);
+  if (pts.length !== 4) return null;
+  return {
+    minX: Math.min(...pts.map(p => p.x)),
+    maxX: Math.max(...pts.map(p => p.x)),
+    minZ: Math.min(...pts.map(p => p.z)),
+    maxZ: Math.max(...pts.map(p => p.z)),
+  };
+}
+
+/** Eindpunten (modelcoörd., mm) van één benoemde plaatrand. */
+function plaatRandSegment(
+  pl: Plate, nodes: Node[], rand: PlaatRand,
+): { a: { x: number; z: number }; b: { x: number; z: number } } | null {
+  const bb = plaatBBox(pl, nodes);
+  if (!bb) return null;
+  switch (rand) {
+    case "bottom": return { a: { x: bb.minX, z: bb.minZ }, b: { x: bb.maxX, z: bb.minZ } };
+    case "top":    return { a: { x: bb.minX, z: bb.maxZ }, b: { x: bb.maxX, z: bb.maxZ } };
+    case "left":   return { a: { x: bb.minX, z: bb.minZ }, b: { x: bb.minX, z: bb.maxZ } };
+    case "right":  return { a: { x: bb.maxX, z: bb.minZ }, b: { x: bb.maxX, z: bb.maxZ } };
+  }
+}
 
 /**
  * Thermische uitzettingscoëfficiënt per staafmateriaal (1/K) voor thermische
@@ -218,8 +338,10 @@ export default function FemCanvas(props: FemCanvasProps) {
 
   // Popover state for support/load tools (anchored at a screen position)
   const [popover, setPopover] = useState<{
-    kind: "zSpring" | "xSpring" | "rotSpring" | "pointLoad" | "pointLoadH" | "moment" | "lineLoad" | "thermal";
+    kind: "zSpring" | "xSpring" | "rotSpring" | "pointLoad" | "pointLoadH" | "moment" | "lineLoad" | "thermal" | "edgeLoad";
     nodeId?: number; beamId?: number;
+    /** edgeLoad (P3.3): doelplaat + benoemde rand. */
+    plateId?: number; edge?: PlaatRand;
     sx: number; sy: number;
   } | null>(null);
 
@@ -295,12 +417,14 @@ export default function FemCanvas(props: FemCanvasProps) {
   const onSolveResultRef = useRef(onSolveResult);
   onSolveResultRef.current = onSolveResult;
 
-  // Invalidate results whenever the model changes
+  // Invalidate results whenever the model changes. `plates` doet mee sinds
+  // de canvas-solve platen meerekent (P3): een dikte- of meshSize-wijziging
+  // maakt ook het single-LC-resultaat (en de contourlaag) ongeldig.
   useEffect(() => {
     setResults(null);
     setSolveError(null);
     onSolveResultRef.current?.(null);
-  }, [nodes, beams, supports, loads, activeLoadCaseId]);
+  }, [nodes, beams, supports, plates, loads, activeLoadCaseId]);
 
   // Run solver whenever parent bumps solveTrigger.
   // This single-case run still feeds the right-rail Properties panel which
@@ -317,6 +441,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       }[] = [];
       const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
       const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
+      const edgeLoads: { plateId: number; edge: PlaatRand; p: number; dir?: "x" | "z" }[] = [];
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
           // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
@@ -349,6 +474,15 @@ export default function FemCanvas(props: FemCanvasProps) {
             beamId: l.beamId, deltaT: l.deltaT,
             alpha: thermalAlphaForMaterial(beam?.material),
           });
+        } else if (l.type === "edgeLoad" && l.plateId !== undefined && l.q !== undefined) {
+          // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting
+          // in globale assen — zelfde velden als het multi-LC-pad in App.tsx.
+          edgeLoads.push({
+            plateId: l.plateId,
+            edge: l.edge ?? "top",
+            p: l.q,
+            dir: l.qDir,
+          });
         }
       }
       const input: SolverInput = {
@@ -374,6 +508,19 @@ export default function FemCanvas(props: FemCanvasProps) {
         loads: distLoads,
         pointLoads,
         thermalLoads,
+        edgeLoads,
+        // Platen (wandschijven): zelfde defaults-aanvulling als het
+        // multi-LC-pad in App.tsx — hiermee rekent óók de canvas-solve de
+        // platen mee (mixed_beam_plate) en levert het resultaat
+        // `plateElements` voor de contourlaag (P3.2).
+        plates: plates.map(p => {
+          const d = withPlateDefaults(p);
+          return {
+            id: d.id, nodeIds: d.nodeIds,
+            thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
+            meshSize: d.meshSize!,
+          };
+        }),
         // Scheefstand — zelfde instelling als het multi-LC-pad in App.tsx.
         scheefstand,
       };
@@ -510,6 +657,33 @@ export default function FemCanvas(props: FemCanvasProps) {
     const w = screenToWorld(best.px, best.py);
     return { beamId: best.beamId, x: snap(w.x), z: snap(w.z) };
   }, [beams, nodes, worldToScreen, screenToWorld, snap]);
+
+  // Dichtstbijzijnde plaatrand binnen 8 px (P3.3) — gebruikt door het
+  // Lijnlast-gereedschap wanneer er géén staaf onder de muis ligt, zodat
+  // één tool zowel staaf-lijnlasten als plaatrandlasten plaatst.
+  const findSnapPlateEdge = useCallback((sx: number, sy: number):
+    { plateId: number; edge: PlaatRand } | null => {
+    const RADIUS_PX = 8;
+    let best: { plateId: number; edge: PlaatRand; d: number } | null = null;
+    for (const pl of plates) {
+      for (const rand of ["bottom", "top", "left", "right"] as PlaatRand[]) {
+        const seg = plaatRandSegment(pl, nodes, rand);
+        if (!seg) continue;
+        const pa = worldToScreen(seg.a.x, seg.a.z);
+        const pb = worldToScreen(seg.b.x, seg.b.z);
+        const vx = pb.x - pa.x, vy = pb.y - pa.y;
+        const lenSq = vx * vx + vy * vy;
+        if (lenSq < 1e-6) continue;
+        const t = Math.max(0, Math.min(1, ((sx - pa.x) * vx + (sy - pa.y) * vy) / lenSq));
+        const px = pa.x + t * vx, py = pa.y + t * vy;
+        const d = Math.hypot(sx - px, sy - py);
+        if (d <= RADIUS_PX && (best === null || d < best.d)) {
+          best = { plateId: pl.id, edge: rand, d };
+        }
+      }
+    }
+    return best ? { plateId: best.plateId, edge: best.edge } : null;
+  }, [plates, nodes, worldToScreen]);
 
   // ── Selection helpers (multi-aware) ─────────────────────────────────────
   const isNodeInSelection = useCallback((nodeId: number, sel: Selection): boolean => {
@@ -946,8 +1120,31 @@ export default function FemCanvas(props: FemCanvasProps) {
         else nodeId = addNode(clickModel.x, clickModel.z);
       }
       if (nodeId === null) return;
+      // Samenvallende hoekklik (P3.1): dezelfde knoop twee keer aanklikken
+      // zou een gedegenereerde plaat opleveren — weigeren met melding.
+      if (plateCorners.includes(nodeId)) {
+        notifyWarning("Ongeldige hoek",
+          "Deze knoop is al een hoek van deze plaat — kies een andere knoop.");
+        return;
+      }
       const next = [...plateCorners, nodeId];
       if (next.length === 4) {
+        // Degeneratie-validatie (P3.1): collineaire of samenvallende hoeken
+        // en niet-asgelijnde rechthoeken worden geweigerd met een melding —
+        // zelfde regels als de adapter-validatie in solver/engine.ts, maar
+        // hier vóór het aanmaken zodat er nooit een kapotte plaat ontstaat.
+        // LET OP: een zojuist via addNode aangemaakte hoekknoop zit nog niet
+        // in de `nodes`-prop van deze render — de klikpositie vult hem aan.
+        const punten = next.map(id => {
+          const n = nodes.find(nn => nn.id === id);
+          return n ? { x: n.x, z: n.z } : { x: clickModel.x, z: clickModel.z };
+        });
+        const fout = valideerPlaatHoeken(punten);
+        if (fout) {
+          notifyWarning("Plaat niet toegevoegd", fout);
+          setPlateCorners([]);
+          return;
+        }
         // Alleen de plaat zelf (P2.4): de plaat draagt nu écht mee als
         // wandschijf, dus de vier verborgen randstaven van vroeger (stille
         // HEA160's — misleidend voor de gebruiker) worden NIET meer
@@ -997,7 +1194,17 @@ export default function FemCanvas(props: FemCanvasProps) {
 
     if (tool === "addLineLoad" || tool === "addThermal") {
       const sb = findSnapBeam(sx, sy);
-      if (!sb) return;
+      if (!sb) {
+        // Randlast op een plaatrand (P3.3): geen staaf onder de muis, wél
+        // een plaatrand → randlast-popover op de klikpositie.
+        if (tool === "addLineLoad") {
+          const pe = findSnapPlateEdge(sx, sy);
+          if (pe) {
+            setPopover({ kind: "edgeLoad", plateId: pe.plateId, edge: pe.edge, sx, sy });
+          }
+        }
+        return;
+      }
       const nA = nodes.find(n => beams.find(b => b.id === sb.beamId)?.from === n.id);
       const nB = nodes.find(n => beams.find(b => b.id === sb.beamId)?.to === n.id);
       if (!nA || !nB) return;
@@ -1453,7 +1660,9 @@ export default function FemCanvas(props: FemCanvasProps) {
   const LINE_LOAD_MIN_PX = 18;
   const LINE_LOAD_MAX_PX = 80;
   const maxLineQ = activeLoads.reduce((m, l) => {
-    if (l.type !== "lineLoad") return m;
+    // Randlasten (edgeLoad, uniform — alleen q) schalen mee met de lijnlasten
+    // zodat beide pijlsoorten dezelfde px-per-kN/m-verhouding delen.
+    if (l.type !== "lineLoad" && l.type !== "edgeLoad") return m;
     const qa = Math.abs(l.qStart ?? l.q ?? 0);
     const qb = Math.abs(l.qEnd   ?? l.q ?? 0);
     return Math.max(m, qa, qb);
@@ -1656,6 +1865,81 @@ export default function FemCanvas(props: FemCanvasProps) {
         </g>
       );
     }
+    // RANDLAST op een plaatrand (P3.3) — pijltjesrij langs de rand, zelfde
+    // pijl- en tekenconventie als de lijnlast (q < 0 = pijlen omlaag/links).
+    if (l.type === "edgeLoad" && l.plateId !== undefined) {
+      const pl = plates.find(pp => pp.id === l.plateId); if (!pl) return null;
+      const seg = plaatRandSegment(pl, nodes, l.edge ?? "top");
+      if (!seg) return null;
+      const q = l.q ?? 0;
+      if (Math.abs(q) < 1e-9) return null;
+      const pA = worldToScreen(seg.a.x, seg.a.z);
+      const pB = worldToScreen(seg.b.x, seg.b.z);
+      const dxs = pB.x - pA.x, dys = pB.y - pA.y;
+      const L = Math.hypot(dxs, dys);
+      if (L < 1) return null;
+      // Richting van de pijlen (globale assen, zoals de rekensemantiek):
+      // (nx, ny) = scherm-eenheidsvector waarlangs de last werkt bij q < 0.
+      const dirL = l.qDir ?? "z";
+      const nx = dirL === "z" ? 0 : -1;
+      const ny = dirL === "z" ? 1 : 0;
+      const len = Math.min(LINE_LOAD_MAX_PX,
+        Math.max(LINE_LOAD_MIN_PX, Math.abs(q) * lineLoadPxPerKnm || LINE_LOAD_MIN_PX));
+      const dirQ = q < 0 ? 1 : -1;    // zelfde flip-conventie als de lijnlast
+      const N = 8;
+      const arrows: React.ReactNode[] = [];
+      const tailPts: { x: number; y: number }[] = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const cx = pA.x + dxs * t, cy = pA.y + dys * t;
+        const sxT = cx + nx * len * -dirQ;
+        const syT = cy + ny * len * -dirQ;
+        tailPts.push({ x: sxT, y: syT });
+        arrows.push(
+          <line key={`ea${l.id}-${i}`}
+            x1={sxT} y1={syT} x2={cx} y2={cy}
+            className="fem-load-vec" markerEnd="url(#fem-load-head)" />
+        );
+      }
+      const midX = (pA.x + pB.x) / 2, midY = (pA.y + pB.y) / 2;
+      const labelX = midX + nx * (len + 14) * -dirQ;
+      const labelY = midY + ny * (len + 14) * -dirQ;
+      const polyPoints = [
+        `${pA.x},${pA.y}`,
+        ...tailPts.map(p => `${p.x},${p.y}`),
+        `${pB.x},${pB.y}`,
+      ].join(" ");
+      const isSel = selection?.type === "load" && selection.id === l.id;
+      return (
+        <g
+          key={`load${l.id}`}
+          className={`fem-lineload-group${isSel ? " selected" : ""}`}
+          onClick={(e) => {
+            if (tool === "select" && !dragState) {
+              e.stopPropagation();
+              setSelection({ type: "load", id: l.id });
+            }
+          }}
+        >
+          <polygon className="fem-lineload-hit" points={polyPoints} />
+          <polyline className="fem-lineload-tip" points={tailPts.map(p => `${p.x},${p.y}`).join(" ")} />
+          {arrows}
+          <text
+            x={labelX} y={labelY}
+            className="fem-load-text fem-load-text-clickable"
+            onClick={(e) => {
+              if (tool === "select" && !dragState) {
+                e.stopPropagation();
+                setSelection({ type: "load", id: l.id });
+                setPendingLoadFocus?.({ loadId: l.id, field: "q" });
+              }
+            }}
+          >
+            p={q.toFixed(1)} kN/m
+          </text>
+        </g>
+      );
+    }
     // THERMAL on beam
     if (l.type === "thermal" && l.beamId !== undefined) {
       const b = beams.find(bb => bb.id === l.beamId); if (!b) return null;
@@ -1721,6 +2005,26 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (envelopeView) return null; // envelope rendered separately
     return results;
   }, [activeCombinationId, combinationResults, envelopeView, results]);
+
+  // ── Plaatspanningscontouren (P3.2) ──────────────────────────────────────
+  // Elementvlakken gevuld op de gekozen component; het kleurbereik is de
+  // min/max over ALLE platen samen zodat één legenda het hele model dekt.
+  // `plateElements` komt uit de single-LC-canvas-solve (en elk ander
+  // SolverResult dat plaatspanningen draagt); combinatie-superpositie van
+  // plaatspanningen staat op de backlog en toont dan geen contouren.
+  const plaatComponent = (displayFlags.plaatComponent ?? "vonMises") as PlaatComponent;
+  const plaatContourData = useMemo(() => {
+    if (!showLoads || displayFlags.plaatContour === false) return null;
+    const platenRes = overlayResult?.plateElements;
+    if (!platenRes || platenRes.length === 0) return null;
+    let min = Infinity, max = -Infinity;
+    for (const pr of platenRes) {
+      const r = pr.ranges[plaatComponent];
+      if (r) { min = Math.min(min, r.min); max = Math.max(max, r.max); }
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    return { platenRes, min, max };
+  }, [overlayResult, plaatComponent, displayFlags.plaatContour, showLoads]);
 
   /** Banner text shown at the top of the canvas after a successful solve. */
   const bannerText: { kind: "single" | "combo" | "envelope"; text: string } | null = useMemo(() => {
@@ -2148,7 +2452,41 @@ export default function FemCanvas(props: FemCanvasProps) {
         })()}
 
         {/* Plates BELOW beams (so beam lines render on top) */}
-        <g className="fem-plates-layer">{plates.map(renderPlate)}</g>
+        <g className="fem-plates-layer">
+          {plates.map(renderPlate)}
+          {/* Spanningscontouren (P3.2): elementvlakken op de gekozen
+              component, in dezelfde laag boven de basis-plaatpolygonen maar
+              ONDER staven/diagrammen (die verderop renderen) — de
+              staafdiagrammen blijven dus onaangetast. pointerEvents none:
+              kliks vallen door naar de plaatpolygoon (selectie werkt). */}
+          {plaatContourData && (
+            <g pointerEvents="none">
+              {plaatContourData.platenRes.flatMap(pr =>
+                pr.elements.map(el => {
+                  const pts = el.corners.map(c => {
+                    const p = worldToScreen(c.x, c.z);
+                    return `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+                  }).join(" ");
+                  const span = plaatContourData.max - plaatContourData.min;
+                  const t = span > 1e-12
+                    ? (el[plaatComponent] - plaatContourData.min) / span
+                    : 0.5; // uniform veld → middenkleur
+                  const toonMesh = displayFlags.plaatMesh !== false;
+                  return (
+                    <polygon
+                      key={`pc${pr.plateId}-${el.elementId}`}
+                      points={pts}
+                      fill={contourKleur(t)}
+                      fillOpacity={0.85}
+                      stroke={toonMesh ? "rgba(15, 23, 42, 0.35)" : "none"}
+                      strokeWidth={toonMesh ? 0.6 : 0}
+                    />
+                  );
+                })
+              )}
+            </g>
+          )}
+        </g>
 
         {/* Origin axes */}
         <g className="fem-axes" transform={`translate(${ORIGIN_X + view.offsetX}, ${size.h - ORIGIN_Y_FROM_BOTTOM + view.offsetY})`}>
@@ -2591,6 +2929,39 @@ export default function FemCanvas(props: FemCanvasProps) {
         </div>
       </div>
 
+      {/* Kleurenlegenda plaatcontouren (P3.2) — min/max uit de
+          plateElements-ranges van het getoonde resultaat; de gradient-balk
+          gebruikt dezelfde kleurstops als de elementvlakken. */}
+      {plaatContourData && (
+        <div className="fem-hud" style={{ left: 12, top: "50%", transform: "translateY(-50%)" }}>
+          <div
+            className="fem-hud-card"
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "8px 10px" }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 600 }}>
+              {PLAAT_COMPONENTEN[plaatComponent].label}
+            </span>
+            <div style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+              <div style={{
+                width: 14, height: 120, borderRadius: 2,
+                background: CONTOUR_GRADIENT_CSS,
+              }} />
+              <div
+                className="fem-hud-mono"
+                style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: 10 }}
+              >
+                <span>{fmtLegenda(plaatContourData.max)}</span>
+                <span>{fmtLegenda((plaatContourData.min + plaatContourData.max) / 2)}</span>
+                <span>{fmtLegenda(plaatContourData.min)}</span>
+              </div>
+            </div>
+            <span style={{ fontSize: 10, opacity: 0.7 }}>
+              {PLAAT_COMPONENTEN[plaatComponent].eenheid}
+            </span>
+          </div>
+        </div>
+      )}
+
       {(bannerText || solveError) && (
         <div className="fem-hud fem-hud-tc">
           <div className={`fem-hud-card ${solveError ? "fem-hud-error" : "fem-hud-success"}`}>
@@ -2791,6 +3162,17 @@ export default function FemCanvas(props: FemCanvasProps) {
         onSubmit={(deltaT) => cbs.onAddLoad({ type: "thermal", beamId: p.beamId, deltaT })}
       />;
     }
+    if (p.kind === "edgeLoad" && p.plateId !== undefined) {
+      // Randlast op een plaatrand (P3.3): p in kN/m langs de rand, richting
+      // in globale assen — zelfde tekenconventie als lijnlasten.
+      return <PopoverEdgeLoadForm
+        edge={p.edge ?? "top"}
+        onSubmit={(pWaarde, dir) => cbs.onAddLoad({
+          type: "edgeLoad", plateId: p.plateId, edge: p.edge ?? "top",
+          q: pWaarde, qDir: dir,
+        })}
+      />;
+    }
     return null;
   }
 }
@@ -2961,6 +3343,47 @@ function PopoverLineLoadForm({ beamLenM, onSubmit }: {
       )}
       <div className="fem-popover-actions">
         <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>OK</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Randlast op een plaatrand (P3.3): p in kN/m langs de randlengte, richting
+ * in GLOBALE assen. Negatief = tegen de +richting in (omlaag voor Z, naar
+ * links voor X) — dezelfde tekenconventie als lijnlasten op staven.
+ */
+function PopoverEdgeLoadForm({ edge, onSubmit }: {
+  edge: "bottom" | "top" | "left" | "right";
+  onSubmit: (p: number, dir: "x" | "z") => void;
+}) {
+  const [p, setP] = useState("-5");
+  const [dir, setDir] = useState<"x" | "z">("z");
+  const commit = () => onSubmit(Number(p) || 0, dir);
+  return (
+    <div className="fem-popover-form">
+      <div className="fem-popover-title">Randlast op {RAND_LABEL[edge]}</div>
+      <label className="fem-popover-row">
+        <span>Richting</span>
+        <select value={dir} onChange={e => setDir(e.target.value as "x" | "z")}>
+          <option value="z">Verticaal (+Z, gravitatie)</option>
+          <option value="x">Horizontaal (+X, wind)</option>
+        </select>
+      </label>
+      <label className="fem-popover-row">
+        <span>p (kN/m)</span>
+        <input
+          type="number" step="0.1" value={p} autoFocus
+          onChange={e => setP(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") commit(); }}
+        />
+      </label>
+      <div className="fem-popover-hint">
+        p werkt per meter randlengte. Negatief = tegen de +richting in
+        (omlaag voor Z, links voor X).
+      </div>
+      <div className="fem-popover-actions">
+        <button onClick={commit} className="fem-popover-primary">OK</button>
       </div>
     </div>
   );

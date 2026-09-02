@@ -558,7 +558,7 @@ function App() {
           };
         }),
         cases: fem.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
-        loads: [], pointLoads: [], thermalLoads: [],
+        loads: [], pointLoads: [], thermalLoads: [], edgeLoads: [],
         // Scheefstand: φ = 1/noemer, richting ±x — de engine geeft elke
         // verticale last een horizontale metgezel H = φ·V.
         scheefstand: fem.scheefstandEnabled
@@ -622,6 +622,17 @@ function App() {
             beamId: l.beamId,
             deltaT: l.deltaT,
             alpha: thermalAlphaForMaterial(beam?.material),
+            caseId: l.caseId,
+          });
+        } else if (l.type === "edgeLoad" && l.plateId !== undefined && l.q !== undefined) {
+          // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting
+          // in globale assen — de engine zet dit via de PlateLoads-wrapper
+          // om in exacte knooplasten op de mesh-randknopen.
+          multiInput.edgeLoads!.push({
+            plateId: l.plateId,
+            edge: l.edge ?? "top",
+            p: l.q,
+            dir: l.qDir,
             caseId: l.caseId,
           });
         }
@@ -1194,6 +1205,7 @@ function App() {
                     loads={fem.loads}
                     updateNode={fem.updateNode}
                     updateBeam={fem.updateBeam}
+                    updatePlate={fem.updatePlate}
                     addSupport={fem.addSupport}
                     removeSupport={fem.removeSupport}
                     updateLoad={fem.updateLoad}

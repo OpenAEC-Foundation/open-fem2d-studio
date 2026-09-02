@@ -10,6 +10,7 @@ import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import type { DisplayFlags } from "./FemResultsOverlay";
+import { PLAAT_COMPONENTEN } from "./FemCanvas";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 
@@ -66,6 +67,7 @@ function ResultsTab({
   loadCases = [], activeLoadCaseId,
   combinations = [], activeCombinationId,
   envelopeView = false,
+  hasPlates = false,
   onSelectScope,
 }: {
   displayFlags?: DisplayFlags;
@@ -76,6 +78,8 @@ function ResultsTab({
   combinations?: LoadCombination[];
   activeCombinationId?: number | null;
   envelopeView?: boolean;
+  /** True zodra het model platen bevat — toont de contour-rij (P3.2). */
+  hasPlates?: boolean;
   /** Called when user picks a scope. Encodes which one was chosen so App
    * can set the right state (single LC / combination / envelope). */
   onSelectScope?: (scope:
@@ -108,6 +112,14 @@ function ResultsTab({
     { key: "N",          label: "N",             hint: "Normaalkracht — constant per element",                    swatch: "#f59e0b",            scaleKey: "scaleN" },
     { key: "reactions",  label: "Reactie",       hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
   ];
+  // Contour-rij alleen wanneer het model platen bevat (P3.2).
+  if (hasPlates) {
+    ROWS.push({
+      key: "plaatContour", label: "Plaatspanning",
+      hint: "Spanningscontouren op de plaatelementen — component kiesbaar, legenda op het canvas",
+      swatch: "#d97706",
+    });
+  }
 
   // Build current "scope" value for the dropdown.
   const currentValue =
@@ -183,6 +195,37 @@ function ResultsTab({
                     }}
                   />
                   <span className="fem-results-scale-value">{scaleVal.toFixed(1)}×</span>
+                </div>
+              )}
+              {/* Plaatcontour-instellingen (P3.2): componentkeuze (von Mises
+                  default) + mesh-lijnen-toggle — zelfde subrij-patroon als de
+                  reactie-subcheckboxes hieronder. */}
+              {row.key === "plaatContour" && active && (
+                <div
+                  className="fem-results-scale-row"
+                  title="Kies de spanningscomponent voor de contourvlakken; 'mesh' toont de elementranden"
+                >
+                  <select
+                    className="fem-results-scope-select"
+                    style={{ flex: 1, minWidth: 0 }}
+                    value={String(displayFlags.plaatComponent ?? "vonMises")}
+                    onChange={(e) => setDisplayFlags(f => ({
+                      ...f,
+                      plaatComponent: e.target.value as DisplayFlags["plaatComponent"],
+                    }))}
+                  >
+                    {Object.entries(PLAAT_COMPONENTEN).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label} ({v.eenheid})</option>
+                    ))}
+                  </select>
+                  <label className="fem-results-subcheck">
+                    <input
+                      type="checkbox"
+                      checked={displayFlags.plaatMesh !== false}
+                      onChange={(e) => setDisplayFlags(f => ({ ...f, plaatMesh: e.target.checked }))}
+                    />
+                    <span>mesh</span>
+                  </label>
                 </div>
               )}
               {/* Reactie-componentkeuze: X- en Z-pijlen apart schakelbaar.
@@ -545,6 +588,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
             displayFlags={displayFlags}
             setDisplayFlags={setDisplayFlags}
             hasResults={hasResults ?? false}
+            hasPlates={plates.length > 0}
             loadCases={loadCases}
             activeLoadCaseId={activeLoadCaseId}
             combinations={combinations}

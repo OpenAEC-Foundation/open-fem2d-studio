@@ -23,7 +23,7 @@ import { solveNonlinear } from "../../../core/solver/NonlinearSolver";
 import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode } from "../../../core/solver/Assembler";
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
 import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
-import { computeSelfWeightNodalForces, applyNodalForces } from "../../../core/fem/PlateLoads";
+import { computeSelfWeightNodalForces, computeEdgeLoadNodalForces, applyNodalForces } from "../../../core/fem/PlateLoads";
 import type {
   SolverInput,
   SolverResult,
@@ -590,6 +590,37 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
           );
         }
       }
+    }
+  }
+
+  // ── Randlasten op plaatranden (P3.3) ──────────────────────────────────────
+  // p (kN/m = N/mm) → N/m, en via de PlateLoads-wrapper (cumulatieve
+  // booglengte + tributary lengths, convertEdgeNodeIdsToNodalForces) naar
+  // exacte knooplasten op de mesh-randknopen: ΣF = p·L exact. De
+  // scheefstand-companion werkt — net als bij knoop-, staaf- en
+  // gewichtslasten — op de VERTICALE component ná omzetting. Een randlast op
+  // een niet (meer) bestaande plaat vervalt stil, consistent met lasten op
+  // verwijderde staven.
+  const edgeLds = (input as any).edgeLoads as Array<any> | undefined;
+  if (edgeLds && edgeLds.length > 0 && plateInfo.length > 0) {
+    const regionByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi.region]));
+    for (const el of edgeLds) {
+      const f = loadFactor ? loadFactor(el.caseId) : 1;
+      if (f === 0 || !el.p) continue;
+      const region = regionByPlateId.get(el.plateId);
+      if (!region) continue;
+      const rand = region.edges?.[el.edge as "bottom" | "top" | "left" | "right"];
+      if (!rand || rand.nodeIds.length < 2) continue;
+      const p_Nm = el.p * 1000 * f;               // kN/m (= N/mm) → N/m, gefactoreerd
+      const dir = (el.dir ?? "z") as "x" | "z";
+      const px = dir === "x" ? p_Nm : 0;
+      const py = dir === "z" ? p_Nm : 0;
+      const krachten = computeEdgeLoadNodalForces(mesh, rand.nodeIds, px, py);
+      applyNodalForces(mesh, krachten.map((kr) => ({
+        nodeId: kr.nodeId,
+        fx: kr.fx + schFactor * -kr.fy,
+        fy: kr.fy,
+      })));
     }
   }
 

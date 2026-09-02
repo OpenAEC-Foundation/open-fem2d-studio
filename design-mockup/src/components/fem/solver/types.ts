@@ -101,6 +101,26 @@ export interface SolverPointLoadInput {
   my?: number;   // N·mm
 }
 
+/**
+ * Randlast op een plaatrand (P3.3): een lijnlast p langs één van de vier
+ * benoemde randen van het gridmesh van een wandschijf. De engine zet de last
+ * via de PlateLoads-wrapper (cumulatieve booglengte + tributary lengths) om
+ * in exacte knooplasten op de mesh-randknopen — ΣF = p·L exact.
+ */
+export interface SolverEdgeLoadInput {
+  /** UI-plaat-id (SolverPlateInput.id). */
+  plateId: number;
+  /**
+   * Benoemde rand van het gridmesh in modelassen: "bottom" = kleinste z,
+   * "top" = grootste z, "left"/"right" = kleinste/grootste x.
+   */
+  edge: "bottom" | "top" | "left" | "right";
+  /** Lastgrootte per meter randlengte (N/mm = kN/m); negatief = tegen de +richting in. */
+  p: number;
+  /** Richting in GLOBALE assen: "z" = verticaal (default), "x" = horizontaal. */
+  dir?: "x" | "z";
+}
+
 /** Uniform temperature change on a beam — added in step 2b. */
 export interface SolverThermalLoadInput {
   beamId: number;
@@ -163,6 +183,8 @@ export interface SolverInput {
   pointLoads?: SolverPointLoadInput[];
   /** Optional uniform temperature changes on beams. */
   thermalLoads?: SolverThermalLoadInput[];
+  /** Optionele randlasten op plaatranden (P3.3). */
+  edgeLoads?: SolverEdgeLoadInput[];
   /** Optionele wandschijven — aanwezig ⇒ analyse in `mixed_beam_plate`. */
   plates?: SolverPlateInput[];
   /** Optional load-case tag for traceability (used by multi-LC variant). */
@@ -180,6 +202,8 @@ export interface MultiInput {
   loads: (SolverDistLoadInput & { caseId: number })[];
   pointLoads?: (SolverPointLoadInput & { caseId: number })[];
   thermalLoads?: (SolverThermalLoadInput & { caseId: number })[];
+  /** Randlasten op plaatranden, per belastinggeval (P3.3). */
+  edgeLoads?: (SolverEdgeLoadInput & { caseId: number })[];
   /** Optionele wandschijven — lastonafhankelijk model, net als beams. */
   plates?: SolverPlateInput[];
   /** All load cases referenced by the loads above. */

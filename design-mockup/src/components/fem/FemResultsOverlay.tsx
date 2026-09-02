@@ -30,6 +30,12 @@ export interface DisplayFlags {
   scaleV: number;
   scaleM: number;
   scaleU: number;
+  /** Plaatspanningscontouren op het canvas (P3.2) — aan/uit. */
+  plaatContour: boolean;
+  /** Gekozen contourcomponent (von Mises default) — zie PLAAT_COMPONENTEN in FemCanvas. */
+  plaatComponent: "vonMises" | "sigmaX" | "sigmaY" | "tauXY" | "nx" | "ny" | "nxy";
+  /** Elementranden (mesh-lijnen) tonen in de contourlaag. */
+  plaatMesh: boolean;
 }
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
@@ -37,6 +43,7 @@ export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   reactieX: true, reactieZ: true,
   showExtremes: true,
   scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1,
+  plaatContour: true, plaatComponent: "vonMises", plaatMesh: true,
 };
 
 interface Props {

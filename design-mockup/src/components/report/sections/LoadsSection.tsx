@@ -35,10 +35,22 @@ export default function LoadsSection() {
       case "pointMoment": return t("home.moment", "Moment");
       case "lineLoad": return t("home.lineLoad", "Lijnlast");
       case "thermal": return t("home.temp", "Temperatuur");
+      case "edgeLoad": return t("report.edgeLoad", "Randlast");
     }
   };
 
+  /** NL-labels voor de benoemde plaatranden (edgeLoad, P3.3). */
+  const EDGE_LABELS: Record<NonNullable<Load["edge"]>, string> = {
+    bottom: t("report.edgeBottom", "onderrand"),
+    top: t("report.edgeTop", "bovenrand"),
+    left: t("report.edgeLeft", "linkerrand"),
+    right: t("report.edgeRight", "rechterrand"),
+  };
+
   const targetText = (l: Load): string => {
+    if (l.type === "edgeLoad" && l.plateId !== undefined) {
+      return `${t("report.plateWord", "plaat")} ${l.plateId}, ${EDGE_LABELS[l.edge ?? "top"]}`;
+    }
     if (l.beamId !== undefined) return `${t("report.beamWord", "staaf")} ${l.beamId}`;
     if (l.nodeId !== undefined) return `${t("report.nodeWord", "knoop")} ${l.nodeId}`;
     return "—";
@@ -65,11 +77,13 @@ export default function LoadsSection() {
         return `My = ${fmtNum(l.my ?? 0, 2)} kNm`;
       case "thermal":
         return `ΔT = ${fmtNum(l.deltaT ?? 0, 1)} K`;
+      case "edgeLoad":
+        return `p = ${fmtNum(l.q ?? 0, 2)} kN/m`;
     }
   };
 
   const directionText = (l: Load): string => {
-    if (l.type !== "lineLoad") return "—";
+    if (l.type !== "lineLoad" && l.type !== "edgeLoad") return "—";
     return (l.qDir ?? "z") === "z"
       ? t("report.dirVertical", "z (verticaal)")
       : t("report.dirHorizontal", "x (horizontaal)");

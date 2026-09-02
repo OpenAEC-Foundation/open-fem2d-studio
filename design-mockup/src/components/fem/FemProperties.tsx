@@ -14,6 +14,7 @@ import "./FemProperties.css";
 import type {
   Node, Beam, Plate, Support, Load, Selection, SupportType,
 } from "./femTypes";
+import { withPlateDefaults } from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { STEEL_GRADES, PROFILE_SUGGESTIONS } from "./BarPropertiesDialog";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -60,6 +61,8 @@ interface FemPropertiesProps {
   updateNode: (id: number, x: number, z: number) => void;
   /** Patch fields on a beam (material, profile, releases, …). */
   updateBeam?: (id: number, updates: Partial<Beam>) => void;
+  /** Patch rekenvelden op een plaat (dikte, E, ν, ρ, meshSize) — P3.1. */
+  updatePlate?: (id: number, updates: Partial<Plate>) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   removeSupport: (nodeId: number) => void;
   /** Patch fields on a load (q / fx / fz / my / ΔT). */
@@ -72,7 +75,7 @@ interface FemPropertiesProps {
 
 export default function FemProperties(props: FemPropertiesProps) {
   const { selection, nodes, beams, plates, supports, loads,
-    updateNode, updateBeam, addSupport, removeSupport, updateLoad,
+    updateNode, updateBeam, updatePlate, addSupport, removeSupport, updateLoad,
     pendingLoadFocus, clearPendingLoadFocus, results } = props;
 
   if (!selection) {
@@ -115,7 +118,7 @@ export default function FemProperties(props: FemPropertiesProps) {
     if (!p) {
       return <div className="fem-properties"><div className="fem-prop-empty">Plaat niet gevonden.</div></div>;
     }
-    return <PlateProperties plate={p} nodes={nodes} />;
+    return <PlateProperties plate={p} nodes={nodes} updatePlate={updatePlate} />;
   }
   if (selection.type === "load") {
     const ld = loads.find(l => l.id === selection.id);
@@ -372,6 +375,12 @@ const LOAD_TYPE_LABEL: Record<Load["type"], string> = {
   pointForce:  "Puntkracht",
   pointMoment: "Puntmoment",
   thermal:     "Temperatuur (ΔT)",
+  edgeLoad:    "Randlast (plaatrand)",
+};
+
+/** NL-labels voor de benoemde plaatranden (edgeLoad, P3.3). */
+const EDGE_LABEL: Record<NonNullable<Load["edge"]>, string> = {
+  bottom: "onderrand", top: "bovenrand", left: "linkerrand", right: "rechterrand",
 };
 
 function LoadProperties({
@@ -512,6 +521,9 @@ function LoadProperties({
           <Row label="Lastgeval"><code>{load.caseId}</code></Row>
           {beam && <Row label="Op balk"><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
           {node && <Row label="Op knoop"><code>{node.id}</code></Row>}
+          {load.type === "edgeLoad" && load.plateId !== undefined && (
+            <Row label="Op plaat"><code>{load.plateId} ({EDGE_LABEL[load.edge ?? "top"]})</code></Row>
+          )}
           {beamLen > 0 && load.type === "lineLoad" && (
             <Row label="Balklengte"><code>{(beamLen / 1000).toFixed(2)} m</code></Row>
           )}
@@ -645,6 +657,39 @@ function LoadProperties({
           </Section>
         )}
 
+        {load.type === "edgeLoad" && (
+          <Section title="Randlast">
+            <Row label="Rand"><code>{EDGE_LABEL[load.edge ?? "top"]}</code></Row>
+            <Row label="Richting">
+              <select
+                className="fem-prop-select"
+                value={load.qDir ?? "z"}
+                onChange={e => updateLoad?.(load.id, { qDir: e.target.value as "x" | "z" })}
+                title={"Wereld-Z: verticaal (negatief = omlaag). Wereld-X: horizontaal.\np blijft per meter randlengte."}
+              >
+                <option value="z">Verticaal (+Z, gravitatie)</option>
+                <option value="x">Horizontaal (+X, wind)</option>
+              </select>
+            </Row>
+            <Row label="p (kN/m)">
+              <input
+                ref={qRef}
+                type="number" step="0.1" className="fem-prop-input fem-prop-input-mono"
+                value={qStr}
+                onChange={e => setQStr(e.target.value)}
+                onBlur={() => commitNumber(qStr, "q")}
+                onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+              />
+            </Row>
+            <Row label="Werkt in">
+              <code>
+                {(load.qDir ?? "z") === "z"
+                  ? "Wereld-Z (negatief = omlaag)" : "Wereld-X (horizontaal)"}
+              </code>
+            </Row>
+          </Section>
+        )}
+
         {load.type === "pointForce" && (
           <Section title="Puntkracht">
             <Row label="Fx (kN)">
@@ -712,7 +757,55 @@ function LoadProperties({
 }
 
 // ── Plate properties ─────────────────────────────────────────────────────
-function PlateProperties({ plate, nodes }: { plate: Plate; nodes: Node[] }) {
+/**
+ * Bewerkbare plaateigenschappen (P3.1): dikte, E, ν, ρ en meshSize gaan via
+ * `updatePlate` de store in (één history-snapshot per commit → undo/redo per
+ * wijziging). De solver-invalidatie loopt via de bestaande trigger-route:
+ * elke plaatmutatie wist de resultaten, waarna Berekenen opnieuw rekent —
+ * identiek aan staafwijzigingen (materiaal/profiel).
+ */
+function PlateProperties({ plate, nodes, updatePlate }: {
+  plate: Plate; nodes: Node[];
+  updatePlate?: (id: number, updates: Partial<Plate>) => void;
+}) {
+  // Weergavewaarden mét defaults — een oude plaat zonder rekenvelden toont
+  // dus de PLATE_DEFAULTS in plaats van lege invoervelden.
+  const d = withPlateDefaults(plate);
+  // String-state per veld; commit onBlur/Enter (zelfde patroon als
+  // NodeProperties). Ongeldige invoer springt terug naar de huidige waarde.
+  const [dikteStr, setDikteStr] = useState(String(d.thickness));
+  const [eStr, setEStr]         = useState(String(d.E));
+  const [nuStr, setNuStr]       = useState(String(d.nu));
+  const [rhoStr, setRhoStr]     = useState(String(d.rho));
+  const [meshStr, setMeshStr]   = useState(String(d.meshSize));
+  useEffect(() => {
+    setDikteStr(String(d.thickness));
+    setEStr(String(d.E));
+    setNuStr(String(d.nu));
+    setRhoStr(String(d.rho));
+    setMeshStr(String(d.meshSize));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plate.id, plate.thickness, plate.E, plate.nu, plate.rho, plate.meshSize]);
+
+  type PlaatRekenveld = "thickness" | "E" | "nu" | "rho" | "meshSize";
+  const commitVeld = (
+    raw: string, veld: PlaatRekenveld,
+    geldig: (v: number) => boolean,
+    terug: () => void,
+  ) => {
+    const v = Number(raw);
+    if (!Number.isFinite(v) || !geldig(v) || !updatePlate) { terug(); return; }
+    if (v !== d[veld]) updatePlate(plate.id, { [veld]: v });
+    else terug(); // ongewijzigd — invoer terug in het nette formaat
+  };
+  const inputProps = {
+    type: "number" as const,
+    className: "fem-prop-input fem-prop-input-mono",
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+    },
+  };
+
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
@@ -725,7 +818,7 @@ function PlateProperties({ plate, nodes }: { plate: Plate; nodes: Node[] }) {
       <div className="fem-prop-body">
         <Section title="Geometrie">
           <Row label="ID"><code>{plate.id}</code></Row>
-          <Row label="Hoeken"><code>{plate.nodeIds.length}</code></Row>
+          <Row label="Type"><code>Wandschijf (in het vlak)</code></Row>
           {plate.nodeIds.map((id, i) => {
             const n = nodes.find(nn => nn.id === id);
             return <Row key={`pc${i}`} label={`Hoek ${i + 1}`}>
@@ -733,11 +826,58 @@ function PlateProperties({ plate, nodes }: { plate: Plate; nodes: Node[] }) {
             </Row>;
           })}
         </Section>
-        <Section title="Materiaal">
-          <Row label="Materiaal">
-            <select className="fem-prop-select" defaultValue="S235"><option>S235</option></select>
+        <Section title="Materiaal en dikte">
+          <Row label="Dikte (mm)">
+            <input
+              {...inputProps} step="1" min="0.1" value={dikteStr}
+              onChange={e => setDikteStr(e.target.value)}
+              onBlur={() => commitVeld(dikteStr, "thickness",
+                v => v > 0, () => setDikteStr(String(d.thickness)))}
+              title="Plaatdikte t — spanningen schalen omgekeerd evenredig (t ×2 → σ ×0,5)"
+            />
           </Row>
-          <Row label="Dikte"><code>20 mm</code></Row>
+          <Row label="E (N/mm²)">
+            <input
+              {...inputProps} step="1000" min="1" value={eStr}
+              onChange={e => setEStr(e.target.value)}
+              onBlur={() => commitVeld(eStr, "E",
+                v => v > 0, () => setEStr(String(d.E)))}
+              title="Elasticiteitsmodulus (staal 210000, beton ~30000)"
+            />
+          </Row>
+          <Row label="ν (—)">
+            <input
+              {...inputProps} step="0.05" min="0" max="0.49" value={nuStr}
+              onChange={e => setNuStr(e.target.value)}
+              onBlur={() => commitVeld(nuStr, "nu",
+                v => v >= 0 && v < 0.5, () => setNuStr(String(d.nu)))}
+              title="Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"
+            />
+          </Row>
+          <Row label="ρ (kg/m³)">
+            <input
+              {...inputProps} step="50" min="0" value={rhoStr}
+              onChange={e => setRhoStr(e.target.value)}
+              onBlur={() => commitVeld(rhoStr, "rho",
+                v => v >= 0, () => setRhoStr(String(d.rho)))}
+              title="Volumieke massa — gebruikt voor het eigengewicht (staal 7850, beton 2500)"
+            />
+          </Row>
+        </Section>
+        <Section title="Rekenmesh">
+          <Row label="Meshgrootte (mm)">
+            <input
+              {...inputProps} step="50" min="10" value={meshStr}
+              onChange={e => setMeshStr(e.target.value)}
+              onBlur={() => commitVeld(meshStr, "meshSize",
+                v => v >= 10, () => setMeshStr(String(d.meshSize)))}
+              title="Gewenste elementgrootte van het quad-grid; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)"
+            />
+          </Row>
+          <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
+            Wijzigingen maken de resultaten ongeldig — klik <strong>Berekenen</strong> om
+            opnieuw te rekenen.
+          </div>
         </Section>
       </div>
     </div>

@@ -152,7 +152,7 @@ export interface Support {
   k?: number;
 }
 
-export type LoadType = "pointForce" | "pointMoment" | "lineLoad" | "thermal";
+export type LoadType = "pointForce" | "pointMoment" | "lineLoad" | "thermal" | "edgeLoad";
 
 export interface Load {
   id: number;
@@ -200,6 +200,18 @@ export interface Load {
   /** Deellast: einde van het belaste deel als fractie 0..1. Default 1. */
   endFrac?: number;
   deltaT?: number; // K
+  /** edgeLoad (P3.3): de plaat waarvan een rand belast wordt. */
+  plateId?: number;
+  /**
+   * edgeLoad (P3.3): de belaste rand van de asgelijnde plaat, benoemd in
+   * modelassen — "bottom" = onderrand (kleinste z), "top" = bovenrand
+   * (grootste z), "left"/"right" = kleinste/grootste x. Dezelfde namen als
+   * de randen van het rekenmesh (PlateRegion.edges), zodat de engine 1-op-1
+   * doorverwijst. De lastgrootte p staat in `q` (kN/m langs de randlengte)
+   * en de richting in `qDir` (GLOBALE assen, negatief = tegen de +richting
+   * in — dezelfde tekenconventie als lijnlasten).
+   */
+  edge?: "bottom" | "top" | "left" | "right";
 }
 
 export interface LoadCase {

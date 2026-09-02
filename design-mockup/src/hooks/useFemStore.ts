@@ -343,12 +343,15 @@ export function computeSelectionCopy(
     newBeams.push(clone);
   }
 
+  const plateIdMap = new Map<number, number>();
   const newPlates: Plate[] = [];
   for (const p of cur.plates) {
     if (!copyPlateIds.has(p.id)) continue;
     const mapped = p.nodeIds.map(id => nodeIdMap.get(id));
     if (mapped.some(id => id === undefined)) continue;
-    newPlates.push({ ...p, id: nextPlateId++, nodeIds: mapped as number[] });
+    const clone: Plate = { ...p, id: nextPlateId++, nodeIds: mapped as number[] };
+    plateIdMap.set(p.id, clone.id);
+    newPlates.push(clone);
   }
 
   const newSupports: Support[] = [];
@@ -363,6 +366,9 @@ export function computeSelectionCopy(
       newLoads.push({ ...l, id: nextLoadId++, beamId: beamIdMap.get(l.beamId)! });
     } else if (l.nodeId !== undefined && nodeIdMap.has(l.nodeId)) {
       newLoads.push({ ...l, id: nextLoadId++, nodeId: nodeIdMap.get(l.nodeId)! });
+    } else if (l.plateId !== undefined && plateIdMap.has(l.plateId)) {
+      // Randlast (edgeLoad, P3.3) volgt zijn gekopieerde plaat.
+      newLoads.push({ ...l, id: nextLoadId++, plateId: plateIdMap.get(l.plateId)! });
     }
   }
 
@@ -697,8 +703,13 @@ export function useFemStore(): FemStore {
     const nextBeams = cur.beams.filter(b => b.from !== id && b.to !== id);
     const nextSupports = cur.supports.filter(s => s.nodeId !== id);
     const goneBeamIds = new Set(cur.beams.filter(b => b.from === id || b.to === id).map(b => b.id));
+    // Platen die deze knoop raken verdwijnen — hun randlasten (edgeLoad,
+    // P3.3) cascaderen mee, net als staafgebonden lasten.
+    const gonePlateIds = new Set(cur.plates.filter(p => p.nodeIds.includes(id)).map(p => p.id));
     const nextLoads = cur.loads.filter(l =>
-      l.nodeId !== id && !(l.beamId !== undefined && goneBeamIds.has(l.beamId)));
+      l.nodeId !== id
+      && !(l.beamId !== undefined && goneBeamIds.has(l.beamId))
+      && !(l.plateId !== undefined && gonePlateIds.has(l.plateId)));
     const nextPlates = cur.plates.filter(p => !p.nodeIds.includes(id));
     setNodes(nextNodes);
     setBeams(nextBeams);
@@ -734,13 +745,15 @@ export function useFemStore(): FemStore {
     setSelection(prev => prev && prev.type === "load" && prev.id === id ? null : prev);
   }, [pushHistory]);
 
-  /** Verwijder één plaat (knopen blijven staan). */
+  /** Verwijder één plaat (knopen blijven staan; randlasten cascaderen mee). */
   const removePlate = useCallback((id: number) => {
     const cur = latestRef.current;
     if (!cur.plates.some(p => p.id === id)) return;
     const nextPlates = cur.plates.filter(p => p.id !== id);
+    const nextLoads = cur.loads.filter(l => l.plateId !== id);
     setPlates(nextPlates);
-    pushHistory({ ...cur, plates: nextPlates });
+    setLoads(nextLoads);
+    pushHistory({ ...cur, plates: nextPlates, loads: nextLoads });
     setSelection(prev => prev && prev.type === "plate" && prev.id === id ? null : prev);
   }, [pushHistory]);
 
@@ -762,8 +775,12 @@ export function useFemStore(): FemStore {
       const nextSupports = cur.supports.filter(s => s.nodeId !== id);
       // Drop plates that touch this node + loads on the removed beams / node
       const goneBeamIds = new Set(cur.beams.filter(b => b.from === id || b.to === id).map(b => b.id));
+      // Randlasten (edgeLoad) van platen die deze knoop raken gaan mee weg.
+      const gonePlateIds = new Set(cur.plates.filter(p => p.nodeIds.includes(id)).map(p => p.id));
       const nextLoads = cur.loads.filter(l =>
-        l.nodeId !== id && !(l.beamId !== undefined && goneBeamIds.has(l.beamId))
+        l.nodeId !== id
+        && !(l.beamId !== undefined && goneBeamIds.has(l.beamId))
+        && !(l.plateId !== undefined && gonePlateIds.has(l.plateId))
       );
       const nextPlates = cur.plates.filter(p => !p.nodeIds.includes(id));
       setNodes(nextNodes);
@@ -777,8 +794,11 @@ export function useFemStore(): FemStore {
       });
     } else if (selection.type === "plate") {
       const nextPlates = cur.plates.filter(p => p.id !== selection.id);
+      // Randlasten (edgeLoad) op deze plaat cascaderen mee.
+      const nextLoads = cur.loads.filter(l => l.plateId !== selection.id);
       setPlates(nextPlates);
-      pushHistory({ ...cur, plates: nextPlates });
+      setLoads(nextLoads);
+      pushHistory({ ...cur, plates: nextPlates, loads: nextLoads });
     } else if (selection.type === "load") {
       const nextLoads = cur.loads.filter(l => l.id !== selection.id);
       setLoads(nextLoads);
@@ -795,9 +815,14 @@ export function useFemStore(): FemStore {
       const goneBeamIds = new Set(cur.beams.filter(b =>
         beamIds.has(b.id) || nodeIds.has(b.from) || nodeIds.has(b.to)).map(b => b.id));
       const nextSupports = cur.supports.filter(s => !nodeIds.has(s.nodeId));
+      // Verdwijnende platen (geselecteerd of via een verwijderde hoekknoop)
+      // nemen hun randlasten (edgeLoad) mee.
+      const gonePlateIds = new Set(cur.plates.filter(p =>
+        plateIds.has(p.id) || p.nodeIds.some(nid => nodeIds.has(nid))).map(p => p.id));
       const nextLoads = cur.loads.filter(l =>
         (l.nodeId === undefined || !nodeIds.has(l.nodeId)) &&
-        (l.beamId === undefined || !goneBeamIds.has(l.beamId)));
+        (l.beamId === undefined || !goneBeamIds.has(l.beamId)) &&
+        (l.plateId === undefined || !gonePlateIds.has(l.plateId)));
       const nextPlates = cur.plates.filter(p =>
         !plateIds.has(p.id) && p.nodeIds.every(nid => !nodeIds.has(nid)));
       setNodes(nextNodes);
