@@ -151,6 +151,68 @@
   text-align: center;
 }
 
+/* ─── Doorlopend document ───
+   Eén vel waarin de hoofdstukken op elkaar aansluiten (geen pagina per
+   sectie); printpagina's breken waar het papier vol is. De tabel is
+   functioneel: de thead herhaalt in Chromium-print op elke pagina en
+   draagt zo de terugkerende koptekst. */
+.report-doorlopend {
+  height: auto;
+}
+.rpt-doc {
+  width: 100%;
+  border-collapse: collapse;
+}
+.rpt-doc > thead > tr > td,
+.rpt-doc > tbody > tr > td {
+  padding: 0;
+  vertical-align: top;
+}
+.rpt-hoofdstuk + .rpt-hoofdstuk {
+  margin-top: 9mm;
+}
+
+/* Kopblok in referentiestijl: bedrijfsregel cursief, projectblok in twee
+   kolommen, afgesloten met een lijn. */
+.rpt-kop {
+  font-size: 8.5pt;
+  color: #333;
+  border-bottom: 0.5mm solid #333;
+  padding-bottom: 1.5mm;
+  margin-bottom: 5mm;
+}
+.rpt-kop-bedrijf {
+  font-style: italic;
+  font-weight: 600;
+  margin-bottom: 1mm;
+}
+.rpt-kop-grid {
+  display: flex;
+  justify-content: space-between;
+  gap: 8mm;
+}
+.rpt-kop-regel {
+  display: flex;
+  line-height: 1.5;
+}
+.rpt-kop-label {
+  display: inline-block;
+  min-width: 30mm;
+  color: #555;
+}
+
+/* Voetregel aan het documenteinde (de per-pagina-voet komt in print uit de
+   @page-margin-boxes). */
+.rpt-voet {
+  margin-top: 10mm;
+  padding-top: 1.5mm;
+  border-top: 0.3mm solid #999;
+  font-size: 8pt;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+}
+
 /* ─── Rapport-typografie (scherm én print: het document is altijd
    zwart-op-wit, onafhankelijk van het app-thema) ─── */
 .report-page {
@@ -509,19 +571,31 @@
   }
 
   /* Het vel: marges komen nu uit @page, dus geen eigen maat/padding meer.
-     Elke sectie begint op een nieuwe pagina; binnen een sectie houden
-     blokken en tabelrijen zichzelf bijeen. */
+     De hoofdstukken sluiten doorlopend op elkaar aan (geen pagina per
+     sectie); binnen een hoofdstuk houden blokken en tabelrijen zichzelf
+     bijeen. */
   .report-page {
     width: auto !important;
     min-height: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     box-shadow: none !important;
-    break-after: page;
   }
 
-  .report-page:last-child {
-    break-after: auto;
+  /* De thead met het kopblok herhaalt op elke printpagina. */
+  .rpt-doc > thead {
+    display: table-header-group;
+  }
+  .rpt-doc .rpt-kop {
+    margin-bottom: 4mm;
+  }
+
+  .rpt-hoofdstuk {
+    break-inside: auto;
+  }
+  /* Hoofdstukkop niet los onderaan een pagina laten bungelen. */
+  .rpt-h2 {
+    break-after: avoid-page;
   }
 
   .rpt-block {
@@ -530,13 +604,13 @@
 
   /* Lange invoer- en resultaatsecties mogen wél over pagina's breken — de
      blokken en tabelrijen erbinnen houden zichzelf bijeen. */
-  .report-page[data-section="nodes"] .rpt-block,
-  .report-page[data-section="beams"] .rpt-block,
-  .report-page[data-section="sections"] .rpt-block,
-  .report-page[data-section="loads"] .rpt-block,
-  .report-page[data-section="diagrams"] .rpt-block,
-  .report-page[data-section="reactions"] .rpt-block,
-  .report-page[data-section="displacements"] .rpt-block {
+  .rpt-hoofdstuk[data-section="nodes"] .rpt-block,
+  .rpt-hoofdstuk[data-section="beams"] .rpt-block,
+  .rpt-hoofdstuk[data-section="sections"] .rpt-block,
+  .rpt-hoofdstuk[data-section="loads"] .rpt-block,
+  .rpt-hoofdstuk[data-section="diagrams"] .rpt-block,
+  .rpt-hoofdstuk[data-section="reactions"] .rpt-block,
+  .rpt-hoofdstuk[data-section="displacements"] .rpt-block {
     break-inside: auto;
   }
 

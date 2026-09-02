@@ -99,13 +99,15 @@ export default function LoadsSection() {
         loadCases.map((lc) => {
           const caseLoads = loads.filter((l) => l.caseId === lc.id);
           const carriesSelfWeight = selfWeightCase?.id === lc.id;
+          // Type-tag weglaten als de gevalnaam het type al noemt
+          // ("Permanent (G)" + tag "Permanent" leest dubbelop).
+          const gevalType = t(`report.caseType_${lc.type}`, CASE_TYPE_LABELS[lc.type]);
+          const tagToont = !lc.name.toLowerCase().includes(gevalType.toLowerCase());
           return (
             <div className="rpt-loadcase-block" key={lc.id}>
               <h3 className="rpt-h3">
                 {lc.name}
-                <span className="rpt-h3-tag">
-                  {t(`report.caseType_${lc.type}`, CASE_TYPE_LABELS[lc.type])}
-                </span>
+                {tagToont && <span className="rpt-h3-tag">{gevalType}</span>}
               </h3>
               {caseLoads.length === 0 && !carriesSelfWeight ? (
                 <p className="rpt-note">

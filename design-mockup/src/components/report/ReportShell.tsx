@@ -74,15 +74,17 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
   const dims = pageDimsMm(pageSize, orientation);
   const headerText = info.name || t("report.unnamedProject", "Naamloos project");
 
-  // Dynamische print-regel: formaat/oriëntatie + kop-/voettekst. De marge
-  // hier is de print-marge; report.css simuleert dezelfde marge op scherm
-  // als padding van het vel.
+  // Dynamische print-regel: formaat/oriëntatie + voettekst. De koptekst is
+  // géén @page-margin-box meer maar een echt kopblok in het document (thead —
+  // herhaalt in print op elke pagina, zie .rpt-doc in report.css); alleen de
+  // paginanummers en het app-merk staan in de margin-boxes (CSS counters
+  // kunnen niet in gewone content; Chromium ≥ 131 voor de boxes).
   const pageCss = `
 @page {
   size: ${pageSize} ${orientation};
-  margin: 18mm 15mm 20mm 15mm;
-  @top-left {
-    content: ${cssString(headerText)};
+  margin: 12mm 15mm 20mm 15mm;
+  @bottom-left {
+    content: "Open FEM2D Studio";
     font-family: "Segoe UI", system-ui, sans-serif;
     font-size: 8pt;
     color: #666;
@@ -94,6 +96,20 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
     color: #666;
   }
 }`;
+
+  // Kopblok in referentiestijl: bedrijfsregel cursief, daaronder het
+  // projectblok in twee kolommen, afgesloten met een lijn. Lege velden
+  // worden weggelaten. Herhaalt in print op elke pagina via de thead.
+  const kopRegels: Array<[string, string]> = [
+    [t("report.kopProjectnummer", "Projectnummer"), info.projectNumber],
+    [t("report.kopProject", "Project"), headerText],
+    [t("report.kopOmschrijving", "Omschrijving"), info.description],
+  ].filter((r): r is [string, string] => !!r[1]);
+  const kopRechts: Array<[string, string]> = [
+    [t("report.kopDatum", "Datum"), info.date],
+    [t("report.kopConstructeur", "Constructeur"), info.engineer],
+  ].filter((r): r is [string, string] => !!r[1]);
+  const kopBedrijf = info.reportHeader || info.company;
 
   const sections = REPORT_SECTIONS.filter((s) => isSectionEnabled(hiddenSections, s.id));
 
@@ -155,11 +171,60 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
 
       <div className="report-scroll">
         <div className="report-zoom" style={zoomStyle}>
-          {sections.map(({ id, Component }) => (
-            <section key={id} className="report-page" data-section={id}>
-              <Component />
-            </section>
-          ))}
+          {/* Eén doorlopend document: hoofdstukken sluiten op elkaar aan en
+              printpagina's breken waar het papier vol is (referentiestijl).
+              De tabelconstructie is functioneel: een thead herhaalt in
+              Chromium-print op élke pagina — dat is de terugkerende kop. */}
+          {sections.length > 0 && (
+            <div className="report-page report-doorlopend">
+              <table className="rpt-doc">
+                <thead>
+                  <tr>
+                    <td>
+                      <div className="rpt-kop">
+                        {kopBedrijf && <div className="rpt-kop-bedrijf">{kopBedrijf}</div>}
+                        {(kopRegels.length > 0 || kopRechts.length > 0) && (
+                          <div className="rpt-kop-grid">
+                            <div>
+                              {kopRegels.map(([label, waarde]) => (
+                                <div key={label} className="rpt-kop-regel">
+                                  <span className="rpt-kop-label">{label}</span>
+                                  <span>: {waarde}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div>
+                              {kopRechts.map(([label, waarde]) => (
+                                <div key={label} className="rpt-kop-regel">
+                                  <span className="rpt-kop-label">{label}</span>
+                                  <span>: {waarde}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      {sections.map(({ id, Component }) => (
+                        <section key={id} className="rpt-hoofdstuk" data-section={id}>
+                          <Component />
+                        </section>
+                      ))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="rpt-voet">
+                <span>Open FEM2D Studio</span>
+                {info.date && <span>{info.date}</span>}
+              </div>
+            </div>
+          )}
           {sections.length === 0 && (
             <div className="report-no-sections">
               {t("report.noSections", "Alle secties staan uit — zet een sectie aan in de zijbalk.")}
