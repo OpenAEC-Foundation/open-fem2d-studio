@@ -123,6 +123,10 @@ const ALLEEN_BRON = new Map([
   ["ifc-export", "staat los van de solver (IFC-export)"],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
   ["modelmapping", "vergelijkt de bronmapping met een gouden JSON"],
+  [
+    "sidecar",
+    "start de sidecar als eigen proces — en draait daarin zelf al bron én bundel",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

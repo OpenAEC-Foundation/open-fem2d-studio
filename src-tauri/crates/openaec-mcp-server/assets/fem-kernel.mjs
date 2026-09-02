@@ -5771,172 +5771,6 @@ function buildSteelCheckInputs(data) {
   return { inputs, skipped };
 }
 
-// src/lib/timberCheckBuilder.ts
-function mapServiceClass(sc) {
-  switch (sc) {
-    case 2:
-      return "Sc2";
-    case 3:
-      return "Sc3";
-    case 1:
-    default:
-      return "Sc1";
-  }
-}
-function mapLoadDuration(d) {
-  switch (d) {
-    case "permanent":
-      return "Permanent";
-    case "long":
-      return "LongTerm";
-    case "short":
-      return "ShortTerm";
-    case "instantaneous":
-      return "Instantaneous";
-    case "medium":
-    default:
-      return "MediumTerm";
-  }
-}
-function timberDeflectionNumerators(cls, customN) {
-  switch (cls) {
-    case "roof":
-      return { fin: 250, add: 250 };
-    case "cantilever":
-      return { fin: 125, add: 167 };
-    case "custom": {
-      const n = customN && customN > 0 ? customN : 333;
-      return { fin: n, add: n };
-    }
-    case "floor":
-    default:
-      return { fin: 250, add: 333 };
-  }
-}
-var SUPPORTED_TIMBER_GRADES = [
-  "C14",
-  "C16",
-  "C18",
-  "C20",
-  "C22",
-  "C24",
-  "C27",
-  "C30",
-  "C35",
-  "GL24h",
-  "GL28h",
-  "GL32h",
-  "GL36h"
-];
-var UNSUPPORTED_TIMBER_GRADES = ["D30", "D35", "D40", "D50", "D60", "D70"];
-var GENERIC_TIMBER_NAMES = ["timber (softwood)", "timber (hardwood)", "wood", "hout"];
-function matchSupportedTimberGrade(materialName, supportedGrades = SUPPORTED_TIMBER_GRADES) {
-  if (!materialName) return null;
-  const trimmed = materialName.trim();
-  const hit = supportedGrades.find((g) => g.toLowerCase() === trimmed.toLowerCase());
-  return hit ?? null;
-}
-function parseTimberRectMm(profileName) {
-  const name = profileName?.trim();
-  if (!name) return null;
-  const m = /^(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)(?:\s+(?:SLS|EU|CLS|GL))?$/i.exec(name);
-  if (!m) return null;
-  const bMm = parseFloat(m[1].replace(",", "."));
-  const hMm = parseFloat(m[2].replace(",", "."));
-  if (bMm > 0 && hMm > 0) return { bMm, hMm };
-  return null;
-}
-function buildTimberCheckInputs(data) {
-  const inputs = [];
-  const skipped = [];
-  const grades = data.supportedGrades && data.supportedGrades.length > 0 ? data.supportedGrades : SUPPORTED_TIMBER_GRADES;
-  const ulsCombos = data.combinations.filter((c) => c.type === "uls");
-  const slsCombos = data.combinations.filter((c) => c.type === "sls");
-  const slsChar = slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
-  const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
-  for (const beam of data.beams) {
-    const materialName = beam.material?.trim() ?? "";
-    const grade = matchSupportedTimberGrade(materialName, grades);
-    if (!grade) {
-      const lower = materialName.toLowerCase();
-      if (UNSUPPORTED_TIMBER_GRADES.some((g) => g.toLowerCase() === lower)) {
-        skipped.push({
-          beamId: beam.id,
-          reason: `materiaal "${materialName}" (loofhout) wordt nog niet ondersteund door de EN 1995-kern`
-        });
-      } else if (GENERIC_TIMBER_NAMES.includes(lower)) {
-        skipped.push({
-          beamId: beam.id,
-          reason: `materiaal "${materialName}" heeft geen sterkteklasse \u2014 kies bijv. C24 of GL28h`
-        });
-      }
-      continue;
-    }
-    if (isSteelProfile(beam.profile)) {
-      skipped.push({
-        beamId: beam.id,
-        reason: `materiaal "${materialName}" is hout maar profiel "${beam.profile}" is een staalprofiel \u2014 kies een houtdoorsnede (bijv. "60x100") of een staalsoort`
-      });
-      continue;
-    }
-    const rect = parseTimberRectMm(beam.profile);
-    if (!rect) {
-      skipped.push({
-        beamId: beam.id,
-        reason: `doorsnede "${beam.profile ?? "\u2014"}" is geen herkenbare rechthoek b\xD7h \u2014 gebruik bijv. "60x100" of "96x450 GL" als profielnaam`
-      });
-      continue;
-    }
-    const lengthMm = beamLengthMm(beam, data.nodes);
-    if (lengthMm <= 0) {
-      skipped.push({ beamId: beam.id, reason: "staaflengte is 0 \u2014 knopen ontbreken" });
-      continue;
-    }
-    const hasAnyResult = ulsCombos.some(
-      (c) => data.combinationResults.get(c.id)?.elements.has(beam.id)
-    );
-    if (!hasAnyResult) {
-      skipped.push({
-        beamId: beam.id,
-        reason: "geen krachtsverloop in de UGT-combinaties \u2014 reken het model eerst door"
-      });
-      continue;
-    }
-    const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
-    const wInstMm = extractFieldDeflectionMm(beam, slsResult);
-    const cfg = beam.checkConfig ?? {};
-    const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
-    inputs.push({
-      beam_id: beam.id,
-      width_mm: rect.bMm,
-      height_mm: rect.hMm,
-      strength_class: grade,
-      service_class: mapServiceClass(cfg.serviceClass),
-      load_duration: mapLoadDuration(cfg.loadDuration),
-      length_m: lengthMm / 1e3,
-      forces_envelope: forcesEnvelope,
-      buckling_length_y_m: lengthMm / 1e3,
-      buckling_length_z_m: lengthMm / 1e3,
-      ltb_segment_length_m: 0,
-      // 0 → staaflengte
-      ltb_load_case: "UniformLoad",
-      ltb_load_position: "CentreOfGravity",
-      ltb_effective_length_override_m: 0,
-      perform_ltb_check: true,
-      k_cr: 1,
-      load_sharing: false,
-      deflection_inst_mm: wInstMm,
-      // Volledige last als quasi-blijvend: maximale kruiptoeslag (veilig-zijdig).
-      deflection_quasi_perm_mm: wInstMm,
-      // Blijvend deel onbekend → 0, dus w_add = w_fin (veilig-zijdig).
-      deflection_permanent_mm: 0,
-      deflection_limit_fin: defl.fin,
-      deflection_limit_add: defl.add
-    });
-  }
-  return { inputs, skipped };
-}
-
 // src/lib/steelSections.generated.ts
 var STEEL_SECTIONS = {
   "HEB160": { A: 5427.5, Iy: 24929151 },
@@ -6355,6 +6189,172 @@ var STEEL_SECTIONS = {
   "CHS508X20": { A: 30661.9, Iy: 914278e3 }
 };
 
+// src/lib/timberCheckBuilder.ts
+function mapServiceClass(sc) {
+  switch (sc) {
+    case 2:
+      return "Sc2";
+    case 3:
+      return "Sc3";
+    case 1:
+    default:
+      return "Sc1";
+  }
+}
+function mapLoadDuration(d) {
+  switch (d) {
+    case "permanent":
+      return "Permanent";
+    case "long":
+      return "LongTerm";
+    case "short":
+      return "ShortTerm";
+    case "instantaneous":
+      return "Instantaneous";
+    case "medium":
+    default:
+      return "MediumTerm";
+  }
+}
+function timberDeflectionNumerators(cls, customN) {
+  switch (cls) {
+    case "roof":
+      return { fin: 250, add: 250 };
+    case "cantilever":
+      return { fin: 125, add: 167 };
+    case "custom": {
+      const n = customN && customN > 0 ? customN : 333;
+      return { fin: n, add: n };
+    }
+    case "floor":
+    default:
+      return { fin: 250, add: 333 };
+  }
+}
+var SUPPORTED_TIMBER_GRADES = [
+  "C14",
+  "C16",
+  "C18",
+  "C20",
+  "C22",
+  "C24",
+  "C27",
+  "C30",
+  "C35",
+  "GL24h",
+  "GL28h",
+  "GL32h",
+  "GL36h"
+];
+var UNSUPPORTED_TIMBER_GRADES = ["D30", "D35", "D40", "D50", "D60", "D70"];
+var GENERIC_TIMBER_NAMES = ["timber (softwood)", "timber (hardwood)", "wood", "hout"];
+function matchSupportedTimberGrade(materialName, supportedGrades = SUPPORTED_TIMBER_GRADES) {
+  if (!materialName) return null;
+  const trimmed = materialName.trim();
+  const hit = supportedGrades.find((g) => g.toLowerCase() === trimmed.toLowerCase());
+  return hit ?? null;
+}
+function parseTimberRectMm(profileName) {
+  const name = profileName?.trim();
+  if (!name) return null;
+  const m = /^(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)(?:\s+(?:SLS|EU|CLS|GL))?$/i.exec(name);
+  if (!m) return null;
+  const bMm = parseFloat(m[1].replace(",", "."));
+  const hMm = parseFloat(m[2].replace(",", "."));
+  if (bMm > 0 && hMm > 0) return { bMm, hMm };
+  return null;
+}
+function buildTimberCheckInputs(data) {
+  const inputs = [];
+  const skipped = [];
+  const grades = data.supportedGrades && data.supportedGrades.length > 0 ? data.supportedGrades : SUPPORTED_TIMBER_GRADES;
+  const ulsCombos = data.combinations.filter((c) => c.type === "uls");
+  const slsCombos = data.combinations.filter((c) => c.type === "sls");
+  const slsChar = slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
+  const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
+  for (const beam of data.beams) {
+    const materialName = beam.material?.trim() ?? "";
+    const grade = matchSupportedTimberGrade(materialName, grades);
+    if (!grade) {
+      const lower = materialName.toLowerCase();
+      if (UNSUPPORTED_TIMBER_GRADES.some((g) => g.toLowerCase() === lower)) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `materiaal "${materialName}" (loofhout) wordt nog niet ondersteund door de EN 1995-kern`
+        });
+      } else if (GENERIC_TIMBER_NAMES.includes(lower)) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `materiaal "${materialName}" heeft geen sterkteklasse \u2014 kies bijv. C24 of GL28h`
+        });
+      }
+      continue;
+    }
+    if (isSteelProfile(beam.profile)) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `materiaal "${materialName}" is hout maar profiel "${beam.profile}" is een staalprofiel \u2014 kies een houtdoorsnede (bijv. "60x100") of een staalsoort`
+      });
+      continue;
+    }
+    const rect = parseTimberRectMm(beam.profile);
+    if (!rect) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `doorsnede "${beam.profile ?? "\u2014"}" is geen herkenbare rechthoek b\xD7h \u2014 gebruik bijv. "60x100" of "96x450 GL" als profielnaam`
+      });
+      continue;
+    }
+    const lengthMm = beamLengthMm(beam, data.nodes);
+    if (lengthMm <= 0) {
+      skipped.push({ beamId: beam.id, reason: "staaflengte is 0 \u2014 knopen ontbreken" });
+      continue;
+    }
+    const hasAnyResult = ulsCombos.some(
+      (c) => data.combinationResults.get(c.id)?.elements.has(beam.id)
+    );
+    if (!hasAnyResult) {
+      skipped.push({
+        beamId: beam.id,
+        reason: "geen krachtsverloop in de UGT-combinaties \u2014 reken het model eerst door"
+      });
+      continue;
+    }
+    const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
+    const wInstMm = extractFieldDeflectionMm(beam, slsResult);
+    const cfg = beam.checkConfig ?? {};
+    const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+    inputs.push({
+      beam_id: beam.id,
+      width_mm: rect.bMm,
+      height_mm: rect.hMm,
+      strength_class: grade,
+      service_class: mapServiceClass(cfg.serviceClass),
+      load_duration: mapLoadDuration(cfg.loadDuration),
+      length_m: lengthMm / 1e3,
+      forces_envelope: forcesEnvelope,
+      buckling_length_y_m: lengthMm / 1e3,
+      buckling_length_z_m: lengthMm / 1e3,
+      ltb_segment_length_m: 0,
+      // 0 → staaflengte
+      ltb_load_case: "UniformLoad",
+      ltb_load_position: "CentreOfGravity",
+      ltb_effective_length_override_m: 0,
+      perform_ltb_check: true,
+      k_cr: 1,
+      load_sharing: false,
+      deflection_inst_mm: wInstMm,
+      // Volledige last als quasi-blijvend: maximale kruiptoeslag (veilig-zijdig).
+      deflection_quasi_perm_mm: wInstMm,
+      // Blijvend deel onbekend → 0, dus w_add = w_fin (veilig-zijdig).
+      deflection_permanent_mm: 0,
+      deflection_limit_fin: defl.fin,
+      deflection_limit_add: defl.add
+    });
+  }
+  return { inputs, skipped };
+}
+
 // src/lib/sectionResolver.ts
 var TIMBER_E_MEAN = {
   C14: 7e3,
@@ -6560,6 +6560,680 @@ function bouwMultiInput(model) {
     }
   }
   return multiInput;
+}
+
+// src/io/projectFile.ts
+var PROJECT_FILE_EXT = "ifcfem2d";
+var PROJECT_FORMAT_VERSION = 2;
+function combinationsToFile(combos) {
+  return combos.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    formula: c.formula,
+    factors: Object.fromEntries([...c.factors].map(([caseId, f]) => [String(caseId), f]))
+  }));
+}
+function combinationsFromFile(raw) {
+  if (!Array.isArray(raw)) return void 0;
+  return raw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type === "sls" ? "sls" : "uls",
+    formula: c.formula ?? "",
+    factors: new Map(
+      Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)])
+    )
+  }));
+}
+function serializeProject(state) {
+  const file = {
+    format: "open-fem2d-studio-v2",
+    version: PROJECT_FORMAT_VERSION,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    ...state
+  };
+  return JSON.stringify(file, null, 2);
+}
+function deserializeProject(text) {
+  const parsed = JSON.parse(text);
+  if (parsed.format !== "open-fem2d-studio-v2") {
+    throw new Error(`Onbekend bestandsformaat: ${parsed.format ?? "(geen format-tag)"}`);
+  }
+  if (typeof parsed.version !== "number") {
+    throw new Error("Bestand mist version-tag");
+  }
+  if (parsed.version > PROJECT_FORMAT_VERSION) {
+    throw new Error(`Bestand is opgeslagen met nieuwere versie (${parsed.version}) \u2014 werk je app bij`);
+  }
+  return parsed;
+}
+
+// package.json
+var version = "0.1.0";
+
+// src/mcp/protocol.ts
+var SIDECAR_PROTOCOL = 1;
+var SIDECAR_OPS = [
+  "handshake",
+  "validate",
+  "solve",
+  "check",
+  "load_project"
+];
+function maakOk(id, result) {
+  return { v: SIDECAR_PROTOCOL, id, ok: true, result };
+}
+function maakFout(id, code, melding, detail) {
+  return detail === void 0 ? { v: SIDECAR_PROTOCOL, id, ok: false, error: { code, melding } } : { v: SIDECAR_PROTOCOL, id, ok: false, error: { code, melding, detail } };
+}
+function ontleedVerzoek(regel) {
+  let rauw;
+  try {
+    rauw = JSON.parse(regel);
+  } catch (err) {
+    return {
+      ok: false,
+      antwoord: maakFout(
+        0,
+        "INVOER_ONGELDIG",
+        "De regel is geen geldige JSON.",
+        { originele_melding: String(err), regel_lengte: regel.length }
+      )
+    };
+  }
+  if (typeof rauw !== "object" || rauw === null || Array.isArray(rauw)) {
+    return {
+      ok: false,
+      antwoord: maakFout(
+        0,
+        "INVOER_ONGELDIG",
+        "Een verzoekregel moet een JSON-object zijn."
+      )
+    };
+  }
+  const obj = rauw;
+  const id = typeof obj.id === "number" && Number.isFinite(obj.id) ? obj.id : 0;
+  if (typeof obj.id !== "number" || !Number.isFinite(obj.id)) {
+    return {
+      ok: false,
+      antwoord: maakFout(
+        0,
+        "INVOER_ONGELDIG",
+        "Veld `id` ontbreekt of is geen eindig getal."
+      )
+    };
+  }
+  if (obj.v !== SIDECAR_PROTOCOL) {
+    return {
+      ok: false,
+      antwoord: maakFout(
+        id,
+        "PROTOCOL_MISMATCH",
+        `Deze sidecar spreekt protocolversie ${SIDECAR_PROTOCOL}; de aanroeper stuurde ${JSON.stringify(obj.v)}. Server en solverbundel horen bij elkaar \u2014 herbouw de MCP-server.`,
+        { verwacht: SIDECAR_PROTOCOL, ontvangen: obj.v ?? null }
+      )
+    };
+  }
+  const op = obj.op;
+  if (typeof op !== "string" || !SIDECAR_OPS.includes(op)) {
+    return {
+      ok: false,
+      antwoord: maakFout(
+        id,
+        "INVOER_ONGELDIG",
+        `Onbekende bewerking ${JSON.stringify(op)}. Bekend zijn: ${SIDECAR_OPS.join(", ")}.`
+      )
+    };
+  }
+  const payload = obj.payload ?? {};
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return {
+      ok: false,
+      antwoord: maakFout(
+        id,
+        "INVOER_ONGELDIG",
+        "Veld `payload` moet een JSON-object zijn (of ontbreken)."
+      )
+    };
+  }
+  return {
+    ok: true,
+    verzoek: {
+      v: SIDECAR_PROTOCOL,
+      id,
+      op,
+      payload
+    }
+  };
+}
+function serialiseerAntwoord(antwoord) {
+  try {
+    return `${JSON.stringify(antwoord)}
+`;
+  } catch (err) {
+    const id = antwoord.id;
+    return `${JSON.stringify(
+      maakFout(
+        id,
+        "INTERN",
+        "Het antwoord kon niet als JSON worden weggeschreven.",
+        { originele_melding: String(err) }
+      )
+    )}
+`;
+  }
+}
+function mapNaarObject(bron, vorm) {
+  const uit = {};
+  for (const [sleutel, waarde] of bron) uit[String(sleutel)] = vorm(waarde, sleutel);
+  return uit;
+}
+function telNietEindig(waarde) {
+  if (typeof waarde === "number") return Number.isFinite(waarde) ? 0 : 1;
+  if (Array.isArray(waarde)) {
+    let n = 0;
+    for (const item of waarde) n += telNietEindig(item);
+    return n;
+  }
+  if (typeof waarde === "object" && waarde !== null) {
+    let n = 0;
+    for (const item of Object.values(waarde)) {
+      n += telNietEindig(item);
+    }
+    return n;
+  }
+  return 0;
+}
+
+// src/mcp/sidecar.ts
+var naarKN = (n) => n / 1e3;
+var naarKNm = (nmm) => nmm / 1e6;
+var EENHEDEN = {
+  kracht: "kN",
+  moment: "kNm",
+  verplaatsing: "mm",
+  rotatie: "rad",
+  teken: "N positief = trek; z positief omhoog"
+};
+function zelfHash() {
+  const haal = process.getBuiltinModule;
+  const pad = process.argv[1];
+  if (typeof haal !== "function" || !pad) return null;
+  try {
+    const fs = haal("node:fs");
+    const crypto = haal("node:crypto");
+    const bytes = fs.readFileSync(pad);
+    return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+  } catch {
+    return null;
+  }
+}
+var InvoerFout = class extends Error {
+  constructor(melding, detail) {
+    super(melding);
+    this.detail = detail;
+  }
+};
+var BestandFout = class extends Error {
+  constructor(melding, detail) {
+    super(melding);
+    this.detail = detail;
+  }
+};
+var ModelFout = class extends Error {
+};
+function eisObject(waarde, veld) {
+  if (typeof waarde !== "object" || waarde === null || Array.isArray(waarde)) {
+    throw new InvoerFout(`Veld \`${veld}\` moet een JSON-object zijn.`);
+  }
+  return waarde;
+}
+function eisArray(waarde, veld) {
+  if (!Array.isArray(waarde)) {
+    throw new InvoerFout(`Veld \`${veld}\` moet een array zijn.`);
+  }
+  return waarde;
+}
+function leesTekst(payload, veld) {
+  const waarde = payload[veld];
+  if (typeof waarde !== "string" || waarde.length === 0) {
+    throw new InvoerFout(`Veld \`${veld}\` ontbreekt of is geen tekst.`);
+  }
+  return waarde;
+}
+function leesModel(payload) {
+  const heeftModel = payload.model !== void 0;
+  const heeftProject = payload.project !== void 0;
+  if (heeftModel === heeftProject) {
+    throw new InvoerFout(
+      "Geef precies \xE9\xE9n van `model` (het model zelf) of `project` (de inhoud van een .ifcfem2d-bestand)."
+    );
+  }
+  if (heeftProject) {
+    const project = eisObject(payload.project, "project");
+    const inhoud = leesTekst(project, "inhoud");
+    let bestand;
+    try {
+      bestand = deserializeProject(inhoud);
+    } catch (err) {
+      throw new BestandFout(
+        "Het projectbestand kon niet worden gelezen.",
+        { originele_melding: String(err) }
+      );
+    }
+    return {
+      model: {
+        nodes: bestand.nodes ?? [],
+        beams: bestand.beams ?? [],
+        supports: bestand.supports ?? [],
+        plates: bestand.plates ?? [],
+        loadCases: bestand.loadCases ?? [],
+        loads: bestand.loads ?? [],
+        selfWeightEnabled: bestand.selfWeightEnabled ?? false,
+        scheefstandEnabled: bestand.scheefstandEnabled ?? false,
+        scheefstandNoemer: bestand.scheefstandNoemer ?? 200,
+        scheefstandRichting: bestand.scheefstandRichting ?? 1
+      },
+      beams: bestand.beams ?? [],
+      combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
+      nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
+      formatVersion: bestand.version
+    };
+  }
+  const rauw = eisObject(payload.model, "model");
+  const beams = eisArray(rauw.beams ?? [], "model.beams");
+  for (const beam of beams) {
+    const b = beam;
+    for (const veld of ["E", "A", "I"]) {
+      if (b[veld] !== void 0) {
+        throw new InvoerFout(
+          `Staaf ${String(b.id)} geeft \`${veld}\` rechtstreeks op. Dat wordt niet ondersteund: de doorsnede volgt uit \`material\` en \`profile\`, zodat er \xE9\xE9n bron voor A en I is.`
+        );
+      }
+    }
+  }
+  return {
+    model: {
+      nodes: eisArray(rauw.nodes ?? [], "model.nodes"),
+      beams,
+      supports: eisArray(
+        rauw.supports ?? [],
+        "model.supports"
+      ),
+      plates: eisArray(rauw.plates ?? [], "model.plates"),
+      loadCases: eisArray(
+        rauw.loadCases ?? [],
+        "model.loadCases"
+      ),
+      loads: eisArray(rauw.loads ?? [], "model.loads"),
+      selfWeightEnabled: rauw.selfWeightEnabled === true,
+      scheefstandEnabled: rauw.scheefstandEnabled === true,
+      scheefstandNoemer: typeof rauw.scheefstandNoemer === "number" ? rauw.scheefstandNoemer : 200,
+      scheefstandRichting: rauw.scheefstandRichting === -1 ? -1 : 1
+    },
+    beams,
+    combinatiesUitBestand: null,
+    nonlinearUitBestand: null,
+    formatVersion: null
+  };
+}
+function leesCombinaties(payload, uitBestand) {
+  if (payload.combinations !== void 0) {
+    const rauw = eisArray(payload.combinations, "combinations");
+    const uit = combinationsFromFile(
+      rauw
+    );
+    if (!uit) throw new InvoerFout("Veld `combinations` is geen geldige lijst.");
+    return uit;
+  }
+  return uitBestand ?? defaultCombinations();
+}
+function leesProfielen(payload) {
+  const db = /* @__PURE__ */ new Map();
+  if (payload.profiles === void 0) return db;
+  for (const item of eisArray(payload.profiles, "profiles")) {
+    const profiel = item;
+    if (!profiel || typeof profiel.name !== "string") {
+      throw new InvoerFout("Elk item in `profiles` heeft een `name` nodig.");
+    }
+    const sleutel = profileLookupKey(profiel.name);
+    if (!db.has(sleutel)) db.set(sleutel, profiel);
+  }
+  return db;
+}
+function pasCheckConfigToe(beams, payload) {
+  if (payload.check_config === void 0) return beams;
+  const configs = eisObject(payload.check_config, "check_config");
+  return beams.map((beam) => {
+    const extra = configs[String(beam.id)];
+    if (extra === void 0) return beam;
+    return {
+      ...beam,
+      checkConfig: {
+        ...beam.checkConfig ?? {},
+        ...eisObject(extra, `check_config.${beam.id}`)
+      }
+    };
+  });
+}
+function vormStaafkrachten(ef, metStations) {
+  const basis = {
+    N: naarKN(ef.N),
+    V: naarKN(ef.V),
+    M_start: naarKNm(ef.M_start),
+    M_end: naarKNm(ef.M_end),
+    L_mm: ef.L_mm
+  };
+  if (!metStations) return basis;
+  return {
+    ...basis,
+    stations_mm: ef.stations_mm,
+    N_x: ef.normalForce.map(naarKN),
+    V_x: ef.shearForce.map(naarKN),
+    M_x: ef.bendingMoment.map(naarKNm),
+    w_x: ef.deflection,
+    u_x: ef.axialDisp
+  };
+}
+function vormResultaat(res, metStations) {
+  return {
+    reactions: mapNaarObject(res.reactions, (r) => ({
+      fx: naarKN(r.fx),
+      fz: naarKN(r.fz),
+      my: naarKNm(r.my)
+    })),
+    displacements: mapNaarObject(res.displacements, (d) => ({
+      ux: d.ux,
+      uz: d.uz,
+      ry: d.ry
+    })),
+    elements: mapNaarObject(res.elements, (ef) => vormStaafkrachten(ef, metStations)),
+    maxDisplacement: res.maxDisplacement
+  };
+}
+function vormEnvelop(env) {
+  return {
+    elements: mapNaarObject(env.elements, (e) => ({
+      N_min: naarKN(e.N_min),
+      N_max: naarKN(e.N_max),
+      V_min: naarKN(e.V_min),
+      V_max: naarKN(e.V_max),
+      M_min: naarKNm(e.M_min),
+      M_max: naarKNm(e.M_max),
+      governingCombinationId: e.governingCombinationId,
+      governingMAbs: naarKNm(e.governingMAbs)
+    })),
+    reactions: mapNaarObject(env.reactions, (r) => ({
+      fx_min: naarKN(r.fx_min),
+      fx_max: naarKN(r.fx_max),
+      fz_min: naarKN(r.fz_min),
+      fz_max: naarKN(r.fz_max)
+    })),
+    maxDisplacement: env.maxDisplacement,
+    maxDisplacementCombinationId: env.maxDisplacementCombinationId
+  };
+}
+function opHandshake() {
+  return {
+    protocol: SIDECAR_PROTOCOL,
+    node_version: `v${process.versions.node}`,
+    bundle_version: version,
+    bundle_hash: zelfHash(),
+    project_format_version: PROJECT_FORMAT_VERSION,
+    ops: [...SIDECAR_OPS]
+  };
+}
+function rekenDoor(payload) {
+  const gelezen = leesModel(payload);
+  const combinaties = leesCombinaties(payload, gelezen.combinatiesUitBestand);
+  const profileDb = leesProfielen(payload);
+  const nonlinear = gelezen.nonlinearUitBestand !== null ? gelezen.nonlinearUitBestand : payload.nonlinear === true;
+  const detail = payload.detail ?? "samenvatting";
+  if (detail !== "samenvatting" && detail !== "stations") {
+    throw new InvoerFout(
+      'Veld `detail` moet "samenvatting" of "stations" zijn.'
+    );
+  }
+  const metStations = detail === "stations";
+  const multiInput = bouwMultiInput(gelezen.model);
+  const start = Date.now();
+  let perCaseResultaat;
+  try {
+    perCaseResultaat = nonlinear ? solveAllCasesNonlinear(multiInput) : solveAllCases(multiInput);
+  } catch (err) {
+    throw new ModelFout(String(err?.message ?? err));
+  }
+  const { perCase } = perCaseResultaat;
+  let combinationResults;
+  let envelope;
+  try {
+    combinationResults = new Map(
+      combinaties.map((c) => [c.id, combineResults(c, perCase)])
+    );
+    envelope = computeEnvelope(combinaties, perCase);
+  } catch (err) {
+    throw new ModelFout(String(err?.message ?? err));
+  }
+  const solveMs = Date.now() - start;
+  const gevraagd = gelezen.model.loadCases.map((lc) => lc.id);
+  const opgelost = [...perCase.keys()];
+  const legeGevallen = gevraagd.filter((id) => !perCase.has(id));
+  const teToetsen = pasCheckConfigToe(gelezen.beams, payload);
+  const beamIds = payload.beam_ids === void 0 ? null : new Set(
+    eisArray(payload.beam_ids, "beam_ids").map(Number)
+  );
+  const staafSelectie = beamIds === null ? teToetsen : teToetsen.filter((b) => beamIds.has(b.id));
+  const staal = buildSteelCheckInputs({
+    nodes: gelezen.model.nodes,
+    beams: staafSelectie,
+    combinations: combinaties,
+    combinationResults,
+    profileDb
+  });
+  const waarschuwingen = [];
+  if (profileDb.size === 0) {
+    waarschuwingen.push(
+      "Geen profieldatabase meegegeven (`profiles`); `steel_check_inputs` blijft daardoor leeg. Lever de lijst uit de staalprofielendatabase mee."
+    );
+  }
+  if (legeGevallen.length > 0) {
+    waarschuwingen.push(
+      `Belastinggeval(len) ${legeGevallen.join(", ")} zonder werkzame last overgeslagen; ze tellen als nulbijdrage in de combinaties.`
+    );
+  }
+  return {
+    combinaties,
+    combinationResults,
+    envelope,
+    perCase,
+    metStations,
+    nonlinear,
+    solveMs,
+    gevraagd,
+    opgelost,
+    legeGevallen,
+    staal,
+    waarschuwingen,
+    formatVersion: gelezen.formatVersion
+  };
+}
+function opSolve(payload) {
+  const d = rekenDoor(payload);
+  const antwoord = {
+    solver_version: version,
+    bundle_hash: zelfHash(),
+    units: EENHEDEN,
+    nonlinear_used: d.nonlinear,
+    cases_requested: d.gevraagd,
+    cases_solved: d.opgelost,
+    cases_skipped_empty: d.legeGevallen,
+    per_case: mapNaarObject(d.perCase, (r) => vormResultaat(r, d.metStations)),
+    combinations: mapNaarObject(
+      d.combinationResults,
+      (r) => vormResultaat(r, d.metStations)
+    ),
+    envelope: vormEnvelop(d.envelope),
+    steel_check_inputs: d.staal.inputs,
+    skipped_beams: d.staal.skipped.map((s) => ({
+      beam_id: s.beamId,
+      reason: s.reason
+    })),
+    warnings: d.waarschuwingen,
+    solve_ms: d.solveMs
+  };
+  const ontspoord = telNietEindig(antwoord.per_case) + telNietEindig(antwoord.combinations) + telNietEindig(antwoord.envelope);
+  if (ontspoord > 0) {
+    antwoord.warnings.push(
+      `${ontspoord} resultaatwaarde(n) zijn NaN of oneindig. JSON schrijft die als null weg, wat als nul kan worden gelezen \u2014 vertrouw dit resultaat niet.`
+    );
+  }
+  return antwoord;
+}
+function opCheck(payload) {
+  const d = rekenDoor(payload);
+  return {
+    solve_summary: {
+      cases_requested: d.gevraagd,
+      cases_solved: d.opgelost,
+      cases_skipped_empty: d.legeGevallen,
+      nonlinear_used: d.nonlinear,
+      solve_ms: d.solveMs
+    },
+    units: EENHEDEN,
+    steel_check_inputs: d.staal.inputs,
+    skipped_beams: d.staal.skipped.map((s) => ({
+      beam_id: s.beamId,
+      reason: s.reason
+    })),
+    warnings: d.waarschuwingen
+  };
+}
+function opLoadProject(payload) {
+  const gelezen = leesModel({
+    project: { inhoud: leesTekst(payload, "inhoud") }
+  });
+  const m = gelezen.model;
+  return {
+    path: typeof payload.path === "string" ? payload.path : null,
+    format_version: gelezen.formatVersion,
+    supported_format_version: PROJECT_FORMAT_VERSION,
+    model: m,
+    combinations: (gelezen.combinatiesUitBestand ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      formula: c.formula,
+      factors: Object.fromEntries([...c.factors].map(([k, v]) => [String(k), v]))
+    })),
+    nonlinear_enabled: gelezen.nonlinearUitBestand,
+    counts: {
+      nodes: m.nodes.length,
+      beams: m.beams.length,
+      supports: m.supports.length,
+      plates: m.plates.length,
+      loads: m.loads.length,
+      load_cases: m.loadCases.length,
+      combinations: (gelezen.combinatiesUitBestand ?? []).length
+    }
+  };
+}
+function verwerkVerzoek(verzoek) {
+  try {
+    switch (verzoek.op) {
+      case "handshake":
+        return maakOk(verzoek.id, opHandshake());
+      case "solve":
+        return maakOk(verzoek.id, opSolve(verzoek.payload));
+      case "check":
+        return maakOk(verzoek.id, opCheck(verzoek.payload));
+      case "load_project":
+        return maakOk(verzoek.id, opLoadProject(verzoek.payload));
+      case "validate":
+        return maakFout(
+          verzoek.id,
+          "INTERN",
+          "Modelvalidatie is in deze bouw nog niet beschikbaar. Gebruik `solve`: die weigert een onoplosbaar model met een eigen melding."
+        );
+    }
+  } catch (err) {
+    if (err instanceof InvoerFout) {
+      return maakFout(verzoek.id, "INVOER_ONGELDIG", err.message, err.detail);
+    }
+    if (err instanceof BestandFout) {
+      return maakFout(verzoek.id, "BESTAND_ONLEESBAAR", err.message, err.detail);
+    }
+    if (err instanceof ModelFout) {
+      return maakFout(
+        verzoek.id,
+        "MODEL_ONOPLOSBAAR",
+        "De solver kon dit model niet oplossen.",
+        { originele_melding: err.message }
+      );
+    }
+    return maakFout(
+      verzoek.id,
+      "INTERN",
+      "Onverwachte fout in de sidecar.",
+      { originele_melding: String(err?.stack ?? err) }
+    );
+  }
+}
+function verwerkRegel(regel) {
+  const opgeschoond = regel.replace(/\r$/, "");
+  if (opgeschoond.trim().length === 0) return null;
+  const ontleed = ontleedVerzoek(opgeschoond);
+  const antwoord = ontleed.ok ? verwerkVerzoek(ontleed.verzoek) : ontleed.antwoord;
+  return serialiseerAntwoord(antwoord);
+}
+function leidConsoleOm() {
+  const naarStderr = (...delen) => {
+    process.stderr.write(
+      `${delen.map((d) => typeof d === "string" ? d : JSON.stringify(d)).join(" ")}
+`
+    );
+  };
+  console.log = naarStderr;
+  console.info = naarStderr;
+  console.debug = naarStderr;
+  console.warn = naarStderr;
+  console.error = naarStderr;
+}
+function startSidecar() {
+  leidConsoleOm();
+  let buffer = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (brok) => {
+    buffer += brok ?? "";
+    let grens = buffer.indexOf("\n");
+    while (grens >= 0) {
+      const regel = buffer.slice(0, grens);
+      buffer = buffer.slice(grens + 1);
+      const antwoord = verwerkRegel(regel);
+      if (antwoord !== null) process.stdout.write(antwoord);
+      grens = buffer.indexOf("\n");
+    }
+  });
+  process.stdin.on("end", () => {
+    const antwoord = verwerkRegel(buffer);
+    if (antwoord !== null) process.stdout.write(antwoord);
+    buffer = "";
+    process.exitCode = 0;
+  });
+  process.stdin.resume();
+}
+function draaitAlsHoofdmodule() {
+  const pad = process.argv[1];
+  if (!pad) return false;
+  try {
+    const eigen = decodeURIComponent(new URL(import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, "$1").toLowerCase();
+    return pad.replace(/\\/g, "/").toLowerCase() === eigen;
+  } catch {
+    return false;
+  }
+}
+if (process.argv.includes("--sidecar") || draaitAlsHoofdmodule()) {
+  startSidecar();
 }
 
 // src/lib/wind/windEurocode.ts
@@ -7205,53 +7879,6 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
   });
   return handtekeningVanGeneratie(gevallen.map((c) => ({ sleutel: c.sleutel, naam: c.naam })), gLasten, gCombi);
 }
-
-// src/io/projectFile.ts
-var PROJECT_FILE_EXT = "ifcfem2d";
-var PROJECT_FORMAT_VERSION = 2;
-function combinationsToFile(combos) {
-  return combos.map((c) => ({
-    id: c.id,
-    name: c.name,
-    type: c.type,
-    formula: c.formula,
-    factors: Object.fromEntries([...c.factors].map(([caseId, f]) => [String(caseId), f]))
-  }));
-}
-function combinationsFromFile(raw) {
-  if (!Array.isArray(raw)) return void 0;
-  return raw.map((c) => ({
-    id: c.id,
-    name: c.name,
-    type: c.type === "sls" ? "sls" : "uls",
-    formula: c.formula ?? "",
-    factors: new Map(
-      Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)])
-    )
-  }));
-}
-function serializeProject(state) {
-  const file = {
-    format: "open-fem2d-studio-v2",
-    version: PROJECT_FORMAT_VERSION,
-    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    ...state
-  };
-  return JSON.stringify(file, null, 2);
-}
-function deserializeProject(text) {
-  const parsed = JSON.parse(text);
-  if (parsed.format !== "open-fem2d-studio-v2") {
-    throw new Error(`Onbekend bestandsformaat: ${parsed.format ?? "(geen format-tag)"}`);
-  }
-  if (typeof parsed.version !== "number") {
-    throw new Error("Bestand mist version-tag");
-  }
-  if (parsed.version > PROJECT_FORMAT_VERSION) {
-    throw new Error(`Bestand is opgeslagen met nieuwere versie (${parsed.version}) \u2014 werk je app bij`);
-  }
-  return parsed;
-}
 export {
   BEAM_LOAD_ROLES,
   BEAM_LOAD_ROLE_LABEL,
@@ -7337,7 +7964,10 @@ export {
   solveAllCases,
   solveAllCasesNonlinear,
   solveCombinationSecondOrder,
+  startSidecar,
   timberDeflectionNumerators,
   valideerPlaatPolygoon,
+  verwerkRegel,
+  verwerkVerzoek,
   withPlateDefaults
 };

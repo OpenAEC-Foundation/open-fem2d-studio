@@ -17,6 +17,14 @@
  *    aanroept. Er komt geen tweede rekenkern bij.
  */
 
+// De NDJSON-hoofdlus hoort IN de bundel: Rust schrijft `fem-kernel.mjs` uit de
+// binary naar schijf en start hem als `node fem-kernel.mjs --sidecar`. Zonder
+// de lus zou dat proces niets doen en met lege stdout eindigen — voor de
+// aanroeper niet te onderscheiden van een crash. De lus start ALLEEN met die
+// vlag of als hoofdmodule; het bundelscript en de bundelstand van de
+// regressierunner importeren dit bestand juist, en dan blijft hij stil.
+export * from "./sidecar";
+
 export * from "../components/fem/solver/engine";
 export * from "../components/fem/solver/combinations";
 export * from "../lib/steelCheckBuilder";
