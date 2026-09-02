@@ -17,18 +17,25 @@ import {
   EMPTY_REPORT_DATA,
   type ReportData,
 } from "../report/ReportDataContext";
+import { useDetachedReportSync } from "../report/reportSync";
 import "./ReportPreview.css";
 
 interface ReportPreviewProps {
   /**
    * Modelstate uit App.tsx (useFemStore-instantie) voor de invoersecties.
-   * Ontbreekt hij (detached venster — eigen webview zonder modelstate),
-   * dan rendert het rapport met een leeg model en eerlijke leeg-meldingen.
+   * Ontbreekt hij (detached venster zonder verbinding), dan rendert het
+   * rapport met een leeg model en eerlijke leeg-meldingen.
    */
   data?: ReportData;
+  /**
+   * Alleen in het hoofdvenster: opent het rapport in een eigen venster
+   * ("Naast je scherm"). In het losgekoppelde venster ontbreekt de prop en
+   * dus de knop.
+   */
+  onDetach?: () => void;
 }
 
-export default function ReportPreview({ data }: ReportPreviewProps) {
+export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const { t } = useTranslation("ribbon");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -89,8 +96,34 @@ export default function ReportPreview({ data }: ReportPreviewProps) {
 
       {/* ─── Het rapport zelf ─── */}
       <ReportDataProvider value={data ?? EMPTY_REPORT_DATA}>
-        <ReportShell />
+        <ReportShell onDetach={onDetach} />
       </ReportDataProvider>
+    </div>
+  );
+}
+
+/**
+ * R5 — het rapport in het losgekoppelde venster ("Naast je scherm").
+ * Eigen webview/React-root zonder useFemStore: de modelstate komt live
+ * binnen via reportSync (snapshot-push vanuit het hoofdvenster). Zolang er
+ * nog geen snapshot is, meldt een dunne balk dat we op het hoofdvenster
+ * wachten (de secties tonen dan hun eerlijke leeg-meldingen).
+ */
+export function DetachedReportPreview() {
+  const { t } = useTranslation("ribbon");
+  const data = useDetachedReportSync();
+
+  return (
+    <div className="report-detached-wrap">
+      {data === null && (
+        <div className="report-sync-waiting">
+          {t(
+            "report.waitingForMain",
+            "Wachten op het hoofdvenster — het rapport verschijnt zodra de verbinding er is.",
+          )}
+        </div>
+      )}
+      <ReportPreview data={data ?? undefined} />
     </div>
   );
 }

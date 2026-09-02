@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { isTauriApp } from "../lib/tauri";
 
 export interface DetachOptions {
   view: string;
@@ -37,10 +38,24 @@ export function useWindowManager() {
   }, []);
 
   const createDetachedWindow = useCallback(async (opts: DetachOptions) => {
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-
     windowCounter++;
     const label = `detached-${windowCounter}`;
+
+    // Browser (vite-dev of statische build): eigen browservenster op dezelfde
+    // origin met dezelfde query-parameters — DetachedApp herkent de view via
+    // getDetachedParams. Zelfde origin ⇒ BroadcastChannel-sync werkt.
+    if (!isTauriApp()) {
+      const w = opts.width ?? 800;
+      const h = opts.height ?? 600;
+      window.open(
+        `?view=${encodeURIComponent(opts.view)}&title=${encodeURIComponent(opts.title)}&detached=true`,
+        "_blank",
+        `popup=yes,width=${w},height=${h}`,
+      );
+      return label;
+    }
+
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
     const url = `index.html?view=${encodeURIComponent(opts.view)}&title=${encodeURIComponent(opts.title)}&detached=true`;
 
     const webview = new WebviewWindow(label, {

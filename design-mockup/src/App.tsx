@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import TitleBar from "./components/TitleBar";
 import Ribbon from "./components/ribbon/Ribbon";
@@ -12,7 +12,9 @@ import FeedbackDialog from "./components/feedback/FeedbackDialog";
 import WelcomeScreen from "./components/welcome/WelcomeScreen";
 import ProjectSettingsDialog from "./components/project/ProjectSettingsDialog";
 import IfcViewerPanel from "./components/panels/IfcViewerPanel";
-import ReportPreview from "./components/panels/ReportPreview";
+import ReportPreview, { DetachedReportPreview } from "./components/panels/ReportPreview";
+import { ReportWindowSync } from "./components/report/reportSync";
+import type { ReportData } from "./components/report/ReportDataContext";
 import InsightsView from "./components/panels/InsightsView";
 import CheckPanel from "./components/panels/CheckPanel";
 import FemProjectTree from "./components/fem/FemProjectTree";
@@ -49,12 +51,20 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
 
   useEffect(() => {
     getSetting("theme", "light").then((saved) => applyTheme(saved));
+    // Browservenster (window.open-fallback): venstertitel zelf zetten.
+    document.title = `${title} — Open FEM2D Studio`;
     import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
       getCurrentWindow().show();
     }).catch(() => {});
-  }, []);
+  }, [title]);
 
   const handleDockBack = () => {
+    // Browser-fallback: het venster is met window.open geopend en mag
+    // zichzelf sluiten — het rapport leeft gewoon door in het hoofdvenster.
+    if (!isTauriApp()) {
+      window.close();
+      return;
+    }
     requestDockBack(title, view);
   };
 
@@ -63,7 +73,8 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
       case "ifc":
         return <IfcViewerPanel />;
       case "report":
-        return <ReportPreview />;
+        // R5 — live gesynchroniseerd rapport (snapshot-push via reportSync).
+        return <DetachedReportPreview />;
       case "viewer":
         return (
           <Suspense fallback={<div className="placeholder"><p>Loading 3D Viewer...</p></div>}>
@@ -135,6 +146,41 @@ function App() {
   const checkRun = useCheckStore((s) => s.run);
   const checksRunning = useCheckStore((s) => s.isRunning);
   const checkClear = useCheckStore((s) => s.clear);
+  // R5 — losgekoppeld rapportvenster ("Naast je scherm").
+  const { createDetachedWindow } = useWindowManager();
+  const { t: tRibbon } = useTranslation("ribbon");
+  const handleDetachReport = useCallback(() => {
+    void createDetachedWindow({
+      view: "report",
+      title: tRibbon("report.report", "Rapport"),
+      width: 860,
+      height: 1100,
+    });
+  }, [createDetachedWindow, tRibbon]);
+
+  // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
+  // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
+  // vensters. useMemo op veld-identiteiten: alleen echte mutaties leveren
+  // een nieuw object (en dus een nieuw snapshot) op.
+  const reportData: ReportData = useMemo(() => ({
+    nodes: fem.nodes,
+    beams: fem.beams,
+    supports: fem.supports,
+    loads: fem.loads,
+    loadCases: fem.loadCases,
+    combinations: fem.combinations,
+    structuralGrid: fem.structuralGrid,
+    selfWeightEnabled: fem.selfWeightEnabled,
+    // R3 — resultaten voor de resultaatsecties. useFemStore zet deze op null
+    // bij elke modelwijziging, dus het rapport valt dan automatisch terug op
+    // "Nog niet berekend" (nooit verouderd).
+    combinationResults: fem.combinationResults,
+    envelope: fem.envelope,
+  }), [
+    fem.nodes, fem.beams, fem.supports, fem.loads, fem.loadCases,
+    fem.combinations, fem.structuralGrid, fem.selfWeightEnabled,
+    fem.combinationResults, fem.envelope,
+  ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
   const buildProjectSnapshot = useCallback(() => ({
@@ -754,21 +800,7 @@ function App() {
       case "report":
         // Doorgeef-regels naar het live rapport (ReportDataContext) — de
         // secties lezen deze modelstate en volgen elke wijziging direct.
-        return <ReportPreview data={{
-          nodes: fem.nodes,
-          beams: fem.beams,
-          supports: fem.supports,
-          loads: fem.loads,
-          loadCases: fem.loadCases,
-          combinations: fem.combinations,
-          structuralGrid: fem.structuralGrid,
-          selfWeightEnabled: fem.selfWeightEnabled,
-          // R3 — resultaten voor de resultaatsecties. useFemStore zet deze
-          // op null bij elke modelwijziging, dus het rapport valt dan
-          // automatisch terug op "Nog niet berekend" (nooit verouderd).
-          combinationResults: fem.combinationResults,
-          envelope: fem.envelope,
-        }} />;
+        return <ReportPreview data={reportData} onDetach={handleDetachReport} />;
       case "check":
         return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} />;
       case "insights":
@@ -847,6 +879,11 @@ function App() {
         onPrintClick={() => setActiveView("report")}
       />
       <ToastHost />
+      {/* R5 — houdt losgekoppelde rapportvensters synchroon met het model,
+          de solver-uitkomsten, de toetsresultaten en de rapportinstellingen.
+          Altijd gemonteerd (ook buiten het Rapport-tabblad), zodat het
+          losgekoppelde venster live blijft terwijl hier gemodelleerd wordt. */}
+      <ReportWindowSync data={reportData} />
       <Ribbon
         onFileTabClick={() => setBackstageOpen(true)}
         onSettingsClick={() => setSettingsOpen(true)}

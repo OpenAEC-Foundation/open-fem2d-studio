@@ -30,7 +30,7 @@ commit per taak op master.
   (SVG, parametrisch: I-profielen en rechthoeken b×h) naast de
   eigenschappentabel, materialen, belastinggevallen (tabel per geval) en
   combinatietabel met factormatrix.
-- [ ] **R3. Resultaatsecties.** Constructieschets op schaal (SVG),
+- [x] **R3. Resultaatsecties.** Constructieschets op schaal (SVG),
   M/V/N/w-diagrammen per combinatie of omhullende (hergebruik de
   21-station-arrays), oplegreacties, verplaatsingen — selecteerbaar per
   combinatie.
@@ -38,7 +38,7 @@ commit per taak op master.
   tabellarisch (rij per staaf: maatgevende UC + formule/artikel) en
   uitgebreid (volledige KaTeX-afleidingen — hergebruik CheckBlock).
   Materiaal-neutraal (staal + hout door hetzelfde pad).
-- [ ] **R5. Live + venster.** Rapport abonneert op de stores (live bij
+- [x] **R5. Live + venster.** Rapport abonneert op de stores (live bij
   modelwijziging, met "verouderd"-markering zolang niet herrekend);
   detached venster synchroon; print vanuit beide.
 

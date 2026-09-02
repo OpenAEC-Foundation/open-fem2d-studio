@@ -25,6 +25,7 @@ import {
 } from "../../stores/reportStore";
 import { REPORT_SECTIONS } from "./reportSections";
 import { useProjectInfo } from "./useProjectInfo";
+import { useReportData } from "./ReportDataContext";
 import "./report.css";
 
 /** Veilige CSS-string (dubbelquoted, met escapes) voor content:-waarden. */
@@ -40,7 +41,19 @@ const printIcon = (
   </svg>
 );
 
-export default function ReportShell() {
+const detachWindowIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <rect x="3" y="7" width="13" height="13" rx="1.5" />
+    <path d="M8 7V4.5A1.5 1.5 0 019.5 3h10A1.5 1.5 0 0121 4.5v10a1.5 1.5 0 01-1.5 1.5H16" />
+  </svg>
+);
+
+interface ReportShellProps {
+  /** Aanwezig in het hoofdvenster: toont de knop "Naast je scherm". */
+  onDetach?: () => void;
+}
+
+export default function ReportShell({ onDetach }: ReportShellProps) {
   const { t } = useTranslation("ribbon");
   const pageSize = useReportStore((s) => s.pageSize);
   const orientation = useReportStore((s) => s.orientation);
@@ -48,6 +61,15 @@ export default function ReportShell() {
   const setZoom = useReportStore((s) => s.setZoom);
   const hiddenSections = useReportStore((s) => s.hiddenSections);
   const info = useProjectInfo();
+  const data = useReportData();
+
+  // R5 — "verouderd"-signaal: er ís een model, maar (nog) geen resultaten.
+  // useFemStore nult de solver-uitkomsten bij elke modelwijziging, dus deze
+  // balk verschijnt vanzelf zodra het rapport achterloopt — in het hoofd-
+  // venster én (via de snapshot-sync) in het losgekoppelde venster. De balk
+  // is scherm-chrome en print nooit mee (@media print in report.css).
+  const hasModel = data.nodes.length > 0 || data.beams.length > 0;
+  const showStale = hasModel && data.combinationResults === null;
 
   const dims = pageDimsMm(pageSize, orientation);
   const headerText = info.name || t("report.unnamedProject", "Naamloos project");
@@ -105,6 +127,16 @@ export default function ReportShell() {
           />
           <span className="report-zoom-pct">{Math.round(zoom * 100)}%</span>
         </label>
+        {onDetach && (
+          <button
+            className="report-detach-btn"
+            onClick={onDetach}
+            title={t("report.detachHint", "Opent het rapport in een eigen venster dat live met het model meebeweegt.")}
+          >
+            {detachWindowIcon}
+            {t("report.detach", "Naast je scherm")}
+          </button>
+        )}
         <button
           className="report-print-btn"
           onClick={() => window.print()}
@@ -114,6 +146,12 @@ export default function ReportShell() {
           {t("report.print", "Afdrukken / PDF")}
         </button>
       </div>
+
+      {showStale && (
+        <div className="report-stale-banner" role="status">
+          {t("report.staleBanner", "Model gewijzigd — druk op Berekenen om het rapport bij te werken.")}
+        </div>
+      )}
 
       <div className="report-scroll">
         <div className="report-zoom" style={zoomStyle}>

@@ -78,6 +78,41 @@
   background: var(--theme-btn-primary-hover-bg);
 }
 
+/* R5: knop "Naast je scherm" — alleen in het hoofdvenster (prop-gestuurd). */
+.report-detach-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  color: var(--theme-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.report-detach-btn:hover {
+  color: var(--theme-accent);
+  border-color: var(--theme-accent);
+}
+
+/* R5: "verouderd"-balk — model gewijzigd, resultaten weggegooid. Scherm-
+   chrome: print nooit mee (zie @media print onderaan). */
+.report-stale-banner {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  background: #fef3c7;
+  color: #92400e;
+  border-bottom: 1px solid #f59e0b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .report-scroll {
   flex: 1;
   overflow: auto;
@@ -405,7 +440,9 @@
   .detached-dock-bar,
   .report-sidebar,
   .report-sidebar-collapsed,
-  .report-shell-toolbar {
+  .report-shell-toolbar,
+  .report-stale-banner,
+  .report-sync-waiting {
     display: none !important;
   }
 
@@ -420,6 +457,7 @@
 
   .content,
   .main-view,
+  .report-detached-wrap,
   .report-preview,
   .report-shell,
   .report-scroll {

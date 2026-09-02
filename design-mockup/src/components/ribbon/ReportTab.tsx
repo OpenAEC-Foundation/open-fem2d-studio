@@ -12,7 +12,6 @@ import RibbonButton from "./RibbonButton";
 import RibbonButtonStack from "./RibbonButtonStack";
 import { useReportStore } from "../../stores/reportStore";
 import { useWindowManager } from "../../hooks/useWindowManager";
-import { isTauriApp } from "../../lib/tauri";
 
 const printIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="6" y="14" width="12" height="8" stroke-width="2"/></svg>`;
 const detachIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="13" rx="1.5" stroke-width="2"/><path d="M8 7V4.5A1.5 1.5 0 019.5 3h10A1.5 1.5 0 0121 4.5v10a1.5 1.5 0 01-1.5 1.5H16" stroke-width="2" stroke-linecap="round"/></svg>`;
@@ -59,14 +58,14 @@ export default function ReportTab(_props: ReportTabProps) {
             size="large"
             onClick={handlePrint}
           />
-          {isTauriApp() && (
-            <RibbonButton
-              icon={detachIcon}
-              label={t("report.detach", "In eigen venster")}
-              size="large"
-              onClick={handleDetach}
-            />
-          )}
+          {/* R5 — werkt óók in de browser: createDetachedWindow valt daar
+              terug op window.open op dezelfde origin (BroadcastChannel-sync). */}
+          <RibbonButton
+            icon={detachIcon}
+            label={t("report.detach", "Naast je scherm")}
+            size="large"
+            onClick={handleDetach}
+          />
         </RibbonGroup>
 
         {/* Weergave — papierformaat + oriëntatie (werken door in @page) */}
