@@ -302,7 +302,7 @@ CHS 508×16.
 
 | onderwerp | reden |
 |---|---|
-| **UNP wordt niet opnieuw gegenereerd** | De UNP-flens loopt met 8% schuinte toe. Het model hier is prismatisch en overschat daardoor Iz met ~14% en Wpl;z met ~23%. De bestaande UNP-regels blijven staan; ze worden alleen als validatie gebruikt. Wie UNP wil regenereren, moet eerst de schuinte modelleren. |
+| ~~**UNP wordt niet opnieuw gegenereerd**~~ | *Achterhaald door §10.* De UNP-flens loopt met 8% schuinte toe; het oorspronkelijke model was prismatisch en overschatte daardoor Iz met ~14% en Wpl;z met ~23%. De schuinte is inmiddels gemodelleerd en UNP 80 t/m 300 zijn opnieuw gegenereerd. |
 | **IPE wordt niet opnieuw gegenereerd** | De reeks is compleet (80–600) en de bestaande waarden zijn gecontroleerd. Opnieuw genereren zou alleen ruis in de derde decimaal toevoegen. |
 | **Massa / oppervlaktegewicht** | Staat niet in het `SectionProperties`-contract van de Rust-crate. Volgt uit `A × 7850 kg/m³` als het ooit nodig is. |
 | **Dwarskrachtcentrum van U-profielen** | Wordt intern wél berekend (voor Iw), maar er is geen veld voor in `SectionProperties`. Uitbreiden van dat contract is een aparte wijziging. |
@@ -315,14 +315,16 @@ CHS 508×16.
 
 1. **`HEA 400`** staat op b/c en moet a/b worden (tabel 6.2, `h/b = 1,30 > 1,2`,
    `tf = 19 ≤ 40 mm`). Huidige waarde is conservatief, niet onveilig.
+   *(Opgelost bij de merge van 5264a91.)*
 2. **De 26 bestaande holle doorsneden** (SHS/RHS/CHS) hebben Iy-waarden die de
    scherpe-hoek bovengrens overschrijden — 21 van de 26, tot +23,7%. Die zijn
    **onveilig** (te stijf, te sterk) en zouden met dezelfde generator
    herberekend moeten worden. Dat is bewust buiten deze opdracht gelaten omdat
-   `profiles.json` niet aangeraakt mocht worden.
+   `profiles.json` niet aangeraakt mocht worden. *(Opgelost in §10.)*
 3. **De 13 bestaande U-profielen** hebben Iw-waarden tot 3,5× te hoog en
    It-waarden ~45–60% te hoog. Te hoge Iw en It zijn **onveilig voor kip**.
    Zelfde advies: herberekenen, met eerst een model voor de UNP-flensschuinte.
+   *(Opgelost in §10.)*
 4. Na de merge moet `design-mockup/scripts/genereer-staalprofielen.mjs` opnieuw
    draaien om de TS-tabellen bij te werken.
 
@@ -332,7 +334,246 @@ CHS 508×16.
 node scripts/genereer-profieldata.mjs --zelftests     # formulecontroles
 node scripts/genereer-profieldata.mjs --valideer      # tegen profiles.json
 node scripts/genereer-profieldata.mjs --schrijf       # uitbreiding schrijven
-node scripts/genereer-profieldata.mjs                 # alles
+node scripts/genereer-profieldata.mjs --eindcontrole  # bovengrenzen op alle 416
+node scripts/genereer-profieldata.mjs                 # alle bovenstaande
+
+node scripts/genereer-profieldata.mjs --herstel       # ZIE §10 — schrijft data
 ```
 
-Het script schrijft **nooit** in `profiles.json`.
+Alleen `--herstel` schrijft in `profiles.json`, en dan uitsluitend de 39
+profielen uit §10. De vlagloze uitvoering doet dat **niet**.
+
+---
+
+## 10. Herstelronde 2026-09-02b — de 39 handmatig ingevoerde profielen
+
+Punten 2 en 3 uit §8 zijn hiermee afgehandeld. De ronde raakt **precies 39 van
+de 416 regels**; de andere 377 zijn byte-identiek gebleven (geverifieerd door
+de records één voor één met `HEAD` te vergelijken). Knikkrommen zijn nergens
+gewijzigd.
+
+### 10.1 De bevindingen, onafhankelijk nagerekend
+
+Beide bovengrenzen zijn met een apart script opnieuw gemeten voordat er iets
+veranderde. De uitkomst is exact wat §5 meldde.
+
+**Holle doorsneden — 21 van de 26 boven de scherpe-hoek bovengrens.** Een
+doorsnede met afgeronde hoeken kan nooit meer traagheid hebben dan dezelfde met
+scherpe hoeken; bij een CHS is er geen hoek en is `π(D⁴−(D−2t)⁴)/64` exact, dus
+daar is elke overschrijding direct bewijs.
+
+| profiel | Iy vóór | bovengrens | overschrijding |
+|---|---|---|---|
+| RHS 250x150x8 | 6,460·10⁷ | 5,224·10⁷ | **+23,7%** |
+| RHS 300x200x10 | 1,440·10⁸ | 1,207·10⁸ | +19,3% |
+| RHS 150x100x6 | 1,040·10⁷ | 8,853·10⁶ | +17,5% |
+| RHS 100x50x4 | 1,690·10⁶ | 1,441·10⁶ | +17,3% |
+| RHS 120x60x5 | 3,610·10⁶ | 3,094·10⁶ | +16,7% |
+| RHS 200x100x8 | 2,590·10⁷ | 2,306·10⁷ | +12,3% |
+| CHS 168.3x8.0 | 1,400·10⁷ | 1,297·10⁷ | +7,9% |
+| CHS 219.1x10 | 3,870·10⁷ | 3,598·10⁷ | +7,6% |
+| CHS 273x10 | 7,680·10⁷ | 7,154·10⁷ | +7,4% |
+| CHS 139.7x8.0 | 7,660·10⁶ | 7,203·10⁶ | +6,4% |
+| CHS 406.4x16 | 3,950·10⁸ | 3,745·10⁸ | +5,5% |
+| CHS 48.3x3.2 | 1,220·10⁵ | 1,159·10⁵ | +5,3% |
+| CHS 42.4x3.2 | 8,000·10⁴ | 7,620·10⁴ | +5,0% |
+| CHS 60.3x4.0 | 2,950·10⁵ | 2,817·10⁵ | +4,7% |
+| CHS 323.9x12.5 | 1,550·10⁸ | 1,485·10⁸ | +4,4% |
+| CHS 114.3x6.3 | 3,260·10⁶ | 3,127·10⁶ | +4,3% |
+| CHS 88.9x5.0 | 1,210·10⁶ | 1,164·10⁶ | +4,0% |
+| CHS 76.1x5.0 | 7,370·10⁵ | 7,092·10⁵ | +3,9% |
+| SHS 100x100x5 | 2,930·10⁶ | 2,866·10⁶ | +2,2% |
+| SHS 120x120x5 | 5,180·10⁶ | 5,079·10⁶ | +2,0% |
+| SHS 150x150x6 | 1,200·10⁷ | 1,197·10⁷ | +0,3% |
+
+Dezelfde grens op Iz vangt bij de RHS — waar Iz een eigen waarde is — precies
+dezelfde zes profielen, met +12,9% t/m +20,1%. En vijf CHS overschrijden de
+grens zelfs op het **oppervlak** (tot +0,28%); bij een exacte ringformule kan
+dat alleen als het getal fout is.
+
+**U-profielen — 12 van de 13 boven de bovengrens `Iw ≤ Iz·hs²/4`** (`hs = h − tf`):
+
+| profiel | Iw vóór | bovengrens | factor |
+|---|---|---|---|
+| UNP 80 | 1,120·10⁹ | 2,514·10⁸ | **4,45×** |
+| UNP 100 | 2,520·10⁹ | 6,133·10⁸ | 4,11× |
+| UNP 120 | 4,950·10⁹ | 1,331·10⁹ | 3,72× |
+| UNP 140 | 9,120·10⁹ | 2,649·10⁹ | 3,44× |
+| UNP 160 | 1,540·10¹⁰ | 4,766·10⁹ | 3,23× |
+| UNP 180 | 2,430·10¹⁰ | 8,140·10⁹ | 2,99× |
+| UNP 200 | 3,670·10¹⁰ | 1,315·10¹⁰ | 2,79× |
+| UNP 220 | 5,550·10¹⁰ | 2,121·10¹⁰ | 2,62× |
+| UNP 240 | 7,900·10¹⁰ | 3,195·10¹⁰ | 2,47× |
+| UNP 260 | 1,090·10¹¹ | 4,796·10¹⁰ | 2,27× |
+| UNP 280 | 1,480·10¹¹ | 7,005·10¹⁰ | 2,11× |
+| UNP 300 | 2,000·10¹¹ | 9,981·10¹⁰ | 2,00× |
+
+`UNP350` bleef als enige onder de grens.
+
+### 10.2 De flensschuinte van UNP, eindelijk gemodelleerd
+
+De UNP-flens loopt met **8% schuinte** toe (DIN 1026-1). Het model beschrijft de
+bovenhelft als vier stukken, met z gemeten vanaf de lijfrug:
+
+```
+z ∈ [0, tw]         lijf, materiaal vanaf y = 0
+z ∈ [tw, ztan1]     walsuitronding r1  (middelpunt in de HOLTE)
+z ∈ [ztan1, ztan2]  schuin flensbinnenvlak  y = a + s·z,  s = 0,08
+z ∈ [ztan2, b]      flenstipafronding r2 = r1/2  (middelpunt in het MATERIAAL)
+```
+
+Het flens**buiten**vlak blijft vlak op `y = h/2`. De vijf benodigde momenten
+(A, Sz, Izz, Iyy en het statisch moment voor Wpl;y) worden over die vier stukken
+geïntegreerd, met de bogen in **hoekparameter** zodat de wortelsingulariteit aan
+de boograndan verdwijnt.
+
+**Waar wordt tf gemeten?** Dat is de enige vrije parameter, en hij is niet
+geraden maar opgelost: per profiel is bepaald welke meetpositie het tabel-A
+exact reproduceert. Voor de hele reeks UNP 80–300 komt daar `0,492 b` tot
+`0,511 b` uit, gemiddeld `0,501 b`. De conventie is dus **`tf` op halve
+flensbreedte, `z = b/2` vanaf de lijfrug** — dezelfde regel als bij de andere
+DIN-walsprofielen met schuine flens, waar `t` op het midden van de flensuitkraging
+wordt gemeten. Met de voor de hand liggende alternatieve keuze `z = (b+tw)/2`
+blijft er 1,2–2,6% staan.
+
+Resultaat tegen de genormeerde tabelwaarden (DIN 1026-1), met `e` het
+zwaartepunt vanaf de lijfrug:
+
+| | A | Iy | Iz | e |
+|---|---|---|---|---|
+| prismatisch model (oud) | 2,08% | 2,93% | 14,37% | — |
+| **met 8% schuinte** | **≤ 0,29%** | **≤ 0,29%** | **≤ 0,44%** | **≤ 0,44%** |
+
+gemeten over de volle reeks UNP 80 t/m 300; UNP 80, 140, 200 en 300 zitten als
+harde zelftest in het script. `Wpl;z` verschuift daardoor +8% tot +14% naar de
+tabelwaarde toe (UNP 200: 46 400 → 51 958 mm³, tabel 51,8 cm³).
+
+### 10.3 Iw van een UNP: de gesloten kanaalformule is hier níét exact
+
+De gesloten formule uit §3 komt op **0,00%** overeen met een directe
+sectoriale-oppervlakintegratie — dat is opnieuw bevestigd, inclusief het
+dwarskrachtcentrum van UNP 200 op **26,63 mm** vanaf het lijfhart en
+`Iw = 10 499 cm⁶`. Maar die overeenstemming geldt voor een **prismatische**
+middellijn. Zodra dezelfde sectoriale integratie over de **schuine** middellijn
+loopt — dikte `t(z) = tf + s·(b/2 − z)`, flensmiddellijn `y = ±(h/2 − t(z)/2)` —
+valt Iw over de hele reeks **12,5% tot 14,4% lager** uit. Dat is geen ruis: het
+sectoriale oppervlak is juist bij de flenstip het grootst, en daar is de flens
+het dunst.
+
+Voor UNP wordt daarom de **schuine** sectoriale waarde gebruikt. Drie
+onafhankelijke aanwijzingen dat dat de juiste is:
+
+- De uitkomst valt samen met de welvingsconstanten in de gepubliceerde
+  UPN-profieltabellen: UNP 200 op **9 066 cm⁶** tegen 9,07·10³ cm⁶ (0,07%),
+  UNP 300 op **68 984 cm⁶** tegen 69,1·10³ cm⁶ (0,2%). De prismatische formule
+  geeft daar 10 499 resp. 78 943 cm⁶ — 15,8% resp. 14,3% te hoog. Twee treffers
+  op 0,2% zijn geen toeval; de prismatische waarde mist ze allebei ruim.
+- Lagere Iw is **conservatief** voor kip; de andere kant op zou de fout die deze
+  ronde herstelt gedeeltelijk terugzetten.
+- Beide waarden blijven ruim onder de formulevrije bovengrens `Iz·hs²/4`.
+
+**UPE blijft ongewijzigd op de gesloten formule.** Die reeks heeft evenwijdige
+flenzen; daar ís de formule exact, en de 14 UPE-regels uit de vorige ronde zijn
+niet aangeraakt (validatie: 0,00% op alle grootheden).
+
+### 10.4 It van UNP
+
+Gecorrigeerd met dezelfde El Darwish & Johnston-formule als in §3, met de
+gehalveerde uitrondings- en flenstiptermen voor een U-doorsnede. De waarden
+dalen 20% (UNP 80) tot 35% (UNP 300); dat is de tegenhanger van de 43–60%
+overschatting die §3 tegen de numerieke Prandtl-oplossing vaststelde.
+
+**Restonzekerheid, eerlijk benoemd:** tegen de DIN 1026-1 tabelwaarden ligt de
+formule nu nog **8–10% te hoog** (UNP 80: 23 538 vs 21 600 mm⁴; UNP 300:
+408 553 vs 374 000 mm⁴). Dat is dezelfde systematische kant op als bij de
+I-profielen (§3: 5,7–6,4% boven de roosteroplossing) en dus formule-eigen, geen
+invoerfout. Het is een **onveilige** restafwijking van ~9% op It, tegenover de
+43–60% die zij vervangt.
+
+### 10.5 Kokers en buizen
+
+Alle 26 zijn herberekend met `berekenKoker` / `berekenBuis` uit §3 —
+buitenhoekstraal 1,5·t, binnenhoekstraal 1,0·t (EN 10210-2). De geometrie-
+sleutel `r` stond bij de 13 SHS/RHS op `t` (de *binnen*straal); die staat nu op
+de buitenstraal 1,5·t, zodat het record intern klopt met de gebruikte meetkunde.
+De sleutelsets van alle geometrie-objecten zijn ongewijzigd gelaten, ook waar de
+oude regels alleen `t` en geen `tw`/`tf` hadden.
+
+Spotcheck tegen EN 10210-2 na herstel: `SHS 250x250x10` A = 94,9 cm²,
+`RHS 250x150x8` A = 60,8 cm² en Iy = 5100 cm⁴, `CHS 406.4x16` op de exacte
+ringformule — alle binnen 0,25%.
+
+Onafhankelijke bevestiging van buiten de generator: `HFRHS200X200X16`
+(= SHS 200×200×16) komt na herberekening op A = 11 501,3 mm², Wpl;y = 785 472 mm³
+en Av;z = 5750,65 mm². De externe referentie-berekening waar de acceptatietest
+op geijkt is noemt **11 501,3 / 785 442 / 5751** — drie treffers binnen 0,004%,
+op waarden die vóór deze ronde 1,9%, 2,2% en 1,9% te laag stonden. De twee
+`TODO Phase 13`-punten in die test zijn daarmee opgelost.
+
+### 10.6 Wat NIET is aangeraakt
+
+| onderwerp | reden |
+|---|---|
+| **A, Iy, Iz, Wel, Wpl en Av van `UNP350`** | Het schuinte-model komt daar niet binnen 0,5%: tegen de DIN-tabel wijkt het −1,4% (A), −2,0% (Iy) en −6,3% (Iz) af, tegen de databasewaarden −0,5% / −0,9% / −4,7%. UNP 350 en 400 zijn de twee zwaarste maten waar b níét meegroeit; hun tabelwaarden volgen `z = (b+tw)/2` in plaats van `b/2`. Bovendien zijn A, Wpl;y en Av;z van `UNP350` op een externe referentie-berekening geijkt — en de generator reproduceert die Av;z onafhankelijk op 4945,7 tegen 4946 mm². Alleen It en Iw zijn vervangen. |
+| **Knikkrommen** | Nergens gewijzigd. `HFRHS200X200X16` staat op c/c terwijl het een warmgewalste holle doorsnede is en tabel 6.2 dan a/a voorschrijft; c/c is conservatief, dus dat is een aparte, niet-urgente correctie. |
+| **Afronding van de overige 61 handmatig ingevoerde I-profielen** | Acht daarvan (IPE 160/180/400, HEA 120/280, HEB 260/280, HEM 220) hebben `Wel;y ≠ Iy/(h/2)` met 0,2–0,5% verschil. Dat is puur het gevolg van opslag op drie significante cijfers, geen rekenfout, en valt buiten deze ronde. |
+
+### 10.7 UC-impact
+
+Drie gevallen, S235, γ_M0 = γ_M1 = 1,0, belasting vastgehouden:
+
+| geval | grootheid | vóór | ná | UC vóór | UC ná |
+|---|---|---|---|---|---|
+| RHS 250x150x8, ligger 6,0 m, M_Ed = 130 kNm | Wpl;y | 618 000 mm³ | 500 634 mm³ | **0,895** | **1,105** |
+| CHS 219.1x10, kolom Lcr = 8,0 m, kromme a | Iy → N_b,Rd | 909,6 kN | 866,9 kN | 0,880 | 0,923 |
+| UNP 200, ligger 4,0 m, kip (C1 = 1,0, kromme c), M_Ed = 40 kNm | It, Iw → M_b,Rd | 31,0 kNm | 26,8 kNm | **1,289** | **1,490** |
+
+De RHS-ligger is het scherpste geval: die ging van "voldoet ruim" naar
+"voldoet niet" — de fout maskeerde een overschrijding van 10%. Bij de CHS-kolom
+daalt N_cr met 7,0% ongeacht de lengte; het effect op de UC loopt van +0,8%
+(Lcr = 4 m) via +2,5% (6 m) tot +4,9% (8 m). Bij de UNP-ligger stijgt de kip-UC
+15,6%.
+
+Voor `UNP350` gaat het de andere kant op: It stijgt 4,6% (605 000 → 632 878 mm⁴,
+omdat de El Darwish & Johnston-formule nu op de hele reeks wordt toegepast) en
+Iw daalt 4,4%. Netto stijgt M_cr bij 5,0 m met 1,6% en χ_LT met 1,0% — een kleine
+**onveilige** verschuiving, die binnen de eigen bandbreedte van de It-formule
+valt en die de acceptatietest van de portaalligger niet op zijn
+referentie-geijkte waarden raakt (A, Wpl;y en Av;z blijven gelijk).
+
+### 10.8 Wat er in de Rust-tests is bijgesteld
+
+Twee acceptatietests raken profielen uit de herstelset. Beide zijn met
+norm-onderbouwing bijgewerkt; op het referentie-rapport geijkte verwachtingen
+zijn **niet** aangeraakt.
+
+**`calc2_beam3.rs` (HFRHS200X200X16).** De drie verwachtingen stonden expliciet
+op de *databasewaarden* met een `TODO Phase 13` erbij, omdat die 1,9–2,2% naast
+de referentie lagen. Ze staan nu op de referentiewaarden zelf:
+`N_c,Rd` 2650,8 → **2702,81 kN** (referentie 2702,808), `M_y,c,Rd` 180,48 →
+**184,586 kNm** (referentie 184,579) en `V_c,z,Rd` 765,2 → **780,23 kN**
+(referentie 780,2). De UC van de drukstaaftoets stond op de afgeronde
+referentiewaarde 0,02 met 10% marge; die is vervangen door de exacte
+`48,329 / 2702,808 = 0,01788`, want die marge werd te krap zodra we de
+referentie precies raakten. De doorsnede blijft NotOk en de maatgevende toets
+blijft 6.2.5. De snapshot verschuift mee: `uc_max` 1,0379 → 1,0148.
+
+**`portal_beam1.rs` (UNP350).** Alleen de snapshot verschuift, via It en Iw:
+`M_cr` 200,00 → 203,54 kNm, `χ_LT` 0,6255 → 0,6309, `M_b,Rd` 130,80 → 131,92 kNm,
+`uc_max` 1,4893 → 1,4766. `N_c,Rd`, `M_y,c,Rd` en `V_c,z,Rd` zijn ongewijzigd en
+worden nog steeds afgedwongen. De vijf overige snapshots (HEB160/HEB300) zijn
+inhoudelijk niet veranderd en zijn dus ook niet aangeraakt.
+
+### 10.9 Eindcontrole
+
+`node scripts/genereer-profieldata.mjs --eindcontrole` over alle **416**
+profielen — scherpe-hoek bovengrens op A, Iy en Iz voor 297 holle doorsneden,
+`Iw ≤ Iz·hs²/4` voor 27 U-profielen, en op alle 416 `iy = √(Iy/A)`,
+`iz = √(Iz/A)`, `Wel;y = Iy/(h/2)`, `Wpl ≥ Wel`, `0 < Av < A` en A/Iy/Iz/It > 0:
+
+> **NUL overschrijdingen.**
+
+De validatie tegen de generator (`--valideer`) staat na het herstel voor
+SHS, RHS, CHS en UPE op **0,00%** over alle grootheden, en voor UNP op 0,04% (A),
+0,07% (Iy) en 0,36% (Iz; dat laatste vrijwel volledig `UNP350`, dat bewust is
+blijven staan).

@@ -3,6 +3,13 @@
 //! Reference: verificatie calculations/original/Calc 2.pdf §2.6.3 (page 57-59)
 //! Profile: HFRHS200X200X16 — hot-formed rectangular hollow section, no LTB.
 //! Beam length: 5000 mm. Governing force: combination 2 at x=2402 mm.
+//!
+//! Sept 2026: de doorsnedegrootheden van dit profiel zijn uit de EN 10210-2-
+//! meetkunde herberekend in plaats van overgetypt (buitenhoekstraal 1,5·t,
+//! binnenhoekstraal 1,0·t). A, Wpl;y en Av;z komen daarmee op 11 501,3 mm²,
+//! 785 472 mm³ en 5750,65 mm² — binnen 0,004% van de referentiewaarden
+//! 11 501,3 / 785 442 / 5751. De verwachtingen hieronder staan nu dus op de
+//! referentiewaarden zelf; de twee TODO's uit fase 13 zijn opgelost.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
@@ -82,21 +89,25 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
 #[test]
 fn calc2_beam3_compression() {
     let r = run();
+    // Sept 2026: het oppervlak is uit de EN 10210-2-meetkunde herberekend
+    // (buitenhoekstraal 1,5t, binnenhoekstraal 1,0t) in plaats van overgetypt.
+    // A gaat van 11280 naar 11501,3 mm² en komt daarmee op de referentiewaarde
+    // uit; de TODO uit fase 13 is daarmee opgelost.
     // Reference: N_c,Rd = 2702.808 kN (A=11501.3 mm²), UC = 0.02
-    // Our profile DB: A=11280 mm² → N_c,Rd = 2650.8 kN
-    // TODO Phase 13: align HFRHS200X200X16 area in profile DB (11280 vs reference 11501.3 mm²)
-    assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 2650.8, max_relative = 1e-3);
-    assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.02, max_relative = 0.10); // wider: small UC
+    assert_relative_eq!(resistance_value(r, "6.2.4_compression"), 2702.81, max_relative = 1e-3);
+    // De referentie drukt deze UC op twee decimalen af (0,02); exact is
+    // 48,329 / 2702,808 = 0,01788, en daar komen we nu ook op uit.
+    assert_relative_eq!(uc_value(r, "6.2.4_compression"), 0.01788, max_relative = 5e-3);
 }
 
 #[test]
 fn calc2_beam3_bending() {
     let r = run();
+    // Sept 2026: Wpl;y volgt nu uit dezelfde EN 10210-2-meetkunde en gaat van
+    // 768000 naar 785472 mm³ — 0,004% van de referentiewaarde 785442 mm³.
     // Reference: M_y,c,Rd = 184.579 kNm (Wpl=785442 mm³), UC = 1.01 NOT OK
-    // Our profile DB: Wpl=768000 mm³ → M_y,c,Rd = 180.48 kNm
-    // TODO Phase 13: align HFRHS200X200X16 Wpl in profile DB (768000 vs reference 785442 mm³)
-    assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 180.48, max_relative = 1e-3);
-    // UC = 187.327 / 180.48 = 1.038 ≥ 1.0 — still NOT OK
+    assert_relative_eq!(resistance_value(r, "6.2.5_bending_y"), 184.586, max_relative = 1e-3);
+    // UC = 187.327 / 184.586 = 1.015 ≥ 1.0 — nog steeds NOT OK (referentie: 1,01)
     assert!(uc_value(r, "6.2.5_bending_y") >= 1.0,
         "UC should be >= 1.0 with our section properties");
     let bend = find_check(r, "6.2.5_bending_y");
@@ -108,14 +119,14 @@ fn calc2_beam3_bending() {
 #[test]
 fn calc2_beam3_shear() {
     let r = run();
+    // Sept 2026: Av;z = A·h/(b+h) uit het herberekende oppervlak = 5750,65 mm²,
+    // tegen de referentiewaarde 5751 mm² — het verschil met de oude 5640 mm²
+    // kwam uit het te lage oppervlak.
     // Reference: V_c,z,Rd = 780.2 kN (Av=5751 mm²), UC = 0.31 (at x=5000 mm where Vz=-241.739 kN)
-    // Our profile DB: Av_z=5640 mm² → V_c,z,Rd = 765.2 kN
     // Phase 13-A fix: orchestrator now picks max |Vz| as governing for shear check.
-    // → position x=5000 mm, Vz=-241.739 kN, UC = 241.739 / 765.2 = 0.316
-    // (reference: 0.31 — small delta due to profile DB Av_z difference)
-    assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 765.2, max_relative = 1e-3);
-    // UC = 241.739 / 765.22 ≈ 0.316 — close to reference 0.31 (profile DB delta only)
-    assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.316, max_relative = 0.02);
+    assert_relative_eq!(resistance_value(r, "6.2.6_shear_z"), 780.23, max_relative = 1e-3);
+    // UC = 241.739 / 780.23 ≈ 0.310 — gelijk aan de referentie 0,31
+    assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.310, max_relative = 0.02);
 }
 
 #[test]
@@ -127,6 +138,14 @@ fn calc2_beam3_governing_not_ok() {
     assert_eq!(r.status, CheckStatus::NotOk);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt na de herberekening van HFRHS200X200X16 uit de
+/// EN 10210-2-meetkunde (zie de kop van dit bestand). De doorsnedegrootheden
+/// schuiven met A +2,0%, Wpl;y +2,3% en Av;z +2,0% naar de waarden van de
+/// externe referentie-berekening toe, en daarmee dalen alle UC's evenredig:
+/// uc_max 1,0379 -> 1,0148 (referentie: 1,01 op de buigingstoets). De
+/// doorsnede blijft NotOk en de maatgevende toets blijft 6.2.5_bending_y.
 #[test]
 fn calc2_beam3_snapshot() {
     insta::assert_json_snapshot!("calc2_beam3", run());

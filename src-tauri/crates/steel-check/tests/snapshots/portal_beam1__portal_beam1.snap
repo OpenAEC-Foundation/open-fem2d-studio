@@ -1,6 +1,5 @@
 ---
 source: crates/steel-check/tests/portal_beam1.rs
-assertion_line: 126
 expression: run()
 ---
 {
@@ -569,36 +568,36 @@ expression: run()
             },
             {
               "symbol": "S",
-              "value": 858.7892618371045,
+              "value": 839.6616020634564,
               "unit": "mm"
             },
             {
               "symbol": "C",
-              "value": 5.957409783103699,
+              "value": 5.927747523296383,
               "unit": "-"
             },
             {
               "symbol": "M_{cr}",
-              "value": 200.00191189949842,
+              "value": 203.53949045559193,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 1.0224781322420138,
+              "value": 1.0135536936738292,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.6255354078103588,
+              "value": 0.6309092330613262,
               "unit": "-"
             }
           ],
-          "value": 0.6255354078103588,
+          "value": 0.6309092330613262,
           "unit": "-",
           "uc": {
             "ed": 194.796,
-            "rd": 130.79589134899854,
-            "uc": 1.4893128369012143,
+            "rd": 131.919527605041,
+            "uc": 1.476627482954664,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "NotOk",
@@ -649,7 +648,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.8957883087708423,
+              "value": 0.8881583525411065,
               "unit": "-"
             },
             {
@@ -658,12 +657,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.9073132510079146,
+          "value": 0.8996832947781789,
           "unit": "-",
           "uc": {
-            "ed": 0.9073132510079146,
+            "ed": 0.8996832947781789,
             "rd": 1.0,
-            "uc": 0.9073132510079146,
+            "uc": 0.8996832947781789,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -712,7 +711,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.5374729852625053,
+              "value": 0.5328950115246639,
               "unit": "-"
             },
             {
@@ -721,12 +720,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.588505646553955,
+          "value": 0.5839276728161136,
           "unit": "-",
           "uc": {
-            "ed": 0.588505646553955,
+            "ed": 0.5839276728161136,
             "rd": 1.0,
-            "uc": 0.588505646553955,
+            "uc": 0.5839276728161136,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -837,7 +836,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.4893128369012143,
+  "uc_max": 1.476627482954664,
   "status": "NotOk",
   "governing_check_id": "6.3.2_ltb_channel"
 }

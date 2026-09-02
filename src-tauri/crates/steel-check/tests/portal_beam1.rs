@@ -123,7 +123,21 @@ fn portal_beam1_governing_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
-/// Sept 2026 bijgewerkt na de correctie van de UNP-knikkromme om de y-as:
+/// Sept 2026 (b) bijgewerkt na het herstel van de torsiegrootheden van UNP350.
+/// It is met de El Darwish & Johnston-formule herberekend die nu op de hele
+/// U-reeks wordt toegepast (605 000 -> 632 878 mm⁴, +4,6%) en Iw met de
+/// sectoriale-oppervlakmethode over de 8% schuine flensmiddellijn
+/// (1,106·10¹¹ -> 1,0572·10¹¹ mm⁶, −4,4%). Zie
+/// docs/superpowers/specs/2026-09-02-profieldata-generatie.md §10.
+/// Gevolg in deze snapshot: M_cr 200,00 -> 203,54 kNm, chi_LT 0,6255 -> 0,6309,
+/// M_b,Rd 130,80 -> 131,92 kNm en daarmee uc_max 1,4893 -> 1,4766. De ligger
+/// blijft ruim NotOk op kip.
+/// **De op het referentie-rapport geijkte waarden veranderen NIET**:
+/// A, Wpl;y en Av;z van UNP350 zijn bewust ongemoeid gelaten, dus
+/// N_c,Rd = 1801,44 kN, M_y,c,Rd = 209,094 kNm en V_c,z,Rd = 671,06 kN staan
+/// hierboven onveranderd en worden nog steeds afgedwongen.
+///
+/// Sept 2026 (a) bijgewerkt na de correctie van de UNP-knikkromme om de y-as:
 /// EN 1993-1-1 tabel 6.2 schrijft voor U-doorsneden kromme **c** voor om
 /// beide assen; de database stond op kromme b. Daardoor verandert in deze
 /// snapshot uitsluitend chi_y (0,9206 -> 0,8901) en, via de 6.3.3-interactie,

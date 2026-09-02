@@ -18,9 +18,17 @@
  *       src-tauri/crates/steel-profiles/data/profielen-uitbreiding.json.
  *   node scripts/genereer-profieldata.mjs --zelfcontrole
  *       Interne consistentiecontrole op de uitbreiding.
- *   zonder vlaggen: alle drie.
+ *   node scripts/genereer-profieldata.mjs --eindcontrole
+ *       Controleert de HELE profiles.json op de twee formulevrije bovengrenzen
+ *       en op interne consistentie.
+ *   zonder vlaggen: alle bovenstaande (dus NIET --herstel).
  *
- * Dit script SCHRIJFT NOOIT in profiles.json.
+ *   node scripts/genereer-profieldata.mjs --herstel
+ *       Het ENIGE dat in profiles.json schrijft. Herberekent uitsluitend de
+ *       39 met de hand overgetypte profielen die aantoonbaar onveilige waarden
+ *       hadden (26 holle doorsneden + 13 U-profielen; zie sectie 11). Alle
+ *       andere regels blijven byte-identiek. De vlag moet expliciet gegeven
+ *       worden; hij zit niet in de vlagloze uitvoering.
  *
  * Geen dependencies; alleen Node-ingebouwde modules.
  */
@@ -360,6 +368,253 @@ function wplZUProfiel(g) {
   return S;
 }
 
+/* -------------------------------------------------------------------- *
+ * U-profiel MET flensschuinte (UNP volgens DIN 1026-1)                  *
+ * -------------------------------------------------------------------- *
+ *
+ * De UNP-flens is niet prismatisch: de binnenzijde loopt met 8% toe naar de
+ * flenstip. Zonder die schuinte overschat een prismatisch model A en Iy met
+ * 2-3% en Iz met ~14%, want de schuinte haalt materiaal weg precies bij de
+ * flenstip, waar het voor Iz het zwaarst telt.
+ *
+ * Doorsnede in de BOVENHELFT (y van y_low(z) tot h/2, z vanaf de lijfrug):
+ *
+ *   z in [0, tw]        lijf                       -> y_low = 0
+ *   z in [tw, ztan1]    walsuitronding r1          -> boog, holte-middelpunt
+ *   z in [ztan1, ztan2] schuin flensbinnenvlak     -> y = a + s*z
+ *   z in [ztan2, b]     flenstipafronding r2       -> boog, materiaal-middelpunt
+ *
+ * De onderhelft is het spiegelbeeld. Het flensBUITENvlak is vlak op y = h/2.
+ */
+
+/** Flensschuinte van UNP volgens DIN 1026-1: 8%. */
+const UNP_SCHUINTE = 0.08;
+
+/**
+ * Meetkunde van een UNP.
+ *
+ * De genormeerde flensdikte tf geldt op HALVE FLENSBREEDTE, dus op z = b/2
+ * gemeten vanaf de lijfrug. Dat is dezelfde conventie als bij de andere
+ * DIN-walsprofielen met schuine flens (daar wordt t op het midden van de
+ * flensuitkraging gemeten). De zelftest onderaan laat zien dat alleen deze
+ * keuze A, Iy, Iz en het zwaartepunt van de hele reeks binnen 0,5% van de
+ * genormeerde tabelwaarden brengt; met z = (b+tw)/2 blijft er 1,2-2,6% staan.
+ *
+ * De flenstip is afgerond met r2 = r1/2 (DIN 1026-1).
+ */
+function unpMeetkunde({ h, b, tw, tf, r }) {
+  const s = UNP_SCHUINTE;
+  const r1 = r;
+  const r2 = r / 2;
+  const H = h / 2;
+  const k = Math.sqrt(1 + s * s);
+  // Flensdikte op positie z: tf + s*(b/2 - z); binnenvlak y = a + s*z.
+  const a = H - tf - (s * b) / 2;
+  // Walsuitronding: middelpunt in de HOLTE, dus onder het schuine vlak.
+  const zc1 = tw + r1;
+  const yc1 = a + s * zc1 - r1 * k;
+  const ztan1 = zc1 - (r1 * s) / k;
+  // Flenstipafronding: middelpunt in het MATERIAAL, dus boven het schuine vlak.
+  const zc2 = b - r2;
+  const yc2 = a + s * zc2 + r2 * k;
+  const ztan2 = zc2 + (r2 * s) / k;
+  // Hoeken waar de bogen het schuine vlak raken (hoek gemeten in de gewone
+  // wiskundige zin vanaf het middelpunt van de betreffende boog).
+  const thetaA = Math.atan2(1 / k, -s / k);              // boog 1, net onder pi
+  const thetaB = 2 * Math.PI + Math.atan2(-1 / k, s / k); // boog 2, net onder 2pi
+  return {
+    h, b, tw, tf, s, r1, r2, H, k, a,
+    zc1, yc1, ztan1, zc2, yc2, ztan2, thetaA, thetaB,
+  };
+}
+
+/** Onderrand van het materiaal in de bovenhelft, op positie z. */
+function unpOnderrand(m, z) {
+  if (z <= m.tw) return 0;
+  if (z <= m.ztan1) {
+    return m.yc1 + Math.sqrt(Math.max(0, m.r1 * m.r1 - (z - m.zc1) ** 2));
+  }
+  if (z <= m.ztan2) return m.a + m.s * z;
+  return m.yc2 - Math.sqrt(Math.max(0, m.r2 * m.r2 - (z - m.zc2) ** 2));
+}
+
+/**
+ * Integreert de vijf benodigde momenten over de bovenhelft in een keer.
+ * De twee bogen worden in HOEK geparametriseerd; daarmee verdwijnt de
+ * wortelsingulariteit die z-integratie aan de boograndan zou geven, en is de
+ * middelpuntregel gelijkmatig nauwkeurig.
+ */
+function unpIntegraal(m, N = 60000) {
+  const H = m.H;
+  let A = 0; let Sz = 0; let Izz = 0; let Iyy = 0; let Sy = 0;
+  const tel = (z, y, dz) => {
+    const dA = (H - y) * dz;
+    A += dA;
+    Sz += z * dA;
+    Izz += z * z * dA;
+    Iyy += ((H ** 3 - y ** 3) / 3) * dz;
+    Sy += ((H * H - y * y) / 2) * dz;
+  };
+  // Lijf.
+  {
+    const dz = m.tw / N;
+    for (let i = 0; i < N; i += 1) tel((i + 0.5) * dz, 0, dz);
+  }
+  // Boog 1: theta van pi (bij z = tw) tot thetaA.
+  {
+    const dth = (m.thetaA - Math.PI) / N;
+    for (let i = 0; i < N; i += 1) {
+      const th = Math.PI + (i + 0.5) * dth;
+      tel(m.zc1 + m.r1 * Math.cos(th), m.yc1 + m.r1 * Math.sin(th),
+        -m.r1 * Math.sin(th) * dth);
+    }
+  }
+  // Schuin flensbinnenvlak.
+  {
+    const dz = (m.ztan2 - m.ztan1) / N;
+    for (let i = 0; i < N; i += 1) {
+      const z = m.ztan1 + (i + 0.5) * dz;
+      tel(z, m.a + m.s * z, dz);
+    }
+  }
+  // Boog 2: theta van thetaB tot 2*pi (bij z = b).
+  {
+    const dth = (2 * Math.PI - m.thetaB) / N;
+    for (let i = 0; i < N; i += 1) {
+      const th = m.thetaB + (i + 0.5) * dth;
+      tel(m.zc2 + m.r2 * Math.cos(th), m.yc2 + m.r2 * Math.sin(th),
+        -m.r2 * Math.sin(th) * dth);
+    }
+  }
+  return { A, Sz, Izz, Iyy, Sy };
+}
+
+/** Wpl;z van een UNP: zelfde methode als bij UPE, maar op de schuine flens. */
+function wplZUnp(m) {
+  const N = 200000;
+  const dz = m.b / N;
+  const w = new Float64Array(N);
+  let A = 0;
+  for (let i = 0; i < N; i += 1) {
+    w[i] = 2 * (m.H - unpOnderrand(m, (i + 0.5) * dz));
+    A += w[i] * dz;
+  }
+  let cum = 0;
+  let zPl = 0;
+  for (let i = 0; i < N; i += 1) {
+    const volgend = cum + w[i] * dz;
+    if (volgend >= A / 2) {
+      zPl = i * dz + ((A / 2 - cum) / (w[i] * dz)) * dz;
+      break;
+    }
+    cum = volgend;
+  }
+  let S = 0;
+  for (let i = 0; i < N; i += 1) {
+    S += w[i] * Math.abs((i + 0.5) * dz - zPl) * dz;
+  }
+  return S;
+}
+
+/**
+ * Welvingsconstante van een UNP, via sectoriale-oppervlakintegratie over de
+ * SCHUINE wandmiddellijn. De gesloten kanaalformule (zie berekenUProfiel) geldt
+ * voor evenwijdige flenzen; voor een UNP ligt zij 12,5-14,4% te hoog, want zij
+ * rekent met de volle dikte tf tot aan de flenstip terwijl het sectoriale
+ * oppervlak juist daar het grootst is. Te hoge Iw is onveilig voor kip, dus de
+ * schuinte moet hier mee.
+ *
+ * Methode identiek aan iwSectoriaal(): pool naar het dwarskrachtcentrum via
+ * x_S = INT omega_0 * y * t ds / Iy, daarna normaliseren op INT omega t ds = 0
+ * en Iw = INT omega^2 t ds.
+ */
+function iwUnpSchuin({ h, b, tw, tf }, N = 40000) {
+  const s = UNP_SCHUINTE;
+  const H = h / 2;
+  const dikte = (z) => tf + s * (b / 2 - z);
+  const yMid = (z) => H - dikte(z) / 2;   // midden tussen buiten- en binnenvlak
+  const xEind = b - tw / 2;               // flens loopt van lijfhart tot tip
+  const pts = [];
+  const flens = (teken, omgekeerd) => {
+    for (let i = 0; i < N; i += 1) {
+      const f = omgekeerd ? 1 - (i + 0.5) / N : (i + 0.5) / N;
+      const fa = omgekeerd ? 1 - i / N : i / N;
+      const fb = omgekeerd ? 1 - (i + 1) / N : (i + 1) / N;
+      const x = xEind * f;
+      const dx = xEind * (fb - fa);
+      const dy = teken * (yMid(xEind * fb + tw / 2) - yMid(xEind * fa + tw / 2));
+      pts.push({
+        x,
+        y: teken * yMid(x + tw / 2),
+        t: dikte(x + tw / 2),
+        ds: Math.hypot(dx, dy),
+        dx,
+        dy,
+      });
+    }
+  };
+  flens(-1, true);                       // onderflens: tip -> lijf
+  const hsMid = 2 * yMid(tw / 2);        // flenshartafstand aan het lijf
+  for (let i = 0; i < N; i += 1) {
+    pts.push({
+      x: 0, y: -hsMid / 2 + (hsMid * (i + 0.5)) / N,
+      t: tw, ds: hsMid / N, dx: 0, dy: hsMid / N,
+    });
+  }
+  flens(1, false);                       // bovenflens: lijf -> tip
+  return sectoriaalIw(pts);
+}
+
+/** Gedeelde kern van de sectoriale-oppervlakmethode. */
+function sectoriaalIw(pts) {
+  const A = pts.reduce((a, p) => a + p.t * p.ds, 0);
+  const Iy = pts.reduce((a, p) => a + p.y * p.y * p.t * p.ds, 0);
+  const om = new Float64Array(pts.length);
+  let w = 0;
+  pts.forEach((p, i) => {
+    const d = p.x * p.dy - p.y * p.dx;
+    om[i] = w + d / 2;
+    w += d;
+  });
+  let num = 0;
+  pts.forEach((p, i) => { num += om[i] * p.y * p.t * p.ds; });
+  const xS = num / Iy;
+  const yStart = pts[0].y;
+  let gem = 0;
+  pts.forEach((p, i) => {
+    om[i] -= xS * (p.y - yStart);
+    gem += om[i] * p.t * p.ds;
+  });
+  gem /= A;
+  let Iw = 0;
+  pts.forEach((p, i) => { Iw += (om[i] - gem) ** 2 * p.t * p.ds; });
+  return { Iw, xS };
+}
+
+/** Doorsnedegrootheden van een UNP (U-profiel met 8% flensschuinte). */
+function berekenUProfielSchuin(g) {
+  const { h, b, tw, tf, r } = g;
+  const m = unpMeetkunde(g);
+  const v = unpIntegraal(m);
+  const A = 2 * v.A;
+  const z0 = v.Sz / v.A;                 // zwaartepunt vanaf de lijfrug
+  const Iy = 2 * v.Iyy;
+  const Iz = 2 * v.Izz - A * z0 * z0;
+  const WelY = Iy / (h / 2);
+  const WelZ = Iz / Math.max(z0, b - z0);
+  const WplY = 2 * v.Sy;
+  const WplZ = wplZUnp(m);
+
+  const hw = h - 2 * tf;
+  const AvZ = Math.max(A - 2 * b * tf + (tw + r) * tf, ETA * hw * tw);
+  const AvY = 2 * b * tf;
+
+  const It = itUProfiel(g);
+  const Iw = iwUnpSchuin(g).Iw;
+
+  return props(g, { A, Iy, Iz, WelY, WelZ, WplY, WplZ, AvY, AvZ, It, Iw }, z0);
+}
+
 /**
  * Warmgewalste rechthoekige of vierkante koker (SHS/RHS).
  * Conform EN 10210-2: buitenhoekstraal 1,5*t, binnenhoekstraal 1,0*t.
@@ -444,10 +699,16 @@ function props(g, v, z0) {
   return o;
 }
 
-/** Rekenkern per profielsoort. */
-function bereken(kind, g) {
+/**
+ * Rekenkern per profielsoort. `schuin` onderscheidt de U-profielen met
+ * toelopende flens (UNP, DIN 1026-1) van die met evenwijdige flenzen (UPE,
+ * DIN 1026-2); de meetkunde verschilt te veel voor een gedeelde formule.
+ */
+function bereken(kind, g, schuin = false) {
   if (kind === "ISection") return berekenIProfiel(g);
-  if (kind === "Channel") return berekenUProfiel(g);
+  if (kind === "Channel") {
+    return schuin ? berekenUProfielSchuin(g) : berekenUProfiel(g);
+  }
   if (kind === "Shs" || kind === "Rhs") return berekenKoker(g);
   if (kind === "Chs") return berekenBuis(g);
   throw new Error(`Onbekende profielsoort: ${kind}`);
@@ -571,7 +832,7 @@ const HEM = [
   ["HEM 1000", 1008, 302, 21.0, 40.0, 30],
 ];
 
-/** UNP — DIN 1026-1 (schuine flenzen, 8%). Alleen ter validatie. */
+/** UNP — DIN 1026-1 (schuine flenzen, 8%). Volledig aanwezig in de database. */
 const UNP = [
   ["UNP 80", 80, 45, 6.0, 8.0, 8],
   ["UNP 100", 100, 50, 6.0, 8.5, 8.5],
@@ -684,8 +945,8 @@ const CHS = [
 /** Maatgetal netjes formatteren: 4.0 -> "4", 6.3 -> "6.3", 273.0 -> "273". */
 const fmt = (x) => String(Number(x.toFixed(2)));
 
-function openProfiel(kind, [name, h, b, tw, tf, r]) {
-  return { name, kind, geometry: { h, b, tw, tf, r } };
+function openProfiel(kind, [name, h, b, tw, tf, r], schuin = false) {
+  return { name, kind, geometry: { h, b, tw, tf, r }, schuin };
 }
 
 function kokerProfiel(kind, h, b, t) {
@@ -714,7 +975,7 @@ function alleKandidaten() {
   for (const rij of HEA) uit.push(openProfiel("ISection", rij));
   for (const rij of HEB) uit.push(openProfiel("ISection", rij));
   for (const rij of HEM) uit.push(openProfiel("ISection", rij));
-  for (const rij of UNP) uit.push(openProfiel("Channel", rij));
+  for (const rij of UNP) uit.push(openProfiel("Channel", rij, true));
   for (const rij of UPE) uit.push(openProfiel("Channel", rij));
   for (const [a, dikten] of SHS) {
     for (const t of dikten) uit.push(kokerProfiel("Shs", a, a, t));
@@ -785,7 +1046,7 @@ function valideer() {
     if (!ref) continue;
     gematcht += 1;
     const reeks = reeksVan(kand.name);
-    const eigen = bereken(kand.kind, kand.geometry);
+    const eigen = bereken(kand.kind, kand.geometry, kand.schuin);
     const krommen = knikkrommen(kand.kind, kand.geometry);
     if (
       krommen.y_axis !== ref.buckling_curves.y_axis ||
@@ -938,28 +1199,7 @@ function iwSectoriaal({ h, b, tw, tf }, N = 20000) {
     const s = (i + 0.5) / N;
     pts.push({ x: bf * s, y: hs / 2, t: tf, ds: bf / N, dx: bf / N, dy: 0 });
   }
-  const A = pts.reduce((a, p) => a + p.t * p.ds, 0);
-  const Iy = pts.reduce((a, p) => a + p.y * p.y * p.t * p.ds, 0);
-  const om = new Float64Array(pts.length);
-  let w = 0;
-  pts.forEach((p, i) => {
-    const d = p.x * p.dy - p.y * p.dx;
-    om[i] = w + d / 2;
-    w += d;
-  });
-  let num = 0;
-  pts.forEach((p, i) => { num += om[i] * p.y * p.t * p.ds; });
-  const xS = num / Iy;
-  const yStart = pts[0].y;
-  let gem = 0;
-  pts.forEach((p, i) => {
-    om[i] -= xS * (p.y - yStart);
-    gem += om[i] * p.t * p.ds;
-  });
-  gem /= A;
-  let Iw = 0;
-  pts.forEach((p, i) => { Iw += (om[i] - gem) ** 2 * p.t * p.ds; });
-  return Iw;
+  return sectoriaalIw(pts).Iw;
 }
 
 function zelftests() {
@@ -1045,12 +1285,63 @@ function zelftests() {
       `Iw U-profiel h=${u.h} gesloten vs sectoriaal`);
   }
 
+  // (7) UNP met flensschuinte: de hoek-geparametriseerde integratie moet
+  //     gelijk zijn aan een botte strookintegratie van dezelfde onderrand.
+  {
+    const gU = { h: 200, b: 75, tw: 8.5, tf: 11.5, r: 11.5 };
+    const m = unpMeetkunde(gU);
+    const v = unpIntegraal(m);
+    const Ns = 2000000;
+    const dz = gU.b / Ns;
+    let Anum = 0;
+    let Iynum = 0;
+    for (let i = 0; i < Ns; i += 1) {
+      const z = (i + 0.5) * dz;
+      const y = unpOnderrand(m, z);
+      Anum += (m.H - y) * dz;
+      Iynum += ((m.H ** 3 - y ** 3) / 3) * dz;
+    }
+    bijna(v.A, Anum, 1e-5, "UNP 200 A hoekintegratie vs strookintegratie");
+    bijna(v.Iyy, Iynum, 1e-5, "UNP 200 Iy hoekintegratie vs strookintegratie");
+  }
+
+  // (8) UNP-schuinte tegen de genormeerde tabelwaarden (DIN 1026-1).
+  //     [naam, h, b, tw, tf, r, A, Iy, Iz, e (zwaartepunt vanaf lijfrug)]
+  for (const [naam, h, b, tw, tf, r, A, Iy, Iz, e] of [
+    ["UNP 80", 80, 45, 6.0, 8.0, 8.0, 1100, 1.06e6, 1.94e5, 14.5],
+    ["UNP 140", 140, 60, 7.0, 10.0, 10.0, 2040, 6.05e6, 6.27e5, 17.5],
+    ["UNP 200", 200, 75, 8.5, 11.5, 11.5, 3220, 1.91e7, 1.48e6, 20.1],
+    ["UNP 300", 300, 100, 10.0, 16.0, 16.0, 5880, 8.03e7, 4.95e6, 27.0],
+  ]) {
+    const p = berekenUProfielSchuin({ h, b, tw, tf, r });
+    bijna(p.area_mm2, A, 5e-3, `${naam} A tegen DIN 1026-1`);
+    bijna(p.iy_mm4, Iy, 5e-3, `${naam} Iy tegen DIN 1026-1`);
+    bijna(p.iz_mm4, Iz, 5e-3, `${naam} Iz tegen DIN 1026-1`);
+    bijna(p._z0_mm, e, 5e-3, `${naam} zwaartepunt tegen DIN 1026-1`);
+    // Harde bovengrens: Iw van een U ligt altijd onder Iz*hs^2/4.
+    const grens = (p.iz_mm4 * (h - tf) ** 2) / 4;
+    if (!(p.iw_mm6 < grens)) {
+      fouten.push(`${naam}: Iw boven de bovengrens Iz*hs^2/4`);
+    }
+    // En altijd onder de prismatische kanaalformule, want de schuinte haalt
+    // materiaal weg juist waar het sectoriale oppervlak het grootst is.
+    const bAcc = b - tw / 2;
+    const hs = h - tf;
+    const prismatisch =
+      ((tf * bAcc ** 3 * hs * hs) / 12) *
+      ((3 * bAcc * tf + 2 * hs * tw) / (6 * bAcc * tf + hs * tw));
+    if (!(p.iw_mm6 < prismatisch)) {
+      fouten.push(`${naam}: Iw niet kleiner dan de prismatische kanaalformule`);
+    }
+  }
+
   console.log("=".repeat(74));
   console.log("ZELFTESTS OP DE FORMULES");
   console.log("=".repeat(74));
   if (fouten.length === 0) {
     console.log("Alle zelftests geslaagd (cirkellimiet, scherpe hoek, EN 10210-");
-    console.log("spotchecks, bovengrens koker, analytisch vs numeriek I-profiel).");
+    console.log("spotchecks, bovengrens koker, analytisch vs numeriek I-profiel,");
+    console.log("UNP-flensschuinte tegen DIN 1026-1 en de Iw-bovengrenzen).");
   } else {
     for (const f of fouten) console.log(`FOUT  ${f}`);
     process.exitCode = 1;
@@ -1085,7 +1376,7 @@ function bouwUitbreiding() {
     }
     eigenSleutels.add(s);
     eigenVingers.add(v);
-    const p = bereken(kand.kind, kand.geometry);
+    const p = bereken(kand.kind, kand.geometry, kand.schuin);
     delete p._z0_mm; // interne hulpwaarde hoort niet in het bestand
     nieuw.push({
       name: kand.name,
@@ -1272,11 +1563,234 @@ function zelfcontrole(nieuw) {
 }
 
 /* ==================================================================== *
- * 11. Aansturing                                                       *
+ * 11. Herstel van de handmatig ingevoerde profielen                    *
+ * ==================================================================== *
+ *
+ * De eerste 100 regels van profiles.json zijn met de hand overgetypt. De
+ * 39 hieronder hadden aantoonbaar foute, ONVEILIGE waarden:
+ *
+ *  - 21 van de 26 holle doorsneden hebben een Iy boven de scherpe-hoek
+ *    bovengrens (RHS tot +23,7%, CHS tot +7,9%, SHS tot +2,2%). Een doorsnede
+ *    met afgeronde hoeken kan nooit stijver zijn dan dezelfde met scherpe
+ *    hoeken; bij een CHS is de ringformule zelfs exact. Alle 26 worden
+ *    herberekend, ook de vijf die de grens net niet overschreden.
+ *  - 12 van de 13 U-profielen hebben een Iw van 2,00x tot 4,45x boven de
+ *    bovengrens Iz*hs^2/4, en een It die 43-60% boven een numerieke
+ *    Prandtl-oplossing ligt. Beide maken de kiptoetsing onveilig.
+ *
+ * UNP350 krijgt ALLEEN een nieuwe It en Iw. Zijn A, Wpl;y en Av;z zijn op een
+ * externe referentie-berekening geijkt (en de generator reproduceert Av;z
+ * daarvan onafhankelijk op 4945,7 vs 4946 mm2); zijn A/Iy/Iz vallen echter
+ * 1,3-6,3% naast de DIN-tabelwaarden, waardoor het schuinte-model daar niet
+ * binnen de gestelde 0,5% komt. Die waarden blijven dus staan.
+ */
+
+/** Holle doorsneden uit de handmatig ingevoerde set (SHS/RHS/CHS). */
+const HERSTEL_HOL = [
+  "HFRHS200X200X16",
+  "SHS 80x80x4", "SHS 100x100x5", "SHS 120x120x5", "SHS 150x150x6",
+  "SHS 200x200x8", "SHS 250x250x10", "SHS 300x300x10",
+  "RHS 100x50x4", "RHS 120x60x5", "RHS 150x100x6", "RHS 200x100x8",
+  "RHS 250x150x8", "RHS 300x200x10",
+  "CHS 42.4x3.2", "CHS 48.3x3.2", "CHS 60.3x4.0", "CHS 76.1x5.0",
+  "CHS 88.9x5.0", "CHS 114.3x6.3", "CHS 139.7x8.0", "CHS 168.3x8.0",
+  "CHS 219.1x10", "CHS 273x10", "CHS 323.9x12.5", "CHS 406.4x16",
+];
+
+/** UNP-profielen die volledig herberekend worden. */
+const HERSTEL_UNP = [
+  "UNP 80", "UNP 100", "UNP 120", "UNP 140", "UNP 160", "UNP 180",
+  "UNP 200", "UNP 220", "UNP 240", "UNP 260", "UNP 280", "UNP 300",
+];
+
+/** UNP-profielen waarvan alleen de torsiegrootheden hersteld worden. */
+const HERSTEL_UNP_TORSIE = ["UNP350"];
+
+function herstel() {
+  const ruw = readFileSync(bestaandPad, "utf8");
+  const crlf = ruw.includes("\r\n");
+  const eindNieuweRegel = /\n$/.test(ruw);
+  const db = JSON.parse(ruw);
+  const opNaam = new Map(db.map((p) => [p.name, p]));
+  const regels = [];
+
+  const pak = (naam) => {
+    const p = opNaam.get(naam);
+    if (!p) throw new Error(`Profiel niet in de database: ${naam}`);
+    return p;
+  };
+  const verschil = (oud, nieuw, sleutels) => sleutels
+    .filter((k) => Number.isFinite(oud[k]) && oud[k] !== 0)
+    .map((k) => ({ k, pct: ((nieuw[k] - oud[k]) / oud[k]) * 100 }))
+    .filter((d) => Math.abs(d.pct) >= 0.05);
+
+  // --- Holle doorsneden -------------------------------------------------
+  for (const naam of HERSTEL_HOL) {
+    const p = pak(naam);
+    const t = p.geometry.t ?? p.geometry.tw;
+    if (!Number.isFinite(t) || t <= 0) {
+      throw new Error(`${naam}: geen bruikbare wanddikte in de geometrie`);
+    }
+    // EN 10210-2: buitenhoekstraal 1,5*t (buis: geen hoek, dus 0). De oude
+    // regels hadden r = t staan, wat de binnenstraal is; die waarde is nooit
+    // in een berekening gebruikt maar hoort wel bij de doorsnede.
+    const r = p.kind === "Chs" ? 0 : 1.5 * t;
+    const g = { ...p.geometry, t, r };
+    const nieuw = p.kind === "Chs" ? berekenBuis(g) : berekenKoker(g);
+    const oud = p.properties;
+    regels.push({ naam, verschillen: verschil(oud, nieuw, GROOTHEDEN) });
+    p.geometry.r = r;
+    p.properties = Object.fromEntries(
+      Object.entries(nieuw).map(([k, v]) => [k, afgerond(v)]),
+    );
+  }
+
+  // --- U-profielen, volledig -------------------------------------------
+  for (const naam of HERSTEL_UNP) {
+    const p = pak(naam);
+    const nieuw = berekenUProfielSchuin(p.geometry);
+    delete nieuw._z0_mm;
+    regels.push({ naam, verschillen: verschil(p.properties, nieuw, GROOTHEDEN) });
+    p.properties = Object.fromEntries(
+      Object.entries(nieuw).map(([k, v]) => [k, afgerond(v)]),
+    );
+  }
+
+  // --- U-profielen, alleen It en Iw ------------------------------------
+  for (const naam of HERSTEL_UNP_TORSIE) {
+    const p = pak(naam);
+    const g = p.geometry;
+    const nieuw = {
+      it_mm4: afgerond(itUProfiel(g)),
+      iw_mm6: afgerond(iwUnpSchuin(g).Iw),
+    };
+    regels.push({
+      naam,
+      verschillen: verschil(p.properties, nieuw, ["it_mm4", "iw_mm6"]),
+    });
+    Object.assign(p.properties, nieuw);
+  }
+
+  let uit = JSON.stringify(db, null, 2);
+  if (eindNieuweRegel) uit += "\n";
+  if (crlf) uit = uit.replace(/\n/g, "\r\n");
+  writeFileSync(bestaandPad, uit, "utf8");
+
+  console.log("=".repeat(74));
+  console.log("HERSTEL VAN DE HANDMATIG INGEVOERDE PROFIELEN");
+  console.log("=".repeat(74));
+  console.log(`Bestand: ${bestaandPad}`);
+  console.log(
+    `Herberekend: ${HERSTEL_HOL.length} holle doorsneden + ` +
+    `${HERSTEL_UNP.length} U-profielen; ` +
+    `${HERSTEL_UNP_TORSIE.length} U-profiel alleen It en Iw.`,
+  );
+  console.log("\nWijziging per profiel (alleen grootheden die >= 0,05% schuiven):");
+  for (const { naam, verschillen } of regels) {
+    if (verschillen.length === 0) {
+      console.log(`   ${naam.padEnd(16)} ongewijzigd`);
+      continue;
+    }
+    console.log(
+      `   ${naam.padEnd(16)} ` +
+      verschillen
+        .map((d) => `${d.k.replace(/_mm\d?$/, "")} ${d.pct >= 0 ? "+" : ""}${d.pct.toFixed(1)}%`)
+        .join("  "),
+    );
+  }
+  return db;
+}
+
+/* ==================================================================== *
+ * 12. Eindcontrole op de HELE database                                 *
+ * ==================================================================== */
+
+/**
+ * Controleert alle profielen in profiles.json op de twee formulevrije
+ * bovengrenzen plus de interne consistentie. Dit is de acceptatietest van de
+ * herstelronde: er mag geen enkele overschrijding overblijven.
+ */
+function eindcontrole() {
+  const db = JSON.parse(readFileSync(bestaandPad, "utf8"));
+  const fouten = [];
+  const rel = (a, b) => Math.abs(a - b) / Math.abs(b);
+  let nHol = 0;
+  let nU = 0;
+
+  for (const p of db) {
+    const g = p.geometry;
+    const q = p.properties;
+    const t = g.t || g.tw;
+
+    if (["Shs", "Rhs", "Chs"].includes(p.kind)) {
+      nHol += 1;
+      // Scherpe-hoek bovengrens; bij een CHS is de ringformule exact.
+      const scherpA = p.kind === "Chs"
+        ? (Math.PI / 4) * (g.h ** 2 - (g.h - 2 * t) ** 2)
+        : g.b * g.h - (g.b - 2 * t) * (g.h - 2 * t);
+      const scherpY = p.kind === "Chs"
+        ? (Math.PI / 64) * (g.h ** 4 - (g.h - 2 * t) ** 4)
+        : (g.b * g.h ** 3 - (g.b - 2 * t) * (g.h - 2 * t) ** 3) / 12;
+      const scherpZ = p.kind === "Chs"
+        ? scherpY
+        : (g.h * g.b ** 3 - (g.h - 2 * t) * (g.b - 2 * t) ** 3) / 12;
+      if (q.area_mm2 > scherpA * 1.0001) fouten.push(`${p.name}: A boven de scherpe-hoek bovengrens`);
+      if (q.iy_mm4 > scherpY * 1.0001) fouten.push(`${p.name}: Iy boven de scherpe-hoek bovengrens`);
+      if (q.iz_mm4 > scherpZ * 1.0001) fouten.push(`${p.name}: Iz boven de scherpe-hoek bovengrens`);
+    }
+
+    if (p.kind === "Channel") {
+      nU += 1;
+      const grens = (q.iz_mm4 * (g.h - g.tf) ** 2) / 4;
+      if (q.iw_mm6 > grens) fouten.push(`${p.name}: Iw boven de bovengrens Iz*hs^2/4`);
+    }
+
+    // Interne consistentie. Tolerantie 0,5%: de handmatig ingevoerde regels
+    // die niet in deze herstelronde vallen staan op drie significante cijfers,
+    // en dan is Iy/(h/2) niet exact gelijk aan de afgeronde Wel;y.
+    if (rel(q.iy_radius_mm, Math.sqrt(q.iy_mm4 / q.area_mm2)) > 5e-3) {
+      fouten.push(`${p.name}: iy != sqrt(Iy/A)`);
+    }
+    if (rel(q.iz_radius_mm, Math.sqrt(q.iz_mm4 / q.area_mm2)) > 5e-3) {
+      fouten.push(`${p.name}: iz != sqrt(Iz/A)`);
+    }
+    if (rel(q.wel_y_mm3, q.iy_mm4 / (g.h / 2)) > 5e-3) {
+      fouten.push(`${p.name}: Wel;y != Iy/(h/2)`);
+    }
+    if (!(q.wpl_y_mm3 >= q.wel_y_mm3)) fouten.push(`${p.name}: Wpl;y < Wel;y`);
+    if (!(q.wpl_z_mm3 >= q.wel_z_mm3)) fouten.push(`${p.name}: Wpl;z < Wel;z`);
+    if (!(q.av_z_mm2 > 0 && q.av_z_mm2 < q.area_mm2)) fouten.push(`${p.name}: Av;z buiten (0, A)`);
+    if (!(q.av_y_mm2 > 0 && q.av_y_mm2 < q.area_mm2)) fouten.push(`${p.name}: Av;y buiten (0, A)`);
+    for (const k of ["area_mm2", "iy_mm4", "iz_mm4", "it_mm4"]) {
+      if (!(q[k] > 0)) fouten.push(`${p.name}: ${k} niet positief`);
+    }
+    if (!(q.iw_mm6 >= 0)) fouten.push(`${p.name}: Iw negatief`);
+  }
+
+  console.log("=".repeat(74));
+  console.log("EINDCONTROLE OP DE HELE DATABASE");
+  console.log("=".repeat(74));
+  console.log(
+    `${db.length} profielen: ${nHol} holle doorsneden tegen de scherpe-hoek ` +
+    `bovengrens, ${nU} U-profielen tegen Iz*hs^2/4, alle 416 op interne ` +
+    `consistentie (iy = wortel(Iy/A), Wel;y = Iy/(h/2), Wpl >= Wel, 0 < Av < A).`,
+  );
+  if (fouten.length === 0) {
+    console.log("NUL overschrijdingen.");
+  } else {
+    console.log(`${fouten.length} overschrijdingen:`);
+    for (const f of fouten) console.log(`   FOUT  ${f}`);
+    process.exitCode = 1;
+  }
+}
+
+/* ==================================================================== *
+ * 13. Aansturing                                                       *
  * ==================================================================== */
 
 const vlaggen = process.argv.slice(2);
 const alles = vlaggen.length === 0;
+if (vlaggen.includes("--herstel")) herstel();
 if (alles || vlaggen.includes("--zelftests")) zelftests();
 if (alles || vlaggen.includes("--valideer")) valideer();
 if (alles || vlaggen.includes("--schrijf") || vlaggen.includes("--zelfcontrole")) {
@@ -1285,3 +1799,4 @@ if (alles || vlaggen.includes("--schrijf") || vlaggen.includes("--zelfcontrole")
     : bouwUitbreiding().nieuw;
   if (alles || vlaggen.includes("--zelfcontrole")) zelfcontrole(nieuw);
 }
+if (alles || vlaggen.includes("--eindcontrole")) eindcontrole();
