@@ -3252,9 +3252,12 @@ dependencies = [
  "mechanics",
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-1-stability",
+ "nen-en-1995-1-1",
  "openaec-layout",
  "serde",
+ "serde_json",
  "steel-check",
+ "timber-check",
  "ts-rs",
 ]
 

@@ -88,6 +88,7 @@ fn produces_valid_pdf_header() {
             dummy_beam(2, "HEB300", 0.87),
             dummy_beam(3, "UNP350", 1.12),
         ],
+        timber_check_results: vec![],
     };
 
     let bytes = generate_report_pdf(input);

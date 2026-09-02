@@ -12,6 +12,7 @@ import { createBlankReport } from '../types/report';
 import type { ReportInput } from '../lib/types/steel/ReportInput';
 import { useCheckStore } from './checkStore';
 import { isSteelCheckResult } from '../lib/checkTypes';
+import type { TimberBeamCheckResult } from '../lib/types/timber/TimberBeamCheckResult';
 import { isTauriApp, DESKTOP_ONLY_MSG } from '../lib/tauri';
 import { getSetting } from '../store';
 
@@ -232,28 +233,17 @@ export const useReportStore = create<ReportState>((set, get) => ({
         throw new Error(DESKTOP_ONLY_MSG);
       }
 
-      // PDF-route: het staaltoetsingsrapport uit de Rust report-crate
-      // (generate_steel_report_pdf). Die dekt nu alleen staal (EN 1993);
-      // houtresultaten (EN 1995) worden gefilterd met melding.
+      // PDF-route: het toetsingsrapport uit de Rust report-crate. Sinds de
+      // materiaal-neutrale uitbreiding gaan staal (EN 1993) én hout (EN 1995)
+      // samen mee; de renderer sorteert alles op staaf-id en toont per staaf
+      // de bijbehorende norm.
       const { results } = useCheckStore.getState();
       const steelResults = results.filter(isSteelCheckResult);
-      const timberCount = results.length - steelResults.length;
+      const timberResults = results.filter((r): r is TimberBeamCheckResult => !isSteelCheckResult(r));
 
       if (results.length === 0) {
         throw new Error(
-          'Geen toetsingsresultaten. Voer eerst de normtoetsing uit (tabblad Toetsing) — het PDF-rapport bevat de EN 1993-afleidingen per staaf.',
-        );
-      }
-      if (steelResults.length === 0) {
-        throw new Error(
-          'Alleen houtresultaten aanwezig — het PDF-rapport dekt momenteel uitsluitend staal (EN 1993). Een houtrapport (EN 1995) bestaat nog niet.',
-        );
-      }
-      if (timberCount > 0) {
-        const { notifyInfo } = await import('../io/notify');
-        notifyInfo(
-          'Houtresultaten niet in PDF',
-          `${timberCount} houtresultaat/-resultaten (EN 1995) zijn niet opgenomen — het PDF-rapport dekt nu alleen staal (EN 1993).`,
+          'Geen toetsingsresultaten. Voer eerst de normtoetsing uit (tabblad Toetsing) — het PDF-rapport bevat de afleidingen per staaf.',
         );
       }
 
@@ -269,6 +259,7 @@ export const useReportStore = create<ReportState>((set, get) => ({
         company: projectInfo.company || '',
         date: report.date || projectInfo.date || new Date().toISOString().slice(0, 10),
         steel_check_results: steelResults,
+        timber_check_results: timberResults,
       };
 
       const bytes = await invoke<number[]>('generate_steel_report_pdf', { input });

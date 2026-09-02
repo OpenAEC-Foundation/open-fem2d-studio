@@ -1,4 +1,5 @@
-//! Steel-check PDF report — built on **OpenAEC Foundation `openaec-layout`**.
+//! Constructieve-toetsing PDF report (EN 1993-1-1 staal + EN 1995-1-1 hout) —
+//! built on **OpenAEC Foundation `openaec-layout`**.
 //!
 //! `openaec-layout` is the Rust equivalent of ReportLab Platypus: Flowables
 //! (Paragraph, Table, Spacer, PageBreak) flow through Frames in PageTemplates,
@@ -23,7 +24,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue};
-use steel_check::result::{BeamCheckResult, CheckKind};
+use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
+use timber_check::TimberBeamCheckResult;
 
 // ── Bundled fonts (Liberation Sans, OFL licence) ──────────────────────────────
 
@@ -54,6 +56,107 @@ pub struct ReportInput {
     pub company: String,
     pub date: String,
     pub steel_check_results: Vec<BeamCheckResult>,
+    /// Houttoetsingen (EN 1995-1-1). `#[serde(default)]` zodat bestaande
+    /// aanroepen zonder dit veld geldig blijven; in TypeScript daarom
+    /// optioneel.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<TimberBeamCheckResult>>", optional)]
+    pub timber_check_results: Vec<TimberBeamCheckResult>,
+}
+
+// ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
+
+/// Kort normlabel voor staaltoetsingen.
+pub const NORM_STEEL: &str = "EN 1993-1-1";
+/// Kort normlabel voor houttoetsingen.
+pub const NORM_TIMBER: &str = "EN 1995-1-1";
+
+/// Volledige normaanduiding (cover) voor staal.
+const NORM_STEEL_FULL: &str = "NEN-EN 1993-1-1+C2+A1/NB:2016 nl";
+/// Volledige normaanduiding (cover) voor hout.
+const NORM_TIMBER_FULL: &str = "NEN-EN 1995-1-1+C1+A1:2011/NB:2013 nl";
+
+/// Uniforme, materiaal-neutrale kijk op één getoetste staaf. De
+/// samenvattingstabel en de per-staaf-blokken worden hieruit gerenderd, zodat
+/// staal en hout gegarandeerd hetzelfde pad volgen.
+pub struct ReportMember<'a> {
+    pub beam_id: u32,
+    /// Kort normlabel: [`NORM_STEEL`] of [`NORM_TIMBER`].
+    pub norm: &'static str,
+    /// Profiel- of doorsnedenaam ("HEB160", "96 x 450").
+    pub section_label: &'a str,
+    /// Staalsoort of sterkteklasse ("S235", "C24").
+    pub grade_label: &'a str,
+    pub uc_max: f64,
+    pub status: &'a CheckStatus,
+    pub governing_check_id: &'a str,
+    pub checks: &'a [NamedCheck],
+}
+
+/// Alle staven (staal + hout) als [`ReportMember`], gesorteerd op staaf-id.
+/// Bij gelijk id komt staal vóór hout (stabiele sortering).
+pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
+    let mut members: Vec<ReportMember<'_>> = Vec::with_capacity(
+        input.steel_check_results.len() + input.timber_check_results.len(),
+    );
+
+    for r in &input.steel_check_results {
+        members.push(ReportMember {
+            beam_id: r.beam_id,
+            norm: NORM_STEEL,
+            section_label: &r.profile_name,
+            grade_label: &r.steel_grade,
+            uc_max: r.uc_max,
+            status: &r.status,
+            governing_check_id: &r.governing_check_id,
+            checks: &r.checks,
+        });
+    }
+
+    for r in &input.timber_check_results {
+        members.push(ReportMember {
+            beam_id: r.beam_id,
+            norm: NORM_TIMBER,
+            section_label: &r.section_name,
+            grade_label: &r.strength_class,
+            uc_max: r.uc_max,
+            status: &r.status,
+            governing_check_id: &r.governing_check_id,
+            checks: &r.checks,
+        });
+    }
+
+    members.sort_by_key(|m| m.beam_id);
+    members
+}
+
+/// Normenregel voor cover en paginakop: alleen normen waarvan resultaten
+/// aanwezig zijn, gescheiden door " / " ("EN 1993-1-1 / EN 1995-1-1").
+pub fn norms_line(input: &ReportInput) -> String {
+    let mut norms: Vec<&str> = Vec::with_capacity(2);
+    if !input.steel_check_results.is_empty() {
+        norms.push(NORM_STEEL);
+    }
+    if !input.timber_check_results.is_empty() {
+        norms.push(NORM_TIMBER);
+    }
+    if norms.is_empty() {
+        // Leeg rapport: toon beide normen als kader in plaats van niets.
+        norms.push(NORM_STEEL);
+    }
+    norms.join(" / ")
+}
+
+/// Volledige normaanduidingen voor het cover-infoblok, in rapportvolgorde.
+fn full_norm_designations(input: &ReportInput) -> Vec<&'static str> {
+    let mut norms: Vec<&'static str> = Vec::with_capacity(2);
+    if !input.steel_check_results.is_empty() || input.timber_check_results.is_empty() {
+        norms.push(NORM_STEEL_FULL);
+    }
+    if !input.timber_check_results.is_empty() {
+        norms.push(NORM_TIMBER_FULL);
+    }
+    norms
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -193,7 +296,11 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     }
 
     // 2. DocTemplate + page template with header/footer callback.
-    let mut doc = DocTemplate::new("EN 1993 Steel Check Report", fonts.clone());
+    let norms = norms_line(&input);
+    let mut doc = DocTemplate::new(
+        &format!("Constructieve toetsing — {}", norms),
+        fonts.clone(),
+    );
 
     let margin_x: Pt = Mm(20.0).into();
     let margin_top: Pt = Mm(28.0).into(); // header band
@@ -210,14 +317,17 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     let template = PageTemplate::new("content", A4, frame).with_callback(Box::new(
         OpenAecHeaderFooter {
             project: input.project_name.clone(),
+            norms: norms.clone(),
         },
     ));
     doc.add_page_template(template);
 
     // 3. Cover page (RawPage — drawn directly).
-    doc.add_pre_page(build_cover_page(&input));
+    doc.add_pre_page(build_cover_page(&input, &norms));
 
-    // 4. Build content flowables.
+    // 4. Build content flowables — steel and timber members share one path.
+    let members = report_members(&input);
+
     let mut flow: Vec<Box<dyn Flowable>> = Vec::new();
 
     flow.push(Box::new(Paragraph::new(
@@ -226,27 +336,26 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     )));
     flow.push(Box::new(Spacer::from_mm(2.0)));
 
-    flow.push(Box::new(build_summary_table(&input.steel_check_results)));
+    flow.push(Box::new(build_summary_table(&members)));
     flow.push(Box::new(Spacer::from_mm(6.0)));
 
-    for (idx, r) in input.steel_check_results.iter().enumerate() {
-        if idx > 0 || !input.steel_check_results.is_empty() {
-            flow.push(Box::new(PageBreak));
-        }
+    for (idx, m) in members.iter().enumerate() {
+        flow.push(Box::new(PageBreak));
 
         flow.push(Box::new(Paragraph::new(
             format!(
-                "{}. Beam {} — {} ({})",
+                "{}. Beam {} — {} ({})    [{}]",
                 idx + 1,
-                r.beam_id,
-                r.profile_name,
-                r.steel_grade
+                m.beam_id,
+                m.section_label,
+                m.grade_label,
+                m.norm
             ),
             style_h2(),
         )));
         flow.push(Box::new(Spacer::from_mm(3.0)));
 
-        for nc in &r.checks {
+        for nc in m.checks {
             extend_with_check_block(&mut flow, &nc.kind);
         }
     }
@@ -257,7 +366,7 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 
 // ── Cover page (drawn manually onto a RawPage) ────────────────────────────────
 
-fn build_cover_page(input: &ReportInput) -> RawPage {
+fn build_cover_page(input: &ReportInput, norms: &str) -> RawPage {
     let mut dl = DrawList::new();
 
     // Background tint band at top
@@ -299,14 +408,15 @@ fn build_cover_page(input: &ReportInput) -> RawPage {
     dl.set_fill_color(C_MUTED);
     dl.draw_text(Pt(left.0 + 200.0), Mm(45.0).into(), "Foundation");
 
-    // Title block
+    // Title block — material-neutral: "Constructieve toetsing" plus the
+    // norms actually present in the results.
     dl.set_font("LiberationSans-Bold", Pt(28.0));
     dl.set_fill_color(C_TEXT);
-    dl.draw_text(left, Mm(95.0).into(), "EN 1993-1-1");
+    dl.draw_text(left, Mm(95.0).into(), "Constructieve toetsing");
 
     dl.set_font("LiberationSans-Bold", Pt(22.0));
     dl.set_fill_color(C_TEXT);
-    dl.draw_text(left, Mm(108.0).into(), "Steel Check Report");
+    dl.draw_text(left, Mm(108.0).into(), norms);
 
     dl.set_font("LiberationSans-Italic", Pt(13.0));
     dl.set_fill_color(C_MUTED);
@@ -317,16 +427,18 @@ fn build_cover_page(input: &ReportInput) -> RawPage {
     let value_x: Pt = Pt(left.0 + Mm(35.0).0 * 2.834_645_7);
     let mut y_mm = 145.0_f32;
 
-    let rows: &[(&str, &str)] = &[
+    let mut rows: Vec<(&str, &str)> = vec![
         ("Project", input.project_name.as_str()),
         ("Number", input.project_number.as_str()),
         ("Engineer", input.engineer.as_str()),
         ("Company", input.company.as_str()),
         ("Date", input.date.as_str()),
-        ("Standard", "NEN-EN 1993-1-1+C2+A1/NB:2016 nl"),
     ];
+    for (i, designation) in full_norm_designations(input).iter().enumerate() {
+        rows.push((if i == 0 { "Standard" } else { "" }, designation));
+    }
 
-    for (label, val) in rows {
+    for (label, val) in &rows {
         dl.set_font("LiberationSans-Bold", Pt(9.5));
         dl.set_fill_color(C_AMBER);
         dl.draw_text(label_x, Mm(y_mm).into(), label);
@@ -358,6 +470,7 @@ fn build_cover_page(input: &ReportInput) -> RawPage {
 #[derive(Debug)]
 struct OpenAecHeaderFooter {
     project: String,
+    norms: String,
 }
 
 impl PageCallback for OpenAecHeaderFooter {
@@ -400,7 +513,7 @@ impl PageCallback for OpenAecHeaderFooter {
         dl.draw_text(
             Pt(left.0 + 60.0),
             baseline,
-            &format!("EN 1993-1-1 — {}", self.project),
+            &format!("{} — {}", self.norms, self.project),
         );
 
         // Page-number on the right of the header
@@ -437,26 +550,28 @@ impl PageCallback for OpenAecHeaderFooter {
 
 // ── Summary table ─────────────────────────────────────────────────────────────
 
-fn build_summary_table(rows: &[BeamCheckResult]) -> Table {
+fn build_summary_table(members: &[ReportMember<'_>]) -> Table {
     let headers: Vec<String> = vec![
         "Beam".into(),
-        "Profile".into(),
+        "Section".into(),
         "Grade".into(),
+        "Standard".into(),
         "UC".into(),
         "Governing".into(),
         "Status".into(),
     ];
 
-    let body: Vec<Vec<String>> = rows
+    let body: Vec<Vec<String>> = members
         .iter()
-        .map(|r| {
+        .map(|m| {
             vec![
-                r.beam_id.to_string(),
-                r.profile_name.clone(),
-                r.steel_grade.clone(),
-                format!("{:.2}", r.uc_max),
-                r.governing_check_id.clone(),
-                status_label(&r.status).into(),
+                m.beam_id.to_string(),
+                m.section_label.to_string(),
+                m.grade_label.to_string(),
+                m.norm.to_string(),
+                format!("{:.2}", m.uc_max),
+                m.governing_check_id.to_string(),
+                status_label(m.status).into(),
             ]
         })
         .collect();
@@ -477,12 +592,13 @@ fn build_summary_table(rows: &[BeamCheckResult]) -> Table {
     // Column widths chosen to fit within the inner content frame (~170mm)
     Table::new(headers, body)
         .with_col_widths(vec![
-            Mm(15.0).into(),
-            Mm(35.0).into(),
-            Mm(20.0).into(),
-            Mm(15.0).into(),
-            Mm(60.0).into(),
-            Mm(20.0).into(),
+            Mm(13.0).into(),
+            Mm(30.0).into(),
+            Mm(16.0).into(),
+            Mm(26.0).into(),
+            Mm(13.0).into(),
+            Mm(50.0).into(),
+            Mm(18.0).into(),
         ])
         .with_style(style)
         .with_repeat_header(true)

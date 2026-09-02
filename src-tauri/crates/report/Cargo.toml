@@ -13,8 +13,11 @@ ts-rs = { workspace = true }
 # Vendored from crates-warehouse/openaec-layout (May 2026) into ../openaec-layout.
 openaec-layout = { path = "../openaec-layout" }
 steel-check = { path = "../steel-check" }
+timber-check = { path = "../timber-check" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
 
 [dev-dependencies]
 mechanics = { path = "../mechanics" }
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
+serde_json = { workspace = true }
