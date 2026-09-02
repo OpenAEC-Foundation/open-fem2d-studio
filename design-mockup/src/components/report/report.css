@@ -1,0 +1,338 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   report.css — het live HTML-rapport (ReportShell + secties).
+
+   Twee lagen:
+   1. Schermweergave: donkere "bureau"-achtergrond met witte vellen op
+      papierformaat (mm), zoombaar via --rpt-zoom.
+   2. Print (@media print): scherm-chrome weg, vellen worden de printflow;
+      marges en kop-/voettekst komen uit de dynamische @page-regel die
+      ReportShell injecteert. Zelfde DOM, zelfde inhoud.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Shell-layout (scherm) ─── */
+.report-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.report-shell-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+  background: var(--theme-bg-lighter);
+  border-bottom: 1px solid var(--theme-border-subtle);
+  flex-shrink: 0;
+}
+
+.report-shell-info {
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+}
+
+.report-zoom-control input[type="range"] {
+  width: 110px;
+  accent-color: var(--theme-accent);
+}
+
+.report-zoom-pct {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-print-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: var(--theme-btn-primary-bg);
+  border: none;
+  border-radius: 4px;
+  color: var(--theme-btn-primary-text);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+
+.report-print-btn:hover {
+  background: var(--theme-btn-primary-hover-bg);
+}
+
+.report-scroll {
+  flex: 1;
+  overflow: auto;
+  background: #52525b;
+}
+
+/* Zoombare kolom vellen. `zoom` (i.p.v. transform) laat de scroll-container
+   gewoon meegroeien/krimpen — geen dode witruimte bij uitzoomen. */
+.report-zoom {
+  zoom: var(--rpt-zoom, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+}
+
+/* ─── Het vel (scherm) ───
+   Padding = de @page-printmarge (18/15/20/15 mm), zodat scherm en print
+   dezelfde tekstbreedte tonen. min-height geeft de A4/A3-contour. */
+.report-page {
+  background: #fff;
+  width: var(--rpt-page-w, 210mm);
+  min-height: var(--rpt-page-h, 297mm);
+  padding: 18mm 15mm 20mm 15mm;
+  box-sizing: border-box;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+}
+
+.report-no-sections {
+  color: #d4d4d8;
+  font-size: 13px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+/* ─── Rapport-typografie (scherm én print: het document is altijd
+   zwart-op-wit, onafhankelijk van het app-thema) ─── */
+.report-page {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 10pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+}
+
+.rpt-doc-kind {
+  font-size: 8.5pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #666;
+  margin-bottom: 2mm;
+}
+
+.rpt-project-title {
+  font-size: 20pt;
+  font-weight: 700;
+  margin: 0 0 1mm;
+  color: #111;
+}
+
+.rpt-project-location {
+  font-size: 11pt;
+  color: #444;
+  margin-bottom: 4mm;
+}
+
+.rpt-project-description {
+  margin-top: 5mm;
+  color: #333;
+}
+
+.rpt-h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 0 0 3mm;
+  padding-bottom: 1.5mm;
+  border-bottom: 0.5mm solid #1a1a1a;
+  color: #111;
+}
+
+.rpt-h3 {
+  font-size: 10.5pt;
+  font-weight: 700;
+  margin: 5mm 0 2mm;
+  color: #111;
+}
+
+.rpt-note {
+  font-size: 9pt;
+  color: #555;
+  margin: 0 0 3mm;
+}
+
+.rpt-empty-note {
+  font-size: 10pt;
+  color: #555;
+  font-style: italic;
+  border: 1px dashed #bbb;
+  padding: 4mm;
+  margin: 4mm 0 0;
+}
+
+/* Metadata-tabel in de projectkop */
+.rpt-meta-table {
+  border-collapse: collapse;
+  margin-top: 4mm;
+}
+
+.rpt-meta-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #555;
+  padding: 1mm 8mm 1mm 0;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.rpt-meta-table td {
+  padding: 1mm 0;
+  color: #1a1a1a;
+}
+
+/* Gegevens-/resultaattabellen */
+.rpt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.rpt-table th,
+.rpt-table td {
+  border: 0.2mm solid #999;
+  padding: 1.4mm 2mm;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rpt-table thead th {
+  background: #ececec;
+  font-weight: 700;
+}
+
+.rpt-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.rpt-uc-fail {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.rpt-status-ok {
+  color: #15803d;
+}
+
+.rpt-status-fail {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.rpt-skipped ul {
+  margin: 0;
+  padding-left: 5mm;
+  font-size: 9pt;
+  color: #444;
+}
+
+.rpt-skipped li {
+  margin-bottom: 1mm;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Print — zelfde inhoud, app-chrome weg. De @page-regel (formaat, marges,
+   kop-/voettekst met paginanummers) injecteert ReportShell dynamisch.
+   ═══════════════════════════════════════════════════════════════════════ */
+@media print {
+  /* App-chrome volledig uit de printflow. */
+  .titlebar,
+  .ribbon-container,
+  .document-bar,
+  .status-bar,
+  .toast-host,
+  .left-panel,
+  .right-panel,
+  .detached-dock-bar,
+  .report-sidebar,
+  .report-sidebar-collapsed,
+  .report-shell-toolbar {
+    display: none !important;
+  }
+
+  /* Vaste-hoogte app-layout loslaten zodat de vellen de printflow vormen. */
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .content,
+  .main-view,
+  .report-preview,
+  .report-shell,
+  .report-scroll {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .report-zoom {
+    zoom: 1 !important;
+    display: block !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Het vel: marges komen nu uit @page, dus geen eigen maat/padding meer.
+     Elke sectie begint op een nieuwe pagina; binnen een sectie houden
+     blokken en tabelrijen zichzelf bijeen. */
+  .report-page {
+    width: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+  }
+
+  .report-page:last-child {
+    break-after: auto;
+  }
+
+  .rpt-block {
+    break-inside: avoid;
+  }
+
+  .rpt-table tr {
+    break-inside: avoid;
+  }
+
+  /* Tabelkop herhalen wanneer een lange tabel tóch over pagina's breekt. */
+  .rpt-table thead {
+    display: table-header-group;
+  }
+
+  .report-no-sections {
+    color: #555;
+  }
+}

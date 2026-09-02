@@ -27,3 +27,19 @@ export async function setSetting<T>(key: string, value: T): Promise<void> {
     // silently fail if store unavailable
   }
 }
+
+/**
+ * Abonneer op wijzigingen van één setting (Tauri plugin-store `onKeyChange`).
+ * Retourneert een unsubscribe-functie; in de browser (geen Tauri) een no-op.
+ */
+export async function onSettingChange<T>(
+  key: string,
+  cb: (value: T | undefined) => void,
+): Promise<() => void> {
+  try {
+    const store = await getStore();
+    return await store.onKeyChange<T>(key, (value) => cb(value ?? undefined));
+  } catch {
+    return () => {};
+  }
+}
