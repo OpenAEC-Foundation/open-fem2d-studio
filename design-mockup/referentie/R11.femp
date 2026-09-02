@@ -1,0 +1,110 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:49:17.890Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 1000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 500,
+      "z": 500
+    },
+    {
+      "id": 4,
+      "x": 2000,
+      "z": 1000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 3,
+      "material": "GL36h",
+      "profile": "50x53.38775510204082",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "GL36h",
+      "profile": "50x53.38775510204082",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "GL36h",
+      "profile": "25x53.38775510204082",
+      "releases": {}
+    },
+    {
+      "id": 4,
+      "from": 2,
+      "to": 4,
+      "material": "GL36h",
+      "profile": "25x53.38775510204082",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 4,
+      "fx": 0,
+      "fz": -9.81
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "F = 9,81 kN (R11 — doorsnede is E·A-surrogaat, zie toets-R11.mjs)",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "Referentie 1,0·F",
+      "type": "sls",
+      "formula": "1,0 · F",
+      "factors": {
+        "1": 1
+      }
+    }
+  ]
+}

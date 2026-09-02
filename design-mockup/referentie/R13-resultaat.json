@@ -1,0 +1,181 @@
+{
+  "kenmerk": "R13",
+  "gedraaid": "2026-09-02T22:53:09.972Z",
+  "aanname": "doorsnede 533x210x92 UKB ontbreekt in de profieldatabase; A/Iy/Wpl,y/Av uit de bron opgegeven",
+  "doorsnedeklasse": "Class1",
+  "maatgevendeToets": "6.2.5_bending_y",
+  "ucMax": 0.8314705917758101,
+  "grootsteAfwijkingPct": 1.108998861297561,
+  "rijen": [
+    {
+      "grootheid": "M_Ed in het midden",
+      "eenheid": "kN·m",
+      "referentie": 539.5,
+      "onze": 539.6244140625007,
+      "afwijkingPct": 0.023060993976034266,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "V_Ed bij de oplegging",
+      "eenheid": "kN",
+      "referentie": 269.5,
+      "onze": 269.60156250000017,
+      "afwijkingPct": 0.0376855287570206,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "V_c,Ed bij max. moment",
+      "eenheid": "kN",
+      "referentie": 62.5,
+      "onze": 62.47500000000017,
+      "afwijkingPct": -0.03999999999972488,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Oplegreactie A",
+      "eenheid": "kN",
+      "referentie": 269.5,
+      "onze": 269.60156250000017,
+      "afwijkingPct": 0.0376855287570206,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Oplegreactie B",
+      "eenheid": "kN",
+      "referentie": 269.5,
+      "onze": 269.60156250000017,
+      "afwijkingPct": 0.0376855287570206,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "BGT-doorbuiging w",
+      "eenheid": "mm",
+      "referentie": 8.5,
+      "onze": 8.483072355037264,
+      "afwijkingPct": -0.19914876426748782,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Grenswaarde w_lim = L/360",
+      "eenheid": "mm",
+      "referentie": 18.1,
+      "onze": 18.055555555555557,
+      "afwijkingPct": -0.24554941682013418,
+      "tolerantiePct": 1,
+      "herkomst": "solver",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Vpl,Rd (toetsmodule)",
+      "eenheid": "kN",
+      "referentie": 909,
+      "onze": 908.7499010547403,
+      "afwijkingPct": -0.02751363534209586,
+      "tolerantiePct": 1,
+      "herkomst": "toets",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "UC dwarskracht",
+      "eenheid": "—",
+      "referentie": 0.3,
+      "onze": 0.2966730034161073,
+      "afwijkingPct": -1.108998861297561,
+      "tolerantiePct": 6.7,
+      "herkomst": "toets",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Mc,Rd = Mpl,Rd (module)",
+      "eenheid": "kN·m",
+      "referentie": 649,
+      "onze": 649,
+      "afwijkingPct": 0,
+      "tolerantiePct": 1,
+      "herkomst": "toets",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "UC buiging",
+      "eenheid": "—",
+      "referentie": 0.83,
+      "onze": 0.8314705917758101,
+      "afwijkingPct": 0.17717973202531373,
+      "tolerantiePct": 2.4,
+      "herkomst": "toets",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "M+V (§6.2.8) → Mc,Rd",
+      "eenheid": "kN·m",
+      "referentie": 649,
+      "onze": 649,
+      "afwijkingPct": 0,
+      "tolerantiePct": 1,
+      "herkomst": "toets",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "w_lim in de toetsmodule",
+      "eenheid": "mm",
+      "referentie": 18.1,
+      "onze": 18.055555555555557,
+      "afwijkingPct": -0.24554941682013418,
+      "tolerantiePct": 1,
+      "herkomst": "toets",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Av (§6.2.6(3))",
+      "eenheid": "mm²",
+      "referentie": 5723.6,
+      "onze": 5723.64,
+      "afwijkingPct": 0.0006988608568027748,
+      "tolerantiePct": 1,
+      "herkomst": "bron",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Vpl,Rd (§6.2.6(2))",
+      "eenheid": "kN",
+      "referentie": 909,
+      "onze": 908.7499010547402,
+      "afwijkingPct": -0.027513635342108368,
+      "tolerantiePct": 1,
+      "herkomst": "bron",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "Mc,Rd (§6.2.5)",
+      "eenheid": "kN·m",
+      "referentie": 649,
+      "onze": 649,
+      "afwijkingPct": 0,
+      "tolerantiePct": 1,
+      "herkomst": "bron",
+      "binnenTolerantie": true
+    },
+    {
+      "grootheid": "0,5·Vpl,Rd (§6.2.8)",
+      "eenheid": "kN",
+      "referentie": 454.5,
+      "onze": 454.3749505273701,
+      "afwijkingPct": -0.027513635342108368,
+      "tolerantiePct": 1,
+      "herkomst": "bron",
+      "binnenTolerantie": true
+    }
+  ]
+}

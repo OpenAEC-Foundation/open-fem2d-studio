@@ -1,0 +1,135 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:44:35.385Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "z": 4500
+    },
+    {
+      "id": 3,
+      "x": 6000,
+      "z": 4500
+    },
+    {
+      "id": 4,
+      "x": 12000,
+      "z": 4500
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C22",
+      "profile": "15000x200"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C22",
+      "profile": "15000x200"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "C22",
+      "profile": "30000x200"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 4,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": 64,
+      "qDir": "x"
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 2,
+      "fx": 50,
+      "fz": 0
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -45
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "Referentiebelasting R07",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1,
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 0
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 6000
+      },
+      {
+        "id": "C",
+        "label": "C",
+        "position": 12000
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      },
+      {
+        "id": "2",
+        "label": "2",
+        "position": 4500
+      }
+    ]
+  }
+}

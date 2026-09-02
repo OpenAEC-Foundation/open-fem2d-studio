@@ -1,0 +1,357 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:47:35.080Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 6000,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 9000,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 12000,
+      "z": 0
+    },
+    {
+      "id": 6,
+      "x": 15000,
+      "z": 0
+    },
+    {
+      "id": 7,
+      "x": 18000,
+      "z": 0
+    },
+    {
+      "id": 8,
+      "x": 19500,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    },
+    {
+      "id": 5,
+      "from": 5,
+      "to": 6,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    },
+    {
+      "id": 6,
+      "from": 6,
+      "to": 7,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    },
+    {
+      "id": 7,
+      "from": 7,
+      "to": 8,
+      "material": "S275",
+      "profile": "HEA550",
+      "checkConfig": {
+        "lateralRestraints": [
+          0,
+          1
+        ],
+        "lateralRestraintsBottom": [
+          0,
+          1
+        ],
+        "deflectionClass": "floor"
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 6,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 8,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 2,
+      "fz": -150
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 4,
+      "fz": -150
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 5,
+      "fz": -150
+    },
+    {
+      "id": 4,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 7,
+      "fz": -112.5
+    },
+    {
+      "id": 5,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 2,
+      "fz": -225
+    },
+    {
+      "id": 6,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 4,
+      "fz": -225
+    },
+    {
+      "id": 7,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 5,
+      "fz": -225
+    },
+    {
+      "id": 8,
+      "type": "pointForce",
+      "caseId": 4,
+      "nodeId": 7,
+      "fz": -225
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "G",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "Q veld 1 (pt2)",
+      "type": "live"
+    },
+    {
+      "id": 3,
+      "name": "Q veld 2 (pt4+5)",
+      "type": "live"
+    },
+    {
+      "id": 4,
+      "name": "Q veld 3 (pt7)",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "Schikking 1 — Q midden",
+      "type": "uls",
+      "formula": "1,25·G + 1,5·Q(veld 2)",
+      "factors": {
+        "1": 1.25,
+        "3": 1.5
+      }
+    },
+    {
+      "id": 2,
+      "name": "Schikking 2 — Q eindvelden",
+      "type": "uls",
+      "formula": "1,25·G + 1,5·Q(veld 1 + veld 3)",
+      "factors": {
+        "1": 1.25,
+        "2": 1.5,
+        "4": 1.5
+      }
+    },
+    {
+      "id": 3,
+      "name": "Schikking 3 — Q midden+rechts",
+      "type": "uls",
+      "formula": "1,25·G + 1,5·Q(veld 2 + veld 3)",
+      "factors": {
+        "1": 1.25,
+        "3": 1.5,
+        "4": 1.5
+      }
+    },
+    {
+      "id": 4,
+      "name": "Schikking 4 — Q links+midden",
+      "type": "uls",
+      "formula": "1,25·G + 1,5·Q(veld 1 + veld 2)",
+      "factors": {
+        "1": 1.25,
+        "2": 1.5,
+        "3": 1.5
+      }
+    }
+  ],
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 0
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 6000
+      },
+      {
+        "id": "C",
+        "label": "C",
+        "position": 15000
+      },
+      {
+        "id": "D",
+        "label": "D",
+        "position": 19500
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      }
+    ]
+  },
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

@@ -1,0 +1,92 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:45:18.077Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 12000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 6000,
+      "z": 8000
+    },
+    {
+      "id": 4,
+      "x": 0,
+      "z": 8000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 4,
+      "to": 3,
+      "material": "C22",
+      "profile": "562500x40"
+    },
+    {
+      "id": 2,
+      "from": 1,
+      "to": 3,
+      "material": "C22",
+      "profile": "937500x40"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 2,
+      "material": "C22",
+      "profile": "1875000x40"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 2,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 4,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -10,
+      "qDir": "z"
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 3,
+      "fz": -40
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "q + F",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false
+}

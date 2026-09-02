@@ -1,0 +1,115 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:46:38.078Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "z": 8000
+    },
+    {
+      "id": 3,
+      "x": 10000,
+      "z": 12000
+    },
+    {
+      "id": 4,
+      "x": 20000,
+      "z": 8000
+    },
+    {
+      "id": 5,
+      "x": 20000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C24",
+      "profile": "278.3x278.3"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C24",
+      "profile": "234x234"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "C24",
+      "profile": "234x234"
+    },
+    {
+      "id": 4,
+      "from": 5,
+      "to": 4,
+      "material": "C24",
+      "profile": "278.3x278.3"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 5,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 3,
+      "fz": -20
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 2,
+      "fx": -10
+    },
+    {
+      "id": 3,
+      "type": "pointMoment",
+      "caseId": 1,
+      "nodeId": 2,
+      "my": -100
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -2.7854300726557772,
+      "qDir": "z",
+      "qCoord": "global"
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "R04 — alle lasten gelijktijdig",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false
+}

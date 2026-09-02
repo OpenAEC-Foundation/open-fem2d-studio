@@ -1,0 +1,75 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:42:03.371Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 720,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 1440,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "UPE220"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S235",
+      "profile": "UPE220"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -100
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -100
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "q = 100 kN/m",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false
+}

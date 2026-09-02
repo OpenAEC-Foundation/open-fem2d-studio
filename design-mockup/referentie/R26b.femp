@@ -1,0 +1,221 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:05:59.443Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 620.91175,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 1241.8235,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 1862.73525,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 2483.647,
+      "z": 0
+    },
+    {
+      "id": 6,
+      "x": 3104.55875,
+      "z": 0
+    },
+    {
+      "id": 7,
+      "x": 3725.4705,
+      "z": 0
+    },
+    {
+      "id": 8,
+      "x": 4346.38225,
+      "z": 0
+    },
+    {
+      "id": 9,
+      "x": 4967.294,
+      "z": 0
+    },
+    {
+      "id": 9999,
+      "x": -1000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 5,
+      "from": 5,
+      "to": 6,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 6,
+      "from": 6,
+      "to": 7,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 7,
+      "from": 7,
+      "to": 8,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 8,
+      "from": 8,
+      "to": 9,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {}
+    },
+    {
+      "id": 9999,
+      "from": 9999,
+      "to": 1,
+      "material": "S235",
+      "profile": "CHS 323.9x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true,
+        "startTz": true,
+        "endTz": true
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "zSpring",
+      "k": 0.2607829
+    },
+    {
+      "nodeId": 2,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 3,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 4,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 5,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 6,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 7,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 8,
+      "type": "zSpring",
+      "k": 0.5215659
+    },
+    {
+      "nodeId": 9,
+      "type": "zSpring",
+      "k": 0.2607829
+    },
+    {
+      "nodeId": 9999,
+      "type": "fixed"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 1,
+      "fz": -10
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 5,
+      "fz": -10
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 9,
+      "fz": -10
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "3 puntlasten 10 kN (8 elementen)",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false
+}

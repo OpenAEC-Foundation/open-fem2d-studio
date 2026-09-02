@@ -1,0 +1,153 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:48:16.371Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 300,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 500,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 700,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 1000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C24",
+      "profile": "1336.630989x14.282856857"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C24",
+      "profile": "1336.630989x14.282856857"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "C24",
+      "profile": "1336.630989x14.282856857"
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "C24",
+      "profile": "1336.630989x14.282856857"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 5,
+      "type": "fixed"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 2,
+      "fx": 30
+    },
+    {
+      "id": 2,
+      "type": "pointMoment",
+      "caseId": 1,
+      "nodeId": 2,
+      "my": -3
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 4,
+      "fx": 10,
+      "fz": -20
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -24
+    },
+    {
+      "id": 5,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 2,
+      "q": -24
+    },
+    {
+      "id": 6,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 3,
+      "q": -24
+    },
+    {
+      "id": 7,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 4,
+      "q": -24
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "LG1 punt-, moment- en axiaallast",
+      "type": "other"
+    },
+    {
+      "id": 2,
+      "name": "LG2 lijnlast 24 kN/m",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "LG1 + LG2",
+      "type": "uls",
+      "formula": "1,0·LG1 + 1,0·LG2",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "toelichting": "Referentiegeval R01 (validatiecampagne). Doorsnede van de bron: E = 210000 N/mm2, A = 1000 mm2, I = 17000 mm4. De app kent geen vrije doorsnede-invoer; hier staat een stijfheidsequivalente C24-rechthoek (1336.630989x14.282856857 mm) met exact dezelfde E*A en E*I. Eigen gewicht uit."
+}

@@ -1,0 +1,213 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:01:12.513Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 4000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 4000,
+      "z": 3000
+    },
+    {
+      "id": 4,
+      "x": 4000,
+      "z": 6000
+    },
+    {
+      "id": 5,
+      "x": 4000,
+      "z": 8000
+    },
+    {
+      "id": 6,
+      "x": 5500,
+      "z": 8000
+    },
+    {
+      "id": 7,
+      "x": 0,
+      "z": 6000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "HEB200",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C22",
+      "profile": "14400x100"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "C22",
+      "profile": "14400x100"
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "C22",
+      "profile": "14400x100"
+    },
+    {
+      "id": 5,
+      "from": 5,
+      "to": 6,
+      "material": "C22",
+      "profile": "14400x100"
+    },
+    {
+      "id": 6,
+      "from": 7,
+      "to": 4,
+      "material": "C22",
+      "profile": "24x100",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 7,
+      "type": "fixed"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 5,
+      "fx": 20,
+      "fz": 0
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 6,
+      "fx": 0,
+      "fz": -10
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 3,
+      "fx": 30,
+      "fz": 0
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": 15,
+      "qDir": "x"
+    },
+    {
+      "id": 5,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 3,
+      "q": 15,
+      "qDir": "x"
+    },
+    {
+      "id": 6,
+      "type": "thermal",
+      "caseId": 2,
+      "beamId": 1,
+      "deltaT": 40
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "BG1 — puntlasten + lijnlast",
+      "type": "other"
+    },
+    {
+      "id": 2,
+      "name": "BG2 — verwarming a-b, dT = +40 K",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1,
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 0
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 4000
+      },
+      {
+        "id": "C",
+        "label": "C",
+        "position": 5500
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      },
+      {
+        "id": "2",
+        "label": "2",
+        "position": 3000
+      },
+      {
+        "id": "3",
+        "label": "3",
+        "position": 6000
+      },
+      {
+        "id": "4",
+        "label": "4",
+        "position": 8000
+      }
+    ]
+  }
+}

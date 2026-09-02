@@ -1,0 +1,185 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:02:54.307Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 17000,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 20000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "GL28h",
+      "profile": "160x680",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "GL28h",
+      "profile": "160x680",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "GL28h",
+      "profile": "160x680",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 2,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -3.3
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -3.3
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 3,
+      "q": -3.3
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -4.5
+    },
+    {
+      "id": 5,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 2,
+      "q": -4.5
+    },
+    {
+      "id": 6,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 3,
+      "q": -4.5
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "g_k permanent",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "sneeuw mu·s_k",
+      "type": "snow"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 1,35·G + 1,5·S",
+      "type": "uls",
+      "formula": "1,35·g_k + 1,5·mu·s_k",
+      "factors": {
+        "1": 1.35,
+        "2": 1.5
+      }
+    },
+    {
+      "id": 2,
+      "name": "BGT Karakteristiek",
+      "type": "sls",
+      "formula": "g_k + mu·s_k",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 3000
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 17000
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      }
+    ]
+  },
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

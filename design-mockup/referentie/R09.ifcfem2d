@@ -1,0 +1,142 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:53:47.084Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 6000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 0,
+      "z": 6000
+    },
+    {
+      "id": 4,
+      "x": 6000,
+      "z": 6000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C30",
+      "profile": "125x200"
+    },
+    {
+      "id": 2,
+      "from": 1,
+      "to": 3,
+      "material": "C30",
+      "profile": "125x200"
+    },
+    {
+      "id": 3,
+      "from": 2,
+      "to": 4,
+      "material": "C30",
+      "profile": "125x200"
+    },
+    {
+      "id": 4,
+      "from": 3,
+      "to": 4,
+      "material": "C30",
+      "profile": "125x200"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 4,
+      "q": -8
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 3,
+      "fz": -15
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 4,
+      "fz": -15
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "LC1 (q + F)",
+      "type": "dead"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "1,0 · LC1",
+      "type": "uls",
+      "formula": "1,0·LC1 — karakteristieke referentiebelasting",
+      "factors": {
+        "1": 1
+      }
+    }
+  ],
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 0
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 6000
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      },
+      {
+        "id": "2",
+        "label": "2",
+        "position": 6000
+      }
+    ]
+  },
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

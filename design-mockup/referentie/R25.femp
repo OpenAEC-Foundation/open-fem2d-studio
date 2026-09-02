@@ -1,0 +1,117 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:55:54.237Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 6000,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 9000,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 12000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "GL36h",
+      "profile": "164.301324x869.482605"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "GL36h",
+      "profile": "164.301324x869.482605"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "GL36h",
+      "profile": "164.301324x869.482605"
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "GL36h",
+      "profile": "164.301324x869.482605"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "zSpring",
+      "k": 2.1
+    },
+    {
+      "nodeId": 5,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 2,
+      "fx": 0,
+      "fz": -42
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 4,
+      "fx": 0,
+      "fz": -42
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "2 × F = 42 kN (R25 — doorsnede is E·A/E·I-surrogaat, zie toets-R25.mjs)",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "Referentie 1,0·F",
+      "type": "sls",
+      "formula": "1,0 · F",
+      "factors": {
+        "1": 1
+      }
+    }
+  ]
+}

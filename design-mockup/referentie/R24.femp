@@ -1,0 +1,197 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:01:38.500Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 2000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 4000,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 6000,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 8000,
+      "z": 0
+    },
+    {
+      "id": 6,
+      "x": 2000,
+      "z": -600
+    },
+    {
+      "id": 7,
+      "x": 6000,
+      "z": -600
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "GL36h",
+      "profile": "522.0720x414.8306",
+      "releases": {}
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "GL36h",
+      "profile": "522.0720x414.8306",
+      "releases": {}
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "GL36h",
+      "profile": "522.0720x414.8306",
+      "releases": {}
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "GL36h",
+      "profile": "522.0720x414.8306",
+      "releases": {}
+    },
+    {
+      "id": 5,
+      "from": 1,
+      "to": 6,
+      "material": "GL36h",
+      "profile": "980.6692x65.5529",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 6,
+      "from": 6,
+      "to": 7,
+      "material": "GL36h",
+      "profile": "980.6692x65.5529",
+      "releases": {}
+    },
+    {
+      "id": 7,
+      "from": 7,
+      "to": 5,
+      "material": "GL36h",
+      "profile": "980.6692x65.5529",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 8,
+      "from": 6,
+      "to": 2,
+      "material": "GL36h",
+      "profile": "862.3943x57.6468",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 9,
+      "from": 7,
+      "to": 4,
+      "material": "GL36h",
+      "profile": "862.3943x57.6468",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 5,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -50
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -50
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 3,
+      "q": -50
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 4,
+      "q": -50
+    },
+    {
+      "id": 10,
+      "type": "thermal",
+      "caseId": 1,
+      "beamId": 6,
+      "deltaT": -326
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "R24 q=50 kN/m + voorspanning (doorsnede = E·A/E·I-surrogaat, ΔT geschaald)",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "Referentie 1,0",
+      "type": "sls",
+      "formula": "1,0 · (q + ΔT)",
+      "factors": {
+        "1": 1
+      }
+    }
+  ]
+}

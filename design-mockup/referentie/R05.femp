@@ -1,0 +1,106 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:41:39.556Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "z": 3000
+    },
+    {
+      "id": 3,
+      "x": 5000,
+      "z": 3000
+    },
+    {
+      "id": 4,
+      "x": 8000,
+      "z": 3000
+    },
+    {
+      "id": 5,
+      "x": 8000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "IPE500"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S235",
+      "profile": "IPE500"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S235",
+      "profile": "IPE500",
+      "releases": {
+        "startRy": true
+      }
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "S235",
+      "profile": "IPE500"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 5,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -2.24
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "beamId": 3,
+      "posFrac": 0.5,
+      "fz": -112
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "LG1 — deellast + puntlast",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

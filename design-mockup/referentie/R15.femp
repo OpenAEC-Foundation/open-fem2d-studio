@@ -1,0 +1,879 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:01:09.143Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "z": 3800
+    },
+    {
+      "id": 3,
+      "x": 0,
+      "z": 5275
+    },
+    {
+      "id": 4,
+      "x": 0,
+      "z": 6000
+    },
+    {
+      "id": 5,
+      "x": 30000,
+      "z": 0
+    },
+    {
+      "id": 6,
+      "x": 30000,
+      "z": 3800
+    },
+    {
+      "id": 7,
+      "x": 30000,
+      "z": 5275
+    },
+    {
+      "id": 8,
+      "x": 30000,
+      "z": 6000
+    },
+    {
+      "id": 9,
+      "x": 249.04867452293638,
+      "z": 6021.788935686915
+    },
+    {
+      "id": 10,
+      "x": 931.4420427157821,
+      "z": 6081.49061946906
+    },
+    {
+      "id": 11,
+      "x": 1613.8354109086279,
+      "z": 6141.192303251206
+    },
+    {
+      "id": 12,
+      "x": 2296.2287791014733,
+      "z": 6200.8939870333525
+    },
+    {
+      "id": 13,
+      "x": 2978.6221472943193,
+      "z": 6260.595670815498
+    },
+    {
+      "id": 14,
+      "x": 5977.168188550473,
+      "z": 6522.934456485949
+    },
+    {
+      "id": 15,
+      "x": 8965.75228282571,
+      "z": 6784.401684728923
+    },
+    {
+      "id": 16,
+      "x": 11954.336377100946,
+      "z": 7045.868912971898
+    },
+    {
+      "id": 17,
+      "x": 15000,
+      "z": 7312.32995288886
+    },
+    {
+      "id": 18,
+      "x": 29750.951325477065,
+      "z": 6021.788935686915
+    },
+    {
+      "id": 19,
+      "x": 29068.557957284218,
+      "z": 6081.49061946906
+    },
+    {
+      "id": 20,
+      "x": 28386.16458909137,
+      "z": 6141.192303251206
+    },
+    {
+      "id": 21,
+      "x": 27703.771220898525,
+      "z": 6200.8939870333525
+    },
+    {
+      "id": 22,
+      "x": 27021.377852705682,
+      "z": 6260.595670815498
+    },
+    {
+      "id": 23,
+      "x": 24022.831811449527,
+      "z": 6522.934456485949
+    },
+    {
+      "id": 24,
+      "x": 21034.24771717429,
+      "z": 6784.401684728923
+    },
+    {
+      "id": 25,
+      "x": 18045.663622899054,
+      "z": 7045.868912971898
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S355",
+      "profile": "IPE500"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S355",
+      "profile": "IPE500"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S355",
+      "profile": "IPE500"
+    },
+    {
+      "id": 4,
+      "from": 5,
+      "to": 6,
+      "material": "S355",
+      "profile": "IPE500"
+    },
+    {
+      "id": 5,
+      "from": 6,
+      "to": 7,
+      "material": "S355",
+      "profile": "IPE500"
+    },
+    {
+      "id": 6,
+      "from": 7,
+      "to": 8,
+      "material": "S355",
+      "profile": "IPE500"
+    },
+    {
+      "id": 7,
+      "from": 4,
+      "to": 9,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 8,
+      "from": 9,
+      "to": 10,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 9,
+      "from": 10,
+      "to": 11,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 10,
+      "from": 11,
+      "to": 12,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 11,
+      "from": 12,
+      "to": 13,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 12,
+      "from": 13,
+      "to": 14,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 13,
+      "from": 14,
+      "to": 15,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 14,
+      "from": 15,
+      "to": 16,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 15,
+      "from": 16,
+      "to": 17,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 16,
+      "from": 8,
+      "to": 18,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 17,
+      "from": 18,
+      "to": 19,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 18,
+      "from": 19,
+      "to": 20,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 19,
+      "from": 20,
+      "to": 21,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 20,
+      "from": 21,
+      "to": 22,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 21,
+      "from": 22,
+      "to": 23,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 22,
+      "from": 23,
+      "to": 24,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 23,
+      "from": 24,
+      "to": 25,
+      "material": "S355",
+      "profile": "IPE450"
+    },
+    {
+      "id": 24,
+      "from": 25,
+      "to": 17,
+      "material": "S355",
+      "profile": "IPE450"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 5,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 7,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 8,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 9,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 10,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 5,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 11,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 6,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 12,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 7,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 13,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 8,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 14,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 9,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 15,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 10,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 16,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 11,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 17,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 12,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 18,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 13,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 19,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 14,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 20,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 15,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 21,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 16,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 22,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 17,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 23,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 18,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 24,
+      "q": -2.16,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 19,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 7,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 20,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 8,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 21,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 9,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 22,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 10,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 23,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 11,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 24,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 12,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 25,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 13,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 26,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 14,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 27,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 15,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 28,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 16,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 29,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 17,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 30,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 18,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 31,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 19,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 32,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 20,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 33,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 21,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 34,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 22,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 35,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 23,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 36,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 24,
+      "q": -4.45,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 37,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 7,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 38,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 8,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 39,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 9,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 40,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 10,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 41,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 11,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 42,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 12,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 43,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 13,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 44,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 14,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 45,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 15,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 46,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 16,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 47,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 17,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 48,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 18,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 49,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 19,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 50,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 20,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 51,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 21,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 52,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 22,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 53,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 23,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 54,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 24,
+      "q": -2.88,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 55,
+      "type": "pointForce",
+      "caseId": 4,
+      "nodeId": 4,
+      "fx": 0.6,
+      "fz": 0
+    },
+    {
+      "id": 56,
+      "type": "pointForce",
+      "caseId": 4,
+      "nodeId": 8,
+      "fx": 0.6,
+      "fz": 0
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "G — permanent dak",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "S — sneeuw",
+      "type": "snow"
+    },
+    {
+      "id": 3,
+      "name": "Q — daklast H",
+      "type": "live"
+    },
+    {
+      "id": 4,
+      "name": "EHF — scheefstand",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 1,35G + 1,5S + EHF",
+      "type": "uls",
+      "formula": "1,35·G + 1,5·S + 1,0·EHF",
+      "factors": {
+        "1": 1.35,
+        "2": 1.5,
+        "4": 1
+      }
+    },
+    {
+      "id": 2,
+      "name": "UGT 1,35G + 1,5S (zonder EHF)",
+      "type": "uls",
+      "formula": "1,35·G + 1,5·S",
+      "factors": {
+        "1": 1.35,
+        "2": 1.5
+      }
+    },
+    {
+      "id": 3,
+      "name": "UGT 1,35G + 1,5Q + EHF",
+      "type": "uls",
+      "formula": "1,35·G + 1,5·Q + 1,0·EHF",
+      "factors": {
+        "1": 1.35,
+        "3": 1.5,
+        "4": 1
+      }
+    }
+  ],
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

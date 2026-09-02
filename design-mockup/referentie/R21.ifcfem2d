@@ -1,0 +1,290 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:00:18.387Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 1100,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 2200,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 3300,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C24",
+      "profile": "79.53x183.64",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 400
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C24",
+      "profile": "79.53x183.64",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 400
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "C24",
+      "profile": "79.53x183.64",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 400
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 4,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -0.092
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -0.092
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 3,
+      "q": -0.092
+    },
+    {
+      "id": 11,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -7.28
+    },
+    {
+      "id": 12,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 2,
+      "q": -7.28
+    },
+    {
+      "id": 13,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 3,
+      "q": -7.28
+    },
+    {
+      "id": 21,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 1,
+      "q": -0.53
+    },
+    {
+      "id": 22,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 2,
+      "q": -0.53
+    },
+    {
+      "id": 23,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 3,
+      "q": -0.53
+    },
+    {
+      "id": 31,
+      "type": "lineLoad",
+      "caseId": 4,
+      "beamId": 1,
+      "q": -0.53
+    },
+    {
+      "id": 32,
+      "type": "lineLoad",
+      "caseId": 4,
+      "beamId": 2,
+      "q": -0.53
+    },
+    {
+      "id": 33,
+      "type": "lineLoad",
+      "caseId": 4,
+      "beamId": 3,
+      "q": -0.53
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "BG1 eigen gewicht",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "BG2 vloeibaar beton",
+      "type": "live"
+    },
+    {
+      "id": 3,
+      "name": "BG3 werkvlak links",
+      "type": "live"
+    },
+    {
+      "id": 4,
+      "name": "BG4 werkvlak midden",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 6.10b — werkvlak links",
+      "type": "uls",
+      "formula": "1,2·BG1 + 1,5·BG2 + 1,5·BG3",
+      "factors": {
+        "1": 1.2,
+        "2": 1.5,
+        "3": 1.5
+      }
+    },
+    {
+      "id": 2,
+      "name": "UGT 6.10b — werkvlak midden",
+      "type": "uls",
+      "formula": "1,2·BG1 + 1,5·BG2 + 1,5·BG4",
+      "factors": {
+        "1": 1.2,
+        "2": 1.5,
+        "4": 1.5
+      }
+    },
+    {
+      "id": 3,
+      "name": "UGT 6.10a — werkvlak links",
+      "type": "uls",
+      "formula": "1,35·BG1 + 1,5·1,0·BG2 + 1,5·1,0·BG3",
+      "factors": {
+        "1": 1.35,
+        "2": 1.5,
+        "3": 1.5
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT karakteristiek — werkvlak links",
+      "type": "sls",
+      "formula": "1,0·BG1 + 1,0·BG2 + 1,0·BG3",
+      "factors": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT karakteristiek — werkvlak midden",
+      "type": "sls",
+      "formula": "1,0·BG1 + 1,0·BG2 + 1,0·BG4",
+      "factors": {
+        "1": 1,
+        "2": 1,
+        "4": 1
+      }
+    }
+  ],
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 0
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 1100
+      },
+      {
+        "id": "C",
+        "label": "C",
+        "position": 2200
+      },
+      {
+        "id": "D",
+        "label": "D",
+        "position": 3300
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      }
+    ]
+  },
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

@@ -1,0 +1,87 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:53:38.628Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 4000,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 8000,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 0,
+      "z": -4000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C24",
+      "profile": "2618181818.1818x5"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C24",
+      "profile": "3927272727.2727x5"
+    },
+    {
+      "id": 3,
+      "from": 2,
+      "to": 4,
+      "material": "C24",
+      "profile": "1851334118.0157x5"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 4,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -1140
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "LG1 — q op DC",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

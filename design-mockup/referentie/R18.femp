@@ -1,0 +1,957 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:24:18.632Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 4000
+    },
+    {
+      "id": 2,
+      "x": 3550,
+      "z": 4106.5
+    },
+    {
+      "id": 3,
+      "x": 7100,
+      "z": 4213
+    },
+    {
+      "id": 4,
+      "x": 10700,
+      "z": 4321
+    },
+    {
+      "id": 5,
+      "x": 14300,
+      "z": 4429
+    },
+    {
+      "id": 6,
+      "x": 16425,
+      "z": 4492.75
+    },
+    {
+      "id": 7,
+      "x": 18550,
+      "z": 4556.5
+    },
+    {
+      "id": 8,
+      "x": 20675,
+      "z": 4620.25
+    },
+    {
+      "id": 9,
+      "x": 22800,
+      "z": 4684
+    },
+    {
+      "id": 10,
+      "x": 24950,
+      "z": 4619.5
+    },
+    {
+      "id": 11,
+      "x": 27100,
+      "z": 4555
+    },
+    {
+      "id": 12,
+      "x": 29250,
+      "z": 4490.5
+    },
+    {
+      "id": 13,
+      "x": 31400,
+      "z": 4426
+    },
+    {
+      "id": 14,
+      "x": 34950,
+      "z": 4319.5
+    },
+    {
+      "id": 15,
+      "x": 38500,
+      "z": 4213
+    },
+    {
+      "id": 16,
+      "x": 42050,
+      "z": 4106.5
+    },
+    {
+      "id": 17,
+      "x": 45600,
+      "z": 4000
+    },
+    {
+      "id": 18,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 19,
+      "x": 3550,
+      "z": 106.5
+    },
+    {
+      "id": 20,
+      "x": 7100,
+      "z": 213
+    },
+    {
+      "id": 21,
+      "x": 10700,
+      "z": 321
+    },
+    {
+      "id": 22,
+      "x": 14300,
+      "z": 429
+    },
+    {
+      "id": 23,
+      "x": 18550,
+      "z": 556.5
+    },
+    {
+      "id": 24,
+      "x": 22800,
+      "z": 684
+    },
+    {
+      "id": 25,
+      "x": 27100,
+      "z": 555
+    },
+    {
+      "id": 26,
+      "x": 31400,
+      "z": 426
+    },
+    {
+      "id": 27,
+      "x": 34950,
+      "z": 319.5
+    },
+    {
+      "id": 28,
+      "x": 38500,
+      "z": 213
+    },
+    {
+      "id": 29,
+      "x": 42050,
+      "z": 106.5
+    },
+    {
+      "id": 30,
+      "x": 45600,
+      "z": 0
+    },
+    {
+      "id": 31,
+      "x": 16425,
+      "z": 2492.75
+    },
+    {
+      "id": 32,
+      "x": 20675,
+      "z": 2620.25
+    },
+    {
+      "id": 33,
+      "x": 24950,
+      "z": 2619.5
+    },
+    {
+      "id": 34,
+      "x": 29250,
+      "z": 2490.5
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 5,
+      "from": 5,
+      "to": 6,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 6,
+      "from": 6,
+      "to": 7,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 7,
+      "from": 7,
+      "to": 8,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 8,
+      "from": 8,
+      "to": 9,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 9,
+      "from": 9,
+      "to": 10,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 10,
+      "from": 10,
+      "to": 11,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 11,
+      "from": 11,
+      "to": 12,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 12,
+      "from": 12,
+      "to": 13,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 13,
+      "from": 13,
+      "to": 14,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 14,
+      "from": 14,
+      "to": 15,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 15,
+      "from": 15,
+      "to": 16,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 16,
+      "from": 16,
+      "to": 17,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 17,
+      "from": 18,
+      "to": 19,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 18,
+      "from": 19,
+      "to": 20,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 19,
+      "from": 20,
+      "to": 21,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 20,
+      "from": 21,
+      "to": 22,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 21,
+      "from": 22,
+      "to": 23,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 22,
+      "from": 23,
+      "to": 24,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 23,
+      "from": 24,
+      "to": 25,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 24,
+      "from": 25,
+      "to": 26,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 25,
+      "from": 26,
+      "to": 27,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 26,
+      "from": 27,
+      "to": 28,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 27,
+      "from": 28,
+      "to": 29,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 28,
+      "from": 29,
+      "to": 30,
+      "material": "S355",
+      "profile": "IPE330"
+    },
+    {
+      "id": 29,
+      "from": 1,
+      "to": 18,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 30,
+      "from": 2,
+      "to": 19,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 31,
+      "from": 3,
+      "to": 20,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 32,
+      "from": 4,
+      "to": 21,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 33,
+      "from": 5,
+      "to": 22,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 34,
+      "from": 7,
+      "to": 23,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 35,
+      "from": 9,
+      "to": 24,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 36,
+      "from": 11,
+      "to": 25,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 37,
+      "from": 13,
+      "to": 26,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 38,
+      "from": 14,
+      "to": 27,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 39,
+      "from": 15,
+      "to": 28,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 40,
+      "from": 16,
+      "to": 29,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 41,
+      "from": 17,
+      "to": 30,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 42,
+      "from": 1,
+      "to": 19,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 43,
+      "from": 3,
+      "to": 19,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 44,
+      "from": 3,
+      "to": 21,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 45,
+      "from": 5,
+      "to": 21,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 46,
+      "from": 5,
+      "to": 31,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "startRy": true
+      }
+    },
+    {
+      "id": 47,
+      "from": 31,
+      "to": 23,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 48,
+      "from": 9,
+      "to": 32,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "startRy": true
+      }
+    },
+    {
+      "id": 49,
+      "from": 32,
+      "to": 23,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 50,
+      "from": 9,
+      "to": 33,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "startRy": true
+      }
+    },
+    {
+      "id": 51,
+      "from": 33,
+      "to": 25,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 52,
+      "from": 13,
+      "to": 34,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "startRy": true
+      }
+    },
+    {
+      "id": 53,
+      "from": 34,
+      "to": 25,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "endRy": true
+      }
+    },
+    {
+      "id": 54,
+      "from": 13,
+      "to": 27,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 55,
+      "from": 15,
+      "to": 27,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 56,
+      "from": 15,
+      "to": 29,
+      "material": "S355",
+      "profile": "SHS150x150x16",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 57,
+      "from": 17,
+      "to": 29,
+      "material": "S355",
+      "profile": "SHS150x150x10",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 58,
+      "from": 6,
+      "to": 31,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 59,
+      "from": 7,
+      "to": 31,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 60,
+      "from": 8,
+      "to": 32,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 61,
+      "from": 7,
+      "to": 32,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 62,
+      "from": 10,
+      "to": 33,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 63,
+      "from": 11,
+      "to": 33,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 64,
+      "from": 12,
+      "to": 34,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    },
+    {
+      "id": 65,
+      "from": 11,
+      "to": 34,
+      "material": "S355",
+      "profile": "SHS70x70x8",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 18,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 30,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 1,
+      "fz": -91
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 1,
+      "fz": 43.5
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 1,
+      "fz": -101
+    },
+    {
+      "id": 4,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 3,
+      "fz": -136
+    },
+    {
+      "id": 5,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 3,
+      "fz": 65.25
+    },
+    {
+      "id": 6,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 3,
+      "fz": -158
+    },
+    {
+      "id": 7,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 5,
+      "fz": -182
+    },
+    {
+      "id": 8,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 5,
+      "fz": 87
+    },
+    {
+      "id": 9,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 5,
+      "fz": -202
+    },
+    {
+      "id": 10,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 9,
+      "fz": -182
+    },
+    {
+      "id": 11,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 9,
+      "fz": 87
+    },
+    {
+      "id": 12,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 9,
+      "fz": -202
+    },
+    {
+      "id": 13,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 13,
+      "fz": -182
+    },
+    {
+      "id": 14,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 13,
+      "fz": 87
+    },
+    {
+      "id": 15,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 13,
+      "fz": -202
+    },
+    {
+      "id": 16,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 15,
+      "fz": -136
+    },
+    {
+      "id": 17,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 15,
+      "fz": 65.25
+    },
+    {
+      "id": 18,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 15,
+      "fz": -158
+    },
+    {
+      "id": 19,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 17,
+      "fz": -91
+    },
+    {
+      "id": 20,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 17,
+      "fz": 43.5
+    },
+    {
+      "id": 21,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 17,
+      "fz": -101
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "UGT-combinatie 1 — zwaartekracht",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "UGT-combinatie 2 — windzuiging (opwaarts)",
+      "type": "wind"
+    },
+    {
+      "id": 3,
+      "name": "Handberekening incl. eigen gewicht",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": false,
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

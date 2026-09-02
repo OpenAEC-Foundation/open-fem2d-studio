@@ -1,0 +1,138 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:01:01.672Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 4500,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C24",
+      "profile": "45x220",
+      "checkConfig": {
+        "serviceClass": 1,
+        "loadDuration": "medium",
+        "deflectionClass": "floor"
+      },
+      "loadRole": "vloer"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -0.3
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -1.2
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 3,
+      "beamId": 1,
+      "q": -2
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "G — permanent 0,3 kN/m",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "Q — veranderlijk 1,2 kN/m",
+      "type": "live"
+    },
+    {
+      "id": 3,
+      "name": "q_d — UGT-rekenlast 2,0 kN/m (bron)",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 3,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT — q_d = 2,0 kN/m (bron)",
+      "type": "uls",
+      "formula": "1,0 · q_d",
+      "factors": {
+        "3": 1
+      }
+    },
+    {
+      "id": 2,
+      "name": "BGT Karakteristiek — G + Q",
+      "type": "sls",
+      "formula": "G + Q",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    },
+    {
+      "id": 3,
+      "name": "BGT — alleen G",
+      "type": "sls",
+      "formula": "G",
+      "factors": {
+        "1": 1
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT — alleen Q",
+      "type": "sls",
+      "formula": "Q",
+      "factors": {
+        "2": 1
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT Quasi-blijvend — G + 0,3·Q",
+      "type": "sls",
+      "formula": "G + ψ₂·Q",
+      "factors": {
+        "1": 1,
+        "2": 0.3
+      }
+    }
+  ],
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

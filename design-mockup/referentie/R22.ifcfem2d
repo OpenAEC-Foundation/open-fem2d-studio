@@ -1,0 +1,393 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T23:05:54.495Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 1750,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 3500,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 5250,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 7000,
+      "z": 0
+    },
+    {
+      "id": 11,
+      "x": 0,
+      "z": -2000
+    },
+    {
+      "id": 12,
+      "x": 2000,
+      "z": -2000
+    },
+    {
+      "id": 13,
+      "x": 2250,
+      "z": -2000
+    },
+    {
+      "id": 14,
+      "x": 4500,
+      "z": -2000
+    },
+    {
+      "id": 15,
+      "x": 6000,
+      "z": -2000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "C24",
+      "profile": "80x120",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "C24",
+      "profile": "80x120",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "C24",
+      "profile": "80x120",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "C24",
+      "profile": "80x120",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 11,
+      "from": 11,
+      "to": 12,
+      "material": "GL28h",
+      "profile": "120x240",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "lateralRestraints": [],
+        "lateralRestraintsBottom": [],
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 12,
+      "from": 12,
+      "to": 13,
+      "material": "GL28h",
+      "profile": "120x240",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "lateralRestraints": [],
+        "lateralRestraintsBottom": [],
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 13,
+      "from": 13,
+      "to": 14,
+      "material": "GL28h",
+      "profile": "120x240",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "lateralRestraints": [],
+        "lateralRestraintsBottom": [],
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    },
+    {
+      "id": 14,
+      "from": 14,
+      "to": 15,
+      "material": "GL28h",
+      "profile": "120x240",
+      "checkConfig": {
+        "serviceClass": 2,
+        "loadDuration": "short",
+        "lateralRestraints": [],
+        "lateralRestraintsBottom": [],
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 300
+      },
+      "loadRole": "dakPlat"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 5,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 11,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 14,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 100,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -0.54
+    },
+    {
+      "id": 101,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -0.54
+    },
+    {
+      "id": 102,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 3,
+      "q": -0.54
+    },
+    {
+      "id": 103,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 4,
+      "q": -0.54
+    },
+    {
+      "id": 110,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 11,
+      "q": -3.15
+    },
+    {
+      "id": 111,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 12,
+      "q": -3.15
+    },
+    {
+      "id": 112,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 13,
+      "q": -3.15
+    },
+    {
+      "id": 113,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 14,
+      "q": -3.15
+    },
+    {
+      "id": 200,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -0.675
+    },
+    {
+      "id": 201,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 2,
+      "q": -0.675
+    },
+    {
+      "id": 202,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 3,
+      "q": -0.675
+    },
+    {
+      "id": 203,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 4,
+      "q": -0.675
+    },
+    {
+      "id": 210,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 11,
+      "q": -3.93
+    },
+    {
+      "id": 211,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 12,
+      "q": -3.93
+    },
+    {
+      "id": 212,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 13,
+      "q": -3.93
+    },
+    {
+      "id": 213,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 14,
+      "q": -3.93
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "G — permanent",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "S — sneeuw (kort)",
+      "type": "snow"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT",
+      "type": "uls",
+      "formula": "1,35·G + 1,50·S",
+      "factors": {
+        "1": 1.35,
+        "2": 1.5
+      }
+    },
+    {
+      "id": 2,
+      "name": "BGT karakteristiek",
+      "type": "sls",
+      "formula": "G + S",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    },
+    {
+      "id": 3,
+      "name": "BGT alleen G",
+      "type": "sls",
+      "formula": "G",
+      "factors": {
+        "1": 1
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT alleen S",
+      "type": "sls",
+      "formula": "S",
+      "factors": {
+        "2": 1
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT eindzakking w_fin",
+      "type": "sls",
+      "formula": "(1+kdef)·G + S",
+      "factors": {
+        "1": 1.8,
+        "2": 1
+      }
+    },
+    {
+      "id": 6,
+      "name": "BGT quasi-blijvend eind",
+      "type": "sls",
+      "formula": "(1+kdef)·G",
+      "factors": {
+        "1": 1.8
+      }
+    }
+  ],
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

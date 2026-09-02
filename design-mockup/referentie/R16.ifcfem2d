@@ -1,0 +1,99 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:42:03.443Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 5700,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "IPE330",
+      "checkConfig": {
+        "lateralRestraints": [],
+        "lateralRestraintsBottom": [],
+        "deflectionClass": "floor"
+      },
+      "loadRole": "vloer"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -9.075
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -6.25
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "G — permanent",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "Q — opgelegd",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": false,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 6.10",
+      "type": "uls",
+      "formula": "1,35·G + 1,50·Q",
+      "factors": {
+        "1": 1.35,
+        "2": 1.5
+      }
+    },
+    {
+      "id": 2,
+      "name": "BGT Karakteristiek",
+      "type": "sls",
+      "formula": "G + Q",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

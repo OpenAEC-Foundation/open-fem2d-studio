@@ -1,0 +1,175 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T22:43:55.261Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "z": 8000
+    },
+    {
+      "id": 3,
+      "x": 10000,
+      "z": 12000
+    },
+    {
+      "id": 4,
+      "x": 20000,
+      "z": 8000
+    },
+    {
+      "id": 5,
+      "x": 20000,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "REF kolom A=1,0e6 mm2 I=5,0e8 mm4",
+      "loadRole": "gevelLinks"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S235",
+      "profile": "REF ligger A=1,0e6 mm2 I=2,5e8 mm4",
+      "loadRole": "dakHellend"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S235",
+      "profile": "REF ligger A=1,0e6 mm2 I=2,5e8 mm4",
+      "loadRole": "dakHellend"
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "S235",
+      "profile": "REF kolom A=1,0e6 mm2 I=5,0e8 mm4",
+      "loadRole": "gevelRechts"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 5,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -3,
+      "qDir": "z",
+      "qCoord": "global"
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 3,
+      "fz": -20
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 3,
+      "nodeId": 2,
+      "fx": -10
+    },
+    {
+      "id": 4,
+      "type": "pointMoment",
+      "caseId": 4,
+      "nodeId": 2,
+      "my": -100
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "p — lijnlast dak D–C",
+      "type": "other"
+    },
+    {
+      "id": 2,
+      "name": "F1 — puntlast nok C",
+      "type": "other"
+    },
+    {
+      "id": 3,
+      "name": "F2 — H-last goot D",
+      "type": "other"
+    },
+    {
+      "id": 4,
+      "name": "M — koppel goot D",
+      "type": "other"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "combinations": [],
+  "structuralGrid": {
+    "enabled": true,
+    "xAxes": [
+      {
+        "id": "A",
+        "label": "A",
+        "position": 0
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "position": 10000
+      },
+      {
+        "id": "C",
+        "label": "C",
+        "position": 20000
+      }
+    ],
+    "zAxes": [
+      {
+        "id": "1",
+        "label": "1",
+        "position": 0
+      },
+      {
+        "id": "2",
+        "label": "2",
+        "position": 8000
+      },
+      {
+        "id": "3",
+        "label": "3",
+        "position": 12000
+      }
+    ]
+  },
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1
+}

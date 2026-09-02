@@ -305,7 +305,7 @@ CHS 508×16.
 | ~~**UNP wordt niet opnieuw gegenereerd**~~ | *Achterhaald door §10.* De UNP-flens loopt met 8% schuinte toe; het oorspronkelijke model was prismatisch en overschatte daardoor Iz met ~14% en Wpl;z met ~23%. De schuinte is inmiddels gemodelleerd en UNP 80 t/m 300 zijn opnieuw gegenereerd. |
 | **IPE wordt niet opnieuw gegenereerd** | De reeks is compleet (80–600) en de bestaande waarden zijn gecontroleerd. Opnieuw genereren zou alleen ruis in de derde decimaal toevoegen. |
 | **Massa / oppervlaktegewicht** | Staat niet in het `SectionProperties`-contract van de Rust-crate. Volgt uit `A × 7850 kg/m³` als het ooit nodig is. |
-| **Dwarskrachtcentrum van U-profielen** | Wordt intern wél berekend (voor Iw), maar er is geen veld voor in `SectionProperties`. Uitbreiden van dat contract is een aparte wijziging. |
+| ~~**Dwarskrachtcentrum van U-profielen**~~ | *Achterhaald.* `SectionProperties` heeft sinds D4.1 `y_s_mm`/`z_s_mm`, en de motor uit §11 vult ze uit de sectoriale coördinaat. Het generatiescript schrijft ze nog niet in `profiles.json`; dat is een aparte wijziging. |
 | **Iw van kokers en buizen** | Op 0 gezet. Bij een gesloten doorsnede is de welvingsweerstand verwaarloosbaar naast de St.-Venanttorsie; EN 1993-1-1 gebruikt hem voor kokers niet. Bij een ronde buis is hij exact 0. |
 | **Doorsnedeklasse (1 t/m 4)** | Hangt van de staalsoort af (via ε) en hoort dus niet in een staalsoort-onafhankelijke geometriedatabase. De classificatie-crate doet dat. |
 | **Koudgevormde kokers (EN 10219)** | Andere hoekstralen (2t/1t) én andere knikkrommen (c/c in plaats van a/a). Aparte reeks, aparte naamgeving; niet meegenomen om verwarring met de warmgewalste reeks te voorkomen. |
@@ -338,10 +338,15 @@ node scripts/genereer-profieldata.mjs --eindcontrole  # bovengrenzen op alle 416
 node scripts/genereer-profieldata.mjs                 # alle bovenstaande
 
 node scripts/genereer-profieldata.mjs --herstel       # ZIE §10 — schrijft data
+
+node scripts/genereer-profieldata.mjs --motor-valideer # ZIE §11 — met de motor
+node scripts/genereer-profieldata.mjs --motor-herstel  # ZIE §11 — schrijft data
 ```
 
-Alleen `--herstel` schrijft in `profiles.json`, en dan uitsluitend de 39
-profielen uit §10. De vlagloze uitvoering doet dat **niet**.
+Alleen `--herstel` en `--motor-herstel` schrijven in `profiles.json`, en dan
+uitsluitend de profielen en grootheden uit §10 respectievelijk §11.4. De
+vlagloze uitvoering doet dat **niet**, en draait ook de motorvlaggen niet: die
+hebben een Rust-toolchain nodig en een halve minuut rekentijd.
 
 ---
 
@@ -577,3 +582,280 @@ De validatie tegen de generator (`--valideer`) staat na het herstel voor
 SHS, RHS, CHS en UPE op **0,00%** over alle grootheden, en voor UNP op 0,04% (A),
 0,07% (Iy) en 0,36% (Iz; dat laatste vrijwel volledig `UNP350`, dat bewust is
 blijven staan).
+
+---
+
+## 11. De exacte motor — 2026-09-02c
+
+Alles in §1 t/m §10 rekent met **gesloten formules in JavaScript**. Dat werkte,
+maar het had twee gebreken die niet met betere formules op te lossen waren:
+
+1. Het was een **tweede implementatie** naast de Rust-crate die de app zelf
+   gebruikt. Twee bronnen voor hetzelfde getal is één te veel.
+2. Voor `It` van een gewalst profiel *bestaat* geen gesloten formule. §10.4
+   moest daarom eindigen met de eerlijke mededeling dat er ~9% onveilige
+   restafwijking bleef staan op de U-reeks. Een tabel raadplegen kan ook niet:
+   voor een samengestelde of afwijkende doorsnede is er geen tabel.
+
+Vanaf nu levert de motor in `crates/section-properties` de waarden. Eén ingang,
+`motor::bereken`, die uit geometrie een volledig gevulde `SectionProperties`
+maakt — voor een catalogusprofiel én voor een zelf opgebouwde contour.
+
+### 11.1 Drie soorten waarheid, uit elkaar gehouden
+
+De hele winst van deze ronde zit in het **onderscheiden** van wat exact is, wat
+convergent is en wat een normkeuze is. Dat was eerder één ononderscheiden brij
+van "formules".
+
+| kern | grootheden | status |
+|---|---|---|
+| `contour.rs` | `A`, `y_c`/`z_c`, `Iy`, `Iz`, `Iyz`, `Iu`/`Iv`, `α`, `Wel` per vezel, `Wpl;y`, `Wpl;z`, `i_y`, `i_z` | **exact** |
+| `torsie.rs` | `It`, `Iw`, schuifmiddelpunt | **numeriek convergent** |
+| `motor.rs` | `Av;y`, `Av;z` | **normbepaald** |
+
+**Exact** betekent hier niet "heel nauwkeurig" maar letterlijk exact tot
+machineprecisie. Een doorsnede is een verzameling gesloten randen van rechte
+lijnen en cirkelbogen; met de stelling van Green wordt elke oppervlakte-integraal
+een randintegraal, en die heeft per segmenttype een gesloten primitieve. Er
+wordt nergens gediscretiseerd. `Wpl` hoort daar ook bij: de neutrale as wordt
+met bisectie tot machineprecisie gezocht, maar het statisch moment eromheen
+volgt weer uit een gesloten randintegraal — de contour hoeft nooit *geknipt*.
+
+Het bewijs staat in de crate zelf: rechthoek, cirkel uit vier bogen, ring,
+driehoek, L-vorm tegen de handberekening, `Wpl` om de diagonaal van een
+vierkant — alle op `< 1e-12` relatieve fout. En op de 90 CHS, waar A, Iy, Wel en
+Wpl allemaal in gesloten vorm bekend zijn, reproduceert de motor élke grootheid
+tot 5·10⁻⁶ relatief.
+
+**Numeriek convergent** betekent: er wordt een randwaardeprobleem over het
+*inwendige* opgelost (Prandtl voor `It`, de sectoriale coördinaat voor `Iw`),
+met lineaire driehoekselementen. Er hoort dus een foutmaat bij, en die is er:
+
+- `It` komt uit **twee** onafhankelijke formuleringen. De Prandtl-vorm is een
+  gegarandeerde *onder*grens, de welvingsvorm een gegarandeerde *boven*grens.
+  De motor geeft beide terug plus het midden; de halve bandbreedte is over de
+  hele catalogus mediaan 0,03% en hoogstens 1,15%.
+- Verfijnen bevestigt dat. Bij drie keer zo fijn meshen verschuift `It` ten
+  hoogste 0,18% en `Iw` ten hoogste 0,12%:
+
+  | profiel | `It` bij h → h/3 | `Iw` bij h → h/3 |
+  |---|---|---|
+  | UPE 80 | +0,174% | +0,006% |
+  | UNP 80 | +0,155% | +0,106% |
+  | HEM 100 | −0,026% | +0,120% |
+  | IPE 600 | +0,117% | +0,006% |
+  | HEA 1000 | +0,126% | +0,006% |
+
+  Dat is een orde kleiner dan de 4,6–12,0% die deze ronde corrigeert. De drift
+  is bovendien vrijwel overal positief: de standaardmesh ligt iets te laag, dus
+  aan de veilige kant.
+- De ronde buis is de sluitsteen: daar is `It = 2·I` exact bekend, en de motor
+  komt op alle 90 CHS binnen 0,02% uit.
+
+**Normbepaald** is alleen `Av;y` / `Av;z`. Dat is géén meetkundige grootheid:
+EN 1993-1-1 §6.2.6(3) geeft per doorsnedesoort een aparte uitdrukking met een
+ondergrens `η·h_w·t_w`, en `η = 1,0` is de waarde die de Nederlandse nationale
+bijlage toelaat. De motor rekent die regel door met het *gemeten* oppervlak,
+maar de regel zelf komt uit de norm en staat daarom apart benoemd in
+`motor.rs` — niet vermomd als geometrie.
+
+**Wat óók normbepaald blijft en dus buiten de motor valt:** de knikkrommen
+(tabel 6.2 — een keuze op grond van h/b, `tf` en het walsproces, geen
+berekening) en de doorsnedeklasse 1 t/m 4 (hangt van de staalsoort af via ε en
+hoort dus niet in een staalsoort-onafhankelijke geometriedatabase).
+
+### 11.2 Twee meetkundemodellen die ontbraken
+
+Voordat de motor de database kón leveren, moesten er twee vormen bij. Beide
+waren geen rekenfout maar een **ontbrekend model**, en dat is een belangrijk
+onderscheid: de motorkern zelf bleek op elk toetsbaar geval exact.
+
+**De binnenhoekstraal van een koker.** `contour::koker()` leidde de
+binnenstraal af als `r_o − t`, dus een concentrische wand van overal dikte `t`.
+De catalogusconventie (EN 10210-2) is `r_o = 1,5·t` **met** `r_i = 1,0·t` —
+niet-concentrisch, de wand is in de hoek dus dikker. Dat scheelt tot 2,6% op A.
+Onderbouwing die op geen van beide bronnen leunt: de seed `HFRHS200X200X16`,
+geijkt op een externe referentie-berekening, heeft `A = 11 501,30 mm²`; het
+normmodel geeft 11 501,31 mm² (0,01 mm² ernaast), het concentrische model
+11 336,50 mm² (1,43% lager). Nieuw: `contour::koker_en10210()`, met
+`koker_met_stralen()` eronder voor wie beide stralen vrij wil kiezen. De oude
+`koker()` blijft bestaan voor de meetkundig zuivere koker, nu expliciet als
+zodanig gedocumenteerd.
+
+**De flensschuinte van UNP.** `contour::u_profiel()` kende alleen evenwijdige
+flenzen, waardoor de 13 UNP's als een zwaarder profiel werden gerekend (A +2,0
+tot +2,6%, Iz +13,5 tot +15,8%). Nieuw: `contour::u_profiel_schuin()` en de
+catalogusingang `contour::unp()`, met precies de meetkunde uit §10.2 maar dan
+als **exacte contour** in plaats van een numerieke integratie over 60 000
+stroken: twee vlakke flensbuitenvlakken, het schuine binnenvlak, de
+walsuitronding `r1` met middelpunt in de holte en de flenstipafronding
+`r2 = r1/2` met middelpunt in het materiaal. Alle raakpunten volgen in gesloten
+vorm uit `k = √(1+s²)`; de afleiding staat in de doc-comment.
+
+### 11.3 Resultaat: de motor reproduceert de database
+
+`node scripts/genereer-profieldata.mjs --motor-valideer` rekent alle 416
+profielen opnieuw door (27,5 s rekentijd, 39 s wandklok) en vergelijkt met
+`profiles.json`. Afwijking = (motor − database)/database.
+
+| grootheid | mediaan | gemiddeld | maximum |
+|---|---|---|---|
+| `A` | 0,000% | 0,016% | 0,545% (UNP350) |
+| `Iy` | 0,000% | 0,009% | 0,902% (UNP350) |
+| `Iz` | 0,000% | 0,024% | 4,729% (UNP350) |
+| `Wel;y` | 0,000% | 0,017% | 0,902% (UNP350) |
+| `Wel;z` | 0,000% | 0,028% | 5,410% (UNP350) |
+| `Wpl;y` | 0,000% | 0,022% | 0,778% (UNP350) |
+| `Wpl;z` | 0,000% | 0,048% | 3,380% (UNP350) |
+| `Av;y` | 0,000% | 0,000% | 0,000% |
+| `Av;z` | 0,000% | 0,042% | 1,436% (HEA 300) |
+| `i_y` | 0,000% | 0,009% | 0,225% (HEA 300) |
+| `i_z` | 0,000% | 0,015% | 1,991% (UNP350) |
+
+Elke geometrische grootheid staat op **mediaan 0,000%**, en het enige profiel
+dat er noemenswaardig uit springt is `UNP350` — dat is bekend en gewild: zijn
+A, Wpl;y en Av;z komen uit een externe referentie-berekening en niet uit het
+DIN-model (§10.4, §11.4 laat die waarden dan ook staan). Meshkwaliteit over de
+hele reeks: `|A_mesh − A_exact|` hoogstens 0,043%, kleinste driehoekshoek 21,2°.
+
+Daarmee is de motor niet langer een controlemiddel maar een **bron**: hij kan
+de database genereren.
+
+### 11.4 Wat is overgenomen, en wat níét
+
+De regel is streng: de motor overschrijft alleen waar aantoonbaar is dat hij
+het beter weet. Waar de database een genormeerde tabelwaarde bevat die een
+geometriemodel niet kan verbeteren, wint de database. De lijst staat als
+`MOTOR_OVERNAME` in het script en wordt door `--motor-herstel` uitgevoerd:
+119 profielen, 119 waarden, geen enkel ander veld aangeraakt.
+
+**Wél overgenomen — `It` van alle 27 U-profielen** (−4,57% tot −11,96%).
+De database gebruikte de empirische benadering met gehalveerde termen; die ligt
+op elk van de 27 boven de **bewezen bovengrens** van de motor, en te hoge `It`
+overschat `M_cr` en dus de kipcapaciteit. De doorslag geeft een derde bron die
+noch de motor noch de generator is: de DIN 1026-1 tabelwaarden uit §10.4.
+
+| | DIN-tabel | oude formule | motor |
+|---|---|---|---|
+| UNP 80 | 21 600 mm⁴ | 23 538 (+9,0%) | 21 519 (**−0,37%**) |
+| UNP 300 | 374 000 mm⁴ | 408 553 (+9,2%) | 379 641 (**+1,51%**) |
+
+De motor landt binnen 1,5% van de gepubliceerde tabel waar de formule er 9%
+boven zat. Daarmee is de restafwijking die §10.4 eerlijk open moest laten
+staan, gesloten.
+
+**Wél overgenomen — `Iw` van alle 92 I-profielen** (−1,10% tot −5,59%; 46 ervan
+meer dan 2%). De database had `Iw` exact gelijkgesteld aan `Iz·h_s²/4`, met
+`Iz` inclusief lijf en uitrondingen. Dat is aantoonbaar een **bovengrens**: hij
+wordt alleen gehaald door een doorsnede die haar hele `Iz` in de
+flensmiddenvlakken heeft. Lijf- en uitrondingsmateriaal telt wél mee in `Iz`
+maar nauwelijks in het sectoriale moment, dus elk echt I-profiel ligt eronder —
+en de afwijking is het grootst bij de gedrongen profielen met een zwaar lijf
+(HEM 100: −5,59%; HEA 100: −4,61%), precies zoals dat argument voorspelt.
+
+**Niet overgenomen — `It` van de 207 kokers** (motor 0,85% tot 8,25% *hoger*).
+De database gebruikt Bredt (`4A_m²t/U_m`), een dunwandige benadering. Bij een
+dikwandige koker als RHS 80×40×8 (`t/b = 0,2`) is die benadering slecht, en de
+motor is daar vermoedelijk het betere getal. Maar Bredt ligt **lager**, en een
+te lage `It` is conservatief voor kip. Overnemen zou capaciteit toevoegen op
+grond van een getal dat in deze ronde niet zelfstandig tegen een derde bron is
+geijkt. Dat is een aparte beslissing; hij staat hier genoteerd, niet genomen.
+
+**Niet overgenomen — `It` van de 92 I-profielen** (−3,98% tot +1,86%, mediaan
++0,10%). Er is hier geen winnaar aan te wijzen: het verschil is van dezelfde
+orde als de eigen insluiting van de motor (tot 1,15% halve bandbreedte) en als
+de spreiding van de El Darwish & Johnston-benadering zelf. Beslissend is dat de
+database hier **op het referentierapport is geijkt**: `HEA 320` staat op
+`It = 1 084 313 mm⁴` en de motor komt op 1 086 726 — 0,22% ernaast, ruim binnen
+zijn eigen band. De geijkte waarde blijft dus staan.
+
+**Niet overgenomen — `It` van de 90 CHS** (−0,02%). De opgeslagen waarde is
+`2·I`, wat voor een ronde buis exact is. De motor bevestigt dat en heeft niets
+toe te voegen.
+
+**Niet overgenomen — `Iw` van de 27 U-profielen** (UNP −1,45% tot +0,90%,
+UPE +1,01% tot +4,92%). Bij UNP zijn beide bronnen het binnen 1,5% eens, en de
+databasewaarde is in §10.3 onafhankelijk geijkt op de gepubliceerde
+UPN-profieltabellen (UNP 200 op 0,07%, UNP 300 op 0,2%) — die corroboratie is
+sterker dan wat de motor eraan toevoegt. Bij UPE ligt de motor *hoger*, dus
+overnemen zou capaciteit toevoegen; ook daar wint de gesloten kanaalformule,
+die voor evenwijdige flenzen exact is.
+
+### 11.5 Eén rekenkern, ook voor samengestelde doorsneden
+
+`composite.rs` (de lamellenkern uit D4.1) had zijn eigen polygoonintegralen en
+zijn eigen halfvlak-clipping voor `Wpl`. Die zijn verwijderd: elke lamel gaat nu
+als vierhoekige contour naar `contour.rs`, en `A`, het zwaartepunt, `Iy`, `Iz`,
+`Iyz` en `Wpl` komen daar exact uit terug. Twee implementaties van dezelfde
+integraal is één te veel, ook als ze allebei kloppen.
+
+Wat de contourkern **niet** kan overnemen, en waarom:
+
+- **Catalogusdelen.** Een `CatalogusDeel` is een verzameling grootheden, geen
+  contour — er is geen rand om langs te integreren. Die tellen met Steiner op,
+  en juist daarom is `Wpl` niet bepaald zodra er een deel in zit: je kunt een
+  deel niet op de plastische neutrale as doorsnijden als je zijn vorm niet kent.
+- **`It` en `Iw` van een lamellenmodel.** Daar zijn `⅓Σbt³`, Bredt en de
+  sectoriële methode de gangbare en snelle weg. Wie de numerieke waarde wil,
+  voert de contour rechtstreeks in `motor::bereken_doorsnede`.
+
+De tien acceptatietests van `tests/samengesteld.rs` en alle tests van
+`composite.rs` slagen ongewijzigd, met dezelfde getallen — wat bevestigt dat de
+twee implementaties inderdaad hetzelfde deden.
+
+### 11.6 De motor draaien
+
+De motor is als los binair bestand beschikbaar dat JSON in en JSON uit doet,
+zodat het generatiescript zijn geometrietabellen kan blijven beheren zonder de
+formules te dupliceren. Eén waarheid, twee rollen: geometrie in het script,
+rekenwerk in de crate.
+
+```
+cargo run -q -p section-properties --bin doorsnedemotor -- invoer.json uitvoer.json
+
+node scripts/genereer-profieldata.mjs --motor-valideer  # meet, schrijft niets
+node scripts/genereer-profieldata.mjs --motor-herstel   # ZIE 11.4 - schrijft data
+```
+
+`--motor-herstel` bouwt de motor eerst opnieuw als de Rust-bron nieuwer is dan
+het binaire bestand; met een verouderde motor de database vullen kan dus niet.
+Naast de grootheden geeft de uitvoer per profiel de diagnostiek mee waarmee je
+het getal kunt *wantrouwen*: de onder- en bovengrens van `It`, het meshoppervlak
+tegenover het exacte oppervlak, het aantal driehoeken en de rekentijd.
+
+### 11.7 Gevolg voor de toetsing
+
+`Iw` gaat **niet** de toetsketen in: de kipcontrole gebruikt de NB-annex, die
+`I_w` uit `h`, `b` en `t_f` afleidt (`nb_annex::i_w_nb`) en verder alleen `Iz`
+en `It` uit de database haalt. De 92 gewijzigde `Iw`-waarden veranderen dus
+alleen wat er in het rapport staat.
+
+`It` van UNP350 gaat er wél in. In `portal_beam1` (de enige acceptatietest met
+een U-profiel) verschuift daardoor het volgende:
+
+| | vóór | ná | verschil |
+|---|---|---|---|
+| `I_t` | 632 878 mm⁴ | 603 930 mm⁴ | −4,57% |
+| `S` | 839,66 mm | 859,55 mm | +2,37% |
+| `C` | 5,9277 | 5,9586 | +0,52% |
+| `M_cr` | 203,539 kNm | 199,865 kNm | −1,81% |
+| `λ̄_LT` | 1,01355 | 1,02283 | +0,92% |
+| `χ_LT` | 0,630909 | 0,625325 | −0,89% |
+| UC 6.3.2 kip | 1,47663 | 1,48981 | +0,89% |
+| UC 6.3.3 (6.61) | 0,899683 | 0,907615 | +0,88% |
+| UC 6.3.3 (6.62) | 0,583928 | 0,588687 | +0,81% |
+| `uc_max` | 1,47663 | 1,48981 | +0,89% |
+
+Alle unity checks bewegen **omhoog** — dat is de veilige kant, en het is precies
+wat een lagere `It` hoort te doen. De ligger blijft NotOk op kip.
+
+**De op het referentie-rapport geijkte waarden veranderen niet.**
+`N_c,Rd = 1801,44 kN`, `M_y,c,Rd = 209,094 kNm` en `V_c,z,Rd = 671,06 kN` hangen
+niet van `It` af; die assertions staan onveranderd en slagen nog steeds. Ook
+`referentie_hea.rs` (HEA 320 / HEA 400, inclusief hun `It`) is ongewijzigd en
+slaagt.
+
+De snapshot `portal_beam1__portal_beam1.snap` is **bewust niet bijgewerkt**:
+een op het referentierapport geijkte verwachting hoort niet stilzwijgend mee te
+schuiven met een databasewijziging. De getallen hierboven zijn gemeten; wie de
+verschuiving accepteert, doet dat expliciet met `cargo insta review`.
