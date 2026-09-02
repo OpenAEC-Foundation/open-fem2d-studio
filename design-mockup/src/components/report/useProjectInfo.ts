@@ -8,7 +8,18 @@ import { useEffect, useState } from "react";
 import { getSetting, onSettingChange } from "../../store";
 import type { ProjectInfo } from "../project/ProjectSettingsDialog";
 
-export const EMPTY_PROJECT_INFO: ProjectInfo = {
+/**
+ * Projectinfo + rapportspecifieke velden. De koptekst-regel wordt in
+ * DEZELFDE "projectInfo"-setting opgeslagen (extra veld); het
+ * ProjectSettingsDialog laat onbekende velden bij opslaan intact
+ * (object-spread), dus de regel overleeft een dialoog-rondgang.
+ */
+export interface ReportProjectInfo extends ProjectInfo {
+  /** Vrije koptekst-regel bovenaan het rapport (bedrijfsregel/briefhoofd). */
+  reportHeader?: string;
+}
+
+export const EMPTY_PROJECT_INFO: ReportProjectInfo = {
   name: "",
   projectNumber: "",
   engineer: "",
@@ -17,19 +28,20 @@ export const EMPTY_PROJECT_INFO: ProjectInfo = {
   description: "",
   notes: "",
   location: "",
+  reportHeader: "",
 };
 
-export function useProjectInfo(): ProjectInfo {
-  const [info, setInfo] = useState<ProjectInfo>(EMPTY_PROJECT_INFO);
+export function useProjectInfo(): ReportProjectInfo {
+  const [info, setInfo] = useState<ReportProjectInfo>(EMPTY_PROJECT_INFO);
 
   useEffect(() => {
     let alive = true;
     let unlisten: (() => void) | undefined;
 
-    getSetting<ProjectInfo>("projectInfo", EMPTY_PROJECT_INFO).then((v) => {
+    getSetting<ReportProjectInfo>("projectInfo", EMPTY_PROJECT_INFO).then((v) => {
       if (alive) setInfo(v);
     });
-    onSettingChange<ProjectInfo>("projectInfo", (v) => {
+    onSettingChange<ReportProjectInfo>("projectInfo", (v) => {
       if (alive) setInfo(v ?? EMPTY_PROJECT_INFO);
     }).then((u) => {
       if (!alive) u();

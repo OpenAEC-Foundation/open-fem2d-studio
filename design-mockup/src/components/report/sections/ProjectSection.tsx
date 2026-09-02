@@ -4,8 +4,16 @@
  * Leest live uit de projectinfo-instelling (Instellingen → Projectgegevens);
  * wijzig je die, dan rendert de kop direct mee (useProjectInfo abonneert op
  * het plugin-store event).
+ *
+ * Koptekst-regel (R2): vrije tekst bovenaan het rapport (bedrijfsregel/
+ * briefhoofd), direct in het rapport te bewerken. Het invoerveld is
+ * scherm-chrome: bij print rendert alleen de tekst (of niets als hij leeg
+ * is). Opslag: extra veld `reportHeader` in de projectinfo-setting.
+ * Logo-upload is bewust R5+ — nu alleen tekst.
  */
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { setSetting } from "../../../store";
 import { useProjectInfo } from "../useProjectInfo";
 
 /** yyyy-mm-dd → nl-notatie; alles wat niet parsebaar is blijft zoals het is. */
@@ -20,6 +28,26 @@ export default function ProjectSection() {
   const { t } = useTranslation("ribbon");
   const info = useProjectInfo();
 
+  // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
+  // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
+  // en blijft de regel alleen voor deze sessie staan — in de desktop-app
+  // persisteert hij en volgt useProjectInfo het store-event.
+  const [headerDraft, setHeaderDraft] = useState<string | null>(null);
+  const [sessionHeader, setSessionHeader] = useState<string | null>(null);
+  useEffect(() => {
+    // Zodra de setting daadwerkelijk verandert, wint de opgeslagen waarde.
+    setSessionHeader(null);
+  }, [info.reportHeader]);
+  const headerValue = headerDraft ?? sessionHeader ?? info.reportHeader ?? "";
+
+  const commitHeader = () => {
+    if (headerDraft === null) return;
+    const value = headerDraft.trim();
+    setHeaderDraft(null);
+    setSessionHeader(value);
+    void setSetting("projectInfo", { ...info, reportHeader: value });
+  };
+
   const rows: Array<{ label: string; value: string }> = [
     { label: t("report.fieldProjectNumber", "Projectnummer"), value: info.projectNumber || "—" },
     { label: t("report.fieldEngineer", "Constructeur"), value: info.engineer || "—" },
@@ -29,6 +57,24 @@ export default function ProjectSection() {
 
   return (
     <header className="rpt-project rpt-block">
+      {/* Koptekst-regel: op scherm een subtiel invoerveld, in de print
+          alleen de tekst (leeg → niets). */}
+      <input
+        className="rpt-header-input rpt-screen-only"
+        type="text"
+        value={headerValue}
+        placeholder={t("report.headerPlaceholder", "Koptekst-regel (klik om te bewerken)")}
+        onChange={(e) => setHeaderDraft(e.target.value)}
+        onBlur={commitHeader}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") setHeaderDraft(null);
+        }}
+        aria-label={t("report.headerLine", "Koptekst")}
+      />
+      {headerValue.trim() !== "" && (
+        <div className="rpt-header-line rpt-print-only">{headerValue}</div>
+      )}
       <div className="rpt-doc-kind">{t("report.docKind", "Rekenrapport")}</div>
       <h1 className="rpt-project-title">
         {info.name || t("report.unnamedProject", "Naamloos project")}

@@ -253,6 +253,80 @@
   margin-bottom: 1mm;
 }
 
+/* ─── R2: invoersecties ─── */
+
+/* Koptekst-regel (ProjectSection): op scherm een subtiel invoerveld dat
+   eruitziet als de gedrukte regel; bij print rendert alleen de tekst
+   (.rpt-print-only). Leeg veld → placeholder op scherm, niets in de print. */
+.rpt-header-input {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: 9pt;
+  color: #555;
+  padding: 0 0 1mm;
+  margin-bottom: 3mm;
+  outline: none;
+}
+
+.rpt-header-input::placeholder {
+  color: #b5b5b5;
+  font-style: italic;
+}
+
+.rpt-header-input:hover,
+.rpt-header-input:focus {
+  border-bottom-color: #b5b5b5;
+}
+
+.rpt-header-line {
+  font-size: 9pt;
+  color: #555;
+  padding-bottom: 1mm;
+  margin-bottom: 3mm;
+}
+
+/* Print-varianten: op scherm verborgen, in de print zichtbaar (en andersom). */
+.rpt-print-only {
+  display: none;
+}
+
+/* Profielen & doorsneden: per profiel een blok met tekening + tabel. */
+.rpt-profile-block {
+  margin-bottom: 6mm;
+}
+
+.rpt-profile-body {
+  display: flex;
+  gap: 10mm;
+  align-items: flex-start;
+}
+
+.rpt-section-sketch {
+  width: 44mm;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.rpt-profile-props th {
+  min-width: 28mm;
+}
+
+/* Belastinggevallen: blok per geval. */
+.rpt-loadcase-block {
+  margin-bottom: 5mm;
+}
+
+.rpt-h3-tag {
+  font-weight: 400;
+  font-size: 8.5pt;
+  color: #666;
+  margin-left: 2mm;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Print — zelfde inhoud, app-chrome weg. De @page-regel (formaat, marges,
    kop-/voettekst met paginanummers) injecteert ReportShell dynamisch.
@@ -323,8 +397,31 @@
     break-inside: avoid;
   }
 
+  /* Lange invoersecties mogen wél over pagina's breken — de blokken en
+     tabelrijen erbinnen houden zichzelf bijeen. */
+  .report-page[data-section="nodes"] .rpt-block,
+  .report-page[data-section="beams"] .rpt-block,
+  .report-page[data-section="sections"] .rpt-block,
+  .report-page[data-section="loads"] .rpt-block {
+    break-inside: auto;
+  }
+
+  .rpt-profile-block,
+  .rpt-loadcase-block {
+    break-inside: avoid;
+  }
+
   .rpt-table tr {
     break-inside: avoid;
+  }
+
+  /* Scherm-chrome in de secties (koptekst-invoerveld) → tekstvariant. */
+  .rpt-screen-only {
+    display: none !important;
+  }
+
+  .rpt-print-only {
+    display: block;
   }
 
   /* Tabelkop herhalen wanneer een lange tabel tóch over pagina's breekt. */

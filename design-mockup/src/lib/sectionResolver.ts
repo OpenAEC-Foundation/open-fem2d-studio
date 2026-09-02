@@ -18,13 +18,13 @@ import { STEEL_SECTIONS } from "./steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
 
 /** E_0,mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL). */
-const TIMBER_E_MEAN: Record<string, number> = {
+export const TIMBER_E_MEAN: Record<string, number> = {
   C14: 7000, C16: 8000, C18: 9000, C20: 9500, C22: 10000,
   C24: 11000, C27: 11500, C30: 12000, C35: 13000,
   GL24h: 11500, GL28h: 12600, GL32h: 14200, GL36h: 14700,
 };
 
-const E_STAAL = 210000;
+export const E_STAAL = 210000;
 
 export interface ResolvedSection {
   E: number;      // N/mm²

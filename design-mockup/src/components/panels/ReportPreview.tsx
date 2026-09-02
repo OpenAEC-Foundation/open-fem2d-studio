@@ -12,9 +12,23 @@ import { useTranslation } from "react-i18next";
 import { useReportStore, isSectionEnabled } from "../../stores/reportStore";
 import { REPORT_SECTIONS } from "../report/reportSections";
 import ReportShell from "../report/ReportShell";
+import {
+  ReportDataProvider,
+  EMPTY_REPORT_DATA,
+  type ReportData,
+} from "../report/ReportDataContext";
 import "./ReportPreview.css";
 
-export default function ReportPreview() {
+interface ReportPreviewProps {
+  /**
+   * Modelstate uit App.tsx (useFemStore-instantie) voor de invoersecties.
+   * Ontbreekt hij (detached venster — eigen webview zonder modelstate),
+   * dan rendert het rapport met een leeg model en eerlijke leeg-meldingen.
+   */
+  data?: ReportData;
+}
+
+export default function ReportPreview({ data }: ReportPreviewProps) {
   const { t } = useTranslation("ribbon");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -74,7 +88,9 @@ export default function ReportPreview() {
       )}
 
       {/* ─── Het rapport zelf ─── */}
-      <ReportShell />
+      <ReportDataProvider value={data ?? EMPTY_REPORT_DATA}>
+        <ReportShell />
+      </ReportDataProvider>
     </div>
   );
 }

@@ -11,7 +11,14 @@
  */
 import type { ComponentType } from "react";
 import ProjectSection from "./sections/ProjectSection";
-import CheckSummarySection from "./sections/CheckSummarySection";
+import NodesSection from "./sections/NodesSection";
+import BeamsSection from "./sections/BeamsSection";
+import SectionsSection from "./sections/SectionsSection";
+import MaterialsSection from "./sections/MaterialsSection";
+import LoadsSection from "./sections/LoadsSection";
+import CombinationsSection from "./sections/CombinationsSection";
+import CheckTableSection from "./sections/CheckTableSection";
+import CheckDetailSection from "./sections/CheckDetailSection";
 
 export interface ReportSectionDef {
   /** Stabiel id — sleutel voor de aan/uit-toggle in de reportStore. */
@@ -31,10 +38,53 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
     defaultTitle: "Projectgegevens",
     Component: ProjectSection,
   },
+  // ── R2: invoersecties (lezen de modelstate via ReportDataContext) ──
   {
-    id: "checkSummary",
-    titleKey: "report.sectionCheckSummary",
-    defaultTitle: "Toetsingssamenvatting",
-    Component: CheckSummarySection,
+    id: "nodes",
+    titleKey: "report.sectionNodes",
+    defaultTitle: "Knopen",
+    Component: NodesSection,
+  },
+  {
+    id: "beams",
+    titleKey: "report.sectionBeams",
+    defaultTitle: "Staven",
+    Component: BeamsSection,
+  },
+  {
+    id: "sections",
+    titleKey: "report.sectionSections",
+    defaultTitle: "Profielen & doorsneden",
+    Component: SectionsSection,
+  },
+  {
+    id: "materials",
+    titleKey: "report.sectionMaterials",
+    defaultTitle: "Materialen",
+    Component: MaterialsSection,
+  },
+  {
+    id: "loads",
+    titleKey: "report.sectionLoads",
+    defaultTitle: "Belastinggevallen",
+    Component: LoadsSection,
+  },
+  {
+    id: "combinations",
+    titleKey: "report.sectionCombinations",
+    defaultTitle: "Belastingcombinaties",
+    Component: CombinationsSection,
+  },
+  {
+    id: "checkTable",
+    titleKey: "report.sectionCheckTable",
+    defaultTitle: "Toetsingsoverzicht",
+    Component: CheckTableSection,
+  },
+  {
+    id: "checkDetail",
+    titleKey: "report.sectionCheckDetail",
+    defaultTitle: "Toetsing per staaf",
+    Component: CheckDetailSection,
   },
 ];

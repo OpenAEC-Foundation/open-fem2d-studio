@@ -752,7 +752,18 @@ function App() {
       case "ifc":
         return <IfcViewerPanel />;
       case "report":
-        return <ReportPreview />;
+        // Doorgeef-regels naar het live rapport (ReportDataContext) — de
+        // secties lezen deze modelstate en volgen elke wijziging direct.
+        return <ReportPreview data={{
+          nodes: fem.nodes,
+          beams: fem.beams,
+          supports: fem.supports,
+          loads: fem.loads,
+          loadCases: fem.loadCases,
+          combinations: fem.combinations,
+          structuralGrid: fem.structuralGrid,
+          selfWeightEnabled: fem.selfWeightEnabled,
+        }} />;
       case "check":
         return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} />;
       case "insights":
