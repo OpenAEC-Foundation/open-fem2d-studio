@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   useWindowManager,
   EVT_DOCK_REQUEST,
@@ -7,21 +7,6 @@ import {
 import { getDetachedParams } from "../hooks/useWindowManager";
 import "./DocumentBar.css";
 
-interface DocTab {
-  id: string;
-  title: string;
-  view?: string;
-  modified?: boolean;
-}
-
-const INITIAL_DOCS: DocTab[] = [
-  { id: "1", title: "project 1.ifcfem2d", view: "default", modified: false },
-];
-
-const DRAG_DETACH_THRESHOLD = 60;
-
-let nextId = 100;
-
 interface DocumentBarProps {
   /** Bestandsnaam van het actieve project — vervangt de placeholder-titel van de projecttab. */
   fileName?: string;
@@ -29,146 +14,46 @@ interface DocumentBarProps {
   modified?: boolean;
 }
 
+/**
+ * DocumentBar — eerlijk één-document.
+ *
+ * De app kan (nog) maar één project tegelijk open hebben; deze balk toont dus
+ * precies één tab: bestandsnaam + wijzigingsindicator. De eerdere
+ * multi-tab-machinerie (sluitkruisje op de enige tab, tab-uitslepen,
+ * fantoomtabs bij terugdocken) was schijn-UI: sluiten liet een lege balk
+ * achter terwijl het project gewoon doordraaide, en gedockte tabs waren
+ * nergens aan gebonden. Weg ermee — meerdere documenten komen terug zodra
+ * de app dat echt kan.
+ *
+ * Terugdock-verzoeken van detached vensters (bv. het rapportvenster) worden
+ * nog wél afgehandeld: kort oplichten + het venster netjes sluiten; de
+ * inhoud leeft immers al in de bijbehorende hoofdvenster-tab.
+ */
 export default function DocumentBar({ fileName, modified }: DocumentBarProps) {
-  const [docs, setDocs] = useState<DocTab[]>(INITIAL_DOCS);
-  const [activeId, setActiveId] = useState("1");
   const [dockIndicator, setDockIndicator] = useState(false);
-  const { createDetachedWindow, listenEvent, confirmDock } = useWindowManager();
+  const { listenEvent, confirmDock } = useWindowManager();
 
-  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-  const dragTabId = useRef<string | null>(null);
-  const isDragging = useRef(false);
-
-  // ── Listen for dock-back requests from detached windows ──
   useEffect(() => {
     const { detached } = getDetachedParams();
-    if (detached) return; // Don't listen in detached windows
+    if (detached) return; // Niet luisteren in detached vensters zelf.
 
     listenEvent(EVT_DOCK_REQUEST, (payload) => {
       const data = payload as DockBackPayload;
-
-      // Add the tab back
-      nextId++;
-      const newTab: DocTab = {
-        id: `docked-${nextId}`,
-        title: data.title,
-        view: data.view,
-        modified: false,
-      };
-
-      setDocs((prev) => [...prev, newTab]);
-      setActiveId(newTab.id);
-
-      // Flash the dock indicator briefly
+      // Kort oplichten als visuele bevestiging, daarna het detached venster
+      // sluiten — de inhoud (bv. het rapport) zit al in het hoofdvenster.
       setDockIndicator(true);
       setTimeout(() => setDockIndicator(false), 600);
-
-      // Close the detached window
       confirmDock(data.label);
     });
   }, [listenEvent, confirmDock]);
 
-  const closeDoc = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const remaining = docs.filter((d) => d.id !== id);
-    setDocs(remaining);
-    if (activeId === id && remaining.length > 0) {
-      setActiveId(remaining[0].id);
-    }
-  };
-
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent, tabId: string) => {
-      dragStartPos.current = { x: e.screenX, y: e.screenY };
-      dragTabId.current = tabId;
-      isDragging.current = false;
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        if (!dragStartPos.current || !dragTabId.current) return;
-        const dy = ev.screenY - dragStartPos.current.y;
-
-        if (Math.abs(dy) > DRAG_DETACH_THRESHOLD && !isDragging.current) {
-          isDragging.current = true;
-
-          const tab = docs.find((d) => d.id === dragTabId.current);
-          if (tab && docs.length > 1) {
-            createDetachedWindow({
-              view: tab.view ?? "default",
-              title: tab.title,
-              x: ev.screenX - 400,
-              y: ev.screenY - 50,
-            });
-
-            setDocs((prev) => {
-              const remaining = prev.filter((d) => d.id !== dragTabId.current);
-              if (activeId === dragTabId.current && remaining.length > 0) {
-                setActiveId(remaining[0].id);
-              }
-              return remaining;
-            });
-          }
-
-          cleanup();
-        }
-      };
-
-      const handleMouseUp = () => {
-        if (!isDragging.current && dragTabId.current) {
-          setActiveId(dragTabId.current);
-        }
-        cleanup();
-      };
-
-      const cleanup = () => {
-        dragStartPos.current = null;
-        dragTabId.current = null;
-        isDragging.current = false;
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    },
-    [docs, activeId, createDetachedWindow]
-  );
-
   return (
     <div className={`document-bar${dockIndicator ? " dock-flash" : ""}`}>
       <div className="document-tabs">
-        {docs.map((doc) => {
-          // De vaste projecttab (id "1") volgt het geopende bestand + de
-          // dirty-vlag uit App.tsx; overige (gedockte) tabs hun eigen state.
-          const isProjectTab = doc.id === "1";
-          const title = isProjectTab && fileName ? fileName : doc.title;
-          const isModified = isProjectTab ? !!modified : !!doc.modified;
-          return (
-          <button
-            key={doc.id}
-            className={`document-tab${activeId === doc.id ? " active" : ""}`}
-            onMouseDown={(e) => handleMouseDown(e, doc.id)}
-          >
-            <span className="document-tab-title">{title}</span>
-            {isModified && <span className="document-tab-modified" />}
-            <span
-              className="document-tab-close"
-              onClick={(e) => closeDoc(doc.id, e)}
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              >
-                <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" />
-              </svg>
-            </span>
-          </button>
-          );
-        })}
+        <button className="document-tab active">
+          <span className="document-tab-title">{fileName ?? "Naamloos project"}</span>
+          {modified && <span className="document-tab-modified" />}
+        </button>
       </div>
     </div>
   );
