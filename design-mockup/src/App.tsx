@@ -10,7 +10,6 @@ import { useRecentFiles } from "./hooks/useRecentFiles";
 import SettingsDialog, { applyTheme } from "./components/settings/SettingsDialog";
 import FeedbackDialog from "./components/feedback/FeedbackDialog";
 import WelcomeScreen from "./components/welcome/WelcomeScreen";
-import { StartSidebar } from "./components/welcome/StartSidebar";
 import ProjectSettingsDialog from "./components/project/ProjectSettingsDialog";
 import IfcViewerPanel from "./components/panels/IfcViewerPanel";
 import ReportPreview from "./components/panels/ReportPreview";
@@ -33,7 +32,7 @@ import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemRe
 import { selfWeightPerMeter } from "./components/fem/profileData";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
-import { getSetting, setSetting } from "./store";
+import { getSetting } from "./store";
 import "./themes.css";
 import "./App.css";
 
@@ -471,19 +470,7 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fem]);
 
-  // Start sidebar — shown only on first launch.
-  // Once the user dismisses it, the flag flips and it never auto-opens again.
-  // Default: undefined (loading) → only render once we know the stored value.
-  const [startSidebarVisible, setStartSidebarVisible] = useState<boolean | null>(null);
-  useEffect(() => {
-    getSetting<boolean>("startSidebarDismissed", false).then((dismissed) => {
-      setStartSidebarVisible(!dismissed);
-    });
-  }, []);
-  const dismissStartSidebar = useCallback(() => {
-    setStartSidebarVisible(false);
-    setSetting("startSidebarDismissed", true);
-  }, []);
+  // Startvenster verwijderd op verzoek: de app opent direct in het model.
 
   // Left panel state (Explorer)
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
@@ -714,25 +701,6 @@ function App() {
       />
       <DocumentBar />
       <div className="content">
-        {/* Start sidebar — shown only on first launch. Once dismissed, gone for good. */}
-        {startSidebarVisible && (
-          <StartSidebar
-            onNewFile={() => {
-              setProjectSettingsOpen(true);
-              dismissStartSidebar();
-            }}
-            onOpenFile={() => {
-              setBackstageOpen(true);
-              dismissStartSidebar();
-            }}
-            onOpenRecentFile={(path) => {
-              console.log("Open recent:", path);
-              dismissStartSidebar();
-            }}
-            onClose={dismissStartSidebar}
-          />
-        )}
-
         {/* Left panel — Explorer (hidden in full-width views) */}
         {!isFullWidthView && (
           <aside className={`left-panel${leftPanelOpen ? "" : " collapsed"}${isResizing ? " no-transition" : ""}`} style={{ width: leftPanelOpen ? leftPanelWidth : 28 }}>
