@@ -22,6 +22,7 @@ import { createContext, useContext } from "react";
 import type {
   Node,
   Beam,
+  Plate,
   Support,
   Load,
   LoadCase,
@@ -33,6 +34,8 @@ import type { SolverResult } from "../fem/solver/types";
 export interface ReportData {
   nodes: Node[];
   beams: Beam[];
+  /** Platen (wandschijven) — P5.2: invoer- en spanningssectie in het rapport. */
+  plates: Plate[];
   supports: Support[];
   loads: Load[];
   loadCases: LoadCase[];
@@ -48,12 +51,20 @@ export interface ReportData {
    * vallen automatisch terug op de "Nog niet berekend"-melding.
    */
   combinationResults: Map<number, SolverResult> | null;
+  /**
+   * P5.2 — per-belastinggeval-resultaten (zelfde run als combinationResults,
+   * zelfde invalidatie in useFemStore). De combinatiepijplijn combineert
+   * `plateElements` (nog) niet; de plaatspanningssectie superponeert daarom
+   * zelf lineair over deze per-case-resultaten.
+   */
+  caseResults: Map<number, SolverResult> | null;
   envelope: Envelope | null;
 }
 
 export const EMPTY_REPORT_DATA: ReportData = {
   nodes: [],
   beams: [],
+  plates: [],
   supports: [],
   loads: [],
   loadCases: [],
@@ -61,6 +72,7 @@ export const EMPTY_REPORT_DATA: ReportData = {
   structuralGrid: { enabled: false, xAxes: [], zAxes: [] },
   selfWeightEnabled: false,
   combinationResults: null,
+  caseResults: null,
   envelope: null,
 };
 

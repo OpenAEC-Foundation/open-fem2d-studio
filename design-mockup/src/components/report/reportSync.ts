@@ -46,6 +46,7 @@ import type {
   NodalDisp,
   NodalReaction,
   ElementForces,
+  PlateResult,
   SolverResult,
 } from "../fem/solver/types";
 import type {
@@ -79,6 +80,8 @@ interface WireSolverResult {
   reactions: [number, NodalReaction][];
   elements: [number, ElementForces][];
   maxDisplacement: number;
+  /** Plaatspanningen (P5.2) — al JSON-veilig (arrays), 1-op-1 mee. */
+  plateElements?: PlateResult[];
 }
 
 interface WireEnvelope {
@@ -91,6 +94,7 @@ interface WireEnvelope {
 interface WireReportData {
   nodes: ReportData["nodes"];
   beams: ReportData["beams"];
+  plates: ReportData["plates"];
   supports: ReportData["supports"];
   loads: ReportData["loads"];
   loadCases: ReportData["loadCases"];
@@ -98,6 +102,8 @@ interface WireReportData {
   selfWeightEnabled: boolean;
   combinations: WireCombination[];
   combinationResults: [number, WireSolverResult][] | null;
+  /** Per-belastinggeval-resultaten (P5.2) — zelfde wire-vorm. */
+  caseResults: [number, WireSolverResult][] | null;
   envelope: WireEnvelope | null;
 }
 
@@ -136,6 +142,7 @@ function wireSolverResult(r: SolverResult): WireSolverResult {
     reactions: [...r.reactions],
     elements: [...r.elements],
     maxDisplacement: r.maxDisplacement,
+    ...(r.plateElements ? { plateElements: r.plateElements } : {}),
   };
 }
 
@@ -145,6 +152,7 @@ function unwireSolverResult(w: WireSolverResult): SolverResult {
     reactions: new Map(w.reactions),
     elements: new Map(w.elements),
     maxDisplacement: w.maxDisplacement,
+    ...(w.plateElements ? { plateElements: w.plateElements } : {}),
   };
 }
 
@@ -152,6 +160,7 @@ function serializeReportData(d: ReportData): WireReportData {
   return {
     nodes: d.nodes,
     beams: d.beams,
+    plates: d.plates,
     supports: d.supports,
     loads: d.loads,
     loadCases: d.loadCases,
@@ -160,6 +169,11 @@ function serializeReportData(d: ReportData): WireReportData {
     combinations: d.combinations.map((c) => ({ ...c, factors: [...c.factors] })),
     combinationResults: d.combinationResults
       ? [...d.combinationResults].map(
+          ([id, r]) => [id, wireSolverResult(r)] as [number, WireSolverResult],
+        )
+      : null,
+    caseResults: d.caseResults
+      ? [...d.caseResults].map(
           ([id, r]) => [id, wireSolverResult(r)] as [number, WireSolverResult],
         )
       : null,
@@ -186,6 +200,8 @@ function deserializeReportData(w: WireReportData): ReportData {
   return {
     nodes: w.nodes,
     beams: w.beams,
+    // Oudere hoofdvensters sturen nog geen platen mee — defensief leeg.
+    plates: w.plates ?? [],
     supports: w.supports,
     loads: w.loads,
     loadCases: w.loadCases,
@@ -194,6 +210,10 @@ function deserializeReportData(w: WireReportData): ReportData {
     combinations: w.combinations.map((c) => ({ ...c, factors: new Map(c.factors) })),
     combinationResults: w.combinationResults
       ? new Map(w.combinationResults.map(([id, r]) => [id, unwireSolverResult(r)]))
+      : null,
+    // ?? — oudere hoofdvensters sturen dit veld nog niet mee.
+    caseResults: w.caseResults
+      ? new Map(w.caseResults.map(([id, r]) => [id, unwireSolverResult(r)]))
       : null,
     envelope,
   };
@@ -327,6 +347,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     publish,
     data.nodes,
     data.beams,
+    data.plates,
     data.supports,
     data.loads,
     data.loadCases,
@@ -334,6 +355,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     data.structuralGrid,
     data.selfWeightEnabled,
     data.combinationResults,
+    data.caseResults,
     data.envelope,
     pageSize,
     orientation,

@@ -201,6 +201,7 @@ function App() {
   const reportData: ReportData = useMemo(() => ({
     nodes: fem.nodes,
     beams: fem.beams,
+    plates: fem.plates,
     supports: fem.supports,
     loads: fem.loads,
     loadCases: fem.loadCases,
@@ -211,11 +212,14 @@ function App() {
     // bij elke modelwijziging, dus het rapport valt dan automatisch terug op
     // "Nog niet berekend" (nooit verouderd).
     combinationResults: fem.combinationResults,
+    // Per-belastinggeval-resultaten (zelfde run/invalidatie) — de
+    // plaatspanningssectie superponeert hier zelf combinaties uit.
+    caseResults: fem.multiLcResult,
     envelope: fem.envelope,
   }), [
-    fem.nodes, fem.beams, fem.supports, fem.loads, fem.loadCases,
+    fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
     fem.combinations, fem.structuralGrid, fem.selfWeightEnabled,
-    fem.combinationResults, fem.envelope,
+    fem.combinationResults, fem.multiLcResult, fem.envelope,
   ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
@@ -1070,6 +1074,7 @@ function App() {
                     addBeam={fem.addBeam}
                     updateBeam={fem.updateBeam}
                     removeBeam={fem.removeBeam}
+                    updatePlate={fem.updatePlate}
                     removePlate={fem.removePlate}
                     addSupport={fem.addSupport}
                     removeSupport={fem.removeSupport}
@@ -1078,6 +1083,7 @@ function App() {
                     removeLoad={fem.removeLoad}
                     combinations={fem.combinations}
                     combinationResults={fem.combinationResults}
+                    caseResults={fem.multiLcResult}
                     envelope={fem.envelope}
                   />
                 </div>

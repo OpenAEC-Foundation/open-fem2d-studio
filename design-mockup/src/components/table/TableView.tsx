@@ -16,8 +16,10 @@
  */
 import { useState, useRef, useEffect, type ReactNode, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  Node, Beam, Plate, Support, Load, LoadCase, Selection, SupportType,
+import {
+  withPlateDefaults,
+  type Node, type Beam, type Plate, type Support, type Load, type LoadCase,
+  type Selection, type SupportType,
 } from "../fem/femTypes";
 import type { SolverResult } from "../fem/solver/types";
 import type { LoadCombination, Envelope } from "../fem/solver/combinations";
@@ -70,6 +72,8 @@ interface TableViewProps {
   addBeam: (fromId: number, toId: number) => number | null;
   updateBeam: (id: number, updates: Partial<Beam>) => void;
   removeBeam: (id: number) => void;
+  /** Patch rekenvelden op een plaat (dikte, E, ν, ρ, meshSize) — P5.1. */
+  updatePlate: (id: number, updates: Partial<Plate>) => void;
   removePlate: (id: number) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   removeSupport: (nodeId: number) => void;
@@ -79,6 +83,8 @@ interface TableViewProps {
   // Resultaten
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult> | null;
+  /** Per-belastinggeval-resultaten — dragen de `plateElements` (P5.1). */
+  caseResults: Map<number, SolverResult> | null;
   envelope: Envelope | null;
 }
 
@@ -109,10 +115,10 @@ export default function TableView(props: TableViewProps) {
     nodes, beams, plates, supports, loads, loadCases, activeLoadCaseId,
     selection, setSelection,
     addNode, updateNode, removeNode,
-    addBeam, updateBeam, removeBeam, removePlate,
+    addBeam, updateBeam, removeBeam, updatePlate, removePlate,
     addSupport, removeSupport,
     addLoad, updateLoad, removeLoad,
-    combinations, combinationResults, envelope,
+    combinations, combinationResults, caseResults, envelope,
   } = props;
   const { t } = useTranslation("ribbon");
 
@@ -353,23 +359,132 @@ export default function TableView(props: TableViewProps) {
     };
   };
 
+  // ── Meshstatistiek per plaat: aantal meshknopen/-elementen uit het laatste
+  //    resultaat (elk belastinggeval/combinatie draagt hetzelfde mesh — de
+  //    eerste treffer volstaat; de per-case-resultaten dragen de
+  //    plateElements, combinatieresultaten defensief als tweede bron), of —
+  //    defensief — uit een eventuele meshcache op de plaat (het async
+  //    CDT-pad voor polygonen, parallel in ontwikkeling); zonder alles
+  //    blijft de cel leeg ("—"). ─────────────────────────────────────────────
+  const plateMeshStats = (p: Plate): { nodes?: number; elems?: number } => {
+    for (const bron of [caseResults, combinationResults]) {
+      if (!bron) continue;
+      for (const res of bron.values()) {
+        const pr = res.plateElements?.find((r) => r.plateId === p.id);
+        if (pr && pr.elements.length > 0) {
+          // Unieke hoekpunten van de elementvlakken = de meshknopen van de
+          // plaat (elke meshknoop is hoekpunt van minstens één element).
+          const uniek = new Set<string>();
+          for (const el of pr.elements) {
+            for (const c of el.corners) {
+              uniek.add(`${Math.round(c.x * 1000)}|${Math.round(c.z * 1000)}`);
+            }
+          }
+          return { nodes: uniek.size, elems: pr.elements.length };
+        }
+      }
+    }
+    // Meshcache op de plaat (polygonen-pad) — veldvorm defensief lezen zodat
+    // dit blijft werken ongeacht de exacte cache-structuur.
+    const cache = (p as unknown as Record<string, unknown>).meshCache;
+    if (cache && typeof cache === "object") {
+      const c = cache as Record<string, unknown>;
+      const nodes = Array.isArray(c.nodes) ? c.nodes.length : undefined;
+      const elems = Array.isArray(c.triangles) ? c.triangles.length
+        : Array.isArray(c.elements) ? c.elements.length : undefined;
+      if (nodes !== undefined || elems !== undefined) return { nodes, elems };
+    }
+    return {};
+  };
+
   const buildPlatesSpec = (): TableSpec => ({
-    columns: [t("table.colId"), t("table.colCorners")],
+    columns: [
+      t("table.colId"), t("table.colCorners"),
+      "t [mm]", "E [N/mm²]", "ν [—]", "ρ [kg/m³]",
+      t("table.colMeshSize"), t("table.colMeshNodes"), t("table.colMeshElems"),
+    ],
     editable: true,
     emptyText: t("table.noPlates"),
-    rows: plates.map((p) => ({
-      key: `p${p.id}`,
-      selected: selPlateId === p.id,
-      onSelect: () => setSelection({ type: "plate", id: p.id }),
-      onDelete: () => removePlate(p.id),
-      exportCells: [String(p.id), p.nodeIds.join(", ")],
-      cells: (
-        <>
-          <td className="ftable-id">{p.id}</td>
-          <td>{p.nodeIds.join(", ")}</td>
-        </>
-      ),
-    })),
+    // Bewust géén onAddRow: een plaat ontstaat op het canvas (hoekknopen
+    // aanklikken met de plaattool); een lege tabelrij zou een plaat zonder
+    // geldige geometrie opleveren.
+    rows: plates.map((p) => {
+      const d = withPlateDefaults(p);
+      const stats = plateMeshStats(p);
+      const statCell = (v: number | undefined) =>
+        v !== undefined ? v : <span className="ftable-muted">—</span>;
+      return {
+        key: `p${p.id}`,
+        selected: selPlateId === p.id,
+        onSelect: () => setSelection({ type: "plate", id: p.id }),
+        onDelete: () => removePlate(p.id),
+        exportCells: [
+          String(p.id), p.nodeIds.join(", "),
+          fmtNum(d.thickness), fmtNum(d.E), fmtNum(d.nu), fmtNum(d.rho),
+          fmtNum(d.meshSize),
+          stats.nodes !== undefined ? String(stats.nodes) : "",
+          stats.elems !== undefined ? String(stats.elems) : "",
+        ],
+        cells: (
+          <>
+            <td className="ftable-id">{p.id}</td>
+            <td>{p.nodeIds.join(", ")}</td>
+            <td>
+              <NumCell
+                value={d.thickness}
+                title="Plaatdikte t in mm — spanningen schalen omgekeerd evenredig (t ×2 → σ ×0,5)"
+                onCommit={(v) => {
+                  if (v <= 0) return false; // dikte moet positief zijn
+                  updatePlate(p.id, { thickness: v });
+                }}
+              />
+            </td>
+            <td>
+              <NumCell
+                value={d.E}
+                title="Elasticiteitsmodulus in N/mm² (staal 210000, beton ~30000)"
+                onCommit={(v) => {
+                  if (v <= 0) return false;
+                  updatePlate(p.id, { E: v });
+                }}
+              />
+            </td>
+            <td>
+              <NumCell
+                value={d.nu}
+                title="Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"
+                onCommit={(v) => {
+                  if (v < 0 || v >= 0.5) return false;
+                  updatePlate(p.id, { nu: v });
+                }}
+              />
+            </td>
+            <td>
+              <NumCell
+                value={d.rho}
+                title="Volumieke massa in kg/m³ — gebruikt voor het eigengewicht (staal 7850, beton 2500)"
+                onCommit={(v) => {
+                  if (v < 0) return false;
+                  updatePlate(p.id, { rho: v });
+                }}
+              />
+            </td>
+            <td>
+              <NumCell
+                value={d.meshSize}
+                title="Gewenste elementgrootte van het rekenmesh in mm; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)"
+                onCommit={(v) => {
+                  if (v < 10) return false; // te fijn mesh → DOF-limiet
+                  updatePlate(p.id, { meshSize: v });
+                }}
+              />
+            </td>
+            <td className="ftable-num">{statCell(stats.nodes)}</td>
+            <td className="ftable-num">{statCell(stats.elems)}</td>
+          </>
+        ),
+      };
+    }),
   });
 
   const buildPointLoadsSpec = (): TableSpec => {

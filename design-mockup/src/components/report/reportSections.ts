@@ -13,6 +13,7 @@ import type { ComponentType } from "react";
 import ProjectSection from "./sections/ProjectSection";
 import NodesSection from "./sections/NodesSection";
 import BeamsSection from "./sections/BeamsSection";
+import PlatesSection from "./sections/PlatesSection";
 import SectionsSection from "./sections/SectionsSection";
 import MaterialsSection from "./sections/MaterialsSection";
 import LoadsSection from "./sections/LoadsSection";
@@ -21,6 +22,7 @@ import SchemaSection from "./sections/SchemaSection";
 import DiagramsSection from "./sections/DiagramsSection";
 import ReactionsSection from "./sections/ReactionsSection";
 import DisplacementsSection from "./sections/DisplacementsSection";
+import PlateStressSection from "./sections/PlateStressSection";
 import CheckTableSection from "./sections/CheckTableSection";
 import CheckDetailSection from "./sections/CheckDetailSection";
 
@@ -54,6 +56,13 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
     titleKey: "report.sectionBeams",
     defaultTitle: "Staven",
     Component: BeamsSection,
+  },
+  // ── P5.2: platen (wandschijven) — invoertabel ──
+  {
+    id: "plates",
+    titleKey: "report.sectionPlates",
+    defaultTitle: "Platen",
+    Component: PlatesSection,
   },
   {
     id: "sections",
@@ -105,6 +114,13 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
     titleKey: "report.sectionDisplacements",
     defaultTitle: "Verplaatsingen",
     Component: DisplacementsSection,
+  },
+  // ── P5.2: plaatspanningen per combinatie + omhullende ──
+  {
+    id: "plateStresses",
+    titleKey: "report.sectionPlateStresses",
+    defaultTitle: "Plaatspanningen",
+    Component: PlateStressSection,
   },
   {
     id: "checkTable",
