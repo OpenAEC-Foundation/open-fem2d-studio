@@ -134,25 +134,58 @@ export function buildForcesEnvelope(
 }
 
 /**
- * Maatgevende zakking van een staaf (mm, absoluut) uit een SolverResult.
- *
- * De solver levert alleen KNOOPverplaatsingen (geen stations langs de
- * staaf), dus dit is het maximum over de twee eindknopen — de veldzakking
- * tussen de knopen wordt niet gezien. Bij een doorgaande ligger die uit
- * meerdere staven bestaat (gesplitste overspanning) is dit wél de zakking
- * van de tussenknopen. Beperking is gedocumenteerd in het rapportageveld.
+ * Knoop-gebaseerd fallback-pad: de uz van de eindknoop met de grootste
+ * |uz|, MET teken (negatief = omlaag). Ziet de veldzakking tussen de
+ * knopen niet — alleen te gebruiken als de station-arrays ontbreken.
  */
-export function extractMaxDeflectionMm(
+function nodalDeflectionMm(beam: Beam, result: SolverResult): number {
+  let w = 0;
+  for (const nid of [beam.from, beam.to]) {
+    const d = result.displacements.get(nid);
+    if (d && Math.abs(d.uz) > Math.abs(w)) w = d.uz;
+  }
+  return w;
+}
+
+/**
+ * Maatgevende zakking van een staaf (mm, MET teken) uit een SolverResult:
+ * het veldmaximum max |w(x)| over de 21 stations van de staaf, met het
+ * teken van de maatgevende stationswaarde behouden.
+ *
+ * Tekenkeuze — afgestemd op wat de Rust-kern verwacht (steel-check
+ * `input.deflection_actual_max_mm` en timber `input.deflection_inst_mm`:
+ * "mm, negatief = omlaag"; de UC gebruikt |w|, maar het teken telt in de
+ * verrekening met zeeg en blijvend deel, w_fin = w_z − w_zeeg): w(x) staat
+ * in LOKALE assen (+y = 90° CCW vanaf de staafas, zie solver/types.ts),
+ * dus voor een horizontale staaf is doorhangen negatief — precies de
+ * kern-conventie. Voor kolommen is w de transversale uitbuiging (de juiste
+ * grootheid voor deze toets); axiale verkorting telt niet meer mee zoals
+ * bij het oude knooppad.
+ *
+ * Fallback: ontbreken de station-arrays (resultaat van vóór de
+ * veldzakking-uitbreiding), dan het knooppad met een console.warn — de
+ * veldzakking kan dan onderschat zijn.
+ */
+export function extractFieldDeflectionMm(
   beam: Beam,
   result: SolverResult | null,
 ): number {
   if (!result) return 0;
-  let max = 0;
-  for (const nid of [beam.from, beam.to]) {
-    const d = result.displacements.get(nid);
-    if (d) max = Math.max(max, Math.abs(d.uz));
+  const ef = result.elements.get(beam.id);
+  const stations = ef?.deflection;
+  if (!ef || !Array.isArray(stations) || stations.length === 0) {
+    console.warn(
+      `[doorbuigingstoets] staaf ${beam.id}: geen station-zakkingen in het ` +
+        `solverresultaat (ouder resultaat?) — val terug op knoopverplaatsingen; ` +
+        `de veldzakking kan hierdoor onderschat zijn. Reken het model opnieuw door.`,
+    );
+    return nodalDeflectionMm(beam, result);
   }
-  return max;
+  let w = 0;
+  for (const v of stations) {
+    if (Number.isFinite(v) && Math.abs(v) > Math.abs(w)) w = v;
+  }
+  return w;
 }
 
 /**
@@ -262,7 +295,8 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
       buckling_length_z_m: lengthMm / 1000,
       deflection_limit_class: "Floor",
       deflection_limit_numerator: 333,
-      deflection_actual_max_mm: extractMaxDeflectionMm(beam, slsResult),
+      // Veldmaximum over de 21 stations, mm met teken (negatief = omlaag).
+      deflection_actual_max_mm: extractFieldDeflectionMm(beam, slsResult),
       is_cantilever: false,
       consequence_class: "CC1",
       pre_camber_mm: 0,

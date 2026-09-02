@@ -21,7 +21,7 @@
 
 - [ ] **B1. `Beam.checkConfig` + projectbestand v2.** Optioneel per-staaf object: kniklengtes/factoren per as, kipsteunposities, doorbuigingsklasse+limiet, zeeg, klimaatklasse, belastingduur. Projectbestand naar versie 2: checkConfig, belastingcombinaties én stramien mee opslaan (gaan nu verloren bij save/open!), met migratie vanaf v1.
 - [ ] **B2. EN 1993/EN 1995-tab gebonden.** De kniklengte-velden in `BarPropertiesDialog` zijn ongebonden decoratie. Binden aan checkConfig; builders (`steelCheckBuilder`/`timberCheckBuilder`) lezen de config in plaats van hun hardcoded defaults.
-- [ ] **B3. Doorbuigingstoets op veld-max.** Builders geven het maximum van w(x) uit A3 door in plaats van knoopzakkingen (die voor een normale overspanning 0 zijn — de toets slaagt nu altijd).
+- [x] **B3. Doorbuigingstoets op veld-max.** Builders geven het maximum van w(x) uit A3 door in plaats van knoopzakkingen (die voor een normale overspanning 0 zijn — de toets slaagt nu altijd).
 - [x] **B4. Hout-PDF.** Report-crate rendert het gedeelde NamedCheck-contract voor beide normen; Tauri-command; filter in `reportStore.generatePdf` vervangen door samenvoegen. *(Draait als aparte agent — geheel in src-tauri, conflictvrij.)*
 
 ## Fase C — Bestandszekerheid & basis-UX (kern)

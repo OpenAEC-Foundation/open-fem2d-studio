@@ -31,7 +31,7 @@ import {
   isSteelProfile,
   beamLengthMm,
   buildForcesEnvelope,
-  extractMaxDeflectionMm,
+  extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
 
 /**
@@ -169,9 +169,12 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
 
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
 
-    // Zakking onder de karakteristieke BGT-combinatie (mm, negatief =
-    // omlaag conform de tekenconventie van de kern).
-    const wInstMm = -extractMaxDeflectionMm(beam, slsResult);
+    // Zakking onder de karakteristieke BGT-combinatie: veldmaximum
+    // max |w(x)| over de 21 stations, teken behouden (mm, negatief =
+    // omlaag conform de tekenconventie van de kern — de lokale
+    // stationsconventie van de solver valt daar voor horizontale staven
+    // mee samen; zie extractFieldDeflectionMm).
+    const wInstMm = extractFieldDeflectionMm(beam, slsResult);
 
     inputs.push({
       beam_id: beam.id,
