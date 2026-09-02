@@ -45,6 +45,41 @@ export interface BeamReleases {
   endRy?: boolean;
 }
 
+/**
+ * Per-staaf toetsconfiguratie voor de normtoetsing (EN 1993 staal /
+ * EN 1995 hout). Alle velden zijn optioneel: een ontbrekend veld betekent
+ * "gebruik de gedocumenteerde default van de builder" (zie
+ * steelCheckBuilder.ts / timberCheckBuilder.ts). De enum-vormen hier zijn
+ * UI-vriendelijk; de builders mappen ze 1-op-1 op de ts-rs-typen die de
+ * Rust-kern verwacht (DeflectionClass, ServiceClass, LoadDurationClass).
+ */
+export interface BeamCheckConfig {
+  // Staal (EN 1993)
+  /** Kniklengte sterke as in m; default: systeemlengte. */
+  bucklingLengthY_m?: number;
+  /** Kniklengte zwakke as in m; default: systeemlengte. */
+  bucklingLengthZ_m?: number;
+  /**
+   * Kipsteunposities (bovenflens) als fractie 0..1 van de staaflengte —
+   * zelfde conventie als LateralBracing.top_flange_positions in de
+   * Rust-kern (lambda_chi.rs vermenigvuldigt met de staaflengte).
+   */
+  lateralRestraints?: number[];
+  // Doorbuiging (beide normen)
+  /** Doorbuigingsklasse; default "floor". */
+  deflectionClass?: "floor" | "roof" | "cantilever" | "custom";
+  /** Bij deflectionClass "custom": de n in L/n. */
+  deflectionLimitNumerator?: number;
+  /** Zeeg (pre-camber) in mm, zelfde tekenconventie als de zakking
+   *  (negatief = omlaag). Alleen door de staalkern geconsumeerd. */
+  preCamber_mm?: number;
+  // Hout (EN 1995)
+  /** Klimaatklasse §2.3.1.3; default 1. */
+  serviceClass?: 1 | 2 | 3;
+  /** Belastingduurklasse §2.3.1.2; default "medium" (middellang). */
+  loadDuration?: "permanent" | "long" | "medium" | "short" | "instantaneous";
+}
+
 export interface Beam {
   id: number;
   from: number; // node id
@@ -55,6 +90,8 @@ export interface Beam {
   profile?: string;
   /** DOF releases per end (default: all rigid = no releases). */
   releases?: BeamReleases;
+  /** Per-staaf toetsconfiguratie; ontbreekt → builder-defaults. */
+  checkConfig?: BeamCheckConfig;
 }
 
 export interface Plate {

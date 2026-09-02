@@ -4,11 +4,62 @@
  * fallback (Blob download / file-input) when running in a plain web context.
  */
 import type {
-  Node, Beam, Support, Plate, Load, LoadCase,
+  Node, Beam, Support, Plate, Load, LoadCase, StructuralGrid,
 } from "../components/fem/femTypes";
+import type { LoadCombination } from "../components/fem/solver/combinations";
 
 export const PROJECT_FILE_EXT = "ifcfem2d";
-export const PROJECT_FORMAT_VERSION = 1;
+/**
+ * Versiegeschiedenis:
+ *  1 — model + loadCases + solver-toggles.
+ *  2 — + belastingcombinaties (`combinations`, factors als object omdat een
+ *      Map niet JSON-serialiseerbaar is) en stramien (`structuralGrid`).
+ *      `Beam.checkConfig` reist automatisch mee met de beams-array.
+ * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
+ * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
+ * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
+ */
+export const PROJECT_FORMAT_VERSION = 2;
+
+/** JSON-vorm van één belastingcombinatie: `factors` als { caseId: factor }. */
+export interface ProjectFileCombination {
+  id: number;
+  name: string;
+  type: "uls" | "sls";
+  formula: string;
+  factors: Record<string, number>;
+}
+
+/** LoadCombination[] (Map-factoren) → JSON-serialiseerbare vorm. */
+export function combinationsToFile(combos: LoadCombination[]): ProjectFileCombination[] {
+  return combos.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    formula: c.formula,
+    factors: Object.fromEntries([...c.factors].map(([caseId, f]) => [String(caseId), f])),
+  }));
+}
+
+/**
+ * JSON-vorm → LoadCombination[] met Map-factoren (caseId weer numeriek).
+ * `undefined` in → `undefined` uit, zodat de aanroeper bij v1-bestanden op
+ * de bestaande defaults kan terugvallen.
+ */
+export function combinationsFromFile(
+  raw: ProjectFileCombination[] | undefined,
+): LoadCombination[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type === "sls" ? "sls" : "uls",
+    formula: c.formula ?? "",
+    factors: new Map(
+      Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)]),
+    ),
+  }));
+}
 
 export interface ProjectFile {
   format: "open-fem2d-studio-v2";
@@ -25,6 +76,11 @@ export interface ProjectFile {
   activeLoadCaseId: number;
   selfWeightEnabled: boolean;
   nonlinearEnabled: boolean;
+  // v2 — optioneel zodat v1-bestanden zonder migratiestap blijven laden.
+  /** Belastingcombinatie-definities (v2). */
+  combinations?: ProjectFileCombination[];
+  /** Stramien (v2). */
+  structuralGrid?: StructuralGrid;
 }
 
 export function serializeProject(state: Omit<ProjectFile, "format" | "version" | "savedAt">): string {

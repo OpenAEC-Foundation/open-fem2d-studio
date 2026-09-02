@@ -234,6 +234,10 @@ export interface FemStore {
     nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[];
     loadCases: LoadCase[]; activeLoadCaseId: number;
     selfWeightEnabled?: boolean; nonlinearEnabled?: boolean;
+    /** v2: combinatie-definities; ontbreekt (v1) → defaultCombinations(). */
+    combinations?: LoadCombination[];
+    /** v2: stramien; ontbreekt (v1) → DEFAULT_STRUCTURAL_GRID. */
+    structuralGrid?: StructuralGrid;
   }) => void;
 }
 
@@ -699,6 +703,8 @@ export function useFemStore(): FemStore {
       nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[];
       loadCases: LoadCase[]; activeLoadCaseId: number;
       selfWeightEnabled?: boolean; nonlinearEnabled?: boolean;
+      combinations?: LoadCombination[];
+      structuralGrid?: StructuralGrid;
     }) => {
       setNodes(p.nodes);
       setBeams(p.beams);
@@ -709,6 +715,12 @@ export function useFemStore(): FemStore {
       setActiveLoadCaseId(p.activeLoadCaseId);
       setSelfWeightEnabled(!!p.selfWeightEnabled);
       setNonlinearEnabled(!!p.nonlinearEnabled);
+      // v2-velden; v1-bestanden (of Nieuw) vallen terug op de defaults.
+      setCombinations(p.combinations ?? defaultCombinations());
+      setStructuralGridState(p.structuralGrid ?? DEFAULT_STRUCTURAL_GRID);
+      // Combinatie-ids uit het bestand hoeven niet overeen te komen met de
+      // vorige selectie — selectie resetten voorkomt een dangling id.
+      setActiveCombinationId(null);
       setSelection(null);
       // Reset history so undo can't time-travel back to the previous model.
       setHistory([{ nodes: p.nodes, beams: p.beams, supports: p.supports, plates: p.plates, loads: p.loads }]);

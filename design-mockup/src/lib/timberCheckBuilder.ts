@@ -13,19 +13,26 @@
  *    geen numerieke doorsnede-eigenschappen per staaf op, dus de naam is de
  *    enige bron — geen naam-match betekent eerlijk overslaan.
  *
- * Gedocumenteerde defaults (nog niet per staaf instelbaar in deze UI):
+ * Per-staaf toetsconfiguratie komt uit `beam.checkConfig` (EN 1995-sectie
+ * van het staaf-eigenschappenvenster): klimaatklasse, belastingduur en
+ * doorbuigingsklasse. Gedocumenteerde defaults voor ontbrekende velden:
  *  - klimaatklasse 1, belastingduur "middellang" (maatgevend voor de
  *    gebruikelijke UGT-combinatie met veranderlijke vloerbelasting);
  *  - kniklengte = systeemlengte om beide assen; kipsteunafstand =
  *    staaflengte; belastinggeval "gelijkmatig verdeeld" aangrijpend in het
  *    zwaartepunt; k_cr = 1,0; geen lastverdelend systeem;
- *  - doorbuiging: karakteristieke BGT-zakking geldt óók als quasi-blijvend
- *    (volledige kruip — veilig-zijdig); blijvend deel 0 → w_add = w_fin.
+ *  - doorbuiging: klasse "vloer" → w_fin ≤ L/250 en w_add ≤ L/333
+ *    (NB-standaard); karakteristieke BGT-zakking geldt óók als
+ *    quasi-blijvend (volledige kruip — veilig-zijdig); blijvend deel 0 →
+ *    w_add = w_fin. Zeeg kent de houtkern (nog) niet — preCamber_mm wordt
+ *    hier bewust NIET geconsumeerd en de UI toont het veld niet voor hout.
  */
-import type { Beam, Node } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, Node } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
+import type { LoadDurationClass } from "./types/timber/LoadDurationClass";
+import type { ServiceClass } from "./types/timber/ServiceClass";
 import type { CheckSkip } from "./checkTypes";
 import {
   isSteelProfile,
@@ -33,6 +40,54 @@ import {
   buildForcesEnvelope,
   extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
+
+// ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
+/** UI-klimaatklasse (1/2/3) → ts-rs/Rust-enum. Ontbreekt → Sc1. */
+export function mapServiceClass(sc: BeamCheckConfig["serviceClass"]): ServiceClass {
+  switch (sc) {
+    case 2:  return "Sc2";
+    case 3:  return "Sc3";
+    case 1:
+    default: return "Sc1";
+  }
+}
+
+/** UI-belastingduurklasse → ts-rs/Rust-enum. Ontbreekt → MediumTerm. */
+export function mapLoadDuration(d: BeamCheckConfig["loadDuration"]): LoadDurationClass {
+  switch (d) {
+    case "permanent":     return "Permanent";
+    case "long":          return "LongTerm";
+    case "short":         return "ShortTerm";
+    case "instantaneous": return "Instantaneous";
+    case "medium":
+    default:              return "MediumTerm";
+  }
+}
+
+/**
+ * Doorbuigingsklasse → L/n-noemers (w_fin, w_add) voor de houtkern.
+ *  - "floor":      fin 250, add 333 (NB-standaard, huidige defaults);
+ *  - "roof":       fin 250, add 250 (niet-toegankelijk dak: w_add 0,004·L);
+ *  - "cantilever": fin 125, add 167 — de NB-conventie "rekenlengte = 2 ×
+ *    uitkraaglengte" uitgedrukt als gehalveerde noemers op de staaflengte;
+ *  - "custom":     de opgegeven n geldt voor w_fin én w_add (één knop,
+ *    transparant gedocumenteerd in de UI-hint).
+ */
+export function timberDeflectionNumerators(
+  cls: BeamCheckConfig["deflectionClass"],
+  customN: number | undefined,
+): { fin: number; add: number } {
+  switch (cls) {
+    case "roof":       return { fin: 250, add: 250 };
+    case "cantilever": return { fin: 125, add: 167 };
+    case "custom": {
+      const n = customN && customN > 0 ? customN : 333;
+      return { fin: n, add: n };
+    }
+    case "floor":
+    default:           return { fin: 250, add: 333 };
+  }
+}
 
 /**
  * Sterkteklassen die de Rust EN 1995-kern kent (nen-en-1995-1-1/data.rs):
@@ -176,13 +231,20 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
     // mee samen; zie extractFieldDeflectionMm).
     const wInstMm = extractFieldDeflectionMm(beam, slsResult);
 
+    // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
+    // Kniklengtes (bucklingLengthY/Z_m) en preCamber_mm worden voor hout
+    // bewust niet geconsumeerd: de EN 1995-sectie van de dialoog biedt ze
+    // niet aan, dus consumeren zou onzichtbare invoer zijn.
+    const cfg = beam.checkConfig ?? {};
+    const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+
     inputs.push({
       beam_id: beam.id,
       width_mm: rect.bMm,
       height_mm: rect.hMm,
       strength_class: grade,
-      service_class: "Sc1",
-      load_duration: "MediumTerm",
+      service_class: mapServiceClass(cfg.serviceClass),
+      load_duration: mapLoadDuration(cfg.loadDuration),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,
       buckling_length_y_m: lengthMm / 1000,
@@ -199,8 +261,8 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       deflection_quasi_perm_mm: wInstMm,
       // Blijvend deel onbekend → 0, dus w_add = w_fin (veilig-zijdig).
       deflection_permanent_mm: 0,
-      deflection_limit_fin: 250,
-      deflection_limit_add: 333,
+      deflection_limit_fin: defl.fin,
+      deflection_limit_add: defl.add,
     });
   }
 

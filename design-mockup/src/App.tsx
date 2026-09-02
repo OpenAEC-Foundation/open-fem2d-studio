@@ -32,6 +32,7 @@ import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemRe
 import { selfWeightPerMeter } from "./components/fem/profileData";
 import { resolveSection } from "./lib/sectionResolver";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
+import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
 import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
 import { getSetting } from "./store";
 import "./themes.css";
@@ -146,6 +147,9 @@ function App() {
     activeLoadCaseId: fem.activeLoadCaseId,
     selfWeightEnabled: fem.selfWeightEnabled,
     nonlinearEnabled: fem.nonlinearEnabled,
+    // v2: combinaties (Map-factoren → JSON-object) + stramien.
+    combinations: combinationsToFile(fem.combinations),
+    structuralGrid: fem.structuralGrid,
   }), [fem]);
 
   // ── C2: dirty-vlag ("niet-opgeslagen wijzigingen") ──────────────────────
@@ -258,6 +262,9 @@ function App() {
         activeLoadCaseId: parsed.activeLoadCaseId,
         selfWeightEnabled: parsed.selfWeightEnabled,
         nonlinearEnabled: parsed.nonlinearEnabled,
+        // v2-velden; undefined bij v1-bestanden → store-defaults.
+        combinations: combinationsFromFile(parsed.combinations),
+        structuralGrid: parsed.structuralGrid,
       });
       setProjectPath(opened.path);
       addRecentFile(opened.path);
@@ -578,7 +585,9 @@ function App() {
     setDirty(json !== lastSavedRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.plates, fem.loads,
-      fem.loadCases, fem.activeLoadCaseId, fem.selfWeightEnabled, fem.nonlinearEnabled]);
+      fem.loadCases, fem.activeLoadCaseId, fem.selfWeightEnabled, fem.nonlinearEnabled,
+      // v2: combinaties + stramien reizen mee in de snapshot-JSON.
+      fem.combinations, fem.structuralGrid]);
 
   // C2: sluitbeveiliging. Tauri: onCloseRequested + native dialoog (dekt de
   // titelbalk-sluitknop, Bestand → Afsluiten en Alt+F4). Browser: beforeunload.
@@ -1021,6 +1030,9 @@ function App() {
               loadCases: parsed.loadCases, activeLoadCaseId: parsed.activeLoadCaseId,
               selfWeightEnabled: parsed.selfWeightEnabled,
               nonlinearEnabled: parsed.nonlinearEnabled,
+              // v2-velden; undefined bij v1-bestanden → store-defaults.
+              combinations: combinationsFromFile(parsed.combinations),
+              structuralGrid: parsed.structuralGrid,
             });
             setProjectPath(path);
             addRecentFile(path);

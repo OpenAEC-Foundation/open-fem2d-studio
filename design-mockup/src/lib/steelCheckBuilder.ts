@@ -17,13 +17,40 @@
  * een expliciete reden (zichtbaar in het toetsingspaneel) — geen stille
  * aannames.
  */
-import type { Beam, Node } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, Node } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { BeamCheckInput } from "./types/steel/BeamCheckInput";
+import type { DeflectionClass } from "./types/steel/DeflectionClass";
 import type { ForcePoint } from "./types/steel/ForcePoint";
 import type { SteelProfile } from "./types/steel/SteelProfile";
 import type { CheckSkip } from "./checkTypes";
+
+// ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
+/** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
+export function mapDeflectionClass(
+  cls: BeamCheckConfig["deflectionClass"],
+): DeflectionClass {
+  switch (cls) {
+    case "roof":       return "Roof";
+    case "cantilever": return "Cantilever";
+    case "custom":     return "Custom";
+    case "floor":
+    default:           return "Floor";
+  }
+}
+
+/**
+ * Kipsteunfracties opschonen voor LateralBracing.top_flange_positions:
+ * alleen 0 < f < 1 (de uiteinden zelf zijn geen kipsteun), gesorteerd en
+ * ontdubbeld — de Rust-kern (lambda_chi.rs) vermenigvuldigt de fracties
+ * met de staaflengte.
+ */
+export function sanitizeRestraintFractions(fractions: number[] | undefined): number[] {
+  if (!Array.isArray(fractions)) return [];
+  return [...new Set(fractions.filter((f) => Number.isFinite(f) && f > 0 && f < 1))]
+    .sort((a, b) => a - b);
+}
 
 /** Profielprefixen die de Rust steel-profiles DB kent. */
 const STEEL_PROFILE_PREFIXES = [
@@ -213,8 +240,9 @@ export function equivalentUdlFromMoments(env: ForcePoint[], lengthMm: number): n
 /**
  * Bouw BeamCheckInput[] voor alle staven met een staalprofiel.
  *
- * Gedocumenteerde defaults (per-staaf toetsconfiguratie — kipsteunen,
- * kniklengtes, doorbuigingsklasse — heeft deze frontend nog niet):
+ * Per-staaf toetsconfiguratie komt uit `beam.checkConfig` (ingesteld via de
+ * EN 1993-tab van het staaf-eigenschappenvenster). Gedocumenteerde defaults
+ * voor ontbrekende velden:
  *  - kniklengte = systeemlengte om beide assen; geen kipsteunen;
  *  - doorbuigingsklasse "vloer", limiet L/333; geen zeeg;
  *  - gevolgklasse CC1; last grijpt aan op de bovenflens (z_a = h/2,
@@ -284,22 +312,31 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
     }
     const govPoints = forcesEnvelope.filter((p) => p.combination_id === govComboId);
 
+    // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
+    const cfg = beam.checkConfig ?? {};
+
     inputs.push({
       beam_id: beam.id,
       profile_name: profileName,
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,
-      lateral_bracing: { top_flange_positions: [], bottom_flange_positions: [] },
-      buckling_length_y_m: lengthMm / 1000,
-      buckling_length_z_m: lengthMm / 1000,
-      deflection_limit_class: "Floor",
-      deflection_limit_numerator: 333,
+      lateral_bracing: {
+        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
+        bottom_flange_positions: [],
+      },
+      buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1000,
+      buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1000,
+      deflection_limit_class: mapDeflectionClass(cfg.deflectionClass),
+      // De Rust-kern gebruikt de noemer alleen bij klasse "Custom"
+      // (deflection.rs::default_numerator); anders geldt de klassenoemer.
+      deflection_limit_numerator:
+        cfg.deflectionClass === "custom" ? (cfg.deflectionLimitNumerator ?? 333) : 333,
       // Veldmaximum over de 21 stations, mm met teken (negatief = omlaag).
       deflection_actual_max_mm: extractFieldDeflectionMm(beam, slsResult),
-      is_cantilever: false,
+      is_cantilever: cfg.deflectionClass === "cantilever",
       consequence_class: "CC1",
-      pre_camber_mm: 0,
+      pre_camber_mm: cfg.preCamber_mm ?? 0,
       // Blijvend BGT-deel is (nog) niet apart op te lossen → 0 betekent
       // w_add = w_fin, de zwaarste van de twee toetsen (veilig-zijdig).
       deflection_permanent_mm: 0,
