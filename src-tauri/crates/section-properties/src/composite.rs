@@ -25,10 +25,32 @@
 //!   gesloten cel
 //! * `Iw` via de sectoriële-oppervlaktemethode op de middellijn (dunwandig)
 //!
-//! De lamel-integralen lopen niet via reeksontwikkelingen maar via exacte
-//! polygoonintegralen (Green), zodat een gedraaide plaat net zo exact is als
-//! een rechte.
+//! ## Eén rekenkern
+//!
+//! De meetkunde van de lamellen wordt **niet** hier uitgerekend maar in
+//! [`crate::contour`]: elke plaat gaat als vierhoekige contour die kant op, en
+//! `A`, het zwaartepunt, `Iy`, `Iz`, `Iyz` en `Wpl` komen daar exact uit terug.
+//! Deze module houdt daarmee alleen over wat écht van een samenstelling is: het
+//! optellen van catalogusdelen (die geen contour hebben, alleen grootheden), de
+//! Bredt-cellen, en de sectoriële welving over de middellijn.
+//!
+//! Dat is bewust: zou een lamellenmodel zijn eigen polygoonintegralen houden,
+//! dan zijn er twee plekken waar een fout in kan sluipen en twee antwoorden op
+//! dezelfde vraag. Nu is er één.
+//!
+//! Wat de contourkern **niet** kan overnemen, en waarom:
+//!
+//! * **Catalogusdelen.** Een `CatalogusDeel` is een verzameling grootheden, geen
+//!   contour — er is geen rand om langs te integreren. Die tellen dus met
+//!   Steiner op, en juist daarom is `Wpl` niet bepaald zodra er een deel in zit:
+//!   je kunt een deel niet op de plastische neutrale as doorsnijden als je zijn
+//!   vorm niet kent.
+//! * **`It` en `Iw`.** Een samengestelde plaatdoorsnede is dunwandig; daar zijn
+//!   `⅓Σbt³`, Bredt en de sectoriële methode de gangbare — en snelle — weg. Wie
+//!   de numerieke waarde wil, voert de contour rechtstreeks in
+//!   [`crate::motor::bereken_doorsnede`].
 
+use crate::contour::{Contour, ContourBouwer, Doorsnede};
 use crate::SectionProperties;
 
 // ── Bouwstenen ──────────────────────────────────────────────────────────────
@@ -233,18 +255,36 @@ impl CompositeSection {
         self
     }
 
+    /// De lamellen als [`Doorsnede`] — de brug naar de exacte contourkern.
+    ///
+    /// Elke plaat wordt één vierhoekige contour tegen de klok in. Overlappende
+    /// platen tellen dubbel, precies zoals bij het optellen van losse lamellen;
+    /// een lamellenmodel is een *som*, geen vereniging.
+    pub fn lamellen_doorsnede(&self) -> Doorsnede {
+        let mut d = Doorsnede::nieuw();
+        for l in &self.lamellen {
+            let p = l.hoekpunten();
+            let c: Contour = ContourBouwer::nieuw(p[0].0, p[0].1)
+                .lijn(p[1].0, p[1].1)
+                .lijn(p[2].0, p[2].1)
+                .lijn(p[3].0, p[3].1)
+                .sluit();
+            d = d.met(c);
+        }
+        d
+    }
+
     /// Reken de complete doorsnede door.
     pub fn bereken(&self) -> CompositeResult {
         // ── 1. Oppervlak en zwaartepunt ─────────────────────────────────────
-        let mut a_tot = 0.0;
-        let mut s_y = 0.0; // Σ A·y
-        let mut s_z = 0.0; // Σ A·z
-        for l in &self.lamellen {
-            let a = l.oppervlak_mm2();
-            a_tot += a;
-            s_y += a * l.y_mm;
-            s_z += a * l.z_mm;
-        }
+        // De lamellen via de contourkern, de catalogusdelen als grootheden.
+        let lam = self.lamellen_doorsnede();
+        // De contourkern noemt ∬z dA "Sy" en ∬y dA "Sz"; hier heten ze naar de
+        // coördinaat waarover ze wegen, dus omgekeerd.
+        let (a_lam, integraal_z, integraal_y, ..) = lam.momenten_om_oorsprong();
+        let mut a_tot = a_lam;
+        let mut s_y = integraal_y; // Σ A·y
+        let mut s_z = integraal_z; // Σ A·z
         for d in &self.delen {
             let a = d.props.area_mm2;
             a_tot += a;
@@ -263,19 +303,17 @@ impl CompositeSection {
         let (mut y_min, mut y_max) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut z_min, mut z_max) = (f64::INFINITY, f64::NEG_INFINITY);
 
-        for l in &self.lamellen {
-            let hp: Vec<(f64, f64)> =
-                l.hoekpunten().iter().map(|&(y, z)| (y - y_c, z - z_c)).collect();
-            let (dyy, dzz, dyz) = polygoon_traagheid_om_oorsprong(&hp);
-            iy += dzz;
-            iz += dyy;
-            iyz += dyz;
-            for &(y, z) in &hp {
-                y_min = y_min.min(y);
-                y_max = y_max.max(y);
-                z_min = z_min.min(z);
-                z_max = z_max.max(z);
-            }
+        if !self.lamellen.is_empty() {
+            let gecentreerd = lam.verschoven(-y_c, -z_c);
+            let (_, _, _, iy_l, iz_l, iyz_l) = gecentreerd.momenten_om_oorsprong();
+            iy += iy_l;
+            iz += iz_l;
+            iyz += iyz_l;
+            let (a, b, c, d) = gecentreerd.uitersten();
+            y_min = y_min.min(a);
+            y_max = y_max.max(b);
+            z_min = z_min.min(c);
+            z_max = z_max.max(d);
         }
         for d in &self.delen {
             let (piy, piz, piyz) = deel_traagheid(d);
@@ -315,11 +353,13 @@ impl CompositeSection {
         let wel_z_left = veilig_delen(iz, -y_min);
 
         // ── 5. Plastische weerstandsmomenten ─────────────────────────────────
+        // Een catalogusdeel laat zich niet op de PNA doorsnijden — het heeft
+        // geen contour — dus dan is Wpl niet bepaald.
         let wpl_bepaald = self.delen.is_empty() && !self.lamellen.is_empty();
         let (wpl_y, wpl_z) = if wpl_bepaald {
             (
-                self.wpl_om_as(true, z_min + z_c, z_max + z_c),
-                self.wpl_om_as(false, y_min + y_c, y_max + y_c),
+                lam.wpl_om_as(0.0).wpl_mm3,
+                lam.wpl_om_as(std::f64::consts::FRAC_PI_2).wpl_mm3,
             )
         } else {
             (0.0, 0.0)
@@ -426,52 +466,6 @@ impl CompositeSection {
             z_min_mm: z_min,
             z_max_mm: z_max,
         }
-    }
-
-    /// `Wpl` om de y-as (`om_y = true`) of om de z-as, met de plastische
-    /// neutrale as op de gelijke-oppervlakte-as.
-    ///
-    /// `Wpl = ∫|c − c_pna| dA`; de PNA wordt met bisectie gezocht op de
-    /// gelijke-oppervlakte-voorwaarde. Omdat `d/dc ∫|c − c_pna| dA` in de PNA
-    /// exact nul is, is de fout in `Wpl` tweede orde in de fout van de PNA.
-    fn wpl_om_as(&self, om_y: bool, onder: f64, boven: f64) -> f64 {
-        let polys: Vec<Vec<(f64, f64)>> =
-            self.lamellen.iter().map(|l| l.hoekpunten().to_vec()).collect();
-        let a_half: f64 = polys.iter().map(|p| polygoon_oppervlak(p).abs()).sum::<f64>() / 2.0;
-
-        // Oppervlak onder de snijlijn.
-        let onder_opp = |c: f64| -> f64 {
-            polys
-                .iter()
-                .map(|p| polygoon_oppervlak(&knip_halfvlak(p, om_y, c, true)).abs())
-                .sum()
-        };
-
-        let (mut lo, mut hi) = (onder, boven);
-        for _ in 0..120 {
-            let mid = 0.5 * (lo + hi);
-            if onder_opp(mid) < a_half {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        let c_pna = 0.5 * (lo + hi);
-
-        let mut wpl = 0.0;
-        for p in &polys {
-            for onderkant in [true, false] {
-                let deel = knip_halfvlak(p, om_y, c_pna, onderkant);
-                let a = polygoon_oppervlak(&deel).abs();
-                if a <= 0.0 {
-                    continue;
-                }
-                let (cy, cz) = polygoon_zwaartepunt(&deel);
-                let c = if om_y { cz } else { cy };
-                wpl += a * (c - c_pna).abs();
-            }
-        }
-        wpl
     }
 
     /// Bouwt de middellijn van een open doorsnede uit de lamellen en geeft hem
@@ -750,48 +744,6 @@ pub fn polygoon_zwaartepunt(p: &[(f64, f64)]) -> (f64, f64) {
         cz += (z0 + z1) * kruis;
     }
     (cy / (6.0 * a), cz / (6.0 * a))
-}
-
-/// Geeft `(∫y² dA, ∫z² dA, ∫y·z dA)` om de **oorsprong** van de meegegeven
-/// coördinaten. Altijd positief teruggegeven, ongeacht de omlooprichting.
-fn polygoon_traagheid_om_oorsprong(p: &[(f64, f64)]) -> (f64, f64, f64) {
-    if p.len() < 3 {
-        return (0.0, 0.0, 0.0);
-    }
-    let (mut iyy, mut izz, mut iyz) = (0.0, 0.0, 0.0);
-    for i in 0..p.len() {
-        let (y0, z0) = p[i];
-        let (y1, z1) = p[(i + 1) % p.len()];
-        let kruis = y0 * z1 - y1 * z0;
-        iyy += (y0 * y0 + y0 * y1 + y1 * y1) * kruis; // ∫y² dA · 12
-        izz += (z0 * z0 + z0 * z1 + z1 * z1) * kruis; // ∫z² dA · 12
-        iyz += (y0 * z1 + 2.0 * y0 * z0 + 2.0 * y1 * z1 + y1 * z0) * kruis; // ∫yz dA · 24
-    }
-    let teken = if polygoon_oppervlak(p) < 0.0 { -1.0 } else { 1.0 };
-    (teken * iyy / 12.0, teken * izz / 12.0, teken * iyz / 24.0)
-}
-
-/// Knipt een polygoon af op `z = c` (`om_y = true`) of `y = c`.
-/// `onderkant = true` houdt het deel met coördinaat ≤ `c` over.
-fn knip_halfvlak(p: &[(f64, f64)], om_y: bool, c: f64, onderkant: bool) -> Vec<(f64, f64)> {
-    let waarde = |q: &(f64, f64)| if om_y { q.1 } else { q.0 };
-    let binnen = |q: &(f64, f64)| if onderkant { waarde(q) <= c } else { waarde(q) >= c };
-    let mut uit: Vec<(f64, f64)> = Vec::with_capacity(p.len() + 2);
-    for i in 0..p.len() {
-        let a = p[i];
-        let b = p[(i + 1) % p.len()];
-        let (ia, ib) = (binnen(&a), binnen(&b));
-        if ia {
-            uit.push(a);
-        }
-        if ia != ib {
-            let va = waarde(&a);
-            let vb = waarde(&b);
-            let t = (c - va) / (vb - va);
-            uit.push((a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1)));
-        }
-    }
-    uit
 }
 
 fn veilig_delen(teller: f64, noemer: f64) -> f64 {

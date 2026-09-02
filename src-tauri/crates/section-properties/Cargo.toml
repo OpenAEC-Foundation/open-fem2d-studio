@@ -6,13 +6,18 @@ edition = "2021"
 [lib]
 crate-type = ["lib"]
 
+[[bin]]
+name = "doorsnedemotor"
+path = "src/bin/doorsnedemotor.rs"
+
 [dependencies]
 serde = { workspace = true }
 ts-rs = { workspace = true }
 mechanics = { path = "../mechanics" }
+# Nodig voor de bin `doorsnedemotor`, die de motor als JSON-in/JSON-uit
+# aanbiedt zodat het generatiescript met dezelfde formules rekent als de app.
+serde_json = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
 insta = { workspace = true }
-# Alleen voor de test die aantoont dat oude JSON zonder de D4.1-velden laadt.
-serde_json = { workspace = true }

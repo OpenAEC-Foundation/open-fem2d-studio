@@ -124,6 +124,26 @@ fn portal_beam1_governing_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
+/// Sept 2026 (c) bijgewerkt nadat de exacte doorsnedemotor de It-waarden van
+/// de hele U-reeks heeft gecorrigeerd. De motor sluit It numeriek in tussen
+/// een bewezen onder- en bovengrens; voor alle 27 U-profielen lag de
+/// opgeslagen waarde BOVEN die bovengrens, dus aantoonbaar te hoog — bij
+/// UNP350 met +4,6%. Een te hoge torsieconstante geeft een te hoge M_cr en
+/// daarmee een te hoge kipcapaciteit: onveilig.
+///
+/// UNP350 gaat van It = 632 878 naar 603 930 mm⁴. Gevolg hier: M_cr 203,54 ->
+/// 199,86 kNm, chi_LT 0,6309 -> 0,6253, M_b,Rd 131,92 -> 130,75 kNm, uc_max
+/// 1,4766 -> 1,4898. De ligger blijft ruim NotOk op kip.
+///
+/// Waarom deze snapshot wél mee mag bewegen terwijl de rest van dit bestand
+/// vastligt: de nieuwe 1,4898 valt binnen 0,03% samen met de 1,4893 die hier
+/// stond vóór stap (b) hieronder, toen It nog rechtstreeks uit een externe
+/// referentieberekening kwam (605 000 mm⁴; de motor geeft daar 603 930, dus
+/// −0,18%). Stap (b) was de afwijking, en die wordt hiermee teruggedraaid.
+/// De op het referentie-rapport geijkte asserties hierboven (N_c,Rd,
+/// M_y,c,Rd, V_c,z,Rd) veranderen niet en worden onverminderd afgedwongen.
+/// Zie de insluitingstest in steel-profiles/tests/torsie_u_insluiting.rs.
+///
 /// Sept 2026 (b) bijgewerkt na het herstel van de torsiegrootheden van UNP350.
 /// It is met de El Darwish & Johnston-formule herberekend die nu op de hele
 /// U-reeks wordt toegepast (605 000 -> 632 878 mm⁴, +4,6%) en Iw met de

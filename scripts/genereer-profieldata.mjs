@@ -24,15 +24,28 @@
  *   zonder vlaggen: alle bovenstaande (dus NIET --herstel).
  *
  *   node scripts/genereer-profieldata.mjs --herstel
- *       Het ENIGE dat in profiles.json schrijft. Herberekent uitsluitend de
- *       39 met de hand overgetypte profielen die aantoonbaar onveilige waarden
- *       hadden (26 holle doorsneden + 13 U-profielen; zie sectie 11). Alle
- *       andere regels blijven byte-identiek. De vlag moet expliciet gegeven
- *       worden; hij zit niet in de vlagloze uitvoering.
+ *       Herberekent uitsluitend de 39 met de hand overgetypte profielen die
+ *       aantoonbaar onveilige waarden hadden (26 holle doorsneden + 13
+ *       U-profielen; zie sectie 11). Alle andere regels blijven byte-identiek.
  *
- * Geen dependencies; alleen Node-ingebouwde modules.
+ *   node scripts/genereer-profieldata.mjs --motor-valideer
+ *   node scripts/genereer-profieldata.mjs --motor-herstel
+ *       Rekenen met de EXACTE MOTOR uit crates/section-properties in plaats van
+ *       met de formules hieronder. Zie sectie 12. `--motor-herstel` schrijft
+ *       uitsluitend de grootheden waarvan is vastgesteld dat de motor beter is
+ *       dan de database (MOTOR_OVERNAME).
+ *
+ * Alleen --herstel en --motor-herstel schrijven in profiles.json; beide vlaggen
+ * moeten expliciet gegeven worden en zitten niet in de vlagloze uitvoering.
+ *
+ * Geen npm-dependencies; alleen Node-ingebouwde modules. De motorvlaggen hebben
+ * daarnaast een Rust-toolchain nodig.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -1702,7 +1715,269 @@ function herstel() {
 }
 
 /* ==================================================================== *
- * 12. Eindcontrole op de HELE database                                 *
+ * 12. De exacte motor als bron                                         *
+ * ==================================================================== *
+ *
+ * Alles hierboven rekent in JavaScript met gesloten formules. Dat werkt, maar
+ * het is een TWEEDE implementatie naast de Rust-crate die de app zelf gebruikt,
+ * en een formule als It van een gewalst profiel bestaat daar sowieso niet in
+ * gesloten vorm — daar staat een empirische benadering met ~1-2% spreiding.
+ *
+ * Deze sectie legt daarom een pad open waarin niet dit script maar de
+ * Rust-motor (`crates/section-properties`) de waarden levert:
+ *
+ *   contour.rs  A, zwaartepunt, Iy, Iz, Iyz, hoofdassen, Wel, Wpl, i
+ *               -> EXACT, gesloten randintegralen per lijn- en boogsegment
+ *   torsie.rs   It, Iw, schuifmiddelpunt
+ *               -> NUMERIEK, driehoekselementen, met insluiting van It
+ *   motor.rs    Av;y, Av;z
+ *               -> NORMBEPAALD, EN 1993-1-1 par. 6.2.6(3)
+ *
+ * De motor draait als los binair bestand dat JSON in en JSON uit doet, zodat
+ * dit script zijn geometrietabellen kan blijven beheren zonder de formules te
+ * dupliceren. Eén waarheid, twee rollen: geometrie hier, rekenwerk daar.
+ *
+ *   node scripts/genereer-profieldata.mjs --motor-valideer
+ *       Rekent alle 416 profielen uit profiles.json opnieuw door met de motor
+ *       en rapporteert per grootheid en per reeks de afwijking.
+ *   node scripts/genereer-profieldata.mjs --motor-herstel
+ *       Schrijft UITSLUITEND de grootheden terug waarvan is vastgesteld dat de
+ *       motor beter is dan de database (zie MOTOR_OVERNAME).
+ */
+
+/** Pad naar het binaire bestand van de motor. */
+const motorBin = join(
+  wortel, "src-tauri", "target", "release",
+  process.platform === "win32" ? "doorsnedemotor.exe" : "doorsnedemotor",
+);
+
+/**
+ * Vertaalt een databaserecord naar de invoer van de motor.
+ *
+ * De enige beslissing die hier valt is UNP versus UPE: de database kent beide
+ * als `Channel`, maar een UNP heeft 8% flensschuinte (DIN 1026-1) en een UPE
+ * evenwijdige flenzen (DIN 1026-2). Dat is meetkunde, geen naamgeving — maar
+ * de naam is wél waar het in staat.
+ */
+function motorInvoerVan(p) {
+  const g = p.geometry;
+  const soort = p.kind === "Channel"
+    ? (sleutel(p.name).startsWith("UNP") ? "ChannelSchuin" : "Channel")
+    : p.kind;
+  return {
+    naam: p.name,
+    soort,
+    h: g.h,
+    b: g.b,
+    tw: g.tw ?? 0,
+    tf: g.tf ?? 0,
+    t: g.t ?? 0,
+    r: g.r ?? 0,
+  };
+}
+
+/**
+ * Draait de motor over een lijst geometrieën. Bouwt hem eerst als hij ontbreekt
+ * of ouder is dan de bron; zo kan niemand per ongeluk met een verouderde motor
+ * de database vullen.
+ */
+function draaiMotor(lijst) {
+  const bronDir = join(wortel, "src-tauri", "crates", "section-properties", "src");
+  const bronTijd = readdirSync(bronDir, { recursive: true })
+    .map((f) => join(bronDir, String(f)))
+    .filter((f) => f.endsWith(".rs"))
+    .reduce((t, f) => Math.max(t, statSync(f).mtimeMs), 0);
+  const verouderd = !existsSync(motorBin) || statSync(motorBin).mtimeMs < bronTijd;
+  if (verouderd) {
+    console.log("Motor bouwen (cargo build --release)...");
+    execFileSync(
+      "cargo",
+      ["build", "--release", "-q", "-p", "section-properties", "--bin", "doorsnedemotor"],
+      { cwd: join(wortel, "src-tauri"), stdio: "inherit" },
+    );
+  }
+  const invoerPad = join(tmpdir(), `motor-invoer-${process.pid}.json`);
+  const uitvoerPad = join(tmpdir(), `motor-uitvoer-${process.pid}.json`);
+  writeFileSync(invoerPad, JSON.stringify(lijst), "utf8");
+  try {
+    execFileSync(motorBin, [invoerPad, uitvoerPad], { stdio: ["ignore", "ignore", "inherit"] });
+    return JSON.parse(readFileSync(uitvoerPad, "utf8"));
+  } finally {
+    for (const f of [invoerPad, uitvoerPad]) {
+      try { unlinkSync(f); } catch { /* al weg */ }
+    }
+  }
+}
+
+/**
+ * Welke grootheden de motor mag overschrijven, en waarom.
+ *
+ * Dit is bewust een KORTE lijst. De motor is exacter dan de generator waar
+ * het om de meetkunde gaat, maar de database bevat op een paar plekken
+ * genormeerde tabelwaarden die beter zijn dan wat een geometriemodel kan
+ * reproduceren — daar wint de database. De verantwoording per regel staat in
+ * docs/superpowers/specs/2026-09-02-profieldata-generatie.md, sectie 11.
+ */
+const MOTOR_OVERNAME = [
+  {
+    soorten: ["Channel"],
+    velden: ["it_mm4"],
+    reden:
+      "It van alle 27 U-profielen staat te HOOG in de database (empirische " +
+      "benadering, gehalveerd voor twee uitrondingen). Te hoge It overschat " +
+      "Mcr en dus de kipcapaciteit: onveilig. De motor lost het probleem van " +
+      "Prandtl numeriek op en sluit de uitkomst in tussen een onder- en een " +
+      "bovengrens.",
+  },
+  {
+    soorten: ["ISection"],
+    velden: ["iw_mm6"],
+    reden:
+      "Iw van de I-profielen is in de database exact gelijkgesteld aan de " +
+      "bovengrens Iz*hs^2/4. Die grens haalt alleen een doorsnede die haar " +
+      "hele Iz in de flensmiddenvlakken heeft; lijf en uitrondingen dragen " +
+      "wel aan Iz bij maar nauwelijks aan het sectoriale moment. Te hoge Iw " +
+      "is onveilig voor kip.",
+  },
+];
+
+/** De velden die de motor voor een gegeven soort mag zetten. */
+function motorVelden(kind) {
+  return MOTOR_OVERNAME.filter((r) => r.soorten.includes(kind))
+    .flatMap((r) => r.velden);
+}
+
+function motorValideer() {
+  const db = JSON.parse(readFileSync(bestaandPad, "utf8"));
+  const start = Date.now();
+  const uit = draaiMotor(db.map(motorInvoerVan));
+  const wand = (Date.now() - start) / 1000;
+  const opNaam = new Map(uit.map((u) => [u.naam, u]));
+
+  const perGrootheid = new Map(GROOTHEDEN.map((k) => [k, []]));
+  const perReeks = new Map();
+  let rekentijd = 0;
+  let ergsteMesh = 0;
+  let ergsteOnzekerheid = 0;
+  let kleinsteHoek = 90;
+
+  for (const p of db) {
+    const m = opNaam.get(p.name);
+    if (!m) throw new Error(`Motor gaf geen uitkomst voor ${p.name}`);
+    rekentijd += m.tijd_ms;
+    ergsteMesh = Math.max(ergsteMesh, Math.abs(m.a_mesh_afwijking));
+    ergsteOnzekerheid = Math.max(ergsteOnzekerheid, m.it_onzekerheid);
+    kleinsteHoek = Math.min(kleinsteHoek, m.kleinste_hoek_graden);
+    const reeks = reeksVan(p.name);
+    if (!perReeks.has(reeks)) perReeks.set(reeks, []);
+    for (const k of GROOTHEDEN) {
+      const oud = p.properties[k];
+      if (!Number.isFinite(oud) || oud === 0) continue;
+      // Iw van een gesloten doorsnede staat in beide bronnen op 0.
+      if (k === "iw_mm6" && m[k] === 0 && oud === 0) continue;
+      const pct = ((m[k] - oud) / oud) * 100;
+      perGrootheid.get(k).push({ naam: p.name, pct });
+      perReeks.get(reeks).push({ naam: `${p.name} ${k}`, pct });
+    }
+  }
+
+  console.log("=".repeat(74));
+  console.log("VALIDATIE VAN DE EXACTE MOTOR TEGEN DE DATABASE");
+  console.log("=".repeat(74));
+  console.log(
+    `${db.length} profielen, ${(rekentijd / 1000).toFixed(1)} s rekentijd ` +
+    `(${wand.toFixed(1)} s wandklok). Meshkwaliteit: |A_mesh - A_exact| ` +
+    `hoogstens ${(ergsteMesh * 100).toFixed(4)}%, kleinste driehoekshoek ` +
+    `${kleinsteHoek.toFixed(1)} graden, It-insluiting hoogstens ` +
+    `${(ergsteOnzekerheid * 100).toFixed(2)}% halve bandbreedte.`,
+  );
+  console.log("\nAfwijking (motor - database)/database, per grootheid:");
+  console.log(
+    `   ${"grootheid".padEnd(15)}${"n".padStart(5)}${"mediaan".padStart(10)}` +
+    `${"gemiddeld".padStart(11)}${"maximum".padStart(10)}  ergste`,
+  );
+  for (const k of GROOTHEDEN) {
+    const s = statistiek(perGrootheid.get(k));
+    if (!s) continue;
+    console.log(
+      `   ${k.padEnd(15)}${String(s.n).padStart(5)}` +
+      `${s.mediaan.toFixed(3).padStart(9)}%${s.gem.toFixed(3).padStart(10)}%` +
+      `${s.max.toFixed(3).padStart(9)}%  ${s.ergste.naam} ` +
+      `(${s.ergste.pct >= 0 ? "+" : ""}${s.ergste.pct.toFixed(2)}%)`,
+    );
+  }
+  console.log("\nPer reeks (grootste afwijking over alle grootheden):");
+  for (const [reeks, lijst] of [...perReeks].sort()) {
+    const s = statistiek(lijst);
+    if (!s) continue;
+    console.log(
+      `   ${reeks.padEnd(8)}${String(s.n).padStart(6)} waarden  ` +
+      `mediaan ${s.mediaan.toFixed(3)}%  max ${s.max.toFixed(2)}%  ` +
+      `(${s.ergste.naam})`,
+    );
+  }
+  return { db, opNaam };
+}
+
+/**
+ * Schrijft de grootheden uit MOTOR_OVERNAME terug in profiles.json. Alle
+ * andere waarden blijven byte-identiek.
+ */
+function motorHerstel() {
+  const ruw = readFileSync(bestaandPad, "utf8");
+  const crlf = ruw.includes("\r\n");
+  const eindNieuweRegel = /\n$/.test(ruw);
+  const db = JSON.parse(ruw);
+  const uit = draaiMotor(db.map(motorInvoerVan));
+  const opNaam = new Map(uit.map((u) => [u.naam, u]));
+
+  const regels = [];
+  for (const p of db) {
+    const velden = motorVelden(p.kind);
+    if (velden.length === 0) continue;
+    const m = opNaam.get(p.name);
+    const wijzigingen = [];
+    for (const k of velden) {
+      const oud = p.properties[k];
+      const nieuw = afgerond(m[k]);
+      if (!Number.isFinite(oud) || oud === nieuw) continue;
+      wijzigingen.push({
+        k,
+        oud,
+        nieuw,
+        pct: oud === 0 ? Infinity : ((nieuw - oud) / oud) * 100,
+      });
+      p.properties[k] = nieuw;
+    }
+    if (wijzigingen.length > 0) regels.push({ naam: p.name, wijzigingen });
+  }
+
+  let tekst = JSON.stringify(db, null, 2);
+  if (eindNieuweRegel) tekst += "\n";
+  if (crlf) tekst = tekst.replace(/\n/g, "\r\n");
+  writeFileSync(bestaandPad, tekst, "utf8");
+
+  console.log("=".repeat(74));
+  console.log("OVERNAME VAN DE EXACTE MOTOR");
+  console.log("=".repeat(74));
+  for (const r of MOTOR_OVERNAME) {
+    console.log(`\n${r.soorten.join(", ")} -> ${r.velden.join(", ")}`);
+    console.log(`   ${r.reden.replace(/(.{68}) /g, "$1\n   ")}`);
+  }
+  console.log(`\n${regels.length} profielen gewijzigd in ${bestaandPad}:`);
+  for (const { naam, wijzigingen } of regels) {
+    console.log(
+      `   ${naam.padEnd(16)} ` +
+      wijzigingen
+        .map((w) => `${w.k.replace(/_mm\d?$/, "")} ${w.oud.toPrecision(6)} -> ` +
+          `${w.nieuw.toPrecision(6)} (${w.pct >= 0 ? "+" : ""}${w.pct.toFixed(1)}%)`)
+        .join("  "),
+    );
+  }
+}
+
+/* ==================================================================== *
+ * 13. Eindcontrole op de HELE database                                 *
  * ==================================================================== */
 
 /**
@@ -1785,12 +2060,17 @@ function eindcontrole() {
 }
 
 /* ==================================================================== *
- * 13. Aansturing                                                       *
+ * 14. Aansturing                                                       *
  * ==================================================================== */
 
 const vlaggen = process.argv.slice(2);
 const alles = vlaggen.length === 0;
 if (vlaggen.includes("--herstel")) herstel();
+// De motorvlaggen zitten bewust NIET in de vlagloze uitvoering: zij hebben een
+// Rust-toolchain nodig en kosten een halve minuut rekentijd. De vlagloze run
+// blijft daarmee dependency-vrij.
+if (vlaggen.includes("--motor-herstel")) motorHerstel();
+if (vlaggen.includes("--motor-valideer")) motorValideer();
 if (alles || vlaggen.includes("--zelftests")) zelftests();
 if (alles || vlaggen.includes("--valideer")) valideer();
 if (alles || vlaggen.includes("--schrijf") || vlaggen.includes("--zelfcontrole")) {

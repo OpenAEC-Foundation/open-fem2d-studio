@@ -941,16 +941,119 @@ pub fn u_profiel(h: f64, b: f64, tw: f64, tf: f64, r: f64) -> Doorsnede {
     Doorsnede::nieuw().met(c)
 }
 
-/// Koker: afgeronde buitenrand plus afgeronde binnenrand als gat.
+/// U-contour met **toelopende** flenzen (DIN 1026-1, de UNP-reeks).
 ///
-/// `r_buiten` is de buitenhoekstraal; de binnenstraal is `r_buiten − t`. Bij
-/// `r_buiten = 0` (of ≤ `t`) wordt de binnenhoek scherp.
+/// Het flens*buiten*vlak blijft vlak op `z = 0` en `z = h`; het *binnen*vlak
+/// loopt met `schuinte` (8 % bij UNP) toe. De nominale flensdikte `tf` wordt
+/// daarbij op **halve flensbreedte** gemeten (`y = b/2` vanaf de lijfrug) —
+/// dezelfde conventie als bij de andere DIN-walsprofielen met schuine flens:
+///
+/// ```text
+/// binnenvlak bovenflens:  z = h/2 + a + s·y,   a = h/2 − tf − s·b/2
+/// ```
+///
+/// Er zitten twee afrondingen in: de walsuitronding `r1` tussen lijf en flens
+/// (middelpunt in de **holte**, dus onder het schuine vlak) en de
+/// flenstipafronding `r2` (middelpunt in het **materiaal**, dus erboven). Met
+/// `k = √(1+s²)` liggen middelpunten en raakpunten vast op
+///
+/// ```text
+/// y_c1 = tw + r1     d1 = a + s·y_c1 − r1·k     y_t1 = y_c1 − r1·s/k
+/// y_c2 = b − r2      d2 = a + s·y_c2 + r2·k     y_t2 = y_c2 + r2·s/k
+/// ```
+///
+/// (`d` telkens de hoogte van het middelpunt boven de halve hoogte). Controle
+/// dat `y_t1` echt op de schuine lijn ligt:
+/// `d1 + r1/k = a + s·y_c1 − r1·k + r1/k = a + s·y_c1 − r1·s²/k = a + s·y_t1` ✓.
+///
+/// Beide bogen spannen `180° − (90° + atan s)`, dus krap 90°. Met `s = 0` en
+/// `r2 = 0` gaat deze contour exact over in [`u_profiel`].
+pub fn u_profiel_schuin(
+    h: f64,
+    b: f64,
+    tw: f64,
+    tf: f64,
+    r1: f64,
+    r2: f64,
+    schuinte: f64,
+) -> Doorsnede {
+    let s = schuinte.max(0.0);
+    if s == 0.0 && r2 <= 0.0 {
+        return u_profiel(h, b, tw, tf, r1);
+    }
+    let hh = h / 2.0;
+    let a = hh - tf - s * b / 2.0;
+    let k = (1.0 + s * s).sqrt();
+    // De uitronding moet in de holte passen (tussen lijfvlak en schuin
+    // flensbinnenvlak), de tipafronding in het dunste deel van de flens.
+    let r1 = begrens_straal(r1, (b - tw) / 2.0, a);
+    let r2 = begrens_straal(r2, (b - tw) / 2.0, hh - a - s * b);
+
+    let yc1 = tw + r1;
+    let d1 = a + s * yc1 - r1 * k;
+    let yt1 = yc1 - r1 * s / k;
+    let yc2 = b - r2;
+    let d2 = a + s * yc2 + r2 * k;
+    let yt2 = yc2 + r2 * s / k;
+
+    // Hoogte van het schuine binnenvlak boven het hart, op positie y.
+    let vlak = |y: f64| a + s * y;
+
+    let c = ContourBouwer::nieuw(0.0, 0.0)
+        .lijn(b, 0.0)
+        .lijn(b, hh - d2)
+        .boog((yc2, hh - d2), (yt2, hh - vlak(yt2)), true)
+        .lijn(yt1, hh - vlak(yt1))
+        .boog((yc1, hh - d1), (tw, hh - d1), false)
+        .lijn(tw, hh + d1)
+        .boog((yc1, hh + d1), (yt1, hh + vlak(yt1)), false)
+        .lijn(yt2, hh + vlak(yt2))
+        .boog((yc2, hh + d2), (b, hh + d2), true)
+        .lijn(b, h)
+        .lijn(0.0, h)
+        .sluit();
+    Doorsnede::nieuw().met(c)
+}
+
+/// Flensschuinte van de UNP-reeks volgens DIN 1026-1: 8 %.
+pub const UNP_SCHUINTE: f64 = 0.08;
+
+/// UNP-contour uit de vier catalogusmaten plus de walsuitronding.
+/// De flenstipafronding is `r/2` (DIN 1026-1).
+pub fn unp(h: f64, b: f64, tw: f64, tf: f64, r: f64) -> Doorsnede {
+    u_profiel_schuin(h, b, tw, tf, r, r / 2.0, UNP_SCHUINTE)
+}
+
+/// Koker met een **concentrische** wand: de binnenstraal is `r_buiten − t`,
+/// zodat de wanddikte overal exact `t` is.
+///
+/// Dat is de meetkundig zuivere koker, maar **niet** de conventie waarmee de
+/// catalogustabellen voor warmgewalste holle doorsneden zijn opgesteld —
+/// gebruik daarvoor [`koker_en10210`]. Bij `r_buiten ≤ t` wordt de binnenhoek
+/// scherp.
 pub fn koker(h: f64, b: f64, t: f64, r_buiten: f64) -> Doorsnede {
     let ro = r_buiten.max(0.0).min(b / 2.0).min(h / 2.0);
-    let ri = (ro - t).max(0.0);
+    koker_met_stralen(h, b, t, ro, ro - t)
+}
+
+/// Koker met een **vrij gekozen** buiten- en binnenhoekstraal.
+pub fn koker_met_stralen(h: f64, b: f64, t: f64, r_buiten: f64, r_binnen: f64) -> Doorsnede {
+    let ro = begrens_straal(r_buiten, b / 2.0, h / 2.0);
+    let ri = begrens_straal(r_binnen, b / 2.0 - t, h / 2.0 - t);
     let buiten = Contour::afgeronde_rechthoek(0.0, 0.0, b, h, ro);
     let binnen = Contour::afgeronde_rechthoek(t, t, b - 2.0 * t, h - 2.0 * t, ri);
     Doorsnede::nieuw().met(buiten).met_gat(binnen)
+}
+
+/// Warmgewalste koker volgens **EN 10210-2**: buitenhoekstraal `1,5·t`,
+/// binnenhoekstraal `1,0·t`.
+///
+/// Die twee stralen zijn *niet* concentrisch — de wand is in de hoek dus dikker
+/// dan `t`. Dat is geen slordigheid maar de normconventie waarmee de
+/// gepubliceerde tabellen zijn opgesteld, en het scheelt merkbaar: op
+/// SHS 60×60×8 geeft het concentrische model een 2,6 % kleiner oppervlak.
+pub fn koker_en10210(h: f64, b: f64, t: f64) -> Doorsnede {
+    koker_met_stralen(h, b, t, 1.5 * t, 1.0 * t)
 }
 
 /// Buis: twee cirkels, de binnenste als gat. `d` is de buitendiameter.
