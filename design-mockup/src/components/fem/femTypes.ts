@@ -60,11 +60,18 @@ export interface BeamCheckConfig {
   /** Kniklengte zwakke as in m; default: systeemlengte. */
   bucklingLengthZ_m?: number;
   /**
-   * Kipsteunposities (bovenflens) als fractie 0..1 van de staaflengte —
+   * Kipsteunposities BOVENFLENS als fractie 0..1 van de staaflengte —
    * zelfde conventie als LateralBracing.top_flange_positions in de
    * Rust-kern (lambda_chi.rs vermenigvuldigt met de staaflengte).
    */
   lateralRestraints?: number[];
+  /**
+   * Kipsteunposities ONDERFLENS, zelfde conventie
+   * (LateralBracing.bottom_flange_positions in de Rust-kern). Relevant waar
+   * het moment de onderflens op druk zet, bijvoorbeeld boven een
+   * tussensteunpunt van een doorgaande ligger.
+   */
+  lateralRestraintsBottom?: number[];
   // Doorbuiging (beide normen)
   /** Doorbuigingsklasse; default "floor". */
   deflectionClass?: "floor" | "roof" | "cantilever" | "custom";

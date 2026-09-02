@@ -323,7 +323,7 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
       forces_envelope: forcesEnvelope,
       lateral_bracing: {
         top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
-        bottom_flange_positions: [],
+        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom),
       },
       buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1000,
       buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1000,

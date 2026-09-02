@@ -290,11 +290,15 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
   // ("0.25, ") niet door de parser wordt teruggeschreven. Synchroniseert
   // wanneer je een andere staaf selecteert.
   const [kipsteunenTekst, setKipsteunenTekst] = useState(cfg.lateralRestraints?.join(", ") ?? "");
+  const [kipsteunenOnderTekst, setKipsteunenOnderTekst] = useState(
+    cfg.lateralRestraintsBottom?.join(", ") ?? "",
+  );
   const vorigeBeamId = useRef(beam.id);
   useEffect(() => {
     if (vorigeBeamId.current !== beam.id) {
       vorigeBeamId.current = beam.id;
       setKipsteunenTekst(beam.checkConfig?.lateralRestraints?.join(", ") ?? "");
+      setKipsteunenOnderTekst(beam.checkConfig?.lateralRestraintsBottom?.join(", ") ?? "");
     }
   }, [beam.id, beam.checkConfig]);
 
@@ -355,25 +359,60 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
                 <div className="fem-prop-hint">Leeg = systeemlengte ({systeemlengteM} m).</div>
               </Section>
 
-              <Section title="Kipsteunen (bovenflens)">
-                <Row label="Posities">
-                  <input
-                    type="text" className="fem-prop-input"
-                    placeholder="0.25, 0.5, 0.75"
-                    value={kipsteunenTekst}
-                    onChange={(e) => {
-                      // Ruwe tekst in lokale state (zodat "0.25, " typen mag),
-                      // geparseerde fracties meteen naar het model.
-                      setKipsteunenTekst(e.target.value);
-                      setCfg({ lateralRestraints: parseKipsteunen(e.target.value) });
-                    }}
-                    spellCheck={false}
-                  />
-                </Row>
-                <div className="fem-prop-hint">
-                  Fracties van de staaflengte (0–1), gescheiden door komma's. Leeg = geen kipsteunen.
-                </div>
-              </Section>
+              {/* Kipsteunen per flens. Meestal wil je er gewoon n gelijk
+                  verdeeld: vul het aantal in en de posities volgen. Wie een
+                  onregelmatige verdeling nodig heeft, past het positieveld
+                  daarna aan (het aantal volgt dan mee). */}
+              {([
+                ["boven", "Kipsteunen bovenflens", "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
+                ["onder", "Kipsteunen onderflens", "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
+              ] as const).map(([sleutel, titel, veld, tekst, setTekst]) => {
+                const huidig = (cfg[veld] ?? []) as number[];
+                return (
+                  <Section key={sleutel} title={titel} defaultOpen={sleutel === "boven"}>
+                    <Row label="Aantal">
+                      <input
+                        type="number" className="fem-prop-input" min="0" max="20" step="1"
+                        placeholder="0"
+                        value={huidig.length || ""}
+                        onChange={(e) => {
+                          const n = Math.max(0, Math.min(20, Math.round(Number(e.target.value) || 0)));
+                          // n steunen gelijk verdeeld over de staaflengte:
+                          // op 1/(n+1), 2/(n+1), … n/(n+1).
+                          const posities = Array.from({ length: n }, (_, i) => (i + 1) / (n + 1));
+                          setTekst(posities.map((f) => f.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")).join(", "));
+                          setCfg({ [veld]: posities } as Partial<BeamCheckConfig>);
+                        }}
+                      />
+                    </Row>
+                    <Row label="Posities">
+                      <input
+                        type="text" className="fem-prop-input"
+                        placeholder="0.25, 0.5, 0.75"
+                        value={tekst}
+                        onChange={(e) => {
+                          // Ruwe tekst in lokale state (zodat "0.25, " typen
+                          // mag), geparseerde fracties meteen naar het model.
+                          setTekst(e.target.value);
+                          setCfg({ [veld]: parseKipsteunen(e.target.value) } as Partial<BeamCheckConfig>);
+                        }}
+                        spellCheck={false}
+                      />
+                    </Row>
+                    {huidig.length > 0 && L > 0 && (
+                      <div className="fem-prop-hint">
+                        Op {huidig.map((f) => ((f * L) / 1000).toFixed(2).replace(".", ",")).join(" · ")} m
+                        vanaf de startknoop.
+                      </div>
+                    )}
+                    {huidig.length === 0 && (
+                      <div className="fem-prop-hint">
+                        Vul een aantal in voor gelijke verdeling, of typ zelf fracties (0–1).
+                      </div>
+                    )}
+                  </Section>
+                );
+              })}
             </>
           )}
 
