@@ -17,9 +17,9 @@
 import { useState, useRef, useEffect, type ReactNode, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  withPlateDefaults,
+  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
   type Node, type Beam, type Plate, type Support, type Load, type LoadCase,
-  type Selection, type SupportType,
+  type Selection, type SupportType, type BeamLoadRole,
 } from "../fem/femTypes";
 import type { SolverResult } from "../fem/solver/types";
 import type { LoadCombination, Envelope } from "../fem/solver/combinations";
@@ -266,6 +266,7 @@ export default function TableView(props: TableViewProps) {
       columns: [
         t("table.colId"), t("table.colFrom"), t("table.colTo"), t("table.colLength"),
         t("table.colMaterial"), t("table.colProfile"),
+        "Belastingtype",
         t("table.colHingeStart"), t("table.colHingeEnd"),
       ],
       editable: true,
@@ -302,6 +303,8 @@ export default function TableView(props: TableViewProps) {
           exportCells: [
             String(b.id), String(b.from), String(b.to), fmtNum(beamLength(b), 0),
             material, profile,
+            BEAM_LOAD_ROLE_LABEL[b.loadRole ?? bepaalStandaardRol(b, nodes)]
+              + (b.loadRole ? "" : " (auto)"),
             b.releases?.startRy ? "x" : "", b.releases?.endRy ? "x" : "",
           ],
           cells: (
@@ -338,6 +341,20 @@ export default function TableView(props: TableViewProps) {
                 <TextCell
                   value={profile} listId="ftable-profile-list"
                   onCommit={(v) => updateBeam(b.id, { profile: v })}
+                />
+              </td>
+              {/* Belastingtype (constructieve rol) — leeg = automatisch uit
+                  de geometrie; de windgenerator leest dit veld. */}
+              <td>
+                <SelectCell
+                  value={b.loadRole ?? ""}
+                  options={[
+                    { value: "", label: `Auto — ${BEAM_LOAD_ROLE_LABEL[bepaalStandaardRol(b, nodes)]}` },
+                    ...BEAM_LOAD_ROLES.map((r) => ({ value: r.id, label: r.label })),
+                  ]}
+                  onCommit={(v) => updateBeam(b.id, {
+                    loadRole: v === "" ? undefined : (v as BeamLoadRole),
+                  })}
                 />
               </td>
               <td className="ftable-center">

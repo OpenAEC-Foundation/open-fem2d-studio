@@ -26,6 +26,7 @@ import {
   loadTempIcon,
   loadCasesIcon,
   loadCombinationsIcon,
+  windGeneratorIcon,
   moveIcon,
   rotateIcon,
   undoIcon,
@@ -52,6 +53,8 @@ interface HomeTabProps {
   onOpenLoadCases?: () => void;
   /** Opens the same dialog but jumps straight to the Combinaties tab. */
   onOpenLoadCombinations?: () => void;
+  /** Opens the wind load generator (EN 1991-1-4 + NL NB). */
+  onOpenWindGenerator?: () => void;
   /** Quick filter: reduce current selection to one type only. */
   onFilterSelection?: () => void;
   /** Wired file-menu actions. */
@@ -77,7 +80,7 @@ export default function HomeTab({
   onFemToolChange,
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onSolve, hasResults,
-  onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject,
+  onOpenLoadCases, onOpenLoadCombinations, onOpenWindGenerator, onNewProject, onOpenProject,
   onSaveProject, onSaveProjectAs,
   onFilterSelection,
 }: HomeTabProps) {
@@ -301,6 +304,13 @@ export default function HomeTab({
               label="Combinaties"
               size="small"
               onClick={onOpenLoadCombinations ?? stub("Load combinations dialog (no handler)")}
+            />
+            {/* Windbelastinggenerator — EN 1991-1-4 + Nederlandse NB. */}
+            <RibbonButton
+              icon={windGeneratorIcon}
+              label="Windgenerator"
+              size="small"
+              onClick={onOpenWindGenerator ?? stub("Wind generator dialog (no handler)")}
             />
           </RibbonButtonStack>
         </RibbonGroup>

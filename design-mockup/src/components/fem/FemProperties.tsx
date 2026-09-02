@@ -13,8 +13,11 @@ import { useState, useEffect, useRef } from "react";
 import "./FemProperties.css";
 import type {
   Node, Beam, Plate, Support, Load, Selection, SupportType, BeamCheckConfig,
+  BeamLoadRole,
 } from "./femTypes";
-import { withPlateDefaults } from "./femTypes";
+import {
+  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
+} from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import ProfielKiezer from "./ProfielKiezer";
@@ -110,7 +113,7 @@ export default function FemProperties(props: FemPropertiesProps) {
     }
     const nFrom = nodes.find(n => n.id === b.from);
     const nTo = nodes.find(n => n.id === b.to);
-    return <BeamProperties beam={b} nFrom={nFrom} nTo={nTo} loads={loads} updateBeam={updateBeam} />;
+    return <BeamProperties beam={b} nFrom={nFrom} nTo={nTo} nodes={nodes} loads={loads} updateBeam={updateBeam} />;
   }
 
   if (selection.type === "plate") {
@@ -248,8 +251,8 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
 }
 
 // ── Beam properties ──────────────────────────────────────────────────────
-function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
-  beam: Beam; nFrom?: Node; nTo?: Node; loads: Load[];
+function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
+  beam: Beam; nFrom?: Node; nTo?: Node; nodes: Node[]; loads: Load[];
   updateBeam?: (id: number, updates: Partial<Beam>) => void;
 }) {
   const dx = nTo && nFrom ? nTo.x - nFrom.x : 0;
@@ -302,6 +305,9 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
     }
   }, [beam.id, beam.checkConfig]);
 
+  // Uit de geometrie afgeleide rol — de "Automatisch"-optie toont hem, zodat
+  // de gebruiker ziet wat er gebeurt als hij niets kiest.
+  const afgeleideRol = bepaalStandaardRol(beam, nodes);
   /** "0.25, 0.5" → [0.25, 0.5]; alleen waarden strikt tussen 0 en 1. */
   const parseKipsteunen = (tekst: string): number[] =>
     tekst
@@ -503,6 +509,35 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
           </Row>
           <Row label="Lengte"><code>{L.toFixed(0)} mm</code></Row>
           <Row label="Hoek"><code>{angDeg.toFixed(1)}°</code></Row>
+        </Section>
+
+        {/* Belastingtype: wát deze staaf constructief is, en dus welk
+            belastingvlak hij draagt. De windgenerator leest dit veld. De
+            keuze "Automatisch" laat de rol uit de geometrie volgen; elke
+            andere keuze legt hem vast in het projectbestand. */}
+        <Section title="Belastingtype">
+          <Row label="Rol">
+            <select
+              className="fem-prop-select"
+              value={beam.loadRole ?? ""}
+              onChange={(e) => updateBeam?.(beam.id, {
+                loadRole: e.target.value === "" ? undefined : e.target.value as BeamLoadRole,
+              })}
+              title={"Bepaalt welk belastingvlak deze staaf draagt.\n"
+                + "Gevel en dak krijgen windbelasting; vloer en binnenstaaf niet."}
+            >
+              <option value="">Automatisch — {BEAM_LOAD_ROLE_LABEL[afgeleideRol]}</option>
+              {BEAM_LOAD_ROLES.map((r) => (
+                <option key={r.id} value={r.id}>{r.label}</option>
+              ))}
+            </select>
+          </Row>
+          <div className="fem-prop-hint">
+            {beam.loadRole
+              ? "Handmatig vastgelegd — de windgenerator gebruikt deze rol."
+              : `Volgt uit de geometrie (${angDeg.toFixed(0)}° t.o.v. horizontaal). `
+                + "Kies zelf een rol om dit vast te leggen."}
+          </div>
         </Section>
 
         {/* Profiel en materiaal zijn één combinatie — geen losse velden.

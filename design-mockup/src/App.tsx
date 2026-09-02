@@ -25,6 +25,8 @@ import TableView from "./components/table/TableView";
 import type { TableDataset, TableViewApi } from "./components/table/tableTypes";
 import LoadCaseTabBar from "./components/fem/LoadCaseTabBar";
 import LoadCasesDialog from "./components/fem/LoadCasesDialog";
+import WindGeneratorDialog from "./lib/wind/WindGeneratorDialog";
+import { useWindGenerator } from "./stores/windStore";
 import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
 import { useFemStore } from "./hooks/useFemStore";
@@ -546,6 +548,10 @@ function App() {
   const [grid, setGrid] = useState<GridSettings>(DEFAULT_GRID);
   const [gridsOpen, setGridsOpen] = useState(false);
   const [loadCasesOpen, setLoadCasesOpen] = useState(false);
+  // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
+  // in de constructie (idempotent, zie windStore.ts).
+  const [windGeneratorOpen, setWindGeneratorOpen] = useState(false);
+  const windGenerator = useWindGenerator(fem);
   // Check-tab state.
   const [activeCode, setActiveCode] = useState<"EN1993" | "EN1995" | "EN1992">("EN1993");
   // UC-badge op het canvas geklikt → toetsingspaneel openen gefocust op die
@@ -1209,6 +1215,7 @@ function App() {
         onOpenGrids={() => setGridsOpen(true)}
         onOpenLoadCases={() => { setLoadCasesTab("cases"); setLoadCasesOpen(true); }}
         onOpenLoadCombinations={() => { setLoadCasesTab("combos"); setLoadCasesOpen(true); }}
+        onOpenWindGenerator={() => setWindGeneratorOpen(true)}
         onExportHtml={handleExportHtmlReport}
         onExportIfc={() => { void handleExportIfc(); }}
         onFilterSelection={() => {
@@ -1455,6 +1462,13 @@ function App() {
       <LibraryDialog open={libraryOpen} onClose={() => setLibraryOpen(false)} initialTab={libraryTab} />
       <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
       <ProjectSettingsDialog open={projectSettingsOpen} onClose={() => setProjectSettingsOpen(false)} />
+      {/* Windbelastinggenerator (EN 1991-1-4 + NL NB) — invoer, controleerbare
+          samenvatting en het wegschrijven van gevallen/lasten/combinaties. */}
+      <WindGeneratorDialog
+        open={windGeneratorOpen}
+        onClose={() => setWindGeneratorOpen(false)}
+        wind={windGenerator}
+      />
       {welcomeOpen && (
         <WelcomeScreen
           onClose={() => setWelcomeOpen(false)}

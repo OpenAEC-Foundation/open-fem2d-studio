@@ -551,6 +551,29 @@ export interface FemStore {
   mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => boolean;
   addLoadCase: (name: string) => void;
 
+  /**
+   * Vervang in ÉÉN stap alles wat een generator (vandaag: de windbelasting-
+   * generator) eerder heeft aangemaakt: de gegenereerde belastinggevallen, de
+   * gegenereerde lasten en de gegenereerde combinaties. Handmatig ingevoerde
+   * gevallen, lasten en combinaties blijven onaangeroerd.
+   *
+   * Eén aanroep = één history-snapshot (dus één keer Ctrl+Z), en één enkele
+   * `loads`-identiteitswissel, zodat de live-rekencyclus in App.tsx precies
+   * één keer opnieuw rekent in plaats van per last.
+   *
+   * `combinatieHoortBijGeneratie` bepaalt welke bestaande combinaties worden
+   * opgeruimd; de aanroeper levert dat criterium, zodat deze store niets van
+   * de windmodule hoeft te weten.
+   */
+  vervangGegenereerdeBelasting: (p: {
+    gevallen: LoadCase[];
+    lasten: Omit<Load, "id">[];
+    combinaties: Omit<LoadCombination, "id">[];
+    gevalHoortBijGeneratie: (c: LoadCase) => boolean;
+    lastHoortBijGeneratie: (l: Load) => boolean;
+    combinatieHoortBijGeneratie: (c: LoadCombination) => boolean;
+  }) => void;
+
   /** Bulk translate a set of nodes by (dx, dz) — used by drag-to-move / G-grab. */
   translateNodes: (nodeIds: number[], dx: number, dz: number) => void;
 
@@ -1083,6 +1106,50 @@ export function useFemStore(): FemStore {
     });
   }, []);
 
+  /**
+   * Zie de documentatie bij FemStore.vervangGegenereerdeBelasting. Één
+   * snapshot, één loads-identiteit — bewust GEEN lus over addLoad, want dat
+   * zou per last een history-stap én een herberekening opleveren.
+   */
+  const vervangGegenereerdeBelasting = useCallback((p: {
+    gevallen: LoadCase[];
+    lasten: Omit<Load, "id">[];
+    combinaties: Omit<LoadCombination, "id">[];
+    gevalHoortBijGeneratie: (c: LoadCase) => boolean;
+    lastHoortBijGeneratie: (l: Load) => boolean;
+    combinatieHoortBijGeneratie: (c: LoadCombination) => boolean;
+  }) => {
+    const cur = latestRef.current;
+    // Lasten: handmatige behouden (volgorde intact), gegenereerde vervangen.
+    const behoudenLasten = cur.loads.filter(l => !p.lastHoortBijGeneratie(l));
+    let nextLoadId = behoudenLasten.reduce((m, l) => Math.max(m, l.id), 0) + 1;
+    const nieuweLasten: Load[] = p.lasten.map(l => ({ ...l, id: nextLoadId++ }));
+    const nextLoads = [...behoudenLasten, ...nieuweLasten];
+    setLoads(nextLoads);
+    pushHistory({ ...cur, loads: nextLoads });
+
+    setLoadCases(prev => {
+      const behouden = prev.filter(c => !p.gevalHoortBijGeneratie(c));
+      const volgend = [...behouden, ...p.gevallen];
+      return volgend.length > 0 ? volgend : prev; // nooit alles wegnemen
+    });
+    // Wees de actieve tab naar een geval dat nog bestaat.
+    setActiveLoadCaseId(curr => {
+      const nogAanwezig = [
+        ...loadCases.filter(c => !p.gevalHoortBijGeneratie(c)),
+        ...p.gevallen,
+      ];
+      return nogAanwezig.some(c => c.id === curr) ? curr : (nogAanwezig[0]?.id ?? curr);
+    });
+
+    setCombinations(prev => {
+      const behouden = prev.filter(c => !p.combinatieHoortBijGeneratie(c));
+      let nextId = behouden.reduce((m, c) => Math.max(m, c.id), 0) + 1;
+      return [...behouden, ...p.combinaties.map(c => ({ ...c, id: nextId++ }))];
+    });
+    setActiveCombinationId(null);
+  }, [pushHistory, loadCases]);
+
   /** Bulk-translate the given nodeIds by (dx, dz). One snapshot push. */
   const translateNodes = useCallback((nodeIds: number[], dx: number, dz: number) => {
     if (nodeIds.length === 0 || (dx === 0 && dz === 0)) return;
@@ -1197,7 +1264,7 @@ export function useFemStore(): FemStore {
     setPlateMeshCache,
     addSupport, removeSupport, addLoad, updateLoad,
     removeNode, removeBeam, removeLoad, removePlate,
-    deleteSelected, splitBeamAt, addLoadCase,
+    deleteSelected, splitBeamAt, addLoadCase, vervangGegenereerdeBelasting,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     translateNodes,
     structuralGrid, setStructuralGrid, verplaatsStramienAs,

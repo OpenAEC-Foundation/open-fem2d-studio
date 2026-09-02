@@ -87,6 +87,50 @@ export interface BeamCheckConfig {
   loadDuration?: "permanent" | "long" | "medium" | "short" | "instantaneous";
 }
 
+/**
+ * BELASTINGTYPE (constructieve rol) van een staaf — wát het onderdeel in de
+ * constructie ís, en dus welk belastingvlak het draagt. De windgenerator
+ * leest deze rol om te bepalen welke vormfactor en welke referentiehoogte bij
+ * een staaf horen; zonder rol weet de generator niet of een verticale staaf
+ * een gevelstijl is of een binnenkolom.
+ *
+ * De lijst is bewust fijn: de vormfactor van een LINKERgevel bij wind van
+ * links (druk, zone D) verschilt van diezelfde gevel bij wind van rechts
+ * (zuiging, zone E). Zie NEN-EN 1991-1-4 tabel 7.1.
+ *
+ * Uitbreidbaar: nieuwe rollen kunnen aan deze unie worden toegevoegd; de
+ * generator negeert rollen die hij niet kent en meldt dat.
+ */
+export type BeamLoadRole =
+  /** Linker (langs)gevel — verticaal buitenvlak aan de linkerzijde. */
+  | "gevelLinks"
+  /** Rechter (langs)gevel — verticaal buitenvlak aan de rechterzijde. */
+  | "gevelRechts"
+  /** Plat dak (dakhelling ≤ 5°) — NEN-EN 1991-1-4 §7.2.3. */
+  | "dakPlat"
+  /** Hellend dakvlak (dakhelling > 5°) — NEN-EN 1991-1-4 §7.2.5. */
+  | "dakHellend"
+  /** Dakoverstek / luifel — wind werkt op boven- én onderzijde (§7.2.6). */
+  | "overstek"
+  /** Vloer- of verdiepingsbalk — draagt vloerbelasting, geen windvlak. */
+  | "vloer"
+  /** Binnenstaaf (binnenkolom, schoor, trekband) — draagt geen windvlak. */
+  | "binnen";
+
+/** Volgorde + NL-labels van de belastingtypen, voor dropdowns en tabellen. */
+export const BEAM_LOAD_ROLES: { id: BeamLoadRole; label: string; kort: string }[] = [
+  { id: "gevelLinks",  label: "Linkergevel",          kort: "Gevel L" },
+  { id: "gevelRechts", label: "Rechtergevel",         kort: "Gevel R" },
+  { id: "dakPlat",     label: "Plat dak (≤ 5°)",      kort: "Dak plat" },
+  { id: "dakHellend",  label: "Hellend dak (> 5°)",   kort: "Dak hellend" },
+  { id: "overstek",    label: "Overstek / luifel",    kort: "Overstek" },
+  { id: "vloer",       label: "Vloer",                kort: "Vloer" },
+  { id: "binnen",      label: "Binnenstaaf (geen windvlak)", kort: "Binnen" },
+];
+
+export const BEAM_LOAD_ROLE_LABEL: Record<BeamLoadRole, string> =
+  Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, r.label])) as Record<BeamLoadRole, string>;
+
 export interface Beam {
   id: number;
   from: number; // node id
@@ -99,6 +143,65 @@ export interface Beam {
   releases?: BeamReleases;
   /** Per-staaf toetsconfiguratie; ontbreekt → builder-defaults. */
   checkConfig?: BeamCheckConfig;
+  /**
+   * Belastingtype (constructieve rol) van deze staaf. ONTBREEKT het veld —
+   * alle bestaande projectbestanden — dan geldt de uit de geometrie afgeleide
+   * standaardrol (zie `bepaalStandaardRol`); de gebruiker kan die altijd
+   * overschrijven, en dan staat de keuze hier vast in het projectbestand.
+   */
+  loadRole?: BeamLoadRole;
+}
+
+/**
+ * Standaard-belastingtype uit de geometrie: een (vrijwel) verticale staaf aan
+ * de buitenrand is een gevel, de bovenste (vrijwel) horizontale of hellende
+ * staven vormen het dak, overige horizontale staven zijn vloer en de rest is
+ * binnenstaaf. Dit is een HULP, geen waarheid — de gebruiker overschrijft de
+ * rol per staaf in de eigenschappen of in de tabel.
+ *
+ * Pure functie (geen React/DOM) zodat de generator én de tests hem delen.
+ */
+export function bepaalStandaardRol(
+  beam: { from: number; to: number },
+  nodes: { id: number; x: number; z: number }[],
+): BeamLoadRole {
+  const a = nodes.find((n) => n.id === beam.from);
+  const b = nodes.find((n) => n.id === beam.to);
+  if (!a || !b || nodes.length === 0) return "binnen";
+  const xs = nodes.map((n) => n.x), zs = nodes.map((n) => n.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const L = Math.hypot(dx, dz);
+  if (L < 1e-9) return "binnen";
+  // Hellingshoek t.o.v. horizontaal, 0°..90°.
+  const helling = Math.abs(Math.atan2(Math.abs(dz), Math.abs(dx)) * 180 / Math.PI);
+  // Tolerantie voor "op de rand" / "aan de bovenkant": 2% van de omhullende
+  // maat, met een ondergrens van 1 mm zodat degeneraties niet exploderen.
+  const tolX = Math.max(1, (maxX - minX) * 0.02);
+  const tolZ = Math.max(1, (maxZ - minZ) * 0.02);
+
+  if (helling >= 75) {
+    // Vrijwel verticaal → gevelstijl als hij op de linker- of rechterrand
+    // van het model staat, anders een binnenkolom.
+    const xMid = (a.x + b.x) / 2;
+    if (Math.abs(xMid - minX) <= tolX) return "gevelLinks";
+    if (Math.abs(xMid - maxX) <= tolX) return "gevelRechts";
+    return "binnen";
+  }
+  // Niet verticaal → dak wanneer de staaf tot de bovenste rand van het model
+  // behoort (minstens één uiteinde op de nok-/dakrandhoogte).
+  const opDakhoogte = Math.abs(Math.max(a.z, b.z) - maxZ) <= tolZ;
+  if (opDakhoogte) return helling <= 5 ? "dakPlat" : "dakHellend";
+  return helling <= 5 ? "vloer" : "binnen";
+}
+
+/** Rol van een staaf: expliciet gezet, of anders afgeleid uit de geometrie. */
+export function rolVanStaaf(
+  beam: Beam,
+  nodes: { id: number; x: number; z: number }[],
+): BeamLoadRole {
+  return beam.loadRole ?? bepaalStandaardRol(beam, nodes);
 }
 
 /**
@@ -474,12 +577,27 @@ export interface Load {
    * FemProperties typografeert op de vier namen.
    */
   edgeIndex?: number;
+  /**
+   * Herkomst van deze last. ONTBREEKT het veld, dan is de last HANDMATIG
+   * ingevoerd en raakt geen enkele generator hem aan. Staat er `"wind"`, dan
+   * is de last door de windbelastinggenerator gemaakt en wordt hij bij een
+   * volgende generatie vervangen. Zo blijft handwerk altijd behouden.
+   */
+  gegenereerdDoor?: "wind";
 }
 
 export interface LoadCase {
   id: number;
   name: string;
   type: "dead" | "live" | "snow" | "wind" | "other";
+  /**
+   * Herkomst van dit belastinggeval, met een STABIELE sleutel per geval
+   * (bijvoorbeeld "wind:links:cpi+0.2"). De generator hergebruikt bij een
+   * herhaalde generatie het id dat bij dezelfde sleutel hoort, zodat lasten,
+   * combinaties en de actieve tab niet bij elke regeneratie verspringen.
+   * Ontbreekt het veld → handmatig aangemaakt belastinggeval.
+   */
+  gegenereerd?: { bron: "wind"; sleutel: string };
 }
 
 export type Selection =

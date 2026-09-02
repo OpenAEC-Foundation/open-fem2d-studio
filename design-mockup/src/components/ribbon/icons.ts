@@ -131,6 +131,10 @@ export const loadCasesIcon = `<svg fill="none" stroke="currentColor" viewBox="0 
 // Visueel onderscheidt van "gevallen": de Σ links suggereert SOM/combinatie.
 export const loadCombinationsIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 4h7l-5 8 5 8H3"/><line x1="13" y1="7" x2="21" y2="7"/><line x1="13" y1="12" x2="21" y2="12"/><line x1="13" y1="17" x2="21" y2="17"/></svg>`;
 
+// WINDGENERATOR — windvlagen die tegen een gevel aan waaien. Onderscheidt
+// zich van de lastknoppen doordat het gebouw (rechts) er in zit.
+export const windGeneratorIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M2 6h7a2.2 2.2 0 100-2.2"/><path d="M2 11h9a2.2 2.2 0 110 2.2"/><path d="M2 16h6"/><path d="M17 21V7l4-3v17z"/></svg>`;
+
 // --- Edit / modify (Move, Rotate, Copy, Finish) ---
 export const moveIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>`;
 export const rotateIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12a9 9 0 109-9 9 9 0 00-9 9z" stroke-dasharray="3 3"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v6h6"/></svg>`;

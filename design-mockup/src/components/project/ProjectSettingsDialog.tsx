@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getSetting, setSetting } from "../../store";
+import {
+  WINDGEBIEDEN, TERREIN_CATEGORIEEN,
+  type Windgebied, type TerreinCategorie,
+} from "../../lib/wind/windEurocode";
 import "./ProjectSettingsDialog.css";
 
 interface ProjectSettingsDialogProps {
@@ -39,6 +43,15 @@ export const LEVENSDUUR_OMSCHRIJVING: Record<Levensduurklasse, string> = {
   "5": "Klasse 5 — 100 jaar: monumentale gebouwen, bruggen en infrastructuur",
 };
 
+/**
+ * Windgebied (NEN-EN 1991-1-4/NB tabel NB.1) en terreincategorie
+ * (NEN-EN 1991-1-4 tabel 4.1). Ze horen bij de uitgangspunten van het project
+ * en worden door de windbelastinggenerator hier uitgelezen. De omschrijvingen
+ * en getalswaarden staan — met vindplaats — in de windmodule.
+ */
+export type WindgebiedId = Windgebied;
+export type TerreinCategorieId = TerreinCategorie;
+
 /** Normen die het project toepast (uitgangspunten van de berekening). */
 export interface Uitgangspunten {
   /** EN 1993 — staalconstructies. */
@@ -53,6 +66,16 @@ export interface Uitgangspunten {
   levensduurklasse: Levensduurklasse;
   /** Nationale bijlage — vandaag alleen de Nederlandse. */
   nationaleBijlage: "NL";
+  /**
+   * Windgebied volgens NEN-EN 1991-1-4/NB tabel NB.1 — bepaalt v_b,0.
+   * Ontbreekt bij projecten van vóór de windgenerator → default "II".
+   */
+  windgebied?: WindgebiedId;
+  /**
+   * Terreincategorie volgens NEN-EN 1991-1-4 tabel 4.1 — bepaalt de
+   * ruwheidslengte z₀ en daarmee het snelheidsprofiel.
+   */
+  terreincategorie?: TerreinCategorieId;
 }
 
 export const DEFAULT_UITGANGSPUNTEN: Uitgangspunten = {
@@ -62,6 +85,8 @@ export const DEFAULT_UITGANGSPUNTEN: Uitgangspunten = {
   gevolgklasse: "CC2",
   levensduurklasse: "4",
   nationaleBijlage: "NL",
+  windgebied: "II",
+  terreincategorie: "II",
 };
 
 export interface ProjectInfo {
@@ -348,6 +373,45 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                 De gevolgklasse bepaalt de betrouwbaarheidsfactor K<sub>FI</sub> ={" "}
                 {K_FI[uitgangspunten.gevolgklasse].toFixed(2).replace(".", ",")} waarmee de
                 ongunstige belastingen in de uiterste grenstoestand worden vermenigvuldigd.
+              </p>
+
+              {/* Wind — windgebied en terreincategorie horen bij de
+                  uitgangspunten van het project; de windbelastinggenerator
+                  leest ze hier uit. */}
+              <div className="proj-row">
+                <div className="proj-field">
+                  <label>Windgebied (EN 1991-1-4/NB)</label>
+                  <select
+                    value={uitgangspunten.windgebied ?? "II"}
+                    onChange={(e) => updateUitgangspunt("windgebied", e.target.value as Windgebied)}
+                  >
+                    {(Object.keys(WINDGEBIEDEN) as Windgebied[]).map((g) => (
+                      <option key={g} value={g}>{WINDGEBIEDEN[g].omschrijving}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="proj-field">
+                  <label>Terreincategorie (EN 1991-1-4 tabel 4.1)</label>
+                  <select
+                    value={uitgangspunten.terreincategorie ?? "II"}
+                    onChange={(e) => updateUitgangspunt("terreincategorie", e.target.value as TerreinCategorie)}
+                  >
+                    {(Object.keys(TERREIN_CATEGORIEEN) as TerreinCategorie[]).map((c) => (
+                      <option key={c} value={c}>{TERREIN_CATEGORIEEN[c].omschrijving}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="proj-uitleg">
+                Windgebied {uitgangspunten.windgebied ?? "II"} geeft een basiswindsnelheid
+                v<sub>b,0</sub> = {WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].vb0
+                  .toFixed(1).replace(".", ",")} m/s ({WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].bron}).
+                De terreincategorie levert z<sub>0</sub> ={" "}
+                {TERREIN_CATEGORIEEN[uitgangspunten.terreincategorie ?? "II"].z0
+                  .toFixed(3).replace(".", ",")} m uit EN 1991-1-4 tabel 4.1 —{" "}
+                <strong>niet</strong> uit de terreinsoortentabel van de nationale bijlage.
+                Houdt u die tabel aan, voer de stuwdruk dan handmatig in bij de
+                windbelastinggenerator.
               </p>
             </div>
           </div>
