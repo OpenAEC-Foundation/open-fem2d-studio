@@ -271,6 +271,22 @@
 .fem-switch.on .fem-switch-dot {
   left: 13px;
 }
+/* Subkeuze onder een resultaat-toggle (bv. reactiecomponenten X/Z). */
+.fem-results-subcheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 10px;
+  font-size: 10px;
+  color: var(--theme-text-muted, var(--theme-text));
+  cursor: pointer;
+}
+.fem-results-subcheck input {
+  accent-color: var(--theme-accent);
+  width: 12px;
+  height: 12px;
+  margin: 0;
+}
 .fem-results-hint {
   padding: 10px 12px;
   margin: 8px 12px 0;

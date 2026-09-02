@@ -1814,6 +1814,45 @@ export default function FemCanvas(props: FemCanvasProps) {
         </g>
       );
     });
+
+    // ── Reactie-extremen bij de opleggingen (min…max over alle combinaties).
+    // Componentkeuze volgt de Reactie-subschakelaars (X/Z) in de
+    // Resultaten-tab; onder de drempel van 0,05 kN wordt niets getoond.
+    if (displayFlags.reactions) {
+      const MIN_KN = 0.05;
+      const fmtBereik = (min: number, max: number) =>
+        `${(min / 1000).toFixed(1)}…${(max / 1000).toFixed(1)} kN`;
+      envelope.reactions.forEach((r, nodeId) => {
+        const n = nodes.find(nn => nn.id === nodeId);
+        if (!n) return;
+        const p = worldToScreen(n.x, n.z);
+        const rijen: string[] = [];
+        if (displayFlags.reactieX !== false &&
+            Math.max(Math.abs(r.fx_min), Math.abs(r.fx_max)) / 1000 > MIN_KN) {
+          rijen.push(`Fx ${fmtBereik(r.fx_min, r.fx_max)}`);
+        }
+        if (displayFlags.reactieZ !== false &&
+            Math.max(Math.abs(r.fz_min), Math.abs(r.fz_max)) / 1000 > MIN_KN) {
+          rijen.push(`Fz ${fmtBereik(r.fz_min, r.fz_max)}`);
+        }
+        if (rijen.length === 0) return;
+        const bx = p.x + 22;
+        const by = p.y + 40;
+        const h = 6 + rijen.length * 13;
+        overlays.push(
+          <g key={`envr${nodeId}`}>
+            <rect x={bx - 4} y={by - 11} width={104} height={h} rx={3}
+              className="fem-result-label-bg" />
+            {rijen.map((tekst, i) => (
+              <text key={i} x={bx} y={by + i * 13} className="fem-reaction-label"
+                textAnchor="start">
+                {tekst}
+              </text>
+            ))}
+          </g>
+        );
+      });
+    }
     return overlays;
   };
 

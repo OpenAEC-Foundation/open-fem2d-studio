@@ -185,6 +185,22 @@ function ResultsTab({
                   <span className="fem-results-scale-value">{scaleVal.toFixed(1)}×</span>
                 </div>
               )}
+              {/* Reactie-componentkeuze: X- en Z-pijlen apart schakelbaar.
+                  Bij omhullende-weergave tonen de labels min…max. */}
+              {row.key === "reactions" && active && (
+                <div className="fem-results-scale-row" title="Kies welke reactiecomponenten getoond worden; bij Omhullende tonen de labels min…max over alle combinaties">
+                  {([["reactieX", "X"], ["reactieZ", "Z"]] as const).map(([k, lbl]) => (
+                    <label key={k} className="fem-results-subcheck">
+                      <input
+                        type="checkbox"
+                        checked={displayFlags[k] !== false}
+                        onChange={(e) => setDisplayFlags(f => ({ ...f, [k]: e.target.checked }))}
+                      />
+                      <span>{lbl}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

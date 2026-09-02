@@ -27,10 +27,14 @@ const DEFAULT_NODES: Node[] = [
   { id: 3, x: 0,     z: 5000 },
   { id: 4, x: 12000, z: 5000 },
 ];
+// Expliciet materiaal/profiel: zonder deze velden viel de solver stil terug
+// op dezelfde defaults (HEA 160 / S235) maar met een console-warning per
+// staaf per berekening, en presenteerde het rapport een impliciete default
+// als bewuste profielkeuze.
 const DEFAULT_BEAMS: Beam[] = [
-  { id: 1, from: 1, to: 3 },
-  { id: 2, from: 2, to: 4 },
-  { id: 3, from: 3, to: 4 },
+  { id: 1, from: 1, to: 3, material: "S235", profile: "HEA160" },
+  { id: 2, from: 2, to: 4, material: "S235", profile: "HEA160" },
+  { id: 3, from: 3, to: 4, material: "S235", profile: "HEA160" },
 ];
 const DEFAULT_SUPPORTS: Support[] = [
   { nodeId: 1, type: "pinned" },

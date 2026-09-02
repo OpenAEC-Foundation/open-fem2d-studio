@@ -20,6 +20,9 @@ export interface DisplayFlags {
   V: boolean;
   M: boolean;
   reactions: boolean;
+  /** Reactie-componentkeuze: horizontale (Fx) resp. verticale (Fz) pijlen. */
+  reactieX: boolean;
+  reactieZ: boolean;
   /** Show extreme-value labels (Mmax, Vmax, Nmax, umax) at peak locations. */
   showExtremes: boolean;
   /** Per-component scale multipliers — 1.0 = auto, slider 0.1–5.0. */
@@ -31,6 +34,7 @@ export interface DisplayFlags {
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   deflection: true, N: false, V: false, M: true, reactions: true,
+  reactieX: true, reactieZ: true,
   showExtremes: true,
   scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1,
 };
@@ -222,7 +226,7 @@ export default function FemResultsOverlay({
     const out: React.ReactNode[] = [];
 
     // ── Horizontaal (Fx) ──────────────────────────────────────────────
-    if (Math.abs(r.fx) / 1000 > REACTION_MIN_KN) {
+    if (displayFlags.reactieX !== false && Math.abs(r.fx) / 1000 > REACTION_MIN_KN) {
       const ax = r.fx * reactionScale;   // screen-px in x direction
       const dirX = Math.sign(ax) || 1;
       // Head zit GAP weg van p in tail-richting (= weg van het support).
@@ -246,7 +250,7 @@ export default function FemResultsOverlay({
     }
 
     // ── Verticaal (Fz) ────────────────────────────────────────────────
-    if (Math.abs(r.fz) / 1000 > REACTION_MIN_KN) {
+    if (displayFlags.reactieZ !== false && Math.abs(r.fz) / 1000 > REACTION_MIN_KN) {
       // Klassieke weergave: de verticale reactiepijl staat ONDER het
       // support-symbool (driehoek + grondlijn + hatching ≈ 34 px hoog),
       // volledig vrij van knoop, staaf en diagrammen. Pijlrichting = de
