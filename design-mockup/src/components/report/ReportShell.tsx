@@ -1,20 +1,29 @@
 /**
- * ReportShell — het live HTML-rapport.
+ * ReportShell — het live HTML-rapport als opmaakproef.
  *
- * Rendert de aangezette secties uit de registry (reportSections.ts) als
- * A4/A3-vellen in een scrollbare, zoombare schermweergave. Het rapport ís de
- * afdruk: window.print() opent de printdialoog van de webview ("Opslaan als
- * PDF") en de print-CSS in report.css laat exact dezelfde inhoud op
- * `@page`-pagina's vallen — de scherm-chrome (toolbar, zijbalk, zoom)
- * verdwijnt met `@media print`.
+ * Rendert de aangezette secties uit de registry (reportSections.ts) en
+ * verdeelt die over LOSSE VELLEN op papierformaat: elk vel apart op de grijze
+ * bureau-achtergrond, met eigen slagschaduw, onder elkaar — precies zoals een
+ * drukproef. Het rapport blijft daarbij één doorlopend document: hoofdstukken
+ * sluiten op elkaar aan, niets begint geforceerd op een nieuw vel.
  *
- * De `@page`-regel wordt hier dynamisch geïnjecteerd zodat papierformaat en
- * oriëntatie uit de reportStore écht doorwerken in de print, inclusief kop-
- * (projectnaam) en voettekst (paginanummers via CSS counters in
- * @page-margin-boxes — Chromium ≥ 131; oudere WebView2-runtimes laten de
- * kop-/voettekst weg maar printen de inhoud gewoon).
+ * De paginering zelf zit in paginate.ts. Hier staat de orkestratie:
+ *
+ *  - de secties draaien ÉÉN keer, in een onzichtbare meetcontainer
+ *    (`.rpt-meet`) die exact zo breed is als de tekstkolom van het vel;
+ *  - een MutationObserver + ResizeObserver op die container herpagineert
+ *    zodra de inhoud verandert (modelwijziging, resultaten, taal), en een
+ *    effect doet hetzelfde bij marges, papierformaat, oriëntatie, sectie
+ *    aan/uit en lettergrootte — alles gedebouncet zodat slepen aan een
+ *    slider vloeiend blijft;
+ *  - de vellen zelf worden als DOM opgebouwd in `.rpt-vellen`; React rendert
+ *    daar bewust géén kinderen, zodat er geen conflict met de paginering is.
+ *
+ * Print: één schermvel = één printpagina (`break-after: page` per vel), en de
+ * `@page`-marges hieronder zijn dezelfde marges als op scherm. Wat je ziet
+ * komt zo ook uit de printer ("Opslaan als PDF" in de printdialoog).
  */
-import type { CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useReportStore,
@@ -26,12 +35,16 @@ import {
 import { REPORT_SECTIONS } from "./reportSections";
 import { useProjectInfo } from "./useProjectInfo";
 import { useReportData } from "./ReportDataContext";
+import { pagineer, koppelBedieningsDoorgifte } from "./paginate";
 import "./report.css";
 
 /** Veilige CSS-string (dubbelquoted, met escapes) voor content:-waarden. */
 function cssString(s: string): string {
   return JSON.stringify(s);
 }
+
+/** Wachttijd voor het herpagineren — houdt slepen aan een slider vloeiend. */
+const HERPAGINEER_MS = 150;
 
 const printIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -54,12 +67,19 @@ interface ReportShellProps {
 }
 
 export default function ReportShell({ onDetach }: ReportShellProps) {
-  const { t } = useTranslation("ribbon");
+  const { t, i18n } = useTranslation("ribbon");
   const pageSize = useReportStore((s) => s.pageSize);
   const orientation = useReportStore((s) => s.orientation);
   const zoom = useReportStore((s) => s.zoom);
   const setZoom = useReportStore((s) => s.setZoom);
   const hiddenSections = useReportStore((s) => s.hiddenSections);
+  const margeBoven = useReportStore((s) => s.margeBoven);
+  const margeOnder = useReportStore((s) => s.margeOnder);
+  const margeBinnen = useReportStore((s) => s.margeBinnen);
+  const margeBuiten = useReportStore((s) => s.margeBuiten);
+  const basisLettergrootte = useReportStore((s) => s.basisLettergrootte);
+  const regelafstand = useReportStore((s) => s.regelafstand);
+  const setActieveSectie = useReportStore((s) => s.setActieveSectie);
   const info = useProjectInfo();
   const data = useReportData();
 
@@ -74,15 +94,21 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
   const dims = pageDimsMm(pageSize, orientation);
   const headerText = info.name || t("report.unnamedProject", "Naamloos project");
 
-  // Dynamische print-regel: formaat/oriëntatie + voettekst. De koptekst is
-  // géén @page-margin-box meer maar een echt kopblok in het document (thead —
-  // herhaalt in print op elke pagina, zie .rpt-doc in report.css); alleen de
-  // paginanummers en het app-merk staan in de margin-boxes (CSS counters
-  // kunnen niet in gewone content; Chromium ≥ 131 voor de boxes).
+  // Enkelzijdig drukwerk: binnenmarge = links, buitenmarge = rechts
+  // (zie ReportOpmaak in reportStore).
+  const margeLinks = margeBinnen;
+  const margeRechts = margeBuiten;
+
+  // Dynamische print-regel: formaat/oriëntatie, de ingestelde marges en de
+  // voettekst. De koptekst staat als echt kopblok bovenaan élk vel (zie de
+  // opmaakproef hieronder); alleen de paginanummers en het app-merk komen uit
+  // de @page-margin-boxes (CSS counters kunnen niet in gewone content;
+  // Chromium ≥ 131 voor de boxes — oudere runtimes printen de inhoud gewoon
+  // zonder die regel).
   const pageCss = `
 @page {
   size: ${pageSize} ${orientation};
-  margin: 12mm 15mm 20mm 15mm;
+  margin: ${margeBoven}mm ${margeRechts}mm ${margeOnder}mm ${margeLinks}mm;
   @bottom-left {
     content: "Open FEM2D Studio";
     font-family: "Segoe UI", system-ui, sans-serif;
@@ -99,7 +125,7 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
 
   // Kopblok in referentiestijl: bedrijfsregel cursief, daaronder het
   // projectblok in twee kolommen, afgesloten met een lijn. Lege velden
-  // worden weggelaten. Herhaalt in print op elke pagina via de thead.
+  // worden weggelaten. Staat bovenaan élk vel (kloon per vel).
   const kopRegels: Array<[string, string]> = [
     [t("report.kopProjectnummer", "Projectnummer"), info.projectNumber],
     [t("report.kopProject", "Project"), headerText],
@@ -113,14 +139,155 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
 
   const sections = REPORT_SECTIONS.filter((s) => isSectionEnabled(hiddenSections, s.id));
 
-  const zoomStyle = {
-    "--rpt-zoom": String(zoom),
+  // ─── Opmaak-variabelen: sturen zowel de meetcontainer als de vellen ───
+  const shellStyle = {
     "--rpt-page-w": `${dims.w}mm`,
     "--rpt-page-h": `${dims.h}mm`,
+    "--rpt-marge-boven": `${margeBoven}mm`,
+    "--rpt-marge-onder": `${margeOnder}mm`,
+    "--rpt-marge-links": `${margeLinks}mm`,
+    "--rpt-marge-rechts": `${margeRechts}mm`,
+    "--rpt-basis": `${basisLettergrootte}pt`,
+    "--rpt-regelafstand": String(regelafstand),
   } as CSSProperties;
 
+  const zoomStyle = { "--rpt-zoom": String(zoom) } as CSSProperties;
+
+  // ─── Paginering ───
+  const meetRef = useRef<HTMLDivElement>(null);
+  const kopRef = useRef<HTMLDivElement>(null);
+  const inhoudRef = useRef<HTMLDivElement>(null);
+  const vellenRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<number | undefined>(undefined);
+  const eersteRef = useRef(true);
+  const [aantalVellen, setAantalVellen] = useState(0);
+
+  const paginaLabel = useCallback(
+    (nummer: number, totaal: number) =>
+      `${t("report.pagePrefix", "Pagina")} ${nummer} ${t("report.pageOf", "van")} ${totaal}`,
+    [t],
+  );
+
+  const draai = useCallback(() => {
+    const meet = meetRef.current;
+    const kop = kopRef.current;
+    const inhoud = inhoudRef.current;
+    const doel = vellenRef.current;
+    if (!meet || !kop || !inhoud || !doel) return;
+    const n = pagineer({
+      meet,
+      kop,
+      inhoud,
+      doel,
+      velHoogteMm: dims.h,
+      margeBovenMm: margeBoven,
+      margeOnderMm: margeOnder,
+      merk: "Open FEM2D Studio",
+      paginaLabel,
+    });
+    setAantalVellen(n);
+  }, [dims.h, margeBoven, margeOnder, paginaLabel]);
+
+  const plan = useCallback(
+    (vertraging: number) => {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(draai, vertraging);
+    },
+    [draai],
+  );
+
+  // Herpagineer bij elke wijziging die de opmaak raakt: marges, papier-
+  // formaat/oriëntatie, sectie aan/uit, lettergrootte, interlinie en taal.
+  // Modeldata loopt via de observers hieronder.
+  useEffect(() => {
+    plan(eersteRef.current ? 0 : HERPAGINEER_MS);
+    eersteRef.current = false;
+  }, [
+    plan,
+    dims.w,
+    dims.h,
+    margeBoven,
+    margeOnder,
+    margeLinks,
+    margeRechts,
+    basisLettergrootte,
+    regelafstand,
+    hiddenSections,
+    i18n.language,
+  ]);
+
+  // Inhoudswijzigingen (model, resultaten, toetsing, projectgegevens): de
+  // secties rerenderen in de meetcontainer, de observers pikken dat op. Zo
+  // hoeft de shell geen enkele datadependency te kennen — dat werkt ook in
+  // het losgekoppelde venster, waar de data via reportSync binnenkomt.
+  useEffect(() => {
+    const meet = meetRef.current;
+    if (!meet) return;
+    const mo = new MutationObserver(() => plan(HERPAGINEER_MS));
+    mo.observe(meet, { childList: true, subtree: true, characterData: true });
+    const ro = new ResizeObserver(() => plan(HERPAGINEER_MS));
+    ro.observe(meet);
+    // Webfonts kunnen ná de eerste meting binnenkomen — dan hermeten.
+    let levend = true;
+    document.fonts?.ready.then(() => {
+      if (levend) plan(0);
+    });
+    return () => {
+      levend = false;
+      mo.disconnect();
+      ro.disconnect();
+      window.clearTimeout(timerRef.current);
+    };
+  }, [plan]);
+
+  // Interactie met de gekloonde bedieningen (koptekst-regel, combinatie-
+  // keuze) doorspelen naar het echte React-element in de meetcontainer.
+  useEffect(() => {
+    const doel = vellenRef.current;
+    const meet = meetRef.current;
+    if (!doel || !meet) return;
+    return koppelBedieningsDoorgifte(doel, meet);
+  }, []);
+
+  // Markeer in de zijbalk welke sectie in beeld is (bijzaak — puur navigatie).
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    let wacht: number | undefined;
+    const bepaal = () => {
+      wacht = undefined;
+      const doel = vellenRef.current;
+      if (!doel) return;
+      const secties = doel.querySelectorAll<HTMLElement>("[data-section]");
+      if (secties.length === 0) {
+        setActieveSectie(null);
+        return;
+      }
+      // De laatste sectie die boven de leesgrens begint is de sectie die je
+      // leest; staat er nog niets boven (helemaal bovenaan), dan de eerste.
+      const grens = scroll.getBoundingClientRect().top + 80;
+      let actief: string | null = secties[0].dataset.section ?? null;
+      secties.forEach((el) => {
+        if (el.getBoundingClientRect().top <= grens) actief = el.dataset.section ?? null;
+      });
+      setActieveSectie(actief);
+    };
+    // Bewust een timer en geen requestAnimationFrame: een verborgen venster
+    // (rapport op de achtergrond) krijgt geen frames meer.
+    const opScroll = () => {
+      if (wacht === undefined) wacht = window.setTimeout(bepaal, 80);
+    };
+    scroll.addEventListener("scroll", opScroll, { passive: true });
+    bepaal();
+    return () => {
+      scroll.removeEventListener("scroll", opScroll);
+      if (wacht !== undefined) window.clearTimeout(wacht);
+    };
+  }, [setActieveSectie, aantalVellen]);
+
   return (
-    <div className="report-shell">
+    <div className="report-shell" style={shellStyle}>
       <style>{pageCss}</style>
 
       {/* Scherm-chrome — verdwijnt bij print (@media print in report.css). */}
@@ -129,6 +296,7 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
           {pageSize} · {orientation === "portrait"
             ? t("report.portrait", "Staand")
             : t("report.landscape", "Liggend")}
+          {aantalVellen > 0 && ` · ${aantalVellen} ${t("report.sheets", "vellen")}`}
           {" · "}{headerText}
         </span>
         <label className="report-zoom-control">
@@ -169,62 +337,47 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
         </div>
       )}
 
-      <div className="report-scroll">
-        <div className="report-zoom" style={zoomStyle}>
-          {/* Eén doorlopend document: hoofdstukken sluiten op elkaar aan en
-              printpagina's breken waar het papier vol is (referentiestijl).
-              De tabelconstructie is functioneel: een thead herhaalt in
-              Chromium-print op élke pagina — dat is de terugkerende kop. */}
-          {sections.length > 0 && (
-            <div className="report-page report-doorlopend">
-              <table className="rpt-doc">
-                <thead>
-                  <tr>
-                    <td>
-                      <div className="rpt-kop">
-                        {kopBedrijf && <div className="rpt-kop-bedrijf">{kopBedrijf}</div>}
-                        {(kopRegels.length > 0 || kopRechts.length > 0) && (
-                          <div className="rpt-kop-grid">
-                            <div>
-                              {kopRegels.map(([label, waarde]) => (
-                                <div key={label} className="rpt-kop-regel">
-                                  <span className="rpt-kop-label">{label}</span>
-                                  <span>: {waarde}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <div>
-                              {kopRechts.map(([label, waarde]) => (
-                                <div key={label} className="rpt-kop-regel">
-                                  <span className="rpt-kop-label">{label}</span>
-                                  <span>: {waarde}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>
-                      {sections.map(({ id, Component }) => (
-                        <section key={id} className="rpt-hoofdstuk" data-section={id}>
-                          <Component />
-                        </section>
-                      ))}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="rpt-voet">
-                <span>Open FEM2D Studio</span>
-                {info.date && <span>{info.date}</span>}
+      {/* ─── Meetcontainer ───
+          Onzichtbaar, maar wél opgemaakt: hier draaien de live secties op
+          exact de tekstbreedte van het vel. De paginering meet hier de
+          natuurlijke breekpunten en kloont ze naar de vellen. */}
+      <div className="rpt-meet" ref={meetRef} aria-hidden="true">
+        <div className="rpt-kop" ref={kopRef}>
+          {kopBedrijf && <div className="rpt-kop-bedrijf">{kopBedrijf}</div>}
+          {(kopRegels.length > 0 || kopRechts.length > 0) && (
+            <div className="rpt-kop-grid">
+              <div>
+                {kopRegels.map(([label, waarde]) => (
+                  <div key={label} className="rpt-kop-regel">
+                    <span className="rpt-kop-label">{label}</span>
+                    <span>: {waarde}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                {kopRechts.map(([label, waarde]) => (
+                  <div key={label} className="rpt-kop-regel">
+                    <span className="rpt-kop-label">{label}</span>
+                    <span>: {waarde}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
+        </div>
+        <div className="rpt-meet-inhoud" ref={inhoudRef}>
+          {sections.map(({ id, Component }) => (
+            <section key={id} className="rpt-hoofdstuk" data-section={id}>
+              <Component />
+            </section>
+          ))}
+        </div>
+      </div>
+
+      <div className="report-scroll" ref={scrollRef}>
+        <div className="report-zoom" style={zoomStyle}>
+          {/* De opmaakproef: losse vellen, door paginate.ts opgebouwd. */}
+          <div className="rpt-vellen" ref={vellenRef} />
           {sections.length === 0 && (
             <div className="report-no-sections">
               {t("report.noSections", "Alle secties staan uit — zet een sectie aan in de zijbalk.")}

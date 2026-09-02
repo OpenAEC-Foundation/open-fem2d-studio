@@ -37,6 +37,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReportData } from "./ReportDataContext";
 import {
   useReportStore,
+  type ReportOpmaak,
   type ReportOrientation,
   type ReportPageSize,
 } from "../../stores/reportStore";
@@ -114,8 +115,12 @@ interface WireCheckState {
   lastRunAt: number | null;
 }
 
-/** Gedeelde rapportinstellingen (zoom bewust NIET — die is per venster). */
-interface WireReportSettings {
+/**
+ * Gedeelde rapportinstellingen. Zoom bewust NIET — die is puur schermweergave
+ * en dus per venster. De opmaak (marges, lettergrootte, interlinie) hoort er
+ * wél bij: dat is documentopmaak, en het rapport is één document.
+ */
+interface WireReportSettings extends ReportOpmaak {
   pageSize: ReportPageSize;
   orientation: ReportOrientation;
   hiddenSections: Record<string, boolean>;
@@ -293,7 +298,30 @@ function currentSettings(): WireReportSettings {
     orientation: s.orientation,
     hiddenSections: s.hiddenSections,
     resultCombo: s.resultCombo,
+    margeBoven: s.margeBoven,
+    margeOnder: s.margeOnder,
+    margeBinnen: s.margeBinnen,
+    margeBuiten: s.margeBuiten,
+    basisLettergrootte: s.basisLettergrootte,
+    regelafstand: s.regelafstand,
   };
+}
+
+/** Zijn twee instellingensets gelijk? (Ondiep — de velden zijn primitieven
+ *  op `hiddenSections` na, dat per mutatie een nieuwe identiteit krijgt.) */
+function settingsGelijk(a: WireReportSettings, b: WireReportSettings): boolean {
+  return (
+    a.pageSize === b.pageSize &&
+    a.orientation === b.orientation &&
+    a.hiddenSections === b.hiddenSections &&
+    a.resultCombo === b.resultCombo &&
+    a.margeBoven === b.margeBoven &&
+    a.margeOnder === b.margeOnder &&
+    a.margeBinnen === b.margeBinnen &&
+    a.margeBuiten === b.margeBuiten &&
+    a.basisLettergrootte === b.basisLettergrootte &&
+    a.regelafstand === b.regelafstand
+  );
 }
 
 // ── Hoofdvenster: publisher ───────────────────────────────────────────────
@@ -309,6 +337,13 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const orientation = useReportStore((s) => s.orientation);
   const hiddenSections = useReportStore((s) => s.hiddenSections);
   const resultCombo = useReportStore((s) => s.resultCombo);
+  // Opmaak hoort bij het document en gaat dus mee naar het rapportvenster.
+  const margeBoven = useReportStore((s) => s.margeBoven);
+  const margeOnder = useReportStore((s) => s.margeOnder);
+  const margeBinnen = useReportStore((s) => s.margeBinnen);
+  const margeBuiten = useReportStore((s) => s.margeBuiten);
+  const basisLettergrootte = useReportStore((s) => s.basisLettergrootte);
+  const regelafstand = useReportStore((s) => s.regelafstand);
   const checkResults = useCheckStore((s) => s.results);
   const checkSkipped = useCheckStore((s) => s.skipped);
   const checkLastRunAt = useCheckStore((s) => s.lastRunAt);
@@ -361,6 +396,12 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     orientation,
     hiddenSections,
     resultCombo,
+    margeBoven,
+    margeOnder,
+    margeBinnen,
+    margeBuiten,
+    basisLettergrootte,
+    regelafstand,
     checkResults,
     checkSkipped,
     checkLastRunAt,
@@ -420,6 +461,8 @@ export function useDetachedReportSync(): ReportData | null {
     // mogen niet als "lokale wijziging" terug naar het hoofdvenster.
     let applyingRemote = false;
     let gotSnapshot = false;
+    /** Laatst verstuurde/ontvangen stand — voorkomt overbodige berichten. */
+    let laatstVerstuurd: WireReportSettings = currentSettings();
 
     const sendHello = () =>
       sendMessage({ kind: "hello", src: WINDOW_ID, seq: nextSeq() });
@@ -438,6 +481,7 @@ export function useDetachedReportSync(): ReportData | null {
       gotSnapshot = true;
       setData(deserializeReportData(msg.data));
       applyingRemote = true;
+      laatstVerstuurd = msg.settings;
       try {
         useReportStore.setState({ ...msg.settings });
         useCheckStore.setState({
@@ -452,29 +496,15 @@ export function useDetachedReportSync(): ReportData | null {
       }
     };
 
-    // Lokale instellingswijziging (sectie-toggle, formaat, combinatiekeuze)
-    // → naar het hoofdvenster. Zoom blijft bewust per venster.
-    const unsubscribe = useReportStore.subscribe((state, prev) => {
+    // Lokale instellingswijziging (sectie-toggle, formaat, combinatiekeuze,
+    // opmaak) → naar het hoofdvenster. Zoom en de actieve sectie blijven
+    // bewust per venster.
+    const unsubscribe = useReportStore.subscribe(() => {
       if (applyingRemote) return;
-      if (
-        state.pageSize === prev.pageSize &&
-        state.orientation === prev.orientation &&
-        state.hiddenSections === prev.hiddenSections &&
-        state.resultCombo === prev.resultCombo
-      ) {
-        return; // alleen zoom gewijzigd — niet syncen
-      }
-      sendMessage({
-        kind: "settings",
-        src: WINDOW_ID,
-        seq: nextSeq(),
-        settings: {
-          pageSize: state.pageSize,
-          orientation: state.orientation,
-          hiddenSections: state.hiddenSections,
-          resultCombo: state.resultCombo,
-        },
-      });
+      const settings = currentSettings();
+      if (settingsGelijk(settings, laatstVerstuurd)) return;
+      laatstVerstuurd = settings;
+      sendMessage({ kind: "settings", src: WINDOW_ID, seq: nextSeq(), settings });
     });
 
     const detachReceiver = attachReceiver(onMessage);

@@ -337,7 +337,19 @@
     "colGoverningCombo": "Maatgevende combinatie",
     "plateKindNote": "Platen rekenen mee als wandschijf (membraan, in het vlak); het rekenmesh wordt bij elke berekening opnieuw uit de meshgrootte gegenereerd.",
     "envelopePlatesTitle": "Omhullende (min/max over alle combinaties)",
-    "plateStressNote": "Spanningen in N/mm², elementgemiddeld over het rekenmesh; min/max per plaat — dezelfde waarden als de contourlegenda op het canvas. Het maatgevende element is het element met de grootste von Mises-spanning."
+    "plateStressNote": "Spanningen in N/mm², elementgemiddeld over het rekenmesh; min/max per plaat — dezelfde waarden als de contourlegenda op het canvas. Het maatgevende element is het element met de grootste von Mises-spanning.",
+    "sectionsHint2": "Vinkje: in het rapport of niet. Naam: spring ernaartoe.",
+    "jumpTo": "Spring naar dit hoofdstuk",
+    "sheets": "vellen",
+    "pageOf": "van",
+    "opmaak": "Opmaak",
+    "margeBoven": "Marge boven",
+    "margeOnder": "Marge onder",
+    "margeLinks": "Marge links",
+    "margeRechts": "Marge rechts",
+    "lettergrootte": "Lettergrootte",
+    "regelafstand": "Interlinie",
+    "resetOpmaak": "Standaardopmaak"
   },
   "viewer": {
     "file": "Bestand",

@@ -110,12 +110,19 @@
   padding: 5px 6px;
   font-size: 12px;
   color: var(--theme-text);
-  cursor: pointer;
   border-radius: 3px;
   transition: background 0.12s;
+  /* Markering van de sectie die in beeld is (IntersectionObserver-light in
+     ReportShell): een dun streepje links, geen kleurbom. */
+  border-left: 2px solid transparent;
 }
 
 .report-section-toggle:hover {
+  background: var(--theme-hover);
+}
+
+.report-section-toggle.is-actief {
+  border-left-color: var(--theme-accent);
   background: var(--theme-hover);
 }
 
@@ -123,7 +130,35 @@
   width: 13px;
   height: 13px;
   accent-color: var(--theme-accent);
-  cursor: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* De sectienaam is tegelijk de sprong-link van de inhoudsopgave. */
+.report-section-link {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-section-link:hover:not(:disabled) {
+  color: var(--theme-accent);
+  text-decoration: underline;
+}
+
+.report-section-link:disabled {
+  color: var(--theme-text-secondary);
+  cursor: default;
+  opacity: 0.6;
 }
 
 .report-reset-btn {
@@ -143,6 +178,55 @@
   border-color: var(--theme-accent);
   color: var(--theme-accent);
   background: var(--theme-hover);
+}
+
+/* ─── Blok "Opmaak": live sliders voor marges en typografie ─── */
+.report-sidebar-kop {
+  margin: 18px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--theme-border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--theme-text);
+}
+
+.report-opmaak {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.report-opmaak-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+}
+
+.report-opmaak-label {
+  grid-column: 1;
+}
+
+.report-opmaak-waarde {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text);
+}
+
+.report-opmaak-slider input[type="range"] {
+  grid-column: 1;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--theme-accent);
 }
 
 /* Ingeklapte verticale tab */
