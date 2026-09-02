@@ -161,6 +161,7 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | undefined>(undefined);
   const eersteRef = useRef(true);
+  const fontsGemetenRef = useRef(false);
   const [aantalVellen, setAantalVellen] = useState(0);
 
   const paginaLabel = useCallback(
@@ -228,11 +229,17 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
     mo.observe(meet, { childList: true, subtree: true, characterData: true });
     const ro = new ResizeObserver(() => plan(HERPAGINEER_MS));
     ro.observe(meet);
-    // Webfonts kunnen ná de eerste meting binnenkomen — dan hermeten.
+    // Webfonts kunnen ná de eerste meting binnenkomen — dan één keer
+    // hermeten. Bewust eenmalig: dit effect wordt bij elke instellings-
+    // wijziging opnieuw opgezet en de belofte is dan al vervuld.
     let levend = true;
-    document.fonts?.ready.then(() => {
-      if (levend) plan(0);
-    });
+    if (!fontsGemetenRef.current) {
+      document.fonts?.ready.then(() => {
+        if (!levend) return;
+        fontsGemetenRef.current = true;
+        plan(0);
+      });
+    }
     return () => {
       levend = false;
       mo.disconnect();

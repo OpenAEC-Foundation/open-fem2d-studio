@@ -110,6 +110,8 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const margeBuiten = useReportStore((s) => s.margeBuiten);
   const basisLettergrootte = useReportStore((s) => s.basisLettergrootte);
   const regelafstand = useReportStore((s) => s.regelafstand);
+  const inhoudsopgaveDiepte = useReportStore((s) => s.inhoudsopgaveDiepte);
+  const setInhoudsopgaveDiepte = useReportStore((s) => s.setInhoudsopgaveDiepte);
 
   const zetOpmaak = (veld: keyof ReportOpmaak) => (v: number) => setOpmaak({ [veld]: v });
 
@@ -238,6 +240,28 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
                 decimalen={2}
                 onChange={zetOpmaak("regelafstand")}
               />
+
+              {/* Diepte van de inhoudsopgave-sectie in het document. Met
+                  subsecties wordt de lijst bij veel staven lang, vandaar de
+                  keuze voor "alleen hoofdstukken". */}
+              <label className="report-opmaak-keuze">
+                <span className="report-opmaak-label">
+                  {t("report.tocDiepte", "Inhoudsopgave")}
+                </span>
+                <select
+                  value={inhoudsopgaveDiepte}
+                  onChange={(e) =>
+                    setInhoudsopgaveDiepte(Number(e.target.value) === 1 ? 1 : 2)
+                  }
+                >
+                  <option value={1}>
+                    {t("report.tocDiepte1", "Alleen hoofdstukken")}
+                  </option>
+                  <option value={2}>
+                    {t("report.tocDiepte2", "Met subsecties")}
+                  </option>
+                </select>
+              </label>
             </div>
 
             <button className="report-reset-btn" onClick={resetOpmaak}>

@@ -125,6 +125,7 @@ interface WireReportSettings extends ReportOpmaak {
   orientation: ReportOrientation;
   hiddenSections: Record<string, boolean>;
   resultCombo: number | "envelope" | null;
+  inhoudsopgaveDiepte: 1 | 2;
 }
 
 type ReportSyncMessage =
@@ -298,6 +299,7 @@ function currentSettings(): WireReportSettings {
     orientation: s.orientation,
     hiddenSections: s.hiddenSections,
     resultCombo: s.resultCombo,
+    inhoudsopgaveDiepte: s.inhoudsopgaveDiepte,
     margeBoven: s.margeBoven,
     margeOnder: s.margeOnder,
     margeBinnen: s.margeBinnen,
@@ -315,6 +317,7 @@ function settingsGelijk(a: WireReportSettings, b: WireReportSettings): boolean {
     a.orientation === b.orientation &&
     a.hiddenSections === b.hiddenSections &&
     a.resultCombo === b.resultCombo &&
+    a.inhoudsopgaveDiepte === b.inhoudsopgaveDiepte &&
     a.margeBoven === b.margeBoven &&
     a.margeOnder === b.margeOnder &&
     a.margeBinnen === b.margeBinnen &&
@@ -337,6 +340,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const orientation = useReportStore((s) => s.orientation);
   const hiddenSections = useReportStore((s) => s.hiddenSections);
   const resultCombo = useReportStore((s) => s.resultCombo);
+  const inhoudsopgaveDiepte = useReportStore((s) => s.inhoudsopgaveDiepte);
   // Opmaak hoort bij het document en gaat dus mee naar het rapportvenster.
   const margeBoven = useReportStore((s) => s.margeBoven);
   const margeOnder = useReportStore((s) => s.margeOnder);
@@ -396,6 +400,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     orientation,
     hiddenSections,
     resultCombo,
+    inhoudsopgaveDiepte,
     margeBoven,
     margeOnder,
     margeBinnen,

@@ -229,6 +229,31 @@
   accent-color: var(--theme-accent);
 }
 
+/* Keuzelijst in het opmaakblok (diepte van de inhoudsopgave). */
+.report-opmaak-keuze {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+}
+
+.report-opmaak-keuze select {
+  width: 100%;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--theme-text);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.report-opmaak-keuze select:hover {
+  border-color: var(--theme-accent);
+}
+
 /* Ingeklapte verticale tab */
 .report-sidebar-collapsed {
   display: flex;

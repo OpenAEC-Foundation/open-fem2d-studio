@@ -338,6 +338,83 @@
   margin-right: 2mm;
 }
 
+/* Voorwerk-kop: dezelfde opmaak, maar zonder nummer en zonder de tellers te
+   raken. De inhoudsopgave zelf is geen hoofdstuk (net zomin als het
+   titelblad), dus hoofdstuk 1 blijft het eerste inhoudelijke hoofdstuk. */
+.rpt-h2.rpt-h2-vrij {
+  counter-increment: none;
+  counter-set: none;
+}
+
+.rpt-h2.rpt-h2-vrij::before {
+  content: none;
+}
+
+/* ─── Inhoudsopgave-sectie ───
+   Regels met nummer, titel, stippellijn en paginanummer. Op scherm is elke
+   regel een knop die naar het hoofdstuk springt; in de print is het gewoon
+   tekst (geen randen, geen achtergrond). */
+.rpt-toc-lijst {
+  margin-top: 2mm;
+}
+
+.rpt-toc-regel {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  width: 100%;
+  margin: 0;
+  padding: 0.7mm 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rpt-toc-regel:hover {
+  color: #000;
+}
+
+.rpt-toc-nummer {
+  min-width: 9mm;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.rpt-toc-titel {
+  flex-shrink: 0;
+}
+
+/* De stippellijn: een lege span die uitvult; `align-self: baseline` legt zijn
+   onderrand precies op de tekstbasislijn. */
+.rpt-toc-stippel {
+  flex: 1;
+  min-width: 5mm;
+  align-self: baseline;
+  border-bottom: 0.2mm dotted #999;
+}
+
+.rpt-toc-pagina {
+  min-width: 6mm;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* Subsecties: ingesprongen, iets kleiner en lichter. */
+.rpt-toc-niveau3 {
+  padding-left: 8mm;
+  font-size: calc(var(--rpt-basis) * 0.95);
+  color: #333;
+}
+
+.rpt-toc-niveau3 .rpt-toc-nummer {
+  min-width: 11mm;
+  font-weight: 400;
+}
+
 .rpt-note {
   font-size: calc(var(--rpt-basis) * 0.9);
   color: #555;
@@ -675,6 +752,12 @@
   .rpt-loadcase-block,
   .rpt-table tr {
     break-inside: avoid;
+  }
+
+  /* De inhoudsopgave-regels zijn op scherm knoppen; op papier tekst. */
+  .rpt-toc-regel {
+    cursor: default;
+    color: #1a1a1a !important;
   }
 
   /* Scherm-chrome in de secties (koptekst-invoerveld) → tekstvariant. */

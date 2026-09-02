@@ -349,7 +349,12 @@
     "margeRechts": "Right margin",
     "lettergrootte": "Font size",
     "regelafstand": "Line spacing",
-    "resetOpmaak": "Default layout"
+    "resetOpmaak": "Default layout",
+    "sectionToc": "Table of contents",
+    "tocLeeg": "No chapters yet — enable sections in the sidebar.",
+    "tocDiepte": "Table of contents",
+    "tocDiepte1": "Chapters only",
+    "tocDiepte2": "Including subsections"
   },
   "viewer": {
     "file": "File",

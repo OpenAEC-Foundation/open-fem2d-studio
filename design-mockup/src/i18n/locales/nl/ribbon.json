@@ -349,7 +349,12 @@
     "margeRechts": "Marge rechts",
     "lettergrootte": "Lettergrootte",
     "regelafstand": "Interlinie",
-    "resetOpmaak": "Standaardopmaak"
+    "resetOpmaak": "Standaardopmaak",
+    "sectionToc": "Inhoudsopgave",
+    "tocLeeg": "Nog geen hoofdstukken — zet secties aan in de zijbalk.",
+    "tocDiepte": "Inhoudsopgave",
+    "tocDiepte1": "Alleen hoofdstukken",
+    "tocDiepte2": "Met subsecties"
   },
   "viewer": {
     "file": "Bestand",

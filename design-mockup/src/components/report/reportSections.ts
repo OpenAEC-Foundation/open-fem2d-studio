@@ -11,6 +11,7 @@
  */
 import type { ComponentType } from "react";
 import ProjectSection from "./sections/ProjectSection";
+import TocSection from "./sections/TocSection";
 import NodesSection from "./sections/NodesSection";
 import BeamsSection from "./sections/BeamsSection";
 import PlatesSection from "./sections/PlatesSection";
@@ -43,6 +44,15 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
     titleKey: "report.sectionProject",
     defaultTitle: "Projectgegevens",
     Component: ProjectSection,
+  },
+  // Inhoudsopgave: voorwerk, dus na de projectgegevens en vóór de
+  // inhoudelijke hoofdstukken. De paginanummers komen uit de paginering
+  // zelf (zie toc.ts).
+  {
+    id: "toc",
+    titleKey: "report.sectionToc",
+    defaultTitle: "Inhoudsopgave",
+    Component: TocSection,
   },
   // ── R2: invoersecties (lezen de modelstate via ReportDataContext) ──
   {

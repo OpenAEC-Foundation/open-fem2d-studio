@@ -46,7 +46,15 @@
  *    `.rpt-print-only` elkaar afwisselen (invoerveld ↔ tekstregel). Dat
  *    scheelt hooguit een regel per vel; daarvoor houden we een kleine
  *    veiligheidsmarge (VEILIGHEID_MM) vrij onderaan elk vel.
+ *
+ * INHOUDSOPGAVE
+ * -------------
+ * Na het bouwen lezen we de koppen van de vellen af (hoofdstuk/subsectie,
+ * nummer, titel, velnummer) en geven die door aan toc.ts, dat de
+ * inhoudsopgave-sectie vult. Omdat die sectie zelf ruimte inneemt, is dat een
+ * terugkoppeling — de convergentiebewaking staat in toc.ts.
  */
+import { startPagineerslag, verwerkKoppen, type TocRegel } from "./toc";
 
 /** Vrijgehouden ruimte onderaan elk vel (mm) — vangt afrondings- en
  *  scherm/print-verschillen op zodat één vel nooit twee printpagina's wordt. */
@@ -289,6 +297,45 @@ function bouwInhoud(atomen: Atoom[]): HTMLElement {
   return wortel;
 }
 
+/**
+ * Lees de koppen van de gebouwde vellen af voor de inhoudsopgave: nummer
+ * (zoals de CSS-tellers het zetten), titel en het vel waarop de kop staat.
+ * Elke kop krijgt tegelijk `data-rpt-kop="<nummer>"` als spring-anker.
+ *
+ * `.rpt-h2-vrij` telt niet mee: dat is voorwerk (de inhoudsopgave zelf) en
+ * die kop krijgt ook geen hoofdstuknummer.
+ */
+function leesKoppen(doel: HTMLElement): TocRegel[] {
+  const uit: TocRegel[] = [];
+  let hoofdstuk = 0;
+  let subsectie = 0;
+  doel.querySelectorAll<HTMLElement>(".rpt-vel").forEach((vel, index) => {
+    vel.querySelectorAll<HTMLElement>(".rpt-h2, .rpt-h3").forEach((kop) => {
+      if (kop.classList.contains("rpt-h2-vrij")) return;
+      const niveau: 2 | 3 = kop.classList.contains("rpt-h2") ? 2 : 3;
+      let nummer: string;
+      if (niveau === 2) {
+        hoofdstuk += 1;
+        subsectie = 0;
+        nummer = String(hoofdstuk);
+      } else {
+        subsectie += 1;
+        nummer = `${hoofdstuk}.${subsectie}`;
+      }
+      kop.dataset.rptKop = nummer;
+      // Bijvoegsels als `.rpt-h3-tag` ("permanent", "veranderlijk", …) horen
+      // niet in de inhoudsopgave.
+      const titel = Array.from(kop.childNodes)
+        .filter((n) => !(n instanceof HTMLElement && n.classList.contains("rpt-h3-tag")))
+        .map((n) => n.textContent ?? "")
+        .join("")
+        .trim();
+      uit.push({ niveau, nummer, titel, pagina: index + 1 });
+    });
+  });
+  return uit;
+}
+
 /** Kopieer de actuele waarden van de originele bedieningen naar hun klonen. */
 function herstelWaarden(doel: HTMLElement, meet: HTMLElement): void {
   doel.querySelectorAll<HTMLElement>("[data-rpt-ctl]").forEach((kloon) => {
@@ -311,6 +358,7 @@ function herstelWaarden(doel: HTMLElement, meet: HTMLElement): void {
  * Retourneert het aantal vellen.
  */
 export function pagineer(o: PagineerOpties): number {
+  startPagineerslag();
   const mm = pxPerMm(o.meet);
   // Het kopblok staat bovenaan élk vel en eet dus van de teksthoogte —
   // inclusief zijn ondermarge (de scheidingslijn naar de inhoud).
@@ -362,6 +410,12 @@ export function pagineer(o: PagineerOpties): number {
   });
 
   herstelWaarden(o.doel, o.meet);
+
+  // Koppen + velnummers doorgeven aan de inhoudsopgave. Wijzigt er iets, dan
+  // rerendert die sectie en volgt er (gedebouncet) nog één pagineerslag —
+  // toc.ts bewaakt dat dat convergeert. `data-toc-slag` maakt zichtbaar
+  // hoeveel bijstelslagen die reeks nodig had (0 = niets veranderd).
+  o.doel.dataset.tocSlag = String(verwerkKoppen(leesKoppen(o.doel)));
 
   if (focusId !== null) {
     const terug = o.doel.querySelector<HTMLElement>(`[data-rpt-ctl="${focusId}"]`);
@@ -494,9 +548,19 @@ function animeerScroll(scroller: HTMLElement, eind: number, ms = 350): void {
  * met precies één opmaakproef.
  */
 export function scrollNaarSectie(id: string): void {
-  const doel = document.querySelector<HTMLElement>(
-    `.rpt-vellen [data-section="${CSS.escape(id)}"]`,
-  );
+  springNaar(`.rpt-vellen [data-section="${CSS.escape(id)}"]`);
+}
+
+/**
+ * Spring naar een genummerde kop ("3" of "3.2") — de klikbare regels van de
+ * inhoudsopgave. De ankers zet `leesKoppen` bij elke pagineerslag.
+ */
+export function scrollNaarKop(nummer: string): void {
+  springNaar(`.rpt-vellen [data-rpt-kop="${CSS.escape(nummer)}"]`);
+}
+
+function springNaar(selector: string): void {
+  const doel = document.querySelector<HTMLElement>(selector);
   if (!doel) return;
   const scroller = doel.closest<HTMLElement>(".report-scroll");
   if (!scroller) {

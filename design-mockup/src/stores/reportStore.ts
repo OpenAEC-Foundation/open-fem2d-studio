@@ -94,6 +94,12 @@ interface ReportState extends ReportOpmaak {
    */
   resultCombo: number | 'envelope' | null;
   /**
+   * Diepte van de inhoudsopgave-SECTIE in het document: 1 = alleen
+   * hoofdstukken, 2 = ook de subsecties (x.1), ingesprongen. Standaard 2;
+   * bij een rapport met veel staven wordt die lijst lang, vandaar de keuze.
+   */
+  inhoudsopgaveDiepte: 1 | 2;
+  /**
    * Sectie waar de lezer nu naar kijkt (scherm-navigatie: markering in de
    * inhoudsopgave in de zijbalk). Bewust GEEN gedeelde instelling — dit is
    * per venster en gaat dus niet mee in de rapport-sync.
@@ -107,6 +113,7 @@ interface ReportState extends ReportOpmaak {
   /** Alle secties weer aan. */
   resetSections: () => void;
   setResultCombo: (v: number | 'envelope' | null) => void;
+  setInhoudsopgaveDiepte: (diepte: 1 | 2) => void;
   /** Eén opmaakwaarde wijzigen (slider) — waarden worden begrensd. */
   setOpmaak: (patch: Partial<ReportOpmaak>) => void;
   /** Terug naar de standaardopmaak. */
@@ -140,6 +147,7 @@ export const useReportStore = create<ReportState>((set) => ({
   zoom: 1,
   hiddenSections: {},
   resultCombo: null,
+  inhoudsopgaveDiepte: 2,
   actieveSectie: null,
   ...STANDAARD_OPMAAK,
 
@@ -159,6 +167,8 @@ export const useReportStore = create<ReportState>((set) => ({
   resetSections: () => set({ hiddenSections: {} }),
 
   setResultCombo: (resultCombo) => set({ resultCombo }),
+
+  setInhoudsopgaveDiepte: (inhoudsopgaveDiepte) => set({ inhoudsopgaveDiepte }),
 
   setOpmaak: (patch) => set(begrens(patch)),
   resetOpmaak: () => set({ ...STANDAARD_OPMAAK }),
