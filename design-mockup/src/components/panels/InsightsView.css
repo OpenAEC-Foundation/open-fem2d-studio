@@ -1,4 +1,5 @@
-/* InsightsView — assembly + stiffness-matrix inspection */
+/* InsightsView — dashboard: stavenlijst | element-K | systeem-K | DOF-mapping,
+   met een inklapbare log/fouten-strip onderin. */
 
 .insights-view {
   display: flex;
@@ -9,9 +10,13 @@
   overflow: hidden;
 }
 
+/* ── Kop ─────────────────────────────────────────────────────────── */
 .insights-header {
   flex-shrink: 0;
-  padding: 14px 18px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 10px 16px 8px;
   background: var(--theme-bg-lighter);
   border-bottom: 1px solid var(--theme-border);
 }
@@ -19,147 +24,340 @@
   margin: 0;
   font: 600 14px/1 "Inter", system-ui, sans-serif;
   color: var(--theme-accent);
+  white-space: nowrap;
 }
 .insights-meta {
-  margin-top: 4px;
   font: 400 11px/1.4 "JetBrains Mono", monospace;
   color: var(--theme-text-secondary);
 }
+.insights-meta strong.ok  { color: var(--theme-accent); font-weight: 600; }
+.insights-meta strong.bad { color: var(--theme-danger-color); font-weight: 600; }
 
-.insights-tabs {
-  display: flex;
-  background: var(--theme-bg);
-  border-bottom: 1px solid var(--theme-border);
-  flex-shrink: 0;
-}
-.insights-tab {
-  padding: 8px 18px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--theme-text-secondary);
-  font: 500 12px/1 "Inter", system-ui, sans-serif;
-  cursor: pointer;
-}
-.insights-tab:hover { color: var(--theme-accent); background: var(--theme-hover); }
-.insights-tab.active {
-  color: var(--theme-accent);
-  border-bottom-color: var(--theme-accent);
-  background: var(--theme-bg-lighter);
-}
-
-.insights-body {
+/* ── Dashboard-grid ──────────────────────────────────────────────── */
+.insights-grid {
   flex: 1;
-  overflow: auto;
-  padding: 12px 18px;
+  min-height: 0;
+  display: grid;
+  grid-template-columns:
+    minmax(148px, 185px)   /* stavenlijst */
+    minmax(280px, 380px)   /* element-K */
+    minmax(0, 1fr)         /* systeem-K */
+    minmax(215px, 280px);  /* DOF-mapping */
+  gap: 1px;
+  background: var(--theme-border); /* haarlijnen tussen de panelen */
 }
 
-.insights-controls {
+.insights-pane {
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-  align-items: center;
-  font: 400 12px/1 "Inter", system-ui, sans-serif;
+  flex-direction: column;
+  background: var(--theme-bg);
+  overflow: hidden;
 }
-.insights-controls select {
-  padding: 4px 8px;
+.insights-pane-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px 6px;
   background: var(--theme-bg-lighter);
-  color: var(--theme-text);
-  border: 1px solid var(--theme-border);
-  border-radius: 3px;
+  border-bottom: 1px solid var(--theme-border-subtle);
 }
-
-.insights-section {
-  margin-bottom: 18px;
-}
-.insights-section h3 {
-  margin: 0 0 8px;
-  font: 600 12px/1 "Inter", system-ui, sans-serif;
+.insights-pane-head h3 {
+  margin: 0;
+  font: 600 11px/1 "Inter", system-ui, sans-serif;
   color: var(--theme-accent-tint, var(--theme-accent));
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
-.insights-props {
+.insights-pane-note {
+  font: 400 10px/1.2 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.insights-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px;
+}
+.insights-pane-body h4 {
+  margin: 10px 0 4px;
+  font: 600 10.5px/1 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-secondary);
+}
+.insights-pane-body h4:first-child { margin-top: 0; }
+
+/* Ribbon-focus: korte flits op het aangevraagde paneel */
+.insights-pane.focus-flash {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: -2px;
+  transition: outline-color 0.3s ease;
+}
+
+/* ── Stavenlijst (links) ─────────────────────────────────────────── */
+.insights-beams { overflow-y: auto; }
+.insights-beamlist {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+.insights-beam-btn {
   display: flex;
-  gap: 18px;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--theme-text);
+  text-align: left;
+  cursor: pointer;
+}
+.insights-beam-btn:hover { background: var(--theme-hover); }
+.insights-beam-btn.active {
+  background: var(--theme-accent-soft);
+  border-color: var(--theme-accent);
+}
+.insights-beam-btn .beam-title {
+  font: 600 12px/1.2 "Inter", system-ui, sans-serif;
+}
+.insights-beam-btn.active .beam-title { color: var(--theme-accent); }
+.insights-beam-btn .beam-nodes {
+  font: 400 10.5px/1.2 "JetBrains Mono", monospace;
+  color: var(--theme-text-secondary);
+}
+.insights-beam-btn .beam-props {
+  font: 400 10px/1.2 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Eigenschappen + formules (element-paneel) ───────────────────── */
+.insights-props,
+.insights-formulas {
+  display: flex;
+  gap: 10px 14px;
+  flex-wrap: wrap;
   margin-bottom: 6px;
   font: 400 11px/1.5 "Inter", system-ui, sans-serif;
   color: var(--theme-text-secondary);
-  flex-wrap: wrap;
 }
-.insights-props code {
+.insights-props code,
+.insights-formulas code {
   font-family: "JetBrains Mono", monospace;
   background: var(--theme-bg-lighter);
   padding: 1px 4px;
   border-radius: 2px;
   color: var(--theme-text);
 }
-.insights-formulas { margin: 4px 0; font: 400 11px/1.5 "Inter", system-ui, sans-serif; color: var(--theme-text-secondary); }
 .insights-formulas code { color: var(--theme-accent); }
+
 .insights-empty {
-  padding: 24px;
+  padding: 18px 12px;
   color: var(--theme-text-faint);
   font: 400 12px/1.4 "Inter", system-ui, sans-serif;
 }
 
+/* ── Matrix-tabellen ─────────────────────────────────────────────── */
 .insights-matrix-wrap {
   overflow: auto;
   border: 1px solid var(--theme-border);
   border-radius: 4px;
   background: var(--theme-bg-lighter);
-  max-height: 60vh;
+  max-height: 100%;
 }
 .insights-matrix {
-  border-collapse: collapse;
-  font: 400 11px/1.2 "JetBrains Mono", monospace;
+  border-collapse: separate; /* nodig voor sticky headers met borders */
+  border-spacing: 0;
+  font: 400 10.5px/1.2 "JetBrains Mono", monospace;
 }
-.insights-matrix th, .insights-matrix td {
-  padding: 3px 8px;
-  border: 1px solid var(--theme-border-subtle);
+.insights-matrix th,
+.insights-matrix td {
+  padding: 2px 6px;
+  border-right: 1px solid var(--theme-border-subtle);
+  border-bottom: 1px solid var(--theme-border-subtle);
   text-align: right;
-  min-width: 72px;
+  min-width: 54px;
+  white-space: nowrap;
 }
 .insights-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--theme-bg);
   color: var(--theme-accent);
   font-weight: 600;
   text-align: center;
-  position: sticky;
-  top: 0;
 }
 .insights-matrix tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   background: var(--theme-bg);
   color: var(--theme-accent);
   font-weight: 600;
   text-align: left;
-  position: sticky;
-  left: 0;
 }
-.insights-matrix td.zero { color: var(--theme-text-faint); }
-.insights-matrix td.huge { color: var(--theme-accent); font-weight: 500; }
+.insights-matrix thead th.corner {
+  left: 0;
+  z-index: 3;
+}
+/* Nul-cellen gedimd → bezettingsstructuur zichtbaar */
+.insights-matrix td.zero { color: var(--theme-text-faint); opacity: 0.55; }
+/* Rij/kolom van de geselecteerde staaf */
+.insights-matrix td.hl { background: var(--theme-accent-soft); }
+.insights-matrix td.hl.zero { opacity: 0.75; }
+/* 6×6-kruispunten (rij ÉN kolom van de staaf) extra geaccentueerd */
+.insights-matrix td.hl-x {
+  background: var(--theme-hover-strong);
+  background: color-mix(in srgb, var(--theme-accent) 24%, transparent);
+  font-weight: 600;
+}
+/* Gehighlighte rij/kolom-labels (gelaagde gradient houdt sticky-bg dekkend) */
+.insights-matrix th.hl-head {
+  background: linear-gradient(var(--theme-accent-soft), var(--theme-accent-soft)), var(--theme-bg);
+  color: var(--theme-accent);
+  font-weight: 700;
+}
 .insights-truncated {
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: var(--theme-bg);
   font: 400 10px/1.4 "Inter", system-ui, sans-serif;
   color: var(--theme-text-faint);
   border-top: 1px solid var(--theme-border-subtle);
+  position: sticky;
+  left: 0;
 }
 
+/* ── DOF-mapping (rechts) ────────────────────────────────────────── */
+.insights-dof .insights-pane-body { padding: 0; }
 .insights-doftable {
-  border-collapse: collapse;
-  font: 400 11px/1.3 "JetBrains Mono", monospace;
+  border-collapse: separate;
+  border-spacing: 0;
+  font: 400 10.5px/1.3 "JetBrains Mono", monospace;
   width: 100%;
-  max-width: 600px;
 }
-.insights-doftable th, .insights-doftable td {
-  padding: 4px 8px;
-  border: 1px solid var(--theme-border-subtle);
+.insights-doftable th,
+.insights-doftable td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--theme-border-subtle);
   text-align: left;
+  white-space: nowrap;
 }
 .insights-doftable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--theme-bg-lighter);
   color: var(--theme-accent);
   font-weight: 600;
 }
-.insights-doftable tr.constrained td { background: rgba(220, 38, 38, 0.08); }
-.insights-doftable tr.spring      td { background: rgba(245, 158, 11, 0.08); }
+.insights-doftable tr.constrained td { background: rgba(220, 38, 38, 0.06); }
+.insights-doftable tr.spring      td { background: rgba(245, 158, 11, 0.06); }
+/* Knopen van de geselecteerde staaf lichten op */
+.insights-doftable tr.hl td {
+  background: var(--theme-accent-soft);
+  box-shadow: inset 2px 0 0 var(--theme-accent);
+}
+.insights-doftable tr.hl td:not(:first-child) { box-shadow: none; }
+
+.dof-badge {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  font: 500 10px/1.6 "Inter", system-ui, sans-serif;
+}
+.dof-badge.rigid  { background: rgba(220, 38, 38, 0.12); color: var(--theme-danger-color); }
+.dof-badge.spring { background: rgba(245, 158, 11, 0.15); color: #B45309; }
+.dof-badge.free   { color: var(--theme-text-faint); }
+
+/* ── Onderste strip: logboek + fouten ────────────────────────────── */
+.insights-bottom {
+  flex-shrink: 0;
+  border-top: 1px solid var(--theme-border);
+  background: var(--theme-bg-lighter);
+}
+.insights-bottom-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+}
+.insights-bottom-toggle {
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--theme-text-secondary);
+  font: 500 11px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.insights-bottom-toggle:hover { color: var(--theme-accent); background: var(--theme-hover); }
+.insights-bottom-toggle.active {
+  color: var(--theme-accent);
+  background: var(--theme-accent-soft);
+}
+.insights-err-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--theme-danger-color);
+}
+.insights-bottom-hint {
+  margin-left: auto;
+  font: 400 10px/1 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-faint);
+}
+.insights-bottom-body {
+  max-height: 160px;
+  overflow: auto;
+  padding: 6px 14px 10px;
+  border-top: 1px solid var(--theme-border-subtle);
+}
+.insights-log {
+  margin: 0;
+  font: 400 11px/1.5 "JetBrains Mono", monospace;
+  white-space: pre;
+  color: var(--theme-text);
+}
+.insights-error-box {
+  padding: 10px 12px;
+  color: var(--theme-danger-color);
+  background: rgba(220, 38, 38, 0.08);
+  border-radius: 4px;
+  font: 400 12px/1.4 "Inter", system-ui, sans-serif;
+}
+.insights-error-box pre {
+  margin: 6px 0 0;
+  font: 400 11px/1.4 "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+}
+.insights-noerror {
+  color: var(--theme-text-faint);
+  font: 400 12px/1.4 "Inter", system-ui, sans-serif;
+}
+
+/* ── Smalle vensters: 2×2-indeling met de stavenlijst over de volle hoogte ── */
+@media (max-width: 1150px) {
+  .insights-grid {
+    grid-template-columns: minmax(140px, 165px) minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  .insights-beams   { grid-row: 1 / 3; }
+  .insights-system  { grid-column: 2 / 4; grid-row: 1; }
+  .insights-element { grid-column: 2; grid-row: 2; }
+  .insights-dof     { grid-column: 3; grid-row: 2; }
+}
