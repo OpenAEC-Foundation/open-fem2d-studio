@@ -997,7 +997,12 @@ export class Mesh implements IMesh {
     const allSubNodeIds = (data.subNodes || []).map(sn => sn.id);
     const allEdgeIds = (data.edges || []).map(e => e.id);
 
-    mesh.nextNodeId = Math.max(...data.nodes.map(n => n.id), 0) + 1;
+    // nextNodeId alleen bepalen over reguliere knopen (id < 1000): plaatknopen
+    // (id >= 1000) hebben hun eigen teller (nextPlateNodeId) en zouden de
+    // reguliere teller anders vervuilen — nieuwe knopen kregen dan id's >= 1000
+    // die botsen met nextPlateNodeId.
+    const regularNodeIds = data.nodes.filter(n => n.id < 1000).map(n => n.id);
+    mesh.nextNodeId = Math.max(...regularNodeIds, 0) + 1;
     mesh.nextElementId = Math.max(...allElementIds, 0) + 1;
     mesh.nextMaterialId = Math.max(...data.materials.map(m => m.id), 10) + 1;
     mesh.nextPlateId = Math.max(...allPlateIds, 0) + 1;
