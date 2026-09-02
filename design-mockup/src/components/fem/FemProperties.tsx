@@ -16,8 +16,8 @@ import type {
 } from "./femTypes";
 import { withPlateDefaults } from "./femTypes";
 import type { SolverResult } from "./solver/types";
-import { STEEL_GRADES, PROFILE_SUGGESTIONS } from "./BarPropertiesDialog";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
+import ProfielKiezer from "./ProfielKiezer";
 
 interface SectionProps {
   title: string;
@@ -264,6 +264,9 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
   // Staalsterkte volgt uit de naam (S235 → 235); voor hout tonen we geen
   // verzonnen getallen — de rekenwaarden komen uit de toetsing zelf.
   const fyStaal = /^S(\d+)$/.exec(material)?.[1];
+  // ProfielKiezer-wizard: profiel + materiaal zijn één combinatie. Conditioneel
+  // gemount zodat elke keer openen met de actuele staafwaarden voorselecteert.
+  const [kiezerOpen, setKiezerOpen] = useState(false);
 
   const setRelease = (key: "startRy" | "endRy", checked: boolean) => {
     updateBeam?.(beam.id, { releases: { ...beam.releases, [key]: checked } });
@@ -293,20 +296,12 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
           <Row label="Hoek"><code>{angDeg.toFixed(1)}°</code></Row>
         </Section>
 
-        <Section title="Materiaal">
-          <Row label="Materiaal">
-            <select
-              className="fem-prop-select"
-              value={material}
-              onChange={(e) => updateBeam?.(beam.id, { material: e.target.value })}
-            >
-              <optgroup label="Staal (EN 1993)">
-                {STEEL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-              </optgroup>
-              <optgroup label="Hout (EN 1995)">
-                {SUPPORTED_TIMBER_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-              </optgroup>
-            </select>
+        {/* Profiel en materiaal zijn één combinatie — geen losse velden.
+            De knop opent de ProfielKiezer-wizard met de huidige waarden
+            voorgeselecteerd; Toepassen schrijft beide velden in één keer. */}
+        <Section title="Doorsnede">
+          <Row label="Profiel">
+            <code>{profile} — {material}</code>
           </Row>
           {isHout ? (
             <Row label="Norm"><code>EN 338 / EN 1995-1-1</code></Row>
@@ -316,22 +311,22 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
               {fyStaal && <Row label="fy"><code>{fyStaal} N/mm²</code></Row>}
             </>
           )}
-        </Section>
-
-        <Section title="Profiel">
-          <Row label="Profiel">
-            <input
-              className="fem-prop-select"
-              list="fem-prop-profile-list"
-              value={profile}
-              onChange={(e) => updateBeam?.(beam.id, { profile: e.target.value })}
+          <div className="fem-prop-kiezer-row">
+            <button
+              className="fem-prop-kiezer-btn"
+              onClick={() => setKiezerOpen(true)}
+              title="Kies profiel én materiaal in één stap (wizard)"
+            >
+              Profiel kiezen…
+            </button>
+          </div>
+          {kiezerOpen && (
+            <ProfielKiezer
+              open
+              onClose={() => setKiezerOpen(false)}
+              huidig={{ material, profile }}
+              onApply={(keuze) => updateBeam?.(beam.id, keuze)}
             />
-          </Row>
-          <datalist id="fem-prop-profile-list">
-            {PROFILE_SUGGESTIONS.map(p => <option key={p} value={p} />)}
-          </datalist>
-          {isHout && (
-            <Row label="Doorsnede"><code>b×h in mm (bijv. 96x450)</code></Row>
           )}
         </Section>
 

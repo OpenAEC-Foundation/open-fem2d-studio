@@ -474,6 +474,24 @@ function App() {
       scopeName,
     });
   }, [fem, solverResult, projectPath]);
+  // IFC4-export van het rekenmodel (Structural Analysis Domain) — bouwt het
+  // bestand in de browser en start direct een download; projectnaam uit het
+  // geopende bestandspad of "Naamloos project" zonder pad.
+  const handleExportIfc = useCallback(async () => {
+    const { downloadIfc } = await import("./io/ifcExport");
+    const projectNaam = projectPath
+      ? projectPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "")
+      : undefined;
+    downloadIfc({
+      projectNaam: projectNaam || "Naamloos project",
+      nodes: fem.nodes,
+      beams: fem.beams,
+      supports: fem.supports,
+      loads: fem.loads,
+      loadCases: fem.loadCases,
+    });
+  }, [fem, projectPath]);
+
   // Auto-invalidate solver results zodra het model OF de belastingen wijzigen.
   // (useFemStore doet dit al voor multi-LC outputs; hier hetzelfde voor de
   // single-LC solverResult uit FemCanvas.)
@@ -508,6 +526,14 @@ function App() {
   const [loadCasesOpen, setLoadCasesOpen] = useState(false);
   // Check-tab state.
   const [activeCode, setActiveCode] = useState<"EN1993" | "EN1995" | "EN1992">("EN1993");
+  // UC-badge op het canvas geklikt → toetsingspaneel openen gefocust op die
+  // staaf. Elke klik maakt een nieuw object zodat een herhaalde klik op
+  // dezelfde badge opnieuw scrollt (identiteit als trigger).
+  const [checkFocus, setCheckFocus] = useState<{ beamId: number } | null>(null);
+  const handleOpenCheckForBeam = useCallback((beamId: number) => {
+    setCheckFocus({ beamId });
+    setActiveView("check");
+  }, []);
   const [autoRunCheck, setAutoRunCheck] = useState(false);
   // Insights view mode (element-K / system-K / dof / logs / errors), controlled from Ribbon.
   const [insightsMode, setInsightsMode] = useState<"element" | "system" | "dof" | "logs" | "errors">("element");
@@ -828,6 +854,13 @@ function App() {
 
   const [isResizing, setIsResizing] = useState(false);
 
+  // ── Tabel als split-view: canvas links, tabel rechts (start 50/50) ──────
+  // De scheidingsbalk is versleepbaar (zelfde patroon als leftPanelWidth);
+  // percentage van de beschikbare breedte zodat venster-resize netjes schaalt.
+  const [tableSplitPct, setTableSplitPct] = useState(50);
+  const splitWrapRef = useRef<HTMLDivElement>(null);
+  const isSplitResizing = useRef(false);
+
   useEffect(() => {
     getSetting("theme", "light").then((saved) => {
       setTheme(saved);
@@ -897,6 +930,35 @@ function App() {
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
+  // Split-divider tussen canvas en tabel (Tabel-weergave) verslepen.
+  const handleSplitResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isSplitResizing.current = true;
+    setIsResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!isSplitResizing.current) return;
+      const rect = splitWrapRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return;
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      setTableSplitPct(Math.max(20, Math.min(80, pct)));
+    };
+
+    const handleMouseUp = () => {
+      isSplitResizing.current = false;
+      setIsResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
+
   // Full-width views (3D viewer, IFC viewer, report, insights, toetsing) hide the side panels
   const isFullWidthView = activeView === "viewer" || activeView === "ifc" || activeView === "report" || activeView === "insights" || activeView === "check";
 
@@ -909,39 +971,7 @@ function App() {
         // secties lezen deze modelstate en volgen elke wijziging direct.
         return <ReportPreview data={reportData} onDetach={handleDetachReport} />;
       case "check":
-        return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} />;
-      case "table":
-        // Tabel-editor (ribbon-tab "Tabel") — model en lasten als bewerkbare
-        // tabellen, resultaten alleen-lezen. Zelfde store-mutators als het
-        // canvas, dus selectie/undo werken gewoon door.
-        return <TableView
-          dataset={tableDataset}
-          apiRef={tableApiRef}
-          nodes={fem.nodes}
-          beams={fem.beams}
-          plates={fem.plates}
-          supports={fem.supports}
-          loads={fem.loads}
-          loadCases={fem.loadCases}
-          activeLoadCaseId={fem.activeLoadCaseId}
-          selection={fem.selection}
-          setSelection={fem.setSelection}
-          addNode={fem.addNode}
-          updateNode={fem.updateNode}
-          removeNode={fem.removeNode}
-          addBeam={fem.addBeam}
-          updateBeam={fem.updateBeam}
-          removeBeam={fem.removeBeam}
-          removePlate={fem.removePlate}
-          addSupport={fem.addSupport}
-          removeSupport={fem.removeSupport}
-          addLoad={fem.addLoad}
-          updateLoad={fem.updateLoad}
-          removeLoad={fem.removeLoad}
-          combinations={fem.combinations}
-          combinationResults={fem.combinationResults}
-          envelope={fem.envelope}
-        />;
+        return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} focus={checkFocus} />;
       case "insights":
         return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} />;
       case "viewer":
@@ -950,52 +980,112 @@ function App() {
             <ThreeViewer />
           </Suspense>
         );
-      default:
-        // FEM canvas (Start tab) — v2 implementation of the FEM editor
-        return <FemCanvas
-          tool={femTool}
-          onToolChange={setFemTool}
-          solveTrigger={solveTrigger}
-          scheefstand={scheefstandInput}
-          onSolveResult={handleSolveResult}
-          nodes={fem.nodes}
-          beams={fem.beams}
-          supports={fem.supports}
-          plates={fem.plates}
-          loads={fem.loads}
-          selection={fem.selection}
-          activeLoadCaseId={fem.activeLoadCaseId}
-          showLoads={fem.showLoads}
-          setPendingLoadFocus={fem.setPendingLoadFocus}
-          setSelection={fem.setSelection}
-          addNode={fem.addNode}
-          updateNode={fem.updateNode}
-          addBeam={fem.addBeam}
-          updateBeam={fem.updateBeam}
-          addPlate={fem.addPlate}
-          addSupport={fem.addSupport}
-          addLoad={fem.addLoad}
-          updateLoad={fem.updateLoad}
-          deleteSelected={fem.deleteSelected}
-          splitBeamAt={fem.splitBeamAt}
-          translateSelection={fem.translateSelection}
-          copySelection={fem.copySelection}
-          rotateSelection={fem.rotateSelection}
-          mirrorSelection={fem.mirrorSelection}
-          translateNodes={fem.translateNodes}
-          structuralGrid={fem.structuralGrid}
-          setStructuralGrid={fem.setStructuralGrid}
-          grid={grid}
-          combinations={fem.combinations}
-          activeCombinationId={fem.activeCombinationId}
-          envelopeView={fem.envelopeView}
-          combinationResults={fem.combinationResults}
-          envelope={fem.envelope}
-          displayFlags={displayFlags}
-          setDisplayFlags={setDisplayFlags}
-          resultsMode={resultsTabActive}
-          onZoomChange={setZoomPct}
-        />;
+      default: {
+        // FEM canvas (Start-tab). In de Tabel-weergave wordt dit een
+        // split-view: canvas links, tabel rechts, met een versleepbare
+        // scheidingsbalk — het model blijft zichtbaar terwijl je in de
+        // tabel werkt en rij-selectie licht direct op in het canvas.
+        // De canvas staat in beide gevallen op dezelfde plek in de boom,
+        // dus zoom/selectie overleven het wisselen tussen Start en Tabel.
+        const isTableSplit = activeView === "table";
+        return (
+          <div className="canvas-split" ref={splitWrapRef}>
+            <div
+              className="canvas-split-canvas"
+              style={isTableSplit ? { flex: `0 0 ${tableSplitPct}%` } : undefined}
+            >
+              <FemCanvas
+                tool={femTool}
+                onToolChange={setFemTool}
+                solveTrigger={solveTrigger}
+                scheefstand={scheefstandInput}
+                onSolveResult={handleSolveResult}
+                nodes={fem.nodes}
+                beams={fem.beams}
+                supports={fem.supports}
+                plates={fem.plates}
+                loads={fem.loads}
+                selection={fem.selection}
+                activeLoadCaseId={fem.activeLoadCaseId}
+                showLoads={fem.showLoads}
+                setPendingLoadFocus={fem.setPendingLoadFocus}
+                setSelection={fem.setSelection}
+                addNode={fem.addNode}
+                updateNode={fem.updateNode}
+                addBeam={fem.addBeam}
+                updateBeam={fem.updateBeam}
+                addPlate={fem.addPlate}
+                addSupport={fem.addSupport}
+                addLoad={fem.addLoad}
+                updateLoad={fem.updateLoad}
+                deleteSelected={fem.deleteSelected}
+                splitBeamAt={fem.splitBeamAt}
+                translateSelection={fem.translateSelection}
+                copySelection={fem.copySelection}
+                rotateSelection={fem.rotateSelection}
+                mirrorSelection={fem.mirrorSelection}
+                translateNodes={fem.translateNodes}
+                structuralGrid={fem.structuralGrid}
+                setStructuralGrid={fem.setStructuralGrid}
+                grid={grid}
+                combinations={fem.combinations}
+                activeCombinationId={fem.activeCombinationId}
+                envelopeView={fem.envelopeView}
+                combinationResults={fem.combinationResults}
+                envelope={fem.envelope}
+                displayFlags={displayFlags}
+                setDisplayFlags={setDisplayFlags}
+                resultsMode={resultsTabActive}
+                onZoomChange={setZoomPct}
+                onOpenCheckForBeam={handleOpenCheckForBeam}
+              />
+            </div>
+            {isTableSplit && (
+              <>
+                <div
+                  className="canvas-split-divider"
+                  onMouseDown={handleSplitResizeMouseDown}
+                  title="Sleep om de verdeling canvas/tabel aan te passen"
+                />
+                <div className="canvas-split-table">
+                  {/* Tabel-editor (ribbon-tab "Tabel") — model en lasten als
+                      bewerkbare tabellen, resultaten alleen-lezen. Zelfde
+                      store-mutators als het canvas, dus selectie/undo werken
+                      gewoon door. */}
+                  <TableView
+                    dataset={tableDataset}
+                    apiRef={tableApiRef}
+                    nodes={fem.nodes}
+                    beams={fem.beams}
+                    plates={fem.plates}
+                    supports={fem.supports}
+                    loads={fem.loads}
+                    loadCases={fem.loadCases}
+                    activeLoadCaseId={fem.activeLoadCaseId}
+                    selection={fem.selection}
+                    setSelection={fem.setSelection}
+                    addNode={fem.addNode}
+                    updateNode={fem.updateNode}
+                    removeNode={fem.removeNode}
+                    addBeam={fem.addBeam}
+                    updateBeam={fem.updateBeam}
+                    removeBeam={fem.removeBeam}
+                    removePlate={fem.removePlate}
+                    addSupport={fem.addSupport}
+                    removeSupport={fem.removeSupport}
+                    addLoad={fem.addLoad}
+                    updateLoad={fem.updateLoad}
+                    removeLoad={fem.removeLoad}
+                    combinations={fem.combinations}
+                    combinationResults={fem.combinationResults}
+                    envelope={fem.envelope}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        );
+      }
     }
   };
 
@@ -1045,6 +1135,7 @@ function App() {
         onOpenLoadCases={() => { setLoadCasesTab("cases"); setLoadCasesOpen(true); }}
         onOpenLoadCombinations={() => { setLoadCasesTab("combos"); setLoadCasesOpen(true); }}
         onExportHtml={handleExportHtmlReport}
+        onExportIfc={() => { void handleExportIfc(); }}
         onFilterSelection={() => {
           // Filter current selection: if multi-selection, keep only the first
           // type (nodes / beams / plates) — quickest visible effect for now.

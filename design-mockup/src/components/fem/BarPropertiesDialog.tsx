@@ -20,8 +20,9 @@ import { useTranslation } from "react-i18next";
 import type { Beam, BeamCheckConfig, BeamReleases, Node } from "./femTypes";
 import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult } from "../../lib/checkTypes";
-import { SUPPORTED_TIMBER_GRADES, matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
+import { matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
 import { sanitizeRestraintFractions } from "../../lib/steelCheckBuilder";
+import ProfielKiezer from "./ProfielKiezer";
 import "./BarPropertiesDialog.css";
 
 export const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
@@ -65,6 +66,9 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
   // Hydrate from the beam so re-opening shows previously-saved values.
   const [material, setMaterial] = useState(beam.material ?? "S235");
   const [profile, setProfile]   = useState(beam.profile  ?? "HEA160");
+  // ProfielKiezer-wizard (profiel + materiaal als één combinatie) — de keuze
+  // landt in de lokale dialoogstate en wordt pas bij OK gecommit.
+  const [kiezerOpen, setKiezerOpen] = useState(false);
   const [releases, setReleases] = useState<Required<BeamReleases>>({
     startTx: beam.releases?.startTx ?? false,
     startTz: beam.releases?.startTz ?? false,
@@ -232,40 +236,33 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
 
               <div className="bar-props-section">
                 <div className="bar-props-section-title">Doorsnede</div>
-                <div className="bar-props-row">
-                  <span>Materiaal</span>
-                  <select className="bar-props-select" value={material}
-                    onChange={(e) => setMaterial(e.target.value)}>
-                    <optgroup label="Staal (EN 1993)">
-                      {STEEL_GRADES.map((g) => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Hout (EN 1995)">
-                      {SUPPORTED_TIMBER_GRADES.map((g) => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </optgroup>
-                  </select>
-                </div>
+                {/* Profiel en materiaal zijn één combinatie — de wizard
+                    (ProfielKiezer) vervangt de losse invoervelden. */}
                 <div className="bar-props-row">
                   <span>Profiel</span>
-                  {/* Combobox: staalprofiel (HEA160, IPE 200, …) of een
-                      rechthoekige houtdoorsnede b×h ("60x100", "96x450 GL"). */}
-                  <input
-                    className="bar-props-select"
-                    type="text"
-                    list="bar-props-profile-list"
-                    value={profile}
-                    onChange={(e) => setProfile(e.target.value)}
-                    spellCheck={false}
-                  />
-                  <datalist id="bar-props-profile-list">
-                    {PROFILE_SUGGESTIONS.map((p) => (
-                      <option key={p} value={p} />
-                    ))}
-                  </datalist>
+                  <code>{profile} — {material}</code>
                 </div>
+                <div className="bar-props-row">
+                  <span></span>
+                  <button
+                    className="bar-props-btn-secondary"
+                    onClick={() => setKiezerOpen(true)}
+                    title="Kies profiel én materiaal in één stap (wizard)"
+                  >
+                    Profiel kiezen…
+                  </button>
+                </div>
+                {kiezerOpen && (
+                  <ProfielKiezer
+                    open
+                    onClose={() => setKiezerOpen(false)}
+                    huidig={{ material, profile }}
+                    onApply={(keuze) => {
+                      setMaterial(keuze.material);
+                      setProfile(keuze.profile);
+                    }}
+                  />
+                )}
               </div>
 
               <div className="bar-props-section">

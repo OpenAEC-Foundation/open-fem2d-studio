@@ -30,8 +30,9 @@ import "./FemCanvas.css";
 import { solve } from "./solver/solver";
 import type { SolverResult, SolverInput } from "./solver/types";
 import type { LoadCombination, Envelope } from "./solver/combinations";
-import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./FemResultsOverlay";
+import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
+import { useCheckStore } from "../../stores/checkStore";
 import { resolveSection, TIMBER_E_MEAN } from "../../lib/sectionResolver";
 import type {
   Tool, Node, Beam, Plate, Support, Load, Selection,
@@ -252,6 +253,8 @@ interface FemCanvasProps {
   setPendingLoadFocus?: (v: { loadId: number; field: keyof Load } | null) => void;
   /** Meldt de actuele zoom (in %, 100 = default) aan de parent — StatusBar. */
   onZoomChange?: (pct: number) => void;
+  /** UC-badge geklikt → open het toetsingspaneel gefocust op deze staaf. */
+  onOpenCheckForBeam?: (beamId: number) => void;
 }
 
 // World ↔ screen constants
@@ -279,7 +282,10 @@ export default function FemCanvas(props: FemCanvasProps) {
     resultsMode = false,
     setPendingLoadFocus,
     onZoomChange,
+    onOpenCheckForBeam,
   } = props;
+  // Toetsresultaten (normtoetsing) — voor de Unity-check-badges op het canvas.
+  const checkResults = useCheckStore((s) => s.results);
   // updateNode is consumed by FemProperties — accept the prop but suppress unused-var lint
   void props.updateNode;
 
@@ -1273,12 +1279,14 @@ export default function FemCanvas(props: FemCanvasProps) {
       if (grabMode) {
         if (e.key === "Escape") { e.preventDefault(); cancelGrab(); return; }
         if (e.key === "Enter")  { e.preventDefault(); commitGrab(); return; }
-        if (e.key === "x" || e.key === "X") {
+        // As-locks alleen zonder modifiers — Ctrl+Z (ongedaan maken) mag
+        // tijdens een grab niet stiekem de Z-aslock omschakelen.
+        if ((e.key === "x" || e.key === "X") && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
           setGrabMode({ ...grabMode, axisLock: grabMode.axisLock === "x" ? null : "x" });
           return;
         }
-        if (e.key === "z" || e.key === "Z") {
+        if ((e.key === "z" || e.key === "Z") && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
           setGrabMode({ ...grabMode, axisLock: grabMode.axisLock === "z" ? null : "z" });
           return;
@@ -2076,7 +2084,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       const t = maxAcrossAll > 0 ? mAbs / maxAcrossAll : 0;
       const sw = 2 + t * 6;
       const combo = combinations?.find(c => c.id === env.governingCombinationId);
-      const mKnm = (mAbs / 1e6).toFixed(1);
+      const mKnm = fmtNl(mAbs / 1e6);
 
       // Beam line
       overlays.push(
@@ -2101,8 +2109,8 @@ export default function FemCanvas(props: FemCanvasProps) {
       overlays.push(
         <g key={`env${beamId}-label`}>
           <rect
-            x={lx - 60} y={ly - 18}
-            width={120} height={32}
+            x={lx - 72} y={ly - 20}
+            width={144} height={36}
             rx={3}
             className="fem-result-label-bg"
           />
@@ -2111,7 +2119,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             M_max = {mKnm} kNm
           </text>
           {combo && (
-            <text x={lx} y={ly + 8} className="fem-force-label" style={{ fontSize: 9 }}>
+            <text x={lx} y={ly + 9} className="fem-force-label" style={{ fontSize: 10 }}>
               {combo.name}
             </text>
           )}
@@ -2125,7 +2133,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (displayFlags.reactions) {
       const MIN_KN = 0.05;
       const fmtBereik = (min: number, max: number) =>
-        `${(min / 1000).toFixed(1)}…${(max / 1000).toFixed(1)} kN`;
+        `${fmtNl(min / 1000)}…${fmtNl(max / 1000)} kN`;
       envelope.reactions.forEach((r, nodeId) => {
         const n = nodes.find(nn => nn.id === nodeId);
         if (!n) return;
@@ -2142,13 +2150,14 @@ export default function FemCanvas(props: FemCanvasProps) {
         if (rijen.length === 0) return;
         const bx = p.x + 22;
         const by = p.y + 40;
-        const h = 6 + rijen.length * 13;
+        const h = 8 + rijen.length * 15;
+        const bw = Math.max(...rijen.map(r2 => r2.length)) * 7.5 + 12;
         overlays.push(
           <g key={`envr${nodeId}`}>
-            <rect x={bx - 4} y={by - 11} width={104} height={h} rx={3}
+            <rect x={bx - 4} y={by - 12} width={bw} height={h} rx={3}
               className="fem-result-label-bg" />
             {rijen.map((tekst, i) => (
-              <text key={i} x={bx} y={by + i * 13} className="fem-reaction-label"
+              <text key={i} x={bx} y={by + i * 15} className="fem-reaction-label"
                 textAnchor="start">
                 {tekst}
               </text>
@@ -2488,21 +2497,24 @@ export default function FemCanvas(props: FemCanvasProps) {
           )}
         </g>
 
-        {/* Origin axes */}
-        <g className="fem-axes" transform={`translate(${ORIGIN_X + view.offsetX}, ${size.h - ORIGIN_Y_FROM_BOTTOM + view.offsetY})`}>
-          <line x1={0} y1={0} x2={40} y2={0} className="fem-axis-x" />
-          <text x={44} y={4} className="fem-axis-label fem-axis-x">+X</text>
-          <line x1={0} y1={0} x2={0} y2={-40} className="fem-axis-z" />
-          <text x={4} y={-44} className="fem-axis-label fem-axis-z">+Z</text>
-          <circle cx={0} cy={0} r={3} fill="var(--theme-accent)" />
-        </g>
+        {/* Het assenkruis op de wereld-oorsprong is vervangen door de vaste
+            assenstelsel-widget linksboven (fem-coord-widget) — één weergave
+            i.p.v. twee. */}
 
         {/* Beams */}
         {beamsWithCoords.map(({ b, p1, p2 }) => {
           const isSel = isBeamInSelection(b.id, selection);
           const isSnap = snapBeam === b.id;
           const selectBeam = (e: React.MouseEvent) => {
-            if (tool === "select" && !dragState) { e.stopPropagation(); setSelection({ type: "beam", id: b.id }); }
+            if (tool === "select" && !dragState) {
+              e.stopPropagation();
+              // Shift-klik: handleMouseDown heeft de staaf al additief aan de
+              // selectie toegevoegd (addBeamToSelection); hier niet meer
+              // vervangen — anders kon je nooit meerdere staven aanklikken
+              // om ze samen met G te verplaatsen.
+              if (e.shiftKey) return;
+              setSelection({ type: "beam", id: b.id });
+            }
           };
           const openBeamProps = (e: React.MouseEvent) => { e.stopPropagation(); setEditingBeamId(b.id); };
           return (
@@ -2578,7 +2590,15 @@ export default function FemCanvas(props: FemCanvasProps) {
                 <circle cx={p.x} cy={p.y} r={10} className={isSel ? "fem-node-sel-halo" : "fem-node-snap-halo"} />
               )}
               <circle cx={p.x} cy={p.y} r={5} className="fem-node"
-                onClick={(e) => { if (tool === "select" && !dragState) { e.stopPropagation(); setSelection({ type: "node", id: n.id }); } }} />
+                onClick={(e) => {
+                  if (tool === "select" && !dragState) {
+                    e.stopPropagation();
+                    // Shift-klik: additieve selectie is al in handleMouseDown
+                    // gemaakt — niet vervangen (zie selectBeam).
+                    if (e.shiftKey) return;
+                    setSelection({ type: "node", id: n.id });
+                  }
+                }} />
               <text x={p.x + 8} y={p.y - 8} className="fem-node-label">{n.id}</text>
             </g>
           );
@@ -2847,6 +2867,46 @@ export default function FemCanvas(props: FemCanvasProps) {
             {renderEnvelopeOverlay()}
           </g>
         )}
+
+        {/* Unity-check-badges (Resultaten-tab, rij "Unity check"): per staaf
+            met toetsresultaat de maatgevende UC op het staafmidden. Groen
+            ≤ 1,0, rood > 1,0; klik opent het toetsingspaneel voor die staaf. */}
+        {showLoads && displayFlags.uc === true && checkResults.length > 0 && (
+          <g className="fem-uc-layer">
+            {checkResults.map(r => {
+              const b = beams.find(bb => bb.id === r.beam_id);
+              const nA = b ? nodes.find(n => n.id === b.from) : undefined;
+              const nB = b ? nodes.find(n => n.id === b.to) : undefined;
+              if (!b || !nA || !nB) return null;
+              const p1 = worldToScreen(nA.x, nA.z);
+              const p2 = worldToScreen(nB.x, nB.z);
+              const mx = (p1.x + p2.x) / 2;
+              const my = (p1.y + p2.y) / 2;
+              const ok = r.uc_max <= 1.0;
+              const tekst = `UC ${fmtNl(r.uc_max, 2)}`;
+              const bw = tekst.length * 7.5 + 16;
+              return (
+                <g
+                  key={`ucb${r.beam_id}`}
+                  className="fem-uc-badge"
+                  style={{ pointerEvents: "auto" }}
+                  onMouseDown={(e) => { e.stopPropagation(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenCheckForBeam?.(r.beam_id);
+                  }}
+                >
+                  <title>{`Staaf ${r.beam_id}: maatgevend ${r.governing_check_id} — klik voor de toetsing`}</title>
+                  <rect
+                    x={mx - bw / 2} y={my - 11} width={bw} height={22} rx={11}
+                    fill={ok ? "#16a34a" : "#dc2626"}
+                  />
+                  <text x={mx} y={my + 4} className="fem-uc-badge-text">{tekst}</text>
+                </g>
+              );
+            })}
+          </g>
+        )}
       </svg>
 
       {/* HUDs */}
@@ -2871,6 +2931,48 @@ export default function FemCanvas(props: FemCanvasProps) {
           )}
           {spaceHeld && <span className="fem-hud-muted">— [pan]</span>}
         </div>
+        {/* Assenstelsel-widget: +X (rechts), +Z (omhoog) en een boogpijl om de
+            y-as die de positieve My-richting toont — zelfde draairichting als
+            een positief puntmoment op het canvas (sweep 1). */}
+        <div
+          className="fem-hud-card fem-coord-widget"
+          style={{ marginTop: 6, padding: 6 }}
+          title="Assenstelsel: +X naar rechts, +Z omhoog; de boogpijl toont de positieve My-richting (om de y-as)"
+        >
+          <svg width="84" height="72" viewBox="0 0 84 72" aria-label="Assenstelsel">
+            <defs>
+              <marker id="fem-coord-head-x" viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--theme-accent)" />
+              </marker>
+              <marker id="fem-coord-head-z" viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#06b6d4" />
+              </marker>
+              <marker id="fem-coord-head-my" viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+              </marker>
+            </defs>
+            {/* My+ boogpijl om de oorsprong (y-as staat loodrecht op het scherm) */}
+            <path
+              d="M 39 41 A 13 13 0 1 1 13 41"
+              fill="none" stroke="#2563eb" strokeWidth={1.8}
+              markerEnd="url(#fem-coord-head-my)"
+            />
+            <text x={26} y={69} fontSize={10} fontWeight={600} fill="#2563eb" textAnchor="middle">My+</text>
+            {/* +X-pijl (horizontaal, naar rechts) */}
+            <line x1={26} y1={41} x2={70} y2={41} stroke="var(--theme-accent)" strokeWidth={2}
+              markerEnd="url(#fem-coord-head-x)" />
+            <text x={64} y={34} fontSize={10} fontWeight={600} fill="var(--theme-accent)">+X</text>
+            {/* +Z-pijl (verticaal, omhoog) */}
+            <line x1={26} y1={41} x2={26} y2={8} stroke="#06b6d4" strokeWidth={2}
+              markerEnd="url(#fem-coord-head-z)" />
+            <text x={32} y={14} fontSize={10} fontWeight={600} fill="#06b6d4">+Z</text>
+            {/* Oorsprong */}
+            <circle cx={26} cy={41} r={2.5} fill="var(--theme-accent)" />
+          </svg>
+        </div>
       </div>
       <div className="fem-hud fem-hud-tr">
         <div className="fem-hud-card fem-hud-mono">
@@ -2880,31 +2982,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           <span>{zoomPct}%</span>
           <button className="fem-hud-btn" onClick={resetView} title="Reset zoom (F = fit)">Reset</button>
         </div>
-        {/* Coordinate-system indicator — fixed compass showing +X / +Z. */}
-        <div className="fem-hud-card fem-coord-widget" style={{ marginTop: 6, padding: 6 }}>
-          <svg width="56" height="56" viewBox="0 0 56 56" aria-label="Assenstelsel">
-            <defs>
-              <marker id="fem-coord-head" viewBox="0 0 10 10" refX="9" refY="5"
-                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
-              </marker>
-            </defs>
-            {/* Origin dot */}
-            <circle cx={20} cy={36} r={2.5} fill="var(--theme-accent)" />
-            {/* +X arrow (horizontal, right) */}
-            <g style={{ color: "var(--theme-accent)" }}>
-              <line x1={20} y1={36} x2={46} y2={36} stroke="currentColor" strokeWidth={2}
-                markerEnd="url(#fem-coord-head)" />
-              <text x={48} y={40} fontSize={10} fontWeight={600} fill="currentColor">+X</text>
-            </g>
-            {/* +Z arrow (vertical, up) */}
-            <g style={{ color: "#06b6d4" }}>
-              <line x1={20} y1={36} x2={20} y2={10} stroke="currentColor" strokeWidth={2}
-                markerEnd="url(#fem-coord-head)" />
-              <text x={24} y={14} fontSize={10} fontWeight={600} fill="currentColor">+Z</text>
-            </g>
-          </svg>
-        </div>
+        {/* De assenstelsel-widget staat nu linksboven (één weergave). */}
       </div>
       <div className="fem-hud fem-hud-bl">
         <div className="fem-hud-card fem-hud-mono">

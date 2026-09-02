@@ -7,7 +7,7 @@
  * NamedCheck-contract is identiek. Niet-toetsbare staven staan er met
  * expliciete reden bij.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult, type MemberCheckResult } from "../../lib/checkTypes";
@@ -18,6 +18,12 @@ import "./CheckPanel.css";
 interface CheckPanelProps {
   /** Draait de gecombineerde normtoetsing (staal + hout). */
   onRun?: () => void;
+  /**
+   * Focus op één staaf (UC-badge op het canvas geklikt): de kaart van deze
+   * staaf klapt open en scrollt in beeld. Elke klik levert een NIEUW object
+   * zodat een tweede klik op dezelfde badge opnieuw scrollt.
+   */
+  focus?: { beamId: number } | null;
 }
 
 function ucClass(uc: number): string {
@@ -26,13 +32,27 @@ function ucClass(uc: number): string {
   return "cp-uc-ok";
 }
 
-function MemberCard({ result }: { result: MemberCheckResult }) {
+function MemberCard({ result, focusToken }: {
+  result: MemberCheckResult;
+  /** Niet-null → kaart openklappen + in beeld scrollen (badge-klik). */
+  focusToken?: { beamId: number } | null;
+}) {
   const { t } = useTranslation("check");
   const [open, setOpen] = useState(false);
   const steel = isSteelCheckResult(result);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focusToken) return;
+    setOpen(true);
+    // Na de render scrollen, zodat het opengeklapte blok al bestaat.
+    requestAnimationFrame(() => {
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [focusToken]);
 
   return (
-    <div className={`cp-card cp-status-${result.status.toLowerCase()}`}>
+    <div ref={cardRef} className={`cp-card cp-status-${result.status.toLowerCase()}`}>
       <button
         className="cp-card-head"
         onClick={() => setOpen((v) => !v)}
@@ -80,7 +100,7 @@ function MemberCard({ result }: { result: MemberCheckResult }) {
   );
 }
 
-export default function CheckPanel({ onRun }: CheckPanelProps) {
+export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
   const { t } = useTranslation("check");
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
@@ -143,7 +163,11 @@ export default function CheckPanel({ onRun }: CheckPanelProps) {
         )}
 
         {results.map((r) => (
-          <MemberCard key={`${isSteelCheckResult(r) ? "s" : "t"}-${r.beam_id}`} result={r} />
+          <MemberCard
+            key={`${isSteelCheckResult(r) ? "s" : "t"}-${r.beam_id}`}
+            result={r}
+            focusToken={focus && focus.beamId === r.beam_id ? focus : null}
+          />
         ))}
       </div>
     </div>

@@ -66,6 +66,8 @@ interface RibbonProps {
   onFilterSelection?: () => void;
   /** Export standalone HTML report (browser + Tauri). */
   onExportHtml?: () => void;
+  /** IFC4-export van het rekenmodel (Structural Analysis Domain). */
+  onExportIfc?: () => void;
   /** File-menu actions (Home tab + Backstage). */
   onNewProject?: () => void;
   onOpenProject?: () => void;
@@ -108,6 +110,7 @@ export default function Ribbon({
   autoRunEnabled, onToggleAutoRun, onExportCheck,
   onFilterSelection,
   onExportHtml,
+  onExportIfc,
   tableDataset, onTableDataset, onTableExportCsv, onTableCopy, onTableFocusFilter,
 }: RibbonProps) {
   const { t, i18n } = useTranslation("ribbon");
@@ -245,7 +248,7 @@ export default function Ribbon({
       case "insights":
         return <InsightsTab onShowInsights={() => onViewChange("insights")} onShowInsightsMode={onShowInsightsMode} onExportMatrixCsv={onExportMatrixCsv} />;
       case "ifc":
-        return <IfcTab />;
+        return <IfcTab onExportIfc={onExportIfc} />;
       case "check":
         return <CheckTab
           onSolve={onSolve}

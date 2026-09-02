@@ -23,8 +23,12 @@ export interface DisplayFlags {
   /** Reactie-componentkeuze: horizontale (Fx) resp. verticale (Fz) pijlen. */
   reactieX: boolean;
   reactieZ: boolean;
+  /** Knoopwaarden: label met ux/uz (mm) bij elke knoop — subvinkje onder Verplaatsing. */
+  knoopWaarden: boolean;
   /** Show extreme-value labels (Mmax, Vmax, Nmax, umax) at peak locations. */
   showExtremes: boolean;
+  /** Unity-check-badges op staafmidden (maatgevende UC uit de normtoetsing). */
+  uc: boolean;
   /** Per-component scale multipliers — 1.0 = auto, slider 0.1–5.0. */
   scaleN: number;
   scaleV: number;
@@ -41,7 +45,9 @@ export interface DisplayFlags {
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   deflection: true, N: false, V: false, M: true, reactions: true,
   reactieX: true, reactieZ: true,
+  knoopWaarden: false,
   showExtremes: true,
+  uc: false,
   scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1,
   plaatContour: true, plaatComponent: "vonMises", plaatMesh: true,
 };
@@ -64,6 +70,14 @@ interface Props {
 }
 
 const SAMPLES_PER_BEAM = 12;
+
+/** Getalnotatie voor canvas-labels: NL-komma, standaard 1 decimaal.
+ *  Waarden die op 0 afronden verliezen hun minteken (geen "−0,0"). */
+export function fmtNl(v: number, dec = 1): string {
+  let s = v.toFixed(dec);
+  if (parseFloat(s) === 0) s = (0).toFixed(dec);
+  return s.replace(".", ",").replace("-", "−");
+}
 
 export default function FemResultsOverlay({
   nodes, beams, supports, result, worldToScreen, canvasW, canvasH,
@@ -207,17 +221,45 @@ export default function FemResultsOverlay({
     const lx = sm.sx + sm.dx_mm * dispScale;
     const ly = sm.sy - sm.dz_mm * dispScale;
     // Label onder het diepste punt van de getekende kromme (bij w<0 = onder).
-    const off = maxFieldW.w_mm <= 0 ? 18 : -18;
+    const off = maxFieldW.w_mm <= 0 ? 20 : -20;
+    const tekst = `w = ${fmtNl(maxFieldW.w_mm)} mm`;
+    const bw = tekst.length * 7.5 + 12;
     return (
       <g key="def-extreme">
-        <rect x={lx - 34} y={ly + off - 9} width={68} height={16} rx={3}
+        <rect x={lx - bw / 2} y={ly + off - 11} width={bw} height={20} rx={3}
           className="fem-result-label-bg" />
-        <text x={lx} y={ly + off + 3} textAnchor="middle"
+        <text x={lx} y={ly + off + 4} textAnchor="middle"
           className="fem-diagram-value" style={{ fill: "var(--theme-accent)" }}>
-          w = {maxFieldW.w_mm.toFixed(1)} mm
+          {tekst}
         </text>
       </g>
     );
+  };
+
+  // ── Knoopwaarden (subvinkje onder Verplaatsing): per knoop een label met
+  //    ux / uz in mm (NL-komma) naast de knoop. Alleen zichtbaar wanneer de
+  //    vervormingsweergave aanstaat — zelfde patroon als de reactie-subkeuzes.
+  const renderKnoopWaarden = () => {
+    if (!showDeflection || displayFlags.knoopWaarden !== true) return null;
+    const out: React.ReactNode[] = [];
+    for (const n of nodes) {
+      const d = result.displacements.get(n.id);
+      if (!d) continue;
+      const p = worldToScreen(n.x, n.z);
+      const tekst = `${n.id}: ${fmtNl(d.ux)} / ${fmtNl(d.uz)} mm`;
+      const bw = tekst.length * 7.2 + 10;
+      out.push(
+        <g key={`knoopw${n.id}`}>
+          <rect x={p.x + 9} y={p.y + 8} width={bw} height={19} rx={3}
+            className="fem-result-label-bg" />
+          <text x={p.x + 14} y={p.y + 21.5} textAnchor="start"
+            className="fem-node-disp-label">
+            {tekst}
+          </text>
+        </g>
+      );
+    }
+    return out;
   };
 
   // Reactions — twee aparte pijlen per oplegging: horizontaal (Fx) en
@@ -240,17 +282,18 @@ export default function FemResultsOverlay({
       const headX = p.x - dirX * REACTION_GAP_PX;
       const tailX = headX - ax;
       const midX = (tailX + headX) / 2;
-      const labelY = p.y + 16;
-      const kN = (r.fx / 1000).toFixed(1);
+      const labelY = p.y + 18;
+      const tekst = `Fx ${fmtNl(r.fx / 1000)} kN`;
+      const bw = tekst.length * 7.5 + 12;
       out.push(
         <g key={`rx-fx-${nodeId}`}>
           <line x1={tailX} y1={p.y} x2={headX} y2={p.y}
             className="fem-reaction-arrow"
             markerEnd="url(#fem-reaction-head)" />
-          <rect x={midX - 24} y={labelY - 8} width={48} height={15} rx={3}
+          <rect x={midX - bw / 2} y={labelY - 10} width={bw} height={19} rx={3}
             className="fem-result-label-bg" />
-          <text x={midX} y={labelY + 3} className="fem-reaction-label">
-            Fx {kN} kN
+          <text x={midX} y={labelY + 4} className="fem-reaction-label">
+            {tekst}
           </text>
         </g>
       );
@@ -271,17 +314,18 @@ export default function FemResultsOverlay({
       const y1 = up ? botY : topY;         // tail
       const y2 = up ? topY : botY;         // head (marker-end)
       const midY = (topY + botY) / 2;
-      const labelX = p.x + 30;
-      const kN = (r.fz / 1000).toFixed(1);
+      const tekst = `Fz ${fmtNl(r.fz / 1000)} kN`;
+      const bw = tekst.length * 7.5 + 12;
+      const labelX = p.x + 10 + bw / 2;
       out.push(
         <g key={`rx-fz-${nodeId}`}>
           <line x1={p.x} y1={y1} x2={p.x} y2={y2}
             className="fem-reaction-arrow"
             markerEnd="url(#fem-reaction-head)" />
-          <rect x={labelX - 24} y={midY - 8} width={48} height={15} rx={3}
+          <rect x={labelX - bw / 2} y={midY - 10} width={bw} height={19} rx={3}
             className="fem-result-label-bg" />
-          <text x={labelX} y={midY + 3} className="fem-reaction-label">
-            Fz {kN} kN
+          <text x={labelX} y={midY + 4} className="fem-reaction-label">
+            {tekst}
           </text>
         </g>
       );
@@ -390,8 +434,9 @@ export default function FemResultsOverlay({
   const renderForceDiagram = (which: "N" | "V" | "M", scale: number, classKey: string) => {
     if (scale === 0) return null;
     const showValues = displayFlags.showExtremes ?? false;
+    // Waarde MET eenheid en NL-komma: momenten in kNm, krachten in kN.
     const fmtValue = (raw: number): string =>
-      which === "M" ? `${(raw / 1e6).toFixed(1)}` : `${(raw / 1000).toFixed(1)}`;
+      which === "M" ? `${fmtNl(raw / 1e6)} kNm` : `${fmtNl(raw / 1000)} kN`;
 
     return beamDiagrams.map(({ beam, samples }) => {
       if (samples.length === 0) return null;
@@ -466,8 +511,8 @@ export default function FemResultsOverlay({
           // Label net voorbij de diagram-lijn, in de plot-richting van het
           // diagram op dat punt (of een vaste kant bij ~0-waarde).
           const dir = Math.sign(pt.vFlip) || 1;
-          const lx = pt.ox + pt.nxW * dir * 13;
-          const ly = pt.oy - pt.nzW * dir * 13;
+          const lx = pt.ox + pt.nxW * dir * 16;
+          const ly = pt.oy - pt.nzW * dir * 16;
           valueLabels.push(
             <text
               key={`val-${which}-${beam.id}-${i}`}
@@ -510,6 +555,7 @@ export default function FemResultsOverlay({
       </defs>
       {showDeflection && renderDeflection()}
       {showDeflection && renderDeflectionExtreme()}
+      {renderKnoopWaarden()}
       {/* Internal-force diagrams drawn under reactions/labels so they don't
           occlude annotation text. */}
       {showM && renderForceDiagram("M", scaleM, "fem-diagram-M")}

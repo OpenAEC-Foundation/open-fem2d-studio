@@ -13,6 +13,7 @@ import type { DisplayFlags } from "./FemResultsOverlay";
 import { PLAAT_COMPONENTEN } from "./FemCanvas";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
+import { useCheckStore } from "../../stores/checkStore";
 
 interface TreeNodeProps {
   label: string;
@@ -87,6 +88,9 @@ function ResultsTab({
     | { kind: "combo"; id: number }
     | { kind: "envelope" }) => void;
 }) {
+  // Zijn er toetsresultaten? Bepaalt de hint onder de Unity-check-rij.
+  // (Hook vóór de early-return — hooks-regels.)
+  const hasCheckResults = useCheckStore((s) => s.results.length > 0);
   if (!displayFlags || !setDisplayFlags) {
     return (
       <div className="fem-results-empty">
@@ -111,6 +115,7 @@ function ResultsTab({
     { key: "V",          label: "Vz",            hint: "Dwarskracht in z-richting — lineair aflopend onder UDL",  swatch: "#10b981",            scaleKey: "scaleV" },
     { key: "N",          label: "N",             hint: "Normaalkracht — constant per element",                    swatch: "#f59e0b",            scaleKey: "scaleN" },
     { key: "reactions",  label: "Reactie",       hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
+    { key: "uc",         label: "Unity check",   hint: "Maatgevende UC per staaf uit de normtoetsing — groen ≤ 1,0, rood > 1,0; klik op een badge voor de toetsing", swatch: "#16a34a" },
   ];
   // Contour-rij alleen wanneer het model platen bevat (P3.2).
   if (hasPlates) {
@@ -195,6 +200,29 @@ function ResultsTab({
                     }}
                   />
                   <span className="fem-results-scale-value">{scaleVal.toFixed(1)}×</span>
+                </div>
+              )}
+              {/* Knoopwaarden-subvinkje: per knoop een label met ux/uz in mm —
+                  zelfde subrij-patroon als de reactie-componentkeuze. */}
+              {row.key === "deflection" && active && (
+                <div className="fem-results-scale-row" title="Toon bij elke knoop de verplaatsing ux / uz in mm">
+                  <label className="fem-results-subcheck">
+                    <input
+                      type="checkbox"
+                      checked={displayFlags.knoopWaarden === true}
+                      onChange={(e) => setDisplayFlags(f => ({ ...f, knoopWaarden: e.target.checked }))}
+                    />
+                    <span>Knoopwaarden</span>
+                  </label>
+                </div>
+              )}
+              {/* Unity-check zonder toetsresultaten: korte hint i.p.v. lege
+                  badges (bv. browser zonder desktop-backend). */}
+              {row.key === "uc" && active && !hasCheckResults && (
+                <div className="fem-results-scale-row" title="De badges verschijnen zodra de normtoetsing resultaten heeft">
+                  <span style={{ fontSize: 10, color: "var(--theme-text-faint)" }}>
+                    Voer eerst de toetsing uit (tabblad Toetsing).
+                  </span>
                 </div>
               )}
               {/* Plaatcontour-instellingen (P3.2): componentkeuze (von Mises

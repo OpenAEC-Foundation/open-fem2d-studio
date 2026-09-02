@@ -325,6 +325,37 @@ body,
   overflow: auto;
 }
 
+/* ── Tabel-splitsweergave: canvas links, tabel rechts ─────────────────────
+   De canvas-kant krijgt bij de Tabel-tab een vast percentage (inline flex-
+   basis, versleepbaar via de divider); zonder tabel vult hij de hele view. */
+.canvas-split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-self: stretch;
+  overflow: hidden;
+}
+.canvas-split-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.canvas-split-divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: var(--theme-border);
+}
+.canvas-split-divider:hover,
+.canvas-split-divider:active {
+  background: var(--theme-accent);
+}
+.canvas-split-table {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* Placeholder shown when no document is open */
 .placeholder {
   display: flex;

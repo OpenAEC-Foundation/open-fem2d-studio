@@ -161,3 +161,23 @@
   font: 400 12px/1.5 "Inter", system-ui, sans-serif;
   color: var(--theme-text-faint);
 }
+
+/* "Profiel kiezen…"-knop: opent de ProfielKiezer-wizard (profiel + materiaal
+   als één combinatie) vanuit het eigenschappenpaneel. */
+.fem-prop-kiezer-row {
+  padding: 4px 10px 6px;
+}
+.fem-prop-kiezer-btn {
+  width: 100%;
+  height: 24px;
+  background: var(--theme-bg-lighter);
+  color: var(--theme-accent);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  font: 600 11px/1.2 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.fem-prop-kiezer-btn:hover {
+  border-color: var(--theme-accent);
+  background: var(--theme-bg);
+}
