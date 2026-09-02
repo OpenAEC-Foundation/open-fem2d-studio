@@ -4,8 +4,12 @@
  * Based on: Batoz, Bathe & Ho (1980) — "A study of three-node triangular
  * plate bending elements", Int. J. Num. Methods Eng.
  *
- * DOFs per node: w (deflection), θx (= ∂w/∂y), θy (= −∂w/∂x)
- * Element size: 9×9 stiffness matrix
+ * DOF's per knoop: w (doorbuiging), θx (= −∂w/∂y), θy (= +∂w/∂x)
+ * Elementgrootte: 9×9 stijfheidsmatrix
+ *
+ * Let op: de afgeleiden van de kwadratische hoekvormfuncties Lk(2Lk−1) zijn
+ * (4·Lk − 1), niet ±1 — die waarde geldt alleen in Lk = 1/2 (zijde-midden).
+ * De eerdere hardcoded ±1-termen gaven divergentie bij meshverfijning.
  */
 
 import { Matrix } from '../math/Matrix';
@@ -105,7 +109,7 @@ export function computeDKTBMatrix(
   const dHx_dL1 = [
     1.5 * (s6.a * dP6_dL1 - s4.a * dP4_dL1),
     s6.b * dP6_dL1 + s4.b * dP4_dL1,
-    1 - s6.c * dP6_dL1 - s4.c * dP4_dL1,
+    (4 * L1 - 1) - s6.c * dP6_dL1 - s4.c * dP4_dL1,
     1.5 * (s4.a * dP4_dL1 - s5.a * dP5_dL1),
     s4.b * dP4_dL1 + s5.b * dP5_dL1,
     -s4.c * dP4_dL1 - s5.c * dP5_dL1,
@@ -119,7 +123,7 @@ export function computeDKTBMatrix(
     -s6.c * dP6_dL2 - s4.c * dP4_dL2,
     1.5 * (s4.a * dP4_dL2 - s5.a * dP5_dL2),
     s4.b * dP4_dL2 + s5.b * dP5_dL2,
-    1 - s4.c * dP4_dL2 - s5.c * dP5_dL2,
+    (4 * L2 - 1) - s4.c * dP4_dL2 - s5.c * dP5_dL2,
     1.5 * (s5.a * dP5_dL2 - s6.a * dP6_dL2),
     s5.b * dP5_dL2 + s6.b * dP6_dL2,
     -s5.c * dP5_dL2 - s6.c * dP6_dL2,
@@ -133,13 +137,13 @@ export function computeDKTBMatrix(
     -s4.c * dP4_dL3 - s5.c * dP5_dL3,
     1.5 * (s5.a * dP5_dL3 - s6.a * dP6_dL3),
     s5.b * dP5_dL3 + s6.b * dP6_dL3,
-    1 - s5.c * dP5_dL3 - s6.c * dP6_dL3,
+    (4 * L3 - 1) - s5.c * dP5_dL3 - s6.c * dP6_dL3,
   ];
 
   // Derivatives of Hy w.r.t. L1, L2, L3
   const dHy_dL1 = [
     1.5 * (s6.d * dP6_dL1 - s4.d * dP4_dL1),
-    -1 + s6.e * dP6_dL1 + s4.e * dP4_dL1,
+    -(4 * L1 - 1) + s6.e * dP6_dL1 + s4.e * dP4_dL1,
     -s6.b * dP6_dL1 - s4.b * dP4_dL1,
     1.5 * (s4.d * dP4_dL1 - s5.d * dP5_dL1),
     s4.e * dP4_dL1 + s5.e * dP5_dL1,
@@ -153,7 +157,7 @@ export function computeDKTBMatrix(
     s6.e * dP6_dL2 + s4.e * dP4_dL2,
     -s6.b * dP6_dL2 - s4.b * dP4_dL2,
     1.5 * (s4.d * dP4_dL2 - s5.d * dP5_dL2),
-    -1 + s4.e * dP4_dL2 + s5.e * dP5_dL2,
+    -(4 * L2 - 1) + s4.e * dP4_dL2 + s5.e * dP5_dL2,
     -s4.b * dP4_dL2 - s5.b * dP5_dL2,
     1.5 * (s5.d * dP5_dL2 - s6.d * dP6_dL2),
     s5.e * dP5_dL2 + s6.e * dP6_dL2,
@@ -167,7 +171,7 @@ export function computeDKTBMatrix(
     s4.e * dP4_dL3 + s5.e * dP5_dL3,
     -s4.b * dP4_dL3 - s5.b * dP5_dL3,
     1.5 * (s5.d * dP5_dL3 - s6.d * dP6_dL3),
-    -1 + s5.e * dP5_dL3 + s6.e * dP6_dL3,
+    -(4 * L3 - 1) + s5.e * dP5_dL3 + s6.e * dP6_dL3,
     -s5.b * dP5_dL3 - s6.b * dP6_dL3,
   ];
 
