@@ -97,6 +97,43 @@ export interface Beam {
 export interface Plate {
   id: number;
   nodeIds: number[]; // 4 corners (in click order)
+  // Rekenvelden (P2.1) — optioneel zodat oude projectbestanden zonder deze
+  // velden blijven laden; ontbrekende velden krijgen de PLATE_DEFAULTS.
+  /** Plaatdikte in mm (default 20). */
+  thickness?: number;
+  /** Elasticiteitsmodulus in N/mm² (default 210000 — staal). */
+  E?: number;
+  /** Dwarscontractiecoëfficiënt ν (default 0,3). */
+  nu?: number;
+  /** Volumieke massa in kg/m³ (default 7850 — staal), voor eigengewicht. */
+  rho?: number;
+  /** Gewenste elementgrootte van het rekenmesh in mm (default 500). */
+  meshSize?: number;
+}
+
+/** Defaults voor de optionele rekenvelden van een plaat (staal, 20 mm). */
+export const PLATE_DEFAULTS = {
+  thickness: 20,     // mm
+  E: 210000,         // N/mm²
+  nu: 0.3,           // —
+  rho: 7850,         // kg/m³
+  meshSize: 500,     // mm
+} as const;
+
+/**
+ * Vul ontbrekende plaat-rekenvelden aan met de defaults. Gebruikt bij het
+ * laden van (oude) projectbestanden; `addPlate` in de store zet de defaults
+ * al bij aanmaken.
+ */
+export function withPlateDefaults(p: Plate): Plate {
+  return {
+    ...p,
+    thickness: p.thickness ?? PLATE_DEFAULTS.thickness,
+    E: p.E ?? PLATE_DEFAULTS.E,
+    nu: p.nu ?? PLATE_DEFAULTS.nu,
+    rho: p.rho ?? PLATE_DEFAULTS.rho,
+    meshSize: p.meshSize ?? PLATE_DEFAULTS.meshSize,
+  };
 }
 
 export type SupportType =

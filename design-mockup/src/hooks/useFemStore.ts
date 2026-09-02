@@ -13,7 +13,9 @@ import type {
   Node, Beam, BeamReleases, Plate, Support, Load, LoadCase, Selection,
   Snapshot, SupportType, StructuralGrid,
 } from "../components/fem/femTypes";
-import { DEFAULT_STRUCTURAL_GRID } from "../components/fem/femTypes";
+import {
+  DEFAULT_STRUCTURAL_GRID, PLATE_DEFAULTS, withPlateDefaults,
+} from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type {
   LoadCombination, Envelope,
@@ -417,6 +419,7 @@ export interface FemStore {
   addBeam: (fromId: number, toId: number) => number | null;
   updateBeam: (id: number, updates: Partial<Beam>) => void;
   addPlate: (nodeIds: number[]) => void;
+  updatePlate: (id: number, updates: Partial<Plate>) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   removeSupport: (nodeId: number) => void;
   addLoad: (l: Omit<Load, "id">) => void;
@@ -633,7 +636,18 @@ export function useFemStore(): FemStore {
   const addPlate = useCallback((nodeIds: number[]) => {
     const cur = latestRef.current;
     const newId = cur.plates.length === 0 ? 1 : Math.max(...cur.plates.map(p => p.id)) + 1;
-    const nextPlates = [...cur.plates, { id: newId, nodeIds }];
+    // Rekenvelden meteen expliciet op de defaults (dikte 20 mm, staal,
+    // meshSize 500 mm) — zo toont de UI nooit een impliciete waarde.
+    const nextPlates = [...cur.plates, { id: newId, nodeIds, ...PLATE_DEFAULTS }];
+    setPlates(nextPlates);
+    pushHistory({ ...cur, plates: nextPlates });
+  }, [pushHistory]);
+
+  /** Patch willekeurige velden op een plaat (dikte, E, ν, ρ, meshSize, …). */
+  const updatePlate = useCallback((id: number, updates: Partial<Plate>) => {
+    const cur = latestRef.current;
+    if (!cur.plates.some(p => p.id === id)) return;
+    const nextPlates = cur.plates.map(p => p.id === id ? { ...p, ...updates } : p);
     setPlates(nextPlates);
     pushHistory({ ...cur, plates: nextPlates });
   }, [pushHistory]);
@@ -913,7 +927,9 @@ export function useFemStore(): FemStore {
     setCombinationResults(null);
     setEnvelope(null);
     // We deliberately depend on the model-bearing state, not on the setters.
-  }, [nodes, beams, supports, loads]);
+    // `plates` doet mee sinds platen meerekenen (P2): zonder die dependency
+    // zou een dikte- of meshSize-wijziging verouderde resultaten laten staan.
+  }, [nodes, beams, supports, plates, loads]);
 
   return {
     nodes, beams, supports, plates, loads,
@@ -926,7 +942,7 @@ export function useFemStore(): FemStore {
     setActiveCombinationId,
     setEnvelopeView,
     setSolverOutputs,
-    addNode, updateNode, addBeam, updateBeam, addPlate,
+    addNode, updateNode, addBeam, updateBeam, addPlate, updatePlate,
     addSupport, removeSupport, addLoad, updateLoad,
     removeNode, removeBeam, removeLoad, removePlate,
     deleteSelected, splitBeamAt, addLoadCase,
@@ -981,10 +997,13 @@ export function useFemStore(): FemStore {
       scheefstandNoemer?: number;
       scheefstandRichting?: 1 | -1;
     }) => {
+      // Oude bestanden zonder plaat-rekenvelden → defaults aanvullen
+      // (dikte 20 mm, staal, meshSize 500 mm), zie withPlateDefaults.
+      const plates = p.plates.map(withPlateDefaults);
       setNodes(p.nodes);
       setBeams(p.beams);
       setSupports(p.supports);
-      setPlates(p.plates);
+      setPlates(plates);
       setLoads(p.loads);
       setLoadCases(p.loadCases);
       setActiveLoadCaseId(p.activeLoadCaseId);
@@ -1006,7 +1025,7 @@ export function useFemStore(): FemStore {
       setActiveCombinationId(null);
       setSelection(null);
       // Reset history so undo can't time-travel back to the previous model.
-      setHistory([{ nodes: p.nodes, beams: p.beams, supports: p.supports, plates: p.plates, loads: p.loads }]);
+      setHistory([{ nodes: p.nodes, beams: p.beams, supports: p.supports, plates, loads: p.loads }]);
       setHistoryIdx(0);
     },
   };

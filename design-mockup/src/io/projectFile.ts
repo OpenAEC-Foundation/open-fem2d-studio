@@ -19,6 +19,11 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      scheefstand-instellingen (`scheefstandEnabled`, `scheefstandNoemer`,
  *      `scheefstandRichting`) — ontbreken ze, dan laadt het bestand met
  *      scheefstand uit (noemer 200, richting +x).
+ *      Eveneens optioneel binnen v2: plaat-rekenvelden op `Plate`
+ *      (`thickness`, `E`, `nu`, `rho`, `meshSize`) — reizen automatisch mee
+ *      met de plates-array (zoals `Beam.checkConfig`); ontbreken ze, dan
+ *      vult het laden de PLATE_DEFAULTS aan (20 mm / 210000 N/mm² / 0,3 /
+ *      7850 kg/m³ / 500 mm — zie femTypes.withPlateDefaults).
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
