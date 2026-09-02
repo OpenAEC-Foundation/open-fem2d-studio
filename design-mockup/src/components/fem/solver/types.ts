@@ -33,6 +33,19 @@ export interface SolverBeamInput {
    */
   startConnection?: 'fixed' | 'hinge';
   endConnection?:   'fixed' | 'hinge';
+  /**
+   * Volledige release-set per uiteinde, in LOKALE staafassen:
+   *  - Tx: axiaal los (normaalkrachthuls — het element draagt daar geen N)
+   *  - Tz: dwars los (dwarskrachthuls — het element draagt daar geen V)
+   *  - Ry: buigscharnier (equivalent aan start/endConnection 'hinge')
+   * Dezelfde translatie aan BEIDE einden lossen koppelt het element in die
+   * richting volledig los; hangt een knoop daardoor nergens meer aan, dan
+   * meldt de solver een singulier stelsel.
+   */
+  releases?: {
+    startTx?: boolean; startTz?: boolean; startRy?: boolean;
+    endTx?: boolean; endTz?: boolean; endRy?: boolean;
+  };
 }
 
 export type SupportType =

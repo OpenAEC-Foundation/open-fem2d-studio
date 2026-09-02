@@ -141,11 +141,35 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     if (!meshBeam) continue;
     beamIdMap.set(b.id, meshBeam.id);
 
-    // Scharnier-aansluiting: forward hinge state to the mesh (which natively
-    // condenses moments at hinged ends via applyEndReleases).
+    // Releases doorgeven aan de mesh (die condenseert via applyEndReleases).
+    // Twee vormen: het legacy scharnierpaar startConnection/endConnection
+    // (alleen Rz) en het volledige releases-object met ook Tx (axiaal,
+    // normaalkrachthuls) en Tz (dwars, dwarskrachthuls) in LOKALE assen.
+    // Met translatie-releases gaat het per-DOF-connectiemodel mee; zonder
+    // blijft het legacy pad bit-identiek.
     const updates: any = {};
-    if ((b as any).startConnection === "hinge") updates.startConnection = "hinge";
-    if ((b as any).endConnection === "hinge")   updates.endConnection   = "hinge";
+    const rel = (b as any).releases as {
+      startTx?: boolean; startTz?: boolean; startRy?: boolean;
+      endTx?: boolean; endTz?: boolean; endRy?: boolean;
+    } | undefined;
+    const heeftTransRelease = !!(rel && (rel.startTx || rel.startTz || rel.endTx || rel.endTz));
+    if (heeftTransRelease) {
+      const startRz = rel!.startRy || (b as any).startConnection === "hinge";
+      const endRz   = rel!.endRy   || (b as any).endConnection   === "hinge";
+      updates.startConnections = {
+        Tx: rel!.startTx ? "hinge" : "fixed",
+        Tz: rel!.startTz ? "hinge" : "fixed",
+        Rz: startRz ? "hinge" : "fixed",
+      };
+      updates.endConnections = {
+        Tx: rel!.endTx ? "hinge" : "fixed",
+        Tz: rel!.endTz ? "hinge" : "fixed",
+        Rz: endRz ? "hinge" : "fixed",
+      };
+    } else {
+      if ((b as any).startConnection === "hinge" || rel?.startRy) updates.startConnection = "hinge";
+      if ((b as any).endConnection === "hinge"   || rel?.endRy)   updates.endConnection   = "hinge";
+    }
     if (Object.keys(updates).length > 0) mesh.updateBeamElement(meshBeam.id, updates);
   }
 

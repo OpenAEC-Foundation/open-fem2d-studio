@@ -204,6 +204,30 @@ export function getDOFConnectionTypes(beam: IBeamElement): { start: IDOFConnecti
 }
 
 /**
+ * Released lokale DOF's (0=u1, 1=v1, 2=θ1, 3=u2, 4=v2, 5=θ2) voor de
+ * statische condensatie (applyEndReleases). Bron is het per-DOF-
+ * connectiemodel via getDOFConnectionTypes: Tx = axiaal (lokale staafas,
+ * normaalkracht-huls), Tz = dwars (loodrecht in het vlak, dwarskracht-huls),
+ * Rz = buigscharnier. Alleen 'hinge' geldt als released; 'spring' en
+ * tension/pressure-only zijn (nog) niet geïmplementeerd en gedragen zich
+ * als 'fixed'. Let op: dezelfde translatie aan BEIDE einden lossen koppelt
+ * het element in die richting volledig los (het draagt daar niets meer);
+ * hangt een knoop daardoor nergens meer aan, dan meldt de solver een
+ * singulier stelsel (geen stille correctie).
+ */
+export function getReleasedLocalDofs(beam: IBeamElement): number[] {
+  const { start, end } = getDOFConnectionTypes(beam);
+  const dofs: number[] = [];
+  if (start.Tx === 'hinge') dofs.push(0);
+  if (start.Tz === 'hinge') dofs.push(1);
+  if (start.Rz === 'hinge') dofs.push(2);
+  if (end.Tx === 'hinge') dofs.push(3);
+  if (end.Tz === 'hinge') dofs.push(4);
+  if (end.Rz === 'hinge') dofs.push(5);
+  return dofs;
+}
+
+/**
  * Get connection types for a beam, with backward compatibility from legacy endReleases.
  * Returns the primary (Rz/moment) connection type for rendering symbols.
  */

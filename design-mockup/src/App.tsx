@@ -470,12 +470,13 @@ function App() {
           return {
             id: b.id, from: b.from, to: b.to,
             E: sec.E, A: sec.A, I: sec.I,
-            // Scharnier-aansluiting: forward rotational releases to the engine.
-            // The solver condenses moment at hinged ends via applyEndReleases.
-            // (Pure translation releases — startTx/endTx/startTz/endTz — are not
-            //  yet wired through; rotational hinges cover the typical column-beam case.)
+            // Releases naar de engine: buigscharnieren via het legacy paar,
+            // en het volledige object (mét Tx/Tz-hulzen in lokale assen)
+            // ernaast — de engine kiest zelf het rijkere per-DOF-model zodra
+            // er een translatie-release in zit.
             startConnection: b.releases?.startRy ? 'hinge' as const : 'fixed' as const,
             endConnection:   b.releases?.endRy   ? 'hinge' as const : 'fixed' as const,
+            releases: b.releases,
           };
         }),
         supports: fem.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),

@@ -1,10 +1,10 @@
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { AnalysisType, getConnectionTypes, getBeamDistributedLoads } from '../fem/types';
+import { AnalysisType, getReleasedLocalDofs, getBeamDistributedLoads } from '../fem/types';
 import { calculateElementStiffness, calculateTriangleStiffnessExpanded } from '../fem/Triangle';
 import { calculateQuadStiffness, calculateQuadStiffnessExpanded } from '../fem/Quad4';
 import { calculateDKTStiffness } from '../fem/DKT';
-import { calculateBeamGlobalStiffness, calculateBeamLocalStiffness, calculateDistributedLoadLocalForces, transformLocalToGlobal, calculateBeamLength, calculateBeamAngle } from '../fem/Beam';
+import { calculateBeamGlobalStiffness, calculateBeamLocalStiffness, calculateDistributedLoadLocalForces, transformLocalToGlobal, calculateBeamLength, calculateBeamAngle, createTransformationMatrix } from '../fem/Beam';
 import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
 
 /**
@@ -85,19 +85,28 @@ export function assembleGlobalStiffnessMatrix(
       const [n1, n2] = nodes;
 
       try {
-        const Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
-
-        // Apply static condensation for end releases (hinges / axial releases)
-        const { start, end } = getConnectionTypes(beam);
-        const releasedLocalDofs: number[] = [];
-        if (start === 'hinge') releasedLocalDofs.push(2); // θ1
-        if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
-        // Axial release for tension/pressure-only beams that are in the released set
+        // Releases (Rz-scharnieren + Tx/Tz-hulzen; tension/pressure-only via
+        // axialReleasedBeamIds) zijn LOKALE vrijheidsgraden: condenseren op
+        // de lokale matrix en daarna transformeren. Voorheen werd hier op de
+        // GLOBALE matrix gecondenseerd — voor rotaties identiek (θ is
+        // invariant onder T), maar voor axiale releases van niet-horizontale
+        // staven fout (dat loste globaal-x i.p.v. de staafas). Zonder
+        // releases blijft het pad bit-identiek (calculateBeamGlobalStiffness).
+        const releasedLocalDofs = getReleasedLocalDofs(beam);
         if (axialReleasedBeamIds?.has(beam.id)) {
-          releasedLocalDofs.push(0, 3); // u1, u2 (axial DOFs)
+          for (const d of [0, 3]) if (!releasedLocalDofs.includes(d)) releasedLocalDofs.push(d);
         }
+        let Ke: Matrix;
         if (releasedLocalDofs.length > 0) {
-          applyEndReleases(Ke, releasedLocalDofs);
+          const L = calculateBeamLength(n1, n2);
+          const angle = calculateBeamAngle(n1, n2);
+          if (L < 1e-10) throw new Error('Beam element has zero length');
+          const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+          applyEndReleases(Kl, releasedLocalDofs);
+          const T = createTransformationMatrix(angle);
+          Ke = T.transpose().multiply(Kl.multiply(T));
+        } else {
+          Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
         }
 
         // Get global DOF indices for this beam element
@@ -191,18 +200,23 @@ export function assembleGlobalStiffnessMatrix(
       const [n1, n2] = nodes;
 
       try {
-        const Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
-
-        // Apply static condensation for end releases (hinges / axial releases)
-        const { start, end } = getConnectionTypes(beam);
-        const releasedLocalDofs: number[] = [];
-        if (start === 'hinge') releasedLocalDofs.push(2);
-        if (end === 'hinge') releasedLocalDofs.push(5);
+        // Zelfde release-aanpak als het frame-pad hierboven: lokaal
+        // condenseren, dan transformeren (Tx/Tz zijn lokale DOF's).
+        const releasedLocalDofs = getReleasedLocalDofs(beam);
         if (axialReleasedBeamIds?.has(beam.id)) {
-          releasedLocalDofs.push(0, 3);
+          for (const d of [0, 3]) if (!releasedLocalDofs.includes(d)) releasedLocalDofs.push(d);
         }
+        let Ke: Matrix;
         if (releasedLocalDofs.length > 0) {
-          applyEndReleases(Ke, releasedLocalDofs);
+          const L = calculateBeamLength(n1, n2);
+          const angle = calculateBeamAngle(n1, n2);
+          if (L < 1e-10) throw new Error('Beam element has zero length');
+          const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+          applyEndReleases(Kl, releasedLocalDofs);
+          const T = createTransformationMatrix(angle);
+          Ke = T.transpose().multiply(Kl.multiply(T));
+        } else {
+          Ke = calculateBeamGlobalStiffness(n1, n2, material, beam.section);
         }
 
         const idx1 = nodeIdToIndex.get(n1.id)!;
@@ -471,12 +485,9 @@ export function assembleForceVector(mesh: Mesh, analysisType: AnalysisType = 'pl
         for (let i = 0; i < 6; i++) localForces[i] += fThermal[i];
       }
 
-      // Apply force condensation for beam end releases (hinges)
-      // The equivalent nodal forces must be condensed consistently with the stiffness
-      const { start, end } = getConnectionTypes(beam);
-      const releasedLocalDofs: number[] = [];
-      if (start === 'hinge') releasedLocalDofs.push(2); // θ1
-      if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+      // Krachtcondensatie voor releases (Rz-scharnieren + Tx/Tz-hulzen) —
+      // consistent met de gecondenseerde stijfheid, in lokale assen.
+      const releasedLocalDofs = getReleasedLocalDofs(beam);
       if (releasedLocalDofs.length > 0) {
         const material = mesh.getMaterial(beam.materialId);
         if (material) {

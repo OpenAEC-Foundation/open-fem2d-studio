@@ -7,7 +7,7 @@
 
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes, getBeamDistributedLoads } from '../fem/types';
+import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes, getReleasedLocalDofs, getBeamDistributedLoads } from '../fem/types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -146,11 +146,10 @@ function assembleGlobalStiffnessWithGeometric(
     // Linear elastic stiffness
     const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
 
-    // Apply static condensation for connection types (hinges)
-    const { start, end } = getConnectionTypes(beam);
-    const releasedLocalDofs: number[] = [];
-    if (start === 'hinge') releasedLocalDofs.push(2); // θ1
-    if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+    // Statische condensatie voor releases: buigscharnieren (Rz) én
+    // translatie-releases (Tx = axiaal / normaalkrachthuls, Tz = dwars),
+    // in LOKALE assen — vandaar vóór de transformatie naar globaal.
+    const releasedLocalDofs = getReleasedLocalDofs(beam);
     if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
     }
@@ -353,11 +352,8 @@ function assembleGlobalStiffnessFNL(
     // Local stiffness with effective EI
     const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
 
-    // Apply end releases
-    const { start, end } = getConnectionTypes(beam);
-    const releasedLocalDofs: number[] = [];
-    if (start === 'hinge') releasedLocalDofs.push(2);
-    if (end === 'hinge') releasedLocalDofs.push(5);
+    // Releases condenseren (Rz-scharnieren + Tx/Tz-hulzen, lokale assen)
+    const releasedLocalDofs = getReleasedLocalDofs(beam);
     if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
     }
@@ -571,12 +567,10 @@ function assembleForceVector(mesh: Mesh): number[] {
       for (let i = 0; i < 6; i++) fLocal[i] += fThermal[i];
     }
 
-    // Apply force condensation for beam end releases (hinges)
-    // The equivalent nodal forces must be condensed consistently with the stiffness
-    const { start, end } = getConnectionTypes(beam);
-    const releasedLocalDofs: number[] = [];
-    if (start === 'hinge') releasedLocalDofs.push(2); // θ1
-    if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+    // Krachtcondensatie voor releases (Rz-scharnieren + Tx/Tz-hulzen) —
+    // de equivalente knoopkrachten moeten consistent met de gecondenseerde
+    // stijfheid meelopen.
+    const releasedLocalDofs = getReleasedLocalDofs(beam);
     if (releasedLocalDofs.length > 0 && material) {
       const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
       applyEndReleases(Kl, releasedLocalDofs, fLocal);

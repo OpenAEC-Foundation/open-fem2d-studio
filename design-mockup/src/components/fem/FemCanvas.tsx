@@ -305,6 +305,8 @@ export default function FemCanvas(props: FemCanvasProps) {
             E: sec.E, A: sec.A, I: sec.I,
             startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
             endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
+            // Volledige release-set (incl. Tx/Tz-hulzen, lokale assen).
+            releases: b.releases,
           };
         }),
         supports: supports.map(s => ({

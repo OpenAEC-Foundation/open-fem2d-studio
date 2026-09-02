@@ -1,4 +1,4 @@
-import { INode, IBeamElement, IBeamForces, IMaterial, getConnectionTypes, getBeamDistributedLoads } from './types';
+import { INode, IBeamElement, IBeamForces, IMaterial, getReleasedLocalDofs, getBeamDistributedLoads } from './types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -14,6 +14,41 @@ import { applyEndReleases } from '../solver/Assembler';
 import { calculateBeamThermalLocalForces } from './ThermalLoad';
 
 const NUM_STATIONS = 21; // Number of points along beam for diagrams
+
+/**
+ * Klein dicht stelsel A·x = b (n ≤ 6) via Gauss-eliminatie met partiële
+ * pivotering. Retourneert null bij een (bijna) singuliere A — de aanroeper
+ * beslist dan zelf wat een veilige terugval is. A en b worden niet gemuteerd.
+ */
+function solveKleinStelsel(Ain: number[][], bin: number[]): number[] | null {
+  const n = bin.length;
+  const A = Ain.map(row => row.slice());
+  const b = bin.slice();
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    }
+    if (Math.abs(A[piv][col]) < 1e-20) return null;
+    if (piv !== col) {
+      [A[piv], A[col]] = [A[col], A[piv]];
+      [b[piv], b[col]] = [b[col], b[piv]];
+    }
+    for (let r = col + 1; r < n; r++) {
+      const f = A[r][col] / A[col][col];
+      if (f === 0) continue;
+      for (let c = col; c < n; c++) A[r][c] -= f * A[col][c];
+      b[r] -= f * b[col];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = b[r];
+    for (let c = r + 1; c < n; c++) s -= A[r][c] * x[c];
+    x[r] = s / A[r][r];
+  }
+  return x;
+}
 
 /** Eén verdeelde last, geprojecteerd naar lokale staafcomponenten. */
 interface ILocalDistLoad {
@@ -153,44 +188,39 @@ export function calculateBeamInternalForces(
     equivalentNodalForces[i] += thermalLocal[i];
   }
 
-  // Apply static condensation for hinges — must be done BEFORE computing forces.
-  // This ensures moment = 0 at hinged ends and correctly redistributes
-  // fixed-end forces from distributed loads to the remaining DOFs.
-  const { start, end } = getConnectionTypes(element);
-  const releasedLocalDofs: number[] = [];
-  if (start === 'hinge') releasedLocalDofs.push(2); // θ1
-  if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+  // Apply static condensation for releases — must be done BEFORE computing
+  // forces. This ensures moment = 0 at hinged ends (and N/V = 0 at Tx/Tz-
+  // released ends) and correctly redistributes fixed-end forces from
+  // distributed loads to the remaining DOFs.
+  const releasedLocalDofs = getReleasedLocalDofs(element);
 
   // ── Werkelijke lokale eind-DOF's voor de verplaatsingskromme ──────────────
-  // Bij een scharnier is de eindrotatie van het ELEMENT niet gelijk aan de
-  // knooprotatie. Terugrekenen uit de nul-moment-voorwaarde op het released
-  // DOF, met de ORIGINELE (niet-gecondenseerde) Kl en belastingvector:
-  //   K_RR·d_R = F_R^eq − K_RC·d_C   (want intern moment = K·d − F^eq = 0)
-  // Moet vóór applyEndReleases gebeuren omdat die Kl/F in-place muteert.
+  // Bij een release is het eind-DOF van het ELEMENT niet gelijk aan het
+  // knoop-DOF. Terugrekenen uit de nul-krachtvoorwaarde op de released
+  // DOF's, met de ORIGINELE (niet-gecondenseerde) Kl en belastingvector:
+  //   K_RR·d_R = F_R^eq − K_RC·d_C   (want interne kracht = K·d − F^eq = 0)
+  // Algemeen klein stelsel (1..n released DOF's) met Gauss + partiële
+  // pivotering; een singuliere K_RR (mechanisme, bv. dezelfde translatie aan
+  // beide einden los) laat de knoopwaarden staan — de solve zelf is dan al
+  // op een singulier stelsel gestrand. Moet vóór applyEndReleases gebeuren
+  // omdat die Kl/F in-place muteert.
   const dLoc = localDisp.slice();
-  if (releasedLocalDofs.length === 1) {
-    const r = releasedLocalDofs[0];
-    let rhs = equivalentNodalForces[r];
-    for (let j = 0; j < 6; j++) {
-      if (j !== r) rhs -= Kl.get(r, j) * dLoc[j];
+  if (releasedLocalDofs.length > 0) {
+    const m = releasedLocalDofs.length;
+    const A: number[][] = [];
+    const b: number[] = [];
+    for (let r = 0; r < m; r++) {
+      const i = releasedLocalDofs[r];
+      let rhs = equivalentNodalForces[i];
+      for (let j = 0; j < 6; j++) {
+        if (!releasedLocalDofs.includes(j)) rhs -= Kl.get(i, j) * dLoc[j];
+      }
+      b.push(rhs);
+      A.push(releasedLocalDofs.map(jj => Kl.get(i, jj)));
     }
-    const krr = Kl.get(r, r);
-    if (Math.abs(krr) > 1e-20) dLoc[r] = rhs / krr;
-  } else if (releasedLocalDofs.length === 2) {
-    const [r1, r2] = releasedLocalDofs;
-    const a11 = Kl.get(r1, r1), a12 = Kl.get(r1, r2);
-    const a21 = Kl.get(r2, r1), a22 = Kl.get(r2, r2);
-    let b1 = equivalentNodalForces[r1];
-    let b2 = equivalentNodalForces[r2];
-    for (let j = 0; j < 6; j++) {
-      if (j === r1 || j === r2) continue;
-      b1 -= Kl.get(r1, j) * dLoc[j];
-      b2 -= Kl.get(r2, j) * dLoc[j];
-    }
-    const det = a11 * a22 - a12 * a21;
-    if (Math.abs(det) > 1e-20) {
-      dLoc[r1] = (a22 * b1 - a12 * b2) / det;
-      dLoc[r2] = (a11 * b2 - a21 * b1) / det;
+    const sol = solveKleinStelsel(A, b);
+    if (sol) {
+      for (let r = 0; r < m; r++) dLoc[releasedLocalDofs[r]] = sol[r];
     }
   }
 
