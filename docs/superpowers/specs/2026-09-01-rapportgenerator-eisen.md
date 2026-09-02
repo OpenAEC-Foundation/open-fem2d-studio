@@ -18,6 +18,12 @@ Bron: opdrachten van de gebruiker, 2026-09-01.
      met kloppende hoogtes als expliciet pijnpunt — **herontwerp**, geen
      opknapbeurt. Paginahoogtes/A4-weergave moeten exact kloppen (ook als
      basis voor de latere PDF-export).
+   - **DEFINITIEF BESLOTEN (2026-09-02, gebruiker expliciet):** géén
+     onzichtbare direct-naar-PDF-engine als gebruikersroute. Het rapport ÍS
+     HTML — zichtbaar en aanpasbaar — en de PDF ontstaat daarúit via de
+     printpijplijn van de webview (print-naar-PDF; dat werkt tegenwoordig
+     goed). De bestaande Rust-PDF-route verdwijnt uit de UI; de report-crate
+     blijft hooguit als slapende bibliotheek bestaan.
 1. **Modulair.** De generator is opgebouwd uit losse, herbruikbare secties;
    secties aan/uit zetten mag de rest niet raken.
 2. **Parametrisch met live preview.** De gebruiker ziet een preview en stelt
