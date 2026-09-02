@@ -90,7 +90,7 @@ function radius(iy_mm4, iz_mm4, area_mm2) {
 }
 
 // ── Shear areas (approximate for sections where not in catalog) ───────────────
-function shearAreas(series, h, b, tw, tf, area_mm2) {
+function shearAreas(series, h, b, tw, tf, r, area_mm2) {
   if (series === 'CHS') {
     // CHS: Av = 2A/π
     const av = (2 * area_mm2) / Math.PI;
@@ -102,10 +102,18 @@ function shearAreas(series, h, b, tw, tf, area_mm2) {
     const av_y = area_mm2 * b / (h + b);
     return { av_y_mm2: av_y, av_z_mm2: av_z };
   }
-  // I-sections and channels: Av_z = h * tw, Av_y ≈ 2*b*tf
+  // Gewalste I-secties: Av;z per EN 1993-1-1 §6.2.6(3)a
+  // (A − 2·b·tf + (tw + 2r)·tf, met ondergrens η·hw·tw, η = 1,2).
+  // Gewalste U-profielen (UNP): idem maar met (tw + r)·tf, zonder ondergrens.
+  // De oude benadering h·tw zat 14–36% te laag (conservatief maar fout) —
+  // zie de databasecorrectie van sept 2026.
+  const hw = h - 2 * tf;
+  const uitronding = series === 'UNP' ? (tw + r) * tf : (tw + 2 * r) * tf;
+  let av_z = area_mm2 - 2 * b * tf + uitronding;
+  if (series !== 'UNP') av_z = Math.max(av_z, 1.2 * hw * tw);
   return {
     av_y_mm2: 2 * b * tf,
-    av_z_mm2: h * tw,
+    av_z_mm2: av_z,
   };
 }
 
@@ -235,12 +243,22 @@ for (const p of SOURCE_PROFILES) {
   const iy_mm4   = p.Iy * cm4_to_mm4;
   const iz_mm4   = p.Iz * cm4_to_mm4;
   const it_mm4   = p.It * cm4_to_mm4;
-  const iw_mm6   = p.Iw * cm6_to_mm6;
 
   const kind = profileKind(p.series, p.name);
 
+  // Iw: de Iw-kolom in de brondata bleek voor HEA/HEB/HEM onbruikbaar
+  // (+27% tot +154% te hoog — onveilig zodra de kiptoetsing er M_cr mee
+  // rekent). Voor dubbelsymmetrische I-secties geldt Iw = Iz·(h − tf)²/4;
+  // de tabelwaarde wordt alleen gebruikt als hij daar <5% van afwijkt
+  // (IPE-cataloguswaarden zijn nauwkeuriger dan de benadering).
+  let iw_mm6 = p.Iw * cm6_to_mm6;
+  if (kind === 'ISection') {
+    const iw_ref = iz_mm4 * (p.h - p.tf) ** 2 / 4;
+    if (!(Math.abs(iw_mm6 - iw_ref) / iw_ref < 0.05)) iw_mm6 = Math.round(iw_ref);
+  }
+
   const { iy_radius_mm, iz_radius_mm } = radius(iy_mm4, iz_mm4, area_mm2);
-  const { av_y_mm2, av_z_mm2 } = shearAreas(p.series, p.h, p.b, p.tw, p.tf, area_mm2);
+  const { av_y_mm2, av_z_mm2 } = shearAreas(p.series, p.h, p.b, p.tw, p.tf, p.r, area_mm2);
 
   let curves = bucklingCurves(p.name, p.series);
   if (curves === null) {
