@@ -12,6 +12,9 @@
   },
   "home": {
     "file": "File",
+    "project": "Project",
+    "projectInfo": "Project info",
+    "assumptions": "Assumptions",
     "new": "New",
     "open": "Open",
     "save": "Save",

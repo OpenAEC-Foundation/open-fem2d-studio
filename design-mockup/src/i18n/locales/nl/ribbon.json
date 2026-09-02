@@ -12,6 +12,9 @@
   },
   "home": {
     "file": "Bestand",
+    "project": "Project",
+    "projectInfo": "Projectgegevens",
+    "assumptions": "Uitgangspunten",
     "new": "Nieuw",
     "open": "Openen",
     "save": "Opslaan",
