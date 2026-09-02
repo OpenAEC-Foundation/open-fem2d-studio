@@ -1,0 +1,117 @@
+# CI-poort voor de MCP-server en de solver-testbatterij.
+#
+# Waarom deze poort vóór de feature uit gaat: de MCP-server gaat dezelfde
+# TypeScript-solver ontsluiten die de app gebruikt, als gebundeld artefact.
+# Elke belofte over "één rekenkern" is pas een mechanisme als een machine hem
+# afdwingt. Tot nu toe draaide CI nul geautomatiseerde tests en kwam de string
+# `mcp` nergens in .github/ voor; zonder deze workflow is de hash-poort verderop
+# in het plan een belofte in plaats van een controle.
+name: MCP en solver
+
+on:
+  # Op master (de integratietak) en op elke pull request. Bewust niet op elke
+  # push naar elke tak: dat zou elke PR twee keer draaien.
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── 1. MCP-server bouwen en testen ────────────────────────
+  # Alleen de crate zelf (-p), niet de Tauri-app. Daardoor heeft de runner geen
+  # webkit2gtk en aanverwante systeembibliotheken nodig: de afhankelijkheden van
+  # deze crate zijn allemaal pure Rust.
+  mcp-server:
+    name: MCP-server (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Rust installeren
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust-cache
+        uses: swatinem/rust-cache@v2.9.1
+        with:
+          workspaces: src-tauri -> target
+
+      - name: MCP-server bouwen
+        run: cargo build -p openaec-mcp-server
+        working-directory: src-tauri
+
+      - name: MCP-server testen
+        run: cargo test -p openaec-mcp-server
+        working-directory: src-tauri
+
+  # ── 2. Solver-testbatterij ────────────────────────────────
+  # De 35 test-*.mjs zijn de enige bewaking op de rekenkern die er is. Ze
+  # draaien tegen de bron, niet tegen een bundel — die bestaat in dit stadium
+  # nog niet.
+  solver:
+    name: Solver-testbatterij (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Node.js installeren
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: npm-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('design-mockup/package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+
+      - name: Frontend-afhankelijkheden installeren
+        run: npm ci
+        working-directory: design-mockup
+
+      - name: Typecontrole
+        run: npx tsc --noEmit
+        working-directory: design-mockup
+
+      # tsx staat vandaag in geen enkele lockfile en komt uit het npm-register.
+      # Deze stap haalt hem één keer op zodat de testaanroepen hierna uit de
+      # npx-cache lezen; hij faalt ook meteen als het register onbereikbaar is,
+      # in plaats van dat 35 losse aanroepen daarop stuklopen.
+      - name: tsx klaarzetten
+        run: npx --yes tsx --version
+        working-directory: design-mockup
+
+      # De batterij kent nog geen runner: elk test-*.mjs is een eigen proces dat
+      # met exitcode 1 afsluit zodra één assert faalt. Deze lus draait ze
+      # allemaal door en telt pas aan het eind, zodat één rode test de rest niet
+      # verbergt.
+      - name: Testbatterij draaien
+        working-directory: design-mockup
+        run: |
+          gefaald=0
+          totaal=0
+          for test in test-*.mjs; do
+            totaal=$((totaal + 1))
+            echo "::group::$test"
+            if npx --yes tsx "$test"; then
+              echo "::endgroup::"
+            else
+              echo "::endgroup::"
+              echo "::error file=design-mockup/$test::$test is gefaald"
+              gefaald=$((gefaald + 1))
+            fi
+          done
+          echo "Testbatterij: $((totaal - gefaald)) van $totaal geslaagd, $gefaald gefaald."
+          test "$gefaald" -eq 0
