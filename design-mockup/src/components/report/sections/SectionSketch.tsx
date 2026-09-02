@@ -180,9 +180,10 @@ export default function SectionSketch({ shape }: { shape: SectionShape }) {
       tx: xLab, ty: y0 + (tf / 2) * s,
       label: `tf = ${dim(tf)}`,
     });
+    // Iets boven het midden zodat het verwijslijntje de neutrale lijn niet kruist.
     leaders.push({
-      fx: wr, fy: y0 + h / 2,
-      tx: xLab, ty: y0 + h / 2,
+      fx: wr, fy: y0 + h * 0.32,
+      tx: xLab, ty: y0 + h * 0.32,
       label: `tw = ${dim(tw)}`,
     });
     // Uitrondingsboog rechtsonder: middelpunt van de kwartcirkel.
@@ -200,8 +201,8 @@ export default function SectionSketch({ shape }: { shape: SectionShape }) {
       label: `tf = ${dim(tf)}`,
     });
     leaders.push({
-      fx: x0 + tw * s, fy: y0 + h / 2,
-      tx: xLab, ty: y0 + h / 2,
+      fx: x0 + tw * s, fy: y0 + h * 0.32,
+      tx: xLab, ty: y0 + h * 0.32,
       label: `tw = ${dim(tw)}`,
     });
     const rEff = Math.max(0, Math.min(r, bs - tw - 0.5, (hs - 2 * tf) / 2 - 0.5));
@@ -251,6 +252,24 @@ export default function SectionSketch({ shape }: { shape: SectionShape }) {
         strokeWidth="1.1"
         strokeLinejoin="miter"
       />
+      {/* Neutrale lijn (zwaartepuntsas voor buiging om de sterke as): de as
+          waar de buigspanning nul is en van teken wisselt. Streep-punt-lijn
+          in tekeningconventie, iets buiten de contour doorlopend. */}
+      <line
+        x1={x0 - 6} y1={yc} x2={x0 + w + 6} y2={yc}
+        stroke={DIM_COLOR}
+        strokeWidth="0.7"
+        strokeDasharray="7 2.5 1.5 2.5"
+      />
+      <text
+        x={x0 + w + 7.5}
+        y={yc - 2}
+        fill={TEXT_COLOR}
+        fontSize="6.5"
+        fontStyle="italic"
+      >
+        n.l.
+      </text>
       <DimH x1={x0} x2={x0 + w} y={yDimB} yObj={y0} label={bLabel} />
       {shape.type !== "tube" && (
         <DimV y1={y0} y2={y0 + h} x={xDimH} xObj={x0} label={hLabel} />

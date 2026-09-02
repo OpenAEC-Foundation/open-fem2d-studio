@@ -425,6 +425,13 @@
 .fem-stramien-elev-left  { text-anchor: end; }
 .fem-stramien-elev-right { text-anchor: start; }
 
+/* Peilmaat-driehoekje op de niveaulijn (bouwkundige conventie). */
+.fem-peil-driehoek {
+  fill: var(--theme-text-secondary);
+  stroke: none;
+  pointer-events: none;
+}
+
 /* + button for adding a new stramien axis from the canvas. */
 .fem-stramien-plus { cursor: pointer; pointer-events: auto; }
 .fem-stramien-plus circle {

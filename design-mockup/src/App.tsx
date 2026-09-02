@@ -538,7 +538,10 @@ function App() {
     setCheckFocus({ beamId });
     setActiveView("check");
   }, []);
-  const [autoRunCheck, setAutoRunCheck] = useState(false);
+  // Normtoetsing draait STANDAARD mee met elke berekening: de toetsing hoort
+  // bij het resultaat en is geen losse handeling. De schakelaar op de
+  // Toetsing-tab blijft bestaan om het uit te zetten (bv. grote modellen).
+  const [autoRunCheck, setAutoRunCheck] = useState(true);
   // Insights view mode (element-K / system-K / dof / logs / errors), controlled from Ribbon.
   const [insightsMode, setInsightsMode] = useState<"element" | "system" | "dof" | "logs" | "errors">("element");
   // Last solver error text — shown in InsightsView Errors-tab.

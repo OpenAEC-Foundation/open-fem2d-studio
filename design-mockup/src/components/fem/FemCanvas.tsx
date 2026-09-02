@@ -111,6 +111,18 @@ function fmtLegenda(v: number): string {
 }
 
 /**
+ * Peilmaat van een niveau in bouwkundige notatie: "+5,00 m" boven peil,
+ * "−1,20 m" eronder en "±0,00 m" op het nulniveau. Horizontale assen zijn
+ * NIVEAUS met een peilmaat, geen genummerd stramien — alleen de verticale
+ * assen dragen een stramienletter.
+ */
+function peilmaatTekst(positieMm: number): string {
+  const m = positieMm / 1000;
+  const teken = Math.abs(m) < 0.005 ? "±" : m > 0 ? "+" : "−";
+  return `${teken}${Math.abs(m).toFixed(2).replace(".", ",")} m`;
+}
+
+/**
  * Validatie van de vier hoekknopen van de plaattool (P3.1): de punten moeten
  * een asgelijnde rechthoek vormen — zelfde regels en tolerantie (1 mm) als de
  * adapter-validatie in solver/engine.ts, maar hier VÓÓR het aanmaken zodat er
@@ -2484,17 +2496,14 @@ export default function FemCanvas(props: FemCanvasProps) {
               return { ...prev, xAxes: [...prev.xAxes, { id: `x-${Date.now()}`, label: lbl || `X${prev.xAxes.length + 1}`, position: maxPos + 3000 }] };
             });
           };
+          // Nieuw NIVEAU: krijgt geen volgnummer maar identificeert zich via
+          // zijn peilmaat (het label blijft leeg tot de gebruiker er zelf een
+          // naam aan geeft, bv. "verdieping" of "maaiveld").
           const addZAxis = () => {
             if (!setStructuralGrid) return;
             setStructuralGrid(prev => {
-              const used = new Set(prev.zAxes.map(a => a.label));
-              let lbl = "";
-              for (let k = 1; k <= 99; k++) {
-                const l = String(k);
-                if (!used.has(l)) { lbl = l; break; }
-              }
               const maxPos = prev.zAxes.length ? Math.max(...prev.zAxes.map(a => a.position)) : 0;
-              return { ...prev, zAxes: [...prev.zAxes, { id: `z-${Date.now()}`, label: lbl || `Z${prev.zAxes.length + 1}`, position: maxPos + 3000 }] };
+              return { ...prev, zAxes: [...prev.zAxes, { id: `z-${Date.now()}`, label: "", position: maxPos + 3000 }] };
             });
           };
 
@@ -2533,18 +2542,27 @@ export default function FemCanvas(props: FemCanvasProps) {
               {structuralGrid.zAxes.map(az => {
                 const pL = worldToScreen(xLo, az.position);
                 const pR = worldToScreen(xHi, az.position);
-                const elevMeters = az.position / 1000;
-                const elevText = `${az.label}  ${elevMeters >= 0 ? "+" : ""}${elevMeters.toFixed(2)} m`;
+                // Horizontale assen zijn NIVEAUS, geen genummerd stramien: ze
+                // dragen een peilmaat in bouwkundige notatie (+5,00 m; het
+                // nulniveau als ±0,00 m). Een eventueel eigen niveaunaam
+                // ("verdieping", "maaiveld") staat ervóór; het automatische
+                // volgnummer wordt niet meer getoond.
+                const elevText = peilmaatTekst(az.position);
+                const eigenNaam = /^\d+$/.test(az.label.trim()) ? "" : az.label.trim();
+                const labelTekst = eigenNaam ? `${eigenNaam}  ${elevText}` : elevText;
                 return (
                   <g key={`zax${az.id}`}>
                     <line x1={pL.x} y1={pL.y} x2={pR.x} y2={pR.y} className="fem-stramien-line" />
-                    {/* LEFT label — combineert level-naam + peilmaat */}
+                    {/* Peilmaat-symbool links: het bouwkundige driehoekje op de lijn. */}
+                    <polygon
+                      points={`${pL.x - 4},${pL.y - 5} ${pL.x + 4},${pL.y - 5} ${pL.x},${pL.y}`}
+                      className="fem-peil-driehoek"
+                    />
                     <text x={pL.x - 10} y={pL.y + 4} className="fem-stramien-elev fem-stramien-elev-left">
-                      {elevText}
+                      {labelTekst}
                     </text>
-                    {/* RIGHT label — combineert level-naam + peilmaat */}
                     <text x={pR.x + 10} y={pR.y + 4} className="fem-stramien-elev fem-stramien-elev-right">
-                      {elevText}
+                      {labelTekst}
                     </text>
                     {/* Minus button — verwijder dit niveau */}
                     {setStructuralGrid && (
@@ -2553,7 +2571,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         className="fem-stramien-minus"
                         onClick={(e) => { e.stopPropagation(); removeZAxis(az.id); }}
                       >
-                        <title>Niveau "{az.label}" ({elevMeters >= 0 ? "+" : ""}{elevMeters.toFixed(2)} m) verwijderen</title>
+                        <title>Niveau {elevText} verwijderen</title>
                         <circle r={7} />
                         <text y={3}>−</text>
                       </g>

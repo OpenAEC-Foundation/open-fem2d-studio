@@ -158,6 +158,20 @@
    draagt zo de terugkerende koptekst. */
 .report-doorlopend {
   height: auto;
+  /* A4-paginagrenzen zichtbaar op scherm: een herhalende achtergrond met
+     één haarlijn op elke veelvoud van de papierhoogte, zodat je ziet waar de
+     print afbreekt zónder dat hoofdstukken op een nieuwe pagina beginnen.
+     De hoogte is de pagina MINUS de kop-/voetmarge (18 + 20 mm), want dat is
+     de werkelijke tekstruimte per vel. Print negeert dit (zie @media print). */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--rpt-page-h, 297mm) - 38mm - 1px),
+    rgba(0, 0, 0, 0.28) calc(var(--rpt-page-h, 297mm) - 38mm - 1px),
+    rgba(0, 0, 0, 0.28) calc(var(--rpt-page-h, 297mm) - 38mm)
+  );
+  background-position: 0 18mm; /* start onder de bovenmarge */
+  background-repeat: repeat-y;
 }
 .rpt-doc {
   width: 100%;
@@ -580,6 +594,8 @@
     padding: 0 !important;
     margin: 0 !important;
     box-shadow: none !important;
+    /* De scherm-hulplijnen die de A4-grenzen markeren horen niet op papier. */
+    background-image: none !important;
   }
 
   /* De thead met het kopblok herhaalt op elke printpagina. */
