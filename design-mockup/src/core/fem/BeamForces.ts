@@ -80,6 +80,40 @@ export function calculateBeamInternalForces(
   const releasedLocalDofs: number[] = [];
   if (start === 'hinge') releasedLocalDofs.push(2); // θ1
   if (end === 'hinge') releasedLocalDofs.push(5);   // θ2
+
+  // ── Werkelijke lokale eind-DOF's voor de verplaatsingskromme ──────────────
+  // Bij een scharnier is de eindrotatie van het ELEMENT niet gelijk aan de
+  // knooprotatie. Terugrekenen uit de nul-moment-voorwaarde op het released
+  // DOF, met de ORIGINELE (niet-gecondenseerde) Kl en belastingvector:
+  //   K_RR·d_R = F_R^eq − K_RC·d_C   (want intern moment = K·d − F^eq = 0)
+  // Moet vóór applyEndReleases gebeuren omdat die Kl/F in-place muteert.
+  const dLoc = localDisp.slice();
+  if (releasedLocalDofs.length === 1) {
+    const r = releasedLocalDofs[0];
+    let rhs = equivalentNodalForces[r];
+    for (let j = 0; j < 6; j++) {
+      if (j !== r) rhs -= Kl.get(r, j) * dLoc[j];
+    }
+    const krr = Kl.get(r, r);
+    if (Math.abs(krr) > 1e-20) dLoc[r] = rhs / krr;
+  } else if (releasedLocalDofs.length === 2) {
+    const [r1, r2] = releasedLocalDofs;
+    const a11 = Kl.get(r1, r1), a12 = Kl.get(r1, r2);
+    const a21 = Kl.get(r2, r1), a22 = Kl.get(r2, r2);
+    let b1 = equivalentNodalForces[r1];
+    let b2 = equivalentNodalForces[r2];
+    for (let j = 0; j < 6; j++) {
+      if (j === r1 || j === r2) continue;
+      b1 -= Kl.get(r1, j) * dLoc[j];
+      b2 -= Kl.get(r2, j) * dLoc[j];
+    }
+    const det = a11 * a22 - a12 * a21;
+    if (Math.abs(det) > 1e-20) {
+      dLoc[r1] = (a22 * b1 - a12 * b2) / det;
+      dLoc[r2] = (a11 * b2 - a21 * b1) / det;
+    }
+  }
+
   if (releasedLocalDofs.length > 0) {
     applyEndReleases(Kl, releasedLocalDofs, equivalentNodalForces);
   }
@@ -162,6 +196,61 @@ export function calculateBeamInternalForces(
     bendingMoment.push(M_x);
   }
 
+  // ── Veldverplaatsingen w(x) en u(x) op dezelfde stations ─────────────────
+  // Totale lokale verplaatsing = homogeen deel + particulier deel:
+  //  • Homogeen: Hermite-vormfuncties op de lokale eind-DOF's dLoc (voor
+  //    scharnieren de teruggerekende element-eindrotatie, zie hierboven).
+  //  • Particulier: de ingeklemde-ligger-oplossing (w = w' = 0, resp. u = 0
+  //    op beide uiteinden) van de elementbelasting. Samen geeft dit de EXACTE
+  //    Euler-Bernoulli-oplossing binnen het element.
+  //
+  // Tekenconventie: w positief in lokale +y (90° CCW vanaf de staafas
+  // node1→node2) — dezelfde conventie als de knoopverplaatsingen (voor een
+  // horizontale staaf is +y omhoog; doorhangen onder gravitatie is negatief).
+  // Sagging-positieve M (bestaande conventie) hoort dus bij negatieve w.
+  // u positief langs de staafas richting node2.
+  //
+  // GEDEKTE elementbelastingen (particulier deel): volledige-lengte uniforme
+  // en trapeziumvormige q (lokaal én globaal opgegeven; qx en qy).
+  // NIET gedekt: partiële q (startT > 0 of endT < 1) — daarvoor wordt alleen
+  // het homogene deel gebruikt (exact óp de knopen, tussenliggend benaderd).
+  // Puntlasten grijpen in deze core altijd op knopen aan en zitten daarmee
+  // volledig in het homogene deel.
+  const EI = material.E * element.section.I;
+  const EA = material.E * element.section.A;
+  const dqy = qyE - qyS;
+  const dqx = qxE - qxS;
+  const hasFullSpanLoad = !isPartial && (qyS !== 0 || qyE !== 0 || qxS !== 0 || qxE !== 0);
+
+  const deflection: number[] = [];
+  const axialDisp: number[] = [];
+  const u1L = dLoc[0], v1L = dLoc[1], t1L = dLoc[2];
+  const u2L = dLoc[3], v2L = dLoc[4], t2L = dLoc[5];
+  for (let i = 0; i < NUM_STATIONS; i++) {
+    const x = stations[i];
+    const xi = L > 0 ? x / L : 0;
+    // Hermite (transversaal) + lineair (axiaal) homogeen deel
+    const H1 = 1 - 3 * xi * xi + 2 * xi * xi * xi;
+    const H2 = x * (1 - xi) * (1 - xi);
+    const H3 = 3 * xi * xi - 2 * xi * xi * xi;
+    const H4 = x * xi * (xi - 1);
+    let w = H1 * v1L + H2 * t1L + H3 * v2L + H4 * t2L;
+    let u = u1L + (u2L - u1L) * xi;
+    if (hasFullSpanLoad && EI > 0 && EA > 0) {
+      // Particuliere oplossing met ingeklemde randen:
+      //  uniform:   w_p = qyS·x²(L−x)²/(24EI)
+      //  driehoek:  w_p = Δqy·(x⁵/(120L) − L·x³/40 + L²·x²/60)/EI
+      w += qyS * x * x * (L - x) * (L - x) / (24 * EI);
+      w += dqy * (Math.pow(x, 5) / (120 * L) - L * x * x * x / 40 + L * L * x * x / 60) / EI;
+      //  axiaal uniform:  u_p = qxS·x(L−x)/(2EA)
+      //  axiaal driehoek: u_p = Δqx·x(L²−x²)/(6L·EA)
+      u += qxS * x * (L - x) / (2 * EA);
+      u += dqx * x * (L * L - x * x) / (6 * L * EA);
+    }
+    deflection.push(w);
+    axialDisp.push(u);
+  }
+
   // Find maximum absolute values for scaling
   const maxN = Math.max(...normalForce.map(Math.abs), 1e-10);
   const maxV = Math.max(...shearForce.map(Math.abs), 1e-10);
@@ -179,6 +268,8 @@ export function calculateBeamInternalForces(
     normalForce,
     shearForce,
     bendingMoment,
+    deflection,
+    axialDisp,
     maxN,
     maxV,
     maxM

@@ -201,6 +201,8 @@ export function combineResults(
     let normalForce: number[] = [];
     let shearForce: number[] = [];
     let bendingMoment: number[] = [];
+    let deflection: number[] = [];
+    let axialDisp: number[] = [];
 
     for (const [caseId, factor] of combo.factors) {
       const r = perCase.get(caseId);
@@ -219,16 +221,22 @@ export function combineResults(
         normalForce   = new Array(ef.stations_mm.length).fill(0);
         shearForce    = new Array(ef.stations_mm.length).fill(0);
         bendingMoment = new Array(ef.stations_mm.length).fill(0);
+        deflection    = new Array(ef.stations_mm.length).fill(0);
+        axialDisp     = new Array(ef.stations_mm.length).fill(0);
       }
       for (let i = 0; i < ef.stations_mm.length && i < normalForce.length; i++) {
         normalForce[i]   += factor * (ef.normalForce[i]   ?? 0);
         shearForce[i]    += factor * (ef.shearForce[i]    ?? 0);
         bendingMoment[i] += factor * (ef.bendingMoment[i] ?? 0);
+        // ?. — resultaten van vóór de veldzakking-uitbreiding missen deze arrays
+        deflection[i]    += factor * (ef.deflection?.[i]  ?? 0);
+        axialDisp[i]     += factor * (ef.axialDisp?.[i]   ?? 0);
       }
     }
     elements.set(bid, {
       N, V, M_start: Ms, M_end: Me,
       L_mm, stations_mm, normalForce, shearForce, bendingMoment,
+      deflection, axialDisp,
     });
   }
 

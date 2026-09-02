@@ -71,11 +71,14 @@ export default function FemResultsOverlay({
   // ── Auto-scale the deflection so the biggest sample is visible. ─────────
   // We sample every beam and find the max curve offset (mm), then scale so
   // it shows as ~60px on screen.
-  type Sample = { sx: number; sy: number; dx_mm: number; dz_mm: number };
+  // w_mm = LOKALE transversale zakking op dit sample (voor veldmax-label).
+  type Sample = { sx: number; sy: number; dx_mm: number; dz_mm: number; w_mm: number };
   type BeamSamples = { beam: Beam; samples: Sample[] };
 
   const allBeamSamples: BeamSamples[] = [];
   let maxOffsetMm = 0;
+  // Veldmaximum |w| over alle staven — voor het extreme-waarde-label.
+  let maxFieldW: { beamId: number; sampleIdx: number; w_mm: number } | null = null;
 
   for (const beam of beams) {
     const nA = nodes.find(n => n.id === beam.from);
@@ -89,34 +92,58 @@ export default function FemResultsOverlay({
     const L = Math.hypot(dx, dz);
     if (L < 1e-6) continue;
     const c = dx / L, s = dz / L;
-    // Transform global node disps into element-local
-    // local x = (c, s) ; local y = (-s, c)
-    const u1L = dA.ux * c + dA.uz * s;          // axial at A
-    const v1L = -dA.ux * s + dA.uz * c;         // transverse at A
-    const t1  = dA.ry;                          // rotation at A
-    const u2L = dB.ux * c + dB.uz * s;
-    const v2L = -dB.ux * s + dB.uz * c;
-    const t2  = dB.ry;
 
     const samples: Sample[] = [];
-    for (let k = 0; k <= SAMPLES_PER_BEAM; k++) {
-      const xi = k / SAMPLES_PER_BEAM;                  // 0..1 along element
-      // Linear interp for axial; Hermite for transverse
-      const uL = u1L + (u2L - u1L) * xi;
-      const N1 = 1 - 3 * xi * xi + 2 * xi * xi * xi;
-      const N2 = L * (xi - 2 * xi * xi + xi * xi * xi);
-      const N3 = 3 * xi * xi - 2 * xi * xi * xi;
-      const N4 = L * (-xi * xi + xi * xi * xi);
-      const vL = N1 * v1L + N2 * t1 + N3 * v2L + N4 * t2;
-      // Back to global
+    const pushSample = (xi: number, uL: number, vL: number) => {
+      // local x = (c, s) ; local y = (-s, c) — terug naar globaal
       const dxG = uL * c + vL * (-s);
       const dzG = uL * s + vL * c;
       const px = nA.x + dx * xi;
       const pz = nA.z + dz * xi;
       const screen = worldToScreen(px, pz);
-      samples.push({ sx: screen.x, sy: screen.y, dx_mm: dxG, dz_mm: dzG });
+      samples.push({ sx: screen.x, sy: screen.y, dx_mm: dxG, dz_mm: dzG, w_mm: vL });
       const off = Math.hypot(dxG, dzG);
       if (off > maxOffsetMm) maxOffsetMm = off;
+      if (maxFieldW === null || Math.abs(vL) > Math.abs(maxFieldW.w_mm)) {
+        maxFieldW = { beamId: beam.id, sampleIdx: samples.length - 1, w_mm: vL };
+      }
+    };
+
+    // Voorkeurspad: de ECHTE veldkromme uit de solver-stations (deflection[]
+    // bevat homogeen Hermite-deel + particuliere oplossing van de element-
+    // belasting — een vrij opgelegde ligger onder q toont zo zijn werkelijke
+    // doorhang in het veld, ook al zijn de knoopverplaatsingen ~0).
+    const ef = result.elements.get(beam.id);
+    const hasCurve = !!ef && ef.L_mm > 0 && ef.stations_mm.length > 1 &&
+      (ef.deflection?.length ?? 0) === ef.stations_mm.length &&
+      (ef.axialDisp?.length  ?? 0) === ef.stations_mm.length;
+
+    if (hasCurve && ef) {
+      for (let k = 0; k < ef.stations_mm.length; k++) {
+        const xi = ef.stations_mm[k] / ef.L_mm;
+        pushSample(xi, ef.axialDisp[k], ef.deflection[k]);
+      }
+    } else {
+      // Fallback (geen station-data): Hermite op knoopwaarden alleen.
+      // Transform global node disps into element-local
+      const u1L = dA.ux * c + dA.uz * s;          // axial at A
+      const v1L = -dA.ux * s + dA.uz * c;         // transverse at A
+      const t1  = dA.ry;                          // rotation at A
+      const u2L = dB.ux * c + dB.uz * s;
+      const v2L = -dB.ux * s + dB.uz * c;
+      const t2  = dB.ry;
+
+      for (let k = 0; k <= SAMPLES_PER_BEAM; k++) {
+        const xi = k / SAMPLES_PER_BEAM;                  // 0..1 along element
+        // Linear interp for axial; Hermite for transverse
+        const uL = u1L + (u2L - u1L) * xi;
+        const N1 = 1 - 3 * xi * xi + 2 * xi * xi * xi;
+        const N2 = L * (xi - 2 * xi * xi + xi * xi * xi);
+        const N3 = 3 * xi * xi - 2 * xi * xi * xi;
+        const N4 = L * (-xi * xi + xi * xi * xi);
+        const vL = N1 * v1L + N2 * t1 + N3 * v2L + N4 * t2;
+        pushSample(xi, uL, vL);
+      }
     }
     allBeamSamples.push({ beam, samples });
   }
@@ -156,6 +183,31 @@ export default function FemResultsOverlay({
       />
     );
   });
+
+  // Extreme-waarde-label op het VELDmaximum |w| (lokale transversale zakking)
+  // — dankzij de station-kromme ligt dat punt ook mídden in een veld, niet
+  // alleen op knopen. Getoond bij "Extreme waarden tonen".
+  const renderDeflectionExtreme = () => {
+    if (!displayFlags.showExtremes || !maxFieldW) return null;
+    if (Math.abs(maxFieldW.w_mm) < 1e-3) return null; // < 0.001 mm: ruis
+    const bs = allBeamSamples.find(b => b.beam.id === maxFieldW!.beamId);
+    const sm = bs?.samples[maxFieldW.sampleIdx];
+    if (!sm) return null;
+    const lx = sm.sx + sm.dx_mm * dispScale;
+    const ly = sm.sy - sm.dz_mm * dispScale;
+    // Label onder het diepste punt van de getekende kromme (bij w<0 = onder).
+    const off = maxFieldW.w_mm <= 0 ? 18 : -18;
+    return (
+      <g key="def-extreme">
+        <rect x={lx - 34} y={ly + off - 9} width={68} height={16} rx={3}
+          className="fem-result-label-bg" />
+        <text x={lx} y={ly + off + 3} textAnchor="middle"
+          className="fem-diagram-value" style={{ fill: "var(--theme-accent)" }}>
+          w = {maxFieldW.w_mm.toFixed(1)} mm
+        </text>
+      </g>
+    );
+  };
 
   // Reactions — twee aparte pijlen per oplegging: horizontaal (Fx) en
   // verticaal (Fz). Pijl wijst in de richting van de KRACHT (head richting
@@ -446,6 +498,7 @@ export default function FemResultsOverlay({
         </marker>
       </defs>
       {showDeflection && renderDeflection()}
+      {showDeflection && renderDeflectionExtreme()}
       {/* Internal-force diagrams drawn under reactions/labels so they don't
           occlude annotation text. */}
       {showM && renderForceDiagram("M", scaleM, "fem-diagram-M")}

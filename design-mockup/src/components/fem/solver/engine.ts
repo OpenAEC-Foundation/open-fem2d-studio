@@ -228,7 +228,8 @@ function convertResult(
 
   // Beam internal forces — engineResult.beamForces[meshId] has:
   //   endpoint values N1/V1/M1/N2/V2/M2 (local, N en N·m)
-  //   AND 21-station arrays stations[], normalForce[], shearForce[], bendingMoment[]
+  //   AND 21-station arrays stations[], normalForce[], shearForce[],
+  //   bendingMoment[], deflection[], axialDisp[]
   // We forward ALL of it (with mm/N·mm units for the UI) so the canvas
   // can draw real parabola / step shapes instead of linear interpolation.
   for (const [uiId, meshId] of beamIdMap) {
@@ -246,6 +247,8 @@ function convertResult(
       normalForce:  bf.normalForce  ?? [],
       shearForce:   bf.shearForce   ?? [],
       bendingMoment: (bf.bendingMoment ?? []).map((m: number) => m * 1000), // N·m → N·mm
+      deflection: (bf.deflection ?? []).map((w: number) => w * 1000), // m → mm (lokaal, +y)
+      axialDisp:  (bf.axialDisp  ?? []).map((u: number) => u * 1000), // m → mm
     });
   }
 

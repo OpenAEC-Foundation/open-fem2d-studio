@@ -391,6 +391,17 @@ export interface IBeamForces {
   normalForce: number[];        // N(x)
   shearForce: number[];         // V(x)
   bendingMoment: number[];      // M(x)
+  /**
+   * Veldzakking w(x) op dezelfde stations (m, LOKALE assen): transversale
+   * verplaatsing loodrecht op de staafas, positief in lokale +y (90° CCW
+   * vanaf de as node1→node2 — voor een horizontale staaf is dat omhoog,
+   * net als de knoopverplaatsingen; doorhangen onder gravitatie < 0).
+   * Hermite-homogeen deel + particuliere oplossing van de elementbelasting.
+   * Optioneel: externe backends leveren dit veld (nog) niet.
+   */
+  deflection?: number[];
+  /** Axiale verplaatsing u(x) op dezelfde stations (m, positief richting node2). */
+  axialDisp?: number[];
   // Maximum values for scaling
   maxN: number;
   maxV: number;

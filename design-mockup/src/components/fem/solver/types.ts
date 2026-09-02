@@ -154,6 +154,25 @@ export interface ElementForces {
    * Parabolic under UDL, linear under point loads — drawn station-per-station.
    */
   bendingMoment: number[];
+
+  /**
+   * Veldzakking w(x) op dezelfde stations (mm, LOKALE assen): transversale
+   * verplaatsing loodrecht op de staafas, positief in lokale +y (90° CCW
+   * vanaf de as from→to). Voor een horizontale staaf is +y omhoog — dezelfde
+   * conventie als de knoop-uz; doorhangen onder gravitatie geeft dus
+   * NEGATIEVE waarden (consistent met sagging-positieve M: veldmoment > 0
+   * hoort bij w < 0). Bevat het Hermite-homogene deel op de eind-DOF's plus
+   * de particuliere oplossing van de elementbelasting (volledige-lengte
+   * uniforme + trapezium-q; partiële q wordt alleen homogeen benaderd).
+   */
+  deflection: number[];
+
+  /**
+   * Axiale verplaatsing u(x) op dezelfde stations (mm, lokaal, positief
+   * richting "to"-knoop). Lineair homogeen deel + particuliere oplossing
+   * voor verdeelde axiale q.
+   */
+  axialDisp: number[];
 }
 
 export interface SolverResult {
