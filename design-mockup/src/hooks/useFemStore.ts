@@ -417,6 +417,12 @@ export interface FemStore {
   removeSupport: (nodeId: number) => void;
   addLoad: (l: Omit<Load, "id">) => void;
   updateLoad: (id: number, updates: Partial<Load>) => void;
+  // Verwijderen op id (tabel-editor) — zelfde cascade-regels als
+  // deleteSelected, maar zonder dat het element geselecteerd hoeft te zijn.
+  removeNode: (id: number) => void;
+  removeBeam: (id: number) => void;
+  removeLoad: (id: number) => void;
+  removePlate: (id: number) => void;
   deleteSelected: () => void;
   splitBeamAt: (beamId: number, x: number, z: number) => void;
   // Transformaties — multi-selectie-bewust. Retourneren `false` wanneer de
@@ -638,6 +644,66 @@ export function useFemStore(): FemStore {
     pushHistory({ ...cur, loads: nextLoads });
   }, [pushHistory]);
 
+  // ── Verwijderen op id (tabel-editor) ─────────────────────────────────────
+  // Zelfde cascade-regels als de overeenkomstige deleteSelected-takken; elke
+  // mutator pusht één history-snapshot. Wijst de huidige selectie naar het
+  // verwijderde element, dan wordt die leeggemaakt.
+
+  /** Verwijder een knoop + aanliggende staven, oplegging, platen en lasten. */
+  const removeNode = useCallback((id: number) => {
+    const cur = latestRef.current;
+    if (!cur.nodes.some(n => n.id === id)) return;
+    const nextNodes = cur.nodes.filter(n => n.id !== id);
+    const nextBeams = cur.beams.filter(b => b.from !== id && b.to !== id);
+    const nextSupports = cur.supports.filter(s => s.nodeId !== id);
+    const goneBeamIds = new Set(cur.beams.filter(b => b.from === id || b.to === id).map(b => b.id));
+    const nextLoads = cur.loads.filter(l =>
+      l.nodeId !== id && !(l.beamId !== undefined && goneBeamIds.has(l.beamId)));
+    const nextPlates = cur.plates.filter(p => !p.nodeIds.includes(id));
+    setNodes(nextNodes);
+    setBeams(nextBeams);
+    setSupports(nextSupports);
+    setPlates(nextPlates);
+    setLoads(nextLoads);
+    pushHistory({
+      nodes: nextNodes, beams: nextBeams, supports: nextSupports,
+      plates: nextPlates, loads: nextLoads,
+    });
+    setSelection(prev => prev && prev.type === "node" && prev.id === id ? null : prev);
+  }, [pushHistory]);
+
+  /** Verwijder een staaf + de lasten die eraan hangen. */
+  const removeBeam = useCallback((id: number) => {
+    const cur = latestRef.current;
+    if (!cur.beams.some(b => b.id === id)) return;
+    const nextBeams = cur.beams.filter(b => b.id !== id);
+    const nextLoads = cur.loads.filter(l => l.beamId !== id);
+    setBeams(nextBeams);
+    setLoads(nextLoads);
+    pushHistory({ ...cur, beams: nextBeams, loads: nextLoads });
+    setSelection(prev => prev && prev.type === "beam" && prev.id === id ? null : prev);
+  }, [pushHistory]);
+
+  /** Verwijder één last. */
+  const removeLoad = useCallback((id: number) => {
+    const cur = latestRef.current;
+    if (!cur.loads.some(l => l.id === id)) return;
+    const nextLoads = cur.loads.filter(l => l.id !== id);
+    setLoads(nextLoads);
+    pushHistory({ ...cur, loads: nextLoads });
+    setSelection(prev => prev && prev.type === "load" && prev.id === id ? null : prev);
+  }, [pushHistory]);
+
+  /** Verwijder één plaat (knopen blijven staan). */
+  const removePlate = useCallback((id: number) => {
+    const cur = latestRef.current;
+    if (!cur.plates.some(p => p.id === id)) return;
+    const nextPlates = cur.plates.filter(p => p.id !== id);
+    setPlates(nextPlates);
+    pushHistory({ ...cur, plates: nextPlates });
+    setSelection(prev => prev && prev.type === "plate" && prev.id === id ? null : prev);
+  }, [pushHistory]);
+
   const deleteSelected = useCallback(() => {
     if (!selection) return;
     const cur = latestRef.current;
@@ -836,6 +902,7 @@ export function useFemStore(): FemStore {
     setSolverOutputs,
     addNode, updateNode, addBeam, updateBeam, addPlate,
     addSupport, removeSupport, addLoad, updateLoad,
+    removeNode, removeBeam, removeLoad, removePlate,
     deleteSelected, splitBeamAt, addLoadCase,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     translateNodes,

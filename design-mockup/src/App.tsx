@@ -20,6 +20,8 @@ import CheckPanel from "./components/panels/CheckPanel";
 import FemProjectTree from "./components/fem/FemProjectTree";
 import FemProperties from "./components/fem/FemProperties";
 import FemCanvas from "./components/fem/FemCanvas";
+import TableView from "./components/table/TableView";
+import type { TableDataset, TableViewApi } from "./components/table/tableTypes";
 import LoadCaseTabBar from "./components/fem/LoadCaseTabBar";
 import LoadCasesDialog from "./components/fem/LoadCasesDialog";
 import Sheet from "./components/openaec/Sheet";
@@ -149,6 +151,28 @@ function App() {
   // R5 — losgekoppeld rapportvenster ("Naast je scherm").
   const { createDetachedWindow } = useWindowManager();
   const { t: tRibbon } = useTranslation("ribbon");
+
+  // ── Tabel-editor (ribbon-tab "Tabel") ──────────────────────────────────
+  // De ribbon-knoppen kiezen de dataset; de hoofdweergave "table" toont hem.
+  const [tableDataset, setTableDataset] = useState<TableDataset>("nodes");
+  // Imperatieve API van de gemonteerde TableView (Export CSV / Kopiëren /
+  // Filter-focus vanaf de ribbon).
+  const tableApiRef = useRef<TableViewApi | null>(null);
+  const handleTableDataset = useCallback((d: TableDataset) => {
+    setTableDataset(d);
+    setActiveView("table");
+  }, []);
+  /** Roep een TableViewApi-actie aan; schakelt zo nodig eerst naar de
+   *  tabelweergave (de view moet gemonteerd zijn vóór de api-ref bestaat). */
+  const invokeTableApi = useCallback((fn: keyof TableViewApi) => {
+    if (tableApiRef.current) {
+      tableApiRef.current[fn]();
+    } else {
+      setActiveView("table");
+      setTimeout(() => tableApiRef.current?.[fn](), 60);
+    }
+  }, []);
+
   const handleDetachReport = useCallback(() => {
     void createDetachedWindow({
       view: "report",
@@ -804,6 +828,38 @@ function App() {
         return <ReportPreview data={reportData} onDetach={handleDetachReport} />;
       case "check":
         return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} />;
+      case "table":
+        // Tabel-editor (ribbon-tab "Tabel") — model en lasten als bewerkbare
+        // tabellen, resultaten alleen-lezen. Zelfde store-mutators als het
+        // canvas, dus selectie/undo werken gewoon door.
+        return <TableView
+          dataset={tableDataset}
+          apiRef={tableApiRef}
+          nodes={fem.nodes}
+          beams={fem.beams}
+          plates={fem.plates}
+          supports={fem.supports}
+          loads={fem.loads}
+          loadCases={fem.loadCases}
+          activeLoadCaseId={fem.activeLoadCaseId}
+          selection={fem.selection}
+          setSelection={fem.setSelection}
+          addNode={fem.addNode}
+          updateNode={fem.updateNode}
+          removeNode={fem.removeNode}
+          addBeam={fem.addBeam}
+          updateBeam={fem.updateBeam}
+          removeBeam={fem.removeBeam}
+          removePlate={fem.removePlate}
+          addSupport={fem.addSupport}
+          removeSupport={fem.removeSupport}
+          addLoad={fem.addLoad}
+          updateLoad={fem.updateLoad}
+          removeLoad={fem.removeLoad}
+          combinations={fem.combinations}
+          combinationResults={fem.combinationResults}
+          envelope={fem.envelope}
+        />;
       case "insights":
         return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} />;
       case "viewer":
@@ -959,6 +1015,11 @@ function App() {
         onOpenProject={() => { void handleOpenProject(); }}
         onSaveProject={() => { void handleSaveProject(); }}
         onSaveProjectAs={() => { void handleSaveProjectAs(); }}
+        tableDataset={tableDataset}
+        onTableDataset={handleTableDataset}
+        onTableExportCsv={() => invokeTableApi("exportCsv")}
+        onTableCopy={() => invokeTableApi("copyTable")}
+        onTableFocusFilter={() => invokeTableApi("focusFilter")}
       />
       <DocumentBar
         fileName={projectPath ? projectPath.split(/[\\/]/).pop() : undefined}

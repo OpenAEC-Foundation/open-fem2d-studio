@@ -73,6 +73,17 @@ interface RibbonProps {
   onPageSizeChange?: (size: "A4" | "A3") => void;
   /** @deprecated */
   onOrientationChange?: (orientation: "portrait" | "landscape") => void;
+  // ── Tabel-tab wiring ──────────────────────────────────────────────────
+  /** Actieve dataset van de tabel-editor (highlight op de Tabel-tab). */
+  tableDataset?: import("../table/tableTypes").TableDataset;
+  /** Dataset kiezen — App schakelt daarbij ook de hoofdweergave om. */
+  onTableDataset?: (d: import("../table/tableTypes").TableDataset) => void;
+  /** Actieve tabel als CSV downloaden. */
+  onTableExportCsv?: () => void;
+  /** Actieve tabel als TSV naar het klembord. */
+  onTableCopy?: () => void;
+  /** Filterveld boven de tabel focussen. */
+  onTableFocusFilter?: () => void;
 }
 
 const TABS = ["home", "table", "settings", "insights", "ifc", "check", "report"] as const;
@@ -90,6 +101,7 @@ export default function Ribbon({
   autoRunEnabled, onToggleAutoRun, onExportCheck,
   onFilterSelection,
   onExportHtml,
+  tableDataset, onTableDataset, onTableExportCsv, onTableCopy, onTableFocusFilter,
 }: RibbonProps) {
   const { t, i18n } = useTranslation("ribbon");
   const [activeTab, setActiveTab] = useState<TabId>("home");
@@ -144,6 +156,7 @@ export default function Ribbon({
     if (newTab === "ifc") onViewChange("ifc");
     else if (newTab === "report") onViewChange("report");
     else if (newTab === "insights") onViewChange("insights");
+    else if (newTab === "table") onViewChange("table");
     else onViewChange("default");
   }, [activeTab, onViewChange]);
 
@@ -154,7 +167,8 @@ export default function Ribbon({
   useEffect(() => {
     if (
       (activeView === "report" || activeView === "ifc" ||
-       activeView === "insights" || activeView === "check") &&
+       activeView === "insights" || activeView === "check" ||
+       activeView === "table") &&
       activeTab !== activeView
     ) {
       switchTab(activeView as TabId);
@@ -206,7 +220,13 @@ export default function Ribbon({
           onSaveProjectAs={onSaveProjectAs}
         />;
       case "table":
-        return <TableTab />;
+        return <TableTab
+          activeDataset={tableDataset}
+          onSelectDataset={onTableDataset}
+          onExportCsv={onTableExportCsv}
+          onCopyTable={onTableCopy}
+          onFocusFilter={onTableFocusFilter}
+        />;
       case "settings":
         return <SettingsTab onSettingsClick={onSettingsClick} onProjectSettingsClick={onProjectSettingsClick} />;
       case "insights":
