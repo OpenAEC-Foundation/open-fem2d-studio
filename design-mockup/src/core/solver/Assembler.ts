@@ -549,40 +549,56 @@ export function getConstrainedDofs(
  */
 export function applyEndReleases(Ke: Matrix, releasedDofs: number[], F?: number[]): void {
   const n = 6;
-  const retained: number[] = [];
-  for (let i = 0; i < n; i++) {
-    if (!releasedDofs.includes(i)) retained.push(i);
-  }
 
-  // Static condensation: K_rr - K_rc * K_cc^-1 * K_cr
-  // For single DOF releases, this simplifies significantly
+  // Sequentiële Gauss-eliminatie van de released DOF's. CRUCIAAL: bij het
+  // elimineren van DOF c moeten óók de rijen/kolommen van de andere nog te
+  // elimineren released DOF's bijgewerkt worden — de released DOF's zijn
+  // onderling gekoppeld (bv. K(θ1,θ2) = 2EI/L bij een dubbel scharnier).
+  // De oude variant behandelde K_cc als diagonaal en gaf een pendelstaaf
+  // daardoor NEGATIEVE dwarsstijfheid (−6EI/L³ i.p.v. exact 0).
+  const eliminated = new Set<number>();
   for (const c of releasedDofs) {
     const kcc = Ke.get(c, c);
-    if (Math.abs(kcc) < 1e-20) continue;
+    if (Math.abs(kcc) < 1e-20) {
+      // Geen stijfheid op dit DOF (al mechanisme) — alleen ontkoppelen.
+      for (let i = 0; i < n; i++) { Ke.set(i, c, 0); Ke.set(c, i, 0); }
+      if (F) F[c] = 0;
+      eliminated.add(c);
+      continue;
+    }
 
-    // Condense force vector FIRST (uses original K values before modification)
-    // F_i -= K_ic / K_cc * F_c
+    // Actief = alle DOF's die nog niet geëlimineerd zijn, behalve c zelf —
+    // dus inclusief andere released DOF's die later aan de beurt komen.
+    const active: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i !== c && !eliminated.has(i)) active.push(i);
+    }
+
+    // Kolom/rij-waarden cachen vóór de in-place-update.
+    const col = active.map(i => Ke.get(i, c));
+    const row = active.map(j => Ke.get(c, j));
+
+    // Krachtvector eerst (gebruikt de ongewijzigde koppelingen).
     if (F) {
       const fc = F[c];
-      for (const i of retained) {
-        F[i] -= Ke.get(i, c) / kcc * fc;
+      for (let a = 0; a < active.length; a++) {
+        F[active[a]] -= col[a] / kcc * fc;
       }
       F[c] = 0;
     }
 
-    // Modify retained entries: K_ij -= K_ic * K_cj / K_cc
-    for (const i of retained) {
-      for (const j of retained) {
-        const kic = Ke.get(i, c);
-        const kcj = Ke.get(c, j);
-        Ke.addAt(i, j, -kic * kcj / kcc);
+    // K_ij -= K_ic · K_cj / K_cc voor alle actieve i, j.
+    for (let a = 0; a < active.length; a++) {
+      for (let b = 0; b < active.length; b++) {
+        Ke.addAt(active[a], active[b], -col[a] * row[b] / kcc);
       }
     }
 
-    // Zero out the released DOF row and column
+    // Rij en kolom van het geëlimineerde DOF op nul.
     for (let i = 0; i < n; i++) {
       Ke.set(i, c, 0);
       Ke.set(c, i, 0);
     }
+    eliminated.add(c);
   }
 }
