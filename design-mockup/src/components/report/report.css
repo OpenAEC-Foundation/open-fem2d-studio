@@ -327,6 +327,68 @@
   margin-left: 2mm;
 }
 
+/* ─── R3: resultaatsecties ─── */
+
+/* Constructieschets: past zich aan de modelomvang aan, max. één vel. */
+.rpt-schema-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 165mm;
+  margin: 2mm auto 0;
+}
+
+/* Combinatie-keuze (scherm-chrome; de print toont .rpt-print-only-regel). */
+.rpt-scope {
+  margin: 0 0 3mm;
+  font-size: 9pt;
+  color: #555;
+}
+
+.rpt-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2mm;
+}
+
+.rpt-scope-select {
+  font-family: inherit;
+  font-size: 9pt;
+  color: #1a1a1a;
+  background: #fff;
+  border: 0.2mm solid #999;
+  border-radius: 1mm;
+  padding: 0.8mm 1.5mm;
+}
+
+/* Krachtsverdeling: per staaf een blok met een 2×2-diagramraster. */
+.rpt-diagram-beam {
+  margin-bottom: 5mm;
+}
+
+.rpt-diagram-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2mm 6mm;
+}
+
+.rpt-diagram-cell {
+  min-width: 0;
+}
+
+.rpt-diagram-title {
+  font-size: 8.5pt;
+  font-weight: 600;
+  color: #333;
+}
+
+.rpt-diagram-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0.15mm solid #ddd;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Print — zelfde inhoud, app-chrome weg. De @page-regel (formaat, marges,
    kop-/voettekst met paginanummers) injecteert ReportShell dynamisch.
@@ -397,17 +459,21 @@
     break-inside: avoid;
   }
 
-  /* Lange invoersecties mogen wél over pagina's breken — de blokken en
-     tabelrijen erbinnen houden zichzelf bijeen. */
+  /* Lange invoer- en resultaatsecties mogen wél over pagina's breken — de
+     blokken en tabelrijen erbinnen houden zichzelf bijeen. */
   .report-page[data-section="nodes"] .rpt-block,
   .report-page[data-section="beams"] .rpt-block,
   .report-page[data-section="sections"] .rpt-block,
-  .report-page[data-section="loads"] .rpt-block {
+  .report-page[data-section="loads"] .rpt-block,
+  .report-page[data-section="diagrams"] .rpt-block,
+  .report-page[data-section="reactions"] .rpt-block,
+  .report-page[data-section="displacements"] .rpt-block {
     break-inside: auto;
   }
 
   .rpt-profile-block,
-  .rpt-loadcase-block {
+  .rpt-loadcase-block,
+  .rpt-diagram-beam {
     break-inside: avoid;
   }
 

@@ -27,7 +27,8 @@ import type {
   LoadCase,
   StructuralGrid,
 } from "../fem/femTypes";
-import type { LoadCombination } from "../fem/solver/combinations";
+import type { LoadCombination, Envelope } from "../fem/solver/combinations";
+import type { SolverResult } from "../fem/solver/types";
 
 export interface ReportData {
   nodes: Node[];
@@ -38,6 +39,16 @@ export interface ReportData {
   combinations: LoadCombination[];
   structuralGrid: StructuralGrid;
   selfWeightEnabled: boolean;
+  /**
+   * R3 — resultaten van de multi-LC-pipeline (Berekenen): per combinatie een
+   * volledig SolverResult (incl. 21-station-arrays per staaf) + de omhullende.
+   * `null` betekent EERLIJK "nog niet berekend": useFemStore zet deze velden
+   * op null bij élke model-/lastwijziging (invalidatie-effect), dus de
+   * resultaatsecties tonen nooit stilzwijgend verouderde uitkomsten — ze
+   * vallen automatisch terug op de "Nog niet berekend"-melding.
+   */
+  combinationResults: Map<number, SolverResult> | null;
+  envelope: Envelope | null;
 }
 
 export const EMPTY_REPORT_DATA: ReportData = {
@@ -49,6 +60,8 @@ export const EMPTY_REPORT_DATA: ReportData = {
   combinations: [],
   structuralGrid: { enabled: false, xAxes: [], zAxes: [] },
   selfWeightEnabled: false,
+  combinationResults: null,
+  envelope: null,
 };
 
 const ReportDataContext = createContext<ReportData>(EMPTY_REPORT_DATA);

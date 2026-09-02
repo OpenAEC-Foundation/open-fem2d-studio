@@ -11,6 +11,11 @@
  *  - zoom → schermweergave (50–150%), heeft géén effect op de print;
  *  - hiddenSections → sectie-toggles per registry-id (reportSections.ts);
  *    een id dat ontbreekt staat AAN, zodat nieuwe secties standaard meedoen.
+ *  - resultCombo → de combinatie-keuze van de resultaatsecties (R3). Bewust
+ *    ÉÉN gedeelde instelling (geen lokale sectiestate): krachtsverdeling,
+ *    oplegreacties en verplaatsingen vertellen zo altijd één consistent
+ *    verhaal over dezelfde combinatie. `null` = automatisch (omhullende als
+ *    die er is, anders de eerste combinatie met resultaten).
  */
 import { create } from 'zustand';
 
@@ -42,6 +47,12 @@ interface ReportState {
   zoom: number;
   /** Sectie-id → verborgen. Ontbrekende id = sectie staat aan. */
   hiddenSections: Record<string, boolean>;
+  /**
+   * Combinatie-keuze van de resultaatsecties: combinatie-id, 'envelope'
+   * (omhullende) of null (= automatisch: omhullende indien beschikbaar,
+   * anders de eerste combinatie met resultaten).
+   */
+  resultCombo: number | 'envelope' | null;
 
   setPageSize: (size: ReportPageSize) => void;
   setOrientation: (orientation: ReportOrientation) => void;
@@ -49,6 +60,7 @@ interface ReportState {
   setSectionEnabled: (id: string, enabled: boolean) => void;
   /** Alle secties weer aan. */
   resetSections: () => void;
+  setResultCombo: (v: number | 'envelope' | null) => void;
 }
 
 export const useReportStore = create<ReportState>((set) => ({
@@ -56,6 +68,7 @@ export const useReportStore = create<ReportState>((set) => ({
   orientation: 'portrait',
   zoom: 1,
   hiddenSections: {},
+  resultCombo: null,
 
   setPageSize: (pageSize) => set({ pageSize }),
   setOrientation: (orientation) => set({ orientation }),
@@ -71,6 +84,8 @@ export const useReportStore = create<ReportState>((set) => ({
     }),
 
   resetSections: () => set({ hiddenSections: {} }),
+
+  setResultCombo: (resultCombo) => set({ resultCombo }),
 }));
 
 /** True wanneer de sectie met dit id zichtbaar is. */
