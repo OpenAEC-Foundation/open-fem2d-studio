@@ -19,7 +19,7 @@ import InsightsView from "./components/panels/InsightsView";
 import CheckPanel from "./components/panels/CheckPanel";
 import FemProjectTree from "./components/fem/FemProjectTree";
 import FemProperties from "./components/fem/FemProperties";
-import FemCanvas, { thermalAlphaForMaterial } from "./components/fem/FemCanvas";
+import FemCanvas from "./components/fem/FemCanvas";
 import LibraryDialog, { type LibraryTab } from "./components/settings/LibraryDialog";
 import TableView from "./components/table/TableView";
 import type { TableDataset, TableViewApi } from "./components/table/tableTypes";
@@ -31,12 +31,12 @@ import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
 import { useFemStore } from "./hooks/useFemStore";
 import type { GridSettings, Tool } from "./components/fem/femTypes";
-import { DEFAULT_GRID, withPlateDefaults } from "./components/fem/femTypes";
-import type { SolverResult, MultiInput } from "./components/fem/solver/types";
+import { DEFAULT_GRID } from "./components/fem/femTypes";
+import type { SolverResult } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
-import { resolveSection, eigenGewichtPerMeter } from "./lib/sectionResolver";
+import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
 import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
@@ -116,19 +116,6 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
       <StatusBar />
     </>
   );
-}
-
-/**
- * Convert UI-side spring stiffness (kN/mm, kNm/rad) to solver units (N/mm, N·mm/rad).
- *  - zSpring/xSpring: k_ui [kN/mm] × 1000 → N/mm
- *  - rotSpring:       k_ui [kNm/rad] × 1e6 → N·mm/rad
- * Returns undefined for non-spring supports (the solver ignores `k` for rigid types).
- */
-function liftSpringK(s: { type: string; k?: number }): number | undefined {
-  if (s.k === undefined) return undefined;
-  if (s.type === "zSpring" || s.type === "xSpring") return s.k * 1000;
-  if (s.type === "rotSpring") return s.k * 1e6;
-  return undefined;
 }
 
 function App() {
@@ -595,129 +582,21 @@ function App() {
    */
   const computeAndStoreSolverOutputs = useCallback(() => {
     try {
-      const multiInput: MultiInput = {
-        nodes: fem.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
-        beams: fem.beams.map(b => {
-          // Stijfheid uit materiaal + profiel — zelfde route als het canvas-pad
-          // (FemCanvas → resolveSection). Zonder dit rekende het multi-LC-pad
-          // (combinaties/envelope/toetsing) élke staaf met de solver-default
-          // (HEA 160 / S235) en kreeg de toetsing krachten en zakkingen van
-          // het verkeerde model.
-          const sec = resolveSection(b.material, b.profile);
-          return {
-            id: b.id, from: b.from, to: b.to,
-            E: sec.E, A: sec.A, I: sec.I,
-            // Releases naar de engine: buigscharnieren via het legacy paar,
-            // en het volledige object (mét Tx/Tz-hulzen in lokale assen)
-            // ernaast — de engine kiest zelf het rijkere per-DOF-model zodra
-            // er een translatie-release in zit.
-            startConnection: b.releases?.startRy ? 'hinge' as const : 'fixed' as const,
-            endConnection:   b.releases?.endRy   ? 'hinge' as const : 'fixed' as const,
-            releases: b.releases,
-          };
-        }),
-        supports: fem.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
-        // Platen (wandschijven, P2.3): rekenvelden met defaults aangevuld —
-        // de engine meshet en schakelt zelf naar mixed_beam_plate.
-        plates: fem.plates.map(p => {
-          const d = withPlateDefaults(p);
-          return {
-            id: d.id, nodeIds: d.nodeIds,
-            thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
-            meshSize: d.meshSize!,
-          };
-        }),
-        cases: fem.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
-        loads: [], pointLoads: [], beamPointLoads: [], thermalLoads: [], edgeLoads: [],
-        // Scheefstand: φ = 1/noemer, richting ±x — de engine geeft elke
-        // verticale last een horizontale metgezel H = φ·V.
-        scheefstand: fem.scheefstandEnabled
-          ? { phi: 1 / fem.scheefstandNoemer, richting: fem.scheefstandRichting }
-          : undefined,
-      };
-      // Optional: append self-weight as extra distributed loads on the first
-      // permanent (dead) load case. Each beam → q = -ρ·A·g (downward in +Z).
-      if (fem.selfWeightEnabled) {
-        const deadCase = fem.loadCases.find(c => c.type === "dead") ?? fem.loadCases[0];
-        if (deadCase) {
-          for (const b of fem.beams) {
-            const q = eigenGewichtPerMeter(b.material, b.profile);
-            if (Math.abs(q) > 1e-9) {
-              multiInput.loads.push({
-                beamId: b.id,
-                q,
-                caseId: deadCase.id,
-              });
-            }
-          }
-          // Plaat-eigengewicht: zelfde dead-geval als de staven. De engine
-          // (buildMesh) zet dit via PlateLoads om in exacte ρ·g·t·A-
-          // knooplasten op de meshknopen.
-          for (const p of multiInput.plates ?? []) p.selfWeightCaseId = deadCase.id;
-        }
-      }
-
-      for (const l of fem.loads) {
-        if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
-          multiInput.loads.push({
-            beamId: l.beamId,
-            q: l.q,
-            qStart: l.qStart,
-            qEnd: l.qEnd,
-            qDir: l.qDir,
-            qCoord: l.qCoord,
-            startFrac: l.startFrac,
-            endFrac: l.endFrac,
-            caseId: l.caseId,
-          });
-        } else if (l.type === "pointForce" && l.nodeId !== undefined) {
-          multiInput.pointLoads!.push({
-            nodeId: l.nodeId,
-            fx: (l.fx ?? 0) * 1000,
-            fz: (l.fz ?? 0) * 1000,
-            caseId: l.caseId,
-          });
-        } else if (l.type === "pointForce" && l.beamId !== undefined) {
-          // Puntlast op een vrije positie op een staaf: positie als fractie
-          // 0..1 vanaf de startknoop. De engine splitst de staaf daar en zet
-          // de kracht op de tussenknoop (exacte V-sprong / M-knik).
-          multiInput.beamPointLoads!.push({
-            beamId: l.beamId,
-            posFrac: Math.min(1, Math.max(0, l.posFrac ?? 0)),
-            fx: (l.fx ?? 0) * 1000,
-            fz: (l.fz ?? 0) * 1000,
-            caseId: l.caseId,
-          });
-        } else if (l.type === "pointMoment" && l.nodeId !== undefined) {
-          multiInput.pointLoads!.push({
-            nodeId: l.nodeId,
-            my: (l.my ?? 0) * 1e6,
-            caseId: l.caseId,
-          });
-        } else if (l.type === "thermal" && l.beamId !== undefined && l.deltaT !== undefined) {
-          // α per staafmateriaal (staal 1,2e-5 /K, hout 5,0e-6 /K = α∥
-          // bovengrens, conservatief) — zonder dit rekende hout met staal-α,
-          // een factor ~2,5–4 te hoog. Zie thermalAlphaForMaterial (FemCanvas).
-          const beam = fem.beams.find(b => b.id === l.beamId);
-          multiInput.thermalLoads!.push({
-            beamId: l.beamId,
-            deltaT: l.deltaT,
-            alpha: thermalAlphaForMaterial(beam?.material),
-            caseId: l.caseId,
-          });
-        } else if (l.type === "edgeLoad" && l.plateId !== undefined && l.q !== undefined) {
-          // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting
-          // in globale assen — de engine zet dit via de PlateLoads-wrapper
-          // om in exacte knooplasten op de mesh-randknopen.
-          multiInput.edgeLoads!.push({
-            plateId: l.plateId,
-            edge: l.edge ?? "top",
-            p: l.q,
-            dir: l.qDir,
-            caseId: l.caseId,
-          });
-        }
-      }
+      // Modelmapping (doorsneden, eenheden, eigen gewicht, scheefstand) staat
+      // in een pure module, zodat de app en elke tweede consument van de
+      // solver exact dezelfde vertaling gebruiken — zie modelNaarSolverInput.ts.
+      const multiInput = bouwMultiInput({
+        nodes: fem.nodes,
+        beams: fem.beams,
+        supports: fem.supports,
+        plates: fem.plates,
+        loadCases: fem.loadCases,
+        loads: fem.loads,
+        selfWeightEnabled: fem.selfWeightEnabled,
+        scheefstandEnabled: fem.scheefstandEnabled,
+        scheefstandNoemer: fem.scheefstandNoemer,
+        scheefstandRichting: fem.scheefstandRichting,
+      });
       const { perCase } = fem.nonlinearEnabled
         ? solveAllCasesNonlinear(multiInput)
         : solveAllCases(multiInput);

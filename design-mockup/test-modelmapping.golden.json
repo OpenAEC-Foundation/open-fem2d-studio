@@ -1,0 +1,240 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "z": 4000
+    },
+    {
+      "id": 3,
+      "x": 6000,
+      "z": 4000
+    },
+    {
+      "id": 4,
+      "x": 6000,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 8000,
+      "z": 0
+    },
+    {
+      "id": 6,
+      "x": 12000,
+      "z": 0
+    },
+    {
+      "id": 7,
+      "x": 12000,
+      "z": 3000
+    },
+    {
+      "id": 8,
+      "x": 8000,
+      "z": 3000
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "E": 210000,
+      "A": 3879.9999999999995,
+      "I": 16700000,
+      "startConnection": "fixed",
+      "endConnection": "fixed"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "E": 210000,
+      "A": 5380,
+      "I": 83600000,
+      "startConnection": "hinge",
+      "endConnection": "fixed",
+      "releases": {
+        "startRy": true,
+        "endTz": true
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "E": 210000,
+      "A": 3879.9999999999995,
+      "I": 16700000,
+      "startConnection": "fixed",
+      "endConnection": "fixed"
+    },
+    {
+      "id": 4,
+      "from": 5,
+      "to": 8,
+      "E": 11000,
+      "A": 43200,
+      "I": 729000000,
+      "startConnection": "fixed",
+      "endConnection": "fixed"
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 4,
+      "type": "fixed"
+    },
+    {
+      "nodeId": 5,
+      "type": "zSpring",
+      "k": 50000
+    },
+    {
+      "nodeId": 6,
+      "type": "rotSpring",
+      "k": 1200000000
+    },
+    {
+      "nodeId": 7,
+      "type": "pinned"
+    }
+  ],
+  "plates": [
+    {
+      "id": 1,
+      "nodeIds": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "thickness": 150,
+      "E": 210000,
+      "nu": 0.3,
+      "rho": 7850,
+      "meshSize": 750,
+      "selfWeightCaseId": 1
+    }
+  ],
+  "cases": [
+    {
+      "id": 1,
+      "name": "G"
+    },
+    {
+      "id": 2,
+      "name": "Q"
+    }
+  ],
+  "loads": [
+    {
+      "beamId": 1,
+      "q": -0.29879297999999993,
+      "caseId": 1
+    },
+    {
+      "beamId": 2,
+      "q": -0.41430573,
+      "caseId": 1
+    },
+    {
+      "beamId": 3,
+      "q": -0.29879297999999993,
+      "caseId": 1
+    },
+    {
+      "beamId": 4,
+      "q": -0.17799264,
+      "caseId": 1
+    },
+    {
+      "beamId": 2,
+      "q": -10,
+      "caseId": 1
+    },
+    {
+      "beamId": 2,
+      "q": -6,
+      "caseId": 2
+    },
+    {
+      "beamId": 1,
+      "q": -3,
+      "qStart": -2,
+      "qEnd": -4,
+      "qDir": "x",
+      "qCoord": "local",
+      "startFrac": 0.25,
+      "endFrac": 0.8,
+      "caseId": 2
+    }
+  ],
+  "pointLoads": [
+    {
+      "nodeId": 3,
+      "fx": 12500,
+      "fz": -7250,
+      "caseId": 1
+    },
+    {
+      "nodeId": 2,
+      "my": 4500000,
+      "caseId": 2
+    }
+  ],
+  "beamPointLoads": [
+    {
+      "beamId": 2,
+      "posFrac": 0.35,
+      "fx": 3000,
+      "fz": -9000,
+      "caseId": 2
+    },
+    {
+      "beamId": 3,
+      "posFrac": 1,
+      "fx": 0,
+      "fz": -4000,
+      "caseId": 2
+    }
+  ],
+  "thermalLoads": [
+    {
+      "beamId": 1,
+      "deltaT": 15,
+      "alpha": 0.000012,
+      "caseId": 1
+    },
+    {
+      "beamId": 4,
+      "deltaT": 15,
+      "alpha": 0.000005,
+      "caseId": 1
+    }
+  ],
+  "edgeLoads": [
+    {
+      "plateId": 1,
+      "edge": "top",
+      "p": -2.5,
+      "dir": "z",
+      "caseId": 2
+    }
+  ],
+  "scheefstand": {
+    "phi": 0.004,
+    "richting": -1
+  }
+}

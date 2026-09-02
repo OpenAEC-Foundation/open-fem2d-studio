@@ -35,7 +35,8 @@ import type { LoadCombination, Envelope } from "./solver/combinations";
 import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
 import { useCheckStore } from "../../stores/checkStore";
-import { resolveSection, TIMBER_E_MEAN } from "../../lib/sectionResolver";
+import { resolveSection } from "../../lib/sectionResolver";
+import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 import type {
   Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
@@ -268,24 +269,6 @@ async function bouwPlaatMeshCache(punten: PlaatPunt[], meshSizeMm: number): Prom
     signature: berekenPlaatMeshSignatuur(punten, meshSizeMm),
     points, triangles, edgeNodeIndices,
   };
-}
-
-/**
- * Thermische uitzettingscoëfficiënt per staafmateriaal (1/K) voor thermische
- * lasten (SolverThermalLoadInput.alpha — de engine honoreert een per-last α
- * exact, zie engine.ts buildMesh).
- *  - Staal: α = 1,2e-5 /K (EN 1993-1-1).
- *  - Hout:  α = 5,0e-6 /K — α∥ (vezelrichting), bovengrens van de
- *    literatuurrange 3–5e-6 /K en dus conservatief voor de krachten uit
- *    verhinderde thermische vervorming.
- * Houtdetectie via de sterkteklassentabel (TIMBER_E_MEAN); al het overige
- * (staal, onbekend) rekent met de staal-α. Wordt gedeeld met het multi-LC-pad
- * in App.tsx zodat beide solver-paden dezelfde α-keuze maken.
- */
-export const ALPHA_STAAL = 1.2e-5;
-export const ALPHA_HOUT = 5.0e-6;
-export function thermalAlphaForMaterial(material: string | undefined): number {
-  return material !== undefined && material in TIMBER_E_MEAN ? ALPHA_HOUT : ALPHA_STAAL;
 }
 
 interface FemCanvasProps {
@@ -620,7 +603,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           });
         } else if (l.type === "thermal" && l.beamId !== undefined && l.deltaT !== undefined) {
           // α per materiaal meesturen (hout ≠ staal) — zelfde keuze als het
-          // multi-LC-pad in App.tsx; zie thermalAlphaForMaterial hierboven.
+          // multi-LC-pad; één bron in lib/thermalAlpha.ts.
           const beam = beams.find(b => b.id === l.beamId);
           thermalLoads.push({
             beamId: l.beamId, deltaT: l.deltaT,
