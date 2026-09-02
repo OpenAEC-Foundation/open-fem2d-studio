@@ -12,7 +12,15 @@ use section_properties::composite::{CompositeSection, GeslotenCel, Lamella};
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum DeflectionClass { Floor, Roof, Cantilever, Custom }
 
+/// Invoer van één staaltoetsing.
+///
+/// `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Vijf
+/// velden hieronder hebben `#[serde(default)]`, en een tikfout in zo'n
+/// veldnaam zou anders stilzwijgend op 0 uitkomen. Bij `q_equiv_n_per_mm` en
+/// `z_a_mm` valt de kiptoets daarmee *gunstiger* uit dan hij hoort te zijn —
+/// onveilig aan de verkeerde kant, en onzichtbaar in het resultaat.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct BeamCheckInput {
     pub beam_id: u32,
@@ -115,6 +123,7 @@ pub fn reden_lijfplooi(hw_over_tw: f64, grens: f64) -> String {
 /// op, `(y_mm, z_mm)` het zwaartepunt van de plaat en `alpha_rad` de hoek van
 /// de lengterichting met de y-as (0 = liggend, π/2 = staand).
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct CustomLamella {
     pub b_mm: f64,
@@ -127,6 +136,7 @@ pub struct CustomLamella {
 
 /// Hoekpunt van een celwandmiddellijn.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct CustomPunt {
     pub y_mm: f64,
@@ -139,6 +149,7 @@ pub struct CustomPunt {
 /// dat onderschat de torsiestijfheid van een koker met ordes van grootte, en
 /// daarom komt er dan een melding in het resultaat.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct CustomGeslotenCel {
     /// Hoekpunten van de wandmiddellijn, in volgorde; de cel sluit vanzelf.
@@ -183,6 +194,7 @@ pub enum CustomDoorsnedevorm {
 ///   `vorm` erbij zodat de classificatie weet welk blad van tabel 5.2 geldt.
 ///   Hiermee laat een catalogusprofiel zich één-op-één inline meegeven.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct CustomSection {
     /// Naam zoals hij in het rapport verschijnt.

@@ -5,6 +5,15 @@ import type { DeflectionClass } from "./DeflectionClass";
 import type { ForcePoint } from "./ForcePoint";
 import type { LateralBracing } from "./LateralBracing";
 
+/**
+ * Invoer van één staaltoetsing.
+ *
+ * `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Vijf
+ * velden hieronder hebben `#[serde(default)]`, en een tikfout in zo'n
+ * veldnaam zou anders stilzwijgend op 0 uitkomen. Bij `q_equiv_n_per_mm` en
+ * `z_a_mm` valt de kiptoets daarmee *gunstiger* uit dan hij hoort te zijn —
+ * onveilig aan de verkeerde kant, en onzichtbaar in het resultaat.
+ */
 export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, buckling_length_y_m: number, buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, is_cantilever: boolean, consequence_class: ConsequenceClass, 
 /**
  * Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.

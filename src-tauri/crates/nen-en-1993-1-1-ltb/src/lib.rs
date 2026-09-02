@@ -11,7 +11,16 @@ pub mod nb_annex;
 pub mod lambda_chi;
 pub mod en_general;
 
+/// Kipsteunen, als fracties van de staaflengte.
+///
+/// `Default` is afgeleid, maar de velden hebben **geen** `#[serde(default)]`:
+/// een leeg object `{}` in de JSON levert daarom een fout ("missing field")
+/// in plaats van stilzwijgend "geen kipsteunen". Dat is gewild — geen
+/// kipsteunen moet je opschrijven als twee lege arrays, niet per ongeluk
+/// krijgen. `deny_unknown_fields` maakt bovendien een tikfout in een
+/// veldnaam zichtbaar in plaats van dat hij ongemerkt wegvalt.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct LateralBracing {
     pub top_flange_positions: Vec<f64>,
