@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef } from "react";
 import "./FemProperties.css";
 import type {
-  Node, Beam, Plate, Support, Load, Selection, SupportType,
+  Node, Beam, Plate, Support, Load, Selection, SupportType, BeamCheckConfig,
 } from "./femTypes";
 import { withPlateDefaults } from "./femTypes";
 import type { SolverResult } from "./solver/types";
@@ -272,6 +272,41 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
     updateBeam?.(beam.id, { releases: { ...beam.releases, [key]: checked } });
   };
 
+  // Norm-tabblad: de toetsconfiguratie per staaf (kniklengtes, kipsteunen,
+  // doorbuiging, en voor hout klimaatklasse/belastingduur). De tabs waren
+  // hardcoded knoppen zonder state — de EN-tab deed dus niets.
+  const [propTab, setPropTab] = useState<"algemeen" | "norm">("algemeen");
+  const cfg = beam.checkConfig ?? {};
+  /** Schrijf één veld in checkConfig; lege/ongeldige waarde wist het veld. */
+  const setCfg = (patch: Partial<BeamCheckConfig>) => {
+    const nieuw: BeamCheckConfig = { ...cfg, ...patch };
+    for (const k of Object.keys(nieuw) as (keyof BeamCheckConfig)[]) {
+      const v = nieuw[k];
+      if (v === undefined || (Array.isArray(v) && v.length === 0)) delete nieuw[k];
+    }
+    updateBeam?.(beam.id, { checkConfig: Object.keys(nieuw).length > 0 ? nieuw : undefined });
+  };
+  // Ruwe tekst van het kipsteunen-veld apart, zodat tussentijds typen
+  // ("0.25, ") niet door de parser wordt teruggeschreven. Synchroniseert
+  // wanneer je een andere staaf selecteert.
+  const [kipsteunenTekst, setKipsteunenTekst] = useState(cfg.lateralRestraints?.join(", ") ?? "");
+  const vorigeBeamId = useRef(beam.id);
+  useEffect(() => {
+    if (vorigeBeamId.current !== beam.id) {
+      vorigeBeamId.current = beam.id;
+      setKipsteunenTekst(beam.checkConfig?.lateralRestraints?.join(", ") ?? "");
+    }
+  }, [beam.id, beam.checkConfig]);
+
+  /** "0.25, 0.5" → [0.25, 0.5]; alleen waarden strikt tussen 0 en 1. */
+  const parseKipsteunen = (tekst: string): number[] =>
+    tekst
+      .split(/[,;\s]+/)
+      .map((s) => parseFloat(s.replace(",", ".")))
+      .filter((v) => Number.isFinite(v) && v > 0 && v < 1)
+      .sort((a, b) => a - b);
+  const systeemlengteM = (L / 1000).toFixed(2);
+
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
@@ -279,9 +314,144 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
         <span className="fem-prop-selection-value">Balk {beam.id}</span>
       </div>
       <div className="fem-prop-tabs">
-        <button className="fem-prop-tab active">Algemeen</button>
-        <button className="fem-prop-tab">EN 1993</button>
+        <button
+          className={`fem-prop-tab${propTab === "algemeen" ? " active" : ""}`}
+          onClick={() => setPropTab("algemeen")}
+        >
+          Algemeen
+        </button>
+        <button
+          className={`fem-prop-tab${propTab === "norm" ? " active" : ""}`}
+          onClick={() => setPropTab("norm")}
+        >
+          {isHout ? "EN 1995" : "EN 1993"}
+        </button>
       </div>
+      {propTab === "norm" && (
+        <div className="fem-prop-body">
+          {!isHout && (
+            <>
+              <Section title="Kniklengtes">
+                <Row label="L_cr,y [m]">
+                  <input
+                    type="number" className="fem-prop-input" step="0.1" min="0"
+                    placeholder={systeemlengteM}
+                    value={cfg.bucklingLengthY_m ?? ""}
+                    onChange={(e) => setCfg({
+                      bucklingLengthY_m: e.target.value === "" ? undefined : Number(e.target.value),
+                    })}
+                  />
+                </Row>
+                <Row label="L_cr,z [m]">
+                  <input
+                    type="number" className="fem-prop-input" step="0.1" min="0"
+                    placeholder={systeemlengteM}
+                    value={cfg.bucklingLengthZ_m ?? ""}
+                    onChange={(e) => setCfg({
+                      bucklingLengthZ_m: e.target.value === "" ? undefined : Number(e.target.value),
+                    })}
+                  />
+                </Row>
+                <div className="fem-prop-hint">Leeg = systeemlengte ({systeemlengteM} m).</div>
+              </Section>
+
+              <Section title="Kipsteunen (bovenflens)">
+                <Row label="Posities">
+                  <input
+                    type="text" className="fem-prop-input"
+                    placeholder="0.25, 0.5, 0.75"
+                    value={kipsteunenTekst}
+                    onChange={(e) => {
+                      // Ruwe tekst in lokale state (zodat "0.25, " typen mag),
+                      // geparseerde fracties meteen naar het model.
+                      setKipsteunenTekst(e.target.value);
+                      setCfg({ lateralRestraints: parseKipsteunen(e.target.value) });
+                    }}
+                    spellCheck={false}
+                  />
+                </Row>
+                <div className="fem-prop-hint">
+                  Fracties van de staaflengte (0–1), gescheiden door komma's. Leeg = geen kipsteunen.
+                </div>
+              </Section>
+            </>
+          )}
+
+          {isHout && (
+            <Section title="Klimaat en belastingduur">
+              <Row label="Klimaatklasse">
+                <select
+                  className="fem-prop-select"
+                  value={cfg.serviceClass ?? 1}
+                  onChange={(e) => setCfg({ serviceClass: Number(e.target.value) as 1 | 2 | 3 })}
+                >
+                  <option value={1}>1 — verwarmd binnen</option>
+                  <option value={2}>2 — overdekt buiten</option>
+                  <option value={3}>3 — onbeschermd buiten</option>
+                </select>
+              </Row>
+              <Row label="Belastingduur">
+                <select
+                  className="fem-prop-select"
+                  value={cfg.loadDuration ?? "medium"}
+                  onChange={(e) => setCfg({
+                    loadDuration: e.target.value as NonNullable<BeamCheckConfig["loadDuration"]>,
+                  })}
+                >
+                  <option value="permanent">Permanent</option>
+                  <option value="long">Lang</option>
+                  <option value="medium">Middellang</option>
+                  <option value="short">Kort</option>
+                  <option value="instantaneous">Momentaan</option>
+                </select>
+              </Row>
+              <div className="fem-prop-hint">Bepaalt k_mod en k_def in de houttoetsing.</div>
+            </Section>
+          )}
+
+          <Section title="Doorbuiging (BGT)">
+            <Row label="Klasse">
+              <select
+                className="fem-prop-select"
+                value={cfg.deflectionClass ?? "floor"}
+                onChange={(e) => setCfg({
+                  deflectionClass: e.target.value as NonNullable<BeamCheckConfig["deflectionClass"]>,
+                })}
+              >
+                <option value="floor">Vloer (L/300)</option>
+                <option value="roof">Dak (L/250)</option>
+                <option value="cantilever">Uitkraging (L/150)</option>
+                <option value="custom">Aangepast (L/n)</option>
+              </select>
+            </Row>
+            {cfg.deflectionClass === "custom" && (
+              <Row label="n in L/n">
+                <input
+                  type="number" className="fem-prop-input" step="1" min="1"
+                  placeholder="333"
+                  value={cfg.deflectionLimitNumerator ?? ""}
+                  onChange={(e) => setCfg({
+                    deflectionLimitNumerator: e.target.value === "" ? undefined : Number(e.target.value),
+                  })}
+                />
+              </Row>
+            )}
+            {!isHout && (
+              <Row label="Zeeg [mm]">
+                <input
+                  type="number" className="fem-prop-input" step="1"
+                  placeholder="0"
+                  value={cfg.preCamber_mm ?? ""}
+                  onChange={(e) => setCfg({
+                    preCamber_mm: e.target.value === "" ? undefined : Number(e.target.value),
+                  })}
+                />
+              </Row>
+            )}
+          </Section>
+        </div>
+      )}
+      {propTab === "algemeen" && (
       <div className="fem-prop-body">
         <Section title="Geometrie">
           <Row label="ID"><code>{beam.id}</code></Row>
@@ -360,6 +530,7 @@ function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
           ))}
         </Section>
       </div>
+      )}
     </div>
   );
 }
