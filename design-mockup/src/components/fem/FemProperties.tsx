@@ -687,6 +687,26 @@ function LoadProperties({
           <Row label="Lastgeval"><code>{load.caseId}</code></Row>
           {beam && <Row label="Op balk"><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
           {node && <Row label="Op knoop"><code>{node.id}</code></Row>}
+          {/* Puntlast op een vrije positie op de staaf: positie achteraf
+              bij te stellen, in meters vanaf de startknoop. */}
+          {beam && load.type === "pointForce" && load.posFrac !== undefined && beamLen > 0 && (
+            <Row label="Positie [m]">
+              <input
+                type="number"
+                className="fem-prop-input"
+                step="0.05"
+                min="0"
+                max={(beamLen / 1000).toFixed(3)}
+                value={((load.posFrac * beamLen) / 1000).toFixed(3)}
+                onChange={(e) => {
+                  const meters = Number(e.target.value);
+                  if (!Number.isFinite(meters) || beamLen <= 0) return;
+                  const frac = Math.min(1, Math.max(0, (meters * 1000) / beamLen));
+                  updateLoad?.(load.id, { posFrac: frac });
+                }}
+              />
+            </Row>
+          )}
           {load.type === "edgeLoad" && load.plateId !== undefined && (
             <Row label="Op plaat"><code>{load.plateId} ({EDGE_LABEL[load.edge ?? "top"]})</code></Row>
           )}
