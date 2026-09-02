@@ -1,0 +1,7 @@
+# De sidecarbundel wordt byte-voor-byte vergeleken: `build.rs` toetst hem tegen
+# fem-kernel.sha256 en CI herbouwt hem en draait `git diff --exit-code`. Met
+# core.autocrlf=true zou git bij het uitchecken LF naar CRLF omzetten en de
+# hash daarmee laten omvallen op precies die machines. Hier dus geen enkele
+# regeleindeconversie.
+fem-kernel.mjs -text
+fem-kernel.sha256 -text
