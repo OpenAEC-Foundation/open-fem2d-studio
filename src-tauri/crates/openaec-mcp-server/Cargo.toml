@@ -5,23 +5,38 @@ edition = "2021"
 description = "MCP (Model Context Protocol) server exposing the OpenAEC steel-check engine"
 license = "CC-BY-SA-4.0"
 
+# Bouwpoort op de ingebakken solverbundel: de build faalt als
+# `assets/fem-kernel.mjs` niet bij `assets/fem-kernel.sha256` hoort.
+build = "build.rs"
+
+# De server is een binary; het libdeel bestaat zodat `tests/` bij de
+# sidecar-aansturing kan. Zie src/lib.rs.
+[lib]
+name = "openaec_mcp_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "openaec-mcp-server"
 path = "src/main.rs"
 
+[build-dependencies]
+sha2 = "0.10"
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "sync"] }
+# `process` en `time` staan hier en niet meer bij de dev-afhankelijkheden: de
+# sidecar-aansturing start Node-processen en bewaakt de klok in de
+# PRODUCTIECODE, niet alleen in tests.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "sync", "process", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 base64 = "0.22"
+# Hashpoort op de solverbundel (build.rs en sidecar.rs).
+sha2 = "0.10"
 # Engine crates
 steel-check = { path = "../steel-check" }
 steel-profiles = { path = "../steel-profiles" }
 section-properties = { path = "../section-properties" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 report = { path = "../report" }
-
-[dev-dependencies]
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "process", "time"] }

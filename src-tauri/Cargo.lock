@@ -2686,6 +2686,7 @@ dependencies = [
  "section-properties",
  "serde",
  "serde_json",
+ "sha2",
  "steel-check",
  "steel-profiles",
  "tokio",
