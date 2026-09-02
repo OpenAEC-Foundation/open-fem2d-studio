@@ -18,6 +18,10 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
+/// De vijf FEM-tools. Ze rekenen niet hier maar in de Node-sidecar, op
+/// letterlijk dezelfde solver als de app. Zie `fem_tools.rs`.
+mod fem_tools;
+
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "openaec-fem";
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -190,8 +194,15 @@ fn schema_custom_section() -> Value {
 ///
 /// `generate_steel_report_pdf` staat nog wél op `additionalProperties: true`;
 /// dat is een rapportage-invoer zonder rekengevolg.
+///
+/// De vijf FEM-tools uit `fem_tools` staan er ALTIJD bij, ook wanneer er geen
+/// Node-runtime is. Verbergen zou de storing ondiagnosticeerbaar maken: de
+/// client meldt dan dat de functie niet bestaat, terwijl de gebruiker weet dat
+/// hij hem geïnstalleerd heeft. In plaats daarvan komt er bij de aanroep een
+/// Nederlandse melding met foutcode en remedie, en blijft `fem_solver_status`
+/// het eerste dat je vraagt.
 fn tool_definitions() -> Value {
-    json!([
+    let mut tools = json!([
         {
             "name": "list_steel_profiles",
             "description": "List all steel cross-section profiles in the OpenAEC database (HEA, HEB, IPE, HEM, UNP, RHS, SHS, CHS). Each profile includes geometry, section properties, and EN 1993-1-1 buckling curves.",
@@ -290,7 +301,12 @@ fn tool_definitions() -> Value {
                 "additionalProperties": true
             }
         }
-    ])
+    ]);
+    tools
+        .as_array_mut()
+        .expect("de tooldefinities zijn een array")
+        .extend(fem_tools::tool_definitions());
+    tools
 }
 
 // ── Tool dispatch ────────────────────────────────────────────────────────────
@@ -345,6 +361,11 @@ async fn dispatch_tool(name: &str, args: Value) -> Result<Value, RpcError> {
             let pdf_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             Ok(json!({ "pdf_base64": pdf_b64, "byte_count": byte_count }))
         }
+        // De FEM-tools. Ze rekenen niet hier: `fem_tools` zet het verzoek klaar
+        // voor de Node-sidecar, die dezelfde solverfuncties uitvoert als de app.
+        // `check_fem_model` roept daarna `steel_check::check_all_beams` aan —
+        // dezelfde functie die `src-tauri/src/lib.rs` voor de app aanroept.
+        fem if fem_tools::is_fem_tool(fem) => fem_tools::dispatch(fem, args).await,
         other => Err(RpcError::method_not_found(other)),
     }
 }

@@ -96,7 +96,7 @@ async fn stdio_roundtrip_initialize_list_call() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("tools must be an array");
-    assert_eq!(tools.len(), 5, "expected 5 tools, got {}", tools.len());
+    assert_eq!(tools.len(), 10, "expected 10 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -107,6 +107,14 @@ async fn stdio_roundtrip_initialize_list_call() {
         "check_steel_beam",
         "compute_section_properties",
         "generate_steel_report_pdf",
+        // De vijf FEM-tools (T10). Ze staan hier ALTIJD in, ook zonder
+        // Node-runtime: verbergen zou de client laten melden dat de functie
+        // niet bestaat, en dan is de storing niet meer te diagnosticeren.
+        "fem_solver_status",
+        "validate_fem_model",
+        "load_fem_project",
+        "solve_fem_model",
+        "check_fem_model",
     ] {
         assert!(names.contains(&expected), "missing tool: {expected} (have {names:?})");
     }
@@ -154,6 +162,66 @@ async fn stdio_roundtrip_initialize_list_call() {
     let first = &profiles_struct[0];
     assert!(first["name"].is_string());
     assert!(first["properties"]["area_mm2"].is_number());
+
+    // ── 5. tools/call fem_solver_status ──────────────────────────────────
+    // Bewijst dat de FEM-tools ook écht bereikbaar zijn en niet alleen in
+    // `tools/list` staan. Deze tool is met opzet de enige die nooit faalt: een
+    // storing IS zijn antwoord. Hij werkt daarmee mét en zónder Node-runtime,
+    // wat hem geschikt maakt als eerste stap bij een storing én als test die
+    // niets over de machine hoeft aan te nemen.
+    let call = json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": { "name": "fem_solver_status", "arguments": {} }
+    });
+    let mut req = serde_json::to_string(&call).unwrap();
+    req.push('\n');
+    stdin.write_all(req.as_bytes()).await.unwrap();
+    stdin.flush().await.unwrap();
+
+    let resp = read_message(&mut reader).await;
+    assert_eq!(resp["id"], 4);
+    assert!(resp["error"].is_null(), "error: {resp:?}");
+    let status = &resp["result"]["structuredContent"];
+    assert_eq!(resp["result"]["isError"], false);
+    assert!(status["available"].is_boolean(), "status: {status}");
+    assert_eq!(status["protocol_version"], 1);
+    // De ingebakken bundelhash weet de binary altijd van zichzelf, ook als er
+    // geen Node is om mee te rekenen.
+    let hash = status["bundle_hash"].as_str().expect("bundle_hash");
+    assert!(hash.starts_with("sha256:"), "bundle_hash: {hash}");
+    // Werkt het niet, dan moet de reden Nederlands zijn en een remedie noemen —
+    // een ontbrekende runtime mag nooit op een rekenfout lijken.
+    if status["available"] == json!(false) {
+        assert!(status["error_code"].is_string(), "status: {status}");
+        assert!(status["reason"].is_string(), "status: {status}");
+        assert!(status["remedie"].is_string(), "status: {status}");
+    }
+
+    // ── 6. tools/call solve_fem_model zonder model ───────────────────────
+    // Een aanroep zonder `model` én zonder `project_path` moet worden
+    // geweigerd. Zonder deze poort zou de server een "leeg model" kunnen
+    // doorrekenen en nullen teruggeven die als uitkomst lezen.
+    let call = json!({
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": { "name": "solve_fem_model", "arguments": {} }
+    });
+    let mut req = serde_json::to_string(&call).unwrap();
+    req.push('\n');
+    stdin.write_all(req.as_bytes()).await.unwrap();
+    stdin.flush().await.unwrap();
+
+    let resp = read_message(&mut reader).await;
+    assert_eq!(resp["id"], 5);
+    assert_eq!(resp["result"]["isError"], true, "resp: {resp:?}");
+    let tekst = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        tekst.contains("project_path") && tekst.contains("model"),
+        "de melding moet beide uitwegen noemen: {tekst}"
+    );
 
     // Cleanup: drop stdin → server sees EOF → exits.
     drop(stdin);
