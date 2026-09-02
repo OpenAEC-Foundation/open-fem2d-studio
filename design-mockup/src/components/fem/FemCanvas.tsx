@@ -83,6 +83,8 @@ interface FemCanvasProps {
   addPlate: (nodeIds: number[]) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   addLoad: (l: Omit<Load, "id">) => void;
+  /** Deellast-grepen: commit van start-/endFrac op muis-loslaten (undo-baar). */
+  updateLoad?: (id: number, updates: Partial<Load>) => void;
   deleteSelected: () => void;
   splitBeamAt: (beamId: number, x: number, z: number) => void;
   // Transformaties (multi-bewust). `false` = selectie bevat niets
@@ -143,6 +145,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   const {
     tool, onToolChange, nodes, beams, supports, plates, loads, selection, activeLoadCaseId,
     setSelection, addNode, addBeam, updateBeam, addPlate, addSupport, addLoad,
+    updateLoad,
     deleteSelected, splitBeamAt,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     translateNodes,
@@ -234,6 +237,20 @@ export default function FemCanvas(props: FemCanvasProps) {
     currentDelta: { dx: number; dz: number };             // snapped delta in mm
   } | null>(null);
 
+  // ── Deellast-greep-sleep (shape-handles op de lastband) ────────────────
+  // Bij een geselecteerde lijnlast staan vierkante grepen op de uiteinden
+  // van de lastband (posities startFrac/endFrac op de staafas). Slepen
+  // toont een live preview (previewStart/previewEnd); de commit gebeurt
+  // pas op muis-loslaten via updateLoad zodat undo één stap is.
+  const [loadHandleDrag, setLoadHandleDrag] = useState<{
+    loadId: number;
+    beamId: number;
+    end: "start" | "end";
+    previewStart: number;   // fractie 0..1
+    previewEnd: number;     // fractie 0..1
+    moved: boolean;         // pas committen als er echt gesleept is
+  } | null>(null);
+
   // ── Box-select rubber-band state ──────────────────────────────────────
   const [boxSelect, setBoxSelect] = useState<{
     startSX: number; startSY: number;
@@ -295,6 +312,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       const distLoads: {
         beamId: number; q: number;
         qStart?: number; qEnd?: number; qDir?: "x" | "z";
+        qCoord?: "global" | "local";
         startFrac?: number; endFrac?: number;
       }[] = [];
       const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
@@ -302,11 +320,12 @@ export default function FemCanvas(props: FemCanvasProps) {
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
           // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
-          // richting (qDir) en deellast-fracties (startFrac/endFrac) gaan
-          // mee — zelfde velden als het multi-LC-pad in App.tsx.
+          // richting (qDir + assenstelsel qCoord) en deellast-fracties
+          // (startFrac/endFrac) gaan mee — zelfde velden als het
+          // multi-LC-pad in App.tsx.
           distLoads.push({
             beamId: l.beamId, q: l.q,
-            qStart: l.qStart, qEnd: l.qEnd, qDir: l.qDir,
+            qStart: l.qStart, qEnd: l.qEnd, qDir: l.qDir, qCoord: l.qCoord,
             startFrac: l.startFrac, endFrac: l.endFrac,
           });
         } else if (l.type === "pointForce" && l.nodeId !== undefined) {
@@ -596,6 +615,38 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
 
     const world = screenToWorld(sx, sy);
+
+    // Deellast-greep-sleep: projecteer de muis op de staafas → fractie,
+    // snap het geprojecteerde punt via de bestaande snap-helper (raster +
+    // stramien; respecteert de snapAan-toggle) en klem tegen de andere
+    // greep met minimaal 2% staaflengte verschil. Alleen live preview —
+    // de commit volgt op muis-loslaten (handleMouseUp).
+    if (loadHandleDrag) {
+      const b = beams.find(bb => bb.id === loadHandleDrag.beamId);
+      const nA = b ? nodes.find(n => n.id === b.from) : undefined;
+      const nB = b ? nodes.find(n => n.id === b.to) : undefined;
+      if (b && nA && nB) {
+        const vx = nB.x - nA.x, vz = nB.z - nA.z;
+        const lenSq = vx * vx + vz * vz;
+        if (lenSq > 1e-9) {
+          const tRaw = ((world.x - nA.x) * vx + (world.z - nA.z) * vz) / lenSq;
+          // Snap het PUNT op de as en projecteer terug, zodat de greep op de
+          // staaf blijft én het actieve rasterpunt gevolgd wordt.
+          const pSnap = snapToStramien(nA.x + vx * tRaw, nA.z + vz * tRaw);
+          let t = ((pSnap.x - nA.x) * vx + (pSnap.z - nA.z) * vz) / lenSq;
+          const MIN_GAP = 0.02;
+          if (loadHandleDrag.end === "start") {
+            t = Math.max(0, Math.min(loadHandleDrag.previewEnd - MIN_GAP, t));
+            setLoadHandleDrag({ ...loadHandleDrag, previewStart: t, moved: true });
+          } else {
+            t = Math.min(1, Math.max(loadHandleDrag.previewStart + MIN_GAP, t));
+            setLoadHandleDrag({ ...loadHandleDrag, previewEnd: t, moved: true });
+          }
+        }
+      }
+      return;
+    }
+
     // Snap to stramien intersection if close, else to grid spacing.
     const snapped = snapToStramien(world.x, world.z);
     setHoverModel({ x: snapped.x, z: snapped.z });
@@ -731,6 +782,22 @@ export default function FemCanvas(props: FemCanvasProps) {
   const handleMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
     if (e.button === 1 || (e.button === 0 && spaceHeld)) {
       panRef.current.active = false;
+      return;
+    }
+    // Commit deellast-greep-sleep op loslaten — één updateLoad-aanroep is
+    // één undo-stap. Volledige lengte normaliseren naar `undefined` (zelfde
+    // conventie als commitRange in FemProperties en oude bestanden).
+    if (e.button === 0 && loadHandleDrag) {
+      if (loadHandleDrag.moved && updateLoad) {
+        const aF = loadHandleDrag.previewStart;
+        const bF = loadHandleDrag.previewEnd;
+        const isFull = aF <= 0 && bF >= 1;
+        updateLoad(loadHandleDrag.loadId, {
+          startFrac: isFull ? undefined : aF,
+          endFrac:   isFull ? undefined : bF,
+        });
+      }
+      setLoadHandleDrag(null);
       return;
     }
     // Commit drag-to-move on left-button release.
@@ -1115,6 +1182,9 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
 
       if (e.key === "Escape") {
+        // Actieve greep-sleep? Alleen de sleep annuleren (geen commit),
+        // selectie en tool blijven staan.
+        if (loadHandleDrag) { setLoadHandleDrag(null); return; }
         setBeamStart(null);
         setPlateCorners([]);
         setPopover(null);
@@ -1174,7 +1244,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     };
   }, [selection, deleteSelected, setSelection, nodes, size, hoverModel,
       grabMode, rotateMode, cancelGrab, commitGrab, cancelRotate, commitRotate,
-      selectionNodeIds, copySelection, onToolChange, tool]);
+      selectionNodeIds, copySelection, onToolChange, tool, loadHandleDrag]);
 
   // ── Wheel event listener (non-passive so preventDefault works) ──────────
   useEffect(() => {
@@ -1431,17 +1501,44 @@ export default function FemCanvas(props: FemCanvasProps) {
       const nB = nodes.find(n => n.id === b.to);
       if (!nA || !nB) return null;
       const pA = worldToScreen(nA.x, nA.z), pB = worldToScreen(nB.x, nB.z);
-      // Perpendicular unit vector pointing "up" in load direction (negative q → arrows point down at beam)
       const dxs = pB.x - pA.x, dys = pB.y - pA.y;
       const L = Math.hypot(dxs, dys);
       if (L < 1) return null;
-      const nx = -dys / L, ny = dxs / L;            // perpendicular (left)
+      // Richting van de pijlen: (nx, ny) is de scherm-eenheidsvector
+      // waarlangs de last WERKT bij q < 0 (conventie: negatief = gravitatie):
+      //  - globaal + qDir z: verticaal omlaag (wereldassen) — zoals gerekend;
+      //  - globaal + qDir x: wereld −x (horizontaal);
+      //  - lokaal  + qDir z: loodrecht op de staaf (lokale −y);
+      //  - lokaal  + qDir x: axiaal, tegen de staafrichting in.
+      // Consistent met de rekensemantiek in solver/engine.ts: een GLOBALE
+      // last tekent verticaal/horizontaal ook op een schuine staaf, een
+      // LOKALE last draait met de staaf mee.
+      const coordL = l.qCoord ?? "global";
+      const dirL = l.qDir ?? "z";
+      let nx: number, ny: number;
+      if (coordL === "local") {
+        if (dirL === "z") { nx = -dys / L; ny = dxs / L; }   // lokale −y (loodrecht)
+        else              { nx = -dxs / L; ny = -dys / L; }  // −x̂ lokaal (axiaal)
+      } else {
+        if (dirL === "z") { nx = 0; ny = 1; }                // scherm-omlaag = wereld −z
+        else              { nx = -1; ny = 0; }               // wereld −x
+      }
+      // Lokaal-axiale pijlen liggen anders óp de staaflijn: til de band een
+      // vast stukje loodrecht van de as zodat de pijlen leesbaar blijven.
+      const isAxial = coordL === "local" && dirL === "x";
+      const offX = isAxial ? (dys / L) * 10 : 0;
+      const offY = isAxial ? (-dxs / L) * 10 : 0;
       // Deellast: pijlen + lastblok alleen over het belaste deel
-      // [startFrac, endFrac] van de staaf (default volle lengte).
-      const aF = Math.min(1, Math.max(0, l.startFrac ?? 0));
-      const bF = Math.min(1, Math.max(aF, l.endFrac ?? 1));
-      const pS = { x: pA.x + dxs * aF, y: pA.y + dys * aF };
-      const pE = { x: pA.x + dxs * bF, y: pA.y + dys * bF };
+      // [startFrac, endFrac] van de staaf (default volle lengte). Tijdens een
+      // greep-sleep gelden de PREVIEW-fracties zodat band en grepen de muis
+      // live volgen; de commit gebeurt pas op loslaten.
+      const storedA = Math.min(1, Math.max(0, l.startFrac ?? 0));
+      const storedB = Math.min(1, Math.max(storedA, l.endFrac ?? 1));
+      const hd = loadHandleDrag && loadHandleDrag.loadId === l.id ? loadHandleDrag : null;
+      const aF = hd ? hd.previewStart : storedA;
+      const bF = hd ? hd.previewEnd : storedB;
+      const pS = { x: pA.x + dxs * aF + offX, y: pA.y + dys * aF + offY };
+      const pE = { x: pA.x + dxs * bF + offX, y: pA.y + dys * bF + offY };
       const sdx = pE.x - pS.x, sdy = pE.y - pS.y;   // belaste segment (px)
       // Trapezium vs uniform: when qStart/qEnd defined, varies linearly
       // (over het BELASTE deel).
@@ -1579,6 +1676,7 @@ export default function FemCanvas(props: FemCanvasProps) {
 
   const cursorStyle = panRef.current.active ? "grabbing"
     : spaceHeld ? "grab"
+    : loadHandleDrag ? "grabbing"
     : dragState ? "grabbing"
     : grabMode ? "move"
     : rotateMode ? "alias"
@@ -2108,6 +2206,59 @@ export default function FemCanvas(props: FemCanvasProps) {
             </g>
           );
         })}
+
+        {/* Deellast-grepen — in een EIGEN toplaag ná de knopen, zodat een
+            greep die op een knoop valt (startFrac 0 / endFrac 1) de muisklik
+            wint van de knoop-cirkel eronder. Vierkante grepen op de twee
+            uiteinden van de lastband, óp de staafas; slepen past startFrac
+            (linkergreep) of endFrac (rechtergreep) aan — zie loadHandleDrag
+            in handleMouseMove/handleMouseUp. Alleen bij een geselecteerde
+            lijnlast in het actieve lastgeval. */}
+        {tool === "select" && showLoads && !resultsMode && selection?.type === "load" && (() => {
+          const l = loads.find(ll => ll.id === (selection as { type: "load"; id: number }).id);
+          if (!l || l.type !== "lineLoad" || l.beamId === undefined) return null;
+          if (l.caseId !== activeLoadCaseId) return null;
+          const b = beams.find(bb => bb.id === l.beamId);
+          const nA = b ? nodes.find(n => n.id === b.from) : undefined;
+          const nB = b ? nodes.find(n => n.id === b.to) : undefined;
+          if (!b || !nA || !nB) return null;
+          const pA = worldToScreen(nA.x, nA.z), pB = worldToScreen(nB.x, nB.z);
+          const dxs = pB.x - pA.x, dys = pB.y - pA.y;
+          const storedA = Math.min(1, Math.max(0, l.startFrac ?? 0));
+          const storedB = Math.min(1, Math.max(storedA, l.endFrac ?? 1));
+          const hd = loadHandleDrag && loadHandleDrag.loadId === l.id ? loadHandleDrag : null;
+          const aF = hd ? hd.previewStart : storedA;
+          const bF = hd ? hd.previewEnd : storedB;
+          const HS = 4.5; // halve zijde van de greep (px)
+          return (
+            <g className="fem-loadhandles-layer">
+              {([
+                { end: "start" as const, fr: aF },
+                { end: "end" as const, fr: bF },
+              ]).map(({ end, fr }) => (
+                <rect
+                  key={`lh-${end}`}
+                  x={pA.x + dxs * fr - HS} y={pA.y + dys * fr - HS}
+                  width={HS * 2} height={HS * 2}
+                  fill="#ffffff" stroke="rgba(220, 38, 38, 1)" strokeWidth={1.5}
+                  style={{ cursor: loadHandleDrag ? "grabbing" : "grab", pointerEvents: "auto" }}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    // stopPropagation: geen box-select of knoop-/staaf-drag
+                    // starten; klik en dubbelklik op staaf en last buiten de
+                    // grepen blijven gewoon werken.
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setLoadHandleDrag({
+                      loadId: l.id, beamId: b.id, end,
+                      previewStart: aF, previewEnd: bF, moved: false,
+                    });
+                  }}
+                />
+              ))}
+            </g>
+          );
+        })()}
 
         {/* Drag ghost preview — translucent dots/lines for nodes being moved */}
         {dragState && (() => {

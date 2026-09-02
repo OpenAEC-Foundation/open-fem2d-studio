@@ -519,14 +519,37 @@ function LoadProperties({
 
         {load.type === "lineLoad" && (
           <Section title="Lijnlast">
+            <Row label="Assenstelsel">
+              <select
+                className="fem-prop-select"
+                value={load.qCoord ?? "global"}
+                onChange={e => updateLoad?.(load.id, { qCoord: e.target.value as "global" | "local" })}
+                title={"Globaal: de last werkt in wereldassen (verticaal/horizontaal), ongeacht de staafhelling.\nLokaal: de last draait met de staaf mee (loodrecht op of langs de staafas).\nq blijft altijd per meter staaflengte."}
+              >
+                <option value="global">Globaal (wereldassen)</option>
+                <option value="local">Lokaal (staafassen)</option>
+              </select>
+            </Row>
             <Row label="Richting">
               <select
                 className="fem-prop-select"
                 value={load.qDir ?? "z"}
                 onChange={e => updateLoad?.(load.id, { qDir: e.target.value as "x" | "z" })}
+                title={(load.qCoord ?? "global") === "local"
+                  ? "Lokale z: loodrecht op de staafas. Lokale x: axiaal langs de staaf."
+                  : "Wereld-Z: verticaal (negatief = omlaag). Wereld-X: horizontaal (wind)."}
               >
-                <option value="z">Verticaal (+Z, gravitatie)</option>
-                <option value="x">Horizontaal (+X, wind)</option>
+                {(load.qCoord ?? "global") === "local" ? (
+                  <>
+                    <option value="z">Loodrecht op staaf (lokale z)</option>
+                    <option value="x">Axiaal langs staaf (lokale x)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="z">Verticaal (+Z, gravitatie)</option>
+                    <option value="x">Horizontaal (+X, wind)</option>
+                  </>
+                )}
               </select>
             </Row>
             <Row label="Trapezium">
@@ -612,7 +635,13 @@ function LoadProperties({
                 </Row>
               </>
             )}
-            <Row label="Richting"><code>Globale +Z (gravitatie: negatief)</code></Row>
+            <Row label="Werkt in">
+              <code>
+                {(load.qCoord ?? "global") === "local"
+                  ? ((load.qDir ?? "z") === "z" ? "Loodrecht op de staaf" : "Axiaal langs de staaf")
+                  : ((load.qDir ?? "z") === "z" ? "Wereld-Z (negatief = omlaag)" : "Wereld-X (horizontaal)")}
+              </code>
+            </Row>
           </Section>
         )}
 

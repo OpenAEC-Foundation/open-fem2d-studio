@@ -74,6 +74,15 @@ export interface SolverDistLoadInput {
   /** Direction of the load in GLOBAL axes. Default "z" = vertical (gravity). "x" = horizontal (wind). */
   qDir?: "x" | "z";
   /**
+   * Assenstelsel van qDir. Default "global" (bestaand gedrag). Bij "local"
+   * is qDir "z" = loodrecht op de staafas (positief = lokale +y: 90° CCW
+   * vanaf de as from→to) en qDir "x" = axiaal langs de staaf. q blijft
+   * per lengte-eenheid STAAFLENGTE. De adapter projecteert lokale lasten
+   * exact naar globale componenten (rechte staven) vóórdat de core rekent;
+   * de scheefstand-companion werkt daardoor op de echte verticale component.
+   */
+  qCoord?: "global" | "local";
+  /**
    * Deellast: begin van het belaste deel als FRACTIE 0..1 van de staaflengte,
    * gemeten vanaf de startknoop. Default 0 (last begint bij de startknoop).
    * Bij een trapezium (qStart/qEnd) lopen de waarden lineair over het

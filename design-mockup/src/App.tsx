@@ -579,6 +579,7 @@ function App() {
             qStart: l.qStart,
             qEnd: l.qEnd,
             qDir: l.qDir,
+            qCoord: l.qCoord,
             startFrac: l.startFrac,
             endFrac: l.endFrac,
             caseId: l.caseId,
@@ -947,6 +948,7 @@ function App() {
           addPlate={fem.addPlate}
           addSupport={fem.addSupport}
           addLoad={fem.addLoad}
+          updateLoad={fem.updateLoad}
           deleteSelected={fem.deleteSelected}
           splitBeamAt={fem.splitBeamAt}
           translateSelection={fem.translateSelection}

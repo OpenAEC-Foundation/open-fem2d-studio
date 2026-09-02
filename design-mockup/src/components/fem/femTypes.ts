@@ -135,6 +135,23 @@ export interface Load {
    *  "x" = horizontal (wind-style). Affects projection to local-axial + local-transverse. */
   qDir?: "x" | "z";
   /**
+   * Assenstelsel van de lijnlast. Default (en ontbrekend veld, dus ook alle
+   * oude projectbestanden) = "global" — het bestaande gedrag.
+   *
+   * SEMANTIEK — q is ALTIJD in kN per meter STAAFLENGTE:
+   *  - "global" + qDir "z": verticaal in wereldassen (negatief = omlaag,
+   *    gravitatie — het huidige rekengedrag);
+   *  - "global" + qDir "x": horizontaal in wereldassen (wind-stijl);
+   *  - "local"  + qDir "z": loodrecht op de staafas (lokale z; positief =
+   *    lokale +y van de core: 90° CCW vanaf de as from→to — voor een
+   *    horizontale staaf van links naar rechts identiek aan globaal-z);
+   *  - "local"  + qDir "x": axiaal, langs de staafas (positief richting de
+   *    to-knoop).
+   * De adapter (solver/engine.ts) projecteert lokale lasten exact naar
+   * globale componenten per staafhoek; de core rekent altijd globaal.
+   */
+  qCoord?: "global" | "local";
+  /**
    * Deellast (partiële lijnlast): begin van het belaste deel als FRACTIE
    * 0..1 van de staaflengte, gemeten vanaf de startknoop (`Beam.from`).
    * Ontbreekt het veld (oude bestanden) dan geldt de volle lengte (0).

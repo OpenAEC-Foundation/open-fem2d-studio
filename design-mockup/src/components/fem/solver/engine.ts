@@ -179,7 +179,25 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   const sch = (input as any).scheefstand as { phi: number; richting: 1 | -1 } | undefined;
   const schFactor = sch ? sch.richting * sch.phi : 0;
 
-  // Distributed loads: N/mm → N/m, project qDir into qx/qy global axes
+  // Staafhoek per UI-staaf-id, voor de projectie van LOKALE lijnlasten.
+  // atan2(Δz, Δx) in modelassen (z omhoog) is identiek aan de hoek die de
+  // core zelf berekent (calculateBeamAngle), omdat mesh-y 1-op-1 uit de
+  // UI-z komt en de hoek schaal-invariant is.
+  const nodeById = new Map<number, { x: number; z: number }>();
+  for (const n of input.nodes) nodeById.set(n.id, { x: n.x, z: n.z });
+  const beamAngle = new Map<number, number>();
+  for (const b of input.beams) {
+    const nf = nodeById.get(b.from), nt = nodeById.get(b.to);
+    if (nf && nt) beamAngle.set(b.id, Math.atan2(nt.z - nf.z, nt.x - nf.x));
+  }
+
+  // Distributed loads: N/mm → N/m, richting (qCoord/qDir) → globale qx/qy.
+  // De core ondersteunt weliswaar coordSystem "local", maar hier wordt
+  // bewust in de ADAPTER geprojecteerd: het volle-lengte-pad voegt lasten
+  // additief samen in één record met één coordSystem (mengen kan niet), en
+  // de scheefstand-companion moet op de VERTICALE component werken — ná
+  // projectie is dat uniform voor globale én lokale lasten. De projectie is
+  // exact voor rechte staven en de core-paden blijven bit-stabiel "global".
   const loads = (input as any).loads as Array<any> | undefined;
   if (loads) {
     for (const ld of loads) {
@@ -190,12 +208,36 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       const qa = (ld.qStart ?? ld.q ?? 0) * 1000 * f;
       const qb = (ld.qEnd   ?? ld.q ?? 0) * 1000 * f;
       const dir = ld.qDir ?? "z";
-      // Companion-qx uit scheefstand: −qy omdat qy < 0 = omlaag (gravitatie)
-      // een H in +richting moet geven.
-      const qxA = (dir === "x" ? qa : 0) + (dir === "z" ? schFactor * -qa : 0);
-      const qyA = dir === "z" ? qa : 0;
-      const qxB = (dir === "x" ? qb : 0) + (dir === "z" ? schFactor * -qb : 0);
-      const qyB = dir === "z" ? qb : 0;
+      const coord = ld.qCoord ?? "global";
+      // Stap 1 — componenten in WERELDASSEN (x rechts, y=z omhoog), N/m.
+      // Globaal: triviale toewijzing (bestaand gedrag). Lokaal: projectie
+      // met staafhoek θ; met lokale eenheidsvectoren
+      //   x̂_lok (axiaal)       = ( cosθ, sinθ)
+      //   ŷ_lok (transversaal) = (−sinθ, cosθ)   [90° CCW vanaf de as]
+      // geldt exact (rechte staaf):
+      //   lokaal qDir "z": (qx_glob, qy_glob) = q·(−sinθ, cosθ)
+      //   lokaal qDir "x": (qx_glob, qy_glob) = q·( cosθ, sinθ)
+      let gxA: number, gyA: number, gxB: number, gyB: number;
+      if (coord === "local") {
+        const th = beamAngle.get(ld.beamId) ?? 0;
+        const c = Math.cos(th), s = Math.sin(th);
+        const ax = dir === "x" ? 1 : 0;   // axiaal aandeel
+        const tr = dir === "z" ? 1 : 0;   // transversaal aandeel
+        gxA = qa * (ax * c - tr * s); gyA = qa * (ax * s + tr * c);
+        gxB = qb * (ax * c - tr * s); gyB = qb * (ax * s + tr * c);
+      } else {
+        gxA = dir === "x" ? qa : 0; gyA = dir === "z" ? qa : 0;
+        gxB = dir === "x" ? qb : 0; gyB = dir === "z" ? qb : 0;
+      }
+      // Stap 2 — scheefstand-companion NÁ de projectie, op de verticale
+      // component: qx += φ·richting·(−qy), omdat qy < 0 = omlaag (gravitatie)
+      // een H in +richting moet geven. Voor globale z-lasten is dit
+      // bit-identiek aan het oude pad (gy = q); een lokale last krijgt zo
+      // een companion op basis van zijn échte verticale aandeel.
+      const qxA = gxA + schFactor * -gyA;
+      const qyA = gyA;
+      const qxB = gxB + schFactor * -gyB;
+      const qyB = gyB;
 
       // Deellast? (startFrac/endFrac, fracties 0..1; ontbreken = volle lengte)
       const aFrac = Math.min(1, Math.max(0, ld.startFrac ?? 0));
