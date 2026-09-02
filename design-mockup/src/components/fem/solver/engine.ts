@@ -22,6 +22,8 @@ import { Mesh } from "../../../core/fem/Mesh";
 import { solveNonlinear } from "../../../core/solver/NonlinearSolver";
 import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode } from "../../../core/solver/Assembler";
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
+import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
+import { computeSelfWeightNodalForces, applyNodalForces } from "../../../core/fem/PlateLoads";
 import type {
   SolverInput,
   SolverResult,
@@ -30,9 +32,75 @@ import type {
   NodalDisp,
   NodalReaction,
   ElementForces,
+  SolverPlateInput,
+  PlateResult,
+  PlateElementStress,
+  PlateStressRange,
 } from "./types";
 
 type AnyMesh = any; // structural typing — Mesh shape from core/fem/Mesh
+
+/** Gemeshte plaat: koppeling UI-plaat-id ↔ core-plaatregio (mesh-knopen/-elementen). */
+type PlateRegionInfo = { plateId: number; region: ReturnType<typeof generatePlateRegionMesh> };
+
+/**
+ * Schaalbewaking mixed-analyse: de dense Gauss-eliminatie is O(n³) in tijd en
+ * O(n²) in geheugen — boven ±4000 vrijheidsgraden wordt de UI onwerkbaar.
+ * De adapter weigert grotere modellen met een nette melding (meshSize
+ * vergroten); een sparse solver staat op de backlog.
+ */
+const MAX_MIXED_DOFS = 4000;
+
+/**
+ * Splitsfracties (0..1, exclusief de uiteinden) van een staaf die exact op
+ * een plaatrand ligt: de gridknoop-posities van die rand, uitgedrukt als
+ * fractie langs de staaf van `nA` naar `nB`. Een staaf die niet (volledig)
+ * op een rand ligt levert een lege lijst — die blijft ongesplitst.
+ * Randen van meerdere platen worden samengevoegd en ontdubbeld (gedeelde
+ * randen tussen twee platen leveren dezelfde posities).
+ */
+function berekenPlaatrandSplitsFracties(
+  nA: { x: number; z: number },
+  nB: { x: number; z: number },
+  plateRects: { minX: number; minZ: number; width: number; height: number; nx: number; ny: number }[],
+  tolMm: number,
+): number[] {
+  const ts: number[] = [];
+  for (const r of plateRects) {
+    // Horizontale randen (onder/boven): z ≈ randhoogte, x varieert.
+    for (const randZ of [r.minZ, r.minZ + r.height]) {
+      if (Math.abs(nA.z - randZ) <= tolMm && Math.abs(nB.z - randZ) <= tolMm &&
+          Math.abs(nB.x - nA.x) > tolMm) {
+        const lo = Math.min(nA.x, nB.x), hi = Math.max(nA.x, nB.x);
+        for (let i = 0; i <= r.nx; i++) {
+          const pos = r.minX + (i / r.nx) * r.width;
+          if (pos > lo + tolMm && pos < hi - tolMm) {
+            ts.push((pos - nA.x) / (nB.x - nA.x));
+          }
+        }
+      }
+    }
+    // Verticale randen (links/rechts): x ≈ randpositie, z varieert.
+    for (const randX of [r.minX, r.minX + r.width]) {
+      if (Math.abs(nA.x - randX) <= tolMm && Math.abs(nB.x - randX) <= tolMm &&
+          Math.abs(nB.z - nA.z) > tolMm) {
+        const lo = Math.min(nA.z, nB.z), hi = Math.max(nA.z, nB.z);
+        for (let j = 0; j <= r.ny; j++) {
+          const pos = r.minZ + (j / r.ny) * r.height;
+          if (pos > lo + tolMm && pos < hi - tolMm) {
+            ts.push((pos - nA.z) / (nB.z - nA.z));
+          }
+        }
+      }
+    }
+  }
+  ts.sort((a, b) => a - b);
+  const uniek: number[] = [];
+  for (const t of ts) {
+    if (uniek.length === 0 || Math.abs(t - uniek[uniek.length - 1]) > 1e-9) uniek.push(t);
+  }
+  return uniek;
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -88,6 +156,14 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   mesh: AnyMesh;
   nodeIdMap: Map<number, number>;
   beamIdMap: Map<number, number>;
+  /** Gemeshte platen (leeg zonder platen) — aanwezig ⇒ analyse in mixed_beam_plate. */
+  plateInfo: PlateRegionInfo[];
+  /**
+   * Op plaatranden gesplitste staven (P2.4): UI-staaf-id → geordende
+   * deelstukken met hun fractie-interval [t0, t1] op de oorspronkelijke
+   * staaf. Alleen entries voor staven met ≥ 2 deelstukken.
+   */
+  beamSegments: Map<number, { meshId: number; t0: number; t1: number }[]>;
 } {
   const mesh = new Mesh();
   const nodeIdMap = new Map<number, number>();
@@ -127,7 +203,114 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     applySupportToMesh(mesh, meshNid, s);
   }
 
-  // Beams: mm² → m², mm⁴ → m⁴; preserve scharnier (startConnection/endConnection)
+  // UI-knoopposities (mm) — nodig voor het staafsplitsen langs plaatranden
+  // (P2.4) én verderop voor de staafhoek bij lokale lijnlasten.
+  const nodeById = new Map<number, { x: number; z: number }>();
+  for (const n of input.nodes) nodeById.set(n.id, { x: n.x, z: n.z });
+
+  // ── Plaatrechthoeken parsen + valideren (P2.2/P2.4) ──────────────────────
+  // De validatie gebeurt VÓÓR de staven, zodat het splitsen van staven op
+  // plaatrandknopen de gridposities al kent; het meshen zelf volgt verderop
+  // (na de staven, zodat het grid hun splitsknopen kan hergebruiken).
+  const TOL_MM = 1; // zelfde orde als de findNodeAt-hergebruiktolerantie (0,001 m)
+  const plateInputs = (input as any).plates as SolverPlateInput[] | undefined;
+  const plateRects: {
+    p: SolverPlateInput;
+    minX: number; minZ: number; width: number; height: number;
+    nx: number; ny: number;
+  }[] = [];
+  if (plateInputs && plateInputs.length > 0) {
+    for (const p of plateInputs) {
+      if (!Array.isArray(p.nodeIds) || p.nodeIds.length !== 4) {
+        throw new Error(
+          `Plaat ${p.id}: verwacht 4 hoekknopen, maar kreeg er ${p.nodeIds?.length ?? 0}.`);
+      }
+      const corners = p.nodeIds.map((id) => nodeById.get(id));
+      if (corners.some((c) => !c)) {
+        throw new Error(`Plaat ${p.id}: één of meer hoekknopen bestaan niet meer.`);
+      }
+      const xs = corners.map((c) => c!.x);
+      const zs = corners.map((c) => c!.z);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+      const width = maxX - minX, height = maxZ - minZ;
+      if (width < TOL_MM || height < TOL_MM) {
+        throw new Error(
+          `Plaat ${p.id} is gedegenereerd (breedte of hoogte vrijwel nul) — ` +
+          `teken een echte rechthoek.`);
+      }
+      // Asgelijnde rechthoek: elk van de vier (minX/maxX)×(minZ/maxZ)-hoeken
+      // moet door precies één hoekknoop bezet zijn (binnen tolerantie).
+      const targets: [number, number][] = [
+        [minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ],
+      ];
+      const bezet = [false, false, false, false];
+      for (const c of corners) {
+        const hit = targets.findIndex(([tx, tz], i) =>
+          !bezet[i] && Math.abs(c!.x - tx) <= TOL_MM && Math.abs(c!.z - tz) <= TOL_MM);
+        if (hit < 0) {
+          throw new Error(
+            `Plaat ${p.id} is geen asgelijnde rechthoek — gedraaide of scheve ` +
+            `platen worden nog niet ondersteund.`);
+        }
+        bezet[hit] = true;
+      }
+      // Divisions uit meshSize (mm): afgerond op het dichtstbijzijnde
+      // gehele aantal, minimaal 1 per richting.
+      const meshSize = p.meshSize > 0 ? p.meshSize : 500;
+      const nx = Math.max(1, Math.round(width / meshSize));
+      const ny = Math.max(1, Math.round(height / meshSize));
+      plateRects.push({ p, minX, minZ, width, height, nx, ny });
+    }
+  }
+
+  /**
+   * Releases toepassen op één (deel)staaf. Bij een gesplitste staaf (P2.4)
+   * horen de start-releases alleen bij het eerste deel en de eind-releases
+   * alleen bij het laatste deel; de tussenknopen zijn momentvast — dezelfde
+   * regels als computeBeamSplit in de store. Met (true, true) is het gedrag
+   * bit-identiek aan het oorspronkelijke ongesplitste pad: het legacy
+   * scharnierpaar (alleen Rz) blijft het legacy pad, en zodra er een
+   * translatie-release (Tx/Tz-huls, lokale assen) in het spel is gaat het
+   * volledige per-DOF-connectiemodel mee.
+   */
+  const pasReleasesToe = (meshBeamId: number, b: any, metStartzijde: boolean, metEindzijde: boolean): void => {
+    const rel = b.releases as {
+      startTx?: boolean; startTz?: boolean; startRy?: boolean;
+      endTx?: boolean; endTz?: boolean; endRy?: boolean;
+    } | undefined;
+    const sTx = !!(metStartzijde && rel?.startTx);
+    const sTz = !!(metStartzijde && rel?.startTz);
+    const sRy = !!(metStartzijde && (rel?.startRy || b.startConnection === "hinge"));
+    const eTx = !!(metEindzijde && rel?.endTx);
+    const eTz = !!(metEindzijde && rel?.endTz);
+    const eRy = !!(metEindzijde && (rel?.endRy || b.endConnection === "hinge"));
+    const updates: any = {};
+    if (sTx || sTz || eTx || eTz) {
+      updates.startConnections = {
+        Tx: sTx ? "hinge" : "fixed",
+        Tz: sTz ? "hinge" : "fixed",
+        Rz: sRy ? "hinge" : "fixed",
+      };
+      updates.endConnections = {
+        Tx: eTx ? "hinge" : "fixed",
+        Tz: eTz ? "hinge" : "fixed",
+        Rz: eRy ? "hinge" : "fixed",
+      };
+    } else {
+      if (sRy) updates.startConnection = "hinge";
+      if (eRy) updates.endConnection = "hinge";
+    }
+    if (Object.keys(updates).length > 0) mesh.updateBeamElement(meshBeamId, updates);
+  };
+
+  // Beams: mm² → m², mm⁴ → m⁴; preserve scharnier (startConnection/endConnection).
+  // P2.4: een staaf die exact op een plaatrand ligt wordt op de plaatrand-
+  // knopen gesplitst (1 UI-staaf → n mesh-staven) — anders zou de plaat
+  // alleen aan de staafuiteinden hangen. beamSegments registreert de delen
+  // (met hun fractie-interval op de UI-staaf) zodat lasten worden verdeeld
+  // en convertResult de stationsresultaten weer aaneenrijgt.
+  const beamSegments = new Map<number, { meshId: number; t0: number; t1: number }[]>();
   for (const b of input.beams) {
     const fromId = nodeIdMap.get(b.from);
     const toId   = nodeIdMap.get(b.to);
@@ -137,59 +320,191 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       I: (b.I ?? 1.673e7) * 1e-12,
       h: 0.2, // default depth — only used for plate analysis
     };
-    const meshBeam = mesh.addBeamElement([fromId, toId], materialIdForE(b.E ?? 210000), section);
-    if (!meshBeam) continue;
-    beamIdMap.set(b.id, meshBeam.id);
+    const matId = materialIdForE(b.E ?? 210000);
+    const nA = nodeById.get(b.from)!;
+    const nB = nodeById.get(b.to)!;
+    const splitsT = plateRects.length > 0
+      ? berekenPlaatrandSplitsFracties(nA, nB, plateRects, TOL_MM)
+      : [];
 
-    // Releases doorgeven aan de mesh (die condenseert via applyEndReleases).
-    // Twee vormen: het legacy scharnierpaar startConnection/endConnection
-    // (alleen Rz) en het volledige releases-object met ook Tx (axiaal,
-    // normaalkrachthuls) en Tz (dwars, dwarskrachthuls) in LOKALE assen.
-    // Met translatie-releases gaat het per-DOF-connectiemodel mee; zonder
-    // blijft het legacy pad bit-identiek.
-    const updates: any = {};
-    const rel = (b as any).releases as {
-      startTx?: boolean; startTz?: boolean; startRy?: boolean;
-      endTx?: boolean; endTz?: boolean; endRy?: boolean;
-    } | undefined;
-    const heeftTransRelease = !!(rel && (rel.startTx || rel.startTz || rel.endTx || rel.endTz));
-    if (heeftTransRelease) {
-      const startRz = rel!.startRy || (b as any).startConnection === "hinge";
-      const endRz   = rel!.endRy   || (b as any).endConnection   === "hinge";
-      updates.startConnections = {
-        Tx: rel!.startTx ? "hinge" : "fixed",
-        Tz: rel!.startTz ? "hinge" : "fixed",
-        Rz: startRz ? "hinge" : "fixed",
-      };
-      updates.endConnections = {
-        Tx: rel!.endTx ? "hinge" : "fixed",
-        Tz: rel!.endTz ? "hinge" : "fixed",
-        Rz: endRz ? "hinge" : "fixed",
-      };
+    if (splitsT.length === 0) {
+      // Ongesplitst — het bestaande pad (bit-identiek zonder platen).
+      const meshBeam = mesh.addBeamElement([fromId, toId], matId, section);
+      if (!meshBeam) continue;
+      beamIdMap.set(b.id, meshBeam.id);
+      pasReleasesToe(meshBeam.id, b, true, true);
     } else {
-      if ((b as any).startConnection === "hinge" || rel?.startRy) updates.startConnection = "hinge";
-      if ((b as any).endConnection === "hinge"   || rel?.endRy)   updates.endConnection   = "hinge";
+      // Tussenknopen op de gridposities van de plaatrand. findNodeAt
+      // hergebruikt een eventueel al bestaande (UI-)knoop binnen 1 mm; het
+      // plaatgrid pikt straks dezelfde knopen op — staaf en plaat delen dus
+      // álle randknopen.
+      const knoopIds = [fromId];
+      for (const t of splitsT) {
+        const mx = (nA.x + t * (nB.x - nA.x)) / 1000;
+        const my = (nA.z + t * (nB.z - nA.z)) / 1000;
+        const bestaand = mesh.findNodeAt(mx, my, 0.001);
+        knoopIds.push(bestaand ? bestaand.id : mesh.addNode(mx, my).id);
+      }
+      knoopIds.push(toId);
+      const grens = [0, ...splitsT, 1];
+      const segs: { meshId: number; t0: number; t1: number }[] = [];
+      for (let i = 0; i < knoopIds.length - 1; i++) {
+        const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, section);
+        if (!mb) continue;
+        pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
+        segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
+      }
+      if (segs.length > 0) {
+        beamIdMap.set(b.id, segs[0].meshId);
+        if (segs.length > 1) beamSegments.set(b.id, segs);
+      }
     }
-    if (Object.keys(updates).length > 0) mesh.updateBeamElement(meshBeam.id, updates);
+  }
+
+  // Scheefstand-factor (hier al nodig voor het plaat-eigengewicht hieronder;
+  // de volledige toelichting staat bij het lastenblok verderop): elke
+  // verticale last krijgt een horizontale metgezel H = φ·V, richting ±x.
+  const sch = (input as any).scheefstand as { phi: number; richting: 1 | -1 } | undefined;
+  const schFactor = sch ? sch.richting * sch.phi : 0;
+
+  // ── Wandschijven meshen (platen, P2.2) ────────────────────────────────────
+  // Per (hierboven al gevalideerde) plaat: eigen mesh-materiaal (E, ν, ρ) en
+  // een Quad4-grid via generatePlateRegionMesh. Dat grid HERGEBRUIKT
+  // bestaande knopen op gridposities (findNodeAt, tolerantie 1 mm) — de vier
+  // UI-hoekknopen, UI-knopen op de rand én de splitsknopen van randstaven
+  // worden dus rekenknopen van de plaat, zodat steunpunten en lasten daar
+  // gewoon aangrijpen en randstaven volledig meedragen.
+  const plateInfo: PlateRegionInfo[] = [];
+  if (plateRects.length > 0) {
+    for (const { p, minX, minZ, width, height, nx, ny } of plateRects) {
+      // Eigen mesh-materiaal per plaat: E (N/mm² → Pa), ν en ρ uit de invoer.
+      const mat = mesh.addMaterial({
+        name: `Plaat ${p.id}`,
+        E: p.E * 1e6,
+        nu: p.nu,
+        rho: p.rho,
+        color: matTemplate?.color ?? "#3b82f6",
+        alpha: matTemplate?.alpha ?? 12e-6,
+      });
+      const region = generatePlateRegionMesh(mesh, {
+        x: minX / 1000, y: minZ / 1000,          // mm → m
+        width: width / 1000, height: height / 1000,
+        divisionsX: nx, divisionsY: ny,
+        materialId: mat.id,
+        thickness: p.thickness / 1000,           // mm → m
+        // Regelmatig grid → Quad4: geen detJ-problemen en beter buiggedrag
+        // dan CST (zie het platenplan, ontwerpbesluiten).
+        elementType: "quad",
+      });
+      mesh.addPlateRegion(region);
+      plateInfo.push({ plateId: p.id, region });
+
+      // Eigengewicht (P2.3): wanneer de plaat een selfWeightCaseId draagt en
+      // dat geval in deze solve meedoet (loadFactor ≠ 0), worden de exacte
+      // ρ·g·t·A-knooplasten van PlateLoads op de meshknopen gezet — CST W/3,
+      // Quad4 W/4 per knoop, ΣF exact. De scheefstand-companion werkt op de
+      // verticale component, net als bij staaf- en knooplasten.
+      if (p.selfWeightCaseId !== undefined) {
+        const f = loadFactor ? loadFactor(p.selfWeightCaseId) : 1;
+        if (f !== 0) {
+          const gewicht = computeSelfWeightNodalForces(mesh, { elementIds: region.elementIds });
+          applyNodalForces(mesh, gewicht.map((kr) => ({
+            nodeId: kr.nodeId,
+            fx: (kr.fx + schFactor * -kr.fy) * f,
+            fy: kr.fy * f,
+          })));
+        }
+      }
+    }
+
+    // Schaalbewaking + validatie op rekenknopen — één actieve-knopen-index
+    // voor beide checks.
+    const actieveKnopen = buildNodeIdToIndex(mesh, "mixed_beam_plate");
+    const nDof = actieveKnopen.size * 3;
+    if (nDof > MAX_MIXED_DOFS) {
+      throw new Error(
+        `Model te groot voor de ingebouwde solver: ${nDof} vrijheidsgraden ` +
+        `(maximum ±${MAX_MIXED_DOFS}). Vergroot de meshSize van de platen ` +
+        `of verklein het model.`);
+    }
+    // solveMixed kent géén constraint-/last-transfer: een steunpunt of
+    // puntlast op een knoop die niet in het rekenmesh zit zou stil genegeerd
+    // worden (of een solver-fout geven). Daarom hier een expliciete controle.
+    for (const s of input.supports) {
+      const mid = nodeIdMap.get(s.nodeId);
+      if (mid !== undefined && !actieveKnopen.has(mid)) {
+        throw new Error(
+          `Steunpunt op knoop ${s.nodeId} ligt niet op een rekenknoop van het ` +
+          `plaatmesh. Verplaats de knoop naar een gridpositie van de plaat ` +
+          `(veelvoud van de meshSize vanaf een hoek) of pas de meshSize aan.`);
+      }
+    }
+    const plsValidatie = (input as any).pointLoads as Array<any> | undefined;
+    if (plsValidatie) {
+      for (const pl of plsValidatie) {
+        const mid = nodeIdMap.get(pl.nodeId);
+        if (mid !== undefined && !actieveKnopen.has(mid)) {
+          throw new Error(
+            `Puntlast op knoop ${pl.nodeId} ligt niet op een rekenknoop van het ` +
+            `plaatmesh. Verplaats de knoop naar een gridpositie van de plaat ` +
+            `of pas de meshSize aan.`);
+        }
+      }
+    }
   }
 
   // Scheefstand: elke verticale last krijgt een equivalente horizontale
   // metgezel H = φ·V (richting ±x). Lineair in de last, dus per-geval-
   // factoren en combinaties schalen automatisch mee — zie ScheefstandInput.
-  const sch = (input as any).scheefstand as { phi: number; richting: 1 | -1 } | undefined;
-  const schFactor = sch ? sch.richting * sch.phi : 0;
+  // (`schFactor` is hierboven al berekend, vóór het plaat-eigengewicht.)
 
   // Staafhoek per UI-staaf-id, voor de projectie van LOKALE lijnlasten.
   // atan2(Δz, Δx) in modelassen (z omhoog) is identiek aan de hoek die de
   // core zelf berekent (calculateBeamAngle), omdat mesh-y 1-op-1 uit de
-  // UI-z komt en de hoek schaal-invariant is.
-  const nodeById = new Map<number, { x: number; z: number }>();
-  for (const n of input.nodes) nodeById.set(n.id, { x: n.x, z: n.z });
+  // UI-z komt en de hoek schaal-invariant is. (nodeById is hierboven al
+  // opgebouwd, vóór het staafsplitsen.)
   const beamAngle = new Map<number, number>();
   for (const b of input.beams) {
     const nf = nodeById.get(b.from), nt = nodeById.get(b.to);
     if (nf && nt) beamAngle.set(b.id, Math.atan2(nt.z - nf.z, nt.x - nf.x));
   }
+
+  /**
+   * Verdeelde last (globale componenten, N/m) op één mesh-staaf toepassen —
+   * exact de bestaande merge-logica: volle lengte additief in het
+   * enkelvoudige distributedLoad-veld (bit-stabiel regressie-anker),
+   * deellast als eigen record in de distributedLoads-array.
+   */
+  const pasVerdeeldeLastToe = (
+    meshBeamId: number,
+    qxA: number, qyA: number, qxB: number, qyB: number,
+    aFrac: number, bFrac: number,
+  ): void => {
+    const isPartial = aFrac > 0 || bFrac < 1;
+    const beam = mesh.getBeamElement(meshBeamId);
+    if (!isPartial) {
+      const ex = beam?.distributedLoad;
+      mesh.updateBeamElement(meshBeamId, {
+        distributedLoad: {
+          qx: (ex?.qx ?? 0) + qxA,
+          qy: (ex?.qy ?? 0) + qyA,
+          qxEnd: (ex?.qxEnd ?? ex?.qx ?? 0) + qxB,
+          qyEnd: (ex?.qyEnd ?? ex?.qy ?? 0) + qyB,
+          coordSystem: "global",
+        },
+      });
+    } else {
+      if (bFrac - aFrac <= 0) return; // leeg belast deel → geen last
+      const arr = beam?.distributedLoads ?? [];
+      mesh.updateBeamElement(meshBeamId, {
+        distributedLoads: [...arr, {
+          qx: qxA, qy: qyA, qxEnd: qxB, qyEnd: qyB,
+          startT: aFrac, endT: bFrac,
+          coordSystem: "global" as const,
+        }],
+      });
+    }
+  };
 
   // Distributed loads: N/mm → N/m, richting (qCoord/qDir) → globale qx/qy.
   // De core ondersteunt weliswaar coordSystem "local", maar hier wordt
@@ -242,35 +557,38 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       // Deellast? (startFrac/endFrac, fracties 0..1; ontbreken = volle lengte)
       const aFrac = Math.min(1, Math.max(0, ld.startFrac ?? 0));
       const bFrac = Math.min(1, Math.max(0, ld.endFrac ?? 1));
-      const isPartial = aFrac > 0 || bFrac < 1;
 
-      const beam = mesh.getBeamElement(beamMeshId);
-      if (!isPartial) {
-        // Volle lengte: additief samenvoegen in het enkelvoudige
-        // distributedLoad-veld — ONGEWIJZIGD pad (bit-stabiel regressie-anker).
-        const ex = beam?.distributedLoad;
-        mesh.updateBeamElement(beamMeshId, {
-          distributedLoad: {
-            qx: (ex?.qx ?? 0) + qxA,
-            qy: (ex?.qy ?? 0) + qyA,
-            qxEnd: (ex?.qxEnd ?? ex?.qx ?? 0) + qxB,
-            qyEnd: (ex?.qyEnd ?? ex?.qy ?? 0) + qyB,
-            coordSystem: "global",
-          },
-        });
+      const segs = beamSegments.get(ld.beamId);
+      if (!segs) {
+        // Ongesplitste staaf — bestaand pad via de merge-helper (identieke ops).
+        pasVerdeeldeLastToe(beamMeshId, qxA, qyA, qxB, qyB, aFrac, bFrac);
       } else {
-        // Deellast: eigen record in de distributedLoads-array — extents
-        // verschillen per last en zijn dus niet additief samen te voegen.
-        // De core sommeert over alle records (getBeamDistributedLoads).
-        if (bFrac - aFrac <= 0) continue; // leeg belast deel → geen last
-        const arr = beam?.distributedLoads ?? [];
-        mesh.updateBeamElement(beamMeshId, {
-          distributedLoads: [...arr, {
-            qx: qxA, qy: qyA, qxEnd: qxB, qyEnd: qyB,
-            startT: aFrac, endT: bFrac,
-            coordSystem: "global" as const,
-          }],
-        });
+        // Gesplitste staaf (P2.4): het belaste interval [aFrac, bFrac] wordt
+        // per deelstuk gesneden en de componentwaarden worden op de
+        // snijgrenzen lineair geïnterpoleerd over het BELASTE interval —
+        // dezelfde regels als computeBeamSplit in de store. De interpolatie
+        // gebeurt op de al geprojecteerde + scheefstand-verrijkte
+        // componenten; dat mag, want beide bewerkingen zijn puntsgewijs
+        // lineair en commuteren dus met de interpolatie.
+        for (const s of segs) {
+          const lo = Math.max(aFrac, s.t0);
+          const hi = Math.min(bFrac, s.t1);
+          if (hi - lo <= 1e-12) continue; // dit deelstuk is onbelast
+          const frac = (t: number) => (bFrac === aFrac ? 0 : (t - aFrac) / (bFrac - aFrac));
+          const fLo = frac(lo), fHi = frac(hi);
+          // Fracties op het DEELSTUK, met snapping tegen float-ruis zodat een
+          // volledig gedekt deelstuk het volle-lengte-pad (additief) neemt.
+          let segA = (lo - s.t0) / (s.t1 - s.t0);
+          let segB = (hi - s.t0) / (s.t1 - s.t0);
+          if (segA < 1e-9) segA = 0;
+          if (segB > 1 - 1e-9) segB = 1;
+          pasVerdeeldeLastToe(
+            s.meshId,
+            qxA + (qxB - qxA) * fLo, qyA + (qyB - qyA) * fLo,
+            qxA + (qxB - qxA) * fHi, qyA + (qyB - qyA) * fHi,
+            segA, segB,
+          );
+        }
       }
     }
   }
@@ -322,22 +640,33 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       if (f === 0 || !tl.deltaT) continue;
       const beamMeshId = beamIdMap.get(tl.beamId);
       if (beamMeshId === undefined) continue;
-      const beam = mesh.getBeamElement(beamMeshId);
-      if (!beam) continue;
-      const alphaMat = mesh.getMaterial(beam.materialId)?.alpha ?? 12e-6;
-      const alphaLoad = tl.alpha ?? 1.2e-5; // default staal — zie types.ts
-      const ex = beam.thermalLoad?.deltaT ?? 0;
-      mesh.updateBeamElement(beamMeshId, {
-        thermalLoad: { deltaT: ex + tl.deltaT * (alphaLoad / alphaMat) * f },
-      });
+      // Gesplitste staaf (P2.4): uniforme ΔT geldt voor élk deelstuk —
+      // zelfde duplicatieregel als computeBeamSplit voor thermische lasten.
+      const doelIds = beamSegments.get(tl.beamId)?.map((s) => s.meshId) ?? [beamMeshId];
+      for (const doelId of doelIds) {
+        const beam = mesh.getBeamElement(doelId);
+        if (!beam) continue;
+        const alphaMat = mesh.getMaterial(beam.materialId)?.alpha ?? 12e-6;
+        const alphaLoad = tl.alpha ?? 1.2e-5; // default staal — zie types.ts
+        const ex = beam.thermalLoad?.deltaT ?? 0;
+        mesh.updateBeamElement(doelId, {
+          thermalLoad: { deltaT: ex + tl.deltaT * (alphaLoad / alphaMat) * f },
+        });
+      }
     }
   }
 
-  return { mesh, nodeIdMap, beamIdMap };
+  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments };
 }
 
 /**
  * Convert engine ISolverResult → UI SolverResult, using the id maps from buildMesh.
+ *
+ * `plateInfo`/`nodeIndex` horen bij het mixed-pad (platen aanwezig):
+ * `nodeIndex` is dan de échte actieve-knopen-index van de solver
+ * (buildNodeIdToIndex) — nodig omdat plaatknopen (id ≥ 1000) meedoen — en
+ * `plateInfo` levert de elementspanningen per plaat op. Zonder platen blijft
+ * het pad bit-identiek aan het bestaande frame-gedrag.
  */
 function convertResult(
   mesh: AnyMesh,
@@ -345,15 +674,25 @@ function convertResult(
   nodeIdMap: Map<number, number>,
   beamIdMap: Map<number, number>,
   supports: SolverInput["supports"],
+  plateInfo?: PlateRegionInfo[],
+  nodeIndex?: Map<number, number>,
+  beamSegments?: Map<number, { meshId: number; t0: number; t1: number }[]>,
 ): SolverResult {
   const displacements = new Map<number, NodalDisp>();
   const reactions = new Map<number, NodalReaction>();
   const elements = new Map<number, ElementForces>();
 
-  // Build mesh-id → array-index lookup (matches order in Mesh.nodes Map)
-  const meshNodes = Array.from(mesh.nodes.values());
-  const indexById = new Map<number, number>();
-  meshNodes.forEach((n: any, i: number) => indexById.set(n.id, i));
+  // Build mesh-id → array-index lookup (matches order in Mesh.nodes Map).
+  // Mét platen komt de index van de solver zelf (actieve knopen) binnen via
+  // `nodeIndex`; zonder platen het bestaande insertion-order-pad.
+  let indexById: Map<number, number>;
+  if (nodeIndex) {
+    indexById = nodeIndex;
+  } else {
+    const meshNodes = Array.from(mesh.nodes.values());
+    indexById = new Map<number, number>();
+    meshNodes.forEach((n: any, i: number) => indexById.set(n.id, i));
+  }
 
   let maxDisp = 0;
   for (const [uiId, meshId] of nodeIdMap) {
@@ -394,6 +733,48 @@ function convertResult(
   // We forward ALL of it (with mm/N·mm units for the UI) so the canvas
   // can draw real parabola / step shapes instead of linear interpolation.
   for (const [uiId, meshId] of beamIdMap) {
+    // Op een plaatrand gesplitste staaf (P2.4): de stations van de
+    // deelstukken worden aaneengeregen tot één doorlopend staafresultaat.
+    // De gedeelde randknoop levert een dubbel station (einde deel i =
+    // begin deel i+1) — dat is gewenst: N en V mogen daar een sprong maken
+    // (de plaat "prikt" krachten in), en het diagram tekent die sprong dan
+    // exact; M en w zijn er continu. L_mm is de som van de deellengtes;
+    // eindwaarden N/V/M_start van het eerste en M_end van het laatste deel.
+    const segs = beamSegments?.get(uiId);
+    if (segs && segs.length > 1) {
+      const delen = segs.map((s) => engineResult.beamForces.get(s.meshId));
+      if (delen.some((d: any) => !d)) continue;
+      const stations_mm: number[] = [];
+      const normalForce: number[] = [];
+      const shearForce: number[] = [];
+      const bendingMoment: number[] = [];
+      const deflection: number[] = [];
+      const axialDisp: number[] = [];
+      let offset_m = 0;
+      for (const d of delen) {
+        const st: number[] = d.stations ?? [];
+        for (let i = 0; i < st.length; i++) {
+          stations_mm.push((st[i] + offset_m) * 1000);
+          normalForce.push(-(d.normalForce?.[i] ?? 0));            // druk→trek-flip, zie hieronder
+          shearForce.push(d.shearForce?.[i] ?? 0);
+          bendingMoment.push((d.bendingMoment?.[i] ?? 0) * 1000);  // N·m → N·mm
+          deflection.push((d.deflection?.[i] ?? 0) * 1000);        // m → mm
+          axialDisp.push((d.axialDisp?.[i] ?? 0) * 1000);
+        }
+        offset_m += st.length > 0 ? st[st.length - 1] : 0;
+      }
+      const eerste = delen[0], laatste = delen[delen.length - 1];
+      elements.set(uiId, {
+        N: -eerste.N1,
+        V: eerste.V1,
+        M_start: eerste.M1 * 1000,
+        M_end:   laatste.M2 * 1000,
+        L_mm: offset_m * 1000,
+        stations_mm, normalForce, shearForce, bendingMoment, deflection, axialDisp,
+      });
+      continue;
+    }
+
     const bf = engineResult.beamForces.get(meshId);
     if (!bf) continue;
     const stations_m: number[] = bf.stations ?? [];
@@ -419,29 +800,113 @@ function convertResult(
     });
   }
 
-  return { displacements, reactions, elements, maxDisplacement: maxDisp };
+  // ── Plaatresultaten (P2.2) ────────────────────────────────────────────────
+  // 1. Plaatknopen (mesh-id ≥ 1000 én hergebruikte UI-knopen) tellen mee in
+  //    maxDisplacement, zodat de canvas-schaal ook zuivere plaatvervorming volgt.
+  // 2. Per plaat de elementspanningen uit het mixed-postprocessingpad:
+  //    Pa → N/mm² (÷1e6), membraankrachten N/m → kN/m (÷1000), plus
+  //    min/max-ranges per component voor de kleurenlegenda.
+  let plateResults: PlateResult[] | undefined;
+  if (plateInfo && plateInfo.length > 0) {
+    plateResults = [];
+    for (const info of plateInfo) {
+      for (const nid of info.region.nodeIds) {
+        const idx = indexById.get(nid);
+        if (idx === undefined) continue;
+        const base = idx * 3;
+        const ux = (engineResult.displacements[base + 0] ?? 0) * 1000;
+        const uz = (engineResult.displacements[base + 1] ?? 0) * 1000;
+        maxDisp = Math.max(maxDisp, Math.abs(ux), Math.abs(uz));
+      }
+
+      const mkRange = (): PlateStressRange => ({ min: Infinity, max: -Infinity });
+      const ranges = {
+        sigmaX: mkRange(), sigmaY: mkRange(), tauXY: mkRange(),
+        vonMises: mkRange(), nx: mkRange(), ny: mkRange(), nxy: mkRange(),
+      };
+      const bijwerken = (r: PlateStressRange, v: number) => {
+        r.min = Math.min(r.min, v);
+        r.max = Math.max(r.max, v);
+      };
+
+      const plaatElementen: PlateElementStress[] = [];
+      for (const eid of info.region.elementIds) {
+        const st = engineResult.elementStresses?.get(eid);
+        const el = mesh.getElement(eid);
+        if (!st || !el) continue;
+        const corners = (el.nodeIds as number[])
+          .map((nid) => mesh.getNode(nid))
+          .filter((n: any) => !!n)
+          .map((n: any) => ({ x: n.x * 1000, z: n.y * 1000 })); // m → mm; mesh-y = model-z
+        const item: PlateElementStress = {
+          elementId: eid,
+          corners,
+          sigmaX:   st.sigmaX / 1e6,
+          sigmaY:   st.sigmaY / 1e6,
+          tauXY:    st.tauXY / 1e6,
+          vonMises: st.vonMises / 1e6,
+          sigma1: (st.principalStresses?.sigma1 ?? 0) / 1e6,
+          sigma2: (st.principalStresses?.sigma2 ?? 0) / 1e6,
+          angle:   st.principalStresses?.angle ?? 0,
+          nx:  (st.nx  ?? 0) / 1000,
+          ny:  (st.ny  ?? 0) / 1000,
+          nxy: (st.nxy ?? 0) / 1000,
+        };
+        plaatElementen.push(item);
+        bijwerken(ranges.sigmaX, item.sigmaX);
+        bijwerken(ranges.sigmaY, item.sigmaY);
+        bijwerken(ranges.tauXY, item.tauXY);
+        bijwerken(ranges.vonMises, item.vonMises);
+        bijwerken(ranges.nx, item.nx);
+        bijwerken(ranges.ny, item.ny);
+        bijwerken(ranges.nxy, item.nxy);
+      }
+      // Lege plaat (geen spanningsresultaten) → ranges op 0 i.p.v. ±Infinity.
+      for (const r of Object.values(ranges)) {
+        if (!Number.isFinite(r.min)) { r.min = 0; r.max = 0; }
+      }
+      plateResults.push({ plateId: info.plateId, elements: plaatElementen, ranges });
+    }
+  }
+
+  return {
+    displacements, reactions, elements, maxDisplacement: maxDisp,
+    ...(plateResults ? { plateElements: plateResults } : {}),
+  };
 }
 
 // ── Public engine functions ─────────────────────────────────────────────────
 
 export function solve(input: SolverInput): SolverResult {
-  const { mesh, nodeIdMap, beamIdMap } = buildMesh(input);
-  const engineResult = solveNonlinear(mesh, { analysisType: "frame", geometricNonlinear: false });
-  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports);
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments } = buildMesh(input);
+  // Platen aanwezig ⇒ mixed_beam_plate (staven 6×6 + membranen 3 DOF/knoop);
+  // zonder platen blijft het pad bit-identiek "frame".
+  const heeftPlaten = plateInfo.length > 0;
+  const engineResult = solveNonlinear(mesh, {
+    analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
+    geometricNonlinear: false,
+  });
+  const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
+  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments);
 }
 
 export function solveAllCases(input: MultiInput): MultiLcResult {
   const perCase = new Map<number, SolverResult>();
   for (const c of input.cases) {
-    const { mesh, nodeIdMap, beamIdMap } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
+    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
     // Een leeg belastinggeval (bijv. Q/S/W zonder ingevoerde lasten — de
     // standaardset heeft er vier) is geen fout: overslaan. De solver gooit er
     // anders "No loads applied" op en dat liet de hele combinatie-/toetsings-
     // pijplijn falen; combineResults behandelt een ontbrekend geval als
     // nulbijdrage, wat mechanisch exact klopt.
     if (!meshHeeftLasten(mesh)) continue;
-    const engineResult = solveNonlinear(mesh, { analysisType: "frame", geometricNonlinear: false });
-    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports));
+    const heeftPlaten = plateInfo.length > 0;
+    const engineResult = solveNonlinear(mesh, {
+      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
+      geometricNonlinear: false,
+    });
+    const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
+    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments));
   }
   return { perCase };
 }
@@ -525,10 +990,20 @@ export function solveCombinationSecondOrder(
   input: MultiInput,
   combo: SecondOrderCombo,
 ): SolverResult | null {
-  const { mesh, nodeIdMap, beamIdMap } = buildMesh(
+  const { mesh, nodeIdMap, beamIdMap, plateInfo } = buildMesh(
     input,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
   );
+
+  // Platen + 2e orde is nog niet ondersteund: solveMixed is puur lineair
+  // (geen geometrische membraanstijfheid, geen koppeling met het P-Δ-pad —
+  // zie backlog platenplan). Lineair rekenen en het "2e orde" noemen zou
+  // misleiden, dus een duidelijke fout via de bestaande engine-foutroute.
+  if (plateInfo.length > 0) {
+    throw new Error(
+      `2e-orde-berekening met platen wordt nog niet ondersteund — schakel ` +
+      `"2e orde (P-Δ)" uit of verwijder de platen.`);
+  }
 
   // Geen geactiveerde lasten in deze combinatie? → aanroeper superponeert (nul).
   if (!meshHeeftLasten(mesh)) return null;

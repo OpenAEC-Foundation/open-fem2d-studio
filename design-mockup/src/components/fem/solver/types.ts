@@ -126,6 +126,34 @@ export interface ScheefstandInput {
   richting: 1 | -1;
 }
 
+/**
+ * Wandschijf (plaat in het vlak, membraan/plane stress) — fase P2.
+ * De adapter meshet de asgelijnde rechthoek tussen de vier hoekknopen met
+ * een quad-grid (elementgrootte ≈ meshSize) en lost het model op met
+ * `mixed_beam_plate`. Eenheden zoals de rest van de invoer: mm en N/mm².
+ */
+export interface SolverPlateInput {
+  id: number;
+  /** De 4 hoekknopen (UI-node-ids, klikvolgorde) — samen een asgelijnde rechthoek. */
+  nodeIds: number[];
+  /** Plaatdikte (mm). */
+  thickness: number;
+  /** Elasticiteitsmodulus (N/mm²). */
+  E: number;
+  /** Dwarscontractiecoëfficiënt ν. */
+  nu: number;
+  /** Volumieke massa (kg/m³) — voor eigengewicht. */
+  rho: number;
+  /** Gewenste elementgrootte van het quad-grid (mm). */
+  meshSize: number;
+  /**
+   * Eigengewicht (P2.3): wanneer gezet, krijgt DIT belastinggeval de
+   * ρ·g·t-knooplasten van de plaat (analoog aan het staaf-eigengewicht dat
+   * App.tsx in het dead-geval stopt). Ontbreekt het veld → geen eigengewicht.
+   */
+  selfWeightCaseId?: number;
+}
+
 export interface SolverInput {
   nodes: SolverNodeInput[];
   beams: SolverBeamInput[];
@@ -135,6 +163,8 @@ export interface SolverInput {
   pointLoads?: SolverPointLoadInput[];
   /** Optional uniform temperature changes on beams. */
   thermalLoads?: SolverThermalLoadInput[];
+  /** Optionele wandschijven — aanwezig ⇒ analyse in `mixed_beam_plate`. */
+  plates?: SolverPlateInput[];
   /** Optional load-case tag for traceability (used by multi-LC variant). */
   caseId?: number;
   /** Optionele scheefstand — zie ScheefstandInput. */
@@ -150,6 +180,8 @@ export interface MultiInput {
   loads: (SolverDistLoadInput & { caseId: number })[];
   pointLoads?: (SolverPointLoadInput & { caseId: number })[];
   thermalLoads?: (SolverThermalLoadInput & { caseId: number })[];
+  /** Optionele wandschijven — lastonafhankelijk model, net als beams. */
+  plates?: SolverPlateInput[];
   /** All load cases referenced by the loads above. */
   cases: { id: number; name: string }[];
   /** Optionele scheefstand — zie ScheefstandInput. */
@@ -227,12 +259,62 @@ export interface ElementForces {
   axialDisp: number[];
 }
 
+/** Min/max van één spannings-/krachtcomponent over de elementen van een plaat. */
+export interface PlateStressRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * Spanningen en membraankrachten van één plaat-element (CST of Quad4),
+ * elementgemiddeld (constante-rek-elementen). Eenheden voor de UI:
+ * spanningen N/mm², membraankrachten kN/m, hoek rad.
+ */
+export interface PlateElementStress {
+  /** Element-id in het rekenmesh (stabiel binnen één solve). */
+  elementId: number;
+  /** Hoekcoördinaten in modelassen (mm), 3 (driehoek) of 4 (quad) punten. */
+  corners: { x: number; z: number }[];
+  sigmaX: number;    // N/mm²
+  sigmaY: number;    // N/mm² (verticale in-vlak-richting = model-z)
+  tauXY: number;     // N/mm²
+  vonMises: number;  // N/mm²
+  sigma1: number;    // N/mm² — grootste hoofdspanning
+  sigma2: number;    // N/mm² — kleinste hoofdspanning
+  /** Richting van hoofdspanning 1 t.o.v. de +x-as (rad). */
+  angle: number;
+  nx: number;        // kN/m — membraankracht = σx·t
+  ny: number;        // kN/m
+  nxy: number;       // kN/m
+}
+
+/** Resultaat per plaat: elementspanningen + min/max-ranges voor de legenda. */
+export interface PlateResult {
+  plateId: number;
+  elements: PlateElementStress[];
+  ranges: {
+    sigmaX: PlateStressRange;
+    sigmaY: PlateStressRange;
+    tauXY: PlateStressRange;
+    vonMises: PlateStressRange;
+    nx: PlateStressRange;
+    ny: PlateStressRange;
+    nxy: PlateStressRange;
+  };
+}
+
 export interface SolverResult {
   displacements: Map<number, NodalDisp>;
   reactions: Map<number, NodalReaction>;
   elements: Map<number, ElementForces>;
-  /** Largest |u_x| or |u_z| across all nodes (mm) — used to auto-scale on-screen deflection. */
+  /**
+   * Largest |u_x| or |u_z| across all nodes (mm) — used to auto-scale
+   * on-screen deflection. Mét platen tellen ook de mesh-knopen van de
+   * platen mee (id ≥ 1000 in de core).
+   */
   maxDisplacement: number;
+  /** Plaatspanningen per plaat — alleen aanwezig wanneer het model platen bevat. */
+  plateElements?: PlateResult[];
 }
 
 // HEA 160 defaults — same numbers the v2 Properties panel hardcodes.

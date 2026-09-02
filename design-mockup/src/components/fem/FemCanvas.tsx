@@ -11,7 +11,7 @@
  *   - addNode     : click empty area → snap to grid → add node
  *   - addBeam     : click two nodes → add beam between them
  *   - addSubNode  : click a beam → split at projected click pos
- *   - addPlate    : 4 clicks → adds 4 perimeter beams + Plate region
+ *   - addPlate    : 4 clicks → Plate region (wandschijf; geen auto-randstaven)
  *   - addPinned/Fixed/X-Roller/Z-Roller : click a node → toggle support
  *   - addZSpring/XSpring/RotSpring     : click node → popover asks for k
  *   - addPointLoad/Moment              : click node → popover for components
@@ -948,11 +948,11 @@ export default function FemCanvas(props: FemCanvasProps) {
       if (nodeId === null) return;
       const next = [...plateCorners, nodeId];
       if (next.length === 4) {
-        // Close polygon: add 4 perimeter beams if they don't already exist
-        for (let i = 0; i < 4; i++) {
-          const a = next[i], b = next[(i + 1) % 4];
-          addBeam(a, b);
-        }
+        // Alleen de plaat zelf (P2.4): de plaat draagt nu écht mee als
+        // wandschijf, dus de vier verborgen randstaven van vroeger (stille
+        // HEA160's — misleidend voor de gebruiker) worden NIET meer
+        // toegevoegd. Wie een randbalk wil, tekent die expliciet; de engine
+        // splitst hem dan automatisch op de plaatrandknopen.
         addPlate(next);
         setPlateCorners([]);
       } else {

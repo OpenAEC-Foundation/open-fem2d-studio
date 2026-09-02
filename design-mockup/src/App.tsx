@@ -29,7 +29,7 @@ import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
 import { useFemStore } from "./hooks/useFemStore";
 import type { GridSettings, Tool } from "./components/fem/femTypes";
-import { DEFAULT_GRID } from "./components/fem/femTypes";
+import { DEFAULT_GRID, withPlateDefaults } from "./components/fem/femTypes";
 import type { SolverResult, MultiInput } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
@@ -487,8 +487,10 @@ function App() {
     checkClear();
     // Model gewijzigd → oude berekening telt niet meer, status terug naar Gereed.
     setSolverStatus({ kind: "ready" });
+    // `fem.plates` doet mee sinds platen meerekenen (P2): een dikte- of
+    // meshSize-wijziging maakt ook de single-LC-resultaten ongeldig.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fem.nodes, fem.beams, fem.supports, fem.loads]);
+  }, [fem.nodes, fem.beams, fem.supports, fem.loads, fem.plates]);
 
   // Result display toggles — lifted so both the FemCanvas HUD and the
   // FemProjectTree "Resultaten" tab can mutate the same flags.
@@ -545,6 +547,16 @@ function App() {
           };
         }),
         supports: fem.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
+        // Platen (wandschijven, P2.3): rekenvelden met defaults aangevuld —
+        // de engine meshet en schakelt zelf naar mixed_beam_plate.
+        plates: fem.plates.map(p => {
+          const d = withPlateDefaults(p);
+          return {
+            id: d.id, nodeIds: d.nodeIds,
+            thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
+            meshSize: d.meshSize!,
+          };
+        }),
         cases: fem.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
         loads: [], pointLoads: [], thermalLoads: [],
         // Scheefstand: φ = 1/noemer, richting ±x — de engine geeft elke
@@ -568,6 +580,10 @@ function App() {
               });
             }
           }
+          // Plaat-eigengewicht: zelfde dead-geval als de staven. De engine
+          // (buildMesh) zet dit via PlateLoads om in exacte ρ·g·t·A-
+          // knooplasten op de meshknopen.
+          for (const p of multiInput.plates ?? []) p.selfWeightCaseId = deadCase.id;
         }
       }
 
