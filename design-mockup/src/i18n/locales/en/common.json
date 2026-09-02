@@ -37,6 +37,15 @@
   "sendFeedback": "Send Feedback",
   "explorer": "Explorer",
   "properties": "Properties",
+  "unsaved": {
+    "title": "Unsaved changes",
+    "askSave": "There are unsaved changes. Do you want to save them first?",
+    "saveBtn": "Save",
+    "dontSaveBtn": "Don't save",
+    "confirmDiscard": "Continue without saving? Unsaved changes will be lost.",
+    "proceedBtn": "Continue",
+    "cancelBtn": "Cancel"
+  },
   "welcome": {
     "subtitle": "Professional desktop application template",
     "getStarted": "Get Started",

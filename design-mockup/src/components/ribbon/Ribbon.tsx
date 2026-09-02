@@ -70,6 +70,7 @@ interface RibbonProps {
   /** File-menu actions (Home tab + Backstage). */
   onNewProject?: () => void;
   onOpenProject?: () => void;
+  onSaveProject?: () => void;
   onSaveProjectAs?: () => void;
   /** @deprecated — read from useReportStore in the Report tab/preview. Kept for prop-compat. */
   pageSize?: "A4" | "A3";
@@ -88,7 +89,8 @@ export default function Ribbon({
   onFileTabClick, onSettingsClick, onProjectSettingsClick, onViewChange,
   femTool, onFemToolChange, onSolve, onShowEnvelope, hasEnvelope, hasResults,
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
-  onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject, onSaveProjectAs,
+  onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject,
+  onSaveProject, onSaveProjectAs,
   onShowInsightsMode, onExportMatrixCsv,
   onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
   activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
@@ -196,6 +198,7 @@ export default function Ribbon({
           consoleOn={consoleOn} onToggleConsole={onToggleConsole}
           onNewProject={onNewProject}
           onOpenProject={onOpenProject}
+          onSaveProject={onSaveProject}
           onSaveProjectAs={onSaveProjectAs}
         />;
       case "table":

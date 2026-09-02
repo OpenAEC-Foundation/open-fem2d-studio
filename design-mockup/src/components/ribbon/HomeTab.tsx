@@ -66,6 +66,7 @@ interface HomeTabProps {
   /** Wired file-menu actions. */
   onNewProject?: () => void;
   onOpenProject?: () => void;
+  onSaveProject?: () => void;
   onSaveProjectAs?: () => void;
 }
 
@@ -85,7 +86,8 @@ export default function HomeTab({
   onFemToolChange,
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onSolve, hasResults,
-  onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject, onSaveProjectAs,
+  onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject,
+  onSaveProject, onSaveProjectAs,
   onFilterSelection, graphSplitOn, onToggleGraphSplit,
   agentPanelOn, onToggleAgentPanel, consoleOn, onToggleConsole,
 }: HomeTabProps) {
@@ -120,6 +122,12 @@ export default function HomeTab({
               label={t("home.open")}
               size="small"
               onClick={onOpenProject ?? stub("Open project (no handler)")}
+            />
+            <RibbonButton
+              icon={fileSaveIcon}
+              label={t("home.save")}
+              size="small"
+              onClick={onSaveProject ?? stub("Save project (no handler)")}
             />
             <RibbonButton
               icon={fileSaveIcon}

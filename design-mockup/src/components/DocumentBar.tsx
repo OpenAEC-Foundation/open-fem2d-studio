@@ -22,7 +22,14 @@ const DRAG_DETACH_THRESHOLD = 60;
 
 let nextId = 100;
 
-export default function DocumentBar() {
+interface DocumentBarProps {
+  /** Bestandsnaam van het actieve project — vervangt de placeholder-titel van de projecttab. */
+  fileName?: string;
+  /** Dirty-vlag: toont de wijzigingsindicator (●) op de projecttab. */
+  modified?: boolean;
+}
+
+export default function DocumentBar({ fileName, modified }: DocumentBarProps) {
   const [docs, setDocs] = useState<DocTab[]>(INITIAL_DOCS);
   const [activeId, setActiveId] = useState("1");
   const [dockIndicator, setDockIndicator] = useState(false);
@@ -129,14 +136,20 @@ export default function DocumentBar() {
   return (
     <div className={`document-bar${dockIndicator ? " dock-flash" : ""}`}>
       <div className="document-tabs">
-        {docs.map((doc) => (
+        {docs.map((doc) => {
+          // De vaste projecttab (id "1") volgt het geopende bestand + de
+          // dirty-vlag uit App.tsx; overige (gedockte) tabs hun eigen state.
+          const isProjectTab = doc.id === "1";
+          const title = isProjectTab && fileName ? fileName : doc.title;
+          const isModified = isProjectTab ? !!modified : !!doc.modified;
+          return (
           <button
             key={doc.id}
             className={`document-tab${activeId === doc.id ? " active" : ""}`}
             onMouseDown={(e) => handleMouseDown(e, doc.id)}
           >
-            <span className="document-tab-title">{doc.title}</span>
-            {doc.modified && <span className="document-tab-modified" />}
+            <span className="document-tab-title">{title}</span>
+            {isModified && <span className="document-tab-modified" />}
             <span
               className="document-tab-close"
               onClick={(e) => closeDoc(doc.id, e)}
@@ -154,7 +167,8 @@ export default function DocumentBar() {
               </svg>
             </span>
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

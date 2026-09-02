@@ -148,39 +148,106 @@ function App() {
     nonlinearEnabled: fem.nonlinearEnabled,
   }), [fem]);
 
-  const handleSaveProjectAs = useCallback(async () => {
+  // ── C2: dirty-vlag ("niet-opgeslagen wijzigingen") ──────────────────────
+  const [isDirty, setIsDirty] = useState(false);
+  const isDirtyRef = useRef(false);
+  const setDirty = useCallback((v: boolean) => {
+    isDirtyRef.current = v;
+    setIsDirty(v);
+  }, []);
+  // JSON van de laatst opgeslagen/geladen snapshot; null = nog geen baseline.
+  const lastSavedRef = useRef<string | null>(null);
+  // Na Openen/Nieuw is de fem-state in de handler zelf nog oud (React-flush) —
+  // deze vlag vraagt de dirty-check-effect om de eerstvolgende run als nieuwe
+  // baseline te nemen.
+  const baselineResetRef = useRef(false);
+
+  /** Opslaan als — retourneert true als er daadwerkelijk is opgeslagen. */
+  const handleSaveProjectAs = useCallback(async (): Promise<boolean> => {
     const { serializeProject, saveProjectAs } = await import("./io/projectFile");
     const { notifySuccess, notifyWarning } = await import("./io/notify");
     try {
-      const text = serializeProject(buildProjectSnapshot());
+      const snap = buildProjectSnapshot();
+      const text = serializeProject(snap);
       const suggested = projectPath || "project.ifcfem2d";
       const newPath = await saveProjectAs(text, suggested);
       if (newPath) {
         setProjectPath(newPath);
         addRecentFile(newPath);
+      } else if (isTauriApp()) {
+        // Native dialoog geannuleerd — er is niets weggeschreven.
+        return false;
       }
+      lastSavedRef.current = JSON.stringify(snap);
+      setDirty(false);
       notifySuccess("Bestand opgeslagen", newPath || "Download gestart in browser.");
+      return true;
     } catch (e) {
       notifyWarning("Opslaan mislukt", e instanceof Error ? e.message : String(e));
+      return false;
     }
-  }, [buildProjectSnapshot, projectPath, addRecentFile]);
+  }, [buildProjectSnapshot, projectPath, addRecentFile, setDirty]);
 
-  const handleSaveProject = useCallback(async () => {
+  /** Opslaan — naar het bekende pad, of via Opslaan-als zonder pad. */
+  const handleSaveProject = useCallback(async (): Promise<boolean> => {
     if (!projectPath) {
-      await handleSaveProjectAs();
-      return;
+      return handleSaveProjectAs();
     }
     const { serializeProject, saveProjectTo } = await import("./io/projectFile");
-    const text = serializeProject(buildProjectSnapshot());
-    await saveProjectTo(projectPath, text);
-  }, [buildProjectSnapshot, projectPath, handleSaveProjectAs]);
+    const { notifySuccess, notifyWarning } = await import("./io/notify");
+    try {
+      const snap = buildProjectSnapshot();
+      const text = serializeProject(snap);
+      await saveProjectTo(projectPath, text);
+      lastSavedRef.current = JSON.stringify(snap);
+      setDirty(false);
+      notifySuccess("Bestand opgeslagen", projectPath.split(/[\\/]/).pop());
+      return true;
+    } catch (e) {
+      notifyWarning("Opslaan mislukt", e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  }, [buildProjectSnapshot, projectPath, handleSaveProjectAs, setDirty]);
+
+  /**
+   * C2: sluitbeveiliging. Vraagt bij niet-opgeslagen wijzigingen wat er moet
+   * gebeuren: Opslaan / Niet opslaan / Annuleren (twee dialogen, want de
+   * Tauri dialog-plugin kent alleen twee-knops dialogen). Retourneert true
+   * wanneer de aanroeper mag doorgaan (schoon, opgeslagen of bewust
+   * weggegooid), false bij Annuleren of mislukt opslaan.
+   */
+  const confirmUnsavedAction = useCallback(async (): Promise<boolean> => {
+    if (!isDirtyRef.current) return true;
+    if (isTauriApp()) {
+      const { ask, confirm } = await import("@tauri-apps/plugin-dialog");
+      const wantsSave = await ask(t("unsaved.askSave"), {
+        title: t("unsaved.title"),
+        kind: "warning",
+        okLabel: t("unsaved.saveBtn"),
+        cancelLabel: t("unsaved.dontSaveBtn"),
+      });
+      if (wantsSave) return handleSaveProject();
+      // "Niet opslaan" → één extra bevestiging zodat Esc of een misklik geen
+      // werk weggooit.
+      return confirm(t("unsaved.confirmDiscard"), {
+        title: t("unsaved.title"),
+        kind: "warning",
+        okLabel: t("unsaved.proceedBtn"),
+        cancelLabel: t("unsaved.cancelBtn"),
+      });
+    }
+    // Browser-fallback: window.confirm kent maar twee knoppen.
+    return window.confirm(t("unsaved.confirmDiscard"));
+  }, [handleSaveProject, t]);
 
   const handleOpenProject = useCallback(async () => {
+    if (!(await confirmUnsavedAction())) return;
     const { openProject, deserializeProject } = await import("./io/projectFile");
     const opened = await openProject();
     if (!opened) return;
     try {
       const parsed = deserializeProject(opened.text);
+      baselineResetRef.current = true;
       fem.loadProjectState({
         nodes: parsed.nodes,
         beams: parsed.beams,
@@ -200,14 +267,16 @@ function App() {
       const { notifyWarning } = await import("./io/notify");
       notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
     }
-  }, [fem]);
+  }, [fem, confirmUnsavedAction, addRecentFile]);
 
   // Bestand → Nieuw: direct een LEEG project (geen confirm, geen reload,
   // geen demo-model). Standaard belastinggevallen blijven beschikbaar zodat
   // de tab-bar en de solver-flow meteen bruikbaar zijn; undo-history wordt
   // door loadProjectState gereset. Ctrl+Z kan dus niet terug — maar het oude
   // model is via Recent/opslaan altijd nog te openen.
-  const handleNewProject = useCallback(() => {
+  const handleNewProject = useCallback(async () => {
+    if (!(await confirmUnsavedAction())) return;
+    baselineResetRef.current = true;
     fem.loadProjectState({
       nodes: [], beams: [], supports: [], plates: [], loads: [],
       loadCases: [
@@ -222,7 +291,7 @@ function App() {
     });
     setProjectPath("");
     setActiveView("default");
-  }, [fem, setActiveView]);
+  }, [fem, setActiveView, confirmUnsavedAction]);
 
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
 
@@ -480,6 +549,72 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fem]);
 
+  // C1: Ctrl+S / Cmd+S = Opslaan, Ctrl+Shift+S = Opslaan als. Altijd
+  // preventDefault zodat de browser-save-dialoog nooit verschijnt; opslaan
+  // mag óók vuren terwijl een input/dialog focus heeft.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (e.shiftKey) void handleSaveProjectAs();
+        else void handleSaveProject();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleSaveProject, handleSaveProjectAs]);
+
+  // C2: dirty-detectie. Draait alléén wanneer persisteerbare modelstate
+  // wijzigt (array-identiteiten veranderen per mutatie), nooit per render —
+  // de JSON-vergelijking is dus event-gedreven en goedkoop.
+  useEffect(() => {
+    const json = JSON.stringify(buildProjectSnapshot());
+    if (baselineResetRef.current || lastSavedRef.current === null) {
+      baselineResetRef.current = false;
+      lastSavedRef.current = json;
+      setDirty(false);
+      return;
+    }
+    setDirty(json !== lastSavedRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fem.nodes, fem.beams, fem.supports, fem.plates, fem.loads,
+      fem.loadCases, fem.activeLoadCaseId, fem.selfWeightEnabled, fem.nonlinearEnabled]);
+
+  // C2: sluitbeveiliging. Tauri: onCloseRequested + native dialoog (dekt de
+  // titelbalk-sluitknop, Bestand → Afsluiten en Alt+F4). Browser: beforeunload.
+  const confirmUnsavedRef = useRef(confirmUnsavedAction);
+  useEffect(() => { confirmUnsavedRef.current = confirmUnsavedAction; });
+  useEffect(() => {
+    if (isTauriApp()) {
+      let unlisten: (() => void) | undefined;
+      let disposed = false;
+      import("@tauri-apps/api/window")
+        .then(({ getCurrentWindow }) =>
+          getCurrentWindow().onCloseRequested(async (event) => {
+            if (!isDirtyRef.current) return;
+            const proceed = await confirmUnsavedRef.current();
+            if (!proceed) event.preventDefault();
+          })
+        )
+        .then((u) => { if (disposed) u(); else unlisten = u; })
+        .catch(() => {});
+      return () => { disposed = true; unlisten?.(); };
+    }
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // C2: wijzigingsindicator in de venster-/tabtitel ("● bestandsnaam").
+  useEffect(() => {
+    const name = projectPath ? projectPath.split(/[\\/]/).pop() : "project 1.ifcfem2d";
+    document.title = `${isDirty ? "● " : ""}${name} — Open FEM2D Studio`;
+  }, [isDirty, projectPath]);
+
   // Startvenster verwijderd op verzoek: de app opent direct in het model.
 
   // Left panel state (Explorer)
@@ -630,7 +765,11 @@ function App() {
 
   return (
     <>
-      <TitleBar onSettingsClick={() => setSettingsOpen(true)} onFeedbackClick={() => setFeedbackOpen(true)} />
+      <TitleBar
+        onSettingsClick={() => setSettingsOpen(true)}
+        onFeedbackClick={() => setFeedbackOpen(true)}
+        onSaveClick={() => { void handleSaveProject(); }}
+      />
       <ToastHost />
       <Ribbon
         onFileTabClick={() => setBackstageOpen(true)}
@@ -705,11 +844,15 @@ function App() {
             exportMatricesAsCsv(fem.nodes, fem.beams, fem.supports);
           } catch (e) { console.error("CSV export failed:", e); }
         }}
-        onNewProject={handleNewProject}
-        onOpenProject={handleOpenProject}
-        onSaveProjectAs={handleSaveProjectAs}
+        onNewProject={() => { void handleNewProject(); }}
+        onOpenProject={() => { void handleOpenProject(); }}
+        onSaveProject={() => { void handleSaveProject(); }}
+        onSaveProjectAs={() => { void handleSaveProjectAs(); }}
       />
-      <DocumentBar />
+      <DocumentBar
+        fileName={projectPath ? projectPath.split(/[\\/]/).pop() : undefined}
+        modified={isDirty}
+      />
       <div className="content">
         {/* Left panel — Explorer (hidden in full-width views) */}
         {!isFullWidthView && (
@@ -862,12 +1005,16 @@ function App() {
         onClose={() => setBackstageOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenFile={async (path) => {
+          // C2: zelfde sluitbeveiliging als bij Openen/Nieuw — eerst vragen
+          // bij niet-opgeslagen wijzigingen.
+          if (!(await confirmUnsavedAction())) return;
           const { readTextFile } = await import("@tauri-apps/plugin-fs");
           const { deserializeProject } = await import("./io/projectFile");
           const { notifyWarning, notifySuccess } = await import("./io/notify");
           try {
             const text = await readTextFile(path);
             const parsed = deserializeProject(text);
+            baselineResetRef.current = true;
             fem.loadProjectState({
               nodes: parsed.nodes, beams: parsed.beams, supports: parsed.supports,
               plates: parsed.plates, loads: parsed.loads,
@@ -883,10 +1030,10 @@ function App() {
             notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
           }
         }}
-        onNew={handleNewProject}
-        onOpen={handleOpenProject}
-        onSave={handleSaveProject}
-        onSaveAs={handleSaveProjectAs}
+        onNew={() => { void handleNewProject(); }}
+        onOpen={() => { void handleOpenProject(); }}
+        onSave={() => { void handleSaveProject(); }}
+        onSaveAs={() => { void handleSaveProjectAs(); }}
       />
       <LoadCasesDialog
         open={loadCasesOpen}

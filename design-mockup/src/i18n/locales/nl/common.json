@@ -37,6 +37,15 @@
   "sendFeedback": "Feedback verzenden",
   "explorer": "Verkenner",
   "properties": "Eigenschappen",
+  "unsaved": {
+    "title": "Niet-opgeslagen wijzigingen",
+    "askSave": "Er zijn niet-opgeslagen wijzigingen. Wil je deze eerst opslaan?",
+    "saveBtn": "Opslaan",
+    "dontSaveBtn": "Niet opslaan",
+    "confirmDiscard": "Doorgaan zonder opslaan? Niet-opgeslagen wijzigingen gaan verloren.",
+    "proceedBtn": "Doorgaan",
+    "cancelBtn": "Annuleren"
+  },
   "welcome": {
     "subtitle": "Professioneel desktop applicatie sjabloon",
     "getStarted": "Aan de slag",

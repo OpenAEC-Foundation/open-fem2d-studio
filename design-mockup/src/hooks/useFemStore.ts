@@ -10,7 +10,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import type {
-  Node, Beam, Plate, Support, Load, LoadCase, Selection,
+  Node, Beam, BeamReleases, Plate, Support, Load, LoadCase, Selection,
   Snapshot, SupportType, StructuralGrid,
 } from "../components/fem/femTypes";
 import { DEFAULT_STRUCTURAL_GRID } from "../components/fem/femTypes";
@@ -60,6 +60,86 @@ function makeInitialSnapshot(): Snapshot {
 }
 
 const HISTORY_LIMIT = 100;
+
+/**
+ * Pure splitslogica voor `splitBeamAt` — losgetrokken uit de hook zodat hij
+ * unit-testbaar is (zie design-mockup/test-splitsen.mjs).
+ *
+ * Gedrag:
+ *  - Beide nieuwe staven erven materiaal + profiel van de oorspronkelijke staaf.
+ *  - Releases: de start-releases (startTx/startTz/startRy) gaan mee met deel 1
+ *    (startzijde), de eind-releases (endTx/endTz/endRy) met deel 2 (eindzijde).
+ *    De nieuwe tussenknoop is momentvast: geen releases aan de binnenzijden.
+ *  - Lijnlasten op de gesplitste staaf gaan over op beide delen: uniform →
+ *    zelfde q op beide delen; trapezium (qStart ≠ qEnd) → lineair
+ *    geïnterpoleerd op het splitspunt (deel 1: qStart→qMid, deel 2: qMid→qEnd).
+ *  - Temperatuurlasten (deltaT) worden op beide delen gedupliceerd.
+ *  - Knoopgebonden lasten (pointForce/pointMoment) verwijzen naar knopen, niet
+ *    naar staven, en blijven ongemoeid. Een eventueel toekomstig staafgebonden
+ *    lasttype dat hier niet bekend is wordt behoudend ongewijzigd gelaten.
+ *
+ * Retourneert null wanneer de staaf of zijn eindknopen niet bestaan.
+ */
+export function computeBeamSplit(
+  cur: Pick<Snapshot, "nodes" | "beams" | "loads">,
+  beamId: number, x: number, z: number,
+): { nodes: Node[]; beams: Beam[]; loads: Load[]; newNodeId: number } | null {
+  const beam = cur.beams.find(b => b.id === beamId);
+  if (!beam) return null;
+  const nodeA = cur.nodes.find(n => n.id === beam.from);
+  const nodeB = cur.nodes.find(n => n.id === beam.to);
+  if (!nodeA || !nodeB) return null;
+
+  const newNodeId = cur.nodes.length === 0 ? 1 : Math.max(...cur.nodes.map(n => n.id)) + 1;
+  const nodes = [...cur.nodes, { id: newNodeId, x, z }];
+
+  // Relatieve positie van het splitspunt op de staaf (0 = start, 1 = eind) —
+  // nodig voor de interpolatie van trapeziumlasten.
+  const len = Math.hypot(nodeB.x - nodeA.x, nodeB.z - nodeA.z);
+  const t = len > 1e-9
+    ? Math.min(1, Math.max(0, Math.hypot(x - nodeA.x, z - nodeA.z) / len))
+    : 0.5;
+
+  const maxBeamId = Math.max(...cur.beams.map(b => b.id));
+  const rel = beam.releases;
+  const startRel: BeamReleases | undefined =
+    rel && (rel.startTx || rel.startTz || rel.startRy)
+      ? { startTx: rel.startTx, startTz: rel.startTz, startRy: rel.startRy }
+      : undefined;
+  const endRel: BeamReleases | undefined =
+    rel && (rel.endTx || rel.endTz || rel.endRy)
+      ? { endTx: rel.endTx, endTz: rel.endTz, endRy: rel.endRy }
+      : undefined;
+  // `...beam` neemt materiaal/profiel (en toekomstige velden) mee; id/from/to/
+  // releases worden expliciet overschreven.
+  const beam1: Beam = { ...beam, id: maxBeamId + 1, from: beam.from, to: newNodeId, releases: startRel };
+  const beam2: Beam = { ...beam, id: maxBeamId + 2, from: newNodeId, to: beam.to, releases: endRel };
+  const beams = cur.beams.filter(b => b.id !== beamId).concat([beam1, beam2]);
+
+  let nextLoadId = cur.loads.length === 0 ? 1 : Math.max(...cur.loads.map(l => l.id)) + 1;
+  const loads: Load[] = [];
+  for (const l of cur.loads) {
+    if (l.beamId !== beamId) { loads.push(l); continue; }
+    if (l.type === "lineLoad") {
+      const isTrapezium = l.qStart !== undefined && l.qEnd !== undefined && l.qStart !== l.qEnd;
+      if (isTrapezium) {
+        const qMid = l.qStart! + t * (l.qEnd! - l.qStart!);
+        loads.push({ ...l, id: nextLoadId++, beamId: beam1.id, qStart: l.qStart, qEnd: qMid });
+        loads.push({ ...l, id: nextLoadId++, beamId: beam2.id, qStart: qMid, qEnd: l.qEnd });
+      } else {
+        loads.push({ ...l, id: nextLoadId++, beamId: beam1.id });
+        loads.push({ ...l, id: nextLoadId++, beamId: beam2.id });
+      }
+    } else if (l.type === "thermal") {
+      loads.push({ ...l, id: nextLoadId++, beamId: beam1.id });
+      loads.push({ ...l, id: nextLoadId++, beamId: beam2.id });
+    } else {
+      // Knoopgebonden of onbekend lasttype — ongewijzigd laten staan.
+      loads.push(l);
+    }
+  }
+  return { nodes, beams, loads, newNodeId };
+}
 
 export interface FemStore {
   // Model
@@ -498,20 +578,19 @@ export function useFemStore(): FemStore {
     pushHistory({ ...cur, nodes: nextNodes });
   }, [pushHistory]);
 
-  /** Split a beam at a snapped point (x, z): inserts a new node and replaces beam with two. */
+  /**
+   * Split a beam at a snapped point (x, z): inserts a new node and replaces
+   * the beam with two. Materiaal/profiel/releases/lijnlasten gaan netjes mee —
+   * zie computeBeamSplit voor de precieze regels.
+   */
   const splitBeamAt = useCallback((beamId: number, x: number, z: number) => {
     const cur = latestRef.current;
-    const beam = cur.beams.find(b => b.id === beamId);
-    if (!beam) return;
-    const newNodeId = cur.nodes.length === 0 ? 1 : Math.max(...cur.nodes.map(n => n.id)) + 1;
-    const nextNodes = [...cur.nodes, { id: newNodeId, x, z }];
-    const maxBeamId = Math.max(...cur.beams.map(b => b.id));
-    const newBeam1 = { id: maxBeamId + 1, from: beam.from, to: newNodeId };
-    const newBeam2 = { id: maxBeamId + 2, from: newNodeId, to: beam.to };
-    const nextBeams = cur.beams.filter(b => b.id !== beamId).concat([newBeam1, newBeam2]);
-    setNodes(nextNodes);
-    setBeams(nextBeams);
-    pushHistory({ ...cur, nodes: nextNodes, beams: nextBeams });
+    const split = computeBeamSplit(cur, beamId, x, z);
+    if (!split) return;
+    setNodes(split.nodes);
+    setBeams(split.beams);
+    setLoads(split.loads);
+    pushHistory({ ...cur, nodes: split.nodes, beams: split.beams, loads: split.loads });
   }, [pushHistory]);
 
   const addLoadCase = useCallback((name: string) => {
