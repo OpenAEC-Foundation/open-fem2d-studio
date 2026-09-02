@@ -453,6 +453,12 @@ export default function FemCanvas(props: FemCanvasProps) {
   const [popover, setPopover] = useState<{
     kind: "zSpring" | "xSpring" | "rotSpring" | "pointLoad" | "pointLoadH" | "moment" | "lineLoad" | "thermal" | "edgeLoad";
     nodeId?: number; beamId?: number;
+    /**
+     * Puntlast op een VRIJE POSITIE op een staaf: fractie 0..1 vanaf de
+     * startknoop. Alleen gezet wanneer de puntlast-tool op een staaf (en niet
+     * op een knoop) klikte; met `nodeId` gezet is dit veld leeg.
+     */
+    posFrac?: number;
     /** edgeLoad (P3.3): doelplaat + benoemde rand (rechthoek). */
     plateId?: number; edge?: PlaatRand;
     /** edgeLoad op een polygonplaat (P4.3): rand-index i.p.v. benoemde rand. */
@@ -555,6 +561,9 @@ export default function FemCanvas(props: FemCanvasProps) {
         startFrac?: number; endFrac?: number;
       }[] = [];
       const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
+      // Puntlasten op een vrije positie op een staaf (posFrac 0..1) — de
+      // engine splitst de staaf daar en zet de kracht op de tussenknoop.
+      const beamPointLoads: { beamId: number; posFrac: number; fx?: number; fz?: number; my?: number }[] = [];
       const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
       const edgeLoads: {
         plateId: number; edge: PlaatRand; edgeIndex?: number; p: number; dir?: "x" | "z";
@@ -574,6 +583,15 @@ export default function FemCanvas(props: FemCanvasProps) {
           // Fx, Fz in kN → N (×1000)
           pointLoads.push({
             nodeId: l.nodeId,
+            fx: (l.fx ?? 0) * 1000,
+            fz: (l.fz ?? 0) * 1000,
+          });
+        } else if (l.type === "pointForce" && l.beamId !== undefined) {
+          // Staafgebonden puntlast (vrije positie): fractie 0..1 vanaf de
+          // startknoop — zelfde velden als het multi-LC-pad in App.tsx.
+          beamPointLoads.push({
+            beamId: l.beamId,
+            posFrac: Math.min(1, Math.max(0, l.posFrac ?? 0)),
             fx: (l.fx ?? 0) * 1000,
             fz: (l.fz ?? 0) * 1000,
           });
@@ -627,6 +645,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         })),
         loads: distLoads,
         pointLoads,
+        beamPointLoads,
         thermalLoads,
         edgeLoads,
         // Platen (wandschijven): zelfde defaults-aanvulling als het
@@ -825,6 +844,27 @@ export default function FemCanvas(props: FemCanvasProps) {
     return { beamId: best.beamId, x: snap(w.x), z: snap(w.z) };
   }, [beams, nodes, worldToScreen, screenToWorld, snap]);
 
+  /**
+   * Positie op een staaf als FRACTIE 0..1 vanaf de startknoop, voor een punt
+   * in modelcoördinaten (mm) — de loodrechte projectie op de staafas, geknipt
+   * op [0, 1]. Gebruikt door het puntlast-gereedschap voor een last op een
+   * vrije positie; de aangeboden coördinaten zijn al raster-gesnapt door
+   * findSnapBeam, dus de positie volgt de snap-instelling.
+   * Retourneert null voor een niet-bestaande of nul-lange staaf.
+   */
+  const beamPosFractie = useCallback((beamId: number, x: number, z: number): number | null => {
+    const b = beams.find(bb => bb.id === beamId);
+    if (!b) return null;
+    const nA = nodes.find(n => n.id === b.from);
+    const nB = nodes.find(n => n.id === b.to);
+    if (!nA || !nB) return null;
+    const vx = nB.x - nA.x, vz = nB.z - nA.z;
+    const lenSq = vx * vx + vz * vz;
+    if (lenSq < 1e-9) return null;
+    const t = ((x - nA.x) * vx + (z - nA.z) * vz) / lenSq;
+    return Math.min(1, Math.max(0, t));
+  }, [beams, nodes]);
+
   // Dichtstbijzijnde plaatrand binnen 8 px (P3.3/P4.3) — gebruikt door het
   // Lijnlast-gereedschap wanneer er géén staaf onder de muis ligt, zodat
   // één tool zowel staaf-lijnlasten als plaatrandlasten plaatst.
@@ -1014,8 +1054,14 @@ export default function FemCanvas(props: FemCanvasProps) {
       // Beam-targeting tools snap to BEAMS, not nodes. Showing a node-halo
       // while placing a line load is misleading ("puntje aan je cursor").
       const isBeamTool = tool === "addLineLoad" || tool === "addThermal";
-      setSnapNode(isBeamTool ? null : findSnapNode(sx, sy));
-      const beamSnapTools = tool === "addSubNode" || tool === "addLineLoad" || tool === "addThermal";
+      const hoverNode = isBeamTool ? null : findSnapNode(sx, sy);
+      setSnapNode(hoverNode);
+      // Het puntlast-gereedschap snapt zowel op een KNOOP (voorrang) als op
+      // een vrije positie op een STAAF; de staaf-halo verschijnt daarom pas
+      // wanneer er geen knoop onder de muis ligt.
+      const isPuntlastTool = tool === "addPointLoad" || tool === "addPointLoadH";
+      const beamSnapTools = tool === "addSubNode" || isBeamTool
+        || (isPuntlastTool && hoverNode === null);
       setSnapBeam(beamSnapTools ? (findSnapBeam(sx, sy)?.beamId ?? null) : null);
     }
 
@@ -1383,15 +1429,34 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
 
     if (tool === "addPointLoad" || tool === "addPointLoadH" || tool === "addMoment") {
-      if (overNodeId === null) return;
-      const n = nodes.find(nn => nn.id === overNodeId);
-      if (!n) return;
-      const p = worldToScreen(n.x, n.z);
       const kind =
         tool === "addMoment"        ? "moment" :
         tool === "addPointLoadH"    ? "pointLoadH" :
                                       "pointLoad";
-      setPopover({ kind, nodeId: overNodeId, sx: p.x, sy: p.y });
+      // 1) KNOOP heeft voorrang (bestaande snap-indicatie).
+      if (overNodeId !== null) {
+        const n = nodes.find(nn => nn.id === overNodeId);
+        if (!n) return;
+        const p = worldToScreen(n.x, n.z);
+        setPopover({ kind, nodeId: overNodeId, sx: p.x, sy: p.y });
+        return;
+      }
+      // 2) Geen knoop onder de muis: een puntlast mag ook op een VRIJE
+      //    POSITIE op een staaf. (Het moment blijft knoopgebonden.)
+      if (tool === "addMoment") return;
+      const sb = findSnapBeam(sx, sy);
+      if (!sb) return;
+      const frac = beamPosFractie(sb.beamId, sb.x, sb.z);
+      if (frac === null) return;
+      const b = beams.find(bb => bb.id === sb.beamId);
+      const nA = b ? nodes.find(n => n.id === b.from) : undefined;
+      const nB = b ? nodes.find(n => n.id === b.to) : undefined;
+      if (!nA || !nB) return;
+      const p = worldToScreen(
+        nA.x + (nB.x - nA.x) * frac,
+        nA.z + (nB.z - nA.z) * frac,
+      );
+      setPopover({ kind, beamId: sb.beamId, posFrac: frac, sx: p.x, sy: p.y });
       return;
     }
 
@@ -1939,21 +2004,199 @@ export default function FemCanvas(props: FemCanvasProps) {
   }, 0);
   const lineLoadPxPerKnm = maxLineQ > 0 ? LINE_LOAD_TARGET_PX / maxLineQ : 0;
 
+  // ── Stapeling van lijnlasten op dezelfde staaf ──────────────────────────
+  // Twee q-lasten op één staaf (bv. permanent + variabel, of twee elkaar
+  // overlappende deellasten) tekenden vroeger dwars door elkaar heen. Nu
+  // krijgt elke volgende last op dezelfde staaf een oplopende verschuiving
+  // LOODRECHT op de staafas: de eerste ligt tegen de staaf aan, de volgende
+  // erbuiten. De verschuiving is een simpele translatie van de lastband, dus
+  // de bestaande auto-schaling van de pijllengte, de deellast-fracties
+  // (startFrac/endFrac), de richting (qCoord/qDir) en de shape-grepen blijven
+  // exact zoals ze waren; met offset 0 is de tekening bit-identiek aan vroeger.
+  //
+  // Regels:
+  //  - alleen stapelen binnen dezelfde "baan": zelfde assenstelsel, richting
+  //    én zijde van de staaf. Een verticale en een horizontale last tekenen
+  //    langs verschillende assen en botsen niet, dus die blijven op offset 0.
+  //  - alleen stapelen waar de lasten elkaar in de LENGTE overlappen; twee
+  //    deellasten naast elkaar houden allebei offset 0.
+  //  - stabiele volgorde op (belastinggeval-id, last-id) zodat een herrender
+  //    de stapel nooit laat springen. De fracties komen uit de OPGESLAGEN
+  //    waarden (niet uit een lopende greep-sleep), zodat de stapel tijdens
+  //    het slepen van een shape-greep evenmin verspringt.
+  // Ruimte tussen twee gestapelde banden. Het waardelabel van de onderste
+  // band staat 14 px boven zijn pijlstaarten en is ±11 px hoog, dus 30 px
+  // geeft het label van elke band zijn eigen strook.
+  const STAPEL_GAT_PX = 30;
+  /** Stapelgegevens per lijnlast-id (leeg wanneer er niets te stapelen valt). */
+  const qStapel = new Map<number, {
+    beamId: number;
+    /** Loodrechte verschuiving van de lastband t.o.v. de staafas (px). */
+    offset: number;
+    /** Scherm-eenheidsvector van de staafas naar de pijlstaarten. */
+    ex: number; ey: number;
+    /** Pijllengte (px) aan begin/eind van het belaste deel. */
+    lenA: number; lenB: number;
+    /** Belast interval als fracties op de staaf. */
+    a: number; b: number;
+  }>();
+  {
+    const perStaaf = new Map<number, Load[]>();
+    for (const l of activeLoads) {
+      if (l.type !== "lineLoad" || l.beamId === undefined) continue;
+      const arr = perStaaf.get(l.beamId);
+      if (arr) arr.push(l); else perStaaf.set(l.beamId, [l]);
+    }
+    for (const [beamId, lijst] of perStaaf) {
+      const b = beams.find(bb => bb.id === beamId);
+      if (!b) continue;
+      const nA = nodes.find(n => n.id === b.from);
+      const nB = nodes.find(n => n.id === b.to);
+      if (!nA || !nB) continue;
+      const pA = worldToScreen(nA.x, nA.z), pB = worldToScreen(nB.x, nB.z);
+      const dxs = pB.x - pA.x, dys = pB.y - pA.y;
+      const Lpx = Math.hypot(dxs, dys);
+      if (Lpx < 1) continue;
+      const gesorteerd = [...lijst].sort((p, q) => (p.caseId - q.caseId) || (p.id - q.id));
+      const geplaatst: { a: number; b: number; baan: string; offset: number; hoogte: number }[] = [];
+      for (const l of gesorteerd) {
+        // Zelfde richtingsbepaling als in renderLoad hieronder.
+        const coordL = l.qCoord ?? "global";
+        const dirL = l.qDir ?? "z";
+        let nx: number, ny: number;
+        if (coordL === "local") {
+          if (dirL === "z") { nx = -dys / Lpx; ny = dxs / Lpx; }
+          else              { nx = -dxs / Lpx; ny = -dys / Lpx; }
+        } else {
+          if (dirL === "z") { nx = 0; ny = 1; }
+          else              { nx = -1; ny = 0; }
+        }
+        const qa = l.qStart ?? l.q ?? 0;
+        const qb = l.qEnd   ?? l.q ?? 0;
+        const gemDir = ((qa + qb) / 2) < 0 ? 1 : -1;   // zelfde flip-conventie
+        const ex = nx * -gemDir, ey = ny * -gemDir;    // as → pijlstaarten
+        const a = Math.min(1, Math.max(0, l.startFrac ?? 0));
+        const bF = Math.min(1, Math.max(a, l.endFrac ?? 1));
+        const lenA = Math.min(LINE_LOAD_MAX_PX, Math.max(LINE_LOAD_MIN_PX, Math.abs(qa) * lineLoadPxPerKnm || LINE_LOAD_MIN_PX));
+        const lenB = Math.min(LINE_LOAD_MAX_PX, Math.max(LINE_LOAD_MIN_PX, Math.abs(qb) * lineLoadPxPerKnm || LINE_LOAD_MIN_PX));
+        const hoogte = Math.max(lenA, lenB);
+        const baan = `${coordL}|${dirL}|${gemDir}`;
+        let offset = 0;
+        for (const g of geplaatst) {
+          if (g.baan !== baan) continue;
+          // Overlap in de lengte? (elkaar rakend telt niet als overlap)
+          if (Math.min(bF, g.b) - Math.max(a, g.a) <= 1e-6) continue;
+          offset = Math.max(offset, g.offset + g.hoogte + STAPEL_GAT_PX);
+        }
+        geplaatst.push({ a, b: bF, baan, offset, hoogte });
+        qStapel.set(l.id, { beamId, offset, ex, ey, lenA, lenB, a, b: bF });
+      }
+    }
+  }
+
+  /**
+   * Hoogte (px) van de gestapelde q-banden op fractie `t` van staaf `beamId`,
+   * geprojecteerd op de schermrichting (ux, uy) — de richting waarin een
+   * puntlastpijl vanaf zijn aangrijpingspunt WEG wijst. Alleen banden die
+   * dezelfde kant op steken tellen mee (projectie > 0), zodat een verticale
+   * puntlast niet uitwijkt voor een horizontale windlast.
+   */
+  const qBandHoogte = (beamId: number, t: number, ux: number, uy: number): number => {
+    let h = 0;
+    for (const info of qStapel.values()) {
+      if (info.beamId !== beamId) continue;
+      if (t < info.a - 1e-9 || t > info.b + 1e-9) continue;
+      const proj = info.ex * ux + info.ey * uy;
+      if (proj <= 0.05) continue;
+      const s = info.b > info.a ? Math.min(1, Math.max(0, (t - info.a) / (info.b - info.a))) : 0;
+      const len = info.lenA + (info.lenB - info.lenA) * s;
+      h = Math.max(h, (info.offset + len) * proj);
+    }
+    return h;
+  };
+
+  /**
+   * Vrije hoogte (px) die een puntlast op KNOOP `nodeId` moet aanhouden om
+   * boven alle q-banden op de aansluitende staven uit te komen.
+   */
+  const qBandHoogteBijKnoop = (nodeId: number, ux: number, uy: number): number => {
+    let h = 0;
+    if (qStapel.size === 0) return 0;              // geen q-lasten zichtbaar
+    const metBand = new Set([...qStapel.values()].map(i => i.beamId));
+    for (const b of beams) {
+      if (!metBand.has(b.id)) continue;
+      if (b.from === nodeId) h = Math.max(h, qBandHoogte(b.id, 0, ux, uy));
+      if (b.to === nodeId)   h = Math.max(h, qBandHoogte(b.id, 1, ux, uy));
+    }
+    return h;
+  };
+
+  /** Extra lucht tussen de bovenkant van de q-band en de puntlastkop (px). */
+  const PUNTLAST_LUCHT_PX = 6;
+
   const renderLoad = (l: Load) => {
-    // POINT FORCE on node
-    if (l.type === "pointForce" && l.nodeId !== undefined) {
-      const n = nodes.find(nn => nn.id === l.nodeId); if (!n) return null;
-      const p = worldToScreen(n.x, n.z);
+    // PUNTLAST op een knoop óf op een vrije positie op een staaf.
+    // De pijl wordt ALTIJD boven de (eventueel gestapelde) q-lastband
+    // getekend: `vrij` is de hoogte van de banden op die positie, gemeten in
+    // de richting waarin de pijl vanaf het aangrijpingspunt weg wijst. Is er
+    // geen q-band (vrij = 0), dan is de tekening identiek aan vroeger.
+    if (l.type === "pointForce" && (l.nodeId !== undefined || l.beamId !== undefined)) {
       const fx = l.fx ?? 0, fz = l.fz ?? 0;
       const mag = Math.hypot(fx, fz);
       if (mag < 1e-9) return null;
+
+      // Aangrijpingspunt (scherm) + de vrije hoogte van de q-banden daar.
+      let p: { x: number; y: number };
+      let vrijMeten: (ux: number, uy: number) => number;
+      let opStaaf = false;
+      if (l.nodeId !== undefined) {
+        const n = nodes.find(nn => nn.id === l.nodeId); if (!n) return null;
+        p = worldToScreen(n.x, n.z);
+        vrijMeten = (ux, uy) => qBandHoogteBijKnoop(l.nodeId!, ux, uy);
+      } else {
+        const b = beams.find(bb => bb.id === l.beamId); if (!b) return null;
+        const nA = nodes.find(n => n.id === b.from);
+        const nB = nodes.find(n => n.id === b.to);
+        if (!nA || !nB) return null;
+        const t = Math.min(1, Math.max(0, l.posFrac ?? 0));
+        const pA = worldToScreen(nA.x, nA.z), pB = worldToScreen(nB.x, nB.z);
+        p = { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t };
+        vrijMeten = (ux, uy) => qBandHoogte(b.id, t, ux, uy);
+        opStaaf = true;
+      }
+
       const scale = 40 / mag;
-      // Arrow drawn TOWARD the node, in load direction. Tail away.
+      // Pijl wijst NAAR het aangrijpingspunt toe, in de lastrichting;
+      // (ux, uy) is de eenheidsvector die daar vandaan wijst (naar de staart).
       const ax = fx * scale, ay = -fz * scale;
-      const tail = { x: p.x - ax, y: p.y - ay };
+      const ux = -ax / 40, uy = -ay / 40;
+      const vrij = vrijMeten(ux, uy);
+      const lucht = vrij > 0 ? vrij + PUNTLAST_LUCHT_PX : 0;
+      const kop  = { x: p.x + ux * lucht, y: p.y + uy * lucht };
+      const tail = { x: kop.x + ux * 40,  y: kop.y + uy * 40 };
+      const isSel = selection?.type === "load" && selection.id === l.id;
       return (
-        <g key={`load${l.id}`}>
-          <line x1={tail.x} y1={tail.y} x2={p.x} y2={p.y} className="fem-load-vec" markerEnd="url(#fem-load-head)" />
+        <g
+          key={`load${l.id}`}
+          className={`fem-pointload-group${isSel ? " selected" : ""}`}
+          onClick={(e) => {
+            if (tool === "select" && !dragState) {
+              e.stopPropagation();
+              setSelection({ type: "load", id: l.id });
+            }
+          }}
+        >
+          {/* Stippellijn van het aangrijpingspunt naar de opgetilde pijlkop —
+              zonder dit is niet te zien wáár de last precies aangrijpt. */}
+          {lucht > 0 && (
+            <line x1={p.x} y1={p.y} x2={kop.x} y2={kop.y} className="fem-load-leader" />
+          )}
+          {/* Markeerpunt op de staaf bij een last op een vrije positie. */}
+          {opStaaf && <circle cx={p.x} cy={p.y} r={2.5} className="fem-pointload-dot" />}
+          {/* Onzichtbare klikzone langs de pijlschacht (steekt van de staaf
+              af, dus botst niet met het aanklikken van de staaf zelf). */}
+          <line x1={tail.x} y1={tail.y} x2={kop.x} y2={kop.y} className="fem-pointload-hit" />
+          <line x1={tail.x} y1={tail.y} x2={kop.x} y2={kop.y} className="fem-load-vec" markerEnd="url(#fem-load-head)" />
           <text x={tail.x} y={tail.y - 4} className="fem-load-text">{mag.toFixed(1)} kN</text>
         </g>
       );
@@ -2005,8 +2248,14 @@ export default function FemCanvas(props: FemCanvasProps) {
       // Lokaal-axiale pijlen liggen anders óp de staaflijn: til de band een
       // vast stukje loodrecht van de as zodat de pijlen leesbaar blijven.
       const isAxial = coordL === "local" && dirL === "x";
-      const offX = isAxial ? (dys / L) * 10 : 0;
-      const offY = isAxial ? (-dxs / L) * 10 : 0;
+      // Stapelverschuiving (zie qStapel hierboven): translatie van de hele
+      // lastband loodrecht op de staafas. Offset 0 (enige last op de staaf,
+      // of geen overlap) ⇒ exact de oude tekening.
+      const stap = qStapel.get(l.id);
+      const stapOffX = stap ? stap.ex * stap.offset : 0;
+      const stapOffY = stap ? stap.ey * stap.offset : 0;
+      const offX = (isAxial ? (dys / L) * 10 : 0) + stapOffX;
+      const offY = (isAxial ? (-dxs / L) * 10 : 0) + stapOffY;
       // Deellast: pijlen + lastblok alleen over het belaste deel
       // [startFrac, endFrac] van de staaf (default volle lengte). Tijdens een
       // greep-sleep gelden de PREVIEW-fracties zodat band en grepen de muis
@@ -2940,6 +3189,12 @@ export default function FemCanvas(props: FemCanvasProps) {
           const hd = loadHandleDrag && loadHandleDrag.loadId === l.id ? loadHandleDrag : null;
           const aF = hd ? hd.previewStart : storedA;
           const bF = hd ? hd.previewEnd : storedB;
+          // Gestapelde last: de grepen schuiven mee met de lastband, zodat ze
+          // op de basislijn van DEZE band blijven zitten (zie qStapel). Het
+          // slepen zelf projecteert de muis op de staafas en is dus ongewijzigd.
+          const stap = qStapel.get(l.id);
+          const sox = stap ? stap.ex * stap.offset : 0;
+          const soy = stap ? stap.ey * stap.offset : 0;
           const HS = 4.5; // halve zijde van de greep (px)
           return (
             <g className="fem-loadhandles-layer">
@@ -2949,7 +3204,7 @@ export default function FemCanvas(props: FemCanvasProps) {
               ]).map(({ end, fr }) => (
                 <rect
                   key={`lh-${end}`}
-                  x={pA.x + dxs * fr - HS} y={pA.y + dys * fr - HS}
+                  x={pA.x + dxs * fr + sox - HS} y={pA.y + dys * fr + soy - HS}
                   width={HS * 2} height={HS * 2}
                   fill="#ffffff" stroke="rgba(220, 38, 38, 1)" strokeWidth={1.5}
                   style={{ cursor: loadHandleDrag ? "grabbing" : "grab", pointerEvents: "auto" }}
@@ -3550,16 +3805,26 @@ export default function FemCanvas(props: FemCanvasProps) {
         onSubmit={(v) => cbs.onAddSupport(supportType, v)}
       />;
     }
-    if (p.kind === "pointLoad") {
-      return <PopoverPointLoadForm onSubmit={(fx, fz) => cbs.onAddLoad({
-        type: "pointForce", nodeId: p.nodeId, fx, fz,
-      })} />;
-    }
-    if (p.kind === "pointLoadH") {
-      // Horizontale puntlast — Fx voor-ingevuld (+10 = naar rechts), Fz=0.
-      return <PopoverPointLoadForm horizontal onSubmit={(fx, fz) => cbs.onAddLoad({
-        type: "pointForce", nodeId: p.nodeId, fx, fz,
-      })} />;
+    if (p.kind === "pointLoad" || p.kind === "pointLoadH") {
+      // Twee aangrijpingsvormen: op een KNOOP (p.nodeId) of op een vrije
+      // positie op een STAAF (p.beamId + p.posFrac). In het tweede geval
+      // toont het formulier ook een positieveld in m vanaf de startknoop.
+      // Horizontale variant: Fx voor-ingevuld (+10 = naar rechts), Fz = 0.
+      const opStaaf = p.nodeId === undefined && p.beamId !== undefined;
+      const beam = opStaaf ? beams.find(b => b.id === p.beamId) : undefined;
+      const nA = beam ? nodes.find(n => n.id === beam.from) : undefined;
+      const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
+      const lenM = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
+      return <PopoverPointLoadForm
+        horizontal={p.kind === "pointLoadH"}
+        beamLenM={opStaaf ? lenM : undefined}
+        defaultPosM={opStaaf ? (p.posFrac ?? 0) * lenM : undefined}
+        onSubmit={(fx, fz, posFrac) => cbs.onAddLoad(
+          opStaaf
+            ? { type: "pointForce", beamId: p.beamId, posFrac: posFrac ?? p.posFrac ?? 0, fx, fz }
+            : { type: "pointForce", nodeId: p.nodeId, fx, fz },
+        )}
+      />;
     }
     if (p.kind === "moment") {
       return <PopoverSingleNumberForm
@@ -3818,28 +4083,68 @@ function PopoverEdgeLoadForm({ randLabel, onSubmit }: {
   );
 }
 
-function PopoverPointLoadForm({ onSubmit, horizontal }: { onSubmit: (fx: number, fz: number) => void; horizontal?: boolean }) {
+function PopoverPointLoadForm({ onSubmit, horizontal, beamLenM, defaultPosM }: {
+  /** `posFrac` is alleen gevuld bij een puntlast op een vrije staafpositie. */
+  onSubmit: (fx: number, fz: number, posFrac?: number) => void;
+  horizontal?: boolean;
+  /** Staaflengte in m — gezet ⇒ de last grijpt op een STAAF aan, niet op een
+   *  knoop, en het positieveld verschijnt. */
+  beamLenM?: number;
+  /** Voorgestelde positie in m vanaf de startknoop (uit de klikpositie). */
+  defaultPosM?: number;
+}) {
   // Horizontal mode: pre-fill Fx (+10 kN, rightward) and clear Fz; the Fx field
   // gets focus. Vertical mode: pre-fill Fz (-10 kN, downward) and focus Fz.
   const [fx, setFx] = useState(horizontal ? "10" : "0");
   const [fz, setFz] = useState(horizontal ? "0"  : "-10");
+  // Positie op de staaf in m vanaf de startknoop; intern omgerekend naar een
+  // fractie 0..1 (Load.posFrac) — dezelfde conventie als de deellast-invoer.
+  const opStaaf = beamLenM !== undefined && beamLenM > 0;
+  const [posM, setPosM] = useState((defaultPosM ?? 0).toFixed(2));
+  const posGeldig = !opStaaf
+    || (Number.isFinite(Number(posM)) && Number(posM) >= 0 && Number(posM) <= beamLenM! + 1e-9);
+  const commit = () => {
+    if (!posGeldig) return;
+    const frac = opStaaf
+      ? Math.min(1, Math.max(0, Number(posM) / beamLenM!))
+      : undefined;
+    onSubmit(Number(fx) || 0, Number(fz) || 0, frac);
+  };
   return (
     <div className="fem-popover-form">
-      <div className="fem-popover-title">{horizontal ? "Horizontale puntlast toevoegen" : "Puntlast toevoegen"}</div>
+      <div className="fem-popover-title">
+        {horizontal ? "Horizontale puntlast toevoegen" : "Puntlast toevoegen"}
+      </div>
+      {opStaaf && (
+        <label className="fem-popover-row">
+          <span>Positie (m)</span>
+          <input
+            type="number" step="0.05" min="0" max={beamLenM}
+            value={posM} onChange={e => setPosM(e.target.value)}
+            title={`Afstand vanaf de startknoop van de staaf (0 – ${beamLenM!.toFixed(2)} m).`}
+            onKeyDown={e => { if (e.key === "Enter") commit(); }}
+          />
+        </label>
+      )}
       <label className="fem-popover-row">
         <span>Fx (kN)</span>
         <input type="number" step="0.1" value={fx} onChange={e => setFx(e.target.value)}
           autoFocus={horizontal}
-          onKeyDown={e => { if (e.key === "Enter" && horizontal) onSubmit(Number(fx) || 0, Number(fz) || 0); }} />
+          onKeyDown={e => { if (e.key === "Enter" && horizontal) commit(); }} />
       </label>
       <label className="fem-popover-row">
         <span>Fz (kN)</span>
         <input type="number" step="0.1" value={fz} onChange={e => setFz(e.target.value)}
           autoFocus={!horizontal}
-          onKeyDown={e => { if (e.key === "Enter") onSubmit(Number(fx) || 0, Number(fz) || 0); }} />
+          onKeyDown={e => { if (e.key === "Enter") commit(); }} />
       </label>
+      {opStaaf && !posGeldig && (
+        <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
+          Ongeldige positie: 0 ≤ positie ≤ {beamLenM!.toFixed(2)} m
+        </div>
+      )}
       <div className="fem-popover-actions">
-        <button onClick={() => onSubmit(Number(fx) || 0, Number(fz) || 0)} className="fem-popover-primary">OK</button>
+        <button onClick={commit} className="fem-popover-primary" disabled={!posGeldig}>OK</button>
       </div>
     </div>
   );

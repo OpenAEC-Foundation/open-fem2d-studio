@@ -392,8 +392,25 @@ export interface Load {
   fx?: number; // kN
   fz?: number; // kN
   my?: number; // kNm
-  /** beam target for lineLoad / thermal */
+  /** beam target for lineLoad / thermal — én voor een STAAFGEBONDEN puntlast
+   *  (pointForce met `posFrac`, zie hieronder). */
   beamId?: number;
+  /**
+   * Puntlast op een VRIJE POSITIE op een staaf: positie als FRACTIE 0..1 van
+   * de staaflengte, gemeten vanaf de startknoop (`Beam.from`) — dezelfde
+   * conventie als de deellast-fracties startFrac/endFrac. Aanwezig ⇒ de last
+   * is staafgebonden (`beamId` gezet, `nodeId` leeg); ontbreekt het veld
+   * (alle bestaande projectbestanden) dan is het gedrag ongewijzigd: de
+   * puntlast hangt aan `nodeId`. posFrac 0 of 1 valt exact samen met de
+   * start- respectievelijk eindknoop en levert hetzelfde resultaat als een
+   * knooplast daar.
+   *
+   * Rekenroute: de engine-adapter SPLITST de staaf op deze fractie (dezelfde
+   * mechaniek als het splitsen op plaatrandknopen, P2.4) en zet de kracht op
+   * de tussenknoop — exact, inclusief de sprong in V en de knik in M op de
+   * lastpositie. Zie solver/engine.ts.
+   */
+  posFrac?: number;
   q?: number; // kN/m (uniform)
   qStart?: number;
   qEnd?: number;

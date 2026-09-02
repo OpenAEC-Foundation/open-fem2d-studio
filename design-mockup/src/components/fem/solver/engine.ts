@@ -350,6 +350,37 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   // (met hun fractie-interval op de UI-staaf) zodat lasten worden verdeeld
   // en convertResult de stationsresultaten weer aaneenrijgt.
   const beamSegments = new Map<number, { meshId: number; t0: number; t1: number }[]>();
+
+  // ── Splitsfracties van staafgebonden puntlasten (vrije positie) ───────────
+  // Een puntlast op een vrije positie wordt gerekend door de staaf op die
+  // fractie te SPLITSEN en de kracht op de tussenknoop te zetten (zie
+  // SolverBeamPointLoadInput in types.ts voor de motivatie). De splitsing is
+  // bewust LASTGEVAL-ONAFHANKELIJK: álle staafpuntlasten uit de invoer
+  // splitsen mee, ook die in deze solve factor 0 hebben. Zo krijgt elk
+  // belastinggeval hetzelfde stationsraster en blijft superpositie van de
+  // per-geval-resultaten (combinaties, envelope) geldig.
+  // Fracties op/naast een eindknoop (≤ EPS of ≥ 1−EPS) splitsen NIET: die
+  // last landt gewoon op de bestaande eindknoop.
+  const BPL_EPS = 1e-6;
+  const staafPuntlasten = (input as any).beamPointLoads as Array<any> | undefined;
+  const puntlastFracties = new Map<number, number[]>();
+  if (staafPuntlasten) {
+    for (const bpl of staafPuntlasten) {
+      const t = Math.min(1, Math.max(0, bpl.posFrac ?? 0));
+      if (t <= BPL_EPS || t >= 1 - BPL_EPS) continue;
+      const lijst = puntlastFracties.get(bpl.beamId) ?? [];
+      lijst.push(t);
+      puntlastFracties.set(bpl.beamId, lijst);
+    }
+  }
+
+  /**
+   * Mesh-knoop-id per splitsfractie, per UI-staaf — inclusief de eindknopen
+   * (t = 0 en t = 1). Hiermee vindt het staafpuntlastenblok verderop de knoop
+   * waarop de kracht moet landen.
+   */
+  const beamKnoopPerFractie = new Map<number, { t: number; meshNodeId: number }[]>();
+
   for (const b of input.beams) {
     const fromId = nodeIdMap.get(b.from);
     const toId   = nodeIdMap.get(b.to);
@@ -362,9 +393,19 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     const matId = materialIdForE(b.E ?? 210000);
     const nA = nodeById.get(b.from)!;
     const nB = nodeById.get(b.to)!;
-    const splitsT = plateRects.length > 0
-      ? berekenPlaatrandSplitsFracties(nA, nB, plateRects, TOL_MM)
-      : [];
+    // Plaatrandknopen (P2.4) + staafpuntlastposities, samengevoegd, gesorteerd
+    // en ontdubbeld — een puntlast exact óp een plaatrandknoop splitst dus
+    // maar één keer.
+    const ruweSplits = [
+      ...(plateRects.length > 0
+        ? berekenPlaatrandSplitsFracties(nA, nB, plateRects, TOL_MM)
+        : []),
+      ...(puntlastFracties.get(b.id) ?? []),
+    ].sort((p, q) => p - q);
+    const splitsT: number[] = [];
+    for (const t of ruweSplits) {
+      if (splitsT.length === 0 || Math.abs(t - splitsT[splitsT.length - 1]) > 1e-9) splitsT.push(t);
+    }
 
     if (splitsT.length === 0) {
       // Ongesplitst — het bestaande pad (bit-identiek zonder platen).
@@ -372,6 +413,9 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       if (!meshBeam) continue;
       beamIdMap.set(b.id, meshBeam.id);
       pasReleasesToe(meshBeam.id, b, true, true);
+      beamKnoopPerFractie.set(b.id, [
+        { t: 0, meshNodeId: fromId }, { t: 1, meshNodeId: toId },
+      ]);
     } else {
       // Tussenknopen op de gridposities van de plaatrand. findNodeAt
       // hergebruikt een eventueel al bestaande (UI-)knoop binnen 1 mm; het
@@ -386,6 +430,8 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       }
       knoopIds.push(toId);
       const grens = [0, ...splitsT, 1];
+      beamKnoopPerFractie.set(b.id,
+        grens.map((t, i) => ({ t, meshNodeId: knoopIds[i] })));
       const segs: { meshId: number; t0: number; t1: number }[] = [];
       for (let i = 0; i < knoopIds.length - 1; i++) {
         const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, section);
@@ -783,6 +829,23 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   }
 
   // Point loads on nodes
+  /** Eén knooplast (N, N·mm) additief op een MESH-knoop zetten. */
+  const pasKnooplastToe = (
+    meshNid: number, fx_N: number, fz_N: number, my_Nmm: number, f: number,
+  ): void => {
+    const node = mesh.getNode(meshNid);
+    const ex = node?.loads ?? { fx: 0, fy: 0, moment: 0 };
+    mesh.updateNode(meshNid, {
+      loads: {
+        // Scheefstand-companion: fx += φ·(−fz)·richting (fz < 0 = omlaag).
+        fx: ex.fx + (fx_N + schFactor * -fz_N) * f,
+        fy: ex.fy + fz_N * f,
+        // my in N·mm → mesh moment in N·m  → /1000
+        moment: ex.moment + (my_Nmm / 1000) * f,
+      },
+    });
+  };
+
   const pls = (input as any).pointLoads as Array<any> | undefined;
   if (pls) {
     for (const pl of pls) {
@@ -790,17 +853,29 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       if (f === 0) continue;
       const meshNid = nodeIdMap.get(pl.nodeId);
       if (meshNid === undefined) continue;
-      const node = mesh.getNode(meshNid);
-      const ex = node?.loads ?? { fx: 0, fy: 0, moment: 0 };
-      mesh.updateNode(meshNid, {
-        loads: {
-          // Scheefstand-companion: fx += φ·(−fz)·richting (fz < 0 = omlaag).
-          fx: ex.fx + ((pl.fx ?? 0) + schFactor * -(pl.fz ?? 0)) * f,
-          fy: ex.fy + (pl.fz ?? 0) * f,
-          // my in N·mm → mesh moment in N·m  → /1000
-          moment: ex.moment + ((pl.my ?? 0) / 1000) * f,
-        },
-      });
+      pasKnooplastToe(meshNid, pl.fx ?? 0, pl.fz ?? 0, pl.my ?? 0, f);
+    }
+  }
+
+  // ── Puntlasten op een vrije positie op een staaf ──────────────────────────
+  // De staaf is hierboven al op `posFrac` gesplitst (lastgeval-onafhankelijk);
+  // hier landt de kracht als gewone knooplast op de bijbehorende mesh-knoop.
+  // Daardoor is het resultaat exact: V springt en M knikt op de lastpositie,
+  // en het stationsraster van convertResult bevat de lastpositie als grens.
+  // posFrac 0/1 (of een last op een staaf die niet in de mesh zit) valt terug
+  // op de dichtstbijzijnde geregistreerde fractie — dat is dan de eindknoop.
+  if (staafPuntlasten) {
+    for (const bpl of staafPuntlasten) {
+      const f = loadFactor ? loadFactor(bpl.caseId) : 1;
+      if (f === 0) continue;
+      const knopen = beamKnoopPerFractie.get(bpl.beamId);
+      if (!knopen || knopen.length === 0) continue;   // staaf bestaat niet (meer)
+      const t = Math.min(1, Math.max(0, bpl.posFrac ?? 0));
+      let beste = knopen[0];
+      for (const k of knopen) {
+        if (Math.abs(k.t - t) < Math.abs(beste.t - t)) beste = k;
+      }
+      pasKnooplastToe(beste.meshNodeId, bpl.fx ?? 0, bpl.fz ?? 0, bpl.my ?? 0, f);
     }
   }
 

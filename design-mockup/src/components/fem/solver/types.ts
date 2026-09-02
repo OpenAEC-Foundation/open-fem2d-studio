@@ -102,6 +102,35 @@ export interface SolverPointLoadInput {
 }
 
 /**
+ * Puntlast op een VRIJE POSITIE op een staaf (niet op een knoop).
+ *
+ * REKENAANPAK — staaf splitsen, niet inklemmingskrachten. De adapter voegt de
+ * lastpositie toe aan de splitsfracties van de staaf (exact dezelfde mechaniek
+ * als het splitsen op plaatrandknopen, P2.4: 1 UI-staaf → n mesh-staven,
+ * waarvan convertResult de stations weer aaneenrijgt) en zet de kracht als
+ * gewone knooplast op de tussenknoop. Waarom niet de klassieke
+ * vaste-inklemmingskrachten (R_A = P·b²(3a+b)/L³ e.d.) op de staafeinden?
+ * Die geven wel exacte reacties, maar de krachtsherleiding binnen het element
+ * zou de last niet "zien": V zou geen sprong maken en M geen knik op de
+ * lastpositie — de N/V/M/w-diagrammen en daarmee de toetsing zouden fout zijn.
+ * Splitsen is exact voor álle grootheden en hergebruikt bestaande, geteste
+ * code. De splitsing is bewust LASTGEVAL-ONAFHANKELIJK (alle beamPointLoads
+ * splitsen mee, ook die met factor 0), zodat elk belastinggeval hetzelfde
+ * stationsraster krijgt en combinatie-superpositie geldig blijft.
+ *
+ * posFrac 0 of 1 valt samen met een eindknoop: er wordt dan NIET gesplitst en
+ * de last landt op de bestaande eindknoop — bit-identiek aan een knooplast.
+ */
+export interface SolverBeamPointLoadInput {
+  beamId: number;
+  /** Positie als fractie 0..1 van de staaflengte vanaf de startknoop. */
+  posFrac: number;
+  fx?: number;   // N
+  fz?: number;   // N
+  my?: number;   // N·mm
+}
+
+/**
  * Randlast op een plaatrand (P3.3): een lijnlast p langs één van de vier
  * benoemde randen van het gridmesh van een wandschijf. De engine zet de last
  * via de PlateLoads-wrapper (cumulatieve booglengte + tributary lengths) om
@@ -207,6 +236,8 @@ export interface SolverInput {
   loads: SolverDistLoadInput[];
   /** Optional concentrated forces on nodes. */
   pointLoads?: SolverPointLoadInput[];
+  /** Optionele puntlasten op een vrije positie op een staaf. */
+  beamPointLoads?: SolverBeamPointLoadInput[];
   /** Optional uniform temperature changes on beams. */
   thermalLoads?: SolverThermalLoadInput[];
   /** Optionele randlasten op plaatranden (P3.3). */
@@ -227,6 +258,8 @@ export interface MultiInput {
   /** Distributed loads tagged by caseId — the solver splits internally. */
   loads: (SolverDistLoadInput & { caseId: number })[];
   pointLoads?: (SolverPointLoadInput & { caseId: number })[];
+  /** Puntlasten op een vrije positie op een staaf, per belastinggeval. */
+  beamPointLoads?: (SolverBeamPointLoadInput & { caseId: number })[];
   thermalLoads?: (SolverThermalLoadInput & { caseId: number })[];
   /** Randlasten op plaatranden, per belastinggeval (P3.3). */
   edgeLoads?: (SolverEdgeLoadInput & { caseId: number })[];

@@ -591,7 +591,7 @@ function App() {
           };
         }),
         cases: fem.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
-        loads: [], pointLoads: [], thermalLoads: [], edgeLoads: [],
+        loads: [], pointLoads: [], beamPointLoads: [], thermalLoads: [], edgeLoads: [],
         // Scheefstand: φ = 1/noemer, richting ±x — de engine geeft elke
         // verticale last een horizontale metgezel H = φ·V.
         scheefstand: fem.scheefstandEnabled
@@ -636,6 +636,17 @@ function App() {
         } else if (l.type === "pointForce" && l.nodeId !== undefined) {
           multiInput.pointLoads!.push({
             nodeId: l.nodeId,
+            fx: (l.fx ?? 0) * 1000,
+            fz: (l.fz ?? 0) * 1000,
+            caseId: l.caseId,
+          });
+        } else if (l.type === "pointForce" && l.beamId !== undefined) {
+          // Puntlast op een vrije positie op een staaf: positie als fractie
+          // 0..1 vanaf de startknoop. De engine splitst de staaf daar en zet
+          // de kracht op de tussenknoop (exacte V-sprong / M-knik).
+          multiInput.beamPointLoads!.push({
+            beamId: l.beamId,
+            posFrac: Math.min(1, Math.max(0, l.posFrac ?? 0)),
             fx: (l.fx ?? 0) * 1000,
             fz: (l.fz ?? 0) * 1000,
             caseId: l.caseId,

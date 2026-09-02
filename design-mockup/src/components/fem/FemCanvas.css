@@ -163,6 +163,37 @@
   stroke-width: 2;
 }
 
+/* Puntlast — pijl staat boven de (gestapelde) q-lastband; een stippellijn
+   verbindt het echte aangrijpingspunt met de opgetilde pijlkop. */
+.fem-pointload-group { cursor: pointer; }
+.fem-load-leader {
+  stroke: rgba(220, 38, 38, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  fill: none;
+  pointer-events: none;
+}
+/* Aangrijpingspunt van een puntlast op een vrije positie op de staaf. */
+.fem-pointload-dot {
+  fill: rgba(220, 38, 38, 0.95);
+  stroke: none;
+  pointer-events: none;
+}
+/* Onzichtbare, brede klikzone langs de pijlschacht. */
+.fem-pointload-hit {
+  stroke: transparent;
+  stroke-width: 12;
+  fill: none;
+  pointer-events: stroke;
+}
+.fem-pointload-group.selected .fem-load-vec {
+  stroke: rgba(220, 38, 38, 1);
+  stroke-width: 2.5;
+}
+.fem-pointload-group.selected .fem-load-leader {
+  stroke: rgba(220, 38, 38, 1);
+}
+
 /* Plates — translucent fill below beams */
 .fem-plates-layer { pointer-events: visiblePainted; }
 .fem-plate {

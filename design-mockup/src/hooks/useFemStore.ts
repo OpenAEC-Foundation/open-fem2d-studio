@@ -170,6 +170,18 @@ export function computeBeamSplit(
     } else if (l.type === "thermal") {
       loads.push({ ...l, id: nextLoadId++, beamId: beam1.id });
       loads.push({ ...l, id: nextLoadId++, beamId: beam2.id });
+    } else if (l.type === "pointForce" && l.posFrac !== undefined) {
+      // Staafgebonden puntlast (vrije positie): hij hoort bij het deel waarin
+      // zijn positie valt; de fractie wordt naar dat deel hermapt. Zelfde
+      // regels als de deellast-fracties hierboven.
+      const s = Math.min(1, Math.max(0, l.posFrac));
+      if (t > 1e-12 && s <= t) {
+        loads.push({ ...l, id: nextLoadId++, beamId: beam1.id, posFrac: s / t });
+      } else if (1 - t > 1e-12) {
+        loads.push({ ...l, id: nextLoadId++, beamId: beam2.id, posFrac: (s - t) / (1 - t) });
+      } else {
+        loads.push({ ...l, id: nextLoadId++, beamId: beam1.id, posFrac: 1 });
+      }
     } else {
       // Knoopgebonden of onbekend lasttype — ongewijzigd laten staan.
       loads.push(l);
