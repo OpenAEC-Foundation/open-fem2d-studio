@@ -97,6 +97,7 @@ const BUNDEL_TESTS = new Set([
   "thermiek",
   "tweede-orde",
   "v2-stations",
+  "validatie-mcp",
   "veldzakking",
   "veren",
   "wind-generator",

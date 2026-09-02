@@ -25,6 +25,13 @@
 // regressierunner importeren dit bestand juist, en dan blijft hij stil.
 export * from "./sidecar";
 
+// De strenge modelvalidatie en de Nederlandse foutafbeelding staan hier apart,
+// hoewel `sidecar.ts` ze al gebruikt: hun tests horen tegen de BUNDEL te
+// draaien, want dat is het artefact dat de MCP-server uitvoert. Zonder deze
+// twee regels kan de bundelstand van de regressierunner ze niet aanroepen.
+export * from "./fouten";
+export * from "./valideerModel";
+
 export * from "../components/fem/solver/engine";
 export * from "../components/fem/solver/combinations";
 export * from "../lib/steelCheckBuilder";

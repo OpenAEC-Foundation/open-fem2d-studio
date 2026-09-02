@@ -62,6 +62,8 @@ import type {
 import type { Beam, BeamCheckConfig } from "../components/fem/femTypes";
 import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import { version as PAKKET_VERSIE } from "../../package.json";
+import { beeldKernfoutAf } from "./fouten";
+import { controleerVelden, valideerModel } from "./valideerModel";
 import {
   SIDECAR_OPS,
   SIDECAR_PROTOCOL,
@@ -198,6 +200,15 @@ function leesTekst(payload: Record<string, unknown>, veld: string): string {
 /** Wat `leesModel` uit een payload haalt. */
 interface GelezenModel {
   model: FemModelInvoer;
+  /**
+   * Het model zoals de aanroeper het aanleverde, ONGEFILTERD. `model` hierboven
+   * is genormaliseerd — daar zijn onbekende sleutels al uit weggevallen, en
+   * juist die moet de strenge validatie kunnen zien. Bij een projectbestand
+   * bevat dit de modelvelden van het bestand; de bestandsvelden eromheen
+   * (`format`, `version`, `savedAt`, …) blijven er buiten, want die horen bij
+   * het bestandsformaat en niet bij het model.
+   */
+  rauw: Record<string, unknown>;
   beams: Beam[];
   /** Combinaties uit het projectbestand, of `null` als het bestand ze niet had. */
   combinatiesUitBestand: LoadCombination[] | null;
@@ -236,19 +247,23 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
         { originele_melding: String(err) },
       );
     }
+    const uitBestand = {
+      nodes: bestand.nodes ?? [],
+      beams: bestand.beams ?? [],
+      supports: bestand.supports ?? [],
+      plates: bestand.plates ?? [],
+      loadCases: bestand.loadCases ?? [],
+      loads: bestand.loads ?? [],
+      selfWeightEnabled: bestand.selfWeightEnabled ?? false,
+      scheefstandEnabled: bestand.scheefstandEnabled ?? false,
+      scheefstandNoemer: bestand.scheefstandNoemer ?? 200,
+      scheefstandRichting: bestand.scheefstandRichting ?? 1,
+    };
     return {
-      model: {
-        nodes: bestand.nodes ?? [],
-        beams: bestand.beams ?? [],
-        supports: bestand.supports ?? [],
-        plates: bestand.plates ?? [],
-        loadCases: bestand.loadCases ?? [],
-        loads: bestand.loads ?? [],
-        selfWeightEnabled: bestand.selfWeightEnabled ?? false,
-        scheefstandEnabled: bestand.scheefstandEnabled ?? false,
-        scheefstandNoemer: bestand.scheefstandNoemer ?? 200,
-        scheefstandRichting: bestand.scheefstandRichting ?? 1,
-      },
+      model: uitBestand,
+      // De arrays zijn dezelfde objecten als in het bestand, dus een onbekend
+      // veld BINNEN een knoop, staaf of last blijft zichtbaar voor de validatie.
+      rauw: uitBestand as unknown as Record<string, unknown>,
       beams: bestand.beams ?? [],
       combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
       nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
@@ -297,6 +312,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
         typeof rauw.scheefstandNoemer === "number" ? rauw.scheefstandNoemer : 200,
       scheefstandRichting: rauw.scheefstandRichting === -1 ? -1 : 1,
     },
+    rauw,
     beams,
     combinatiesUitBestand: null,
     nonlinearUitBestand: null,
@@ -439,6 +455,24 @@ function opHandshake() {
 /** Gedeelde kern van `solve` en `check`. */
 function rekenDoor(payload: Record<string, unknown>) {
   const gelezen = leesModel(payload);
+
+  // Strenge veldpoort VÓÓR het rekenen. Een onbekende of verkeerd getypte
+  // sleutel is geen schoonheidsfoutje: `bouwMultiInput` laat zo'n last door
+  // alle takken heen vallen en de solve slaagt met een resultaat waarin die
+  // last ontbreekt — nul, en niet te onderscheiden van een echte nul. Weigeren
+  // is daarom het enige veilige antwoord. Dit staat NA `leesModel`, zodat de
+  // specifiekere melding over losse E/A/I op een staaf voorrang houdt.
+  const veldFouten = controleerVelden(gelezen.rauw);
+  if (veldFouten.length > 0) {
+    throw new InvoerFout(
+      `Het model bevat ${veldFouten.length} invoerfout(en) — zie ` +
+        "`detail.fouten`. Onbekende velden worden geweigerd, niet genegeerd: " +
+        "een genegeerd veld levert een geslaagde berekening op die bij een " +
+        "ander model hoort.",
+      { fouten: veldFouten },
+    );
+  }
+
   const combinaties = leesCombinaties(payload, gelezen.combinatiesUitBestand);
   const profileDb = leesProfielen(payload);
 
@@ -604,6 +638,30 @@ function opCheck(payload: Record<string, unknown>) {
 }
 
 /**
+ * `validate`: droogloop zonder rekenen (plan §3.2). Bestaat omdat een tikfout
+ * in een lastveld vandaag een gesláágde solve met een ontbrekende last
+ * oplevert — een fout die als "nul" leest. Deze bewerking rekent bewust niet:
+ * ze zegt alleen of het model doorgerekend mag worden, en waarom niet.
+ */
+function opValidate(payload: Record<string, unknown>) {
+  const gelezen = leesModel(payload);
+  const uitkomst = valideerModel(gelezen.rauw);
+  return {
+    ok: uitkomst.ok,
+    errors: uitkomst.errors,
+    warnings: uitkomst.warnings,
+    counts: {
+      nodes: gelezen.model.nodes.length,
+      beams: gelezen.model.beams.length,
+      supports: gelezen.model.supports.length,
+      plates: gelezen.model.plates.length,
+      loads: gelezen.model.loads.length,
+      load_cases: gelezen.model.loadCases.length,
+    },
+  };
+}
+
+/**
  * `load_project`: het gedeserialiseerde model plus tellingen. Alleen-lezen —
  * en de sidecar raakt de schijf niet eens aan: Rust levert de inhoud in
  * `payload.inhoud`, `payload.path` is er alleen om het antwoord te labelen.
@@ -656,17 +714,10 @@ export function verwerkVerzoek(verzoek: SidecarVerzoek): SidecarAntwoord {
       case "load_project":
         return maakOk(verzoek.id, opLoadProject(verzoek.payload));
       case "validate":
-        // De strenge modelvalidatie is een eigen module met een eigen
-        // testbatterij. Zolang die er niet is, geeft deze bewerking een
-        // expliciete weigering: een half werkende validatie die "ok" antwoordt
-        // is gevaarlijker dan geen validatie, want ze wekt vertrouwen dat ze
-        // niet waarmaakt.
-        return maakFout(
-          verzoek.id,
-          "INTERN",
-          "Modelvalidatie is in deze bouw nog niet beschikbaar. Gebruik " +
-            "`solve`: die weigert een onoplosbaar model met een eigen melding.",
-        );
+        // Een gevonden modelfout is GEEN protocolfout: de bewerking is
+        // geslaagd, het antwoord luidt alleen `ok: false`. Daarom `maakOk` —
+        // wie een lijst bevindingen vraagt en er een krijgt, kreeg antwoord.
+        return maakOk(verzoek.id, opValidate(verzoek.payload));
     }
   } catch (err) {
     if (err instanceof InvoerFout) {
@@ -676,14 +727,17 @@ export function verwerkVerzoek(verzoek: SidecarVerzoek): SidecarAntwoord {
       return maakFout(verzoek.id, "BESTAND_ONLEESBAAR", err.message, err.detail);
     }
     if (err instanceof ModelFout) {
-      // De kern meldt in het Engels. De Nederlandse afbeelding van bekende
-      // meldingen is een eigen module; tot die er is gaat de originele tekst
-      // ONVERKORT mee in `detail`, zodat er nooit iets stil verdwijnt.
+      // De kern meldt in het Engels; `fouten.ts` beeldt bekende meldingen af op
+      // Nederlands en kiest de foutcode. Een ONBEKENDE melding wordt niet
+      // gegokt: die komt door als `INTERN`, want "de solver kon dit model niet
+      // oplossen" zou een uitspraak over de constructie zijn die niemand heeft
+      // onderbouwd. De originele tekst gaat in beide gevallen mee in `detail`.
+      const afgebeeld = beeldKernfoutAf(err.message);
       return maakFout(
         verzoek.id,
-        "MODEL_ONOPLOSBAAR",
-        "De solver kon dit model niet oplossen.",
-        { originele_melding: err.message },
+        afgebeeld.code,
+        afgebeeld.melding,
+        afgebeeld.detail,
       );
     }
     return maakFout(
