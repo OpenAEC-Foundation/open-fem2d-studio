@@ -4,9 +4,18 @@
  * A LoadCombination is a weighted sum of LoadCases:
  *     u_combo = Σ_i  factor_i · u_case_i
  *
- * Linearity makes this trivial: because we solved each case in isolation
- * against the same K, we can superpose displacements, reactions and
+ * 1e-ORDE: linearity makes this trivial — because we solved each case in
+ * isolation against the same K, we superpose displacements, reactions and
  * member end-forces.
+ *
+ * 2e-ORDE (P-Δ): superpositie is ONGELDIG — de vergroting hangt niet-lineair
+ * van het totale lastniveau af. Wanneer de perCase-Map uit
+ * solveAllCasesNonlinear komt (herkenbaar via getSecondOrderState), lost
+ * combineResults de combinatie daarom ZELF geometrisch niet-lineair op:
+ * gefactoreerde lasten samen het model in (solveCombinationSecondOrder),
+ * met memoisatie per combinatie. computeEnvelope gebruikt combineResults en
+ * envelopt dan automatisch over de échte per-combinatie-2e-orde-resultaten
+ * (max/min over combinaties — geen superpositie).
  *
  * Then `computeEnvelope` sweeps all combinations and records per-element
  * min/max axial/shear/moment + per-node reaction extrema. The governing
@@ -19,6 +28,7 @@
 import type {
   SolverResult, NodalDisp, NodalReaction, ElementForces,
 } from "./types";
+import { getSecondOrderState, solveCombinationSecondOrder } from "./engine";
 
 // ── Public types ──────────────────────────────────────────────────────────
 
@@ -142,6 +152,34 @@ export function combineResults(
   combo: LoadCombination,
   perCase: Map<number, SolverResult>,
 ): SolverResult {
+  // ── 2e-orde-pad ─────────────────────────────────────────────────────────
+  // perCase uit solveAllCasesNonlinear draagt de model-input mee: los deze
+  // combinatie dan echt niet-lineair op (géén superpositie). Station-arrays
+  // (N/V/M/w) komen daarmee rechtstreeks uit de niet-lineaire eindstand met
+  // de gefactoreerde elementbelastingen. Gememoiseerd per combinatie zodat
+  // App.tsx (per-combinatie) en computeEnvelope dezelfde solve delen.
+  // Divergentie (last boven kritieke knikwaarde) gooit hier een duidelijke
+  // NL-fout die via de bestaande engine-foutroute in de UI belandt.
+  const so = getSecondOrderState(perCase);
+  if (so) {
+    const key = `${combo.id}|` + [...combo.factors.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([cid, f]) => `${cid}=${f}`)
+      .join(",");
+    let res = so.cache.get(key);
+    if (res === undefined) {
+      const solved = solveCombinationSecondOrder(so.input, combo);
+      if (solved) {
+        so.cache.set(key, solved);
+        return solved;
+      }
+      // Combinatie activeert geen lasten → superpositie (triviaal ~nul).
+    } else {
+      return res;
+    }
+  }
+
+  // ── 1e-orde-pad: lineaire superpositie ──────────────────────────────────
   // Union of all keys across the contributing cases.
   const nodeIds = new Set<number>();
   const beamIds = new Set<number>();

@@ -158,10 +158,17 @@ function assembleGlobalStiffnessWithGeometric(
 
     // Add geometric stiffness if requested
     if (includeGeometric) {
-      const N = axialForces.get(beam.id) || 0;
+      // TEKENCONVENTIE: calculateAllInternalForces vult axialForces met
+      // (N1+N2)/2 uit de krachtenrecovery, en die levert N1 = f_lokaal[0]
+      // — DRUK-positief (empirisch geverifieerd: trek geeft negatieve N1).
+      // calculateGeometricStiffness verwacht N trek-positief, dus flippen.
+      // Zonder deze flip verstijft druk i.p.v. verslapt (P-Δ verkeerd om).
+      const N = -(axialForces.get(beam.id) || 0);
       const Kg = calculateGeometricStiffness(L, N);
 
-      // Add geometric stiffness to local stiffness
+      // Add geometric stiffness to local stiffness.
+      // Beperking: Kg wordt NIET mee-gecondenseerd met scharnier-releases
+      // (kleine benadering; de Kg-termen ~N/L zijn klein t.o.v. EI/L³).
       for (let i = 0; i < 6; i++) {
         for (let j = 0; j < 6; j++) {
           Kl.addAt(i, j, Kg.get(i, j));
@@ -358,7 +365,9 @@ function assembleGlobalStiffnessFNL(
 
     // Add geometric stiffness
     if (includeGeometric) {
-      const N = axialForces.get(beam.id) || 0;
+      // Zelfde tekenflip als in assembleGlobalStiffnessWithGeometric:
+      // recovery-N is druk-positief, Kg verwacht trek-positief.
+      const N = -(axialForces.get(beam.id) || 0);
       const Kg = calculateGeometricStiffness(L, N);
       for (let i = 0; i < 6; i++) {
         for (let j = 0; j < 6; j++) {
@@ -716,6 +725,50 @@ function calculateAllInternalForces(
 }
 
 /**
+ * Stabiliteitscheck voor 2e-orde: tel het aantal negatieve (en bijna-nul)
+ * pivots van de symmetrische matrix K via eliminatie ZONDER rijwisselingen.
+ * Volgens de traagheidswet van Sylvester is dat het aantal negatieve
+ * eigenwaarden. Voor K = Ke + Kg(N) betekent ≥ 1 negatieve eigenwaarde dat
+ * de belasting de kritieke (knik)waarde van minstens één mode overschrijdt —
+ * de geïtereerde P-Δ kan dan wél "convergeren", maar naar een fysisch
+ * betekenisloze oplossing voorbij het knikpunt. Vandaar deze aparte check.
+ *
+ * Bijna-nul-pivots (|piv| < 1e-10 × |oorspronkelijke diagonaal|) tellen ook
+ * mee: dan zit de belasting op (of numeriek onhoudbaar dicht bij) de
+ * kritieke waarde.
+ */
+function countNonPositivePivots(K: Matrix): number {
+  const n = K.rows;
+  // Dense kopie voor in-place eliminatie
+  const a: number[][] = [];
+  const diag0: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < n; j++) row.push(K.get(i, j));
+    a.push(row);
+    diag0.push(Math.abs(K.get(i, i)) || 1);
+  }
+
+  let nonPositive = 0;
+  for (let col = 0; col < n; col++) {
+    const piv = a[col][col];
+    if (!Number.isFinite(piv) || Math.abs(piv) < 1e-10 * diag0[col]) {
+      // (bijna) singulier — conservatief als instabiel tellen en stoppen
+      return nonPositive + 1;
+    }
+    if (piv < 0) nonPositive++;
+    for (let row = col + 1; row < n; row++) {
+      const factor = a[row][col] / piv;
+      if (factor === 0) continue;
+      for (let j = col; j < n; j++) {
+        a[row][j] -= factor * a[col][j];
+      }
+    }
+  }
+  return nonPositive;
+}
+
+/**
  * Main nonlinear solver using Newton-Raphson iteration
  */
 export function solveNonlinear(
@@ -855,11 +908,36 @@ export function solveNonlinear(
   }
 
   // Nonlinear iteration (P-Delta and/or FNL analysis)
+  //
+  // Iteratieschema (geometrisch): geïtereerde P-Δ. Iteratie 0 lost 1e-orde op
+  // (axialForces leeg → Kg = 0); elke volgende iteratie herassembleert
+  // K = Ke + Kg(N_vorige) en lost het residu F − K·u op. Voor het (in u)
+  // lineaire P-Δ-probleem is dit de klassieke vaste-punt-iteratie met
+  // convergentieratio ≈ P/P_kritiek per iteratie.
+  //
+  // CONVERGENTIECRITERIUM: relatieve verplaatsingsincrement-norm
+  //     ‖Δu‖ ≤ tolerance · ‖u‖
+  // Het oude criterium (residunorm/krachtnorm) was kapot: het residu bevatte
+  // op vaste DOF's de reactiekrachten (F_bc = 0 daar, K·u = reactie), die
+  // per definitie niet naar nul gaan — de toets sloeg dus nooit aan.
+  //
+  // DIVERGENTIEDETECTIE (alleen geometrisch pad): als de increment-norm 3
+  // iteraties op rij groeit, of niet-eindig wordt, of K (bijna) singulier
+  // raakt, of maxIterations wordt bereikt zonder convergentie, dan is de
+  // belasting op of boven de kritieke (knik)waarde → duidelijke Error
+  // (stroomt via engine.ts als nette NL-melding naar de UI).
   let beamForces = new Map<number, IBeamForces>();
+
+  const DIVERGENCE_MSG =
+    'Second-order (P-Delta) analysis did not converge — the applied load is at or above the critical (buckling) load';
 
   for (let step = 1; step <= opts.loadSteps; step++) {
     const loadFactor = step / opts.loadSteps;
     const scaledF = F.map(f => f * loadFactor);
+
+    let converged = false;
+    let prevIncrNorm = Infinity;
+    let growthCount = 0;
 
     for (let iter = 0; iter < opts.maxIterations; iter++) {
       // Assemble stiffness with current state
@@ -875,22 +953,22 @@ export function solveNonlinear(
         K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, true);
       }
 
-      const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, scaledF, mesh);
+      const { K: Kbc, F: Fbc, fixedDofs } = applyBoundaryConditions(K, scaledF, mesh);
 
-      // Calculate residual
+      // Residual t.o.v. de huidige stand; op vaste DOF's is het residu per
+      // definitie 0 (K·u geeft daar de reactie, geen onbalans).
       const internalForces = K.multiplyVector(displacements);
       const residual = Fbc.map((f, i) => f - internalForces[i]);
-
-      // Check convergence
-      const residualNorm = Math.sqrt(residual.reduce((sum, r) => sum + r * r, 0));
-      const forceNorm = Math.sqrt(scaledF.reduce((sum, f) => sum + f * f, 0));
-
-      if (residualNorm / (forceNorm + 1e-10) < opts.tolerance) {
-        break;
-      }
+      for (const dof of fixedDofs) residual[dof] = 0;
 
       // Solve for displacement increment
-      const deltaU = solveLinearSystem(Kbc, residual);
+      let deltaU: number[];
+      try {
+        deltaU = solveLinearSystem(Kbc, residual);
+      } catch (e) {
+        if (opts.geometricNonlinear) throw new Error(DIVERGENCE_MSG);
+        throw e;
+      }
 
       // Update displacements
       for (let i = 0; i < numDofs; i++) {
@@ -910,6 +988,37 @@ export function solveNonlinear(
         sectionStates = statesResult.sectionStates;
         crackedStates = statesResult.crackedStates;
       }
+
+      const incrNorm = Math.sqrt(deltaU.reduce((s, d) => s + d * d, 0));
+      const dispNorm = Math.sqrt(displacements.reduce((s, d) => s + d * d, 0));
+
+      if (!Number.isFinite(incrNorm) || !Number.isFinite(dispNorm)) {
+        if (opts.geometricNonlinear) throw new Error(DIVERGENCE_MSG);
+        break;
+      }
+
+      // Convergentie: relatieve increment-norm
+      if (incrNorm <= opts.tolerance * Math.max(dispNorm, 1e-30)) {
+        converged = true;
+        break;
+      }
+
+      // Divergentie: increment-norm groeit structureel (ratio P/P_kr > 1)
+      if (iter >= 1 && incrNorm > prevIncrNorm) {
+        growthCount++;
+      } else {
+        growthCount = 0;
+      }
+      if (growthCount >= 3 && opts.geometricNonlinear) {
+        throw new Error(DIVERGENCE_MSG);
+      }
+      prevIncrNorm = incrNorm;
+    }
+
+    if (!converged && opts.geometricNonlinear) {
+      throw new Error(
+        `Second-order (P-Delta) analysis did not converge within ${opts.maxIterations} iterations — the load is at, above, or very close to the critical (buckling) load`
+      );
     }
   }
 
@@ -929,6 +1038,20 @@ export function solveNonlinear(
     );
   } else {
     K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, opts.geometricNonlinear);
+  }
+
+  // Stabiliteitscheck: boven de kniklast "convergeert" de geïtereerde P-Δ
+  // vaak alsnog (N hangt nauwelijks van u af, dus Kg ligt na iteratie 1 vast
+  // en het indefiniete stelsel heeft gewoon een vast punt) — maar dan is
+  // K = Ke + Kg indefiniet en de oplossing fysisch betekenisloos. Detecteer
+  // dat via negatieve pivots (Sylvester) op de finale K mét randvoorwaarden.
+  if (opts.geometricNonlinear) {
+    const { K: Kstab } = applyBoundaryConditions(K, F, mesh);
+    if (countNonPositivePivots(Kstab) > 0) {
+      throw new Error(
+        'Second-order (P-Delta) analysis is unstable — the applied load is at or above the critical (buckling) load'
+      );
+    }
   }
 
   const reactions = K.multiplyVector(displacements);

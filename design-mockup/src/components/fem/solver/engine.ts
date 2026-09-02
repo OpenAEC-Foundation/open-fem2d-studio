@@ -69,8 +69,13 @@ function applySupportToMesh(mesh: AnyMesh, meshNodeId: number, support: SolverIn
  * Build a Mesh from a SolverInput, returning the mesh + id maps so the
  * caller can convert results back. Caller is responsible for invoking
  * solveNonlinear and reading from result via the id maps.
+ *
+ * `loadFactor` bepaalt per belastinggeval de multiplicatieve factor waarmee
+ * de lasten het model in gaan (undefined → 1 voor alles). Hiermee bouwt
+ * hetzelfde pad zowel één-geval-meshes (factor 1/0) als GEFACTOREERDE
+ * combinatie-meshes voor de 2e-orde-berekening.
  */
-function buildMesh(input: SolverInput | MultiInput, loadsFilter?: (caseId?: number) => boolean): {
+function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: number) => number): {
   mesh: AnyMesh;
   nodeIdMap: Map<number, number>;
   beamIdMap: Map<number, number>;
@@ -139,11 +144,12 @@ function buildMesh(input: SolverInput | MultiInput, loadsFilter?: (caseId?: numb
   const loads = (input as any).loads as Array<any> | undefined;
   if (loads) {
     for (const ld of loads) {
-      if (loadsFilter && !loadsFilter(ld.caseId)) continue;
+      const f = loadFactor ? loadFactor(ld.caseId) : 1;
+      if (f === 0) continue;
       const beamMeshId = beamIdMap.get(ld.beamId);
       if (beamMeshId === undefined) continue;
-      const qa = (ld.qStart ?? ld.q ?? 0) * 1000;
-      const qb = (ld.qEnd   ?? ld.q ?? 0) * 1000;
+      const qa = (ld.qStart ?? ld.q ?? 0) * 1000 * f;
+      const qb = (ld.qEnd   ?? ld.q ?? 0) * 1000 * f;
       const dir = ld.qDir ?? "z";
       const qxA = dir === "x" ? qa : 0, qyA = dir === "z" ? qa : 0;
       const qxB = dir === "x" ? qb : 0, qyB = dir === "z" ? qb : 0;
@@ -167,17 +173,18 @@ function buildMesh(input: SolverInput | MultiInput, loadsFilter?: (caseId?: numb
   const pls = (input as any).pointLoads as Array<any> | undefined;
   if (pls) {
     for (const pl of pls) {
-      if (loadsFilter && !loadsFilter(pl.caseId)) continue;
+      const f = loadFactor ? loadFactor(pl.caseId) : 1;
+      if (f === 0) continue;
       const meshNid = nodeIdMap.get(pl.nodeId);
       if (meshNid === undefined) continue;
       const node = mesh.getNode(meshNid);
       const ex = node?.loads ?? { fx: 0, fy: 0, moment: 0 };
       mesh.updateNode(meshNid, {
         loads: {
-          fx: ex.fx + (pl.fx ?? 0),
-          fy: ex.fy + (pl.fz ?? 0),
+          fx: ex.fx + (pl.fx ?? 0) * f,
+          fy: ex.fy + (pl.fz ?? 0) * f,
           // my in N·mm → mesh moment in N·m  → /1000
-          moment: ex.moment + (pl.my ?? 0) / 1000,
+          moment: ex.moment + ((pl.my ?? 0) / 1000) * f,
         },
       });
     }
@@ -266,19 +273,129 @@ export function solve(input: SolverInput): SolverResult {
 export function solveAllCases(input: MultiInput): MultiLcResult {
   const perCase = new Map<number, SolverResult>();
   for (const c of input.cases) {
-    const { mesh, nodeIdMap, beamIdMap } = buildMesh(input, (caseId) => caseId === c.id);
+    const { mesh, nodeIdMap, beamIdMap } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
     const engineResult = solveNonlinear(mesh, { analysisType: "frame", geometricNonlinear: false });
     perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports));
   }
   return { perCase };
 }
 
+// ── 2e-orde (P-Δ) per belastingcombinatie ──────────────────────────────────
+//
+// Superpositie is bij 2e-orde ONGELDIG: de vergroting hangt niet-lineair van
+// het totale (gefactoreerde) lastniveau af. Daarom wordt per COMBINATIE een
+// mesh met gefactoreerde lasten gebouwd en geometrisch niet-lineair opgelost
+// (geïtereerde P-Δ: N uit vorige iteratie → KG → opnieuw, tot de relatieve
+// verplaatsingsincrement-norm ‖Δu‖/‖u‖ ≤ 1e-6 — zie NonlinearSolver.ts).
+//
+// De koppeling met de UI loopt zónder App.tsx-wijziging: solveAllCasesNonlinear
+// hangt de MultiInput + een resultaatcache als verborgen eigenschappen aan de
+// perCase-Map; combineResults() in combinations.ts detecteert die en lost dan
+// per combinatie niet-lineair op i.p.v. te superponeren. computeEnvelope()
+// gebruikt combineResults en envelopt dus automatisch over de per-combinatie
+// 2e-orde-resultaten (max/min, geen superpositie).
+
+/** Minimale structurele vorm van een combinatie (combinations.LoadCombination past hierin). */
+export interface SecondOrderCombo {
+  id: number;
+  name: string;
+  factors: Map<number, number>;
+}
+
+interface SecondOrderState {
+  input: MultiInput;
+  cache: Map<string, SolverResult>;
+}
+
+const SECOND_ORDER_KEY = "__femSecondOrder";
+
+/** Lees de 2e-orde-status die solveAllCasesNonlinear aan een perCase-Map hing. */
+export function getSecondOrderState(perCase: Map<number, SolverResult>): SecondOrderState | undefined {
+  return (perCase as any)[SECOND_ORDER_KEY];
+}
+
+/**
+ * Los één combinatie 2e-orde op: gefactoreerde lasten samen het model in,
+ * geometrisch niet-lineair. Retourneert null wanneer de combinatie geen
+ * enkele last activeert (de aanroeper valt dan terug op superpositie, die
+ * in dat geval triviaal nul is).
+ *
+ * Divergentie (belasting op/boven de kritieke knikwaarde) wordt door de core
+ * gemeld als "P-Delta ..."-Error (niet-convergent of instabiel via de
+ * negatieve-pivot-check); hier vertaald naar een duidelijke NL-melding mét
+ * combinatienaam. Die stroomt via de bestaande engine-foutroute naar de UI
+ * (App.tsx: try/catch → console.warn + setSolverOutputs(null)).
+ *
+ * BEPERKING station-arrays (N/V/M/w per station): de recovery gebeurt
+ * LINEAIR op de niet-lineaire eindstand. De P-Δ-vergroting zit dus in de
+ * knoopverplaatsingen/eindkrachten (en daarmee in de Hermite-interpolatie
+ * tussen de knopen), maar BINNEN één element ontbreekt het extra P·δ-aandeel
+ * t.o.v. de elementkoorde: w(x) gebruikt de 1e-orde particuliere oplossing
+ * en M(x) = M1 + V1·x + ∫q neemt het interne P·w(x)-moment niet mee.
+ * Mitigatie: staven onderverdelen (validatie: kolom met 4 elementen geeft
+ * M_mid binnen ~2% van de exacte secansoplossing — zie test-tweede-orde.mjs).
+ */
+export function solveCombinationSecondOrder(
+  input: MultiInput,
+  combo: SecondOrderCombo,
+): SolverResult | null {
+  const { mesh, nodeIdMap, beamIdMap } = buildMesh(
+    input,
+    (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
+  );
+
+  // Geen geactiveerde lasten in deze combinatie? → aanroeper superponeert (nul).
+  let hasLoads = false;
+  for (const node of (mesh as any).nodes.values()) {
+    const l = node.loads;
+    if (l && (l.fx !== 0 || l.fy !== 0 || (l.moment ?? 0) !== 0)) { hasLoads = true; break; }
+  }
+  if (!hasLoads) {
+    for (const beam of (mesh as any).beamElements.values()) {
+      const d = beam.distributedLoad;
+      if (d && (d.qx !== 0 || d.qy !== 0 || (d.qxEnd ?? 0) !== 0 || (d.qyEnd ?? 0) !== 0)) { hasLoads = true; break; }
+    }
+  }
+  if (!hasLoads) return null;
+
+  try {
+    const engineResult = solveNonlinear(mesh, {
+      analysisType: "frame",
+      geometricNonlinear: true,
+      // Geïtereerde P-Δ convergeert met ratio ≈ P/P_kr per iteratie; 100
+      // iteraties dekt tot P ≈ 0.87·P_kr bij tol 1e-6. Daarboven → nette fout.
+      maxIterations: 100,
+      tolerance: 1e-6,
+    });
+    return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/P-Delta/.test(msg)) {
+      throw new Error(
+        `2e-orde-berekening niet convergent voor combinatie "${combo.name}" — ` +
+        `belasting op of boven de kritieke (knik)waarde. Verlaag de belasting ` +
+        `of verzwaar de constructie.`,
+      );
+    }
+    throw e;
+  }
+}
+
+/**
+ * Multi-geval-solve met 2e-orde (P-Δ) ingeschakeld.
+ *
+ * BEWUSTE KEUZE: de per-GEVAL-resultaten blijven 1e-orde — een los
+ * belastinggeval is geen fysieke belastingtoestand (die ontstaat pas in een
+ * combinatie), en 2e-orde-resultaten mogen niet gesuperponeerd worden. De
+ * combinatie- en envelope-resultaten die de UI toont komen via
+ * combineResults/computeEnvelope WEL uit het echte 2e-orde-pad (zie
+ * getSecondOrderState + combinations.ts).
+ */
 export function solveAllCasesNonlinear(input: MultiInput): MultiLcResult {
-  // For now: same as linear unless materialNonlinear option is enabled.
-  // The engine supports tension-only/compression-only natively if
-  // beam.startConnection/endConnection is set to 'tension_only' or
-  // 'pressure_only'. Delegating to linear is the conservative default.
-  return solveAllCases(input);
+  const { perCase } = solveAllCases(input);
+  const state: SecondOrderState = { input, cache: new Map() };
+  (perCase as any)[SECOND_ORDER_KEY] = state;
+  return { perCase };
 }
 
 // ── Inspection helpers — for the Insights matrix viewer ────────────────────
