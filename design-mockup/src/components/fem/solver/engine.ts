@@ -51,16 +51,25 @@ function applySupportToMesh(mesh: AnyMesh, meshNodeId: number, support: SolverIn
     case "zRoller":
       mesh.updateNode(meshNodeId, { constraints: { x: false, y: true, rotation: false } });
       break;
+    // Veren: k ≤ 0 of ontbrekend → star (contract in types.ts) — een veer met
+    // stijfheid 0 zou het DOF vrij én onverend laten en het stelsel singulier
+    // maken. springY/X/Rot alleen zetten bij k > 0.
     case "zSpring":
       // canonical k (N/mm) → mesh (N/m): × 1000
-      mesh.updateNode(meshNodeId, { constraints: { x: false, y: true, rotation: false, springY: k * 1000 } });
+      mesh.updateNode(meshNodeId, k > 0
+        ? { constraints: { x: false, y: true, rotation: false, springY: k * 1000 } }
+        : { constraints: { x: false, y: true, rotation: false } });
       break;
     case "xSpring":
-      mesh.updateNode(meshNodeId, { constraints: { x: true, y: false, rotation: false, springX: k * 1000 } });
+      mesh.updateNode(meshNodeId, k > 0
+        ? { constraints: { x: true, y: false, rotation: false, springX: k * 1000 } }
+        : { constraints: { x: true, y: false, rotation: false } });
       break;
     case "rotSpring":
       // canonical k (N·mm/rad) → mesh (N·m/rad): / 1000
-      mesh.updateNode(meshNodeId, { constraints: { x: false, y: false, rotation: true, springRot: k / 1000 } });
+      mesh.updateNode(meshNodeId, k > 0
+        ? { constraints: { x: false, y: false, rotation: true, springRot: k / 1000 } }
+        : { constraints: { x: false, y: false, rotation: true } });
       break;
   }
 }
@@ -283,10 +292,21 @@ function convertResult(
 
     const support = supports.find(s => s.nodeId === uiId);
     if (support) {
-      const fx = engineResult.reactions[base + 0] ?? 0;
-      const fz = engineResult.reactions[base + 1] ?? 0;
-      const my_Nm = engineResult.reactions[base + 2] ?? 0;
-      reactions.set(uiId, { fx, fz, my: my_Nm * 1000 }); // N·m → N·mm
+      let fx = engineResult.reactions[base + 0] ?? 0;
+      let fz = engineResult.reactions[base + 1] ?? 0;
+      let my_Nmm = (engineResult.reactions[base + 2] ?? 0) * 1000; // N·m → N·mm
+      // Veerreacties: de core vult de reactievector alleen op STARRE DOF's;
+      // een veer-DOF blijft vrij en meldt daar 0. De veerkracht is R = −k·u
+      // (k canoniek N/mm resp. N·mm/rad, u in mm resp. rad — zie liftSpringK
+      // in App.tsx en applySupportToMesh). k ≤ 0 werd hierboven star gezet en
+      // levert dan wél een core-reactie, dus alleen bij k > 0 aanvullen.
+      const k = support.k ?? 0;
+      if (k > 0) {
+        if (support.type === "zSpring")  fz = -k * uz;
+        if (support.type === "xSpring")  fx = -k * ux;
+        if (support.type === "rotSpring") my_Nmm = -k * ry;
+      }
+      reactions.set(uiId, { fx, fz, my: my_Nmm });
     }
   }
 
