@@ -152,8 +152,7 @@
     "appearance": "Appearance",
     "darkMode": "Dark",
     "lightMode": "Light",
-    "language": "Language",
-    "languageSelect": "Select Language"
+    "language": "Language"
   },
   "insights": {
     "matrices": "Matrices",

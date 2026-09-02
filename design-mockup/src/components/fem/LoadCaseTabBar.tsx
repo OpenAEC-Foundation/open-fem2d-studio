@@ -22,6 +22,15 @@ interface Props {
   setSelfWeightEnabled?: (v: boolean) => void;
   nonlinearEnabled?: boolean;
   setNonlinearEnabled?: (v: boolean) => void;
+  /** Scheefstand (initiële imperfectie): H = φ·V per verticale last. */
+  scheefstandEnabled?: boolean;
+  setScheefstandEnabled?: (v: boolean) => void;
+  /** Noemer x in φ = 1/x (default 200). */
+  scheefstandNoemer?: number;
+  setScheefstandNoemer?: (v: number) => void;
+  /** Richting van de equivalente horizontale krachten: +1 = +x, −1 = −x. */
+  scheefstandRichting?: 1 | -1;
+  setScheefstandRichting?: (v: 1 | -1) => void;
   /** Model-view tab: when false, no LC loads are drawn on the canvas. */
   showLoads?: boolean;
   setShowLoads?: (v: boolean) => void;
@@ -48,6 +57,9 @@ export default function LoadCaseTabBar({
   loadCases, activeLoadCaseId, setActiveLoadCaseId, addLoadCase, loads,
   selfWeightEnabled, setSelfWeightEnabled,
   nonlinearEnabled, setNonlinearEnabled,
+  scheefstandEnabled, setScheefstandEnabled,
+  scheefstandNoemer, setScheefstandNoemer,
+  scheefstandRichting, setScheefstandRichting,
   showLoads = true, setShowLoads,
   hasResults = false, resultsActive = false, onShowResults,
 }: Props) {
@@ -167,6 +179,47 @@ export default function LoadCaseTabBar({
           />
           <span>P-Δ</span>
         </label>
+      )}
+
+      {/* Scheefstand — zelfde toggle-patroon; bij aan verschijnen φ (1/x) en
+          de richtingskeuze inline. */}
+      {setScheefstandEnabled && (
+        <label
+          className={`lc-tab-toggle${scheefstandEnabled ? " active" : ""}`}
+          title="Scheefstand meenemen: elke verticale last krijgt een horizontale metgezel H = φ·V (EN 1993-1-1 §5.3.2)"
+        >
+          <input
+            type="checkbox"
+            checked={!!scheefstandEnabled}
+            onChange={(e) => setScheefstandEnabled(e.target.checked)}
+          />
+          <span>Scheefstand</span>
+        </label>
+      )}
+      {setScheefstandEnabled && scheefstandEnabled && (
+        <span className="lc-tab-phi" title="Scheefstand φ als 1/x (default 1/200) en richting van de horizontale krachten">
+          <span className="lc-tab-phi-label">φ = 1/</span>
+          <input
+            type="number"
+            className="lc-tab-phi-input"
+            min={1}
+            step={50}
+            value={scheefstandNoemer ?? 200}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v > 0) setScheefstandNoemer?.(v);
+            }}
+          />
+          <select
+            className="lc-tab-phi-dir"
+            value={scheefstandRichting ?? 1}
+            onChange={(e) => setScheefstandRichting?.(Number(e.target.value) === -1 ? -1 : 1)}
+            title="Richting van de equivalente horizontale krachten"
+          >
+            <option value={1}>+X</option>
+            <option value={-1}>−X</option>
+          </select>
+        </span>
       )}
     </div>
   );

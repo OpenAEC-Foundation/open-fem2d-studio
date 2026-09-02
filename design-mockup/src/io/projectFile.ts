@@ -15,6 +15,10 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *  2 — + belastingcombinaties (`combinations`, factors als object omdat een
  *      Map niet JSON-serialiseerbaar is) en stramien (`structuralGrid`).
  *      `Beam.checkConfig` reist automatisch mee met de beams-array.
+ *      Later binnen v2 toegevoegd (optioneel, dus geen versie-bump):
+ *      scheefstand-instellingen (`scheefstandEnabled`, `scheefstandNoemer`,
+ *      `scheefstandRichting`) — ontbreken ze, dan laadt het bestand met
+ *      scheefstand uit (noemer 200, richting +x).
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
@@ -81,6 +85,12 @@ export interface ProjectFile {
   combinations?: ProjectFileCombination[];
   /** Stramien (v2). */
   structuralGrid?: StructuralGrid;
+  /** Scheefstand meenemen in de berekening (v2, optioneel — ontbreekt = uit). */
+  scheefstandEnabled?: boolean;
+  /** Noemer x in φ = 1/x (v2, optioneel — ontbreekt = 200). */
+  scheefstandNoemer?: number;
+  /** Richting van de equivalente horizontale krachten (v2, optioneel — ontbreekt = +1). */
+  scheefstandRichting?: 1 | -1;
 }
 
 export function serializeProject(state: Omit<ProjectFile, "format" | "version" | "savedAt">): string {

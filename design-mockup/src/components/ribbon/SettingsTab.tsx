@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import RibbonGroup from "./RibbonGroup";
 import RibbonButton from "./RibbonButton";
 import RibbonButtonStack from "./RibbonButtonStack";
+import { changeLanguage } from "../../i18n/config";
+import { setSetting } from "../../store";
 import {
   projectInfoIcon,
   materialsIcon,
@@ -15,12 +17,28 @@ import {
 interface SettingsTabProps {
   onSettingsClick?: () => void;
   onProjectSettingsClick?: () => void;
+  /** Actieve app-thema — bepaalt de active-markering op de themaknoppen. */
+  theme?: string;
+  /** Themawissel (direct toepassen + persist) — geleverd door App via Ribbon. */
+  onThemeSelect?: (theme: string) => void;
+  /** Open de alleen-lezen bibliotheek-dialoog op het gegeven tabblad. */
+  onOpenLibrary?: (tab: "sections" | "materials") => void;
 }
 
-const stub = (label: string) => () => console.log(`TODO: ${label}`);
+export default function SettingsTab({
+  onSettingsClick, onProjectSettingsClick,
+  theme, onThemeSelect, onOpenLibrary,
+}: SettingsTabProps) {
+  const { t, i18n } = useTranslation("ribbon");
+  // Actieve taal — resolvedLanguage vangt varianten als "en-US" af.
+  const activeLang = (i18n.resolvedLanguage ?? i18n.language ?? "en").split("-")[0];
 
-export default function SettingsTab({ onSettingsClick, onProjectSettingsClick }: SettingsTabProps) {
-  const { t } = useTranslation("ribbon");
+  // Taalwissel: zelfde route als SettingsDialog (changeLanguage + persist),
+  // maar direct — de ribbon-knop is een sneltoets, geen draft-dialoog.
+  const selectLanguage = (lang: "nl" | "en") => {
+    void changeLanguage(lang);
+    void setSetting("language", lang);
+  };
 
   return (
     <div className="ribbon-content">
@@ -31,64 +49,72 @@ export default function SettingsTab({ onSettingsClick, onProjectSettingsClick }:
             icon={projectInfoIcon}
             label={t("settings.projectInfo")}
             size="large"
-            onClick={onProjectSettingsClick ?? stub("Project info dialog")}
+            onClick={onProjectSettingsClick}
           />
           <RibbonButtonStack>
             <RibbonButton
               icon={materialsIcon}
               label={t("settings.materials")}
               size="small"
-              onClick={stub("Materials dialog")}
+              onClick={() => onOpenLibrary?.("materials")}
             />
             <RibbonButton
               icon={sectionsIcon}
               label={t("settings.sections")}
               size="small"
-              onClick={stub("Sections library")}
+              onClick={() => onOpenLibrary?.("sections")}
             />
           </RibbonButtonStack>
         </RibbonGroup>
 
-        {/* Calculation */}
+        {/* Berekening */}
         <RibbonGroup label={t("settings.calculation")}>
           <RibbonButton
             icon={calcSettingsIcon}
             label={t("settings.calcSettings")}
             size="large"
-            onClick={onSettingsClick ?? stub("Calculation settings")}
+            onClick={onSettingsClick}
           />
         </RibbonGroup>
 
-        {/* Appearance — theme toggle */}
+        {/* Weergave — themawissel. "Donker" = het OpenAEC-huisstijlthema;
+            bij een ander donker thema (forge/blueprint/contrast) licht geen
+            van beide knoppen op. */}
         <RibbonGroup label={t("settings.appearance")}>
           <RibbonButton
             icon={themeMoonIcon}
             label={t("settings.darkMode")}
             size="large"
-            active
-            onClick={stub("Set dark theme")}
+            active={theme === "openaec"}
+            onClick={() => onThemeSelect?.("openaec")}
           />
           <RibbonButton
             icon={themeSunIcon}
             label={t("settings.lightMode")}
             size="large"
-            onClick={stub("Set light theme")}
+            active={theme === "light"}
+            onClick={() => onThemeSelect?.("light")}
           />
         </RibbonGroup>
 
-        {/* Language */}
+        {/* Taal — alleen talen met een echte locale (nl/en). */}
         <RibbonGroup label={t("settings.language")}>
           <RibbonButton
             icon={languageIcon}
-            label={t("settings.languageSelect")}
+            label="NL"
             size="large"
-            onClick={stub("Open language picker")}
+            title="Nederlands"
+            active={activeLang === "nl"}
+            onClick={() => selectLanguage("nl")}
           />
-          <RibbonButtonStack>
-            <RibbonButton icon={languageIcon} label="NL" size="small" active onClick={stub("Set NL")} />
-            <RibbonButton icon={languageIcon} label="EN" size="small" onClick={stub("Set EN")} />
-            <RibbonButton icon={languageIcon} label="FR" size="small" onClick={stub("Set FR")} />
-          </RibbonButtonStack>
+          <RibbonButton
+            icon={languageIcon}
+            label="EN"
+            size="large"
+            title="English"
+            active={activeLang === "en"}
+            onClick={() => selectLanguage("en")}
+          />
         </RibbonGroup>
       </div>
     </div>

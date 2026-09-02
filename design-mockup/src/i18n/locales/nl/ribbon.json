@@ -152,8 +152,7 @@
     "appearance": "Weergave",
     "darkMode": "Donker",
     "lightMode": "Licht",
-    "language": "Taal",
-    "languageSelect": "Taal kiezen"
+    "language": "Taal"
   },
   "insights": {
     "matrices": "Matrices",

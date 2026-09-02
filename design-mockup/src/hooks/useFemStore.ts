@@ -447,6 +447,20 @@ export interface FemStore {
   /** Niet-lineair (P-Δ) toggle — adds geometric stiffness + Newton-Raphson. */
   nonlinearEnabled: boolean;
   setNonlinearEnabled: (v: boolean) => void;
+  /**
+   * Scheefstand (initiële imperfectie, EN 1993-1-1 §5.3.2-aanpak): elke
+   * verticale last krijgt een horizontale metgezel H = φ·V. φ = 1/noemer
+   * (default 1/200); richting +1 = +x, −1 = −x. De motor past alleen toe —
+   * zie ScheefstandInput in solver/types.ts.
+   */
+  scheefstandEnabled: boolean;
+  setScheefstandEnabled: (v: boolean) => void;
+  /** Noemer x in φ = 1/x (default 200). */
+  scheefstandNoemer: number;
+  setScheefstandNoemer: (v: number) => void;
+  /** Richting van de equivalente horizontale krachten: +1 = +x, −1 = −x. */
+  scheefstandRichting: 1 | -1;
+  setScheefstandRichting: (v: 1 | -1) => void;
   /** Canvas view mode: false = model-only (no loads drawn), true = LC active loads visible. */
   showLoads: boolean;
   setShowLoads: (v: boolean) => void;
@@ -476,6 +490,10 @@ export interface FemStore {
     combinations?: LoadCombination[];
     /** v2: stramien; ontbreekt (v1) → DEFAULT_STRUCTURAL_GRID. */
     structuralGrid?: StructuralGrid;
+    /** v2: scheefstand-instellingen; ontbreken → uit, 1/200, +x. */
+    scheefstandEnabled?: boolean;
+    scheefstandNoemer?: number;
+    scheefstandRichting?: 1 | -1;
   }) => void;
 }
 
@@ -504,6 +522,10 @@ export function useFemStore(): FemStore {
   // Solver options — separate from undo history (UI toggles, not model state).
   const [selfWeightEnabled, setSelfWeightEnabled] = useState<boolean>(false);
   const [nonlinearEnabled, setNonlinearEnabled]   = useState<boolean>(false);
+  // Scheefstand (initiële imperfectie) — zelfde patroon als selfWeightEnabled.
+  const [scheefstandEnabled, setScheefstandEnabled] = useState<boolean>(false);
+  const [scheefstandNoemer, setScheefstandNoemer]   = useState<number>(200);
+  const [scheefstandRichting, setScheefstandRichting] = useState<1 | -1>(1);
   // Canvas view mode: false = "Model" tab (no loads drawn), true = LC active.
   const [showLoads, setShowLoads] = useState<boolean>(true);
   // Cross-panel focus hint: when the user clicks a value on the canvas (e.g.
@@ -909,6 +931,9 @@ export function useFemStore(): FemStore {
     structuralGrid, setStructuralGrid,
     selfWeightEnabled, setSelfWeightEnabled,
     nonlinearEnabled,  setNonlinearEnabled,
+    scheefstandEnabled, setScheefstandEnabled,
+    scheefstandNoemer, setScheefstandNoemer,
+    scheefstandRichting, setScheefstandRichting,
     showLoads, setShowLoads,
     pendingLoadFocus, setPendingLoadFocus,
     canUndo, canRedo, undo, redo,
@@ -948,6 +973,9 @@ export function useFemStore(): FemStore {
       selfWeightEnabled?: boolean; nonlinearEnabled?: boolean;
       combinations?: LoadCombination[];
       structuralGrid?: StructuralGrid;
+      scheefstandEnabled?: boolean;
+      scheefstandNoemer?: number;
+      scheefstandRichting?: 1 | -1;
     }) => {
       setNodes(p.nodes);
       setBeams(p.beams);
@@ -958,6 +986,14 @@ export function useFemStore(): FemStore {
       setActiveLoadCaseId(p.activeLoadCaseId);
       setSelfWeightEnabled(!!p.selfWeightEnabled);
       setNonlinearEnabled(!!p.nonlinearEnabled);
+      // Scheefstand — ontbrekende velden (v1/oudere v2-bestanden) → uit,
+      // noemer 200 (φ = 1/200), richting +x.
+      setScheefstandEnabled(!!p.scheefstandEnabled);
+      setScheefstandNoemer(
+        typeof p.scheefstandNoemer === "number" && p.scheefstandNoemer > 0
+          ? p.scheefstandNoemer : 200,
+      );
+      setScheefstandRichting(p.scheefstandRichting === -1 ? -1 : 1);
       // v2-velden; v1-bestanden (of Nieuw) vallen terug op de defaults.
       setCombinations(p.combinations ?? defaultCombinations());
       setStructuralGridState(p.structuralGrid ?? DEFAULT_STRUCTURAL_GRID);

@@ -59,6 +59,23 @@
   "plugins": {
     "placeholder": "Plugin management will appear here."
   },
+  "library": {
+    "title": "Library",
+    "subtitle": "Library — read-only reference. Values come from the section database and code tables (EN 338 / EN 14080); editing is not possible here.",
+    "tabSections": "Steel sections",
+    "tabMaterials": "Materials",
+    "search": "Search…",
+    "noResults": "No results for this filter.",
+    "colName": "Name",
+    "colA": "A [mm²]",
+    "colIy": "Iy [×10⁶ mm⁴]",
+    "colDims": "h × b × tw × tf [mm]",
+    "colFy": "fy [N/mm²]",
+    "colE": "E [N/mm²]",
+    "colEmean": "E₀,mean [N/mm²]",
+    "steelGroup": "Steel grades (EN 1993)",
+    "timberGroup": "Timber strength classes (EN 338 / EN 14080)"
+  },
   "about": {
     "appName": "Open FEM2D Studio",
     "version": "Version",

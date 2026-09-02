@@ -169,3 +169,39 @@
   accent-color: var(--theme-accent);
   cursor: pointer;
 }
+
+/* Inline scheefstand-instellingen (φ = 1/x + richting) — verschijnen rechts
+   van de Scheefstand-toggle zodra die aan staat. */
+.lc-tab-phi {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 8px 0 2px;
+  color: var(--theme-text-secondary);
+  font: 500 11px/1 "Inter", system-ui, sans-serif;
+  flex-shrink: 0;
+}
+.lc-tab-phi-label { white-space: nowrap; }
+.lc-tab-phi-input {
+  width: 52px;
+  height: 20px;
+  padding: 0 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  font: 500 11px/1 "JetBrains Mono", monospace;
+}
+.lc-tab-phi-input:focus { outline: none; border-color: var(--theme-accent); }
+.lc-tab-phi-dir {
+  height: 20px;
+  padding: 0 2px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  font: 500 11px/1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.lc-tab-phi-dir:focus { outline: none; border-color: var(--theme-accent); }

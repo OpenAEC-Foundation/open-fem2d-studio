@@ -32,7 +32,7 @@ import type { SolverResult, SolverInput } from "./solver/types";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
-import { resolveSection } from "../../lib/sectionResolver";
+import { resolveSection, TIMBER_E_MEAN } from "../../lib/sectionResolver";
 import type {
   Tool, Node, Beam, Plate, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
@@ -42,6 +42,24 @@ import { notifyWarning } from "../../io/notify";
 
 // Re-export Tool so older imports (Ribbon, HomeTab) keep working.
 export type { Tool } from "./femTypes";
+
+/**
+ * Thermische uitzettingscoëfficiënt per staafmateriaal (1/K) voor thermische
+ * lasten (SolverThermalLoadInput.alpha — de engine honoreert een per-last α
+ * exact, zie engine.ts buildMesh).
+ *  - Staal: α = 1,2e-5 /K (EN 1993-1-1).
+ *  - Hout:  α = 5,0e-6 /K — α∥ (vezelrichting), bovengrens van de
+ *    literatuurrange 3–5e-6 /K en dus conservatief voor de krachten uit
+ *    verhinderde thermische vervorming.
+ * Houtdetectie via de sterkteklassentabel (TIMBER_E_MEAN); al het overige
+ * (staal, onbekend) rekent met de staal-α. Wordt gedeeld met het multi-LC-pad
+ * in App.tsx zodat beide solver-paden dezelfde α-keuze maken.
+ */
+export const ALPHA_STAAL = 1.2e-5;
+export const ALPHA_HOUT = 5.0e-6;
+export function thermalAlphaForMaterial(material: string | undefined): number {
+  return material !== undefined && material in TIMBER_E_MEAN ? ALPHA_HOUT : ALPHA_STAAL;
+}
 
 interface FemCanvasProps {
   tool: Tool;
@@ -87,6 +105,12 @@ interface FemCanvasProps {
   solveTrigger?: number;
   /** Notify parent of solver result. */
   onSolveResult?: (result: SolverResult | null) => void;
+  /**
+   * Scheefstand (initiële imperfectie) — wanneer gezet krijgt elke verticale
+   * last in de solve een horizontale metgezel H = φ·V (zie ScheefstandInput).
+   * App.tsx levert dezelfde waarde aan het multi-LC-pad.
+   */
+  scheefstand?: { phi: number; richting: 1 | -1 };
 
   // Multi-LC / combinations / envelope (step 2d/2e)
   combinations?: LoadCombination[];
@@ -123,7 +147,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     translateNodes,
     grid, structuralGrid, setStructuralGrid,
-    solveTrigger, onSolveResult,
+    solveTrigger, onSolveResult, scheefstand,
     combinations, activeCombinationId, envelopeView,
     combinationResults, envelope,
     displayFlags: displayFlagsProp,
@@ -266,7 +290,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         startFrac?: number; endFrac?: number;
       }[] = [];
       const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
-      const thermalLoads: { beamId: number; deltaT: number }[] = [];
+      const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
           // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
@@ -291,7 +315,13 @@ export default function FemCanvas(props: FemCanvasProps) {
             my: (l.my ?? 0) * 1e6,
           });
         } else if (l.type === "thermal" && l.beamId !== undefined && l.deltaT !== undefined) {
-          thermalLoads.push({ beamId: l.beamId, deltaT: l.deltaT });
+          // α per materiaal meesturen (hout ≠ staal) — zelfde keuze als het
+          // multi-LC-pad in App.tsx; zie thermalAlphaForMaterial hierboven.
+          const beam = beams.find(b => b.id === l.beamId);
+          thermalLoads.push({
+            beamId: l.beamId, deltaT: l.deltaT,
+            alpha: thermalAlphaForMaterial(beam?.material),
+          });
         }
       }
       const input: SolverInput = {
@@ -317,6 +347,8 @@ export default function FemCanvas(props: FemCanvasProps) {
         loads: distLoads,
         pointLoads,
         thermalLoads,
+        // Scheefstand — zelfde instelling als het multi-LC-pad in App.tsx.
+        scheefstand,
       };
       const r = solve(input);
       setResults(r);

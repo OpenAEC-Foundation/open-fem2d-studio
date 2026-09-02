@@ -1,0 +1,122 @@
+/* LibraryDialog — alleen-lezen bibliotheek (profielen + materialen). */
+
+.library-dialog .modal-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.library-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding: 10px 14px 14px;
+  gap: 8px;
+}
+
+.library-subtitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.library-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--theme-bg-lighter);
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.library-tab {
+  border: none;
+  background: transparent;
+  color: var(--theme-text-secondary);
+  font: 500 11.5px/1 "Inter", system-ui, sans-serif;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.library-tab:hover { color: var(--theme-text); background: var(--theme-hover); }
+.library-tab.active {
+  color: var(--theme-accent);
+  background: var(--theme-bg);
+  font-weight: 600;
+}
+
+.library-search {
+  flex: 1;
+  max-width: 220px;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  font: 500 11.5px/1 "Inter", system-ui, sans-serif;
+}
+.library-search:focus {
+  outline: none;
+  border-color: var(--theme-accent);
+}
+
+.library-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  background: var(--theme-bg);
+}
+
+.library-group {
+  margin: 10px 10px 4px;
+  font: 600 11px/1 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.library-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 11.5px/1.5 "Inter", system-ui, sans-serif;
+  color: var(--theme-text);
+}
+.library-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 6px 10px;
+  background: var(--theme-bg-lighter);
+  color: var(--theme-text-secondary);
+  font-weight: 600;
+  font-size: 10.5px;
+  border-bottom: 1px solid var(--theme-border);
+  white-space: nowrap;
+}
+.library-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--theme-border-subtle, var(--theme-border));
+  white-space: nowrap;
+}
+.library-table tr:hover td { background: var(--theme-hover); }
+.library-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.library-table .mono { font-family: "JetBrains Mono", monospace; font-size: 11px; }
+.library-table .dims { color: var(--theme-text-secondary); }
+
+.library-empty {
+  margin: 16px 10px;
+  font-size: 11.5px;
+  color: var(--theme-text-secondary);
+}

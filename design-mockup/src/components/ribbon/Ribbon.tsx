@@ -14,6 +14,12 @@ interface RibbonProps {
   onFileTabClick?: () => void;
   onSettingsClick?: () => void;
   onProjectSettingsClick?: () => void;
+  /** Actieve app-thema ("light" / "openaec" / …) — voor de Instellingen-tab. */
+  theme?: string;
+  /** Themawissel vanaf de Instellingen-tab (direct toepassen + persist). */
+  onThemeSelect?: (theme: string) => void;
+  /** Open de alleen-lezen bibliotheek-dialoog (profielen / materialen). */
+  onOpenLibrary?: (tab: "sections" | "materials") => void;
   activeView: string;
   onViewChange: (view: string) => void;
   /** Active FEM canvas tool. Routed into HomeTab so draw buttons can highlight + dispatch. */
@@ -91,6 +97,7 @@ type TabId = (typeof TABS)[number];
 
 export default function Ribbon({
   onFileTabClick, onSettingsClick, onProjectSettingsClick, activeView, onViewChange,
+  theme, onThemeSelect, onOpenLibrary,
   femTool, onFemToolChange, onSolve, onShowEnvelope, hasEnvelope, hasResults,
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject,
@@ -228,7 +235,13 @@ export default function Ribbon({
           onFocusFilter={onTableFocusFilter}
         />;
       case "settings":
-        return <SettingsTab onSettingsClick={onSettingsClick} onProjectSettingsClick={onProjectSettingsClick} />;
+        return <SettingsTab
+          onSettingsClick={onSettingsClick}
+          onProjectSettingsClick={onProjectSettingsClick}
+          theme={theme}
+          onThemeSelect={onThemeSelect}
+          onOpenLibrary={onOpenLibrary}
+        />;
       case "insights":
         return <InsightsTab onShowInsights={() => onViewChange("insights")} onShowInsightsMode={onShowInsightsMode} onExportMatrixCsv={onExportMatrixCsv} />;
       case "ifc":

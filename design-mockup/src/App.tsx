@@ -19,7 +19,8 @@ import InsightsView from "./components/panels/InsightsView";
 import CheckPanel from "./components/panels/CheckPanel";
 import FemProjectTree from "./components/fem/FemProjectTree";
 import FemProperties from "./components/fem/FemProperties";
-import FemCanvas from "./components/fem/FemCanvas";
+import FemCanvas, { thermalAlphaForMaterial } from "./components/fem/FemCanvas";
+import LibraryDialog, { type LibraryTab } from "./components/settings/LibraryDialog";
 import TableView from "./components/table/TableView";
 import type { TableDataset, TableViewApi } from "./components/table/tableTypes";
 import LoadCaseTabBar from "./components/fem/LoadCaseTabBar";
@@ -38,7 +39,7 @@ import { resolveSection } from "./lib/sectionResolver";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
 import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
-import { getSetting } from "./store";
+import { getSetting, setSetting } from "./store";
 import "./themes.css";
 import "./App.css";
 
@@ -138,6 +139,17 @@ function App() {
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [theme, setTheme] = useState("light");
+  // Bibliotheek-dialoog (Instellingen-ribbon: Materialen / Profielen) —
+  // alleen-lezen naslag, geen editor.
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("sections");
+  // Themawissel vanaf de ribbon (Instellingen-tab): direct toepassen +
+  // persist — zelfde route als Opslaan in SettingsDialog.
+  const handleThemeSelect = useCallback((value: string) => {
+    setTheme(value);
+    applyTheme(value);
+    void setSetting("theme", value);
+  }, []);
   const [activeView, setActiveView] = useState("default");
   // FEM tool state — shared between Ribbon (active highlight) + FemCanvas (action)
   const [femTool, setFemTool] = useState<Tool>("select");
@@ -217,9 +229,12 @@ function App() {
     activeLoadCaseId: fem.activeLoadCaseId,
     selfWeightEnabled: fem.selfWeightEnabled,
     nonlinearEnabled: fem.nonlinearEnabled,
-    // v2: combinaties (Map-factoren → JSON-object) + stramien.
+    // v2: combinaties (Map-factoren → JSON-object) + stramien + scheefstand.
     combinations: combinationsToFile(fem.combinations),
     structuralGrid: fem.structuralGrid,
+    scheefstandEnabled: fem.scheefstandEnabled,
+    scheefstandNoemer: fem.scheefstandNoemer,
+    scheefstandRichting: fem.scheefstandRichting,
   }), [fem]);
 
   // ── C2: dirty-vlag ("niet-opgeslagen wijzigingen") ──────────────────────
@@ -335,6 +350,9 @@ function App() {
         // v2-velden; undefined bij v1-bestanden → store-defaults.
         combinations: combinationsFromFile(parsed.combinations),
         structuralGrid: parsed.structuralGrid,
+        scheefstandEnabled: parsed.scheefstandEnabled,
+        scheefstandNoemer: parsed.scheefstandNoemer,
+        scheefstandRichting: parsed.scheefstandRichting,
       });
       setProjectPath(opened.path);
       addRecentFile(opened.path);
@@ -368,6 +386,9 @@ function App() {
         // v2-velden; undefined bij v1-bestanden → store-defaults.
         combinations: combinationsFromFile(parsed.combinations),
         structuralGrid: parsed.structuralGrid,
+        scheefstandEnabled: parsed.scheefstandEnabled,
+        scheefstandNoemer: parsed.scheefstandNoemer,
+        scheefstandRichting: parsed.scheefstandRichting,
       });
       setProjectPath(path);
       addRecentFile(path);
@@ -400,6 +421,14 @@ function App() {
     setProjectPath("");
     setActiveView("default");
   }, [fem, setActiveView, confirmUnsavedAction]);
+
+  // Scheefstand voor het canvas-pad (single-LC) — zelfde afleiding als het
+  // multi-LC-pad in computeAndStoreSolverOutputs.
+  const scheefstandInput = useMemo(() =>
+    fem.scheefstandEnabled
+      ? { phi: 1 / fem.scheefstandNoemer, richting: fem.scheefstandRichting }
+      : undefined,
+    [fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting]);
 
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
   // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
@@ -506,6 +535,11 @@ function App() {
         supports: fem.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
         cases: fem.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
         loads: [], pointLoads: [], thermalLoads: [],
+        // Scheefstand: φ = 1/noemer, richting ±x — de engine geeft elke
+        // verticale last een horizontale metgezel H = φ·V.
+        scheefstand: fem.scheefstandEnabled
+          ? { phi: 1 / fem.scheefstandNoemer, richting: fem.scheefstandRichting }
+          : undefined,
       };
       // Optional: append self-weight as extra distributed loads on the first
       // permanent (dead) load case. Each beam → q = -ρ·A·g (downward in +Z).
@@ -551,9 +585,14 @@ function App() {
             caseId: l.caseId,
           });
         } else if (l.type === "thermal" && l.beamId !== undefined && l.deltaT !== undefined) {
+          // α per staafmateriaal (staal 1,2e-5 /K, hout 5,0e-6 /K = α∥
+          // bovengrens, conservatief) — zonder dit rekende hout met staal-α,
+          // een factor ~2,5–4 te hoog. Zie thermalAlphaForMaterial (FemCanvas).
+          const beam = fem.beams.find(b => b.id === l.beamId);
           multiInput.thermalLoads!.push({
             beamId: l.beamId,
             deltaT: l.deltaT,
+            alpha: thermalAlphaForMaterial(beam?.material),
             caseId: l.caseId,
           });
         }
@@ -694,8 +733,9 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.plates, fem.loads,
       fem.loadCases, fem.activeLoadCaseId, fem.selfWeightEnabled, fem.nonlinearEnabled,
-      // v2: combinaties + stramien reizen mee in de snapshot-JSON.
-      fem.combinations, fem.structuralGrid]);
+      // v2: combinaties + stramien + scheefstand reizen mee in de snapshot-JSON.
+      fem.combinations, fem.structuralGrid,
+      fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting]);
 
   // C2: sluitbeveiliging. Tauri: onCloseRequested + native dialoog (dekt de
   // titelbalk-sluitknop, Bestand → Afsluiten en Alt+F4). Browser: beforeunload.
@@ -874,6 +914,7 @@ function App() {
           tool={femTool}
           onToolChange={setFemTool}
           solveTrigger={solveTrigger}
+          scheefstand={scheefstandInput}
           onSolveResult={(r) => {
             setSolverResult(r);
             // Single-LC solve geslaagd → de canvas toont resultaten, dus de
@@ -945,6 +986,9 @@ function App() {
         onFileTabClick={() => setBackstageOpen(true)}
         onSettingsClick={() => setSettingsOpen(true)}
         onProjectSettingsClick={() => setProjectSettingsOpen(true)}
+        theme={theme}
+        onThemeSelect={handleThemeSelect}
+        onOpenLibrary={(tab) => { setLibraryTab(tab); setLibraryOpen(true); }}
         activeView={activeView}
         onViewChange={setActiveView}
         femTool={femTool}
@@ -1155,6 +1199,12 @@ function App() {
           setSelfWeightEnabled={fem.setSelfWeightEnabled}
           nonlinearEnabled={fem.nonlinearEnabled}
           setNonlinearEnabled={fem.setNonlinearEnabled}
+          scheefstandEnabled={fem.scheefstandEnabled}
+          setScheefstandEnabled={fem.setScheefstandEnabled}
+          scheefstandNoemer={fem.scheefstandNoemer}
+          setScheefstandNoemer={fem.setScheefstandNoemer}
+          scheefstandRichting={fem.scheefstandRichting}
+          setScheefstandRichting={fem.setScheefstandRichting}
           showLoads={fem.showLoads}
           setShowLoads={(v) => { fem.setShowLoads(v); setResultsTabActive(false); }}
           hasResults={solverResult !== null || fem.envelope !== null}
@@ -1202,6 +1252,7 @@ function App() {
         removeCombination={fem.removeCombination}
       />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} onThemeChange={setTheme} />
+      <LibraryDialog open={libraryOpen} onClose={() => setLibraryOpen(false)} initialTab={libraryTab} />
       <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
       <ProjectSettingsDialog open={projectSettingsOpen} onClose={() => setProjectSettingsOpen(false)} />
       {welcomeOpen && (
