@@ -767,8 +767,10 @@ function App() {
   }, []);
 
   // C2: wijzigingsindicator in de venster-/tabtitel ("● bestandsnaam").
+  // Zonder pad: "Naamloos project" — zelfde tekst als de DocumentBar-tab,
+  // zodat venstertitel en documenttab nooit verschillende namen tonen.
   useEffect(() => {
-    const name = projectPath ? projectPath.split(/[\\/]/).pop() : "project 1.ifcfem2d";
+    const name = projectPath ? projectPath.split(/[\\/]/).pop() : "Naamloos project";
     document.title = `${isDirty ? "● " : ""}${name} — Open FEM2D Studio`;
   }, [isDirty, projectPath]);
 

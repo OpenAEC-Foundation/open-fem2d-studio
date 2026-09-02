@@ -32,10 +32,10 @@
 
 ## Backlog (belangrijk → nice-to-have, uit de inventaris)
 
-Afgerond sinds het plan: dode TitleBar/Welcome/recente-bestanden-knoppen ✓ · StatusBar echt ✓ · rapport-instellingen echt (live HTML-rapport R1–R5) ✓ · thermische last doorgevoerd ✓ (test-thermiek) · transform-tools ✓ (test-transform) · verkenner Materialen/Profielen echt, Versies-schijn weg ✓ · deellasten ✓ (test-deellast) · veerinklemming + veerreacties ✓ (test-veren) · uX/uZ-releases doorgerekend ✓ (test-releases) · Tabel-tab als echte tabel-editor (in uitvoering).
+Afgerond sinds het plan: dode TitleBar/Welcome/recente-bestanden-knoppen ✓ · StatusBar echt ✓ · rapport-instellingen echt (live HTML-rapport R1–R5) ✓ · thermische last doorgevoerd ✓ (test-thermiek), incl. hout-α per materiaal ✓ · transform-tools ✓ (test-transform) · verkenner Materialen/Profielen echt, Versies-schijn weg ✓ · deellasten ✓ (test-deellast) · veerinklemming + veerreacties ✓ (test-veren) · uX/uZ-releases doorgerekend ✓ (test-releases) · Tabel-tab als echte tabel-editor ✓ (9 datasets, bewerkbaar, CSV/klembord/filter) · scheefstand ✓ (motor test-scheefstand + UI-toggle met φ=1/x en richting, persist in projectbestand) · instellingen-tab echt ✓ (thema/taal gebonden, FR-schijn weg, alleen-lezen bibliotheekdialoog) · DocumentBar één-document eerlijk ✓ · Grafiek/Agent/Console-toggles waren al verwijderd ✓ · IFC-tab was al eerlijk-minimaal ✓ · FeedbackDialog wees al naar het juiste repo ✓.
 
-Extra solver-fixes buiten het plan om (2026-09-02): leeg belastinggeval brak de multi-LC-pijplijn (test-leeg-geval) · N-tekenconventie nu trek-positief conform contract (test-n-teken) · pendelstaaf-condensatie was fout — negatieve dwarsstijfheid bij dubbelscharnier (test-pendelstaaf).
+Extra solver-fixes buiten het plan om (2026-09-02): leeg belastinggeval brak de multi-LC-pijplijn (test-leeg-geval) · N-tekenconventie nu trek-positief conform contract — de houttoetsing kreeg voorheen druk als trek aangeleverd (test-n-teken) · pendelstaaf-condensatie was fout — negatieve dwarsstijfheid bij dubbelscharnier (test-pendelstaaf).
 
-Nog open, in deze volgorde: scheefstand/imperfecties · instellingen (eenheden, nationale bijlage, defaults) + projectinfo per bestand · Grafiek/Agent/Console-toggles aansluiten of verwijderen · IFC-tab echt of eerlijk minimaal · DocumentBar één-document eerlijk · FeedbackDialog naar het juiste repo · platen (groot, apart plan).
+Nog open: platen (groot, apart plan) · eenheden/nationale-bijlage-instellingen (verdieping op de instellingen-tab) · handmatige printcontrole van het rapport in de Tauri-desktopbuild.
 
 Live HTML-rapport: eigen spec (`2026-09-01-rapportgenerator-eisen.md`), start na fase B.
