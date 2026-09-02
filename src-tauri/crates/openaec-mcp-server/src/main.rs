@@ -13,7 +13,7 @@
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
@@ -65,6 +65,62 @@ impl RpcError {
     }
     fn method_not_found(method: &str) -> Self {
         Self { code: -32601, message: format!("Method not found: {method}"), data: None }
+    }
+
+    /// De fout als machineleesbaar object, voor `structuredContent` op het
+    /// toolfoutpad.
+    ///
+    /// Waarom dit bestaat: `tools/call` geeft een toolfout per MCP-spec terug
+    /// als een *geslaagd* resultaat met `isError: true`, zodat het model de fout
+    /// kan lezen. Daarbij verdampten tot nu toe de foutcode en `data`, en bleef
+    /// er alleen een tekstregel over. Voor een client leest "Node ontbreekt" dan
+    /// identiek aan "je raamwerk is een mechanisme" — de eerste is een
+    /// installatieprobleem, de tweede een constructieve bevinding. Bij
+    /// rekensoftware mag een ontbrekende runtime nooit op een rekenfout lijken,
+    /// dus gaan code, melding, remedie en detail hier mee terug.
+    ///
+    /// `data` is de bron zodra die er is: de FEM-tools vullen hem al met
+    /// `error_code`, `melding`, `remedie` en `detail`. Ontbreekt hij, dan wordt
+    /// er een code afgeleid uit de JSON-RPC-code, zodat een client ALTIJD iets
+    /// machineleesbaars krijgt en nooit op de meldingstekst hoeft te matchen.
+    fn gestructureerde_fout(&self) -> Value {
+        let mut velden = match &self.data {
+            Some(Value::Object(map)) => map.clone(),
+            // Een niet-object `data` (geen enkele tool doet dit vandaag) gaat
+            // ongewijzigd mee als detail in plaats van verloren te gaan.
+            Some(anders) => {
+                let mut m = Map::new();
+                m.insert("detail".to_owned(), anders.clone());
+                m
+            }
+            None => Map::new(),
+        };
+        velden
+            .entry("error_code")
+            .or_insert_with(|| json!(afgeleide_foutcode(self.code)));
+        velden
+            .entry("melding")
+            .or_insert_with(|| json!(self.message));
+        // De sleutel staat er altijd, desnoods op `null`: dan is zichtbaar dat
+        // er geen remedie bekend is, in plaats van dat het veld ontbreekt en de
+        // client moet raden of hij iets mist.
+        velden.entry("remedie").or_insert(Value::Null);
+        Value::Object(velden)
+    }
+}
+
+/// JSON-RPC-code → machineleesbare foutcode, als terugval voor tools die er zelf
+/// nog geen meegeven (de vijf staaltools).
+///
+/// Bewust grof en kort: dit is een terugvalwaarde, geen tweede codelijst naast
+/// die van de sidecar. `ARGUMENT_ONGELDIG` is dezelfde code die `fem_tools`
+/// gebruikt voor een ondeugdelijke aanroep, zodat een client één begrip heeft
+/// voor "jouw aanroep deugde niet".
+fn afgeleide_foutcode(code: i32) -> &'static str {
+    match code {
+        -32602 => "ARGUMENT_ONGELDIG",
+        -32601 => "TOOL_ONBEKEND",
+        _ => "TOOL_MISLUKT",
     }
 }
 
@@ -452,9 +508,16 @@ async fn handle_request(req: Request) -> Option<Response> {
                 Err(e) => {
                     // Tool execution errors are reported in result, not as JSON-RPC errors,
                     // per MCP spec for tools/call (so the model can see them).
+                    //
+                    // De tekstregel is voor een mens; `structuredContent` houdt
+                    // de foutcode, de Nederlandse remedie en het detail heel.
+                    // Zonder dat is een storing in de rekenketen voor een client
+                    // niet te onderscheiden van een constructieve bevinding —
+                    // zie `RpcError::gestructureerde_fout`.
                     Ok(json!({
                         "content": [{ "type": "text", "text": format!("Error: {}", e.message) }],
-                        "isError": true
+                        "isError": true,
+                        "structuredContent": e.gestructureerde_fout()
                     }))
                 }
             }
