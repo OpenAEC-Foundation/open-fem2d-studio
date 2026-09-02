@@ -106,7 +106,7 @@ function ResultsTab({
     { key: "M",          label: "My",            hint: "Buigend moment om y-as (sagging+) loodrecht op balk",     swatch: "#2563eb",            scaleKey: "scaleM" },
     { key: "V",          label: "Vz",            hint: "Dwarskracht in z-richting — lineair aflopend onder UDL",  swatch: "#10b981",            scaleKey: "scaleV" },
     { key: "N",          label: "N",             hint: "Normaalkracht — constant per element",                    swatch: "#f59e0b",            scaleKey: "scaleN" },
-    { key: "reactions",  label: "R",             hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
+    { key: "reactions",  label: "Reactie",       hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
   ];
 
   // Build current "scope" value for the dropdown.
@@ -165,8 +165,9 @@ function ResultsTab({
               >
                 <span className="fem-results-toggle-swatch" style={{ background: row.swatch }} />
                 <span className="fem-results-toggle-label">{row.label}</span>
-                <span className={`fem-results-toggle-state${active ? " on" : ""}`}>
-                  {active ? "AAN" : "uit"}
+                {/* Moderne schuifschakelaar i.p.v. AAN/uit-tekst */}
+                <span className={`fem-switch${active ? " on" : ""}`} aria-hidden="true">
+                  <span className="fem-switch-dot" />
                 </span>
               </button>
               {row.scaleKey && active && (
@@ -199,8 +200,8 @@ function ResultsTab({
         >
           <span className="fem-results-toggle-swatch" style={{ background: "#f59e0b" }} />
           <span className="fem-results-toggle-label">Extreme waarden tonen</span>
-          <span className={`fem-results-toggle-state${displayFlags.showExtremes ? " on" : ""}`}>
-            {displayFlags.showExtremes ? "AAN" : "uit"}
+          <span className={`fem-switch${displayFlags.showExtremes ? " on" : ""}`} aria-hidden="true">
+            <span className="fem-switch-dot" />
           </span>
         </button>
         <button
@@ -212,8 +213,8 @@ function ResultsTab({
         >
           <span className="fem-results-toggle-swatch" style={{ background: "#9333ea" }} />
           <span className="fem-results-toggle-label">Omhullende</span>
-          <span className={`fem-results-toggle-state${envelopeView ? " on" : ""}`}>
-            {envelopeView ? "AAN" : "uit"}
+          <span className={`fem-switch${envelopeView ? " on" : ""}`} aria-hidden="true">
+            <span className="fem-switch-dot" />
           </span>
         </button>
       </div>

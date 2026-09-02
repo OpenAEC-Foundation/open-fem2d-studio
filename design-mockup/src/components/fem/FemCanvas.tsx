@@ -270,12 +270,20 @@ export default function FemCanvas(props: FemCanvasProps) {
     snap: boolean;
   } | null>(null);
 
+  // Callback via een ref, zodat een wisselende functie-identiteit vanuit de
+  // parent NOOIT als "modelwijziging" telt. Met onSolveResult in de dep-array
+  // hieronder wiste elke App-render (bv. direct na Berekenen, door
+  // setSolverOutputs) de zojuist berekende resultaten — de gemelde
+  // "resultaten verdwijnen gelijk weer"-bug.
+  const onSolveResultRef = useRef(onSolveResult);
+  onSolveResultRef.current = onSolveResult;
+
   // Invalidate results whenever the model changes
   useEffect(() => {
     setResults(null);
     setSolveError(null);
-    onSolveResult?.(null);
-  }, [nodes, beams, supports, loads, activeLoadCaseId, onSolveResult]);
+    onSolveResultRef.current?.(null);
+  }, [nodes, beams, supports, loads, activeLoadCaseId]);
 
   // Run solver whenever parent bumps solveTrigger.
   // This single-case run still feeds the right-rail Properties panel which
@@ -387,9 +395,12 @@ export default function FemCanvas(props: FemCanvasProps) {
     z: (size.h - ORIGIN_Y_FROM_BOTTOM + view.offsetY - sy) / view.scale,
   }), [size.h, view]);
 
+  // Raster-snap aan/uit — schakelbaar via de Snap-knop in de HUD. Uit =
+  // vrij tekenen/slepen op exacte muispositie (stramien-snap ook uit).
+  const [snapAan, setSnapAan] = useState(true);
   const snap = useCallback((v: number) =>
-    Math.round(v / grid.spacingMm) * grid.spacingMm,
-  [grid.spacingMm]);
+    snapAan ? Math.round(v / grid.spacingMm) * grid.spacingMm : v,
+  [grid.spacingMm, snapAan]);
 
   /**
    * Snap a (world-coord) point to the nearest STRAMIEN intersection if it's
@@ -397,6 +408,7 @@ export default function FemCanvas(props: FemCanvasProps) {
    * Returns the snapped point + a flag for the canvas to show the amber halo.
    */
   const snapToStramien = useCallback((mx: number, mz: number): { x: number; z: number; snapped: boolean } => {
+    if (!snapAan) return { x: mx, z: mz, snapped: false };
     if (!structuralGrid?.enabled) return { x: snap(mx), z: snap(mz), snapped: false };
     // Convert 8 screen-px tolerance into mm in world space using the live scale.
     const tolModel = 8 / view.scale;
@@ -413,7 +425,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
     if (bestX !== null && bestZ !== null) return { x: bestX, z: bestZ, snapped: true };
     return { x: snap(mx), z: snap(mz), snapped: false };
-  }, [structuralGrid, view.scale, snap]);
+  }, [structuralGrid, view.scale, snap, snapAan]);
 
   /** Collect every node id implied by a Selection (handles single / multi). */
   const selectionNodeIds = useCallback((sel: Selection): number[] => {
@@ -2110,16 +2122,28 @@ export default function FemCanvas(props: FemCanvasProps) {
             ghosts.push(<circle key={`gh${id}`} cx={p.x} cy={p.y} r={5}
               className="fem-node-ghost" />);
           }
-          // Ghost beams: only those whose both endpoints are moving (rigid translation).
-          for (const b of beams) {
-            if (movedNodeIds.has(b.from) && movedNodeIds.has(b.to)) {
-              const oA = dragState.originPositions.get(b.from)!;
-              const oB = dragState.originPositions.get(b.to)!;
-              const pa = worldToScreen(oA.x + dragState.currentDelta.dx, oA.z + dragState.currentDelta.dz);
-              const pb = worldToScreen(oB.x + dragState.currentDelta.dx, oB.z + dragState.currentDelta.dz);
-              ghosts.push(<line key={`ghb${b.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
-                className="fem-member-ghost" />);
+          // Ghost beams. Twee gevallen:
+          //  - beide uiteinden bewegen mee → starre translatie van de staaf;
+          //  - één uiteinde beweegt → de staaf "rekt" mee: ghost van het
+          //    vaste uiteinde naar de nieuwe positie, zodat je tijdens het
+          //    slepen direct ziet hoe de aangesloten staven meegaan.
+          const previewPos = (id: number): { x: number; y: number } | null => {
+            const orig = dragState.originPositions.get(id);
+            if (orig) {
+              return worldToScreen(orig.x + dragState.currentDelta.dx, orig.z + dragState.currentDelta.dz);
             }
+            const n = nodes.find(nn => nn.id === id);
+            return n ? worldToScreen(n.x, n.z) : null;
+          };
+          for (const b of beams) {
+            const fromMoves = movedNodeIds.has(b.from);
+            const toMoves = movedNodeIds.has(b.to);
+            if (!fromMoves && !toMoves) continue;
+            const pa = previewPos(b.from);
+            const pb = previewPos(b.to);
+            if (!pa || !pb) continue;
+            ghosts.push(<line key={`ghb${b.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+              className="fem-member-ghost" />);
           }
           return <g pointerEvents="none">{ghosts}</g>;
         })()}
@@ -2147,15 +2171,21 @@ export default function FemCanvas(props: FemCanvasProps) {
             const p = worldToScreen(orig.x + dx, orig.z + dz);
             ghosts.push(<circle key={`grab${id}`} cx={p.x} cy={p.y} r={5} className="fem-node-ghost" />);
           }
+          // Zelfde stretch-preview als bij muisverslepen: staven met één
+          // meebewegend uiteinde rekken zichtbaar mee.
+          const grabPos = (id: number): { x: number; y: number } | null => {
+            const orig = grabMode.originPositions.get(id);
+            if (orig) return worldToScreen(orig.x + dx, orig.z + dz);
+            const n = nodes.find(nn => nn.id === id);
+            return n ? worldToScreen(n.x, n.z) : null;
+          };
           for (const b of beams) {
-            if (movedNodeIds.has(b.from) && movedNodeIds.has(b.to)) {
-              const oA = grabMode.originPositions.get(b.from)!;
-              const oB = grabMode.originPositions.get(b.to)!;
-              const pa = worldToScreen(oA.x + dx, oA.z + dz);
-              const pb = worldToScreen(oB.x + dx, oB.z + dz);
-              ghosts.push(<line key={`grabb${b.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
-                className="fem-member-ghost" />);
-            }
+            if (!movedNodeIds.has(b.from) && !movedNodeIds.has(b.to)) continue;
+            const pa = grabPos(b.from);
+            const pb = grabPos(b.to);
+            if (!pa || !pb) continue;
+            ghosts.push(<line key={`grabb${b.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+              className="fem-member-ghost" />);
           }
           // Axis lock visual: dotted line through centroid in the lock direction
           if (grabMode.axisLock) {
@@ -2358,7 +2388,16 @@ export default function FemCanvas(props: FemCanvasProps) {
       <div className="fem-hud fem-hud-br">
         <div className="fem-hud-card">
           <span className="fem-hud-muted">Snap:</span>
-          <span className="fem-hud-strong">{grid.spacingMm} mm</span>
+          <button
+            className="fem-hud-btn"
+            onClick={() => setSnapAan(v => !v)}
+            title={snapAan
+              ? `Snap aan raster (${grid.spacingMm} mm) en stramien — klik om uit te zetten`
+              : "Snap staat uit (vrij tekenen) — klik om aan te zetten"}
+            style={snapAan ? undefined : { opacity: 0.6 }}
+          >
+            {snapAan ? `${grid.spacingMm} mm` : "uit"}
+          </button>
         </div>
       </div>
 

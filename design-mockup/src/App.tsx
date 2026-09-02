@@ -433,6 +433,18 @@ function App() {
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
   // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
   const [solverStatus, setSolverStatus] = useState<SolverStatus>({ kind: "ready" });
+  // STABIELE identiteit is essentieel: FemCanvas invalideert zijn resultaten
+  // (mede) wanneer deze callback wisselt. Een inline arrow kreeg bij élke
+  // App-render een nieuwe identiteit, waardoor resultaten direct na Berekenen
+  // weer verdwenen (de setSolverOutputs-render wiste ze meteen).
+  const handleSolveResult = useCallback((r: SolverResult | null) => {
+    setSolverResult(r);
+    // Single-LC solve geslaagd → de canvas toont resultaten, dus de StatusBar
+    // meldt "Berekend om ..." — ook als de multi-LC-pipeline faalde. r === null
+    // laat de status met rust: invalidatie zet hem al op "Gereed", een
+    // solve-fout op "Fout" (via handleSolve).
+    if (r) setSolverStatus({ kind: "solved", at: Date.now() });
+  }, []);
   // Actuele canvas-zoom in % (gemeld door FemCanvas) — getoond in de StatusBar.
   const [zoomPct, setZoomPct] = useState(100);
 
@@ -917,15 +929,7 @@ function App() {
           onToolChange={setFemTool}
           solveTrigger={solveTrigger}
           scheefstand={scheefstandInput}
-          onSolveResult={(r) => {
-            setSolverResult(r);
-            // Single-LC solve geslaagd → de canvas toont resultaten, dus de
-            // StatusBar meldt "Berekend om ..." — ook als de multi-LC-pipeline
-            // (combinaties/envelope) faalde. r === null laat de status met
-            // rust: invalidatie zet hem al op "Gereed", een solve-fout op
-            // "Fout" (via handleSolve).
-            if (r) setSolverStatus({ kind: "solved", at: Date.now() });
-          }}
+          onSolveResult={handleSolveResult}
           nodes={fem.nodes}
           beams={fem.beams}
           supports={fem.supports}
