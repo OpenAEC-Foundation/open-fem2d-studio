@@ -6,6 +6,8 @@ import "./StatusBar.css";
 /** Solverstatus zoals App.tsx hem bijhoudt. */
 export type SolverStatus =
   | { kind: "ready" }
+  /** Model gewijzigd, de verse berekening staat klaar of loopt. */
+  | { kind: "rekenen" }
   | { kind: "solved"; at: number }
   | { kind: "error" };
 
@@ -44,6 +46,8 @@ export default function StatusBar({
         });
         return t("solvedAt", { time });
       }
+      case "rekenen":
+        return t("solving");
       case "error":
         return t("solverError");
       default:

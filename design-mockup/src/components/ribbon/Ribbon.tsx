@@ -60,8 +60,6 @@ interface RibbonProps {
   onSelectCode?: (c: "EN1993" | "EN1995" | "EN1992") => void;
   onToggleResultsPanel?: () => void;
   resultsPanelActive?: boolean;
-  autoRunEnabled?: boolean;
-  onToggleAutoRun?: () => void;
   onExportCheck?: () => void;
   onFilterSelection?: () => void;
   /** Export standalone HTML report (browser + Tauri). */
@@ -107,7 +105,7 @@ export default function Ribbon({
   onShowInsightsMode, onExportMatrixCsv,
   onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
   activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
-  autoRunEnabled, onToggleAutoRun, onExportCheck,
+  onExportCheck,
   onFilterSelection,
   onExportHtml,
   onExportIfc,
@@ -262,8 +260,6 @@ export default function Ribbon({
           onSelectCode={onSelectCode}
           onToggleResultsPanel={onToggleResultsPanel}
           resultsPanelActive={resultsPanelActive}
-          autoRunEnabled={autoRunEnabled}
-          onToggleAutoRun={onToggleAutoRun}
           onExportCheck={onExportCheck}
         />;
       case "report":

@@ -7,7 +7,6 @@ import {
   checkPanelIcon,
   checkRulesIcon,
   exportCsvIcon,
-  settingsIcon,
 } from "./icons";
 
 const stub = (label: string) => () => console.log(`TODO: ${label}`);
@@ -38,9 +37,6 @@ interface CheckTabProps {
   /** Toggle the Resultaten-tab in sidebar + bottom. */
   onToggleResultsPanel?: () => void;
   resultsPanelActive?: boolean;
-  /** Auto-run checks after every solve. */
-  autoRunEnabled?: boolean;
-  onToggleAutoRun?: () => void;
   /** Export the steel-check unity-check results as CSV. */
   onExportCheck?: () => void;
 }
@@ -50,7 +46,6 @@ export default function CheckTab({
   onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
   activeCode = "EN1993", onSelectCode,
   onToggleResultsPanel, resultsPanelActive,
-  autoRunEnabled, onToggleAutoRun,
   onExportCheck,
 }: CheckTabProps) {
   const { t } = useTranslation("ribbon");
@@ -134,16 +129,10 @@ export default function CheckTab({
           />
         </RibbonGroup>
 
-        {/* Options + Export */}
+        {/* Export — de toetsing zelf loopt altijd mee met de berekening en
+            heeft daarom geen aan/uit-knop meer. */}
         <RibbonGroup label={t("check.options")}>
           <RibbonButtonStack>
-            <RibbonButton
-              icon={settingsIcon}
-              label={t("check.autoRun")}
-              size="small"
-              active={autoRunEnabled}
-              onClick={onToggleAutoRun ?? stub("Toggle auto-run")}
-            />
             <RibbonButton
               icon={exportCsvIcon}
               label={t("check.export")}

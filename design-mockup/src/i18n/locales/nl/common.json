@@ -29,6 +29,7 @@
   "noDocumentOpen": "Geen document geopend",
   "noDocumentHint": "Open of maak een nieuw document om te beginnen.",
   "ready": "Gereed",
+  "solving": "Bezig met berekenen…",
   "solvedAt": "Berekend om {{time}}",
   "solverError": "Fout in berekening",
   "statusNodes": "Knopen",

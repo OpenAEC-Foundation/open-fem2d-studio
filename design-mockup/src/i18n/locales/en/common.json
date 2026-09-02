@@ -29,6 +29,7 @@
   "noDocumentOpen": "No document open",
   "noDocumentHint": "Open or create a new document to get started.",
   "ready": "Ready",
+  "solving": "Calculating…",
   "solvedAt": "Solved at {{time}}",
   "solverError": "Calculation failed",
   "statusNodes": "Nodes",

@@ -34,8 +34,7 @@ import type { SolverResult, MultiInput } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
-import { selfWeightPerMeter } from "./components/fem/profileData";
-import { resolveSection } from "./lib/sectionResolver";
+import { resolveSection, eigenGewichtPerMeter } from "./lib/sectionResolver";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
 import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
@@ -44,6 +43,13 @@ import "./themes.css";
 import "./App.css";
 
 const ThreeViewer = lazy(() => import("./components/panels/ThreeViewer"));
+
+/**
+ * Rust tussen de laatste modelwijziging en de live-herberekening. Lang genoeg
+ * om een sleepbeweging (tientallen updates per seconde) als één wijziging te
+ * behandelen, kort genoeg om als directe reactie te voelen.
+ */
+const HERBEREKEN_VERTRAGING_MS = 300;
 
 /**
  * Detached window — shows only one view, no ribbon/backstage/etc.
@@ -496,9 +502,15 @@ function App() {
     });
   }, [fem, projectPath]);
 
-  // Auto-invalidate solver results zodra het model OF de belastingen wijzigen.
-  // (useFemStore doet dit al voor multi-LC outputs; hier hetzelfde voor de
-  // single-LC solverResult uit FemCanvas.)
+  // Model of belastingen gewijzigd → de oude uitkomst telt niet meer. Zodra
+  // er live gerekend wordt volgt meteen een verse berekening in plaats van
+  // een leeg canvas: de gebruiker wil het effect van zijn wijziging zien,
+  // niet zijn resultaten kwijtraken.
+  //
+  // De vertraging vangt een reeks wijzigingen op (een knoop verslepen levert
+  // tientallen updates per seconde); elke nieuwe wijziging annuleert de
+  // vorige geplande berekening, zodat er pas gerekend wordt als de gebruiker
+  // even stilzit.
   useEffect(() => {
     setSolverResult(null);
     // Also flip the envelope-view off; otherwise the user lingers on stale
@@ -507,8 +519,14 @@ function App() {
     fem.setActiveCombinationId(null);
     // Normtoetsingsresultaten horen bij het oude model → wissen.
     checkClear();
-    // Model gewijzigd → oude berekening telt niet meer, status terug naar Gereed.
-    setSolverStatus({ kind: "ready" });
+    if (!liveRekenenRef.current) {
+      // Nog niet gerekend: status terug naar Gereed en verder niets doen.
+      setSolverStatus({ kind: "ready" });
+      return;
+    }
+    setSolverStatus({ kind: "rekenen" });
+    const id = window.setTimeout(() => { rekenDoorRef.current(); }, HERBEREKEN_VERTRAGING_MS);
+    return () => window.clearTimeout(id);
     // `fem.plates` doet mee sinds platen meerekenen (P2): een dikte- of
     // meshSize-wijziging maakt ook de single-LC-resultaten ongeldig.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -538,10 +556,17 @@ function App() {
     setCheckFocus({ beamId });
     setActiveView("check");
   }, []);
-  // Normtoetsing draait STANDAARD mee met elke berekening: de toetsing hoort
-  // bij het resultaat en is geen losse handeling. De schakelaar op de
-  // Toetsing-tab blijft bestaan om het uit te zetten (bv. grote modellen).
-  const [autoRunCheck, setAutoRunCheck] = useState(true);
+  // Normtoetsing draait ALTIJD mee met een berekening: de toetsing hoort bij
+  // het resultaat en is geen losse handeling. Er is bewust geen schakelaar —
+  // een model waarvan je de krachten ziet maar de unity checks niet, nodigt
+  // uit tot verkeerde conclusies.
+  //
+  // Live rekenen gaat aan zodra er één keer met succes is gerekend. Daarna
+  // levert elke modelwijziging een verse berekening in plaats van lege
+  // resultaten. Vóór die eerste keer blijft het stil: een half getekend
+  // model is meestal nog een mechanisme, en dan zou elke muisklik een
+  // foutmelding opleveren.
+  const liveRekenenRef = useRef(false);
   // Insights view mode (element-K / system-K / dof / logs / errors), controlled from Ribbon.
   const [insightsMode, setInsightsMode] = useState<"element" | "system" | "dof" | "logs" | "errors">("element");
   // Last solver error text — shown in InsightsView Errors-tab.
@@ -604,7 +629,7 @@ function App() {
         const deadCase = fem.loadCases.find(c => c.type === "dead") ?? fem.loadCases[0];
         if (deadCase) {
           for (const b of fem.beams) {
-            const q = selfWeightPerMeter(b.material ?? "S235", b.profile ?? "HEA160");
+            const q = eigenGewichtPerMeter(b.material, b.profile);
             if (Math.abs(q) > 1e-9) {
               multiInput.loads.push({
                 beamId: b.id,
@@ -744,8 +769,44 @@ function App() {
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 
-  const handleSolve = useCallback(() => {
+  /**
+   * Eén rekengang: canvas-pad triggeren, multi-LC doorrekenen en de
+   * normtoetsing er direct achteraan. Gedeeld door de knop Berekenen en de
+   * live-herberekening na een modelwijziging — de knop doet daarnaast de
+   * weergave-omschakeling die bij een handmatige actie hoort, want tijdens
+   * het bewerken mag de app niet onder de handen van de gebruiker van tab
+   * wisselen of de selectie wissen.
+   */
+  const rekenDoor = useCallback(() => {
     setSolveTrigger((n) => n + 1);
+    const outputs = computeAndStoreSolverOutputs();
+    setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
+    if (outputs) {
+      liveRekenenRef.current = true;
+      if (isTauriApp()) void handleRunMemberChecks({ openPanel: false, outputs });
+    }
+    return outputs;
+  }, [computeAndStoreSolverOutputs, handleRunMemberChecks]);
+
+  // Het invalidatie-effect leest deze functie uit een ref: zou het effect op
+  // `rekenDoor` deppen, dan startte het opnieuw bij elke modelwijziging (die
+  // verandert `fem` en dus de callback-identiteit) en herberekende het zich
+  // in een kringetje.
+  const rekenDoorRef = useRef(rekenDoor);
+  useEffect(() => { rekenDoorRef.current = rekenDoor; }, [rekenDoor]);
+
+  // Het rapport hoort cijfers te tonen, geen lege tabellen. Wie de
+  // rapportweergave opent zonder verse resultaten, krijgt ze meteen: dan
+  // rekent de app eerst door. Mislukt dat, dan blijft `combinationResults`
+  // leeg en probeert dit effect het niet opnieuw — de melding daarover komt
+  // uit de rekengang zelf.
+  useEffect(() => {
+    if (activeView !== "report") return;
+    if (fem.combinationResults) return;
+    rekenDoorRef.current();
+  }, [activeView, fem.combinationResults]);
+
+  const handleSolve = useCallback(() => {
     // Make sure the user is looking at the canvas (not the report/IFC view).
     setActiveView("default");
     // Spring direct naar de Resultaten-tab in BEIDE plekken:
@@ -759,16 +820,9 @@ function App() {
     // Clear selection so the results overlay isn't visually competing with
     // selection-halos. User wants a clean view after computing.
     fem.setSelection(null);
-    // Multi-LC pipeline zodat Combinaties + Envelope direct bruikbaar zijn.
-    const outputs = computeAndStoreSolverOutputs();
-    // Solverstatus voor de StatusBar: gelukt → tijdstip; mislukt → Fout.
-    setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
-    // Auto-uitvoeren: normtoetsing meteen achter de berekening aan (zonder
-    // van weergave te wisselen — de gebruiker kijkt naar de canvas).
-    if (autoRunCheck && outputs && isTauriApp()) {
-      void handleRunMemberChecks({ openPanel: false, outputs });
-    }
-  }, [fem, computeAndStoreSolverOutputs, autoRunCheck, handleRunMemberChecks]);
+    // Rekenen + toetsen; vanaf nu blijft het model live.
+    rekenDoor();
+  }, [fem, rekenDoor]);
 
   // Keyboard: Ctrl+Z / Ctrl+Y for undo/redo
   useEffect(() => {
@@ -1180,8 +1234,6 @@ function App() {
           setTreeTab(next ? "results" : "project");
           if (next) setDisplayFlags(f => ({ ...f, M: true, V: true, N: true, deflection: true, reactions: true }));
         }}
-        autoRunEnabled={autoRunCheck}
-        onToggleAutoRun={() => setAutoRunCheck(v => !v)}
         onExportCheck={async () => {
           const { runMinimalSteelCheck, exportCheckResultsCsv } = await import("./io/steelCheck");
           // Pick scope: active combination > envelope > active LC > single-LC result

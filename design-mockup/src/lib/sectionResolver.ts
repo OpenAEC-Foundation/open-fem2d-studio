@@ -26,6 +26,19 @@ export const TIMBER_E_MEAN: Record<string, number> = {
 
 export const E_STAAL = 210000;
 
+/** ρ_mean in kg/m³ per sterkteklasse — EN 338 tabel 1 (C) en EN 14080 (GL). */
+export const TIMBER_RHO_MEAN: Record<string, number> = {
+  C14: 350, C16: 370, C18: 380, C20: 390, C22: 410,
+  C24: 420, C27: 450, C30: 460, C35: 480,
+  GL24h: 420, GL28h: 460, GL32h: 490, GL36h: 500,
+};
+
+/** ρ van staal in kg/m³ — EN 1991-1-1 tabel A.4. */
+export const RHO_STAAL = 7850;
+
+/** Valversnelling in m/s². */
+export const G = 9.81;
+
 export interface ResolvedSection {
   E: number;      // N/mm²
   A: number;      // mm²
@@ -75,4 +88,26 @@ export function resolveSection(material: string | undefined, profile: string | u
     `reken met default HEA 160 / S235. Controleer de staafeigenschappen.`,
   );
   return { E: E_STAAL, A: 3877, I: 1.673e7, bron: "default" };
+}
+
+/**
+ * Eigen gewicht van een staaf als verdeelde last in kN/m, negatief omdat de
+ * zwaartekracht in −Z werkt.
+ *
+ *   q = ρ · A · g
+ *
+ * De doorsnede komt uit dezelfde `resolveSection` als de stijfheid, zodat het
+ * eigen gewicht niet van een ander profiel kan zijn dan waar de solver mee
+ * rekent. Een houten balk krijgt de dichtheid van zijn sterkteklasse, geen
+ * staaldichtheid.
+ */
+export function eigenGewichtPerMeter(
+  material: string | undefined,
+  profile: string | undefined,
+): number {
+  const { A } = resolveSection(material, profile);
+  const mat = material ?? "S235";
+  const rho = TIMBER_RHO_MEAN[mat] ?? RHO_STAAL;
+  // A in mm² → m²; resultaat N/m → kN/m.
+  return -(rho * (A * 1e-6) * G) / 1000;
 }
