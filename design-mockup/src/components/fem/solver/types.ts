@@ -100,6 +100,23 @@ export interface SolverThermalLoadInput {
   alpha?: number;
 }
 
+/**
+ * Scheefstand / initiële imperfectie (EN 1993-1-1 §5.3.2-aanpak):
+ * elke VERTICALE last krijgt een equivalente horizontale metgezel
+ * H = φ·V in de gekozen richting (knooplast fz → fx-companion,
+ * lijnlast in z → qx-companion over hetzelfde belaste deel).
+ * Lineair in de last, dus factoren/combinaties schalen automatisch mee —
+ * ook in het 2e-orde-pad, waar de imperfectie er het meest toe doet.
+ * φ zelf (φ₀·αh·αm, basis 1/200) bepaalt de aanroeper; de motor past
+ * alleen toe. Thermische lasten en momenten krijgen geen companion.
+ */
+export interface ScheefstandInput {
+  /** Scheefstand als verhouding, bv. 1/200 = 0.005. */
+  phi: number;
+  /** Richting van de equivalente horizontale krachten: +1 = +x, -1 = −x. */
+  richting: 1 | -1;
+}
+
 export interface SolverInput {
   nodes: SolverNodeInput[];
   beams: SolverBeamInput[];
@@ -111,6 +128,8 @@ export interface SolverInput {
   thermalLoads?: SolverThermalLoadInput[];
   /** Optional load-case tag for traceability (used by multi-LC variant). */
   caseId?: number;
+  /** Optionele scheefstand — zie ScheefstandInput. */
+  scheefstand?: ScheefstandInput;
 }
 
 // ── Multi-load-case + combinations (step 2c–2e) ──────────────────────────────
@@ -124,6 +143,8 @@ export interface MultiInput {
   thermalLoads?: (SolverThermalLoadInput & { caseId: number })[];
   /** All load cases referenced by the loads above. */
   cases: { id: number; name: string }[];
+  /** Optionele scheefstand — zie ScheefstandInput. */
+  scheefstand?: ScheefstandInput;
 }
 
 export interface MultiLcResult {

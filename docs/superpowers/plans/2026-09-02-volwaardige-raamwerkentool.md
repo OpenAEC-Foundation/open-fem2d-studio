@@ -32,6 +32,10 @@
 
 ## Backlog (belangrijk → nice-to-have, uit de inventaris)
 
-In deze volgorde oppakken na A-C: dode TitleBar/Welcome/recente-bestanden-knoppen aansluiten op bestaande handlers · StatusBar echt (items/zoom/versie) · rapport-instellingen die de generator echt leest · thermische last doorvoeren (adapter negeert hem stil) of tool verbergen · transform-tools op multi-selectie + kopiëren mét eigenschappen · verkenner Materialen/Profielen/Versies echt · Grafiek/Agent/Console-toggles aansluiten of verwijderen · Tabel-tab als echte tabel-editor (12 console.log-stubs) · deellasten/lokale lastrichtingen (core kan het al, UI ontbreekt) · scheefstand/imperfecties · instellingen (eenheden, nationale bijlage, defaults) + projectinfo per bestand · veerinklemming + veerreacties · IFC-tab echt of eerlijk minimaal · DocumentBar één-document eerlijk · FeedbackDialog naar het juiste repo · platen (groot, apart plan) · uX/uZ-releases doorrekenen of uit de UI.
+Afgerond sinds het plan: dode TitleBar/Welcome/recente-bestanden-knoppen ✓ · StatusBar echt ✓ · rapport-instellingen echt (live HTML-rapport R1–R5) ✓ · thermische last doorgevoerd ✓ (test-thermiek) · transform-tools ✓ (test-transform) · verkenner Materialen/Profielen echt, Versies-schijn weg ✓ · deellasten ✓ (test-deellast) · veerinklemming + veerreacties ✓ (test-veren) · uX/uZ-releases doorgerekend ✓ (test-releases) · Tabel-tab als echte tabel-editor (in uitvoering).
+
+Extra solver-fixes buiten het plan om (2026-09-02): leeg belastinggeval brak de multi-LC-pijplijn (test-leeg-geval) · N-tekenconventie nu trek-positief conform contract (test-n-teken) · pendelstaaf-condensatie was fout — negatieve dwarsstijfheid bij dubbelscharnier (test-pendelstaaf).
+
+Nog open, in deze volgorde: scheefstand/imperfecties · instellingen (eenheden, nationale bijlage, defaults) + projectinfo per bestand · Grafiek/Agent/Console-toggles aansluiten of verwijderen · IFC-tab echt of eerlijk minimaal · DocumentBar één-document eerlijk · FeedbackDialog naar het juiste repo · platen (groot, apart plan).
 
 Live HTML-rapport: eigen spec (`2026-09-01-rapportgenerator-eisen.md`), start na fase B.

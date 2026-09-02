@@ -173,6 +173,12 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     if (Object.keys(updates).length > 0) mesh.updateBeamElement(meshBeam.id, updates);
   }
 
+  // Scheefstand: elke verticale last krijgt een equivalente horizontale
+  // metgezel H = φ·V (richting ±x). Lineair in de last, dus per-geval-
+  // factoren en combinaties schalen automatisch mee — zie ScheefstandInput.
+  const sch = (input as any).scheefstand as { phi: number; richting: 1 | -1 } | undefined;
+  const schFactor = sch ? sch.richting * sch.phi : 0;
+
   // Distributed loads: N/mm → N/m, project qDir into qx/qy global axes
   const loads = (input as any).loads as Array<any> | undefined;
   if (loads) {
@@ -184,8 +190,12 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       const qa = (ld.qStart ?? ld.q ?? 0) * 1000 * f;
       const qb = (ld.qEnd   ?? ld.q ?? 0) * 1000 * f;
       const dir = ld.qDir ?? "z";
-      const qxA = dir === "x" ? qa : 0, qyA = dir === "z" ? qa : 0;
-      const qxB = dir === "x" ? qb : 0, qyB = dir === "z" ? qb : 0;
+      // Companion-qx uit scheefstand: −qy omdat qy < 0 = omlaag (gravitatie)
+      // een H in +richting moet geven.
+      const qxA = (dir === "x" ? qa : 0) + (dir === "z" ? schFactor * -qa : 0);
+      const qyA = dir === "z" ? qa : 0;
+      const qxB = (dir === "x" ? qb : 0) + (dir === "z" ? schFactor * -qb : 0);
+      const qyB = dir === "z" ? qb : 0;
 
       // Deellast? (startFrac/endFrac, fracties 0..1; ontbreken = volle lengte)
       const aFrac = Math.min(1, Math.max(0, ld.startFrac ?? 0));
@@ -235,7 +245,8 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       const ex = node?.loads ?? { fx: 0, fy: 0, moment: 0 };
       mesh.updateNode(meshNid, {
         loads: {
-          fx: ex.fx + (pl.fx ?? 0) * f,
+          // Scheefstand-companion: fx += φ·(−fz)·richting (fz < 0 = omlaag).
+          fx: ex.fx + ((pl.fx ?? 0) + schFactor * -(pl.fz ?? 0)) * f,
           fy: ex.fy + (pl.fz ?? 0) * f,
           // my in N·mm → mesh moment in N·m  → /1000
           moment: ex.moment + ((pl.my ?? 0) / 1000) * f,
