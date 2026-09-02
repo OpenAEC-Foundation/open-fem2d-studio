@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "node scripts/run-tests.mjs",
+    "test:bundel": "node scripts/run-tests.mjs --bundel",
+    "build:sidecar": "node scripts/bouw-sidecar.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -36,6 +39,8 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^5.1.4",
+    "esbuild": "0.27.3",
+    "tsx": "4.23.13",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
   }
