@@ -5,7 +5,7 @@ use mechanics::{ForceStateSnapshot, ForcePoint, InternalForces};
 use nen_en_1993_1_1_section::{
     grade_by_name, S235, SteelGrade,
     ResistanceCalc, CheckStatus,
-    classification::{classify_section, CrossSectionClass},
+    classification::{classify_section, CrossSectionClass, SectionShape},
     compression::n_c_rd,
     bending::{m_y_c_rd, m_z_c_rd},
     shear::{v_z_c_rd, v_y_c_rd},
@@ -150,7 +150,16 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     };
 
     // 4. Classify section (use bending-governing forces — bending drives classification)
-    let classification = classify_section(p, &grade, &gov_bending.forces);
+    //    De vorm bepaalt welk blad van tabel 5.2 geldt: kokerwanden zijn
+    //    inwendige delen (blad 1) en ronde buizen hebben eigen d/t-grenzen
+    //    (blad 3). SHS en RHS vallen voor de norm samen.
+    let shape = match profile.kind {
+        ProfileKind::ISection => SectionShape::ISection,
+        ProfileKind::Channel  => SectionShape::Channel,
+        ProfileKind::Shs | ProfileKind::Rhs => SectionShape::BoxSection,
+        ProfileKind::Chs      => SectionShape::CircularHollow,
+    };
+    let classification = classify_section(p, &grade, &gov_bending.forces, shape);
 
     // 5. Run cross-section resistance checks
     let mut checks: Vec<NamedCheck> = Vec::new();

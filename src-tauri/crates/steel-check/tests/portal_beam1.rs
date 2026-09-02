@@ -121,6 +121,18 @@ fn portal_beam1_governing_ok() {
     eprintln!("portal_beam1 uc_max (Phase 13-F) = {}", r.uc_max);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt na de correctie van de UNP-knikkromme om de y-as:
+/// EN 1993-1-1 tabel 6.2 schrijft voor U-doorsneden kromme **c** voor om
+/// beide assen; de database stond op kromme b. Daardoor verandert in deze
+/// snapshot uitsluitend chi_y (0,9206 -> 0,8901) en, via de 6.3.3-interactie,
+/// de UC van vgl. 6.61 (0,9069 -> 0,9073) en 6.62 (0,58846 -> 0,58851).
+/// Alle op het referentie-rapport geijkte waarden in dit bestand
+/// (N_c,Rd = 1801,44 kN, M_y,c,Rd = 209,094 kNm, V_c,z,Rd = 671,06 kN en de
+/// bijbehorende UC's) zijn ONgewijzigd en worden hierboven nog steeds
+/// afgedwongen. N_b,Rd verandert niet, omdat voor deze ligger de z-as
+/// maatgevend is en die al op kromme c stond.
 #[test]
 fn portal_beam1_snapshot() {
     insta::assert_json_snapshot!("portal_beam1", run());

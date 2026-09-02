@@ -55,7 +55,10 @@ function bucklingCurves(name, series) {
     if (name.startsWith('SHS') || name.startsWith('RHS')) return { y_axis: 'a', z_axis: 'a' };
     return { y_axis: 'c', z_axis: 'c' };
   }
-  if (series === 'UNP') return { y_axis: 'b', z_axis: 'c' };
+  // U-, T- en volle doorsneden: tabel 6.2 schrijft kromme c voor om BEIDE
+  // assen voor. De y-as stond op 'b' — dat gaf een te hoge chi_y en daarmee
+  // een te hoge N_b,Rd (onveilig). Gecorrigeerd sept 2026.
+  if (series === 'UNP') return { y_axis: 'c', z_axis: 'c' };
   // I-sections (IPE, HEA, HEB, HEM):
   // h/b > 1.2 → y=a, z=b;  h/b ≤ 1.2 → y=b, z=c
   // IPE typically h/b > 1.2 for larger sizes but starts square-ish for small ones.
@@ -177,17 +180,24 @@ const SOURCE_PROFILES = [
   { name: 'HEB 400', series: 'HEB', h: 400, b: 300, tw: 13.5, tf: 24.0, r: 27, A: 197.8, Iy: 57680, Iz: 10820, Wy: 2880,  Wz: 721,   Wpl_y: 3230,  Wpl_z: 1100,   It: 356,    Iw: 7160000 },
 
   // HEM
-  { name: 'HEM 100', series: 'HEM', h: 120, b: 106, tw: 12.0, tf: 20.0, r: 12, A: 53.2,  Iy: 1140,  Iz: 399,  Wy: 190, Wz: 75.3, Wpl_y: 235,  Wpl_z: 117,  It: 118,  Iw: 25370 },
-  { name: 'HEM 120', series: 'HEM', h: 140, b: 126, tw: 12.5, tf: 21.0, r: 12, A: 66.4,  Iy: 2020,  Iz: 703,  Wy: 288, Wz: 112, Wpl_y: 350,  Wpl_z: 172,  It: 153,  Iw: 60560 },
-  { name: 'HEM 140', series: 'HEM', h: 160, b: 146, tw: 13.0, tf: 22.0, r: 12, A: 80.6,  Iy: 3290,  Iz: 1140, Wy: 411, Wz: 156, Wpl_y: 496,  Wpl_z: 241,  It: 193,  Iw: 128400 },
-  { name: 'HEM 160', series: 'HEM', h: 180, b: 166, tw: 14.0, tf: 23.0, r: 15, A: 97.1,  Iy: 5100,  Iz: 1760, Wy: 566, Wz: 212, Wpl_y: 675,  Wpl_z: 327,  It: 258,  Iw: 246100 },
-  { name: 'HEM 180', series: 'HEM', h: 200, b: 186, tw: 14.5, tf: 24.0, r: 15, A: 113,   Iy: 7480,  Iz: 2580, Wy: 748, Wz: 277, Wpl_y: 884,  Wpl_z: 428,  It: 324,  Iw: 439400 },
-  { name: 'HEM 200', series: 'HEM', h: 220, b: 206, tw: 15.0, tf: 25.0, r: 18, A: 131,   Iy: 10640, Iz: 3650, Wy: 967, Wz: 354, Wpl_y: 1140, Wpl_z: 549,  It: 406,  Iw: 727000 },
-  { name: 'HEM 220', series: 'HEM', h: 240, b: 226, tw: 15.5, tf: 26.0, r: 18, A: 149,   Iy: 14600, Iz: 5020, Wy: 1220, Wz: 444, Wpl_y: 1430, Wpl_z: 690, It: 495,  Iw: 1160000 },
-  { name: 'HEM 240', series: 'HEM', h: 270, b: 248, tw: 18.0, tf: 32.0, r: 21, A: 200,   Iy: 24290, Iz: 8150, Wy: 1800, Wz: 657, Wpl_y: 2120, Wpl_z: 1020, It: 926,  Iw: 2380000 },
-  { name: 'HEM 260', series: 'HEM', h: 290, b: 268, tw: 18.0, tf: 32.5, r: 24, A: 220,   Iy: 31310, Iz: 10450, Wy: 2160, Wz: 780, Wpl_y: 2530, Wpl_z: 1210, It: 1030, Iw: 3700000 },
-  { name: 'HEM 280', series: 'HEM', h: 310, b: 288, tw: 18.5, tf: 33.0, r: 24, A: 240,   Iy: 39550, Iz: 13160, Wy: 2550, Wz: 914, Wpl_y: 2970, Wpl_z: 1420, It: 1130, Iw: 5590000 },
-  { name: 'HEM 300', series: 'HEM', h: 340, b: 310, tw: 21.0, tf: 39.0, r: 27, A: 303,   Iy: 59200, Iz: 19400, Wy: 3480, Wz: 1250, Wpl_y: 4080, Wpl_z: 1950, It: 1930, Iw: 10290000 },
+  // De It-kolom van de HE M-reeks stond 27–73% te hoog (sept 2026 gecorrigeerd).
+  // Vastgesteld met de uitrondings-inclusieve torsieformule voor gewalste
+  // I-profielen (El Darwish & Johnston), gekalibreerd op IPE/HEA/HEB — daar
+  // reproduceert de formule de catalogus binnen 1,4% (n=50). Op HEM week de
+  // oude kolom 33–65% af; de nu ingevulde cataloguswaarden liggen binnen 1,5%
+  // van diezelfde formule. It gaat lineair in de St-Venant-term van M_cr, dus
+  // een te hoge It gaf een te hoge kipweerstand (onveilig).
+  { name: 'HEM 100', series: 'HEM', h: 120, b: 106, tw: 12.0, tf: 20.0, r: 12, A: 53.2,  Iy: 1140,  Iz: 399,  Wy: 190, Wz: 75.3, Wpl_y: 235,  Wpl_z: 117,  It: 68.21,  Iw: 25370 },
+  { name: 'HEM 120', series: 'HEM', h: 140, b: 126, tw: 12.5, tf: 21.0, r: 12, A: 66.4,  Iy: 2020,  Iz: 703,  Wy: 288, Wz: 112, Wpl_y: 350,  Wpl_z: 172,  It: 91.66,  Iw: 60560 },
+  { name: 'HEM 140', series: 'HEM', h: 160, b: 146, tw: 13.0, tf: 22.0, r: 12, A: 80.6,  Iy: 3290,  Iz: 1140, Wy: 411, Wz: 156, Wpl_y: 496,  Wpl_z: 241,  It: 120,  Iw: 128400 },
+  { name: 'HEM 160', series: 'HEM', h: 180, b: 166, tw: 14.0, tf: 23.0, r: 15, A: 97.1,  Iy: 5100,  Iz: 1760, Wy: 566, Wz: 212, Wpl_y: 675,  Wpl_z: 327,  It: 162.4,  Iw: 246100 },
+  { name: 'HEM 180', series: 'HEM', h: 200, b: 186, tw: 14.5, tf: 24.0, r: 15, A: 113,   Iy: 7480,  Iz: 2580, Wy: 748, Wz: 277, Wpl_y: 884,  Wpl_z: 428,  It: 203.3,  Iw: 439400 },
+  { name: 'HEM 200', series: 'HEM', h: 220, b: 206, tw: 15.0, tf: 25.0, r: 18, A: 131,   Iy: 10640, Iz: 3650, Wy: 967, Wz: 354, Wpl_y: 1140, Wpl_z: 549,  It: 259.4,  Iw: 727000 },
+  { name: 'HEM 220', series: 'HEM', h: 240, b: 226, tw: 15.5, tf: 26.0, r: 18, A: 149,   Iy: 14600, Iz: 5020, Wy: 1220, Wz: 444, Wpl_y: 1430, Wpl_z: 690, It: 315.3,  Iw: 1160000 },
+  { name: 'HEM 240', series: 'HEM', h: 270, b: 248, tw: 18.0, tf: 32.0, r: 21, A: 200,   Iy: 24290, Iz: 8150, Wy: 1800, Wz: 657, Wpl_y: 2120, Wpl_z: 1020, It: 627.9,  Iw: 2380000 },
+  { name: 'HEM 260', series: 'HEM', h: 290, b: 268, tw: 18.0, tf: 32.5, r: 24, A: 220,   Iy: 31310, Iz: 10450, Wy: 2160, Wz: 780, Wpl_y: 2530, Wpl_z: 1210, It: 719, Iw: 3700000 },
+  { name: 'HEM 280', series: 'HEM', h: 310, b: 288, tw: 18.5, tf: 33.0, r: 24, A: 240,   Iy: 39550, Iz: 13160, Wy: 2550, Wz: 914, Wpl_y: 2970, Wpl_z: 1420, It: 807.3, Iw: 5590000 },
+  { name: 'HEM 300', series: 'HEM', h: 340, b: 310, tw: 21.0, tf: 39.0, r: 27, A: 303,   Iy: 59200, Iz: 19400, Wy: 3480, Wz: 1250, Wpl_y: 4080, Wpl_z: 1950, It: 1408, Iw: 10290000 },
 
   // RHS (SHS + RHS)
   { name: 'SHS 80x80x4',    series: 'RHS', h: 80,  b: 80,  tw: 4,  tf: 4,  r: 4,  A: 11.7, Iy: 115,   Iz: 115,   Wy: 28.7,  Wz: 28.7,  Wpl_y: 34.1,  Wpl_z: 34.1,  It: 182,  Iw: 0 },

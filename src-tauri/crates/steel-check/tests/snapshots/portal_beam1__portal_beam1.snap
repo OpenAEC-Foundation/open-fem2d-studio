@@ -484,7 +484,7 @@ expression: run()
             },
             {
               "symbol": "\\chi_y",
-              "value": 0.9206084924244137,
+              "value": 0.8900615225146796,
               "unit": "-"
             },
             {
@@ -632,7 +632,7 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{yy}",
-              "value": 0.601428570028033,
+              "value": 0.6014775986452199,
               "unit": "-"
             },
             {
@@ -644,12 +644,12 @@ expression: run()
           "intermediate_values": [
             {
               "symbol": "term_N",
-              "value": 0.011142529879784466,
+              "value": 0.011524942237072358,
               "unit": "-"
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.8957152898218903,
+              "value": 0.8957883087708423,
               "unit": "-"
             },
             {
@@ -658,12 +658,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.9068578197016748,
+          "value": 0.9073132510079146,
           "unit": "-",
           "uc": {
-            "ed": 0.9068578197016748,
+            "ed": 0.9073132510079146,
             "rd": 1.0,
-            "uc": 0.9068578197016748,
+            "uc": 0.9073132510079146,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
@@ -695,7 +695,7 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{zy}",
-              "value": 0.3608571420168198,
+              "value": 0.3608865591871319,
               "unit": "-"
             },
             {
@@ -712,7 +712,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.5374291738931343,
+              "value": 0.5374729852625053,
               "unit": "-"
             },
             {
@@ -721,12 +721,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.588461835184584,
+          "value": 0.588505646553955,
           "unit": "-",
           "uc": {
-            "ed": 0.588461835184584,
+            "ed": 0.588505646553955,
             "rd": 1.0,
-            "uc": 0.588461835184584,
+            "uc": 0.588505646553955,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
