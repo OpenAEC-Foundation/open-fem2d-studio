@@ -12,7 +12,7 @@
   },
   "home": {
     "file": "File",
-    "project": "Project",
+    "projectGroep": "Project",
     "projectInfo": "Project info",
     "assumptions": "Assumptions",
     "new": "New",

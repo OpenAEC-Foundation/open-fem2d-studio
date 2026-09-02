@@ -12,7 +12,7 @@
   },
   "home": {
     "file": "Bestand",
-    "project": "Project",
+    "projectGroep": "Project",
     "projectInfo": "Projectgegevens",
     "assumptions": "Uitgangspunten",
     "new": "Nieuw",

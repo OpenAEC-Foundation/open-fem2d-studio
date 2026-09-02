@@ -133,7 +133,7 @@ export default function HomeTab({
             project (rapportkop, normkeuzes, rekeninstellingen), dus die
             knoppen staan hier vooraan in plaats van verstopt onder
             Instellingen. Zelfde handlers als de Instellingen-tab. */}
-        <RibbonGroup label={t("home.project", "Project")}>
+        <RibbonGroup label={t("home.projectGroep", "Project")}>
           <RibbonButton
             icon={projectInfoIcon}
             label={t("home.projectInfo", "Projectgegevens")}

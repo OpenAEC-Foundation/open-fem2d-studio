@@ -27,6 +27,7 @@
  */
 import type {
   SolverResult, NodalDisp, NodalReaction, ElementForces,
+  PlateResult, PlateElementStress,
 } from "./types";
 import { getSecondOrderState, solveCombinationSecondOrder } from "./engine";
 
@@ -278,7 +279,83 @@ export function combineResults(
     });
   }
 
-  return { displacements, reactions, elements, maxDisplacement: maxDisp };
+  // ── Plaatspanningen superponeren ─────────────────────────────────────────
+  // De componentspanningen (σx, σy, τxy) en membraankrachten (nx/ny/nxy)
+  // zijn lineair in de last en superponeren dus exact; de AFGELEIDE
+  // grootheden (von Mises, hoofdspanningen, hoek) zijn dat NIET en worden
+  // ná combinatie opnieuw uit de gecombineerde componenten berekend.
+  // Elementen matchen op index binnen dezelfde plaat: alle gevallen komen
+  // uit dezelfde solve-run met identieke mesh (invalidatie wist alles bij
+  // elke modelwijziging), dus de volgorde is stabiel.
+  const plateIds = new Set<number>();
+  for (const [caseId] of combo.factors) {
+    perCase.get(caseId)?.plateElements?.forEach(p => plateIds.add(p.plateId));
+  }
+  let plateElements: PlateResult[] | undefined;
+  if (plateIds.size > 0) {
+    plateElements = [];
+    for (const pid of plateIds) {
+      // Referentiegeometrie: de eerste bijdrage levert corners/elementIds.
+      let referentie: PlateResult | undefined;
+      for (const [caseId] of combo.factors) {
+        referentie = perCase.get(caseId)?.plateElements?.find(p => p.plateId === pid);
+        if (referentie) break;
+      }
+      if (!referentie) continue;
+      const n = referentie.elements.length;
+      const gecombineerd: PlateElementStress[] = referentie.elements.map(el => ({
+        elementId: el.elementId,
+        corners: el.corners,
+        sigmaX: 0, sigmaY: 0, tauXY: 0,
+        vonMises: 0, sigma1: 0, sigma2: 0, angle: 0,
+        nx: 0, ny: 0, nxy: 0,
+      }));
+      for (const [caseId, factor] of combo.factors) {
+        const bron = perCase.get(caseId)?.plateElements?.find(p => p.plateId === pid);
+        if (!bron) continue;
+        for (let i = 0; i < n && i < bron.elements.length; i++) {
+          const s = bron.elements[i];
+          const d = gecombineerd[i];
+          d.sigmaX += factor * s.sigmaX;
+          d.sigmaY += factor * s.sigmaY;
+          d.tauXY  += factor * s.tauXY;
+          d.nx     += factor * s.nx;
+          d.ny     += factor * s.ny;
+          d.nxy    += factor * s.nxy;
+        }
+      }
+      const ranges = {
+        sigmaX: { min: Infinity, max: -Infinity },
+        sigmaY: { min: Infinity, max: -Infinity },
+        tauXY: { min: Infinity, max: -Infinity },
+        vonMises: { min: Infinity, max: -Infinity },
+        nx: { min: Infinity, max: -Infinity },
+        ny: { min: Infinity, max: -Infinity },
+        nxy: { min: Infinity, max: -Infinity },
+      };
+      for (const d of gecombineerd) {
+        const { sigmaX: sx, sigmaY: sy, tauXY: t } = d;
+        d.vonMises = Math.sqrt(sx * sx + sy * sy - sx * sy + 3 * t * t);
+        const midden = (sx + sy) / 2;
+        const straal = Math.hypot((sx - sy) / 2, t);
+        d.sigma1 = midden + straal;
+        d.sigma2 = midden - straal;
+        d.angle = 0.5 * Math.atan2(2 * t, sx - sy);
+        for (const [sleutel, waarde] of [
+          ["sigmaX", d.sigmaX], ["sigmaY", d.sigmaY], ["tauXY", d.tauXY],
+          ["vonMises", d.vonMises], ["nx", d.nx], ["ny", d.ny], ["nxy", d.nxy],
+        ] as const) {
+          const r = ranges[sleutel];
+          if (waarde < r.min) r.min = waarde;
+          if (waarde > r.max) r.max = waarde;
+        }
+      }
+      plateElements.push({ plateId: pid, elements: gecombineerd, ranges });
+    }
+    if (plateElements.length === 0) plateElements = undefined;
+  }
+
+  return { displacements, reactions, elements, maxDisplacement: maxDisp, plateElements };
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────
