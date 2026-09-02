@@ -14,3 +14,5 @@ mechanics = { path = "../mechanics" }
 [dev-dependencies]
 approx = { workspace = true }
 insta = { workspace = true }
+# Alleen voor de test die aantoont dat oude JSON zonder de D4.1-velden laadt.
+serde_json = { workspace = true }

@@ -50,6 +50,14 @@ pub fn i_section_props(h: f64, b: f64, tw: f64, tf: f64, r: f64) -> SectionPrope
         it_mm4: it, iw_mm6: iw,
         iy_radius_mm: iy_radius, iz_radius_mm: iz_radius,
         h_mm: h, b_mm: b, tw_mm: tw, tf_mm: tf, r_mm: r,
+        // Dubbelsymmetrisch: zwaartepunt in het hart, geen traagheidsproduct,
+        // hoofdassen vallen samen met y en z en het schuifmiddelpunt met het
+        // zwaartepunt. Boven- en ondervezel zijn identiek, links en rechts ook.
+        y_c_mm: b / 2.0, z_c_mm: h / 2.0,
+        wel_y_top_mm3: wel_y, wel_y_bot_mm3: wel_y,
+        wel_z_left_mm3: wel_z, wel_z_right_mm3: wel_z,
+        iyz_mm4: 0.0, iu_mm4: iy, iv_mm4: iz, alpha_hoofdas_rad: 0.0,
+        y_s_mm: b / 2.0, z_s_mm: h / 2.0,
     }
 }
 

@@ -5,7 +5,7 @@ use mechanics::{ForceStateSnapshot, ForcePoint, InternalForces};
 use nen_en_1993_1_1_section::{
     grade_by_name, S235, SteelGrade,
     ResistanceCalc, CheckStatus,
-    classification::{classify_section, CrossSectionClass, SectionShape},
+    classification::{classify_composite, classify_section, epsilon, CrossSectionClass, SectionShape},
     compression::n_c_rd,
     bending::{m_y_c_rd, m_z_c_rd},
     shear::{v_z_c_rd, v_y_c_rd},
@@ -21,8 +21,13 @@ use nen_en_1993_1_1_stability::{
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
 use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel};
+use section_properties::SectionProperties;
 use steel_profiles::{db, ProfileKind};
-use crate::input::BeamCheckInput;
+use crate::input::{
+    BeamCheckInput, CustomDoorsnedevorm, MELDING_VORM_NIET_CONTROLEERBAAR,
+    REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD, REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
+    REDEN_KLASSE_4, reden_lijfplooi,
+};
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
 use crate::deflection::check_deflection_pair;
 
@@ -96,6 +101,281 @@ fn make_stability(check: StabilityCalc) -> NamedCheck {
     NamedCheck { id: check.id.clone(), kind: CheckKind::Stability(check) }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  D4.3 — de doorsnede resolveren en de weigeringen hard programmeren
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// η uit NEN-EN 1993-1-1 6.2.6(3): 1,2 voor staalsoorten t/m S460. Zelfde
+/// waarde als `CompositeSection::eta_schuif` in de rekenkern.
+const ETA_SCHUIF: f64 = 1.2;
+
+/// De doorsnede waarop getoetst wordt, plus wat er níet gerekend mag worden.
+///
+/// Voor het databasepad zijn alle weigeringsvelden `None`: D4.3 verandert
+/// niets aan het gedrag van een catalogusprofiel. De weigeringen gelden voor
+/// het inline pad, waar de doorsnede geen catalogusgeschiedenis heeft en de
+/// aannames van de formules dus niet vanzelf opgaan.
+struct Doorsnede {
+    naam: String,
+    props: SectionProperties,
+    klasse: CrossSectionClass,
+    curve_y: BucklingCurve,
+    curve_z: BucklingCurve,
+    is_channel: bool,
+    /// Reden waarom kip 6.3.2 (en daarmee 6.3.3) niet gerekend mag worden.
+    kip_weigering: Option<String>,
+    /// Reden waarom de schuiftoets om de z-as (en M+V, M+N+V) niet mag draaien.
+    schuif_weigering: Option<String>,
+    /// Reden waarom géén enkele weerstands- of stabiliteitstoets mag draaien.
+    totaal_weigering: Option<String>,
+    /// Losse meldingen die als eigen regel in de checklijst landen.
+    meldingen: Vec<(&'static str, &'static str, String)>,
+    /// Notities die bij de kipcontrole horen als die wél draait.
+    kip_notities: Vec<String>,
+}
+
+/// De twaalf toetsen die bij een weigering met naam en artikel in de lijst
+/// blijven staan, zodat het rapport toont wát er niet gerekend is en waarom.
+/// De laatste kolom zegt of het een stabiliteitstoets is.
+const TOETSEN: [(&str, &str, &str, bool); 12] = [
+    ("6.2.4_compression", "Compression", "art. 6.2.4 (6.10)", false),
+    ("6.2.5_bending_y", "Bending (y-axis)", "art. 6.2.5 (6.12)", false),
+    ("6.2.5_bending_z", "Bending (z-axis)", "art. 6.2.5 (6.12)", false),
+    ("6.2.6_shear_z", "Shear", "art. 6.2.6 (6.18)", false),
+    ("6.2.6_shear_y", "Shear (y-axis)", "art. 6.2.6", false),
+    ("6.2.8_combined_mv", "Bending + shear", "art. 6.2.8", false),
+    ("6.2.9_combined_mn", "Bending + axial force", "art. 6.2.9", false),
+    ("6.2.10_combined_mnv", "Bending + axial + shear", "art. 6.2.10", false),
+    ("6.3.1_buckling", "Column buckling", "art. 6.3.1 (6.46)", true),
+    ("6.3.2_ltb", "Lateral-torsional buckling resistance", "art. 6.3.2", true),
+    ("6.3.3_eq_6_61", "Combined N+M (6.61)", "art. 6.3.3", true),
+    ("6.3.3_eq_6_62", "Combined N+M (6.62)", "art. 6.3.3", true),
+];
+
+/// Een geweigerde toets: `CheckStatus::NotApplicable`, géén UC, en de reden in
+/// leesbaar Nederlands in `notes`. Nooit een UC van 0,0 die als "voldoet" oogt.
+fn weigering(
+    id: &str,
+    titel: &str,
+    artikel: &str,
+    stabiliteit: bool,
+    redenen: Vec<String>,
+    force_state: ForceStateSnapshot,
+) -> NamedCheck {
+    if stabiliteit {
+        NamedCheck {
+            id: id.to_string(),
+            kind: CheckKind::Stability(StabilityCalc {
+                id: id.to_string(),
+                title: titel.to_string(),
+                article: artikel.to_string(),
+                force_state,
+                formula_latex: String::new(),
+                variables: vec![],
+                intermediate_values: vec![],
+                value: 0.0,
+                unit: "-".to_string(),
+                uc: None,
+                status: CheckStatus::NotApplicable,
+                notes: redenen,
+            }),
+        }
+    } else {
+        NamedCheck {
+            id: id.to_string(),
+            kind: CheckKind::Resistance(ResistanceCalc {
+                id: id.to_string(),
+                title: titel.to_string(),
+                article: artikel.to_string(),
+                force_state,
+                formula_latex: String::new(),
+                variables: vec![],
+                value: 0.0,
+                unit: "-".to_string(),
+                uc: None,
+                status: CheckStatus::NotApplicable,
+                notes: redenen,
+            }),
+        }
+    }
+}
+
+/// Zoekt titel, artikel en soort bij een toets-id uit [`TOETSEN`].
+fn toetsgegevens(id: &str) -> (&'static str, &'static str, bool) {
+    TOETSEN
+        .iter()
+        .find(|(t, ..)| *t == id)
+        .map(|&(_, titel, artikel, stab)| (titel, artikel, stab))
+        .unwrap_or(("", "", false))
+}
+
+/// Kiest de doorsnede: eerst de inline `custom_section`, anders de database.
+///
+/// Het databasepad is letterlijk het oude pad — zelfde lookup, zelfde
+/// classificatie, zelfde knikkrommen — zodat een aanroep zonder
+/// `custom_section` bit-identiek blijft.
+fn resolveer_doorsnede(
+    input: &BeamCheckInput,
+    grade: &SteelGrade,
+    bend_forces: &InternalForces,
+) -> Result<Doorsnede, String> {
+    let Some(custom) = input.custom_section.as_ref() else {
+        let profile = match db().find(&input.profile_name) {
+            Some(p) => p,
+            None => return Err(format!("ERROR: profile {} not found", input.profile_name)),
+        };
+        let p = &profile.properties;
+        // De vorm bepaalt welk blad van tabel 5.2 geldt: kokerwanden zijn
+        // inwendige delen (blad 1) en ronde buizen hebben eigen d/t-grenzen
+        // (blad 3). SHS en RHS vallen voor de norm samen.
+        let shape = match profile.kind {
+            ProfileKind::ISection => SectionShape::ISection,
+            ProfileKind::Channel  => SectionShape::Channel,
+            ProfileKind::Shs | ProfileKind::Rhs => SectionShape::BoxSection,
+            ProfileKind::Chs      => SectionShape::CircularHollow,
+        };
+        return Ok(Doorsnede {
+            naam: input.profile_name.clone(),
+            props: *p,
+            klasse: classify_section(p, grade, bend_forces, shape),
+            curve_y: BucklingCurve::from_char(profile.buckling_curves.y_axis)
+                .unwrap_or(BucklingCurve::B),
+            curve_z: BucklingCurve::from_char(profile.buckling_curves.z_axis)
+                .unwrap_or(BucklingCurve::C),
+            is_channel: matches!(profile.kind, ProfileKind::Channel),
+            kip_weigering: None,
+            schuif_weigering: None,
+            totaal_weigering: None,
+            meldingen: vec![],
+            kip_notities: vec![],
+        });
+    };
+
+    // ── Inline doorsnede ────────────────────────────────────────────────────
+    let mut meldingen: Vec<(&'static str, &'static str, String)> = Vec::new();
+    let mut kip_notities: Vec<String> = Vec::new();
+
+    let (mut props, klasse, kip_toegestaan) = if !custom.lamellen.is_empty() {
+        // Geometrie beslist: eigenschappen, klasse per plaatdeel (tabel 5.2)
+        // en de dubbelsymmetrie volgen alle drie uit de lamellen.
+        let sec = custom.naar_composite();
+        let res = sec.bereken();
+        let cls = classify_composite(&sec, grade, bend_forces);
+        if custom.heeft_ongedeclareerde_gesloten_cel() {
+            meldingen.push((
+                "doorsnede_gesloten_cel",
+                "Gesloten cel (torsiestijfheid)",
+                REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD.to_string(),
+            ));
+        }
+        (res.props, cls.klasse, custom.is_dubbelsymmetrische_gelaste_i())
+    } else {
+        // Alleen eigenschappen: er is geen geometrie om tabel 5.2 op los te
+        // laten, dus de gedeclareerde vorm moet zeggen welk blad geldt.
+        let p = custom.eigenschappen.ok_or_else(|| {
+            "inline doorsnede zonder lamellen en zonder eigenschappen: er valt niets te toetsen"
+                .to_string()
+        })?;
+        let shape = match custom.vorm {
+            CustomDoorsnedevorm::Onbekend => {
+                return Err(
+                    "inline doorsnede zonder lamellen én zonder vormaanduiding kan niet volgens \
+                     tabel 5.2 worden geklasseerd"
+                        .to_string(),
+                )
+            }
+            CustomDoorsnedevorm::GelasteIDubbelsymmetrisch
+            | CustomDoorsnedevorm::GelasteIMonosymmetrisch => SectionShape::ISection,
+            CustomDoorsnedevorm::Koker => SectionShape::BoxSection,
+            CustomDoorsnedevorm::RondeBuis => SectionShape::CircularHollow,
+        };
+        kip_notities.push(MELDING_VORM_NIET_CONTROLEERBAAR.to_string());
+        (
+            p,
+            classify_section(&p, grade, bend_forces, shape),
+            custom.vorm == CustomDoorsnedevorm::GelasteIDubbelsymmetrisch,
+        )
+    };
+
+    // `composite.rs` laat t_f en t_w op nul staan: een willekeurige
+    // lamellendoorsnede heeft geen "flens" en geen "lijf". Twee formules vragen
+    // er wél om, en beide gebruiken het product `2·b·t_f` c.q. `h/t_w`:
+    //
+    //  * 6.2.9 gebruikt `a = (A − 2·b·t_f)/A ≤ 0,5` — de **lijffractie** van de
+    //    doorsnede. Met `t_f = ΣA_liggend/(2·b)` komt daar precies
+    //    `A_lijf/A` uit, ook bij ongelijke flenzen. Voor de gelaste I uit D4.1
+    //    levert dat de echte flensdikte terug: 6000/(2·200) = 15 mm.
+    //  * de kipformules van de nationale bijlage (k_red, C₂-correctie) vragen
+    //    om h, b, t_f en t_w; die draaien alleen op de dubbelsymmetrische
+    //    gelaste I, waar `t_f` en `t_w` letterlijk de plaatdikten zijn.
+    //
+    // `t_w` wordt de **dunste** staande plaat: dat is de ongunstigste voor
+    // `h/t_w` in k_red.
+    if !custom.lamellen.is_empty() {
+        let a_liggend: f64 = custom
+            .lamellen
+            .iter()
+            .filter(|l| l.alpha_rad.sin().abs() <= l.alpha_rad.cos().abs())
+            .map(|l| l.b_mm * l.t_mm)
+            .sum();
+        if props.b_mm > 0.0 {
+            props.tf_mm = a_liggend / (2.0 * props.b_mm);
+        }
+        props.tw_mm = custom
+            .lamellen
+            .iter()
+            .filter(|l| l.alpha_rad.sin().abs() > l.alpha_rad.cos().abs())
+            .map(|l| l.t_mm)
+            .fold(f64::INFINITY, f64::min);
+        if !props.tw_mm.is_finite() {
+            props.tw_mm = 0.0;
+        }
+    }
+
+    // (1) Kip 6.3.2 — alleen op een dubbelsymmetrische gelaste I.
+    let kip_weigering = if kip_toegestaan {
+        None
+    } else {
+        Some(REDEN_KIP_NIET_DUBBELSYMMETRISCH.to_string())
+    };
+
+    // (3) Lijfplooi onder schuifkracht: NEN-EN 1993-1-5 §5.1(2) verlangt een
+    //     plooitoets zodra h_w/t_w > 72ε/η. Die toets is niet geïmplementeerd,
+    //     dus dan mag V_pl,Rd niet als weerstand doorgaan.
+    let grens_lijfplooi = 72.0 * epsilon(grade) / ETA_SCHUIF;
+    let schuif_weigering = custom
+        .hw_over_tw()
+        .filter(|hw| *hw > grens_lijfplooi)
+        .map(|hw| reden_lijfplooi(hw, grens_lijfplooi));
+
+    // (2) Klasse 4: geen effectieve breedtes, dus geen enkele weerstand.
+    let totaal_weigering = (klasse == CrossSectionClass::Class4)
+        .then(|| REDEN_KLASSE_4.to_string());
+
+    // Knikkrommen: tabel 6.2, **gelaste** I-doorsnede. t_f ≤ 40 mm → b (y-y) en
+    // c (z-z); t_f > 40 mm → c (y-y) en d (z-z). Een inline doorsnede erft
+    // nooit stilzwijgend de gunstiger gewalste kromme.
+    let (curve_y, curve_z) = if custom.flensdikte_mm() <= 40.0 {
+        (BucklingCurve::B, BucklingCurve::C)
+    } else {
+        (BucklingCurve::C, BucklingCurve::D)
+    };
+
+    Ok(Doorsnede {
+        naam: if custom.naam.is_empty() { input.profile_name.clone() } else { custom.naam.clone() },
+        props,
+        klasse,
+        curve_y,
+        curve_z,
+        is_channel: false,
+        kip_weigering,
+        schuif_weigering,
+        totaal_weigering,
+        meldingen,
+        kip_notities,
+    })
+}
+
 fn uc_of(c: &NamedCheck) -> f64 {
     let (uc_opt, status_skip) = match &c.kind {
         CheckKind::Resistance(r) => (r.uc.as_ref().map(|u| u.uc), matches!(r.status, CheckStatus::NotApplicable)),
@@ -105,22 +385,6 @@ fn uc_of(c: &NamedCheck) -> f64 {
 }
 
 pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
-    // 1. Look up profile
-    let profile = match db().find(&input.profile_name) {
-        Some(p) => p,
-        None => return BeamCheckResult {
-            beam_id: input.beam_id,
-            profile_name: input.profile_name.clone(),
-            steel_grade: input.steel_grade.clone(),
-            classification: CrossSectionClass::Class1,
-            checks: vec![],
-            uc_max: 0.0,
-            status: CheckStatus::NotApplicable,
-            governing_check_id: format!("ERROR: profile {} not found", input.profile_name),
-        },
-    };
-    let p = &profile.properties;
-
     // 2. Look up grade (default to S235 if unknown)
     let grade: SteelGrade = grade_by_name(&input.steel_grade).unwrap_or(S235);
 
@@ -149,21 +413,86 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         forces: gov_shear.forces,
     };
 
-    // 4. Classify section (use bending-governing forces — bending drives classification)
-    //    De vorm bepaalt welk blad van tabel 5.2 geldt: kokerwanden zijn
-    //    inwendige delen (blad 1) en ronde buizen hebben eigen d/t-grenzen
-    //    (blad 3). SHS en RHS vallen voor de norm samen.
-    let shape = match profile.kind {
-        ProfileKind::ISection => SectionShape::ISection,
-        ProfileKind::Channel  => SectionShape::Channel,
-        ProfileKind::Shs | ProfileKind::Rhs => SectionShape::BoxSection,
-        ProfileKind::Chs      => SectionShape::CircularHollow,
+    // 4. Resolveer de doorsnede: inline (D4.3) of uit de database, inclusief
+    //    de classificatie (buiging drijft de classificatie) en de expliciete
+    //    weigeringen die bij die doorsnede horen.
+    let doorsnede = match resolveer_doorsnede(&input, &grade, &gov_bending.forces) {
+        Ok(d) => d,
+        Err(reden) => return BeamCheckResult {
+            beam_id: input.beam_id,
+            profile_name: input.profile_name.clone(),
+            steel_grade: input.steel_grade.clone(),
+            classification: CrossSectionClass::Class1,
+            checks: vec![],
+            uc_max: 0.0,
+            status: CheckStatus::NotApplicable,
+            governing_check_id: reden,
+        },
     };
-    let classification = classify_section(p, &grade, &gov_bending.forces, shape);
+    let p = &doorsnede.props;
+    let classification = doorsnede.klasse;
 
-    // 5. Run cross-section resistance checks
     let mut checks: Vec<NamedCheck> = Vec::new();
 
+    // Losse meldingen over de doorsnede zelf (bijvoorbeeld een gesloten cel
+    // die niet is gedeclareerd) landen als eigen NotApplicable-regel.
+    for (id, titel, reden) in &doorsnede.meldingen {
+        checks.push(weigering(id, titel, "NEN-EN 1993-1-1 6.2.7 / kern", false,
+            vec![reden.clone()], bend_state));
+    }
+
+    // Klasse 4 (weigering 2): geen effectieve breedtes volgens NEN-EN 1993-1-5,
+    // dus geen enkele weerstands- of stabiliteitstoets. Alle twaalf toetsen
+    // blijven mét reden in de lijst staan; alleen de doorbuigingstoets — puur
+    // EI en dus altijd geldig — draait nog.
+    if let Some(reden4) = doorsnede.totaal_weigering.clone() {
+        for &(id, titel, artikel, stabiliteit) in TOETSEN.iter() {
+            let mut redenen = vec![reden4.clone()];
+            if let Some(r) = &doorsnede.schuif_weigering {
+                if matches!(id, "6.2.6_shear_z" | "6.2.8_combined_mv" | "6.2.10_combined_mnv") {
+                    redenen.push(r.clone());
+                }
+            }
+            if let Some(r) = &doorsnede.kip_weigering {
+                if matches!(id, "6.3.2_ltb" | "6.3.3_eq_6_61" | "6.3.3_eq_6_62") {
+                    redenen.push(r.clone());
+                }
+            }
+            let state = match id {
+                "6.2.4_compression" | "6.3.1_buckling" => comp_state,
+                "6.2.6_shear_z" | "6.2.6_shear_y" => shear_state,
+                _ => bend_state,
+            };
+            checks.push(weigering(id, titel, artikel, stabiliteit, redenen, state));
+        }
+        let (defl_fin, defl_add) = check_deflection_pair(
+            input.deflection_actual_max_mm,
+            input.pre_camber_mm,
+            input.deflection_permanent_mm,
+            input.length_m,
+            input.deflection_limit_class,
+            input.deflection_limit_numerator,
+        );
+        checks.push(make_resistance(defl_fin));
+        checks.push(make_resistance(defl_add));
+
+        let mut uc_max = 0.0_f64;
+        for c in &checks {
+            uc_max = uc_max.max(uc_of(c));
+        }
+        return BeamCheckResult {
+            beam_id: input.beam_id,
+            profile_name: doorsnede.naam.clone(),
+            steel_grade: input.steel_grade.clone(),
+            classification,
+            checks,
+            uc_max,
+            status: CheckStatus::NotApplicable,
+            governing_check_id: format!("NIET TOETSBAAR: {reden4}"),
+        };
+    }
+
+    // 5. Run cross-section resistance checks
     let comp = n_c_rd(p, &grade, comp_state);
     let n_c_rd_kn = comp.value;
     checks.push(make_resistance(comp));
@@ -175,26 +504,52 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     let bend_z = m_z_c_rd(p, &grade, classification, bend_state);
     checks.push(make_resistance(bend_z));
 
-    let shear_z = v_z_c_rd(p, &grade, shear_state);
-    let v_z_pl_rd = shear_z.value;
-    checks.push(make_resistance(shear_z));
+    // Lijfplooi (weigering 3): boven 72ε/η draagt het lijf niet meer de volle
+    // V_pl,Rd. Dan vervallen de schuiftoets om de z-as en alles wat V_pl,Rd
+    // als weerstand gebruikt.
+    // De volgorde van de checklijst blijft in beide takken gelijk:
+    // V_z, V_y, M+V, M+N, M+N+V.
+    let geweigerd_v = |id: &str, state: ForceStateSnapshot| -> NamedCheck {
+        let (titel, artikel, stab) = toetsgegevens(id);
+        weigering(id, titel, artikel, stab,
+            vec![doorsnede.schuif_weigering.clone().unwrap_or_default()], state)
+    };
+    let v_z_pl_rd = if doorsnede.schuif_weigering.is_some() {
+        checks.push(geweigerd_v("6.2.6_shear_z", shear_state));
+        0.0 // wordt niet gebruikt: elke afnemer van V_pl,Rd is hieronder geweigerd
+    } else {
+        let shear_z = v_z_c_rd(p, &grade, shear_state);
+        let v = shear_z.value;
+        checks.push(make_resistance(shear_z));
+        v
+    };
 
     let shear_y = v_y_c_rd(p, &grade, shear_state);
     checks.push(make_resistance(shear_y));
 
     // Combined M+V and M+N checks use bending-governing location
-    let mv = check_combined_mv(p, &grade, classification, v_z_pl_rd, m_y_c_rd_knm, bend_state);
-    checks.push(make_resistance(mv));
+    match doorsnede.schuif_weigering {
+        Some(_) => checks.push(geweigerd_v("6.2.8_combined_mv", bend_state)),
+        None => {
+            let mv = check_combined_mv(p, &grade, classification, v_z_pl_rd, m_y_c_rd_knm, bend_state);
+            checks.push(make_resistance(mv));
+        }
+    }
 
     let mn = check_combined_mn(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, bend_state);
     checks.push(make_resistance(mn));
 
-    let mnv = check_combined_mnv(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, v_z_pl_rd, bend_state);
-    checks.push(make_resistance(mnv));
+    match doorsnede.schuif_weigering {
+        Some(_) => checks.push(geweigerd_v("6.2.10_combined_mnv", bend_state)),
+        None => {
+            let mnv = check_combined_mnv(p, &grade, classification, n_c_rd_kn, m_y_c_rd_knm, v_z_pl_rd, bend_state);
+            checks.push(make_resistance(mnv));
+        }
+    }
 
     // 6. Member stability — column buckling 6.3.1 (compression-governing location)
-    let curve_y = BucklingCurve::from_char(profile.buckling_curves.y_axis).unwrap_or(BucklingCurve::B);
-    let curve_z = BucklingCurve::from_char(profile.buckling_curves.z_axis).unwrap_or(BucklingCurve::C);
+    let curve_y = doorsnede.curve_y;
+    let curve_z = doorsnede.curve_z;
     let buckling = n_b_rd(p, &grade, input.buckling_length_y_m, input.buckling_length_z_m, curve_y, curve_z, comp_state);
 
     // Extract chi_y, chi_z and lambda_bar values from intermediate_values for use in §6.3.3.
@@ -219,7 +574,13 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 
     // 7. LTB 6.3.2 — channel sections use monosymmetric (conservative) Mcr × 0.7.
     //    Doubly-symmetric I/H sections use the standard I-section formula.
-    let is_channel = matches!(profile.kind, ProfileKind::Channel);
+    //
+    //    Weigering (1): voor een inline doorsnede die géén dubbelsymmetrische
+    //    gelaste I is, bestaat er geen M_cr. `m_cr_i_section` gebruikt alleen
+    //    I_z en I_t en `m_cr_algemeen` I_w zonder monosymmetrieparameter z_j;
+    //    beide veronderstellen dubbelsymmetrie. Dan blijft de kipcontrole leeg
+    //    — mét reden — en vervalt 6.3.3, want dat deelt door M_b,Rd.
+    let is_channel = doorsnede.is_channel;
     let m_b_rd_knm: f64;
 
     // Interpolate M_y at L_st/4 and L_st/2 for accurate beta / C1 calculation.
@@ -230,7 +591,11 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     let my_at_quarter = interpolate_my_at(&input.forces_envelope, l_st_mm / 4.0, combo_id);
     let my_at_half    = interpolate_my_at(&input.forces_envelope, l_st_mm / 2.0, combo_id);
 
-    let ltb_check = if is_channel {
+    let ltb_check = if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
+        m_b_rd_knm = f64::NAN; // bestaat niet; elke afnemer is hieronder geweigerd
+        let (titel, artikel, stab) = toetsgegevens("6.3.2_ltb");
+        weigering("6.3.2_ltb", titel, artikel, stab, vec![reden_kip], bend_state)
+    } else if is_channel {
         let ltb = m_b_rd_channel(
             p, &grade, input.length_m, &input.lateral_bracing,
             gov_bending.forces.my_ed,
@@ -242,7 +607,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
         make_stability(ltb)
     } else {
-        let ltb = m_b_rd(
+        let mut ltb = m_b_rd(
             p, &grade, input.length_m, &input.lateral_bracing,
             gov_bending.forces.my_ed,
             my_at_quarter,
@@ -251,6 +616,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             input.z_a_mm,
             bend_state,
         );
+        // Leeg voor een catalogusprofiel; gevuld als de dubbelsymmetrie op een
+        // declaratie berust in plaats van op lamellen.
+        ltb.notes.extend(doorsnede.kip_notities.iter().cloned());
         let chi_lt = ltb.value;
         m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
         make_stability(ltb)
@@ -270,20 +638,30 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     } else {
         p.wel_z_mm3 * grade.fy_mpa / grade.gamma_m0 * 1e-6
     };
-    let n_my = check_combined_n_my(
-        gov_bending.forces.n_ed.abs(), n_b_rd_y_kn,
-        gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
-        gov_bending.forces.mz_ed, m_z_c_rd_knm,
-        factors, bend_state,
-    );
-    checks.push(make_stability(n_my));
-    let n_mz = check_combined_n_mz(
-        gov_bending.forces.n_ed.abs(), n_b_rd_z_kn,
-        gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
-        gov_bending.forces.mz_ed, m_z_c_rd_knm,
-        factors, bend_state,
-    );
-    checks.push(make_stability(n_mz));
+    if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
+        // 6.61 en 6.62 delen door M_b,Rd; zonder kipcontrole bestaat dat getal
+        // niet. Doorrekenen met χ_LT = 1 zou de kip stilzwijgend wegpoetsen.
+        for id in ["6.3.3_eq_6_61", "6.3.3_eq_6_62"] {
+            let (titel, artikel, stab) = toetsgegevens(id);
+            checks.push(weigering(id, titel, artikel, stab,
+                vec![REDEN_INTERACTIE_ZONDER_KIP.to_string(), reden_kip.clone()], bend_state));
+        }
+    } else {
+        let n_my = check_combined_n_my(
+            gov_bending.forces.n_ed.abs(), n_b_rd_y_kn,
+            gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
+            gov_bending.forces.mz_ed, m_z_c_rd_knm,
+            factors, bend_state,
+        );
+        checks.push(make_stability(n_my));
+        let n_mz = check_combined_n_mz(
+            gov_bending.forces.n_ed.abs(), n_b_rd_z_kn,
+            gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
+            gov_bending.forces.mz_ed, m_z_c_rd_knm,
+            factors, bend_state,
+        );
+        checks.push(make_stability(n_mz));
+    }
 
     // 9. Doorbuiging (BGT): eindzakking w_fin (L/klasse) en bijkomende
     //    zakking w_add (L/150), conform de referentie-uitwerking.
@@ -315,7 +693,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 
     BeamCheckResult {
         beam_id: input.beam_id,
-        profile_name: input.profile_name.clone(),
+        // Gelijk aan `input.profile_name` op het databasepad; bij een inline
+        // doorsnede staat hier de naam waaronder hij in het rapport hoort.
+        profile_name: doorsnede.naam.clone(),
         steel_grade: input.steel_grade.clone(),
         classification,
         checks,

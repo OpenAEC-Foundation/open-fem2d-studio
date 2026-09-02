@@ -47,6 +47,12 @@ pub fn rhs_section_props(h: f64, b: f64, t: f64, r: f64) -> SectionProperties {
         it_mm4: it, iw_mm6: iw,
         iy_radius_mm: iy_radius, iz_radius_mm: iz_radius,
         h_mm: h, b_mm: b, tw_mm: t, tf_mm: t, r_mm: r,
+        // Dubbelsymmetrisch, net als het I-profiel.
+        y_c_mm: b / 2.0, z_c_mm: h / 2.0,
+        wel_y_top_mm3: wel_y, wel_y_bot_mm3: wel_y,
+        wel_z_left_mm3: wel_z, wel_z_right_mm3: wel_z,
+        iyz_mm4: 0.0, iu_mm4: iy, iv_mm4: iz, alpha_hoofdas_rad: 0.0,
+        y_s_mm: b / 2.0, z_s_mm: h / 2.0,
     }
 }
 

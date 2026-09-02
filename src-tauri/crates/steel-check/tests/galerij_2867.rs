@@ -79,6 +79,7 @@ fn ligger(
         deflection_permanent_mm: -3.2,
         q_equiv_n_per_mm: q_n_per_mm,
         z_a_mm: 155.0,
+        custom_section: None,
     };
     check_beam(input)
 }

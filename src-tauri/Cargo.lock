@@ -3433,6 +3433,7 @@ dependencies = [
  "insta",
  "mechanics",
  "serde",
+ "serde_json",
  "ts-rs",
 ]
 

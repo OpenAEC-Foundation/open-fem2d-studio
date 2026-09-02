@@ -3,5 +3,72 @@
 /**
  * All cross-sectional properties needed for EN 1993 checks.
  * Units: mm² for areas, mm⁴ for I, mm³ for W, mm for radii.
+ *
+ * ## Assenstelsel van de aanvullende velden (D4.1)
+ *
+ * De velden `y_c_mm`, `z_c_mm`, `y_s_mm` en `z_s_mm` staan in het
+ * **beschrijvingsassenstelsel** van de doorsnede: oorsprong linksonder in de
+ * omhullende rechthoek, `y` naar rechts, `z` omhoog. Voor een catalogusprofiel
+ * is dat dus `y ∈ [0, b]` en `z ∈ [0, h]`; voor een samengestelde doorsnede is
+ * het het assenstelsel waarin de lamellen zijn ingevoerd.
+ *
+ * Alle nieuwe velden zijn `#[serde(default)]`: bestaande JSON-data zonder deze
+ * sleutels laadt ongewijzigd (de 98 catalogus-entries hoeven niet gemigreerd).
  */
-export type SectionProperties = { area_mm2: number, iy_mm4: number, iz_mm4: number, wel_y_mm3: number, wel_z_mm3: number, wpl_y_mm3: number, wpl_z_mm3: number, av_y_mm2: number, av_z_mm2: number, it_mm4: number, iw_mm6: number, iy_radius_mm: number, iz_radius_mm: number, h_mm: number, b_mm: number, tw_mm: number, tf_mm: number, r_mm: number, };
+export type SectionProperties = { area_mm2: number, iy_mm4: number, iz_mm4: number, wel_y_mm3: number, wel_z_mm3: number, wpl_y_mm3: number, wpl_z_mm3: number, av_y_mm2: number, av_z_mm2: number, it_mm4: number, iw_mm6: number, iy_radius_mm: number, iz_radius_mm: number, h_mm: number, b_mm: number, tw_mm: number, tf_mm: number, r_mm: number, 
+/**
+ * y-coördinaat van het zwaartepunt in het beschrijvingsassenstelsel.
+ * Voor een U-profiel is dit de afstand van de rug van het lijf tot het
+ * zwaartepunt (`e_y` in de catalogus).
+ */
+y_c_mm: number, 
+/**
+ * z-coördinaat van het zwaartepunt in het beschrijvingsassenstelsel.
+ */
+z_c_mm: number, 
+/**
+ * Elastisch weerstandsmoment om de y-as naar de **bovenste** vezel
+ * (`Iy / (z_max − z_c)`).
+ */
+wel_y_top_mm3: number, 
+/**
+ * Elastisch weerstandsmoment om de y-as naar de **onderste** vezel
+ * (`Iy / (z_c − z_min)`).
+ */
+wel_y_bot_mm3: number, 
+/**
+ * Elastisch weerstandsmoment om de z-as naar de vezel aan de **−y**-zijde
+ * (`Iz / (y_c − y_min)`). Voor een U-profiel: de rug van het lijf.
+ */
+wel_z_left_mm3: number, 
+/**
+ * Elastisch weerstandsmoment om de z-as naar de vezel aan de **+y**-zijde
+ * (`Iz / (y_max − y_c)`). Voor een U-profiel: de punt van de flenzen.
+ */
+wel_z_right_mm3: number, 
+/**
+ * Traagheidsproduct `Iyz = ∫ y·z dA` om de zwaartepuntsassen. Nul zodra de
+ * doorsnede één symmetrieas heeft die met y of z samenvalt.
+ */
+iyz_mm4: number, 
+/**
+ * Grootste hoofdtraagheidsmoment (`Iu ≥ Iv`).
+ */
+iu_mm4: number, 
+/**
+ * Kleinste hoofdtraagheidsmoment.
+ */
+iv_mm4: number, 
+/**
+ * Hoek van de y-as naar de **hoofdas met de grootste** traagheid, in rad,
+ * positief tegen de klok in: `α = ½·atan2(−2·Iyz, Iy − Iz)`.
+ */
+alpha_hoofdas_rad: number, 
+/**
+ * y-coördinaat van het schuifmiddelpunt, zelfde assenstelsel als `y_c_mm`.
+ */
+y_s_mm: number, 
+/**
+ * z-coördinaat van het schuifmiddelpunt.
+ */
+z_s_mm: number, };

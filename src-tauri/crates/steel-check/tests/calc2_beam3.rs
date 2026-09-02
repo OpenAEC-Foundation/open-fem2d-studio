@@ -61,6 +61,7 @@ fn run() -> &'static BeamCheckResult {
             deflection_permanent_mm: 0.0,
             q_equiv_n_per_mm: 0.0,
             z_a_mm: 0.0,
+            custom_section: None,
         };
         check_beam(input)
     })

@@ -56,3 +56,7 @@ path = "tests/doorbuiging_2867.rs"
 [[test]]
 name = "galerij_2867"
 path = "tests/galerij_2867.rs"
+
+[[test]]
+name = "samengesteld"
+path = "tests/samengesteld.rs"
