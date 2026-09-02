@@ -14,7 +14,7 @@
 
 - [x] **A1. Multi-LC/toetsingspad krijgt echte doorsneden.** `App.tsx` `computeAndStoreSolverOutputs` (~305-319) stuurt geen E/A/I mee — elke staaf rekent als HEA 160/S235 en de toetsing eet die krachten. Fix: per staaf `resolveSection(b.material, b.profile)` zoals FemCanvas al doet. Test: houten raamwerk-voorbeeld geeft in het multi-LC-pad dezelfde reacties/diagrammen als het canvas-pad.
 - [x] **A2. Per-staaf E in de engine.** `engine.ts:82-86` zet één E voor het hele model (eerste staaf). Fix: per unieke E een Mesh-materiaal (`Mesh.addMaterial`, Mesh.ts:322-328) en per staaf toewijzen. Test: gemengd staal+hout-model — stijve staalligger op houten kolommen — geeft aantoonbaar andere verdeling dan alles-één-E.
-- [ ] **A3. Veldzakking w(x) per station.** Verplaatsingsuitvoer kent alleen knoopwaarden; een gewone overspanning toont 0 zakking in het veld. Fix: per station Hermite-interpolatie van eindverplaatsingen/-rotaties plús de particuliere oplossing (q/trapezium) in `BeamForces`→`ElementForces`; overlay tekent de kromme; per staaf max-veldzakking beschikbaar. Test: vrij opgelegde ligger q — w_mid = 5qL⁴/384EI binnen 1%.
+- [x] **A3. Veldzakking w(x) per station.** Verplaatsingsuitvoer kent alleen knoopwaarden; een gewone overspanning toont 0 zakking in het veld. Fix: per station Hermite-interpolatie van eindverplaatsingen/-rotaties plús de particuliere oplossing (q/trapezium) in `BeamForces`→`ElementForces`; overlay tekent de kromme; per staaf max-veldzakking beschikbaar. Test: vrij opgelegde ligger q — w_mid = 5qL⁴/384EI binnen 1%.
 - [ ] **A4. 2e-orde echt (P-Δ).** `solveAllCasesNonlinear` delegeert naar lineair ("For now: same as linear", engine.ts:258). Fix: geometrisch niet-lineair pad van de core aansluiten, per cómbinatie rekenen (superpositie is bij 2e-orde ongeldig), valideren tegen een analytisch geval (kolom met dwarslast nabij knik). Tot die validatie: toggle uit de UI of gemarkeerd "1e orde".
 
 ## Fase B — Toetsing betrouwbaar (kern)
@@ -26,9 +26,9 @@
 
 ## Fase C — Bestandszekerheid & basis-UX (kern)
 
-- [ ] **C1. Opslaan overal.** TitleBar-Opslaan (nu zonder onClick), Opslaan-knop op de Start-tab, Ctrl+S — allemaal naar het bestaande `handleSaveProject` (App.tsx:167).
-- [ ] **C2. Dirty-vlag + sluitbeveiliging.** Snapshot-vergelijking; Tauri `onCloseRequested` met opslaan/negeren/annuleren; zelfde guard vóór Nieuw/Openen/recent.
-- [ ] **C3. Sub-knoop netjes.** Bij splitsen: lasten proportioneel herverdelen en materiaal/profiel/releases overerven (lasten raken nu wees).
+- [x] **C1. Opslaan overal.** TitleBar-Opslaan (nu zonder onClick), Opslaan-knop op de Start-tab, Ctrl+S — allemaal naar het bestaande `handleSaveProject` (App.tsx:167).
+- [x] **C2. Dirty-vlag + sluitbeveiliging.** Snapshot-vergelijking; Tauri `onCloseRequested` met opslaan/negeren/annuleren; zelfde guard vóór Nieuw/Openen/recent.
+- [x] **C3. Sub-knoop netjes.** Bij splitsen: lasten proportioneel herverdelen en materiaal/profiel/releases overerven (lasten raken nu wees).
 
 ## Backlog (belangrijk → nice-to-have, uit de inventaris)
 
