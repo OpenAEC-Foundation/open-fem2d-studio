@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { fetchAppVersion } from "../lib/appVersion";
 import "./TitleBar.css";
 
 interface TitleBarProps {
@@ -7,9 +8,21 @@ interface TitleBarProps {
   onFeedbackClick?: () => void;
   /** Quick-access Opslaan (ook via Ctrl+S) — gewired vanuit App.tsx. */
   onSaveClick?: () => void;
+  /** Ongedaan maken / Opnieuw — zelfde handlers als de ribbon (fem.undo/redo).
+   *  Weggelaten (bijv. DetachedApp) → knoppen worden niet gerenderd. */
+  onUndoClick?: () => void;
+  onRedoClick?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  /** Afdrukken — opent de rapportweergave (de echte print/PDF-route).
+   *  Weggelaten → knop wordt niet gerenderd. */
+  onPrintClick?: () => void;
 }
 
-function TitleBar({ onSettingsClick, onFeedbackClick, onSaveClick }: TitleBarProps) {
+function TitleBar({
+  onSettingsClick, onFeedbackClick, onSaveClick,
+  onUndoClick, onRedoClick, canUndo, canRedo, onPrintClick,
+}: TitleBarProps) {
   const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   const [appVersion, setAppVersion] = useState("");
@@ -25,10 +38,7 @@ function TitleBar({ onSettingsClick, onFeedbackClick, onSaveClick }: TitleBarPro
   }, []);
 
   useEffect(() => {
-    import("@tauri-apps/api/app")
-      .then(({ getVersion }) => getVersion())
-      .then(setAppVersion)
-      .catch(() => setAppVersion(""));
+    fetchAppVersion().then(setAppVersion).catch(() => setAppVersion(""));
   }, []);
 
   const updateMaximizedState = useCallback(async () => {
@@ -117,40 +127,51 @@ function TitleBar({ onSettingsClick, onFeedbackClick, onSaveClick }: TitleBarPro
             <polyline points="7 3 7 8 15 8" />
           </svg>
         </button>
-        <button
-          className="titlebar-quick-btn"
-          title={`${t("undo")} (Ctrl+Z)`}
-          aria-label={t("undo")}
-          tabIndex={-1}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
-          </svg>
-        </button>
-        <button
-          className="titlebar-quick-btn"
-          title={`${t("redo")} (Ctrl+Y)`}
-          aria-label={t("redo")}
-          tabIndex={-1}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 11-2.13-9.36L23 10" />
-          </svg>
-        </button>
-        <button
-          className="titlebar-quick-btn"
-          title={`${t("print")} (Ctrl+P)`}
-          aria-label={t("print")}
-          tabIndex={-1}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 6 2 18 2 18 9" />
-            <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
-            <rect x="6" y="14" width="12" height="8" />
-          </svg>
-        </button>
+        {onUndoClick && (
+          <button
+            className="titlebar-quick-btn"
+            title={`${t("undo")} (Ctrl+Z)`}
+            aria-label={t("undo")}
+            tabIndex={-1}
+            onClick={onUndoClick}
+            disabled={canUndo === false}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
+            </svg>
+          </button>
+        )}
+        {onRedoClick && (
+          <button
+            className="titlebar-quick-btn"
+            title={`${t("redo")} (Ctrl+Y)`}
+            aria-label={t("redo")}
+            tabIndex={-1}
+            onClick={onRedoClick}
+            disabled={canRedo === false}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 11-2.13-9.36L23 10" />
+            </svg>
+          </button>
+        )}
+        {onPrintClick && (
+          <button
+            className="titlebar-quick-btn"
+            title={t("printReport")}
+            aria-label={t("printReport")}
+            tabIndex={-1}
+            onClick={onPrintClick}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+          </button>
+        )}
           <button
             className="titlebar-quick-btn"
             title={t("preferences")}

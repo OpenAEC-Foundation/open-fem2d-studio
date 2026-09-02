@@ -141,6 +141,206 @@ export function computeBeamSplit(
   return { nodes, beams, loads, newNodeId };
 }
 
+// ── Pure transformatielogica ───────────────────────────────────────────────
+// Losgetrokken uit de hook zodat hij unit-testbaar is (zie
+// design-mockup/test-transform.mjs), naar het voorbeeld van computeBeamSplit.
+
+/**
+ * Verzamel alle knoop-ids die een Selection raakt: geselecteerde knopen +
+ * eindknopen van geselecteerde staven + hoekknopen van geselecteerde platen.
+ * Een gedeelde knoop (bv. de gezamenlijke knoop van twee geselecteerde staven)
+ * zit er precies één keer in (Set), zodat een transformatie hem nooit dubbel
+ * toepast. Een lastselectie of lege selectie levert een lege set.
+ */
+export function collectSelectionNodeIds(
+  cur: Pick<Snapshot, "beams" | "plates">,
+  sel: Selection,
+): Set<number> {
+  const ids = new Set<number>();
+  if (!sel) return ids;
+  if (sel.type === "node") {
+    ids.add(sel.id);
+  } else if (sel.type === "beam") {
+    const b = cur.beams.find(bb => bb.id === sel.id);
+    if (b) { ids.add(b.from); ids.add(b.to); }
+  } else if (sel.type === "plate") {
+    const p = cur.plates.find(pp => pp.id === sel.id);
+    if (p) p.nodeIds.forEach(id => ids.add(id));
+  } else if (sel.type === "multi") {
+    sel.nodeIds.forEach(id => ids.add(id));
+    for (const bid of sel.beamIds) {
+      const b = cur.beams.find(bb => bb.id === bid);
+      if (b) { ids.add(b.from); ids.add(b.to); }
+    }
+    for (const pid of sel.plateIds) {
+      const p = cur.plates.find(pp => pp.id === pid);
+      if (p) p.nodeIds.forEach(id => ids.add(id));
+    }
+  }
+  return ids;
+}
+
+/**
+ * Verplaats de selectie over (dx, dz). Retourneert null wanneer de selectie
+ * geen knopen raakt (lege selectie / lastselectie) — de aanroeper toont dan
+ * feedback in plaats van stilzwijgend niets te doen.
+ */
+export function computeSelectionTranslate(
+  cur: Pick<Snapshot, "nodes" | "beams" | "plates">,
+  sel: Selection, dx: number, dz: number,
+): { nodes: Node[] } | null {
+  const ids = collectSelectionNodeIds(cur, sel);
+  if (ids.size === 0) return null;
+  const nodes = cur.nodes.map(n =>
+    ids.has(n.id) ? { ...n, x: n.x + dx, z: n.z + dz } : n);
+  return { nodes };
+}
+
+/**
+ * Roteer de selectie om (cx, cz) met `angleRad` (positief = van +x naar +z).
+ * Coördinaten worden op hele mm afgerond, consistent met de bestaande
+ * enkelvoudige flow en het mm-integer-model. Null wanneer de selectie geen
+ * knopen raakt.
+ */
+export function computeSelectionRotate(
+  cur: Pick<Snapshot, "nodes" | "beams" | "plates">,
+  sel: Selection, cx: number, cz: number, angleRad: number,
+): { nodes: Node[] } | null {
+  const ids = collectSelectionNodeIds(cur, sel);
+  if (ids.size === 0) return null;
+  const cs = Math.cos(angleRad), sn = Math.sin(angleRad);
+  const nodes = cur.nodes.map(n => {
+    if (!ids.has(n.id)) return n;
+    const rx = n.x - cx, rz = n.z - cz;
+    return {
+      ...n,
+      x: Math.round(cx + rx * cs - rz * sn),
+      z: Math.round(cz + rx * sn + rz * cs),
+    };
+  });
+  return { nodes };
+}
+
+/**
+ * Spiegel de selectie om de lijn door (x1,z1)-(x2,z2). Coördinaten op hele mm
+ * (zie computeSelectionRotate). Null wanneer de selectie geen knopen raakt of
+ * de spiegelas gedegenereerd is (lengte ~0).
+ */
+export function computeSelectionMirror(
+  cur: Pick<Snapshot, "nodes" | "beams" | "plates">,
+  sel: Selection, x1: number, z1: number, x2: number, z2: number,
+): { nodes: Node[] } | null {
+  const ids = collectSelectionNodeIds(cur, sel);
+  if (ids.size === 0) return null;
+  const dx = x2 - x1, dz = z2 - z1;
+  const denom = dx * dx + dz * dz;
+  if (denom < 1e-6) return null;
+  const nodes = cur.nodes.map(n => {
+    if (!ids.has(n.id)) return n;
+    const t = ((n.x - x1) * dx + (n.z - z1) * dz) / denom;
+    const fx = x1 + t * dx, fz = z1 + t * dz;
+    return { ...n, x: Math.round(2 * fx - n.x), z: Math.round(2 * fz - n.z) };
+  });
+  return { nodes };
+}
+
+/**
+ * Volwaardige kopie van de selectie op offset (dx, dz).
+ *
+ * Regels:
+ *  - Knopen krijgen nieuwe id's; `...n`-spread behoudt eventuele extra velden.
+ *  - Staven behouden ALLE velden — materiaal/profiel/releases/checkConfig én
+ *    toekomstige velden via spread; from/to worden herbonden aan de nieuwe
+ *    knoop-id's. (Geneste objecten worden per referentie gedeeld, conform de
+ *    immutable-update-conventie van de store: patches vervangen subobjecten.)
+ *  - Platen krijgen nieuwe id's met herbonden hoekknopen.
+ *  - Opleggingen op gekopieerde knopen gaan mee naar de nieuwe knoop-id's.
+ *  - Staafgebonden lasten (lineLoad/thermal) gaan mee naar de nieuwe staaf-id
+ *    in HETZELFDE belastinggeval; knoopgebonden lasten (pointForce/pointMoment)
+ *    naar de nieuwe knoop-id.
+ *
+ * Retourneert null wanneer de selectie niets kopieerbaars bevat. De functie
+ * muteert `cur` niet — de aanroepende mutatie pusht het resultaat als één
+ * history-snapshot, zodat één Ctrl+Z de hele kopie ongedaan maakt.
+ */
+export function computeSelectionCopy(
+  cur: Snapshot,
+  sel: Selection, dx: number, dz: number,
+): {
+  nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[];
+  nodeIdMap: Map<number, number>; beamIdMap: Map<number, number>;
+} | null {
+  const copyNodeIds = collectSelectionNodeIds(cur, sel);
+  if (copyNodeIds.size === 0) return null;
+  const copyBeamIds = new Set<number>();
+  const copyPlateIds = new Set<number>();
+  if (sel && sel.type === "beam") copyBeamIds.add(sel.id);
+  else if (sel && sel.type === "plate") copyPlateIds.add(sel.id);
+  else if (sel && sel.type === "multi") {
+    sel.beamIds.forEach(id => copyBeamIds.add(id));
+    sel.plateIds.forEach(id => copyPlateIds.add(id));
+  }
+
+  let nextNodeId  = cur.nodes.length  === 0 ? 1 : Math.max(...cur.nodes.map(n => n.id)) + 1;
+  let nextBeamId  = cur.beams.length  === 0 ? 1 : Math.max(...cur.beams.map(b => b.id)) + 1;
+  let nextPlateId = cur.plates.length === 0 ? 1 : Math.max(...cur.plates.map(p => p.id)) + 1;
+  let nextLoadId  = cur.loads.length  === 0 ? 1 : Math.max(...cur.loads.map(l => l.id)) + 1;
+
+  // Knopen — itereren over cur.nodes (niet over de Set) zodat kopieën in
+  // modelvolgorde ontstaan en dangling ids in de selectie stil vervallen.
+  const nodeIdMap = new Map<number, number>();
+  const newNodes: Node[] = [];
+  for (const n of cur.nodes) {
+    if (!copyNodeIds.has(n.id)) continue;
+    const clone: Node = { ...n, id: nextNodeId++, x: n.x + dx, z: n.z + dz };
+    nodeIdMap.set(n.id, clone.id);
+    newNodes.push(clone);
+  }
+
+  const beamIdMap = new Map<number, number>();
+  const newBeams: Beam[] = [];
+  for (const b of cur.beams) {
+    if (!copyBeamIds.has(b.id)) continue;
+    const from = nodeIdMap.get(b.from), to = nodeIdMap.get(b.to);
+    if (from === undefined || to === undefined) continue; // eindknoop ontbreekt
+    const clone: Beam = { ...b, id: nextBeamId++, from, to };
+    beamIdMap.set(b.id, clone.id);
+    newBeams.push(clone);
+  }
+
+  const newPlates: Plate[] = [];
+  for (const p of cur.plates) {
+    if (!copyPlateIds.has(p.id)) continue;
+    const mapped = p.nodeIds.map(id => nodeIdMap.get(id));
+    if (mapped.some(id => id === undefined)) continue;
+    newPlates.push({ ...p, id: nextPlateId++, nodeIds: mapped as number[] });
+  }
+
+  const newSupports: Support[] = [];
+  for (const s of cur.supports) {
+    const mapped = nodeIdMap.get(s.nodeId);
+    if (mapped !== undefined) newSupports.push({ ...s, nodeId: mapped });
+  }
+
+  const newLoads: Load[] = [];
+  for (const l of cur.loads) {
+    if (l.beamId !== undefined && beamIdMap.has(l.beamId)) {
+      newLoads.push({ ...l, id: nextLoadId++, beamId: beamIdMap.get(l.beamId)! });
+    } else if (l.nodeId !== undefined && nodeIdMap.has(l.nodeId)) {
+      newLoads.push({ ...l, id: nextLoadId++, nodeId: nodeIdMap.get(l.nodeId)! });
+    }
+  }
+
+  return {
+    nodes: [...cur.nodes, ...newNodes],
+    beams: [...cur.beams, ...newBeams],
+    supports: [...cur.supports, ...newSupports],
+    plates: [...cur.plates, ...newPlates],
+    loads: [...cur.loads, ...newLoads],
+    nodeIdMap, beamIdMap,
+  };
+}
+
 export interface FemStore {
   // Model
   nodes: Node[];
@@ -190,10 +390,13 @@ export interface FemStore {
   updateLoad: (id: number, updates: Partial<Load>) => void;
   deleteSelected: () => void;
   splitBeamAt: (beamId: number, x: number, z: number) => void;
-  translateSelection: (sel: Selection, dx: number, dz: number) => void;
-  copySelection: (sel: Selection, dx: number, dz: number) => void;
-  rotateSelection: (sel: Selection, cx: number, cz: number, angleRad: number) => void;
-  mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => void;
+  // Transformaties — multi-selectie-bewust. Retourneren `false` wanneer de
+  // selectie niets transformeerbaars bevat (lege selectie / lastselectie),
+  // zodat de aanroeper feedback kan tonen in plaats van een stille no-op.
+  translateSelection: (sel: Selection, dx: number, dz: number) => boolean;
+  copySelection: (sel: Selection, dx: number, dz: number) => boolean;
+  rotateSelection: (sel: Selection, cx: number, cz: number, angleRad: number) => boolean;
+  mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => boolean;
   addLoadCase: (name: string) => void;
 
   /** Bulk translate a set of nodes by (dx, dz) — used by drag-to-move / G-grab. */
@@ -475,111 +678,55 @@ export function useFemStore(): FemStore {
     setSelection(null);
   }, [selection, pushHistory]);
 
-  /** Translate selected node/beam endpoints by (dx, dz). */
-  const translateSelection = useCallback((sel: Selection, dx: number, dz: number) => {
-    if (!sel) return;
+  /** Verplaats de volledige selectie (multi-bewust) over (dx, dz). */
+  const translateSelection = useCallback((sel: Selection, dx: number, dz: number): boolean => {
     const cur = latestRef.current;
-    const nodeIds = new Set<number>();
-    if (sel.type === "node") nodeIds.add(sel.id);
-    else if (sel.type === "beam") {
-      const b = cur.beams.find(bb => bb.id === sel.id);
-      if (b) { nodeIds.add(b.from); nodeIds.add(b.to); }
-    } else if (sel.type === "plate") {
-      const p = cur.plates.find(pp => pp.id === sel.id);
-      if (p) p.nodeIds.forEach(id => nodeIds.add(id));
-    }
-    const nextNodes = cur.nodes.map(n =>
-      nodeIds.has(n.id) ? { ...n, x: n.x + dx, z: n.z + dz } : n);
-    setNodes(nextNodes);
-    pushHistory({ ...cur, nodes: nextNodes });
+    const r = computeSelectionTranslate(cur, sel, dx, dz);
+    if (!r) return false;
+    setNodes(r.nodes);
+    pushHistory({ ...cur, nodes: r.nodes });
+    return true;
   }, [pushHistory]);
 
-  /** Duplicate selected node/beam at offset (dx, dz). */
-  const copySelection = useCallback((sel: Selection, dx: number, dz: number) => {
-    if (!sel) return;
+  /**
+   * Volwaardige kopie van de selectie op offset (dx, dz): alle staafvelden,
+   * opleggingen en lasten gaan mee (zie computeSelectionCopy). Eén history-
+   * push, dus één Ctrl+Z maakt de hele kopie ongedaan.
+   */
+  const copySelection = useCallback((sel: Selection, dx: number, dz: number): boolean => {
     const cur = latestRef.current;
-    const idMap = new Map<number, number>();
-    let nextNodeId = cur.nodes.length === 0 ? 1 : Math.max(...cur.nodes.map(n => n.id)) + 1;
-    let nextBeamId = cur.beams.length === 0 ? 1 : Math.max(...cur.beams.map(b => b.id)) + 1;
-    const newNodes: Node[] = [];
-    const newBeams: Beam[] = [];
-    const cloneNode = (id: number) => {
-      if (idMap.has(id)) return idMap.get(id)!;
-      const orig = cur.nodes.find(n => n.id === id);
-      if (!orig) return id;
-      const clone = { id: nextNodeId++, x: orig.x + dx, z: orig.z + dz };
-      newNodes.push(clone);
-      idMap.set(id, clone.id);
-      return clone.id;
-    };
-    if (sel.type === "node") cloneNode(sel.id);
-    else if (sel.type === "beam") {
-      const b = cur.beams.find(bb => bb.id === sel.id);
-      if (b) {
-        const a = cloneNode(b.from), c = cloneNode(b.to);
-        newBeams.push({ id: nextBeamId++, from: a, to: c });
-      }
-    } else if (sel.type === "plate") {
-      const p = cur.plates.find(pp => pp.id === sel.id);
-      if (p) p.nodeIds.forEach(cloneNode);
-    }
-    const nextNodesAll = [...cur.nodes, ...newNodes];
-    const nextBeamsAll = [...cur.beams, ...newBeams];
-    setNodes(nextNodesAll);
-    setBeams(nextBeamsAll);
-    pushHistory({ ...cur, nodes: nextNodesAll, beams: nextBeamsAll });
-  }, [pushHistory]);
-
-  /** Rotate selected node-set around (cx, cz) by `angleRad`. */
-  const rotateSelection = useCallback((sel: Selection, cx: number, cz: number, angleRad: number) => {
-    if (!sel) return;
-    const cur = latestRef.current;
-    const nodeIds = new Set<number>();
-    if (sel.type === "node") nodeIds.add(sel.id);
-    else if (sel.type === "beam") {
-      const b = cur.beams.find(bb => bb.id === sel.id);
-      if (b) { nodeIds.add(b.from); nodeIds.add(b.to); }
-    } else if (sel.type === "plate") {
-      const p = cur.plates.find(pp => pp.id === sel.id);
-      if (p) p.nodeIds.forEach(id => nodeIds.add(id));
-    }
-    const cs = Math.cos(angleRad), sn = Math.sin(angleRad);
-    const nextNodes = cur.nodes.map(n => {
-      if (!nodeIds.has(n.id)) return n;
-      const rx = n.x - cx, rz = n.z - cz;
-      const nx = cx + rx * cs - rz * sn;
-      const nz = cz + rx * sn + rz * cs;
-      return { ...n, x: Math.round(nx), z: Math.round(nz) };
+    const r = computeSelectionCopy(cur, sel, dx, dz);
+    if (!r) return false;
+    setNodes(r.nodes);
+    setBeams(r.beams);
+    setSupports(r.supports);
+    setPlates(r.plates);
+    setLoads(r.loads);
+    pushHistory({
+      nodes: r.nodes, beams: r.beams, supports: r.supports,
+      plates: r.plates, loads: r.loads,
     });
-    setNodes(nextNodes);
-    pushHistory({ ...cur, nodes: nextNodes });
+    return true;
   }, [pushHistory]);
 
-  /** Mirror selected node-set across a line through (x1,z1)-(x2,z2). */
-  const mirrorSelection = useCallback((sel: Selection, x1: number, z1: number, x2: number, z2: number) => {
-    if (!sel) return;
+  /** Roteer de volledige selectie (multi-bewust) om (cx, cz) met `angleRad`. */
+  const rotateSelection = useCallback((sel: Selection, cx: number, cz: number, angleRad: number): boolean => {
     const cur = latestRef.current;
-    const nodeIds = new Set<number>();
-    if (sel.type === "node") nodeIds.add(sel.id);
-    else if (sel.type === "beam") {
-      const b = cur.beams.find(bb => bb.id === sel.id);
-      if (b) { nodeIds.add(b.from); nodeIds.add(b.to); }
-    } else if (sel.type === "plate") {
-      const p = cur.plates.find(pp => pp.id === sel.id);
-      if (p) p.nodeIds.forEach(id => nodeIds.add(id));
-    }
-    const dx = x2 - x1, dz = z2 - z1;
-    const denom = dx * dx + dz * dz;
-    if (denom < 1e-6) return;
-    const nextNodes = cur.nodes.map(n => {
-      if (!nodeIds.has(n.id)) return n;
-      // Reflect (n.x, n.z) across the line.
-      const t = ((n.x - x1) * dx + (n.z - z1) * dz) / denom;
-      const fx = x1 + t * dx, fz = z1 + t * dz;
-      return { ...n, x: Math.round(2 * fx - n.x), z: Math.round(2 * fz - n.z) };
-    });
-    setNodes(nextNodes);
-    pushHistory({ ...cur, nodes: nextNodes });
+    const r = computeSelectionRotate(cur, sel, cx, cz, angleRad);
+    if (!r) return false;
+    setNodes(r.nodes);
+    pushHistory({ ...cur, nodes: r.nodes });
+    return true;
+  }, [pushHistory]);
+
+  /** Spiegel de volledige selectie (multi-bewust) om de lijn (x1,z1)-(x2,z2). */
+  const mirrorSelection = useCallback((sel: Selection, x1: number, z1: number, x2: number, z2: number): boolean => {
+    const cur = latestRef.current;
+    const r = computeSelectionMirror(cur, sel, x1, z1, x2, z2);
+    if (!r) return false;
+    setNodes(r.nodes);
+    pushHistory({ ...cur, nodes: r.nodes });
+    return true;
   }, [pushHistory]);
 
   /**

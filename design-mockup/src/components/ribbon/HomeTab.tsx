@@ -31,9 +31,6 @@ import {
   redoIcon,
   copyIcon,
   filterIcon,
-  graphIcon,
-  agentIcon,
-  consoleIcon,
 } from "./icons";
 
 interface HomeTabProps {
@@ -56,13 +53,6 @@ interface HomeTabProps {
   onOpenLoadCombinations?: () => void;
   /** Quick filter: reduce current selection to one type only. */
   onFilterSelection?: () => void;
-  /** Toggle states for the View-group buttons. */
-  graphSplitOn?: boolean;
-  onToggleGraphSplit?: () => void;
-  agentPanelOn?: boolean;
-  onToggleAgentPanel?: () => void;
-  consoleOn?: boolean;
-  onToggleConsole?: () => void;
   /** Wired file-menu actions. */
   onNewProject?: () => void;
   onOpenProject?: () => void;
@@ -88,8 +78,7 @@ export default function HomeTab({
   onSolve, hasResults,
   onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject,
   onSaveProject, onSaveProjectAs,
-  onFilterSelection, graphSplitOn, onToggleGraphSplit,
-  agentPanelOn, onToggleAgentPanel, consoleOn, onToggleConsole,
+  onFilterSelection,
 }: HomeTabProps) {
   const { t } = useTranslation("ribbon");
   const setTool = (tool: import("../fem/femTypes").Tool) => onFemToolChange?.(tool);
@@ -365,32 +354,9 @@ export default function HomeTab({
           />
         </RibbonGroup>
 
-        {/* View — Graph / Agent / Console stacked */}
-        <RibbonGroup label={t("home.view")}>
-          <RibbonButtonStack>
-            <RibbonButton
-              icon={graphIcon}
-              label={t("home.graph")}
-              size="small"
-              active={graphSplitOn}
-              onClick={onToggleGraphSplit ?? stub("Toggle graph split (no handler)")}
-            />
-            <RibbonButton
-              icon={agentIcon}
-              label={t("home.agent")}
-              size="small"
-              active={agentPanelOn}
-              onClick={onToggleAgentPanel ?? stub("Toggle agent panel (no handler)")}
-            />
-            <RibbonButton
-              icon={consoleIcon}
-              label={t("home.console")}
-              size="small"
-              active={consoleOn}
-              onClick={onToggleConsole ?? stub("Toggle console (no handler)")}
-            />
-          </RibbonButtonStack>
-        </RibbonGroup>
+        {/* De vroegere View-groep (Grafiek / Agent / Console) is verwijderd:
+            de toggles zetten alleen App-state die nergens werd geconsumeerd —
+            er bestond geen grafiek-split-, agent- of consolepaneel. */}
       </div>
     </div>
   );

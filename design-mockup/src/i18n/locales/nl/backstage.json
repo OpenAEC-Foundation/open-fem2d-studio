@@ -46,5 +46,13 @@
     "asImageDesc": "Opslaan als PNG- of JPEG-afbeeldingsbestanden",
     "asHtml": "Exporteren als HTML",
     "asHtmlDesc": "Exporteer het document als een HTML-bestand"
+  },
+  "openPanel": {
+    "title": "Recente bestanden",
+    "browse": "Bladeren...",
+    "clearAll": "Alles wissen",
+    "noRecent": "Nog geen recente bestanden",
+    "remove": "Verwijderen",
+    "justNow": "Zojuist"
   }
 }

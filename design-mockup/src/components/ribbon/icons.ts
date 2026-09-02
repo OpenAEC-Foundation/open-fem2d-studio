@@ -136,9 +136,9 @@ export const moveIcon = `<svg fill="none" stroke="currentColor" stroke-width="2"
 export const rotateIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12a9 9 0 109-9 9 9 0 00-9 9z" stroke-dasharray="3 3"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v6h6"/></svg>`;
 export const finishIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><polyline points="8 12 11 15 16 9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-// --- View / panels (Graph, Agent, Console, Filter) ---
-export const graphIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`;
-export const agentIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`;
+// --- View / panels (Console, Filter) ---
+// graphIcon/agentIcon zijn verwijderd samen met de dode View-groep in HomeTab
+// (de toggles zetten state die nergens werd geconsumeerd).
 export const consoleIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
 export const filterIcon = `<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`;
 

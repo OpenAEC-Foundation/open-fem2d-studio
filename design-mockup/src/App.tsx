@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import TitleBar from "./components/TitleBar";
 import Ribbon from "./components/ribbon/Ribbon";
 import DocumentBar from "./components/DocumentBar";
-import StatusBar from "./components/StatusBar";
+import StatusBar, { type SolverStatus } from "./components/StatusBar";
 import Backstage from "./components/backstage/Backstage";
 import ToastHost from "./components/feedback/Toast";
 import { useRecentFiles } from "./hooks/useRecentFiles";
@@ -276,6 +276,37 @@ function App() {
     }
   }, [fem, confirmUnsavedAction, addRecentFile]);
 
+  /**
+   * Open een project via een bekend pad (recente bestanden — backstage én
+   * welkomstscherm). Zelfde route en sluitbeveiliging als Openen/Nieuw.
+   */
+  const handleOpenFilePath = useCallback(async (path: string) => {
+    if (!(await confirmUnsavedAction())) return;
+    const { readTextFile } = await import("@tauri-apps/plugin-fs");
+    const { deserializeProject } = await import("./io/projectFile");
+    const { notifyWarning, notifySuccess } = await import("./io/notify");
+    try {
+      const text = await readTextFile(path);
+      const parsed = deserializeProject(text);
+      baselineResetRef.current = true;
+      fem.loadProjectState({
+        nodes: parsed.nodes, beams: parsed.beams, supports: parsed.supports,
+        plates: parsed.plates, loads: parsed.loads,
+        loadCases: parsed.loadCases, activeLoadCaseId: parsed.activeLoadCaseId,
+        selfWeightEnabled: parsed.selfWeightEnabled,
+        nonlinearEnabled: parsed.nonlinearEnabled,
+        // v2-velden; undefined bij v1-bestanden → store-defaults.
+        combinations: combinationsFromFile(parsed.combinations),
+        structuralGrid: parsed.structuralGrid,
+      });
+      setProjectPath(path);
+      addRecentFile(path);
+      notifySuccess("Project geopend", path.split(/[\\/]/).pop());
+    } catch (e) {
+      notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
+    }
+  }, [fem, confirmUnsavedAction, addRecentFile]);
+
   // Bestand → Nieuw: direct een LEEG project (geen confirm, geen reload,
   // geen demo-model). Standaard belastinggevallen blijven beschikbaar zodat
   // de tab-bar en de solver-flow meteen bruikbaar zijn; undo-history wordt
@@ -301,6 +332,10 @@ function App() {
   }, [fem, setActiveView, confirmUnsavedAction]);
 
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
+  // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
+  const [solverStatus, setSolverStatus] = useState<SolverStatus>({ kind: "ready" });
+  // Actuele canvas-zoom in % (gemeld door FemCanvas) — getoond in de StatusBar.
+  const [zoomPct, setZoomPct] = useState(100);
 
   // HTML-rapport export — altijd werkend (browser + Tauri). Kiest het actieve
   // resultaat: combinatie indien geselecteerd, anders single-LC solverResult.
@@ -339,6 +374,8 @@ function App() {
     fem.setActiveCombinationId(null);
     // Normtoetsingsresultaten horen bij het oude model → wissen.
     checkClear();
+    // Model gewijzigd → oude berekening telt niet meer, status terug naar Gereed.
+    setSolverStatus({ kind: "ready" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.loads]);
 
@@ -356,10 +393,6 @@ function App() {
   const [grid, setGrid] = useState<GridSettings>(DEFAULT_GRID);
   const [gridsOpen, setGridsOpen] = useState(false);
   const [loadCasesOpen, setLoadCasesOpen] = useState(false);
-  // HomeTab view-toggles
-  const [graphSplitOn, setGraphSplitOn] = useState(false);
-  const [agentPanelOn, setAgentPanelOn] = useState(false);
-  const [consoleOn, setConsoleOn] = useState(false);
   // Check-tab state.
   const [activeCode, setActiveCode] = useState<"EN1993" | "EN1995" | "EN1992">("EN1993");
   const [autoRunCheck, setAutoRunCheck] = useState(false);
@@ -532,6 +565,8 @@ function App() {
     fem.setSelection(null);
     // Multi-LC pipeline zodat Combinaties + Envelope direct bruikbaar zijn.
     const outputs = computeAndStoreSolverOutputs();
+    // Solverstatus voor de StatusBar: gelukt → tijdstip; mislukt → Fout.
+    setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
     // Auto-uitvoeren: normtoetsing meteen achter de berekening aan (zonder
     // van weergave te wisselen — de gebruiker kijkt naar de canvas).
     if (autoRunCheck && outputs && isTauriApp()) {
@@ -732,7 +767,15 @@ function App() {
           tool={femTool}
           onToolChange={setFemTool}
           solveTrigger={solveTrigger}
-          onSolveResult={setSolverResult}
+          onSolveResult={(r) => {
+            setSolverResult(r);
+            // Single-LC solve geslaagd → de canvas toont resultaten, dus de
+            // StatusBar meldt "Berekend om ..." — ook als de multi-LC-pipeline
+            // (combinaties/envelope) faalde. r === null laat de status met
+            // rust: invalidatie zet hem al op "Gereed", een solve-fout op
+            // "Fout" (via handleSolve).
+            if (r) setSolverStatus({ kind: "solved", at: Date.now() });
+          }}
           nodes={fem.nodes}
           beams={fem.beams}
           supports={fem.supports}
@@ -768,6 +811,7 @@ function App() {
           displayFlags={displayFlags}
           setDisplayFlags={setDisplayFlags}
           resultsMode={resultsTabActive}
+          onZoomChange={setZoomPct}
         />;
     }
   };
@@ -778,6 +822,11 @@ function App() {
         onSettingsClick={() => setSettingsOpen(true)}
         onFeedbackClick={() => setFeedbackOpen(true)}
         onSaveClick={() => { void handleSaveProject(); }}
+        onUndoClick={fem.undo}
+        onRedoClick={fem.redo}
+        canUndo={fem.canUndo}
+        canRedo={fem.canRedo}
+        onPrintClick={() => setActiveView("report")}
       />
       <ToastHost />
       <Ribbon
@@ -815,9 +864,6 @@ function App() {
             else if (sel.plateIds.length > 0)  fem.setSelection({ type: "plate", id: sel.plateIds[0] } as any);
           }
         }}
-        graphSplitOn={graphSplitOn}     onToggleGraphSplit={() => setGraphSplitOn(v => !v)}
-        agentPanelOn={agentPanelOn}     onToggleAgentPanel={() => setAgentPanelOn(v => !v)}
-        consoleOn={consoleOn}           onToggleConsole={() => setConsoleOn(v => !v)}
         onRunMemberChecks={() => { void handleRunMemberChecks(); }}
         checksRunning={checksRunning}
         onOpenCheckPanel={() => setActiveView(activeView === "check" ? "default" : "check")}
@@ -1008,40 +1054,18 @@ function App() {
           }}
         />
       )}
-      <StatusBar />
+      <StatusBar
+        nodeCount={fem.nodes.length}
+        beamCount={fem.beams.length}
+        loadCount={fem.loads.length}
+        zoomPct={activeView === "default" ? zoomPct : undefined}
+        solverStatus={solverStatus}
+      />
       <Backstage
         open={backstageOpen}
         onClose={() => setBackstageOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenFile={async (path) => {
-          // C2: zelfde sluitbeveiliging als bij Openen/Nieuw — eerst vragen
-          // bij niet-opgeslagen wijzigingen.
-          if (!(await confirmUnsavedAction())) return;
-          const { readTextFile } = await import("@tauri-apps/plugin-fs");
-          const { deserializeProject } = await import("./io/projectFile");
-          const { notifyWarning, notifySuccess } = await import("./io/notify");
-          try {
-            const text = await readTextFile(path);
-            const parsed = deserializeProject(text);
-            baselineResetRef.current = true;
-            fem.loadProjectState({
-              nodes: parsed.nodes, beams: parsed.beams, supports: parsed.supports,
-              plates: parsed.plates, loads: parsed.loads,
-              loadCases: parsed.loadCases, activeLoadCaseId: parsed.activeLoadCaseId,
-              selfWeightEnabled: parsed.selfWeightEnabled,
-              nonlinearEnabled: parsed.nonlinearEnabled,
-              // v2-velden; undefined bij v1-bestanden → store-defaults.
-              combinations: combinationsFromFile(parsed.combinations),
-              structuralGrid: parsed.structuralGrid,
-            });
-            setProjectPath(path);
-            addRecentFile(path);
-            notifySuccess("Project geopend", path.split(/[\\/]/).pop());
-            setBackstageOpen(false);
-          } catch (e) {
-            notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
-          }
-        }}
+        onOpenFile={(path) => { void handleOpenFilePath(path); }}
         onNew={() => { void handleNewProject(); }}
         onOpen={() => { void handleOpenProject(); }}
         onSave={() => { void handleSaveProject(); }}
@@ -1066,9 +1090,9 @@ function App() {
       {welcomeOpen && (
         <WelcomeScreen
           onClose={() => setWelcomeOpen(false)}
-          onNewProject={() => setProjectSettingsOpen(true)}
-          onOpenProject={() => setBackstageOpen(true)}
-          onOpenFile={(path) => console.log("Open file:", path)}
+          onNewProject={() => { void handleNewProject(); }}
+          onOpenProject={() => { void handleOpenProject(); }}
+          onOpenFile={(path) => { void handleOpenFilePath(path); }}
         />
       )}
       {/* Grids dialog — right-docked sheet, controls grid show/hide/spacing + stramien */}

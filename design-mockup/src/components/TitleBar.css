@@ -152,6 +152,11 @@
   border-color: var(--theme-ribbon-btn-active-border);
 }
 
+.titlebar-quick-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* Send Feedback Button */
 .send-feedback-btn {
   background: none;

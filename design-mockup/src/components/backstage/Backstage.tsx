@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useRecentFiles, type RecentFile } from "../../hooks/useRecentFiles";
+import { fetchAppVersion } from "../../lib/appVersion";
 import ExtensionManagerPanel from "./ExtensionManagerPanel";
 import "./Backstage.css";
 
@@ -125,12 +126,15 @@ export default function Backstage({ open, onClose, onOpenSettings, onOpenFile,
             shortcut="Ctrl+N"
             onClick={() => actionAndClose(onNew)}
           />
+          {/* Openen toont het panel met recente bestanden + Bladeren-knop
+              (Office-backstage-patroon). Voorheen was het panel onbereikbaar
+              zodra onOpen gewired was: de klik opende dan direct de dialoog. */}
           <MenuItem
             icon={ICONS.open}
             label={t("open")}
             shortcut="Ctrl+O"
             active={activePanel === "open"}
-            onClick={() => onOpen ? actionAndClose(onOpen) : setActivePanel("open")}
+            onClick={() => setActivePanel("open")}
           />
           <MenuItem
             icon={ICONS.save}
@@ -209,6 +213,7 @@ export default function Backstage({ open, onClose, onOpenSettings, onOpenFile,
               onOpenFile={(path) => { onClose(); onOpenFile?.(path); }}
               onRemoveFile={removeRecentFile}
               onClearAll={clearRecentFiles}
+              onBrowse={onOpen ? () => actionAndClose(onOpen) : undefined}
             />
           )}
           {activePanel === "about" && <AboutPanel />}
@@ -225,6 +230,12 @@ export default function Backstage({ open, onClose, onOpenSettings, onOpenFile,
 
 function AboutPanel() {
   const { t } = useTranslation("backstage");
+  // App-versie uit dezelfde bron als TitleBar/StatusBar (Tauri getVersion,
+  // met package.json-fallback in de browser) — geen hardcoded versienummer.
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    fetchAppVersion().then(setVersion).catch(() => setVersion(""));
+  }, []);
 
   const openExternal = (url: string) => async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -266,7 +277,7 @@ function AboutPanel() {
         </div>
         <div className="bs-about-app-info">
           <h1 className="bs-about-app-name">{t("aboutPanel.appName")}</h1>
-          <p className="bs-about-version">{t("aboutPanel.version")} 0.1.0</p>
+          <p className="bs-about-version">{t("aboutPanel.version")}{version ? ` ${version}` : ""}</p>
         </div>
       </div>
       <p className="bs-about-tagline">{t("aboutPanel.tagline")}</p>
@@ -352,11 +363,14 @@ function OpenPanel({
   onOpenFile,
   onRemoveFile,
   onClearAll,
+  onBrowse,
 }: {
   recentFiles: RecentFile[];
   onOpenFile: (path: string) => void;
   onRemoveFile: (path: string) => void;
   onClearAll: () => void;
+  /** Opent de native bestandsdialoog (Bestand → Openen-route uit App.tsx). */
+  onBrowse?: () => void;
 }) {
   const { t } = useTranslation("backstage");
 
@@ -389,6 +403,31 @@ function OpenPanel({
 
   return (
     <div className="bs-export-panel">
+      {onBrowse && (
+        <button
+          className="bs-open-browse-btn"
+          onClick={onBrowse}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 20,
+            padding: "10px 16px",
+            borderRadius: 6,
+            border: "1px solid var(--theme-accent)",
+            background: "var(--theme-accent)",
+            color: "var(--theme-accent-text, #fff)",
+            cursor: "pointer",
+            fontSize: "0.9rem",
+            fontWeight: 500,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+          </svg>
+          {t("openPanel.browse", "Bladeren...")}
+        </button>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <h2 className="bs-export-title" style={{ margin: 0 }}>{t("openPanel.title", "Recent Files")}</h2>
         {recentFiles.length > 0 && (

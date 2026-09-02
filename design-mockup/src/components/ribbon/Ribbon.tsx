@@ -57,14 +57,7 @@ interface RibbonProps {
   autoRunEnabled?: boolean;
   onToggleAutoRun?: () => void;
   onExportCheck?: () => void;
-  // ── HomeTab view-toggles ───────────────────────────────────────────────
   onFilterSelection?: () => void;
-  graphSplitOn?: boolean;
-  onToggleGraphSplit?: () => void;
-  agentPanelOn?: boolean;
-  onToggleAgentPanel?: () => void;
-  consoleOn?: boolean;
-  onToggleConsole?: () => void;
   /** Export standalone HTML report (browser + Tauri). */
   onExportHtml?: () => void;
   /** File-menu actions (Home tab + Backstage). */
@@ -86,7 +79,7 @@ const TABS = ["home", "table", "settings", "insights", "ifc", "check", "report"]
 type TabId = (typeof TABS)[number];
 
 export default function Ribbon({
-  onFileTabClick, onSettingsClick, onProjectSettingsClick, onViewChange,
+  onFileTabClick, onSettingsClick, onProjectSettingsClick, activeView, onViewChange,
   femTool, onFemToolChange, onSolve, onShowEnvelope, hasEnvelope, hasResults,
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onOpenLoadCases, onOpenLoadCombinations, onNewProject, onOpenProject,
@@ -95,8 +88,7 @@ export default function Ribbon({
   onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
   activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
   autoRunEnabled, onToggleAutoRun, onExportCheck,
-  onFilterSelection, graphSplitOn, onToggleGraphSplit,
-  agentPanelOn, onToggleAgentPanel, consoleOn, onToggleConsole,
+  onFilterSelection,
   onExportHtml,
 }: RibbonProps) {
   const { t, i18n } = useTranslation("ribbon");
@@ -155,6 +147,21 @@ export default function Ribbon({
     else onViewChange("default");
   }, [activeTab, onViewChange]);
 
+  // Houd de ribbon-tab in sync wanneer App de hoofdview programmatisch
+  // wisselt (bv. TitleBar-Afdrukken → rapportweergave). Alleen voor views
+  // die 1-op-1 bij een tab horen; "default" hoort bij meerdere tabs
+  // (Start/Tabel/Instellingen) en blijft daarom ongemoeid.
+  useEffect(() => {
+    if (
+      (activeView === "report" || activeView === "ifc" ||
+       activeView === "insights" || activeView === "check") &&
+      activeTab !== activeView
+    ) {
+      switchTab(activeView as TabId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView]);
+
   useEffect(() => {
     updateHighlight();
     requestAnimationFrame(updateHighlight);
@@ -193,9 +200,6 @@ export default function Ribbon({
           onOpenLoadCases={onOpenLoadCases}
           onOpenLoadCombinations={onOpenLoadCombinations}
           onFilterSelection={onFilterSelection}
-          graphSplitOn={graphSplitOn} onToggleGraphSplit={onToggleGraphSplit}
-          agentPanelOn={agentPanelOn} onToggleAgentPanel={onToggleAgentPanel}
-          consoleOn={consoleOn} onToggleConsole={onToggleConsole}
           onNewProject={onNewProject}
           onOpenProject={onOpenProject}
           onSaveProject={onSaveProject}

@@ -38,6 +38,7 @@ import type {
   ViewTransform, GridSettings, SupportType, StructuralGrid,
 } from "./femTypes";
 import InlinePopover from "../openaec/InlinePopover";
+import { notifyWarning } from "../../io/notify";
 
 // Re-export Tool so older imports (Ribbon, HomeTab) keep working.
 export type { Tool } from "./femTypes";
@@ -66,10 +67,12 @@ interface FemCanvasProps {
   addLoad: (l: Omit<Load, "id">) => void;
   deleteSelected: () => void;
   splitBeamAt: (beamId: number, x: number, z: number) => void;
-  translateSelection: (sel: Selection, dx: number, dz: number) => void;
-  copySelection: (sel: Selection, dx: number, dz: number) => void;
-  rotateSelection: (sel: Selection, cx: number, cz: number, angleRad: number) => void;
-  mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => void;
+  // Transformaties (multi-bewust). `false` = selectie bevat niets
+  // transformeerbaars → canvas toont feedback i.p.v. een stille no-op.
+  translateSelection: (sel: Selection, dx: number, dz: number) => boolean;
+  copySelection: (sel: Selection, dx: number, dz: number) => boolean;
+  rotateSelection: (sel: Selection, cx: number, cz: number, angleRad: number) => boolean;
+  mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => boolean;
 
   // View settings
   grid: GridSettings;
@@ -101,6 +104,8 @@ interface FemCanvasProps {
   resultsMode?: boolean;
   /** Request the matching field in LoadProperties to auto-focus. */
   setPendingLoadFocus?: (v: { loadId: number; field: keyof Load } | null) => void;
+  /** Meldt de actuele zoom (in %, 100 = default) aan de parent — StatusBar. */
+  onZoomChange?: (pct: number) => void;
 }
 
 // World ↔ screen constants
@@ -126,6 +131,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     showLoads = true,
     resultsMode = false,
     setPendingLoadFocus,
+    onZoomChange,
   } = props;
   // updateNode is consumed by FemProperties — accept the prop but suppress unused-var lint
   void props.updateNode;
@@ -164,6 +170,10 @@ export default function FemCanvas(props: FemCanvasProps) {
   const [view, setView] = useState<ViewTransform>({
     scale: DEFAULT_SCALE, offsetX: 0, offsetY: 0,
   });
+  // Zoom-percentage omhoog melden (StatusBar toont de echte canvas-zoom).
+  useEffect(() => {
+    onZoomChange?.(Math.round((view.scale / DEFAULT_SCALE) * 100));
+  }, [view.scale, onZoomChange]);
   // Auto-fit het model ÉÉN keer bij het openen van de canvas, zodra we
   // zowel canvas-size als nodes hebben. Daarna respecteer user pan/zoom.
   const initialFitDoneRef = useRef(false);
@@ -502,25 +512,14 @@ export default function FemCanvas(props: FemCanvasProps) {
   /** Apply current rotate delta + commit to store. */
   const commitRotate = useCallback(() => {
     if (!rotateMode) return;
-    if (rotateMode.deltaRad !== 0 && translateNodes) {
-      // Rotate by applying (newX, newZ) per node — bypass translateNodes since
-      // it only does pure translation. Compute per-node delta and call once.
-      const cs = Math.cos(rotateMode.deltaRad), sn = Math.sin(rotateMode.deltaRad);
-      const cx = rotateMode.centroidModel.x, cz = rotateMode.centroidModel.z;
-      // Build a temporary translation map: dx_i = newX_i − origX_i.
-      // Apply individually via translateSelection? We only have a bulk translate.
-      // Workaround: pretend each node is its own selection. Cheaper: directly
-      // mutate using updateNode? — but updateNode pushes a snapshot per call.
-      // We'll use rotateSelection from the store (existing path) by treating
-      // current selection. That's already wired to undo.
-      if (selection) {
-        rotateSelection(selection, cx, cz, rotateMode.deltaRad);
-      }
-      // Use cs/sn to satisfy linter (already used implicitly above)
-      void cs; void sn;
+    if (rotateMode.deltaRad !== 0 && selection) {
+      // rotateSelection is multi-bewust en pusht één undo-snapshot.
+      rotateSelection(selection,
+        rotateMode.centroidModel.x, rotateMode.centroidModel.z,
+        rotateMode.deltaRad);
     }
     setRotateMode(null);
-  }, [rotateMode, translateNodes, selection, rotateSelection]);
+  }, [rotateMode, selection, rotateSelection]);
   const cancelRotate = useCallback(() => setRotateMode(null), []);
 
   // ── Mouse handlers ──────────────────────────────────────────────────────
@@ -888,8 +887,13 @@ export default function FemCanvas(props: FemCanvasProps) {
     // Transform tools (move/copy/rotate/mirror) — 2-click interaction
     if (tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") {
       if (!selection) {
-        // First time using a transform — require a selection
-        if (overNodeId !== null) setSelection({ type: "node", id: overNodeId });
+        // Eerste gebruik zonder selectie: klik op knoop/staaf selecteert die;
+        // klik in het niets geeft feedback i.p.v. een stille no-op.
+        if (overNodeId !== null) { setSelection({ type: "node", id: overNodeId }); return; }
+        const sb = findSnapBeam(sx, sy);
+        if (sb) { setSelection({ type: "beam", id: sb.beamId }); return; }
+        notifyWarning("Geen selectie",
+          "Selecteer eerst één of meer knopen, staven of platen — klik erop of sleep een selectiekader.");
         return;
       }
       if (!hoverModel) return;
@@ -900,19 +904,26 @@ export default function FemCanvas(props: FemCanvasProps) {
         // Second click: apply transform
         const a = transformAnchor;
         const b = hoverModel;
+        let ok = true;
         if (tool === "move") {
-          translateSelection(selection, b.x - a.x, b.z - a.z);
+          ok = translateSelection(selection, b.x - a.x, b.z - a.z);
         } else if (tool === "copy") {
-          copySelection(selection, b.x - a.x, b.z - a.z);
+          ok = copySelection(selection, b.x - a.x, b.z - a.z);
         } else if (tool === "rotate") {
           // Snap angle to 15°
           const angle0 = 0; // default reference axis +x
           const angle = Math.atan2(b.z - a.z, b.x - a.x) - angle0;
           const step = (15 * Math.PI / 180);
           const snapped = Math.round(angle / step) * step;
-          rotateSelection(selection, a.x, a.z, snapped);
+          ok = rotateSelection(selection, a.x, a.z, snapped);
         } else if (tool === "mirror") {
-          mirrorSelection(selection, a.x, a.z, b.x, b.z);
+          ok = mirrorSelection(selection, a.x, a.z, b.x, b.z);
+        }
+        if (!ok) {
+          notifyWarning("Transformatie niet uitgevoerd",
+            tool === "mirror"
+              ? "De selectie bevat geen knopen, staven of platen — of de spiegelas heeft geen lengte."
+              : "De selectie bevat geen knopen, staven of platen.");
         }
         setTransformAnchor(null);
       }
@@ -1036,8 +1047,10 @@ export default function FemCanvas(props: FemCanvasProps) {
         if ((e.key === "d" || e.key === "D") && selection) {
           // Blender-style: duplicate + enter grab.
           e.preventDefault();
-          if (selection.type === "node" || selection.type === "beam" || selection.type === "plate") {
-            copySelection(selection, 0, 0);
+          // copySelection is multi-bewust; false = niets kopieerbaars.
+          if (!copySelection(selection, 0, 0)) {
+            notifyWarning("Niets te dupliceren",
+              "De selectie bevat geen knopen, staven of platen.");
           }
           // We don't auto-grab the new copy yet (would need access to the new
           // ids); user can re-grab manually. Mockup shortcut.
@@ -2380,8 +2393,10 @@ export default function FemCanvas(props: FemCanvasProps) {
           </button>
           <button onClick={() => {
             setContextMenu(null);
-            if (selection && (selection.type === "node" || selection.type === "beam" || selection.type === "plate")) {
-              copySelection(selection, 500, 0); // small offset visible by default
+            // copySelection is multi-bewust; kleine offset zodat de kopie zichtbaar is.
+            if (selection && !copySelection(selection, 500, 0)) {
+              notifyWarning("Niets te dupliceren",
+                "De selectie bevat geen knopen, staven of platen.");
             }
           }}>
             Dupliceer

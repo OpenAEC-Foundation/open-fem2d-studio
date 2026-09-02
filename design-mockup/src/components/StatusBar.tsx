@@ -1,8 +1,55 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { fetchAppVersion } from "../lib/appVersion";
 import "./StatusBar.css";
 
-export default function StatusBar() {
+/** Solverstatus zoals App.tsx hem bijhoudt. */
+export type SolverStatus =
+  | { kind: "ready" }
+  | { kind: "solved"; at: number }
+  | { kind: "error" };
+
+interface StatusBarProps {
+  /** Werkelijke modeltellingen — weggelaten (DetachedApp) = niet getoond. */
+  nodeCount?: number;
+  beamCount?: number;
+  loadCount?: number;
+  /** Actuele canvas-zoom in % — weggelaten = niet getoond. */
+  zoomPct?: number;
+  /** Solverstatus — weggelaten = niet getoond. */
+  solverStatus?: SolverStatus;
+}
+
+export default function StatusBar({
+  nodeCount,
+  beamCount,
+  loadCount,
+  zoomPct,
+  solverStatus,
+}: StatusBarProps) {
   const { t } = useTranslation();
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    fetchAppVersion().then(setVersion).catch(() => setVersion(""));
+  }, []);
+
+  const statusLabel = (() => {
+    if (!solverStatus) return null;
+    switch (solverStatus.kind) {
+      case "solved": {
+        const time = new Date(solverStatus.at).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return t("solvedAt", { time });
+      }
+      case "error":
+        return t("solverError");
+      default:
+        return t("ready");
+    }
+  })();
 
   return (
     <div className="status-bar">
@@ -24,27 +71,48 @@ export default function StatusBar() {
             <line x1="42" y1="54" x2="58" y2="54" stroke="white" strokeWidth="1.5" />
           </svg>
         </span>
-        <div className="status-item">
-          <span className="status-item-label">{t("ready")}</span>
-        </div>
-        <div className="status-separator" />
-        <div className="status-item">
-          <span className="status-item-label">{t("items")}:</span>
-          <span className="status-item-value">0</span>
-        </div>
+        {statusLabel && (
+          <div className="status-item">
+            <span className="status-item-label">{statusLabel}</span>
+          </div>
+        )}
+        {nodeCount !== undefined && (
+          <>
+            <div className="status-separator" />
+            <div className="status-item">
+              <span className="status-item-label">{t("statusNodes")}:</span>
+              <span className="status-item-value">{nodeCount}</span>
+            </div>
+          </>
+        )}
+        {beamCount !== undefined && (
+          <div className="status-item">
+            <span className="status-item-label">{t("statusBeams")}:</span>
+            <span className="status-item-value">{beamCount}</span>
+          </div>
+        )}
+        {loadCount !== undefined && (
+          <div className="status-item">
+            <span className="status-item-label">{t("statusLoads")}:</span>
+            <span className="status-item-value">{loadCount}</span>
+          </div>
+        )}
       </div>
 
       <div className="status-bar-center">
         <span className="status-item-label" style={{ fontSize: "11px" }}>
-          {t("version")}
+          {t("appName")}
+          {version ? ` v${version}` : ""}
         </span>
       </div>
 
       <div className="status-bar-right">
-        <div className="status-item">
-          <span className="status-item-label">{t("zoom")}:</span>
-          <span className="status-item-value">100%</span>
-        </div>
+        {zoomPct !== undefined && (
+          <div className="status-item">
+            <span className="status-item-label">{t("zoom")}:</span>
+            <span className="status-item-value">{zoomPct}%</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -5,10 +5,10 @@ import Modal from "../Modal";
 import "./FeedbackDialog.css";
 
 // ── GitHub target ─────────────────────────────────────────────────────
-// Apps using this template can override these constants. Issues are
-// opened in the user's browser with a pre-filled title + body.
+// Issues worden geopend in de browser met een vooringevulde titel + body.
+// Doelrepo = deze app zelf (niet langer het style-book/template-repo).
 const GITHUB_OWNER = "OpenAEC-Foundation";
-const GITHUB_REPO = "OpenAEC-style-book";
+const GITHUB_REPO = "Open-FEM2D-Studio";
 
 async function getAppVersion(): Promise<string> {
   try {

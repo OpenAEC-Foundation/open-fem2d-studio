@@ -46,5 +46,13 @@
     "asImageDesc": "Save as PNG or JPEG image files",
     "asHtml": "Export as HTML",
     "asHtmlDesc": "Export the document as an HTML file"
+  },
+  "openPanel": {
+    "title": "Recent Files",
+    "browse": "Browse...",
+    "clearAll": "Clear all",
+    "noRecent": "No recent files yet",
+    "remove": "Remove",
+    "justNow": "Just now"
   }
 }

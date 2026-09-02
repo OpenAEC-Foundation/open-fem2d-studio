@@ -10,6 +10,8 @@ import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import type { DisplayFlags } from "./FemResultsOverlay";
+import { STEEL_GRADES } from "./BarPropertiesDialog";
+import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 
 interface TreeNodeProps {
   label: string;
@@ -291,6 +293,42 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     zSpring: "Z-Veer", xSpring: "X-Veer", rotSpring: "Rot-Veer",
   };
 
+  // ── Materialen/profielen in gebruik — afgeleid uit de staven ────────────
+  // Zelfde defaults als de solver-route (resolveSection): geen materiaal →
+  // S235, geen profiel → HEA 160. Klikken selecteert de staven die het
+  // materiaal/profiel gebruiken (multi-selectie, zoals shift-klik op canvas).
+  const materialUse = new Map<string, number[]>();
+  const profileUse = new Map<string, number[]>();
+  for (const b of beams) {
+    const mat = b.material ?? "S235";
+    if (!materialUse.has(mat)) materialUse.set(mat, []);
+    materialUse.get(mat)!.push(b.id);
+    const prof = b.profile ?? "HEA160";
+    if (!profileUse.has(prof)) profileUse.set(prof, []);
+    profileUse.get(prof)!.push(b.id);
+  }
+  const sortedMaterials = Array.from(materialUse.entries())
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  const sortedProfiles = Array.from(profileUse.entries())
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+
+  const selectBeamSet = (ids: number[]) => {
+    if (ids.length === 1) setSelection({ type: "beam", id: ids[0] });
+    else setSelection({ type: "multi", nodeIds: [], beamIds: ids, plateIds: [] });
+  };
+  const isBeamSetSelected = (ids: number[]) => {
+    if (selection?.type === "beam") return ids.length === 1 && selection.id === ids[0];
+    if (selection?.type === "multi") {
+      return (
+        selection.nodeIds.length === 0 &&
+        selection.plateIds.length === 0 &&
+        selection.beamIds.length === ids.length &&
+        ids.every((id) => selection.beamIds.includes(id))
+      );
+    }
+    return false;
+  };
+
   return (
     <div className="fem-project-tree">
       {/* Tabs */}
@@ -349,20 +387,45 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   ))}
                 </TreeNode>
               )}
-              <TreeNode label="Materialen" count={5} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>}>
-                <Leaf label="S235" />
-                <Leaf label="S275" />
-                <Leaf label="S355" />
-                <Leaf label="S420" />
-                <Leaf label="S460" />
+              <TreeNode label="Materialen" count={sortedMaterials.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>}>
+                {sortedMaterials.map(([mat, ids]) => (
+                  <Leaf
+                    key={`mat-${mat}`}
+                    label={mat}
+                    value={`${ids.length} ${ids.length === 1 ? "staaf" : "staven"}`}
+                    active={isBeamSetSelected(ids)}
+                    onClick={() => selectBeamSet(ids)}
+                  />
+                ))}
+                {sortedMaterials.length === 0 && (
+                  <div className="fem-tree-leaf" style={{ fontStyle: "italic", opacity: 0.7 }}>
+                    <span className="fem-tree-leaf-label">Geen staven in het model</span>
+                  </div>
+                )}
+                <TreeNode label="Beschikbare klassen" count={STEEL_GRADES.length + SUPPORTED_TIMBER_GRADES.length}>
+                  {STEEL_GRADES.map((g) => (
+                    <Leaf key={`avail-${g}`} label={g} value="staal" />
+                  ))}
+                  {SUPPORTED_TIMBER_GRADES.map((g) => (
+                    <Leaf key={`avail-${g}`} label={g} value="hout" />
+                  ))}
+                </TreeNode>
               </TreeNode>
-              <TreeNode label="Profielen" count={8} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 1h6M5 1v8M2 9h6" /></svg>}>
-                <Leaf label="HEA 160" />
-                <Leaf label="HEA 200" />
-                <Leaf label="HEB 160" />
-                <Leaf label="HEB 300" />
-                <Leaf label="IPE 200" />
-                <Leaf label="IPE 360" />
+              <TreeNode label="Profielen" count={sortedProfiles.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 1h6M5 1v8M2 9h6" /></svg>}>
+                {sortedProfiles.map(([prof, ids]) => (
+                  <Leaf
+                    key={`prof-${prof}`}
+                    label={prof}
+                    value={`${ids.length} ${ids.length === 1 ? "staaf" : "staven"}`}
+                    active={isBeamSetSelected(ids)}
+                    onClick={() => selectBeamSet(ids)}
+                  />
+                ))}
+                {sortedProfiles.length === 0 && (
+                  <div className="fem-tree-leaf" style={{ fontStyle: "italic", opacity: 0.7 }}>
+                    <span className="fem-tree-leaf-label">Geen staven in het model</span>
+                  </div>
+                )}
               </TreeNode>
             </TreeNode>
 
@@ -457,7 +520,8 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                 );
               })}
             </TreeNode>
-            <TreeNode label="Versies" count={0} icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6" /><path d="M8 4v4l3 2" /></svg>} />
+            {/* De "Versies"-knoop is verwijderd: er bestaat (nog) geen
+                versie-/snapshotsysteem in de app, dus de knoop was schijn-UI. */}
           </>
         ) : (
           <ResultsTab
