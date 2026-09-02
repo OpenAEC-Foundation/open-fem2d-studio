@@ -37,7 +37,16 @@ async function pickIfcFile(): Promise<void> {
   });
 }
 
-export default function IfcTab() {
+interface IfcTabProps {
+  /**
+   * Exporteert het rekenmodel als IFC4-bestand (Structural Analysis Domain,
+   * zie src/io/ifcExport.ts). Zonder prop valt de knop terug op de eerlijke
+   * comingSoon-melding.
+   */
+  onExportIfc?: () => void;
+}
+
+export default function IfcTab({ onExportIfc }: IfcTabProps) {
   const { t } = useTranslation("ribbon");
 
   return (
@@ -56,7 +65,7 @@ export default function IfcTab() {
               icon={ifcExportIcon}
               label={t("ifc.export")}
               size="small"
-              onClick={soon("IFC-export", "Genereert een geldig IFC4 bestand uit het huidige model. Vereist @thatopen IFC writer-integratie.")}
+              onClick={onExportIfc ?? soon("IFC-export", "Genereert een geldig IFC4 bestand uit het huidige model.")}
             />
             <RibbonButton
               icon={ifcExportIcon}
