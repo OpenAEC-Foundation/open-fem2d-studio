@@ -331,10 +331,36 @@ export function solveAllCases(input: MultiInput): MultiLcResult {
   const perCase = new Map<number, SolverResult>();
   for (const c of input.cases) {
     const { mesh, nodeIdMap, beamIdMap } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
+    // Een leeg belastinggeval (bijv. Q/S/W zonder ingevoerde lasten — de
+    // standaardset heeft er vier) is geen fout: overslaan. De solver gooit er
+    // anders "No loads applied" op en dat liet de hele combinatie-/toetsings-
+    // pijplijn falen; combineResults behandelt een ontbrekend geval als
+    // nulbijdrage, wat mechanisch exact klopt.
+    if (!meshHeeftLasten(mesh)) continue;
     const engineResult = solveNonlinear(mesh, { analysisType: "frame", geometricNonlinear: false });
     perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports));
   }
   return { perCase };
+}
+
+/** Heeft de opgebouwde mesh ten minste één werkzame last (knoop, verdeeld of thermisch)? */
+function meshHeeftLasten(mesh: unknown): boolean {
+  for (const node of (mesh as any).nodes.values()) {
+    const l = node.loads;
+    if (l && (l.fx !== 0 || l.fy !== 0 || (l.moment ?? 0) !== 0)) return true;
+  }
+  for (const beam of (mesh as any).beamElements.values()) {
+    const d = beam.distributedLoad;
+    if (d && (d.qx !== 0 || d.qy !== 0 || (d.qxEnd ?? 0) !== 0 || (d.qyEnd ?? 0) !== 0)) return true;
+    // Deellasten staan in de distributedLoads-array (eigen record per last).
+    const dArr = beam.distributedLoads as Array<{ qx: number; qy: number; qxEnd?: number; qyEnd?: number }> | undefined;
+    if (dArr && dArr.some(p => p.qx !== 0 || p.qy !== 0 || (p.qxEnd ?? 0) !== 0 || (p.qyEnd ?? 0) !== 0)) return true;
+    // Thermische last telt ook: een verhinderde ΔT levert normaalkracht
+    // zonder dat er knoop- of q-lasten bestaan.
+    const t = beam.thermalLoad;
+    if (t && ((t.deltaT ?? 0) !== 0 || t.deltaTTop !== undefined || t.deltaTBottom !== undefined)) return true;
+  }
+  return false;
 }
 
 // ── 2e-orde (P-Δ) per belastingcombinatie ──────────────────────────────────
@@ -402,25 +428,7 @@ export function solveCombinationSecondOrder(
   );
 
   // Geen geactiveerde lasten in deze combinatie? → aanroeper superponeert (nul).
-  let hasLoads = false;
-  for (const node of (mesh as any).nodes.values()) {
-    const l = node.loads;
-    if (l && (l.fx !== 0 || l.fy !== 0 || (l.moment ?? 0) !== 0)) { hasLoads = true; break; }
-  }
-  if (!hasLoads) {
-    for (const beam of (mesh as any).beamElements.values()) {
-      const d = beam.distributedLoad;
-      if (d && (d.qx !== 0 || d.qy !== 0 || (d.qxEnd ?? 0) !== 0 || (d.qyEnd ?? 0) !== 0)) { hasLoads = true; break; }
-      // Deellasten staan in de distributedLoads-array (eigen record per last).
-      const dArr = beam.distributedLoads as Array<{ qx: number; qy: number; qxEnd?: number; qyEnd?: number }> | undefined;
-      if (dArr && dArr.some(p => p.qx !== 0 || p.qy !== 0 || (p.qxEnd ?? 0) !== 0 || (p.qyEnd ?? 0) !== 0)) { hasLoads = true; break; }
-      // Thermische last telt ook: een verhinderde ΔT levert normaalkracht
-      // (en dus K_G-effect) zonder dat er knoop- of q-lasten bestaan.
-      const t = beam.thermalLoad;
-      if (t && ((t.deltaT ?? 0) !== 0 || t.deltaTTop !== undefined || t.deltaTBottom !== undefined)) { hasLoads = true; break; }
-    }
-  }
-  if (!hasLoads) return null;
+  if (!meshHeeftLasten(mesh)) return null;
 
   try {
     const engineResult = solveNonlinear(mesh, {
