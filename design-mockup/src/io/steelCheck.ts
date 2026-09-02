@@ -1,102 +1,86 @@
 /**
- * steelCheck.ts — minimaal EN 1993-1-1 unity check (class 1 plastische
- * doorsnede, geen instabiliteit). Voor v2 MVP: enkel een eerste-orde-toetsing
- * per balk op buigmoment + normaalkracht via |M|/Mpl,Rd + |N|/Npl,Rd ≤ 1.
+ * steelCheck.ts — export van de normtoetsing naar CSV.
  *
- * Volledige toetsing (kniklengtes, LTB, 6.3.x interactie, klassen-bepaling)
- * is een groter traject dat in v1 in Rust zat — niet in scope voor MVP.
- * Deze module geeft wel een werkende UC-export zodat de Check-tab betekenis
- * heeft + de gebruiker de orde van grootte kan zien.
+ * Hier stond ooit een vereenvoudigde eigen toetsing (|N|/Npl + |M|/Mpl, geen
+ * klassen, geen stabiliteit) die naast de echte toetsing meeliep. Die is
+ * weg: de toetsing komt uit de Rust-kern (EN 1993-1-1 met de Nederlandse
+ * nationale bijlage, en EN 1995-1-1 voor hout) en staat in de check-store.
+ * Twee toetsingen naast elkaar betekende dat het rapport een andere unity
+ * check kon tonen dan het toetsingspaneel, en de vereenvoudigde variant
+ * werkte bovendien op een verouderde profieltabel van 45 profielen die
+ * alles wat zij niet kende stilzwijgend als HEA 160 doorrekende.
  */
-import type { Beam } from "../components/fem/femTypes";
-import type { SolverResult } from "../components/fem/solver/types";
-import { PROFILE_AREA_CM2, PROFILE_WPL_Y_CM3, STEEL_FY } from "../components/fem/profileData";
+import { isSteelCheckResult, type CheckSkip, type MemberCheckResult } from "../lib/checkTypes";
 
-export interface CheckResult {
-  beamId: number;
-  profile?: string;
-  N_Ed: number;        // N
-  M_Ed: number;        // N·mm — max |M(x)| over alle stations
-  Npl_Rd: number;      // N
-  Mpl_Rd: number;      // N·mm
-  uc_N: number;        // |N_Ed| / Npl_Rd
-  uc_M: number;        // |M_Ed| / Mpl_Rd
-  uc_combined: number; // uc_N + uc_M  (simpele lineaire interactie, 6.2.1)
-  pass: boolean;
+/** Nederlandse notatie: decimaalkomma, vaste precisie. */
+function getal(v: number, cijfers = 3): string {
+  return v.toFixed(cijfers).replace(".", ",");
+}
+
+/** Veld dat het scheidingsteken of een aanhalingsteken bevat, veilig maken. */
+function veld(s: string): string {
+  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /**
- * Run de minimale UC-check op alle beams in `result`.
- * fy default 235 N/mm² (S235). γM0 default 1.0.
+ * Exporteer de toetsingsresultaten als CSV: één regel per toets, niet per
+ * staaf, zodat ook de niet-maatgevende toetsen na te lopen zijn. Overgeslagen
+ * staven komen er onderaan bij met hun reden — een staaf die stil uit de
+ * export verdwijnt, leest als "getoetst en goed".
+ *
+ * Puntkomma als scheidingsteken en decimaalkomma: dat opent in een
+ * Nederlandse Excel zonder importstappen.
  */
-export function runMinimalSteelCheck(
-  beams: Beam[],
-  result: SolverResult,
-  gammaM0 = 1.0,
-): CheckResult[] {
-  const out: CheckResult[] = [];
-  for (const b of beams) {
-    const ef = result.elements.get(b.id);
-    if (!ef) continue;
+export function exportCheckResultsCsv(
+  results: MemberCheckResult[],
+  skipped: CheckSkip[] = [],
+): void {
+  const regels: string[] = ["sep=;"];
+  regels.push(
+    [
+      "Staaf", "Doorsnede", "Materiaal", "Norm", "Toets", "Artikel",
+      "Ed", "Rd", "UC", "Status", "Maatgevend",
+    ].join(";"),
+  );
 
-    const profile = b.profile ?? "HEA160";
-    const grade   = b.material ?? "S235";
-    const A_cm2   = PROFILE_AREA_CM2[profile]   ?? PROFILE_AREA_CM2.HEA160;
-    const Wpl_cm3 = PROFILE_WPL_Y_CM3[profile]  ?? PROFILE_WPL_Y_CM3.HEA160;
-    const fy_Nmm2 = STEEL_FY[grade]             ?? 235;
-
-    const A_mm2  = A_cm2 * 100;          // cm² → mm²
-    const Wpl_mm3 = Wpl_cm3 * 1000;      // cm³ → mm³
-
-    const Npl_Rd = A_mm2 * fy_Nmm2 / gammaM0;
-    const Mpl_Rd = Wpl_mm3 * fy_Nmm2 / gammaM0;
-
-    // Max |M(x)| uit stations; fallback naar M_start/M_end.
-    let Mmax = Math.max(Math.abs(ef.M_start), Math.abs(ef.M_end));
-    if (ef.bendingMoment?.length) {
-      for (const m of ef.bendingMoment) if (Math.abs(m) > Mmax) Mmax = Math.abs(m);
+  for (const r of results) {
+    const staal = isSteelCheckResult(r);
+    const doorsnede = staal ? r.profile_name : r.section_name;
+    const materiaal = staal ? r.steel_grade : r.strength_class;
+    const norm = staal ? "EN 1993-1-1" : "EN 1995-1-1";
+    for (const named of r.checks) {
+      const d = named.kind.data;
+      regels.push(
+        [
+          String(r.beam_id),
+          veld(doorsnede),
+          veld(materiaal),
+          norm,
+          veld(d.title),
+          veld(d.article),
+          d.uc ? getal(d.uc.ed) : "",
+          d.uc ? getal(d.uc.rd) : "",
+          d.uc ? getal(d.uc.uc, 4) : "",
+          String(d.status),
+          named.id === r.governing_check_id ? "ja" : "",
+        ].join(";"),
+      );
     }
-
-    const uc_N = Math.abs(ef.N) / Npl_Rd;
-    const uc_M = Mmax / Mpl_Rd;
-    const uc_combined = uc_N + uc_M;
-
-    out.push({
-      beamId: b.id,
-      profile,
-      N_Ed: ef.N,
-      M_Ed: Mmax,
-      Npl_Rd, Mpl_Rd,
-      uc_N, uc_M, uc_combined,
-      pass: uc_combined <= 1.0,
-    });
   }
-  return out;
-}
 
-/** Export check results as CSV (downloads via Blob). */
-export function exportCheckResultsCsv(rows: CheckResult[]): void {
-  const header = "Beam,Profile,N_Ed [kN],|M|_max [kNm],N_pl,Rd [kN],M_pl,Rd [kNm],UC_N,UC_M,UC_combined,Status";
-  const lines = [header];
-  for (const r of rows) {
-    lines.push([
-      r.beamId,
-      r.profile ?? "—",
-      (r.N_Ed / 1000).toFixed(3),
-      (r.M_Ed / 1e6).toFixed(3),
-      (r.Npl_Rd / 1000).toFixed(3),
-      (r.Mpl_Rd / 1e6).toFixed(3),
-      r.uc_N.toFixed(4),
-      r.uc_M.toFixed(4),
-      r.uc_combined.toFixed(4),
-      r.pass ? "OK" : "NOT OK",
-    ].join(","));
+  if (skipped.length > 0) {
+    regels.push("");
+    regels.push(["Staaf", "Niet getoetst — reden"].join(";"));
+    for (const s of skipped) {
+      regels.push([String(s.beamId), veld(s.reason)].join(";"));
+    }
   }
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `steel-check-${rows.length}beams.csv`;
+
+  const blob = new Blob([regels.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `toetsing-${results.length}staven.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -168,6 +168,11 @@ function App() {
   const checkRun = useCheckStore((s) => s.run);
   const checksRunning = useCheckStore((s) => s.isRunning);
   const checkClear = useCheckStore((s) => s.clear);
+  // Toetsingsuitkomst voor de CSV-export en het losse HTML-rapport: exact
+  // wat het toetsingspaneel toont, zodat er nooit twee verschillende unity
+  // checks voor hetzelfde model in omloop zijn.
+  const checkResults = useCheckStore((s) => s.results);
+  const checkSkipped = useCheckStore((s) => s.skipped);
   // R5 — losgekoppeld rapportvenster ("Naast je scherm").
   const { createDetachedWindow } = useWindowManager();
   const { t: tRibbon } = useTranslation("ribbon");
@@ -484,8 +489,9 @@ function App() {
       loadCases: fem.loadCases,
       result,
       scopeName,
+      checks: checkResults,
     });
-  }, [fem, solverResult, projectPath]);
+  }, [fem, solverResult, projectPath, checkResults]);
   // IFC4-export van het rekenmodel (Structural Analysis Domain) — bouwt het
   // bestand in de browser en start direct een download; projectnaam uit het
   // geopende bestandspad of "Naamloos project" zonder pad.
@@ -1242,17 +1248,18 @@ function App() {
           if (next) setDisplayFlags(f => ({ ...f, M: true, V: true, N: true, deflection: true, reactions: true }));
         }}
         onExportCheck={async () => {
-          const { runMinimalSteelCheck, exportCheckResultsCsv } = await import("./io/steelCheck");
-          // Pick scope: active combination > envelope > active LC > single-LC result
-          let r: SolverResult | null = solverResult;
-          if (fem.activeCombinationId != null && fem.combinationResults)
-            r = fem.combinationResults.get(fem.activeCombinationId) ?? r;
-          if (!r) {
-            alert("Voer eerst Berekenen uit voordat je een Check exporteert.");
+          // Exporteert de toetsing zoals die in het paneel staat — dezelfde
+          // Rust-uitkomst, geen tweede berekening met eigen aannames.
+          const { exportCheckResultsCsv } = await import("./io/steelCheck");
+          const { notifyInfo } = await import("./io/notify");
+          if (checkResults.length === 0) {
+            notifyInfo(
+              "Nog geen toetsing",
+              "Reken het model eerst door; de normtoetsing loopt dan mee en is daarna te exporteren.",
+            );
             return;
           }
-          const rows = runMinimalSteelCheck(fem.beams, r);
-          exportCheckResultsCsv(rows);
+          exportCheckResultsCsv(checkResults, checkSkipped);
         }}
         onShowInsightsMode={(m) => { setInsightsMode(m); setActiveView("insights"); }}
         onExportMatrixCsv={async () => {

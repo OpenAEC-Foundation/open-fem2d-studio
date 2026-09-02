@@ -5,11 +5,17 @@
  *
  * Secties: projectinfo, model-overzicht (knopen/staven/opleggingen),
  * belastingen per geval, reacties, element-krachten (N/V/M per staaf),
- * en de minimale EN 1993-toetsing indien resultaten beschikbaar zijn.
+ * en de normtoetsing indien die is uitgevoerd.
+ *
+ * Dit rapport rekent zelf niets. De toetsingsresultaten komen uit de
+ * check-store (Rust-kern, EN 1993-1-1 met de Nederlandse nationale bijlage
+ * en EN 1995-1-1) en worden meegegeven. Eerder stond hier een eigen
+ * vereenvoudigde toetsing, waardoor dit rapport een andere unity check kon
+ * tonen dan het toetsingspaneel.
  */
 import type { Node, Beam, Support, Load, LoadCase } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
-import { runMinimalSteelCheck } from "./steelCheck";
+import { isSteelCheckResult, type MemberCheckResult } from "../lib/checkTypes";
 
 interface ReportInput {
   projectName?: string;
@@ -22,6 +28,16 @@ interface ReportInput {
   result: SolverResult | null;
   /** Naam van actieve scope, bv. "ULS 6.10b" of "Eigen gewicht". */
   scopeName?: string;
+  /** Toetsingsresultaten uit de check-store; leeg = niet getoetst. */
+  checks?: MemberCheckResult[];
+}
+
+/** Welke norm(en) in de toetsing voorkomen — voor de hoofdstuktitel. */
+function checkNorm(checks: MemberCheckResult[]): string {
+  const staal = checks.some(isSteelCheckResult);
+  const hout = checks.some(c => !isSteelCheckResult(c));
+  if (staal && hout) return "EN 1993-1-1 en EN 1995-1-1";
+  return hout ? "EN 1995-1-1" : "EN 1993-1-1";
 }
 
 const esc = (s: unknown): string =>
@@ -128,23 +144,38 @@ export function buildReportHtml(input: ReportInput): string {
       </table>
     `);
 
-    // ── 4. Toetsing (minimale EN 1993 UC) ────────────────────────────────
-    const checks = runMinimalSteelCheck(beams, result);
+    // ── 4. Toetsing ──────────────────────────────────────────────────────
+    // Komt kant-en-klaar uit de check-store; dit rapport rekent niets zelf.
+    // Zonder resultaten blijft het hoofdstuk staan mét de reden — een
+    // weggelaten hoofdstuk leest te makkelijk als "niets aan de hand".
+    const checks = input.checks ?? [];
     if (checks.length > 0) {
       sections.push(`
-        <h2>4. Toetsing — EN 1993-1-1 (doorsnede, plastisch)</h2>
-        <p class="small">UC = |N<sub>Ed</sub>|/N<sub>pl,Rd</sub> + |M<sub>Ed</sub>|/M<sub>pl,Rd</sub> ≤ 1,0 &nbsp;(vereenvoudigde lineaire interactie; stabiliteit niet inbegrepen)</p>
+        <h2>4. Toetsing — ${esc(checkNorm(checks))}</h2>
         <table>
-          <tr><th>Staaf</th><th>Profiel</th><th>N<sub>Ed</sub> (kN)</th><th>|M|<sub>max</sub> (kNm)</th><th>UC<sub>N</sub></th><th>UC<sub>M</sub></th><th>UC</th><th>Status</th></tr>
-          ${checks.map(c => `
-            <tr class="${c.pass ? "ok" : "fail"}">
-              <td>${c.beamId}</td><td>${esc(c.profile ?? "—")}</td>
-              <td>${fmt(c.N_Ed / 1000, 2)}</td><td>${fmt(c.M_Ed / 1e6, 2)}</td>
-              <td>${fmt(c.uc_N, 3)}</td><td>${fmt(c.uc_M, 3)}</td>
-              <td><strong>${fmt(c.uc_combined, 3)}</strong></td>
-              <td>${c.pass ? "✓ OK" : "✗ NIET OK"}</td>
-            </tr>`).join("")}
+          <tr><th>Staaf</th><th>Doorsnede</th><th>Materiaal</th><th>Maatgevende toets</th><th>Artikel</th><th>UC</th><th>Status</th></tr>
+          ${checks.map(r => {
+            const staal = isSteelCheckResult(r);
+            const g = r.checks.find(c => c.id === r.governing_check_id)?.kind.data;
+            const voldoet = r.uc_max <= 1.0;
+            return `
+            <tr class="${voldoet ? "ok" : "fail"}">
+              <td>${r.beam_id}</td>
+              <td>${esc(staal ? r.profile_name : r.section_name)}</td>
+              <td>${esc(staal ? r.steel_grade : r.strength_class)}</td>
+              <td>${esc(g?.title ?? r.governing_check_id)}</td>
+              <td>${esc(g?.article ?? "")}</td>
+              <td><strong>${fmt(r.uc_max, 3)}</strong></td>
+              <td>${voldoet ? "✓ OK" : "✗ NIET OK"}</td>
+            </tr>`;
+          }).join("")}
         </table>
+      `);
+    } else {
+      sections.push(`
+        <h2>4. Toetsing</h2>
+        <p><em>Geen toetsingsresultaten beschikbaar — de normtoetsing draait in
+        de desktop-app.</em></p>
       `);
     }
   } else {
