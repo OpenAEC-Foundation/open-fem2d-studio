@@ -37,6 +37,12 @@ import BarPropertiesDialog from "./BarPropertiesDialog";
 import { useCheckStore } from "../../stores/checkStore";
 import { resolveSection } from "../../lib/sectionResolver";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
+// Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
+// Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
+// App.tsx"), naast een identieke kopie in App.tsx — twee kopieën van dezelfde
+// eenheidsconversie is precies het soort duplicaat dat stil uit elkaar kan
+// lopen en dan twee antwoorden op hetzelfde model geeft.
+import { liftSpringK } from "../../lib/modelNaarSolverInput";
 import type {
   Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
@@ -3891,14 +3897,6 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
     return null;
   }
-}
-
-/** UI spring stiffness → solver units (N/mm or N·mm/rad). Same logic as App.tsx. */
-function liftSpringK(s: { type: string; k?: number }): number | undefined {
-  if (s.k === undefined) return undefined;
-  if (s.type === "zSpring" || s.type === "xSpring") return s.k * 1000;
-  if (s.type === "rotSpring") return s.k * 1e6;
-  return undefined;
 }
 
 function toolLabel(t: Tool): string {

@@ -52,6 +52,12 @@ export interface FemModelInvoer {
  *  - zSpring/xSpring: k_ui [kN/mm] × 1000 → N/mm
  *  - rotSpring:       k_ui [kNm/rad] × 1e6 → N·mm/rad
  * Geeft `undefined` voor starre opleggingen (de solver negeert `k` daar).
+ *
+ * DE ENIGE bron van deze omrekening. Ze stond eerder driemaal in de repo:
+ * hier, in App.tsx en onderaan FemCanvas.tsx (met het commentaar "Same logic
+ * as App.tsx" — een duplicaat dat zichzelf al aankondigde). Het canvas-pad
+ * importeert hem nu hiervandaan, zodat een wijziging aan de eenheden nooit
+ * meer maar op één van de twee rekenpaden kan landen.
  */
 export function liftSpringK(s: { type: string; k?: number }): number | undefined {
   if (s.k === undefined) return undefined;
