@@ -192,6 +192,49 @@
   color: var(--theme-text);
 }
 
+/* De eerste blokkop staat bovenaan de zijbalk — daar hoort geen scheidslijn. */
+.report-sidebar-kop-eerste {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ─── Rapporttype: voorinstelling van de sectiekeuze ─── */
+.report-type-keuze {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.report-type-knop {
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--theme-text-secondary);
+  background: transparent;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.report-type-knop:hover {
+  border-color: var(--theme-accent);
+  color: var(--theme-accent);
+}
+
+.report-type-knop.is-actief {
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+  color: var(--theme-btn-primary-text);
+}
+
+.report-detail-keuze {
+  margin-bottom: 4px;
+}
+
 .report-opmaak {
   display: flex;
   flex-direction: column;

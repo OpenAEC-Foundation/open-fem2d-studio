@@ -262,48 +262,77 @@
   border-radius: 3px;
 }
 
-.check-formula {
-  margin: 10px 0;
-  font-size: 13.5px;
-  text-align: center;
-  overflow-x: auto;
+/* Afleiding: ingesprongen formuleblok links, vergelijkingsnummer rechts —
+   dezelfde indeling als in het rapport. */
+.check-derivation {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 10px 0 6px;
+  padding-left: 10px;
 }
 
+.check-formula {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* KaTeX centreert displayformules; een afleiding lijnt links uit. */
+.check-formula .katex-display,
+.check-uc-formula .katex-display {
+  margin: 0;
+  text-align: left;
+}
+
+.check-formula .katex-display > .katex,
+.check-uc-formula .katex-display > .katex {
+  text-align: left;
+}
+
+.check-eq {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+  padding-top: 4px;
+}
+
+/* Waardenlijst: symbool rechts uitgelijnd zodat de = onder elkaar staan. */
 .check-variables {
-  font-family: ui-monospace, Consolas, monospace;
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: 1px 8px;
   font-size: 12px;
   color: var(--theme-text-muted);
-  margin: 6px 0;
-  line-height: 1.7;
+  margin: 6px 0 6px 10px;
 }
 
-.check-var { display: inline-block; margin-right: 6px; }
-.var-symbol { font-style: italic; }
+.check-var { display: contents; }
+.var-symbol { justify-self: end; font-style: italic; }
+.var-eq { color: var(--theme-text-faint, var(--theme-text-muted)); }
 .var-value { color: var(--theme-text); font-weight: 500; }
 .var-unit { color: var(--theme-text-faint, var(--theme-text-muted)); font-size: 11px; }
-.var-sep { color: var(--theme-text-faint, var(--theme-text-muted)); }
-
-.check-result {
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 13px;
-  margin: 6px 0;
-}
-
-.check-result-value { font-weight: 700; color: var(--theme-accent); }
 
 .check-uc-line {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 12px;
   margin-top: 10px;
   padding-top: 8px;
+  padding-left: 10px;
   border-top: 1px solid var(--theme-border);
-  font-family: ui-monospace, Consolas, monospace;
   font-size: 12.5px;
 }
 
-.check-uc-value { font-size: 15px; }
+.check-uc-formula {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 
 .check-status {
   margin-left: auto;

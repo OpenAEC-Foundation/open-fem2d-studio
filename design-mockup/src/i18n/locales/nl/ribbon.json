@@ -354,7 +354,19 @@
     "tocLeeg": "Nog geen hoofdstukken — zet secties aan in de zijbalk.",
     "tocDiepte": "Inhoudsopgave",
     "tocDiepte1": "Alleen hoofdstukken",
-    "tocDiepte2": "Met subsecties"
+    "tocDiepte2": "Met subsecties",
+    "rapportType": "Rapporttype",
+    "rapportTypeVolledig": "Volledig",
+    "rapportTypeBeperkt": "Beperkt",
+    "rapportTypeVolledigHint": "De complete berekening: alle secties, inclusief invoertabellen en de afleidingen per staaf.",
+    "rapportTypeBeperktHint": "De kern voor de opdrachtgever: uitgangspunten, schets, resultaten en toetsingsoverzicht.",
+    "rapportTypeHint": "Een voorinstelling: hieronder blijft elke sectie los aan of uit te zetten.",
+    "rapportTypeAangepast": "Aangepast — de sectiekeuze wijkt af van dit type. Klik het type opnieuw om terug te zetten.",
+    "toetsingDetail": "Toetsing",
+    "toetsingBeknopt": "Beknopt — alleen unity checks",
+    "toetsingGedetailleerd": "Gedetailleerd — met afleidingen",
+    "detailBeknoptNoot": "Beknopt niveau: per staaf is alleen de maatgevende toets uitgeschreven.",
+    "colCheck": "Toets"
   },
   "viewer": {
     "file": "Bestand",

@@ -37,9 +37,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReportData } from "./ReportDataContext";
 import {
   useReportStore,
+  type RapportType,
   type ReportOpmaak,
   type ReportOrientation,
   type ReportPageSize,
+  type ToetsingDetail,
 } from "../../stores/reportStore";
 import { useCheckStore } from "../../stores/checkStore";
 import type { MemberCheckResult, CheckSkip } from "../../lib/checkTypes";
@@ -126,6 +128,8 @@ interface WireReportSettings extends ReportOpmaak {
   hiddenSections: Record<string, boolean>;
   resultCombo: number | "envelope" | null;
   inhoudsopgaveDiepte: 1 | 2;
+  rapportType: RapportType;
+  toetsingDetail: ToetsingDetail;
 }
 
 type ReportSyncMessage =
@@ -300,6 +304,8 @@ function currentSettings(): WireReportSettings {
     hiddenSections: s.hiddenSections,
     resultCombo: s.resultCombo,
     inhoudsopgaveDiepte: s.inhoudsopgaveDiepte,
+    rapportType: s.rapportType,
+    toetsingDetail: s.toetsingDetail,
     margeBoven: s.margeBoven,
     margeOnder: s.margeOnder,
     margeBinnen: s.margeBinnen,
@@ -318,6 +324,8 @@ function settingsGelijk(a: WireReportSettings, b: WireReportSettings): boolean {
     a.hiddenSections === b.hiddenSections &&
     a.resultCombo === b.resultCombo &&
     a.inhoudsopgaveDiepte === b.inhoudsopgaveDiepte &&
+    a.rapportType === b.rapportType &&
+    a.toetsingDetail === b.toetsingDetail &&
     a.margeBoven === b.margeBoven &&
     a.margeOnder === b.margeOnder &&
     a.margeBinnen === b.margeBinnen &&
@@ -341,6 +349,8 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const hiddenSections = useReportStore((s) => s.hiddenSections);
   const resultCombo = useReportStore((s) => s.resultCombo);
   const inhoudsopgaveDiepte = useReportStore((s) => s.inhoudsopgaveDiepte);
+  const rapportType = useReportStore((s) => s.rapportType);
+  const toetsingDetail = useReportStore((s) => s.toetsingDetail);
   // Opmaak hoort bij het document en gaat dus mee naar het rapportvenster.
   const margeBoven = useReportStore((s) => s.margeBoven);
   const margeOnder = useReportStore((s) => s.margeOnder);
@@ -401,6 +411,8 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     hiddenSections,
     resultCombo,
     inhoudsopgaveDiepte,
+    rapportType,
+    toetsingDetail,
     margeBoven,
     margeOnder,
     margeBinnen,

@@ -1,9 +1,15 @@
 /**
- * CheckBlock — volledige afleiding van één toets (EN 1993 of EN 1995):
- * formule (KaTeX), ingevulde variabelen, tussenwaarden, unity check en
- * status. Geport uit de oude frontend en aangesloten op de design-mockup
- * theme-tokens; het datacontract (ResistanceCalc/StabilityCalc) is identiek
- * voor staal en hout.
+ * CheckBlock — volledige afleiding van één toets (EN 1993 of EN 1995) in het
+ * toetsingspaneel.
+ *
+ * Zet de afleiding in dezelfde drie stappen als het rapport: de formule
+ * symbolisch, dan met ingevulde getallen, dan de uitkomst met eenheid — met
+ * de is-gelijktekens onder elkaar — en sluit af met de unity check tegen 1,0.
+ * De LaTeX daarvoor komt uit checkReportUtils, zodat paneel en rapport
+ * gegarandeerd hetzelfde verhaal vertellen.
+ *
+ * Het datacontract (ResistanceCalc/StabilityCalc) is identiek voor staal en
+ * hout.
  */
 import { useEffect, useRef } from "react";
 import katex from "katex";
@@ -13,6 +19,11 @@ import "./CheckPanel.css";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
 import type { StabilityCalc } from "../../lib/types/steel/StabilityCalc";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
+import {
+  afleidingLatex,
+  splitsArtikel,
+  unityCheckLatex,
+} from "../report/checkReportUtils";
 
 export type CheckLike = ResistanceCalc | StabilityCalc;
 
@@ -38,36 +49,54 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`check-status ${cls}`}>{label}</span>;
 }
 
+/** Waardenlijst met uitgelijnde is-gelijktekens (symbool = getal eenheid). */
 function VariableLine({ vars }: { vars: NamedValue[] }) {
   if (!vars.length) return null;
   return (
     <div className="check-variables">
       {vars.map((v, i) => (
-        <span key={i} className="check-var">
+        <div key={i} className="check-var">
           <span
             className="var-symbol"
             dangerouslySetInnerHTML={{ __html: renderLatex(v.symbol, false) }}
           />
-          <span className="var-eq"> = </span>
-          <span className="var-value">
-            {v.value.toLocaleString("nl-NL", { maximumFractionDigits: 3 })}
+          <span className="var-eq">=</span>
+          <span>
+            <span className="var-value">
+              {v.value.toLocaleString("nl-NL", { maximumFractionDigits: 3 })}
+            </span>
+            {v.unit && v.unit !== "-" && <span className="var-unit"> {v.unit}</span>}
           </span>
-          {v.unit && v.unit !== "-" && <span className="var-unit"> {v.unit}</span>}
-          {i < vars.length - 1 && <span className="var-sep">, </span>}
-        </span>
+        </div>
       ))}
     </div>
   );
 }
 
+/** nl-notatie, gelijk aan het rapport (decimaalkomma). */
+function nl(v: number, digits: number): string {
+  return v.toLocaleString("nl-NL", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 export default function CheckBlock({ check }: { check: CheckLike }) {
   const formulaRef = useRef<HTMLDivElement>(null);
+  const ucRef = useRef<HTMLDivElement>(null);
+
+  const { latex, ongebruikt } = afleidingLatex(check);
+  const { artikel, vergelijking } = splitsArtikel(check.article);
 
   useEffect(() => {
-    if (formulaRef.current && check.formula_latex) {
-      formulaRef.current.innerHTML = renderLatex(check.formula_latex, true);
+    if (formulaRef.current) formulaRef.current.innerHTML = renderLatex(latex, true);
+  }, [latex]);
+
+  useEffect(() => {
+    if (ucRef.current && check.uc) {
+      ucRef.current.innerHTML = renderLatex(unityCheckLatex(check.uc), true);
     }
-  }, [check.formula_latex]);
+  }, [check.uc]);
 
   const intermediates = isStability(check) ? check.intermediate_values : [];
 
@@ -75,40 +104,29 @@ export default function CheckBlock({ check }: { check: CheckLike }) {
     <div className="check-block">
       <div className="check-header">
         <h3 className="check-title">{check.title}</h3>
-        <span className="check-article">{check.article}</span>
+        <span className="check-article">{artikel}</span>
       </div>
 
       <div className="check-force-state">
         Combinatie {check.force_state.combination_id}
-        &nbsp;&nbsp; x = {check.force_state.position_mm.toFixed(0)} mm
-        &nbsp;&nbsp; N = {check.force_state.forces.n_ed.toFixed(2)} kN
-        &nbsp;&nbsp; V<sub>z</sub> = {check.force_state.forces.vz_ed.toFixed(2)} kN
-        &nbsp;&nbsp; M<sub>y</sub> = {check.force_state.forces.my_ed.toFixed(2)} kNm
+        &nbsp;&nbsp; x = {nl(check.force_state.position_mm, 0)} mm
+        &nbsp;&nbsp; N = {nl(check.force_state.forces.n_ed, 2)} kN
+        &nbsp;&nbsp; V<sub>z</sub> = {nl(check.force_state.forces.vz_ed, 2)} kN
+        &nbsp;&nbsp; M<sub>y</sub> = {nl(check.force_state.forces.my_ed, 2)} kNm
       </div>
 
-      {check.formula_latex && <div className="check-formula" ref={formulaRef} />}
-
-      <VariableLine vars={check.variables} />
-
-      <div className="check-result">
-        <span className="check-result-label">=</span>{" "}
-        <span className="check-result-value">
-          {check.value.toLocaleString("nl-NL", { maximumFractionDigits: 3 })}
-        </span>
-        <span className="check-result-unit"> {check.unit}</span>
+      {/* Symbolisch → ingevuld → uitkomst, met het vergelijkingsnummer rechts. */}
+      <div className="check-derivation">
+        <div className="check-formula" ref={formulaRef} />
+        {vergelijking && <span className="check-eq">({vergelijking})</span>}
       </div>
+
+      {/* Wat niet in de formule ingevuld kon worden, staat hier alsnog. */}
+      <VariableLine vars={ongebruikt} />
 
       {check.uc && (
         <div className="check-uc-line">
-          <span
-            className="check-uc-formula"
-            dangerouslySetInnerHTML={{ __html: renderLatex(check.uc.formula_latex, false) }}
-          />
-          <span>
-            {" "}= {check.uc.ed.toLocaleString("nl-NL", { maximumFractionDigits: 3 })} /{" "}
-            {check.uc.rd.toLocaleString("nl-NL", { maximumFractionDigits: 3 })} ={" "}
-          </span>
-          <strong className="check-uc-value">{check.uc.uc.toFixed(2)}</strong>
+          <div className="check-uc-formula" ref={ucRef} />
           <StatusBadge status={check.status} />
         </div>
       )}

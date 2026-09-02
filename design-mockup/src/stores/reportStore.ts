@@ -26,6 +26,33 @@ import { create } from 'zustand';
 export type ReportPageSize = 'A4' | 'A3';
 export type ReportOrientation = 'portrait' | 'landscape';
 
+/**
+ * Rapporttype — een VOORINSTELLING van de sectiekeuze, geen slot.
+ *
+ *  - 'volledig' — de complete berekening (archiefstuk): alle secties aan,
+ *    inclusief invoertabellen en de formule-afleidingen per staaf.
+ *  - 'beperkt'  — de kern voor de opdrachtgever: projectgegevens en
+ *    uitgangspunten, de aannames, het beeld, de maatgevende uitkomsten en
+ *    het toetsingsoverzicht.
+ *
+ * Welke sectie in welk type hoort — en waaróm — staat bij de sectie zelf
+ * (`inBeperkt` / `beperktReden` in reportSections.ts). Na het toepassen kan
+ * elke sectie los aan of uit; de zijbalk meldt dan "aangepast".
+ */
+export type RapportType = 'volledig' | 'beperkt';
+
+/**
+ * Detailniveau van de toetsingssecties. Staat LOS van het rapporttype (een
+ * volledig rapport mag beknopt getoetst worden en omgekeerd); het type kiest
+ * er alleen een verstandige beginstand bij.
+ *
+ *  - 'beknopt'       — toetsingsoverzicht met één regel per staaf (de
+ *    maatgevende toets), en per staaf alleen díe toets uitgeschreven.
+ *  - 'gedetailleerd' — overzicht met álle toetsen per staaf, en per staaf
+ *    elke toets volledig afgeleid, inclusief tussenwaarden.
+ */
+export type ToetsingDetail = 'beknopt' | 'gedetailleerd';
+
 /** Papierformaten in mm (breedte × hoogte, staand). */
 const PAPER_MM: Record<ReportPageSize, { w: number; h: number }> = {
   A4: { w: 210, h: 297 },
@@ -87,6 +114,10 @@ interface ReportState extends ReportOpmaak {
   zoom: number;
   /** Sectie-id → verborgen. Ontbrekende id = sectie staat aan. */
   hiddenSections: Record<string, boolean>;
+  /** Laatst toegepaste voorinstelling (zie RapportType). */
+  rapportType: RapportType;
+  /** Detailniveau van de toetsingssecties (zie ToetsingDetail). */
+  toetsingDetail: ToetsingDetail;
   /**
    * Combinatie-keuze van de resultaatsecties: combinatie-id, 'envelope'
    * (omhullende) of null (= automatisch: omhullende indien beschikbaar,
@@ -110,6 +141,15 @@ interface ReportState extends ReportOpmaak {
   setOrientation: (orientation: ReportOrientation) => void;
   setZoom: (zoom: number) => void;
   setSectionEnabled: (id: string, enabled: boolean) => void;
+  /**
+   * De hele sectiekeuze in één keer zetten — gebruikt door de
+   * rapporttype-voorinstelling. De map zelf komt uit reportSections.ts;
+   * deze store kent de registry bewust niet (dat zou een importlus geven:
+   * store → registry → secties → store).
+   */
+  setHiddenSections: (hiddenSections: Record<string, boolean>) => void;
+  setRapportType: (type: RapportType) => void;
+  setToetsingDetail: (niveau: ToetsingDetail) => void;
   /** Alle secties weer aan. */
   resetSections: () => void;
   setResultCombo: (v: number | 'envelope' | null) => void;
@@ -146,6 +186,8 @@ export const useReportStore = create<ReportState>((set) => ({
   orientation: 'portrait',
   zoom: 1,
   hiddenSections: {},
+  rapportType: 'volledig',
+  toetsingDetail: 'gedetailleerd',
   resultCombo: null,
   inhoudsopgaveDiepte: 2,
   actieveSectie: null,
@@ -163,6 +205,10 @@ export const useReportStore = create<ReportState>((set) => ({
       else hiddenSections[id] = true;
       return { hiddenSections };
     }),
+
+  setHiddenSections: (hiddenSections) => set({ hiddenSections }),
+  setRapportType: (rapportType) => set({ rapportType }),
+  setToetsingDetail: (toetsingDetail) => set({ toetsingDetail }),
 
   resetSections: () => set({ hiddenSections: {} }),
 

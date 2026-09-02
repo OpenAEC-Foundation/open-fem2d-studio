@@ -1,127 +1,156 @@
 /**
- * CheckDetailSection — toetsing op uitgebreid detailniveau.
+ * CheckDetailSection — de toetsing per staaf, uitgeschreven.
  *
- * Per staaf een blok met ALLE toetsen, elk als volledig ingevulde
- * normformule op de maatgevende plek — dezelfde afleiding die het
- * toetsingspaneel (CheckBlock) toont, maar als print-variant: op papier
- * bestaat uitklappen niet, dus alles staat uitgeklapt (inclusief
- * tussenwaarden), in vaste zwart-op-wit-typografie met `break-inside:
- * avoid` per toets. KaTeX rendert via renderToString (puur, geen effects).
+ * Per staaf een genummerd hoofdstukje met de toetsen, elk als volledige
+ * afleiding: de formule symbolisch, dan met ingevulde getallen, dan de
+ * uitkomst met eenheid — de is-gelijktekens onder elkaar — en tot slot de
+ * unity check met de vergelijking tegen 1,0. Die opmaak volgt het
+ * referentie-rapport; de LaTeX ervoor wordt gebouwd in checkReportUtils
+ * (afleidingLatex / unityCheckLatex).
+ *
+ * Detailniveau (reportStore.toetsingDetail):
+ *  - 'gedetailleerd' — álle toetsen per staaf, inclusief tussenwaarden;
+ *  - 'beknopt'       — alleen de maatgevende toets per staaf, zonder de
+ *    tussenwaarden. Dat is nog steeds een volwaardige verantwoording van de
+ *    UC die telt, maar zonder de acht toetsen die er niet toe deden.
  *
  * Materiaal-neutraal: staal (EN 1993) en hout (EN 1995) delen het
- * NamedCheck-contract; alleen de kopregel per staaf verschilt
+ * NamedCheck-contract; alleen de regel onder de staafkop verschilt
  * (doorsnedeklasse vs. klimaatklasse + belastingduur).
  */
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { useCheckStore } from "../../../stores/checkStore";
+import { useReportStore } from "../../../stores/reportStore";
 import { isSteelCheckResult, type MemberCheckResult } from "../../../lib/checkTypes";
 import type { NamedValue } from "../../../lib/types/steel/NamedValue";
 import {
   CHECK_REPORT_CSS,
   LOAD_DURATION_LABELS,
+  afleidingLatex,
   basisText,
   crossSectionClassLabel,
   fmtCheckedAt,
+  fmtUc,
   fmtValue,
   isStabilityCalc,
   renderLatexHtml,
   serviceClassLabel,
+  splitsArtikel,
   statusClass,
   statusLabel,
+  unityCheckLatex,
   type CheckCalc,
 } from "../checkReportUtils";
 
-/** Ingevulde variabelen (of tussenwaarden) als doorlopende regel. */
-function ValueLine({ vars }: { vars: NamedValue[] }) {
+/**
+ * Waardenlijst met uitgelijnde is-gelijktekens: symbool, "=", getal + eenheid.
+ * Gebruikt voor tussenwaarden en voor variabelen die niet in de formule
+ * ingevuld konden worden (die mogen niet stilzwijgend wegvallen).
+ */
+function Waarden({ kop, vars }: { kop?: string; vars: NamedValue[] }) {
   if (vars.length === 0) return null;
   return (
-    <span>
+    <div className="rpt-chk-waarden">
+      {kop && <div className="rpt-chk-waarden-kop">{kop}</div>}
       {vars.map((v, i) => (
-        <span key={i} className="rpt-chk-var">
-          <span dangerouslySetInnerHTML={{ __html: renderLatexHtml(v.symbol, false) }} />
-          {" = "}
-          <span className="rpt-chk-var-value">{fmtValue(v.value)}</span>
-          {v.unit && v.unit !== "-" && <span className="rpt-chk-var-unit"> {v.unit}</span>}
-          {i < vars.length - 1 && <span className="rpt-chk-var-sep">, </span>}
-        </span>
+        <div key={i} style={{ display: "contents" }}>
+          <span
+            className="rpt-chk-waarde-symbool"
+            dangerouslySetInnerHTML={{ __html: renderLatexHtml(v.symbol, false) }}
+          />
+          <span className="rpt-chk-waarde-eq">=</span>
+          <span>
+            <span className="rpt-chk-waarde-getal">{fmtValue(v.value)}</span>
+            {v.unit && v.unit !== "-" && (
+              <span className="rpt-chk-waarde-eenheid"> {v.unit}</span>
+            )}
+          </span>
+        </div>
       ))}
-    </span>
+    </div>
   );
 }
 
-/** Print-variant van CheckBlock: één toets, volledig uitgeklapt. */
-function DerivationBlock({ check, governing }: { check: CheckCalc; governing: boolean }) {
+/** Eén toets, volledig afgeleid — de opmaak van het referentie-rapport. */
+function DerivationBlock({
+  check,
+  governing,
+  metTussenwaarden,
+}: {
+  check: CheckCalc;
+  governing: boolean;
+  metTussenwaarden: boolean;
+}) {
   const { t } = useTranslation("ribbon");
   const cls = statusClass(check.status);
-  const intermediates = isStabilityCalc(check) ? check.intermediate_values : [];
+  const tussenwaarden =
+    metTussenwaarden && isStabilityCalc(check) ? check.intermediate_values : [];
+  const { artikel, vergelijking } = splitsArtikel(check.article);
+  const { latex, ongebruikt } = afleidingLatex(check);
+  const f = check.force_state.forces;
 
   return (
-    <div className={`rpt-chk-block ${cls}`}>
+    <div className="rpt-chk-block">
       <div className="rpt-chk-head">
         <h4 className="rpt-chk-title">
           {check.title}
           {governing && (
-            <span className="rpt-chk-gov-tag">{t("report.governingTag", "maatgevend")}</span>
+            <span className="rpt-chk-gov-tag">
+              — {t("report.governingTag", "maatgevend")}
+            </span>
           )}
         </h4>
-        <span className="rpt-chk-article">{check.article}</span>
+        <span className="rpt-chk-article">{artikel}</span>
       </div>
 
+      {/* Krachtstoestand op de getoetste plek — combinatie, x en de
+          snedekrachten. Getallen in nl-notatie, net als de rest van het
+          rapport (decimaalkomma, geen punt). */}
       <div className="rpt-chk-forces">
         {t("report.combination", "Combinatie")} {check.force_state.combination_id}
-        {" · x = "}
-        {check.force_state.position_mm.toFixed(0)} mm
-        {" · N = "}
-        {check.force_state.forces.n_ed.toFixed(2)} kN
-        {" · V"}
+        {"   x = "}
+        {fmtValue(check.force_state.position_mm, 0)} mm
+        {"   N = "}
+        {fmtValue(f.n_ed, 2)} kN
+        {"   V"}
         <sub>z</sub>
         {" = "}
-        {check.force_state.forces.vz_ed.toFixed(2)} kN
-        {" · M"}
+        {fmtValue(f.vz_ed, 2)} kN
+        {"   M"}
         <sub>y</sub>
         {" = "}
-        {check.force_state.forces.my_ed.toFixed(2)} kNm
+        {fmtValue(f.my_ed, 2)} kNm
       </div>
 
-      {check.formula_latex && (
+      {/* Symbolisch → ingevuld → uitkomst, met het vergelijkingsnummer rechts. */}
+      <div className="rpt-chk-afleiding">
         <div
-          className="rpt-chk-formula"
-          dangerouslySetInnerHTML={{ __html: renderLatexHtml(check.formula_latex, true) }}
+          className="rpt-chk-afleiding-formule"
+          dangerouslySetInnerHTML={{ __html: renderLatexHtml(latex, true) }}
+        />
+        {vergelijking && <span className="rpt-chk-eq">({vergelijking})</span>}
+      </div>
+
+      {/* Wat niet in de formule ingevuld kon worden, staat hier alsnog. */}
+      <Waarden vars={ongebruikt} />
+
+      {tussenwaarden.length > 0 && (
+        <Waarden
+          kop={`${t("report.intermediateValues", "Tussenwaarden")}:`}
+          vars={tussenwaarden}
         />
       )}
 
-      {check.variables.length > 0 && (
-        <div className="rpt-chk-vars">
-          <ValueLine vars={check.variables} />
-        </div>
-      )}
-
-      <div className="rpt-chk-result">
-        {"= "}
-        <strong>{fmtValue(check.value)}</strong>
-        {check.unit && check.unit !== "-" && <span> {check.unit}</span>}
-      </div>
-
       {check.uc && (
         <div className="rpt-chk-ucline">
-          <span
-            dangerouslySetInnerHTML={{ __html: renderLatexHtml(check.uc.formula_latex, false) }}
+          <div
+            className="rpt-chk-ucline-formule"
+            dangerouslySetInnerHTML={{
+              __html: renderLatexHtml(unityCheckLatex(check.uc), true),
+            }}
           />
-          <span>
-            {" "}= {fmtValue(check.uc.ed)} / {fmtValue(check.uc.rd)} ={" "}
-          </span>
-          <strong className="rpt-chk-uc-value">{check.uc.uc.toFixed(2)}</strong>
           <span className={`rpt-chk-status ${cls}`}>{statusLabel(t, check.status)}</span>
-        </div>
-      )}
-
-      {intermediates.length > 0 && (
-        <div className="rpt-chk-intermediates">
-          <span className="rpt-chk-intermediates-label">
-            {t("report.intermediateValues", "Tussenwaarden")}:
-          </span>
-          <ValueLine vars={intermediates} />
         </div>
       )}
 
@@ -136,8 +165,14 @@ function DerivationBlock({ check, governing }: { check: CheckCalc; governing: bo
   );
 }
 
-/** Alle toetsen van één staaf, met materiaal-specifieke kopregel. */
-function MemberBlock({ result }: { result: MemberCheckResult }) {
+/** Alle toetsen van één staaf, als genummerde subsectie. */
+function MemberBlock({
+  result,
+  gedetailleerd,
+}: {
+  result: MemberCheckResult;
+  gedetailleerd: boolean;
+}) {
   const { t } = useTranslation("ribbon");
   const { t: tCheck } = useTranslation("check");
   const steel = isSteelCheckResult(result);
@@ -149,28 +184,38 @@ function MemberBlock({ result }: { result: MemberCheckResult }) {
         LOAD_DURATION_LABELS[result.load_duration].fallback,
       ).toLowerCase()}`;
 
+  // Beknopt: alleen de maatgevende toets — de UC die telt, met dezelfde
+  // volledige afleiding, maar zonder de toetsen die niet maatgevend waren.
+  const toetsen = gedetailleerd
+    ? result.checks
+    : result.checks.filter((c) => c.id === result.governing_check_id);
+
   return (
     <div className="rpt-chk-member">
-      <div className="rpt-chk-member-head">
-        <h3 className="rpt-chk-member-title">
-          {t("report.colBeam", "Staaf")} {result.beam_id} —{" "}
-          {steel ? result.profile_name : result.section_name} (
-          {steel ? result.steel_grade : result.strength_class})
-        </h3>
-        <span className="rpt-chk-member-meta">{meta}</span>
+      {/* Echte .rpt-h3: doet mee met de sectienummering én komt zo in de
+          inhoudsopgave te staan, net als in het referentie-rapport. */}
+      <h3 className="rpt-h3">
+        {t("report.colBeam", "Staaf")} {result.beam_id} —{" "}
+        {steel ? result.profile_name : result.section_name} (
+        {steel ? result.steel_grade : result.strength_class})
+      </h3>
+
+      <div className="rpt-chk-member-meta">
+        <span>{meta}</span>
         <span className={`rpt-chk-member-uc${result.uc_max > 1 ? " rpt-uc-fail" : ""}`}>
-          {t("report.colUc", "UC")} = {result.uc_max.toFixed(2)}
+          {t("report.colUc", "UC")} = {fmtUc(result.uc_max)}
         </span>
         <span className={`rpt-chk-status ${statusClass(result.status)}`}>
           {statusLabel(t, result.status)}
         </span>
       </div>
 
-      {result.checks.map((named) => (
+      {toetsen.map((named) => (
         <DerivationBlock
           key={named.id}
           check={named.kind.data}
           governing={named.id === result.governing_check_id}
+          metTussenwaarden={gedetailleerd}
         />
       ))}
     </div>
@@ -182,6 +227,7 @@ export default function CheckDetailSection() {
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
+  const gedetailleerd = useReportStore((s) => s.toetsingDetail === "gedetailleerd");
 
   const checkedTime = fmtCheckedAt(lastRunAt);
   const basis = basisText(t, results);
@@ -200,15 +246,22 @@ export default function CheckDetailSection() {
         </p>
       ) : (
         <>
-          {checkedTime && (
-            <p className="rpt-note">
-              {t("report.checkedAt", "Toetsing uitgevoerd op")} {checkedTime}.
-              {basis ? ` ${basis}` : ""}
-            </p>
-          )}
+          <p className="rpt-note">
+            {checkedTime && `${t("report.checkedAt", "Toetsing uitgevoerd op")} ${checkedTime}. `}
+            {!gedetailleerd &&
+              `${t(
+                "report.detailBeknoptNoot",
+                "Beknopt niveau: per staaf is alleen de maatgevende toets uitgeschreven.",
+              )} `}
+            {basis ?? ""}
+          </p>
 
           {results.map((r) => (
-            <MemberBlock key={`${isSteelCheckResult(r) ? "s" : "t"}-${r.beam_id}`} result={r} />
+            <MemberBlock
+              key={`${isSteelCheckResult(r) ? "s" : "t"}-${r.beam_id}`}
+              result={r}
+              gedetailleerd={gedetailleerd}
+            />
           ))}
 
           {skipped.length > 0 && (

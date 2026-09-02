@@ -28,8 +28,13 @@ import {
   REGELAFSTAND_MIN,
   REGELAFSTAND_MAX,
   type ReportOpmaak,
+  type RapportType,
 } from "../../stores/reportStore";
-import { REPORT_SECTIONS } from "../report/reportSections";
+import {
+  REPORT_SECTIONS,
+  hiddenSectionsVoorType,
+  isAangepast,
+} from "../report/reportSections";
 import ReportShell from "../report/ReportShell";
 import { scrollNaarSectie } from "../report/paginate";
 import {
@@ -112,8 +117,27 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const regelafstand = useReportStore((s) => s.regelafstand);
   const inhoudsopgaveDiepte = useReportStore((s) => s.inhoudsopgaveDiepte);
   const setInhoudsopgaveDiepte = useReportStore((s) => s.setInhoudsopgaveDiepte);
+  const rapportType = useReportStore((s) => s.rapportType);
+  const setRapportType = useReportStore((s) => s.setRapportType);
+  const setHiddenSections = useReportStore((s) => s.setHiddenSections);
+  const toetsingDetail = useReportStore((s) => s.toetsingDetail);
+  const setToetsingDetail = useReportStore((s) => s.setToetsingDetail);
 
   const zetOpmaak = (veld: keyof ReportOpmaak) => (v: number) => setOpmaak({ [veld]: v });
+
+  /**
+   * Rapporttype toepassen: zet de sectiekeuze op de voorinstelling van dat
+   * type en kiest er een passend toetsniveau bij. Dat blijft een
+   * VOORINSTELLING — daarna kan elke sectie los aan of uit, en dan meldt de
+   * zijbalk "aangepast".
+   */
+  const pasTypeToe = (type: RapportType) => {
+    setRapportType(type);
+    setHiddenSections(hiddenSectionsVoorType(type === "beperkt"));
+    setToetsingDetail(type === "beperkt" ? "beknopt" : "gedetailleerd");
+  };
+
+  const aangepast = isAangepast(hiddenSections, rapportType === "beperkt");
 
   return (
     <div className="report-preview">
@@ -134,6 +158,71 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
           </div>
 
           <div className="report-sidebar-body">
+            {/* ─── Rapporttype: voorinstelling van de sectiekeuze ───
+                Waarom een sectie in welk type zit, staat bij de sectie zelf
+                (reportSections.ts). Na toepassen blijft alles los te zetten. */}
+            <div className="report-sidebar-kop report-sidebar-kop-eerste">
+              {t("report.rapportType", "Rapporttype")}
+            </div>
+            <div className="report-type-keuze">
+              <button
+                type="button"
+                className={`report-type-knop${rapportType === "volledig" ? " is-actief" : ""}`}
+                onClick={() => pasTypeToe("volledig")}
+                title={t(
+                  "report.rapportTypeVolledigHint",
+                  "De complete berekening: alle secties, inclusief invoertabellen en de afleidingen per staaf.",
+                )}
+              >
+                {t("report.rapportTypeVolledig", "Volledig")}
+              </button>
+              <button
+                type="button"
+                className={`report-type-knop${rapportType === "beperkt" ? " is-actief" : ""}`}
+                onClick={() => pasTypeToe("beperkt")}
+                title={t(
+                  "report.rapportTypeBeperktHint",
+                  "De kern voor de opdrachtgever: uitgangspunten, schets, resultaten en toetsingsoverzicht.",
+                )}
+              >
+                {t("report.rapportTypeBeperkt", "Beperkt")}
+              </button>
+            </div>
+            <p className="report-sidebar-hint">
+              {aangepast
+                ? t(
+                    "report.rapportTypeAangepast",
+                    "Aangepast — de sectiekeuze wijkt af van dit type. Klik het type opnieuw om terug te zetten.",
+                  )
+                : t(
+                    "report.rapportTypeHint",
+                    "Een voorinstelling: hieronder blijft elke sectie los aan of uit te zetten.",
+                  )}
+            </p>
+
+            {/* Detailniveau van de toetsing — los van het rapporttype. */}
+            <label className="report-opmaak-keuze report-detail-keuze">
+              <span className="report-opmaak-label">
+                {t("report.toetsingDetail", "Toetsing")}
+              </span>
+              <select
+                value={toetsingDetail}
+                onChange={(e) =>
+                  setToetsingDetail(
+                    e.target.value === "beknopt" ? "beknopt" : "gedetailleerd",
+                  )
+                }
+              >
+                <option value="beknopt">
+                  {t("report.toetsingBeknopt", "Beknopt — alleen unity checks")}
+                </option>
+                <option value="gedetailleerd">
+                  {t("report.toetsingGedetailleerd", "Gedetailleerd — met afleidingen")}
+                </option>
+              </select>
+            </label>
+
+            <div className="report-sidebar-kop">{t("report.sections", "Secties")}</div>
             <p className="report-sidebar-hint">
               {t(
                 "report.sectionsHint2",
