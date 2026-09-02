@@ -203,6 +203,34 @@
   color: #111;
 }
 
+/* ─── Sectienummering (1, 1.1, …) ───
+   CSS-tellers over de gerenderde vellen: de registry-volgorde
+   (reportSections.ts) bepaalt via de rendervolgorde in ReportShell de
+   nummers; uitgeschakelde secties tellen automatisch niet mee. De
+   projectkop (h1) blijft ongenummerd als titelblad. */
+.report-zoom {
+  counter-reset: rpt-sectie;
+}
+
+.rpt-h2 {
+  counter-increment: rpt-sectie;
+  counter-reset: rpt-subsectie;
+}
+
+.rpt-h2::before {
+  content: counter(rpt-sectie);
+  margin-right: 2.5mm;
+}
+
+.rpt-h3 {
+  counter-increment: rpt-subsectie;
+}
+
+.rpt-h3::before {
+  content: counter(rpt-sectie) "." counter(rpt-subsectie);
+  margin-right: 2mm;
+}
+
 .rpt-note {
   font-size: 9pt;
   color: #555;
@@ -238,24 +266,51 @@
   color: #1a1a1a;
 }
 
-/* Gegevens-/resultaattabellen */
+/* Gegevens-/resultaattabellen — referentiestijl: dunne randen, lichtgrijze
+   kopregel, compacte regelafstand; getallen rechts via .rpt-num per cel. */
 .rpt-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 9pt;
+  line-height: 1.35;
 }
 
 .rpt-table th,
 .rpt-table td {
-  border: 0.2mm solid #999;
-  padding: 1.4mm 2mm;
+  border: 0.15mm solid #999;
+  padding: 1mm 2mm;
   text-align: left;
   vertical-align: top;
 }
 
 .rpt-table thead th {
-  background: #ececec;
+  background: #f2f2f2;
+  font-weight: 600;
+}
+
+/* ─── Figuren: één conventie voor alle rapportfiguren ───
+   .rpt-figuur          figuurblok (breekt bij print niet over een paginarand)
+   .rpt-figuur-svg      de tekening zelf (gecentreerd, past binnen het vel)
+   .rpt-figuur-bijschrift  vet, gecentreerd bijschrift ÓNDER de figuur
+   (referentiestijl — zie bv. de omhullende-figuren). */
+.rpt-figuur {
+  margin: 0 0 5mm;
+}
+
+.rpt-figuur-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 150mm;
+  margin: 0 auto;
+}
+
+.rpt-figuur-bijschrift {
+  text-align: center;
   font-weight: 700;
+  font-size: 9.5pt;
+  color: #111;
+  margin: 1mm 0 0;
 }
 
 .rpt-num {
@@ -340,10 +395,14 @@
   align-items: flex-start;
 }
 
-.rpt-section-sketch {
-  width: 44mm;
-  height: auto;
+.rpt-profile-sketch {
   flex-shrink: 0;
+}
+
+.rpt-section-sketch {
+  display: block;
+  width: 96mm;
+  height: auto;
 }
 
 .rpt-profile-props th {
@@ -364,13 +423,10 @@
 
 /* ─── R3: resultaatsecties ─── */
 
-/* Constructieschets: past zich aan de modelomvang aan, max. één vel. */
+/* Constructieschets: modifier op .rpt-figuur-svg — iets ruimer, max. één vel. */
 .rpt-schema-svg {
-  display: block;
-  width: 100%;
-  height: auto;
   max-height: 165mm;
-  margin: 2mm auto 0;
+  margin-top: 2mm;
 }
 
 /* Combinatie-keuze (scherm-chrome; de print toont .rpt-print-only-regel). */
@@ -396,33 +452,8 @@
   padding: 0.8mm 1.5mm;
 }
 
-/* Krachtsverdeling: per staaf een blok met een 2×2-diagramraster. */
-.rpt-diagram-beam {
-  margin-bottom: 5mm;
-}
-
-.rpt-diagram-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2mm 6mm;
-}
-
-.rpt-diagram-cell {
-  min-width: 0;
-}
-
-.rpt-diagram-title {
-  font-size: 8.5pt;
-  font-weight: 600;
-  color: #333;
-}
-
-.rpt-diagram-svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 0.15mm solid #ddd;
-}
+/* Krachtsverdeling: de figuren gebruiken de generieke .rpt-figuur-klassen
+   (zie boven) — geen sectie-eigen figuurstijlen meer. */
 
 /* ═══════════════════════════════════════════════════════════════════════
    Print — zelfde inhoud, app-chrome weg. De @page-regel (formaat, marges,
@@ -509,9 +540,11 @@
     break-inside: auto;
   }
 
+  /* Figuurblokken (incl. bijschrift), profiel- en belastinggeval-blokken
+     blijven op één pagina bijeen. */
+  .rpt-figuur,
   .rpt-profile-block,
-  .rpt-loadcase-block,
-  .rpt-diagram-beam {
+  .rpt-loadcase-block {
     break-inside: avoid;
   }
 

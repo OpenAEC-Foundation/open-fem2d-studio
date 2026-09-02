@@ -1,96 +1,224 @@
 /**
- * SectionSketch — parametrische doorsnede-tekening (SVG) voor het rapport.
+ * SectionSketch — parametrische doorsnede-tekening (SVG) voor het rapport,
+ * in de stijl van het referentie-rapport: twee weergaven naast elkaar.
  *
- * v1 volgens de rapporteis: rechte rechthoekcontouren (geen afrondingen),
- * netjes op schaal binnen een vast kader, met maatlijnen h en b.
- *  - I-profiel (HEA/HEB/IPE): één 12-punts contour uit h/b/tw/tf;
- *  - U-profiel (UNP/UPE): 8-punts contour;
- *  - koker (RHS/SHS): buiten- + binnenrechthoek (evenodd);
- *  - buis (CHS): buiten- + binnencirkel (evenodd);
- *  - rechthoek b×h (hout): massieve rechthoek.
- * Kleuren zijn vaste documentkleuren (zwart-op-wit rapport, print-echt).
+ *  1. Gemaatvoerde contour: b-maatlijn boven, h-maatlijn links (met korte
+ *     eindstreepjes en pijlpunten), en verwijslabels voor tw, tf en r bij de
+ *     betreffende onderdelen.
+ *  2. Assenweergave: dezelfde doorsnede met de y- en z-as door het
+ *     zwaartepunt en de uiterste-vezelafstanden (h/2 boven/onder, b/2
+ *     links/rechts, met teken).
+ *
+ * Contouren mét échte afrondingsstralen:
+ *  - I-profiel (HEA/HEB/HEM/IPE): walsuitrondingen r als kwartcirkelbogen
+ *    bij de lijf-flens-overgangen;
+ *  - U-profiel (UNP/UPE): idem, twee uitrondingen aan de lijfzijde;
+ *  - koker (SHS/RHS): afgeronde buitenhoeken (datastraal, minimaal 1,5t)
+ *    en binnenhoeken (buitenstraal − t);
+ *  - buis (CHS): buiten- + binnencirkel;
+ *  - rechthoek b×h (hout): strak, zonder afrondingen.
+ *
+ * NB: bij U-profielen ligt het werkelijke zwaartepunt niet op b/2; de
+ * profieldatabase bevat die ligging niet, dus de assenweergave tekent de
+ * z-as symmetrisch (door b/2) — bewuste, gedocumenteerde vereenvoudiging.
+ *
+ * Kleuren zijn vaste documentkleuren: lichte vulling met donkere contour,
+ * print-echt op wit papier (A4), ook in grijstinten.
  */
 
 export type SectionShape =
-  | { type: "isection"; h: number; b: number; tw: number; tf: number }
-  | { type: "channel"; h: number; b: number; tw: number; tf: number }
-  | { type: "box"; h: number; b: number; t: number }
+  | { type: "isection"; h: number; b: number; tw: number; tf: number; r: number }
+  | { type: "channel"; h: number; b: number; tw: number; tf: number; r: number }
+  | { type: "box"; h: number; b: number; t: number; r: number }
   | { type: "tube"; d: number; t: number }
   | { type: "rect"; h: number; b: number };
 
 /** Maat in mm als tekst: integer waar mogelijk, anders 1 decimaal. */
 function dim(v: number): string {
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  const afgerond = Math.round(v * 10) / 10;
+  return Number.isInteger(afgerond) ? String(afgerond) : afgerond.toFixed(1);
 }
 
-// Vast kader (viewBox-eenheden): tekenvlak + ruimte voor maatlijnen.
-const FRAME_W = 196;
-const FRAME_H = 184;
-const DRAW_W = 120;
+// ---------------------------------------------------------------------------
+// Vast kader (viewBox-eenheden).
+// Panel 1 (maatvoering): links ruimte voor de h-maatlijn, boven voor de
+// b-maatlijn, rechts voor de tw/tf/r-labels. Panel 2 (assen): links/boven
+// ruimte voor de aspijlen, rondom voor de vezelafstand-teksten.
+// ---------------------------------------------------------------------------
+const DRAW_W = 100; // tekenvlak per panel (contour wordt hierin gecentreerd)
 const DRAW_H = 130;
-const PAD = 12;
-const DIM_GAP = 12; // afstand contour → maatlijn
-const TICK = 3.5;
+const M1_LEFT = 30;
+const M1_TOP = 26;
+const M1_RIGHT = 48; // labelkolom tw/tf/r
+const GAP = 8;
+const M2_LEFT = 30;
+const M2_RIGHT = 26;
+const M_BOTTOM = 16;
+const P2_X = M1_LEFT + DRAW_W + M1_RIGHT + GAP; // x-offset panel 2
+const FRAME_W = P2_X + M2_LEFT + DRAW_W + M2_RIGHT;
+const FRAME_H = M1_TOP + DRAW_H + M_BOTTOM;
+const TICK = 3; // korte eindstreepjes op de maatlijnen
 
-const FILL_STEEL = "#dce3ea";
+const FILL_STEEL = "#dbe4f0";
 const FILL_TIMBER = "#e9deca";
 const STROKE = "#39424e";
-const DIM_COLOR = "#767676";
+const DIM_COLOR = "#5b6470";
+const TEXT_COLOR = "#333";
 
+// ---------------------------------------------------------------------------
+// Contourpaden met afrondingsstralen.
+// ---------------------------------------------------------------------------
 function shapePath(shape: SectionShape, s: number, x0: number, y0: number): {
   d: string;
   fillRule?: "evenodd";
 } {
-  const p = (x: number, y: number) => `${(x0 + x * s).toFixed(2)} ${(y0 + y * s).toFixed(2)}`;
+  const X = (x: number) => (x0 + x * s).toFixed(2);
+  const Y = (y: number) => (y0 + y * s).toFixed(2);
+  const P = (x: number, y: number) => `${X(x)} ${Y(y)}`;
+  // Kwartcirkelboog met straal r naar (x, y); sweep 0 = holle uitronding
+  // (walsuitronding), sweep 1 = bolle hoek (kokerhoek).
+  const A = (r: number, x: number, y: number, sweep: 0 | 1) =>
+    `A ${(r * s).toFixed(2)} ${(r * s).toFixed(2)} 0 0 ${sweep} ${P(x, y)}`;
 
   switch (shape.type) {
     case "isection": {
       const { h, b, tw, tf } = shape;
+      // Straal defensief begrensd zodat de boog altijd binnen het profiel past.
+      const r = Math.max(0, Math.min(shape.r, (b - tw) / 2 - 0.5, (h - 2 * tf) / 2 - 0.5));
       const wl = (b - tw) / 2; // flensuitstek links van het lijf
+      const wr = wl + tw; // rechterkant lijf
       return {
         d:
-          `M ${p(0, 0)} L ${p(b, 0)} L ${p(b, tf)} L ${p(wl + tw, tf)} ` +
-          `L ${p(wl + tw, h - tf)} L ${p(b, h - tf)} L ${p(b, h)} L ${p(0, h)} ` +
-          `L ${p(0, h - tf)} L ${p(wl, h - tf)} L ${p(wl, tf)} L ${p(0, tf)} Z`,
+          `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, tf)} L ${P(wr + r, tf)} ` +
+          `${A(r, wr, tf + r, 0)} L ${P(wr, h - tf - r)} ${A(r, wr + r, h - tf, 0)} ` +
+          `L ${P(b, h - tf)} L ${P(b, h)} L ${P(0, h)} L ${P(0, h - tf)} ` +
+          `L ${P(wl - r, h - tf)} ${A(r, wl, h - tf - r, 0)} L ${P(wl, tf + r)} ` +
+          `${A(r, wl - r, tf, 0)} L ${P(0, tf)} Z`,
       };
     }
     case "channel": {
       const { h, b, tw, tf } = shape;
+      const r = Math.max(0, Math.min(shape.r, b - tw - 0.5, (h - 2 * tf) / 2 - 0.5));
       return {
         d:
-          `M ${p(0, 0)} L ${p(b, 0)} L ${p(b, tf)} L ${p(tw, tf)} ` +
-          `L ${p(tw, h - tf)} L ${p(b, h - tf)} L ${p(b, h)} L ${p(0, h)} Z`,
+          `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, tf)} L ${P(tw + r, tf)} ` +
+          `${A(r, tw, tf + r, 0)} L ${P(tw, h - tf - r)} ${A(r, tw + r, h - tf, 0)} ` +
+          `L ${P(b, h - tf)} L ${P(b, h)} L ${P(0, h)} Z`,
       };
     }
     case "box": {
       const { h, b, t } = shape;
-      return {
-        d:
-          `M ${p(0, 0)} H ${(x0 + b * s).toFixed(2)} V ${(y0 + h * s).toFixed(2)} H ${x0.toFixed(2)} Z ` +
-          `M ${p(t, t)} H ${(x0 + (b - t) * s).toFixed(2)} V ${(y0 + (h - t) * s).toFixed(2)} H ${(x0 + t * s).toFixed(2)} Z`,
-        fillRule: "evenodd",
-      };
+      // Buitenhoekstraal: datastraal, maar minimaal 1,5t (warmgewalste
+      // kokers hebben 1,5t à 2t); binnenstraal = buitenstraal − t.
+      const ro = Math.min(Math.max(shape.r, 1.5 * t), Math.min(b, h) / 2 - 0.5);
+      const ri = Math.max(ro - t, 0.5);
+      const buiten =
+        `M ${P(ro, 0)} L ${P(b - ro, 0)} ${A(ro, b, ro, 1)} L ${P(b, h - ro)} ` +
+        `${A(ro, b - ro, h, 1)} L ${P(ro, h)} ${A(ro, 0, h - ro, 1)} ` +
+        `L ${P(0, ro)} ${A(ro, ro, 0, 1)} Z`;
+      const binnen =
+        `M ${P(t + ri, t)} L ${P(b - t - ri, t)} ${A(ri, b - t, t + ri, 1)} ` +
+        `L ${P(b - t, h - t - ri)} ${A(ri, b - t - ri, h - t, 1)} L ${P(t + ri, h - t)} ` +
+        `${A(ri, t, h - t - ri, 1)} L ${P(t, t + ri)} ${A(ri, t + ri, t, 1)} Z`;
+      return { d: `${buiten} ${binnen}`, fillRule: "evenodd" };
     }
     case "tube": {
       const { d, t } = shape;
-      const r = d / 2;
-      const ri = r - t;
-      const cx = x0 + r * s;
-      const cy = y0 + r * s;
-      const circle = (rad: number) =>
+      const rBuiten = d / 2;
+      const rBinnen = Math.max(rBuiten - t, 0.5);
+      const cx = x0 + rBuiten * s;
+      const cy = y0 + rBuiten * s;
+      const cirkel = (rad: number) =>
         `M ${(cx - rad * s).toFixed(2)} ${cy.toFixed(2)} ` +
         `a ${(rad * s).toFixed(2)} ${(rad * s).toFixed(2)} 0 1 0 ${(2 * rad * s).toFixed(2)} 0 ` +
         `a ${(rad * s).toFixed(2)} ${(rad * s).toFixed(2)} 0 1 0 ${(-2 * rad * s).toFixed(2)} 0 Z`;
-      return { d: `${circle(r)} ${circle(ri)}`, fillRule: "evenodd" };
+      return { d: `${cirkel(rBuiten)} ${cirkel(rBinnen)}`, fillRule: "evenodd" };
     }
     case "rect": {
       const { h, b } = shape;
-      return {
-        d: `M ${p(0, 0)} L ${p(b, 0)} L ${p(b, h)} L ${p(0, h)} Z`,
-      };
+      return { d: `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, h)} L ${P(0, h)} Z` };
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Kleine tekenhulpen.
+// ---------------------------------------------------------------------------
+
+/** Gevulde pijlpunt met de punt op (x, y); ang 0 = wijst naar links,
+ *  90 = omhoog, 180 = rechts, 270 = omlaag. */
+function ArrowHead({ x, y, ang, color }: { x: number; y: number; ang: number; color: string }) {
+  return (
+    <polygon
+      points="0,0 6.5,-2.1 6.5,2.1"
+      fill={color}
+      transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${ang.toFixed(1)})`}
+    />
+  );
+}
+
+/** Horizontale maatlijn (b boven de contour) met eindstreepjes en pijlen. */
+function DimH({ x1, x2, y, yObj, label }: { x1: number; x2: number; y: number; yObj: number; label: string }) {
+  return (
+    <g>
+      <g stroke={DIM_COLOR} strokeWidth="0.7">
+        <line x1={x1} y1={y} x2={x2} y2={y} />
+        {/* korte eindstreepjes + hulplijnen naar de contour */}
+        <line x1={x1} y1={y - TICK} x2={x1} y2={y + TICK} />
+        <line x1={x2} y1={y - TICK} x2={x2} y2={y + TICK} />
+        <line x1={x1} y1={y + TICK} x2={x1} y2={yObj - 1.5} strokeDasharray="2 2" />
+        <line x1={x2} y1={y + TICK} x2={x2} y2={yObj - 1.5} strokeDasharray="2 2" />
+      </g>
+      <ArrowHead x={x1} y={y} ang={0} color={DIM_COLOR} />
+      <ArrowHead x={x2} y={y} ang={180} color={DIM_COLOR} />
+      <text x={(x1 + x2) / 2} y={y - 2.5} fill={TEXT_COLOR} fontSize="8" textAnchor="middle">
+        {label}
+      </text>
+    </g>
+  );
+}
+
+/** Verticale maatlijn (h links van de contour) met eindstreepjes en pijlen. */
+function DimV({ y1, y2, x, xObj, label }: { y1: number; y2: number; x: number; xObj: number; label: string }) {
+  return (
+    <g>
+      <g stroke={DIM_COLOR} strokeWidth="0.7">
+        <line x1={x} y1={y1} x2={x} y2={y2} />
+        <line x1={x - TICK} y1={y1} x2={x + TICK} y2={y1} />
+        <line x1={x - TICK} y1={y2} x2={x + TICK} y2={y2} />
+        <line x1={x + TICK} y1={y1} x2={xObj - 1.5} y2={y1} strokeDasharray="2 2" />
+        <line x1={x + TICK} y1={y2} x2={xObj - 1.5} y2={y2} strokeDasharray="2 2" />
+      </g>
+      <ArrowHead x={x} y={y1} ang={90} color={DIM_COLOR} />
+      <ArrowHead x={x} y={y2} ang={270} color={DIM_COLOR} />
+      <text
+        x={x - 3}
+        y={(y1 + y2) / 2}
+        fill={TEXT_COLOR}
+        fontSize="8"
+        textAnchor="middle"
+        transform={`rotate(-90 ${x - 3} ${(y1 + y2) / 2})`}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+/** Verwijslabel: dun lijntje van een onderdeel naar een tekstje rechts. */
+function Leader({ fx, fy, tx, ty, label }: { fx: number; fy: number; tx: number; ty: number; label: string }) {
+  return (
+    <g>
+      <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={DIM_COLOR} strokeWidth="0.6" />
+      <circle cx={fx} cy={fy} r="0.9" fill={DIM_COLOR} />
+      <text x={tx + 1.5} y={ty + 2.6} fill={TEXT_COLOR} fontSize="7.5">
+        {label}
+      </text>
+    </g>
+  );
+}
+
+interface LeaderSpec { fx: number; fy: number; tx: number; ty: number; label: string }
 
 export default function SectionSketch({ shape }: { shape: SectionShape }) {
   const bMm = shape.type === "tube" ? shape.d : shape.b;
@@ -100,17 +228,87 @@ export default function SectionSketch({ shape }: { shape: SectionShape }) {
   const s = Math.min(DRAW_W / bMm, DRAW_H / hMm);
   const w = bMm * s;
   const h = hMm * s;
-  const x0 = PAD + (DRAW_W - w) / 2;
-  const y0 = PAD + (DRAW_H - h) / 2;
 
-  const path = shapePath(shape, s, x0, y0);
+  // Panel 1: gemaatvoerde contour.
+  const x0 = M1_LEFT + (DRAW_W - w) / 2;
+  const y0 = M1_TOP + (DRAW_H - h) / 2;
+  // Panel 2: assenweergave, verticaal op dezelfde hoogte.
+  const x0b = P2_X + M2_LEFT + (DRAW_W - w) / 2;
 
-  // Maatlijnen: h rechts van de contour, b eronder.
-  const hx = PAD + DRAW_W + DIM_GAP; // x van de h-maatlijn
-  const by = PAD + DRAW_H + DIM_GAP; // y van de b-maatlijn
+  const path1 = shapePath(shape, s, x0, y0);
+  const path2 = shapePath(shape, s, x0b, y0);
   const isTimber = shape.type === "rect";
-  const hLabel = `${shape.type === "tube" ? "d" : "h"} = ${dim(hMm)}`;
-  const bLabel = `b = ${dim(bMm)}`;
+  const fill = isTimber ? FILL_TIMBER : FILL_STEEL;
+
+  // Maatlijn-posities.
+  const yDimB = y0 - 12; // b-maatlijn boven
+  const xDimH = x0 - 12; // h-maatlijn links
+  const xLab = M1_LEFT + DRAW_W + 8; // labelkolom rechts in panel 1
+
+  // Verwijslabels per vorm (tw/tf/r resp. t).
+  const leaders: LeaderSpec[] = [];
+  if (shape.type === "isection") {
+    const { h: hs, b: bs, tw, tf, r } = shape;
+    const wr = x0 + ((bs + tw) / 2) * s; // rechterkant lijf (scherm-x)
+    leaders.push({
+      fx: x0 + w, fy: y0 + (tf / 2) * s,
+      tx: xLab, ty: y0 + (tf / 2) * s,
+      label: `tf = ${dim(tf)}`,
+    });
+    leaders.push({
+      fx: wr, fy: y0 + h / 2,
+      tx: xLab, ty: y0 + h / 2,
+      label: `tw = ${dim(tw)}`,
+    });
+    // Uitrondingsboog rechtsonder: middelpunt van de kwartcirkel.
+    const rEff = Math.max(0, Math.min(r, (bs - tw) / 2 - 0.5, (hs - 2 * tf) / 2 - 0.5));
+    leaders.push({
+      fx: wr + 0.29 * rEff * s, fy: y0 + (hs - tf - 0.29 * rEff) * s,
+      tx: xLab, ty: y0 + h * 0.8,
+      label: `r = ${dim(r)}`,
+    });
+  } else if (shape.type === "channel") {
+    const { h: hs, b: bs, tw, tf, r } = shape;
+    leaders.push({
+      fx: x0 + w, fy: y0 + (tf / 2) * s,
+      tx: xLab, ty: y0 + (tf / 2) * s,
+      label: `tf = ${dim(tf)}`,
+    });
+    leaders.push({
+      fx: x0 + tw * s, fy: y0 + h / 2,
+      tx: xLab, ty: y0 + h / 2,
+      label: `tw = ${dim(tw)}`,
+    });
+    const rEff = Math.max(0, Math.min(r, bs - tw - 0.5, (hs - 2 * tf) / 2 - 0.5));
+    leaders.push({
+      fx: x0 + (tw + 0.29 * rEff) * s, fy: y0 + (hs - tf - 0.29 * rEff) * s,
+      tx: xLab, ty: y0 + h * 0.8,
+      label: `r = ${dim(r)}`,
+    });
+  } else if (shape.type === "box") {
+    leaders.push({
+      fx: x0 + w - (shape.t / 2) * s, fy: y0 + h * 0.4,
+      tx: xLab, ty: y0 + h * 0.4,
+      label: `t = ${dim(shape.t)}`,
+    });
+  } else if (shape.type === "tube") {
+    leaders.push({
+      fx: x0 + w - (shape.t / 2) * s, fy: y0 + h / 2,
+      tx: xLab, ty: y0 + h / 2,
+      label: `t = ${dim(shape.t)}`,
+    });
+  }
+
+  // Assenweergave: zwaartepunt. Bij U-profielen ligt het echte zwaartepunt
+  // niet op b/2, maar de profieldatabase bevat die ligging niet — we tekenen
+  // symmetrisch (gedocumenteerde vereenvoudiging, zie kopcommentaar).
+  const xc = x0b + w / 2;
+  const yc = y0 + h / 2;
+  const halfB = dim(bMm / 2);
+  const halfH = dim(hMm / 2);
+
+  const bLabel = shape.type === "tube" ? `d = ${dim(bMm)}` : `b = ${dim(bMm)}`;
+  const hLabel = `h = ${dim(hMm)}`;
 
   return (
     <svg
@@ -119,49 +317,64 @@ export default function SectionSketch({ shape }: { shape: SectionShape }) {
       role="img"
       aria-label={`${bLabel} mm, ${hLabel} mm`}
     >
+      {/* ---- Panel 1: gemaatvoerde contour ---- */}
       <path
-        d={path.d}
-        fillRule={path.fillRule}
-        fill={isTimber ? FILL_TIMBER : FILL_STEEL}
+        d={path1.d}
+        fillRule={path1.fillRule}
+        fill={fill}
         stroke={STROKE}
-        strokeWidth="1.2"
+        strokeWidth="1.1"
         strokeLinejoin="miter"
       />
-
-      {/* h-maatlijn (rechts) */}
-      <g stroke={DIM_COLOR} strokeWidth="0.8">
-        <line x1={hx} y1={y0} x2={hx} y2={y0 + h} />
-        <line x1={hx - TICK} y1={y0} x2={hx + TICK} y2={y0} />
-        <line x1={hx - TICK} y1={y0 + h} x2={hx + TICK} y2={y0 + h} />
-        <line x1={x0 + w + 2} y1={y0} x2={hx + TICK} y2={y0} strokeDasharray="2 2" />
-        <line x1={x0 + w + 2} y1={y0 + h} x2={hx + TICK} y2={y0 + h} strokeDasharray="2 2" />
-      </g>
-      <text
-        x={hx + 6}
-        y={y0 + h / 2}
-        fill="#444"
-        fontSize="9"
-        textAnchor="middle"
-        transform={`rotate(-90 ${hx + 6} ${y0 + h / 2})`}
-      >
-        {hLabel}
-      </text>
-
-      {/* b-maatlijn (onder) — bij CHS volstaat de d-maat rechts */}
+      <DimH x1={x0} x2={x0 + w} y={yDimB} yObj={y0} label={bLabel} />
       {shape.type !== "tube" && (
-        <>
-          <g stroke={DIM_COLOR} strokeWidth="0.8">
-            <line x1={x0} y1={by} x2={x0 + w} y2={by} />
-            <line x1={x0} y1={by - TICK} x2={x0} y2={by + TICK} />
-            <line x1={x0 + w} y1={by - TICK} x2={x0 + w} y2={by + TICK} />
-            <line x1={x0} y1={y0 + h + 2} x2={x0} y2={by + TICK} strokeDasharray="2 2" />
-            <line x1={x0 + w} y1={y0 + h + 2} x2={x0 + w} y2={by + TICK} strokeDasharray="2 2" />
-          </g>
-          <text x={x0 + w / 2} y={by + 11} fill="#444" fontSize="9" textAnchor="middle">
-            {bLabel}
-          </text>
-        </>
+        <DimV y1={y0} y2={y0 + h} x={xDimH} xObj={x0} label={hLabel} />
       )}
+      {leaders.map((l) => (
+        <Leader key={l.label} {...l} />
+      ))}
+
+      {/* ---- Panel 2: assen door het zwaartepunt + uiterste vezels ---- */}
+      <path
+        d={path2.d}
+        fillRule={path2.fillRule}
+        fill={fill}
+        stroke={STROKE}
+        strokeWidth="1.1"
+        strokeLinejoin="miter"
+      />
+      {/* y-as: horizontaal, positief naar links (rechtsdraaiend assenstelsel
+          met z omhoog, x uit het papier) */}
+      <line
+        x1={x0b - 16} y1={yc} x2={xc + 14} y2={yc}
+        stroke={DIM_COLOR} strokeWidth="0.7"
+      />
+      <ArrowHead x={x0b - 16} y={yc} ang={0} color={DIM_COLOR} />
+      <text x={x0b - 19} y={yc + 2.6} fill={TEXT_COLOR} fontSize="8" fontStyle="italic" textAnchor="end">
+        y
+      </text>
+      {/* z-as: verticaal, positief omhoog */}
+      <line
+        x1={xc} y1={y0 - 14} x2={xc} y2={yc + 14}
+        stroke={DIM_COLOR} strokeWidth="0.7"
+      />
+      <ArrowHead x={xc} y={y0 - 14} ang={90} color={DIM_COLOR} />
+      <text x={xc - 4} y={y0 - 11} fill={TEXT_COLOR} fontSize="8" fontStyle="italic" textAnchor="end">
+        z
+      </text>
+      {/* uiterste-vezelafstanden (met teken) */}
+      <text x={xc + 4} y={y0 - 2.5} fill={TEXT_COLOR} fontSize="7">
+        {halfH}
+      </text>
+      <text x={xc + 4} y={y0 + h + 7.5} fill={TEXT_COLOR} fontSize="7">
+        −{halfH}
+      </text>
+      <text x={x0b - 2} y={yc + 9} fill={TEXT_COLOR} fontSize="7" textAnchor="end">
+        {halfB}
+      </text>
+      <text x={x0b + w + 2} y={yc + 9} fill={TEXT_COLOR} fontSize="7">
+        −{halfB}
+      </text>
     </svg>
   );
 }

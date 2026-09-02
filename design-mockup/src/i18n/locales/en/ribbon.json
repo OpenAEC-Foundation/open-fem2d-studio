@@ -263,6 +263,7 @@
     "nodeWord": "node",
     "unknownSection": "Unknown cross-section — this profile is not in the profile database and is not a rectangle b×h. The solver uses the default (HEA 160 / S235).",
     "noSketch": "No drawing available for this profile shape.",
+    "figSection": "Cross-section",
     "colType": "Type",
     "colReference": "Code",
     "matSteel": "Steel",

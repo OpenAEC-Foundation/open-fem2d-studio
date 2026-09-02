@@ -3,8 +3,8 @@
  *
  * GEGENEREERD uit src-tauri/crates/steel-profiles/data/profiles.json —
  * de bron van waarheid die ook de Rust-toetsing gebruikt. Niet met de hand
- * bijwerken; opnieuw genereren bij wijziging van de database.
- * Sleutels genormaliseerd (hoofdletters, zonder spaties/koppeltekens);
+ * bijwerken; opnieuw genereren met: node scripts/genereer-staalprofielen.mjs
+ * Sleutels genormaliseerd (hoofdletters, zonder spaties/koppeltekens/punten);
  * dubbelen ontdubbeld met dezelfde eerste-wint-regel als de Rust-lookup.
  */
 export const STEEL_SECTIONS: Record<string, { A: number; Iy: number }> = {
@@ -44,7 +44,7 @@ export const STEEL_SECTIONS: Record<string, { A: number; Iy: number }> = {
   "HEA320": { A: 12438.9, Iy: 229321969 },
   "HEA340": { A: 13350, Iy: 276900000 },
   "HEA360": { A: 14280.000000000002, Iy: 330900000 },
-  "HEA400": { A: 15900.0, Iy: 450750000 },
+  "HEA400": { A: 15900, Iy: 450750000 },
   "HEB100": { A: 2600, Iy: 4500000 },
   "HEB120": { A: 3400, Iy: 8640000 },
   "HEB140": { A: 4300, Iy: 15100000 },

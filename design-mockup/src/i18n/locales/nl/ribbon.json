@@ -263,6 +263,7 @@
     "nodeWord": "knoop",
     "unknownSection": "Doorsnede onbekend — dit profiel staat niet in de profieldatabase en is geen rechthoek b×h. De solver rekent met de default (HEA 160 / S235).",
     "noSketch": "Geen tekening beschikbaar voor deze profielvorm.",
+    "figSection": "Doorsnede",
     "colType": "Type",
     "colReference": "Norm",
     "matSteel": "Staal",
