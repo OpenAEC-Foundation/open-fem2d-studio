@@ -79,11 +79,26 @@ function buildMesh(input: SolverInput | MultiInput, loadsFilter?: (caseId?: numb
   const nodeIdMap = new Map<number, number>();
   const beamIdMap = new Map<number, number>();
 
-  // Material: mutate default material 1's E from the first beam's E.
-  // All beams share material 1 (same E); per-beam section overrides A/I/h.
-  const E_Nmm2 = input.beams[0]?.E ?? 210000;
-  const mat = mesh.getMaterial(1);
-  if (mat) mat.E = E_Nmm2 * 1e6; // N/mm² → Pa
+  // Materialen: één mesh-materiaal per unieke E-waarde, zodat een gemengd
+  // model (bv. staal + hout) per staaf zijn eigen E behoudt. Voorheen werd
+  // E van de eerste staaf op default-materiaal 1 gemuteerd en deelde het
+  // hele model die ene E — fout zodra staven verschillende E hebben.
+  const matTemplate = mesh.getMaterial(1); // default staal — bron voor nu/rho/alpha
+  const materialIdByE = new Map<number, number>();
+  const materialIdForE = (E_Nmm2: number): number => {
+    const cached = materialIdByE.get(E_Nmm2);
+    if (cached !== undefined) return cached;
+    const created = mesh.addMaterial({
+      name: `E=${E_Nmm2} N/mm²`,
+      E: E_Nmm2 * 1e6, // N/mm² → Pa
+      nu: matTemplate?.nu ?? 0.3,
+      rho: matTemplate?.rho ?? 7850,
+      color: matTemplate?.color ?? "#3b82f6",
+      alpha: matTemplate?.alpha ?? 12e-6,
+    });
+    materialIdByE.set(E_Nmm2, created.id);
+    return created.id;
+  };
 
   // Nodes: mm → m
   for (const n of input.nodes) {
@@ -108,7 +123,7 @@ function buildMesh(input: SolverInput | MultiInput, loadsFilter?: (caseId?: numb
       I: (b.I ?? 1.673e7) * 1e-12,
       h: 0.2, // default depth — only used for plate analysis
     };
-    const meshBeam = mesh.addBeamElement([fromId, toId], 1, section);
+    const meshBeam = mesh.addBeamElement([fromId, toId], materialIdForE(b.E ?? 210000), section);
     if (!meshBeam) continue;
     beamIdMap.set(b.id, meshBeam.id);
 

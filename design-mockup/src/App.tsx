@@ -30,6 +30,7 @@ import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/s
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { selfWeightPerMeter } from "./components/fem/profileData";
+import { resolveSection } from "./lib/sectionResolver";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
 import { getSetting } from "./store";
@@ -304,15 +305,24 @@ function App() {
     try {
       const multiInput: MultiInput = {
         nodes: fem.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
-        beams: fem.beams.map(b => ({
-          id: b.id, from: b.from, to: b.to,
-          // Scharnier-aansluiting: forward rotational releases to the engine.
-          // The solver condenses moment at hinged ends via applyEndReleases.
-          // (Pure translation releases — startTx/endTx/startTz/endTz — are not
-          //  yet wired through; rotational hinges cover the typical column-beam case.)
-          startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
-          endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
-        })),
+        beams: fem.beams.map(b => {
+          // Stijfheid uit materiaal + profiel — zelfde route als het canvas-pad
+          // (FemCanvas → resolveSection). Zonder dit rekende het multi-LC-pad
+          // (combinaties/envelope/toetsing) élke staaf met de solver-default
+          // (HEA 160 / S235) en kreeg de toetsing krachten en zakkingen van
+          // het verkeerde model.
+          const sec = resolveSection(b.material, b.profile);
+          return {
+            id: b.id, from: b.from, to: b.to,
+            E: sec.E, A: sec.A, I: sec.I,
+            // Scharnier-aansluiting: forward rotational releases to the engine.
+            // The solver condenses moment at hinged ends via applyEndReleases.
+            // (Pure translation releases — startTx/endTx/startTz/endTz — are not
+            //  yet wired through; rotational hinges cover the typical column-beam case.)
+            startConnection: b.releases?.startRy ? 'hinge' as const : 'fixed' as const,
+            endConnection:   b.releases?.endRy   ? 'hinge' as const : 'fixed' as const,
+          };
+        }),
         supports: fem.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
         cases: fem.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
         loads: [], pointLoads: [], thermalLoads: [],
