@@ -24,6 +24,14 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      met de plates-array (zoals `Beam.checkConfig`); ontbreken ze, dan
  *      vult het laden de PLATE_DEFAULTS aan (20 mm / 210000 N/mm² / 0,3 /
  *      7850 kg/m³ / 500 mm — zie femTypes.withPlateDefaults).
+ *      Polygonplaten (P4.2, optioneel — geen versie-bump): `Plate.nodeIds`
+ *      mag n ≥ 3 hoeken bevatten en `Plate.meshCache` draagt dan het
+ *      gecachete CDT-rekenmesh (platte data + geometrie-signatuur, zie
+ *      femTypes.PlaatMeshCache); randlasten op polygonranden gebruiken
+ *      `Load.edgeIndex` i.p.v. de benoemde `Load.edge`. Beide velden reizen
+ *      automatisch mee met de bestaande arrays; oude bestanden zonder deze
+ *      velden laden ongewijzigd, en een bestand met verouderde cache wordt
+ *      bij het openen door het canvas geregenereerd (signatuurcontrole).
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).

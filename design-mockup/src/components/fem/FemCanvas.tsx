@@ -11,7 +11,9 @@
  *   - addNode     : click empty area → snap to grid → add node
  *   - addBeam     : click two nodes → add beam between them
  *   - addSubNode  : click a beam → split at projected click pos
- *   - addPlate    : 4 clicks → Plate region (wandschijf; geen auto-randstaven)
+ *   - addPlate    : n hoeken klikken, sluiten door klik op de eerste knoop
+ *                   (P4.2) → wandschijf; asgelijnde rechthoek rekent via het
+ *                   quad-grid, elke andere polygoon via een CDT-meshcache
  *   - addPinned/Fixed/X-Roller/Z-Roller : click a node → toggle support
  *   - addZSpring/XSpring/RotSpring     : click node → popover asks for k
  *   - addPointLoad/Moment              : click node → popover for components
@@ -35,10 +37,18 @@ import BarPropertiesDialog from "./BarPropertiesDialog";
 import { useCheckStore } from "../../stores/checkStore";
 import { resolveSection, TIMBER_E_MEAN } from "../../lib/sectionResolver";
 import type {
-  Tool, Node, Beam, Plate, Support, Load, Selection,
+  Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
 } from "./femTypes";
-import { withPlateDefaults } from "./femTypes";
+import {
+  withPlateDefaults, PLATE_DEFAULTS,
+  isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur,
+  commitPlaatMeshCache,
+} from "./femTypes";
+// Alleen importeren (mesh-generatie voor de CDT-cache, P4.2) — de core zelf
+// blijft ongewijzigd.
+import { Mesh } from "../../core/fem/Mesh";
+import { generatePolygonPlateMeshV2 } from "../../core/fem/PlateRegion";
 import InlinePopover from "../openaec/InlinePopover";
 import { notifyWarning } from "../../io/notify";
 
@@ -164,6 +174,87 @@ function plaatRandSegment(
   }
 }
 
+/** Hoekcoördinaten (mm, klikvolgorde) van een plaat — null bij een dode knoop. */
+function plaatHoekPunten(pl: Plate, nodes: Node[]): PlaatPunt[] | null {
+  const punten: PlaatPunt[] = [];
+  for (const id of pl.nodeIds) {
+    const n = nodes.find((nn) => nn.id === id);
+    if (!n) return null;
+    punten.push({ x: n.x, z: n.z });
+  }
+  return punten;
+}
+
+/**
+ * Rekent deze plaat via het CDT-polygonpad (P4.2)? Zelfde classificatie als
+ * de engine-adapter: 4 hoeken die een asgelijnde rechthoek vormen = grid-pad,
+ * al het andere = polygonpad.
+ */
+function isPolygoonPlaat(punten: PlaatPunt[]): boolean {
+  return !(punten.length === 4 && isAsgelijndeRechthoek(punten));
+}
+
+/** Eindpunten (mm) van polygonrand `edgeIndex` (hoek i → hoek i+1, cyclisch). */
+function plaatPolygoonRandSegment(
+  pl: Plate, nodes: Node[], edgeIndex: number,
+): { a: { x: number; z: number }; b: { x: number; z: number } } | null {
+  const n = pl.nodeIds.length;
+  if (n < 3 || edgeIndex < 0 || edgeIndex >= n) return null;
+  const na = nodes.find((nn) => nn.id === pl.nodeIds[edgeIndex]);
+  const nb = nodes.find((nn) => nn.id === pl.nodeIds[(edgeIndex + 1) % n]);
+  if (!na || !nb) return null;
+  return { a: { x: na.x, z: na.z }, b: { x: nb.x, z: nb.z } };
+}
+
+/**
+ * Genereer de CDT-meshcache van een polygonplaat (P4.2). Draait volledig op
+ * een SCRATCH-mesh in mm (Triangle is eenheid-agnostisch) zodat er geen
+ * mm↔m-afrondingsruis in de cache belandt; de engine zet de punten bij het
+ * solven om naar meters. Async (WASM) — vandaar de cache: de solve zelf
+ * blijft synchroon. Gooit bij WASM-/CDT-fouten; de aanroeper meldt dat en
+ * laat het model ongewijzigd (P4.3).
+ */
+async function bouwPlaatMeshCache(punten: PlaatPunt[], meshSizeMm: number): Promise<PlaatMeshCache> {
+  const scratch = new Mesh();
+  const region = await generatePolygonPlateMeshV2(scratch, {
+    outline: punten.map((p) => ({ x: p.x, y: p.z })),   // model-z = mesh-y
+    meshSize: meshSizeMm,
+    materialId: 1,
+    thickness: 1, // dummy — de dikte gaat pas bij het solven op de elementen
+  });
+  const indexById = new Map<number, number>();
+  const points = region.nodeIds.map((id, i) => {
+    indexById.set(id, i);
+    const n = scratch.getNode(id)!;
+    return { x: n.x, z: n.y };
+  });
+  const triangles: [number, number, number][] = [];
+  for (const eid of region.elementIds) {
+    const el = scratch.getElement(eid);
+    if (!el || el.nodeIds.length !== 3) continue;
+    const [a, b, c] = el.nodeIds.map((id: number) => indexById.get(id));
+    if (a === undefined || b === undefined || c === undefined) continue;
+    triangles.push([a, b, c]);
+  }
+  const edgeNodeIndices: number[][] = punten.map(() => []);
+  for (const edgeId of region.edgeIds ?? []) {
+    const e = scratch.getEdge(edgeId);
+    if (e && e.polygonEdgeIndex !== undefined && e.polygonEdgeIndex >= 0
+        && e.polygonEdgeIndex < edgeNodeIndices.length) {
+      edgeNodeIndices[e.polygonEdgeIndex] = e.nodeIds
+        .map((id) => indexById.get(id))
+        .filter((i): i is number => i !== undefined);
+    }
+  }
+  if (points.length < 3 || triangles.length === 0) {
+    throw new Error("de CDT leverde geen bruikbaar mesh op");
+  }
+  return {
+    signature: berekenPlaatMeshSignatuur(punten, meshSizeMm),
+    points, triangles, edgeNodeIndices,
+  };
+}
+
 /**
  * Thermische uitzettingscoëfficiënt per staafmateriaal (1/K) voor thermische
  * lasten (SolverThermalLoadInput.alpha — de engine honoreert een per-last α
@@ -201,7 +292,11 @@ interface FemCanvasProps {
   updateNode: (id: number, x: number, z: number) => void;
   addBeam: (fromId: number, toId: number) => number | null;
   updateBeam?: (id: number, updates: Partial<Beam>) => void;
-  addPlate: (nodeIds: number[]) => void;
+  /**
+   * Plaat toevoegen; een polygonplaat (P4.2) krijgt zijn zojuist gegenereerde
+   * CDT-meshcache direct mee zodat plaat + mesh één history-snapshot vormen.
+   */
+  addPlate: (nodeIds: number[], meshCache?: PlaatMeshCache) => number;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   addLoad: (l: Omit<Load, "id">) => void;
   /** Deellast-grepen: commit van start-/endFrac op muis-loslaten (undo-baar). */
@@ -346,8 +441,10 @@ export default function FemCanvas(props: FemCanvasProps) {
   const [popover, setPopover] = useState<{
     kind: "zSpring" | "xSpring" | "rotSpring" | "pointLoad" | "pointLoadH" | "moment" | "lineLoad" | "thermal" | "edgeLoad";
     nodeId?: number; beamId?: number;
-    /** edgeLoad (P3.3): doelplaat + benoemde rand. */
+    /** edgeLoad (P3.3): doelplaat + benoemde rand (rechthoek). */
     plateId?: number; edge?: PlaatRand;
+    /** edgeLoad op een polygonplaat (P4.3): rand-index i.p.v. benoemde rand. */
+    edgeIndex?: number;
     sx: number; sy: number;
   } | null>(null);
 
@@ -447,7 +544,9 @@ export default function FemCanvas(props: FemCanvasProps) {
       }[] = [];
       const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
       const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
-      const edgeLoads: { plateId: number; edge: PlaatRand; p: number; dir?: "x" | "z" }[] = [];
+      const edgeLoads: {
+        plateId: number; edge: PlaatRand; edgeIndex?: number; p: number; dir?: "x" | "z";
+      }[] = [];
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
           // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
@@ -483,9 +582,12 @@ export default function FemCanvas(props: FemCanvasProps) {
         } else if (l.type === "edgeLoad" && l.plateId !== undefined && l.q !== undefined) {
           // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting
           // in globale assen — zelfde velden als het multi-LC-pad in App.tsx.
+          // Op een POLYGONplaat (P4.3) adresseert `edgeIndex` de rand; de
+          // engine laat `edge` dan links liggen.
           edgeLoads.push({
             plateId: l.plateId,
             edge: l.edge ?? "top",
+            edgeIndex: l.edgeIndex,
             p: l.q,
             dir: l.qDir,
           });
@@ -518,15 +620,21 @@ export default function FemCanvas(props: FemCanvasProps) {
         // Platen (wandschijven): zelfde defaults-aanvulling als het
         // multi-LC-pad in App.tsx — hiermee rekent óók de canvas-solve de
         // platen mee (mixed_beam_plate) en levert het resultaat
-        // `plateElements` voor de contourlaag (P3.2).
+        // `plateElements` voor de contourlaag (P3.2). Polygonplaten (P4.2)
+        // dragen hun CDT-meshcache direct mee.
         plates: plates.map(p => {
           const d = withPlateDefaults(p);
           return {
             id: d.id, nodeIds: d.nodeIds,
             thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
             meshSize: d.meshSize!,
+            meshCache: d.meshCache,
           };
         }),
+        // Actief belastinggeval meegeven (P4.3): de doorgeefluik-fallback
+        // voor polygonrandlasten in de engine filtert hierop wanneer er
+        // geen loadFactor is (één-geval-solve).
+        caseId: activeLoadCaseId,
         // Scheefstand — zelfde instelling als het multi-LC-pad in App.tsx.
         scheefstand,
       };
@@ -542,6 +650,47 @@ export default function FemCanvas(props: FemCanvasProps) {
       console.error("[FEM solver]", e);
     }
   }, [solveTrigger]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── CDT-meshcache actueel houden (P4.2) ─────────────────────────────────
+  // Een geometrie- (hoekknoop verplaatst/gesleept/geroteerd) of meshSize-
+  // wijziging verandert de signatuur; dit effect regenereert de cache dan
+  // async en commit hem via het femTypes-terugkanaal naar de store (geen
+  // history-snapshot — de cache is afgeleide data). Dekt ook: een rechthoek
+  // die door slepen/roteren polygoon wordt, undo/redo naar een staat zonder
+  // cache, en projectbestanden met een verouderde cache. Mislukt de CDT, dan
+  // blijft de oude (stale) cache staan en weigert de engine met een nette
+  // NL-melding — nooit stil een verkeerd mesh.
+  const meshRegenBezigRef = useRef(new Map<number, string>()); // plateId → signatuur onderweg
+  useEffect(() => {
+    for (const pl of plates) {
+      const punten = plaatHoekPunten(pl, nodes);
+      if (!punten || !isPolygoonPlaat(punten)) continue;      // rechthoek: grid-pad
+      if (valideerPlaatPolygoon(punten) !== null) continue;   // (tijdelijk) ongeldig — niet meshen
+      const meshSize = withPlateDefaults(pl).meshSize!;
+      const sig = berekenPlaatMeshSignatuur(punten, meshSize);
+      if (pl.meshCache?.signature === sig) continue;          // cache is actueel
+      if (meshRegenBezigRef.current.get(pl.id) === sig) continue; // al onderweg
+      meshRegenBezigRef.current.set(pl.id, sig);
+      const plateId = pl.id;
+      void (async () => {
+        try {
+          const cache = await bouwPlaatMeshCache(punten, meshSize);
+          // Commit; is de plaat inmiddels wéér gewijzigd, dan matcht de
+          // signatuur niet meer en draait dit effect gewoon opnieuw.
+          commitPlaatMeshCache(plateId, cache);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          notifyWarning("Plaatmesh niet bijgewerkt",
+            `Meshgeneratie (CDT) voor plaat ${plateId} mislukt: ${msg}. ` +
+            `Rekenen met deze plaat geeft een foutmelding totdat het mesh opnieuw lukt.`);
+        } finally {
+          if (meshRegenBezigRef.current.get(plateId) === sig) {
+            meshRegenBezigRef.current.delete(plateId);
+          }
+        }
+      })();
+    }
+  }, [plates, nodes]);
 
   // Resize observer
   useEffect(() => {
@@ -664,31 +813,45 @@ export default function FemCanvas(props: FemCanvasProps) {
     return { beamId: best.beamId, x: snap(w.x), z: snap(w.z) };
   }, [beams, nodes, worldToScreen, screenToWorld, snap]);
 
-  // Dichtstbijzijnde plaatrand binnen 8 px (P3.3) — gebruikt door het
+  // Dichtstbijzijnde plaatrand binnen 8 px (P3.3/P4.3) — gebruikt door het
   // Lijnlast-gereedschap wanneer er géén staaf onder de muis ligt, zodat
   // één tool zowel staaf-lijnlasten als plaatrandlasten plaatst.
+  // Rechthoeken leveren een BENOEMDE rand, polygonplaten een RAND-INDEX
+  // (rand van hoek i naar hoek i+1, in klikvolgorde).
   const findSnapPlateEdge = useCallback((sx: number, sy: number):
-    { plateId: number; edge: PlaatRand } | null => {
+    { plateId: number; edge?: PlaatRand; edgeIndex?: number } | null => {
     const RADIUS_PX = 8;
-    let best: { plateId: number; edge: PlaatRand; d: number } | null = null;
+    let best: { plateId: number; edge?: PlaatRand; edgeIndex?: number; d: number } | null = null;
+    const probeer = (plateId: number, seg: { a: PlaatPunt; b: PlaatPunt } | null,
+                     doel: { edge?: PlaatRand; edgeIndex?: number }) => {
+      if (!seg) return;
+      const pa = worldToScreen(seg.a.x, seg.a.z);
+      const pb = worldToScreen(seg.b.x, seg.b.z);
+      const vx = pb.x - pa.x, vy = pb.y - pa.y;
+      const lenSq = vx * vx + vy * vy;
+      if (lenSq < 1e-6) return;
+      const t = Math.max(0, Math.min(1, ((sx - pa.x) * vx + (sy - pa.y) * vy) / lenSq));
+      const px = pa.x + t * vx, py = pa.y + t * vy;
+      const d = Math.hypot(sx - px, sy - py);
+      if (d <= RADIUS_PX && (best === null || d < best.d)) {
+        best = { plateId, ...doel, d };
+      }
+    };
     for (const pl of plates) {
-      for (const rand of ["bottom", "top", "left", "right"] as PlaatRand[]) {
-        const seg = plaatRandSegment(pl, nodes, rand);
-        if (!seg) continue;
-        const pa = worldToScreen(seg.a.x, seg.a.z);
-        const pb = worldToScreen(seg.b.x, seg.b.z);
-        const vx = pb.x - pa.x, vy = pb.y - pa.y;
-        const lenSq = vx * vx + vy * vy;
-        if (lenSq < 1e-6) continue;
-        const t = Math.max(0, Math.min(1, ((sx - pa.x) * vx + (sy - pa.y) * vy) / lenSq));
-        const px = pa.x + t * vx, py = pa.y + t * vy;
-        const d = Math.hypot(sx - px, sy - py);
-        if (d <= RADIUS_PX && (best === null || d < best.d)) {
-          best = { plateId: pl.id, edge: rand, d };
+      const punten = plaatHoekPunten(pl, nodes);
+      if (punten && isPolygoonPlaat(punten)) {
+        for (let i = 0; i < pl.nodeIds.length; i++) {
+          probeer(pl.id, plaatPolygoonRandSegment(pl, nodes, i), { edgeIndex: i });
+        }
+      } else {
+        for (const rand of ["bottom", "top", "left", "right"] as PlaatRand[]) {
+          probeer(pl.id, plaatRandSegment(pl, nodes, rand), { edge: rand });
         }
       }
     }
-    return best ? { plateId: best.plateId, edge: best.edge } : null;
+    if (!best) return null;
+    const b = best as { plateId: number; edge?: PlaatRand; edgeIndex?: number };
+    return { plateId: b.plateId, edge: b.edge, edgeIndex: b.edgeIndex };
   }, [plates, nodes, worldToScreen]);
 
   // ── Selection helpers (multi-aware) ─────────────────────────────────────
@@ -1118,7 +1281,9 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
 
     if (tool === "addPlate") {
-      // 4-click rectangle. Snap to existing node or create one.
+      // Polygontekentool (P4.2): n hoeken klikken, sluiten door op de EERSTE
+      // knoop te klikken (Esc annuleert; de HUD toont de hoekenteller).
+      // Snap naar een bestaande knoop of maak er één op de klikpositie.
       let nodeId = overNodeId;
       if (nodeId === null) {
         const existing = nodes.find(n => n.x === clickModel.x && n.z === clickModel.z);
@@ -1126,41 +1291,61 @@ export default function FemCanvas(props: FemCanvasProps) {
         else nodeId = addNode(clickModel.x, clickModel.z);
       }
       if (nodeId === null) return;
-      // Samenvallende hoekklik (P3.1): dezelfde knoop twee keer aanklikken
-      // zou een gedegenereerde plaat opleveren — weigeren met melding.
-      if (plateCorners.includes(nodeId)) {
-        notifyWarning("Ongeldige hoek",
-          "Deze knoop is al een hoek van deze plaat — kies een andere knoop.");
-        return;
-      }
-      const next = [...plateCorners, nodeId];
-      if (next.length === 4) {
-        // Degeneratie-validatie (P3.1): collineaire of samenvallende hoeken
-        // en niet-asgelijnde rechthoeken worden geweigerd met een melding —
-        // zelfde regels als de adapter-validatie in solver/engine.ts, maar
-        // hier vóór het aanmaken zodat er nooit een kapotte plaat ontstaat.
-        // LET OP: een zojuist via addNode aangemaakte hoekknoop zit nog niet
-        // in de `nodes`-prop van deze render — de klikpositie vult hem aan.
-        const punten = next.map(id => {
+
+      // Sluiten: klik op de eerste hoek (vanaf 3 hoeken).
+      if (plateCorners.length >= 3 && nodeId === plateCorners[0]) {
+        const hoekIds = [...plateCorners];
+        const punten = hoekIds.map(id => {
           const n = nodes.find(nn => nn.id === id);
-          return n ? { x: n.x, z: n.z } : { x: clickModel.x, z: clickModel.z };
+          return n ? { x: n.x, z: n.z } : null;
         });
-        const fout = valideerPlaatHoeken(punten);
-        if (fout) {
-          notifyWarning("Plaat niet toegevoegd", fout);
-          setPlateCorners([]);
+        if (punten.some(p => p === null)) { setPlateCorners([]); return; }
+        const geldigePunten = punten as PlaatPunt[];
+        setPlateCorners([]);
+
+        // Asgelijnde rechthoek → het deterministische quad-grid-pad; geen
+        // CDT-cache nodig. Alleen de plaat zelf (P2.4): geen auto-randstaven.
+        if (geldigePunten.length === 4 && isAsgelijndeRechthoek(geldigePunten)) {
+          addPlate(hoekIds);
           return;
         }
-        // Alleen de plaat zelf (P2.4): de plaat draagt nu écht mee als
-        // wandschijf, dus de vier verborgen randstaven van vroeger (stille
-        // HEA160's — misleidend voor de gebruiker) worden NIET meer
-        // toegevoegd. Wie een randbalk wil, tekent die expliciet; de engine
-        // splitst hem dan automatisch op de plaatrandknopen.
-        addPlate(next);
-        setPlateCorners([]);
-      } else {
-        setPlateCorners(next);
+
+        // Polygonvalidatie (P4.3): zelfsnijdend, dubbele hoeken, degeneraat —
+        // geweigerd VÓÓR het aanmaken, zodat er nooit een kapotte plaat in
+        // het model komt.
+        const fout = valideerPlaatPolygoon(geldigePunten);
+        if (fout) {
+          notifyWarning("Plaat niet toegevoegd", fout);
+          return;
+        }
+
+        // Polygonplaat: eerst de CDT-meshcache genereren (async, WASM), pas
+        // bij succes de plaat aanmaken — mislukt de meshgeneratie, dan komt
+        // er GEEN halve plaat in de store (P4.3). De cache hoort bij de
+        // default-meshSize waarmee addPlate de plaat aanmaakt.
+        void (async () => {
+          try {
+            const cache = await bouwPlaatMeshCache(geldigePunten, PLATE_DEFAULTS.meshSize);
+            addPlate(hoekIds, cache);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            notifyWarning("Plaat niet toegevoegd",
+              `Meshgeneratie (CDT) mislukt: ${msg}. De plaat is niet aangemaakt; het model is ongewijzigd.`);
+          }
+        })();
+        return;
       }
+
+      // Samenvallende hoekklik: dezelfde knoop nogmaals aanklikken (behalve
+      // de eerste, die sluit) zou een gedegenereerde omtrek opleveren.
+      if (plateCorners.includes(nodeId)) {
+        notifyWarning("Ongeldige hoek",
+          plateCorners.length >= 3 && nodeId !== plateCorners[0]
+            ? "Deze knoop is al een hoek van deze plaat — klik de eerste knoop om te sluiten."
+            : "Deze knoop is al een hoek van deze plaat — kies een andere knoop.");
+        return;
+      }
+      setPlateCorners([...plateCorners, nodeId]);
       return;
     }
 
@@ -1206,7 +1391,11 @@ export default function FemCanvas(props: FemCanvasProps) {
         if (tool === "addLineLoad") {
           const pe = findSnapPlateEdge(sx, sy);
           if (pe) {
-            setPopover({ kind: "edgeLoad", plateId: pe.plateId, edge: pe.edge, sx, sy });
+            setPopover({
+              kind: "edgeLoad", plateId: pe.plateId,
+              edge: pe.edge, edgeIndex: pe.edgeIndex,
+              sx, sy,
+            });
           }
         }
         return;
@@ -1873,11 +2062,15 @@ export default function FemCanvas(props: FemCanvasProps) {
         </g>
       );
     }
-    // RANDLAST op een plaatrand (P3.3) — pijltjesrij langs de rand, zelfde
-    // pijl- en tekenconventie als de lijnlast (q < 0 = pijlen omlaag/links).
+    // RANDLAST op een plaatrand (P3.3/P4.3) — pijltjesrij langs de rand,
+    // zelfde pijl- en tekenconventie als de lijnlast (q < 0 = omlaag/links).
+    // Polygonranden (edgeIndex) tekenen langs het echte randsegment
+    // hoek i → hoek i+1; benoemde randen langs de bbox-rand (rechthoek).
     if (l.type === "edgeLoad" && l.plateId !== undefined) {
       const pl = plates.find(pp => pp.id === l.plateId); if (!pl) return null;
-      const seg = plaatRandSegment(pl, nodes, l.edge ?? "top");
+      const seg = l.edgeIndex !== undefined
+        ? plaatPolygoonRandSegment(pl, nodes, l.edgeIndex)
+        : plaatRandSegment(pl, nodes, l.edge ?? "top");
       if (!seg) return null;
       const q = l.q ?? 0;
       if (Math.abs(q) < 1e-9) return null;
@@ -1977,7 +2170,9 @@ export default function FemCanvas(props: FemCanvasProps) {
       ? (snapNode !== null || snapBeam !== null ? "pointer" : "default")
       : "crosshair";
 
-  // Render plates (translucent polygons)
+  // Render plates (translucent polygons). Polygonplaten (P4.2) tonen hun
+  // gecachete CDT-mesh als lichte lijnen zodra de cache actueel is — zo is
+  // het rekenmesh al vóór de berekening zichtbaar.
   const renderPlate = (pl: Plate) => {
     const pts = pl.nodeIds.map(id => {
       const n = nodes.find(nn => nn.id === id);
@@ -1987,13 +2182,41 @@ export default function FemCanvas(props: FemCanvasProps) {
     });
     if (pts.some(x => x === null)) return null;
     const isSel = selection?.type === "plate" && selection.id === pl.id;
+
+    // CDT-mesh-preview: alleen wanneer de cache bij de ACTUELE geometrie +
+    // meshSize hoort (zelfde signatuurcheck als de engine).
+    let meshPreview: React.ReactNode = null;
+    const punten = plaatHoekPunten(pl, nodes);
+    if (punten && isPolygoonPlaat(punten) && pl.meshCache) {
+      const d = withPlateDefaults(pl);
+      const sig = berekenPlaatMeshSignatuur(punten, d.meshSize!);
+      if (pl.meshCache.signature === sig) {
+        const schermPunt = pl.meshCache.points.map(p2 => worldToScreen(p2.x, p2.z));
+        meshPreview = (
+          <g pointerEvents="none" className="fem-plate-meshlines">
+            {pl.meshCache.triangles.map((t, i) => (
+              <polygon
+                key={`pm${pl.id}-${i}`}
+                points={t.map(pi => `${schermPunt[pi].x.toFixed(2)},${schermPunt[pi].y.toFixed(2)}`).join(" ")}
+                fill="none"
+                stroke="rgba(100, 116, 139, 0.35)"
+                strokeWidth={0.7}
+              />
+            ))}
+          </g>
+        );
+      }
+    }
+
     return (
-      <polygon
-        key={`plate${pl.id}`}
-        points={pts.join(" ")}
-        className={`fem-plate${isSel ? " selected" : ""}`}
-        onClick={(e) => { if (tool === "select") { e.stopPropagation(); setSelection({ type: "plate", id: pl.id }); } }}
-      />
+      <g key={`plate${pl.id}`}>
+        <polygon
+          points={pts.join(" ")}
+          className={`fem-plate${isSel ? " selected" : ""}`}
+          onClick={(e) => { if (tool === "select") { e.stopPropagation(); setSelection({ type: "plate", id: pl.id }); } }}
+        />
+        {meshPreview}
+      </g>
     );
   };
 
@@ -2546,7 +2769,9 @@ export default function FemCanvas(props: FemCanvasProps) {
           return <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className="fem-member-preview" />;
         })()}
 
-        {/* Plate preview while drawing — connect plateCorners + hover */}
+        {/* Plate preview while drawing — connect plateCorners + hover. Vanaf
+            3 hoeken markeert een ring de eerste knoop: dáár klikken sluit de
+            polygoon (P4.2). */}
         {tool === "addPlate" && plateCorners.length > 0 && hoverModel && (() => {
           const pts: string[] = [];
           for (const id of plateCorners) {
@@ -2557,7 +2782,17 @@ export default function FemCanvas(props: FemCanvasProps) {
           }
           const hp = worldToScreen(hoverModel.x, hoverModel.z);
           pts.push(`${hp.x},${hp.y}`);
-          return <polyline points={pts.join(" ")} className="fem-member-preview" />;
+          const eerste = nodes.find(nn => nn.id === plateCorners[0]);
+          const ep = eerste ? worldToScreen(eerste.x, eerste.z) : null;
+          return (
+            <g>
+              <polyline points={pts.join(" ")} className="fem-member-preview" />
+              {plateCorners.length >= 3 && ep && (
+                <circle cx={ep.x} cy={ep.y} r={9} fill="none"
+                  stroke="var(--theme-accent)" strokeWidth={2} strokeDasharray="3 2" />
+              )}
+            </g>
+          );
         })()}
 
         {/* Transform preview — anchor → cursor while in move/copy/rotate/mirror */}
@@ -2918,7 +3153,12 @@ export default function FemCanvas(props: FemCanvasProps) {
             <span className="fem-hud-muted">— klik tweede knoop</span>
           )}
           {tool === "addPlate" && plateCorners.length > 0 && (
-            <span className="fem-hud-muted">— hoek {plateCorners.length + 1} van 4</span>
+            <span className="fem-hud-muted">
+              — {plateCorners.length} {plateCorners.length === 1 ? "hoek" : "hoeken"}
+              {plateCorners.length >= 3
+                ? " · klik de eerste knoop om te sluiten · Esc annuleert"
+                : " · klik de volgende hoek · Esc annuleert"}
+            </span>
           )}
           {(tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") && !selection && (
             <span className="fem-hud-muted">— selecteer eerst een knoop/balk</span>
@@ -3241,14 +3481,19 @@ export default function FemCanvas(props: FemCanvasProps) {
       />;
     }
     if (p.kind === "edgeLoad" && p.plateId !== undefined) {
-      // Randlast op een plaatrand (P3.3): p in kN/m langs de rand, richting
-      // in globale assen — zelfde tekenconventie als lijnlasten.
+      // Randlast op een plaatrand (P3.3/P4.3): p in kN/m langs de rand,
+      // richting in globale assen — zelfde tekenconventie als lijnlasten.
+      // Polygonranden gaan via de rand-index (`edgeIndex`), benoemde randen
+      // blijven het rechthoekpad.
       return <PopoverEdgeLoadForm
-        edge={p.edge ?? "top"}
-        onSubmit={(pWaarde, dir) => cbs.onAddLoad({
-          type: "edgeLoad", plateId: p.plateId, edge: p.edge ?? "top",
-          q: pWaarde, qDir: dir,
-        })}
+        randLabel={p.edgeIndex !== undefined
+          ? `rand ${p.edgeIndex + 1}`
+          : RAND_LABEL[p.edge ?? "top"]}
+        onSubmit={(pWaarde, dir) => cbs.onAddLoad(
+          p.edgeIndex !== undefined
+            ? { type: "edgeLoad", plateId: p.plateId, edgeIndex: p.edgeIndex, q: pWaarde, qDir: dir }
+            : { type: "edgeLoad", plateId: p.plateId, edge: p.edge ?? "top", q: pWaarde, qDir: dir },
+        )}
       />;
     }
     return null;
@@ -3427,12 +3672,13 @@ function PopoverLineLoadForm({ beamLenM, onSubmit }: {
 }
 
 /**
- * Randlast op een plaatrand (P3.3): p in kN/m langs de randlengte, richting
- * in GLOBALE assen. Negatief = tegen de +richting in (omlaag voor Z, naar
- * links voor X) — dezelfde tekenconventie als lijnlasten op staven.
+ * Randlast op een plaatrand (P3.3/P4.3): p in kN/m langs de randlengte,
+ * richting in GLOBALE assen. Negatief = tegen de +richting in (omlaag voor
+ * Z, naar links voor X) — dezelfde tekenconventie als lijnlasten op staven.
+ * `randLabel` is de NL-naam van de rand ("bovenrand" of "rand 3").
  */
-function PopoverEdgeLoadForm({ edge, onSubmit }: {
-  edge: "bottom" | "top" | "left" | "right";
+function PopoverEdgeLoadForm({ randLabel, onSubmit }: {
+  randLabel: string;
   onSubmit: (p: number, dir: "x" | "z") => void;
 }) {
   const [p, setP] = useState("-5");
@@ -3440,7 +3686,7 @@ function PopoverEdgeLoadForm({ edge, onSubmit }: {
   const commit = () => onSubmit(Number(p) || 0, dir);
   return (
     <div className="fem-popover-form">
-      <div className="fem-popover-title">Randlast op {RAND_LABEL[edge]}</div>
+      <div className="fem-popover-title">Randlast op {randLabel}</div>
       <label className="fem-popover-row">
         <span>Richting</span>
         <select value={dir} onChange={e => setDir(e.target.value as "x" | "z")}>

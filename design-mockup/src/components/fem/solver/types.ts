@@ -113,8 +113,20 @@ export interface SolverEdgeLoadInput {
   /**
    * Benoemde rand van het gridmesh in modelassen: "bottom" = kleinste z,
    * "top" = grootste z, "left"/"right" = kleinste/grootste x.
+   * Voor een POLYGONplaat (P4.3) is een benoemde rand niet adresseerbaar:
+   * gebruik dan `edgeIndex` — een benoemde-rand-last op een polygonplaat
+   * vervalt stil (het polygonmesh heeft geen benoemde randen).
    */
   edge: "bottom" | "top" | "left" | "right";
+  /**
+   * Polygonrand-index (P4.3): rand van hoek i naar hoek i+1 (cyclisch,
+   * 0-based in SolverPlateInput.nodeIds-volgorde). Wanneer gezet wint dit
+   * veld van `edge` en worden de mesh-randknopen uit de CDT-cache van de
+   * plaat gehaald. Draagt de invoer voor een polygonplaat GÉÉN
+   * edgeIndex-lasten, dan valt de engine terug op het doorgeefluik in
+   * femTypes (registreerPolygoonRandlasten) — zie buildMesh.
+   */
+  edgeIndex?: number;
   /** Lastgrootte per meter randlengte (N/mm = kN/m); negatief = tegen de +richting in. */
   p: number;
   /** Richting in GLOBALE assen: "z" = verticaal (default), "x" = horizontaal. */
@@ -148,14 +160,28 @@ export interface ScheefstandInput {
 
 /**
  * Wandschijf (plaat in het vlak, membraan/plane stress) — fase P2.
- * De adapter meshet de asgelijnde rechthoek tussen de vier hoekknopen met
- * een quad-grid (elementgrootte ≈ meshSize) en lost het model op met
- * `mixed_beam_plate`. Eenheden zoals de rest van de invoer: mm en N/mm².
+ * De adapter meshet een asgelijnde rechthoek (4 hoekknopen) met een
+ * quad-grid (elementgrootte ≈ meshSize); elke andere geldige polygoon
+ * (n ≥ 3 hoeken, P4.2) rekent met CST-driehoeken uit de vooraf gegenereerde
+ * CDT-cache. Beide lossen op met `mixed_beam_plate`. Eenheden zoals de rest
+ * van de invoer: mm en N/mm².
  */
 export interface SolverPlateInput {
   id: number;
-  /** De 4 hoekknopen (UI-node-ids, klikvolgorde) — samen een asgelijnde rechthoek. */
+  /**
+   * De hoekknopen (UI-node-ids, klikvolgorde): 4 asgelijnde hoeken =
+   * rechthoekpad (grid), anders polygonpad (CDT-cache vereist).
+   */
   nodeIds: number[];
+  /**
+   * CDT-meshcache voor het polygonpad (P4.2) — platte data in mm, zie
+   * femTypes.PlaatMeshCache. Optioneel: ontbreekt het veld, dan leest de
+   * engine de cache uit het femTypes-doorgeefluik (de store registreert de
+   * caches daar; de App-multi-LC-mapping geeft dit veld niet door). In beide
+   * gevallen wordt de signature tegen de actuele hoekcoördinaten + meshSize
+   * gevalideerd; mismatch → nette NL-fout.
+   */
+  meshCache?: import("../femTypes").PlaatMeshCache;
   /** Plaatdikte (mm). */
   thickness: number;
   /** Elasticiteitsmodulus (N/mm²). */

@@ -94,9 +94,42 @@ export interface Beam {
   checkConfig?: BeamCheckConfig;
 }
 
+/**
+ * Gecachet CDT-rekenmesh van een polygonplaat (P4.2). De CDT (triangle-wasm)
+ * is async én tussen versies niet bit-identiek; daarom wordt het mesh bij
+ * aanmaken/wijzigen van de plaat gegenereerd, hier als platte data op de
+ * Plate gecachet en mee-geserialiseerd in het projectbestand (optioneel
+ * veld — oude bestanden laden ongewijzigd). De solve blijft synchroon en
+ * gebruikt uitsluitend deze cache.
+ */
+export interface PlaatMeshCache {
+  /**
+   * Handtekening van de geometrie (hoekcoördinaten in mm) + meshSize
+   * waarvoor deze cache geldt — zie berekenPlaatMeshSignatuur. Wijkt de
+   * actuele geometrie/meshSize af, dan is de cache verouderd: het canvas
+   * regenereert en de engine weigert met een NL-melding.
+   */
+  signature: string;
+  /** Meshknopen in modelcoördinaten (mm; z omhoog, zoals Node). */
+  points: { x: number; z: number }[];
+  /** CST-driehoeken als drietallen puntindices (0-based in `points`). */
+  triangles: [number, number, number][];
+  /**
+   * Per polygonrand (index i = rand van hoek i naar hoek i+1, cyclisch):
+   * de puntindices van de meshknopen op die rand, geordend langs de rand.
+   * Gebruikt voor randlasten via rand-index (P4.3).
+   */
+  edgeNodeIndices: number[][];
+}
+
 export interface Plate {
   id: number;
-  nodeIds: number[]; // 4 corners (in click order)
+  /**
+   * Hoekknopen in klikvolgorde. Een asgelijnde rechthoek (4 hoeken, zie
+   * isAsgelijndeRechthoek) rekent via het deterministische quad-grid; elke
+   * andere geldige polygoon (n ≥ 3 hoeken, P4.2) via de CDT-cache hieronder.
+   */
+  nodeIds: number[];
   // Rekenvelden (P2.1) — optioneel zodat oude projectbestanden zonder deze
   // velden blijven laden; ontbrekende velden krijgen de PLATE_DEFAULTS.
   /** Plaatdikte in mm (default 20). */
@@ -109,6 +142,12 @@ export interface Plate {
   rho?: number;
   /** Gewenste elementgrootte van het rekenmesh in mm (default 500). */
   meshSize?: number;
+  /**
+   * CDT-meshcache (alleen polygonplaten, P4.2). Reist automatisch mee met
+   * de plates-array in projectbestand én undo-history; wordt door het
+   * canvas (re)gegenereerd wanneer de signature niet meer klopt.
+   */
+  meshCache?: PlaatMeshCache;
 }
 
 /** Defaults voor de optionele rekenvelden van een plaat (staal, 20 mm). */
@@ -134,6 +173,196 @@ export function withPlateDefaults(p: Plate): Plate {
     rho: p.rho ?? PLATE_DEFAULTS.rho,
     meshSize: p.meshSize ?? PLATE_DEFAULTS.meshSize,
   };
+}
+
+// ── Plaatgeometrie: rechthoek-/polygonclassificatie en -validatie (P4) ─────
+// Pure functies (unit-testbaar, geen React/DOM) — gedeeld door de tekentool
+// (FemCanvas), de engine-adapter (solver/engine.ts) en de tests.
+
+/** Punt in modelcoördinaten (mm; z omhoog) — de vorm van een plaathoek. */
+export interface PlaatPunt { x: number; z: number }
+
+/**
+ * Is dit vierpuntenstel een asgelijnde rechthoek (binnen `tolMm`)? Zelfde
+ * bezettingsregel als de P2.2-adaptervalidatie: elk van de vier
+ * (minX/maxX)×(minZ/maxZ)-hoeken moet door precies één punt bezet zijn, en
+ * de rechthoek moet echte afmetingen hebben. Bepaalt de splitsing tussen het
+ * deterministische quad-grid-pad (rechthoek) en het CDT-polygonpad (P4.2).
+ */
+export function isAsgelijndeRechthoek(punten: PlaatPunt[], tolMm = 1): boolean {
+  if (punten.length !== 4) return false;
+  const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  if (maxX - minX < tolMm || maxZ - minZ < tolMm) return false;
+  const doelen: [number, number][] = [
+    [minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ],
+  ];
+  const bezet = [false, false, false, false];
+  for (const p of punten) {
+    const hit = doelen.findIndex(([tx, tz], i) =>
+      !bezet[i] && Math.abs(p.x - tx) <= tolMm && Math.abs(p.z - tz) <= tolMm);
+    if (hit < 0) return false;
+    bezet[hit] = true;
+  }
+  return true;
+}
+
+/** Kruisproduct (b−a)×(c−a) — teken = oriëntatie van c t.o.v. lijn a→b. */
+function kruis(a: PlaatPunt, b: PlaatPunt, c: PlaatPunt): number {
+  return (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+}
+
+/** Snijden de open segmenten a–b en c–d elkaar (echte kruising)? */
+function segmentenSnijden(a: PlaatPunt, b: PlaatPunt, c: PlaatPunt, d: PlaatPunt): boolean {
+  const d1 = kruis(c, d, a);
+  const d2 = kruis(c, d, b);
+  const d3 = kruis(a, b, c);
+  const d4 = kruis(a, b, d);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    return true;
+  }
+  // Collineaire overlap: projectie-intervallen op de dominante as overlappen.
+  if (d1 === 0 && d2 === 0 && d3 === 0 && d4 === 0) {
+    const horizontaal = Math.abs(b.x - a.x) >= Math.abs(b.z - a.z);
+    const key = horizontaal ? "x" as const : "z" as const;
+    const lo1 = Math.min(a[key], b[key]), hi1 = Math.max(a[key], b[key]);
+    const lo2 = Math.min(c[key], d[key]), hi2 = Math.max(c[key], d[key]);
+    return Math.max(lo1, lo2) < Math.min(hi1, hi2);
+  }
+  return false;
+}
+
+/**
+ * Validatie van een plaatpolygoon (P4.3, pure functie): minstens 3 hoeken,
+ * geen (vrijwel) samenvallende hoeken, geen terugvouwende rand (spike),
+ * echte oppervlakte en geen zelfsnijding (vlinder). Retourneert een
+ * NL-foutmelding, of null wanneer de vorm geldig is. Beide windingsrichtingen
+ * (met/tegen de klok) zijn toegestaan — spiegelen mag.
+ */
+export function valideerPlaatPolygoon(punten: PlaatPunt[], tolMm = 1): string | null {
+  const n = punten.length;
+  if (n < 3) return "Een plaat heeft minstens drie hoeken nodig.";
+  // Dubbele (samenvallende) hoeken — ook niet-aangrenzende.
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (Math.abs(punten[i].x - punten[j].x) <= tolMm &&
+          Math.abs(punten[i].z - punten[j].z) <= tolMm) {
+        return `Hoek ${i + 1} en hoek ${j + 1} vallen (vrijwel) samen — kies verschillende hoekpunten.`;
+      }
+    }
+  }
+  // Zelfsnijding (vlinder) VÓÓR de oppervlaktecheck: bij een symmetrische
+  // vlinder heffen de shoelace-lobben elkaar op (netto oppervlakte ≈ 0) en
+  // zou de oppervlaktemelding de échte oorzaak maskeren.
+  for (let i = 0; i < n; i++) {
+    const a = punten[i], b = punten[(i + 1) % n];
+    for (let j = i + 1; j < n; j++) {
+      // Aangrenzende randen (delen een hoek) overslaan.
+      if (j === i || (j + 1) % n === i || (i + 1) % n === j) continue;
+      const c = punten[j], d = punten[(j + 1) % n];
+      if (segmentenSnijden(a, b, c, d)) {
+        return `De omtrek snijdt zichzelf (rand ${i + 1} kruist rand ${j + 1}) — teken een enkelvoudige polygoon.`;
+      }
+    }
+  }
+  // Oppervlakte (shoelace): collineaire hoekensets en slivers weigeren.
+  let opp2 = 0;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    opp2 += punten[j].x * punten[i].z - punten[i].x * punten[j].z;
+  }
+  if (Math.abs(opp2) / 2 < 1000) { // < 1000 mm² is voor een constructie-schijf degeneraat
+    return "De hoeken liggen (vrijwel) op één lijn — de plaat heeft geen oppervlakte.";
+  }
+  // Terugvouwende rand (spike): aangrenzende randen collineair én dezelfde
+  // kant op (de omtrek loopt uit en over dezelfde lijn terug).
+  for (let i = 0; i < n; i++) {
+    const p0 = punten[(i + n - 1) % n], p1 = punten[i], p2 = punten[(i + 1) % n];
+    const cr = kruis(p1, p0, p2);
+    const dot = (p0.x - p1.x) * (p2.x - p1.x) + (p0.z - p1.z) * (p2.z - p1.z);
+    const l1 = Math.hypot(p0.x - p1.x, p0.z - p1.z);
+    const l2 = Math.hypot(p2.x - p1.x, p2.z - p1.z);
+    if (l1 > 0 && l2 > 0 && Math.abs(cr) <= tolMm * Math.max(l1, l2) && dot > 0) {
+      return `De rand vouwt bij hoek ${i + 1} op zichzelf terug — teken een echte omtrek.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Handtekening van plaatgeometrie + meshSize voor de CDT-cache (P4.2).
+ * Elke wijziging van een hoekcoördinaat of de meshSize verandert de string
+ * en invalideert daarmee de cache; materiaal-/diktewijzigingen bewust níét
+ * (die staan los van de meshgeometrie).
+ */
+export function berekenPlaatMeshSignatuur(punten: PlaatPunt[], meshSizeMm: number): string {
+  return `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
+}
+
+// ── Doorgeefluik plaat-solvegegevens (P4.2/P4.3) ───────────────────────────
+// De multi-LC-invoer wordt in App.tsx veld-voor-veld opgebouwd en kent de
+// CDT-cache en de rand-index van polygonrandlasten (nog) niet; App.tsx valt
+// buiten deze fase. De store registreert daarom beide hier (module-globaal),
+// en de engine-adapter leest ze als fallback wanneer de invoer ze niet
+// draagt. De cache wordt bij het lezen ALTIJD tegen de actuele
+// geometrie-signatuur gevalideerd, dus een verouderde registratie kan nooit
+// stil verkeerde resultaten geven.
+
+/** Randlast op een polygonrand zoals de store hem registreert. */
+export interface PolygoonRandlast {
+  plateId: number;
+  /** Rand-index: rand van hoek i naar hoek i+1 (cyclisch, 0-based). */
+  edgeIndex: number;
+  /** Lastgrootte in kN/m (= N/mm), zelfde tekenconventie als Load.q. */
+  p: number;
+  /** Richting in globale assen: "z" verticaal, "x" horizontaal. */
+  dir: "x" | "z";
+  caseId: number;
+}
+
+const meshCacheRegister = new Map<number, PlaatMeshCache>();
+let polygoonRandlastRegister: PolygoonRandlast[] = [];
+
+/** Vervang de volledige meshcache-registratie (store-sync op `plates`). */
+export function registreerPlaatMeshCaches(perPlaat: Iterable<[number, PlaatMeshCache]>): void {
+  meshCacheRegister.clear();
+  for (const [plateId, cache] of perPlaat) meshCacheRegister.set(plateId, cache);
+}
+
+/** Cache van één plaat (engine-fallback; signatuurvalidatie doet de lezer). */
+export function leesPlaatMeshCache(plateId: number): PlaatMeshCache | undefined {
+  return meshCacheRegister.get(plateId);
+}
+
+/** Vervang de volledige polygonrandlast-registratie (store-sync op `loads`). */
+export function registreerPolygoonRandlasten(lasten: PolygoonRandlast[]): void {
+  polygoonRandlastRegister = [...lasten];
+}
+
+/** Alle geregistreerde polygonrandlasten van één plaat. */
+export function leesPolygoonRandlasten(plateId: number): PolygoonRandlast[] {
+  return polygoonRandlastRegister.filter((l) => l.plateId === plateId);
+}
+
+// Terugkanaal voor mesh-REGENERATIE (P4.2): het canvas regenereert de CDT-
+// cache bij een geometrie-/meshSize-wijziging, maar krijgt van App.tsx geen
+// store-mutator daarvoor aangereikt (App.tsx valt buiten deze fase). De
+// store registreert daarom zijn setPlateMeshCache hier; het canvas commit er
+// doorheen. Bij het AANMAKEN van een polygonplaat is dit niet nodig — daar
+// gaat de cache direct met addPlate mee.
+let meshCacheCommitter: ((plateId: number, cache: PlaatMeshCache | undefined) => void) | null = null;
+
+/** Store-registratie van de meshcache-mutator (useFemStore, éénmalig per mount). */
+export function registreerPlaatMeshCacheCommitter(
+  fn: ((plateId: number, cache: PlaatMeshCache | undefined) => void) | null,
+): void {
+  meshCacheCommitter = fn;
+}
+
+/** Commit een geregenereerde meshcache naar de store (no-op zonder store). */
+export function commitPlaatMeshCache(plateId: number, cache: PlaatMeshCache | undefined): void {
+  meshCacheCommitter?.(plateId, cache);
 }
 
 export type SupportType =
@@ -212,6 +441,15 @@ export interface Load {
    * in — dezelfde tekenconventie als lijnlasten).
    */
   edge?: "bottom" | "top" | "left" | "right";
+  /**
+   * edgeLoad op een POLYGONplaat (P4.3): rand-index in plaats van benoemde
+   * rand — rand i loopt van hoek i naar hoek i+1 (cyclisch, 0-based, in de
+   * klikvolgorde van Plate.nodeIds). `edge` blijft dan leeg: de vier namen
+   * kunnen de n randen van een polygoon niet adresseren. Bewust een APART
+   * veld (geen verbreding van `edge`): het EDGE_LABEL-Record in
+   * FemProperties typografeert op de vier namen.
+   */
+  edgeIndex?: number;
 }
 
 export interface LoadCase {

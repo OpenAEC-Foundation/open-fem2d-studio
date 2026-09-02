@@ -24,6 +24,11 @@ import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode } fro
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
 import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
 import { computeSelfWeightNodalForces, computeEdgeLoadNodalForces, applyNodalForces } from "../../../core/fem/PlateLoads";
+import {
+  isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur,
+  leesPlaatMeshCache, leesPolygoonRandlasten,
+} from "../femTypes";
+import type { PlaatMeshCache } from "../femTypes";
 import type {
   SolverInput,
   SolverResult,
@@ -40,8 +45,17 @@ import type {
 
 type AnyMesh = any; // structural typing — Mesh shape from core/fem/Mesh
 
-/** Gemeshte plaat: koppeling UI-plaat-id ↔ core-plaatregio (mesh-knopen/-elementen). */
-type PlateRegionInfo = { plateId: number; region: ReturnType<typeof generatePlateRegionMesh> };
+/**
+ * Gemeshte plaat: koppeling UI-plaat-id ↔ core-plaatregio (mesh-knopen/
+ * -elementen). `edgeNodeIds` is alleen gevuld voor polygonplaten (P4.2):
+ * per polygonrand (index i = hoek i → hoek i+1) de geordende mesh-knoop-ids,
+ * voor randlasten via rand-index (P4.3).
+ */
+type PlateRegionInfo = {
+  plateId: number;
+  region: ReturnType<typeof generatePlateRegionMesh>;
+  edgeNodeIds?: number[][];
+};
 
 /**
  * Schaalbewaking mixed-analyse: de dense Gauss-eliminatie is O(n³) in tijd en
@@ -208,10 +222,14 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   const nodeById = new Map<number, { x: number; z: number }>();
   for (const n of input.nodes) nodeById.set(n.id, { x: n.x, z: n.z });
 
-  // ── Plaatrechthoeken parsen + valideren (P2.2/P2.4) ──────────────────────
+  // ── Platen parsen + valideren (P2.2/P2.4/P4.2) ───────────────────────────
   // De validatie gebeurt VÓÓR de staven, zodat het splitsen van staven op
   // plaatrandknopen de gridposities al kent; het meshen zelf volgt verderop
   // (na de staven, zodat het grid hun splitsknopen kan hergebruiken).
+  // Classificatie (P4.2): 4 hoekknopen die een asgelijnde rechthoek vormen →
+  // het deterministische quad-grid-pad; elke andere geldige polygoon
+  // (n ≥ 3 hoeken) → het CDT-polygonpad, dat het vooraf gegenereerde mesh
+  // uit de cache haalt (de CDT zelf is async/WASM en draait niet in de solve).
   const TOL_MM = 1; // zelfde orde als de findNodeAt-hergebruiktolerantie (0,001 m)
   const plateInputs = (input as any).plates as SolverPlateInput[] | undefined;
   const plateRects: {
@@ -219,48 +237,69 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     minX: number; minZ: number; width: number; height: number;
     nx: number; ny: number;
   }[] = [];
+  const plaatPolygonen: { p: SolverPlateInput; cache: PlaatMeshCache }[] = [];
   if (plateInputs && plateInputs.length > 0) {
     for (const p of plateInputs) {
-      if (!Array.isArray(p.nodeIds) || p.nodeIds.length !== 4) {
+      if (!Array.isArray(p.nodeIds) || p.nodeIds.length < 3) {
         throw new Error(
-          `Plaat ${p.id}: verwacht 4 hoekknopen, maar kreeg er ${p.nodeIds?.length ?? 0}.`);
+          `Plaat ${p.id}: verwacht minstens 3 hoekknopen, maar kreeg er ${p.nodeIds?.length ?? 0}.`);
       }
       const corners = p.nodeIds.map((id) => nodeById.get(id));
       if (corners.some((c) => !c)) {
         throw new Error(`Plaat ${p.id}: één of meer hoekknopen bestaan niet meer.`);
       }
-      const xs = corners.map((c) => c!.x);
-      const zs = corners.map((c) => c!.z);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minZ = Math.min(...zs), maxZ = Math.max(...zs);
-      const width = maxX - minX, height = maxZ - minZ;
-      if (width < TOL_MM || height < TOL_MM) {
-        throw new Error(
-          `Plaat ${p.id} is gedegenereerd (breedte of hoogte vrijwel nul) — ` +
-          `teken een echte rechthoek.`);
-      }
-      // Asgelijnde rechthoek: elk van de vier (minX/maxX)×(minZ/maxZ)-hoeken
-      // moet door precies één hoekknoop bezet zijn (binnen tolerantie).
-      const targets: [number, number][] = [
-        [minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ],
-      ];
-      const bezet = [false, false, false, false];
-      for (const c of corners) {
-        const hit = targets.findIndex(([tx, tz], i) =>
-          !bezet[i] && Math.abs(c!.x - tx) <= TOL_MM && Math.abs(c!.z - tz) <= TOL_MM);
-        if (hit < 0) {
-          throw new Error(
-            `Plaat ${p.id} is geen asgelijnde rechthoek — gedraaide of scheve ` +
-            `platen worden nog niet ondersteund.`);
-        }
-        bezet[hit] = true;
-      }
-      // Divisions uit meshSize (mm): afgerond op het dichtstbijzijnde
-      // gehele aantal, minimaal 1 per richting.
+      const punten = corners.map((c) => ({ x: c!.x, z: c!.z }));
       const meshSize = p.meshSize > 0 ? p.meshSize : 500;
-      const nx = Math.max(1, Math.round(width / meshSize));
-      const ny = Math.max(1, Math.round(height / meshSize));
-      plateRects.push({ p, minX, minZ, width, height, nx, ny });
+
+      if (punten.length === 4 && isAsgelijndeRechthoek(punten, TOL_MM)) {
+        // ── Rechthoekpad (ongewijzigd t.o.v. P2.2) ──────────────────────────
+        const xs = punten.map((c) => c.x);
+        const zs = punten.map((c) => c.z);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+        const width = maxX - minX, height = maxZ - minZ;
+        // Divisions uit meshSize (mm): afgerond op het dichtstbijzijnde
+        // gehele aantal, minimaal 1 per richting.
+        const nx = Math.max(1, Math.round(width / meshSize));
+        const ny = Math.max(1, Math.round(height / meshSize));
+        plateRects.push({ p, minX, minZ, width, height, nx, ny });
+        continue;
+      }
+
+      // ── Polygonpad (P4.2) ─────────────────────────────────────────────────
+      // Eerst de vorm zelf valideren (zelfsnijdend, dubbele hoeken,
+      // degeneraat — dekt ook de oude "gedegenereerde rechthoek"-gevallen).
+      const vormFout = valideerPlaatPolygoon(punten, TOL_MM);
+      if (vormFout) {
+        throw new Error(`Plaat ${p.id}: ${vormFout}`);
+      }
+      // CDT-cache: uit de invoer (canvas/tests) of het femTypes-doorgeefluik
+      // (store-registratie — de App-multi-LC-mapping draagt het veld niet).
+      // De signatuur borgt dat de cache bij de ACTUELE geometrie + meshSize
+      // hoort; een verouderde of ontbrekende cache is een nette fout, nooit
+      // een stil verkeerd mesh.
+      const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
+      const kandidaten = [p.meshCache, leesPlaatMeshCache(p.id)];
+      const cache = kandidaten.find((c) => c && c.signature === handtekening);
+      if (!cache) {
+        throw new Error(
+          `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als ` +
+          `polygonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. ` +
+          `Open het canvas (het mesh wordt daar automatisch gegenereerd) en ` +
+          `reken daarna opnieuw.`);
+      }
+      // Cache-sanity: puntindices binnen bereik (beschadigd projectbestand).
+      const nPts = cache.points.length;
+      const indexOk = cache.triangles.every((t) =>
+        t.length === 3 && t.every((i) => Number.isInteger(i) && i >= 0 && i < nPts))
+        && cache.edgeNodeIndices.every((rand) =>
+          rand.every((i) => Number.isInteger(i) && i >= 0 && i < nPts));
+      if (!indexOk || nPts < 3 || cache.triangles.length < 1) {
+        throw new Error(
+          `Plaat ${p.id}: de meshcache is beschadigd. Wijzig de plaat ` +
+          `(bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`);
+      }
+      plaatPolygonen.push({ p, cache });
     }
   }
 
@@ -375,6 +414,25 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   // worden dus rekenknopen van de plaat, zodat steunpunten en lasten daar
   // gewoon aangrijpen en randstaven volledig meedragen.
   const plateInfo: PlateRegionInfo[] = [];
+
+  // Eigengewicht (P2.3) — gedeeld door het rechthoek- en het polygonpad:
+  // wanneer de plaat een selfWeightCaseId draagt en dat geval in deze solve
+  // meedoet (loadFactor ≠ 0), worden de exacte ρ·g·t·A-knooplasten van
+  // PlateLoads op de meshknopen gezet — CST W/3, Quad4 W/4 per knoop, ΣF
+  // exact. De scheefstand-companion werkt op de verticale component, net als
+  // bij staaf- en knooplasten.
+  const pasPlaatEigengewichtToe = (p: SolverPlateInput, elementIds: number[]): void => {
+    if (p.selfWeightCaseId === undefined) return;
+    const f = loadFactor ? loadFactor(p.selfWeightCaseId) : 1;
+    if (f === 0) return;
+    const gewicht = computeSelfWeightNodalForces(mesh, { elementIds });
+    applyNodalForces(mesh, gewicht.map((kr) => ({
+      nodeId: kr.nodeId,
+      fx: (kr.fx + schFactor * -kr.fy) * f,
+      fy: kr.fy * f,
+    })));
+  };
+
   if (plateRects.length > 0) {
     for (const { p, minX, minZ, width, height, nx, ny } of plateRects) {
       // Eigen mesh-materiaal per plaat: E (N/mm² → Pa), ν en ρ uit de invoer.
@@ -398,25 +456,77 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       });
       mesh.addPlateRegion(region);
       plateInfo.push({ plateId: p.id, region });
-
-      // Eigengewicht (P2.3): wanneer de plaat een selfWeightCaseId draagt en
-      // dat geval in deze solve meedoet (loadFactor ≠ 0), worden de exacte
-      // ρ·g·t·A-knooplasten van PlateLoads op de meshknopen gezet — CST W/3,
-      // Quad4 W/4 per knoop, ΣF exact. De scheefstand-companion werkt op de
-      // verticale component, net als bij staaf- en knooplasten.
-      if (p.selfWeightCaseId !== undefined) {
-        const f = loadFactor ? loadFactor(p.selfWeightCaseId) : 1;
-        if (f !== 0) {
-          const gewicht = computeSelfWeightNodalForces(mesh, { elementIds: region.elementIds });
-          applyNodalForces(mesh, gewicht.map((kr) => ({
-            nodeId: kr.nodeId,
-            fx: (kr.fx + schFactor * -kr.fy) * f,
-            fy: kr.fy * f,
-          })));
-        }
-      }
+      pasPlaatEigengewichtToe(p, region.elementIds);
     }
+  }
 
+  // ── Polygonplaten meshen uit de CDT-cache (P4.2) ─────────────────────────
+  // De cache (mm, gevalideerd op signatuur hierboven) wordt 1-op-1 omgezet
+  // naar meshknopen (mm → m) en CST-driehoeken. findNodeAt HERGEBRUIKT
+  // bestaande knopen binnen 1 mm — de UI-hoekknopen (polygoonhoeken zitten
+  // altijd in het CDT-mesh) en eventuele UI-knopen op randposities worden zo
+  // rekenknopen van de plaat, net als in het grid-pad. Staafsplitsen langs
+  // polygonranden (het P2.4-gedrag van rechthoekranden) is er bewust nog
+  // niet — een staaf op een polygonrand hangt alleen aan zijn eindknopen.
+  if (plaatPolygonen.length > 0) {
+    for (const { p, cache } of plaatPolygonen) {
+      const mat = mesh.addMaterial({
+        name: `Plaat ${p.id}`,
+        E: p.E * 1e6,
+        nu: p.nu,
+        rho: p.rho,
+        color: matTemplate?.color ?? "#3b82f6",
+        alpha: matTemplate?.alpha ?? 12e-6,
+      });
+      const dikte_m = p.thickness / 1000;
+      const knoopIdPerPunt = cache.points.map((pt) => {
+        const mx = pt.x / 1000, my = pt.z / 1000;   // mm → m; model-z = mesh-y
+        const bestaand = mesh.findNodeAt(mx, my, 0.001);
+        return bestaand ? bestaand.id : mesh.addPlateNode(mx, my).id;
+      });
+      const nodeIds = Array.from(new Set(knoopIdPerPunt));
+      const elementIds: number[] = [];
+      for (const [a, b, c] of cache.triangles) {
+        const t = mesh.addTriangleElement(
+          [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c]], mat.id, dikte_m);
+        if (t) elementIds.push(t.id);
+      }
+      const xs = cache.points.map((pt) => pt.x);
+      const zs = cache.points.map((pt) => pt.z);
+      const minX = Math.min(...xs), minZ = Math.min(...zs);
+      const region: ReturnType<typeof generatePlateRegionMesh> = {
+        id: 0, // wordt door addPlateRegion toegekend
+        x: minX / 1000, y: minZ / 1000,
+        width: (Math.max(...xs) - minX) / 1000,
+        height: (Math.max(...zs) - minZ) / 1000,
+        divisionsX: 0, divisionsY: 0,
+        materialId: mat.id,
+        thickness: dikte_m,
+        elementType: "triangle",
+        nodeIds,
+        // Niet gebruikt in het adapterpad (alleen door remesh-/edge-helpers
+        // van de core, die hier niet lopen) — bewust een neutrale vulling.
+        cornerNodeIds: [nodeIds[0], nodeIds[0], nodeIds[0], nodeIds[0]],
+        elementIds,
+        // Polygonmesh heeft geen benoemde randen: randlasten lopen via de
+        // rand-index (edgeNodeIds hieronder); een benoemde-rand-last op een
+        // polygonplaat vervalt daardoor stil in het randlastenblok.
+        edges: {
+          bottom: { nodeIds: [] }, top: { nodeIds: [] },
+          left: { nodeIds: [] }, right: { nodeIds: [] },
+        },
+        isPolygon: true,
+        meshSize: (p.meshSize > 0 ? p.meshSize : 500) / 1000,
+      };
+      mesh.addPlateRegion(region);
+      const edgeNodeIds = cache.edgeNodeIndices.map((rand) =>
+        rand.map((i) => knoopIdPerPunt[i]));
+      plateInfo.push({ plateId: p.id, region, edgeNodeIds });
+      pasPlaatEigengewichtToe(p, elementIds);
+    }
+  }
+
+  if (plateInfo.length > 0) {
     // Schaalbewaking + validatie op rekenknopen — één actieve-knopen-index
     // voor beide checks.
     const actieveKnopen = buildNodeIdToIndex(mesh, "mixed_beam_plate");
@@ -593,7 +703,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
   }
 
-  // ── Randlasten op plaatranden (P3.3) ──────────────────────────────────────
+  // ── Randlasten op plaatranden (P3.3/P4.3) ─────────────────────────────────
   // p (kN/m = N/mm) → N/m, en via de PlateLoads-wrapper (cumulatieve
   // booglengte + tributary lengths, convertEdgeNodeIdsToNodalForces) naar
   // exacte knooplasten op de mesh-randknopen: ΣF = p·L exact. De
@@ -601,26 +711,74 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   // gewichtslasten — op de VERTICALE component ná omzetting. Een randlast op
   // een niet (meer) bestaande plaat vervalt stil, consistent met lasten op
   // verwijderde staven.
+  //
+  // Adressering: rechthoeken via de vier BENOEMDE randen van het gridmesh;
+  // polygonen via de RAND-INDEX (P4.3, rand hoek i → hoek i+1) op de
+  // randknopen uit de CDT-cache. Draagt de invoer voor een polygonplaat geen
+  // enkele rand-index-last (de App-multi-LC-mapping geeft `edgeIndex` niet
+  // door), dan leest de engine de polygonrandlasten uit het femTypes-
+  // doorgeefluik — per plaat exclusief invoer ÓF doorgeefluik, nooit beide
+  // (geen dubbeltelling).
   const edgeLds = (input as any).edgeLoads as Array<any> | undefined;
-  if (edgeLds && edgeLds.length > 0 && plateInfo.length > 0) {
-    const regionByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi.region]));
-    for (const el of edgeLds) {
-      const f = loadFactor ? loadFactor(el.caseId) : 1;
-      if (f === 0 || !el.p) continue;
-      const region = regionByPlateId.get(el.plateId);
-      if (!region) continue;
-      const rand = region.edges?.[el.edge as "bottom" | "top" | "left" | "right"];
-      if (!rand || rand.nodeIds.length < 2) continue;
-      const p_Nm = el.p * 1000 * f;               // kN/m (= N/mm) → N/m, gefactoreerd
-      const dir = (el.dir ?? "z") as "x" | "z";
+  if (plateInfo.length > 0) {
+    const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
+
+    /** Eén randlast (p in kN/m, factor f) op een geordende randknopenrij. */
+    const pasRandlastToe = (
+      randNodeIds: number[], p_kNm: number, dir: "x" | "z", f: number,
+    ): void => {
+      if (!randNodeIds || randNodeIds.length < 2) return;
+      const p_Nm = p_kNm * 1000 * f;              // kN/m (= N/mm) → N/m, gefactoreerd
       const px = dir === "x" ? p_Nm : 0;
       const py = dir === "z" ? p_Nm : 0;
-      const krachten = computeEdgeLoadNodalForces(mesh, rand.nodeIds, px, py);
+      const krachten = computeEdgeLoadNodalForces(mesh, randNodeIds, px, py);
       applyNodalForces(mesh, krachten.map((kr) => ({
         nodeId: kr.nodeId,
         fx: kr.fx + schFactor * -kr.fy,
         fy: kr.fy,
       })));
+    };
+
+    // 1) Randlasten uit de invoer. Platen waarvoor de invoer rand-index-
+    //    lasten draagt zijn "index-bewust": het doorgeefluik blijft daar uit.
+    const invoerIndexBewust = new Set<number>();
+    if (edgeLds && edgeLds.length > 0) {
+      for (const el of edgeLds) {
+        if (el.edgeIndex !== undefined && el.plateId !== undefined) {
+          invoerIndexBewust.add(el.plateId);
+        }
+      }
+      for (const el of edgeLds) {
+        const f = loadFactor ? loadFactor(el.caseId) : 1;
+        if (f === 0 || !el.p) continue;
+        const info = infoByPlateId.get(el.plateId);
+        if (!info) continue;
+        const dir = (el.dir ?? "z") as "x" | "z";
+        if (el.edgeIndex !== undefined) {
+          // Polygonrand via rand-index (alleen aanwezig op polygonplaten).
+          pasRandlastToe(info.edgeNodeIds?.[el.edgeIndex] ?? [], el.p, dir, f);
+          continue;
+        }
+        const rand = info.region.edges?.[el.edge as "bottom" | "top" | "left" | "right"];
+        if (!rand || rand.nodeIds.length < 2) continue; // ook: benoemde rand op polygonplaat → stil
+        pasRandlastToe(rand.nodeIds, el.p, dir, f);
+      }
+    }
+
+    // 2) Doorgeefluik-fallback: polygonrandlasten die de store registreerde
+    //    (App-pad). Per belastinggeval gefactoreerd; in de één-geval-solve
+    //    (geen loadFactor) filtert input.caseId — het canvas zet die.
+    const invoerCaseId = (input as any).caseId as number | undefined;
+    for (const pi of plateInfo) {
+      if (!pi.edgeNodeIds) continue;                     // rechthoek: n.v.t.
+      if (invoerIndexBewust.has(pi.plateId)) continue;   // invoer wint
+      for (const rl of leesPolygoonRandlasten(pi.plateId)) {
+        const f = loadFactor
+          ? loadFactor(rl.caseId)
+          : (invoerCaseId !== undefined && rl.caseId !== invoerCaseId ? 0 : 1);
+        if (f === 0 || !rl.p) continue;
+        pasRandlastToe(pi.edgeNodeIds[rl.edgeIndex] ?? [], rl.p, rl.dir, f);
+      }
     }
   }
 

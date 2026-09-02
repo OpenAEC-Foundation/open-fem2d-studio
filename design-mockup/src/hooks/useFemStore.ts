@@ -10,11 +10,13 @@
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import type {
-  Node, Beam, BeamReleases, Plate, Support, Load, LoadCase, Selection,
-  Snapshot, SupportType, StructuralGrid,
+  Node, Beam, BeamReleases, Plate, PlaatMeshCache, Support, Load, LoadCase,
+  Selection, Snapshot, SupportType, StructuralGrid,
 } from "../components/fem/femTypes";
 import {
   DEFAULT_STRUCTURAL_GRID, PLATE_DEFAULTS, withPlateDefaults,
+  registreerPlaatMeshCaches, registreerPolygoonRandlasten,
+  registreerPlaatMeshCacheCommitter,
 } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type {
@@ -424,8 +426,21 @@ export interface FemStore {
   updateNode: (id: number, x: number, z: number) => void;
   addBeam: (fromId: number, toId: number) => number | null;
   updateBeam: (id: number, updates: Partial<Beam>) => void;
-  addPlate: (nodeIds: number[]) => void;
+  /**
+   * Voeg een plaat toe (rechthoek óf polygoon, P4.2) en geef het nieuwe id
+   * terug. Voor een polygonplaat levert het canvas de zojuist gegenereerde
+   * CDT-meshcache direct mee, zodat plaat + mesh in één history-snapshot
+   * landen (geen halve modellen bij undo).
+   */
+  addPlate: (nodeIds: number[], meshCache?: PlaatMeshCache) => number;
   updatePlate: (id: number, updates: Partial<Plate>) => void;
+  /**
+   * Vervang de CDT-meshcache van een polygonplaat (P4.2) — ZONDER
+   * history-snapshot: de cache is afgeleide data van geometrie + meshSize,
+   * geen bewerkstap. Undo/redo herstelt platen inclusief hun cache via de
+   * gewone snapshots; het canvas regenereert wanneer de signatuur niet klopt.
+   */
+  setPlateMeshCache: (id: number, cache: PlaatMeshCache | undefined) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   removeSupport: (nodeId: number) => void;
   addLoad: (l: Omit<Load, "id">) => void;
@@ -575,6 +590,28 @@ export function useFemStore(): FemStore {
     latestRef.current = { nodes, beams, supports, plates, loads };
   }, [nodes, beams, supports, plates, loads]);
 
+  // ── Doorgeefluik-sync (P4.2/P4.3) ────────────────────────────────────────
+  // De multi-LC-invoer wordt in App.tsx veld-voor-veld opgebouwd en draagt
+  // de CDT-meshcache en de rand-index van polygonrandlasten niet; de engine
+  // leest die daarom uit het femTypes-doorgeefluik. Hier wordt dat register
+  // bij ELKE model-wijziging (incl. undo/redo en projectladen) volledig
+  // vervangen, zodat het altijd de actuele store-inhoud spiegelt. De engine
+  // valideert de cache bovendien op geometrie-signatuur — een verouderde
+  // registratie kan dus nooit stil een verkeerd mesh opleveren.
+  useEffect(() => {
+    registreerPlaatMeshCaches(
+      plates.flatMap((p): [number, PlaatMeshCache][] =>
+        p.meshCache ? [[p.id, p.meshCache]] : []));
+    registreerPolygoonRandlasten(
+      loads
+        .filter(l => l.type === "edgeLoad" && l.plateId !== undefined
+          && l.edgeIndex !== undefined && l.q !== undefined)
+        .map(l => ({
+          plateId: l.plateId!, edgeIndex: l.edgeIndex!,
+          p: l.q!, dir: l.qDir ?? "z", caseId: l.caseId,
+        })));
+  }, [plates, loads]);
+
   /** Push a new history snapshot AFTER a mutation completes. */
   const pushHistory = useCallback((next: Snapshot) => {
     setHistory((prev) => {
@@ -639,15 +676,33 @@ export function useFemStore(): FemStore {
     pushHistory({ ...cur, beams: nextBeams });
   }, [pushHistory]);
 
-  const addPlate = useCallback((nodeIds: number[]) => {
+  const addPlate = useCallback((nodeIds: number[], meshCache?: PlaatMeshCache) => {
     const cur = latestRef.current;
     const newId = cur.plates.length === 0 ? 1 : Math.max(...cur.plates.map(p => p.id)) + 1;
     // Rekenvelden meteen expliciet op de defaults (dikte 20 mm, staal,
-    // meshSize 500 mm) — zo toont de UI nooit een impliciete waarde.
-    const nextPlates = [...cur.plates, { id: newId, nodeIds, ...PLATE_DEFAULTS }];
+    // meshSize 500 mm) — zo toont de UI nooit een impliciete waarde. Een
+    // polygonplaat krijgt zijn CDT-meshcache direct mee (P4.2).
+    const nieuw: Plate = meshCache
+      ? { id: newId, nodeIds, ...PLATE_DEFAULTS, meshCache }
+      : { id: newId, nodeIds, ...PLATE_DEFAULTS };
+    const nextPlates = [...cur.plates, nieuw];
     setPlates(nextPlates);
     pushHistory({ ...cur, plates: nextPlates });
+    return newId;
   }, [pushHistory]);
+
+  /** Meshcache bijwerken zonder history-snapshot — zie FemStore-doc. */
+  const setPlateMeshCache = useCallback((id: number, cache: PlaatMeshCache | undefined) => {
+    setPlates(prev => prev.map(p => p.id === id ? { ...p, meshCache: cache } : p));
+  }, []);
+
+  // Terugkanaal voor mesh-regeneratie (P4.2): het canvas commit een
+  // geregenereerde CDT-cache via femTypes.commitPlaatMeshCache — de store
+  // registreert de mutator hier zodat er geen extra App-prop nodig is.
+  useEffect(() => {
+    registreerPlaatMeshCacheCommitter(setPlateMeshCache);
+    return () => registreerPlaatMeshCacheCommitter(null);
+  }, [setPlateMeshCache]);
 
   /** Patch willekeurige velden op een plaat (dikte, E, ν, ρ, meshSize, …). */
   const updatePlate = useCallback((id: number, updates: Partial<Plate>) => {
@@ -968,6 +1023,7 @@ export function useFemStore(): FemStore {
     setEnvelopeView,
     setSolverOutputs,
     addNode, updateNode, addBeam, updateBeam, addPlate, updatePlate,
+    setPlateMeshCache,
     addSupport, removeSupport, addLoad, updateLoad,
     removeNode, removeBeam, removeLoad, removePlate,
     deleteSelected, splitBeamAt, addLoadCase,
