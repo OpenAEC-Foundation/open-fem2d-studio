@@ -302,13 +302,19 @@ function convertResult(
     const stations_m: number[] = bf.stations ?? [];
     const L_m: number = stations_m.length > 0 ? stations_m[stations_m.length - 1] : 0;
     elements.set(uiId, {
-      N: bf.N1,
+      // TEKENCONVENTIE N: de core levert druk-positief (f_local = K·d aan het
+      // startpunt). De hele UI/rapport/toetsing hanteert de constructeurs-
+      // conventie TREK POSITIEF (EN-contract n_ed idem), dus hier — op de ene
+      // adapter-grens — wordt geflipt. Richting-onafhankelijk geverifieerd
+      // (kolom from=onder én from=boven geven dezelfde druk): zie
+      // test-n-teken.mjs.
+      N: -bf.N1,
       V: bf.V1,
       M_start: bf.M1 * 1000, // N·m → N·mm
       M_end:   bf.M2 * 1000,
       L_mm: L_m * 1000,
       stations_mm:  stations_m.map((x: number) => x * 1000),
-      normalForce:  bf.normalForce  ?? [],
+      normalForce:  (bf.normalForce ?? []).map((n: number) => -n),
       shearForce:   bf.shearForce   ?? [],
       bendingMoment: (bf.bendingMoment ?? []).map((m: number) => m * 1000), // N·m → N·mm
       deflection: (bf.deflection ?? []).map((w: number) => w * 1000), // m → mm (lokaal, +y)
