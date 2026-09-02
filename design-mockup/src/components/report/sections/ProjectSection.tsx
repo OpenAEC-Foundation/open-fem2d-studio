@@ -15,6 +15,11 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { setSetting } from "../../../store";
 import { useProjectInfo } from "../useProjectInfo";
+import {
+  DEFAULT_UITGANGSPUNTEN,
+  K_FI,
+  LEVENSDUUR_OMSCHRIJVING,
+} from "../../project/ProjectSettingsDialog";
 
 /** yyyy-mm-dd → nl-notatie; alles wat niet parsebaar is blijft zoals het is. */
 function formatDate(raw: string): string {
@@ -91,6 +96,43 @@ export default function ProjectSection() {
         </tbody>
       </table>
       {info.description && <p className="rpt-project-description">{info.description}</p>}
+
+      {/* Uitgangspunten: toegepaste normen, gevolgklasse en ontwerplevensduur.
+          Horen vooraan in elk rekenrapport, vóór de invoergegevens. */}
+      {(() => {
+        const u = info.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
+        const normen = [
+          u.en1993 && "Eurocode 3 — Staal (EN 1993-1-1)",
+          u.en1995 && "Eurocode 5 — Hout (EN 1995-1-1)",
+          u.en1992 && "Eurocode 2 — Beton (EN 1992-1-1)",
+        ].filter(Boolean) as string[];
+        const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
+        const levensduur = LEVENSDUUR_OMSCHRIJVING[u.levensduurklasse]
+          .replace(/^Klasse \d+ — /, "");
+        const rijen: Array<[string, string]> = [
+          [t("report.fieldNormen", "Toegepaste normen"), normen.length > 0 ? normen.join("; ") : "—"],
+          [t("report.fieldNationaleBijlage", "Nationale bijlage"), "Nederland"],
+          [t("report.fieldGevolgklasse", "Gevolgklasse"), `${u.gevolgklasse} (K_FI = ${kfi})`],
+          [t("report.fieldLevensduur", "Ontwerplevensduur"), levensduur],
+        ];
+        return (
+          <>
+            <div className="rpt-uitgangspunten-kop">
+              {t("report.uitgangspunten", "Uitgangspunten")}
+            </div>
+            <table className="rpt-meta-table">
+              <tbody>
+                {rijen.map(([label, waarde]) => (
+                  <tr key={label}>
+                    <th>{label}</th>
+                    <td>{waarde}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        );
+      })()}
     </header>
   );
 }

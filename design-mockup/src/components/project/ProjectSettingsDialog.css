@@ -118,7 +118,8 @@
 }
 
 .proj-field input,
-.proj-field textarea {
+.proj-field textarea,
+.proj-field select {
   padding: 6px 8px;
   background: var(--theme-dialog-input-bg);
   border: 1px solid var(--theme-dialog-input-border);
@@ -131,8 +132,44 @@
 }
 
 .proj-field input:focus,
-.proj-field textarea:focus {
+.proj-field textarea:focus,
+.proj-field select:focus {
   border-color: var(--theme-accent);
+}
+.proj-field select:disabled {
+  opacity: 0.6;
+}
+
+/* Uitgangspunten: normkeuze + toelichting. */
+.proj-normen {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.proj-norm {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--theme-dialog-content-text, var(--theme-text));
+  cursor: pointer;
+}
+.proj-norm input {
+  accent-color: var(--theme-accent);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+}
+.proj-norm-uit {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.proj-uitleg {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--theme-dialog-content-secondary);
 }
 
 .proj-field textarea {

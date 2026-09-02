@@ -1791,10 +1791,30 @@ export default function FemCanvas(props: FemCanvasProps) {
       );
     }
     if (s.type === "fixed") {
+      // Inklemming: de inklemlijn ligt DIRECT op de knoop (geen zwevend blok
+      // eronder) met arceerstreepjes aan de grondzijde — de tekenconventie
+      // voor een volledig ingeklemde rand.
+      const halveBreedte = 15;
+      const arcering: React.ReactNode[] = [];
+      for (let i = 0; i <= 6; i++) {
+        const x = p.x - halveBreedte + (i * 2 * halveBreedte) / 6;
+        arcering.push(
+          <line
+            key={`ha${i}`}
+            x1={x} y1={p.y}
+            x2={x - 5} y2={p.y + 7}
+            className="fem-support-ground"
+          />,
+        );
+      }
       return (
         <g key={`sup${s.nodeId}`}>
-          <rect x={p.x - 14} y={p.y + 18} width={28} height={6} className="fem-support" />
-          <line x1={p.x - 16} y1={p.y + 24} x2={p.x + 16} y2={p.y + 24} className="fem-support-ground" />
+          <line
+            x1={p.x - halveBreedte} y1={p.y}
+            x2={p.x + halveBreedte} y2={p.y}
+            className="fem-support-vast"
+          />
+          {arcering}
         </g>
       );
     }
@@ -1844,11 +1864,52 @@ export default function FemCanvas(props: FemCanvasProps) {
       );
     }
     if (s.type === "rotSpring") {
+      // Rotatieveer: een INKLEMMING (grondlijn met arcering) met daartussen
+      // een spiraalveer, zodat zichtbaar is dat de rotatie verend is
+      // vastgehouden in plaats van star.
+      const halveBreedte = 15;
+      const grondY = p.y + 26;
+      const arcering: React.ReactNode[] = [];
+      for (let i = 0; i <= 6; i++) {
+        const x = p.x - halveBreedte + (i * 2 * halveBreedte) / 6;
+        arcering.push(
+          <line
+            key={`ra${i}`}
+            x1={x} y1={grondY}
+            x2={x - 5} y2={grondY + 7}
+            className="fem-support-ground"
+          />,
+        );
+      }
+      // Archimedische spiraal van de knoop naar de grondlijn: r groeit
+      // lineair met de hoek, 2,25 omwentelingen.
+      const punten: string[] = [];
+      const stappen = 54;
+      const rMax = 9.5;
+      for (let i = 0; i <= stappen; i++) {
+        const t = i / stappen;
+        const hoek = t * 2.25 * 2 * Math.PI;
+        const r = t * rMax;
+        punten.push(`${(p.x + r * Math.sin(hoek)).toFixed(2)},${(p.y + 12 - r * Math.cos(hoek)).toFixed(2)}`);
+      }
       return (
         <g key={`sup${s.nodeId}`}>
-          <circle cx={p.x} cy={p.y} r={11} fill="none" className="fem-spring" strokeDasharray="3 2" />
-          <circle cx={p.x} cy={p.y} r={6}  fill="none" className="fem-spring" />
-          {s.k !== undefined && <text x={p.x + 14} y={p.y - 8} className="fem-spring-label">kθ={s.k}</text>}
+          {/* aansluiting knoop → spiraal en spiraal → grondlijn */}
+          <line x1={p.x} y1={p.y} x2={p.x} y2={p.y + 12 - rMax} className="fem-spring" />
+          <polyline points={punten.join(" ")} fill="none" className="fem-spring" />
+          <line
+            x1={p.x + rMax * Math.sin(2.25 * 2 * Math.PI)}
+            y1={p.y + 12 - rMax * Math.cos(2.25 * 2 * Math.PI)}
+            x2={p.x} y2={grondY}
+            className="fem-spring"
+          />
+          <line
+            x1={p.x - halveBreedte} y1={grondY}
+            x2={p.x + halveBreedte} y2={grondY}
+            className="fem-support-vast"
+          />
+          {arcering}
+          {s.k !== undefined && <text x={p.x + 16} y={p.y + 6} className="fem-spring-label">kθ={s.k}</text>}
         </g>
       );
     }
@@ -3047,9 +3108,14 @@ export default function FemCanvas(props: FemCanvasProps) {
               <line x1={p.x - 16} y1={p.y + 25} x2={p.x + 16} y2={p.y + 25} className="fem-support-ground" />
             </>);
           } else if (previewType === "fixed") {
+            // Zelfde vorm als renderSupport: inklemlijn direct op de knoop
+            // met arcering eronder.
             shape = (<>
-              <rect x={p.x - 14} y={p.y + 18} width={28} height={6} className="fem-support" />
-              <line x1={p.x - 16} y1={p.y + 24} x2={p.x + 16} y2={p.y + 24} className="fem-support-ground" />
+              <line x1={p.x - 15} y1={p.y} x2={p.x + 15} y2={p.y} className="fem-support-vast" />
+              {Array.from({ length: 7 }, (_, i) => {
+                const x = p.x - 15 + (i * 30) / 6;
+                return <line key={`pfa${i}`} x1={x} y1={p.y} x2={x - 5} y2={p.y + 7} className="fem-support-ground" />;
+              })}
             </>);
           } else if (previewType === "xRoller") {
             shape = (<>
@@ -3082,9 +3148,30 @@ export default function FemCanvas(props: FemCanvasProps) {
               <line x1={p.x - 32} y1={p.y - 12} x2={p.x - 32} y2={p.y + 12} className="fem-support-ground" />
             </>);
           } else if (previewType === "rotSpring") {
+            // Zelfde vorm als renderSupport: spiraalveer tussen knoop en
+            // ingeklemde grondlijn.
+            const grondY = p.y + 26;
+            const rMax = 9.5;
+            const pts: string[] = [];
+            for (let i = 0; i <= 54; i++) {
+              const t = i / 54;
+              const hoek = t * 2.25 * 2 * Math.PI;
+              const r = t * rMax;
+              pts.push(`${(p.x + r * Math.sin(hoek)).toFixed(2)},${(p.y + 12 - r * Math.cos(hoek)).toFixed(2)}`);
+            }
             shape = (<>
-              <circle cx={p.x} cy={p.y} r={11} fill="none" className="fem-spring" strokeDasharray="3 2" />
-              <circle cx={p.x} cy={p.y} r={6}  fill="none" className="fem-spring" />
+              <line x1={p.x} y1={p.y} x2={p.x} y2={p.y + 12 - rMax} className="fem-spring" />
+              <polyline points={pts.join(" ")} fill="none" className="fem-spring" />
+              <line
+                x1={p.x + rMax * Math.sin(2.25 * 2 * Math.PI)}
+                y1={p.y + 12 - rMax * Math.cos(2.25 * 2 * Math.PI)}
+                x2={p.x} y2={grondY} className="fem-spring"
+              />
+              <line x1={p.x - 15} y1={grondY} x2={p.x + 15} y2={grondY} className="fem-support-vast" />
+              {Array.from({ length: 7 }, (_, i) => {
+                const x = p.x - 15 + (i * 30) / 6;
+                return <line key={`pra${i}`} x1={x} y1={grondY} x2={x - 5} y2={grondY + 7} className="fem-support-ground" />;
+              })}
             </>);
           }
           return (

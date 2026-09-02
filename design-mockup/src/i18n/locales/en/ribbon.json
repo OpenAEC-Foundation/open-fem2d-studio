@@ -13,8 +13,7 @@
   "home": {
     "file": "File",
     "projectGroep": "Project",
-    "projectInfo": "Project info",
-    "assumptions": "Assumptions",
+    "projectInfo": "Project info & assumptions",
     "new": "New",
     "open": "Open",
     "save": "Save",

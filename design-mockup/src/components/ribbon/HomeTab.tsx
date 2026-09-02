@@ -7,7 +7,6 @@ import {
   fileOpenIcon,
   fileSaveIcon,
   projectInfoIcon,
-  calcSettingsIcon,
   selectIcon,
   barIcon,
   nodeIcon,
@@ -72,7 +71,7 @@ const mirrorIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><
 const solveIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>`;
 
 export default function HomeTab({
-  onSettingsClick,
+  onSettingsClick: _onSettingsClick,
   onProjectSettingsClick,
   femTool = "select",
   onFemToolChange,
@@ -134,17 +133,14 @@ export default function HomeTab({
             knoppen staan hier vooraan in plaats van verstopt onder
             Instellingen. Zelfde handlers als de Instellingen-tab. */}
         <RibbonGroup label={t("home.projectGroep", "Project")}>
+          {/* Projectgegevens bevat óók de uitgangspunten (normen,
+              gevolgklasse, ontwerplevensduur) — één ingang, geen aparte
+              knop meer. */}
           <RibbonButton
             icon={projectInfoIcon}
-            label={t("home.projectInfo", "Projectgegevens")}
+            label={t("home.projectInfo", "Projectgegevens & uitgangspunten")}
             size="large"
             onClick={onProjectSettingsClick ?? stub("Project info dialog")}
-          />
-          <RibbonButton
-            icon={calcSettingsIcon}
-            label={t("home.assumptions", "Uitgangspunten")}
-            size="large"
-            onClick={onSettingsClick ?? stub("Calculation settings")}
           />
         </RibbonGroup>
 

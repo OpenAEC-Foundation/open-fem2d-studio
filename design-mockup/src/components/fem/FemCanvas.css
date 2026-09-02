@@ -77,6 +77,13 @@
   stroke: var(--theme-text);
   stroke-width: 1.5;
 }
+/* Inklemlijn: dikkere lijn die direct op de knoop aansluit (inklemming en
+   de vaste zijde van een rotatieveer). */
+.fem-support-vast {
+  stroke: var(--theme-text);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
 .fem-load-arrow {
   stroke: rgba(220, 38, 38, 0.85);
   stroke-width: 1.5;
