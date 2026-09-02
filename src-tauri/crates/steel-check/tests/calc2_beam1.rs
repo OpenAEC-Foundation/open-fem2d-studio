@@ -118,6 +118,23 @@ fn calc2_beam1_governing_is_bending() {
     assert_eq!(r.status, CheckStatus::NotOk);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt nadat een dubbele catalogusregel is opgeruimd. HEB 160
+/// stond twee keer in profiles.json — als "HEB160" en als "HEB 160" — met
+/// verschillende waarden. Beide komen op dezelfde zoeksleutel uit, dus de
+/// opzoeking pakte simpelweg de eerste: de SCHRIJFWIJZE bepaalde met welke
+/// doorsnede er gerekend werd. De handmatige regel zonder spatie is
+/// verwijderd; over blijft de regel die de generator uit de brontabellen
+/// maakt, met de genormeerde waarden (A = 54,3 cm², Wpl;y = 354 cm³).
+///
+/// Gevolg hier: A 5427,5 -> 5430 mm², Wpl;y 354113 -> 354000 mm³, en daarmee
+/// uc_max 1,0556 -> 1,0559. De ligger blijft NotOk op buiging, en de op het
+/// referentie-rapport geijkte asserties hierboven veranderen niet.
+///
+/// De exacte doorsnedemotor onderschrijft de keuze: die geeft voor dit
+/// profiel It = 312 065 mm⁴, waar de verwijderde regel 313 664 had (+0,51%)
+/// en de behouden regel 312 000 (-0,02%).
 #[test]
 fn calc2_beam1_snapshot() {
     insta::assert_json_snapshot!("calc2_beam1", run());

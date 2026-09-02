@@ -1,6 +1,5 @@
 ---
 source: crates/steel-check/tests/calc2_beam2.rs
-assertion_line: 124
 expression: run()
 ---
 {
@@ -33,7 +32,7 @@ expression: run()
           "variables": [
             {
               "symbol": "A",
-              "value": 5427.5,
+              "value": 5430.0,
               "unit": "mm²"
             },
             {
@@ -47,12 +46,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 1275.4625,
+          "value": 1276.05,
           "unit": "kN",
           "uc": {
             "ed": 241.496,
-            "rd": 1275.4625,
-            "uc": 0.18933994531395473,
+            "rd": 1276.05,
+            "uc": 0.18925277222679363,
             "formula_latex": "N_{Ed} / N_{c,Rd}"
           },
           "status": "Ok",
@@ -84,7 +83,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,y}",
-              "value": 354113.0,
+              "value": 354000.0,
               "unit": "mm³"
             },
             {
@@ -98,12 +97,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 83.216555,
+          "value": 83.19,
           "unit": "kNm",
           "uc": {
             "ed": 126.672,
-            "rd": 83.216555,
-            "uc": 1.5221971157061236,
+            "rd": 83.19,
+            "uc": 1.5226830147854309,
             "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
           },
           "status": "NotOk",
@@ -135,7 +134,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,z}",
-              "value": 169986.0,
+              "value": 170000.0,
               "unit": "mm³"
             },
             {
@@ -149,11 +148,11 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 39.946709999999996,
+          "value": 39.949999999999996,
           "unit": "kNm",
           "uc": {
             "ed": 0.0,
-            "rd": 39.946709999999996,
+            "rd": 39.949999999999996,
             "uc": 0.0,
             "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
           },
@@ -186,7 +185,7 @@ expression: run()
           "variables": [
             {
               "symbol": "A_v",
-              "value": 1762.0,
+              "value": 1764.0,
               "unit": "mm²"
             },
             {
@@ -200,12 +199,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 239.06342596334832,
+          "value": 239.33478058986748,
           "unit": "kN",
           "uc": {
             "ed": 50.669,
-            "rd": 239.06342596334832,
-            "uc": 0.21194793722971345,
+            "rd": 239.33478058986748,
+            "uc": 0.21170763344600627,
             "formula_latex": "V_{z,Ed} / V_{c,z,Rd}"
           },
           "status": "Ok",
@@ -293,26 +292,26 @@ expression: run()
             },
             {
               "symbol": "V_{z,pl,Rd}",
-              "value": 239.06342596334832,
+              "value": 239.33478058986748,
               "unit": "kN"
             },
             {
               "symbol": "M_{y,c,Rd}",
-              "value": 83.216555,
+              "value": 83.19,
               "unit": "kNm"
             }
           ],
-          "value": 83.216555,
+          "value": 83.19,
           "unit": "kNm",
           "uc": {
             "ed": 126.672,
-            "rd": 83.216555,
-            "uc": 1.5221971157061236,
+            "rd": 83.19,
+            "uc": 1.5226830147854309,
             "formula_latex": "M_{y,Ed} / M_{y,V,Rd}"
           },
           "status": "NotOk",
           "notes": [
-            "V_z,Ed = 50.669 kN < V_z,pl,Rd / 2 = 119.532 kN — The effect of shear on the moment resistance can be neglected."
+            "V_z,Ed = 50.669 kN < V_z,pl,Rd / 2 = 119.667 kN — The effect of shear on the moment resistance can be neglected."
           ]
         }
       }
@@ -346,21 +345,21 @@ expression: run()
             },
             {
               "symbol": "N_{pl,Rd}",
-              "value": 1275.4625,
+              "value": 1276.05,
               "unit": "kN"
             },
             {
               "symbol": "M_{pl,y,Rd}",
-              "value": 83.216555,
+              "value": 83.19,
               "unit": "kNm"
             }
           ],
-          "value": 83.216555,
+          "value": 83.19,
           "unit": "kNm",
           "uc": {
             "ed": 126.672,
-            "rd": 83.216555,
-            "uc": 1.5221971157061236,
+            "rd": 83.19,
+            "uc": 1.5226830147854309,
             "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
           },
           "status": "NotOk",
@@ -399,21 +398,21 @@ expression: run()
             },
             {
               "symbol": "N_{pl,Rd}",
-              "value": 1275.4625,
+              "value": 1276.05,
               "unit": "kN"
             },
             {
               "symbol": "M_{pl,y,Rd}",
-              "value": 83.216555,
+              "value": 83.19,
               "unit": "kNm"
             }
           ],
-          "value": 83.216555,
+          "value": 83.19,
           "unit": "kNm",
           "uc": {
             "ed": 126.672,
-            "rd": 83.216555,
-            "uc": 1.5221971157061236,
+            "rd": 83.19,
+            "uc": 1.5226830147854309,
             "formula_latex": "M_{y,Ed} / M_{N,y,Rd}"
           },
           "status": "NotOk",
@@ -447,7 +446,7 @@ expression: run()
           "variables": [
             {
               "symbol": "A",
-              "value": 5427.5,
+              "value": 5430.0,
               "unit": "mm²"
             },
             {
@@ -464,46 +463,46 @@ expression: run()
           "intermediate_values": [
             {
               "symbol": "\\lambda_y",
-              "value": 73.74631268436579,
+              "value": 73.83635438532743,
               "unit": "-"
             },
             {
               "symbol": "\\lambda_z",
-              "value": 123.45679012345678,
+              "value": 123.57170490940966,
               "unit": "-"
             },
             {
               "symbol": "\\bar{\\lambda}_y",
-              "value": 0.785262252670267,
+              "value": 0.7862210307617766,
               "unit": "-"
             },
             {
               "symbol": "\\bar{\\lambda}_z",
-              "value": 1.3145871785442984,
+              "value": 1.315810809128633,
               "unit": "-"
             },
             {
               "symbol": "\\chi_y",
-              "value": 0.7335029324408805,
+              "value": 0.732917163758462,
               "unit": "-"
             },
             {
               "symbol": "\\chi_z",
-              "value": 0.38271659092980925,
+              "value": 0.3822099461213474,
               "unit": "-"
             },
             {
               "symbol": "\\chi",
-              "value": 0.38271659092980925,
+              "value": 0.3822099461213474,
               "unit": "-"
             }
           ],
-          "value": 488.1406598588119,
+          "value": 487.71900174814533,
           "unit": "kN",
           "uc": {
             "ed": 241.496,
-            "rd": 488.1406598588119,
-            "uc": 0.4947262538421804,
+            "rd": 487.71900174814533,
+            "uc": 0.49515397008195067,
             "formula_latex": "N_{Ed} / N_{b,Rd}"
           },
           "status": "Ok",
@@ -537,7 +536,7 @@ expression: run()
           "variables": [
             {
               "symbol": "W_{pl,y}",
-              "value": 354113.0,
+              "value": 354000.0,
               "unit": "mm³"
             },
             {
@@ -589,12 +588,12 @@ expression: run()
             },
             {
               "symbol": "S",
-              "value": 686.8464207557247,
+              "value": 688.5743881410856,
               "unit": "mm"
             },
             {
               "symbol": "C",
-              "value": 4.448155717827936,
+              "value": 4.449914538202344,
               "unit": "-"
             },
             {
@@ -604,26 +603,26 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 193.5035838016959,
+              "value": 193.03757082914393,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.6557833108581156,
+              "value": 0.656469631441189,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.891225666704428,
+              "value": 0.8908979506178124,
               "unit": "-"
             }
           ],
-          "value": 0.891225666704428,
+          "value": 0.8908979506178124,
           "unit": "-",
           "uc": {
             "ed": 126.672,
-            "rd": 74.1647297107207,
-            "uc": 1.7079816847453464,
+            "rd": 74.11380051189582,
+            "uc": 1.709155368164775,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "NotOk",
@@ -655,24 +654,24 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{yy}",
-              "value": 0.6906446461334428,
+              "value": 0.6908238698957884,
               "unit": "-"
             },
             {
               "symbol": "k_{yz}",
-              "value": 0.6093420319364589,
+              "value": 0.6095576009213031,
               "unit": "-"
             }
           ],
           "intermediate_values": [
             {
               "symbol": "term_N",
-              "value": 0.2581311361413205,
+              "value": 0.2582185021514426,
               "unit": "-"
             },
             {
               "symbol": "term_{M_y}",
-              "value": 1.1796084062633512,
+              "value": 1.1807253256887509,
               "unit": "-"
             },
             {
@@ -681,12 +680,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 1.4377395424046717,
+          "value": 1.4389438278401934,
           "unit": "-",
           "uc": {
-            "ed": 1.4377395424046717,
+            "ed": 1.4389438278401934,
             "rd": 1.0,
-            "uc": 1.4377395424046717,
+            "uc": 1.4389438278401934,
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
@@ -718,24 +717,24 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{zy}",
-              "value": 0.41438678768006565,
+              "value": 0.414494321937473,
               "unit": "-"
             },
             {
               "symbol": "k_{zz}",
-              "value": 1.0155700532274314,
+              "value": 1.0159293348688385,
               "unit": "-"
             }
           ],
           "intermediate_values": [
             {
               "symbol": "term_N",
-              "value": 0.4947262538421804,
+              "value": 0.49515397008195067,
               "unit": "-"
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.7077650437580106,
+              "value": 0.7084351954132505,
               "unit": "-"
             },
             {
@@ -744,12 +743,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 1.202491297600191,
+          "value": 1.2035891654952011,
           "unit": "-",
           "uc": {
-            "ed": 1.202491297600191,
+            "ed": 1.2035891654952011,
             "rd": 1.0,
-            "uc": 1.202491297600191,
+            "uc": 1.2035891654952011,
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
@@ -860,7 +859,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.7079816847453464,
+  "uc_max": 1.709155368164775,
   "status": "NotOk",
   "governing_check_id": "6.3.2_ltb"
 }

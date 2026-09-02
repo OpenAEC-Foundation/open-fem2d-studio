@@ -1044,8 +1044,19 @@ function statistiek(afwijkingen) {
 function valideer() {
   const bestaand = JSON.parse(readFileSync(bestaandPad, "utf8"));
   const perSleutel = new Map();
+  // Twee profielen die op dezelfde zoeksleutel uitkomen ("HEB160" en
+  // "HEB 160") zijn een echte fout, geen administratief detail: de opzoeking
+  // pakt de eerste die hij tegenkomt, dus de SCHRIJFWIJZE van de gebruiker
+  // bepaalt met welke waarden er gerekend wordt. Ze apart bijhouden zodat de
+  // validatie ze bij naam kan melden.
+  const duplicaten = new Map();
   for (const p of bestaand) {
-    if (!perSleutel.has(sleutel(p.name))) perSleutel.set(sleutel(p.name), p);
+    const k = sleutel(p.name);
+    if (!perSleutel.has(k)) perSleutel.set(k, p);
+    else {
+      if (!duplicaten.has(k)) duplicaten.set(k, [perSleutel.get(k).name]);
+      duplicaten.get(k).push(p.name);
+    }
   }
 
   const perGrootheid = new Map(GROOTHEDEN.map((k) => [k, []]));
@@ -1098,6 +1109,16 @@ function valideer() {
     console.log(
       `Niet in de brontabellen (dus niet gevalideerd): ${nietGevonden.join(", ")}`,
     );
+  }
+  if (duplicaten.size) {
+    console.log(
+      `\n!! ${duplicaten.size} zoeksleutel(s) met meer dan één profiel — de ` +
+      `schrijfwijze bepaalt dan met welke waarden gerekend wordt:`,
+    );
+    for (const [k, namen] of duplicaten) {
+      console.log(`   ${k}: ${namen.map((n) => JSON.stringify(n)).join(" , ")}`);
+    }
+    console.log("   Verwijder de dubbele regels uit profiles.json.");
   }
 
   console.log("\n-- Afwijking per grootheid (|berekend - database| / database) --");
