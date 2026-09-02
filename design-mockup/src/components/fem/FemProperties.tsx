@@ -15,6 +15,8 @@ import type {
   Node, Beam, Plate, Support, Load, Selection, SupportType,
 } from "./femTypes";
 import type { SolverResult } from "./solver/types";
+import { STEEL_GRADES, PROFILE_SUGGESTIONS } from "./BarPropertiesDialog";
+import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 
 interface SectionProps {
   title: string;
@@ -56,6 +58,8 @@ interface FemPropertiesProps {
   supports: Support[];
   loads: Load[];
   updateNode: (id: number, x: number, z: number) => void;
+  /** Patch fields on a beam (material, profile, releases, …). */
+  updateBeam?: (id: number, updates: Partial<Beam>) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
   removeSupport: (nodeId: number) => void;
   /** Patch fields on a load (q / fx / fz / my / ΔT). */
@@ -68,7 +72,7 @@ interface FemPropertiesProps {
 
 export default function FemProperties(props: FemPropertiesProps) {
   const { selection, nodes, beams, plates, supports, loads,
-    updateNode, addSupport, removeSupport, updateLoad,
+    updateNode, updateBeam, addSupport, removeSupport, updateLoad,
     pendingLoadFocus, clearPendingLoadFocus, results } = props;
 
   if (!selection) {
@@ -103,7 +107,7 @@ export default function FemProperties(props: FemPropertiesProps) {
     }
     const nFrom = nodes.find(n => n.id === b.from);
     const nTo = nodes.find(n => n.id === b.to);
-    return <BeamProperties beam={b} nFrom={nFrom} nTo={nTo} loads={loads} />;
+    return <BeamProperties beam={b} nFrom={nFrom} nTo={nTo} loads={loads} updateBeam={updateBeam} />;
   }
 
   if (selection.type === "plate") {
@@ -241,14 +245,26 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
 }
 
 // ── Beam properties ──────────────────────────────────────────────────────
-function BeamProperties({ beam, nFrom, nTo, loads }: {
+function BeamProperties({ beam, nFrom, nTo, loads, updateBeam }: {
   beam: Beam; nFrom?: Node; nTo?: Node; loads: Load[];
+  updateBeam?: (id: number, updates: Partial<Beam>) => void;
 }) {
   const dx = nTo && nFrom ? nTo.x - nFrom.x : 0;
   const dz = nTo && nFrom ? nTo.z - nFrom.z : 0;
   const L = Math.hypot(dx, dz);
   const angDeg = (Math.atan2(dz, dx) * 180 / Math.PI);
   const beamLoads = loads.filter(l => l.beamId === beam.id);
+
+  const material = beam.material ?? "S235";
+  const profile = beam.profile ?? "HEA160";
+  const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(material);
+  // Staalsterkte volgt uit de naam (S235 → 235); voor hout tonen we geen
+  // verzonnen getallen — de rekenwaarden komen uit de toetsing zelf.
+  const fyStaal = /^S(\d+)$/.exec(material)?.[1];
+
+  const setRelease = (key: "startRy" | "endRy", checked: boolean) => {
+    updateBeam?.(beam.id, { releases: { ...beam.releases, [key]: checked } });
+  };
 
   return (
     <div className="fem-properties">
@@ -276,41 +292,60 @@ function BeamProperties({ beam, nFrom, nTo, loads }: {
 
         <Section title="Materiaal">
           <Row label="Materiaal">
-            <select className="fem-prop-select" defaultValue="S235">
-              <option>S235</option>
-              <option>S275</option>
-              <option>S355</option>
-              <option>S420</option>
-              <option>S460</option>
+            <select
+              className="fem-prop-select"
+              value={material}
+              onChange={(e) => updateBeam?.(beam.id, { material: e.target.value })}
+            >
+              <optgroup label="Staal (EN 1993)">
+                {STEEL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+              </optgroup>
+              <optgroup label="Hout (EN 1995)">
+                {SUPPORTED_TIMBER_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+              </optgroup>
             </select>
           </Row>
-          <Row label="E"><code>210000 N/mm²</code></Row>
-          <Row label="fy"><code>235 N/mm²</code></Row>
+          {isHout ? (
+            <Row label="Norm"><code>EN 338 / EN 1995-1-1</code></Row>
+          ) : (
+            <>
+              <Row label="E"><code>210000 N/mm²</code></Row>
+              {fyStaal && <Row label="fy"><code>{fyStaal} N/mm²</code></Row>}
+            </>
+          )}
         </Section>
 
         <Section title="Profiel">
           <Row label="Profiel">
-            <select className="fem-prop-select" defaultValue="HEA 160">
-              <option>HEA 160</option>
-              <option>HEA 200</option>
-              <option>HEB 160</option>
-              <option>HEB 300</option>
-              <option>IPE 200</option>
-              <option>IPE 360</option>
-            </select>
+            <input
+              className="fem-prop-select"
+              list="fem-prop-profile-list"
+              value={profile}
+              onChange={(e) => updateBeam?.(beam.id, { profile: e.target.value })}
+            />
           </Row>
-          <Row label="A"><code>3877 mm²</code></Row>
-          <Row label="Iy"><code>16730000 mm⁴</code></Row>
-          <Row label="Wel,y"><code>220500 mm³</code></Row>
-          <Row label="Wpl,y"><code>245100 mm³</code></Row>
+          <datalist id="fem-prop-profile-list">
+            {PROFILE_SUGGESTIONS.map(p => <option key={p} value={p} />)}
+          </datalist>
+          {isHout && (
+            <Row label="Doorsnede"><code>b×h in mm (bijv. 96x450)</code></Row>
+          )}
         </Section>
 
         <Section title="Randvoorwaarden" defaultOpen={false}>
           <Row label="Start scharnierend">
-            <input type="checkbox" className="fem-prop-checkbox" />
+            <input
+              type="checkbox" className="fem-prop-checkbox"
+              checked={beam.releases?.startRy ?? false}
+              onChange={(e) => setRelease("startRy", e.target.checked)}
+            />
           </Row>
           <Row label="Eind scharnierend">
-            <input type="checkbox" className="fem-prop-checkbox" />
+            <input
+              type="checkbox" className="fem-prop-checkbox"
+              checked={beam.releases?.endRy ?? false}
+              onChange={(e) => setRelease("endRy", e.target.checked)}
+            />
           </Row>
         </Section>
 

@@ -1,0 +1,31 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 1,
+  "savedAt": "2026-09-02T00:00:00.000Z",
+  "nodes": [
+    { "id": 1, "x": 0, "z": 0 },
+    { "id": 2, "x": 1406, "z": 3000 },
+    { "id": 3, "x": 7748, "z": 3000 }
+  ],
+  "beams": [
+    { "id": 1, "from": 1, "to": 2, "material": "C24", "profile": "96x450" },
+    { "id": 2, "from": 2, "to": 3, "material": "C24", "profile": "96x450" }
+  ],
+  "supports": [
+    { "nodeId": 1, "type": "pinned" },
+    { "nodeId": 3, "type": "zRoller" }
+  ],
+  "plates": [],
+  "loads": [
+    { "id": 1, "type": "lineLoad", "beamId": 2, "q": -15, "caseId": 1 }
+  ],
+  "loadCases": [
+    { "id": 1, "name": "Permanent (G)", "type": "dead" },
+    { "id": 2, "name": "Variabel (Q)", "type": "live" },
+    { "id": 3, "name": "Sneeuw (S)", "type": "snow" },
+    { "id": 4, "name": "Wind (W)", "type": "wind" }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": false
+}

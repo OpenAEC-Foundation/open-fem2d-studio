@@ -832,6 +832,7 @@ function App() {
                     supports={fem.supports}
                     loads={fem.loads}
                     updateNode={fem.updateNode}
+                    updateBeam={fem.updateBeam}
                     addSupport={fem.addSupport}
                     removeSupport={fem.removeSupport}
                     updateLoad={fem.updateLoad}

@@ -13,10 +13,10 @@ import { isSteelCheckResult } from "../../lib/checkTypes";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import "./BarPropertiesDialog.css";
 
-const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
+export const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
 
 /** Suggesties voor de profiel-combobox: staalprofielen + houtdoorsneden. */
-const PROFILE_SUGGESTIONS = [
+export const PROFILE_SUGGESTIONS = [
   "HEA100", "HEA140", "HEA160", "HEA200", "HEA240", "HEA300",
   "HEB160", "HEB200", "HEB240", "HEB300",
   "IPE160", "IPE200", "IPE240", "IPE300", "IPE360",

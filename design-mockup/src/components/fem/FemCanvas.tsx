@@ -32,6 +32,7 @@ import type { SolverResult, SolverInput } from "./solver/types";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
+import { resolveSection } from "../../lib/sectionResolver";
 import type {
   Tool, Node, Beam, Plate, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
@@ -275,11 +276,17 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
       const input: SolverInput = {
         nodes: nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
-        beams: beams.map(b => ({
-          id: b.id, from: b.from, to: b.to,
-          startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
-          endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
-        })),
+        beams: beams.map(b => {
+          // Stijfheid uit materiaal + profiel; zonder dit rekende elke staaf
+          // met de solver-default (HEA 160 / S235).
+          const sec = resolveSection(b.material, b.profile);
+          return {
+            id: b.id, from: b.from, to: b.to,
+            E: sec.E, A: sec.A, I: sec.I,
+            startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
+            endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
+          };
+        }),
         supports: supports.map(s => ({
           nodeId: s.nodeId,
           type: s.type,
@@ -760,6 +767,13 @@ export default function FemCanvas(props: FemCanvasProps) {
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const overNodeId = findSnapNode(sx, sy);
+    // Model-positie uit het klik-event zelf. Niet op hoverModel leunen: dat is
+    // de laatste mousemove-positie, en een klik zonder voorafgaande beweging
+    // (touchpad-tap, snelle klik, automation) komt dan stilzwijgend op de
+    // oude of ontbrekende hoverpositie uit.
+    const clickWorld = screenToWorld(sx, sy);
+    const clickSnap = snapToStramien(clickWorld.x, clickWorld.z);
+    const clickModel = { x: clickSnap.x, z: clickSnap.z };
 
     if (tool === "select") {
       // mousedown handler already sets selection / starts drag / starts box-select.
@@ -772,19 +786,18 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
 
     if (tool === "addNode") {
-      if (!hoverModel) return;
-      if (nodes.some(n => n.x === hoverModel.x && n.z === hoverModel.z)) return;
-      addNode(hoverModel.x, hoverModel.z);
+      if (nodes.some(n => n.x === clickModel.x && n.z === clickModel.z)) return;
+      addNode(clickModel.x, clickModel.z);
       return;
     }
 
     if (tool === "addBeam") {
       // Need 2 node clicks. If clicking empty area, snap-create a node first.
       let nodeId = overNodeId;
-      if (nodeId === null && hoverModel) {
-        const existing = nodes.find(n => n.x === hoverModel.x && n.z === hoverModel.z);
+      if (nodeId === null) {
+        const existing = nodes.find(n => n.x === clickModel.x && n.z === clickModel.z);
         if (existing) nodeId = existing.id;
-        else nodeId = addNode(hoverModel.x, hoverModel.z);
+        else nodeId = addNode(clickModel.x, clickModel.z);
       }
       if (nodeId === null) return;
       if (beamStart === null) {
@@ -805,10 +818,10 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (tool === "addPlate") {
       // 4-click rectangle. Snap to existing node or create one.
       let nodeId = overNodeId;
-      if (nodeId === null && hoverModel) {
-        const existing = nodes.find(n => n.x === hoverModel.x && n.z === hoverModel.z);
+      if (nodeId === null) {
+        const existing = nodes.find(n => n.x === clickModel.x && n.z === clickModel.z);
         if (existing) nodeId = existing.id;
-        else nodeId = addNode(hoverModel.x, hoverModel.z);
+        else nodeId = addNode(clickModel.x, clickModel.z);
       }
       if (nodeId === null) return;
       const next = [...plateCorners, nodeId];
@@ -1933,14 +1946,27 @@ export default function FemCanvas(props: FemCanvasProps) {
         {beamsWithCoords.map(({ b, p1, p2 }) => {
           const isSel = isBeamInSelection(b.id, selection);
           const isSnap = snapBeam === b.id;
+          const selectBeam = (e: React.MouseEvent) => {
+            if (tool === "select" && !dragState) { e.stopPropagation(); setSelection({ type: "beam", id: b.id }); }
+          };
+          const openBeamProps = (e: React.MouseEvent) => { e.stopPropagation(); setEditingBeamId(b.id); };
           return (
-            <line
-              key={`beam${b.id}`}
-              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-              className={`fem-member${isSel ? " selected" : ""}${isSnap ? " snap" : ""}`}
-              onClick={(e) => { if (tool === "select" && !dragState) { e.stopPropagation(); setSelection({ type: "beam", id: b.id }); } }}
-              onDoubleClick={(e) => { e.stopPropagation(); setEditingBeamId(b.id); }}
-            />
+            <g key={`beam${b.id}`}>
+              <line
+                x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                className={`fem-member${isSel ? " selected" : ""}${isSnap ? " snap" : ""}`}
+                onClick={selectBeam}
+                onDoubleClick={openBeamProps}
+              />
+              {/* Onzichtbare brede hit-lijn: de zichtbare staaf is maar een paar
+                  pixel dik, waardoor (dubbel)klikken er net naast vaak misten. */}
+              <line
+                x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                stroke="transparent" strokeWidth={12} style={{ cursor: "pointer" }}
+                onClick={selectBeam}
+                onDoubleClick={openBeamProps}
+              />
+            </g>
           );
         })}
 
