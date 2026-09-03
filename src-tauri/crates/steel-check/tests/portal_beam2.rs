@@ -116,6 +116,20 @@ fn portal_beam2_governing_ok() {
     assert_eq!(r.status, CheckStatus::Ok);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt na de kipreparatie, maar **geen enkel getal is
+/// veranderd**. Alleen de nieuwe tussenwaarde α_LT = 0,34 is bijgekomen, zodat
+/// het rapport kan tonen wélke kipkromme is gebruikt.
+///
+/// Waarom er niets schuift, nagerekend: de envelop heeft voor de maatgevende
+/// combinatie (id 21) één station, op x = 0. Beide eindmomenten van het enige
+/// kipveld zijn dus −66,036 kNm, β = +1 — dezelfde waarde die de oude
+/// kwartpuntbenadering gaf. De kolom is ongesteund, dus het veld ligt tussen
+/// twee gaffels en L_kip = L_st = 2500 mm; de oude code kwam daar ook op uit
+/// doordat (1,4 − 0,8·1) = 0,6 op de ondergrens 1,0 werd afgekapt. En HEB 160
+/// heeft h/b = 1,0 ≤ 2, dus tabel 6.5 geeft kromme b: α_LT = 0,34, dezelfde
+/// waarde die er vast stond.
 #[test]
 fn portal_beam2_snapshot() {
     insta::assert_json_snapshot!("portal_beam2", run());

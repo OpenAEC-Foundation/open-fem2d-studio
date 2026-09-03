@@ -124,6 +124,36 @@ fn portal_beam1_governing_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
+/// Sept 2026 (d) bijgewerkt na de kipreparatie. Van de drie defecten raakt er
+/// één dit kanaalpad: β kwam uit het VELDmoment (M op L_st/4 gedeeld door het
+/// grootste moment over de staaf) in plaats van uit de EINDMOMENTEN van het
+/// kipveld (NB.NB.4.3). De andere twee raakten dit pad niet — `m_b_rd_channel`
+/// zette L_kip al gelijk aan L_st, wat voor deze ongesteunde ligger het juiste
+/// gaffelgeval is, en α_LT stond hier al op 0,49.
+///
+/// De ligger is 5000 mm, ongesteund, met M(0) = +66,036 kNm en
+/// M(3900) = −194,796 kNm. De momentenlijn wisselt dus van teken: dubbele
+/// kromming, het gunstigste geval van tabel NB.NB.1. β wordt daarmee
+/// −194,796 in de noemer en +66,036 in de teller, dus β = −0,339 in plaats van
+/// de +0,090 die de kwartpuntbenadering gaf. C₁ gaat mee van 1,669 naar 2,123
+/// — en 2,12 is precies wat de formule van geval 1 uit tabel NB.NB.1 voor
+/// β = −0,339 geeft: 1,75 + 1,05·0,339 + 0,3·0,339² = 2,14.
+///
+/// Gevolg: M_cr 199,86 → 254,24 kNm, λ_LT 1,0228 → 0,9069, χ_LT 0,6253 →
+/// 0,6966, M_b,Rd 130,75 → 145,66 kNm, UC kip 1,4898 → 1,3373, uc_max
+/// idem. De ligger blijft ruim NotOk op kip. De UC daalt hier dus; dat is geen
+/// versoepeling maar het wegvallen van een te ongunstige β — de oude waarde
+/// las de momentenlijn op de verkeerde plek af.
+///
+/// De tussenwaardenlijst van dit kanaalpad is bovendien gelijkgetrokken met
+/// die van het I-profielpad: L_g, L_kip, B*, C₂ en k_red stonden er niet in en
+/// staan er nu wel. B* = −1 (q_equiv = 0, dus uitsluitend eindmomenten) en
+/// C₂ = 0 (z_a = 0); rekenkundig identiek aan de vaste 1,0 en 0 die er stonden.
+///
+/// **De op het referentie-rapport geijkte waarden veranderen NIET**:
+/// N_c,Rd = 1801,44 kN, M_y,c,Rd = 209,094 kNm en V_c,z,Rd = 671,06 kN staan
+/// hierboven onveranderd en worden onverminderd afgedwongen.
+///
 /// Sept 2026 (c) bijgewerkt nadat de exacte doorsnedemotor de It-waarden van
 /// de hele U-reeks heeft gecorrigeerd. De motor sluit It numeriek in tussen
 /// een bewezen onder- en bovengrens; voor alle 27 U-profielen lag de

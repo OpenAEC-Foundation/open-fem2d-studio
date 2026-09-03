@@ -120,6 +120,20 @@ fn calc2_beam2_governing_not_ok() {
     assert_eq!(r.status, CheckStatus::NotOk);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt na de kipreparatie, om exact dezelfde reden als bij
+/// calc2_beam1 — zelfde profiel (HEB 160), zelfde lengte, zelfde ongesteunde
+/// kipveld, alleen hogere krachten. Zie de uitgebreide verantwoording in de
+/// docstring bij `calc2_beam1_snapshot`.
+///
+/// β komt nu uit de eindmomenten van het kipveld (M(0) = 0 en M(5000) =
+/// +126,672 kNm, dus β = 0) in plaats van uit M(1250)/M_max = 0,50.
+/// Gevolg: C₁ 1,300 → 1,750, M_cr 193,04 → 259,86 kNm, λ_LT 0,6565 → 0,5658,
+/// χ_LT 0,8909 → 0,9323, UC kip 1,7092 → 1,6333, 6.3.3 vgl. 6.61 1,4389 →
+/// 1,3865 en vgl. 6.62 1,2036 → 1,1721. uc_max 1,7092 → 1,6333; de ligger
+/// blijft ruim NotOk. De op het referentie-rapport geijkte asserties hierboven
+/// veranderen niet.
 #[test]
 fn calc2_beam2_snapshot() {
     insta::assert_json_snapshot!("calc2_beam2", run());

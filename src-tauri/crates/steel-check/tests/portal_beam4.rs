@@ -117,10 +117,16 @@ fn portal_beam4_ltb_chi_is_one() {
     // We check that M_b,Rd (indirectly via 6.3.2_ltb value or UC) reflects chi_LT=1.0.
     // UC_LTB = M_y,Ed / M_b,Rd = 273.135 / 439.199 = 0.622 (same as pure bending since chi_LT=1)
     let ltb_uc = uc_value(r, "6.3.2_ltb");
-    // TODO Phase 13: tighten tolerance once LTB Mcr for HEB300 with bracing is verified
-    // LTB UC should ~= bending UC when chi_LT=1.0 (reference: lambda_LT=0.236 < 0.4)
-    // TODO Phase 13: tighten once LTB Mcr for HEB300 with bracing is verified
+    // Sept 2026: de twee TODO's uit fase 13 vroegen om verificatie van M_cr
+    // voor de HEB 300 mét kipsteunen. Die is er nu, dankzij de kipreparatie —
+    // en de uitkomst is ONVERANDERD gebleven, zie hieronder. De tolerantie van
+    // 5 % blijft staan omdat de referentie met de algemene EN-formule voor
+    // M_cr rekent en onze kern met de Nederlandse bijlage; dat methodeverschil
+    // is groter dan de rekennauwkeurigheid en hoort niet weggetolereerd te
+    // worden.
     assert_relative_eq!(ltb_uc, 0.622, max_relative = 0.05);
+    // χ_LT = 1,00 is de eigenlijke bewering; die mag exact.
+    assert_relative_eq!(resistance_value(r, "6.3.2_ltb"), 1.0, max_relative = 1e-12);
 }
 
 #[test]
@@ -131,6 +137,28 @@ fn portal_beam4_governing_ok() {
     assert_eq!(r.status, CheckStatus::Ok);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt na de kipreparatie, maar **geen enkel getal is
+/// veranderd**. Alleen de nieuwe tussenwaarde α_LT = 0,34 is bijgekomen.
+///
+/// Dit is de enige ligger in de suite met échte kipsteunen (twee, op 1667 en
+/// 3333 mm), en dus het geval waar de veldindeling er het meest toe doet. De
+/// drie velden krijgen elk hun eigen β en L_kip:
+///   [0 ; 1667]     M = 273,135 en 273,135 → β = +1,00 → L_kip = 1667 mm
+///   [1667 ; 3333]  M = 273,135 en 174,55  → β = +0,64 → L_kip = 1667 mm
+///   [3333 ; 5000]  M = 174,55 en −20,602  → β = −0,12 → L_kip = 2334 mm
+/// Het eerste veld heeft de laagste M_cr en is dus maatgevend — nét, want het
+/// derde veld komt er met zijn 40 % langere kiplengte dicht bij (C = 30,70
+/// tegen 30,76). Dat het maatgevende veld het KORTSTE van de drie is, laat
+/// zien waarom "het langste veld" niet als criterium kan dienen.
+///
+/// Het maatgevende veld levert β = +1 en L_kip = L_st = 1667 mm; toevallig
+/// precies wat de oude kwartpuntbenadering hier ook opleverde (die las op
+/// x = 417 mm af, waar de envelop nog op M_max staat, en de formule kapte
+/// (1,4 − 0,8) op de ondergrens 1,0 af). λ_LT blijft 0,209 en dus χ_LT = 1,00,
+/// zoals in de referentie (λ_LT = 0,236). HEB 300 heeft h/b = 1,0 ≤ 2, dus
+/// tabel 6.5 geeft kromme b met dezelfde α_LT = 0,34 die er vast stond.
 #[test]
 fn portal_beam4_snapshot() {
     insta::assert_json_snapshot!("portal_beam4", run());

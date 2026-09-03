@@ -114,6 +114,12 @@ fn portal_beam3_governing_ok() {
     assert_eq!(r.status, CheckStatus::Ok);
 }
 
+/// Regressiesnapshot van het volledige resultaat.
+///
+/// Sept 2026 bijgewerkt na de kipreparatie, maar **geen enkel getal is
+/// veranderd** — zelfde situatie als portal_beam2, waarvan deze kolom het
+/// spiegelbeeld is. Alleen de nieuwe tussenwaarde α_LT = 0,34 is bijgekomen.
+/// Zie de verantwoording bij `portal_beam2_snapshot`.
 #[test]
 fn portal_beam3_snapshot() {
     insta::assert_json_snapshot!("portal_beam3", run());

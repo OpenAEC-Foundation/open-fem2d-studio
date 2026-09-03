@@ -219,6 +219,18 @@ export function extractFieldDeflectionMm(
  * Equivalente gelijkmatig verdeelde belasting uit de momentenlijn (N/mm),
  * voor B* volgens NB.NB.4.3(3). Zelfde afleiding als de oude frontend:
  * pijl van de momentenparabool t.o.v. de koorde → q = 8·pijl/L².
+ *
+ * De teruggegeven waarde is de GROOTTE van die belasting, altijd ≥ 0.
+ * `nb_annex::b_ster` rekent B* = 8·M/(8·|M| + q·L_st²): het teken van de
+ * momentenlijn zit al in de teller M, en q hoort daar als positieve
+ * lastgrootte in de noemer te staan.
+ *
+ * Vóór september 2026 stond hier `Math.max(0, …)`. Bij een hogging
+ * momentenlijn (windzuiging) is de pijl negatief, en die werd dan op nul
+ * geklemd. B* kwam daarmee op ±1 uit — "uitsluitend eindmomenten" — terwijl er
+ * gewoon veldbelasting was. C₁ viel daardoor te hoog uit en M_cr mee. De
+ * absolute waarde herstelt dat: dezelfde belasting, gespiegelde momentenlijn,
+ * dezelfde B*-noemer.
  */
 export function equivalentUdlFromMoments(env: ForcePoint[], lengthMm: number): number {
   if (env.length < 3 || lengthMm <= 0) return 0;
@@ -234,7 +246,7 @@ export function equivalentUdlFromMoments(env: ForcePoint[], lengthMm: number): n
 
   const pijlKnm = best.forces.my_ed - (mStart + mEnd) / 2; // kNm
   const qKnPerM = (8 * pijlKnm) / Math.pow(lengthMm / 1000, 2); // kN/m ≡ N/mm
-  return Math.max(0, qKnPerM);
+  return Math.abs(qKnPerM);
 }
 
 /**
@@ -341,7 +353,14 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
       // w_add = w_fin, de zwaarste van de twee toetsen (veilig-zijdig).
       deflection_permanent_mm: 0,
       q_equiv_n_per_mm: equivalentUdlFromMoments(govPoints, lengthMm),
-      // Last op de bovenflens aangenomen: destabiliserend, dus conservatief.
+      // AANNAME, bewust niet meegenomen in de kipreparatie van sept 2026:
+      // de last grijpt aan op de bovenflens, z_a = +h/2. `c2_gecorrigeerd`
+      // maakt daar een negatieve C₂ van, wat M_cr verlaagt — veilig-zijdig, en
+      // dat blijft zo ongeacht welke flens gedrukt is. Bij hogging (gedrukte
+      // ONDERflens) grijpt een neerwaartse last echter aan op de GETROKKEN
+      // flens en werkt hij in werkelijkheid stabiliserend; de aanname is daar
+      // dus conservatief in plaats van juist. Het echte aangrijpingspunt is nu
+      // niet bekend in de invoer; dit hoort een expliciet veld te worden.
       z_a_mm: profile.geometry.h / 2,
     });
   }

@@ -141,7 +141,23 @@ fn calc2_beam3_governing_not_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
-/// Sept 2026 bijgewerkt na de herberekening van HFRHS200X200X16 uit de
+/// Sept 2026 (b) bijgewerkt na de kipreparatie. **Geen enkele UC verandert**:
+/// λ_LT blijft ver onder de drempel 0,4, dus χ_LT blijft 1,00 en M_b,Rd blijft
+/// de volle plastische momentcapaciteit. Alleen de NB-tussenwaarden schuiven,
+/// en die staan in de snapshot.
+///
+/// Wat er schoof en waarom: de envelop loopt van M(2402) = +187,327 kNm naar
+/// M(5000) = −126,675 kNm, dus de momentenlijn wisselt van teken. β komt nu uit
+/// die twee eindmomenten (−126,675/+187,327 = −0,676; dubbele kromming) in
+/// plaats van uit het kwartpunt, dat door de sparse envelop op M_max zelf
+/// uitkwam en β = +1,0 gaf. C₁ 1,000 → 2,300 (tabel NB.NB.1 geval 1 kapt op
+/// 2,30 af), M_cr 6643,6 → 15 280,3 kNm, λ_LT 0,1667 → 0,1099.
+///
+/// De doorsnede is een koker en staat niet in tabel 6.5. α_LT komt daarom op
+/// 0,76 (kromme d, de ongunstigste rij) en verschijnt nu als tussenwaarde in
+/// het resultaat; met χ_LT = 1,00 heeft die keuze hier geen gevolg.
+///
+/// Sept 2026 (a) bijgewerkt na de herberekening van HFRHS200X200X16 uit de
 /// EN 10210-2-meetkunde (zie de kop van dit bestand). De doorsnedegrootheden
 /// schuiven met A +2,0%, Wpl;y +2,3% en Av;z +2,0% naar de waarden van de
 /// externe referentie-berekening toe, en daarmee dalen alle UC's evenredig:

@@ -20,7 +20,7 @@ use nen_en_1993_1_1_stability::{
     interaction_factors::{interaction_factors_method_2, cm_uniform_or_psi},
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
-use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel};
+use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel, Kipprofiel, Kipveld};
 use section_properties::SectionProperties;
 use steel_profiles::{db, ProfileKind};
 use crate::input::{
@@ -122,6 +122,11 @@ struct Doorsnede {
     curve_y: BucklingCurve,
     curve_z: BucklingCurve,
     is_channel: bool,
+    /// Welke rij van tabel 6.5 de kipkromme levert (art. 6.3.2.3). Dit is een
+    /// ANDERE tabel dan de 6.2 waar `curve_y`/`curve_z` uit komen: die gaan
+    /// over kolomknik en hebben de grens h/b = 1,2, tabel 6.5 gaat over kip en
+    /// heeft de grens h/b = 2.
+    kip_profielsoort: Kipprofiel,
     /// Reden waarom kip 6.3.2 (en daarmee 6.3.3) niet gerekend mag worden.
     kip_weigering: Option<String>,
     /// Reden waarom de schuiftoets om de z-as (en M+V, M+N+V) niet mag draaien.
@@ -243,6 +248,15 @@ fn resolveer_doorsnede(
             curve_z: BucklingCurve::from_char(profile.buckling_curves.z_axis)
                 .unwrap_or(BucklingCurve::C),
             is_channel: matches!(profile.kind, ProfileKind::Channel),
+            // Tabel 6.5 kent alleen rijen voor I-profielen. Alles uit de
+            // catalogus is gewalst; kokers en buizen vallen buiten de tabel.
+            kip_profielsoort: match profile.kind {
+                ProfileKind::ISection => Kipprofiel::GewalsteI,
+                ProfileKind::Channel
+                | ProfileKind::Shs
+                | ProfileKind::Rhs
+                | ProfileKind::Chs => Kipprofiel::Overig,
+            },
             kip_weigering: None,
             schuif_weigering: None,
             totaal_weigering: None,
@@ -368,6 +382,11 @@ fn resolveer_doorsnede(
         curve_y,
         curve_z,
         is_channel: false,
+        // Een inline doorsnede heeft geen catalogusgeschiedenis en is per
+        // definitie uit platen samengesteld, dus gelast. Kip draait hier
+        // bovendien alleen op de dubbelsymmetrische gelaste I (zie
+        // `kip_weigering`), precies de rij "gelaste I-profielen" van tabel 6.5.
+        kip_profielsoort: Kipprofiel::GelasteI,
         kip_weigering,
         schuif_weigering,
         totaal_weigering,
@@ -583,13 +602,40 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     let is_channel = doorsnede.is_channel;
     let m_b_rd_knm: f64;
 
-    // Interpolate M_y at L_st/4 and L_st/2 for accurate beta / C1 calculation.
-    let l_st_mm = nen_en_1993_1_1_ltb::lambda_chi::unbraced_length_mm(
-        input.length_m, &input.lateral_bracing,
-    );
+    // De kipvelden van deze staaf (NB.NB.4.3).
+    //
+    // Drie beslissingen, en alle drie horen hier omdat de ltb-crate de
+    // momentenlijn niet kent:
+    //
+    //  1. WELKE FLENS. Kip is uitknikken van de GEDRUKTE flens; een steun aan
+    //     de getrokken flens telt niet mee. Bij sagging (M_y ≥ 0) gelden de
+    //     bovenflenssteunen, bij hogging de onderflenssteunen. Vóór deze
+    //     reparatie werd `bottom_flange_positions` nergens gelezen: een ligger
+    //     met een bovenflenssteun halverwege en een onderflenssteun aan het
+    //     eind rekende bij windzuiging met de halve kiplengte.
+    //  2. WAAR DE VELDGRENZEN LIGGEN. Alleen de grootste tussenafstand kennen
+    //     is niet genoeg — de eindmomenten moeten op de werkelijke veldgrenzen
+    //     worden afgelezen, niet op L_st/4 vanaf x = 0.
+    //  3. WELK VELD MAATGEVEND IS. Die keuze zit in de ltb-crate (laagste
+    //     M_cr), want zij vergt de hele NB-keten; zie `maatgevend_kipveld`.
+    let l_g_mm = input.length_m * 1000.0;
     let combo_id = gov_bending.combination_id;
-    let my_at_quarter = interpolate_my_at(&input.forces_envelope, l_st_mm / 4.0, combo_id);
-    let my_at_half    = interpolate_my_at(&input.forces_envelope, l_st_mm / 2.0, combo_id);
+    let kipsteunen = input
+        .lateral_bracing
+        .gedrukte_flens_posities(gov_bending.forces.my_ed);
+    let grenzen = nen_en_1993_1_1_ltb::lambda_chi::kipveld_grenzen_mm(l_g_mm, kipsteunen);
+    // Zonder tussenliggende kipsteun is er één veld, en dat loopt van gaffel
+    // tot gaffel: dan geldt L_kip = L_st en NIET de formule met β.
+    let tussen_gaffels = grenzen.len() == 2;
+    let kipvelden: Vec<Kipveld> = grenzen
+        .windows(2)
+        .map(|w| Kipveld {
+            l_st_mm: w[1] - w[0],
+            m_begin_knm: interpolate_my_at(&input.forces_envelope, w[0], combo_id),
+            m_eind_knm: interpolate_my_at(&input.forces_envelope, w[1], combo_id),
+            tussen_gaffels,
+        })
+        .collect();
 
     let ltb_check = if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
         m_b_rd_knm = f64::NAN; // bestaat niet; elke afnemer is hieronder geweigerd
@@ -597,10 +643,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         weigering("6.3.2_ltb", titel, artikel, stab, vec![reden_kip], bend_state)
     } else if is_channel {
         let ltb = m_b_rd_channel(
-            p, &grade, input.length_m, &input.lateral_bracing,
-            gov_bending.forces.my_ed,
-            my_at_quarter,
-            my_at_half,
+            p, &grade, l_g_mm, &kipvelden,
+            input.q_equiv_n_per_mm,
+            input.z_a_mm,
             bend_state,
         );
         let chi_lt = ltb.value;
@@ -608,12 +653,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         make_stability(ltb)
     } else {
         let mut ltb = m_b_rd(
-            p, &grade, input.length_m, &input.lateral_bracing,
-            gov_bending.forces.my_ed,
-            my_at_quarter,
-            my_at_half,
+            p, &grade, l_g_mm, &kipvelden,
             input.q_equiv_n_per_mm,
             input.z_a_mm,
+            doorsnede.kip_profielsoort,
             bend_state,
         );
         // Leeg voor een catalogusprofiel; gevuld als de dubbelsymmetrie op een

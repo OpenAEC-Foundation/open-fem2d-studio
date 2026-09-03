@@ -190,36 +190,44 @@ fn de_nb_tussenwaarden_staan_in_het_resultaat() {
     );
 }
 
-/// BEKENDE AFWIJKING — β wordt nog niet volgens de norm bepaald.
+/// Sept 2026 — vervangt `bekend_gat_beta_wordt_benaderd_niet_volgens_de_norm`.
 ///
-/// De norm definieert β als M_y,1,Ed / M_y,2,Ed: de verhouding van de twee
-/// EINDMOMENTEN VAN HET KIPVELD, met M_1 de kleinste en M_2 de grootste in
-/// absolute waarde. Voor deze ligger loopt het maatgevende kipveld van x = 0
-/// tot x = 2667 mm met eindmomenten 0 en M(2667), dus β = 0 en daarmee
-/// L_kip = 1,4 · 2667 = 3733 mm — precies wat de referentie-uitwerking geeft.
+/// Die test dwong af dat β NIET nul was en documenteerde daarmee een bekend
+/// gat: de orchestrator leidde β af uit het moment op L_st/4 gedeeld door het
+/// grootste moment over de hele staaf, wat hier β ≈ 0,167 en L_kip ≈ 3378 mm
+/// gaf. Zijn eigen docstring schreef de vervanging voor: *"als dit 0 is
+/// geworden, is het gat gedicht — vervang deze test door een controle op
+/// L_kip = 3733 mm"*. Dat is precies wat hieronder staat.
 ///
-/// De orchestrator gebruikt in plaats daarvan een benadering: het moment op
-/// L_st/4 gedeeld door het maximale moment over de hele staaf. Dat levert hier
-/// β ≈ 0,167 en L_kip ≈ 3378 mm, oftewel een 10% kortere kiplengte en dus een
-/// te hoge M_cr.
-///
-/// Deze test legt de afwijking vast zodat zij niet ongemerkt blijft bestaan.
-/// Hij moet worden vervangen zodra β uit de werkelijke veldeindmomenten wordt
-/// bepaald.
+/// De rekengang, met de vindplaatsen erbij:
+///  * De ligger heeft twee kipsteunen op de derdepunten, dus drie kipvelden
+///    van 2666,67 mm: [0 ; 2667], [2667 ; 5333] en [5333 ; 8000].
+///  * NB.NB.4.3 — β van het eerste veld: eindmomenten M(0) = 0 en M(2667),
+///    dus β = 0. Van het middenveld en het eindveld is β groter (0,67 resp.
+///    1,0), en die krijgen daarmee L_kip = 1,0·L_st.
+///  * NB.NB.4.3 — dat eerste veld ligt tussen een gaffel en een kipsteun, dus
+///    L_kip = (1,4 − 0,8·0)·2666,67 = 3733,33 mm. De bovengrens 1,4 wordt hier
+///    exact geraakt.
+///  * Het is ook het veld met de LAAGSTE M_cr en dus het maatgevende — precies
+///    het veld dat de referentie-uitwerking kiest. Het langste veld zou hier
+///    niets onderscheiden (alle drie zijn even lang); de kiplengte wél.
 #[test]
-fn bekend_gat_beta_wordt_benaderd_niet_volgens_de_norm() {
+fn het_eindveld_is_maatgevend_met_beta_nul_en_l_kip_3733() {
     let r = ligger1();
     let ltb = r.checks.iter().find(|c| c.id == "6.3.2_ltb").unwrap();
     let CheckKind::Stability(s) = &ltb.kind else { unreachable!() };
-    let beta = s
-        .intermediate_values
-        .iter()
-        .find(|v| v.symbol == r"\beta")
-        .expect("β aanwezig")
-        .value;
-    assert!(
-        beta.abs() > 1e-6,
-        "β is nu {beta}; als dit 0 is geworden, is het gat gedicht — \
-         vervang deze test door een controle op L_kip = 3733 mm"
-    );
+    let waarde = |sym: &str| {
+        s.intermediate_values
+            .iter()
+            .find(|v| v.symbol == sym)
+            .unwrap_or_else(|| panic!("tussenwaarde '{sym}' ontbreekt"))
+            .value
+    };
+    assert_relative_eq!(waarde(r"\beta"), 0.0, epsilon = 1e-12);
+    assert_relative_eq!(waarde("L_{kip}"), 3733.33, max_relative = 1e-4);
+    // De referentie-uitwerking geeft λ_LT = 0,378; met de gedigitaliseerde
+    // NB-figuren komen we op 0,370 (2 % lager). Beide blijven onder de drempel
+    // λ_LT,0 = 0,4, dus χ_LT = 1,00 — zoals in de referentie.
+    assert_relative_eq!(waarde(r"\bar{\lambda}_{LT}"), 0.378, max_relative = 3e-2);
+    assert_relative_eq!(waarde(r"\chi_{LT}"), 1.0, max_relative = 1e-12);
 }

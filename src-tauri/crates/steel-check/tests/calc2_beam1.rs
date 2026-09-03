@@ -120,7 +120,39 @@ fn calc2_beam1_governing_is_bending() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
-/// Sept 2026 bijgewerkt nadat een dubbele catalogusregel is opgeruimd. HEB 160
+/// Sept 2026 (b) bijgewerkt na de kipreparatie. Eén van de drie defecten raakt
+/// deze ligger: β kwam uit het VELDmoment (M op L_st/4 gedeeld door het
+/// grootste moment over de staaf) in plaats van uit de EINDMOMENTEN van het
+/// kipveld (NB.NB.4.3). De andere twee laten hem ongemoeid — de ligger is
+/// ongesteund, dus het enige kipveld ligt tussen twee gaffels en L_kip = L_st
+/// = 5000 mm, precies wat de oude code hier toevallig ook gaf (β = 0,5 kapte
+/// de formule op de ondergrens 1,0 af); en HEB 160 heeft h/b = 160/160 = 1,0
+/// ≤ 2, dus tabel 6.5 geeft kromme b met α_LT = 0,34 — dezelfde waarde die er
+/// vast stond.
+///
+/// De envelop van de maatgevende combinatie (id 2) heeft twee stations:
+/// M(0) = 0 en M(2500) = −87,84 kNm. Het kipveld loopt van 0 tot 5000 mm; het
+/// moment op x = 5000 volgt uit die twee punten door het laatste te herhalen,
+/// dus de eindmomenten zijn 0 en −87,84 kNm en β = 0. De oude benadering las
+/// M(1250) = −43,92 af en kwam op β = 0,50.
+///
+/// Gevolg: C₁ 1,300 → 1,750 (tabel NB.NB.1 geval 1 geeft bij β = 0 exact 1,75),
+/// M_cr 193,04 → 259,86 kNm, λ_LT 0,6565 → 0,5658, χ_LT 0,8909 → 0,9323,
+/// UC kip 1,1852 → 1,1326, 6.3.3 vgl. 6.61 1,0536 → 1,0175 en vgl. 6.62
+/// 0,9506 → 0,9289. uc_max 1,1852 → 1,1326; de ligger blijft NotOk op kip.
+///
+/// De UC daalt dus. Dat is geen versoepeling maar het corrigeren van een β die
+/// op de verkeerde plek werd afgelezen: bij β = 0,50 hoort een veel vlakkere
+/// momentenlijn dan deze envelop beschrijft. Wel het noteren waard: de fixture
+/// bemonstert de momentenlijn maar tot x = 2500 mm. Levert de frontend de
+/// volle 21 stations (met M(5000) = 0), dan zijn béíde eindmomenten nul, wordt
+/// B* = 0 in plaats van −1 en C₁ = 1,13, en gaat de UC juist omhóóg naar
+/// ≈ 1,21. De richting van deze verschuiving hangt dus aan de onvolledige
+/// envelop van de fixture, niet aan de norm.
+///
+/// De op het referentie-rapport geijkte asserties hierboven veranderen niet.
+///
+/// Sept 2026 (a) bijgewerkt nadat een dubbele catalogusregel is opgeruimd. HEB 160
 /// stond twee keer in profiles.json — als "HEB160" en als "HEB 160" — met
 /// verschillende waarden. Beide komen op dezelfde zoeksleutel uit, dus de
 /// opzoeking pakte simpelweg de eerste: de SCHRIJFWIJZE bepaalde met welke

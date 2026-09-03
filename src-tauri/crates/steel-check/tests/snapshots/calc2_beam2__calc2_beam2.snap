@@ -1,5 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam2.rs
+assertion_line: 125
 expression: run()
 ---
 {
@@ -519,7 +520,7 @@ expression: run()
         "data": {
           "id": "6.3.2_ltb",
           "title": "Lateral-torsional buckling resistance",
-          "article": "art. 6.3.2.1 + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
+          "article": "art. 6.3.2.3 (tabel 6.3/6.5) + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
           "force_state": {
             "combination_id": 2,
             "position_mm": 2500.0,
@@ -568,7 +569,7 @@ expression: run()
             },
             {
               "symbol": "\\beta",
-              "value": 0.5,
+              "value": 0.0,
               "unit": "-"
             },
             {
@@ -578,7 +579,7 @@ expression: run()
             },
             {
               "symbol": "C_1",
-              "value": 1.3,
+              "value": 1.75,
               "unit": "-"
             },
             {
@@ -593,7 +594,7 @@ expression: run()
             },
             {
               "symbol": "C",
-              "value": 4.449914538202344,
+              "value": 5.990269570657001,
               "unit": "-"
             },
             {
@@ -603,30 +604,37 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 193.03757082914393,
+              "value": 259.8582684238476,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.656469631441189,
+              "value": 0.565805665833314,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\alpha_{LT}",
+              "value": 0.34,
               "unit": "-"
             },
             {
               "symbol": "\\chi_{LT}",
-              "value": 0.8908979506178124,
+              "value": 0.9322860243664393,
               "unit": "-"
             }
           ],
-          "value": 0.8908979506178124,
+          "value": 0.9322860243664393,
           "unit": "-",
           "uc": {
             "ed": 126.672,
-            "rd": 74.11380051189582,
-            "uc": 1.709155368164775,
+            "rd": 77.55687436704407,
+            "uc": 1.6332788167882408,
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "Kipkromme B volgens tabel 6.5 (h/b = 1.000), α_LT = 0.34 volgens tabel 6.3."
+          ]
         }
       }
     },
@@ -671,7 +679,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 1.1807253256887509,
+              "value": 1.128307992832467,
               "unit": "-"
             },
             {
@@ -680,12 +688,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 1.4389438278401934,
+          "value": 1.3865264949839098,
           "unit": "-",
           "uc": {
-            "ed": 1.4389438278401934,
+            "ed": 1.3865264949839098,
             "rd": 1.0,
-            "uc": 1.4389438278401934,
+            "uc": 1.3865264949839098,
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
@@ -734,7 +742,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.7084351954132505,
+              "value": 0.6769847956994801,
               "unit": "-"
             },
             {
@@ -743,12 +751,12 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 1.2035891654952011,
+          "value": 1.1721387657814308,
           "unit": "-",
           "uc": {
-            "ed": 1.2035891654952011,
+            "ed": 1.1721387657814308,
             "rd": 1.0,
-            "uc": 1.2035891654952011,
+            "uc": 1.1721387657814308,
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
@@ -859,7 +867,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.709155368164775,
+  "uc_max": 1.6332788167882408,
   "status": "NotOk",
   "governing_check_id": "6.3.2_ltb"
 }

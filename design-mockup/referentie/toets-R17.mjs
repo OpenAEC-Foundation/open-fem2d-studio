@@ -458,11 +458,12 @@ try {
         `, χ_LT = ${fmt(tussen(r, "6.3.2_ltb", "\\chi_{LT}"), 3)}` +
         `, Mb,Rd = ${fmt(u.rd)} kNm, UC = ${fmt(u.uc, 3)}`);
   }
-  log(`  Let op de q_equiv van comb. 2: 0 N/mm. equivalentUdlFromMoments`);
-  log(`  (steelCheckBuilder.ts) klemt de pijl van de momentenlijn op ≥ 0 af,`);
-  log(`  dus bij een HOGGING lijn (opwaartse last) valt de belastingterm B*`);
-  log(`  weg en blijft "alleen eindmomenten" over — gunstiger dan de`);
-  log(`  werkelijkheid, net als de genegeerde onderflenssteunen hieronder.`);
+  log(`  Sept 2026 — bevinding B4 is gerepareerd; deze twee regels blijven`);
+  log(`  staan als controle dat zij niet terugkomt. equivalentUdlFromMoments`);
+  log(`  (steelCheckBuilder.ts) klemde de pijl van de momentenlijn op ≥ 0 af,`);
+  log(`  waardoor bij een HOGGING lijn (opwaartse last) de belastingterm van`);
+  log(`  B* wegviel en "alleen eindmomenten" overbleef. Nu is het de absolute`);
+  log(`  waarde: q_equiv comb. 2 hoort ≠ 0 te zijn.`);
   log(`  envelop (zoals de app hem draait): UC kip = ` +
       `${fmt(uc(rEnvelop, "6.3.2_ltb").uc, 3)}, maatgevende toets ` +
       `"${rEnvelop.governing_check_id}", UC max = ${fmt(rEnvelop.uc_max, 3)}`);
@@ -471,11 +472,15 @@ try {
   const lstNormaal = tussen(rComb2, "6.3.2_ltb", "L_{st}");
   const lstOnder   = tussen(rComb2Onder, "6.3.2_ltb", "L_{st}");
   log(`  model zoals ingevoerd (boven 2,50 m / onder 5,00 m): L_st = ${fmt(lstNormaal, 0)} mm`);
-  log(`  dezelfde staaf met 5,00 m als BOVENflenssteun        : L_st = ${fmt(lstOnder, 0)} mm`);
+  log(`  dezelfde steunen, maar als BOVENflenssteun opgegeven: L_st = ${fmt(lstOnder, 0)} mm`);
   log(`  → de onderflenssteunen ${Math.abs(lstNormaal - 5000) < 1 ? "TELLEN MEE" : "worden GENEGEERD"}` +
       ` (bron rekent comb. 2 met Lc = 5,00 m)`);
-  log(`     UC kip comb. 2 met 2,50 m: ${fmt(uc(rComb2, "6.3.2_ltb").uc, 3)}` +
-      `   met 5,00 m: ${fmt(uc(rComb2Onder, "6.3.2_ltb").uc, 3)}`);
+  log(`     UC kip comb. 2, steunen aan de gedrukte (onder)flens: ` +
+      `${fmt(uc(rComb2, "6.3.2_ltb").uc, 3)}` +
+      `   aan de getrokken (boven)flens: ${fmt(uc(rComb2Onder, "6.3.2_ltb").uc, 3)}`);
+  log(`     Vóór de reparatie las de kern altijd de BOVENflensvector en kwam`);
+  log(`     comb. 2 op L_st = 2500 mm uit — de halve kiplengte, en dus een`);
+  log(`     UC van 0,199 waar 0,311 hoort.`);
 
   log("\n─── Doorbuigingstoets van de kern (zeeg-verrekening) ───");
   const wfin = uc(rEnvelop, "deflection_w_fin");

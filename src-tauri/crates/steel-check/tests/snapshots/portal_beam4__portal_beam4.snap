@@ -1,5 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam4.rs
+assertion_line: 136
 expression: run()
 ---
 {
@@ -519,7 +520,7 @@ expression: run()
         "data": {
           "id": "6.3.2_ltb",
           "title": "Lateral-torsional buckling resistance",
-          "article": "art. 6.3.2.1 + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
+          "article": "art. 6.3.2.3 (tabel 6.3/6.5) + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
           "force_state": {
             "combination_id": 21,
             "position_mm": 2491.0,
@@ -558,12 +559,12 @@ expression: run()
             },
             {
               "symbol": "L_{st}",
-              "value": 1667.0,
+              "value": 1666.9999999999998,
               "unit": "mm"
             },
             {
               "symbol": "L_{kip}",
-              "value": 1667.0,
+              "value": 1666.9999999999998,
               "unit": "mm"
             },
             {
@@ -593,7 +594,7 @@ expression: run()
             },
             {
               "symbol": "C",
-              "value": 30.69844507689055,
+              "value": 30.698445076890565,
               "unit": "-"
             },
             {
@@ -603,12 +604,17 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 10062.389423166731,
+              "value": 10062.389423166735,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.20897973491934327,
+              "value": 0.20897973491934324,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\alpha_{LT}",
+              "value": 0.34,
               "unit": "-"
             },
             {
@@ -626,7 +632,9 @@ expression: run()
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Kipkromme B volgens tabel 6.5 (h/b = 1.000), α_LT = 0.34 volgens tabel 6.3."
+          ]
         }
       }
     },

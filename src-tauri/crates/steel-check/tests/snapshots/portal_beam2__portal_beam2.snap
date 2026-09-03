@@ -1,5 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam2.rs
+assertion_line: 121
 expression: run()
 ---
 {
@@ -519,7 +520,7 @@ expression: run()
         "data": {
           "id": "6.3.2_ltb",
           "title": "Lateral-torsional buckling resistance",
-          "article": "art. 6.3.2.1 + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
+          "article": "art. 6.3.2.3 (tabel 6.3/6.5) + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
           "force_state": {
             "combination_id": 21,
             "position_mm": 0.0,
@@ -612,6 +613,11 @@ expression: run()
               "unit": "-"
             },
             {
+              "symbol": "\\alpha_{LT}",
+              "value": 0.34,
+              "unit": "-"
+            },
+            {
               "symbol": "\\chi_{LT}",
               "value": 0.9681970052793766,
               "unit": "-"
@@ -627,6 +633,7 @@ expression: run()
           },
           "status": "Ok",
           "notes": [
+            "Kipkromme B volgens tabel 6.5 (h/b = 1.000), α_LT = 0.34 volgens tabel 6.3.",
             "B* < 0: C₁ en C₂ zijn afgelezen bij |B*|. De negatieve tak van figuur NB.NB.5/NB.NB.6 is niet gedigitaliseerd; deze benadering ligt onder de werkelijke waarden en is dus veilig-zijdig, maar nog niet geverifieerd."
           ]
         }

@@ -123,6 +123,19 @@ noch corrigeerbaar voor de gebruiker.
 
 ### B.2 — ONVEILIG · kiptoets staal: beta en B* uit het veldmoment, en alpha_LT vast op 0,34
 
+> **GEREPAREERD op 3 september 2026**, alle drie de defecten plus B4 in één
+> samenhangende wijziging. Gemeten resultaat op R16 (IPE 330, 5,70 m):
+> UC kip **0,850 → 0,988** tegen de 0,981 van de bron (verschil 0,007, binnen
+> de UC-tolerantie van 0,02); M_cr 125,38 → 115,41 kNm (bron 113,90),
+> lambda_LT 1,228 → 1,280 (bron 1,288), chi_LT 0,564 → 0,485 (bron 0,480).
+> Alle 12 vergeleken grootheden van R16 vallen nu binnen tolerantie; grootste
+> afwijking 1,32 % (het methodeverschil NB-Mcr tegen de algemene EN-formule).
+> Regressietests: `src-tauri/crates/steel-check/tests/kip_ipe330_r16.rs`,
+> `.../tests/kipsteunen_gedrukte_flens.rs` en
+> `src-tauri/crates/nen-en-1993-1-1-ltb/tests/kipveld_en_kipkromme.rs`.
+> De beschrijving hieronder is de oorspronkelijke bevinding en blijft staan
+> als verantwoording van wat er is gewijzigd.
+
 **Wat.** Drie samenhangende defecten in de EN 1993-1-1-kiptoets:
 
 1. `src-tauri/crates/steel-check/src/orchestrator.rs` (r. ~586-618) geeft
@@ -239,6 +252,25 @@ er staat wel een 49 % te hoge V_Rd in het rapport. Het oordeel kantelt bij korte
 belaste overspanningen en bij inkepingen.
 
 ### B.4 — ONVEILIG · kipsteunen van de onderflens worden genegeerd
+
+> **GEREPAREERD op 3 september 2026**, samen met B.2. De kern kiest de
+> kipsteunvector nu op het teken van het maatgevende moment
+> (`LateralBracing::gedrukte_flens_posities`): sagging → bovenflens, hogging →
+> onderflens; de twee vectoren worden nooit samengevoegd. En
+> `equivalentUdlFromMoments` geeft de absolute waarde van de pijl door in
+> plaats van hem op ≥ 0 te klemmen.
+> Gemeten op R17: comb. 2 L_st **2500 → 5000 mm**, q_equiv **0,000 → 2,049
+> N/mm**, UC kip comb. 2 **0,199 → 0,311**. De envelop-UC van de staaf gaat
+> van 0,851 naar 0,893 en kip wordt daarmee de maatgevende toets (was
+> doorbuiging). Alle 14 vergeleken grootheden van R17 blijven binnen
+> tolerantie (grootste afwijking 0,41 %).
+> Regressietest: `src-tauri/crates/steel-check/tests/kipsteunen_gedrukte_flens.rs`.
+>
+> **Nog open, apart gemeld:** `steelCheckBuilder.ts` zet `z_a_mm` nog
+> onvoorwaardelijk op +h/2 ("last op de bovenflens"). Dat blijft veilig-zijdig
+> (C₂ wordt negatief en verlaagt M_cr), maar bij hogging grijpt een
+> neerwaartse last op de GETROKKEN flens aan en werkt hij in werkelijkheid
+> stabiliserend. Het echte aangrijpingspunt hoort een invoerveld te worden.
 
 **Wat.** `lateralRestraintsBottom` heeft een eigen sectie in de UI
 (`src/components/fem/FemProperties.tsx`), wordt in het projectbestand bewaard en door

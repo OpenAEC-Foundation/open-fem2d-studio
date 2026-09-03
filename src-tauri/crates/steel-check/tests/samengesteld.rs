@@ -202,8 +202,33 @@ const TOETSEN: [&str; 12] = [
 //  (a) Het inline pad introduceert geen tweede rekenwijze
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Sept 2026 — de kipkromme maakt de twee paden bewust NIET meer identiek.
+///
+/// Deze test heette en luidde: "inline HEB 300 geeft dezelfde UC als de
+/// database", en dwong dat voor álle veertien toetsen af. Sinds de kipkromme
+/// uit tabel 6.5 komt (art. 6.3.2.3) geldt dat niet meer voor de drie toetsen
+/// die van χ_LT afhangen. Tabel 6.5 heeft twee rijen:
+///
+///   gewalste I-profielen, h/b ≤ 2 → kromme b → α_LT = 0,34
+///   gelaste  I-profielen, h/b ≤ 2 → kromme c → α_LT = 0,49
+///
+/// HEB 300 heeft h/b = 300/300 = 1,0. Uit de catalogus is hij gewalst en krijgt
+/// hij kromme b; inline opgegeven is hij per definitie uit platen samengesteld
+/// en krijgt hij kromme c. Dat is dezelfde regel die dit bestand al voor de
+/// KOLOMKNIK vastlegt ("een inline doorsnede erft nooit stilzwijgend de
+/// gunstiger gewalste kromme", tabel 6.2) — nu ook voor kip.
+///
+/// Gemeten verschil, vóór → na:
+///   6.3.2_ltb      0,552160978 → gewalst 0,552160978 · gelast 0,573902228
+///   6.3.3_eq_6_61  0,472378214 → gewalst 0,472378214 · gelast 0,485912280
+///   6.3.3_eq_6_62  0,386063500 → gewalst 0,386063500 · gelast 0,394183940
+/// Het GEWALSTE (database)pad is dus bit-identiek gebleven; alleen het inline
+/// pad wordt strenger. uc_max blijft 0,666 (doorbuiging) en de maatgevende
+/// toets blijft dezelfde, dus de conclusie van de test — het inline pad
+/// introduceert geen tweede rekenwijze — staat nog steeds overeind: het is
+/// dezelfde formule met de doorsnede-eigen tabelrij.
 #[test]
-fn inline_heb300_geeft_dezelfde_uc_als_de_database() {
+fn inline_heb300_wijkt_alleen_af_op_de_kipkromme_van_tabel_6_5() {
     let profiel = steel_profiles::db()
         .find("HEB 300")
         .expect("HEB 300 hoort in de database te staan");
@@ -211,7 +236,7 @@ fn inline_heb300_geeft_dezelfde_uc_als_de_database() {
     // Voorwaarde die deze test expliciet vastlegt: het inline pad kiest ALTIJD
     // de gelaste knikkromme (t_f ≤ 40 → b om y, c om z). Voor HEB 300
     // (t_f = 19 mm) valt die samen met de gewalste kromme uit de catalogus, en
-    // alleen daarom kunnen de twee paden identiek uitkomen.
+    // alleen daarom kunnen de KOLOMKNIK-uitkomsten identiek zijn.
     assert_eq!(profiel.buckling_curves.y_axis, 'b');
     assert_eq!(profiel.buckling_curves.z_axis, 'c');
     assert!(profiel.properties.tf_mm <= 40.0);
@@ -232,9 +257,15 @@ fn inline_heb300_geeft_dezelfde_uc_als_de_database() {
     assert_eq!(uit_db.governing_check_id, uit_inline.governing_check_id);
     assert_relative_eq!(uit_db.uc_max, uit_inline.uc_max, max_relative = 1e-12);
 
+    // De drie toetsen die door χ_LT lopen; al het andere moet gelijk blijven.
+    const VIA_CHI_LT: [&str; 3] = ["6.3.2_ltb", "6.3.3_eq_6_61", "6.3.3_eq_6_62"];
+
     for (a, b) in uit_db.checks.iter().zip(uit_inline.checks.iter()) {
         assert_eq!(a.id, b.id, "checklijst loopt uit de pas");
         assert_eq!(status_van(a), status_van(b), "status verschilt bij {}", a.id);
+        if VIA_CHI_LT.contains(&a.id.as_str()) {
+            continue;
+        }
         match (uc_van(a), uc_van(b)) {
             (Some(ua), Some(ub)) => {
                 assert_relative_eq!(ua, ub, max_relative = 1e-12);
@@ -244,6 +275,31 @@ fn inline_heb300_geeft_dezelfde_uc_als_de_database() {
         }
         assert_relative_eq!(waarde_van(a), waarde_van(b), max_relative = 1e-12);
     }
+
+    // En het verschil is er één van precies één tabelrij: dezelfde M_cr,
+    // dezelfde λ_LT, alleen een andere α_LT en daarmee een andere χ_LT.
+    for sym in ["M_{cr}", r"\bar{\lambda}_{LT}", "L_{kip}", r"\beta", "B^*"] {
+        assert_relative_eq!(
+            tussenwaarde(check(&uit_db, "6.3.2_ltb"), sym),
+            tussenwaarde(check(&uit_inline, "6.3.2_ltb"), sym),
+            max_relative = 1e-12
+        );
+    }
+    assert_relative_eq!(
+        tussenwaarde(check(&uit_db, "6.3.2_ltb"), r"\alpha_{LT}"),
+        0.34,
+        max_relative = 1e-12
+    );
+    assert_relative_eq!(
+        tussenwaarde(check(&uit_inline, "6.3.2_ltb"), r"\alpha_{LT}"),
+        0.49,
+        max_relative = 1e-12
+    );
+    assert!(
+        uc_van(check(&uit_inline, "6.3.2_ltb")).unwrap()
+            > uc_van(check(&uit_db, "6.3.2_ltb")).unwrap(),
+        "de gelaste kromme c hoort strenger te zijn dan de gewalste kromme b"
+    );
 
     // Het inline pad meldt wél dat de vorm op een declaratie berust en niet op
     // geometrie — dat mag de uitkomst niet veranderen, maar moet zichtbaar zijn.
@@ -275,6 +331,19 @@ fn databasepad_blijft_ongewijzigd() {
     //   6.3.3_eq_6_61       0,503911636430369
     //   6.3.3_eq_6_62       0,438619204384099
     //   deflection_w_fin    0,666  · deflection_w_add 0,200 · uc_max 0,666
+    //
+    // Sept 2026, na de kipreparatie: alle negen waarden hierboven staan
+    // ONVERANDERD. Nagerekend waarom, want dat is geen toeval:
+    //  * β en B* — de envelop heeft één punt (x = 3000), dus beide eindmomenten
+    //    van het enige kipveld zijn 220 kNm: β = +1 en B* = +1, precies wat de
+    //    oude benadering via M(L_st/4)/M_max ook opleverde.
+    //  * L_kip — geen kipsteunen, dus één veld tussen twee gaffels: L_kip =
+    //    L_st = 6000 mm. De oude code kwam met β = 1 op dezelfde 6000 mm uit,
+    //    omdat (1,4 − 0,8·1) = 0,6 op de ondergrens 1,0 werd afgekapt.
+    //  * α_LT — HEB 300 heeft h/b = 1,0 ≤ 2 en is gewalst, dus tabel 6.5 geeft
+    //    kromme b en daarmee dezelfde 0,34 die er vast stond.
+    // Dit is dus het geval waarin de drie defecten elkaar niet raken; het
+    // ijkgeval van de reparatie staat in tests/kip_ipe330_r16.rs.
     let p = steel_profiles::db().find("HEB 300").unwrap().properties;
     let r = check_beam(invoer("HEB 300", None, -400.0, -150.0, 220.0));
 
@@ -327,6 +396,26 @@ fn databasepad_blijft_ongewijzigd() {
 //  (b) De toegestane toetsen op de gelaste I uit D4.1
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Sept 2026 — de marge tot `status == Ok` is met de kipkromme flink gekrompen.
+///
+/// De doorsnede is een GELASTE I met h = 430 en b = 200, dus h/b = 2,15 > 2.
+/// Tabel 6.5 (art. 6.3.2.3) geeft daarvoor kipkromme **d**, tabel 6.3 dus
+/// α_LT = 0,76. Voorheen stond α_LT vast op 0,34 — kromme b, die in tabel 6.5
+/// alleen voor een GEWALSTE I met h/b ≤ 2 bestaat en voor een gelaste
+/// doorsnede in geen enkel geval een rij van de tabel is.
+///
+/// Gevolg, gemeten (de asserties hieronder over N, M, V, klasse en doorbuiging
+/// veranderen geen van alle — die raken χ_LT niet):
+///   χ_LT      0,659415 → 0,522901
+///   M_b,Rd    254,90   → 202,14 kNm
+///   6.3.2_ltb 0,784580 → 0,989411
+///   uc_max    0,919959 → 0,996396 (maatgevend blijft 6.3.3 vgl. 6.62)
+///
+/// De ligger voldoet dus nog, maar met 0,4 % marge in plaats van 8 %. Dat is
+/// geen toevalligheid die weggepoetst mag worden: het is de uitkomst van de
+/// tabelrij die bij deze doorsnede hoort. Verschuift de profieldata of de
+/// digitalisering van de NB-figuren nog een fractie, dan slaat `status` om naar
+/// `NotOk` — en dan is dát het juiste antwoord, geen regressie.
 #[test]
 fn gelaste_i_levert_handrekenbare_uc_voor_n_v_en_m() {
     // N = 500 kN druk, V_z = 150 kN, M_y = 200 kNm.
@@ -485,6 +574,11 @@ fn gelaste_i_krijgt_kip_want_dubbelsymmetrisch() {
         "UC kip {uc_kip} < UC doorsnede {uc_doorsnede}"
     );
     assert_relative_eq!(uc_kip, 200.0 / (chi_lt * 386.575), max_relative = 1e-6);
+
+    // Tabel 6.5 (art. 6.3.2.3): gelaste I met h/b = 430/200 = 2,15 > 2 →
+    // kipkromme d → tabel 6.3 → α_LT = 0,76. Niet de 0,34 (kromme b) die hier
+    // vast stond, en ook niet de 0,49 die bij h/b ≤ 2 zou gelden.
+    assert_relative_eq!(tussenwaarde(kip, r"\alpha_{LT}"), 0.76, max_relative = 1e-12);
 
     // Met kip is 6.3.3 gewoon te rekenen.
     for id in ["6.3.3_eq_6_61", "6.3.3_eq_6_62"] {

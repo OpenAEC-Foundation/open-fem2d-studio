@@ -196,13 +196,13 @@ if (!existsSync(SIDECAR)) {
   log("  eerste plaats NB-verschillen, geen rekenfouten in de solver.");
   vergelijk("Mcr", tussen.get("M_{cr}"), 113.9, "kNm", 2.0, "NB-methode ≠ EN-formule");
   vergelijk("lambda_LT", tussen.get("\\bar{\\lambda}_{LT}"), 1.288, "-", 2.0, "volgt uit Mcr");
-  vergelijk("chi_LT", tussen.get("\\chi_{LT}"), 0.480, "-", 2.0, "onze kromme b, bron kromme c");
+  vergelijk("chi_LT", tussen.get("\\chi_{LT}"), 0.480, "-", 2.0, "beide kromme c");
   vergelijk("Mb,Rd", kip.uc.rd, 92.24, "kNm", 2.0, "bron gebruikt chi_LT,mod = 0,488");
   vergelijkAbs("UC kip", kip.uc.uc, 0.981, 0.02, "zie hierboven");
 
   log("\n  Wat de bron nog meer geeft, en wat onze kern daarvan kent:");
   log(`  --  kipkromme: bron c (h/b = ${(330 / 160).toFixed(3)} > 2), alpha_LT = 0,49;` +
-      "  onze kern: vast alpha_LT = 0,34 (kromme b), h/b speelt geen rol");
+      `  onze kern: ${tussen.get("\\alpha_{LT}")} uit tabel 6.5 (sinds sept 2026)`);
   log("  --  lambda_LT,0 = 0,4 en beta = 0,75: onze kern gebruikt dezelfde waarden");
   log("  --  kc = 0,94 / f = 0,984 / chi_LT,mod = 0,488 (art. 6.3.2.3(2)):");
   log("      NIET geïmplementeerd in onze kern — die stopt bij chi_LT.");
@@ -211,10 +211,12 @@ if (!existsSync(SIDECAR)) {
   for (const s of ["L_g", "L_{st}", "L_{kip}", "\\beta", "B^*", "C_1", "C_2", "S", "C", "k_{red}"]) {
     if (tussen.has(s)) log(`      ${s.padEnd(10)} = ${tussen.get(s)}`);
   }
-  log(`      → beta en B* horen volgens NB.NB.4.3(3) uit de EINDMOMENTEN van`);
-  log(`        het kipveld te komen. Die zijn hier nul (vrij opgelegd, alleen`);
-  log(`        veldbelasting), dus NB-correct is beta = 0 en B* = 0. Onze kern`);
-  log(`        leidt ze af uit het VELDmoment; zie de bevindingen bij dit geval.`);
+  log(`      → beta en B* komen volgens NB.NB.4.3(3) uit de EINDMOMENTEN van`);
+  log(`        het kipveld. Die zijn hier nul (vrij opgelegd, alleen`);
+  log(`        veldbelasting), dus beta = 0 en B* = 0 — en omdat het veld`);
+  log(`        tussen twee gaffels ligt, is L_kip = L_st = 5700 mm. Tot`);
+  log(`        sept 2026 leidde de kern beta en B* af uit het VELDmoment`);
+  log(`        (0,75 resp. 0,50) en kwam de UC op 0,850 uit.`);
 
   log("\n  Doorbuigingstoets van de kern (niet in de dossiertabel):");
   const wfin = checks.get("deflection_w_fin");
@@ -240,8 +242,10 @@ for (const r of buiten) {
 log(`  grootste afwijking:    ${grootsteAfwijking.toFixed(2)} %`);
 log("");
 log("  Deel 1 (krachtsverdeling en zakking) hoort binnen 1 % te vallen.");
-log("  Deel 2 (kip) valt daarbuiten; dat is een NB-/implementatieverschil,");
-log("  geen fout in de krachtsverdeling. Zie de bevindingen bij dit geval.");
+log("  Deel 2 (kip) sinds sept 2026 ook: de drie defecten in de AANROEPER");
+log("  van de kiptoets zijn gerepareerd (beta/B* uit de eindmomenten,");
+log("  L_kip = L_st tussen gaffels, kipkromme uit tabel 6.5). Wat er nog");
+log("  rest is het verschil tussen de NB-Mcr en de algemene EN-formule.");
 
 // ══════════════════════════════════════════════════════════════════════════
 //  DIAGNOSE van het kipverschil
@@ -256,7 +260,8 @@ log("  geen fout in de krachtsverdeling. Zie de bevindingen bij dit geval.");
 // lambda_chi::lambda_lt → chi_lt aan met de invoer per variant.
 //
 //  variant                                              Mcr    lam_LT  chi_LT  Mb,Rd   UC
-//  A  zoals de app nu rekent (beta=0,75; B*=0,50; a=0,34) 125,38 1,2276 0,5635 106,46 0,850
+//  A  zoals de app TOT sept 2026 rekende (b=0,75; B*=0,50; a=0,34)
+//                                                        125,38 1,2276 0,5635 106,46 0,850
 //  B  zoals A, maar kromme c (alpha_LT = 0,49)            125,38 1,2276 0,5105  96,46 0,938
 //  C  NB-correct beta=0, B*=0, L_kip=L_st, kromme c       115,40 1,2795 0,4845  91,54 0,988
 //  D  NB-correct beta/B*, maar kromme b (alpha_LT = 0,34) 115,40 1,2795 0,5346 101,01 0,896
@@ -269,19 +274,24 @@ log("  geen fout in de krachtsverdeling. Zie de bevindingen bij dit geval.");
 //    beta = 0 en B* = 0) en met de kipkromme uit tabel 6.5 voor h/b > 2 —
 //    komt op 1,3 % van de Mcr van de bron en op 0,007 van haar UC. De
 //    NB-METHODE is dus niet de oorzaak van het verschil.
-//  * Het verschil zit in twee dingen die de aanroeper doet:
-//      1. beta en B* worden afgeleid uit het VELDmoment (gov_bending.my_ed en
+//  * Het verschil zat in drie dingen die de aanroeper deed:
+//      1. beta en B* werden afgeleid uit het VELDmoment (gov_bending.my_ed en
 //         M(L_st/4)) in plaats van uit de eindmomenten van het kipveld;
-//      2. alpha_LT staat vast op 0,34 (kromme b) ongeacht h/b.
-//    Beide werken hier dezelfde kant op: ze verhogen chi_LT, dus onze UC valt
-//    0,13 LAGER uit dan die van de bron. Onveilig aan de verkeerde kant.
-//  * Variant F laat zien dat punt 1 niet los te repareren is: met beta = 0
+//      2. nb_annex::l_kip werd onvoorwaardelijk aangeroepen, ook voor een veld
+//         tussen twee gaffels;
+//      3. alpha_LT stond vast op 0,34 (kromme b) ongeacht h/b.
+//    Punt 1 en 3 werkten dezelfde kant op: ze verhoogden chi_LT, dus de UC
+//    viel 0,13 LAGER uit dan die van de bron. Onveilig aan de verkeerde kant.
+//  * Variant F laat zien dat punt 1 niet los te repareren was: met beta = 0
 //    geeft nb_annex::l_kip 1,4·L_st, terwijl NB.NB.4.3 voor een veld tussen
 //    TWEE gaffels L_kip = L_st voorschrijft. Wie alleen beta/B* corrigeert
 //    zonder dat onderscheid, schiet 31 % de andere kant op.
 //
-// Er is hier bewust NIETS gerepareerd: dit is een bevinding van de
-// validatiecampagne, geen opdracht tot wijzigen.
+// SEPT 2026 — GEREPAREERD. Alle drie de punten zijn in één samenhangende
+// wijziging aangepakt; de app rekent nu variant C en dit script komt op
+// UC 0,988 tegen de 0,981 van de bron. De regressietests staan in
+// src-tauri/crates/steel-check/tests/kip_ipe330_r16.rs (ditzelfde geval, maar
+// dan als cargo-test) en in .../tests/kipsteunen_gedrukte_flens.rs.
 
 // ── Sidecar-hulp: één JSON-RPC-gesprek over stdio ─────────────────────────
 /**

@@ -1,5 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam3.rs
+assertion_line: 152
 expression: run()
 ---
 {
@@ -519,7 +520,7 @@ expression: run()
         "data": {
           "id": "6.3.2_ltb",
           "title": "Lateral-torsional buckling resistance",
-          "article": "art. 6.3.2.1 + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
+          "article": "art. 6.3.2.3 (tabel 6.3/6.5) + NB.NB.2/NB.4/NB.7/NB.11/NB.13",
           "force_state": {
             "combination_id": 2,
             "position_mm": 2402.0,
@@ -568,7 +569,7 @@ expression: run()
             },
             {
               "symbol": "\\beta",
-              "value": 1.0,
+              "value": -0.6762239292787479,
               "unit": "-"
             },
             {
@@ -578,7 +579,7 @@ expression: run()
             },
             {
               "symbol": "C_1",
-              "value": 1.0,
+              "value": 2.3,
               "unit": "-"
             },
             {
@@ -593,7 +594,7 @@ expression: run()
             },
             {
               "symbol": "C",
-              "value": 3.1516395547795337,
+              "value": 7.248770975992927,
               "unit": "-"
             },
             {
@@ -603,12 +604,17 @@ expression: run()
             },
             {
               "symbol": "M_{cr}",
-              "value": 6643.60826427403,
+              "value": 15280.29900783027,
               "unit": "kNm"
             },
             {
               "symbol": "\\bar{\\lambda}_{LT}",
-              "value": 0.16668529074248692,
+              "value": 0.10990902591789542,
+              "unit": "-"
+            },
+            {
+              "symbol": "\\alpha_{LT}",
+              "value": 0.76,
               "unit": "-"
             },
             {
@@ -626,7 +632,9 @@ expression: run()
             "formula_latex": "M_{y,Ed} / M_{b,Rd}"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "Kipkromme D volgens tabel 6.5 (h/b = 1.000), α_LT = 0.76 volgens tabel 6.3."
+          ]
         }
       }
     },
