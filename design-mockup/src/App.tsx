@@ -551,6 +551,12 @@ function App() {
   // staaf. Elke klik maakt een nieuw object zodat een herhaalde klik op
   // dezelfde badge opnieuw scrollt (identiteit als trigger).
   const [checkFocus, setCheckFocus] = useState<{ beamId: number } | null>(null);
+  /**
+   * UC-badge op het canvas aangeklikt: toon de toetsing van díé staaf naast
+   * het model. `activeView` op "check" levert de split-weergave (canvas links,
+   * toetsingspaneel rechts); de focus klapt de kaart van die staaf open en
+   * scrollt hem in beeld.
+   */
   const handleOpenCheckForBeam = useCallback((beamId: number) => {
     setCheckFocus({ beamId });
     setActiveView("check");
@@ -706,8 +712,11 @@ function App() {
     setTreeTab("results");
     setResultsTabActive(true);
     // Zet alle resultaten-overlays standaard aan zodat M/V/N + reacties +
-    // vervorming meteen zichtbaar zijn op de canvas.
-    setDisplayFlags(prev => ({ ...prev, M: true, V: true, N: true, deflection: true, reactions: true }));
+    // vervorming meteen zichtbaar zijn op de canvas. De unity checks horen
+    // daarbij: de toetsing loopt altijd mee met de berekening, dus de badges
+    // horen er ook te staan — en zij zijn de ingang naar de afleiding per
+    // staaf (klikken opent die naast het model).
+    setDisplayFlags(prev => ({ ...prev, M: true, V: true, N: true, deflection: true, reactions: true, uc: true }));
     // Clear selection so the results overlay isn't visually competing with
     // selection-halos. User wants a clean view after computing.
     fem.setSelection(null);
@@ -922,8 +931,11 @@ function App() {
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
-  // Full-width views (3D viewer, IFC viewer, report, insights, toetsing) hide the side panels
-  const isFullWidthView = activeView === "viewer" || activeView === "ifc" || activeView === "report" || activeView === "insights" || activeView === "check";
+  // Volledige-breedteweergaven verbergen de zijpanelen. De toetsing hoort daar
+  // NIET bij: klikken op een UC-badge moet de toetsing van díé staaf NAAST het
+  // model tonen, niet in de plaats daarvan. Zo blijft het model in beeld
+  // terwijl je de afleiding leest, en zie je welke staaf je voor je hebt.
+  const isFullWidthView = activeView === "viewer" || activeView === "ifc" || activeView === "report" || activeView === "insights";
 
   const renderMainContent = () => {
     switch (activeView) {
@@ -933,8 +945,6 @@ function App() {
         // Doorgeef-regels naar het live rapport (ReportDataContext) — de
         // secties lezen deze modelstate en volgen elke wijziging direct.
         return <ReportPreview data={reportData} onDetach={handleDetachReport} />;
-      case "check":
-        return <CheckPanel onRun={() => { void handleRunMemberChecks(); }} focus={checkFocus} />;
       case "insights":
         return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} />;
       case "viewer":
@@ -951,11 +961,15 @@ function App() {
         // De canvas staat in beide gevallen op dezelfde plek in de boom,
         // dus zoom/selectie overleven het wisselen tussen Start en Tabel.
         const isTableSplit = activeView === "table";
+        // Toetsing naast het model: klikken op een UC-badge opent de volledige
+        // afleiding van die staaf rechts, met het model links in beeld.
+        const isCheckSplit = activeView === "check";
+        const isSplit = isTableSplit || isCheckSplit;
         return (
           <div className="canvas-split" ref={splitWrapRef}>
             <div
               className="canvas-split-canvas"
-              style={isTableSplit ? { flex: `0 0 ${tableSplitPct}%` } : undefined}
+              style={isSplit ? { flex: `0 0 ${tableSplitPct}%` } : undefined}
             >
               <FemCanvas
                 tool={femTool}
@@ -1004,6 +1018,24 @@ function App() {
                 onOpenCheckForBeam={handleOpenCheckForBeam}
               />
             </div>
+            {isCheckSplit && (
+              <>
+                <div
+                  className="canvas-split-divider"
+                  onMouseDown={handleSplitResizeMouseDown}
+                  title="Sleep om de verdeling model/toetsing aan te passen"
+                />
+                <div className="canvas-split-table">
+                  {/* Toetsing van de aangeklikte staaf, naast het model. De
+                      focus komt van de UC-badge op het canvas: die klapt de
+                      kaart van die staaf open en scrollt hem in beeld. */}
+                  <CheckPanel
+                    onRun={() => { void handleRunMemberChecks(); }}
+                    focus={checkFocus}
+                  />
+                </div>
+              </>
+            )}
             {isTableSplit && (
               <>
                 <div

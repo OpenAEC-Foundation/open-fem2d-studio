@@ -11,7 +11,6 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult, type MemberCheckResult } from "../../lib/checkTypes";
-import { isTauriApp, DESKTOP_ONLY_MSG } from "../../lib/tauri";
 import CheckBlock from "./CheckBlock";
 import "./CheckPanel.css";
 
@@ -136,10 +135,6 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
       <div className="cp-body">
         {error && <div className="cp-error">{error}</div>}
 
-        {!isTauriApp() && (
-          <div className="cp-desktop-note">{DESKTOP_ONLY_MSG}</div>
-        )}
-
         {skipped.length > 0 && (
           <details className="cp-skipped" open={results.length === 0}>
             <summary>
@@ -155,7 +150,7 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
           </details>
         )}
 
-        {results.length === 0 && !error && isTauriApp() && (
+        {results.length === 0 && !error && (
           <div className="cp-empty">
             <p className="cp-empty-title">{t("emptyTitle")}</p>
             <p className="cp-empty-hint">{t("emptyHint")}</p>
