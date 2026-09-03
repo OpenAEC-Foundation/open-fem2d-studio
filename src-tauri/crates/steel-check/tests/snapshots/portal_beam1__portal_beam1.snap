@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam1.rs
-assertion_line: 203
+assertion_line: 230
 expression: run()
 ---
 {
@@ -498,6 +498,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 362.1014372436047,
           "unit": "kN",
           "uc": {
@@ -519,8 +520,8 @@ expression: run()
         "type": "Stability",
         "data": {
           "id": "6.3.2_ltb_channel",
-          "title": "Lateral-torsional buckling (channel, monosym)",
-          "article": "art. 6.3.2.1 + Annex F (simplified)",
+          "title": "Kip (U-profiel, monosymmetrisch)",
+          "article": "art. 6.3.2.3 + NB.NB.4/NB.7/NB.11/NB.13, met een M_cr buiten de norm om",
           "force_state": {
             "combination_id": 21,
             "position_mm": 3900.0,
@@ -623,8 +624,483 @@ expression: run()
               "unit": "-"
             }
           ],
-          "value": 0.6966238901351572,
-          "unit": "-",
+          "deelstappen": [
+            {
+              "id": "uitgangspunten",
+              "titel": "Uitgangspunten van het maatgevende kipveld",
+              "symbol": "",
+              "article": "NB.NB.4.3",
+              "formula_latex": "",
+              "ingevuld_latex": "",
+              "variables": [
+                {
+                  "symbol": "n_{kipsteunen}",
+                  "value": 0.0,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "L_g",
+                  "value": 5000.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "L_{st}",
+                  "value": 5000.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "M_{y,1,Ed}",
+                  "value": 66.036,
+                  "unit": "kNm"
+                },
+                {
+                  "symbol": "M_{y,2,Ed}",
+                  "value": -194.796,
+                  "unit": "kNm"
+                },
+                {
+                  "symbol": "M_{y,Ed}(L_{st}/2)",
+                  "value": -101.16400000000002,
+                  "unit": "kNm"
+                },
+                {
+                  "symbol": "q",
+                  "value": 0.0,
+                  "unit": "N/mm"
+                },
+                {
+                  "symbol": "z_a",
+                  "value": 0.0,
+                  "unit": "mm"
+                }
+              ],
+              "value": null,
+              "unit": "",
+              "notes": [
+                "Er is geen kipsteun aan de gedrukte flens: de ligger heeft één kipveld, van gaffel tot gaffel.",
+                "De staafeinden zijn als gaffels (vorkopleggingen) aangenomen. Op die aanname berust de hele keten: NB.NB.4.3 kent alleen kipvelden tussen twee gaffels, tussen één gaffel en één kipsteun, of tussen twee kipsteunen, en het aantal kipsteunen hierboven volgt uit het aantal kipvelden min één.",
+                "q en z_a zijn uitgangspunten, geen gemeten grootheden. q is de equivalente gelijkmatig verdeelde belasting die bij de momentenlijn van dit kipveld hoort (NB.NB.4.3(3)); z_a is het aangenomen aangrijpingspunt van die belasting ten opzichte van het zwaartepunt van de doorsnede, positief naar boven en dus destabiliserend. Beide bepalen B*, C₁ en C₂ en daarmee M_cr; wie ze anders aanhoudt, krijgt een andere kipweerstand.",
+                "M_y,Ed(L_st/2) rekent nergens in mee — NB.NB.4.3 bepaalt β en B* uit de eindmomenten. Hij staat erbij zodat te zien is of de momentenlijn tussen die eindmomenten doorbuigt, en dus of de aanname 'gelijkmatig verdeelde belasting met eindmomenten' van NB.NB.4.3(3) hier opgaat."
+              ]
+            },
+            {
+              "id": "b_ster",
+              "titel": "Aandeel eindmoment in de momentenlijn",
+              "symbol": "B^*",
+              "article": "NB.NB.4.3(3)",
+              "formula_latex": "B^* = \\frac{8 \\cdot M_{y,2,Ed} \\cdot 10^6}{8 \\cdot \\left| M_{y,2,Ed} \\right| \\cdot 10^6 + q \\cdot L_{st}^2}",
+              "ingevuld_latex": "B^* = \\frac{8 \\cdot (-194{,}796) \\cdot 10^6}{8 \\cdot \\left| (-194{,}796) \\right| \\cdot 10^6 + 0 \\cdot 5000^2}",
+              "variables": [
+                {
+                  "symbol": "M_{y,2,Ed}",
+                  "value": -194.796,
+                  "unit": "kNm"
+                },
+                {
+                  "symbol": "q",
+                  "value": 0.0,
+                  "unit": "N/mm"
+                },
+                {
+                  "symbol": "L_{st}",
+                  "value": 5000.0,
+                  "unit": "mm"
+                }
+              ],
+              "value": -1.0,
+              "unit": "-",
+              "notes": [
+                "B* is de maat voor het aandeel eindmoment in de momentenlijn: B* = ±1 betekent uitsluitend eindmomenten (basisgeval 1 van tabel NB.NB.1), B* = 0 uitsluitend veldbelasting (basisgeval 2). De factor 10⁶ zet M_y,2,Ed van kNm naar N·mm, zodat teller en noemer in dezelfde eenheid staan als q·L_st²."
+              ]
+            },
+            {
+              "id": "beta",
+              "titel": "Verhouding van de eindmomenten",
+              "symbol": "\\beta",
+              "article": "NB.NB.4.3",
+              "formula_latex": "\\beta = \\frac{M_{y,1,Ed}}{M_{y,2,Ed}}",
+              "ingevuld_latex": "\\beta = \\frac{66{,}036}{-194{,}796}",
+              "variables": [
+                {
+                  "symbol": "M_{y,1,Ed}",
+                  "value": 66.036,
+                  "unit": "kNm"
+                },
+                {
+                  "symbol": "M_{y,2,Ed}",
+                  "value": -194.796,
+                  "unit": "kNm"
+                }
+              ],
+              "value": -0.33900080083779954,
+              "unit": "-",
+              "notes": [
+                "M_y,1,Ed is het eindmoment met de KLEINSTE absolute waarde, M_y,2,Ed dat met de grootste. De breuk gaat over de ondertekende rekenwaarden: β = +1 hoort bij een constant moment (enkelvoudige kromming), β = −1 bij de scherpste tekenwisseling."
+              ]
+            },
+            {
+              "id": "c1",
+              "titel": "Momentenfactor C₁",
+              "symbol": "C_1",
+              "article": "NB.NB.4.3(3), figuur NB.NB.5",
+              "formula_latex": "C_1 = f_{NB.NB.5}\\left( \\beta \\,;\\, \\left| B^* \\right| \\right)",
+              "ingevuld_latex": "C_1 = f_{NB.NB.5}\\left( -0{,}339 \\,;\\, 1 \\right)",
+              "variables": [
+                {
+                  "symbol": "\\beta",
+                  "value": -0.33900080083779954,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "B^*",
+                  "value": -1.0,
+                  "unit": "-"
+                }
+              ],
+              "value": 2.1229008809215792,
+              "unit": "-",
+              "notes": [
+                "Bilineair geïnterpoleerd uit figuur NB.NB.5 — C₁ bij gelijkmatig verdeelde belasting met eindmomenten — op het raster β = −1,0 … +1,0 in stappen van 0,5 en B* = 0,00 … 1,00 in stappen van 0,05. De uiteinden van dat raster zijn verankerd op tabel NB.NB.1: C₁ = 1,13 bij B* = 0 en C₁ = min(1,75 − 1,05·β + 0,3·β² ; 2,30) bij B* = 1.",
+                "B* is negatief; afgelezen is bij |B*|. De negatieve tak van de figuur is niet gedigitaliseerd — daar kruisen de krommen elkaar en liggen pieken tot C₁ = 2,3. De hier gebruikte waarde ligt daaronder en is dus veilig-zijdig, maar zij is een benadering en geen aflezing."
+              ]
+            },
+            {
+              "id": "c2_tabel",
+              "titel": "Belastingfactor C₂ uit de figuur",
+              "symbol": "C_{2,tabel}",
+              "article": "NB.NB.4.3(3), figuur NB.NB.6",
+              "formula_latex": "C_{2,tabel} = f_{NB.NB.6}\\left( \\beta \\,;\\, \\left| B^* \\right| \\right)",
+              "ingevuld_latex": "C_{2,tabel} = f_{NB.NB.6}\\left( -0{,}339 \\,;\\, 1 \\right)",
+              "variables": [
+                {
+                  "symbol": "\\beta",
+                  "value": -0.33900080083779954,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "B^*",
+                  "value": -1.0,
+                  "unit": "-"
+                }
+              ],
+              "value": 0.0,
+              "unit": "-",
+              "notes": [
+                "Bilineair geïnterpoleerd uit figuur NB.NB.6, op hetzelfde raster als C₁ en verankerd op tabel NB.NB.1: C₂ = 0,45 bij B* = 0 en C₂ = 0 bij B* = 1. Deze tabelwaarde geldt voor een belasting die aangrijpt in het zwaartepunt van de bovenflens; de volgende stap schaalt haar naar het werkelijke aangrijpingspunt.",
+                "B* is negatief; afgelezen is bij |B*|. De negatieve tak van de figuur is niet gedigitaliseerd — daar kruisen de krommen elkaar en liggen pieken tot C₁ = 2,3. De hier gebruikte waarde ligt daaronder en is dus veilig-zijdig, maar zij is een benadering en geen aflezing."
+              ]
+            },
+            {
+              "id": "c2",
+              "titel": "Belastingfactor C₂ bij het werkelijke aangrijpingspunt",
+              "symbol": "C_2",
+              "article": "NB.NB.4.3(1)",
+              "formula_latex": "C_2 = -\\,C_{2,tabel} \\cdot \\frac{z_a}{\\left( h - t_f \\right)/2}",
+              "ingevuld_latex": "C_2 = -\\,0 \\cdot \\frac{0}{\\left( 350 - 16 \\right)/2}",
+              "variables": [
+                {
+                  "symbol": "C_{2,tabel}",
+                  "value": 0.0,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "z_a",
+                  "value": 0.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "h",
+                  "value": 350.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "t_f",
+                  "value": 16.0,
+                  "unit": "mm"
+                }
+              ],
+              "value": -0.0,
+              "unit": "-",
+              "notes": [
+                "De tabelwaarde geldt bij een belasting op het zwaartepunt van de bovenflens, en C₂ = 0 bij een belasting op het zwaartepunt van de doorsnede; daartussen wordt lineair geïnterpoleerd. De arm tussen beide zwaartepunten is (h − t_f)/2. Het minteken is de tekenafspraak van NB.NB.11: daar staat C₂ in een OPTELterm, dus een belasting bóven het zwaartepunt (z_a > 0) werkt destabiliserend en moet C₂ negatief maken."
+              ]
+            },
+            {
+              "id": "l_kip",
+              "titel": "Vervangende ongesteunde kiplengte",
+              "symbol": "L_{kip}",
+              "article": "NB.NB.4.3",
+              "formula_latex": "L_{kip} = L_{st}",
+              "ingevuld_latex": "",
+              "variables": [
+                {
+                  "symbol": "L_{st}",
+                  "value": 5000.0,
+                  "unit": "mm"
+                }
+              ],
+              "value": 5000.0,
+              "unit": "mm",
+              "notes": [
+                "Dit kipveld ligt tussen TWEE GAFFELS; NB.NB.4.3 geeft dan L_kip = L_st. De formule (1,4 − 0,8·β)·L_st geldt alleen tussen één gaffel en één kipsteun of tussen twee kipsteunen. Zou zij hier tóch worden toegepast, dan gaf β = 0 een L_kip van 1,4·L_st en daarmee een ruim 30 % te lage M_cr."
+              ]
+            },
+            {
+              "id": "s",
+              "titel": "Doorsnedeparameter S",
+              "symbol": "S",
+              "article": "NB.NB.13",
+              "formula_latex": "S = \\frac{h}{2} \\cdot \\sqrt{\\frac{E \\cdot I_z}{G \\cdot I_t}}",
+              "ingevuld_latex": "S = \\frac{350}{2} \\cdot \\sqrt{\\frac{210000 \\cdot 5603739}{80769 \\cdot 603930}}",
+              "variables": [
+                {
+                  "symbol": "h",
+                  "value": 350.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "E",
+                  "value": 210000.0,
+                  "unit": "MPa"
+                },
+                {
+                  "symbol": "I_z",
+                  "value": 5603739.0,
+                  "unit": "mm⁴"
+                },
+                {
+                  "symbol": "G",
+                  "value": 80769.0,
+                  "unit": "MPa"
+                },
+                {
+                  "symbol": "I_t",
+                  "value": 603930.0,
+                  "unit": "mm⁴"
+                }
+              ],
+              "value": 859.5496958758131,
+              "unit": "mm",
+              "notes": [
+                "S vervangt in de NB-vorm de welvingsstijfheid. NB.NB.13 rekent met de VOLLE hoogte h; een herleiding via I_w = I_z·(h − t_f)²/4 zou (h − t_f)/2 geven. Het welvingstraagheidsmoment I_w komt in deze keten dan ook nergens voor: NB.148 rekent alleen met I_z en I_t.",
+                "E = 210 000 MPa volgens art. 3.2.6. G = 80 769 MPa; dat is E/(2(1+ν)) met ν = 0,3, afgerond zoals de referentie-uitwerking hem voert."
+              ]
+            },
+            {
+              "id": "c",
+              "titel": "C-coëfficiënt",
+              "symbol": "C",
+              "article": "NB.NB.11",
+              "formula_latex": "C = \\frac{\\pi \\cdot C_1 \\cdot L_g}{L_{kip}} \\left( \\sqrt{1 + \\frac{\\pi^2 \\cdot S^2}{L_{kip}^2} \\left( C_2^2 + 1 \\right)} + \\frac{\\pi \\cdot C_2 \\cdot S}{L_{kip}} \\right)",
+              "ingevuld_latex": "C = \\frac{\\pi \\cdot 2{,}123 \\cdot 5000}{5000} \\left( \\sqrt{1 + \\frac{\\pi^2 \\cdot 859{,}55^2}{5000^2} \\left( 0^2 + 1 \\right)} + \\frac{\\pi \\cdot 0 \\cdot 859{,}55}{5000} \\right)",
+              "variables": [
+                {
+                  "symbol": "C_1",
+                  "value": 2.1229008809215792,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "L_g",
+                  "value": 5000.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "L_{kip}",
+                  "value": 5000.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "S",
+                  "value": 859.5496958758131,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "C_2",
+                  "value": -0.0,
+                  "unit": "-"
+                }
+              ],
+              "value": 7.57977825473234,
+              "unit": "-",
+              "notes": [
+                "Let op de haakjes: de term π·C₂·S/L_kip staat BUITEN de wortel. Bij een belasting boven het zwaartepunt is C₂ negatief, en die losse term verlaagt C dan — en daarmee M_cr."
+              ]
+            },
+            {
+              "id": "k_red",
+              "titel": "Reductiefactor voor de vervormbaarheid van het lijf",
+              "symbol": "k_{red}",
+              "article": "NB.NB.7",
+              "formula_latex": "\\frac{h}{t_w} \\le 75 \\;\\Rightarrow\\; k_{red} = 1{,}0",
+              "ingevuld_latex": "\\frac{350}{14} = 25 \\le 75 \\;\\Rightarrow\\; k_{red} = 1{,}0",
+              "variables": [
+                {
+                  "symbol": "h",
+                  "value": 350.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "t_w",
+                  "value": 14.0,
+                  "unit": "mm"
+                }
+              ],
+              "value": 1.0,
+              "unit": "-",
+              "notes": [
+                "Het lijf is niet slank genoeg om M_cr te verlagen: NB.NB.7 geeft dan k_red = 1 en de vervormbaarheidsmaat α van NB.NB.9 hoeft niet te worden bepaald."
+              ]
+            },
+            {
+              "id": "m_cr",
+              "titel": "Kritiek kipmoment",
+              "symbol": "M_{cr}",
+              "article": "NB.148, met een reductie buiten de norm om",
+              "formula_latex": "M_{cr} = 0{,}70 \\cdot k_{red} \\cdot \\frac{C}{L_g} \\cdot \\sqrt{E \\cdot I_z \\cdot G \\cdot I_t} \\cdot 10^{-6}",
+              "ingevuld_latex": "M_{cr} = 0{,}70 \\cdot 1 \\cdot \\frac{7{,}580}{5000} \\cdot \\sqrt{210000 \\cdot 5603739 \\cdot 80769 \\cdot 603930} \\cdot 10^{-6}",
+              "variables": [
+                {
+                  "symbol": "k_{red}",
+                  "value": 1.0,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "C",
+                  "value": 7.57977825473234,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "L_g",
+                  "value": 5000.0,
+                  "unit": "mm"
+                },
+                {
+                  "symbol": "E",
+                  "value": 210000.0,
+                  "unit": "MPa"
+                },
+                {
+                  "symbol": "I_z",
+                  "value": 5603739.0,
+                  "unit": "mm⁴"
+                },
+                {
+                  "symbol": "G",
+                  "value": 80769.0,
+                  "unit": "MPa"
+                },
+                {
+                  "symbol": "I_t",
+                  "value": 603930.0,
+                  "unit": "mm⁴"
+                }
+              ],
+              "value": 254.24287332430595,
+              "unit": "kNm",
+              "notes": [
+                "De factor 10⁻⁶ zet het resultaat van N·mm naar kNm. I_w komt in deze formule niet voor: de NB-vorm vangt de welving in de C-coëfficiënt, via S.",
+                "De factor 0,7 is GEEN normwaarde. De bijlage geeft voor een monosymmetrisch U-profiel geen M_cr; de werkelijke waarde vraagt de monosymmetrieparameter z_j, die hier niet is uitgewerkt. Aangehouden is de I-vorm van NB.148 maal een vaste, veilig-zijdig bedoelde reductie — een expliciete keuze buiten de norm om."
+              ]
+            },
+            {
+              "id": "lambda_lt",
+              "titel": "Relatieve slankheid voor kip",
+              "symbol": "\\bar{\\lambda}_{LT}",
+              "article": "art. 6.3.2.2(1)",
+              "formula_latex": "\\bar{\\lambda}_{LT} = \\sqrt{\\frac{W_{pl,y} \\cdot f_y}{M_{cr} \\cdot 10^6}}",
+              "ingevuld_latex": "\\bar{\\lambda}_{LT} = \\sqrt{\\frac{889763 \\cdot 235}{254{,}243 \\cdot 10^6}}",
+              "variables": [
+                {
+                  "symbol": "W_{pl,y}",
+                  "value": 889763.0,
+                  "unit": "mm³"
+                },
+                {
+                  "symbol": "f_y",
+                  "value": 235.0,
+                  "unit": "MPa"
+                },
+                {
+                  "symbol": "M_{cr}",
+                  "value": 254.24287332430595,
+                  "unit": "kNm"
+                }
+              ],
+              "value": 0.9068734930617727,
+              "unit": "-",
+              "notes": [
+                "W_pl,y omdat de doorsnede in klasse 1 of 2 valt; de factor 10⁶ zet M_cr van kNm naar N·mm."
+              ]
+            },
+            {
+              "id": "phi_lt",
+              "titel": "Hulpgrootheid Φ_LT",
+              "symbol": "\\Phi_{LT}",
+              "article": "art. 6.3.2.3 (6.57)",
+              "formula_latex": "\\Phi_{LT} = 0{,}5 \\left[ 1 + \\alpha_{LT} \\left( \\bar{\\lambda}_{LT} - \\bar{\\lambda}_{LT,0} \\right) + \\beta \\cdot \\bar{\\lambda}_{LT}^2 \\right]",
+              "ingevuld_latex": "\\Phi_{LT} = 0{,}5 \\left[ 1 + 0{,}49 \\left( 0{,}907 - 0{,}4 \\right) + 0{,}75 \\cdot 0{,}907^2 \\right]",
+              "variables": [
+                {
+                  "symbol": "\\alpha_{LT}",
+                  "value": 0.49,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "\\bar{\\lambda}_{LT}",
+                  "value": 0.9068734930617727,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "\\bar{\\lambda}_{LT,0}",
+                  "value": 0.4,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "\\beta",
+                  "value": 0.75,
+                  "unit": "-"
+                }
+              ],
+              "value": 0.9325913304569072,
+              "unit": "-",
+              "notes": [
+                "Tabel 6.5 kent geen rij voor U-profielen; zij noemt alleen gewalste en gelaste I-profielen. Aangehouden is kipkromme c met α_LT = 0,49 (tabel 6.3), één kromme ongunstiger dan een gewalste I met h/b ≤ 2. Dat is een expliciete keuze buiten de tabel om, geen normwaarde.",
+                "λ_LT,0 = 0,4 en β = 0,75 zijn de waarden die de nationale bijlage bij 6.3.2.3(1) VOORSCHRIJFT; zij schrapt daar het woord 'aanbevolen'. De β in deze formule is NIET de β van NB.NB.4.3 hierboven — dat is de verhouding van de eindmomenten, dit is een vaste factor in de kipkromme."
+              ]
+            },
+            {
+              "id": "chi_lt",
+              "titel": "Kipreductiefactor",
+              "symbol": "\\chi_{LT}",
+              "article": "art. 6.3.2.3 (6.57)",
+              "formula_latex": "\\chi_{LT} = \\min\\left( \\frac{1}{\\Phi_{LT} + \\sqrt{\\Phi_{LT}^2 - \\beta \\cdot \\bar{\\lambda}_{LT}^2}} \\,;\\, 1{,}0 \\,;\\, \\frac{1}{\\bar{\\lambda}_{LT}^2} \\right)",
+              "ingevuld_latex": "\\chi_{LT} = \\min\\left( \\frac{1}{0{,}933 + \\sqrt{0{,}933^2 - 0{,}75 \\cdot 0{,}907^2}} \\,;\\, 1{,}0 \\,;\\, \\frac{1}{0{,}907^2} \\right)",
+              "variables": [
+                {
+                  "symbol": "\\Phi_{LT}",
+                  "value": 0.9325913304569072,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "\\beta",
+                  "value": 0.75,
+                  "unit": "-"
+                },
+                {
+                  "symbol": "\\bar{\\lambda}_{LT}",
+                  "value": 0.9068734930617727,
+                  "unit": "-"
+                }
+              ],
+              "value": 0.6966238901351572,
+              "unit": "-",
+              "notes": [
+                "De twee bovengrenzen horen bij vgl. (6.57): χ_LT ≤ 1,0 en χ_LT ≤ 1/λ̄_LT²."
+              ]
+            }
+          ],
+          "value": 145.66008815420705,
+          "unit": "kNm",
           "uc": {
             "ed": 194.796,
             "rd": 145.66008815420705,
@@ -633,7 +1109,7 @@ expression: run()
           },
           "status": "NotOk",
           "notes": [
-            "Conservatieve monosymmetriereductie (M_cr × 0,7) — de volledige bijlage F is niet geïmplementeerd.",
+            "Conservatieve monosymmetriereductie: M_cr is de I-vorm van NB.148 maal een vaste factor 0,7. De monosymmetrieparameter z_j, die een U-profiel werkelijk nodig heeft, is niet uitgewerkt. Deze factor is geen normwaarde.",
             "Tabel 6.5 kent geen rij voor U-profielen; α_LT = 0,49 (kromme c) is een expliciete keuze buiten de tabel om, geen normwaarde.",
             "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 0 tot x = 3900 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
           ]
@@ -690,6 +1166,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 0.8159006074615356,
           "unit": "-",
           "uc": {
@@ -753,6 +1230,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 0.5336580604261275,
           "unit": "-",
           "uc": {

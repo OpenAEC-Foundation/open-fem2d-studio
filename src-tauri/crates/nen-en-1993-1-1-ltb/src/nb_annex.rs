@@ -166,12 +166,24 @@ pub fn k_red(h_mm: f64, tf_mm: f64, tw_mm: f64, b_mm: f64, l_g_mm: f64) -> f64 {
     (-5.4e-5 * alpha + 1.03).min(1.0)
 }
 
-/// NB.148: M_cr = k_red * (C/L_g) * sqrt(E*Iz * G*It) * 10^-6 (kNm)
+/// NB.148 — M_cr = k_red · (C/L_g) · √(E·I_z · G·I_t) · 10⁻⁶, in kNm.
+///
+/// E en G komen uit [`E_MPA`] en [`G_MPA`]; ze stonden hier tot september 2026
+/// nóg een keer als los getal, waardoor het rapport twee bronnen voor dezelfde
+/// materiaalconstante zou tonen.
+///
+/// I_w komt in deze formule NIET voor: de NB-vorm vangt de welving in de
+/// C-coëfficiënt (via S) en rekent zelf alleen met I_z en I_t.
 pub fn m_cr_i_section(c: f64, l_g_mm: f64, iz_mm4: f64, it_mm4: f64, k_red: f64) -> f64 {
-    let e_mpa = 210000.0;
-    let g_mpa = 80769.0;
-    k_red * (c / l_g_mm) * (e_mpa * iz_mm4 * g_mpa * it_mm4).sqrt() * 1e-6
+    k_red * (c / l_g_mm) * (E_MPA * iz_mm4 * G_MPA * it_mm4).sqrt() * 1e-6
 }
+
+/// De benaderingsfactor waarmee [`m_cr_channel_section`] de I-vorm van NB.148
+/// verlaagt voor een monosymmetrisch U-profiel.
+///
+/// **Geen normwaarde.** De bijlage geeft voor U-profielen geen M_cr; dit is een
+/// expliciete veilig-zijdige keuze, zie de docstring daar.
+pub const CHANNEL_REDUCTIE: f64 = 0.7;
 
 /// Monosymmetric (channel) Mcr — simplified per Annex F approach.
 /// Uses I-section formula with monosym warping reduction.
@@ -185,7 +197,7 @@ pub fn m_cr_i_section(c: f64, l_g_mm: f64, iz_mm4: f64, it_mm4: f64, k_red: f64)
 pub fn m_cr_channel_section(c: f64, l_g_mm: f64, iz_mm4: f64, it_mm4: f64, k_red: f64) -> f64 {
     let m_cr_isection = m_cr_i_section(c, l_g_mm, iz_mm4, it_mm4, k_red);
     // Conservative reduction for monosymmetric channel
-    m_cr_isection * 0.7
+    m_cr_isection * CHANNEL_REDUCTIE
 }
 
 /// NB.NB.4.3 — vervangende ongesteunde kiplengte L_kip.

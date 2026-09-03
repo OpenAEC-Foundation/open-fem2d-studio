@@ -19,7 +19,7 @@ pub fn check_combined_n_my(
 
     StabilityCalc {
         id: "6.3.3_eq_6_61".to_string(),
-        title: "Combined N + M (member y)".to_string(),
+        title: "Knik en kip om de y-as (N + M)".to_string(),
         article: "art. 6.3.3 (6.61)".to_string(),
         force_state,
         formula_latex: r"\frac{N_{Ed}}{\chi_y N_{Rk}/\gamma_{M1}} + k_{yy}\frac{M_{y,Ed}}{\chi_{LT} M_{y,Rk}/\gamma_{M1}} + k_{yz}\frac{M_{z,Ed}}{M_{z,Rk}/\gamma_{M1}} \leq 1".to_string(),
@@ -32,6 +32,8 @@ pub fn check_combined_n_my(
             NamedValue { symbol: "term_{M_y}".to_string(), value: term_my, unit: "-".to_string() },
             NamedValue { symbol: "term_{M_z}".to_string(), value: term_mz, unit: "-".to_string() },
         ],
+        // De interactietoets heeft (nog) geen uitgeschreven afleiding.
+        deelstappen: vec![],
         value: uc,
         unit: "-".to_string(),
         uc: Some(UnityCheck { ed: uc, rd: 1.0, uc, formula_latex: "Sum of terms".to_string() }),
@@ -54,7 +56,7 @@ pub fn check_combined_n_mz(
 
     StabilityCalc {
         id: "6.3.3_eq_6_62".to_string(),
-        title: "Combined N + M (member z)".to_string(),
+        title: "Knik en kip om de z-as (N + M)".to_string(),
         article: "art. 6.3.3 (6.62)".to_string(),
         force_state,
         formula_latex: r"\frac{N_{Ed}}{\chi_z N_{Rk}/\gamma_{M1}} + k_{zy}\frac{M_{y,Ed}}{\chi_{LT} M_{y,Rk}/\gamma_{M1}} + k_{zz}\frac{M_{z,Ed}}{M_{z,Rk}/\gamma_{M1}} \leq 1".to_string(),
@@ -67,6 +69,8 @@ pub fn check_combined_n_mz(
             NamedValue { symbol: "term_{M_y}".to_string(), value: term_my, unit: "-".to_string() },
             NamedValue { symbol: "term_{M_z}".to_string(), value: term_mz, unit: "-".to_string() },
         ],
+        // De interactietoets heeft (nog) geen uitgeschreven afleiding.
+        deelstappen: vec![],
         value: uc,
         unit: "-".to_string(),
         uc: Some(UnityCheck { ed: uc, rd: 1.0, uc, formula_latex: "Sum of terms".to_string() }),

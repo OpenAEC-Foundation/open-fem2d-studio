@@ -42,6 +42,7 @@ import {
   type ReportOrientation,
   type ReportPageSize,
   type ToetsingDetail,
+  type ToetsStaafKeuze,
 } from "../../stores/reportStore";
 import { useCheckStore } from "../../stores/checkStore";
 import type { MemberCheckResult, CheckSkip } from "../../lib/checkTypes";
@@ -130,6 +131,8 @@ interface WireReportSettings extends ReportOpmaak {
   inhoudsopgaveDiepte: 1 | 2;
   rapportType: RapportType;
   toetsingDetail: ToetsingDetail;
+  /** Per staaf: uitgebreide toetsingsuitvoer in het rapport of niet. */
+  verborgenToetsStaven: ToetsStaafKeuze;
 }
 
 type ReportSyncMessage =
@@ -306,6 +309,7 @@ function currentSettings(): WireReportSettings {
     inhoudsopgaveDiepte: s.inhoudsopgaveDiepte,
     rapportType: s.rapportType,
     toetsingDetail: s.toetsingDetail,
+    verborgenToetsStaven: s.verborgenToetsStaven,
     margeBoven: s.margeBoven,
     margeOnder: s.margeOnder,
     margeBinnen: s.margeBinnen,
@@ -315,13 +319,15 @@ function currentSettings(): WireReportSettings {
   };
 }
 
-/** Zijn twee instellingensets gelijk? (Ondiep — de velden zijn primitieven
- *  op `hiddenSections` na, dat per mutatie een nieuwe identiteit krijgt.) */
+/** Zijn twee instellingensets gelijk? (Ondiep — de velden zijn primitieven op
+ *  `hiddenSections` en `verborgenToetsStaven` na; die krijgen per mutatie een
+ *  nieuwe identiteit.) */
 function settingsGelijk(a: WireReportSettings, b: WireReportSettings): boolean {
   return (
     a.pageSize === b.pageSize &&
     a.orientation === b.orientation &&
     a.hiddenSections === b.hiddenSections &&
+    a.verborgenToetsStaven === b.verborgenToetsStaven &&
     a.resultCombo === b.resultCombo &&
     a.inhoudsopgaveDiepte === b.inhoudsopgaveDiepte &&
     a.rapportType === b.rapportType &&
@@ -333,6 +339,18 @@ function settingsGelijk(a: WireReportSettings, b: WireReportSettings): boolean {
     a.basisLettergrootte === b.basisLettergrootte &&
     a.regelafstand === b.regelafstand
   );
+}
+
+/**
+ * Binnengekomen instellingen op de eigen store zetten. Velden die een ouder
+ * venster nog niet meestuurt worden hier op hun standaard gezet — anders zou
+ * `undefined` in de store belanden en de lezer erop stuklopen.
+ */
+function pasSettingsToe(settings: WireReportSettings): void {
+  useReportStore.setState({
+    ...settings,
+    verborgenToetsStaven: settings.verborgenToetsStaven ?? {},
+  });
 }
 
 // ── Hoofdvenster: publisher ───────────────────────────────────────────────
@@ -351,6 +369,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const inhoudsopgaveDiepte = useReportStore((s) => s.inhoudsopgaveDiepte);
   const rapportType = useReportStore((s) => s.rapportType);
   const toetsingDetail = useReportStore((s) => s.toetsingDetail);
+  const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
   // Opmaak hoort bij het document en gaat dus mee naar het rapportvenster.
   const margeBoven = useReportStore((s) => s.margeBoven);
   const margeOnder = useReportStore((s) => s.margeOnder);
@@ -413,6 +432,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     inhoudsopgaveDiepte,
     rapportType,
     toetsingDetail,
+    verborgenToetsStaven,
     margeBoven,
     margeOnder,
     margeBinnen,
@@ -444,7 +464,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
           // Wijziging uit een rapportvenster → in de eigen store zetten; de
           // publish-effect hierboven broadcast daarna vanzelf het volledige
           // snapshot terug (één echo, geen lus — zie guard in de ontvanger).
-          useReportStore.setState({ ...msg.settings });
+          pasSettingsToe(msg.settings);
           break;
         default:
           break; // snapshot/main-ready van onszelf is al weggefilterd
@@ -500,7 +520,7 @@ export function useDetachedReportSync(): ReportData | null {
       applyingRemote = true;
       laatstVerstuurd = msg.settings;
       try {
-        useReportStore.setState({ ...msg.settings });
+        pasSettingsToe(msg.settings);
         useCheckStore.setState({
           results: msg.check.results,
           skipped: msg.check.skipped,

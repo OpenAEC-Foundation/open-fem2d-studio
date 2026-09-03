@@ -49,6 +49,35 @@ pub fn kipveld_grenzen_mm(length_mm: f64, kipsteun_fracties: &[f64]) -> Vec<f64>
 /// het gaffelgeval van NB.NB.4.3 wegneemt.
 pub const MIN_VELDFRACTIE: f64 = 1e-3;
 
+/// De grenswaarde λ̄_LT,0 waaronder geen kipreductie geldt (χ_LT = 1,0).
+///
+/// De Nederlandse bijlage schrapt bij 6.3.2.3(1) het woord "aanbevolen": *"de
+/// waarde van λ_LT,0 moet gelijk zijn genomen aan 0,4"*. Dit is dus voorschrift.
+/// Let op: de ALGEMENE methode 6.3.2.2 (vgl. 6.56) hoort bij λ̄_LT,0 = 0,2; dat
+/// is een ander artikel met een andere tabel (6.4 in plaats van 6.5).
+///
+/// Eén constante, bewust: dit getal stond op drie plaatsen los in de code
+/// (`m_b_rd`, `m_b_rd_channel` en `chi_lt`) en de afleiding in het rapport had
+/// er een vierde van gemaakt.
+pub const LAMBDA_LT_0: f64 = 0.4;
+
+/// De factor β uit vgl. (6.57). Ook deze schrapt de NB bij 6.3.2.3(1) uit de
+/// aanbeveling: *"de waarde van β moet gelijk zijn genomen aan 0,75"*.
+///
+/// Heet hier `BETA_LT` en niet `BETA` om hem te onderscheiden van de β van
+/// NB.NB.4.3 — de verhouding van de eindmomenten — die in dezelfde keten zit
+/// en een heel andere grootheid is.
+pub const BETA_LT: f64 = 0.75;
+
+/// EN 1993-1-1 vgl. (6.57), eerste regel:
+/// Φ_LT = 0,5·[1 + α_LT·(λ̄_LT − λ̄_LT,0) + β·λ̄_LT²].
+///
+/// Apart zodat het rapport Φ_LT als eigen deelstap kan tonen zonder de formule
+/// een tweede keer op te schrijven; [`chi_lt`] rekent met deze functie.
+pub fn phi_lt(lambda_lt: f64, alpha_lt: f64) -> f64 {
+    0.5 * (1.0 + alpha_lt * (lambda_lt - LAMBDA_LT_0) + BETA_LT * lambda_lt.powi(2))
+}
+
 pub fn lambda_lt(wpl_y_mm3: f64, fy_mpa: f64, m_cr_knm: f64) -> f64 {
     if m_cr_knm <= 0.0 { return f64::INFINITY; }
     let m_cr_nmm = m_cr_knm * 1e6;
@@ -79,10 +108,8 @@ pub fn lambda_lt(wpl_y_mm3: f64, fy_mpa: f64, m_cr_knm: f64) -> f64 {
 /// χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig. Zie bevinding B12 van het
 /// validatiedossier; `m_b_rd` zet die kanttekening in het rapport.
 pub fn chi_lt(lambda_lt: f64, alpha_lt: f64) -> f64 {
-    let beta = 0.75;
-    let lambda_lt_0 = 0.4;
-    let phi = 0.5 * (1.0 + alpha_lt * (lambda_lt - lambda_lt_0) + beta * lambda_lt.powi(2));
-    let denom = phi + (phi.powi(2) - beta * lambda_lt.powi(2)).sqrt();
+    let phi = phi_lt(lambda_lt, alpha_lt);
+    let denom = phi + (phi.powi(2) - BETA_LT * lambda_lt.powi(2)).sqrt();
     if denom > 0.0 {
         let chi = 1.0 / denom;
         chi.min(1.0).min(1.0 / lambda_lt.powi(2))

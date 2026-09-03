@@ -12,6 +12,7 @@ import katex from "katex";
 import type { TFunction } from "i18next";
 import type { MemberCheckResult } from "../../lib/checkTypes";
 import { isSteelCheckResult } from "../../lib/checkTypes";
+import type { Deelstap } from "../../lib/types/steel/Deelstap";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
 import type { StabilityCalc } from "../../lib/types/steel/StabilityCalc";
@@ -72,8 +73,13 @@ export function latexGetal(v: number, maxDigits = 3): string {
   const s = v.toLocaleString("nl-NL", {
     maximumFractionDigits: maxDigits,
     useGrouping: false,
-  });
-  return s.replace(",", "{,}").replace("−", "-");
+  }).replace("−", "-");
+  // Een grootheid die numeriek nul is maar een spoortje negatief (β komt op
+  // een vrij opgelegde ligger uit op −2,4·10⁻¹⁶) rondt af naar "-0". Dat leest
+  // als een richting die er niet is; het minteken hoort dan weg.
+  const zonderTeken = s.startsWith("-") ? s.slice(1) : s;
+  const isNul = /^0(,0*)?$/.test(zonderTeken);
+  return (isNul ? zonderTeken : s).replace(",", "{,}");
 }
 
 const MACHTEN: Record<string, string> = {
@@ -234,6 +240,79 @@ export function afleidingLatex(check: CheckCalc): {
     latex: `\\begin{aligned}${regels.join(" \\\\[1mm] ")}\\end{aligned}`,
     ongebruikt: check.variables.filter((v) => !gebruikt.has(v.symbol)),
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// De afleiding vóór de toets: de deelstappen
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Een stabiliteitstoets is de laatste regel van een langere keten. Bij kip
+// loopt die van de uitgangspunten van het kipveld via B*, β, C₁, C₂, L_kip,
+// S, C en k_red naar M_cr, en pas daarna naar λ̄_LT en χ_LT. Het
+// referentie-rapport schrijft die keten voluit; wij deden dat niet — er stond
+// alleen een rij uitkomsten ("Tussenwaarden: S = … C = …") zonder formule of
+// vindplaats.
+//
+// De rekenkern levert die keten nu als `deelstappen`. Anders dan bij een
+// gewone toets wordt de INGEVULDE regel daar gemaakt en niet hier: zie de
+// docstring van `Deelstap`. `vulGetallenIn` mag dus NIET op een deelstap
+// worden losgelaten — die zou stukbreken op `\sqrt{E I_z/(G I_t)}` en op de
+// eenheidsomrekeningen (kNm → N·mm) die helemaal geen symbool hebben.
+
+/** De keten die aan deze toets voorafgaat; leeg als er geen keten is. */
+export function deelstappenVan(check: CheckCalc): Deelstap[] {
+  return isStabilityCalc(check) ? check.deelstappen : [];
+}
+
+/**
+ * De twee formuleregels van één deelstap: de formule symbolisch, en dezelfde
+ * formule met getallen én de uitkomst erachter.
+ *
+ * De uitkomst wordt áchter de ingevulde regel gezet — `S = h/2·√(…) = 1406,40
+ * mm` op één regel, zoals het referentie-rapport het doet. Twee gevallen
+ * wijken af:
+ *
+ *  - Een stap die zichzelf al afsluit met een toekenning aan het eigen
+ *    symbool (`h/t_w = 44 ≤ 75 ⇒ k_red = 1,0`) krijgt er niets achter; daar
+ *    zou `= 1` de derde keer hetzelfde getal zijn.
+ *  - Een stap zonder ingevulde regel (de gaffeltak `L_kip = L_st`, of β dat
+ *    onbepaald is) krijgt de uitkomst als eigen regel `L_kip = 5700 mm`.
+ *
+ * De uitgangspuntenstap heeft geen formule en geen uitkomst; die levert twee
+ * lege regels op en toont alleen haar grootheden.
+ */
+export function deelstapRegels(d: Deelstap): {
+  formule: string | null;
+  uitkomst: string | null;
+} {
+  const formule = d.formula_latex.trim() ? d.formula_latex : null;
+  const heeftWaarde = d.value !== null && Number.isFinite(d.value);
+  // Dimensieloze factoren met vier decimalen, grootheden mét eenheid met drie.
+  // Een keten moet narekenbaar zijn, en χ_LT = 0,4845 afgerond op 0,485 geeft
+  // in M_b,Rd al een zichtbaar ander getal; een lengte tot op een tienduizendste
+  // millimeter is daarentegen schijnnauwkeurigheid. Drie decimalen bij een
+  // eenheid is ook wat het referentie-rapport aanhoudt (650,886 kNm).
+  const dimensieloos = !d.unit || d.unit === "-";
+  const waarde = heeftWaarde
+    ? `${latexGetal(d.value as number, dimensieloos ? 4 : 3)}${latexEenheid(d.unit)}`
+    : null;
+
+  if (d.ingevuld_latex.trim()) {
+    // Sluit de ingevulde regel zelf al af met "<symbool> = …"? Dan niet nog
+    // eens. Positie > 0, want een regel die MET het symbool begint (`S = …`)
+    // is juist een regel die om zijn uitkomst vraagt.
+    const alAfgesloten =
+      d.symbol.length > 0 &&
+      new RegExp(`.${escapeRe(d.symbol)}\\s*=`).test(d.ingevuld_latex);
+    return {
+      formule,
+      uitkomst:
+        alAfgesloten || !waarde ? d.ingevuld_latex : `${d.ingevuld_latex} = ${waarde}`,
+    };
+  }
+
+  if (!waarde || !d.symbol) return { formule, uitkomst: null };
+  return { formule, uitkomst: `${d.symbol} = ${waarde}` };
 }
 
 /**
@@ -534,6 +613,76 @@ export const CHECK_REPORT_CSS = `
   color: #555;
   margin-right: 2mm;
 }
+
+/* ─── De keten vóór de toets (deelstappen) ───
+   Ingesprongen ten opzichte van de toets zelf: het is de aanloop, niet de
+   conclusie. Elke stap krijgt zijn eigen kopje met de vindplaats rechts,
+   precies zoals de toets erboven — een lezer die één stap wil narekenen,
+   vindt daar meteen het artikelnummer bij. */
+.rpt-chk-keten {
+  margin: 0 0 2mm;
+  padding-left: 4mm;
+  border-left: 0.2mm solid #ccc;
+}
+
+.rpt-chk-keten-kop {
+  font-size: calc(var(--rpt-basis) * 0.85);
+  font-style: italic;
+  color: #555;
+  margin: 0 0 1.5mm;
+}
+
+/* Een stap blijft op papier bijeen: kop, formule en uitkomst horen bij
+   elkaar en mogen niet over een velgrens uiteenvallen. */
+.rpt-chk-stap {
+  margin: 0 0 2.5mm;
+  break-inside: avoid;
+}
+
+.rpt-chk-stap-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 3mm;
+}
+
+.rpt-chk-stap-titel {
+  font-size: calc(var(--rpt-basis) * 0.9);
+  font-weight: 600;
+  margin: 0;
+}
+
+.rpt-chk-stap-article {
+  font-size: calc(var(--rpt-basis) * 0.8);
+  color: #555;
+  white-space: nowrap;
+}
+
+/* Formuleregels van een stap: iets kleiner dan de toets zelf, links
+   uitgelijnd, en met dezelfde horizontale uitwijk als de afleiding erboven —
+   de C-formule van NB.NB.11 is breder dan een A4 als hij ingevuld is. */
+.rpt-chk-stap-regel {
+  padding-left: 4mm;
+  margin: 0.5mm 0 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.rpt-chk-stap-regel .katex-display { margin: 0; text-align: left; }
+.rpt-chk-stap-regel .katex-display > .katex { text-align: left; }
+.rpt-chk-stap-regel .katex { font-size: 0.95em; }
+
+.rpt-chk-stap .rpt-chk-waarden { padding-left: 4mm; }
+
+.rpt-chk-stap-notes {
+  margin: 0.8mm 0 0;
+  padding-left: 4mm;
+  list-style: none;
+  font-size: calc(var(--rpt-basis) * 0.8);
+  color: #555;
+}
+
+.rpt-chk-stap-notes li { margin-bottom: 0.4mm; }
 
 /* Afsluitende unity-checkregel. */
 .rpt-chk-ucline {

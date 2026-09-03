@@ -305,6 +305,7 @@
     "governingTag": "governing",
     "combination": "Combination",
     "intermediateValues": "Intermediate values",
+    "ketenKop": "Derivation according to the National Annex, step by step:",
     "crossSectionClass": "cross-section class",
     "serviceClass": "service class",
     "loadDuration": "load duration",
@@ -366,6 +367,13 @@
     "toetsingBeknopt": "Concise — unity checks only",
     "toetsingGedetailleerd": "Detailed — with derivations",
     "detailBeknoptNoot": "Concise level: only the governing check is written out per member.",
+    "staafKeuze": "Detailed output per member",
+    "staafKeuzeAlles": "All members",
+    "staafKeuzeHint": "Only the ticked members get their derivations in the report; the check overview always lists every member.",
+    "staafKeuzeSectieUit": "The chapter “Checks per member” is switched off — enable it below for this selection to take effect.",
+    "staafKeuzeNoot": "For {{aantal}} of the {{totaal}} checked members the detailed output was left out on request; those members do appear in the check overview.",
+    "staafKeuzeLeeg": "No member was selected for detailed output — tick at least one member in the report sidebar.",
+    "zoomHint": "Holding Ctrl while scrolling zooms the report as well.",
     "colCheck": "Check"
   },
   "viewer": {

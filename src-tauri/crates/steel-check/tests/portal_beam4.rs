@@ -89,6 +89,22 @@ fn uc_value(result: &BeamCheckResult, id: &str) -> f64 {
     }
 }
 
+/// Een tussenwaarde van een stabiliteitstoets, op symbool.
+///
+/// Nodig sinds `value` van de kiptoets de uitkomst van háár eigen formule is
+/// (M_b,Rd in kNm) en niet langer χ_LT; die staat in de tussenwaarden.
+fn intermediate(result: &BeamCheckResult, id: &str, symbool: &str) -> f64 {
+    match &find_check(result, id).kind {
+        CheckKind::Stability(s) => s
+            .intermediate_values
+            .iter()
+            .find(|v| v.symbol == symbool)
+            .unwrap_or_else(|| panic!("tussenwaarde {symbool} ontbreekt bij {id}"))
+            .value,
+        CheckKind::Resistance(_) => panic!("{id} is geen stabiliteitstoets"),
+    }
+}
+
 #[test]
 fn portal_beam4_bending() {
     let r = run();
@@ -125,8 +141,14 @@ fn portal_beam4_ltb_chi_is_one() {
     // is groter dan de rekennauwkeurigheid en hoort niet weggetolereerd te
     // worden.
     assert_relative_eq!(ltb_uc, 0.622, max_relative = 0.05);
-    // χ_LT = 1,00 is de eigenlijke bewering; die mag exact.
-    assert_relative_eq!(resistance_value(r, "6.3.2_ltb"), 1.0, max_relative = 1e-12);
+    // χ_LT = 1,00 is de eigenlijke bewering; die mag exact. De verwachting is
+    // onveranderd — alleen het veld waaruit χ_LT komt is verhuisd: `value` van
+    // de kiptoets is nu de uitkomst van háár eigen formule (M_b,Rd in kNm),
+    // zoals de kniktoets van 6.3.1 N_b,Rd in kN levert.
+    assert_relative_eq!(intermediate(r, "6.3.2_ltb", r"\chi_{LT}"), 1.0, max_relative = 1e-12);
+    // En `value` is dan ook werkelijk M_b,Rd: bij χ_LT = 1 valt die samen met
+    // de doorsnedeweerstand M_y,c,Rd van 6.2.5 — 439,199 kNm.
+    assert_relative_eq!(resistance_value(r, "6.3.2_ltb"), 439.199, max_relative = 1e-3);
 }
 
 #[test]

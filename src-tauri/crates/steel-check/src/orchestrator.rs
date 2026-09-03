@@ -152,7 +152,9 @@ const TOETSEN: [(&str, &str, &str, bool); 12] = [
     ("6.2.9_combined_mn", "Bending + axial force", "art. 6.2.9", false),
     ("6.2.10_combined_mnv", "Bending + axial + shear", "art. 6.2.10", false),
     ("6.3.1_buckling", "Column buckling", "art. 6.3.1 (6.46)", true),
-    ("6.3.2_ltb", "Lateral-torsional buckling resistance", "art. 6.3.2", true),
+    // Nederlands, gelijk aan de titel die `m_b_rd` zelf voert: anders heet
+    // dezelfde toets in het rapport anders zodra hij geweigerd wordt.
+    ("6.3.2_ltb", "Kipweerstand", "art. 6.3.2", true),
     ("6.3.3_eq_6_61", "Combined N+M (6.61)", "art. 6.3.3", true),
     ("6.3.3_eq_6_62", "Combined N+M (6.62)", "art. 6.3.3", true),
 ];
@@ -178,6 +180,8 @@ fn weigering(
                 formula_latex: String::new(),
                 variables: vec![],
                 intermediate_values: vec![],
+                // Een geweigerde toets is niet gerekend; er valt niets af te leiden.
+                deelstappen: vec![],
                 value: 0.0,
                 unit: "-".to_string(),
                 uc: None,
@@ -639,6 +643,17 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             l_st_mm: w[1] - w[0],
             m_begin_knm: interpolate_my_at(&input.forces_envelope, w[0], combo_id),
             m_eind_knm: interpolate_my_at(&input.forces_envelope, w[1], combo_id),
+            // Rekent niet mee — NB.NB.4.3 werkt met de eindmomenten. Staat in
+            // het rapport zodat de lezer ziet of de momentenlijn tussen die
+            // eindmomenten doorbuigt; met alleen twee eindmomenten is een
+            // rechte lijn niet van een parabool te onderscheiden, terwijl
+            // NB.NB.4.3(3) juist op "verdeelde belasting mét eindmomenten"
+            // berust. De momentenlijn kent alleen de orchestrator.
+            m_midden_knm: interpolate_my_at(
+                &input.forces_envelope,
+                (w[0] + w[1]) / 2.0,
+                combo_id,
+            ),
             tussen_gaffels,
         })
         .collect();
@@ -678,6 +693,30 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         }
     }
 
+    /// M_b,Rd (kNm) uit de kiptoets, zoals de kiptoets hem zélf berekende.
+    ///
+    /// Hier stond `chi_lt * W_pl,y * f_y / γ_M1 * 1e-6`, met χ_LT gelezen uit
+    /// `ltb.value`. Dat was op twee manieren broos. Ten eerste een tweede som:
+    /// dezelfde formule stond ook in de ltb-crate, en die twee konden uit
+    /// elkaar lopen zonder dat iets het merkte. Ten tweede leunde hij op de
+    /// afspraak dat `value` van de kiptoets χ_LT is — een afspraak die niemand
+    /// kon zien en die bij het herstellen van de rapportregel
+    /// (`M_b,Rd = … = 0,9`) omviel: 6.61 en 6.62 gingen toen stilzwijgend door
+    /// M_b,Rd² delen, waardoor een staaf met UC 1,02 op UC 0,25 uitkwam en van
+    /// "voldoet niet" naar "voldoet" sprong.
+    ///
+    /// De noemer van de unity check ÍS M_b,Rd, en die is met de toets zelf
+    /// meegereisd. Eén bron, geen afspraak nodig.
+    fn m_b_rd_van(ltb: &nen_en_1993_1_1_stability::StabilityCalc) -> f64 {
+        ltb.uc
+            .as_ref()
+            .map(|u| u.rd)
+            // Onbereikbaar zolang m_b_rd/m_b_rd_channel een UC leveren; NaN
+            // stopt de interactietoetsen in plaats van ze met een verzonnen
+            // M_b,Rd door te laten rekenen.
+            .unwrap_or(f64::NAN)
+    }
+
     let ltb_check = if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
         m_b_rd_knm = f64::NAN; // bestaat niet; elke afnemer is hieronder geweigerd
         let (titel, artikel, stab) = toetsgegevens("6.3.2_ltb");
@@ -690,8 +729,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             bend_state,
         );
         ltb.notes.extend(envelop_notities.iter().cloned());
-        let chi_lt = ltb.value;
-        m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
+        m_b_rd_knm = m_b_rd_van(&ltb);
         make_stability(ltb)
     } else {
         let mut ltb = m_b_rd(
@@ -705,8 +743,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         // declaratie berust in plaats van op lamellen.
         ltb.notes.extend(doorsnede.kip_notities.iter().cloned());
         ltb.notes.extend(envelop_notities.iter().cloned());
-        let chi_lt = ltb.value;
-        m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
+        m_b_rd_knm = m_b_rd_van(&ltb);
         make_stability(ltb)
     };
     checks.push(ltb_check);

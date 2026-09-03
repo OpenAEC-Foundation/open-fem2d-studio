@@ -15,12 +15,20 @@
  *  - "Opmaak" — sliders voor marges, lettergrootte en interlinie. Die werken
  *    live door: op scherm via CSS-variabelen op het vel, in print via de
  *    dynamische @page-regel. Elke wijziging herpagineert de proef.
+ *
+ * Bij het rapporttype staat ook de staafkeuze: per getoetste staaf een vinkje
+ * dat bepaalt of de uitgebreide toetsingsuitvoer (de afleidingen) van díé
+ * staaf in het rapport komt. Dat is bewust een keuze per staaf en niet per
+ * rapport: bij een raamwerk met twintig kolommen wil je zelden alle twintig
+ * afleidingen, maar wél die van de maatgevende. Het toetsingsoverzicht blijft
+ * altijd álle staven tonen — de conclusie mag niet selectief zijn.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useReportStore,
   isSectionEnabled,
+  isToetsStaafZichtbaar,
   MARGE_MIN_MM,
   MARGE_MAX_MM,
   LETTER_MIN_PT,
@@ -43,6 +51,8 @@ import {
   type ReportData,
 } from "../report/ReportDataContext";
 import { useDetachedReportSync } from "../report/reportSync";
+import { useCheckStore } from "../../stores/checkStore";
+import { isSteelCheckResult } from "../../lib/checkTypes";
 import "./ReportPreview.css";
 
 /** Eén opmaak-slider met de waarde ernaast (mm/pt), zoals in een drukproef. */
@@ -122,22 +132,33 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const setHiddenSections = useReportStore((s) => s.setHiddenSections);
   const toetsingDetail = useReportStore((s) => s.toetsingDetail);
   const setToetsingDetail = useReportStore((s) => s.setToetsingDetail);
+  const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
+  const setToetsStaafZichtbaar = useReportStore((s) => s.setToetsStaafZichtbaar);
+  const resetToetsStaven = useReportStore((s) => s.resetToetsStaven);
+  // De getoetste staven zelf komen uit de toetsstore — in het losgekoppelde
+  // venster gevuld door de rapport-sync, dus de lijst klopt daar ook.
+  const checkResults = useCheckStore((s) => s.results);
 
   const zetOpmaak = (veld: keyof ReportOpmaak) => (v: number) => setOpmaak({ [veld]: v });
 
   /**
    * Rapporttype toepassen: zet de sectiekeuze op de voorinstelling van dat
-   * type en kiest er een passend toetsniveau bij. Dat blijft een
-   * VOORINSTELLING — daarna kan elke sectie los aan of uit, en dan meldt de
-   * zijbalk "aangepast".
+   * type, kiest er een passend toetsniveau bij en zet álle staven weer in de
+   * afleidingssectie. Dat blijft een VOORINSTELLING — daarna kan elke sectie
+   * en elke staaf los aan of uit, en dan meldt de zijbalk "aangepast".
    */
   const pasTypeToe = (type: RapportType) => {
     setRapportType(type);
     setHiddenSections(hiddenSectionsVoorType(type === "beperkt"));
     setToetsingDetail(type === "beperkt" ? "beknopt" : "gedetailleerd");
+    resetToetsStaven();
   };
 
   const aangepast = isAangepast(hiddenSections, rapportType === "beperkt");
+  const checkDetailAan = isSectionEnabled(hiddenSections, "checkDetail");
+  const staafKeuzeAangepast = checkResults.some(
+    (r) => !isToetsStaafZichtbaar(verborgenToetsStaven, r.beam_id),
+  );
 
   return (
     <div className="report-preview">
@@ -221,6 +242,63 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
                 </option>
               </select>
             </label>
+
+            {/* ─── Uitgebreide uitvoer per staaf ───
+                Vinkje per getoetste staaf: komt de afleiding van díé staaf in
+                het hoofdstuk "Toetsing per staaf"? Standaard alle aan. Het
+                toetsingsoverzicht blijft hoe dan ook álle staven tonen. */}
+            {checkResults.length > 0 && (
+              <div className="report-staaf-keuze">
+                <div className="report-staaf-keuze-kop">
+                  <span className="report-opmaak-label">
+                    {t("report.staafKeuze", "Uitgebreide uitvoer per staaf")}
+                  </span>
+                  <button
+                    type="button"
+                    className="report-staaf-alles"
+                    onClick={resetToetsStaven}
+                    disabled={!staafKeuzeAangepast}
+                  >
+                    {t("report.staafKeuzeAlles", "Alle staven")}
+                  </button>
+                </div>
+                <p className="report-sidebar-hint">
+                  {checkDetailAan
+                    ? t(
+                        "report.staafKeuzeHint",
+                        "Alleen de aangevinkte staven krijgen hun afleidingen in het rapport; het toetsingsoverzicht toont altijd alle staven.",
+                      )
+                    : t(
+                        "report.staafKeuzeSectieUit",
+                        "Het hoofdstuk “Toetsing per staaf” staat uit — zet het hieronder aan om deze keuze te laten meetellen.",
+                      )}
+                </p>
+                <div className="report-section-list">
+                  {checkResults.map((r) => {
+                    const aan = isToetsStaafZichtbaar(verborgenToetsStaven, r.beam_id);
+                    const naam = `${t("report.colBeam", "Staaf")} ${r.beam_id} — ${
+                      isSteelCheckResult(r) ? r.profile_name : r.section_name
+                    }`;
+                    return (
+                      <label
+                        key={`${isSteelCheckResult(r) ? "s" : "t"}-${r.beam_id}`}
+                        className="report-section-toggle report-staaf-toggle"
+                        title={naam}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={aan}
+                          onChange={(e) =>
+                            setToetsStaafZichtbaar(r.beam_id, e.target.checked)
+                          }
+                        />
+                        <span className="report-staaf-naam">{naam}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="report-sidebar-kop">{t("report.sections", "Secties")}</div>
             <p className="report-sidebar-hint">

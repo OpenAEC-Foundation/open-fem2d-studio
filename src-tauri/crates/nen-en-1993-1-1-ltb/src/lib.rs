@@ -10,6 +10,9 @@ use section_properties::SectionProperties;
 pub mod nb_annex;
 pub mod lambda_chi;
 pub mod en_general;
+mod deelstappen;
+
+use deelstappen::{kip_deelstappen, Kipgegevens, McrVorm};
 
 /// Kipsteunen, als fracties van de staaflengte.
 ///
@@ -98,6 +101,16 @@ pub struct Kipveld {
     pub m_begin_knm: f64,
     /// Idem aan het eind van het veld.
     pub m_eind_knm: f64,
+    /// Rekenwaarde van het buigend moment halverwege het veld (kNm, mét teken).
+    ///
+    /// **Rekent nergens in mee.** NB.NB.4.3 bepaalt β en B* uit de
+    /// EINDmomenten; dit derde moment staat alleen in het rapport, omdat de
+    /// lezer aan twee eindmomenten niet kan zien of de momentenlijn er tussenin
+    /// doorbuigt of recht loopt — en dus niet kan nagaan of de aanname
+    /// "gelijkmatig verdeelde belasting plus eindmomenten" van NB.NB.4.3(3)
+    /// hier opgaat. De aanroeper kent de momentenlijn en vult het in; 0 is een
+    /// geldige waarde voor "niet bekend".
+    pub m_midden_knm: f64,
     /// `true` als het veld aan **beide** zijden door een gaffel wordt
     /// begrensd. Dan geldt L_kip = L_st; anders de formule met β. Zie
     /// [`nb_annex::l_kip`].
@@ -105,6 +118,21 @@ pub struct Kipveld {
 }
 
 impl Kipveld {
+    /// De twee eindmomenten van dit veld, geordend als (M_y,1,Ed ; M_y,2,Ed):
+    /// eerst het eindmoment met de **kleinste** absolute waarde, dan dat met de
+    /// **grootste**. Dat is de nummering van NB.NB.4.3, waar β = M_1/M_2.
+    ///
+    /// Bestaat naast [`Self::beta_en_grootste_eindmoment`] omdat het rapport
+    /// béíde momenten toont en die functie alleen het grootste teruggeeft; haar
+    /// signatuur is niet veranderd, want daar hangen tests aan.
+    pub fn eindmomenten_knm(&self) -> (f64, f64) {
+        if self.m_begin_knm.abs() <= self.m_eind_knm.abs() {
+            (self.m_begin_knm, self.m_eind_knm)
+        } else {
+            (self.m_eind_knm, self.m_begin_knm)
+        }
+    }
+
     /// NB.NB.4.3 — β = M_y,1,Ed / M_y,2,Ed, met M_1 het eindmoment met de
     /// **kleinste** en M_2 dat met de **grootste** absolute waarde. De breuk
     /// zelf gaat over de ondertekende rekenwaarden, zodat β = +1 een constant
@@ -114,11 +142,7 @@ impl Kipveld {
     /// Levert β en het grootste eindmoment (dat laatste is de M van
     /// [`nb_annex::b_ster`]).
     pub fn beta_en_grootste_eindmoment(&self) -> (f64, f64) {
-        let (klein, groot) = if self.m_begin_knm.abs() <= self.m_eind_knm.abs() {
-            (self.m_begin_knm, self.m_eind_knm)
-        } else {
-            (self.m_eind_knm, self.m_begin_knm)
-        };
+        let (klein, groot) = self.eindmomenten_knm();
         let beta = if groot.abs() > 1e-9 {
             (klein / groot).clamp(-1.0, 1.0)
         } else {
@@ -223,12 +247,30 @@ fn kromme_letter(k: BucklingCurve) -> &'static str {
 /// Alles wat één kipveld aan M_cr oplevert, plus de tussenwaarden die het
 /// rapport moet kunnen tonen.
 #[derive(Clone, Copy, Debug)]
-struct Veldresultaat {
+pub(crate) struct Veldresultaat {
+    /// Welk kipveld dit is, geteld vanaf 0 bij het staafbegin, en hoeveel
+    /// velden de ligger telt. Alleen voor het rapport: het moet kunnen zeggen
+    /// wélk veld maatgevend werd.
+    index: usize,
+    aantal_velden: usize,
     l_st_mm: f64,
     l_kip_mm: f64,
+    /// `true` als L_kip = L_st gold (veld tussen twee gaffels), `false` als de
+    /// formule met β is toegepast. Bepaalt welke tak het rapport toont.
+    tussen_gaffels: bool,
+    /// De twee eindmomenten van dit veld (kNm), in de nummering van NB.NB.4.3.
+    m_klein_knm: f64,
+    m_groot_knm: f64,
+    /// Het moment halverwege het veld (kNm). Rekent niet mee; zie
+    /// [`Kipveld::m_midden_knm`].
+    m_midden_knm: f64,
     beta: f64,
     b_ster: f64,
     c1: f64,
+    /// C₂ zoals figuur NB.NB.6 hem geeft, vóór de correctie voor het
+    /// aangrijpingspunt van de belasting.
+    c2_tabel: f64,
+    /// C₂ ná die correctie — dit is de waarde die in C meerekent.
     c2: f64,
     c: f64,
     m_cr_knm: f64,
@@ -256,19 +298,28 @@ fn maatgevend_kipveld(
     s_mm: f64,
     m_cr: impl Fn(f64) -> f64,
 ) -> Veldresultaat {
-    let bereken = |veld: &Kipveld| {
+    let aantal_velden = velden.len().max(1);
+    let bereken = |index: usize, veld: &Kipveld| {
         let (beta, m_groot_knm) = veld.beta_en_grootste_eindmoment();
+        let (m_klein_knm, _) = veld.eindmomenten_knm();
         let b_ster = nb_annex::b_ster(m_groot_knm * 1e6, q_equiv_n_per_mm, veld.l_st_mm);
         let (c1, c2_tabel) = nb_annex::c1_c2_factors(beta, b_ster);
         let c2 = nb_annex::c2_gecorrigeerd(c2_tabel, z_a_mm, h_mm, tf_mm);
         let l_kip_mm = veld.l_kip_mm(beta);
         let c = nb_annex::c_coefficient(c1, l_g_mm, l_kip_mm, s_mm, c2);
         Veldresultaat {
+            index,
+            aantal_velden,
             l_st_mm: veld.l_st_mm,
             l_kip_mm,
+            tussen_gaffels: veld.tussen_gaffels,
+            m_klein_knm,
+            m_groot_knm,
+            m_midden_knm: veld.m_midden_knm,
             beta,
             b_ster,
             c1,
+            c2_tabel,
             c2,
             c,
             m_cr_knm: m_cr(c),
@@ -279,11 +330,12 @@ fn maatgevend_kipveld(
         l_st_mm: l_g_mm,
         m_begin_knm: 0.0,
         m_eind_knm: 0.0,
+        m_midden_knm: 0.0,
         tussen_gaffels: true,
     };
-    let mut maatgevend = bereken(velden.first().unwrap_or(&leeg));
-    for veld in velden.iter().skip(1) {
-        let kandidaat = bereken(veld);
+    let mut maatgevend = bereken(0, velden.first().unwrap_or(&leeg));
+    for (i, veld) in velden.iter().enumerate().skip(1) {
+        let kandidaat = bereken(i, veld);
         if kandidaat.m_cr_knm < maatgevend.m_cr_knm {
             maatgevend = kandidaat;
         }
@@ -381,16 +433,22 @@ pub fn m_b_rd_channel(
     );
 
     let lambda_lt = lambda_chi::lambda_lt(p.wpl_y_mm3, grade.fy_mpa, v.m_cr_knm);
-    // art. 6.3.2.3(1) met de waarde die de Nederlandse bijlage daar voorschrijft
-    // (λ_LT,0 = 0,4, niet de 0,2 van de algemene methode 6.3.2.2).
-    let lambda_lt_0 = 0.4;
     // Tabel 6.5 kent geen rij voor U-profielen. Kromme c (α_LT = 0,49) is hier
     // aangehouden: één kromme ongunstiger dan de gewalste I met h/b ≤ 2,
     // passend bij een M_cr die zelf al een grove benadering is (factor 0,7, zie
     // `m_cr_channel_section`). Dit is een expliciete keuze buiten de tabel om,
     // geen normwaarde.
     let alpha_lt = BucklingCurve::C.alpha();
-    let chi_lt = if lambda_lt < lambda_lt_0 {
+    let alpha_lt_herkomst = format!(
+        "Tabel 6.5 kent geen rij voor U-profielen; zij noemt alleen gewalste en gelaste \
+         I-profielen. Aangehouden is kipkromme c met α_LT = {} (tabel 6.3), één kromme \
+         ongunstiger dan een gewalste I met h/b ≤ 2. Dat is een expliciete keuze buiten de \
+         tabel om, geen normwaarde.",
+        nl(alpha_lt, 2)
+    );
+    // art. 6.3.2.3(1) met de waarde die de Nederlandse bijlage daar voorschrijft
+    // (λ_LT,0 = 0,4, niet de 0,2 van de algemene methode 6.3.2.2).
+    let chi_lt = if lambda_lt < lambda_chi::LAMBDA_LT_0 {
         1.0
     } else {
         lambda_chi::chi_lt(lambda_lt, alpha_lt)
@@ -411,8 +469,9 @@ pub fn m_b_rd_channel(
 
     StabilityCalc {
         id: "6.3.2_ltb_channel".to_string(),
-        title: "Lateral-torsional buckling (channel, monosym)".to_string(),
-        article: "art. 6.3.2.1 + Annex F (simplified)".to_string(),
+        title: "Kip (U-profiel, monosymmetrisch)".to_string(),
+        article: "art. 6.3.2.3 + NB.NB.4/NB.7/NB.11/NB.13, met een M_cr buiten de norm om"
+            .to_string(),
         force_state,
         formula_latex: r"M_{b,Rd} = \chi_{LT} \cdot W_{pl,y} \cdot f_y / \gamma_{M1}".to_string(),
         variables: vec![
@@ -421,8 +480,17 @@ pub fn m_b_rd_channel(
             NamedValue { symbol: r"\gamma_{M1}".to_string(), value: grade.gamma_m1, unit: "-".to_string() },
         ],
         intermediate_values,
-        value: chi_lt,
-        unit: "-".to_string(),
+        deelstappen: kip_deelstappen(&Kipgegevens {
+            p, grade, l_g_mm, v: &v,
+            q_equiv_n_per_mm, z_a_mm, s_mm, k_red,
+            lambda_lt, alpha_lt, chi_lt,
+            vorm: McrVorm::Kanaal,
+            alpha_lt_herkomst,
+        }),
+        // Zie de gelijkluidende toelichting in [`m_b_rd`]: `value` is de
+        // uitkomst van `formula_latex`, dus M_b,Rd en niet χ_LT.
+        value: m_b_rd_knm,
+        unit: "kNm".to_string(),
         uc: Some(UnityCheck {
             ed: m_y_ed_abs, rd: m_b_rd_knm, uc,
             formula_latex: r"M_{y,Ed} / M_{b,Rd}".to_string(),
@@ -430,9 +498,19 @@ pub fn m_b_rd_channel(
         status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
         notes: {
             let mut n = vec![
-                "Conservatieve monosymmetriereductie (M_cr × 0,7) — de volledige \
-                 bijlage F is niet geïmplementeerd."
-                    .to_string(),
+                // Deze notitie noemde tot september 2026 "bijlage F". Die
+                // verwijzing is hier weggehaald: de code rekent de I-vorm van
+                // NB.148 maal een vaste factor, en welke bijlage de volledige
+                // monosymmetrische afleiding draagt is uit deze code niet vast
+                // te stellen. Een vindplaats die niet nagelopen is, hoort niet
+                // in een rapport.
+                format!(
+                    "Conservatieve monosymmetriereductie: M_cr is de I-vorm van NB.148 maal \
+                     een vaste factor {}. De monosymmetrieparameter z_j, die een U-profiel \
+                     werkelijk nodig heeft, is niet uitgewerkt. Deze factor is geen \
+                     normwaarde.",
+                    nl(nb_annex::CHANNEL_REDUCTIE, 1)
+                ),
                 "Tabel 6.5 kent geen rij voor U-profielen; α_LT = 0,49 (kromme c) is een \
                  expliciete keuze buiten de tabel om, geen normwaarde."
                     .to_string(),
@@ -475,13 +553,40 @@ pub fn m_b_rd(
     let lambda_lt = lambda_chi::lambda_lt(p.wpl_y_mm3, grade.fy_mpa, v.m_cr_knm);
 
     // art. 6.3.2.3 met de NB-waarden λ_LT,0 = 0,4 en β = 0,75.
-    let lambda_lt_0 = 0.4;
     let kromme = kipkromme_tabel_6_5(profielsoort, p.h_mm, p.b_mm);
     let alpha_lt = kromme.alpha();
-    let chi_lt = if lambda_lt < lambda_lt_0 {
+    let chi_lt = if lambda_lt < lambda_chi::LAMBDA_LT_0 {
         1.0
     } else {
         lambda_chi::chi_lt(lambda_lt, alpha_lt)
+    };
+
+    // Waar α_LT vandaan komt. Eén tekst, twee bestemmingen: de notities van de
+    // toets én de deelstap Φ_LT, waar α_LT werkelijk meerekent. Per tak apart
+    // geformuleerd — tabel 6.5 heeft precies twee rijen (gewalste en gelaste
+    // I-profielen) en géén rij "andere doorsneden"; die staat alleen in tabel
+    // 6.4, bij de algemene methode 6.3.2.2. Eén onvoorwaardelijke zin "volgens
+    // tabel 6.5" zou voor een koker dus een tabelrij aanhalen die niet bestaat.
+    let alpha_lt_herkomst = {
+        let h_b = nl(if p.b_mm > 0.0 { p.h_mm / p.b_mm } else { f64::NAN }, 3);
+        let a = nl(alpha_lt, 2);
+        let letter = kromme_letter(kromme);
+        match profielsoort {
+            Kipprofiel::GewalsteI => format!(
+                "Gewalst I-profiel met h/b = {h_b} → kipkromme {letter} volgens tabel 6.5; \
+                 α_LT = {a} volgens tabel 6.3."
+            ),
+            Kipprofiel::GelasteI => format!(
+                "Gelast I-profiel met h/b = {h_b} → kipkromme {letter} volgens tabel 6.5; \
+                 α_LT = {a} volgens tabel 6.3."
+            ),
+            Kipprofiel::Overig => format!(
+                "Tabel 6.5 kent voor deze doorsnede geen rij — zij noemt alleen gewalste en \
+                 gelaste I-profielen. Aangehouden is kipkromme {letter} met α_LT = {a} \
+                 (tabel 6.3), de ongunstigste rij van de tabel. Dat is een expliciete \
+                 veilig-zijdige keuze buiten de tabel om, geen normwaarde."
+            ),
+        }
     };
 
     let m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
@@ -500,7 +605,7 @@ pub fn m_b_rd(
 
     StabilityCalc {
         id: "6.3.2_ltb".to_string(),
-        title: "Lateral-torsional buckling resistance".to_string(),
+        title: "Kipweerstand".to_string(),
         article: "art. 6.3.2.3 (tabel 6.3/6.5) + NB.NB.2/NB.4/NB.7/NB.11/NB.13".to_string(),
         force_state,
         formula_latex: r"M_{b,Rd} = \chi_{LT} \cdot W_{pl,y} \cdot f_y / \gamma_{M1}".to_string(),
@@ -510,43 +615,35 @@ pub fn m_b_rd(
             NamedValue { symbol: r"\gamma_{M1}".to_string(), value: grade.gamma_m1, unit: "-".to_string() },
         ],
         intermediate_values,
-        value: chi_lt,
-        unit: "-".to_string(),
+        deelstappen: kip_deelstappen(&Kipgegevens {
+            p, grade, l_g_mm, v: &v,
+            q_equiv_n_per_mm, z_a_mm, s_mm, k_red,
+            lambda_lt, alpha_lt, chi_lt,
+            vorm: McrVorm::DubbelsymmetrischeI,
+            alpha_lt_herkomst: alpha_lt_herkomst.clone(),
+        }),
+        // `value` is de UITKOMST van `formula_latex`, en die formule is
+        // M_b,Rd = χ_LT·W_pl,y·f_y/γ_M1. Hier stond χ_LT, en dat liep in beide
+        // rapportwegen mis: het rapport zette de afleiding als
+        //
+        //     M_b,Rd = χ_LT · W_pl,y · f_y / γ_M1
+        //            = 0,9 · 245000 · 235 / 1
+        //            = 0,9                        ← χ_LT, zonder eenheid
+        //     M_y,Ed / M_b,Rd = 63,383 / 51,8 = 1,22 > 1,0
+        //
+        // — twee regels uit elkaar twee verschillende M_b,Rd. χ_LT gaat niet
+        // verloren: hij staat in `intermediate_values` én als eigen deelstap.
+        // De kniktoets van 6.3.1 voert al dezelfde afspraak (value = N_b,Rd in
+        // kN); kip was de uitzondering.
+        value: m_b_rd_knm,
+        unit: "kNm".to_string(),
         uc: Some(UnityCheck {
             ed: m_y_ed_abs, rd: m_b_rd_knm, uc,
             formula_latex: r"M_{y,Ed} / M_{b,Rd}".to_string(),
         }),
         status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
         notes: {
-            let mut n = Vec::new();
-            let h_b = nl(
-                if p.b_mm > 0.0 { p.h_mm / p.b_mm } else { f64::NAN },
-                3,
-            );
-            let alpha_lt = nl(alpha_lt, 2);
-            let letter = kromme_letter(kromme);
-            // Per tak apart geformuleerd. Tabel 6.5 heeft precies twee rijen —
-            // gewalste I-profielen en gelaste I-profielen — en géén rij "andere
-            // doorsneden" (die staat alleen in tabel 6.4, bij de algemene
-            // methode 6.3.2.2). Eén onvoorwaardelijke zin "volgens tabel 6.5"
-            // zou voor een koker dus een tabelrij aanhalen die niet bestaat.
-            n.push(match profielsoort {
-                Kipprofiel::GewalsteI => format!(
-                    "Gewalst I-profiel met h/b = {h_b} → kipkromme {letter} volgens \
-                     tabel 6.5; α_LT = {alpha_lt} volgens tabel 6.3."
-                ),
-                Kipprofiel::GelasteI => format!(
-                    "Gelast I-profiel met h/b = {h_b} → kipkromme {letter} volgens \
-                     tabel 6.5; α_LT = {alpha_lt} volgens tabel 6.3."
-                ),
-                Kipprofiel::Overig => format!(
-                    "Tabel 6.5 kent voor deze doorsnede geen rij — zij noemt alleen \
-                     gewalste en gelaste I-profielen. Aangehouden is kipkromme {letter} \
-                     met α_LT = {alpha_lt} (tabel 6.3), de ongunstigste rij van de tabel. \
-                     Dat is een expliciete veilig-zijdige keuze buiten de tabel om, geen \
-                     normwaarde."
-                ),
-            });
+            let mut n = vec![alpha_lt_herkomst];
             // Vgl. (6.58) hoort bij 6.3.2.3(2) en is niet geïmplementeerd. Het
             // artikellabel van deze toets noemt 6.3.2.3; dan hoort het rapport
             // te zeggen welk deel daarvan is overgeslagen.

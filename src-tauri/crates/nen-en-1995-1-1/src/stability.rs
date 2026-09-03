@@ -152,6 +152,9 @@ pub fn check_column_stability(
             NamedValue { symbol: "(6.23)".to_string(), value: eq_a, unit: "-".to_string() },
             NamedValue { symbol: "(6.24)".to_string(), value: eq_b, unit: "-".to_string() },
         ],
+        // De houttoetsen hebben (nog) geen uitgeschreven afleiding; hun
+        // tussenwaarden blijven ongewijzigd de weergave.
+        deelstappen: vec![],
         value: uc,
         unit: "-".to_string(),
         uc: Some(UnityCheck {
@@ -335,6 +338,8 @@ pub fn check_beam_stability(
             NamedValue { symbol: r"\lambda_{rel,z}".to_string(), value: lambda_rel_z, unit: "-".to_string() },
             NamedValue { symbol: r"k_{c,z}".to_string(), value: k_c_z, unit: "-".to_string() },
         ],
+        // Zie hierboven: hout krijgt zijn afleiding later.
+        deelstappen: vec![],
         value: uc,
         unit: "-".to_string(),
         uc: Some(UnityCheck {

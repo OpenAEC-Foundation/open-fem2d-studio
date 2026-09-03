@@ -12,7 +12,9 @@
  *    scherm via CSS-variabelen op de vellen, in print via dezelfde
  *    `@page`-regel. Elke wijziging herpagineert de opmaakproef live
  *    (ReportShell, gedebouncet).
- *  - zoom → schermweergave (50–150%), heeft géén effect op de print;
+ *  - zoom → schermweergave (50–150%), heeft géén effect op de print; te
+ *    bedienen met de regelaar in de rapportbalk én met Ctrl+scroll in het
+ *    rapportvenster (ReportShell);
  *  - hiddenSections → sectie-toggles per registry-id (reportSections.ts);
  *    een id dat ontbreekt staat AAN, zodat nieuwe secties standaard meedoen.
  *  - resultCombo → de combinatie-keuze van de resultaatsecties (R3). Bewust
@@ -53,6 +55,24 @@ export type RapportType = 'volledig' | 'beperkt';
  */
 export type ToetsingDetail = 'beknopt' | 'gedetailleerd';
 
+/**
+ * Keuze per staaf: hoort de UITGEBREIDE toetsingsuitvoer (de afleidingen in
+ * het hoofdstuk "Toetsing per staaf") van díé staaf in het rapport?
+ *
+ * Zelfde vorm als `hiddenSections`: de map noteert alleen wat UIT staat, zodat
+ * een staaf die er niet in voorkomt automatisch meedoet. Dat is precies wat je
+ * wilt zodra het model verandert — een nieuwe of hernummerde staaf staat dan
+ * aan in plaats van stilzwijgend te ontbreken.
+ *
+ * Dit raakt ALLEEN de afleidingssectie. Het toetsingsoverzicht blijft altijd
+ * álle getoetste staven tonen met hun maatgevende toets: dat is de conclusie
+ * van het rapport en die mag niet selectief zijn.
+ *
+ * Sleutel = het staafnummer als tekst (JSON-sleutels zijn tekst; zo overleeft
+ * de map de rapport-synchronisatie naar het losgekoppelde venster ongeschonden).
+ */
+export type ToetsStaafKeuze = Record<string, boolean>;
+
 /** Papierformaten in mm (breedte × hoogte, staand). */
 const PAPER_MM: Record<ReportPageSize, { w: number; h: number }> = {
   A4: { w: 210, h: 297 },
@@ -70,6 +90,13 @@ export function pageDimsMm(
 
 export const REPORT_ZOOM_MIN = 0.5;
 export const REPORT_ZOOM_MAX = 1.5;
+/**
+ * Stapgrootte van de zoom: 5 procentpunt. Gedeeld door de regelaar in de
+ * rapportbalk én door Ctrl+scroll, zodat beide bedieningen exact dezelfde
+ * reeks waarden opleveren (50, 55, … 150%) en de regelaar altijd op een
+ * echte stand staat.
+ */
+export const REPORT_ZOOM_STAP = 0.05;
 
 /** Grenzen van de opmaak-sliders (zijbalk → sectie "Opmaak"). */
 export const MARGE_MIN_MM = 5;
@@ -119,6 +146,11 @@ interface ReportState extends ReportOpmaak {
   /** Detailniveau van de toetsingssecties (zie ToetsingDetail). */
   toetsingDetail: ToetsingDetail;
   /**
+   * Staafnummer → uitgesloten van de afleidingssectie. Ontbrekend nummer =
+   * de staaf doet mee (zie ToetsStaafKeuze).
+   */
+  verborgenToetsStaven: ToetsStaafKeuze;
+  /**
    * Combinatie-keuze van de resultaatsecties: combinatie-id, 'envelope'
    * (omhullende) of null (= automatisch: omhullende indien beschikbaar,
    * anders de eerste combinatie met resultaten).
@@ -150,6 +182,12 @@ interface ReportState extends ReportOpmaak {
   setHiddenSections: (hiddenSections: Record<string, boolean>) => void;
   setRapportType: (type: RapportType) => void;
   setToetsingDetail: (niveau: ToetsingDetail) => void;
+  /** Eén staaf in of uit de afleidingssectie zetten. */
+  setToetsStaafZichtbaar: (beamId: number, zichtbaar: boolean) => void;
+  /** De hele staafkeuze in één keer zetten (rapporttype-voorinstelling, sync). */
+  setVerborgenToetsStaven: (keuze: ToetsStaafKeuze) => void;
+  /** Alle staven weer in de afleidingssectie. */
+  resetToetsStaven: () => void;
   /** Alle secties weer aan. */
   resetSections: () => void;
   setResultCombo: (v: number | 'envelope' | null) => void;
@@ -188,6 +226,7 @@ export const useReportStore = create<ReportState>((set) => ({
   hiddenSections: {},
   rapportType: 'volledig',
   toetsingDetail: 'gedetailleerd',
+  verborgenToetsStaven: {},
   resultCombo: null,
   inhoudsopgaveDiepte: 2,
   actieveSectie: null,
@@ -210,6 +249,18 @@ export const useReportStore = create<ReportState>((set) => ({
   setRapportType: (rapportType) => set({ rapportType }),
   setToetsingDetail: (toetsingDetail) => set({ toetsingDetail }),
 
+  setToetsStaafZichtbaar: (beamId, zichtbaar) =>
+    set((state) => {
+      const verborgenToetsStaven = { ...state.verborgenToetsStaven };
+      if (zichtbaar) delete verborgenToetsStaven[String(beamId)];
+      else verborgenToetsStaven[String(beamId)] = true;
+      return { verborgenToetsStaven };
+    }),
+
+  setVerborgenToetsStaven: (verborgenToetsStaven) => set({ verborgenToetsStaven }),
+
+  resetToetsStaven: () => set({ verborgenToetsStaven: {} }),
+
   resetSections: () => set({ hiddenSections: {} }),
 
   setResultCombo: (resultCombo) => set({ resultCombo }),
@@ -228,4 +279,15 @@ export function isSectionEnabled(
   id: string,
 ): boolean {
   return !hiddenSections[id];
+}
+
+/**
+ * Hoort de uitgebreide toetsingsuitvoer van deze staaf in het rapport?
+ * Onbekend staafnummer = ja (zie ToetsStaafKeuze).
+ */
+export function isToetsStaafZichtbaar(
+  keuze: ToetsStaafKeuze,
+  beamId: number,
+): boolean {
+  return !keuze[String(beamId)];
 }

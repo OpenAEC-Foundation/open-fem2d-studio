@@ -7,7 +7,15 @@ use nen_en_1993_1_1_ltb::{kipkromme_tabel_6_5, Kipprofiel, Kipveld};
 use nen_en_1993_1_1_stability::buckling_curve::BucklingCurve;
 
 fn veld(m_a: f64, m_b: f64, l_st: f64, tussen_gaffels: bool) -> Kipveld {
-    Kipveld { l_st_mm: l_st, m_begin_knm: m_a, m_eind_knm: m_b, tussen_gaffels }
+    Kipveld {
+        l_st_mm: l_st,
+        m_begin_knm: m_a,
+        m_eind_knm: m_b,
+        // Rekent nergens in mee (zie `Kipveld::m_midden_knm`); deze tests gaan
+        // over β, L_kip en de kipkromme.
+        m_midden_knm: 0.0,
+        tussen_gaffels,
+    }
 }
 
 // ── β uit de eindmomenten (NB.NB.4.3) ─────────────────────────────────────

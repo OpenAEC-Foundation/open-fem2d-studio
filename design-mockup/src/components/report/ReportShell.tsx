@@ -23,7 +23,14 @@
  * `@page`-marges hieronder zijn dezelfde marges als op scherm. Wat je ziet
  * komt zo ook uit de printer ("Opslaan als PDF" in de printdialoog).
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   useReportStore,
@@ -31,6 +38,7 @@ import {
   pageDimsMm,
   REPORT_ZOOM_MIN,
   REPORT_ZOOM_MAX,
+  REPORT_ZOOM_STAP,
 } from "../../stores/reportStore";
 import { REPORT_SECTIONS } from "./reportSections";
 import { useProjectInfo } from "./useProjectInfo";
@@ -257,6 +265,85 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
     return koppelBedieningsDoorgifte(doel, meet);
   }, []);
 
+  // ─── Ctrl+scroll = zoomen ───
+  // Het gebaar uit elk tekenprogramma. De browser claimt het standaard zelf
+  // (paginazoom van de héle app), dus de listener staat bewust op
+  // `passive: false` en onderschept hem met preventDefault — met een passieve
+  // listener mag dat niet en zou de app als geheel meeschalen.
+  //
+  // De stap is dezelfde REPORT_ZOOM_STAP als de regelaar in de balk: één
+  // scrolltik = 5 procentpunt, en omdat beide bedieningen dezelfde store-
+  // waarde zetten, beweegt de regelaar vanzelf mee.
+  //
+  // Het ankerpunt (positie van de muis + de scrollstand op dat moment) gaat
+  // in een ref; de correctie zelf gebeurt in de layout-effect hieronder, als
+  // de vellen hun nieuwe maat al hebben maar er nog niet geschilderd is.
+  const zoomAnkerRef = useRef<{
+    muisX: number;
+    muisY: number;
+    scrollLinks: number;
+    scrollBoven: number;
+    oudeZoom: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const opWiel = (e: WheelEvent) => {
+      // metaKey erbij voor macOS-gewoonte; Windows/Linux gebruiken Ctrl.
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      if (e.deltaY === 0) return;
+      const oudeZoom = useReportStore.getState().zoom;
+      const richting = e.deltaY < 0 ? 1 : -1;
+      // Op de stap afronden houdt de reeks schoon (0,05 is niet exact in
+      // binaire drijvende komma; zonder afronding kruipt de waarde weg).
+      const nieuw = Math.min(
+        REPORT_ZOOM_MAX,
+        Math.max(
+          REPORT_ZOOM_MIN,
+          Math.round((oudeZoom + richting * REPORT_ZOOM_STAP) * 100) / 100,
+        ),
+      );
+      if (nieuw === oudeZoom) return;
+      // Een trackpad vuurt meerdere tikken binnen één frame. De store loopt
+      // dan al vooruit terwijl de DOM nog op de oude stand staat, dus alleen
+      // de EERSTE tik van zo'n reeks legt het anker vast; de rest rekent tegen
+      // diezelfde beginstand. Anders zou het ankerpunt bij snel zoomen
+      // weglopen (elke tik zou de al verouderde scrollstand opnieuw als
+      // uitgangspunt nemen).
+      if (zoomAnkerRef.current === null) {
+        const rect = scroll.getBoundingClientRect();
+        zoomAnkerRef.current = {
+          muisX: e.clientX - rect.left,
+          muisY: e.clientY - rect.top,
+          scrollLinks: scroll.scrollLeft,
+          scrollBoven: scroll.scrollTop,
+          oudeZoom,
+        };
+      }
+      setZoom(nieuw);
+    };
+    scroll.addEventListener("wheel", opWiel, { passive: false });
+    return () => scroll.removeEventListener("wheel", opWiel);
+  }, [setZoom]);
+
+  // Houd het punt onder de muisaanwijzer op zijn plaats. De vellen staan in
+  // een CSS-`zoom`-container, dus een inhoudspunt op afstand a van de
+  // bovenkant van de inhoud staat na het zoomen op a·f. Verticaal lukt dat
+  // altijd; horizontaal alleen zolang de vellen breder zijn dan het venster —
+  // daarbuiten centreert de kolom zichzelf en klemt de browser scrollLeft op
+  // 0. Vandaar "als dat redelijk kan".
+  useLayoutEffect(() => {
+    const anker = zoomAnkerRef.current;
+    zoomAnkerRef.current = null;
+    const scroll = scrollRef.current;
+    if (!anker || !scroll) return;
+    const f = zoom / anker.oudeZoom;
+    scroll.scrollLeft = (anker.scrollLinks + anker.muisX) * f - anker.muisX;
+    scroll.scrollTop = (anker.scrollBoven + anker.muisY) * f - anker.muisY;
+  }, [zoom]);
+
   // Markeer in de zijbalk welke sectie in beeld is (bijzaak — puur navigatie).
   useEffect(() => {
     const scroll = scrollRef.current;
@@ -306,13 +393,16 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
           {aantalVellen > 0 && ` · ${aantalVellen} ${t("report.sheets", "vellen")}`}
           {" · "}{headerText}
         </span>
-        <label className="report-zoom-control">
+        <label
+          className="report-zoom-control"
+          title={t("report.zoomHint", "Ctrl ingedrukt houden en scrollen zoomt ook in het rapport.")}
+        >
           <span>{t("report.zoom", "Zoom")}</span>
           <input
             type="range"
             min={Math.round(REPORT_ZOOM_MIN * 100)}
             max={Math.round(REPORT_ZOOM_MAX * 100)}
-            step={5}
+            step={Math.round(REPORT_ZOOM_STAP * 100)}
             value={Math.round(zoom * 100)}
             onChange={(e) => setZoom(Number(e.target.value) / 100)}
           />

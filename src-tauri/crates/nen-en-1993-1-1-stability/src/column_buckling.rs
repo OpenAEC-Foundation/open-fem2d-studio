@@ -39,7 +39,7 @@ pub fn n_b_rd(
 
     StabilityCalc {
         id: "6.3.1_buckling".to_string(),
-        title: "Column buckling".to_string(),
+        title: "Kolomknik".to_string(),
         article: "art. 6.3.1 (6.46)".to_string(),
         force_state,
         formula_latex: r"N_{b,Rd} = \chi \cdot A \cdot f_y / \gamma_{M1}".to_string(),
@@ -57,6 +57,9 @@ pub fn n_b_rd(
             NamedValue { symbol: r"\chi_z".to_string(), value: chi_z, unit: "-".to_string() },
             NamedValue { symbol: r"\chi".to_string(), value: chi_used, unit: "-".to_string() },
         ],
+        // Kolomknik heeft (nog) geen uitgeschreven afleiding; de tussenwaarden
+        // blijven hier de weergave.
+        deelstappen: vec![],
         value: n_b_rd_kn,
         unit: "kN".to_string(),
         uc: Some(UnityCheck { ed: n_ed, rd: n_b_rd_kn, uc, formula_latex: r"N_{Ed} / N_{b,Rd}".to_string() }),

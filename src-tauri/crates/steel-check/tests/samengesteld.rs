@@ -555,7 +555,12 @@ fn gelaste_i_krijgt_kip_want_dubbelsymmetrisch() {
     let kip = check(&r, "6.3.2_ltb");
 
     assert_ne!(status_van(kip), CheckStatus::NotApplicable);
-    let chi_lt = waarde_van(kip);
+    // χ_LT komt uit de tussenwaarden en niet meer uit `value`: `value` is de
+    // uitkomst van de formule van de toets — M_b,Rd in kNm, net als de
+    // kniktoets van 6.3.1 N_b,Rd in kN levert. De verwachtingen hieronder zijn
+    // ongewijzigd; alleen het veld waaruit χ_LT wordt gelezen, is nu het veld
+    // dat hem werkelijk draagt.
+    let chi_lt = tussenwaarde(kip, r"\chi_{LT}");
     assert!(chi_lt > 0.0 && chi_lt <= 1.0, "χ_LT = {chi_lt} is geen reductiefactor");
     assert!(
         !notities_van(kip).contains(&MELDING_KIP.to_string()),

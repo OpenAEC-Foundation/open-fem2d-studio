@@ -305,6 +305,7 @@
     "governingTag": "maatgevend",
     "combination": "Combinatie",
     "intermediateValues": "Tussenwaarden",
+    "ketenKop": "Afleiding volgens de nationale bijlage, stap voor stap:",
     "crossSectionClass": "doorsnedeklasse",
     "serviceClass": "klimaatklasse",
     "loadDuration": "belastingduur",
@@ -366,6 +367,13 @@
     "toetsingBeknopt": "Beknopt — alleen unity checks",
     "toetsingGedetailleerd": "Gedetailleerd — met afleidingen",
     "detailBeknoptNoot": "Beknopt niveau: per staaf is alleen de maatgevende toets uitgeschreven.",
+    "staafKeuze": "Uitgebreide uitvoer per staaf",
+    "staafKeuzeAlles": "Alle staven",
+    "staafKeuzeHint": "Alleen de aangevinkte staven krijgen hun afleidingen in het rapport; het toetsingsoverzicht toont altijd alle staven.",
+    "staafKeuzeSectieUit": "Het hoofdstuk “Toetsing per staaf” staat uit — zet het hieronder aan om deze keuze te laten meetellen.",
+    "staafKeuzeNoot": "Van {{aantal}} van de {{totaal}} getoetste staven is de uitgebreide uitvoer op verzoek weggelaten; die staven staan wel in het toetsingsoverzicht.",
+    "staafKeuzeLeeg": "Van geen enkele staaf is de uitgebreide uitvoer gekozen — vink in de rapportzijbalk minstens één staaf aan.",
+    "zoomHint": "Ctrl ingedrukt houden en scrollen zoomt ook in het rapport.",
     "colCheck": "Toets"
   },
   "viewer": {
