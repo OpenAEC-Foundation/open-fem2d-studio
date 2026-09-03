@@ -1,15 +1,19 @@
 /**
  * CheckTableSection — het toetsingsoverzicht.
  *
- * Twee detailniveaus (reportStore.toetsingDetail):
+ * Eén regel per getoetste staaf: profiel/klasse, norm, de maatgevende toets
+ * (artikel + titel, met de UC-formule als KaTeX) en de hoogste unity check met
+ * status. Bij tien staven dus tien regels.
  *
- *  - 'beknopt'       — één regel per getoetste staaf: profiel/klasse, norm,
- *    de maatgevende toets (artikel + titel, met de UC-formule als KaTeX) en
- *    de hoogste unity check met status. Bij tien staven dus tien regels.
- *  - 'gedetailleerd' — álle toetsen per staaf onder elkaar, gegroepeerd per
- *    staaf, met per regel de maatgevende combinatie, het artikel en de UC.
- *    Die tabelvorm volgt het referentie-rapport, dat het toetsingsoverzicht
- *    ook per toets opsomt in plaats van per staaf.
+ * Bewust alléén de maatgevende toets. Er is hier ook een variant geweest die
+ * álle toetsen per staaf opsomde — zoals het referentie-rapport dat doet —
+ * maar dan wordt dit hoofdstuk een tweede, langere versie van "Toetsing per
+ * staaf" zonder dat er iets bijkomt: de regel die ertoe doet, de maatgevende,
+ * raakt zoek tussen de rest. Wie alle toetsen wil zien, vindt ze verderop mét
+ * hun afleiding.
+ *
+ * Het detailniveau uit de rapportinstellingen stuurt daarom alleen de
+ * afleidingen, niet deze tabel.
  *
  * Onder de tabel een voetregel met de toetsbasis (alleen de normen die
  * daadwerkelijk in de resultaten voorkomen).
@@ -21,7 +25,6 @@
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { useCheckStore } from "../../../stores/checkStore";
-import { useReportStore } from "../../../stores/reportStore";
 import { isSteelCheckResult, type MemberCheckResult } from "../../../lib/checkTypes";
 import {
   CHECK_REPORT_CSS,
@@ -84,59 +87,19 @@ function BeknopteRijen({ results }: { results: MemberCheckResult[] }) {
   );
 }
 
-/**
- * Gedetailleerd: alle toetsen per staaf. Het staafnummer staat op élke regel
- * (zo blijft de groep herkenbaar als de tabel over een velgrens breekt);
- * profiel en klasse alleen op de eerste regel van de groep, met een
- * zwaardere lijn erboven.
- */
-function GedetailleerdeRijen({ results }: { results: MemberCheckResult[] }) {
-  const { t } = useTranslation("ribbon");
-  return (
-    <>
-      {results.flatMap((r) => {
-        const steel = isSteelCheckResult(r);
-        return r.checks.map((named, i) => {
-          const c = named.kind.data;
-          const { artikel } = splitsArtikel(c.article);
-          const uc = c.uc?.uc ?? 0;
-          const maatgevend = named.id === r.governing_check_id;
-          return (
-            <tr
-              key={`${steel ? "s" : "t"}-${r.beam_id}-${named.id}`}
-              className={`${i === 0 ? "rpt-chk-groep-start" : ""}${
-                maatgevend ? " rpt-chk-rij-gov" : ""
-              }`}
-            >
-              <td>{r.beam_id}</td>
-              <td>{i === 0 ? (steel ? r.profile_name : r.section_name) : ""}</td>
-              <td>{i === 0 ? (steel ? r.steel_grade : r.strength_class) : ""}</td>
-              <td>{c.force_state.combination_id}</td>
-              <td>{artikel}</td>
-              <td>
-                {c.title}
-                {maatgevend && (
-                  <span className="rpt-chk-gov-tag">
-                    — {t("report.governingTag", "maatgevend")}
-                  </span>
-                )}
-              </td>
-              <td className={`rpt-num${uc > 1 ? " rpt-uc-fail" : ""}`}>{fmtUc(uc)}</td>
-              <td className={statusCel(c.status)}>{statusLabel(t, c.status)}</td>
-            </tr>
-          );
-        });
-      })}
-    </>
-  );
-}
 
 export default function CheckTableSection() {
   const { t } = useTranslation("ribbon");
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
-  const gedetailleerd = useReportStore((s) => s.toetsingDetail === "gedetailleerd");
+  // Het overzicht toont ALTIJD één regel per staaf: de maatgevende toets.
+  // Dat is wat een overzicht hoort te zijn — wie alle toetsen wil zien, vindt
+  // ze verderop bij "Toetsing per staaf", waar ze bovendien met hun afleiding
+  // staan. Alle toetsen óók hier herhalen maakte de tabel lang zonder dat er
+  // iets bij kwam, en de maatgevende regel ging erin verloren.
+  //
+  // Het detailniveau stuurt dus alleen nog de afleidingen, niet deze tabel.
 
   const checkedTime = fmtCheckedAt(lastRunAt);
   const basis = basisText(t, results);
@@ -163,35 +126,18 @@ export default function CheckTableSection() {
 
           <table className="rpt-table">
             <thead>
-              {gedetailleerd ? (
-                <tr>
-                  <th>{t("report.colBeam", "Staaf")}</th>
-                  <th>{t("report.colSection", "Profiel / doorsnede")}</th>
-                  <th>{t("report.colGrade", "Klasse")}</th>
-                  <th>{t("report.colCombination", "Combinatie")}</th>
-                  <th>{t("report.colArticle", "Artikel")}</th>
-                  <th>{t("report.colCheck", "Toets")}</th>
-                  <th className="rpt-num">{t("report.colUc", "UC")}</th>
-                  <th>{t("report.colStatus", "Status")}</th>
-                </tr>
-              ) : (
-                <tr>
-                  <th>{t("report.colBeam", "Staaf")}</th>
-                  <th>{t("report.colSection", "Profiel / doorsnede")}</th>
-                  <th>{t("report.colGrade", "Klasse")}</th>
-                  <th>{t("report.colCode", "Norm")}</th>
-                  <th>{t("report.colGoverning", "Maatgevende toets")}</th>
-                  <th className="rpt-num">{t("report.colUc", "UC")}</th>
-                  <th>{t("report.colStatus", "Status")}</th>
-                </tr>
-              )}
+              <tr>
+                <th>{t("report.colBeam", "Staaf")}</th>
+                <th>{t("report.colSection", "Profiel / doorsnede")}</th>
+                <th>{t("report.colGrade", "Klasse")}</th>
+                <th>{t("report.colCode", "Norm")}</th>
+                <th>{t("report.colGoverning", "Maatgevende toets")}</th>
+                <th className="rpt-num">{t("report.colUc", "UC")}</th>
+                <th>{t("report.colStatus", "Status")}</th>
+              </tr>
             </thead>
             <tbody>
-              {gedetailleerd ? (
-                <GedetailleerdeRijen results={results} />
-              ) : (
-                <BeknopteRijen results={results} />
-              )}
+              <BeknopteRijen results={results} />
             </tbody>
           </table>
 
