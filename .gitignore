@@ -8,3 +8,7 @@ PROMPTS.md
 
 # Niet-geaccepteerde snapshots van insta — werkbestanden, geen broncode.
 *.snap.new
+
+# Normen (NEN/EN) — auteursrechtelijk beschermd, mogen NOOIT in de repo of op
+# GitHub terechtkomen. Lokaal naslagwerk, gekopieerd van de bedrijfsschijf.
+/normen/
