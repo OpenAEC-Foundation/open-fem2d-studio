@@ -25,9 +25,9 @@ pub fn m_y_c_rd(
     let status = if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk };
 
     let title = if matches!(class, CrossSectionClass::Class1 | CrossSectionClass::Class2) {
-        "Bending moment (decisive)"
+        "Buigend moment (maatgevend)"
     } else {
-        "Bending moment"
+        "Buigend moment"
     };
 
     ResistanceCalc {
@@ -68,7 +68,7 @@ pub fn m_z_c_rd(
 
     ResistanceCalc {
         id: "6.2.5_bending_z".to_string(),
-        title: "Bending moment (z-axis)".to_string(),
+        title: "Buigend moment (z-as)".to_string(),
         article: "art. 6.2.5".to_string(),
         force_state,
         formula_latex: format!(r"M_{{z,c,Rd}} = \frac{{{} \cdot f_y}}{{\gamma_{{M0}}}}", w_symbol),

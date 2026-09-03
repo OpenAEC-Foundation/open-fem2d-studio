@@ -41,7 +41,7 @@ pub fn check_combined_mv(
 
     ResistanceCalc {
         id: "6.2.8_combined_mv".to_string(),
-        title: "Bending and shear".to_string(),
+        title: "Buiging en dwarskracht".to_string(),
         article: "art. 6.2.8".to_string(),
         force_state,
         formula_latex: r"M_{y,V,Rd} = M_{y,c,Rd} \text{ if } V_{z,Ed} \leq V_{z,pl,Rd}/2".to_string(),

@@ -31,6 +31,25 @@ function ucClass(uc: number): string {
   return "cp-uc-ok";
 }
 
+/**
+ * Toetsen op unity check, hoogste eerst — de maatgevende bovenaan.
+ *
+ * De kern levert ze in de volgorde waarin ze berekend zijn (druk, buiging,
+ * afschuiving, …). Daardoor opende een kaart met een toets van UC 0,01, terwijl
+ * de toets die de staaf afkeurt eronder verstopt zat. Wie een kaart openklapt
+ * wil eerst zien wat er knelt.
+ *
+ * Een toets zonder unity check (niet van toepassing) heeft niets te vergelijken
+ * en zakt naar beneden.
+ */
+function opUnityCheck<T extends { kind: { data: { uc: { uc: number } | null } } }>(
+  checks: readonly T[],
+): T[] {
+  return [...checks].sort(
+    (a, b) => (b.kind.data.uc?.uc ?? -1) - (a.kind.data.uc?.uc ?? -1),
+  );
+}
+
 function MemberCard({ result, focusToken }: {
   result: MemberCheckResult;
   /** Niet-null → kaart openklappen + in beeld scrollen (badge-klik). */
@@ -90,7 +109,7 @@ function MemberCard({ result, focusToken }: {
 
       {open && (
         <div className="cp-card-body">
-          {result.checks.map((named) => (
+          {opUnityCheck(result.checks).map((named) => (
             <CheckBlock key={named.id} check={named.kind.data} />
           ))}
         </div>

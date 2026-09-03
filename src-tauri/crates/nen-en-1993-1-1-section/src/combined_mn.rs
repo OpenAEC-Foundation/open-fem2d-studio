@@ -31,7 +31,7 @@ pub fn check_combined_mn(
             let combined_uc = (n_ed / n_pl_rd_kn) + (m_ed / m_pl_y_rd_knm);
             return ResistanceCalc {
                 id: "6.2.9_combined_mn".to_string(),
-                title: "Bending and axial force".to_string(),
+                title: "Buiging en normaalkracht".to_string(),
                 article: "art. 6.2.9".to_string(),
                 force_state,
                 formula_latex: r"\frac{N_{Ed}}{N_{Rd}} + \frac{M_{y,Ed}}{M_{y,Rd}} \leq 1".to_string(),
@@ -54,7 +54,7 @@ pub fn check_combined_mn(
 
     ResistanceCalc {
         id: "6.2.9_combined_mn".to_string(),
-        title: "Bending and axial force".to_string(),
+        title: "Buiging en normaalkracht".to_string(),
         article: "art. 6.2.9".to_string(),
         force_state,
         formula_latex: r"M_{N,y,Rd} = M_{pl,y,Rd} \cdot (1-n)/(1-0.5a)".to_string(),

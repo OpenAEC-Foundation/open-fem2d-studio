@@ -11,7 +11,7 @@ pub fn v_z_c_rd(p: &SectionProperties, grade: &SteelGrade, force_state: ForceSta
 
     ResistanceCalc {
         id: "6.2.6_shear_z".to_string(),
-        title: "Shear".to_string(),
+        title: "Dwarskracht".to_string(),
         article: "art. 6.2.6 (6.18)".to_string(),
         force_state,
         formula_latex: r"V_{c,z,Rd} = V_{pl,z,Rd} = \frac{A_v \cdot (f_y / \sqrt{3})}{\gamma_{M0}}".to_string(),
@@ -34,7 +34,7 @@ pub fn v_y_c_rd(p: &SectionProperties, grade: &SteelGrade, force_state: ForceSta
     let uc = if v_rd > 0.0 { v_ed / v_rd } else { 0.0 };
     ResistanceCalc {
         id: "6.2.6_shear_y".to_string(),
-        title: "Shear (y-axis)".to_string(),
+        title: "Dwarskracht (y-as)".to_string(),
         article: "art. 6.2.6".to_string(),
         force_state,
         formula_latex: r"V_{c,y,Rd} = \frac{A_v \cdot (f_y/\sqrt{3})}{\gamma_{M0}}".to_string(),

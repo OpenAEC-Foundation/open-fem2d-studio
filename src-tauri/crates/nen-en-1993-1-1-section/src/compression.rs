@@ -18,7 +18,7 @@ pub fn n_c_rd(
 
     ResistanceCalc {
         id: "6.2.4_compression".to_string(),
-        title: "Compression".to_string(),
+        title: "Druk".to_string(),
         article: "art. 6.2.4 (6.10)".to_string(),
         force_state,
         formula_latex: r"N_{c,Rd} = \frac{A \cdot f_y}{\gamma_{M0}}".to_string(),

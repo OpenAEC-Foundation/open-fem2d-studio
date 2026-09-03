@@ -32,7 +32,7 @@ pub fn check_deflection(
 
     ResistanceCalc {
         id: "sls_deflection".to_string(),
-        title: "Deflection (SLS)".to_string(),
+        title: "Doorbuiging (BGT)".to_string(),
         article: "NEN-EN 1990 (SLS)".to_string(),
         force_state: ForceStateSnapshot { combination_id: 0, position_mm: 0.0, forces: InternalForces::default() },
         formula_latex: format!(r"\delta_{{lim}} = L / {}", numerator),
