@@ -1,0 +1,22 @@
+[package]
+name = "toetsbrug"
+version = "0.1.0"
+edition = "2021"
+description = "Normtoetsing als JSON-in/JSON-uit, zodat de browser dezelfde rekenkern bereikt als de desktop-app"
+license = "CC-BY-SA-4.0"
+
+# Bewust een eigen crate en geen binary in het Tauri-pakket: daar zou hij als
+# tweede uitvoerbaar bestand naast de app staan, en de bundler pakte hem dan
+# als hoofdprogramma — de installer bevatte de toetsbrug in plaats van de app.
+[[bin]]
+name = "toetsbrug"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+steel-check = { path = "../steel-check" }
+steel-profiles = { path = "../steel-profiles" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+timber-check = { path = "../timber-check" }
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }

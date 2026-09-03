@@ -4398,6 +4398,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
+name = "toetsbrug"
+version = "0.1.0"
+dependencies = [
+ "nen-en-1993-1-1-section",
+ "nen-en-1995-1-1",
+ "serde",
+ "serde_json",
+ "steel-check",
+ "steel-profiles",
+ "timber-check",
+]
+
+[[package]]
 name = "tokio"
 version = "1.52.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
