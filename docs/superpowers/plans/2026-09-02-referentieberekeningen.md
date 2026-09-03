@@ -154,12 +154,37 @@ noch corrigeerbaar voor de gebruiker.
 > Voor IPE 330 (h/b = 330/160 = 2,0625 > 2) hoort er dus **alpha_LT = 0,49** te staan waar nu
 > 0,34 staat. Punt 3 is daarmee hard, niet op een buitenlandse keuze gebaseerd.
 >
-> Nog NIET tegen de bijlage geverifieerd: de punten 1 en 2 (de momentverdelingsfactoren uit het
-> veldmoment, en de onvoorwaardelijke kiplengteherleiding). Die rusten op de NB.NB-bijlage voor
-> M_cr, die een eigen methode voorschrijft. Zolang die twee niet even hard staan, wordt er niets
-> gerepareerd: de campagne heeft gemeten dat één van de drie losstaand corrigeren de uitkomst
-> 31 % de andere kant op schiet. De reparatie is dus alles-of-niets en wacht op verificatie van
-> de andere twee punten.
+> **Aanvulling: ook de punten 1 en 2 zijn nu geverifieerd** tegen bijlage NB.NB van diezelfde
+> norm (NB.NB.4.3, coëfficiënt C).
+>
+> - De norm definieert **β als de verhouding van het kleinste tot het grootste EINDmoment**
+>   (M_y,2,Ed en M_y,1,Ed). Het doc-commentaar boven de code zegt dat ook, letterlijk — maar de
+>   regel eronder rekent `m_y_ed_at_lst_quarter / m_y_ed_max`, oftewel het moment op een kwart
+>   van de lengte gedeeld door het maximum. Commentaar en code spreken elkaar tegen.
+> - De norm geeft voor **L_kip twee gevallen**: tussen twee gaffels geldt L_kip = L_st, en de
+>   formule (1,4 − 0,8·β)·L_st met ondergrens 1,0 geldt bij één kipsteun of tussen twee
+>   kipsteunen. `l_kip()` implementeert die formule correct, maar wordt onvoorwaardelijk
+>   aangeroepen — ook in het gaffelgeval.
+>
+> **Nagerekend voor een vrij opgelegde ligger onder gelijkmatig verdeelde last** (M(L/4) =
+> 3qL²/32, M_max = qL²/8, eindmomenten nul):
+>
+> | Grootheid | Wat de code krijgt | Wat de norm vraagt |
+> |---|---|---|
+> | β | (3qL²/32)/(qL²/8) = **0,75** | eindmomenten nul → **0** |
+> | L_kip-factor | 1,4 − 0,8·0,75 = 0,8 → geklemd op **1,0** | 1,4 − 0 = **1,4** |
+> | B* | 8·(qL²/8) / (8·qL²/8 + qL²) = **0,500** | eindmoment nul → **0** |
+>
+> Daar zit de onveiligheid: de kiplengte valt een factor 1,4 te laag uit en dus M_cr te hoog.
+> De structurele waarneming uit de campagne — dat B* voor élke vrij opgelegde ligger exact 0,500
+> wordt — is hiermee verklaard als rekenkundig gevolg van het invullen van het veldmoment, geen
+> toeval. Volgens tabel NB.NB.1 hoort B* = 0 bij zuivere veldbelasting, precies wat zo'n ligger is.
+>
+> Alle drie de punten staan daarmee hard. De reparatie blijft alles-of-niets: de campagne heeft
+> gemeten dat één van de drie losstaand corrigeren de uitkomst 31 % de andere kant op schiet.
+> Zij vraagt bovendien een signatuurwijziging, want de eindmomenten worden op dit moment niet
+> eens aan de kipfunctie doorgegeven — `orchestrator.rs` levert het maatgevende moment plus
+> interpolaties op L/4 en L/2, en daar zit geen eindmoment bij.
 
 **Hoe groot (R16, IPE 330 5,70 m, last op de bovenflens).**
 
