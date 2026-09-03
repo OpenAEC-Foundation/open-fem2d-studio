@@ -18,12 +18,25 @@ pub fn tau_d_rect_mpa(v_ed_kn: f64, section: &RectTimberSection, k_cr: f64) -> f
 
 /// §6.1.7, vergelijking (6.13): tau_d <= f_v,d.
 ///
-/// `k_cr` is de scheurfactor uit A1 (6.13a): aanbevolen waarde 0,67 voor
-/// massief en gelamineerd hout. De referentie-uitwerking rekent met de VOLLE
-/// breedte (k_cr = 1,0): tau = 75567,6 · 2,43e6 / (96 · 7,29e8) = 2,6 N/mm2
-/// > f_v,d = 2,5 → UC 1,07. De nationale-bijlagewaarde van k_cr kon niet
-/// worden geraadpleegd (normtekst niet bereikbaar); de keuze ligt daarom bij
-/// de aanroeper en is NIET-GEVERIFIEERD buiten k_cr = 1,0.
+/// `k_cr` is de scheurfactor uit A1 (6.13a). De Eurocode zelf beveelt 0,67
+/// aan voor gezaagd hout en voor gelijmd gelamineerd hout, en 1,0 voor
+/// houtachtige producten volgens EN 13986 en EN 14374, met de uitdrukkelijke
+/// aantekening dat de nationale keuze in de nationale bijlage staat.
+///
+/// De Nederlandse nationale bijlage (NEN-EN 1995-1-1:2005+A2:2014/NB:2013,
+/// bij 6.1.7) maakt die keuze: **voor liggers met een prismatische doorsnede
+/// geldt k_cr = 1,0**. De waarde 0,8 komt daar alleen voor bij I- en
+/// T-profielen waarvan het lijf dunner is dan de halve flensbreedte; die
+/// vormen kent deze toetsing niet, want [`RectTimberSection`] is per
+/// definitie prismatisch en rechthoekig.
+///
+/// Voor het Nederlandse toepassingsgebied is 1,0 dus de normwaarde en geen
+/// onveilige vereenvoudiging. Rekenen met 0,67 zou de dwarskrachtcapaciteit
+/// een derde lager maken dan de norm toestaat. De parameter blijft
+/// instelbaar voor een ander nationaal toepassingsgebied.
+///
+/// Ter controle, met de volle breedte (k_cr = 1,0):
+/// tau = 75567,6 · 2,43e6 / (96 · 7,29e8) = 2,6 N/mm2 > f_v,d = 2,5 → UC 1,07.
 pub fn check_shear(
     section: &RectTimberSection,
     f_vd_mpa: f64,

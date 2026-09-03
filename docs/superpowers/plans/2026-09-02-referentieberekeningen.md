@@ -32,12 +32,28 @@ in hoofdstuk B komt er maar **één** (B2, de kiptoets) uitsluitend uit zo'n gev
 twaalf zijn aan het licht gekomen in gevallen die keurig "komt overeen" scoren, of gewoon
 tijdens het nabouwen. R11, R17, R20, R23 en R26 leverden alle vijf een bevinding op die náást
 de vergelijking staat. **Het aantal gevonden problemen in de app is dus 13, niet 2 — waarvan
-drie onveilig aan de verkeerde kant** (B2 kip staal, B3 k_cr hout, B4 kipsteunen onderflens).
+~~drie~~ twee onveilig aan de verkeerde kant** (B2 kip staal en B4 kipsteunen onderflens).
+
+> **Correctie van 3 september 2026: B3 (k_cr hout) is ingetrokken.** De Nederlandse nationale
+> bijlage schrijft voor prismatische liggers k_cr = 1,0 voor; de gemelde 0,67 is de
+> *aanbevolen* Eurocode-waarde, die de bijlage juist overschrijft. De onveilige bevindingen
+> zijn er dus twee, niet drie, en het twaalfde en dertiende probleem tellen als één minder.
+> De volledige onderbouwing staat bij de bespreking van R19 verderop. Deze fout is
+> veelzeggend: hij ontstond doordat beide houtgevallen een buitenlandse bijlage gebruiken
+> (de aanbevolen waarde respectievelijk de Duitse), precies de blinde vlek die dit dossier
+> zelf al benoemde.
 
 Dat is meteen de belangrijkste methodologische les van deze campagne: **een geval dat "komt
-overeen" scoort bewijst dat de rekenkern klopt, niet dat de app klopt.** De drie onveilige
-bevindingen zitten alle drie in de laag tússen model en kern — de invoer die de app automatisch
+overeen" scoort bewijst dat de rekenkern klopt, niet dat de app klopt.** De onveilige
+bevindingen zitten in de laag tússen model en kern — de invoer die de app automatisch
 samenstelt en die de gebruiker niet kan zien of corrigeren.
+
+Daar komt na de correctie hierboven een tweede les bij: **een referentie uit een ander land
+toetst een andere norm.** Een verschil tegen een buitenlandse bijlage is op zichzelf geen
+fout in onze app, en behandelen alsof het dat wel is levert een verzonnen fout op — met het
+risico dat de app onnodig conservatief wordt afgesteld. Elke bevinding die op een
+nationale keuze rust, hoort tegen de Nederlandse bijlage geverifieerd te worden voordat er
+één regel code verandert.
 
 Van de 26 gevallen zijn er **19** die de app niet exact als projectbestand kan vastleggen,
 omdat er geen vrije doorsnede-invoer is (probleem B1). Bij **drie** daarvan (R03, R04, R13)
@@ -2529,12 +2545,31 @@ Dezelfde staaf mét `lateralRestraints [0,25 0,5 0,75]`, `lateralRestraintsBotto
 kniklengtes ingevuld levert **exact dezelfde toetsinvoer** op: er verandert niets. De invoer is
 voor de gebruiker onbereikbaar.
 
-1. **k_cr = 1,0** (r. 257) — zie **B3**. Dit is geen andere nationale keuze: (6.13a) heeft twee
-   takken en álle door de kern ondersteunde klassen (C14–C35, GL24h–GL36h) horen bij de
-   0,67-tak. V_Rd wordt 16,25 in plaats van 10,89 kN, **+49 %, de onveilige kant op**. Eerlijke
-   nuance: bij R19 zelf is dwarskracht niet maatgevend (UC 0,41 met 0,67 tegen 0,28 met 1,0 —
-   beide voldoen), dus hier ontstaat geen verkeerd goedkeuringsoordeel; wel staat er een 49 %
-   te hoge V_Rd in het rapport. Het oordeel kantelt bij dwarskracht-maatgevende gevallen.
+1. ~~**k_cr = 1,0** (r. 257) — zie **B3**.~~ **INGETROKKEN — zie de correctie hieronder.**
+
+   > **Correctie (3 september 2026): B3 is onjuist. k_cr = 1,0 is de Nederlandse normwaarde.**
+   >
+   > De oorspronkelijke conclusie luidde dat dit "geen andere nationale keuze" was, omdat
+   > (6.13a) twee takken heeft en alle ondersteunde klassen bij de 0,67-tak horen. Dat is
+   > precies verkeerd om. De Eurocode geeft 0,67 als **aanbevolen** waarde en vermeldt er
+   > uitdrukkelijk bij dat de nationale keuze in de nationale bijlage staat.
+   >
+   > NEN-EN 1995-1-1:2005+A2:2014/NB:2013 maakt die keuze bij 6.1.7, letterlijk: *"De
+   > volgende waarden moeten voor k_cr zijn toegepast: Voor liggers met een prismatische
+   > doorsnede: k_cr = 1,0."* De waarde 0,8 staat daar alleen voor I- en T-profielen met een
+   > lijf dunner dan de halve flensbreedte — vormen die deze toetsing niet kent, want zij
+   > rekent uitsluitend met rechthoekige doorsneden.
+   >
+   > Waarom de campagne het mis had: beide houtgevallen gebruiken een ándere bijlage. R19
+   > rekent met de aanbevolen 0,67 en R20 expliciet met de Duitse (0,71). De Nederlandse
+   > implementatie is dus tegen buitenlandse keuzes gelegd en op grond daarvan afgekeurd.
+   > Dat is dezelfde blinde vlek die dit dossier zelf benoemt — met dit verschil dat hij hier
+   > niet tot een gemiste fout leidde, maar tot een verzonnen fout.
+   >
+   > Naar 0,67 gaan zou de dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
+   > De code is daarom **niet** gewijzigd; wel is de vindplaats vastgelegd in
+   > `nen-en-1995-1-1/src/shear.rs` en in `timberCheckBuilder.ts`, waar tot nu toe stond dat
+   > de bijlagewaarde niet te raadplegen was.
 2. **w_qp = w_karakteristiek** (r. 260) — zie **B8**. Richting veilig (+28 %), maar de reden is
    niet "het blijvende deel is onbekend": de standaardset bevat al een "SLS Quasi-permanent"
    G + 0,3Q die gewoon wordt doorgerekend. Het juiste getal ligt klaar en wordt niet gelezen.

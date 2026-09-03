@@ -254,6 +254,16 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       ltb_load_position: "CentreOfGravity",
       ltb_effective_length_override_m: 0,
       perform_ltb_check: true,
+      // Scheurfactor voor dwarskracht, b_ef = k_cr · b uit EN 1995-1-1+A2
+      // (6.13a). De Eurocode beveelt 0,67 aan voor gezaagd en gelijmd
+      // gelamineerd hout, maar laat de keuze uitdrukkelijk aan de nationale
+      // bijlage. NEN-EN 1995-1-1/NB:2013 bij 6.1.7 schrijft voor liggers met
+      // een prismatische doorsnede k_cr = 1,0 voor; de 0,8 daar geldt alleen
+      // voor I- en T-profielen met een dun lijf, en deze toetsing rekent
+      // uitsluitend met rechthoekige doorsneden.
+      //
+      // Dus: 1,0 is hier de normwaarde. Naar 0,67 gaan zou de
+      // dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
       k_cr: 1.0,
       load_sharing: false,
       deflection_inst_mm: wInstMm,
