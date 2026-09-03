@@ -139,6 +139,23 @@ fn portal_beam4_governing_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
+/// Sept 2026 (b) bijgewerkt na de nabeschouwing op de kipreparatie.
+/// **Geen enkele unity check en geen enkele tussenwaarde verandert**; het
+/// verschil met de vorige snapshot zit volledig in de notitieteksten:
+///  * de kipkrommenotitie is per rij van tabel 6.5 apart geformuleerd. Zij
+///    stond onvoorwaardelijk als "volgens tabel 6.5", ook voor doorsneden
+///    waarvoor die tabel geen rij heeft — precies de kloof tussen commentaar en
+///    code die de reparatie zelf moest dichten, terug op de plek waar de
+///    constructeur hem leest. De krommeletter staat nu bovendien klein, zoals de
+///    norm hem schrijft, en de getallen met een decimale komma;
+///  * er komt een notitie bij dat vgl. (6.58) — χ_LT,mod — niet is toegepast.
+///    Het artikellabel van deze toets noemt 6.3.2.3; dan hoort het rapport te
+///    zeggen welk deel daarvan is overgeslagen. Weglaten is veilig-zijdig
+///    (f ≤ 1, dus χ_LT,mod ≥ χ_LT), maar niet stilzwijgend;
+///  * er komt een notitie bij dat de omhullende van de maatgevende
+///    combinatie is bemonsterd van x = 2491 tot x = 5000 mm op een staaf van
+///    5000 mm: het eindmoment aan de beginzijde is vastgehouden, niet gemeten.
+///
 /// Sept 2026 bijgewerkt na de kipreparatie, maar **geen enkel getal is
 /// veranderd**. Alleen de nieuwe tussenwaarde α_LT = 0,34 is bijgekomen.
 ///

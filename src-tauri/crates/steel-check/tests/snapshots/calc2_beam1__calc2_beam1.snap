@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam1.rs
-assertion_line: 140
+assertion_line: 172
 expression: run()
 ---
 {
@@ -633,8 +633,10 @@ expression: run()
           },
           "status": "NotOk",
           "notes": [
-            "Kipkromme B volgens tabel 6.5 (h/b = 1.000), α_LT = 0.34 volgens tabel 6.3.",
-            "B* < 0: C₁ en C₂ zijn afgelezen bij |B*|. De negatieve tak van figuur NB.NB.5/NB.NB.6 is niet gedigitaliseerd; deze benadering ligt onder de werkelijke waarden en is dus veilig-zijdig, maar nog niet geverifieerd."
+            "Gewalst I-profiel met h/b = 1,000 → kipkromme b volgens tabel 6.5; α_LT = 0,34 volgens tabel 6.3.",
+            "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig.",
+            "B* < 0: C₁ en C₂ zijn afgelezen bij |B*|. De negatieve tak van figuur NB.NB.5/NB.NB.6 is niet gedigitaliseerd; deze benadering ligt onder de werkelijke waarden en is dus veilig-zijdig, maar nog niet geverifieerd. Voor de volledig buigvast ingeklemde ligger geeft tabel NB.NB.3 C₁ = 2,30 en C₂ = 1,55; die tak is hier niet geïmplementeerd.",
+            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 0 tot x = 2500 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
           ]
         }
       }

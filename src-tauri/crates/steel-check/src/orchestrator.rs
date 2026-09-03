@@ -612,7 +612,11 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     //     bovenflenssteunen, bij hogging de onderflenssteunen. Vóór deze
     //     reparatie werd `bottom_flange_positions` nergens gelezen: een ligger
     //     met een bovenflenssteun halverwege en een onderflenssteun aan het
-    //     eind rekende bij windzuiging met de halve kiplengte.
+    //     eind rekende bij windzuiging met de halve kiplengte. De keuze valt
+    //     PER STEUN, op het moment ter plaatse van die steun — niet één keer
+    //     voor de hele staaf op het teken van het maatgevende moment; zie
+    //     `LateralBracing::kipsteunen_op_de_gedrukte_flens` voor waarom dat
+    //     laatste de uitkomst discontinu maakt in de belasting.
     //  2. WAAR DE VELDGRENZEN LIGGEN. Alleen de grootste tussenafstand kennen
     //     is niet genoeg — de eindmomenten moeten op de werkelijke veldgrenzen
     //     worden afgelezen, niet op L_st/4 vanaf x = 0.
@@ -622,8 +626,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     let combo_id = gov_bending.combination_id;
     let kipsteunen = input
         .lateral_bracing
-        .gedrukte_flens_posities(gov_bending.forces.my_ed);
-    let grenzen = nen_en_1993_1_1_ltb::lambda_chi::kipveld_grenzen_mm(l_g_mm, kipsteunen);
+        .kipsteunen_op_de_gedrukte_flens(|f| {
+            interpolate_my_at(&input.forces_envelope, f * l_g_mm, combo_id)
+        });
+    let grenzen = nen_en_1993_1_1_ltb::lambda_chi::kipveld_grenzen_mm(l_g_mm, &kipsteunen);
     // Zonder tussenliggende kipsteun is er één veld, en dat loopt van gaffel
     // tot gaffel: dan geldt L_kip = L_st en NIET de formule met β.
     let tussen_gaffels = grenzen.len() == 2;
@@ -637,17 +643,53 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         })
         .collect();
 
+    // β en B* hangen rechtstreeks aan de momenten op de STAAFEINDEN, en
+    // `interpolate_my_at` houdt buiten het bemonsterde bereik de laatste waarde
+    // vast. Reikt de omhullende van de maatgevende combinatie niet tot beide
+    // uiteinden, dan zijn die eindmomenten dus niet gemeten maar doorgetrokken,
+    // en de richting is onveilig: een vastgehouden veldmoment maakt van een
+    // vrij opgelegde ligger een ligger onder eindmomenten (B* → ±1, C₁ van 1,13
+    // naar 1,75) en daarmee M_cr te hoog. De invoer wordt niet gecorrigeerd —
+    // de kern weet niet wat er niet bemonsterd is — maar het rapport hoort te
+    // zeggen dat het hierop berust.
+    let mut envelop_notities: Vec<String> = Vec::new();
+    {
+        let tol_mm = (l_g_mm * 1e-6).max(1e-9);
+        let mut posities = input
+            .forces_envelope
+            .iter()
+            .filter(|p| p.combination_id == combo_id)
+            .map(|p| p.position_mm);
+        if let Some(eerste) = posities.next() {
+            let (mut min_mm, mut max_mm) = (eerste, eerste);
+            for x in posities {
+                min_mm = min_mm.min(x);
+                max_mm = max_mm.max(x);
+            }
+            if min_mm > tol_mm || max_mm < l_g_mm - tol_mm {
+                envelop_notities.push(format!(
+                    "De momentenlijn van de maatgevende combinatie is bemonsterd van \
+                     x = {min_mm:.0} tot x = {max_mm:.0} mm op een staaf van {l_g_mm:.0} mm. \
+                     Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus \
+                     de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn \
+                     doorgetrokken en niet gemeten."
+                ));
+            }
+        }
+    }
+
     let ltb_check = if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
         m_b_rd_knm = f64::NAN; // bestaat niet; elke afnemer is hieronder geweigerd
         let (titel, artikel, stab) = toetsgegevens("6.3.2_ltb");
         weigering("6.3.2_ltb", titel, artikel, stab, vec![reden_kip], bend_state)
     } else if is_channel {
-        let ltb = m_b_rd_channel(
+        let mut ltb = m_b_rd_channel(
             p, &grade, l_g_mm, &kipvelden,
             input.q_equiv_n_per_mm,
             input.z_a_mm,
             bend_state,
         );
+        ltb.notes.extend(envelop_notities.iter().cloned());
         let chi_lt = ltb.value;
         m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
         make_stability(ltb)
@@ -662,6 +704,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         // Leeg voor een catalogusprofiel; gevuld als de dubbelsymmetrie op een
         // declaratie berust in plaats van op lamellen.
         ltb.notes.extend(doorsnede.kip_notities.iter().cloned());
+        ltb.notes.extend(envelop_notities.iter().cloned());
         let chi_lt = ltb.value;
         m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
         make_stability(ltb)

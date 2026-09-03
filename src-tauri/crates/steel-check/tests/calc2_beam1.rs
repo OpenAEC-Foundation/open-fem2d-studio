@@ -120,6 +120,24 @@ fn calc2_beam1_governing_is_bending() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
+/// Sept 2026 (c) bijgewerkt na de nabeschouwing op de kipreparatie.
+/// **Geen enkele unity check en geen enkele tussenwaarde verandert**; het
+/// verschil met de vorige snapshot zit volledig in de notitieteksten:
+///  * de kipkrommenotitie is per rij van tabel 6.5 apart geformuleerd. Zij
+///    stond onvoorwaardelijk als "volgens tabel 6.5", ook voor doorsneden
+///    waarvoor die tabel geen rij heeft — precies de kloof tussen commentaar en
+///    code die de reparatie zelf moest dichten, terug op de plek waar de
+///    constructeur hem leest. De krommeletter staat nu bovendien klein, zoals de
+///    norm hem schrijft, en de getallen met een decimale komma;
+///  * er komt een notitie bij dat vgl. (6.58) — χ_LT,mod — niet is toegepast.
+///    Het artikellabel van deze toets noemt 6.3.2.3; dan hoort het rapport te
+///    zeggen welk deel daarvan is overgeslagen. Weglaten is veilig-zijdig
+///    (f ≤ 1, dus χ_LT,mod ≥ χ_LT), maar niet stilzwijgend;
+///  * er komt een notitie bij dat de omhullende van de maatgevende
+///    combinatie is bemonsterd van x = 0 tot x = 2500 mm op een staaf van
+///    5000 mm. Dat is exact de onvolledigheid die (b) hieronder al beschrijft;
+///    het rapport meldt haar nu zelf in plaats van alleen deze docstring.
+///
 /// Sept 2026 (b) bijgewerkt na de kipreparatie. Eén van de drie defecten raakt
 /// deze ligger: β kwam uit het VELDmoment (M op L_st/4 gedeeld door het
 /// grootste moment over de staaf) in plaats van uit de EINDMOMENTEN van het
@@ -147,8 +165,13 @@ fn calc2_beam1_governing_is_bending() {
 /// bemonstert de momentenlijn maar tot x = 2500 mm. Levert de frontend de
 /// volle 21 stations (met M(5000) = 0), dan zijn béíde eindmomenten nul, wordt
 /// B* = 0 in plaats van −1 en C₁ = 1,13, en gaat de UC juist omhóóg naar
-/// ≈ 1,21. De richting van deze verschuiving hangt dus aan de onvolledige
-/// envelop van de fixture, niet aan de norm.
+/// ≈ 1,21 (onafhankelijk nagemeten met 21 stations: 1,2171). De richting van
+/// deze verschuiving hangt dus aan de onvolledige envelop van de fixture, niet
+/// aan de norm; op realistische invoer werkt de reparatie hier conservatiever.
+/// De fixture is bewust niet uitgebreid: het is referentie-afgeleide invoer, en
+/// die binnen een kipreparatie herschrijven maakt de snapshot onnavolgbaar. Het
+/// staat als open punt in §B.15 van het validatiedossier, en de kern meldt de
+/// onvolledigheid sinds september 2026 zelf in het rapport.
 ///
 /// De op het referentie-rapport geijkte asserties hierboven veranderen niet.
 ///

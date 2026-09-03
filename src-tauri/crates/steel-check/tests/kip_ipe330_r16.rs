@@ -30,6 +30,44 @@
 //!  * art. 6.3.2.3 + tabel 6.5 + tabel 6.3 — gewalst I met h/b > 2 is
 //!    kipkromme c, dus α_LT = 0,49. Vóór de reparatie stond α_LT vast op
 //!    0,34 (kromme b), wat χ_LT en daarmee de capaciteit te hoog maakte.
+//!
+//! ## Wat deze casus wél en niet onderscheidt
+//!
+//! Eerlijk over de dekking, zodat niemand hier meer op leunt dan hij draagt:
+//!
+//!  * **B\* onderscheidt hij scherp.** De sprong van M_cr 125,378 naar 115,405
+//!    komt volledig uit B\* (0,500 → 0): C₁ gaat van 1,0765 naar 1,13 en C₂ van
+//!    −0,2466 naar −0,4662.
+//!  * **β onderscheidt hij rekenkundig niet.** Bij B\* = 0 is kolom 0 van beide
+//!    NB-tabellen constant over álle vijf β-rijen (1,130 respectievelijk
+//!    0,450), dus β heeft in déze casus geen invloed op C₁ en C₂. De assertie
+//!    op β = 0 bewaakt de tussenwaarde, niet de uitkomst. Wie β wil zien bijten,
+//!    moet in `nen-en-1993-1-1-ltb/tests/kipveld_en_kipkromme.rs` en in de
+//!    snapshot van portal_beam1 kijken.
+//!  * **Het L_kip-onderscheid bijt hier alleen ná de β-reparatie.** Vóór én na
+//!    is L_kip = L_st = 5700 mm — vóór omdat β = 0,75 de factor op de ondergrens
+//!    1,0 afkapte, ná omdat het gaffelgeval geldt. Zou de formule mét β = 0
+//!    onvoorwaardelijk worden toegepast, dan gaf zij 7980 mm; dát is wat de test
+//!    hierboven afdwingt. De zelfstandige bewaking van het onderscheid zit in
+//!    `kipveld_en_kipkromme.rs` en in `galerij_2867.rs`.
+//!
+//! ## Waarom 0,988 en niet 0,981 — en wat er gebeurt als B12 wordt gesloten
+//!
+//! Het restverschil van 0,007 is geen ruis maar de som van twee tegengestelde
+//! posten van elk ruim anderhalf procent, die elkaar grotendeels opheffen:
+//!
+//!  * NB.NB.13 benadert I_w met I_z·(h/2)², voor IPE 330 ruim 7 % boven de
+//!    werkelijke waarde. Dat maakt M_cr +1,76 % en de UC −0,84 %: de onveilige
+//!    richting ten opzichte van de bron. De norm laat die benadering toe ("mag
+//!    als benadering zijn aangehouden"), zij schrijft haar niet voor.
+//!  * Vgl. (6.58) — χ_LT,mod — is niet geïmplementeerd (bevinding B12). Dat
+//!    maakt de UC +1,62 %: de veilige richting.
+//!
+//! **Voor wie B12 oppakt:** met k_c = 0,94 geeft f = 0,9838 en zakt de UC van
+//! deze casus van 0,988 naar 0,972 — dan 0,9 procentpunt ONDER de referentie,
+//! dus naar de onveilige kant, terwijl de assertie hieronder (tolerantie 0,02)
+//! groen blijft en dus niets meldt. Wie vgl. (6.58) toevoegt, hoort tegelijk de
+//! I_w-post te bekijken; zie §B.2 van het validatiedossier.
 
 use approx::assert_relative_eq;
 use mechanics::{ForcePoint, InternalForces};

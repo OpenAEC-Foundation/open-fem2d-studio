@@ -124,6 +124,21 @@ fn portal_beam1_governing_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
+/// Sept 2026 (e) bijgewerkt na de nabeschouwing op de kipreparatie. **Geen
+/// enkele unity check en geen enkele bestaande tussenwaarde verandert**; wat
+/// erbij komt is uitsluitend verantwoording:
+///  * α_LT = 0,49 staat nu in de tussenwaardenlijst. Dat was de enige grootheid
+///    die het I-pad wel toonde en dit kanaalpad niet, en juist hier is het de
+///    bewuste keuze buiten tabel 6.5 om — dus de waarde die het rapport hoort te
+///    laten zien.
+///  * Twee notities zijn van het Engels naar het Nederlands gebracht, in lijn
+///    met de rest van de kipuitvoer.
+///  * Er komt één notitie bij: de omhullende van combinatie 21 is bemonsterd
+///    tot x = 3900 mm op een staaf van 5000 mm, dus het eindmoment waaruit β en
+///    B* volgen is door `interpolate_my_at` vastgehouden en niet gemeten. Dat
+///    is precies de invoer waar de β van 1,4898 → 1,3373 hieronder op rust; het
+///    rapport zegt dat nu zelf in plaats van alleen deze docstring.
+///
 /// Sept 2026 (d) bijgewerkt na de kipreparatie. Van de drie defecten raakt er
 /// één dit kanaalpad: β kwam uit het VELDmoment (M op L_st/4 gedeeld door het
 /// grootste moment over de staaf) in plaats van uit de EINDMOMENTEN van het
@@ -135,9 +150,21 @@ fn portal_beam1_governing_ok() {
 /// M(3900) = −194,796 kNm. De momentenlijn wisselt dus van teken: dubbele
 /// kromming, het gunstigste geval van tabel NB.NB.1. β wordt daarmee
 /// −194,796 in de noemer en +66,036 in de teller, dus β = −0,339 in plaats van
-/// de +0,090 die de kwartpuntbenadering gaf. C₁ gaat mee van 1,669 naar 2,123
-/// — en 2,12 is precies wat de formule van geval 1 uit tabel NB.NB.1 voor
-/// β = −0,339 geeft: 1,75 + 1,05·0,339 + 0,3·0,339² = 2,14.
+/// de +0,090 die de kwartpuntbenadering gaf. C₁ gaat mee van 1,669 naar 2,123.
+///
+/// Waar die 2,123 precies vandaan komt — de eerdere formulering "dat is precies
+/// wat de formule van geval 1 geeft" was op twee punten mis en is hierbij
+/// rechtgezet. `nb_annex::c1_c2_factors` gebruikt die formule niet; hij
+/// interpoleert bilineair in de gedigitaliseerde figuur NB.NB.5, op een β-raster
+/// van vijf punten. Hier is B* = −1 (q_equiv = 0, dus uitsluitend
+/// eindmomenten), dus de laatste kolom telt, en daarin staat de rij β = −0,5 op
+/// 2,300 en de rij β = 0 op 1,750. Lineair op β = −0,339:
+/// 1,750 + (0,339/0,5)·(2,300 − 1,750) = 2,1229 — de snapshotwaarde. De formule
+/// van geval 1 uit tabel NB.NB.1 zelf geeft 1,75 + 1,05·0,339 + 0,3·0,339² =
+/// 2,140, oftewel 0,8 % hóger; zij is kwadratisch waar de interpolatie tussen
+/// twee rijen lineair is, en de rij β = −0,5 staat bovendien al op de
+/// afkapwaarde 2,30. De formule is hier dus een plausibiliteitscontrole die op
+/// 0,8 % uitkomt, niet het mechanisme waarlangs de waarde ontstaat.
 ///
 /// Gevolg: M_cr 199,86 → 254,24 kNm, λ_LT 1,0228 → 0,9069, χ_LT 0,6253 →
 /// 0,6966, M_b,Rd 130,75 → 145,66 kNm, UC kip 1,4898 → 1,3373, uc_max

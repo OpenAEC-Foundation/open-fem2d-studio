@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam3.rs
-assertion_line: 152
+assertion_line: 185
 expression: run()
 ---
 {
@@ -633,7 +633,9 @@ expression: run()
           },
           "status": "NotOk",
           "notes": [
-            "Kipkromme D volgens tabel 6.5 (h/b = 1.000), α_LT = 0.76 volgens tabel 6.3."
+            "Tabel 6.5 kent voor deze doorsnede geen rij — zij noemt alleen gewalste en gelaste I-profielen. Aangehouden is kipkromme d met α_LT = 0,76 (tabel 6.3), de ongunstigste rij van de tabel. Dat is een expliciete veilig-zijdige keuze buiten de tabel om, geen normwaarde.",
+            "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig.",
+            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 2402 tot x = 5000 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
           ]
         }
       }

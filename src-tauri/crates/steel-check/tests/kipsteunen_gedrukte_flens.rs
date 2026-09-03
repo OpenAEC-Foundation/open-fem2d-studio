@@ -171,3 +171,137 @@ fn een_gesteunde_ligger_krijgt_de_l_kip_formule_en_niet_l_st() {
     assert_relative_eq!(tussenwaarde(&ongesteund, "L_{kip}"), 10_000.0, max_relative = 1e-9);
     assert_relative_eq!(tussenwaarde(&ongesteund, "L_{st}"), 10_000.0, max_relative = 1e-9);
 }
+
+// ── De doorgaande ligger: hogging én sagging op één staaf ──────────────────
+
+/// IPE 330 van 9 m onder q = 16 N/mm met twee gelijke eindmomenten `m_eind`
+/// (negatief = hogging boven de steunpunten), en bovenflenssteunen op de
+/// kwartpunten. M(x) = m_eind + q·x·(L − x)/2, bemonsterd op 21 stations —
+/// die vallen op veelvouden van 450 mm, dus precies op 2250, 4500 en 6750.
+fn doorgaande_ligger(m_eind_knm: f64) -> BeamCheckResult {
+    doorgaande_ligger_met(m_eind_knm, vec![0.25, 0.5, 0.75], vec![])
+}
+
+fn doorgaande_ligger_met(m_eind_knm: f64, top: Vec<f64>, bot: Vec<f64>) -> BeamCheckResult {
+    const L: f64 = 9000.0;
+    const Q: f64 = 16.0; // N/mm ≡ kN/m; q·L²/8 = 162 kNm
+    let envelop: Vec<ForcePoint> = (0..21)
+        .map(|i| {
+            let x = L * i as f64 / 20.0;
+            let my = m_eind_knm + Q * (x / 1000.0) * ((L - x) / 1000.0) / 2.0;
+            ForcePoint {
+                combination_id: 1,
+                position_mm: x,
+                forces: InternalForces { my_ed: my, ..Default::default() },
+            }
+        })
+        .collect();
+
+    check_beam(BeamCheckInput {
+        beam_id: 1,
+        profile_name: "IPE 330".to_string(),
+        steel_grade: "S235".to_string(),
+        length_m: L / 1000.0,
+        forces_envelope: envelop,
+        lateral_bracing: LateralBracing {
+            top_flange_positions: top,
+            bottom_flange_positions: bot,
+        },
+        buckling_length_y_m: L / 1000.0,
+        buckling_length_z_m: L / 1000.0,
+        deflection_limit_class: DeflectionClass::Floor,
+        deflection_limit_numerator: 333,
+        deflection_actual_max_mm: 0.0,
+        is_cantilever: false,
+        consequence_class: ConsequenceClass::CC1,
+        pre_camber_mm: 0.0,
+        deflection_permanent_mm: 0.0,
+        q_equiv_n_per_mm: Q,
+        z_a_mm: 165.0,
+        custom_section: None,
+    })
+}
+
+#[test]
+fn de_gedrukte_flens_wordt_per_steun_gekozen_en_niet_voor_de_hele_staaf() {
+    // De reparatie van B4 koos de kipsteunvector één keer voor de hele staaf,
+    // op het teken van het MAATGEVENDE moment. Bij een doorgaande ligger met
+    // hogging boven de steunpunten en sagging in het veld springt die keuze
+    // zodra |M_hogging| het |M_sagging| passeert — een lastverandering van
+    // ruim één procent gooit dan in één klap álle bovenflenssteunen weg.
+    //
+    // Twee liggers, uitsluitend verschillend in het eindmoment, met de
+    // omslag ertussen:
+    //   m_eind = −75 → veld +87, sagging maatgevend (87 > 75);
+    //   m_eind = −85 → veld +77, hogging maatgevend (85 > 77).
+    // In BEIDE gevallen liggen de drie steunen op de kwartpunten in de
+    // saggingzone — M(2250) = m_eind + 121,5 is +46,5 respectievelijk +36,5 —
+    // dus in beide gevallen steunen zij de gedrukte flens en gelden zij.
+    let sagging_maatgevend = doorgaande_ligger(-75.0);
+    let hogging_maatgevend = doorgaande_ligger(-85.0);
+
+    for r in [&sagging_maatgevend, &hogging_maatgevend] {
+        assert_relative_eq!(tussenwaarde(r, "L_{st}"), 2250.0, max_relative = 1e-9);
+    }
+
+    // En de uitkomst mag over die omslag heen niet springen. Met de oude
+    // globale schakelaar ging L_st van 2250 naar 9000 mm en sprong M_b,Rd van
+    // 172,97 naar 65,40 kNm — een factor 2,6 op een lastverschil van 13 %.
+    let uc_a = kip_uc(&sagging_maatgevend);
+    let uc_b = kip_uc(&hogging_maatgevend);
+    assert!(
+        (uc_a - uc_b).abs() / uc_a.max(uc_b) < 0.2,
+        "de kip-UC hoort continu te zijn over de omslag van sagging- naar \
+         hogging-maatgevend: {uc_a} tegen {uc_b}"
+    );
+}
+
+#[test]
+fn in_de_hoggingzone_telt_de_onderflenssteun_en_niet_de_bovenflenssteun() {
+    // Zelfde ligger met m_eind = −85 kNm. Op x = 0,1·L is het moment
+    // M = −85 + 16·0,9·8,1/2 = −26,68 kNm: hogging, dus de ONDERflens is daar
+    // gedrukt. Een bovenflenssteun op die plek steunt de getrokken flens en
+    // mag geen veldgrens maken; een onderflenssteun op diezelfde plek wel.
+    //
+    // Dit is de proef op de som van "per steun beslissen": één en dezelfde
+    // positie telt wél of niet, afhankelijk van de flens waaraan hij zit én
+    // van het moment ter plaatse.
+    let alleen_boven = doorgaande_ligger_met(-85.0, vec![0.1], vec![]);
+    let alleen_onder = doorgaande_ligger_met(-85.0, vec![], vec![0.1]);
+
+    // Bovenflens in de hoggingzone: geen veldgrens, dus één veld van 9000 mm
+    // tussen twee gaffels.
+    assert_relative_eq!(tussenwaarde(&alleen_boven, "L_{st}"), 9000.0, max_relative = 1e-9);
+    assert_relative_eq!(tussenwaarde(&alleen_boven, "L_{kip}"), 9000.0, max_relative = 1e-9);
+
+    // Onderflens in de hoggingzone: wél een veldgrens op 900 mm. Het
+    // maatgevende (laagste M_cr) veld is dan het lange restveld van 8100 mm,
+    // en dat ligt tussen een kipsteun en een gaffel, dus geldt de formule met
+    // β en NIET meer L_kip = L_st.
+    assert_relative_eq!(tussenwaarde(&alleen_onder, "L_{st}"), 8100.0, max_relative = 1e-9);
+    let beta = tussenwaarde(&alleen_onder, r"\beta");
+    let verwacht_l_kip = (1.4 - 0.8 * beta).clamp(1.0, 1.4) * 8100.0;
+    assert_relative_eq!(
+        tussenwaarde(&alleen_onder, "L_{kip}"),
+        verwacht_l_kip,
+        max_relative = 1e-9
+    );
+}
+
+#[test]
+fn een_kipsteun_vlak_naast_een_gaffel_wordt_gemeld_en_niet_stilzwijgend_verwerkt() {
+    // NB.NB.4.3 begrenst L_kip/L_st op 1,4 maar niet L_kip tegen L_g. Een
+    // steun op 0,1·L laat het restveld van 8100 mm op maximaal 1,4·8100 =
+    // 11 340 mm uitkomen — lánger dan de ligger zelf (9000 mm), zodat de
+    // steun de berekende weerstand VERLAAGT. Dat is een getrouwe lezing van de
+    // norm, dus er wordt niets afgekapt; het rapport hoort het wel te melden.
+    let r = doorgaande_ligger_met(-85.0, vec![], vec![0.1]);
+    assert!(tussenwaarde(&r, "L_{kip}") > 9000.0);
+    let kip = r.checks.iter().find(|c| c.id == "6.3.2_ltb").expect("kiptoets");
+    let CheckKind::Stability(s) = &kip.kind else { unreachable!() };
+    assert!(
+        s.notes.iter().any(|n| n.contains("groter dan de afstand tussen de gaffels")),
+        "verwachtte een melding dat L_kip > L_g; genoteerd: {:?}",
+        s.notes
+    );
+}

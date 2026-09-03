@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam4.rs
-assertion_line: 136
+assertion_line: 181
 expression: run()
 ---
 {
@@ -633,7 +633,9 @@ expression: run()
           },
           "status": "Ok",
           "notes": [
-            "Kipkromme B volgens tabel 6.5 (h/b = 1.000), α_LT = 0.34 volgens tabel 6.3."
+            "Gewalst I-profiel met h/b = 1,000 → kipkromme b volgens tabel 6.5; α_LT = 0,34 volgens tabel 6.3.",
+            "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig.",
+            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 2491 tot x = 5000 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
           ]
         }
       }

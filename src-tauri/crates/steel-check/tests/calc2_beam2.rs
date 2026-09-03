@@ -122,18 +122,53 @@ fn calc2_beam2_governing_not_ok() {
 
 /// Regressiesnapshot van het volledige resultaat.
 ///
+/// Sept 2026 (b) bijgewerkt na de nabeschouwing op de kipreparatie.
+/// **Geen enkele unity check en geen enkele tussenwaarde verandert**; het
+/// verschil met de vorige snapshot zit volledig in de notitieteksten:
+///  * de kipkrommenotitie is per rij van tabel 6.5 apart geformuleerd. Zij
+///    stond onvoorwaardelijk als "volgens tabel 6.5", ook voor doorsneden
+///    waarvoor die tabel geen rij heeft — precies de kloof tussen commentaar en
+///    code die de reparatie zelf moest dichten, terug op de plek waar de
+///    constructeur hem leest. De krommeletter staat nu bovendien klein, zoals de
+///    norm hem schrijft, en de getallen met een decimale komma;
+///  * er komt een notitie bij dat vgl. (6.58) — χ_LT,mod — niet is toegepast.
+///    Het artikellabel van deze toets noemt 6.3.2.3; dan hoort het rapport te
+///    zeggen welk deel daarvan is overgeslagen. Weglaten is veilig-zijdig
+///    (f ≤ 1, dus χ_LT,mod ≥ χ_LT), maar niet stilzwijgend;
+///  * er komt een notitie bij dat de omhullende van de maatgevende
+///    combinatie is bemonsterd van x = 0 tot x = 2500 mm op een staaf van
+///    5000 mm, zodat het eindmoment waaruit β en B* volgen is vastgehouden en
+///    niet gemeten. Zie de waarschuwing daarover hieronder.
+///
 /// Sept 2026 bijgewerkt na de kipreparatie, om exact dezelfde reden als bij
 /// calc2_beam1 — zelfde profiel (HEB 160), zelfde lengte, zelfde ongesteunde
 /// kipveld, alleen hogere krachten. Zie de uitgebreide verantwoording in de
 /// docstring bij `calc2_beam1_snapshot`.
 ///
-/// β komt nu uit de eindmomenten van het kipveld (M(0) = 0 en M(5000) =
-/// +126,672 kNm, dus β = 0) in plaats van uit M(1250)/M_max = 0,50.
+/// β komt nu uit de eindmomenten van het kipveld in plaats van uit
+/// M(1250)/M_max = 0,50. Let op waar die eindmomenten vandaan komen: de fixture
+/// bemonstert de momentenlijn alleen op x = 0 en x = 2500 mm, terwijl de staaf
+/// 5000 mm lang is. De M(5000) = +126,672 kNm waarmee gerekend wordt is dus
+/// niet gemeten maar door `interpolate_my_at` vastgehouden — het is de waarde
+/// van x = 2500. De kern gelooft daardoor dat dit een ligger onder
+/// eindmomenten is (B* = −1), terwijl de testkop "check at x=2500" beschrijft.
+///
 /// Gevolg: C₁ 1,300 → 1,750, M_cr 193,04 → 259,86 kNm, λ_LT 0,6565 → 0,5658,
 /// χ_LT 0,8909 → 0,9323, UC kip 1,7092 → 1,6333, 6.3.3 vgl. 6.61 1,4389 →
 /// 1,3865 en vgl. 6.62 1,2036 → 1,1721. uc_max 1,7092 → 1,6333; de ligger
 /// blijft ruim NotOk. De op het referentie-rapport geijkte asserties hierboven
 /// veranderen niet.
+///
+/// **Dezelfde waarschuwing als bij calc2_beam1, en zij geldt hier even hard.**
+/// De UC daalt, maar die richting hangt aan de onvolledige envelop van de
+/// fixture, niet aan de norm. Levert de frontend de volle overspanning (met
+/// M(5000) = 0), dan zijn béíde eindmomenten nul, wordt B* = 0 in plaats van
+/// −1 en C₁ = 1,13, en gaat de UC juist omhóóg. Op realistische invoer werkt
+/// deze reparatie hier dus conservatiever, niet gunstiger. De fixture is bewust
+/// niet uitgebreid: het is referentie-afgeleide invoer, en die binnen een
+/// kipreparatie herschrijven maakt de snapshot onnavolgbaar. Het staat als open
+/// punt in §B.15 van het validatiedossier, en de kern meldt de onvolledigheid
+/// sinds september 2026 zelf in het rapport.
 #[test]
 fn calc2_beam2_snapshot() {
     insta::assert_json_snapshot!("calc2_beam2", run());

@@ -32,7 +32,29 @@ in hoofdstuk B komt er maar **één** (B2, de kiptoets) uitsluitend uit zo'n gev
 twaalf zijn aan het licht gekomen in gevallen die keurig "komt overeen" scoren, of gewoon
 tijdens het nabouwen. R11, R17, R20, R23 en R26 leverden alle vijf een bevinding op die náást
 de vergelijking staat. **Het aantal gevonden problemen in de app is dus 13, niet 2 — waarvan
-~~drie~~ twee onveilig aan de verkeerde kant** (B2 kip staal en B4 kipsteunen onderflens).
+~~drie~~ ~~twee~~ nul nog onveilig aan de verkeerde kant staan**: B2 (kip staal) en B4
+(kipsteunen onderflens) zijn beide gerepareerd.
+
+> **Stand van de balans na 3 september 2026: er staat geen onveilige bevinding meer open.**
+>
+> | Bevinding | Was | Nu |
+> |---|---|---|
+> | B2 — kip staal: beta/B\* uit het veldmoment, alpha_LT vast op 0,34 | ONVEILIG | **GEREPAREERD** — R16 UC kip 0,850 → **0,988** (bron 0,981) |
+> | B3 — k_cr hout | ONVEILIG | **INGETROKKEN** — 1,0 is de NL-normwaarde, zie hieronder |
+> | B4 — kipsteunen onderflens genegeerd | ONVEILIG | **GEREPAREERD** — R17 comb. 2 L_st 2500 → **5000 mm**, UC kip 0,199 → 0,311 |
+>
+> B2 en B4 zijn in één samenhangende wijziging doorgevoerd, omdat de campagne had gemeten
+> dat één van de drie deeldefecten van B2 losstaand corrigeren de uitkomst 31 % de andere
+> kant op laat schieten. Verificatie: `cargo test --workspace` **377 geslaagd, 0 gefaald,
+> 2 genegeerd** (twee bestaande convergentiestudies), R16 **12 van 12** binnen tolerantie
+> (grootste afwijking 1,32 %), R17 **14 van 14** (grootste afwijking 0,41 %).
+>
+> Wat er bij de nabeschouwing op die reparatie is bijgekomen, zijn drie **kleinere** punten
+> die alle drie naar de veilige kant wijzen: B15 (twee testfixtures bemonsteren de
+> momentenlijn niet tot de staafeinden), B16 (L_kip kan L_g overschrijden zodra er een
+> kipsteun vlak naast een gaffel staat) en B17 (het aangrijpingspunt z_a is geen
+> invoerveld). Zij staan hieronder beschreven. Het totaal komt daarmee op 16 bevindingen,
+> waarvan er drie zijn afgehandeld (B2, B4) of ingetrokken (B3).
 
 > **Correctie van 3 september 2026: B3 (k_cr hout) is ingetrokken.** De Nederlandse nationale
 > bijlage schrijft voor prismatische liggers k_cr = 1,0 voor; de gemelde 0,67 is de
@@ -65,7 +87,7 @@ grotendeels de solver-API, niet de volledige keten bestand → app → solver �
 
 | Code | Betekenis | Waar aangetroffen |
 |---|---|---|
-| `ONS` | Fout in solver, adapter, toetsmodule of eenhedenconversie | R16 (kip staal), R19 + R20 (k_cr hout), R17 (kipsteunen onderflens). Zie hoofdstuk B |
+| `ONS` | Fout in solver, adapter, toetsmodule of eenhedenconversie | R16 (kip staal — **gerepareerd**), R19 + R20 (k_cr hout — bevinding **ingetrokken**), R17 (kipsteunen onderflens — **gerepareerd**). Zie hoofdstuk B |
 | `BRON` | Fout of interne inconsistentie in de referentie | R06 (M4/M5 verwisseld, was al voorzien), R09 (kniklengte van een nomogram), R14 (tekenfout in één dwarskracht), R21 (etiketfout dwarskracht), R26 (8-staafskolom hoort bij een ander net; verschoven regel; laatste-cijferfout) |
 | `NB` | Andere nationale bijlage of andere aanbevolen waarde | R16 (NL NB-kip tegen aanbevolen EN: +1,32 % op Mcr), R17 (§6.3.2.4 tegen onze Mcr-route), R20 (gamma_M 1,25 tegen 1,30, (6.32) tegen (6.31)+1,4) |
 | `AANNAME` | Verschil in modelaanname | R12 + R24 (geen dwarskrachtvervorming), R15 (voute), R18 (eigen gewicht 124 vs 90,7 kN), R23 (alpha_T niet vrij instelbaar), en in vrijwel elk A-geval de eindige EA waar de bron oneindige EA aanneemt |
@@ -81,10 +103,19 @@ grotendeels de solver-API, niet de volledige keten bestand → app → solver �
 - Voor de zwaarste bevinding (B2, kip staal) zijn vier ijkpunten gemeten die als
   regressietest vastgelegd kunnen worden: Mcr = 113,90 (bron, algemene EN) / 115,40 (NB met
   juiste invoer) / 125,38 (NB met de huidige invoer) / 78,91 kN·m (beta = 0 zonder het
-  l_kip-onderscheid).
+  l_kip-onderscheid). **Alle vier zijn inmiddels vastgelegd** in
+  `src-tauri/crates/steel-check/tests/kip_ipe330_r16.rs`.
 
 **Er is in deze campagne geen enkele regel productiecode gewijzigd, geen bestaande test
 aangepast en geen referentiewaarde bijgesteld.**
+
+> **Wat er ná de campagne wél is gewijzigd (3 september 2026).** B2 en B4 zijn gerepareerd;
+> zie de statusblokken bij die twee bevindingen. Daarbij zijn zeven regressiesnapshots
+> bijgewerkt en twee bestaande tests omgeslagen — elk met een gedateerde verantwoording in
+> de docstring, volgens het patroon van `portal_beam1_snapshot`. Er is geen enkele
+> verwachtingswaarde bijgesteld om een test groen te krijgen; waar een waarde omsloeg, is
+> de oude, de nieuwe en het oordeel over welke beter is opgeschreven. De op het
+> referentie-rapport geijkte asserties zijn overal ongewijzigd gebleven.
 
 ---
 
@@ -123,18 +154,143 @@ noch corrigeerbaar voor de gebruiker.
 
 ### B.2 — ONVEILIG · kiptoets staal: beta en B* uit het veldmoment, en alpha_LT vast op 0,34
 
-> **GEREPAREERD op 3 september 2026**, alle drie de defecten plus B4 in één
-> samenhangende wijziging. Gemeten resultaat op R16 (IPE 330, 5,70 m):
-> UC kip **0,850 → 0,988** tegen de 0,981 van de bron (verschil 0,007, binnen
-> de UC-tolerantie van 0,02); M_cr 125,38 → 115,41 kNm (bron 113,90),
-> lambda_LT 1,228 → 1,280 (bron 1,288), chi_LT 0,564 → 0,485 (bron 0,480).
-> Alle 12 vergeleken grootheden van R16 vallen nu binnen tolerantie; grootste
+> ## STATUS: GEREPAREERD (3 september 2026)
+>
+> De drie defecten plus B4 in één samenhangende wijziging, gevolgd door een
+> nabeschouwing die nog vier kleinere punten in dezelfde code heeft gesloten.
+>
+> **Gemeten op R16** (IPE 330, 5,70 m, last op de bovenflens):
+>
+> | Grootheid | Vóór | Ná | Bron |
+> |---|---|---|---|
+> | Mcr | 125,378 kN·m | **115,405** | 113,90 |
+> | lambda_LT | 1,2276 | **1,2795** | 1,288 |
+> | chi_LT | 0,5635 | **0,4845** | 0,480 |
+> | Mb,Rd | 106,459 kN·m | **91,543** | 92,24 |
+> | **UC kip** | **0,850** | **0,988** | **0,981** |
+>
+> Alle 12 vergeleken grootheden van R16 vallen binnen tolerantie; grootste
 > afwijking 1,32 % (het methodeverschil NB-Mcr tegen de algemene EN-formule).
-> Regressietests: `src-tauri/crates/steel-check/tests/kip_ipe330_r16.rs`,
-> `.../tests/kipsteunen_gedrukte_flens.rs` en
-> `src-tauri/crates/nen-en-1993-1-1-ltb/tests/kipveld_en_kipkromme.rs`.
-> De beschrijving hieronder is de oorspronkelijke bevinding en blijft staan
-> als verantwoording van wat er is gewijzigd.
+> `cargo test --workspace`: 377 geslaagd, 0 gefaald, 2 genegeerd.
+>
+> **Wat er precies is gewijzigd**, per deeldefect:
+>
+> 1. *beta uit de eindmomenten.* `Kipveld::beta_en_grootste_eindmoment()` in
+>    `nen-en-1993-1-1-ltb/src/lib.rs`; de orchestrator leest de eindmomenten op de
+>    werkelijke veldgrenzen met `interpolate_my_at` in plaats van op L_st/4. Let op
+>    de index-volgorde: de norm koppelt index 1 aan het *kleinste* eindmoment,
+>    omgekeerd aan de formulering verderop in deze bevinding. De breuk is dezelfde;
+>    de code volgt de norm.
+> 2. *L_kip voorwaardelijk.* `Kipveld::l_kip_mm()` kiest tussen L_kip = L_st (tussen
+>    twee gaffels) en de formule met beta. De orchestrator zet `tussen_gaffels`
+>    zodra er geen tussenliggende kipsteun overleeft.
+> 3. *Kipkromme uit tabel 6.5.* `kipkromme_tabel_6_5()` met `Kipprofiel` (gewalste I
+>    / gelaste I / overig). Catalogus-`ISection` naar gewalst, inline-doorsnede naar
+>    gelast, koker en buis naar overig.
+>
+> **Welk veld maatgevend is** — afwijking van de oorspronkelijke diagnose, die "het
+> veld met de grootste L_kip" voorschreef. De kern rekent Mcr voor élk veld door en
+> neemt de laagste (`maatgevend_kipveld`). Bij portal_beam4 wijst dat het kórtste
+> van drie velden aan (C = 30,70 tegen 30,76 voor het langste-L_kip-veld); "het
+> langste veld" zou daar het verkeerde antwoord geven.
+>
+> **Wat R16 wél en niet onderscheidt**, zodat niemand er meer op leunt dan hij
+> draagt. Bij B* = 0 is kolom 0 van beide NB-tabellen constant over alle vijf
+> beta-rijen (1,130 respectievelijk 0,450), dus **beta heeft in deze casus geen
+> invloed op C1 en C2**. Wat Mcr van 125,378 naar 115,405 brengt is uitsluitend B*
+> (0,500 naar 0). En het L_kip-onderscheid verandert voor R16 niets: vóór én ná is
+> L_kip = L_st = 5700 mm — vóór omdat beta = 0,75 de factor op de ondergrens 1,0
+> afkapte, ná omdat het gaffelgeval geldt. De zelfstandige bewaking van die twee
+> zit in `nen-en-1993-1-1-ltb/tests/kipveld_en_kipkromme.rs`, in `galerij_2867.rs`
+> (het 1,4-geval: L_kip = 3733 mm, exact de referentiewaarde) en in de snapshot van
+> portal_beam1 (beta = −0,339 bij dubbele kromming).
+>
+> **Waarom 0,988 en niet 0,981.** De nabijheid tot de bron is voor een groot deel
+> opheffing van twee tegengestelde posten van elk ruim anderhalf procent, geen
+> convergentie:
+>
+> | Post | Effect op Mcr | Effect op de UC | Richting t.o.v. de bron |
+> |---|---|---|---|
+> | NB.NB.13 benadert I_w met I_z·(h/2)²; voor IPE 330 +7,75 % op I_w | +1,76 % | −0,84 % | onveilig |
+> | Vgl. (6.58), chi_LT,mod, niet geïmplementeerd (zie B12) | — | +1,62 % | veilig |
+>
+> Dat de twee samen op 1,32 % restverschil uitkomen is nagerekend: de algemene
+> EN-formule met dezelfde C1 = 1,13, C2 = −0,466248 en z_g = 165 geeft met de
+> werkelijke I_w een Mcr van 113,41 kN·m en met de door de NB geïmpliceerde I_w
+> exact 115,405 kN·m. Dat is tegelijk een onafhankelijke controle dat NB.NB.11 +
+> NB.NB.13 + NB.NB.2 algebraïsch samenvallen met de algemene formule bij
+> I_w = I_z·(h/2)².
+>
+> **Waarschuwing voor wie B12 oppakt:** wordt vgl. (6.58) alsnog geïmplementeerd,
+> dan zakt de R16-UC van 0,988 naar **0,972** — 0,9 procentpunt ONDER de
+> referentie, dus naar de onveilige kant, terwijl de regressietest (tolerantie 0,02
+> op een UC) groen blijft en dus niets meldt. De I_w-post hoort dan tegelijk
+> bekeken te worden. De NB laat die benadering toe ("mag als benadering zijn
+> aangehouden"), zij schrijft haar niet voor, en `profiles.json` draagt per
+> ISection al een `iw_mm6` mee — al is die voor IPE 330 zelf 1,52 % te laag, wat
+> eerst opgelost moet zijn (zie B13). Dezelfde waarschuwing staat in de docstring
+> van `kip_ipe330_r16.rs`, zodat wie de test aanraakt hem tegenkomt.
+>
+> **Nabeschouwing: vier punten die daarna in dezelfde code zijn gesloten.**
+>
+> - *De gedrukte flens wordt per steun gekozen, niet per staaf.* De eerste
+>   reparatie koos de kipsteunvector één keer voor de hele staaf, op het teken van
+>   het maatgevende moment. Bij een doorgaande ligger met hogging boven de
+>   steunpunten en sagging in het veld sprong die keuze zodra |M_hogging| het
+>   |M_sagging| passeerde: gemeten op een IPE 330 van 9 m met bovenflenssteunen op
+>   de kwartpunten ging L_st van 2250 naar 9000 mm, Mb,Rd van 172,97 naar 65,40
+>   kN·m en de UC van 0,474 naar 1,239 — op een lastverschil van ruim één procent.
+>   `LateralBracing::kipsteunen_op_de_gedrukte_flens` beoordeelt nu elke steun op
+>   het moment ter plaatse van díé steun; daarmee is de sprong weg. De richting was
+>   conservatief (loos alarm), maar een correct geschoorde doorgaande ligger werd
+>   wel als bezwijkend gerapporteerd. Regressietest: `kipsteunen_gedrukte_flens.rs`.
+> - *C2 wordt niet meer onbegrensd naar beneden geëxtrapoleerd.* NB.NB.4.3(1) staat
+>   extrapolatie alleen naar boven toe, tot ten hoogste 0,1·h boven het zwaartepunt
+>   van de bovenflens. Onder het zwaartepunt van de ONDERflens doorschalen
+>   crediteerde een stabiliserend effect dat de bijlage niet toekent: voor een
+>   IPE 330 met z_a = −165 mm gaf dat C2 = +0,4662 in plaats van de tabelwaarde
+>   +0,450, en daarmee een 0,96 % te hoge Mcr — onveilig. Nu nog onbereikbaar omdat
+>   z_a vaststaat op +h/2 (zie B17), maar bereikbaar zodra dat invoerveld er komt.
+> - *Een kipsteun die met een staafeind samenvalt maakt geen kipveld meer.* Zonder
+>   drempel overleefde een steun op f = 1e−9 het filter, maakte een kipveld van een
+>   paar nanometer en nam daarmee het gaffelgeval weg: L_kip 6000 naar 8400 mm en de
+>   UC 1,0232 naar 1,3349, op invoer die numeriek niet van "geen kipsteun" te
+>   onderscheiden is. De drempel is één promille van de staaflengte en is als
+>   numerieke keuze gemerkt, niet als normwaarde.
+> - *De rapporttekst haalt geen tabelrij meer aan die niet bestaat.* De notitie
+>   stond onvoorwaardelijk als "Kipkromme … volgens tabel 6.5", ook voor een koker,
+>   terwijl tabel 6.5 alleen gewalste en gelaste I-profielen noemt (de rij "andere
+>   doorsneden" staat in tabel 6.4, bij de andere methode). Dat is dezelfde klasse
+>   defect als de drie hierboven — commentaar en code die elkaar tegenspreken —
+>   terug op de plek waar de constructeur hem leest. De notitie is nu per rij
+>   geformuleerd en benoemt voor "overig" de keuze als keuze. Regressietest:
+>   `kip_holle_doorsnede.rs`, dat tevens de tot dan ongemeten overgang van kromme b
+>   naar kromme d voor holle doorsneden dekt.
+>
+> Verder is B* begrensd op [−1; +1] en ongevoelig gemaakt voor een negatieve
+> q_equiv (het veld is publiek en `#[serde(default)]`, dus die waarde kan van elke
+> aanroeper komen), staat alpha_LT nu ook in de tussenwaarden van het U-profielpad,
+> en meldt het rapport voortaan dat vgl. (6.58) niet is toegepast.
+>
+> **Wat NIET is geïmplementeerd en waarom.** De negatieve tak van figuur NB.NB.5 en
+> NB.NB.6 is nog steeds niet gedigitaliseerd; bij B* < 0 wordt de waarde bij |B*|
+> gebruikt, wat onder de werkelijke piekwaarden ligt en dus veilig-zijdig is. Voor
+> het meest voorkomende geval op die tak — de volledig buigvast ingeklemde ligger
+> onder gelijkmatig verdeelde belasting, die exact beta = +1 en B* = −0,4 geeft —
+> is nagegaan wat de norm daar voorschrijft: **tabel NB.NB.3 geeft C1 = 2,30 en
+> C2 = 1,55**, waar de code 1,082 afleest, ruim een factor 2 te laag. Die tabel
+> is bewust niet als losse uitzondering ingebouwd: één punt patchen in een
+> continuüm dat verder niet is uitgelezen maakt een sprong in de uitkomst. De
+> waarden staan hier vast zodat wie de figuren alsnog digitaliseert een ankerpunt
+> heeft, en de kern noemt tabel NB.NB.3 nu in de notitie bij B* < 0.
+>
+> **Regressietests:** `src-tauri/crates/steel-check/tests/kip_ipe330_r16.rs` (7),
+> `.../kipsteunen_gedrukte_flens.rs` (8), `.../kip_holle_doorsnede.rs` (4),
+> `src-tauri/crates/nen-en-1993-1-1-ltb/tests/kipveld_en_kipkromme.rs` (10), plus
+> unittests in `lambda_chi.rs` en `nb_annex.rs`.
+>
+> De beschrijving hieronder is de oorspronkelijke bevinding en blijft staan als
+> verantwoording van wat er is gewijzigd.
 
 **Wat.** Drie samenhangende defecten in de EN 1993-1-1-kiptoets:
 
@@ -253,24 +409,52 @@ belaste overspanningen en bij inkepingen.
 
 ### B.4 — ONVEILIG · kipsteunen van de onderflens worden genegeerd
 
-> **GEREPAREERD op 3 september 2026**, samen met B.2. De kern kiest de
-> kipsteunvector nu op het teken van het maatgevende moment
-> (`LateralBracing::gedrukte_flens_posities`): sagging → bovenflens, hogging →
-> onderflens; de twee vectoren worden nooit samengevoegd. En
-> `equivalentUdlFromMoments` geeft de absolute waarde van de pijl door in
-> plaats van hem op ≥ 0 te klemmen.
-> Gemeten op R17: comb. 2 L_st **2500 → 5000 mm**, q_equiv **0,000 → 2,049
-> N/mm**, UC kip comb. 2 **0,199 → 0,311**. De envelop-UC van de staaf gaat
-> van 0,851 naar 0,893 en kip wordt daarmee de maatgevende toets (was
-> doorbuiging). Alle 14 vergeleken grootheden van R17 blijven binnen
-> tolerantie (grootste afwijking 0,41 %).
-> Regressietest: `src-tauri/crates/steel-check/tests/kipsteunen_gedrukte_flens.rs`.
+> ## STATUS: GEREPAREERD (3 september 2026), samen met B2
 >
-> **Nog open, apart gemeld:** `steelCheckBuilder.ts` zet `z_a_mm` nog
-> onvoorwaardelijk op +h/2 ("last op de bovenflens"). Dat blijft veilig-zijdig
-> (C₂ wordt negatief en verlaagt M_cr), maar bij hogging grijpt een
-> neerwaartse last op de GETROKKEN flens aan en werkt hij in werkelijkheid
-> stabiliserend. Het echte aangrijpingspunt hoort een invoerveld te worden.
+> De kern leest `bottom_flange_positions` nu wél, en kiest de flens **per
+> kipsteun** in plaats van één keer voor de hele staaf
+> (`LateralBracing::kipsteunen_op_de_gedrukte_flens`): een steun telt mee wanneer
+> het moment ter plaatse van díé steun zijn flens op druk zet — sagging voor de
+> bovenflens, hogging voor de onderflens. De twee vectoren worden niet
+> samengevoegd zonder die toets, en het teken van het maatgevende moment elders op
+> de staaf doet er niet meer toe. En `equivalentUdlFromMoments` geeft de absolute
+> waarde van de pijl door in plaats van hem op ≥ 0 te klemmen.
+>
+> **Gemeten op R17** (IPE 400, 15,00 m, windzuiging):
+>
+> | Grootheid | Vóór | Ná | Bron |
+> |---|---|---|---|
+> | comb. 2 L_st | 2500 mm | **5000 mm** | Lc = 5,00 m |
+> | comb. 2 q_equiv | 0,000 N/mm | **2,049 N/mm** | — |
+> | comb. 2 UC kip | 0,199 | **0,311** | — |
+> | envelop uc_max | 0,869 (doorbuiging) | **0,893 (kip)** | — |
+>
+> Alle 14 vergeleken grootheden van R17 blijven binnen tolerantie; grootste
+> afwijking 0,41 %. Kip wordt daarmee de maatgevende toets van de staaf, waar dat
+> eerst doorbuiging was. De controleproef die het toetsscript zelf draait: dezelfde
+> steunen als BOVENflenssteun opgegeven geven L_st = 15 000 mm en UC 0,793 — de
+> onderflenssteunen tellen dus aantoonbaar mee.
+>
+> **Waarom de flenskeuze per steun valt en niet per staaf.** De eerste versie van
+> deze reparatie koos één vector voor de hele staaf, op het teken van het
+> maatgevende moment. Dat maakt de uitkomst discontinu: bij een doorgaande ligger
+> met hogging boven de steunpunten en sagging in het veld worden álle
+> bovenflenssteunen weggegooid zodra |M_hogging| het |M_sagging| passeert. Gemeten
+> op een IPE 330 van 9 m met steunen op de kwartpunten sprong Mb,Rd daardoor van
+> 172,97 naar 65,40 kN·m en de UC van 0,474 naar 1,239 op een lastverschil van ruim
+> één procent — conservatief, maar een correct geschoorde ligger werd als
+> bezwijkend gerapporteerd. Zie de uitgebreidere beschrijving in B2.
+>
+> Resterende, bewuste beperking: binnen één kipveld kan het moment alsnog van teken
+> wisselen. De ongesteunde lengte van de dán gedrukte flens is korter dan L_st, dus
+> dat veld met zijn volle L_st doorrekenen is voor die zone veilig-zijdig.
+>
+> **Regressietest:** `src-tauri/crates/steel-check/tests/kipsteunen_gedrukte_flens.rs`
+> (8 tests: vier flens/teken-combinaties, de L_kip-formule, de continuïteit over de
+> sagging/hogging-omslag, de steun in de hoggingzone, en de melding bij L_kip > L_g).
+>
+> **Nog open, apart gemeld:** het aangrijpingspunt van de belasting staat nog vast
+> op +h/2 — zie **B17**.
 
 **Wat.** `lateralRestraintsBottom` heeft een eigen sectie in de UI
 (`src/components/fem/FemProperties.tsx`), wordt in het projectbestand bewaard en door
@@ -420,7 +604,97 @@ functionaliteit: een gebruiker kan alpha_cr of een kniklast in de UI niet afleze
 een `.femp` verschijnt niet in de bestandskiezer. Elk model is daarom onder beide namen
 weggeschreven. Campagne-breed gelijk te trekken.
 
-### B.14 — Wat expliciet NIET fout is gebleken
+### B.15 — TESTHYGIENE · twee testfixtures bemonsteren de momentenlijn niet tot de staafeinden
+
+**Wat.** Sinds de kipreparatie (B2) hangen beta en B* rechtstreeks aan de momenten op de
+**staafeinden**, en `interpolate_my_at` (`steel-check/src/orchestrator.rs`) houdt buiten het
+bemonsterde bereik de laatst bemonsterde waarde vast. Reikt de omhullende niet tot beide
+uiteinden, dan zijn die eindmomenten dus niet gemeten maar doorgetrokken.
+
+Dat treft zes van de zeven snapshotfixtures in `steel-check/tests/`:
+
+| Fixture | Bemonsterd | Staaflengte |
+|---|---|---|
+| calc2_beam1 | x = 0 … 2500 | 5000 mm |
+| calc2_beam2 | x = 0 … 2500 | 5000 mm |
+| calc2_beam3 | x = 2402 … 5000 | 5000 mm |
+| portal_beam1 | x = 0 … 3900 | 5000 mm |
+| portal_beam2 | x = 0 (één station) | 2500 mm |
+| portal_beam3 | x = 0 (één station) | 2500 mm |
+| portal_beam4 | x = 2491 … 5000 | 5000 mm |
+
+**Waarom het ertoe doet, en in welke richting.** Een vastgehouden veldmoment maakt van een
+vrij opgelegde ligger een ligger onder eindmomenten: B* schuift naar ±1 en C1 van 1,13 naar
+1,75, dus Mcr te hoog — de **onveilige** kant. Bij calc2_beam1 en calc2_beam2 is dat ook
+zichtbaar: hun uc_max daalt door de kipreparatie (1,1852 → 1,1326 respectievelijk 1,7092 →
+1,6333), terwijl dezelfde ligger met een volledige omhullende (M(5000) = 0, dus B* = 0 en
+C1 = 1,13) juist naar boven gaat — nagemeten met 21 stations: **1,2171** voor calc2_beam1.
+Op realistische invoer werkt de reparatie daar dus conservatiever, niet gunstiger.
+
+**Wat er is gedaan.** De kern meldt de onvolledigheid nu zelf, in een notitie bij de
+kiptoets die het bemonsterde bereik en de staaflengte noemt. Daarmee staat het in het
+rapport dat de constructeur leest, en niet alleen in een testdocstring.
+
+**Wat er niet is gedaan, en waarom.** De fixtures zijn níét uitgebreid tot de volle
+overspanning. Het is referentie-afgeleide invoer; die binnen een kipreparatie herschrijven
+maakt de snapshot onnavolgbaar en vermengt twee wijzigingen. Het hoort een eigen stap te
+zijn, met een eigen verantwoording per fixture. De verwachte uitkomst staat hierboven en in
+de docstrings van `calc2_beam1.rs` en `calc2_beam2.rs`.
+
+### B.16 — TE CONSERVATIEF · L_kip kan L_g overschrijden zodra er een kipsteun vlak naast een gaffel staat
+
+**Wat.** NB.NB.4.3 begrenst L_kip/L_st op 1,4, maar begrenst L_kip niet tegen L_g. Een
+kipsteun vlak naast een gaffel laat het resterende lange veld daardoor op 1,4·L_st uitkomen,
+en dat kan **langer zijn dan de hele ligger zonder die steun**. Een steun toevoegen maakt de
+toetsing dan slechter in plaats van beter.
+
+**Hoe groot.** Gemeten op een IPE 330 van 9,00 m onder q = 15 N/mm:
+
+| Kipsteun op | UC kip |
+|---|---|
+| geen steun | 2,3798 |
+| 0,02·L | 3,0544 (+28 %) |
+| 0,05·L | 2,9650 |
+| 0,10·L | 2,8056 |
+| 0,20·L | 2,4871 |
+| 0,25·L | 2,3137 (pas hier wint de steun) |
+
+Bij 0,05·L is L_kip 11 970 mm op een ligger van 9000 mm — een vervangende kiplengte 33 %
+langer dan de afstand tussen de gaffels.
+
+**Waarom er niets is afgekapt.** Dit is een getrouwe lezing van de norm. Elke bovengrens op
+L_kip — bijvoorbeeld "nooit meer dan de L_kip die dezelfde ligger zónder die steun krijgt" —
+is een verzonnen normwaarde, en zij zou ook in gewone gevallen bijten: met één steun op
+0,8·L_g geeft de formule al 1,12·L_g, dus afkappen op L_g zou daar de uitkomst
+**onconservatief** maken. De kern meldt daarom alleen: zodra L_kip > L_g signaleert de
+kiptoets dat, met de vraag of de opgegeven steun werkelijk een kipsteun in de zin van
+NB.NB.4.3 is.
+
+**Wat het echt vraagt.** Een UI die het onderscheid gaffel / kipsteun expliciet maakt, zodat
+een gebruiker niet per ongeluk een gaffel als kipsteun invoert. Regressietest:
+`kipsteunen_gedrukte_flens.rs::een_kipsteun_vlak_naast_een_gaffel_wordt_gemeld_en_niet_stilzwijgend_verwerkt`.
+
+### B.17 — ONTBREEKT · het aangrijpingspunt van de belasting (z_a) is geen invoerveld
+
+**Wat.** `design-mockup/src/lib/steelCheckBuilder.ts` zet `z_a_mm` onvoorwaardelijk op +h/2,
+oftewel "last op de bovenflens". Er is geen veld om dat te corrigeren.
+
+**Waarom het meestal veilig is, en wanneer niet.** Bij sagging klopt de aanname en werkt zij
+destabiliserend: C2 wordt negatief en verlaagt Mcr. Maar bij **hogging** grijpt een
+neerwaartse last aan op de GETROKKEN flens, en werkt zij in werkelijkheid stabiliserend. De
+app rekent dan met een destabiliserende last die er niet is — conservatief, maar het
+verkeerde model, en het maakt liggers onnodig zwaar.
+
+**Waarom het nú vastgelegd moet worden.** Zodra z_a een invoerveld wordt, komt de
+extrapolatie van C2 in beeld die met B2 al is dichtgezet: NB.NB.4.3(1) staat lineaire
+extrapolatie alleen naar boven toe, tot ten hoogste 0,1·h boven het zwaartepunt van de
+bovenflens. `nb_annex::c2_gecorrigeerd` kapt daarom onder het zwaartepunt van de onderflens
+af (doorschalen crediteerde daar een stabiliserend effect dat de bijlage niet toekent: voor
+IPE 330 met z_a = −165 mm C2 = +0,4662 in plaats van +0,450, dus 0,96 % te hoge Mcr) en
+meldt een overschrijding van de bovengrens in het rapport. Die twee vangnetten liggen er dus
+al klaar; wat ontbreekt is het invoerveld zelf.
+
+### B.18 — Wat expliciet NIET fout is gebleken
 
 Om de lijst hierboven in verhouding te houden: de volgende onderdelen zijn intensief
 beproefd en kwamen er zonder één bevinding uit.
@@ -2131,6 +2405,14 @@ tussensteunen, en de interactie van normaalkracht met buiging in vakwerkstaven.
 
 ### R16 — Vrij opgelegde, zijdelings ongesteunde ligger IPE 330 van 5,70 m
 
+> **Status na 3 september 2026: de bevinding uit dit geval (B2) is gerepareerd.**
+> UC kip **0,850 → 0,988** tegen 0,981 in de bron; alle 12 vergeleken grootheden
+> binnen tolerantie, grootste afwijking 1,32 %. De uitwerking hieronder beschrijft
+> de toestand tijdens de campagne en blijft staan als verantwoording. Zie B2 voor
+> wat er is gewijzigd, en voor de waarschuwing dat de resterende 1,32 % het saldo
+> is van twee tegengestelde posten. Regressietest:
+> `src-tauri/crates/steel-check/tests/kip_ipe330_r16.rs`.
+
 **Constructie.** Enkelvoudige, vrij opgelegde ligger die uitsluitend bij de opleggingen
 zijdelings is gesteund, dus kipgevoelig over de volle overspanning. Buiging om de sterke
 as onder een gelijkmatig verdeelde belasting.
@@ -2270,6 +2552,15 @@ Regressie-ijkpunten voor de reparatie: Mcr = 113,90 / 115,40 / 125,38 / 78,91 kN
 ---
 
 ### R17 — Vrij opgelegde dakligger IPE 400 van 15,00 m met tussensteunen en windzuiging
+
+> **Status na 3 september 2026: de bevinding uit dit geval (B4) is gerepareerd.**
+> Comb. 2 (windzuiging, onderflens gedrukt) rekent nu met L_st = **5000 mm** in
+> plaats van 2500 mm en met q_equiv = **2,049 N/mm** in plaats van 0; UC kip
+> comb. 2 **0,199 → 0,311**, en kip wordt de maatgevende toets van de staaf
+> (uc_max 0,869 doorbuiging → 0,893 kip). Alle 14 vergeleken grootheden binnen
+> tolerantie, grootste afwijking 0,41 %. De uitwerking hieronder beschrijft de
+> toestand tijdens de campagne. Regressietest:
+> `src-tauri/crates/steel-check/tests/kipsteunen_gedrukte_flens.rs`.
 
 **Constructie.** Enkelvoudige, vrij opgelegde dakligger onder gelijkmatig verdeelde
 belasting. Bovenflens zijdelings gesteund door de gordingen, onderflens door schoren van

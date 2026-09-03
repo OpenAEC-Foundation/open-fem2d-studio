@@ -1,4 +1,13 @@
-//! NEN-EN 1993-1-1 Tabel 6.1 + 6.2 — buckling curves and imperfection factors.
+//! NEN-EN 1993-1-1 tabel 6.1 (imperfectiefactoren per knikkromme) en tabel 6.2
+//! (welke knikkromme bij welke doorsnede hoort).
+//!
+//! [`BucklingCurve::alpha`] bedient twee tabellen tegelijk: tabel 6.1 koppelt
+//! de KOLOMKNIK-krommen a₀/a/b/c/d aan α = 0,13 / 0,21 / 0,34 / 0,49 / 0,76, en
+//! tabel 6.3 koppelt de KIP-krommen a/b/c/d aan diezelfde α_LT = 0,21 / 0,34 /
+//! 0,49 / 0,76. De getallen vallen samen, de tabellen niet: wélke kromme bij
+//! een doorsnede hoort verschilt per verschijnsel — tabel 6.2 voor kolomknik,
+//! tabel 6.4/6.5 voor kip. De aanroeper kiest de kromme en citeert de tabel die
+//! daarbij hoort; zie `nen_en_1993_1_1_ltb::kipkromme_tabel_6_5`.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
