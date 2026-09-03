@@ -44,29 +44,36 @@ import {
 } from "../checkReportUtils";
 
 /**
- * Waardenlijst met uitgelijnde is-gelijktekens: symbool, "=", getal + eenheid.
- * Gebruikt voor tussenwaarden en voor variabelen die niet in de formule
- * ingevuld konden worden (die mogen niet stilzwijgend wegvallen).
+ * Waarden die naast de afleiding horen, als één doorlopende regel.
+ *
+ * Dit stond eerder als een driekolomsraster (symbool, "=", waarde) onder de
+ * formule. Dat leverde per toets een blokje tabel op en dat is precies wat het
+ * referentie-rapport níét doet: daar loopt een toets als wiskunde door, met de
+ * getallen ingevuld in de formule zelf en de losse grootheden achter elkaar op
+ * één regel. Een reeks ingesprongen kolommetjes onder elke formule maakt van
+ * een afleiding een opsomming.
+ *
+ * De waarden verdwijnen niet — een grootheid die niet in de formule ingevuld
+ * kon worden, hoort zichtbaar te blijven — maar ze staan nu achter elkaar
+ * gescheiden door een dunne spatie, zoals de krachtenregel erboven.
  */
 function Waarden({ kop, vars }: { kop?: string; vars: NamedValue[] }) {
   if (vars.length === 0) return null;
   return (
     <div className="rpt-chk-waarden">
-      {kop && <div className="rpt-chk-waarden-kop">{kop}</div>}
+      {kop && <span className="rpt-chk-waarden-kop">{kop}</span>}
       {vars.map((v, i) => (
-        <div key={i} style={{ display: "contents" }}>
+        <span className="rpt-chk-waarde" key={i}>
           <span
             className="rpt-chk-waarde-symbool"
             dangerouslySetInnerHTML={{ __html: renderLatexHtml(v.symbol, false) }}
           />
           <span className="rpt-chk-waarde-eq">=</span>
-          <span>
-            <span className="rpt-chk-waarde-getal">{fmtValue(v.value)}</span>
-            {v.unit && v.unit !== "-" && (
-              <span className="rpt-chk-waarde-eenheid"> {v.unit}</span>
-            )}
-          </span>
-        </div>
+          <span className="rpt-chk-waarde-getal">{fmtValue(v.value)}</span>
+          {v.unit && v.unit !== "-" && (
+            <span className="rpt-chk-waarde-eenheid">&nbsp;{v.unit}</span>
+          )}
+        </span>
       ))}
     </div>
   );

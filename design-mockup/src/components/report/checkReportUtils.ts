@@ -498,28 +498,41 @@ export const CHECK_REPORT_CSS = `
   padding-top: 0.8mm;
 }
 
-/* Waardenlijst (niet-ingevulde variabelen, tussenwaarden): symbool rechts
-   uitgelijnd zodat de is-gelijktekens onder elkaar staan. */
+/* Waarden naast de afleiding: één doorlopende regel.
+
+   Stond eerder als driekolomsraster (symbool, "=", waarde) met de
+   is-gelijktekens onder elkaar. Netjes op zichzelf, maar het gaf elke toets
+   een blokje tabel onder de formule, en juist dat maakt van een afleiding een
+   opsomming. Het referentie-rapport laat een toets als wiskunde doorlopen: de
+   getallen ingevuld in de formule, de losse grootheden achter elkaar op één
+   regel. */
 .rpt-chk-waarden {
-  display: grid;
-  grid-template-columns: max-content max-content 1fr;
-  gap: 0.4mm 1.5mm;
   padding-left: 6mm;
   margin: 0 0 1.5mm;
   font-size: calc(var(--rpt-basis) * 0.85);
   color: #333;
+  line-height: 1.7;
 }
 
-.rpt-chk-waarde-symbool { justify-self: end; }
-.rpt-chk-waarde-eq { color: #666; }
+/* Elke grootheid als één geheel, zodat symbool, "=" en waarde nooit over een
+   regeleinde uiteenvallen. De ruime tussenruimte doet het scheidingswerk dat
+   eerder door kolommen werd gedaan. */
+.rpt-chk-waarde {
+  white-space: nowrap;
+  margin-right: 5mm;
+}
+
+.rpt-chk-waarde-eq {
+  color: #666;
+  margin: 0 0.6mm;
+}
 .rpt-chk-waarde-getal { font-variant-numeric: tabular-nums; }
 .rpt-chk-waarde-eenheid { color: #555; }
 
 .rpt-chk-waarden-kop {
-  grid-column: 1 / -1;
   font-style: italic;
   color: #555;
-  margin-top: 0.5mm;
+  margin-right: 2mm;
 }
 
 /* Afsluitende unity-checkregel. */
