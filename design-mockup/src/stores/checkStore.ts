@@ -1,11 +1,19 @@
 /**
  * checkStore — resultaten van de normtoetsing (EN 1993 staal + EN 1995 hout).
  *
- * Eén run draait beide Rust-kernen parallel (Tauri-commands
- * `check_steel_beams` en `check_timber_beams`) en merget de resultaten op
- * staaf-id in één lijst met hetzelfde NamedCheck-contract. Niet-toetsbare
- * staven komen met expliciete reden in `skipped` (zichtbaar in het
- * toetsingspaneel) — geen stille aannames.
+ * Eén run draait beide Rust-kernen parallel (`check_steel_beams` en
+ * `check_timber_beams`) en merget de resultaten op staaf-id in één lijst met
+ * hetzelfde NamedCheck-contract. Niet-toetsbare staven komen met expliciete
+ * reden in `skipped` (zichtbaar in het toetsingspaneel) — geen stille
+ * aannames.
+ *
+ * De rekenkern is in beide omgevingen bereikbaar. In de desktop-app via
+ * Tauri's `invoke`; in de browser via het eindpunt `/api/toetsing` van de
+ * dev-server, dat dezelfde binary aanroept (zie `vite.config.ts` en
+ * `src-tauri/src/bin/toetsbrug.rs`). Dat is bewust dezelfde kern en geen
+ * tweede implementatie: hetzelfde model hoort overal hetzelfde antwoord te
+ * geven. Vóór die brug haakte de toetsing in de browser volledig af, waardoor
+ * elke unity check leeg bleef — in het canvas én in het rapport.
  */
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
@@ -16,7 +24,33 @@ import type { BeamCheckResult } from "../lib/types/steel/BeamCheckResult";
 import type { TimberBeamCheckResult } from "../lib/types/timber/TimberBeamCheckResult";
 import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import type { MemberCheckResult, CheckSkip } from "../lib/checkTypes";
-import { isTauriApp, DESKTOP_ONLY_MSG } from "../lib/tauri";
+import { isTauriApp } from "../lib/tauri";
+
+/**
+ * Roep de Rust-rekenkern aan, waar de app ook draait.
+ *
+ * In de desktop-app gaat dat via Tauri; in de browser via de dev-brug. De
+ * aanroepers merken het verschil niet, en dat is de bedoeling — de toetsing
+ * hoort niet af te hangen van de schil waarin de app toevallig staat.
+ */
+async function roepKern<T>(opdracht: string, inputs?: unknown): Promise<T> {
+  if (isTauriApp()) {
+    return invoke<T>(opdracht, inputs !== undefined ? { inputs } : undefined);
+  }
+  const antwoord = await fetch("/api/toetsing", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ opdracht, inputs }),
+  });
+  const data = await antwoord.json().catch(() => null);
+  if (!antwoord.ok || (data && typeof data === "object" && "fout" in data)) {
+    throw new Error(
+      (data as { fout?: string })?.fout ??
+        `De rekenkern antwoordde met status ${antwoord.status}.`,
+    );
+  }
+  return data as T;
+}
 import {
   buildSteelCheckInputs,
   isSteelProfile,
@@ -54,7 +88,7 @@ let timberGradesCache: string[] | null = null;
 
 async function getProfileDb(): Promise<Map<string, SteelProfile>> {
   if (profileDbCache) return profileDbCache;
-  const profiles = await invoke<SteelProfile[]>("list_steel_profiles");
+  const profiles = await roepKern<SteelProfile[]>("list_steel_profiles");
   const map = new Map<string, SteelProfile>();
   for (const p of profiles) {
     const key = profileLookupKey(p.name);
@@ -66,7 +100,7 @@ async function getProfileDb(): Promise<Map<string, SteelProfile>> {
 
 async function getTimberGrades(): Promise<string[]> {
   if (timberGradesCache) return timberGradesCache;
-  timberGradesCache = await invoke<string[]>("list_timber_grades");
+  timberGradesCache = await roepKern<string[]>("list_timber_grades");
   return timberGradesCache;
 }
 
@@ -78,10 +112,10 @@ export const useCheckStore = create<CheckState>((set) => ({
   lastRunAt: null,
 
   run: async (data: CheckRunData) => {
-    if (!isTauriApp()) {
-      set({ error: DESKTOP_ONLY_MSG, isRunning: false });
-      return;
-    }
+    // Geen omgevingscontrole meer: de toetsing loopt altijd mee met de
+    // berekening. Is de rekenkern onbereikbaar, dan komt dat als een gewone
+    // fout terug uit `roepKern` en staat het in het toetsingspaneel — in
+    // plaats van dat de toetsing er stilzwijgend niet is.
     set({ isRunning: true, error: null });
     try {
       const [profileDb, timberGrades] = await Promise.all([
@@ -115,10 +149,10 @@ export const useCheckStore = create<CheckState>((set) => ({
 
       const [steelResults, timberResults] = await Promise.all([
         steel.inputs.length > 0
-          ? invoke<BeamCheckResult[]>("check_steel_beams", { inputs: steel.inputs })
+          ? roepKern<BeamCheckResult[]>("check_steel_beams", steel.inputs)
           : Promise.resolve<BeamCheckResult[]>([]),
         timber.inputs.length > 0
-          ? invoke<TimberBeamCheckResult[]>("check_timber_beams", { inputs: timber.inputs })
+          ? roepKern<TimberBeamCheckResult[]>("check_timber_beams", timber.inputs)
           : Promise.resolve<TimberBeamCheckResult[]>([]),
       ]);
 

@@ -39,7 +39,7 @@ import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemRe
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
-import { isTauriApp, DESKTOP_ONLY_MSG } from "./lib/tauri";
+import { isTauriApp } from "./lib/tauri";
 import { getSetting, setSetting } from "./store";
 import "./themes.css";
 import "./App.css";
@@ -626,12 +626,11 @@ function App() {
     outputs?: { combinationResults: Map<number, SolverResult> } | null;
   }) => {
     const openPanel = opts?.openPanel ?? true;
-    const { notifyWarning, notifyInfo } = await import("./io/notify");
-    if (!isTauriApp()) {
-      notifyWarning("Toetsing vereist de desktop-app", DESKTOP_ONLY_MSG);
-      if (openPanel) setActiveView("check");
-      return;
-    }
+    const { notifyInfo, notifyWarning } = await import("./io/notify");
+    // Geen omgevingscontrole meer: de toetsing loopt overal mee. In de
+    // desktop-app via Tauri, in de browser via de dev-brug (zie checkStore).
+    // Lukt het niet, dan meldt de check-store dat als fout — beter dan een
+    // toetsing die er stilzwijgend niet is.
     if (!anyCheckableBeams(fem.beams)) {
       notifyInfo(
         "Geen toetsbare staven",
@@ -674,7 +673,8 @@ function App() {
     setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
     if (outputs) {
       liveRekenenRef.current = true;
-      if (isTauriApp()) void handleRunMemberChecks({ openPanel: false, outputs });
+      // De normtoetsing hoort bij het resultaat en loopt altijd mee.
+      void handleRunMemberChecks({ openPanel: false, outputs });
     }
     return outputs;
   }, [computeAndStoreSolverOutputs, handleRunMemberChecks]);
