@@ -137,6 +137,30 @@ noch corrigeerbaar voor de gebruiker.
    lambda_LT,0 = 0,4 en beta = 0,75 gebruikt (art. 6.3.2.3, waar tabel 6.5 bij hoort:
    h/b > 2 → kromme c, alpha = 0,49). IPE 330 heeft h/b = 2,0625.
 
+> **Normverificatie van punt 3 (3 september 2026) — bevestigd tegen de Nederlandse bijlage.**
+>
+> Na de intrekking van B3 is dit punt niet op de aanbevolen Eurocode-waarden afgegaan maar
+> nagekeken in NEN-EN 1993-1-1:2006+A1:2014+NB:2016 zelf:
+>
+> - Tabel 6.3 koppelt de kipkrommen a/b/c/d aan de imperfectiefactoren 0,21 / 0,34 / 0,49 / 0,76.
+> - Tabel 6.5, die hoort bij 6.3.2.3 (gewalste profielen of equivalente gelaste profielen),
+>   geeft voor een **gewalst I-profiel met h/b > 2 kromme c**. Tabel 6.4, die bij de algemene
+>   methode 6.3.2.2 hoort, zou daar kromme b geven — dat is het onderscheid waar de code
+>   overheen stapt.
+> - Dat de code onder 6.3.2.3 valt en niet onder 6.3.2.2 blijkt uit de eigen parameters:
+>   `chi_lt` rekent met beta = 0,75 en lambda_LT,0 = 0,4, en dat zijn precies de waarden van
+>   6.3.2.3 (de algemene methode heeft beta = 1,0 en lambda_LT,0 = 0,2).
+>
+> Voor IPE 330 (h/b = 330/160 = 2,0625 > 2) hoort er dus **alpha_LT = 0,49** te staan waar nu
+> 0,34 staat. Punt 3 is daarmee hard, niet op een buitenlandse keuze gebaseerd.
+>
+> Nog NIET tegen de bijlage geverifieerd: de punten 1 en 2 (de momentverdelingsfactoren uit het
+> veldmoment, en de onvoorwaardelijke kiplengteherleiding). Die rusten op de NB.NB-bijlage voor
+> M_cr, die een eigen methode voorschrijft. Zolang die twee niet even hard staan, wordt er niets
+> gerepareerd: de campagne heeft gemeten dat één van de drie losstaand corrigeren de uitkomst
+> 31 % de andere kant op schiet. De reparatie is dus alles-of-niets en wacht op verificatie van
+> de andere twee punten.
+
 **Hoe groot (R16, IPE 330 5,70 m, last op de bovenflens).**
 
 | Grootheid | Bron | App | Afwijking |
