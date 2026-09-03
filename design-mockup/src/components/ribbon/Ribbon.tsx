@@ -162,11 +162,18 @@ export default function Ribbon({
     setActiveTab(newTab);
     setAnimating(true);
 
-    // Switch main content view based on tab
+    // Hoofdweergave meeschakelen met het tabblad.
+    //
+    // "check" moet hier expliciet in staan. Ontbrak hij, dan viel hij in de
+    // else en zette de ribbon de weergave terug op "default" — precies op het
+    // moment dat het effect hieronder naar dit tabblad schakelde omdat de
+    // weergave "check" wérd. Klikken op een UC-badge opende de toetsing dan
+    // wel, waarna zij binnen een tel weer verdween.
     if (newTab === "ifc") onViewChange("ifc");
     else if (newTab === "report") onViewChange("report");
     else if (newTab === "insights") onViewChange("insights");
     else if (newTab === "table") onViewChange("table");
+    else if (newTab === "check") onViewChange("check");
     else onViewChange("default");
   }, [activeTab, onViewChange]);
 

@@ -560,6 +560,10 @@ function App() {
   const handleOpenCheckForBeam = useCallback((beamId: number) => {
     setCheckFocus({ beamId });
     setActiveView("check");
+    // Ruimte maken voor de afleiding: het eigenschappenpaneel klapt in. Anders
+    // staan er drie kolommen naast elkaar en houdt de toetsing te weinig
+    // breedte over voor de formules. Het paneel is met één klik terug.
+    setRightPanelOpen(false);
   }, []);
   // Normtoetsing draait ALTIJD mee met een berekening: de toetsing hoort bij
   // het resultaat en is geen losse handeling. Er is bewust geen schakelaar —
