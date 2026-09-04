@@ -88,9 +88,85 @@ function toetsbrug(): Plugin {
   };
 }
 
+/**
+ * Doorsnedemotor bereikbaar maken vanuit de browser — voor de profieleditor.
+ *
+ * De eigenschappen van een eigen doorsnede (samenstelling uit lamellen, of een
+ * catalogusprofiel met een gat) komen uit dezelfde Rust-motor die ook de
+ * profieldatabase heeft gegenereerd (`doorsnedemotor`, JSON-in/JSON-uit).
+ * Zelfde patroon als de toetsbrug hierboven: één rekenkern, geen tweede
+ * implementatie in TypeScript. Bouwen met
+ * `cargo build --release -p section-properties --bin doorsnedemotor` in src-tauri.
+ *
+ * De motor leest een JSON-array van geometrieën op stdin en schrijft een
+ * JSON-array met eigenschappen op stdout; een fout gaat naar stderr met
+ * afsluitcode 2. Dit eindpunt vertaalt dat naar `{ fout }` met status 400.
+ */
+function doorsnedemotor(): Plugin {
+  const exe = resolve(
+    hier,
+    "../src-tauri/target/release",
+    // @ts-expect-error process is a nodejs global
+    process.platform === "win32" ? "doorsnedemotor.exe" : "doorsnedemotor",
+  );
+
+  return {
+    name: "openaec-doorsnedemotor",
+    configureServer(server) {
+      server.middlewares.use("/api/doorsnede", (req, res) => {
+        res.setHeader("content-type", "application/json");
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ fout: "alleen POST" }));
+          return;
+        }
+        if (!existsSync(exe)) {
+          res.statusCode = 503;
+          res.end(
+            JSON.stringify({
+              fout:
+                "De doorsnedemotor is nog niet gebouwd. Draai in src-tauri: " +
+                "cargo build --release -p section-properties --bin doorsnedemotor",
+            }),
+          );
+          return;
+        }
+
+        let body = "";
+        req.on("data", (c) => (body += c));
+        req.on("end", () => {
+          const kind = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"] });
+          let uit = "";
+          let fout = "";
+          kind.stdout.on("data", (d) => (uit += d));
+          kind.stderr.on("data", (d) => (fout += d));
+          kind.on("error", (e) => {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ fout: `doorsnedemotor start niet: ${e.message}` }));
+          });
+          kind.on("close", (code) => {
+            if (code === 0 && uit) {
+              res.statusCode = 200;
+              res.end(uit);
+            } else {
+              res.statusCode = code === 2 ? 400 : 500;
+              res.end(
+                JSON.stringify({
+                  fout: fout.trim() || `doorsnedemotor stopte met code ${code}`,
+                }),
+              );
+            }
+          });
+          kind.stdin.end(body);
+        });
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), toetsbrug()],
+  plugins: [react(), toetsbrug(), doorsnedemotor()],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

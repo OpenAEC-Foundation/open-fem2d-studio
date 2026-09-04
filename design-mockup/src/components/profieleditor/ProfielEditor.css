@@ -1,0 +1,406 @@
+/* ProfielEditor — eigen doorsneden samenstellen, tekenen en van een gat voorzien. */
+
+.pe-wortel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--theme-text);
+  font-size: 12px;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
+.pe-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  flex-shrink: 0;
+}
+.pe-tab {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: none;
+  color: var(--theme-text-muted, var(--theme-text));
+  font-size: 12px;
+  cursor: pointer;
+}
+.pe-tab:hover { color: var(--theme-accent); }
+.pe-tab.actief {
+  color: var(--theme-accent);
+  font-weight: 600;
+  border-color: var(--theme-border-subtle);
+  background: var(--theme-bg);
+  margin-bottom: -1px;
+}
+
+/* ── Drie kolommen ────────────────────────────────────────────────────── */
+.pe-kolommen {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.pe-kolom {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  gap: 8px;
+}
+.pe-kolom-links {
+  flex: 0 0 300px;
+  border-right: 1px solid var(--theme-border-subtle);
+}
+.pe-kolom-midden {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  background: var(--theme-bg);
+}
+.pe-kolom-rechts {
+  flex: 0 0 316px;
+  border-left: 1px solid var(--theme-border-subtle);
+}
+
+.pe-kop {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--theme-text-faint);
+  margin: 4px 0 2px;
+}
+.pe-hint {
+  font-size: 11px;
+  color: var(--theme-text-muted, var(--theme-text-faint));
+  line-height: 1.4;
+}
+.pe-melding {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  background: var(--theme-accent-soft, rgba(217, 119, 6, 0.08));
+  color: var(--theme-text);
+}
+.pe-melding-fout {
+  border-color: var(--theme-danger-color, #dc2626);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* ── Lijsten van bouwstenen ───────────────────────────────────────────── */
+.pe-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pe-item {
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.pe-item.actief {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 1px var(--theme-accent) inset;
+}
+.pe-item-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 11px;
+}
+.pe-item-kop .pe-item-sub {
+  font-weight: 400;
+  color: var(--theme-text-muted, var(--theme-text-faint));
+}
+.pe-velden {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+.pe-velden-3 { grid-template-columns: 1fr 1fr 1fr; }
+.pe-veld {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--theme-text-muted, var(--theme-text));
+}
+.pe-veld input,
+.pe-veld select,
+.pe-naam input,
+.pe-naam select {
+  padding: 4px 6px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg-lighter, var(--theme-bg));
+  color: var(--theme-text);
+  font-size: 12px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.pe-veld input:focus,
+.pe-naam input:focus { outline: 1px solid var(--theme-accent); }
+.pe-veld-vink {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.pe-veld-vink input { width: auto; }
+
+.pe-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pe-knop {
+  padding: 5px 10px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pe-knop:hover:not(:disabled) { border-color: var(--theme-accent); color: var(--theme-accent); }
+.pe-knop:disabled { opacity: 0.5; cursor: not-allowed; }
+.pe-knop-klein { padding: 2px 6px; font-size: 10px; }
+.pe-knop-primair {
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+  color: var(--theme-accent-text, #fff);
+  font-weight: 600;
+}
+.pe-knop-primair:hover:not(:disabled) { color: var(--theme-accent-text, #fff); background: var(--theme-accent-hover, var(--theme-accent)); }
+.pe-knop-gevaar:hover:not(:disabled) { border-color: var(--theme-danger-color, #dc2626); color: var(--theme-danger-color, #dc2626); }
+
+/* Profielkeuze (gat-tab): reeks en maat naast elkaar. */
+.pe-profielkeuze {
+  display: flex;
+  gap: 6px;
+}
+.pe-profielkeuze select { flex: 1; }
+
+/* Startvormen */
+.pe-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.pe-preset {
+  text-align: left;
+  padding: 5px 7px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  cursor: pointer;
+  font-size: 11px;
+}
+.pe-preset:hover { border-color: var(--theme-accent); }
+.pe-preset small {
+  display: block;
+  color: var(--theme-text-muted, var(--theme-text-faint));
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+/* ── Tekenvlak ────────────────────────────────────────────────────────── */
+.pe-tekenvlak {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
+.pe-tekenvlak .pe-raster { stroke: var(--theme-border-subtle); }
+.pe-tekenvlak .pe-raster-hoofd { stroke: var(--theme-border); }
+.pe-tekenvlak .pe-materiaal {
+  fill: var(--theme-accent-soft, rgba(217, 119, 6, 0.12));
+  stroke: var(--theme-text);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+.pe-tekenvlak .pe-materiaal.pe-vast { cursor: default; }
+.pe-tekenvlak .pe-materiaal.actief {
+  fill: var(--theme-hover-strong, rgba(217, 119, 6, 0.25));
+  stroke: var(--theme-accent);
+  stroke-width: 2;
+}
+.pe-tekenvlak .pe-gat {
+  fill: var(--theme-bg);
+  stroke: var(--theme-accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+.pe-tekenvlak .pe-gat.actief { stroke-width: 2; }
+.pe-tekenvlak .pe-as {
+  stroke: var(--theme-text-muted, #888);
+  stroke-width: 0.8;
+  stroke-dasharray: 8 3 2 3;
+}
+.pe-tekenvlak .pe-hoofdas {
+  stroke: var(--theme-accent);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 3;
+}
+.pe-tekenvlak .pe-tekst {
+  fill: var(--theme-text-muted, #666);
+  font-size: 10px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+.pe-tekenvlak .pe-maatlijn { stroke: var(--theme-text-faint, #888); stroke-width: 0.7; }
+.pe-tekenvlak .pe-zwaartepunt { fill: none; stroke: var(--theme-text); stroke-width: 1.2; }
+.pe-tekenvlak .pe-schuifmiddelpunt { stroke: var(--theme-accent); stroke-width: 1.4; }
+.pe-tekenvlak.verouderd .pe-materiaal { opacity: 0.75; }
+
+.pe-tekenvlak-leeg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--theme-text-faint);
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* ── Eigenschappen ────────────────────────────────────────────────────── */
+.pe-eig-tabel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.pe-eig-tabel th,
+.pe-eig-tabel td {
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  vertical-align: baseline;
+}
+.pe-eig-tabel th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--theme-text-muted, var(--theme-text));
+  white-space: normal;
+  line-height: 1.25;
+}
+.pe-eig-tabel td { width: 1%; }
+.pe-eig-tabel td {
+  text-align: right;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  white-space: nowrap;
+  color: var(--theme-text);
+}
+.pe-eig-tabel .pe-eenheid {
+  font-family: inherit;
+  color: var(--theme-text-faint);
+  font-size: 10px;
+}
+.pe-eig-tabel tr.pe-groep th {
+  padding-top: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--theme-text-faint);
+  border-bottom: none;
+}
+.pe-eig-tabel td.pe-niet-bepaald {
+  color: var(--theme-text-faint);
+  font-style: italic;
+  font-family: inherit;
+}
+.pe-eig-verouderd { opacity: 0.55; }
+.pe-status {
+  font-size: 10px;
+  color: var(--theme-text-faint);
+  min-height: 14px;
+}
+
+/* ── Voet ─────────────────────────────────────────────────────────────── */
+.pe-voet {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--theme-border-subtle);
+  flex-shrink: 0;
+}
+.pe-naam {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--theme-text-muted, var(--theme-text));
+}
+.pe-naam-breed { flex: 1; }
+.pe-naam input, .pe-naam select { font-family: inherit; }
+.pe-voet-rechts {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ── Bewaarde doorsneden ──────────────────────────────────────────────── */
+.pe-bewaard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+}
+.pe-bewaard-kaart {
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pe-bewaard-kaart svg { width: 100%; height: 120px; }
+.pe-bewaard-naam { font-weight: 600; font-size: 12px; }
+.pe-bewaard-sub { font-size: 10px; color: var(--theme-text-muted, var(--theme-text-faint)); }
+.pe-bewaard-leeg {
+  padding: 30px;
+  text-align: center;
+  color: var(--theme-text-faint);
+}
+
+/* ── Losse pagina (dev) ───────────────────────────────────────────────── */
+.pe-standalone {
+  min-height: 100vh;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.pe-standalone-balk {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.pe-standalone .pe-kader {
+  height: calc(100vh - 80px);
+  border: 1px solid var(--theme-border);
+  background: var(--theme-dialog-bg, var(--theme-bg));
+}
