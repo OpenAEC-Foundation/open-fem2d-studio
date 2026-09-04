@@ -34,6 +34,7 @@ import type { SolverResult, SolverInput } from "./solver/types";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
+import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
 import { resolveSection } from "../../lib/sectionResolver";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
@@ -1545,6 +1546,13 @@ export default function FemCanvas(props: FemCanvasProps) {
       // Ignore when typing in an input
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+
+      // Staat er een dialoog open, dan zijn de sneltoetsen van het canvas niet
+      // aan de beurt. Escape sloot hieronder namelijk óók de selectie weg,
+      // waarmee het eigenschappenpaneel en de dialoog die eruit geopend was
+      // verdwenen: één druk op Escape klapte de profieleditor én de
+      // profielkiezer weg in plaats van alleen het bovenste venster.
+      if (erIsEenDialoogOpen()) return;
 
       // ── Active modal: grab/rotate ────────────────────────────────────
       // Numeric / X / Z / Enter / Esc handled here before generic Escape.

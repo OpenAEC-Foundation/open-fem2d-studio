@@ -126,6 +126,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
   // deze dialoog, maar dan moet die dialoog meegroeien tot editorformaat —
   // precies de sprong in vensterafmeting die eruit moest.
   const eigenDoorsneden = useEigenDoorsneden((s) => s.items);
+  // Escape sluit alleen het bovenste venster; dat regelt Modal zelf.
   const [editorOpen, setEditorOpen] = useState(false);
   const kiesEigen = (d: EigenDoorsnede) => {
     onApply({ material: staalKlasse, profile: profielnaamVan(d) });
