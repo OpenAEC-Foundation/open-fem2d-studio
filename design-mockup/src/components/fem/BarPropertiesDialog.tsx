@@ -22,6 +22,7 @@ import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult } from "../../lib/checkTypes";
 import { matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
 import { sanitizeRestraintFractions } from "../../lib/steelCheckBuilder";
+import { parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import ProfielKiezer from "./ProfielKiezer";
 import "./BarPropertiesDialog.css";
 
@@ -95,6 +96,14 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
       ? cfg0.preCamber_mm.toString() : "",
   );
   const [serviceClass, setServiceClass] = useState<1 | 2 | 3>(cfg0.serviceClass ?? 1);
+  // Dwarsspanning voor de vergelijkspanning van een vrij materiaal. Leeg = 0:
+  // een staafelement kent alleen N, V en M, dus σ_z kan alleen van de
+  // gebruiker komen (bijvoorbeeld een oplegdruk).
+  const [sigmaZStr, setSigmaZStr] = useState(
+    cfg0.spanningSigmaZ !== undefined && cfg0.spanningSigmaZ !== 0
+      ? String(cfg0.spanningSigmaZ)
+      : "",
+  );
   const [loadDuration, setLoadDuration] = useState<NonNullable<BeamCheckConfig["loadDuration"]>>(
     cfg0.loadDuration ?? "medium",
   );
@@ -102,6 +111,8 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
   // Welke norm-velden tonen we? Live op het materiaal in de dialoog, zodat
   // wisselen van materiaal in het Algemeen-tabblad meteen doorwerkt.
   const isTimber = matchSupportedTimberGrade(material) !== null;
+  // Vrij materiaal: geen norm, maar een toets op de vergelijkspanning.
+  const vrij = parseVrijMateriaal(material);
 
   /**
    * Bouw een schone checkConfig: alleen expliciet ingevulde waarden; alles
@@ -129,6 +140,10 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
     }
     if (serviceClass !== 1) cfg.serviceClass = serviceClass;
     if (loadDuration !== "medium") cfg.loadDuration = loadDuration;
+    const sigmaZ = parseFloat(sigmaZStr.replace(",", "."));
+    if (sigmaZStr.trim() !== "" && Number.isFinite(sigmaZ) && sigmaZ !== 0) {
+      cfg.spanningSigmaZ = sigmaZ;
+    }
     return Object.keys(cfg).length > 0 ? cfg : undefined;
   };
 
@@ -252,7 +267,7 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
           <button
             className={`bar-props-tab${tab === "norm" ? " active" : ""}`}
             onClick={() => setTab("norm")}
-          >{isTimber ? "EN 1995" : "EN 1993"}</button>
+          >{vrij ? "Spanning" : isTimber ? "EN 1995" : "EN 1993"}</button>
         </div>
 
         <div className="bar-props-body">
@@ -348,9 +363,40 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
                 <div className="bar-props-row"><span>Profiel</span><code>{profile}</code></div>
                 <div className="bar-props-row">
                   <span>Norm</span>
-                  <code>{isTimber ? "NEN-EN 1995-1-1" : "NEN-EN 1993-1-1"}</code>
+                  <code>
+                    {vrij
+                      ? "geen — toets op de vergelijkspanning"
+                      : isTimber ? "NEN-EN 1995-1-1" : "NEN-EN 1993-1-1"}
+                  </code>
                 </div>
               </div>
+
+              {vrij && (
+                <div className="bar-props-section">
+                  <div className="bar-props-section-title">Vergelijkspanning</div>
+                  <div className="bar-props-row">
+                    <span>f_toel</span>
+                    <code>
+                      {vrij.fToel} N/mm² · γ_M = {vrij.gammaM} → f_d ={" "}
+                      {(vrij.fToel / vrij.gammaM).toFixed(2)} N/mm²
+                    </code>
+                  </div>
+                  <div className="bar-props-row">
+                    <span>σ_z [N/mm²]</span>
+                    <input
+                      type="number" className="bar-props-input" step="1"
+                      placeholder="0"
+                      value={sigmaZStr}
+                      onChange={(e) => setSigmaZStr(e.target.value)}
+                    />
+                  </div>
+                  <div className="bar-props-hint">
+                    Dwarsspanning loodrecht op de staafas, bijvoorbeeld een
+                    oplegdruk. Een staafelement rekent die niet zelf uit. Leeg of
+                    0 laat σ_eq = √(σ_x² + 3τ²) over.
+                  </div>
+                </div>
+              )}
 
               {!isTimber && (
                 <>

@@ -100,6 +100,13 @@ export interface BeamCheckConfig {
   betonStroken?: number;
   /** Bovenste tak van het staaldiagram (3.2.7); default horizontaal. */
   betonStaaltak?: SteelBranch;
+  // Vrije spanningstoets (geen norm)
+  /**
+   * Dwarsspanning σ_z in N/mm² voor de vergelijkspanning, bijvoorbeeld een
+   * oplegdruk. Default 0: een staafelement kent alleen N, V en M en berekent
+   * σ_z niet zelf, dus die waarde kan alleen van de gebruiker komen.
+   */
+  spanningSigmaZ?: number;
 }
 
 /**

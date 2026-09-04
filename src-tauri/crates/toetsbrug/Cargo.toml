@@ -22,3 +22,4 @@ timber-check = { path = "../timber-check" }
 nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 concrete-check = { path = "../concrete-check" }
 nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
+spanning-check = { path = "../spanning-check" }

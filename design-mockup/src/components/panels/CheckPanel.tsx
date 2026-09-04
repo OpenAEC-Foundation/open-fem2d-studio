@@ -3,9 +3,11 @@
  *
  * Per staaf een kaart met profiel/klasse, maatgevende UC en status;
  * uitklapbaar de volledige afleiding per toets (CheckBlock, KaTeX).
- * Staal (EN 1993) en hout (EN 1995) staan gemerged in één lijst — het
- * NamedCheck-contract is identiek. Niet-toetsbare staven staan er met
- * expliciete reden bij.
+ * Staal (EN 1993), hout en kruislaaghout (EN 1995), beton (EN 1992) en de
+ * vrije spanningstoets staan gemerged in één lijst — het NamedCheck-contract
+ * is identiek. Bij de vrije spanningstoets komt daar de doorsnedetekening met
+ * het spanningsverloop bovenop, want daar zit de uitleg in het BEELD.
+ * Niet-toetsbare staven staan er met expliciete reden bij.
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,10 +15,13 @@ import { useCheckStore } from "../../stores/checkStore";
 import {
   gradeLabel,
   isSteelCheckResult,
+  isStressCheckResult,
   normLabel,
   sectionLabel,
   type MemberCheckResult,
 } from "../../lib/checkTypes";
+import type { SpanningBeamCheckResult } from "../../lib/types/spanning/SpanningBeamCheckResult";
+import SpanningDoorsnedeTekening from "../spanning/SpanningDoorsnedeTekening";
 import CheckBlock from "./CheckBlock";
 import { governingInfo } from "../report/checkReportUtils";
 import "./CheckPanel.css";
@@ -54,6 +59,54 @@ function opUnityCheck<T extends { kind: { data: { uc: { uc: number } | null } } 
 ): T[] {
   return [...checks].sort(
     (a, b) => (b.kind.data.uc?.uc ?? -1) - (a.kind.data.uc?.uc ?? -1),
+  );
+}
+
+/**
+ * De doorsnede met het spanningsverloop, boven de afleidingen. Alleen de
+ * vrije spanningstoets levert dit; bij de normkernen valt het weg.
+ */
+function SpanningFiguur({ r }: { r: SpanningBeamCheckResult }) {
+  const v = r.verloop;
+  if (!v) {
+    return r.notes.length > 0 ? (
+      <ul className="cp-spanning-notes">
+        {r.notes.map((n, i) => (
+          <li key={i}>{n}</li>
+        ))}
+      </ul>
+    ) : null;
+  }
+  const g = (x: number, d = 2) => x.toLocaleString("nl-NL", { maximumFractionDigits: d });
+  return (
+    <>
+      <div className="cp-spanning-figuur">
+        <SpanningDoorsnedeTekening
+          naam={r.section.naam}
+          lagen={r.section.lagen}
+          hoogteMm={r.section.hoogte_mm}
+          breedteMaxMm={r.section.breedte_max_mm}
+          zCMm={r.section.z_c_mm}
+          vezels={v.vezels}
+          zMaatgevendMm={v.z_maatgevend_mm}
+          fDMpa={r.f_d_mpa}
+        />
+        <div className="cp-spanning-bijschrift">
+          Spanningsverloop bij de maatgevende snede: x = {g(v.position_mm, 0)} mm,
+          combinatie {v.combination_id} — N = {g(v.n_ed_kn)} kN, V<sub>z</sub> ={" "}
+          {g(v.vz_ed_kn)} kN, M<sub>y</sub> = {g(v.my_ed_knm)} kNm
+          {v.sigma_z_mpa !== 0 && <>, σ<sub>z</sub> = {g(v.sigma_z_mpa)} N/mm²</>}. Trek
+          positief; f<sub>d</sub> = {g(r.f_d_mpa)} N/mm².
+        </div>
+      </div>
+      {r.notes.length > 0 && (
+        <ul className="cp-spanning-notes">
+          {r.notes.map((n, i) => (
+            <li key={i}>{n}</li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 
@@ -118,6 +171,7 @@ function MemberCard({ result, focusToken }: {
 
       {open && (
         <div className="cp-card-body">
+          {isStressCheckResult(result) && <SpanningFiguur r={result} />}
           {opUnityCheck(result.checks).map((named) => (
             <CheckBlock key={named.id} check={named.kind.data} />
           ))}

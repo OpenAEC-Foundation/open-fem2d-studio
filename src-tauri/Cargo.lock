@@ -2681,6 +2681,7 @@ dependencies = [
  "report",
  "serde",
  "serde_json",
+ "spanning-check",
  "steel-check",
  "steel-profiles",
  "tauri",
@@ -3786,6 +3787,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "spanning-check"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nen-en-1993-1-1-section",
+ "serde",
+ "serde_json",
+ "steel-check",
+ "steel-profiles",
+ "ts-rs",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4435,6 +4450,7 @@ dependencies = [
  "nen-en-1995-1-1",
  "serde",
  "serde_json",
+ "spanning-check",
  "steel-check",
  "steel-profiles",
  "timber-check",

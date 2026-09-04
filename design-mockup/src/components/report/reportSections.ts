@@ -45,6 +45,7 @@ import PlateStressSection from "./sections/PlateStressSection";
 import CheckTableSection from "./sections/CheckTableSection";
 import CheckDetailSection from "./sections/CheckDetailSection";
 import CltSection from "./sections/CltSection";
+import SpanningSection from "./sections/SpanningSection";
 
 export interface ReportSectionDef {
   /** Stabiel id — sleutel voor de aan/uit-toggle in de reportStore. */
@@ -242,6 +243,19 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "voor de controlerend constructeur; de UC van de staaf staat al in het " +
       "toetsingsoverzicht.",
     Component: CltSection,
+  },
+  // Vrije spanningstoets: de doorsnede met het spanningsverloop. Rendert
+  // alleen iets wanneer er staven met een vrij materiaal zijn.
+  {
+    id: "spanning",
+    titleKey: "report.sectionSpanning",
+    defaultTitle: "Spanningstoets — doorsnede en spanningsverloop",
+    inBeperkt: false,
+    beperktReden:
+      "Detailuitvoer per doorsnede (σx-, τ- en σeq-verloop over de hoogte): " +
+      "verantwoording voor de controlerend constructeur; de UC van de staaf " +
+      "staat al in het toetsingsoverzicht.",
+    Component: SpanningSection,
   },
 ];
 

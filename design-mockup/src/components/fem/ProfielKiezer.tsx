@@ -1,14 +1,21 @@
 /**
  * ProfielKiezer — tweestaps profieldialoog voor een staaf.
  *
- * Stap 1: materiaalsoort (Staal / Hout / Beton / Aluminium / Overig — de
- *         laatste twee zichtbaar maar eerlijk uitgeschakeld tot ze bestaan).
+ * Stap 1: materiaalsoort (Staal / Hout / Beton / Aluminium / Overig —
+ *         aluminium is zichtbaar maar eerlijk uitgeschakeld tot het bestaat).
  * Stap 2: het profiel BINNEN die soort, samen met de materiaalklasse:
  *         - staal: reeks (IPE/HEA/HEB/HEM/UNP/koker/buis) → maat → staalklasse;
  *         - hout: sterkteklasse (C/GL) → massief b×h, óf kruislaaghout als
  *           opbouw (voorinstelling of vrij: "CLT 40/20/40/20/40[:C16][b600]");
  *         - beton: betonklasse (C12/15 … C90/105) → doorsnede b×h; de
- *           wapeningskorf hoort bij de staafeigenschappen (tabblad Norm).
+ *           wapeningskorf hoort bij de staafeigenschappen (tabblad Norm);
+ *         - overig: een VRIJ materiaal — een doorsnede (rechthoek of een
+ *           profiel uit de database) plus een naam, E, ρ en een toelaatbare
+ *           spanning. Die staaf wordt niet aan een norm getoetst maar op de
+ *           vergelijkspanning van von Mises (zie `spanningCheckBuilder.ts`).
+ *           Er staan bewust GEEN standaardwaarden in de velden: een verzonnen
+ *           E-modulus of toelaatbare spanning zou een uitkomst zonder invoer
+ *           opleveren.
  * Het resultaat is de COMBINATIE { material, profile } die op de staaf landt —
  * precies de twee velden die resolveSection en de toetsing al lezen.
  */
@@ -32,6 +39,8 @@ import {
   SUPPORTED_CONCRETE_CLASSES,
   matchSupportedConcreteClass,
 } from "../../lib/betonCheckBuilder";
+import { profileLookupKey } from "../../lib/steelCheckBuilder";
+import { formatVrijMateriaal, parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import type { CltPreset } from "../../lib/types/timber/CltPreset";
 import type { EigenDoorsnede } from "../../lib/profieleditor/types";
 import {
@@ -66,7 +75,7 @@ const SOORTEN: Array<{ id: MateriaalSoort; label: string; beschikbaar: boolean; 
   { id: "hout", label: "Hout", beschikbaar: true, hint: "Massief b×h of kruislaaghout (CLT) + sterkteklasse (EN 1995)" },
   { id: "beton", label: "Beton", beschikbaar: true, hint: "Rechthoekige doorsnede b×h + betonklasse (EN 1992); wapeningskorf bij de staafeigenschappen" },
   { id: "aluminium", label: "Aluminium", beschikbaar: false, hint: "Volgt later — nog geen profieldatabase en toetsing" },
-  { id: "overig", label: "Overig", beschikbaar: false, hint: "Volgt later — vrije E/A/I-invoer" },
+  { id: "overig", label: "Overig", beschikbaar: true, hint: "Vrij materiaal: eigen naam, E, ρ en toelaatbare spanning; getoetst op de vergelijkspanning (von Mises), zonder norm" },
 ];
 
 /** Reeks-indeling van de staaldatabase op naamprefix. */
@@ -108,16 +117,29 @@ function nlGetal(v: number, decimalen = 0): string {
   return v.toLocaleString("nl-NL", { maximumFractionDigits: decimalen });
 }
 
+/** Tekstveld → getal; NaN wanneer het veld leeg of onzin is (geen terugval). */
+function getalUit(tekst: string): number {
+  const v = parseFloat(tekst.replace(",", "."));
+  return Number.isFinite(v) ? v : NaN;
+}
+
 export default function ProfielKiezer({ open, onClose, huidig, onApply }: ProfielKiezerProps) {
-  const huidigIsBeton = matchSupportedConcreteClass(huidig?.material) !== null;
-  const huidigIsHout = !huidigIsBeton && !!huidig?.material && (huidig.material in TIMBER_E_MEAN);
+  const huidigVrij = parseVrijMateriaal(huidig?.material);
+  const huidigIsBeton = !huidigVrij && matchSupportedConcreteClass(huidig?.material) !== null;
+  const huidigIsHout =
+    !huidigVrij && !huidigIsBeton && !!huidig?.material && (huidig.material in TIMBER_E_MEAN);
   const huidigIsClt = huidigIsHout && isCltProfiel(huidig?.profile);
-  const huidigIsEigen = !huidigIsBeton && !huidigIsHout && isEigenProfiel(huidig?.profile);
+  const huidigIsEigen =
+    !huidigVrij && !huidigIsBeton && !huidigIsHout && isEigenProfiel(huidig?.profile);
 
   // ── Wizardstate ──────────────────────────────────────────────────────────
   const [soort, setSoort] = useState<MateriaalSoort | null>(
     huidig?.material
-      ? huidigIsBeton ? "beton" : huidigIsHout ? "hout" : huidigIsEigen ? "eigen" : "staal"
+      ? huidigVrij ? "overig"
+        : huidigIsBeton ? "beton"
+        : huidigIsHout ? "hout"
+        : huidigIsEigen ? "eigen"
+        : "staal"
       : null,
   );
 
@@ -162,6 +184,26 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
   const [betonKlasse, setBetonKlasse] = useState(huidigIsBeton ? huidig!.material! : "C30/37");
   const [betonB, setBetonB] = useState(huidigBetonRect?.b ?? BETON_DOORSNEDE_DEFAULT.b);
   const [betonH, setBetonH] = useState(huidigBetonRect?.h ?? BETON_DOORSNEDE_DEFAULT.h);
+
+  // Overig-stap: doorsnede + vrij materiaal. De materiaalvelden beginnen LEEG
+  // — er bestaat geen tabel om ze uit te vullen, en een verzonnen getal zou
+  // een unity check opleveren die nergens op slaat.
+  const huidigVrijRect = huidigVrij ? parseRechthoek(huidig?.profile) : null;
+  const huidigVrijProfiel =
+    huidigVrij && !huidigVrijRect && huidig?.profile && STEEL_SECTION_DIMS[profileLookupKey(huidig.profile)]
+      ? profileLookupKey(huidig.profile)
+      : "";
+  const [overigVorm, setOverigVorm] = useState<"rechthoek" | "profiel">(
+    huidigVrijProfiel ? "profiel" : "rechthoek",
+  );
+  const [overigB, setOverigB] = useState(huidigVrijRect?.b ?? 100);
+  const [overigH, setOverigH] = useState(huidigVrijRect?.h ?? 300);
+  const [overigProfiel, setOverigProfiel] = useState(huidigVrijProfiel);
+  const [vrijNaam, setVrijNaam] = useState(huidigVrij?.naam ?? "");
+  const [vrijE, setVrijE] = useState(huidigVrij ? String(huidigVrij.eMod) : "");
+  const [vrijRho, setVrijRho] = useState(huidigVrij ? String(huidigVrij.dichtheid) : "");
+  const [vrijF, setVrijF] = useState(huidigVrij ? String(huidigVrij.fToel) : "");
+  const [vrijGamma, setVrijGamma] = useState(huidigVrij ? String(huidigVrij.gammaM) : "1");
 
   const reeksProfielen = useMemo(() => {
     const r = STAAL_REEKSEN.find((x) => x.id === reeks);
@@ -213,6 +255,41 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
         )?.name ?? ""
       : "";
 
+  // ── Overig: doorsnede, materiaal en de afgeleide grootheden ─────────────
+  const overigDims = overigVorm === "profiel" ? STEEL_SECTION_DIMS[overigProfiel] : undefined;
+  const overigSectie = overigVorm === "profiel" ? STEEL_SECTIONS[overigProfiel] : undefined;
+  const overigVorm2 = useMemo(
+    () =>
+      overigVorm === "profiel"
+        ? shapeVanProfiel(overigProfiel)
+        : overigB > 0 && overigH > 0
+          ? ({ type: "rect", b: overigB, h: overigH } as const)
+          : null,
+    [overigVorm, overigProfiel, overigB, overigH],
+  );
+  const overigProfielnaam =
+    overigVorm === "profiel" ? overigProfiel : `${overigB}x${overigH}`;
+  const vrijMat = {
+    naam: vrijNaam.trim(),
+    eMod: getalUit(vrijE),
+    dichtheid: getalUit(vrijRho),
+    fToel: getalUit(vrijF),
+    gammaM: vrijGamma.trim() === "" ? 1 : getalUit(vrijGamma),
+  };
+  const overigDoorsnedeGeldig =
+    overigVorm === "profiel" ? !!overigDims : overigB > 0 && overigH > 0;
+  const overigMateriaalGeldig =
+    vrijMat.naam.length > 0 &&
+    vrijMat.eMod > 0 &&
+    vrijMat.dichtheid >= 0 &&
+    vrijMat.fToel > 0 &&
+    vrijMat.gammaM > 0;
+  const overigGeldig = overigDoorsnedeGeldig && overigMateriaalGeldig;
+  // A en I_y van de gekozen doorsnede — dezelfde getallen waarmee de solver
+  // straks rekent (zie sectionResolver, bron "vrij").
+  const overigA = overigSectie?.A ?? overigB * overigH;
+  const overigI = overigSectie?.Iy ?? (overigB * overigH ** 3) / 12;
+
   const houtGeldig = houtType === "clt" ? cltGeldig : houtB > 0 && houtH > 0;
   const staalGeldig = !!staalProfiel && !!STEEL_SECTION_DIMS[staalProfiel];
   const betonGeldig = betonB > 0 && betonH > 0;
@@ -233,6 +310,12 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
     } else if (soort === "beton" && betonGeldig) {
       onApply({ material: betonKlasse, profile: `${betonB}x${betonH}` });
       onClose();
+    } else if (soort === "overig" && overigGeldig) {
+      // Het vrije materiaal reist als NAAM mee (zie vrijMateriaal.ts): zo
+      // staat het in het projectbestand, de undo-historie en het rapport
+      // zonder een tweede opslagplaats die uit de pas kan lopen.
+      onApply({ material: formatVrijMateriaal(vrijMat), profile: overigProfielnaam });
+      onClose();
     }
   };
 
@@ -240,6 +323,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
     soort === "staal" ? !staalGeldig
     : soort === "hout" ? !houtGeldig
     : soort === "beton" ? !betonGeldig
+    : soort === "overig" ? !overigGeldig
     : true;
 
   if (!open) return null;
@@ -506,6 +590,143 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
               {betonGeldig
                 ? <>Keuze: <strong>{betonB}×{betonH} — {betonKlasse}</strong></>
                 : "Vul een geldige doorsnede in."}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {soort === "overig" && (
+        <div className="pk-stap2">
+          <div className="pk-kolom pk-kolom-reeks">
+            <div className="pk-kolom-kop">Doorsnede</div>
+            <button
+              className={`pk-rij${overigVorm === "rechthoek" ? " actief" : ""}`}
+              onClick={() => setOverigVorm("rechthoek")}
+            >
+              Rechthoek <span className="pk-rij-sub">b × h</span>
+            </button>
+            <button
+              className={`pk-rij${overigVorm === "profiel" ? " actief" : ""}`}
+              onClick={() => setOverigVorm("profiel")}
+            >
+              Uit de database <span className="pk-rij-sub">IPE, HEA, koker, buis</span>
+            </button>
+            {overigVorm === "profiel" && (
+              <>
+                <div className="pk-kolom-kop">Reeks</div>
+                <div className="pk-scroll">
+                  {STAAL_REEKSEN.map((r) => (
+                    <button
+                      key={r.id}
+                      className={`pk-rij${reeks === r.id ? " actief" : ""}`}
+                      onClick={() => { setReeks(r.id); setOverigProfiel(""); }}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="pk-kolom pk-kolom-maat">
+            {overigVorm === "rechthoek" ? (
+              <>
+                <div className="pk-kolom-kop">Maten</div>
+                <label className="pk-veld">
+                  <span>Breedte b [mm]</span>
+                  <input type="number" min={1} step={1} value={overigB}
+                    onChange={(e) => setOverigB(Number(e.target.value))} />
+                </label>
+                <label className="pk-veld">
+                  <span>Hoogte h [mm]</span>
+                  <input type="number" min={1} step={1} value={overigH}
+                    onChange={(e) => setOverigH(Number(e.target.value))} />
+                </label>
+              </>
+            ) : (
+              <>
+                <div className="pk-kolom-kop">Profiel</div>
+                <div className="pk-scroll">
+                  {reeksProfielen.map((naam) => (
+                    <button
+                      key={naam}
+                      className={`pk-rij${overigProfiel === naam ? " actief" : ""}`}
+                      onClick={() => setOverigProfiel(naam)}
+                    >
+                      {naam}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {overigVorm2 && (
+              <div className="pk-tekening">
+                <ProfielMiniatuur
+                  shape={overigVorm2}
+                  titel={`Doorsnede ${overigProfielnaam}`}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="pk-kolom pk-kolom-detail">
+            <div className="pk-kolom-kop">Vrij materiaal</div>
+            <label className="pk-veld">
+              <span>Naam</span>
+              <input type="text" value={vrijNaam} spellCheck={false}
+                placeholder="bijv. Natuursteen"
+                onChange={(e) => setVrijNaam(e.target.value)} />
+            </label>
+            <label className="pk-veld">
+              <span>E-modulus [N/mm²]</span>
+              <input type="number" min={1} step={100} value={vrijE}
+                onChange={(e) => setVrijE(e.target.value)} />
+            </label>
+            <label className="pk-veld">
+              <span>Volumieke massa ρ [kg/m³]</span>
+              <input type="number" min={0} step={10} value={vrijRho}
+                onChange={(e) => setVrijRho(e.target.value)} />
+            </label>
+            <label className="pk-veld">
+              <span>Toelaatbare spanning f [N/mm²]</span>
+              <input type="number" min={0} step={1} value={vrijF}
+                onChange={(e) => setVrijF(e.target.value)} />
+            </label>
+            <label className="pk-veld">
+              <span>Materiaalfactor γ_M [-]</span>
+              <input type="number" min={0.1} step={0.05} value={vrijGamma}
+                onChange={(e) => setVrijGamma(e.target.value)} />
+            </label>
+            <div className="pk-hint">
+              Deze staaf wordt <strong>niet aan een norm</strong> getoetst, maar op de
+              vergelijkspanning van von Mises:
+              σ<sub>eq</sub> = √(σ<sub>x</sub>² + σ<sub>z</sub>² − σ<sub>x</sub>·σ<sub>z</sub>
+              {" "}+ 3·τ²) ≤ f/γ<sub>M</sub>. Er is dus geen doorsnedeklassificatie en geen
+              knik-, kip- of doorbuigingstoets. De velden hebben bewust geen
+              standaardwaarden: vul de gegevens van je eigen materiaal in.
+            </div>
+            {overigDoorsnedeGeldig && (
+              <div className="pk-eigenschappen">
+                <div className="pk-eig-rij"><span>A</span><code>{nlGetal(overigA)} mm²</code></div>
+                <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(overigI / 1e4)} cm⁴</code></div>
+                {overigDims && (
+                  <div className="pk-eig-rij"><span>h × b</span><code>{overigDims.h} × {overigDims.b} mm</code></div>
+                )}
+                {overigMateriaalGeldig && (
+                  <div className="pk-eig-rij">
+                    <span>f_d = f/γ_M</span>
+                    <code>{nlGetal(vrijMat.fToel / vrijMat.gammaM, 2)} N/mm²</code>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="pk-samenvatting">
+              {overigGeldig
+                ? <>Keuze: <strong>{overigProfielnaam} — {vrijMat.naam}</strong> (f = {nlGetal(vrijMat.fToel, 2)} N/mm²)</>
+                : !overigDoorsnedeGeldig
+                  ? "Kies of vul een geldige doorsnede in."
+                  : "Vul naam, E, ρ en de toelaatbare spanning in."}
             </div>
           </div>
         </div>

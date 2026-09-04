@@ -24,6 +24,7 @@ use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use spanning_check::SpanningBeamCheckInput;
 use steel_check::BeamCheckInput;
 use timber_check::clt::CltBeamCheckInput;
 use timber_check::TimberBeamCheckInput;
@@ -121,6 +122,16 @@ fn behandel(v: Verzoek) -> Result<Value, String> {
                 serde_json::from_value(inputs).map_err(|e| format!("korfinvoer: {e}"))?;
             let uit = concrete_check::mn_kappa(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // Vrije spanningstoets: geen norm, alleen een doorsnede en een
+        // toelaatbare spanning, getoetst op de vergelijkspanning van von
+        // Mises. Zelfde typen als het Tauri-command.
+        "check_stress_beams" => {
+            let inputs = v.inputs.ok_or("check_stress_beams vraagt om `inputs`")?;
+            let inputs: Vec<SpanningBeamCheckInput> =
+                serde_json::from_value(inputs).map_err(|e| format!("spanningsinvoer: {e}"))?;
+            serde_json::to_value(spanning_check::check_all_spanning_beams(inputs))
+                .map_err(|e| e.to_string())
         }
         andere => Err(format!("onbekende opdracht: {andere}")),
     }

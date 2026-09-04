@@ -1,0 +1,23 @@
+[package]
+name = "spanning-check"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+mechanics = { path = "../mechanics" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+steel-check = { path = "../steel-check" }
+steel-profiles = { path = "../steel-profiles" }
+
+[dev-dependencies]
+approx = { workspace = true }
+serde_json = { workspace = true }
+
+[[test]]
+name = "handberekening"
+path = "tests/handberekening.rs"

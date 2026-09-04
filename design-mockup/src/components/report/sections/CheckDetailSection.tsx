@@ -33,6 +33,7 @@ import {
   gradeLabel,
   isConcreteCheckResult,
   isSteelCheckResult,
+  isStressCheckResult,
   sectionLabel,
   type MemberCheckResult,
 } from "../../../lib/checkTypes";
@@ -285,15 +286,18 @@ function MemberBlock({
 
   // De regel onder de staafkop: per materiaal wat de toetsing bepaalt —
   // doorsnedeklasse (staal), korf en rekensterkten (beton), klimaatklasse en
-  // belastingduur (hout en kruislaaghout).
+  // belastingduur (hout en kruislaaghout), en bij de vrije spanningstoets de
+  // toelaatbare spanning met de materiaalfactor (daar is geen norm).
   const meta = steel
     ? `EN 1993 · ${t("report.crossSectionClass", "doorsnedeklasse")} ${crossSectionClassLabel(result.classification)}`
     : isConcreteCheckResult(result)
       ? `EN 1992 · ${result.reinforcement_summary} · f_cd = ${result.f_cd_mpa.toFixed(1)} N/mm² · f_yd = ${result.f_yd_mpa.toFixed(0)} N/mm²`
-      : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${t("report.loadDuration", "belastingduur")} ${tCheck(
-          LOAD_DURATION_LABELS[result.load_duration].key,
-          LOAD_DURATION_LABELS[result.load_duration].fallback,
-        ).toLowerCase()}`;
+      : isStressCheckResult(result)
+        ? `${t("report.spanningGeenNorm", "vrije spanningstoets (geen norm)")} · f_toel = ${result.f_toel_mpa.toFixed(2)} N/mm² · γ_M = ${result.gamma_m.toFixed(2)} · f_d = ${result.f_d_mpa.toFixed(2)} N/mm²`
+        : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${t("report.loadDuration", "belastingduur")} ${tCheck(
+            LOAD_DURATION_LABELS[result.load_duration].key,
+            LOAD_DURATION_LABELS[result.load_duration].fallback,
+          ).toLowerCase()}`;
 
   // Beknopt: alleen de maatgevende toets — de UC die telt, met dezelfde
   // volledige afleiding, maar zonder de toetsen die niet maatgevend waren.

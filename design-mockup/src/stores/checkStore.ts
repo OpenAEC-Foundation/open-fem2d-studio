@@ -1,12 +1,19 @@
 /**
- * checkStore — resultaten van de normtoetsing.
+ * checkStore — resultaten van de toetsing.
  *
- * Eén run draait de vier Rust-kernen parallel — staal (`check_steel_beams`),
- * hout (`check_timber_beams`), kruislaaghout (`check_clt_beams`) en beton
- * (`check_concrete_beams`) — en merget de resultaten op staaf-id in één lijst
+ * Eén run draait de vijf Rust-kernen parallel — staal (`check_steel_beams`),
+ * hout (`check_timber_beams`), kruislaaghout (`check_clt_beams`), beton
+ * (`check_concrete_beams`) en de vrije spanningstoets
+ * (`check_stress_beams`) — en merget de resultaten op staaf-id in één lijst
  * met hetzelfde NamedCheck-contract. Niet-toetsbare staven komen met
  * expliciete reden in `skipped` (zichtbaar in het toetsingspaneel) — geen
  * stille aannames.
+ *
+ * De vijfde kern is bewust NORM-ONAFHANKELIJK: een doorsnede plus een
+ * toelaatbare spanning, getoetst op de vergelijkspanning van von Mises. Hij
+ * bedient de materialen die buiten EN 1992/1993/1995 vallen (natuursteen,
+ * een gietstuk, een kunststof) en de snelle spanningscontrole op een
+ * bestaand profiel.
  *
  * De rekenkern is in beide omgevingen bereikbaar. In de desktop-app via
  * Tauri's `invoke`; in de browser via het eindpunt `/api/toetsing` van de
@@ -25,6 +32,7 @@ import type { BeamCheckResult } from "../lib/types/steel/BeamCheckResult";
 import type { TimberBeamCheckResult } from "../lib/types/timber/TimberBeamCheckResult";
 import type { CltBeamCheckResult } from "../lib/types/timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "../lib/types/concrete/ConcreteBeamCheckResult";
+import type { SpanningBeamCheckResult } from "../lib/types/spanning/SpanningBeamCheckResult";
 import type { ConcreteClass } from "../lib/types/concrete/ConcreteClass";
 import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import type { MemberCheckResult, CheckSkip } from "../lib/checkTypes";
@@ -44,6 +52,8 @@ import {
   matchSupportedConcreteClass,
   type BetonStaafConfig,
 } from "../lib/betonCheckBuilder";
+import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
+import { isVrijMateriaal } from "../lib/vrijMateriaal";
 
 /**
  * Roep de Rust-rekenkern aan, waar de app ook draait.
@@ -163,7 +173,17 @@ export const useCheckStore = create<CheckState>((set) => ({
         getConcreteClasses(),
       ]);
 
-      const steel = buildSteelCheckInputs({ ...data, profileDb });
+      // De staalbouwer krijgt de staven met een vrij materiaal niet te zien:
+      // hun profiel kán een staalprofiel zijn ("even staal op spanning
+      // toetsen"), maar hun materiaal is geen staalsoort — anders meldde hij
+      // ze als "geen ondersteunde staalsoort" terwijl de spanningskern ze
+      // wél toetst. Zelfde reden als waarom de houtbouwer de CLT-staven niet
+      // ziet.
+      const steel = buildSteelCheckInputs({
+        ...data,
+        beams: data.beams.filter((b) => !isVrijMateriaal(b.material)),
+        profileDb,
+      });
       // De houtbouwer krijgt de CLT-staven niet te zien: qua materiaal zijn
       // ze hout, maar hun profiel is een opbouw en geen b × h — anders meldde
       // hij ze als "geen rechthoek" terwijl de CLT-bouwer ze wél toetst.
@@ -178,10 +198,11 @@ export const useCheckStore = create<CheckState>((set) => ({
         korven: korvenUitStaven(data.beams),
         supportedClasses: concreteClasses,
       });
+      const spanning = buildSpanningCheckInputs(data);
 
       // Eerlijkheid: elke staaf die nergens terechtkwam expliciet melden.
       const bouwers: { inputs: { beam_id: number }[]; skipped: CheckSkip[] }[] = [
-        steel, timber, clt, beton,
+        steel, timber, clt, beton, spanning,
       ];
       const covered = new Set<number>(
         bouwers.flatMap((b) => [
@@ -194,7 +215,7 @@ export const useCheckStore = create<CheckState>((set) => ({
         if (!covered.has(b.id)) {
           skipped.push({
             beamId: b.id,
-            reason: `niet herkend als staal, hout, kruislaaghout of beton (materiaal "${b.material ?? "—"}", profiel "${b.profile ?? "—"}") — geen normtoetsing mogelijk`,
+            reason: `niet herkend als staal, hout, kruislaaghout, beton of vrij materiaal (materiaal "${b.material ?? "—"}", profiel "${b.profile ?? "—"}") — geen toetsing mogelijk`,
           });
         }
       }
@@ -203,26 +224,31 @@ export const useCheckStore = create<CheckState>((set) => ({
         console.info(`[Toetsing] staaf ${s.beamId} overgeslagen — ${s.reason}`);
       }
 
-      const [steelResults, timberResults, cltResults, betonResults] = await Promise.all([
-        steel.inputs.length > 0
-          ? roepKern<BeamCheckResult[]>("check_steel_beams", steel.inputs)
-          : Promise.resolve<BeamCheckResult[]>([]),
-        timber.inputs.length > 0
-          ? roepKern<TimberBeamCheckResult[]>("check_timber_beams", timber.inputs)
-          : Promise.resolve<TimberBeamCheckResult[]>([]),
-        clt.inputs.length > 0
-          ? roepKern<CltBeamCheckResult[]>("check_clt_beams", clt.inputs)
-          : Promise.resolve<CltBeamCheckResult[]>([]),
-        beton.inputs.length > 0
-          ? roepKern<ConcreteBeamCheckResult[]>("check_concrete_beams", beton.inputs)
-          : Promise.resolve<ConcreteBeamCheckResult[]>([]),
-      ]);
+      const [steelResults, timberResults, cltResults, betonResults, spanningResults] =
+        await Promise.all([
+          steel.inputs.length > 0
+            ? roepKern<BeamCheckResult[]>("check_steel_beams", steel.inputs)
+            : Promise.resolve<BeamCheckResult[]>([]),
+          timber.inputs.length > 0
+            ? roepKern<TimberBeamCheckResult[]>("check_timber_beams", timber.inputs)
+            : Promise.resolve<TimberBeamCheckResult[]>([]),
+          clt.inputs.length > 0
+            ? roepKern<CltBeamCheckResult[]>("check_clt_beams", clt.inputs)
+            : Promise.resolve<CltBeamCheckResult[]>([]),
+          beton.inputs.length > 0
+            ? roepKern<ConcreteBeamCheckResult[]>("check_concrete_beams", beton.inputs)
+            : Promise.resolve<ConcreteBeamCheckResult[]>([]),
+          spanning.inputs.length > 0
+            ? roepKern<SpanningBeamCheckResult[]>("check_stress_beams", spanning.inputs)
+            : Promise.resolve<SpanningBeamCheckResult[]>([]),
+        ]);
 
       const merged: MemberCheckResult[] = [
         ...steelResults,
         ...timberResults,
         ...cltResults,
         ...betonResults,
+        ...spanningResults,
       ].sort((a, b) => a.beam_id - b.beam_id);
 
       set({
@@ -247,6 +273,7 @@ export const useCheckStore = create<CheckState>((set) => ({
 export function anyCheckableBeams(beams: Beam[]): boolean {
   return beams.some(
     (b) =>
+      isVrijMateriaal(b.material) ||
       isSteelProfile(b.profile) ||
       isCltProfiel(b.profile) ||
       matchSupportedTimberGrade(b.material) !== null ||

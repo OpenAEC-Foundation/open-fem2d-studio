@@ -13,11 +13,15 @@
  *   A = b·h, Iy = b·h³/12, E = E_0,mean per sterkteklasse (EN 338 / EN 14080).
  *   De TOETSING gebruikt de Rust-kern als bron; deze E-tabel stuurt alleen de
  *   stijfheid in de solver.
+ * - Vrij materiaal ("VRIJ:… E=… rho=… f=…"): E en ρ komen uit de naam zelf,
+ *   de doorsnede uit het profiel (rechthoek of catalogusprofiel). Geen norm,
+ *   geen tabel — de gebruiker geeft de getallen.
  */
 import { STEEL_SECTIONS } from "./steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
 import { cltSolverDoorsnede, isCltProfiel, parseCltProfiel } from "./cltCheckBuilder";
 import { zoekEigenDoorsnede } from "./profieleditor/eigenDoorsnedenStore";
+import { parseVrijMateriaal } from "./vrijMateriaal";
 
 /** E_0,mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL). */
 export const TIMBER_E_MEAN: Record<string, number> = {
@@ -61,7 +65,7 @@ export interface ResolvedSection {
   E: number;      // N/mm²
   A: number;      // mm²
   I: number;      // mm⁴ (Iy, sterke as)
-  bron: "staal-db" | "eigen" | "hout-bxh" | "clt" | "beton-bxh" | "default";
+  bron: "staal-db" | "eigen" | "hout-bxh" | "clt" | "beton-bxh" | "vrij" | "default";
   /**
    * Volle doorsnede in mm² voor het eigen gewicht, waar die van `A` afwijkt.
    * Bij kruislaaghout is `A` de meewerkende doorsnede van de lengtelagen; de
@@ -88,6 +92,23 @@ function normaliseer(naam: string): string {
 export function resolveSection(material: string | undefined, profile: string | undefined): ResolvedSection {
   const mat = material ?? "S235";
   const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(mat) || mat in TIMBER_E_MEAN;
+
+  // Vrij materiaal: de E-modulus komt uit de materiaalnaam, de doorsnede uit
+  // het profiel. Dat kan een rechthoek zijn of een catalogusprofiel — "even
+  // staal op spanning toetsen" is dezelfde route als natuursteen, alleen met
+  // een andere f_toel. Past het profiel bij geen van beide, dan valt de staaf
+  // door naar de waarschuwing onderaan; de spanningstoets meldt hem apart met
+  // reden bij de overgeslagen staven.
+  const vrij = parseVrijMateriaal(material);
+  if (vrij) {
+    const rect = parseRechthoek(profile);
+    if (rect) {
+      const { b, h } = rect;
+      return { E: vrij.eMod, A: b * h, I: (b * h * h * h) / 12, bron: "vrij" };
+    }
+    const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
+    if (sec) return { E: vrij.eMod, A: sec.A, I: sec.Iy, bron: "vrij" };
+  }
 
   if (mat in CONCRETE_E_CM) {
     // Beton: ongescheurde rechthoekige doorsnede met E_cm. De wapening telt
@@ -158,7 +179,11 @@ export function eigenGewichtPerMeter(
 ): number {
   const { A, aBruto } = resolveSection(material, profile);
   const mat = material ?? "S235";
-  const rho = TIMBER_RHO_MEAN[mat] ?? (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
+  const vrij = parseVrijMateriaal(material);
+  const rho =
+    vrij?.dichtheid ??
+    TIMBER_RHO_MEAN[mat] ??
+    (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
   // A in mm² → m²; resultaat N/m → kN/m. Voor het gewicht telt de volle
   // doorsnede, niet alleen het meewerkende deel.
   return -(rho * ((aBruto ?? A) * 1e-6) * G) / 1000;

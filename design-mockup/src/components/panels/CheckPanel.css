@@ -368,3 +368,29 @@
 
 /* KaTeX moet meekleuren met het thema. */
 .check-block .katex { color: var(--theme-text); }
+
+/* ── Vrije spanningstoets: doorsnede + spanningsverloop in de kaart ────── */
+
+.cp-spanning-figuur { margin: 4px 0 10px; }
+
+.cp-spanning-figuur svg {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+}
+
+.cp-spanning-bijschrift {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--theme-text-muted);
+}
+
+.cp-spanning-notes {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--theme-text-muted);
+}

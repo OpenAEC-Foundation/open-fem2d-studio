@@ -5,6 +5,7 @@ use nen_en_1992_1_1::{ConcreteClass, ReinforcementGrade};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1995_1_1::clt::CltPreset;
 use report::{ReportInput, generate_report_pdf};
+use spanning_check::{SpanningBeamCheckInput, SpanningBeamCheckResult};
 use steel_check::{BeamCheckInput, BeamCheckResult};
 use steel_profiles::SteelProfile;
 use timber_check::clt::{CltBeamCheckInput, CltBeamCheckResult};
@@ -96,6 +97,18 @@ async fn concrete_mn_kappa(inputs: MnKappaRequest) -> Result<MnKappaResponse, St
     concrete_check::mn_kappa(inputs)
 }
 
+/// Vrije spanningstoets (geen norm): een doorsnede plus een toelaatbare
+/// spanning, getoetst op de vergelijkspanning van von Mises. Bedoeld voor
+/// materialen die buiten EN 1992/1993/1995 vallen — natuursteen, een
+/// gietstuk, een kunststof — en voor een snelle spanningscontrole op een
+/// bestaand profiel.
+#[tauri::command]
+async fn check_stress_beams(
+    inputs: Vec<SpanningBeamCheckInput>,
+) -> Result<Vec<SpanningBeamCheckResult>, String> {
+    Ok(spanning_check::check_all_spanning_beams(inputs))
+}
+
 #[tauri::command]
 async fn generate_steel_report_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
     Ok(generate_report_pdf(input))
@@ -119,6 +132,7 @@ pub fn run() {
             list_reinforcement_grades,
             check_concrete_beams,
             concrete_mn_kappa,
+            check_stress_beams,
             generate_steel_report_pdf,
         ])
         .run(tauri::generate_context!())

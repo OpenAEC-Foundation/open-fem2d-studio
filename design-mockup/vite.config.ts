@@ -21,7 +21,9 @@ const hier = dirname(fileURLToPath(import.meta.url));
  *
  * Het is dezelfde binary die ook achter de Tauri-commands zit, dus er ontstaat
  * geen tweede implementatie: één rekenkern, twee manieren om hem te bereiken.
- * Bouwen met `cargo build --release --bin toetsbrug` in src-tauri.
+ * Bouwen met `cargo build --release -p toetsbrug` in src-tauri. (Met `--bin`
+ * zoekt cargo de binary in het hoofdpakket en faalt met "no bin target named
+ * toetsbrug in default-run packages"; `-p` wijst het juiste pakket aan.)
  */
 function toetsbrug(): Plugin {
   const exe = resolve(
@@ -48,7 +50,7 @@ function toetsbrug(): Plugin {
             JSON.stringify({
               fout:
                 "De rekenkern is nog niet gebouwd. Draai in src-tauri: " +
-                "cargo build --release --bin toetsbrug",
+                "cargo build --release -p toetsbrug",
             }),
           );
           return;
