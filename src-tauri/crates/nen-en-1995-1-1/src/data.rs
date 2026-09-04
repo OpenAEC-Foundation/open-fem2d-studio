@@ -75,10 +75,24 @@ pub const SOFTWOOD: &[StrengthClass] = &[
 ];
 
 /// Gelamineerd hout (homogeen) — EN 14080.
+///
+/// GL32h had hier E_0,mean = 13 700. Dat is de waarde uit het ingetrokken
+/// EN 1194:1999 (tabel 6.2 van een Eurocode-5-leerboek citeert die norm met
+/// precies 13,7 kN/mm²); EN 14080:2013 geeft 14 200. Dat deze tabel op
+/// EN 14080 zit en niet op EN 1194 blijkt uit de buren: GL24h staat op 11 500
+/// (EN 1194: 11 600) en rho_k van GL32h op 440 (EN 1194: 430). Het was dus
+/// één achtergebleven oude waarde, en de frontend (sectionResolver.ts, die
+/// de solverstijfheid levert) had al 14 200 — de solver en de toetsing
+/// rekenden daardoor met een verschillende E voor dezelfde staaf.
+///
+/// EN 14080 zelf stond niet op schijf; de correctie rust op de twee
+/// bovenstaande consistentie-argumenten plus de frontendwaarde. Nog open,
+/// niet aangeraakt: rho_mean wijkt bij GL32h (480 hier, 490 frontend) en
+/// GL36h (490 hier, 500 frontend) af — daarvoor is de norm nodig.
 pub const GLULAM: &[StrengthClass] = &[
     glulam("GL24h", 24.0, 19.2, 0.5, 24.0, 2.5, 3.5, 11500.0, 9600.0, 300.0, 650.0, 385.0, 420.0),
     glulam("GL28h", 28.0, 22.3, 0.5, 26.5, 2.5, 3.5, 12600.0, 10500.0, 300.0, 650.0, 425.0, 460.0),
-    glulam("GL32h", 32.0, 25.6, 0.5, 29.0, 2.5, 3.5, 13700.0, 11100.0, 300.0, 650.0, 440.0, 480.0),
+    glulam("GL32h", 32.0, 25.6, 0.5, 29.0, 2.5, 3.5, 14200.0, 11100.0, 300.0, 650.0, 440.0, 480.0),
     glulam("GL36h", 36.0, 28.8, 0.5, 31.0, 2.5, 3.5, 14700.0, 11900.0, 300.0, 650.0, 450.0, 490.0),
 ];
 
