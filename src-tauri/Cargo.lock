@@ -480,6 +480,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "concrete-check"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nen-en-1992-1-1",
+ "nen-en-1993-1-1-section",
+ "serde",
+ "serde_json",
+ "steel-check",
+ "ts-rs",
+]
+
+[[package]]
 name = "console"
 version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2268,6 +2282,17 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "insta",
+ "serde",
+ "ts-rs",
+]
+
+[[package]]
+name = "nen-en-1992-1-1"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nen-en-1993-1-1-section",
  "serde",
  "ts-rs",
 ]
@@ -4337,6 +4362,7 @@ dependencies = [
  "nen-en-1993-1-1-stability",
  "nen-en-1995-1-1",
  "serde",
+ "serde_json",
  "steel-check",
  "ts-rs",
 ]
@@ -4401,6 +4427,8 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 name = "toetsbrug"
 version = "0.1.0"
 dependencies = [
+ "concrete-check",
+ "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
  "nen-en-1995-1-1",
  "serde",

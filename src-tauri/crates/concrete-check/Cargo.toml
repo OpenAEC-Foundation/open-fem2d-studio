@@ -1,0 +1,25 @@
+[package]
+name = "concrete-check"
+version = "0.1.0"
+edition = "2021"
+description = "Orkestratie van de betontoetsing per staaf volgens NEN-EN 1992-1-1+A1/NB:2016+A1:2020"
+license = "CC-BY-SA-4.0"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+mechanics = { path = "../mechanics" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
+steel-check = { path = "../steel-check" }
+
+[dev-dependencies]
+approx = { workspace = true }
+serde_json = { workspace = true }
+
+[[test]]
+name = "referentie_balk"
+path = "tests/referentie_balk.rs"

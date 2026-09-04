@@ -1,0 +1,219 @@
+/* Wapeningskorf en M-N-κ-diagram — thema-volgend via de theme-tokens. */
+
+.beton-paneel {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(320px, 1fr);
+  gap: 16px;
+  color: var(--theme-text);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .beton-paneel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.beton-kolom-invoer,
+.beton-kolom-uitvoer {
+  min-width: 0;
+}
+
+/* ── Formulier ─────────────────────────────────────────────────────────── */
+
+.beton-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.beton-groep {
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  padding: 8px 10px 10px;
+  background: var(--theme-surface);
+}
+
+.beton-groep-kop {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted);
+  margin-bottom: 6px;
+}
+
+.beton-rij {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.beton-label {
+  color: var(--theme-text-secondary);
+  white-space: nowrap;
+}
+
+.beton-invoer {
+  width: 128px;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-dialog-input-text, var(--theme-text));
+  background: var(--theme-dialog-input-bg, var(--theme-bg));
+  border: 1px solid var(--theme-dialog-input-border, var(--theme-border));
+  border-radius: 4px;
+}
+
+.beton-invoer:focus {
+  outline: 2px solid var(--theme-focus-color);
+  outline-offset: 1px;
+}
+
+.beton-invoer-kort {
+  width: 58px;
+}
+
+.beton-invoer-met-eenheid,
+.beton-invoer-groep {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.beton-invoer-met-eenheid .beton-invoer {
+  width: 90px;
+}
+
+.beton-eenheid {
+  color: var(--theme-text-muted);
+  min-width: 22px;
+}
+
+.beton-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--theme-text-muted);
+  padding: 2px 0 4px;
+}
+
+/* ── Uitvoer ───────────────────────────────────────────────────────────── */
+
+.beton-tekening-blok {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--theme-surface);
+}
+
+.beton-tekening {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.beton-kerngetallen {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 10px;
+  row-gap: 3px;
+  align-content: start;
+}
+
+.beton-kerngetallen dt {
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+}
+
+.beton-kerngetallen dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.beton-waarschuwing {
+  color: var(--theme-danger-color);
+}
+
+.beton-grafiek-blok {
+  margin-top: 12px;
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  padding: 8px 10px 10px;
+  background: var(--theme-surface);
+}
+
+.beton-grafiek-kop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.beton-bezig {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--theme-text-muted);
+}
+
+.beton-grafiek {
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  display: block;
+  cursor: crosshair;
+}
+
+.beton-grafiek-samenvatting {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--theme-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.beton-fout {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--theme-danger-color);
+  color: var(--theme-danger-color);
+  background: var(--theme-surface);
+  font-size: 11.5px;
+}
+
+.beton-tabel {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.beton-tabel summary {
+  cursor: pointer;
+  color: var(--theme-text-muted);
+}
+
+.beton-tabel table {
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.beton-tabel th,
+.beton-tabel td {
+  text-align: right;
+  padding: 2px 10px 2px 0;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+.beton-tabel th {
+  color: var(--theme-text-muted);
+  font-weight: 500;
+}

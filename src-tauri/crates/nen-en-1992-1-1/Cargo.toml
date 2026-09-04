@@ -1,0 +1,22 @@
+[package]
+name = "nen-en-1992-1-1"
+version = "0.1.0"
+edition = "2021"
+description = "NEN-EN 1992-1-1+A1/NB:2016+A1:2020 — materiaalgegevens, spanning-rekrelaties en M-N-κ-doorsnedeberekening voor gewapend beton"
+license = "CC-BY-SA-4.0"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+mechanics = { path = "../mechanics" }
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[[test]]
+name = "handberekening"
+path = "tests/handberekening.rs"

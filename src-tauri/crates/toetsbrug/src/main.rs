@@ -7,7 +7,7 @@
 //! waar toetsing hoort te staan een melding dat de desktop-app nodig is — in
 //! het canvas én in het rapport.
 //!
-//! Deze binary biedt dezelfde vier functies aan als de Tauri-commands, met
+//! Deze binary biedt dezelfde functies aan als de Tauri-commands, met
 //! precies dezelfde typen, zodat er geen tweede implementatie ontstaat. De
 //! dev-server roept hem aan (zie `vite.config.ts`) en geeft het antwoord door.
 //!
@@ -20,10 +20,12 @@
 
 use std::io::{Read, Write};
 
+use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use steel_check::BeamCheckInput;
+use timber_check::clt::CltBeamCheckInput;
 use timber_check::TimberBeamCheckInput;
 
 /// Eén verzoek. `opdracht` kiest de functie; de rest hangt daarvan af.
@@ -80,6 +82,44 @@ fn behandel(v: Verzoek) -> Result<Value, String> {
                 .into_iter()
                 .map(timber_check::check_timber_beam)
                 .collect();
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // Kruislaaghout: standaardopbouwen (voorinstellingen) en de toetsing
+        // per lamel. Zelfde typen als de Tauri-commands.
+        "list_clt_presets" => {
+            serde_json::to_value(nen_en_1995_1_1::clt::clt_presets()).map_err(|e| e.to_string())
+        }
+        "check_clt_beams" => {
+            let inputs = v.inputs.ok_or("check_clt_beams vraagt om `inputs`")?;
+            let inputs: Vec<CltBeamCheckInput> =
+                serde_json::from_value(inputs).map_err(|e| format!("CLT-staafinvoer: {e}"))?;
+            let uit: Vec<_> = inputs
+                .into_iter()
+                .map(timber_check::clt::check_clt_beam)
+                .collect();
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // Beton (NEN-EN 1992-1-1): sterkteklassen met alle tabel 3.1-waarden,
+        // de B500-klassen, de toetsing per staaf en het losse M-N-κ-diagram
+        // voor de wapeningskorf in de eigenschappen.
+        "list_concrete_classes" => {
+            serde_json::to_value(nen_en_1992_1_1::CONCRETE_CLASSES).map_err(|e| e.to_string())
+        }
+        "list_reinforcement_grades" => {
+            serde_json::to_value(nen_en_1992_1_1::REINFORCEMENT_GRADES).map_err(|e| e.to_string())
+        }
+        "check_concrete_beams" => {
+            let inputs = v.inputs.ok_or("check_concrete_beams vraagt om `inputs`")?;
+            let inputs: Vec<ConcreteBeamCheckInput> =
+                serde_json::from_value(inputs).map_err(|e| format!("betonstaafinvoer: {e}"))?;
+            serde_json::to_value(concrete_check::check_all_concrete_beams(inputs))
+                .map_err(|e| e.to_string())
+        }
+        "concrete_mn_kappa" => {
+            let inputs = v.inputs.ok_or("concrete_mn_kappa vraagt om `inputs`")?;
+            let verzoek: MnKappaRequest =
+                serde_json::from_value(inputs).map_err(|e| format!("korfinvoer: {e}"))?;
+            let uit = concrete_check::mn_kappa(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
         }
         andere => Err(format!("onbekende opdracht: {andere}")),
