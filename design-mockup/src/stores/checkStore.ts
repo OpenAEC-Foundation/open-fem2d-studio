@@ -1,19 +1,20 @@
 /**
- * checkStore — resultaten van de normtoetsing (EN 1993 staal + EN 1995 hout).
+ * checkStore — resultaten van de normtoetsing.
  *
- * Eén run draait beide Rust-kernen parallel (`check_steel_beams` en
- * `check_timber_beams`) en merget de resultaten op staaf-id in één lijst met
- * hetzelfde NamedCheck-contract. Niet-toetsbare staven komen met expliciete
- * reden in `skipped` (zichtbaar in het toetsingspaneel) — geen stille
- * aannames.
+ * Eén run draait de vier Rust-kernen parallel — staal (`check_steel_beams`),
+ * hout (`check_timber_beams`), kruislaaghout (`check_clt_beams`) en beton
+ * (`check_concrete_beams`) — en merget de resultaten op staaf-id in één lijst
+ * met hetzelfde NamedCheck-contract. Niet-toetsbare staven komen met
+ * expliciete reden in `skipped` (zichtbaar in het toetsingspaneel) — geen
+ * stille aannames.
  *
  * De rekenkern is in beide omgevingen bereikbaar. In de desktop-app via
  * Tauri's `invoke`; in de browser via het eindpunt `/api/toetsing` van de
  * dev-server, dat dezelfde binary aanroept (zie `vite.config.ts` en
- * `src-tauri/src/bin/toetsbrug.rs`). Dat is bewust dezelfde kern en geen
- * tweede implementatie: hetzelfde model hoort overal hetzelfde antwoord te
- * geven. Vóór die brug haakte de toetsing in de browser volledig af, waardoor
- * elke unity check leeg bleef — in het canvas én in het rapport.
+ * `src-tauri/crates/toetsbrug`). Dat is bewust dezelfde kern en geen tweede
+ * implementatie: hetzelfde model hoort overal hetzelfde antwoord te geven.
+ * Vóór die brug haakte de toetsing in de browser volledig af, waardoor elke
+ * unity check leeg bleef — in het canvas én in het rapport.
  */
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
@@ -22,9 +23,27 @@ import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { BeamCheckResult } from "../lib/types/steel/BeamCheckResult";
 import type { TimberBeamCheckResult } from "../lib/types/timber/TimberBeamCheckResult";
+import type { CltBeamCheckResult } from "../lib/types/timber/CltBeamCheckResult";
+import type { ConcreteBeamCheckResult } from "../lib/types/concrete/ConcreteBeamCheckResult";
+import type { ConcreteClass } from "../lib/types/concrete/ConcreteClass";
 import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import type { MemberCheckResult, CheckSkip } from "../lib/checkTypes";
 import { isTauriApp } from "../lib/tauri";
+import {
+  buildSteelCheckInputs,
+  isSteelProfile,
+  profileLookupKey,
+} from "../lib/steelCheckBuilder";
+import {
+  buildTimberCheckInputs,
+  matchSupportedTimberGrade,
+} from "../lib/timberCheckBuilder";
+import { buildCltCheckInputs, isCltProfiel } from "../lib/cltCheckBuilder";
+import {
+  buildBetonCheckInputs,
+  matchSupportedConcreteClass,
+  type BetonStaafConfig,
+} from "../lib/betonCheckBuilder";
 
 /**
  * Roep de Rust-rekenkern aan, waar de app ook draait.
@@ -32,8 +51,9 @@ import { isTauriApp } from "../lib/tauri";
  * In de desktop-app gaat dat via Tauri; in de browser via de dev-brug. De
  * aanroepers merken het verschil niet, en dat is de bedoeling — de toetsing
  * hoort niet af te hangen van de schil waarin de app toevallig staat.
+ * Geëxporteerd zodat ook de korfeditor (M-N-κ-diagram) dezelfde weg neemt.
  */
-async function roepKern<T>(opdracht: string, inputs?: unknown): Promise<T> {
+export async function roepKern<T>(opdracht: string, inputs?: unknown): Promise<T> {
   if (isTauriApp()) {
     return invoke<T>(opdracht, inputs !== undefined ? { inputs } : undefined);
   }
@@ -51,15 +71,6 @@ async function roepKern<T>(opdracht: string, inputs?: unknown): Promise<T> {
   }
   return data as T;
 }
-import {
-  buildSteelCheckInputs,
-  isSteelProfile,
-  profileLookupKey,
-} from "../lib/steelCheckBuilder";
-import {
-  buildTimberCheckInputs,
-  matchSupportedTimberGrade,
-} from "../lib/timberCheckBuilder";
 
 export interface CheckRunData {
   nodes: Node[];
@@ -75,16 +86,17 @@ interface CheckState {
   error: string | null;
   lastRunAt: number | null;
 
-  /** Draai staal + hout in één run. Resolves wanneer de state gevuld is. */
+  /** Draai alle kernen in één run. Resolves wanneer de state gevuld is. */
   run: (data: CheckRunData) => Promise<void>;
   /** Wis resultaten (bijv. wanneer het model wijzigt). */
   clear: () => void;
 }
 
-// Module-level caches — de profieldatabase en houtklassen veranderen niet
-// tijdens een sessie, dus één invoke per app-start volstaat.
+// Module-level caches — de profieldatabase en de klassenlijsten veranderen
+// niet tijdens een sessie, dus één aanroep per app-start volstaat.
 let profileDbCache: Map<string, SteelProfile> | null = null;
 let timberGradesCache: string[] | null = null;
+let concreteClassesCache: string[] | null = null;
 
 async function getProfileDb(): Promise<Map<string, SteelProfile>> {
   if (profileDbCache) return profileDbCache;
@@ -104,6 +116,33 @@ async function getTimberGrades(): Promise<string[]> {
   return timberGradesCache;
 }
 
+async function getConcreteClasses(): Promise<string[]> {
+  if (concreteClassesCache) return concreteClassesCache;
+  const klassen = await roepKern<ConcreteClass[]>("list_concrete_classes");
+  concreteClassesCache = klassen.map((k) => k.name);
+  return concreteClassesCache;
+}
+
+/**
+ * Wapeningskorven uit de staafeigenschappen. Een betonstaaf zónder korf komt
+ * niet in deze map en wordt door de betonbouwer met reden overgeslagen —
+ * er is geen stille standaardkorf.
+ */
+function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
+  const korven = new Map<number, BetonStaafConfig>();
+  for (const b of beams) {
+    const cfg = b.checkConfig;
+    if (!cfg?.betonKorf) continue;
+    korven.set(b.id, {
+      korf: cfg.betonKorf,
+      staalsoort: cfg.betonStaalsoort,
+      aantalStroken: cfg.betonStroken,
+      staaltak: cfg.betonStaaltak,
+    });
+  }
+  return korven;
+}
+
 export const useCheckStore = create<CheckState>((set) => ({
   results: [],
   skipped: [],
@@ -118,27 +157,44 @@ export const useCheckStore = create<CheckState>((set) => ({
     // plaats van dat de toetsing er stilzwijgend niet is.
     set({ isRunning: true, error: null });
     try {
-      const [profileDb, timberGrades] = await Promise.all([
+      const [profileDb, timberGrades, concreteClasses] = await Promise.all([
         getProfileDb(),
         getTimberGrades(),
+        getConcreteClasses(),
       ]);
 
       const steel = buildSteelCheckInputs({ ...data, profileDb });
-      const timber = buildTimberCheckInputs({ ...data, supportedGrades: timberGrades });
+      // De houtbouwer krijgt de CLT-staven niet te zien: qua materiaal zijn
+      // ze hout, maar hun profiel is een opbouw en geen b × h — anders meldde
+      // hij ze als "geen rechthoek" terwijl de CLT-bouwer ze wél toetst.
+      const timber = buildTimberCheckInputs({
+        ...data,
+        beams: data.beams.filter((b) => !isCltProfiel(b.profile)),
+        supportedGrades: timberGrades,
+      });
+      const clt = buildCltCheckInputs({ ...data, supportedGrades: timberGrades });
+      const beton = buildBetonCheckInputs({
+        ...data,
+        korven: korvenUitStaven(data.beams),
+        supportedClasses: concreteClasses,
+      });
 
       // Eerlijkheid: elke staaf die nergens terechtkwam expliciet melden.
-      const covered = new Set<number>([
-        ...steel.inputs.map((i) => i.beam_id),
-        ...timber.inputs.map((i) => i.beam_id),
-        ...steel.skipped.map((s) => s.beamId),
-        ...timber.skipped.map((s) => s.beamId),
-      ]);
-      const skipped: CheckSkip[] = [...steel.skipped, ...timber.skipped];
+      const bouwers: { inputs: { beam_id: number }[]; skipped: CheckSkip[] }[] = [
+        steel, timber, clt, beton,
+      ];
+      const covered = new Set<number>(
+        bouwers.flatMap((b) => [
+          ...b.inputs.map((i) => i.beam_id),
+          ...b.skipped.map((s) => s.beamId),
+        ]),
+      );
+      const skipped: CheckSkip[] = bouwers.flatMap((b) => b.skipped);
       for (const b of data.beams) {
         if (!covered.has(b.id)) {
           skipped.push({
             beamId: b.id,
-            reason: `niet herkend als staal of hout (materiaal "${b.material ?? "—"}", profiel "${b.profile ?? "—"}") — geen normtoetsing mogelijk`,
+            reason: `niet herkend als staal, hout, kruislaaghout of beton (materiaal "${b.material ?? "—"}", profiel "${b.profile ?? "—"}") — geen normtoetsing mogelijk`,
           });
         }
       }
@@ -147,18 +203,27 @@ export const useCheckStore = create<CheckState>((set) => ({
         console.info(`[Toetsing] staaf ${s.beamId} overgeslagen — ${s.reason}`);
       }
 
-      const [steelResults, timberResults] = await Promise.all([
+      const [steelResults, timberResults, cltResults, betonResults] = await Promise.all([
         steel.inputs.length > 0
           ? roepKern<BeamCheckResult[]>("check_steel_beams", steel.inputs)
           : Promise.resolve<BeamCheckResult[]>([]),
         timber.inputs.length > 0
           ? roepKern<TimberBeamCheckResult[]>("check_timber_beams", timber.inputs)
           : Promise.resolve<TimberBeamCheckResult[]>([]),
+        clt.inputs.length > 0
+          ? roepKern<CltBeamCheckResult[]>("check_clt_beams", clt.inputs)
+          : Promise.resolve<CltBeamCheckResult[]>([]),
+        beton.inputs.length > 0
+          ? roepKern<ConcreteBeamCheckResult[]>("check_concrete_beams", beton.inputs)
+          : Promise.resolve<ConcreteBeamCheckResult[]>([]),
       ]);
 
-      const merged: MemberCheckResult[] = [...steelResults, ...timberResults].sort(
-        (a, b) => a.beam_id - b.beam_id,
-      );
+      const merged: MemberCheckResult[] = [
+        ...steelResults,
+        ...timberResults,
+        ...cltResults,
+        ...betonResults,
+      ].sort((a, b) => a.beam_id - b.beam_id);
 
       set({
         results: merged,
@@ -177,12 +242,14 @@ export const useCheckStore = create<CheckState>((set) => ({
 
 /**
  * Snelle voorspelling of een run überhaupt iets zal toetsen — gebruikt om
- * de gebruiker vroeg te waarschuwen (geen invoke nodig).
+ * de gebruiker vroeg te waarschuwen (geen aanroep van de kern nodig).
  */
 export function anyCheckableBeams(beams: Beam[]): boolean {
   return beams.some(
     (b) =>
       isSteelProfile(b.profile ?? "HEA160") ||
-      matchSupportedTimberGrade(b.material) !== null,
+      isCltProfiel(b.profile) ||
+      matchSupportedTimberGrade(b.material) !== null ||
+      matchSupportedConcreteClass(b.material) !== null,
   );
 }

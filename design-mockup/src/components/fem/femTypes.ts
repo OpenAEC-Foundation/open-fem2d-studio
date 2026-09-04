@@ -5,6 +5,8 @@
  * FemCanvas (controlled rendering), FemProjectTree (live counts/leaves)
  * and FemProperties (reactive details) without circular imports.
  */
+import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
+import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 
 export type Tool =
   | "select"
@@ -46,8 +48,8 @@ export interface BeamReleases {
 }
 
 /**
- * Per-staaf toetsconfiguratie voor de normtoetsing (EN 1993 staal /
- * EN 1995 hout). Alle velden zijn optioneel: een ontbrekend veld betekent
+ * Per-staaf toetsconfiguratie voor de normtoetsing (EN 1993 staal,
+ * EN 1995 hout en kruislaaghout, EN 1992 beton). Alle velden zijn optioneel: een ontbrekend veld betekent
  * "gebruik de gedocumenteerde default van de builder" (zie
  * steelCheckBuilder.ts / timberCheckBuilder.ts). De enum-vormen hier zijn
  * UI-vriendelijk; de builders mappen ze 1-op-1 op de ts-rs-typen die de
@@ -85,6 +87,19 @@ export interface BeamCheckConfig {
   serviceClass?: 1 | 2 | 3;
   /** Belastingduurklasse §2.3.1.2; default "medium" (middellang). */
   loadDuration?: "permanent" | "long" | "medium" | "short" | "instantaneous";
+  // Beton (EN 1992)
+  /**
+   * Wapeningskorf: dekking, beugel, boven- en onderwapening. Zonder korf
+   * wordt een betonstaaf niet getoetst (met reden in het paneel) — er is
+   * geen stille standaardkorf.
+   */
+  betonKorf?: ReinforcementCage;
+  /** Wapeningsstaal; default "B500B". */
+  betonStaalsoort?: string;
+  /** Aantal stroken voor de M-N-κ-integratie van de doorsnede; default 50. */
+  betonStroken?: number;
+  /** Bovenste tak van het staaldiagram (3.2.7); default horizontaal. */
+  betonStaaltak?: SteelBranch;
 }
 
 /**

@@ -1,11 +1,14 @@
 /**
  * ProfielKiezer — tweestaps profieldialoog voor een staaf.
  *
- * Stap 1: materiaalsoort (Staal / Hout / Aluminium / Beton / Overig — de
- *         laatste drie zichtbaar maar eerlijk uitgeschakeld tot ze bestaan).
+ * Stap 1: materiaalsoort (Staal / Hout / Beton / Aluminium / Overig — de
+ *         laatste twee zichtbaar maar eerlijk uitgeschakeld tot ze bestaan).
  * Stap 2: het profiel BINNEN die soort, samen met de materiaalklasse:
  *         - staal: reeks (IPE/HEA/HEB/HEM/UNP/koker/buis) → maat → staalklasse;
- *         - hout: sterkteklasse (C/GL) → doorsnede b×h.
+ *         - hout: sterkteklasse (C/GL) → massief b×h, óf kruislaaghout als
+ *           opbouw (voorinstelling of vrij: "CLT 40/20/40/20/40[:C16][b600]");
+ *         - beton: betonklasse (C12/15 … C90/105) → doorsnede b×h; de
+ *           wapeningskorf hoort bij de staafeigenschappen (tabblad Norm).
  * Het resultaat is de COMBINATIE { material, profile } die op de staaf landt —
  * precies de twee velden die resolveSection en de toetsing al lezen.
  */
@@ -14,7 +17,22 @@ import { STEEL_SECTION_DIMS } from "../../lib/steelSectionDims.generated";
 import { STEEL_SECTIONS } from "../../lib/steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
-import { TIMBER_E_MEAN, parseRechthoek } from "../../lib/sectionResolver";
+import { CONCRETE_E_CM, TIMBER_E_MEAN, parseRechthoek } from "../../lib/sectionResolver";
+import {
+  CLT_STROOKBREEDTE_MM,
+  CLT_VOORINSTELLINGEN,
+  cltHoogteMm,
+  cltSolverDoorsnede,
+  cltVanVoorinstelling,
+  formatCltProfiel,
+  isCltProfiel,
+  parseCltProfiel,
+} from "../../lib/cltCheckBuilder";
+import {
+  SUPPORTED_CONCRETE_CLASSES,
+  matchSupportedConcreteClass,
+} from "../../lib/betonCheckBuilder";
+import type { CltPreset } from "../../lib/types/timber/CltPreset";
 import Modal from "../Modal";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";
 import { shapeVanProfiel } from "../shared/profielVorm";
@@ -33,13 +51,13 @@ interface ProfielKiezerProps {
   onApply: (keuze: ProfielKeuze) => void;
 }
 
-type MateriaalSoort = "staal" | "hout" | "aluminium" | "beton" | "overig";
+type MateriaalSoort = "staal" | "hout" | "beton" | "aluminium" | "overig";
 
 const SOORTEN: Array<{ id: MateriaalSoort; label: string; beschikbaar: boolean; hint: string }> = [
   { id: "staal", label: "Staal", beschikbaar: true, hint: "Walsprofielen uit de profieldatabase + staalklasse (EN 1993)" },
-  { id: "hout", label: "Hout", beschikbaar: true, hint: "Rechthoekige doorsnede b×h + sterkteklasse (EN 1995)" },
+  { id: "hout", label: "Hout", beschikbaar: true, hint: "Massief b×h of kruislaaghout (CLT) + sterkteklasse (EN 1995)" },
+  { id: "beton", label: "Beton", beschikbaar: true, hint: "Rechthoekige doorsnede b×h + betonklasse (EN 1992); wapeningskorf bij de staafeigenschappen" },
   { id: "aluminium", label: "Aluminium", beschikbaar: false, hint: "Volgt later — nog geen profieldatabase en toetsing" },
-  { id: "beton", label: "Beton", beschikbaar: false, hint: "Volgt later — nog geen doorsneden en toetsing" },
   { id: "overig", label: "Overig", beschikbaar: false, hint: "Volgt later — vrije E/A/I-invoer" },
 ];
 
@@ -61,13 +79,23 @@ function maatVan(naam: string): number {
 }
 
 const HOUT_DOORSNEDE_DEFAULT = { b: 71, h: 171 };
+const BETON_DOORSNEDE_DEFAULT = { b: 300, h: 500 };
+/** Startopbouw voor kruislaaghout: de gangbare 5-laags 160. */
+const CLT_PRESET_DEFAULT: CltPreset =
+  CLT_VOORINSTELLINGEN.find((p) => p.name === "5-laags 160") ?? CLT_VOORINSTELLINGEN[0];
+
+function nlGetal(v: number, decimalen = 0): string {
+  return v.toLocaleString("nl-NL", { maximumFractionDigits: decimalen });
+}
 
 export default function ProfielKiezer({ open, onClose, huidig, onApply }: ProfielKiezerProps) {
-  const huidigIsHout = !!huidig?.material && (huidig.material in TIMBER_E_MEAN);
+  const huidigIsBeton = matchSupportedConcreteClass(huidig?.material) !== null;
+  const huidigIsHout = !huidigIsBeton && !!huidig?.material && (huidig.material in TIMBER_E_MEAN);
+  const huidigIsClt = huidigIsHout && isCltProfiel(huidig?.profile);
 
   // ── Wizardstate ──────────────────────────────────────────────────────────
   const [soort, setSoort] = useState<MateriaalSoort | null>(
-    huidig?.material ? (huidigIsHout ? "hout" : "staal") : null,
+    huidig?.material ? (huidigIsBeton ? "beton" : huidigIsHout ? "hout" : "staal") : null,
   );
 
   // Staal-stap
@@ -77,14 +105,28 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
   const [reeks, setReeks] = useState(eersteReeks);
   const [staalProfiel, setStaalProfiel] = useState(huidig?.profile ?? "");
   const [staalKlasse, setStaalKlasse] = useState(
-    huidig?.material && !huidigIsHout ? huidig.material : "S235",
+    huidig?.material && !huidigIsHout && !huidigIsBeton ? huidig.material : "S235",
   );
 
-  // Hout-stap
-  const huidigRect = huidigIsHout ? parseRechthoek(huidig?.profile) : null;
+  // Hout-stap: massief b×h of een CLT-opbouw
+  const huidigRect = huidigIsHout && !huidigIsClt ? parseRechthoek(huidig?.profile) : null;
   const [houtKlasse, setHoutKlasse] = useState(huidigIsHout ? huidig!.material! : "C24");
+  const [houtType, setHoutType] = useState<"massief" | "clt">(huidigIsClt ? "clt" : "massief");
   const [houtB, setHoutB] = useState(huidigRect?.b ?? HOUT_DOORSNEDE_DEFAULT.b);
   const [houtH, setHoutH] = useState(huidigRect?.h ?? HOUT_DOORSNEDE_DEFAULT.h);
+  // De opbouw als tekst, zodat hij ook vrij te bewerken is; een voorinstelling
+  // schrijft de tekst, en de tekst is wat er op de staaf landt.
+  const [cltTekst, setCltTekst] = useState(() =>
+    huidigIsClt
+      ? huidig!.profile!
+      : formatCltProfiel(cltVanVoorinstelling(CLT_PRESET_DEFAULT, "C24"), "C24"),
+  );
+
+  // Beton-stap
+  const huidigBetonRect = huidigIsBeton ? parseRechthoek(huidig?.profile) : null;
+  const [betonKlasse, setBetonKlasse] = useState(huidigIsBeton ? huidig!.material! : "C30/37");
+  const [betonB, setBetonB] = useState(huidigBetonRect?.b ?? BETON_DOORSNEDE_DEFAULT.b);
+  const [betonH, setBetonH] = useState(huidigBetonRect?.h ?? BETON_DOORSNEDE_DEFAULT.h);
 
   const reeksProfielen = useMemo(() => {
     const r = STAAL_REEKSEN.find((x) => x.id === reeks);
@@ -101,19 +143,69 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
     () => (houtB > 0 && houtH > 0 ? ({ type: "rect", b: houtB, h: houtH } as const) : null),
     [houtB, houtH],
   );
+  const betonVorm = useMemo(
+    () => (betonB > 0 && betonH > 0 ? ({ type: "rect", b: betonB, h: betonH } as const) : null),
+    [betonB, betonH],
+  );
 
-  const houtGeldig = houtB > 0 && houtH > 0;
+  // CLT: de tekst geparsed met de gekozen klasse als standaard voor lagen
+  // zonder eigen klasse; de solvergrootheden erbij, zodat de kiezer laat zien
+  // wat de opbouw stijfheidstechnisch waard is.
+  const cltLayup = useMemo(() => parseCltProfiel(cltTekst, houtKlasse), [cltTekst, houtKlasse]);
+  const cltGeldig = !!cltLayup && cltLayup.layers.some((l) => l.orientation === "Longitudinal");
+  const cltDoorsnede = useMemo(
+    () => (cltLayup ? cltSolverDoorsnede(cltLayup, (k) => TIMBER_E_MEAN[k]) : null),
+    [cltLayup],
+  );
+  const cltBreedte = cltLayup?.width_mm ?? CLT_STROOKBREEDTE_MM;
+
+  const kiesCltVoorinstelling = (naam: string) => {
+    const p = CLT_VOORINSTELLINGEN.find((x) => x.name === naam);
+    if (!p) return;
+    setCltTekst(formatCltProfiel(cltVanVoorinstelling(p, houtKlasse, cltBreedte), houtKlasse));
+  };
+  const zetCltBreedte = (breedte: number) => {
+    if (!cltLayup || !(breedte > 0)) return;
+    setCltTekst(formatCltProfiel({ ...cltLayup, width_mm: breedte }, houtKlasse));
+  };
+  /** Welke voorinstelling bij de huidige tekst hoort — of geen (vrij). */
+  const actieveVoorinstelling =
+    cltLayup
+      ? CLT_VOORINSTELLINGEN.find(
+          (p) =>
+            p.thicknesses_mm.length === cltLayup.layers.length &&
+            p.thicknesses_mm.every((t, i) => t === cltLayup.layers[i].thickness_mm),
+        )?.name ?? ""
+      : "";
+
+  const houtGeldig = houtType === "clt" ? cltGeldig : houtB > 0 && houtH > 0;
   const staalGeldig = !!staalProfiel && !!STEEL_SECTION_DIMS[staalProfiel];
+  const betonGeldig = betonB > 0 && betonH > 0;
 
   const pasToe = () => {
     if (soort === "staal" && staalGeldig) {
       onApply({ material: staalKlasse, profile: staalProfiel });
       onClose();
     } else if (soort === "hout" && houtGeldig) {
-      onApply({ material: houtKlasse, profile: `${houtB}x${houtH}` });
+      onApply({
+        material: houtKlasse,
+        profile:
+          houtType === "clt" && cltLayup
+            ? formatCltProfiel(cltLayup, houtKlasse)
+            : `${houtB}x${houtH}`,
+      });
+      onClose();
+    } else if (soort === "beton" && betonGeldig) {
+      onApply({ material: betonKlasse, profile: `${betonB}x${betonH}` });
       onClose();
     }
   };
+
+  const toepassenUit =
+    soort === "staal" ? !staalGeldig
+    : soort === "hout" ? !houtGeldig
+    : soort === "beton" ? !betonGeldig
+    : true;
 
   if (!open) return null;
 
@@ -186,8 +278,8 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
                 <div className="pk-kolom-kop">Eigenschappen</div>
                 <div className="pk-eig-rij"><span>h × b</span><code>{dims.h} × {dims.b} mm</code></div>
                 <div className="pk-eig-rij"><span>t_w / t_f</span><code>{dims.tw} / {dims.tf} mm</code></div>
-                {sectie && <div className="pk-eig-rij"><span>A</span><code>{sectie.A.toLocaleString("nl-NL")} mm²</code></div>}
-                {sectie && <div className="pk-eig-rij"><span>I_y</span><code>{(sectie.Iy / 1e4).toLocaleString("nl-NL", { maximumFractionDigits: 0 })} cm⁴</code></div>}
+                {sectie && <div className="pk-eig-rij"><span>A</span><code>{nlGetal(sectie.A)} mm²</code></div>}
+                {sectie && <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(sectie.Iy / 1e4)} cm⁴</code></div>}
               </div>
             )}
             <div className="pk-samenvatting">
@@ -202,6 +294,19 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
       {soort === "hout" && (
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
+            <div className="pk-kolom-kop">Vorm</div>
+            <button
+              className={`pk-rij${houtType === "massief" ? " actief" : ""}`}
+              onClick={() => setHoutType("massief")}
+            >
+              Massief <span className="pk-rij-sub">b × h</span>
+            </button>
+            <button
+              className={`pk-rij${houtType === "clt" ? " actief" : ""}`}
+              onClick={() => setHoutType("clt")}
+            >
+              Kruislaaghout <span className="pk-rij-sub">CLT-opbouw</span>
+            </button>
             <div className="pk-kolom-kop">Sterkteklasse</div>
             <div className="pk-scroll">
               {SUPPORTED_TIMBER_GRADES.map((g) => (
@@ -215,33 +320,153 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
               ))}
             </div>
           </div>
+
+          {houtType === "massief" && (
+            <div className="pk-kolom pk-kolom-detail">
+              <div className="pk-kolom-kop">Doorsnede</div>
+              <label className="pk-veld">
+                <span>Breedte b [mm]</span>
+                <input type="number" min={10} step={1} value={houtB}
+                  onChange={(e) => setHoutB(Number(e.target.value))} />
+              </label>
+              <label className="pk-veld">
+                <span>Hoogte h [mm]</span>
+                <input type="number" min={10} step={1} value={houtH}
+                  onChange={(e) => setHoutH(Number(e.target.value))} />
+              </label>
+              {houtVorm && (
+                <div className="pk-tekening">
+                  <ProfielMiniatuur shape={houtVorm} titel={`Doorsnede ${houtB}×${houtH} mm`} />
+                </div>
+              )}
+              {houtGeldig && (
+                <div className="pk-eigenschappen">
+                  <div className="pk-eig-rij"><span>A</span><code>{nlGetal(houtB * houtH)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(houtB * houtH ** 3 / 12 / 1e4)} cm⁴</code></div>
+                  <div className="pk-eig-rij"><span>E₀,mean</span><code>{TIMBER_E_MEAN[houtKlasse] ?? "—"} N/mm²</code></div>
+                </div>
+              )}
+              <div className="pk-samenvatting">
+                {houtGeldig
+                  ? <>Keuze: <strong>{houtB}×{houtH} — {houtKlasse}</strong></>
+                  : "Vul een geldige doorsnede in."}
+              </div>
+            </div>
+          )}
+
+          {houtType === "clt" && (
+            <div className="pk-kolom pk-kolom-detail">
+              <div className="pk-kolom-kop">Opbouw</div>
+              <label className="pk-veld">
+                <span>Voorinstelling</span>
+                <select value={actieveVoorinstelling} onChange={(e) => kiesCltVoorinstelling(e.target.value)}>
+                  <option value="">— vrij —</option>
+                  {CLT_VOORINSTELLINGEN.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name} ({p.thicknesses_mm.join("/")})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="pk-veld">
+                <span>Strookbreedte b [mm]</span>
+                <input type="number" min={10} step={10} value={cltBreedte}
+                  onChange={(e) => zetCltBreedte(Number(e.target.value))} />
+              </label>
+              <label className="pk-veld">
+                <span>Lagen (boven → beneden)</span>
+                <input
+                  type="text"
+                  value={cltTekst}
+                  onChange={(e) => setCltTekst(e.target.value)}
+                  placeholder="CLT 40/20/40/20/40"
+                  spellCheck={false}
+                />
+              </label>
+              <div className="pk-hint">
+                Dikten in mm, gescheiden door "/". Lagen wisselen lengte/dwars af,
+                beginnend met een lengtelaag; optioneel L of D per laag en een
+                eigen klasse, bijv. <code>40L:C24/20D:C16/40L</code>.
+              </div>
+              {cltLayup && (
+                <div className="pk-eigenschappen">
+                  {cltLayup.layers.map((l, i) => (
+                    <div key={i} className="pk-eig-rij">
+                      <span>laag {i + 1}</span>
+                      <code>
+                        {l.thickness_mm} mm · {l.orientation === "Longitudinal" ? "lengte" : "dwars"} · {l.strength_class}
+                      </code>
+                    </div>
+                  ))}
+                  <div className="pk-eig-rij"><span>h</span><code>{cltHoogteMm(cltLayup)} mm</code></div>
+                  {cltDoorsnede && (
+                    <div className="pk-eig-rij">
+                      <span>(EI)_ef</span>
+                      <code>{nlGetal((cltDoorsnede.E * cltDoorsnede.I) / 1e9, 1)} kNm²</code>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="pk-samenvatting">
+                {cltGeldig && cltLayup
+                  ? <>Keuze: <strong>{formatCltProfiel(cltLayup, houtKlasse)} — {houtKlasse}</strong></>
+                  : cltLayup
+                    ? "De opbouw heeft geen lengtelaag."
+                    : "Geen geldige opbouw — zie de notatie hierboven."}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {soort === "beton" && (
+        <div className="pk-stap2">
+          <div className="pk-kolom pk-kolom-reeks">
+            <div className="pk-kolom-kop">Betonklasse</div>
+            <div className="pk-scroll">
+              {SUPPORTED_CONCRETE_CLASSES.map((k) => (
+                <button
+                  key={k}
+                  className={`pk-rij${betonKlasse === k ? " actief" : ""}`}
+                  onClick={() => setBetonKlasse(k)}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="pk-kolom pk-kolom-detail">
             <div className="pk-kolom-kop">Doorsnede</div>
             <label className="pk-veld">
               <span>Breedte b [mm]</span>
-              <input type="number" min={10} step={1} value={houtB}
-                onChange={(e) => setHoutB(Number(e.target.value))} />
+              <input type="number" min={50} step={10} value={betonB}
+                onChange={(e) => setBetonB(Number(e.target.value))} />
             </label>
             <label className="pk-veld">
               <span>Hoogte h [mm]</span>
-              <input type="number" min={10} step={1} value={houtH}
-                onChange={(e) => setHoutH(Number(e.target.value))} />
+              <input type="number" min={50} step={10} value={betonH}
+                onChange={(e) => setBetonH(Number(e.target.value))} />
             </label>
-            {houtVorm && (
+            {betonVorm && (
               <div className="pk-tekening">
-                <ProfielMiniatuur shape={houtVorm} titel={`Doorsnede ${houtB}×${houtH} mm`} />
+                <ProfielMiniatuur shape={betonVorm} titel={`Doorsnede ${betonB}×${betonH} mm`} />
               </div>
             )}
-            {houtGeldig && (
+            {betonGeldig && (
               <div className="pk-eigenschappen">
-                <div className="pk-eig-rij"><span>A</span><code>{(houtB * houtH).toLocaleString("nl-NL")} mm²</code></div>
-                <div className="pk-eig-rij"><span>I_y</span><code>{(houtB * houtH ** 3 / 12 / 1e4).toLocaleString("nl-NL", { maximumFractionDigits: 0 })} cm⁴</code></div>
-                <div className="pk-eig-rij"><span>E₀,mean</span><code>{TIMBER_E_MEAN[houtKlasse] ?? "—"} N/mm²</code></div>
+                <div className="pk-eig-rij"><span>A</span><code>{nlGetal(betonB * betonH)} mm²</code></div>
+                <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(betonB * betonH ** 3 / 12 / 1e4)} cm⁴</code></div>
+                <div className="pk-eig-rij"><span>E_cm</span><code>{CONCRETE_E_CM[betonKlasse] ?? "—"} N/mm²</code></div>
               </div>
             )}
+            <div className="pk-hint">
+              De wapeningskorf (dekking, beugel, staven) kies je bij de
+              staafeigenschappen onder het tabblad Norm; zonder korf wordt de
+              staaf niet getoetst.
+            </div>
             <div className="pk-samenvatting">
-              {houtGeldig
-                ? <>Keuze: <strong>{houtB}×{houtH} — {houtKlasse}</strong></>
+              {betonGeldig
+                ? <>Keuze: <strong>{betonB}×{betonH} — {betonKlasse}</strong></>
                 : "Vul een geldige doorsnede in."}
             </div>
           </div>
@@ -257,7 +482,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
           {soort !== null && (
             <button
               className="pk-knop pk-knop-primair"
-              disabled={soort === "staal" ? !staalGeldig : soort === "hout" ? !houtGeldig : true}
+              disabled={toepassenUit}
               onClick={pasToe}
             >
               Toepassen

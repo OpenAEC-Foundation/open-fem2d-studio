@@ -10,7 +10,13 @@
  * werkte bovendien op een verouderde profieltabel van 45 profielen die
  * alles wat zij niet kende stilzwijgend als HEA 160 doorrekende.
  */
-import { isSteelCheckResult, type CheckSkip, type MemberCheckResult } from "../lib/checkTypes";
+import {
+  gradeLabel,
+  normLabel,
+  sectionLabel,
+  type CheckSkip,
+  type MemberCheckResult,
+} from "../lib/checkTypes";
 
 /** Nederlandse notatie: decimaalkomma, vaste precisie. */
 function getal(v: number, cijfers = 3): string {
@@ -44,10 +50,9 @@ export function exportCheckResultsCsv(
   );
 
   for (const r of results) {
-    const staal = isSteelCheckResult(r);
-    const doorsnede = staal ? r.profile_name : r.section_name;
-    const materiaal = staal ? r.steel_grade : r.strength_class;
-    const norm = staal ? "EN 1993-1-1" : "EN 1995-1-1";
+    const doorsnede = sectionLabel(r);
+    const materiaal = gradeLabel(r);
+    const norm = `${normLabel(r)}-1-1`;
     for (const named of r.checks) {
       const d = named.kind.data;
       regels.push(

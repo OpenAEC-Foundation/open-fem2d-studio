@@ -10,7 +10,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckStore } from "../../stores/checkStore";
-import { isSteelCheckResult, type MemberCheckResult } from "../../lib/checkTypes";
+import {
+  gradeLabel,
+  isSteelCheckResult,
+  normLabel,
+  sectionLabel,
+  type MemberCheckResult,
+} from "../../lib/checkTypes";
 import CheckBlock from "./CheckBlock";
 import { governingInfo } from "../report/checkReportUtils";
 import "./CheckPanel.css";
@@ -58,7 +64,6 @@ function MemberCard({ result, focusToken }: {
 }) {
   const { t } = useTranslation("check");
   const [open, setOpen] = useState(false);
-  const steel = isSteelCheckResult(result);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,12 +93,12 @@ function MemberCard({ result, focusToken }: {
         <div className="cp-card-main">
           <div className="cp-card-id">
             {t("beam")} {result.beam_id}
-            <span className="cp-card-code">{steel ? "EN 1993" : "EN 1995"}</span>
+            <span className="cp-card-code">{normLabel(result)}</span>
           </div>
           <div className="cp-card-profile">
-            {steel ? result.profile_name : result.section_name}{" "}
+            {sectionLabel(result)}{" "}
             <span className="cp-card-grade">
-              ({steel ? result.steel_grade : result.strength_class})
+              ({gradeLabel(result)})
             </span>
           </div>
           <div className="cp-card-governing">

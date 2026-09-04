@@ -29,7 +29,13 @@ import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { useCheckStore } from "../../../stores/checkStore";
 import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportStore";
-import { isSteelCheckResult, type MemberCheckResult } from "../../../lib/checkTypes";
+import {
+  gradeLabel,
+  isConcreteCheckResult,
+  isSteelCheckResult,
+  sectionLabel,
+  type MemberCheckResult,
+} from "../../../lib/checkTypes";
 import type { Deelstap } from "../../../lib/types/steel/Deelstap";
 import type { NamedValue } from "../../../lib/types/steel/NamedValue";
 import {
@@ -277,12 +283,17 @@ function MemberBlock({
   const { t: tCheck } = useTranslation("check");
   const steel = isSteelCheckResult(result);
 
+  // De regel onder de staafkop: per materiaal wat de toetsing bepaalt —
+  // doorsnedeklasse (staal), korf en rekensterkten (beton), klimaatklasse en
+  // belastingduur (hout en kruislaaghout).
   const meta = steel
     ? `EN 1993 · ${t("report.crossSectionClass", "doorsnedeklasse")} ${crossSectionClassLabel(result.classification)}`
-    : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${t("report.loadDuration", "belastingduur")} ${tCheck(
-        LOAD_DURATION_LABELS[result.load_duration].key,
-        LOAD_DURATION_LABELS[result.load_duration].fallback,
-      ).toLowerCase()}`;
+    : isConcreteCheckResult(result)
+      ? `EN 1992 · ${result.reinforcement_summary} · f_cd = ${result.f_cd_mpa.toFixed(1)} N/mm² · f_yd = ${result.f_yd_mpa.toFixed(0)} N/mm²`
+      : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${t("report.loadDuration", "belastingduur")} ${tCheck(
+          LOAD_DURATION_LABELS[result.load_duration].key,
+          LOAD_DURATION_LABELS[result.load_duration].fallback,
+        ).toLowerCase()}`;
 
   // Beknopt: alleen de maatgevende toets — de UC die telt, met dezelfde
   // volledige afleiding, maar zonder de toetsen die niet maatgevend waren.
@@ -296,8 +307,7 @@ function MemberBlock({
           inhoudsopgave te staan, net als in het referentie-rapport. */}
       <h3 className="rpt-h3">
         {t("report.colBeam", "Staaf")} {result.beam_id} —{" "}
-        {steel ? result.profile_name : result.section_name} (
-        {steel ? result.steel_grade : result.strength_class})
+        {sectionLabel(result)} ({gradeLabel(result)})
       </h3>
 
       <div className="rpt-chk-member-meta">

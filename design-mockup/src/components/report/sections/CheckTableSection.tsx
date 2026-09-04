@@ -25,7 +25,12 @@
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { useCheckStore } from "../../../stores/checkStore";
-import { isSteelCheckResult, type MemberCheckResult } from "../../../lib/checkTypes";
+import {
+  gradeLabel,
+  normLabel,
+  sectionLabel,
+  type MemberCheckResult,
+} from "../../../lib/checkTypes";
 import {
   CHECK_REPORT_CSS,
   alsBreuk,
@@ -52,14 +57,14 @@ function BeknopteRijen({ results }: { results: MemberCheckResult[] }) {
   return (
     <>
       {results.map((r) => {
-        const steel = isSteelCheckResult(r);
         const gov = governingInfo(r);
         return (
-          <tr key={`${steel ? "s" : "t"}-${r.beam_id}`}>
+          // Eén resultaat per staaf, dus het staafnummer volstaat als sleutel.
+          <tr key={r.beam_id}>
             <td>{r.beam_id}</td>
-            <td>{steel ? r.profile_name : r.section_name}</td>
-            <td>{steel ? r.steel_grade : r.strength_class}</td>
-            <td>{steel ? "EN 1993" : "EN 1995"}</td>
+            <td>{sectionLabel(r)}</td>
+            <td>{gradeLabel(r)}</td>
+            <td>{normLabel(r)}</td>
             <td>
               <div className="rpt-gov-title">
                 {/* Alleen het artikel; het vergelijkingsnummer hoort bij de

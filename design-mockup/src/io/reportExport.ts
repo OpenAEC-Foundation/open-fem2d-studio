@@ -15,7 +15,12 @@
  */
 import type { Node, Beam, Support, Load, LoadCase } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
-import { isSteelCheckResult, type MemberCheckResult } from "../lib/checkTypes";
+import {
+  gradeLabel,
+  isSteelCheckResult,
+  sectionLabel,
+  type MemberCheckResult,
+} from "../lib/checkTypes";
 
 interface ReportInput {
   projectName?: string;
@@ -155,14 +160,13 @@ export function buildReportHtml(input: ReportInput): string {
         <table>
           <tr><th>Staaf</th><th>Doorsnede</th><th>Materiaal</th><th>Maatgevende toets</th><th>Artikel</th><th>UC</th><th>Status</th></tr>
           ${checks.map(r => {
-            const staal = isSteelCheckResult(r);
             const g = r.checks.find(c => c.id === r.governing_check_id)?.kind.data;
             const voldoet = r.uc_max <= 1.0;
             return `
             <tr class="${voldoet ? "ok" : "fail"}">
               <td>${r.beam_id}</td>
-              <td>${esc(staal ? r.profile_name : r.section_name)}</td>
-              <td>${esc(staal ? r.steel_grade : r.strength_class)}</td>
+              <td>${esc(sectionLabel(r))}</td>
+              <td>${esc(gradeLabel(r))}</td>
               <td>${esc(g?.title ?? r.governing_check_id)}</td>
               <td>${esc(g?.article ?? "")}</td>
               <td><strong>${fmt(r.uc_max, 3)}</strong></td>

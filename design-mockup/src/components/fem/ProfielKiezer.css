@@ -190,3 +190,14 @@
   color: var(--theme-accent-text, #fff);
   font-weight: 600;
 }
+
+/* Toelichting onder een invoerveld (CLT-notatie, wapeningskorf). */
+.pk-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted, #6b7280);
+  margin: 4px 0 8px;
+}
+.pk-hint code {
+  font-size: 10.5px;
+}

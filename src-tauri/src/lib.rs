@@ -1,8 +1,19 @@
+use concrete_check::{
+    ConcreteBeamCheckInput, ConcreteBeamCheckResult, MnKappaRequest, MnKappaResponse,
+};
+use nen_en_1992_1_1::{ConcreteClass, ReinforcementGrade};
+use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
+use nen_en_1995_1_1::clt::CltPreset;
+use report::{ReportInput, generate_report_pdf};
 use steel_check::{BeamCheckInput, BeamCheckResult};
 use steel_profiles::SteelProfile;
-use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
-use report::{ReportInput, generate_report_pdf};
+use timber_check::clt::{CltBeamCheckInput, CltBeamCheckResult};
 use timber_check::{TimberBeamCheckInput, TimberBeamCheckResult};
+
+// De commands hieronder zijn één-op-één gespiegeld in `crates/toetsbrug`
+// (dezelfde functies als JSON-in/JSON-uit voor de browser). Wie hier een
+// command toevoegt, voegt hem daar ook toe — anders werkt hij alleen in de
+// desktop-app.
 
 #[tauri::command]
 fn list_steel_profiles() -> Vec<SteelProfile> {
@@ -41,6 +52,50 @@ async fn check_timber_beams(
         .collect())
 }
 
+/// Kruislaaghout: standaardopbouwen voor de profielkiezer.
+#[tauri::command]
+fn list_clt_presets() -> Vec<CltPreset> {
+    nen_en_1995_1_1::clt::clt_presets()
+}
+
+/// Kruislaaghout: toetsing per lamel (samengestelde doorsnede, bijlage B
+/// met starre verbinding).
+#[tauri::command]
+async fn check_clt_beams(
+    inputs: Vec<CltBeamCheckInput>,
+) -> Result<Vec<CltBeamCheckResult>, String> {
+    Ok(inputs
+        .into_iter()
+        .map(timber_check::clt::check_clt_beam)
+        .collect())
+}
+
+/// Beton (NEN-EN 1992-1-1): sterkteklassen met alle waarden uit tabel 3.1.
+#[tauri::command]
+fn list_concrete_classes() -> Vec<ConcreteClass> {
+    nen_en_1992_1_1::CONCRETE_CLASSES.to_vec()
+}
+
+/// Wapeningsstaal: B500A/B/C (bijlage C).
+#[tauri::command]
+fn list_reinforcement_grades() -> Vec<ReinforcementGrade> {
+    nen_en_1992_1_1::REINFORCEMENT_GRADES.to_vec()
+}
+
+#[tauri::command]
+async fn check_concrete_beams(
+    inputs: Vec<ConcreteBeamCheckInput>,
+) -> Result<Vec<ConcreteBeamCheckResult>, String> {
+    Ok(concrete_check::check_all_concrete_beams(inputs))
+}
+
+/// Het losse M-N-κ-diagram voor de korfeditor in de staafeigenschappen —
+/// zonder dat er een hele toetsrun voor nodig is.
+#[tauri::command]
+async fn concrete_mn_kappa(inputs: MnKappaRequest) -> Result<MnKappaResponse, String> {
+    concrete_check::mn_kappa(inputs)
+}
+
 #[tauri::command]
 async fn generate_steel_report_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
     Ok(generate_report_pdf(input))
@@ -58,6 +113,12 @@ pub fn run() {
             check_steel_beams,
             list_timber_grades,
             check_timber_beams,
+            list_clt_presets,
+            check_clt_beams,
+            list_concrete_classes,
+            list_reinforcement_grades,
+            check_concrete_beams,
+            concrete_mn_kappa,
             generate_steel_report_pdf,
         ])
         .run(tauri::generate_context!())

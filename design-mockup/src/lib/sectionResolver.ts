@@ -16,6 +16,7 @@
  */
 import { STEEL_SECTIONS } from "./steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
+import { cltSolverDoorsnede, isCltProfiel, parseCltProfiel } from "./cltCheckBuilder";
 
 /** E_0,mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL). */
 export const TIMBER_E_MEAN: Record<string, number> = {
@@ -33,6 +34,22 @@ export const TIMBER_RHO_MEAN: Record<string, number> = {
   GL24h: 420, GL28h: 460, GL32h: 490, GL36h: 500,
 };
 
+/**
+ * E_cm per betonsterkteklasse in N/mm² — NEN-EN 1992-1-1 tabel 3.1, dezelfde
+ * waarden als de kern (nen-en-1992-1-1/data.rs). Voor de solverstijfheid van
+ * een betonstaaf; de toetsing rekent in de kern met f_cd en f_yd uit dezelfde
+ * tabel.
+ */
+export const CONCRETE_E_CM: Record<string, number> = {
+  "C12/15": 27000, "C16/20": 29000, "C20/25": 30000, "C25/30": 31000,
+  "C30/37": 33000, "C35/45": 34000, "C40/50": 35000, "C45/55": 36000,
+  "C50/60": 37000, "C55/67": 38000, "C60/75": 39000, "C70/85": 41000,
+  "C80/95": 42000, "C90/105": 44000,
+};
+
+/** ρ van gewapend beton in kg/m³ — EN 1991-1-1 tabel A.1 (25 kN/m³). */
+export const RHO_BETON = 2500;
+
 /** ρ van staal in kg/m³ — EN 1991-1-1 tabel A.4. */
 export const RHO_STAAL = 7850;
 
@@ -43,7 +60,13 @@ export interface ResolvedSection {
   E: number;      // N/mm²
   A: number;      // mm²
   I: number;      // mm⁴ (Iy, sterke as)
-  bron: "staal-db" | "hout-bxh" | "default";
+  bron: "staal-db" | "hout-bxh" | "clt" | "beton-bxh" | "default";
+  /**
+   * Volle doorsnede in mm² voor het eigen gewicht, waar die van `A` afwijkt.
+   * Bij kruislaaghout is `A` de meewerkende doorsnede van de lengtelagen; de
+   * dwarslagen wegen wél mee maar dragen niet in de spanrichting.
+   */
+  aBruto?: number;
 }
 
 /** "96x450", "96 x 450", "60x100 GL" → { b, h } in mm; anders null. */
@@ -65,7 +88,23 @@ export function resolveSection(material: string | undefined, profile: string | u
   const mat = material ?? "S235";
   const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(mat) || mat in TIMBER_E_MEAN;
 
-  if (isHout) {
+  if (mat in CONCRETE_E_CM) {
+    // Beton: ongescheurde rechthoekige doorsnede met E_cm. De wapening telt
+    // niet mee in de stijfheid — de gebruikelijke lineaire aanname voor de
+    // krachtsverdeling; de doorsnedetoetsing zelf zit in de kern.
+    const rect = parseRechthoek(profile);
+    if (rect) {
+      const { b, h } = rect;
+      return { E: CONCRETE_E_CM[mat], A: b * h, I: (b * h * h * h) / 12, bron: "beton-bxh" };
+    }
+  } else if (isHout) {
+    // Kruislaaghout: E·A en E·I van de samengestelde doorsnede (alleen de
+    // lengtelagen dragen), uitgedrukt in de E van de bovenste lengtelaag.
+    if (isCltProfiel(profile)) {
+      const layup = parseCltProfiel(profile, mat);
+      const d = layup ? cltSolverDoorsnede(layup, (k) => TIMBER_E_MEAN[k]) : null;
+      if (d) return { E: d.E, A: d.A, I: d.I, bron: "clt", aBruto: d.aBruto };
+    }
     const rect = parseRechthoek(profile);
     if (rect) {
       const { b, h } = rect;
@@ -105,9 +144,10 @@ export function eigenGewichtPerMeter(
   material: string | undefined,
   profile: string | undefined,
 ): number {
-  const { A } = resolveSection(material, profile);
+  const { A, aBruto } = resolveSection(material, profile);
   const mat = material ?? "S235";
-  const rho = TIMBER_RHO_MEAN[mat] ?? RHO_STAAL;
-  // A in mm² → m²; resultaat N/m → kN/m.
-  return -(rho * (A * 1e-6) * G) / 1000;
+  const rho = TIMBER_RHO_MEAN[mat] ?? (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
+  // A in mm² → m²; resultaat N/m → kN/m. Voor het gewicht telt de volle
+  // doorsnede, niet alleen het meewerkende deel.
+  return -(rho * ((aBruto ?? A) * 1e-6) * G) / 1000;
 }

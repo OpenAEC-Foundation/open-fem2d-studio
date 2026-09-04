@@ -11,7 +11,7 @@
 import katex from "katex";
 import type { TFunction } from "i18next";
 import type { MemberCheckResult } from "../../lib/checkTypes";
-import { isSteelCheckResult } from "../../lib/checkTypes";
+import { isConcreteCheckResult, isSteelCheckResult } from "../../lib/checkTypes";
 import type { Deelstap } from "../../lib/types/steel/Deelstap";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
@@ -32,6 +32,7 @@ export function isStabilityCalc(c: CheckCalc): c is StabilityCalc {
 /** Normaanduidingen zoals de Rust-kernen ze hanteren. */
 export const STEEL_NORM_FULL = "NEN-EN 1993-1-1+C2+A1/NB:2016";
 export const TIMBER_NORM_FULL = "NEN-EN 1995-1-1+C1+A1:2011/NB:2013";
+export const CONCRETE_NORM_FULL = "NEN-EN 1992-1-1+A1:2015/NB:2016";
 
 /** KaTeX → HTML-string; faalt zacht naar <code> zodat het rapport nooit breekt. */
 export function renderLatexHtml(latex: string, displayMode: boolean): string {
@@ -368,15 +369,22 @@ export function governingInfo(r: MemberCheckResult): GoverningInfo {
   return { title: d.title, article: d.article, ucFormulaLatex: d.uc?.formula_latex ?? null };
 }
 
-/** Welke normen daadwerkelijk in de resultaten voorkomen. */
-export function usedNorms(results: MemberCheckResult[]): { steel: boolean; timber: boolean } {
+/**
+ * Welke normen daadwerkelijk in de resultaten voorkomen. Kruislaaghout telt
+ * als hout: het is dezelfde norm (EN 1995), alleen per lamel getoetst.
+ */
+export function usedNorms(
+  results: MemberCheckResult[],
+): { steel: boolean; timber: boolean; concrete: boolean } {
   let steel = false;
   let timber = false;
+  let concrete = false;
   for (const r of results) {
     if (isSteelCheckResult(r)) steel = true;
+    else if (isConcreteCheckResult(r)) concrete = true;
     else timber = true;
   }
-  return { steel, timber };
+  return { steel, timber, concrete };
 }
 
 /**
@@ -384,10 +392,11 @@ export function usedNorms(results: MemberCheckResult[]): { steel: boolean; timbe
  * `t` hoort bij de "ribbon"-namespace (report.*-sleutels).
  */
 export function basisText(t: TFunction, results: MemberCheckResult[]): string | null {
-  const { steel, timber } = usedNorms(results);
+  const { steel, timber, concrete } = usedNorms(results);
   const parts: string[] = [];
   if (steel) parts.push(t("report.basisSteel", `staal: ${STEEL_NORM_FULL}`));
   if (timber) parts.push(t("report.basisTimber", `hout: ${TIMBER_NORM_FULL}`));
+  if (concrete) parts.push(t("report.basisConcrete", `beton: ${CONCRETE_NORM_FULL}`));
   if (parts.length === 0) return null;
   const label = t("report.basisLabel", "Toetsbasis");
   const annex = t("report.basisAnnex", "inclusief Nederlandse nationale bijlage");

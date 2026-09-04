@@ -44,6 +44,7 @@ import DisplacementsSection from "./sections/DisplacementsSection";
 import PlateStressSection from "./sections/PlateStressSection";
 import CheckTableSection from "./sections/CheckTableSection";
 import CheckDetailSection from "./sections/CheckDetailSection";
+import CltSection from "./sections/CltSection";
 
 export interface ReportSectionDef {
   /** Stabiel id — sleutel voor de aan/uit-toggle in de reportStore. */
@@ -228,6 +229,19 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "De formule-afleidingen per staaf: verantwoording voor de " +
       "controlerend constructeur, niet voor de opdrachtgever.",
     Component: CheckDetailSection,
+  },
+  // Kruislaaghout: de opbouw en de toetsing per lamel. Rendert alleen iets
+  // wanneer er CLT-staven zijn; anders één regel "geen".
+  {
+    id: "clt",
+    titleKey: "report.sectionClt",
+    defaultTitle: "Kruislaaghout — opbouw en toetsing per lamel",
+    inBeperkt: false,
+    beperktReden:
+      "Detailuitvoer per laag (spanningsverloop, rolschuif): verantwoording " +
+      "voor de controlerend constructeur; de UC van de staaf staat al in het " +
+      "toetsingsoverzicht.",
+    Component: CltSection,
   },
 ];
 

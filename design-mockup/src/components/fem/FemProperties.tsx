@@ -20,6 +20,9 @@ import {
 } from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
+import { matchSupportedConcreteClass } from "../../lib/betonCheckBuilder";
+import { parseRechthoek } from "../../lib/sectionResolver";
+import { BetonKorfPaneel, type Wapeningskorf } from "../beton";
 import ProfielKiezer from "./ProfielKiezer";
 
 interface SectionProps {
@@ -264,6 +267,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
   const material = beam.material ?? "S235";
   const profile = beam.profile ?? "HEA160";
   const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(material);
+  const isBeton = matchSupportedConcreteClass(material) !== null;
   // Staalsterkte volgt uit de naam (S235 → 235); voor hout tonen we geen
   // verzonnen getallen — de rekenwaarden komen uit de toetsing zelf.
   const fyStaal = /^S(\d+)$/.exec(material)?.[1];
@@ -280,14 +284,45 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
   // hardcoded knoppen zonder state — de EN-tab deed dus niets.
   const [propTab, setPropTab] = useState<"algemeen" | "norm">("algemeen");
   const cfg = beam.checkConfig ?? {};
-  /** Schrijf één veld in checkConfig; lege/ongeldige waarde wist het veld. */
-  const setCfg = (patch: Partial<BeamCheckConfig>) => {
-    const nieuw: BeamCheckConfig = { ...cfg, ...patch };
+  /** checkConfig zonder lege velden; `undefined` als er niets overblijft. */
+  const opgeschoond = (c: BeamCheckConfig): BeamCheckConfig | undefined => {
+    const nieuw: BeamCheckConfig = { ...c };
     for (const k of Object.keys(nieuw) as (keyof BeamCheckConfig)[]) {
       const v = nieuw[k];
       if (v === undefined || (Array.isArray(v) && v.length === 0)) delete nieuw[k];
     }
-    updateBeam?.(beam.id, { checkConfig: Object.keys(nieuw).length > 0 ? nieuw : undefined });
+    return Object.keys(nieuw).length > 0 ? nieuw : undefined;
+  };
+  /** Schrijf één veld in checkConfig; lege/ongeldige waarde wist het veld. */
+  const setCfg = (patch: Partial<BeamCheckConfig>) => {
+    updateBeam?.(beam.id, { checkConfig: opgeschoond({ ...cfg, ...patch }) });
+  };
+  // Beton: het korfpaneel beheert doorsnede, betonklasse én korf als één
+  // geheel. Doorsnede en klasse landen op profiel/materiaal — waar de solver
+  // en de toetsing ze al lezen — en de korf in checkConfig. Alleen gevulde
+  // velden gaan mee als startwaarde; een `undefined` zou anders de
+  // standaardkorf van het paneel overschrijven.
+  const betonRect = isBeton ? parseRechthoek(profile) : null;
+  const betonInitieel: Partial<Wapeningskorf> = {
+    betonklasse: material,
+    ...(betonRect ? { breedteMm: betonRect.b, hoogteMm: betonRect.h } : {}),
+    ...(cfg.betonKorf ? { korf: cfg.betonKorf } : {}),
+    ...(cfg.betonStaalsoort ? { staalsoort: cfg.betonStaalsoort } : {}),
+    ...(cfg.betonStroken ? { aantalStroken: cfg.betonStroken } : {}),
+    ...(cfg.betonStaaltak ? { staaltak: cfg.betonStaaltak } : {}),
+  };
+  const setBetonKorf = (k: Wapeningskorf) => {
+    updateBeam?.(beam.id, {
+      material: k.betonklasse,
+      profile: `${k.breedteMm}x${k.hoogteMm}`,
+      checkConfig: opgeschoond({
+        ...cfg,
+        betonKorf: k.korf,
+        betonStaalsoort: k.staalsoort,
+        betonStroken: k.aantalStroken,
+        betonStaaltak: k.staaltak,
+      }),
+    });
   };
   // Ruwe tekst van het kipsteunen-veld apart, zodat tussentijds typen
   // ("0.25, ") niet door de parser wordt teruggeschreven. Synchroniseert
@@ -454,6 +489,16 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
             </Section>
           )}
 
+          {isBeton && (
+            <Section title="Wapeningskorf en M-N-κ">
+              {/* key: bij een andere staaf een vers paneel met díe korf. */}
+              <BetonKorfPaneel key={beam.id} initieel={betonInitieel} onChange={setBetonKorf} />
+              <div className="fem-prop-hint">
+                Zonder korf wordt de staaf niet getoetst; dat staat dan met reden in het toetsingspaneel.
+              </div>
+            </Section>
+          )}
+
           <Section title="Doorbuiging (BGT)">
             <Row label="Klasse">
               <select
@@ -481,7 +526,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
                 />
               </Row>
             )}
-            {!isHout && (
+            {!isHout && !isBeton && (
               <Row label="Zeeg [mm]">
                 <input
                   type="number" className="fem-prop-input" step="1"
