@@ -34,7 +34,11 @@ import {
 } from "../../lib/betonCheckBuilder";
 import type { CltPreset } from "../../lib/types/timber/CltPreset";
 import type { EigenDoorsnede } from "../../lib/profieleditor/types";
-import { isEigenProfiel, profielnaamVan } from "../../lib/profieleditor/eigenDoorsnedenStore";
+import {
+  isEigenProfiel,
+  profielnaamVan,
+  useEigenDoorsneden,
+} from "../../lib/profieleditor/eigenDoorsnedenStore";
 import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";
@@ -82,6 +86,18 @@ function maatVan(naam: string): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
+/**
+ * Vaste maat van het venster, gelijk voor élke stap.
+ *
+ * De dialoog groeide en kromp eerder mee met zijn inhoud: de materiaalkeuze
+ * was laag, de staalstap hoger, de CLT-stap hoger nog, en de eigen doorsnede
+ * maakte hem tweemaal zo breed. Bij elke stap sprong het venster onder de
+ * muis weg. Nu ligt de maat vast en schuift alleen de inhoud, zodat knoppen
+ * op hun plek blijven staan.
+ */
+const VENSTER_BREEDTE = 720;
+const VENSTER_HOOGTE = 560;
+
 const HOUT_DOORSNEDE_DEFAULT = { b: 71, h: 171 };
 const BETON_DOORSNEDE_DEFAULT = { b: 300, h: 500 };
 /** Startopbouw voor kruislaaghout: de gangbare 5-laags 160. */
@@ -105,8 +121,12 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
       : null,
   );
 
-  // Eigen doorsnede: de profieleditor kiest of bewaart een doorsnede; die
-  // landt als `EIGEN:<naam>` op de staaf, met de staalklasse van hiernaast.
+  // Eigen doorsnede: de bewaarde doorsneden staan hier in een lijst, en de
+  // profieleditor opent in zijn eigen venster. Hij stond eerst ingebouwd in
+  // deze dialoog, maar dan moet die dialoog meegroeien tot editorformaat —
+  // precies de sprong in vensterafmeting die eruit moest.
+  const eigenDoorsneden = useEigenDoorsneden((s) => s.items);
+  const [editorOpen, setEditorOpen] = useState(false);
   const kiesEigen = (d: EigenDoorsnede) => {
     onApply({ material: staalKlasse, profile: profielnaamVan(d) });
     onClose();
@@ -227,9 +247,12 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
     <Modal
       open={open}
       onClose={onClose}
-      width={soort === "eigen" ? 1100 : 620}
+      width={VENSTER_BREEDTE}
+      height={VENSTER_HOOGTE}
+      className="pk-modal"
       title={soort === null ? "Profiel toewijzen — kies materiaal" : `Profiel toewijzen — ${SOORTEN.find(s => s.id === soort)?.label}`}
     >
+      <div className="pk-inhoud">
       {soort === null && (
         <div className="pk-soorten">
           {SOORTEN.map((s) => (
@@ -495,17 +518,51 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
               {STEEL_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </label>
-          {/* De editor heeft zijn eigen "Kies"/"Bewaar"-knoppen; die sluiten
-              ook deze dialoog. Inline, want we zitten al in een modal. */}
-          <ProfielEditor
-            open
-            inModal={false}
-            onClose={() => setSoort(null)}
-            onKies={kiesEigen}
-            onOpslaan={kiesEigen}
-          />
+
+          {eigenDoorsneden.length === 0 ? (
+            <p className="pk-hint">
+              Er zijn nog geen eigen doorsneden bewaard. Maak er een in de
+              profieleditor: samenstellen uit platen en profielen, of een gat in
+              een catalogusprofiel.
+            </p>
+          ) : (
+            <div className="pk-scroll">
+              {eigenDoorsneden.map((d) => (
+                <button
+                  key={d.id}
+                  className="pk-rij pk-rij-eigen"
+                  onClick={() => kiesEigen(d)}
+                  title="Deze doorsnede op de staaf zetten"
+                >
+                  <span className="pk-rij-naam">{d.naam}</span>
+                  <span className="pk-rij-sub">
+                    A = {nlGetal(d.eigenschappen.area_mm2, 0)} mm² · I_y ={" "}
+                    {nlGetal(d.eigenschappen.iy_mm4 / 1e6, 2)}·10⁶ mm⁴
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button className="pk-knop" onClick={() => setEditorOpen(true)}>
+            Profieleditor openen…
+          </button>
+          <div className="pk-hint">
+            De editor opent in een eigen venster. Wat je daar bewaart of kiest
+            landt met de staalklasse hierboven op de staaf.
+          </div>
+
+          {editorOpen && (
+            <ProfielEditor
+              open
+              onClose={() => setEditorOpen(false)}
+              onKies={kiesEigen}
+              onOpslaan={kiesEigen}
+            />
+          )}
         </div>
       )}
+      </div>
 
       <div className="pk-voet">
         {soort !== null && (

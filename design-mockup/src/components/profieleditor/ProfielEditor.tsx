@@ -335,8 +335,11 @@ export default function ProfielEditor({
   );
 
   if (!inModal) return inhoud;
+  // Vaste maat, net als de profielkiezer: het venster hoort niet mee te
+  // groeien met het aantal lamellen of met de tekening. Modal.css houdt hem
+  // met max-height 90vh op een lage monitor binnen het scherm.
   return (
-    <Modal open={open} onClose={onClose} title="Profieleditor — eigen doorsnede" width={1160} height="88vh">
+    <Modal open={open} onClose={onClose} title="Profieleditor — eigen doorsnede" width={1160} height={760}>
       {inhoud}
     </Modal>
   );

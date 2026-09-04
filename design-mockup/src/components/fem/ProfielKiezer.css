@@ -38,6 +38,20 @@
   line-height: 1.35;
 }
 
+/* Vaste vensterafmeting: de inhoud schuift, de voet blijft staan.
+   De dialoog groeide eerder mee met zijn inhoud, waardoor hij bij elke stap
+   van maat veranderde en de knoppen onder de muis wegsprongen. */
+.pk-modal .modal-body {
+  padding: 12px 14px;
+  gap: 0;
+}
+.pk-inhoud {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .pk-stap2 {
   display: flex;
   flex-wrap: wrap;
@@ -167,6 +181,8 @@
   margin-top: 14px;
   padding-top: 10px;
   border-top: 1px solid var(--theme-border-subtle);
+  /* Blijft onderaan staan; alleen .pk-inhoud schuift. */
+  flex-shrink: 0;
 }
 .pk-voet-rechts {
   display: flex;
@@ -200,4 +216,40 @@
 }
 .pk-hint code {
   font-size: 10.5px;
+}
+
+/* Stap "Eigen doorsnede": staalklasse, de bewaarde doorsneden en de knop naar
+   de profieleditor. De editor zat hier eerst ingebouwd, maar dan moest deze
+   dialoog meegroeien tot editorformaat — precies de sprong in vensterafmeting
+   die eruit moest. Hij heeft nu zijn eigen venster. */
+.pk-eigen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.pk-veld-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.pk-veld-inline select {
+  width: auto;
+}
+.pk-eigen .pk-scroll {
+  align-self: stretch;
+  max-height: 300px;
+}
+.pk-rij-eigen {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-color: var(--theme-border-subtle);
+  padding: 7px 9px;
+}
+.pk-rij-naam {
+  font-weight: 600;
+}
+.pk-rij-eigen .pk-rij-sub {
+  margin-left: 0;
 }
