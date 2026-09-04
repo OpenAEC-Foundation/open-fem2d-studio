@@ -11,7 +11,13 @@
  * groepstransformatie `translate · scale(s, −s)` op het scherm gezet; alle
  * tekst en maatlijnen staan buiten die groep in schermcoördinaten.
  */
-import { useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import { omhullende } from "../../lib/profieleditor/geometrie";
 import { tekenItems } from "../../lib/profieleditor/tekening";
 import { fmtMaat } from "../../lib/profieleditor/format";
@@ -32,10 +38,18 @@ interface Props {
   onSelecteer: (id: string | null) => void;
   /** Sleep begonnen op een bouwsteen. */
   onSleepStart: (id: string) => void;
-  /** Sleepverplaatsing sinds het begin, in model-mm. */
-  onSleep: (id: string, dy: number, dz: number) => void;
+  /**
+   * Sleepverplaatsing sinds het begin, in model-mm. `stap` is de maat waarop
+   * de nieuwe positie mag landen: de rasterstap die op dat moment in beeld is,
+   * of 0 wanneer de gebruiker Shift ingedrukt houdt en dus vrij wil schuiven.
+   */
+  onSleep: (id: string, dy: number, dz: number, stap: number) => void;
   onSleepEinde: () => void;
 }
+
+/** Zoomgrenzen ten opzichte van passend in beeld. */
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 20;
 
 /** Rasterstap (mm) zodat een stap minstens 14 schermeenheden is. */
 function rasterStap(s: number): number {
@@ -57,6 +71,13 @@ export default function DoorsnedeTekenvlak({
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const sleep = useRef<{ id: string; x0: number; y0: number } | null>(null);
+  /** Slepen van het vlak zelf (verschuiven van het beeld). */
+  const schuif = useRef<{ x0: number; y0: number; panX: number; panY: number } | null>(null);
+
+  // Zoom en verschuiving ten opzichte van "passend in beeld". 1 en (0,0) is
+  // passend; het beeld staat daarop tot de gebruiker eraan draait.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
 
   const items = useMemo(() => tekenItems(ontwerp, uitvoer?.delen ?? []), [ontwerp, uitvoer]);
   const kader = useMemo(() => omhullende(ontwerp, uitvoer?.delen ?? []), [ontwerp, uitvoer]);
@@ -74,9 +95,14 @@ export default function DoorsnedeTekenvlak({
   const bh = Math.max(kader.zMax - kader.zMin, 1);
   const tekenW = W - MARGE_LINKS - MARGE_RECHTS;
   const tekenH = H - MARGE_BOVEN - MARGE_ONDER;
-  const s = Math.min(tekenW / (bw * 1.12), tekenH / (bh * 1.12));
-  const ox = MARGE_LINKS + (tekenW - bw * s) / 2 - kader.yMin * s;
-  const oy = MARGE_BOVEN + (tekenH - bh * s) / 2 + kader.zMax * s;
+  // Passende schaal en oorsprong; zoom en verschuiving komen daar bovenop.
+  const sPassend = Math.min(tekenW / (bw * 1.12), tekenH / (bh * 1.12));
+  const oxPassend = MARGE_LINKS + (tekenW - bw * sPassend) / 2 - kader.yMin * sPassend;
+  const oyPassend = MARGE_BOVEN + (tekenH - bh * sPassend) / 2 + kader.zMax * sPassend;
+  const s = sPassend * zoom;
+  // Bij zoomen om het midden blijft het midden van het passende beeld staan.
+  const ox = oxPassend + (W / 2 - oxPassend) * (1 - zoom) + pan.x;
+  const oy = oyPassend + (H / 2 - oyPassend) * (1 - zoom) + pan.y;
   const X = (y: number) => ox + y * s;
   const Y = (z: number) => oy - z * s;
 
@@ -103,6 +129,31 @@ export default function DoorsnedeTekenvlak({
     return { x: p.x, y: p.y };
   };
 
+  /** Oorsprong bij een gegeven zoom, zonder verschuiving. */
+  const oxBij = (z: number) => W / 2 - (W / 2 - oxPassend) * z;
+  const oyBij = (z: number) => H / 2 + (oyPassend - H / 2) * z;
+
+  /**
+   * Wielen zoomt om de muisaanwijzer: het punt van de doorsnede dat onder de
+   * cursor ligt blijft daar staan. Dat is waar je op inzoomt, dus dat hoort
+   * niet weg te schuiven.
+   */
+  const opWiel = (e: ReactWheelEvent) => {
+    const p = naarViewBox(e as unknown as ReactPointerEvent);
+    const nieuw = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    if (nieuw === zoom) return;
+    const my = (p.x - ox) / s;
+    const mz = (oy - p.y) / s;
+    const s2 = sPassend * nieuw;
+    setPan({ x: p.x - my * s2 - oxBij(nieuw), y: p.y + mz * s2 - oyBij(nieuw) });
+    setZoom(nieuw);
+  };
+
+  const passend = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
   const opItemDown = (id: string, sleepbaar: boolean) => (e: ReactPointerEvent) => {
     e.stopPropagation();
     onSelecteer(id);
@@ -113,20 +164,52 @@ export default function DoorsnedeTekenvlak({
     onSleepStart(id);
   };
 
+  /** Slepen op de achtergrond verschuift het beeld. */
+  const opVlakDown = (e: ReactPointerEvent) => {
+    onSelecteer(null);
+    const p = naarViewBox(e);
+    schuif.current = { x0: p.x, y0: p.y, panX: pan.x, panY: pan.y };
+    svgRef.current?.setPointerCapture(e.pointerId);
+  };
+
   const opMove = (e: ReactPointerEvent) => {
+    if (schuif.current) {
+      const p = naarViewBox(e);
+      setPan({
+        x: schuif.current.panX + (p.x - schuif.current.x0),
+        y: schuif.current.panY + (p.y - schuif.current.y0),
+      });
+      return;
+    }
     if (!sleep.current) return;
     const p = naarViewBox(e);
-    onSleep(sleep.current.id, (p.x - sleep.current.x0) / s, -(p.y - sleep.current.y0) / s);
+    // Shift ingedrukt = vrij schuiven; anders landt de bouwsteen op het
+    // raster dat op dit moment in beeld staat. Wat je ziet is dus waar hij
+    // op vastklikt, en inzoomen maakt de stap vanzelf fijner.
+    onSleep(
+      sleep.current.id,
+      (p.x - sleep.current.x0) / s,
+      -(p.y - sleep.current.y0) / s,
+      e.shiftKey ? 0 : stap,
+    );
   };
 
   const opUp = (e: ReactPointerEvent) => {
+    const losmaken = () => {
+      try {
+        svgRef.current?.releasePointerCapture(e.pointerId);
+      } catch {
+        // al losgelaten
+      }
+    };
+    if (schuif.current) {
+      schuif.current = null;
+      losmaken();
+      return;
+    }
     if (!sleep.current) return;
     sleep.current = null;
-    try {
-      svgRef.current?.releasePointerCapture(e.pointerId);
-    } catch {
-      // al losgelaten
-    }
+    losmaken();
     onSleepEinde();
   };
 
@@ -152,10 +235,11 @@ export default function DoorsnedeTekenvlak({
       className={`pe-tekenvlak${verouderd ? " verouderd" : ""}`}
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="xMidYMid meet"
-      onPointerDown={() => onSelecteer(null)}
+      onPointerDown={opVlakDown}
       onPointerMove={opMove}
       onPointerUp={opUp}
       onPointerCancel={opUp}
+      onWheel={opWiel}
       role="img"
       aria-label="Tekenvlak van de doorsnede"
     >
@@ -173,8 +257,23 @@ export default function DoorsnedeTekenvlak({
         ))}
       </g>
       <text x={W - 6} y={H - 6} className="pe-tekst" textAnchor="end">
-        raster {stap} mm
+        raster {stap} mm · snap {stap} mm (Shift = vrij)
       </text>
+
+      {/* Zoomregelaar linksonder: percentage en terug naar passend. */}
+      <g className="pe-zoombalk">
+        <text x={6} y={H - 6} className="pe-tekst">
+          zoom {Math.round(zoom * 100)}%
+        </text>
+        {zoom !== 1 && (
+          <g onPointerDown={(e) => { e.stopPropagation(); passend(); }} style={{ cursor: "pointer" }}>
+            <rect x={62} y={H - 18} width={54} height={15} rx={3} className="pe-knopvlak" />
+            <text x={89} y={H - 6} className="pe-tekst" textAnchor="middle">
+              passend
+            </text>
+          </g>
+        )}
+      </g>
 
       {/* Materiaal en gaten, in modelcoördinaten */}
       <g transform={`translate(${ox} ${oy}) scale(${s} ${-s})`}>

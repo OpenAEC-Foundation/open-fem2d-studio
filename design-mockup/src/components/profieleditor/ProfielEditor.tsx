@@ -137,10 +137,12 @@ export default function ProfielEditor({
     sleepStart.current = zoekPositie(id);
   }, [zoekPositie]);
   const opSleep = useCallback(
-    (id: string, dy: number, dz: number) => {
+    (id: string, dy: number, dz: number, stap = 0) => {
       const s0 = sleepStart.current;
       if (!s0) return;
-      const rond = (v: number) => Math.round(v);
+      // `stap` is de rasterstap waarop de nieuwe positie mag landen; 0 betekent
+      // vrij schuiven (Shift), en dan blijft het bij hele millimeters.
+      const rond = (v: number) => (stap > 0 ? Math.round(v / stap) * stap : Math.round(v));
       if (ontwerp.soort === "samenstelling") {
         setSamenstelling((o) => ({
           ...o,

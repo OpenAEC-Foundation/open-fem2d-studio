@@ -39,7 +39,12 @@
   border-bottom: 1px solid var(--theme-dialog-border);
   height: 30px;
   flex-shrink: 0;
-  cursor: default;
+  /* De titelbalk sleept het venster (zie Modal.tsx). Dat kon altijd al, maar
+     met de standaardcursor was er niets dat het verraadde. */
+  cursor: move;
+}
+.modal-header .modal-close-btn {
+  cursor: pointer;
 }
 
 .modal-header h2 {

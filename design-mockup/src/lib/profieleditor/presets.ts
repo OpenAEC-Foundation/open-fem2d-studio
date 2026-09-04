@@ -59,6 +59,23 @@ export const PRESETS: Preset[] = [
     maak: () => samenstelling([lamel(100, 10, 5, 50, 90), lamel(90, 10, 55, 5)]),
   },
   {
+    id: "sfb",
+    label: "SFB-ligger (geïntegreerd)",
+    omschrijving: "HEB 200 met onderplaat 400×15 — de vloer rust op de plaatranden",
+    maak: () => {
+      const p = basisprofielVan("HEB 200");
+      if (!p) return samenstelling([]);
+      // De onderplaat sluit aan tegen de onderkant van de onderflens: het
+      // profiel staat op zijn zwaartepunt (z = 0), dus de onderkant ligt op
+      // −h/2 en het hart van de plaat een halve plaatdikte daaronder.
+      const t = 15;
+      return samenstelling(
+        [lamel(400, t, 0, -(p.h / 2 + t / 2))],
+        [{ id: nieuwId(), profiel: p, y_mm: 0, z_mm: 0, alphaGraden: 0, gespiegeld: false }],
+      );
+    },
+  },
+  {
     id: "dubbel-unp",
     label: "Twee UNP 200 rug-aan-rug",
     omschrijving: "Catalogusdelen, gespiegeld om de z-as",

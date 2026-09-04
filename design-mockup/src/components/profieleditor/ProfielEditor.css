@@ -404,3 +404,13 @@
   border: 1px solid var(--theme-border);
   background: var(--theme-dialog-bg, var(--theme-bg));
 }
+
+/* Zoomregelaar in het tekenvlak. */
+.pe-knopvlak {
+  fill: var(--theme-bg, #fff);
+  stroke: var(--theme-border-subtle, #d0d0d0);
+  stroke-width: 1;
+}
+.pe-zoombalk text {
+  pointer-events: none;
+}
