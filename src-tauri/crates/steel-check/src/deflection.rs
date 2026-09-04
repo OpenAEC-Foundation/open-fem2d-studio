@@ -119,11 +119,11 @@ pub fn check_deflection_pair(
 
     (
         calc(
-            "deflection_w_fin", "Deflection w_fin (BGT)", w_fin, noemer_fin,
+            "deflection_w_fin", "Doorbuiging w_fin (BGT)", w_fin, noemer_fin,
             r"w_{fin,z} = w_z - w_{zeeg,z}",
         ),
         calc(
-            "deflection_w_add", "Deflection w_add (BGT)", w_add, W_ADD_NOEMER,
+            "deflection_w_add", "Doorbuiging w_add (BGT)", w_add, W_ADD_NOEMER,
             r"w_{add,z} = w_{fin,z} - w_{BGT,perm,z}",
         ),
     )

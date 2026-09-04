@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult, type MemberCheckResult } from "../../lib/checkTypes";
 import CheckBlock from "./CheckBlock";
+import { governingInfo } from "../report/checkReportUtils";
 import "./CheckPanel.css";
 
 interface CheckPanelProps {
@@ -96,7 +97,10 @@ function MemberCard({ result, focusToken }: {
             </span>
           </div>
           <div className="cp-card-governing">
-            {t("governing")}: {result.governing_check_id}
+            {/* De leesbare toetsnaam, niet de interne sleutel: "Doorbuiging
+                (BGT)" in plaats van "deflection_w_fin". Dezelfde bron als het
+                rapport gebruikt. */}
+            {t("governing")}: {governingInfo(result).title}
           </div>
         </div>
         <div className={`cp-card-uc ${ucClass(result.uc_max)}`}>

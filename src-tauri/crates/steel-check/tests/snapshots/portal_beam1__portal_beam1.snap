@@ -1249,7 +1249,7 @@ expression: run()
         "type": "Resistance",
         "data": {
           "id": "deflection_w_fin",
-          "title": "Deflection w_fin (BGT)",
+          "title": "Doorbuiging w_fin (BGT)",
           "article": "NEN-EN 1990 (BGT)",
           "force_state": {
             "combination_id": 0,
@@ -1300,7 +1300,7 @@ expression: run()
         "type": "Resistance",
         "data": {
           "id": "deflection_w_add",
-          "title": "Deflection w_add (BGT)",
+          "title": "Doorbuiging w_add (BGT)",
           "article": "NEN-EN 1990 (BGT)",
           "force_state": {
             "combination_id": 0,
