@@ -137,15 +137,23 @@
   background: #52525b;
 }
 
-/* Zoombare kolom vellen. `zoom` (i.p.v. transform) laat de scroll-container
-   gewoon meegroeien/krimpen — geen dode witruimte bij uitzoomen. */
+/* Zoombare vellen. `zoom` (i.p.v. transform) laat de scroll-container gewoon
+   meegroeien/krimpen — geen dode witruimte bij uitzoomen.
+
+   De breedte is die van het venster, niet `fit-content`: daardoor kunnen de
+   vellen in .rpt-vellen naast elkaar gaan staan zodra ze passen. Bij 100 %
+   past op een gewoon scherm één A4 naast de zijbalk; wie uitzoomt ziet er
+   twee, drie of vier naast elkaar, zoals een tekstverwerker dat doet. Met
+   `fit-content` groeide de container mee met de inhoud en werd er nooit
+   gewikkeld. */
 .report-zoom {
   zoom: var(--rpt-zoom, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  width: fit-content;
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 24px 24px 48px;
 }
@@ -167,12 +175,23 @@
   counter-reset: rpt-sectie 0 rpt-subsectie 0;
 }
 
-/* ─── De opmaakproef: losse vellen onder elkaar ─── */
+/* ─── De opmaakproef: losse vellen, naast elkaar zodra ze passen ───
+   Een rij die wikkelt: op 100 % staat er één vel per rij, bij uitzoomen
+   komen er meer naast elkaar. `align-items: flex-start` zodat een korter
+   laatste vel bovenaan blijft staan in plaats van te zweven. */
 .rpt-vellen {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
   gap: 8mm;
+  /* De volle breedte van de zoomcontainer, anders krimpt deze rij tot één vel
+     (de ouder centreert zijn kinderen en rekt ze niet uit) en valt er nooit
+     iets te wikkelen. Bij zoom 0,5 is die breedte in gezoomde eenheden
+     verdubbeld en passen er twee A4's naast elkaar. */
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Het vel zelf: exact papierformaat, met slagschaduw op het "bureau". */
