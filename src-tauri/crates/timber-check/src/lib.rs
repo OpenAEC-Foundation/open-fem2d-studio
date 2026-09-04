@@ -14,6 +14,7 @@
 pub mod input;
 pub mod orchestrator;
 pub mod result;
+pub mod clt; // kruislaaghout: CltBeamCheckInput → CltBeamCheckResult, toets per lamel
 
 pub use input::TimberBeamCheckInput;
 pub use orchestrator::check_timber_beam;

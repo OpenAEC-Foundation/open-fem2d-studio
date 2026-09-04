@@ -17,6 +17,7 @@ steel-check = { path = "../steel-check" }
 
 [dev-dependencies]
 approx = { workspace = true }
+serde_json = { workspace = true }
 
 [[test]]
 name = "referentie_raamwerk"

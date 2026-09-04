@@ -24,6 +24,7 @@ pub mod bending;
 pub mod shear;
 pub mod stability;
 pub mod deflection;
+pub mod clt; pub mod clt_toets; // kruislaaghout: doorsnedemodel + toetsing per lamel
 
 pub use data::{strength_class_by_name, StrengthClass};
 pub use factors::{
