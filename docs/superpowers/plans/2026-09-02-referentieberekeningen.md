@@ -694,6 +694,48 @@ IPE 330 met z_a = −165 mm C2 = +0,4662 in plaats van +0,450, dus 0,96 % te hog
 meldt een overschrijding van de bovengrens in het rapport. Die twee vangnetten liggen er dus
 al klaar; wat ontbreekt is het invoerveld zelf.
 
+### B.17b — B15: de grens voor de bijkomende doorbuiging staat in de staalkern vast op L/150, en dat is te ruim
+
+Gevonden bij P03 (projectvalidatie, 4 september 2026), niet bij de R-reeks.
+
+`steel-check/src/deflection.rs` heeft `const W_ADD_NOEMER: f64 = 150.0` en toetst de
+bijkomende zakking w_add altijd op L/150, ongeacht de doorbuigingsklasse van de staaf. De
+klasse (vloer / dak / uitkraging / aangepast) stuurt alleen w_fin.
+
+NEN-EN 1993-1-1 §7.2.1 geeft zelf geen grenzen; het verwijst voor verticale doorbuigingen
+naar de nationale bijlage bij NEN-EN 1990, bijlage A1.4. Die staat op schijf
+(NEN-EN 1990:2002/NB:2019). A1.4.3(3) begrenst de som w2 + w3 — precies onze w_add — op:
+
+| geval | combinatie | grens |
+|---|---|---|
+| vloeren die scheurgevoelige scheidingswanden dragen | frequent (6.15b) | ℓ_rep/500 |
+| overige vloeren en daken die intensief door personen worden gebruikt | frequent (6.15b) | 3/1000 · ℓ_rep = ℓ_rep/333 |
+| overige daken | karakteristiek (6.14b) | ℓ_rep/250 |
+| vloerafscheidingen ter plaatse van een hoogteverschil | — | ℓ_rep/150 |
+
+ℓ_rep is de overspanning of tweemaal de uitkraaglengte.
+
+L/150 hoort dus bij één bijzonder geval — de bovenregel van een vloerafscheiding — en niet
+bij de bijkomende doorbuiging van een gewone ligger. Voor een vloer is de norm 333 of 500 en
+voor een dak 250; de kern is daar een factor 2,2 tot 3,3 ruimer dan de norm toestaat. Dit is
+de enige bevinding tot nu toe die de andere kant op wijst dan de rest: de app keurt hier goed
+wat de norm afkeurt.
+
+De houttoets doet het al wél zo: `timberCheckBuilder.timberDeflectionNumerators` levert 333
+voor een vloer, 250 voor een dak en 167 voor een uitkraging. Staal en hout geven daardoor
+voor dezelfde ligger een andere grens.
+
+Bij P03 werd het zichtbaar doordat de bron (gevolgklasse CC1, vloer) op L/333 toetst en
+UC 0,24 publiceert, terwijl de kern met L/150 op UC 0,168 uitkomt — een verschil van 30 %
+dat volledig in de grenswaarde zit en niet in de zakking: met de bron-definitie op onze eigen
+solverwaarden komt er 0,243 uit, 1,05 % van de bron af.
+
+Niet gerepareerd. Het raakt elke staaltoets met een w_add-regel en dus de gepubliceerde UC's;
+dat is een aparte, bewuste ingreep. Wat ervoor nodig is: de noemer uit de doorbuigingsklasse
+halen (zoals bij hout) en het onderscheid frequent/karakteristiek in de combinatiekeuze
+meenemen. `deflection_permanent_mm` staat bovendien nog op 0 (B11), waardoor w_add gelijk is
+aan w_fin; die twee horen in één keer opgelost te worden.
+
 ### B.18 — Wat expliciet NIET fout is gebleken
 
 Om de lijst hierboven in verhouding te houden: de volgende onderdelen zijn intensief

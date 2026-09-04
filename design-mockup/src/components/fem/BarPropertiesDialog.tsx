@@ -137,6 +137,35 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
     onClose();
   };
 
+  /**
+   * Staat er iets in deze dialoog dat nog niet op de staaf is gezet?
+   *
+   * Alles wat je hier invult blijft lokaal totdat je op OK drukt — ook de
+   * profielwizard, die alleen `setMaterial`/`setProfile` doet. Wie een
+   * profiel koos, in de regel "Profiel" netjes "HEB 200 — S235" zag staan en
+   * daarna naast het kader klikte, verloor die toewijzing zonder melding: de
+   * overlay beslaat het hele scherm en sloot meteen. In het rapport bleef het
+   * oude profiel staan, terwijl de gebruiker het wel degelijk had toegewezen.
+   */
+  const huidigeInvoer = JSON.stringify({
+    material, profile, releases, cfg: buildCheckConfig() ?? null,
+  });
+  const [beginInvoer] = useState(huidigeInvoer);
+  const gewijzigd = huidigeInvoer !== beginInvoer;
+
+  /**
+   * Klik naast het kader. Is er niets veranderd, dan sluit de dialoog zoals
+   * altijd; wacht er nog iets op OK, dan gebeurt er niets — een misklik hoort
+   * geen werk weg te gooien. Weggooien kan nog steeds bewust, met × of
+   * Annuleer. Er komt geen `window.confirm` aan te pas: die is in de
+   * desktopschil niet betrouwbaar (App.tsx gebruikt hem alleen als
+   * browser-terugval), en een dialoog die niet meer dicht kan is erger dan
+   * de kwaal.
+   */
+  const overlayKlik = () => {
+    if (!gewijzigd) onClose();
+  };
+
   const nA = nodes.find(n => n.id === beam.from);
   const nB = nodes.find(n => n.id === beam.to);
   const length = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
@@ -204,10 +233,14 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
   );
 
   return (
-    <div className="bar-props-overlay" onClick={onClose}>
+    <div className="bar-props-overlay" onClick={overlayKlik}>
       <div className="bar-props-dialog" onClick={(e) => e.stopPropagation()} role="dialog">
         <div className="bar-props-header">
-          <h2 className="bar-props-title">Eigenschappen balk #{beam.id}</h2>
+          <h2 className="bar-props-title">
+            Eigenschappen balk #{beam.id}
+            {/* Zichtbaar dat er nog iets op OK wacht. */}
+            {gewijzigd && <span className="bar-props-dirty" title="Nog niet opgeslagen — bevestig met OK"> ●</span>}
+          </h2>
           <button className="bar-props-close" onClick={onClose} aria-label="Sluiten">×</button>
         </div>
 
@@ -440,6 +473,11 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
         </div>
 
         <div className="bar-props-footer">
+          {gewijzigd && (
+            <span className="bar-props-dirty-hint">
+              Nog niet opgeslagen — bevestig met OK
+            </span>
+          )}
           <button className="bar-props-btn-secondary" onClick={onClose}>Annuleer</button>
           <button className="bar-props-btn-primary" onClick={handleConfirm}>OK</button>
         </div>

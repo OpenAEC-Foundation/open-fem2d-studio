@@ -1,0 +1,127 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-04T12:58:51.488Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 2700,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "IPE180",
+      "checkConfig": {
+        "lateralRestraints": [],
+        "lateralRestraintsBottom": [],
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 250,
+        "preCamber_mm": 0
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -11.7
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -12.2
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "BG1 Permanent (incl. eigen gewicht)",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "BG2 Veranderlijk (A: woonfunctie)",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": true,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 6.10a",
+      "type": "uls",
+      "formula": "1,22·G + 0,40·1,35·Q",
+      "factors": {
+        "1": 1.22,
+        "2": 0.54
+      }
+    },
+    {
+      "id": 2,
+      "name": "UGT 6.10b",
+      "type": "uls",
+      "formula": "1,08·G + 1,35·Q",
+      "factors": {
+        "1": 1.08,
+        "2": 1.35
+      }
+    },
+    {
+      "id": 3,
+      "name": "BGT blijvend",
+      "type": "sls",
+      "formula": "1,0·G",
+      "factors": {
+        "1": 1
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT quasi-blijvend",
+      "type": "sls",
+      "formula": "1,0·G + 0,3·Q",
+      "factors": {
+        "1": 1,
+        "2": 0.3
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT karakteristiek",
+      "type": "sls",
+      "formula": "1,0·G + 1,0·Q",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "toelichting": "Projectvalidatie P01: vrij opgelegde ligger IPE 180 (S235), L = 2700 mm, twee steunpunten, verdeelde lasten G = 11,7 kN/m (+ eigen gewicht) en Q = 12,2 kN/m. Combinatiefactoren CC1 volgens de nationale bijlage. Doorbuigingsgrens w_fin = L/250 (custom)."
+}

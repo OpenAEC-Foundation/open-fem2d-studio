@@ -1,0 +1,147 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-04T12:59:01.506Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3250,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "HEB160",
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": -10,
+        "lateralRestraints": []
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 2,
+      "type": "zRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -38.9,
+      "startFrac": 0,
+      "endFrac": 0.46153846153846156
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -41.2,
+      "startFrac": 0.46153846153846156,
+      "endFrac": 1
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -7.8,
+      "startFrac": 0,
+      "endFrac": 0.46153846153846156
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -9.1,
+      "startFrac": 0.46153846153846156,
+      "endFrac": 1
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "Permanent (incl. eigen gewicht)",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "Veranderlijk (woonfunctie, ψ0 = 0,40)",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": true,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 6.10a",
+      "type": "uls",
+      "formula": "1,22·G + 0,40·1,35·Q",
+      "factors": {
+        "1": 1.22,
+        "2": 0.54
+      }
+    },
+    {
+      "id": 2,
+      "name": "UGT 6.10b",
+      "type": "uls",
+      "formula": "1,08·G + 1,35·Q",
+      "factors": {
+        "1": 1.08,
+        "2": 1.35
+      }
+    },
+    {
+      "id": 3,
+      "name": "BGT blijvend",
+      "type": "sls",
+      "formula": "G",
+      "factors": {
+        "1": 1
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT quasi-blijvend",
+      "type": "sls",
+      "formula": "G + 0,30·Q",
+      "factors": {
+        "1": 1,
+        "2": 0.3
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT karakteristiek",
+      "type": "sls",
+      "formula": "G + Q",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "toelichting": "Referentiegeval P03 uit het projectarchief (geanonimiseerd): stalen dakbalk HEB 160 S235, vrij opgelegd over 3,25 m, deellasten permanent 38,9/41,2 kN/m en veranderlijk 7,8/9,1 kN/m (knik op 1,5 m), zeeg 10 mm, eigen gewicht automatisch, 2e orde. Combinaties conform NB (CC1): 1,22G+0,54Q; 1,08G+1,35Q; BGT G, G+0,3Q, G+Q."
+}

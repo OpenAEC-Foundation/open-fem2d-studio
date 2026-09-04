@@ -1,0 +1,185 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-04T12:58:52.701Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 840,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 3040,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 3800,
+      "z": 0
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "HEM160",
+      "checkConfig": {
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 250
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S235",
+      "profile": "HEM160",
+      "checkConfig": {
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 250,
+        "lateralRestraints": [
+          0.1940909090909091,
+          0.77
+        ],
+        "lateralRestraintsBottom": [
+          0.1940909090909091,
+          0.77
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S235",
+      "profile": "HEM160",
+      "checkConfig": {
+        "deflectionClass": "custom",
+        "deflectionLimitNumerator": 250
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 2,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "pinned"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 1,
+      "fz": -55.4
+    },
+    {
+      "id": 2,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 1,
+      "fz": -47.8
+    },
+    {
+      "id": 3,
+      "type": "pointForce",
+      "caseId": 1,
+      "nodeId": 4,
+      "fz": -56
+    },
+    {
+      "id": 4,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 4,
+      "fz": -16.6
+    },
+    {
+      "id": 5,
+      "type": "pointForce",
+      "caseId": 2,
+      "nodeId": 1,
+      "fz": -14.3
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "BG1 Permanent (incl. eigen gewicht)",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "BG2 Veranderlijk (A: woonfunctie)",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": true,
+  "nonlinearEnabled": true,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 1 (6.10a)",
+      "type": "uls",
+      "formula": "1,35·BG1 + 0,40·1,50·BG2",
+      "factors": {
+        "1": 1.35,
+        "2": 0.6
+      }
+    },
+    {
+      "id": 2,
+      "name": "UGT 2 (6.10b)",
+      "type": "uls",
+      "formula": "1,20·BG1 + 1,50·BG2",
+      "factors": {
+        "1": 1.2,
+        "2": 1.5
+      }
+    },
+    {
+      "id": 3,
+      "name": "BGT 3 (permanent)",
+      "type": "sls",
+      "formula": "1,00·BG1",
+      "factors": {
+        "1": 1
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT 4 (quasi-blijvend)",
+      "type": "sls",
+      "formula": "1,00·BG1 + 0,30·BG2",
+      "factors": {
+        "1": 1,
+        "2": 0.3
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT 5 karakteristiek",
+      "type": "sls",
+      "formula": "1,00·BG1 + 1,00·BG2",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "toelichting": "Referentieproject P02 (geanonimiseerd): doorgaande onderligger HEM 160 S235 op twee steunpunten (x = 840 en 3040) met uitkragingen naar x = 0 en x = 3800. De ene staaf uit de bron is hier drie staven (K1-K2, K2-K3, K3-K4) omdat een oplegging aan een knoop hangt. Eigen gewicht automatisch (bron: 0,748 kN/m). Kipsteunen op x = 1267 en 2534 (beide flenzen, aanname). Doorbuigingsgrens L/250. Combinaties en psi-factoren zoals in de bron; 2e orde aan (geen normaalkracht)."
+}

@@ -245,3 +245,18 @@
   background: var(--theme-hover);
   border-color: var(--theme-accent);
 }
+
+/* Stipje in de titel: er staat iets in de dialoog dat nog op OK wacht. */
+.bar-props-dirty {
+  color: var(--accent, #e8730c);
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+/* Voetregel: er wacht iets op OK. */
+.bar-props-dirty-hint {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--accent, #e8730c);
+  align-self: center;
+}
