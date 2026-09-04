@@ -17,6 +17,7 @@
 import { STEEL_SECTIONS } from "./steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
 import { cltSolverDoorsnede, isCltProfiel, parseCltProfiel } from "./cltCheckBuilder";
+import { zoekEigenDoorsnede } from "./profieleditor/eigenDoorsnedenStore";
 
 /** E_0,mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL). */
 export const TIMBER_E_MEAN: Record<string, number> = {
@@ -60,7 +61,7 @@ export interface ResolvedSection {
   E: number;      // N/mm²
   A: number;      // mm²
   I: number;      // mm⁴ (Iy, sterke as)
-  bron: "staal-db" | "hout-bxh" | "clt" | "beton-bxh" | "default";
+  bron: "staal-db" | "eigen" | "hout-bxh" | "clt" | "beton-bxh" | "default";
   /**
    * Volle doorsnede in mm² voor het eigen gewicht, waar die van `A` afwijkt.
    * Bij kruislaaghout is `A` de meewerkende doorsnede van de lengtelagen; de
@@ -116,6 +117,17 @@ export function resolveSection(material: string | undefined, profile: string | u
       };
     }
   } else {
+    // Eigen doorsnede uit de profieleditor (`EIGEN:<naam>`): de motor heeft
+    // A en I_y al exact bepaald; eigen doorsneden zijn staal.
+    const eigen = zoekEigenDoorsnede(profile);
+    if (eigen) {
+      return {
+        E: E_STAAL,
+        A: eigen.eigenschappen.area_mm2,
+        I: eigen.eigenschappen.iy_mm4,
+        bron: "eigen",
+      };
+    }
     const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
     if (sec) return { E: E_STAAL, A: sec.A, I: sec.Iy, bron: "staal-db" };
   }

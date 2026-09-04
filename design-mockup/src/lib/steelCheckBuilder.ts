@@ -25,6 +25,12 @@ import type { DeflectionClass } from "./types/steel/DeflectionClass";
 import type { ForcePoint } from "./types/steel/ForcePoint";
 import type { SteelProfile } from "./types/steel/SteelProfile";
 import type { CheckSkip } from "./checkTypes";
+import {
+  eigenNaamVan,
+  isEigenProfiel,
+  naarCustomSection,
+  zoekEigenDoorsnede,
+} from "./profieleditor/eigenDoorsnedenStore";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -63,6 +69,9 @@ const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
 
 export function isSteelProfile(profileName: string | undefined): boolean {
   if (!profileName) return false;
+  // Een eigen doorsnede uit de profieleditor is staal en gaat als
+  // `custom_section` naar dezelfde kern.
+  if (isEigenProfiel(profileName)) return true;
   const upper = profileName.toUpperCase();
   return STEEL_PROFILE_PREFIXES.some((p) => upper.startsWith(p));
 }
@@ -273,17 +282,36 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
   const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
 
   for (const beam of data.beams) {
-    const profileName = beam.profile ?? "HEA160";
+    // GEEN terugval op "HEA160" meer. Een staaf zonder profiel werd hier
+    // stilzwijgend als HEA 160 getoetst — met een unity check die niets met
+    // die staaf te maken had. Zo'n staaf valt nu door naar de eindcontrole in
+    // de check-store en komt met reden bij de overgeslagen staven te staan.
+    const profileName = beam.profile ?? "";
     if (!isSteelProfile(profileName)) continue; // geen staal — niet onze zaak
 
-    const profile = data.profileDb.get(profileLookupKey(profileName));
-    if (!profile) {
+    // Eigen doorsnede uit de profieleditor: de motor heeft de eigenschappen
+    // al bepaald en die gaan als `custom_section` mee — de kern slaat de
+    // profieldatabase dan over. Een naam die niet (meer) bewaard is, is een
+    // fout in het model en wordt gemeld, niet stil vervangen.
+    const eigen = isEigenProfiel(profileName) ? zoekEigenDoorsnede(profileName) : undefined;
+    if (isEigenProfiel(profileName) && !eigen) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `eigen doorsnede "${eigenNaamVan(profileName)}" is niet (meer) bewaard — open de profieleditor en bewaar hem opnieuw`,
+      });
+      continue;
+    }
+    const profile = eigen ? undefined : data.profileDb.get(profileLookupKey(profileName));
+    if (!eigen && !profile) {
       skipped.push({
         beamId: beam.id,
         reason: `profiel "${profileName}" is niet bekend in de EN 1993-profieldatabase`,
       });
       continue;
     }
+    // Hoogte voor het aangrijpingspunt van de last (z_a = +h/2, zie onder).
+    // Eén van beide bestaat na de controles hierboven.
+    const hMm = eigen ? eigen.motor.z_max_mm - eigen.motor.z_min_mm : profile!.geometry.h;
 
     const grade = beam.material ?? "S235";
     if (!STEEL_GRADES.includes(grade.toUpperCase())) {
@@ -329,7 +357,8 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
 
     inputs.push({
       beam_id: beam.id,
-      profile_name: profileName,
+      profile_name: eigen ? eigen.naam : profileName,
+      ...(eigen ? { custom_section: naarCustomSection(eigen) } : {}),
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,
@@ -361,7 +390,7 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
       // flens en werkt hij in werkelijkheid stabiliserend; de aanname is daar
       // dus conservatief in plaats van juist. Het echte aangrijpingspunt is nu
       // niet bekend in de invoer; dit hoort een expliciet veld te worden.
-      z_a_mm: profile.geometry.h / 2,
+      z_a_mm: hMm / 2,
     });
   }
 

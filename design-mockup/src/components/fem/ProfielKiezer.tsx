@@ -33,6 +33,9 @@ import {
   matchSupportedConcreteClass,
 } from "../../lib/betonCheckBuilder";
 import type { CltPreset } from "../../lib/types/timber/CltPreset";
+import type { EigenDoorsnede } from "../../lib/profieleditor/types";
+import { isEigenProfiel, profielnaamVan } from "../../lib/profieleditor/eigenDoorsnedenStore";
+import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";
 import { shapeVanProfiel } from "../shared/profielVorm";
@@ -51,10 +54,11 @@ interface ProfielKiezerProps {
   onApply: (keuze: ProfielKeuze) => void;
 }
 
-type MateriaalSoort = "staal" | "hout" | "beton" | "aluminium" | "overig";
+type MateriaalSoort = "staal" | "eigen" | "hout" | "beton" | "aluminium" | "overig";
 
 const SOORTEN: Array<{ id: MateriaalSoort; label: string; beschikbaar: boolean; hint: string }> = [
   { id: "staal", label: "Staal", beschikbaar: true, hint: "Walsprofielen uit de profieldatabase + staalklasse (EN 1993)" },
+  { id: "eigen", label: "Eigen doorsnede", beschikbaar: true, hint: "Samenstellen uit platen en profielen, of een gat in een catalogusprofiel (staal, EN 1993)" },
   { id: "hout", label: "Hout", beschikbaar: true, hint: "Massief b×h of kruislaaghout (CLT) + sterkteklasse (EN 1995)" },
   { id: "beton", label: "Beton", beschikbaar: true, hint: "Rechthoekige doorsnede b×h + betonklasse (EN 1992); wapeningskorf bij de staafeigenschappen" },
   { id: "aluminium", label: "Aluminium", beschikbaar: false, hint: "Volgt later — nog geen profieldatabase en toetsing" },
@@ -92,11 +96,21 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
   const huidigIsBeton = matchSupportedConcreteClass(huidig?.material) !== null;
   const huidigIsHout = !huidigIsBeton && !!huidig?.material && (huidig.material in TIMBER_E_MEAN);
   const huidigIsClt = huidigIsHout && isCltProfiel(huidig?.profile);
+  const huidigIsEigen = !huidigIsBeton && !huidigIsHout && isEigenProfiel(huidig?.profile);
 
   // ── Wizardstate ──────────────────────────────────────────────────────────
   const [soort, setSoort] = useState<MateriaalSoort | null>(
-    huidig?.material ? (huidigIsBeton ? "beton" : huidigIsHout ? "hout" : "staal") : null,
+    huidig?.material
+      ? huidigIsBeton ? "beton" : huidigIsHout ? "hout" : huidigIsEigen ? "eigen" : "staal"
+      : null,
   );
+
+  // Eigen doorsnede: de profieleditor kiest of bewaart een doorsnede; die
+  // landt als `EIGEN:<naam>` op de staaf, met de staalklasse van hiernaast.
+  const kiesEigen = (d: EigenDoorsnede) => {
+    onApply({ material: staalKlasse, profile: profielnaamVan(d) });
+    onClose();
+  };
 
   // Staal-stap
   const eersteReeks = huidig?.profile
@@ -213,7 +227,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
     <Modal
       open={open}
       onClose={onClose}
-      width={620}
+      width={soort === "eigen" ? 1100 : 620}
       title={soort === null ? "Profiel toewijzen — kies materiaal" : `Profiel toewijzen — ${SOORTEN.find(s => s.id === soort)?.label}`}
     >
       {soort === null && (
@@ -473,13 +487,33 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
         </div>
       )}
 
+      {soort === "eigen" && (
+        <div className="pk-eigen">
+          <label className="pk-veld pk-veld-inline">
+            <span>Staalklasse</span>
+            <select value={staalKlasse} onChange={(e) => setStaalKlasse(e.target.value)}>
+              {STEEL_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </label>
+          {/* De editor heeft zijn eigen "Kies"/"Bewaar"-knoppen; die sluiten
+              ook deze dialoog. Inline, want we zitten al in een modal. */}
+          <ProfielEditor
+            open
+            inModal={false}
+            onClose={() => setSoort(null)}
+            onKies={kiesEigen}
+            onOpslaan={kiesEigen}
+          />
+        </div>
+      )}
+
       <div className="pk-voet">
         {soort !== null && (
           <button className="pk-knop" onClick={() => setSoort(null)}>← Materiaal</button>
         )}
         <div className="pk-voet-rechts">
           <button className="pk-knop" onClick={onClose}>Annuleren</button>
-          {soort !== null && (
+          {soort !== null && soort !== "eigen" && (
             <button
               className="pk-knop pk-knop-primair"
               disabled={toepassenUit}

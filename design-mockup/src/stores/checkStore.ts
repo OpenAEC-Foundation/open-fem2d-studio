@@ -247,7 +247,7 @@ export const useCheckStore = create<CheckState>((set) => ({
 export function anyCheckableBeams(beams: Beam[]): boolean {
   return beams.some(
     (b) =>
-      isSteelProfile(b.profile ?? "HEA160") ||
+      isSteelProfile(b.profile) ||
       isCltProfiel(b.profile) ||
       matchSupportedTimberGrade(b.material) !== null ||
       matchSupportedConcreteClass(b.material) !== null,

@@ -516,6 +516,12 @@ export interface FemStore {
   addBeam: (fromId: number, toId: number) => number | null;
   updateBeam: (id: number, updates: Partial<Beam>) => void;
   /**
+   * Dezelfde wijziging op meerdere staven, in ÉÉN history-stap en één
+   * herberekening. Een lus over `updateBeam` zou per staaf een undo-stap en
+   * een solverrun opleveren — zie ook `vervangGegenereerdeBelasting`.
+   */
+  updateBeams: (ids: number[], updates: Partial<Beam>) => void;
+  /**
    * Voeg een plaat toe (rechthoek óf polygoon, P4.2) en geef het nieuwe id
    * terug. Voor een polygonplaat levert het canvas de zojuist gegenereerde
    * CDT-meshcache direct mee, zodat plaat + mesh in één history-snapshot
@@ -801,7 +807,17 @@ export function useFemStore(): FemStore {
       return null;
     }
     const newId = cur.beams.length === 0 ? 1 : Math.max(...cur.beams.map(b => b.id)) + 1;
-    const nextBeams = [...cur.beams, { id: newId, from: fromId, to: toId }];
+    // Materiaal en profiel EXPLICIET meegeven, ook al zijn het de defaults.
+    // Een staaf zonder deze velden bestond wel, maar elke lezer verzon er
+    // dan zelf "HEA160 / S235" bij: de eigenschappen, de tabel, de solver en
+    // het rapport. In het rapport kwam dat terug als een volwaardig
+    // hoofdstuk "HEA160" met de complete eigenschappentabel — een profiel
+    // dat de gebruiker nooit had gekozen en dat hij ook niet kon aanwijzen
+    // om te wijzigen. Wat de app rekent hoort in het model te staan.
+    const nextBeams = [
+      ...cur.beams,
+      { id: newId, from: fromId, to: toId, material: "S235", profile: "HEA160" },
+    ];
     setBeams(nextBeams);
     pushHistory({ ...cur, beams: nextBeams });
     return newId;
@@ -812,6 +828,16 @@ export function useFemStore(): FemStore {
     const cur = latestRef.current;
     if (!cur.beams.some(b => b.id === id)) return;
     const nextBeams = cur.beams.map(b => b.id === id ? { ...b, ...updates } : b);
+    setBeams(nextBeams);
+    pushHistory({ ...cur, beams: nextBeams });
+  }, [pushHistory]);
+
+  /** Zie FemStore.updateBeams — één snapshot voor de hele groep. */
+  const updateBeams = useCallback((ids: number[], updates: Partial<Beam>) => {
+    const cur = latestRef.current;
+    const doel = new Set(ids);
+    if (!cur.beams.some(b => doel.has(b.id))) return;
+    const nextBeams = cur.beams.map(b => doel.has(b.id) ? { ...b, ...updates } : b);
     setBeams(nextBeams);
     pushHistory({ ...cur, beams: nextBeams });
   }, [pushHistory]);
@@ -1260,7 +1286,7 @@ export function useFemStore(): FemStore {
     setActiveCombinationId,
     setEnvelopeView,
     setSolverOutputs,
-    addNode, updateNode, addBeam, updateBeam, addPlate, updatePlate,
+    addNode, updateNode, addBeam, updateBeam, updateBeams, addPlate, updatePlate,
     setPlateMeshCache,
     addSupport, removeSupport, addLoad, updateLoad,
     removeNode, removeBeam, removeLoad, removePlate,

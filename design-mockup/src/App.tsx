@@ -39,6 +39,10 @@ import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemRe
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
 import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
+import {
+  exporteer as exporteerEigenDoorsneden,
+  importeer as importeerEigenDoorsneden,
+} from "./lib/profieleditor/eigenDoorsnedenStore";
 import { isTauriApp } from "./lib/tauri";
 import { getSetting, setSetting } from "./store";
 import "./themes.css";
@@ -239,6 +243,9 @@ function App() {
     scheefstandEnabled: fem.scheefstandEnabled,
     scheefstandNoemer: fem.scheefstandNoemer,
     scheefstandRichting: fem.scheefstandRichting,
+    // Eigen doorsneden reizen mee in het projectbestand: een staaf met
+    // `EIGEN:<naam>` moet op een andere machine dezelfde doorsnede vinden.
+    eigenDoorsneden: exporteerEigenDoorsneden(),
   }), [fem]);
 
   // ── C2: dirty-vlag ("niet-opgeslagen wijzigingen") ──────────────────────
@@ -341,6 +348,9 @@ function App() {
     try {
       const parsed = deserializeProject(opened.text);
       baselineResetRef.current = true;
+      // Vóór het model: de staven verwijzen naar deze doorsneden. Een ouder
+      // bestand zonder het veld laat de lokale lijst staan.
+      if (parsed.eigenDoorsneden) importeerEigenDoorsneden(parsed.eigenDoorsneden);
       fem.loadProjectState({
         nodes: parsed.nodes,
         beams: parsed.beams,
@@ -381,6 +391,7 @@ function App() {
       const text = await readTextFile(path);
       const parsed = deserializeProject(text);
       baselineResetRef.current = true;
+      if (parsed.eigenDoorsneden) importeerEigenDoorsneden(parsed.eigenDoorsneden);
       fem.loadProjectState({
         nodes: parsed.nodes, beams: parsed.beams, supports: parsed.supports,
         plates: parsed.plates, loads: parsed.loads,
@@ -1298,6 +1309,7 @@ function App() {
                     loads={fem.loads}
                     updateNode={fem.updateNode}
                     updateBeam={fem.updateBeam}
+                    updateBeams={fem.updateBeams}
                     updatePlate={fem.updatePlate}
                     addSupport={fem.addSupport}
                     removeSupport={fem.removeSupport}

@@ -24,6 +24,8 @@ import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
 import SectionSketch from "./SectionSketch";
 import { steelShape, type SectionShape } from "../../shared/profielVorm";
+import { zoekEigenDoorsnede } from "../../../lib/profieleditor/eigenDoorsnedenStore";
+import EigenDoorsnedeTekening from "../../profieleditor/EigenDoorsnedeTekening";
 
 interface ProfileUse {
   profile: string;
@@ -69,9 +71,16 @@ export default function SectionsSection() {
 
   // Unieke profielen, in volgorde van eerste gebruik; het materiaal van de
   // eerste staaf bepaalt de staal/hout-route (zelfde als de solver per staaf).
+  // De profielnaam wordt hier NIET aangevuld met een default. Dat gebeurde
+  // wel — `b.profile ?? "HEA160"` — en dan liep zo'n staaf verderop door
+  // `resolveSection` als een echte HEA160: het rapport drukte de volledige
+  // eigenschappentabel van dat profiel af, met de staafnummers erbij, terwijl
+  // niemand het gekozen had. De eerlijke melding "doorsnede onbekend" verderop
+  // kon daardoor nooit afgaan. Een staaf zonder profiel hoort als zodanig in
+  // het rapport te staan.
   const uses = new Map<string, ProfileUse>();
   for (const b of [...beams].sort((a, z) => a.id - z.id)) {
-    const profile = b.profile ?? "HEA160";
+    const profile = b.profile ?? "";
     const material = b.material ?? "S235";
     const existing = uses.get(profile);
     if (existing) existing.beamIds.push(b.id);
@@ -95,21 +104,37 @@ export default function SectionsSection() {
             sec.bron === "staal-db"
               ? STEEL_SECTION_DIMS[profileLookupKey(profile)]
               : undefined;
+          // Eigen doorsnede uit de profieleditor: tekening uit het ontwerp,
+          // eigenschappen zoals de motor ze heeft bepaald — geen herberekening.
+          const eigen = sec.bron === "eigen" ? zoekEigenDoorsnede(profile) : undefined;
+          const eigenProps = eigen?.eigenschappen;
           const shape: SectionShape | null = timberRect
             ? { type: "rect", b: timberRect.b, h: timberRect.h }
             : steelShape(steelDims);
 
           if (sec.bron === "default") {
-            // Onbekende combinatie: dat zegt de solver ook hardop — hier dus
-            // geen eigenschappen tonen die niet van dit profiel zijn.
+            // Onbekende of ontbrekende doorsnede: dat zegt de solver ook
+            // hardop — hier dus geen eigenschappen tonen die niet van dit
+            // profiel zijn.
             return (
-              <div className="rpt-profile-block" key={profile}>
-                <h3 className="rpt-h3">{profile}</h3>
+              <div className="rpt-profile-block" key={profile || "(geen profiel)"}>
+                <h3 className="rpt-h3">
+                  {profile || t("report.noProfileTitle", "Geen profiel toegewezen")}
+                </h3>
                 <p className="rpt-empty-note">
-                  {t(
-                    "report.unknownSection",
-                    "Doorsnede onbekend — dit profiel staat niet in de profieldatabase en is geen rechthoek b×h. De solver rekent met de default (HEA 160 / S235).",
-                  )}
+                  {profile
+                    ? t(
+                        "report.unknownSection",
+                        "Doorsnede onbekend — dit profiel staat niet in de profieldatabase en is geen rechthoek b×h. De solver rekent met de default (HEA 160 / S235).",
+                      )
+                    : t(
+                        "report.noProfileNote",
+                        "Aan deze staven is nog geen profiel toegewezen. De solver rekent ze door met de default (HEA 160 / S235) en de normtoetsing slaat ze over. Wijs een profiel toe via de staafeigenschappen.",
+                      )}
+                </p>
+                <p className="rpt-note">
+                  {t("report.propUsedBy", "Toegepast op staaf")}:{" "}
+                  {beamIdsText(beamIds, t("report.beamsWord", "staven"))}
                 </p>
               </div>
             );
@@ -145,11 +170,15 @@ export default function SectionsSection() {
             kopRijen.push({ label: "b [mm]", value: fmtNum(timberRect.b, 0) });
             kopRijen.push({ label: "h [mm]", value: fmtNum(timberRect.h, 0) });
           }
+          if (eigenProps) {
+            kopRijen.push({ label: "h [mm]", value: fmtMaat(eigenProps.h_mm) });
+            kopRijen.push({ label: "b [mm]", value: fmtMaat(eigenProps.b_mm) });
+          }
           kopRijen.push({
             label: "A [mm²]",
             value: Number.isInteger(aAfgerond) ? fmtGroep(aAfgerond) : fmtGroep(aAfgerond, 1),
           });
-          if (steelDims) {
+          if (steelDims || eigenProps) {
             // Massa per meter: G = A × ρ (7850 kg/m³ voor constructiestaal).
             kopRijen.push({
               label: "G [kg/m]",
@@ -181,6 +210,30 @@ export default function SectionsSection() {
               y: fmtGroep(props.wplY),
               z: fmtGroep(props.wplZ),
             });
+          } else if (eigenProps && eigen) {
+            // Eigen doorsnede: wat de motor niet kon bepalen (Wpl bij losse
+            // delen) staat als "—", niet als nul.
+            const wpl = eigen.motor.wpl_bepaald;
+            paarRijen.push({
+              label: "I [mm⁴]",
+              y: fmtGroep(eigenProps.iy_mm4),
+              z: fmtGroep(eigenProps.iz_mm4),
+            });
+            paarRijen.push({
+              label: "i [mm]",
+              y: fmtNum(eigenProps.iy_radius_mm, 1),
+              z: fmtNum(eigenProps.iz_radius_mm, 1),
+            });
+            paarRijen.push({
+              label: "Wel [mm³]",
+              y: fmtGroep(eigenProps.wel_y_mm3),
+              z: fmtGroep(eigenProps.wel_z_mm3),
+            });
+            paarRijen.push({
+              label: "Wpl [mm³]",
+              y: wpl ? fmtGroep(eigenProps.wpl_y_mm3) : "—",
+              z: wpl ? fmtGroep(eigenProps.wpl_z_mm3) : "—",
+            });
           } else if (timberRect) {
             // Hout: rechthoek b×h — alles daaruit berekend (zelfde formules
             // als de solver: I = b·h³/12, en W = I/(h/2)).
@@ -206,6 +259,15 @@ export default function SectionsSection() {
               label: "Iw [×10⁹ mm⁶]",
               value: fmtGroep(props.iw / 1e9, props.iw >= 1e11 ? 0 : 2),
             });
+          } else if (eigenProps && eigen) {
+            slotRijen.push({ label: "Av;z [mm²]", value: fmtGroep(eigenProps.av_z_mm2) });
+            slotRijen.push({ label: "It [mm⁴]", value: fmtGroep(eigenProps.it_mm4) });
+            slotRijen.push({
+              label: "Iw [×10⁹ mm⁶]",
+              value: eigen.motor.iw_bepaald
+                ? fmtGroep(eigenProps.iw_mm6 / 1e9, eigenProps.iw_mm6 >= 1e11 ? 0 : 2)
+                : t("report.notDetermined", "niet bepaald"),
+            });
           }
           slotRijen.push({ label: "E [N/mm²]", value: fmtGroep(sec.E) });
           slotRijen.push({
@@ -215,11 +277,21 @@ export default function SectionsSection() {
 
           return (
             <div className="rpt-profile-block" key={profile}>
-              <h3 className="rpt-h3">{profile}</h3>
+              <h3 className="rpt-h3">{eigen ? eigen.naam : profile}</h3>
               <div className="rpt-profile-body">
                 {/* Generieke figuurconventie: figuurblok + vet bijschrift. */}
                 <div className="rpt-profile-sketch rpt-figuur">
-                  {shape ? (
+                  {eigen ? (
+                    <>
+                      <EigenDoorsnedeTekening doorsnede={eigen} stijl="rapport" />
+                      <div className="rpt-figuur-bijschrift">
+                        {t("report.figSection", "Doorsnede")} {eigen.naam}
+                      </div>
+                      {eigen.motor.meldingen.length > 0 && (
+                        <p className="rpt-note">{eigen.motor.meldingen.join(" ")}</p>
+                      )}
+                    </>
+                  ) : shape ? (
                     <>
                       <SectionSketch shape={shape} />
                       <div className="rpt-figuur-bijschrift">

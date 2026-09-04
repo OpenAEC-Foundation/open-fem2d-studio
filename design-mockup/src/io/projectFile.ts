@@ -7,6 +7,7 @@ import type {
   Node, Beam, Support, Plate, Load, LoadCase, StructuralGrid,
 } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import type { EigenDoorsnede } from "../lib/profieleditor/types";
 
 export const PROJECT_FILE_EXT = "ifcfem2d";
 /**
@@ -104,6 +105,12 @@ export interface ProjectFile {
   scheefstandNoemer?: number;
   /** Richting van de equivalente horizontale krachten (v2, optioneel — ontbreekt = +1). */
   scheefstandRichting?: 1 | -1;
+  /**
+   * Eigen doorsneden uit de profieleditor waarnaar staven verwijzen
+   * (`EIGEN:<naam>`); v2, optioneel — geen versie-bump. Ontbreekt het veld
+   * (ouder bestand), dan blijft de lokaal bewaarde lijst ongemoeid.
+   */
+  eigenDoorsneden?: EigenDoorsnede[];
 }
 
 export function serializeProject(state: Omit<ProjectFile, "format" | "version" | "savedAt">): string {

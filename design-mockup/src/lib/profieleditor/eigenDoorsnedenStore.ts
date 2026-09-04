@@ -14,7 +14,6 @@
 import { create } from "zustand";
 import type { CustomSection } from "../types/steel/CustomSection";
 import type { SectionProperties } from "../types/steel/SectionProperties";
-import { E_STAAL } from "../sectionResolver";
 import type { EigenDoorsnede } from "./types";
 
 export const EIGEN_PREFIX = "EIGEN:";
@@ -137,10 +136,10 @@ export function naarCustomSection(d: EigenDoorsnede): CustomSection {
   };
 }
 
-/** Stijfheidsgrootheden voor de solver, zelfde vorm als `resolveSection`. */
-export function resolveEigenDoorsnede(d: EigenDoorsnede): { E: number; A: number; I: number } {
-  return { E: E_STAAL, A: d.eigenschappen.area_mm2, I: d.eigenschappen.iy_mm4 };
-}
+// De solverstijfheid (E, A, I) van een eigen doorsnede bepaalt
+// `resolveSection` in sectionResolver.ts zelf — die kent E_STAAL en is de
+// enige plek waar de solver zijn doorsnede vandaan haalt. Zo importeert deze
+// store niets uit de resolver en de resolver wél uit de store: één richting.
 
 /** De eigenschappen die het rapport toont — één plek, geen herberekening. */
 export function eigenschappenVan(d: EigenDoorsnede): SectionProperties {

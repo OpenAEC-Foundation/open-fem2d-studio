@@ -17,6 +17,7 @@ import type { Node, Beam, Support, Load, LoadCase } from "../components/fem/femT
 import type { SolverResult } from "../components/fem/solver/types";
 import {
   gradeLabel,
+  isConcreteCheckResult,
   isSteelCheckResult,
   sectionLabel,
   type MemberCheckResult,
@@ -40,9 +41,13 @@ interface ReportInput {
 /** Welke norm(en) in de toetsing voorkomen — voor de hoofdstuktitel. */
 function checkNorm(checks: MemberCheckResult[]): string {
   const staal = checks.some(isSteelCheckResult);
-  const hout = checks.some(c => !isSteelCheckResult(c));
-  if (staal && hout) return "EN 1993-1-1 en EN 1995-1-1";
-  return hout ? "EN 1995-1-1" : "EN 1993-1-1";
+  const beton = checks.some(isConcreteCheckResult);
+  // Hout én kruislaaghout: dezelfde norm.
+  const hout = checks.some(c => !isSteelCheckResult(c) && !isConcreteCheckResult(c));
+  const delen = [staal && "EN 1993-1-1", hout && "EN 1995-1-1", beton && "EN 1992-1-1"]
+    .filter((x): x is string => !!x);
+  if (delen.length <= 1) return delen[0] ?? "";
+  return `${delen.slice(0, -1).join(", ")} en ${delen[delen.length - 1]}`;
 }
 
 const esc = (s: unknown): string =>

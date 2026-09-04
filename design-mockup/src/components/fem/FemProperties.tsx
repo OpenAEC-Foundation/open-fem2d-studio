@@ -67,6 +67,8 @@ interface FemPropertiesProps {
   updateNode: (id: number, x: number, z: number) => void;
   /** Patch fields on a beam (material, profile, releases, …). */
   updateBeam?: (id: number, updates: Partial<Beam>) => void;
+  /** Dezelfde wijziging op meerdere staven in één keer (meervoudige selectie). */
+  updateBeams?: (ids: number[], updates: Partial<Beam>) => void;
   /** Patch rekenvelden op een plaat (dikte, E, ν, ρ, meshSize) — P3.1. */
   updatePlate?: (id: number, updates: Partial<Plate>) => void;
   addSupport: (nodeId: number, type: SupportType, k?: number) => void;
@@ -81,7 +83,7 @@ interface FemPropertiesProps {
 
 export default function FemProperties(props: FemPropertiesProps) {
   const { selection, nodes, beams, plates, supports, loads,
-    updateNode, updateBeam, updatePlate, addSupport, removeSupport, updateLoad,
+    updateNode, updateBeam, updateBeams, updatePlate, addSupport, removeSupport, updateLoad,
     pendingLoadFocus, clearPendingLoadFocus, results } = props;
 
   if (!selection) {
@@ -137,24 +139,102 @@ export default function FemProperties(props: FemPropertiesProps) {
     />;
   }
   if (selection.type === "multi") {
-    const total = selection.nodeIds.length + selection.beamIds.length + selection.plateIds.length;
-    return (
-      <div className="fem-properties">
-        <div className="fem-prop-empty" style={{ textAlign: "left" }}>
-          <strong>{total} elementen geselecteerd</strong>
-          <ul style={{ marginTop: 6, paddingLeft: 18, fontSize: 11 }}>
-            {selection.nodeIds.length > 0 && <li>{selection.nodeIds.length} knopen</li>}
-            {selection.beamIds.length > 0 && <li>{selection.beamIds.length} balken</li>}
-            {selection.plateIds.length > 0 && <li>{selection.plateIds.length} platen</li>}
-          </ul>
-          <p style={{ marginTop: 8, fontSize: 11, opacity: 0.7 }}>
-            Tip: druk <kbd>G</kbd> om te verplaatsen, <kbd>R</kbd> om te roteren of <kbd>Delete</kbd> om te verwijderen.
-          </p>
-        </div>
-      </div>
-    );
+    return <MultiProperties selection={selection} beams={beams} updateBeams={updateBeams} />;
   }
   return null;
+}
+
+// ── Meervoudige selectie ─────────────────────────────────────────────────
+/**
+ * Eigenschappen van een meervoudige selectie.
+ *
+ * Het profiel is hier voor álle geselecteerde staven tegelijk toe te wijzen.
+ * Dat kon eerder niet: een profiel ging staaf voor staaf, en wie er één
+ * oversloeg hield daar het profiel van het startmodel. In het rapport
+ * verscheen dat vervolgens als een volwaardig hoofdstuk — een profiel dat de
+ * gebruiker nooit gekozen had, met de staafnummers erbij.
+ *
+ * Daarom staat hier ook wát de selectie nu aan profielen bevat: één regel per
+ * combinatie profiel + materiaal, met het aantal staven. Zo is in één oogopslag
+ * te zien of er nog staven op het startprofiel staan.
+ */
+function MultiProperties({ selection, beams, updateBeams }: {
+  selection: Extract<Selection, { type: "multi" }>;
+  beams: Beam[];
+  updateBeams?: (ids: number[], updates: Partial<Beam>) => void;
+}) {
+  const [kiezerOpen, setKiezerOpen] = useState(false);
+  const total = selection.nodeIds.length + selection.beamIds.length + selection.plateIds.length;
+
+  const gekozen = beams.filter((b) => selection.beamIds.includes(b.id));
+  // Combinaties profiel + materiaal met hun aantal, in modelvolgorde.
+  const combinaties = new Map<string, { profile: string; material: string; ids: number[] }>();
+  for (const b of gekozen) {
+    const profile = b.profile ?? "HEA160";
+    const material = b.material ?? "S235";
+    const sleutel = `${profile}|${material}`;
+    const bestaand = combinaties.get(sleutel);
+    if (bestaand) bestaand.ids.push(b.id);
+    else combinaties.set(sleutel, { profile, material, ids: [b.id] });
+  }
+  const rijen = [...combinaties.values()];
+  // Eén combinatie → die staat voorgeselecteerd in de wizard; meerdere →
+  // de wizard begint bij de materiaalkeuze.
+  const eenduidig = rijen.length === 1 ? rijen[0] : null;
+
+  return (
+    <div className="fem-properties">
+      <div className="fem-prop-selection">
+        <span className="fem-prop-selection-label">Selectie</span>
+        <span className="fem-prop-selection-value">{total} elementen</span>
+      </div>
+      <div className="fem-prop-tabs">
+        <button className="fem-prop-tab active">Algemeen</button>
+      </div>
+      <div className="fem-prop-body">
+        <Section title="Selectie">
+          {selection.nodeIds.length > 0 && (
+            <Row label="Knopen"><code>{selection.nodeIds.length}</code></Row>
+          )}
+          {selection.beamIds.length > 0 && (
+            <Row label="Staven"><code>{selection.beamIds.length}</code></Row>
+          )}
+          {selection.plateIds.length > 0 && (
+            <Row label="Platen"><code>{selection.plateIds.length}</code></Row>
+          )}
+          <div className="fem-prop-hint">
+            <kbd>G</kbd> verplaatsen · <kbd>R</kbd> roteren · <kbd>Delete</kbd> verwijderen.
+          </div>
+        </Section>
+
+        {gekozen.length > 0 && (
+          <Section title="Doorsnede">
+            {rijen.map((r) => (
+              <Row key={`${r.profile}|${r.material}`} label={`${r.ids.length}× staaf`}>
+                <code>{r.profile} — {r.material}</code>
+              </Row>
+            ))}
+            <button
+              className="fem-prop-kiezer-btn"
+              onClick={() => setKiezerOpen(true)}
+              disabled={!updateBeams}
+              title="Wijs één profiel én materiaal toe aan alle geselecteerde staven"
+            >
+              Profiel kiezen voor {gekozen.length} staven…
+            </button>
+            {kiezerOpen && (
+              <ProfielKiezer
+                open
+                onClose={() => setKiezerOpen(false)}
+                huidig={eenduidig ? { material: eenduidig.material, profile: eenduidig.profile } : undefined}
+                onApply={(keuze) => updateBeams?.(selection.beamIds, keuze)}
+              />
+            )}
+          </Section>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Node properties ──────────────────────────────────────────────────────
