@@ -128,6 +128,10 @@ const ALLEEN_BRON = new Map([
     "sidecar",
     "start de sidecar als eigen proces — en draait daarin zelf al bron én bundel",
   ],
+  [
+    "golden",
+    "spreekt de bundel rechtstreeks als proces aan; herschrijven zou hem juist van het gouden artefact afhalen",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

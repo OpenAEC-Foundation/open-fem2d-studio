@@ -24,7 +24,17 @@ sha2 = "0.10"
 
 [dependencies]
 serde = { workspace = true }
-serde_json = { workspace = true }
+# `float_roundtrip` is hier GEEN optionele netheid. Zonder deze feature parseert
+# serde_json een double uit JSON langs een snelle route die er 1 ULP naast kan
+# zitten. De FEM-tools zijn precies een JSON-doorgeefluik: de sidecar schrijft
+# een getal als tekst, deze server leest het en schrijft het opnieuw. Verschuift
+# bij dat lezen de laatste bit, dan krijgt de MCP-client NIET het getal dat de
+# solver uitrekende. Gemeten op het gouden portaal (tests/golden, taak T13):
+# drie waarden schoven een ULP op, waaronder een doorbuiging. Plan §5.2 laag B
+# eist bit-identiteit tussen bundel en MCP-tool juist omdat beide in dezelfde
+# runtime draaien; met de snelle parser is die eis onhaalbaar, hoe goed de
+# rekenkern ook is.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 # `process` en `time` staan hier en niet meer bij de dev-afhankelijkheden: de
 # sidecar-aansturing start Node-processen en bewaakt de klok in de
 # PRODUCTIECODE, niet alleen in tests.

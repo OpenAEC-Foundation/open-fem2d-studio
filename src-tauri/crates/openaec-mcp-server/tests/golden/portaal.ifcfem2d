@@ -1,0 +1,45 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-02T00:00:00.000Z",
+  "toelichting": "Referentieportaal uit het implementatieplan docs/superpowers/plans/2026-09-02-mcp-solver.md, paragraaf 5.1. Dit bestand is een GOUDEN INVOER: het hoort niet te veranderen. Wijzigt het model, dan verliezen de verwachte uitkomsten in portaal.verwacht.json hun betekenis en moeten die opnieuw worden gegenereerd. Het model is met opzet zo gekozen dat een fout in eenheden, tekens of combinatielogica minstens een van de analytische identiteiten breekt: R = 0,5*q*L, M_veld + |M_steun| = q*L^2/8, en exacte superpositie van de belastinggevallen in de combinatie.",
+  "nodes": [
+    { "id": 1, "x": 0, "z": 0 },
+    { "id": 2, "x": 0, "z": 4000 },
+    { "id": 3, "x": 6000, "z": 4000 },
+    { "id": 4, "x": 6000, "z": 0 }
+  ],
+  "beams": [
+    { "id": 1, "from": 1, "to": 2, "material": "S235", "profile": "HEA160" },
+    { "id": 2, "from": 2, "to": 3, "material": "S235", "profile": "IPE300" },
+    { "id": 3, "from": 3, "to": 4, "material": "S235", "profile": "HEA160" }
+  ],
+  "supports": [
+    { "nodeId": 1, "type": "fixed" },
+    { "nodeId": 4, "type": "fixed" }
+  ],
+  "plates": [],
+  "loads": [
+    { "id": 1, "type": "lineLoad", "caseId": 1, "beamId": 2, "q": -10 },
+    { "id": 2, "type": "lineLoad", "caseId": 2, "beamId": 2, "q": -6 }
+  ],
+  "loadCases": [
+    { "id": 1, "name": "G", "type": "dead" },
+    { "id": 2, "name": "Q", "type": "live" }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": false,
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "1,2·G + 1,5·Q",
+      "type": "uls",
+      "formula": "1,2·G + 1,5·Q",
+      "factors": { "1": 1.2, "2": 1.5 }
+    }
+  ]
+}

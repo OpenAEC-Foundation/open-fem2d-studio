@@ -1,0 +1,8 @@
+# Het gouden bestand wordt byte-voor-byte vergeleken: `genereer-golden.mjs
+# --controleer` en `git diff --exit-code` moeten allebei "geen verschil" kunnen
+# melden. Met core.autocrlf=true zou git bij het uitchecken LF naar CRLF
+# omzetten terwijl het generatiescript LF schrijft; de poort zou dan op precies
+# die machines altijd rood staan, en een echte drift zou daartussen wegvallen.
+# Hier dus geen enkele regeleindeconversie.
+portaal.ifcfem2d -text
+portaal.verwacht.json -text
