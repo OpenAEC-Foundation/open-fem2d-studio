@@ -169,6 +169,114 @@ export interface MotorUitvoer extends SectionProperties {
   z_max_mm: number;
   delen: DeelUitvoer[];
   meldingen: string[];
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  Uitgebreide doorsnedegrootheden
+  //
+  //  Eén geometrie erin, een volledige set eigenschappen eruit — en een
+  //  eerlijke `*_bepaald`-vlag zodra iets voor deze doorsnede niet te bepalen
+  //  is. Staat zo'n vlag op `false`, dan is het bijbehorende getal 0 en moet de
+  //  UI "niet bepaald" tonen, NIET de nul.
+  //
+  //  Assenstelsels (zie `crate::uitgebreid` in de motor):
+  //  * globaal   — het invoerstelsel, `y` rechts en `z` omhoog;
+  //  * hoofdas   — het zwaartepuntsstelsel gedraaid over `alpha_hoofdas_rad`;
+  //                `u` ligt langs de as met de grootste traagheid,
+  //                `u =  y·cos α + z·sin α`, `v = −y·sin α + z·cos α`.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Lengte van de buitenrand(en) in mm — het conserveringsoppervlak per meter. */
+  omtrek_mm: number;
+  /** Lengte van de randen van de langsgaten (mm). */
+  omtrek_gaten_mm: number;
+  /**
+   * `false` voor een lamellenmodel: overlappende platen en catalogusdelen
+   * hebben geen gemeenschappelijke buitenrand.
+   */
+  omtrek_bepaald: boolean;
+  /** Gebruikte soortelijke massa (kg/m³); staal (7850) tenzij anders opgegeven. */
+  dichtheid_kg_m3: number;
+  /** Massa per strekkende meter (kg/m). */
+  massa_kg_per_m: number;
+
+  /** Statisch moment om de y-as van het invoerstelsel: `∬z dA` (mm³). */
+  qy_mm3: number;
+  /** Statisch moment om de z-as van het invoerstelsel: `∬y dA` (mm³). */
+  qz_mm3: number;
+
+  /** Uiterste vezels in het hoofdasstelsel, t.o.v. het zwaartepunt (mm). */
+  u_min_mm: number;
+  u_max_mm: number;
+  v_min_mm: number;
+  v_max_mm: number;
+  /** `I_u / v_max` — om de sterke hoofdas, naar de vezel aan de +v-zijde. */
+  wel_u_plus_mm3: number;
+  /** `I_u / |v_min|` — idem naar de −v-zijde. */
+  wel_u_min_mm3: number;
+  /** `I_v / u_max` — om de zwakke hoofdas, naar de vezel aan de +u-zijde. */
+  wel_v_plus_mm3: number;
+  /** `I_v / |u_min|` — idem naar de −u-zijde. */
+  wel_v_min_mm3: number;
+  /** De maatgevende (kleinste) van elk paar, zoals `wel_y_mm3` dat is. */
+  wel_u_mm3: number;
+  wel_v_mm3: number;
+  /** Traagheidsstralen om de hoofdassen (mm). */
+  iu_radius_mm: number;
+  iv_radius_mm: number;
+
+  /** Plastische neutrale as om de y-as, als z-coördinaat in het invoerstelsel. */
+  z_pna_mm: number;
+  /** Plastische neutrale as om de z-as, als y-coördinaat in het invoerstelsel. */
+  y_pna_mm: number;
+  /** Plastisch zwaartepunt in het hoofdasstelsel, t.o.v. het elastische (mm). */
+  u_pna_mm: number;
+  v_pna_mm: number;
+  /** Plastische weerstandsmomenten om de hoofdassen (mm³). */
+  wpl_u_mm3: number;
+  wpl_v_mm3: number;
+  /**
+   * Vormfactor `W_pl / W_el` met de maatgevende `W_el`. Rechthoek exact 1,5;
+   * IPE 300 om de sterke as 1,128 en om de zwakke as 1,555.
+   */
+  vormfactor_y: number;
+  vormfactor_z: number;
+  vormfactor_u: number;
+  vormfactor_v: number;
+  /** `false` als `W_pl` niet bepaald is; alle plastische velden zijn dan 0. */
+  plastisch_bepaald: boolean;
+
+  /**
+   * Monosymmetrieconstante om de y-as (mm), in de literatuur `β_x`:
+   * `β_y = ∬(y²+z²)z dA / I_y − 2·z_s`, in zwaartepuntscoördinaten.
+   */
+  beta_y_mm: number;
+  /** Het spiegelbeeld om de z-as. */
+  beta_z_mm: number;
+  /**
+   * `z_j = z_s − 0,5·∬(y²+z²)z dA / I_y = −β_y/2` (mm) — de
+   * monosymmetrieparameter uit de kipbijlage van NEN-EN 1993-1-1. Nul voor een
+   * dubbelsymmetrische doorsnede; positief als het meeste materiaal boven het
+   * zwaartepunt zit.
+   */
+  z_j_mm: number;
+  /** Het spiegelbeeld: `y_j = −β_z/2`. */
+  y_j_mm: number;
+  /**
+   * `false` zonder schuifmiddelpunt (losse delen) of met een catalogusdeel in
+   * de samenstelling; `β` en `z_j` zijn dan 0.
+   */
+  monosymmetrie_bepaald: boolean;
+
+  /** Afschuifoppervlak voor een dwarskracht langs de u-as (mm²). */
+  av_u_mm2: number;
+  /** Idem langs de v-as. */
+  av_v_mm2: number;
+  /**
+   * `false` zodra de hoofdassen niet met y en z samenvallen: de normregel van
+   * EN 1993-1-1 §6.2.6(3) laat zich niet meedraaien. Dan zijn `av_u_mm2` en
+   * `av_v_mm2` 0 in plaats van geraden.
+   */
+  av_hoofdas_bepaald: boolean;
 }
 
 /** Diagnostiek die met de opgeslagen doorsnede meereist. */

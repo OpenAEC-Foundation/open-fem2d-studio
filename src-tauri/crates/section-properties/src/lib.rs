@@ -13,6 +13,7 @@ pub mod mesh2d;
 pub mod motor;
 pub mod opdracht;
 pub mod torsie;
+pub mod uitgebreid;
 
 /// All cross-sectional properties needed for EN 1993 checks.
 /// Units: mm² for areas, mm⁴ for I, mm³ for W, mm for radii.

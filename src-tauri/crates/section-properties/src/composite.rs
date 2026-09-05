@@ -51,6 +51,7 @@
 //!   [`crate::motor::bereken_doorsnede`].
 
 use crate::contour::{Contour, ContourBouwer, Doorsnede};
+use crate::uitgebreid::Monosymmetrie;
 use crate::SectionProperties;
 
 // ── Bouwstenen ──────────────────────────────────────────────────────────────
@@ -228,6 +229,38 @@ pub struct CompositeResult {
     pub y_max_mm: f64,
     pub z_min_mm: f64,
     pub z_max_mm: f64,
+
+    // ── Uitgebreide grootheden (zie [`crate::uitgebreid`]) ──────────────────
+    /// Statisch moment om de **y-as van het invoerstelsel**: `∬z dA`.
+    pub qy_mm3: f64,
+    /// Statisch moment om de **z-as van het invoerstelsel**: `∬y dA`.
+    pub qz_mm3: f64,
+    /// Uiterste vezels in het **hoofdasstelsel**, ten opzichte van het
+    /// zwaartepunt; samen met `Iu`/`Iv` leveren die `W_u` en `W_v`.
+    pub u_min_mm: f64,
+    pub u_max_mm: f64,
+    pub v_min_mm: f64,
+    pub v_max_mm: f64,
+    /// Plastische neutrale assen in het **invoerstelsel**; alleen zinvol als
+    /// `wpl_bepaald`.
+    pub y_pna_mm: f64,
+    pub z_pna_mm: f64,
+    /// Plastische weerstandsmomenten om de hoofdassen; alleen zinvol als
+    /// `wpl_bepaald`.
+    pub wpl_u_mm3: f64,
+    pub wpl_v_mm3: f64,
+    /// Plastisch zwaartepunt in het hoofdasstelsel, ten opzichte van het
+    /// elastische zwaartepunt.
+    pub u_pna_mm: f64,
+    pub v_pna_mm: f64,
+    /// Monosymmetrieconstanten en `z_j`/`y_j`; alleen zinvol als
+    /// `monosymmetrie_bepaald`.
+    pub monosymmetrie: Monosymmetrie,
+    /// `true` als `β` en `z_j` uit de werkelijke geometrie zijn bepaald. Dat kan
+    /// alleen als de doorsnede uitsluitend uit lamellen bestaat én het
+    /// schuifmiddelpunt sectorieel gevonden is: een catalogusdeel levert geen
+    /// derde momenten en een gesloten cel geen schuifmiddelpunt.
+    pub monosymmetrie_bepaald: bool,
 }
 
 impl CompositeSection {
@@ -303,8 +336,15 @@ impl CompositeSection {
         let (mut y_min, mut y_max) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut z_min, mut z_max) = (f64::INFINITY, f64::NEG_INFINITY);
 
+        // De naar het zwaartepunt verschoven lamellen; ook de derde momenten en
+        // de hoofdas-uitersten komen hiervandaan.
+        let gecentreerd = lam.verschoven(-y_c, -z_c);
+        // De hoekpunten van de catalogusdelen, ten opzichte van het
+        // zwaartepunt: die hebben geen contour, dus voor de uitersten in het
+        // hoofdasstelsel moeten ze apart worden bewaard.
+        let mut deelpunten: Vec<(f64, f64)> = Vec::new();
+
         if !self.lamellen.is_empty() {
-            let gecentreerd = lam.verschoven(-y_c, -z_c);
             let (_, _, _, iy_l, iz_l, iyz_l) = gecentreerd.momenten_om_oorsprong();
             iy += iy_l;
             iz += iz_l;
@@ -324,10 +364,12 @@ impl CompositeSection {
             iz += piz + a * dy * dy;
             iyz += piyz + a * dy * dz;
             for (y, z) in deel_hoekpunten(d) {
-                y_min = y_min.min(y + dy);
-                y_max = y_max.max(y + dy);
-                z_min = z_min.min(z + dz);
-                z_max = z_max.max(z + dz);
+                let p = (y + dy, z + dz);
+                deelpunten.push(p);
+                y_min = y_min.min(p.0);
+                y_max = y_max.max(p.0);
+                z_min = z_min.min(p.1);
+                z_max = z_max.max(p.1);
             }
         }
         if !y_min.is_finite() {
@@ -346,6 +388,33 @@ impl CompositeSection {
         let iv = 0.5 * (iy + iz) - 0.5 * r;
         let alpha = 0.5 * (-2.0 * iyz).atan2(iy - iz);
 
+        // Uitersten in het hoofdasstelsel: dezelfde punten, over −α gedraaid.
+        // `u = y·cos α + z·sin α`, `v = −y·sin α + z·cos α`.
+        let (mut u_min, mut u_max) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut v_min, mut v_max) = (f64::INFINITY, f64::NEG_INFINITY);
+        if !self.lamellen.is_empty() {
+            let (a, b, c, d) = gecentreerd.gedraaid(-alpha).uitersten();
+            u_min = u_min.min(a);
+            u_max = u_max.max(b);
+            v_min = v_min.min(c);
+            v_max = v_max.max(d);
+        }
+        let (sin_a, cos_a) = alpha.sin_cos();
+        for &(y, z) in &deelpunten {
+            let u = y * cos_a + z * sin_a;
+            let v = -y * sin_a + z * cos_a;
+            u_min = u_min.min(u);
+            u_max = u_max.max(u);
+            v_min = v_min.min(v);
+            v_max = v_max.max(v);
+        }
+        if !u_min.is_finite() {
+            u_min = 0.0;
+            u_max = 0.0;
+            v_min = 0.0;
+            v_max = 0.0;
+        }
+
         // ── 4. Elastische weerstandsmomenten per vezel ───────────────────────
         let wel_y_top = veilig_delen(iy, z_max);
         let wel_y_bot = veilig_delen(iy, -z_min);
@@ -356,13 +425,19 @@ impl CompositeSection {
         // Een catalogusdeel laat zich niet op de PNA doorsnijden — het heeft
         // geen contour — dus dan is Wpl niet bepaald.
         let wpl_bepaald = self.delen.is_empty() && !self.lamellen.is_empty();
-        let (wpl_y, wpl_z) = if wpl_bepaald {
+        let (wpl_y, wpl_z, y_pna, z_pna, plastisch_hoofdas) = if wpl_bepaald {
+            let pl_y = lam.wpl_om_as(0.0);
+            let pl_z = lam.wpl_om_as(std::f64::consts::FRAC_PI_2);
             (
-                lam.wpl_om_as(0.0).wpl_mm3,
-                lam.wpl_om_as(std::f64::consts::FRAC_PI_2).wpl_mm3,
+                pl_y.wpl_mm3,
+                pl_z.wpl_mm3,
+                // Bij α = π/2 is de vezelrichting −y, dus y_pna = y_c − afstand.
+                y_c - pl_z.as_afstand_mm,
+                z_c + pl_y.as_afstand_mm,
+                crate::uitgebreid::plastisch_hoofdas(&lam, alpha),
             )
         } else {
-            (0.0, 0.0)
+            (0.0, 0.0, 0.0, 0.0, crate::uitgebreid::PlastischHoofdas::default())
         };
 
         // ── 6. Torsie ────────────────────────────────────────────────────────
@@ -423,6 +498,23 @@ impl CompositeSection {
             }
         }
 
+        // ── 9. Monosymmetrie ────────────────────────────────────────────────
+        // Alleen als de héle doorsnede uit lamellen bestaat: een catalogusdeel
+        // heeft geen contour, dus de derde momenten ervan zijn onbekend. En
+        // zonder schuifmiddelpunt is z_j per definitie niet te bepalen.
+        let monosymmetrie_bepaald = sm_bepaald && self.delen.is_empty();
+        let monosymmetrie = if monosymmetrie_bepaald {
+            crate::uitgebreid::monosymmetrie(
+                gecentreerd.derde_momenten_om_oorsprong(),
+                iy,
+                iz,
+                y_s - y_c,
+                z_s - z_c,
+            )
+        } else {
+            Monosymmetrie::default()
+        };
+
         let props = SectionProperties {
             area_mm2: a_tot,
             iy_mm4: iy,
@@ -465,6 +557,21 @@ impl CompositeSection {
             y_max_mm: y_max,
             z_min_mm: z_min,
             z_max_mm: z_max,
+            // Σ A·z respectievelijk Σ A·y om de oorsprong van het invoerstelsel.
+            qy_mm3: s_z,
+            qz_mm3: s_y,
+            u_min_mm: u_min,
+            u_max_mm: u_max,
+            v_min_mm: v_min,
+            v_max_mm: v_max,
+            y_pna_mm: y_pna,
+            z_pna_mm: z_pna,
+            wpl_u_mm3: plastisch_hoofdas.wpl_u_mm3,
+            wpl_v_mm3: plastisch_hoofdas.wpl_v_mm3,
+            u_pna_mm: plastisch_hoofdas.u_pna_mm,
+            v_pna_mm: plastisch_hoofdas.v_pna_mm,
+            monosymmetrie,
+            monosymmetrie_bepaald,
         }
     }
 

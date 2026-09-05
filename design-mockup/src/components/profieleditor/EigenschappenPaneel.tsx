@@ -92,6 +92,26 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
               }
               eenheid="mm"
             />
+            <Rij
+              label="Omtrek"
+              waarde={uitvoer.omtrek_bepaald ? fmtMaat(uitvoer.omtrek_mm, 1) : "niet bepaald"}
+              eenheid="mm"
+              titel={
+                uitvoer.omtrek_bepaald
+                  ? `Buitenrand; conserveringsoppervlak ${fmtMaat(uitvoer.omtrek_mm / 1000, 3)} m²/m.${
+                      uitvoer.omtrek_gaten_mm > 0
+                        ? ` Randen van gaten: ${fmtMaat(uitvoer.omtrek_gaten_mm, 1)} mm.`
+                        : ""
+                    }`
+                  : "Een samenstelling is een som van platen die bij de lasnaden overlappen; er is geen eenduidige buitenrand."
+              }
+            />
+            <Rij
+              label="Massa"
+              waarde={fmtMaat(uitvoer.massa_kg_per_m, 2)}
+              eenheid="kg/m"
+              titel={`Bij ρ = ${fmtGroep(uitvoer.dichtheid_kg_m3, 0)} kg/m³`}
+            />
 
             <Groep titel="Buiging om y (sterke as)" />
             <Rij label="I_y" waarde={fmtMacht(uitvoer.iy_mm4, 6, 3)} eenheid="mm⁴" />
@@ -110,6 +130,11 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
               />
             )}
             <Rij label="W_pl,y" waarde={uitvoer.wpl_bepaald ? fmtGroep(uitvoer.wpl_y_mm3, 0) : "niet bepaald"} eenheid="mm³" />
+            <Rij
+              label="  vormfactor"
+              waarde={uitvoer.plastisch_bepaald ? fmtMaat(uitvoer.vormfactor_y, 3) : "niet bepaald"}
+              titel="W_pl/W_el: hoeveel de doorsnede na intreden van vloeien nog bijdraagt. Rechthoek 1,5; gewalste I om de sterke as ongeveer 1,13."
+            />
             <Rij label="A_v,z" waarde={fmtGroep(uitvoer.av_z_mm2, 0)} eenheid="mm²" />
 
             <Groep titel="Buiging om z (zwakke as)" />
@@ -129,6 +154,11 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
               />
             )}
             <Rij label="W_pl,z" waarde={uitvoer.wpl_bepaald ? fmtGroep(uitvoer.wpl_z_mm3, 0) : "niet bepaald"} eenheid="mm³" />
+            <Rij
+              label="  vormfactor"
+              waarde={uitvoer.plastisch_bepaald ? fmtMaat(uitvoer.vormfactor_z, 3) : "niet bepaald"}
+              titel="W_pl/W_el om de zwakke as."
+            />
             <Rij label="A_v,y" waarde={fmtGroep(uitvoer.av_y_mm2, 0)} eenheid="mm²" />
 
             <Groep titel="Hoofdassen" />
@@ -147,6 +177,86 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
               }
               eenheid="°"
             />
+            <Rij label="i_u / i_v" waarde={`${fmtMaat(uitvoer.iu_radius_mm, 1)} / ${fmtMaat(uitvoer.iv_radius_mm, 1)}`} eenheid="mm" />
+            <Rij
+              label="W_el,u / W_el,v"
+              waarde={`${fmtGroep(uitvoer.wel_u_mm3, 0)} / ${fmtGroep(uitvoer.wel_v_mm3, 0)}`}
+              eenheid="mm³"
+              titel={`Maatgevend van beide vezels. u: ${fmtGroep(uitvoer.wel_u_plus_mm3, 0)} / ${fmtGroep(uitvoer.wel_u_min_mm3, 0)} · v: ${fmtGroep(uitvoer.wel_v_plus_mm3, 0)} / ${fmtGroep(uitvoer.wel_v_min_mm3, 0)} mm³`}
+            />
+            <Rij
+              label="W_pl,u / W_pl,v"
+              waarde={
+                uitvoer.plastisch_bepaald
+                  ? `${fmtGroep(uitvoer.wpl_u_mm3, 0)} / ${fmtGroep(uitvoer.wpl_v_mm3, 0)}`
+                  : "niet bepaald"
+              }
+              eenheid="mm³"
+            />
+
+            <Groep titel="Plastisch" />
+            <Rij
+              label="Plastisch zwaartepunt"
+              waarde={
+                uitvoer.plastisch_bepaald
+                  ? `${fmtMaat(uitvoer.y_pna_mm, 2)}; ${fmtMaat(uitvoer.z_pna_mm, 2)}`
+                  : "niet bepaald"
+              }
+              eenheid="mm"
+              titel="De lijn die het oppervlak in tweeën deelt. Bij een symmetrische doorsnede valt hij samen met het elastische zwaartepunt; bij een T-profiel ligt hij hoger."
+            />
+            {uitvoer.plastisch_bepaald && (
+              <Rij
+                label="  t.o.v. hoofdassen u, v"
+                waarde={`${fmtMaat(uitvoer.u_pna_mm, 2)}; ${fmtMaat(uitvoer.v_pna_mm, 2)}`}
+                eenheid="mm"
+              />
+            )}
+            <Rij
+              label="Vormfactor u / v"
+              waarde={
+                uitvoer.plastisch_bepaald
+                  ? `${fmtMaat(uitvoer.vormfactor_u, 3)} / ${fmtMaat(uitvoer.vormfactor_v, 3)}`
+                  : "niet bepaald"
+              }
+            />
+
+            <Groep titel="Kip (monosymmetrie)" />
+            <Rij
+              label="z_j"
+              waarde={uitvoer.monosymmetrie_bepaald ? fmtMaat(uitvoer.z_j_mm, 3) : "niet bepaald"}
+              eenheid="mm"
+              titel="z_j = z_s − ½·∬(y²+z²)z dA / I_y, de monosymmetrieterm uit de kiptoetsing. Nul bij een dubbelsymmetrische doorsnede; positief wanneer het meeste materiaal boven het zwaartepunt zit."
+            />
+            <Rij
+              label="y_j"
+              waarde={uitvoer.monosymmetrie_bepaald ? fmtMaat(uitvoer.y_j_mm, 3) : "niet bepaald"}
+              eenheid="mm"
+              titel="Het spiegelbeeld van z_j; maatgevend bij een U-profiel."
+            />
+            {uitvoer.monosymmetrie_bepaald && (
+              <Rij
+                label="  β_y / β_z"
+                waarde={`${fmtMaat(uitvoer.beta_y_mm, 3)} / ${fmtMaat(uitvoer.beta_z_mm, 3)}`}
+                eenheid="mm"
+                titel="De monosymmetrieconstanten waaruit z_j en y_j volgen: z_j = −β_y/2."
+              />
+            )}
+
+            <Groep titel="Statische momenten (globale assen)" />
+            <Rij
+              label="Q_y / Q_z"
+              waarde={`${fmtGroep(uitvoer.qy_mm3, 0)} / ${fmtGroep(uitvoer.qz_mm3, 0)}`}
+              eenheid="mm³"
+              titel="∬z dA en ∬y dA om de assen van het beschrijvingsstelsel. Om de zwaartepuntsassen zijn ze per definitie nul; Q_y = A·z_c is dus meteen een controle op de rekengang."
+            />
+            {uitvoer.av_hoofdas_bepaald && (
+              <Rij
+                label="A_v,u / A_v,v"
+                waarde={`${fmtGroep(uitvoer.av_u_mm2, 0)} / ${fmtGroep(uitvoer.av_v_mm2, 0)}`}
+                eenheid="mm²"
+              />
+            )}
 
             <Groep titel="Torsie en welving" />
             <Rij
@@ -180,11 +290,22 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
         </table>
       )}
 
-      {uitvoer?.meldingen.map((m, i) => (
-        <div key={i} className="pe-melding">
-          {m}
+      {/*
+        De motor is eerlijk over wat hij niet weet, en dat moet zichtbaar
+        blijven — maar niet als drie alinea's naast de tabel. Elke melding is
+        één regel; de volledige zin staat in de tooltip (en blijft dus
+        vindbaar, ook bij kopiëren).
+      */}
+      {uitvoer && uitvoer.meldingen.length > 0 && (
+        <div className="pe-meldingen">
+          {uitvoer.meldingen.map((m, i) => (
+            <div key={i} className="pe-melding pe-melding-regel" title={m}>
+              <span className="pe-melding-merk" aria-hidden="true">!</span>
+              <span className="pe-melding-tekst">{m}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </>
   );
 }

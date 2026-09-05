@@ -99,6 +99,10 @@ use crate::composite::{CatalogusDeel, CompositeSection, GeslotenCel, Lamella};
 use crate::contour::{Contour, Doorsnede, Segment};
 use crate::motor::{self, Afschuiving, Profielvorm};
 use crate::torsie::{aanbevolen_h, TorsieOpties};
+use crate::uitgebreid::{
+    hoofdas_uitersten, massa_kg_per_m, monosymmetrie_van_doorsnede, plastisch_hoofdas, vormfactor,
+    Hoofdas, Monosymmetrie, PlastischHoofdas, DICHTHEID_STAAL_KG_M3,
+};
 use serde::{Deserialize, Serialize};
 
 // ── Invoer ────────────────────────────────────────────────────────────────────
@@ -123,6 +127,12 @@ pub struct Invoer {
     /// Aantal driehoeken door de dunste wand; standaard 8.
     #[serde(default)]
     elementen_per_wand: Option<f64>,
+
+    /// Soortelijke massa voor `massa_kg_per_m`, in kg/m³. Weggelaten of
+    /// niet-positief betekent staal (7850 kg/m³); voor hout of aluminium hoort
+    /// de invoer een eigen waarde mee te geven.
+    #[serde(default)]
+    dichtheid_kg_m3: Option<f64>,
 
     /// Uitsparingen in een catalogusvorm (leeg = het ongewijzigde profiel).
     #[serde(default)]
@@ -295,6 +305,116 @@ pub struct Uitvoer {
     delen: Vec<DeelUitvoer>,
     /// Leesbare waarschuwingen; leeg als er niets te melden is.
     meldingen: Vec<String>,
+
+    /// De uitgebreide grootheden. `flatten` zet ze in dezelfde platte
+    /// JSON-objecten als de rest, zodat de frontend er als gewone velden bij
+    /// kan; in Rust blijven ze bij elkaar staan omdat beide rekenwegen ze in
+    /// één keer opleveren.
+    #[serde(flatten)]
+    uitbreiding: Uitbreiding,
+}
+
+/// De uitgebreide doorsnedegrootheden — zie [`crate::uitgebreid`] voor de
+/// definities en de tekenafspraken. Elke groep heeft zijn eigen
+/// `*_bepaald`-vlag zodra hij niet voor elke doorsnede te bepalen is; is die
+/// `false`, dan staan de bijbehorende velden op nul en hoort de app ze als
+/// "niet bepaald" te tonen in plaats van als uitkomst.
+#[derive(Serialize)]
+pub struct Uitbreiding {
+    /// Lengte van de buitenrand(en) in mm — het conserveringsoppervlak per
+    /// strekkende meter, samen met `omtrek_gaten_mm`.
+    pub omtrek_mm: f64,
+    /// Lengte van de randen van de langsgaten (mm).
+    pub omtrek_gaten_mm: f64,
+    /// `false` voor een lamellenmodel: overlappende platen en catalogusdelen
+    /// hebben geen gemeenschappelijke buitenrand, dus er is geen omtrek.
+    pub omtrek_bepaald: bool,
+    /// De gebruikte soortelijke massa (kg/m³); staal tenzij de invoer anders
+    /// zegt.
+    pub dichtheid_kg_m3: f64,
+    /// Massa per strekkende meter (kg/m) bij die soortelijke massa.
+    pub massa_kg_per_m: f64,
+
+    /// Statisch moment om de **y-as van het invoerstelsel**: `∬z dA` (mm³).
+    /// Om de zwaartepuntsas is dit per definitie nul.
+    pub qy_mm3: f64,
+    /// Statisch moment om de **z-as van het invoerstelsel**: `∬y dA` (mm³).
+    pub qz_mm3: f64,
+
+    /// Uiterste vezels in het **hoofdasstelsel**, ten opzichte van het
+    /// zwaartepunt (mm). `u` ligt langs de hoofdas met de grootste traagheid.
+    pub u_min_mm: f64,
+    pub u_max_mm: f64,
+    pub v_min_mm: f64,
+    pub v_max_mm: f64,
+    /// `I_u / v_max` — weerstandsmoment om de sterke hoofdas naar de vezel aan
+    /// de **+v**-zijde.
+    pub wel_u_plus_mm3: f64,
+    /// `I_u / |v_min|` — idem naar de **−v**-zijde.
+    pub wel_u_min_mm3: f64,
+    /// `I_v / u_max` — weerstandsmoment om de zwakke hoofdas naar de vezel aan
+    /// de **+u**-zijde.
+    pub wel_v_plus_mm3: f64,
+    /// `I_v / |u_min|` — idem naar de **−u**-zijde.
+    pub wel_v_min_mm3: f64,
+    /// De maatgevende (kleinste) van elk paar, zoals `wel_y_mm3` dat is.
+    pub wel_u_mm3: f64,
+    pub wel_v_mm3: f64,
+    /// Traagheidsstralen om de hoofdassen.
+    pub iu_radius_mm: f64,
+    pub iv_radius_mm: f64,
+
+    /// Plastische neutrale as om de zwaartepunts-y-as, als z-coördinaat in het
+    /// **invoerstelsel**. Samen met `y_pna_mm` het plastisch zwaartepunt.
+    pub z_pna_mm: f64,
+    /// Plastische neutrale as om de zwaartepunts-z-as, als y-coördinaat in het
+    /// invoerstelsel.
+    pub y_pna_mm: f64,
+    /// Plastisch zwaartepunt in het hoofdasstelsel, ten opzichte van het
+    /// **elastische** zwaartepunt (mm).
+    pub u_pna_mm: f64,
+    pub v_pna_mm: f64,
+    /// Plastische weerstandsmomenten om de hoofdassen (mm³).
+    pub wpl_u_mm3: f64,
+    pub wpl_v_mm3: f64,
+    /// Vormfactoren `W_pl / W_el` met de **maatgevende** `W_el`. Rechthoek:
+    /// exact 1,5; gewalst I-profiel om de sterke as ongeveer 1,13.
+    pub vormfactor_y: f64,
+    pub vormfactor_z: f64,
+    pub vormfactor_u: f64,
+    pub vormfactor_v: f64,
+    /// `false` als `Wpl` niet bepaald kon worden; dan zijn alle plastische
+    /// velden hierboven nul.
+    pub plastisch_bepaald: bool,
+
+    /// Monosymmetrieconstante om de y-as (mm), in de literatuur `β_x`:
+    /// `β_y = ∬(y²+z²)z dA / I_y − 2·z_s`, met zwaartepuntscoördinaten.
+    pub beta_y_mm: f64,
+    /// Het spiegelbeeld om de z-as.
+    pub beta_z_mm: f64,
+    /// `z_j = z_s − 0,5·∬(y²+z²)z dA / I_y = −β_y/2` (mm) — de
+    /// monosymmetrieparameter uit de kipbijlage van NEN-EN 1993-1-1. Nul voor
+    /// een dubbelsymmetrische doorsnede; positief als het meeste materiaal
+    /// **boven** het zwaartepunt zit.
+    pub z_j_mm: f64,
+    /// Het spiegelbeeld: `y_j = −β_z/2`.
+    pub y_j_mm: f64,
+    /// `false` als het schuifmiddelpunt niet bepaald is, of als een
+    /// catalogusdeel in de samenstelling zit (dat heeft geen contour, dus geen
+    /// derde momenten). Dan zijn `β` en `z_j` nul.
+    pub monosymmetrie_bepaald: bool,
+
+    /// Afschuifoppervlak voor een dwarskracht **langs de u-as** (mm²); zelfde
+    /// afspraak als `av_y_mm2`, dat bij een kracht langs y hoort.
+    pub av_u_mm2: f64,
+    /// Idem langs de v-as.
+    pub av_v_mm2: f64,
+    /// `false` zodra de hoofdassen niet met `y`/`z` samenvallen: de
+    /// normuitdrukkingen van EN 1993-1-1 §6.2.6(3) gelden per doorsnedesoort om
+    /// de eigen assen en laten zich niet zomaar meedraaien, en een
+    /// afschuifoppervlak uit de mesh lossen wij (nog) niet op. Dan zijn
+    /// `av_u_mm2` en `av_v_mm2` nul in plaats van geraden.
+    pub av_hoofdas_bepaald: bool,
 }
 
 #[derive(Serialize)]
@@ -304,6 +424,110 @@ struct DeelUitvoer {
     z_c_mm: f64,
     h_mm: f64,
     b_mm: f64,
+}
+
+// ── De uitgebreide grootheden samenstellen ───────────────────────────────────
+
+/// Wat elke rekenweg zélf moet aanleveren om [`Uitbreiding`] te kunnen vullen.
+/// Alles wat daarna volgt — de weerstandsmomenten om de hoofdassen, de
+/// vormfactoren, de afschuifoppervlakken in de hoofdrichtingen — is voor beide
+/// wegen hetzelfde en staat daarom in [`bouw_uitbreiding`].
+struct Bouwstenen {
+    /// `(buitenomtrek, gatomtrek)`; `None` als er geen contour is om langs te
+    /// lopen (lamellenmodel).
+    omtrekken: Option<(f64, f64)>,
+    qy_mm3: f64,
+    qz_mm3: f64,
+    /// Uitersten in het hoofdasstelsel, ten opzichte van het zwaartepunt.
+    hoofdas_uitersten: (f64, f64, f64, f64),
+    /// Plastische neutrale assen in het invoerstelsel.
+    z_pna_mm: f64,
+    y_pna_mm: f64,
+    plastisch: PlastischHoofdas,
+    plastisch_bepaald: bool,
+    mono: Monosymmetrie,
+    monosymmetrie_bepaald: bool,
+}
+
+/// De hoek waaronder de hoofdassen nog als "samenvallend met y en z" gelden.
+/// Voor elke catalogusvorm en voor elke samenstelling met een symmetrieas is
+/// `Iyz` exact nul en komt `α` op precies 0 of ±π/2 uit; deze marge vangt
+/// alleen de afrondingsruis op.
+const HOOFDAS_TOLERANTIE_RAD: f64 = 1e-6;
+
+fn bouw_uitbreiding(
+    p: &crate::SectionProperties,
+    dichtheid_kg_m3: f64,
+    b: Bouwstenen,
+) -> Uitbreiding {
+    let hoofdas = Hoofdas::uit_uitersten(b.hoofdas_uitersten, p.iu_mm4, p.iv_mm4, p.area_mm2);
+
+    // Afschuifoppervlakken in de hoofdrichtingen. De uitdrukkingen van
+    // EN 1993-1-1 §6.2.6(3) staan per doorsnedesoort om de eigen assen; ze laten
+    // zich niet meedraaien, en een afschuifoppervlak uit de mesh lossen wij niet
+    // op. Vallen de hoofdassen met y en z samen — wat voor elk catalogusprofiel
+    // geldt — dan is het antwoord er wél; anders melden we dat het niet bepaald
+    // is in plaats van een getal te verzinnen.
+    let alpha = p.alpha_hoofdas_rad;
+    let (av_u, av_v, av_bepaald) = if alpha.abs() < HOOFDAS_TOLERANTIE_RAD {
+        // u ∥ y en v ∥ z.
+        (p.av_y_mm2, p.av_z_mm2, true)
+    } else if (alpha.abs() - std::f64::consts::FRAC_PI_2).abs() < HOOFDAS_TOLERANTIE_RAD {
+        // u ∥ ±z en v ∥ ∓y: de sterke hoofdas is de z-as.
+        (p.av_z_mm2, p.av_y_mm2, true)
+    } else {
+        (0.0, 0.0, false)
+    };
+
+    let pl = b.plastisch;
+    Uitbreiding {
+        omtrek_mm: b.omtrekken.map_or(0.0, |(buiten, _)| buiten),
+        omtrek_gaten_mm: b.omtrekken.map_or(0.0, |(_, gaten)| gaten),
+        omtrek_bepaald: b.omtrekken.is_some(),
+        dichtheid_kg_m3,
+        massa_kg_per_m: massa_kg_per_m(p.area_mm2, dichtheid_kg_m3),
+        qy_mm3: b.qy_mm3,
+        qz_mm3: b.qz_mm3,
+        u_min_mm: hoofdas.u_min_mm,
+        u_max_mm: hoofdas.u_max_mm,
+        v_min_mm: hoofdas.v_min_mm,
+        v_max_mm: hoofdas.v_max_mm,
+        wel_u_plus_mm3: hoofdas.wel_u_plus_mm3,
+        wel_u_min_mm3: hoofdas.wel_u_min_mm3,
+        wel_v_plus_mm3: hoofdas.wel_v_plus_mm3,
+        wel_v_min_mm3: hoofdas.wel_v_min_mm3,
+        wel_u_mm3: hoofdas.wel_u_mm3,
+        wel_v_mm3: hoofdas.wel_v_mm3,
+        iu_radius_mm: hoofdas.iu_radius_mm,
+        iv_radius_mm: hoofdas.iv_radius_mm,
+        z_pna_mm: if b.plastisch_bepaald { b.z_pna_mm } else { 0.0 },
+        y_pna_mm: if b.plastisch_bepaald { b.y_pna_mm } else { 0.0 },
+        u_pna_mm: pl.u_pna_mm,
+        v_pna_mm: pl.v_pna_mm,
+        wpl_u_mm3: pl.wpl_u_mm3,
+        wpl_v_mm3: pl.wpl_v_mm3,
+        vormfactor_y: vormfactor(p.wpl_y_mm3, p.wel_y_mm3),
+        vormfactor_z: vormfactor(p.wpl_z_mm3, p.wel_z_mm3),
+        vormfactor_u: vormfactor(pl.wpl_u_mm3, hoofdas.wel_u_mm3),
+        vormfactor_v: vormfactor(pl.wpl_v_mm3, hoofdas.wel_v_mm3),
+        plastisch_bepaald: b.plastisch_bepaald,
+        beta_y_mm: b.mono.beta_y_mm,
+        beta_z_mm: b.mono.beta_z_mm,
+        z_j_mm: b.mono.z_j_mm,
+        y_j_mm: b.mono.y_j_mm,
+        monosymmetrie_bepaald: b.monosymmetrie_bepaald,
+        av_u_mm2: av_u,
+        av_v_mm2: av_v,
+        av_hoofdas_bepaald: av_bepaald,
+    }
+}
+
+/// De soortelijke massa uit de invoer, of staal als er niets bruikbaars staat.
+fn dichtheid_van(i: &Invoer) -> f64 {
+    match i.dichtheid_kg_m3 {
+        Some(d) if d > 0.0 => d,
+        _ => DICHTHEID_STAAL_KG_M3,
+    }
 }
 
 // ── Vormen ────────────────────────────────────────────────────────────────────
@@ -885,6 +1109,43 @@ fn reken_contour(i: &Invoer) -> Result<Uitvoer, String> {
         meldingen.push("de doorsnede bestaat uit losse delen: Iw en het schuifmiddelpunt zijn betekenisloos (0 resp. zwaartepunt aangehouden)".into());
     }
 
+    // ── Uitgebreide grootheden ────────────────────────────────────────────────
+    // Alles wat uit de contour volgt is hier exact; alleen de
+    // monosymmetrieconstante leunt op het schuifmiddelpunt en dus op de mesh.
+    let mono_bepaald = !t.losse_delen;
+    let mono = if mono_bepaald {
+        monosymmetrie_van_doorsnede(&d, &e, p.y_s_mm, p.z_s_mm)
+    } else {
+        meldingen.push(
+            "z_j en β zijn niet bepaald: zonder samenhangende doorsnede is er geen schuifmiddelpunt"
+                .into(),
+        );
+        Monosymmetrie::default()
+    };
+    let uitbreiding = bouw_uitbreiding(
+        &p,
+        dichtheid_van(i),
+        Bouwstenen {
+            omtrekken: Some(d.omtrekken_mm()),
+            qy_mm3: e.sy_mm3,
+            qz_mm3: e.sz_mm3,
+            hoofdas_uitersten: hoofdas_uitersten(&d, &e),
+            z_pna_mm: e.z_pna_mm,
+            y_pna_mm: e.y_pna_mm,
+            plastisch: plastisch_hoofdas(&d, e.alpha_hoofdas_rad),
+            plastisch_bepaald: true,
+            mono,
+            monosymmetrie_bepaald: mono_bepaald,
+        },
+    );
+    if !uitbreiding.av_hoofdas_bepaald {
+        meldingen.push(
+            "Av;u en Av;v zijn niet bepaald: de hoofdassen vallen niet met y en z samen, en de \
+             normregel van EN 1993-1-1 §6.2.6(3) laat zich niet meedraaien"
+                .into(),
+        );
+    }
+
     Ok(Uitvoer {
         naam: i.naam.clone(),
         soort: i.soort.clone(),
@@ -939,6 +1200,7 @@ fn reken_contour(i: &Invoer) -> Result<Uitvoer, String> {
         z_max_mm: e.z_max_mm,
         delen: Vec::new(),
         meldingen,
+        uitbreiding,
     })
 }
 
@@ -1009,6 +1271,51 @@ fn reken_samenstelling(i: &Invoer) -> Result<Uitvoer, String> {
     if !sec.lamellen.is_empty() && sec.cellen.is_empty() && !r.iw_bepaald && sec.delen.is_empty() {
         meldingen.push("de lamellen sluiten mogelijk een cel zonder dat die is gedeclareerd: It is met de open formule ⅓·Σb·t³ bepaald".into());
     }
+    if !r.monosymmetrie_bepaald {
+        meldingen.push(
+            "z_j en β zijn niet bepaald: dat vraagt een doorsnede die volledig uit lamellen \
+             bestaat, met een sectorieel gevonden schuifmiddelpunt"
+                .into(),
+        );
+    }
+
+    // Een lamellenmodel is een SOM van platen, geen vereniging: de platen
+    // overlappen elkaar bij de lasnaden en een catalogusdeel heeft helemaal
+    // geen contour. Er is dus geen buitenrand om langs te lopen, en dan is de
+    // omtrek niet bepaald in plaats van "de som van de plaatomtrekken".
+    meldingen.push(
+        "de omtrek is voor een samenstelling niet bepaald: overlappende platen en catalogusdelen \
+         hebben geen gemeenschappelijke buitenrand"
+            .into(),
+    );
+
+    let uitbreiding = bouw_uitbreiding(
+        &p,
+        dichtheid_van(i),
+        Bouwstenen {
+            omtrekken: None,
+            qy_mm3: r.qy_mm3,
+            qz_mm3: r.qz_mm3,
+            hoofdas_uitersten: (r.u_min_mm, r.u_max_mm, r.v_min_mm, r.v_max_mm),
+            z_pna_mm: r.z_pna_mm,
+            y_pna_mm: r.y_pna_mm,
+            plastisch: PlastischHoofdas {
+                wpl_u_mm3: r.wpl_u_mm3,
+                wpl_v_mm3: r.wpl_v_mm3,
+                u_pna_mm: r.u_pna_mm,
+                v_pna_mm: r.v_pna_mm,
+            },
+            plastisch_bepaald: r.wpl_bepaald,
+            mono: r.monosymmetrie,
+            monosymmetrie_bepaald: r.monosymmetrie_bepaald,
+        },
+    );
+    if !uitbreiding.av_hoofdas_bepaald {
+        meldingen.push(
+            "Av;u en Av;v zijn niet bepaald: de hoofdassen vallen niet met y en z samen"
+                .into(),
+        );
+    }
 
     Ok(Uitvoer {
         naam: i.naam.clone(),
@@ -1067,6 +1374,7 @@ fn reken_samenstelling(i: &Invoer) -> Result<Uitvoer, String> {
         z_max_mm: r.z_max_mm + p.z_c_mm,
         delen,
         meldingen,
+        uitbreiding,
     })
 }
 

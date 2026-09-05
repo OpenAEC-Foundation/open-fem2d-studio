@@ -200,6 +200,24 @@ impl Segment {
         }
     }
 
+    /// De vier **derde**-orde momenten van dit segment, om de oorsprong.
+    fn derde_momenten(&self) -> DerdeMomenten {
+        match *self {
+            Segment::Lijn { van, naar } => derde_momenten_lijn(van, naar),
+            Segment::Boog { centrum, straal, theta1, theta2 } => {
+                derde_momenten_boog(centrum, straal, theta1, theta2)
+            }
+        }
+    }
+
+    /// Booglengte van dit segment (mm).
+    pub fn lengte_mm(&self) -> f64 {
+        match *self {
+            Segment::Lijn { van, naar } => (naar.0 - van.0).hypot(naar.1 - van.1),
+            Segment::Boog { straal, theta1, theta2, .. } => straal.abs() * (theta2 - theta1).abs(),
+        }
+    }
+
     /// Omhullende rechthoek `(y_min, y_max, z_min, z_max)` van dit segment.
     fn uitersten(&self) -> (f64, f64, f64, f64) {
         match *self {
@@ -343,6 +361,193 @@ fn momenten_boog(centrum: (f64, f64), r: f64, t1: f64, t2: f64) -> Momenten {
         iy: f_iy(t2) - f_iy(t1),
         iz: f_iz(t2) - f_iz(t1),
         iyz: f_iyz(t2) - f_iyz(t1),
+    }
+}
+
+// ── Derde momenten ──────────────────────────────────────────────────────────
+//
+// Voor de monosymmetrieconstante uit de kipbijlage is `∬(y² + z²)·z dA` nodig,
+// en voor de spiegelbeeldige constante om de z-as `∬(y² + z²)·y dA`. Dat zijn
+// samen vier derde-orde momenten. Ze volgen uit dezelfde stelling van Green als
+// de zes hierboven, met deze keuzes voor `P` en `Q`:
+//
+// | grootheid          | randintegraal   | keuze P, Q       |
+// |--------------------|-----------------|------------------|
+// | `∬ y³ dA`          | `¼∮ y⁴ dz`      | `Q = ¼y⁴`        |
+// | `∬ y² z dA`        | `⅓∮ y³ z dz`    | `Q = ⅓y³z`       |
+// | `∬ y z² dA`        | `−⅓∮ y z³ dy`   | `P = −⅓y z³`     |
+// | `∬ z³ dA`          | `−¼∮ z⁴ dy`     | `P = −¼z⁴`       |
+//
+// Controle op een volle cirkel met straal `r` om `(yc, zc)` — de gemengde
+// termen om het eigen zwaartepunt zijn nul, dus alleen de Steiner-termen
+// blijven over:
+//
+// ```text
+// ∬ y³ dA  = yc³·πr² + 3·yc·πr⁴/4
+// ∬ y²z dA = yc²·zc·πr² + zc·πr⁴/4
+// ∬ y z² dA = yc·zc²·πr² + yc·πr⁴/4
+// ∬ z³ dA  = zc³·πr² + 3·zc·πr⁴/4
+// ```
+//
+// Die vier staan als test in deze module.
+
+/// De vier derde-orde momenten om de **oorsprong** van het invoerstelsel.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DerdeMomenten {
+    /// `∬ y³ dA`
+    pub iyyy_mm5: f64,
+    /// `∬ y² z dA`
+    pub iyyz_mm5: f64,
+    /// `∬ y z² dA`
+    pub iyzz_mm5: f64,
+    /// `∬ z³ dA`
+    pub izzz_mm5: f64,
+}
+
+impl DerdeMomenten {
+    fn tel_op(&mut self, m: DerdeMomenten) {
+        self.iyyy_mm5 += m.iyyy_mm5;
+        self.iyyz_mm5 += m.iyyz_mm5;
+        self.iyzz_mm5 += m.iyzz_mm5;
+        self.izzz_mm5 += m.izzz_mm5;
+    }
+}
+
+/// Derde momenten van een recht segment.
+///
+/// Zelfde parametrisatie als [`momenten_lijn`]: `y(t) = y₁ + t·a`,
+/// `z(t) = z₁ + t·b`, `t ∈ [0,1]`. Elke integrand is dan een polynoom in `t`
+/// dat term voor term exact wordt geïntegreerd (`∫₀¹ tⁿ dt = 1/(n+1)`).
+fn derde_momenten_lijn(p1: (f64, f64), p2: (f64, f64)) -> DerdeMomenten {
+    let (y1, z1) = p1;
+    let (y2, z2) = p2;
+    let a = y2 - y1;
+    let b = z2 - z1;
+
+    DerdeMomenten {
+        // ¼·b·∫(y₁ + ta)⁴ dt
+        iyyy_mm5: 0.25
+            * b
+            * (y1.powi(4)
+                + 2.0 * y1.powi(3) * a
+                + 2.0 * y1 * y1 * a * a
+                + y1 * a.powi(3)
+                + a.powi(4) / 5.0),
+        // ⅓·b·∫(y₁ + ta)³·(z₁ + tb) dt
+        iyyz_mm5: (1.0 / 3.0)
+            * b
+            * (y1.powi(3) * z1
+                + (y1.powi(3) * b + 3.0 * y1 * y1 * a * z1) / 2.0
+                + (3.0 * y1 * y1 * a * b + 3.0 * y1 * a * a * z1) / 3.0
+                + (3.0 * y1 * a * a * b + a.powi(3) * z1) / 4.0
+                + a.powi(3) * b / 5.0),
+        // −⅓·a·∫(y₁ + ta)·(z₁ + tb)³ dt
+        iyzz_mm5: -(1.0 / 3.0)
+            * a
+            * (y1 * z1.powi(3)
+                + (3.0 * y1 * z1 * z1 * b + a * z1.powi(3)) / 2.0
+                + (3.0 * y1 * z1 * b * b + 3.0 * a * z1 * z1 * b) / 3.0
+                + (y1 * b.powi(3) + 3.0 * a * z1 * b * b) / 4.0
+                + a * b.powi(3) / 5.0),
+        // −¼·a·∫(z₁ + tb)⁴ dt
+        izzz_mm5: -0.25
+            * a
+            * (z1.powi(4)
+                + 2.0 * z1.powi(3) * b
+                + 2.0 * z1 * z1 * b * b
+                + z1 * b.powi(3)
+                + b.powi(4) / 5.0),
+    }
+}
+
+/// Derde momenten van een boogsegment.
+///
+/// Met `y = yc + r·cos θ`, `z = zc + r·sin θ`, `dy = −r·sin θ dθ` en
+/// `dz = r·cos θ dθ` wordt elke randintegraal een som van machten van sinus en
+/// cosinus. Naast de primitieven uit de moduledocumentatie zijn hier nodig:
+///
+/// ```text
+/// ∫ sin⁵θ = −cos θ + ⅔cos³θ − cos⁵θ/5      ∫ cos⁵θ = sin θ − ⅔sin³θ + sin⁵θ/5
+/// ∫ sin²θ cos θ = sin³θ/3                  ∫ sin θ cos²θ = −cos³θ/3
+/// ∫ sin³θ cos θ = sin⁴θ/4                  ∫ sin θ cos³θ = −cos⁴θ/4
+/// ∫ sin⁴θ cos θ = sin⁵θ/5                  ∫ sin θ cos⁴θ = −cos⁵θ/5
+/// ```
+fn derde_momenten_boog(centrum: (f64, f64), r: f64, t1: f64, t2: f64) -> DerdeMomenten {
+    if r == 0.0 {
+        return DerdeMomenten::default();
+    }
+    let (yc, zc) = centrum;
+
+    // ∫sinⁿ en ∫cosⁿ.
+    let s1 = |t: f64| -t.cos();
+    let s2 = |t: f64| t / 2.0 - (2.0 * t).sin() / 4.0;
+    let s3 = |t: f64| -t.cos() + t.cos().powi(3) / 3.0;
+    let s4 = |t: f64| 3.0 * t / 8.0 - (2.0 * t).sin() / 4.0 + (4.0 * t).sin() / 32.0;
+    let s5 = |t: f64| -t.cos() + 2.0 * t.cos().powi(3) / 3.0 - t.cos().powi(5) / 5.0;
+    let c1 = |t: f64| t.sin();
+    let c2 = |t: f64| t / 2.0 + (2.0 * t).sin() / 4.0;
+    let c3 = |t: f64| t.sin() - t.sin().powi(3) / 3.0;
+    let c4 = |t: f64| 3.0 * t / 8.0 + (2.0 * t).sin() / 4.0 + (4.0 * t).sin() / 32.0;
+    let c5 = |t: f64| t.sin() - 2.0 * t.sin().powi(3) / 3.0 + t.sin().powi(5) / 5.0;
+    // Gemengd: `cs_n = ∫ cosⁿθ·sin θ`, `sc_n = ∫ sinⁿθ·cos θ`.
+    let cs1 = |t: f64| t.sin().powi(2) / 2.0; // = ∫ sin θ cos θ, geldt voor beide
+    let cs2 = |t: f64| -t.cos().powi(3) / 3.0;
+    let cs3 = |t: f64| -t.cos().powi(4) / 4.0;
+    let cs4 = |t: f64| -t.cos().powi(5) / 5.0;
+    let sc2 = |t: f64| t.sin().powi(3) / 3.0;
+    let sc3 = |t: f64| t.sin().powi(4) / 4.0;
+    let sc4 = |t: f64| t.sin().powi(5) / 5.0;
+
+    // ∬y³ dA = ¼∮y⁴ dz = (r/4)∫(yc + r cos θ)⁴·cos θ dθ
+    let f_yyy = |t: f64| {
+        0.25 * r
+            * (yc.powi(4) * c1(t)
+                + 4.0 * yc.powi(3) * r * c2(t)
+                + 6.0 * yc * yc * r * r * c3(t)
+                + 4.0 * yc * r.powi(3) * c4(t)
+                + r.powi(4) * c5(t))
+    };
+    // ∬z³ dA = −¼∮z⁴ dy = (r/4)∫(zc + r sin θ)⁴·sin θ dθ
+    let f_zzz = |t: f64| {
+        0.25 * r
+            * (zc.powi(4) * s1(t)
+                + 4.0 * zc.powi(3) * r * s2(t)
+                + 6.0 * zc * zc * r * r * s3(t)
+                + 4.0 * zc * r.powi(3) * s4(t)
+                + r.powi(4) * s5(t))
+    };
+    // ∬y²z dA = ⅓∮y³z dz = (r/3)∫(yc + r cos θ)³·(zc + r sin θ)·cos θ dθ
+    let f_yyz = |t: f64| {
+        (1.0 / 3.0)
+            * r
+            * (zc * (yc.powi(3) * c1(t)
+                + 3.0 * yc * yc * r * c2(t)
+                + 3.0 * yc * r * r * c3(t)
+                + r.powi(3) * c4(t))
+                + r * (yc.powi(3) * cs1(t)
+                    + 3.0 * yc * yc * r * cs2(t)
+                    + 3.0 * yc * r * r * cs3(t)
+                    + r.powi(3) * cs4(t)))
+    };
+    // ∬yz² dA = −⅓∮y z³ dy = (r/3)∫(yc + r cos θ)·(zc + r sin θ)³·sin θ dθ
+    let f_yzz = |t: f64| {
+        (1.0 / 3.0)
+            * r
+            * (yc * (zc.powi(3) * s1(t)
+                + 3.0 * zc * zc * r * s2(t)
+                + 3.0 * zc * r * r * s3(t)
+                + r.powi(3) * s4(t))
+                + r * (zc.powi(3) * cs1(t)
+                    + 3.0 * zc * zc * r * sc2(t)
+                    + 3.0 * zc * r * r * sc3(t)
+                    + r.powi(3) * sc4(t)))
+    };
+
+    DerdeMomenten {
+        iyyy_mm5: f_yyy(t2) - f_yyy(t1),
+        iyyz_mm5: f_yyz(t2) - f_yyz(t1),
+        iyzz_mm5: f_yzz(t2) - f_yzz(t1),
+        izzz_mm5: f_zzz(t2) - f_zzz(t1),
     }
 }
 
@@ -514,6 +719,11 @@ impl Contour {
     /// Het teken van het omsloten oppervlak: `> 0` tegen de klok in.
     pub fn oppervlak_mm2(&self) -> f64 {
         self.segmenten.iter().map(|s| s.momenten().a).sum()
+    }
+
+    /// Lengte van deze rand (mm) — de som van de segmentlengtes.
+    pub fn omtrek_mm(&self) -> f64 {
+        self.segmenten.iter().map(Segment::lengte_mm).sum()
     }
 
     /// Rechthoek met de linkeronderhoek op `(y0, z0)`, tegen de klok in.
@@ -732,6 +942,47 @@ impl Doorsnede {
             m.tel_op(s.momenten());
         }
         (m.a, m.sy, m.sz, m.iy, m.iz, m.iyz)
+    }
+
+    /// De vier derde-orde momenten om de **oorsprong** van het invoerstelsel.
+    ///
+    /// Net als bij [`Doorsnede::bereken`] geldt: een doorsnede die per ongeluk
+    /// helemaal met de klok mee is ingevoerd wordt één keer omgekeerd, zodat
+    /// het teken van de uitkomst niet van de invoervolgorde afhangt.
+    pub fn derde_momenten_om_oorsprong(&self) -> DerdeMomenten {
+        let (a, ..) = self.momenten_om_oorsprong();
+        if a < 0.0 {
+            return self.omgekeerd().derde_momenten_om_oorsprong();
+        }
+        let mut m = DerdeMomenten::default();
+        for s in self.alle_segmenten() {
+            m.tel_op(s.derde_momenten());
+        }
+        m
+    }
+
+    /// `(buitenomtrek, omtrek van de gaten)` in mm.
+    ///
+    /// Een rand telt als buitenrand zodra hij zélf tegen de klok in loopt
+    /// (positief oppervlak) en als gat zodra hij met de klok mee loopt. Een
+    /// doorsnede die in losse delen uiteenvalt heeft dus meerdere buitenranden,
+    /// die alle bij de buitenomtrek worden opgeteld. De som van beide is het
+    /// hele conserveringsoppervlak per meter lengte.
+    pub fn omtrekken_mm(&self) -> (f64, f64) {
+        let (a, ..) = self.momenten_om_oorsprong();
+        if a < 0.0 {
+            return self.omgekeerd().omtrekken_mm();
+        }
+        let mut buiten = 0.0;
+        let mut gaten = 0.0;
+        for c in &self.contouren {
+            if c.oppervlak_mm2() >= 0.0 {
+                buiten += c.omtrek_mm();
+            } else {
+                gaten += c.omtrek_mm();
+            }
+        }
+        (buiten, gaten)
     }
 
     /// Omhullende rechthoek `(y_min, y_max, z_min, z_max)`.
@@ -1435,6 +1686,114 @@ mod tests {
         eis("buis Iz", p.iz_mm4, i, i);
         eis("buis y_c", p.y_c_mm, ro, d);
         eis("buis Wpl", p.wpl_y_mm3, 4.0 / 3.0 * (ro.powi(3) - ri.powi(3)), ro.powi(3));
+    }
+
+    // ── Derde momenten ──────────────────────────────────────────────────────
+
+    /// Een volle cirkel is de scherpste toets op de boogformules: alle vier de
+    /// derde momenten hebben er een gesloten vorm, en de gemengde termen om het
+    /// eigen zwaartepunt vallen weg zodat alleen de Steiner-termen overblijven.
+    #[test]
+    fn derde_momenten_van_een_cirkel() {
+        let (yc, zc, r) = (37.0, -19.0, 23.0);
+        let d = Doorsnede::nieuw().met(Contour::cirkel((yc, zc), r));
+        let m = d.derde_momenten_om_oorsprong();
+        let a = PI * r * r;
+        let i = PI * r.powi(4) / 4.0;
+        let schaal = a * r.powi(3);
+        eis("cirkel ∬y³", m.iyyy_mm5, yc.powi(3) * a + 3.0 * yc * i, schaal);
+        eis("cirkel ∬y²z", m.iyyz_mm5, yc * yc * zc * a + zc * i, schaal);
+        eis("cirkel ∬yz²", m.iyzz_mm5, yc * zc * zc * a + yc * i, schaal);
+        eis("cirkel ∬z³", m.izzz_mm5, zc.powi(3) * a + 3.0 * zc * i, schaal);
+    }
+
+    /// Een rechthoek `[0,b] × [0,h]`: `∬y³ dA = h·b⁴/4`, `∬y²z dA = b³h²/6`,
+    /// enzovoort — allemaal met de hand na te rekenen.
+    #[test]
+    fn derde_momenten_van_een_rechthoek() {
+        let (b, h) = (120.0, 300.0);
+        let m = rechthoek(h, b).derde_momenten_om_oorsprong();
+        let schaal = b * h * (b + h).powi(3);
+        eis("rechthoek ∬y³", m.iyyy_mm5, h * b.powi(4) / 4.0, schaal);
+        eis("rechthoek ∬y²z", m.iyyz_mm5, b.powi(3) * h * h / 6.0, schaal);
+        eis("rechthoek ∬yz²", m.iyzz_mm5, b * b * h.powi(3) / 6.0, schaal);
+        eis("rechthoek ∬z³", m.izzz_mm5, b * h.powi(4) / 4.0, schaal);
+    }
+
+    /// Om het eigen zwaartepunt zijn alle vier de derde momenten van een
+    /// dubbelsymmetrische doorsnede nul. Dat is de eigenschap waar `z_j = 0`
+    /// voor een I-profiel op rust, dus die hoort hier hard te staan.
+    #[test]
+    fn derde_momenten_zijn_nul_bij_dubbele_symmetrie() {
+        let d = i_profiel(300.0, 150.0, 7.1, 10.7, 15.0);
+        let e = d.bereken();
+        let m = d.verschoven(-e.y_c_mm, -e.z_c_mm).derde_momenten_om_oorsprong();
+        let schaal = e.a_mm2 * 300f64.powi(3);
+        eis("I-profiel ∬y³", m.iyyy_mm5, 0.0, schaal);
+        eis("I-profiel ∬y²z", m.iyyz_mm5, 0.0, schaal);
+        eis("I-profiel ∬yz²", m.iyzz_mm5, 0.0, schaal);
+        eis("I-profiel ∬z³", m.izzz_mm5, 0.0, schaal);
+    }
+
+    /// De verschuivingsregel voor `∬z³ dA` (de derde-orde Steiner-stelling):
+    /// `∬(z+c)³ dA = ∬z³ dA + 3c·Iy + 3c²·Sy + c³·A`. Met een I-profiel dat op
+    /// zijn eigen zwaartepunt staat vallen `∬z³` en `Sy` weg.
+    #[test]
+    fn derde_momenten_verschuiven_volgens_steiner() {
+        let d = i_profiel(300.0, 150.0, 7.1, 10.7, 15.0);
+        let e = d.bereken();
+        let gecentreerd = d.verschoven(-e.y_c_mm, -e.z_c_mm);
+        let c = 1234.5;
+        let m = gecentreerd.verschoven(0.0, c).derde_momenten_om_oorsprong();
+        let verwacht = 3.0 * c * e.iy_mm4 + c.powi(3) * e.a_mm2;
+        eis("verschoven ∬z³", m.izzz_mm5, verwacht, verwacht.abs());
+        // ∬y²z verschuift met c·Iz.
+        eis("verschoven ∬y²z", m.iyyz_mm5, c * e.iz_mm4, (c * e.iz_mm4).abs());
+    }
+
+    // ── Omtrek ──────────────────────────────────────────────────────────────
+
+    /// Omtrek van een rechthoek is `2(b+h)`, van een cirkel `2πr`; een gat
+    /// telt apart.
+    #[test]
+    fn omtrek_van_rechthoek_en_gat() {
+        let (b, h, r) = (120.0, 300.0, 40.0);
+        let (buiten, gaten) = rechthoek(h, b).omtrekken_mm();
+        eis("rechthoek omtrek", buiten, 2.0 * (b + h), b + h);
+        eis("rechthoek gaten", gaten, 0.0, b + h);
+
+        let d = Doorsnede::nieuw()
+            .met(Contour::rechthoek(0.0, 0.0, b, h))
+            .met_gat(Contour::cirkel((b / 2.0, h / 2.0), r));
+        let (buiten, gaten) = d.omtrekken_mm();
+        eis("doorboord buiten", buiten, 2.0 * (b + h), b + h);
+        eis("doorboord gat", gaten, TAU * r, r);
+    }
+
+    /// De omtrek van een I-profiel: alle rechte stukken plus vier
+    /// kwartcirkels. Met de hand:
+    ///
+    /// ```text
+    /// 2·b                    boven- en onderrand
+    /// + 4·tf                 de vier flenskanten
+    /// + 4·((b − tw)/2 − r)   onderkanten van de flensuitsteken
+    /// + 2·(h − 2tf − 2r)     de twee lijfzijden
+    /// + 4·(¼·2πr)            de vier walsuitrondingen
+    /// ```
+    ///
+    /// Dat komt uit op 1 160 mm; de catalogus geeft voor een IPE 300 een
+    /// omtrek van 1,16 m per strekkende meter.
+    #[test]
+    fn omtrek_van_een_i_profiel() {
+        let (h, b, tw, tf, r) = (300.0, 150.0, 7.1, 10.7, 15.0);
+        let (buiten, gaten) = i_profiel(h, b, tw, tf, r).omtrekken_mm();
+        let verwacht = 2.0 * b
+            + 4.0 * tf
+            + 4.0 * ((b - tw) / 2.0 - r)
+            + 2.0 * (h - 2.0 * tf - 2.0 * r)
+            + 4.0 * (0.5 * PI * r);
+        eis("I-profiel omtrek", buiten, verwacht, verwacht);
+        eis("I-profiel gaten", gaten, 0.0, verwacht);
     }
 
     #[test]
