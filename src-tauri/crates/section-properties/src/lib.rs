@@ -11,6 +11,7 @@ pub mod composite;
 pub mod contour;
 pub mod mesh2d;
 pub mod motor;
+pub mod opdracht;
 pub mod torsie;
 
 /// All cross-sectional properties needed for EN 1993 checks.

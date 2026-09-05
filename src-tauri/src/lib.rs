@@ -5,6 +5,7 @@ use nen_en_1992_1_1::{ConcreteClass, ReinforcementGrade};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1995_1_1::clt::CltPreset;
 use report::{ReportInput, generate_report_pdf};
+use section_properties::opdracht::{Invoer as DoorsnedeInvoer, Uitvoer as DoorsnedeUitvoer};
 use spanning_check::{SpanningBeamCheckInput, SpanningBeamCheckResult};
 use steel_check::{BeamCheckInput, BeamCheckResult};
 use steel_profiles::SteelProfile;
@@ -109,6 +110,39 @@ async fn check_stress_beams(
     Ok(spanning_check::check_all_spanning_beams(inputs))
 }
 
+/// Doorsnede-eigenschappen van een of meer geometrieën — de motor achter de
+/// profieleditor.
+///
+/// Dezelfde rekengang als de binary `doorsnedemotor` en als het eindpunt
+/// `/api/doorsnede` van de dev-server: alle drie roepen ze
+/// `section_properties::opdracht::reken` aan. Zonder dit command werkte de
+/// profieleditor alleen op de dev-server en bleef hij in de geïnstalleerde app
+/// wachten op een motor die er niet was.
+///
+/// Eén geometrie die niet door de motor komt laat de hele aanroep falen, met
+/// de naam erbij: een halve lijst met stilzwijgend ontbrekende doorsneden is
+/// erger dan een duidelijke fout.
+#[tauri::command]
+async fn bereken_doorsneden(
+    invoer: Vec<DoorsnedeInvoer>,
+) -> Result<Vec<DoorsnedeUitvoer>, String> {
+    let mut uit = Vec::with_capacity(invoer.len());
+    for i in &invoer {
+        match section_properties::opdracht::reken(i) {
+            Ok(u) => uit.push(u),
+            Err(e) => {
+                let naam = i.naam();
+                return Err(if naam.is_empty() {
+                    e
+                } else {
+                    format!("{naam}: {e}")
+                });
+            }
+        }
+    }
+    Ok(uit)
+}
+
 #[tauri::command]
 async fn generate_steel_report_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
     Ok(generate_report_pdf(input))
@@ -133,6 +167,7 @@ pub fn run() {
             check_concrete_beams,
             concrete_mn_kappa,
             check_stress_beams,
+            bereken_doorsneden,
             generate_steel_report_pdf,
         ])
         .run(tauri::generate_context!())

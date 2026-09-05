@@ -2679,6 +2679,7 @@ dependencies = [
  "nen-en-1993-1-1-section",
  "nen-en-1995-1-1",
  "report",
+ "section-properties",
  "serde",
  "serde_json",
  "spanning-check",

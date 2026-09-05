@@ -32,6 +32,7 @@ timber-check = { path = "crates/timber-check" }
 nen-en-1995-1-1 = { path = "crates/nen-en-1995-1-1" }
 concrete-check = { path = "crates/concrete-check" }
 nen-en-1992-1-1 = { path = "crates/nen-en-1992-1-1" }
+section-properties = { path = "crates/section-properties" }
 spanning-check = { path = "crates/spanning-check" }
 report = { path = "crates/report" }
 
