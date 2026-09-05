@@ -13,6 +13,9 @@
 //     catalogusdeel α' = −α met `gespiegeld` omgeklapt, en twee keer
 //     spiegelen is de identiteit
 //   - een deel dat niet het doel is blijft ongemoeid
+//   - gaten in een catalogusprofiel bewegen binnen hun eigen speelruimte: een
+//     lijfgat alleen in z, een flensgat alleen in y, een wandgat in zijn hoek
+//     en een langsgat vrij; wat niet kan wordt gemeld in plaats van gedaan
 // Uitvoeren: npx tsx test-profieleditor-transform.mjs
 
 const {
@@ -24,6 +27,10 @@ const {
   verplaats,
   roteer,
   spiegel,
+  naamVanGat,
+  verplaatsGaten,
+  roteerGaten,
+  spiegelGaten,
 } = await import("./src/lib/profieleditor/transformeren.ts");
 
 let passed = 0, failed = 0;
@@ -203,6 +210,70 @@ log("\n── spiegelen ──────────────────�
     exact(een.catalogusdelen[0].alphaGraden, -30) && een.catalogusdelen[0].gespiegeld === true);
   check("één deel: de lamel blijft ongemoeid",
     een.lamellen[0].y_mm === 0 && een.lamellen[0].alphaGraden === 0);
+}
+
+// -- Gaten in een catalogusprofiel -----------------------------------------
+{
+  log("");
+  log("-- gaten: verplaatsen binnen de speelruimte van de plaat -----------");
+  const IPE300 = { naam: "IPE 300", soort: "ISection", h: 300, b: 150, tw: 7.1, tf: 10.7, r: 15 };
+  const o = {
+    soort: "gat",
+    basis: IPE300,
+    gaten: [
+      { id: "g1", plaats: "lijf", vorm: "rond", y: 75, z: 150, d: 80, b: 0, h: 0, hoekGraden: 0 },
+      { id: "g2", plaats: "flensBoven", vorm: "rond", y: 40, z: 295, d: 20, b: 0, h: 0, hoekGraden: 0 },
+      { id: "g3", plaats: "vlak", vorm: "rechthoek", y: 75, z: 60, d: 0, b: 30, h: 12, hoekGraden: 20 },
+      { id: "g4", plaats: "wand", vorm: "rond", y: 0, z: 0, d: 12, b: 0, h: 0, hoekGraden: 30 },
+    ],
+  };
+
+  check("naamVanGat noemt de plaats", naamVanGat(o, "g1") === "Gat 1 (in het lijf)", String(naamVanGat(o, "g1")));
+
+  const v = verplaatsGaten(o, null, 25, 40);
+  check("lijfgat neemt alleen z", exact(v.gaten[0].z, 190) && exact(v.gaten[0].y, 75));
+  check("flensgat neemt alleen y", exact(v.gaten[1].y, 65) && exact(v.gaten[1].z, 295));
+  check("langsgat neemt beide", exact(v.gaten[2].y, 100) && exact(v.gaten[2].z, 100));
+  check("wandgat blijft staan bij Dy/Dz", exact(v.gaten[3].hoekGraden, 30));
+  check("melding noemt het lijf", /lijf/.test(v.melding || ""), String(v.melding));
+  check("melding noemt de buiswand", /buiswand/.test(v.melding || ""), String(v.melding));
+
+  const alleenZ = verplaatsGaten(o, "g1", 0, -50);
+  check("alleen z verplaatsen geeft geen melding", alleenZ.melding === null, String(alleenZ.melding));
+  check("lijfgat schuift omlaag naar 100", exact(alleenZ.gaten[0].z, 100));
+  check("de andere gaten blijven ongemoeid",
+    JSON.stringify(alleenZ.gaten.slice(1)) === JSON.stringify(o.gaten.slice(1)));
+
+  log("");
+  log("-- gaten: roteren --------------------------------------------------");
+  const r = roteerGaten(o, null, 25);
+  check("langsgat draait mee: 20 + 25 = 45", exact(r.gaten[2].hoekGraden, 45));
+  check("wandgat schuift over de omtrek: 30 + 25 = 55", exact(r.gaten[3].hoekGraden, 55));
+  check("lijfgat draait niet", exact(r.gaten[0].hoekGraden, 0));
+  check("melding over een gat door een plaat", /loodrecht/.test(r.melding || ""), String(r.melding));
+
+  const rond = roteerGaten({ ...o, gaten: [{ ...o.gaten[2], vorm: "rond" }] }, null, 30);
+  check("rond langsgat verandert niet", exact(rond.gaten[0].hoekGraden, 20));
+  check("en dat wordt gezegd", /rond/.test(rond.melding || ""), String(rond.melding));
+
+  const heen90 = roteerGaten(o, "g3", 90);
+  const terug90 = roteerGaten({ ...o, gaten: heen90.gaten }, "g3", -90);
+  check("90 graden heen en terug geeft de oude hoek", exact(terug90.gaten[2].hoekGraden, 20));
+
+  log("");
+  log("-- gaten: spiegelen om de hartlijn y = b/2 -------------------------");
+  const sp = spiegelGaten(o, null);
+  check("flensgat spiegelt: 40 wordt 110", exact(sp.gaten[1].y, 110));
+  check("langsgat op de hartlijn blijft op 75", exact(sp.gaten[2].y, 75));
+  check("langsgat draait mee: 20 wordt 160", exact(sp.gaten[2].hoekGraden, 160));
+  check("wandgat: 30 wordt 150", exact(sp.gaten[3].hoekGraden, 150));
+  check("lijfgat blijft staan", exact(sp.gaten[0].y, 75));
+  check("melding over het lijfgat op de hartlijn", /hartlijn/.test(sp.melding || ""), String(sp.melding));
+
+  const heen = spiegelGaten(o, "g2");
+  const weer = spiegelGaten({ ...o, gaten: heen.gaten }, "g2");
+  check("twee keer spiegelen is de identiteit",
+    JSON.stringify(weer.gaten) === JSON.stringify(o.gaten));
 }
 
 log(`\n${failed === 0 ? "ALLE TESTS GESLAAGD" : "TESTS GEFAALD"} — ${passed} ok, ${failed} fout\n`);

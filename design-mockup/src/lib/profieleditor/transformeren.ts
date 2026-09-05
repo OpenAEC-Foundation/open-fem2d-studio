@@ -20,9 +20,10 @@
  * scale(±1, 1)` in de tekening, en dezelfde volgorde in de motor — want
  * S(−1,1)·R(α) = R(−α)·S(−1,1).
  */
-import type { DoorsnedeOntwerp } from "./types";
+import type { DoorsnedeOntwerp, Gat } from "./types";
 
 export type Samenstelling = Extract<DoorsnedeOntwerp, { soort: "samenstelling" }>;
+export type GatOntwerp = Extract<DoorsnedeOntwerp, { soort: "gat" }>;
 
 /** Punt in het modelstelsel (mm, y naar rechts, z omhoog). */
 export interface Punt2 {
@@ -135,6 +136,145 @@ export function roteer(
       return { ...d, y_mm: y, z_mm: z, alphaGraden: normaliseerHoek(d.alphaGraden + graden) };
     }),
   };
+}
+
+// ── Gaten in een catalogusprofiel ───────────────────────────────────────────
+//
+// Hier ligt het basisprofiel vast en bewegen alleen de gaten. Een gat is niet
+// vrij in het vlak: het zit in een plaat, en die plaat bepaalt waarlangs het
+// kan schuiven.
+//
+//   lijf            — door het lijf: schuift alleen omhoog en omlaag (z).
+//   flensBoven/-Onder — door een flens: schuift alleen zijwaarts (y).
+//   wand            — door de wand van een buis: verplaatst als een HOEK om
+//                     het buismidden, niet als een afstand.
+//   vlak            — een langsgat in het doorsnedevlak zelf: vrij in y en z,
+//                     en als rechthoek ook draaibaar.
+//
+// Een bewerking die op een gat niet van toepassing is, gebeurt niet en wordt
+// gemeld. Een gat in het lijf stilzwijgend zijwaarts verschuiven zou een
+// doorsnede opleveren die niet is wat de gebruiker tekende.
+
+/** Uitkomst van een gatbewerking: de nieuwe gaten en wat er niet kon. */
+export interface GatBewerking {
+  gaten: Gat[];
+  /** Kort en concreet, of null als alles is uitgevoerd. */
+  melding: string | null;
+}
+
+/** Namen voor in een melding. */
+const PLAATS_NAAM: Record<Gat["plaats"], string> = {
+  lijf: "in het lijf",
+  flensBoven: "in de bovenflens",
+  flensOnder: "in de onderflens",
+  wand: "in de buiswand",
+  vlak: "in het vlak",
+};
+
+/** Naam waaronder een gat in het paneel staat. */
+export function naamVanGat(o: GatOntwerp, id: string): string | null {
+  const i = o.gaten.findIndex((g) => g.id === id);
+  return i >= 0 ? `Gat ${i + 1} (${PLAATS_NAAM[o.gaten[i].plaats]})` : null;
+}
+
+function meldingVan(redenen: string[]): string | null {
+  if (redenen.length === 0) return null;
+  return [...new Set(redenen)].join(" ");
+}
+
+/**
+ * Verplaatst gaten over (dy, dz), elk binnen zijn eigen speelruimte. Een gat
+ * in een plaat neemt alleen de component die langs die plaat loopt.
+ */
+export function verplaatsGaten(
+  o: GatOntwerp,
+  doelId: string | null,
+  dy: number,
+  dz: number,
+): GatBewerking {
+  const redenen: string[] = [];
+  const gaten = o.gaten.map((g) => {
+    if (!hoort(doelId, g.id)) return g;
+    switch (g.plaats) {
+      case "lijf":
+        if (dy !== 0) redenen.push("Een gat in het lijf schuift alleen omhoog en omlaag.");
+        return dz === 0 ? g : { ...g, z: net(g.z + dz) };
+      case "flensBoven":
+      case "flensOnder":
+        if (dz !== 0) redenen.push("Een gat in een flens schuift alleen zijwaarts.");
+        return dy === 0 ? g : { ...g, y: net(g.y + dy) };
+      case "wand":
+        redenen.push("Een gat in de buiswand verplaats je met de hoek, niet met Δy en Δz.");
+        return g;
+      case "vlak":
+        return { ...g, y: net(g.y + dy), z: net(g.z + dz) };
+    }
+  });
+  return { gaten, melding: meldingVan(redenen) };
+}
+
+/**
+ * Draait gaten over `graden`.
+ *
+ * Voor een langsgat is dat de stand van de rechthoek om zijn eigen hart; voor
+ * een gat in een buiswand is de hoek de POSITIE op de omtrek, en dan schuift
+ * het gat dus over de wand. Bij een rond langsgat verandert er niets — dat
+ * wordt gezegd in plaats van dat de knop niets lijkt te doen.
+ */
+export function roteerGaten(o: GatOntwerp, doelId: string | null, graden: number): GatBewerking {
+  const redenen: string[] = [];
+  const gaten = o.gaten.map((g) => {
+    if (!hoort(doelId, g.id)) return g;
+    switch (g.plaats) {
+      case "vlak":
+        if (g.vorm === "rond") {
+          redenen.push("Een rond langsgat verandert niet door draaien.");
+          return g;
+        }
+        return { ...g, hoekGraden: normaliseerHoek(g.hoekGraden + graden) };
+      case "wand":
+        // De hoek IS de plaats op de omtrek: draaien verschuift het gat.
+        return { ...g, hoekGraden: normaliseerHoek(g.hoekGraden + graden) };
+      case "lijf":
+      case "flensBoven":
+      case "flensOnder":
+        redenen.push("Een gat door een plaat staat loodrecht op die plaat en is niet te draaien.");
+        return g;
+    }
+  });
+  return { gaten, melding: meldingVan(redenen) };
+}
+
+/**
+ * Spiegelt gaten om de verticale hartlijn van het basisprofiel.
+ *
+ * Het beschrijvingsassenstelsel van een catalogusprofiel loopt van 0 tot b, dus
+ * die hartlijn ligt op y = b/2. Een gat in het lijf ligt daar al op en blijft
+ * dus staan; een gat in de buiswand spiegelt in zijn hoek (φ → 180° − φ).
+ */
+export function spiegelGaten(o: GatOntwerp, doelId: string | null): GatBewerking {
+  const redenen: string[] = [];
+  const spiegelY = (y: number) => net(o.basis.b - y);
+  const gaten = o.gaten.map((g) => {
+    if (!hoort(doelId, g.id)) return g;
+    switch (g.plaats) {
+      case "lijf":
+        redenen.push("Een gat in het lijf ligt op de hartlijn en verandert niet door spiegelen.");
+        return g;
+      case "flensBoven":
+      case "flensOnder":
+        return { ...g, y: spiegelY(g.y) };
+      case "wand":
+        return { ...g, hoekGraden: normaliseerHoek(180 - g.hoekGraden) };
+      case "vlak":
+        return {
+          ...g,
+          y: spiegelY(g.y),
+          hoekGraden: g.vorm === "rond" ? g.hoekGraden : normaliseerHoek(180 - g.hoekGraden),
+        };
+    }
+  });
+  return { gaten, melding: meldingVan(redenen) };
 }
 
 /** Spiegelt om de verticale lijn door `om` (y → −y om dat punt). */
