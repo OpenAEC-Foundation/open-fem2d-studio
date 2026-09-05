@@ -293,7 +293,7 @@ function MemberBlock({
     : isConcreteCheckResult(result)
       ? `EN 1992 · ${result.reinforcement_summary} · f_cd = ${result.f_cd_mpa.toFixed(1)} N/mm² · f_yd = ${result.f_yd_mpa.toFixed(0)} N/mm²`
       : isStressCheckResult(result)
-        ? `${t("report.spanningGeenNorm", "vrije spanningstoets (geen norm)")} · f_toel = ${result.f_toel_mpa.toFixed(2)} N/mm² · γ_M = ${result.gamma_m.toFixed(2)} · f_d = ${result.f_d_mpa.toFixed(2)} N/mm²`
+        ? `${t("report.spanningGeenNorm", "vrije spanningstoets (geen norm)")} · f_toel = ${fmtValue(result.f_toel_mpa, 2)} N/mm² · γ_M = ${fmtValue(result.gamma_m, 2)} · f_d = ${fmtValue(result.f_d_mpa, 2)} N/mm²`
         : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${t("report.loadDuration", "belastingduur")} ${tCheck(
             LOAD_DURATION_LABELS[result.load_duration].key,
             LOAD_DURATION_LABELS[result.load_duration].fallback,
