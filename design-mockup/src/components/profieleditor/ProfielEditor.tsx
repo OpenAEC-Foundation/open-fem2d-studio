@@ -11,26 +11,37 @@
  * lib/profieleditor/eigenDoorsnedenStore.ts) en gaat via `custom_section`
  * naar de toetsing.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CustomDoorsnedevorm } from "../../lib/types/steel/CustomDoorsnedevorm";
 import { basisprofielVan } from "../../lib/profieleditor/catalogus";
 import {
   profielnaamVan,
   useEigenDoorsneden,
 } from "../../lib/profieleditor/eigenDoorsnedenStore";
-import { fmtGroep, fmtMacht } from "../../lib/profieleditor/format";
+import { fmtGroep, fmtMaat, fmtMacht, leesGetal } from "../../lib/profieleditor/format";
 import { controleerGat, snelleSchatting } from "../../lib/profieleditor/geometrie";
 import { nieuwId } from "../../lib/profieleditor/id";
 import { ontwerpIsLeeg, ontwerpNaarMotor } from "../../lib/profieleditor/motorInvoer";
 import { VORM_LABEL, gaatAlsLamellen, maakEigenDoorsnede, stelVormVoor } from "../../lib/profieleditor/opslaan";
+import {
+  aantalBouwstenen,
+  hartVan,
+  naamVanBouwsteen,
+  normaliseerHoek,
+  roteer,
+  spiegel,
+  verplaats,
+  type Punt2,
+} from "../../lib/profieleditor/transformeren";
 import type { DoorsnedeOntwerp, EigenDoorsnede } from "../../lib/profieleditor/types";
 import { useMotorBerekening } from "../../lib/profieleditor/useMotorBerekening";
 import Modal from "../Modal";
-import DoorsnedeTekenvlak from "./DoorsnedeTekenvlak";
+import DoorsnedeTekenvlak, { type TekenvlakModus } from "./DoorsnedeTekenvlak";
 import EigenDoorsnedeTekening from "./EigenDoorsnedeTekening";
 import EigenschappenPaneel from "./EigenschappenPaneel";
 import GatPaneel from "./GatPaneel";
 import SamenstellingPaneel from "./SamenstellingPaneel";
+import TransformPaneel, { type TransformSoort } from "./TransformPaneel";
 import "./ProfielEditor.css";
 
 type Tab = "samenstelling" | "gat" | "bewaard";
@@ -68,6 +79,84 @@ function standaardGatOntwerp(): GatOntwerp {
   const basis = basisprofielVan("IPE 300") ?? basisprofielVan("HEA 160");
   if (!basis) throw new Error("profieldatabase leeg");
   return { soort: "gat", basis, gaten: [] };
+}
+
+/** Rasterstappen waarop een muisdraaiing landt zolang Shift niet ingedrukt is. */
+const HOEKSTAP_GRADEN = 15;
+
+/**
+ * Een lopende verplaats- of roteermodus (G/R), naar het voorbeeld van het
+ * canvas: de muis stuurt, een getypt getal gaat vóór de muis, Enter bevestigt
+ * en Escape zet `origineel` terug.
+ */
+interface Modus {
+  soort: TransformSoort;
+  /** Bouwsteen die meegaat; null = alle bouwstenen samen. */
+  doelId: string | null;
+  /** Het ontwerp bij de start; elke voorvertoning wordt hieruit opnieuw berekend. */
+  origineel: Samenstelling;
+  /** Draai-/ankerpunt, bevroren bij de start zodat het niet met de motor meeschuift. */
+  anker: Punt2;
+  /** Muis (model-mm) bij de eerste beweging in het tekenvlak. */
+  muisStart: Punt2 | null;
+  /** Laatste muispositie (model-mm). */
+  muis: Punt2 | null;
+  /** Rasterstap die bij die laatste beweging in beeld stond. */
+  stap: number;
+  /** Shift ingedrukt: niet snappen. */
+  vrij: boolean;
+  /** Vergrendelde as bij verplaatsen. */
+  asSlot: "y" | "z" | null;
+  /** Getypt getal; zolang dit er staat telt de muis niet mee. */
+  getypt: string | null;
+  dy: number;
+  dz: number;
+  graden: number;
+}
+
+/**
+ * Verplaatsing of hoek opnieuw afleiden uit de muis of het getypte getal.
+ * Eén plek, zodat een aslock, een Shift of een extra cijfer allemaal langs
+ * dezelfde weg lopen.
+ */
+function herbereken(m: Modus): Modus {
+  const getal = m.getypt === null ? NaN : leesGetal(m.getypt);
+  if (m.soort === "verplaats") {
+    let dy = 0;
+    let dz = 0;
+    if (m.getypt !== null) {
+      const v = Number.isFinite(getal) ? getal : 0;
+      if (m.asSlot === "z") dz = v;
+      else dy = v;
+    } else if (m.muisStart && m.muis) {
+      dy = m.muis.y - m.muisStart.y;
+      dz = m.muis.z - m.muisStart.z;
+      if (!m.vrij && m.stap > 0) {
+        dy = Math.round(dy / m.stap) * m.stap;
+        dz = Math.round(dz / m.stap) * m.stap;
+      }
+      if (m.asSlot === "y") dz = 0;
+      if (m.asSlot === "z") dy = 0;
+    }
+    return { ...m, dy, dz };
+  }
+  let graden = 0;
+  if (m.getypt !== null) {
+    graden = Number.isFinite(getal) ? getal : 0;
+  } else if (m.muisStart && m.muis) {
+    const a0 = Math.atan2(m.muisStart.z - m.anker.z, m.muisStart.y - m.anker.y);
+    const a1 = Math.atan2(m.muis.z - m.anker.z, m.muis.y - m.anker.y);
+    graden = normaliseerHoek(((a1 - a0) * 180) / Math.PI);
+    if (!m.vrij) graden = Math.round(graden / HOEKSTAP_GRADEN) * HOEKSTAP_GRADEN;
+  }
+  return { ...m, graden };
+}
+
+/** Het ontwerp zoals de modus het nú laat zien. */
+function voorvertoning(m: Modus): Samenstelling {
+  return m.soort === "verplaats"
+    ? verplaats(m.origineel, m.doelId, m.dy, m.dz)
+    : roteer(m.origineel, m.doelId, m.graden, m.anker);
 }
 
 export default function ProfielEditor({
@@ -182,6 +271,192 @@ export default function ProfielEditor({
     sleepStart.current = null;
   }, []);
 
+  // ── Verplaatsen, roteren en spiegelen ───────────────────────────────────
+  // Doel is de geselecteerde bouwsteen; is er niets (of iets dat geen
+  // bouwsteen van deze samenstelling is) geselecteerd, dan gaat het hele
+  // ontwerp mee.
+  const doelId = useMemo(
+    () => (geselecteerd && hartVan(samenstelling, geselecteerd) ? geselecteerd : null),
+    [geselecteerd, samenstelling],
+  );
+  const doelNaam = doelId ? naamVanBouwsteen(samenstelling, doelId) : null;
+  const aantal = aantalBouwstenen(samenstelling);
+  /**
+   * Waar het hele ontwerp omheen draait en spiegelt: het zwaartepunt uit de
+   * motor als dat er is, anders de oorsprong. Eén bouwsteen draait om zijn
+   * eigen hart.
+   */
+  const zwaartepunt: Punt2 = useMemo(
+    () =>
+      tab === "samenstelling" && motor.uitvoer
+        ? { y: motor.uitvoer.y_c_mm, z: motor.uitvoer.z_c_mm }
+        : { y: 0, z: 0 },
+    [tab, motor.uitvoer],
+  );
+  const draaipunt: Punt2 = (doelId ? hartVan(samenstelling, doelId) : null) ?? zwaartepunt;
+
+  const [modus, setModus] = useState<Modus | null>(null);
+
+  /** Modus bijwerken en de voorvertoning meteen in het ontwerp zetten. */
+  const zetModus = useCallback((m: Modus) => {
+    const n = herbereken(m);
+    setModus(n);
+    setSamenstelling(voorvertoning(n));
+  }, []);
+
+  const startModus = useCallback(
+    (soort: TransformSoort) => {
+      if (tab !== "samenstelling" || aantalBouwstenen(samenstelling) === 0) return;
+      // Het toetsenbord stuurt de modus; een veld dat nog focus heeft zou de
+      // cijfers opeten.
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      setModus({
+        soort,
+        doelId,
+        origineel: samenstelling,
+        anker: draaipunt,
+        muisStart: null,
+        muis: null,
+        stap: 0,
+        vrij: false,
+        asSlot: null,
+        getypt: null,
+        dy: 0,
+        dz: 0,
+        graden: 0,
+      });
+    },
+    [tab, samenstelling, doelId, draaipunt],
+  );
+
+  const bevestigModus = useCallback(() => setModus(null), []);
+  const annuleerModus = useCallback(() => {
+    if (!modus) return;
+    setSamenstelling(modus.origineel);
+    setModus(null);
+  }, [modus]);
+
+  const opModusMuis = useCallback(
+    (y: number, z: number, stap: number, vrij: boolean) => {
+      if (!modus) return;
+      zetModus({ ...modus, muis: { y, z }, stap, vrij, muisStart: modus.muisStart ?? { y, z } });
+    },
+    [modus, zetModus],
+  );
+
+  // Directe bewerkingen uit het paneel (geen modus).
+  const verplaatsNu = useCallback(
+    (dy: number, dz: number) => setSamenstelling((o) => verplaats(o, doelId, dy, dz)),
+    [doelId],
+  );
+  const roteerNu = useCallback(
+    (graden: number) => {
+      const om = draaipunt;
+      setSamenstelling((o) => roteer(o, doelId, graden, om));
+    },
+    [doelId, draaipunt],
+  );
+  const spiegelNu = useCallback(() => {
+    const om = draaipunt;
+    setSamenstelling((o) => spiegel(o, doelId, om));
+  }, [doelId, draaipunt]);
+
+  // Een tabwissel laat een halve bewerking niet doorlopen.
+  useEffect(() => {
+    setModus(null);
+  }, [tab]);
+
+  // Sneltoetsen. De afhandeling staat in een ref zodat de luisteraar zelf
+  // stabiel blijft en toch altijd de verse toestand ziet.
+  const toetsRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  toetsRef.current = (e: KeyboardEvent) => {
+    if (!open || tab !== "samenstelling") return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const doel = e.target as HTMLElement | null;
+    const inVeld =
+      !!doel &&
+      (doel.tagName === "INPUT" || doel.tagName === "SELECT" || doel.tagName === "TEXTAREA" || doel.isContentEditable);
+    const pak = () => {
+      e.preventDefault();
+      // Escape mag hier niet doorlopen naar Modal — die zou de hele editor sluiten.
+      e.stopPropagation();
+    };
+    const m = modus;
+    if (m) {
+      if (e.key === "Escape") {
+        pak();
+        annuleerModus();
+        return;
+      }
+      // Staat de aandacht in een invoerveld, dan is de gebruiker daar aan het
+      // typen; alleen Escape onderbreekt dan de modus.
+      if (inVeld) return;
+      if (e.key === "Enter") {
+        pak();
+        bevestigModus();
+        return;
+      }
+      if (m.soort === "verplaats" && (e.key === "y" || e.key === "Y" || e.key === "z" || e.key === "Z")) {
+        pak();
+        const as = e.key.toLowerCase() === "y" ? "y" : "z";
+        zetModus({ ...m, asSlot: m.asSlot === as ? null : as });
+        return;
+      }
+      if (/^[0-9]$/.test(e.key) || e.key === "-" || e.key === "," || e.key === ".") {
+        pak();
+        zetModus({ ...m, getypt: (m.getypt ?? "") + (e.key === "," ? "." : e.key) });
+        return;
+      }
+      if (e.key === "Backspace") {
+        pak();
+        const rest = m.getypt && m.getypt.length > 1 ? m.getypt.slice(0, -1) : null;
+        zetModus({ ...m, getypt: rest });
+        return;
+      }
+      return;
+    }
+    if (inVeld) return;
+    if (e.key === "g" || e.key === "G") {
+      pak();
+      startModus("verplaats");
+      return;
+    }
+    if (e.key === "r" || e.key === "R") {
+      pak();
+      startModus("roteer");
+    }
+  };
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => toetsRef.current(e);
+    // In de opvangfase, zodat Escape de Modal niet ook nog sluit.
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, []);
+
+  /** Wat de modus in het tekenvlak laat zien. */
+  const tekenvlakModus: TekenvlakModus | null = useMemo(() => {
+    if (!modus) return null;
+    const wat = modus.doelId ? (naamVanBouwsteen(samenstelling, modus.doelId) ?? "bouwsteen") : "hele ontwerp";
+    const getypt = modus.getypt ? `  ⌨ ${modus.getypt}` : "";
+    if (modus.soort === "verplaats") {
+      const slot = modus.asSlot ? `  [${modus.asSlot}-as]` : "";
+      return {
+        soort: "verplaats",
+        regel: `Verplaatsen (${wat}): Δy = ${fmtMaat(modus.dy, 3)} mm, Δz = ${fmtMaat(modus.dz, 3)} mm${slot}${getypt}`,
+        bediening:
+          "muis verplaatst · cijfers typen = maat · Y of Z vergrendelt een as · Shift = vrij van het raster · Enter bevestigt · Esc annuleert",
+        anker: modus.anker,
+        asSlot: modus.asSlot,
+      };
+    }
+    return {
+      soort: "roteer",
+      regel: `Roteren (${wat}): φ = ${fmtMaat(modus.graden, 3)}°${getypt}`,
+      bediening: `muis draait om het ankerpunt · cijfers typen = hoek · Shift = vrij (anders stappen van ${HOEKSTAP_GRADEN}°) · Enter bevestigt · Esc annuleert`,
+      anker: modus.anker,
+    };
+  }, [modus, samenstelling]);
+
   // ── Opslaan ─────────────────────────────────────────────────────────────
   const kanOpslaan = !!motor.uitvoer && !motor.verouderd && !motor.fout && naam.trim().length > 0 && invoer !== null;
   const slaOp = () => {
@@ -262,12 +537,25 @@ export default function ProfielEditor({
         <div className="pe-kolommen">
           <div className="pe-kolom pe-kolom-links">
             {tab === "samenstelling" ? (
-              <SamenstellingPaneel
-                ontwerp={samenstelling}
-                onWijzig={setSamenstelling}
-                geselecteerd={geselecteerd}
-                onSelecteer={setGeselecteerd}
-              />
+              <>
+                <TransformPaneel
+                  doelNaam={doelNaam}
+                  aantal={aantal}
+                  draaipunt={draaipunt}
+                  draaipuntUitMotor={!!motor.uitvoer}
+                  modus={modus?.soort ?? null}
+                  onVerplaats={verplaatsNu}
+                  onRoteer={roteerNu}
+                  onSpiegel={spiegelNu}
+                  onStart={startModus}
+                />
+                <SamenstellingPaneel
+                  ontwerp={samenstelling}
+                  onWijzig={setSamenstelling}
+                  geselecteerd={geselecteerd}
+                  onSelecteer={setGeselecteerd}
+                />
+              </>
             ) : (
               <GatPaneel
                 ontwerp={gatOntwerp}
@@ -287,6 +575,9 @@ export default function ProfielEditor({
               onSleepStart={opSleepStart}
               onSleep={opSleep}
               onSleepEinde={opSleepEinde}
+              modus={tekenvlakModus}
+              onModusMuis={opModusMuis}
+              onModusBevestig={bevestigModus}
             />
           </div>
           <div className="pe-kolom pe-kolom-rechts">

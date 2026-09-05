@@ -405,6 +405,45 @@
   background: var(--theme-dialog-bg, var(--theme-bg));
 }
 
+/* ── Verplaats-/roteermodus in het tekenvlak ──────────────────────────── */
+.pe-tekenvlak.pe-modus,
+.pe-tekenvlak.pe-modus .pe-materiaal,
+.pe-tekenvlak.pe-modus .pe-gat {
+  cursor: crosshair;
+}
+.pe-modus-laag { pointer-events: none; }
+.pe-modus-lijn {
+  stroke: var(--theme-accent);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+}
+.pe-modus-anker {
+  fill: none;
+  stroke: var(--theme-accent);
+  stroke-width: 1.4;
+}
+.pe-modus-band {
+  fill: var(--theme-accent);
+  opacity: 0.94;
+}
+.pe-modus-regel {
+  fill: var(--theme-accent-text, #fff);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+.pe-modus-bediening {
+  fill: var(--theme-accent-text, #fff);
+  font-size: 9px;
+  opacity: 0.85;
+}
+
+/* Twee knoppen die als één veld in het rooster staan. */
+.pe-knoppen-strak {
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
 /* Zoomregelaar in het tekenvlak. */
 .pe-knopvlak {
   fill: var(--theme-bg, #fff);

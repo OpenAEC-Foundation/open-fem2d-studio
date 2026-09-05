@@ -30,6 +30,22 @@ const MARGE_RECHTS = 36;
 const MARGE_BOVEN = 44;
 const MARGE_ONDER = 30;
 
+/**
+ * Een lopende verplaats- of roteermodus (G/R). Het tekenvlak tekent hem en
+ * meldt de muis; het rekenwerk en de tekst staan in ProfielEditor.
+ */
+export interface TekenvlakModus {
+  soort: "verplaats" | "roteer";
+  /** Wat er nu gebeurt, bijvoorbeeld "Verplaatsen: Δy = 40 mm, Δz = −20 mm". */
+  regel: string;
+  /** Tweede regel met de bediening. */
+  bediening: string;
+  /** Draai- of ankerpunt in modelcoördinaten. */
+  anker: { y: number; z: number };
+  /** Vergrendelde as bij verplaatsen (tekent de hulplijn). */
+  asSlot?: "y" | "z" | null;
+}
+
 interface Props {
   ontwerp: DoorsnedeOntwerp;
   uitvoer: MotorUitvoer | null;
@@ -45,6 +61,15 @@ interface Props {
    */
   onSleep: (id: string, dy: number, dz: number, stap: number) => void;
   onSleepEinde: () => void;
+  /** Lopende verplaats-/roteermodus, of null. */
+  modus?: TekenvlakModus | null;
+  /**
+   * Muis in modelcoördinaten tijdens een modus. `stap` is de rasterstap die
+   * in beeld staat, `vrij` betekent dat Shift ingedrukt is (niet snappen).
+   */
+  onModusMuis?: (y: number, z: number, stap: number, vrij: boolean) => void;
+  /** Klikken in het tekenvlak tijdens een modus bevestigt. */
+  onModusBevestig?: () => void;
 }
 
 /** Zoomgrenzen ten opzichte van passend in beeld. */
@@ -68,6 +93,9 @@ export default function DoorsnedeTekenvlak({
   onSleepStart,
   onSleep,
   onSleepEinde,
+  modus = null,
+  onModusMuis,
+  onModusBevestig,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const sleep = useRef<{ id: string; x0: number; y0: number } | null>(null);
@@ -78,6 +106,8 @@ export default function DoorsnedeTekenvlak({
   // passend; het beeld staat daarop tot de gebruiker eraan draait.
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  /** Muis in schermcoördinaten tijdens een modus (voor de hulplijn). */
+  const [muisScherm, setMuisScherm] = useState<{ x: number; y: number } | null>(null);
 
   const items = useMemo(() => tekenItems(ontwerp, uitvoer?.delen ?? []), [ontwerp, uitvoer]);
   const kader = useMemo(() => omhullende(ontwerp, uitvoer?.delen ?? []), [ontwerp, uitvoer]);
@@ -156,6 +186,12 @@ export default function DoorsnedeTekenvlak({
 
   const opItemDown = (id: string, sleepbaar: boolean) => (e: ReactPointerEvent) => {
     e.stopPropagation();
+    // Tijdens een verplaats-/roteermodus bevestigt elke klik; selecteren en
+    // slepen zijn dan niet aan de beurt.
+    if (modus) {
+      onModusBevestig?.();
+      return;
+    }
     onSelecteer(id);
     if (!sleepbaar) return;
     const p = naarViewBox(e);
@@ -166,6 +202,10 @@ export default function DoorsnedeTekenvlak({
 
   /** Slepen op de achtergrond verschuift het beeld. */
   const opVlakDown = (e: ReactPointerEvent) => {
+    if (modus) {
+      onModusBevestig?.();
+      return;
+    }
     onSelecteer(null);
     const p = naarViewBox(e);
     schuif.current = { x0: p.x, y0: p.y, panX: pan.x, panY: pan.y };
@@ -173,6 +213,12 @@ export default function DoorsnedeTekenvlak({
   };
 
   const opMove = (e: ReactPointerEvent) => {
+    if (modus) {
+      const p = naarViewBox(e);
+      setMuisScherm({ x: p.x, y: p.y });
+      onModusMuis?.((p.x - ox) / s, (oy - p.y) / s, stap, e.shiftKey);
+      return;
+    }
     if (schuif.current) {
       const p = naarViewBox(e);
       setPan({
@@ -232,7 +278,7 @@ export default function DoorsnedeTekenvlak({
   return (
     <svg
       ref={svgRef}
-      className={`pe-tekenvlak${verouderd ? " verouderd" : ""}`}
+      className={`pe-tekenvlak${verouderd ? " verouderd" : ""}${modus ? " pe-modus" : ""}`}
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="xMidYMid meet"
       onPointerDown={opVlakDown}
@@ -373,6 +419,49 @@ export default function DoorsnedeTekenvlak({
       >
         h = {fmtMaat(bh)} mm
       </text>
+
+      {/* Verplaats-/roteermodus: ankerpunt, hulplijn en de regel in beeld. */}
+      {modus && (
+        <g className="pe-modus-laag">
+          {modus.soort === "roteer" && muisScherm && (
+            <line
+              x1={X(modus.anker.y)}
+              y1={Y(modus.anker.z)}
+              x2={muisScherm.x}
+              y2={muisScherm.y}
+              className="pe-modus-lijn"
+            />
+          )}
+          {modus.soort === "verplaats" && modus.asSlot === "y" && (
+            <line x1={0} y1={Y(modus.anker.z)} x2={W} y2={Y(modus.anker.z)} className="pe-modus-lijn" />
+          )}
+          {modus.soort === "verplaats" && modus.asSlot === "z" && (
+            <line x1={X(modus.anker.y)} y1={0} x2={X(modus.anker.y)} y2={H} className="pe-modus-lijn" />
+          )}
+          <circle cx={X(modus.anker.y)} cy={Y(modus.anker.z)} r={5} className="pe-modus-anker" />
+          <line
+            x1={X(modus.anker.y) - 9}
+            y1={Y(modus.anker.z)}
+            x2={X(modus.anker.y) + 9}
+            y2={Y(modus.anker.z)}
+            className="pe-modus-anker"
+          />
+          <line
+            x1={X(modus.anker.y)}
+            y1={Y(modus.anker.z) - 9}
+            x2={X(modus.anker.y)}
+            y2={Y(modus.anker.z) + 9}
+            className="pe-modus-anker"
+          />
+          <rect x={0} y={0} width={W} height={32} className="pe-modus-band" />
+          <text x={W / 2} y={14} className="pe-modus-regel" textAnchor="middle">
+            {modus.regel}
+          </text>
+          <text x={W / 2} y={26} className="pe-modus-bediening" textAnchor="middle">
+            {modus.bediening}
+          </text>
+        </g>
+      )}
     </svg>
   );
 }
