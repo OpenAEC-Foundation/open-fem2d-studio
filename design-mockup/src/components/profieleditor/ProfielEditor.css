@@ -51,8 +51,10 @@
   padding: 8px 10px;
   gap: 8px;
 }
+/* De bewerkingen staan in de balk bovenin, dus de linkerkolom mag smaller;
+   die ruimte gaat naar het tekenvlak. */
 .pe-kolom-links {
-  flex: 0 0 300px;
+  flex: 0 0 254px;
   border-right: 1px solid var(--theme-border-subtle);
 }
 .pe-kolom-midden {
@@ -74,10 +76,39 @@
   color: var(--theme-text-faint);
   margin: 4px 0 2px;
 }
-.pe-hint {
+/* Kop met de knoppen die erbij horen op dezelfde regel; passen ze niet, dan
+   zakt de knoppengroep als geheel naar de regel eronder. De rij blijft bij het
+   scrollen bovenaan plakken, zodat ＋ Lamel en ＋ Profiel altijd binnen bereik
+   staan — ook bij tien bouwstenen. */
+.pe-kop-rij {
+  /* top −8px: de kolom heeft 8px padding-top, en zonder die verschuiving
+     schuift er inhoud dóór de strook boven de vastgezette kop. */
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-bottom: 0;
+  padding: 13px 0 5px;
+  background: var(--theme-dialog-bg, var(--theme-bg));
+}
+.pe-kop-rij > .pe-knoppen { margin-left: auto; }
+.pe-kop-rij > span:first-child {
+  cursor: help;
+}
+/* Eén regel voor "er is hier nog niets". */
+.pe-leeg {
   font-size: 11px;
+  color: var(--theme-text-faint);
+}
+/* Maatregel van een catalogusprofiel: getallen, geen proza. */
+.pe-maatregel {
+  font-size: 10px;
+  font-family: "JetBrains Mono", Consolas, monospace;
   color: var(--theme-text-muted, var(--theme-text-faint));
-  line-height: 1.4;
+  cursor: help;
 }
 .pe-melding {
   font-size: 11px;
@@ -91,6 +122,32 @@
 .pe-melding-fout {
   border-color: var(--theme-danger-color, #dc2626);
   background: rgba(220, 38, 38, 0.08);
+}
+/* Meldingen van de motor: één regel elk, de hele zin in de tooltip. */
+.pe-meldingen {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+.pe-melding-regel {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 6px;
+  cursor: help;
+}
+.pe-melding-merk {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--theme-accent);
+}
+.pe-melding-tekst {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Lijsten van bouwstenen ───────────────────────────────────────────── */
@@ -137,9 +194,7 @@
   color: var(--theme-text-muted, var(--theme-text));
 }
 .pe-veld input,
-.pe-veld select,
-.pe-naam input,
-.pe-naam select {
+.pe-veld select {
   padding: 4px 6px;
   border: 1px solid var(--theme-border-subtle);
   border-radius: 4px;
@@ -151,8 +206,7 @@
   width: 100%;
   box-sizing: border-box;
 }
-.pe-veld input:focus,
-.pe-naam input:focus { outline: 1px solid var(--theme-accent); }
+.pe-veld input:focus { outline: 1px solid var(--theme-accent); }
 .pe-veld-vink {
   flex-direction: row;
   align-items: center;
@@ -178,7 +232,6 @@
 }
 .pe-knop:hover:not(:disabled) { border-color: var(--theme-accent); color: var(--theme-accent); }
 .pe-knop:disabled { opacity: 0.5; cursor: not-allowed; }
-.pe-knop-klein { padding: 2px 6px; font-size: 10px; }
 .pe-knop-primair {
   background: var(--theme-accent);
   border-color: var(--theme-accent);
@@ -195,29 +248,205 @@
 }
 .pe-profielkeuze select { flex: 1; }
 
-/* Startvormen */
+/* ── Gereedschapsknoppen ──────────────────────────────────────────────── */
+.pe-tknop {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg-lighter, var(--theme-bg));
+  color: var(--theme-text);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pe-tknop:hover:not(:disabled) {
+  border-color: var(--theme-accent);
+  color: var(--theme-accent);
+  background: var(--theme-hover, var(--theme-accent-soft));
+}
+.pe-tknop:disabled { opacity: 0.45; cursor: not-allowed; }
+.pe-tknop.actief {
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+  color: var(--theme-accent-text, #fff);
+  font-weight: 600;
+}
+.pe-tknop.actief:hover { color: var(--theme-accent-text, #fff); background: var(--theme-accent-hover, var(--theme-accent)); }
+.pe-tknop.actief .pe-kbd { color: inherit; border-color: currentColor; }
+.pe-tknop-icoon { padding: 0 6px; }
+.pe-tknop-kwart { padding: 0 7px; gap: 3px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; }
+.pe-tknop-toepas {
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1;
+}
+.pe-tknop-mini { height: 19px; padding: 0 5px; font-size: 10px; gap: 3px; }
+.pe-tknop-gevaar:hover:not(:disabled) {
+  border-color: var(--theme-danger-color, #dc2626);
+  color: var(--theme-danger-color, #dc2626);
+  background: rgba(220, 38, 38, 0.06);
+}
+.pe-icoon { flex: 0 0 auto; display: block; }
+.pe-kbd {
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 9px;
+  line-height: 1;
+  padding: 1px 3px;
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  color: var(--theme-text-faint);
+}
+
+/* ── Gereedschapsbalk boven de kolommen ───────────────────────────────── */
+.pe-balk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  background: var(--theme-docbar-bg, var(--theme-bg));
+  flex-shrink: 0;
+}
+.pe-balk-streep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--theme-border);
+}
+/* Wat er bewerkt wordt: altijd zichtbaar, klikbaar om de selectie op te heffen. */
+.pe-doel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  max-width: 200px;
+  padding: 0 8px;
+  border: 1px dashed var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-bg-lighter, var(--theme-bg));
+  color: var(--theme-text);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pe-doel .pe-icoon { color: var(--theme-accent); }
+.pe-doel-naam { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.pe-doel:not(:disabled):hover { border-color: var(--theme-accent); color: var(--theme-accent); }
+/* Het hele ontwerp is geen fouttoestand: de knop is dan alleen niet nodig. */
+.pe-doel:disabled { cursor: default; }
+.pe-doel:disabled .pe-doel-naam { font-weight: 400; color: var(--theme-text-muted, var(--theme-text)); }
+.pe-doel-leeg { opacity: 0.45; }
+
+/* Smal getalveld: teken vóór, eenheid ná het getal, allebei in het vakje. */
+.pe-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg-lighter, var(--theme-bg));
+}
+.pe-mini:focus-within { border-color: var(--theme-accent); }
+.pe-mini input {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--theme-text);
+  font-size: 11px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  text-align: right;
+}
+.pe-mini input:focus { outline: none; }
+.pe-mini-teken { font-size: 10px; color: var(--theme-text-muted, var(--theme-text-faint)); }
+.pe-mini-eenheid { font-size: 9px; color: var(--theme-text-faint); }
+
+/* Ankerpunt en korte melding, rechts in de balk. */
+.pe-balk-om {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  color: var(--theme-text-muted, var(--theme-text-faint));
+  white-space: nowrap;
+  cursor: help;
+}
+.pe-balk-om .pe-icoon { color: var(--theme-accent); }
+.pe-balk-melding {
+  flex: 1 1 100px;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--theme-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Startvormen: silhouet plus naam; de omschrijving zit in de tooltip. */
 .pe-presets {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
 .pe-preset {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
   text-align: left;
-  padding: 5px 7px;
+  padding: 2px 6px 2px 2px;
   border: 1px solid var(--theme-border-subtle);
   border-radius: 4px;
-  background: var(--theme-bg);
+  background: var(--theme-bg-lighter, var(--theme-bg));
   color: var(--theme-text);
   cursor: pointer;
   font-size: 11px;
+  font-family: inherit;
 }
-.pe-preset:hover { border-color: var(--theme-accent); }
-.pe-preset small {
-  display: block;
-  color: var(--theme-text-muted, var(--theme-text-faint));
+.pe-preset:hover { border-color: var(--theme-accent); color: var(--theme-accent); }
+.pe-preset-naam { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-miniatuur { flex: 0 0 auto; }
+.pe-miniatuur path {
+  fill: var(--theme-accent-soft, rgba(217, 119, 6, 0.12));
+  stroke: var(--theme-text-muted, #888);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.pe-preset:hover .pe-miniatuur path { stroke: var(--theme-accent); }
+
+/* Torsieschakelaar: één regel met de uitkomst, de uitleg in de tooltip. */
+.pe-schakelaar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 4px 6px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  font-size: 11px;
+  color: var(--theme-text);
+  cursor: pointer;
+}
+.pe-schakelaar input { width: auto; margin: 0; }
+.pe-schakelaar-status {
+  margin-left: auto;
   font-size: 10px;
-  line-height: 1.3;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  color: var(--theme-text-faint);
 }
+.pe-schakelaar-status.pe-aan { color: var(--theme-accent); }
 
 /* ── Tekenvlak ────────────────────────────────────────────────────────── */
 .pe-tekenvlak {
@@ -337,23 +566,52 @@
 /* ── Voet ─────────────────────────────────────────────────────────────── */
 .pe-voet {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   padding: 8px 10px;
   border-top: 1px solid var(--theme-border-subtle);
   flex-shrink: 0;
 }
-.pe-naam {
+/* Label vóór het veld in plaats van erboven: scheelt een regel. */
+.pe-voet-veld {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-size: 10px;
   color: var(--theme-text-muted, var(--theme-text));
 }
-.pe-naam-breed { flex: 1; }
-.pe-naam input, .pe-naam select { font-family: inherit; }
+.pe-voet-veld > span { white-space: nowrap; }
+.pe-voet-veld input,
+.pe-voet-veld select {
+  padding: 4px 6px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg-lighter, var(--theme-bg));
+  color: var(--theme-text);
+  font-size: 12px;
+  font-family: inherit;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.pe-voet-veld input:focus,
+.pe-voet-veld select:focus { outline: 1px solid var(--theme-accent); }
+.pe-voet-veld select { max-width: 280px; }
+.pe-voet-veld-breed { flex: 1; }
+.pe-voet-veld-breed input { flex: 1; }
+.pe-voet-melding {
+  align-self: center;
+  max-width: 220px;
+  font-size: 10px;
+  color: var(--theme-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
 .pe-voet-rechts {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-left: auto;
 }
@@ -436,12 +694,6 @@
   fill: var(--theme-accent-text, #fff);
   font-size: 9px;
   opacity: 0.85;
-}
-
-/* Twee knoppen die als één veld in het rooster staan. */
-.pe-knoppen-strak {
-  gap: 4px;
-  flex-wrap: nowrap;
 }
 
 /* Zoomregelaar in het tekenvlak. */

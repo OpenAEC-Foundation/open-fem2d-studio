@@ -17,7 +17,9 @@ function samenstelling(lamellen: Lamel[], catalogusdelen: Catalogusdeel[] = []):
 
 export interface Preset {
   id: string;
+  /** Korte naam op de knop; het paneel toont hem naast een silhouet. */
   label: string;
+  /** Volledige omschrijving; staat als tooltip op de knop, niet in beeld. */
   omschrijving: string;
   maak: () => DoorsnedeOntwerp;
 }
@@ -36,8 +38,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "koker",
-    label: "Koker uit vier platen",
-    omschrijving: "200×200, wanden 10 — gesloten cel (Bredt)",
+    label: "Koker",
+    omschrijving: "Vier platen, 200×200, wanden 10 — gesloten cel (Bredt)",
     maak: () =>
       samenstelling([
         lamel(200, 10, 0, 95),
@@ -54,14 +56,14 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "hoek",
-    label: "Hoekprofiel L",
-    omschrijving: "100×100×10, scherpe hoek",
+    label: "Hoek L",
+    omschrijving: "Hoekprofiel 100×100×10, scherpe hoek",
     maak: () => samenstelling([lamel(100, 10, 5, 50, 90), lamel(90, 10, 55, 5)]),
   },
   {
     id: "sfb",
-    label: "SFB-ligger (geïntegreerd)",
-    omschrijving: "HEB 200 met onderplaat 400×15 — de vloer rust op de plaatranden",
+    label: "SFB-ligger",
+    omschrijving: "Geïntegreerde ligger: HEB 200 met onderplaat 400×15 — de vloer rust op de plaatranden",
     maak: () => {
       const p = basisprofielVan("HEB 200");
       if (!p) return samenstelling([]);
@@ -77,8 +79,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "dubbel-unp",
-    label: "Twee UNP 200 rug-aan-rug",
-    omschrijving: "Catalogusdelen, gespiegeld om de z-as",
+    label: "2× UNP 200",
+    omschrijving: "Twee UNP 200 rug aan rug — catalogusdelen, gespiegeld om de z-as",
     maak: () => {
       const p = basisprofielVan("UNP 200");
       if (!p) return samenstelling([]);

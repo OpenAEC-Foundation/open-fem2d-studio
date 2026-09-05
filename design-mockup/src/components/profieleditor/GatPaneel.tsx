@@ -13,10 +13,24 @@ import {
 } from "../../lib/profieleditor/geometrie";
 import { fmtMaat } from "../../lib/profieleditor/format";
 import { nieuwId } from "../../lib/profieleditor/id";
-import type { DoorsnedeOntwerp, Gat, GatPlaats } from "../../lib/profieleditor/types";
+import type { Basisprofiel, DoorsnedeOntwerp, Gat, GatPlaats } from "../../lib/profieleditor/types";
 import GetalVeld from "./GetalVeld";
 
 type GatOntwerp = Extract<DoorsnedeOntwerp, { soort: "gat" }>;
+
+/**
+ * Knopnaam voor een plaats: zonder het "door het/de"-voorvoegsel, zodat de
+ * drie ＋-knoppen naast de kop passen. De volledige plaats staat in de tooltip
+ * en op de gatkaart zelf.
+ */
+function knopNaam(plaats: GatPlaats, basis: Basisprofiel): string {
+  if (plaats === "vlak") return "langsgat";
+  return plaatsLabel(plaats, basis).replace(/^door (het|de) /, "");
+}
+
+const GAT_UITLEG =
+  "Een gat door een plaat laat in het doorsnedevlak een spleet over de volle plaatdikte achter: de netto " +
+  "doorsnede ter plaatse van het gat. Een lijfgat splitst de doorsnede in twee T's — I_w vervalt dan en I_t telt op.";
 
 interface Props {
   ontwerp: GatOntwerp;
@@ -58,6 +72,7 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
       <div className="pe-profielkeuze">
         <select
           value={reeks}
+          title="Profielreeks"
           onChange={(e) => {
             const eerste = profielenVanReeks(e.target.value)[0];
             if (eerste) kiesProfiel(eerste);
@@ -65,20 +80,37 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
         >
           {REEKSEN.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
         </select>
-        <select value={basis.naam} onChange={(e) => kiesProfiel(e.target.value)}>
+        <select value={basis.naam} title="Profielmaat" onChange={(e) => kiesProfiel(e.target.value)}>
           {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </div>
-      <div className="pe-hint">
+      <div className="pe-maatregel" title="Buitenmaten en wanddikten van het gekozen catalogusprofiel.">
         h = {fmtMaat(basis.h)} · b = {fmtMaat(basis.b)} · t_w = {fmtMaat(basis.tw)} · t_f = {fmtMaat(basis.tf)} · r = {fmtMaat(basis.r)} mm
       </div>
 
-      <div className="pe-kop">Gaten</div>
-      <div className="pe-hint">
-        Een gat door een plaat laat in het doorsnedevlak een spleet over de volle plaatdikte achter:
-        de netto doorsnede ter plaatse van het gat. Een lijfgat splitst de doorsnede in twee T's
-        (I_w vervalt dan; I_t telt op).
+      {/*
+        De uitleg over wat een gat met de doorsnede doet staat in de tooltip
+        van de kop én van elke ＋-knop: uit beeld, niet uit de app.
+      */}
+      <div className="pe-kop pe-kop-rij">
+        <span title={GAT_UITLEG}>Gaten{ontwerp.gaten.length > 0 ? ` (${ontwerp.gaten.length})` : ""}</span>
+        <span className="pe-knoppen">
+          {plaatsen.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className="pe-tknop pe-tknop-mini"
+              onClick={() => voegToe(p)}
+              title={`Gat ${plaatsLabel(p, basis)} toevoegen. ${GAT_UITLEG}`}
+            >
+              ＋ {knopNaam(p, basis)}
+            </button>
+          ))}
+        </span>
       </div>
+
+      {ontwerp.gaten.length === 0 && <div className="pe-leeg">Nog geen gaten — voeg er hierboven een toe.</div>}
+
       <div className="pe-lijst">
         {ontwerp.gaten.map((g, i) => {
           const fout = controleerGat(g, basis);
@@ -95,7 +127,7 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
                 <span>
                   Gat {i + 1} <span className="pe-item-sub">{plaatsLabel(g.plaats, basis)}</span>
                 </span>
-                <button className="pe-knop pe-knop-klein pe-knop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(g.id); }} title="Verwijderen">
+                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(g.id); }} title="Dit gat verwijderen">
                   ✕
                 </button>
               </div>
@@ -158,13 +190,6 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
             </div>
           );
         })}
-      </div>
-      <div className="pe-knoppen">
-        {plaatsen.map((p) => (
-          <button key={p} className="pe-knop" onClick={() => voegToe(p)}>
-            ＋ Gat {plaatsLabel(p, basis)}
-          </button>
-        ))}
       </div>
     </>
   );

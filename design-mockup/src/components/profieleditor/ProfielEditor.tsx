@@ -27,10 +27,15 @@ import {
   aantalBouwstenen,
   hartVan,
   naamVanBouwsteen,
+  naamVanGat,
   normaliseerHoek,
   roteer,
+  roteerGaten,
   spiegel,
+  spiegelGaten,
   verplaats,
+  verplaatsGaten,
+  type GatBewerking,
   type Punt2,
 } from "../../lib/profieleditor/transformeren";
 import type { DoorsnedeOntwerp, EigenDoorsnede } from "../../lib/profieleditor/types";
@@ -40,8 +45,8 @@ import DoorsnedeTekenvlak, { type TekenvlakModus } from "./DoorsnedeTekenvlak";
 import EigenDoorsnedeTekening from "./EigenDoorsnedeTekening";
 import EigenschappenPaneel from "./EigenschappenPaneel";
 import GatPaneel from "./GatPaneel";
+import GereedschapsBalk, { type TransformSoort } from "./GereedschapsBalk";
 import SamenstellingPaneel from "./SamenstellingPaneel";
-import TransformPaneel, { type TransformSoort } from "./TransformPaneel";
 import "./ProfielEditor.css";
 
 type Tab = "samenstelling" | "gat" | "bewaard";
@@ -344,26 +349,73 @@ export default function ProfielEditor({
     [modus, zetModus],
   );
 
-  // Directe bewerkingen uit het paneel (geen modus).
+  /**
+   * Wat de laatste bewerking te melden had, kort, voor in de gereedschapsbalk:
+   * de melding van een gat-bewerking ("Een gat in het lijf schuift alleen
+   * omhoog en omlaag."), of de aantekening dat er om de oorsprong gedraaid is
+   * omdat de motor nog geen zwaartepunt had.
+   */
+  const [transformMelding, setTransformMelding] = useState<string | null>(null);
+  /** Melding zetten voor een draaiing of spiegeling om het ontwerp als geheel. */
+  const meldAnker = useCallback(() => {
+    setTransformMelding(
+      doelId === null && !motor.uitvoer
+        ? "Om de oorsprong (0, 0) — de motor had nog geen zwaartepunt."
+        : null,
+    );
+  }, [doelId, motor.uitvoer]);
+
+  // Directe bewerkingen uit de gereedschapsbalk (geen muismodus).
   const verplaatsNu = useCallback(
-    (dy: number, dz: number) => setSamenstelling((o) => verplaats(o, doelId, dy, dz)),
+    (dy: number, dz: number) => {
+      setTransformMelding(null);
+      setSamenstelling((o) => verplaats(o, doelId, dy, dz));
+    },
     [doelId],
   );
   const roteerNu = useCallback(
     (graden: number) => {
       const om = draaipunt;
+      meldAnker();
       setSamenstelling((o) => roteer(o, doelId, graden, om));
     },
-    [doelId, draaipunt],
+    [doelId, draaipunt, meldAnker],
   );
   const spiegelNu = useCallback(() => {
     const om = draaipunt;
+    meldAnker();
     setSamenstelling((o) => spiegel(o, doelId, om));
-  }, [doelId, draaipunt]);
+  }, [doelId, draaipunt, meldAnker]);
+
+  // ── Dezelfde bewerkingen op de gaten van een catalogusprofiel ───────────
+  // Een gat is niet vrij: het zit vast aan zijn plaat of aan de omtrek. De
+  // bewerkingen doen wat kan en zeggen wat niet kon; die melding komt kort in
+  // de gereedschapsbalk te staan.
+  const gatDoelId = useMemo(
+    () => (geselecteerd && naamVanGat(gatOntwerp, geselecteerd) ? geselecteerd : null),
+    [geselecteerd, gatOntwerp],
+  );
+  const pasGatBewerkingToe = useCallback((b: GatBewerking) => {
+    setGatOntwerp((o) => ({ ...o, gaten: b.gaten }));
+    setTransformMelding(b.melding);
+  }, []);
+  const verplaatsGatenNu = useCallback(
+    (dy: number, dz: number) => pasGatBewerkingToe(verplaatsGaten(gatOntwerp, gatDoelId, dy, dz)),
+    [gatOntwerp, gatDoelId, pasGatBewerkingToe],
+  );
+  const roteerGatenNu = useCallback(
+    (graden: number) => pasGatBewerkingToe(roteerGaten(gatOntwerp, gatDoelId, graden)),
+    [gatOntwerp, gatDoelId, pasGatBewerkingToe],
+  );
+  const spiegelGatenNu = useCallback(
+    () => pasGatBewerkingToe(spiegelGaten(gatOntwerp, gatDoelId)),
+    [gatOntwerp, gatDoelId, pasGatBewerkingToe],
+  );
 
   // Een tabwissel laat een halve bewerking niet doorlopen.
   useEffect(() => {
     setModus(null);
+    setTransformMelding(null);
   }, [tab]);
 
   // Sneltoetsen. De afhandeling staat in een ref zodat de luisteraar zelf
@@ -457,6 +509,72 @@ export default function ProfielEditor({
     };
   }, [modus, samenstelling]);
 
+  // ── Wat de gereedschapsbalk laat zien en aanroept ───────────────────────
+  // De twee tabbladen delen de balk maar niet de wiskunde: een samenstelling
+  // draait vrij om een punt, een gat zit vast aan zijn plaat. Alles wat per
+  // tabblad verschilt — de naam van het doel, het ankerpunt en de reden waarom
+  // iets niet kan — wordt hier bepaald en gaat als tekst mee naar de balk.
+  const balk = (() => {
+    if (tab === "gat") {
+      const n = gatOntwerp.gaten.length;
+      const naam = gatDoelId ? naamVanGat(gatOntwerp, gatDoelId) : null;
+      const leegReden = n === 0 ? "Er is nog geen gat om te bewerken: voeg er links een toe." : null;
+      return {
+        doelKort: n === 0 ? "geen gaten" : (naam ?? `alle gaten (${n})`),
+        doelTitel:
+          leegReden ??
+          (naam
+            ? `Doel: ${naam}. Klik hier — of naast de doorsnede — om de selectie op te heffen en alle gaten tegelijk te bewerken.`
+            : `Doel: alle ${n} gaten. Klik een gat in de tekening of in de lijst aan om alleen dat gat te bewerken.`),
+        kanLoslaten: naam !== null,
+        leegReden,
+        ankerKort: "profielhartlijn",
+        ankerUitleg:
+          "Spiegelen gaat om de verticale hartlijn van het profiel. Een gat blijft verder in zijn eigen plaat: verplaatsen schuift het langs die plaat, draaien verschuift een gat in de buiswand langs de omtrek en draait een rechthoekig langsgat mee.",
+        roteerOm:
+          "elk gat volgt zijn eigen plaats — een gat in de buiswand schuift langs de omtrek, een rechthoekig langsgat draait mee, en wat niet kan meldt de balk",
+        spiegelOm: "de verticale hartlijn van het profiel",
+        spiegelExtra: "Een gat in het lijf ligt op die hartlijn en verandert daar niet van.",
+        geenMuisModus:
+          "De muismodi G en R werken op een samenstelling; een gat versleep je rechtstreeks in het tekenvlak.",
+        onVerplaats: verplaatsGatenNu,
+        onRoteer: roteerGatenNu,
+        onSpiegel: spiegelGatenNu,
+      };
+    }
+    const leegReden =
+      aantal === 0 ? "Er is nog niets om te bewerken: kies eerst een startvorm of voeg een bouwsteen toe." : null;
+    const zwaartepuntBekend = !!motor.uitvoer;
+    const om = doelId
+      ? "zijn eigen hart"
+      : zwaartepuntBekend
+        ? `het zwaartepunt Z (${fmtMaat(draaipunt.y)}, ${fmtMaat(draaipunt.z)})`
+        : "de oorsprong (0, 0)";
+    return {
+      doelKort: aantal === 0 ? "geen bouwstenen" : (doelNaam ?? `hele ontwerp (${aantal})`),
+      doelTitel:
+        leegReden ??
+        (doelNaam
+          ? `Doel: ${doelNaam}. Klik hier — of naast de doorsnede — om de selectie op te heffen en weer het hele ontwerp te bewerken.`
+          : `Doel: alle ${aantal} bouwstenen. Klik een bouwsteen in de tekening of in de lijst aan om alleen die te bewerken.`),
+      kanLoslaten: doelNaam !== null,
+      leegReden,
+      ankerKort: doelId
+        ? "eigen hart"
+        : zwaartepuntBekend
+          ? `Z (${fmtMaat(draaipunt.y)}, ${fmtMaat(draaipunt.z)})`
+          : "oorsprong",
+      ankerUitleg: `Roteren en spiegelen gaan om ${om}. Eén geselecteerde bouwsteen draait om zijn eigen hart; het hele ontwerp draait om het zwaartepunt uit de motor — of om de oorsprong zolang de motor nog niets heeft teruggegeven.`,
+      roteerOm: `het doel draait om ${om}`,
+      spiegelOm: om,
+      spiegelExtra: "Een catalogusdeel klapt daarbij ook zelf om.",
+      geenMuisModus: null,
+      onVerplaats: verplaatsNu,
+      onRoteer: roteerNu,
+      onSpiegel: spiegelNu,
+    };
+  })();
+
   // ── Opslaan ─────────────────────────────────────────────────────────────
   const kanOpslaan = !!motor.uitvoer && !motor.verouderd && !motor.fout && naam.trim().length > 0 && invoer !== null;
   const slaOp = () => {
@@ -534,68 +652,74 @@ export default function ProfielEditor({
           </div>
         )
       ) : (
-        <div className="pe-kolommen">
-          <div className="pe-kolom pe-kolom-links">
-            {tab === "samenstelling" ? (
-              <>
-                <TransformPaneel
-                  doelNaam={doelNaam}
-                  aantal={aantal}
-                  draaipunt={draaipunt}
-                  draaipuntUitMotor={!!motor.uitvoer}
-                  modus={modus?.soort ?? null}
-                  onVerplaats={verplaatsNu}
-                  onRoteer={roteerNu}
-                  onSpiegel={spiegelNu}
-                  onStart={startModus}
-                />
+        <>
+          {/*
+            De gereedschapsbalk staat over de volle breedte boven de drie
+            kolommen: zo passen alle bewerkingen op één regel en houden de
+            kolommen hun volle hoogte voor de bouwstenen en de eigenschappen.
+          */}
+          <GereedschapsBalk
+            {...balk}
+            modus={modus?.soort ?? null}
+            melding={transformMelding}
+            onStart={startModus}
+            onLosLaten={() => setGeselecteerd(null)}
+          />
+          <div className="pe-kolommen">
+            <div className="pe-kolom pe-kolom-links">
+              {tab === "samenstelling" ? (
                 <SamenstellingPaneel
                   ontwerp={samenstelling}
                   onWijzig={setSamenstelling}
                   geselecteerd={geselecteerd}
                   onSelecteer={setGeselecteerd}
                 />
-              </>
-            ) : (
-              <GatPaneel
-                ontwerp={gatOntwerp}
-                onWijzig={setGatOntwerp}
+              ) : (
+                <GatPaneel
+                  ontwerp={gatOntwerp}
+                  onWijzig={setGatOntwerp}
+                  geselecteerd={geselecteerd}
+                  onSelecteer={setGeselecteerd}
+                />
+              )}
+            </div>
+            <div className="pe-kolom pe-kolom-midden">
+              <DoorsnedeTekenvlak
+                ontwerp={ontwerp}
+                uitvoer={motor.uitvoer}
+                verouderd={motor.verouderd}
                 geselecteerd={geselecteerd}
                 onSelecteer={setGeselecteerd}
+                onSleepStart={opSleepStart}
+                onSleep={opSleep}
+                onSleepEinde={opSleepEinde}
+                modus={tekenvlakModus}
+                onModusMuis={opModusMuis}
+                onModusBevestig={bevestigModus}
               />
-            )}
+            </div>
+            <div className="pe-kolom pe-kolom-rechts">
+              <EigenschappenPaneel
+                uitvoer={invoer ? motor.uitvoer : null}
+                verouderd={motor.verouderd}
+                bezig={motor.bezig}
+                fout={motor.fout ?? (gatFouten.length > 0 ? "Los eerst de gemelde gatfouten op." : null)}
+                schatting={schatting}
+              />
+            </div>
           </div>
-          <div className="pe-kolom pe-kolom-midden">
-            <DoorsnedeTekenvlak
-              ontwerp={ontwerp}
-              uitvoer={motor.uitvoer}
-              verouderd={motor.verouderd}
-              geselecteerd={geselecteerd}
-              onSelecteer={setGeselecteerd}
-              onSleepStart={opSleepStart}
-              onSleep={opSleep}
-              onSleepEinde={opSleepEinde}
-              modus={tekenvlakModus}
-              onModusMuis={opModusMuis}
-              onModusBevestig={bevestigModus}
-            />
-          </div>
-          <div className="pe-kolom pe-kolom-rechts">
-            <EigenschappenPaneel
-              uitvoer={invoer ? motor.uitvoer : null}
-              verouderd={motor.verouderd}
-              bezig={motor.bezig}
-              fout={motor.fout ?? (gatFouten.length > 0 ? "Los eerst de gemelde gatfouten op." : null)}
-              schatting={schatting}
-            />
-          </div>
-        </div>
+        </>
       )}
 
       {tab !== "bewaard" && (
         <div className="pe-voet">
-          <label className="pe-naam pe-naam-breed">
-            <span>Naam van de doorsnede{bewerkId ? " (bewerken)" : ""}</span>
+          {/* Labels staan vóór het veld in plaats van erboven: één regel in
+              plaats van twee, en de uitleg zit in de tooltip. */}
+          <label
+            className="pe-voet-veld pe-voet-veld-breed"
+            title={bewerkId ? "Naam van de doorsnede die je nu bewerkt." : "Onder deze naam komt de doorsnede in de lijst en op de staaf."}
+          >
+            <span>Naam{bewerkId ? " (bewerken)" : ""}</span>
             <input
               type="text"
               value={naam}
@@ -603,8 +727,15 @@ export default function ProfielEditor({
               onChange={(e) => setNaam(e.target.value)}
             />
           </label>
-          <label className="pe-naam" title="Welk blad van tabel 5.2 de toetsing gebruikt als de doorsnede als eigenschappen meegaat.">
-            <span>Vorm voor de toetsing{alsLamellen ? " (uit lamellen afgeleid)" : ""}</span>
+          <label
+            className="pe-voet-veld"
+            title={
+              alsLamellen
+                ? "De doorsnede gaat als geometrie naar de toetsing; die leidt de vorm zelf uit de lamellen af."
+                : "Welk blad van tabel 5.2 de toetsing gebruikt als de doorsnede als eigenschappen meegaat."
+            }
+          >
+            <span>Vorm{alsLamellen ? " (uit lamellen)" : ""}</span>
             <select
               value={vormKeuze}
               disabled={alsLamellen}
@@ -615,11 +746,20 @@ export default function ProfielEditor({
             </select>
           </label>
           <div className="pe-voet-rechts">
-            {melding && <span className="pe-hint" style={{ alignSelf: "center" }}>{melding}</span>}
-            {bewerkId && <button className="pe-knop" onClick={nieuw}>Nieuw</button>}
-            <button className="pe-knop" onClick={onClose}>Sluiten</button>
-            <button className="pe-knop pe-knop-primair" disabled={!kanOpslaan} onClick={slaOp} title={kanOpslaan ? "Bewaar de doorsnede met de berekende eigenschappen" : "Geef een naam en wacht tot de motor klaar is"}>
-              {bewerkId ? "Opslaan" : "Bewaren als eigen doorsnede"}
+            {melding && <span className="pe-voet-melding" title={melding}>{melding}</span>}
+            {bewerkId && (
+              <button className="pe-knop" onClick={nieuw} title="Begin een nieuwe doorsnede; de bewaarde blijft staan">
+                Nieuw
+              </button>
+            )}
+            <button className="pe-knop" onClick={onClose} title="Sluit de profieleditor">Sluiten</button>
+            <button
+              className="pe-knop pe-knop-primair"
+              disabled={!kanOpslaan}
+              onClick={slaOp}
+              title={kanOpslaan ? "Bewaar de doorsnede met de berekende eigenschappen" : "Geef eerst een naam en wacht tot de motor klaar is"}
+            >
+              {bewerkId ? "Opslaan" : "Bewaren"}
             </button>
           </div>
         </div>
