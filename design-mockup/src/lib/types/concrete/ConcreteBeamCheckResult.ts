@@ -13,6 +13,24 @@ export type ConcreteBeamCheckResult = { beam_id: number,
  */
 section_name: string, 
 /**
+ * De aannamen die bij DEZE DOORSNEDEVORM horen, woordelijk uit
+ * [`nen_en_1992_1_1::section::ConcreteSection::assumptions`]. Leeg bij een
+ * rechthoek.
+ *
+ * Dezelfde teksten staan óók vooraan in de `notes` van elke toets — daar
+ * horen ze, want ze gelden voor die toets. Maar een rapport dat ze per
+ * toets herhaalt, laat een lezer twee of drie keer dezelfde alinea zien en
+ * maakt niet zichtbaar dát het aannamen zijn. Met dit veld weet het rapport
+ * welke notes vormaannamen zijn, en kan het ze één keer tonen. Op tekst
+ * matchen zou breken zodra de kern één woord wijzigt.
+ *
+ * De tekst is de kernbron en mag niet vertaald of geherformuleerd worden:
+ * dat een L in dit uniaxiale model exact een T is omdat de zijdelingse
+ * kromming VERHINDERD wordt verondersteld, en dat de norm daar geen apart
+ * artikel voor geeft, is geen zin die in een tweede versie mag bestaan.
+ */
+shape_assumptions: Array<string>, 
+/**
  * Betonsterkteklasse, bijv. "C30/37".
  */
 concrete_class: string, 

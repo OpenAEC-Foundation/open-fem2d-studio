@@ -36,6 +36,8 @@ import { breedteOpHoogteMm, asAfstandMm } from "../../beton/wapeningskorf";
 import type { ConcreteBeamCheckResult } from "../../../lib/types/concrete/ConcreteBeamCheckResult";
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
 import type { RebarRow } from "../../../lib/types/concrete/RebarRow";
+import type { BeffStaafUitkomst } from "../../../lib/beffLiggerlijn";
+import BeffAfleiding, { BEFF_REPORT_CSS } from "../BeffAfleiding";
 import DoorsnedeTekening from "../../beton/DoorsnedeTekening";
 import MNKappaGrafiek from "../../beton/MNKappaGrafiek";
 import InteractieGrafiek from "../../beton/InteractieGrafiek";
@@ -124,13 +126,20 @@ function mnKappaToets(r: ConcreteBeamCheckResult): CheckCalc | null {
 function BetonStaafBlok({
   r,
   korfUitModel,
+  beff,
 }: {
   r: ConcreteBeamCheckResult;
   korfUitModel: ReinforcementCage | undefined;
+  /** De b_eff-afleiding van deze staaf, of `undefined` bij een rechthoek. */
+  beff: BeffStaafUitkomst | undefined;
 }) {
   const { t } = useTranslation("ribbon");
   const fout = r.checks.length === 0 || r.governing_check_id.startsWith("ERROR:");
   const korf = korfVoorTekening(r, korfUitModel);
+  // De doorsnede zoals de KERN hem heeft gebruikt — bij een T of L draagt die
+  // de b_eff waarmee gerekend is, en niet de ingevoerde flensbreedte.
+  const vorm = parseSectionNaam(r.section_name);
+  const heeftFlens = vorm !== null && vorm.shape !== "Rectangle";
   const mn = mnKappaToets(r);
   const diagram = r.mn_kappa;
 
@@ -222,9 +231,33 @@ function BetonStaafBlok({
                   <td>{r.reinforcement_grade}</td>
                 </tr>
                 <tr>
-                  <th>{t("report.betonAfmetingen", "Doorsnede b × h")}</th>
+                  <th>
+                    {heeftFlens
+                      ? t("report.betonAfmetingenFlens", "Doorsnede b_eff × h")
+                      : t("report.betonAfmetingen", "Doorsnede b × h")}
+                  </th>
                   <td>{r.section_name} mm</td>
                 </tr>
+                {/* Bij een T of L is de eerste maat de flensbreedte waarmee
+                    gerekend is; zonder het lijf en de flensdikte erbij is de
+                    doorsnede uit die ene regel niet na te tekenen. */}
+                {heeftFlens && vorm && (
+                  <>
+                    <tr>
+                      <th>{t("report.betonLijfbreedte", "Lijfbreedte b_w")}</th>
+                      <td>{fmtValue(vorm.b_w_mm ?? 0, 0)} mm</td>
+                    </tr>
+                    <tr>
+                      <th>{t("report.betonFlensdikte", "Flensdikte h_f")}</th>
+                      <td>
+                        {fmtValue(vorm.h_f_mm ?? 0, 0)} mm —{" "}
+                        {vorm.flange_at_bottom
+                          ? t("report.betonFlensOnder", "flens aan de onderzijde")
+                          : t("report.betonFlensBoven", "flens aan de bovenzijde")}
+                      </td>
+                    </tr>
+                  </>
+                )}
                 <tr>
                   <th>{t("report.betonDekking", "Dekking c")}</th>
                   <td>{korf ? `${fmtValue(korf.korf.cover_mm, 0)} mm` : "—"}</td>
@@ -274,6 +307,32 @@ function BetonStaafBlok({
               </tbody>
             </table>
           </div>
+
+          {/* De afleiding van de gebruikte b_eff. Alleen bij een T of L: bij
+              een rechthoek bestaat 5.3.2.1 niet en zou dit blok ruis zijn. */}
+          {heeftFlens && <BeffAfleiding uitkomst={beff} />}
+
+          {/* De aannamen die bij de VORM horen, woordelijk uit de rekenkern.
+              Ze staan óók vooraan in de notes van elke toets — daar horen ze,
+              want ze gelden voor die toets — maar per toets herhaald zou een
+              lezer ze twee tot drie keer zien en niet als aanname herkennen.
+              Hier staan ze één keer, en de notitielijst onderaan filtert ze
+              eruit. De tekst is NIET vertaald en niet geherformuleerd: dat een
+              L in dit model exact een T is omdat de zijdelingse kromming
+              verhinderd wordt verondersteld, en dat de norm daar geen artikel
+              voor geeft, is geen zin die in een tweede versie mag bestaan. */}
+          {r.shape_assumptions.length > 0 && (
+            <div className="rpt-bet-aannamen">
+              <p className="rpt-bet-kopje">
+                {t("report.betonAannamenKop", "Aannamen bij deze doorsnedevorm")}
+              </p>
+              <ul className="rpt-bet-aannamen-lijst">
+                {r.shape_assumptions.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* De toetsen die de kern teruggeeft, met formule en vindplaats. */}
           <p className="rpt-bet-kopje">{t("report.betonToetsKop", "Toetsen op de doorsnede")}</p>
@@ -431,18 +490,31 @@ function BetonStaafBlok({
           </div>
 
           {/* De opmerkingen van de kern: minimale excentriciteit, bezwijkwijze,
-              rekken. Die dragen de inhoud en horen niet weggelaten te worden. */}
-          {r.checks.some((c) => c.kind.data.notes.length > 0) && (
-            <ul className="rpt-bet-notes">
-              {r.checks.flatMap((named) =>
-                named.kind.data.notes.map((n, i) => (
-                  <li key={`${named.id}-${i}`}>
-                    <em>{named.kind.data.title}:</em> {n}
+              rekken. Die dragen de inhoud en horen niet weggelaten te worden.
+
+              De vormaannamen staan hier NIET meer bij: die staan al één keer
+              in het blok hierboven, woordelijk. Ze hier per toets herhalen zou
+              dezelfde alinea drie keer in één staafblok zetten. Het filter
+              vergelijkt op de tekst uit `shape_assumptions`, dus het is precies
+              dezelfde string en geen benadering. */}
+          {(() => {
+            const aannamen = new Set(r.shape_assumptions);
+            const overige = r.checks.flatMap((named) =>
+              named.kind.data.notes
+                .filter((n) => !aannamen.has(n))
+                .map((n, i) => ({ id: `${named.id}-${i}`, titel: named.kind.data.title, n })),
+            );
+            if (overige.length === 0) return null;
+            return (
+              <ul className="rpt-bet-notes">
+                {overige.map((o) => (
+                  <li key={o.id}>
+                    <em>{o.titel}:</em> {o.n}
                   </li>
-                )),
-              )}
-            </ul>
-          )}
+                ))}
+              </ul>
+            );
+          })()}
         </>
       )}
     </div>
@@ -600,6 +672,49 @@ function nietGetoetst(fysisch: boolean, creepNote: string | null): Beperking[] {
   return [...NIET_GETOETST_VOOR, tweedeOrde, ...NIET_GETOETST_MIDDEN, kruip, ...NIET_GETOETST_NA];
 }
 
+/**
+ * Wat er bij een T of L bovenop komt.
+ *
+ * Alleen tonen wanneer er werkelijk een doorsnede met flens in het rapport
+ * staat — in een rapport met alleen rechthoeken zijn dit twee alinea's over
+ * iets dat er niet is, en dat maakt het blok minder in plaats van meer
+ * geloofwaardig.
+ *
+ * De eerste vindplaats is opgezocht in de norm: **9.2.1.2(1), OPMERKING 2**
+ * luidt dat bij tussenopleggingen van doorgaande liggers de totale oppervlakte
+ * van de trekwapening A_s van een dwarsdoorsnede met flenzen gespreid behoort
+ * te zijn over de meewerkende flensbreedte (zie 5.3.2), en dat een deel ervan
+ * geconcentreerd mag zijn over de breedte van het lijf (figuur 9.1). De tweede
+ * is 5.3.2.1(4), die letterlijk in `beff.rs` staat.
+ */
+const NIET_GETOETST_FLENS: Beperking[] = [
+  {
+    artikel: "9.2.1.2(1)",
+    key: "report.betonNietSpreidingTrekwapening",
+    nl:
+      "De SPREIDING van de trekwapening over de meewerkende flensbreedte. OPMERKING 2 bij " +
+      "9.2.1.2(1) zegt dat bij tussenopleggingen van doorgaande liggers de totale " +
+      "oppervlakte van de trekwapening A_s van een doorsnede met flenzen gespreid behoort " +
+      "te zijn over de meewerkende flensbreedte (zie 5.3.2), waarbij een deel geconcentreerd " +
+      "mag zijn over de breedte van het lijf (figuur 9.1). De wapeningskorf in dit model " +
+      "kent twee rijen — één boven en één onder, elk over de breedte die op hun eigen hoogte " +
+      "aanwezig is — en kan die spreiding dus principieel niet uitdrukken. Boven een " +
+      "steunpunt is de getoetste korf daarmee een andere korf dan 9.2.1.2 voorschrijft.",
+  },
+  {
+    artikel: "5.3.2.1(4)",
+    key: "report.betonNietBeffPerSegment",
+    nl:
+      "b_eff springt NIET binnen een staaf. Er is één waarde per staaf gebruikt: die van het " +
+      "gebied waarin het staafmidden ligt. 5.3.2.1(4) staat dat toe — “voor constructieve " +
+      "berekeningen, waarin geen grote nauwkeurigheid is vereist, mag een constante breedte " +
+      "over de gehele overspanning zijn aangenomen” — maar boven een steunpunt is b_eff " +
+      "volgens figuur 5.2 aanzienlijk kleiner, en daar is de doorsnede dus TE STIJF gerekend. " +
+      "Te stijf geeft te weinig doorbuiging en te weinig tweede-orde-effect: de onveilige " +
+      "kant. De gebiedstabel per staaf laat zien hoeveel het scheelt.",
+  },
+];
+
 // ═══════════════════════════════════════════════════════════════════════
 // De sectie
 // ═══════════════════════════════════════════════════════════════════════
@@ -608,6 +723,8 @@ export default function BetonSection() {
   const { t } = useTranslation("ribbon");
   const results = useCheckStore((s) => s.results);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
+  // De b_eff-afleiding per staaf, uit dezelfde run als de toetsresultaten.
+  const beffUitkomsten = useCheckStore((s) => s.beff);
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
   const { beams } = useReportData();
   // Is er fysisch niet-lineair gerekend? Zo ja, dan is 5.8 niet overgeslagen
@@ -621,11 +738,16 @@ export default function BetonSection() {
   const getoond = beton.filter((r) => isToetsStaafZichtbaar(verborgenToetsStaven, r.beam_id));
   const weggelaten = beton.length - getoond.length;
   const checkedTime = fmtCheckedAt(lastRunAt);
+  // Staat er werkelijk een T of L in dit rapport? Bepaalt of het
+  // beperkingenblok de twee flenspunten toont. `shape_assumptions` is leeg bij
+  // een rechthoek, dus dat is de directe maat — geen naamvergelijking.
+  const heeftFlensDoorsnede = getoond.some((r) => r.shape_assumptions.length > 0);
 
   return (
     <div className="rpt-block rpt-bet">
       <style>{CHECK_REPORT_CSS}</style>
       <style>{BETON_REPORT_CSS}</style>
+      <style>{BEFF_REPORT_CSS}</style>
       <h2 className="rpt-h2">
         {t("report.sectionBeton", "Beton — doorsnede, M-κ-diagram en N-M-interactiediagram")}
       </h2>
@@ -665,6 +787,7 @@ export default function BetonSection() {
               key={r.beam_id}
               r={r}
               korfUitModel={beams.find((b) => b.id === r.beam_id)?.checkConfig?.betonKorf}
+              beff={beffUitkomsten.find((u) => u.beamId === r.beam_id)}
             />
           ))}
 
@@ -691,11 +814,20 @@ export default function BetonSection() {
                   <strong>{b.artikel}</strong> — {b.letterlijk ? b.nl : t(b.key, b.nl)}
                 </li>
               ))}
+              {/* De twee punten die alleen bij een flens spelen. In een rapport
+                  met alleen rechthoeken zijn dit alinea's over iets dat er niet
+                  is. */}
+              {heeftFlensDoorsnede &&
+                NIET_GETOETST_FLENS.map((b) => (
+                  <li key={b.artikel}>
+                    <strong>{b.artikel}</strong> — {t(b.key, b.nl)}
+                  </li>
+                ))}
               <li>
                 <strong>{t("report.betonBeperkingVormLabel", "Toepassingsgebied")}</strong> —{" "}
                 {t(
                   "report.betonBeperkingVorm",
-                  "alleen een rechthoekige doorsnede b × h met buiging om de sterke as. Scheve buiging (M_y en M_z samen) en andere doorsnedevormen worden niet getoetst.",
+                  "een rechthoek b × h, een T of een L, met buiging om de sterke as. Scheve buiging (M_y en M_z samen) en andere doorsnedevormen worden niet getoetst. Bij een T of L rust de berekening bovendien op de aannamen die per staaf bij de doorsnede staan.",
                 )}
               </li>
             </ul>
@@ -815,6 +947,27 @@ const BETON_REPORT_CSS = `
   color: #444;
 }
 .rpt-bet-notes li { margin-bottom: 0.5mm; }
+
+/* Vormaannamen: geen terzijde maar een voorwaarde waaronder de getallen
+   gelden. Een zijbalk in plaats van een kader, zodat het blok binnen het
+   staafblok blijft passen en niet met het beperkingenkader concurreert. */
+.rpt-bet-aannamen {
+  margin: 3mm 0 1mm;
+  padding: 1.5mm 0 1.5mm 3mm;
+  border-left: 0.6mm solid #64748b;
+  background: #f6f7f9;
+  break-inside: avoid;
+}
+
+.rpt-bet-aannamen .rpt-bet-kopje { margin-top: 0; }
+
+.rpt-bet-aannamen-lijst {
+  margin: 0;
+  padding-left: 4mm;
+  font-size: calc(var(--rpt-basis) * 0.8);
+  color: #333;
+}
+.rpt-bet-aannamen-lijst li { margin-bottom: 1mm; }
 
 /* Beperkingenblok: nadrukkelijk, met een kader — dit is geen terzijde maar
    een waarschuwing, en moet ook bij snel doorbladeren opvallen. */

@@ -101,6 +101,7 @@
 //! nooit een stilzwijgend getal: een verkeerde b_eff is onzichtbaar en stuurt
 //! naast de sterkte ook I_c, M_cr en de tweede orde.
 
+use nen_en_1993_1_1_section::Deelstap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -987,6 +988,37 @@ pub struct EffectiveFlangeWidthRequest {
     pub line: BeamLine,
     /// De flensmaten van figuur 5.3.
     pub flange: FlangeGeometry,
+    /// De plaats langs de liggerlijn (mm vanaf `line.start`) waarvoor de
+    /// afleiding wordt uitgeschreven — meestal het midden van de staaf die de
+    /// b_eff gaat gebruiken.
+    ///
+    /// Blijft dit veld weg, dan komt alleen de verdeling terug en is
+    /// [`EffectiveFlangeWidthResponse::applied`] leeg. Dat is geen gebrek maar
+    /// de eerlijke uitkomst: zonder plaats is er geen gebied, en zonder gebied
+    /// is er geen afleiding om op te schrijven.
+    ///
+    /// Waarom de plaats in het VERZOEK zit en niet een keten per gebied in het
+    /// antwoord: één keten per gebied maakt het antwoord voor élke aanroeper
+    /// groter, en "welk gebied geldt hier" is precies de vraag die 5.3.2.1(4)
+    /// stelt. Zo staat die vraag in het verzoek en het antwoord erop in het
+    /// antwoord.
+    #[serde(default)]
+    pub x_mm: Option<f64>,
+}
+
+/// Het gebied dat werkelijk is aangehouden, met de afleiding uitgeschreven.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct BeffApplied {
+    /// Index in [`BeffDistribution::zones`] van het gebied waarin `x_mm` valt.
+    pub zone_index: u32,
+    /// De plaats die is aangehouden, mm vanaf het lijnbegin — onveranderd
+    /// terug, zodat het rapport hem kan noemen.
+    pub x_mm: f64,
+    /// De meewerkende flensbreedte van dat gebied, mm.
+    pub b_eff_mm: f64,
+    /// De afleiding, stap voor stap. Zie [`crate::beff_deelstappen`].
+    pub deelstappen: Vec<Deelstap>,
 }
 
 /// Het antwoord: het staafnummer terug plus de verdeling.
@@ -995,6 +1027,9 @@ pub struct EffectiveFlangeWidthRequest {
 pub struct EffectiveFlangeWidthResponse {
     pub beam_id: u32,
     pub distribution: BeffDistribution,
+    /// Het aangehouden gebied met de uitgeschreven afleiding, of `None` als het
+    /// verzoek geen `x_mm` droeg.
+    pub applied: Option<BeffApplied>,
 }
 
 /// De rekengang achter alle drie de wegen. Eén implementatie, drie aanroepers.
@@ -1003,10 +1038,48 @@ pub fn effective_flange_width_request(
 ) -> Result<EffectiveFlangeWidthResponse, String> {
     let distribution =
         beff_distribution(&req.line, &req.flange).map_err(|e| e.to_string())?;
+    // Het gebied wordt met dezelfde regel gezocht als `zone_at_mm`: op een
+    // gebiedsgrens wint het linker gebied. Een plaats buiten de lijn levert
+    // geen afleiding — dan hoort de staaf niet bij deze liggerlijn, en een
+    // keten over een willekeurig gebied zou een verkeerd verhaal vertellen.
+    let applied = req.x_mm.and_then(|x| {
+        let zone_index = zone_index_at_mm(&distribution, x)?;
+        Some(BeffApplied {
+            zone_index: zone_index as u32,
+            x_mm: x,
+            b_eff_mm: distribution.zones[zone_index].b_eff_mm,
+            deelstappen: crate::beff_deelstappen::beff_deelstappen(
+                &req.line,
+                &req.flange,
+                &distribution,
+                zone_index,
+            ),
+        })
+    });
     Ok(EffectiveFlangeWidthResponse {
         beam_id: req.beam_id,
         distribution,
+        applied,
     })
+}
+
+/// De index van het gebied waarin `x_mm` valt — dezelfde keuze als
+/// [`BeffDistribution::zone_at_mm`], maar met het volgnummer erbij zodat het
+/// antwoord ernaar kan verwijzen.
+fn zone_index_at_mm(verdeling: &BeffDistribution, x_mm: f64) -> Option<usize> {
+    if verdeling.zones.is_empty() {
+        return None;
+    }
+    let eps = 1e-9 * verdeling.total_length_mm.max(1.0);
+    if x_mm < -eps || x_mm > verdeling.total_length_mm + eps {
+        return None;
+    }
+    for (i, z) in verdeling.zones.iter().enumerate() {
+        if x_mm <= z.zone.x_end_mm + eps || i + 1 == verdeling.zones.len() {
+            return Some(i);
+        }
+    }
+    Some(verdeling.zones.len() - 1)
 }
 
 // ───────────────────────────────────────────────────────────────────────────

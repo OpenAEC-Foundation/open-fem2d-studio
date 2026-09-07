@@ -49,6 +49,21 @@ fn invoer_figuur_5_2() -> Value {
     })
 }
 
+/// Het portaal uit de proef, MET een plaats: één overspanning van 12 m tussen
+/// twee kolommen, dus twee momentvaste uiteinden, en het staafmidden op
+/// x = 6000 mm. Daarmee draagt het antwoord de uitgeschreven afleiding.
+///
+/// Handberekening (figuur 5.2 en (5.7a)):
+/// l₀ = 0,7·12000 = 8400; b_i = 2000; b_eff,i = min(1240; 1680; 2000) = 1240;
+/// b_eff = 2·1240 + 300 = 2780.
+fn invoer_portaal_met_plaats() -> Value {
+    json!({
+        "line": { "spans_mm": [12000.0], "start": "Restrained", "end": "Restrained" },
+        "flange": { "b_w_mm": 300.0, "b_i_mm": [2000.0, 2000.0] },
+        "x_mm": 6000.0
+    })
+}
+
 /// Een geval dat de geldigheidsvoorwaarde van de OPMERKING bij figuur 5.2 niet
 /// haalt: de uitkraging is 2600 mm en de helft van de aangrenzende
 /// overspanning is 2500 mm.
@@ -320,6 +335,93 @@ async fn de_uitkomst_zelf_staat_vast() {
     }
     // `beam_id` stond niet in de invoer en valt op 0 terug.
     assert_eq!(uit["beam_id"], json!(0));
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// De UITGESCHREVEN AFLEIDING reist ook langs alle drie de wegen, en zij
+/// bevat de getallen van de handberekening.
+///
+/// Zonder deze test kan de keten in één weg wél en in een andere niet
+/// meekomen — precies de storing waarvoor deze hele testset bestaat. Dat de
+/// keten uit de kern komt en niet uit de frontend is juist waarom hij hier
+/// hoort: een rapport dat in de app een afleiding toont en via de MCP-server
+/// niet, is twee producten.
+#[tokio::test]
+async fn de_uitgeschreven_afleiding_gaat_langs_alle_drie_de_wegen_mee() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let invoer = invoer_portaal_met_plaats();
+    let tauri = weg_tauri(&invoer).expect("Tauri-weg");
+    let brug = weg_toetsbrug(invoer.clone()).expect("toetsbrug-weg");
+    let mcp = weg_mcp(&mut stdin, &mut reader, 603, invoer)
+        .await
+        .expect("MCP-weg");
+
+    eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
+    eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
+
+    let toegepast = &mcp["applied"];
+    assert!(!toegepast.is_null(), "`applied` ontbreekt terwijl x_mm meeging");
+    assert_eq!(toegepast["x_mm"], json!(6000.0));
+    let b_eff = toegepast["b_eff_mm"].as_f64().expect("b_eff_mm");
+    assert!((b_eff - 2780.0).abs() < 1e-9, "b_eff {b_eff} ≠ 2780");
+
+    let stappen = toegepast["deelstappen"].as_array().expect("deelstappen");
+    let ids: Vec<&str> = stappen
+        .iter()
+        .map(|d| d["id"].as_str().expect("id"))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            "beff_liggerlijn",
+            "beff_l0",
+            "beff_deel_1",
+            "beff_deel_2",
+            "beff_totaal",
+            "beff_geldigheid"
+        ]
+    );
+    // De drie getallen van de handberekening staan in de ingevulde regels.
+    let l0 = &stappen[1];
+    assert_eq!(l0["value"], json!(8400.0));
+    assert!(
+        l0["ingevuld_latex"].as_str().unwrap().contains("12000"),
+        "l0-regel toont de overspanning niet: {}",
+        l0["ingevuld_latex"]
+    );
+    assert_eq!(stappen[2]["value"], json!(1240.0));
+    assert_eq!(stappen[4]["value"], json!(2780.0));
+    // Elke stap draagt zijn vindplaats.
+    for stap in stappen {
+        let artikel = stap["article"].as_str().expect("article");
+        assert!(
+            artikel.starts_with("NEN-EN 1992-1-1"),
+            "stap {} heeft vindplaats {artikel:?}",
+            stap["id"]
+        );
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Zonder `x_mm` is er geen gebied en dus geen afleiding — langs alle drie de
+/// wegen `null`, en geen weg die zelf een plaats verzint.
+#[tokio::test]
+async fn zonder_plaats_komt_er_geen_afleiding_terug() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let uit = weg_mcp(&mut stdin, &mut reader, 604, invoer_figuur_5_2())
+        .await
+        .expect("MCP-weg");
+    assert_eq!(uit["applied"], Value::Null);
+    let tauri = weg_tauri(&invoer_figuur_5_2()).expect("Tauri-weg");
+    assert_eq!(tauri["applied"], Value::Null);
+    let brug = weg_toetsbrug(invoer_figuur_5_2()).expect("toetsbrug-weg");
+    assert_eq!(brug["applied"], Value::Null);
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

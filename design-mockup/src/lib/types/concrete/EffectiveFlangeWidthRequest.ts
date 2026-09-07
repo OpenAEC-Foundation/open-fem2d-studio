@@ -23,4 +23,21 @@ line: BeamLine,
 /**
  * De flensmaten van figuur 5.3.
  */
-flange: FlangeGeometry, };
+flange: FlangeGeometry, 
+/**
+ * De plaats langs de liggerlijn (mm vanaf `line.start`) waarvoor de
+ * afleiding wordt uitgeschreven — meestal het midden van de staaf die de
+ * b_eff gaat gebruiken.
+ *
+ * Blijft dit veld weg, dan komt alleen de verdeling terug en is
+ * [`EffectiveFlangeWidthResponse::applied`] leeg. Dat is geen gebrek maar
+ * de eerlijke uitkomst: zonder plaats is er geen gebied, en zonder gebied
+ * is er geen afleiding om op te schrijven.
+ *
+ * Waarom de plaats in het VERZOEK zit en niet een keten per gebied in het
+ * antwoord: één keten per gebied maakt het antwoord voor élke aanroeper
+ * groter, en "welk gebied geldt hier" is precies de vraag die 5.3.2.1(4)
+ * stelt. Zo staat die vraag in het verzoek en het antwoord erop in het
+ * antwoord.
+ */
+x_mm: number | null, };

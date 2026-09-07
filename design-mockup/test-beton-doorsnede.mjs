@@ -192,6 +192,18 @@ checkTrue("L: lijf staat tegen de linkerrand (x van 0 tot 200)",
   omtrekL[0][0] === 0 && omtrekL[1][0] === 200);
 checkTrue("rechthoek: 4 hoekpunten", korfmodel.omtrekPunten(r.doorsnede).length === 4);
 
+// Bij een L valt het lijf tegen de linkerrand, en dan zouden twee hoekpunten
+// samenvallen: een zijde van lengte nul. De vorm tekent daarmee hetzelfde,
+// maar een omtrek die je doorgeeft mag zo'n zijde niet dragen.
+checkTrue("L: 7 hoekpunten, geen samenvallend paar", omtrekL.length === 7);
+const geenDubbele = (punten) =>
+  punten.every((p, i) => i === 0 || p[0] !== punten[i - 1][0] || p[1] !== punten[i - 1][1]);
+checkTrue("L (flens boven): geen samenvallende hoekpunten", geenDubbele(omtrekL));
+const lOnder = beton.parseConcreteSection("L 400x450 bw=200 hf=50 flens=onder");
+checkTrue("L (flens onder): geen samenvallende hoekpunten",
+  geenDubbele(korfmodel.omtrekPunten(lOnder.doorsnede)));
+checkTrue("T: geen samenvallende hoekpunten", geenDubbele(omtrekT));
+
 // ── 7. De korfcontrole kijkt naar de breedte op die hoogte ────────────────
 log("\n7. Korfcontrole: de breedte waar de rij ligt");
 

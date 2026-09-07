@@ -50,6 +50,7 @@ import {
   type StijfheidCombinatie,
 } from "../../stores/betonStijfheidStore";
 import type { MemberCheckResult, CheckSkip } from "../../lib/checkTypes";
+import type { BeffStaafUitkomst } from "../../lib/beffLiggerlijn";
 import type {
   NodalDisp,
   NodalReaction,
@@ -119,6 +120,12 @@ interface WireReportData {
 interface WireCheckState {
   results: MemberCheckResult[];
   skipped: CheckSkip[];
+  /**
+   * De b_eff-afleiding per T-/L-betonstaaf. Ontbreekt in snapshots van een
+   * ouder hoofdvenster; dan hoort het rapport de afleiding weg te laten en
+   * niet die van een vorig snapshot te tonen.
+   */
+  beff?: BeffStaafUitkomst[];
   lastRunAt: number | null;
 }
 
@@ -425,6 +432,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
       check: {
         results: check.results,
         skipped: check.skipped,
+        beff: check.beff,
         lastRunAt: check.lastRunAt,
       },
       stijfheid: {
@@ -556,6 +564,9 @@ export function useDetachedReportSync(): ReportData | null {
         useCheckStore.setState({
           results: msg.check.results,
           skipped: msg.check.skipped,
+          // Een ouder hoofdvenster stuurt dit veld niet mee; dan hoort hier
+          // LEEG te staan en niet de afleiding van een vorig snapshot.
+          beff: msg.check.beff ?? [],
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
           error: null,

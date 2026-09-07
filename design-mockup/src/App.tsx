@@ -47,7 +47,7 @@ import {
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { useCheckStore, anyCheckableBeams, roepKern } from "./stores/checkStore";
-import { bepaalBeffPerStaaf } from "./lib/beffLiggerlijn";
+import { bEffWaardenPerStaaf, bepaalBeffPerStaaf } from "./lib/beffLiggerlijn";
 import {
   useBetonStijfheidStore,
   type StijfheidCombinatie,
@@ -788,9 +788,11 @@ function App() {
     const { staven, overgeslagen } = betonStavenUitModel({
       nodes: fem.nodes,
       beams: fem.beams,
-      bEffPerStaaf: await bepaalBeffPerStaaf(
-        { nodes: fem.nodes, beams: fem.beams, supports: fem.supports },
-        roepKern,
+      bEffPerStaaf: bEffWaardenPerStaaf(
+        await bepaalBeffPerStaaf(
+          { nodes: fem.nodes, beams: fem.beams, supports: fem.supports },
+          roepKern,
+        ),
       ),
     });
     // Een vorige rekengang mag nooit als spoor van deze blijven staan.

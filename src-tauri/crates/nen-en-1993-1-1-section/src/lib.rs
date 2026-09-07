@@ -41,7 +41,10 @@ pub fn grade_by_name(name: &str) -> Option<SteelGrade> {
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub enum CheckStatus { Ok, NotOk, NotApplicable }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+// `PartialEq`: een antwoordtype dat deelstappen draagt moet vergelijkbaar
+// blijven — de drie-wegen-tests zetten twee antwoorden naast elkaar. Puur
+// gegevens, dus de afgeleide vergelijking is de bedoelde.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct NamedValue {
     pub symbol: String,
@@ -90,7 +93,7 @@ pub struct UnityCheck {
 /// een tekstvervanging achteraf kan dat niet. `ingevuld_latex` is daarom in de
 /// kern gevuld. Is hij leeg, dan hoort er geen ingevulde regel te staan
 /// (bijvoorbeeld bij een stap die alleen uitgangspunten opsomt).
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct Deelstap {
     /// Stabiele sleutel, bedoeld om een stap in code of test op terug te vinden

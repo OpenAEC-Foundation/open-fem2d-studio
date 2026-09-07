@@ -43,6 +43,7 @@
  */
 import type { Beam, BeamReleases, Node, Support } from "../components/fem/femTypes";
 import type { BeamLine } from "./types/concrete/BeamLine";
+import type { BeffApplied } from "./types/concrete/BeffApplied";
 import type { BeffZone } from "./types/concrete/BeffZone";
 import type { EffectiveFlangeWidthResponse } from "./types/concrete/EffectiveFlangeWidthResponse";
 import type { LineEnd } from "./types/concrete/LineEnd";
@@ -569,25 +570,95 @@ export interface BeffStavenInvoer {
 }
 
 /**
- * De meewerkende flensbreedte b_eff per T- of L-staaf, in mm (5.3.2.1).
+ * Alles wat het rapport van de b_eff-afleiding van één staaf moet kunnen
+ * laten zien.
+ *
+ * WAAROM DIT MEER IS DAN ÉÉN GETAL. De gebruiker voert 4300 mm flensbreedte in
+ * en er wordt met 2780 mm gerekend. Alleen de uitkomst doorgeven maakt van dat
+ * verschil een getal dat uit de lucht valt: de doorsnedenaam in het resultaat
+ * noemt de 2780 wel, maar niet welk geval van figuur 5.2 gold, uit welke
+ * overspanningen l₀ volgde, of welke van de drie grenzen van (5.7a)/(5.7b) won.
+ * Die staan in `applied.deelstappen`, uitgeschreven door de KERN — hier wordt
+ * niets van de norm gerekend en niets naverteld.
+ *
+ * JSON-VEILIG. Dit type reist in het rapportsnapshot mee naar een losgekoppeld
+ * rapportvenster (`components/report/reportSync.ts`). Geen Maps, geen Sets,
+ * geen klassen — anders staat dat venster met een lege afleiding terwijl de
+ * hoofdsessie hem wél heeft.
+ */
+export type BeffStaafUitkomst = BeffStaafAfleiding | BeffStaafMislukt;
+
+export interface BeffStaafAfleiding {
+  ok: true;
+  beamId: number;
+  /** De b_eff waarmee werkelijk gerekend is, mm. */
+  bEffMm: number;
+  /** De flensbreedte zoals de gebruiker hem intikte, mm. */
+  ingevoerdeBreedteMm: number;
+  /** Lijfbreedte b_w, mm. */
+  bWMm: number;
+  /** De uitkragende flensdelen b_i, mm (figuur 5.3). */
+  bIMm: number[];
+  /** De liggerlijn zoals de kern hem heeft gekregen. */
+  line: BeamLine;
+  /** De staven die samen de liggerlijn vormen, op volgorde. */
+  staafIds: number[];
+  /** De knopen die als steunpunt tellen, inclusief de twee uiteinden. */
+  steunpuntKnopen: number[];
+  /**
+   * Waarnemingen over de topologie: welke knoop als steunpunt telt en waarom,
+   * en of de lijn uit meer dan één staaf bestaat. Horen woordelijk in het
+   * rapport — zonder deze regels is niet na te gaan hoe de overspanningen tot
+   * stand kwamen.
+   */
+  meldingen: string[];
+  /** Plaats van het staafmidden langs de liggerlijn, mm. */
+  xLijnMm: number;
+  /** De verdeling per gebied, onveranderd uit de kern. */
+  zones: BeffZone[];
+  totaleLengteMm: number;
+  /** Keuzes die de kern zelf meldde bij deze verdeling. */
+  verdelingMeldingen: string[];
+  /** Het aangehouden gebied met de uitgeschreven afleiding. */
+  applied: BeffApplied | null;
+}
+
+export interface BeffStaafMislukt {
+  ok: false;
+  beamId: number;
+  /**
+   * Waarom er geen b_eff is afgeleid. Stond vroeger alleen in de console; een
+   * rapport dat de ingevoerde breedte gebruikt zonder te zeggen dát de
+   * afleiding niet lukte, verzwijgt de belangrijkste mededeling.
+   */
+  reden: string;
+  /** De breedte waarmee dan gerekend wordt: de ingevoerde flensbreedte, mm. */
+  ingevoerdeBreedteMm: number;
+}
+
+/**
+ * De b_eff-afleiding per T- of L-staaf (5.3.2.1).
  *
  * DRIE STAPPEN, EN GEEN ERVAN HIER GEREKEND
  *  1. `bepaalLiggerlijn` hierboven leidt uit knopen, staven en opleggingen af
  *     welke staven één doorgaande ligger vormen en waar de steunpunten
  *     liggen — de liggerlijn van figuur 5.2. Alleen topologie.
  *  2. De KERN rekent daaruit b_eff per gebied ((5.7), (5.7a), (5.7b)) via
- *     `concrete_effective_flange_width`, langs dezelfde weg als de toetsing.
- *  3. Hier wordt daar één waarde per staaf uit gekozen: die van het MIDDEN
- *     van de staaf. 5.3.2.1(4) staat een constante breedte over de
- *     overspanning toe en zegt dat de waarde van de VELDdoorsnede moet worden
- *     aangehouden; het midden van de staaf is de plaats die daar het dichtst
- *     bij ligt zonder aan te nemen welk deel van de lijn "het veld" is.
+ *     `concrete_effective_flange_width`, langs dezelfde weg als de toetsing,
+ *     én schrijft de afleiding uit voor de plaats die hier wordt meegegeven.
+ *  3. Hier wordt alleen die plaats gekozen: het MIDDEN van de staaf.
+ *     5.3.2.1(4) staat een constante breedte over de overspanning toe en zegt
+ *     dat de waarde van de VELDdoorsnede moet worden aangehouden; het midden
+ *     van de staaf is de plaats die daar het dichtst bij ligt zonder aan te
+ *     nemen welk deel van de lijn "het veld" is.
  *
  * WAAROM ÉÉN WAARDE PER STAAF EN NIET PER SEGMENT. `beffPerStaafsegment`
  * hierboven kan de verdeling wél per segment leveren, maar zowel
  * `ConcreteBeamCheckInput` als `SegmentStiffnessRequest` draagt één doorsnede
  * per staaf. Een b_eff die binnen de staaf springt, past dus niet in het
- * huidige contract; dat is een aparte stap en geen stille aanname hier.
+ * huidige contract; dat is een aparte stap en geen stille aanname hier. De
+ * hele verdeling reist wél mee in `zones`, zodat het rapport kan laten zien
+ * hoeveel het scheelt.
  *
  * DE UITKRAGENDE FLENSDELEN. De profielnaam draagt de flensbreedte b_f en de
  * lijfbreedte b_w, dus b_i volgt daaruit: bij een T twee keer (b_f − b_w)/2,
@@ -595,17 +666,15 @@ export interface BeffStavenInvoer {
  * gebruiker heeft opgegeven; er wordt geen naastliggend lijf verzonnen.
  *
  * Lukt een staaf niet — geen opleggingen, geen liggerlijn, een topologie
- * buiten figuur 5.2, een kern die het verzoek weigert — dan komt hij niet in
- * de map en gaat de INGEVOERDE flensbreedte de berekening in. Het resultaat
- * noemt dan die breedte als de veronderstelde b_eff, in `section_name` én in
- * de aanname-tekst, dus er verdwijnt niets stilzwijgend. De reden staat in de
- * console.
+ * buiten figuur 5.2, een kern die het verzoek weigert — dan komt hij als
+ * `ok: false` MÉT reden terug en gaat de INGEVOERDE flensbreedte de berekening
+ * in. Het rapport zegt dat dan met zoveel woorden.
  */
 export async function bepaalBeffPerStaaf(
   data: BeffStavenInvoer,
   roep: RoepKern,
-): Promise<Map<number, number>> {
-  const uit = new Map<number, number>();
+): Promise<BeffStaafUitkomst[]> {
+  const uit: BeffStaafUitkomst[] = [];
   const supports = data.supports;
   if (!supports) return uit;
 
@@ -617,12 +686,27 @@ export async function bepaalBeffPerStaaf(
     const bW = d.b_w_mm;
     if (bW === null || !(bW > 0)) continue;
 
+    const mislukt = (reden: string): BeffStaafMislukt => {
+      console.info(
+        `[b_eff] staaf ${beam.id}: ${reden} — er wordt gerekend met de ingevoerde ` +
+          `flensbreedte van ${d.b_mm} mm.`,
+      );
+      return { ok: false, beamId: beam.id, reden, ingevoerdeBreedteMm: d.b_mm };
+    };
+
     const lijn = bepaalLiggerlijn(beam.id, { nodes: data.nodes, beams: data.beams, supports });
     if (!lijn.ok) {
-      console.info(
-        `[b_eff] staaf ${beam.id}: geen liggerlijn (${lijn.reden}) — er wordt gerekend met de ` +
-          `ingevoerde flensbreedte van ${d.b_mm} mm.`,
-      );
+      uit.push(mislukt(`geen liggerlijn (${lijn.reden})`));
+      continue;
+    }
+    const staaf = lijn.lijn.staven.find((s) => s.beamId === beam.id);
+    if (!staaf) {
+      uit.push(mislukt("de staaf zit niet in zijn eigen liggerlijn"));
+      continue;
+    }
+    const xLijn = lijnPositieMm(lijn.lijn, beam.id, staaf.lengthMm / 2);
+    if (xLijn === null) {
+      uit.push(mislukt("het staafmidden is niet op de liggerlijn te plaatsen"));
       continue;
     }
     const overstek = d.b_mm - bW;
@@ -631,28 +715,67 @@ export async function bepaalBeffPerStaaf(
     try {
       const antwoord = await roep<EffectiveFlangeWidthResponse>(
         "concrete_effective_flange_width",
-        { beam_id: beam.id, line: lijn.lijn.line, flange: { b_w_mm: bW, b_i_mm } },
+        {
+          beam_id: beam.id,
+          line: lijn.lijn.line,
+          flange: { b_w_mm: bW, b_i_mm },
+          // De plaats waarvoor de kern de afleiding uitschrijft. Zonder dit
+          // veld komt alleen de verdeling terug, en toont het rapport de
+          // gebruikte b_eff wél maar kan het hem niet verantwoorden.
+          x_mm: xLijn,
+        },
       );
-      const staaf = lijn.lijn.staven.find((s) => s.beamId === beam.id);
-      if (!staaf) continue;
-      const xLijn = lijnPositieMm(lijn.lijn, beam.id, staaf.lengthMm / 2);
-      if (xLijn === null) continue;
       const zones = antwoord.distribution.zones;
       const eps = 1e-9 * Math.max(antwoord.distribution.total_length_mm, 1);
-      const zone = zones.find((z) => xLijn <= z.zone.x_end_mm + eps) ?? zones[zones.length - 1];
-      if (!zone) continue;
-      uit.set(beam.id, zone.b_eff_mm);
-      console.info(
-        `[b_eff] staaf ${beam.id}: b_eff = ${zone.b_eff_mm.toFixed(0)} mm ` +
-          `(l₀ = ${zone.zone.l0_mm.toFixed(0)} mm, ${zone.zone.case}) in plaats van de ingevoerde ` +
-          `flensbreedte ${d.b_mm} mm.`,
-      );
+      // De kern koos het gebied al (`applied`); de terugval bestaat alleen voor
+      // een antwoord dat er geen draagt, en volgt dezelfde regel.
+      const zone =
+        (antwoord.applied ? zones[antwoord.applied.zone_index] : undefined) ??
+        zones.find((z) => xLijn <= z.zone.x_end_mm + eps) ??
+        zones[zones.length - 1];
+      if (!zone) {
+        uit.push(mislukt("de kern gaf geen enkel gebied terug"));
+        continue;
+      }
+      uit.push({
+        ok: true,
+        beamId: beam.id,
+        bEffMm: zone.b_eff_mm,
+        ingevoerdeBreedteMm: d.b_mm,
+        bWMm: bW,
+        bIMm: b_i_mm,
+        line: lijn.lijn.line,
+        staafIds: lijn.lijn.staven.map((s) => s.beamId),
+        steunpuntKnopen: lijn.lijn.steunpuntKnopen,
+        meldingen: lijn.lijn.meldingen,
+        xLijnMm: xLijn,
+        zones,
+        totaleLengteMm: antwoord.distribution.total_length_mm,
+        verdelingMeldingen: antwoord.distribution.notes,
+        applied: antwoord.applied,
+      });
     } catch (e) {
-      console.info(
-        `[b_eff] staaf ${beam.id}: de kern gaf geen b_eff (${e instanceof Error ? e.message : String(e)}) — ` +
-          `er wordt gerekend met de ingevoerde flensbreedte van ${d.b_mm} mm.`,
+      uit.push(
+        mislukt(`de kern gaf geen b_eff (${e instanceof Error ? e.message : String(e)})`),
       );
     }
+  }
+  return uit;
+}
+
+/**
+ * De gebruikte b_eff per staaf-id, mm — wat de doorsnedebouwers nodig hebben.
+ *
+ * Alleen de geslaagde afleidingen komen erin. Een staaf die er niet in staat,
+ * rekent met de ingevoerde flensbreedte; `metBeff` in `betonCheckBuilder.ts`
+ * regelt dat, en het rapport meldt de reden.
+ */
+export function bEffWaardenPerStaaf(
+  uitkomsten: readonly BeffStaafUitkomst[],
+): Map<number, number> {
+  const uit = new Map<number, number>();
+  for (const u of uitkomsten) {
+    if (u.ok) uit.set(u.beamId, u.bEffMm);
   }
   return uit;
 }

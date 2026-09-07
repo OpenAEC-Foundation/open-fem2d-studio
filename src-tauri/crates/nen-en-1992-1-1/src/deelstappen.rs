@@ -77,7 +77,7 @@ use crate::stress_strain::{DesignMaterial, SteelBranch};
 /// een spatie, waardoor "1,13" als "1, 13" oogt. Dezelfde schrijfwijze als in de
 /// kipafleiding en als `latexGetal` in de frontend, zodat de ingevulde regels
 /// van staal en beton er in hetzelfde rapport hetzelfde uitzien.
-fn lx(v: f64, decimalen: usize) -> String {
+pub(crate) fn lx(v: f64, decimalen: usize) -> String {
     if !v.is_finite() {
         return r"\text{n.v.t.}".to_string();
     }
@@ -126,18 +126,18 @@ fn lxv(v: f64, decimalen: usize) -> String {
 }
 
 /// Een getal in lopende tekst (kanttekeningen), met decimaalkomma.
-fn nl(x: f64, decimalen: usize) -> String {
+pub(crate) fn nl(x: f64, decimalen: usize) -> String {
     format!("{x:.decimalen$}").replace('.', ",")
 }
 
-fn nv(symbol: &str, value: f64, unit: &str) -> NamedValue {
+pub(crate) fn nv(symbol: &str, value: f64, unit: &str) -> NamedValue {
     NamedValue { symbol: symbol.to_string(), value, unit: unit.to_string() }
 }
 
 /// Bouwt één deelstap. Alle velden expliciet, zodat er geen stap kan ontstaan
 /// zonder vindplaats.
 #[allow(clippy::too_many_arguments)]
-fn stap(
+pub(crate) fn stap(
     id: &str,
     titel: &str,
     symbol: &str,

@@ -15,6 +15,15 @@
  * kern. Het enige wat de tekening zélf beslist, is waar de flens van een L
  * ligt (links) — in de berekening is dat geen verschil, in het beeld wel.
  *
+ * HET KADER VOLGT DE DOORSNEDE. Het tekenvlak was vierkant. Dat werkt voor een
+ * balk (300 × 500) maar niet voor een T met een meewerkende flens: bij
+ * b_eff = 2780 en h = 450 is de verhouding ruim 6 : 1, en op ware schaal werd
+ * dat een streep van een tiende van de kaderhoogte, met een flens van enkele
+ * pixels. De hoogte van het tekenvlak volgt daarom de verhouding h/b van de
+ * doorsnede zelf (zie [`tekenvlakHoogte`]); de schaal blijft daarmee waar en
+ * de doorsnede vult het beeld. Voor alles wat hoger is dan breed — de gewone
+ * balk, de kolom — verandert er niets: die zat al op de bovengrens.
+ *
  * Kleuren komen standaard uit de theme-tokens, zodat de tekening in licht én
  * donker leesbaar blijft. Het rapport geeft `RAPPORT_KLEUREN` mee: daar is de
  * tekening papier en volgt hij het app-thema juist niet.
@@ -33,12 +42,38 @@ import {
 } from "./wapeningskorf";
 
 const KADER_W = 220;
-const KADER_H = 220;
 const MARGE_LINKS = 30;
 const MARGE_RECHTS = 34;
 const MARGE_BOVEN = 22;
 const MARGE_ONDER = 18;
 const TICK = 3;
+
+/** Breedte van het tekenvlak binnen het kader — vast, zodat figuren uitlijnen. */
+const TEKENVLAK_W = KADER_W - MARGE_LINKS - MARGE_RECHTS;
+
+/**
+ * Grenzen aan de hoogte van het tekenvlak.
+ *
+ * De bovengrens is precies de hoogte die het kader altijd had (220 − 22 − 18),
+ * zodat elke doorsnede die hoger is dan breed — een balk, een kolom — geen bit
+ * verschuift. De ondergrens houdt genoeg ruimte over voor de maatlijn boven,
+ * de d-maat rechts en het onderschrift.
+ */
+const TEKENVLAK_MIN_H = 40;
+const TEKENVLAK_MAX_H = 180;
+
+/**
+ * De hoogte van het tekenvlak voor een doorsnede b × h.
+ *
+ * De doorsnede wordt op ware schaal getekend en past dus altijd in
+ * `TEKENVLAK_W × hoogte`. Door de hoogte de verhouding h/b te laten volgen,
+ * vult de doorsnede het vlak in beide richtingen in plaats van als streep in
+ * een vierkant te blijven staan.
+ */
+function tekenvlakHoogte(bMm: number, hMm: number): number {
+  const gewenst = (TEKENVLAK_W * hMm) / bMm;
+  return Math.min(TEKENVLAK_MAX_H, Math.max(TEKENVLAK_MIN_H, gewenst));
+}
 
 interface Props {
   korf: Wapeningskorf;
@@ -73,8 +108,9 @@ export default function DoorsnedeTekening({
   const hMm = d3.h_mm;
   if (!(bMm > 0) || !(hMm > 0)) return null;
 
-  const tekenW = KADER_W - MARGE_LINKS - MARGE_RECHTS;
-  const tekenH = KADER_H - MARGE_BOVEN - MARGE_ONDER;
+  const tekenW = TEKENVLAK_W;
+  const tekenH = tekenvlakHoogte(bMm, hMm);
+  const kaderH = MARGE_BOVEN + tekenH + MARGE_ONDER;
   const s = Math.min(tekenW / bMm, tekenH / hMm);
   const w = bMm * s;
   const h = hMm * s;
@@ -111,6 +147,23 @@ export default function DoorsnedeTekening({
   const xMaatH = x0 - 10;
   const xMaatD = x0 + w + 10;
 
+  // Waar de rijlabels ("4Ø20", "2Ø12") komen te staan: in het beton naast de
+  // staven. Bij een lage doorsnede — een T met een brede meewerkende flens is
+  // maar een fractie zo hoog als breed — liggen de twee rijen zo dicht bij
+  // elkaar dat de labels over elkaar heen vallen. Twee onleesbare labels zijn
+  // erger dan geen: dan staan ze in het onderschrift, waar altijd ruimte is.
+  const yLabelOnder =
+    sy(asAfstandMm(korf.korf, korf.korf.bottom)) -
+    Math.max(3, (korf.korf.bottom.diameter_mm / 2) * s) -
+    2.5;
+  const yLabelBoven =
+    sy(hMm - asAfstandMm(korf.korf, korf.korf.top)) +
+    Math.max(3, (korf.korf.top.diameter_mm / 2) * s) +
+    8;
+  const LABEL_H = 9;
+  const labelsInDeDoorsnede =
+    !heeftOnder || !heeftBoven || yLabelOnder - yLabelBoven >= LABEL_H;
+
   const vormLabel =
     d3.shape === "Rectangle"
       ? `Betondoorsnede ${maat(bMm)} × ${maat(hMm)} mm`
@@ -121,7 +174,7 @@ export default function DoorsnedeTekening({
   return (
     <svg
       className={className}
-      viewBox={`0 0 ${KADER_W} ${KADER_H}`}
+      viewBox={`0 0 ${KADER_W} ${kaderH.toFixed(2)}`}
       role="img"
       aria-label={
         titel ??
@@ -146,22 +199,26 @@ export default function DoorsnedeTekening({
         />
       )}
 
-      {/* Hoofdwapening op ware schaal */}
+      {/* Hoofdwapening op ware schaal. De ondergrens is er alleen zodat een
+          staaf bij een zeer brede doorsnede niet als onzichtbare stip
+          verdwijnt; zij is bewust klein gehouden, want een opgeblazen staaf
+          suggereert wapening die er niet ligt. */}
       {staven.map((st, i) => (
         <circle
           key={i}
           cx={sx(st.x)}
           cy={sy(st.z)}
-          r={Math.max(1.2, (st.diameter / 2) * s)}
+          r={Math.max(0.6, (st.diameter / 2) * s)}
           fill={kleuren.lijn}
         />
       ))}
 
-      {/* Labels van de rijen: in het beton, naast de staven */}
-      {heeftOnder && (
+      {/* Labels van de rijen: in het beton, naast de staven — maar alleen als
+          ze elkaar daar niet raken; anders staan ze in het onderschrift. */}
+      {labelsInDeDoorsnede && heeftOnder && (
         <text
           x={sx(hartXMm(d3, asAfstandMm(korf.korf, korf.korf.bottom)))}
-          y={sy(asAfstandMm(korf.korf, korf.korf.bottom)) - Math.max(3, (korf.korf.bottom.diameter_mm / 2) * s) - 2.5}
+          y={yLabelOnder}
           fill={kleuren.tekstZwak}
           fontSize="7.5"
           textAnchor="middle"
@@ -169,10 +226,10 @@ export default function DoorsnedeTekening({
           {rijLabel(korf.korf.bottom)}
         </text>
       )}
-      {heeftBoven && (
+      {labelsInDeDoorsnede && heeftBoven && (
         <text
           x={sx(hartXMm(d3, hMm - asAfstandMm(korf.korf, korf.korf.top)))}
-          y={sy(hMm - asAfstandMm(korf.korf, korf.korf.top)) + Math.max(3, (korf.korf.top.diameter_mm / 2) * s) + 8}
+          y={yLabelBoven}
           fill={kleuren.tekstZwak}
           fontSize="7.5"
           textAnchor="middle"
@@ -260,9 +317,16 @@ export default function DoorsnedeTekening({
             </>
           )}
           <text x={x0 + w / 2} y={y0 + h + 12} fill={kleuren.tekstMaat} fontSize="7" textAnchor="middle">
-            {d3.shape === "Rectangle"
-              ? `dekking ${maat(c)}${dBgl > 0 ? `, beugel Ø${maat(dBgl)}` : ""}`
-              : `h_f ${maat(d3.h_f_mm ?? 0)}, dekking ${maat(c)}${dBgl > 0 ? `, beugel Ø${maat(dBgl)}` : ""}`}
+            {[
+              // De rijen komen alleen hier te staan als ze in de doorsnede
+              // zelf niet leesbaar passen; dan mogen ze niet wegvallen.
+              ...(labelsInDeDoorsnede
+                ? []
+                : [`${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`]),
+              ...(d3.shape === "Rectangle" ? [] : [`h_f ${maat(d3.h_f_mm ?? 0)}`]),
+              `dekking ${maat(c)}`,
+              ...(dBgl > 0 ? [`beugel Ø${maat(dBgl)}`] : []),
+            ].join(", ")}
           </text>
         </>
       )}

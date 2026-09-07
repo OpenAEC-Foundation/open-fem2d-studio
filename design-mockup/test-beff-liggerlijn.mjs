@@ -431,5 +431,120 @@ log("\n[11] b_eff per staafsegment: elk segment krijgt het gebied van zijn midde
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// 12. De weg naar de kern: bepaalBeffPerStaaf met een nagebootste rekenkern
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Ook hier wordt GEEN b_eff gerekend. Wat getoetst wordt is de bedrading:
+// gaat het staafmidden als `x_mm` mee — zonder dat veld schrijft de kern geen
+// afleiding uit — en komt die afleiding onveranderd in de uitkomst terecht.
+// De getallen komen uit het nagebootste antwoord en zeggen niets over de norm.
+log("\n[12] bepaalBeffPerStaaf — de plaats gaat mee en de afleiding komt terug");
+{
+  const { bepaalBeffPerStaaf, bEffWaardenPerStaaf } =
+    await import("./src/lib/beffLiggerlijn.ts");
+
+  // Portaal 12 × 5 m: kolommen 1-3 en 2-4, de ligger 3-4 als T.
+  const nodes = [
+    { id: 1, x: 0, z: 0 }, { id: 2, x: 12000, z: 0 },
+    { id: 3, x: 0, z: 5000 }, { id: 4, x: 12000, z: 5000 },
+  ];
+  const beams = [
+    { id: 1, from: 1, to: 3, material: "S235", profile: "HEA160" },
+    { id: 2, from: 2, to: 4, material: "S235", profile: "HEA160" },
+    { id: 3, from: 3, to: 4, material: "C30/37", profile: "T 4300x450 bw=300 hf=100" },
+  ];
+  const supports = [{ nodeId: 1, type: "fixed" }, { nodeId: 2, type: "fixed" }];
+
+  let gezien = null;
+  const nepKern = async (opdracht, inputs) => {
+    gezien = { opdracht, inputs };
+    const gebied = (x0, x1, l0, geval, bEff) => ({
+      zone: { x_start_mm: x0, x_end_mm: x1, l0_mm: l0, case: geval, span_index: 0, expression: "" },
+      b_eff_mm: bEff, b_mm: 4300, parts: [], limited_by_b: false,
+    });
+    return {
+      beam_id: inputs.beam_id,
+      distribution: {
+        total_length_mm: 12000,
+        zones: [
+          gebied(0, 1800, 1800, "RestrainedEnd", 1020),
+          gebied(1800, 10200, 8400, "InteriorSpan", 2780),
+          gebied(10200, 12000, 1800, "RestrainedEnd", 1020),
+        ],
+        notes: ["een melding van de kern"],
+      },
+      applied: {
+        zone_index: 1, x_mm: inputs.x_mm, b_eff_mm: 2780,
+        deelstappen: [{
+          id: "beff_l0", titel: "l0", symbol: "l_0",
+          article: "NEN-EN 1992-1-1, figuur 5.2", formula_latex: "l_0",
+          ingevuld_latex: "l_0 = 0{,}7 \\cdot 12000", variables: [],
+          value: 8400, unit: "mm", notes: ["een kanttekening"],
+        }],
+      },
+    };
+  };
+
+  const uit = await bepaalBeffPerStaaf({ nodes, beams, supports }, nepKern);
+  check("alleen de T-staaf komt in de uitkomst", uit.length === 1, String(uit.length));
+  gelijk("de opdracht is die van de kern", gezien?.opdracht,
+    "concrete_effective_flange_width");
+  // Het staafmidden ligt op 6000 mm langs de lijn.
+  gelijk("het staafmidden gaat als x_mm mee", gezien?.inputs?.x_mm, 6000);
+  gelijk("de liggerlijn is één overspanning tussen twee kolommen",
+    gezien?.inputs?.line, { spans_mm: [12000], start: "Restrained", end: "Restrained" });
+  // b_i = (4300 − 300) / 2 aan elke zijde (figuur 5.3).
+  gelijk("de flensmaten volgen uit de profielnaam", gezien?.inputs?.flange,
+    { b_w_mm: 300, b_i_mm: [2000, 2000] });
+
+  const a = uit[0];
+  check("de afleiding is geslaagd", a.ok === true, a.ok ? "" : a.reden);
+  if (a.ok) {
+    gelijk("de gebruikte b_eff is die van het aangehouden gebied", a.bEffMm, 2780);
+    gelijk("de ingevoerde flensbreedte reist mee", a.ingevoerdeBreedteMm, 4300);
+    gelijk("alle gebieden reizen mee", a.zones.length, 3);
+    gelijk("de keten van de kern reist mee", a.applied.deelstappen.length, 1);
+    gelijk("de meldingen van de kern reizen woordelijk mee",
+      a.verdelingMeldingen, ["een melding van de kern"]);
+    gelijk("de staaf-ids van de liggerlijn", a.staafIds, [3]);
+  }
+  gelijk("de waardenmap draagt alleen het getal",
+    [...bEffWaardenPerStaaf(uit).entries()], [[3, 2780]]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 13. Een mislukte afleiding levert een reden, geen stilte
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[13] een mislukte afleiding levert een reden");
+{
+  const { bepaalBeffPerStaaf, bEffWaardenPerStaaf } =
+    await import("./src/lib/beffLiggerlijn.ts");
+
+  // Een losse T-staaf zonder opleggingen en zonder aansluitende staven: er is
+  // nergens een steunpunt, dus figuur 5.2 kent er geen geval voor.
+  const nodes = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }];
+  const beams = [
+    { id: 9, from: 1, to: 2, material: "C30/37", profile: "T 4300x450 bw=300 hf=100" },
+  ];
+  const nooitAangeroepen = async () => {
+    throw new Error("de kern hoort hier niet aangeroepen te worden");
+  };
+  const uit = await bepaalBeffPerStaaf({ nodes, beams, supports: [] }, nooitAangeroepen);
+  check("de staaf komt met een uitkomst terug", uit.length === 1, String(uit.length));
+  check("de uitkomst is een mislukking", uit[0]?.ok === false);
+  check("de reden noemt het ontbrekende steunpunt",
+    uit[0]?.ok === false && uit[0].reden.includes("steunpunt"),
+    uit[0]?.reden ?? "");
+  gelijk("de ingevoerde breedte staat erbij", uit[0]?.ingevoerdeBreedteMm, 4300);
+  gelijk("een mislukking levert geen waarde voor de doorsnede",
+    [...bEffWaardenPerStaaf(uit).entries()], []);
+
+  // Zonder opleggingen in de invoer is een tussensteunpunt niet te herkennen;
+  // dan hoort er niets terug te komen in plaats van een gok.
+  const zonder = await bepaalBeffPerStaaf({ nodes, beams }, nooitAangeroepen);
+  gelijk("zonder opleggingen komt er niets", zonder.length, 0);
+}
+
 log(`\n${failed === 0 ? "✓" : "✗"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

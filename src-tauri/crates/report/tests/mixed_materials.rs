@@ -104,6 +104,9 @@ fn concrete_beam(beam_id: u32, uc: f64) -> ConcreteBeamCheckResult {
     ConcreteBeamCheckResult {
         beam_id,
         section_name: "300 x 500".into(),
+        // Een rechthoek draagt geen vormaannamen; zie
+        // `ConcreteSection::assumptions`.
+        shape_assumptions: Vec::new(),
         concrete_class: "C30/37".into(),
         reinforcement_grade: "B500B".into(),
         reinforcement_summary: "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm".into(),

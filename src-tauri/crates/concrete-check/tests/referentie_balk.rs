@@ -158,3 +158,59 @@ fn json_invoer_met_defaults() {
     let fout = json.replace("\"length_m\"", "\"n_stripes\": 3, \"length_m\"");
     assert!(serde_json::from_str::<ConcreteBeamCheckInput>(&fout).is_err());
 }
+
+/// De vormaannamen reizen mee in het resultaat, WOORDELIJK gelijk aan
+/// `ConcreteSection::assumptions()` en aan wat vooraan in de notes van elke
+/// toets staat.
+///
+/// Waarom een eigen veld naast die notes: het rapport moet weten wélke notes
+/// vormaannamen zijn om ze één keer te tonen in plaats van per toets. Zou het
+/// die op tekst moeten herkennen, dan breekt het rapport zodra de kern één
+/// woord wijzigt. Deze test bewaakt dat de twee bronnen niet uiteenlopen.
+#[test]
+fn de_vormaannamen_staan_woordelijk_in_het_resultaat() {
+    let env = vec![punt(1, 2500.0, 0.0, 60.0)];
+
+    // Een rechthoek draagt er geen.
+    let r = check_concrete_beam(invoer(2, env.clone()));
+    assert!(r.shape_assumptions.is_empty());
+
+    // Een T draagt de modelkeuze achter de bandenintegratie en de mededeling
+    // over de veronderstelde b_eff.
+    let mut i = invoer(2, env.clone());
+    i.section = ConcreteSectionInput::tee(400.0, 500.0, 200.0, 100.0);
+    let t = check_concrete_beam(i);
+    let verwacht = ConcreteSectionInput::tee(400.0, 500.0, 200.0, 100.0)
+        .build()
+        .unwrap()
+        .assumptions();
+    assert_eq!(t.shape_assumptions, verwacht);
+    assert_eq!(t.shape_assumptions.len(), 2);
+    assert!(t.shape_assumptions.iter().any(|a| a.contains("MODELKEUZE")));
+    assert!(t.shape_assumptions.iter().any(|a| a.contains("5.3.2.1(3)")));
+
+    // Een L draagt er één meer: de zijdelingse kromming wordt verhinderd
+    // verondersteld, en de norm geeft daar geen artikel voor. Die zin mag
+    // nergens in een tweede versie bestaan.
+    let mut i = invoer(2, env);
+    i.section = ConcreteSectionInput::ell(400.0, 500.0, 200.0, 100.0);
+    let l = check_concrete_beam(i);
+    assert_eq!(l.shape_assumptions.len(), 3);
+    assert!(l.shape_assumptions.iter().any(|a| a.contains("VERHINDERD")));
+    assert!(l.shape_assumptions.iter().any(|a| a.contains("geen apart artikel")));
+
+    // Dezelfde teksten staan vooraan in de notes van elke toets — één bron.
+    for c in &l.checks {
+        let notes = match &c.kind {
+            CheckKind::Resistance(rc) => &rc.notes,
+            CheckKind::Stability(_) => unreachable!(),
+        };
+        for aanname in &l.shape_assumptions {
+            assert!(
+                notes.contains(aanname),
+                "toets {} mist de vormaanname woordelijk",
+                c.id
+            );
+        }
+    }
+}

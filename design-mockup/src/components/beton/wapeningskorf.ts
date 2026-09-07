@@ -132,7 +132,7 @@ export function omtrekPunten(d: ConcreteSectionInput): Array<[number, number]> {
   // staat het lijf tegen de rand aan.
   const x0 = d.shape === "Ell" ? 0 : (b - bW) / 2;
   const x1 = x0 + bW;
-  return d.flange_at_bottom
+  const punten: Array<[number, number]> = d.flange_at_bottom
     ? [
         [0, 0],
         [b, 0],
@@ -153,6 +153,14 @@ export function omtrekPunten(d: ConcreteSectionInput): Array<[number, number]> {
         [0, h - hF],
         [x0, h - hF],
       ];
+  // Bij een L staat het lijf tegen de linkerrand (x0 = 0), en dan vallen de
+  // laatste twee hoekpunten samen. De vorm klopt ook mét dat dubbele punt —
+  // een polygoon met een nulzijde tekent hetzelfde — maar een omtrek met een
+  // zijde van lengte nul is geen omtrek die je wilt doorgeven; hij komt terug
+  // zodra er iets anders mee gebeurt dan tekenen.
+  return punten.filter(
+    (p, i) => i === 0 || p[0] !== punten[i - 1][0] || p[1] !== punten[i - 1][1],
+  );
 }
 
 /** Waar het midden van de rij op hoogte `zMm` ligt, in x vanaf de linkerrand. */

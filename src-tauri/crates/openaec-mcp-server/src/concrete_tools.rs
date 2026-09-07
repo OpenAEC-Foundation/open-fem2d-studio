@@ -408,7 +408,9 @@ pub fn tool_definitions() -> Vec<Value> {
                             }
                         },
                         "required": ["b_w_mm", "b_i_mm"]
-                    }
+                    },
+                    "x_mm": { "type": "number",
+                        "description": "Optioneel. De plaats langs de liggerlijn (mm vanaf `line.start`) waarvoor de afleiding wordt uitgeschreven — meestal het midden van de staaf die b_eff gaat gebruiken. Staat hij erin, dan draagt het antwoord `applied` met het gebied waarin die plaats valt, de b_eff van dat gebied en de UITGESCHREVEN AFLEIDING: de liggerlijn met haar uiteinden, l_0 met de overspanningen ingevuld, b_eff,i per flensdeel met de drie grenzen van (5.7a)/(5.7b) naast elkaar en de grens die won, b_eff volgens (5.7), en de geldigheidsvoorwaarden uit de OPMERKING bij figuur 5.2 met hun getallen. Blijft hij weg, dan is `applied` null en komt alleen de verdeling terug. Een plaats buiten [0, som van de overspanningen] levert eveneens null." }
                 },
                 "required": ["line", "flange"]
             }
@@ -553,11 +555,13 @@ mod tests {
         let velden = def["inputSchema"]["properties"]
             .as_object()
             .expect("properties");
-        for v in ["beam_id", "line", "flange"] {
+        for v in ["beam_id", "line", "flange", "x_mm"] {
             assert!(velden.contains_key(v), "het flensbreedteschema mist `{v}`");
         }
-        assert_eq!(velden.len(), 3);
-        // `beam_id` heeft `#[serde(default)]` en is dus niet verplicht.
+        assert_eq!(velden.len(), 4);
+        // `beam_id` en `x_mm` hebben `#[serde(default)]` en zijn dus niet
+        // verplicht. Zonder `x_mm` komt er geen uitgeschreven afleiding terug —
+        // dat is de bedoelde uitkomst en geen fout.
         let verplicht: Vec<&str> = def["inputSchema"]["required"]
             .as_array()
             .expect("required")

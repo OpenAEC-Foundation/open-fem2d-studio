@@ -68,6 +68,10 @@ fn error_result(input: &ConcreteBeamCheckInput, fout: String) -> ConcreteBeamChe
     ConcreteBeamCheckResult {
         beam_id: input.beam_id,
         section_name: input.section.name(),
+        // Er is geen bouwbare doorsnede, dus er zijn ook geen vormaannamen om
+        // mee te geven. Ze uit de INVOER afleiden zou aannamen tonen bij een
+        // doorsnede die niet bestaat.
+        shape_assumptions: Vec::new(),
         concrete_class: input.concrete_class.clone(),
         reinforcement_grade: input.reinforcement_grade.clone(),
         reinforcement_summary: input.cage.summary(),
@@ -170,6 +174,9 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     ConcreteBeamCheckResult {
         beam_id: input.beam_id,
         section_name: section.name(),
+        // Dezelfde aanroep als in `checks.rs`, dus letterlijk dezelfde teksten
+        // als vooraan in de notes van elke toets — één bron, geen tweede versie.
+        shape_assumptions: section.assumptions(),
         concrete_class: mat.concrete_name.to_string(),
         reinforcement_grade: mat.steel_name.to_string(),
         reinforcement_summary: input.cage.summary(),

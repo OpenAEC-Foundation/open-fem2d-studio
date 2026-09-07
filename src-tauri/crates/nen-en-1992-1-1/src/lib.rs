@@ -34,7 +34,13 @@
 //! * [`deelstappen`] — diezelfde toetsen als UITGESCHREVEN AFLEIDING: per stap
 //!   de formule symbolisch, de ingevulde waarden, de uitkomst, de vindplaats en
 //!   de aannamen die eronder liggen. De module rekent niets opnieuw uit; zij
-//!   schrijft op wat [`bending`] en [`mnkappa`] al bepaald hebben.
+//!   schrijft op wat [`bending`] en [`mnkappa`] al bepaald hebben;
+//! * [`beff`] — de meewerkende flensbreedte van 5.3.2.1: l₀ per gebied uit
+//!   figuur 5.2 en b_eff uit (5.7)/(5.7a)/(5.7b);
+//! * [`beff_deelstappen`] — diezelfde afleiding UITGESCHREVEN, in hetzelfde
+//!   patroon als [`deelstappen`] en met dezelfde regel: niets wordt opnieuw
+//!   uitgerekend. Zonder die keten staat er in het rapport wel de gebruikte
+//!   b_eff maar niet waarom hij kleiner is dan de ingevoerde flensbreedte.
 //!
 //! Tekenconventie aan de buitengrens (gelijk aan `mechanics`): N positief =
 //! trek, M_y positief = trek in de onderste vezel. Inwendig rekent de
@@ -55,6 +61,7 @@
 //! zijn materiaal-neutraal en horen in een gedeelde `check-core` crate.
 
 pub mod beff;
+pub mod beff_deelstappen;
 pub mod bending;
 pub mod checks;
 pub mod data;
@@ -70,10 +77,11 @@ pub mod stress_strain;
 // aanroepen; zie `beff`.
 pub use beff::{
     beff_distribution, effective_flange_width, effective_flange_width_request, l0_zones, BeamLine,
-    BeffAtL0, BeffBound, BeffDistribution, BeffError, BeffPart, BeffZone,
+    BeffApplied, BeffAtL0, BeffBound, BeffDistribution, BeffError, BeffPart, BeffZone,
     EffectiveFlangeWidthRequest, EffectiveFlangeWidthResponse, FlangeGeometry, L0Case, L0Zone,
     LineEnd,
 };
+pub use beff_deelstappen::beff_deelstappen;
 pub use data::{
     concrete_class_by_name, reinforcement_grade_by_name, ConcreteClass, DuctilityClass,
     ReinforcementGrade, CONCRETE_CLASSES, REINFORCEMENT_GRADES,

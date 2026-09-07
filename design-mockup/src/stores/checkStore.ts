@@ -52,7 +52,11 @@ import {
   matchSupportedConcreteClass,
   type BetonStaafConfig,
 } from "../lib/betonCheckBuilder";
-import { bepaalBeffPerStaaf } from "../lib/beffLiggerlijn";
+import {
+  bEffWaardenPerStaaf,
+  bepaalBeffPerStaaf,
+  type BeffStaafUitkomst,
+} from "../lib/beffLiggerlijn";
 import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
 import { isVrijMateriaal } from "../lib/vrijMateriaal";
 
@@ -102,6 +106,21 @@ export interface CheckRunData {
 interface CheckState {
   results: MemberCheckResult[];
   skipped: CheckSkip[];
+  /**
+   * De afleiding van de meewerkende flensbreedte per T-/L-betonstaaf
+   * (5.3.2.1), zoals de kern hem heeft uitgeschreven.
+   *
+   * WAAROM DIT IN DE STORE STAAT EN NIET WEGGEGOOID WORDT. De afgeleide b_eff
+   * belandt in de doorsnede waarmee getoetst is, en die staat in
+   * `section_name` — maar de WEG ernaartoe (welk geval van figuur 5.2, uit
+   * welke overspanningen l₀ volgde, welke grens van (5.7a)/(5.7b) won) zat
+   * tot nu toe alleen in de console. Het rapport heeft hem nodig, en het
+   * losgekoppelde rapportvenster ook; vandaar hier, naast de toetsresultaten
+   * die dezelfde weg reizen.
+   *
+   * Een array en geen Map: het rapportsnapshot gaat als JSON over.
+   */
+  beff: BeffStaafUitkomst[];
   isRunning: boolean;
   error: string | null;
   lastRunAt: number | null;
@@ -166,6 +185,7 @@ function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
 export const useCheckStore = create<CheckState>((set) => ({
   results: [],
   skipped: [],
+  beff: [],
   isRunning: false,
   error: null,
   lastRunAt: null,
@@ -204,12 +224,14 @@ export const useCheckStore = create<CheckState>((set) => ({
       });
       const clt = buildCltCheckInputs({ ...data, supportedGrades: timberGrades });
       // De meewerkende flensbreedte moet vóór de bouwer bekend zijn: hij
-      // belandt in de doorsnede zelf, niet als losse correctie erna.
+      // belandt in de doorsnede zelf, niet als losse correctie erna. De hele
+      // afleiding wordt bewaard — zie het veld `beff` hierboven.
+      const beffUitkomsten = await bepaalBeffPerStaaf(data, roepKern);
       const beton = buildBetonCheckInputs({
         ...data,
         korven: korvenUitStaven(data.beams),
         supportedClasses: concreteClasses,
-        bEffPerStaaf: await bepaalBeffPerStaaf(data, roepKern),
+        bEffPerStaaf: bEffWaardenPerStaaf(beffUitkomsten),
       });
       const spanning = buildSpanningCheckInputs(data);
 
@@ -267,6 +289,7 @@ export const useCheckStore = create<CheckState>((set) => ({
       set({
         results: merged,
         skipped: skipped.sort((a, b) => a.beamId - b.beamId),
+        beff: beffUitkomsten,
         isRunning: false,
         error: null,
         lastRunAt: Date.now(),
@@ -276,7 +299,7 @@ export const useCheckStore = create<CheckState>((set) => ({
     }
   },
 
-  clear: () => set({ results: [], skipped: [], error: null, lastRunAt: null }),
+  clear: () => set({ results: [], skipped: [], beff: [], error: null, lastRunAt: null }),
 }));
 
 /**
