@@ -80,8 +80,16 @@ const ONDEELBAAR = [
   "li",
 ].join(", ");
 
-/** Koppen die niet los onderaan een vel mogen blijven staan. */
-const KOP = ".rpt-h2, .rpt-h3, .rpt-uitgangspunten-kop, .rpt-doc-kind";
+/**
+ * Koppen die niet los onderaan een vel mogen blijven staan.
+ *
+ * `.rpt-eis-staafkop` is de staafkop van het hoofdstuk over de fysisch
+ * niet-lineaire tweede orde: geen <h3> (dat zou de inhoudsopgave vullen met
+ * een regel per staaf per combinatie), maar wel een kop, en hij hoort dus bij
+ * zijn figuur en segmenttabel te blijven.
+ */
+const KOP =
+  ".rpt-h2, .rpt-h3, .rpt-uitgangspunten-kop, .rpt-doc-kind, .rpt-eis-staafkop";
 
 /** Containers die zelf nooit een atoom worden (altijd verder opensplitsen). */
 const NOOIT_ATOOM = new Set(["TBODY", "TFOOT"]);

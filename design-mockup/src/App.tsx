@@ -47,6 +47,10 @@ import {
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
+import {
+  useBetonStijfheidStore,
+  type StijfheidCombinatie,
+} from "./stores/betonStijfheidStore";
 import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
 import {
   exporteer as exporteerEigenDoorsneden,
@@ -176,6 +180,11 @@ function App() {
   // checks voor hetzelfde model in omloop zijn.
   const checkResults = useCheckStore((s) => s.results);
   const checkSkipped = useCheckStore((s) => s.skipped);
+  // Het spoor van de fysisch niet-lineaire tweede orde (segmentstijfheden per
+  // combinatie) — bron van het rapporthoofdstuk. Wordt op dezelfde momenten
+  // gewist als de toetsresultaten: verse gegevens of niets.
+  const stijfheidZet = useBetonStijfheidStore((s) => s.zet);
+  const stijfheidClear = useBetonStijfheidStore((s) => s.clear);
   // R5 — losgekoppeld rapportvenster ("Naast je scherm").
   const { createDetachedWindow } = useWindowManager();
   const { t: tRibbon } = useTranslation("ribbon");
@@ -632,6 +641,9 @@ function App() {
     fem.setActiveCombinationId(null);
     // Normtoetsingsresultaten horen bij het oude model → wissen.
     checkClear();
+    // Idem het segmentspoor van de fysisch niet-lineaire berekening: die
+    // stijfheden horen bij de krachtsverdeling van het oude model.
+    stijfheidClear();
     if (!liveRekenenRef.current) {
       // Nog niet gerekend: status terug naar Gereed en verder niets doen.
       setSolverStatus({ kind: "ready" });
@@ -772,6 +784,8 @@ function App() {
       nodes: fem.nodes,
       beams: fem.beams,
     });
+    // Een vorige rekengang mag nooit als spoor van deze blijven staan.
+    stijfheidClear();
     if (staven.length === 0) {
       notifyInfo(
         "Fysisch niet-lineair: niets te doen",
@@ -797,18 +811,37 @@ function App() {
       );
       return null;
     }
+    // Het spoor voor het rapporthoofdstuk: per combinatie de segmenttabel van
+    // de laatste ronde plus het convergentieverloop. Wordt pas weggeschreven
+    // als ALLE combinaties gelukt zijn — een half spoor hoort bij een
+    // krachtsverdeling die er niet is.
+    const spoor: StijfheidCombinatie[] = [];
     try {
       for (const combo of fem.combinations) {
+        // Besluit B2: in de UGT rekenwaarden zonder betontrek (5.8.6(3)/(5)),
+        // in de BGT gemiddelde waarden mét tension stiffening (7.4.3). De
+        // grenstoestand van de combinatie bepaalt dus welk diagram de kern
+        // gebruikt; nooit impliciet, en de gebruikte variant staat per
+        // segment in het antwoord.
+        const grenstoestand = combo.type === "sls" ? "MeanValues" : "DesignValues";
         const uit = await losCombinatieFysischOp(input, combo, staven, {
           segmentLengteMm: fem.betonSegmentLengteMm,
-          // Besluit B2: in de UGT rekenwaarden zonder betontrek (5.8.6(3)/(5)),
-          // in de BGT gemiddelde waarden mét tension stiffening (7.4.3). De
-          // grenstoestand van de combinatie bepaalt dus welk diagram de kern
-          // gebruikt; nooit impliciet, en de gebruikte variant staat per
-          // segment in het antwoord.
-          grenstoestand: combo.type === "sls" ? "MeanValues" : "DesignValues",
+          grenstoestand,
         });
-        if (!uit.zonderLasten) zetCombinatieResultaat(outputs.perCase, combo, uit.resultaat);
+        if (uit.zonderLasten) continue;
+        zetCombinatieResultaat(outputs.perCase, combo, uit.resultaat);
+        spoor.push({
+          combinatieId: combo.id,
+          combinatieNaam: combo.name,
+          grenstoestand,
+          ronden: uit.ronden,
+          verloop: uit.geschiedenis.map((g) => ({
+            ronde: g.ronde,
+            maxRelatieveVerandering: g.maxRelatieveVerandering,
+            geconvergeerd: g.geconvergeerd,
+          })),
+          staven: [...uit.laatsteRonde.values()],
+        });
       }
     } catch (e) {
       console.warn("[FEM fysisch niet-lineair]", e);
@@ -819,6 +852,11 @@ function App() {
       );
       return null;
     }
+    stijfheidZet({
+      segmentLengteMm: fem.betonSegmentLengteMm,
+      combinaties: spoor,
+      overgeslagen,
+    });
     const combinationResults = new Map(
       fem.combinations.map(c => [c.id, combineResults(c, outputs.perCase)]),
     );
@@ -826,7 +864,7 @@ function App() {
     const verse = { perCase: outputs.perCase, combinationResults, envelope };
     fem.setSolverOutputs(verse);
     return verse;
-  }, [fem]);
+  }, [fem, stijfheidZet, stijfheidClear]);
 
   /**
    * Eén run voor staal én hout: zorgt eerst voor verse combinatieresultaten
@@ -898,12 +936,20 @@ function App() {
           void handleRunMemberChecks({ openPanel: false, outputs: verse ?? outputs });
         });
       } else {
+        // Er is NIET fysisch gerekend: een segmentspoor van een vorige
+        // rekengang zou dan bij een andere krachtsverdeling horen dan die nu
+        // op het scherm staat. Het invalidatie-effect kijkt alleen naar het
+        // model, en het analysetype staat daar niet in.
+        stijfheidClear();
         // De normtoetsing hoort bij het resultaat en loopt altijd mee.
         void handleRunMemberChecks({ openPanel: false, outputs });
       }
     }
     return outputs;
-  }, [fem.analysetype, computeAndStoreSolverOutputs, handleRunMemberChecks, rekenFysischNietlineair]);
+  }, [
+    fem.analysetype, computeAndStoreSolverOutputs, handleRunMemberChecks,
+    rekenFysischNietlineair, stijfheidClear,
+  ]);
 
   // Het invalidatie-effect leest deze functie uit een ref: zou het effect op
   // `rekenDoor` deppen, dan startte het opnieuw bij elke modelwijziging (die

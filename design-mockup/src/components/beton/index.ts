@@ -12,6 +12,7 @@ export { default as WapeningskorfEditor } from "./WapeningskorfEditor";
 export { default as DoorsnedeTekening } from "./DoorsnedeTekening";
 export { default as MNKappaGrafiek, puntBijMoment } from "./MNKappaGrafiek";
 export { default as InteractieGrafiek } from "./InteractieGrafiek";
+export { default as EiVerloopGrafiek, type EiSegment } from "./EiVerloopGrafiek";
 export * from "./tekenkleuren";
 export * from "./wapeningskorf";
 export * from "./betonKern";

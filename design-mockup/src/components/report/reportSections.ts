@@ -46,6 +46,7 @@ import CheckTableSection from "./sections/CheckTableSection";
 import CheckDetailSection from "./sections/CheckDetailSection";
 import CltSection from "./sections/CltSection";
 import BetonSection from "./sections/BetonSection";
+import BetonStijfheidSection from "./sections/BetonStijfheidSection";
 import SpanningSection from "./sections/SpanningSection";
 
 export interface ReportSectionDef {
@@ -259,6 +260,25 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "dat de betonstaaf compleet is nagerekend. Dat weegt zwaarder dan de " +
       "regel dat detailuitvoer buiten het beperkte rapport blijft.",
     Component: BetonSection,
+  },
+  // De fysisch niet-lineaire tweede orde: per combinatie de segmentindeling,
+  // de secans-EI per segment en het convergentiespoor. Een EIGEN hoofdstuk en
+  // geen blok in de betonsectie hierboven — dat gaat over de doorsnede en
+  // leest de checkStore, dit gaat over de krachtsverdeling, is per combinatie
+  // ingedeeld en bestaat alleen na een fysisch niet-lineaire berekening.
+  {
+    id: "betonStijfheid",
+    titleKey: "report.sectionBetonStijfheid",
+    defaultTitle: "Beton — fysisch niet-lineaire tweede orde",
+    inBeperkt: false,
+    beperktReden:
+      "Detailuitvoer: tientallen segmentregels per staaf en per combinatie — " +
+      "de verantwoording waarmee een controlerend constructeur de " +
+      "krachtsverdeling kan navertellen, niet de samenvatting voor de " +
+      "opdrachtgever. Wat de ontvanger moet weten (dat er zonder kruip " +
+      "gerekend is, en dat dat voor blijvend belaste kolommen aan de " +
+      "onveilige kant is) staat óók in het beperkingenblok van de betonsectie.",
+    Component: BetonStijfheidSection,
   },
   // Vrije spanningstoets: de doorsnede met het spanningsverloop. Rendert
   // alleen iets wanneer er staven met een vrij materiaal zijn.

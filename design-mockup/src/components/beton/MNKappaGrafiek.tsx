@@ -65,7 +65,7 @@ export function puntBijMoment(
 }
 
 /** Ronde asstap: 1, 2 of 5 × 10ⁿ zodat er ongeveer `doel` stappen komen. */
-function mooieStap(max: number, doel = 5): number {
+export function mooieStap(max: number, doel = 5): number {
   if (!(max > 0)) return 1;
   const ruw = max / doel;
   const mag = 10 ** Math.floor(Math.log10(ruw));
@@ -74,7 +74,13 @@ function mooieStap(max: number, doel = 5): number {
   return stap * mag;
 }
 
-function ticks(max: number): number[] {
+/**
+ * Asverdeling van 0 tot minstens `max`, in ronde stappen. Geëxporteerd zodat
+ * het EI-verloop van de fysisch niet-lineaire berekening dezelfde asregel
+ * gebruikt — twee grafieken in één rapport horen niet op een andere manier
+ * te verdelen.
+ */
+export function ticks(max: number): number[] {
   const stap = mooieStap(max);
   const n = Math.ceil(max / stap - 1e-9);
   const uit: number[] = [];

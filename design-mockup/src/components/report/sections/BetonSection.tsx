@@ -27,6 +27,7 @@
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { useCheckStore } from "../../../stores/checkStore";
+import { useBetonStijfheidStore } from "../../../stores/betonStijfheidStore";
 import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportStore";
 import { useReportData } from "../ReportDataContext";
 import { isConcreteCheckResult } from "../../../lib/checkTypes";
@@ -438,8 +439,27 @@ function BetonStaafBlok({
  * De Nederlandse tekst is de bron (`nl`); `key` verwijst naar de vertaling in
  * de "ribbon"-namespace. Een ontbrekende sleutel valt terug op `nl`, zodat
  * een niet-vertaalde regel zichtbaar blijft in plaats van te verdwijnen.
+ *
+ * TWEE PUNTEN HANGEN AF VAN DE BEREKENING. Zodra er fysisch niet-lineair
+ * gerekend is (analysetype "2e orde + fysisch"), is 5.8 niet meer overgeslagen
+ * en komen N_Ed en M_Ed niet meer uit een eerste-orde-berekening; en dan hoort
+ * de kruipvermelding van besluit B1 hier woordelijk zoals de rekenkern hem
+ * geeft. Zie [`nietGetoetst`].
  */
-const NIET_GETOETST: Array<{ artikel: string; key: string; nl: string }> = [
+interface Beperking {
+  artikel: string;
+  key: string;
+  nl: string;
+  /**
+   * Tekst die WOORDELIJK uit de rekenkern komt en dus niet door een vertaling
+   * vervangen mag worden. Een tweede versie van een verplichte waarschuwing is
+   * een tweede waarheid.
+   */
+  letterlijk?: boolean;
+}
+
+/** De punten vóór het tweede-orde-punt. */
+const NIET_GETOETST_VOOR: Beperking[] = [
   {
     artikel: "6.2",
     key: "report.betonNietDwarskracht",
@@ -453,29 +473,19 @@ const NIET_GETOETST: Array<{ artikel: string; key: string; nl: string }> = [
     key: "report.betonNietWringingPons",
     nl: "Wringing en pons.",
   },
-  {
-    artikel: "5.8",
-    key: "report.betonNietTweedeOrde",
-    nl:
-      "Tweede-orde-effecten bij aanwezigheid van axiale belastingen. N_Ed en M_Ed komen " +
-      "uit de eerste-orde-berekening; er is geen slankheidscriterium, geen methode " +
-      "gebaseerd op de nominale stijfheid (5.8.7) en geen methode gebaseerd op de " +
-      "nominale kromming (5.8.8). Voor een slanke gedrukte staaf is deze toetsing " +
-      "daarmee aan de ONVEILIGE kant.",
-  },
+];
+
+/** Tussen het tweede-orde-punt en het kruippunt. */
+const NIET_GETOETST_MIDDEN: Beperking[] = [
   {
     artikel: "5.2 / 5.9",
     key: "report.betonNietImperfecties",
     nl: "Geometrische imperfecties en kip van slanke liggers.",
   },
-  {
-    artikel: "3.1.4",
-    key: "report.betonNietKruip",
-    nl:
-      "Kruip en krimp. Er wordt met φ = 0 gerekend. In deze doorsnedetoetsing op " +
-      "bezwijken speelt kruip geen rol, maar zodra de krachtsverdeling van de kruip " +
-      "afhangt (tweede orde, blijvend belaste kolommen) is die aanname niet meer veilig.",
-  },
+];
+
+/** De punten ná het kruippunt. */
+const NIET_GETOETST_NA: Beperking[] = [
   {
     artikel: "7.2 / 7.3 / 7.4",
     key: "report.betonNietBgt",
@@ -507,6 +517,64 @@ const NIET_GETOETST: Array<{ artikel: string; key: string; nl: string }> = [
   },
 ];
 
+/**
+ * De volledige lijst, met de twee punten die van de gedraaide berekening
+ * afhangen op hun plaats.
+ *
+ * `fysisch` = er is met het analysetype "2e orde + fysisch" gerekend en er
+ * staat een segmentspoor van de rekenkern. Dan is 5.8 niet overgeslagen maar
+ * uitgevoerd — met de algemene methode van 5.8.6 — en zou de oude tekst ("N_Ed
+ * en M_Ed komen uit de eerste-orde-berekening") onwaar zijn. `creepNote` is de
+ * verplichte vermelding van besluit B1, woordelijk uit het kernantwoord: hier
+ * niet geherformuleerd, want dan zouden er twee versies van dezelfde
+ * waarschuwing bestaan.
+ */
+function nietGetoetst(fysisch: boolean, creepNote: string | null): Beperking[] {
+  const tweedeOrde: Beperking = fysisch
+    ? {
+        artikel: "5.8",
+        key: "report.betonTweedeOrdeGedaan",
+        nl:
+          "Tweede-orde-effecten bij aanwezigheid van axiale belastingen zijn WÉL " +
+          "meegenomen: de krachtsverdeling is bepaald met de algemene methode van " +
+          "5.8.6 — geometrisch én fysisch niet-lineair, met per segment de secante " +
+          "buigstijfheid uit het M-N-κ-diagram. N_Ed en M_Ed in deze " +
+          "doorsnedetoetsing komen dus uit die berekening en niet uit een " +
+          "eerste-orde-berekening. De vereenvoudigde methoden op basis van de " +
+          "nominale stijfheid (5.8.7) en de nominale kromming (5.8.8) zijn daarom " +
+          "niet gebruikt. De segmenttabellen, het convergentiespoor en de " +
+          "uitgangspunten staan in het hoofdstuk “Beton — fysisch " +
+          "niet-lineaire tweede orde”.",
+      }
+    : {
+        artikel: "5.8",
+        key: "report.betonNietTweedeOrde",
+        nl:
+          "Tweede-orde-effecten bij aanwezigheid van axiale belastingen. N_Ed en M_Ed komen " +
+          "uit de eerste-orde-berekening; er is geen slankheidscriterium, geen methode " +
+          "gebaseerd op de nominale stijfheid (5.8.7) en geen methode gebaseerd op de " +
+          "nominale kromming (5.8.8). Voor een slanke gedrukte staaf is deze toetsing " +
+          "daarmee aan de ONVEILIGE kant.",
+      };
+  const kruip: Beperking =
+    fysisch && creepNote
+      ? {
+          artikel: "3.1.4 / 5.8.4",
+          key: "report.betonKruipVermelding",
+          nl: `Kruip en krimp. ${creepNote}`,
+          letterlijk: true,
+        }
+      : {
+          artikel: "3.1.4",
+          key: "report.betonNietKruip",
+          nl:
+            "Kruip en krimp. Er wordt met φ = 0 gerekend. In deze doorsnedetoetsing op " +
+            "bezwijken speelt kruip geen rol, maar zodra de krachtsverdeling van de kruip " +
+            "afhangt (tweede orde, blijvend belaste kolommen) is die aanname niet meer veilig.",
+        };
+  return [...NIET_GETOETST_VOOR, tweedeOrde, ...NIET_GETOETST_MIDDEN, kruip, ...NIET_GETOETST_NA];
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // De sectie
 // ═══════════════════════════════════════════════════════════════════════
@@ -517,6 +585,12 @@ export default function BetonSection() {
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
   const { beams } = useReportData();
+  // Is er fysisch niet-lineair gerekend? Zo ja, dan is 5.8 niet overgeslagen
+  // en draagt de kern de kruipvermelding van besluit B1 — beide bepalen de
+  // tekst van het beperkingenblok hieronder.
+  const stijfheidCombinaties = useBetonStijfheidStore((s) => s.combinaties);
+  const fysischGerekend = stijfheidCombinaties.length > 0;
+  const creepNote = stijfheidCombinaties[0]?.staven[0]?.creep_note ?? null;
 
   const beton = results.filter(isConcreteCheckResult);
   const getoond = beton.filter((r) => isToetsStaafZichtbaar(verborgenToetsStaven, r.beam_id));
@@ -579,12 +653,17 @@ export default function BetonSection() {
               {t(
                 "report.betonBeperkingenInleiding",
                 "Getoetst is uitsluitend de DOORSNEDE op buiging met normaalkracht in de uiterste grenstoestand, op het maatgevende punt van de omhullende van de UGT-combinaties. Alles hieronder is NIET getoetst; een betonstaaf die hier voldoet, is daarmee niet compleet nagerekend.",
-              )}
+              )}{" "}
+              {fysischGerekend &&
+                t(
+                  "report.betonBeperkingenTweedeOrdeUitzondering",
+                  "Op één punt na: de tweede-orde-effecten van 5.8 zijn in deze berekening wél meegenomen — zie het punt 5.8 hieronder en het hoofdstuk met de segmenttabellen.",
+                )}
             </p>
             <ul className="rpt-bet-beperking-lijst">
-              {NIET_GETOETST.map((b) => (
+              {nietGetoetst(fysischGerekend, creepNote).map((b) => (
                 <li key={b.artikel}>
-                  <strong>{b.artikel}</strong> — {t(b.key, b.nl)}
+                  <strong>{b.artikel}</strong> — {b.letterlijk ? b.nl : t(b.key, b.nl)}
                 </li>
               ))}
               <li>

@@ -45,6 +45,10 @@ import {
   type ToetsStaafKeuze,
 } from "../../stores/reportStore";
 import { useCheckStore } from "../../stores/checkStore";
+import {
+  useBetonStijfheidStore,
+  type StijfheidCombinatie,
+} from "../../stores/betonStijfheidStore";
 import type { MemberCheckResult, CheckSkip } from "../../lib/checkTypes";
 import type {
   NodalDisp,
@@ -119,6 +123,19 @@ interface WireCheckState {
 }
 
 /**
+ * Het segmentspoor van de fysisch niet-lineaire tweede orde
+ * (betonStijfheidStore) — eveneens al JSON-veilig (geen Maps), dus 1-op-1
+ * mee. Zonder dit veld zou het rapporthoofdstuk in een losgekoppeld venster
+ * "niet fysisch gerekend" melden terwijl dat wél gebeurd is.
+ */
+interface WireStijfheidState {
+  segmentLengteMm: number;
+  combinaties: StijfheidCombinatie[];
+  overgeslagen: CheckSkip[];
+  berekendOp: number | null;
+}
+
+/**
  * Gedeelde rapportinstellingen. Zoom bewust NIET — die is puur schermweergave
  * en dus per venster. De opmaak (marges, lettergrootte, interlinie) hoort er
  * wél bij: dat is documentopmaak, en het rapport is één document.
@@ -144,6 +161,8 @@ type ReportSyncMessage =
       data: WireReportData;
       settings: WireReportSettings;
       check: WireCheckState;
+      /** Ontbreekt in snapshots van een ouder hoofdvenster. */
+      stijfheid?: WireStijfheidState;
     }
   | { kind: "settings"; src: string; seq: number; settings: WireReportSettings };
 
@@ -380,6 +399,10 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const checkResults = useCheckStore((s) => s.results);
   const checkSkipped = useCheckStore((s) => s.skipped);
   const checkLastRunAt = useCheckStore((s) => s.lastRunAt);
+  // Het segmentspoor van de fysisch niet-lineaire berekening. `berekendOp`
+  // volstaat als aanleiding: hij wisselt bij elke verse run én bij het wissen.
+  const stijfheidBerekendOp = useBetonStijfheidStore((s) => s.berekendOp);
+  const stijfheidCombinaties = useBetonStijfheidStore((s) => s.combinaties);
 
   // Altijd de actuele stand voor asynchrone aanvragen (hello-afhandeling).
   const latestRef = useRef<ReportData>(data);
@@ -392,6 +415,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const publish = useCallback(() => {
     if (listenersRef.current.size === 0) return;
     const check = useCheckStore.getState();
+    const stijf = useBetonStijfheidStore.getState();
     sendMessage({
       kind: "snapshot",
       src: WINDOW_ID,
@@ -402,6 +426,12 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
         results: check.results,
         skipped: check.skipped,
         lastRunAt: check.lastRunAt,
+      },
+      stijfheid: {
+        segmentLengteMm: stijf.segmentLengteMm,
+        combinaties: stijf.combinaties,
+        overgeslagen: stijf.overgeslagen,
+        berekendOp: stijf.berekendOp,
       },
     });
   }, []);
@@ -442,6 +472,8 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     checkResults,
     checkSkipped,
     checkLastRunAt,
+    stijfheidBerekendOp,
+    stijfheidCombinaties,
   ]);
 
   // Ontvang hello/bye/settings van rapportvensters.
@@ -527,6 +559,14 @@ export function useDetachedReportSync(): ReportData | null {
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
           error: null,
+        });
+        // Een ouder hoofdvenster stuurt dit veld niet mee; dan hoort hier
+        // LEEG te staan en niet het spoor van een vorig snapshot.
+        useBetonStijfheidStore.setState({
+          segmentLengteMm: msg.stijfheid?.segmentLengteMm ?? 0,
+          combinaties: msg.stijfheid?.combinaties ?? [],
+          overgeslagen: msg.stijfheid?.overgeslagen ?? [],
+          berekendOp: msg.stijfheid?.berekendOp ?? null,
         });
       } finally {
         applyingRemote = false;

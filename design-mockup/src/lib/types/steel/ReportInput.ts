@@ -20,5 +20,15 @@ timber_check_results?: Array<TimberBeamCheckResult>,
  * scheurwijdte, doorbuiging, tweede-orde-effecten en de
  * detailleringsregels zitten er NIET in; zie het beperkingenblok van de
  * betonsectie in het live rapport.
+ *
+ * De tweede orde is daarmee niet per se afwezig uit de BEREKENING: het
+ * analysetype "2e orde + fysisch" bepaalt de krachtsverdeling met de
+ * algemene methode van 5.8.6, via `concrete_check::segments` en de lus in
+ * de frontend. Die segmenttabellen, hun convergentiespoor en de
+ * verplichte kruipvermelding staan alleen in het LIVE rapport
+ * (hoofdstuk "Beton — fysisch niet-lineaire tweede orde"); deze
+ * PDF-invoer draagt uitsluitend toetsresultaten en dus geen van beide.
+ * Wie ze in de PDF wil hebben, breidt `ReportInput` uit met het
+ * `SegmentStiffnessResponse`-spoor per combinatie.
  */
 concrete_check_results?: Array<ConcreteBeamCheckResult>, };
