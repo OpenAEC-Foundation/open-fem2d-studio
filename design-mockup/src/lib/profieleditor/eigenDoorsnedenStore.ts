@@ -10,8 +10,21 @@
  * Opslag: localStorage (per browser/desktop-installatie). Opname in het
  * projectbestand is een integratiestap van de hoofdsessie; daarvoor bestaan
  * `exporteer()` / `importeer()`.
+ *
+ * # Waarom hier geen React in zit
+ *
+ * Dit bestand gebruikt bewust `zustand/vanilla` en niet de React-ingang van
+ * zustand. `sectionResolver.ts` leest `zoekEigenDoorsnede` en die resolver
+ * loopt óók in de sidecar — een kaal Node-proces zonder browser. Via de
+ * React-ingang trok esbuild React de sidecarbundel in, waarna de bundelcontrole
+ * terecht struikelde over `window.`-verwijzingen en `assets/fem-kernel.mjs`
+ * niet meer te herbouwen was.
+ *
+ * De React-binding staat daarom apart in `useEigenDoorsneden.ts`. Wie in een
+ * component de lijst wil volgen, importeert daar; wie buiten React alleen wil
+ * opzoeken, blijft hier.
  */
-import { create } from "zustand";
+import { createStore } from "zustand/vanilla";
 import type { CustomSection } from "../types/steel/CustomSection";
 import type { SectionProperties } from "../types/steel/SectionProperties";
 import type { EigenDoorsnede } from "./types";
@@ -62,7 +75,7 @@ function schrijf(items: EigenDoorsnede[]): void {
   }
 }
 
-export const useEigenDoorsneden = create<EigenDoorsnedenState>((set, get) => ({
+export const eigenDoorsnedenStore = createStore<EigenDoorsnedenState>((set, get) => ({
   items: lees(),
   bewaar: (d) => {
     const rest = get().items.filter((x) => x.id !== d.id && x.naam !== d.naam);
@@ -85,17 +98,17 @@ export const useEigenDoorsneden = create<EigenDoorsnedenState>((set, get) => ({
 export function zoekEigenDoorsnede(profile: string | undefined): EigenDoorsnede | undefined {
   const naam = eigenNaamVan(profile);
   if (naam === null) return undefined;
-  return useEigenDoorsneden.getState().items.find((d) => d.naam === naam);
+  return eigenDoorsnedenStore.getState().items.find((d) => d.naam === naam);
 }
 
 /** Alle bewaarde doorsneden als kopie — voor opname in een projectbestand. */
 export function exporteer(): EigenDoorsnede[] {
-  return useEigenDoorsneden.getState().items.map((d) => ({ ...d }));
+  return eigenDoorsnedenStore.getState().items.map((d) => ({ ...d }));
 }
 
 /** Projectbestand → store (vervangt de lokale lijst). */
 export function importeer(items: EigenDoorsnede[]): void {
-  useEigenDoorsneden.getState().vervangAlles(items);
+  eigenDoorsnedenStore.getState().vervangAlles(items);
 }
 
 /**

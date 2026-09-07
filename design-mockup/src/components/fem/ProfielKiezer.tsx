@@ -46,8 +46,8 @@ import type { EigenDoorsnede } from "../../lib/profieleditor/types";
 import {
   isEigenProfiel,
   profielnaamVan,
-  useEigenDoorsneden,
 } from "../../lib/profieleditor/eigenDoorsnedenStore";
+import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
 import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";

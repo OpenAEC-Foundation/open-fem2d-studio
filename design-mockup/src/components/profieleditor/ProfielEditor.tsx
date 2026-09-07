@@ -19,8 +19,8 @@ import type { CustomDoorsnedevorm } from "../../lib/types/steel/CustomDoorsnedev
 import { basisprofielVan, profielLabel } from "../../lib/profieleditor/catalogus";
 import {
   profielnaamVan,
-  useEigenDoorsneden,
 } from "../../lib/profieleditor/eigenDoorsnedenStore";
+import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
 import { fmtGroep, fmtMaat, fmtMacht, leesGetal } from "../../lib/profieleditor/format";
 import { controleerGat, snelleSchatting } from "../../lib/profieleditor/geometrie";
 import { nieuwId } from "../../lib/profieleditor/id";

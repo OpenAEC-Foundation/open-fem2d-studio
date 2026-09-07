@@ -1498,17 +1498,19 @@
           "M_min": -23.58802372840362,
           "M_max": 11.778573900610478,
           "governingCombinationId": 1,
-          "governingMAbs": 23.58802372840362
+          "governingMAbs": 23.58802372840362,
+          "governingMPos_mm": 4000
         },
         "2": {
           "N_min": -8.841649407253527,
           "N_max": -8.841649407253527,
-          "V_min": 63,
+          "V_min": -63,
           "V_max": 63,
-          "M_min": -23.588023728403623,
-          "M_max": -23.588023728403616,
+          "M_min": -23.588023728403616,
+          "M_max": 70.91197627159639,
           "governingCombinationId": 1,
-          "governingMAbs": 23.588023728403623
+          "governingMAbs": 70.91197627159639,
+          "governingMPos_mm": 3000
         },
         "3": {
           "N_min": -63.00000000000001,
@@ -1516,9 +1518,10 @@
           "V_min": 8.841649407253522,
           "V_max": 8.841649407253522,
           "M_min": -23.588023728403613,
-          "M_max": 11.778573900610475,
+          "M_max": 11.778573900610477,
           "governingCombinationId": 1,
-          "governingMAbs": 23.588023728403613
+          "governingMAbs": 23.588023728403613,
+          "governingMPos_mm": 0
         }
       },
       "reactions": {
@@ -1803,6 +1806,10 @@
         "buckling_length_z_m": 4,
         "deflection_limit_class": "Floor",
         "deflection_limit_numerator": 333,
+        "deflection_add_limit_numerator": 0,
+        "deflection_notes": [
+          "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming ertussen."
+        ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,
         "consequence_class": "CC1",
@@ -2075,6 +2082,10 @@
         "buckling_length_z_m": 6,
         "deflection_limit_class": "Floor",
         "deflection_limit_numerator": 333,
+        "deflection_add_limit_numerator": 0,
+        "deflection_notes": [
+          "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming ertussen."
+        ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,
         "consequence_class": "CC1",
@@ -2347,12 +2358,16 @@
         "buckling_length_z_m": 4,
         "deflection_limit_class": "Floor",
         "deflection_limit_numerator": 333,
+        "deflection_add_limit_numerator": 0,
+        "deflection_notes": [
+          "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming ertussen."
+        ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,
         "consequence_class": "CC1",
         "pre_camber_mm": 0,
         "deflection_permanent_mm": 0,
-        "q_equiv_n_per_mm": 0,
+        "q_equiv_n_per_mm": 8.881784197001252e-16,
         "z_a_mm": 76
       }
     ],

@@ -18,8 +18,12 @@
  * (max/min over combinaties — geen superpositie).
  *
  * Then `computeEnvelope` sweeps all combinations and records per-element
- * min/max axial/shear/moment + per-node reaction extrema. The governing
- * combination id (for max |M|) is captured so the UI can label the bar.
+ * min/max axial/shear/moment + per-node reaction extrema. Dat gebeurt over de
+ * VOLLEDIGE stationsarrays van elke staaf, niet over de eindwaarden: het
+ * veldmoment qL²/8 van een vrij opgelegde ligger zit tussen twee einden die
+ * beide M = 0 dragen. The governing combination id (max |M| érgens op de
+ * staaf) is captured so the UI can label the bar, mét de positie van dat
+ * maximum (governingMPos_mm).
  *
  * Default combos are EN 1990 Eq. 6.10a/b (ULS) + 6.14a/6.15a/6.16a (SLS) for
  * a residential building — ψ-factors are simplified housing values used as
@@ -51,6 +55,14 @@ export interface EnvelopeElementSpan {
   governingCombinationId: number;
   /** The |M| value used for governing pick. */
   governingMAbs: number;
+  /**
+   * Positie van governingMAbs langs de staaf: mm vanaf de startknoop.
+   * Het station met het grootste |M| binnen de maatgevende combinatie —
+   * voor een vrij opgelegde ligger onder een gelijkmatig verdeelde last
+   * dus het midden, niet een van de einden. Zonder stationsarrays
+   * (terugvalpad) is dit 0 of L_mm, naargelang welk eindmoment wint.
+   */
+  governingMPos_mm: number;
 }
 
 export interface EnvelopeReaction {
@@ -253,6 +265,11 @@ export function combineResults(
       Ms += factor * ef.M_start;
       Me += factor * ef.M_end;
 
+      // Staaflengte overnemen van het eerste bijdragende geval, óók als dat
+      // geval geen stationsarrays draagt: zonder L_mm kan het terugvalpad van
+      // de omhullende de positie van het maatgevende eindmoment niet noemen.
+      if (L_mm === 0) L_mm = ef.L_mm;
+
       // Lazily initialise / size the arrays from the first contributing case.
       if (stations_mm.length === 0 && ef.stations_mm.length > 0) {
         L_mm = ef.L_mm;
@@ -361,9 +378,72 @@ export function combineResults(
 // ── Envelope ──────────────────────────────────────────────────────────────
 
 /**
+ * Extremen van ÉÉN staaf binnen ÉÉN combinatie, over de VOLLEDIGE staaf.
+ *
+ * Waarom niet op de eindwaarden: N/V/M van `ElementForces` zijn eindwaarden
+ * (N/V aan het startuiteinde, M aan beide knopen). Een vrij opgelegde ligger
+ * onder een gelijkmatig verdeelde last heeft M = 0 aan béíde einden; het
+ * veldmoment qL²/8 zit ertussen. Hetzelfde geldt voor V (die van +qL/2 naar
+ * −qL/2 loopt) en voor N zodra er axiale belasting over de staaf staat
+ * (eigen gewicht van een kolom, een deellast). De stationsarrays dragen dat
+ * verloop wél — 21 punten, dezelfde bron die de diagrammen en de
+ * EN-toetsenvelop (`buildForcesEnvelope`) gebruiken.
+ *
+ * Terugval: zonder stationsarrays (oudere/gedegradeerde resultaten — zie de
+ * `stations_mm.length === 0`-controle in de toetsbouwer) blijft alleen het
+ * oude gedrag over: de eindwaarden. Dat is dan het beste dat er is.
+ *
+ * Tekenconventies ongemoeid: `normalForce`/`shearForce`/`bendingMoment`
+ * dragen dezelfde conventie als N/V/M_start (trek-positief resp.
+ * sagging-positief) — de adapter flipt beide op dezelfde plek.
+ */
+function staafExtremen(ef: ElementForces): {
+  N_min: number; N_max: number;
+  V_min: number; V_max: number;
+  M_min: number; M_max: number;
+  mAbs: number; mPos_mm: number;
+} {
+  const n = ef.stations_mm.length;
+  if (n === 0) {
+    const absStart = Math.abs(ef.M_start);
+    const absEnd = Math.abs(ef.M_end);
+    return {
+      N_min: ef.N, N_max: ef.N,
+      V_min: ef.V, V_max: ef.V,
+      M_min: Math.min(ef.M_start, ef.M_end),
+      M_max: Math.max(ef.M_start, ef.M_end),
+      mAbs: Math.max(absStart, absEnd),
+      mPos_mm: absEnd > absStart ? ef.L_mm : 0,
+    };
+  }
+  let N_min = Infinity, N_max = -Infinity;
+  let V_min = Infinity, V_max = -Infinity;
+  let M_min = Infinity, M_max = -Infinity;
+  let mAbs = -Infinity, mPos_mm = ef.stations_mm[0] ?? 0;
+  for (let i = 0; i < n; i++) {
+    const nx = ef.normalForce[i] ?? 0;
+    const vx = ef.shearForce[i] ?? 0;
+    const mx = ef.bendingMoment[i] ?? 0;
+    if (nx < N_min) N_min = nx;
+    if (nx > N_max) N_max = nx;
+    if (vx < V_min) V_min = vx;
+    if (vx > V_max) V_max = vx;
+    if (mx < M_min) M_min = mx;
+    if (mx > M_max) M_max = mx;
+    // Strikt groter: bij gelijke |M| (symmetrisch verloop) wint het eerste
+    // station, zodat de gemelde positie niet van afrondruis afhangt.
+    const a = Math.abs(mx);
+    if (a > mAbs) { mAbs = a; mPos_mm = ef.stations_mm[i] ?? 0; }
+  }
+  return { N_min, N_max, V_min, V_max, M_min, M_max, mAbs, mPos_mm };
+}
+
+/**
  * Sweep all combinations and record per-element min/max axial/shear/moment
- * (using the larger of |M_start| or |M_end| for the "governing M" tiebreak),
- * plus per-node reaction extrema and the largest |displacement|.
+ * over de VOLLEDIGE staaf (alle stations, niet alleen de eindwaarden — zie
+ * staafExtremen), plus per-node reaction extrema and the largest
+ * |displacement|. De maatgevende combinatie per staaf is die met het
+ * grootste |M| érgens op de staaf; governingMPos_mm zegt wáár.
  */
 export function computeEnvelope(
   combinations: LoadCombination[],
@@ -383,27 +463,28 @@ export function computeEnvelope(
 
   for (const { combo, res } of combined) {
     res.elements.forEach((ef, beamId) => {
-      const mAbs = Math.max(Math.abs(ef.M_start), Math.abs(ef.M_end));
+      const e = staafExtremen(ef);
       const prev = elements.get(beamId);
       if (!prev) {
         elements.set(beamId, {
-          N_min: ef.N, N_max: ef.N,
-          V_min: ef.V, V_max: ef.V,
-          M_min: Math.min(ef.M_start, ef.M_end),
-          M_max: Math.max(ef.M_start, ef.M_end),
+          N_min: e.N_min, N_max: e.N_max,
+          V_min: e.V_min, V_max: e.V_max,
+          M_min: e.M_min, M_max: e.M_max,
           governingCombinationId: combo.id,
-          governingMAbs: mAbs,
+          governingMAbs: e.mAbs,
+          governingMPos_mm: e.mPos_mm,
         });
       } else {
-        prev.N_min = Math.min(prev.N_min, ef.N);
-        prev.N_max = Math.max(prev.N_max, ef.N);
-        prev.V_min = Math.min(prev.V_min, ef.V);
-        prev.V_max = Math.max(prev.V_max, ef.V);
-        prev.M_min = Math.min(prev.M_min, ef.M_start, ef.M_end);
-        prev.M_max = Math.max(prev.M_max, ef.M_start, ef.M_end);
-        if (mAbs > prev.governingMAbs) {
+        prev.N_min = Math.min(prev.N_min, e.N_min);
+        prev.N_max = Math.max(prev.N_max, e.N_max);
+        prev.V_min = Math.min(prev.V_min, e.V_min);
+        prev.V_max = Math.max(prev.V_max, e.V_max);
+        prev.M_min = Math.min(prev.M_min, e.M_min);
+        prev.M_max = Math.max(prev.M_max, e.M_max);
+        if (e.mAbs > prev.governingMAbs) {
           prev.governingCombinationId = combo.id;
-          prev.governingMAbs = mAbs;
+          prev.governingMAbs = e.mAbs;
+          prev.governingMPos_mm = e.mPos_mm;
         }
       }
     });

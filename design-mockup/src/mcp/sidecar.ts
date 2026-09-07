@@ -427,6 +427,11 @@ function vormEnvelop(env: ReturnType<typeof computeEnvelope>) {
       M_max: naarKNm(e.M_max),
       governingCombinationId: e.governingCombinationId,
       governingMAbs: naarKNm(e.governingMAbs),
+      // Positie van governingMAbs langs de staaf (mm vanaf de startknoop).
+      // De omhullende leest het volledige stationsraster, dus dat maximum
+      // ligt zelden op een uiteinde; zonder deze waarde is niet af te leiden
+      // waar het maatgevende moment optreedt.
+      governingMPos_mm: e.governingMPos_mm,
     })),
     reactions: mapNaarObject(env.reactions, (r) => ({
       fx_min: naarKN(r.fx_min),

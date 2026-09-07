@@ -829,7 +829,13 @@ export default function TableView(props: TableViewProps) {
         columns: [
           t("table.colBeam"),
           "N,min [kN]", "N,max [kN]", "V,min [kN]", "V,max [kN]",
-          "M,min [kNm]", "M,max [kNm]", t("table.colGoverning"),
+          "M,min [kNm]", "M,max [kNm]",
+          // Positie van het maatgevende |M| vanaf de startknoop. De extremen
+          // hierboven komen van het volledige stationsraster, dus het maximum
+          // ligt doorgaans in het veld; zonder deze kolom is niet af te lezen
+          // wáár. Millimeters, net als de lengtekolom van de staventabel.
+          "x(|M|max) [mm]",
+          t("table.colGoverning"),
         ],
         editable: false,
         emptyText: t("table.noRows"),
@@ -838,16 +844,18 @@ export default function TableView(props: TableViewProps) {
             e.N_min / 1e3, e.N_max / 1e3, e.V_min / 1e3, e.V_max / 1e3,
             e.M_min / 1e6, e.M_max / 1e6,
           ];
+          const pos = fmtNum(e.governingMPos_mm, 0);
           const gov = comboName(e.governingCombinationId);
           return {
             key: `f${bid}`,
             selected: selBeamId === bid,
             onSelect: () => setSelection({ type: "beam", id: bid }),
-            exportCells: [String(bid), ...vals.map((v) => fmtNum(v)), gov],
+            exportCells: [String(bid), ...vals.map((v) => fmtNum(v)), pos, gov],
             cells: (
               <>
                 <td className="ftable-id">{bid}</td>
                 {vals.map((v, i) => <td key={i} className="ftable-num">{fmtNum(v)}</td>)}
+                <td className="ftable-num">{pos}</td>
                 <td>{gov}</td>
               </>
             ),

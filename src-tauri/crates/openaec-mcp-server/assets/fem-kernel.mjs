@@ -4322,6 +4322,13 @@ function registreerPlaatMeshCacheCommitter(fn) {
 function commitPlaatMeshCache(plateId, cache) {
   meshCacheCommitter?.(plateId, cache);
 }
+var LOAD_SOORT_MEERVOUD = {
+  lineLoad: "lijnlasten",
+  pointForce: "puntlasten",
+  pointMoment: "momenten",
+  thermal: "temperatuurlasten",
+  edgeLoad: "randlasten"
+};
 var DEFAULT_STRUCTURAL_GRID = {
   enabled: true,
   xAxes: [
@@ -5392,6 +5399,7 @@ function combineResults(combo, perCase) {
       V += factor * ef.V;
       Ms += factor * ef.M_start;
       Me += factor * ef.M_end;
+      if (L_mm === 0) L_mm = ef.L_mm;
       if (stations_mm.length === 0 && ef.stations_mm.length > 0) {
         L_mm = ef.L_mm;
         stations_mm = ef.stations_mm.slice();
@@ -5503,6 +5511,44 @@ function combineResults(combo, perCase) {
   }
   return { displacements, reactions, elements, maxDisplacement: maxDisp, plateElements };
 }
+function staafExtremen(ef) {
+  const n = ef.stations_mm.length;
+  if (n === 0) {
+    const absStart = Math.abs(ef.M_start);
+    const absEnd = Math.abs(ef.M_end);
+    return {
+      N_min: ef.N,
+      N_max: ef.N,
+      V_min: ef.V,
+      V_max: ef.V,
+      M_min: Math.min(ef.M_start, ef.M_end),
+      M_max: Math.max(ef.M_start, ef.M_end),
+      mAbs: Math.max(absStart, absEnd),
+      mPos_mm: absEnd > absStart ? ef.L_mm : 0
+    };
+  }
+  let N_min = Infinity, N_max = -Infinity;
+  let V_min = Infinity, V_max = -Infinity;
+  let M_min = Infinity, M_max = -Infinity;
+  let mAbs = -Infinity, mPos_mm = ef.stations_mm[0] ?? 0;
+  for (let i = 0; i < n; i++) {
+    const nx = ef.normalForce[i] ?? 0;
+    const vx = ef.shearForce[i] ?? 0;
+    const mx = ef.bendingMoment[i] ?? 0;
+    if (nx < N_min) N_min = nx;
+    if (nx > N_max) N_max = nx;
+    if (vx < V_min) V_min = vx;
+    if (vx > V_max) V_max = vx;
+    if (mx < M_min) M_min = mx;
+    if (mx > M_max) M_max = mx;
+    const a = Math.abs(mx);
+    if (a > mAbs) {
+      mAbs = a;
+      mPos_mm = ef.stations_mm[i] ?? 0;
+    }
+  }
+  return { N_min, N_max, V_min, V_max, M_min, M_max, mAbs, mPos_mm };
+}
 function computeEnvelope(combinations, perCase) {
   const elements = /* @__PURE__ */ new Map();
   const reactions = /* @__PURE__ */ new Map();
@@ -5514,29 +5560,31 @@ function computeEnvelope(combinations, perCase) {
   }));
   for (const { combo, res } of combined) {
     res.elements.forEach((ef, beamId) => {
-      const mAbs = Math.max(Math.abs(ef.M_start), Math.abs(ef.M_end));
+      const e = staafExtremen(ef);
       const prev = elements.get(beamId);
       if (!prev) {
         elements.set(beamId, {
-          N_min: ef.N,
-          N_max: ef.N,
-          V_min: ef.V,
-          V_max: ef.V,
-          M_min: Math.min(ef.M_start, ef.M_end),
-          M_max: Math.max(ef.M_start, ef.M_end),
+          N_min: e.N_min,
+          N_max: e.N_max,
+          V_min: e.V_min,
+          V_max: e.V_max,
+          M_min: e.M_min,
+          M_max: e.M_max,
           governingCombinationId: combo.id,
-          governingMAbs: mAbs
+          governingMAbs: e.mAbs,
+          governingMPos_mm: e.mPos_mm
         });
       } else {
-        prev.N_min = Math.min(prev.N_min, ef.N);
-        prev.N_max = Math.max(prev.N_max, ef.N);
-        prev.V_min = Math.min(prev.V_min, ef.V);
-        prev.V_max = Math.max(prev.V_max, ef.V);
-        prev.M_min = Math.min(prev.M_min, ef.M_start, ef.M_end);
-        prev.M_max = Math.max(prev.M_max, ef.M_start, ef.M_end);
-        if (mAbs > prev.governingMAbs) {
+        prev.N_min = Math.min(prev.N_min, e.N_min);
+        prev.N_max = Math.max(prev.N_max, e.N_max);
+        prev.V_min = Math.min(prev.V_min, e.V_min);
+        prev.V_max = Math.max(prev.V_max, e.V_max);
+        prev.M_min = Math.min(prev.M_min, e.M_min);
+        prev.M_max = Math.max(prev.M_max, e.M_max);
+        if (e.mAbs > prev.governingMAbs) {
           prev.governingCombinationId = combo.id;
-          prev.governingMAbs = mAbs;
+          prev.governingMAbs = e.mAbs;
+          prev.governingMPos_mm = e.mPos_mm;
         }
       }
     });
@@ -5564,6 +5612,108 @@ function computeEnvelope(combinations, perCase) {
   return { elements, reactions, maxDisplacement, maxDisplacementCombinationId };
 }
 
+// node_modules/zustand/esm/vanilla.mjs
+var createStoreImpl = (createState) => {
+  let state;
+  const listeners = /* @__PURE__ */ new Set();
+  const setState = (partial, replace) => {
+    const nextState = typeof partial === "function" ? partial(state) : partial;
+    if (!Object.is(nextState, state)) {
+      const previousState = state;
+      state = (replace != null ? replace : typeof nextState !== "object" || nextState === null) ? nextState : Object.assign({}, state, nextState);
+      listeners.forEach((listener) => listener(state, previousState));
+    }
+  };
+  const getState = () => state;
+  const getInitialState = () => initialState;
+  const subscribe = (listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  const api = { setState, getState, getInitialState, subscribe };
+  const initialState = state = createState(setState, getState, api);
+  return api;
+};
+var createStore = ((createState) => createState ? createStoreImpl(createState) : createStoreImpl);
+
+// src/lib/profieleditor/eigenDoorsnedenStore.ts
+var EIGEN_PREFIX = "EIGEN:";
+var OPSLAG_SLEUTEL = "openaec.eigenDoorsneden.v1";
+function isEigenProfiel(profile) {
+  return !!profile && profile.startsWith(EIGEN_PREFIX);
+}
+function eigenNaamVan(profile) {
+  return isEigenProfiel(profile) ? profile.slice(EIGEN_PREFIX.length) : null;
+}
+function lees() {
+  try {
+    const ruw = localStorage.getItem(OPSLAG_SLEUTEL);
+    if (!ruw) return [];
+    const data = JSON.parse(ruw);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+function schrijf(items) {
+  try {
+    localStorage.setItem(OPSLAG_SLEUTEL, JSON.stringify(items));
+  } catch {
+  }
+}
+var eigenDoorsnedenStore = createStore((set, get) => ({
+  items: lees(),
+  bewaar: (d) => {
+    const rest = get().items.filter((x) => x.id !== d.id && x.naam !== d.naam);
+    const items = [...rest, d].sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+    schrijf(items);
+    set({ items });
+  },
+  verwijder: (id) => {
+    const items = get().items.filter((x) => x.id !== id);
+    schrijf(items);
+    set({ items });
+  },
+  vervangAlles: (items) => {
+    schrijf(items);
+    set({ items: [...items] });
+  }
+}));
+function zoekEigenDoorsnede(profile) {
+  const naam = eigenNaamVan(profile);
+  if (naam === null) return void 0;
+  return eigenDoorsnedenStore.getState().items.find((d) => d.naam === naam);
+}
+function naarCustomSection(d) {
+  const o = d.ontwerp;
+  if (o.soort === "samenstelling" && o.catalogusdelen.length === 0 && o.lamellen.length > 0) {
+    return {
+      naam: d.naam,
+      lamellen: o.lamellen.map((l) => ({
+        b_mm: l.b_mm,
+        t_mm: l.t_mm,
+        y_mm: l.y_mm,
+        z_mm: l.z_mm,
+        alpha_rad: l.alphaGraden * Math.PI / 180
+      })),
+      gesloten_cellen: (d.motor.cel ? [d.motor.cel] : []).map((c) => ({
+        midlijn: c.midlijn.map(([y, z]) => ({ y_mm: y, z_mm: z })),
+        dikte_mm: c.dikte_mm,
+        lamellen: c.lamellen
+      })),
+      eigenschappen: null,
+      vorm: "Onbekend"
+    };
+  }
+  return {
+    naam: d.naam,
+    lamellen: [],
+    gesloten_cellen: [],
+    eigenschappen: d.eigenschappen,
+    vorm: d.vorm
+  };
+}
+
 // src/lib/steelCheckBuilder.ts
 function mapDeflectionClass(cls) {
   switch (cls) {
@@ -5573,6 +5723,10 @@ function mapDeflectionClass(cls) {
       return "Cantilever";
     case "custom":
       return "Custom";
+    // Vloer die scheurgevoelige scheidingswanden draagt — NEN-EN
+    // 1990:2002/NB:2019 A1.4.3(3), eerste gedachtestreepje (w2 + w3 ≤ ℓ_rep/500).
+    case "floorBrittle":
+      return "FloorBrittlePartitions";
     case "floor":
     default:
       return "Floor";
@@ -5598,11 +5752,55 @@ var STEEL_PROFILE_PREFIXES = [
 var STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
 function isSteelProfile(profileName) {
   if (!profileName) return false;
+  if (isEigenProfiel(profileName)) return true;
   const upper = profileName.toUpperCase();
   return STEEL_PROFILE_PREFIXES.some((p) => upper.startsWith(p));
 }
 function profileLookupKey(name) {
   return name.replace(/[\s\-.]/g, "").toUpperCase();
+}
+function beamDirection(beam, nodes) {
+  const a = nodes.find((n) => n.id === beam.from);
+  const b = nodes.find((n) => n.id === beam.to);
+  if (!a || !b) return null;
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const l = Math.hypot(dx, dz);
+  if (l <= 0) return null;
+  return { x: dx / l, z: dz / l };
+}
+function collinearContinuations(beam, nodes, beams, supports) {
+  const dir = beamDirection(beam, nodes);
+  if (!dir) return [];
+  const opgelegd = new Set((supports ?? []).map((s) => s.nodeId));
+  const uit = [];
+  for (const other of beams) {
+    if (other.id === beam.id) continue;
+    const gedeeld = [beam.from, beam.to].filter(
+      (n) => n === other.from || n === other.to
+    );
+    if (gedeeld.length !== 1) continue;
+    if (opgelegd.has(gedeeld[0])) continue;
+    if ((other.profile ?? "") !== (beam.profile ?? "")) continue;
+    if ((other.material ?? "") !== (beam.material ?? "")) continue;
+    const d2 = beamDirection(other, nodes);
+    if (!d2) continue;
+    if (Math.abs(dir.x * d2.z - dir.z * d2.x) > 1e-6) continue;
+    uit.push(other.id);
+  }
+  return uit.sort((a, b) => a - b);
+}
+function deflectionNotesFor(beam, nodes, beams, supports) {
+  const notes = [
+    "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming ertussen."
+  ];
+  const vervolg = collinearContinuations(beam, nodes, beams, supports);
+  if (vervolg.length > 0) {
+    notes.push(
+      `Deze staaf loopt in het verlengde door in staaf ${vervolg.join(", ")} (zelfde doorsnede en materiaal) zonder oplegging op de tussenknoop. De doorbuiging is per staafdeel getoetst, dus over de koorde van dit deel en tegen L/n van dit deel \u2014 niet over de volledige overspanning. Voor een doorgaande ligger onderschat dat de veldzakking; beoordeel de overspanning als geheel.` + (supports === void 0 ? " (De opleggingen zijn niet meegegeven aan de toetsbouwer, dus een tussensteunpunt kan hier niet zijn uitgesloten.)" : "")
+    );
+  }
+  return notes;
 }
 function beamLengthMm(beam, nodes) {
   const a = nodes.find((n) => n.id === beam.from);
@@ -5663,15 +5861,33 @@ function extractFieldDeflectionMm(beam, result) {
   const stations = ef?.deflection;
   if (!ef || !Array.isArray(stations) || stations.length === 0) {
     console.warn(
-      `[doorbuigingstoets] staaf ${beam.id}: geen station-zakkingen in het solverresultaat (ouder resultaat?) \u2014 val terug op knoopverplaatsingen; de veldzakking kan hierdoor onderschat zijn. Reken het model opnieuw door.`
+      `[doorbuigingstoets] staaf ${beam.id}: geen station-zakkingen in het solverresultaat (ouder resultaat?) \u2014 val terug op knoopverplaatsingen. Dat is de ABSOLUTE verplaatsing van een staafeind, niet de doorbuiging vanaf de koorde: de veldzakking kan zowel onderschat als overschat worden. Reken het model opnieuw door.`
     );
     return nodalDeflectionMm(beam, result);
   }
-  let w = 0;
-  for (const v of stations) {
-    if (Number.isFinite(v) && Math.abs(v) > Math.abs(w)) w = v;
+  return chordRelativeMaxMm(stations, ef.stations_mm);
+}
+function chordRelativeMaxMm(w, stationsMm) {
+  const n = w.length;
+  if (n === 0) return 0;
+  const wStart = w[0];
+  const wEnd = w[n - 1];
+  const koordeBruikbaar = Number.isFinite(wStart) && Number.isFinite(wEnd);
+  const xOk = Array.isArray(stationsMm) && stationsMm.length === n && Number.isFinite(stationsMm[0]) && Number.isFinite(stationsMm[n - 1]) && stationsMm[n - 1] !== stationsMm[0];
+  const x0 = xOk ? stationsMm[0] : 0;
+  const span = xOk ? stationsMm[n - 1] - x0 : n - 1;
+  let max = 0;
+  for (let i = 0; i < n; i++) {
+    const v = w[i];
+    if (!Number.isFinite(v)) continue;
+    let d = v;
+    if (koordeBruikbaar && span !== 0) {
+      const t = xOk ? (stationsMm[i] - x0) / span : i / span;
+      d = v - (wStart + t * (wEnd - wStart));
+    }
+    if (Math.abs(d) > Math.abs(max)) max = d;
   }
-  return w;
+  return max;
 }
 function equivalentUdlFromMoments(env, lengthMm) {
   if (env.length < 3 || lengthMm <= 0) return 0;
@@ -5685,7 +5901,7 @@ function equivalentUdlFromMoments(env, lengthMm) {
   }
   const pijlKnm = best.forces.my_ed - (mStart + mEnd) / 2;
   const qKnPerM = 8 * pijlKnm / Math.pow(lengthMm / 1e3, 2);
-  return Math.max(0, qKnPerM);
+  return Math.abs(qKnPerM);
 }
 function buildSteelCheckInputs(data) {
   const inputs = [];
@@ -5695,16 +5911,25 @@ function buildSteelCheckInputs(data) {
   const slsChar = slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
   const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
   for (const beam of data.beams) {
-    const profileName = beam.profile ?? "HEA160";
+    const profileName = beam.profile ?? "";
     if (!isSteelProfile(profileName)) continue;
-    const profile = data.profileDb.get(profileLookupKey(profileName));
-    if (!profile) {
+    const eigen = isEigenProfiel(profileName) ? zoekEigenDoorsnede(profileName) : void 0;
+    if (isEigenProfiel(profileName) && !eigen) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `eigen doorsnede "${eigenNaamVan(profileName)}" is niet (meer) bewaard \u2014 open de profieleditor en bewaar hem opnieuw`
+      });
+      continue;
+    }
+    const profile = eigen ? void 0 : data.profileDb.get(profileLookupKey(profileName));
+    if (!eigen && !profile) {
       skipped.push({
         beamId: beam.id,
         reason: `profiel "${profileName}" is niet bekend in de EN 1993-profieldatabase`
       });
       continue;
     }
+    const hMm = eigen ? eigen.motor.z_max_mm - eigen.motor.z_min_mm : profile.geometry.h;
     const grade = beam.material ?? "S235";
     if (!STEEL_GRADES.includes(grade.toUpperCase())) {
       skipped.push({
@@ -5741,7 +5966,8 @@ function buildSteelCheckInputs(data) {
     const cfg = beam.checkConfig ?? {};
     inputs.push({
       beam_id: beam.id,
-      profile_name: profileName,
+      profile_name: eigen ? eigen.naam : profileName,
+      ...eigen ? { custom_section: naarCustomSection(eigen) } : {},
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1e3,
       forces_envelope: forcesEnvelope,
@@ -5755,6 +5981,15 @@ function buildSteelCheckInputs(data) {
       // De Rust-kern gebruikt de noemer alleen bij klasse "Custom"
       // (deflection.rs::default_numerator); anders geldt de klassenoemer.
       deflection_limit_numerator: cfg.deflectionClass === "custom" ? cfg.deflectionLimitNumerator ?? 333 : 333,
+      // Noemer voor de BIJKOMENDE doorbuiging w_add. 0 = de kern leidt hem af
+      // uit de klasse volgens NEN-EN 1990:2002/NB:2019 A1.4.3(3); dat is de
+      // normale gang van zaken. Een getal hier overschrijft die klassewaarde
+      // en is alleen bedoeld om een externe referentie-uitwerking met een
+      // vaste noemer (bijvoorbeeld L/150) na te rekenen.
+      deflection_add_limit_numerator: cfg.deflectionAddLimitNumerator ?? 0,
+      // Waar de doorbuiging vandaan komt en wat er bij is aangenomen — zie
+      // `deflectionNotesFor`. Landt in de notes van de w_fin-regel.
+      deflection_notes: deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
       // Veldmaximum over de 21 stations, mm met teken (negatief = omlaag).
       deflection_actual_max_mm: extractFieldDeflectionMm(beam, slsResult),
       is_cantilever: cfg.deflectionClass === "cantilever",
@@ -5764,8 +5999,15 @@ function buildSteelCheckInputs(data) {
       // w_add = w_fin, de zwaarste van de twee toetsen (veilig-zijdig).
       deflection_permanent_mm: 0,
       q_equiv_n_per_mm: equivalentUdlFromMoments(govPoints, lengthMm),
-      // Last op de bovenflens aangenomen: destabiliserend, dus conservatief.
-      z_a_mm: profile.geometry.h / 2
+      // AANNAME, bewust niet meegenomen in de kipreparatie van sept 2026:
+      // de last grijpt aan op de bovenflens, z_a = +h/2. `c2_gecorrigeerd`
+      // maakt daar een negatieve C₂ van, wat M_cr verlaagt — veilig-zijdig, en
+      // dat blijft zo ongeacht welke flens gedrukt is. Bij hogging (gedrukte
+      // ONDERflens) grijpt een neerwaartse last echter aan op de GETROKKEN
+      // flens en werkt hij in werkelijkheid stabiliserend; de aanname is daar
+      // dus conservatief in plaats van juist. Het echte aangrijpingspunt is nu
+      // niet bekend in de invoer; dit hoort een expliciet veld te worden.
+      z_a_mm: hMm / 2
     });
   }
   return { inputs, skipped };
@@ -5773,8 +6015,6 @@ function buildSteelCheckInputs(data) {
 
 // src/lib/steelSections.generated.ts
 var STEEL_SECTIONS = {
-  "HEB160": { A: 5427.5, Iy: 24929151 },
-  "HEB300": { A: 14909.9, Iy: 251688299 },
   "UNP350": { A: 7665.7, Iy: 126942139 },
   "HFRHS200X200X16": { A: 11501.3, Iy: 63935400 },
   "IPE80": { A: 764, Iy: 801e3 },
@@ -5813,12 +6053,14 @@ var STEEL_SECTIONS = {
   "HEB100": { A: 2600, Iy: 45e5 },
   "HEB120": { A: 3400, Iy: 864e4 },
   "HEB140": { A: 4300, Iy: 151e5 },
+  "HEB160": { A: 5430, Iy: 249e5 },
   "HEB180": { A: 6530, Iy: 383e5 },
   "HEB200": { A: 7809.999999999999, Iy: 57e6 },
   "HEB220": { A: 9100, Iy: 809e5 },
   "HEB240": { A: 10600, Iy: 1126e5 },
   "HEB260": { A: 11800, Iy: 1492e5 },
   "HEB280": { A: 13100, Iy: 1927e5 },
+  "HEB300": { A: 14900, Iy: 2517e5 },
   "HEB320": { A: 16130.000000000002, Iy: 3082e5 },
   "HEB340": { A: 17090, Iy: 3666e5 },
   "HEB360": { A: 18060, Iy: 4319e5 },
@@ -6186,7 +6428,89 @@ var STEEL_SECTIONS = {
   "CHS508X10": { A: 15645.1, Iy: 485202e3 },
   "CHS508X125": { A: 19458.2, Iy: 597554e3 },
   "CHS508X16": { A: 24730.6, Iy: 74909e4 },
-  "CHS508X20": { A: 30661.9, Iy: 914278e3 }
+  "CHS508X20": { A: 30661.9, Iy: 914278e3 },
+  "DIE10": { A: 2077.87, Iy: 3274140 },
+  "DIE12": { A: 2497.87, Iy: 5976100 },
+  "DIE14": { A: 3107.61, Iy: 10199300 },
+  "DIE16": { A: 3786.25, Iy: 15881200 },
+  "DIE18": { A: 4696.25, Iy: 26052300 },
+  "DIE20": { A: 5703.14, Iy: 38783900 },
+  "DIE22": { A: 6556.54, Iy: 55346600 },
+  "DIE24": { A: 7764.28, Iy: 77419900 },
+  "DIE26": { A: 8722.08, Iy: 104324e3 },
+  "DIE28": { A: 9749.12, Iy: 133574e3 },
+  "DIE30": { A: 11179.1, Iy: 179705e3 },
+  "DIE32": { A: 12469.4, Iy: 225562e3 },
+  "DIE34": { A: 13401.4, Iy: 276257e3 },
+  "DIE36": { A: 14346.6, Iy: 326626e3 },
+  "DIE38": { A: 15316.6, Iy: 391352e3 },
+  "DIE40": { A: 16086.6, Iy: 452095e3 },
+  "DIE425": { A: 17142.1, Iy: 546814e3 },
+  "DIE45": { A: 18250.1, Iy: 643788e3 },
+  "DIE475": { A: 19353.6, Iy: 763466e3 },
+  "DIE50": { A: 20470.4, Iy: 883071e3 },
+  "DIE55": { A: 21417.4, Iy: 111967e4 },
+  "DIE60": { A: 23528.3, Iy: 14399e5 },
+  "DIE65": { A: 24228.3, Iy: 172963e4 },
+  "DIE70": { A: 26737.8, Iy: 2188e6 },
+  "DIE75": { A: 27487.8, Iy: 256388e4 },
+  "DIE80": { A: 30217.8, Iy: 320089e4 },
+  "DIE85": { A: 33070.6, Iy: 390997e4 },
+  "DIE90": { A: 33920.6, Iy: 446042e4 },
+  "DIE95": { A: 34770.6, Iy: 505326e4 },
+  "DIE100": { A: 35620.6, Iy: 568957e4 },
+  "DIL10": { A: 2693.87, Iy: 4715610 },
+  "DIL12": { A: 3233.87, Iy: 8485690 },
+  "DIL14": { A: 4005.61, Iy: 14767100 },
+  "DIL16": { A: 4998.25, Iy: 24222100 },
+  "DIL18": { A: 6044.25, Iy: 37307100 },
+  "DIL20": { A: 7213.14, Iy: 55195600 },
+  "DIL22": { A: 8455.14, Iy: 78582200 },
+  "DIL24": { A: 9850.08, Iy: 109187e3 },
+  "DIL26": { A: 11288.1, Iy: 147224e3 },
+  "DIL28": { A: 12854.1, Iy: 194779e3 },
+  "DIL30": { A: 14488.1, Iy: 252467e3 },
+  "DIL32": { A: 15445.4, Iy: 304409e3 },
+  "DIL34": { A: 16355.4, Iy: 361852e3 },
+  "DIL36": { A: 17318.6, Iy: 427008e3 },
+  "DIL38": { A: 18264.6, Iy: 498817e3 },
+  "DIL40": { A: 19228.6, Iy: 578413e3 },
+  "DIL425": { A: 20268.1, Iy: 684014e3 },
+  "DIL45": { A: 21406.1, Iy: 804645e3 },
+  "DIL475": { A: 22491.6, Iy: 935894e3 },
+  "DIL50": { A: 23640.4, Iy: 108278e4 },
+  "DIL55": { A: 25109.4, Iy: 137891e4 },
+  "DIL60": { A: 26712.3, Iy: 172886e4 },
+  "DIN10": { A: 2810.87, Iy: 4774930 },
+  "DIN12": { A: 3380.87, Iy: 8603340 },
+  "DIN14": { A: 4411.61, Iy: 15222400 },
+  "DIN16": { A: 5836.25, Iy: 26338300 },
+  "DIN18": { A: 6576.25, Iy: 38331400 },
+  "DIN20": { A: 8273.14, Iy: 59515300 },
+  "DIN22": { A: 9113.14, Iy: 80520200 },
+  "DIN24": { A: 11132.1, Iy: 116864e3 },
+  "DIN26": { A: 12072.1, Iy: 150502e3 },
+  "DIN28": { A: 14358.1, Iy: 207222e3 },
+  "DIN30": { A: 15398.1, Iy: 257593e3 },
+  "DIN32": { A: 17131.4, Iy: 32249e4 },
+  "DIN34": { A: 17391.4, Iy: 369416e3 },
+  "DIN36": { A: 19146.6, Iy: 451223e3 },
+  "DIN38": { A: 19426.6, Iy: 50949e4 },
+  "DIN40": { A: 20850.6, Iy: 606421e3 },
+  "DIN425": { A: 21200.6, Iy: 694826e3 },
+  "DIN45": { A: 23164.1, Iy: 842228e3 },
+  "DIN475": { A: 23539.1, Iy: 951219e3 },
+  "DIN50": { A: 25534.4, Iy: 113177e4 },
+  "DIN55": { A: 26334.4, Iy: 140342e4 },
+  "DIN60": { A: 28892.3, Iy: 180829e4 },
+  "DIN65": { A: 29742.3, Iy: 216782e4 },
+  "DIN70": { A: 32401.8, Iy: 27029e5 },
+  "DIN75": { A: 33301.8, Iy: 316256e4 },
+  "DIN80": { A: 34201.8, Iy: 366386e4 },
+  "DIN85": { A: 37154.6, Iy: 44389e5 },
+  "DIN90": { A: 38104.6, Iy: 50604e5 },
+  "DIN95": { A: 39054.6, Iy: 572953e4 },
+  "DIN100": { A: 40004.6, Iy: 644748e4 }
 };
 
 // src/lib/timberCheckBuilder.ts
@@ -6220,6 +6544,8 @@ function timberDeflectionNumerators(cls, customN) {
   switch (cls) {
     case "roof":
       return { fin: 250, add: 250 };
+    case "floorBrittle":
+      return { fin: 250, add: 500 };
     case "cantilever":
       return { fin: 125, add: 167 };
     case "custom": {
@@ -6264,6 +6590,30 @@ function parseTimberRectMm(profileName) {
   if (bMm > 0 && hMm > 0) return { bMm, hMm };
   return null;
 }
+function quasiPermanentDeflection(beam, combo, result, wInstMm) {
+  const terugval = (reden) => ({
+    mm: wInstMm,
+    notes: [
+      `w_qp is gelijkgesteld aan de volledige zakking onder de karakteristieke BGT-combinatie omdat ${reden}. De kruip (k_def) wordt daarmee over de volle veranderlijke belasting gerekend in plaats van over het quasi-blijvende deel (\u03A3 \u03C8\u2082,i \xB7 Q_k,i, NEN-EN 1990 uitdrukking 6.16b): veilig-zijdig, maar w_fin \u2014 en daarmee ook het daaruit afgeleide w_add \u2014 valt hoger uit dan de norm vraagt.`
+    ]
+  });
+  if (!combo) {
+    return terugval(
+      'het model geen quasi-blijvende BGT-combinatie kent (verwacht: een BGT-combinatie met "quasi" in de naam)'
+    );
+  }
+  if (!result || !result.elements.has(beam.id)) {
+    return terugval(
+      `combinatie "${combo.name}" geen krachtsverloop voor deze staaf oplevert \u2014 reken het model opnieuw door`
+    );
+  }
+  return {
+    mm: extractFieldDeflectionMm(beam, result),
+    notes: [
+      `w_qp is de zakking onder de quasi-blijvende BGT-combinatie "${combo.name}" (${combo.formula}); de \u03C8\u2082-factoren zitten in de combinatiefactoren. Kruip volgens EN 1995-1-1 \xA77.2: w_fin = w_inst + k_def \xB7 w_qp.`
+    ]
+  };
+}
 function buildTimberCheckInputs(data) {
   const inputs = [];
   const skipped = [];
@@ -6272,6 +6622,8 @@ function buildTimberCheckInputs(data) {
   const slsCombos = data.combinations.filter((c) => c.type === "sls");
   const slsChar = slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
   const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
+  const slsQuasi = slsCombos.find((c) => /quasi/i.test(c.name)) ?? null;
+  const quasiResult = slsQuasi ? data.combinationResults.get(slsQuasi.id) ?? null : null;
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
     const grade = matchSupportedTimberGrade(materialName, grades);
@@ -6322,6 +6674,7 @@ function buildTimberCheckInputs(data) {
     }
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
     const wInstMm = extractFieldDeflectionMm(beam, slsResult);
+    const wQuasi = quasiPermanentDeflection(beam, slsQuasi, quasiResult, wInstMm);
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
     inputs.push({
@@ -6341,18 +6694,133 @@ function buildTimberCheckInputs(data) {
       ltb_load_position: "CentreOfGravity",
       ltb_effective_length_override_m: 0,
       perform_ltb_check: true,
+      // Scheurfactor voor dwarskracht, b_ef = k_cr · b uit EN 1995-1-1+A2
+      // (6.13a). De Eurocode beveelt 0,67 aan voor gezaagd en gelijmd
+      // gelamineerd hout, maar laat de keuze uitdrukkelijk aan de nationale
+      // bijlage. NEN-EN 1995-1-1/NB:2013 bij 6.1.7 schrijft voor liggers met
+      // een prismatische doorsnede k_cr = 1,0 voor; de 0,8 daar geldt alleen
+      // voor I- en T-profielen met een dun lijf, en deze toetsing rekent
+      // uitsluitend met rechthoekige doorsneden.
+      //
+      // Dus: 1,0 is hier de normwaarde. Naar 0,67 gaan zou de
+      // dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
       k_cr: 1,
       load_sharing: false,
       deflection_inst_mm: wInstMm,
-      // Volledige last als quasi-blijvend: maximale kruiptoeslag (veilig-zijdig).
-      deflection_quasi_perm_mm: wInstMm,
+      // Zakking onder de quasi-blijvende BGT-combinatie (G + Σ ψ₂,i · Q_k,i),
+      // of de volle last mét notitie als die combinatie ontbreekt — zie
+      // `quasiPermanentDeflection`.
+      deflection_quasi_perm_mm: wQuasi.mm,
       // Blijvend deel onbekend → 0, dus w_add = w_fin (veilig-zijdig).
       deflection_permanent_mm: 0,
       deflection_limit_fin: defl.fin,
-      deflection_limit_add: defl.add
+      deflection_limit_add: defl.add,
+      // Referentielijn + eventuele waarschuwing over een doorgeknipte staaf
+      // (gedeeld met de staalbouwer), gevolgd door de herkomst van w_qp.
+      deflection_notes: [
+        ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
+        ...wQuasi.notes
+      ]
     });
   }
   return { inputs, skipped };
+}
+
+// src/lib/cltCheckBuilder.ts
+var CLT_STROOKBREEDTE_MM = 1e3;
+function standaardRichting(index) {
+  return index % 2 === 0 ? "Longitudinal" : "Transverse";
+}
+function isCltProfiel(profileName) {
+  return /^\s*CLT\b/i.test(profileName ?? "");
+}
+var LAAG_TOKEN = /^(\d+(?:[.,]\d+)?)([LD])?(?::([A-Za-z]+\d+[A-Za-z]*))?$/i;
+function parseCltProfiel(profileName, standaardKlasse) {
+  const naam = profileName?.trim();
+  if (!naam) return null;
+  const m = /^CLT\s+(\S+)(?:\s+b\s*=?\s*(\d+(?:[.,]\d+)?))?$/i.exec(naam);
+  if (!m) return null;
+  const breedte = m[2] ? parseFloat(m[2].replace(",", ".")) : CLT_STROOKBREEDTE_MM;
+  if (!(breedte > 0)) return null;
+  const tokens = m[1].split("/");
+  if (tokens.length < 3) return null;
+  const layers = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tm = LAAG_TOKEN.exec(tokens[i]);
+    if (!tm) return null;
+    const dikte = parseFloat(tm[1].replace(",", "."));
+    if (!(dikte > 0)) return null;
+    const richting = tm[2] ? tm[2].toUpperCase() === "L" ? "Longitudinal" : "Transverse" : standaardRichting(i);
+    layers.push({
+      thickness_mm: dikte,
+      orientation: richting,
+      strength_class: tm[3] ?? standaardKlasse
+    });
+  }
+  return { width_mm: breedte, layers };
+}
+function cltMechanica(layup, eVanKlasse) {
+  if (!(layup.width_mm > 0) || layup.layers.length === 0) return null;
+  const lagen = [];
+  let z = 0;
+  let ea = 0;
+  let eaz = 0;
+  for (const l of layup.layers) {
+    if (!(l.thickness_mm > 0)) return null;
+    const e0 = eVanKlasse(l.strength_class);
+    if (e0 === void 0) return null;
+    const e = l.orientation === "Longitudinal" ? e0 : 0;
+    const zBoven = z;
+    const zOnder = z + l.thickness_mm;
+    z = zOnder;
+    const a = layup.width_mm * l.thickness_mm;
+    ea += e * a;
+    eaz += e * a * (zBoven + zOnder) / 2;
+    lagen.push({ zBoven, zOnder, e, richting: l.orientation });
+  }
+  if (!(ea > 0)) return null;
+  const z0 = eaz / ea;
+  return { breedte: layup.width_mm, hoogte: z, z0, eiEf: eiEfVan(layup.width_mm, z0, lagen), eaEf: ea, lagen };
+}
+function eiEfVan(b, z0, lagen) {
+  let ei = 0;
+  for (const l of lagen) {
+    if (l.e === 0) continue;
+    const t = l.zOnder - l.zBoven;
+    const arm = (l.zBoven + l.zOnder) / 2 - z0;
+    ei += l.e * (b * t * t * t / 12 + b * t * arm * arm);
+  }
+  return ei;
+}
+function cltSolverDoorsnede(layup, eVanKlasse) {
+  const mech = cltMechanica(layup, eVanKlasse);
+  if (!mech) return null;
+  const eRef = mech.lagen.find((l) => l.e > 0)?.e;
+  if (!eRef) return null;
+  return {
+    E: eRef,
+    A: mech.eaEf / eRef,
+    I: mech.eiEf / eRef,
+    aBruto: mech.breedte * mech.hoogte
+  };
+}
+
+// src/lib/vrijMateriaal.ts
+var PATROON = /^\s*VRIJ:\s*(.+?)\s+E\s*=\s*([\d.,]+)\s+rho\s*=\s*([\d.,]+)\s+f\s*=\s*([\d.,]+)(?:\s+gM\s*=\s*([\d.,]+))?\s*$/i;
+function getal(tekst) {
+  return parseFloat(tekst.replace(",", "."));
+}
+function parseVrijMateriaal(material) {
+  const m = PATROON.exec(material ?? "");
+  if (!m) return null;
+  const naam = m[1].trim();
+  const eMod = getal(m[2]);
+  const dichtheid = getal(m[3]);
+  const fToel = getal(m[4]);
+  const gammaM = m[5] !== void 0 ? getal(m[5]) : 1;
+  if (!naam) return null;
+  if (!(eMod > 0) || !(dichtheid >= 0) || !(fToel > 0) || !(gammaM > 0)) return null;
+  return { naam, eMod, dichtheid, fToel, gammaM };
 }
 
 // src/lib/sectionResolver.ts
@@ -6387,6 +6855,23 @@ var TIMBER_RHO_MEAN = {
   GL32h: 490,
   GL36h: 500
 };
+var CONCRETE_E_CM = {
+  "C12/15": 27e3,
+  "C16/20": 29e3,
+  "C20/25": 3e4,
+  "C25/30": 31e3,
+  "C30/37": 33e3,
+  "C35/45": 34e3,
+  "C40/50": 35e3,
+  "C45/55": 36e3,
+  "C50/60": 37e3,
+  "C55/67": 38e3,
+  "C60/75": 39e3,
+  "C70/85": 41e3,
+  "C80/95": 42e3,
+  "C90/105": 44e3
+};
+var RHO_BETON = 2500;
 var RHO_STAAL = 7850;
 var G2 = 9.81;
 function parseRechthoek(profiel) {
@@ -6404,7 +6889,28 @@ function normaliseer(naam) {
 function resolveSection(material, profile) {
   const mat = material ?? "S235";
   const isHout = SUPPORTED_TIMBER_GRADES.includes(mat) || mat in TIMBER_E_MEAN;
-  if (isHout) {
+  const vrij = parseVrijMateriaal(material);
+  if (vrij) {
+    const rect = parseRechthoek(profile);
+    if (rect) {
+      const { b, h } = rect;
+      return { E: vrij.eMod, A: b * h, I: b * h * h * h / 12, bron: "vrij" };
+    }
+    const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
+    if (sec) return { E: vrij.eMod, A: sec.A, I: sec.Iy, bron: "vrij" };
+  }
+  if (mat in CONCRETE_E_CM) {
+    const rect = parseRechthoek(profile);
+    if (rect) {
+      const { b, h } = rect;
+      return { E: CONCRETE_E_CM[mat], A: b * h, I: b * h * h * h / 12, bron: "beton-bxh" };
+    }
+  } else if (isHout) {
+    if (isCltProfiel(profile)) {
+      const layup = parseCltProfiel(profile, mat);
+      const d = layup ? cltSolverDoorsnede(layup, (k) => TIMBER_E_MEAN[k]) : null;
+      if (d) return { E: d.E, A: d.A, I: d.I, bron: "clt", aBruto: d.aBruto };
+    }
     const rect = parseRechthoek(profile);
     if (rect) {
       const { b, h } = rect;
@@ -6416,6 +6922,15 @@ function resolveSection(material, profile) {
       };
     }
   } else {
+    const eigen = zoekEigenDoorsnede(profile);
+    if (eigen) {
+      return {
+        E: E_STAAL,
+        A: eigen.eigenschappen.area_mm2,
+        I: eigen.eigenschappen.iy_mm4,
+        bron: "eigen"
+      };
+    }
     const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
     if (sec) return { E: E_STAAL, A: sec.A, I: sec.Iy, bron: "staal-db" };
   }
@@ -6425,10 +6940,11 @@ function resolveSection(material, profile) {
   return { E: E_STAAL, A: 3877, I: 1673e4, bron: "default" };
 }
 function eigenGewichtPerMeter(material, profile) {
-  const { A } = resolveSection(material, profile);
+  const { A, aBruto } = resolveSection(material, profile);
   const mat = material ?? "S235";
-  const rho = TIMBER_RHO_MEAN[mat] ?? RHO_STAAL;
-  return -(rho * (A * 1e-6) * G2) / 1e3;
+  const vrij = parseVrijMateriaal(material);
+  const rho = vrij?.dichtheid ?? TIMBER_RHO_MEAN[mat] ?? (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
+  return -(rho * ((aBruto ?? A) * 1e-6) * G2) / 1e3;
 }
 
 // src/lib/thermalAlpha.ts
@@ -6799,6 +7315,40 @@ function aantalAfbeeldingen() {
   return AFBEELDINGEN.length;
 }
 
+// src/lib/modelControle.ts
+var CONTROLE_TOL_MM = 1;
+function zoekDubbeleKnopen(model, tolMm = CONTROLE_TOL_MM) {
+  const verbonden = /* @__PURE__ */ new Set();
+  for (const b of model.beams) {
+    verbonden.add(b.from < b.to ? `${b.from}-${b.to}` : `${b.to}-${b.from}`);
+  }
+  const uit = [];
+  const { nodes } = model;
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i];
+      const b = nodes[j];
+      if (Math.abs(a.x - b.x) > tolMm || Math.abs(a.z - b.z) > tolMm) continue;
+      const sleutel = a.id < b.id ? `${a.id}-${b.id}` : `${b.id}-${a.id}`;
+      const zitVast = verbonden.has(sleutel);
+      uit.push({
+        soort: "dubbeleKnoop",
+        ernst: "fout",
+        nodeIds: [a.id, b.id],
+        tekst: zitVast ? `Knoop ${a.id} en knoop ${b.id} liggen op dezelfde plek (${a.x}, ${a.z}) mm en zijn met een staaf van lengte nul verbonden; voeg ze samen.` : `Knoop ${a.id} en knoop ${b.id} liggen op dezelfde plek (${a.x}, ${a.z}) mm. Ze zijn NIET met elkaar verbonden; voeg ze samen of verplaats er \xE9\xE9n.`,
+        // De laagste id blijft bestaan: stabiel en voorspelbaar, ongeacht in
+        // welke volgorde de knopen zijn getekend.
+        herstel: {
+          soort: "voegSamen",
+          bewaarId: Math.min(a.id, b.id),
+          verwijderId: Math.max(a.id, b.id)
+        }
+      });
+    }
+  }
+  return uit;
+}
+
 // src/mcp/valideerModel.ts
 var MODEL_VELDEN = [
   "nodes",
@@ -6838,6 +7388,7 @@ var CHECKCONFIG_VELDEN = [
   "lateralRestraintsBottom",
   "deflectionClass",
   "deflectionLimitNumerator",
+  "deflectionAddLimitNumerator",
   "preCamber_mm",
   "serviceClass",
   "loadDuration"
@@ -7056,8 +7607,9 @@ function controleerVelden(rauw) {
         keurGetal(cc.bucklingLengthY_m, `${cpad}.bucklingLengthY_m`, fouten, { positief: true });
         keurGetal(cc.bucklingLengthZ_m, `${cpad}.bucklingLengthZ_m`, fouten, { positief: true });
         keurGetal(cc.deflectionLimitNumerator, `${cpad}.deflectionLimitNumerator`, fouten, { positief: true });
+        keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
         keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
-        keurEnum(cc.deflectionClass, ["floor", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
+        keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
         keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
         if (cc.serviceClass !== void 0 && ![1, 2, 3].includes(cc.serviceClass)) {
           fouten.push(`${cpad}.serviceClass: moet 1, 2 of 3 zijn.`);
@@ -7280,14 +7832,8 @@ function valideerModel(rauw) {
   if (loadCases.length === 0) {
     errors.push("Het model bevat geen belastinggevallen.");
   }
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      if (Math.abs(nodes[i].x - nodes[j].x) <= 1e-6 && Math.abs(nodes[i].z - nodes[j].z) <= 1e-6) {
-        errors.push(
-          `Knoop ${nodes[i].id} en knoop ${nodes[j].id} liggen op dezelfde plek (${nodes[i].x}, ${nodes[i].z}) mm. Ze zijn NIET met elkaar verbonden; voeg ze samen of verplaats er \xE9\xE9n.`
-        );
-      }
-    }
+  for (const bevinding of zoekDubbeleKnopen({ nodes, beams }, 1e-6)) {
+    errors.push(bevinding.tekst);
   }
   for (const b of beams) {
     const van = knoopById.get(b.from);
@@ -7815,7 +8361,12 @@ function vormEnvelop(env) {
       M_min: naarKNm(e.M_min),
       M_max: naarKNm(e.M_max),
       governingCombinationId: e.governingCombinationId,
-      governingMAbs: naarKNm(e.governingMAbs)
+      governingMAbs: naarKNm(e.governingMAbs),
+      // Positie van governingMAbs langs de staaf (mm vanaf de startknoop).
+      // De omhullende leest het volledige stationsraster, dus dat maximum
+      // ligt zelden op een uiteinde; zonder deze waarde is niet af te leiden
+      // waar het maatgevende moment optreedt.
+      governingMPos_mm: e.governingMPos_mm
     })),
     reactions: mapNaarObject(env.reactions, (r) => ({
       fx_min: naarKN(r.fx_min),
@@ -7887,6 +8438,10 @@ function rekenDoor(payload) {
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
     beams: staafSelectie,
+    // Nodig om een tussensteunpunt te onderscheiden van een knoop waar een
+    // ligger alleen is doorgeknipt; zonder deze lijst zou de doorbuigingstoets
+    // dat verschil niet kunnen melden.
+    supports: gelezen.model.supports,
     combinations: combinaties,
     combinationResults,
     profileDb
@@ -8756,6 +9311,7 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
 export {
   BEAM_LOAD_ROLES,
   BEAM_LOAD_ROLE_LABEL,
+  CONCRETE_E_CM,
   CPE10_BRON,
   CPE10_MIN_OPPERVLAK_M2,
   CPE_PLAT_DAK,
@@ -8773,10 +9329,12 @@ export {
   E_STAAL,
   G2 as G,
   K_I,
+  LOAD_SOORT_MEERVOUD,
   MELDING_ZONE_I,
   PLATE_DEFAULTS,
   PROJECT_FILE_EXT,
   PROJECT_FORMAT_VERSION,
+  RHO_BETON,
   RHO_LUCHT,
   RHO_STAAL,
   STANDAARD_WIND_INSTELLINGEN,
@@ -8801,6 +9359,8 @@ export {
   buildMatrices,
   buildSteelCheckInputs,
   buildTimberCheckInputs,
+  chordRelativeMaxMm,
+  collinearContinuations,
   combinationsFromFile,
   combinationsToFile,
   combineResults,
@@ -8809,6 +9369,7 @@ export {
   controleerVelden,
   cpeWand,
   defaultCombinations,
+  deflectionNotesFor,
   deserializeProject,
   eigenGewichtPerMeter,
   equivalentUdlFromMoments,
@@ -8830,6 +9391,7 @@ export {
   parseRechthoek,
   parseTimberRectMm,
   profileLookupKey,
+  quasiPermanentDeflection,
   registreerPlaatMeshCacheCommitter,
   registreerPlaatMeshCaches,
   registreerPolygoonRandlasten,

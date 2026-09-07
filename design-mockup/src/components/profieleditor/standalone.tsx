@@ -8,7 +8,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "../../themes.css";
-import { useEigenDoorsneden, naarCustomSection } from "../../lib/profieleditor/eigenDoorsnedenStore";
+import { naarCustomSection } from "../../lib/profieleditor/eigenDoorsnedenStore";
+import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
 import EigenDoorsnedeTekening from "./EigenDoorsnedeTekening";
 import ProfielEditor from "./ProfielEditor";
 
