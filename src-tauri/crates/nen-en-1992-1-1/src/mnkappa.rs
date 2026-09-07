@@ -199,7 +199,12 @@ pub fn internal_forces(
     for i in 0..n {
         let z = (i as f64 + 0.5) * dz;
         let arm = z - h / 2.0;
-        let sigma = mat.concrete.sigma(eps_0 + kappa_per_mm * arm);
+        // `sigma_c` is het parabool-rechthoekdiagram van 3.1.7(1) zolang het
+        // materiaal geen niet-lineaire kromme draagt (`nonlinear: None`, de
+        // stand van `DesignMaterial::new`) — de doorsnedetoetsing rekent dus
+        // onveranderd. Met `DesignMaterial::nonlinear` is het (3.14) van
+        // 3.1.5, zoals 5.8.6(3) voor de constructieve berekening voorschrijft.
+        let sigma = mat.sigma_c(eps_0 + kappa_per_mm * arm);
         let f = sigma * section.b_mm * dz;
         n_c += f;
         m_c += f * arm;
@@ -305,6 +310,21 @@ pub fn solve_state(
     let kappa_per_mm = kappa_per_m * 1e-3;
     let eps_0 = solve_eps0(section, layers, mat, n_target, kappa_per_mm, opts.strips())?;
     Some(state_from(section, layers, mat, eps_0, kappa_per_mm, opts.strips()))
+}
+
+/// De volledige toestand bij een **al bekende** rek ε₀ en kromming (1/mm) —
+/// zonder opnieuw naar evenwicht te zoeken. [`crate::stiffness`] gebruikt dit
+/// om de toestand bij zijn eigen oplossing uit te schrijven, zodat er geen
+/// tweede, iets afwijkende ε₀ ontstaat.
+pub fn state_at(
+    section: &RectConcreteSection,
+    layers: &[RebarLayer],
+    mat: &DesignMaterial,
+    eps_0: f64,
+    kappa_per_mm: f64,
+    opts: &MnKappaOptions,
+) -> SectionState {
+    state_from(section, layers, mat, eps_0, kappa_per_mm, opts.strips())
 }
 
 fn state_from(

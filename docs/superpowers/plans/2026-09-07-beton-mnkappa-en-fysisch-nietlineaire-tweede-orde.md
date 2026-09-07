@@ -81,6 +81,37 @@ tweede-ordemoment), maar stoot in een statisch onbepaald raamwerk moment af
 naar zijn buren. Dan is de staaf zelf onderbemeten. Dit is het grootste
 risico van de hele operatie en het staat bovenaan met opzet.
 
+#### Nagemeten: het gat zit anders in elkaar dan hierboven geschat
+
+De alinea hierboven schreef het hele verschil tussen 45,0 en 103,1 MNm² op het
+rekening van het diagram. Dat is bij het bouwen nagemeten en het klopt niet.
+Dezelfde 45,0 is gereproduceerd (gemeten 46,8) en toen ontleed:
+
+| EI [MNm²] | wat er meetelt |
+|---:|---|
+| 46,8 | M/κ, parabool-rechthoek, **zonder** M₀-correctie |
+| 60,8 | hetzelfde punt **mét** M₀-correctie (M₀ = −4,13 kNm) |
+| 75,7 | daarbovenop (3.14) met E_cd |
+| 103,1 | E_cm·I_c, ongescheurd |
+
+Grofweg een derde van het gat komt dus van de ontbrekende M₀-correctie, een
+kwart van het diagram, en de rest is werkelijk scheuren — dat laatste hoort er
+gewoon te zijn. Bij N = 0 scheelt het diagram maar 4 tot 6 procent, omdat de
+gescheurde doorsnede daar door de wapening en de drukzonehoogte wordt bepaald;
+onder matige druk loopt het op tot 32 procent.
+
+De conclusie verandert niet — (3.14) met E_cd is voorgeschreven en de
+M₀-correctie is noodzakelijk — maar de weging wel: **M₀ was de grootste
+enkele fout, niet het diagram.** En juist die fout is onzichtbaar bij een
+symmetrische wapeningskorf.
+
+#### En: in de UGT bestaat er geen ongescheurde tak
+
+5.8.6(5) laat betontrek weg, dus zodra er moment op staat draagt de trekzijde
+niets — ook bij M → 0. Er is in de UGT dus geen tak waar EI naar E_c·I_c
+loopt. Die waarde staat daarom apart in het antwoordtype, als
+vergelijkingsgetal en niet als rekenwaarde.
+
 ## 2. Besluiten van de gebruiker
 
 Drie keuzes, expliciet gemaakt en niet af te leiden uit de norm.

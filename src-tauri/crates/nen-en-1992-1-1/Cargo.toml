@@ -20,3 +20,7 @@ approx = { workspace = true }
 [[test]]
 name = "handberekening"
 path = "tests/handberekening.rs"
+
+[[test]]
+name = "stijfheid_3_14"
+path = "tests/stijfheid_3_14.rs"

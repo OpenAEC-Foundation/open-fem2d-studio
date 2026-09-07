@@ -47,6 +47,21 @@ pub fn gamma_s(situation: DesignSituation) -> f64 {
 /// α_cc — Nederlandse nationale bijlage bij 3.1.6(1)P: 1,0.
 pub const ALPHA_CC: f64 = 1.0;
 
+/// γ_cE — 5.8.6(3), vergelijking (5.20): E_cd = E_cm/γ_cE.
+///
+/// Letterlijk uit de normtekst bij 5.8.6(3): "OPMERKING De waarde van γ cE
+/// voor gebruik in een land kan worden gevonden in de nationale bijlage. De
+/// aanbevolen waarde is 1,2." gevolgd door de NB-bepaling "De waarde van
+/// γ CE moet gelijk aan 1,2 zijn genomen." Geen keuze dus, en ook niet
+/// afhankelijk van de ontwerpsituatie: 1,2.
+pub const GAMMA_CE: f64 = 1.2;
+
+/// Rekenwaarde van de elasticiteitsmodulus van beton voor de niet-lineaire
+/// constructieve berekening, 5.8.6(3), vergelijking (5.20): E_cd = E_cm/γ_cE.
+pub fn e_cd(e_cm: f64) -> f64 {
+    e_cm / GAMMA_CE
+}
+
 /// Rekenwaarde van de elasticiteitsmodulus van betonstaal, 3.2.7(4): 200 GPa.
 pub const E_S: f64 = 200_000.0;
 
@@ -107,6 +122,13 @@ mod tests {
         assert_relative_eq!(f_yd(500.0, 1.15), 434.7826, max_relative = 1e-5);
         // ε_ud = 0,9 · 5,0 % = 4,5 % (B500B).
         assert_relative_eq!(eps_ud(0.05), 0.045);
+    }
+
+    #[test]
+    fn e_cd_volgt_5_20_met_gamma_ce_1_2() {
+        assert_relative_eq!(GAMMA_CE, 1.2);
+        // C30/37: E_cm = 33 000 N/mm² → E_cd = 33 000/1,2 = 27 500 N/mm².
+        assert_relative_eq!(e_cd(33_000.0), 27_500.0);
     }
 
     #[test]
