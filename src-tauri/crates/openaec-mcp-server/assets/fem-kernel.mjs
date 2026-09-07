@@ -2639,7 +2639,7 @@ function solveWithProfile(A, b, first) {
 
 // src/core/math/LinearSolver.ts
 var LINEAR_SOLVER_IDS = ["gauss", "skyline"];
-var STANDAARD = "gauss";
+var STANDAARD = "skyline";
 function leesOmgevingskeuze() {
   const g = globalThis;
   const ruw = g.process?.env?.FEM_SOLVER;

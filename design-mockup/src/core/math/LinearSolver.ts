@@ -9,12 +9,12 @@
  * Twee oplossers:
  *
  *   'gauss'    dichte Gauss-eliminatie met partiële pivotering (bestaand).
- *              O(n³) in tijd, O(n²) in geheugen. STANDAARD.
- *   'skyline'  LDLᵀ over de onderdriehoek-envelop (nieuw). O(n·b²) met b de
+ *              O(n³) in tijd, O(n²) in geheugen.
+ *   'skyline'  LDLᵀ over de onderdriehoek-envelop. O(n·b²) met b de
  *              gemiddelde profielhoogte; valt terug op 'gauss' zodra de
- *              matrix niet symmetrisch blijkt.
+ *              matrix niet symmetrisch blijkt. STANDAARD.
  *
- * De standaard blijft 'gauss'. De keuze is per proces te overrulen met de
+ * De standaard is 'skyline'. De keuze is per proces te overrulen met de
  * omgevingsvariabele `FEM_SOLVER` — dat is het haakje waarmee de volledige
  * regressiebatterij met de andere oplosser gedraaid kan worden zonder de
  * broncode te veranderen — of programmatisch met `setLinearSolver`.
@@ -28,8 +28,22 @@ export type LinearSolverId = 'gauss' | 'skyline';
 
 export const LINEAR_SOLVER_IDS: readonly LinearSolverId[] = ['gauss', 'skyline'] as const;
 
-/** Standaard. Verander dit niet zonder meting — zie het besluitdocument B3. */
-const STANDAARD: LinearSolverId = 'gauss';
+/**
+ * Standaard. Verander dit niet zonder meting — zie het besluitdocument B3.
+ *
+ * Waarom 'skyline' en niet de oudere 'gauss': gemeten scheelt het bij 3135
+ * vrijheidsgraden 16 964 ms tegen 55 ms, en op de volledige rekenketen bij
+ * 7860 vrijheidsgraden 249 s tegen 1,4 s. De fysisch niet-lineaire tweede orde
+ * doet tientallen oplossingen per combinatie op een model dat door de
+ * segmentindeling tien keer zoveel elementen telt; met de dichte oplosser ligt
+ * de grens van één seconde per oplossing al bij circa 165 m staaflengte.
+ *
+ * De uitkomsten verschillen door de andere eliminatievolgorde in de laatste
+ * cijfers: gemeten 9,3e-13 op verplaatsingen, 1,1e-12 op reacties en 2,0e-12
+ * op staafkrachten, relatief. Dat is ver onder de precisie waarop het rapport
+ * getallen toont. `test-oplossers.mjs` meet dat verschil en drukt het af.
+ */
+const STANDAARD: LinearSolverId = 'skyline';
 
 /** Metingen over alle aanroepen sinds de laatste reset. */
 export interface ILinearSolverStats {
