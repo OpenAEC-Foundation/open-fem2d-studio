@@ -16,15 +16,19 @@
  *  - een catalogusprofiel uit de staaldatabase ("HEA 200", "IPE 300", koker,
  *    buis) — de kern haalt A en I_y daar op en bouwt het lagenmodel voor
  *    S(z) en b(z);
- *  - een vrij lagenmodel; dat kan de kern aan, maar het model kent er (nog)
- *    geen invoervorm voor, dus deze bouwer maakt hem niet.
+ *  - een eigen doorsnede uit de profieleditor ("EIGEN:…") — de getekende
+ *    bouwstenen worden via `lagenmodel.ts` een stapel horizontale stroken, en
+ *    daarmee is b(z) er wél. Dat was tot voor kort de reden om zo'n doorsnede
+ *    af te wijzen; die reden geldt niet meer.
  *
  * Niet ondersteund, met expliciete reden bij de overgeslagen staven:
  *  - kruislaaghout ("CLT …"): de lagen hebben elk hun eigen E-modulus, dus
  *    één toelaatbare spanning over de hele doorsnede zou onzin zijn;
- *  - een eigen doorsnede uit de profieleditor ("EIGEN:…"): daarvan is A en
- *    I_y bekend, maar niet de breedte b(z) over de hoogte, en zonder b(z) is
- *    er geen schuifspanning en dus geen vergelijkspanning.
+ *  - een eigen doorsnede die géén stapel doorlopende stroken is. Het
+ *    lagenmodel zegt zelf waarom: een gat onderbreekt de doorsnede, een
+ *    gedraaid catalogusdeel is geen stapel platen meer, en een doorsnede die
+ *    in losse delen uiteenvalt heeft geen doorlopende b(z). Die reden wordt
+ *    onvertaald doorgegeven, want hij is preciezer dan wat hier te maken valt.
  *
  * WAT DE KERN ERVAN MAAKT staat in `src-tauri/crates/spanning-check`: de
  * vergelijkspanning van von Mises per vezel over de hoogte, met de kruisterm
@@ -42,6 +46,8 @@ import { isCltProfiel } from "./cltCheckBuilder";
 import { parseRechthoek } from "./sectionResolver";
 import { STEEL_SECTION_DIMS } from "./steelSectionDims.generated";
 import { isVrijMateriaal, parseVrijMateriaal } from "./vrijMateriaal";
+import { doorsnedeVanOntwerp } from "./profieleditor/lagenmodel";
+import { isEigenProfiel, zoekEigenDoorsnede } from "./profieleditor/eigenDoorsnedenStore";
 
 export interface SpanningBuildData {
   nodes: Node[];
@@ -76,12 +82,21 @@ export function doorsnedeVanProfiel(profile: string | undefined): SpanningDoorsn
   if (STEEL_SECTION_DIMS[profileLookupKey(naam)]) {
     return { vorm: "Catalogus", maten: { naam } };
   }
-  if (/^\s*EIGEN:/i.test(naam)) {
-    return (
-      `profiel "${naam}" is een eigen doorsnede uit de profieleditor: daarvan zijn A en I_y ` +
-      "bekend, maar niet de breedte b(z) over de hoogte — zonder b(z) is er geen " +
-      "schuifspanning en dus geen vergelijkspanning te bepalen"
-    );
+  if (isEigenProfiel(naam)) {
+    const eigen = zoekEigenDoorsnede(naam);
+    if (!eigen) {
+      return (
+        `profiel "${naam}" verwijst naar een eigen doorsnede die niet in dit project zit — ` +
+        "open de profieleditor en bewaar hem opnieuw, of kies een ander profiel"
+      );
+    }
+    // Het ontwerp mét de motoruitvoer per catalogusdeel: die uitvoer bevat het
+    // zwaartepunt waaromheen een deel gedraaid en gespiegeld staat. Zonder die
+    // uitvoer valt `deelZwaartepunt` terug op het midden van de omhullende
+    // rechthoek, en dan staat een gedraaid deel op de verkeerde plek.
+    const uit = doorsnedeVanOntwerp(eigen.ontwerp, eigen.motor.delen);
+    if (typeof uit === "string") return uit;
+    return uit.doorsnede;
   }
   return (
     `profiel "${naam}" is geen rechthoek (b×h) en staat niet in de profieldatabase — ` +

@@ -90,9 +90,58 @@ checkEq("catalogusprofiel", sp.doorsnedeVanProfiel("HEA200"),
 checkEq("catalogusprofiel met spatie", sp.doorsnedeVanProfiel("IPE 300"),
   { vorm: "Catalogus", maten: { naam: "IPE 300" } });
 checkTrue("CLT afgewezen met reden", /kruislaaghout/.test(sp.doorsnedeVanProfiel("CLT 40/20/40")));
-checkTrue("eigen doorsnede afgewezen met reden", /b\(z\)/.test(sp.doorsnedeVanProfiel("EIGEN:mijnprofiel")));
+checkTrue("onbekende eigen doorsnede afgewezen met reden",
+  /niet in dit project/.test(sp.doorsnedeVanProfiel("EIGEN:mijnprofiel")));
 checkTrue("leeg profiel afgewezen met reden", /geen profiel/.test(sp.doorsnedeVanProfiel(undefined)));
 checkTrue("onbekend profiel afgewezen met reden", /profieldatabase/.test(sp.doorsnedeVanProfiel("ZZZ999")));
+
+// Een BEWAARDE eigen doorsnede moet er wél doorheen: sinds het lagenmodel de
+// getekende bouwstenen in horizontale stroken omzet, is b(z) er wel degelijk.
+// Dat was tot voor kort juist de reden om zo'n doorsnede af te wijzen.
+const eds = await import("./src/lib/profieleditor/eigenDoorsnedenStore.ts");
+const leegMotor = {
+  methode: "lamellen", wpl_bepaald: true, iw_bepaald: true,
+  schuifmiddelpunt_bepaald: true, it_onzekerheid: 0, a_gaten_mm2: 0,
+  y_min_mm: 0, y_max_mm: 0, z_min_mm: 0, z_max_mm: 0,
+  delen: [], meldingen: [],
+};
+// Gelaste I: onderflens 200x15, lijf 10x370, bovenflens 200x15 (h = 400).
+const gelasteI = {
+  soort: "samenstelling",
+  celMeenemen: false,
+  catalogusdelen: [],
+  lamellen: [
+    { id: "of", b_mm: 200, t_mm: 15, y_mm: 0, z_mm: 7.5, alphaGraden: 0 },
+    { id: "lf", b_mm: 370, t_mm: 10, y_mm: 0, z_mm: 200, alphaGraden: 90 },
+    { id: "bf", b_mm: 200, t_mm: 15, y_mm: 0, z_mm: 392.5, alphaGraden: 0 },
+  ],
+};
+eds.importeer([
+  { id: "1", naam: "gelaste ligger", ontwerp: gelasteI, eigenschappen: {},
+    vorm: "GelasteIDubbelsymmetrisch", motor: leegMotor, berekendOp: "" },
+  { id: "2", naam: "IPE300 met gat", vorm: "GelasteIDubbelsymmetrisch",
+    eigenschappen: {}, motor: leegMotor, berekendOp: "",
+    ontwerp: {
+      soort: "gat",
+      basis: { naam: "IPE300", soort: "ISection", h: 300, b: 150, tw: 7.1, tf: 10.7 },
+      gaten: [{ id: "g", soort: "lijf", y_mm: 0, z_mm: 150, d_mm: 100 }],
+    } },
+]);
+
+const eigenUit = sp.doorsnedeVanProfiel("EIGEN:gelaste ligger");
+checkTrue("bewaarde eigen doorsnede wordt een lagenmodel",
+  typeof eigenUit === "object" && eigenUit.vorm === "Lagen");
+if (typeof eigenUit === "object") {
+  const lagen = eigenUit.maten.lagen;
+  checkTrue("lagenmodel heeft stroken", Array.isArray(lagen) && lagen.length >= 3);
+  // A = 2*200*15 + 370*10 = 9700 mm2; de stroken moeten dat oppervlak dragen.
+  const a = lagen.reduce((som, l) => som + l.breedte_mm * (l.z_bot_mm - l.z_top_mm), 0);
+  checkTrue(`oppervlak uit de stroken is 9700 mm² (gemeten ${a.toFixed(1)})`,
+    Math.abs(a - 9700) < 1);
+}
+checkTrue("eigen doorsnede MET gat afgewezen met de reden van het lagenmodel",
+  /gat/.test(sp.doorsnedeVanProfiel("EIGEN:IPE300 met gat")));
+eds.importeer([]);
 
 // ── 3. Doorwerking naar solver en eigen gewicht ───────────────────────────
 log("3. resolveSection + eigenGewichtPerMeter voor een vrij materiaal");
