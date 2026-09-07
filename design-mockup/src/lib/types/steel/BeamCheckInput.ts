@@ -8,13 +8,31 @@ import type { LateralBracing } from "./LateralBracing";
 /**
  * Invoer van één staaltoetsing.
  *
- * `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Vijf
+ * `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Zeven
  * velden hieronder hebben `#[serde(default)]`, en een tikfout in zo'n
  * veldnaam zou anders stilzwijgend op 0 uitkomen. Bij `q_equiv_n_per_mm` en
  * `z_a_mm` valt de kiptoets daarmee *gunstiger* uit dan hij hoort te zijn —
  * onveilig aan de verkeerde kant, en onzichtbaar in het resultaat.
  */
-export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, buckling_length_y_m: number, buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, is_cantilever: boolean, consequence_class: ConsequenceClass, 
+export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, buckling_length_y_m: number, buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, 
+/**
+ * Is deze staaf een uitkraging?
+ *
+ * Tot september 2026 werd dit veld door de kern NERGENS gelezen: alleen
+ * [`DeflectionClass::Cantilever`] deed iets, en dan nog uitsluitend via de
+ * w_fin-noemer 150 op de staaflengte. Nu bepaalt het samen met de klasse
+ * de referentielengte ℓ_rep = 2·L voor de w_add-grens
+ * ("ℓ_rep is de lengte van een overspanning of tweemaal de lengte van een
+ * uitkraging", NEN-EN 1990:2002/NB:2019 A1.4.3(3)). Eén van beide volstaat;
+ * de frontend zet ze allebei.
+ *
+ * Let op de asymmetrie met w_fin: die kant verdubbelt ℓ_rep NIET maar
+ * gebruikt noemer 150 op de staaflengte, wat op ℓ_rep/300 neerkomt.
+ * Strenger dan de ℓ_rep/250 uit A1.4.3(4), dus veilig — maar het is een
+ * andere manier om hetzelfde uit te drukken, en dat staat als notitie in
+ * het rapport.
+ */
+is_cantilever: boolean, consequence_class: ConsequenceClass, 
 /**
  * Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.
  */
@@ -23,6 +41,32 @@ pre_camber_mm: number,
  * Doorbuiging onder de permanente BGT-combinatie (mm), voor w_add.
  */
 deflection_permanent_mm: number, 
+/**
+ * Noemer n in de grenswaarde L/n voor de **bijkomende** zakking w_add.
+ *
+ * `0` of afwezig = de waarde die bij [`Self::deflection_limit_class`]
+ * hoort volgens NEN-EN 1990:2002/NB:2019 A1.4.3(3); zie
+ * [`crate::deflection::w_add_grens`]. Een waarde > 0 overschrijft die
+ * klassewaarde en wordt op de **staaflengte** toegepast (dus zonder de
+ * verdubbeling ℓ_rep = 2·L bij een uitkraging) — precies zoals een
+ * externe referentie-uitwerking met een vaste noemer rekent. Het rapport
+ * vermeldt dan dat de noemer is opgegeven en niet uit de norm volgt.
+ *
+ * `f64` en niet `u32`, omdat de NB-waarde 3/1000 een noemer van 333⅓
+ * oplevert; met een geheel getal was die niet exact op te geven.
+ */
+deflection_add_limit_numerator: number, 
+/**
+ * Vrije toelichtingen bij de doorbuigingstoets, die letterlijk in de
+ * `notes` van de w_fin-regel van het rapport belanden.
+ *
+ * Waarom dit bestaat: [`Self::deflection_actual_max_mm`] is een kaal
+ * getal. Waar het vandaan komt — vanaf welke referentielijn het is
+ * gemeten, over welke lengte, en of de aanroeper daarbij iets heeft moeten
+ * aannemen — weet alleen de bouwer die de invoer samenstelt. Zonder dit
+ * kanaal zou zo'n aanname onzichtbaar zijn in het rapport.
+ */
+deflection_notes: Array<string>, 
 /**
  * Equivalente gelijkmatig verdeelde belasting in het kipveld (N/mm),
  * voor B* volgens NB.NB.4.3(3). 0 = alleen eindmomenten.

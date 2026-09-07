@@ -22,12 +22,13 @@
  *    staaflengte; belastinggeval "gelijkmatig verdeeld" aangrijpend in het
  *    zwaartepunt; k_cr = 1,0; geen lastverdelend systeem;
  *  - doorbuiging: klasse "vloer" → w_fin ≤ L/250 en w_add ≤ L/333
- *    (NB-standaard); karakteristieke BGT-zakking geldt óók als
- *    quasi-blijvend (volledige kruip — veilig-zijdig); blijvend deel 0 →
- *    w_add = w_fin. Zeeg kent de houtkern (nog) niet — preCamber_mm wordt
- *    hier bewust NIET geconsumeerd en de UI toont het veld niet voor hout.
+ *    (NB-standaard); w_qp komt uit de quasi-blijvende BGT-combinatie
+ *    (G + Σ ψ₂,i · Q_k,i), en valt alleen mét een notitie in het rapport terug
+ *    op de volle last; blijvend deel 0 → w_add = w_fin. Zeeg kent de houtkern
+ *    (nog) niet — preCamber_mm wordt hier bewust NIET geconsumeerd en de UI
+ *    toont het veld niet voor hout.
  */
-import type { Beam, BeamCheckConfig, Node } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
@@ -38,6 +39,7 @@ import {
   isSteelProfile,
   beamLengthMm,
   buildForcesEnvelope,
+  deflectionNotesFor,
   extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
 
@@ -66,11 +68,24 @@ export function mapLoadDuration(d: BeamCheckConfig["loadDuration"]): LoadDuratio
 
 /**
  * Doorbuigingsklasse → L/n-noemers (w_fin, w_add) voor de houtkern.
- *  - "floor":      fin 250, add 333 (NB-standaard, huidige defaults);
- *  - "roof":       fin 250, add 250 (niet-toegankelijk dak: w_add 0,004·L);
- *  - "cantilever": fin 125, add 167 — de NB-conventie "rekenlengte = 2 ×
- *    uitkraaglengte" uitgedrukt als gehalveerde noemers op de staaflengte;
- *  - "custom":     de opgegeven n geldt voor w_fin én w_add (één knop,
+ *
+ * De w_fin-noemers volgen NEN-EN 1990:2002/NB:2019 A1.4.3(4) — w_max ≤ 1/250
+ * deel van ℓ_rep bij zowel vloeren als daken. De w_add-noemers volgen
+ * A1.4.3(3), dat vier categorieën voor w2 + w3 kent:
+ *  - "floor":        fin 250, add 333 — het tweede gedachtestreepje, "overige
+ *    vloeren en daken die intensief door personen worden gebruikt", 3/1 000
+ *    deel van ℓ_rep. De 333 is de afronding naar beneden van 333⅓ en dus een
+ *    fractie strenger dan de norm; de staalkern rekent sinds september 2026
+ *    met 1000/3 exact. Bewust niet gelijkgetrokken: 333 is veilig-zijdig en
+ *    het wijzigen zou de bevroren houtreferenties verschuiven;
+ *  - "floorBrittle": fin 250, add 500 — het eerste gedachtestreepje, "vloeren
+ *    die scheurgevoelige scheidingswanden dragen", 1/500 deel van ℓ_rep;
+ *  - "roof":         fin 250, add 250 — het derde gedachtestreepje, "overige
+ *    daken", 1/250 deel van ℓ_rep;
+ *  - "cantilever":   fin 125, add 167 — de NB-conventie "ℓ_rep = tweemaal de
+ *    lengte van een uitkraging" uitgedrukt als gehalveerde noemers op de
+ *    staaflengte;
+ *  - "custom":       de opgegeven n geldt voor w_fin én w_add (één knop,
  *    transparant gedocumenteerd in de UI-hint).
  */
 export function timberDeflectionNumerators(
@@ -78,14 +93,15 @@ export function timberDeflectionNumerators(
   customN: number | undefined,
 ): { fin: number; add: number } {
   switch (cls) {
-    case "roof":       return { fin: 250, add: 250 };
-    case "cantilever": return { fin: 125, add: 167 };
+    case "roof":         return { fin: 250, add: 250 };
+    case "floorBrittle": return { fin: 250, add: 500 };
+    case "cantilever":   return { fin: 125, add: 167 };
     case "custom": {
       const n = customN && customN > 0 ? customN : 333;
       return { fin: n, add: n };
     }
     case "floor":
-    default:           return { fin: 250, add: 333 };
+    default:             return { fin: 250, add: 333 };
   }
 }
 
@@ -133,9 +149,86 @@ export function parseTimberRectMm(
   return null;
 }
 
+// ── Quasi-blijvende zakking (w_qp) ─────────────────────────────────────────
+//
+// w_fin = w_inst + k_def · w_qp (EN 1995-1-1 §7.2). w_qp is de zakking onder de
+// QUASI-BLIJVENDE belastingscombinatie: G + Σ ψ₂,i · Q_k,i (NEN-EN 1990,
+// uitdrukking 6.16b). Die ψ₂-factoren zitten in dit project al in de
+// combinatiedefinities — `defaultCombinations()` in
+// components/fem/solver/combinations.ts levert "SLS Quasi-permanent" met
+// formule "G + ψ₂·Q" — dus w_qp hoeft niet geschat te worden; hij is gewoon
+// het veldmaximum van diezelfde combinatie.
+//
+// Tot september 2026 stond hier `deflection_quasi_perm_mm: wInstMm`: de VOLLE
+// karakteristieke last als quasi-blijvend. Dat is veilig-zijdig maar niet
+// eerlijk — het rekent de kruip over lasten die er in de eindtoestand niet
+// blijvend zijn. Voor de standaardcombinaties (G + Q, ψ₂ = 0,3) valt w_qp
+// daarmee 1/0,65 ≈ 1,5 keer te hoog uit.
+//
+// Terugvallen op de volle last mag nog steeds — als de quasi-blijvende
+// combinatie ontbreekt of niet is doorgerekend is er niets beters — maar dan
+// mét een notitie in het rapport. Nooit stilzwijgend.
+
+/** Uitkomst van de w_qp-bepaling: het getal én waar het vandaan komt. */
+export interface QuasiPermanentDeflection {
+  /** w_qp in mm, teken behouden (negatief = omlaag). */
+  mm: number;
+  /** Regels voor `deflection_notes` van de houtkern. */
+  notes: string[];
+}
+
+/**
+ * Zakking onder de quasi-blijvende BGT-combinatie, of een gedocumenteerde
+ * terugval op de volle karakteristieke last.
+ *
+ * `combo` is de quasi-blijvende combinatie (of `null` als het model er geen
+ * heeft), `result` haar solverresultaat.
+ */
+export function quasiPermanentDeflection(
+  beam: Beam,
+  combo: LoadCombination | null,
+  result: SolverResult | null,
+  wInstMm: number,
+): QuasiPermanentDeflection {
+  const terugval = (reden: string): QuasiPermanentDeflection => ({
+    mm: wInstMm,
+    notes: [
+      `w_qp is gelijkgesteld aan de volledige zakking onder de karakteristieke ` +
+        `BGT-combinatie omdat ${reden}. De kruip (k_def) wordt daarmee over de ` +
+        `volle veranderlijke belasting gerekend in plaats van over het ` +
+        `quasi-blijvende deel (Σ ψ₂,i · Q_k,i, NEN-EN 1990 uitdrukking 6.16b): ` +
+        `veilig-zijdig, maar w_fin — en daarmee ook het daaruit afgeleide w_add — ` +
+        `valt hoger uit dan de norm vraagt.`,
+    ],
+  });
+
+  if (!combo) {
+    return terugval(
+      "het model geen quasi-blijvende BGT-combinatie kent (verwacht: een " +
+        'BGT-combinatie met "quasi" in de naam)',
+    );
+  }
+  if (!result || !result.elements.has(beam.id)) {
+    return terugval(
+      `combinatie "${combo.name}" geen krachtsverloop voor deze staaf oplevert — ` +
+        "reken het model opnieuw door",
+    );
+  }
+  return {
+    mm: extractFieldDeflectionMm(beam, result),
+    notes: [
+      `w_qp is de zakking onder de quasi-blijvende BGT-combinatie "${combo.name}" ` +
+        `(${combo.formula}); de ψ₂-factoren zitten in de combinatiefactoren. ` +
+        "Kruip volgens EN 1995-1-1 §7.2: w_fin = w_inst + k_def · w_qp.",
+    ],
+  };
+}
+
 export interface TimberBuildData {
   nodes: Node[];
   beams: Beam[];
+  /** Opleggingen; zie `SteelBuildData.supports`. */
+  supports?: Support[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
   /** Runtime-lijst uit `list_timber_grades`; leeg → statische fallback. */
@@ -162,6 +255,15 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
   const slsChar =
     slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
   const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
+  // Quasi-blijvende BGT-combinatie voor w_qp. Herkend op de naam — de
+  // ψ₂-factoren zelf zitten in `combo.factors` en zijn daaruit niet terug te
+  // lezen als "dit is de quasi-blijvende". GEEN terugval op slsCombos[0]: dat
+  // zou de karakteristieke combinatie stilzwijgend als quasi-blijvend
+  // doorgeven, precies de aanname die hier wordt weggehaald.
+  const slsQuasi = slsCombos.find((c) => /quasi/i.test(c.name)) ?? null;
+  const quasiResult = slsQuasi
+    ? data.combinationResults.get(slsQuasi.id) ?? null
+    : null;
 
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
@@ -230,6 +332,7 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
     // stationsconventie van de solver valt daar voor horizontale staven
     // mee samen; zie extractFieldDeflectionMm).
     const wInstMm = extractFieldDeflectionMm(beam, slsResult);
+    const wQuasi = quasiPermanentDeflection(beam, slsQuasi, quasiResult, wInstMm);
 
     // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
     // Kniklengtes (bucklingLengthY/Z_m) en preCamber_mm worden voor hout
@@ -267,12 +370,20 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       k_cr: 1.0,
       load_sharing: false,
       deflection_inst_mm: wInstMm,
-      // Volledige last als quasi-blijvend: maximale kruiptoeslag (veilig-zijdig).
-      deflection_quasi_perm_mm: wInstMm,
+      // Zakking onder de quasi-blijvende BGT-combinatie (G + Σ ψ₂,i · Q_k,i),
+      // of de volle last mét notitie als die combinatie ontbreekt — zie
+      // `quasiPermanentDeflection`.
+      deflection_quasi_perm_mm: wQuasi.mm,
       // Blijvend deel onbekend → 0, dus w_add = w_fin (veilig-zijdig).
       deflection_permanent_mm: 0,
       deflection_limit_fin: defl.fin,
       deflection_limit_add: defl.add,
+      // Referentielijn + eventuele waarschuwing over een doorgeknipte staaf
+      // (gedeeld met de staalbouwer), gevolgd door de herkomst van w_qp.
+      deflection_notes: [
+        ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
+        ...wQuasi.notes,
+      ],
     });
   }
 

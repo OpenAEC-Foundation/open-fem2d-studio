@@ -156,6 +156,23 @@ formulae, intermediate values, and unity-check ratios per check).
 }
 ```
 
+`deflection_limit_class` kiest de NB-categorie voor de **bijkomende**
+doorbuiging w_add (= w2 + w3), volgens NEN-EN 1990:2002/NB:2019 A1.4.3(3):
+
+| klasse | grens voor w_add | NB-categorie |
+|---|---|---|
+| `Floor` | 3/1 000 · ℓ_rep | overige vloeren en daken die intensief door personen worden gebruikt (2e streepje) |
+| `FloorBrittlePartitions` | ℓ_rep/500 | vloeren die scheurgevoelige scheidingswanden dragen (1e streepje) |
+| `Roof` | ℓ_rep/250 | overige daken (3e streepje) |
+| `Cantilever` | als `Floor`, maar met ℓ_rep = 2 × de uitkraaglengte | verklaring bij ℓ_rep |
+| `Custom` | de opgegeven `deflection_limit_numerator`, op de staaflengte | geen |
+
+Het optionele veld `deflection_add_limit_numerator` (default 0 = de tabel
+hierboven) overschrijft die noemer en rekent op de staaflengte. Gebruik het
+alleen om een externe referentie-uitwerking met een vaste noemer na te rekenen;
+het antwoord vermeldt dan in `notes` dat de noemer is opgegeven en niet uit de
+norm volgt.
+
 **Response shape**:
 ```json
 {

@@ -25,7 +25,7 @@
  */
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { Beam, Node } from "../components/fem/femTypes";
+import type { Beam, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { BeamCheckResult } from "../lib/types/steel/BeamCheckResult";
@@ -85,6 +85,15 @@ export async function roepKern<T>(opdracht: string, inputs?: unknown): Promise<T
 export interface CheckRunData {
   nodes: Node[];
   beams: Beam[];
+  /**
+   * Opleggingen. De doorbuigingstoets gebruikt ze om een echt tussensteunpunt
+   * te onderscheiden van een knoop waar een ligger alleen is doorgeknipt;
+   * zonder dat onderscheid kan de toetsing niet zeggen of het per-staafdeel
+   * toetsen van de doorbuiging klopt. Optioneel, zodat een aanroeper die ze
+   * niet heeft nog steeds kan toetsen — het rapport zegt dan dat het
+   * onderscheid niet gemaakt kon worden.
+   */
+  supports?: Support[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
 }

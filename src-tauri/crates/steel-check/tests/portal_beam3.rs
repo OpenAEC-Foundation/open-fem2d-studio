@@ -6,6 +6,18 @@
 //!
 //! LTB: C1=1.485 (beta=0.326), M_cr=536.275 kNm, lambda_LT=0.394, chi_LT=1.00
 //! Reference: Combination 2.2 (id=22) governs bending; 1.1 (id=11) for LTB.
+//!
+//! WAAROM DE SNAPSHOT IN SEPTEMBER 2026 IS VERSCHOVEN
+//! Alleen de regel `deflection_w_add` verandert, en daarbinnen alleen de
+//! GRENSWAARDE, het artikel en de toelichting — niet een unity check. De
+//! w_add-noemer stond vast op 150 ("conform de referentie-uitwerking"), maar
+//! NEN-EN 1990:2002/NB:2019 A1.4.3(3) geeft ℓ_rep/150 uitsluitend voor
+//! vloerafscheidingen ter plaatse van een hoogteverschil. Voor deze staaf geldt
+//! het tweede gedachtestreepje — "overige vloeren en daken die intensief door
+//! personen worden gebruikt" — dus 3/1 000 deel van ℓ_rep: 7.5 mm in plaats
+//! van de oude 16.67 mm bij L = 2500 mm.
+//! De unity check blijft 0,00 omdat `deflection_actual_max_mm` in deze test 0 is;
+//! de referentie-uitwerking rekent de doorbuiging niet mee in deze staaf.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
@@ -54,6 +66,8 @@ fn run() -> &'static BeamCheckResult {
             consequence_class: ConsequenceClass::CC1,
             pre_camber_mm: 0.0,
             deflection_permanent_mm: 0.0,
+            deflection_add_limit_numerator: 0.0,
+            deflection_notes: vec![],
             q_equiv_n_per_mm: 0.0,
             z_a_mm: 0.0,
             custom_section: None,

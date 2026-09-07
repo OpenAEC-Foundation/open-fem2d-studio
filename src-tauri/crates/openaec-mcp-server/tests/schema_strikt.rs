@@ -168,6 +168,7 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         "pre_camber_mm",
         "deflection_permanent_mm",
         "deflection_add_limit_numerator",
+        "deflection_notes",
         "q_equiv_n_per_mm",
         "z_a_mm",
         "custom_section",

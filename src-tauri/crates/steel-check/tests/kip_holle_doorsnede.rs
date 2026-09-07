@@ -56,6 +56,8 @@ fn koker(l_m: f64, q_n_per_mm: f64) -> BeamCheckResult {
         consequence_class: ConsequenceClass::CC1,
         pre_camber_mm: 0.0,
         deflection_permanent_mm: 0.0,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
         q_equiv_n_per_mm: q_n_per_mm,
         // Belasting op de bovenflens: z_a = h/2 = 100 mm (destabiliserend).
         z_a_mm: 100.0,

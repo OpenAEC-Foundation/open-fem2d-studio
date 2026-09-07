@@ -11,9 +11,12 @@ const { solve } = await import("./src/components/fem/solver/engine.ts");
 const { defaultCombinations, combineResults } = await import(
   "./src/components/fem/solver/combinations.ts"
 );
-const { buildSteelCheckInputs, extractFieldDeflectionMm } = await import(
-  "./src/lib/steelCheckBuilder.ts"
-);
+const {
+  buildSteelCheckInputs,
+  collinearContinuations,
+  deflectionNotesFor,
+  extractFieldDeflectionMm,
+} = await import("./src/lib/steelCheckBuilder.ts");
 const { buildTimberCheckInputs } = await import("./src/lib/timberCheckBuilder.ts");
 
 const E = 210000; // N/mm²
@@ -84,7 +87,7 @@ log("\n[2] Staal: deflection_actual_max_mm = veldmaximum (teken behouden)");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[3] Hout: deflection_inst_mm en deflection_quasi_perm_mm = veldmaximum");
+log("\n[3] Hout: w_inst uit de karakteristieke, w_qp uit de QUASI-BLIJVENDE combinatie");
 {
   const { inputs, skipped } = buildTimberCheckInputs({
     nodes,
@@ -98,12 +101,49 @@ log("\n[3] Hout: deflection_inst_mm en deflection_quasi_perm_mm = veldmaximum");
   checkTrue("w_inst NIET ~0", Math.abs(wi) > 1);
   check("|w_inst| = 5qL⁴/384EI", Math.abs(wi), wExp, 1);
   checkTrue("w_inst negatief (omlaag)", wi < 0);
-  check("w_qp = w_inst (gedocumenteerde veilig-zijdige keuze)", wq, wi, 0.01);
+
+  // Bevroren grenswaarde. G (case 1) en Q (case 2) leveren elk q = -5 N/mm.
+  //   SLS Karakteristiek (combo 6) = 1,0·G + 1,0·Q       → q = -10   → w_inst
+  //   SLS Quasi-permanent (combo 8) = 1,0·G + ψ₂·Q, ψ₂ = 0,3
+  //                                                      → q = -6,5  → w_qp
+  // w is lineair in q, dus w_qp/w_inst = 6,5/10 = 0,65 exact.
+  // Vóór september 2026 stond hier w_qp = w_inst (de volle last), 1/0,65 ≈ 1,54
+  // keer te hoog; de kruipterm k_def·w_qp viel daarmee even veel te hoog uit.
+  check("w_qp = 0,65 · w_inst (G + ψ₂·Q, ψ₂ = 0,3 voor Q)", wq, 0.65 * wi, 0.01);
+  const notes = (inputs[0]?.deflection_notes ?? []).join(" ");
+  checkTrue("notitie noemt de gebruikte combinatie",
+    /quasi-blijvende BGT-combinatie "SLS Quasi-permanent"/.test(notes));
+  checkTrue("notitie noemt de koorde als referentielijn", /vanaf de koorde/.test(notes));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[4] Teken bij max |w|: grootste amplitude wint, teken blijft");
+log("\n[3b] Hout: geen quasi-blijvende combinatie → volle last MET notitie");
 {
+  // Zelfde model, maar de quasi-blijvende combinatie is uit de lijst gehaald.
+  const zonderQp = combos.filter((c) => !/quasi/i.test(c.name));
+  const { inputs } = buildTimberCheckInputs({
+    nodes,
+    beams: [{ id: 1, from: 1, to: 2, material: "C24", profile: "60x100" }],
+    combinations: zonderQp,
+    combinationResults,
+  });
+  const wi = inputs[0]?.deflection_inst_mm ?? NaN;
+  const wq = inputs[0]?.deflection_quasi_perm_mm ?? NaN;
+  check("terugval: w_qp = w_inst (volle last)", wq, wi, 0.01);
+  const notes = (inputs[0]?.deflection_notes ?? []).join(" ");
+  checkTrue("terugval is expliciet gemeld, niet stilzwijgend",
+    /geen quasi-blijvende BGT-combinatie/.test(notes));
+  checkTrue("notitie zegt dat het veilig-zijdig maar te hoog is",
+    /veilig-zijdig/.test(notes));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[4] Koorde-aftrek: max |w − koorde|, teken behouden");
+{
+  // w = [0, 3.2, -5.7] op x = [0, 500, 1000]. De koorde loopt van 0 naar -5,7,
+  // dus koorde(500) = -2,85. Dan is w − koorde = [0, +6,05, 0] en is 6,05 het
+  // maximum. Vóór september 2026 gaf dit -5,7: de ABSOLUTE verplaatsing van het
+  // staafeind, wat helemaal geen doorbuiging is.
   const fake = {
     displacements: new Map([[1, { ux: 0, uz: 0, ry: 0 }], [2, { ux: 0, uz: 0, ry: 0 }]]),
     reactions: new Map(),
@@ -116,7 +156,52 @@ log("\n[4] Teken bij max |w|: grootste amplitude wint, teken blijft");
     maxDisplacement: 0,
   };
   const w = extractFieldDeflectionMm({ id: 7, from: 1, to: 2 }, fake);
-  check("w = -5.7 (|max|, teken behouden)", w, -5.7, 0.01);
+  check("w = 3.2 − (−2.85) = 6.05 (vanaf de koorde)", w, 6.05, 0.01);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[4b] Koorde-aftrek: starre zakking en rotatie tellen NIET mee");
+{
+  // Vrij opgelegde ligger, maar beide steunpunten zakken mee: 20 mm links,
+  // 30 mm rechts. De echte doorbuiging is de parabool eromheen (hier −4 mm in
+  // het midden). Zonder koorde-aftrek zou hier −29 mm uitkomen — ruim 7 keer
+  // te veel, precies het defect dat in een referentievergelijking opdook.
+  const parabool = [0, -3, -4, -3, 0];                 // echte doorbuiging
+  const star = [-20, -22.5, -25, -27.5, -30];          // lineaire meebeweging
+  const fake = {
+    displacements: new Map(),
+    reactions: new Map(),
+    elements: new Map([[9, {
+      N: 0, V: 0, M_start: 0, M_end: 0, L_mm: 4000,
+      stations_mm: [0, 1000, 2000, 3000, 4000],
+      normalForce: [0, 0, 0, 0, 0], shearForce: [0, 0, 0, 0, 0],
+      bendingMoment: [0, 0, 0, 0, 0],
+      deflection: parabool.map((v, i) => v + star[i]),
+      axialDisp: [0, 0, 0, 0, 0],
+    }]]),
+    maxDisplacement: 0,
+  };
+  const w = extractFieldDeflectionMm({ id: 9, from: 1, to: 2 }, fake);
+  check("w = -4 mm (de parabool), niet -29 mm (parabool + starre beweging)", w, -4, 0.01);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[4c] Vrij opgelegd op onwrikbare steunpunten: koorde = 0, niets verandert");
+{
+  const fake = {
+    displacements: new Map(),
+    reactions: new Map(),
+    elements: new Map([[11, {
+      N: 0, V: 0, M_start: 0, M_end: 0, L_mm: 4000,
+      stations_mm: [0, 1000, 2000, 3000, 4000],
+      normalForce: [0, 0, 0, 0, 0], shearForce: [0, 0, 0, 0, 0],
+      bendingMoment: [0, 0, 0, 0, 0],
+      deflection: [0, -3, -4, -3, 0], axialDisp: [0, 0, 0, 0, 0],
+    }]]),
+    maxDisplacement: 0,
+  };
+  check("w = -4 mm, onveranderd t.o.v. de oude absolute meting",
+    extractFieldDeflectionMm({ id: 11, from: 1, to: 2 }, fake), -4, 0.01);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -142,7 +227,11 @@ log("\n[5] Fallback: geen station-arrays (ouder resultaat) → knooppad + warn")
   const w = extractFieldDeflectionMm({ id: 7, from: 1, to: 2 }, oldStyle);
   console.warn = origWarn;
   check("fallback: signed knoop-uz met max |uz|", w, -12.3, 0.01);
-  checkTrue("console.warn over mogelijke onderschatting", warns.length >= 1 && /onderschat/i.test(warns.join(" ")));
+  // De waarschuwing moet zeggen dat dit pad de ABSOLUTE verplaatsing levert en
+  // niet de doorbuiging vanaf de koorde — anders leest een te grote of te
+  // kleine waarde als een gewone uitkomst.
+  checkTrue("console.warn noemt het risico in beide richtingen",
+    warns.length >= 1 && /onderschat als overschat/i.test(warns.join(" ")));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -150,6 +239,49 @@ log("\n[6] Geen resultaat → 0 (geen crash)");
 {
   const w = extractFieldDeflectionMm({ id: 1, from: 1, to: 2 }, null);
   check("null-resultaat → 0", w, 0, 0.01);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[7] Doorgeknipte staaf: gemeld in het rapport, niet stilzwijgend per deel");
+{
+  // 1 ── 2 ── 3, twee staafdelen met dezelfde doorsnede in elkaars verlengde.
+  const ketenNodes = [
+    { id: 1, x: 0, z: 0 }, { id: 2, x: 3000, z: 0 }, { id: 3, x: 6000, z: 0 },
+  ];
+  const deel1 = { id: 1, from: 1, to: 2, material: "S235", profile: "HEA160" };
+  const deel2 = { id: 2, from: 2, to: 3, material: "S235", profile: "HEA160" };
+  const ketenBeams = [deel1, deel2];
+
+  // (a) geen oplegging op knoop 2 → één overspanning, dus melden.
+  const zonderSteun = [{ nodeId: 1, type: "pinned" }, { nodeId: 3, type: "zRoller" }];
+  const vervolg = collinearContinuations(deel1, ketenNodes, ketenBeams, zonderSteun);
+  checkTrue("staaf 1 loopt door in staaf 2", vervolg.length === 1 && vervolg[0] === 2);
+  const nZonder = deflectionNotesFor(deel1, ketenNodes, ketenBeams, zonderSteun).join(" ");
+  checkTrue("melding over toetsing per staafdeel", /per staafdeel getoetst/.test(nZonder));
+
+  // (b) wél een oplegging op knoop 2 → twee overspanningen, dus GEEN melding.
+  const metSteun = [...zonderSteun, { nodeId: 2, type: "zRoller" }];
+  checkTrue("tussensteunpunt → geen doorloop",
+    collinearContinuations(deel1, ketenNodes, ketenBeams, metSteun).length === 0);
+  const nMet = deflectionNotesFor(deel1, ketenNodes, ketenBeams, metSteun).join(" ");
+  checkTrue("geen valse melding bij een echt tussensteunpunt",
+    !/per staafdeel getoetst/.test(nMet) && /vanaf de koorde/.test(nMet));
+
+  // (c) een kolom op knoop 2 is niet collineair → geen melding.
+  const kolom = { id: 3, from: 2, to: 4, material: "S235", profile: "HEA160" };
+  const portaalNodes = [...ketenNodes, { id: 4, x: 3000, z: -3000 }];
+  checkTrue("haakse staaf telt niet als doorloop",
+    collinearContinuations(kolom, portaalNodes, [deel1, deel2, kolom], zonderSteun).length === 0);
+
+  // (d) ander profiel op hetzelfde hart → geen doorlopende ligger.
+  const anderProfiel = { ...deel2, profile: "IPE300" };
+  checkTrue("ander profiel telt niet als doorloop",
+    collinearContinuations(deel1, ketenNodes, [deel1, anderProfiel], zonderSteun).length === 0);
+
+  // (e) opleggingen niet meegegeven → melden mét het voorbehoud.
+  const nOnbekend = deflectionNotesFor(deel1, ketenNodes, ketenBeams, undefined).join(" ");
+  checkTrue("zonder opleggingenlijst wordt het voorbehoud vermeld",
+    /niet meegegeven aan de toetsbouwer/.test(nOnbekend));
 }
 
 log(`\n${"─".repeat(60)}`);

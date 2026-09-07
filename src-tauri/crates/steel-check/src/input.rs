@@ -8,13 +8,50 @@ use nen_en_1993_1_1_ltb::LateralBracing;
 use section_properties::SectionProperties;
 use section_properties::composite::{CompositeSection, GeslotenCel, Lamella};
 
+/// Doorbuigingsklasse van een staaf.
+///
+/// De klasse bepaalt twee dingen: de noemer voor de eindzakking `w_fin`
+/// ([`crate::deflection::default_numerator`]) en de noemer plus de
+/// referentielengte ℓ_rep voor de bijkomende zakking `w_add`
+/// ([`crate::deflection::w_add_grens`]).
+///
+/// De indeling volgt de vier gedachtestreepjes van NEN-EN 1990:2002/NB:2019
+/// A1.4.3(3), die de grenswaarden voor w2 + w3 (= de bijkomende doorbuiging)
+/// geven. Per variant staat hieronder welk gedachtestreepje erbij hoort; de
+/// bijbehorende getallen en belastingscombinaties staan in
+/// [`crate::deflection`], want daar worden ze gebruikt.
+///
+/// Wat hier bewust GEEN variant is: het vierde gedachtestreepje
+/// (vloerafscheidingen ter plaatse van een hoogteverschil, ℓ_rep/150). Dat is
+/// geen vloer- of dakligger maar de bovenrand/bovenregel van een balustrade, en
+/// de NB geeft daar geen w_max-eis bij; een w_fin-noemer zou dus verzonnen
+/// moeten worden. Wie L/150 nodig heeft — bijvoorbeeld om een externe
+/// referentie-uitwerking na te bootsen — geeft dat op via
+/// [`BeamCheckInput::deflection_add_limit_numerator`], of via `Custom`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
-pub enum DeflectionClass { Floor, Roof, Cantilever, Custom }
+pub enum DeflectionClass {
+    /// Overige vloeren en daken die intensief door personen worden gebruikt —
+    /// A1.4.3(3), **tweede** gedachtestreepje. Standaardkeuze van de app.
+    Floor,
+    /// Vloeren die scheurgevoelige scheidingswanden dragen — A1.4.3(3),
+    /// **eerste** gedachtestreepje. Toegevoegd omdat `Floor` deze categorie
+    /// niet kon uitdrukken: hij is met ℓ_rep/500 anderhalf keer zo streng.
+    FloorBrittlePartitions,
+    /// Overige daken — A1.4.3(3), **derde** gedachtestreepje.
+    Roof,
+    /// Uitkraging. Zegt niets over het gebruik van het vlak, alleen over de
+    /// referentielengte: ℓ_rep is tweemaal de uitkraaglengte (A1.4.3(3),
+    /// definitie van ℓ_rep). Voor de categorie zelf wordt `Floor` aangehouden;
+    /// zie [`crate::deflection::w_add_grens`].
+    Cantilever,
+    /// Noemer volledig door de aanroeper opgegeven; geen NB-categorie.
+    Custom,
+}
 
 /// Invoer van één staaltoetsing.
 ///
-/// `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Vijf
+/// `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Zeven
 /// velden hieronder hebben `#[serde(default)]`, en een tikfout in zo'n
 /// veldnaam zou anders stilzwijgend op 0 uitkomen. Bij `q_equiv_n_per_mm` en
 /// `z_a_mm` valt de kiptoets daarmee *gunstiger* uit dan hij hoort te zijn —
@@ -34,6 +71,21 @@ pub struct BeamCheckInput {
     pub deflection_limit_class: DeflectionClass,
     pub deflection_limit_numerator: u32,
     pub deflection_actual_max_mm: f64,
+    /// Is deze staaf een uitkraging?
+    ///
+    /// Tot september 2026 werd dit veld door de kern NERGENS gelezen: alleen
+    /// [`DeflectionClass::Cantilever`] deed iets, en dan nog uitsluitend via de
+    /// w_fin-noemer 150 op de staaflengte. Nu bepaalt het samen met de klasse
+    /// de referentielengte ℓ_rep = 2·L voor de w_add-grens
+    /// ("ℓ_rep is de lengte van een overspanning of tweemaal de lengte van een
+    /// uitkraging", NEN-EN 1990:2002/NB:2019 A1.4.3(3)). Eén van beide volstaat;
+    /// de frontend zet ze allebei.
+    ///
+    /// Let op de asymmetrie met w_fin: die kant verdubbelt ℓ_rep NIET maar
+    /// gebruikt noemer 150 op de staaflengte, wat op ℓ_rep/300 neerkomt.
+    /// Strenger dan de ℓ_rep/250 uit A1.4.3(4), dus veilig — maar het is een
+    /// andere manier om hetzelfde uit te drukken, en dat staat als notitie in
+    /// het rapport.
     pub is_cantilever: bool,
     pub consequence_class: ConsequenceClass,
     /// Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.
@@ -42,6 +94,30 @@ pub struct BeamCheckInput {
     /// Doorbuiging onder de permanente BGT-combinatie (mm), voor w_add.
     #[serde(default)]
     pub deflection_permanent_mm: f64,
+    /// Noemer n in de grenswaarde L/n voor de **bijkomende** zakking w_add.
+    ///
+    /// `0` of afwezig = de waarde die bij [`Self::deflection_limit_class`]
+    /// hoort volgens NEN-EN 1990:2002/NB:2019 A1.4.3(3); zie
+    /// [`crate::deflection::w_add_grens`]. Een waarde > 0 overschrijft die
+    /// klassewaarde en wordt op de **staaflengte** toegepast (dus zonder de
+    /// verdubbeling ℓ_rep = 2·L bij een uitkraging) — precies zoals een
+    /// externe referentie-uitwerking met een vaste noemer rekent. Het rapport
+    /// vermeldt dan dat de noemer is opgegeven en niet uit de norm volgt.
+    ///
+    /// `f64` en niet `u32`, omdat de NB-waarde 3/1000 een noemer van 333⅓
+    /// oplevert; met een geheel getal was die niet exact op te geven.
+    #[serde(default)]
+    pub deflection_add_limit_numerator: f64,
+    /// Vrije toelichtingen bij de doorbuigingstoets, die letterlijk in de
+    /// `notes` van de w_fin-regel van het rapport belanden.
+    ///
+    /// Waarom dit bestaat: [`Self::deflection_actual_max_mm`] is een kaal
+    /// getal. Waar het vandaan komt — vanaf welke referentielijn het is
+    /// gemeten, over welke lengte, en of de aanroeper daarbij iets heeft moeten
+    /// aannemen — weet alleen de bouwer die de invoer samenstelt. Zonder dit
+    /// kanaal zou zo'n aanname onzichtbaar zijn in het rapport.
+    #[serde(default)]
+    pub deflection_notes: Vec<String>,
     /// Equivalente gelijkmatig verdeelde belasting in het kipveld (N/mm),
     /// voor B* volgens NB.NB.4.3(3). 0 = alleen eindmomenten.
     #[serde(default)]

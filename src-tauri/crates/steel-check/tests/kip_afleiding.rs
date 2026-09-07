@@ -75,6 +75,8 @@ fn invoer(profiel: &str, l_m: f64, q: f64, steunen: Vec<f64>, z_a_mm: f64) -> Be
         consequence_class: ConsequenceClass::CC1,
         pre_camber_mm: 0.0,
         deflection_permanent_mm: 0.0,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
         q_equiv_n_per_mm: q,
         z_a_mm,
         custom_section: None,

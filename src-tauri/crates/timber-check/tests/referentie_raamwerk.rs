@@ -60,6 +60,7 @@ fn basis(beam_id: u32) -> TimberBeamCheckInput {
         deflection_permanent_mm: 0.0,
         deflection_limit_fin: 250.0,
         deflection_limit_add: 333.0,
+        deflection_notes: vec![],
     }
 }
 

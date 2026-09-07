@@ -92,4 +92,15 @@ pub struct TimberBeamCheckInput {
     /// Noemer voor w_add (L/n), NB-standaard 333.
     #[serde(default = "default_noemer_add")]
     pub deflection_limit_add: f64,
+    /// Vrije toelichtingen bij de doorbuigingstoets, die letterlijk in de
+    /// `notes` van de w_fin-regel van het rapport belanden.
+    ///
+    /// Waarom dit bestaat: `deflection_quasi_perm_mm` is een kaal getal, en de
+    /// kern kan niet zien uit welke belastingscombinatie het komt. De bouwer
+    /// die de invoer samenstelt weet dat wél — of hij weet juist dat hij de
+    /// quasi-blijvende combinatie NIET heeft kunnen vinden en op de volle last
+    /// is teruggevallen. Zonder dit kanaal zou zo'n terugval onzichtbaar zijn,
+    /// en een onzichtbare aanname is geen aanname maar een fout in wording.
+    #[serde(default)]
+    pub deflection_notes: Vec<String>,
 }

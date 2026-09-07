@@ -10,6 +10,18 @@
 //! 785 472 mm³ en 5750,65 mm² — binnen 0,004% van de referentiewaarden
 //! 11 501,3 / 785 442 / 5751. De verwachtingen hieronder staan nu dus op de
 //! referentiewaarden zelf; de twee TODO's uit fase 13 zijn opgelost.
+//!
+//! WAAROM DE SNAPSHOT IN SEPTEMBER 2026 IS VERSCHOVEN
+//! Alleen de regel `deflection_w_add` verandert, en daarbinnen alleen de
+//! GRENSWAARDE, het artikel en de toelichting — niet een unity check. De
+//! w_add-noemer stond vast op 150 ("conform de referentie-uitwerking"), maar
+//! NEN-EN 1990:2002/NB:2019 A1.4.3(3) geeft ℓ_rep/150 uitsluitend voor
+//! vloerafscheidingen ter plaatse van een hoogteverschil. Voor deze staaf geldt
+//! het tweede gedachtestreepje — "overige vloeren en daken die intensief door
+//! personen worden gebruikt" — dus 3/1 000 deel van ℓ_rep: 15.0 mm in plaats
+//! van de oude 33.33 mm bij L = 5000 mm.
+//! De unity check blijft 0,00 omdat `deflection_actual_max_mm` in deze test 0 is;
+//! de referentie-uitwerking rekent de doorbuiging niet mee in deze staaf.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
@@ -59,6 +71,8 @@ fn run() -> &'static BeamCheckResult {
             consequence_class: ConsequenceClass::CC1,
             pre_camber_mm: 0.0,
             deflection_permanent_mm: 0.0,
+            deflection_add_limit_numerator: 0.0,
+            deflection_notes: vec![],
             q_equiv_n_per_mm: 0.0,
             z_a_mm: 0.0,
             custom_section: None,

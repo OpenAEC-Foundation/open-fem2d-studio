@@ -17,7 +17,7 @@
  * een expliciete reden (zichtbaar in het toetsingspaneel) — geen stille
  * aannames.
  */
-import type { Beam, BeamCheckConfig, Node } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { BeamCheckInput } from "./types/steel/BeamCheckInput";
@@ -38,11 +38,14 @@ export function mapDeflectionClass(
   cls: BeamCheckConfig["deflectionClass"],
 ): DeflectionClass {
   switch (cls) {
-    case "roof":       return "Roof";
-    case "cantilever": return "Cantilever";
-    case "custom":     return "Custom";
+    case "roof":         return "Roof";
+    case "cantilever":   return "Cantilever";
+    case "custom":       return "Custom";
+    // Vloer die scheurgevoelige scheidingswanden draagt — NEN-EN
+    // 1990:2002/NB:2019 A1.4.3(3), eerste gedachtestreepje (w2 + w3 ≤ ℓ_rep/500).
+    case "floorBrittle": return "FloorBrittlePartitions";
     case "floor":
-    default:           return "Floor";
+    default:             return "Floor";
   }
 }
 
@@ -85,9 +88,116 @@ export function profileLookupKey(name: string): string {
   return name.replace(/[\s\-.]/g, "").toUpperCase();
 }
 
+// ── Doorgeknipte staven ────────────────────────────────────────────────────
+//
+// Een ligger die door een tussenknoop in twee staven is geknipt, wordt hier per
+// DEEL getoetst: eigen lengte, eigen koorde, eigen grenswaarde L/n. Ligt op die
+// knoop een steunpunt, dan is dat juist — het zijn dan twee overspanningen.
+// Ligt er géén steunpunt (de knoop is er alleen om een andere staaf aan te
+// hangen, of omdat er is geknipt), dan is de fysieke overspanning langer dan
+// elk van de delen en klopt de toetsing per deel niet: de koorde loopt dan van
+// knip tot knip in plaats van van steunpunt tot steunpunt.
+//
+// Samenvoegen tot één staaf is binnen deze wijziging NIET gedaan. Het raakt
+// niet alleen de doorbuiging maar ook de lengte die in de kniklengtes, de
+// kipvelden en de krachtenomhullende zit; die als één geheel opnieuw opbouwen
+// is een aparte ingreep. Wat hier wél gebeurt: het geval opsporen en het in het
+// rapport zetten, zodat de lezer het ziet in plaats van dat het stilzwijgend
+// per deel gaat.
+
+/** Eenheidsrichting van een staaf, of `null` als de knopen ontbreken/samenvallen. */
+function beamDirection(beam: Beam, nodes: Node[]): { x: number; z: number } | null {
+  const a = nodes.find((n) => n.id === beam.from);
+  const b = nodes.find((n) => n.id === beam.to);
+  if (!a || !b) return null;
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const l = Math.hypot(dx, dz);
+  if (l <= 0) return null;
+  return { x: dx / l, z: dz / l };
+}
+
+/**
+ * Staaf-ids die in het verlengde van `beam` liggen: ze delen een knoop, lopen
+ * in dezelfde richting (of exact tegengesteld), hebben hetzelfde profiel en
+ * hetzelfde materiaal, en op die gedeelde knoop staat geen oplegging.
+ *
+ * De richtingstolerantie is 1e-6 op het uitwendig product van de
+ * eenheidsrichtingen — dat is ~0,00006°, dus alleen echt collineaire staven.
+ * Een portaal (ligger + kolom) valt daar ruim buiten en geeft dus geen melding.
+ */
+export function collinearContinuations(
+  beam: Beam,
+  nodes: Node[],
+  beams: Beam[],
+  supports: Support[] | undefined,
+): number[] {
+  const dir = beamDirection(beam, nodes);
+  if (!dir) return [];
+  const opgelegd = new Set((supports ?? []).map((s) => s.nodeId));
+  const uit: number[] = [];
+  for (const other of beams) {
+    if (other.id === beam.id) continue;
+    const gedeeld = [beam.from, beam.to].filter(
+      (n) => n === other.from || n === other.to,
+    );
+    // Precies één gedeelde knoop: twee gedeelde knopen zou een dubbele staaf
+    // zijn, en dat is een modelfout die de modelcontrole meldt, niet deze.
+    if (gedeeld.length !== 1) continue;
+    if (opgelegd.has(gedeeld[0])) continue;
+    if ((other.profile ?? "") !== (beam.profile ?? "")) continue;
+    if ((other.material ?? "") !== (beam.material ?? "")) continue;
+    const d2 = beamDirection(other, nodes);
+    if (!d2) continue;
+    if (Math.abs(dir.x * d2.z - dir.z * d2.x) > 1e-6) continue;
+    uit.push(other.id);
+  }
+  return uit.sort((a, b) => a - b);
+}
+
+/**
+ * Toelichtingen bij de doorbuiging van één staaf, voor `deflection_notes`.
+ * Altijd de referentielijn; daarnaast een waarschuwing zodra de staaf in het
+ * verlengde doorloopt zonder tussensteunpunt.
+ */
+export function deflectionNotesFor(
+  beam: Beam,
+  nodes: Node[],
+  beams: Beam[],
+  supports: Support[] | undefined,
+): string[] {
+  const notes = [
+    "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre " +
+      "zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming " +
+      "ertussen.",
+  ];
+  const vervolg = collinearContinuations(beam, nodes, beams, supports);
+  if (vervolg.length > 0) {
+    notes.push(
+      `Deze staaf loopt in het verlengde door in staaf ${vervolg.join(", ")} ` +
+        "(zelfde doorsnede en materiaal) zonder oplegging op de tussenknoop. De " +
+        "doorbuiging is per staafdeel getoetst, dus over de koorde van dit deel " +
+        "en tegen L/n van dit deel — niet over de volledige overspanning. Voor " +
+        "een doorgaande ligger onderschat dat de veldzakking; beoordeel de " +
+        "overspanning als geheel." +
+        (supports === undefined
+          ? " (De opleggingen zijn niet meegegeven aan de toetsbouwer, dus een " +
+            "tussensteunpunt kan hier niet zijn uitgesloten.)"
+          : ""),
+    );
+  }
+  return notes;
+}
+
 export interface SteelBuildData {
   nodes: Node[];
   beams: Beam[];
+  /**
+   * Opleggingen, om een echt tussensteunpunt te onderscheiden van een knoop
+   * waar een ligger alleen is doorgeknipt. Ontbreekt de lijst, dan kan dat
+   * onderscheid niet worden gemaakt en zegt de notitie in het rapport dat ook.
+   */
+  supports?: Support[];
   combinations: LoadCombination[];
   /** Combinatieresultaten uit de laatste solver-run (per combinatie-id). */
   combinationResults: Map<number, SolverResult>;
@@ -184,9 +294,30 @@ function nodalDeflectionMm(beam: Beam, result: SolverResult): number {
 }
 
 /**
- * Maatgevende zakking van een staaf (mm, MET teken) uit een SolverResult:
- * het veldmaximum max |w(x)| over de 21 stations van de staaf, met het
+ * Maatgevende doorbuiging van een staaf (mm, MET teken) uit een SolverResult:
+ * het veldmaximum van max |w(x) − koorde(x)| over de 21 stations, met het
  * teken van de maatgevende stationswaarde behouden.
+ *
+ * VANAF DE KOORDE, NIET ABSOLUUT. `ElementForces.deflection[]` is de volledige
+ * transversale verplaatsing in lokale assen: het Hermite-deel op de eind-DOF's
+ * plus de particuliere oplossing van de elementbelasting. Daar zit dus ook de
+ * STARRE beweging van de staaf in — de zakking en de rotatie van de twee
+ * staafeinden zelf. Zodra een staafeind meebeweegt (een doorgaande ligger, een
+ * portaal, elke staaf die niet op twee onwrikbare opleggingen ligt) telde die
+ * starre beweging tot september 2026 mee als doorbuiging. Gemeten op een
+ * referentiegeval liep dat op tot +121 %, met als gevolg dat een staaf ten
+ * onrechte "voldoet niet" meldde (UC 1,04 waar de bron 0,55 geeft).
+ *
+ * De doorbuiging hoort te worden gemeten vanaf de KOORDE: de rechte lijn
+ * tussen de twee VERPLAATSTE staafeinden. Omdat `deflection[0]` en
+ * `deflection[n−1]` per definitie de transversale verplaatsingen van die twee
+ * einden zijn, is de koorde precies hun lineaire interpolatie — er is geen
+ * extra solveruitvoer voor nodig. Het aftrekken gebeurt in de LOKALE
+ * transversale richting (loodrecht op de staafas), dus het klopt net zo goed
+ * voor een kolom of een schuine staaf als voor een horizontale ligger.
+ *
+ * Voor een vrij opgelegde ligger op twee onwrikbare steunpunten is de koorde
+ * nul en verandert er niets — daar was de oude uitkomst al goed.
  *
  * Tekenkeuze — afgestemd op wat de Rust-kern verwacht (steel-check
  * `input.deflection_actual_max_mm` en timber `input.deflection_inst_mm`:
@@ -194,13 +325,12 @@ function nodalDeflectionMm(beam: Beam, result: SolverResult): number {
  * verrekening met zeeg en blijvend deel, w_fin = w_z − w_zeeg): w(x) staat
  * in LOKALE assen (+y = 90° CCW vanaf de staafas, zie solver/types.ts),
  * dus voor een horizontale staaf is doorhangen negatief — precies de
- * kern-conventie. Voor kolommen is w de transversale uitbuiging (de juiste
- * grootheid voor deze toets); axiale verkorting telt niet meer mee zoals
- * bij het oude knooppad.
+ * kern-conventie.
  *
  * Fallback: ontbreken de station-arrays (resultaat van vóór de
- * veldzakking-uitbreiding), dan het knooppad met een console.warn — de
- * veldzakking kan dan onderschat zijn.
+ * veldzakking-uitbreiding), dan het knooppad met een console.warn. Dat pad
+ * levert een ABSOLUTE verplaatsing en géén koorde-relatieve doorbuiging; het
+ * kan er dus zowel naast zitten als de veldzakking missen.
  */
 export function extractFieldDeflectionMm(
   beam: Beam,
@@ -212,16 +342,55 @@ export function extractFieldDeflectionMm(
   if (!ef || !Array.isArray(stations) || stations.length === 0) {
     console.warn(
       `[doorbuigingstoets] staaf ${beam.id}: geen station-zakkingen in het ` +
-        `solverresultaat (ouder resultaat?) — val terug op knoopverplaatsingen; ` +
-        `de veldzakking kan hierdoor onderschat zijn. Reken het model opnieuw door.`,
+        `solverresultaat (ouder resultaat?) — val terug op knoopverplaatsingen. ` +
+        `Dat is de ABSOLUTE verplaatsing van een staafeind, niet de doorbuiging ` +
+        `vanaf de koorde: de veldzakking kan zowel onderschat als overschat ` +
+        `worden. Reken het model opnieuw door.`,
     );
     return nodalDeflectionMm(beam, result);
   }
-  let w = 0;
-  for (const v of stations) {
-    if (Number.isFinite(v) && Math.abs(v) > Math.abs(w)) w = v;
+  return chordRelativeMaxMm(stations, ef.stations_mm);
+}
+
+/**
+ * max |w(x) − koorde(x)| over de stations, teken behouden.
+ *
+ * De koorde loopt van `w[0]` naar `w[n−1]`, lineair in x. `stationsMm` mag
+ * ontbreken of een andere lengte hebben — dan wordt de index als parameter
+ * gebruikt, wat op het vaste 21-stationsraster op hetzelfde neerkomt.
+ */
+export function chordRelativeMaxMm(
+  w: number[],
+  stationsMm?: number[],
+): number {
+  const n = w.length;
+  if (n === 0) return 0;
+  const wStart = w[0];
+  const wEnd = w[n - 1];
+  // Zijn de eindwaarden onbruikbaar, dan is er geen koorde te trekken. Niet
+  // stilzwijgend op nul zetten: dan zou de toets een zakking van 0 melden.
+  const koordeBruikbaar = Number.isFinite(wStart) && Number.isFinite(wEnd);
+  const xOk =
+    Array.isArray(stationsMm) &&
+    stationsMm.length === n &&
+    Number.isFinite(stationsMm[0]) &&
+    Number.isFinite(stationsMm[n - 1]) &&
+    stationsMm[n - 1] !== stationsMm[0];
+  const x0 = xOk ? stationsMm![0] : 0;
+  const span = xOk ? stationsMm![n - 1] - x0 : n - 1;
+
+  let max = 0;
+  for (let i = 0; i < n; i++) {
+    const v = w[i];
+    if (!Number.isFinite(v)) continue;
+    let d = v;
+    if (koordeBruikbaar && span !== 0) {
+      const t = xOk ? (stationsMm![i] - x0) / span : i / span;
+      d = v - (wStart + t * (wEnd - wStart));
+    }
+    if (Math.abs(d) > Math.abs(max)) max = d;
   }
-  return w;
+  return max;
 }
 
 /**
@@ -265,7 +434,9 @@ export function equivalentUdlFromMoments(env: ForcePoint[], lengthMm: number): n
  * EN 1993-tab van het staaf-eigenschappenvenster). Gedocumenteerde defaults
  * voor ontbrekende velden:
  *  - kniklengte = systeemlengte om beide assen; geen kipsteunen;
- *  - doorbuigingsklasse "vloer", limiet L/333; geen zeeg;
+ *  - doorbuigingsklasse "vloer", w_fin op L/333 en w_add op de NB-waarde bij
+ *    die klasse (3/1 000 · ℓ_rep, NEN-EN 1990:2002/NB:2019 A1.4.3(3), tweede
+ *    gedachtestreepje); geen zeeg;
  *  - gevolgklasse CC1; last grijpt aan op de bovenflens (z_a = h/2,
  *    destabiliserend = veilig-zijdig);
  *  - blijvende BGT-zakking onbekend → 0, dus w_add = w_fin (veilig-zijdig).
@@ -373,6 +544,15 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
       // (deflection.rs::default_numerator); anders geldt de klassenoemer.
       deflection_limit_numerator:
         cfg.deflectionClass === "custom" ? (cfg.deflectionLimitNumerator ?? 333) : 333,
+      // Noemer voor de BIJKOMENDE doorbuiging w_add. 0 = de kern leidt hem af
+      // uit de klasse volgens NEN-EN 1990:2002/NB:2019 A1.4.3(3); dat is de
+      // normale gang van zaken. Een getal hier overschrijft die klassewaarde
+      // en is alleen bedoeld om een externe referentie-uitwerking met een
+      // vaste noemer (bijvoorbeeld L/150) na te rekenen.
+      deflection_add_limit_numerator: cfg.deflectionAddLimitNumerator ?? 0,
+      // Waar de doorbuiging vandaan komt en wat er bij is aangenomen — zie
+      // `deflectionNotesFor`. Landt in de notes van de w_fin-regel.
+      deflection_notes: deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
       // Veldmaximum over de 21 stations, mm met teken (negatief = omlaag).
       deflection_actual_max_mm: extractFieldDeflectionMm(beam, slsResult),
       is_cantilever: cfg.deflectionClass === "cantilever",

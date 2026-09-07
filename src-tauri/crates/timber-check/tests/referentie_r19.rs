@@ -144,6 +144,7 @@ fn invoer(
         deflection_permanent_mm: 0.0,
         deflection_limit_fin: 250.0,
         deflection_limit_add: 333.0,
+        deflection_notes: vec![],
     }
 }
 

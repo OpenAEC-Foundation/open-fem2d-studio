@@ -191,7 +191,7 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
 
     // 7. Doorbuiging §7.2 met kruip.
     let kdef = k_def(mat.timber_type, input.service_class);
-    let (fin, add) = deflection::check_deflection_pair(
+    let (mut fin, add) = deflection::check_deflection_pair(
         input.deflection_inst_mm,
         input.deflection_quasi_perm_mm,
         input.deflection_permanent_mm,
@@ -200,6 +200,10 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
         input.deflection_limit_fin,
         input.deflection_limit_add,
     );
+    // Waar w_qp vandaan komt, staat bij w_fin — dat is de enige formule waar
+    // hij in voorkomt (w_fin = w_inst + k_def · w_qp). w_add volgt uit w_fin en
+    // erft de aanname dus, wat in de toelichting zelf hoort te staan.
+    fin.notes.extend(input.deflection_notes.iter().cloned());
     checks.push(make_resistance(fin));
     checks.push(make_resistance(add));
 

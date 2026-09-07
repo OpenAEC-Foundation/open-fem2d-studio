@@ -537,6 +537,10 @@ function rekenDoor(payload: Record<string, unknown>) {
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
     beams: staafSelectie,
+    // Nodig om een tussensteunpunt te onderscheiden van een knoop waar een
+    // ligger alleen is doorgeknipt; zonder deze lijst zou de doorbuigingstoets
+    // dat verschil niet kunnen melden.
+    supports: gelezen.model.supports,
     combinations: combinaties,
     combinationResults,
     profileDb,

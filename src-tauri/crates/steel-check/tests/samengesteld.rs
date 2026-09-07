@@ -127,6 +127,8 @@ fn invoer(
         consequence_class: ConsequenceClass::CC1,
         pre_camber_mm: 0.0,
         deflection_permanent_mm: -4.0,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
         q_equiv_n_per_mm: 0.0,
         z_a_mm: 0.0,
         custom_section: custom,
@@ -385,9 +387,15 @@ fn databasepad_blijft_ongewijzigd() {
         max_relative = 1e-12
     );
     // De doorbuiging hangt niet van de profieldata af: w_fin = 12 mm op
-    // L/333 = 6000/333 = 18,018 mm → 0,666; w_add = 8 mm op L/150 = 40 mm → 0,2.
+    // L/333 = 6000/333 = 18,018 mm → 0,666.
+    //
+    // w_add = 8 mm. De grens was de vaste L/150 = 40 mm (UC 0,20); sinds
+    // september 2026 volgt de noemer de klasse. `Floor` valt onder het tweede
+    // gedachtestreepje van NEN-EN 1990:2002/NB:2019 A1.4.3(3) — "overige
+    // vloeren en daken die intensief door personen worden gebruikt" — dus
+    // 3/1 000 deel van ℓ_rep = 18,0 mm → UC = 8/18 = 0,444.
     assert_relative_eq!(uc_van(check(&r, "deflection_w_fin")).unwrap(), 0.666, max_relative = 1e-12);
-    assert_relative_eq!(uc_van(check(&r, "deflection_w_add")).unwrap(), 0.200, max_relative = 1e-12);
+    assert_relative_eq!(uc_van(check(&r, "deflection_w_add")).unwrap(), 8.0 / 18.0, max_relative = 1e-12);
     assert_relative_eq!(r.uc_max, 0.666, max_relative = 1e-12);
     assert_eq!(r.governing_check_id, "deflection_w_fin");
 }
@@ -725,9 +733,12 @@ fn klasse_4_levert_geen_enkele_weerstands_uc() {
     );
 
     // De doorbuiging is puur EI en blijft wél geldig — dat is de enige toets
-    // met een UC.
+    // met een UC. Zelfde verschuiving van de w_add-grens als in
+    // `databasepad_blijft_ongewijzigd`: van de vaste L/150 = 40 mm naar
+    // 3/1 000 · ℓ_rep = 18,0 mm (NEN-EN 1990:2002/NB:2019 A1.4.3(3), tweede
+    // gedachtestreepje) → UC = 8/18 = 0,444.
     assert_relative_eq!(uc_van(check(&r, "deflection_w_fin")).unwrap(), 0.666, max_relative = 1e-12);
-    assert_relative_eq!(uc_van(check(&r, "deflection_w_add")).unwrap(), 0.200, max_relative = 1e-12);
+    assert_relative_eq!(uc_van(check(&r, "deflection_w_add")).unwrap(), 8.0 / 18.0, max_relative = 1e-12);
     assert_relative_eq!(r.uc_max, 0.666, max_relative = 1e-12);
 }
 

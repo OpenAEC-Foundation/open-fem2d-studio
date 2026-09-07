@@ -75,10 +75,28 @@ export interface BeamCheckConfig {
    */
   lateralRestraintsBottom?: number[];
   // Doorbuiging (beide normen)
-  /** Doorbuigingsklasse; default "floor". */
-  deflectionClass?: "floor" | "roof" | "cantilever" | "custom";
+  /**
+   * Doorbuigingsklasse; default "floor". De klasse kiest de NB-categorie van
+   * NEN-EN 1990:2002/NB:2019 A1.4.3(3) voor de bijkomende doorbuiging w_add:
+   *  - "floor"        → 3/1 000 · ℓ_rep (overige vloeren en daken die
+   *                     intensief door personen worden gebruikt, 2e streepje);
+   *  - "floorBrittle" → ℓ_rep/500 (vloeren die scheurgevoelige
+   *                     scheidingswanden dragen, 1e streepje);
+   *  - "roof"         → ℓ_rep/250 (overige daken, 3e streepje);
+   *  - "cantilever"   → als "floor", maar met ℓ_rep = 2 × de uitkraaglengte;
+   *  - "custom"       → de opgegeven n, voor w_fin én w_add.
+   */
+  deflectionClass?: "floor" | "floorBrittle" | "roof" | "cantilever" | "custom";
   /** Bij deflectionClass "custom": de n in L/n. */
   deflectionLimitNumerator?: number;
+  /**
+   * Losse noemer n voor de grenswaarde L/n van de BIJKOMENDE doorbuiging
+   * w_add; leeg = de NB-waarde bij de klasse. Alleen door de staalkern
+   * geconsumeerd (`deflection_add_limit_numerator`). Bedoeld om een externe
+   * referentie-uitwerking met een vaste noemer na te rekenen; het rapport zegt
+   * er dan bij dat de noemer is opgegeven en niet uit de norm volgt.
+   */
+  deflectionAddLimitNumerator?: number;
   /** Zeeg (pre-camber) in mm, zelfde tekenconventie als de zakking
    *  (negatief = omlaag). Alleen door de staalkern geconsumeerd. */
   preCamber_mm?: number;

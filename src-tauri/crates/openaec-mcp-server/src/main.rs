@@ -316,6 +316,8 @@ fn tool_definitions() -> Value {
                         "description": "Equivalente gelijkmatig verdeelde belasting in het kipveld (N/mm), voor B* volgens NB.4.3(3). 0 = alleen eindmomenten en dat is GUNSTIGER; laat dit veld niet per ongeluk weg." },
                     "z_a_mm": { "type": "number", "default": 0,
                         "description": "Afstand zwaartepunt tot aangrijpingspunt van de belasting (mm). Positief = boven het zwaartepunt, destabiliserend (last op de bovenflens: z_a = h/2). 0 is GUNSTIGER dan een last op de bovenflens." },
+                    "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
+                        "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken vanaf welke referentielijn en over welke lengte 'deflection_actual_max_mm' is gemeten, en welke aannames daarbij zijn gedaan." },
                     "custom_section": schema_custom_section()
                 },
                 "required": [

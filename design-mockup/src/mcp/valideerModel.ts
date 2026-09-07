@@ -92,7 +92,7 @@ const RELEASE_VELDEN = [
 const CHECKCONFIG_VELDEN = [
   "bucklingLengthY_m", "bucklingLengthZ_m", "lateralRestraints",
   "lateralRestraintsBottom", "deflectionClass", "deflectionLimitNumerator",
-  "preCamber_mm", "serviceClass", "loadDuration",
+  "deflectionAddLimitNumerator", "preCamber_mm", "serviceClass", "loadDuration",
 ] as const;
 
 const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
@@ -351,8 +351,9 @@ export function controleerVelden(rauw: unknown): string[] {
         keurGetal(cc.bucklingLengthY_m, `${cpad}.bucklingLengthY_m`, fouten, { positief: true });
         keurGetal(cc.bucklingLengthZ_m, `${cpad}.bucklingLengthZ_m`, fouten, { positief: true });
         keurGetal(cc.deflectionLimitNumerator, `${cpad}.deflectionLimitNumerator`, fouten, { positief: true });
+        keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
         keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
-        keurEnum(cc.deflectionClass, ["floor", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
+        keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
         keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
         if (cc.serviceClass !== undefined && ![1, 2, 3].includes(cc.serviceClass as number)) {
           fouten.push(`${cpad}.serviceClass: moet 1, 2 of 3 zijn.`);

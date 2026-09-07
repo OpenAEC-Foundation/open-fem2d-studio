@@ -745,6 +745,9 @@ function App() {
     await checkRun({
       nodes: fem.nodes,
       beams: fem.beams,
+      // De doorbuigingstoets onderscheidt hiermee een echt tussensteunpunt van
+      // een knoop waar een ligger alleen is doorgeknipt.
+      supports: fem.supports,
       combinations: fem.combinations,
       combinationResults,
     });

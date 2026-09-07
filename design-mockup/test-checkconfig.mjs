@@ -97,6 +97,11 @@ log("\n[1] Staal ZONDER checkConfig → gedocumenteerde defaults");
   checkDeep("geen kipsteunen", i.lateral_bracing.top_flange_positions, []);
   check("deflection_limit_class Floor", i.deflection_limit_class, "Floor");
   check("deflection_limit_numerator 333", i.deflection_limit_numerator, 333);
+  // 0 = de kern leidt de w_add-noemer af uit de klasse (NEN-EN 1990:2002/
+  // NB:2019 A1.4.3(3)). Tot september 2026 zat die noemer als vaste 150 in de
+  // kern; hij hoort niet uit de bouwer te komen tenzij de gebruiker hem geeft.
+  check("deflection_add_limit_numerator 0 (= NB-waarde bij de klasse)",
+    i.deflection_add_limit_numerator, 0);
   check("is_cantilever false", i.is_cantilever, false);
   check("pre_camber_mm 0", i.pre_camber_mm, 0);
 }
@@ -130,11 +135,16 @@ log("\n[2] Staal MET checkConfig → waarden 1-op-1 doorgegeven");
   check("pre_camber_mm -10", i.pre_camber_mm, -10);
 }
 
-log("\n[2b] Staal doorbuigingsklassen: floor/roof/cantilever mappen op Rust-enum");
+log("\n[2b] Staal doorbuigingsklassen mappen op de Rust-enum");
 {
   const mk = (deflectionClass) => ({ ...steelBeamNoCfg, checkConfig: { deflectionClass } });
+  // De klassen zijn de categorieën van NEN-EN 1990:2002/NB:2019 A1.4.3(3)
+  // voor de bijkomende doorbuiging w2 + w3 (= w_add).
   for (const [ui, rust, cant] of [
-    ["floor", "Floor", false], ["roof", "Roof", false], ["cantilever", "Cantilever", true],
+    ["floor", "Floor", false],
+    ["floorBrittle", "FloorBrittlePartitions", false],
+    ["roof", "Roof", false],
+    ["cantilever", "Cantilever", true],
   ]) {
     const { inputs } = buildSteelCheckInputs({
       nodes, beams: [mk(ui)], combinations: combos, combinationResults, profileDb,
@@ -142,6 +152,19 @@ log("\n[2b] Staal doorbuigingsklassen: floor/roof/cantilever mappen op Rust-enum
     check(`"${ui}" → ${rust}`, inputs[0].deflection_limit_class, rust);
     check(`"${ui}" → is_cantilever ${cant}`, inputs[0].is_cantilever, cant);
   }
+}
+
+log("\n[2c] Staal: losse w_add-noemer overschrijft de klassewaarde");
+{
+  // De escape voor een externe referentie-uitwerking die met een vaste L/150
+  // rekent. Zonder dit veld zou die niet meer na te rekenen zijn.
+  const { inputs } = buildSteelCheckInputs({
+    nodes,
+    beams: [{ ...steelBeamNoCfg, checkConfig: { deflectionAddLimitNumerator: 150 } }],
+    combinations: combos, combinationResults, profileDb,
+  });
+  check("deflection_add_limit_numerator 150", inputs[0].deflection_add_limit_numerator, 150);
+  check("klasse blijft Floor", inputs[0].deflection_limit_class, "Floor");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -180,9 +203,16 @@ log("\n[4] Hout MET checkConfig → klimaatklasse/duurklasse/doorbuiging 1-op-1"
     check(`duurklasse "${ui}" → ${rust}`, run({ loadDuration: ui }).load_duration, rust);
   }
 
+  // NB-categorieën uit NEN-EN 1990:2002/NB:2019 A1.4.3(3) voor w_add (w2 + w3),
+  // met A1.4.3(4) (w_max ≤ ℓ_rep/250) voor w_fin.
   const roof = run({ deflectionClass: "roof" });
   check("roof → fin 250", roof.deflection_limit_fin, 250);
-  check("roof → add 250", roof.deflection_limit_add, 250);
+  check("roof → add 250 (3e streepje: overige daken)", roof.deflection_limit_add, 250);
+
+  const brittle = run({ deflectionClass: "floorBrittle" });
+  check("floorBrittle → fin 250", brittle.deflection_limit_fin, 250);
+  check("floorBrittle → add 500 (1e streepje: scheurgevoelige scheidingswanden)",
+    brittle.deflection_limit_add, 500);
 
   const cant = run({ deflectionClass: "cantilever" });
   check("cantilever → fin 125", cant.deflection_limit_fin, 125);

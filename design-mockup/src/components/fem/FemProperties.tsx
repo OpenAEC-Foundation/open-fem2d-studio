@@ -605,9 +605,15 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   deflectionClass: e.target.value as NonNullable<BeamCheckConfig["deflectionClass"]>,
                 })}
               >
-                <option value="floor">Vloer (L/300)</option>
-                <option value="roof">Dak (L/250)</option>
-                <option value="cantilever">Uitkraging (L/150)</option>
+                {/* Categorieën van NEN-EN 1990:2002/NB:2019 A1.4.3(3) voor de
+                    bijkomende doorbuiging w_add. De labels noemden tot
+                    september 2026 "L/300" en "L/150"; geen van beide is een
+                    normwaarde voor een ligger — de ℓ_rep/150 hoort bij
+                    vloerafscheidingen ter plaatse van een hoogteverschil. */}
+                <option value="floor">Vloer/dak, intensief gebruikt (w_add ≤ 3/1000·ℓ_rep)</option>
+                <option value="floorBrittle">Vloer met scheurgevoelige scheidingswanden (w_add ≤ ℓ_rep/500)</option>
+                <option value="roof">Overig dak (w_add ≤ ℓ_rep/250)</option>
+                <option value="cantilever">Uitkraging (ℓ_rep = 2 × uitkraaglengte)</option>
                 <option value="custom">Aangepast (L/n)</option>
               </select>
             </Row>
@@ -619,6 +625,19 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   value={cfg.deflectionLimitNumerator ?? ""}
                   onChange={(e) => setCfg({
                     deflectionLimitNumerator: e.target.value === "" ? undefined : Number(e.target.value),
+                  })}
+                />
+              </Row>
+            )}
+            {!isHout && !isBeton && (
+              <Row label="n voor w_add (leeg = norm)">
+                <input
+                  type="number" className="fem-prop-input" step="1" min="1"
+                  placeholder="—"
+                  value={cfg.deflectionAddLimitNumerator ?? ""}
+                  onChange={(e) => setCfg({
+                    deflectionAddLimitNumerator:
+                      e.target.value === "" ? undefined : Number(e.target.value),
                   })}
                 />
               </Row>

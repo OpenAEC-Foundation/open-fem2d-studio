@@ -127,6 +127,8 @@ fn run() -> &'static BeamCheckResult {
             consequence_class: ConsequenceClass::CC1,
             pre_camber_mm: 0.0,
             deflection_permanent_mm: 0.0,
+            deflection_add_limit_numerator: 0.0,
+            deflection_notes: vec![],
             q_equiv_n_per_mm: Q_N_PER_MM,
             // Belasting op de bovenflens: z_a = h/2 = 165 mm (destabiliserend).
             z_a_mm: 165.0,

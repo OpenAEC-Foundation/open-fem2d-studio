@@ -73,6 +73,8 @@ fn ligger(teken: f64, aan_de_bovenflens: bool) -> BeamCheckResult {
         consequence_class: ConsequenceClass::CC1,
         pre_camber_mm: 0.0,
         deflection_permanent_mm: 0.0,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
         // q = 8·M_max/L² = 8·150/10² = 12 kN/m ≡ 12 N/mm.
         q_equiv_n_per_mm: 12.0,
         z_a_mm: 200.0,
@@ -216,6 +218,8 @@ fn doorgaande_ligger_met(m_eind_knm: f64, top: Vec<f64>, bot: Vec<f64>) -> BeamC
         consequence_class: ConsequenceClass::CC1,
         pre_camber_mm: 0.0,
         deflection_permanent_mm: 0.0,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
         q_equiv_n_per_mm: Q,
         z_a_mm: 165.0,
         custom_section: None,

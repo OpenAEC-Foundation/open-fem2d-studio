@@ -2,6 +2,10 @@
 //!
 //! Twee liggers van 8000 mm, S 235, CC2, elk met 2 zijdelingse steunen op de
 //! derdepunten (L_st = 2667 mm), belasting aangrijpend op de bovenflens.
+//!
+//! Eén punt waarop deze toetsing sinds september 2026 BEWUST van de referentie
+//! afwijkt: de grenswaarde voor de bijkomende doorbuiging w_add. Zie
+//! `doorbuiging_beide_liggers` hieronder.
 
 use approx::assert_relative_eq;
 use mechanics::{ForcePoint, InternalForces};
@@ -38,7 +42,22 @@ fn ligger(
     q_n_per_mm: f64,
     w_z_mm: f64,
 ) -> BeamCheckResult {
-    let input = BeamCheckInput {
+    check_beam(invoer(profiel, m_max_knm, v_max_kn, q_n_per_mm, w_z_mm))
+}
+
+/// De invoer van ligger 1, om er in één test een veld van te variëren.
+fn basisinvoer() -> BeamCheckInput {
+    invoer("HEA 320", 111.84, 55.92, 8.115, -11.0)
+}
+
+fn invoer(
+    profiel: &str,
+    m_max_knm: f64,
+    v_max_kn: f64,
+    q_n_per_mm: f64,
+    w_z_mm: f64,
+) -> BeamCheckInput {
+    BeamCheckInput {
         beam_id: 1,
         profile_name: profiel.to_string(),
         steel_grade: "S235".to_string(),
@@ -77,11 +96,12 @@ fn ligger(
         consequence_class: ConsequenceClass::CC2,
         pre_camber_mm: 0.0,
         deflection_permanent_mm: -3.2,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
         q_equiv_n_per_mm: q_n_per_mm,
         z_a_mm: 155.0,
         custom_section: None,
-    };
-    check_beam(input)
+    }
 }
 
 fn ligger1() -> BeamCheckResult {
@@ -111,11 +131,21 @@ fn ligger2_hea400_buiging_en_dwarskracht() {
 
 #[test]
 fn doorbuiging_beide_liggers() {
-    // w_fin = -11 mm, grens L/333 = 24,0 → UC = 0,46
-    // w_add = -11 - (-3,2) = -7,8 mm, grens L/150 = 53,3 → UC = 0,15
+    // w_fin = -11 mm, grens L/333 = 24,0 → UC = 0,46. Ongewijzigd.
+    //
+    // w_add = -11 - (-3,2) = -7,8 mm. Hier WIJKT de toetsing bewust van de
+    // referentie-uitwerking af. Die rekent met een vaste L/150 = 53,3 mm en
+    // komt op UC 0,15. NEN-EN 1990:2002/NB:2019 A1.4.3(3) geeft ℓ_rep/150
+    // uitsluitend voor vloerafscheidingen ter plaatse van een hoogteverschil;
+    // deze galerijligger valt onder het tweede gedachtestreepje — "overige
+    // vloeren en daken die intensief door personen worden gebruikt" — en dus
+    // onder 3/1 000 deel van ℓ_rep = 24,0 mm. UC = 7,8/24,0 = 0,325.
+    // De referentiewaarde is niet weg: zet `deflection_add_limit_numerator` op
+    // 150 en de toetsing levert weer 0,15, mét een notitie dat de noemer is
+    // opgegeven (zie doorbuiging_2867.rs).
     let r1 = ligger1();
     assert_relative_eq!(uc_van(&r1, "deflection_w_fin"), 0.46, max_relative = 3e-2);
-    assert_relative_eq!(uc_van(&r1, "deflection_w_add"), 0.15, max_relative = 5e-2);
+    assert_relative_eq!(uc_van(&r1, "deflection_w_add"), 0.325, max_relative = 2e-2);
 
     // w_fin = -11,2 mm → UC = 0,47
     let r2 = ligger2();
@@ -135,6 +165,41 @@ fn kip_levert_geen_reductie_in_deze_casus() {
             "{naam}: kip-UC {uc_kip} mag niet boven buiging-UC {uc_buiging} liggen (χ_LT = 1,00)"
         );
     }
+}
+
+/// De toelichtingen die de aanroeper meestuurt komen in het rapport terecht —
+/// bij w_fin, want daar zit `deflection_actual_max_mm` in.
+///
+/// Zonder deze test kwamen ze alleen in de klasse-4-tak van de orchestrator
+/// terecht en op het normale pad niet: dezelfde regel stond er twee keer, en
+/// er was er maar één aangepast. Een toelichting die stilzwijgend wegvalt is
+/// precies het probleem dat dit kanaal moest oplossen.
+#[test]
+fn toelichtingen_van_de_aanroeper_komen_bij_w_fin_terecht() {
+    let mut input = BeamCheckInput {
+        deflection_notes: vec!["w is gemeten vanaf de koorde.".to_string()],
+        ..basisinvoer()
+    };
+    input.deflection_notes.push("Staaf loopt door in staaf 2.".to_string());
+    let r = check_beam(input);
+    let fin = r
+        .checks
+        .iter()
+        .find(|c| c.id == "deflection_w_fin")
+        .expect("w_fin aanwezig");
+    let CheckKind::Resistance(x) = &fin.kind else {
+        panic!("w_fin hoort een ResistanceCalc te zijn");
+    };
+    assert!(
+        x.notes.iter().any(|n| n.contains("vanaf de koorde")),
+        "toelichting ontbreekt in het rapport: {:?}",
+        x.notes
+    );
+    assert!(
+        x.notes.iter().any(|n| n.contains("loopt door in staaf 2")),
+        "tweede toelichting ontbreekt: {:?}",
+        x.notes
+    );
 }
 
 #[test]

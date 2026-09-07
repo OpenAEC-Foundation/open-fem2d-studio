@@ -93,6 +93,17 @@ fn interpolate_my_at(envelope: &[ForcePoint], position_mm: f64, combo_id: u32) -
     last.forces.my_ed
 }
 
+/// Plakt de toelichtingen van de aanroeper achter die van de toets zelf.
+///
+/// Ze horen bij w_fin, want daar zit `deflection_actual_max_mm` in; w_add is
+/// eruit afgeleid en erft de aanname. Zie
+/// [`BeamCheckInput::deflection_notes`](crate::BeamCheckInput) voor waarom dit
+/// kanaal bestaat.
+fn met_invoernotities(mut check: ResistanceCalc, input: &BeamCheckInput) -> ResistanceCalc {
+    check.notes.extend(input.deflection_notes.iter().cloned());
+    check
+}
+
 fn make_resistance(check: ResistanceCalc) -> NamedCheck {
     NamedCheck { id: check.id.clone(), kind: CheckKind::Resistance(check) }
 }
@@ -495,8 +506,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             input.length_m,
             input.deflection_limit_class,
             input.deflection_limit_numerator,
+            input.deflection_add_limit_numerator,
+            input.is_cantilever,
         );
-        checks.push(make_resistance(defl_fin));
+        checks.push(make_resistance(met_invoernotities(defl_fin, &input)));
         checks.push(make_resistance(defl_add));
 
         let mut uc_max = 0.0_f64;
@@ -786,8 +799,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         checks.push(make_stability(n_mz));
     }
 
-    // 9. Doorbuiging (BGT): eindzakking w_fin (L/klasse) en bijkomende
-    //    zakking w_add (L/150), conform de referentie-uitwerking.
+    // 9. Doorbuiging (BGT): eindzakking w_fin (L/klasse, A1.4.3(4)) en
+    //    bijkomende zakking w_add (ℓ_rep/n uit A1.4.3(3), afgeleid van de
+    //    klasse tenzij `deflection_add_limit_numerator` een noemer opgeeft).
     let (defl_fin, defl_add) = check_deflection_pair(
         input.deflection_actual_max_mm,
         input.pre_camber_mm,
@@ -795,8 +809,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         input.length_m,
         input.deflection_limit_class,
         input.deflection_limit_numerator,
+        input.deflection_add_limit_numerator,
+        input.is_cantilever,
     );
-    checks.push(make_resistance(defl_fin));
+    checks.push(make_resistance(met_invoernotities(defl_fin, &input)));
     checks.push(make_resistance(defl_add));
 
     // Apply consequence class factor (KFI) — for v1, just note; not yet applied to individual UCs

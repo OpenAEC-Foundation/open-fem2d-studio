@@ -97,6 +97,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     cfg0.deflectionClass ?? "floor",
   );
   const [deflNStr, setDeflNStr] = useState(cfg0.deflectionLimitNumerator?.toString() ?? "");
+  // Losse noemer voor w_add; leeg = de NB-waarde bij de klasse.
+  const [deflAddNStr, setDeflAddNStr] = useState(
+    cfg0.deflectionAddLimitNumerator?.toString() ?? "",
+  );
   const [preCamberStr, setPreCamberStr] = useState(
     cfg0.preCamber_mm !== undefined && cfg0.preCamber_mm !== 0
       ? cfg0.preCamber_mm.toString() : "",
@@ -139,6 +143,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     if (deflClass === "custom") {
       const n = parseFloat(deflNStr.replace(",", "."));
       if (Number.isFinite(n) && n > 0) cfg.deflectionLimitNumerator = n;
+    }
+    const addN = parseFloat(deflAddNStr.replace(",", "."));
+    if (deflAddNStr.trim() !== "" && Number.isFinite(addN) && addN > 0) {
+      cfg.deflectionAddLimitNumerator = addN;
     }
     const camber = parseFloat(preCamberStr.replace(",", "."));
     if (preCamberStr.trim() !== "" && Number.isFinite(camber) && camber !== 0) {
@@ -194,10 +202,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   const systemLengthM = (length / 1000).toFixed(2);
 
   const deflClassOptions: Array<{ value: NonNullable<BeamCheckConfig["deflectionClass"]>; label: string }> = [
-    { value: "floor",      label: t("cfg.deflFloor") },
-    { value: "roof",       label: t("cfg.deflRoof") },
-    { value: "cantilever", label: t("cfg.deflCantilever") },
-    { value: "custom",     label: t("cfg.deflCustom") },
+    { value: "floor",        label: t("cfg.deflFloor") },
+    { value: "floorBrittle", label: t("cfg.deflFloorBrittle") },
+    { value: "roof",         label: t("cfg.deflRoof") },
+    { value: "cantilever",   label: t("cfg.deflCantilever") },
+    { value: "custom",       label: t("cfg.deflCustom") },
   ];
 
   const durationOptions: Array<{ value: NonNullable<BeamCheckConfig["loadDuration"]>; label: string }> = [
@@ -235,9 +244,27 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
           />
         </div>
       )}
+      {deflClass !== "custom" && (
+        <div className="bar-props-hint">{t("cfg.deflClassHint")}</div>
+      )}
       {deflClass === "custom" && isTimber && (
         <div className="bar-props-hint">{t("cfg.deflCustomTimberHint")}</div>
       )}
+      {/* Losse w_add-noemer: alleen staal, want alleen de staalkern kent
+          `deflection_add_limit_numerator`. De houtkern krijgt zijn noemers via
+          timberDeflectionNumerators uit de klasse. */}
+      {!isTimber && (
+        <div className="bar-props-row">
+          <span>{t("cfg.deflAddNumerator")}</span>
+          <input
+            type="number" className="bar-props-input" step="1" min="1"
+            placeholder="—"
+            value={deflAddNStr}
+            onChange={(e) => setDeflAddNStr(e.target.value)}
+          />
+        </div>
+      )}
+      {!isTimber && <div className="bar-props-hint">{t("cfg.deflAddNumeratorHint")}</div>}
       {!isTimber && (
         <div className="bar-props-row">
           <span>{t("cfg.preCamber")}</span>
