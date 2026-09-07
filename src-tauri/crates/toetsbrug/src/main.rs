@@ -22,6 +22,7 @@ use std::io::{Read, Write};
 
 use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
+use nen_en_1993_1_8_las::LasInput;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use spanning_check::SpanningBeamCheckInput;
@@ -131,6 +132,17 @@ fn behandel(v: Verzoek) -> Result<Value, String> {
             let inputs: Vec<SpanningBeamCheckInput> =
                 serde_json::from_value(inputs).map_err(|e| format!("spanningsinvoer: {e}"))?;
             serde_json::to_value(spanning_check::check_all_spanning_beams(inputs))
+                .map_err(|e| e.to_string())
+        }
+        // Doorlopende langslassen in een samengestelde doorsnede, getoetst
+        // volgens NEN-EN 1993-1-8 4.5.3.3. De schuifstroom per naad komt van de
+        // aanroeper mee (die kent de meetkunde van de doorsnede); deze kern
+        // doet de normkant. Zelfde typen als het Tauri-command.
+        "check_fillet_welds" => {
+            let inputs = v.inputs.ok_or("check_fillet_welds vraagt om `inputs`")?;
+            let inputs: Vec<LasInput> =
+                serde_json::from_value(inputs).map_err(|e| format!("lasinvoer: {e}"))?;
+            serde_json::to_value(nen_en_1993_1_8_las::toets_lassen(&inputs))
                 .map_err(|e| e.to_string())
         }
         andere => Err(format!("onbekende opdracht: {andere}")),

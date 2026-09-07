@@ -422,13 +422,23 @@ export function omhullende(o: DoorsnedeOntwerp, delen: DeelUitvoer[] = []): Omhu
 
 // ── Gesloten cel herkennen ──────────────────────────────────────────────────
 
-/** Lasnaad-criterium: raakt een uiteinde van a de middellijn van b? */
-function rakenElkaar(a: Lamel, b: Lamel): boolean {
+/**
+ * Lasnaad-criterium: raakt een uiteinde van a de middellijn van b?
+ *
+ * Ook de lassen gebruiken dit: waar twee platen elkaar zo raken, zit in een
+ * gelaste doorsnede een naad. Zie lib/profieleditor/lassen.ts.
+ */
+export function rakenElkaar(a: Lamel, b: Lamel): boolean {
   const tol = 0.5 * (a.t_mm + b.t_mm) * 1.05 + 1e-9;
   return afstandUiteindenTotAs(a, b) <= tol || afstandUiteindenTotAs(b, a) <= tol;
 }
 
-function afstandUiteindenTotAs(a: Lamel, b: Lamel): number {
+/**
+ * Kleinste afstand van een uiteinde van `a` tot de middellijn van `b`. Klein
+ * betekent: `a` eindigt op `b`. De lassen gebruiken dit om te bepalen welke van
+ * de twee platen de "steel" van de naad is en welke de "voet".
+ */
+export function afstandUiteindenTotAs(a: Lamel, b: Lamel): number {
   const [b0, b1] = lamelMiddellijn(b);
   const ab: Punt = [b1[0] - b0[0], b1[1] - b0[1]];
   const l2 = ab[0] * ab[0] + ab[1] * ab[1];

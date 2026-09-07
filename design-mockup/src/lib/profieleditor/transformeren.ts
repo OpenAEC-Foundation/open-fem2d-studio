@@ -20,6 +20,7 @@
  * scale(±1, 1)` in de tekening, en dezelfde volgorde in de motor — want
  * S(−1,1)·R(α) = R(−α)·S(−1,1).
  */
+import { profielLabel } from "./catalogus";
 import type { DoorsnedeOntwerp, Gat } from "./types";
 
 export type Samenstelling = Extract<DoorsnedeOntwerp, { soort: "samenstelling" }>;
@@ -76,7 +77,7 @@ export function naamVanBouwsteen(o: Samenstelling, id: string): string | null {
   const i = o.lamellen.findIndex((x) => x.id === id);
   if (i >= 0) return `Lamel ${i + 1}`;
   const j = o.catalogusdelen.findIndex((x) => x.id === id);
-  if (j >= 0) return `Deel ${j + 1} (${o.catalogusdelen[j].profiel.naam})`;
+  if (j >= 0) return `Deel ${j + 1} (${profielLabel(o.catalogusdelen[j].profiel.naam)})`;
   return null;
 }
 

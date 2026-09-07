@@ -19,14 +19,34 @@ export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) =
   { id: "HEM", label: "HEM", match: (n) => n.startsWith("HEM") },
   { id: "UNP", label: "UNP", match: (n) => n.startsWith("UNP") },
   { id: "UPE", label: "UPE", match: (n) => n.startsWith("UPE") },
+  // Oude Differdinger parallelflensreeksen; zie
+  // scripts/genereer-oude-profielen.mjs voor de bron van de maten.
+  { id: "DIE", label: "DIE (oud)", match: (n) => n.startsWith("DIE") },
+  { id: "DIL", label: "DIL (oud)", match: (n) => n.startsWith("DIL") },
+  { id: "DIN", label: "DIN (oud)", match: (n) => n.startsWith("DIN") },
   { id: "KOKER", label: "Koker (SHS/RHS)", match: (n) => n.startsWith("SHS") || n.startsWith("RHS") || n.startsWith("HFRHS") },
   { id: "CHS", label: "Buis (CHS)", match: (n) => n.startsWith("CHS") },
 ];
 
-/** Sorteersleutel: eerste getal in de naam (maat), daarna alfabetisch. */
-function maatVan(naam: string): number {
-  const m = /(\d+)/.exec(naam);
-  return m ? parseInt(m[1], 10) : 0;
+/**
+ * Naam om te tónen bij een databasesleutel: "DIN425" → "DIN 42.5".
+ *
+ * De sleutel is de genormaliseerde naam (zonder spaties en punten) en die is
+ * bij de oude reeksen misleidend: DIN 42.5 en DIN 47.5 zijn de historische
+ * maten 42½ en 47½, geen maat 425 of 475.
+ */
+export function profielLabel(sleutel: string): string {
+  return STEEL_SECTION_DIMS[sleutel]?.naam ?? sleutel;
+}
+
+/**
+ * Sorteersleutel: het eerste getal in de LEESBARE naam, dus met de decimaal
+ * erin ("DIN 42.5" → 42,5). Op de sleutel sorteren zou 42.5 als 425 lezen en
+ * de maat achteraan zetten.
+ */
+function maatVan(sleutel: string): number {
+  const m = /(\d+(?:[.,]\d+)?)/.exec(profielLabel(sleutel));
+  return m ? parseFloat(m[1].replace(",", ".")) : 0;
 }
 
 /** Profielnamen (databasesleutels) van één reeks, op maat gesorteerd. */

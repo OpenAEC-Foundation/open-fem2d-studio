@@ -10,10 +10,11 @@
  */
 import { shapePath, type SectionShape } from "../../components/shared/profielVorm";
 import { gatContourPunten, gatNaarMotor, lamelHoekpunten, deelZwaartepunt } from "./geometrie";
-import type { Basisprofiel, Catalogusdeel, DeelUitvoer, DoorsnedeOntwerp, Gat, Lamel } from "./types";
+import { lassenVan, naadmeetkunde } from "./lassen";
+import type { Basisprofiel, Catalogusdeel, DeelUitvoer, DoorsnedeOntwerp, Gat, Lamel, Las } from "./types";
 
 export interface TekenItem {
-  soort: "lamel" | "deel" | "basis" | "gat";
+  soort: "lamel" | "deel" | "basis" | "gat" | "las";
   id: string;
   /** SVG-pad; `transform` (SVG-syntax, modelstelsel) hoort erbij als hij er is. */
   d: string;
@@ -110,12 +111,75 @@ export function gatItem(g: Gat, basis: Basisprofiel): TekenItem {
   };
 }
 
+/**
+ * Een lasnaad als getekende vorm.
+ *
+ * Een hoeklas wordt getekend zoals hij er in werkelijkheid uitziet: een
+ * driehoek in de hoek tussen de twee platen, met rechthoekszijden `z = a·√2`
+ * — dat is de gelijkbenige hoeklas waarvan `a` de keeldikte is. Bij een
+ * dubbelzijdige naad staan er twee, één in elke hoek. Een volledig doorgelaste
+ * stompe naad heeft geen driehoek; die krijgt een streepje dwars over de
+ * plaatdikte, op de plaats van de naad.
+ *
+ * Zo is aan de tekening te zien wat er staat, en verandert de figuur mee als
+ * de keeldikte verandert.
+ */
+export function lasItem(las: Las, a: Lamel, b: Lamel): TekenItem | null {
+  const m = naadmeetkunde(a, b);
+  if (!m) return null;
+  const { punt, langsA: u, dwarsA: n, tA } = m;
+  const punt2 = (s: number, t: number): [number, number] => [
+    punt.y + u.y * s + n.y * t,
+    punt.z + u.z * s + n.z * t,
+  ];
+  if (las.soort === "StompVolledig") {
+    const halfB = tA / 2;
+    const halfL = Math.max(0.4, tA * 0.2);
+    return {
+      soort: "las",
+      id: las.id,
+      d: polygoonPad([
+        punt2(-halfL, -halfB),
+        punt2(halfL, -halfB),
+        punt2(halfL, halfB),
+        punt2(-halfL, halfB),
+      ]),
+    };
+  }
+  const been = Math.max(0.1, las.a_mm) * Math.SQRT2;
+  const zijden = las.soort === "HoeklasDubbel" ? [1, -1] : [1];
+  const paden = zijden.map((s) => {
+    const c: [number, number] = [punt.y + n.y * s * (tA / 2), punt.z + n.z * s * (tA / 2)];
+    return polygoonPad([
+      c,
+      [c[0] + n.y * s * been, c[1] + n.z * s * been],
+      [c[0] + u.y * been, c[1] + u.z * been],
+    ]);
+  });
+  return { soort: "las", id: las.id, d: paden.join(" ") };
+}
+
+/** Alle lasnaden van een samenstelling als tekenitems. */
+export function lasItems(o: Extract<DoorsnedeOntwerp, { soort: "samenstelling" }>): TekenItem[] {
+  const perId = new Map(o.lamellen.map((l) => [l.id, l]));
+  const uit: TekenItem[] = [];
+  for (const las of lassenVan(o)) {
+    const a = perId.get(las.aId);
+    const b = perId.get(las.bId);
+    if (!a || !b) continue;
+    const item = lasItem(las, a, b);
+    if (item) uit.push(item);
+  }
+  return uit;
+}
+
 /** Alle tekenitems van een ontwerp, in tekenvolgorde (gaten als laatste). */
 export function tekenItems(o: DoorsnedeOntwerp, delen: DeelUitvoer[] = []): TekenItem[] {
   if (o.soort === "samenstelling") {
     return [
       ...o.catalogusdelen.map((d, i) => deelItem(d, delen[i])),
       ...o.lamellen.map(lamelItem),
+      ...lasItems(o),
     ];
   }
   return [basisItem(o.basis), ...o.gaten.map((g) => gatItem(g, o.basis))];

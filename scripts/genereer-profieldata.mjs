@@ -2068,7 +2068,7 @@ function eindcontrole() {
   console.log("=".repeat(74));
   console.log(
     `${db.length} profielen: ${nHol} holle doorsneden tegen de scherpe-hoek ` +
-    `bovengrens, ${nU} U-profielen tegen Iz*hs^2/4, alle 416 op interne ` +
+    `bovengrens, ${nU} U-profielen tegen Iz*hs^2/4, alle ${db.length} op interne ` +
     `consistentie (iy = wortel(Iy/A), Wel;y = Iy/(h/2), Wpl >= Wel, 0 < Av < A).`,
   );
   if (fouten.length === 0) {

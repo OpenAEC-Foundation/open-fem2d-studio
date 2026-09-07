@@ -8,7 +8,7 @@
  * gesloten cel zit in de tooltip van de knop of het veld waar hij bij hoort.
  */
 import { useMemo } from "react";
-import { REEKSEN, basisprofielVan, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
+import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
 import { herkenGeslotenCel } from "../../lib/profieleditor/geometrie";
 import { nieuwId } from "../../lib/profieleditor/id";
 import { PRESETS } from "../../lib/profieleditor/presets";
@@ -175,7 +175,7 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
               title={DEEL_UITLEG}
             >
               <div className="pe-item-kop">
-                <span>Deel {i + 1} <span className="pe-item-sub">{d.profiel.naam}</span></span>
+                <span>Deel {i + 1} <span className="pe-item-sub">{profielLabel(d.profiel.naam)}</span></span>
                 <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(d.id); }} title="Dit deel verwijderen">
                   ✕
                 </button>
@@ -200,7 +200,7 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
                     if (p) zetDeel(d.id, { profiel: p });
                   }}
                 >
-                  {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{n}</option>)}
+                  {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{profielLabel(n)}</option>)}
                 </select>
               </div>
               <div className="pe-velden pe-velden-3">

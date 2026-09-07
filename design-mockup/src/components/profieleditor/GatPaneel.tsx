@@ -3,7 +3,7 @@
  * kiezen en gaten toevoegen (door het lijf, door een flens, door de
  * buiswand), rond of rechthoekig.
  */
-import { REEKSEN, basisprofielVan, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
+import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
 import {
   controleerGat,
   plaatsLabel,
@@ -81,7 +81,7 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
           {REEKSEN.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
         </select>
         <select value={basis.naam} title="Profielmaat" onChange={(e) => kiesProfiel(e.target.value)}>
-          {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{n}</option>)}
+          {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{profielLabel(n)}</option>)}
         </select>
       </div>
       <div className="pe-maatregel" title="Buitenmaten en wanddikten van het gekozen catalogusprofiel.">

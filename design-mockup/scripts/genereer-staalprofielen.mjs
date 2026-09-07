@@ -120,6 +120,13 @@ export interface SteelSectionProps {
 
 export interface SteelSectionDims {
   kind: SteelSectionKind;
+  /**
+   * De naam zoals hij in de profieldatabase staat ("HEA 200", "DIN 42.5").
+   * De sleutel van dit record is de genormaliseerde vorm daarvan, en die is
+   * niet altijd leesbaar: uit "DIN 42.5" wordt "DIN425", wat er uitziet als
+   * een maat 425. Wie de gebruiker een profiel laat kiezen, toont dit veld.
+   */
+  naam: string;
   /** Hoogte in mm (CHS: uitwendige diameter). */
   h: number;
   /** Breedte in mm (CHS: uitwendige diameter). */
@@ -152,7 +159,8 @@ for (const [k, p] of uniek) {
     `iw: ${num(pr.iw_mm6, `${k}.iw_mm6`)}, ` +
     `iRadY: ${num(pr.iy_radius_mm, `${k}.iy_radius_mm`)}, iRadZ: ${num(pr.iz_radius_mm, `${k}.iz_radius_mm`)} }`;
   dims +=
-    `  "${k}": { kind: "${p.kind}", h: ${num(g.h, `${k}.h`)}, b: ${num(g.b, `${k}.b`)}, ` +
+    `  "${k}": { kind: "${p.kind}", naam: ${JSON.stringify(p.name)}, ` +
+    `h: ${num(g.h, `${k}.h`)}, b: ${num(g.b, `${k}.b`)}, ` +
     `tw: ${num(tw, `${k}.tw`)}, tf: ${num(tf, `${k}.tf`)}, r: ${num(r, `${k}.r`)},\n` +
     `    props: ${props} },\n`;
 }

@@ -158,10 +158,16 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         "check_steel_beam moet additionalProperties: false hebben"
     );
 
-    // De vijf velden met #[serde(default)] stonden niet in het oude schema.
+    // De velden met #[serde(default)] stonden niet in het oude schema.
+    // `deflection_add_limit_numerator` kwam er in september 2026 bij, toen de
+    // w_add-noemer van een vaste 150 naar de klassewaarde uit
+    // NEN-EN 1990:2002/NB:2019 A1.4.3(3) ging; zonder dit veld in het schema
+    // kan een client de referentie-noemer niet meer opgeven en wordt hij door
+    // `additionalProperties: false` zelfs geweigerd.
     for veld in [
         "pre_camber_mm",
         "deflection_permanent_mm",
+        "deflection_add_limit_numerator",
         "q_equiv_n_per_mm",
         "z_a_mm",
         "custom_section",
@@ -172,10 +178,12 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         );
     }
 
-    // Enums die de kern werkelijk kent.
+    // Enums die de kern werkelijk kent. `FloorBrittlePartitions` hoort bij het
+    // eerste gedachtestreepje van A1.4.3(3) (vloeren die scheurgevoelige
+    // scheidingswanden dragen, w2 + w3 ≤ ℓ_rep/500).
     assert_eq!(
         props["deflection_limit_class"]["enum"],
-        json!(["Floor", "Roof", "Cantilever", "Custom"])
+        json!(["Floor", "FloorBrittlePartitions", "Roof", "Cantilever", "Custom"])
     );
     assert_eq!(props["consequence_class"]["enum"], json!(["CC1", "CC2", "CC3"]));
     assert_eq!(

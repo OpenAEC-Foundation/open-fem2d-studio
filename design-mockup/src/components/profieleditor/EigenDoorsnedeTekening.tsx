@@ -25,6 +25,9 @@ interface Props {
 
 const RAPPORT = {
   vulling: "#dbe4f0",
+  // De lasnaden een tint donkerder dan het materiaal: zichtbaar op papier,
+  // zonder dat de doorsnede erdoor uit elkaar valt.
+  las: "#8fa3bf",
   gat: "#ffffff",
   lijn: "#39424e",
   maat: "#5b6470",
@@ -32,6 +35,7 @@ const RAPPORT = {
 };
 const APP = {
   vulling: "var(--theme-accent-soft, #dbe4f0)",
+  las: "var(--theme-accent, #8fa3bf)",
   gat: "var(--theme-bg, #fff)",
   lijn: "var(--theme-text, #39424e)",
   maat: "var(--theme-text-faint, #888)",
@@ -84,7 +88,7 @@ export default function EigenDoorsnedeTekening({ doorsnede, stijl, className, ma
             d={it.d}
             transform={it.transform}
             fillRule={it.fillRule}
-            fill={it.soort === "gat" ? kleuren.gat : kleuren.vulling}
+            fill={it.soort === "gat" ? kleuren.gat : it.soort === "las" ? kleuren.las : kleuren.vulling}
             stroke={kleuren.lijn}
             strokeWidth={dik}
             strokeDasharray={it.soort === "gat" ? "3 2" : undefined}

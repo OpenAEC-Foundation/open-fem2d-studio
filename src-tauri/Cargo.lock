@@ -2340,6 +2340,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nen-en-1993-1-8-las"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "nen-en-1993-1-1-section",
+ "serde",
+ "ts-rs",
+]
+
+[[package]]
 name = "nen-en-1995-1-1"
 version = "0.1.0"
 dependencies = [
@@ -2677,6 +2687,7 @@ dependencies = [
  "concrete-check",
  "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
+ "nen-en-1993-1-8-las",
  "nen-en-1995-1-1",
  "report",
  "section-properties",
@@ -4448,6 +4459,7 @@ dependencies = [
  "concrete-check",
  "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
+ "nen-en-1993-1-8-las",
  "nen-en-1995-1-1",
  "serde",
  "serde_json",

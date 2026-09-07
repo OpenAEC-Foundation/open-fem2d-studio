@@ -3,6 +3,7 @@ use concrete_check::{
 };
 use nen_en_1992_1_1::{ConcreteClass, ReinforcementGrade};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
+use nen_en_1993_1_8_las::{LasInput, LasResultaat};
 use nen_en_1995_1_1::clt::CltPreset;
 use report::{ReportInput, generate_report_pdf};
 use section_properties::opdracht::{Invoer as DoorsnedeInvoer, Uitvoer as DoorsnedeUitvoer};
@@ -110,6 +111,18 @@ async fn check_stress_beams(
     Ok(spanning_check::check_all_spanning_beams(inputs))
 }
 
+/// Doorlopende langslassen in een samengestelde doorsnede, getoetst volgens
+/// NEN-EN 1993-1-8 4.5.3.3 (vereenvoudigde methode).
+///
+/// De schuifstroom per naad (`F_w,Ed` in N/mm) komt van de aanroeper: die kent
+/// de meetkunde van de doorsnede en dus welk deel er aan welke naad hangt.
+/// Deze kern doet uitsluitend de normkant — correlatiefactor uit tabel 4.1,
+/// `f_vw,d` uit (4.4), weerstand uit (4.3) en de unity check.
+#[tauri::command]
+async fn check_fillet_welds(inputs: Vec<LasInput>) -> Result<Vec<LasResultaat>, String> {
+    Ok(nen_en_1993_1_8_las::toets_lassen(&inputs))
+}
+
 /// Doorsnede-eigenschappen van een of meer geometrieën — de motor achter de
 /// profieleditor.
 ///
@@ -167,6 +180,7 @@ pub fn run() {
             check_concrete_beams,
             concrete_mn_kappa,
             check_stress_beams,
+            check_fillet_welds,
             bereken_doorsneden,
             generate_steel_report_pdf,
         ])

@@ -438,10 +438,13 @@ export default function DoorsnedeTekenvlak({
         {items.map((it) => {
           const actief = geselecteerd === it.id;
           const isGat = it.soort === "gat";
+          const isLas = it.soort === "las";
           const vast = it.soort === "basis";
           const klasse = isGat
             ? `pe-gat${actief ? " actief" : ""}`
-            : `pe-materiaal${vast ? " pe-vast" : ""}${actief ? " actief" : ""}`;
+            : isLas
+              ? `pe-las${actief ? " actief" : ""}`
+              : `pe-materiaal${vast ? " pe-vast" : ""}${actief ? " actief" : ""}`;
           return (
             <path
               key={`${it.soort}-${it.id}`}
@@ -449,7 +452,10 @@ export default function DoorsnedeTekenvlak({
               transform={it.transform}
               fillRule={it.fillRule}
               className={klasse}
-              onPointerDown={opItemDown(it.id, !vast)}
+              // Een lasnaad zit vast aan de twee platen die hij verbindt; hij is
+              // wel aan te klikken (om hem in de lijst op te lichten) maar niet
+              // los te slepen.
+              onPointerDown={opItemDown(it.id, !vast && !isLas)}
             />
           );
         })}

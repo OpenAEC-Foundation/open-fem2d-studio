@@ -34,6 +34,7 @@ concrete-check = { path = "crates/concrete-check" }
 nen-en-1992-1-1 = { path = "crates/nen-en-1992-1-1" }
 section-properties = { path = "crates/section-properties" }
 spanning-check = { path = "crates/spanning-check" }
+nen-en-1993-1-8-las = { path = "crates/nen-en-1993-1-8-las" }
 report = { path = "crates/report" }
 
 # Workaround for GNU linker "export ordinal too large" on Windows.

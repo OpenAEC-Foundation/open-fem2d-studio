@@ -480,6 +480,21 @@
   cursor: grab;
 }
 .pe-tekenvlak .pe-gat.actief { stroke-width: 2; }
+/* Lasnaad: een gevulde driehoek in de hoek tussen twee platen (of een streepje
+   bij een stompe las). Zwaarder gevuld dan het materiaal, zodat de naad opvalt
+   zonder de plaat eronder te verbergen. */
+.pe-tekenvlak .pe-las {
+  fill: var(--theme-accent);
+  fill-opacity: 0.55;
+  stroke: var(--theme-accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+.pe-tekenvlak .pe-las.actief {
+  fill-opacity: 0.9;
+  stroke-width: 2;
+}
 .pe-tekenvlak .pe-as {
   stroke: var(--theme-text-muted, #888);
   stroke-width: 0.8;
@@ -572,12 +587,37 @@
   color: var(--theme-text-faint);
   border-bottom: none;
 }
-.pe-eig-tabel td.pe-niet-bepaald {
+.pe-eig-tabel td.pe-niet-bepaald,
+.pe-eig-tabel .pe-niet-bepaald {
   color: var(--theme-text-faint);
   font-style: italic;
   font-family: inherit;
 }
 .pe-eig-verouderd { opacity: 0.55; }
+
+/* ── Tabblad Spanning ─────────────────────────────────────────────────── */
+/* De unity check: één getal dat meteen moet zeggen of het goed is. */
+.pe-uc { font-weight: 600; }
+.pe-uc-ok { color: var(--theme-success, #15803d); }
+.pe-uc-fout { color: var(--theme-danger, #b91c1c); }
+.pe-eig-tabel tr.pe-rij-actief > th,
+.pe-eig-tabel tr.pe-rij-actief > td {
+  background: var(--theme-hover, rgba(217, 119, 6, 0.12));
+}
+.pe-eig-tabel tr[title] { cursor: default; }
+/* De figuur houdt haar eigen verhouding en staat daarom midden in de kolom in
+   plaats van tegen de bovenrand. */
+.pe-spanningsvlak {
+  justify-content: center;
+  padding: 8px 10px;
+}
+.pe-spanningsfiguur {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  display: block;
+}
+.pe-spanningsfiguur.verouderd { opacity: 0.55; }
 .pe-status {
   font-size: 10px;
   color: var(--theme-text-faint);

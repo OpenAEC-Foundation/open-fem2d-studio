@@ -2,9 +2,12 @@
  * ProfielEditor — eigen doorsneden samenstellen, tekenen en van een gat
  * voorzien, met de eigenschappen live uit de Rust-doorsnedemotor.
  *
- * Drie tabbladen:
- *  - Samenstellen: lamellen (platen) en catalogusprofielen als bouwstenen;
+ * Vier tabbladen:
+ *  - Samenstellen: lamellen (platen), catalogusprofielen als bouwstenen en de
+ *    lasnaden daartussen;
  *  - Gat in profiel: een catalogusprofiel met gaten door lijf, flens of wand;
+ *  - Spanning: een moment, normaalkracht en dwarskracht op de doorsnede, met
+ *    het spanningsverloop en de toetsing van de lasnaden;
  *  - Bewaard: de opgeslagen eigen doorsneden (bewerken, verwijderen, kiezen).
  *
  * Een bewaarde doorsnede krijgt als profielnaam `EIGEN:<naam>` (zie
@@ -13,7 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CustomDoorsnedevorm } from "../../lib/types/steel/CustomDoorsnedevorm";
-import { basisprofielVan } from "../../lib/profieleditor/catalogus";
+import { basisprofielVan, profielLabel } from "../../lib/profieleditor/catalogus";
 import {
   profielnaamVan,
   useEigenDoorsneden,
@@ -47,10 +50,12 @@ import EigenDoorsnedeTekening from "./EigenDoorsnedeTekening";
 import EigenschappenPaneel from "./EigenschappenPaneel";
 import GatPaneel from "./GatPaneel";
 import GereedschapsBalk, { type TransformSoort } from "./GereedschapsBalk";
+import LassenPaneel from "./LassenPaneel";
 import SamenstellingPaneel from "./SamenstellingPaneel";
+import SpanningPaneel, { STANDAARD_BELASTING, type Belasting } from "./SpanningPaneel";
 import "./ProfielEditor.css";
 
-type Tab = "samenstelling" | "gat" | "bewaard";
+type Tab = "samenstelling" | "gat" | "spanning" | "bewaard";
 type Samenstelling = Extract<DoorsnedeOntwerp, { soort: "samenstelling" }>;
 type GatOntwerp = Extract<DoorsnedeOntwerp, { soort: "gat" }>;
 
@@ -202,8 +207,19 @@ export default function ProfielEditor({
   const [vormKeuze, setVormKeuze] = useState<CustomDoorsnedevorm | "auto">("auto");
   const [geselecteerd, setGeselecteerd] = useState<string | null>(null);
   const [melding, setMelding] = useState<string | null>(null);
+  /** Snedekrachten van het tabblad Spanning; horen bij de sessie, niet bij het ontwerp. */
+  const [belasting, setBelasting] = useState<Belasting>(STANDAARD_BELASTING);
 
-  const ontwerp: DoorsnedeOntwerp = tab === "gat" ? gatOntwerp : samenstelling;
+  /**
+   * Welk van de twee ontwerpen er "aan" staat. Het tabblad Spanning en het
+   * opslaan werken op het ontwerp waar je vandaan komt, dus dat volgt niet uit
+   * `tab` alleen.
+   */
+  const [bron, setBron] = useState<"samenstelling" | "gat">(
+    bewerk?.ontwerp.soort === "gat" ? "gat" : "samenstelling",
+  );
+
+  const ontwerp: DoorsnedeOntwerp = bron === "gat" ? gatOntwerp : samenstelling;
 
   // Gaten die niet in de plaat passen houden de motor tegen: een verkeerd
   // getal is erger dan even geen getal.
@@ -654,6 +670,7 @@ export default function ProfielEditor({
     setBewerkId(d.id);
     setVormKeuze(d.vorm === stelVormVoor(d.ontwerp) ? "auto" : d.vorm);
     setTab(d.ontwerp.soort);
+    setBron(d.ontwerp.soort);
     setGeselecteerd(null);
     setMelding(null);
   };
@@ -671,11 +688,18 @@ export default function ProfielEditor({
   const inhoud = (
     <div className="pe-wortel">
       <div className="pe-tabs">
-        <button className={`pe-tab${tab === "samenstelling" ? " actief" : ""}`} onClick={() => { setTab("samenstelling"); setGeselecteerd(null); }}>
+        <button className={`pe-tab${tab === "samenstelling" ? " actief" : ""}`} onClick={() => { setTab("samenstelling"); setBron("samenstelling"); setGeselecteerd(null); }}>
           Samenstellen
         </button>
-        <button className={`pe-tab${tab === "gat" ? " actief" : ""}`} onClick={() => { setTab("gat"); setGeselecteerd(null); }}>
+        <button className={`pe-tab${tab === "gat" ? " actief" : ""}`} onClick={() => { setTab("gat"); setBron("gat"); setGeselecteerd(null); }}>
           Gat in profiel
+        </button>
+        <button
+          className={`pe-tab${tab === "spanning" ? " actief" : ""}`}
+          onClick={() => setTab("spanning")}
+          title="Zet een moment, een normaalkracht en een dwarskracht op deze doorsnede en zie het spanningsverloop erover; de lasnaden worden er meteen op getoetst."
+        >
+          Spanning
         </button>
         <button className={`pe-tab${tab === "bewaard" ? " actief" : ""}`} onClick={() => setTab("bewaard")}>
           Bewaard ({items.length})
@@ -695,7 +719,7 @@ export default function ProfielEditor({
                   A = {fmtGroep(d.eigenschappen.area_mm2, 0)} mm² · I_y = {fmtMacht(d.eigenschappen.iy_mm4, 6, 2)} mm⁴
                   <br />
                   {d.ontwerp.soort === "gat"
-                    ? `${d.ontwerp.basis.naam} met ${d.ontwerp.gaten.length} gat${d.ontwerp.gaten.length === 1 ? "" : "en"}`
+                    ? `${profielLabel(d.ontwerp.basis.naam)} met ${d.ontwerp.gaten.length} gat${d.ontwerp.gaten.length === 1 ? "" : "en"}`
                     : `${d.ontwerp.lamellen.length} lamellen, ${d.ontwerp.catalogusdelen.length} catalogusdelen`}
                   {" · "}
                   {gaatAlsLamellen(d.ontwerp) ? "toetsing uit geometrie" : VORM_LABEL[d.vorm].split(" — ")[0]}
@@ -711,6 +735,15 @@ export default function ProfielEditor({
             ))}
           </div>
         )
+      ) : tab === "spanning" ? (
+        <SpanningPaneel
+          ontwerp={ontwerp}
+          uitvoer={motor.uitvoer}
+          belasting={belasting}
+          onWijzig={setBelasting}
+          geselecteerd={geselecteerd}
+          onSelecteer={setGeselecteerd}
+        />
       ) : (
         <>
           {/*
@@ -728,12 +761,20 @@ export default function ProfielEditor({
           <div className="pe-kolommen">
             <div className="pe-kolom pe-kolom-links">
               {tab === "samenstelling" ? (
-                <SamenstellingPaneel
-                  ontwerp={samenstelling}
-                  onWijzig={setSamenstelling}
-                  geselecteerd={geselecteerd}
-                  onSelecteer={setGeselecteerd}
-                />
+                <>
+                  <SamenstellingPaneel
+                    ontwerp={samenstelling}
+                    onWijzig={setSamenstelling}
+                    geselecteerd={geselecteerd}
+                    onSelecteer={setGeselecteerd}
+                  />
+                  <LassenPaneel
+                    ontwerp={samenstelling}
+                    onWijzig={setSamenstelling}
+                    geselecteerd={geselecteerd}
+                    onSelecteer={setGeselecteerd}
+                  />
+                </>
               ) : (
                 <GatPaneel
                   ontwerp={gatOntwerp}
@@ -783,7 +824,7 @@ export default function ProfielEditor({
             <input
               type="text"
               value={naam}
-              placeholder={ontwerp.soort === "gat" ? `${ontwerp.basis.naam} met gat` : "Gelaste ligger"}
+              placeholder={ontwerp.soort === "gat" ? `${profielLabel(ontwerp.basis.naam)} met gat` : "Gelaste ligger"}
               onChange={(e) => setNaam(e.target.value)}
             />
           </label>

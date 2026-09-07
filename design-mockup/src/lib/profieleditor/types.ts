@@ -10,6 +10,7 @@
  */
 import type { SectionProperties } from "../types/steel/SectionProperties";
 import type { CustomDoorsnedevorm } from "../types/steel/CustomDoorsnedevorm";
+import type { Lassoort } from "../types/las/Lassoort";
 
 /** Vormaanduidingen die de motor kent (`soort` in de JSON-invoer). */
 export type MotorSoort =
@@ -101,6 +102,29 @@ export interface Catalogusdeel {
   gespiegeld: boolean;
 }
 
+/**
+ * Eén doorlopende lasnaad tussen twee lamellen van een samenstelling.
+ *
+ * Een lasnaad in een doorsnedetekening is altijd een **langslas**: hij loopt
+ * met de staaf mee. Wat hij overdraagt is daarom geen kracht maar een kracht
+ * per strekkende millimeter — de schuifstroom `q = V_z·S/I_y`, met `S` het
+ * statisch moment van het deel dat aan die naad hangt. Er hoort dus geen
+ * laslengte bij: de lengte is de staaflengte.
+ *
+ * `soort` is dezelfde opsomming als de rekenkern gebruikt
+ * (`nen-en-1993-1-8-las`), zodat er geen tweede lijst ontstaat.
+ */
+export interface Las {
+  id: string;
+  /** Lamel aan de ene kant van de naad. */
+  aId: string;
+  /** Lamel aan de andere kant. */
+  bId: string;
+  soort: Lassoort;
+  /** Keeldikte `a` van één las (mm); bij een stompe las niet gebruikt. */
+  a_mm: number;
+}
+
 /** Gesloten cel voor de Bredt-torsie, zoals de motor hem verwacht. */
 export interface GeslotenCelDef {
   /** Hoekpunten van de wandmiddellijn `[y, z]`, in volgorde. */
@@ -122,6 +146,12 @@ export type DoorsnedeOntwerp =
        * (Bredt). Uit = open formule ⅓·Σb·t³, wat een koker sterk onderschat.
        */
       celMeenemen: boolean;
+      /**
+       * Lasnaden tussen de lamellen. Optioneel omdat doorsneden die vóór de
+       * lassen bewaard zijn het veld niet hebben; lees hem altijd als
+       * `lassen ?? []`.
+       */
+      lassen?: Las[];
     }
   | {
       soort: "gat";
