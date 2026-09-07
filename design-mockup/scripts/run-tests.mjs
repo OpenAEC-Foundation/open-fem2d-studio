@@ -117,6 +117,10 @@ const ALLEEN_BRON = new Map([
   ["plaat-lasten", "raakt kerninterne klassen (Mesh, PlateRegion, PlateLoads)"],
   ["plaat-mixed", "raakt kerninterne klassen (Mesh, PlateRegion, NonlinearSolver)"],
   ["plaat-schijf", "raakt kerninterne klassen (Triangle, Quad4, GaussElimination)"],
+  [
+    "oplossers",
+    "vergelijkt de twee stelseloplossers rechtstreeks (Matrix, GaussElimination, SkylineSolver, LinearSolver); die staan bewust niet in de barrel",
+  ],
   ["deellast", "test de zustand-store, niet de solver"],
   ["puntlast-positie", "test de zustand-store, niet de solver"],
   ["splitsen", "test de zustand-store, niet de solver"],

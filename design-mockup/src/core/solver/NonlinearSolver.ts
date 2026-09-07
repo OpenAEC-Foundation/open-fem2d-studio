@@ -21,7 +21,11 @@ import { calculateElementStress, calculatePrincipalStresses } from '../fem/Trian
 import { calculateQuadStress } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
 import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, buildNodeIdToIndex } from './Assembler';
-import { solveLinearSystem } from '../math/GaussElimination';
+// De keuze welke stelseloplosser draait loopt via één plek: `LinearSolver`.
+// De zeven aanroepen hieronder houden hun bestaande handtekening en weten niet
+// welke oplosser eronder zit. Standaard is dat nog steeds de dichte
+// Gauss-eliminatie uit `GaussElimination`.
+import { solveLinearSystem } from '../math/LinearSolver';
 import {
   ISectionState,
   ICrackedSectionState,

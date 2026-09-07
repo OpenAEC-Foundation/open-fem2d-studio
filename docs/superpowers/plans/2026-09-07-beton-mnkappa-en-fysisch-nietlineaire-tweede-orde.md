@@ -125,6 +125,122 @@ een geraden getal. Meet eerst de werkelijke oplostijd tegen het aantal
 vrijheidsgraden voordat je de drempel vastzet, en zet de meting in dit
 document.
 
+#### De meting
+
+Uitgevoerd met `design-mockup/scripts/meet-oplossers.mjs` (draaien met
+`node node_modules/tsx/dist/cli.mjs scripts/meet-oplossers.mjs`). Machine:
+Windows 11, Node 24.11.1, standaard heaplimiet (4,26 GB). Model: een raamwerk
+van 3 velden × 3 verdiepingen, kolommen 3,5 m en liggers 6,0 m, waarvan elke
+staaf in steeds meer segmenten geknipt is — precies de vertienvoudiging die
+deze taak meebrengt. Elke tijd is de laagste van twee metingen.
+
+De knoopnummering staat er als aparte rij in, want zij bepaalt de
+bandbreedte. **aaneengesloten** = de segmentknopen staan tussen de
+stramienknopen in; **toegevoegd** = eerst de stramienknopen, daarna per staaf
+de segmentknopen erachteraan — dat is wat `Mesh.addNode` doet als een bestaand
+model achteraf wordt opgeknipt, en dus het te verwachten geval.
+
+`b_max` is de grootste profielhoogte (de bandbreedte waarop een vaste-band-
+oplosser gedimensioneerd moet worden), `h_gem` de gemiddelde profielhoogte
+(waarop een skyline-oplosser werkelijk rekent). Kolom "band" is dezelfde
+LDLᵀ-code als "skyline", maar met een vaste envelop ter breedte `b_max`.
+
+**Kale oplostijd van K·u = F, één stelsel:**
+
+| nummering | segm./staaf | elementen | DOF | dichte K (MB) | b_max | h_gem | Gauss (ms) | band (ms) | skyline (ms) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| aaneengesloten | 1 | 3 | 12 | 0,0 | 7 | 4,1 | 0,1 | 0,0 | 0,0 |
+| aaneengesloten | 1 | 10 | 27 | 0,0 | 10 | 6,4 | 0,5 | 0,1 | 0,1 |
+| aaneengesloten | 2 | 20 | 57 | 0,0 | 40 | 10,7 | 0,1 | 0,1 | 0,2 |
+| aaneengesloten | 2 | 42 | 111 | 0,1 | 85 | 19,1 | 0,7 | 0,3 | 0,1 |
+| aaneengesloten | 4 | 84 | 237 | 0,4 | 175 | 29,6 | 14,9 | 1,9 | 0,3 |
+| aaneengesloten | 7 | 147 | 426 | 1,4 | 310 | 30,0 | 42,9 | 10,0 | 0,6 |
+| aaneengesloten | 12 | 252 | 741 | 4,2 | 535 | 30,2 | 213,0 | 48,4 | 1,2 |
+| aaneengesloten | 20 | 420 | 1245 | 11,8 | 895 | 30,3 | 986,9 | 215,4 | 3,6 |
+| aaneengesloten | 32 | 672 | 2001 | 30,5 | 1435 | 30,3 | 4355,2 | 887,5 | 21,3 |
+| aaneengesloten | 50 | 1050 | 3135 | 75,0 | 2245 | 30,4 | 16963,9 | 3674,1 | 55,1 |
+| aaneengesloten | 80 | 1680 | 5025 | 192,6 | 3595 | 30,4 | niet gemeten | niet gemeten | 158,1 |
+| aaneengesloten | 125 | 2625 | 7860 | 471,3 | 5620 | 30,4 | niet gemeten | niet gemeten | 414,1 |
+| aaneengesloten | 200 | 4200 | 12585 | 1208,4 | 8995 | 30,4 | niet gemeten | niet gemeten | 1235,7 |
+| toegevoegd | 2 | 20 | 57 | 0,0 | 46 | 17,9 | 0,1 | 0,0 | 0,0 |
+| toegevoegd | 2 | 42 | 111 | 0,1 | 94 | 34,8 | 0,8 | 0,3 | 0,1 |
+| toegevoegd | 4 | 84 | 237 | 0,4 | 202 | 65,2 | 7,4 | 2,2 | 0,8 |
+| toegevoegd | 7 | 147 | 426 | 1,4 | 379 | 66,3 | 39,5 | 12,0 | 1,7 |
+| toegevoegd | 12 | 252 | 741 | 4,2 | 694 | 66,9 | 214,1 | 60,0 | 3,0 |
+| toegevoegd | 20 | 420 | 1245 | 11,8 | 1198 | 67,2 | 1011,0 | 265,8 | 8,0 |
+| toegevoegd | 32 | 672 | 2001 | 30,5 | 1954 | 67,4 | 4141,8 | 1099,7 | 22,6 |
+| toegevoegd | 50 | 1050 | 3135 | 75,0 | 3088 | 67,5 | 16616,2 | 4383,9 | 51,1 |
+| toegevoegd | 80 | 1680 | 5025 | 192,6 | 4978 | 67,6 | niet gemeten | niet gemeten | 131,6 |
+| toegevoegd | 125 | 2625 | 7860 | 471,3 | 7813 | 67,6 | niet gemeten | niet gemeten | 421,8 |
+| toegevoegd | 200 | 4200 | 12585 | 1208,4 | 12538 | 67,7 | niet gemeten | niet gemeten | 1391,8 |
+
+"niet gemeten" betekent: overgeslagen omdat één meting minuten tot uren zou
+kosten en de trend al vaststaat.
+
+**Volledige analyseketen (`solveAllCases`), dus wat de gebruiker afwacht:**
+
+| nummering | DOF | keten Gauss (ms) | waarvan stelsel | keten skyline (ms) | waarvan stelsel |
+|---|---:|---:|---:|---:|---:|
+| aaneengesloten | 237 | 9,3 | 7,1 | 6,5 | 2,1 |
+| aaneengesloten | 426 | 47,5 | 40,1 | 9,3 | 3,5 |
+| aaneengesloten | 741 | 224,3 | 211,2 | 10,1 | 1,7 |
+| aaneengesloten | 1245 | 1073,8 | 1045,4 | 28,0 | 7,3 |
+| aaneengesloten | 2001 | 4296,8 | 4241,6 | 87,1 | 21,1 |
+| aaneengesloten | 5025 | 84 485 | — | 595 | — |
+| aaneengesloten | 7860 | 249 319 | — | 1400 | — |
+| aaneengesloten | 10065 | niet gemeten | — | 2347 | — |
+| aaneengesloten | 12585 | niet gemeten | — | 4051 | — |
+| aaneengesloten | 15735 | niet gemeten | — | 6953 | — |
+
+Boven 400 vrijheidsgraden zit meer dan 95 % van de analysetijd in de
+stelseloplossing. Beide oplossers geven dezelfde `max|u|` tot op drie decimalen
+(180,522 mm bij 5025 DOF, 282,423 mm bij 7860 DOF).
+
+**Drie dingen die uit de meting volgen en niet uit een verwachting:**
+
+1. **De vaste band is niet de goede vorm.** `b_max` groeit mee met het model
+   (895 → 8995 bij aaneengesloten nummering) omdat de aansluitknopen van elke
+   staaf ver terugwijzen, terwijl `h_gem` constant blijft op 30 respectievelijk
+   68. Een vaste band wint daardoor maar een factor 4,6 op de dichte oplosser
+   (3674 tegen 16 964 ms bij 3135 DOF); de skyline wint er nog een factor 67
+   bovenop (55 ms). Vandaar de keuze voor de variabele envelop.
+2. **De stijfheidsmatrix is exact symmetrisch.** Gemeten
+   max |K(i,j) − K(j,i)| = 0 op elk model in de reeks. Dat is de voorwaarde
+   waaronder LDLᵀ zonder pivotering mag; de oplosser meet het per aanroep en
+   valt bij asymmetrie terug op Gauss.
+3. **Boven circa 5000 DOF is de oplosser niet meer de rem.** De skyline-tijd
+   groeit dan als O(n²) omdat de matrix als dichte `number[][]` moet worden
+   afgelopen om het profiel te bepalen, niet als O(n·h²) van de ontbinding
+   zelf. De volgende winst zit dus in ijle assemblage, niet in de oplosser.
+
+**Het plafond van de huidige opzet is geheugen, niet tijd.** De dichte
+`Matrix` kost 8·n² bytes en `applyBoundaryConditions` kloont hem nog eens.
+Gemeten: de volledige keten haalt 15 735 DOF (3,88 GB heap) en breekt bij
+20 160 DOF af met "JavaScript heap out of memory" op 3,73 GB van de 4,26 GB.
+
+#### De drempel
+
+**Criterium** (een keuze, geen norm): de waarschuwing verschijnt zodra één
+stelseloplossing meer dan één seconde kost. Reden: een fysisch niet-lineaire
+tweede-orde-berekening doet er tientallen per belastingcombinatie, dus één
+seconde per stelsel is al een minuut per combinatie.
+
+| standaard-oplosser | gemeten ijkpunten | **drempel** | dat is bij segmenten van 400 mm |
+|---|---|---:|---|
+| dichte Gauss (huidig) | 987 ms bij 1245 DOF, 4355 ms bij 2001 DOF | **1250 DOF** | circa 165 m staaflengte in totaal |
+| skyline | 414 ms bij 7860 DOF, 1236 ms bij 12 585 DOF | **10 000 DOF** | circa 1330 m staaflengte in totaal |
+
+De omrekening: bij een segmentlengte van 0,4 m en 3 vrijheidsgraden per knoop
+geldt DOF ≈ 7,5 × totale staaflengte in meters.
+
+De skyline-drempel is bewust op 10 000 gezet en niet op de 11 500 waar de
+tijdsgrens ligt: bij 10 000 DOF vraagt de keten circa 2,4 GB heap (gemeten),
+en dat is de plek waar de geheugengrens van 15 700 DOF nog een halve
+verdubbeling weg is.
+
+**Welke drempel geldt, hangt af van welke oplosser standaard is.** Vandaag is
+dat nog de dichte Gauss-eliminatie, dus **1250**.
+
 ### B4 — Keuze van solver
 
 Op verzoek van de gebruiker: "Geef ook de mogelijkheid tot verschillende
@@ -147,6 +263,34 @@ solvers." Dat wordt hier op twee assen ingevuld, omdat beide toch nodig zijn:
    **Voorwaarde: bit-identieke uitkomsten op de bestaande testbatterij bij de
    bestaande oplosser.** De nieuwe oplosser wordt tegen de bestaande
    gevalideerd op dezelfde modellen, niet alleen op snelheid.
+
+   **UITGEVOERD.** `core/math/LinearSolver` is het keuzepunt; `NonlinearSolver`
+   importeert `solveLinearSystem` daarvandaan en de zeven aanroepplaatsen
+   bleven ongewijzigd. De tweede oplosser is een skyline-LDLᵀ
+   (`core/math/SkylineSolver`); de motivering voor die vorm boven een vaste
+   band staat bij de meting onder B3. Kiezen kan met `setLinearSolver()` of met
+   de omgevingsvariabele `FEM_SOLVER=skyline`.
+
+   Twee dingen zijn hier bijgesteld ten opzichte van de tekst hierboven:
+
+   - **De standaard is NIET veranderd.** Hij blijft `gauss`. De meting
+     rechtvaardigt omzetten (factor 140 tot 180 op de volledige keten), maar
+     omzetten dwingt ook een nieuw gouden bestand af — zie het punt hieronder —
+     en dat is een aparte beslissing.
+   - **"Bit-identiek" is bij een andere eliminatievolgorde niet haalbaar en ook
+     geen goed criterium.** Wat gemeten is: over alle vergelijkingsmodellen
+     samen (`test-oplossers.mjs`) is de grootste relatieve afwijking tussen de
+     twee oplossers 9,3e-13 op verplaatsingen, 1,1e-12 op reacties en 2,0e-12
+     op staafkrachten. De afwijking groeit met de modelgrootte: 5e-14 bij 63
+     DOF, 2,7e-12 bij 741 DOF, 1,5e-10 bij 3135 DOF. De test hanteert 1e-9 en
+     drukt de gemeten waarde altijd af.
+
+     Wél bit-exact: het gouden bestand `tests/golden/portaal.verwacht.json`
+     blijft byte-identiek zolang `gauss` de standaard is. Met `skyline` als
+     standaard verschuiven 613 van de 1838 gouden waarden, telkens in de
+     laatste een tot twee cijfers (bijvoorbeeld −23,58802372840362 →
+     −23,588023728403613, relatief 3e-16). Dat is de prijs van omzetten, en het
+     is een zichtbare prijs — precies waarvoor het gouden bestand bedoeld is.
 
 ## 3. Architectuur
 

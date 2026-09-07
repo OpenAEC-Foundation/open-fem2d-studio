@@ -2521,6 +2521,148 @@ function solveLinearSystem(A, b) {
   return x;
 }
 
+// src/core/math/SkylineSolver.ts
+var ASYMMETRIE_GRENS = 1e-10;
+var PIVOT_ABS_DREMPEL = 1e-12;
+var PIVOT_REL_DREMPEL = 1e-12;
+var laagstePivotRatio = Number.POSITIVE_INFINITY;
+var terugvalTeller = 0;
+function analyzeMatrix(A) {
+  const n = A.rows;
+  const first = new Int32Array(n);
+  let profileSize = 0;
+  let halfBandwidth = 0;
+  let maxAsymmetry = 0;
+  let maxMagnitude = 0;
+  for (let i = 0; i < n; i++) {
+    const rij = A.data[i];
+    let fi = i;
+    for (let j = 0; j < i; j++) {
+      const onder = rij[j];
+      const boven = A.data[j][i];
+      if (onder !== 0 || boven !== 0) {
+        if (fi === i) fi = j;
+        const verschil = Math.abs(onder - boven);
+        if (verschil > maxAsymmetry) maxAsymmetry = verschil;
+        const m = Math.abs(onder) > Math.abs(boven) ? Math.abs(onder) : Math.abs(boven);
+        if (m > maxMagnitude) maxMagnitude = m;
+      }
+    }
+    const diag = Math.abs(rij[i]);
+    if (diag > maxMagnitude) maxMagnitude = diag;
+    first[i] = fi;
+    profileSize += i - fi + 1;
+    if (i - fi > halfBandwidth) halfBandwidth = i - fi;
+  }
+  return {
+    first,
+    profileSize,
+    halfBandwidth,
+    meanHeight: n > 0 ? profileSize / n : 0,
+    maxAsymmetry,
+    maxMagnitude,
+    relAsymmetry: maxMagnitude > 0 ? maxAsymmetry / maxMagnitude : 0
+  };
+}
+function solveSkyline(A, b) {
+  const n = A.rows;
+  if (A.rows !== A.cols) {
+    throw new Error("Matrix must be square");
+  }
+  if (b.length !== n) {
+    throw new Error("Vector length must match matrix size");
+  }
+  if (n === 0) return [];
+  const profiel = analyzeMatrix(A);
+  if (profiel.relAsymmetry > ASYMMETRIE_GRENS) {
+    terugvalTeller++;
+    return solveLinearSystem(A, b);
+  }
+  return solveWithProfile(A, b, profiel.first);
+}
+function solveWithProfile(A, b, first) {
+  const n = A.rows;
+  if (n === 0) return [];
+  const start = new Int32Array(n);
+  let offset = 0;
+  for (let i = 0; i < n; i++) {
+    start[i] = offset - first[i];
+    offset += i - first[i] + 1;
+  }
+  const vals = new Float64Array(offset);
+  for (let i = 0; i < n; i++) {
+    const rij = A.data[i];
+    const s = start[i];
+    for (let j = first[i]; j <= i; j++) vals[s + j] = rij[j];
+  }
+  const d = new Float64Array(n);
+  const t = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const fi = first[i];
+    const si = start[i];
+    for (let j = fi; j < i; j++) {
+      const sj = start[j];
+      const k0 = fi > first[j] ? fi : first[j];
+      let som = vals[si + j];
+      for (let k = k0; k < j; k++) som -= t[k] * vals[sj + k];
+      vals[si + j] = som / d[j];
+      t[j] = som;
+    }
+    let diag = vals[si + i];
+    for (let k = fi; k < i; k++) diag -= vals[si + k] * t[k];
+    const oorspronkelijk = Math.abs(A.data[i][i]);
+    if (oorspronkelijk > 0) {
+      const ratio = Math.abs(diag) / oorspronkelijk;
+      if (ratio < laagstePivotRatio) laagstePivotRatio = ratio;
+    }
+    if (Math.abs(diag) < PIVOT_ABS_DREMPEL || Math.abs(diag) < PIVOT_REL_DREMPEL * oorspronkelijk) {
+      throw new Error(`Matrix is singular or nearly singular at column ${i}`);
+    }
+    d[i] = diag;
+  }
+  const x = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const si = start[i];
+    let som = b[i];
+    for (let k = first[i]; k < i; k++) som -= vals[si + k] * x[k];
+    x[i] = som;
+  }
+  for (let i = 0; i < n; i++) x[i] /= d[i];
+  for (let i = n - 1; i > 0; i--) {
+    const si = start[i];
+    const xi = x[i];
+    if (xi === 0) continue;
+    for (let k = first[i]; k < i; k++) x[k] -= vals[si + k] * xi;
+  }
+  return Array.from(x);
+}
+
+// src/core/math/LinearSolver.ts
+var LINEAR_SOLVER_IDS = ["gauss", "skyline"];
+var STANDAARD = "gauss";
+function leesOmgevingskeuze() {
+  const g = globalThis;
+  const ruw = g.process?.env?.FEM_SOLVER;
+  if (!ruw) return STANDAARD;
+  const genormaliseerd = ruw.trim().toLowerCase();
+  if (LINEAR_SOLVER_IDS.includes(genormaliseerd)) {
+    return genormaliseerd;
+  }
+  return STANDAARD;
+}
+var actief = leesOmgevingskeuze();
+var stats = { calls: 0, totalMs: 0, maxDofs: 0 };
+function solveLinearSystem2(A, b) {
+  const t0 = performance.now();
+  try {
+    return actief === "skyline" ? solveSkyline(A, b) : solveLinearSystem(A, b);
+  } finally {
+    stats.calls++;
+    stats.totalMs += performance.now() - t0;
+    if (A.rows > stats.maxDofs) stats.maxDofs = A.rows;
+  }
+}
+
 // src/core/solver/NonlinearMaterial.ts
 function createSteelMaterial(fy) {
   const E = 21e10;
@@ -3342,7 +3484,7 @@ function solveNonlinear(mesh, options = {}) {
     }
     const K2 = assembleGlobalStiffnessWithGeometric(mesh, axialForces, false);
     const { K: Kbc, F: Fbc } = applyBoundaryConditions(K2, F, mesh);
-    displacements = solveLinearSystem(Kbc, Fbc);
+    displacements = solveLinearSystem2(Kbc, Fbc);
     const { beamForces: beamForces2, axialForces: newAxial } = calculateAllInternalForces(mesh, displacements);
     axialForces = newAxial;
     const reactions2 = K2.multiplyVector(displacements);
@@ -3390,7 +3532,7 @@ function solveNonlinear(mesh, options = {}) {
       for (const dof of fixedDofs) residual[dof] = 0;
       let deltaU;
       try {
-        deltaU = solveLinearSystem(Kbc, residual);
+        deltaU = solveLinearSystem2(Kbc, residual);
       } catch (e) {
         if (opts.geometricNonlinear) throw new Error(DIVERGENCE_MSG);
         throw e;
@@ -3619,7 +3761,7 @@ function solvePlateOrPlane(mesh, opts) {
   }
   let displacements;
   try {
-    displacements = solveLinearSystem(Kmod, Fmod);
+    displacements = solveLinearSystem2(Kmod, Fmod);
   } catch (e) {
     const msg = e.message;
     const colMatch = msg.match(/column (\d+)/);
@@ -3797,7 +3939,7 @@ function solveMixed(mesh, _opts) {
     Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
     Fmod[dof] = 0;
   }
-  const displacements = solveLinearSystem(Kmod, Fmod);
+  const displacements = solveLinearSystem2(Kmod, Fmod);
   const reactions = K.multiplyVector(displacements);
   for (let i = 0; i < reactions.length; i++) {
     reactions[i] = reactions[i] - F[i];
@@ -3914,7 +4056,7 @@ function solveWithAxialConstraints(mesh, F, opts) {
   for (let iter = 0; iter < maxIter; iter++) {
     const K2 = assembleGlobalStiffnessMatrix(mesh, "frame", axialReleasedBeamIds);
     const { K: Kbc2, F: Fbc2 } = applyBoundaryConditions(K2, F, mesh);
-    const displacements2 = solveLinearSystem(Kbc2, Fbc2);
+    const displacements2 = solveLinearSystem2(Kbc2, Fbc2);
     const { beamForces: beamForces2, axialForces } = calculateAllInternalForces(mesh, displacements2);
     let changed = false;
     for (const beam of mesh.beamElements.values()) {
@@ -3955,7 +4097,7 @@ function solveWithAxialConstraints(mesh, F, opts) {
   }
   const K = assembleGlobalStiffnessMatrix(mesh, "frame", axialReleasedBeamIds);
   const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
-  const displacements = solveLinearSystem(Kbc, Fbc);
+  const displacements = solveLinearSystem2(Kbc, Fbc);
   const { beamForces } = calculateAllInternalForces(mesh, displacements);
   const reactions = K.multiplyVector(displacements);
   for (let i = 0; i < reactions.length; i++) {
@@ -7856,14 +7998,14 @@ function valideerModel(rauw) {
       );
     }
   }
-  const actief = /* @__PURE__ */ new Set();
+  const actief2 = /* @__PURE__ */ new Set();
   for (const b of beams) {
-    actief.add(b.from);
-    actief.add(b.to);
+    actief2.add(b.from);
+    actief2.add(b.to);
   }
-  for (const p of plates) for (const id of p.nodeIds ?? []) actief.add(id);
+  for (const p of plates) for (const id of p.nodeIds ?? []) actief2.add(id);
   for (const n of nodes) {
-    if (!actief.has(n.id)) {
+    if (!actief2.has(n.id)) {
       warnings.push(
         `Knoop ${n.id} hangt aan geen enkele staaf of plaat en telt niet mee in de berekening.`
       );
@@ -7877,7 +8019,7 @@ function valideerModel(rauw) {
       errors.push(`Oplegging op knoop ${s.nodeId}, die niet bestaat.`);
       continue;
     }
-    if (!actief.has(s.nodeId)) {
+    if (!actief2.has(s.nodeId)) {
       const melding = `Oplegging op knoop ${s.nodeId}, die aan geen enkele staaf of plaat hangt. Die knoop zit niet in het rekenmodel, dus de oplegging doet niets.`;
       if (heeftPlaten) warnings.push(melding);
       else errors.push(melding);
@@ -7921,12 +8063,12 @@ function valideerModel(rauw) {
       );
     }
   }
-  if (actief.size > 0) {
+  if (actief2.size > 0) {
     const verbindingen = [
       ...beams.map((b) => [b.from, b.to]),
       ...plates.map((p) => p.nodeIds ?? [])
     ];
-    for (const deel of samenhangendeDelen([...actief], verbindingen)) {
+    for (const deel of samenhangendeDelen([...actief2], verbindingen)) {
       if (!deel.some((id) => gesteund.has(id))) {
         errors.push(
           `Het constructiedeel met knopen ${deel.slice(0, 6).join(", ")}${deel.length > 6 ? ", \u2026" : ""} heeft geen enkele oplegging en kan vrij bewegen (mechanisme).`
@@ -7974,7 +8116,7 @@ function valideerModel(rauw) {
     if (l.nodeId !== void 0) {
       if (!knoopById.has(l.nodeId)) {
         errors.push(`Last ${id} verwijst naar knoop ${l.nodeId}, die niet bestaat.`);
-      } else if (!actief.has(l.nodeId)) {
+      } else if (!actief2.has(l.nodeId)) {
         errors.push(
           `Last ${id} staat op knoop ${l.nodeId}, die aan geen enkele staaf of plaat hangt. Die last valt bij het rekenen weg zonder melding.`
         );
