@@ -1,9 +1,11 @@
-//! Gemengd rapport: staal (EN 1993-1-1) én hout (EN 1995-1-1) in één PDF.
+//! Gemengd rapport: staal (EN 1993-1-1), hout (EN 1995-1-1) én beton
+//! (EN 1992-1-1) in één PDF.
 //!
 //! Wat deze test hard aantoont:
-//! - `report_members` levert ALLE staven (staal + hout) gesorteerd op staaf-id,
-//!   met de juiste norm-, doorsnede- en klasselabels — dit is exact de bron
-//!   waaruit de samenvattingstabel en de per-staaf-blokken worden gerenderd.
+//! - `report_members` levert ALLE staven (staal + hout + beton) gesorteerd op
+//!   staaf-id, met de juiste norm-, doorsnede- en klasselabels — dit is exact
+//!   de bron waaruit de samenvattingstabel en de per-staaf-blokken worden
+//!   gerenderd.
 //! - `norms_line` toont alleen de normen waarvan resultaten aanwezig zijn.
 //! - De gerenderde PDF is syntactisch geldig en telt één pagina per staaf
 //!   (cover + samenvatting + n staven); een rapport mét houtstaaf heeft
@@ -15,6 +17,7 @@
 //! bytes. De inhoudsgarantie loopt daarom via `report_members`/`norms_line`
 //! (zelfde codepad als de renderer) plus de pagina-telling.
 
+use concrete_check::ConcreteBeamCheckResult;
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nen_en_1993_1_1_section::{
     classification::CrossSectionClass, CheckStatus, NamedValue, ResistanceCalc, UnityCheck,
@@ -96,7 +99,37 @@ fn timber_beam(beam_id: u32, uc: f64) -> TimberBeamCheckResult {
     }
 }
 
+fn concrete_beam(beam_id: u32, uc: f64) -> ConcreteBeamCheckResult {
+    ConcreteBeamCheckResult {
+        beam_id,
+        section_name: "300 x 500".into(),
+        concrete_class: "C30/37".into(),
+        reinforcement_grade: "B500B".into(),
+        reinforcement_summary: "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm".into(),
+        a_s_bottom_mm2: 603.2,
+        a_s_top_mm2: 226.2,
+        d_mm: 454.0,
+        f_cd_mpa: 20.0,
+        f_yd_mpa: 435.0,
+        checks: vec![dummy_check("6.1_mn_kappa", "Moment-normaalkracht (M-N-κ)", "art. 6.1 en 3.1.7(1) (3.17)", uc)],
+        uc_max: uc,
+        status: CheckStatus::Ok,
+        governing_check_id: "6.1_mn_kappa".into(),
+        mn_kappa: None,
+        interaction_positive: vec![],
+        interaction_negative: vec![],
+    }
+}
+
 fn input(steel: Vec<BeamCheckResult>, timber: Vec<TimberBeamCheckResult>) -> ReportInput {
+    input_alle(steel, timber, vec![])
+}
+
+fn input_alle(
+    steel: Vec<BeamCheckResult>,
+    timber: Vec<TimberBeamCheckResult>,
+    concrete: Vec<ConcreteBeamCheckResult>,
+) -> ReportInput {
     ReportInput {
         project_name: "Gemengd raamwerk".into(),
         project_number: "MX-001".into(),
@@ -105,6 +138,7 @@ fn input(steel: Vec<BeamCheckResult>, timber: Vec<TimberBeamCheckResult>) -> Rep
         date: "2026-09-02".into(),
         steel_check_results: steel,
         timber_check_results: timber,
+        concrete_check_results: concrete,
     }
 }
 
@@ -156,10 +190,54 @@ fn norms_line_toont_alleen_aanwezige_normen() {
     let staal_alleen = input(vec![steel_beam(1, 0.5)], vec![]);
     let hout_alleen = input(vec![], vec![timber_beam(1, 0.5)]);
     let beide = input(vec![steel_beam(1, 0.5)], vec![timber_beam(2, 0.5)]);
+    let beton_alleen = input_alle(vec![], vec![], vec![concrete_beam(1, 0.5)]);
+    let alle_drie = input_alle(
+        vec![steel_beam(1, 0.5)],
+        vec![timber_beam(2, 0.5)],
+        vec![concrete_beam(3, 0.5)],
+    );
+    let leeg = input(vec![], vec![]);
 
     assert_eq!(norms_line(&staal_alleen), "EN 1993-1-1");
     assert_eq!(norms_line(&hout_alleen), "EN 1995-1-1");
     assert_eq!(norms_line(&beide), "EN 1993-1-1 / EN 1995-1-1");
+    assert_eq!(norms_line(&beton_alleen), "EN 1992-1-1");
+    assert_eq!(norms_line(&alle_drie), "EN 1993-1-1 / EN 1995-1-1 / EN 1992-1-1");
+    // Leeg rapport houdt de staalnorm als kader — ongewijzigd gedrag.
+    assert_eq!(norms_line(&leeg), "EN 1993-1-1");
+}
+
+#[test]
+fn report_members_neemt_beton_mee_met_eigen_norm_en_labels() {
+    let inp = input_alle(
+        vec![steel_beam(3, 0.42)],
+        vec![timber_beam(2, 0.81)],
+        vec![concrete_beam(1, 0.63)],
+    );
+    let members = report_members(&inp);
+
+    assert_eq!(members.len(), 3);
+    // Gesorteerd op staaf-id: beton 1, hout 2, staal 3.
+    assert_eq!(members[0].beam_id, 1);
+    assert_eq!(members[0].norm, "EN 1992-1-1");
+    assert_eq!(members[0].section_label, "300 x 500");
+    assert_eq!(members[0].grade_label, "C30/37");
+    assert_eq!(members[0].governing_check_id, "6.1_mn_kappa");
+    assert!((members[0].uc_max - 0.63).abs() < 1e-12);
+    assert_eq!(members[0].checks.len(), 1);
+
+    assert_eq!(members[1].norm, "EN 1995-1-1");
+    assert_eq!(members[2].norm, "EN 1993-1-1");
+}
+
+#[test]
+fn betonrapport_rendert_geldige_pdf() {
+    let bytes = generate_report_pdf(input_alle(vec![], vec![], vec![concrete_beam(1, 0.63)]));
+
+    assert!(bytes.starts_with(b"%PDF-"), "PDF-magic ontbreekt");
+    assert!(bytes.windows(5).any(|w| w == b"%%EOF"), "%%EOF-trailer ontbreekt");
+    // Cover (1) + samenvatting (1) + één betonstaaf.
+    assert_eq!(count_pages(&bytes), 3);
 }
 
 #[test]
@@ -198,9 +276,9 @@ fn gemengd_rapport_rendert_geldige_pdf_met_pagina_per_staaf() {
 }
 
 #[test]
-fn timber_check_results_heeft_serde_default_voor_bestaande_aanroepen() {
-    // Bestaande frontend-aanroepen sturen het veld niet mee — dat moet
-    // deserialiseren naar een lege lijst.
+fn hout_en_beton_hebben_serde_default_voor_bestaande_aanroepen() {
+    // Bestaande frontend-aanroepen sturen deze velden niet mee — dat moet
+    // deserialiseren naar lege lijsten.
     let json = r#"{
         "project_name": "Legacy",
         "project_number": "L-1",
@@ -211,4 +289,5 @@ fn timber_check_results_heeft_serde_default_voor_bestaande_aanroepen() {
     }"#;
     let parsed: ReportInput = serde_json::from_str(json).expect("legacy JSON moet geldig blijven");
     assert!(parsed.timber_check_results.is_empty());
+    assert!(parsed.concrete_check_results.is_empty());
 }

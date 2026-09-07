@@ -6,12 +6,19 @@
  * stippellijn. Bij aanwijzen met de muis verschijnt een verticale hulplijn
  * met de waarden van het dichtstbijzijnde diagrampunt (κ, M, ε_c, x).
  *
+ * Met `markeerMEd` komt daar het MAATGEVENDE punt bij: waar de kromme de
+ * M_Ed-lijn snijdt staat een bolletje met de kromming die bij dat moment
+ * hoort. Dat is wat een rapportlezer wil zien — niet alleen dát M_Ed onder
+ * M_Rd ligt, maar ook hoe ver de doorsnede al gescheurd is bij dat moment.
+ *
  * Opmaak: dunne lijn (2 px) in de accentkleur, rustige rasterlijnen, tekst
  * in de tekstkleuren van het thema — nooit in de reekskleur. Getallen in
- * nl-notatie. De kromming staat in 10⁻³/m.
+ * nl-notatie. De kromming staat in 10⁻³/m. Het rapport geeft
+ * `RAPPORT_KLEUREN` mee (vaste papierkleuren) en zet `interactief` uit.
  */
 import { useMemo, useRef, useState } from "react";
 import type { MnKappaDiagram } from "../../lib/types/concrete/MnKappaDiagram";
+import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import { nl } from "./wapeningskorf";
 
 const BREEDTE = 380;
@@ -22,7 +29,39 @@ interface Props {
   diagram: MnKappaDiagram | null;
   /** Rekenmoment ter vergelijking, kNm (absolute waarde wordt getoond). */
   mEdKnm?: number;
+  /** Markeer het maatgevende punt: waar de kromme M_Ed snijdt. */
+  markeerMEd?: boolean;
+  /** Aanwijzen met de muis (uit in het rapport — papier reageert niet). */
+  interactief?: boolean;
+  /** Palet; standaard de theme-tokens, het rapport geeft RAPPORT_KLEUREN mee. */
+  kleuren?: BetonTekenKleuren;
   className?: string;
+}
+
+/**
+ * Het punt op de kromme waar M = |M_Ed|: lineaire interpolatie tussen de twee
+ * diagrampunten die de M_Ed-lijn insluiten. `null` wanneer M_Ed buiten het
+ * diagram valt (M_Ed > M_Rd, of geen M_Ed) — dan is er geen punt om te
+ * markeren en zegt de M_Ed-lijn boven de kromme het verhaal al.
+ */
+export function puntBijMoment(
+  diagram: MnKappaDiagram | null,
+  mKnm: number,
+): { kappa_per_m: number; m_knm: number } | null {
+  const p = diagram?.points ?? [];
+  const doel = Math.abs(mKnm);
+  if (p.length < 2 || !(doel > 0)) return null;
+  for (let i = 1; i < p.length; i++) {
+    const a = p[i - 1];
+    const b = p[i];
+    const lo = Math.min(a.m_knm, b.m_knm);
+    const hi = Math.max(a.m_knm, b.m_knm);
+    if (doel < lo || doel > hi) continue;
+    const span = b.m_knm - a.m_knm;
+    const t = Math.abs(span) < 1e-12 ? 0 : (doel - a.m_knm) / span;
+    return { kappa_per_m: a.kappa_per_m + t * (b.kappa_per_m - a.kappa_per_m), m_knm: doel };
+  }
+  return null;
 }
 
 /** Ronde asstap: 1, 2 of 5 × 10ⁿ zodat er ongeveer `doel` stappen komen. */
@@ -53,7 +92,14 @@ function bezwijkLabel(d: MnKappaDiagram): string {
   }
 }
 
-export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
+export default function MNKappaGrafiek({
+  diagram,
+  mEdKnm,
+  markeerMEd = false,
+  interactief = true,
+  kleuren = THEMA_KLEUREN,
+  className,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -91,9 +137,15 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
     return beste;
   }, [diagram, punten]);
 
+  // Het maatgevende punt: de kromming die bij M_Ed hoort.
+  const govPunt = useMemo(
+    () => (markeerMEd && mEdKnm !== undefined ? puntBijMoment(diagram, mEdKnm) : null),
+    [markeerMEd, mEdKnm, diagram],
+  );
+
   function bijMuis(e: React.MouseEvent<SVGSVGElement>) {
     const svg = svgRef.current;
-    if (!svg || leeg) return;
+    if (!svg || leeg || !interactief) return;
     const rect = svg.getBoundingClientRect();
     const xView = ((e.clientX - rect.left) / rect.width) * BREEDTE;
     const kappa = ((xView - MARGE.links) / plotW) * xMax * 1e-3;
@@ -122,7 +174,7 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
       onMouseLeave={() => setHover(null)}
     >
       {/* Raster en assen */}
-      <g stroke="var(--theme-border, #ddd)" strokeWidth="0.6">
+      <g stroke={kleuren.raster} strokeWidth="0.6">
         {yTicks.map((t) => (
           <line key={`y${t}`} x1={MARGE.links} y1={sy(t)} x2={MARGE.links + plotW} y2={sy(t)} />
         ))}
@@ -130,11 +182,11 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
           <line key={`x${t}`} x1={MARGE.links + (t / xMax) * plotW} y1={MARGE.boven} x2={MARGE.links + (t / xMax) * plotW} y2={MARGE.boven + plotH} />
         ))}
       </g>
-      <g stroke="var(--theme-text-faint, #999)" strokeWidth="0.8">
+      <g stroke={kleuren.maatlijn} strokeWidth="0.8">
         <line x1={MARGE.links} y1={MARGE.boven + plotH} x2={MARGE.links + plotW} y2={MARGE.boven + plotH} />
         <line x1={MARGE.links} y1={MARGE.boven} x2={MARGE.links} y2={MARGE.boven + plotH} />
       </g>
-      <g fill="var(--theme-text-secondary, #666)" fontSize="8">
+      <g fill={kleuren.tekstMaat} fontSize="8">
         {yTicks.map((t) => (
           <text key={`yl${t}`} x={MARGE.links - 5} y={sy(t) + 2.8} textAnchor="end">
             {nl(t, 0)}
@@ -146,13 +198,13 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
           </text>
         ))}
       </g>
-      <text x={MARGE.links + plotW / 2} y={HOOGTE - 6} fill="var(--theme-text-muted, #666)" fontSize="8.5" textAnchor="middle">
+      <text x={MARGE.links + plotW / 2} y={HOOGTE - 6} fill={kleuren.tekstMaat} fontSize="8.5" textAnchor="middle">
         kromming κ [10⁻³/m]
       </text>
       <text
         x={12}
         y={MARGE.boven + plotH / 2}
-        fill="var(--theme-text-muted, #666)"
+        fill={kleuren.tekstMaat}
         fontSize="8.5"
         textAnchor="middle"
         transform={`rotate(-90 12 ${MARGE.boven + plotH / 2})`}
@@ -161,7 +213,7 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
       </text>
 
       {leeg && (
-        <text x={MARGE.links + plotW / 2} y={MARGE.boven + plotH / 2} fill="var(--theme-text-muted, #666)" fontSize="9" textAnchor="middle">
+        <text x={MARGE.links + plotW / 2} y={MARGE.boven + plotH / 2} fill={kleuren.tekstMaat} fontSize="9" textAnchor="middle">
           {diagram ? `Geen diagram: ${bezwijkLabel(diagram)}` : "Nog geen diagram berekend"}
         </text>
       )}
@@ -174,11 +226,11 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
             y1={sy(Math.abs(mEdKnm))}
             x2={MARGE.links + plotW}
             y2={sy(Math.abs(mEdKnm))}
-            stroke="var(--theme-text-muted, #666)"
+            stroke={markeerMEd ? kleuren.rekenpunt : kleuren.tekstMaat}
             strokeWidth="1"
             strokeDasharray="4 3"
           />
-          <text x={MARGE.links + plotW - 2} y={sy(Math.abs(mEdKnm)) - 3} fill="var(--theme-text-secondary, #555)" fontSize="8" textAnchor="end">
+          <text x={MARGE.links + plotW - 2} y={sy(Math.abs(mEdKnm)) - 3} fill={kleuren.tekstZwak} fontSize="8" textAnchor="end">
             M_Ed = {nl(Math.abs(mEdKnm), 1)} kNm
           </text>
         </g>
@@ -186,23 +238,51 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
 
       {/* De reeks */}
       {!leeg && (
-        <path d={pad} fill="none" stroke="var(--theme-accent, #D97706)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={pad} fill="none" stroke={kleuren.reeks} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       )}
 
       {/* Vloeipunt en bezwijkpunt, direct gelabeld */}
       {!leeg && vloeiIndex !== null && diagram && diagram.m_y_knm !== null && diagram.kappa_y_per_m !== null && (
         <g>
-          <circle cx={sx(diagram.kappa_y_per_m)} cy={sy(diagram.m_y_knm)} r="4.5" fill="var(--theme-surface, #fff)" stroke="var(--theme-accent, #D97706)" strokeWidth="2" />
-          <text x={sx(diagram.kappa_y_per_m) + 7} y={sy(diagram.m_y_knm) + 10} fill="var(--theme-text-secondary, #555)" fontSize="8">
+          <circle cx={sx(diagram.kappa_y_per_m)} cy={sy(diagram.m_y_knm)} r="4.5" fill={kleuren.vlak} stroke={kleuren.reeks} strokeWidth="2" />
+          <text x={sx(diagram.kappa_y_per_m) + 7} y={sy(diagram.m_y_knm) + 10} fill={kleuren.tekstZwak} fontSize="8">
             vloeien {nl(diagram.m_y_knm, 1)} kNm
           </text>
         </g>
       )}
       {!leeg && diagram && laatste && (
         <g>
-          <circle cx={sx(laatste.kappa_per_m)} cy={sy(laatste.m_knm)} r="4.5" fill="var(--theme-accent, #D97706)" />
-          <text x={sx(laatste.kappa_per_m) - 7} y={sy(laatste.m_knm) - 6} fill="var(--theme-text-secondary, #555)" fontSize="8" textAnchor="end">
+          <circle cx={sx(laatste.kappa_per_m)} cy={sy(laatste.m_knm)} r="4.5" fill={kleuren.reeks} />
+          <text x={sx(laatste.kappa_per_m) - 7} y={sy(laatste.m_knm) - 6} fill={kleuren.tekstZwak} fontSize="8" textAnchor="end">
             {bezwijkLabel(diagram)} {nl(laatste.m_knm, 1)} kNm
+          </text>
+        </g>
+      )}
+
+      {/* Het maatgevende punt: waar de kromme M_Ed snijdt. Ruitvorm, zodat het
+          ook in grijstinten van het vloei- en bezwijkpunt te onderscheiden is. */}
+      {!leeg && govPunt && (
+        <g>
+          <line
+            x1={sx(govPunt.kappa_per_m)}
+            y1={sy(govPunt.m_knm)}
+            x2={sx(govPunt.kappa_per_m)}
+            y2={MARGE.boven + plotH}
+            stroke={kleuren.rekenpunt}
+            strokeWidth="0.8"
+            strokeDasharray="3 2"
+          />
+          <path
+            d={`M${sx(govPunt.kappa_per_m).toFixed(2)} ${(sy(govPunt.m_knm) - 5).toFixed(2)} l5 5 l-5 5 l-5 -5 z`}
+            fill={kleuren.rekenpunt}
+          />
+          <text
+            x={sx(govPunt.kappa_per_m) + 8}
+            y={sy(govPunt.m_knm) - 6}
+            fill={kleuren.rekenpunt}
+            fontSize="8"
+          >
+            maatgevend: κ = {nl(govPunt.kappa_per_m * 1e3, 2)}·10⁻³/m
           </text>
         </g>
       )}
@@ -210,8 +290,8 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
       {/* Aanwijzen: hulplijn + waarden */}
       {hp && (
         <g pointerEvents="none">
-          <line x1={sx(hp.kappa_per_m)} y1={MARGE.boven} x2={sx(hp.kappa_per_m)} y2={MARGE.boven + plotH} stroke="var(--theme-text-muted, #666)" strokeWidth="0.8" strokeDasharray="2 2" />
-          <circle cx={sx(hp.kappa_per_m)} cy={sy(hp.m_knm)} r="3.5" fill="var(--theme-surface, #fff)" stroke="var(--theme-accent, #D97706)" strokeWidth="1.5" />
+          <line x1={sx(hp.kappa_per_m)} y1={MARGE.boven} x2={sx(hp.kappa_per_m)} y2={MARGE.boven + plotH} stroke={kleuren.tekstMaat} strokeWidth="0.8" strokeDasharray="2 2" />
+          <circle cx={sx(hp.kappa_per_m)} cy={sy(hp.m_knm)} r="3.5" fill={kleuren.vlak} stroke={kleuren.reeks} strokeWidth="1.5" />
           {(() => {
             const regels = [
               `κ = ${nl(hp.kappa_per_m * 1e3, 2)}·10⁻³/m`,
@@ -226,9 +306,9 @@ export default function MNKappaGrafiek({ diagram, mEdKnm, className }: Props) {
             const by = Math.min(Math.max(MARGE.boven, sy(hp.m_knm) - bh / 2), MARGE.boven + plotH - bh);
             return (
               <g>
-                <rect x={bx} y={by} width={bw} height={bh} rx="3" fill="var(--theme-surface, #fff)" stroke="var(--theme-border, #ccc)" strokeWidth="0.8" />
+                <rect x={bx} y={by} width={bw} height={bh} rx="3" fill={kleuren.vlak} stroke={kleuren.raster} strokeWidth="0.8" />
                 {regels.map((r, i) => (
-                  <text key={i} x={bx + 6} y={by + 12 + i * 12} fill="var(--theme-text, #333)" fontSize="8">
+                  <text key={i} x={bx + 6} y={by + 12 + i * 12} fill={kleuren.tekst} fontSize="8">
                     {r}
                   </text>
                 ))}

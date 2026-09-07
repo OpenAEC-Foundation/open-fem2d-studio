@@ -7,9 +7,17 @@
  * wijziging wordt het met een korte vertraging opnieuw opgevraagd, en een
  * verouderd antwoord wordt genegeerd.
  *
- * Nog niet aangesloten op de staafeigenschappen: het paneel beheert zijn
- * eigen korf (`initieel`) en meldt wijzigingen via `onChange`. De
- * hoofdsessie koppelt dat aan `Beam` en aan de check-store.
+ * Aangesloten op de staafeigenschappen: FemProperties monteert dit paneel op
+ * het tabblad "Norm" van een betonstaaf, geeft de opgeslagen korf mee als
+ * `initieel` en schrijft elke `onChange` terug naar `beam.checkConfig`
+ * (doorsnede en betonklasse landen op `profile`/`material`). De check-store
+ * leest die velden weer bij het toetsen.
+ *
+ * Het interactiediagram wordt hier bewust NIET opgevraagd
+ * (`interaction_points: 0`): het paneel is voor het kiezen van een korf, en
+ * elke toetsaanslag zou anders 21 extra M-κ-diagrammen kosten. Het rapport
+ * tekent het interactiediagram wél — dat gebruikt de omhullende die
+ * `check_concrete_beam` al berekent.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";

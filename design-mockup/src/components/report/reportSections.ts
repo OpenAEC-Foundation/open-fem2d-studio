@@ -45,6 +45,7 @@ import PlateStressSection from "./sections/PlateStressSection";
 import CheckTableSection from "./sections/CheckTableSection";
 import CheckDetailSection from "./sections/CheckDetailSection";
 import CltSection from "./sections/CltSection";
+import BetonSection from "./sections/BetonSection";
 import SpanningSection from "./sections/SpanningSection";
 
 export interface ReportSectionDef {
@@ -243,6 +244,21 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "voor de controlerend constructeur; de UC van de staaf staat al in het " +
       "toetsingsoverzicht.",
     Component: CltSection,
+  },
+  // Beton: de doorsnede met de wapeningskorf, het M-κ-diagram, het
+  // N-M-interactiediagram en het beperkingenblok. Rendert alleen iets wanneer
+  // er betonstaven met een korf zijn.
+  {
+    id: "beton",
+    titleKey: "report.sectionBeton",
+    defaultTitle: "Beton — doorsnede, M-κ-diagram en N-M-interactiediagram",
+    inBeperkt: true,
+    beperktReden:
+      "Het beperkingenblok hoort in ELK betonrapport: de toetsing dekt alleen " +
+      "de doorsnede op M en N, en een ontvanger die dat niet leest kan denken " +
+      "dat de betonstaaf compleet is nagerekend. Dat weegt zwaarder dan de " +
+      "regel dat detailuitvoer buiten het beperkte rapport blijft.",
+    Component: BetonSection,
   },
   // Vrije spanningstoets: de doorsnede met het spanningsverloop. Rendert
   // alleen iets wanneer er staven met een vrij materiaal zijn.

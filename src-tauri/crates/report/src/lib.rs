@@ -1,5 +1,5 @@
-//! Constructieve-toetsing PDF report (EN 1993-1-1 staal + EN 1995-1-1 hout) —
-//! built on **OpenAEC Foundation `openaec-layout`**.
+//! Constructieve-toetsing PDF report (EN 1993-1-1 staal, EN 1995-1-1 hout en
+//! EN 1992-1-1 beton) — built on **OpenAEC Foundation `openaec-layout`**.
 //!
 //! `openaec-layout` is the Rust equivalent of ReportLab Platypus: Flowables
 //! (Paragraph, Table, Spacer, PageBreak) flow through Frames in PageTemplates,
@@ -23,6 +23,7 @@ use openaec_layout::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use concrete_check::ConcreteBeamCheckResult;
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue};
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
 use timber_check::TimberBeamCheckResult;
@@ -62,6 +63,18 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(as = "Option<Vec<TimberBeamCheckResult>>", optional)]
     pub timber_check_results: Vec<TimberBeamCheckResult>,
+    /// Betontoetsingen (EN 1992-1-1): buiging met normaalkracht op de
+    /// doorsnede. `#[serde(default)]` om dezelfde reden als bij hout —
+    /// bestaande aanroepen zonder dit veld blijven geldig.
+    ///
+    /// LET OP bij het lezen van deze resultaten: de betonkern toetst
+    /// uitsluitend de doorsnede op M en N. Dwarskracht, wringing, pons,
+    /// scheurwijdte, doorbuiging, tweede-orde-effecten en de
+    /// detailleringsregels zitten er NIET in; zie het beperkingenblok van de
+    /// betonsectie in het live rapport.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<ConcreteBeamCheckResult>>", optional)]
+    pub concrete_check_results: Vec<ConcreteBeamCheckResult>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -70,22 +83,27 @@ pub struct ReportInput {
 pub const NORM_STEEL: &str = "EN 1993-1-1";
 /// Kort normlabel voor houttoetsingen.
 pub const NORM_TIMBER: &str = "EN 1995-1-1";
+/// Kort normlabel voor betontoetsingen.
+pub const NORM_CONCRETE: &str = "EN 1992-1-1";
 
 /// Volledige normaanduiding (cover) voor staal.
 const NORM_STEEL_FULL: &str = "NEN-EN 1993-1-1+C2+A1/NB:2016 nl";
 /// Volledige normaanduiding (cover) voor hout.
 const NORM_TIMBER_FULL: &str = "NEN-EN 1995-1-1+C1+A1:2011/NB:2013 nl";
+/// Volledige normaanduiding (cover) voor beton — dezelfde uitgave als waaruit
+/// de `nen-en-1992-1-1`-crate haar waarden leest (zie de crate-doc daar).
+const NORM_CONCRETE_FULL: &str = "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020 nl";
 
 /// Uniforme, materiaal-neutrale kijk op één getoetste staaf. De
 /// samenvattingstabel en de per-staaf-blokken worden hieruit gerenderd, zodat
-/// staal en hout gegarandeerd hetzelfde pad volgen.
+/// staal, hout en beton gegarandeerd hetzelfde pad volgen.
 pub struct ReportMember<'a> {
     pub beam_id: u32,
-    /// Kort normlabel: [`NORM_STEEL`] of [`NORM_TIMBER`].
+    /// Kort normlabel: [`NORM_STEEL`], [`NORM_TIMBER`] of [`NORM_CONCRETE`].
     pub norm: &'static str,
-    /// Profiel- of doorsnedenaam ("HEB160", "96 x 450").
+    /// Profiel- of doorsnedenaam ("HEB160", "96 x 450", "300 x 500").
     pub section_label: &'a str,
-    /// Staalsoort of sterkteklasse ("S235", "C24").
+    /// Staalsoort, sterkteklasse of betonsterkteklasse ("S235", "C24", "C30/37").
     pub grade_label: &'a str,
     pub uc_max: f64,
     pub status: &'a CheckStatus,
@@ -93,11 +111,14 @@ pub struct ReportMember<'a> {
     pub checks: &'a [NamedCheck],
 }
 
-/// Alle staven (staal + hout) als [`ReportMember`], gesorteerd op staaf-id.
-/// Bij gelijk id komt staal vóór hout (stabiele sortering).
+/// Alle staven (staal + hout + beton) als [`ReportMember`], gesorteerd op
+/// staaf-id. Bij gelijk id blijft de invoegvolgorde staal → hout → beton
+/// staan (stabiele sortering).
 pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     let mut members: Vec<ReportMember<'_>> = Vec::with_capacity(
-        input.steel_check_results.len() + input.timber_check_results.len(),
+        input.steel_check_results.len()
+            + input.timber_check_results.len()
+            + input.concrete_check_results.len(),
     );
 
     for r in &input.steel_check_results {
@@ -126,6 +147,19 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
         });
     }
 
+    for r in &input.concrete_check_results {
+        members.push(ReportMember {
+            beam_id: r.beam_id,
+            norm: NORM_CONCRETE,
+            section_label: &r.section_name,
+            grade_label: &r.concrete_class,
+            uc_max: r.uc_max,
+            status: &r.status,
+            governing_check_id: &r.governing_check_id,
+            checks: &r.checks,
+        });
+    }
+
     members.sort_by_key(|m| m.beam_id);
     members
 }
@@ -133,28 +167,40 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
 /// Normenregel voor cover en paginakop: alleen normen waarvan resultaten
 /// aanwezig zijn, gescheiden door " / " ("EN 1993-1-1 / EN 1995-1-1").
 pub fn norms_line(input: &ReportInput) -> String {
-    let mut norms: Vec<&str> = Vec::with_capacity(2);
+    let mut norms: Vec<&str> = Vec::with_capacity(3);
     if !input.steel_check_results.is_empty() {
         norms.push(NORM_STEEL);
     }
     if !input.timber_check_results.is_empty() {
         norms.push(NORM_TIMBER);
     }
+    if !input.concrete_check_results.is_empty() {
+        norms.push(NORM_CONCRETE);
+    }
     if norms.is_empty() {
-        // Leeg rapport: toon beide normen als kader in plaats van niets.
+        // Leeg rapport: toon de staalnorm als kader in plaats van niets.
         norms.push(NORM_STEEL);
     }
     norms.join(" / ")
 }
 
 /// Volledige normaanduidingen voor het cover-infoblok, in rapportvolgorde.
+///
+/// Eén norm per materiaal waarvan resultaten aanwezig zijn; een leeg rapport
+/// valt terug op de staalnorm, zodat het cover-infoblok nooit leeg is.
 fn full_norm_designations(input: &ReportInput) -> Vec<&'static str> {
-    let mut norms: Vec<&'static str> = Vec::with_capacity(2);
-    if !input.steel_check_results.is_empty() || input.timber_check_results.is_empty() {
+    let mut norms: Vec<&'static str> = Vec::with_capacity(3);
+    if !input.steel_check_results.is_empty() {
         norms.push(NORM_STEEL_FULL);
     }
     if !input.timber_check_results.is_empty() {
         norms.push(NORM_TIMBER_FULL);
+    }
+    if !input.concrete_check_results.is_empty() {
+        norms.push(NORM_CONCRETE_FULL);
+    }
+    if norms.is_empty() {
+        norms.push(NORM_STEEL_FULL);
     }
     norms
 }
@@ -325,7 +371,8 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     // 3. Cover page (RawPage — drawn directly).
     doc.add_pre_page(build_cover_page(&input, &norms));
 
-    // 4. Build content flowables — steel and timber members share one path.
+    // 4. Build content flowables — steel, timber and concrete members share
+    //    one path (all three deliver the same NamedCheck contract).
     let members = report_members(&input);
 
     let mut flow: Vec<Box<dyn Flowable>> = Vec::new();

@@ -14,6 +14,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { setSetting } from "../../../store";
+import { useCheckStore } from "../../../stores/checkStore";
+import { usedNorms } from "../checkReportUtils";
 import { useProjectInfo } from "../useProjectInfo";
 import {
   DEFAULT_UITGANGSPUNTEN,
@@ -32,6 +34,12 @@ function formatDate(raw: string): string {
 export default function ProjectSection() {
   const { t } = useTranslation("ribbon");
   const info = useProjectInfo();
+  // De normenregel komt uit de uitgangspunten-instelling, MAAR een norm
+  // waarop daadwerkelijk getoetst is hoort er altijd bij te staan — ook als
+  // de gebruiker hem in de projectinstellingen niet had aangevinkt. Beton
+  // staat daar standaard uit; zonder deze samenvoeging zou een rapport met
+  // een betontoetsing beweren dat EN 1992 niet is toegepast.
+  const gebruikt = usedNorms(useCheckStore((s) => s.results));
 
   // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
   // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
@@ -102,9 +110,9 @@ export default function ProjectSection() {
       {(() => {
         const u = info.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
         const normen = [
-          u.en1993 && "Eurocode 3 — Staal (EN 1993-1-1)",
-          u.en1995 && "Eurocode 5 — Hout (EN 1995-1-1)",
-          u.en1992 && "Eurocode 2 — Beton (EN 1992-1-1)",
+          (u.en1993 || gebruikt.steel) && "Eurocode 3 — Staal (EN 1993-1-1)",
+          (u.en1995 || gebruikt.timber) && "Eurocode 5 — Hout (EN 1995-1-1)",
+          (u.en1992 || gebruikt.concrete) && "Eurocode 2 — Beton (EN 1992-1-1)",
         ].filter(Boolean) as string[];
         const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
         const levensduur = LEVENSDUUR_OMSCHRIJVING[u.levensduurklasse]

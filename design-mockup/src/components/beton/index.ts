@@ -1,11 +1,17 @@
 /**
- * components/beton — wapeningskorf, doorsnedetekening en M-N-κ-diagram voor
- * de betontoetsing (NEN-EN 1992-1-1). Nog niet aangesloten op de
- * staafeigenschappen; zie BetonKorfPaneel voor het koppelvlak.
+ * components/beton — wapeningskorf, doorsnedetekening, M-N-κ-diagram en
+ * N-M-interactiediagram voor de betontoetsing (NEN-EN 1992-1-1).
+ *
+ * BetonKorfPaneel hangt in de staafeigenschappen (FemProperties, tabblad
+ * "Norm" bij een betonstaaf). De tekening en de grafieken worden daarnaast
+ * door de betonsectie van het rapport hergebruikt — daar met RAPPORT_KLEUREN
+ * in plaats van de theme-tokens.
  */
 export { default as BetonKorfPaneel } from "./BetonKorfPaneel";
 export { default as WapeningskorfEditor } from "./WapeningskorfEditor";
 export { default as DoorsnedeTekening } from "./DoorsnedeTekening";
-export { default as MNKappaGrafiek } from "./MNKappaGrafiek";
+export { default as MNKappaGrafiek, puntBijMoment } from "./MNKappaGrafiek";
+export { default as InteractieGrafiek } from "./InteractieGrafiek";
+export * from "./tekenkleuren";
 export * from "./wapeningskorf";
 export * from "./betonKern";
