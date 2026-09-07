@@ -37,6 +37,8 @@ import type {
   NodalDisp,
   NodalReaction,
   ElementForces,
+  BeamSegmentForces,
+  SolverBeamSegmentInput,
   SolverPlateInput,
   PlateResult,
   PlateElementStress,
@@ -64,6 +66,133 @@ type PlateRegionInfo = {
  * vergroten); een sparse solver staat op de backlog.
  */
 const MAX_MIXED_DOFS = 4000;
+
+/**
+ * Knooptolerantie van `mesh.findNodeAt` in mm (0,001 m). Twee splitsposities
+ * die dichter bij elkaar liggen krijgen DEZELFDE mesh-knoop en leveren dus een
+ * element van lengte nul — met NaN-doorbuigingen tot gevolg. Deze constante
+ * staat hier alleen om die grens in de segmentcontrole te kunnen noemen.
+ */
+const KNOOP_TOL_MM = 1;
+
+/**
+ * SAMENVOEGREGEL VOOR FLINTERS — kleinste lengte (mm) die een rekenelement van
+ * een gesegmenteerde staaf van de segmentindeling mag krijgen.
+ *
+ * De regel: een segmentgrens die dichter dan deze afstand bij een fractie ligt
+ * die om een ANDERE reden al vastligt — de twee eindknopen, een
+ * plaatrandknoop, een staafpuntlast — wordt laten vallen. Die andere fracties
+ * zijn dwingend (daar hangt een plaat of grijpt een last aan) en worden nooit
+ * verplaatst; het samengevoegde element krijgt de I van het segment waarin zijn
+ * MIDDEN valt. Segmentgrenzen worden NIET tegen elkaar afgewogen: een
+ * gelijkmatig fijne indeling is de resolutiekeuze van de aanroeper en het is
+ * niet aan de adapter om die uit te dunnen.
+ *
+ * WAAROM EEN GRENS NODIG IS. De buigtermen van de elementstijfheid schalen met
+ * 1/L², 1/L³. Een flinter zet daardoor torenhoge termen naast de gewone termen
+ * in dezelfde matrix en de oplossing verliest cijfers.
+ *
+ * WAAROM 25 mm — GEMETEN, niet geschat. Een flinter van lengte ℓ werd
+ * afgedwongen met twee nul-puntlasten naast elkaar (die splitsen wel maar
+ * belasten niet) en de uitkomst vergeleken met de analytische waarde
+ * θ_A = qL³/24EI van een vrij opgelegde ligger van 6000 mm onder UDL, en met
+ * max|u| van een raamwerk van 3 velden × 3 verdiepingen waarvan elke staaf in
+ * segmenten van 400 mm ligt (het model uit besluit B3):
+ *
+ *   ℓ [mm]  |  ligger 6 m   |  raamwerk 3×3 (max|u| / R)
+ *   --------|---------------|---------------------------
+ *     100   |    8,8e-13    |   1,0e-12 / 2,4e-13
+ *      50   |    2,0e-12    |   1,2e-12 / 2,9e-12
+ *      25   |    3,5e-10    |   1,6e-11 / 6,6e-11
+ *    12,5   |    2,5e-9     |   6,6e-11 / 2,7e-10   (12 mm)
+ *      10   |    1,2e-8     |   3,4e-10 / 1,3e-9
+ *       5   |    3,7e-8     |   8,8e-10 / 3,3e-9
+ *       2   |    4,2e-7     |   1,7e-8  / 6,4e-8
+ *      ≤1   |  knoopsnapping: element van lengte nul, doorbuiging NaN
+ *
+ * Bij 25 mm blijft de fout onder 5,5e-10 — ruim onder de 1e-9 waarmee de
+ * batterij toetst — terwijl de volgende halvering (12,5 mm) er al overheen
+ * gaat. Vandaar 25 en niet 10.
+ *
+ * De maat is ABSOLUUT (mm) en geen verhouding tot de buurelementen, omdat de
+ * meting dat zo uitwijst: een flinter van 25 mm kost 2,6e-10 tot 5,5e-10,
+ * ongeacht of zijn buren 400, 200, 100 of 40 mm lang zijn. Bij een VASTE
+ * verhouding buur/flinter = 16 loopt de fout juist op van 3,5e-10 (buur 400,
+ * flinter 25) naar 6,8e-7 (buur 40, flinter 2,5). Het is dus de absolute
+ * elementlengte die telt.
+ *
+ * En hij kost niets aan modelleervrijheid: 25 mm is 1/16 van de 400 mm
+ * segmentlengte uit besluit B3, dus er gaat nooit een echt segment verloren —
+ * alleen grenzen die praktisch al samenvielen met een bestaande splitsing.
+ */
+const MIN_SEGMENT_MM = 25;
+
+/**
+ * Segmentinvoer van één staaf controleren en normaliseren.
+ *
+ * Weigert liever met een Nederlandse melding dan stil met een verkeerde I te
+ * rekenen: de segmenten moeten een sluitende, niet-overlappende partitie van
+ * [0, 1] vormen. Retourneert `undefined` wanneer de staaf geen segmenten heeft
+ * (het bestaande, ongewijzigde pad).
+ */
+function normaliseerSegmenten(
+  beamId: number, segmenten: SolverBeamSegmentInput[] | undefined, L_mm: number,
+): { t0: number; t1: number; I_mm4: number; index: number }[] | undefined {
+  if (segmenten === undefined) return undefined;
+  if (!Array.isArray(segmenten) || segmenten.length === 0) {
+    throw new Error(
+      `Staaf ${beamId}: het veld "segmenten" is aanwezig maar leeg. Laat het ` +
+      `weg om met één doorsnede over de volle lengte te rekenen.`);
+  }
+  const TOL = 1e-9;
+  const uit = segmenten.map((s, i) => {
+    const t0 = s.tStart, t1 = s.tEnd, I_mm4 = s.I;
+    if (!Number.isFinite(t0) || !Number.isFinite(t1) || !Number.isFinite(I_mm4)) {
+      throw new Error(`Staaf ${beamId}, segment ${i + 1}: tStart, tEnd en I moeten getallen zijn.`);
+    }
+    if (t0 < -TOL || t1 > 1 + TOL) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: tStart/tEnd moeten tussen 0 en 1 ` +
+        `liggen (gekregen ${t0} … ${t1}).`);
+    }
+    if (t1 - t0 <= TOL) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: tEnd (${t1}) moet groter zijn dan tStart (${t0}).`);
+    }
+    if (!(I_mm4 > 0)) {
+      throw new Error(`Staaf ${beamId}, segment ${i + 1}: I moet groter dan nul zijn (mm⁴).`);
+    }
+    // Ondergrens die het REKENMESH stelt, niet de nauwkeurigheid: twee
+    // splitsposities binnen KNOOP_TOL_MM krijgen dezelfde mesh-knoop en het
+    // segment ertussen wordt een element van lengte nul (doorbuiging NaN).
+    // Daarom hier een harde weigering in plaats van een stil NaN verderop.
+    const lengte_mm = (t1 - t0) * L_mm;
+    if (L_mm > 0 && lengte_mm < KNOOP_TOL_MM) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: lengte ${lengte_mm.toFixed(4)} mm is ` +
+        `korter dan de knooptolerantie van het rekenmesh (${KNOOP_TOL_MM} mm). ` +
+        `Zo'n segment levert een element van lengte nul op. Gebruik een grovere ` +
+        `segmentindeling.`);
+    }
+    return { t0, t1, I_mm4, index: i };
+  });
+  // Partitie-eis: oplopend, sluitend van 0 tot 1, zonder gaten of overlap.
+  if (Math.abs(uit[0].t0) > TOL || Math.abs(uit[uit.length - 1].t1 - 1) > TOL) {
+    throw new Error(
+      `Staaf ${beamId}: de segmenten moeten de hele staaf dekken — het eerste ` +
+      `segment begint bij tStart ${uit[0].t0} en het laatste eindigt bij tEnd ` +
+      `${uit[uit.length - 1].t1}; verwacht 0 en 1.`);
+  }
+  for (let i = 1; i < uit.length; i++) {
+    if (Math.abs(uit[i].t0 - uit[i - 1].t1) > TOL) {
+      throw new Error(
+        `Staaf ${beamId}: segment ${i} eindigt op ${uit[i - 1].t1} en segment ` +
+        `${i + 1} begint op ${uit[i].t0}. De segmenten moeten aaneensluiten ` +
+        `(geen gat en geen overlap).`);
+    }
+  }
+  return uit;
+}
 
 /**
  * Splitsfracties (0..1, exclusief de uiteinden) van een staaf die exact op
@@ -178,6 +307,13 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
    * staaf. Alleen entries voor staven met ≥ 2 deelstukken.
    */
   beamSegments: Map<number, { meshId: number; t0: number; t1: number }[]>;
+  /**
+   * Rekenstukken van staven die met een eigen I PER SEGMENT zijn opgebouwd
+   * (fase D, stap 10). Alleen entries voor staven waarvan de invoer een
+   * `segmenten`-veld droeg; anders leeg, en dan blijft convertResult op het
+   * bestaande pad. Eén item per mesh-element, op volgorde langs de staaf.
+   */
+  segmentUitvoer: Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>;
 } {
   const mesh = new Mesh();
   const nodeIdMap = new Map<number, number>();
@@ -381,6 +517,9 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
    */
   const beamKnoopPerFractie = new Map<number, { t: number; meshNodeId: number }[]>();
 
+  // Rekenstukken van gesegmenteerde staven — zie het returntype hierboven.
+  const segmentUitvoer = new Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>();
+
   for (const b of input.beams) {
     const fromId = nodeIdMap.get(b.from);
     const toId   = nodeIdMap.get(b.to);
@@ -407,15 +546,62 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       if (splitsT.length === 0 || Math.abs(t - splitsT[splitsT.length - 1]) > 1e-9) splitsT.push(t);
     }
 
+    // ── Segmenten met een eigen I (fase D, stap 10) ────────────────────────
+    // De segmentgrenzen komen ACHTERAF bij de geometrische splitsfracties:
+    // die laatste zijn dwingend (daar hangt een plaat of grijpt een last aan)
+    // en worden nooit verplaatst of weggelaten. Een segmentgrens binnen
+    // MIN_SEGMENT_MM van zo'n dwingende fractie — of van een uiteinde — wordt
+    // LATEN VALLEN; dat is de samenvoegregel tegen flinters (zie
+    // MIN_SEGMENT_MM voor de meting erachter). Segmentgrenzen worden bewust
+    // NIET tegen elkáár afgewogen: de indeling van de aanroeper blijft intact.
+    // Welke I een rekenelement krijgt volgt daarna uit zijn MIDDEN en niet uit
+    // zijn nummer; die ene regel dekt samengevoegde grenzen én extra knippen
+    // bínnen één segment.
+    const L_mm = Math.hypot(nB.x - nA.x, nB.z - nA.z);
+    const segDef = normaliseerSegmenten(b.id, b.segmenten, L_mm);
+    if (segDef) {
+      // Staaf met lengte 0 kan niet gesplitst worden; minFrac = ∞ laat dan
+      // elke grens vallen en levert één element met de I van het middensegment.
+      const minFrac = L_mm > 0 ? MIN_SEGMENT_MM / L_mm : Infinity;
+      const dwingend = [0, ...splitsT, 1];
+      for (const s of segDef.slice(1)) {           // grens = tStart van segment 2..n
+        if (dwingend.some((t) => Math.abs(t - s.t0) < minFrac)) continue;
+        splitsT.push(s.t0);
+      }
+      splitsT.sort((p, q) => p - q);
+    }
+
+    /**
+     * Doorsnede van het rekenstuk [t0, t1]: A en h van de staaf, I van het
+     * segment waarin het MIDDEN van het stuk valt (zonder segmenten: de
+     * staaf-I, en dan is dit hetzelfde object als voorheen).
+     */
+    const doorsnedeVoor = (t0: number, t1: number):
+      { sec: typeof section; I_mm4: number; segmentIndex: number } => {
+      if (!segDef) return { sec: section, I_mm4: 0, segmentIndex: -1 };
+      const mid = (t0 + t1) / 2;
+      const s = segDef.find((d) => mid >= d.t0 && mid < d.t1) ?? segDef[segDef.length - 1];
+      return {
+        sec: { A: section.A, I: s.I_mm4 * 1e-12, h: section.h },
+        I_mm4: s.I_mm4,
+        segmentIndex: s.index,
+      };
+    };
+
     if (splitsT.length === 0) {
       // Ongesplitst — het bestaande pad (bit-identiek zonder platen).
-      const meshBeam = mesh.addBeamElement([fromId, toId], matId, section);
+      const d = doorsnedeVoor(0, 1);
+      const meshBeam = mesh.addBeamElement([fromId, toId], matId, d.sec);
       if (!meshBeam) continue;
       beamIdMap.set(b.id, meshBeam.id);
       pasReleasesToe(meshBeam.id, b, true, true);
       beamKnoopPerFractie.set(b.id, [
         { t: 0, meshNodeId: fromId }, { t: 1, meshNodeId: toId },
       ]);
+      if (segDef) {
+        segmentUitvoer.set(b.id,
+          [{ meshId: meshBeam.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex }]);
+      }
     } else {
       // Tussenknopen op de gridposities van de plaatrand. findNodeAt
       // hergebruikt een eventueel al bestaande (UI-)knoop binnen 1 mm; het
@@ -433,15 +619,19 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       beamKnoopPerFractie.set(b.id,
         grens.map((t, i) => ({ t, meshNodeId: knoopIds[i] })));
       const segs: { meshId: number; t0: number; t1: number }[] = [];
+      const stukken: { meshId: number; I_mm4: number; segmentIndex: number }[] = [];
       for (let i = 0; i < knoopIds.length - 1; i++) {
-        const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, section);
+        const d = doorsnedeVoor(grens[i], grens[i + 1]);
+        const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, d.sec);
         if (!mb) continue;
         pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
         segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
+        stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex });
       }
       if (segs.length > 0) {
         beamIdMap.set(b.id, segs[0].meshId);
         if (segs.length > 1) beamSegments.set(b.id, segs);
+        if (segDef) segmentUitvoer.set(b.id, stukken);
       }
     }
   }
@@ -920,7 +1110,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
   }
 
-  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments };
+  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer };
 }
 
 /**
@@ -941,6 +1131,7 @@ function convertResult(
   plateInfo?: PlateRegionInfo[],
   nodeIndex?: Map<number, number>,
   beamSegments?: Map<number, { meshId: number; t0: number; t1: number }[]>,
+  segmentUitvoer?: Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>,
 ): SolverResult {
   const displacements = new Map<number, NodalDisp>();
   const reactions = new Map<number, NodalReaction>();
@@ -996,7 +1187,54 @@ function convertResult(
   //   bendingMoment[], deflection[], axialDisp[]
   // We forward ALL of it (with mm/N·mm units for the UI) so the canvas
   // can draw real parabola / step shapes instead of linear interpolation.
+  /**
+   * Segmentuitkomsten van één staaf (fase D, stap 10): per rekenstuk de
+   * x-grenzen langs de staaf, de gebruikte I, en de N/M die erin optraden.
+   * De x-as loopt gelijk met `stations_mm`, dus de offsets worden op dezelfde
+   * manier opgeteld als daar: de lengte van elk stuk is het laatste station
+   * van dat stuk.
+   *
+   * TEKENS: N wordt hier — net als in het staafresultaat zelf — van de
+   * druk-positieve core naar de TREK-POSITIEVE adaptergrens geflipt; M gaat
+   * van N·m naar N·mm.
+   */
+  const bouwSegmentUitvoer = (
+    stukken: { meshId: number; I_mm4: number; segmentIndex: number }[],
+  ): BeamSegmentForces[] | undefined => {
+    const uit: BeamSegmentForces[] = [];
+    let offset_m = 0;
+    for (const stuk of stukken) {
+      const d = engineResult.beamForces.get(stuk.meshId);
+      if (!d) return undefined;              // onvolledig → veld weglaten
+      const st: number[] = d.stations ?? [];
+      const L_stuk_m = st.length > 0 ? st[st.length - 1] : 0;
+      const nArr: number[] = d.normalForce ?? [];
+      const mArr: number[] = d.bendingMoment ?? [];
+      let iMax = 0;
+      for (let i = 1; i < mArr.length; i++) {
+        if (Math.abs(mArr[i]) > Math.abs(mArr[iMax])) iMax = i;
+      }
+      const laatste = Math.max(0, mArr.length - 1);
+      uit.push({
+        xStart: offset_m * 1000,
+        xEnd: (offset_m + L_stuk_m) * 1000,
+        I: stuk.I_mm4,
+        segmentIndex: stuk.segmentIndex,
+        N_start: -(nArr[0] ?? 0),
+        N_end:   -(nArr[nArr.length - 1] ?? 0),
+        M_start: (mArr[0] ?? 0) * 1000,
+        M_end:   (mArr[laatste] ?? 0) * 1000,
+        M_max:   (mArr[iMax] ?? 0) * 1000,
+        N_bij_M_max: -(nArr[iMax] ?? 0),
+      });
+      offset_m += L_stuk_m;
+    }
+    return uit;
+  };
+
   for (const [uiId, meshId] of beamIdMap) {
+    const stukken = segmentUitvoer?.get(uiId);
+    const segmentVeld = stukken ? bouwSegmentUitvoer(stukken) : undefined;
     // Op een plaatrand gesplitste staaf (P2.4): de stations van de
     // deelstukken worden aaneengeregen tot één doorlopend staafresultaat.
     // De gedeelde randknoop levert een dubbel station (einde deel i =
@@ -1035,6 +1273,7 @@ function convertResult(
         M_end:   laatste.M2 * 1000,
         L_mm: offset_m * 1000,
         stations_mm, normalForce, shearForce, bendingMoment, deflection, axialDisp,
+        ...(segmentVeld ? { segmenten: segmentVeld } : {}),
       });
       continue;
     }
@@ -1061,6 +1300,7 @@ function convertResult(
       bendingMoment: (bf.bendingMoment ?? []).map((m: number) => m * 1000), // N·m → N·mm
       deflection: (bf.deflection ?? []).map((w: number) => w * 1000), // m → mm (lokaal, +y)
       axialDisp:  (bf.axialDisp  ?? []).map((u: number) => u * 1000), // m → mm
+      ...(segmentVeld ? { segmenten: segmentVeld } : {}),
     });
   }
 
@@ -1142,7 +1382,7 @@ function convertResult(
 // ── Public engine functions ─────────────────────────────────────────────────
 
 export function solve(input: SolverInput): SolverResult {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments } = buildMesh(input);
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input);
   // Platen aanwezig ⇒ mixed_beam_plate (staven 6×6 + membranen 3 DOF/knoop);
   // zonder platen blijft het pad bit-identiek "frame".
   const heeftPlaten = plateInfo.length > 0;
@@ -1151,13 +1391,13 @@ export function solve(input: SolverInput): SolverResult {
     geometricNonlinear: false,
   });
   const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
-  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments);
+  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer);
 }
 
 export function solveAllCases(input: MultiInput): MultiLcResult {
   const perCase = new Map<number, SolverResult>();
   for (const c of input.cases) {
-    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
+    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
     // Een leeg belastinggeval (bijv. Q/S/W zonder ingevoerde lasten — de
     // standaardset heeft er vier) is geen fout: overslaan. De solver gooit er
     // anders "No loads applied" op en dat liet de hele combinatie-/toetsings-
@@ -1170,7 +1410,7 @@ export function solveAllCases(input: MultiInput): MultiLcResult {
       geometricNonlinear: false,
     });
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
-    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments));
+    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer));
   }
   return { perCase };
 }
@@ -1254,7 +1494,7 @@ export function solveCombinationSecondOrder(
   input: MultiInput,
   combo: SecondOrderCombo,
 ): SolverResult | null {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo } = buildMesh(
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(
     input,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
   );
@@ -1281,7 +1521,16 @@ export function solveCombinationSecondOrder(
       maxIterations: 100,
       tolerance: 1e-6,
     });
-    return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports);
+    // beamSegments/segmentUitvoer gaan hier MEE. Zonder die twee zou een
+    // gesplitste staaf (staafpuntlast, of straks een segmentindeling) in het
+    // 2e-orde-pad alleen zijn EERSTE deelstuk als staafresultaat melden — het
+    // 1e-orde-pad rijgt de deelstukken al wél aaneen. Dit is dus geen extra
+    // vrijheid maar het wegwerken van een verschil tussen de twee paden; op
+    // modellen zónder splitsing is beide Maps leeg en verandert er niets.
+    return convertResult(
+      mesh, engineResult, nodeIdMap, beamIdMap, input.supports,
+      undefined, undefined, beamSegments, segmentUitvoer,
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/P-Delta/.test(msg)) {

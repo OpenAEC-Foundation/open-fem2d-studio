@@ -18,6 +18,44 @@ export interface SolverNodeInput {
   z: number;
 }
 
+/**
+ * Eén segment van een staaf met een EIGEN buigstijfheid (fase D, stap 10).
+ *
+ * BEDOELING. Een fysisch niet-lineaire berekening geeft elke doorsnede langs
+ * een staaf zijn eigen secans-EI: gescheurd beton is bij het veldmoment
+ * slapper dan bij de steunpunten. De rekenkern kan dat al — `Mesh.addBeamElement`
+ * geeft élk element zijn eigen `section`, en `Assembler`/`BeamForces` lezen
+ * `element.section.I` per element. Dit veld is het contract waarmee de
+ * aanroeper die indeling aan de adapter doorgeeft; de adapter knipt de staaf
+ * op de segmentgrenzen en geeft elk deelelement zijn eigen I.
+ *
+ * EENHEDEN OP DEZE GRENS. Zoals de rest van de solverinvoer: lengtes in mm,
+ * I in mm⁴. `tStart`/`tEnd` zijn dimensieloze FRACTIES 0..1 van de staaflengte,
+ * gemeten vanaf de startknoop (`from`); de bijbehorende lengte in mm is dus
+ * t·L. De adapter rekent I zelf om naar m⁴ (×1e-12) voordat de kern hem ziet.
+ *
+ * WAT NIET PER SEGMENT VARIEERT. Alleen I. E hoort bij de staaf (één
+ * materiaal per staaf — de adapter maakt één mesh-materiaal per unieke
+ * E-waarde) en A blijft de staaf-A: de normaalkrachtstijfheid EA varieert in
+ * deze stap niet mee. Wie dat later wél wil, breidt dit type uit; de
+ * adapterlus is er op ingericht (de doorsnede wordt per deelelement gebouwd).
+ *
+ * MINIMALE SEGMENTLENGTE. Een segmentgrens die vlak naast een al bestaande
+ * splitsfractie ligt (plaatrandknoop of staafpuntlast) zou een element met
+ * bijna lengte nul opleveren; zie MIN_SEGMENT_MM in engine.ts voor de regel
+ * en de motivatie. De adapter laat zo'n grens vallen — de bestaande
+ * splitsfractie wint altijd — en het samengevoegde element krijgt de I van het
+ * segment waarin zijn MIDDEN valt.
+ */
+export interface SolverBeamSegmentInput {
+  /** Beginfractie 0..1 van de staaflengte vanaf de startknoop (dimensieloos). */
+  tStart: number;
+  /** Eindfractie 0..1, strikt groter dan `tStart` (dimensieloos). */
+  tEnd: number;
+  /** Traagheidsmoment van dit segment (mm⁴). */
+  I: number;
+}
+
 export interface SolverBeamInput {
   id: number;
   from: number;          // node id
@@ -25,6 +63,18 @@ export interface SolverBeamInput {
   E?: number;            // N/mm²   default 210000
   A?: number;            // mm²     default 3877  (HEA 160)
   I?: number;            // mm⁴     default 1.673e7 (HEA 160 Iy)
+  /**
+   * Optionele segmentindeling met een eigen I per segment (mm⁴) — zie
+   * SolverBeamSegmentInput. ONTBREEKT het veld, dan rekent de staaf precies
+   * zoals hij dat zonder segmenten deed: één doorsnede over de volle lengte.
+   *
+   * De segmenten moeten een sluitende, niet-overlappende PARTITIE van [0, 1]
+   * vormen (oplopend, tStart[0] = 0, tEnd[n−1] = 1, tEnd[i] = tStart[i+1]);
+   * de adapter weigert anders met een Nederlandse melding in plaats van stil
+   * met een verkeerde I te rekenen. `I` overschrijft `SolverBeamInput.I` voor
+   * het betreffende stuk; `E` en `A` blijven van de staaf zelf.
+   */
+  segmenten?: SolverBeamSegmentInput[];
   /**
    * Scharnier-aansluiting per uiteinde:
    *  - 'fixed' (default): rigid moment-resisting joint to the next element.
@@ -288,6 +338,49 @@ export interface NodalReaction {
   my: number;   // N·mm
 }
 
+/**
+ * Uitkomst per REKENSTUK van een gesegmenteerde staaf (fase D, stap 10).
+ *
+ * Eén record per element waarmee werkelijk gerekend is — dus per stuk met een
+ * eigen I. Dat is niet altijd één-op-één het invoersegment: binnen een segment
+ * kan nog geknipt zijn op een staafpuntlast of een plaatrandknoop (dan liggen
+ * er meerdere records met dezelfde `segmentIndex` achter elkaar), en een
+ * segmentgrens die op een bestaande splitsfractie is samengevoegd levert één
+ * record dat twee invoersegmenten overspant (`segmentIndex` is dan die van het
+ * segment waarin het midden van het stuk valt). De records liggen op volgorde
+ * langs de staaf en sluiten aaneen: `xEnd[i] = xStart[i+1]`, `xStart[0] = 0`
+ * en `xEnd[laatste] = L_mm`.
+ *
+ * De x-coördinaten liggen in hetzelfde assenstelsel als `stations_mm`, zodat
+ * een aanroeper de stationsreeks per stuk kan snijden.
+ *
+ * Eenheden: mm, mm⁴, N en N·mm — zoals de rest van de grens. Tekenconventies
+ * eveneens: N TREK POSITIEF, M sagging-positief.
+ */
+export interface BeamSegmentForces {
+  /** Beginpositie langs de staaf vanaf de startknoop (mm). */
+  xStart: number;
+  /** Eindpositie langs de staaf (mm). */
+  xEnd: number;
+  /** Traagheidsmoment waarmee dit stuk gerekend heeft (mm⁴). */
+  I: number;
+  /** Index in `SolverBeamInput.segmenten` waarvan die I komt. */
+  segmentIndex: number;
+  /** Normaalkracht aan het begin resp. het eind van het stuk (N, trek positief). */
+  N_start: number;
+  N_end: number;
+  /** Buigend moment aan het begin resp. het eind van het stuk (N·mm, sagging +). */
+  M_start: number;
+  M_end: number;
+  /**
+   * Het station binnen dit stuk met de grootste |M|, mét teken (N·mm), en de
+   * normaalkracht op datzelfde station (N, trek positief). Dat is het
+   * (N, M)-paar waarmee een M-N-κ-orakel de volgende secans-EI bepaalt.
+   */
+  M_max: number;
+  N_bij_M_max: number;
+}
+
 export interface ElementForces {
   N: number;        // N   (axial, tension +ve at end A)
   V: number;        // N   (shear, end-A local convention)
@@ -340,6 +433,14 @@ export interface ElementForces {
    * voor verdeelde axiale q.
    */
   axialDisp: number[];
+
+  /**
+   * Segmentuitkomsten — ALLEEN aanwezig wanneer de invoerstaaf een
+   * `segmenten`-veld droeg (zie SolverBeamSegmentInput). Zonder segmenten
+   * ontbreekt het veld en is het resultaat identiek aan het bestaande gedrag.
+   * Zie BeamSegmentForces voor de inhoud.
+   */
+  segmenten?: BeamSegmentForces[];
 }
 
 /** Min/max van één spannings-/krachtcomponent over de elementen van een plaat. */

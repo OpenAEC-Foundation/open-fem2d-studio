@@ -23,3 +23,7 @@ serde_json = { workspace = true }
 [[test]]
 name = "referentie_balk"
 path = "tests/referentie_balk.rs"
+
+[[test]]
+name = "segmentstijfheid"
+path = "tests/segmentstijfheid.rs"

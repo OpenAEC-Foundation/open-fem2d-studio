@@ -96,9 +96,17 @@ use crate::section::{RebarLayer, RectConcreteSection};
 use crate::stress_strain::{
     ConcreteNonlinearCurve, ConcreteTension, DesignMaterial, NonlinearBasis,
 };
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// β van (7.19): de invloed van de belastingsduur op de gemiddelde rek.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+///
+/// Serde en ts-rs staan erop omdat het segmentstijfheidsverzoek in
+/// `concrete-check` deze keuze als invoerveld draagt en hem in het antwoord
+/// terugmeldt. Welke β is gebruikt mag niet impliciet blijven; het scheelt in
+/// de BGT rechtstreeks stijfheid (zie `beta_van_7_19_werkt_de_goede_kant_op`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub enum LoadDuration {
     /// "= 1,0 voor een enkele kortdurende belasting" — 7.4.3(3).
     #[default]
@@ -166,7 +174,13 @@ impl std::fmt::Display for StiffnessError {
 impl std::error::Error for StiffnessError {}
 
 /// Hoe de kromming is gevonden.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// Serde en ts-rs staan erop om dezelfde reden als bij [`LoadDuration`]: het
+/// segmentantwoord meldt per segment of de snelle weg is genomen of dat er is
+/// teruggevallen op de insluiting. Dat is de vroegste zichtbare aanwijzing dat
+/// een segment tegen de top van zijn M-κ-diagram aanloopt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub enum SolveMethod {
     /// Newton op (ε₀, κ), binnen de bewaakte insluiting.
     Newton,

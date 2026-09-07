@@ -16,8 +16,9 @@
 //! constructieve software een veiligheidsprobleem.
 //!
 //! DE NAMEN
-//! `list_concrete_classes`, `list_reinforcement_grades` en `concrete_mn_kappa`
-//! heten hier precies zoals in de andere twee wegen. `check_concrete_beam`
+//! `list_concrete_classes`, `list_reinforcement_grades`, `concrete_mn_kappa` en
+//! `concrete_segment_stiffness` heten hier precies zoals in de andere twee
+//! wegen. `check_concrete_beam`
 //! staat in het ENKELVOUD en toetst één staaf, gelijk aan `check_steel_beam`
 //! hiernaast; de Tauri- en toetsbrug-weg heten `check_concrete_beams` en nemen
 //! een lijst, net zoals `check_steel_beams` daar. Het invoertype
@@ -33,8 +34,9 @@
 //! byte-voor-byte wat de andere twee wegen kaal teruggeven.
 //!
 //! STRIKTE SCHEMA'S
-//! `ConcreteBeamCheckInput`, `MnKappaRequest`, `ReinforcementCage` en
-//! `RebarRow` staan alle vier op `#[serde(deny_unknown_fields)]`. De schema's
+//! `ConcreteBeamCheckInput`, `MnKappaRequest`, `SegmentStiffnessRequest`,
+//! `SegmentForces`, `ReinforcementCage` en `RebarRow` staan alle zes op
+//! `#[serde(deny_unknown_fields)]`. De schema's
 //! hieronder spiegelen dat met `additionalProperties: false` en noemen ALLE
 //! velden, ook die met `#[serde(default)]`. Dat is niet cosmetisch: laat een
 //! client `apply_min_eccentricity` weg, dan valt hij op `true` (veilig), maar
@@ -45,14 +47,15 @@ use serde_json::{json, Value};
 
 use crate::RpcError;
 
-/// De vier betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
+/// De vijf betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
 /// schema's en de dispatch — zodat een tool niet in `tools/list` kan staan
 /// zonder afhandeling, of andersom.
-pub const CONCRETE_TOOLS: [&str; 4] = [
+pub const CONCRETE_TOOLS: [&str; 5] = [
     "list_concrete_classes",
     "list_reinforcement_grades",
     "check_concrete_beam",
     "concrete_mn_kappa",
+    "concrete_segment_stiffness",
 ];
 
 pub fn is_concrete_tool(naam: &str) -> bool {
@@ -92,6 +95,26 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
                 // Een onbekende sterkteklasse of een korf die niet in de
                 // doorsnede past is een toolfout met de reden erbij, geen leeg
                 // diagram: leeg zou als "geen capaciteit" kunnen lezen.
+                .map_err(RpcError::invalid_params)?;
+            serde_json::to_value(result)
+                .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
+        }
+        "concrete_segment_stiffness" => {
+            let req: concrete_check::SegmentStiffnessRequest = serde_json::from_value(args)
+                .map_err(|e| {
+                    RpcError::invalid_params(format!("SegmentStiffnessRequest: {e}"))
+                })?;
+            // Blokkerend werk: per segment wordt de doorsnede in `n_strips`
+            // stroken geïntegreerd en wordt er op de kromming geïtereerd. Een
+            // staaf van 10 m in segmenten van 400 mm is 25 van die oplossingen.
+            let result = tokio::task::spawn_blocking(move || concrete_check::segment_stiffness(req))
+                .await
+                .map_err(|e| RpcError::tool_exec(format!("join error: {e}")))?
+                // Een onuitvoerbaar verzoek — onbekende sterkteklasse, een korf
+                // die niet past, een lijst krachten die niet bij de indeling
+                // hoort — is een toolfout met de reden erbij. Een segment dat
+                // niet convergeert is dat NIET: dat staat als `Failed` in de
+                // tabel, met de reden en zonder getal.
                 .map_err(RpcError::invalid_params)?;
             serde_json::to_value(result)
                 .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
@@ -157,7 +180,29 @@ fn schema_design_situation() -> Value {
     })
 }
 
-/// De vier tooldefinities voor `tools/list`.
+/// Eén paar snedekrachten van een segment (`SegmentForces`). Beide velden zijn
+/// verplicht: de Rust-kant kent er geen standaardwaarde voor, en een
+/// stilzwijgende nul zou een stijfheid opleveren die bij een ander lastgeval
+/// hoort.
+fn schema_segmentkrachten() -> Value {
+    json!({
+        "type": "array",
+        "description": "De snedekrachten per segment uit de vorige raamwerkronde, in de volgorde van de segmentindeling. LEEG (of weggelaten) = ronde 0: dan komt alleen de indeling terug en wordt er niets gerekend. Is de lijst niet leeg, dan moet hij precies zoveel elementen tellen als er segmenten zijn; een afwijkend aantal is een fout en geen stilzwijgende bijsnijding.",
+        "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["n_ed_kn", "m_ed_knm"],
+            "properties": {
+                "n_ed_kn": { "type": "number",
+                    "description": "Normaalkracht in kN. TREK IS POSITIEF, dus een drukkracht is negatief." },
+                "m_ed_knm": { "type": "number",
+                    "description": "Buigend moment in kNm om de sterke as; positief = trek in de onderste vezel." }
+            }
+        }
+    })
+}
+
+/// De vijf tooldefinities voor `tools/list`.
 pub fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
@@ -228,6 +273,58 @@ pub fn tool_definitions() -> Vec<Value> {
                 "required": ["width_mm", "height_mm", "concrete_class", "reinforcement_grade", "cage"]
             }
         }),
+        json!({
+            "name": "concrete_segment_stiffness",
+            "description": "Stateless secant-bending-stiffness service for the physically non-linear second-order analysis of EN 1992-1-1 §5.8.6. One request describes ONE reinforced-concrete member: it is divided into equal segments (rule n = max(1, round(L / target)), the same rule the mesh adapter uses for its element boundaries) and each segment gets its own EI = (M - M_0)/kappa from the (3.14) stress-strain relation of §3.1.5 that §5.8.6(3) prescribes. Send it WITHOUT 'segment_forces' to get only the segment layout (round 0, load-case independent). Send it WITH the (N, M) of the previous frame analysis to get the stiffnesses for the next round, plus the convergence verdict. Nothing is kept between calls. The response is the report table: per segment x_start/x_end, N_Ed, M_Ed, M_0, M_cr, kappa, EI, cracked yes/no, the limit state used and the status. Same input type (SegmentStiffnessRequest) and output type (SegmentStiffnessResponse) as the Tauri command and the toetsbrug opdracht of the same name. NOT included: the global iteration loop itself, shear, torsion, crack width.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "beam_id": { "type": "integer", "minimum": 0,
+                        "description": "Staafnummer; komt onveranderd terug in het antwoord." },
+                    "width_mm": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "Doorsnedebreedte b in mm." },
+                    "height_mm": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "Doorsnedehoogte h in mm; de buiging gaat om de sterke as." },
+                    "concrete_class": { "type": "string",
+                        "description": "Betonsterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\". Zie `list_concrete_classes`." },
+                    "reinforcement_grade": { "type": "string",
+                        "description": "Wapeningsstaal uit bijlage C, bijvoorbeeld \"B500B\". Zie `list_reinforcement_grades`." },
+                    "cage": schema_korf(),
+                    "length_m": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "Staaflengte in m. Bepaalt samen met `target_segment_length_mm` de segmentindeling." },
+                    "target_segment_length_mm": { "type": "number", "exclusiveMinimum": 0, "default": 400,
+                        "description": "Gewenste segmentlengte in mm; 400 is de beginwaarde. De werkelijke lengte is L/n met n = max(1, round(L / doel)), dus alle segmenten zijn even lang en de werkelijke lengte ligt tussen 0,75x en 1,5x de gewenste. De uitkomst staat in het antwoord." },
+                    "max_segments": { "type": "integer", "minimum": 1, "default": 2000,
+                        "description": "Vangnet: meer segmenten dan dit is een verzoekfout in plaats van een berekening. Beschermt tegen een doelwaarde van bijna nul." },
+                    "limit_state": { "type": "string", "enum": ["DesignValues", "MeanValues"], "default": "DesignValues",
+                        "description": "Grenstoestand. \"DesignValues\" = UGT volgens 5.8.6(3): (3.14) met f_cd en E_cd = E_cm/1,2, betontrek verwaarloosd (5.8.6(5)). \"MeanValues\" = BGT volgens 3.1.5/7.4.3: (3.14) met f_cm en E_cm, met de tension stiffening van (7.18)/(7.19). De gebruikte variant staat per segment in het antwoord en is nooit impliciet." },
+                    "phi_ef": { "type": "number", "minimum": 0, "default": 0,
+                        "description": "Effectieve kruipcoefficient volgens 5.8.4, verwerkt volgens 5.8.6(4) (alle rekwaarden maal (1 + phi_ef)). Default 0: er wordt dan ZONDER kruip gerekend, en het antwoord meldt dat met zoveel woorden, inclusief dat de uitkomst voor blijvend belaste kolommen aan de onveilige kant is." },
+                    "segment_forces": schema_segmentkrachten(),
+                    "previous_ei_knm2": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "De stijfheden in kNm2 van de vorige ronde, in dezelfde volgorde als de segmenten. Leeg = eerste ronde met krachten; convergentie is dan niet te beoordelen en het antwoord meldt dat. Een niet-lege lijst moet precies zoveel elementen tellen als er segmenten zijn."
+                    },
+                    "relaxation": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1,
+                        "description": "Onderrelaxatie omega: EI = EI_vorig + omega*(EI_berekend - EI_vorig). 1,0 = geen relaxatie. De onbewerkte waarde blijft in `ei_raw_knm2` staan, en het convergentie-oordeel rekent met die onbewerkte waarde — relaxatie kan dus geen convergentie voorwenden." },
+                    "convergence_tolerance": { "type": "number", "exclusiveMinimum": 0, "default": 0.01,
+                        "description": "Tolerantie op max |EI - EI_vorig| / max(|EI|, |EI_vorig|) over alle segmenten. Default 0,01 (1 %). Een keuze, geen normwaarde." },
+                    "min_ei_ratio": { "type": "number", "minimum": 0, "exclusiveMaximum": 1, "default": 0.01,
+                        "description": "Ondergrens voor EI als fractie van E_c*I_c, om het globale stelsel oplosbaar te houden als een segment vrijwel op zijn momentweerstand staat. 0 = niet klemmen. Grijpt de klem in, dan staat dat per segment in `clamped` met een melding, en geldt de ronde NIET als geconvergeerd: een geklemde waarde is een numerieke ondergrens en geen rekenuitkomst. Een keuze, geen normwaarde." },
+                    "n_strips": schema_n_strips(),
+                    "steel_branch": schema_steel_branch(),
+                    "design_situation": schema_design_situation(),
+                    "load_duration": { "type": "string", "enum": ["ShortTerm", "Sustained"], "default": "ShortTerm",
+                        "description": "beta van (7.19), alleen in de BGT van invloed. \"ShortTerm\" = 1,0 voor een enkele kortdurende belasting, \"Sustained\" = 0,5 voor aanhoudende belastingen of meervoudige cycli van zich herhalende belastingen (7.4.3(3))." }
+                },
+                "required": [
+                    "beam_id", "width_mm", "height_mm", "concrete_class",
+                    "reinforcement_grade", "cage", "length_m"
+                ]
+            }
+        }),
     ]
 }
 
@@ -262,6 +359,78 @@ mod tests {
                 "{naam} laat onbekende argumenten toe"
             );
         }
+    }
+
+    /// Het schema van `concrete_segment_stiffness` is de spiegel van
+    /// `SegmentStiffnessRequest`. Dat type staat op `deny_unknown_fields` en
+    /// het schema op `additionalProperties: false`, dus een veld dat aan één
+    /// van de twee kanten ontbreekt maakt de tool onbruikbaar: de kern zou het
+    /// weigeren, of de server zou het al voor de kern wegfilteren. De lijst
+    /// hieronder is met de hand overgetypt uit `concrete-check/src/segments.rs`
+    /// — juist daarom vangt hij een wijziging aan één van beide kanten.
+    #[test]
+    fn segmentschema_kent_alle_velden_van_het_verzoektype() {
+        let def = tool_definitions()
+            .into_iter()
+            .find(|d| d["name"] == "concrete_segment_stiffness")
+            .expect("de tool staat in de lijst");
+        let velden = def["inputSchema"]["properties"]
+            .as_object()
+            .expect("properties");
+        let verwacht = [
+            "beam_id",
+            "width_mm",
+            "height_mm",
+            "concrete_class",
+            "reinforcement_grade",
+            "cage",
+            "length_m",
+            "target_segment_length_mm",
+            "max_segments",
+            "limit_state",
+            "phi_ef",
+            "segment_forces",
+            "previous_ei_knm2",
+            "relaxation",
+            "convergence_tolerance",
+            "min_ei_ratio",
+            "n_strips",
+            "steel_branch",
+            "design_situation",
+            "load_duration",
+        ];
+        for v in verwacht {
+            assert!(velden.contains_key(v), "het segmentschema mist `{v}`");
+        }
+        assert_eq!(
+            velden.len(),
+            verwacht.len(),
+            "het segmentschema kent een veld dat het verzoektype weigert"
+        );
+        // De verplichte velden zijn precies die zonder `#[serde(default)]`.
+        let verplicht: Vec<&str> = def["inputSchema"]["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            verplicht,
+            vec![
+                "beam_id",
+                "width_mm",
+                "height_mm",
+                "concrete_class",
+                "reinforcement_grade",
+                "cage",
+                "length_m"
+            ]
+        );
+        // De segmentkrachten weigeren zelf ook onbekende velden.
+        assert_eq!(
+            def["inputSchema"]["properties"]["segment_forces"]["items"]["additionalProperties"],
+            json!(false)
+        );
     }
 
     /// Het korfschema is de spiegel van `ReinforcementCage`/`RebarRow`. Een

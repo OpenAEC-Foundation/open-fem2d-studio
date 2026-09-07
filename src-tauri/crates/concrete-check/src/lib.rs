@@ -11,6 +11,13 @@
 //! N-M-interactiediagram voor een korf, los van een staaf — dat is wat de
 //! frontend tekent bij de wapeningskorf in de eigenschappen.
 //!
+//! En [`segment_stiffness`]: de stateloze stijfheidsdienst voor de fysisch
+//! niet-lineaire tweede orde (5.8.6). Eén staaf, in segmenten, elk met zijn
+//! eigen secante buigstijfheid uit `nen_en_1992_1_1::stiffness`. Daar zit ook
+//! de segmentindelingsregel ([`segment_layout`]) en het convergentie-oordeel,
+//! bewust in de kern en niet in de aanroeper — zie de moduletoelichting van
+//! [`segments`].
+//!
 //! TODO: `ResistanceCalc`/`NamedCheck`/`CheckKind`/`CheckStatus` wonen nu in
 //! staal-crates; verhuis ze naar een materiaal-neutrale `check-core` crate
 //! zodra die bestaat.
@@ -18,10 +25,16 @@
 pub mod input;
 pub mod orchestrator;
 pub mod result;
+pub mod segments;
 
 pub use input::{ConcreteBeamCheckInput, MnKappaRequest};
 pub use orchestrator::{check_all_concrete_beams, check_concrete_beam, mn_kappa};
 pub use result::{ConcreteBeamCheckResult, MnKappaResponse};
+pub use segments::{
+    segment_layout, segment_stiffness, SegmentForces, SegmentRunStatus, SegmentSpan,
+    SegmentStatus, SegmentStiffness, SegmentStiffnessRequest, SegmentStiffnessResponse,
+    DEFAULT_SEGMENT_LENGTH_MM,
+};
 
 pub use nen_en_1993_1_1_section::CheckStatus;
 pub use steel_check::{CheckKind, NamedCheck};

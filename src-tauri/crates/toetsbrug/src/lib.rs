@@ -28,7 +28,7 @@
 //! JSON. Een fout komt terug als `{"fout": "…"}` met afsluitcode 1; de
 //! aanroeper hoeft stderr niet te lezen.
 
-use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest};
+use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest, SegmentStiffnessRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use nen_en_1993_1_8_las::LasInput;
 use serde::Deserialize;
@@ -118,6 +118,16 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let verzoek: MnKappaRequest =
                 serde_json::from_value(inputs).map_err(|e| format!("korfinvoer: {e}"))?;
             let uit = concrete_check::mn_kappa(verzoek)?;
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // De stateloze stijfheidsdienst voor de fysisch niet-lineaire tweede
+        // orde (5.8.6): één staaf, in segmenten, elk met zijn eigen secante
+        // buigstijfheid. Zonder `segment_forces` komt alleen de indeling terug.
+        "concrete_segment_stiffness" => {
+            let inputs = v.inputs.ok_or("concrete_segment_stiffness vraagt om `inputs`")?;
+            let verzoek: SegmentStiffnessRequest = serde_json::from_value(inputs)
+                .map_err(|e| format!("segmentstijfheidsinvoer: {e}"))?;
+            let uit = concrete_check::segment_stiffness(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
         }
         // Vrije spanningstoets: geen norm, alleen een doorsnede en een

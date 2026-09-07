@@ -126,6 +126,42 @@ fn invoer_mn_kappa() -> Value {
     })
 }
 
+/// Segmentstijfheden, ronde 0: geen krachten, dus alleen de indeling. Alle
+/// instelbare velden zijn met opzet weggelaten — zo toont de test aan dat de
+/// drie wegen dezelfde standaardwaarden invullen, inclusief de 400 mm van
+/// besluit B3 en φ_ef = 0 van besluit B1.
+fn invoer_segmenten_ronde0() -> Value {
+    json!({
+        "beam_id": 5,
+        "width_mm": 300,
+        "height_mm": 500,
+        "concrete_class": "C30/37",
+        "reinforcement_grade": "B500B",
+        "cage": korf(),
+        "length_m": 4.3
+    })
+}
+
+/// Dezelfde staaf, nu mét de krachten van de vorige ronde. 11 segmenten (de
+/// indeling van ronde 0), een kolom onder 800 kN druk met een moment dat naar
+/// het midden toe oploopt.
+fn invoer_segmenten_ronde1() -> Value {
+    let momenten: Vec<f64> = (0..11)
+        .map(|i| {
+            // Parabolisch verloop met een top van 60 kNm in het midden.
+            let x = (i as f64 + 0.5) / 11.0;
+            60.0 * 4.0 * x * (1.0 - x)
+        })
+        .collect();
+    let krachten: Vec<Value> = momenten
+        .iter()
+        .map(|m| json!({ "n_ed_kn": -800.0, "m_ed_knm": m }))
+        .collect();
+    let mut v = invoer_segmenten_ronde0();
+    v["segment_forces"] = json!(krachten);
+    v
+}
+
 // ── Weg 1: de rekengang achter het Tauri-command ────────────────────────────
 
 /// Letterlijk de body van `check_concrete_beams` uit `src-tauri/src/lib.rs`.
@@ -141,6 +177,15 @@ fn weg_tauri_mn_kappa(invoer: &Value) -> Value {
     let req: concrete_check::MnKappaRequest =
         serde_json::from_value(invoer.clone()).expect("MnKappaRequest");
     let uit = concrete_check::mn_kappa(req).expect("geldig verzoek");
+    serde_json::to_value(uit).expect("resultaat serialiseren")
+}
+
+/// Letterlijk de body van `concrete_segment_stiffness` uit
+/// `src-tauri/src/lib.rs`.
+fn weg_tauri_segmenten(invoer: &Value) -> Value {
+    let req: concrete_check::SegmentStiffnessRequest =
+        serde_json::from_value(invoer.clone()).expect("SegmentStiffnessRequest");
+    let uit = concrete_check::segment_stiffness(req).expect("geldig verzoek");
     serde_json::to_value(uit).expect("resultaat serialiseren")
 }
 
@@ -329,7 +374,11 @@ fn weg_1_de_tauri_commands_zijn_geregistreerd() {
     let handler_eind = handler.find(']').expect("`generate_handler!` is niet gesloten");
     let handler = &handler[..handler_eind];
 
-    for command in ["check_concrete_beams", "concrete_mn_kappa"] {
+    for command in [
+        "check_concrete_beams",
+        "concrete_mn_kappa",
+        "concrete_segment_stiffness",
+    ] {
         assert!(
             bron.contains(&format!("async fn {command}(")),
             "`{command}` staat niet als functie in src-tauri/src/lib.rs"
@@ -403,6 +452,216 @@ async fn de_drie_wegen_leveren_hetzelfde_mn_kappa_diagram() {
     );
     assert_eq!(mcp["interaction_positive"].as_array().unwrap().len(), 11);
     assert_eq!(mcp["interaction_negative"].as_array().unwrap().len(), 11);
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// **De segmentstijfheden langs de drie wegen.** Twee ronden: eerst de kale
+/// indeling (ronde 0), daarna dezelfde staaf mét de krachten van de vorige
+/// raamwerkronde. Alle instelbare velden zijn weggelaten, dus een weg die zijn
+/// eigen standaardwaarde zou kiezen — een andere segmentlengte dan 400 mm, een
+/// andere grenstoestand, een stilzwijgende φ_ef — valt hier door de mand.
+#[tokio::test]
+async fn de_drie_wegen_leveren_dezelfde_segmentstijfheden() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    for (naam, invoer, id) in [
+        ("ronde 0 (alleen de indeling)", invoer_segmenten_ronde0(), 500),
+        ("ronde 1 (met krachten)", invoer_segmenten_ronde1(), 501),
+    ] {
+        let tauri = weg_tauri_segmenten(&invoer);
+        let brug = weg_toetsbrug("concrete_segment_stiffness", invoer.clone());
+        let mcp = weg_mcp(
+            &mut stdin,
+            &mut reader,
+            id,
+            "concrete_segment_stiffness",
+            invoer,
+        )
+        .await;
+
+        eis_gelijk(&format!("{naam}: Tauri-command"), &tauri, "toetsbrug", &brug);
+        eis_gelijk(&format!("{naam}: toetsbrug"), &brug, "MCP-server", &mcp);
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Ankerwaarden voor de segmentstijfheid. Gelijklopen is niet genoeg: drie
+/// wegen kunnen samen verschuiven. Elk getal hieronder is uit de norm of uit
+/// de invoer na te rekenen, en er is er geen verzonnen.
+#[tokio::test]
+async fn de_segmentstijfheden_zelf_staan_vast() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    // ── Ronde 0: de indeling ────────────────────────────────────────────────
+    let r0 = weg_mcp(
+        &mut stdin,
+        &mut reader,
+        510,
+        "concrete_segment_stiffness",
+        invoer_segmenten_ronde0(),
+    )
+    .await;
+
+    // n = max(1; round(4300 / 400)) = round(10,75) = 11 segmenten van
+    // 4300/11 = 390,909… mm. Besluit B3: 400 mm is de beginwaarde, dus een weg
+    // die die default niet invult komt op iets anders uit.
+    assert_eq!(r0["segment_count"], 11);
+    assert!((getal(&r0, &["target_segment_length_mm"]) - 400.0).abs() < 1e-12);
+    assert!((getal(&r0, &["segment_length_mm"]) - 4300.0 / 11.0).abs() < 1e-9);
+    assert_eq!(r0["status"], "Layout");
+    assert_eq!(r0["has_forces"], false);
+    assert_eq!(r0["converged"], false);
+    let segs = r0["segments"].as_array().expect("segments");
+    assert_eq!(segs.len(), 11);
+    assert!(getal(&segs[0], &["x_start_mm"]).abs() < 1e-12);
+    assert!((getal(&segs[10], &["x_end_mm"]) - 4300.0).abs() < 1e-9);
+    // Ronde 0 rekent niet: geen enkel getal dat als stijfheid gelezen kan worden.
+    for s in segs {
+        assert!(s["ei_knm2"].is_null(), "ronde 0 leverde tóch een stijfheid");
+        assert!(s["kappa_per_m"].is_null());
+        assert_eq!(s["status"], "Layout");
+    }
+
+    // Besluit B1: φ_ef = 0 en dat staat er met zoveel woorden bij.
+    assert!((getal(&r0, &["phi_ef"])).abs() < 1e-12);
+    assert_eq!(r0["creep_neglected"], true);
+    let note = r0["creep_note"].as_str().expect("creep_note");
+    assert!(note.contains("ZONDER kruip"), "{note}");
+    assert!(note.contains("ONVEILIGE KANT"), "{note}");
+    // Besluit B2: de variant is de UGT van 5.8.6(3) en staat er expliciet.
+    assert_eq!(r0["limit_state"], "DesignValues");
+    assert!(r0["limit_state_label"].as_str().unwrap().contains("UGT"));
+
+    // ── Ronde 1: de stijfheden ──────────────────────────────────────────────
+    let r1 = weg_mcp(
+        &mut stdin,
+        &mut reader,
+        511,
+        "concrete_segment_stiffness",
+        invoer_segmenten_ronde1(),
+    )
+    .await;
+    assert_eq!(r1["segment_count"], 11);
+    assert_eq!(r1["has_forces"], true);
+    assert_eq!(r1["failed_count"], 0);
+    assert_eq!(r1["clamped_count"], 0);
+    // Geen vorige ronde meegestuurd ⇒ convergentie is niet te beoordelen.
+    assert_eq!(r1["status"], "NotConverged");
+    assert!(r1["max_relative_change"].is_null());
+
+    // f_cd = alpha_cc·f_ck/gamma_C = 1,0·30/1,5 = 20,0 N/mm² (NB bij 3.1.6(1)P),
+    // E_cd = E_cm/gamma_cE = 33 000/1,2 = 27 500 N/mm² (5.20 met de NB-waarde
+    // gamma_cE = 1,2), f_ctm = 2,9 N/mm² (tabel 3.1, C30/37).
+    assert!((getal(&r1, &["f_c_mpa"]) - 20.0).abs() < 1e-9);
+    assert!((getal(&r1, &["e_c_mpa"]) - 27_500.0).abs() < 1e-9);
+    assert!((getal(&r1, &["f_ctm_mpa"]) - 2.9).abs() < 1e-9);
+    // E_cd·I_c = 27 500 · 300·500³/12 · 10⁻⁹ = 85 937,5 kNm².
+    assert!((getal(&r1, &["ei_uncracked_knm2"]) - 85_937.5).abs() < 1e-6);
+
+    let segs = r1["segments"].as_array().expect("segments");
+    // M_cr = (f_ctm − N/A_c)·W_c met A_c = 150 000 mm² en W_c = 12,5·10⁶ mm³:
+    // (2,9 + 800 000/150 000)·12,5·10⁶ = 98,916… kNm.
+    let m_cr = 2.9 * 12.5e6 * 1e-6 + 800_000.0 / 150_000.0 * 12.5e6 * 1e-6;
+    for s in segs {
+        assert!((getal(s, &["m_cr_knm"]) - m_cr).abs() < 1e-6, "M_cr = {}", s["m_cr_knm"]);
+        // Alle momenten liggen onder M_cr, dus geen enkel segment is gescheurd.
+        assert_eq!(s["cracked"], false);
+        assert_eq!(s["status"], "Uncracked");
+        assert_eq!(s["basis"], "DesignValues");
+        // 5.8.6(5): geen tension stiffening in de UGT.
+        assert!(s["zeta"].is_null());
+        // M₀ ≠ 0: de korf is asymmetrisch (onder 3Ø16, boven 2Ø12) en de
+        // 800 kN druk levert om h/2 zelf al een moment. Was M₀ nul, dan zou de
+        // M₀-correctie ontbreken en zou EI = M/κ zijn.
+        assert!(getal(s, &["m0_knm"]) < -1.0, "M₀ = {}", s["m0_knm"]);
+    }
+    // Het moment loopt naar het midden op, dus de stijfheid loopt af.
+    let ei = |i: usize| getal(&segs[i], &["ei_knm2"]);
+    println!(
+        "segment-EI [MNm²]: {}",
+        (0..11)
+            .map(|i| format!("{:.1}", ei(i) * 1e-3))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    for i in 1..=5 {
+        assert!(ei(i) < ei(i - 1), "segment {i}: EI stijgt");
+    }
+    // En hij blijft onder de ongescheurde vergelijkingswaarde: de doorsnede is
+    // niet stijver dan beton dat is.
+    for i in 0..11 {
+        assert!(ei(i) > 0.0 && ei(i) < 1.1 * 85_937.5, "segment {i}: EI = {}", ei(i));
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Een onuitvoerbaar verzoek is langs alle drie de wegen een fout, en langs
+/// geen enkele weg een half antwoord. De MCP-weg meldt hem als toolfout.
+#[tokio::test]
+async fn een_verkeerd_aantal_krachten_faalt_langs_alle_drie_de_wegen() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut invoer = invoer_segmenten_ronde0();
+    // 11 segmenten, maar 3 krachtenparen.
+    invoer["segment_forces"] = json!([
+        { "n_ed_kn": 0.0, "m_ed_knm": 10.0 },
+        { "n_ed_kn": 0.0, "m_ed_knm": 20.0 },
+        { "n_ed_kn": 0.0, "m_ed_knm": 30.0 }
+    ]);
+
+    // Weg 1 en 2: de rekengang weigert.
+    let req: concrete_check::SegmentStiffnessRequest =
+        serde_json::from_value(invoer.clone()).expect("SegmentStiffnessRequest");
+    let fout_tauri = concrete_check::segment_stiffness(req).unwrap_err();
+    assert!(fout_tauri.contains("11 segmenten"), "{fout_tauri}");
+
+    let verzoek: toetsbrug::Verzoek = serde_json::from_value(
+        json!({ "opdracht": "concrete_segment_stiffness", "inputs": invoer.clone() }),
+    )
+    .expect("toetsbrug-verzoek");
+    let fout_brug = toetsbrug::behandel(verzoek).unwrap_err();
+    assert_eq!(fout_brug, fout_tauri);
+
+    // Weg 3: een toolfout met dezelfde reden, geen leeg antwoord.
+    schrijf(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0", "id": 520, "method": "tools/call",
+            "params": { "name": "concrete_segment_stiffness", "arguments": invoer }
+        }),
+    )
+    .await;
+    let resp = lees_bericht(&mut reader).await;
+    let tekst = format!("{resp}");
+    assert!(tekst.contains("11 segmenten"), "{tekst}");
+
+    // En een onbekend veld wordt geweigerd (`deny_unknown_fields` +
+    // `additionalProperties: false`), niet stilzwijgend genegeerd.
+    let mut tikfout = invoer_segmenten_ronde0();
+    tikfout["target_segment_length"] = json!(200); // moet `_mm` zijn
+    let e = serde_json::from_value::<concrete_check::SegmentStiffnessRequest>(tikfout.clone())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("target_segment_length"), "{e}");
+    schrijf(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0", "id": 521, "method": "tools/call",
+            "params": { "name": "concrete_segment_stiffness", "arguments": tikfout }
+        }),
+    )
+    .await;
+    let resp = lees_bericht(&mut reader).await;
+    assert!(
+        format!("{resp}").contains("target_segment_length"),
+        "de MCP-weg slikte een onbekend veld: {resp}"
+    );
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

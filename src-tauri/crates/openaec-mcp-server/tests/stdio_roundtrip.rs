@@ -96,7 +96,7 @@ async fn stdio_roundtrip_initialize_list_call() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("tools must be an array");
-    assert_eq!(tools.len(), 14, "expected 14 tools, got {}", tools.len());
+    assert_eq!(tools.len(), 15, "expected 15 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -115,12 +115,16 @@ async fn stdio_roundtrip_initialize_list_call() {
         "load_fem_project",
         "solve_fem_model",
         "check_fem_model",
-        // De vier betontools (NEN-EN 1992-1-1). Dezelfde rekengang als het
+        // De vijf betontools (NEN-EN 1992-1-1). Dezelfde rekengang als het
         // Tauri-command en de toetsbrug; zie `tests/drie_wegen_beton.rs`.
         "list_concrete_classes",
         "list_reinforcement_grades",
         "check_concrete_beam",
         "concrete_mn_kappa",
+        // De stateloze stijfheidsdienst voor de fysisch niet-lineaire tweede
+        // orde (5.8.6): segmentindeling, secante EI per segment en het
+        // convergentie-oordeel.
+        "concrete_segment_stiffness",
     ] {
         assert!(names.contains(&expected), "missing tool: {expected} (have {names:?})");
     }

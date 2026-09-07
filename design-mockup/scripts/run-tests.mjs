@@ -95,6 +95,7 @@ const BUNDEL_TESTS = new Set([
   "releases",
   "scheefstand",
   "sectie-doorvoer",
+  "staafsegmenten",
   "thermiek",
   "tweede-orde",
   "v2-stations",

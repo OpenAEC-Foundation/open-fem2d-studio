@@ -4495,6 +4495,56 @@ var DEFAULT_GRID = {
 
 // src/components/fem/solver/engine.ts
 var MAX_MIXED_DOFS = 4e3;
+var KNOOP_TOL_MM = 1;
+var MIN_SEGMENT_MM = 25;
+function normaliseerSegmenten(beamId, segmenten, L_mm) {
+  if (segmenten === void 0) return void 0;
+  if (!Array.isArray(segmenten) || segmenten.length === 0) {
+    throw new Error(
+      `Staaf ${beamId}: het veld "segmenten" is aanwezig maar leeg. Laat het weg om met \xE9\xE9n doorsnede over de volle lengte te rekenen.`
+    );
+  }
+  const TOL = 1e-9;
+  const uit = segmenten.map((s, i) => {
+    const t0 = s.tStart, t1 = s.tEnd, I_mm4 = s.I;
+    if (!Number.isFinite(t0) || !Number.isFinite(t1) || !Number.isFinite(I_mm4)) {
+      throw new Error(`Staaf ${beamId}, segment ${i + 1}: tStart, tEnd en I moeten getallen zijn.`);
+    }
+    if (t0 < -TOL || t1 > 1 + TOL) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: tStart/tEnd moeten tussen 0 en 1 liggen (gekregen ${t0} \u2026 ${t1}).`
+      );
+    }
+    if (t1 - t0 <= TOL) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: tEnd (${t1}) moet groter zijn dan tStart (${t0}).`
+      );
+    }
+    if (!(I_mm4 > 0)) {
+      throw new Error(`Staaf ${beamId}, segment ${i + 1}: I moet groter dan nul zijn (mm\u2074).`);
+    }
+    const lengte_mm = (t1 - t0) * L_mm;
+    if (L_mm > 0 && lengte_mm < KNOOP_TOL_MM) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: lengte ${lengte_mm.toFixed(4)} mm is korter dan de knooptolerantie van het rekenmesh (${KNOOP_TOL_MM} mm). Zo'n segment levert een element van lengte nul op. Gebruik een grovere segmentindeling.`
+      );
+    }
+    return { t0, t1, I_mm4, index: i };
+  });
+  if (Math.abs(uit[0].t0) > TOL || Math.abs(uit[uit.length - 1].t1 - 1) > TOL) {
+    throw new Error(
+      `Staaf ${beamId}: de segmenten moeten de hele staaf dekken \u2014 het eerste segment begint bij tStart ${uit[0].t0} en het laatste eindigt bij tEnd ${uit[uit.length - 1].t1}; verwacht 0 en 1.`
+    );
+  }
+  for (let i = 1; i < uit.length; i++) {
+    if (Math.abs(uit[i].t0 - uit[i - 1].t1) > TOL) {
+      throw new Error(
+        `Staaf ${beamId}: segment ${i} eindigt op ${uit[i - 1].t1} en segment ${i + 1} begint op ${uit[i].t0}. De segmenten moeten aaneensluiten (geen gat en geen overlap).`
+      );
+    }
+  }
+  return uit;
+}
 function berekenPlaatrandSplitsFracties(nA, nB, plateRects, tolMm) {
   const ts = [];
   for (const r of plateRects) {
@@ -4679,6 +4729,7 @@ function buildMesh(input, loadFactor) {
     }
   }
   const beamKnoopPerFractie = /* @__PURE__ */ new Map();
+  const segmentUitvoer = /* @__PURE__ */ new Map();
   for (const b of input.beams) {
     const fromId = nodeIdMap.get(b.from);
     const toId = nodeIdMap.get(b.to);
@@ -4700,8 +4751,30 @@ function buildMesh(input, loadFactor) {
     for (const t of ruweSplits) {
       if (splitsT.length === 0 || Math.abs(t - splitsT[splitsT.length - 1]) > 1e-9) splitsT.push(t);
     }
+    const L_mm = Math.hypot(nB.x - nA.x, nB.z - nA.z);
+    const segDef = normaliseerSegmenten(b.id, b.segmenten, L_mm);
+    if (segDef) {
+      const minFrac = L_mm > 0 ? MIN_SEGMENT_MM / L_mm : Infinity;
+      const dwingend = [0, ...splitsT, 1];
+      for (const s of segDef.slice(1)) {
+        if (dwingend.some((t) => Math.abs(t - s.t0) < minFrac)) continue;
+        splitsT.push(s.t0);
+      }
+      splitsT.sort((p, q) => p - q);
+    }
+    const doorsnedeVoor = (t0, t1) => {
+      if (!segDef) return { sec: section, I_mm4: 0, segmentIndex: -1 };
+      const mid = (t0 + t1) / 2;
+      const s = segDef.find((d) => mid >= d.t0 && mid < d.t1) ?? segDef[segDef.length - 1];
+      return {
+        sec: { A: section.A, I: s.I_mm4 * 1e-12, h: section.h },
+        I_mm4: s.I_mm4,
+        segmentIndex: s.index
+      };
+    };
     if (splitsT.length === 0) {
-      const meshBeam = mesh.addBeamElement([fromId, toId], matId, section);
+      const d = doorsnedeVoor(0, 1);
+      const meshBeam = mesh.addBeamElement([fromId, toId], matId, d.sec);
       if (!meshBeam) continue;
       beamIdMap.set(b.id, meshBeam.id);
       pasReleasesToe(meshBeam.id, b, true, true);
@@ -4709,6 +4782,12 @@ function buildMesh(input, loadFactor) {
         { t: 0, meshNodeId: fromId },
         { t: 1, meshNodeId: toId }
       ]);
+      if (segDef) {
+        segmentUitvoer.set(
+          b.id,
+          [{ meshId: meshBeam.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex }]
+        );
+      }
     } else {
       const knoopIds = [fromId];
       for (const t of splitsT) {
@@ -4724,15 +4803,19 @@ function buildMesh(input, loadFactor) {
         grens.map((t, i) => ({ t, meshNodeId: knoopIds[i] }))
       );
       const segs = [];
+      const stukken = [];
       for (let i = 0; i < knoopIds.length - 1; i++) {
-        const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, section);
+        const d = doorsnedeVoor(grens[i], grens[i + 1]);
+        const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, d.sec);
         if (!mb) continue;
         pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
         segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
+        stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex });
       }
       if (segs.length > 0) {
         beamIdMap.set(b.id, segs[0].meshId);
         if (segs.length > 1) beamSegments.set(b.id, segs);
+        if (segDef) segmentUitvoer.set(b.id, stukken);
       }
     }
   }
@@ -5072,9 +5155,9 @@ function buildMesh(input, loadFactor) {
       }
     }
   }
-  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments };
+  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer };
 }
-function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plateInfo, nodeIndex, beamSegments) {
+function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer) {
   const displacements = /* @__PURE__ */ new Map();
   const reactions = /* @__PURE__ */ new Map();
   const elements = /* @__PURE__ */ new Map();
@@ -5111,7 +5194,40 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
       reactions.set(uiId, { fx, fz, my: my_Nmm });
     }
   }
+  const bouwSegmentUitvoer = (stukken) => {
+    const uit = [];
+    let offset_m = 0;
+    for (const stuk of stukken) {
+      const d = engineResult.beamForces.get(stuk.meshId);
+      if (!d) return void 0;
+      const st = d.stations ?? [];
+      const L_stuk_m = st.length > 0 ? st[st.length - 1] : 0;
+      const nArr = d.normalForce ?? [];
+      const mArr = d.bendingMoment ?? [];
+      let iMax = 0;
+      for (let i = 1; i < mArr.length; i++) {
+        if (Math.abs(mArr[i]) > Math.abs(mArr[iMax])) iMax = i;
+      }
+      const laatste = Math.max(0, mArr.length - 1);
+      uit.push({
+        xStart: offset_m * 1e3,
+        xEnd: (offset_m + L_stuk_m) * 1e3,
+        I: stuk.I_mm4,
+        segmentIndex: stuk.segmentIndex,
+        N_start: -(nArr[0] ?? 0),
+        N_end: -(nArr[nArr.length - 1] ?? 0),
+        M_start: (mArr[0] ?? 0) * 1e3,
+        M_end: (mArr[laatste] ?? 0) * 1e3,
+        M_max: (mArr[iMax] ?? 0) * 1e3,
+        N_bij_M_max: -(nArr[iMax] ?? 0)
+      });
+      offset_m += L_stuk_m;
+    }
+    return uit;
+  };
   for (const [uiId, meshId] of beamIdMap) {
+    const stukken = segmentUitvoer?.get(uiId);
+    const segmentVeld = stukken ? bouwSegmentUitvoer(stukken) : void 0;
     const segs = beamSegments?.get(uiId);
     if (segs && segs.length > 1) {
       const delen = segs.map((s) => engineResult.beamForces.get(s.meshId));
@@ -5147,7 +5263,8 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
         shearForce,
         bendingMoment,
         deflection,
-        axialDisp
+        axialDisp,
+        ...segmentVeld ? { segmenten: segmentVeld } : {}
       });
       continue;
     }
@@ -5175,8 +5292,9 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
       // N·m → N·mm
       deflection: (bf.deflection ?? []).map((w) => w * 1e3),
       // m → mm (lokaal, +y)
-      axialDisp: (bf.axialDisp ?? []).map((u) => u * 1e3)
+      axialDisp: (bf.axialDisp ?? []).map((u) => u * 1e3),
       // m → mm
+      ...segmentVeld ? { segmenten: segmentVeld } : {}
     });
   }
   let plateResults;
@@ -5252,19 +5370,19 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
   };
 }
 function solve(input) {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments } = buildMesh(input);
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input);
   const heeftPlaten = plateInfo.length > 0;
   const engineResult = solveNonlinear(mesh, {
     analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
     geometricNonlinear: false
   });
   const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
-  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments);
+  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer);
 }
 function solveAllCases(input) {
   const perCase = /* @__PURE__ */ new Map();
   for (const c of input.cases) {
-    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments } = buildMesh(input, (caseId) => caseId === c.id ? 1 : 0);
+    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input, (caseId) => caseId === c.id ? 1 : 0);
     if (!meshHeeftLasten(mesh)) continue;
     const heeftPlaten = plateInfo.length > 0;
     const engineResult = solveNonlinear(mesh, {
@@ -5272,7 +5390,7 @@ function solveAllCases(input) {
       geometricNonlinear: false
     });
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
-    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments));
+    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer));
   }
   return { perCase };
 }
@@ -5296,7 +5414,7 @@ function getSecondOrderState(perCase) {
   return perCase[SECOND_ORDER_KEY];
 }
 function solveCombinationSecondOrder(input, combo) {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo } = buildMesh(
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(
     input,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0
   );
@@ -5315,7 +5433,17 @@ function solveCombinationSecondOrder(input, combo) {
       maxIterations: 100,
       tolerance: 1e-6
     });
-    return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports);
+    return convertResult(
+      mesh,
+      engineResult,
+      nodeIdMap,
+      beamIdMap,
+      input.supports,
+      void 0,
+      void 0,
+      beamSegments,
+      segmentUitvoer
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/P-Delta/.test(msg)) {

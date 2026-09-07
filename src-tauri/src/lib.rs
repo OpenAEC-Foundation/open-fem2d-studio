@@ -1,5 +1,6 @@
 use concrete_check::{
     ConcreteBeamCheckInput, ConcreteBeamCheckResult, MnKappaRequest, MnKappaResponse,
+    SegmentStiffnessRequest, SegmentStiffnessResponse,
 };
 use nen_en_1992_1_1::{ConcreteClass, ReinforcementGrade};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
@@ -99,6 +100,22 @@ async fn concrete_mn_kappa(inputs: MnKappaRequest) -> Result<MnKappaResponse, St
     concrete_check::mn_kappa(inputs)
 }
 
+/// De stateloze stijfheidsdienst voor de fysisch niet-lineaire tweede orde
+/// (5.8.6): één betonstaaf, in segmenten, elk met zijn eigen secante
+/// buigstijfheid.
+///
+/// Eén verzoek is één ronde. Zonder `segment_forces` komt alleen de
+/// segmentindeling terug — die is de bron van de elementgrenzen voor de mesh en
+/// hoort daarom uit de kern te komen en niet uit de frontend. Mét krachten komt
+/// per segment de EI terug waarmee de volgende ronde gerekend wordt, plus het
+/// convergentie-oordeel. Er blijft niets achter tussen twee aanroepen.
+#[tauri::command]
+async fn concrete_segment_stiffness(
+    inputs: SegmentStiffnessRequest,
+) -> Result<SegmentStiffnessResponse, String> {
+    concrete_check::segment_stiffness(inputs)
+}
+
 /// Vrije spanningstoets (geen norm): een doorsnede plus een toelaatbare
 /// spanning, getoetst op de vergelijkspanning van von Mises. Bedoeld voor
 /// materialen die buiten EN 1992/1993/1995 vallen — natuursteen, een
@@ -179,6 +196,7 @@ pub fn run() {
             list_reinforcement_grades,
             check_concrete_beams,
             concrete_mn_kappa,
+            concrete_segment_stiffness,
             check_stress_beams,
             check_fillet_welds,
             bereken_doorsneden,
