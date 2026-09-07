@@ -339,10 +339,20 @@ async fn roep(op: &str, payload: Value, timeout_s: Option<u64>) -> Result<Value,
 /// `steel_check_inputs` gaat expres mee terug: de client ziet wát er getoetst
 /// is en kan één invoer desgewenst opnieuw door `check_steel_beam` halen,
 /// zonder ooit zelf een invoer te hoeven verzinnen.
+///
+/// ALLEEN STAAL. De toetsing hier is `steel_check::check_all_beams` en niets
+/// anders. Wat daar niet in past, hoort zichtbaar te zijn: betonstaven worden
+/// na de solve aan `skipped_beams` toegevoegd door [`meld_betonstaven`]. Zie
+/// daar ook wat er met hout NIET gebeurt.
 async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
     let a: CheckArgumenten = lees_argumenten(naam, args)?;
     let timeout_s = a.timeout_s;
+    let beam_ids_filter = a.beam_ids.clone();
     let mut payload = model_payload(naam, a.model, a.project_path)?;
+    // Het model blijft hier bewaard: na de solve wordt eruit afgelezen welke
+    // staven van beton zijn, zodat die niet stil wegvallen. Zie
+    // `meld_betonstaven`.
+    let model_voor_beton = model_uit_payload(&payload);
     payload.insert("profiles".to_owned(), profielen().clone());
     if let Some(c) = a.combinations {
         payload.insert("combinations".to_owned(), c);
@@ -417,7 +427,129 @@ async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
         map.insert("results".to_owned(), resultaten);
         map.insert("governing".to_owned(), maatgevend);
     }
+    meld_betonstaven(&mut uit, model_voor_beton.as_ref(), beam_ids_filter.as_deref());
     Ok(uit)
+}
+
+/// Het model als JSON, uit de payload die naar de sidecar gaat.
+///
+/// Bewust uit de payload en niet opnieuw van schijf: zo staat er geen tweede
+/// leesactie naast de eerste die iets anders zou kunnen opleveren. `model` is
+/// het model zelf; bij `project_path` staat het model op het bovenste niveau van
+/// het projectbestand (zelfde velden, zie `tests/golden/portaal.ifcfem2d`).
+/// Ontleedt de inhoud niet, dan komt er `None` terug en gebeurt er verder
+/// niets: de sidecar leest dezelfde tekst en meldt de fout met meer detail dan
+/// hier mogelijk is.
+fn model_uit_payload(payload: &serde_json::Map<String, Value>) -> Option<Value> {
+    if let Some(m) = payload.get("model") {
+        return Some(m.clone());
+    }
+    let inhoud = payload.get("project")?.get("inhoud")?.as_str()?;
+    serde_json::from_str(inhoud).ok()
+}
+
+/// Vult `skipped_beams` aan met de betonstaven uit het model.
+///
+/// WAAROM DIT BESTAAT
+/// `check_fem_model` toetst uitsluitend via `steel_check::check_all_beams`. De
+/// solverbundel bouwt alleen staal-toetsinvoer; een staaf met een ander
+/// materiaal komt daar niet doorheen en verdween tot nu toe zonder spoor uit
+/// het antwoord. Voor een client is een betonkolom die nergens in het antwoord
+/// staat niet te onderscheiden van een betonkolom die is goedgekeurd. Daarom
+/// staat hij nu bij de overgeslagen staven, mét de reden en met de tool die de
+/// toetsing wél doet.
+///
+/// WAAROM DE DETECTIE HIER GEBEURT EN NIET IN DE BUNDEL
+/// De bundel is een ingebakken, op hash vastgelegde asset; de sidecar kent geen
+/// beton. Het materiaal van een staaf staat echter gewoon in het model dat deze
+/// server zelf heeft ingelezen, en of een naam een betonsterkteklasse is weet
+/// `nen_en_1992_1_1::concrete_class_by_name` — dezelfde bron die de
+/// betontoetsing gebruikt. Er wordt hier dus niets geraden en geen tweede
+/// lijst met klassenamen aangelegd.
+///
+/// WAT DIT NIET DOET
+/// Er wordt niet getoetst. De EN 1992-toetsing vraagt een wapeningskorf, en die
+/// staat niet in het rekenmodel: `checkConfig` van een staaf kent in de
+/// modelvorm die deze server aanvaardt geen korfvelden. Een staaf toetsen met
+/// een verzonnen korf zou een unity check opleveren die bij een andere staaf
+/// hoort.
+///
+/// En het doet niets aan HOUT. De tooldescription beloofde dat houten staven in
+/// `skipped_beams` staan; dat klopt alleen wanneer zo'n staaf een STAALPROFIEL
+/// draagt — dan struikelt `buildSteelCheckInputs` over de staalsoort en meldt
+/// hij de staaf. Een houten staaf met een houtdoorsnede valt daar door
+/// `if (!isSteelProfile(profileName)) continue;` zonder melding uit. Repareren
+/// vraagt een wijziging in de solverbundel (`design-mockup/src/mcp/sidecar.ts`
+/// en de ingebakken `assets/fem-kernel.mjs`), en die valt buiten deze taak; de
+/// tooldescription vertelt nu wél wat er werkelijk gebeurt.
+/// Is deze materiaalnaam een betonsterkteklasse zoals het REKENMODEL hem
+/// bedoelt?
+///
+/// De namen komen uit `nen_en_1992_1_1::CONCRETE_CLASSES` — dezelfde tabel 3.1
+/// die de betontoetsing gebruikt, dus geen tweede lijst hier. Maar bewust NIET
+/// via `concrete_class_by_name`: die herkent ook de korte vorm ("C30" naast
+/// "C30/37"), en "C30" en "C35" zijn in EN 338 juist HOUTsterkteklassen. De
+/// solverbundel maakt dat onderscheid net zo: `resolveSection` zoekt beton op
+/// de volledige naam ("C30/37") en laat "C30" naar de houttak gaan. Zou hier de
+/// korte vorm meetellen, dan kreeg een houten C30-staaf een melding dat hij van
+/// beton is.
+fn is_betonklasse(materiaal: &str) -> bool {
+    let naam = materiaal.trim().replace(' ', "");
+    nen_en_1992_1_1::CONCRETE_CLASSES
+        .iter()
+        .any(|c| c.name.eq_ignore_ascii_case(&naam))
+}
+
+fn meld_betonstaven(uit: &mut Value, model: Option<&Value>, beam_ids: Option<&[i64]>) {
+    let Some(model) = model else { return };
+    let Some(staven) = model.get("beams").and_then(Value::as_array) else { return };
+
+    // Alles wat al in het antwoord staat blijft ongemoeid: een staaf twee keer
+    // melden leest als twee staven.
+    let mut bekend: Vec<i64> = Vec::new();
+    for veld in ["steel_check_inputs", "skipped_beams"] {
+        if let Some(lijst) = uit.get(veld).and_then(Value::as_array) {
+            bekend.extend(lijst.iter().filter_map(|e| e.get("beam_id")?.as_i64()));
+        }
+    }
+
+    let mut nieuw: Vec<Value> = Vec::new();
+    for staaf in staven {
+        let Some(id) = staaf.get("id").and_then(Value::as_i64) else { continue };
+        if bekend.contains(&id) {
+            continue;
+        }
+        // `beam_ids` beperkt de toetsing; buiten die selectie is niets
+        // overgeslagen, want er is niets gevraagd.
+        if let Some(selectie) = beam_ids {
+            if !selectie.is_empty() && !selectie.contains(&id) {
+                continue;
+            }
+        }
+        let materiaal = staaf.get("material").and_then(Value::as_str).unwrap_or("");
+        if !is_betonklasse(materiaal) {
+            continue;
+        }
+        nieuw.push(json!({
+            "beam_id": id,
+            "reason": format!(
+                "materiaal \"{materiaal}\" is een betonsterkteklasse — `check_fem_model` \
+                 toetst alleen volgens EN 1993 (staal). De EN 1992-toetsing loopt via de \
+                 tool `check_concrete_beam`; die vraagt een wapeningskorf, en die staat \
+                 niet in het rekenmodel."
+            ),
+        }));
+    }
+    if nieuw.is_empty() {
+        return;
+    }
+    let Some(map) = uit.as_object_mut() else { return };
+    match map.get_mut("skipped_beams").and_then(Value::as_array_mut) {
+        Some(lijst) => lijst.extend(nieuw),
+        None => {
+            map.insert("skipped_beams".to_owned(), Value::Array(nieuw));
+        }
+    }
 }
 
 // ── Schema's ────────────────────────────────────────────────────────────────
@@ -769,7 +901,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "check_fem_model",
-            "description": "Doorrekenen EN toetsen in één aanroep: de solve loopt in dezelfde solver als de app, de EN 1993-toetsing in dezelfde Rust-kern als de app. Gebruik deze tool in plaats van solve_fem_model gevolgd door check_steel_beam — zo kan er geen veld tussenuit vallen dat de kiptoets gunstiger maakt dan hij is. `steel_check_inputs` komt zichtbaar mee terug. Houten staven worden gemeld in `skipped_beams`; houttoetsing loopt nog niet via deze server.",
+            "description": "Doorrekenen EN toetsen in één aanroep: de solve loopt in dezelfde solver als de app, de EN 1993-toetsing (staal) in dezelfde Rust-kern als de app. Gebruik deze tool in plaats van solve_fem_model gevolgd door check_steel_beam — zo kan er geen veld tussenuit vallen dat de kiptoets gunstiger maakt dan hij is. `steel_check_inputs` komt zichtbaar mee terug. ALLEEN STAAL WORDT HIER GETOETST. Betonstaven (materiaal = een EN 1992-sterkteklasse zoals \"C30/37\") worden gemeld in `skipped_beams` met een verwijzing naar de tool `check_concrete_beam`; die toetsing loopt niet mee omdat de wapeningskorf niet in het rekenmodel staat. Houten staven worden alleen gemeld wanneer ze een staalprofiel dragen — een houten staaf met een houtdoorsnede valt zonder melding uit het antwoord, en houttoetsing loopt niet via deze server. Lees `skipped_beams` dus altijd, en ga bij een gemengd model niet af op `governing` alleen.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -871,5 +1003,76 @@ mod tests {
         let lijst = profielen().as_array().expect("profielen moeten een array zijn");
         assert!(!lijst.is_empty());
         assert!(lijst[0]["name"].is_string());
+    }
+
+    // ── meld_betonstaven ───────────────────────────────────────────────────
+    //
+    // Het end-to-end-gedrag staat in `tests/beton_in_check_fem_model.rs`. Deze
+    // drie tests dekken de randen die daar niet langskomen en hebben geen Node
+    // nodig.
+
+    fn model_met(materiaal: &str) -> Value {
+        json!({ "beams": [ { "id": 5, "from": 1, "to": 2, "material": materiaal } ] })
+    }
+
+    fn gemelde_ids(uit: &Value) -> Vec<i64> {
+        uit["skipped_beams"]
+            .as_array()
+            .map(|l| l.iter().filter_map(|s| s["beam_id"].as_i64()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Een staaf die al getoetst is of al gemeld staat, wordt niet nóg een keer
+    /// gemeld: dubbel melden leest als twee staven.
+    #[test]
+    fn een_al_verantwoorde_staaf_wordt_niet_dubbel_gemeld() {
+        let model = model_met("C30/37");
+
+        let mut al_getoetst = json!({ "steel_check_inputs": [ { "beam_id": 5 } ] });
+        meld_betonstaven(&mut al_getoetst, Some(&model), None);
+        assert!(gemelde_ids(&al_getoetst).is_empty());
+
+        let mut al_gemeld = json!({
+            "steel_check_inputs": [],
+            "skipped_beams": [ { "beam_id": 5, "reason": "andere reden" } ]
+        });
+        meld_betonstaven(&mut al_gemeld, Some(&model), None);
+        assert_eq!(gemelde_ids(&al_gemeld), vec![5]);
+    }
+
+    /// Alleen beton, en alleen op de VOLLEDIGE klassenaam. "C30" en "C35" zijn
+    /// houtsterkteklassen uit EN 338; die mogen hier niet als beton gelden, net
+    /// zomin als in `resolveSection` in de solverbundel.
+    #[test]
+    fn alleen_betonsterkteklassen_worden_gemeld() {
+        for materiaal in ["S235", "C24", "GL28h", "", "C30", "C35"] {
+            let mut uit = json!({ "steel_check_inputs": [] });
+            meld_betonstaven(&mut uit, Some(&model_met(materiaal)), None);
+            assert!(
+                gemelde_ids(&uit).is_empty(),
+                "`{materiaal}` is geen betonsterkteklasse en hoort niet gemeld te worden"
+            );
+        }
+        for materiaal in ["C30/37", "c30/37", " C30/37 ", "C90/105"] {
+            let mut uit = json!({ "steel_check_inputs": [] });
+            meld_betonstaven(&mut uit, Some(&model_met(materiaal)), None);
+            assert_eq!(
+                gemelde_ids(&uit),
+                vec![5],
+                "`{materiaal}` is een betonsterkteklasse en hoort gemeld te worden"
+            );
+        }
+    }
+
+    /// Zonder model gebeurt er niets. Dat pad ontstaat als `check_fem_model`
+    /// zowel `model` als `project_path` kreeg (dan weigert `model_payload` al
+    /// eerder) of als het projectbestand niet te ontleden was — in dat laatste
+    /// geval meldt de solve zelf de fout, met meer detail dan hier mogelijk is.
+    #[test]
+    fn zonder_model_verandert_er_niets() {
+        let mut uit = json!({ "steel_check_inputs": [] });
+        let voor = uit.clone();
+        meld_betonstaven(&mut uit, None, None);
+        assert_eq!(uit, voor);
     }
 }

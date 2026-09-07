@@ -1,14 +1,29 @@
 # openaec-mcp-server
 
 Model Context Protocol (MCP) server that exposes the **Open FEM2D Studio** /
-**OpenAEC** EN 1993-1-1 steel-check engine to MCP clients (Claude Desktop,
+**OpenAEC** check engines and the 2D FEM solver to MCP clients (Claude Desktop,
 Claude Code, etc.). It speaks JSON-RPC 2.0 over stdio and wraps the same
 Rust crates the Tauri desktop app uses, so a tool call from Claude returns
 byte-identical results to clicking through the UI.
 
-This is **v1**: only the steel-check engine. The 2D FEM solver pipeline
-(node/beam/plate mesh, nonlinear solver) is not yet exposed — see "Roadmap"
-below.
+Fourteen tools in three groups:
+
+| group | tools |
+|---|---|
+| steel — EN 1993-1-1 | `list_steel_profiles`, `list_steel_grades`, `check_steel_beam`, `compute_section_properties`, `generate_steel_report_pdf` |
+| 2D FEM solver | `fem_solver_status`, `validate_fem_model`, `load_fem_project`, `solve_fem_model`, `check_fem_model` |
+| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `check_concrete_beam`, `concrete_mn_kappa` |
+
+**De drie wegen.** Elke rekenkern in dit project hoort langs drie wegen
+bereikbaar te zijn: een Tauri-command (de desktop-app), een opdracht in
+`crates/toetsbrug` (de dev-server) en deze MCP-server. Voor beton bestonden
+alleen de eerste twee; sinds september 2026 is de derde er ook.
+`tests/drie_wegen_beton.rs` stuurt dezelfde JSON door alle drie de wegen en
+eist dat de antwoorden veld voor veld gelijk zijn. Voor staal bestaat zo'n
+vergelijking nog niet.
+
+Not exposed: timber (EN 1995), cross-laminated timber, the free stress check,
+fillet welds — die zijn wel via de Tauri-commands en de toetsbrug bereikbaar.
 
 ## Build
 
@@ -48,7 +63,7 @@ The config file lives at:
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Restart Claude Desktop after editing. The five tools below should appear in
+Restart Claude Desktop after editing. All fourteen tools should appear in
 the tools picker.
 
 To raise the log level (logs go to **stderr** so they never collide with
@@ -68,8 +83,8 @@ JSON-RPC traffic on stdout), set the env var `OPENAEC_MCP_LOG=debug`:
 ## Tools
 
 All tool I/O matches the existing `ts-rs`-generated TypeScript types in
-`src/lib/types/steel/`, so the same JSON shapes work for both Tauri and MCP
-callers.
+`src/lib/types/steel/` and `src/lib/types/concrete/`, so the same JSON shapes
+work for both Tauri and MCP callers.
 
 ### `list_steel_profiles`
 
@@ -237,6 +252,121 @@ Decode the base64 and write to disk to view. The PDF renders the OpenAEC
 header/footer, a project information block, and one section per beam with all
 checks, formulae and unity-check ratios.
 
+## Concrete tools (EN 1992-1-1)
+
+Same engine as the Tauri commands `list_concrete_classes`,
+`list_reinforcement_grades`, `check_concrete_beams` and `concrete_mn_kappa`, and
+as the toetsbrug opdrachten of those names: `concrete_check` is called directly,
+so there is no second implementation. `check_concrete_beam` is **singular** here
+and takes one beam, exactly like `check_steel_beam`; the other two ways take a
+list. Input and output types are identical (`ConcreteBeamCheckInput` /
+`ConcreteBeamCheckResult`, `MnKappaRequest` / `MnKappaResponse`).
+
+Scope today: a rectangular section `b × h` with a cage (cover, stirrup, one top
+row and one bottom row), checked for bending with the rectangular stress block
+(§3.1.7(3)) and for bending **with axial force** through the M-N-κ relation,
+including the minimum eccentricity of §6.1(4). **Not** included: shear, torsion,
+crack width, deflection, second-order effects.
+
+### `list_concrete_classes` / `list_reinforcement_grades`
+
+```json
+{ "name": "list_concrete_classes", "arguments": {} }
+```
+
+Return `{ "classes": [ … ] }` and `{ "grades": [ … ] }`. The list is wrapped in
+an object because `structuredContent` must be an object; the array inside is the
+same one the other two ways return bare.
+
+### `check_concrete_beam`
+
+`n_strips` (50), `steel_branch` (`"Horizontal"`), `design_situation`
+(`"PersistentTransient"`) and `apply_min_eccentricity` (`true`) may be omitted;
+everything else is required. The schema is complete and strict
+(`additionalProperties: false`), mirroring `#[serde(deny_unknown_fields)]`: a
+typo in a field name is an error, not a silent fallback.
+
+```json
+{
+  "name": "check_concrete_beam",
+  "arguments": {
+    "beam_id": 7,
+    "width_mm": 300,
+    "height_mm": 500,
+    "concrete_class": "C30/37",
+    "reinforcement_grade": "B500B",
+    "cage": {
+      "cover_mm": 30,
+      "stirrup_diameter_mm": 8,
+      "top":    { "count": 2, "diameter_mm": 12 },
+      "bottom": { "count": 3, "diameter_mm": 16 }
+    },
+    "length_m": 5,
+    "forces_envelope": [
+      { "combination_id": 1, "position_mm": 2500,
+        "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 0,
+                    "mt_ed": 0, "my_ed": 100, "mz_ed": 0 } }
+    ]
+  }
+}
+```
+
+Response (`ConcreteBeamCheckResult`, abridged) — these are the numbers all three
+ways produce for this input:
+
+```json
+{
+  "beam_id": 7,
+  "section_name": "300 x 500",
+  "reinforcement_summary": "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm",
+  "d_mm": 454.0,
+  "f_cd_mpa": 20.0,
+  "f_yd_mpa": 434.7826086956522,
+  "checks": [ "6.1_bending_stress_block", "6.1_mn_kappa" ],
+  "uc_max": 0.8839946123262402,
+  "status": "Ok",
+  "governing_check_id": "6.1_mn_kappa",
+  "mn_kappa": { "n_kn": 0.0, "m_max_knm": 113.12286139035288, "failure_mode": "ConcreteCrushing" },
+  "interaction_positive": [ /* 21 points */ ],
+  "interaction_negative": [ /* 21 points */ ]
+}
+```
+
+An unknown strength class or a cage that does not fit the section does **not**
+throw: the result comes back with `governing_check_id` = `"ERROR: …"` and an
+empty `checks` list. Check that field before reading `uc_max`.
+
+### `concrete_mn_kappa`
+
+The M-N-κ diagram of one cage without a beam or a force envelope — what the
+reinforcement editor draws. `n_ed_kn` is **tension-positive**, so a compressed
+column takes a negative value.
+
+```json
+{
+  "name": "concrete_mn_kappa",
+  "arguments": {
+    "width_mm": 300, "height_mm": 500,
+    "concrete_class": "C30/37", "reinforcement_grade": "B500B",
+    "cage": { "cover_mm": 30, "stirrup_diameter_mm": 8,
+              "top": { "count": 2, "diameter_mm": 12 },
+              "bottom": { "count": 3, "diameter_mm": 16 } },
+    "n_ed_kn": -800,
+    "interaction_points": 11
+  }
+}
+```
+
+Response (abridged): `n_rd_compression_kn` = 3331.7521842190818,
+`n_rd_tension_kn` = 360.6002002381328, `diagram.m_max_knm` =
+235.12985457846818, `diagram.kappa_u_per_m` = 0.017642178136855355,
+`diagram.failure_mode` = `"ConcreteCrushing"`, 61 diagram points and 11
+interaction points per moment direction.
+
+Unlike `check_concrete_beam`, an invalid request here **is** a tool error
+(`isError: true`) with the reason — an empty diagram would read as "no
+capacity".
+
 ## Architecture
 
 - **Transport**: newline-delimited JSON-RPC 2.0 on stdin/stdout. One message
@@ -261,39 +391,59 @@ checks, formulae and unity-check ratios.
 cargo test -p openaec-mcp-server
 ```
 
-The single integration test in `tests/stdio_roundtrip.rs` spawns the actual
-binary, drives a full handshake (`initialize` →
-`notifications/initialized` → `tools/list` → `tools/call list_steel_profiles`)
-and asserts every response is well-formed and the profile array is
-non-empty.
+| test | what it pins down |
+|---|---|
+| `stdio_roundtrip.rs` | the full handshake against the real binary: `initialize` → `notifications/initialized` → `tools/list` → `tools/call`, and the complete tool roster |
+| `schema_strikt.rs` | the input schemas of `check_steel_beam`, `check_concrete_beam` and `concrete_mn_kappa` are complete and strict; a typo in a field name is refused, not silently defaulted |
+| `drie_wegen_beton.rs` | **the three ways give the same answer**: the same JSON through the Tauri command's engine call, through `toetsbrug::behandel` and through the real MCP binary, compared field by field, plus anchor values so all three cannot drift together |
+| `beton_in_check_fem_model.rs` | a concrete beam in a mixed model is reported in `skipped_beams` instead of vanishing; `beam_ids` is respected; a model carrying a reinforcement cage is refused by the field gate |
+| `fem_golden.rs`, `sidecar.rs`, `fout_paden.rs` | the FEM chain: golden values, the Node sidecar, and the error paths |
 
-## Known limitations (v1)
+`beton_in_check_fem_model.rs` and the FEM tests need Node ≥ 20, because the
+solve runs in the Node sidecar; they fail with that message rather than skipping
+silently. The steel and concrete check tools run entirely in Rust, so
+`schema_strikt.rs` and `drie_wegen_beton.rs` need nothing beyond cargo.
 
-- **Engine scope**: only the steel-check pipeline is wrapped. The 2D FEM
-  solver (node/beam/plate mesh, nonlinear solver, plate-region mesh
-  generation) is not yet exposed — see roadmap.
+## Known limitations
+
+- **`check_fem_model` checks steel only.** The solve covers every beam —
+  `resolveSection` knows concrete (E_cm on an uncracked rectangular section) and
+  timber, so those beams do carry their share of the force distribution. The
+  *check* afterwards is `steel_check::check_all_beams` and nothing else.
+  Concrete beams are therefore listed in `skipped_beams` with a pointer to
+  `check_concrete_beam`. **Timber beams are not**: a timber beam is only
+  reported when it carries a steel profile; with a timber cross-section it drops
+  out of `buildSteelCheckInputs` without a word. Fixing that needs a change in
+  the solver bundle, not in this crate. Always read `skipped_beams`, and never
+  read `governing` as a verdict on a mixed model.
+- **Concrete cages are not part of the model.** The `.ifcfem2d` model shape this
+  server accepts has no cage fields in `checkConfig` (the sidecar's field gate
+  rejects unknown ones), so a project saved with reinforcement cages is refused
+  by `validate_fem_model` / `solve_fem_model` / `check_fem_model` on those
+  fields. Feed the cage to `check_concrete_beam` directly instead.
+- **Concrete scope**: rectangular sections with one top and one bottom
+  reinforcement row; bending and bending-with-axial-force only. No shear, no
+  torsion, no crack width, no deflection, no second-order effects.
 - **CHS section properties**: `compute_section_properties` returns the
   catalogue values for CHS profiles because no `chs_section_props` analytical
   helper exists in the `section-properties` crate yet.
-- **Tool input schemas**: kept loose (`additionalProperties: true` on
-  engine-types) because re-deriving JSON-Schema from the existing serde/ts-rs
-  type definitions would mean duplicating every field. Validation happens
-  server-side via serde and produces -32602 errors with the offending field
-  named.
+- **Tool input schemas**: `check_steel_beam`, `check_concrete_beam` and
+  `concrete_mn_kappa` have complete, strict schemas
+  (`additionalProperties: false`, every field listed) that mirror
+  `#[serde(deny_unknown_fields)]` on the Rust types; so do the five FEM tools.
+  `generate_steel_report_pdf` is still loose — it is a reporting input with no
+  effect on any calculation.
 - **No streaming**: tool results are returned in one chunk. The PDF tool
   returns the entire base64-encoded document in a single response — fine for
   reports up to ~1 MB, may need chunking later.
 - **No auth**: stdio transport is trusted by definition. Do not expose this
   server over TCP without adding authentication.
 
-## Roadmap (v2 idea)
+## Roadmap
 
-Wrap the 2D FEM solver pipeline as additional tools:
-
-- `solve_fem_model` — accept a `Mesh` (nodes, beams, plates, supports, loads)
-  and return the solved nodal displacements, reactions and per-beam force
-  envelopes — i.e. exactly the input shape that `check_steel_beam` expects.
-  This would let an MCP client describe a steel frame in natural language,
-  have Claude solve it, and pipe the result straight into the steel checks
-  already exposed here — closing the loop end-to-end without ever opening
-  the desktop app.
+- **Timber (EN 1995) and CLT** as their own tools, the same way concrete was
+  added: `timber_check` is already a crate and already reachable through the
+  Tauri command and the toetsbrug, so the MCP way is the missing third.
+- **A three-ways test for steel**, in the shape of `tests/drie_wegen_beton.rs`.
+  Steel is the oldest engine here and the only one without that comparison.
+- **A concrete PDF report tool**, next to `generate_steel_report_pdf`.

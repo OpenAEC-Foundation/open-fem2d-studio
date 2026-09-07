@@ -1,4 +1,5 @@
-//! Strikt schema en strikte invoer voor `check_steel_beam`.
+//! Strikt schema en strikte invoer voor `check_steel_beam` en voor de
+//! betontools (`check_concrete_beam`, `concrete_mn_kappa`).
 //!
 //! Waarom deze test bestaat: het oude schema zette `additionalProperties` op
 //! `true` en verzweeg vijf velden met `#[serde(default)]`. Een client die dat
@@ -107,24 +108,56 @@ fn geldige_invoer() -> Value {
     })
 }
 
-/// Roep `check_steel_beam` aan en geef het `result`-object terug.
-async fn roep_check_aan(
+/// Roep één tool aan en geef het `result`-object terug.
+async fn roep_tool_aan(
     stdin: &mut ChildStdin,
     reader: &mut BufReader<ChildStdout>,
     id: u32,
+    tool: &str,
     argumenten: Value,
 ) -> Value {
     schrijf(
         stdin,
         json!({
             "jsonrpc": "2.0", "id": id, "method": "tools/call",
-            "params": { "name": "check_steel_beam", "arguments": argumenten }
+            "params": { "name": tool, "arguments": argumenten }
         }),
     )
     .await;
     let resp = lees_bericht(reader).await;
     assert_eq!(resp["id"], id);
     resp["result"].clone()
+}
+
+async fn roep_check_aan(
+    stdin: &mut ChildStdin,
+    reader: &mut BufReader<ChildStdout>,
+    id: u32,
+    argumenten: Value,
+) -> Value {
+    roep_tool_aan(stdin, reader, id, "check_steel_beam", argumenten).await
+}
+
+/// Eén tooldefinitie uit `tools/list`.
+async fn tooldefinitie(
+    stdin: &mut ChildStdin,
+    reader: &mut BufReader<ChildStdout>,
+    id: u32,
+    naam: &str,
+) -> Value {
+    schrijf(
+        stdin,
+        json!({ "jsonrpc": "2.0", "id": id, "method": "tools/list", "params": {} }),
+    )
+    .await;
+    let resp = lees_bericht(reader).await;
+    resp["result"]["tools"]
+        .as_array()
+        .expect("tools is een array")
+        .iter()
+        .find(|t| t["name"] == naam)
+        .unwrap_or_else(|| panic!("{naam} ontbreekt in tools/list"))
+        .clone()
 }
 
 /// De foutmelding zoals de client hem te zien krijgt.
@@ -297,6 +330,219 @@ async fn onbekend_veld_in_lateral_bracing_wordt_geweigerd() {
     assert!(
         melding.contains("top_flange_position"),
         "de melding moet het onbekende veld noemen, kreeg: {melding}"
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+// ── 3. De betontools ────────────────────────────────────────────────────────
+//
+// `ConcreteBeamCheckInput`, `MnKappaRequest`, `ReinforcementCage` en `RebarRow`
+// staan alle vier op `#[serde(deny_unknown_fields)]`. Het schema moet dat
+// spiegelen én alle velden noemen: laat een schema een veld met
+// `#[serde(default)]` weg, dan wordt het door `additionalProperties: false`
+// zelfs geweigerd en kan een client het niet meer opgeven.
+
+/// De referentiedoorsnede: 300 × 500, C30/37, B500B, dekking 30, beugel Ø8,
+/// onder 3Ø16, boven 2Ø12 — dezelfde als in `concrete-check/tests/`.
+fn geldige_betoninvoer() -> Value {
+    json!({
+        "beam_id": 7,
+        "width_mm": 300,
+        "height_mm": 500,
+        "concrete_class": "C30/37",
+        "reinforcement_grade": "B500B",
+        "cage": {
+            "cover_mm": 30,
+            "stirrup_diameter_mm": 8,
+            "top": { "count": 2, "diameter_mm": 12 },
+            "bottom": { "count": 3, "diameter_mm": 16 }
+        },
+        "length_m": 5,
+        "forces_envelope": [
+            { "combination_id": 1, "position_mm": 2500,
+              "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 0,
+                          "mt_ed": 0, "my_ed": 100, "mz_ed": 0 } }
+        ]
+    })
+}
+
+#[tokio::test]
+async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let tool = tooldefinitie(&mut stdin, &mut reader, 20, "check_concrete_beam").await;
+    let schema = &tool["inputSchema"];
+    let props = &schema["properties"];
+
+    assert_eq!(
+        schema["additionalProperties"], false,
+        "check_concrete_beam moet additionalProperties: false hebben"
+    );
+
+    // Elk veld van ConcreteBeamCheckInput, ook de vier met #[serde(default)].
+    for veld in [
+        "beam_id", "width_mm", "height_mm", "concrete_class",
+        "reinforcement_grade", "cage", "length_m", "forces_envelope",
+        "n_strips", "steel_branch", "design_situation", "apply_min_eccentricity",
+    ] {
+        assert!(
+            props[veld].is_object(),
+            "veld '{veld}' ontbreekt in het schema van check_concrete_beam"
+        );
+    }
+    assert_eq!(
+        props.as_object().unwrap().len(),
+        12,
+        "het schema kent een veld dat ConcreteBeamCheckInput weigert"
+    );
+
+    // De enums die de kern werkelijk kent (serde schrijft de varianten uit).
+    assert_eq!(props["steel_branch"]["enum"], json!(["Horizontal", "Inclined"]));
+    assert_eq!(
+        props["design_situation"]["enum"],
+        json!(["PersistentTransient", "Accidental"])
+    );
+
+    // De korf: geen standaardwaarden, dus alle vier de velden verplicht.
+    let cage = &props["cage"];
+    assert_eq!(cage["additionalProperties"], false);
+    assert_eq!(
+        cage["required"],
+        json!(["cover_mm", "stirrup_diameter_mm", "top", "bottom"])
+    );
+    for zijde in ["top", "bottom"] {
+        let rij = &cage["properties"][zijde];
+        assert_eq!(rij["additionalProperties"], false);
+        assert_eq!(rij["required"], json!(["count", "diameter_mm"]));
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+#[tokio::test]
+async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let tool = tooldefinitie(&mut stdin, &mut reader, 21, "concrete_mn_kappa").await;
+    let schema = &tool["inputSchema"];
+    let props = &schema["properties"];
+
+    assert_eq!(schema["additionalProperties"], false);
+    for veld in [
+        "width_mm", "height_mm", "concrete_class", "reinforcement_grade",
+        "cage", "n_ed_kn", "moment_sign", "n_strips", "steel_branch",
+        "design_situation", "interaction_points",
+    ] {
+        assert!(
+            props[veld].is_object(),
+            "veld '{veld}' ontbreekt in het schema van concrete_mn_kappa"
+        );
+    }
+    assert_eq!(
+        props.as_object().unwrap().len(),
+        11,
+        "het schema kent een veld dat MnKappaRequest weigert"
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+#[tokio::test]
+async fn geldige_betoninvoer_wordt_gewoon_getoetst() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let result = roep_tool_aan(
+        &mut stdin,
+        &mut reader,
+        22,
+        "check_concrete_beam",
+        geldige_betoninvoer(),
+    )
+    .await;
+    assert_eq!(
+        result["isError"], false,
+        "geldige invoer moet gewoon rekenen, kreeg: {}",
+        foutmelding(&result)
+    );
+    let checks = result["structuredContent"]["checks"]
+        .as_array()
+        .expect("resultaat moet een 'checks'-array bevatten");
+    assert!(!checks.is_empty(), "er is geen enkele toets uitgevoerd");
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+#[tokio::test]
+async fn tikfout_in_een_betonveld_wordt_geweigerd() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    // n_stripes in plaats van n_strips: zonder deny_unknown_fields zou de
+    // toetsing doorlopen met 50 stroken terwijl de aanroeper er 200 vroeg.
+    let mut invoer = geldige_betoninvoer();
+    invoer.as_object_mut().unwrap().insert("n_stripes".into(), json!(200));
+
+    let result = roep_tool_aan(&mut stdin, &mut reader, 23, "check_concrete_beam", invoer).await;
+    let melding = foutmelding(&result);
+    assert_eq!(result["isError"], true, "kreeg een resultaat: {result}");
+    assert!(
+        melding.contains("n_stripes") && melding.contains("unknown field"),
+        "de melding moet het onbekende veld noemen, kreeg: {melding}"
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Een korf zonder dekking is geen korf met dekking 0: `ReinforcementCage`
+/// kent geen standaardwaarden, dus dit hoort een fout te zijn en geen
+/// stilzwijgend gunstiger geplaatste wapening.
+#[tokio::test]
+async fn onvolledige_wapeningskorf_wordt_geweigerd() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut invoer = geldige_betoninvoer();
+    invoer["cage"].as_object_mut().unwrap().remove("cover_mm");
+
+    let result = roep_tool_aan(&mut stdin, &mut reader, 24, "check_concrete_beam", invoer).await;
+    let melding = foutmelding(&result);
+    assert_eq!(result["isError"], true, "kreeg een resultaat: {result}");
+    assert!(
+        melding.contains("cover_mm"),
+        "de melding moet zeggen welk veld ontbreekt, kreeg: {melding}"
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Een onbekende sterkteklasse in `concrete_mn_kappa` levert een toolfout met
+/// de reden, en geen leeg diagram — leeg zou als "geen capaciteit" lezen.
+#[tokio::test]
+async fn onbekende_sterkteklasse_geeft_een_leesbare_fout() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let result = roep_tool_aan(
+        &mut stdin,
+        &mut reader,
+        25,
+        "concrete_mn_kappa",
+        json!({
+            "width_mm": 300, "height_mm": 500,
+            "concrete_class": "C24", "reinforcement_grade": "B500B",
+            "cage": geldige_betoninvoer()["cage"]
+        }),
+    )
+    .await;
+    let melding = foutmelding(&result);
+    assert_eq!(result["isError"], true, "kreeg een resultaat: {result}");
+    assert!(
+        melding.contains("C24"),
+        "de melding moet de afgewezen klasse noemen, kreeg: {melding}"
     );
 
     drop(stdin);

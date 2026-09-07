@@ -1,5 +1,6 @@
 //! openaec-mcp-server — Model Context Protocol server exposing the
-//! OpenAEC steel-check engine over stdio (JSON-RPC 2.0).
+//! OpenAEC check engines (EN 1993 steel, EN 1992 concrete) and the 2D FEM
+//! solver over stdio (JSON-RPC 2.0).
 //!
 //! Speaks newline-delimited JSON-RPC on stdin/stdout. stderr is reserved
 //! for human-readable tracing (so it never collides with protocol traffic).
@@ -21,6 +22,11 @@ use tokio::sync::Mutex;
 /// De vijf FEM-tools. Ze rekenen niet hier maar in de Node-sidecar, op
 /// letterlijk dezelfde solver als de app. Zie `fem_tools.rs`.
 mod fem_tools;
+
+/// De vier betontools (NEN-EN 1992-1-1). Ze roepen dezelfde `concrete_check`
+/// aan als het Tauri-command en de toetsbrug — de derde weg naar één
+/// rekengang. Zie `concrete_tools.rs`.
+mod concrete_tools;
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "openaec-fem";
@@ -139,6 +145,10 @@ fn err(id: Value, error: RpcError) -> Response {
 /// `InternalForces` kennen geen `#[serde(default)]`, dus daar levert een
 /// tikfout altijd al een "missing field"-fout op. Het schema belooft hier dus
 /// niet strenger te zijn dan de server werkelijk is.
+///
+/// Wordt gedeeld met `concrete_tools`: `ConcreteBeamCheckInput` draagt dezelfde
+/// `Vec<ForcePoint>` als `BeamCheckInput`, dus één schema en geen tweede
+/// beschrijving die kan afwijken.
 fn schema_krachtenomhullende() -> Value {
     json!({
         "type": "array",
@@ -257,6 +267,10 @@ fn schema_custom_section() -> Value {
 /// hij hem geïnstalleerd heeft. In plaats daarvan komt er bij de aanroep een
 /// Nederlandse melding met foutcode en remedie, en blijft `fem_solver_status`
 /// het eerste dat je vraagt.
+///
+/// De vier betontools uit `concrete_tools` sluiten de rij. Ze hebben, net als
+/// `check_steel_beam`, een volledig en strikt schema: `ConcreteBeamCheckInput`
+/// en `MnKappaRequest` staan op `#[serde(deny_unknown_fields)]`.
 fn tool_definitions() -> Value {
     let mut tools = json!([
         {
@@ -362,10 +376,11 @@ fn tool_definitions() -> Value {
             }
         }
     ]);
-    tools
+    let lijst = tools
         .as_array_mut()
-        .expect("de tooldefinities zijn een array")
-        .extend(fem_tools::tool_definitions());
+        .expect("de tooldefinities zijn een array");
+    lijst.extend(fem_tools::tool_definitions());
+    lijst.extend(concrete_tools::tool_definitions());
     tools
 }
 
@@ -426,6 +441,12 @@ async fn dispatch_tool(name: &str, args: Value) -> Result<Value, RpcError> {
         // `check_fem_model` roept daarna `steel_check::check_all_beams` aan —
         // dezelfde functie die `src-tauri/src/lib.rs` voor de app aanroept.
         fem if fem_tools::is_fem_tool(fem) => fem_tools::dispatch(fem, args).await,
+        // De betontools. Ze roepen `concrete_check` aan — dezelfde functies die
+        // `src-tauri/src/lib.rs` en `crates/toetsbrug` aanroepen. Zie
+        // `concrete_tools.rs` en `tests/drie_wegen_beton.rs`.
+        beton if concrete_tools::is_concrete_tool(beton) => {
+            concrete_tools::dispatch(beton, args).await
+        }
         other => Err(RpcError::method_not_found(other)),
     }
 }

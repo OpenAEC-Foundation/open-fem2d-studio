@@ -50,3 +50,15 @@ steel-profiles = { path = "../steel-profiles" }
 section-properties = { path = "../section-properties" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 report = { path = "../report" }
+# Beton (NEN-EN 1992-1-1). De derde weg naar dezelfde rekengang die achter het
+# Tauri-command `check_concrete_beams` en achter de gelijknamige
+# toetsbrug-opdracht zit. `nen-en-1992-1-1` staat erbij voor de sterkteklassen
+# en om in `check_fem_model` te kunnen zien of het materiaal van een staaf een
+# betonsterkteklasse is.
+concrete-check = { path = "../concrete-check" }
+nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
+
+[dev-dependencies]
+# De toetsbrug als bibliotheek: de drie-wegen-verificatie roept zijn werkelijke
+# `behandel` aan in plaats van hem na te programmeren.
+toetsbrug = { path = "../toetsbrug" }
