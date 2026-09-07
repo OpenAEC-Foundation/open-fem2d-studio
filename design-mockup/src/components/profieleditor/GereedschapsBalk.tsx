@@ -207,7 +207,7 @@ export default function GereedschapsBalk({
         onClick={() => onStart("verplaats")}
         title={
           muisReden ??
-          "Verplaatsen met de muis. Cijfers typen geeft een exacte maat, Y of Z vergrendelt een as, Shift laat het raster los, Enter bevestigt en Esc zet alles terug."
+          "Verplaatsen in twee klikken: eerst het basispunt dat je vastpakt, dan het doelpunt waar het heen moet. De aanwijzer klikt onderweg vast op hoekpunten, zijdemiddens, harten en het zwaartepunt, en anders op het raster. Cijfers typen geeft een exacte maat, Y of Z vergrendelt een as, Shift laat alle snap los, Enter bevestigt en Esc zet alles terug."
         }
       >
         <Icoon naam="verplaats" />

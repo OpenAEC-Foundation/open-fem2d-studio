@@ -38,6 +38,7 @@ import {
   type GatBewerking,
   type Punt2,
 } from "../../lib/profieleditor/transformeren";
+import { VANG_NAAM, type VangSoort } from "../../lib/profieleditor/snappunten";
 import type { DoorsnedeOntwerp, EigenDoorsnede } from "../../lib/profieleditor/types";
 import { useMotorBerekening } from "../../lib/profieleditor/useMotorBerekening";
 import Modal from "../Modal";
@@ -93,6 +94,11 @@ const HOEKSTAP_GRADEN = 15;
  * Een lopende verplaats- of roteermodus (G/R), naar het voorbeeld van het
  * canvas: de muis stuurt, een getypt getal gaat vóór de muis, Enter bevestigt
  * en Escape zet `origineel` terug.
+ *
+ * Verplaatsen gaat in twee klikken, zoals in elk tekenpakket: eerst wijs je
+ * het BASISPUNT aan (het punt dat je vastpakt), dan het DOELPUNT. Het verschil
+ * tussen die twee is de verplaatsing. Beide klikken vangen op de punten van de
+ * tekening, zodat een hoekpunt exact op een ander hoekpunt landt.
  */
 interface Modus {
   soort: TransformSoort;
@@ -100,15 +106,21 @@ interface Modus {
   doelId: string | null;
   /** Het ontwerp bij de start; elke voorvertoning wordt hieruit opnieuw berekend. */
   origineel: Samenstelling;
-  /** Draai-/ankerpunt, bevroren bij de start zodat het niet met de motor meeschuift. */
+  /** Draaipunt bij roteren, bevroren bij de start zodat het niet meeschuift. */
   anker: Punt2;
-  /** Muis (model-mm) bij de eerste beweging in het tekenvlak. */
+  /** Zwaartepunt bij de start; snappunt dat niet met de voorvertoning meeschuift. */
+  ankerZwaartepunt: Punt2 | null;
+  /** Verplaatsen: wijst de muis nu het basispunt aan of het doelpunt? */
+  fase: "basispunt" | "doelpunt";
+  /** Het vastgelegde basispunt, of null zolang het nog aangewezen wordt. */
+  basis: Punt2 | null;
+  /** Muis (model-mm) bij de eerste beweging in het tekenvlak (roteren). */
   muisStart: Punt2 | null;
-  /** Laatste muispositie (model-mm). */
+  /** Laatste muispositie (model-mm), al gevangen door het tekenvlak. */
   muis: Punt2 | null;
-  /** Rasterstap die bij die laatste beweging in beeld stond. */
-  stap: number;
-  /** Shift ingedrukt: niet snappen. */
+  /** Waar die muispositie op vastklikte. */
+  vang: VangSoort;
+  /** Shift ingedrukt: niet vangen (en bij roteren: geen hoekstap). */
   vrij: boolean;
   /** Vergrendelde as bij verplaatsen. */
   asSlot: "y" | "z" | null;
@@ -123,6 +135,11 @@ interface Modus {
  * Verplaatsing of hoek opnieuw afleiden uit de muis of het getypte getal.
  * Eén plek, zodat een aslock, een Shift of een extra cijfer allemaal langs
  * dezelfde weg lopen.
+ *
+ * De muispositie is hier al gevangen (het tekenvlak weet als enige hoe ver een
+ * schermstraal in millimeters is); er wordt dus niets meer afgerond. Juist
+ * daardoor klopt de uitkomst exact: doelpunt − basispunt, allebei coördinaten
+ * uit de geometrie.
  */
 function herbereken(m: Modus): Modus {
   const getal = m.getypt === null ? NaN : leesGetal(m.getypt);
@@ -133,13 +150,9 @@ function herbereken(m: Modus): Modus {
       const v = Number.isFinite(getal) ? getal : 0;
       if (m.asSlot === "z") dz = v;
       else dy = v;
-    } else if (m.muisStart && m.muis) {
-      dy = m.muis.y - m.muisStart.y;
-      dz = m.muis.z - m.muisStart.z;
-      if (!m.vrij && m.stap > 0) {
-        dy = Math.round(dy / m.stap) * m.stap;
-        dz = Math.round(dz / m.stap) * m.stap;
-      }
+    } else if (m.fase === "doelpunt" && m.basis && m.muis) {
+      dy = m.muis.y - m.basis.y;
+      dz = m.muis.z - m.basis.z;
       if (m.asSlot === "y") dz = 0;
       if (m.asSlot === "z") dy = 0;
     }
@@ -231,12 +244,14 @@ export default function ProfielEditor({
     sleepStart.current = zoekPositie(id);
   }, [zoekPositie]);
   const opSleep = useCallback(
-    (id: string, dy: number, dz: number, stap = 0) => {
+    (id: string, dy: number, dz: number, vrij = false) => {
       const s0 = sleepStart.current;
       if (!s0) return;
-      // `stap` is de rasterstap waarop de nieuwe positie mag landen; 0 betekent
-      // vrij schuiven (Shift), en dan blijft het bij hele millimeters.
-      const rond = (v: number) => (stap > 0 ? Math.round(v / stap) * stap : Math.round(v));
+      // De verplaatsing is al gevangen op een snappunt of op het raster: hier
+      // wordt alleen drijvendekommastof weggehaald, zodat een hoekpunt dat op
+      // een ander hoekpunt landt ook echt dezelfde coördinaat krijgt. Met
+      // Shift is er niets gevangen, en dan blijft het bij hele millimeters.
+      const rond = (v: number) => (vrij ? Math.round(v) : Math.round(v * 1e4) / 1e4);
       if (ontwerp.soort === "samenstelling") {
         setSamenstelling((o) => ({
           ...o,
@@ -320,9 +335,12 @@ export default function ProfielEditor({
         doelId,
         origineel: samenstelling,
         anker: draaipunt,
+        ankerZwaartepunt: motor.uitvoer ? { y: motor.uitvoer.y_c_mm, z: motor.uitvoer.z_c_mm } : null,
+        fase: "basispunt",
+        basis: null,
         muisStart: null,
         muis: null,
-        stap: 0,
+        vang: "raster",
         vrij: false,
         asSlot: null,
         getypt: null,
@@ -331,10 +349,28 @@ export default function ProfielEditor({
         graden: 0,
       });
     },
-    [tab, samenstelling, doelId, draaipunt],
+    [tab, samenstelling, doelId, draaipunt, motor.uitvoer],
   );
 
-  const bevestigModus = useCallback(() => setModus(null), []);
+  /**
+   * Klikken in het tekenvlak (of Enter). Bij verplaatsen legt de eerste klik
+   * het basispunt vast en voert de tweede de verplaatsing uit; bij roteren, en
+   * zodra er een maat getypt is, bevestigt hij meteen.
+   */
+  const bevestigModus = useCallback(
+    (punt?: Punt2) => {
+      const m = modus;
+      if (!m) return;
+      if (m.soort === "verplaats" && m.fase === "basispunt" && m.getypt === null) {
+        const p = punt ?? m.muis;
+        if (!p) return;
+        zetModus({ ...m, fase: "doelpunt", basis: p, muis: p });
+        return;
+      }
+      setModus(null);
+    },
+    [modus, zetModus],
+  );
   const annuleerModus = useCallback(() => {
     if (!modus) return;
     setSamenstelling(modus.origineel);
@@ -342,9 +378,15 @@ export default function ProfielEditor({
   }, [modus]);
 
   const opModusMuis = useCallback(
-    (y: number, z: number, stap: number, vrij: boolean) => {
+    (y: number, z: number, vang: VangSoort, shift: boolean) => {
       if (!modus) return;
-      zetModus({ ...modus, muis: { y, z }, stap, vrij, muisStart: modus.muisStart ?? { y, z } });
+      zetModus({
+        ...modus,
+        muis: { y, z },
+        vang,
+        vrij: shift,
+        muisStart: modus.muisStart ?? { y, z },
+      });
     },
     [modus, zetModus],
   );
@@ -490,15 +532,32 @@ export default function ProfielEditor({
     if (!modus) return null;
     const wat = modus.doelId ? (naamVanBouwsteen(samenstelling, modus.doelId) ?? "bouwsteen") : "hele ontwerp";
     const getypt = modus.getypt ? `  ⌨ ${modus.getypt}` : "";
+    const gemeen = {
+      snapOntwerp: modus.origineel,
+      snapZwaartepunt: modus.ankerZwaartepunt,
+    };
     if (modus.soort === "verplaats") {
       const slot = modus.asSlot ? `  [${modus.asSlot}-as]` : "";
+      // Waar de aanwijzer nu op vastklikt; bij een getypte maat telt de muis
+      // niet mee en heeft die aanduiding dus niets te zeggen.
+      const op = modus.getypt === null ? `  ⊹ ${VANG_NAAM[modus.vang]}` : "";
+      const punt = modus.muis
+        ? `(${fmtMaat(modus.muis.y, 3)}, ${fmtMaat(modus.muis.z, 3)})`
+        : "wijs aan";
       return {
         soort: "verplaats",
-        regel: `Verplaatsen (${wat}): Δy = ${fmtMaat(modus.dy, 3)} mm, Δz = ${fmtMaat(modus.dz, 3)} mm${slot}${getypt}`,
+        regel:
+          modus.fase === "basispunt" && modus.getypt === null
+            ? `Verplaatsen (${wat}) · 1/2 basispunt ${punt}${op}`
+            : `Verplaatsen (${wat}) · 2/2 doelpunt: Δy = ${fmtMaat(modus.dy, 3)} mm, ` +
+              `Δz = ${fmtMaat(modus.dz, 3)} mm${slot}${getypt}${op}`,
         bediening:
-          "muis verplaatst · cijfers typen = maat · Y of Z vergrendelt een as · Shift = vrij van het raster · Enter bevestigt · Esc annuleert",
-        anker: modus.anker,
+          modus.fase === "basispunt" && modus.getypt === null
+            ? "klik het punt dat je vastpakt · snap op hoekpunt, midden, hart en zwaartepunt · Shift = vrij · Esc annuleert"
+            : "klik waar dat punt heen moet · cijfers typen = maat · Y of Z vergrendelt een as · Shift = vrij · Enter bevestigt · Esc annuleert",
+        anker: modus.basis,
         asSlot: modus.asSlot,
+        ...gemeen,
       };
     }
     return {
@@ -506,6 +565,7 @@ export default function ProfielEditor({
       regel: `Roteren (${wat}): φ = ${fmtMaat(modus.graden, 3)}°${getypt}`,
       bediening: `muis draait om het ankerpunt · cijfers typen = hoek · Shift = vrij (anders stappen van ${HOEKSTAP_GRADEN}°) · Enter bevestigt · Esc annuleert`,
       anker: modus.anker,
+      ...gemeen,
     };
   }, [modus, samenstelling]);
 

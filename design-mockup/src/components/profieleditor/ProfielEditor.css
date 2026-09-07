@@ -500,6 +500,27 @@
 .pe-tekenvlak .pe-schuifmiddelpunt { stroke: var(--theme-accent); stroke-width: 1.4; }
 .pe-tekenvlak.verouderd .pe-materiaal { opacity: 0.75; }
 
+/*
+  Opsmuk vangt de muis niet. Het zwaartepuntkruis, de assen, de maatlijnen en
+  de teksten worden ná de bouwstenen getekend en liggen er dus bovenop: een gat
+  of een lamel precies onder dat kruisje was daardoor niet op te pakken — de
+  klik kwam op het kruisje terecht en hief de selectie juist op. Het raster
+  ligt eronder en vangt niets weg, maar hoort net zo goed niet aanwijsbaar te
+  zijn. Klikbaar blijft alleen wat je moet kunnen aanwijzen: de bouwstenen, de
+  gaten en het vlak van de knop "passend" (.pe-knopvlak, dat zijn eigen klik
+  afhandelt — zijn opschrift valt onder .pe-tekst en hoeft dat niet).
+*/
+.pe-tekenvlak .pe-raster,
+.pe-tekenvlak .pe-raster-hoofd,
+.pe-tekenvlak .pe-as,
+.pe-tekenvlak .pe-hoofdas,
+.pe-tekenvlak .pe-zwaartepunt,
+.pe-tekenvlak .pe-schuifmiddelpunt,
+.pe-tekenvlak .pe-maatlijn,
+.pe-tekenvlak .pe-tekst {
+  pointer-events: none;
+}
+
 .pe-tekenvlak-leeg {
   display: flex;
   align-items: center;
@@ -694,6 +715,21 @@
   fill: var(--theme-accent-text, #fff);
   font-size: 9px;
   opacity: 0.85;
+}
+
+/* Waar de aanwijzer op vastklikt: vierkantje = hoekpunt, driehoekje = midden,
+   cirkeltje = hart, cirkel met kruis = zwaartepunt, kruisje = raster. */
+.pe-snap-laag { pointer-events: none; }
+.pe-snap {
+  fill: none;
+  stroke: var(--theme-accent);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+.pe-snap-tekst {
+  fill: var(--theme-accent);
+  font-size: 9px;
+  font-family: "JetBrains Mono", Consolas, monospace;
 }
 
 /* Zoomregelaar in het tekenvlak. */

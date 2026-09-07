@@ -18,7 +18,15 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { omhullende } from "../../lib/profieleditor/geometrie";
+import { omhullende, type Omhullende } from "../../lib/profieleditor/geometrie";
+import {
+  VANG_NAAM,
+  dichtstbijzijndeSnap,
+  snapPunten,
+  type SnapPunt,
+  type VangSoort,
+  type Vangst,
+} from "../../lib/profieleditor/snappunten";
 import { tekenItems } from "../../lib/profieleditor/tekening";
 import { fmtMaat } from "../../lib/profieleditor/format";
 import type { DoorsnedeOntwerp, MotorUitvoer } from "../../lib/profieleditor/types";
@@ -40,10 +48,21 @@ export interface TekenvlakModus {
   regel: string;
   /** Tweede regel met de bediening. */
   bediening: string;
-  /** Draai- of ankerpunt in modelcoördinaten. */
-  anker: { y: number; z: number };
+  /**
+   * Draaipunt (roteren) of basispunt (verplaatsen) in modelcoördinaten, of
+   * null zolang het basispunt nog aangewezen moet worden.
+   */
+  anker: { y: number; z: number } | null;
   /** Vergrendelde as bij verplaatsen (tekent de hulplijn). */
   asSlot?: "y" | "z" | null;
+  /**
+   * Het ontwerp zoals het bij de start van de modus stond. De snappunten komen
+   * hieruit en niet uit de voorvertoning: anders zou een bouwsteen zich aan
+   * zijn eigen meebewegende hoekpunt vastklikken.
+   */
+  snapOntwerp: DoorsnedeOntwerp;
+  /** Bevroren zwaartepunt bij de start van de modus, om dezelfde reden. */
+  snapZwaartepunt: { y: number; z: number } | null;
 }
 
 interface Props {
@@ -55,26 +74,37 @@ interface Props {
   /** Sleep begonnen op een bouwsteen. */
   onSleepStart: (id: string) => void;
   /**
-   * Sleepverplaatsing sinds het begin, in model-mm. `stap` is de maat waarop
-   * de nieuwe positie mag landen: de rasterstap die op dat moment in beeld is,
-   * of 0 wanneer de gebruiker Shift ingedrukt houdt en dus vrij wil schuiven.
+   * Sleepverplaatsing sinds het begin, in model-mm, al gevangen op een
+   * snappunt of op het raster. `vrij` betekent dat Shift ingedrukt is: dan is
+   * er niets gevangen en blijft het bij hele millimeters.
    */
-  onSleep: (id: string, dy: number, dz: number, stap: number) => void;
+  onSleep: (id: string, dy: number, dz: number, vrij: boolean) => void;
   onSleepEinde: () => void;
   /** Lopende verplaats-/roteermodus, of null. */
   modus?: TekenvlakModus | null;
   /**
-   * Muis in modelcoördinaten tijdens een modus. `stap` is de rasterstap die
-   * in beeld staat, `vrij` betekent dat Shift ingedrukt is (niet snappen).
+   * Muis in modelcoördinaten tijdens een modus, al gevangen. `vang` zegt
+   * waarop, `shift` of Shift ingedrukt is (die laat ook de hoekstap los).
    */
-  onModusMuis?: (y: number, z: number, stap: number, vrij: boolean) => void;
-  /** Klikken in het tekenvlak tijdens een modus bevestigt. */
-  onModusBevestig?: () => void;
+  onModusMuis?: (y: number, z: number, vang: VangSoort, shift: boolean) => void;
+  /**
+   * Klikken in het tekenvlak tijdens een modus: de eerste klik legt het
+   * basispunt vast, de tweede voert de bewerking uit. Het meegegeven punt is
+   * de gevangen muispositie van die klik.
+   */
+  onModusBevestig?: (punt: { y: number; z: number }) => void;
 }
 
 /** Zoomgrenzen ten opzichte van passend in beeld. */
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 20;
+
+/**
+ * Hoe dicht de aanwijzer bij een snappunt moet komen voordat hij eraan
+ * vastklikt, in schermeenheden van het viewBox. Bewust niet in millimeter:
+ * de vangst hoort bij het beeld, zodat hij bij elke zoomstand even ver reikt.
+ */
+const SNAP_STRAAL = 12;
 
 /** Rasterstap (mm) zodat een stap minstens 14 schermeenheden is. */
 function rasterStap(s: number): number {
@@ -98,19 +128,44 @@ export default function DoorsnedeTekenvlak({
   onModusBevestig,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const sleep = useRef<{ id: string; x0: number; y0: number } | null>(null);
+  /**
+   * Lopende sleep. `basis` is het punt dat je vastpakte — al gevangen op een
+   * hoekpunt, midden of hart van díé bouwsteen als je daar dichtbij genoeg
+   * klikte, anders op het raster. De verplaatsing is het verschil tussen dat
+   * punt en waar de muis nu op vastklikt.
+   */
+  const sleep = useRef<{ id: string; basis: { y: number; z: number } } | null>(null);
   /** Slepen van het vlak zelf (verschuiven van het beeld). */
   const schuif = useRef<{ x0: number; y0: number; panX: number; panY: number } | null>(null);
+  /** Omhullende waarop het beeld past; bevroren zolang er een bewerking loopt. */
+  const kaderVast = useRef<Omhullende | null>(null);
 
   // Zoom en verschuiving ten opzichte van "passend in beeld". 1 en (0,0) is
   // passend; het beeld staat daarop tot de gebruiker eraan draait.
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  /** Muis in schermcoördinaten tijdens een modus (voor de hulplijn). */
-  const [muisScherm, setMuisScherm] = useState<{ x: number; y: number } | null>(null);
+  /** Waar de aanwijzer op vastklikt tijdens een modus of een sleep. */
+  const [vangst, setVangst] = useState<Vangst | null>(null);
+  /** Is er een sleep bezig? Alleen om de vangstmarkering te tonen. */
+  const [sleept, setSleept] = useState(false);
 
   const items = useMemo(() => tekenItems(ontwerp, uitvoer?.delen ?? []), [ontwerp, uitvoer]);
   const kader = useMemo(() => omhullende(ontwerp, uitvoer?.delen ?? []), [ontwerp, uitvoer]);
+
+  // Snappunten. Tijdens een modus uit het bevroren ontwerp van vóór de
+  // bewerking: de voorvertoning schuift mee met de muis, en een punt dat
+  // meeschuift is geen mikpunt maar een terugkoppeling.
+  const modusSnapOntwerp = modus?.snapOntwerp;
+  const modusSnapZwaartepunt = modus?.snapZwaartepunt;
+  const snapLijst = useMemo(() => {
+    const bron = modusSnapOntwerp ?? ontwerp;
+    const zp = modusSnapOntwerp
+      ? (modusSnapZwaartepunt ?? null)
+      : uitvoer
+        ? { y: uitvoer.y_c_mm, z: uitvoer.z_c_mm }
+        : null;
+    return snapPunten(bron, uitvoer?.delen ?? [], zp);
+  }, [modusSnapOntwerp, modusSnapZwaartepunt, ontwerp, uitvoer]);
 
   if (!kader || items.length === 0) {
     return (
@@ -120,15 +175,25 @@ export default function DoorsnedeTekenvlak({
     );
   }
 
+  // Tijdens een bewerking staat het beeld stil. De voorvertoning verandert de
+  // buitenmaten, en een tekening die onder de aanwijzer vandaan schaalt is niet
+  // aan te wijzen: je mikt op een hoekpunt dat tijdens het mikken wegloopt. Bij
+  // het loslaten past het beeld zich in één keer aan.
+  const bezig = !!modus || sleept;
+  if (!bezig) kaderVast.current = kader;
+  const beeldKader = (bezig && kaderVast.current) || kader;
+
   // Passend maken: buitenmaten met een kleine marge.
   const bw = Math.max(kader.yMax - kader.yMin, 1);
   const bh = Math.max(kader.zMax - kader.zMin, 1);
+  const passW = Math.max(beeldKader.yMax - beeldKader.yMin, 1);
+  const passH = Math.max(beeldKader.zMax - beeldKader.zMin, 1);
   const tekenW = W - MARGE_LINKS - MARGE_RECHTS;
   const tekenH = H - MARGE_BOVEN - MARGE_ONDER;
   // Passende schaal en oorsprong; zoom en verschuiving komen daar bovenop.
-  const sPassend = Math.min(tekenW / (bw * 1.12), tekenH / (bh * 1.12));
-  const oxPassend = MARGE_LINKS + (tekenW - bw * sPassend) / 2 - kader.yMin * sPassend;
-  const oyPassend = MARGE_BOVEN + (tekenH - bh * sPassend) / 2 + kader.zMax * sPassend;
+  const sPassend = Math.min(tekenW / (passW * 1.12), tekenH / (passH * 1.12));
+  const oxPassend = MARGE_LINKS + (tekenW - passW * sPassend) / 2 - beeldKader.yMin * sPassend;
+  const oyPassend = MARGE_BOVEN + (tekenH - passH * sPassend) / 2 + beeldKader.zMax * sPassend;
   const s = sPassend * zoom;
   // Bij zoomen om het midden blijft het midden van het passende beeld staan.
   const ox = oxPassend + (W / 2 - oxPassend) * (1 - zoom) + pan.x;
@@ -159,6 +224,43 @@ export default function DoorsnedeTekenvlak({
     return { x: p.x, y: p.y };
   };
 
+  /** Schermpunt → modelcoördinaten (mm). */
+  const naarModel = (p: { x: number; y: number }) => ({ y: (p.x - ox) / s, z: (oy - p.y) / s });
+
+  /**
+   * De aanwijzer vangen: eerst op een snappunt van de tekening, anders op het
+   * raster dat in beeld staat. Shift laat allebei los.
+   *
+   * De volgorde is de bedoeling: een hoekpunt van een plaat wint van de
+   * rasterlijn er vlak naast, want dáár wil je op landen. `filter` beperkt de
+   * kandidaten — tijdens het slepen op de punten van de bouwsteen zelf (het
+   * vastpakken) en juist op alle andere (het neerzetten).
+   */
+  const vang = (
+    px: number,
+    py: number,
+    shift: boolean,
+    filter?: (p: SnapPunt) => boolean,
+  ): Vangst => {
+    const my = (px - ox) / s;
+    const mz = (oy - py) / s;
+    if (shift) return { y: my, z: mz, soort: "vrij" };
+    const kandidaten = filter ? snapLijst.filter(filter) : snapLijst;
+    const p = dichtstbijzijndeSnap(kandidaten, (y, z) => [X(y), Y(z)], px, py, SNAP_STRAAL);
+    if (p) return { y: p.y, z: p.z, soort: p.soort };
+    return { y: Math.round(my / stap) * stap, z: Math.round(mz / stap) * stap, soort: "raster" };
+  };
+
+  /**
+   * Vangen tijdens een modus. Roteren blijft ongemoeid: daar mikt de muis op
+   * een hoek en niet op een punt, en die hoek landt op stappen van 15°.
+   */
+  const vangVoorModus = (e: ReactPointerEvent): Vangst => {
+    const p = naarViewBox(e);
+    if (modus?.soort === "roteer") return { ...naarModel(p), soort: "vrij" };
+    return vang(p.x, p.y, e.shiftKey);
+  };
+
   /** Oorsprong bij een gegeven zoom, zonder verschuiving. */
   const oxBij = (z: number) => W / 2 - (W / 2 - oxPassend) * z;
   const oyBij = (z: number) => H / 2 + (oyPassend - H / 2) * z;
@@ -186,16 +288,24 @@ export default function DoorsnedeTekenvlak({
 
   const opItemDown = (id: string, sleepbaar: boolean) => (e: ReactPointerEvent) => {
     e.stopPropagation();
-    // Tijdens een verplaats-/roteermodus bevestigt elke klik; selecteren en
-    // slepen zijn dan niet aan de beurt.
+    // Tijdens een verplaats-/roteermodus wijst elke klik een punt aan;
+    // selecteren en slepen zijn dan niet aan de beurt.
     if (modus) {
-      onModusBevestig?.();
+      const v = vangVoorModus(e);
+      setVangst(v);
+      onModusBevestig?.(v);
       return;
     }
     onSelecteer(id);
     if (!sleepbaar) return;
     const p = naarViewBox(e);
-    sleep.current = { id, x0: p.x, y0: p.y };
+    // Het punt dat je vastpakt: een hoekpunt, zijdemidden of hart van déze
+    // bouwsteen als je daar dichtbij genoeg klikte, anders het raster. Zo
+    // landt de hoek die je oppakt straks precies op de hoek die je aanwijst.
+    const basis = vang(p.x, p.y, e.shiftKey, (q) => q.id === id);
+    sleep.current = { id, basis };
+    setVangst(basis);
+    setSleept(true);
     svgRef.current?.setPointerCapture(e.pointerId);
     onSleepStart(id);
   };
@@ -203,7 +313,9 @@ export default function DoorsnedeTekenvlak({
   /** Slepen op de achtergrond verschuift het beeld. */
   const opVlakDown = (e: ReactPointerEvent) => {
     if (modus) {
-      onModusBevestig?.();
+      const v = vangVoorModus(e);
+      setVangst(v);
+      onModusBevestig?.(v);
       return;
     }
     onSelecteer(null);
@@ -214,9 +326,9 @@ export default function DoorsnedeTekenvlak({
 
   const opMove = (e: ReactPointerEvent) => {
     if (modus) {
-      const p = naarViewBox(e);
-      setMuisScherm({ x: p.x, y: p.y });
-      onModusMuis?.((p.x - ox) / s, (oy - p.y) / s, stap, e.shiftKey);
+      const v = vangVoorModus(e);
+      setVangst(v);
+      onModusMuis?.(v.y, v.z, v.soort, e.shiftKey);
       return;
     }
     if (schuif.current) {
@@ -229,15 +341,13 @@ export default function DoorsnedeTekenvlak({
     }
     if (!sleep.current) return;
     const p = naarViewBox(e);
-    // Shift ingedrukt = vrij schuiven; anders landt de bouwsteen op het
-    // raster dat op dit moment in beeld staat. Wat je ziet is dus waar hij
-    // op vastklikt, en inzoomen maakt de stap vanzelf fijner.
-    onSleep(
-      sleep.current.id,
-      (p.x - sleep.current.x0) / s,
-      -(p.y - sleep.current.y0) / s,
-      e.shiftKey ? 0 : stap,
-    );
+    const sl = sleep.current;
+    // Neerzetten: vangen op de punten van al het andere — de bouwsteen die
+    // meebeweegt en het zwaartepunt dat met hem meeschuift zijn geen mikpunt.
+    // Shift laat alle vangst los; dan blijft het bij hele millimeters.
+    const doel = vang(p.x, p.y, e.shiftKey, (q) => q.id !== sl.id && q.soort !== "zwaartepunt");
+    setVangst(doel);
+    onSleep(sl.id, doel.y - sl.basis.y, doel.z - sl.basis.z, e.shiftKey);
   };
 
   const opUp = (e: ReactPointerEvent) => {
@@ -255,6 +365,8 @@ export default function DoorsnedeTekenvlak({
     }
     if (!sleep.current) return;
     sleep.current = null;
+    setSleept(false);
+    setVangst(null);
     losmaken();
     onSleepEinde();
   };
@@ -303,7 +415,7 @@ export default function DoorsnedeTekenvlak({
         ))}
       </g>
       <text x={W - 6} y={H - 6} className="pe-tekst" textAnchor="end">
-        raster {stap} mm · snap {stap} mm (Shift = vrij)
+        raster {stap} mm · snap op punten en raster (Shift = vrij)
       </text>
 
       {/* Zoomregelaar linksonder: percentage en terug naar passend. */}
@@ -420,39 +532,48 @@ export default function DoorsnedeTekenvlak({
         h = {fmtMaat(bh)} mm
       </text>
 
-      {/* Verplaats-/roteermodus: ankerpunt, hulplijn en de regel in beeld. */}
+      {/* Waar de aanwijzer op vastklikt: markering met het soort punt erbij. */}
+      {vangst && vangst.soort !== "vrij" && (modus || sleept) && (
+        <VangstMerk vangst={vangst} x={X(vangst.y)} y={Y(vangst.z)} />
+      )}
+
+      {/* Verplaats-/roteermodus: anker- of basispunt, hulplijn en de regel. */}
       {modus && (
         <g className="pe-modus-laag">
-          {modus.soort === "roteer" && muisScherm && (
+          {modus.anker && vangst && (
             <line
               x1={X(modus.anker.y)}
               y1={Y(modus.anker.z)}
-              x2={muisScherm.x}
-              y2={muisScherm.y}
+              x2={X(vangst.y)}
+              y2={Y(vangst.z)}
               className="pe-modus-lijn"
             />
           )}
-          {modus.soort === "verplaats" && modus.asSlot === "y" && (
+          {modus.anker && modus.soort === "verplaats" && modus.asSlot === "y" && (
             <line x1={0} y1={Y(modus.anker.z)} x2={W} y2={Y(modus.anker.z)} className="pe-modus-lijn" />
           )}
-          {modus.soort === "verplaats" && modus.asSlot === "z" && (
+          {modus.anker && modus.soort === "verplaats" && modus.asSlot === "z" && (
             <line x1={X(modus.anker.y)} y1={0} x2={X(modus.anker.y)} y2={H} className="pe-modus-lijn" />
           )}
-          <circle cx={X(modus.anker.y)} cy={Y(modus.anker.z)} r={5} className="pe-modus-anker" />
-          <line
-            x1={X(modus.anker.y) - 9}
-            y1={Y(modus.anker.z)}
-            x2={X(modus.anker.y) + 9}
-            y2={Y(modus.anker.z)}
-            className="pe-modus-anker"
-          />
-          <line
-            x1={X(modus.anker.y)}
-            y1={Y(modus.anker.z) - 9}
-            x2={X(modus.anker.y)}
-            y2={Y(modus.anker.z) + 9}
-            className="pe-modus-anker"
-          />
+          {modus.anker && (
+            <>
+              <circle cx={X(modus.anker.y)} cy={Y(modus.anker.z)} r={5} className="pe-modus-anker" />
+              <line
+                x1={X(modus.anker.y) - 9}
+                y1={Y(modus.anker.z)}
+                x2={X(modus.anker.y) + 9}
+                y2={Y(modus.anker.z)}
+                className="pe-modus-anker"
+              />
+              <line
+                x1={X(modus.anker.y)}
+                y1={Y(modus.anker.z) - 9}
+                x2={X(modus.anker.y)}
+                y2={Y(modus.anker.z) + 9}
+                className="pe-modus-anker"
+              />
+            </>
+          )}
           <rect x={0} y={0} width={W} height={32} className="pe-modus-band" />
           <text x={W / 2} y={14} className="pe-modus-regel" textAnchor="middle">
             {modus.regel}
@@ -463,5 +584,45 @@ export default function DoorsnedeTekenvlak({
         </g>
       )}
     </svg>
+  );
+}
+
+/**
+ * De markering op het punt waar de aanwijzer aan vastklikt, met een symbool
+ * dat het soort punt verraadt — zoals in een tekenpakket: een vierkantje voor
+ * een hoekpunt, een driehoekje voor een midden, een cirkeltje voor een hart
+ * en een cirkel met kruis voor het zwaartepunt. Het raster krijgt een klein
+ * kruisje zonder naam; er is niets aan te wijzen wat je nog niet zag.
+ */
+function VangstMerk({ vangst, x, y }: { vangst: Vangst; x: number; y: number }) {
+  const r = 5;
+  return (
+    <g className="pe-snap-laag">
+      {vangst.soort === "hoek" && (
+        <rect x={x - r} y={y - r} width={2 * r} height={2 * r} className="pe-snap" />
+      )}
+      {vangst.soort === "midden" && (
+        <path d={`M ${x} ${y - r - 1} L ${x + r + 1} ${y + r} L ${x - r - 1} ${y + r} Z`} className="pe-snap" />
+      )}
+      {vangst.soort === "hart" && <circle cx={x} cy={y} r={r} className="pe-snap" />}
+      {vangst.soort === "zwaartepunt" && (
+        <>
+          <circle cx={x} cy={y} r={r + 1} className="pe-snap" />
+          <line x1={x - r - 3} y1={y} x2={x + r + 3} y2={y} className="pe-snap" />
+          <line x1={x} y1={y - r - 3} x2={x} y2={y + r + 3} className="pe-snap" />
+        </>
+      )}
+      {vangst.soort === "raster" && (
+        <>
+          <line x1={x - 4} y1={y} x2={x + 4} y2={y} className="pe-snap" />
+          <line x1={x} y1={y - 4} x2={x} y2={y + 4} className="pe-snap" />
+        </>
+      )}
+      {vangst.soort !== "raster" && vangst.soort !== "vrij" && (
+        <text x={x + r + 4} y={y - r - 2} className="pe-snap-tekst">
+          {VANG_NAAM[vangst.soort]}
+        </text>
+      )}
+    </g>
   );
 }

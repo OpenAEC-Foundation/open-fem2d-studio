@@ -122,6 +122,10 @@ const ALLEEN_BRON = new Map([
   ["stramien-verplaatsen", "test de zustand-store, niet de solver"],
   ["transform", "test de zustand-store, niet de solver"],
   ["ifc-export", "staat los van de solver (IFC-export)"],
+  ["profieleditor-snap", "test de objectsnap van de profieleditor, niet de solver"],
+  ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
+  ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
+  ["spanning-builder", "test de invoerbouwer voor de spanningstoets, niet de solver"],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
   ["modelmapping", "vergelijkt de bronmapping met een gouden JSON"],
   [
