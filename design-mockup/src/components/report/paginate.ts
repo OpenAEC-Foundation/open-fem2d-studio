@@ -87,9 +87,15 @@ const ONDEELBAAR = [
  * niet-lineaire tweede orde: geen <h3> (dat zou de inhoudsopgave vullen met
  * een regel per staaf per combinatie), maar wel een kop, en hij hoort dus bij
  * zijn figuur en segmenttabel te blijven.
+ *
+ * `.rpt-chk-keten-kop` is de aankondiging boven een uitgeschreven afleiding
+ * ("Afleiding, stap voor stap:"). Hij bleef onder aan een vel achter met de
+ * eerste stap op het volgende — een aankondiging zonder inhoud. Dat viel op
+ * zodra er naast de kipketen van staal ook een betonketen bijkwam en er dus
+ * twee keer zoveel van deze koppen door het rapport lopen.
  */
 const KOP =
-  ".rpt-h2, .rpt-h3, .rpt-uitgangspunten-kop, .rpt-doc-kind, .rpt-eis-staafkop";
+  ".rpt-h2, .rpt-h3, .rpt-uitgangspunten-kop, .rpt-doc-kind, .rpt-eis-staafkop, .rpt-chk-keten-kop";
 
 /** Containers die zelf nooit een atoom worden (altijd verder opensplitsen). */
 const NOOIT_ATOOM = new Set(["TBODY", "TFOOT"]);

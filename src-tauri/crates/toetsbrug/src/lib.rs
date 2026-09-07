@@ -29,6 +29,7 @@
 //! aanroeper hoeft stderr niet te lezen.
 
 use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest, SegmentStiffnessRequest};
+use nen_en_1992_1_1::EffectiveFlangeWidthRequest;
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use nen_en_1993_1_8_las::LasInput;
 use serde::Deserialize;
@@ -128,6 +129,18 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let verzoek: SegmentStiffnessRequest = serde_json::from_value(inputs)
                 .map_err(|e| format!("segmentstijfheidsinvoer: {e}"))?;
             let uit = concrete_check::segment_stiffness(verzoek)?;
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // De meewerkende flensbreedte van een T- of L-ligger (5.3.2.1), per
+        // gebied uit figuur 5.2. Zelfde typen als het Tauri-command en de
+        // MCP-tool; er wordt hier niet gerekend.
+        "concrete_effective_flange_width" => {
+            let inputs = v
+                .inputs
+                .ok_or("concrete_effective_flange_width vraagt om `inputs`")?;
+            let verzoek: EffectiveFlangeWidthRequest = serde_json::from_value(inputs)
+                .map_err(|e| format!("flensbreedte-invoer: {e}"))?;
+            let uit = nen_en_1992_1_1::beff::effective_flange_width_request(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
         }
         // Vrije spanningstoets: geen norm, alleen een doorsnede en een

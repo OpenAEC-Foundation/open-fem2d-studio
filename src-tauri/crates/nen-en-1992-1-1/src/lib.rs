@@ -1,7 +1,7 @@
 //! NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020 — gewapend beton.
 //!
 //! Deze crate bevat de rekenregels voor de doorsnedeberekening van een
-//! rechthoekige gewapend-betonnen doorsnede met een wapeningskorf:
+//! gewapend-betonnen doorsnede — rechthoek, T of L — met een wapeningskorf:
 //!
 //! * [`data`] — tabel 3.1 (beton) en bijlage C tabel C.1 (wapeningsstaal);
 //! * [`factors`] — partiële factoren (tabel 2.1N), α_cc (NB bij 3.1.6),
@@ -16,8 +16,13 @@
 //!   constructieve berekening: het moment bij κ = 0, de omgekeerde weg van
 //!   (N, M) naar κ, het scheurmoment uit f_ctm, en in de
 //!   bruikbaarheidsgrenstoestand de tension stiffening van 7.4.3;
-//! * [`section`] — de rechthoekige doorsnede en de wapeningskorf (dekking,
-//!   beugel, boven- en onderwapening) → wapeningslagen met hun ligging;
+//! * [`section`] — de doorsnede en de wapeningskorf (dekking, beugel, boven-
+//!   en onderwapening) → wapeningslagen met hun ligging. De doorsnede is
+//!   intern een kleine reeks horizontale BANDEN met elk een breedte en een
+//!   hoogtebereik; twee banden volstaan voor rechthoek, T en L. De vorm
+//!   ([`ConcreteShape`]) is een etiket voor het rapport, geen rekengegeven —
+//!   b(z) van een T en een L zijn in dit uniaxiale model identiek. Wat dat
+//!   voor de L betekent, levert [`ConcreteSection::assumptions`] als tekst mee;
 //! * [`mnkappa`] — de M-N-κ-berekening: voor een gegeven normaalkracht en
 //!   kromming de rekverdeling, de spanningen per strook en per laag en het
 //!   resulterende moment; daaruit het M-κ-diagram bij vaste N tot bezwijken,
@@ -25,7 +30,11 @@
 //! * [`bending`] — de momentweerstand met de rechthoekige spanningsverdeling
 //!   (de klassieke handberekening, 3.1.7(3));
 //! * [`checks`] — de toetsen als [`ResistanceCalc`], met formule, variabelen
-//!   en unity check, in hetzelfde contract als de staal- en houttoetsen.
+//!   en unity check, in hetzelfde contract als de staal- en houttoetsen;
+//! * [`deelstappen`] — diezelfde toetsen als UITGESCHREVEN AFLEIDING: per stap
+//!   de formule symbolisch, de ingevulde waarden, de uitkomst, de vindplaats en
+//!   de aannamen die eronder liggen. De module rekent niets opnieuw uit; zij
+//!   schrijft op wat [`bending`] en [`mnkappa`] al bepaald hebben.
 //!
 //! Tekenconventie aan de buitengrens (gelijk aan `mechanics`): N positief =
 //! trek, M_y positief = trek in de onderste vezel. Inwendig rekent de
@@ -45,15 +54,26 @@
 //! `UnityCheck` en `CheckStatus` wonen nu in `nen-en-1993-1-1-section`; ze
 //! zijn materiaal-neutraal en horen in een gedeelde `check-core` crate.
 
+pub mod beff;
 pub mod bending;
 pub mod checks;
 pub mod data;
+pub mod deelstappen;
 pub mod factors;
 pub mod mnkappa;
 pub mod section;
 pub mod stiffness;
 pub mod stress_strain;
 
+// De meewerkende flensbreedte (5.3.2.1). Op crate-niveau omdat de drie wegen
+// — Tauri-command, toetsbrug en MCP-server — hem alle drie rechtstreeks
+// aanroepen; zie `beff`.
+pub use beff::{
+    beff_distribution, effective_flange_width, effective_flange_width_request, l0_zones, BeamLine,
+    BeffAtL0, BeffBound, BeffDistribution, BeffError, BeffPart, BeffZone,
+    EffectiveFlangeWidthRequest, EffectiveFlangeWidthResponse, FlangeGeometry, L0Case, L0Zone,
+    LineEnd,
+};
 pub use data::{
     concrete_class_by_name, reinforcement_grade_by_name, ConcreteClass, DuctilityClass,
     ReinforcementGrade, CONCRETE_CLASSES, REINFORCEMENT_GRADES,
@@ -69,7 +89,10 @@ pub use mnkappa::{
     InternalForces, MnKappaDiagram, MnKappaOptions, MnKappaPoint, SectionState, DEFAULT_N_STRIPS,
     MAX_N_STRIPS,
 };
-pub use section::{RebarLayer, RebarRow, RectConcreteSection, ReinforcementCage};
+pub use section::{
+    mirrored_layers, Band, ConcreteSection, ConcreteShape, RebarLayer, RebarRow,
+    RectConcreteSection, ReinforcementCage,
+};
 pub use stiffness::{
     ei_secant, kappa_from_nm, m0_knm, m_cr_knm, KappaSolution, LoadDuration, SecantStiffness,
     SolveMethod, StiffnessError, StiffnessOptions, TensionStiffening,
@@ -78,5 +101,9 @@ pub use stress_strain::{
     ConcreteNonlinearCurve, ConcreteTension, DesignMaterial, NonlinearBasis, SteelBranch,
 };
 
-// Hergebruikte resultaattypen (zie TODO in de crate-doc).
-pub use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityCheck};
+// Hergebruikte resultaattypen (zie TODO in de crate-doc). `Deelstap` hoort in
+// dat rijtje thuis: hij is materiaal-neutraal en draagt bij zowel de kipketen
+// van EN 1993 als de doorsnedeketen van EN 1992 één stap van een afleiding.
+pub use nen_en_1993_1_1_section::{
+    CheckStatus, Deelstap, NamedValue, ResistanceCalc, UnityCheck,
+};

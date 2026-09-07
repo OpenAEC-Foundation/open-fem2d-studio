@@ -16,6 +16,9 @@
  *  - concrete_segment_stiffness → SegmentStiffnessResponse (de segment-EI's;
  *    de lus die daarmee rekent staat in lib/betonStijfheid.ts en roept
  *    `roepKern` rechtstreeks aan)
+ *  - concrete_effective_flange_width → EffectiveFlangeWidthResponse
+ *    (b_eff per gebied van figuur 5.2; de liggerlijn komt uit
+ *    lib/beffLiggerlijn.ts)
  */
 import { roepKern } from "../../stores/checkStore";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
@@ -24,6 +27,8 @@ import type { MnKappaRequest } from "../../lib/types/concrete/MnKappaRequest";
 import type { MnKappaResponse } from "../../lib/types/concrete/MnKappaResponse";
 import type { ConcreteBeamCheckInput } from "../../lib/types/concrete/ConcreteBeamCheckInput";
 import type { ConcreteBeamCheckResult } from "../../lib/types/concrete/ConcreteBeamCheckResult";
+import type { EffectiveFlangeWidthRequest } from "../../lib/types/concrete/EffectiveFlangeWidthRequest";
+import type { EffectiveFlangeWidthResponse } from "../../lib/types/concrete/EffectiveFlangeWidthResponse";
 
 /**
  * Doorgeefluik naar `roepKern`. Blijft bestaan omdat het paneel de aanroep
@@ -58,4 +63,26 @@ export function berekenMnKappa(verzoek: MnKappaRequest): Promise<MnKappaResponse
 /** Toetsing van betonstaven (invoer uit betonCheckBuilder). */
 export function toetsBetonstaven(inputs: ConcreteBeamCheckInput[]): Promise<ConcreteBeamCheckResult[]> {
   return roepBetonKern<ConcreteBeamCheckResult[]>("check_concrete_beams", inputs);
+}
+
+/**
+ * De meewerkende flensbreedte b_eff per gebied van figuur 5.2 (5.3.2.1).
+ *
+ * De liggerlijn in het verzoek komt uit `lib/beffLiggerlijn.ts`: die leidt uit
+ * knopen, staven en opleggingen af welke staven één doorgaande ligger vormen
+ * en waar de steunpunten liggen. Hier wordt niets gerekend — de norm zelf
+ * staat in de crate-lib en is langs alle drie de wegen bereikbaar.
+ *
+ * Een geval buiten figuur 5.2 — een losstaande uitkraging, een uitkraging
+ * langer dan de halve aangrenzende overspanning, een overspanningsverhouding
+ * buiten 2/3 … 1,5 — komt terug als een afgewezen belofte MET de reden, niet
+ * als een getal.
+ */
+export function bepaalMeewerkendeFlensbreedte(
+  verzoek: EffectiveFlangeWidthRequest,
+): Promise<EffectiveFlangeWidthResponse> {
+  return roepBetonKern<EffectiveFlangeWidthResponse>(
+    "concrete_effective_flange_width",
+    verzoek,
+  );
 }

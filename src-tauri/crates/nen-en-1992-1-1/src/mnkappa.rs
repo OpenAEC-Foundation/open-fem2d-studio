@@ -1,4 +1,4 @@
-//! M-N-κ-berekening van de rechthoekige doorsnede met wapeningskorf.
+//! M-N-κ-berekening van de doorsnede met wapeningskorf.
 //!
 //! Uitgangspunten, 6.1(2):
 //! * vlakke doorsneden blijven vlak — de rek is lineair over de hoogte:
@@ -15,6 +15,14 @@
 //! gebruiker instelt; de fout neemt kwadratisch af met het aantal stroken
 //! (de parabool is glad en de overgang naar het plateau is C¹). De tests in
 //! `tests/handberekening.rs` laten de convergentie zien.
+//!
+//! Heeft de doorsnede meer dan één band — een T of een L — dan krijgt **elke
+//! band zijn eigen stroken**, evenredig met zijn hoogte, zodat er nooit een
+//! strook óver de sprong in b(z) heen ligt. Daar zou de middelpuntregel
+//! eerste-orde worden en de kwadratische convergentie inzakken;
+//! `tests/vormen.rs` bewaakt dat. De vorm van de doorsnede komt in deze
+//! module verder nergens voor: de rekengang kijkt naar de banden, niet naar
+//! het etiket.
 //!
 //! Bezwijken, 6.1(3)–(6) en figuur 6.1:
 //! * ligt de neutrale lijn in de doorsnede, dan is de drukrek aan de meest
@@ -44,7 +52,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::section::{RebarLayer, RectConcreteSection};
+use crate::section::{mirrored_layers, ConcreteSection, RebarLayer, RectConcreteSection};
 use crate::stress_strain::DesignMaterial;
 
 /// Standaardaantal stroken. Bij 50 stroken ligt de integratiefout van de
@@ -193,21 +201,53 @@ pub fn internal_forces(
 ) -> InternalForces {
     let h = section.h_mm;
     let n = n_strips.clamp(1, MAX_N_STRIPS);
-    let dz = h / n as f64;
     let mut n_c = 0.0;
     let mut m_c = 0.0;
-    for i in 0..n {
-        let z = (i as f64 + 0.5) * dz;
-        let arm = z - h / 2.0;
-        // `sigma_c` is het parabool-rechthoekdiagram van 3.1.7(1) zolang het
-        // materiaal geen niet-lineaire kromme draagt (`nonlinear: None`, de
-        // stand van `DesignMaterial::new`) — de doorsnedetoetsing rekent dus
-        // onveranderd. Met `DesignMaterial::nonlinear` is het (3.14) van
-        // 3.1.5, zoals 5.8.6(3) voor de constructieve berekening voorschrijft.
-        let sigma = mat.sigma_c(eps_0 + kappa_per_mm * arm);
-        let f = sigma * section.b_mm * dz;
-        n_c += f;
-        m_c += f * arm;
+    // `sigma_c` is het parabool-rechthoekdiagram van 3.1.7(1) zolang het
+    // materiaal geen niet-lineaire kromme draagt (`nonlinear: None`, de
+    // stand van `DesignMaterial::new`) — de doorsnedetoetsing rekent dus
+    // onveranderd. Met `DesignMaterial::nonlinear` is het (3.14) van
+    // 3.1.5, zoals 5.8.6(3) voor de constructieve berekening voorschrijft.
+    match section.bands() {
+        // Eén band — de rechthoek. Letterlijk de lus die er altijd stond:
+        // dezelfde strookhoogte, dezelfde middelpunten, dezelfde volgorde van
+        // vermenigvuldigen. De rechthoek verschuift dus geen bit.
+        [enige] => {
+            let dz = h / n as f64;
+            for i in 0..n {
+                let z = (i as f64 + 0.5) * dz;
+                let arm = z - h / 2.0;
+                let sigma = mat.sigma_c(eps_0 + kappa_per_mm * arm);
+                let f = sigma * enige.b_mm * dz;
+                n_c += f;
+                m_c += f * arm;
+            }
+        }
+        // Meer banden: elke band krijgt zijn eigen stroken, evenredig met zijn
+        // hoogte. Zo ligt er nooit een strook óver de sprong in b(z) heen —
+        // dat zou de middelpuntregel bij de overgang eerste-orde maken en de
+        // kwadratische convergentie van `stroken_convergentie_analytisch`
+        // bederven. Er is bewust geen voorgerekende tabel met b·dz: dan zou
+        // hier σ·(b·dz) staan waar nu (σ·b)·dz staat, en dat breekt de
+        // bit-identiteit met de rechthoek. De prijs is twee delingen per band.
+        banden => {
+            for band in banden {
+                let hb = band.height_mm();
+                if hb <= 0.0 {
+                    continue;
+                }
+                let nb = ((n as f64 * hb / h).round() as usize).max(1);
+                let dz = hb / nb as f64;
+                for i in 0..nb {
+                    let z = band.z0_mm + (i as f64 + 0.5) * dz;
+                    let arm = z - h / 2.0;
+                    let sigma = mat.sigma_c(eps_0 + kappa_per_mm * arm);
+                    let f = sigma * band.b_mm * dz;
+                    n_c += f;
+                    m_c += f * arm;
+                }
+            }
+        }
     }
     let mut n_s = 0.0;
     let mut m_s = 0.0;
@@ -399,15 +439,6 @@ pub fn exceeded_limit(state: &SectionState, mat: &DesignMaterial, h_mm: f64) -> 
     None
 }
 
-/// Spiegel de lagen in de hoogte (z → h − z), om een negatief moment als
-/// positief door te rekenen.
-fn mirrored(layers: &[RebarLayer], h_mm: f64) -> Vec<RebarLayer> {
-    layers
-        .iter()
-        .map(|l| RebarLayer { z_mm: h_mm - l.z_mm, area_mm2: l.area_mm2, label: l.label.clone() })
-        .collect()
-}
-
 /// Aantal punten waarmee het diagram wordt uitgeschreven (κ = 0 t/m κ_u).
 const DIAGRAM_POINTS: usize = 60;
 
@@ -423,12 +454,18 @@ pub fn mn_kappa_diagram(
     opts: &MnKappaOptions,
 ) -> MnKappaDiagram {
     let sign = if moment_sign < 0.0 { -1.0 } else { 1.0 };
+    // Bij een negatief moment wordt de hele doorsnede omgeklapt en als
+    // positief doorgerekend: niet alleen de korf, ook de BANDEN. Bij een T
+    // hoort de flens dan onder — een negatief moment drukt op het lijf en
+    // trekt aan de flens.
+    let sec_eig: ConcreteSection;
     let lagen_eig: Vec<RebarLayer>;
-    let lagen: &[RebarLayer] = if sign < 0.0 {
-        lagen_eig = mirrored(layers, section.h_mm);
-        &lagen_eig
+    let (section, lagen): (&ConcreteSection, &[RebarLayer]) = if sign < 0.0 {
+        sec_eig = section.mirrored();
+        lagen_eig = mirrored_layers(layers, section.h_mm);
+        (&sec_eig, &lagen_eig)
     } else {
-        layers
+        (section, layers)
     };
     let h = section.h_mm;
     let n_strips = opts.strips() as u32;

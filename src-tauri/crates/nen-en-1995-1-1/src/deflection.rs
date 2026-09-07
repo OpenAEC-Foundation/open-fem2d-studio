@@ -45,6 +45,7 @@ fn doorbuigingstoets(
     ];
     variables.extend(extra);
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: id.to_string(),
         title: titel.to_string(),
         article: "art. 7.2 + NB".to_string(),

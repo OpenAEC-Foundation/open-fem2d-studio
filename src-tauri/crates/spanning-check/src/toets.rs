@@ -322,6 +322,7 @@ fn toets_vergelijkspanning(
 ) -> ResistanceCalc {
     let uc = if f_d > 0.0 { p.sigma_eq / f_d } else { 0.0 };
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "spanning_vergelijk".to_string(),
         title: "Vergelijkspanning (von Mises)".to_string(),
         article: "vrije spanningstoets".to_string(),
@@ -357,6 +358,7 @@ fn toets_vergelijkspanning(
 fn toets_normaalspanning(p: &Punt, d: &Doorsnedegegevens, f_d: f64) -> ResistanceCalc {
     let uc = if f_d > 0.0 { p.sigma_x.abs() / f_d } else { 0.0 };
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "spanning_normaal".to_string(),
         title: "Normaalspanning σ_x".to_string(),
         article: "vrije spanningstoets".to_string(),
@@ -391,6 +393,7 @@ fn toets_normaalspanning(p: &Punt, d: &Doorsnedegegevens, f_d: f64) -> Resistanc
 fn toets_schuifspanning(p: &Punt, d: &Doorsnedegegevens, f_vd: f64, f_d: f64) -> ResistanceCalc {
     let uc = if f_vd > 0.0 { p.tau / f_vd } else { 0.0 };
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "spanning_schuif".to_string(),
         title: "Schuifspanning τ".to_string(),
         article: "vrije spanningstoets".to_string(),

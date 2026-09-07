@@ -327,13 +327,22 @@ function BetonStaafBlok({
           </table>
 
           {/* De maatgevende toets één keer uitgeschreven: symbolisch, met de
-              getallen ingevuld, en de uitkomst. De overige toetsen staan
-              volledig in "Toetsing per staaf". */}
+              getallen ingevuld, en de uitkomst.
+
+              Bewust NIET de volledige stap-voor-stap-afleiding. Die bestaat —
+              de rekenkern levert per betontoets ruim tien deelstappen met
+              formule, ingevulde waarden, vindplaats en de aannamen die eronder
+              liggen — maar zij hoort in "Toetsing per staaf", waar zij op het
+              gedetailleerde niveau staat en waar ook de kipketen van staal
+              staat. Haar hier hérhalen zou hetzelfde twee keer in één rapport
+              zetten; dit hoofdstuk gaat over het BEELD (de korf in de
+              doorsnede, de twee diagrammen) en de invoer. */}
           {(() => {
             const named = r.checks.find((c) => c.id === r.governing_check_id);
             if (!named) return null;
             const c = named.kind.data;
             const { latex } = afleidingLatex(c);
+            const heeftKeten = (c.deelstappen?.length ?? 0) > 0;
             return (
               <div className="rpt-bet-afleiding">
                 <p className="rpt-bet-kopje">
@@ -343,6 +352,15 @@ function BetonStaafBlok({
                   className="rpt-bet-formuleblok"
                   dangerouslySetInnerHTML={{ __html: renderLatexHtml(latex, true) }}
                 />
+                {heeftKeten && (
+                  <p className="rpt-bet-verwijzing">
+                    {t("report.betonKetenVerwijzing", {
+                      defaultValue:
+                        "De volledige afleiding van deze toets — {{aantal}} stappen, elk met formule, ingevulde waarden, vindplaats en de aannamen die eronder liggen — staat in het hoofdstuk “Toetsing per staaf”, op het gedetailleerde niveau.",
+                      aantal: c.deelstappen.length,
+                    })}
+                  </p>
+                )}
               </div>
             );
           })()}
@@ -750,6 +768,14 @@ const BETON_REPORT_CSS = `
 .rpt-bet-formule .katex { font-size: 0.95em; }
 
 .rpt-bet-afleiding { margin: 2mm 0 1mm; }
+
+/* De verwijzing naar de volledige afleiding: een terzijde, geen kop. */
+.rpt-bet-verwijzing {
+  margin: 1mm 0 0 6mm;
+  font-size: calc(var(--rpt-basis) * 0.78);
+  font-style: italic;
+  color: #555;
+}
 
 .rpt-bet-formuleblok {
   padding-left: 6mm;

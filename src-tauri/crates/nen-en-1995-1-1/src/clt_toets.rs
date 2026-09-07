@@ -113,6 +113,7 @@ pub fn check_layer_bending(
 
     let i = idx + 1;
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: bending_check_id(idx),
         title: format!("Buiging {}", laagnaam(mech, idx)),
         article: "art. 6.1.6 (6.11)".to_string(),
@@ -182,6 +183,7 @@ pub fn check_layer_shear(
 
     let i = idx + 1;
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: shear_check_id(idx),
         title: format!("Dwarskracht {}", laagnaam(mech, idx)),
         article: "art. 6.1.7 (6.13)".to_string(),
@@ -231,6 +233,7 @@ pub fn rolling_shear_info(
 
     let i = idx + 1;
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: rolling_shear_check_id(idx),
         title: format!("Rolschuiving {} — ter informatie", laagnaam(mech, idx)),
         article: "bijlage B (B.9)".to_string(),

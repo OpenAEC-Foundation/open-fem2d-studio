@@ -46,6 +46,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 1276.05,
           "unit": "kN",
           "uc": {
@@ -97,6 +98,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 83.19,
           "unit": "kNm",
           "uc": {
@@ -148,6 +150,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 39.949999999999996,
           "unit": "kNm",
           "uc": {
@@ -199,6 +202,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 239.33478058986748,
           "unit": "kN",
           "uc": {
@@ -250,6 +254,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 564.4176231597781,
           "unit": "kN",
           "uc": {
@@ -301,6 +306,7 @@ expression: run()
               "unit": "kNm"
             }
           ],
+          "deelstappen": [],
           "value": 83.19,
           "unit": "kNm",
           "uc": {
@@ -354,6 +360,7 @@ expression: run()
               "unit": "kNm"
             }
           ],
+          "deelstappen": [],
           "value": 83.19,
           "unit": "kNm",
           "uc": {
@@ -407,6 +414,7 @@ expression: run()
               "unit": "kNm"
             }
           ],
+          "deelstappen": [],
           "value": 83.19,
           "unit": "kNm",
           "uc": {
@@ -1281,6 +1289,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 15.015015015015015,
           "unit": "mm",
           "uc": {
@@ -1332,6 +1341,7 @@ expression: run()
               "unit": "-"
             }
           ],
+          "deelstappen": [],
           "value": 15.0,
           "unit": "mm",
           "uc": {

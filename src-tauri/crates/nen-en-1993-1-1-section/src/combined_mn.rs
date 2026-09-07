@@ -30,6 +30,7 @@ pub fn check_combined_mn(
         CrossSectionClass::Class3 | CrossSectionClass::Class4 => {
             let combined_uc = (n_ed / n_pl_rd_kn) + (m_ed / m_pl_y_rd_knm);
             return ResistanceCalc {
+                deelstappen: Vec::new(),
                 id: "6.2.9_combined_mn".to_string(),
                 title: "Buiging en normaalkracht".to_string(),
                 article: "art. 6.2.9".to_string(),
@@ -53,6 +54,7 @@ pub fn check_combined_mn(
     let uc = if m_n_rd > 0.0 { m_ed / m_n_rd } else { 0.0 };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.9_combined_mn".to_string(),
         title: "Buiging en normaalkracht".to_string(),
         article: "art. 6.2.9".to_string(),

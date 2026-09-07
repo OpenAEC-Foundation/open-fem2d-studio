@@ -60,6 +60,7 @@ pub fn check_shear(
     }
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.1.7_shear".to_string(),
         title: "Dwarskracht".to_string(),
         article: "art. 6.1.7 (6.13)".to_string(),

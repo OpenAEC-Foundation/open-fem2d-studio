@@ -11,6 +11,7 @@ use mechanics::ForceStateSnapshot;
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityCheck};
 
 use crate::bending::{stress_block, StressBlockError};
+use crate::deelstappen::{self, Betongegevens};
 use crate::mnkappa::{
     axial_compression_capacity_kn, axial_tension_capacity_kn, mn_kappa_diagram, FailureMode,
     MnKappaDiagram, MnKappaOptions,
@@ -56,7 +57,11 @@ pub fn check_bending_stress_block(
     let n_ed = force_state.forces.n_ed;
     let sign = if m_ed < 0.0 { -1.0 } else { 1.0 };
     let layers = cage.layers(section.h_mm);
-    let mut notes: Vec<String> = Vec::new();
+    // De aannamen van de doorsnedevorm reizen met ELK resultaat mee. Bij een
+    // rechthoek is dat niets; bij een T en een L de modelkeuze achter de
+    // bandenintegratie, en bij een L bovendien dat de zijdelingse kromming
+    // verhinderd wordt verondersteld. Zie `ConcreteSection::assumptions`.
+    let mut notes: Vec<String> = section.assumptions();
     let mut variables = vec![
         nv("b", section.b_mm, "mm"),
         nv("h", section.h_mm, "mm"),
@@ -68,6 +73,13 @@ pub fn check_bending_stress_block(
         nv(r"A_{s1}", cage.a_s_bottom_mm2(), "mm²"),
         nv(r"A_{s2}", cage.a_s_top_mm2(), "mm²"),
     ];
+    // Bij een T of L is `b` de flensbreedte; dan horen b_w en h_f er ook bij,
+    // anders is de tabel niet na te rekenen. Bij een rechthoek blijft de
+    // tabel letterlijk zoals hij was.
+    if section.shape.has_flange() {
+        variables.push(nv("b_w", section.b_w_mm(), "mm"));
+        variables.push(nv("h_f", section.h_f_mm(), "mm"));
+    }
     if n_ed.abs() > 1e-9 {
         notes.push(format!(
             "N_Ed = {n_ed:.1} kN is in het krachtenevenwicht meegenomen (druk negatief)."
@@ -80,6 +92,20 @@ pub fn check_bending_stress_block(
     let article = "art. 6.1 en 3.1.7(3) (3.19–3.22)".to_string();
     let title = "Buiging — rechthoekige spanningsverdeling".to_string();
     let id = "6.1_bending_stress_block".to_string();
+
+    // De gegevens waarmee de afleiding wordt uitgeschreven. Zij worden hier
+    // alleen doorgegeven, niet opnieuw berekend: `deelstappen` beschrijft de
+    // rekengang en verandert hem niet.
+    let g = Betongegevens {
+        section,
+        cage,
+        mat,
+        layers: &layers,
+        sign,
+        n_ed_kn: n_ed,
+        m_ed_knm: m_ed.abs(),
+        m_y_ed_knm: m_ed,
+    };
 
     match stress_block(section, &layers, mat, n_ed, sign) {
         Ok(r) => {
@@ -109,10 +135,32 @@ pub fn check_bending_stress_block(
                 nv(r"F_{s2}", f_s2, "kN"),
                 nv(r"z_{s2}", z_s2, "m"),
             ]);
-            notes.push(format!(
-                "F_c = η·f_cd·b·λ·x = {:.3}·{:.2}·{:.0}·{:.2}·{:.2} = {:.1} kN; x uit N_c + ΣF_s = −N_Ed.",
-                r.eta, mat.f_cd(), section.b_mm, r.lambda, r.x_mm, r.f_c_kn
-            ));
+            // Welke breedte in de gesloten vorm hoort, hangt af van de vraag
+            // of het blok binnen één band blijft. Bij een negatief moment
+            // rekent `stress_block` op de omgeklapte doorsnede, dus die moet
+            // hier ook worden bekeken — anders zou er bij een T de
+            // flensbreedte staan waar het lijf wordt gedrukt.
+            let werk = if sign < 0.0 { section.mirrored() } else { *section };
+            match werk.uniform_top_width(r.lambda * r.x_mm) {
+                Some(b) => notes.push(format!(
+                    "F_c = η·f_cd·b·λ·x = {:.3}·{:.2}·{:.0}·{:.2}·{:.2} = {:.1} kN; x uit N_c + ΣF_s = −N_Ed.",
+                    r.eta, mat.f_cd(), b, r.lambda, r.x_mm, r.f_c_kn
+                )),
+                None => {
+                    let (a_blok, _) = werk.top_strip(r.lambda * r.x_mm);
+                    notes.push(format!(
+                        "Het spanningsblok van λ·x = {:.2} mm komt de flens uit: de drukkracht is \
+                         over de werkelijke breedte b(z) geïntegreerd. F_c = η·f_cd·A_blok = \
+                         {:.3}·{:.2}·{a_blok:.0} = {:.1} kN, met het zwaartepunt van A_blok op \
+                         {:.1} mm onder de gedrukte rand; x uit N_c + ΣF_s = −N_Ed.",
+                        r.lambda * r.x_mm,
+                        r.eta,
+                        mat.f_cd(),
+                        r.f_c_kn,
+                        section.h_mm / 2.0 - r.z_c_m * 1e3
+                    ));
+                }
+            }
             for l in &r.layers {
                 notes.push(format!(
                     "{}: ε_s = {:.2} ‰, σ_s = {:.1} N/mm²{}",
@@ -125,6 +173,8 @@ pub fn check_bending_stress_block(
             let m_rd = r.m_rd_knm;
             let uc = if m_rd > 0.0 { m_ed.abs() / m_rd } else { 0.0 };
             let applicable = m_ed.abs() > 1e-9;
+            let mut stappen = deelstappen::spanningsblok_deelstappen(&g, &r);
+            stappen.push(deelstappen::spanningsblok_unity_check(&g, m_rd));
             ResistanceCalc {
                 id,
                 title,
@@ -132,6 +182,7 @@ pub fn check_bending_stress_block(
                 force_state,
                 formula_latex: r"M_{Rd} = F_c z_c + F_{s1} z_{s1} + F_{s2} z_{s2}".to_string(),
                 variables,
+                deelstappen: stappen,
                 value: m_rd,
                 unit: "kNm".to_string(),
                 uc: Some(UnityCheck {
@@ -145,7 +196,7 @@ pub fn check_bending_stress_block(
             }
         }
         Err(e) => {
-            notes.push(match e {
+            let reden = match e {
                 StressBlockError::WhollyCompressed => {
                     "De doorsnede staat bij deze N_Ed geheel onder druk (x > h); de rechthoekige \
                      spanningsverdeling met ε_cu3 aan de rand is dan niet van toepassing. Zie de \
@@ -158,7 +209,8 @@ pub fn check_bending_stress_block(
                         .to_string()
                 }
                 StressBlockError::NoReinforcement => "Geen wapening in de doorsnede.".to_string(),
-            });
+            };
+            notes.push(reden.clone());
             ResistanceCalc {
                 id,
                 title,
@@ -166,6 +218,7 @@ pub fn check_bending_stress_block(
                 force_state,
                 formula_latex: r"M_{Rd} = F_c z_c + F_{s1} z_{s1} + F_{s2} z_{s2}".to_string(),
                 variables,
+                deelstappen: deelstappen::spanningsblok_afgebroken(&g, &reden),
                 value: 0.0,
                 unit: "kNm".to_string(),
                 uc: None,
@@ -201,9 +254,13 @@ pub fn check_mn_kappa(
     let layers: Vec<RebarLayer> = cage.layers(section.h_mm);
     let diagram = mn_kappa_diagram(section, &layers, mat, n_ed, sign, opts);
 
-    let mut notes: Vec<String> = Vec::new();
+    // Idem: de vormaannamen staan in elk resultaat.
+    let mut notes: Vec<String> = section.assumptions();
     let e0 = minimum_eccentricity_mm(section.h_mm);
     let mut m_ed_eff = m_ed.abs();
+    // `None` zolang 6.1(4) het toetsmoment niet heeft opgetild; de afleiding
+    // krijgt e₀ alleen te zien als die grens werkelijk bindend was.
+    let mut e0_bindend: Option<f64> = None;
     if apply_min_eccentricity && n_ed < 0.0 {
         let m_min = n_ed.abs() * e0 * 1e-3;
         if m_min > m_ed_eff {
@@ -212,6 +269,7 @@ pub fn check_mn_kappa(
                 m_ed.abs()
             ));
             m_ed_eff = m_min;
+            e0_bindend = Some(e0);
         }
     }
     notes.push(format!(
@@ -244,11 +302,27 @@ pub fn check_mn_kappa(
         nv(r"A_{s2}", cage.a_s_top_mm2(), "mm²"),
         nv(r"n_{stroken}", diagram.n_strips as f64, "-"),
     ];
+    if section.shape.has_flange() {
+        variables.push(nv("b_w", section.b_w_mm(), "mm"));
+        variables.push(nv("h_f", section.h_f_mm(), "mm"));
+    }
 
     let article = "art. 6.1 en 3.1.7(1) (3.17)".to_string();
     let title = "Moment-normaalkracht (M-N-κ)".to_string();
     let id = "6.1_mn_kappa".to_string();
     let formula = r"M_{Rd} = \max_{\kappa} M(\kappa; N_{Ed})".to_string();
+
+    // Zie de opmerking bij `check_bending_stress_block`: alleen doorgeven.
+    let g = Betongegevens {
+        section,
+        cage,
+        mat,
+        layers: &layers,
+        sign,
+        n_ed_kn: n_ed,
+        m_ed_knm: m_ed_eff,
+        m_y_ed_knm: m_ed,
+    };
 
     if diagram.failure_mode == FailureMode::AxialCapacityExceeded
         || diagram.failure_mode == FailureMode::NoEquilibrium
@@ -261,7 +335,7 @@ pub fn check_mn_kappa(
         };
         let uc = if n_rd > 0.0 { n_ed.abs() / n_rd } else { f64::INFINITY };
         variables.push(nv(r"N_{Rd}", n_rd, "kN"));
-        notes.push(if n_ed < 0.0 {
+        let reden = if n_ed < 0.0 {
             format!(
                 "Geen evenwicht bij κ = 0: |N_Ed| = {:.1} kN overschrijdt de drukcapaciteit N_Rd = f_cd·A_c + ΣA_s·σ_s(ε_c2) = {n_rd:.1} kN (6.1(4)).",
                 n_ed.abs()
@@ -270,7 +344,8 @@ pub fn check_mn_kappa(
             format!(
                 "Geen evenwicht bij κ = 0: N_Ed = {n_ed:.1} kN overschrijdt de trekcapaciteit N_Rd = ΣA_s·σ_s(ε_ud) = {n_rd:.1} kN."
             )
-        });
+        };
+        notes.push(reden.clone());
         return MnKappaCheck {
             calc: ResistanceCalc {
                 id,
@@ -279,6 +354,7 @@ pub fn check_mn_kappa(
                 force_state,
                 formula_latex: formula,
                 variables,
+                deelstappen: deelstappen::mn_kappa_afgebroken(&g, n_rd, reden),
                 value: 0.0,
                 unit: "kNm".to_string(),
                 uc: Some(UnityCheck {
@@ -328,6 +404,7 @@ pub fn check_mn_kappa(
     });
     let uc = if m_rd > 0.0 { m_ed_eff / m_rd } else { f64::INFINITY };
     let applicable = m_ed_eff > 1e-9 || n_ed.abs() > 1e-9;
+    let stappen = deelstappen::mn_kappa_deelstappen(&g, &diagram, opts, e0_bindend);
     MnKappaCheck {
         calc: ResistanceCalc {
             id,
@@ -336,6 +413,7 @@ pub fn check_mn_kappa(
             force_state,
             formula_latex: formula,
             variables,
+            deelstappen: stappen,
             value: m_rd,
             unit: "kNm".to_string(),
             uc: Some(UnityCheck {

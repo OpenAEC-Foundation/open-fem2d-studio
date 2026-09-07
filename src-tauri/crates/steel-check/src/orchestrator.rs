@@ -204,6 +204,7 @@ fn weigering(
         NamedCheck {
             id: id.to_string(),
             kind: CheckKind::Resistance(ResistanceCalc {
+                deelstappen: Vec::new(),
                 id: id.to_string(),
                 title: titel.to_string(),
                 article: artikel.to_string(),

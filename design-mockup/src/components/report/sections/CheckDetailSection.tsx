@@ -9,10 +9,13 @@
  * (afleidingLatex / unityCheckLatex).
  *
  * Detailniveau (reportStore.toetsingDetail):
- *  - 'gedetailleerd' — álle toetsen per staaf, inclusief tussenwaarden;
+ *  - 'gedetailleerd' — álle toetsen per staaf, inclusief tussenwaarden en de
+ *    volledig uitgeschreven afleiding (de deelstappen);
  *  - 'beknopt'       — alleen de maatgevende toets per staaf, zonder de
- *    tussenwaarden. Dat is nog steeds een volwaardige verantwoording van de
- *    UC die telt, maar zonder de acht toetsen die er niet toe deden.
+ *    tussenwaarden en zonder die afleiding. Dat is nog steeds een volwaardige
+ *    verantwoording van de UC die telt, maar zonder de acht toetsen die er niet
+ *    toe deden en zonder de tien tot twaalf tussenstappen die het beknopte
+ *    niveau meteen weer zouden opblazen.
  *
  * Staafkeuze (reportStore.verborgenToetsStaven): welke staven hier úberhaupt
  * uitgeschreven worden, kiest de lezer per staaf in de rapportzijbalk. Een
@@ -21,9 +24,12 @@
  * rapport. Onder de sectiekop staat dan hoeveel staven zijn weggelaten — een
  * weglating hoort zichtbaar te zijn, niet stil.
  *
- * Materiaal-neutraal: staal (EN 1993) en hout (EN 1995) delen het
- * NamedCheck-contract; alleen de regel onder de staafkop verschilt
- * (doorsnedeklasse vs. klimaatklasse + belastingduur).
+ * Materiaal-neutraal: staal (EN 1993), hout (EN 1995) en beton (EN 1992) delen
+ * het NamedCheck-contract; alleen de regel onder de staafkop verschilt
+ * (doorsnedeklasse vs. korf en rekensterkten vs. klimaatklasse +
+ * belastingduur). Dat geldt ook voor de afleiding: de deelstappen van de
+ * kiptoetsing en die van de betonnen doorsnedetoetsing worden door hetzelfde
+ * blok hieronder gezet.
  */
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
@@ -51,6 +57,7 @@ import {
   fmtUc,
   fmtValue,
   isStabilityCalc,
+  ketenHerkomst,
   renderLatexHtml,
   serviceClassLabel,
   splitsArtikel,
@@ -100,10 +107,11 @@ function Waarden({ kop, vars }: { kop?: string; vars: NamedValue[] }) {
  * De keten die aan een toets voorafgaat, stap voor stap.
  *
  * Waarom dit er is: een kiptoets is niet één formule maar een keten van
- * veertien. Tot nu toe stond daarvan alleen de uitkomstenrij in het rapport
- * ("Tussenwaarden: S = 1406,4 mm  C = 3,388 …") — getallen zonder formule en
- * zonder vindplaats, en dus niet na te rekenen. Het referentie-rapport
- * schrijft die keten voluit; dit blok doet dat nu ook.
+ * veertien, en een betonnen doorsnedetoets er een van ruim tien. Tot nu toe
+ * stond daarvan alleen de uitkomstenrij in het rapport ("Tussenwaarden:
+ * S = 1406,4 mm  C = 3,388 …"), of bij beton één formule met een getal —
+ * zonder de weg ertussen, en dus niet na te rekenen. Het referentie-rapport
+ * schrijft zo'n keten voluit; dit blok doet dat nu ook, voor beide.
  *
  * Elke stap toont de formule symbolisch, dezelfde formule met de getallen
  * ingevuld en de uitkomst, met het artikelnummer in de rechtermarge. De
@@ -224,10 +232,14 @@ function DerivationBlock({
           de norm hem afwerkt. */}
       <Deelstappen
         stappen={stappen}
-        kop={t(
-          "report.ketenKop",
-          "Afleiding volgens de nationale bijlage, stap voor stap:",
-        )}
+        kop={
+          ketenHerkomst(check) === "nb"
+            ? t(
+                "report.ketenKop",
+                "Afleiding volgens de nationale bijlage, stap voor stap:",
+              )
+            : t("report.ketenKopAlgemeen", "Afleiding, stap voor stap:")
+        }
       />
 
       {/* Symbolisch → ingevuld → uitkomst, met het vergelijkingsnummer rechts. */}

@@ -50,6 +50,7 @@ pub fn check_bending(
     };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.1.6_bending".to_string(),
         title: "Buiging".to_string(),
         article: "art. 6.1.6 (6.11)(6.12)".to_string(),

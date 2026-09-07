@@ -4,23 +4,36 @@ import type { NamedValue } from "./NamedValue";
 /**
  * Eén stap uit de afleiding die aan een toets voorafgaat.
  *
- * `intermediate_values` op [`StabilityCalc`] draagt alleen de UITKOMSTEN van
- * zo'n keten: een lijstje `S = 2006 mm   C = 4,12`. Waar die getallen vandaan
- * komen staat er niet bij, en een rapport dat een normtoets moet verantwoorden
- * heeft juist dát nodig. Een `Deelstap` draagt daarom de hele stap: de formule
- * symbolisch, dezelfde formule met de getallen ingevuld, de uitkomst met haar
- * eenheid, en de vindplaats in de norm.
+ * Een toets is zelden één formule. Een kiptoets is een keten van veertien
+ * (B*, β, C₁, C₂, L_kip, S, C, k_red, M_cr, λ̄_LT, χ_LT); een betonnen
+ * doorsnedetoets is er een van rekenwaarden, nuttige hoogte, krachtenevenwicht,
+ * drukzonehoogte, rekverdeling, hefboomsarm en momentenevenwicht. Van zo'n
+ * keten alleen de UITKOMSTEN afleveren — een rij losse getallen — is voor een
+ * rapport dat een normtoets moet verantwoorden te weinig: het moet per stap
+ * tonen wélke formule is gebruikt, met wélke getallen, en wáár die formule
+ * staat. Een `Deelstap` draagt daarom de hele stap: de formule symbolisch,
+ * dezelfde formule met de getallen ingevuld, de uitkomst met haar eenheid, en
+ * de vindplaats in de norm.
+ *
+ * **Waarom dit type hier staat en niet bij de stabiliteitstoetsen.** Het is
+ * daar begonnen — de kipketen was de eerste die een afleiding nodig had — maar
+ * een afleiding is geen eigenschap van stabiliteit. De betontoetsen zijn
+ * weerstandstoetsen ([`ResistanceCalc`]) en hebben dezelfde keten nodig. Omdat
+ * `nen-en-1993-1-1-stability` van deze crate afhangt en niet andersom, kan het
+ * type alleen hier staan; de stabiliteitscrate exporteert hem onveranderd door,
+ * zodat `nen_en_1993_1_1_stability::Deelstap` blijft werken. Het ts-rs-pad is
+ * hetzelfde gebleven, dus de frontend ziet exact dezelfde `Deelstap.ts`.
  *
  * **Waarom de ingevulde regel uit de rekenkern komt en niet uit de frontend.**
- * De frontend maakt zo'n regel nu door de symbolen in `formula_latex` door hun
- * waarde te vervangen (`vulGetallenIn`). Dat werkt voor een formule als
- * `N_{c,Rd} = A f_y / \gamma_{M0}`, maar de NB-keten bevat wortels met losse
- * hoofdletters (`\sqrt{E I_z / (G I_t)}`) naast samengestelde symbolen, en
- * bovendien eenheidsomrekeningen (kNm → N·mm) die geen symbool hebben. Wie de
- * formule kent kan de ingevulde regel exact opschrijven; een tekstvervanging
- * achteraf kan dat niet. `ingevuld_latex` is daarom hier gevuld. Is hij leeg,
- * dan hoort er geen ingevulde regel te staan (bijvoorbeeld bij een stap die
- * alleen uitgangspunten opsomt).
+ * De frontend maakt zo'n regel voor een gewone toets door de symbolen in
+ * `formula_latex` door hun waarde te vervangen (`vulGetallenIn`). Dat werkt
+ * voor een formule als `N_{c,Rd} = A f_y / \gamma_{M0}`, maar de ketens hier
+ * bevatten wortels met losse hoofdletters (`\sqrt{E I_z / (G I_t)}`), sommaties
+ * over wapeningslagen, en eenheidsomrekeningen (kNm → N·mm) die helemaal geen
+ * symbool hebben. Wie de formule kent kan de ingevulde regel exact opschrijven;
+ * een tekstvervanging achteraf kan dat niet. `ingevuld_latex` is daarom in de
+ * kern gevuld. Is hij leeg, dan hoort er geen ingevulde regel te staan
+ * (bijvoorbeeld bij een stap die alleen uitgangspunten opsomt).
  */
 export type Deelstap = { 
 /**
@@ -39,8 +52,8 @@ titel: string,
 symbol: string, 
 /**
  * De vindplaats: vergelijking- of artikelnummer, bijvoorbeeld `"NB.148"`
- * of `"NB.NB.4.3(3)"`. Apart veld, niet als achtervoegsel in de titel —
- * het rapport zet hem in de rechtermarge.
+ * of `"art. 3.1.7(3) (3.19)"`. Apart veld, niet als achtervoegsel in de
+ * titel — het rapport zet hem in de rechtermarge.
  */
 article: string, 
 /**
@@ -64,5 +77,10 @@ value: number | null, unit: string,
 /**
  * Kanttekeningen bij déze stap: welke tak van de norm geldt, waar een
  * benadering buiten de norm om is aangehouden, welke aanname eronder ligt.
+ *
+ * Dit veld is niet decoratief. Een afleiding die stilzwijgend een aanname
+ * doet is erger dan geen afleiding: de lezer denkt dan dat hij de hele
+ * redenering ziet. Elke aangenomen bezwijkvorm, elke vereenvoudiging en
+ * elke normgrens die NIET getoetst is, hoort hier te staan.
  */
 notes: Array<string>, };

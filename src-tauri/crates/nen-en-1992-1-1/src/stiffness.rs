@@ -92,7 +92,7 @@
 //! niet-lineaire tweede orde en zijn een aparte taak.
 
 use crate::mnkappa::{internal_forces, solve_eps0, MnKappaOptions, SectionState, MAX_N_STRIPS};
-use crate::section::{RebarLayer, RectConcreteSection};
+use crate::section::{mirrored_layers, ConcreteSection, RebarLayer, RectConcreteSection};
 use crate::stress_strain::{
     ConcreteNonlinearCurve, ConcreteTension, DesignMaterial, NonlinearBasis,
 };
@@ -268,16 +268,6 @@ impl SecantStiffness {
 // M₀ — het moment bij κ = 0
 // ───────────────────────────────────────────────────────────────────────────
 
-/// Spiegel de lagen in de hoogte (z → h − z) — dezelfde spiegeling die
-/// [`crate::mnkappa::mn_kappa_diagram`] gebruikt om een negatief moment als
-/// positief door te rekenen.
-fn mirrored(layers: &[RebarLayer], h_mm: f64) -> Vec<RebarLayer> {
-    layers
-        .iter()
-        .map(|l| RebarLayer { z_mm: h_mm - l.z_mm, area_mm2: l.area_mm2, label: l.label.clone() })
-        .collect()
-}
-
 /// Het moment bij κ = 0 (kNm), in het frame dat `moment_sign` aanwijst.
 ///
 /// `moment_sign` = +1 geeft de `mechanics`-conventie (trek onder positief).
@@ -297,12 +287,14 @@ pub fn m0_knm(
     moment_sign: f64,
     opts: &MnKappaOptions,
 ) -> Option<f64> {
+    let sec_eigen: ConcreteSection;
     let eigen: Vec<RebarLayer>;
-    let lagen: &[RebarLayer] = if moment_sign < 0.0 {
-        eigen = mirrored(layers, section.h_mm);
-        &eigen
+    let (section, lagen): (&ConcreteSection, &[RebarLayer]) = if moment_sign < 0.0 {
+        sec_eigen = section.mirrored();
+        eigen = mirrored_layers(layers, section.h_mm);
+        (&sec_eigen, &eigen)
     } else {
-        layers
+        (section, layers)
     };
     let n_strips = opts.n_strips.clamp(1, MAX_N_STRIPS);
     let n_target = -n_ed_kn * 1e3;
@@ -324,12 +316,21 @@ pub fn m0_knm(
 ///   σ = N/A_c + M/W_c = f_ctm     →     M_cr = (f_ctm − N/A_c)·W_c
 /// ```
 ///
-/// met A_c = b·h en W_c = b·h²/6 van de **bruto betondoorsnede**. De
-/// wapening wordt niet meegerekend (geen omrekening naar een homogene
-/// doorsnede) — dezelfde vereenvoudiging als elders in deze crate, waar het
-/// door de wapening verdrongen beton ook niet wordt afgetrokken. Voor een
+/// met A_c en W_c van de **bruto betondoorsnede**. De wapening wordt niet
+/// meegerekend (geen omrekening naar een homogene doorsnede) — dezelfde
+/// vereenvoudiging als elders in deze crate, waar het door de wapening
+/// verdrongen beton ook niet wordt afgetrokken. Voor een
 /// tweede-ordeberekening is dat de veilige kant op: een kleinere W_c geeft
 /// een kleiner M_cr, dus eerder scheuren en een slappere staaf.
+///
+/// **Twee weerstandsmomenten, niet één.** Welke vezel scheurt, hangt af van
+/// de richting van het moment, en welke W daarbij hoort van de ligging van
+/// het zwaartepunt. Bij een rechthoek ligt dat op halve hoogte en is
+/// W_onder = W_boven = b·h²/6; het teken van `moment_sign` draaide toen alleen
+/// de uitkomst om. Bij een T ligt het zwaartepunt naar de flens toe, en dan
+/// is W_onder = I/z_g kleiner dan W_boven = I/(h − z_g). **Het scheurmoment
+/// van een T verschilt dus wezenlijk tussen een positief en een negatief
+/// moment** — met de flens boven scheurt de onderzijde eerder.
 ///
 /// f_ctm komt uit **tabel 3.1**; 7.4.3(4): "In het algemeen zal de beste
 /// schatting van het gedrag zijn verkregen indien f_ctm is gebruikt." De
@@ -344,8 +345,10 @@ pub fn m_cr_knm(
     n_ed_kn: f64,
     moment_sign: f64,
 ) -> f64 {
-    let a_c = section.b_mm * section.h_mm;
-    let w_c = section.b_mm * section.h_mm * section.h_mm / 6.0;
+    let a_c = section.area_mm2();
+    // Positief moment = trek in de ONDERSTE vezel (mechanics-conventie), dus
+    // W van de onderzijde; negatief moment scheurt de bovenzijde.
+    let w_c = if moment_sign < 0.0 { section.w_top_mm3() } else { section.w_bottom_mm3() };
     if a_c <= 0.0 {
         return 0.0;
     }
@@ -389,9 +392,10 @@ fn eps0_at(
     let n_of = |e: f64| internal_forces(section, layers, mat, e, kappa_per_mm, n_strips).n();
     // Referentiestijfheid voor het beginschatje en de tolerantie.
     let e_c0 = mat.nonlinear.map(|c| c.e_c0()).unwrap_or(mat.concrete.f_cd * mat.concrete.n / mat.concrete.eps_c2);
-    let ea = e_c0 * section.b_mm * section.h_mm
+    // Bandsgewijs opgeteld, zodat de rechthoek letterlijk e_c0·b·h houdt.
+    let ea = section.bands().iter().map(|b| e_c0 * b.b_mm * b.height_mm()).sum::<f64>()
         + crate::factors::E_S * layers.iter().map(|l| l.area_mm2).sum::<f64>();
-    let n_ref = mat.f_cd().max(1.0) * section.b_mm * section.h_mm;
+    let n_ref = section.bands().iter().map(|b| mat.f_cd().max(1.0) * b.b_mm * b.height_mm()).sum::<f64>();
     let tol = 1e-10 * n_ref.max(n_target.abs());
 
     let mut e = seed.unwrap_or(if ea > 0.0 { n_target / ea } else { 0.0 });
@@ -477,7 +481,9 @@ fn solve_branch(
         .ok_or(StiffnessError::AxialCapacityExceeded)?;
     let m_0 = internal_forces(section, layers, mat, eps0_0, 0.0, n_strips).m();
 
-    let m_ref = mat.f_cd().max(1.0) * section.b_mm * h * h / 6.0;
+    // Schaal waarop momenten worden afgerond: f_cd maal het kleinste
+    // weerstandsmoment van de bruto doorsnede. Bij een rechthoek b·h²/6.
+    let m_ref = mat.f_cd().max(1.0) * section.w_bottom_mm3().min(section.w_top_mm3());
     let tol_m = 1e-9 * m_ref.max(m_target.abs());
     if (m_target - m_0).abs() <= tol_m {
         return Ok(Branch { eps_0: eps0_0, kappa_per_mm: 0.0, iterations: 0, method: SolveMethod::Newton });
@@ -500,7 +506,7 @@ fn solve_branch(
 
     // Beginschatje uit de ongescheurde stijfheid: κ₀ = (M − M₀)/(E_c0·I_c).
     let e_c0 = mat.nonlinear.map(|c| c.e_c0()).unwrap_or(mat.concrete.f_cd * mat.concrete.n / mat.concrete.eps_c2);
-    let ei_0 = e_c0 * section.b_mm * h * h * h / 12.0;
+    let ei_0 = e_c0 * section.i_centroid_mm4();
     let mut k = if ei_0 > 0.0 { ((m_target - m_0) / ei_0).min(kappa_max) } else { kappa_max * 0.01 };
     // Vangt ook NaN en oneindig af: een onbruikbaar beginschatje wordt een
     // kleine, zeker positieve kromming.
@@ -677,14 +683,18 @@ pub fn kappa_from_nm(
         .ok_or(StiffnessError::AxialCapacityExceeded)?;
     let sign = if m_ed_knm < m0 { -1.0 } else { 1.0 };
 
+    // Ook hier klapt de hele doorsnede om en niet alleen de korf: bij een T
+    // hoort de flens onder als het moment negatief is.
+    let sec_eigen: ConcreteSection;
     let eigen: Vec<RebarLayer>;
-    let lagen: &[RebarLayer] = if sign < 0.0 {
-        eigen = mirrored(layers, section.h_mm);
-        &eigen
+    let (werk, lagen): (&ConcreteSection, &[RebarLayer]) = if sign < 0.0 {
+        sec_eigen = section.mirrored();
+        eigen = mirrored_layers(layers, section.h_mm);
+        (&sec_eigen, &eigen)
     } else {
-        layers
+        (section, layers)
     };
-    let br = solve_branch(section, lagen, mat, n_target, sign * m_ed_knm * 1e6, n_strips)?;
+    let br = solve_branch(werk, lagen, mat, n_target, sign * m_ed_knm * 1e6, n_strips)?;
 
     // Terug naar de oorspronkelijke stand. De rek in het midden is onder de
     // spiegeling z → h − z onveranderd (alleen de armen keren om), dus de
@@ -733,7 +743,7 @@ pub fn ei_secant(
 ) -> Result<SecantStiffness, StiffnessError> {
     let curve: ConcreteNonlinearCurve = mat.nonlinear.ok_or(StiffnessError::NoNonlinearCurve)?;
     let mnk = &opts.mnk;
-    let i_c = section.b_mm * section.h_mm.powi(3) / 12.0;
+    let i_c = section.i_centroid_mm4();
     // E_c·I_c in kNm²: N/mm² · mm⁴ = N·mm² = 10⁻⁹ kN·m².
     let ei_uncracked = curve.e_c * i_c * 1e-9;
 

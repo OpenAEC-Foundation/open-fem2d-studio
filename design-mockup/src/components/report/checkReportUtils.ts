@@ -247,22 +247,44 @@ export function afleidingLatex(check: CheckCalc): {
 // De afleiding vóór de toets: de deelstappen
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Een stabiliteitstoets is de laatste regel van een langere keten. Bij kip
-// loopt die van de uitgangspunten van het kipveld via B*, β, C₁, C₂, L_kip,
-// S, C en k_red naar M_cr, en pas daarna naar λ̄_LT en χ_LT. Het
-// referentie-rapport schrijft die keten voluit; wij deden dat niet — er stond
-// alleen een rij uitkomsten ("Tussenwaarden: S = … C = …") zonder formule of
-// vindplaats.
+// Een toets is zelden één formule. Een kiptoets loopt van de uitgangspunten
+// van het kipveld via B*, β, C₁, C₂, L_kip, S, C en k_red naar M_cr, en pas
+// daarna naar λ̄_LT en χ_LT. Een betonnen doorsnedetoets loopt van f_cd en
+// f_yd via de nuttige hoogte en het krachtenevenwicht naar de drukzonehoogte,
+// de rekverdeling, de hefboomsarm en het momentenevenwicht. Het
+// referentie-rapport schrijft zulke ketens voluit; wij deden dat niet — er
+// stond alleen een rij uitkomsten zonder formule of vindplaats.
 //
-// De rekenkern levert die keten nu als `deelstappen`. Anders dan bij een
-// gewone toets wordt de INGEVULDE regel daar gemaakt en niet hier: zie de
-// docstring van `Deelstap`. `vulGetallenIn` mag dus NIET op een deelstap
-// worden losgelaten — die zou stukbreken op `\sqrt{E I_z/(G I_t)}` en op de
+// De rekenkern levert die keten nu als `deelstappen`, en dat doen ZOWEL de
+// stabiliteitstoetsen (`StabilityCalc`) ALS de weerstandstoetsen
+// (`ResistanceCalc`). Het veld staat daarom op allebei; bij toetsen die één
+// formule zijn — het staal- en houtwerk — blijft hij leeg en verandert er niets
+// aan de weergave.
+//
+// Anders dan bij een gewone toets wordt de INGEVULDE regel in de kern gemaakt
+// en niet hier: zie de docstring van `Deelstap`. `vulGetallenIn` mag dus NIET
+// op een deelstap worden losgelaten — die zou stukbreken op
+// `\sqrt{E I_z/(G I_t)}`, op sommaties over wapeningslagen, en op de
 // eenheidsomrekeningen (kNm → N·mm) die helemaal geen symbool hebben.
 
 /** De keten die aan deze toets voorafgaat; leeg als er geen keten is. */
 export function deelstappenVan(check: CheckCalc): Deelstap[] {
-  return isStabilityCalc(check) ? check.deelstappen : [];
+  // `?? []` en niet alleen het veld: een resultaat dat uit een ouder
+  // opgeslagen bestand komt, kent het veld nog niet. De Rust-kant leest zulke
+  // bestanden met `#[serde(default)]`; hier is dit dezelfde voorziening.
+  return check.deelstappen ?? [];
+}
+
+/**
+ * Waar de keten van deze toets vandaan komt, voor de kop erboven.
+ *
+ * De kipketen komt uit de nationale bijlage bij EN 1993 en zei dat ook in haar
+ * kop. De betonketen komt uit EN 1992 zelf — hoofdstuk 6 en 3.1.7 — en niet uit
+ * een nationale bijlage; die kop letterlijk overnemen zou een verkeerde bron
+ * noemen. Vandaar twee koppen en niet één.
+ */
+export function ketenHerkomst(check: CheckCalc): "nb" | "algemeen" {
+  return isStabilityCalc(check) ? "nb" : "algemeen";
 }
 
 /**
@@ -634,11 +656,17 @@ export const CHECK_REPORT_CSS = `
   border-left: 0.2mm solid #ccc;
 }
 
+/* De kop van de keten neemt de eerste stap mee naar de volgende bladzijde.
+   Zonder dit blijft "Afleiding, stap voor stap:" onder aan een vel achter met
+   niets eronder — een aankondiging zonder inhoud. Dat viel op zodra er naast de
+   kipketen een tweede, even lange betonketen bijkwam. */
 .rpt-chk-keten-kop {
   font-size: calc(var(--rpt-basis) * 0.85);
   font-style: italic;
   color: #555;
   margin: 0 0 1.5mm;
+  break-after: avoid;
+  page-break-after: avoid;
 }
 
 /* Een stap blijft op papier bijeen: kop, formule en uitkomst horen bij

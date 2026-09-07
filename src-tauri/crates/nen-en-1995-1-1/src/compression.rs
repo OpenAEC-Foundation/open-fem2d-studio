@@ -36,6 +36,7 @@ pub fn check_compression_parallel(
     };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.1.4_compression".to_string(),
         title: "Druk evenwijdig aan de vezel".to_string(),
         article: "art. 6.1.4 (6.2)".to_string(),
@@ -82,6 +83,7 @@ pub fn check_tension_parallel(
     };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.1.2_tension".to_string(),
         title: "Trek evenwijdig aan de vezel".to_string(),
         article: "art. 6.1.2 (6.1)".to_string(),

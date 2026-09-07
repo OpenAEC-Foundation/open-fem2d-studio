@@ -16,9 +16,9 @@
 //! constructieve software een veiligheidsprobleem.
 //!
 //! DE NAMEN
-//! `list_concrete_classes`, `list_reinforcement_grades`, `concrete_mn_kappa` en
-//! `concrete_segment_stiffness` heten hier precies zoals in de andere twee
-//! wegen. `check_concrete_beam`
+//! `list_concrete_classes`, `list_reinforcement_grades`, `concrete_mn_kappa`,
+//! `concrete_segment_stiffness` en `concrete_effective_flange_width` heten hier
+//! precies zoals in de andere twee wegen. `check_concrete_beam`
 //! staat in het ENKELVOUD en toetst één staaf, gelijk aan `check_steel_beam`
 //! hiernaast; de Tauri- en toetsbrug-weg heten `check_concrete_beams` en nemen
 //! een lijst, net zoals `check_steel_beams` daar. Het invoertype
@@ -47,15 +47,16 @@ use serde_json::{json, Value};
 
 use crate::RpcError;
 
-/// De vijf betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
+/// De zes betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
 /// schema's en de dispatch — zodat een tool niet in `tools/list` kan staan
 /// zonder afhandeling, of andersom.
-pub const CONCRETE_TOOLS: [&str; 5] = [
+pub const CONCRETE_TOOLS: [&str; 6] = [
     "list_concrete_classes",
     "list_reinforcement_grades",
     "check_concrete_beam",
     "concrete_mn_kappa",
     "concrete_segment_stiffness",
+    "concrete_effective_flange_width",
 ];
 
 pub fn is_concrete_tool(naam: &str) -> bool {
@@ -115,6 +116,23 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
                 // hoort — is een toolfout met de reden erbij. Een segment dat
                 // niet convergeert is dat NIET: dat staat als `Failed` in de
                 // tabel, met de reden en zonder getal.
+                .map_err(RpcError::invalid_params)?;
+            serde_json::to_value(result)
+                .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
+        }
+        // De meewerkende flensbreedte (5.3.2.1). Geen blokkerend werk: dit is
+        // een handvol vermenigvuldigingen per gebied, geen integratie over de
+        // doorsnede. Een ongeldig geval — een losstaande uitkraging, een
+        // uitkraging langer dan de halve aangrenzende overspanning, een
+        // overspanningsverhouding buiten 2/3 … 1,5 — is een toolfout MET de
+        // reden. Een teruggegeven getal zou hier onzichtbaar fout zijn: b_eff
+        // stuurt naast de sterkte ook I_c, M_cr en de tweede orde.
+        "concrete_effective_flange_width" => {
+            let req: nen_en_1992_1_1::EffectiveFlangeWidthRequest = serde_json::from_value(args)
+                .map_err(|e| {
+                    RpcError::invalid_params(format!("EffectiveFlangeWidthRequest: {e}"))
+                })?;
+            let result = nen_en_1992_1_1::beff::effective_flange_width_request(req)
                 .map_err(RpcError::invalid_params)?;
             serde_json::to_value(result)
                 .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
@@ -202,7 +220,7 @@ fn schema_segmentkrachten() -> Value {
     })
 }
 
-/// De vijf tooldefinities voor `tools/list`.
+/// De zes tooldefinities voor `tools/list`.
 pub fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
@@ -325,7 +343,70 @@ pub fn tool_definitions() -> Vec<Value> {
                 ]
             }
         }),
+        json!({
+            "name": "concrete_effective_flange_width",
+            "description": "Derive the effective flange width b_eff of a T- or L-beam from EN 1992-1-1 §5.3.2.1 (all limit states): l_0 per region from figure 5.2 (end span 0,85*l1, interior support 0,15*(l1+l2), interior span 0,7*l2, cantilever 0,15*l2+l3) and then b_eff = sum(b_eff,i) + b_w <= b with b_eff,i = 0,2*b_i + 0,1*l_0 <= 0,2*l_0 and b_eff,i <= b_i, equations (5.7)/(5.7a)/(5.7b). Returns one region per figure-5.2 case with its x-range along the beam line, its l_0, the governing bound per flange part and the resulting b_eff, plus the constant-per-span fallback of §5.3.2.1(4). This tool takes the BEAM LINE (the ordered spans plus the two outer end conditions), not a model: turning nodes, beams and supports into a beam line is the caller's job. Cases outside figure 5.2 are an ERROR with the reason, never a number: a standalone cantilever, a cantilever not shorter than half the adjacent span, or an adjacent-span ratio outside 2/3 … 1,5. Same input and output types as the Tauri command and the toetsbrug opdracht of the same name.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "beam_id": { "type": "integer", "minimum": 0, "default": 0,
+                        "description": "Vrij te kiezen nummer; komt onveranderd terug in het antwoord." },
+                    "line": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "description": "De doorgaande liggerlijn zoals figuur 5.2 hem tekent. Tussen twee opeenvolgende overspanningen zit per definitie een tussensteunpunt; alleen de twee buitenste uiteinden hebben een keuze.",
+                        "properties": {
+                            "spans_mm": {
+                                "type": "array",
+                                "items": { "type": "number", "exclusiveMinimum": 0 },
+                                "minItems": 1,
+                                "description": "De overspanningen in mm, op volgorde van `start` naar `end`. Een uitkraging is de eerste respectievelijk laatste overspanning, met het bijbehorende uiteinde op \"Free\"."
+                            },
+                            "start": schema_lijnuiteinde("begin (x = 0)"),
+                            "end": schema_lijnuiteinde("eind (x = som van de overspanningen)")
+                        },
+                        "required": ["spans_mm", "start", "end"]
+                    },
+                    "flange": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "description": "De flensmaten van figuur 5.3, in mm.",
+                        "properties": {
+                            "b_w_mm": { "type": "number", "exclusiveMinimum": 0,
+                                "description": "Lijfbreedte b_w in mm." },
+                            "b_i_mm": {
+                                "type": "array",
+                                "items": { "type": "number", "minimum": 0 },
+                                "maxItems": 2,
+                                "description": "De uitkragende flensdelen b_i in mm: twee voor een T-ligger, één voor een L-ligger (randligger), geen voor een rechthoek. Elke b_i is de HALVE vrije afstand tot het naastliggende lijf, of bij een rand het werkelijke overstek. b = b_w + som(b_i)."
+                            }
+                        },
+                        "required": ["b_w_mm", "b_i_mm"]
+                    }
+                },
+                "required": ["line", "flange"]
+            }
+        }),
     ]
+}
+
+/// Het uiteinde van een liggerlijn (`LineEnd`). De drie namen zijn die van de
+/// Rust-enum, dus wat hier staat is wat de kern accepteert.
+fn schema_lijnuiteinde(waar: &str) -> Value {
+    json!({
+        "type": "string",
+        "enum": ["Support", "Restrained", "Free"],
+        "description": format!(
+            "Wat er aan het {waar} van de lijn zit. \"Support\" = buitensteunpunt dat de \
+             hoekverdraaiing niet verhindert (het linker steunpunt van figuur 5.2). \
+             \"Restrained\" = momentvast buitenuiteinde (inklemming of raamwerkknoop); dat \
+             geval staat NIET in figuur 5.2 en wordt gelezen als een tussensteunpunt met \
+             één aangrenzende overspanning — het antwoord meldt dat in `notes`. \"Free\" = \
+             vrij einde, dus de buitenste overspanning is een uitkraging; zonder \
+             aangrenzende overspanning is dat een fout."
+        )
+    })
 }
 
 #[cfg(test)]
@@ -430,6 +511,64 @@ mod tests {
         assert_eq!(
             def["inputSchema"]["properties"]["segment_forces"]["items"]["additionalProperties"],
             json!(false)
+        );
+    }
+
+    /// Het schema van `concrete_effective_flange_width` is de spiegel van
+    /// `EffectiveFlangeWidthRequest`, `BeamLine` en `FlangeGeometry`. Alle drie
+    /// staan op `deny_unknown_fields`, dus een veld dat aan één van beide
+    /// kanten ontbreekt maakt de tool onbruikbaar. Het schema mag óók de
+    /// geneste objecten geen onbekende velden laten doorlaten: een tikfout in
+    /// `spans_mm` zou anders een lege lijst opleveren, en dat is een andere
+    /// ligger.
+    #[test]
+    fn flensbreedteschema_spiegelt_het_verzoektype() {
+        let def = tool_definitions()
+            .into_iter()
+            .find(|d| d["name"] == "concrete_effective_flange_width")
+            .expect("de tool staat in de lijst");
+        let velden = def["inputSchema"]["properties"]
+            .as_object()
+            .expect("properties");
+        for v in ["beam_id", "line", "flange"] {
+            assert!(velden.contains_key(v), "het flensbreedteschema mist `{v}`");
+        }
+        assert_eq!(velden.len(), 3);
+        // `beam_id` heeft `#[serde(default)]` en is dus niet verplicht.
+        let verplicht: Vec<&str> = def["inputSchema"]["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(verplicht, vec!["line", "flange"]);
+
+        let lijn = &velden["line"];
+        assert_eq!(lijn["additionalProperties"], json!(false));
+        let lijnvelden = lijn["properties"].as_object().expect("line.properties");
+        for v in ["spans_mm", "start", "end"] {
+            assert!(lijnvelden.contains_key(v), "de liggerlijn mist `{v}`");
+        }
+        assert_eq!(lijnvelden.len(), 3);
+
+        let flens = &velden["flange"];
+        assert_eq!(flens["additionalProperties"], json!(false));
+        let flensvelden = flens["properties"].as_object().expect("flange.properties");
+        for v in ["b_w_mm", "b_i_mm"] {
+            assert!(flensvelden.contains_key(v), "de flens mist `{v}`");
+        }
+        assert_eq!(flensvelden.len(), 2);
+
+        // De drie namen van `LineEnd` staan letterlijk in het schema; een
+        // vierde naam zou de kern weigeren, een ontbrekende naam zou een
+        // geldig geval onbereikbaar maken.
+        assert_eq!(
+            lijn["properties"]["start"]["enum"],
+            json!(["Support", "Restrained", "Free"])
+        );
+        assert_eq!(
+            lijn["properties"]["end"]["enum"],
+            json!(["Support", "Restrained", "Free"])
         );
     }
 

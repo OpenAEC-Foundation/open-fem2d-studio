@@ -10,6 +10,7 @@ pub fn v_z_c_rd(p: &SectionProperties, grade: &SteelGrade, force_state: ForceSta
     let uc = if v_rd > 0.0 { v_ed / v_rd } else { 0.0 };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.6_shear_z".to_string(),
         title: "Dwarskracht".to_string(),
         article: "art. 6.2.6 (6.18)".to_string(),
@@ -33,6 +34,7 @@ pub fn v_y_c_rd(p: &SectionProperties, grade: &SteelGrade, force_state: ForceSta
     let v_ed = force_state.forces.vy_ed.abs();
     let uc = if v_rd > 0.0 { v_ed / v_rd } else { 0.0 };
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.6_shear_y".to_string(),
         title: "Dwarskracht (y-as)".to_string(),
         article: "art. 6.2.6".to_string(),

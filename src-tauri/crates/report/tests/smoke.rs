@@ -10,6 +10,7 @@ use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
 
 fn dummy_resistance_calc(uc: f64) -> ResistanceCalc {
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "comp".into(),
         title: "Compression resistance — 6.2.4".into(),
         article: "EN 1993-1-1 §6.2.4".into(),

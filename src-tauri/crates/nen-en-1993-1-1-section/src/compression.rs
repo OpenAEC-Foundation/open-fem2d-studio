@@ -17,6 +17,7 @@ pub fn n_c_rd(
     } else if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.4_compression".to_string(),
         title: "Druk".to_string(),
         article: "art. 6.2.4 (6.10)".to_string(),

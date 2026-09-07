@@ -65,6 +65,7 @@ pub fn check_deflection(
     let uc = if limit_mm > 0.0 { actual_mm / limit_mm } else { 0.0 };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "sls_deflection".to_string(),
         title: "Doorbuiging (BGT)".to_string(),
         article: "NEN-EN 1990 (SLS)".to_string(),
@@ -363,6 +364,7 @@ pub fn check_deflection_pair(
         let grens = grens_mm(referentie_mm, noemer);
         let uc = if grens.is_finite() && grens > 0.0 { w.abs() / grens } else { 0.0 };
         ResistanceCalc {
+            deelstappen: Vec::new(),
             id: id.to_string(),
             title: titel.to_string(),
             article: artikel.to_string(),

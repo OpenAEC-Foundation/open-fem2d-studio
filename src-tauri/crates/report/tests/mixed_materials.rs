@@ -33,6 +33,7 @@ fn dummy_check(id: &str, title: &str, article: &str, uc: f64) -> NamedCheck {
     NamedCheck {
         id: id.into(),
         kind: CheckKind::Resistance(ResistanceCalc {
+            deelstappen: Vec::new(),
             id: id.into(),
             title: title.into(),
             article: article.into(),

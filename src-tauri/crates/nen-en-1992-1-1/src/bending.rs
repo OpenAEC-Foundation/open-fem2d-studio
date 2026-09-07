@@ -8,6 +8,13 @@
 //!   F_c = η · f_cd · b · λ·x          (arm t.o.v. de gedrukte rand: λ·x / 2)
 //! ```
 //!
+//! Die gesloten vorm geldt zolang het blok over zijn hele hoogte één breedte
+//! ziet — bij een rechthoek altijd, bij een T of L zolang λ·x de flens niet
+//! uit komt. Loopt het blok over de bandgrens heen, dan wordt de drukkracht
+//! de integraal van b(z) over de bloklaagte en ligt de arm op het
+//! zwaartepunt daarvan; zie [`concrete_block`]. Die splitsing is een benoemde
+//! MODELKEUZE en geen normvoorschrift.
+//!
 //! De wapeningslagen krijgen hun rek uit de lineaire verdeling en hun spanning
 //! uit het bilineaire diagram (3.2.7). Krachtenevenwicht met N_Ed levert x;
 //! momentenevenwicht om het midden van de doorsnede levert M_Rd.
@@ -27,8 +34,40 @@
 //! Zelfde vereenvoudiging als in `mnkappa`: verdrongen beton bij de
 //! drukwapening wordt niet afgetrokken.
 
-use crate::section::{RebarLayer, RectConcreteSection};
+use crate::section::{ConcreteSection, RebarLayer, RectConcreteSection};
 use crate::stress_strain::DesignMaterial;
+
+/// De betondrukkracht van het spanningsblok (N, druk positief) en de diepte
+/// van haar zwaartepunt onder de GEDRUKTE rand (mm), bij drukzonehoogte `x`.
+///
+/// **Twee gevallen, één norm.** 3.1.7(3) geeft het blok: over een hoogte λ·x
+/// vanaf de gedrukte rand heerst de spanning η·f_cd. Wat dat aan kracht
+/// oplevert, hangt af van het oppervlak dat over die hoogte aanwezig is.
+///
+/// * Ligt het blok geheel binnen één band — bij een rechthoek altijd, bij een
+///   T of L zolang λ·x de flens niet uit komt — dan is dat oppervlak b·λ·x en
+///   staat er letterlijk de gesloten vorm die er altijd stond, met de arm op
+///   λ·x/2. Dat is de klassieke "gedraagt zich als een rechthoek", en het
+///   getal is exact gelijk aan dat van een rechthoek met díé breedte.
+/// * Loopt het blok over de bandgrens heen, dan is het oppervlak de integraal
+///   van b(z) over de bloklaagte en ligt de arm op het zwaartepunt daarvan.
+///   Rekenen met de flensbreedte zou het lijfdeel te breed maken (ONVEILIG);
+///   rekenen met de lijfbreedte zou de flens te smal maken (conservatief).
+///
+/// Die splitsing is een benoemde MODELKEUZE en geen normvoorschrift: de norm
+/// kent geen grenswaarde λ·x ≤ h_f en geen tweetermsformule. Zie
+/// [`crate::section::ConcreteSection::assumptions`], die deze aanname als
+/// tekst met elk resultaat meegeeft.
+fn concrete_block(section: &ConcreteSection, mat: &DesignMaterial, x: f64) -> (f64, f64) {
+    match section.uniform_top_width(mat.lambda * x) {
+        Some(b) => (mat.eta * mat.concrete.f_cd * b * mat.lambda * x, mat.lambda * x / 2.0),
+        None => {
+            let (a, statisch) = section.top_strip(mat.lambda * x);
+            let arm = if a > 0.0 { statisch / a } else { mat.lambda * x / 2.0 };
+            (mat.eta * mat.concrete.f_cd * a, arm)
+        }
+    }
+}
 
 /// Kracht en arm van één wapeningslaag in het spanningsblok-evenwicht.
 #[derive(Clone, Debug, PartialEq)]
@@ -55,7 +94,11 @@ pub struct StressBlockResult {
     pub eta: f64,
     /// Betondrukkracht in kN.
     pub f_c_kn: f64,
-    /// Arm van F_c t.o.v. het midden, m: h/2 − λx/2.
+    /// Arm van F_c t.o.v. het midden, m: h/2 min de diepte van het
+    /// zwaartepunt van het blok onder de gedrukte rand. Ligt het blok binnen
+    /// één band — bij een rechthoek altijd — dan is die diepte λx/2 en staat
+    /// er h/2 − λx/2; loopt het over de bandgrens heen, dan is het het
+    /// zwaartepunt van het werkelijke blokoppervlak. Zie [`concrete_block`].
     pub z_c_m: f64,
     pub layers: Vec<LayerForce>,
     /// Momentweerstand in kNm (positief getal, in de richting van het opgegeven moment).
@@ -79,8 +122,8 @@ pub enum StressBlockError {
 /// Inwendige normaalkracht (N, druk positief) bij drukzonehoogte `x` (mm),
 /// gemeten vanaf de gedrukte rand; `depth` per laag is de afstand van de
 /// staafas tot de gedrukte rand.
-fn n_internal(section: &RectConcreteSection, depths: &[(f64, f64)], mat: &DesignMaterial, x: f64) -> f64 {
-    let f_c = mat.eta * mat.concrete.f_cd * section.b_mm * mat.lambda * x;
+fn n_internal(section: &ConcreteSection, depths: &[(f64, f64)], mat: &DesignMaterial, x: f64) -> f64 {
+    let (f_c, _) = concrete_block(section, mat, x);
     let f_s: f64 = depths
         .iter()
         .map(|&(depth, area)| {
@@ -105,6 +148,17 @@ pub fn stress_block(
     }
     let sign = if moment_sign < 0.0 { -1.0 } else { 1.0 };
     let h = section.h_mm;
+    // Bij een negatief moment wordt de doorsnede omgeklapt zodat de gedrukte
+    // rand altijd boven ligt. Voor een rechthoek verandert dat niets; voor
+    // een T brengt het de flens naar onderen, wat bij een negatief moment ook
+    // precies de werkelijkheid is: het lijf wordt gedrukt.
+    let gespiegeld: ConcreteSection;
+    let section: &ConcreteSection = if sign < 0.0 {
+        gespiegeld = section.mirrored();
+        &gespiegeld
+    } else {
+        section
+    };
     // Afstand van elke laag tot de gedrukte rand: boven bij positief moment,
     // onder bij negatief moment.
     let depths: Vec<(f64, f64)> = layers
@@ -142,8 +196,8 @@ pub fn stress_block(
     }
     let x = 0.5 * (lo + hi);
 
-    let f_c = mat.eta * mat.concrete.f_cd * section.b_mm * mat.lambda * x; // N
-    let z_c = (h / 2.0 - mat.lambda * x / 2.0) * 1e-3; // m
+    let (f_c, arm_c) = concrete_block(section, mat, x); // N, mm onder de gedrukte rand
+    let z_c = (h / 2.0 - arm_c) * 1e-3; // m
     let mut m = f_c * z_c; // N·m
     let mut lf = Vec::with_capacity(layers.len());
     for (l, &(depth, area)) in layers.iter().zip(depths.iter()) {

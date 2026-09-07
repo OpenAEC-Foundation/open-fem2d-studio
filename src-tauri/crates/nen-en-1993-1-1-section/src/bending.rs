@@ -31,6 +31,7 @@ pub fn m_y_c_rd(
     };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.5_bending_y".to_string(),
         title: title.to_string(),
         article: "art. 6.2.5 (6.13)".to_string(),
@@ -67,6 +68,7 @@ pub fn m_z_c_rd(
     let uc = if m_c_rd > 0.0 { m_ed / m_c_rd } else { 0.0 };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.5_bending_z".to_string(),
         title: "Buigend moment (z-as)".to_string(),
         article: "art. 6.2.5".to_string(),

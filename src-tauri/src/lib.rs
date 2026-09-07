@@ -2,7 +2,9 @@ use concrete_check::{
     ConcreteBeamCheckInput, ConcreteBeamCheckResult, MnKappaRequest, MnKappaResponse,
     SegmentStiffnessRequest, SegmentStiffnessResponse,
 };
-use nen_en_1992_1_1::{ConcreteClass, ReinforcementGrade};
+use nen_en_1992_1_1::{
+    ConcreteClass, EffectiveFlangeWidthRequest, EffectiveFlangeWidthResponse, ReinforcementGrade,
+};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1993_1_8_las::{LasInput, LasResultaat};
 use nen_en_1995_1_1::clt::CltPreset;
@@ -116,6 +118,27 @@ async fn concrete_segment_stiffness(
     concrete_check::segment_stiffness(inputs)
 }
 
+/// De meewerkende flensbreedte b_eff van een T- of L-ligger (5.3.2.1), per
+/// gebied uit figuur 5.2 (eindveld, tussensteunpunt, binnenveld, uitkraging).
+///
+/// De rekengang staat in `nen_en_1992_1_1::beff` en kent geen knopen, staven
+/// of opleggingen: de invoer is de liggerlijn (overspanningen + de twee
+/// uiteinden) plus de flensmaten. Het omzetten van de modeltopologie naar zo'n
+/// liggerlijn gebeurt in de frontend (`lib/beffLiggerlijn.ts`); de crate zou
+/// die topologie niet kennen.
+///
+/// Een geval dat buiten figuur 5.2 valt — een losstaande uitkraging, een
+/// uitkraging langer dan de halve aangrenzende overspanning, een
+/// overspanningsverhouding buiten 2/3 … 1,5 — levert een FOUT met de reden en
+/// geen getal. Een verkeerde b_eff is onzichtbaar en stuurt naast de sterkte
+/// ook I_c, M_cr en de tweede orde.
+#[tauri::command]
+async fn concrete_effective_flange_width(
+    inputs: EffectiveFlangeWidthRequest,
+) -> Result<EffectiveFlangeWidthResponse, String> {
+    nen_en_1992_1_1::beff::effective_flange_width_request(inputs)
+}
+
 /// Vrije spanningstoets (geen norm): een doorsnede plus een toelaatbare
 /// spanning, getoetst op de vergelijkspanning van von Mises. Bedoeld voor
 /// materialen die buiten EN 1992/1993/1995 vallen — natuursteen, een
@@ -197,6 +220,7 @@ pub fn run() {
             check_concrete_beams,
             concrete_mn_kappa,
             concrete_segment_stiffness,
+            concrete_effective_flange_width,
             check_stress_beams,
             check_fillet_welds,
             bereken_doorsneden,

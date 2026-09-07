@@ -40,6 +40,7 @@ pub fn check_combined_mv(
     let uc = if m_v_rd > 0.0 { m_ed / m_v_rd } else { 0.0 };
 
     ResistanceCalc {
+        deelstappen: Vec::new(),
         id: "6.2.8_combined_mv".to_string(),
         title: "Buiging en dwarskracht".to_string(),
         article: "art. 6.2.8".to_string(),
