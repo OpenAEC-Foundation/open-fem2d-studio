@@ -367,6 +367,22 @@
 /* N (normaalkracht) — oranje */
 .fem-diagram-N.fem-diagram-fill { fill: #f59e0b; }
 .fem-diagram-N.fem-diagram-line { stroke: #d97706; }
+/* θ (hoekverdraaiing) — paars; vervormingsgrootheid, dus bewust een andere
+   kleurfamilie dan de drie snedekrachten hierboven. */
+.fem-diagram-R.fem-diagram-fill { fill: #8b5cf6; }
+.fem-diagram-R.fem-diagram-line { stroke: #6d28d9; }
+/* EI (buigstijfheidsverloop bij fysisch niet-lineair beton) — leisteen.
+   De gestreepte referentielijn is de ONGESCHEURDE EI₀; het dichte vlak de
+   werkelijk gerekende stijfheid per segment. */
+.fem-diagram-EI.fem-diagram-fill { fill: #0f766e; }
+.fem-diagram-EI.fem-diagram-line { stroke: #0f766e; stroke-width: 2; }
+.fem-diagram-EI-ref {
+  stroke: #0f766e;
+  stroke-width: 1.25;
+  stroke-dasharray: 6 4;
+  opacity: 0.7;
+  fill: none;
+}
 
 .fem-deflected {
   fill: none;
@@ -422,6 +438,15 @@
 .fem-diagram-value.fem-diagram-M { fill: #1d4ed8; }
 .fem-diagram-value.fem-diagram-V { fill: #047857; }
 .fem-diagram-value.fem-diagram-N { fill: #d97706; }
+.fem-diagram-value.fem-diagram-R { fill: #6d28d9; }
+.fem-diagram-value.fem-diagram-EI { fill: #0f766e; }
+/* Referentiewaarde-label bij de gestreepte EI₀-lijn: zelfde kleur, lichter,
+   zodat het als achtergrondinformatie leest en niet als uitkomst. */
+.fem-diagram-value.fem-diagram-EI-reflabel {
+  fill: #0f766e;
+  opacity: 0.75;
+  font-weight: 500;
+}
 
 .fem-result-label-bg {
   fill: var(--theme-bg-lighter);

@@ -33,10 +33,17 @@ import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
 import { useFemStore } from "./hooks/useFemStore";
 import type { GridSettings, Tool } from "./components/fem/femTypes";
-import { DEFAULT_GRID } from "./components/fem/femTypes";
+import { DEFAULT_GRID, nonlinearVoorBestand } from "./components/fem/femTypes";
 import type { SolverResult } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
+import { zetCombinatieResultaat, getSecondOrderInput } from "./components/fem/solver/engine";
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
+import {
+  betonStavenUitModel,
+  losCombinatieFysischOp,
+  schatVrijheidsgraden,
+  segmentWaarschuwing,
+} from "./lib/betonStijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
@@ -241,7 +248,12 @@ function App() {
     loadCases: fem.loadCases,
     activeLoadCaseId: fem.activeLoadCaseId,
     selfWeightEnabled: fem.selfWeightEnabled,
-    nonlinearEnabled: fem.nonlinearEnabled,
+    // Het analysetype gaat er als eigen veld in; de oude booleaan blijft
+    // ernaast staan zodat een oudere versie van de app (en de sidecar) het
+    // bestand nog kan lezen — beide tweede-orde-standen zijn daar "aan".
+    nonlinearEnabled: nonlinearVoorBestand(fem.analysetype),
+    analysetype: fem.analysetype,
+    betonSegmentLengteMm: fem.betonSegmentLengteMm,
     // v2: combinaties (Map-factoren → JSON-object) + stramien + scheefstand.
     combinations: combinationsToFile(fem.combinations),
     structuralGrid: fem.structuralGrid,
@@ -365,7 +377,11 @@ function App() {
         loadCases: parsed.loadCases,
         activeLoadCaseId: parsed.activeLoadCaseId,
         selfWeightEnabled: parsed.selfWeightEnabled,
+        // Beide velden gaan mee: ontbreekt `analysetype` (elk bestand van
+        // vóór de drie standen), dan bepaalt de oude booleaan de stand.
         nonlinearEnabled: parsed.nonlinearEnabled,
+        analysetype: parsed.analysetype,
+        betonSegmentLengteMm: parsed.betonSegmentLengteMm,
         // v2-velden; undefined bij v1-bestanden → store-defaults.
         combinations: combinationsFromFile(parsed.combinations),
         structuralGrid: parsed.structuralGrid,
@@ -402,7 +418,11 @@ function App() {
         plates: parsed.plates, loads: parsed.loads,
         loadCases: parsed.loadCases, activeLoadCaseId: parsed.activeLoadCaseId,
         selfWeightEnabled: parsed.selfWeightEnabled,
+        // Beide velden gaan mee: ontbreekt `analysetype` (elk bestand van
+        // vóór de drie standen), dan bepaalt de oude booleaan de stand.
         nonlinearEnabled: parsed.nonlinearEnabled,
+        analysetype: parsed.analysetype,
+        betonSegmentLengteMm: parsed.betonSegmentLengteMm,
         // v2-velden; undefined bij v1-bestanden → store-defaults.
         combinations: combinationsFromFile(parsed.combinations),
         structuralGrid: parsed.structuralGrid,
@@ -436,7 +456,7 @@ function App() {
       ],
       activeLoadCaseId: 1,
       selfWeightEnabled: false,
-      nonlinearEnabled: false,
+      analysetype: "eersteOrde",
     });
     setProjectPath("");
     setActiveView("default");
@@ -449,6 +469,23 @@ function App() {
       ? { phi: 1 / fem.scheefstandNoemer, richting: fem.scheefstandRichting }
       : undefined,
     [fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting]);
+
+  /**
+   * Wat de interface over de fysisch niet-lineaire stand moet zeggen: hoeveel
+   * betonstaven mét wapeningskorf er zijn (zonder die staven doet de derde
+   * stand niets), en of de segmentlengte het model te groot maakt (besluit B3,
+   * gemeten drempel — de applicatie grijpt niet zelf in).
+   */
+  const betonSegmentInfo = useMemo(() => {
+    const { staven } = betonStavenUitModel({ nodes: fem.nodes, beams: fem.beams });
+    const dof = schatVrijheidsgraden(fem.nodes.length, staven, fem.betonSegmentLengteMm);
+    return {
+      aantalBetonstaven: staven.length,
+      dof,
+      waarschuwing:
+        staven.length > 0 ? segmentWaarschuwing(dof, fem.betonSegmentLengteMm) : null,
+    };
+  }, [fem.nodes, fem.beams, fem.betonSegmentLengteMm]);
 
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
   // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
@@ -688,7 +725,10 @@ function App() {
         scheefstandNoemer: fem.scheefstandNoemer,
         scheefstandRichting: fem.scheefstandRichting,
       });
-      const { perCase } = fem.nonlinearEnabled
+      // Beide tweede-orde-standen lopen via hetzelfde per-combinatie-pad. De
+      // fysisch niet-lineaire stand doet daar ná deze (synchrone) rekengang
+      // nog een ronde overheen — zie `rekenFysischNietlineair`.
+      const { perCase } = fem.analysetype !== "eersteOrde"
         ? solveAllCasesNonlinear(multiInput)
         : solveAllCases(multiInput);
       const combinationResults = new Map(
@@ -703,6 +743,89 @@ function App() {
       fem.setSolverOutputs(null);
       return null;
     }
+  }, [fem]);
+
+  /**
+   * De fysisch niet-lineaire ronde over de zojuist berekende uitkomsten.
+   *
+   * Dit is het ENIGE asynchrone punt van de rekengang: de segmentstijfheden
+   * komen uit de rekenkern (apart proces). Per COMBINATIE draait de lus uit
+   * `lib/betonStijfheid.ts`; het resultaat gaat via `zetCombinatieResultaat`
+   * naar dezelfde plek waar het geometrische 2e-orde-resultaat landt, zodat
+   * `combineResults` en `computeEnvelope` daarna gewoon hun werk doen.
+   *
+   * Loopt één combinatie vast (niet geconvergeerd, of een segment zonder
+   * stijfheid), dan verdwijnen ALLE resultaten. Een half fysisch niet-lineaire
+   * set — sommige combinaties met de gescheurde stijfheid, andere met de
+   * ongescheurde — is geen krachtsverdeling, en de melding zegt waarom.
+   *
+   * Retourneert de verse outputs, of null wanneer er niets te verfijnen viel
+   * of de berekening niet doorging.
+   */
+  const rekenFysischNietlineair = useCallback(async (outputs: {
+    perCase: Map<number, SolverResult>;
+    combinationResults: Map<number, SolverResult>;
+    envelope: ReturnType<typeof computeEnvelope>;
+  }) => {
+    const { notifyInfo, notifyWarning } = await import("./io/notify");
+    const { staven, overgeslagen } = betonStavenUitModel({
+      nodes: fem.nodes,
+      beams: fem.beams,
+    });
+    if (staven.length === 0) {
+      notifyInfo(
+        "Fysisch niet-lineair: niets te doen",
+        overgeslagen.length > 0
+          ? `Geen betonstaaf met wapeningskorf. ${overgeslagen.length} betonstaaf/-staven ` +
+            `overgeslagen: ${overgeslagen[0].reason}. De uitkomst is die van 2e orde (P-Δ).`
+          : "Het model bevat geen betonstaven met een wapeningskorf; de uitkomst " +
+            "is die van 2e orde (P-Δ).",
+      );
+      return null;
+    }
+    const dof = schatVrijheidsgraden(fem.nodes.length, staven, fem.betonSegmentLengteMm);
+    const waarschuwing = segmentWaarschuwing(dof, fem.betonSegmentLengteMm);
+    if (waarschuwing) notifyWarning("Segmentlengte", waarschuwing);
+
+    // Dezelfde model-invoer waarmee de synchrone gang gerekend heeft — niet
+    // opnieuw opgebouwd, zodat er geen tweede vertaling van het model bestaat.
+    const input = getSecondOrderInput(outputs.perCase);
+    if (!input) {
+      notifyWarning(
+        "Fysisch niet-lineair",
+        "De 2e-orde-status ontbreekt bij de resultaten; de berekening is niet uitgevoerd.",
+      );
+      return null;
+    }
+    try {
+      for (const combo of fem.combinations) {
+        const uit = await losCombinatieFysischOp(input, combo, staven, {
+          segmentLengteMm: fem.betonSegmentLengteMm,
+          // Besluit B2: in de UGT rekenwaarden zonder betontrek (5.8.6(3)/(5)),
+          // in de BGT gemiddelde waarden mét tension stiffening (7.4.3). De
+          // grenstoestand van de combinatie bepaalt dus welk diagram de kern
+          // gebruikt; nooit impliciet, en de gebruikte variant staat per
+          // segment in het antwoord.
+          grenstoestand: combo.type === "sls" ? "MeanValues" : "DesignValues",
+        });
+        if (!uit.zonderLasten) zetCombinatieResultaat(outputs.perCase, combo, uit.resultaat);
+      }
+    } catch (e) {
+      console.warn("[FEM fysisch niet-lineair]", e);
+      fem.setSolverOutputs(null);
+      notifyWarning(
+        "Fysisch niet-lineaire berekening mislukt",
+        e instanceof Error ? e.message : String(e),
+      );
+      return null;
+    }
+    const combinationResults = new Map(
+      fem.combinations.map(c => [c.id, combineResults(c, outputs.perCase)]),
+    );
+    const envelope = computeEnvelope(fem.combinations, outputs.perCase);
+    const verse = { perCase: outputs.perCase, combinationResults, envelope };
+    fem.setSolverOutputs(verse);
+    return verse;
   }, [fem]);
 
   /**
@@ -767,11 +890,20 @@ function App() {
     setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
     if (outputs) {
       liveRekenenRef.current = true;
-      // De normtoetsing hoort bij het resultaat en loopt altijd mee.
-      void handleRunMemberChecks({ openPanel: false, outputs });
+      if (fem.analysetype === "tweedeOrdeFysisch") {
+        // De fysisch niet-lineaire ronde is asynchroon (de rekenkern is een
+        // apart proces). De toetsing wacht erop: hij hoort op de gescheurde
+        // krachtsverdeling te draaien, niet op de ongescheurde ertussenin.
+        void rekenFysischNietlineair(outputs).then((verse) => {
+          void handleRunMemberChecks({ openPanel: false, outputs: verse ?? outputs });
+        });
+      } else {
+        // De normtoetsing hoort bij het resultaat en loopt altijd mee.
+        void handleRunMemberChecks({ openPanel: false, outputs });
+      }
     }
     return outputs;
-  }, [computeAndStoreSolverOutputs, handleRunMemberChecks]);
+  }, [fem.analysetype, computeAndStoreSolverOutputs, handleRunMemberChecks, rekenFysischNietlineair]);
 
   // Het invalidatie-effect leest deze functie uit een ref: zou het effect op
   // `rekenDoor` deppen, dan startte het opnieuw bij elke modelwijziging (die
@@ -858,7 +990,8 @@ function App() {
     setDirty(json !== lastSavedRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.plates, fem.loads,
-      fem.loadCases, fem.activeLoadCaseId, fem.selfWeightEnabled, fem.nonlinearEnabled,
+      fem.loadCases, fem.activeLoadCaseId, fem.selfWeightEnabled,
+      fem.analysetype, fem.betonSegmentLengteMm,
       // v2: combinaties + stramien + scheefstand reizen mee in de snapshot-JSON.
       fem.combinations, fem.structuralGrid,
       fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting]);
@@ -1419,8 +1552,12 @@ function App() {
           loads={fem.loads}
           selfWeightEnabled={fem.selfWeightEnabled}
           setSelfWeightEnabled={fem.setSelfWeightEnabled}
-          nonlinearEnabled={fem.nonlinearEnabled}
-          setNonlinearEnabled={fem.setNonlinearEnabled}
+          analysetype={fem.analysetype}
+          setAnalysetype={fem.setAnalysetype}
+          betonSegmentLengteMm={fem.betonSegmentLengteMm}
+          setBetonSegmentLengteMm={fem.setBetonSegmentLengteMm}
+          aantalBetonstaven={betonSegmentInfo.aantalBetonstaven}
+          segmentWaarschuwing={betonSegmentInfo.waarschuwing}
           scheefstandEnabled={fem.scheefstandEnabled}
           setScheefstandEnabled={fem.setScheefstandEnabled}
           scheefstandNoemer={fem.scheefstandNoemer}

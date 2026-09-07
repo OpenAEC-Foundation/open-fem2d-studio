@@ -33,6 +33,13 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      automatisch mee met de bestaande arrays; oude bestanden zonder deze
  *      velden laden ongewijzigd, en een bestand met verouderde cache wordt
  *      bij het openen door het canvas geregenereerd (signatuurcontrole).
+ *      Eveneens optioneel binnen v2: `analysetype` (drie standen) en
+ *      `betonSegmentLengteMm`. `nonlinearEnabled` BLIJFT geschreven worden en
+ *      blijft leidend zolang `analysetype` ontbreekt — zie
+ *      `analysetypeUitBestand` in femTypes. Een bestand van vóór het
+ *      analysetype laadt daardoor onveranderd (true → 2e orde P-Δ, false →
+ *      1e orde), en een nieuw bestand blijft leesbaar in een oudere versie
+ *      van de app, want die leest alleen de booleaan.
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
@@ -93,8 +100,24 @@ export interface ProjectFile {
   loadCases: LoadCase[];
   activeLoadCaseId: number;
   selfWeightEnabled: boolean;
+  /**
+   * OUD veld, nog altijd geschreven: `true` voor beide tweede-orde-standen.
+   * Het is de enige uitspraak over het analysetype die een oudere versie van
+   * de app (en de sidecar) kan lezen. Bij het laden telt hij alleen wanneer
+   * `analysetype` ontbreekt.
+   */
   nonlinearEnabled: boolean;
   // v2 — optioneel zodat v1-bestanden zonder migratiestap blijven laden.
+  /**
+   * Analysetype (v2, optioneel): "eersteOrde" | "tweedeOrdeGeometrisch" |
+   * "tweedeOrdeFysisch". Ontbreekt het veld, dan bepaalt `nonlinearEnabled`
+   * de stand. Bewust als `string` getypeerd: een bestand uit een nieuwere
+   * versie mag hier een onbekende waarde in hebben staan zonder dat het
+   * laden omvalt — `analysetypeUitBestand` valt dan terug op de booleaan.
+   */
+  analysetype?: string;
+  /** Gewenste segmentlengte in mm (v2, optioneel — ontbreekt = 400, besluit B3). */
+  betonSegmentLengteMm?: number;
   /** Belastingcombinatie-definities (v2). */
   combinations?: ProjectFileCombination[];
   /** Stramien (v2). */

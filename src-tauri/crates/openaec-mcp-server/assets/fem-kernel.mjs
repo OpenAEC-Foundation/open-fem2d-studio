@@ -2263,7 +2263,7 @@ function makePartialParticular(L, EI, EA, ld) {
   const b = ld.endT * L;
   const span = b - a;
   if (span <= 0 || EI <= 0 || EA <= 0) {
-    return { wAt: () => 0, uAt: () => 0 };
+    return { wAt: () => 0, uAt: () => 0, dwAt: () => 0 };
   }
   const my = (ld.qyE - ld.qyS) / span;
   const mx = (ld.qxE - ld.qxS) / span;
@@ -2293,7 +2293,8 @@ function makePartialParticular(L, EI, EA, ld) {
   const C1 = Rx1(L) / L;
   return {
     wAt: (x) => (V0 * x ** 3 / 6 + M0 * x * x / 2 + R3(x)) / EI,
-    uAt: (x) => (C1 * x - Rx1(x)) / EA
+    uAt: (x) => (C1 * x - Rx1(x)) / EA,
+    dwAt: (x) => (V0 * x * x / 2 + M0 * x + R2(x)) / EI
   };
 }
 function calculateBeamInternalForces(element, n1, n2, material, globalDisplacements) {
@@ -2416,6 +2417,7 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
   });
   const deflection = [];
   const axialDisp = [];
+  const rotation = [];
   const u1L = dLoc[0], v1L = dLoc[1], t1L = dLoc[2];
   const u2L = dLoc[3], v2L = dLoc[4], t2L = dLoc[5];
   for (let i = 0; i < NUM_STATIONS; i++) {
@@ -2427,6 +2429,11 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
     const H4 = x * xi * (xi - 1);
     let w = H1 * v1L + H2 * t1L + H3 * v2L + H4 * t2L;
     let u = u1L + (u2L - u1L) * xi;
+    const G1 = L > 0 ? 6 * xi * (xi - 1) / L : 0;
+    const G22 = 1 - 4 * xi + 3 * xi * xi;
+    const G3 = L > 0 ? 6 * xi * (1 - xi) / L : 0;
+    const G4 = 3 * xi * xi - 2 * xi;
+    let th = G1 * v1L + G22 * t1L + G3 * v2L + G4 * t2L;
     for (const p of particulars) {
       if (p.kind === "full" && EI > 0 && EA > 0) {
         const dl = p.dl;
@@ -2436,13 +2443,17 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
         w += dqy * (Math.pow(x, 5) / (120 * L) - L * x * x * x / 40 + L * L * x * x / 60) / EI;
         u += dl.qxS * x * (L - x) / (2 * EA);
         u += dqx * x * (L * L - x * x) / (6 * L * EA);
+        th += dl.qyS * x * (L - x) * (L - 2 * x) / (12 * EI);
+        th += dqy * (Math.pow(x, 4) / (24 * L) - 3 * L * x * x / 40 + L * L * x / 30) / EI;
       } else if (p.kind === "partial" && p.partial) {
         w += p.partial.wAt(x);
         u += p.partial.uAt(x);
+        th += p.partial.dwAt(x);
       }
     }
     deflection.push(w);
     axialDisp.push(u);
+    rotation.push(th);
   }
   const maxN = Math.max(...normalForce.map(Math.abs), 1e-10);
   const maxV = Math.max(...shearForce.map(Math.abs), 1e-10);
@@ -2461,6 +2472,7 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
     bendingMoment,
     deflection,
     axialDisp,
+    rotation,
     maxN,
     maxV,
     maxM
@@ -2903,63 +2915,6 @@ function updateSectionState(state, kappa, section, materialType, steel, concrete
     maxCurvature
   };
 }
-function calculateCrackingMoment(b, h, fctm, Ecm, As, d, Es = 2e11) {
-  const alphaE = Es / Ecm;
-  const Ac = b * h;
-  const AsTrans = alphaE * As;
-  const x0 = (Ac * h / 2 + AsTrans * d) / (Ac + AsTrans);
-  const Iunc = b * h * h * h / 12 + Ac * (h / 2 - x0) ** 2 + AsTrans * (d - x0) ** 2;
-  const Mcr = fctm * Iunc / (h - x0);
-  return { Mcr, Iunc, x0 };
-}
-function calculateCrackedI(b, d, As, Ecm, Es = 2e11, AsTop, dTop) {
-  const alphaE = Es / Ecm;
-  const AsTrans = alphaE * As;
-  const AsTopTrans = AsTop ? alphaE * AsTop : 0;
-  const d2 = dTop ?? 0.1 * d;
-  const a = b / 2;
-  const bCoef = AsTopTrans + AsTrans;
-  const c = -(AsTrans * d + AsTopTrans * d2);
-  const xCr = (-bCoef + Math.sqrt(bCoef * bCoef - 4 * a * c)) / (2 * a);
-  const Icr = b * xCr * xCr * xCr / 3 + AsTrans * (d - xCr) ** 2 + AsTopTrans * (xCr - d2) ** 2;
-  return { Icr, xCr };
-}
-function calculateEffectiveI(M, Mcr, Iunc, Icr, beta = 0.5) {
-  if (Math.abs(M) <= Mcr) {
-    return Iunc;
-  }
-  const zeta = 1 - beta * (Mcr / M) ** 2;
-  const zetaClamped = Math.max(0, Math.min(1, zeta));
-  const invIeff = zetaClamped / Icr + (1 - zetaClamped) / Iunc;
-  const Ieff = 1 / invIeff;
-  return Math.min(Ieff, Iunc);
-}
-function initCrackedSectionState(b, h, d, As, concrete, Es = 2e11) {
-  const { Mcr, Iunc } = calculateCrackingMoment(b, h, concrete.fctm, concrete.Ecm, As, d, Es);
-  const { Icr, xCr } = calculateCrackedI(b, d, As, concrete.Ecm, Es);
-  return {
-    isCracked: false,
-    Mcr,
-    Icr,
-    Ieff: Iunc,
-    xCr,
-    curvature: 0,
-    EIeff: concrete.Ecm * Iunc
-  };
-}
-function updateCrackedSectionState(state, M, Iunc, Ecm, beta = 0.5) {
-  const isCracked = Math.abs(M) > state.Mcr;
-  const Ieff = calculateEffectiveI(M, state.Mcr, Iunc, state.Icr, beta);
-  const EIeff = Ecm * Ieff;
-  const curvature = EIeff > 0 ? M / EIeff : 0;
-  return {
-    ...state,
-    isCracked,
-    Ieff,
-    EIeff,
-    curvature
-  };
-}
 
 // src/core/solver/NonlinearSolver.ts
 var DEFAULT_OPTIONS = {
@@ -3113,7 +3068,7 @@ function calculateBeamLocalStiffnessFNL(L, E, A, _I, EI_tangent) {
   Kl.set(5, 5, 4 * EI_L);
   return Kl;
 }
-function assembleGlobalStiffnessFNL(mesh, sectionStates, crackedStates, axialForces, includeGeometric, materialType) {
+function assembleGlobalStiffnessFNL(mesh, sectionStates, axialForces, includeGeometric) {
   const numNodes = mesh.getNodeCount();
   const numDofs = numNodes * 3;
   const K = new Matrix(numDofs, numDofs);
@@ -3132,18 +3087,8 @@ function assembleGlobalStiffnessFNL(mesh, sectionStates, crackedStates, axialFor
     const L = calculateBeamLength(n1, n2);
     const angle = calculateBeamAngle(n1, n2);
     if (L < 1e-10) continue;
-    let EI_eff;
-    if (materialType === "concrete") {
-      const crackedState = crackedStates.get(beam.id);
-      if (crackedState && crackedState.isCracked) {
-        EI_eff = crackedState.EIeff;
-      } else {
-        EI_eff = material.E * beam.section.I;
-      }
-    } else {
-      const sectionState = sectionStates.get(beam.id);
-      EI_eff = sectionState?.tangentStiffness ?? material.E * beam.section.I;
-    }
+    const sectionState = sectionStates.get(beam.id);
+    const EI_eff = sectionState?.tangentStiffness ?? material.E * beam.section.I;
     const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
     const releasedLocalDofs = getReleasedLocalDofs(beam);
     if (releasedLocalDofs.length > 0) {
@@ -3194,7 +3139,7 @@ function assembleGlobalStiffnessFNL(mesh, sectionStates, crackedStates, axialFor
   }
   return K;
 }
-function updateAllSectionStates(mesh, displacements, sectionStates, crackedStates, beamForces, opts) {
+function updateAllSectionStates(mesh, displacements, sectionStates, opts) {
   const nodeIdToIndex = /* @__PURE__ */ new Map();
   let index = 0;
   for (const node of mesh.nodes.values()) {
@@ -3225,38 +3170,25 @@ function updateAllSectionStates(mesh, displacements, sectionStates, crackedState
     const vL1 = -u1 * sin + v1 * cos;
     const vL2 = -u2 * sin + v2 * cos;
     const kappa = (theta2 - theta1) / L + 6 * (vL2 - vL1) / (L * L);
-    if (opts.materialType === "concrete") {
-      const forces = beamForces.get(beam.id);
-      const M = forces ? Math.max(Math.abs(forces.M1), Math.abs(forces.M2), Math.abs(forces.maxM)) : 0;
-      let crackedState = crackedStates.get(beam.id);
-      if (crackedState) {
-        const Iunc = beam.section.I;
-        const Ecm = material.E;
-        const beta = 0.5;
-        crackedState = updateCrackedSectionState(crackedState, M, Iunc, Ecm, beta);
-        crackedStates.set(beam.id, crackedState);
-      }
-    } else {
-      let state = sectionStates.get(beam.id);
-      if (!state) {
-        state = initSectionState(beam.section, opts.materialType, steel, concrete);
-      }
-      state = updateSectionState(
-        state,
-        kappa,
-        beam.section,
-        opts.materialType,
-        steel,
-        concrete,
-        void 0,
-        // rebarTop
-        void 0
-        // rebarBot
-      );
-      sectionStates.set(beam.id, state);
+    let state = sectionStates.get(beam.id);
+    if (!state) {
+      state = initSectionState(beam.section, opts.materialType, steel, concrete);
     }
+    state = updateSectionState(
+      state,
+      kappa,
+      beam.section,
+      opts.materialType,
+      steel,
+      concrete,
+      void 0,
+      // rebarTop
+      void 0
+      // rebarBot
+    );
+    sectionStates.set(beam.id, state);
   }
-  return { sectionStates, crackedStates };
+  return sectionStates;
 }
 function assembleForceVector2(mesh) {
   const numNodes = mesh.getNodeCount();
@@ -3457,25 +3389,18 @@ function solveNonlinear(mesh, options = {}) {
     }
   }
   let sectionStates = /* @__PURE__ */ new Map();
-  let crackedStates = /* @__PURE__ */ new Map();
   if (opts.materialNonlinear) {
-    const steel = opts.materialType === "steel" ? createSteelMaterial(opts.steelFy) : void 0;
-    const concrete = opts.materialType === "concrete" ? createConcreteMaterial(opts.concreteFck) : void 0;
+    if (opts.materialType === "concrete") {
+      throw new Error(
+        "Fysisch niet-lineair beton loopt niet via deze solver. De gescheurde buigstijfheid komt per segment uit de rekenkern (NEN-EN 1992-1-1, M-N-\u03BA met de wapeningskorf) en wordt als section.I van de deelelementen aangeleverd \u2014 zie lib/betonStijfheid.ts."
+      );
+    }
+    const steel = createSteelMaterial(opts.steelFy);
     for (const beam of mesh.beamElements.values()) {
       const material = mesh.getMaterial(beam.materialId);
       if (!material) continue;
-      if (opts.materialType === "concrete") {
-        const h = beam.section.h || Math.sqrt(beam.section.I * 12 / 1);
-        const b = h > 0 ? beam.section.A / h : 0.3;
-        const d = h * 0.9;
-        const As = beam.section.A * 5e-3;
-        const concMat = concrete;
-        const crackedState = initCrackedSectionState(b, h, d, As, concMat, 2e11);
-        crackedStates.set(beam.id, crackedState);
-      } else {
-        const state = initSectionState(beam.section, opts.materialType, steel, concrete);
-        sectionStates.set(beam.id, state);
-      }
+      const state = initSectionState(beam.section, opts.materialType, steel, void 0);
+      sectionStates.set(beam.id, state);
     }
   }
   if (!opts.geometricNonlinear && !opts.materialNonlinear) {
@@ -3518,10 +3443,8 @@ function solveNonlinear(mesh, options = {}) {
         K2 = assembleGlobalStiffnessFNL(
           mesh,
           sectionStates,
-          crackedStates,
           axialForces,
-          opts.geometricNonlinear,
-          opts.materialType
+          opts.geometricNonlinear
         );
       } else {
         K2 = assembleGlobalStiffnessWithGeometric(mesh, axialForces, true);
@@ -3544,16 +3467,7 @@ function solveNonlinear(mesh, options = {}) {
       axialForces = forcesResult.axialForces;
       beamForces = forcesResult.beamForces;
       if (opts.materialNonlinear) {
-        const statesResult = updateAllSectionStates(
-          mesh,
-          displacements,
-          sectionStates,
-          crackedStates,
-          beamForces,
-          opts
-        );
-        sectionStates = statesResult.sectionStates;
-        crackedStates = statesResult.crackedStates;
+        sectionStates = updateAllSectionStates(mesh, displacements, sectionStates, opts);
       }
       const incrNorm = Math.sqrt(deltaU.reduce((s, d) => s + d * d, 0));
       const dispNorm = Math.sqrt(displacements.reduce((s, d) => s + d * d, 0));
@@ -3591,10 +3505,8 @@ function solveNonlinear(mesh, options = {}) {
     K = assembleGlobalStiffnessFNL(
       mesh,
       sectionStates,
-      crackedStates,
       axialForces,
-      opts.geometricNonlinear,
-      opts.materialType
+      opts.geometricNonlinear
     );
   } else {
     K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, opts.geometricNonlinear);
@@ -3615,22 +3527,13 @@ function solveNonlinear(mesh, options = {}) {
   for (const forces of beamForces.values()) {
     maxVonMises = Math.max(maxVonMises, Math.abs(forces.maxM));
   }
-  if (opts.materialNonlinear && opts.materialType === "concrete") {
-    let crackedCount = 0;
-    for (const state of crackedStates.values()) {
-      if (state.isCracked) crackedCount++;
-    }
-    console.log(`[FNL Concrete] ${crackedCount}/${crackedStates.size} beams cracked`);
-  }
   return {
     displacements,
     reactions,
     elementStresses: /* @__PURE__ */ new Map(),
     beamForces,
     maxVonMises,
-    minVonMises: 0,
-    // Include cracked section info in result for concrete FNL
-    crackedSectionStates: opts.materialNonlinear && opts.materialType === "concrete" ? crackedStates : void 0
+    minVonMises: 0
   };
 }
 function solvePlateOrPlane(mesh, opts) {
@@ -4471,6 +4374,30 @@ var LOAD_SOORT_MEERVOUD = {
   thermal: "temperatuurlasten",
   edgeLoad: "randlasten"
 };
+var ANALYSETYPEN = [
+  "eersteOrde",
+  "tweedeOrdeGeometrisch",
+  "tweedeOrdeFysisch"
+];
+var ANALYSETYPE_LABEL = {
+  eersteOrde: "1e orde",
+  tweedeOrdeGeometrisch: "2e orde (P-\u0394)",
+  tweedeOrdeFysisch: "2e orde + fysisch"
+};
+var ANALYSETYPE_OMSCHRIJVING = {
+  eersteOrde: "Eerste orde, lineair: elke combinatie is de gewogen som van de belastinggevallen.",
+  tweedeOrdeGeometrisch: "Tweede orde, geometrisch niet-lineair (P-\u0394): elke combinatie wordt met gefactoreerde lasten en geometrische stijfheid apart opgelost.",
+  tweedeOrdeFysisch: "Tweede orde, geometrisch \xE9n fysisch niet-lineair: als P-\u0394, maar de betonstaven krijgen per segment de secans-EI uit de rekenkern (NEN-EN 1992-1-1 5.8.6). Zonder betonstaven m\xE9t wapeningskorf is de uitkomst gelijk aan 2e orde (P-\u0394)."
+};
+function analysetypeUitBestand(analysetype, nonlinearEnabled) {
+  if (analysetype !== void 0 && ANALYSETYPEN.includes(analysetype)) {
+    return analysetype;
+  }
+  return nonlinearEnabled ? "tweedeOrdeGeometrisch" : "eersteOrde";
+}
+function nonlinearVoorBestand(analysetype) {
+  return analysetype !== "eersteOrde";
+}
 var DEFAULT_STRUCTURAL_GRID = {
   enabled: true,
   xAxes: [
@@ -5238,6 +5165,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
       const bendingMoment = [];
       const deflection = [];
       const axialDisp = [];
+      const rotation = [];
       let offset_m = 0;
       for (const d of delen) {
         const st = d.stations ?? [];
@@ -5248,6 +5176,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
           bendingMoment.push((d.bendingMoment?.[i] ?? 0) * 1e3);
           deflection.push((d.deflection?.[i] ?? 0) * 1e3);
           axialDisp.push((d.axialDisp?.[i] ?? 0) * 1e3);
+          rotation.push(d.rotation?.[i] ?? 0);
         }
         offset_m += st.length > 0 ? st[st.length - 1] : 0;
       }
@@ -5264,6 +5193,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
         bendingMoment,
         deflection,
         axialDisp,
+        rotation,
         ...segmentVeld ? { segmenten: segmentVeld } : {}
       });
       continue;
@@ -5294,6 +5224,9 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
       // m → mm (lokaal, +y)
       axialDisp: (bf.axialDisp ?? []).map((u) => u * 1e3),
       // m → mm
+      // θ = dw/dx is dimensieloos (rad): dezelfde waarde in m-assen en in
+      // mm-assen, dus onveranderd doorgegeven.
+      rotation: bf.rotation ?? [],
       ...segmentVeld ? { segmenten: segmentVeld } : {}
     });
   }
@@ -5412,6 +5345,18 @@ function meshHeeftLasten(mesh) {
 var SECOND_ORDER_KEY = "__femSecondOrder";
 function getSecondOrderState(perCase) {
   return perCase[SECOND_ORDER_KEY];
+}
+function tweedeOrdeSleutel(combo) {
+  return `${combo.id}|` + [...combo.factors.entries()].sort((a, b) => a[0] - b[0]).map(([cid, f]) => `${cid}=${f}`).join(",");
+}
+function zetCombinatieResultaat(perCase, combo, resultaat) {
+  const so = getSecondOrderState(perCase);
+  if (!so) return false;
+  so.cache.set(tweedeOrdeSleutel(combo), resultaat);
+  return true;
+}
+function getSecondOrderInput(perCase) {
+  return getSecondOrderState(perCase)?.input;
 }
 function solveCombinationSecondOrder(input, combo) {
   const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(
@@ -5660,6 +5605,7 @@ function combineResults(combo, perCase) {
     let bendingMoment = [];
     let deflection = [];
     let axialDisp = [];
+    let rotation = [];
     for (const [caseId, factor] of combo.factors) {
       const r = perCase.get(caseId);
       if (!r) continue;
@@ -5678,6 +5624,7 @@ function combineResults(combo, perCase) {
         bendingMoment = new Array(ef.stations_mm.length).fill(0);
         deflection = new Array(ef.stations_mm.length).fill(0);
         axialDisp = new Array(ef.stations_mm.length).fill(0);
+        rotation = new Array(ef.stations_mm.length).fill(0);
       }
       for (let i = 0; i < ef.stations_mm.length && i < normalForce.length; i++) {
         normalForce[i] += factor * (ef.normalForce[i] ?? 0);
@@ -5685,6 +5632,7 @@ function combineResults(combo, perCase) {
         bendingMoment[i] += factor * (ef.bendingMoment[i] ?? 0);
         deflection[i] += factor * (ef.deflection?.[i] ?? 0);
         axialDisp[i] += factor * (ef.axialDisp?.[i] ?? 0);
+        rotation[i] += factor * (ef.rotation?.[i] ?? 0);
       }
     }
     elements.set(bid, {
@@ -5698,7 +5646,8 @@ function combineResults(combo, perCase) {
       shearForce,
       bendingMoment,
       deflection,
-      axialDisp
+      axialDisp,
+      rotation
     });
   }
   const plateIds = /* @__PURE__ */ new Set();
@@ -8602,7 +8551,12 @@ function vormStaafkrachten(ef, metStations) {
     V_x: ef.shearForce.map(naarKN),
     M_x: ef.bendingMoment.map(naarKNm),
     w_x: ef.deflection,
-    u_x: ef.axialDisp
+    u_x: ef.axialDisp,
+    // Hoekverdraaiing θ(x) = dw/dx per station, in RAD — dezelfde eenheid als
+    // `displacements.ry` en als `units.rotatie`, dus geen omrekening. Positief
+    // = tegen de klok in; bij een stijve aansluiting is θ op een staafeinde
+    // gelijk aan de ry van de aanliggende knoop.
+    theta_x: ef.rotation ?? []
   };
 }
 function vormResultaat(res, metStations) {
@@ -9579,6 +9533,9 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
   return handtekeningVanGeneratie(gevallen.map((c) => ({ sleutel: c.sleutel, naam: c.naam })), gLasten, gCombi);
 }
 export {
+  ANALYSETYPEN,
+  ANALYSETYPE_LABEL,
+  ANALYSETYPE_OMSCHRIJVING,
   BEAM_LOAD_ROLES,
   BEAM_LOAD_ROLE_LABEL,
   CONCRETE_E_CM,
@@ -9618,6 +9575,7 @@ export {
   Z0_II,
   ZMAX_M,
   aantalAfbeeldingen,
+  analysetypeUitBestand,
   beamLengthMm,
   beeldKernfoutAf,
   bepaalStandaardRol,
@@ -9645,6 +9603,7 @@ export {
   equivalentUdlFromMoments,
   extractFieldDeflectionMm,
   genereerWindbelasting,
+  getSecondOrderInput,
   getSecondOrderState,
   handmatigeStuwdruk,
   handtekeningVanGeneratie,
@@ -9658,6 +9617,7 @@ export {
   mapLoadDuration,
   mapServiceClass,
   matchSupportedTimberGrade,
+  nonlinearVoorBestand,
   parseRechthoek,
   parseTimberRectMm,
   profileLookupKey,
@@ -9679,5 +9639,6 @@ export {
   valideerPlaatPolygoon,
   verwerkRegel,
   verwerkVerzoek,
-  withPlateDefaults
+  withPlateDefaults,
+  zetCombinatieResultaat
 };

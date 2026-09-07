@@ -660,6 +660,89 @@ export interface LoadCase {
   gegenereerd?: { bron: "wind"; sleutel: string };
 }
 
+/**
+ * Het analysetype: wat de solver met de combinaties doet.
+ *
+ * Dit veld vervangt de booleaan `nonlinearEnabled`. Die kende twee standen, en
+ * zodra de fysisch niet-lineaire variant erbij komt zijn dat er drie — een
+ * derde stand in een booleaan persen (bijvoorbeeld "true met een tweede
+ * vlaggetje ernaast") maakt onleesbaar welke berekening er gedraaid heeft.
+ * Zie besluit B4 in het plandocument.
+ *
+ *  - `eersteOrde` — lineair, superpositie per combinatie. Het gedrag bij
+ *    `nonlinearEnabled = false`.
+ *  - `tweedeOrdeGeometrisch` — P-Δ per combinatie (geometrische stijfheid +
+ *    iteratie). Het gedrag bij `nonlinearEnabled = true`; ONGEWIJZIGD.
+ *  - `tweedeOrdeFysisch` — P-Δ én fysisch niet-lineair: de betonstaven
+ *    krijgen per segment de secans-EI uit de rekenkern, in een lus die per
+ *    combinatie apart draait (zie `lib/betonStijfheid.ts`). Alleen zinvol met
+ *    betonstaven mét wapeningskorf in het model; staat er geen enkele, dan is
+ *    de uitkomst gelijk aan `tweedeOrdeGeometrisch` en zegt de interface dat.
+ */
+export type Analysetype =
+  | "eersteOrde"
+  | "tweedeOrdeGeometrisch"
+  | "tweedeOrdeFysisch";
+
+/** Alle analysetypen in de volgorde waarin ze in de interface staan. */
+export const ANALYSETYPEN: readonly Analysetype[] = [
+  "eersteOrde",
+  "tweedeOrdeGeometrisch",
+  "tweedeOrdeFysisch",
+] as const;
+
+/** Korte naam voor de keuzelijst. */
+export const ANALYSETYPE_LABEL: Record<Analysetype, string> = {
+  eersteOrde: "1e orde",
+  tweedeOrdeGeometrisch: "2e orde (P-Δ)",
+  tweedeOrdeFysisch: "2e orde + fysisch",
+};
+
+/** Volledige omschrijving voor tooltip en rapport. */
+export const ANALYSETYPE_OMSCHRIJVING: Record<Analysetype, string> = {
+  eersteOrde:
+    "Eerste orde, lineair: elke combinatie is de gewogen som van de belastinggevallen.",
+  tweedeOrdeGeometrisch:
+    "Tweede orde, geometrisch niet-lineair (P-Δ): elke combinatie wordt met " +
+    "gefactoreerde lasten en geometrische stijfheid apart opgelost.",
+  tweedeOrdeFysisch:
+    "Tweede orde, geometrisch én fysisch niet-lineair: als P-Δ, maar de " +
+    "betonstaven krijgen per segment de secans-EI uit de rekenkern " +
+    "(NEN-EN 1992-1-1 5.8.6). Zonder betonstaven mét wapeningskorf is de " +
+    "uitkomst gelijk aan 2e orde (P-Δ).",
+};
+
+/**
+ * Terugleesbaarheid van het projectbestand: `analysetype` ontbreekt in elk
+ * bestand van vóór deze wijziging, en dan telt de oude booleaan.
+ * `true` → tweede orde (geometrisch), `false`/ontbrekend → eerste orde.
+ *
+ * Een ONBEKENDE waarde in het veld (een bestand uit een nieuwere versie, of
+ * een tikfout) valt op dezelfde manier terug: raden welke van de drie bedoeld
+ * was zou een andere berekening kunnen opleveren dan de gebruiker bewaarde.
+ */
+export function analysetypeUitBestand(
+  analysetype: string | undefined,
+  nonlinearEnabled: boolean | undefined,
+): Analysetype {
+  if (
+    analysetype !== undefined &&
+    (ANALYSETYPEN as readonly string[]).includes(analysetype)
+  ) {
+    return analysetype as Analysetype;
+  }
+  return nonlinearEnabled ? "tweedeOrdeGeometrisch" : "eersteOrde";
+}
+
+/**
+ * De booleaan die het projectbestand blijft dragen, zodat een oudere versie
+ * van de app een nieuw bestand nog kan lezen: beide tweede-orde-standen zijn
+ * daar "niet-lineair aan".
+ */
+export function nonlinearVoorBestand(analysetype: Analysetype): boolean {
+  return analysetype !== "eersteOrde";
+}
+
 export type Selection =
   | { type: "node"; id: number }
   | { type: "beam"; id: number }

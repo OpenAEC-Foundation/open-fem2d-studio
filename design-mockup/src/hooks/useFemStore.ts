@@ -11,13 +11,14 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type {
   Node, Beam, BeamReleases, Plate, PlaatMeshCache, Support, Load, LoadCase,
-  Selection, Snapshot, SupportType, StructuralGrid,
+  Selection, Snapshot, SupportType, StructuralGrid, Analysetype,
 } from "../components/fem/femTypes";
 import {
   DEFAULT_STRUCTURAL_GRID, PLATE_DEFAULTS, withPlateDefaults,
   registreerPlaatMeshCaches, registreerPolygoonRandlasten,
-  registreerPlaatMeshCacheCommitter,
+  registreerPlaatMeshCacheCommitter, analysetypeUitBestand,
 } from "../components/fem/femTypes";
+import { STANDAARD_SEGMENTLENGTE_MM } from "../lib/betonStijfheid";
 // Modelcontrole: één implementatie van "ligt deze knoop op die staaf" en
 // "liggen deze twee knopen op elkaar", gedeeld door de controle in het canvas
 // en door de herstelbewerkingen hieronder.
@@ -963,9 +964,20 @@ export interface FemStore {
   /** Solver options. */
   selfWeightEnabled: boolean;
   setSelfWeightEnabled: (v: boolean) => void;
-  /** Niet-lineair (P-Δ) toggle — adds geometric stiffness + Newton-Raphson. */
-  nonlinearEnabled: boolean;
-  setNonlinearEnabled: (v: boolean) => void;
+  /**
+   * Analysetype: eerste orde, geometrisch tweede orde (het oude
+   * `nonlinearEnabled = true`) of geometrisch én fysisch tweede orde.
+   * Zie `Analysetype` in femTypes.
+   */
+  analysetype: Analysetype;
+  setAnalysetype: (v: Analysetype) => void;
+  /**
+   * Gewenste segmentlengte in mm voor de fysisch niet-lineaire berekening —
+   * besluit B3: instelbaar, 400 mm als beginwaarde, geen automatische
+   * vergroving. Alleen van invloed bij `analysetype = tweedeOrdeFysisch`.
+   */
+  betonSegmentLengteMm: number;
+  setBetonSegmentLengteMm: (v: number) => void;
   /**
    * Scheefstand (initiële imperfectie, EN 1993-1-1 §5.3.2-aanpak): elke
    * verticale last krijgt een horizontale metgezel H = φ·V. φ = 1/noemer
@@ -1004,7 +1016,16 @@ export interface FemStore {
   loadProjectState: (p: {
     nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[];
     loadCases: LoadCase[]; activeLoadCaseId: number;
-    selfWeightEnabled?: boolean; nonlinearEnabled?: boolean;
+    selfWeightEnabled?: boolean;
+    /**
+     * OUD veld. Bestanden van vóór het analysetype dragen alleen deze
+     * booleaan; hij blijft leidend zolang `analysetype` ontbreekt.
+     */
+    nonlinearEnabled?: boolean;
+    /** v2: analysetype; ontbreekt → afgeleid uit `nonlinearEnabled`. */
+    analysetype?: string;
+    /** v2: gewenste segmentlengte in mm; ontbreekt → 400 (besluit B3). */
+    betonSegmentLengteMm?: number;
     /** v2: combinatie-definities; ontbreekt (v1) → defaultCombinations(). */
     combinations?: LoadCombination[];
     /** v2: stramien; ontbreekt (v1) → DEFAULT_STRUCTURAL_GRID. */
@@ -1040,7 +1061,9 @@ export function useFemStore(): FemStore {
 
   // Solver options — separate from undo history (UI toggles, not model state).
   const [selfWeightEnabled, setSelfWeightEnabled] = useState<boolean>(false);
-  const [nonlinearEnabled, setNonlinearEnabled]   = useState<boolean>(false);
+  const [analysetype, setAnalysetype]             = useState<Analysetype>("eersteOrde");
+  const [betonSegmentLengteMm, setBetonSegmentLengteMm] =
+    useState<number>(STANDAARD_SEGMENTLENGTE_MM);
   // Scheefstand (initiële imperfectie) — zelfde patroon als selfWeightEnabled.
   const [scheefstandEnabled, setScheefstandEnabled] = useState<boolean>(false);
   const [scheefstandNoemer, setScheefstandNoemer]   = useState<number>(200);
@@ -1753,7 +1776,8 @@ export function useFemStore(): FemStore {
     translateNodes,
     structuralGrid, setStructuralGrid, verplaatsStramienAs,
     selfWeightEnabled, setSelfWeightEnabled,
-    nonlinearEnabled,  setNonlinearEnabled,
+    analysetype, setAnalysetype,
+    betonSegmentLengteMm, setBetonSegmentLengteMm,
     scheefstandEnabled, setScheefstandEnabled,
     scheefstandNoemer, setScheefstandNoemer,
     scheefstandRichting, setScheefstandRichting,
@@ -1793,7 +1817,16 @@ export function useFemStore(): FemStore {
     loadProjectState: (p: {
       nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[];
       loadCases: LoadCase[]; activeLoadCaseId: number;
-      selfWeightEnabled?: boolean; nonlinearEnabled?: boolean;
+      selfWeightEnabled?: boolean;
+    /**
+     * OUD veld. Bestanden van vóór het analysetype dragen alleen deze
+     * booleaan; hij blijft leidend zolang `analysetype` ontbreekt.
+     */
+    nonlinearEnabled?: boolean;
+    /** v2: analysetype; ontbreekt → afgeleid uit `nonlinearEnabled`. */
+    analysetype?: string;
+    /** v2: gewenste segmentlengte in mm; ontbreekt → 400 (besluit B3). */
+    betonSegmentLengteMm?: number;
       combinations?: LoadCombination[];
       structuralGrid?: StructuralGrid;
       scheefstandEnabled?: boolean;
@@ -1811,7 +1844,15 @@ export function useFemStore(): FemStore {
       setLoadCases(p.loadCases);
       setActiveLoadCaseId(p.activeLoadCaseId);
       setSelfWeightEnabled(!!p.selfWeightEnabled);
-      setNonlinearEnabled(!!p.nonlinearEnabled);
+      // Terugleesbaarheid: een bestand zonder `analysetype` valt terug op de
+      // oude booleaan — true wordt de geometrische tweede orde, false de
+      // eerste orde. Zie `analysetypeUitBestand` in femTypes.
+      setAnalysetype(analysetypeUitBestand(p.analysetype, p.nonlinearEnabled));
+      setBetonSegmentLengteMm(
+        typeof p.betonSegmentLengteMm === "number" && p.betonSegmentLengteMm > 0
+          ? p.betonSegmentLengteMm
+          : STANDAARD_SEGMENTLENGTE_MM,
+      );
       // Scheefstand — ontbrekende velden (v1/oudere v2-bestanden) → uit,
       // noemer 200 (φ = 1/200), richting +x.
       setScheefstandEnabled(!!p.scheefstandEnabled);

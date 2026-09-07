@@ -420,15 +420,11 @@ export interface ISolverResult {
     ny: { min: number; max: number };
     nxy: { min: number; max: number };
   };
-  // FNL concrete: cracked section states per beam (Map<beamId, ICrackedSectionState>)
-  crackedSectionStates?: Map<number, {
-    isCracked: boolean;
-    Mcr: number;        // Cracking moment (Nm)
-    Icr: number;        // Cracked second moment of area (m⁴)
-    Ieff: number;       // Effective I with tension stiffening (m⁴)
-    xCr: number;        // Neutral axis depth when cracked (m)
-    EIeff: number;      // Effective bending stiffness (Nm²)
-  }>;
+  // Hier stond `crackedSectionStates`: de uitkomst van een tweede,
+  // TypeScript-eigen model voor de gescheurde betonstijfheid. Dat model is
+  // verwijderd (zie NonlinearMaterial.ts); de gescheurde stijfheid komt uit de
+  // rekenkern en landt per SEGMENT in `section.I` van de deelelementen, dus in
+  // het gewone resultaat. Zie lib/betonStijfheid.ts.
 }
 
 export interface IBeamForces {
@@ -457,6 +453,19 @@ export interface IBeamForces {
   deflection?: number[];
   /** Axiale verplaatsing u(x) op dezelfde stations (m, positief richting node2). */
   axialDisp?: number[];
+  /**
+   * Hoekverdraaiing θ(x) = dw/dx op dezelfde stations (rad, LOKALE assen).
+   * ANALYTISCH afgeleid uit dezelfde vormfuncties + particuliere oplossing
+   * waaruit `deflection` volgt — géén numerieke differentie van dat array.
+   *
+   * Tekenconventie: de helling van w (positief in lokale +y) langs de as
+   * node1→node2. Positieve θ draait dus tegen de klok in (CCW). In 2D is de
+   * rotatie-DOF invariant onder de assentransformatie, waardoor bij een
+   * STIJVE aansluiting θ(0) gelijk is aan de knooprotatie van node1 en θ(L)
+   * aan die van node2; een scharnier maakt θ daar discontinu t.o.v. de
+   * knoopwaarde. Optioneel: externe backends leveren dit veld (nog) niet.
+   */
+  rotation?: number[];
   // Maximum values for scaling
   maxN: number;
   maxV: number;

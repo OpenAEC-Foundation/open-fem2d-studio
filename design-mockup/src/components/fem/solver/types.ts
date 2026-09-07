@@ -435,6 +435,27 @@ export interface ElementForces {
   axialDisp: number[];
 
   /**
+   * Hoekverdraaiing θ(x) op dezelfde stations (rad, LOKAAL): de helling
+   * dw/dx van de veldzakking hierboven. ANALYTISCH afgeleid uit dezelfde
+   * Hermite-vormfuncties plus particuliere oplossing waaruit `deflection`
+   * volgt — géén numerieke differentie van dat array (die verliest juist bij
+   * de staafeinden nauwkeurigheid, waar θ doorgaans het grootst is).
+   *
+   * TEKEN: w is positief in lokale +y en x loopt van "from" naar "to", dus
+   * positieve θ draait tegen de klok in (CCW) — dezelfde draairichting als
+   * de knooprotatie `ry`. In 2D is de rotatie-DOF invariant onder de
+   * assentransformatie; bij een STIJVE aansluiting geldt daarom exact
+   * θ(0) = ry van de "from"-knoop en θ(L) = ry van de "to"-knoop. Bij een
+   * scharnier verschilt de element-eindrotatie van de knooprotatie en maakt
+   * θ daar dus een sprong. Doorhangen onder gravitatie (w < 0 in het veld)
+   * geeft θ(0) < 0 en θ(L) > 0.
+   *
+   * Eenheid rad, net als `NodalDisp.ry`; de UI toont hem in mrad.
+   * Optioneel omdat resultaten van vóór deze uitbreiding het veld missen.
+   */
+  rotation?: number[];
+
+  /**
    * Segmentuitkomsten — ALLEEN aanwezig wanneer de invoerstaaf een
    * `segmenten`-veld droeg (zie SolverBeamSegmentInput). Zonder segmenten
    * ontbreekt het veld en is het resultaat identiek aan het bestaande gedrag.

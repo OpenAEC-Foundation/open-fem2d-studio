@@ -12,6 +12,7 @@
  */
 import type { SolverResult } from "./solver/types";
 import type { Node, Beam, Support, Load } from "./femTypes";
+import { resolveSection } from "../../lib/sectionResolver";
 
 /** Per-result display toggles — multi-active diagram picker. */
 export interface DisplayFlags {
@@ -19,6 +20,17 @@ export interface DisplayFlags {
   N: boolean;
   V: boolean;
   M: boolean;
+  /**
+   * Hoekverdraaiing θ(x) langs de staaf (uit `ElementForces.rotation`, rad).
+   * Getekend als verloopdiagram, gelabeld in mrad — zie `renderRotationDiagram`.
+   */
+  rotation: boolean;
+  /**
+   * Buigstijfheid EI(x) langs de staaf uit de segmentuitkomsten van de
+   * fysisch niet-lineaire tweede orde (beton). Alleen zinvol wanneer het
+   * resultaat `ElementForces.segmenten` draagt.
+   */
+  EI: boolean;
   reactions: boolean;
   /** Reactie-componentkeuze: horizontale (Fx) resp. verticale (Fz) pijlen. */
   reactieX: boolean;
@@ -34,6 +46,10 @@ export interface DisplayFlags {
   scaleV: number;
   scaleM: number;
   scaleU: number;
+  /** Schaalregelaar van het hoekverdraaiingsdiagram. */
+  scaleR: number;
+  /** Schaalregelaar van het EI-verloop. */
+  scaleEI: number;
   /** Plaatspanningscontouren op het canvas (P3.2) — aan/uit. */
   plaatContour: boolean;
   /** Gekozen contourcomponent (von Mises default) — zie PLAAT_COMPONENTEN in FemCanvas. */
@@ -51,11 +67,14 @@ export interface DisplayFlags {
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   deflection: true, N: false, V: false, M: true, reactions: true,
+  // Uit by default: het zijn extra standen naast N/V/M, en EI heeft alleen
+  // inhoud bij een fysisch niet-lineaire betonberekening.
+  rotation: false, EI: false,
   reactieX: true, reactieZ: true,
   knoopWaarden: false,
   showExtremes: true,
   uc: false,
-  scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1,
+  scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1, scaleR: 1, scaleEI: 1,
   plaatContour: true, plaatComponent: "vonMises", plaatMesh: true,
   // Aan: de gebruiker wil bij het tekenen kunnen zien welk profiel een staaf
   // heeft zonder hem eerst aan te klikken.
@@ -103,6 +122,8 @@ export default function FemResultsOverlay({
   const showN = displayFlags.N;
   const showV = displayFlags.V;
   const showM = displayFlags.M;
+  const showRotation = displayFlags.rotation === true;
+  const showEI = displayFlags.EI === true;
   // ── Auto-scale the deflection so the biggest sample is visible. ─────────
   // We sample every beam and find the max curve offset (mm), then scale so
   // it shows as ~60px on screen.
@@ -357,7 +378,16 @@ export default function FemResultsOverlay({
   type DiagramSample = {
     px: number; py: number;        // screen position of point ON beam axis
     nxW: number; nzW: number;      // perpendicular direction in WORLD
-    N: number; V: number; M: number;
+    /**
+     * Positie langs de staaf (mm). Nodig om DUBBELE stations te herkennen: een
+     * staaf die in deelelementen is geknipt (plaatrand, of een eigen I per
+     * segment bij de fysisch niet-lineaire beton-berekening) levert het
+     * knippunt twee keer — einde van deel k en begin van deel k+1. Zie de
+     * extremum-zoeker in renderForceDiagram.
+     */
+    x: number;
+    // θ in mrad (rad × 1000) — zie de eenheidskeuze bij renderForceDiagram.
+    N: number; V: number; M: number; T: number;
   };
   type BeamDiagram = {
     beam: Beam;
@@ -365,8 +395,8 @@ export default function FemResultsOverlay({
   };
 
   const beamDiagrams: BeamDiagram[] = [];
-  let dgMaxN = 0, dgMaxV = 0, dgMaxM = 0;
-  const anyDiagram = showN || showV || showM;
+  let dgMaxN = 0, dgMaxV = 0, dgMaxM = 0, dgMaxT = 0;
+  const anyDiagram = showN || showV || showM || showRotation;
 
   if (anyDiagram) {
     for (const beam of beams) {
@@ -402,10 +432,14 @@ export default function FemResultsOverlay({
           const N_val = ef.normalForce[k];
           const V_val = ef.shearForce[k];
           const M_val = ef.bendingMoment[k];
-          samples.push({ px: screen.x, py: screen.y, nxW, nzW, N: N_val, V: V_val, M: M_val });
+          // rad → mrad; ontbreekt het veld (ouder resultaat) dan blijft het 0
+          // en tekent de θ-stand een vlakke lijn i.p.v. NaN-punten.
+          const T_val = (ef.rotation?.[k] ?? 0) * 1000;
+          samples.push({ px: screen.x, py: screen.y, nxW, nzW, x: stations[k], N: N_val, V: V_val, M: M_val, T: T_val });
           if (Math.abs(N_val) > dgMaxN) dgMaxN = Math.abs(N_val);
           if (Math.abs(V_val) > dgMaxV) dgMaxV = Math.abs(V_val);
           if (Math.abs(M_val) > dgMaxM) dgMaxM = Math.abs(M_val);
+          if (Math.abs(T_val) > dgMaxT) dgMaxT = Math.abs(T_val);
         }
       } else {
         // Fallback: 13 linear samples between endpoint values only.
@@ -418,7 +452,9 @@ export default function FemResultsOverlay({
           const N_val = ef.N;
           const V_val = ef.V;
           const M_val = (1 - xi) * ef.M_start + xi * ef.M_end;
-          samples.push({ px: screen.x, py: screen.y, nxW, nzW, N: N_val, V: V_val, M: M_val });
+          // Zonder stations is er geen θ-verloop; 0 laat de stand leeg i.p.v.
+          // een verzonnen lineair verloop te suggereren.
+          samples.push({ px: screen.x, py: screen.y, nxW, nzW, x: xi * L, N: N_val, V: V_val, M: M_val, T: 0 });
           if (Math.abs(N_val) > dgMaxN) dgMaxN = Math.abs(N_val);
           if (Math.abs(V_val) > dgMaxV) dgMaxV = Math.abs(V_val);
           if (Math.abs(M_val) > dgMaxM) dgMaxM = Math.abs(M_val);
@@ -433,6 +469,7 @@ export default function FemResultsOverlay({
   const scaleN = dgMaxN > 0 ? (TARGET_PX_DIAGRAM / dgMaxN) * (displayFlags.scaleN ?? 1) : 0;
   const scaleV = dgMaxV > 0 ? (TARGET_PX_DIAGRAM / dgMaxV) * (displayFlags.scaleV ?? 1) : 0;
   const scaleM = dgMaxM > 0 ? (TARGET_PX_DIAGRAM / dgMaxM) * (displayFlags.scaleM ?? 1) : 0;
+  const scaleT = dgMaxT > 0 ? (TARGET_PX_DIAGRAM / dgMaxT) * (displayFlags.scaleR ?? 1) : 0;
 
   /** Draw a diagram (filled polygon + outline) for one force component.
    *
@@ -440,28 +477,44 @@ export default function FemResultsOverlay({
    * To plot on the TENSION SIDE we flip the offset sign for M — sagging M > 0
    * pushes the diagram in the -y_local direction (= bottom of a horizontal beam,
    * = world-RIGHT for the left column, etc.). N and V keep raw signs.
+   *
+   * "θ" is de hoekverdraaiing. Die krijgt GEEN trekzijde-flip — hij is geen
+   * snedekracht maar een vervormingsgrootheid, dus hij wordt met zijn eigen
+   * teken uitgezet (positief = tegen de klok in, dus naar lokale +y).
+   *
+   * EENHEID θ: mrad, niet rad en niet graden. Een gebruikelijke
+   * eindrotatie ligt rond 1/300 rad; in rad lees je "0,0033" (drie
+   * betekenisloze nullen), in graden "0,19°" — beide lastig te vergelijken.
+   * mrad geeft "3,3" en sluit bovendien aan op de kolom "φy [mrad]" van de
+   * knoopverplaatsingstabel, zodat één eenheid door de hele app loopt.
    */
-  const renderForceDiagram = (which: "N" | "V" | "M", scale: number, classKey: string) => {
+  const renderForceDiagram = (which: "N" | "V" | "M" | "θ", scale: number, classKey: string) => {
     if (scale === 0) return null;
     const showValues = displayFlags.showExtremes ?? false;
-    // Waarde MET eenheid en NL-komma: momenten in kNm, krachten in kN.
+    // Waarde MET eenheid en NL-komma: momenten in kNm, krachten in kN,
+    // hoekverdraaiing in mrad (de sample draagt hem al in mrad).
     const fmtValue = (raw: number): string =>
-      which === "M" ? `${fmtNl(raw / 1e6)} kNm` : `${fmtNl(raw / 1000)} kN`;
+      which === "M" ? `${fmtNl(raw / 1e6)} kNm`
+      : which === "θ" ? `${fmtNl(raw, 2)} mrad`
+      : `${fmtNl(raw / 1000)} kN`;
 
     return beamDiagrams.map(({ beam, samples }) => {
       if (samples.length === 0) return null;
       const offset: string[] = [];
       // Bijhouden voor waarde-labels: per sample de geplotte offset-positie
       // + de vlip-waarde (voor label-offset-richting) + de raw waarde.
-      const pts: { ox: number; oy: number; vFlip: number; raw: number; nxW: number; nzW: number }[] = [];
+      const pts: { ox: number; oy: number; vFlip: number; raw: number; nxW: number; nzW: number; x: number }[] = [];
       for (const sm of samples) {
-        const raw = which === "N" ? sm.N : which === "V" ? sm.V : sm.M;
-        // M flips for tension-side rendering; N/V plot in raw direction.
+        const raw = which === "N" ? sm.N
+          : which === "V" ? sm.V
+          : which === "θ" ? sm.T
+          : sm.M;
+        // M flips for tension-side rendering; N/V/θ plot in raw direction.
         const v = which === "M" ? -raw : raw;
         const ox = sm.px + sm.nxW * v * scale;
         const oy = sm.py - sm.nzW * v * scale;
         offset.push(`${ox.toFixed(2)},${oy.toFixed(2)}`);
-        pts.push({ ox, oy, vFlip: v, raw, nxW: sm.nxW, nzW: sm.nzW });
+        pts.push({ ox, oy, vFlip: v, raw, nxW: sm.nxW, nzW: sm.nzW, x: sm.x });
       }
       // Closing polygon: back to beam (endpoint → startpoint along axis)
       const startBase = `${samples[0].px.toFixed(2)},${samples[0].py.toFixed(2)}`;
@@ -498,15 +551,55 @@ export default function FemResultsOverlay({
         consider(0, pts[0].raw);
         consider(pts.length - 1, pts[pts.length - 1].raw);
 
-        // Lokale extrema (veldmoment, tussensteunpunten)
-        for (let i = 1; i < pts.length - 1; i++) {
-          const dPrev = pts[i].raw - pts[i - 1].raw;
-          const dNext = pts[i + 1].raw - pts[i].raw;
+        // ── Lokale extrema (veldmoment, tussensteunpunten) ────────────────
+        // NAADPUNTEN EERST WEGNEMEN. Een in deelelementen geknipte staaf —
+        // op een plaatrand, of met een eigen I per segment bij de fysisch
+        // niet-lineaire betonberekening — levert het knippunt TWEE keer: het
+        // laatste station van deel k en het eerste van deel k+1, met dezelfde
+        // x. Voor een grootheid die daar echt continu is, is het tweede punt
+        // bit-identiek aan het eerste (de hoekverdraaiing komt links en rechts
+        // uit dezelfde knoop-DOF). Het verschil naar die buur is dan exact
+        // nul, en de tekenwisselingstoets hieronder ziet op ELKE segmentgrens
+        // een "extremum" — op een staaf met dertien segmenten leverde dat
+        // tientallen labels over één diagram.
+        //
+        // Een naad met een ECHTE sprong (N en V mogen op een plaatrandknoop
+        // springen) blijft staan: die twee waarden verschillen wél. En het
+        // punt zelf verdwijnt niet — alleen de kopie ervan — zodat een
+        // veldmaximum dat toevallig precies op een naad valt (bij een
+        // symmetrisch gesegmenteerde ligger: het midden) gewoon gevonden
+        // wordt.
+        //
+        // "Gelijk" met een marge van 1 % van de piek, niet bit-exact: bij de
+        // fysisch niet-lineaire berekening heeft elk stuk zijn eigen EI, en
+        // dan verschillen de twee naadwaarden van een vrijwel constante
+        // grootheid (N of V op een kolom) in de derde decimaal. Die marge kan
+        // geen leesbaar label wegnemen: `minShow` hieronder toont sowieso
+        // niets onder 2 % van de piek.
+        const naadTol = globalPeak * 1e-2;
+        const kand: number[] = [];
+        for (let i = 0; i < pts.length; i++) {
+          if (i > 0 && pts[i].x === pts[i - 1].x &&
+              Math.abs(pts[i].raw - pts[i - 1].raw) <= naadTol) continue;
+          kand.push(i);
+        }
+        // Verschillen onder de afrondingsruis tellen als NUL. Een constante
+        // grootheid (N of V op een kolom) is binnen één rekenelement exact
+        // constant, maar over een segmentgrens verschillen de twee waarden in
+        // het laatste bit — twee elementen, twee stijfheidsmatrices. Zonder
+        // deze drempel leest de tekenwisselingstoets dat als een extremum en
+        // zet ze op elke grens een label neer.
+        const ruis = globalPeak * 1e-9;
+        const snap = (d: number) => (Math.abs(d) <= ruis ? 0 : d);
+        for (let k = 1; k < kand.length - 1; k++) {
+          const i = kand[k], iPrev = kand[k - 1], iNext = kand[k + 1];
+          const dPrev = snap(pts[i].raw - pts[iPrev].raw);
+          const dNext = snap(pts[iNext].raw - pts[i].raw);
           if (dPrev === 0 && dNext === 0) continue;
           const slopeFlips = (dPrev >= 0 && dNext <= 0) || (dPrev <= 0 && dNext >= 0);
           if (!slopeFlips) continue;
           // Parabolische verfijning van het extremum via 3 gelijk-afstand punten.
-          const y0 = pts[i - 1].raw, y1 = pts[i].raw, y2 = pts[i + 1].raw;
+          const y0 = pts[iPrev].raw, y1 = pts[i].raw, y2 = pts[iNext].raw;
           const denom = y0 - 2 * y1 + y2;
           let peakVal = y1;
           if (Math.abs(denom) > 1e-9) {
@@ -547,6 +640,123 @@ export default function FemResultsOverlay({
     });
   };
 
+  // ── Buigstijfheidsverloop EI(x) — fysisch niet-lineair beton ─────────────
+  // De fysisch niet-lineaire tweede orde rekent elke staaf in stukken met een
+  // eigen traagheidsmoment. `ElementForces.segmenten` draagt per rekenstuk
+  // xStart/xEnd (mm langs de staaf) en de I (mm⁴) waarmee dat stuk gerekend
+  // heeft; de E hoort bij de staaf en komt uit dezelfde `resolveSection` die
+  // de solver-invoer voedt. Samen geeft dat EI per stuk.
+  //
+  // Waarom een stapfiguur MET referentielijn: de vraag van een constructeur is
+  // niet "hoe groot is EI" maar "wáár is de ligger gescheurd". De ongescheurde
+  // EI₀ = E·I van de bruto doorsnede is de gestreepte lijn; de dichte stappen
+  // liggen daar (deels) onder. Waar ze samenvallen is de doorsnede ongescheurd.
+  //
+  // Zonder `segmenten` is er niets gescheurd gerekend — een geldige toestand,
+  // geen fout. Deze weergave tekent dan niets en de stand staat in de
+  // Resultaten-tab uitgegrijsd met de reden erbij.
+  const EI_TARGET_PX = 46;
+  type EiStuk = { xStart: number; xEnd: number; EI: number };
+  type EiStaaf = { beam: Beam; L_mm: number; EI0: number; stukken: EiStuk[] };
+  const eiStaven: EiStaaf[] = [];
+  let eiMax = 0;
+  if (showEI) {
+    for (const beam of beams) {
+      const ef = result.elements.get(beam.id);
+      if (!ef?.segmenten || ef.segmenten.length === 0 || ef.L_mm <= 0) continue;
+      const sec = resolveSection(beam.material, beam.profile);
+      if (!(sec.E > 0)) continue;
+      const EI0 = sec.E * sec.I;                       // N·mm² — ongescheurd
+      const stukken = ef.segmenten.map(s => ({
+        xStart: s.xStart, xEnd: s.xEnd, EI: sec.E * s.I,
+      }));
+      for (const s of stukken) if (s.EI > eiMax) eiMax = s.EI;
+      if (EI0 > eiMax) eiMax = EI0;
+      eiStaven.push({ beam, L_mm: ef.L_mm, EI0, stukken });
+    }
+  }
+  const eiScale = eiMax > 0 ? (EI_TARGET_PX / eiMax) * (displayFlags.scaleEI ?? 1) : 0;
+
+  /** EI in kNm²: 1 kNm² = 10³ N · 10⁶ mm² = 10⁹ N·mm². */
+  const eiNaarKNm2 = (nmm2: number) => nmm2 / 1e9;
+
+  const renderEIDiagram = () => {
+    if (eiScale === 0) return null;
+    const toonWaarden = displayFlags.showExtremes ?? false;
+    return eiStaven.map(({ beam, L_mm, EI0, stukken }) => {
+      const nA = nodes.find(n => n.id === beam.from);
+      const nB = nodes.find(n => n.id === beam.to);
+      if (!nA || !nB) return null;
+      const dx = nB.x - nA.x, dz = nB.z - nA.z;
+      const L = Math.hypot(dx, dz);
+      if (L < 1e-6) return null;
+      // Loodrecht = 90° CCW op de staafas, dezelfde richting als de andere
+      // diagrammen gebruiken.
+      const nxW = -dz / L, nzW = dx / L;
+      /** Scherm-punt op fractie t langs de staaf, met een loodrechte offset. */
+      const punt = (t: number, offsetPx: number) => {
+        const p = worldToScreen(nA.x + dx * t, nA.z + dz * t);
+        return { x: p.x + nxW * offsetPx, y: p.y - nzW * offsetPx };
+      };
+
+      // Stapfiguur: per stuk een horizontale lijn op EI·schaal, met verticale
+      // sprongen ertussen. Eén doorlopende polyline zodat de sprong zichtbaar
+      // is als verticale flank en niet als schuine helling.
+      const pts: string[] = [];
+      for (const s of stukken) {
+        const h = s.EI * eiScale;
+        const t0 = s.xStart / L_mm, t1 = s.xEnd / L_mm;
+        const a = punt(t0, h), b = punt(t1, h);
+        pts.push(`${a.x.toFixed(2)},${a.y.toFixed(2)}`, `${b.x.toFixed(2)},${b.y.toFixed(2)}`);
+      }
+      // Referentielijn op de ongescheurde EI₀ over de hele staaf.
+      const r0 = punt(0, EI0 * eiScale), r1 = punt(1, EI0 * eiScale);
+
+      // Vlak tussen staafas en stappen, zodat de terugval als "hap" leest.
+      const basisEind = punt(1, 0), basisStart = punt(0, 0);
+      const vlak = [
+        ...pts,
+        `${basisEind.x.toFixed(2)},${basisEind.y.toFixed(2)}`,
+        `${basisStart.x.toFixed(2)},${basisStart.y.toFixed(2)}`,
+      ].join(" ");
+
+      // Label op het stuk met de KLEINSTE EI — dat is de maatgevende
+      // scheurplek — plus de referentiewaarde bij de gestreepte lijn.
+      const labels: React.ReactNode[] = [];
+      if (toonWaarden && stukken.length > 0) {
+        let laagste = stukken[0];
+        for (const s of stukken) if (s.EI < laagste.EI) laagste = s;
+        const factor = EI0 > 0 ? laagste.EI / EI0 : 1;
+        const tMid = ((laagste.xStart + laagste.xEnd) / 2) / L_mm;
+        const p = punt(tMid, laagste.EI * eiScale + 12);
+        labels.push(
+          <text key={`ei-min-${beam.id}`} x={p.x} y={p.y}
+            className="fem-diagram-value fem-diagram-EI"
+            textAnchor="middle" dominantBaseline="middle">
+            {`EI = ${fmtNl(eiNaarKNm2(laagste.EI), 0)} kNm² (${fmtNl(factor, 2)}·EI₀)`}
+          </text>
+        );
+        const pr = punt(0.5, EI0 * eiScale + 12);
+        labels.push(
+          <text key={`ei-ref-${beam.id}`} x={pr.x} y={pr.y}
+            className="fem-diagram-value fem-diagram-EI-reflabel"
+            textAnchor="middle" dominantBaseline="middle">
+            {`EI₀ = ${fmtNl(eiNaarKNm2(EI0), 0)} kNm²`}
+          </text>
+        );
+      }
+
+      return (
+        <g key={`ei-${beam.id}`}>
+          <polygon points={vlak} className="fem-diagram-fill fem-diagram-EI" />
+          <polyline points={pts.join(" ")} className="fem-diagram-line fem-diagram-EI" fill="none" />
+          <line x1={r0.x} y1={r0.y} x2={r1.x} y2={r1.y} className="fem-diagram-EI-ref" />
+          {labels}
+        </g>
+      );
+    });
+  };
+
   return (
     <g className="fem-results-overlay" pointerEvents="none">
       {/* Arrow marker — defined once */}
@@ -571,6 +781,8 @@ export default function FemResultsOverlay({
       {showM && renderForceDiagram("M", scaleM, "fem-diagram-M")}
       {showV && renderForceDiagram("V", scaleV, "fem-diagram-V")}
       {showN && renderForceDiagram("N", scaleN, "fem-diagram-N")}
+      {showRotation && renderForceDiagram("θ", scaleT, "fem-diagram-R")}
+      {showEI && renderEIDiagram()}
       {showReactions && renderReactions()}
 
       {/* HUD-like banner so the user knows scale used — only when deflection shown */}

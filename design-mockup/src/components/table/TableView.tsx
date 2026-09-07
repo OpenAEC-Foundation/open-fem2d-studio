@@ -868,6 +868,12 @@ export default function TableView(props: TableViewProps) {
       columns: [
         t("table.colBeam"), "N [kN]", "V [kN]",
         "M,begin [kNm]", "M,eind [kNm]", "|M|max [kNm]",
+        // De grootste hoekverdraaiing LANGS DE STAAF. Bewust hier en niet
+        // alleen in de knooptabel: bij een scharnier verschilt de
+        // element-eindrotatie van de knooprotatie φy, en dan is dit de enige
+        // plek waar die scharnierrotatie af te lezen valt. Eenheid mrad, gelijk
+        // aan de kolom φy van de verplaatsingstabel.
+        "|φ|max [mrad]",
       ],
       editable: false,
       emptyText: t("table.noRows"),
@@ -876,7 +882,14 @@ export default function TableView(props: TableViewProps) {
         const mAbsMax = e.bendingMoment.length > 0
           ? e.bendingMoment.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
           : Math.max(Math.abs(e.M_start), Math.abs(e.M_end));
-        const vals = [e.N / 1e3, e.V / 1e3, e.M_start / 1e6, e.M_end / 1e6, mAbsMax / 1e6];
+        // rad → mrad; ontbreekt het veld (resultaat van vóór deze uitbreiding),
+        // dan blijft de cel 0 in plaats van NaN.
+        const thetaAbsMax =
+          (e.rotation ?? []).reduce((m, v) => Math.max(m, Math.abs(v)), 0) * 1000;
+        const vals = [
+          e.N / 1e3, e.V / 1e3, e.M_start / 1e6, e.M_end / 1e6, mAbsMax / 1e6,
+          thetaAbsMax,
+        ];
         return {
           key: `f${bid}`,
           selected: selBeamId === bid,

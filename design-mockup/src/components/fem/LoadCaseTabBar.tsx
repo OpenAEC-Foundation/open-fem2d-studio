@@ -7,7 +7,8 @@
  * Hidden on full-width views (IFC, report) since those don't use LCs.
  */
 import { useState } from "react";
-import type { LoadCase, Load } from "./femTypes";
+import type { LoadCase, Load, Analysetype } from "./femTypes";
+import { ANALYSETYPEN, ANALYSETYPE_LABEL, ANALYSETYPE_OMSCHRIJVING } from "./femTypes";
 import "./LoadCaseTabBar.css";
 
 interface Props {
@@ -20,8 +21,20 @@ interface Props {
   /** Solver toggles — surfaced on the right side of the bar. */
   selfWeightEnabled?: boolean;
   setSelfWeightEnabled?: (v: boolean) => void;
-  nonlinearEnabled?: boolean;
-  setNonlinearEnabled?: (v: boolean) => void;
+  /** Analysetype: 1e orde, 2e orde (P-Δ) of 2e orde + fysisch niet-lineair. */
+  analysetype?: Analysetype;
+  setAnalysetype?: (v: Analysetype) => void;
+  /** Gewenste segmentlengte in mm (besluit B3) — alleen zichtbaar bij fysisch. */
+  betonSegmentLengteMm?: number;
+  setBetonSegmentLengteMm?: (v: number) => void;
+  /**
+   * Aantal betonstaven mét wapeningskorf. Nul betekent dat de fysisch
+   * niet-lineaire stand niets te doen heeft; dat hoort de balk te zeggen in
+   * plaats van stilzwijgend hetzelfde antwoord te geven als P-Δ.
+   */
+  aantalBetonstaven?: number;
+  /** Waarschuwing over de modelgrootte (besluit B3); null = geen. */
+  segmentWaarschuwing?: string | null;
   /** Scheefstand (initiële imperfectie): H = φ·V per verticale last. */
   scheefstandEnabled?: boolean;
   setScheefstandEnabled?: (v: boolean) => void;
@@ -56,7 +69,9 @@ function typeTag(type: LoadCase["type"]): string {
 export default function LoadCaseTabBar({
   loadCases, activeLoadCaseId, setActiveLoadCaseId, addLoadCase, loads,
   selfWeightEnabled, setSelfWeightEnabled,
-  nonlinearEnabled, setNonlinearEnabled,
+  analysetype = "eersteOrde", setAnalysetype,
+  betonSegmentLengteMm = 400, setBetonSegmentLengteMm,
+  aantalBetonstaven = 0, segmentWaarschuwing = null,
   scheefstandEnabled, setScheefstandEnabled,
   scheefstandNoemer, setScheefstandNoemer,
   scheefstandRichting, setScheefstandRichting,
@@ -167,18 +182,75 @@ export default function LoadCaseTabBar({
         </label>
       )}
 
-      {setNonlinearEnabled && (
-        <label
-          className={`lc-tab-toggle${nonlinearEnabled ? " active" : ""}`}
-          title="Niet-lineair (P-Δ) analyse — geometrische stijfheid + Newton-Raphson"
+      {/* Analysetype — drie standen, want de derde (fysisch niet-lineair) past
+          niet in de booleaan die hier eerst stond. Zie femTypes.Analysetype. */}
+      {setAnalysetype && (
+        <span
+          className={`lc-tab-phi${analysetype !== "eersteOrde" ? " active" : ""}`}
+          title={ANALYSETYPE_OMSCHRIJVING[analysetype]}
         >
+          <span className="lc-tab-phi-label">Analyse</span>
+          <select
+            className="lc-tab-phi-dir"
+            value={analysetype}
+            onChange={(e) => setAnalysetype(e.target.value as Analysetype)}
+          >
+            {ANALYSETYPEN.map((t) => (
+              <option key={t} value={t}>{ANALYSETYPE_LABEL[t]}</option>
+            ))}
+          </select>
+        </span>
+      )}
+
+      {/* De segmentlengte is de knop die de gebruiker in handen heeft bij een
+          fysisch niet-lineaire berekening (besluit B3): instelbaar, 400 mm als
+          beginwaarde, geen automatische vergroving. */}
+      {setAnalysetype && analysetype === "tweedeOrdeFysisch" && (
+        <span
+          className="lc-tab-phi"
+          title={
+            "Gewenste segmentlengte in mm. Elke betonstaaf wordt in even lange " +
+            "segmenten geknipt die elk hun eigen secans-EI krijgen (5.8.6(6)). " +
+            "Korter = nauwkeuriger en trager; de applicatie vergroft niet uit " +
+            "zichzelf."
+          }
+        >
+          <span className="lc-tab-phi-label">segment</span>
           <input
-            type="checkbox"
-            checked={!!nonlinearEnabled}
-            onChange={(e) => setNonlinearEnabled(e.target.checked)}
+            type="number"
+            className="lc-tab-phi-input"
+            min={50}
+            step={50}
+            value={betonSegmentLengteMm}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v > 0) setBetonSegmentLengteMm?.(v);
+            }}
           />
-          <span>P-Δ</span>
-        </label>
+          <span className="lc-tab-phi-label">mm</span>
+        </span>
+      )}
+
+      {/* Zonder betonstaven mét korf doet de derde stand niets. Dat hoort
+          hier te staan en niet stil te blijven. */}
+      {setAnalysetype && analysetype === "tweedeOrdeFysisch" && aantalBetonstaven === 0 && (
+        <span
+          className="lc-tab-phi"
+          title={
+            "Fysisch niet-lineair werkt op betonstaven met een wapeningskorf: " +
+            "materiaal een sterkteklasse (bijv. C30/37), profiel een rechthoek " +
+            "(bijv. 300x500) en een korf bij de staafeigenschappen. Zonder die " +
+            "staven is de uitkomst gelijk aan 2e orde (P-Δ)."
+          }
+        >
+          <span className="lc-tab-phi-label">geen betonstaven met korf</span>
+        </span>
+      )}
+
+      {setAnalysetype && analysetype === "tweedeOrdeFysisch" && segmentWaarschuwing && (
+        <span className="lc-tab-phi" title={segmentWaarschuwing}>
+          <span className="lc-tab-phi-label">⚠ model groot — zie segmentlengte</span>
+        </span>
       )}
 
       {/* Scheefstand — zelfde toggle-patroon; bij aan verschijnen φ (1/x) en

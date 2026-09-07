@@ -80,15 +80,27 @@ interface ILocalDistLoad {
  * Axiaal analoog: EA·u'' = −qx(x), u(0) = u(L) = 0:
  *   EA·u(x) = C₁·x − Rx₁(x),  Rx₁(x) = [qxS + mx(x−a)]·(u₂²−u₁²)/2
  *             − mx·(u₂³−u₁³)/3,  C₁ = Rx₁(L)/L.
+ *
+ * De hoekverdraaiing θ_p = dw_p/dx komt er GRATIS bij: de tweede regel van de
+ * afleiding hierboven IS al EI·w'(x) = V₀·x²/2 + M₀·x + R₂(x). `dwAt` geeft
+ * die uitdrukking terug — geen numerieke differentie van `wAt`, maar dezelfde
+ * exacte primitieve waaruit `wAt` zelf volgt. Uit de randvoorwaarde die M₀
+ * vastlegt volgt bovendien w'(L) = 0 (en w'(0) = 0 per constructie): de
+ * particuliere oplossing draagt op de staafeinden GEEN rotatie, zodat θ daar
+ * volledig uit het homogene Hermite-deel komt.
  */
 function makePartialParticular(
   L: number, EI: number, EA: number, ld: ILocalDistLoad,
-): { wAt: (x: number) => number; uAt: (x: number) => number } {
+): {
+  wAt: (x: number) => number;
+  uAt: (x: number) => number;
+  dwAt: (x: number) => number;
+} {
   const a = ld.startT * L;
   const b = ld.endT * L;
   const span = b - a;
   if (span <= 0 || EI <= 0 || EA <= 0) {
-    return { wAt: () => 0, uAt: () => 0 };
+    return { wAt: () => 0, uAt: () => 0, dwAt: () => 0 };
   }
   const my = (ld.qyE - ld.qyS) / span;
   const mx = (ld.qxE - ld.qxS) / span;
@@ -122,6 +134,7 @@ function makePartialParticular(
   return {
     wAt: (x: number) => (V0 * x ** 3 / 6 + M0 * x * x / 2 + R3(x)) / EI,
     uAt: (x: number) => (C1 * x - Rx1(x)) / EA,
+    dwAt: (x: number) => (V0 * x * x / 2 + M0 * x + R2(x)) / EI,
   };
 }
 
@@ -344,8 +357,39 @@ export function calculateBeamInternalForces(
     return { kind: 'partial' as const, dl, partial: makePartialParticular(L, EI, EA, dl) };
   });
 
+  // ── Hoekverdraaiing θ(x) = dw/dx ─────────────────────────────────────────
+  // ANALYTISCH afgeleid uit exact dezelfde uitdrukking waaruit w(x) volgt —
+  // niet numeriek gedifferentieerd. Een differentie over het 21-stationsraster
+  // verliest juist bij de eindwaarden (waar θ het grootst is) nauwkeurigheid,
+  // terwijl de exacte afgeleide gewoon voorhanden is:
+  //   • homogeen deel: de afgeleide van de Hermite-vormfuncties, met ξ = x/L
+  //     en d/dx = (1/L)·d/dξ:
+  //        H1 = 1 − 3ξ² + 2ξ³        → G1 = 6ξ(ξ − 1)/L
+  //        H2 = L(ξ − 2ξ² + ξ³)      → G2 = 1 − 4ξ + 3ξ²
+  //        H3 = 3ξ² − 2ξ³            → G3 = 6ξ(1 − ξ)/L
+  //        H4 = L(ξ³ − ξ²)           → G4 = 3ξ² − 2ξ
+  //     Op ξ = 0 geeft dat (0, 1, 0, 0) en op ξ = 1 (0, 0, 0, 1): θ op de
+  //     staafeinden IS de lokale eindrotatie-DOF.
+  //   • particulier deel: alle drie de particuliere oplossingen hebben
+  //     w = w' = 0 op beide einden, dus ze verschuiven θ alleen ín het veld:
+  //        uniform:  w_p = q·x²(L−x)²/(24EI)  → θ_p = q·x(L−x)(L−2x)/(12EI)
+  //        driehoek: w_p = Δq·(x⁵/(120L) − Lx³/40 + L²x²/60)/EI
+  //                  → θ_p = Δq·(x⁴/(24L) − 3Lx²/40 + L²x/30)/EI
+  //        partieel: zie makePartialParticular().dwAt
+  //
+  // TEKENCONVENTIE: θ is de helling van w in LOKALE assen, met w positief in
+  // lokale +y en x langs de as node1→node2. Positieve θ draait dus tegen de
+  // klok in (CCW) in het lokale (x, y)-vlak — voor een horizontale staaf
+  // node1-links/node2-rechts is dat dezelfde draairichting als de knooprotatie
+  // ry, en in 2D is de rotatie-DOF invariant onder de assentransformatie.
+  // Daarom geldt bij een STIJVE aansluiting exact θ(0) = ry(node1) en
+  // θ(L) = ry(node2); bij een scharnier wijkt de element-eindrotatie af van de
+  // knooprotatie en maakt θ daar dus een sprong. Eenheid: rad (m/m).
+  // Doorhangen onder gravitatie (w < 0 in het veld) geeft θ(0) < 0 en
+  // θ(L) > 0 — de staafeinden kantelen naar de zakking toe.
   const deflection: number[] = [];
   const axialDisp: number[] = [];
+  const rotation: number[] = [];
   const u1L = dLoc[0], v1L = dLoc[1], t1L = dLoc[2];
   const u2L = dLoc[3], v2L = dLoc[4], t2L = dLoc[5];
   for (let i = 0; i < NUM_STATIONS; i++) {
@@ -358,6 +402,12 @@ export function calculateBeamInternalForces(
     const H4 = x * xi * (xi - 1);
     let w = H1 * v1L + H2 * t1L + H3 * v2L + H4 * t2L;
     let u = u1L + (u2L - u1L) * xi;
+    // Afgeleiden van diezelfde vormfuncties (zie het blok hierboven).
+    const G1 = L > 0 ? 6 * xi * (xi - 1) / L : 0;
+    const G2 = 1 - 4 * xi + 3 * xi * xi;
+    const G3 = L > 0 ? 6 * xi * (1 - xi) / L : 0;
+    const G4 = 3 * xi * xi - 2 * xi;
+    let th = G1 * v1L + G2 * t1L + G3 * v2L + G4 * t2L;
     for (const p of particulars) {
       if (p.kind === 'full' && EI > 0 && EA > 0) {
         const dl = p.dl;
@@ -372,13 +422,18 @@ export function calculateBeamInternalForces(
         //  axiaal driehoek: u_p = Δqx·x(L²−x²)/(6L·EA)
         u += dl.qxS * x * (L - x) / (2 * EA);
         u += dqx * x * (L * L - x * x) / (6 * L * EA);
+        //  θ_p = d/dx van diezelfde twee uitdrukkingen
+        th += dl.qyS * x * (L - x) * (L - 2 * x) / (12 * EI);
+        th += dqy * (Math.pow(x, 4) / (24 * L) - 3 * L * x * x / 40 + L * L * x / 30) / EI;
       } else if (p.kind === 'partial' && p.partial) {
         w += p.partial.wAt(x);
         u += p.partial.uAt(x);
+        th += p.partial.dwAt(x);
       }
     }
     deflection.push(w);
     axialDisp.push(u);
+    rotation.push(th);
   }
 
   // Find maximum absolute values for scaling
@@ -400,6 +455,7 @@ export function calculateBeamInternalForces(
     bendingMoment,
     deflection,
     axialDisp,
+    rotation,
     maxN,
     maxV,
     maxM

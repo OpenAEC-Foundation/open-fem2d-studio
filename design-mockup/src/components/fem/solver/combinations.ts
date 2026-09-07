@@ -254,6 +254,9 @@ export function combineResults(
     let bendingMoment: number[] = [];
     let deflection: number[] = [];
     let axialDisp: number[] = [];
+    // θ(x) = dw/dx is lineair in de belasting — de afgeleide van een
+    // superponeerbare w superponeert met dezelfde factoren.
+    let rotation: number[] = [];
 
     for (const [caseId, factor] of combo.factors) {
       const r = perCase.get(caseId);
@@ -279,6 +282,7 @@ export function combineResults(
         bendingMoment = new Array(ef.stations_mm.length).fill(0);
         deflection    = new Array(ef.stations_mm.length).fill(0);
         axialDisp     = new Array(ef.stations_mm.length).fill(0);
+        rotation      = new Array(ef.stations_mm.length).fill(0);
       }
       for (let i = 0; i < ef.stations_mm.length && i < normalForce.length; i++) {
         normalForce[i]   += factor * (ef.normalForce[i]   ?? 0);
@@ -287,12 +291,13 @@ export function combineResults(
         // ?. — resultaten van vóór de veldzakking-uitbreiding missen deze arrays
         deflection[i]    += factor * (ef.deflection?.[i]  ?? 0);
         axialDisp[i]     += factor * (ef.axialDisp?.[i]   ?? 0);
+        rotation[i]      += factor * (ef.rotation?.[i]    ?? 0);
       }
     }
     elements.set(bid, {
       N, V, M_start: Ms, M_end: Me,
       L_mm, stations_mm, normalForce, shearForce, bendingMoment,
-      deflection, axialDisp,
+      deflection, axialDisp, rotation,
     });
   }
 

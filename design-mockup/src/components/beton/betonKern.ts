@@ -1,22 +1,23 @@
 /**
  * betonKern.ts — typed aanroepen van de betonopdrachten in de rekenkern.
  *
- * `roepBetonKern` is een kopie van `roepKern` in stores/checkStore.ts: in de
- * desktop-app via Tauri's `invoke`, in de browser via het eindpunt
- * `/api/toetsing` van de dev-server (toetsbrug). Dezelfde kern, geen tweede
- * implementatie. Zodra de hoofdsessie `roepKern` uit checkStore exporteert,
- * kan deze kopie daarnaar verwijzen; het paneel accepteert de aanroep ook
- * als prop (`berekenDiagram`), zodat die koppeling zonder wijziging hier
- * gemaakt kan worden.
+ * De aanroeplaag zelf staat NIET meer hier. `roepBetonKern` was een bewuste
+ * kopie van `roepKern` in stores/checkStore.ts (in de desktop-app via Tauri's
+ * `invoke`, in de browser via het eindpunt `/api/toetsing` van de dev-server),
+ * met de afspraak dat de kopie zou verdwijnen zodra `roepKern` geëxporteerd
+ * was. Dat is gebeurd: hieronder staat alleen nog een doorgeefluik onder de
+ * oude naam, zodat de bestaande aanroepen ongewijzigd blijven werken.
  *
  * Opdrachten (zie src-tauri/crates/toetsbrug/src/main.rs):
  *  - list_concrete_classes      → ConcreteClass[]     (tabel 3.1, volledig)
  *  - list_reinforcement_grades  → ReinforcementGrade[] (bijlage C)
  *  - concrete_mn_kappa          → MnKappaResponse     (diagram voor één korf)
  *  - check_concrete_beams       → ConcreteBeamCheckResult[]
+ *  - concrete_segment_stiffness → SegmentStiffnessResponse (de segment-EI's;
+ *    de lus die daarmee rekent staat in lib/betonStijfheid.ts en roept
+ *    `roepKern` rechtstreeks aan)
  */
-import { invoke } from "@tauri-apps/api/core";
-import { isTauriApp } from "../../lib/tauri";
+import { roepKern } from "../../stores/checkStore";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
 import type { MnKappaRequest } from "../../lib/types/concrete/MnKappaRequest";
@@ -24,23 +25,12 @@ import type { MnKappaResponse } from "../../lib/types/concrete/MnKappaResponse";
 import type { ConcreteBeamCheckInput } from "../../lib/types/concrete/ConcreteBeamCheckInput";
 import type { ConcreteBeamCheckResult } from "../../lib/types/concrete/ConcreteBeamCheckResult";
 
-export async function roepBetonKern<T>(opdracht: string, inputs?: unknown): Promise<T> {
-  if (isTauriApp()) {
-    return invoke<T>(opdracht, inputs !== undefined ? { inputs } : undefined);
-  }
-  const antwoord = await fetch("/api/toetsing", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ opdracht, inputs }),
-  });
-  const data = await antwoord.json().catch(() => null);
-  if (!antwoord.ok || (data && typeof data === "object" && "fout" in data)) {
-    throw new Error(
-      (data as { fout?: string })?.fout ?? `De rekenkern antwoordde met status ${antwoord.status}.`,
-    );
-  }
-  return data as T;
-}
+/**
+ * Doorgeefluik naar `roepKern`. Blijft bestaan omdat het paneel de aanroep
+ * ook als prop kan krijgen (`berekenDiagram`) en die naam daar in gebruik is;
+ * er zit geen eigen implementatie meer onder.
+ */
+export const roepBetonKern = roepKern;
 
 // Module-level caches — de materiaaltabellen veranderen niet tijdens een sessie.
 let betonklassenCache: ConcreteClass[] | null = null;

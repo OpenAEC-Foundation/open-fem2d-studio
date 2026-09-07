@@ -81,6 +81,7 @@ const TIJDSLIMIET_MS = 300_000;
 const BUNDEL_TESTS = new Set([
   "checkconfig",
   "doorbuiging-toets",
+  "hoekverdraaiing",
   "leeg-geval",
   "n-teken",
   "omhullende",
@@ -145,6 +146,10 @@ const ALLEEN_BRON = new Map([
   ["spanning-builder", "test de invoerbouwer voor de spanningstoets, niet de solver"],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
   ["modelmapping", "vergelijkt de bronmapping met een gouden JSON"],
+  [
+    "fysisch-nietlineair",
+    "drijft de lus uit lib/betonStijfheid, die de Rust-rekenkern nodig heeft en dus niet in de barrel hoort; het echte-kernblok start de toetsbrug als apart proces en wordt luid overgeslagen als die binary ontbreekt",
+  ],
   [
     "sidecar",
     "start de sidecar als eigen proces — en draait daarin zelf al bron én bundel",

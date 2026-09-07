@@ -28,13 +28,10 @@ import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVect
 import { solveLinearSystem } from '../math/LinearSolver';
 import {
   ISectionState,
-  ICrackedSectionState,
   createSteelMaterial,
   createConcreteMaterial,
   initSectionState,
   updateSectionState,
-  initCrackedSectionState,
-  updateCrackedSectionState,
 } from './NonlinearMaterial';
 
 export interface NonlinearSolverOptions {
@@ -300,16 +297,19 @@ function calculateBeamLocalStiffnessFNL(
 
 /**
  * Assemble global stiffness matrix with material nonlinearity (FNL)
- * For steel: uses tangent stiffness from M-κ section states
- * For concrete: uses effective EI from cracked section analysis (EC2 tension stiffening)
+ * For steel: uses tangent stiffness from M-κ section states.
+ *
+ * BETON LOOPT HIER NIET LANGS. De gescheurde buigstijfheid komt uit de
+ * rekenkern (NEN-EN 1992-1-1, M-N-κ met de werkelijke wapeningskorf) en wordt
+ * per SEGMENT als `section.I` van een deelelement aangeleverd — zie
+ * `lib/betonStijfheid.ts`. `solveNonlinear` weigert daarom
+ * `materialNonlinear` met `materialType: 'concrete'`.
  */
 function assembleGlobalStiffnessFNL(
   mesh: Mesh,
   sectionStates: Map<number, ISectionState>,
-  crackedStates: Map<number, ICrackedSectionState>,
   axialForces: Map<number, number>,
-  includeGeometric: boolean,
-  materialType: 'steel' | 'concrete'
+  includeGeometric: boolean
 ): Matrix {
   const numNodes = mesh.getNodeCount();
   const numDofs = numNodes * 3;
@@ -335,23 +335,9 @@ function assembleGlobalStiffnessFNL(
 
     if (L < 1e-10) continue;
 
-    // Get effective EI based on material type
-    let EI_eff: number;
-    if (materialType === 'concrete') {
-      // Concrete: use EIeff from cracked section analysis
-      const crackedState = crackedStates.get(beam.id);
-      if (crackedState && crackedState.isCracked) {
-        // Use effective EI with tension stiffening
-        EI_eff = crackedState.EIeff;
-      } else {
-        // Uncracked: use full EI
-        EI_eff = material.E * beam.section.I;
-      }
-    } else {
-      // Steel: use tangent stiffness from M-κ relationship
-      const sectionState = sectionStates.get(beam.id);
-      EI_eff = sectionState?.tangentStiffness ?? (material.E * beam.section.I);
-    }
+    // Steel: use tangent stiffness from M-κ relationship
+    const sectionState = sectionStates.get(beam.id);
+    const EI_eff = sectionState?.tangentStiffness ?? (material.E * beam.section.I);
 
     // Local stiffness with effective EI
     const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
@@ -418,17 +404,14 @@ function assembleGlobalStiffnessFNL(
 
 /**
  * Update section states based on current displacements
- * For concrete: updates cracked section state based on moments (EC2 tension stiffening)
- * For steel: updates M-κ state for plastic hinge tracking
+ * For steel: updates M-κ state for plastic hinge tracking.
  */
 function updateAllSectionStates(
   mesh: Mesh,
   displacements: number[],
   sectionStates: Map<number, ISectionState>,
-  crackedStates: Map<number, ICrackedSectionState>,
-  beamForces: Map<number, IBeamForces>,
   opts: NonlinearSolverOptions
-): { sectionStates: Map<number, ISectionState>; crackedStates: Map<number, ICrackedSectionState> } {
+): Map<number, ISectionState> {
   const nodeIdToIndex = new Map<number, number>();
   let index = 0;
   for (const node of mesh.nodes.values()) {
@@ -474,41 +457,23 @@ function updateAllSectionStates(
     // κ ≈ (θ2 - θ1) / L + 6*(vL2 - vL1) / L²
     const kappa = (theta2 - theta1) / L + 6 * (vL2 - vL1) / (L * L);
 
-    if (opts.materialType === 'concrete') {
-      // Concrete: use cracked section analysis with EC2 tension stiffening
-      // Get maximum moment from beam forces
-      const forces = beamForces.get(beam.id);
-      const M = forces ? Math.max(Math.abs(forces.M1), Math.abs(forces.M2), Math.abs(forces.maxM)) : 0;
-
-      let crackedState = crackedStates.get(beam.id);
-      if (crackedState) {
-        // Get uncracked I from section
-        const Iunc = beam.section.I;
-        const Ecm = material.E;
-        const beta = 0.5;  // EC2 tension stiffening factor for sustained loading
-
-        crackedState = updateCrackedSectionState(crackedState, M, Iunc, Ecm, beta);
-        crackedStates.set(beam.id, crackedState);
-      }
-    } else {
-      // Steel: use M-κ relationship for plastic hinge tracking
-      let state = sectionStates.get(beam.id);
-      if (!state) {
-        state = initSectionState(beam.section, opts.materialType, steel, concrete);
-      }
-
-      state = updateSectionState(
-        state, kappa, beam.section, opts.materialType,
-        steel, concrete,
-        undefined, // rebarTop
-        undefined  // rebarBot
-      );
-
-      sectionStates.set(beam.id, state);
+    // Steel: use M-κ relationship for plastic hinge tracking
+    let state = sectionStates.get(beam.id);
+    if (!state) {
+      state = initSectionState(beam.section, opts.materialType, steel, concrete);
     }
+
+    state = updateSectionState(
+      state, kappa, beam.section, opts.materialType,
+      steel, concrete,
+      undefined, // rebarTop
+      undefined  // rebarBot
+    );
+
+    sectionStates.set(beam.id, state);
   }
 
-  return { sectionStates, crackedStates };
+  return sectionStates;
 }
 
 /**
@@ -817,35 +782,31 @@ export function solveNonlinear(
 
   // Initialize section states for material nonlinearity
   let sectionStates = new Map<number, ISectionState>();
-  let crackedStates = new Map<number, ICrackedSectionState>();
 
   if (opts.materialNonlinear) {
-    const steel = opts.materialType === 'steel' ? createSteelMaterial(opts.steelFy) : undefined;
-    const concrete = opts.materialType === 'concrete' ? createConcreteMaterial(opts.concreteFck) : undefined;
+    // Beton kent hier geen materiaalmodel meer. Er stond er wel een — met een
+    // geschatte wapening (0,5 % van het betonoppervlak) en b en h
+    // teruggerekend uit A en I — maar dat was een tweede antwoord op een vraag
+    // die de rekenkern al beantwoordt, mét de werkelijke wapeningskorf. Een
+    // stille terugval op de ongescheurde EI zou hier het ergste van twee
+    // werelden zijn: fysisch niet-lineair heten en het niet zijn.
+    if (opts.materialType === 'concrete') {
+      throw new Error(
+        'Fysisch niet-lineair beton loopt niet via deze solver. De gescheurde ' +
+        'buigstijfheid komt per segment uit de rekenkern (NEN-EN 1992-1-1, ' +
+        'M-N-κ met de wapeningskorf) en wordt als section.I van de ' +
+        'deelelementen aangeleverd — zie lib/betonStijfheid.ts.'
+      );
+    }
+    const steel = createSteelMaterial(opts.steelFy);
 
     for (const beam of mesh.beamElements.values()) {
       const material = mesh.getMaterial(beam.materialId);
       if (!material) continue;
 
-      if (opts.materialType === 'concrete') {
-        // Initialize cracked section state for concrete beams
-        // Estimate section dimensions from section properties
-        const h = beam.section.h || Math.sqrt(beam.section.I * 12 / 1);  // Approximate h for rectangular
-        const b = h > 0 ? beam.section.A / h : 0.3;  // Approximate b
-        const d = h * 0.9;  // Effective depth (assuming 10% cover)
-
-        // Estimate reinforcement area from section (default: 0.5% of concrete area)
-        const As = beam.section.A * 0.005;
-
-        // Use concrete material properties
-        const concMat = concrete!;
-        const crackedState = initCrackedSectionState(b, h, d, As, concMat, 200e9);  // Es = 200 GPa
-        crackedStates.set(beam.id, crackedState);
-      } else {
-        // Steel: use M-κ section state
-        const state = initSectionState(beam.section, opts.materialType, steel, concrete);
-        sectionStates.set(beam.id, state);
-      }
+      // Steel: use M-κ section state
+      const state = initSectionState(beam.section, opts.materialType, steel, undefined);
+      sectionStates.set(beam.id, state);
     }
   }
 
@@ -922,8 +883,7 @@ export function solveNonlinear(
       if (opts.materialNonlinear) {
         // Use effective stiffness from material state (M-κ for steel, cracked I for concrete)
         K = assembleGlobalStiffnessFNL(
-          mesh, sectionStates, crackedStates, axialForces,
-          opts.geometricNonlinear, opts.materialType
+          mesh, sectionStates, axialForces, opts.geometricNonlinear
         );
       } else {
         // Geometric nonlinearity only
@@ -959,11 +919,7 @@ export function solveNonlinear(
 
       // Update section states for material nonlinearity
       if (opts.materialNonlinear) {
-        const statesResult = updateAllSectionStates(
-          mesh, displacements, sectionStates, crackedStates, beamForces, opts
-        );
-        sectionStates = statesResult.sectionStates;
-        crackedStates = statesResult.crackedStates;
+        sectionStates = updateAllSectionStates(mesh, displacements, sectionStates, opts);
       }
 
       const incrNorm = Math.sqrt(deltaU.reduce((s, d) => s + d * d, 0));
@@ -1010,8 +966,7 @@ export function solveNonlinear(
   let K: Matrix;
   if (opts.materialNonlinear) {
     K = assembleGlobalStiffnessFNL(
-      mesh, sectionStates, crackedStates, axialForces,
-      opts.geometricNonlinear, opts.materialType
+      mesh, sectionStates, axialForces, opts.geometricNonlinear
     );
   } else {
     K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, opts.geometricNonlinear);
@@ -1042,15 +997,6 @@ export function solveNonlinear(
     maxVonMises = Math.max(maxVonMises, Math.abs(forces.maxM));
   }
 
-  // Log cracked section info for concrete analysis
-  if (opts.materialNonlinear && opts.materialType === 'concrete') {
-    let crackedCount = 0;
-    for (const state of crackedStates.values()) {
-      if (state.isCracked) crackedCount++;
-    }
-    console.log(`[FNL Concrete] ${crackedCount}/${crackedStates.size} beams cracked`);
-  }
-
   return {
     displacements,
     reactions,
@@ -1058,8 +1004,6 @@ export function solveNonlinear(
     beamForces,
     maxVonMises,
     minVonMises: 0,
-    // Include cracked section info in result for concrete FNL
-    crackedSectionStates: opts.materialNonlinear && opts.materialType === 'concrete' ? crackedStates : undefined,
   };
 }
 

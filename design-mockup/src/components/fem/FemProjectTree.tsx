@@ -14,6 +14,7 @@ import { PLAAT_COMPONENTEN } from "./FemCanvas";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import { useCheckStore } from "../../stores/checkStore";
+import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 
 interface TreeNodeProps {
   label: string;
@@ -91,6 +92,10 @@ function ResultsTab({
   // Zijn er toetsresultaten? Bepaalt de hint onder de Unity-check-rij.
   // (Hook vóór de early-return — hooks-regels.)
   const hasCheckResults = useCheckStore((s) => s.results.length > 0);
+  // Draagt het getoonde resultaat segmentstijfheden? Bepaalt of de EI-rij
+  // bruikbaar is; het canvas zet dit vlaggetje bij elke solve (zie
+  // resultaatInfoStore).
+  const heeftSegmentStijfheid = useResultaatInfoStore((s) => s.heeftSegmentStijfheid);
   if (!displayFlags || !setDisplayFlags) {
     return (
       <div className="fem-results-empty">
@@ -108,14 +113,35 @@ function ResultsTab({
     swatch: string;
     /** Optional companion scale-flag key for a slider next to this toggle. */
     scaleKey?: keyof DisplayFlags;
+    /**
+     * Gezet → de rij staat uitgegrijsd en is niet aan te zetten; de tekst is
+     * de REDEN, en die verschijnt zowel als tooltip als onder de rij. Bedoeld
+     * voor standen die alleen bij een bepaald soort berekening inhoud hebben
+     * (nu: EI zonder segmentuitkomsten). Een lege canvas-laag aanzetten zegt
+     * de gebruiker niets; een reden wel.
+     */
+    disabledReden?: string;
   };
   const ROWS: Row[] = [
     { key: "deflection", label: "Verplaatsing", hint: "Vervormde stand — Hermite-curve van knoopverplaatsingen", swatch: "var(--theme-accent)", scaleKey: "scaleU" },
     { key: "M",          label: "My",            hint: "Buigend moment om y-as (sagging+) loodrecht op balk",     swatch: "#2563eb",            scaleKey: "scaleM" },
     { key: "V",          label: "Vz",            hint: "Dwarskracht in z-richting — lineair aflopend onder UDL",  swatch: "#10b981",            scaleKey: "scaleV" },
     { key: "N",          label: "N",             hint: "Normaalkracht — constant per element",                    swatch: "#f59e0b",            scaleKey: "scaleN" },
+    { key: "rotation",   label: "φy",            hint: "Hoekverdraaiing θ(x) = dw/dx langs de staaf, in mrad — positief tegen de klok in; bij een stijve aansluiting gelijk aan de knooprotatie, bij een scharnier springt hij", swatch: "#8b5cf6", scaleKey: "scaleR" },
     { key: "reactions",  label: "Reactie",       hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
     { key: "uc",         label: "Unity check",   hint: "Maatgevende UC per staaf uit de normtoetsing — groen ≤ 1,0, rood > 1,0; klik op een badge voor de toetsing", swatch: "#16a34a" },
+    // EI-verloop: alleen zinvol met segmentuitkomsten uit de fysisch
+    // niet-lineaire (beton)berekening. Zonder die uitkomsten uitgegrijsd MET
+    // reden — er is dan niets gescheurd gerekend, en dat is een geldige
+    // toestand en geen fout.
+    {
+      key: "EI", label: "EI (beton)",
+      hint: "Buigstijfheid EI per staafdeel uit de fysisch niet-lineaire tweede orde; de gestreepte lijn is de ongescheurde EI₀, zodat de terugval bij scheurvorming zichtbaar wordt",
+      swatch: "#0f766e", scaleKey: "scaleEI",
+      disabledReden: heeftSegmentStijfheid
+        ? undefined
+        : "Geen segmentstijfheden in dit resultaat — reken fysisch niet-lineair (beton) om het scheurverloop te zien.",
+    },
     // Modelweergave (geen resultaat), maar hij hoort in dezelfde lijst — dit
     // is de ene plek waar canvas-weergave aan en uit gaat.
     { key: "profielLabels", label: "Profielnaam", hint: "Profielnaam klein langs elke staaf op het canvas", swatch: "var(--theme-text)" },
@@ -174,14 +200,18 @@ function ResultsTab({
       <div className="fem-results-section-title">Weergave op canvas</div>
       <div className="fem-results-toggle-list">
         {ROWS.map(row => {
-          const active = !!displayFlags[row.key];
+          const uitgegrijsd = row.disabledReden !== undefined;
+          // Een uitgegrijsde stand telt nooit als actief, ook niet als het
+          // vinkje uit een eerdere sessie nog aan stond.
+          const active = !uitgegrijsd && !!displayFlags[row.key];
           const scaleVal = row.scaleKey ? (Number(displayFlags[row.scaleKey] ?? 1)) : 1;
           return (
             <div key={row.key} className="fem-results-row">
               <button
-                className={`fem-results-toggle${active ? " active" : ""}`}
-                onClick={() => toggle(row.key)}
-                title={row.hint}
+                className={`fem-results-toggle${active ? " active" : ""}${uitgegrijsd ? " disabled" : ""}`}
+                onClick={() => { if (!uitgegrijsd) toggle(row.key); }}
+                disabled={uitgegrijsd}
+                title={row.disabledReden ?? row.hint}
               >
                 <span className="fem-results-toggle-swatch" style={{ background: row.swatch }} />
                 <span className="fem-results-toggle-label">{row.label}</span>
@@ -190,6 +220,16 @@ function ResultsTab({
                   <span className="fem-switch-dot" />
                 </span>
               </button>
+              {/* Uitgegrijsd: de reden staat er ONDER, niet alleen in de
+                  tooltip — anders moet de gebruiker raden waarom de stand
+                  niet meedoet. */}
+              {row.disabledReden && (
+                <div className="fem-results-scale-row" title={row.disabledReden}>
+                  <span style={{ fontSize: 10, color: "var(--theme-text-faint)" }}>
+                    {row.disabledReden}
+                  </span>
+                </div>
+              )}
               {row.scaleKey && active && (
                 <div className="fem-results-scale-row" title="Schaalfactor — pas de visuele grootte van dit diagram aan">
                   <input

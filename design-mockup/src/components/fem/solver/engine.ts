@@ -1252,6 +1252,7 @@ function convertResult(
       const bendingMoment: number[] = [];
       const deflection: number[] = [];
       const axialDisp: number[] = [];
+      const rotation: number[] = [];
       let offset_m = 0;
       for (const d of delen) {
         const st: number[] = d.stations ?? [];
@@ -1262,6 +1263,10 @@ function convertResult(
           bendingMoment.push((d.bendingMoment?.[i] ?? 0) * 1000);  // N·m → N·mm
           deflection.push((d.deflection?.[i] ?? 0) * 1000);        // m → mm
           axialDisp.push((d.axialDisp?.[i] ?? 0) * 1000);
+          // θ is dimensieloos (rad = m/m) — géén eenheidsomrekening. Op de
+          // gedeelde randknoop staat het station dubbel; θ is daar continu,
+          // dus beide kopieën dragen dezelfde waarde.
+          rotation.push(d.rotation?.[i] ?? 0);
         }
         offset_m += st.length > 0 ? st[st.length - 1] : 0;
       }
@@ -1273,6 +1278,7 @@ function convertResult(
         M_end:   laatste.M2 * 1000,
         L_mm: offset_m * 1000,
         stations_mm, normalForce, shearForce, bendingMoment, deflection, axialDisp,
+        rotation,
         ...(segmentVeld ? { segmenten: segmentVeld } : {}),
       });
       continue;
@@ -1300,6 +1306,9 @@ function convertResult(
       bendingMoment: (bf.bendingMoment ?? []).map((m: number) => m * 1000), // N·m → N·mm
       deflection: (bf.deflection ?? []).map((w: number) => w * 1000), // m → mm (lokaal, +y)
       axialDisp:  (bf.axialDisp  ?? []).map((u: number) => u * 1000), // m → mm
+      // θ = dw/dx is dimensieloos (rad): dezelfde waarde in m-assen en in
+      // mm-assen, dus onveranderd doorgegeven.
+      rotation:   bf.rotation ?? [],
       ...(segmentVeld ? { segmenten: segmentVeld } : {}),
     });
   }
@@ -1467,6 +1476,54 @@ const SECOND_ORDER_KEY = "__femSecondOrder";
 /** Lees de 2e-orde-status die solveAllCasesNonlinear aan een perCase-Map hing. */
 export function getSecondOrderState(perCase: Map<number, SolverResult>): SecondOrderState | undefined {
   return (perCase as any)[SECOND_ORDER_KEY];
+}
+
+/**
+ * De cachesleutel van één combinatie: id plus de gebruikte factoren.
+ *
+ * MOET gelijk blijven aan de sleutel die `combineResults` in combinations.ts
+ * bouwt — anders leest die de cache niet. `test-fysisch-nietlineair.mjs`
+ * controleert dat met een rondgang: iets in de cache zetten en het via
+ * `combineResults` terugkrijgen.
+ */
+function tweedeOrdeSleutel(combo: SecondOrderCombo): string {
+  return `${combo.id}|` + [...combo.factors.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([cid, f]) => `${cid}=${f}`)
+    .join(",");
+}
+
+/**
+ * Zet een van BUITEN uitgerekend combinatieresultaat op de plek waar
+ * `combineResults` en `computeEnvelope` het vinden.
+ *
+ * Waarom dit bestaat: de fysisch niet-lineaire lus (lib/betonStijfheid.ts)
+ * lost een combinatie zelf op — met per ronde nieuwe segmentstijfheden uit de
+ * rekenkern — en dat is asynchroon. `combineResults` is synchroon en blijft
+ * dat; het resultaat komt hier binnen en wordt daarna gewoon gelezen. Zonder
+ * deze route zou de lus de combinatie- en envelopeberekening moeten
+ * overschrijven, met twee wegen naar hetzelfde getal als gevolg.
+ *
+ * `false` = er hing geen 2e-orde-status aan deze Map (het model is met het
+ * eerste-ordepad doorgerekend); de aanroeper hoort dat te merken.
+ */
+export function zetCombinatieResultaat(
+  perCase: Map<number, SolverResult>,
+  combo: SecondOrderCombo,
+  resultaat: SolverResult,
+): boolean {
+  const so = getSecondOrderState(perCase);
+  if (!so) return false;
+  so.cache.set(tweedeOrdeSleutel(combo), resultaat);
+  return true;
+}
+
+/**
+ * De model-invoer waarmee de 2e-orde-status is opgezet — de fysisch
+ * niet-lineaire lus heeft hem nodig om er de segmentindeling in te zetten.
+ */
+export function getSecondOrderInput(perCase: Map<number, SolverResult>): MultiInput | undefined {
+  return getSecondOrderState(perCase)?.input;
 }
 
 /**

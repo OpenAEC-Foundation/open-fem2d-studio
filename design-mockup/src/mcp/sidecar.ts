@@ -396,6 +396,11 @@ function vormStaafkrachten(ef: ElementForces, metStations: boolean) {
     M_x: ef.bendingMoment.map(naarKNm),
     w_x: ef.deflection,
     u_x: ef.axialDisp,
+    // Hoekverdraaiing θ(x) = dw/dx per station, in RAD — dezelfde eenheid als
+    // `displacements.ry` en als `units.rotatie`, dus geen omrekening. Positief
+    // = tegen de klok in; bij een stijve aansluiting is θ op een staafeinde
+    // gelijk aan de ry van de aanliggende knoop.
+    theta_x: ef.rotation ?? [],
   };
 }
 

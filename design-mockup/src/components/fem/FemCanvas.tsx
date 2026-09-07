@@ -36,6 +36,7 @@ import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } fr
 import BarPropertiesDialog from "./BarPropertiesDialog";
 import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
+import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 import { resolveSection } from "../../lib/sectionResolver";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 // Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
@@ -2970,6 +2971,24 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (envelopeView) return null; // envelope rendered separately
     return results;
   }, [activeCombinationId, combinationResults, envelopeView, results]);
+
+  // ── Beschikbaarheid van de EI-weergave doorgeven ────────────────────────
+  // De weergavelijst (FemProjectTree) moet de EI-stand kunnen uitgrijzen als
+  // het getoonde resultaat géén segmentuitkomsten draagt — dan is er niets
+  // gescheurd gerekend en valt er geen stijfheidsverloop te tekenen. Alleen
+  // dit ene vlaggetje gaat door de store; de resultaatdata blijft in props.
+  const setHeeftSegmentStijfheid = useResultaatInfoStore(
+    (s) => s.setHeeftSegmentStijfheid,
+  );
+  useEffect(() => {
+    let heeft = false;
+    if (overlayResult) {
+      for (const ef of overlayResult.elements.values()) {
+        if (ef.segmenten && ef.segmenten.length > 0) { heeft = true; break; }
+      }
+    }
+    setHeeftSegmentStijfheid(heeft);
+  }, [overlayResult, setHeeftSegmentStijfheid]);
 
   // ── Plaatspanningscontouren (P3.2) ──────────────────────────────────────
   // Elementvlakken gevuld op de gekozen component; het kleurbereik is de
