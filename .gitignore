@@ -12,3 +12,11 @@ PROMPTS.md
 # Normen (NEN/EN) — auteursrechtelijk beschermd, mogen NOOIT in de repo of op
 # GitHub terechtkomen. Lokaal naslagwerk, gekopieerd van de bedrijfsschijf.
 /normen/
+
+# Bronbestanden van externe referentieberekeningen — de uitdraaien en de
+# projectbestanden van het pakket waarmee ze gemaakt zijn. Ze dragen de naam
+# van dat pakket in hun tekst en in hun bestandsextensie en horen daarom niet
+# in de repo (zie de regel over externe softwarenamen in CLAUDE.md). Lokaal
+# blijven ze gewoon staan; wat de repo van die berekeningen nodig heeft, staat
+# als platte tekst een map hoger.
+/verificatie calculations/original/
