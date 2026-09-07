@@ -67,6 +67,45 @@
   font-size: 12px;
 }
 
+/* Snapknopjes — één per snapsoort, in voorrangsvolgorde. De AAN-stand is aan
+   de accentkleur te zien, de UIT-stand aan de doorgestreepte, gedempte tekst,
+   zodat de stand ook zonder kleur af te lezen is. */
+.status-snap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+}
+
+.status-snap-btn {
+  appearance: none;
+  border: 1px solid var(--theme-status-separator);
+  background: transparent;
+  color: var(--theme-status-text-label);
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: line-through;
+  opacity: 0.65;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.status-snap-btn:hover {
+  background: var(--theme-status-hover);
+}
+
+.status-snap-btn.on {
+  border-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  color: var(--theme-status-text);
+  text-decoration: none;
+  opacity: 1;
+  font-weight: 500;
+}
+
 /* Mini app-logo in the status bar — sits to the left of all status items. */
 .status-bar-logo {
   display: inline-flex;

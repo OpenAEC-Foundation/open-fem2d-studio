@@ -253,3 +253,35 @@
 .pk-rij-eigen .pk-rij-sub {
   margin-left: 0;
 }
+
+/* Profielen die al in het project staan: snelkeuze boven de materiaalsoorten.
+   In een raamwerk komt hetzelfde profiel meestal op meer dan één staaf, en dan
+   is opnieuw door de reeksen klikken verloren tijd. */
+.pk-gebruikt {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+.pk-gebruikt-rij {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pk-gebruikt-knop {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 9px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  cursor: pointer;
+  text-align: left;
+}
+.pk-gebruikt-knop:hover { border-color: var(--theme-accent); }
+.pk-gebruikt-naam {
+  font-size: 12px;
+  font-weight: 600;
+}

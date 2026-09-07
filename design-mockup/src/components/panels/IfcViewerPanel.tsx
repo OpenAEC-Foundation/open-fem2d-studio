@@ -1,5 +1,26 @@
+/**
+ * IfcViewerPanel — het IFC-tabblad.
+ *
+ * Toont het GEOPENDE rekenmodel als IFC4 (Structural Analysis Domain): de
+ * boomstructuur links, de STEP-tekst in het midden en rechts de validatie
+ * plus wat er niet in IFC uit te drukken viel.
+ *
+ * Belangrijke regel: de tekst die hier in beeld staat is LETTERLIJK de tekst
+ * die de exportknoppen wegschrijven — beide komen uit één aanroep van
+ * `bouwIfcRekenmodel`. Er staat hier geen voorbeeldbestand meer.
+ */
 import { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  bouwIfcRekenmodel,
+  bouwIfcBoom,
+  verzamelIfcBeperkingen,
+  valideerIfc,
+  ifcStatistiek,
+  downloadTekstbestand,
+  type IfcRekenmodelInput,
+  type IfcBoomKnoop,
+} from "../../io/ifcExport";
 import "./IfcViewerPanel.css";
 
 // ── BuildingSMART documentation links ─────────────────────────
@@ -70,132 +91,9 @@ function highlightStepLine(text: string): React.ReactNode {
   return <>{tokens}</>;
 }
 
-// ── Syntax highlighting for IFCX JSON ─────────────────────────
+// ── STEP-weergave ─────────────────────────────────────────────
 
-function highlightJson(json: string): React.ReactNode {
-  const tokens: React.ReactNode[] = [];
-  const re = /("(?:\\.|[^"\\])*"\s*:)|("(?:\\.|[^"\\])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],])/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
-
-  while ((match = re.exec(json)) !== null) {
-    if (match.index > last) tokens.push(json.slice(last, match.index));
-    const [full] = match;
-    if (match[1]) {
-      tokens.push(<span key={key++} className="step-entity-type">{full}</span>);
-    } else if (match[2]) {
-      // Check if the string value is an IFC entity type (e.g. "IfcWall", "IfcSite")
-      const inner = full.slice(1, -1); // strip quotes
-      if (/^Ifc[A-Z][a-zA-Z]+$/.test(inner)) {
-        tokens.push(
-          <a
-            key={key++}
-            className="step-string step-link"
-            title={`${inner} — BuildingSMART docs`}
-            onClick={(e) => openIfcDocs(inner, e)}
-          >
-            {full}
-          </a>
-        );
-      } else {
-        tokens.push(<span key={key++} className="step-string">{full}</span>);
-      }
-    } else if (match[3]) {
-      tokens.push(<span key={key++} className="step-enum">{full}</span>);
-    } else if (match[4]) {
-      tokens.push(<span key={key++} className="step-entity-ref">{full}</span>);
-    } else if (match[5]) {
-      tokens.push(<span key={key++} className="step-keyword">{full}</span>);
-    } else {
-      tokens.push(full);
-    }
-    last = match.index + full.length;
-  }
-  if (last < json.length) tokens.push(json.slice(last));
-  return <>{tokens}</>;
-}
-
-// ── Sample data ───────────────────────────────────────────────
-
-const SAMPLE_STEP = `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
-FILE_NAME('sample.ifc','2026-03-23T12:00:00',(''),(''),'','OpenAEC Template','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-
-DATA;
-#1=IFCPROJECT('0YvctVUKvCZxI',#2,'Sample Project',$,$,$,$,(#20),#7);
-#2=IFCOWNERHISTORY(#3,#6,$,.NOCHANGE.,$,$,$,0);
-#3=IFCPERSONANDORGANIZATION(#4,#5,$);
-#4=IFCPERSON($,'Engineer',$,$,$,$,$,$);
-#5=IFCORGANIZATION($,'OpenAEC Foundation',$,$,$);
-#6=IFCAPPLICATION(#5,'0.1.0','Open FEM2D Studio','OpenFEM2DStudio');
-#7=IFCUNITASSIGNMENT((#8,#9,#10));
-#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
-#10=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
-#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-05,#21,$);
-#21=IFCAXIS2PLACEMENT3D(#22,$,$);
-#22=IFCCARTESIANPOINT((0.,0.,0.));
-#30=IFCSITE('3De4wG8izHuO0',#2,'Default Site',$,$,#31,$,$,.ELEMENT.,$,$,$,$,$);
-#31=IFCLOCALPLACEMENT($,#21);
-#40=IFCBUILDING('0FmgI$EcvBNOz',#2,'Default Building',$,$,#41,$,$,.ELEMENT.,$,$,$);
-#41=IFCLOCALPLACEMENT(#31,#21);
-#50=IFCBUILDINGSTOREY('1wnBb0bT17RAR',#2,'Ground Floor',$,$,#51,$,$,.ELEMENT.,0.);
-#51=IFCLOCALPLACEMENT(#41,#21);
-#60=IFCRELAGGREGATES('2M0VDqHHrF$xR',#2,$,$,#1,(#30));
-#61=IFCRELAGGREGATES('3WUw$nXaj9QQX',#2,$,$,#30,(#40));
-#62=IFCRELAGGREGATES('1Z7kPrWHb6Awm',#2,$,$,#40,(#50));
-ENDSEC;
-
-END-ISO-10303-21;`;
-
-const SAMPLE_IFCX = {
-  schema: "IFCX",
-  version: "0.1",
-  header: {
-    description: "IFCX export from Open FEM2D Studio",
-    timestamp: new Date().toISOString(),
-    application: "Open FEM2D Studio",
-    applicationVersion: "0.1.0",
-    originating_system: "OpenAEC Foundation",
-  },
-  units: {
-    length: "MILLIMETRE",
-    area: "SQUARE_METRE",
-    volume: "CUBIC_METRE",
-    angle: "RADIAN",
-  },
-  project: {
-    globalId: "0YvctVUKvCZxI",
-    name: "Sample Project",
-    spatialStructure: {
-      type: "IfcSite",
-      name: "Default Site",
-      children: [
-        {
-          type: "IfcBuilding",
-          name: "Default Building",
-          children: [
-            {
-              type: "IfcBuildingStorey",
-              name: "Ground Floor",
-              elevation: 0.0,
-              children: [],
-            },
-          ],
-        },
-      ],
-    },
-  },
-  data: [],
-};
-
-// ── Components ────────────────────────────────────────────────
-
-function StepViewer({ content }: { content: string }) {
+function StepViewer({ content, bestandsnaam }: { content: string; bestandsnaam: string }) {
   const { t } = useTranslation("ribbon");
   const [copied, setCopied] = useState(false);
 
@@ -219,17 +117,11 @@ function StepViewer({ content }: { content: string }) {
     setTimeout(() => setCopied(false), 2000);
   }, [content]);
 
+  // Schrijft PRECIES weg wat hierboven staat — zelfde string, geen tweede
+  // opbouw die er stiekem naast kan gaan zitten.
   const handleExport = useCallback(() => {
-    const blob = new Blob([content], { type: "application/x-step" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "model.ifc";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [content]);
+    downloadTekstbestand(content, bestandsnaam);
+  }, [content, bestandsnaam]);
 
   const size = new Blob([content]).size;
   const sizeLabel = size < 1024 ? `${size} B` : `${(size / 1024).toFixed(1)} KB`;
@@ -240,10 +132,10 @@ function StepViewer({ content }: { content: string }) {
         <span className="ifc-viewer-label">IFC4 STEP</span>
         <span className="ifc-viewer-stats">{lines.length} {t("ifc.lines")} &middot; {sizeLabel}</span>
         <div className="ifc-viewer-actions">
-          <button onClick={handleCopy} title={t("copy")}>
-            {copied ? "\u2713" : "\u2398"}
+          <button onClick={handleCopy} title="Kopieer naar klembord">
+            {copied ? "✓" : "⎘"}
           </button>
-          <button onClick={handleExport} title={t("export")}>
+          <button onClick={handleExport} title={`Opslaan als ${bestandsnaam}`}>
             .ifc
           </button>
         </div>
@@ -264,124 +156,29 @@ function StepViewer({ content }: { content: string }) {
   );
 }
 
-function IfcxViewer({ content }: { content: string }) {
-  const { t } = useTranslation("common");
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(content);
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = content;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [content]);
-
-  const handleExport = useCallback(() => {
-    const blob = new Blob([content], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "model.ifcx";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [content]);
-
-  const size = new Blob([content]).size;
-  const sizeLabel = size < 1024 ? `${size} B` : `${(size / 1024).toFixed(1)} KB`;
-
-  return (
-    <div className="ifc-viewer-pane">
-      <div className="ifc-viewer-toolbar">
-        <span className="ifc-viewer-label">IFCX JSON</span>
-        <span className="ifc-viewer-stats">{sizeLabel}</span>
-        <div className="ifc-viewer-actions">
-          <button onClick={handleCopy} title={t("copy")}>
-            {copied ? "\u2713" : "\u2398"}
-          </button>
-          <button onClick={handleExport} title={t("export")}>
-            .ifcx
-          </button>
-        </div>
-      </div>
-      <div className="ifc-viewer-code">
-        <pre className="ifc-viewer-json">{highlightJson(content)}</pre>
-      </div>
-    </div>
-  );
-}
-
 // ── IFC Spatial Structure Browser ─────────────────────────────
-
-interface TreeNode {
-  type: string;
-  name: string;
-  count?: number;
-  children?: TreeNode[];
-}
-
-const SAMPLE_TREE: TreeNode = {
-  type: "IfcProject",
-  name: "Sample Project",
-  children: [
-    {
-      type: "IfcSite",
-      name: "Default Site",
-      children: [
-        {
-          type: "IfcBuilding",
-          name: "Default Building",
-          children: [
-            {
-              type: "IfcBuildingStorey",
-              name: "Ground Floor",
-              children: [
-                { type: "IfcWall", name: "Walls", count: 5 },
-                { type: "IfcSlab", name: "Slabs", count: 2 },
-                { type: "IfcBeam", name: "Beams", count: 3 },
-                { type: "IfcColumn", name: "Columns", count: 4 },
-                { type: "IfcSpace", name: "Spaces", count: 2 },
-              ],
-            },
-            {
-              type: "IfcBuildingStorey",
-              name: "First Floor",
-              children: [
-                { type: "IfcWall", name: "Walls", count: 4 },
-                { type: "IfcSlab", name: "Slabs", count: 1 },
-                { type: "IfcBeam", name: "Beams", count: 2 },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ],
-};
 
 const TYPE_COLORS: Record<string, string> = {
   IfcProject: "#c084fc",
   IfcSite: "#34d399",
   IfcBuilding: "#60a5fa",
-  IfcBuildingStorey: "#fbbf24",
-  IfcWall: "#fb923c",
-  IfcSlab: "#f472b6",
-  IfcBeam: "#a78bfa",
-  IfcColumn: "#38bdf8",
-  IfcSpace: "#4ade80",
+  IfcStructuralAnalysisModel: "#fbbf24",
+  IfcStructuralPointConnection: "#38bdf8",
+  IfcStructuralCurveMember: "#a78bfa",
+  IfcBoundaryNodeCondition: "#fb923c",
+  IfcStructuralLoadGroup: "#f472b6",
+  IfcStructuralPointAction: "#f472b6",
+  IfcStructuralLinearAction: "#f472b6",
+  IfcStructuralCurveAction: "#f472b6",
+  IfcVertexPoint: "#4ade80",
+  IfcMaterialProfile: "#4ade80",
 };
 
-function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
-  const [expanded, setExpanded] = useState(depth < 3);
-  const hasChildren = node.children && node.children.length > 0;
+function TreeItem({ node, depth = 0 }: { node: IfcBoomKnoop; depth?: number }) {
+  // Standaard staat de hiërarchie tot en met het analysemodel open; de lange
+  // lijsten met knopen en staven vouwt de gebruiker zelf open.
+  const [expanded, setExpanded] = useState(depth < 4);
+  const hasChildren = node.kinderen && node.kinderen.length > 0;
   const color = TYPE_COLORS[node.type] || "var(--theme-text-secondary)";
 
   return (
@@ -404,12 +201,12 @@ function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
           title={`${node.type} — BuildingSMART docs`}
           onClick={(e) => openIfcDocs(node.type, e)}
         >{node.type}</a>
-        <span className="ifc-tree-name">{node.name}</span>
-        {node.count != null && <span className="ifc-tree-count">{node.count}</span>}
+        <span className="ifc-tree-name">{node.naam}</span>
+        {node.aantal != null && <span className="ifc-tree-count">{node.aantal}</span>}
       </button>
       {expanded && hasChildren && (
         <div className="ifc-tree-children">
-          {node.children!.map((child, i) => (
+          {node.kinderen!.map((child, i) => (
             <TreeItem key={i} node={child} depth={depth + 1} />
           ))}
         </div>
@@ -418,7 +215,7 @@ function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
   );
 }
 
-function StructureBrowser() {
+function StructureBrowser({ boom }: { boom: IfcBoomKnoop }) {
   const { t } = useTranslation("ribbon");
 
   return (
@@ -427,7 +224,82 @@ function StructureBrowser() {
         <span className="ifc-viewer-label">{t("ifc.structure")}</span>
       </div>
       <div className="ifc-structure-tree">
-        <TreeItem node={SAMPLE_TREE} />
+        <TreeItem node={boom} />
+      </div>
+    </div>
+  );
+}
+
+// ── Validatie, beperkingen en statistieken ────────────────────
+
+function RapportPane({
+  ifc,
+  beperkingen,
+}: {
+  ifc: string;
+  beperkingen: string[];
+}) {
+  const validatie = useMemo(() => valideerIfc(ifc), [ifc]);
+  const statistiek = useMemo(() => ifcStatistiek(ifc), [ifc]);
+  const geldig = validatie.fouten.length === 0;
+
+  return (
+    <div className="ifc-viewer-pane">
+      <div className="ifc-viewer-toolbar">
+        <span className="ifc-viewer-label">Validatie</span>
+        <span className="ifc-viewer-stats">
+          {validatie.entiteiten} entiteiten
+        </span>
+      </div>
+      <div className="ifc-viewer-code ifc-rapport">
+        <div className={`ifc-rapport-kop ${geldig ? "ok" : "fout"}`}>
+          {geldig
+            ? "Geldig IFC4-bestand — geen fouten gevonden."
+            : `${validatie.fouten.length} fout(en) gevonden.`}
+        </div>
+
+        {validatie.fouten.length > 0 && (
+          <ul className="ifc-rapport-lijst fout">
+            {validatie.fouten.map((r, i) => <li key={i}>{r}</li>)}
+          </ul>
+        )}
+        {validatie.waarschuwingen.length > 0 && (
+          <>
+            <div className="ifc-rapport-titel">Waarschuwingen</div>
+            <ul className="ifc-rapport-lijst waarschuwing">
+              {validatie.waarschuwingen.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          </>
+        )}
+
+        <div className="ifc-rapport-titel">Niet in IFC uitgedrukt</div>
+        {beperkingen.length === 0 ? (
+          <p className="ifc-rapport-tekst">
+            Het volledige model staat in het bestand.
+          </p>
+        ) : (
+          <ul className="ifc-rapport-lijst waarschuwing">
+            {beperkingen.map((r, i) => <li key={i}>{r}</li>)}
+          </ul>
+        )}
+
+        <div className="ifc-rapport-titel">Entiteiten</div>
+        <table className="ifc-rapport-tabel">
+          <tbody>
+            {statistiek.map(({ type, aantal }) => (
+              <tr key={type}>
+                <td>
+                  <a
+                    className="step-entity-type step-link"
+                    title={`${type} — BuildingSMART docs`}
+                    onClick={(e) => openIfcDocs(type, e)}
+                  >{type}</a>
+                </td>
+                <td className="ifc-rapport-getal">{aantal}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -435,17 +307,57 @@ function StructureBrowser() {
 
 // ── Main Panel ────────────────────────────────────────────────
 
-export default function IfcViewerPanel() {
-  const stepContent = SAMPLE_STEP;
-  const ifcxContent = JSON.stringify(SAMPLE_IFCX, null, 2);
+export interface IfcViewerPanelProps {
+  /**
+   * Het geopende rekenmodel. Ontbreekt het (bijvoorbeeld in een
+   * losgekoppeld venster, dat de modelstate van het hoofdvenster niet kan
+   * lezen), dan zegt het paneel dat eerlijk in plaats van een voorbeeld te
+   * tonen.
+   */
+  model?: IfcRekenmodelInput;
+}
+
+export default function IfcViewerPanel({ model }: IfcViewerPanelProps) {
+  const ifc = useMemo(
+    () => (model ? bouwIfcRekenmodel(model) : ""),
+    [model],
+  );
+  const boom = useMemo(() => (model ? bouwIfcBoom(model) : null), [model]);
+  const beperkingen = useMemo(
+    () => (model ? verzamelIfcBeperkingen(model) : []),
+    [model],
+  );
+  const bestandsnaam = useMemo(() => {
+    const basis = model?.project?.naam?.trim() || model?.projectNaam?.trim() || "rekenmodel";
+    return `${basis.replace(/[\\/:*?"<>|]/g, "_")}.ifc`;
+  }, [model]);
+
+  if (!model || !boom) {
+    return (
+      <div className="ifc-viewer-panel">
+        <div className="ifc-viewer-pane">
+          <div className="ifc-viewer-toolbar">
+            <span className="ifc-viewer-label">IFC4 STEP</span>
+          </div>
+          <div className="ifc-viewer-code ifc-rapport">
+            <p className="ifc-rapport-tekst">
+              Geen model beschikbaar in dit venster. Koppel de weergave terug
+              naar het hoofdvenster om de IFC-export van het geopende model te
+              zien.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ifc-viewer-panel">
-      <StructureBrowser />
+      <StructureBrowser boom={boom} />
       <div className="ifc-viewer-divider" />
-      <StepViewer content={stepContent} />
+      <StepViewer content={ifc} bestandsnaam={bestandsnaam} />
       <div className="ifc-viewer-divider" />
-      <IfcxViewer content={ifcxContent} />
+      <RapportPane ifc={ifc} beperkingen={beperkingen} />
     </div>
   );
 }

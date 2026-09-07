@@ -40,6 +40,13 @@ export interface DisplayFlags {
   plaatComponent: "vonMises" | "sigmaX" | "sigmaY" | "tauXY" | "nx" | "ny" | "nxy";
   /** Elementranden (mesh-lijnen) tonen in de contourlaag. */
   plaatMesh: boolean;
+  /**
+   * Profielnaam klein langs elke staaf op het canvas. Dit is een MODEL-
+   * weergave en geen resultaatweergave, maar hij hoort hier omdat dit de ene
+   * lijst met canvas-vinkjes is: een tweede vinkjessysteem ernaast zou de
+   * gebruiker laten zoeken waar iets uit te zetten valt.
+   */
+  profielLabels: boolean;
 }
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
@@ -50,6 +57,9 @@ export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   uc: false,
   scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1,
   plaatContour: true, plaatComponent: "vonMises", plaatMesh: true,
+  // Aan: de gebruiker wil bij het tekenen kunnen zien welk profiel een staaf
+  // heeft zonder hem eerst aan te klikken.
+  profielLabels: true,
 };
 
 interface Props {

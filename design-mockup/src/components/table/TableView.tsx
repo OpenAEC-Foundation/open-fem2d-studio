@@ -266,7 +266,7 @@ export default function TableView(props: TableViewProps) {
       columns: [
         t("table.colId"), t("table.colFrom"), t("table.colTo"), t("table.colLength"),
         t("table.colMaterial"), t("table.colProfile"),
-        "Belastingtype",
+        "Staaftype",
         t("table.colHingeStart"), t("table.colHingeEnd"),
       ],
       editable: true,
@@ -343,8 +343,8 @@ export default function TableView(props: TableViewProps) {
                   onCommit={(v) => updateBeam(b.id, { profile: v })}
                 />
               </td>
-              {/* Belastingtype (constructieve rol) — leeg = automatisch uit
-                  de geometrie; de windgenerator leest dit veld. */}
+              {/* Staaftype — leeg = automatisch uit de geometrie; de
+                  windgenerator leest dit veld (op schijf `loadRole`). */}
               <td>
                 <SelectCell
                   value={b.loadRole ?? ""}

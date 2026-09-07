@@ -51,17 +51,33 @@ import type {
 import {
   withPlateDefaults, PLATE_DEFAULTS,
   isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur,
-  commitPlaatMeshCache,
+  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD,
 } from "./femTypes";
+// Onthoudt per lastsoort de laatst ingevulde waarde en biedt die aan als
+// startwaarde bij de volgende plaatsing (sessiegeheugen, geen projectgegeven).
+import {
+  lastwaarden, isOnthouden, onthoudLastwaarden, type LastSoort,
+} from "../../lib/laatsteLastwaarden";
 // Alleen importeren (mesh-generatie voor de CDT-cache, P4.2) — de core zelf
 // blijft ongewijzigd.
 import { Mesh } from "../../core/fem/Mesh";
 import { generatePolygonPlateMeshV2 } from "../../core/fem/PlateRegion";
 import InlinePopover from "../openaec/InlinePopover";
-import { notifyWarning } from "../../io/notify";
+import { notifyInfo, notifyWarning } from "../../io/notify";
 // Pure stramien-helper (zelfde tolerantie als de store-mutator) — alleen om
 // in de maat-popover te tonen hoeveel knopen mee gaan schuiven.
-import { knopenOpStramienAs } from "../../hooks/useFemStore";
+// Lastselectie + klembord: pure helpers, zodat de testbatterij dezelfde
+// regels naspeelt als het canvas.
+import {
+  knopenOpStramienAs, selecteerLastenVanZelfdeSoort, kopieerLastenNaarKlembord,
+} from "../../hooks/useFemStore";
+// Modelcontrole: knopen die op een staaf liggen zonder eraan vast te zitten,
+// samenvallende knopen en vrije uiteinden — mét knoopnummers en herstelactie,
+// zodat de solver niet als eerste met "singuliere matrix" hoeft te komen.
+import { CONTROLE_TOL_MM, controleerModel, type Bevinding } from "../../lib/modelControle";
+// Snap per soort (knoop / stramien / raster) — de knopjes staan in de
+// statusbalk onderin; deze hook leest dezelfde stand.
+import { useSnapInstellingen } from "../../hooks/useSnapInstellingen";
 
 // Re-export Tool so older imports (Ribbon, HomeTab) keep working.
 export type { Tool } from "./femTypes";
@@ -308,12 +324,34 @@ interface FemCanvasProps {
   updateLoad?: (id: number, updates: Partial<Load>) => void;
   deleteSelected: () => void;
   splitBeamAt: (beamId: number, x: number, z: number) => void;
+  /**
+   * Knoop plaatsen die zich meteen AANSLUIT op elke staaf waar hij middenop
+   * ligt (die staaf wordt daar gesplitst). Dit is het gereedschap achter
+   * "steunpunt halverwege een ligger": zonder splitsing is de nieuwe knoop een
+   * los uiteinde dat de ligger niet raakt. Retourneert het knoop-id.
+   */
+  addNodeMetSplitsing?: (x: number, z: number) => number;
+  /** Herstelactie modelcontrole: splits `beamId` op de bestaande `nodeId`. */
+  verbindKnoopMetStaaf?: (nodeId: number, beamId: number) => boolean;
+  /** Herstelactie modelcontrole: voeg twee samenvallende knopen samen. */
+  voegKnopenSamen?: (bewaarId: number, verwijderId: number) => boolean;
+  /** Herstelactie modelcontrole: alles herstellen in één undo-stap. */
+  herstelModel?: () => string[];
   // Transformaties (multi-bewust). `false` = selectie bevat niets
   // transformeerbaars → canvas toont feedback i.p.v. een stille no-op.
   translateSelection: (sel: Selection, dx: number, dz: number) => boolean;
   copySelection: (sel: Selection, dx: number, dz: number) => boolean;
   rotateSelection: (sel: Selection, cx: number, cz: number, angleRad: number) => boolean;
   mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => boolean;
+  /**
+   * Plak klembordlasten in een belastinggeval (Ctrl+V). Retourneert de
+   * telling plus de naam van het geval, zodat het canvas exact kan melden
+   * wat er is geplakt, wat er al stond en wat er geen aangrijpingspunt meer
+   * had. Ontbreekt de prop (standalone gebruik), dan doet Ctrl+V niets.
+   */
+  plakLasten?: (klembord: Omit<Load, "id">[], doelCaseId: number) => {
+    geplakt: number; overgeslagen: number; verweesd: number; gevalNaam: string;
+  };
 
   // View settings
   grid: GridSettings;
@@ -376,6 +414,12 @@ const ORIGIN_Y_FROM_BOTTOM = 60;
 const DIM_KNOOP_R = 3.5;
 /** Verspringing van het maat-label t.o.v. de maatlijn (boven / ernaast). */
 const DIM_LABEL_DY = 13;
+/** Straal van het scharnierbolletje op de staaf (px, schermruimte). */
+const SCHARNIER_R_PX = 3.5;
+/** Afstand van het scharnierbolletje tot de knoop (px, schermruimte). */
+const SCHARNIER_AFSTAND_PX = 11;
+/** Loodrechte verspringing van de profielnaam t.o.v. de staafas (px). */
+const PROFIEL_LABEL_OFFSET_PX = 9;
 
 export default function FemCanvas(props: FemCanvasProps) {
   const {
@@ -383,7 +427,9 @@ export default function FemCanvas(props: FemCanvasProps) {
     setSelection, addNode, addBeam, updateBeam, addPlate, addSupport, addLoad,
     updateLoad,
     deleteSelected, splitBeamAt,
+    addNodeMetSplitsing, verbindKnoopMetStaaf, voegKnopenSamen, herstelModel,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
+    plakLasten,
     translateNodes,
     grid, structuralGrid, setStructuralGrid, verplaatsStramienAs,
     solveTrigger, onSolveResult, scheefstand,
@@ -423,6 +469,15 @@ export default function FemCanvas(props: FemCanvasProps) {
   void setDisplayFlagsProp;
   // Beam currently open in the BarPropertiesDialog (dblclick).
   const [editingBeamId, setEditingBeamId] = useState<number | null>(null);
+  // Staat de bevindingenlijst van de modelcontrole uitgeklapt?
+  const [controleOpen, setControleOpen] = useState(false);
+  /**
+   * Maat die tijdens het tekenen van een staaf is ingetypt (in METERS, zoals
+   * alle afstanden in de UI). null = niets getypt, de muispositie bepaalt het
+   * tweede punt. Zelfde bediening als de G-greep: cijfers typen, Enter
+   * bevestigt, Backspace wist, Escape annuleert.
+   */
+  const [beamLengte, setBeamLengte] = useState<string | null>(null);
   // Dimension-edit popover state: click a maatlijn to enter a new distance.
   const [dimEdit, setDimEdit] = useState<{
     axis: "x" | "z";           // x = horizontal dim (between x-axes), z = vertical
@@ -475,6 +530,16 @@ export default function FemCanvas(props: FemCanvasProps) {
 
   // Right-click context menu (Bewerk / Verwijder / Dupliceer)
   const [contextMenu, setContextMenu] = useState<{ sx: number; sy: number } | null>(null);
+
+  /**
+   * Klembord voor BELASTINGEN (Ctrl+C / Ctrl+V). Bewaart de lasten zelf, niet
+   * hun id's: zo overleeft een gekopieerde set het wisselen van
+   * belastinggeval en zelfs het verwijderen van het origineel. Een ref en
+   * geen state — het klembord verandert niets aan wat er op het scherm staat,
+   * dus een hertekening is niet nodig. Leeft zolang het canvas leeft; het
+   * gaat niet mee in het projectbestand en niet naar het systeemklembord.
+   */
+  const lastenKlembordRef = useRef<Omit<Load, "id">[]>([]);
 
   // ── Drag-to-move state (mouse-driven, Select tool only) ────────────────
   // While dragging a node or beam we keep the original positions of all the
@@ -559,6 +624,26 @@ export default function FemCanvas(props: FemCanvasProps) {
   // expects a SolverResult; the multi-LC pipeline runs in parallel in App.tsx.
   useEffect(() => {
     if (solveTrigger === undefined || solveTrigger === 0) return;
+    // Modelcontrole VÓÓR het rekenen. Een kolomvoet die alleen maar óp een
+    // ligger ligt, of twee losse knopen op dezelfde plek, leveren een
+    // singuliere matrix op — een melding die niet zegt wélke knoop het is.
+    // Daarom eerst de controle, met knoopnummers en een herstelactie in het
+    // paneel rechtsonder. De berekening wordt dan overgeslagen: doorrekenen
+    // zou óf falen, óf een antwoord geven bij een model dat de gebruiker niet
+    // bedoeld heeft.
+    const vooraf = controleerModel({ nodes, beams, supports, plates });
+    const blokkerend = vooraf.filter(b => b.ernst === "fout");
+    if (blokkerend.length > 0) {
+      setControleOpen(true);
+      setResults(null);
+      setSolveError(
+        `Model niet doorgerekend — ${blokkerend.length} ` +
+        `${blokkerend.length === 1 ? "onderdeel is" : "onderdelen zijn"} niet ` +
+        "goed aangesloten. Zie de modelcontrole rechtsonder; herstellen kan daar.",
+      );
+      onSolveResultRef.current?.(null);
+      return;
+    }
     try {
       const activeLoads = loads.filter(l => l.caseId === activeLoadCaseId);
       const distLoads: {
@@ -754,37 +839,67 @@ export default function FemCanvas(props: FemCanvasProps) {
     z: (size.h - ORIGIN_Y_FROM_BOTTOM + view.offsetY - sy) / view.scale,
   }), [size.h, view]);
 
-  // Raster-snap aan/uit — schakelbaar via de Snap-knop in de HUD. Uit =
-  // vrij tekenen/slepen op exacte muispositie (stramien-snap ook uit).
-  const [snapAan, setSnapAan] = useState(true);
+  // Snap per soort aan/uit — de knopjes staan in de statusbalk onderin
+  // (StatusBar). Alles uit = vrij tekenen/slepen op de exacte muispositie.
+  const snapInstellingen = useSnapInstellingen();
   const snap = useCallback((v: number) =>
-    snapAan ? Math.round(v / grid.spacingMm) * grid.spacingMm : v,
-  [grid.spacingMm, snapAan]);
+    snapInstellingen.raster ? Math.round(v / grid.spacingMm) * grid.spacingMm : v,
+  [grid.spacingMm, snapInstellingen.raster]);
 
   /**
-   * Snap a (world-coord) point to the nearest STRAMIEN intersection if it's
-   * within `radiusModel` mm; otherwise fall back to the 500 mm grid snap.
-   * Returns the snapped point + a flag for the canvas to show the amber halo.
+   * Snap een punt in modelcoördinaten, MET VOORRANG.
+   *
+   *   1. KNOOP     — een bestaande knoop binnen de knoopstraal wint altijd.
+   *   2. STRAMIEN  — per as afzonderlijk: ligt de muis dicht bij een verticale
+   *                  stramienas dan wordt x die as, idem voor z en een niveau.
+   *                  Vallen beide binnen bereik, dan is dat vanzelf het
+   *                  snijpunt. Per as, want een stramienLIJN hoort ook te
+   *                  vangen — niet alleen het kruispunt van twee lijnen.
+   *   3. RASTER    — het achtergrondraster, alleen voor wat 1 en 2 niet vingen.
+   *
+   * Dit is de volgorde die de gebruiker verwacht: het raster is een hulplijn,
+   * een knoop en een stramienas zijn constructiegegevens. Vóór deze wijziging
+   * won het raster van de stramienas zodra de as niet toevallig op een
+   * rasterlijn lag, en verschoof een klik op de as naar de dichtstbijzijnde
+   * rasterpositie.
+   *
+   * `snapped` blijft de vlag voor de amberkleurige halo (nu: knoop óf
+   * stramien, want beide zijn een "harde" vangst); `soort` zegt welke.
    */
-  const snapToStramien = useCallback((mx: number, mz: number): { x: number; z: number; snapped: boolean } => {
-    if (!snapAan) return { x: mx, z: mz, snapped: false };
-    if (!structuralGrid?.enabled) return { x: snap(mx), z: snap(mz), snapped: false };
-    // Convert 8 screen-px tolerance into mm in world space using the live scale.
-    const tolModel = 8 / view.scale;
-    let bestX: number | null = null;
-    let bestZ: number | null = null;
-    let bestDist = Infinity;
-    for (const ax of structuralGrid.xAxes) {
+  const snapPunt = useCallback((mx: number, mz: number): {
+    x: number; z: number; snapped: boolean; soort: "knoop" | "stramien" | "raster" | "vrij";
+  } => {
+    // 1. Knoopsnap — zelfde straal als findSnapNode (14 px), omgerekend naar mm.
+    if (snapInstellingen.knoop) {
+      const tolKnoop = 14 / view.scale;
+      let beste: { x: number; z: number; d: number } | null = null;
+      for (const n of nodes) {
+        const d = Math.hypot(mx - n.x, mz - n.z);
+        if (d <= tolKnoop && (beste === null || d < beste.d)) beste = { x: n.x, z: n.z, d };
+      }
+      if (beste) return { x: beste.x, z: beste.z, snapped: true, soort: "knoop" };
+    }
+    // 2. Stramien — per as, met 8 px tolerantie omgerekend naar mm.
+    let asX: number | null = null;
+    let asZ: number | null = null;
+    if (snapInstellingen.stramien && structuralGrid?.enabled) {
+      const tolModel = 8 / view.scale;
+      let besteX = Infinity, besteZ = Infinity;
+      for (const ax of structuralGrid.xAxes) {
+        const d = Math.abs(mx - ax.position);
+        if (d <= tolModel && d < besteX) { besteX = d; asX = ax.position; }
+      }
       for (const az of structuralGrid.zAxes) {
-        const d = Math.hypot(mx - ax.position, mz - az.position);
-        if (d <= tolModel && d < bestDist) {
-          bestDist = d; bestX = ax.position; bestZ = az.position;
-        }
+        const d = Math.abs(mz - az.position);
+        if (d <= tolModel && d < besteZ) { besteZ = d; asZ = az.position; }
       }
     }
-    if (bestX !== null && bestZ !== null) return { x: bestX, z: bestZ, snapped: true };
-    return { x: snap(mx), z: snap(mz), snapped: false };
-  }, [structuralGrid, view.scale, snap, snapAan]);
+    // 3. Raster voor de assen die het stramien niet ving.
+    const x = asX ?? snap(mx);
+    const z = asZ ?? snap(mz);
+    if (asX !== null || asZ !== null) return { x, z, snapped: true, soort: "stramien" };
+    return { x, z, snapped: false, soort: snapInstellingen.raster ? "raster" : "vrij" };
+  }, [structuralGrid, view.scale, snap, snapInstellingen, nodes]);
 
   /** Collect every node id implied by a Selection (handles single / multi). */
   const selectionNodeIds = useCallback((sel: Selection): number[] => {
@@ -872,6 +987,53 @@ export default function FemCanvas(props: FemCanvasProps) {
     return Math.min(1, Math.max(0, t));
   }, [beams, nodes]);
 
+  /**
+   * Knoop plaatsen die zich AANSLUIT op wat eronder ligt: ligt het punt in het
+   * inwendige van een of meer staven, dan worden die daar gesplitst zodat de
+   * knoop er echt aan vastzit. Dit is het gedrag achter "steunpunt halverwege
+   * een ligger": een losse knoop óp een ligger is geometrisch overtuigend en
+   * constructief een mechanisme.
+   *
+   * Valt terug op het gewone `addNode` wanneer de parent de splitsende variant
+   * niet aanreikt (de canvas blijft dan bruikbaar, alleen zonder aansluiting).
+   */
+  const plaatsKnoop = useCallback((x: number, z: number): number => {
+    if (addNodeMetSplitsing) return addNodeMetSplitsing(x, z);
+    return addNode(x, z);
+  }, [addNodeMetSplitsing, addNode]);
+
+  /**
+   * Ligt er een staaf onder de muis (en geen knoop), maak dan dáár een knoop
+   * die de staaf in twee delen splitst, en geef zijn id terug. Zonder staaf
+   * onder de muis: null — het gereedschap doet dan niets, zoals voorheen.
+   *
+   * Gebruikt door de oplegging-gereedschappen, zodat een steunpunt halverwege
+   * een doorgaande ligger in één klik goed staat.
+   *
+   * Het punt van `findSnapBeam` is RASTER-gesnapt en kan daardoor naast een
+   * SCHUINE staaf vallen; daarom wordt het hier teruggeprojecteerd op de
+   * staafas. Zonder die projectie zou de knoop er net naast komen te liggen —
+   * precies het gebrek dat dit gereedschap moet voorkomen.
+   */
+  const knoopOpStaafOnderMuis = useCallback((sx: number, sy: number): number | null => {
+    const sb = findSnapBeam(sx, sy);
+    if (!sb) return null;
+    const b = beams.find(bb => bb.id === sb.beamId);
+    const a = b ? nodes.find(n => n.id === b.from) : undefined;
+    const c = b ? nodes.find(n => n.id === b.to) : undefined;
+    if (!a || !c) return null;
+    const vx = c.x - a.x, vz = c.z - a.z;
+    const lenSq = vx * vx + vz * vz;
+    if (lenSq < 1e-9) return null;
+    const t = Math.min(1, Math.max(0, ((sb.x - a.x) * vx + (sb.z - a.z) * vz) / lenSq));
+    const len = Math.sqrt(lenSq);
+    // Vlak bij een uiteinde: gebruik die knoop zelf. Splitsen zou daar een
+    // staaf met lengte nul opleveren.
+    if (t * len <= CONTROLE_TOL_MM) return a.id;
+    if ((1 - t) * len <= CONTROLE_TOL_MM) return c.id;
+    return plaatsKnoop(a.x + vx * t, a.z + vz * t);
+  }, [findSnapBeam, plaatsKnoop, beams, nodes]);
+
   // Dichtstbijzijnde plaatrand binnen 8 px (P3.3/P4.3) — gebruikt door het
   // Lijnlast-gereedschap wanneer er géén staaf onder de muis ligt, zodat
   // één tool zowel staaf-lijnlasten als plaatrandlasten plaatst.
@@ -926,6 +1088,13 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (sel.type === "multi") return sel.beamIds.includes(beamId);
     return false;
   }, []);
+  /** Is deze last geselecteerd — los, of als deel van een lastselectie? */
+  const isLastGeselecteerd = useCallback((loadId: number): boolean => {
+    if (!selection) return false;
+    if (selection.type === "load") return selection.id === loadId;
+    if (selection.type === "multi") return !!selection.loadIds?.includes(loadId);
+    return false;
+  }, [selection]);
   const addNodeToSelection = useCallback((nodeId: number, sel: Selection): Selection => {
     if (!sel) return { type: "node", id: nodeId };
     if (sel.type === "node") return { type: "multi", nodeIds: [sel.id, nodeId], beamIds: [], plateIds: [] };
@@ -1020,7 +1189,7 @@ export default function FemCanvas(props: FemCanvasProps) {
 
     // Deellast-greep-sleep: projecteer de muis op de staafas → fractie,
     // snap het geprojecteerde punt via de bestaande snap-helper (raster +
-    // stramien; respecteert de snapAan-toggle) en klem tegen de andere
+    // stramien; respecteert de snapknopjes) en klem tegen de andere
     // greep met minimaal 2% staaflengte verschil. Alleen live preview —
     // de commit volgt op muis-loslaten (handleMouseUp).
     if (loadHandleDrag) {
@@ -1034,7 +1203,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           const tRaw = ((world.x - nA.x) * vx + (world.z - nA.z) * vz) / lenSq;
           // Snap het PUNT op de as en projecteer terug, zodat de greep op de
           // staaf blijft én het actieve rasterpunt gevolgd wordt.
-          const pSnap = snapToStramien(nA.x + vx * tRaw, nA.z + vz * tRaw);
+          const pSnap = snapPunt(nA.x + vx * tRaw, nA.z + vz * tRaw);
           let t = ((pSnap.x - nA.x) * vx + (pSnap.z - nA.z) * vz) / lenSq;
           const MIN_GAP = 0.02;
           if (loadHandleDrag.end === "start") {
@@ -1050,7 +1219,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
 
     // Snap to stramien intersection if close, else to grid spacing.
-    const snapped = snapToStramien(world.x, world.z);
+    const snapped = snapPunt(world.x, world.z);
     setHoverModel({ x: snapped.x, z: snapped.z });
     // Hover halo (Select tool only)
     if (tool === "select" && !boxSelect && !dragState && !grabMode && !rotateMode) {
@@ -1074,7 +1243,7 @@ export default function FemCanvas(props: FemCanvasProps) {
 
     // Drag-to-move: update ghost preview delta in mm (snapped).
     if (dragState) {
-      const snappedDrag = snapToStramien(world.x, world.z);
+      const snappedDrag = snapPunt(world.x, world.z);
       const dx = snappedDrag.x - dragState.originModel.x;
       const dz = snappedDrag.z - dragState.originModel.z;
       setDragState({ ...dragState, currentDelta: { dx, dz } });
@@ -1089,7 +1258,7 @@ export default function FemCanvas(props: FemCanvasProps) {
 
     // G-grab: update cursor + recompute delta visualisation.
     if (grabMode) {
-      const snappedG = snapToStramien(world.x, world.z);
+      const snappedG = snapPunt(world.x, world.z);
       setGrabMode({ ...grabMode, cursorModel: { x: snappedG.x, z: snappedG.z } });
       return;
     }
@@ -1302,7 +1471,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     // (touchpad-tap, snelle klik, automation) komt dan stilzwijgend op de
     // oude of ontbrekende hoverpositie uit.
     const clickWorld = screenToWorld(sx, sy);
-    const clickSnap = snapToStramien(clickWorld.x, clickWorld.z);
+    const clickSnap = snapPunt(clickWorld.x, clickWorld.z);
     const clickModel = { x: clickSnap.x, z: clickSnap.z };
 
     if (tool === "select") {
@@ -1316,25 +1485,33 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
 
     if (tool === "addNode") {
+      if (overNodeId !== null) return;                      // staat er al een
+      // Klik op een bestaande staaf: knoop ÓP die staaf, en de staaf wordt
+      // daar in twee delen gesplitst zodat de knoop er echt aan vastzit.
+      if (knoopOpStaafOnderMuis(sx, sy) !== null) return;
       if (nodes.some(n => n.x === clickModel.x && n.z === clickModel.z)) return;
-      addNode(clickModel.x, clickModel.z);
+      plaatsKnoop(clickModel.x, clickModel.z);
       return;
     }
 
     if (tool === "addBeam") {
       // Need 2 node clicks. If clicking empty area, snap-create a node first.
       let nodeId = overNodeId;
+      // Ook een staafbegin/-einde sluit aan op wat eronder ligt: op een
+      // bestaande staaf klikken splitst die en gebruikt de nieuwe tussenknoop.
+      if (nodeId === null) nodeId = knoopOpStaafOnderMuis(sx, sy);
       if (nodeId === null) {
         const existing = nodes.find(n => n.x === clickModel.x && n.z === clickModel.z);
-        if (existing) nodeId = existing.id;
-        else nodeId = addNode(clickModel.x, clickModel.z);
+        nodeId = existing ? existing.id : plaatsKnoop(clickModel.x, clickModel.z);
       }
       if (nodeId === null) return;
       if (beamStart === null) {
         setBeamStart(nodeId);
+        setBeamLengte(null);
       } else if (beamStart !== nodeId) {
         addBeam(beamStart, nodeId);
         setBeamStart(null);
+        setBeamLengte(null);
       }
       return;
     }
@@ -1416,22 +1593,30 @@ export default function FemCanvas(props: FemCanvasProps) {
 
     if (tool === "addPinned" || tool === "addFixed"
      || tool === "addXRoller" || tool === "addZRoller") {
-      if (overNodeId === null) return;
       const type =
         tool === "addPinned"  ? "pinned"  :
         tool === "addFixed"   ? "fixed"   :
         tool === "addXRoller" ? "xRoller" : "zRoller";
-      addSupport(overNodeId, type);
+      // STEUNPUNT HALVERWEGE EEN LIGGER: staat er geen knoop onder de muis maar
+      // wél een staaf, dan komt de knoop op de staaf te liggen ÉN wordt de
+      // staaf daar in twee delen gesplitst. Zonder die splitsing zou de
+      // oplegging aan een losse knoop hangen die de ligger niet raakt.
+      const nodeId = overNodeId ?? knoopOpStaafOnderMuis(sx, sy);
+      if (nodeId === null) return;
+      addSupport(nodeId, type);
       return;
     }
 
     if (tool === "addZSpring" || tool === "addXSpring" || tool === "addRotSpring") {
-      if (overNodeId === null) return;
-      const n = nodes.find(nn => nn.id === overNodeId);
-      if (!n) return;
-      const p = worldToScreen(n.x, n.z);
+      const nodeId = overNodeId ?? knoopOpStaafOnderMuis(sx, sy);
+      if (nodeId === null) return;
+      const n = nodes.find(nn => nn.id === nodeId);
       const kind = tool === "addZSpring" ? "zSpring" : tool === "addXSpring" ? "xSpring" : "rotSpring";
-      setPopover({ kind, nodeId: overNodeId, sx: p.x, sy: p.y });
+      // De knoop kan zojuist zijn aangemaakt en staat dan nog niet in `nodes`
+      // (die prop komt pas met de volgende render mee) — val terug op de
+      // klikpositie voor het ankerpunt van de popover.
+      const p = n ? worldToScreen(n.x, n.z) : { x: sx, y: sy };
+      setPopover({ kind, nodeId, sx: p.x, sy: p.y });
       return;
     }
 
@@ -1540,6 +1725,45 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
   };
 
+  // ── Maat intypen tijdens het tekenen van een staaf ──────────────────────
+  /**
+   * Het tweede punt van de staaf uit de INGETYPTE lengte: de richting komt van
+   * de muis (dus je wijst de kant op en typt hoe ver), de maat uit het
+   * toetsenbord. Zelfde bediening als de G-greep, maar in METERS — dat is de
+   * eenheid waarin de rest van de UI afstanden toont.
+   *
+   * Het eindpunt wordt op hele mm afgerond (het model rekent in mm) en via
+   * `plaatsKnoop` geplaatst, zodat een eindpunt dat op een bestaande staaf
+   * valt daar ook echt op aansluit.
+   */
+  const beamLengteMm = useMemo(() => {
+    if (beamLengte === null) return null;
+    const m = parseFloat(beamLengte.replace(",", "."));
+    return Number.isFinite(m) && m > 0 ? m * 1000 : null;
+  }, [beamLengte]);
+
+  /** Eindpunt van de getypte maat, of null als er (nog) niets te tekenen is. */
+  const beamMaatEindpunt = useMemo(() => {
+    if (beamStart === null || beamLengteMm === null || !hoverModel) return null;
+    const start = nodes.find(n => n.id === beamStart);
+    if (!start) return null;
+    const dx = hoverModel.x - start.x, dz = hoverModel.z - start.z;
+    const l = Math.hypot(dx, dz);
+    if (l < 1e-6) return null;   // muis nog op de startknoop: geen richting
+    return {
+      x: Math.round(start.x + (dx / l) * beamLengteMm),
+      z: Math.round(start.z + (dz / l) * beamLengteMm),
+    };
+  }, [beamStart, beamLengteMm, hoverModel, nodes]);
+
+  const commitBeamLengte = useCallback(() => {
+    if (beamStart === null || !beamMaatEindpunt) return;
+    const eindId = plaatsKnoop(beamMaatEindpunt.x, beamMaatEindpunt.z);
+    if (eindId !== beamStart) addBeam(beamStart, eindId);
+    setBeamStart(null);
+    setBeamLengte(null);
+  }, [beamStart, beamMaatEindpunt, plaatsKnoop, addBeam]);
+
   // ── Keyboard handlers ───────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1590,6 +1814,89 @@ export default function FemCanvas(props: FemCanvasProps) {
         if (e.key === "Shift") {
           e.preventDefault();
           setRotateMode({ ...rotateMode, snap: false });
+          return;
+        }
+      }
+
+      // ── Maat intypen tijdens het tekenen van een staaf ────────────────
+      // Na het eerste punt: een getal typen legt de LENGTE vast in de richting
+      // waarin de muis wijst. Enter bevestigt, Backspace wist een teken,
+      // Escape gooit alleen de getypte maat weg (de staaf blijft in aanbouw).
+      // Zowel komma als punt mag als decimaalteken.
+      if (tool === "addBeam" && beamStart !== null && !grabMode && !rotateMode
+          && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (/^[0-9]$/.test(e.key) || e.key === "," || e.key === ".") {
+          e.preventDefault();
+          const teken = e.key === "," ? "." : e.key;
+          setBeamLengte(prev => (prev ?? "") + teken);
+          return;
+        }
+        if (e.key === "Backspace") {
+          e.preventDefault();
+          setBeamLengte(prev => {
+            const volgend = (prev ?? "").slice(0, -1);
+            return volgend.length > 0 ? volgend : null;
+          });
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commitBeamLengte();
+          return;
+        }
+        if (e.key === "Escape" && beamLengte !== null) {
+          e.preventDefault();
+          setBeamLengte(null);
+          return;
+        }
+      }
+
+      // ── Ctrl+C / Ctrl+V — belastingen naar een ander belastinggeval ──
+      // Werkt op een lastselectie: één aangeklikte last, of de hele set uit
+      // "selecteer alle <soort>" in het contextmenu. Ctrl+C legt ze op het
+      // canvasklembord, Ctrl+V plakt ze in het ACTIEVE belastinggeval — dus
+      // eerst van tabblad wisselen, dan plakken. Zonder lastselectie laat
+      // Ctrl+C de toets ongemoeid, zodat kopiëren elders normaal blijft
+      // werken.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !grabMode && !rotateMode) {
+        const k = e.key.toLowerCase();
+        if (k === "c") {
+          const ids = selection?.type === "load" ? [selection.id]
+            : selection?.type === "multi" ? (selection.loadIds ?? [])
+            : [];
+          if (ids.length === 0) return;
+          e.preventDefault();
+          lastenKlembordRef.current = kopieerLastenNaarKlembord(loads, ids);
+          const n = lastenKlembordRef.current.length;
+          notifyInfo(
+            n === 1 ? "1 belasting gekopieerd" : `${n} belastingen gekopieerd`,
+            "Ga naar een ander belastinggeval en druk Ctrl+V om ze daar te plakken.");
+          return;
+        }
+        if (k === "v") {
+          const klembord = lastenKlembordRef.current;
+          if (klembord.length === 0 || !plakLasten) return;
+          e.preventDefault();
+          const r = plakLasten(klembord, activeLoadCaseId);
+          const extra: string[] = [];
+          if (r.overgeslagen > 0) {
+            extra.push(r.overgeslagen === 1
+              ? "1 belasting stond er al en is overgeslagen."
+              : `${r.overgeslagen} belastingen stonden er al en zijn overgeslagen.`);
+          }
+          if (r.verweesd > 0) {
+            extra.push(r.verweesd === 1
+              ? "1 belasting is vervallen: de staaf, knoop of plaat bestaat niet meer."
+              : `${r.verweesd} belastingen zijn vervallen: hun staaf, knoop of plaat bestaat niet meer.`);
+          }
+          if (r.geplakt > 0) {
+            notifyInfo(
+              `${r.geplakt} ${r.geplakt === 1 ? "belasting" : "belastingen"} geplakt in “${r.gevalNaam}”`,
+              extra.join(" ") || undefined);
+          } else {
+            notifyWarning(`Niets geplakt in “${r.gevalNaam}”`,
+              extra.join(" ") || "Het klembord bevat geen belastingen.");
+          }
           return;
         }
       }
@@ -1681,6 +1988,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         // selectie en tool blijven staan.
         if (loadHandleDrag) { setLoadHandleDrag(null); return; }
         setBeamStart(null);
+        setBeamLengte(null);
         setPlateCorners([]);
         setPopover(null);
         setTransformAnchor(null);
@@ -1739,7 +2047,9 @@ export default function FemCanvas(props: FemCanvasProps) {
     };
   }, [selection, deleteSelected, setSelection, nodes, size, hoverModel,
       grabMode, rotateMode, cancelGrab, commitGrab, cancelRotate, commitRotate,
-      selectionNodeIds, copySelection, onToolChange, tool, loadHandleDrag]);
+      selectionNodeIds, copySelection, onToolChange, tool, loadHandleDrag,
+      loads, plakLasten, activeLoadCaseId,
+      beamStart, beamLengte, commitBeamLengte]);
 
   // ── Wheel event listener (non-passive so preventDefault works) ──────────
   useEffect(() => {
@@ -2188,7 +2498,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       const lucht = vrij > 0 ? vrij + PUNTLAST_LUCHT_PX : 0;
       const kop  = { x: p.x + ux * lucht, y: p.y + uy * lucht };
       const tail = { x: kop.x + ux * 40,  y: kop.y + uy * 40 };
-      const isSel = selection?.type === "load" && selection.id === l.id;
+      const isSel = isLastGeselecteerd(l.id);
       return (
         <g
           key={`load${l.id}`}
@@ -2333,7 +2643,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         ...tailPts.map(p => `${p.x},${p.y}`),
         `${pE.x},${pE.y}`,
       ].join(" ");
-      const isSel = selection?.type === "load" && selection.id === l.id;
+      const isSel = isLastGeselecteerd(l.id);
       return (
         <g
           key={`load${l.id}`}
@@ -2446,7 +2756,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         ...tailPts.map(p => `${p.x},${p.y}`),
         `${pB.x},${pB.y}`,
       ].join(" ");
-      const isSel = selection?.type === "load" && selection.id === l.id;
+      const isSel = isLastGeselecteerd(l.id);
       return (
         <g
           key={`load${l.id}`}
@@ -2495,6 +2805,90 @@ export default function FemCanvas(props: FemCanvasProps) {
     return null;
   };
 
+  /**
+   * Scharnierbolletjes: een klein open cirkeltje ÓP de staaf, net naast de
+   * knoop, aan de kant waar de rotatie-release zit (`releases.startRy` /
+   * `endRy`). Zonder deze markering is aan het model niet te zien dat een
+   * staaf scharnierend is aangesloten — en juist dat verschil bepaalt of er
+   * een moment overgedragen wordt.
+   *
+   * Maat en afstand staan in SCHERMPIXELS, niet in mm. Een bolletje in
+   * modelmaat verdwijnt bij uitzoomen en wordt bij inzoomen een schijf; de
+   * maatvoering (DIM_KNOOP_R) gebruikt om dezelfde reden schermruimte. De
+   * afstand tot de knoop wordt begrensd op 30 % van de staaflengte, zodat de
+   * twee bolletjes elkaar op een korte (of ver uitgezoomde) staaf nooit
+   * passeren.
+   */
+  const renderScharnieren = (
+    b: Beam,
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+  ) => {
+    const rel = b.releases;
+    if (!rel?.startRy && !rel?.endRy) return null;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 4) return null;
+    const d = Math.min(SCHARNIER_AFSTAND_PX, len * 0.3);
+    const ux = dx / len, uy = dy / len;
+    return (
+      <g pointerEvents="none">
+        {rel.startRy && (
+          <circle cx={p1.x + ux * d} cy={p1.y + uy * d} r={SCHARNIER_R_PX}
+            className="fem-scharnier">
+            <title>Scharnier aan de startzijde (staaf {b.id})</title>
+          </circle>
+        )}
+        {rel.endRy && (
+          <circle cx={p2.x - ux * d} cy={p2.y - uy * d} r={SCHARNIER_R_PX}
+            className="fem-scharnier">
+            <title>Scharnier aan de eindzijde (staaf {b.id})</title>
+          </circle>
+        )}
+      </g>
+    );
+  };
+
+  /**
+   * Profielnaam klein langs de staaf, meegedraaid met de staafrichting en
+   * altijd leesbaar (nooit ondersteboven). Uit te zetten met het vinkje
+   * "Profielnaam" in de weergavelijst.
+   *
+   * Op een staaf die op het scherm korter is dan het label zelf wordt niets
+   * getekend: een naam die over drie staven heen loopt hoort bij geen van
+   * drieën meer.
+   */
+  const renderProfielLabel = (
+    b: Beam,
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+  ) => {
+    if (displayFlags.profielLabels === false) return null;
+    if (!b.profile) return null;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    // Ruwe schatting van de labelbreedte bij 9 px letterhoogte.
+    if (len < b.profile.length * 5.5 + 10) return null;
+    let hoek = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (hoek > 90) hoek -= 180;
+    if (hoek < -90) hoek += 180;
+    // Loodrecht verschuiven zodat de tekst NAAST de staaf staat; de kant die
+    // op het scherm omhoog wijst, zodat het label niet op de diagrammen valt.
+    const nx = -dy / len, ny = dx / len;
+    const teken = ny > 0 ? -1 : 1;
+    const tx = p1.x + dx / 2 + nx * PROFIEL_LABEL_OFFSET_PX * teken;
+    const ty = p1.y + dy / 2 + ny * PROFIEL_LABEL_OFFSET_PX * teken;
+    return (
+      <text
+        x={tx} y={ty}
+        className="fem-beam-profiel"
+        textAnchor="middle"
+        transform={`rotate(${hoek.toFixed(2)} ${tx.toFixed(2)} ${ty.toFixed(2)})`}
+        pointerEvents="none"
+      >{b.profile}</text>
+    );
+  };
+
   const cursorStyle = panRef.current.active ? "grabbing"
     : spaceHeld ? "grab"
     : loadHandleDrag ? "grabbing"
@@ -2502,9 +2896,13 @@ export default function FemCanvas(props: FemCanvasProps) {
     : grabMode ? "move"
     : rotateMode ? "alias"
     : boxSelect ? "crosshair"
-    : tool === "select"
-      ? (snapNode !== null || snapBeam !== null ? "pointer" : "default")
-      : "crosshair";
+    // SELECTEREN = de gewone pijl, altijd. Het wijzende handje boven een knoop
+    // of staaf las als "hier gebeurt straks iets bij het klikken" — precies wat
+    // je in een tekenmodus NIET wilt zien als je net op Escape hebt gedrukt om
+    // uit die modus te komen. Dat een element aanklikbaar is blijkt al uit de
+    // hover-halo en de dikkere lijn.
+    : tool === "select" ? "default"
+    : "crosshair";
 
   // Render plates (translucent polygons). Polygonplaten (P4.2) tonen hun
   // gecachete CDT-mesh als lichte lijnen zodra de cache actueel is — zo is
@@ -2592,6 +2990,36 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
     return { platenRes, min, max };
   }, [overlayResult, plaatComponent, displayFlags.plaatContour, showLoads]);
+
+  // ── Modelcontrole ───────────────────────────────────────────────────────
+  // Loopt live mee met het model: zo zie je een niet-aangesloten kolomvoet al
+  // terwijl je tekent, en niet pas als de solver met "singuliere matrix" komt.
+  // De controle is O(knopen × staven) op puur rekenwerk — voor modellen van
+  // deze orde verwaarloosbaar naast het tekenen zelf.
+  const bevindingen = useMemo(
+    () => controleerModel({ nodes, beams, supports, plates }),
+    [nodes, beams, supports, plates],
+  );
+  const aantalFouten = useMemo(
+    () => bevindingen.filter(b => b.ernst === "fout").length,
+    [bevindingen],
+  );
+  // Nieuwe fouten: paneel automatisch openklappen. Verdwijnen ze, dan klapt
+  // het weer dicht — anders blijft er een lege kaart hangen.
+  useEffect(() => {
+    if (aantalFouten > 0) setControleOpen(true);
+    else setControleOpen(false);
+  }, [aantalFouten]);
+
+  /** Voer de herstelactie van één bevinding uit. */
+  const herstelBevinding = useCallback((b: Bevinding) => {
+    if (!b.herstel) return;
+    if (b.herstel.soort === "verbind") {
+      verbindKnoopMetStaaf?.(b.herstel.nodeId, b.herstel.beamId);
+    } else {
+      voegKnopenSamen?.(b.herstel.bewaarId, b.herstel.verwijderId);
+    }
+  }, [verbindKnoopMetStaaf, voegKnopenSamen]);
 
   /** Banner text shown at the top of the canvas after a successful solve. */
   const bannerText: { kind: "single" | "combo" | "envelope"; text: string } | null = useMemo(() => {
@@ -3103,24 +3531,51 @@ export default function FemCanvas(props: FemCanvasProps) {
                 onDoubleClick={openBeamProps}
               />
               {/* Onzichtbare brede hit-lijn: de zichtbare staaf is maar een paar
-                  pixel dik, waardoor (dubbel)klikken er net naast vaak misten. */}
+                  pixel dik, waardoor (dubbel)klikken er net naast vaak misten.
+                  cursor "inherit": de hit-lijn mag de cursor van het canvas niet
+                  overrulen — in de selectiemodus blijft dat de gewone pijl. */}
               <line
                 x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                stroke="transparent" strokeWidth={12} style={{ cursor: "pointer" }}
+                stroke="transparent" strokeWidth={12} style={{ cursor: "inherit" }}
                 onClick={selectBeam}
                 onDoubleClick={openBeamProps}
               />
+              {renderScharnieren(b, p1, p2)}
+              {renderProfielLabel(b, p1, p2)}
             </g>
           );
         })}
 
-        {/* Beam preview while drawing */}
+        {/* Beam preview while drawing. Is er een maat ingetypt, dan loopt de
+            preview tot dáár (richting muis, lengte toetsenbord) met het
+            ingetypte getal als label — anders gewoon tot de muis. */}
         {tool === "addBeam" && beamStart !== null && hoverModel && (() => {
           const startNode = nodes.find(n => n.id === beamStart);
           if (!startNode) return null;
+          const doel = beamMaatEindpunt ?? hoverModel;
           const p1 = worldToScreen(startNode.x, startNode.z);
-          const p2 = worldToScreen(hoverModel.x, hoverModel.z);
-          return <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className="fem-member-preview" />;
+          const p2 = worldToScreen(doel.x, doel.z);
+          const lengteM = Math.hypot(doel.x - startNode.x, doel.z - startNode.z) / 1000;
+          return (
+            <g>
+              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className="fem-member-preview" />
+              {beamLengte !== null && (
+                <>
+                  <circle cx={p2.x} cy={p2.y} r={4} className="fem-maat-punt" />
+                  <text
+                    x={(p1.x + p2.x) / 2}
+                    y={(p1.y + p2.y) / 2 - 8}
+                    className="fem-maat-label"
+                    textAnchor="middle"
+                  >
+                    {beamMaatEindpunt
+                      ? `${fmtNl(lengteM, 3)} m`
+                      : `${beamLengte.replace(".", ",")} m — wijs een richting aan`}
+                  </text>
+                </>
+              )}
+            </g>
+          );
         })()}
 
         {/* Plate preview while drawing — connect plateCorners + hover. Vanaf
@@ -3535,8 +3990,17 @@ export default function FemCanvas(props: FemCanvasProps) {
         <div className="fem-hud-card">
           <span className="fem-hud-muted">Tool:</span>
           <span className="fem-hud-strong">{toolLabel(tool)}</span>
-          {tool === "addBeam" && beamStart !== null && (
-            <span className="fem-hud-muted">— klik tweede knoop</span>
+          {tool === "addBeam" && beamStart !== null && beamLengte === null && (
+            <span className="fem-hud-muted">
+              — klik tweede knoop, of typ een lengte in m
+            </span>
+          )}
+          {tool === "addBeam" && beamStart !== null && beamLengte !== null && (
+            <span className="fem-hud-muted">
+              — L = <span className="fem-hud-strong fem-hud-mono">
+                {beamLengte.replace(".", ",")}
+              </span> m · Enter bevestigt · Esc wist de maat
+            </span>
           )}
           {tool === "addPlate" && plateCorners.length > 0 && (
             <span className="fem-hud-muted">
@@ -3617,21 +4081,63 @@ export default function FemCanvas(props: FemCanvasProps) {
             : <span>(——, ——) m</span>}
         </div>
       </div>
-      <div className="fem-hud fem-hud-br">
-        <div className="fem-hud-card">
-          <span className="fem-hud-muted">Snap:</span>
-          <button
-            className="fem-hud-btn"
-            onClick={() => setSnapAan(v => !v)}
-            title={snapAan
-              ? `Snap aan raster (${grid.spacingMm} mm) en stramien — klik om uit te zetten`
-              : "Snap staat uit (vrij tekenen) — klik om aan te zetten"}
-            style={snapAan ? undefined : { opacity: 0.6 }}
-          >
-            {snapAan ? `${grid.spacingMm} mm` : "uit"}
-          </button>
+      {/* Modelcontrole — zie `lib/modelControle.ts`. Alleen zichtbaar wanneer
+          er iets te melden is; klappen open/dicht met een klik. De snapknopjes
+          die hier eerder stonden zijn verhuisd naar de statusbalk onderin,
+          waar ze per soort aan en uit te zetten zijn. */}
+      {bevindingen.length > 0 && (
+        <div className="fem-hud fem-hud-br">
+          <div className={`fem-hud-card fem-controle-kaart${aantalFouten > 0 ? " fout" : ""}`}>
+            <button
+              className="fem-controle-kop"
+              onClick={() => setControleOpen(v => !v)}
+              title="Modelcontrole — klik om de bevindingen te tonen of te verbergen"
+            >
+              <span className="fem-controle-merk">{aantalFouten > 0 ? "!" : "?"}</span>
+              <span>
+                {aantalFouten > 0
+                  ? `Modelcontrole: ${aantalFouten} ${aantalFouten === 1 ? "fout" : "fouten"}`
+                  : `Modelcontrole: ${bevindingen.length} ${bevindingen.length === 1 ? "aandachtspunt" : "aandachtspunten"}`}
+                {bevindingen.length > aantalFouten && aantalFouten > 0
+                  ? ` + ${bevindingen.length - aantalFouten} waarschuwing${bevindingen.length - aantalFouten === 1 ? "" : "en"}`
+                  : ""}
+              </span>
+              <span className="fem-controle-chevron">{controleOpen ? "▾" : "▴"}</span>
+            </button>
+            {controleOpen && (
+              <div className="fem-controle-lijst">
+                {bevindingen.map((b, i) => (
+                  <div key={`bev${i}`} className={`fem-controle-regel ${b.ernst}`}>
+                    <span className="fem-controle-tekst">{b.tekst}</span>
+                    {b.herstel && (
+                      <button
+                        className="fem-controle-fix"
+                        onClick={() => herstelBevinding(b)}
+                        title={b.herstel.soort === "verbind"
+                          ? "Splits de staaf op deze knoop, zodat hij er echt aan vastzit"
+                          : "Voeg de twee knopen samen; staven, opleggingen en lasten verhuizen mee"}
+                      >
+                        {b.herstel.soort === "verbind" ? "Verbind" : "Voeg samen"}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {aantalFouten > 0 && herstelModel && (
+                  <button
+                    className="fem-controle-fix fem-controle-alles"
+                    onClick={() => {
+                      const stappen = herstelModel();
+                      if (stappen.length === 0) return;
+                      notifyInfo("Model hersteld", stappen.join(" "));
+                    }}
+                    title="Voer alle herstelbare bevindingen uit — één stap in de historie"
+                  >Herstel alles ({aantalFouten})</button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Kleurenlegenda plaatcontouren (P3.2) — min/max uit de
           plateElements-ranges van het getoonde resultaat; de gradient-balk
@@ -3696,6 +4202,18 @@ export default function FemCanvas(props: FemCanvasProps) {
             },
             onAddLoad: (l) => {
               addLoad({ ...l, caseId: activeLoadCaseId });
+              // Onthoud wat er is ingevuld, zodat de volgende plaatsing van
+              // dezelfde soort er al mee begint. Eén plek voor álle
+              // lastformulieren — de soort komt uit het gereedschap, niet uit
+              // het lasttype (een verticale en een horizontale puntlast zijn
+              // allebei een pointForce maar vul je verschillend in).
+              const soort = lastSoortVanPopover(popover.kind);
+              if (soort) {
+                onthoudLastwaarden(soort, {
+                  q: l.q, qDir: l.qDir, fx: l.fx, fz: l.fz,
+                  my: l.my, deltaT: l.deltaT,
+                });
+              }
               setPopover(null);
             },
           })}
@@ -3750,6 +4268,29 @@ export default function FemCanvas(props: FemCanvasProps) {
           }}>
             Bewerk eigenschappen
           </button>
+          {/* Lastselectie: in één klik alle lasten van dezelfde soort in dit
+              belastinggeval selecteren, klaar voor Ctrl+C → ander geval →
+              Ctrl+V. */}
+          {selection?.type === "load" && (() => {
+            const bron = loads.find(l => l.id === selection.id);
+            if (!bron) return null;
+            const ids = selecteerLastenVanZelfdeSoort(loads, selection.id);
+            const soort = LOAD_SOORT_MEERVOUD[bron.type];
+            return (
+              <button onClick={() => {
+                setContextMenu(null);
+                setSelection({
+                  type: "multi", nodeIds: [], beamIds: [], plateIds: [],
+                  loadIds: ids,
+                });
+                notifyInfo(
+                  `${ids.length} ${ids.length === 1 ? "belasting" : soort} geselecteerd`,
+                  "Ctrl+C kopieert ze; wissel van belastinggeval en plak met Ctrl+V.");
+              }}>
+                Selecteer alle {soort} ({ids.length})
+              </button>
+            );
+          })()}
           <button onClick={() => {
             setContextMenu(null);
             // copySelection is multi-bewust; kleine offset zodat de kopie zichtbaar is.
@@ -3813,6 +4354,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           <BarPropertiesDialog
             beam={beam}
             nodes={nodes}
+            beams={beams}
             beamForces={beamForces}
             onUpdate={(updates) => updateBeam?.(beam.id, updates)}
             onClose={() => setEditingBeamId(null)}
@@ -3846,14 +4388,20 @@ export default function FemCanvas(props: FemCanvasProps) {
       // Twee aangrijpingsvormen: op een KNOOP (p.nodeId) of op een vrije
       // positie op een STAAF (p.beamId + p.posFrac). In het tweede geval
       // toont het formulier ook een positieveld in m vanaf de startknoop.
-      // Horizontale variant: Fx voor-ingevuld (+10 = naar rechts), Fz = 0.
+      // Fx/Fz komen uit het waardegeheugen; de eerste keer per sessie zijn
+      // dat de vertrouwde beginwaarden (verticaal −10 kN, horizontaal +10 kN).
       const opStaaf = p.nodeId === undefined && p.beamId !== undefined;
       const beam = opStaaf ? beams.find(b => b.id === p.beamId) : undefined;
       const nA = beam ? nodes.find(n => n.id === beam.from) : undefined;
       const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
       const lenM = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
+      const soort: LastSoort = p.kind === "pointLoadH" ? "puntlastH" : "puntlastV";
+      const w = lastwaarden(soort);
       return <PopoverPointLoadForm
         horizontal={p.kind === "pointLoadH"}
+        startFx={w.fx ?? 0}
+        startFz={w.fz ?? 0}
+        onthouden={isOnthouden(soort)}
         beamLenM={opStaaf ? lenM : undefined}
         defaultPosM={opStaaf ? (p.posFrac ?? 0) * lenM : undefined}
         onSubmit={(fx, fz, posFrac) => cbs.onAddLoad(
@@ -3864,8 +4412,10 @@ export default function FemCanvas(props: FemCanvasProps) {
       />;
     }
     if (p.kind === "moment") {
+      const w = lastwaarden("moment");
       return <PopoverSingleNumberForm
-        title="Moment toevoegen" label="My (kNm)" defaultValue={5}
+        title="Moment toevoegen" label="My (kNm)" defaultValue={w.my ?? 5}
+        hint={isOnthouden("moment") ? ONTHOUDEN_HINT : undefined}
         onSubmit={(my) => cbs.onAddLoad({ type: "pointMoment", nodeId: p.nodeId, my })}
       />;
     }
@@ -3875,15 +4425,23 @@ export default function FemCanvas(props: FemCanvasProps) {
       const nA = beam ? nodes.find(n => n.id === beam.from) : undefined;
       const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
       const lenM = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
+      // q en richting komen uit het waardegeheugen; begin/einde niet — die
+      // horen bij DEZE staaf en beginnen dus altijd op de volle lengte.
+      const w = lastwaarden("lijnlast");
       return <PopoverLineLoadForm
         beamLenM={lenM}
+        startQ={w.q ?? -5}
+        startDir={w.qDir ?? "z"}
+        onthouden={isOnthouden("lijnlast")}
         onSubmit={(q, qDir, startFrac, endFrac) =>
           cbs.onAddLoad({ type: "lineLoad", beamId: p.beamId, q, qDir, startFrac, endFrac })}
       />;
     }
     if (p.kind === "thermal") {
+      const w = lastwaarden("temperatuur");
       return <PopoverSingleNumberForm
-        title="Temperatuurlast" label="ΔT (K)" defaultValue={20}
+        title="Temperatuurlast" label="ΔT (K)" defaultValue={w.deltaT ?? 20}
+        hint={isOnthouden("temperatuur") ? ONTHOUDEN_HINT : undefined}
         onSubmit={(deltaT) => cbs.onAddLoad({ type: "thermal", beamId: p.beamId, deltaT })}
       />;
     }
@@ -3892,10 +4450,14 @@ export default function FemCanvas(props: FemCanvasProps) {
       // richting in globale assen — zelfde tekenconventie als lijnlasten.
       // Polygonranden gaan via de rand-index (`edgeIndex`), benoemde randen
       // blijven het rechthoekpad.
+      const w = lastwaarden("randlast");
       return <PopoverEdgeLoadForm
         randLabel={p.edgeIndex !== undefined
           ? `rand ${p.edgeIndex + 1}`
           : RAND_LABEL[p.edge ?? "top"]}
+        startP={w.q ?? -5}
+        startDir={w.qDir ?? "z"}
+        onthouden={isOnthouden("randlast")}
         onSubmit={(pWaarde, dir) => cbs.onAddLoad(
           p.edgeIndex !== undefined
             ? { type: "edgeLoad", plateId: p.plateId, edgeIndex: p.edgeIndex, q: pWaarde, qDir: dir }
@@ -3906,6 +4468,30 @@ export default function FemCanvas(props: FemCanvasProps) {
     return null;
   }
 }
+
+/**
+ * Van popover-soort naar de sleutel van het waardegeheugen. De veerpopovers
+ * plaatsen een OPLEGGING, geen belasting — die hebben hier niets te zoeken en
+ * leveren `null`.
+ */
+function lastSoortVanPopover(
+  kind: "zSpring" | "xSpring" | "rotSpring" | "pointLoad" | "pointLoadH"
+      | "moment" | "lineLoad" | "thermal" | "edgeLoad",
+): LastSoort | null {
+  switch (kind) {
+    case "lineLoad":   return "lijnlast";
+    case "pointLoad":  return "puntlastV";
+    case "pointLoadH": return "puntlastH";
+    case "moment":     return "moment";
+    case "thermal":    return "temperatuur";
+    case "edgeLoad":   return "randlast";
+    default:           return null;
+  }
+}
+
+/** Regel onder een voorgevuld veld dat zijn waarde uit de vorige plaatsing
+ *  overneemt — zodat niemand zich afvraagt waar die 8 kN/m vandaan komt. */
+const ONTHOUDEN_HINT = "Waarde overgenomen van je vorige plaatsing.";
 
 function toolLabel(t: Tool): string {
   switch (t) {
@@ -3986,8 +4572,13 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
   );
 }
 
-function PopoverSingleNumberForm({ title, label, defaultValue, onSubmit }:
-  { title: string; label: string; defaultValue: number; onSubmit: (v: number) => void }) {
+function PopoverSingleNumberForm({ title, label, defaultValue, hint, onSubmit }:
+  {
+    title: string; label: string; defaultValue: number;
+    /** Toelichting onder het veld, bv. dat de waarde is overgenomen. */
+    hint?: string;
+    onSubmit: (v: number) => void;
+  }) {
   const [val, setVal] = useState(String(defaultValue));
   return (
     <div className="fem-popover-form">
@@ -3996,9 +4587,11 @@ function PopoverSingleNumberForm({ title, label, defaultValue, onSubmit }:
         <span>{label}</span>
         <input
           type="number" step="0.1" value={val} onChange={e => setVal(e.target.value)}
-          autoFocus onKeyDown={e => { if (e.key === "Enter") onSubmit(Number(val) || 0); }}
+          autoFocus onFocus={e => e.target.select()}
+          onKeyDown={e => { if (e.key === "Enter") onSubmit(Number(val) || 0); }}
         />
       </label>
+      {hint && <div className="fem-popover-hint">{hint}</div>}
       <div className="fem-popover-actions">
         <button onClick={() => onSubmit(Number(val) || 0)} className="fem-popover-primary">OK</button>
       </div>
@@ -4006,14 +4599,20 @@ function PopoverSingleNumberForm({ title, label, defaultValue, onSubmit }:
   );
 }
 
-function PopoverLineLoadForm({ beamLenM, onSubmit }: {
+function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }: {
   /** Staaflengte in m — begrenst de begin/eind-invoer van een deellast. */
   beamLenM: number;
+  /** Voorgevulde q (kN/m) — beginwaarde of de laatst gebruikte waarde. */
+  startQ: number;
+  /** Voorgevulde richting — beginwaarde of de laatst gebruikte richting. */
+  startDir: "x" | "z";
+  /** Komen startQ/startDir uit de vorige plaatsing? Dan komt dat erbij te staan. */
+  onthouden: boolean;
   /** startFrac/endFrac zijn undefined bij volle lengte (default-gedrag). */
   onSubmit: (q: number, qDir: "x" | "z", startFrac?: number, endFrac?: number) => void;
 }) {
-  const [q, setQ]     = useState("-5");
-  const [dir, setDir] = useState<"x" | "z">("z");
+  const [q, setQ]     = useState(String(startQ));
+  const [dir, setDir] = useState<"x" | "z">(startDir);
   // Deellast-invoer in m VANAF DE STARTKNOOP (zelfde eenheid als de
   // maatvoering elders in de UI); intern omgerekend naar fracties 0..1.
   const [beginM, setBeginM] = useState("0");
@@ -4046,9 +4645,11 @@ function PopoverLineLoadForm({ beamLenM, onSubmit }: {
         <input
           type="number" step="0.1" value={q} autoFocus
           onChange={e => setQ(e.target.value)}
+          onFocus={e => e.target.select()}
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
+      {onthouden && <div className="fem-popover-hint">{ONTHOUDEN_HINT}</div>}
       <label className="fem-popover-row">
         <span>Begin (m)</span>
         <input
@@ -4087,12 +4688,18 @@ function PopoverLineLoadForm({ beamLenM, onSubmit }: {
  * Z, naar links voor X) — dezelfde tekenconventie als lijnlasten op staven.
  * `randLabel` is de NL-naam van de rand ("bovenrand" of "rand 3").
  */
-function PopoverEdgeLoadForm({ randLabel, onSubmit }: {
+function PopoverEdgeLoadForm({ randLabel, startP, startDir, onthouden, onSubmit }: {
   randLabel: string;
+  /** Voorgevulde p (kN/m) — beginwaarde of de laatst gebruikte waarde. */
+  startP: number;
+  /** Voorgevulde richting — beginwaarde of de laatst gebruikte richting. */
+  startDir: "x" | "z";
+  /** Komen startP/startDir uit de vorige plaatsing? Dan komt dat erbij te staan. */
+  onthouden: boolean;
   onSubmit: (p: number, dir: "x" | "z") => void;
 }) {
-  const [p, setP] = useState("-5");
-  const [dir, setDir] = useState<"x" | "z">("z");
+  const [p, setP] = useState(String(startP));
+  const [dir, setDir] = useState<"x" | "z">(startDir);
   const commit = () => onSubmit(Number(p) || 0, dir);
   return (
     <div className="fem-popover-form">
@@ -4109,12 +4716,14 @@ function PopoverEdgeLoadForm({ randLabel, onSubmit }: {
         <input
           type="number" step="0.1" value={p} autoFocus
           onChange={e => setP(e.target.value)}
+          onFocus={e => e.target.select()}
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
       <div className="fem-popover-hint">
         p werkt per meter randlengte. Negatief = tegen de +richting in
         (omlaag voor Z, links voor X).
+        {onthouden && ` ${ONTHOUDEN_HINT}`}
       </div>
       <div className="fem-popover-actions">
         <button onClick={commit} className="fem-popover-primary">OK</button>
@@ -4123,20 +4732,28 @@ function PopoverEdgeLoadForm({ randLabel, onSubmit }: {
   );
 }
 
-function PopoverPointLoadForm({ onSubmit, horizontal, beamLenM, defaultPosM }: {
+function PopoverPointLoadForm({
+  onSubmit, horizontal, startFx, startFz, onthouden, beamLenM, defaultPosM,
+}: {
   /** `posFrac` is alleen gevuld bij een puntlast op een vrije staafpositie. */
   onSubmit: (fx: number, fz: number, posFrac?: number) => void;
   horizontal?: boolean;
+  /** Voorgevulde Fx (kN) — beginwaarde of de laatst gebruikte waarde. */
+  startFx: number;
+  /** Voorgevulde Fz (kN) — beginwaarde of de laatst gebruikte waarde. */
+  startFz: number;
+  /** Komen startFx/startFz uit de vorige plaatsing? Dan komt dat erbij te staan. */
+  onthouden: boolean;
   /** Staaflengte in m — gezet ⇒ de last grijpt op een STAAF aan, niet op een
    *  knoop, en het positieveld verschijnt. */
   beamLenM?: number;
   /** Voorgestelde positie in m vanaf de startknoop (uit de klikpositie). */
   defaultPosM?: number;
 }) {
-  // Horizontal mode: pre-fill Fx (+10 kN, rightward) and clear Fz; the Fx field
-  // gets focus. Vertical mode: pre-fill Fz (-10 kN, downward) and focus Fz.
-  const [fx, setFx] = useState(horizontal ? "10" : "0");
-  const [fz, setFz] = useState(horizontal ? "0"  : "-10");
+  // De horizontale variant focust Fx, de verticale Fz. De waarden zelf komen
+  // van de aanroeper (waardegeheugen, of de beginwaarden +10 / −10 kN).
+  const [fx, setFx] = useState(String(startFx));
+  const [fz, setFz] = useState(String(startFz));
   // Positie op de staaf in m vanaf de startknoop; intern omgerekend naar een
   // fractie 0..1 (Load.posFrac) — dezelfde conventie als de deellast-invoer.
   const opStaaf = beamLenM !== undefined && beamLenM > 0;
@@ -4169,15 +4786,16 @@ function PopoverPointLoadForm({ onSubmit, horizontal, beamLenM, defaultPosM }: {
       <label className="fem-popover-row">
         <span>Fx (kN)</span>
         <input type="number" step="0.1" value={fx} onChange={e => setFx(e.target.value)}
-          autoFocus={horizontal}
+          autoFocus={horizontal} onFocus={e => e.target.select()}
           onKeyDown={e => { if (e.key === "Enter" && horizontal) commit(); }} />
       </label>
       <label className="fem-popover-row">
         <span>Fz (kN)</span>
         <input type="number" step="0.1" value={fz} onChange={e => setFz(e.target.value)}
-          autoFocus={!horizontal}
+          autoFocus={!horizontal} onFocus={e => e.target.select()}
           onKeyDown={e => { if (e.key === "Enter") commit(); }} />
       </label>
+      {onthouden && <div className="fem-popover-hint">{ONTHOUDEN_HINT}</div>}
       {opStaaf && !posGeldig && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
           Ongeldige positie: 0 ≤ positie ≤ {beamLenM!.toFixed(2)} m

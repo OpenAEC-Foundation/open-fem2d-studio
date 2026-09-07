@@ -68,6 +68,12 @@ interface RibbonProps {
   onExportHtml?: () => void;
   /** IFC4-export van het rekenmodel (Structural Analysis Domain). */
   onExportIfc?: () => void;
+  /** Idem, maar alleen het draagsysteem — zonder belastinggevallen. */
+  onExportIfcStructural?: () => void;
+  /** Controleert de IFC-export en meldt de uitslag. */
+  onValidateIfc?: () => void;
+  /** Schakelt naar het IFC-tabblad (boomstructuur / STEP / statistieken). */
+  onOpenIfcView?: () => void;
   /** File-menu actions (Home tab + Backstage). */
   onNewProject?: () => void;
   onOpenProject?: () => void;
@@ -110,7 +116,7 @@ export default function Ribbon({
   onExportCheck,
   onFilterSelection,
   onExportHtml,
-  onExportIfc,
+  onExportIfc, onExportIfcStructural, onValidateIfc, onOpenIfcView,
   tableDataset, onTableDataset, onTableExportCsv, onTableCopy, onTableFocusFilter,
 }: RibbonProps) {
   const { t, i18n } = useTranslation("ribbon");
@@ -256,7 +262,12 @@ export default function Ribbon({
       case "insights":
         return <InsightsTab onShowInsights={() => onViewChange("insights")} onShowInsightsMode={onShowInsightsMode} onExportMatrixCsv={onExportMatrixCsv} />;
       case "ifc":
-        return <IfcTab onExportIfc={onExportIfc} />;
+        return <IfcTab
+          onExportIfc={onExportIfc}
+          onExportIfcStructural={onExportIfcStructural}
+          onValidateIfc={onValidateIfc}
+          onOpenIfcView={onOpenIfcView}
+        />;
       case "check":
         return <CheckTab
           onSolve={onSolve}

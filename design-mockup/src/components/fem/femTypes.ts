@@ -110,18 +110,23 @@ export interface BeamCheckConfig {
 }
 
 /**
- * BELASTINGTYPE (constructieve rol) van een staaf — wát het onderdeel in de
- * constructie ís, en dus welk belastingvlak het draagt. De windgenerator
- * leest deze rol om te bepalen welke vormfactor en welke referentiehoogte bij
- * een staaf horen; zonder rol weet de generator niet of een verticale staaf
- * een gevelstijl is of een binnenkolom.
+ * STAAFTYPE van een staaf — wát het onderdeel in de constructie ís, en dus
+ * welk belastingvlak het draagt. De windgenerator leest het staaftype om te
+ * bepalen welke vormfactor en welke referentiehoogte bij een staaf horen;
+ * zonder staaftype weet de generator niet of een verticale staaf een
+ * gevelstijl is of een binnenkolom.
  *
  * De lijst is bewust fijn: de vormfactor van een LINKERgevel bij wind van
  * links (druk, zone D) verschilt van diezelfde gevel bij wind van rechts
  * (zuiging, zone E). Zie NEN-EN 1991-1-4 tabel 7.1.
  *
- * Uitbreidbaar: nieuwe rollen kunnen aan deze unie worden toegevoegd; de
- * generator negeert rollen die hij niet kent en meldt dat.
+ * Uitbreidbaar: nieuwe staaftypen kunnen aan deze unie worden toegevoegd; de
+ * generator negeert typen die hij niet kent en meldt dat.
+ *
+ * NAAMGEVING — de UI noemt dit "staaftype"; de code houdt de bestaande namen
+ * (`BeamLoadRole`, `Beam.loadRole`, `bepaalStandaardRol`, `rolVanStaaf`) aan.
+ * `loadRole` staat namelijk in opgeslagen projectbestanden en in de
+ * MCP-modelvalidatie; hernoemen zou die bestanden breken.
  */
 export type BeamLoadRole =
   /** Linker (langs)gevel — verticaal buitenvlak aan de linkerzijde. */
@@ -139,7 +144,7 @@ export type BeamLoadRole =
   /** Binnenstaaf (binnenkolom, schoor, trekband) — draagt geen windvlak. */
   | "binnen";
 
-/** Volgorde + NL-labels van de belastingtypen, voor dropdowns en tabellen. */
+/** Volgorde + NL-labels van de staaftypen, voor dropdowns en tabellen. */
 export const BEAM_LOAD_ROLES: { id: BeamLoadRole; label: string; kort: string }[] = [
   { id: "gevelLinks",  label: "Linkergevel",          kort: "Gevel L" },
   { id: "gevelRechts", label: "Rechtergevel",         kort: "Gevel R" },
@@ -166,20 +171,21 @@ export interface Beam {
   /** Per-staaf toetsconfiguratie; ontbreekt → builder-defaults. */
   checkConfig?: BeamCheckConfig;
   /**
-   * Belastingtype (constructieve rol) van deze staaf. ONTBREEKT het veld —
-   * alle bestaande projectbestanden — dan geldt de uit de geometrie afgeleide
-   * standaardrol (zie `bepaalStandaardRol`); de gebruiker kan die altijd
+   * Staaftype van deze staaf (in de UI: "staaftype"). ONTBREEKT het veld —
+   * alle bestaande projectbestanden — dan geldt het uit de geometrie afgeleide
+   * standaardtype (zie `bepaalStandaardRol`); de gebruiker kan dat altijd
    * overschrijven, en dan staat de keuze hier vast in het projectbestand.
+   * De veldnaam blijft `loadRole` omdat hij zo op schijf staat.
    */
   loadRole?: BeamLoadRole;
 }
 
 /**
- * Standaard-belastingtype uit de geometrie: een (vrijwel) verticale staaf aan
+ * Standaard-staaftype uit de geometrie: een (vrijwel) verticale staaf aan
  * de buitenrand is een gevel, de bovenste (vrijwel) horizontale of hellende
  * staven vormen het dak, overige horizontale staven zijn vloer en de rest is
- * binnenstaaf. Dit is een HULP, geen waarheid — de gebruiker overschrijft de
- * rol per staaf in de eigenschappen of in de tabel.
+ * binnenstaaf. Dit is een HULP, geen waarheid — de gebruiker overschrijft het
+ * staaftype per staaf in de eigenschappen of in de tabel.
  *
  * Pure functie (geen React/DOM) zodat de generator én de tests hem delen.
  */
@@ -218,7 +224,7 @@ export function bepaalStandaardRol(
   return helling <= 5 ? "vloer" : "binnen";
 }
 
-/** Rol van een staaf: expliciet gezet, of anders afgeleid uit de geometrie. */
+/** Staaftype: expliciet gezet, of anders afgeleid uit de geometrie. */
 export function rolVanStaaf(
   beam: Beam,
   nodes: { id: number; x: number; z: number }[],
@@ -515,6 +521,20 @@ export interface Support {
 
 export type LoadType = "pointForce" | "pointMoment" | "lineLoad" | "thermal" | "edgeLoad";
 
+/**
+ * NL-meervoud per lastsoort, voor zinnen als "alle lijnlasten in dit
+ * belastinggeval". Bewust apart van het enkelvoudige label in het
+ * eigenschappenpaneel: dáár staat de eenheid erbij ("Lijnlast (q)"), hier
+ * moet de tekst in een menuregel en een melding passen.
+ */
+export const LOAD_SOORT_MEERVOUD: Record<LoadType, string> = {
+  lineLoad:    "lijnlasten",
+  pointForce:  "puntlasten",
+  pointMoment: "momenten",
+  thermal:     "temperatuurlasten",
+  edgeLoad:    "randlasten",
+};
+
 export interface Load {
   id: number;
   type: LoadType;
@@ -627,7 +647,22 @@ export type Selection =
   | { type: "beam"; id: number }
   | { type: "plate"; id: number }
   | { type: "load"; id: number }
-  | { type: "multi"; nodeIds: number[]; beamIds: number[]; plateIds: number[] }
+  | {
+      type: "multi";
+      nodeIds: number[];
+      beamIds: number[];
+      plateIds: number[];
+      /**
+       * Geselecteerde BELASTINGEN. Optioneel en standaard afwezig: alle
+       * bestaande selectiepaden (kaderselectie, shift-klikken, de projectboom)
+       * vullen dit veld niet en gedragen zich onveranderd. Gevuld wordt het
+       * alleen door "selecteer alle lasten van deze soort" in het
+       * canvas-contextmenu, zodat één Ctrl+C de hele set naar het klembord
+       * neemt. Lasten hebben geen eigen knopen, dus verplaatsen/roteren/
+       * spiegelen raakt ze niet — verwijderen wél (zie deleteSelected).
+       */
+      loadIds?: number[];
+    }
   | null;
 
 // ── Structural grid (stramien) ───────────────────────────────────────────

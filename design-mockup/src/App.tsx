@@ -12,6 +12,8 @@ import FeedbackDialog from "./components/feedback/FeedbackDialog";
 import WelcomeScreen from "./components/welcome/WelcomeScreen";
 import ProjectSettingsDialog from "./components/project/ProjectSettingsDialog";
 import IfcViewerPanel from "./components/panels/IfcViewerPanel";
+import type { IfcRekenmodelInput } from "./io/ifcExport";
+import { useProjectInfo } from "./components/report/useProjectInfo";
 import ReportPreview, { DetachedReportPreview } from "./components/panels/ReportPreview";
 import { ReportWindowSync } from "./components/report/reportSync";
 import type { ReportData } from "./components/report/ReportDataContext";
@@ -154,6 +156,9 @@ function App() {
   const [femTool, setFemTool] = useState<Tool>("select");
   // FEM model state lifted to App.tsx via useFemStore.
   const fem = useFemStore();
+  // Projectgegevens uit de projectinstellingen — voeden onder meer de
+  // IFC-export (projectnaam, nummer, ingenieur, bedrijf, locatie).
+  const projectInfo = useProjectInfo();
   const { addRecentFile } = useRecentFiles();
   // Normtoetsing (EN 1993 staal + EN 1995 hout) — resultaten in checkStore.
   const checkRun = useCheckStore((s) => s.run);
@@ -490,23 +495,88 @@ function App() {
       checks: checkResults,
     });
   }, [fem, solverResult, projectPath, checkResults]);
-  // IFC4-export van het rekenmodel (Structural Analysis Domain) — bouwt het
-  // bestand in de browser en start direct een download; projectnaam uit het
-  // geopende bestandspad of "Naamloos project" zonder pad.
-  const handleExportIfc = useCallback(async () => {
-    const { downloadIfc } = await import("./io/ifcExport");
-    const projectNaam = projectPath
+  // IFC4-export van het rekenmodel (Structural Analysis Domain). ÉÉN bron:
+  // dit object voedt zowel het IFC-tabblad als de exportknoppen, zodat wat er
+  // op het scherm staat letterlijk het bestand is dat wordt weggeschreven.
+  // Projectnaam en -gegevens komen uit de projectinstellingen; zonder
+  // ingevulde naam valt hij terug op de bestandsnaam van het project.
+  const ifcModel: IfcRekenmodelInput = useMemo(() => ({
+    projectNaam: (projectPath
       ? projectPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "")
-      : undefined;
-    downloadIfc({
-      projectNaam: projectNaam || "Naamloos project",
-      nodes: fem.nodes,
-      beams: fem.beams,
-      supports: fem.supports,
-      loads: fem.loads,
-      loadCases: fem.loadCases,
-    });
-  }, [fem, projectPath]);
+      : undefined) || "Naamloos project",
+    project: {
+      naam: projectInfo.name,
+      projectnummer: projectInfo.projectNumber,
+      ingenieur: projectInfo.engineer,
+      bedrijf: projectInfo.company,
+      locatie: projectInfo.location,
+      omschrijving: projectInfo.description,
+    },
+    nodes: fem.nodes,
+    beams: fem.beams,
+    supports: fem.supports,
+    loads: fem.loads,
+    loadCases: fem.loadCases,
+    plates: fem.plates,
+    eigenGewicht: fem.selfWeightEnabled,
+    aantalCombinaties: fem.combinations.length,
+  }), [
+    projectPath, projectInfo,
+    fem.nodes, fem.beams, fem.supports, fem.loads, fem.loadCases,
+    fem.plates, fem.selfWeightEnabled, fem.combinations,
+  ]);
+
+  /**
+   * Schrijft het IFC-bestand weg en valideert het meteen. `zonderLasten`
+   * levert de knop "Export structureel": alleen het draagsysteem, zonder
+   * belastinggevallen — het bestand dat je aan een BIM-model overhandigt.
+   */
+  const handleExportIfc = useCallback(async (zonderLasten = false) => {
+    const { downloadIfc, valideerIfc, verzamelIfcBeperkingen } = await import("./io/ifcExport");
+    const { notifySuccess, notifyWarning } = await import("./io/notify");
+    const basis = ifcModel.project?.naam?.trim() || ifcModel.projectNaam || "rekenmodel";
+    const inhoud = downloadIfc(
+      ifcModel,
+      `${basis}${zonderLasten ? " - structureel" : ""}.ifc`,
+      { zonderLasten },
+    );
+    const uitslag = valideerIfc(inhoud);
+    const beperkingen = verzamelIfcBeperkingen(ifcModel, { zonderLasten });
+    if (uitslag.fouten.length > 0) {
+      notifyWarning("IFC-export bevat fouten", uitslag.fouten.slice(0, 3).join("\n"));
+    } else if (beperkingen.length > 0) {
+      notifySuccess(
+        "IFC geëxporteerd — met kanttekeningen",
+        `${uitslag.entiteiten} entiteiten. Niet meegenomen: ${beperkingen.length} punt(en); ` +
+        "zie het IFC-tabblad.",
+      );
+    } else {
+      notifySuccess("IFC geëxporteerd", `${uitslag.entiteiten} entiteiten, geldig IFC4.`);
+    }
+  }, [ifcModel]);
+
+  /** "Valideren" in het lint: controleert de export en meldt de uitslag. */
+  const handleValidateIfc = useCallback(async () => {
+    const { bouwIfcRekenmodel, valideerIfc, verzamelIfcBeperkingen } = await import("./io/ifcExport");
+    const { notifySuccess, notifyWarning } = await import("./io/notify");
+    const uitslag = valideerIfc(bouwIfcRekenmodel(ifcModel));
+    const beperkingen = verzamelIfcBeperkingen(ifcModel);
+    setActiveView("ifc");
+    if (uitslag.fouten.length > 0) {
+      notifyWarning(
+        `IFC-validatie: ${uitslag.fouten.length} fout(en)`,
+        uitslag.fouten.slice(0, 3).join("\n"),
+      );
+    } else {
+      notifySuccess(
+        "IFC-validatie geslaagd",
+        `${uitslag.entiteiten} entiteiten, geldig IFC4.` +
+        (beperkingen.length > 0
+          ? ` ${beperkingen.length} punt(en) niet in IFC uitgedrukt — zie het IFC-tabblad.`
+          : ""),
+      );
+    }
+  }, [ifcModel]);
 
   // Model of belastingen gewijzigd → de oude uitkomst telt niet meer. Zodra
   // er live gerekend wordt volgt meteen een verse berekening in plaats van
@@ -955,7 +1025,7 @@ function App() {
   const renderMainContent = () => {
     switch (activeView) {
       case "ifc":
-        return <IfcViewerPanel />;
+        return <IfcViewerPanel model={ifcModel} />;
       case "report":
         // Doorgeef-regels naar het live rapport (ReportDataContext) — de
         // secties lezen deze modelstate en volgen elke wijziging direct.
@@ -1012,10 +1082,15 @@ function App() {
                 updateLoad={fem.updateLoad}
                 deleteSelected={fem.deleteSelected}
                 splitBeamAt={fem.splitBeamAt}
+                addNodeMetSplitsing={fem.addNodeMetSplitsing}
+                verbindKnoopMetStaaf={fem.verbindKnoopMetStaaf}
+                voegKnopenSamen={fem.voegKnopenSamen}
+                herstelModel={fem.herstelModel}
                 translateSelection={fem.translateSelection}
                 copySelection={fem.copySelection}
                 rotateSelection={fem.rotateSelection}
                 mirrorSelection={fem.mirrorSelection}
+                plakLasten={fem.plakLasten}
                 translateNodes={fem.translateNodes}
                 structuralGrid={fem.structuralGrid}
                 setStructuralGrid={fem.setStructuralGrid}
@@ -1149,7 +1224,10 @@ function App() {
         onOpenLoadCombinations={() => { setLoadCasesTab("combos"); setLoadCasesOpen(true); }}
         onOpenWindGenerator={() => setWindGeneratorOpen(true)}
         onExportHtml={handleExportHtmlReport}
-        onExportIfc={() => { void handleExportIfc(); }}
+        onExportIfc={() => { void handleExportIfc(false); }}
+        onExportIfcStructural={() => { void handleExportIfc(true); }}
+        onValidateIfc={() => { void handleValidateIfc(); }}
+        onOpenIfcView={() => setActiveView("ifc")}
         onFilterSelection={() => {
           // Filter current selection: if multi-selection, keep only the first
           // type (nodes / beams / plates) — quickest visible effect for now.
@@ -1368,6 +1446,9 @@ function App() {
         loadCount={fem.loads.length}
         zoomPct={activeView === "default" ? zoomPct : undefined}
         solverStatus={solverStatus}
+        // Snapknopjes horen bij de tekenweergave; in de rapport-/IFC-weergave
+        // valt er niets te snappen.
+        toonSnap={!isFullWidthView}
       />
       <Backstage
         open={backstageOpen}
@@ -1501,6 +1582,21 @@ function App() {
                 return { ...p, zAxes: [...p.zAxes, { id: `z-${Date.now()}`, label: lbl || `Z${p.zAxes.length + 1}`, position: maxPos + 3000 }] };
               })}
             >+ Toevoegen</button>
+
+            {/* Afronden — het paneel blijft anders openstaan zolang je het
+                niet met het kruisje of Escape wegklikt, en dat leest als "de
+                stramienmodus staat nog aan". Elke wijziging hierboven is al
+                doorgevoerd; deze knop sluit alleen het paneel. */}
+            <div className="oa-grid-afronden">
+              <span className="oa-grid-afronden-hint">
+                Wijzigingen zijn direct doorgevoerd.
+              </span>
+              <button
+                className="oa-grid-done-btn"
+                onClick={() => setGridsOpen(false)}
+                title="Stramieninvoer afronden en dit paneel sluiten"
+              >Afronden</button>
+            </div>
           </div>
         </Sheet>
       )}

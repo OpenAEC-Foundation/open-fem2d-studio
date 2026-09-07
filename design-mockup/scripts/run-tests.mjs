@@ -121,7 +121,16 @@ const ALLEEN_BRON = new Map([
   ["splitsen", "test de zustand-store, niet de solver"],
   ["stramien-verplaatsen", "test de zustand-store, niet de solver"],
   ["transform", "test de zustand-store, niet de solver"],
+  [
+    "lasten-kopieren",
+    "test de store-logica voor het kopiëren van lasten tussen belastinggevallen; de solver dient er alleen als eindcontrole",
+  ],
+  [
+    "modelcontrole",
+    "test de modelcontrole en de herstelbewerkingen in de store; de acceptatieproef gebruikt de solver alleen als eindcontrole",
+  ],
   ["ifc-export", "staat los van de solver (IFC-export)"],
+  ["ifc-spiegel", "staat los van de solver (IFC-export spiegelt het model)"],
   ["profieleditor-snap", "test de objectsnap van de profieleditor, niet de solver"],
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],

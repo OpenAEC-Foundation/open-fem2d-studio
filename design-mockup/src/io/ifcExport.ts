@@ -38,45 +38,91 @@
  *    abstract), dus die staven krijgen alleen de IfcMaterial-koppeling; de
  *    profielnaam blijft behouden in de Description van de staaf.
  *  - Lasten: per belastinggeval een IfcStructuralLoadGroup (LOAD_CASE) +
- *    IfcRelAssignsToGroup. Puntlasten/momenten: IfcStructuralPointAction met
- *    IfcStructuralLoadSingleForce (globale assen). Uniforme lijnlasten:
+ *    IfcRelAssignsToGroup. Puntlasten/momenten op een knoop:
+ *    IfcStructuralPointAction met IfcStructuralLoadSingleForce (globale
+ *    assen), gekoppeld aan de puntconnectie. Een puntlast op een VRIJE
+ *    POSITIE op een staaf (posFrac) krijgt dezelfde actie, maar dan met een
+ *    eigen IfcVertexPoint-representatie op de werkelijke plek en een
+ *    koppeling aan de staaf — IfcStructuralActivity is een IfcProduct en mag
+ *    dus zelf geometrie dragen. Uniforme lijnlasten over de volle lengte:
  *    IfcStructuralLinearAction (CONST, TRUE_LENGTH) met
- *    IfcStructuralLoadLinearForce. Trapeziumlasten (qStart ≠ qEnd):
- *    IfcStructuralCurveAction (LINEAR) met IfcStructuralLoadConfiguration
- *    van twee waarden op posities 0 en L. Thermische lasten:
- *    IfcStructuralLinearAction met IfcStructuralLoadTemperature (ΔT
- *    constant). Globaal vs lokaal via GlobalOrLocal: een last met
- *    qCoord === "local"/"lokaal" (veld nog niet in femTypes — defensief
- *    gelezen) wordt LOCAL_COORDS, anders GLOBAL_COORDS (qDir is globaal).
+ *    IfcStructuralLoadLinearForce. Trapeziumlasten (qStart ≠ qEnd) over de
+ *    volle lengte: IfcStructuralCurveAction (LINEAR) met
+ *    IfcStructuralLoadConfiguration van twee waarden op 0 en L. DEELLASTEN
+ *    (startFrac/endFrac): IfcStructuralCurveAction (POLYGONAL) met een
+ *    configuratie die buiten het belaste deel op nul staat — knikpunten op
+ *    0, a, b en L. Thermische lasten: IfcStructuralLinearAction met
+ *    IfcStructuralLoadTemperature (ΔT constant).
+ *  - Lastrichting: alles wordt in GLOBAL_COORDS geschreven. Een lokale last
+ *    (qCoord "local") wordt met de staafhoek θ exact naar wereldassen
+ *    geprojecteerd — lokaal-x = (cosθ, sinθ), lokaal-z = (−sinθ, cosθ),
+ *    dezelfde projectie als de rekenadapter (solver/engine.ts). Zo staat er
+ *    geen richting in het bestand die van de IFC-lokale-assenconventie van
+ *    de lezer afhangt.
+ *  - Projectgegevens: naam, omschrijving, projectnummer en locatie uit de
+ *    projectinstellingen komen in IfcProject (Name / Description / LongName)
+ *    en IfcSite (Name). Ingenieur en bedrijf staan in de STEP-header
+ *    (FILE_NAME author/organization) — de plek die ISO 10303-21 daarvoor
+ *    heeft.
  *  - GlobalId's: deterministische 22-teken IFC-GUID's, afgeleid uit een
  *    inhoudelijke seed (bv. "knoop:3") via FNV-1a — geen Math.random, zodat
  *    twee exports van hetzelfde model byte-identiek zijn.
- *  - IfcOwnerHistory wordt weggelaten ($) — optioneel in IFC4.
+ *  - IfcOwnerHistory wordt weggelaten ($) — optioneel in IFC4, en een
+ *    tijdstempel daarin zou het determinisme breken.
  *
- * Bekende beperkingen (bewust, zie rapport):
- *  - Platen (Plate) worden niet geëxporteerd (geen IfcStructuralSurfaceMember).
- *  - Eigen gewicht (selfWeight-vlag) is geen Load in het model en wordt niet
- *    als IfcStructuralLoadCase.SelfWeightCoefficients geschreven.
- *  - Deellasten over een deel van de staaf kent femTypes (nog) niet; een
- *    trapezium loopt dus altijd over de volledige staaflengte.
+ * Bekende beperkingen: `verzamelIfcBeperkingen()` levert ze als leesbare
+ * regels op, zodat de IFC-weergave in beeld kan zeggen wat er NIET in het
+ * bestand staat in plaats van het stil weg te laten.
  */
 import type {
   Node, Beam, Support, Load, LoadCase,
 } from "../components/fem/femTypes";
 import { parseRechthoek } from "../lib/sectionResolver";
 import { SUPPORTED_TIMBER_GRADES } from "../lib/timberCheckBuilder";
+import {
+  STEEL_SECTION_DIMS, type SteelSectionDims,
+} from "../lib/steelSectionDims.generated";
 
 // ── Invoertype ──────────────────────────────────────────────────────────────
 
+/**
+ * Projectgegevens zoals de gebruiker ze in de projectinstellingen invult
+ * (ProjectSettingsDialog → instelling "projectInfo"). Alle velden optioneel:
+ * een leeg veld wordt gewoon weggelaten uit het bestand.
+ */
+export interface IfcProjectGegevens {
+  naam?: string;
+  projectnummer?: string;
+  ingenieur?: string;
+  bedrijf?: string;
+  locatie?: string;
+  omschrijving?: string;
+}
+
 /** Modelstate voor de export — zelfde vormen als de gelifte App-state. */
 export interface IfcRekenmodelInput {
-  /** Projectnaam (IfcProject.Name + bestandsnaamsuggestie). */
+  /**
+   * Projectnaam als er geen projectinstellingen zijn (bv. de bestandsnaam
+   * van het geopende project). `project.naam` gaat hier altijd vóór.
+   */
   projectNaam?: string;
+  /** Projectgegevens uit de projectinstellingen. */
+  project?: IfcProjectGegevens;
   nodes: Node[];
   beams: Beam[];
   supports: Support[];
   loads: Load[];
   loadCases: LoadCase[];
+  /**
+   * Platen in het model. Ze worden NIET geëxporteerd (zie
+   * verzamelIfcBeperkingen); alleen het aantal telt, om dat eerlijk te
+   * kunnen melden.
+   */
+  plates?: { id: number }[];
+  /** Staat de eigen-gewichtsberekening aan? Alleen voor de beperkingenlijst. */
+  eigenGewicht?: boolean;
+  /** Aantal belastingcombinaties. Alleen voor de beperkingenlijst. */
+  aantalCombinaties?: number;
 }
 
 export interface IfcExportOpties {
@@ -88,124 +134,30 @@ export interface IfcExportOpties {
    * downloadIfc geeft hier de echte kloktijd door.
    */
   tijdstempel?: string;
+  /**
+   * Alleen het draagsysteem: knopen, staven, profielen, materialen en
+   * opleggingen — zonder belastinggevallen en belastingen. Voor de knop
+   * "Export structureel", die het model naar een BIM-omgeving brengt waar de
+   * belastingen niet thuishoren.
+   */
+  zonderLasten?: boolean;
 }
 
 // ── Staalprofiel-afmetingen (mm) ────────────────────────────────────────────
-// GEGENEREERD uit src-tauri/crates/steel-profiles/data/profiles.json — de
-// bron van waarheid die ook de Rust-toetsing gebruikt. Sleutels genormaliseerd
-// zoals in sectionResolver (hoofdletters, zonder spaties/koppeltekens/punten).
-// NB: bedoeld om t.z.t. vervangen te worden door een gedeelde
-// src/lib/steelSectionDims.generated.ts zodra die bestaat.
+// Uit de GEDEELDE gegenereerde tabel (bron: de Rust-profieldatabase, dezelfde
+// die de toetsing en de doorsnedetekening gebruiken). Eerder stond hier een
+// eigen, met de hand bijgehouden uittreksel; dat liep achter op de
+// bibliotheek, waardoor gangbare profielen — bijvoorbeeld SHS 60x60x4 —
+// zonder doorsnede in het IFC-bestand terechtkwamen.
 
-type ProfielAfmeting =
-  | { soort: "I" | "U"; h: number; b: number; tw: number; tf: number; r: number }
-  | { soort: "koker"; h: number; b: number; t: number; r: number }
-  | { soort: "buis"; d: number; t: number };
-
-const STAALPROFIEL_AFMETINGEN: Record<string, ProfielAfmeting> = {
-  "HEB160": { soort: "I", h: 160, b: 160, tw: 8, tf: 13, r: 15 },
-  "HEB300": { soort: "I", h: 300, b: 300, tw: 11, tf: 19, r: 27 },
-  "UNP350": { soort: "U", h: 350, b: 100, tw: 14, tf: 16, r: 16 },
-  "HFRHS200X200X16": { soort: "koker", h: 200, b: 200, t: 16, r: 24 },
-  "IPE80": { soort: "I", h: 80, b: 46, tw: 3.8, tf: 5.2, r: 5 },
-  "IPE100": { soort: "I", h: 100, b: 55, tw: 4.1, tf: 5.7, r: 7 },
-  "IPE120": { soort: "I", h: 120, b: 64, tw: 4.4, tf: 6.3, r: 7 },
-  "IPE140": { soort: "I", h: 140, b: 73, tw: 4.7, tf: 6.9, r: 7 },
-  "IPE160": { soort: "I", h: 160, b: 82, tw: 5, tf: 7.4, r: 9 },
-  "IPE180": { soort: "I", h: 180, b: 91, tw: 5.3, tf: 8, r: 9 },
-  "IPE200": { soort: "I", h: 200, b: 100, tw: 5.6, tf: 8.5, r: 12 },
-  "IPE220": { soort: "I", h: 220, b: 110, tw: 5.9, tf: 9.2, r: 12 },
-  "IPE240": { soort: "I", h: 240, b: 120, tw: 6.2, tf: 9.8, r: 15 },
-  "IPE270": { soort: "I", h: 270, b: 135, tw: 6.6, tf: 10.2, r: 15 },
-  "IPE300": { soort: "I", h: 300, b: 150, tw: 7.1, tf: 10.7, r: 15 },
-  "IPE330": { soort: "I", h: 330, b: 160, tw: 7.5, tf: 11.5, r: 18 },
-  "IPE360": { soort: "I", h: 360, b: 170, tw: 8, tf: 12.7, r: 18 },
-  "IPE400": { soort: "I", h: 400, b: 180, tw: 8.6, tf: 13.5, r: 21 },
-  "IPE450": { soort: "I", h: 450, b: 190, tw: 9.4, tf: 14.6, r: 21 },
-  "IPE500": { soort: "I", h: 500, b: 200, tw: 10.2, tf: 16, r: 21 },
-  "IPE550": { soort: "I", h: 550, b: 210, tw: 11.1, tf: 17.2, r: 24 },
-  "IPE600": { soort: "I", h: 600, b: 220, tw: 12, tf: 19, r: 24 },
-  "HEA100": { soort: "I", h: 96, b: 100, tw: 5, tf: 8, r: 12 },
-  "HEA120": { soort: "I", h: 114, b: 120, tw: 5, tf: 8, r: 12 },
-  "HEA140": { soort: "I", h: 133, b: 140, tw: 5.5, tf: 8.5, r: 12 },
-  "HEA160": { soort: "I", h: 152, b: 160, tw: 6, tf: 9, r: 15 },
-  "HEA180": { soort: "I", h: 171, b: 180, tw: 6, tf: 9.5, r: 15 },
-  "HEA200": { soort: "I", h: 190, b: 200, tw: 6.5, tf: 10, r: 18 },
-  "HEA220": { soort: "I", h: 210, b: 220, tw: 7, tf: 11, r: 18 },
-  "HEA240": { soort: "I", h: 230, b: 240, tw: 7.5, tf: 12, r: 21 },
-  "HEA260": { soort: "I", h: 250, b: 260, tw: 7.5, tf: 12.5, r: 24 },
-  "HEA280": { soort: "I", h: 270, b: 280, tw: 8, tf: 13, r: 24 },
-  "HEA300": { soort: "I", h: 290, b: 300, tw: 8.5, tf: 14, r: 27 },
-  "HEA320": { soort: "I", h: 310, b: 300, tw: 9, tf: 15.5, r: 27 },
-  "HEA340": { soort: "I", h: 330, b: 300, tw: 9.5, tf: 16.5, r: 27 },
-  "HEA360": { soort: "I", h: 350, b: 300, tw: 10, tf: 17.5, r: 27 },
-  "HEA400": { soort: "I", h: 390, b: 300, tw: 11, tf: 19, r: 27 },
-  "HEB100": { soort: "I", h: 100, b: 100, tw: 6, tf: 10, r: 12 },
-  "HEB120": { soort: "I", h: 120, b: 120, tw: 6.5, tf: 11, r: 12 },
-  "HEB140": { soort: "I", h: 140, b: 140, tw: 7, tf: 12, r: 12 },
-  "HEB180": { soort: "I", h: 180, b: 180, tw: 8.5, tf: 14, r: 15 },
-  "HEB200": { soort: "I", h: 200, b: 200, tw: 9, tf: 15, r: 18 },
-  "HEB220": { soort: "I", h: 220, b: 220, tw: 9.5, tf: 16, r: 18 },
-  "HEB240": { soort: "I", h: 240, b: 240, tw: 10, tf: 17, r: 21 },
-  "HEB260": { soort: "I", h: 260, b: 260, tw: 10, tf: 17.5, r: 24 },
-  "HEB280": { soort: "I", h: 280, b: 280, tw: 10.5, tf: 18, r: 24 },
-  "HEB320": { soort: "I", h: 320, b: 300, tw: 11.5, tf: 20.5, r: 27 },
-  "HEB340": { soort: "I", h: 340, b: 300, tw: 12, tf: 21.5, r: 27 },
-  "HEB360": { soort: "I", h: 360, b: 300, tw: 12.5, tf: 22.5, r: 27 },
-  "HEB400": { soort: "I", h: 400, b: 300, tw: 13.5, tf: 24, r: 27 },
-  "HEM100": { soort: "I", h: 120, b: 106, tw: 12, tf: 20, r: 12 },
-  "HEM120": { soort: "I", h: 140, b: 126, tw: 12.5, tf: 21, r: 12 },
-  "HEM140": { soort: "I", h: 160, b: 146, tw: 13, tf: 22, r: 12 },
-  "HEM160": { soort: "I", h: 180, b: 166, tw: 14, tf: 23, r: 15 },
-  "HEM180": { soort: "I", h: 200, b: 186, tw: 14.5, tf: 24, r: 15 },
-  "HEM200": { soort: "I", h: 220, b: 206, tw: 15, tf: 25, r: 18 },
-  "HEM220": { soort: "I", h: 240, b: 226, tw: 15.5, tf: 26, r: 18 },
-  "HEM240": { soort: "I", h: 270, b: 248, tw: 18, tf: 32, r: 21 },
-  "HEM260": { soort: "I", h: 290, b: 268, tw: 18, tf: 32.5, r: 24 },
-  "HEM280": { soort: "I", h: 310, b: 288, tw: 18.5, tf: 33, r: 24 },
-  "HEM300": { soort: "I", h: 340, b: 310, tw: 21, tf: 39, r: 27 },
-  "SHS80X80X4": { soort: "koker", h: 80, b: 80, t: 4, r: 4 },
-  "SHS100X100X5": { soort: "koker", h: 100, b: 100, t: 5, r: 5 },
-  "SHS120X120X5": { soort: "koker", h: 120, b: 120, t: 5, r: 5 },
-  "SHS150X150X6": { soort: "koker", h: 150, b: 150, t: 6, r: 6 },
-  "SHS200X200X8": { soort: "koker", h: 200, b: 200, t: 8, r: 8 },
-  "SHS250X250X10": { soort: "koker", h: 250, b: 250, t: 10, r: 10 },
-  "SHS300X300X10": { soort: "koker", h: 300, b: 300, t: 10, r: 10 },
-  "RHS100X50X4": { soort: "koker", h: 100, b: 50, t: 4, r: 4 },
-  "RHS120X60X5": { soort: "koker", h: 120, b: 60, t: 5, r: 5 },
-  "RHS150X100X6": { soort: "koker", h: 150, b: 100, t: 6, r: 6 },
-  "RHS200X100X8": { soort: "koker", h: 200, b: 100, t: 8, r: 8 },
-  "RHS250X150X8": { soort: "koker", h: 250, b: 150, t: 8, r: 8 },
-  "RHS300X200X10": { soort: "koker", h: 300, b: 200, t: 10, r: 10 },
-  "CHS424X32": { soort: "buis", d: 42.4, t: 3.2 },
-  "CHS483X32": { soort: "buis", d: 48.3, t: 3.2 },
-  "CHS603X40": { soort: "buis", d: 60.3, t: 4 },
-  "CHS761X50": { soort: "buis", d: 76.1, t: 5 },
-  "CHS889X50": { soort: "buis", d: 88.9, t: 5 },
-  "CHS1143X63": { soort: "buis", d: 114.3, t: 6.3 },
-  "CHS1397X80": { soort: "buis", d: 139.7, t: 8 },
-  "CHS1683X80": { soort: "buis", d: 168.3, t: 8 },
-  "CHS2191X10": { soort: "buis", d: 219.1, t: 10 },
-  "CHS273X10": { soort: "buis", d: 273, t: 10 },
-  "CHS3239X125": { soort: "buis", d: 323.9, t: 12.5 },
-  "CHS4064X16": { soort: "buis", d: 406.4, t: 16 },
-  "UNP80": { soort: "U", h: 80, b: 45, tw: 6, tf: 8, r: 8 },
-  "UNP100": { soort: "U", h: 100, b: 50, tw: 6, tf: 8.5, r: 8.5 },
-  "UNP120": { soort: "U", h: 120, b: 55, tw: 7, tf: 9, r: 9 },
-  "UNP140": { soort: "U", h: 140, b: 60, tw: 7, tf: 10, r: 10 },
-  "UNP160": { soort: "U", h: 160, b: 65, tw: 7.5, tf: 10.5, r: 10.5 },
-  "UNP180": { soort: "U", h: 180, b: 70, tw: 8, tf: 11, r: 11 },
-  "UNP200": { soort: "U", h: 200, b: 75, tw: 8.5, tf: 11.5, r: 11.5 },
-  "UNP220": { soort: "U", h: 220, b: 80, tw: 9, tf: 12.5, r: 12.5 },
-  "UNP240": { soort: "U", h: 240, b: 85, tw: 9.5, tf: 13, r: 13 },
-  "UNP260": { soort: "U", h: 260, b: 90, tw: 10, tf: 14, r: 14 },
-  "UNP280": { soort: "U", h: 280, b: 95, tw: 10, tf: 15, r: 15 },
-  "UNP300": { soort: "U", h: 300, b: 100, tw: 10, tf: 16, r: 16 },
-};
-
-/** Zelfde normalisatie als sectionResolver (die exporteert hem niet). */
+/** Zelfde normalisatie als de sleutels van STEEL_SECTION_DIMS. */
 function normaliseerProfielnaam(naam: string): string {
-  return naam.toUpperCase().split("").filter(c => c !== " " && c !== "-" && c !== ".").join("");
+  return naam.replace(/[\s\-.]/g, "").toUpperCase();
+}
+
+/** Afmetingen van een catalogusprofiel, of undefined als het onbekend is. */
+function profielAfmetingen(profiel: string): SteelSectionDims | undefined {
+  return STEEL_SECTION_DIMS[normaliseerProfielnaam(profiel)];
 }
 
 /** Herkenning hout-sterkteklasse (EN 338 / EN 14080) — incl. D-klassen. */
@@ -335,7 +287,16 @@ export function bouwIfcRekenmodel(
   opties: IfcExportOpties = {},
 ): string {
   const w = new SpfSchrijver();
-  const projectNaam = model.projectNaam?.trim() || "Rekenmodel";
+  /** Leeg/whitespace veld telt als "niet ingevuld". */
+  const tekst = (v: string | undefined): string | undefined => {
+    const s = v?.trim();
+    return s ? s : undefined;
+  };
+  const projectNaam =
+    tekst(model.project?.naam) ?? tekst(model.projectNaam) ?? "Rekenmodel";
+  const projectOmschrijving = tekst(model.project?.omschrijving);
+  const projectNummer = tekst(model.project?.projectnummer);
+  const projectLocatie = tekst(model.project?.locatie);
 
   // ── Eenheden (SI) ────────────────────────────────────────────────────────
   const uLengte = w.ent("IFCSIUNIT", "*", ".LENGTHUNIT.", "$", ".METRE.");
@@ -360,11 +321,17 @@ export function bouwIfcRekenmodel(
     "$", "'Model'", "3", "1.E-5", ref(wereldAssen), "$");
 
   // ── Project → terrein → gebouw ───────────────────────────────────────────
+  // Name = projectnaam, Description = omschrijving, LongName = projectnummer.
   const project = w.ent("IFCPROJECT",
-    w.guid("project"), "$", stepString(projectNaam), "$", "$", "$", "$",
-    lijst([context]), ref(eenheden));
+    w.guid("project"), "$", stepString(projectNaam),
+    projectOmschrijving !== undefined ? stepString(projectOmschrijving) : "$",
+    "$",
+    projectNummer !== undefined ? stepString(projectNummer) : "$",
+    "$", lijst([context]), ref(eenheden));
   const terrein = w.ent("IFCSITE",
-    w.guid("terrein"), "$", "'Terrein'", "$", "$", "$", "$", "$",
+    w.guid("terrein"), "$",
+    stepString(projectLocatie ?? "Terrein"),
+    "$", "$", "$", "$", "$",
     ".ELEMENT.", "$", "$", "$", "$", "$");
   const gebouw = w.ent("IFCBUILDING",
     w.guid("gebouw"), "$", "'Gebouw'", "$", "$", "$", "$", "$",
@@ -384,9 +351,11 @@ export function bouwIfcRekenmodel(
     wind: [".VARIABLE_Q.", ".WIND_W."],
     other: [".NOTDEFINED.", ".NOTDEFINED."],
   };
-  const alleCases: LoadCase[] = [...model.loadCases];
+  const zonderLasten = opties.zonderLasten === true;
+  const teExporterenLasten = zonderLasten ? [] : model.loads;
+  const alleCases: LoadCase[] = zonderLasten ? [] : [...model.loadCases];
   // Lasten met een caseId zonder bijbehorend geval: synthetische groep.
-  for (const last of model.loads) {
+  for (const last of teExporterenLasten) {
     if (!alleCases.some(c => c.id === last.caseId)) {
       alleCases.push({ id: last.caseId, name: `BG ${last.caseId}`, type: "other" });
     }
@@ -439,7 +408,7 @@ export function bouwIfcRekenmodel(
   // ── Staven: curve-members + eindverbindingen ─────────────────────────────
   const richtingY = w.ent("IFCDIRECTION", "(0.,1.,0.)"); // normaal op het rekenvlak
   const memberPerStaaf = new Map<number, number>();
-  const staafLengteM = new Map<number, number>();
+  const staafInfo = new Map<number, StaafInfo>();
   for (const staaf of model.beams) {
     const van = model.nodes.find(n => n.id === staaf.from);
     const naar = model.nodes.find(n => n.id === staaf.to);
@@ -449,8 +418,16 @@ export function bouwIfcRekenmodel(
       console.warn(`[ifcExport] Staaf ${staaf.id} verwijst naar ontbrekende knoop — overgeslagen.`);
       continue;
     }
-    staafLengteM.set(staaf.id,
-      Math.hypot(naar.x - van.x, naar.z - van.z) / 1000);
+    const lengteMm = Math.hypot(naar.x - van.x, naar.z - van.z);
+    staafInfo.set(staaf.id, {
+      lengteM: lengteMm / 1000,
+      // Eenheidsvector van→naar; bij een staaf met lengte 0 (gedegenereerd
+      // model) valt hij terug op +X, zodat er geen NaN in het bestand komt.
+      ux: lengteMm > 0 ? (naar.x - van.x) / lengteMm : 1,
+      uz: lengteMm > 0 ? (naar.z - van.z) / lengteMm : 0,
+      xMmVan: van.x, zMmVan: van.z,
+      xMmNaar: naar.x, zMmNaar: naar.z,
+    });
 
     const rand = w.ent("IFCEDGE", ref(vertexVan), ref(vertexNaar));
     const topo = w.ent("IFCTOPOLOGYREPRESENTATION",
@@ -494,8 +471,8 @@ export function bouwIfcRekenmodel(
 
   // ── Lasten ───────────────────────────────────────────────────────────────
   const actiesPerGroep = new Map<number, number[]>();
-  for (const last of model.loads) {
-    const actie = schrijfLast(w, last, connectiePerKnoop, memberPerStaaf, staafLengteM);
+  for (const last of teExporterenLasten) {
+    const actie = schrijfLast(w, last, connectiePerKnoop, memberPerStaaf, staafInfo, context);
     if (actie === undefined) continue;
     const groep = groepPerCase.get(last.caseId);
     if (groep !== undefined) {
@@ -521,11 +498,17 @@ export function bouwIfcRekenmodel(
   // ── Omlijsting (ISO 10303-21) ────────────────────────────────────────────
   const bestandsnaam = opties.bestandsnaam ?? `${projectNaam}.ifc`;
   const tijdstempel = opties.tijdstempel ?? "";
+  // Auteur en organisatie: de ISO 10303-21-header is de plek voor "wie heeft
+  // dit gemaakt". Leeg gelaten velden worden een lege string, zoals de norm
+  // voorschrijft (de lijsten zelf zijn verplicht).
+  const auteur = stepString(tekst(model.project?.ingenieur) ?? "");
+  const organisatie = stepString(tekst(model.project?.bedrijf) ?? "");
   return [
     "ISO-10303-21;",
     "HEADER;",
     "FILE_DESCRIPTION(('ViewDefinition [StructuralAnalysisView]'),'2;1');",
-    `FILE_NAME(${stepString(bestandsnaam)},${stepString(tijdstempel)},(''),(''),` +
+    `FILE_NAME(${stepString(bestandsnaam)},${stepString(tijdstempel)},` +
+      `(${auteur}),(${organisatie}),` +
       "'Open FEM2D Studio','Open FEM2D Studio','');",
     "FILE_SCHEMA(('IFC4'));",
     "ENDSEC;",
@@ -627,28 +610,53 @@ function schrijfMaterialenEnProfielen(
 
 // ── Lasten ──────────────────────────────────────────────────────────────────
 
+/** Wat de lastroutine van een staaf moet weten: lengte, richting, eindpunten. */
+interface StaafInfo {
+  /** Staaflengte in m. */
+  lengteM: number;
+  /** Eenheidsvector van→naar in wereldassen (x rechts, z omhoog). */
+  ux: number;
+  uz: number;
+  /** Eindpunten in mm (modelcoördinaten). */
+  xMmVan: number; zMmVan: number;
+  xMmNaar: number; zMmNaar: number;
+}
+
+/**
+ * Componenten van een lijnlast in WERELDASSEN (kN/m). Een lokale last wordt
+ * met de staafhoek geprojecteerd — exact dezelfde formules als de
+ * rekenadapter (solver/engine.ts): lokaal-x = (cosθ, sinθ) axiaal,
+ * lokaal-z = (−sinθ, cosθ) transversaal (90° CCW vanaf de as van→naar).
+ */
+function lastComponenten(
+  q: number,
+  qDir: "x" | "z",
+  lokaal: boolean,
+  staaf: StaafInfo | undefined,
+): { qx: number; qz: number } {
+  if (!lokaal || staaf === undefined) {
+    return qDir === "x" ? { qx: q, qz: 0 } : { qx: 0, qz: q };
+  }
+  const c = staaf.ux, s = staaf.uz;
+  return qDir === "x"
+    ? { qx: q * c, qz: q * s }
+    : { qx: -q * s, qz: q * c };
+}
+
 /**
  * Schrijft één last als structural action + koppeling aan knoop of staaf.
- * Retourneert het action-#id, of undefined als de last niet te exporteren is.
+ * Retourneert het action-#id, of undefined als de last niet te exporteren is
+ * (dat geval staat dan in `verzamelIfcBeperkingen`).
  */
 function schrijfLast(
   w: SpfSchrijver,
   last: Load,
   connectiePerKnoop: Map<number, number>,
   memberPerStaaf: Map<number, number>,
-  staafLengteM: Map<number, number>,
+  staafInfoPerStaaf: Map<number, StaafInfo>,
+  context: number,
 ): number | undefined {
-  // Globaal tenzij het (toekomstige) qCoord-veld expliciet lokaal zegt.
-  const qCoord = (last as { qCoord?: string }).qCoord;
-  const lokaal = qCoord === "local" || qCoord === "lokaal";
-  const stelsel = lokaal ? ".LOCAL_COORDS." : ".GLOBAL_COORDS.";
-
   if (last.type === "pointForce" || last.type === "pointMoment") {
-    const connectie = last.nodeId !== undefined ? connectiePerKnoop.get(last.nodeId) : undefined;
-    if (connectie === undefined) {
-      console.warn(`[ifcExport] Last ${last.id} verwijst naar ontbrekende knoop — overgeslagen.`);
-      return undefined;
-    }
     // kN → N, kNm → N·m
     const kracht = w.ent("IFCSTRUCTURALLOADSINGLEFORCE",
       stepString(`Last ${last.id}`),
@@ -658,13 +666,44 @@ function schrijfLast(
       "$",
       last.my !== undefined ? `IFCTORQUEMEASURE(${reeel(last.my * 1e3)})` : "$",
       "$");
-    const actie = w.ent("IFCSTRUCTURALPOINTACTION",
-      w.guid(`last:${last.id}`), "$",
-      stepString(last.type === "pointMoment" ? `M ${last.id}` : `F ${last.id}`),
-      "$", "$", "$", "$", ref(kracht), stelsel, "$");
-    w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
-      w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(connectie), ref(actie));
-    return actie;
+    const naam = stepString(last.type === "pointMoment" ? `M ${last.id}` : `F ${last.id}`);
+
+    // Knooplast: hangt aan de puntconnectie, geen eigen geometrie nodig.
+    const connectie = last.nodeId !== undefined ? connectiePerKnoop.get(last.nodeId) : undefined;
+    if (connectie !== undefined) {
+      const actie = w.ent("IFCSTRUCTURALPOINTACTION",
+        w.guid(`last:${last.id}`), "$", naam,
+        "$", "$", "$", "$", ref(kracht), ".GLOBAL_COORDS.", "$");
+      w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
+        w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(connectie), ref(actie));
+      return actie;
+    }
+
+    // Staafgebonden puntlast op een vrije positie (posFrac): de actie krijgt
+    // een eigen IfcVertexPoint op de werkelijke plek — IfcStructuralActivity
+    // is een IfcProduct en mag dus geometrie dragen — en wordt aan de staaf
+    // gekoppeld.
+    const staaf = last.beamId !== undefined ? staafInfoPerStaaf.get(last.beamId) : undefined;
+    const member = last.beamId !== undefined ? memberPerStaaf.get(last.beamId) : undefined;
+    if (staaf !== undefined && member !== undefined) {
+      const f = Math.min(1, Math.max(0, last.posFrac ?? 0));
+      const xMm = staaf.xMmVan + f * (staaf.xMmNaar - staaf.xMmVan);
+      const zMm = staaf.zMmVan + f * (staaf.zMmNaar - staaf.zMmVan);
+      const punt = w.ent("IFCCARTESIANPOINT", `(${meter(xMm)},0.,${meter(zMm)})`);
+      const vertex = w.ent("IFCVERTEXPOINT", ref(punt));
+      const topo = w.ent("IFCTOPOLOGYREPRESENTATION",
+        ref(context), "'Reference'", "'Vertex'", lijst([vertex]));
+      const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
+      const actie = w.ent("IFCSTRUCTURALPOINTACTION",
+        w.guid(`last:${last.id}`), "$", naam,
+        "$", "$", "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$");
+      w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
+        w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(member), ref(actie));
+      return actie;
+    }
+
+    console.warn(`[ifcExport] Last ${last.id} verwijst naar ontbrekende knoop of staaf — overgeslagen.`);
+    return undefined;
   }
 
   if (last.type === "lineLoad" || last.type === "thermal") {
@@ -673,6 +712,7 @@ function schrijfLast(
       console.warn(`[ifcExport] Last ${last.id} verwijst naar ontbrekende staaf — overgeslagen.`);
       return undefined;
     }
+    const staaf = last.beamId !== undefined ? staafInfoPerStaaf.get(last.beamId) : undefined;
 
     let actie: number;
     if (last.type === "thermal") {
@@ -688,25 +728,37 @@ function schrijfLast(
       const qA = last.qStart ?? last.q ?? 0; // kN/m
       const qB = last.qEnd ?? last.q ?? 0;
       const richting = last.qDir ?? "z";
-      // kN/m → N/m; richting in globale assen via qDir
-      const lijnkracht = (q: number, naam: string): number => w.ent(
-        "IFCSTRUCTURALLOADLINEARFORCE",
-        stepString(naam),
-        richting === "x" ? `IFCLINEARFORCEMEASURE(${reeel(q * 1e3)})` : "$",
-        "$",
-        richting === "z" ? `IFCLINEARFORCEMEASURE(${reeel(q * 1e3)})` : "$",
-        "$", "$", "$");
+      const lokaal = last.qCoord === "local";
+      // kN/m → N/m, altijd in wereldassen (een lokale last is geprojecteerd).
+      const lijnkracht = (q: number, naam: string): number => {
+        const { qx, qz } = lastComponenten(q, richting, lokaal, staaf);
+        // Globaal: alleen de aangewezen richting krijgt een waarde (ook een
+        // nul-last blijft zo zichtbaar). Lokaal: beide componenten, voor
+        // zover ze niet nul zijn.
+        const toonX = lokaal ? qx !== 0 : richting === "x";
+        const toonZ = lokaal ? qz !== 0 : richting === "z";
+        return w.ent("IFCSTRUCTURALLOADLINEARFORCE",
+          stepString(naam),
+          toonX ? `IFCLINEARFORCEMEASURE(${reeel(qx * 1e3)})` : "$",
+          "$",
+          toonZ ? `IFCLINEARFORCEMEASURE(${reeel(qz * 1e3)})` : "$",
+          "$", "$", "$");
+      };
 
-      if (qA === qB) {
-        // Uniform: IfcStructuralLinearAction, per definitie CONST.
+      const L = staaf?.lengteM ?? 0;
+      // Deellast: het belaste deel loopt van a tot b (m vanaf de startknoop).
+      const fA = Math.min(1, Math.max(0, last.startFrac ?? 0));
+      const fB = Math.min(1, Math.max(fA, last.endFrac ?? 1));
+      const deellast = fA > 0 || fB < 1;
+
+      if (!deellast && qA === qB) {
+        // Uniform over de volle lengte: IfcStructuralLinearAction, CONST.
         const qLast = lijnkracht(qA, `q ${last.id}`);
         actie = w.ent("IFCSTRUCTURALLINEARACTION",
           w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), "$", "$",
-          "$", "$", ref(qLast), stelsel, "$", ".TRUE_LENGTH.", ".CONST.");
-      } else {
-        // Trapezium: IfcStructuralCurveAction (LINEAR) met een
-        // lastconfiguratie van twee waarden op 0 en L (volledige staaf).
-        const L = staafLengteM.get(last.beamId!) ?? 0;
+          "$", "$", ref(qLast), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".CONST.");
+      } else if (!deellast) {
+        // Trapezium over de volle lengte: twee waarden op 0 en L.
         const q1 = lijnkracht(qA, `q ${last.id} begin`);
         const q2 = lijnkracht(qB, `q ${last.id} eind`);
         const config = w.ent("IFCSTRUCTURALLOADCONFIGURATION",
@@ -714,7 +766,26 @@ function schrijfLast(
           `((0.),(${reeel(L)}))`);
         actie = w.ent("IFCSTRUCTURALCURVEACTION",
           w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), "$", "$",
-          "$", "$", ref(config), stelsel, "$", ".TRUE_LENGTH.", ".LINEAR.");
+          "$", "$", ref(config), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".LINEAR.");
+      } else {
+        // Deellast: knikpunten op 0 (nul), a (qA), b (qB) en L (nul). De
+        // punten buiten het belaste deel vallen weg als a = 0 of b = L; de
+        // lezer interpoleert lineair tussen de opgegeven posities, dus dit
+        // is een exacte weergave van de belaste strook.
+        const nul = lijnkracht(0, `q ${last.id} nul`);
+        const waarden: number[] = [];
+        const posities: string[] = [];
+        const a = fA * L, b = fB * L;
+        if (fA > 0) { waarden.push(nul); posities.push(reeel(0)); }
+        waarden.push(lijnkracht(qA, `q ${last.id} begin`)); posities.push(reeel(a));
+        waarden.push(lijnkracht(qB, `q ${last.id} eind`));  posities.push(reeel(b));
+        if (fB < 1) { waarden.push(nul); posities.push(reeel(L)); }
+        const config = w.ent("IFCSTRUCTURALLOADCONFIGURATION",
+          stepString(`q ${last.id}`), lijst(waarden),
+          `(${posities.map(p => `(${p})`).join(",")})`);
+        actie = w.ent("IFCSTRUCTURALCURVEACTION",
+          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), "$", "$",
+          "$", "$", ref(config), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".POLYGONAL.");
       }
     }
     w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
@@ -726,30 +797,436 @@ function schrijfLast(
   return undefined;
 }
 
-// ── Download-helper (browser) ───────────────────────────────────────────────
+// ── Wat er NIET in het bestand komt ─────────────────────────────────────────
 
 /**
- * Bouwt het IFC-bestand en biedt het aan als download (blob, zoals de
- * CSV-export van de matrijzen). Bestandsnaam default: "<projectNaam>.ifc".
+ * Leesbare regels over modelonderdelen die deze IFC-vorm niet draagt. De
+ * IFC-weergave toont ze in beeld: liever eerlijk melden dan stilzwijgend
+ * weglaten. Lege lijst = het hele model staat in het bestand.
  */
-export function downloadIfc(model: IfcRekenmodelInput, bestandsnaam?: string): void {
-  const veiligeNaam = (bestandsnaam ?? `${model.projectNaam?.trim() || "rekenmodel"}.ifc`)
-    .replace(/[\\/:*?"<>|]/g, "_");
-  const naamMetExt = veiligeNaam.toLowerCase().endsWith(".ifc")
-    ? veiligeNaam : `${veiligeNaam}.ifc`;
-  const inhoud = bouwIfcRekenmodel(model, {
-    bestandsnaam: naamMetExt,
-    tijdstempel: new Date().toISOString().slice(0, 19),
-  });
-  const blob = new Blob([inhoud], { type: "application/x-step" });
+export function verzamelIfcBeperkingen(
+  model: IfcRekenmodelInput,
+  opties: IfcExportOpties = {},
+): string[] {
+  const regels: string[] = [];
+
+  const platen = model.plates?.length ?? 0;
+  if (platen > 0) {
+    regels.push(
+      `${platen} ${platen === 1 ? "plaat" : "platen"}: platen worden niet ` +
+      "geëxporteerd. IFC4 heeft hiervoor IfcStructuralSurfaceMember; deze " +
+      "export schrijft alleen het staafwerk.",
+    );
+  }
+
+  const randlasten = model.loads.filter(l => l.type === "edgeLoad").length;
+  if (randlasten > 0) {
+    regels.push(
+      `${randlasten} ${randlasten === 1 ? "randbelasting" : "randbelastingen"} op een plaat: ` +
+      "hoort bij een plaat en valt dus met de platen buiten het bestand.",
+    );
+  }
+
+  if (opties.zonderLasten === true) {
+    if (model.loads.length > 0 || model.loadCases.length > 0) {
+      regels.push(
+        `Structurele export: ${model.loads.length} belasting${model.loads.length === 1 ? "" : "en"} ` +
+        `en ${model.loadCases.length} belastinggeval${model.loadCases.length === 1 ? "" : "len"} ` +
+        "zijn bewust weggelaten — dit bestand bevat alleen het draagsysteem.",
+      );
+    }
+  } else {
+    if (model.eigenGewicht === true) {
+      regels.push(
+        "Eigen gewicht staat aan, maar is in het model geen belasting; het " +
+        "wordt niet als zelfgewichtsbelasting in het bestand gezet.",
+      );
+    }
+    const combinaties = model.aantalCombinaties ?? 0;
+    if (combinaties > 0) {
+      regels.push(
+        `${combinaties} belastingcombinatie${combinaties === 1 ? "" : "s"}: alleen de ` +
+        "losse belastinggevallen worden geëxporteerd, niet de combinaties " +
+        "met hun factoren.",
+      );
+    }
+  }
+
+  // Staven met een profiel waarvan de afmetingen niet bekend zijn: die
+  // krijgen wel materiaal en naam, maar geen parametrische doorsnede.
+  const zonderDoorsnede = new Set<string>();
+  for (const staaf of model.beams) {
+    const materiaal = staaf.material ?? "S235";
+    const profiel = staaf.profile ?? "HEA160";
+    const bekend = isHoutMateriaal(materiaal)
+      ? parseRechthoek(profiel) !== null
+      : profielAfmetingen(profiel) !== undefined || parseRechthoek(profiel) !== null;
+    if (!bekend) zonderDoorsnede.add(profiel);
+  }
+  if (zonderDoorsnede.size > 0) {
+    regels.push(
+      `Doorsnede onbekend voor ${[...zonderDoorsnede].sort().join(", ")}: die staven ` +
+      "krijgen wel materiaal en profielnaam, maar geen parametrische " +
+      "doorsnede (IFC4 kent geen profiel zonder afmetingen).",
+    );
+  }
+
+  // Staven of lasten die naar iets verwijzen dat niet bestaat.
+  const knoopIds = new Set(model.nodes.map(n => n.id));
+  const staafIds = new Set(model.beams.map(b => b.id));
+  const losseStaven = model.beams.filter(b => !knoopIds.has(b.from) || !knoopIds.has(b.to));
+  if (losseStaven.length > 0) {
+    regels.push(
+      `${losseStaven.length} staaf/staven verwijzen naar een knoop die niet bestaat ` +
+      `(${losseStaven.map(b => b.id).join(", ")}) — die staven zijn overgeslagen.`,
+    );
+  }
+  if (opties.zonderLasten !== true) {
+    const losseLasten = model.loads.filter(l => {
+      if (l.type === "edgeLoad") return false;
+      if (l.nodeId !== undefined) return !knoopIds.has(l.nodeId);
+      if (l.beamId !== undefined) return !staafIds.has(l.beamId);
+      return true;
+    });
+    if (losseLasten.length > 0) {
+      regels.push(
+        `${losseLasten.length} belasting(en) verwijzen naar een knoop of staaf die niet ` +
+        `bestaat (${losseLasten.map(l => l.id).join(", ")}) — die zijn overgeslagen.`,
+      );
+    }
+  }
+
+  return regels;
+}
+
+// ── Boomstructuur van het geëxporteerde model ───────────────────────────────
+
+export interface IfcBoomKnoop {
+  /** IFC-entiteitsnaam, bv. "IfcStructuralPointConnection". */
+  type: string;
+  /** Leesbare naam of waarde. */
+  naam: string;
+  /** Aantal onderliggende items, als dat iets zegt. */
+  aantal?: number;
+  kinderen?: IfcBoomKnoop[];
+}
+
+/** Getal met komma als decimaalteken, voor de Nederlandse weergave. */
+function nl(v: number, decimalen = 3): string {
+  return v.toFixed(decimalen).replace(".", ",");
+}
+
+/**
+ * De hiërarchie zoals hij in het geëxporteerde bestand staat — dus met de
+ * echte knopen, staven, opleggingen en belastinggevallen van het model.
+ */
+export function bouwIfcBoom(
+  model: IfcRekenmodelInput,
+  opties: IfcExportOpties = {},
+): IfcBoomKnoop {
+  const projectNaam =
+    model.project?.naam?.trim() || model.projectNaam?.trim() || "Rekenmodel";
+  const locatie = model.project?.locatie?.trim() || "Terrein";
+  const knoopNaam = new Map(model.nodes.map(n => [n.id, `Knoop ${n.id}`]));
+
+  const knopen: IfcBoomKnoop = {
+    type: "IfcStructuralPointConnection",
+    naam: "Knopen",
+    aantal: model.nodes.length,
+    kinderen: model.nodes.map(n => ({
+      type: "IfcVertexPoint",
+      naam: `Knoop ${n.id} — x ${nl(n.x / 1000)} m, z ${nl(n.z / 1000)} m`,
+    })),
+  };
+
+  const staven: IfcBoomKnoop = {
+    type: "IfcStructuralCurveMember",
+    naam: "Staven",
+    aantal: model.beams.length,
+    kinderen: model.beams.map(b => ({
+      type: "IfcMaterialProfile",
+      naam: `Staaf ${b.id} — ${b.material ?? "S235"} ${b.profile ?? "HEA160"} ` +
+        `(${knoopNaam.get(b.from) ?? `knoop ${b.from}?`} → ${knoopNaam.get(b.to) ?? `knoop ${b.to}?`})`,
+    })),
+  };
+
+  const opleggingNaam: Record<string, string> = {
+    pinned: "Scharnieroplegging", fixed: "Inklemming",
+    xRoller: "Rol (X vast)", zRoller: "Rol (Z vast)",
+    zSpring: "Veer Z", xSpring: "Veer X", rotSpring: "Draaiveer",
+  };
+  const opleggingen: IfcBoomKnoop = {
+    type: "IfcBoundaryNodeCondition",
+    naam: "Opleggingen",
+    aantal: model.supports.length,
+    kinderen: model.supports.map(s => ({
+      type: "IfcBoundaryNodeCondition",
+      naam: `Knoop ${s.nodeId} — ${opleggingNaam[s.type] ?? s.type}` +
+        (s.k !== undefined ? ` (k = ${nl(s.k, 2)})` : ""),
+    })),
+  };
+
+  const kinderenModel: IfcBoomKnoop[] = [knopen, staven, opleggingen];
+
+  if (opties.zonderLasten !== true) {
+    const perGeval = new Map<number, number>();
+    for (const l of model.loads) {
+      if (l.type === "edgeLoad") continue;
+      perGeval.set(l.caseId, (perGeval.get(l.caseId) ?? 0) + 1);
+    }
+    for (const geval of model.loadCases) {
+      kinderenModel.push({
+        type: "IfcStructuralLoadGroup",
+        naam: geval.name,
+        aantal: perGeval.get(geval.id) ?? 0,
+        kinderen: model.loads
+          .filter(l => l.caseId === geval.id && l.type !== "edgeLoad")
+          .map(l => ({
+            type: l.type === "lineLoad"
+              ? "IfcStructuralCurveAction"
+              : l.type === "thermal"
+                ? "IfcStructuralLinearAction"
+                : "IfcStructuralPointAction",
+            naam: omschrijfLast(l),
+          })),
+      });
+    }
+  }
+
+  return {
+    type: "IfcProject",
+    naam: projectNaam,
+    kinderen: [{
+      type: "IfcSite",
+      naam: locatie,
+      kinderen: [{
+        type: "IfcBuilding",
+        naam: "Gebouw",
+        kinderen: [{
+          type: "IfcStructuralAnalysisModel",
+          naam: `Rekenmodel ${projectNaam}`,
+          kinderen: kinderenModel,
+        }],
+      }],
+    }],
+  };
+}
+
+/** Eenregelige omschrijving van een belasting, met eenheden. */
+function omschrijfLast(l: Load): string {
+  const doel = l.nodeId !== undefined
+    ? `knoop ${l.nodeId}`
+    : l.beamId !== undefined ? `staaf ${l.beamId}` : "?";
+  switch (l.type) {
+    case "pointForce": {
+      const delen: string[] = [];
+      if (l.fx !== undefined && l.fx !== 0) delen.push(`Fx ${nl(l.fx, 2)} kN`);
+      if (l.fz !== undefined && l.fz !== 0) delen.push(`Fz ${nl(l.fz, 2)} kN`);
+      const plek = l.posFrac !== undefined ? ` op ${nl(l.posFrac * 100, 0)}%` : "";
+      return `Puntlast ${l.id} — ${delen.join(", ") || "0 kN"} op ${doel}${plek}`;
+    }
+    case "pointMoment":
+      return `Moment ${l.id} — My ${nl(l.my ?? 0, 2)} kNm op ${doel}`;
+    case "thermal":
+      return `Temperatuur ${l.id} — ΔT ${nl(l.deltaT ?? 0, 1)} K op ${doel}`;
+    case "lineLoad": {
+      const qA = l.qStart ?? l.q ?? 0;
+      const qB = l.qEnd ?? l.q ?? 0;
+      const waarde = qA === qB ? `${nl(qA, 2)} kN/m` : `${nl(qA, 2)} → ${nl(qB, 2)} kN/m`;
+      const deel = (l.startFrac ?? 0) > 0 || (l.endFrac ?? 1) < 1
+        ? ` (deel ${nl((l.startFrac ?? 0) * 100, 0)}–${nl((l.endFrac ?? 1) * 100, 0)}%)`
+        : "";
+      const stelsel = l.qCoord === "local" ? " lokaal" : "";
+      return `Lijnlast ${l.id} — ${waarde} ${l.qDir ?? "z"}${stelsel} op ${doel}${deel}`;
+    }
+    default:
+      return `Belasting ${l.id} (${l.type}) op ${doel}`;
+  }
+}
+
+// ── Validatie van het geschreven bestand ────────────────────────────────────
+
+export interface IfcValidatie {
+  fouten: string[];
+  waarschuwingen: string[];
+  /** Aantal entiteiten (#n=…) in de DATA-sectie. */
+  entiteiten: number;
+  regels: number;
+}
+
+const GUID_TEKENS_SET = new Set(IFC_GUID_TEKENS);
+
+/**
+ * De IfcRoot-afgeleiden die deze export schrijft. Alleen zij dragen een
+ * GlobalId als eerste attribuut; bij de rest is het eerste attribuut een
+ * gewone naam.
+ */
+const GEWORTELDE_ENTITEITEN = [
+  "IFCPROJECT", "IFCSITE", "IFCBUILDING",
+  "IFCSTRUCTURALANALYSISMODEL", "IFCSTRUCTURALLOADGROUP",
+  "IFCSTRUCTURALPOINTCONNECTION", "IFCSTRUCTURALCURVEMEMBER",
+  "IFCSTRUCTURALPOINTACTION", "IFCSTRUCTURALLINEARACTION",
+  "IFCSTRUCTURALCURVEACTION",
+  "IFCRELAGGREGATES", "IFCRELSERVICESBUILDINGS",
+  "IFCRELCONNECTSSTRUCTURALMEMBER", "IFCRELCONNECTSSTRUCTURALACTIVITY",
+  "IFCRELASSOCIATESMATERIAL", "IFCRELASSIGNSTOGROUP",
+] as const;
+
+/**
+ * Controleert een geschreven IFC-bestand: STEP-omlijsting, regelvorm,
+ * unieke #id's, referentie-integriteit, GlobalId-vorm en -uniciteit, en de
+ * aanwezigheid van de entiteiten die een StructuralAnalysisView nodig heeft.
+ * Puur tekstueel — geen schema-validator, maar wel de fouten die een export
+ * in de praktijk maakt.
+ */
+export function valideerIfc(ifc: string): IfcValidatie {
+  const fouten: string[] = [];
+  const waarschuwingen: string[] = [];
+  const regels = ifc.split("\n");
+
+  if (!ifc.startsWith("ISO-10303-21;")) fouten.push("Bestand begint niet met ISO-10303-21;");
+  if (!ifc.trimEnd().endsWith("END-ISO-10303-21;")) fouten.push("Bestand eindigt niet met END-ISO-10303-21;");
+  if (!ifc.includes("\nHEADER;\n")) fouten.push("HEADER-sectie ontbreekt");
+  if (!ifc.includes("\nDATA;\n")) fouten.push("DATA-sectie ontbreekt");
+  if ((ifc.match(/^ENDSEC;$/gm) ?? []).length !== 2) fouten.push("Er horen precies twee ENDSEC;-regels te staan");
+  if (!/FILE_SCHEMA\(\('IFC4[^']*'\)\);/.test(ifc)) fouten.push("FILE_SCHEMA noemt geen IFC4-schema");
+  if (!/FILE_NAME\(/.test(ifc)) fouten.push("FILE_NAME ontbreekt in de header");
+  if (!/FILE_DESCRIPTION\(/.test(ifc)) fouten.push("FILE_DESCRIPTION ontbreekt in de header");
+
+  const gedefinieerd = new Set<string>();
+  const dubbeleIds: string[] = [];
+  let entiteiten = 0;
+  const vormfouten: string[] = [];
+
+  for (const regel of regels) {
+    if (!regel.startsWith("#")) continue;
+    entiteiten++;
+    const m = /^#(\d+)=([A-Z][A-Z0-9_]*)\((.*)\);$/.exec(regel);
+    if (!m) { vormfouten.push(regel.slice(0, 60)); continue; }
+    if (gedefinieerd.has(m[1])) dubbeleIds.push(`#${m[1]}`);
+    gedefinieerd.add(m[1]);
+    // Haakjesbalans buiten strings.
+    let diepte = 0, inString = false;
+    const args = m[3];
+    for (let i = 0; i < args.length; i++) {
+      const c = args[i];
+      if (inString) { if (c === "'") inString = false; continue; }
+      if (c === "'") inString = true;
+      else if (c === "(") diepte++;
+      else if (c === ")") diepte--;
+      if (diepte < 0) break;
+    }
+    if (diepte !== 0 || inString) vormfouten.push(`#${m[1]}: ongebalanceerde haakjes of string`);
+  }
+  if (vormfouten.length > 0) {
+    fouten.push(`${vormfouten.length} regel(s) met een ongeldige entiteitsvorm: ${vormfouten.slice(0, 3).join(" | ")}`);
+  }
+  if (dubbeleIds.length > 0) fouten.push(`Dubbele entiteits-id's: ${dubbeleIds.slice(0, 5).join(", ")}`);
+
+  const kapot: string[] = [];
+  for (const regel of regels) {
+    const eq = regel.indexOf("=");
+    if (!regel.startsWith("#") || eq < 0) continue;
+    for (const m of regel.slice(eq + 1).matchAll(/#(\d+)/g)) {
+      if (!gedefinieerd.has(m[1])) kapot.push(`${regel.slice(0, eq)} → #${m[1]}`);
+    }
+  }
+  if (kapot.length > 0) {
+    fouten.push(`${kapot.length} verwijzing(en) naar een niet-bestaande entiteit: ${kapot.slice(0, 3).join(", ")}`);
+  }
+
+  // Alleen IfcRoot-afgeleiden dragen een GlobalId. Alle andere entiteiten
+  // mogen een gewone naam als eerste attribuut hebben — die is geen GUID en
+  // hoort dus niet mee te tellen.
+  const guids = [...ifc.matchAll(
+    new RegExp(`^#\\d+=(?:${[...GEWORTELDE_ENTITEITEN].join("|")})\\('([^']*)'`, "gm"),
+  )].map(m => m[1]);
+  const foutieveGuids = guids.filter(
+    g => g.length !== 22 || [...g].some(c => !GUID_TEKENS_SET.has(c)),
+  );
+  if (foutieveGuids.length > 0) {
+    fouten.push(`${foutieveGuids.length} GlobalId('s) met een ongeldige vorm (22 tekens IFC-base64 verwacht)`);
+  }
+  if (new Set(guids).size !== guids.length) fouten.push("Niet alle GlobalId's zijn uniek");
+
+  if (/\bundefined\b/.test(ifc)) fouten.push("Het bestand bevat de tekst 'undefined'");
+  if (/\bNaN\b/.test(ifc)) fouten.push("Het bestand bevat de tekst 'NaN'");
+
+  for (const verplicht of [
+    "IFCPROJECT", "IFCUNITASSIGNMENT", "IFCGEOMETRICREPRESENTATIONCONTEXT",
+    "IFCSTRUCTURALANALYSISMODEL",
+  ]) {
+    if (!new RegExp(`^#\\d+=${verplicht}\\(`, "m").test(ifc)) {
+      fouten.push(`Verplichte entiteit ${verplicht} ontbreekt`);
+    }
+  }
+
+  if (!/^#\d+=IFCSTRUCTURALPOINTCONNECTION\(/m.test(ifc)) {
+    waarschuwingen.push("Geen enkele knoop in het bestand — is er een model geopend?");
+  }
+  if (!/^#\d+=IFCSTRUCTURALCURVEMEMBER\(/m.test(ifc)) {
+    waarschuwingen.push("Geen enkele staaf in het bestand.");
+  }
+  if (!/^#\d+=IFCBOUNDARYNODECONDITION\(/m.test(ifc)) {
+    waarschuwingen.push("Geen enkele oplegging in het bestand — het model is niet gesteund.");
+  }
+
+  return { fouten, waarschuwingen, entiteiten, regels: regels.length };
+}
+
+/** Entiteitstelling per type, aflopend gesorteerd — voor "Statistieken". */
+export function ifcStatistiek(ifc: string): Array<{ type: string; aantal: number }> {
+  const telling = new Map<string, number>();
+  for (const m of ifc.matchAll(/^#\d+=([A-Z][A-Z0-9_]*)\(/gm)) {
+    telling.set(m[1], (telling.get(m[1]) ?? 0) + 1);
+  }
+  return [...telling.entries()]
+    .map(([type, aantal]) => ({ type, aantal }))
+    .sort((a, b) => b.aantal - a.aantal || a.type.localeCompare(b.type));
+}
+
+// ── Download-helper (browser) ───────────────────────────────────────────────
+
+/** Biedt een tekstbestand aan als download (blob, zoals de CSV-export). */
+export function downloadTekstbestand(
+  inhoud: string,
+  bestandsnaam: string,
+  mimeType = "application/x-step",
+): void {
+  const blob = new Blob([inhoud], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = naamMetExt;
+  a.download = bestandsnaam;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Bouwt het IFC-bestand en biedt het aan als download. Bestandsnaam default:
+ * "<projectNaam>.ifc". Retourneert de geschreven inhoud, zodat de aanroeper
+ * hem kan valideren of tonen — wat wegschrijft en wat in beeld staat is
+ * daarmee gegarandeerd dezelfde tekst.
+ */
+export function downloadIfc(
+  model: IfcRekenmodelInput,
+  bestandsnaam?: string,
+  opties: IfcExportOpties = {},
+): string {
+  const standaardNaam = model.project?.naam?.trim() || model.projectNaam?.trim() || "rekenmodel";
+  const veiligeNaam = (bestandsnaam ?? `${standaardNaam}.ifc`)
+    .replace(/[\\/:*?"<>|]/g, "_");
+  const naamMetExt = veiligeNaam.toLowerCase().endsWith(".ifc")
+    ? veiligeNaam : `${veiligeNaam}.ifc`;
+  const inhoud = bouwIfcRekenmodel(model, {
+    ...opties,
+    bestandsnaam: naamMetExt,
+    tijdstempel: new Date().toISOString().slice(0, 19),
+  });
+  downloadTekstbestand(inhoud, naamMetExt);
+  return inhoud;
 }
 
 // ── Profieldefinities ───────────────────────────────────────────────────────
@@ -774,24 +1251,28 @@ function schrijfProfiel(
     return undefined;
   }
 
-  const dims = STAALPROFIEL_AFMETINGEN[normaliseerProfielnaam(profiel)];
+  // Catalogusprofiel: h/b/tw/tf/r uit de gedeelde tabel. Bij SHS/RHS is
+  // tw = tf = wanddikte en r de hoekstraal; bij CHS is h = b = uitwendige
+  // diameter en tw = wanddikte.
+  const dims = profielAfmetingen(profiel);
   if (dims) {
-    switch (dims.soort) {
-      case "I":
+    switch (dims.kind) {
+      case "ISection":
         return w.ent("IFCISHAPEPROFILEDEF",
           ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
           meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$");
-      case "U":
+      case "Channel":
         return w.ent("IFCUSHAPEPROFILEDEF",
           ".AREA.", naam, "$", meter(dims.h), meter(dims.b),
           meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$");
-      case "koker":
+      case "Shs":
+      case "Rhs":
         return w.ent("IFCRECTANGLEHOLLOWPROFILEDEF",
           ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
-          meter(dims.t), "$", dims.r > 0 ? meter(dims.r) : "$");
-      case "buis":
+          meter(dims.tw), "$", dims.r > 0 ? meter(dims.r) : "$");
+      case "Chs":
         return w.ent("IFCCIRCLEHOLLOWPROFILEDEF",
-          ".AREA.", naam, "$", meter(dims.d / 2), meter(dims.t));
+          ".AREA.", naam, "$", meter(dims.h / 2), meter(dims.tw));
     }
   }
 

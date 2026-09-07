@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchAppVersion } from "../lib/appVersion";
+import {
+  SNAP_LABELS, SNAP_SOORTEN, useSnapInstellingen, wisselSnap,
+} from "../hooks/useSnapInstellingen";
 import "./StatusBar.css";
 
 /** Solverstatus zoals App.tsx hem bijhoudt. */
@@ -20,6 +23,11 @@ interface StatusBarProps {
   zoomPct?: number;
   /** Solverstatus — weggelaten = niet getoond. */
   solverStatus?: SolverStatus;
+  /**
+   * Toon de snapknopjes. Alleen zinvol naast een canvas; de losgekoppelde
+   * rapportvenster-variant (DetachedApp) heeft er geen.
+   */
+  toonSnap?: boolean;
 }
 
 export default function StatusBar({
@@ -28,9 +36,11 @@ export default function StatusBar({
   loadCount,
   zoomPct,
   solverStatus,
+  toonSnap = false,
 }: StatusBarProps) {
   const { t } = useTranslation();
   const [version, setVersion] = useState("");
+  const snap = useSnapInstellingen();
 
   useEffect(() => {
     fetchAppVersion().then(setVersion).catch(() => setVersion(""));
@@ -111,6 +121,28 @@ export default function StatusBar({
       </div>
 
       <div className="status-bar-right">
+        {/* Snap aan/uit per soort. De volgorde is de voorrangsvolgorde:
+            knoop wint van stramien, stramien wint van raster. */}
+        {toonSnap && (
+          <div className="status-snap" role="group" aria-label={t("snapGroup", "Snap")}>
+            <span className="status-item-label">{t("snapLabel", "Snap")}:</span>
+            {SNAP_SOORTEN.map((soort) => (
+              <button
+                key={soort}
+                type="button"
+                className={`status-snap-btn${snap[soort] ? " on" : ""}`}
+                aria-pressed={snap[soort]}
+                title={`${t(`snap.${soort}`, SNAP_LABELS[soort].kort)} — ${
+                  SNAP_LABELS[soort].uitleg
+                } ${snap[soort] ? t("snapClickOff", "Klik om uit te zetten.")
+                                : t("snapClickOn", "Klik om aan te zetten.")}`}
+                onClick={() => wisselSnap(soort)}
+              >
+                {t(`snap.${soort}`, SNAP_LABELS[soort].kort)}
+              </button>
+            ))}
+          </div>
+        )}
         {zoomPct !== undefined && (
           <div className="status-item">
             <span className="status-item-label">{t("zoom")}:</span>

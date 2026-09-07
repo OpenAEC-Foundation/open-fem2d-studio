@@ -18,6 +18,12 @@ import {
   registreerPlaatMeshCaches, registreerPolygoonRandlasten,
   registreerPlaatMeshCacheCommitter,
 } from "../components/fem/femTypes";
+// Modelcontrole: één implementatie van "ligt deze knoop op die staaf" en
+// "liggen deze twee knopen op elkaar", gedeeld door de controle in het canvas
+// en door de herstelbewerkingen hieronder.
+import {
+  CONTROLE_TOL_MM, controleerModel, puntOpStaaf,
+} from "../lib/modelControle";
 import type { SolverResult } from "../components/fem/solver/types";
 import type {
   LoadCombination, Envelope,
@@ -182,6 +188,41 @@ export function computeBeamSplit(
 
   const newNodeId = cur.nodes.length === 0 ? 1 : Math.max(...cur.nodes.map(n => n.id)) + 1;
   const nodes = [...cur.nodes, { id: newNodeId, x, z }];
+  const deel = computeBeamSplitOpKnoop(
+    { nodes, beams: cur.beams, loads: cur.loads }, beamId, newNodeId);
+  if (!deel) return null;
+  return { nodes, beams: deel.beams, loads: deel.loads, newNodeId };
+}
+
+/**
+ * Splitsen op een BESTAANDE knoop — de rekenkern achter `computeBeamSplit` en
+ * achter de herstelactie "verbind knoop met staaf" uit de modelcontrole. De
+ * knoop moet al in `cur.nodes` staan en (vrijwel) op de staaf liggen; alle
+ * gedragsregels staan hierboven bij `computeBeamSplit`.
+ *
+ * Bewust losgetrokken zodat ÉÉN knoop MEERDERE staven kan splitsen (kruisende
+ * staven, of een kolomvoet op een doorgaande ligger die ook nog eens een
+ * plaatrand raakt): elke aanroep werkt op de uitkomst van de vorige, met
+ * dezelfde knoop-id — een lus over `computeBeamSplit` zou per staaf een nieuwe
+ * knoop op dezelfde plek maken, en dat is precies het gebrek dat we bestrijden.
+ *
+ * Retourneert null wanneer de staaf, de knoop of een eindknoop ontbreekt, of
+ * wanneer de knoop zélf al een uiteinde van de staaf is (splitsen zou dan een
+ * staaf met lengte nul opleveren).
+ */
+export function computeBeamSplitOpKnoop(
+  cur: Pick<Snapshot, "nodes" | "beams" | "loads">,
+  beamId: number, knoopId: number,
+): { beams: Beam[]; loads: Load[] } | null {
+  const beam = cur.beams.find(b => b.id === beamId);
+  if (!beam) return null;
+  const nodeA = cur.nodes.find(n => n.id === beam.from);
+  const nodeB = cur.nodes.find(n => n.id === beam.to);
+  const knoop = cur.nodes.find(n => n.id === knoopId);
+  if (!nodeA || !nodeB || !knoop) return null;
+  if (knoopId === beam.from || knoopId === beam.to) return null;
+  const newNodeId = knoopId;
+  const x = knoop.x, z = knoop.z;
 
   // Relatieve positie van het splitspunt op de staaf (0 = start, 1 = eind) —
   // nodig voor de interpolatie van trapeziumlasten.
@@ -264,7 +305,175 @@ export function computeBeamSplit(
       loads.push(l);
     }
   }
-  return { nodes, beams, loads, newNodeId };
+  return { beams, loads };
+}
+
+/**
+ * Knoop plaatsen op (x, z) en meteen AANSLUITEN op alles waar hij op ligt.
+ *
+ * Dit is de bewerking achter "zet een steunpunt halverwege een ligger": ligt
+ * het punt in het inwendige van een of meer staven, dan worden die daar
+ * gesplitst in twee delen die materiaal, profiel, belastingtype en releases
+ * erven en hun lasten (inclusief deellast-fracties) meenemen — zie
+ * `computeBeamSplitOpKnoop`. Zonder dat splitsen zou de nieuwe knoop een los
+ * uiteinde zijn dat de staaf niet raakt: geometrisch goed, constructief een
+ * mechanisme, en de solver meldt alleen "singuliere matrix".
+ *
+ * Ligt er al een knoop binnen `tolMm`, dan wordt DIE hergebruikt (er komt
+ * nooit een tweede knoop op dezelfde plek) en worden staven die er doorheen
+ * lopen alsnog op hem gesplitst.
+ *
+ * `gewijzigd` is false wanneer er niets te doen viel — de aanroeper kan dan
+ * een history-push overslaan.
+ */
+export function computeKnoopMetSplitsing(
+  cur: Pick<Snapshot, "nodes" | "beams" | "loads">,
+  x: number, z: number,
+  tolMm: number = CONTROLE_TOL_MM,
+): {
+  nodes: Node[]; beams: Beam[]; loads: Load[];
+  nodeId: number; gesplitsteStaven: number[]; gewijzigd: boolean;
+} {
+  const bestaand = cur.nodes.find(n =>
+    Math.abs(n.x - x) <= tolMm && Math.abs(n.z - z) <= tolMm);
+  const nodeId = bestaand
+    ? bestaand.id
+    : (cur.nodes.length === 0 ? 1 : Math.max(...cur.nodes.map(n => n.id)) + 1);
+  // Bij hergebruik telt de positie van de BESTAANDE knoop, niet de klik: zo
+  // blijft de splitsing exact op de knoop liggen die we aansluiten.
+  const px = bestaand ? bestaand.x : x;
+  const pz = bestaand ? bestaand.z : z;
+  let nodes = bestaand ? cur.nodes : [...cur.nodes, { id: nodeId, x, z }];
+  let beams = cur.beams;
+  let loads = cur.loads;
+
+  // Welke staven lopen door dit punt? Bepaald op de UITGANGSSITUATIE: de
+  // delen die tijdens het splitsen ontstaan hebben het punt als eindknoop en
+  // komen dus per definitie niet opnieuw in aanmerking.
+  const gesplitsteStaven: number[] = [];
+  for (const b of cur.beams) {
+    if (b.from === nodeId || b.to === nodeId) continue;
+    if (puntOpStaaf(nodes, b, px, pz, tolMm) === null) continue;
+    const deel = computeBeamSplitOpKnoop({ nodes, beams, loads }, b.id, nodeId);
+    if (!deel) continue;
+    beams = deel.beams;
+    loads = deel.loads;
+    gesplitsteStaven.push(b.id);
+  }
+  return {
+    nodes, beams, loads, nodeId, gesplitsteStaven,
+    gewijzigd: !bestaand || gesplitsteStaven.length > 0,
+  };
+}
+
+/**
+ * Twee knopen die op dezelfde plek liggen samenvoegen: `verwijderId` verdwijnt
+ * en alles wat naar hem verwees gaat over op `bewaarId`.
+ *
+ * Regels:
+ *  - Staven: elke verwijzing wordt omgezet. Een staaf die daardoor van en naar
+ *    dezelfde knoop loopt (lengte nul) verdwijnt, net als een staaf die een
+ *    al bestaande staaf zou dupliceren — twee identieke staven tellen hun
+ *    stijfheid dubbel mee.
+ *  - Opleggingen: de oplegging van `bewaarId` wint; had alleen `verwijderId`
+ *    er een, dan verhuist die. Nooit twee opleggingen op één knoop.
+ *  - Platen: hoekverwijzingen worden omgezet en direct opeenvolgende
+ *    duplicaten vallen weg. Houdt een plaat minder dan drie hoeken over, dan
+ *    is het geen plaat meer en verdwijnt hij.
+ *  - Lasten: knoopverwijzingen gaan over; lasten op een verdwenen staaf
+ *    verdwijnen mee (ze zouden anders naar een niet-bestaande staaf wijzen).
+ *
+ * Retourneert null bij gelijke of onbekende knopen.
+ */
+export function computeKnopenSamenvoegen(
+  cur: Pick<Snapshot, "nodes" | "beams" | "supports" | "plates" | "loads">,
+  bewaarId: number, verwijderId: number,
+): { nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[] } | null {
+  if (bewaarId === verwijderId) return null;
+  if (!cur.nodes.some(n => n.id === bewaarId)) return null;
+  if (!cur.nodes.some(n => n.id === verwijderId)) return null;
+
+  const nodes = cur.nodes.filter(n => n.id !== verwijderId);
+  const om = (id: number) => (id === verwijderId ? bewaarId : id);
+
+  const beams: Beam[] = [];
+  const verdwenenStaven = new Set<number>();
+  const gezien = new Set<string>();
+  for (const b of cur.beams) {
+    const from = om(b.from), to = om(b.to);
+    const sleutel = from < to ? `${from}-${to}` : `${to}-${from}`;
+    if (from === to || gezien.has(sleutel)) { verdwenenStaven.add(b.id); continue; }
+    gezien.add(sleutel);
+    beams.push({ ...b, from, to });
+  }
+
+  const behouden = cur.supports.find(s => s.nodeId === bewaarId);
+  const verhuizend = cur.supports.find(s => s.nodeId === verwijderId);
+  const supports: Support[] = cur.supports.filter(
+    s => s.nodeId !== bewaarId && s.nodeId !== verwijderId);
+  const winnaar = behouden ?? (verhuizend ? { ...verhuizend, nodeId: bewaarId } : undefined);
+  if (winnaar) supports.push(winnaar);
+
+  const plates: Plate[] = [];
+  for (const p of cur.plates) {
+    const hoeken: number[] = [];
+    for (const id of p.nodeIds) {
+      const nieuw = om(id);
+      if (hoeken.length > 0 && hoeken[hoeken.length - 1] === nieuw) continue;
+      hoeken.push(nieuw);
+    }
+    // Ook de naad tussen laatste en eerste hoek kan door de samenvoeging
+    // dubbel worden.
+    if (hoeken.length > 1 && hoeken[0] === hoeken[hoeken.length - 1]) hoeken.pop();
+    if (hoeken.length >= 3) plates.push({ ...p, nodeIds: hoeken });
+  }
+
+  const loads: Load[] = [];
+  for (const l of cur.loads) {
+    if (l.beamId !== undefined && verdwenenStaven.has(l.beamId)) continue;
+    loads.push(l.nodeId === verwijderId ? { ...l, nodeId: bewaarId } : l);
+  }
+  return { nodes, beams, supports, plates, loads };
+}
+
+/**
+ * Voer ALLE automatisch herstelbare bevindingen van de modelcontrole uit.
+ *
+ * Iteratief en niet in één veeg: elke bewerking verandert de staaf-ids
+ * (splitsen) of de knoop-ids (samenvoegen), waardoor een vooraf verzamelde
+ * lijst bevindingen na de eerste stap verouderd is. Daarom wordt na elke stap
+ * opnieuw gecontroleerd. De ronde-limiet is een vangnet tegen een bewerking
+ * die zijn eigen bevinding niet opheft; hij hoort nooit bereikt te worden.
+ *
+ * Retourneert null wanneer er niets te herstellen viel.
+ */
+export function computeModelHerstel(
+  cur: Pick<Snapshot, "nodes" | "beams" | "supports" | "plates" | "loads">,
+  tolMm: number = CONTROLE_TOL_MM,
+  maxRondes = 200,
+): { nodes: Node[]; beams: Beam[]; supports: Support[]; plates: Plate[]; loads: Load[]; stappen: string[] } | null {
+  let staat = {
+    nodes: cur.nodes, beams: cur.beams, supports: cur.supports,
+    plates: cur.plates, loads: cur.loads,
+  };
+  const stappen: string[] = [];
+  for (let ronde = 0; ronde < maxRondes; ronde++) {
+    const bevinding = controleerModel(staat, tolMm).find(b => b.herstel);
+    if (!bevinding?.herstel) break;
+    const h = bevinding.herstel;
+    if (h.soort === "verbind") {
+      const deel = computeBeamSplitOpKnoop(staat, h.beamId, h.nodeId);
+      if (!deel) break;
+      staat = { ...staat, beams: deel.beams, loads: deel.loads };
+      stappen.push(`Knoop ${h.nodeId} verbonden met staaf ${h.beamId}.`);
+    } else {
+      const r = computeKnopenSamenvoegen(staat, h.bewaarId, h.verwijderId);
+      if (!r) break;
+      staat = r;
+      stappen.push(`Knoop ${h.verwijderId} samengevoegd met knoop ${h.bewaarId}.`);
+    }
+  }
+  return stappen.length > 0 ? { ...staat, stappen } : null;
 }
 
 // ── Pure transformatielogica ───────────────────────────────────────────────
@@ -473,6 +682,132 @@ export function computeSelectionCopy(
   };
 }
 
+// ── Lasten kopiëren tussen belastinggevallen ─────────────────────────────
+//
+// Werkwijze in de UI: selecteer één last, kies in het contextmenu "selecteer
+// alle <soort> in dit belastinggeval", Ctrl+C, wissel van belastinggeval,
+// Ctrl+V. De drie stappen hieronder zijn puur (geen React) zodat de
+// testbatterij ze rechtstreeks kan naspelen.
+
+/**
+ * De id's van alle lasten van DEZELFDE SOORT in HETZELFDE belastinggeval als
+ * de last `lastId`, in modelvolgorde. "Soort" is het lasttype (lijnlast,
+ * puntlast, moment, temperatuur, randlast) — niet de richting of de waarde:
+ * wie "alle lijnlasten" vraagt bedoelt ook de horizontale.
+ *
+ * Bestaat `lastId` niet, dan is het resultaat leeg (de aanroeper meldt dat).
+ * De referentielast zelf zit altijd in het resultaat.
+ */
+export function selecteerLastenVanZelfdeSoort(
+  loads: Load[], lastId: number,
+): number[] {
+  const ref = loads.find(l => l.id === lastId);
+  if (!ref) return [];
+  return loads
+    .filter(l => l.type === ref.type && l.caseId === ref.caseId)
+    .map(l => l.id);
+}
+
+/**
+ * Vergelijkingssleutel van een last, ZONDER id, belastinggeval en herkomst.
+ * Twee lasten met dezelfde sleutel zijn inhoudelijk identiek: zelfde soort,
+ * zelfde aangrijpingspunt, zelfde waarden. Wordt gebruikt om bij het plakken
+ * te herkennen dat een last er al staat.
+ *
+ * De sleutel loopt over de GESORTEERDE eigen sleutels van het object, zodat
+ * de volgorde waarin velden zijn gezet niet meetelt en toekomstige velden
+ * automatisch meedoen.
+ */
+function lastSignatuur(l: Omit<Load, "id">): string {
+  const overslaan = new Set(["id", "caseId", "gegenereerdDoor"]);
+  const paren = Object.keys(l)
+    .filter(k => !overslaan.has(k))
+    .filter(k => (l as Record<string, unknown>)[k] !== undefined)
+    .sort()
+    .map(k => `${k}=${JSON.stringify((l as Record<string, unknown>)[k])}`);
+  return paren.join("|");
+}
+
+/**
+ * Neem de geselecteerde lasten mee naar het klembord: de volledige lasten
+ * ZONDER id (die wordt bij het plakken opnieuw uitgedeeld) en zonder
+ * generatorherkomst.
+ *
+ * Waarom `gegenereerdDoor` eraf gaat: een windlast is eigendom van de
+ * windgenerator en wordt bij een volgende generatie vervangen. Een met de
+ * hand geplakte kopie hoort daar niet meer bij — die is handwerk en moet
+ * blijven staan. Zie `vervangGegenereerdeBelasting`.
+ */
+export function kopieerLastenNaarKlembord(
+  loads: Load[], ids: number[],
+): Omit<Load, "id">[] {
+  const gewild = new Set(ids);
+  return loads
+    .filter(l => gewild.has(l.id))
+    .map(l => {
+      const { id: _id, gegenereerdDoor: _bron, ...rest } = l;
+      void _id; void _bron;
+      return rest as Omit<Load, "id">;
+    });
+}
+
+/**
+ * Plak de klembordlasten in belastinggeval `doelCaseId`.
+ *
+ * Drie uitkomsten per last, alle drie geteld zodat de UI ze kan melden:
+ *  - GEPLAKT      — toegevoegd met een nieuw id en het doel-belastinggeval;
+ *  - OVERGESLAGEN — er stond al een inhoudelijk identieke last in dat geval
+ *    (zelfde soort, zelfde aangrijpingspunt, zelfde waarden). Zo verdubbelt
+ *    een tweede Ctrl+V in hetzelfde geval de belasting niet stilzwijgend;
+ *  - VERWEESD     — de staaf, knoop of plaat waar de last aan hing bestaat
+ *    niet meer (tussen kopiëren en plakken verwijderd). Zo'n last plakken zou
+ *    een last opleveren die nergens aangrijpt.
+ *
+ * Nieuwe id's lopen door op het hoogste bestaande id; de bestaande lasten
+ * blijven ongemoeid. De aanroepende mutatie pusht het resultaat als één
+ * history-snapshot, dus één Ctrl+Z maakt de hele plakactie ongedaan.
+ */
+export function computeLastenPlakken(
+  cur: Pick<Snapshot, "loads" | "beams" | "nodes" | "plates">,
+  klembord: Omit<Load, "id">[],
+  doelCaseId: number,
+): { loads: Load[]; geplakt: number; overgeslagen: number; verweesd: number } {
+  const beamIds = new Set(cur.beams.map(b => b.id));
+  const nodeIds = new Set(cur.nodes.map(n => n.id));
+  const plateIds = new Set(cur.plates.map(p => p.id));
+  // Signaturen van wat er al in het DOELgeval staat — inclusief de lasten die
+  // we in deze plakactie zelf toevoegen, zodat een klembord met twee gelijke
+  // lasten er ook maar één oplevert.
+  const aanwezig = new Set(
+    cur.loads.filter(l => l.caseId === doelCaseId).map(l => lastSignatuur(l)));
+
+  let volgendId = cur.loads.length === 0
+    ? 1 : Math.max(...cur.loads.map(l => l.id)) + 1;
+  const nieuw: Load[] = [];
+  let overgeslagen = 0, verweesd = 0;
+
+  for (const bron of klembord) {
+    const doelBestaat =
+      bron.beamId !== undefined  ? beamIds.has(bron.beamId)  :
+      bron.nodeId !== undefined  ? nodeIds.has(bron.nodeId)  :
+      bron.plateId !== undefined ? plateIds.has(bron.plateId) :
+      false;
+    if (!doelBestaat) { verweesd++; continue; }
+    const kandidaat: Omit<Load, "id"> = { ...bron, caseId: doelCaseId };
+    const sig = lastSignatuur(kandidaat);
+    if (aanwezig.has(sig)) { overgeslagen++; continue; }
+    aanwezig.add(sig);
+    nieuw.push({ ...kandidaat, id: volgendId++ });
+  }
+
+  return {
+    loads: nieuw.length > 0 ? [...cur.loads, ...nieuw] : cur.loads,
+    geplakt: nieuw.length,
+    overgeslagen,
+    verweesd,
+  };
+}
+
 export interface FemStore {
   // Model
   nodes: Node[];
@@ -548,6 +883,29 @@ export interface FemStore {
   removePlate: (id: number) => void;
   deleteSelected: () => void;
   splitBeamAt: (beamId: number, x: number, z: number) => void;
+  /**
+   * Knoop plaatsen op (x, z) en meteen aansluiten op elke staaf waar hij
+   * middenop ligt (die staaf wordt daar gesplitst) — zie
+   * `computeKnoopMetSplitsing`. Retourneert het knoop-id, ook wanneer een
+   * bestaande knoop is hergebruikt. Eén history-stap voor knoop + splitsingen.
+   */
+  addNodeMetSplitsing: (x: number, z: number) => number;
+  /**
+   * Herstelactie uit de modelcontrole: splits `beamId` op de bestaande knoop
+   * `nodeId`, zodat een knoop die alleen maar ÓP een staaf lag er ook echt aan
+   * vastzit. Retourneert false wanneer dat niet kan.
+   */
+  verbindKnoopMetStaaf: (nodeId: number, beamId: number) => boolean;
+  /**
+   * Herstelactie uit de modelcontrole: voeg twee samenvallende knopen samen —
+   * `verwijderId` verdwijnt, alles verhuist naar `bewaarId`.
+   */
+  voegKnopenSamen: (bewaarId: number, verwijderId: number) => boolean;
+  /**
+   * Voer alle automatisch herstelbare bevindingen van de modelcontrole uit in
+   * ÉÉN history-stap. Retourneert de uitgevoerde stappen (leeg = niets te doen).
+   */
+  herstelModel: () => string[];
   // Transformaties — multi-selectie-bewust. Retourneren `false` wanneer de
   // selectie niets transformeerbaars bevat (lege selectie / lastselectie),
   // zodat de aanroeper feedback kan tonen in plaats van een stille no-op.
@@ -555,6 +913,16 @@ export interface FemStore {
   copySelection: (sel: Selection, dx: number, dz: number) => boolean;
   rotateSelection: (sel: Selection, cx: number, cz: number, angleRad: number) => boolean;
   mirrorSelection: (sel: Selection, x1: number, z1: number, x2: number, z2: number) => boolean;
+  /**
+   * Plak klembordlasten in een belastinggeval — één history-snapshot, dus
+   * één Ctrl+Z maakt de hele plakactie ongedaan. Retourneert de telling
+   * (geplakt / al aanwezig / doel verdwenen) plus de naam van het
+   * belastinggeval, zodat de aanroeper precies kan melden wat er gebeurd is.
+   * Zie `computeLastenPlakken` voor de regels.
+   */
+  plakLasten: (klembord: Omit<Load, "id">[], doelCaseId: number) => {
+    geplakt: number; overgeslagen: number; verweesd: number; gevalNaam: string;
+  };
   addLoadCase: (name: string) => void;
 
   /**
@@ -1040,7 +1408,12 @@ export function useFemStore(): FemStore {
       // nemen hun randlasten (edgeLoad) mee.
       const gonePlateIds = new Set(cur.plates.filter(p =>
         plateIds.has(p.id) || p.nodeIds.some(nid => nodeIds.has(nid))).map(p => p.id));
+      // Rechtstreeks geselecteerde lasten ("selecteer alle lijnlasten") gaan
+      // óók weg; het veld ontbreekt bij elke andere multi-selectie en laat
+      // het bestaande gedrag dan ongemoeid.
+      const gekozenLastIds = new Set(selection.loadIds ?? []);
       const nextLoads = cur.loads.filter(l =>
+        !gekozenLastIds.has(l.id) &&
         (l.nodeId === undefined || !nodeIds.has(l.nodeId)) &&
         (l.beamId === undefined || !goneBeamIds.has(l.beamId)) &&
         (l.plateId === undefined || !gonePlateIds.has(l.plateId)));
@@ -1100,6 +1473,28 @@ export function useFemStore(): FemStore {
     return true;
   }, [pushHistory]);
 
+  /**
+   * Plak klembordlasten in een belastinggeval (zie `computeLastenPlakken`).
+   * Eén setLoads + één history-push, dus één Ctrl+Z draait de hele actie
+   * terug. Verandert niets aan de geometrie.
+   */
+  const plakLasten = useCallback((
+    klembord: Omit<Load, "id">[], doelCaseId: number,
+  ) => {
+    const cur = latestRef.current;
+    const gevalNaam = loadCases.find(c => c.id === doelCaseId)?.name
+      ?? `Geval ${doelCaseId}`;
+    const r = computeLastenPlakken(cur, klembord, doelCaseId);
+    if (r.geplakt > 0) {
+      setLoads(r.loads);
+      pushHistory({ ...cur, loads: r.loads });
+    }
+    return {
+      geplakt: r.geplakt, overgeslagen: r.overgeslagen, verweesd: r.verweesd,
+      gevalNaam,
+    };
+  }, [pushHistory, loadCases]);
+
   /** Spiegel de volledige selectie (multi-bewust) om de lijn (x1,z1)-(x2,z2). */
   const mirrorSelection = useCallback((sel: Selection, x1: number, z1: number, x2: number, z2: number): boolean => {
     const cur = latestRef.current;
@@ -1123,6 +1518,67 @@ export function useFemStore(): FemStore {
     setBeams(split.beams);
     setLoads(split.loads);
     pushHistory({ ...cur, nodes: split.nodes, beams: split.beams, loads: split.loads });
+  }, [pushHistory]);
+
+  /**
+   * Knoop plaatsen ÉN aansluiten — zie FemStore.addNodeMetSplitsing. Eén
+   * snapshot: de knoop en de splitsingen die hij veroorzaakt horen bij elkaar
+   * en gaan met één Ctrl+Z samen terug.
+   */
+  const addNodeMetSplitsing = useCallback((x: number, z: number) => {
+    const cur = latestRef.current;
+    const r = computeKnoopMetSplitsing(cur, x, z);
+    if (!r.gewijzigd) return r.nodeId;
+    setNodes(r.nodes);
+    setBeams(r.beams);
+    setLoads(r.loads);
+    pushHistory({ ...cur, nodes: r.nodes, beams: r.beams, loads: r.loads });
+    return r.nodeId;
+  }, [pushHistory]);
+
+  /** Herstel: splits een staaf op een knoop die er alleen maar op lag. */
+  const verbindKnoopMetStaaf = useCallback((nodeId: number, beamId: number) => {
+    const cur = latestRef.current;
+    const deel = computeBeamSplitOpKnoop(cur, beamId, nodeId);
+    if (!deel) return false;
+    setBeams(deel.beams);
+    setLoads(deel.loads);
+    pushHistory({ ...cur, beams: deel.beams, loads: deel.loads });
+    return true;
+  }, [pushHistory]);
+
+  /** Herstel: voeg twee samenvallende knopen samen. */
+  const voegKnopenSamen = useCallback((bewaarId: number, verwijderId: number) => {
+    const cur = latestRef.current;
+    const r = computeKnopenSamenvoegen(cur, bewaarId, verwijderId);
+    if (!r) return false;
+    setNodes(r.nodes);
+    setBeams(r.beams);
+    setSupports(r.supports);
+    setPlates(r.plates);
+    setLoads(r.loads);
+    pushHistory(r);
+    // Een selectie kan naar de verdwenen knoop wijzen.
+    setSelection(null);
+    return true;
+  }, [pushHistory]);
+
+  /** Herstel alles in één stap — zie FemStore.herstelModel. */
+  const herstelModel = useCallback(() => {
+    const cur = latestRef.current;
+    const r = computeModelHerstel(cur);
+    if (!r) return [];
+    setNodes(r.nodes);
+    setBeams(r.beams);
+    setSupports(r.supports);
+    setPlates(r.plates);
+    setLoads(r.loads);
+    pushHistory({
+      nodes: r.nodes, beams: r.beams, supports: r.supports,
+      plates: r.plates, loads: r.loads,
+    });
+    setSelection(null);
+    return r.stappen;
   }, [pushHistory]);
 
   const addLoadCase = useCallback((name: string) => {
@@ -1291,7 +1747,9 @@ export function useFemStore(): FemStore {
     addSupport, removeSupport, addLoad, updateLoad,
     removeNode, removeBeam, removeLoad, removePlate,
     deleteSelected, splitBeamAt, addLoadCase, vervangGegenereerdeBelasting,
+    addNodeMetSplitsing, verbindKnoopMetStaaf, voegKnopenSamen, herstelModel,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
+    plakLasten,
     translateNodes,
     structuralGrid, setStructuralGrid, verplaatsStramienAs,
     selfWeightEnabled, setSelfWeightEnabled,

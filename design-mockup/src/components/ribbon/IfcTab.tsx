@@ -44,9 +44,17 @@ interface IfcTabProps {
    * comingSoon-melding.
    */
   onExportIfc?: () => void;
+  /** Idem, maar alleen het draagsysteem — zonder belastinggevallen. */
+  onExportIfcStructural?: () => void;
+  /** Controleert de export en meldt fouten, waarschuwingen en beperkingen. */
+  onValidateIfc?: () => void;
+  /** Opent het IFC-tabblad (boomstructuur, STEP-tekst, statistieken). */
+  onOpenIfcView?: () => void;
 }
 
-export default function IfcTab({ onExportIfc }: IfcTabProps) {
+export default function IfcTab({
+  onExportIfc, onExportIfcStructural, onValidateIfc, onOpenIfcView,
+}: IfcTabProps) {
   const { t } = useTranslation("ribbon");
 
   return (
@@ -71,7 +79,10 @@ export default function IfcTab({ onExportIfc }: IfcTabProps) {
               icon={ifcExportIcon}
               label={t("ifc.exportStructural")}
               size="small"
-              onClick={soon("IFC structural-only export", "Export beperkt tot dragend deel (kolommen, liggers, platen) volgens IFC4 STRUCTURAL_ANALYSIS_VIEW.")}
+              onClick={onExportIfcStructural ?? soon(
+                "IFC structurele export",
+                "Alleen het draagsysteem: knopen, staven, profielen, materialen en opleggingen — zonder belastinggevallen.",
+              )}
             />
           </RibbonButtonStack>
         </RibbonGroup>
@@ -89,13 +100,13 @@ export default function IfcTab({ onExportIfc }: IfcTabProps) {
               icon={ifcTreeIcon}
               label={t("ifc.structure")}
               size="small"
-              onClick={soon("IFC entity-tree", "Toont hiërarchie van IFC-entities (Project → Site → Building → Storey → Elements).")}
+              onClick={onOpenIfcView ?? soon("IFC-boomstructuur", "Toont de hiërarchie van het geëxporteerde rekenmodel.")}
             />
             <RibbonButton
               icon={ifcStatsIcon}
               label={t("ifc.statistics")}
               size="small"
-              onClick={soon("IFC statistieken", "Telt entities per type + materialen + property sets.")}
+              onClick={onOpenIfcView ?? soon("IFC-statistieken", "Telt de entiteiten per type in de export.")}
             />
           </RibbonButtonStack>
         </RibbonGroup>
@@ -116,7 +127,10 @@ export default function IfcTab({ onExportIfc }: IfcTabProps) {
             icon={ifcValidateIcon}
             label={t("ifc.validate")}
             size="large"
-            onClick={soon("IFC validator", "Controleert geometrie-integriteit + IFC schema-conformiteit (IFC4 ADD2).")}
+            onClick={onValidateIfc ?? soon(
+              "IFC-validator",
+              "Controleert de STEP-omlijsting, referentie-integriteit, GlobalId's en de verplichte entiteiten van de export.",
+            )}
           />
         </RibbonGroup>
       </div>

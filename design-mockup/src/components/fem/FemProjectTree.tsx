@@ -116,6 +116,9 @@ function ResultsTab({
     { key: "N",          label: "N",             hint: "Normaalkracht — constant per element",                    swatch: "#f59e0b",            scaleKey: "scaleN" },
     { key: "reactions",  label: "Reactie",       hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
     { key: "uc",         label: "Unity check",   hint: "Maatgevende UC per staaf uit de normtoetsing — groen ≤ 1,0, rood > 1,0; klik op een badge voor de toetsing", swatch: "#16a34a" },
+    // Modelweergave (geen resultaat), maar hij hoort in dezelfde lijst — dit
+    // is de ene plek waar canvas-weergave aan en uit gaat.
+    { key: "profielLabels", label: "Profielnaam", hint: "Profielnaam klein langs elke staaf op het canvas", swatch: "var(--theme-text)" },
   ];
   // Contour-rij alleen wanneer het model platen bevat (P3.2).
   if (hasPlates) {

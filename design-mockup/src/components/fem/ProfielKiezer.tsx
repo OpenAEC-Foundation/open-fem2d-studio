@@ -59,12 +59,49 @@ export interface ProfielKeuze {
   profile: string;
 }
 
+/** Een combinatie die al ergens in het model staat, met het aantal staven. */
+export interface ProfielInGebruik {
+  material: string;
+  profile: string;
+  aantal: number;
+}
+
+/**
+ * Wat er in het model al aan profielen staat, geteld per combinatie van
+ * profiel en materiaal, in volgorde van staafnummer.
+ *
+ * Hier en niet bij de aanroeper, zodat elke aanroeper dezelfde telling krijgt
+ * en er geen tweede manier van tellen ontstaat.
+ */
+export function profielenInGebruik(
+  beams: Array<{ id: number; material?: string; profile?: string }>,
+): ProfielInGebruik[] {
+  const per = new Map<string, ProfielInGebruik>();
+  for (const b of [...beams].sort((a, z) => a.id - z.id)) {
+    const profile = b.profile ?? "";
+    const material = b.material ?? "";
+    if (!profile || !material) continue; // staaf zonder keuze telt niet mee
+    const sleutel = `${profile}|${material}`;
+    const bestaand = per.get(sleutel);
+    if (bestaand) bestaand.aantal += 1;
+    else per.set(sleutel, { material, profile, aantal: 1 });
+  }
+  return [...per.values()];
+}
+
 interface ProfielKiezerProps {
   open: boolean;
   onClose: () => void;
   /** Huidige waarden van de staaf — bepalen de startstap en voorselectie. */
   huidig?: Partial<ProfielKeuze>;
   onApply: (keuze: ProfielKeuze) => void;
+  /**
+   * Profielen die al in het project gebruikt worden. Staan bovenaan als
+   * snelkeuze: in een raamwerk komt hetzelfde profiel meestal op meer dan één
+   * staaf, en dan is opnieuw door de reeksen klikken verloren tijd.
+   * Ontbreekt de lijst, dan valt het blok gewoon weg.
+   */
+  inGebruik?: ProfielInGebruik[];
 }
 
 type MateriaalSoort = "staal" | "eigen" | "hout" | "beton" | "aluminium" | "overig";
@@ -123,7 +160,7 @@ function getalUit(tekst: string): number {
   return Number.isFinite(v) ? v : NaN;
 }
 
-export default function ProfielKiezer({ open, onClose, huidig, onApply }: ProfielKiezerProps) {
+export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebruik }: ProfielKiezerProps) {
   const huidigVrij = parseVrijMateriaal(huidig?.material);
   const huidigIsBeton = !huidigVrij && matchSupportedConcreteClass(huidig?.material) !== null;
   const huidigIsHout =
@@ -338,6 +375,28 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply }: Profie
       title={soort === null ? "Profiel toewijzen — kies materiaal" : `Profiel toewijzen — ${SOORTEN.find(s => s.id === soort)?.label}`}
     >
       <div className="pk-inhoud">
+      {soort === null && inGebruik && inGebruik.length > 0 && (
+        <div className="pk-gebruikt">
+          <div className="pk-kolom-kop">In dit project</div>
+          <div className="pk-gebruikt-rij">
+            {inGebruik.map((g) => (
+              <button
+                key={`${g.profile}|${g.material}`}
+                className="pk-gebruikt-knop"
+                title={`${g.profile} in ${g.material}, nu op ${g.aantal} ${g.aantal === 1 ? "staaf" : "staven"}`}
+                onClick={() => {
+                  onApply({ material: g.material, profile: g.profile });
+                  onClose();
+                }}
+              >
+                <span className="pk-gebruikt-naam">{g.profile}</span>
+                <span className="pk-rij-sub">{g.material} · {g.aantal}×</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {soort === null && (
         <div className="pk-soorten">
           {SOORTEN.map((s) => (

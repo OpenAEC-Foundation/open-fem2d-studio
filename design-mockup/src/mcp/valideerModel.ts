@@ -54,6 +54,7 @@ import {
   valideerPlaatPolygoon,
   type PlaatPunt,
 } from "../components/fem/femTypes";
+import { zoekDubbeleKnopen } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { resolveSection } from "../lib/sectionResolver";
 
@@ -645,19 +646,14 @@ export function valideerModel(rauw: unknown): ValidatieUitkomst {
   // Samenvallende knopen: twee knopen op dezelfde plek zijn niet met elkaar
   // verbonden, maar zien er in het model uit alsof ze dat wel zijn. De staven
   // die eraan hangen vormen dan stilzwijgend twee losse constructies.
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      if (
-        Math.abs(nodes[i].x - nodes[j].x) <= 1e-6 &&
-        Math.abs(nodes[i].z - nodes[j].z) <= 1e-6
-      ) {
-        errors.push(
-          `Knoop ${nodes[i].id} en knoop ${nodes[j].id} liggen op dezelfde ` +
-            `plek (${nodes[i].x}, ${nodes[i].z}) mm. Ze zijn NIET met elkaar ` +
-            "verbonden; voeg ze samen of verplaats er één.",
-        );
-      }
-    }
+  //
+  // De regel zelf staat in `lib/modelControle.ts` — dezelfde die het canvas
+  // gebruikt om de bevinding te tonen en te herstellen. Twee kopieën van deze
+  // controle zouden op termijn twee antwoorden op dezelfde vraag geven.
+  // De tolerantie is hier bewust EXACT (1e-6 mm): de MCP-poort krijgt
+  // machinaal opgestelde modellen binnen, het canvas een muis.
+  for (const bevinding of zoekDubbeleKnopen({ nodes, beams }, 1e-6)) {
+    errors.push(bevinding.tekst);
   }
 
   // Staven: verwijzingen, lengte en doorsnede.

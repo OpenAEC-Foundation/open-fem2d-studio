@@ -23,7 +23,7 @@ import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import { matchSupportedConcreteClass } from "../../lib/betonCheckBuilder";
 import { parseRechthoek } from "../../lib/sectionResolver";
 import { BetonKorfPaneel, type Wapeningskorf } from "../beton";
-import ProfielKiezer from "./ProfielKiezer";
+import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
 
 interface SectionProps {
   title: string;
@@ -118,7 +118,7 @@ export default function FemProperties(props: FemPropertiesProps) {
     }
     const nFrom = nodes.find(n => n.id === b.from);
     const nTo = nodes.find(n => n.id === b.to);
-    return <BeamProperties beam={b} nFrom={nFrom} nTo={nTo} nodes={nodes} loads={loads} updateBeam={updateBeam} />;
+    return <BeamProperties beam={b} nFrom={nFrom} nTo={nTo} nodes={nodes} beams={beams} loads={loads} updateBeam={updateBeam} />;
   }
 
   if (selection.type === "plate") {
@@ -164,7 +164,11 @@ function MultiProperties({ selection, beams, updateBeams }: {
   updateBeams?: (ids: number[], updates: Partial<Beam>) => void;
 }) {
   const [kiezerOpen, setKiezerOpen] = useState(false);
-  const total = selection.nodeIds.length + selection.beamIds.length + selection.plateIds.length;
+  // Lasten tellen mee in de selectie: "selecteer alle lijnlasten" levert een
+  // selectie die uitsluitend uit belastingen bestaat.
+  const aantalLasten = selection.loadIds?.length ?? 0;
+  const total = selection.nodeIds.length + selection.beamIds.length
+    + selection.plateIds.length + aantalLasten;
 
   const gekozen = beams.filter((b) => selection.beamIds.includes(b.id));
   // Combinaties profiel + materiaal met hun aantal, in modelvolgorde.
@@ -202,9 +206,18 @@ function MultiProperties({ selection, beams, updateBeams }: {
           {selection.plateIds.length > 0 && (
             <Row label="Platen"><code>{selection.plateIds.length}</code></Row>
           )}
+          {aantalLasten > 0 && (
+            <Row label="Belastingen"><code>{aantalLasten}</code></Row>
+          )}
           <div className="fem-prop-hint">
             <kbd>G</kbd> verplaatsen · <kbd>R</kbd> roteren · <kbd>Delete</kbd> verwijderen.
           </div>
+          {aantalLasten > 0 && (
+            <div className="fem-prop-hint">
+              <kbd>Ctrl</kbd>+<kbd>C</kbd> kopieert deze belastingen; wissel van
+              belastinggeval en plak ze met <kbd>Ctrl</kbd>+<kbd>V</kbd>.
+            </div>
+          )}
         </Section>
 
         {gekozen.length > 0 && (
@@ -228,6 +241,7 @@ function MultiProperties({ selection, beams, updateBeams }: {
                 onClose={() => setKiezerOpen(false)}
                 huidig={eenduidig ? { material: eenduidig.material, profile: eenduidig.profile } : undefined}
                 onApply={(keuze) => updateBeams?.(selection.beamIds, keuze)}
+                inGebruik={profielenInGebruik(beams)}
               />
             )}
           </Section>
@@ -334,8 +348,11 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
 }
 
 // ── Beam properties ──────────────────────────────────────────────────────
-function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
-  beam: Beam; nFrom?: Node; nTo?: Node; nodes: Node[]; loads: Load[];
+function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
+  beam: Beam; nFrom?: Node; nTo?: Node; nodes: Node[];
+  /** Alle staven, om te kunnen tonen welke profielen al in het project staan. */
+  beams: Beam[];
+  loads: Load[];
   updateBeam?: (id: number, updates: Partial<Beam>) => void;
 }) {
   const dx = nTo && nFrom ? nTo.x - nFrom.x : 0;
@@ -636,12 +653,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
           <Row label="Hoek"><code>{angDeg.toFixed(1)}°</code></Row>
         </Section>
 
-        {/* Belastingtype: wát deze staaf constructief is, en dus welk
-            belastingvlak hij draagt. De windgenerator leest dit veld. De
-            keuze "Automatisch" laat de rol uit de geometrie volgen; elke
-            andere keuze legt hem vast in het projectbestand. */}
-        <Section title="Belastingtype">
-          <Row label="Rol">
+        {/* Staaftype: wát deze staaf constructief is, en dus welk
+            belastingvlak hij draagt. De windgenerator leest dit veld (dat op
+            schijf `loadRole` heet). De keuze "Automatisch" laat het staaftype
+            uit de geometrie volgen; elke andere keuze legt het vast in het
+            projectbestand. */}
+        <Section title="Staaftype">
+          <Row label="Staaftype">
             <select
               className="fem-prop-select"
               value={beam.loadRole ?? ""}
@@ -659,9 +677,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
           </Row>
           <div className="fem-prop-hint">
             {beam.loadRole
-              ? "Handmatig vastgelegd — de windgenerator gebruikt deze rol."
+              ? "Handmatig vastgelegd — de windgenerator gebruikt dit staaftype."
               : `Volgt uit de geometrie (${angDeg.toFixed(0)}° t.o.v. horizontaal). `
-                + "Kies zelf een rol om dit vast te leggen."}
+                + "Kies zelf een staaftype om dit vast te leggen."}
           </div>
         </Section>
 
@@ -695,6 +713,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, loads, updateBeam }: {
               onClose={() => setKiezerOpen(false)}
               huidig={{ material, profile }}
               onApply={(keuze) => updateBeam?.(beam.id, keuze)}
+              inGebruik={profielenInGebruik(beams)}
             />
           )}
         </Section>

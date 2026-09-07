@@ -23,7 +23,7 @@ import { isSteelCheckResult } from "../../lib/checkTypes";
 import { matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
 import { sanitizeRestraintFractions } from "../../lib/steelCheckBuilder";
 import { parseVrijMateriaal } from "../../lib/vrijMateriaal";
-import ProfielKiezer from "./ProfielKiezer";
+import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
 import "./BarPropertiesDialog.css";
 
 export const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
@@ -50,6 +50,12 @@ export function parseRestraintInput(text: string): number[] {
 interface Props {
   beam: Beam;
   nodes: Node[];
+  /**
+   * Alle staven van het model. Alleen nodig om in de profielwizard te tonen
+   * welke profielen er al in het project staan; ontbreekt hij, dan blijft dat
+   * lijstje weg en werkt de rest gewoon.
+   */
+  beams?: Beam[];
   /** Element forces from the most-recent solver result, if any. */
   beamForces?: { N: number; V: number; M_start: number; M_end: number } | null;
   /** Persist material/profile/releases/checkConfig edits back to the store. */
@@ -57,7 +63,7 @@ interface Props {
   onClose: () => void;
 }
 
-export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate, onClose }: Props) {
+export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, onUpdate, onClose }: Props) {
   const { t } = useTranslation("check");
   const [tab, setTab] = useState<"general" | "norm">("general");
   // Normtoetsingsresultaat van deze staaf (staal of hout) uit de laatste run.
@@ -305,6 +311,7 @@ export default function BarPropertiesDialog({ beam, nodes, beamForces, onUpdate,
                     open
                     onClose={() => setKiezerOpen(false)}
                     huidig={{ material, profile }}
+                    inGebruik={beams ? profielenInGebruik(beams) : undefined}
                     onApply={(keuze) => {
                       setMaterial(keuze.material);
                       setProfile(keuze.profile);

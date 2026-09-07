@@ -37,6 +37,15 @@
   "statusLoads": "Lasten",
   "printReport": "Afdrukken (rapportweergave)",
   "zoom": "Zoom",
+  "snapLabel": "Snap",
+  "snapGroup": "Snap aan/uit per soort",
+  "snapClickOff": "Klik om uit te zetten.",
+  "snapClickOn": "Klik om aan te zetten.",
+  "snap": {
+    "knoop": "Knoop",
+    "stramien": "Stramien",
+    "raster": "Raster"
+  },
   "section": "Sectie {{number}}",
   "contentPlaceholder": "Inhoud hier",
   "sendFeedback": "Feedback verzenden",
@@ -131,7 +140,7 @@
     "statusIdle": "Nog niet gegenereerd.",
     "btnClear": "Gegenereerde windlasten wissen",
     "btnGenerate": "Genereren",
-    "beamRole": "Belastingtype",
-    "beamRoleAuto": "Automatisch — {{role}}"
+    "beamType": "Staaftype",
+    "beamTypeAuto": "Automatisch — {{role}}"
   }
 }

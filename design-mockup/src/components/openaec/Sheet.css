@@ -133,3 +133,30 @@
   cursor: pointer;
 }
 .oa-grid-add-btn:hover { border-color: var(--theme-accent); background: rgba(255, 176, 0, 0.08); }
+
+/* Afrondblok onderaan de stramieninvoer — sluit het paneel af zodat het niet
+   als een open modus blijft staan. */
+.oa-grid-afronden {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--theme-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.oa-grid-afronden-hint {
+  font-size: 11px;
+  color: var(--theme-text-muted, var(--theme-text));
+  opacity: 0.75;
+}
+.oa-grid-done-btn {
+  background: var(--theme-accent);
+  border: 1px solid var(--theme-accent);
+  border-radius: 3px;
+  color: var(--theme-bg);
+  padding: 5px 14px;
+  font: 600 12px/1.2 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+.oa-grid-done-btn:hover { filter: brightness(1.08); }

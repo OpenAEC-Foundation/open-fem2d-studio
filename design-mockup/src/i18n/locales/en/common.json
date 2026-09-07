@@ -37,6 +37,15 @@
   "statusLoads": "Loads",
   "printReport": "Print (report view)",
   "zoom": "Zoom",
+  "snapLabel": "Snap",
+  "snapGroup": "Toggle snapping per type",
+  "snapClickOff": "Click to turn off.",
+  "snapClickOn": "Click to turn on.",
+  "snap": {
+    "knoop": "Node",
+    "stramien": "Grid line",
+    "raster": "Grid"
+  },
   "section": "Section {{number}}",
   "contentPlaceholder": "Content here",
   "sendFeedback": "Send Feedback",
@@ -131,7 +140,7 @@
     "statusIdle": "Not generated yet.",
     "btnClear": "Clear generated wind loads",
     "btnGenerate": "Generate",
-    "beamRole": "Load type",
-    "beamRoleAuto": "Automatic — {{role}}"
+    "beamType": "Member type",
+    "beamTypeAuto": "Automatic — {{role}}"
   }
 }
