@@ -7024,19 +7024,139 @@ function cltSolverDoorsnede(layup, eVanKlasse) {
   };
 }
 
+// src/lib/betonCheckBuilder.ts
+function parseConcreteRectMm(profileName) {
+  const name = profileName?.trim();
+  if (!name) return null;
+  const m = /^(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)$/i.exec(name);
+  if (!m) return null;
+  const bMm = parseFloat(m[1].replace(",", "."));
+  const hMm = parseFloat(m[2].replace(",", "."));
+  if (bMm > 0 && hMm > 0) return { bMm, hMm };
+  return null;
+}
+var VORM_VOORVOEGSEL = { T: "Tee", L: "Ell" };
+var BETON_PROFIEL_VOORBEELDEN = '"300x500" (rechthoek), "T 400x450 bw=200 hf=50" (T-ligger) of "L 400x450 bw=200 hf=50" (L-ligger)';
+function getal(t) {
+  return parseFloat(t.replace(",", "."));
+}
+function parseConcreteSection(profileName) {
+  const naam = profileName?.trim();
+  if (!naam) {
+    return { ok: false, reden: `er is geen doorsnede opgegeven \u2014 gebruik ${BETON_PROFIEL_VOORBEELDEN}` };
+  }
+  const rect = parseConcreteRectMm(naam);
+  if (rect) {
+    return {
+      ok: true,
+      doorsnede: {
+        shape: "Rectangle",
+        b_mm: rect.bMm,
+        h_mm: rect.hMm,
+        b_w_mm: null,
+        h_f_mm: null,
+        flange_at_bottom: false
+      }
+    };
+  }
+  const kop = /^([TL])\s+(.*)$/i.exec(naam);
+  if (!kop) {
+    return {
+      ok: false,
+      reden: `doorsnede "${naam}" is geen herkenbare betondoorsnede \u2014 gebruik ${BETON_PROFIEL_VOORBEELDEN}`
+    };
+  }
+  const shape = VORM_VOORVOEGSEL[kop[1].toUpperCase()];
+  const rest = kop[2].trim();
+  const maten = /^(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(.*)$/i.exec(rest);
+  if (!maten) {
+    return {
+      ok: false,
+      reden: `doorsnede "${naam}": na "${kop[1].toUpperCase()}" horen de flensbreedte en de totale hoogte te staan als "b\xD7h", bijvoorbeeld "${kop[1].toUpperCase()} 400x450 bw=200 hf=50"`
+    };
+  }
+  const bMm = getal(maten[1]);
+  const hMm = getal(maten[2]);
+  let bW = null;
+  let hF = null;
+  let flensOnder = false;
+  const tokens = maten[3].trim().split(/\s+/).filter((t) => t.length > 0);
+  for (const token of tokens) {
+    const kv = /^([A-Za-z_]+)\s*=\s*(.+)$/.exec(token);
+    if (!kv) {
+      return {
+        ok: false,
+        reden: `doorsnede "${naam}": "${token}" is geen sleutel=waarde \u2014 verwacht bw=\u2026, hf=\u2026 of flens=onder`
+      };
+    }
+    const sleutel = kv[1].toLowerCase();
+    const waarde = kv[2];
+    if (sleutel === "bw") bW = getal(waarde);
+    else if (sleutel === "hf") hF = getal(waarde);
+    else if (sleutel === "flens") {
+      const w = waarde.toLowerCase();
+      if (w !== "onder" && w !== "boven") {
+        return {
+          ok: false,
+          reden: `doorsnede "${naam}": flens="${waarde}" bestaat niet \u2014 gebruik flens=onder of flens=boven (standaard boven)`
+        };
+      }
+      flensOnder = w === "onder";
+    } else {
+      return {
+        ok: false,
+        reden: `doorsnede "${naam}": sleutel "${kv[1]}" is onbekend \u2014 verwacht bw=\u2026, hf=\u2026 of flens=onder`
+      };
+    }
+  }
+  const vorm = shape === "Tee" ? "T-vorm" : "L-vorm";
+  if (bW === null) {
+    return { ok: false, reden: `doorsnede "${naam}": de ${vorm} mist de lijfbreedte \u2014 voeg bw=\u2026 toe (in mm)` };
+  }
+  if (hF === null) {
+    return { ok: false, reden: `doorsnede "${naam}": de ${vorm} mist de flensdikte \u2014 voeg hf=\u2026 toe (in mm)` };
+  }
+  if (!(bMm > 0 && hMm > 0 && bW > 0 && hF > 0)) {
+    return { ok: false, reden: `doorsnede "${naam}": alle maten moeten groter dan nul zijn` };
+  }
+  if (bW >= bMm) {
+    return {
+      ok: false,
+      reden: `doorsnede "${naam}": de lijfbreedte bw=${bW} is niet kleiner dan de flensbreedte ${bMm} \u2014 dan is het een rechthoek, schrijf "${bMm}x${hMm}"`
+    };
+  }
+  if (hF >= hMm) {
+    return {
+      ok: false,
+      reden: `doorsnede "${naam}": de flensdikte hf=${hF} laat geen lijf over binnen de hoogte ${hMm}`
+    };
+  }
+  return {
+    ok: true,
+    doorsnede: {
+      shape,
+      b_mm: bMm,
+      h_mm: hMm,
+      b_w_mm: bW,
+      h_f_mm: hF,
+      flange_at_bottom: flensOnder
+    }
+  };
+}
+
 // src/lib/vrijMateriaal.ts
 var PATROON = /^\s*VRIJ:\s*(.+?)\s+E\s*=\s*([\d.,]+)\s+rho\s*=\s*([\d.,]+)\s+f\s*=\s*([\d.,]+)(?:\s+gM\s*=\s*([\d.,]+))?\s*$/i;
-function getal(tekst) {
+function getal2(tekst) {
   return parseFloat(tekst.replace(",", "."));
 }
 function parseVrijMateriaal(material) {
   const m = PATROON.exec(material ?? "");
   if (!m) return null;
   const naam = m[1].trim();
-  const eMod = getal(m[2]);
-  const dichtheid = getal(m[3]);
-  const fToel = getal(m[4]);
-  const gammaM = m[5] !== void 0 ? getal(m[5]) : 1;
+  const eMod = getal2(m[2]);
+  const dichtheid = getal2(m[3]);
+  const fToel = getal2(m[4]);
+  const gammaM = m[5] !== void 0 ? getal2(m[5]) : 1;
   if (!naam) return null;
   if (!(eMod > 0) || !(dichtheid >= 0) || !(fToel > 0) || !(gammaM > 0)) return null;
   return { naam, eMod, dichtheid, fToel, gammaM };
@@ -7105,6 +7225,28 @@ function parseRechthoek(profiel) {
 function normaliseer(naam) {
   return naam.toUpperCase().split("").filter((c) => c !== " " && c !== "-" && c !== ".").join("");
 }
+function betonDoorsnede(profile) {
+  const uit = parseConcreteSection(profile);
+  if (!uit.ok) return null;
+  const d = uit.doorsnede;
+  if (d.shape === "Rectangle") {
+    const A2 = d.b_mm * d.h_mm;
+    return { A: A2, I: d.b_mm * d.h_mm ** 3 / 12, bron: "beton-bxh" };
+  }
+  const bF = d.b_mm;
+  const hF = d.h_f_mm ?? 0;
+  const bW = d.b_w_mm ?? 0;
+  const hW = d.h_mm - hF;
+  const aF = bF * hF;
+  const aW = bW * hW;
+  const A = aF + aW;
+  if (!(A > 0)) return null;
+  const zF = hW + hF / 2;
+  const zW = hW / 2;
+  const zG = (aF * zF + aW * zW) / A;
+  const I = bF * hF ** 3 / 12 + aF * (zF - zG) ** 2 + bW * hW ** 3 / 12 + aW * (zW - zG) ** 2;
+  return { A, I, bron: "beton-vorm" };
+}
 function resolveSection(material, profile) {
   const mat = material ?? "S235";
   const isHout = SUPPORTED_TIMBER_GRADES.includes(mat) || mat in TIMBER_E_MEAN;
@@ -7119,10 +7261,9 @@ function resolveSection(material, profile) {
     if (sec) return { E: vrij.eMod, A: sec.A, I: sec.Iy, bron: "vrij" };
   }
   if (mat in CONCRETE_E_CM) {
-    const rect = parseRechthoek(profile);
-    if (rect) {
-      const { b, h } = rect;
-      return { E: CONCRETE_E_CM[mat], A: b * h, I: b * h * h * h / 12, bron: "beton-bxh" };
+    const vorm = betonDoorsnede(profile);
+    if (vorm) {
+      return { E: CONCRETE_E_CM[mat], A: vorm.A, I: vorm.I, bron: vorm.bron };
     }
   } else if (isHout) {
     if (isCltProfiel(profile)) {

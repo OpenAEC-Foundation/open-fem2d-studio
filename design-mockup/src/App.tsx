@@ -46,7 +46,8 @@ import {
 } from "./lib/betonStijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
-import { useCheckStore, anyCheckableBeams } from "./stores/checkStore";
+import { useCheckStore, anyCheckableBeams, roepKern } from "./stores/checkStore";
+import { bepaalBeffPerStaaf } from "./lib/beffLiggerlijn";
 import {
   useBetonStijfheidStore,
   type StijfheidCombinatie,
@@ -780,9 +781,17 @@ function App() {
     envelope: ReturnType<typeof computeEnvelope>;
   }) => {
     const { notifyInfo, notifyWarning } = await import("./io/notify");
+    // Dezelfde b_eff als de toetsing gebruikt: de meewerkende flensbreedte
+    // stuurt ook de ONGESCHEURDE stijfheid waarmee ronde 0 begint, dus twee
+    // verschillende breedtes in dezelfde rekengang zou betekenen dat de
+    // krachtsverdeling en de toetsing over een andere doorsnede gaan.
     const { staven, overgeslagen } = betonStavenUitModel({
       nodes: fem.nodes,
       beams: fem.beams,
+      bEffPerStaaf: await bepaalBeffPerStaaf(
+        { nodes: fem.nodes, beams: fem.beams, supports: fem.supports },
+        roepKern,
+      ),
     });
     // Een vorige rekengang mag nooit als spoor van deze blijven staan.
     stijfheidClear();

@@ -23,7 +23,7 @@ import { STEEL_SECTION_DIMS } from "../../../lib/steelSectionDims.generated";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
 import SectionSketch from "./SectionSketch";
-import { steelShape, type SectionShape } from "../../shared/profielVorm";
+import { betonShape, steelShape, type SectionShape } from "../../shared/profielVorm";
 import { zoekEigenDoorsnede } from "../../../lib/profieleditor/eigenDoorsnedenStore";
 import EigenDoorsnedeTekening from "../../profieleditor/EigenDoorsnedeTekening";
 
@@ -108,9 +108,15 @@ export default function SectionsSection() {
           // eigenschappen zoals de motor ze heeft bepaald — geen herberekening.
           const eigen = sec.bron === "eigen" ? zoekEigenDoorsnede(profile) : undefined;
           const eigenProps = eigen?.eigenschappen;
+          // Beton krijgt nu ook een tekening: een rechthoek b×h, en bij een T
+          // of L de werkelijke omtrek met flens en lijf. Zonder deze tak stond
+          // er bij élke betondoorsnede "geen tekening beschikbaar", terwijl de
+          // vorm juist het punt is.
+          const betonVorm =
+            sec.bron === "beton-bxh" || sec.bron === "beton-vorm" ? betonShape(profile) : null;
           const shape: SectionShape | null = timberRect
             ? { type: "rect", b: timberRect.b, h: timberRect.h }
-            : steelShape(steelDims);
+            : (betonVorm ?? steelShape(steelDims));
 
           if (sec.bron === "default") {
             // Onbekende of ontbrekende doorsnede: dat zegt de solver ook

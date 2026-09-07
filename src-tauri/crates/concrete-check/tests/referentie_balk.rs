@@ -5,7 +5,7 @@
 use approx::assert_relative_eq;
 use concrete_check::{check_concrete_beam, mn_kappa, CheckKind, CheckStatus, ConcreteBeamCheckInput, MnKappaRequest};
 use mechanics::{ForcePoint, InternalForces};
-use nen_en_1992_1_1::{RebarRow, ReinforcementCage};
+use nen_en_1992_1_1::{ConcreteSectionInput, RebarRow, ReinforcementCage};
 
 fn korf(boven: u32) -> ReinforcementCage {
     ReinforcementCage {
@@ -27,8 +27,7 @@ fn punt(combi: u32, x_mm: f64, n: f64, m: f64) -> ForcePoint {
 fn invoer(boven: u32, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
     ConcreteBeamCheckInput {
         beam_id: 7,
-        width_mm: 300.0,
-        height_mm: 500.0,
+        section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".into(),
         reinforcement_grade: "B500B".into(),
         cage: korf(boven),
@@ -118,8 +117,7 @@ fn fouten_worden_gemeld() {
 #[test]
 fn mn_kappa_verzoek() {
     let req = MnKappaRequest {
-        width_mm: 300.0,
-        height_mm: 500.0,
+        section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".into(),
         reinforcement_grade: "B500B".into(),
         cage: korf(2),
@@ -142,7 +140,7 @@ fn mn_kappa_verzoek() {
 #[test]
 fn json_invoer_met_defaults() {
     let json = r#"{
-        "beam_id": 3, "width_mm": 300, "height_mm": 500,
+        "beam_id": 3, "section": { "b_mm": 300, "h_mm": 500 },
         "concrete_class": "C30/37", "reinforcement_grade": "B500B",
         "cage": { "cover_mm": 30, "stirrup_diameter_mm": 8,
                   "top": { "count": 2, "diameter_mm": 12 },

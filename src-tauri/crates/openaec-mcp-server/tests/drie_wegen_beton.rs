@@ -75,8 +75,7 @@ fn korf() -> Value {
 fn invoer_balk() -> Value {
     json!({
         "beam_id": 7,
-        "width_mm": 300,
-        "height_mm": 500,
+        "section": { "b_mm": 300, "h_mm": 500 },
         "concrete_class": "C30/37",
         "reinforcement_grade": "B500B",
         "cage": korf(),
@@ -98,8 +97,7 @@ fn invoer_balk() -> Value {
 fn invoer_kolom() -> Value {
     json!({
         "beam_id": 3,
-        "width_mm": 300,
-        "height_mm": 500,
+        "section": { "b_mm": 300, "h_mm": 500 },
         "concrete_class": "C30/37",
         "reinforcement_grade": "B500B",
         "cage": korf(),
@@ -113,11 +111,72 @@ fn invoer_kolom() -> Value {
     })
 }
 
+/// **De T-ligger.** Dezelfde doorsnede als
+/// `nen-en-1992-1-1/tests/vormen.rs::drukzone_in_het_lijf_handberekening`:
+/// T 400 × 450 met een flens van 50 mm en een lijf van 200 mm, 4Ø20 onder.
+/// Bij 150 kNm loopt het spanningsblok de flens uit, dus dit is precies het
+/// geval waarin een rechthoekaanname zichtbaar het verkeerde antwoord geeft.
+///
+/// De korf hangt aan de VORM: 4Ø20 = 80 mm staal past in het lijf (binnenmaat
+/// 200 − 2·38 = 124 mm), maar 8Ø20 zou dat niet doen. Dat de korfcontrole naar
+/// de breedte op de hoogte van de rij kijkt, is dus onderdeel van deze weg.
+fn korf_t() -> Value {
+    json!({
+        "cover_mm": 30,
+        "stirrup_diameter_mm": 8,
+        "top": { "count": 0, "diameter_mm": 0 },
+        "bottom": { "count": 4, "diameter_mm": 20 }
+    })
+}
+
+fn invoer_t_ligger() -> Value {
+    json!({
+        "beam_id": 9,
+        "section": {
+            "shape": "Tee",
+            "b_mm": 400,
+            "h_mm": 450,
+            "b_w_mm": 200,
+            "h_f_mm": 50
+        },
+        "concrete_class": "C30/37",
+        "reinforcement_grade": "B500B",
+        "cage": korf_t(),
+        "length_m": 6,
+        "forces_envelope": [
+            { "combination_id": 1, "position_mm": 0,
+              "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 100, "mt_ed": 0, "my_ed": 0, "mz_ed": 0 } },
+            { "combination_id": 1, "position_mm": 3000,
+              "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 0, "mt_ed": 0, "my_ed": 150, "mz_ed": 0 } },
+            { "combination_id": 1, "position_mm": 6000,
+              "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": -100, "mt_ed": 0, "my_ed": 0, "mz_ed": 0 } }
+        ]
+    })
+}
+
+/// Dezelfde T als segmentstijfheidsverzoek, ronde 0: alleen de indeling en de
+/// ongescheurde vergelijkingsstijfheid E_cd·I_c.
+fn invoer_t_segmenten() -> Value {
+    json!({
+        "beam_id": 9,
+        "section": {
+            "shape": "Tee",
+            "b_mm": 400,
+            "h_mm": 450,
+            "b_w_mm": 200,
+            "h_f_mm": 50
+        },
+        "concrete_class": "C30/37",
+        "reinforcement_grade": "B500B",
+        "cage": korf_t(),
+        "length_m": 6
+    })
+}
+
 /// M-N-κ van dezelfde korf bij 800 kN druk.
 fn invoer_mn_kappa() -> Value {
     json!({
-        "width_mm": 300,
-        "height_mm": 500,
+        "section": { "b_mm": 300, "h_mm": 500 },
         "concrete_class": "C30/37",
         "reinforcement_grade": "B500B",
         "cage": korf(),
@@ -133,8 +192,7 @@ fn invoer_mn_kappa() -> Value {
 fn invoer_segmenten_ronde0() -> Value {
     json!({
         "beam_id": 5,
-        "width_mm": 300,
-        "height_mm": 500,
+        "section": { "b_mm": 300, "h_mm": 500 },
         "concrete_class": "C30/37",
         "reinforcement_grade": "B500B",
         "cage": korf(),
@@ -395,7 +453,14 @@ fn weg_1_de_tauri_commands_zijn_geregistreerd() {
 async fn de_drie_wegen_toetsen_dezelfde_staaf_gelijk() {
     let (mut child, mut stdin, mut reader) = start_server().await;
 
-    for (naam, invoer) in [("balk", invoer_balk()), ("kolom", invoer_kolom())] {
+    for (naam, invoer) in [
+        ("balk", invoer_balk()),
+        ("kolom", invoer_kolom()),
+        // De T hoort in dezelfde lus: een weg die de doorsnedevorm anders
+        // leest — of hem stilzwijgend als rechthoek behandelt — valt hier door
+        // de mand, en niet pas in de app.
+        ("T-ligger", invoer_t_ligger()),
+    ] {
         let tauri = weg_tauri_check(&invoer);
         let brug = weg_toetsbrug("check_concrete_beams", json!([invoer]));
         let brug = brug
@@ -596,6 +661,155 @@ async fn de_segmentstijfheden_zelf_staan_vast() {
     for i in 0..11 {
         assert!(ei(i) > 0.0 && ei(i) < 1.1 * 85_937.5, "segment {i}: EI = {}", ei(i));
     }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// **Ankerwaarden voor de T-ligger.** Gelijklopen bewijst niet dat de vorm
+/// werkelijk meedoet: drie wegen die de T alle drie als rechthoek van 400 ×
+/// 450 lezen, lopen ook gelijk. Deze getallen zijn met de hand na te rekenen
+/// en verschillen aantoonbaar van die rechthoekaanname.
+#[tokio::test]
+async fn de_t_ligger_rekent_als_een_t_en_niet_als_een_rechthoek() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    // ── De toetsing ─────────────────────────────────────────────────────────
+    let mcp = weg_mcp(&mut stdin, &mut reader, 600, "check_concrete_beam", invoer_t_ligger()).await;
+    assert_eq!(mcp["status"], "Ok");
+    assert_eq!(mcp["section_name"], "T 400 x 450 (flens 400 x 50, lijf 200)");
+    // d = 450 − 30 − 8 − 20/2 = 402 mm.
+    assert!((getal(&mcp, &["d_mm"]) - 402.0).abs() < 1e-9);
+
+    // M_Rd met de rechthoekige spanningsverdeling, met de hand (dezelfde
+    // uitwerking als `nen-en-1992-1-1/tests/vormen.rs`):
+    //   A_s = 4·π·10² = 1256,637 mm²;  F_s = A_s·f_yd = 546,364 kN
+    //   blokoppervlak A_c = F_s/(η·f_cd) = 546 364/20 = 27 318,19 mm²
+    //   flens 400·50 = 20 000 mm² < A_c ⇒ het blok loopt het lijf in over
+    //   (27 318,19 − 20 000)/200 = 36,591 mm, dus λ·x = 86,591 en x = 108,239 mm
+    //   zwaartepunt d_c = 36,598 mm onder de bovenrand
+    //   M_Rd = F_s·(d − d_c) = 546 364·(402 − 36,598) = 199,64 kNm
+    //   UC = 150/199,64 = 0,7514
+    let uc_blok = mcp["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|c| c["id"] == "6.1_bending_stress_block")
+        .expect("de spanningsblok-toets")["kind"]["data"]["uc"]["uc"]
+        .as_f64()
+        .expect("uc");
+    assert!(
+        (uc_blok - 150.0 / 199.64).abs() < 2e-3,
+        "UC spanningsblok = {uc_blok}, met de hand 0,7514"
+    );
+    // Als rechthoek van 400 × 450 gerekend zou M_Rd hoger uitvallen (het
+    // lijfdeel van het blok zou 400 mm breed zijn) en de UC dus LAGER — de
+    // onveilige kant. Het verschil is klein maar het is er, en het moet de
+    // goede kant op staan.
+    assert!(uc_blok > 150.0 / 201.0, "de T rekent als een rechthoek van 400 mm breed");
+
+    // De MODELKEUZE achter de splitsing reist mee als tekst, in beide toetsen.
+    for c in mcp["checks"].as_array().unwrap() {
+        let notes = format!("{}", c["kind"]["data"]["notes"]);
+        assert!(notes.contains("MODELKEUZE"), "{}: {notes}", c["id"]);
+        assert!(notes.contains("5.3.2.1(3)"), "{}: {notes}", c["id"]);
+    }
+
+    // ── De ongescheurde stijfheid ───────────────────────────────────────────
+    // A = 400·50 + 200·400 = 100 000 mm²
+    // z_g = (80 000·200 + 20 000·425)/100 000 = 245 mm
+    // I  = 200·400³/12 + 80 000·45² + 400·50³/12 + 20 000·180²
+    //    = 1 880 833 333,33 mm⁴
+    // E_cd·I_c = 27 500 · 1 880 833 333,33 · 10⁻⁹ = 51 722,92 kNm².
+    let seg = weg_mcp(
+        &mut stdin,
+        &mut reader,
+        601,
+        "concrete_segment_stiffness",
+        invoer_t_segmenten(),
+    )
+    .await;
+    let i_t = 200.0 * 400.0_f64.powi(3) / 12.0
+        + 80_000.0 * 45.0_f64.powi(2)
+        + 400.0 * 50.0_f64.powi(3) / 12.0
+        + 20_000.0 * 180.0_f64.powi(2);
+    let ei_t = 27_500.0 * i_t * 1e-9;
+    assert!((ei_t - 51_722.9167).abs() < 1e-3, "handberekening: {ei_t}");
+    assert!(
+        (getal(&seg, &["ei_uncracked_knm2"]) - ei_t).abs() < 1e-6,
+        "E_c·I_c = {} kNm², met de hand {ei_t}",
+        seg["ei_uncracked_knm2"]
+    );
+    // De oude uitdrukking b·h³/12 met b = de flensbreedte zou 400·450³/12 =
+    // 3,0375·10⁹ mm⁴ geven en dus 83 531 kNm² — ruim 60 % te stijf. Dat getal
+    // stuurde niet alleen de vergelijkingswaarde maar ook de klemdrempel.
+    let ei_fout = 27_500.0 * 400.0 * 450.0_f64.powi(3) / 12.0 * 1e-9;
+    assert!(ei_fout / ei_t > 1.6, "de vergelijking bewijst niets: {ei_fout} tegen {ei_t}");
+    assert!((getal(&seg, &["ei_uncracked_knm2"]) - ei_fout).abs() > 1.0);
+    // De klemdrempel hangt aan diezelfde I.
+    assert!((getal(&seg, &["min_ei_knm2"]) - 0.01 * ei_t).abs() < 1e-6);
+
+    // Weg 1 en 2 leveren letterlijk hetzelfde.
+    eis_gelijk(
+        "T: Tauri-command",
+        &weg_tauri_segmenten(&invoer_t_segmenten()),
+        "MCP-server",
+        &seg,
+    );
+    eis_gelijk(
+        "T: toetsbrug",
+        &weg_toetsbrug("concrete_segment_stiffness", invoer_t_segmenten()),
+        "MCP-server",
+        &seg,
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Een doorsnede die niet klopt, is langs alle drie de wegen een fout met de
+/// reden erbij — en nergens een stilzwijgende rechthoek.
+#[tokio::test]
+async fn een_onmogelijke_doorsnede_wordt_langs_alle_drie_de_wegen_geweigerd() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    // Een T zonder lijfbreedte. De vorm zegt "Tee", dus stilzwijgend
+    // terugvallen op een rechthoek van 400 × 450 zou een doorsnede opleveren
+    // die niemand heeft ingevoerd — en een te hoge weerstand.
+    let mut invoer = invoer_t_segmenten();
+    invoer["section"]["b_w_mm"] = Value::Null;
+
+    let req: concrete_check::SegmentStiffnessRequest =
+        serde_json::from_value(invoer.clone()).expect("SegmentStiffnessRequest");
+    let fout = concrete_check::segment_stiffness(req).unwrap_err();
+    assert!(fout.contains("b_w_mm"), "{fout}");
+
+    let verzoek: toetsbrug::Verzoek = serde_json::from_value(
+        json!({ "opdracht": "concrete_segment_stiffness", "inputs": invoer.clone() }),
+    )
+    .expect("toetsbrug-verzoek");
+    assert_eq!(toetsbrug::behandel(verzoek).unwrap_err(), fout);
+
+    schrijf(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0", "id": 610, "method": "tools/call",
+            "params": { "name": "concrete_segment_stiffness", "arguments": invoer }
+        }),
+    )
+    .await;
+    let resp = lees_bericht(&mut reader).await;
+    assert!(format!("{resp}").contains("b_w_mm"), "{resp}");
+
+    // En andersom: flensmaten op een rechthoek. Ook dat is een fout en geen
+    // genegeerd veld — de aanroeper bedoelde iets anders dan hij opschreef.
+    let mut rechthoek = invoer_segmenten_ronde0();
+    rechthoek["section"]["h_f_mm"] = json!(100);
+    let e = concrete_check::segment_stiffness(
+        serde_json::from_value(rechthoek).expect("SegmentStiffnessRequest"),
+    )
+    .unwrap_err();
+    assert!(e.contains("geen flens"), "{e}");
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

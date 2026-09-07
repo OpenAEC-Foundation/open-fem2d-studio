@@ -61,15 +61,18 @@ import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
 import type { SteelBranch } from "./types/concrete/SteelBranch";
 import type { NonlinearBasis } from "./types/concrete/NonlinearBasis";
 import type { LoadDuration } from "./types/concrete/LoadDuration";
+import type { ConcreteSectionInput } from "./types/concrete/ConcreteSectionInput";
 import type { SegmentForces } from "./types/concrete/SegmentForces";
 import type { SegmentStiffnessRequest } from "./types/concrete/SegmentStiffnessRequest";
 import type { SegmentStiffnessResponse } from "./types/concrete/SegmentStiffnessResponse";
 import {
+  BETON_PROFIEL_VOORBEELDEN,
   DEFAULT_N_STRIPS,
   DEFAULT_REINFORCEMENT_GRADE,
   SUPPORTED_CONCRETE_CLASSES,
   matchSupportedConcreteClass,
-  parseConcreteRectMm,
+  metBeff,
+  parseConcreteSection,
 } from "./betonCheckBuilder";
 import { beamLengthMm, isSteelProfile } from "./steelCheckBuilder";
 import { getLinearSolver, type LinearSolverId } from "../core/math/LinearSolver";
@@ -127,14 +130,15 @@ export const DOF_GEHEUGENPLAFOND = 15735;
 
 /**
  * Eén betonstaaf zoals de segmentstijfheidsdienst hem nodig heeft. Dezelfde
- * herkenning als `betonCheckBuilder`: materiaal is een sterkteklasse, profiel
- * is een rechthoek b×h, en er is een wapeningskorf bij de staafeigenschappen.
- * Zonder korf géén staaf — er is geen stille standaardkorf.
+ * herkenning als `betonCheckBuilder`: materiaal is een sterkteklasse, het
+ * profiel is een betondoorsnede (rechthoek, T of L), en er is een
+ * wapeningskorf bij de staafeigenschappen. Zonder korf géén staaf — er is
+ * geen stille standaardkorf.
  */
 export interface BetonSegmentStaaf {
   beamId: number;
-  breedteMm: number;
-  hoogteMm: number;
+  /** De doorsnede zoals de kern hem verwacht: rechthoek, T of L. */
+  doorsnede: ConcreteSectionInput;
   betonklasse: string;
   staalsoort: string;
   korf: ReinforcementCage;
@@ -148,6 +152,13 @@ export interface BetonStavenInvoer {
   beams: Beam[];
   /** Runtime-lijst uit `list_concrete_classes`; leeg → statische fallback. */
   supportedClasses?: string[];
+  /**
+   * De afgeleide meewerkende flensbreedte b_eff per staaf-id, in mm
+   * (5.3.2.1). Alleen van toepassing op een T of een L; ontbreekt hij, dan
+   * gaat de ingevoerde flensbreedte de berekening in en drukt de kern die
+   * waarde af als de veronderstelde b_eff.
+   */
+  bEffPerStaaf?: Map<number, number>;
 }
 
 /**
@@ -171,16 +182,13 @@ export function betonStavenUitModel(
     if (isSteelProfile(beam.profile)) {
       overgeslagen.push({
         beamId: beam.id,
-        reason: `profiel "${beam.profile}" is een staalprofiel bij betonmateriaal "${beam.material}" — kies een rechthoek (bijv. "300x500")`,
+        reason: `profiel "${beam.profile}" is een staalprofiel bij betonmateriaal "${beam.material}" — kies ${BETON_PROFIEL_VOORBEELDEN}`,
       });
       continue;
     }
-    const rect = parseConcreteRectMm(beam.profile);
-    if (!rect) {
-      overgeslagen.push({
-        beamId: beam.id,
-        reason: `doorsnede "${beam.profile ?? "—"}" is geen herkenbare rechthoek b×h — gebruik bijv. "300x500"`,
-      });
+    const vorm = parseConcreteSection(beam.profile);
+    if (!vorm.ok) {
+      overgeslagen.push({ beamId: beam.id, reason: vorm.reden });
       continue;
     }
     const cfg = beam.checkConfig;
@@ -199,8 +207,7 @@ export function betonStavenUitModel(
     }
     staven.push({
       beamId: beam.id,
-      breedteMm: rect.bMm,
-      hoogteMm: rect.hMm,
+      doorsnede: metBeff(vorm.doorsnede, data.bEffPerStaaf?.get(beam.id)),
       betonklasse: klasse,
       staalsoort: cfg.betonStaalsoort ?? DEFAULT_REINFORCEMENT_GRADE,
       korf: cfg.betonKorf,
@@ -396,8 +403,7 @@ function bouwVerzoek(
 ): SegmentStiffnessRequest {
   return {
     beam_id: staaf.beamId,
-    width_mm: staaf.breedteMm,
-    height_mm: staaf.hoogteMm,
+    section: staaf.doorsnede,
     concrete_class: staaf.betonklasse,
     reinforcement_grade: staaf.staalsoort,
     cage: staaf.korf,

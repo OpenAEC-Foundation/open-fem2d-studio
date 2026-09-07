@@ -52,6 +52,7 @@ import {
   matchSupportedConcreteClass,
   type BetonStaafConfig,
 } from "../lib/betonCheckBuilder";
+import { bepaalBeffPerStaaf } from "../lib/beffLiggerlijn";
 import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
 import { isVrijMateriaal } from "../lib/vrijMateriaal";
 
@@ -202,10 +203,13 @@ export const useCheckStore = create<CheckState>((set) => ({
         supportedGrades: timberGrades,
       });
       const clt = buildCltCheckInputs({ ...data, supportedGrades: timberGrades });
+      // De meewerkende flensbreedte moet vóór de bouwer bekend zijn: hij
+      // belandt in de doorsnede zelf, niet als losse correctie erna.
       const beton = buildBetonCheckInputs({
         ...data,
         korven: korvenUitStaven(data.beams),
         supportedClasses: concreteClasses,
+        bEffPerStaaf: await bepaalBeffPerStaaf(data, roepKern),
       });
       const spanning = buildSpanningCheckInputs(data);
 

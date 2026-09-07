@@ -34,6 +34,7 @@ import {
   korfSamenvatting,
   nl,
   nuttigeHoogteMm,
+  rijBreedteMm,
   rijOppervlakMm2,
   vrijeStaafafstandMm,
   type Wapeningskorf,
@@ -94,8 +95,7 @@ export default function BetonKorfPaneel({
     const timer = window.setTimeout(() => {
       setBezig(true);
       const verzoek: MnKappaRequest = {
-        width_mm: korf.breedteMm,
-        height_mm: korf.hoogteMm,
+        section: korf.doorsnede,
         concrete_class: korf.betonklasse,
         reinforcement_grade: korf.staalsoort,
         cage: korf.korf,
@@ -131,10 +131,15 @@ export default function BetonKorfPaneel({
 
   const aOnder = rijOppervlakMm2(korf.korf.bottom);
   const aBoven = rijOppervlakMm2(korf.korf.top);
-  const d = nuttigeHoogteMm(korf.korf, korf.hoogteMm);
-  const rho = korf.breedteMm > 0 && d > 0 ? (aOnder / (korf.breedteMm * d)) * 100 : 0;
-  const vrijOnder = vrijeStaafafstandMm(korf.korf, korf.korf.bottom, korf.breedteMm);
-  const vrijBoven = vrijeStaafafstandMm(korf.korf, korf.korf.top, korf.breedteMm);
+  const d = nuttigeHoogteMm(korf.korf, korf.doorsnede.h_mm);
+  // Het wapeningspercentage van de trekwapening rekent met de breedte waarin
+  // die wapening LIGT — bij een T-lijf dus b_w en niet de flensbreedte, anders
+  // komt er een ρ uit die tien keer te laag is.
+  const bOnder = rijBreedteMm(korf, "onder");
+  const bBoven = rijBreedteMm(korf, "boven");
+  const rho = bOnder > 0 && d > 0 ? (aOnder / (bOnder * d)) * 100 : 0;
+  const vrijOnder = vrijeStaafafstandMm(korf.korf, korf.korf.bottom, bOnder);
+  const vrijBoven = vrijeStaafafstandMm(korf.korf, korf.korf.top, bBoven);
   const diagram = antwoord?.diagram ?? null;
 
   return (

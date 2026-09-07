@@ -12,7 +12,8 @@ use concrete_check::segments::{
     SegmentStiffnessRequest, DEFAULT_MAX_SEGMENTS,
 };
 use nen_en_1992_1_1::{
-    concrete_class_by_name, LoadDuration, NonlinearBasis, RebarRow, ReinforcementCage,
+    concrete_class_by_name, ConcreteSectionInput, LoadDuration, NonlinearBasis, RebarRow,
+    ReinforcementCage,
 };
 
 // ── Bouwstenen ──────────────────────────────────────────────────────────────
@@ -40,8 +41,7 @@ fn korf_sym() -> ReinforcementCage {
 fn verzoek(length_m: f64, cage: ReinforcementCage) -> SegmentStiffnessRequest {
     SegmentStiffnessRequest {
         beam_id: 1,
-        width_mm: 300.0,
-        height_mm: 500.0,
+        section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".to_string(),
         reinforcement_grade: "B500B".to_string(),
         cage,

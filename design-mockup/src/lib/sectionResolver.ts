@@ -21,6 +21,7 @@ import { STEEL_SECTIONS } from "./steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
 import { cltSolverDoorsnede, isCltProfiel, parseCltProfiel } from "./cltCheckBuilder";
 import { zoekEigenDoorsnede } from "./profieleditor/eigenDoorsnedenStore";
+import { parseConcreteSection } from "./betonCheckBuilder";
 import { parseVrijMateriaal } from "./vrijMateriaal";
 
 /** E_0,mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL). */
@@ -65,7 +66,17 @@ export interface ResolvedSection {
   E: number;      // N/mm²
   A: number;      // mm²
   I: number;      // mm⁴ (Iy, sterke as)
-  bron: "staal-db" | "eigen" | "hout-bxh" | "clt" | "beton-bxh" | "vrij" | "default";
+  bron:
+    | "staal-db"
+    | "eigen"
+    | "hout-bxh"
+    | "clt"
+    /** Beton, rechthoek b × h. */
+    | "beton-bxh"
+    /** Beton, T of L — A en I over de banden en niet over b × h. */
+    | "beton-vorm"
+    | "vrij"
+    | "default";
   /**
    * Volle doorsnede in mm² voor het eigen gewicht, waar die van `A` afwijkt.
    * Bij kruislaaghout is `A` de meewerkende doorsnede van de lengtelagen; de
@@ -87,6 +98,47 @@ export function parseRechthoek(profiel: string | undefined): { b: number; h: num
 
 function normaliseer(naam: string): string {
   return naam.toUpperCase().split("").filter(c => c !== " " && c !== "-" && c !== ".").join("");
+}
+
+/**
+ * A en I_y van een betondoorsnede uit de profielnaam: rechthoek, T of L.
+ *
+ * De vorm wordt door dezelfde `parseConcreteSection` gelezen als de toetsing,
+ * zodat de solver en de kern nooit een andere doorsnede kunnen zien. De
+ * grootheden zelf worden hier wél opnieuw uitgerekend — dit is de
+ * SOLVERstijfheid en die is er vóór er ook maar één kernaanroep is gedaan;
+ * de kern rekent hem daarna over met E_cd in plaats van E_cm en met de
+ * scheurvorming erbij.
+ *
+ * Twee banden: het lijf van 0 tot h − h_f en de flens daarboven (bij een
+ * omgekeerde T andersom, wat voor A en I niets uitmaakt — de banden zijn dan
+ * gespiegeld en I om het eigen zwaartepunt is hetzelfde).
+ */
+function betonDoorsnede(
+  profile: string | undefined,
+): { A: number; I: number; bron: ResolvedSection["bron"] } | null {
+  const uit = parseConcreteSection(profile);
+  if (!uit.ok) return null;
+  const d = uit.doorsnede;
+  if (d.shape === "Rectangle") {
+    const A = d.b_mm * d.h_mm;
+    return { A, I: (d.b_mm * d.h_mm ** 3) / 12, bron: "beton-bxh" };
+  }
+  const bF = d.b_mm;
+  const hF = d.h_f_mm ?? 0;
+  const bW = d.b_w_mm ?? 0;
+  const hW = d.h_mm - hF;
+  const aF = bF * hF;
+  const aW = bW * hW;
+  const A = aF + aW;
+  if (!(A > 0)) return null;
+  // Zwaartepunt vanaf de onderrand, met het lijf onderin en de flens erboven.
+  const zF = hW + hF / 2;
+  const zW = hW / 2;
+  const zG = (aF * zF + aW * zW) / A;
+  const I =
+    (bF * hF ** 3) / 12 + aF * (zF - zG) ** 2 + (bW * hW ** 3) / 12 + aW * (zW - zG) ** 2;
+  return { A, I, bron: "beton-vorm" };
 }
 
 export function resolveSection(material: string | undefined, profile: string | undefined): ResolvedSection {
@@ -111,13 +163,18 @@ export function resolveSection(material: string | undefined, profile: string | u
   }
 
   if (mat in CONCRETE_E_CM) {
-    // Beton: ongescheurde rechthoekige doorsnede met E_cm. De wapening telt
-    // niet mee in de stijfheid — de gebruikelijke lineaire aanname voor de
-    // krachtsverdeling; de doorsnedetoetsing zelf zit in de kern.
-    const rect = parseRechthoek(profile);
-    if (rect) {
-      const { b, h } = rect;
-      return { E: CONCRETE_E_CM[mat], A: b * h, I: (b * h * h * h) / 12, bron: "beton-bxh" };
+    // Beton: ongescheurde doorsnede met E_cm. De wapening telt niet mee in de
+    // stijfheid — de gebruikelijke lineaire aanname voor de krachtsverdeling;
+    // de doorsnedetoetsing zelf zit in de kern.
+    //
+    // Een T of L is hier GEEN rechthoek van b_f × h. Dat is de stijfheid
+    // waarmee de eerste ronde van de fysisch niet-lineaire berekening begint
+    // en, voor een lineair model, de stijfheid waarmee de hele
+    // krachtsverdeling wordt bepaald. b_f·h³/12 zou een T van 400 × 450 met
+    // een flens van 50 mm ruim 60 % te stijf maken.
+    const vorm = betonDoorsnede(profile);
+    if (vorm) {
+      return { E: CONCRETE_E_CM[mat], A: vorm.A, I: vorm.I, bron: vorm.bron };
     }
   } else if (isHout) {
     // Kruislaaghout: E·A en E·I van de samengestelde doorsnede (alleen de

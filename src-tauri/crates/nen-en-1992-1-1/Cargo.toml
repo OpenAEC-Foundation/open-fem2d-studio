@@ -16,6 +16,9 @@ nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 
 [dev-dependencies]
 approx = { workspace = true }
+# Alleen voor de test die de JSON-vorm van `ConcreteSectionInput` vastlegt:
+# dat contract gaat over drie wegen en hoort in deze crate zelf bewaakt te zijn.
+serde_json = { workspace = true }
 
 [[test]]
 name = "handberekening"

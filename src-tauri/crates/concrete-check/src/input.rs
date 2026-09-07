@@ -2,7 +2,7 @@
 
 use mechanics::ForcePoint;
 use nen_en_1992_1_1::mnkappa::DEFAULT_N_STRIPS;
-use nen_en_1992_1_1::{DesignSituation, ReinforcementCage, SteelBranch};
+use nen_en_1992_1_1::{ConcreteSectionInput, DesignSituation, ReinforcementCage, SteelBranch};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -14,19 +14,23 @@ fn default_true() -> bool {
     true
 }
 
-/// Invoer voor één betonnen staaf (rechthoekige doorsnede b × h met korf).
+/// Invoer voor één betonnen staaf: een doorsnede met een wapeningskorf.
 ///
 /// `deny_unknown_fields`: een tikfout in een veldnaam met `#[serde(default)]`
 /// zou anders stilzwijgend de standaardwaarde opleveren.
+///
+/// De doorsnede staat als één `section`-object in het verzoek en niet meer als
+/// een losse breedte en hoogte. Dat is met opzet **geen** uitbreiding met
+/// extra optionele velden naast de oude twee: dan zou een T te maken zijn door
+/// alleen `h_f_mm` in te vullen en `shape` te vergeten, en zou de doorsnede
+/// stilzwijgend een rechthoek blijven. Zie [`ConcreteSectionInput`].
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct ConcreteBeamCheckInput {
     pub beam_id: u32,
-    /// Doorsnedebreedte b in mm.
-    pub width_mm: f64,
-    /// Doorsnedehoogte h in mm (buiging om de sterke as).
-    pub height_mm: f64,
+    /// De doorsnede: rechthoek, T of L, met de maten die bij die vorm horen.
+    pub section: ConcreteSectionInput,
     /// Betonsterkteklasse, bijv. "C30/37" (tabel 3.1).
     pub concrete_class: String,
     /// Wapeningsstaal, bijv. "B500B" (bijlage C).
@@ -57,8 +61,8 @@ pub struct ConcreteBeamCheckInput {
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct MnKappaRequest {
-    pub width_mm: f64,
-    pub height_mm: f64,
+    /// De doorsnede: rechthoek, T of L, met de maten die bij die vorm horen.
+    pub section: ConcreteSectionInput,
     pub concrete_class: String,
     pub reinforcement_grade: String,
     pub cage: ReinforcementCage,

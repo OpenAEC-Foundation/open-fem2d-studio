@@ -158,6 +158,14 @@ const ALLEEN_BRON = new Map([
     "golden",
     "spreekt de bundel rechtstreeks als proces aan; herschrijven zou hem juist van het gouden artefact afhalen",
   ],
+  [
+    "beff-liggerlijn",
+    "leidt de liggerlijn van 5.3.2.1 uit de modeltopologie af (knopen, staven, opleggingen); dat is invoerbouw voor de betontoetsing en geen solverwerk, dus hij hoort niet in de barrel",
+  ],
+  [
+    "beton-doorsnede",
+    "test de profielnaam-grammatica en het korfmodel van de betontoetsing; alleen de solverstijfheid daarvan (resolveSection) zit in de barrel, de rest is invoerbouw en tekenmeetkunde",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

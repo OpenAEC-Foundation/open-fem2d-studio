@@ -177,6 +177,38 @@ fn schema_wapeningsrij(omschrijving: &str) -> Value {
     })
 }
 
+/// De doorsnede (`ConcreteSectionInput`): een vorm met de maten die bij die
+/// vorm horen.
+///
+/// `additionalProperties: false` spiegelt `deny_unknown_fields` op het
+/// Rust-type. `b_w_mm` en `h_f_mm` staan hier als optionele velden omdat een
+/// JSON-schema "verplicht zodra shape = Tee" niet kan uitdrukken zonder
+/// `oneOf`; de kern zelf weigert een T zonder lijfbreedte en een rechthoek
+/// mét flensdikte, met de reden erbij. De beschrijving zegt dat met zoveel
+/// woorden, zodat een aanroeper het niet hoeft uit te proberen.
+fn schema_doorsnede() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "De betondoorsnede: een vorm met benoemde maten. RECHTHOEK: alleen b_mm en h_mm; b_w_mm en h_f_mm moeten dan WEGBLIJVEN. T-VORM en L-VORM: b_mm is de flensbreedte b_f, en b_w_mm (lijfbreedte) en h_f_mm (flensdikte) zijn dan VERPLICHT. De flensbreedte wordt verondersteld de meewerkende breedte b_eff van 5.3.2.1(3) te zijn; die leidt de tool `concrete_effective_flange_width` af, niet deze.",
+        "required": ["b_mm", "h_mm"],
+        "properties": {
+            "shape": { "type": "string", "enum": ["Rectangle", "Tee", "Ell"], "default": "Rectangle",
+                "description": "De vorm. \"Rectangle\" (default) = massieve rechthoek b x h. \"Tee\" = T-ligger, flens aan beide zijden van het lijf. \"Ell\" = L-ligger (randligger), flens aan een kant; die rekent in dit uniaxiale model identiek aan de T en levert daarom een expliciete aanname mee, namelijk dat de zijdelingse kromming verhinderd is." },
+            "b_mm": { "type": "number", "exclusiveMinimum": 0,
+                "description": "Grootste breedte in mm: b bij een rechthoek, de flensbreedte b_f bij een T en een L." },
+            "h_mm": { "type": "number", "exclusiveMinimum": 0,
+                "description": "Totale hoogte h in mm; de buiging gaat om de sterke as." },
+            "b_w_mm": { "type": ["number", "null"], "exclusiveMinimum": 0,
+                "description": "Lijfbreedte b_w in mm. Verplicht bij \"Tee\" en \"Ell\", en kleiner dan b_mm; bij \"Rectangle\" weglaten." },
+            "h_f_mm": { "type": ["number", "null"], "exclusiveMinimum": 0,
+                "description": "Flensdikte h_f in mm. Verplicht bij \"Tee\" en \"Ell\", en kleiner dan h_mm; bij \"Rectangle\" weglaten." },
+            "flange_at_bottom": { "type": "boolean", "default": false,
+                "description": "Ligt de flens aan de ONDERZIJDE (de omgekeerde T)? Default false: de flens ligt boven, zoals bij een ligger onder een vloer. Alleen zinvol bij \"Tee\" en \"Ell\"." }
+        }
+    })
+}
+
 fn schema_n_strips() -> Value {
     json!({
         "type": "integer", "minimum": 1, "default": 50,
@@ -242,10 +274,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het resultaat." },
-                    "width_mm": { "type": "number", "exclusiveMinimum": 0,
-                        "description": "Doorsnedebreedte b in mm." },
-                    "height_mm": { "type": "number", "exclusiveMinimum": 0,
-                        "description": "Doorsnedehoogte h in mm; de buiging gaat om de sterke as." },
+                    "section": schema_doorsnede(),
                     "concrete_class": { "type": "string",
                         "description": "Betonsterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\". Een onbekende naam levert een resultaat met 'governing_check_id' = \"ERROR: …\" en géén toetsen; vraag de geldige namen op met `list_concrete_classes`." },
                     "reinforcement_grade": { "type": "string",
@@ -261,7 +290,7 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "Minimale excentriciteit e_0 = max(h/30; 20 mm) toepassen bij druk (6.1(4)). Default true; op false zetten maakt de toets GUNSTIGER en hoort alleen bij het narekenen van een uitwerking die die regel niet toepast." }
                 },
                 "required": [
-                    "beam_id", "width_mm", "height_mm", "concrete_class",
+                    "beam_id", "section", "concrete_class",
                     "reinforcement_grade", "cage", "length_m", "forces_envelope"
                 ]
             }
@@ -273,8 +302,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                    "width_mm": { "type": "number", "exclusiveMinimum": 0, "description": "Doorsnedebreedte b in mm." },
-                    "height_mm": { "type": "number", "exclusiveMinimum": 0, "description": "Doorsnedehoogte h in mm." },
+                    "section": schema_doorsnede(),
                     "concrete_class": { "type": "string", "description": "Betonsterkteklasse, bijvoorbeeld \"C30/37\"." },
                     "reinforcement_grade": { "type": "string", "description": "Wapeningsstaal, bijvoorbeeld \"B500B\"." },
                     "cage": schema_korf(),
@@ -288,7 +316,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "interaction_points": { "type": "integer", "minimum": 0, "default": 21,
                         "description": "Aantal punten van het N-M-interactiediagram per momentrichting. Minder dan 3 = niet berekenen; beide diagrammen komen dan leeg terug." }
                 },
-                "required": ["width_mm", "height_mm", "concrete_class", "reinforcement_grade", "cage"]
+                "required": ["section", "concrete_class", "reinforcement_grade", "cage"]
             }
         }),
         json!({
@@ -300,10 +328,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het antwoord." },
-                    "width_mm": { "type": "number", "exclusiveMinimum": 0,
-                        "description": "Doorsnedebreedte b in mm." },
-                    "height_mm": { "type": "number", "exclusiveMinimum": 0,
-                        "description": "Doorsnedehoogte h in mm; de buiging gaat om de sterke as." },
+                    "section": schema_doorsnede(),
                     "concrete_class": { "type": "string",
                         "description": "Betonsterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\". Zie `list_concrete_classes`." },
                     "reinforcement_grade": { "type": "string",
@@ -338,7 +363,7 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "beta van (7.19), alleen in de BGT van invloed. \"ShortTerm\" = 1,0 voor een enkele kortdurende belasting, \"Sustained\" = 0,5 voor aanhoudende belastingen of meervoudige cycli van zich herhalende belastingen (7.4.3(3))." }
                 },
                 "required": [
-                    "beam_id", "width_mm", "height_mm", "concrete_class",
+                    "beam_id", "section", "concrete_class",
                     "reinforcement_grade", "cage", "length_m"
                 ]
             }
@@ -460,8 +485,7 @@ mod tests {
             .expect("properties");
         let verwacht = [
             "beam_id",
-            "width_mm",
-            "height_mm",
+            "section",
             "concrete_class",
             "reinforcement_grade",
             "cage",
@@ -499,8 +523,7 @@ mod tests {
             verplicht,
             vec![
                 "beam_id",
-                "width_mm",
-                "height_mm",
+                "section",
                 "concrete_class",
                 "reinforcement_grade",
                 "cage",

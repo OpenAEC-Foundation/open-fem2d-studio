@@ -349,8 +349,7 @@ async fn onbekend_veld_in_lateral_bracing_wordt_geweigerd() {
 fn geldige_betoninvoer() -> Value {
     json!({
         "beam_id": 7,
-        "width_mm": 300,
-        "height_mm": 500,
+        "section": { "b_mm": 300, "h_mm": 500 },
         "concrete_class": "C30/37",
         "reinforcement_grade": "B500B",
         "cage": {
@@ -383,7 +382,7 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
 
     // Elk veld van ConcreteBeamCheckInput, ook de vier met #[serde(default)].
     for veld in [
-        "beam_id", "width_mm", "height_mm", "concrete_class",
+        "beam_id", "section", "concrete_class",
         "reinforcement_grade", "cage", "length_m", "forces_envelope",
         "n_strips", "steel_branch", "design_situation", "apply_min_eccentricity",
     ] {
@@ -394,9 +393,25 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        12,
+        11,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
     );
+
+    // De doorsnede: een vorm met benoemde maten, en ook zij weigert onbekende
+    // velden. `b_w_mm` en `h_f_mm` zijn niet in het schema verplicht — dat kan
+    // een JSON-schema niet per vorm — maar ze moeten er wél in staan, anders
+    // filtert `additionalProperties: false` een T weg voordat de kern hem ziet.
+    let sec = &props["section"];
+    assert_eq!(sec["additionalProperties"], false);
+    assert_eq!(sec["required"], json!(["b_mm", "h_mm"]));
+    assert_eq!(sec["properties"]["shape"]["enum"], json!(["Rectangle", "Tee", "Ell"]));
+    for veld in ["shape", "b_mm", "h_mm", "b_w_mm", "h_f_mm", "flange_at_bottom"] {
+        assert!(
+            sec["properties"][veld].is_object(),
+            "veld '{veld}' ontbreekt in het doorsnedeschema"
+        );
+    }
+    assert_eq!(sec["properties"].as_object().unwrap().len(), 6);
 
     // De enums die de kern werkelijk kent (serde schrijft de varianten uit).
     assert_eq!(props["steel_branch"]["enum"], json!(["Horizontal", "Inclined"]));
@@ -432,7 +447,7 @@ async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
 
     assert_eq!(schema["additionalProperties"], false);
     for veld in [
-        "width_mm", "height_mm", "concrete_class", "reinforcement_grade",
+        "section", "concrete_class", "reinforcement_grade",
         "cage", "n_ed_kn", "moment_sign", "n_strips", "steel_branch",
         "design_situation", "interaction_points",
     ] {
@@ -443,7 +458,7 @@ async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        11,
+        10,
         "het schema kent een veld dat MnKappaRequest weigert"
     );
 
@@ -532,7 +547,7 @@ async fn onbekende_sterkteklasse_geeft_een_leesbare_fout() {
         25,
         "concrete_mn_kappa",
         json!({
-            "width_mm": 300, "height_mm": 500,
+            "section": { "b_mm": 300, "h_mm": 500 },
             "concrete_class": "C24", "reinforcement_grade": "B500B",
             "cage": geldige_betoninvoer()["cage"]
         }),

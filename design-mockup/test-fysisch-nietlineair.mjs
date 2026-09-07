@@ -115,8 +115,14 @@ const KORF = {
 /** Eén betonstaaf zoals de lus hem verwacht. */
 const staaf = (beamId, lengteMm) => ({
   beamId,
-  breedteMm: B_MM,
-  hoogteMm: H_MM,
+  doorsnede: {
+    shape: "Rectangle",
+    b_mm: B_MM,
+    h_mm: H_MM,
+    b_w_mm: null,
+    h_f_mm: null,
+    flange_at_bottom: false,
+  },
   betonklasse: "C30/37",
   staalsoort: "B500B",
   korf: KORF,
@@ -492,7 +498,8 @@ log("\n[9] Betonstaven uit het model: alleen mét wapeningskorf");
   const { staven, overgeslagen: over } = betonStavenUitModel({ nodes, beams });
   checkWaar("één bruikbare betonstaaf", staven.length === 1 && staven[0].beamId === 1);
   checkWaar("b, h en lengte kloppen",
-    staven[0].breedteMm === 300 && staven[0].hoogteMm === 500 && staven[0].lengteMm === 6000);
+    staven[0].doorsnede.b_mm === 300 && staven[0].doorsnede.h_mm === 500
+    && staven[0].doorsnede.shape === "Rectangle" && staven[0].lengteMm === 6000);
   checkWaar("twee overgeslagen mét reden", over.length === 2);
   checkWaar("de staaf zonder korf wordt met reden genoemd",
     over.some((s) => s.beamId === 2 && s.reason.includes("wapeningskorf")));

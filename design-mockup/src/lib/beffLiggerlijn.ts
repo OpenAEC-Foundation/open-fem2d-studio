@@ -44,7 +44,9 @@
 import type { Beam, BeamReleases, Node, Support } from "../components/fem/femTypes";
 import type { BeamLine } from "./types/concrete/BeamLine";
 import type { BeffZone } from "./types/concrete/BeffZone";
+import type { EffectiveFlangeWidthResponse } from "./types/concrete/EffectiveFlangeWidthResponse";
 import type { LineEnd } from "./types/concrete/LineEnd";
+import { matchSupportedConcreteClass, parseConcreteSection } from "./betonCheckBuilder";
 
 /** Richtingstolerantie op het uitwendig product van twee eenheidsrichtingen. */
 const COLLINEAIR_TOL = 1e-6;
@@ -551,4 +553,106 @@ export function beffPerStaafsegment(
       grensBinnenSegment: links !== zoneIndex || rechts !== zoneIndex,
     };
   });
+}
+
+// ── Van model naar één b_eff per staaf ─────────────────────────────────────
+
+/** De aanroep van de rekenkern, zoals `roepKern` in `stores/checkStore`. */
+export type RoepKern = <T>(opdracht: string, inputs?: unknown) => Promise<T>;
+
+/** Wat er nodig is om b_eff af te leiden: de topologie plus de opleggingen. */
+export interface BeffStavenInvoer {
+  nodes: Node[];
+  beams: Beam[];
+  /** Zonder opleggingen is een tussensteunpunt niet te herkennen; dan geen b_eff. */
+  supports?: Support[];
+}
+
+/**
+ * De meewerkende flensbreedte b_eff per T- of L-staaf, in mm (5.3.2.1).
+ *
+ * DRIE STAPPEN, EN GEEN ERVAN HIER GEREKEND
+ *  1. `bepaalLiggerlijn` hierboven leidt uit knopen, staven en opleggingen af
+ *     welke staven één doorgaande ligger vormen en waar de steunpunten
+ *     liggen — de liggerlijn van figuur 5.2. Alleen topologie.
+ *  2. De KERN rekent daaruit b_eff per gebied ((5.7), (5.7a), (5.7b)) via
+ *     `concrete_effective_flange_width`, langs dezelfde weg als de toetsing.
+ *  3. Hier wordt daar één waarde per staaf uit gekozen: die van het MIDDEN
+ *     van de staaf. 5.3.2.1(4) staat een constante breedte over de
+ *     overspanning toe en zegt dat de waarde van de VELDdoorsnede moet worden
+ *     aangehouden; het midden van de staaf is de plaats die daar het dichtst
+ *     bij ligt zonder aan te nemen welk deel van de lijn "het veld" is.
+ *
+ * WAAROM ÉÉN WAARDE PER STAAF EN NIET PER SEGMENT. `beffPerStaafsegment`
+ * hierboven kan de verdeling wél per segment leveren, maar zowel
+ * `ConcreteBeamCheckInput` als `SegmentStiffnessRequest` draagt één doorsnede
+ * per staaf. Een b_eff die binnen de staaf springt, past dus niet in het
+ * huidige contract; dat is een aparte stap en geen stille aanname hier.
+ *
+ * DE UITKRAGENDE FLENSDELEN. De profielnaam draagt de flensbreedte b_f en de
+ * lijfbreedte b_w, dus b_i volgt daaruit: bij een T twee keer (b_f − b_w)/2,
+ * bij een L één keer b_f − b_w. Dat is figuur 5.3 met de maten die de
+ * gebruiker heeft opgegeven; er wordt geen naastliggend lijf verzonnen.
+ *
+ * Lukt een staaf niet — geen opleggingen, geen liggerlijn, een topologie
+ * buiten figuur 5.2, een kern die het verzoek weigert — dan komt hij niet in
+ * de map en gaat de INGEVOERDE flensbreedte de berekening in. Het resultaat
+ * noemt dan die breedte als de veronderstelde b_eff, in `section_name` én in
+ * de aanname-tekst, dus er verdwijnt niets stilzwijgend. De reden staat in de
+ * console.
+ */
+export async function bepaalBeffPerStaaf(
+  data: BeffStavenInvoer,
+  roep: RoepKern,
+): Promise<Map<number, number>> {
+  const uit = new Map<number, number>();
+  const supports = data.supports;
+  if (!supports) return uit;
+
+  for (const beam of data.beams) {
+    if (!matchSupportedConcreteClass(beam.material?.trim() ?? "")) continue;
+    const vorm = parseConcreteSection(beam.profile);
+    if (!vorm.ok || vorm.doorsnede.shape === "Rectangle") continue;
+    const d = vorm.doorsnede;
+    const bW = d.b_w_mm;
+    if (bW === null || !(bW > 0)) continue;
+
+    const lijn = bepaalLiggerlijn(beam.id, { nodes: data.nodes, beams: data.beams, supports });
+    if (!lijn.ok) {
+      console.info(
+        `[b_eff] staaf ${beam.id}: geen liggerlijn (${lijn.reden}) — er wordt gerekend met de ` +
+          `ingevoerde flensbreedte van ${d.b_mm} mm.`,
+      );
+      continue;
+    }
+    const overstek = d.b_mm - bW;
+    const b_i_mm = d.shape === "Tee" ? [overstek / 2, overstek / 2] : [overstek];
+
+    try {
+      const antwoord = await roep<EffectiveFlangeWidthResponse>(
+        "concrete_effective_flange_width",
+        { beam_id: beam.id, line: lijn.lijn.line, flange: { b_w_mm: bW, b_i_mm } },
+      );
+      const staaf = lijn.lijn.staven.find((s) => s.beamId === beam.id);
+      if (!staaf) continue;
+      const xLijn = lijnPositieMm(lijn.lijn, beam.id, staaf.lengthMm / 2);
+      if (xLijn === null) continue;
+      const zones = antwoord.distribution.zones;
+      const eps = 1e-9 * Math.max(antwoord.distribution.total_length_mm, 1);
+      const zone = zones.find((z) => xLijn <= z.zone.x_end_mm + eps) ?? zones[zones.length - 1];
+      if (!zone) continue;
+      uit.set(beam.id, zone.b_eff_mm);
+      console.info(
+        `[b_eff] staaf ${beam.id}: b_eff = ${zone.b_eff_mm.toFixed(0)} mm ` +
+          `(l₀ = ${zone.zone.l0_mm.toFixed(0)} mm, ${zone.zone.case}) in plaats van de ingevoerde ` +
+          `flensbreedte ${d.b_mm} mm.`,
+      );
+    } catch (e) {
+      console.info(
+        `[b_eff] staaf ${beam.id}: de kern gaf geen b_eff (${e instanceof Error ? e.message : String(e)}) — ` +
+          `er wordt gerekend met de ingevoerde flensbreedte van ${d.b_mm} mm.`,
+      );
+    }
+  }
+  return uit;
 }

@@ -482,6 +482,101 @@ fn de_aannamen_staan_in_elke_toets() {
     }
 }
 
+/// **De afleiding moet dezelfde x tonen als de toets gebruikt.**
+///
+/// Voor een rechthoek is x = F/(η·f_cd·b·λ) exact, en die gesloten vorm stond
+/// dan ook in de afleiding. Voor een T waarvan het spanningsblok het lijf in
+/// loopt, geeft diezelfde uitdrukking met de FLENSBREEDTE een andere x dan de
+/// bisectie over de werkelijke meetkunde — en een afleiding die iets anders
+/// zegt dan de berekening is erger dan geen afleiding.
+///
+/// De doorsnede is die van `drukzone_in_het_lijf_handberekening`: T 400/50 —
+/// 200/450 met 4Ø20 onder, x = 108,239 mm met de hand.
+#[test]
+fn de_afleiding_toont_dezelfde_x_als_de_toets() {
+    use mechanics::{ForceStateSnapshot, InternalForces};
+    use nen_en_1992_1_1::checks::check_bending_stress_block;
+    use nen_en_1992_1_1::{Deelstap, ResistanceCalc};
+
+    let m = materiaal();
+    let k = korf((4, 20.0), (0, 0.0));
+    let snap = ForceStateSnapshot {
+        combination_id: 1,
+        position_mm: 2500.0,
+        forces: InternalForces { n_ed: 0.0, my_ed: 150.0, ..Default::default() },
+    };
+    let stap = |calc: &ResistanceCalc, id: &str| -> Deelstap {
+        calc.deelstappen
+            .iter()
+            .find(|d| d.id == id)
+            .unwrap_or_else(|| panic!("stap {id} ontbreekt"))
+            .clone()
+    };
+
+    // ── Blok in het lijf: geen gesloten vorm, wel dezelfde x ──────────────
+    let s = ConcreteSection::tee(400.0, 50.0, 200.0, 450.0).unwrap();
+    let r = stress_block(&s, &k.layers(450.0), &m, 0.0, 1.0).unwrap();
+    assert!(s.uniform_top_width(LAMBDA * r.x_mm).is_none(), "het blok blijft in de flens");
+    assert_relative_eq!(r.x_mm, 108.239, max_relative = 1e-5);
+
+    let calc = check_bending_stress_block(&s, &k, &m, snap);
+    let ev = stap(&calc, "evenwicht_x");
+    assert_eq!(ev.value, Some(r.x_mm), "de afleiding toont een andere x dan de toets");
+    // De formule is de integraal en niet η·f_cd·b·λ·x — er is hier geen b die
+    // klopt, dus mag er ook geen in staan.
+    assert!(ev.formula_latex.contains(r"A_c(\lambda x)"), "{}", ev.formula_latex);
+    assert!(!ev.formula_latex.contains(r"f_{cd} \cdot b \cdot"), "{}", ev.formula_latex);
+    // De naïeve gesloten vorm met de flensbreedte zou een ANDERE x geven; dat
+    // is precies waarom hij hier niet mag staan.
+    let x_naief = k.a_s_bottom_mm2() * f_yd() / (1.0 * F_CD * 400.0 * LAMBDA);
+    assert!((x_naief - r.x_mm).abs() > 20.0, "x_naief = {x_naief}, x = {}", r.x_mm);
+    let tekst = ev.notes.join(" ");
+    assert!(tekst.contains("LOOPT DE FLENS UIT"), "{tekst}");
+    assert!(!tekst.contains("de bekende handformule"), "{tekst}");
+
+    // De drukkracht en haar arm zijn die van de toets, niet die van λx/2.
+    let fc = stap(&calc, "f_c");
+    assert_eq!(fc.value, Some(r.f_c_kn));
+    let diepte = 225.0 - r.z_c_m * 1e3;
+    assert!(
+        (diepte - LAMBDA * r.x_mm / 2.0).abs() > 5.0,
+        "het zwaartepunt valt toevallig op λx/2; dan toetst dit niets"
+    );
+    assert!(fc.notes.join(" ").contains("over twee breedten"), "{:?}", fc.notes);
+
+    // ── Blok in de flens: dan geldt de gesloten vorm wél, met b_f ─────────
+    let dun = korf((2, 12.0), (0, 0.0));
+    let r2 = stress_block(&s, &dun.layers(450.0), &m, 0.0, 1.0).unwrap();
+    assert_eq!(s.uniform_top_width(LAMBDA * r2.x_mm), Some(400.0));
+    let calc2 = check_bending_stress_block(&s, &dun, &m, snap);
+    let ev2 = stap(&calc2, "evenwicht_x");
+    assert_eq!(ev2.value, Some(r2.x_mm));
+    assert!(ev2.formula_latex.contains(r"f_{cd} \cdot b \cdot"), "{}", ev2.formula_latex);
+    // De breedte in de variabelentabel is de FLENSbreedte, want die ziet het
+    // blok — en de gesloten handformule wordt genoemd omdat hij hier klopt.
+    assert!(ev2.variables.iter().any(|v| v.symbol == "b" && v.value == 400.0));
+    let tekst2 = ev2.notes.join(" ");
+    assert!(tekst2.contains("de bekende handformule"), "{tekst2}");
+    assert!(tekst2.contains("binnen de gedrukte band"), "{tekst2}");
+
+    // ── Negatief moment: de flens klapt naar onderen, dus het blok ziet het
+    //    LIJF. De afleiding moet dan 200 mm noemen en geen 400 mm ──────────
+    let neg = ForceStateSnapshot {
+        forces: InternalForces { n_ed: 0.0, my_ed: -40.0, ..Default::default() },
+        ..snap
+    };
+    let boven = korf((0, 0.0), (2, 12.0));
+    let calc3 = check_bending_stress_block(&s, &boven, &m, neg);
+    let ev3 = stap(&calc3, "evenwicht_x");
+    let r3 = stress_block(&s, &boven.layers(450.0), &m, 0.0, -1.0).unwrap();
+    assert_eq!(ev3.value, Some(r3.x_mm));
+    assert!(
+        ev3.variables.iter().any(|v| v.symbol == "b" && v.value == 200.0),
+        "bij een negatief moment hoort de LIJFbreedte in de afleiding: {:?}",
+        ev3.variables
+    );
+}
+
 /// De korfcontrole en de vormcontrole geven een leesbare fout in plaats van
 /// een stil verkeerd getal.
 #[test]

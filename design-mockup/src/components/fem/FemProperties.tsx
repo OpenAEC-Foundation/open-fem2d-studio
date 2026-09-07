@@ -20,8 +20,11 @@ import {
 } from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
-import { matchSupportedConcreteClass } from "../../lib/betonCheckBuilder";
-import { parseRechthoek } from "../../lib/sectionResolver";
+import {
+  formatConcreteSection,
+  matchSupportedConcreteClass,
+  parseConcreteSection,
+} from "../../lib/betonCheckBuilder";
 import { BetonKorfPaneel, type Wapeningskorf } from "../beton";
 import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
 
@@ -399,10 +402,14 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   // en de toetsing ze al lezen — en de korf in checkConfig. Alleen gevulde
   // velden gaan mee als startwaarde; een `undefined` zou anders de
   // standaardkorf van het paneel overschrijven.
-  const betonRect = isBeton ? parseRechthoek(profile) : null;
+  // De doorsnede reist als profielNAAM: "300x500" voor een rechthoek,
+  // "T 400x450 bw=200 hf=50" voor een T of L. Parseert de naam niet, dan
+  // blijft de standaarddoorsnede van het paneel staan — dat is de enige
+  // plaats waar de gebruiker hem alsnog kan invullen.
+  const betonVorm = isBeton ? parseConcreteSection(profile) : null;
   const betonInitieel: Partial<Wapeningskorf> = {
     betonklasse: material,
-    ...(betonRect ? { breedteMm: betonRect.b, hoogteMm: betonRect.h } : {}),
+    ...(betonVorm?.ok ? { doorsnede: betonVorm.doorsnede } : {}),
     ...(cfg.betonKorf ? { korf: cfg.betonKorf } : {}),
     ...(cfg.betonStaalsoort ? { staalsoort: cfg.betonStaalsoort } : {}),
     ...(cfg.betonStroken ? { aantalStroken: cfg.betonStroken } : {}),
@@ -411,7 +418,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   const setBetonKorf = (k: Wapeningskorf) => {
     updateBeam?.(beam.id, {
       material: k.betonklasse,
-      profile: `${k.breedteMm}x${k.hoogteMm}`,
+      profile: formatConcreteSection(k.doorsnede),
       checkConfig: opgeschoond({
         ...cfg,
         betonKorf: k.korf,
@@ -466,7 +473,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
           className={`fem-prop-tab${propTab === "norm" ? " active" : ""}`}
           onClick={() => setPropTab("norm")}
         >
-          {isHout ? "EN 1995" : "EN 1993"}
+          {isHout ? "EN 1995" : isBeton ? "EN 1992" : "EN 1993"}
         </button>
       </div>
       {propTab === "norm" && (

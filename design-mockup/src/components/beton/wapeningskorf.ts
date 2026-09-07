@@ -10,14 +10,19 @@
  * De ligging van de staafassen volgt dezelfde regel als de kern:
  *   afstand staafas tot betonrand = c_nom + Ø_beugel + Ø_hoofd / 2.
  */
+import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
 import type { RebarRow } from "../../lib/types/concrete/RebarRow";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 import { DEFAULT_N_STRIPS, DEFAULT_REINFORCEMENT_GRADE } from "../../lib/betonCheckBuilder";
 
 export interface Wapeningskorf {
-  breedteMm: number;
-  hoogteMm: number;
+  /**
+   * De doorsnede: rechthoek, T of L. Letterlijk het type dat de kern
+   * verwacht — de editor en de tekening delen dus één beschrijving met de
+   * berekening, en er is geen tweede plaats waar een T anders wordt bedoeld.
+   */
+  doorsnede: ConcreteSectionInput;
   /** Betonsterkteklasse, bijv. "C30/37". */
   betonklasse: string;
   /** Wapeningsstaal, bijv. "B500B". */
@@ -29,10 +34,21 @@ export interface Wapeningskorf {
   staaltak: SteelBranch;
 }
 
+/** Een rechthoek b × h als `ConcreteSectionInput`. */
+export function rechthoek(bMm: number, hMm: number): ConcreteSectionInput {
+  return {
+    shape: "Rectangle",
+    b_mm: bMm,
+    h_mm: hMm,
+    b_w_mm: null,
+    h_f_mm: null,
+    flange_at_bottom: false,
+  };
+}
+
 /** Een gangbare balkkorf als startpunt voor de editor. Geen normwaarde. */
 export const STANDAARD_KORF: Wapeningskorf = {
-  breedteMm: 300,
-  hoogteMm: 500,
+  doorsnede: rechthoek(300, 500),
   betonklasse: "C30/37",
   staalsoort: DEFAULT_REINFORCEMENT_GRADE,
   korf: {
@@ -44,6 +60,107 @@ export const STANDAARD_KORF: Wapeningskorf = {
   aantalStroken: DEFAULT_N_STRIPS,
   staaltak: "Horizontal",
 };
+
+// ── De meetkunde van de doorsnede, zoals de tekening en de controle hem
+//    nodig hebben ────────────────────────────────────────────────────────
+//
+// Spiegel van `ConcreteSection` in de kern: een reeks horizontale BANDEN met
+// elk een breedte en een hoogtebereik. Twee banden volstaan voor rechthoek, T
+// en L, en de tekening hoeft dan niet per vorm te vertakken.
+
+/** Eén horizontale band: een breedte over een hoogtebereik, z vanaf onder. */
+export interface Band {
+  z0Mm: number;
+  z1Mm: number;
+  bMm: number;
+}
+
+/** De banden van onder (z = 0) naar boven (z = h). */
+export function banden(d: ConcreteSectionInput): Band[] {
+  if (d.shape === "Rectangle" || d.b_w_mm === null || d.h_f_mm === null) {
+    return [{ z0Mm: 0, z1Mm: d.h_mm, bMm: d.b_mm }];
+  }
+  const hF = d.h_f_mm;
+  const bW = d.b_w_mm;
+  return d.flange_at_bottom
+    ? [
+        { z0Mm: 0, z1Mm: hF, bMm: d.b_mm },
+        { z0Mm: hF, z1Mm: d.h_mm, bMm: bW },
+      ]
+    : [
+        { z0Mm: 0, z1Mm: d.h_mm - hF, bMm: bW },
+        { z0Mm: d.h_mm - hF, z1Mm: d.h_mm, bMm: d.b_mm },
+      ];
+}
+
+/**
+ * De breedte die op hoogte `zMm` werkelijk aanwezig is, mm. Op een bandgrens
+ * de KLEINSTE van de twee — een staaf die precies op de overgang ligt, moet
+ * in het smalste deel passen. Zelfde regel als `width_at_mm` in de kern.
+ */
+export function breedteOpHoogteMm(d: ConcreteSectionInput, zMm: number): number {
+  let w = Infinity;
+  for (const b of banden(d)) {
+    if (zMm >= b.z0Mm && zMm <= b.z1Mm) w = Math.min(w, b.bMm);
+  }
+  return Number.isFinite(w) ? w : 0;
+}
+
+/**
+ * De omtrek van de doorsnede als SVG-punten (x vanaf de linkerrand van de
+ * OMHULLENDE breedte b, z vanaf de onderrand), tegen de klok in.
+ *
+ * Bij een L ligt de flens aan één kant en bij een T aan beide kanten. Dat
+ * verschil is voor de berekening geen verschil — b(z) is identiek — maar voor
+ * de TEKENING wél: wie een L als een T tekent, laat de constructeur iets
+ * anders zien dan hij heeft ingevoerd.
+ */
+export function omtrekPunten(d: ConcreteSectionInput): Array<[number, number]> {
+  const b = d.b_mm;
+  const h = d.h_mm;
+  if (d.shape === "Rectangle" || d.b_w_mm === null || d.h_f_mm === null) {
+    return [
+      [0, 0],
+      [b, 0],
+      [b, h],
+      [0, h],
+    ];
+  }
+  const bW = d.b_w_mm;
+  const hF = d.h_f_mm;
+  // Links van het lijf: bij een T de halve uitkraging, bij een L niets — daar
+  // staat het lijf tegen de rand aan.
+  const x0 = d.shape === "Ell" ? 0 : (b - bW) / 2;
+  const x1 = x0 + bW;
+  return d.flange_at_bottom
+    ? [
+        [0, 0],
+        [b, 0],
+        [b, hF],
+        [x1, hF],
+        [x1, h],
+        [x0, h],
+        [x0, hF],
+        [0, hF],
+      ]
+    : [
+        [x0, 0],
+        [x1, 0],
+        [x1, h - hF],
+        [b, h - hF],
+        [b, h],
+        [0, h],
+        [0, h - hF],
+        [x0, h - hF],
+      ];
+}
+
+/** Waar het midden van de rij op hoogte `zMm` ligt, in x vanaf de linkerrand. */
+export function hartXMm(d: ConcreteSectionInput, zMm: number): number {
+  const breedte = breedteOpHoogteMm(d, zMm);
+  if (d.shape === "Ell" && breedte < d.b_mm) return breedte / 2;
+  return d.b_mm / 2;
+}
 
 /** Gangbare staafdiameters (handelsmaten, geen normwaarden). */
 export const STAAFDIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32, 40] as const;
@@ -90,8 +207,13 @@ export interface StaafPositie {
 /**
  * Staafposities in de doorsnede: elke rij gelijkmatig verdeeld tussen de
  * binnenhoeken van de beugel; één staaf staat in het midden.
+ *
+ * De rij wordt verdeeld over de breedte die op ZIJN EIGEN hoogte aanwezig is,
+ * niet over de grootste breedte van de doorsnede. Bij een T-lijf zou dat
+ * laatste staven buiten het beton tekenen; dezelfde regel als de
+ * korfcontrole in de kern, die ook naar `width_at_mm` kijkt.
  */
-export function staafPosities(korf: ReinforcementCage, breedteMm: number, hoogteMm: number): StaafPositie[] {
+export function staafPosities(korf: ReinforcementCage, d: ConcreteSectionInput): StaafPositie[] {
   const uit: StaafPositie[] = [];
   const rijen: Array<[RebarRow, "boven" | "onder"]> = [
     [korf.bottom, "onder"],
@@ -100,11 +222,13 @@ export function staafPosities(korf: ReinforcementCage, breedteMm: number, hoogte
   for (const [rij, kant] of rijen) {
     if (rij.count <= 0 || rij.diameter_mm <= 0) continue;
     const as = asAfstandMm(korf, rij);
-    const z = kant === "onder" ? as : hoogteMm - as;
-    const xEerste = as;
-    const xLaatste = breedteMm - as;
+    const z = kant === "onder" ? as : d.h_mm - as;
+    const breedte = breedteOpHoogteMm(d, z);
+    const hart = hartXMm(d, z);
+    const xEerste = hart - breedte / 2 + as;
+    const xLaatste = hart + breedte / 2 - as;
     for (let i = 0; i < rij.count; i++) {
-      const x = rij.count === 1 ? breedteMm / 2 : xEerste + ((xLaatste - xEerste) * i) / (rij.count - 1);
+      const x = rij.count === 1 ? hart : xEerste + ((xLaatste - xEerste) * i) / (rij.count - 1);
       uit.push({ x, z, diameter: rij.diameter_mm, rij: kant });
     }
   }
@@ -118,21 +242,36 @@ export function staafPosities(korf: ReinforcementCage, breedteMm: number, hoogte
  */
 export function controleerKorf(k: Wapeningskorf): string | null {
   const { korf } = k;
-  if (!(k.breedteMm > 0) || !(k.hoogteMm > 0)) return "Doorsnedeafmetingen moeten positief zijn.";
+  const d = k.doorsnede;
+  if (!(d.b_mm > 0) || !(d.h_mm > 0)) return "Doorsnedeafmetingen moeten positief zijn.";
+  if (d.shape !== "Rectangle") {
+    if (!(d.b_w_mm !== null && d.b_w_mm > 0)) return "De lijfbreedte b_w moet positief zijn.";
+    if (!(d.h_f_mm !== null && d.h_f_mm > 0)) return "De flensdikte h_f moet positief zijn.";
+    if (d.b_w_mm >= d.b_mm) return "De lijfbreedte b_w moet kleiner zijn dan de flensbreedte b_f.";
+    if (d.h_f_mm >= d.h_mm) return "De flensdikte h_f laat geen lijf over binnen de hoogte h.";
+  }
   if (korf.cover_mm < 0 || korf.stirrup_diameter_mm < 0) return "Dekking en beugeldiameter mogen niet negatief zijn.";
   const leeg = (r: RebarRow) => r.count <= 0 || r.diameter_mm <= 0;
   if (leeg(korf.top) && leeg(korf.bottom)) return "De korf bevat geen hoofdwapening.";
-  const binnenbreedte = k.breedteMm - 2 * (korf.cover_mm + korf.stirrup_diameter_mm);
-  for (const [naam, rij] of [["Onderwapening", korf.bottom], ["Bovenwapening", korf.top]] as const) {
+  // De breedte OP DE HOOGTE VAN DE RIJ, net als `ReinforcementCage::validate`
+  // in de kern: in een T-lijf past minder dan in de flens.
+  for (const [naam, rij, z] of [
+    ["Onderwapening", korf.bottom, asAfstandMm(korf, korf.bottom)],
+    ["Bovenwapening", korf.top, d.h_mm - asAfstandMm(korf, korf.top)],
+  ] as const) {
     if (leeg(rij)) continue;
+    const breedte = breedteOpHoogteMm(d, z);
+    const binnenbreedte = breedte - 2 * (korf.cover_mm + korf.stirrup_diameter_mm);
     const benodigd = rij.count * rij.diameter_mm;
     if (benodigd > binnenbreedte + 1e-9) {
-      return `${naam} ${rijLabel(rij)} past niet in de breedte: ${maat(benodigd)} mm staal in ${maat(binnenbreedte)} mm binnenmaat.`;
+      const waar =
+        d.shape === "Rectangle" ? "" : ` (de doorsnede is op z = ${maat(z)} mm ${maat(breedte)} mm breed)`;
+      return `${naam} ${rijLabel(rij)} past niet in de breedte: ${maat(benodigd)} mm staal in ${maat(binnenbreedte)} mm binnenmaat${waar}.`;
     }
   }
   const onder = leeg(korf.bottom) ? 0 : asAfstandMm(korf, korf.bottom);
   const boven = leeg(korf.top) ? 0 : asAfstandMm(korf, korf.top);
-  if (onder + boven >= k.hoogteMm) return "Boven- en onderwapening overlappen elkaar in de hoogte.";
+  if (onder + boven >= d.h_mm) return "Boven- en onderwapening overlappen elkaar in de hoogte.";
   return null;
 }
 
@@ -146,6 +285,17 @@ export function vrijeStaafafstandMm(korf: ReinforcementCage, rij: RebarRow, bree
   const as = asAfstandMm(korf, rij);
   const hartAfstand = (breedteMm - 2 * as) / (rij.count - 1);
   return hartAfstand - rij.diameter_mm;
+}
+
+/**
+ * De breedte waarin een rij werkelijk ligt: die op de hoogte van de rij zelf.
+ * Voor de vrije-staafafstand van de editor; in een T-lijf is dat b_w en niet
+ * de flensbreedte.
+ */
+export function rijBreedteMm(k: Wapeningskorf, kant: "onder" | "boven"): number {
+  const rij = kant === "onder" ? k.korf.bottom : k.korf.top;
+  const as = asAfstandMm(k.korf, rij);
+  return breedteOpHoogteMm(k.doorsnede, kant === "onder" ? as : k.doorsnede.h_mm - as);
 }
 
 /** Maat in mm als tekst: integer waar mogelijk, anders één decimaal (nl). */

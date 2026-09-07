@@ -60,7 +60,11 @@ use ts_rs::TS;
 /// De vorm van de doorsnede — het **etiket**, voor het rapport en de
 /// meldingen. De rekengang vertakt hier niet op; die kijkt naar
 /// [`ConcreteSection::bands`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Dit etiket is óók het eerste veld van [`ConcreteSectionInput`] en reist
+/// daarmee over alle drie de wegen mee; vandaar de ts-export.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub enum ConcreteShape {
     /// Rechthoek b × h.
     #[default]
@@ -404,12 +408,15 @@ impl ConcreteSection {
                 format!("{} x {}", fmt_mm(self.b_mm), fmt_mm(self.h_mm))
             }
             ConcreteShape::Tee | ConcreteShape::Ell => format!(
-                "{} {} x {} (flens {} x {}, lijf {})",
+                "{} {} x {} (flens {} x {}{}, lijf {})",
                 if self.shape == ConcreteShape::Tee { "T" } else { "L" },
                 fmt_mm(self.b_mm),
                 fmt_mm(self.h_mm),
                 fmt_mm(self.b_mm),
                 fmt_mm(self.h_f_mm()),
+                // Een omgekeerde T verschilt alleen in de ligging van de
+                // flens; die mag dus niet uit de naam wegvallen.
+                if self.flange_on_top() { "" } else { " onder" },
                 fmt_mm(self.b_w_mm())
             ),
         }
@@ -472,6 +479,177 @@ fn fmt_mm(v: f64) -> String {
         format!("{}", v.round() as i64)
     } else {
         format!("{v:.1}")
+    }
+}
+
+/// De doorsnede zoals de **invoer** hem beschrijft: een vorm met de maten die
+/// bij die vorm horen.
+///
+/// Dit is het buitenaanzicht van [`ConcreteSection`] — het type dat over het
+/// Tauri-command, de toetsbrug en de MCP-server gaat. Waarom een apart type en
+/// niet `ConcreteSection` zelf: die draagt de **banden**, en banden zijn een
+/// rekenkundige afgeleide. Wie ze als invoer zou aanbieden, kan een reeks
+/// stroken opgeven die geen rechthoek, geen T en geen L is; de vormen die deze
+/// crate kent zijn er dan drie in naam en oneindig veel in werkelijkheid.
+///
+/// # Verplichte en verboden maten
+///
+/// `b_w_mm` en `h_f_mm` horen bij een flens: bij `Tee` en `Ell` zijn ze
+/// verplicht, bij `Rectangle` moeten ze wegblijven. Een rechthoek mét
+/// flensdikte is geen tikfout die stilzwijgend genegeerd mag worden — hij
+/// betekent dat de aanroeper iets anders bedoelde dan hij opschreef, en
+/// negeren zou een doorsnede opleveren die niemand heeft ingevoerd. Zie
+/// [`Self::build`], de enige plaats waar dit type een `ConcreteSection` wordt.
+///
+/// ```text
+///        Rectangle              Tee / Ell            Tee met flange_at_bottom
+///     ┌───── b ─────┐      ┌────── b ──────┐            ┌──┐
+///     │             │      └──┐  h_f    ┌──┘            │  │
+///     │             h         │         │  h            │  │  h
+///     │             │         │  b_w    │               │  │
+///     └─────────────┘         └─────────┘            ┌──┴──┴──┐  h_f
+/// ```
+///
+/// `b_mm` is bij een T en een L de **flensbreedte**, en die wordt verondersteld
+/// de meewerkende b_eff van 5.3.2.1(3) te zijn — zie [`crate::beff`], die hem
+/// afleidt, en [`ConcreteSection::assumptions`], die de aanname als tekst
+/// meelevert.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct ConcreteSectionInput {
+    /// De vorm. Bepaalt welke maten verplicht zijn en welke verboden.
+    /// Ontbreekt hij, dan is het een rechthoek.
+    #[serde(default)]
+    pub shape: ConcreteShape,
+    /// Grootste breedte in mm: b bij een rechthoek, de flensbreedte b_f bij
+    /// een T en een L.
+    pub b_mm: f64,
+    /// Totale hoogte h in mm (buiging om de sterke as).
+    pub h_mm: f64,
+    /// Lijfbreedte b_w in mm. Verplicht bij `Tee` en `Ell`; bij `Rectangle`
+    /// moet dit veld wegblijven.
+    #[serde(default)]
+    pub b_w_mm: Option<f64>,
+    /// Flensdikte h_f in mm. Zelfde regel als `b_w_mm`.
+    #[serde(default)]
+    pub h_f_mm: Option<f64>,
+    /// Ligt de flens aan de ONDERZIJDE — de omgekeerde T? Standaard `false`:
+    /// de flens ligt boven, zoals bij een ligger onder een vloer.
+    ///
+    /// De banden en [`ConcreteSection::mirrored`] dragen dit geval volledig;
+    /// deze vlag is de enige plaats waar het gekozen wordt. Bij `Rectangle`
+    /// heeft hij geen betekenis en moet hij `false` blijven.
+    #[serde(default)]
+    pub flange_at_bottom: bool,
+}
+
+impl ConcreteSectionInput {
+    /// Rechthoek b × h.
+    pub fn rectangle(b_mm: f64, h_mm: f64) -> Self {
+        Self {
+            shape: ConcreteShape::Rectangle,
+            b_mm,
+            h_mm,
+            b_w_mm: None,
+            h_f_mm: None,
+            flange_at_bottom: false,
+        }
+    }
+
+    /// T-vorm met de flens boven.
+    pub fn tee(b_f_mm: f64, h_mm: f64, b_w_mm: f64, h_f_mm: f64) -> Self {
+        Self {
+            shape: ConcreteShape::Tee,
+            b_mm: b_f_mm,
+            h_mm,
+            b_w_mm: Some(b_w_mm),
+            h_f_mm: Some(h_f_mm),
+            flange_at_bottom: false,
+        }
+    }
+
+    /// L-vorm met de flens boven.
+    pub fn ell(b_f_mm: f64, h_mm: f64, b_w_mm: f64, h_f_mm: f64) -> Self {
+        Self { shape: ConcreteShape::Ell, ..Self::tee(b_f_mm, h_mm, b_w_mm, h_f_mm) }
+    }
+
+    /// Woordelijke aanduiding van de INVOER, ook wanneer die geen doorsnede
+    /// oplevert. Bij een geldige invoer letterlijk [`ConcreteSection::name`];
+    /// bij een ongeldige staat er wat er is opgegeven, met een `?` op de
+    /// plaats van de ontbrekende maat. Een foutmelding zonder de doorsnede
+    /// erbij is voor de lezer niet thuis te brengen.
+    pub fn name(&self) -> String {
+        if let Ok(s) = self.build() {
+            return s.name();
+        }
+        let maat = |v: Option<f64>| v.map(fmt_mm).unwrap_or_else(|| "?".to_string());
+        match self.shape {
+            ConcreteShape::Rectangle => format!("{} x {}", fmt_mm(self.b_mm), fmt_mm(self.h_mm)),
+            ConcreteShape::Tee | ConcreteShape::Ell => format!(
+                "{} {} x {} (flens {} x {}{}, lijf {})",
+                if self.shape == ConcreteShape::Tee { "T" } else { "L" },
+                fmt_mm(self.b_mm),
+                fmt_mm(self.h_mm),
+                fmt_mm(self.b_mm),
+                maat(self.h_f_mm),
+                if self.flange_at_bottom { " onder" } else { "" },
+                maat(self.b_w_mm)
+            ),
+        }
+    }
+
+    /// De doorsnede waarmee gerekend wordt, of een Nederlandse reden waarom
+    /// deze invoer er geen oplevert.
+    ///
+    /// **De enige omzetting.** Elke weg — command, toetsbrug, MCP — komt hier
+    /// langs, zodat een T in alle drie dezelfde banden krijgt.
+    pub fn build(&self) -> Result<ConcreteSection, String> {
+        if self.shape == ConcreteShape::Rectangle {
+            if self.b_w_mm.is_some() || self.h_f_mm.is_some() {
+                return Err(
+                    "een rechthoek heeft geen flens: laat `b_w_mm` en `h_f_mm` weg, of zet \
+                     `shape` op \"Tee\" of \"Ell\""
+                        .to_string(),
+                );
+            }
+            if self.flange_at_bottom {
+                return Err(
+                    "`flange_at_bottom` zegt aan welke zijde de flens ligt; een rechthoek heeft \
+                     geen flens"
+                        .to_string(),
+                );
+            }
+            if !(self.b_mm > 0.0 && self.h_mm > 0.0) {
+                return Err(format!(
+                    "rechthoek: b = {} mm en h = {} mm moeten beide positief zijn",
+                    self.b_mm, self.h_mm
+                ));
+            }
+            return Ok(ConcreteSection::new(self.b_mm, self.h_mm));
+        }
+
+        let naam = self.shape.label();
+        let b_w = self.b_w_mm.ok_or_else(|| {
+            format!("{naam}: `b_w_mm` ontbreekt — een flensdoorsnede heeft een lijfbreedte nodig")
+        })?;
+        let h_f = self.h_f_mm.ok_or_else(|| {
+            format!("{naam}: `h_f_mm` ontbreekt — een flensdoorsnede heeft een flensdikte nodig")
+        })?;
+        if b_w >= self.b_mm {
+            return Err(format!(
+                "{naam}: de lijfbreedte b_w = {b_w} mm is niet kleiner dan de flensbreedte \
+                 b_f = {} mm. Dan is er geen uitkragend flensdeel en is de doorsnede een \
+                 rechthoek; kies `shape` = \"Rectangle\".",
+                self.b_mm
+            ));
+        }
+        let s = match self.shape {
+            ConcreteShape::Tee => ConcreteSection::tee(self.b_mm, h_f, b_w, self.h_mm)?,
+            ConcreteShape::Ell => ConcreteSection::ell(self.b_mm, h_f, b_w, self.h_mm)?,
+            ConcreteShape::Rectangle => unreachable!("hierboven al afgehandeld"),
+        };
+        Ok(if self.flange_at_bottom { s.mirrored() } else { s })
     }
 }
 
@@ -854,5 +1032,95 @@ mod tests {
         assert!(fout.contains("200 mm breed"), "{fout}");
         // In een rechthoek van 600 mm zou diezelfde korf wél passen.
         assert!(te_veel.validate(&ConcreteSection::new(600.0, 500.0)).is_ok());
+    }
+
+    // ── Het invoercontract ────────────────────────────────────────────────
+
+    /// De rechthoek uit de invoer is dezelfde doorsnede als `new(b, h)`.
+    #[test]
+    fn invoer_rechthoek_is_new() {
+        let s = ConcreteSectionInput::rectangle(300.0, 500.0).build().unwrap();
+        assert_eq!(s, ConcreteSection::new(300.0, 500.0));
+        assert_eq!(s.name(), "300 x 500");
+    }
+
+    /// De T uit de invoer is dezelfde doorsnede als `tee(...)`, en de volgorde
+    /// van de argumenten wisselt daarbij niet stilzwijgend om: in de invoer
+    /// staat (b_f, h, b_w, h_f), in de kern (b_f, h_f, b_w, h).
+    #[test]
+    fn invoer_t_en_l_leveren_dezelfde_banden_als_de_constructors() {
+        let t = ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0).build().unwrap();
+        assert_eq!(t, ConcreteSection::tee(400.0, 50.0, 200.0, 450.0).unwrap());
+        let l = ConcreteSectionInput::ell(400.0, 450.0, 200.0, 50.0).build().unwrap();
+        assert_eq!(l, ConcreteSection::ell(400.0, 50.0, 200.0, 450.0).unwrap());
+    }
+
+    /// De omgekeerde T: één vlag, en de flens ligt onder. De banden zijn
+    /// letterlijk die van de gespiegelde T.
+    #[test]
+    fn de_omgekeerde_t_is_een_vlag() {
+        let mut invoer = ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0);
+        invoer.flange_at_bottom = true;
+        let s = invoer.build().unwrap();
+        assert_eq!(s.bands(), ConcreteSection::tee(400.0, 50.0, 200.0, 450.0).unwrap().mirrored().bands());
+        assert!(!s.flange_on_top());
+        assert_eq!(s.shape, ConcreteShape::Tee);
+        // Oppervlak en traagheidsmoment veranderen niet door het omklappen;
+        // het zwaartepunt wel.
+        let rechtop = ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0).build().unwrap();
+        assert_relative_eq!(s.area_mm2(), rechtop.area_mm2());
+        assert_relative_eq!(s.i_centroid_mm4(), rechtop.i_centroid_mm4(), max_relative = 1e-12);
+        assert_relative_eq!(s.centroid_z_mm(), 450.0 - rechtop.centroid_z_mm(), max_relative = 1e-12);
+    }
+
+    /// Een maat die bij de vorm hoort mag niet ontbreken, en een maat die er
+    /// niet bij hoort mag er niet zijn. Beide leveren een reden, geen
+    /// doorsnede.
+    #[test]
+    fn de_maten_horen_bij_de_vorm() {
+        // Flensmaten op een rechthoek: geweigerd.
+        let mut r = ConcreteSectionInput::rectangle(300.0, 500.0);
+        r.h_f_mm = Some(100.0);
+        assert!(r.build().unwrap_err().contains("geen flens"));
+        let mut r = ConcreteSectionInput::rectangle(300.0, 500.0);
+        r.flange_at_bottom = true;
+        assert!(r.build().unwrap_err().contains("flange_at_bottom"));
+        // Ontbrekende flensmaten op een T: geweigerd, met de naam van het veld.
+        let mut t = ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0);
+        t.b_w_mm = None;
+        assert!(t.build().unwrap_err().contains("b_w_mm"));
+        let mut t = ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0);
+        t.h_f_mm = None;
+        assert!(t.build().unwrap_err().contains("h_f_mm"));
+        // Een lijf dat even breed of breder is dan de flens is geen T.
+        assert!(ConcreteSectionInput::tee(400.0, 450.0, 400.0, 50.0).build().is_err());
+        assert!(ConcreteSectionInput::tee(400.0, 450.0, 500.0, 50.0).build().is_err());
+        // Een flens die de hele hoogte opeet: de kern weigert hem al.
+        assert!(ConcreteSectionInput::tee(400.0, 450.0, 200.0, 450.0).build().is_err());
+        // Nulmaten.
+        assert!(ConcreteSectionInput::rectangle(0.0, 500.0).build().is_err());
+        assert!(ConcreteSectionInput::rectangle(300.0, -1.0).build().is_err());
+    }
+
+    /// De JSON-vorm van het contract: `shape` mag weg (dan rechthoek), een
+    /// onbekend veld wordt geweigerd.
+    #[test]
+    fn de_json_vorm_van_het_contract() {
+        let r: ConcreteSectionInput =
+            serde_json::from_str(r#"{"b_mm": 300, "h_mm": 500}"#).unwrap();
+        assert_eq!(r.shape, ConcreteShape::Rectangle);
+        assert_eq!(r.build().unwrap(), ConcreteSection::new(300.0, 500.0));
+
+        let t: ConcreteSectionInput = serde_json::from_str(
+            r#"{"shape": "Tee", "b_mm": 400, "h_mm": 450, "b_w_mm": 200, "h_f_mm": 50}"#,
+        )
+        .unwrap();
+        assert_eq!(t.build().unwrap().name(), "T 400 x 450 (flens 400 x 50, lijf 200)");
+
+        // Een tikfout in een veldnaam is een fout en geen standaardwaarde.
+        assert!(serde_json::from_str::<ConcreteSectionInput>(
+            r#"{"b_mm": 300, "h_mm": 500, "width_mm": 300}"#
+        )
+        .is_err());
     }
 }

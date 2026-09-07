@@ -90,8 +90,8 @@ pub use mnkappa::{
     MAX_N_STRIPS,
 };
 pub use section::{
-    mirrored_layers, Band, ConcreteSection, ConcreteShape, RebarLayer, RebarRow,
-    RectConcreteSection, ReinforcementCage,
+    mirrored_layers, Band, ConcreteSection, ConcreteSectionInput, ConcreteShape, RebarLayer,
+    RebarRow, RectConcreteSection, ReinforcementCage,
 };
 pub use stiffness::{
     ei_secant, kappa_from_nm, m0_knm, m_cr_knm, KappaSolution, LoadDuration, SecantStiffness,

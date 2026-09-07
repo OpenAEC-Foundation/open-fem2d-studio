@@ -11,13 +11,33 @@
 import { STEEL_SECTION_DIMS, type SteelSectionDims } from "../../lib/steelSectionDims.generated";
 import { profileLookupKey } from "../../lib/steelCheckBuilder";
 import { parseRechthoek } from "../../lib/sectionResolver";
+import { parseConcreteSection } from "../../lib/betonCheckBuilder";
+import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 
 export type SectionShape =
   | { type: "isection"; h: number; b: number; tw: number; tf: number; r: number }
   | { type: "channel"; h: number; b: number; tw: number; tf: number; r: number }
   | { type: "box"; h: number; b: number; t: number; r: number }
   | { type: "tube"; d: number; t: number }
-  | { type: "rect"; h: number; b: number };
+  | { type: "rect"; h: number; b: number }
+  /**
+   * Betonnen T- of L-ligger. `bw` is de lijfbreedte, `hf` de flensdikte en
+   * `b` de flensbreedte (in de toetsing de meewerkende breedte b_eff).
+   *
+   * `eenzijdig` onderscheidt de L van de T: bij een L staat het lijf tegen de
+   * rand van de flens en niet in het midden. Voor de berekening is dat geen
+   * verschil — b(z) is identiek — maar wie een L als een T tekent, laat de
+   * constructeur iets anders zien dan hij heeft ingevoerd.
+   */
+  | {
+      type: "tee";
+      h: number;
+      b: number;
+      bw: number;
+      hf: number;
+      flensOnder: boolean;
+      eenzijdig: boolean;
+    };
 
 /** Staaldims → tekenvorm; null wanneer we de vorm niet kennen. */
 export function steelShape(dims: SteelSectionDims | undefined): SectionShape | null {
@@ -44,8 +64,35 @@ export function shapeVanProfiel(profiel: string | undefined): SectionShape | nul
   if (!profiel) return null;
   const dims = STEEL_SECTION_DIMS[profileLookupKey(profiel)];
   if (dims) return steelShape(dims);
+  // Een betonnen T of L staat als "T 400x450 bw=200 hf=50" in de profielnaam
+  // en begint dus niet met een cijfer; `parseRechthoek` hieronder zou hem
+  // niet zien en de tekening zou wegvallen.
+  const beton = betonShape(profiel);
+  if (beton) return beton;
   const rect = parseRechthoek(profiel);
   return rect ? { type: "rect", b: rect.b, h: rect.h } : null;
+}
+
+/** Betondoorsnede uit de profielnaam → tekenvorm; null als het er geen is. */
+export function betonShape(profiel: string | undefined): SectionShape | null {
+  const uit = parseConcreteSection(profiel);
+  if (!uit.ok) return null;
+  return shapeVanBetonDoorsnede(uit.doorsnede);
+}
+
+/** Dezelfde omzetting, maar vanuit een al geparseerde doorsnede. */
+export function shapeVanBetonDoorsnede(d: ConcreteSectionInput): SectionShape | null {
+  if (d.shape === "Rectangle") return { type: "rect", b: d.b_mm, h: d.h_mm };
+  if (d.b_w_mm === null || d.h_f_mm === null) return null;
+  return {
+    type: "tee",
+    b: d.b_mm,
+    h: d.h_mm,
+    bw: d.b_w_mm,
+    hf: d.h_f_mm,
+    flensOnder: d.flange_at_bottom,
+    eenzijdig: d.shape === "Ell",
+  };
 }
 
 /** Buitenmaten van een vorm (mm) — voor schaling en aria-teksten. */
@@ -130,6 +177,20 @@ export function shapePath(shape: SectionShape, s: number, x0: number, y0: number
     case "rect": {
       const { h, b } = shape;
       return { d: `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, h)} L ${P(0, h)} Z` };
+    }
+    case "tee": {
+      // y = 0 is hier de BOVENrand van de tekening. Geen afrondingsstralen:
+      // een gestorte betondoorsnede heeft ze niet.
+      const { h, b, bw, hf } = shape;
+      const xl = shape.eenzijdig ? 0 : (b - bw) / 2;
+      const xr = xl + bw;
+      return {
+        d: shape.flensOnder
+          ? `M ${P(xl, 0)} L ${P(xr, 0)} L ${P(xr, h - hf)} L ${P(b, h - hf)} ` +
+            `L ${P(b, h)} L ${P(0, h)} L ${P(0, h - hf)} L ${P(xl, h - hf)} Z`
+          : `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, hf)} L ${P(xr, hf)} ` +
+            `L ${P(xr, h)} L ${P(xl, h)} L ${P(xl, hf)} L ${P(0, hf)} Z`,
+      };
     }
   }
 }

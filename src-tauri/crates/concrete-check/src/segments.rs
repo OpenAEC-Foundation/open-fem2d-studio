@@ -100,8 +100,8 @@
 
 use nen_en_1992_1_1::mnkappa::DEFAULT_N_STRIPS;
 use nen_en_1992_1_1::{
-    concrete_class_by_name, ei_secant, reinforcement_grade_by_name, DesignMaterial,
-    DesignSituation, LoadDuration, MnKappaOptions, NonlinearBasis, RectConcreteSection,
+    concrete_class_by_name, ei_secant, reinforcement_grade_by_name, ConcreteSectionInput,
+    DesignMaterial, DesignSituation, LoadDuration, MnKappaOptions, NonlinearBasis,
     ReinforcementCage, SolveMethod, SteelBranch, StiffnessOptions,
 };
 use serde::{Deserialize, Serialize};
@@ -165,10 +165,10 @@ pub struct SegmentForces {
 pub struct SegmentStiffnessRequest {
     /// Staafnummer; komt onveranderd terug in het antwoord.
     pub beam_id: u32,
-    /// Doorsnedebreedte b in mm.
-    pub width_mm: f64,
-    /// Doorsnedehoogte h in mm (buiging om de sterke as).
-    pub height_mm: f64,
+    /// De doorsnede: rechthoek, T of L, met de maten die bij die vorm horen.
+    /// De ongescheurde stijfheid E_c·I_c waarmee de eerste ronde begint volgt
+    /// uit de WERKELIJKE meetkunde van deze vorm.
+    pub section: ConcreteSectionInput,
     /// Betonsterkteklasse, bijv. "C30/37" (tabel 3.1).
     pub concrete_class: String,
     /// Wapeningsstaal, bijv. "B500B" (bijlage C).
@@ -515,7 +515,7 @@ pub fn segment_stiffness(
     let spans = segment_layout(length_mm, req.target_segment_length_mm, req.max_segments)?;
     let n_seg = spans.len();
 
-    let section = RectConcreteSection::new(req.width_mm, req.height_mm);
+    let section = req.section.build()?;
     let beton = concrete_class_by_name(&req.concrete_class)
         .ok_or_else(|| format!("betonsterkteklasse {} onbekend", req.concrete_class))?;
     let staal = reinforcement_grade_by_name(&req.reinforcement_grade)
@@ -574,7 +574,15 @@ pub fn segment_stiffness(
         load_duration: req.load_duration,
     };
 
-    let i_c = section.b_mm * section.h_mm.powi(3) / 12.0;
+    // Het traagheidsmoment van de BRUTO betondoorsnede om haar eigen
+    // zwaartepunt. Niet b·h³/12: dat is de gesloten vorm van een rechthoek, en
+    // bij een T ligt het zwaartepunt niet op h/2. Deze waarde stuurt drie
+    // dingen tegelijk — de ongescheurde vergelijkingsstijfheid E_c·I_c, de
+    // klemdrempel `min_ei_ratio`·E_c·I_c, en de verhouding EI/E_c·I_c die in
+    // het rapport staat — dus een te grote I maakt de klem te hoog én de
+    // gerapporteerde verhouding te laag. Voor één band levert
+    // `i_centroid_mm4()` letterlijk dezelfde uitdrukking b·h³/12 op.
+    let i_c = section.i_centroid_mm4();
     // N/mm² · mm⁴ = N·mm² = 10⁻⁹ kN·m².
     let ei_uncracked = curve.e_c * i_c * 1e-9;
     let min_ei = req.min_ei_ratio * ei_uncracked;

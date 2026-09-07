@@ -2294,6 +2294,7 @@ dependencies = [
  "mechanics",
  "nen-en-1993-1-1-section",
  "serde",
+ "serde_json",
  "ts-rs",
 ]
 

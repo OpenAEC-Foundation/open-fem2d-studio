@@ -1,10 +1,14 @@
 /**
  * WapeningskorfEditor — de invoervelden van de wapeningskorf.
  *
- * Doorsnede (b, h), betonsterkteklasse en wapeningsstaal, dekking, beugel,
- * boven- en onderwapening (aantal × Ø), het aantal stroken voor de
- * integratie en de vorm van het staaldiagram. Daarnaast de normaalkracht
- * waarbij het M-κ-diagram wordt getekend.
+ * Doorsnede (vorm plus de maten die bij die vorm horen), betonsterkteklasse en
+ * wapeningsstaal, dekking, beugel, boven- en onderwapening (aantal × Ø), het
+ * aantal stroken voor de integratie en de vorm van het staaldiagram. Daarnaast
+ * de normaalkracht waarbij het M-κ-diagram wordt getekend.
+ *
+ * De flensvelden verschijnen alleen bij een T of een L, en verdwijnen ook
+ * weer: de kern weigert een rechthoek die een flensdikte meedraagt, omdat dat
+ * betekent dat er iets anders bedoeld is dan er staat.
  *
  * De component is gecontroleerd: alle waarden komen via `waarde` binnen en
  * elke wijziging gaat via `onChange` terug. Geen eigen state, zodat de
@@ -12,6 +16,8 @@
  * waarheid blijft.
  */
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
+import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
+import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
 import type { RebarRow } from "../../lib/types/concrete/RebarRow";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
@@ -131,6 +137,29 @@ export default function WapeningskorfEditor({
 }: Props) {
   const zet = (patch: Partial<Wapeningskorf>) => onChange({ ...waarde, ...patch });
   const zetKorf = (patch: Partial<Wapeningskorf["korf"]>) => onChange({ ...waarde, korf: { ...waarde.korf, ...patch } });
+  const d = waarde.doorsnede;
+  const heeftFlens = d.shape !== "Rectangle";
+  const zetDoorsnede = (patch: Partial<ConcreteSectionInput>) =>
+    zet({ doorsnede: { ...d, ...patch } });
+  /**
+   * Van vorm wisselen. Naar een T of L toe worden de flensmaten aangevuld
+   * met een maat die bij de doorsnede past — h/6 flensdikte, de helft van de
+   * breedte als lijf — en niet met nul: nul zou de doorsnede meteen
+   * ongeldig maken en de gebruiker een foutmelding geven op iets wat hij nog
+   * niet heeft ingevuld. Terug naar een rechthoek worden ze WEGGEGOOID; de
+   * kern weigert een rechthoek met flensmaten, en terecht.
+   */
+  const zetVorm = (shape: ConcreteShape) => {
+    if (shape === "Rectangle") {
+      zetDoorsnede({ shape, b_w_mm: null, h_f_mm: null, flange_at_bottom: false });
+      return;
+    }
+    zetDoorsnede({
+      shape,
+      b_w_mm: d.b_w_mm ?? Math.max(50, Math.round(d.b_mm / 2 / 10) * 10),
+      h_f_mm: d.h_f_mm ?? Math.max(20, Math.round(d.h_mm / 6 / 10) * 10),
+    });
+  };
 
   const klasseNamen = betonklassen && betonklassen.length > 0 ? betonklassen.map((c) => c.name) : [...SUPPORTED_CONCRETE_CLASSES];
   const staalNamen = staalsoorten && staalsoorten.length > 0 ? staalsoorten.map((g) => g.name) : [...SUPPORTED_REINFORCEMENT_GRADES];
@@ -141,8 +170,77 @@ export default function WapeningskorfEditor({
     <div className="beton-form">
       <div className="beton-groep">
         <div className="beton-groep-kop">Doorsnede</div>
-        <Getal id="beton-b" label="Breedte b" eenheid="mm" waarde={waarde.breedteMm} min={50} stap={10} onChange={(v) => zet({ breedteMm: v })} />
-        <Getal id="beton-h" label="Hoogte h" eenheid="mm" waarde={waarde.hoogteMm} min={50} stap={10} onChange={(v) => zet({ hoogteMm: v })} />
+        <label className="beton-rij" htmlFor="beton-vorm">
+          <span className="beton-label">Vorm</span>
+          <select
+            id="beton-vorm"
+            className="beton-invoer"
+            value={d.shape}
+            onChange={(e) => zetVorm(e.target.value as ConcreteShape)}
+          >
+            <option value="Rectangle">rechthoek</option>
+            <option value="Tee">T-ligger</option>
+            <option value="Ell">L-ligger (randligger)</option>
+          </select>
+        </label>
+        <Getal
+          id="beton-b"
+          label={heeftFlens ? "Flensbreedte b_eff" : "Breedte b"}
+          eenheid="mm"
+          waarde={d.b_mm}
+          min={50}
+          stap={10}
+          onChange={(v) => zetDoorsnede({ b_mm: v })}
+        />
+        <Getal id="beton-h" label="Hoogte h" eenheid="mm" waarde={d.h_mm} min={50} stap={10} onChange={(v) => zetDoorsnede({ h_mm: v })} />
+        {heeftFlens && (
+          <>
+            <Getal
+              id="beton-bw"
+              label="Lijfbreedte b_w"
+              eenheid="mm"
+              waarde={d.b_w_mm ?? 0}
+              min={50}
+              stap={10}
+              onChange={(v) => zetDoorsnede({ b_w_mm: v })}
+            />
+            <Getal
+              id="beton-hf"
+              label="Flensdikte h_f"
+              eenheid="mm"
+              waarde={d.h_f_mm ?? 0}
+              min={20}
+              stap={10}
+              onChange={(v) => zetDoorsnede({ h_f_mm: v })}
+            />
+            <label className="beton-rij" htmlFor="beton-flenszijde">
+              <span className="beton-label">Flens ligt</span>
+              <select
+                id="beton-flenszijde"
+                className="beton-invoer"
+                value={d.flange_at_bottom ? "onder" : "boven"}
+                onChange={(e) => zetDoorsnede({ flange_at_bottom: e.target.value === "onder" })}
+              >
+                <option value="boven">boven (ligger onder een vloer)</option>
+                <option value="onder">onder (omgekeerde T)</option>
+              </select>
+            </label>
+            <div className="beton-hint">
+              De flensbreedte hoort de MEEWERKENDE breedte b<sub>eff</sub> te zijn — 5.3.2.1(3),
+              vergelijking (5.7). Bij het toetsen van het model leidt de rekenkern hem af uit de
+              liggerlijn en vervangt hij de waarde die hier staat; het resultaat noemt altijd de
+              breedte waarmee gerekend is.
+              {d.shape === "Ell" && (
+                <>
+                  {" "}
+                  Een L rekent in dit uniaxiale model exact als een T; dat geldt alleen als de
+                  zijdelingse kromming verhinderd is, bijvoorbeeld door een vloerschijf. Die
+                  aanname staat in elk resultaat.
+                </>
+              )}
+            </div>
+          </>
+        )}
         <label className="beton-rij" htmlFor="beton-klasse">
           <span className="beton-label">Betonkwaliteit</span>
           <select id="beton-klasse" className="beton-invoer" value={waarde.betonklasse} onChange={(e) => zet({ betonklasse: e.target.value })}>

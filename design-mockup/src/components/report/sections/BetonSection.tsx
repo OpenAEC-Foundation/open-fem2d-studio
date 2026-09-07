@@ -31,7 +31,8 @@ import { useBetonStijfheidStore } from "../../../stores/betonStijfheidStore";
 import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportStore";
 import { useReportData } from "../ReportDataContext";
 import { isConcreteCheckResult } from "../../../lib/checkTypes";
-import { parseConcreteRectMm, DEFAULT_N_STRIPS } from "../../../lib/betonCheckBuilder";
+import { parseSectionNaam, DEFAULT_N_STRIPS } from "../../../lib/betonCheckBuilder";
+import { breedteOpHoogteMm, asAfstandMm } from "../../beton/wapeningskorf";
 import type { ConcreteBeamCheckResult } from "../../../lib/types/concrete/ConcreteBeamCheckResult";
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
 import type { RebarRow } from "../../../lib/types/concrete/RebarRow";
@@ -95,12 +96,13 @@ function korfVoorTekening(
   r: ConcreteBeamCheckResult,
   uitModel: ReinforcementCage | undefined,
 ): Wapeningskorf | null {
-  const rect = parseConcreteRectMm(r.section_name);
+  // De doorsnedenaam van de KERN — die draagt bij een T ook de flensmaten en
+  // daarmee de b_eff waarmee werkelijk gerekend is.
+  const doorsnede = parseSectionNaam(r.section_name);
   const cage = uitModel ?? korfUitSamenvatting(r.reinforcement_summary);
-  if (!rect || !cage) return null;
+  if (!doorsnede || !cage) return null;
   return {
-    breedteMm: rect.bMm,
-    hoogteMm: rect.hMm,
+    doorsnede,
     betonklasse: r.concrete_class,
     staalsoort: r.reinforcement_grade,
     korf: cage,
@@ -146,7 +148,12 @@ function BetonStaafBlok({
   const heeftInteractie = r.interaction_positive.length > 1 || r.interaction_negative.length > 1;
 
   const aOnder = korf ? rijOppervlakMm2(korf.korf.bottom) : r.a_s_bottom_mm2;
-  const rho = korf && r.d_mm > 0 ? (aOnder / (korf.breedteMm * r.d_mm)) * 100 : null;
+  // ρ rekent met de breedte waarin de trekwapening LIGT: bij een T-lijf b_w
+  // en niet de flensbreedte.
+  const bOnder = korf
+    ? breedteOpHoogteMm(korf.doorsnede, asAfstandMm(korf.korf, korf.korf.bottom))
+    : 0;
+  const rho = korf && r.d_mm > 0 && bOnder > 0 ? (aOnder / (bOnder * r.d_mm)) * 100 : null;
 
   return (
     <div className="rpt-bet-member">

@@ -66,7 +66,7 @@ use crate::bending::StressBlockResult;
 use crate::mnkappa::{
     solve_state, FailureMode, MnKappaDiagram, MnKappaOptions, SectionState,
 };
-use crate::section::{RebarLayer, RectConcreteSection, ReinforcementCage};
+use crate::section::{ConcreteSection, RebarLayer, RectConcreteSection, ReinforcementCage};
 use crate::stress_strain::{DesignMaterial, SteelBranch};
 
 // ── Opmaakhulpjes ─────────────────────────────────────────────────────────────
@@ -196,6 +196,41 @@ impl Betongegevens<'_> {
         self.section.b_mm
     }
 
+    /// De doorsnede zoals de TOETS hem ziet: bij een negatief moment
+    /// omgeklapt, zodat de gedrukte rand boven ligt.
+    ///
+    /// Precies wat [`crate::bending::stress_block`] doet. Bij een rechthoek
+    /// verandert het omklappen niets, bij een T brengt het de flens naar
+    /// onderen — en dan ziet het spanningsblok het LIJF. Een afleiding die
+    /// hier de ongespiegelde doorsnede zou aflezen, zou bij een negatief
+    /// moment de flensbreedte opschrijven waar de toets met de lijfbreedte
+    /// heeft gerekend.
+    fn werkzame_doorsnede(&self) -> ConcreteSection {
+        if self.sign < 0.0 {
+            self.section.mirrored()
+        } else {
+            *self.section
+        }
+    }
+
+    /// De breedte die het spanningsblok van hoogte `lambda_x` over zijn HELE
+    /// hoogte ziet, als dat er één is.
+    ///
+    /// `Some(b)` bij een rechthoek altijd, en bij een T of L zolang het blok
+    /// binnen de gedrukte band blijft; dan is de gesloten vorm van 3.1.7(3)
+    /// met díé breedte exact goed. `None` zodra het blok over de bandgrens
+    /// heen loopt — dan bestaat er geen enkele breedte waarmee de gesloten
+    /// vorm klopt, en mag er in de afleiding ook geen staan.
+    fn blokbreedte(&self, lambda_x: f64) -> Option<f64> {
+        self.werkzame_doorsnede().uniform_top_width(lambda_x)
+    }
+
+    /// Heeft deze doorsnede een flens? Bepaalt of de afleiding de flensmaten
+    /// moet noemen.
+    fn heeft_flens(&self) -> bool {
+        self.section.shape.has_flange()
+    }
+
     /// Afstand van een laag tot de GEDRUKTE rand — de d_i van figuur 3.5.
     fn diepte(&self, l: &RebarLayer) -> f64 {
         if self.sign > 0.0 {
@@ -290,8 +325,32 @@ fn uitgangspunten(g: &Betongegevens, route: Route) -> Deelstap {
             .to_string(),
     );
 
-    let mut vars = vec![
-        nv("b", g.b(), "mm"),
+    // Bij een T of een L is één breedte niet genoeg om de doorsnede vast te
+    // leggen; dan horen de flens- en lijfmaten in de uitgangspunten te staan.
+    // De vorm zelf staat in de kanttekening hieronder.
+    if g.heeft_flens() {
+        notes.push(format!(
+            "De doorsnede is een {vorm}: een flens van {bf} mm breed en {hf} mm dik aan de \
+             {kant}, met een lijf van {bw} mm. De flensbreedte wordt verondersteld de \
+             MEEWERKENDE breedte b_eff van 5.3.2.1(3) te zijn; deze afleiding bepaalt hem niet.",
+            vorm = g.section.shape.label(),
+            bf = nl(g.section.b_mm, 0),
+            hf = nl(g.section.h_f_mm(), 0),
+            kant = if g.section.flange_on_top() { "bovenzijde" } else { "onderzijde" },
+            bw = nl(g.section.b_w_mm(), 0),
+        ));
+    }
+
+    let mut vars = if g.heeft_flens() {
+        vec![
+            nv("b_f", g.section.b_mm, "mm"),
+            nv("h_f", g.section.h_f_mm(), "mm"),
+            nv("b_w", g.section.b_w_mm(), "mm"),
+        ]
+    } else {
+        vec![nv("b", g.b(), "mm")]
+    };
+    vars.extend([
         nv("h", g.h(), "mm"),
         nv("c_{nom}", g.cage.cover_mm, "mm"),
         nv(r"\varnothing_{beugel}", g.cage.stirrup_diameter_mm, "mm"),
@@ -299,7 +358,7 @@ fn uitgangspunten(g: &Betongegevens, route: Route) -> Deelstap {
         nv("A_{s2}", g.cage.a_s_top_mm2(), "mm²"),
         nv("N_{Ed}", g.n_ed_kn, "kN"),
         nv("M_{y,Ed}", g.m_y_ed_knm, "kNm"),
-    ];
+    ]);
     if g.cage.stirrup_diameter_mm <= 0.0 {
         vars.retain(|v| v.symbol != r"\varnothing_{beugel}");
         notes.push(
@@ -662,21 +721,56 @@ fn evenwicht_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
             .to_string(),
     ];
 
+    // Loopt het blok over een bandgrens heen, dan bestaat er geen enkele
+    // breedte waarmee η·f_cd·b·λ·x de betondrukkracht is. Dan hoort de
+    // afleiding de INTEGRAAL op te schrijven, en niet een breedte te kiezen.
+    let blokbreedte = g.blokbreedte(r.lambda * r.x_mm);
+    if blokbreedte.is_none() {
+        let s = g.werkzame_doorsnede();
+        let (a_blok, _) = s.top_strip(r.lambda * r.x_mm);
+        notes.push(format!(
+            "HET SPANNINGSBLOK LOOPT DE FLENS UIT. Het blok is λ·x = {lx} mm hoog en de flens \
+             is {hf} mm dik, dus over de bovenste {hf} mm is de doorsnede {bf} mm breed en over \
+             de overige {rest} mm nog {bw} mm. Er is dus geen ENKELE breedte b waarmee \
+             F_c = η·f_cd·b·λ·x klopt; de betondrukkracht is de integraal van de werkelijke \
+             breedte b(z) over de blokhoogte: A_c(λ·x) = {bf}·{hf} + {bw}·{rest} = {a} mm². Dat \
+             is dezelfde grootheid die de toets zelf gebruikt — hier staat geen tweede \
+             berekening. De splitsing over flens en lijf is een benoemde MODELKEUZE: \
+             NEN-EN 1992-1-1 geeft in 3.1.7(3) alleen de rechthoekige spanningsverdeling zelf \
+             en kent geen grenswaarde λ·x ≤ h_f.",
+            lx = nl(r.lambda * r.x_mm, 1),
+            hf = nl(s.h_f_mm(), 0),
+            bf = nl(s.b_mm, 0),
+            bw = nl(s.b_w_mm(), 0),
+            rest = nl(r.lambda * r.x_mm - s.h_f_mm(), 1),
+            a = nl(a_blok, 0),
+        ));
+    } else if g.heeft_flens() {
+        notes.push(format!(
+            "Het spanningsblok is λ·x = {lx} mm hoog en blijft daarmee binnen de gedrukte band \
+             van {b} mm breed. De doorsnede gedraagt zich hier dus als een rechthoek van die \
+             breedte, en de gesloten vorm van 3.1.7(3) is exact goed.",
+            lx = nl(r.lambda * r.x_mm, 1),
+            b = nl(blokbreedte.unwrap(), 0),
+        ));
+    }
+
     // De klassieke gesloten vorm — alleen als hij hier werkelijk geldt, en pas
     // nadat is nagegaan dat hij hetzelfde getal geeft.
     let klassiek = klassieke_x(g, r);
-    if let Some((x_dicht, a_s)) = klassiek {
+    if let Some((x_dicht, a_s, b_blok)) = klassiek {
         notes.push(format!(
             "In dit geval — één wapeningslaag, die vloeit en op trek staat, en N_Ed = 0 — valt \
              de vergelijking wél dicht: η·f_cd·b·λ·x = A_s·f_yd geeft x = A_s·f_yd/(η·f_cd·b·λ) \
              = {} · {} / ({} · {} · {} · {}) = {} mm. Dat is de bekende handformule, en zij \
              levert hier hetzelfde getal als de bisectie hierboven. Zodra er drukwapening is, \
-             een laag niet vloeit, of N_Ed ≠ 0, gaat die vereenvoudiging niet meer op.",
+             een laag niet vloeit, N_Ed ≠ 0, of het spanningsblok een bandgrens overschrijdt, \
+             gaat die vereenvoudiging niet meer op.",
             nl(a_s, 2),
             nl(m.steel.f_yd, 2),
             nl(r.eta, 1),
             nl(m.f_cd(), 2),
-            nl(g.b(), 0),
+            nl(b_blok, 0),
             nl(r.lambda, 1),
             nl(x_dicht, 3)
         ));
@@ -696,30 +790,73 @@ fn evenwicht_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
         }
     }
 
+    let staaltermen = if termen.is_empty() { "0".to_string() } else { termen.join(" + ") };
+    // Twee schrijfwijzen van dezelfde vergelijking. Welke er staat, hangt af
+    // van wat de toets werkelijk heeft gedaan: b·λ·x als het blok één breedte
+    // ziet, en A_c(λ·x) als het over een bandgrens loopt.
+    let (formule, ingevuld, vars) = match blokbreedte {
+        Some(b) => (
+            r"\eta \cdot f_{cd} \cdot b \cdot \lambda \cdot x + \sum_i A_{s,i} \cdot \sigma_s\!\left( \varepsilon_{cu3} \left( 1 - \frac{d_i}{x} \right) \right) = -N_{Ed} \cdot 10^3"
+                .to_string(),
+            format!(
+                r"{e} \cdot {f} \cdot {b} \cdot {l} \cdot x + {t} = {n} \cdot 10^3 \;\Rightarrow\; x = {x}\ \text{{mm}}",
+                e = lx(r.eta, 1),
+                f = lx(m.f_cd(), 2),
+                b = lx(b, 0),
+                l = lx(r.lambda, 1),
+                t = staaltermen,
+                n = lxh(-g.n_ed_kn, 2),
+                x = lx(r.x_mm, 3),
+            ),
+            vec![
+                nv(r"\eta", r.eta, "-"),
+                nv("f_{cd}", m.f_cd(), "N/mm²"),
+                nv("b", b, "mm"),
+                nv(r"\lambda", r.lambda, "-"),
+                nv("N_{Ed}", g.n_ed_kn, "kN"),
+            ],
+        ),
+        None => {
+            let s = g.werkzame_doorsnede();
+            let (a_blok, _) = s.top_strip(r.lambda * r.x_mm);
+            (
+                r"\eta \cdot f_{cd} \cdot A_c(\lambda x) + \sum_i A_{s,i} \cdot \sigma_s\!\left( \varepsilon_{cu3} \left( 1 - \frac{d_i}{x} \right) \right) = -N_{Ed} \cdot 10^3, \qquad A_c(\lambda x) = \int_{h-\lambda x}^{h} b(z)\,dz"
+                    .to_string(),
+                format!(
+                    r"{e} \cdot {f} \cdot A_c(\lambda x) + {t} = {n} \cdot 10^3 \;\Rightarrow\; x = {x}\ \text{{mm}}, \quad A_c = {bf} \cdot {hf} + {bw} \cdot {rest} = {a}\ \text{{mm}}^2",
+                    e = lx(r.eta, 1),
+                    f = lx(m.f_cd(), 2),
+                    t = staaltermen,
+                    n = lxh(-g.n_ed_kn, 2),
+                    x = lx(r.x_mm, 3),
+                    bf = lx(s.b_mm, 0),
+                    hf = lx(s.h_f_mm(), 0),
+                    bw = lx(s.b_w_mm(), 0),
+                    rest = lx(r.lambda * r.x_mm - s.h_f_mm(), 1),
+                    a = lx(a_blok, 0),
+                ),
+                vec![
+                    nv(r"\eta", r.eta, "-"),
+                    nv("f_{cd}", m.f_cd(), "N/mm²"),
+                    nv("b_f", s.b_mm, "mm"),
+                    nv("h_f", s.h_f_mm(), "mm"),
+                    nv("b_w", s.b_w_mm(), "mm"),
+                    nv(r"A_c(\lambda x)", a_blok, "mm²"),
+                    nv(r"\lambda", r.lambda, "-"),
+                    nv("N_{Ed}", g.n_ed_kn, "kN"),
+                ],
+            )
+        }
+    };
+
     stap(
         "evenwicht_x",
         "Krachtenevenwicht: hoogte van de drukzone",
         "x",
         "art. 6.1(2)P; figuur 3.5",
-        r"\eta \cdot f_{cd} \cdot b \cdot \lambda \cdot x + \sum_i A_{s,i} \cdot \sigma_s\!\left( \varepsilon_{cu3} \left( 1 - \frac{d_i}{x} \right) \right) = -N_{Ed} \cdot 10^3"
-            .to_string(),
-        format!(
-            r"{e} \cdot {f} \cdot {b} \cdot {l} \cdot x + {t} = {n} \cdot 10^3 \;\Rightarrow\; x = {x}\ \text{{mm}}",
-            e = lx(r.eta, 1),
-            f = lx(m.f_cd(), 2),
-            b = lx(g.b(), 0),
-            l = lx(r.lambda, 1),
-            t = if termen.is_empty() { "0".to_string() } else { termen.join(" + ") },
-            n = lxh(-g.n_ed_kn, 2),
-            x = lx(r.x_mm, 3),
-        ),
-        vec![
-            nv(r"\eta", r.eta, "-"),
-            nv("f_{cd}", m.f_cd(), "N/mm²"),
-            nv("b", g.b(), "mm"),
-            nv(r"\lambda", r.lambda, "-"),
-            nv("N_{Ed}", g.n_ed_kn, "kN"),
-        ],
+        formule,
+        ingevuld,
+        vars,
         Some(r.x_mm),
         "mm",
         notes,
@@ -727,15 +864,19 @@ fn evenwicht_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
 }
 
 /// De klassieke gesloten vorm van x, maar alleen als hij hier écht geldt én
-/// hetzelfde getal oplevert als de bisectie van de kern.
+/// hetzelfde getal oplevert als de bisectie van de kern. Levert x, A_s en de
+/// breedte waarmee de vorm is ingevuld.
 ///
-/// Drie voorwaarden, alle drie nodig: precies één wapeningslaag, die laag staat
-/// op trek en vloeit, en er is geen normaalkracht. Faalt er één, dan bestaat de
-/// gesloten vorm niet en hoort er ook geen in het rapport te staan. De
-/// numerieke controle erna is de laatste zeef: hij vangt het geval waarin de
-/// voorwaarden formeel kloppen maar de kern om een andere reden iets anders
-/// deed.
-fn klassieke_x(g: &Betongegevens, r: &StressBlockResult) -> Option<(f64, f64)> {
+/// Vier voorwaarden, alle vier nodig: precies één wapeningslaag, die laag staat
+/// op trek en vloeit, er is geen normaalkracht, en het spanningsblok ziet over
+/// zijn hele hoogte één breedte. Faalt er één, dan bestaat de gesloten vorm
+/// niet en hoort er ook geen in het rapport te staan. Die vierde voorwaarde
+/// zit er voor de T en de L: valt de drukzone geheel in de flens, dan IS de
+/// gesloten vorm met de flensbreedte exact goed — loopt het blok het lijf in,
+/// dan is er geen breedte die klopt. De numerieke controle erna is de laatste
+/// zeef: hij vangt het geval waarin de voorwaarden formeel kloppen maar de kern
+/// om een andere reden iets anders deed.
+fn klassieke_x(g: &Betongegevens, r: &StressBlockResult) -> Option<(f64, f64, f64)> {
     if g.layers.len() != 1 || r.layers.len() != 1 || g.n_ed_kn.abs() > 1e-9 {
         return None;
     }
@@ -743,8 +884,9 @@ fn klassieke_x(g: &Betongegevens, r: &StressBlockResult) -> Option<(f64, f64)> {
     if !laag.yields || laag.f_kn >= 0.0 {
         return None;
     }
+    let b_blok = g.blokbreedte(r.lambda * r.x_mm)?;
     let a_s = g.layers[0].area_mm2;
-    let noemer = r.eta * g.mat.f_cd() * g.b() * r.lambda;
+    let noemer = r.eta * g.mat.f_cd() * b_blok * r.lambda;
     if noemer <= 0.0 {
         return None;
     }
@@ -752,7 +894,7 @@ fn klassieke_x(g: &Betongegevens, r: &StressBlockResult) -> Option<(f64, f64)> {
     if (x - r.x_mm).abs() > 1e-6 * r.x_mm.abs().max(1.0) {
         return None;
     }
-    Some((x, a_s))
+    Some((x, a_s, b_blok))
 }
 
 /// De kanttekening bij 6.1(9): de begrenzing van x_u/d die deze toets niet doet.
@@ -914,11 +1056,30 @@ fn rekverdeling_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
 /// 8 ── De betondrukkracht en haar arm.
 fn betondrukkracht_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
     let m = g.mat;
-    let notes = vec![
-        "F_c is de resultante van het spanningsblok: een rechthoek van hoogte λ·x en spanning \
-         η·f_cd over de breedte b. De factor 10⁻³ zet N naar kN."
-            .to_string(),
-        format!(
+    let lambda_x = r.lambda * r.x_mm;
+    let blokbreedte = g.blokbreedte(lambda_x);
+    // Diepte van het zwaartepunt van het blok onder de gedrukte rand, zoals de
+    // toets hem heeft gebruikt: z_c is h/2 min die diepte. Bij één breedte is
+    // dat λx/2; loopt het blok de flens uit, dan ligt het zwaartepunt hoger.
+    let zwaartepunt_diepte = g.h() / 2.0 - r.z_c_m * 1e3;
+
+    let mut notes = vec![match blokbreedte {
+        Some(b) => format!(
+            "F_c is de resultante van het spanningsblok: een rechthoek van hoogte λ·x en \
+             spanning η·f_cd over de breedte {} mm. De factor 10⁻³ zet N naar kN.",
+            nl(b, 0)
+        ),
+        None => format!(
+            "F_c is de resultante van het spanningsblok. Het blok is λ·x = {lx} mm hoog en \
+             loopt de flens uit, dus het staat NIET over één breedte: de spanning η·f_cd werkt \
+             over het werkelijke betonoppervlak binnen die hoogte, A_c(λ·x) = {a} mm². De \
+             factor 10⁻³ zet N naar kN.",
+            lx = nl(lambda_x, 1),
+            a = nl(g.werkzame_doorsnede().top_strip(lambda_x).0, 0),
+        ),
+    }];
+    notes.push(match blokbreedte {
+        Some(_) => format!(
             "z_c is de arm van die resultante ten opzichte van het MIDDEN van de doorsnede, \
              niet ten opzichte van de trekwapening. Het blok begint aan de gedrukte rand en is \
              λ·x = {lx} mm hoog, dus zijn zwaartepunt ligt λ·x/2 = {half} mm van die rand en \
@@ -926,40 +1087,90 @@ fn betondrukkracht_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
              omdat de normaalkracht N_Ed daar aangrijpt: alleen dan is het berekende M_Rd \
              hetzelfde moment als de M_y,Ed die uit de krachtsverdeling komt, en mogen ze in de \
              unity check tegen elkaar.",
-            lx = nl(r.lambda * r.x_mm, 1),
-            half = nl(r.lambda * r.x_mm / 2.0, 1),
+            lx = nl(lambda_x, 1),
+            half = nl(lambda_x / 2.0, 1),
             z = nl(r.z_c_m * 1e3, 1)
         ),
-    ];
+        None => format!(
+            "z_c is de arm van die resultante ten opzichte van het MIDDEN van de doorsnede, \
+             niet ten opzichte van de trekwapening. Omdat het blok over twee breedten loopt, \
+             ligt zijn zwaartepunt NIET op λ·x/2 = {half} mm onder de gedrukte rand maar op \
+             {diep} mm — het brede deel bij de rand trekt het omhoog. Vandaar \
+             z_c = h/2 − {diep} = {z} mm. Het midden is als momentpunt gekozen omdat de \
+             normaalkracht N_Ed daar aangrijpt: alleen dan is het berekende M_Rd hetzelfde \
+             moment als de M_y,Ed die uit de krachtsverdeling komt, en mogen ze in de unity \
+             check tegen elkaar.",
+            half = nl(lambda_x / 2.0, 1),
+            diep = nl(zwaartepunt_diepte, 1),
+            z = nl(r.z_c_m * 1e3, 1)
+        ),
+    });
+
+    // Ook hier: de schrijfwijze volgt wat de toets heeft gedaan.
+    let (formule, ingevuld, vars) = match blokbreedte {
+        Some(b) => (
+            r"z_c = \frac{h}{2} - \frac{\lambda \cdot x}{2} \qquad F_c = \eta \cdot f_{cd} \cdot b \cdot \lambda \cdot x \cdot 10^{-3}"
+                .to_string(),
+            // De arm eerst, de kracht als laatste en zónder haar uitkomst: die
+            // zet het rapport erachter. Andersom zou er achter de arm een
+            // kracht in kN komen te staan.
+            format!(
+                r"z_c = \frac{{{h}}}{{2}} - \frac{{{l} \cdot {x}}}{{2}} = {zc}\ \text{{mm}} \qquad F_c = {e} \cdot {f} \cdot {b} \cdot {l} \cdot {x} \cdot 10^{{-3}}",
+                h = lx(g.h(), 0),
+                l = lx(r.lambda, 1),
+                x = lx(r.x_mm, 2),
+                zc = lx(r.z_c_m * 1e3, 1),
+                e = lx(r.eta, 1),
+                f = lx(m.f_cd(), 2),
+                b = lx(b, 0),
+            ),
+            vec![
+                nv(r"\eta", r.eta, "-"),
+                nv("f_{cd}", m.f_cd(), "N/mm²"),
+                nv("b", b, "mm"),
+                nv(r"\lambda", r.lambda, "-"),
+                nv("x", r.x_mm, "mm"),
+                nv("z_c", r.z_c_m * 1e3, "mm"),
+            ],
+        ),
+        None => {
+            let s = g.werkzame_doorsnede();
+            let (a_blok, _) = s.top_strip(lambda_x);
+            (
+                r"z_c = \frac{h}{2} - \frac{\int_{h-\lambda x}^{h} (h-z)\,b(z)\,dz}{A_c(\lambda x)} \qquad F_c = \eta \cdot f_{cd} \cdot A_c(\lambda x) \cdot 10^{-3}"
+                    .to_string(),
+                format!(
+                    r"z_c = \frac{{{h}}}{{2}} - {diep} = {zc}\ \text{{mm}} \qquad F_c = {e} \cdot {f} \cdot {a} \cdot 10^{{-3}}",
+                    h = lx(g.h(), 0),
+                    diep = lx(zwaartepunt_diepte, 1),
+                    zc = lx(r.z_c_m * 1e3, 1),
+                    e = lx(r.eta, 1),
+                    f = lx(m.f_cd(), 2),
+                    a = lx(a_blok, 0),
+                ),
+                vec![
+                    nv(r"\eta", r.eta, "-"),
+                    nv("f_{cd}", m.f_cd(), "N/mm²"),
+                    nv("b_f", s.b_mm, "mm"),
+                    nv("h_f", s.h_f_mm(), "mm"),
+                    nv("b_w", s.b_w_mm(), "mm"),
+                    nv(r"A_c(\lambda x)", a_blok, "mm²"),
+                    nv(r"\lambda", r.lambda, "-"),
+                    nv("x", r.x_mm, "mm"),
+                    nv("z_c", r.z_c_m * 1e3, "mm"),
+                ],
+            )
+        }
+    };
 
     stap(
         "f_c",
         "Betondrukkracht en haar arm",
         "F_c",
         "art. 3.1.7(3), figuur 3.5",
-        r"z_c = \frac{h}{2} - \frac{\lambda \cdot x}{2} \qquad F_c = \eta \cdot f_{cd} \cdot b \cdot \lambda \cdot x \cdot 10^{-3}"
-            .to_string(),
-        // De arm eerst, de kracht als laatste en zónder haar uitkomst: die zet
-        // het rapport erachter. Andersom zou er achter de arm een kracht in kN
-        // komen te staan.
-        format!(
-            r"z_c = \frac{{{h}}}{{2}} - \frac{{{l} \cdot {x}}}{{2}} = {zc}\ \text{{mm}} \qquad F_c = {e} \cdot {f} \cdot {b} \cdot {l} \cdot {x} \cdot 10^{{-3}}",
-            h = lx(g.h(), 0),
-            l = lx(r.lambda, 1),
-            x = lx(r.x_mm, 2),
-            zc = lx(r.z_c_m * 1e3, 1),
-            e = lx(r.eta, 1),
-            f = lx(m.f_cd(), 2),
-            b = lx(g.b(), 0),
-        ),
-        vec![
-            nv(r"\eta", r.eta, "-"),
-            nv("f_{cd}", m.f_cd(), "N/mm²"),
-            nv("b", g.b(), "mm"),
-            nv(r"\lambda", r.lambda, "-"),
-            nv("x", r.x_mm, "mm"),
-            nv("z_c", r.z_c_m * 1e3, "mm"),
-        ],
+        formule,
+        ingevuld,
+        vars,
         Some(r.f_c_kn),
         "kN",
         notes,
@@ -1155,7 +1366,7 @@ fn m_rd_stap(g: &Betongegevens, r: &StressBlockResult) -> Deelstap {
             nl(g.n_ed_kn, 2)
         ));
     }
-    if let Some((_, a_s)) = klassieke_x(g, r) {
+    if let Some((_, a_s, _)) = klassieke_x(g, r) {
         if let Some(d) = g.d_mm() {
             let z = d - r.lambda * r.x_mm / 2.0;
             notes.push(format!(
@@ -1477,6 +1688,36 @@ fn vlakke_doorsnede_stap(g: &Betongegevens) -> Deelstap {
 fn integratie_stap(g: &Betongegevens, diagram: &MnKappaDiagram) -> Deelstap {
     let n = diagram.n_strips.max(1);
     let dz = g.h() / n as f64;
+    // Bij meer dan één band krijgt elke band zijn eigen stroken, evenredig met
+    // zijn hoogte — zie `mnkappa::internal_forces`. Er ligt dus nooit een
+    // strook óver de sprong in b(z) heen, en er is dan ook geen enkele Δz en
+    // geen enkele b om op te schrijven.
+    let banden: Vec<(f64, f64, usize, f64)> = if g.section.bands().len() > 1 {
+        g.section
+            .bands()
+            .iter()
+            .map(|band| {
+                let hb = band.height_mm();
+                let nb = ((n as f64 * hb / g.h()).round() as usize).max(1);
+                (band.b_mm, hb, nb, hb / nb as f64)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let bandregel = banden
+        .iter()
+        .map(|(b, hb, nb, dzb)| {
+            format!(
+                r"b = {b}\ \text{{mm}}: {nb} \times \Delta z = \frac{{{hb}}}{{{nb}}} = {dzb}\ \text{{mm}}",
+                b = lx(*b, 0),
+                nb = nb,
+                hb = lx(*hb, 0),
+                dzb = lx(*dzb, 3),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(r" \qquad ");
     stap(
         "integratie",
         "Evenwicht bij een gegeven kromming",
@@ -1485,44 +1726,97 @@ fn integratie_stap(g: &Betongegevens, diagram: &MnKappaDiagram) -> Deelstap {
         // alsof die er is zou juist verhullen waar het hier om gaat.
         "",
         "art. 6.1(2)P; numerieke uitwerking",
-        r"N_c(\varepsilon_0, \kappa) = \sum_{i=1}^{n} \sigma_c\!\left( \varepsilon(z_i) \right) \cdot b \cdot \Delta z, \qquad N_c + \sum_j A_{s,j}\,\sigma_s\!\left( \varepsilon(z_j) \right) = -N_{Ed} \cdot 10^3"
-            .to_string(),
-        format!(
-            r"\Delta z = \frac{{{h}}}{{{n}}} = {dz}\ \text{{mm}}, \qquad z_i = \left( i - \tfrac{{1}}{{2}} \right) \Delta z",
-            h = lx(g.h(), 0),
-            n = n,
-            dz = lx(dz, 3),
-        ),
-        vec![
-            nv("h", g.h(), "mm"),
-            nv("b", g.b(), "mm"),
-            nv("n_{stroken}", n as f64, "-"),
-            nv(r"\Delta z", dz, "mm"),
-            nv("N_{Ed}", g.n_ed_kn, "kN"),
-        ],
+        if banden.is_empty() {
+            r"N_c(\varepsilon_0, \kappa) = \sum_{i=1}^{n} \sigma_c\!\left( \varepsilon(z_i) \right) \cdot b \cdot \Delta z, \qquad N_c + \sum_j A_{s,j}\,\sigma_s\!\left( \varepsilon(z_j) \right) = -N_{Ed} \cdot 10^3"
+                .to_string()
+        } else {
+            r"N_c(\varepsilon_0, \kappa) = \sum_{\text{banden}} \sum_{i=1}^{n_b} \sigma_c\!\left( \varepsilon(z_i) \right) \cdot b(z_i) \cdot \Delta z_b, \qquad N_c + \sum_j A_{s,j}\,\sigma_s\!\left( \varepsilon(z_j) \right) = -N_{Ed} \cdot 10^3"
+                .to_string()
+        },
+        if banden.is_empty() {
+            format!(
+                r"\Delta z = \frac{{{h}}}{{{n}}} = {dz}\ \text{{mm}}, \qquad z_i = \left( i - \tfrac{{1}}{{2}} \right) \Delta z",
+                h = lx(g.h(), 0),
+                n = n,
+                dz = lx(dz, 3),
+            )
+        } else {
+            bandregel
+        },
+        {
+            let mut v = vec![nv("h", g.h(), "mm")];
+            if banden.is_empty() {
+                v.push(nv("b", g.b(), "mm"));
+            } else {
+                v.push(nv("b_f", g.section.b_mm, "mm"));
+                v.push(nv("h_f", g.section.h_f_mm(), "mm"));
+                v.push(nv("b_w", g.section.b_w_mm(), "mm"));
+            }
+            v.push(nv("n_{stroken}", n as f64, "-"));
+            if banden.is_empty() {
+                v.push(nv(r"\Delta z", dz, "mm"));
+            }
+            v.push(nv("N_{Ed}", g.n_ed_kn, "kN"));
+            v
+        },
         None,
         "",
-        vec![
-            format!(
-                "De betonspanning is niet analytisch te integreren zodra de neutrale lijn in de \
-                 parabool ligt; zij wordt daarom NUMERIEK bepaald. De doorsnede is in {n} \
-                 stroken van {dz} mm verdeeld en per strook is de spanning in het MIDDEN \
-                 genomen (middelpuntregel). Dat is een benadering: de fout neemt kwadratisch af \
-                 met het aantal stroken, en het aantal stroken is een instelling van de \
-                 gebruiker en geen normwaarde. Wie het aantal verlaagt, verandert de uitkomst.",
-                n = n,
-                dz = nl(dz, 2)
-            ),
-            "Bij elke kromming κ wordt ε₀ gezocht waarbij de inwendige normaalkracht gelijk is \
-             aan −N_Ed. Ook dat gaat met BISECTIE: de inwendige normaalkracht is monotoon \
-             niet-dalend in ε₀ omdat elke spanning niet-dalend is in de rek, dus er is precies \
-             één oplossing. Er is hier dus geen formule voor ε₀ — er is een voorwaarde en een \
-             zoekprocedure."
-                .to_string(),
-            "Ook hier is het door de wapening verdrongen beton niet afgetrokken: de stroken \
-             lopen over de volle breedte b, ook op de hoogte waar staven liggen."
-                .to_string(),
-        ],
+        {
+            let mut notes = vec![if banden.is_empty() {
+                format!(
+                    "De betonspanning is niet analytisch te integreren zodra de neutrale lijn in \
+                     de parabool ligt; zij wordt daarom NUMERIEK bepaald. De doorsnede is in {n} \
+                     stroken van {dz} mm verdeeld en per strook is de spanning in het MIDDEN \
+                     genomen (middelpuntregel). Dat is een benadering: de fout neemt kwadratisch \
+                     af met het aantal stroken, en het aantal stroken is een instelling van de \
+                     gebruiker en geen normwaarde. Wie het aantal verlaagt, verandert de \
+                     uitkomst.",
+                    n = n,
+                    dz = nl(dz, 2)
+                )
+            } else {
+                format!(
+                    "De betonspanning is niet analytisch te integreren zodra de neutrale lijn in \
+                     de parabool ligt; zij wordt daarom NUMERIEK bepaald, per strook met de \
+                     spanning in het MIDDEN (middelpuntregel). Omdat de breedte hier SPRINGT, \
+                     krijgt elke band zijn eigen stroken — {reeks} — in plaats van {n} stroken \
+                     over de hele hoogte. Zo ligt er nooit een strook óver de sprong in b(z) \
+                     heen; een strook die dat wél deed, zou daar een breedte tussen de flens en \
+                     het lijf in aannemen die de doorsnede nergens heeft. Het aantal stroken is \
+                     een instelling van de gebruiker en geen normwaarde.",
+                    reeks = banden
+                        .iter()
+                        .map(|(b, _, nb, dzb)| format!(
+                            "{nb} stroken van {dzb} mm over de {b} mm brede band",
+                            nb = nb,
+                            dzb = nl(*dzb, 2),
+                            b = nl(*b, 0)
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" en "),
+                    n = n,
+                )
+            }];
+            notes.push(
+                "Bij elke kromming κ wordt ε₀ gezocht waarbij de inwendige normaalkracht gelijk \
+                 is aan −N_Ed. Ook dat gaat met BISECTIE: de inwendige normaalkracht is monotoon \
+                 niet-dalend in ε₀ omdat elke spanning niet-dalend is in de rek, dus er is \
+                 precies één oplossing. Er is hier dus geen formule voor ε₀ — er is een \
+                 voorwaarde en een zoekprocedure."
+                    .to_string(),
+            );
+            notes.push(if banden.is_empty() {
+                "Ook hier is het door de wapening verdrongen beton niet afgetrokken: de stroken \
+                 lopen over de volle breedte b, ook op de hoogte waar staven liggen."
+                    .to_string()
+            } else {
+                "Ook hier is het door de wapening verdrongen beton niet afgetrokken: de stroken \
+                 lopen over de volle breedte b(z) van hun band, ook op de hoogte waar staven \
+                 liggen."
+                    .to_string()
+            });
+            notes
+        },
     )
 }
 
@@ -1987,8 +2281,9 @@ mod tests {
             section: &s, cage: &k, mat: &m, layers: &lagen,
             sign: 1.0, n_ed_kn: 0.0, m_ed_knm: 100.0, m_y_ed_knm: 100.0,
         };
-        let (x, a_s) = klassieke_x(&g, &r).expect("gesloten vorm hoort hier te gelden");
+        let (x, a_s, b_blok) = klassieke_x(&g, &r).expect("gesloten vorm hoort hier te gelden");
         assert_eq!(a_s, k.a_s_bottom_mm2());
+        assert_eq!(b_blok, s.b_mm, "bij een rechthoek is de blokbreedte gewoon b");
         // Niet exact gelijk en dat hoort ook niet: de kern vindt x met bisectie
         // en stopt bij een intervalbreedte van 10⁻¹⁰·h, dus ongeveer 5·10⁻⁸ mm.
         // De gesloten vorm mag daar niet meer dan die zoekfout van afwijken —

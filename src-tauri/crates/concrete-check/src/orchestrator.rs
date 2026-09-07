@@ -8,7 +8,8 @@ use nen_en_1992_1_1::mnkappa::{
     mn_kappa_diagram, MnKappaOptions,
 };
 use nen_en_1992_1_1::{
-    concrete_class_by_name, reinforcement_grade_by_name, DesignMaterial, RectConcreteSection,
+    concrete_class_by_name, reinforcement_grade_by_name, ConcreteSection, ConcreteSectionInput,
+    DesignMaterial,
 };
 use nen_en_1993_1_1_section::{CheckStatus, ResistanceCalc};
 use steel_check::{CheckKind, NamedCheck};
@@ -60,16 +61,19 @@ fn uc_of(c: &NamedCheck) -> f64 {
     }
 }
 
-fn error_result(input: &ConcreteBeamCheckInput, section: &RectConcreteSection, fout: String) -> ConcreteBeamCheckResult {
+/// Het resultaat waarin alleen de reden staat. De doorsnede kán hier
+/// onbouwbaar zijn — een T zonder lijfbreedte bijvoorbeeld — dus de naam en de
+/// hoogte komen uit de INVOER en niet uit een doorsnede die er niet is.
+fn error_result(input: &ConcreteBeamCheckInput, fout: String) -> ConcreteBeamCheckResult {
     ConcreteBeamCheckResult {
         beam_id: input.beam_id,
-        section_name: section.name(),
+        section_name: input.section.name(),
         concrete_class: input.concrete_class.clone(),
         reinforcement_grade: input.reinforcement_grade.clone(),
         reinforcement_summary: input.cage.summary(),
         a_s_bottom_mm2: input.cage.a_s_bottom_mm2(),
         a_s_top_mm2: input.cage.a_s_top_mm2(),
-        d_mm: input.cage.d_mm(section.h_mm),
+        d_mm: input.cage.d_mm(input.section.h_mm),
         f_cd_mpa: 0.0,
         f_yd_mpa: 0.0,
         checks: vec![],
@@ -84,15 +88,14 @@ fn error_result(input: &ConcreteBeamCheckInput, section: &RectConcreteSection, f
 
 /// Materiaal en geometrie uit de invoer; `Err` met een leesbare reden.
 fn setup(
-    width_mm: f64,
-    height_mm: f64,
+    section: &ConcreteSectionInput,
     concrete_class: &str,
     reinforcement_grade: &str,
     cage: &nen_en_1992_1_1::ReinforcementCage,
     situation: nen_en_1992_1_1::DesignSituation,
     branch: nen_en_1992_1_1::SteelBranch,
-) -> Result<(RectConcreteSection, DesignMaterial), String> {
-    let section = RectConcreteSection::new(width_mm, height_mm);
+) -> Result<(ConcreteSection, DesignMaterial), String> {
+    let section = section.build()?;
     let beton = concrete_class_by_name(concrete_class)
         .ok_or_else(|| format!("betonsterkteklasse {concrete_class} onbekend"))?;
     let staal = reinforcement_grade_by_name(reinforcement_grade)
@@ -103,8 +106,7 @@ fn setup(
 
 pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckResult {
     let (section, mat) = match setup(
-        input.width_mm,
-        input.height_mm,
+        &input.section,
         &input.concrete_class,
         &input.reinforcement_grade,
         &input.cage,
@@ -112,7 +114,7 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         input.steel_branch,
     ) {
         Ok(v) => v,
-        Err(e) => return error_result(&input, &RectConcreteSection::new(input.width_mm, input.height_mm), e),
+        Err(e) => return error_result(&input, e),
     };
     let opts = MnKappaOptions { n_strips: input.n_strips.max(1) as usize };
     let layers = input.cage.layers(section.h_mm);
@@ -193,8 +195,7 @@ pub fn check_all_concrete_beams(inputs: Vec<ConcreteBeamCheckInput>) -> Vec<Conc
 /// M-N-κ-diagram en interactiediagram voor een korf, los van een staaf.
 pub fn mn_kappa(req: MnKappaRequest) -> Result<MnKappaResponse, String> {
     let (section, mat) = setup(
-        req.width_mm,
-        req.height_mm,
+        &req.section,
         &req.concrete_class,
         &req.reinforcement_grade,
         &req.cage,
