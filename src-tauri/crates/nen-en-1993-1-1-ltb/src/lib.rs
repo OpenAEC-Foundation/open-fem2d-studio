@@ -273,7 +273,46 @@ pub(crate) struct Veldresultaat {
     /// C₂ ná die correctie — dit is de waarde die in C meerekent.
     c2: f64,
     c: f64,
+    /// Het moment met de **grootste absolute waarde** in dit veld, gekozen uit
+    /// het beginmoment, het middenmoment en het eindmoment (kNm, mét teken).
+    ///
+    /// Rekent nergens in mee — β en B* komen uit de eindmomenten, en het teken
+    /// van z_j komt uit [`Self::gedrukte_flens`]. Hij staat alleen in het
+    /// rapport, als maat voor hoe zwaar dit veld belast is.
+    ///
+    /// **Niet gebruiken om te bepalen welke flens gedrukt is.** Dat was de
+    /// oude, foute regel; zie [`en_general::z_j_kipveld`] voor het
+    /// getallenvoorbeeld waarop zij stukloopt.
+    m_maatgevend_knm: f64,
+    /// De drie bekende momenten van dit veld: begin, midden, eind (kNm, mét
+    /// teken). Hieruit volgt welke flens gedrukt is.
+    momenten_knm: [f64; 3],
+    /// Welke flens er in dit veld gedrukt is — de grootheid die het teken van
+    /// z_j bepaalt op de monosymmetrische route.
+    gedrukte_flens: en_general::GedrukteFlens,
     m_cr_knm: f64,
+}
+
+/// Wat één kipveld aan een M_cr-vorm aanreikt.
+///
+/// De NB-vorm heeft aan `c` genoeg; de algemene vorm van
+/// [`en_general::m_cr_monosymmetrisch`] rekent niet met C maar rechtstreeks met
+/// C₁, C₂ en L_kip, en heeft bovendien het teken van het moment nodig. Deze
+/// struct bestaat zodat [`maatgevend_kipveld`] beide kan bedienen zonder dat de
+/// NB-tak één bit verschuift.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct McrInvoer {
+    /// De C-coëfficiënt van NB.NB.11 — de enige grootheid die de NB-vorm wil.
+    c: f64,
+    c1: f64,
+    /// C₂ zoals figuur NB.NB.6 hem geeft, vóór de correctie voor het
+    /// aangrijpingspunt. De algemene vorm vermenigvuldigt hem zelf met z_g;
+    /// de al gecorrigeerde C₂ hier gebruiken zou z_g dubbel tellen.
+    c2_tabel: f64,
+    l_kip_mm: f64,
+    /// De drie bekende momenten van dit veld (begin, midden, eind), waaruit
+    /// [`en_general::z_j_kipveld`] het teken van z_j haalt.
+    momenten_knm: [f64; 3],
 }
 
 /// Rekent M_cr voor élk kipveld door en geeft het **ongunstigste** terug.
@@ -296,7 +335,7 @@ fn maatgevend_kipveld(
     h_mm: f64,
     tf_mm: f64,
     s_mm: f64,
-    m_cr: impl Fn(f64) -> f64,
+    m_cr: impl Fn(&McrInvoer) -> f64,
 ) -> Veldresultaat {
     let aantal_velden = velden.len().max(1);
     let bereken = |index: usize, veld: &Kipveld| {
@@ -307,6 +346,13 @@ fn maatgevend_kipveld(
         let c2 = nb_annex::c2_gecorrigeerd(c2_tabel, z_a_mm, h_mm, tf_mm);
         let l_kip_mm = veld.l_kip_mm(beta);
         let c = nb_annex::c_coefficient(c1, l_g_mm, l_kip_mm, s_mm, c2);
+        let momenten_knm = [veld.m_begin_knm, veld.m_midden_knm, veld.m_eind_knm];
+        // Alleen voor het rapport: hoe zwaar is dit veld belast. Welke flens
+        // gedrukt is, volgt uit de TEKENS van alle drie de momenten samen en
+        // niet uit dit ene getal — zie `en_general::z_j_kipveld`.
+        let m_maatgevend_knm = momenten_knm
+            .into_iter()
+            .fold(0.0_f64, |m, x| if x.abs() > m.abs() { x } else { m });
         Veldresultaat {
             index,
             aantal_velden,
@@ -322,7 +368,10 @@ fn maatgevend_kipveld(
             c2_tabel,
             c2,
             c,
-            m_cr_knm: m_cr(c),
+            m_maatgevend_knm,
+            momenten_knm,
+            gedrukte_flens: en_general::gedrukte_flens_in_kipveld(momenten_knm),
+            m_cr_knm: m_cr(&McrInvoer { c, c1, c2_tabel, l_kip_mm, momenten_knm }),
         }
     };
 
@@ -429,7 +478,7 @@ pub fn m_b_rd_channel(
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
     let v = maatgevend_kipveld(
         velden, l_g_mm, q_equiv_n_per_mm, z_a_mm, p.h_mm, p.tf_mm, s_mm,
-        |c| nb_annex::m_cr_channel_section(c, l_g_mm, p.iz_mm4, p.it_mm4, k_red),
+        |i| nb_annex::m_cr_channel_section(i.c, l_g_mm, p.iz_mm4, p.it_mm4, k_red),
     );
 
     let lambda_lt = lambda_chi::lambda_lt(p.wpl_y_mm3, grade.fy_mpa, v.m_cr_knm);
@@ -486,6 +535,7 @@ pub fn m_b_rd_channel(
             lambda_lt, alpha_lt, chi_lt,
             vorm: McrVorm::Kanaal,
             alpha_lt_herkomst,
+            mono: None,
         }),
         // Zie de gelijkluidende toelichting in [`m_b_rd`]: `value` is de
         // uitkomst van `formula_latex`, dus M_b,Rd en niet χ_LT.
@@ -521,6 +571,337 @@ pub fn m_b_rd_channel(
     }
 }
 
+/// Wat de doorsnedemotor over de monosymmetrie weet — **inclusief of hij het
+/// weet**.
+///
+/// ## Waarom dit geen kale `f64` mag zijn
+///
+/// De motor levert z_j alleen als de doorsnede volledig uit lamellen bestaat
+/// én het schuifmiddelpunt sectorieel gevonden is; hij zet dat in de vlag
+/// `monosymmetrie_bepaald` (`section_properties::composite`). Kan hij het
+/// niet — een catalogusdeel levert geen derde momenten, een gesloten cel geen
+/// schuifmiddelpunt — dan vult hij `Monosymmetrie::default()` in, en dat is
+/// z_j = 0. Tegelijk blijven dan ook z_s = z_c en I_w = 0 staan.
+///
+/// Een kale `f64` maakt die nul niet te onderscheiden van een echte,
+/// uitgerekende nul. De kiptoetsing zou hem als "de doorsnede is symmetrisch
+/// om de buigingsas" lezen, dat met normverwijzing en al in de afleiding
+/// zetten, en een M_cr rapporteren die tot tientallen procenten te hoog is —
+/// onjuist én overtuigend opgeschreven. Deze struct dwingt de aanroeper de
+/// vlag mee te geven.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Monosymmetrieinvoer {
+    /// z_j zoals de doorsnedemotor hem levert: z omhoog positief, een vaste
+    /// eigenschap van de doorsnede. Alleen zinvol als `bepaald`.
+    pub z_j_geometrisch_mm: f64,
+    /// De vlag `monosymmetrie_bepaald` van de doorsnedemotor. `false` →
+    /// [`m_b_rd_monosymmetrisch`] weigert de toets.
+    pub bepaald: bool,
+    /// ψ_f = (I_fc − I_ft)/(I_fc + I_ft), als de aanroeper hem kent. `None` →
+    /// de ongunstigste C₃-band; zie [`en_general::c3_bovengrens`].
+    pub psi_f: Option<f64>,
+}
+
+/// De kiptoets zoals hij eruitziet als de monosymmetrie niet vaststaat.
+///
+/// ## Weigeren, niet raden — en waarom die kant op
+///
+/// Er waren twee verdedigbare uitwegen: de toets weigeren, of de ongunstige
+/// waarde aanhouden. De ongunstige waarde kan hier niet, want er is er geen.
+/// z_j ligt ergens in de orde van ±h/2, en welk uiteinde daarvan ongunstig is,
+/// hangt af van dezelfde geometrie die de motor juist níét heeft kunnen
+/// ontleden. Elk getal dat we hier zouden invullen, zou verzonnen zijn — en
+/// een verzonnen getal met een nette afleiding eromheen is precies de fout die
+/// deze functie moet voorkomen. Bij C₃ kón een bovengrens uit de tabel worden
+/// gelezen; hier is er geen tabel om uit te lezen.
+///
+/// Weggelaten wordt de toets niet: hij komt met `NotApplicable` en zonder
+/// unity check in het rapport, mét de reden en met wat de gebruiker eraan kan
+/// doen. Onzichtbaar verdwijnen zou net zo gevaarlijk zijn als een verzonnen
+/// getal.
+fn kip_geweigerd_onbepaalde_monosymmetrie(force_state: ForceStateSnapshot) -> StabilityCalc {
+    StabilityCalc {
+        id: "6.3.2_ltb_monosymmetrisch".to_string(),
+        title: "Kip (monosymmetrische doorsnede) — NIET UITGEVOERD".to_string(),
+        article: "art. 6.3.2.2(2)".to_string(),
+        force_state,
+        formula_latex: r"M_{b,Rd} = \chi_{LT} \cdot W_{pl,y} \cdot f_y / \gamma_{M1}".to_string(),
+        variables: Vec::new(),
+        intermediate_values: Vec::new(),
+        deelstappen: Vec::new(),
+        value: 0.0,
+        unit: "kNm".to_string(),
+        uc: None,
+        status: CheckStatus::NotApplicable,
+        notes: vec![
+            "De kiptoets is NIET uitgevoerd. De doorsnedemotor heeft de monosymmetrie van deze \
+             doorsnede niet kunnen bepalen: dat lukt alleen als de doorsnede volledig uit \
+             lamellen is opgebouwd én het schuifmiddelpunt sectorieel te vinden is. Een \
+             catalogusdeel levert geen derde momenten, en een gesloten cel geen \
+             schuifmiddelpunt."
+                .to_string(),
+            "Er is bewust GEEN waarde aangenomen. z_j = 0 invullen zou beweren dat de doorsnede \
+             symmetrisch is om de buigingsas, en dat staat hier niet vast; het levert een M_cr \
+             die tientallen procenten te hoog kan zijn. Een ongunstige waarde aannemen kan \
+             evenmin: die zou uit dezelfde geometrie moeten komen die niet ontleed kon worden."
+                .to_string(),
+            "Let op: bij een onbepaalde monosymmetrie zijn ook het schuifmiddelpunt (z_s) en de \
+             welvingsweerstand (I_w) niet bepaald. Die drie hangen samen; ze zijn alle drie \
+             nodig voor de algemene elastische formule."
+                .to_string(),
+            "Wat helpt: de doorsnede uit lamellen modelleren in plaats van uit een \
+             catalogusdeel. Is de doorsnede dubbelsymmetrisch, dan is deze route sowieso niet \
+             de juiste — dan geldt de NB-route van `m_b_rd`, die binnen NB.NB.1(1) valt."
+                .to_string(),
+        ],
+    }
+}
+
+/// Kipcontrole voor een doorsnede die **monosymmetrisch om de buigingsas** is:
+/// een T-vorm, een gelaste I met ongelijke flenzen, een SFB-ligger.
+///
+/// ## Waarom dit een eigen ingang is en geen extra parameter op [`m_b_rd`]
+///
+/// De Nederlandse nationale bijlage dekt dit geval niet. NB.NB.1(1) verklaart
+/// de rekenregels van bijlage NB.NB van toepassing op dubbelsymmetrische
+/// I-vormige doorsneden en op buisprofielen met h/b > 3; een monosymmetrische
+/// doorsnede valt daarbuiten, en de bijlage geeft er geen alternatief voor.
+/// Zij kán het ook niet: de symbolenlijst bij NB.NB.4.1(1) noemt E, G, I_z,
+/// I_t, L_g, k_red en C, en NB.NB.4.3 alleen C₁ en C₂ — geen I_w, geen z_g,
+/// geen z_j, geen C₃.
+///
+/// Hier wordt daarom de **algemene** elastische formule gerekend
+/// ([`en_general::m_cr_monosymmetrisch`]). Die voldoet aan de eis van art.
+/// 6.3.2.2(2) — brutodoorsnede, werkelijke momentenverdeling, zijdelingse
+/// steunen — maar de uitkomst is **geen Nederlandse NB-waarde**, en de notities
+/// van deze toets zeggen dat letterlijk.
+///
+/// ## Wat wél uit de nationale bijlage komt, en waarom dat verantwoord is
+///
+/// * **C₁ en C₂** uit figuur NB.NB.5 en NB.NB.6, precies zoals [`m_b_rd`] ze
+///   afleest. Het zijn dezelfde grootheden met dezelfde betekenis (aard van de
+///   momentenlijn, plaats van aangrijpen), en zij worden hier in hun
+///   **onbewerkte** vorm gebruikt: de algemene formule vermenigvuldigt C₂ zelf
+///   met z_g, dus de al naar het aangrijpingspunt geschaalde C₂ van
+///   [`nb_annex::c2_gecorrigeerd`] zou z_g dubbel tellen.
+/// * **k_red** uit NB.NB.7/NB.NB.8, als extra vermenigvuldiger. Hij hoort niet
+///   bij de algemene formule, maar hij is per definitie ≤ 1 en kan M_cr dus
+///   alleen verlagen. Hem weglaten zou een slank lijf gratis geven.
+///
+/// Dat er hier twee parametriseringen worden gecombineerd, is een keuze en
+/// staat als zodanig in de afleiding.
+///
+/// ## Argumenten
+///
+/// `z_a_mm`: zoals bij [`m_b_rd`] de afstand van het **zwaartepunt** tot het
+/// aangrijpingspunt van de belasting. Deze functie rekent hem zelf om naar de
+/// z_g van de norm, die vanaf het **dwarskrachtencentrum** meet
+/// (EN 1999-1-1 art. I.1.2(8)): z_g = z_a − (z_s − z_c). Voor een
+/// dubbelsymmetrische doorsnede is dat verschil nul; voor een T is het de
+/// halve lijfhoogte en dus dragend.
+///
+/// `mono`: wat de doorsnedemotor over de monosymmetrie wéét — zie
+/// [`Monosymmetrieinvoer`]. Het teken naar de gedrukte flens en de afkapping
+/// van de gunstige tak gebeuren hier, per kipveld; zie
+/// [`en_general::z_j_kipveld`] en [`en_general::z_j_rekenwaarde`].
+#[allow(clippy::too_many_arguments)]
+pub fn m_b_rd_monosymmetrisch(
+    p: &SectionProperties, grade: &SteelGrade,
+    l_g_mm: f64,
+    velden: &[Kipveld],
+    q_equiv_n_per_mm: f64,
+    z_a_mm: f64,
+    mono_invoer: &Monosymmetrieinvoer,
+    profielsoort: Kipprofiel,
+    force_state: ForceStateSnapshot,
+) -> StabilityCalc {
+    let Monosymmetrieinvoer { z_j_geometrisch_mm, bepaald, psi_f } = *mono_invoer;
+    if !bepaald {
+        return kip_geweigerd_onbepaalde_monosymmetrie(force_state);
+    }
+    let c3 = en_general::c3_bovengrens(psi_f);
+    // EN 1999-1-1 I.1.2(8): z_g meet vanaf het dwarskrachtencentrum, niet vanaf
+    // het zwaartepunt. Beide coördinaten staan in het beschrijvingsassenstelsel
+    // van de doorsnede, dus het verschil is de ligging van het schuifmiddelpunt
+    // ten opzichte van het zwaartepunt.
+    let z_s_rel_mm = p.z_s_mm - p.z_c_mm;
+    let z_g_mm = z_a_mm - z_s_rel_mm;
+
+    let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
+    let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
+
+    // Het teken van z_j hangt van het VELD af, niet van de staaf: in een
+    // doorgaande ligger is de bovenflens in het veld gedrukt en boven de steun
+    // de onderflens. Daarom valt de keuze binnen de closure, per kandidaat.
+    let m_cr_van = |i: &McrInvoer| {
+        let z_j_norm = en_general::z_j_kipveld(z_j_geometrisch_mm, i.momenten_knm);
+        let z_j_reken = en_general::z_j_rekenwaarde(z_j_norm);
+        k_red
+            * en_general::m_cr_monosymmetrisch(
+                i.c1, i.c2_tabel, c3,
+                i.l_kip_mm,
+                p.iz_mm4, p.iw_mm6, p.it_mm4,
+                z_g_mm, z_j_reken,
+            )
+    };
+    let v = maatgevend_kipveld(
+        velden, l_g_mm, q_equiv_n_per_mm, z_a_mm, p.h_mm, p.tf_mm, s_mm, m_cr_van,
+    );
+
+    // Dezelfde twee stappen nog eens, nu op het veld dat gewonnen heeft, zodat
+    // het rapport de gebruikte waarde mét teken kan tonen.
+    let z_j_norm_mm = en_general::z_j_kipveld(z_j_geometrisch_mm, v.momenten_knm);
+    let z_j_reken_mm = en_general::z_j_rekenwaarde(z_j_norm_mm);
+
+    let lambda_lt = lambda_chi::lambda_lt(p.wpl_y_mm3, grade.fy_mpa, v.m_cr_knm);
+    let kromme = kipkromme_tabel_6_5(profielsoort, p.h_mm, p.b_mm);
+    let alpha_lt = kromme.alpha();
+    let chi_lt = if lambda_lt < lambda_chi::LAMBDA_LT_0 {
+        1.0
+    } else {
+        lambda_chi::chi_lt(lambda_lt, alpha_lt)
+    };
+    let alpha_lt_herkomst = {
+        let a = nl(alpha_lt, 2);
+        let letter = kromme_letter(kromme);
+        let h_b = nl(if p.b_mm > 0.0 { p.h_mm / p.b_mm } else { f64::NAN }, 3);
+        match profielsoort {
+            Kipprofiel::GelasteI => format!(
+                "Gelast I-profiel met h/b = {h_b} → kipkromme {letter} volgens tabel 6.5; \
+                 α_LT = {a} volgens tabel 6.3. Tabel 6.5 onderscheidt gewalst en gelast, niet \
+                 dubbel- en monosymmetrisch; de rij voor gelaste I-profielen is daarom ook hier \
+                 aangehouden."
+            ),
+            Kipprofiel::GewalsteI => format!(
+                "Gewalst I-profiel met h/b = {h_b} → kipkromme {letter} volgens tabel 6.5; \
+                 α_LT = {a} volgens tabel 6.3."
+            ),
+            Kipprofiel::Overig => format!(
+                "Tabel 6.5 kent voor deze doorsnede geen rij — zij noemt alleen gewalste en \
+                 gelaste I-profielen. Aangehouden is kipkromme {letter} met α_LT = {a} \
+                 (tabel 6.3), de ongunstigste rij van de tabel. Dat is een expliciete \
+                 veilig-zijdige keuze buiten de tabel om, geen normwaarde."
+            ),
+        }
+    };
+
+    let m_b_rd_knm = chi_lt * p.wpl_y_mm3 * grade.fy_mpa / grade.gamma_m1 * 1e-6;
+    let m_y_ed_abs = force_state.forces.my_ed.abs();
+    let uc = if m_b_rd_knm > 0.0 { m_y_ed_abs / m_b_rd_knm } else { 0.0 };
+
+    let mono = deelstappen::Monogegevens {
+        z_j_geometrisch_mm,
+        z_j_norm_mm,
+        z_j_reken_mm,
+        z_g_mm,
+        z_s_rel_mm,
+        c3,
+        psi_f,
+        gedrukte_flens: v.gedrukte_flens,
+        // Dezelfde functie die `m_cr_monosymmetrisch` zelf aanroept, met de
+        // C₂ van het maatgevende veld: de afleiding toont zo exact het getal
+        // dat in M_cr is ingevuld.
+        d_mm: en_general::d_parameter(v.c2_tabel, z_g_mm, c3, z_j_reken_mm),
+    };
+
+    let intermediate_values = vec![
+        NamedValue { symbol: "L_g".to_string(), value: l_g_mm, unit: "mm".to_string() },
+        NamedValue { symbol: "L_{st}".to_string(), value: v.l_st_mm, unit: "mm".to_string() },
+        NamedValue { symbol: "L_{kip}".to_string(), value: v.l_kip_mm, unit: "mm".to_string() },
+        NamedValue { symbol: r"\beta".to_string(), value: v.beta, unit: "-".to_string() },
+        NamedValue { symbol: "B^*".to_string(), value: v.b_ster, unit: "-".to_string() },
+        NamedValue { symbol: "C_1".to_string(), value: v.c1, unit: "-".to_string() },
+        NamedValue { symbol: "C_{2,tabel}".to_string(), value: v.c2_tabel, unit: "-".to_string() },
+        NamedValue { symbol: "C_3".to_string(), value: mono.c3, unit: "-".to_string() },
+        NamedValue { symbol: "z_g".to_string(), value: z_g_mm, unit: "mm".to_string() },
+        NamedValue { symbol: "z_j".to_string(), value: z_j_reken_mm, unit: "mm".to_string() },
+        NamedValue { symbol: "k_{red}".to_string(), value: k_red, unit: "-".to_string() },
+        NamedValue { symbol: "M_{cr}".to_string(), value: v.m_cr_knm, unit: "kNm".to_string() },
+        NamedValue { symbol: r"\bar{\lambda}_{LT}".to_string(), value: lambda_lt, unit: "-".to_string() },
+        NamedValue { symbol: r"\alpha_{LT}".to_string(), value: alpha_lt, unit: "-".to_string() },
+        NamedValue { symbol: r"\chi_{LT}".to_string(), value: chi_lt, unit: "-".to_string() },
+    ];
+
+    StabilityCalc {
+        id: "6.3.2_ltb_monosymmetrisch".to_string(),
+        title: "Kip (monosymmetrische doorsnede)".to_string(),
+        article: "art. 6.3.2.2(2) + 6.3.2.3 (tabel 6.3/6.5); M_cr volgens de algemene \
+                  elastische formule, niet volgens bijlage NB.NB"
+            .to_string(),
+        force_state,
+        formula_latex: r"M_{b,Rd} = \chi_{LT} \cdot W_{pl,y} \cdot f_y / \gamma_{M1}".to_string(),
+        variables: vec![
+            NamedValue { symbol: "W_{pl,y}".to_string(), value: p.wpl_y_mm3, unit: "mm³".to_string() },
+            NamedValue { symbol: "f_y".to_string(), value: grade.fy_mpa, unit: "MPa".to_string() },
+            NamedValue { symbol: r"\gamma_{M1}".to_string(), value: grade.gamma_m1, unit: "-".to_string() },
+        ],
+        intermediate_values,
+        deelstappen: kip_deelstappen(&Kipgegevens {
+            p, grade, l_g_mm, v: &v,
+            q_equiv_n_per_mm, z_a_mm, s_mm, k_red,
+            lambda_lt, alpha_lt, chi_lt,
+            vorm: McrVorm::AlgemeenMonosymmetrisch,
+            alpha_lt_herkomst: alpha_lt_herkomst.clone(),
+            mono: Some(mono),
+        }),
+        value: m_b_rd_knm,
+        unit: "kNm".to_string(),
+        uc: Some(UnityCheck {
+            ed: m_y_ed_abs, rd: m_b_rd_knm,
+            formula_latex: r"M_{y,Ed} / M_{b,Rd}".to_string(),
+            uc,
+        }),
+        status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
+        notes: {
+            let mut n = vec![
+                "Deze doorsnede is monosymmetrisch om de buigingsas. NB.NB.1(1) verklaart de \
+                 rekenregels van bijlage NB.NB van toepassing op dubbelsymmetrische I-vormige \
+                 doorsneden en op buisprofielen met h/b > 3; dit geval valt daarbuiten en de \
+                 bijlage geeft er geen alternatief voor. M_cr is daarom bepaald met de algemene \
+                 elastische formule. Die voldoet aan de eis van art. 6.3.2.2(2), maar de \
+                 uitkomst is GEEN Nederlandse NB-waarde."
+                    .to_string(),
+                "De gebruikte vorm — M_cr = C₁·π²·E·I_z/L² · {√[I_w/I_z + L²·G·I_t/(π²·E·I_z) + \
+                 (C₂·z_g − C₃·z_j)²] − (C₂·z_g − C₃·z_j)} — is de dimensionele uitschrijving \
+                 van NEN-EN 1999-1-1 bijlage I, art. I.1.2(1), formules (I.2) en (I.3), met \
+                 k_z = k_w = 1 (vorkopleggingen, geen welvingsklemming). Bijlage I is daar \
+                 informatief."
+                    .to_string(),
+                alpha_lt_herkomst,
+                "C₁ en C₂ komen uit figuur NB.NB.5 en NB.NB.6 van de nationale bijlage, k_red \
+                 uit NB.NB.7/NB.NB.8. Dat mengt twee parametriseringen in één formule en is een \
+                 keuze: C₁ en C₂ hebben in beide dezelfde betekenis, en k_red is ≤ 1 en kan \
+                 M_cr dus alleen verlagen. De C-coëfficiënt van NB.NB.11 en de \
+                 doorsnedeparameter S rekenen hier NIET mee — die horen bij de NB-vorm, waarin \
+                 de welving via S wordt gevangen; hier staat I_w er zelf in."
+                    .to_string(),
+                "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet \
+                 toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig."
+                    .to_string(),
+            ];
+            if nb_annex::vereist_toets_gedrukte_rand(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm) {
+                n.push(
+                    "α > 5000 (NB.NB.4.2(3)): de nationale bijlage geeft hier geen \
+                     reductiefactor k_red. De gedrukte rand — de flens plus 1/6 van de \
+                     lijfhoogte — moet volgens 6.3.3 worden getoetst op druk en buiging uit het \
+                     vlak van het lijf."
+                        .to_string(),
+                );
+            }
+            if v.b_ster < -1e-9 {
+                n.push(
+                    "B* < 0: C₁ en C₂ zijn afgelezen bij |B*|. De negatieve tak van figuur \
+                     NB.NB.5/NB.NB.6 is niet gedigitaliseerd; deze benadering ligt onder de \
+                     werkelijke waarden en is dus veilig-zijdig, maar nog niet geverifieerd."
+                        .to_string(),
+                );
+            }
+            n.extend(nb_waarschuwingen(l_g_mm, &v, z_a_mm, p.h_mm, p.tf_mm));
+            n
+        },
+    }
+}
+
 /// Kipcontrole voor dubbelsymmetrische I-profielen volgens de Nederlandse
 /// nationale bijlage (NB.NB).
 ///
@@ -547,7 +928,7 @@ pub fn m_b_rd(
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
     let v = maatgevend_kipveld(
         velden, l_g_mm, q_equiv_n_per_mm, z_a_mm, p.h_mm, p.tf_mm, s_mm,
-        |c| nb_annex::m_cr_i_section(c, l_g_mm, p.iz_mm4, p.it_mm4, k_red),
+        |i| nb_annex::m_cr_i_section(i.c, l_g_mm, p.iz_mm4, p.it_mm4, k_red),
     );
 
     let lambda_lt = lambda_chi::lambda_lt(p.wpl_y_mm3, grade.fy_mpa, v.m_cr_knm);
@@ -621,6 +1002,7 @@ pub fn m_b_rd(
             lambda_lt, alpha_lt, chi_lt,
             vorm: McrVorm::DubbelsymmetrischeI,
             alpha_lt_herkomst: alpha_lt_herkomst.clone(),
+            mono: None,
         }),
         // `value` is de UITKOMST van `formula_latex`, en die formule is
         // M_b,Rd = χ_LT·W_pl,y·f_y/γ_M1. Hier stond χ_LT, en dat liep in beide
