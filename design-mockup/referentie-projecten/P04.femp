@@ -1,0 +1,431 @@
+{
+  "format": "open-fem2d-studio-v2",
+  "version": 2,
+  "savedAt": "2026-09-07T06:53:50.445Z",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3397,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 4050,
+      "z": 0
+    },
+    {
+      "id": 4,
+      "x": 5997,
+      "z": 0
+    },
+    {
+      "id": 5,
+      "x": 8100,
+      "z": 0
+    },
+    {
+      "id": 6,
+      "x": 3397,
+      "z": 2400
+    },
+    {
+      "id": 7,
+      "x": 5997,
+      "z": 2400
+    }
+  ],
+  "beams": [
+    {
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "material": "S235",
+      "profile": "IPE200",
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0,
+        "lateralRestraints": [
+          0.199882,
+          0.399764,
+          0.599647,
+          0.799529
+        ],
+        "lateralRestraintsBottom": [
+          0.199882,
+          0.399764,
+          0.599647,
+          0.799529
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "to": 3,
+      "material": "S235",
+      "profile": "EIGEN:Profiel 4",
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0
+      }
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "to": 4,
+      "material": "S235",
+      "profile": "EIGEN:Profiel 4",
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0,
+        "lateralRestraints": [
+          0.109913,
+          0.555213
+        ],
+        "lateralRestraintsBottom": [
+          0.109913,
+          0.555213
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "from": 4,
+      "to": 5,
+      "material": "S235",
+      "profile": "IPE200",
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0,
+        "lateralRestraints": [
+          0.250119,
+          0.500238,
+          0.750357
+        ],
+        "lateralRestraintsBottom": [
+          0.250119,
+          0.500238,
+          0.750357
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "from": 2,
+      "to": 6,
+      "material": "S235",
+      "profile": "SHS50X50X5",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      },
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0
+      }
+    },
+    {
+      "id": 6,
+      "from": 4,
+      "to": 7,
+      "material": "S235",
+      "profile": "SHS50X50X5",
+      "releases": {
+        "startRy": true,
+        "endRy": true
+      },
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0
+      }
+    },
+    {
+      "id": 7,
+      "from": 6,
+      "to": 7,
+      "material": "S235",
+      "profile": "HEA140",
+      "checkConfig": {
+        "deflectionClass": "roof",
+        "preCamber_mm": 0,
+        "lateralRestraints": [
+          0.333462,
+          0.666923
+        ],
+        "lateralRestraintsBottom": [
+          0.333462,
+          0.666923
+        ]
+      }
+    }
+  ],
+  "supports": [
+    {
+      "nodeId": 1,
+      "type": "pinned"
+    },
+    {
+      "nodeId": 3,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 5,
+      "type": "zRoller"
+    },
+    {
+      "nodeId": 6,
+      "type": "xRoller"
+    }
+  ],
+  "plates": [],
+  "loads": [
+    {
+      "id": 1,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -12.3,
+      "qDir": "z"
+    },
+    {
+      "id": 2,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 1,
+      "q": -1.5,
+      "qDir": "z"
+    },
+    {
+      "id": 3,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -8.6,
+      "qDir": "z"
+    },
+    {
+      "id": 4,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 1,
+      "q": -4.3,
+      "qDir": "z"
+    },
+    {
+      "id": 5,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 2,
+      "q": -1.5,
+      "qDir": "z"
+    },
+    {
+      "id": 6,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 2,
+      "q": -4.3,
+      "qDir": "z"
+    },
+    {
+      "id": 7,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 3,
+      "q": -1.5,
+      "qDir": "z"
+    },
+    {
+      "id": 8,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 3,
+      "q": -4.3,
+      "qDir": "z"
+    },
+    {
+      "id": 9,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 4,
+      "q": -12.3,
+      "qDir": "z"
+    },
+    {
+      "id": 10,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 4,
+      "q": -1.5,
+      "qDir": "z"
+    },
+    {
+      "id": 11,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 4,
+      "q": -8.6,
+      "qDir": "z"
+    },
+    {
+      "id": 12,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 4,
+      "q": -4.3,
+      "qDir": "z"
+    },
+    {
+      "id": 13,
+      "type": "lineLoad",
+      "caseId": 1,
+      "beamId": 7,
+      "q": -12.3,
+      "qDir": "z"
+    },
+    {
+      "id": 14,
+      "type": "lineLoad",
+      "caseId": 2,
+      "beamId": 7,
+      "q": -8.6,
+      "qDir": "z"
+    }
+  ],
+  "loadCases": [
+    {
+      "id": 1,
+      "name": "BG1 Permanent",
+      "type": "dead"
+    },
+    {
+      "id": 2,
+      "name": "BG2 Veranderlijk (A: woonfunctie, ψ0 = 0,40)",
+      "type": "live"
+    }
+  ],
+  "activeLoadCaseId": 1,
+  "selfWeightEnabled": false,
+  "nonlinearEnabled": true,
+  "combinations": [
+    {
+      "id": 1,
+      "name": "UGT 1 (6.10a)",
+      "type": "uls",
+      "formula": "1,22·BG1 + 0,40·1,35·BG2",
+      "factors": {
+        "1": 1.22,
+        "2": 0.54
+      }
+    },
+    {
+      "id": 2,
+      "name": "UGT 2 (6.10b)",
+      "type": "uls",
+      "formula": "1,08·BG1 + 1,35·BG2",
+      "factors": {
+        "1": 1.08,
+        "2": 1.35
+      }
+    },
+    {
+      "id": 3,
+      "name": "BGT 3 (permanent)",
+      "type": "sls",
+      "formula": "1,00·BG1",
+      "factors": {
+        "1": 1
+      }
+    },
+    {
+      "id": 4,
+      "name": "BGT 4 (quasi-blijvend)",
+      "type": "sls",
+      "formula": "1,00·BG1 + 0,30·BG2",
+      "factors": {
+        "1": 1,
+        "2": 0.3
+      }
+    },
+    {
+      "id": 5,
+      "name": "BGT 5 karakteristiek",
+      "type": "sls",
+      "formula": "1,00·BG1 + 1,00·BG2",
+      "factors": {
+        "1": 1,
+        "2": 1
+      }
+    }
+  ],
+  "scheefstandEnabled": false,
+  "scheefstandNoemer": 200,
+  "scheefstandRichting": 1,
+  "eigenDoorsneden": [
+    {
+      "id": "p04-profiel-4",
+      "naam": "Profiel 4",
+      "ontwerp": {
+        "soort": "samenstelling",
+        "lamellen": [],
+        "catalogusdelen": [],
+        "celMeenemen": false,
+        "lassen": []
+      },
+      "eigenschappen": {
+        "area_mm2": 5647.9,
+        "iy_mm4": 32991247,
+        "iz_mm4": 9334581,
+        "wel_y_mm3": 329912,
+        "wel_z_mm3": 108936,
+        "wpl_y_mm3": 399997,
+        "wpl_z_mm3": 196419,
+        "av_z_mm2": 2868,
+        "it_mm4": 70157,
+        "iw_mm6": 6438000000,
+        "iy_radius_mm": 76.4,
+        "iz_radius_mm": 40.7,
+        "h_mm": 200,
+        "b_mm": 100,
+        "tw_mm": 5.6,
+        "tf_mm": 8.5,
+        "r_mm": 12,
+        "av_y_mm2": 3240,
+        "y_c_mm": 34.32191266614208,
+        "z_c_mm": 0,
+        "wel_y_top_mm3": 329707.8501862085,
+        "wel_y_bot_mm3": 329707.85018620867,
+        "wel_z_left_mm3": 110667.42701184971,
+        "wel_z_right_mm3": 108921.3456211226,
+        "iyz_mm4": 0,
+        "iu_mm4": 32991247,
+        "iv_mm4": 9334581,
+        "alpha_hoofdas_rad": 0,
+        "y_s_mm": 34.32191266614208,
+        "z_s_mm": 0
+      },
+      "vorm": "GelasteIMonosymmetrisch",
+      "motor": {
+        "methode": "lamellen",
+        "wpl_bepaald": false,
+        "iw_bepaald": false,
+        "schuifmiddelpunt_bepaald": false,
+        "it_onzekerheid": 0,
+        "a_gaten_mm2": 0,
+        "y_min_mm": -85.7,
+        "y_max_mm": 84.3,
+        "z_min_mm": -100,
+        "z_max_mm": 100,
+        "delen": [],
+        "meldingen": []
+      },
+      "berekendOp": "2026-09-07T00:00:00.000Z"
+    }
+  ],
+  "toelichting": "Referentiegeval P04 uit het projectarchief (geanonimiseerd): portaal op een doorgaande onderligger, S235. Onderligger over drie steunpunten (0 / 4050 / 8100), IPE 200 — eigen doorsnede 'Profiel 4' — IPE 200; twee pendelkolommen SHS 50x50x5 op 3397 en 5997, 2400 mm hoog, met daarboven een HEA 140 van 2600 mm en een horizontale steun op de linker kolomkop. Het middelste stuk van de onderligger is hier op het tussensteunpunt geknipt omdat een oplegging in de app aan een knoop hangt. Eigen gewicht uit (de bron rekent 0 kg), 2e orde aan, scheefstand uit (zie het script). Combinaties conform NB (CC1): 1,22G+0,54Q; 1,08G+1,35Q; BGT G, G+0,3Q, G+Q."
+}
