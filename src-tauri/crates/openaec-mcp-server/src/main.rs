@@ -357,7 +357,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "generate_steel_report_pdf",
-            "description": "Generate a complete EN 1993-1-1 steel-check PDF report from a list of BeamCheckResult. Returns the PDF as base64 plus byte_count. Heavy operation — runs on a blocking task.",
+            "description": "Generate a complete constructive-check PDF report (EN 1993-1-1 steel, EN 1995-1-1 timber, EN 1992-1-1 concrete). Optionally include concrete_stiffness_trace to add the chapter on physically non-linear second-order analysis: the per-combination assumptions, the segment stiffness tables and the four concrete figures. Returns the PDF as base64 plus byte_count. Heavy operation — runs on a blocking task.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -366,7 +366,10 @@ fn tool_definitions() -> Value {
                     "engineer":            { "type": "string" },
                     "company":             { "type": "string" },
                     "date":                { "type": "string" },
-                    "steel_check_results": { "type": "array" }
+                    "steel_check_results": { "type": "array" },
+                    "timber_check_results":   { "type": "array" },
+                    "concrete_check_results": { "type": "array" },
+                    "concrete_stiffness_trace": { "type": "object" }
                 },
                 "required": [
                     "project_name", "project_number", "engineer",

@@ -220,10 +220,25 @@ catalogue values (no analytical helper exists yet — see "Known limitations").
 
 ### `generate_steel_report_pdf`
 
-Renders a complete EN 1993-1-1 PDF report (OpenAEC-branded, A4 portrait,
-multi-page) from a list of `BeamCheckResult` objects — typically the output
-of one or more prior `check_steel_beam` calls. Returns the PDF as base64
+Renders a complete constructive-check PDF report (OpenAEC-branded, A4 portrait,
+multi-page) from check results — typically the output of one or more prior
+`check_steel_beam` / `check_concrete_beam` calls. Returns the PDF as base64
 because MCP transports JSON, not binary.
+
+Despite the name, the report is material-neutral: `steel_check_results`
+(EN 1993-1-1) is required, `timber_check_results` (EN 1995-1-1) and
+`concrete_check_results` (EN 1992-1-1) are optional, and the cover only names
+the standards that are actually present.
+
+`concrete_stiffness_trace` is optional as well and adds the chapter "Beton —
+fysisch niet-lineaire tweede orde": per load combination the assumptions
+(analysis type, segment length, number of rounds, convergence criterion with
+the value reached), the segment stiffness table per member, and the four
+concrete figures — cross-section with cage, M-κ, N-M interaction and the EI
+distribution along the member. Its shape mirrors
+`design-mockup/src/stores/betonStijfheidStore.ts`; see `report::betonspoor`.
+Omit it and the chapter states, honestly, that no physically non-linear round
+was run.
 
 **Request**:
 ```json
@@ -235,7 +250,9 @@ because MCP transports JSON, not binary.
     "engineer":       "M. Vroegindeweij",
     "company":        "OpenAEC Foundation",
     "date":           "2026-05-16",
-    "steel_check_results": [ /* one or more BeamCheckResult objects */ ]
+    "steel_check_results": [ /* one or more BeamCheckResult objects */ ],
+    "concrete_check_results":   [ /* optional ConcreteBeamCheckResult objects */ ],
+    "concrete_stiffness_trace": { /* optional BetonStijfheidSpoor */ }
   }
 }
 ```
@@ -446,4 +463,7 @@ silently. The steel and concrete check tools run entirely in Rust, so
   Tauri command and the toetsbrug, so the MCP way is the missing third.
 - **A three-ways test for steel**, in the shape of `tests/drie_wegen_beton.rs`.
   Steel is the oldest engine here and the only one without that comparison.
-- **A concrete PDF report tool**, next to `generate_steel_report_pdf`.
+- ~~**A concrete PDF report tool**, next to `generate_steel_report_pdf`.~~
+  Done differently, and better: `generate_steel_report_pdf` itself now carries
+  concrete — the checks, the segment stiffness chapter and the four figures.
+  A second tool would have meant a second report for the same structure.

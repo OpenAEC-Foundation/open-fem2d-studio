@@ -49,4 +49,40 @@ pub trait Flowable: std::fmt::Debug + Send {
     fn is_page_break(&self) -> bool {
         false
     }
+
+    /// Mag dit element **niet** als laatste op een vel achterblijven?
+    ///
+    /// Een kop hoort bij wat eronder staat: een kop onderaan een bladzijde met
+    /// zijn tabel op de volgende is een aankondiging zonder inhoud. Het live
+    /// HTML-rapport lost dat op met de `KOP`-lijst in
+    /// `design-mockup/src/components/report/paginate.ts` — dezelfde regel,
+    /// daar op CSS-selectors en hier op de flowable zelf.
+    ///
+    /// De paginamotor van [`crate::doc_template::DocTemplate`] eist bij `true`
+    /// dat er ná deze kop — en ná de kopketen die er direct achter staat — nog
+    /// [`MIN_VERVOLG`](crate::doc_template::MIN_VERVOLG) aan ruimte op het vel
+    /// over is; anders verhuist de hele kopketen naar het volgende vel.
+    ///
+    /// Bewust GEEN eis dat het volgende element in zijn geheel past: een kop
+    /// boven een tabel van drie bladzijden zou dan eindeloos doorschuiven.
+    fn keep_with_next(&self) -> bool {
+        false
+    }
+
+    /// Hoeveel ruimte dit element minstens nodig heeft om ZINVOL TE BEGINNEN
+    /// op het vel waar een kop erboven staat.
+    ///
+    /// Voor alles wat kan splitsen — een alinea, een tabel — is dat een paar
+    /// regels: [`MIN_VERVOLG`](crate::doc_template::MIN_VERVOLG). Voor iets dat
+    /// NIET kan splitsen, zoals een figuur, is het de volle hoogte: een kop
+    /// bovenaan met de figuur op het volgende vel laat een halve bladzijde wit
+    /// achter, en dat is precies wat je op het gerenderde blad ziet en in de
+    /// code niet.
+    ///
+    /// Alleen gebruikt in de vooruitblik ná een kop. De paginamotor slaat die
+    /// vooruitblik over zodra het vel nog leeg is, dus een figuur die hoger is
+    /// dan een hele bladzijde kan hiermee niet in een lus terechtkomen.
+    fn min_start_height(&self) -> Pt {
+        crate::doc_template::MIN_VERVOLG
+    }
 }

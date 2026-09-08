@@ -33,6 +33,48 @@ fn camel_to_hyphen(name: &str) -> String {
     result
 }
 
+/// Hoeveel ruimte er ná een kop op hetzelfde vel over moet zijn.
+///
+/// Ongeveer twee regels lopende tekst (leading 12,5 pt) of één tabelregel. Het
+/// is met opzet een KLEIN getal en niet de hoogte van het volgende element:
+/// een kop boven een tabel van drie bladzijden moet gewoon blijven staan, en
+/// wat hier bewaakt wordt is de kop die als enige onderaan achterblijft.
+pub const MIN_VERVOLG: Pt = Pt(26.0);
+
+/// Hoeveel ruimte de kopketen die bij `idx` begint nodig heeft, ínclusief het
+/// begin van waar de kop bij hoort.
+///
+/// De keten is het element zelf plus alle direct erop volgende elementen die
+/// óók [`Flowable::keep_with_next`] zeggen — een `<h2>` gevolgd door een
+/// `<h3>` is één keten: verhuist de `h3`, dan moet de `h2` mee, anders staat
+/// die alsnog alleen onderaan. Daarbovenop komt
+/// [`Flowable::min_start_height`] van het eerste element dat GEEN kop is: voor
+/// een alinea of een tabel is dat [`MIN_VERVOLG`], voor een figuur — die niet
+/// kan splitsen — zijn volle hoogte.
+///
+/// `wrap` is hier nodig om die hoogtes te weten en verandert de opmaakstaat
+/// van de vooruitgekeken elementen; dat is ongevaarlijk omdat de paginamotor
+/// ze vlak daarna nog eens wrapt met de breedte en hoogte van hun eigen plek.
+fn kopketen_hoogte(
+    flowables: &mut [Box<dyn Flowable>],
+    idx: usize,
+    breedte: Pt,
+    hoogte: Pt,
+    ctx: &LayoutContext,
+) -> Pt {
+    let mut totaal = 0.0_f32;
+    let mut j = idx;
+    while j < flowables.len() && !flowables[j].is_page_break() && flowables[j].keep_with_next() {
+        totaal += flowables[j].wrap(breedte, hoogte, ctx).height.0;
+        j += 1;
+    }
+    if j < flowables.len() && !flowables[j].is_page_break() {
+        flowables[j].wrap(breedte, hoogte, ctx);
+        totaal += flowables[j].min_start_height().0;
+    }
+    Pt(totaal)
+}
+
 /// A rendered page (draw list + size).
 #[derive(Debug)]
 struct RenderedPage {
@@ -183,6 +225,18 @@ impl DocTemplate {
 
                 let remaining = Pt(inner_h.0 - cursor_y.0);
                 let size = flowable.wrap(inner_w, remaining, ctx);
+
+                // Een kop mag niet los onderaan een vel blijven staan. Staat er
+                // al iets op dit vel (anders zou de kop nergens heen kunnen),
+                // dan moet de hele kopketen plus MIN_VERVOLG nog passen.
+                if cursor_y.0 > 0.0
+                    && flowables[idx].keep_with_next()
+                    && kopketen_hoogte(&mut flowables, idx, inner_w, remaining, ctx).0
+                        > remaining.0
+                {
+                    break;
+                }
+                let flowable = &mut flowables[idx];
 
                 if size.height.0 <= remaining.0 {
                     // Fits entirely
@@ -654,5 +708,173 @@ impl DocTemplate {
                 }
             }
         }
+    }
+}
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::Frame;
+    use crate::paragraph::{Paragraph, ParagraphStyle};
+    use crate::spacer::Spacer;
+    use crate::types::{Rect, A4};
+
+    /// Een document met één vel van `hoogte` punten aan inhoudsruimte.
+    fn doc(hoogte: f32) -> DocTemplate {
+        let fonts = crate::fonts::shared_font_registry();
+        let mut d = DocTemplate::new("proef", fonts);
+        d.add_page_template(PageTemplate::new(
+            "content",
+            A4,
+            Frame::new(Rect::new(Pt(0.0), Pt(0.0), Pt(400.0), Pt(hoogte))),
+        ));
+        d
+    }
+
+    /// De teksten per vel, in tekenvolgorde.
+    fn teksten_per_vel(pagina: &[RenderedPage]) -> Vec<Vec<String>> {
+        pagina
+            .iter()
+            .map(|p| {
+                p.draw_list
+                    .ops
+                    .iter()
+                    .filter_map(|op| match op {
+                        DrawOp::DrawText { text, .. } => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn kop(tekst: &str) -> Box<dyn Flowable> {
+        Box::new(Paragraph::new(tekst, ParagraphStyle::default()).kop())
+    }
+
+    fn regel(tekst: &str) -> Box<dyn Flowable> {
+        Box::new(Paragraph::new(tekst, ParagraphStyle::default()))
+    }
+
+    /// Een figuur-achtig element: het splitst niet en eist zijn volle hoogte
+    /// zodra er een kop boven staat.
+    #[derive(Debug)]
+    struct Blok(Pt);
+    impl Flowable for Blok {
+        fn wrap(&mut self, breedte: Pt, _h: Pt, _ctx: &LayoutContext) -> Size {
+            Size::new(breedte, self.0)
+        }
+        fn draw(&self, _x: Pt, _y: Pt, dl: &mut DrawList) {
+            dl.draw_text(Pt(0.0), Pt(0.0), "BLOK");
+        }
+        fn height(&self) -> Pt {
+            self.0
+        }
+        fn min_start_height(&self) -> Pt {
+            self.0
+        }
+    }
+
+    #[test]
+    fn een_kop_met_ruimte_eronder_blijft_gewoon_staan() {
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![
+                Box::new(Spacer::new(Pt(140.0))),
+                kop("KOP"),
+                regel("inhoud"),
+            ],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert_eq!(t.len(), 1, "alles past op één vel, kreeg {}", t.len());
+        assert!(
+            t[0].contains(&"KOP".to_string()) && t[0].contains(&"inhoud".to_string()),
+            "kop en inhoud horen samen op vel 1: {t:?}"
+        );
+    }
+
+    #[test]
+    fn een_kop_zonder_ruimte_eronder_verhuist_mee_naar_het_volgende_vel() {
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![
+                Box::new(Spacer::new(Pt(175.0))),
+                kop("KOP"),
+                regel("inhoud"),
+            ],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert_eq!(t.len(), 2, "verwacht twee vellen, kreeg {}", t.len());
+        assert!(
+            !t[0].contains(&"KOP".to_string()),
+            "de kop bleef alleen onderaan vel 1 achter: {t:?}"
+        );
+        assert!(t[1].contains(&"KOP".to_string()), "de kop hoort op vel 2: {t:?}");
+        assert!(t[1].contains(&"inhoud".to_string()), "en zijn inhoud erbij: {t:?}");
+    }
+
+    #[test]
+    fn een_hele_kopketen_verhuist_en_niet_alleen_de_laatste() {
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![
+                Box::new(Spacer::new(Pt(150.0))),
+                kop("H2"),
+                kop("H3"),
+                regel("inhoud"),
+            ],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert!(
+            !t[0].contains(&"H2".to_string()) && !t[0].contains(&"H3".to_string()),
+            "een kop bleef achter op vel 1: {t:?}"
+        );
+        assert!(t[1].contains(&"H2".to_string()) && t[1].contains(&"H3".to_string()));
+    }
+
+    #[test]
+    fn een_kop_boven_iets_dat_niet_splitst_neemt_de_volle_hoogte_mee() {
+        // Er is nog 100 pt over; de kop past ruim, en er is meer dan MIN_VERVOLG
+        // vrij — maar het blok van 120 pt kan niet splitsen. Kop én blok horen
+        // dus naar het volgende vel, en niet de kop alleen.
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![
+                Box::new(Spacer::new(Pt(100.0))),
+                kop("KOP"),
+                Box::new(Blok(Pt(120.0))),
+            ],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert!(
+            !t[0].contains(&"KOP".to_string()),
+            "de kop bleef zonder zijn figuur op vel 1 staan: {t:?}"
+        );
+        assert!(
+            t[1].contains(&"KOP".to_string()) && t[1].contains(&"BLOK".to_string()),
+            "kop en figuur horen samen op vel 2: {t:?}"
+        );
+    }
+
+    #[test]
+    fn een_kop_bovenaan_een_leeg_vel_schuift_nooit_door() {
+        // Het blok is hoger dan een heel vel. De vooruitblik mag dan niet
+        // ingrijpen, anders schuift de kop eindeloos door.
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(vec![kop("KOP"), Box::new(Blok(Pt(400.0)))], &ctx);
+        let t = teksten_per_vel(&vellen);
+        assert!(t[0].contains(&"KOP".to_string()), "de kop hoort op vel 1: {t:?}");
+        assert!(vellen.len() <= 3, "onverwacht veel vellen: {}", vellen.len());
     }
 }

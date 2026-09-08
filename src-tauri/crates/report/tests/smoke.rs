@@ -91,6 +91,7 @@ fn produces_valid_pdf_header() {
         ],
         timber_check_results: vec![],
         concrete_check_results: vec![],
+        concrete_stiffness_trace: None,
     };
 
     let bytes = generate_report_pdf(input);

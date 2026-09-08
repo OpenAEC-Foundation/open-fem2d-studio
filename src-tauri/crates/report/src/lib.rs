@@ -7,8 +7,24 @@
 //! printpdf 0.7.
 //!
 //! Fonts: Liberation Sans (OFL), bundled via include_bytes!.
+//!
+//! # De betonkant
+//!
+//! Vier modules dragen samen het hoofdstuk "Beton — fysisch niet-lineaire
+//! tweede orde":
+//!
+//! * [`betonfiguren`] tekent de vier figuren native op een `DrawList`
+//!   (doorsnede met korf, M-κ, N-M-interactie en het EI-verloop);
+//! * [`figuur`] maakt daar een opmaakelement van dat meedoet in de paginering;
+//! * [`betonspoor`] is het invoertype van het segmentspoor — de spiegel van
+//!   `betonStijfheidStore` in de frontend;
+//! * [`betonhoofdstuk`] zet die drie om in het hoofdstuk zelf, en bepaalt of
+//!   het hoofdstuk überhaupt van toepassing is.
 
 pub mod betonfiguren;
+pub mod betonhoofdstuk;
+pub mod betonspoor;
+pub mod figuur;
 
 use openaec_layout::{
     doc_template::{DocTemplate, RawPage},
@@ -39,14 +55,14 @@ const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-BoldItal
 
 // ── OpenAEC colour palette ────────────────────────────────────────────────────
 
-const C_AMBER: Color = Color::rgb(217, 119, 6); //  #D97706
-const C_DEEP: Color = Color::rgb(54, 54, 62); //  #36363E
-const C_TEXT: Color = Color::rgb(38, 38, 46); //  near-black
-const C_MUTED: Color = Color::rgb(87, 83, 78); //  warm grey
-const C_OK: Color = Color::rgb(22, 163, 74); //  #16A34A
-const C_FAIL: Color = Color::rgb(220, 38, 38); //  #DC2626
-const C_HEADER_BG: Color = Color::rgb(245, 240, 230); //  faint warm tint
-const C_DIVIDER: Color = Color::rgb(217, 119, 6); //  amber rule
+pub(crate) const C_AMBER: Color = Color::rgb(217, 119, 6); //  #D97706
+pub(crate) const C_DEEP: Color = Color::rgb(54, 54, 62); //  #36363E
+pub(crate) const C_TEXT: Color = Color::rgb(38, 38, 46); //  near-black
+pub(crate) const C_MUTED: Color = Color::rgb(87, 83, 78); //  warm grey
+pub(crate) const C_OK: Color = Color::rgb(22, 163, 74); //  #16A34A
+pub(crate) const C_FAIL: Color = Color::rgb(220, 38, 38); //  #DC2626
+pub(crate) const C_HEADER_BG: Color = Color::rgb(245, 240, 230); //  faint warm tint
+pub(crate) const C_DIVIDER: Color = Color::rgb(217, 119, 6); //  amber rule
 
 // ── Input types ───────────────────────────────────────────────────────────────
 
@@ -78,15 +94,30 @@ pub struct ReportInput {
     /// De tweede orde is daarmee niet per se afwezig uit de BEREKENING: het
     /// analysetype "2e orde + fysisch" bepaalt de krachtsverdeling met de
     /// algemene methode van 5.8.6, via `concrete_check::segments` en de lus in
-    /// de frontend. Die segmenttabellen, hun convergentiespoor en de
-    /// verplichte kruipvermelding staan alleen in het LIVE rapport
-    /// (hoofdstuk "Beton — fysisch niet-lineaire tweede orde"); deze
-    /// PDF-invoer draagt uitsluitend toetsresultaten en dus geen van beide.
-    /// Wie ze in de PDF wil hebben, breidt `ReportInput` uit met het
-    /// `SegmentStiffnessResponse`-spoor per combinatie.
+    /// de frontend. Dat spoor reist mee in [`Self::concrete_stiffness_trace`],
+    /// en daaruit bouwt [`crate::betonhoofdstuk`] het hoofdstuk "Beton —
+    /// fysisch niet-lineaire tweede orde" mét de vier figuren.
     #[serde(default)]
     #[ts(as = "Option<Vec<ConcreteBeamCheckResult>>", optional)]
     pub concrete_check_results: Vec<ConcreteBeamCheckResult>,
+    /// Het segmentspoor van de fysisch niet-lineaire tweede orde: per
+    /// belastingcombinatie de segmenttabel van de laatste ronde, het
+    /// convergentieverloop, de doorsnede en de korf per staaf, en de
+    /// verplichte kruipvermelding zoals de kern die teruggeeft.
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij hout en beton: een
+    /// bestaande aanroep zonder dit veld blijft geldig, en in TypeScript is
+    /// het daarom optioneel.
+    ///
+    /// Ontbreekt het spoor, dan blijft het betonhoofdstuk weg wanneer er ook
+    /// geen betontoetsingen zijn; zijn die er wél, dan staat het hoofdstuk er
+    /// met de eerlijke melding dat er niet fysisch gerekend is. Dat verschil is
+    /// hetzelfde onderscheid dat `design-mockup/src/lib/sectieRelevantie.ts`
+    /// maakt: "kan dit model dit ooit vullen" laat een hoofdstuk weg, "is het
+    /// nu leeg" is een rekenstand en laat het staan.
+    #[serde(default)]
+    #[ts(optional)]
+    pub concrete_stiffness_trace: Option<betonspoor::BetonStijfheidSpoor>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -221,7 +252,7 @@ fn full_norm_designations(input: &ReportInput) -> Vec<&'static str> {
 // Stylesheet palette — some helpers are unused right now but kept so the
 // cover/page-decoration code can pick them up without re-deriving values.
 #[allow(dead_code)]
-fn style_h1() -> ParagraphStyle {
+pub(crate) fn style_h1() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(22.0),
@@ -234,7 +265,7 @@ fn style_h1() -> ParagraphStyle {
     }
 }
 
-fn style_h2() -> ParagraphStyle {
+pub(crate) fn style_h2() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(14.0),
@@ -247,7 +278,7 @@ fn style_h2() -> ParagraphStyle {
     }
 }
 
-fn style_h3() -> ParagraphStyle {
+pub(crate) fn style_h3() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(11.0),
@@ -261,7 +292,7 @@ fn style_h3() -> ParagraphStyle {
 }
 
 #[allow(dead_code)]
-fn style_label() -> ParagraphStyle {
+pub(crate) fn style_label() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(8.5),
@@ -273,7 +304,7 @@ fn style_label() -> ParagraphStyle {
     }
 }
 
-fn style_body() -> ParagraphStyle {
+pub(crate) fn style_body() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(9.5),
@@ -284,7 +315,7 @@ fn style_body() -> ParagraphStyle {
     }
 }
 
-fn style_mono() -> ParagraphStyle {
+pub(crate) fn style_mono() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(8.5),
@@ -295,7 +326,7 @@ fn style_mono() -> ParagraphStyle {
     }
 }
 
-fn style_note() -> ParagraphStyle {
+pub(crate) fn style_note() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(7.5),
@@ -307,7 +338,7 @@ fn style_note() -> ParagraphStyle {
     }
 }
 
-fn style_amber_value() -> ParagraphStyle {
+pub(crate) fn style_amber_value() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(10.0),
@@ -319,7 +350,7 @@ fn style_amber_value() -> ParagraphStyle {
     }
 }
 
-fn style_uc(uc_color: Color) -> ParagraphStyle {
+pub(crate) fn style_uc(uc_color: Color) -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
         font_size: Pt(9.5),
@@ -389,10 +420,9 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 
     let mut flow: Vec<Box<dyn Flowable>> = Vec::new();
 
-    flow.push(Box::new(Paragraph::new(
-        "Summary — Unity Checks",
-        style_h2(),
-    )));
+    flow.push(Box::new(
+        Paragraph::new("Summary — Unity Checks", style_h2()).kop(),
+    ));
     flow.push(Box::new(Spacer::from_mm(2.0)));
 
     flow.push(Box::new(build_summary_table(&members)));
@@ -401,23 +431,31 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     for (idx, m) in members.iter().enumerate() {
         flow.push(Box::new(PageBreak));
 
-        flow.push(Box::new(Paragraph::new(
-            format!(
-                "{}. Beam {} — {} ({})    [{}]",
-                idx + 1,
-                m.beam_id,
-                m.section_label,
-                m.grade_label,
-                m.norm
-            ),
-            style_h2(),
-        )));
+        flow.push(Box::new(
+            Paragraph::new(
+                format!(
+                    "{}. Beam {} — {} ({})    [{}]",
+                    idx + 1,
+                    m.beam_id,
+                    m.section_label,
+                    m.grade_label,
+                    m.norm
+                ),
+                style_h2(),
+            )
+            .kop(),
+        ));
         flow.push(Box::new(Spacer::from_mm(3.0)));
 
         for nc in m.checks {
             extend_with_check_block(&mut flow, &nc.kind);
         }
     }
+
+    // 4b. Beton — fysisch niet-lineaire tweede orde: de segmenttabellen, het
+    //     convergentiespoor en de vier figuren. Blijft in zijn geheel weg bij
+    //     een rapport zonder beton; zie `betonhoofdstuk::van_toepassing`.
+    betonhoofdstuk::extend_with_betonhoofdstuk(&mut flow, &input);
 
     // 5. Render.
     doc.build_to_bytes(flow).expect("openaec-layout build")

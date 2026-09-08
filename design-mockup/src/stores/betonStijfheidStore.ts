@@ -28,7 +28,9 @@
  */
 import { create } from "zustand";
 import type { CheckSkip } from "../lib/checkTypes";
+import type { ConcreteSectionInput } from "../lib/types/concrete/ConcreteSectionInput";
 import type { NonlinearBasis } from "../lib/types/concrete/NonlinearBasis";
+import type { ReinforcementCage } from "../lib/types/concrete/ReinforcementCage";
 import type { SegmentStiffnessResponse } from "../lib/types/concrete/SegmentStiffnessResponse";
 
 /** Eén ronde van de lus, zoals het rapport de convergentie laat zien. */
@@ -63,6 +65,25 @@ export interface StijfheidCombinatie {
   staven: SegmentStiffnessResponse[];
 }
 
+/**
+ * De doorsnede en de wapeningskorf van één meerekenende staaf.
+ *
+ * WAAROM DIT NAAST DE ANTWOORDEN STAAT. Het kernantwoord draagt de doorsnede
+ * alleen als NAAM ("300 x 500") en de korf alleen als zin ("onder 3Ø16, …").
+ * Het live rapport plakt die twee met een reguliere expressie weer uit elkaar
+ * om te kunnen tekenen — de terugvaloptie voor een losgekoppeld venster zonder
+ * modelstate. De PDF-uitdraai hoeft die noodgreep niet te herhalen: de
+ * rekengang HEEFT de doorsnede en de korf al als gegeven, en een tweede parser
+ * op een zin die de kern zelf samenstelt is precies de dubbele waarheid die
+ * dit project elders vermijdt. Vandaar dat ze hier bewaard worden.
+ */
+export interface BetonStaafDoorsnedeInvoer {
+  beamId: number;
+  /** Zoals de kern hem kreeg — bij een T of L dus mét de gebruikte b_eff. */
+  doorsnede: ConcreteSectionInput;
+  korf: ReinforcementCage;
+}
+
 export interface BetonStijfheidState {
   /** De gewenste segmentlengte waarmee gerekend is, mm (besluit B3). */
   segmentLengteMm: number;
@@ -74,6 +95,11 @@ export interface BetonStijfheidState {
    * over een betonstaaf heen stappen.
    */
   overgeslagen: CheckSkip[];
+  /**
+   * De doorsnede en korf per meerekenende staaf — alleen nodig om te TEKENEN
+   * (de doorsnedefiguur in de PDF-uitdraai). Geen rekengegeven.
+   */
+  staafdoorsneden: BetonStaafDoorsnedeInvoer[];
   /** Tijdstip van de rekengang, of null wanneer er niets staat. */
   berekendOp: number | null;
 
@@ -81,6 +107,7 @@ export interface BetonStijfheidState {
     segmentLengteMm: number;
     combinaties: StijfheidCombinatie[];
     overgeslagen: CheckSkip[];
+    staafdoorsneden: BetonStaafDoorsnedeInvoer[];
   }) => void;
   /** Wis het spoor (modelwijziging, ander analysetype, mislukte rekengang). */
   clear: () => void;
@@ -90,13 +117,20 @@ const LEEG = {
   segmentLengteMm: 0,
   combinaties: [] as StijfheidCombinatie[],
   overgeslagen: [] as CheckSkip[],
+  staafdoorsneden: [] as BetonStaafDoorsnedeInvoer[],
   berekendOp: null as number | null,
 };
 
 export const useBetonStijfheidStore = create<BetonStijfheidState>((set) => ({
   ...LEEG,
-  zet: ({ segmentLengteMm, combinaties, overgeslagen }) =>
-    set({ segmentLengteMm, combinaties, overgeslagen, berekendOp: Date.now() }),
+  zet: ({ segmentLengteMm, combinaties, overgeslagen, staafdoorsneden }) =>
+    set({
+      segmentLengteMm,
+      combinaties,
+      overgeslagen,
+      staafdoorsneden,
+      berekendOp: Date.now(),
+    }),
   clear: () =>
     // Alleen schrijven wanneer er iets stond: `clear()` loopt bij elke
     // modelwijziging langs, en een gelijke set zou elke abonnee (het

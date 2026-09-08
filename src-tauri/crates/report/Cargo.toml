@@ -24,5 +24,12 @@ nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
 
 [dev-dependencies]
 mechanics = { path = "../mechanics" }
+# Alleen voor de PDF-proef in `tests/betonhoofdstuk_pdf.rs`: die pakt de
+# gerenderde PDF weer uit en zoekt de woorden van het hoofdstuk terug in de
+# inhoudsstroom. `lopdf` decomprimeert de stroom, `ttf-parser` vertaalt een
+# woord naar de glief-nummers waarmee het in de PDF staat. Beide zitten al in
+# de afhankelijkheidsboom (printpdf gebruikt ze), dus dit kost geen nieuwe crate.
+lopdf = "0.31"
+ttf-parser = "0.25"
 nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 serde_json = { workspace = true }

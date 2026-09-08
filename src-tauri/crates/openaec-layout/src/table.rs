@@ -150,24 +150,35 @@ impl Table {
         let char_width = font_size.0 * 0.5;
         let max_chars = (usable_width / char_width).max(1.0) as usize;
 
-        if text.len() <= max_chars {
+        // Tellen in TEKENS, niet in bytes. Een cel met κ, ζ, ², Ø of een
+        // gedachtestreepje telde als breder dan hij is, en — erger — een
+        // afbreekpunt op een byte-index kon MIDDEN IN zo'n teken vallen. Dat is
+        // geen schoonheidsfout maar een paniek in `remaining[..split_at]`,
+        // precies waar een rapport met Griekse symbolen in de tabelkop komt.
+        if text.chars().count() <= max_chars {
             return vec![text.to_string()];
+        }
+
+        /// De byte-index van het `n`-de teken, of het einde van de tekst.
+        fn byte_index(s: &str, n: usize) -> usize {
+            s.char_indices().nth(n).map(|(i, _)| i).unwrap_or(s.len())
         }
 
         let mut lines = Vec::new();
         let mut remaining = text;
 
         while !remaining.is_empty() {
-            if remaining.len() <= max_chars {
+            if remaining.chars().count() <= max_chars {
                 lines.push(remaining.to_string());
                 break;
             }
 
             // Find last space within max_chars
-            let split_at = remaining[..max_chars.min(remaining.len())]
+            let grens = byte_index(remaining, max_chars);
+            let split_at = remaining[..grens]
                 .rfind(' ')
                 .map(|pos| pos + 1)
-                .unwrap_or(max_chars.min(remaining.len()));
+                .unwrap_or(grens);
 
             lines.push(remaining[..split_at].trim_end().to_string());
             remaining = remaining[split_at..].trim_start();

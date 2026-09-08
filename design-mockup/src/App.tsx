@@ -891,6 +891,14 @@ function App() {
       segmentLengteMm: fem.betonSegmentLengteMm,
       combinaties: spoor,
       overgeslagen,
+      // De doorsnede en de korf waarmee gerekend is. Alleen om te TEKENEN in de
+      // PDF-uitdraai; het kernantwoord draagt ze niet, en ze uit `section_name`
+      // en `reinforcement_summary` terugparsen zou een tweede waarheid zijn.
+      staafdoorsneden: staven.map((s) => ({
+        beamId: s.beamId,
+        doorsnede: s.doorsnede,
+        korf: s.korf,
+      })),
     });
     const combinationResults = new Map(
       fem.actieveCombinaties.map(c => [c.id, combineResults(c, outputs.perCase)]),

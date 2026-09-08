@@ -60,6 +60,8 @@ pub struct Paragraph {
     lines: Vec<TextLine>,
     wrapped_width: Pt,
     wrapped_height: Pt,
+    /// Zie [`Flowable::keep_with_next`] — een kop blijft bij zijn inhoud.
+    keep_with_next: bool,
 }
 
 impl Paragraph {
@@ -70,7 +72,15 @@ impl Paragraph {
             lines: Vec::new(),
             wrapped_width: Pt::ZERO,
             wrapped_height: Pt::ZERO,
+            keep_with_next: false,
         }
+    }
+
+    /// Merk deze alinea als KOP: hij mag niet los onderaan een vel blijven
+    /// staan. Zie [`Flowable::keep_with_next`].
+    pub fn kop(mut self) -> Self {
+        self.keep_with_next = true;
+        self
     }
 
     /// Create with default style.
@@ -297,6 +307,9 @@ impl Flowable for Paragraph {
 
         let mut first = Paragraph::new(first_text, first_style);
         let mut second = Paragraph::new(second_text, second_style);
+        // De tweede helft erft de kopstatus: een gesplitste kop hoort nog
+        // steeds bij wat eronder komt.
+        second.keep_with_next = self.keep_with_next;
 
         // Pre-wrap both parts
         first.wrap(available_width, Pt(f32::MAX), ctx);
@@ -307,6 +320,10 @@ impl Flowable for Paragraph {
 
     fn height(&self) -> Pt {
         self.wrapped_height
+    }
+
+    fn keep_with_next(&self) -> bool {
+        self.keep_with_next
     }
 }
 

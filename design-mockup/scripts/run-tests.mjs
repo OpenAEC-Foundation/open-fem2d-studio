@@ -147,6 +147,10 @@ const ALLEEN_BRON = new Map([
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
   ["spanning-builder", "test de invoerbouwer voor de spanningstoets, niet de solver"],
   [
+    "rapportpdf-invoer",
+    "zet de stores om naar de invoer van de PDF-uitdraai (`lib/rapportPdfInvoer`) — rapportagelogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
+  ],
+  [
     "sectierelevantie",
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],

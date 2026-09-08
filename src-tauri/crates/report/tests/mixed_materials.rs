@@ -143,6 +143,10 @@ fn input_alle(
         steel_check_results: steel,
         timber_check_results: timber,
         concrete_check_results: concrete,
+        // Deze test gaat over de materiaal-neutrale renderer, niet over het
+        // segmentspoor; het betonhoofdstuk blijft dus op de "niet fysisch
+        // gerekend"-melding staan.
+        concrete_stiffness_trace: None,
     }
 }
 
@@ -240,8 +244,13 @@ fn betonrapport_rendert_geldige_pdf() {
 
     assert!(bytes.starts_with(b"%PDF-"), "PDF-magic ontbreekt");
     assert!(bytes.windows(5).any(|w| w == b"%%EOF"), "%%EOF-trailer ontbreekt");
-    // Cover (1) + samenvatting (1) + één betonstaaf.
-    assert_eq!(count_pages(&bytes), 3);
+    // Cover (1) + samenvatting (1) + één betonstaaf (1) + het betonhoofdstuk
+    // (1). Dat laatste hoort erbij zodra er beton in het rapport zit, óók
+    // zonder segmentspoor: het MODEL kan dit hoofdstuk vullen, en dat het nu
+    // leeg is, is een rekenstand. Het hoofdstuk zegt dan met zoveel woorden dat
+    // er niet fysisch niet-lineair gerekend is — zie
+    // `betonhoofdstuk::van_toepassing` en `tests/betonhoofdstuk_pdf.rs`.
+    assert_eq!(count_pages(&bytes), 4);
 }
 
 #[test]
