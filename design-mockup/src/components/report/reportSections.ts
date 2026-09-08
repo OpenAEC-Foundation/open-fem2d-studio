@@ -26,6 +26,20 @@
  *
  * Het type is een VOORINSTELLING, geen slot: na het toepassen kan elke
  * sectie los aan of uit (ReportPreview laat dan "aangepast" zien).
+ *
+ * VAN TOEPASSING OF NIET
+ * ----------------------
+ * Naast "staat hij aan" heeft een sectie een tweede vraag: KAN dit model dit
+ * hoofdstuk vullen? Een zuiver stalen raamwerk hoort geen hoofdstuk Beton en
+ * geen hoofdstuk Kruislaaghout te krijgen, ook niet met één regel "geen".
+ * Secties die daar last van hebben dragen daarom een `nietVanToepassing`: een
+ * zuivere functie van het model naar de REDEN waarom ze wegblijven (of `null`
+ * wanneer ze meedoen). De regels zelf staan in lib/sectieRelevantie.ts, met
+ * hun onderbouwing.
+ *
+ * Het oordeel is AFGELEID en wordt nooit in `hiddenSections` geschreven: een
+ * betonstaaf toevoegen brengt het hoofdstuk meteen terug, en "aangepast" blijft
+ * betekenen dat de gebruiker iets veranderd heeft.
  */
 import type { ComponentType } from "react";
 import ProjectSection from "./sections/ProjectSection";
@@ -48,6 +62,16 @@ import CltSection from "./sections/CltSection";
 import BetonSection from "./sections/BetonSection";
 import BetonStijfheidSection from "./sections/BetonStijfheidSection";
 import SpanningSection from "./sections/SpanningSection";
+import {
+  nvtBeton,
+  nvtBetonStijfheid,
+  nvtKruislaaghout,
+  nvtPlaatspanningen,
+  nvtPlaten,
+  nvtSpanningstoets,
+  type RapportGegevens,
+  type SectieOordeel,
+} from "../../lib/sectieRelevantie";
 
 export interface ReportSectionDef {
   /** Stabiel id — sleutel voor de aan/uit-toggle in de reportStore. */
@@ -60,6 +84,13 @@ export interface ReportSectionDef {
   inBeperkt: boolean;
   /** Waarom wel/niet — de onderbouwing hoort bij de sectie, niet in een lijst. */
   beperktReden: string;
+  /**
+   * Kan dit model deze sectie vullen? Geeft de REDEN terug wanneer er niets te
+   * tonen valt, en `null` wanneer de sectie meedoet. Ontbreekt de functie, dan
+   * is de sectie altijd van toepassing — dat is de stand voor alles wat elk
+   * model heeft (projectgegevens, knopen, staven, resultaten).
+   */
+  nietVanToepassing?: (g: RapportGegevens) => SectieOordeel;
   /** De sectie-inhoud zelf (rendert ook zijn eigen kop). */
   Component: ComponentType;
 }
@@ -118,6 +149,7 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
     defaultTitle: "Platen",
     inBeperkt: false,
     beperktReden: "Uitgebreide invoertabel (mesh- en plaatgegevens).",
+    nietVanToepassing: nvtPlaten,
     Component: PlatesSection,
   },
   {
@@ -211,6 +243,7 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
     inBeperkt: false,
     beperktReden:
       "Detailuitvoer per plaatelement; hoort bij de volledige berekening.",
+    nietVanToepassing: nvtPlaatspanningen,
     Component: PlateStressSection,
   },
   {
@@ -244,6 +277,7 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "Detailuitvoer per laag (spanningsverloop, rolschuif): verantwoording " +
       "voor de controlerend constructeur; de UC van de staaf staat al in het " +
       "toetsingsoverzicht.",
+    nietVanToepassing: nvtKruislaaghout,
     Component: CltSection,
   },
   // Beton: de doorsnede met de wapeningskorf, het M-κ-diagram, het
@@ -259,6 +293,7 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "de doorsnede op M en N, en een ontvanger die dat niet leest kan denken " +
       "dat de betonstaaf compleet is nagerekend. Dat weegt zwaarder dan de " +
       "regel dat detailuitvoer buiten het beperkte rapport blijft.",
+    nietVanToepassing: nvtBeton,
     Component: BetonSection,
   },
   // De fysisch niet-lineaire tweede orde: per combinatie de segmentindeling,
@@ -278,6 +313,7 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "opdrachtgever. Wat de ontvanger moet weten (dat er zonder kruip " +
       "gerekend is, en dat dat voor blijvend belaste kolommen aan de " +
       "onveilige kant is) staat óók in het beperkingenblok van de betonsectie.",
+    nietVanToepassing: nvtBetonStijfheid,
     Component: BetonStijfheidSection,
   },
   // Vrije spanningstoets: de doorsnede met het spanningsverloop. Rendert
@@ -291,6 +327,7 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "Detailuitvoer per doorsnede (σx-, τ- en σeq-verloop over de hoogte): " +
       "verantwoording voor de controlerend constructeur; de UC van de staaf " +
       "staat al in het toetsingsoverzicht.",
+    nietVanToepassing: nvtSpanningstoets,
     Component: SpanningSection,
   },
 ];

@@ -444,6 +444,8 @@
     "envelopePlatesTitle": "Envelope (min/max over all combinations)",
     "plateStressNote": "Stresses in N/mm², element-averaged over the analysis mesh; min/max per plate — the same values as the contour legend on the canvas. The governing element is the element with the largest von Mises stress.",
     "sectionsHint2": "Checkbox: include or not. Name: jump to it.",
+    "sectionsHintNvt": "Struck through: this model cannot fill that chapter, so it is left out of the report. Hover it for the reason.",
+    "sectionNvtLabel": "n/a",
     "jumpTo": "Jump to this chapter",
     "sheets": "sheets",
     "pageOf": "of",

@@ -161,6 +161,37 @@
   opacity: 0.6;
 }
 
+/*
+ * Een sectie die dit model niet kan vullen (geen beton, geen platen — zie
+ * lib/sectieRelevantie). Hij blijft in de lijst staan, want de zijbalk is een
+ * bedieningspaneel: een schakelaar die verdwijnt laat iemand ernaar zoeken.
+ * Gedempt en niet aanklikbaar, met de reden in de tooltip — dezelfde greep als
+ * een overgeslagen belastingcombinatie in de projectboom. De cursor is `help`
+ * en niet `not-allowed`: er valt hier iets te lezen, niets te forceren.
+ */
+.report-section-toggle.is-nvt {
+  opacity: 0.55;
+  cursor: help;
+}
+
+.report-section-toggle.is-nvt input[type="checkbox"],
+.report-section-toggle.is-nvt .report-section-link {
+  cursor: help;
+}
+
+/* De aanduiding achter de naam: klein en kleurloos, zoals de badge van een
+   overgeslagen combinatie in de projectboom. */
+.report-section-nvt {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--theme-text-faint);
+  padding: 1px 5px;
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
 .report-reset-btn {
   font-size: 11px;
   background: transparent;

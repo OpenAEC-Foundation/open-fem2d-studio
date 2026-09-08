@@ -41,6 +41,7 @@ import {
   REPORT_ZOOM_STAP,
 } from "../../stores/reportStore";
 import { REPORT_SECTIONS } from "./reportSections";
+import { useSectieRelevantie } from "./useSectieRelevantie";
 import { useProjectInfo } from "./useProjectInfo";
 import { useReportData } from "./ReportDataContext";
 import { pagineer, koppelBedieningsDoorgifte } from "./paginate";
@@ -145,7 +146,16 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
   ].filter((r): r is [string, string] => !!r[1]);
   const kopBedrijf = info.reportHeader || info.company;
 
-  const sections = REPORT_SECTIONS.filter((s) => isSectionEnabled(hiddenSections, s.id));
+  // Twee zeven, en de volgorde doet er niet toe: staat de sectie aan (keuze van
+  // de gebruiker), en kan dit model haar vullen (eigenschap van het model, zie
+  // lib/sectieRelevantie). Wat hier wegvalt, valt daarmee ook uit de
+  // inhoudsopgave en uit de hoofdstuknummering — die worden na het pagineren
+  // uit de gebouwde vellen afgelezen (paginate.leesKoppen → toc.ts), dus een
+  // weggelaten hoofdstuk laat geen gat en geen overgeslagen nummer achter.
+  const nietVanToepassing = useSectieRelevantie(data);
+  const sections = REPORT_SECTIONS.filter(
+    (s) => isSectionEnabled(hiddenSections, s.id) && !nietVanToepassing.has(s.id),
+  );
 
   // ─── Opmaak-variabelen: sturen zowel de meetcontainer als de vellen ───
   const shellStyle = {

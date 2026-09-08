@@ -146,6 +146,10 @@ const ALLEEN_BRON = new Map([
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
   ["spanning-builder", "test de invoerbouwer voor de spanningstoets, niet de solver"],
+  [
+    "sectierelevantie",
+    "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
+  ],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
   ["modelmapping", "vergelijkt de bronmapping met een gouden JSON"],
   [

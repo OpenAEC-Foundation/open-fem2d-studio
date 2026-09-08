@@ -16,6 +16,13 @@
  *    live door: op scherm via CSS-variabelen op het vel, in print via de
  *    dynamische @page-regel. Elke wijziging herpagineert de proef.
  *
+ * Een sectie die dit model niet kan vullen (het hoofdstuk Beton in een zuiver
+ * stalen raamwerk) valt uit het rapport, maar NIET uit deze lijst. De zijbalk
+ * is een bedieningspaneel en geen rapport: een schakelaar die verdwijnt laat
+ * iemand zoeken naar iets wat er wél was. Hij blijft dus staan — doorgehaald,
+ * gedempt, niet aanklikbaar, met "n.v.t." erachter en de reden als tooltip,
+ * precies zoals de projectboom een overgeslagen belastingcombinatie toont.
+ *
  * Bij het rapporttype staat ook de staafkeuze: per getoetste staaf een vinkje
  * dat bepaalt of de uitgebreide toetsingsuitvoer (de afleidingen) van díé
  * staaf in het rapport komt. Dat is bewust een keuze per staaf en niet per
@@ -45,6 +52,8 @@ import {
 } from "../report/reportSections";
 import ReportShell from "../report/ReportShell";
 import { scrollNaarSectie } from "../report/paginate";
+import { useSectieRelevantie } from "../report/useSectieRelevantie";
+import { LABEL_NIET_VAN_TOEPASSING } from "../../lib/sectieRelevantie";
 import {
   ReportDataProvider,
   EMPTY_REPORT_DATA,
@@ -112,6 +121,11 @@ interface ReportPreviewProps {
 export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const { t } = useTranslation("ribbon");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Welke hoofdstukken dit model niet kan vullen, met reden. Dezelfde hook die
+  // ReportShell gebruikt om ze uit het rapport te laten, zodat de zijbalk
+  // precies dempt wat het document weglaat.
+  const nietVanToepassing = useSectieRelevantie(data ?? EMPTY_REPORT_DATA);
 
   const hiddenSections = useReportStore((s) => s.hiddenSections);
   const setSectionEnabled = useReportStore((s) => s.setSectionEnabled);
@@ -305,23 +319,40 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
               {t(
                 "report.sectionsHint2",
                 "Vinkje: in het rapport of niet. Naam: spring ernaartoe.",
-              )}
+              )}{" "}
+              {/* Alleen tonen als er werkelijk iets doorgehaald staat —
+                  anders is dit een zin over iets wat niet te zien is. */}
+              {nietVanToepassing.size > 0 &&
+                t(
+                  "report.sectionsHintNvt",
+                  "Doorgehaald: dit model kan dat hoofdstuk niet vullen, dus het staat niet in het rapport. Wijs het aan voor de reden.",
+                )}
             </p>
 
             <div className="report-section-list">
               {REPORT_SECTIONS.map(({ id, titleKey, defaultTitle }) => {
-                const aan = isSectionEnabled(hiddenSections, id);
+                // De reden waarom dit model dit hoofdstuk niet kan vullen, of
+                // undefined wanneer het gewoon meedoet.
+                const nvt = nietVanToepassing.get(id);
+                const aan = isSectionEnabled(hiddenSections, id) && !nvt;
                 const naam = t(titleKey, defaultTitle);
                 return (
                   <div
                     key={id}
                     className={`report-section-toggle${
                       actieveSectie === id ? " is-actief" : ""
-                    }`}
+                    }${nvt ? " is-nvt" : ""}`}
+                    title={nvt}
                   >
+                    {/* Het vinkje van een niet-toepasselijke sectie staat uit
+                        en is niet te bedienen: aanzetten zou niets opleveren.
+                        De opgeslagen keuze blijft er wél onder liggen, dus
+                        zodra het model het hoofdstuk weer kan vullen, staat
+                        het weer zoals de gebruiker het had. */}
                     <input
                       type="checkbox"
                       checked={aan}
+                      disabled={!!nvt}
                       aria-label={naam}
                       onChange={(e) => setSectionEnabled(id, e.target.checked)}
                     />
@@ -332,10 +363,15 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
                       className="report-section-link"
                       disabled={!aan}
                       onClick={() => scrollNaarSectie(id)}
-                      title={t("report.jumpTo", "Spring naar dit hoofdstuk")}
+                      title={nvt ?? t("report.jumpTo", "Spring naar dit hoofdstuk")}
                     >
-                      {naam}
+                      {nvt ? <s>{naam}</s> : naam}
                     </button>
+                    {nvt && (
+                      <span className="report-section-nvt">
+                        {t("report.sectionNvtLabel", LABEL_NIET_VAN_TOEPASSING)}
+                      </span>
+                    )}
                   </div>
                 );
               })}
