@@ -201,6 +201,23 @@
   max-width: 150px;
   height: auto;
 }
+/* De CLT-opbouw mag breder dan een profielminiatuur: hij toont geen enkele
+   contour maar een stapel lagen met per laag een label ernaast, en op 150 px
+   zijn die labels niet meer te lezen. De hoogteopbouw is hier het onderwerp,
+   dus die moet ruimte krijgen. */
+.pk-tekening-clt svg {
+  max-width: 240px;
+}
+/* Geen leesbare opbouw = geen tekening, maar wél de reden. Hetzelfde kader,
+   zodat de kolom niet verspringt zodra je een teken bijtypt. */
+.pk-tekening-leeg {
+  min-height: 58px;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--theme-text-muted, var(--theme-text));
+}
 
 .pk-eigenschappen {
   margin-top: 8px;

@@ -55,7 +55,7 @@ import {
   CLT_STROOKBREEDTE_MM,
   CLT_VOORINSTELLINGEN,
   cltHoogteMm,
-  cltSolverDoorsnede,
+  cltMechanica,
   cltVanVoorinstelling,
   formatCltProfiel,
   isCltProfiel,
@@ -76,6 +76,7 @@ import {
 import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
 import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
+import CltOpbouwTekening, { CLT_THEMA_KLEUREN } from "../clt/CltOpbouwTekening";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";
 import { shapeVanProfiel } from "../shared/profielVorm";
 import "./ProfielKiezer.css";
@@ -205,6 +206,34 @@ const CLT_PRESET_DEFAULT: CltPreset =
 
 function nlGetal(v: number, decimalen = 0): string {
   return v.toLocaleString("nl-NL", { maximumFractionDigits: decimalen });
+}
+
+/**
+ * Waaróm een ingetypte CLT-opbouw niet leesbaar is — in plaats van een halve
+ * tekening.
+ *
+ * `parseCltProfiel` blijft de rechter: dit wordt alleen aangeroepen wanneer die
+ * al null heeft gezegd, en zoekt dan de eerste plek waar het misgaat, zodat de
+ * melding naar díe plek wijst en niet naar "ongeldig".
+ */
+function cltOpbouwReden(tekst: string): string {
+  const t = tekst.trim();
+  if (!t) return "Nog geen opbouw ingevuld.";
+  if (!/^clt\b/i.test(t)) return 'Begin met "CLT", bijvoorbeeld CLT 40/20/40.';
+  const [lagen = "", ...rest] = t.replace(/^clt\s*/i, "").split(/\s+/);
+  const tokens = lagen ? lagen.split("/") : [];
+  if (tokens.length < 3) return "Een opbouw heeft minstens drie lagen, bijvoorbeeld 40/20/40.";
+  // Een lege plek tussen twee schuine strepen is de gewone tussenstand tijdens
+  // het typen; die verdient een eigen zin in plaats van een leeg citaat.
+  if (tokens.some((x) => x.trim() === "")) return "Er staat nog een lege laag in de rij.";
+  const fout = tokens.find((x) => !/^\d+(?:[.,]\d+)?[LD]?(?::[A-Za-z]+\d+[A-Za-z]*)?$/i.test(x));
+  if (fout !== undefined) {
+    return `"${fout}" is geen laag: een dikte in mm, eventueel met L of D en een klasse (40L:C24).`;
+  }
+  if (rest.length > 0) {
+    return "Achter de lagen past alleen een strookbreedte, bijvoorbeeld b=600.";
+  }
+  return "De opbouw is niet te lezen; zie de notatie hierboven.";
 }
 
 /** Tekstveld → getal; NaN wanneer het veld leeg of onzin is (geen terugval). */
@@ -377,8 +406,11 @@ export default function ProfielKiezer({
   // wat de opbouw stijfheidstechnisch waard is.
   const cltLayup = useMemo(() => parseCltProfiel(cltTekst, houtKlasse), [cltTekst, houtKlasse]);
   const cltGeldig = !!cltLayup && cltLayup.layers.some((l) => l.orientation === "Longitudinal");
-  const cltDoorsnede = useMemo(
-    () => (cltLayup ? cltSolverDoorsnede(cltLayup, (k) => TIMBER_E_MEAN[k]) : null),
+  // Zwaartelijn en (EI)_ef in één keer: `cltMechanica` is de bron van beide, en
+  // de zwaartelijn hoort in de tekening — bij een niet-symmetrische opbouw ligt
+  // die niet op halve hoogte.
+  const cltMech = useMemo(
+    () => (cltLayup ? cltMechanica(cltLayup, (k) => TIMBER_E_MEAN[k]) : null),
     [cltLayup],
   );
   const cltBreedte = cltLayup?.width_mm ?? CLT_STROOKBREEDTE_MM;
@@ -732,6 +764,28 @@ export default function ProfielKiezer({
                 beginnend met een lengtelaag; optioneel L of D per laag en een
                 eigen klasse, bijv. <code>40L:C24/20D:C16/40L</code>.
               </div>
+              {/* De opbouw als tekening — bij kruislaaghout bepaalt de
+                  laagrichting het gedrag, en dat lees je niet af aan een rij
+                  getallen. Dezelfde component als de rapportfiguur, maar zonder
+                  spanningen (hier is nog niets berekend) en in de themakleuren,
+                  want dit is een scherm dat ook donker kan staan. */}
+              {cltLayup ? (
+                <div className="pk-tekening pk-tekening-clt">
+                  <CltOpbouwTekening
+                    lagen={cltLayup.layers.map((l) => ({
+                      dikte: l.thickness_mm,
+                      richting: l.orientation,
+                      klasse: l.strength_class,
+                    }))}
+                    breedteMm={cltLayup.width_mm}
+                    z0Mm={cltMech?.z0}
+                    kleuren={CLT_THEMA_KLEUREN}
+                    titel={`Opbouw ${formatCltProfiel(cltLayup, houtKlasse)}`}
+                  />
+                </div>
+              ) : (
+                <div className="pk-tekening pk-tekening-leeg">{cltOpbouwReden(cltTekst)}</div>
+              )}
               {cltLayup && (
                 <div className="pk-eigenschappen">
                   {cltLayup.layers.map((l, i) => (
@@ -743,10 +797,10 @@ export default function ProfielKiezer({
                     </div>
                   ))}
                   <div className="pk-eig-rij"><span>h</span><code>{cltHoogteMm(cltLayup)} mm</code></div>
-                  {cltDoorsnede && (
+                  {cltMech && (
                     <div className="pk-eig-rij">
                       <span>(EI)_ef</span>
-                      <code>{nlGetal((cltDoorsnede.E * cltDoorsnede.I) / 1e9, 1)} kNm²</code>
+                      <code>{nlGetal(cltMech.eiEf / 1e9, 1)} kNm²</code>
                     </div>
                   )}
                 </div>
