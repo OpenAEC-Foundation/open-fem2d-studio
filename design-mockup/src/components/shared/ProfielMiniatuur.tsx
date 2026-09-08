@@ -19,31 +19,58 @@
 import { shapePath, buitenmaten, type SectionShape } from "./profielVorm";
 
 /**
- * Vulling en omtrek per materiaal; zie de materiaalkleuren in `themes.css`.
+ * Vulling, omtrek en dekking per materiaal; zie de materiaalkleuren in
+ * `themes.css`.
  *
  * Staal en een vrij materiaal krijgen een doorschijnende accenttint over de
  * paneelkleur; daar volgt de omtrek het thema. Hout en beton hebben een VASTE
  * lichte vulling in élk thema, en dan moet de omtrek er ook in het donkere
  * thema donker op staan — de themakleur voor tekst is daar bijna wit.
+ *
+ * `dekking` is de opacity van het hele pad, vulling én omtrek. Voor staal en
+ * het vrije materiaal staat die op 0,95 om de accenttint zijn harde rand te
+ * ontnemen; dat mag daar, want die vulling volgt het thema toch al en er is
+ * geen afspraak over de precieze RGB-waarde.
+ *
+ * BETON STAAT OP 1 EN DAT MOET ZO BLIJVEN. `--theme-beton-vlak` is #C0C0C0 =
+ * 192-192-192, een vastgelegde waarde die in élk thema gelijk hoort te zijn
+ * (zie het materiaalkleurenblok in `themes.css` en `beton/tekenkleuren.ts`).
+ * Het paneel eronder — `.pk-tekening`, background `var(--theme-bg)` — mengt
+ * mee zodra de dekking onder 1 zakt, en die achtergrond verschilt per thema.
+ * Op 0,95 kwam er daardoor rgb(195,195,195) uit in het lichte thema, ruwweg
+ * rgb(184,184,184) in openaec en rgb(183,184,184) in blueprint — de laatste
+ * bit hangt van het rasterpad af, maar de afwijking en de thema-afhankelijkheid
+ * niet, en dat is precies wat een vaste materiaalkleur moest voorkomen.
+ *
+ * Hout heeft dezelfde vaste vulling en daarmee in beginsel dezelfde
+ * afwijking, maar staat hier bewust nog op 0,95: alleen voor beton is de
+ * exacte waarde afgesproken. Wie hout ook exact wil, zet die 0,95 op 1.
  */
-const KLEUREN: Record<Materiaalsoort, { vulling: string; lijn: string }> = {
+const KLEUREN: Record<
+  Materiaalsoort,
+  { vulling: string; lijn: string; dekking: number }
+> = {
   staal: {
     vulling: "var(--theme-accent-soft, #dbe4f0)",
     lijn: "var(--theme-text, #39424e)",
+    dekking: 0.95,
   },
   hout: {
     vulling: "var(--theme-hout-vlak, #E9DECA)",
     lijn: "var(--theme-materiaal-lijn, #2A2A30)",
+    dekking: 0.95,
   },
   beton: {
     vulling: "var(--theme-beton-vlak, #C0C0C0)",
     lijn: "var(--theme-materiaal-lijn, #2A2A30)",
+    dekking: 1,
   },
   // Een vrij materiaal heeft geen eigen kleur — het is per definitie niet één
   // materiaal. Dezelfde neutrale vulling als staal.
   vrij: {
     vulling: "var(--theme-accent-soft, #dbe4f0)",
     lijn: "var(--theme-text, #39424e)",
+    dekking: 0.95,
   },
 };
 
@@ -126,7 +153,7 @@ export default function ProfielMiniatuur({
         stroke={KLEUREN[materiaal].lijn}
         strokeWidth="1"
         strokeLinejoin="miter"
-        opacity={0.95}
+        opacity={KLEUREN[materiaal].dekking}
       />
 
       {maatvoering && (

@@ -1,12 +1,18 @@
-//! Gemengd rapport: staal (EN 1993-1-1), hout (EN 1995-1-1) én beton
-//! (EN 1992-1-1) in één PDF.
+//! Gemengd rapport: staal (EN 1993-1-1), hout en kruislaaghout (EN 1995-1-1),
+//! beton (EN 1992-1-1) én de vrije spanningstoets (geen norm) in één PDF.
 //!
 //! Wat deze test hard aantoont:
-//! - `report_members` levert ALLE staven (staal + hout + beton) gesorteerd op
+//! - `report_members` levert ALLE staven van alle vijf de kernen, gesorteerd op
 //!   staaf-id, met de juiste norm-, doorsnede- en klasselabels — dit is exact
 //!   de bron waaruit de samenvattingstabel en de per-staaf-blokken worden
 //!   gerenderd.
-//! - `norms_line` toont alleen de normen waarvan resultaten aanwezig zijn.
+//! - `norms_line` toont alleen de kaders waarvan resultaten aanwezig zijn en
+//!   valt NIET terug op een norm wanneer er niets getoetst is. Dat is de
+//!   omgekeerde kant van "geen leeg hoofdstuk tonen": het rapport mag ook geen
+//!   norm CLAIMEN die er niet in zit — en die claim stond op het omslag én in
+//!   de kop van elk vel.
+//! - Een rapport zonder één getoetste staaf toont geen samenvattingstabel maar
+//!   de melding waarom het leeg is.
 //! - De gerenderde PDF is syntactisch geldig en telt één pagina per staaf
 //!   (cover + samenvatting + n staven); een rapport mét houtstaaf heeft
 //!   aantoonbaar één pagina méér dan hetzelfde rapport zonder.
@@ -23,8 +29,10 @@ use nen_en_1993_1_1_section::{
     classification::CrossSectionClass, CheckStatus, NamedValue, ResistanceCalc, UnityCheck,
 };
 use nen_en_1995_1_1::{LoadDurationClass, ServiceClass};
-use report::{generate_report_pdf, norms_line, report_members, ReportInput};
+use report::{generate_report_pdf, norms_line, report_members, ReportInput, GEEN_NORM};
+use spanning_check::{SpanningBeamCheckResult, SpanningDoorsnedeResultaat};
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
+use timber_check::clt::{CltBeamCheckResult, CltLayupResult};
 use timber_check::TimberBeamCheckResult;
 
 // ── Testdata ─────────────────────────────────────────────────────────────────
@@ -125,6 +133,77 @@ fn concrete_beam(beam_id: u32, uc: f64) -> ConcreteBeamCheckResult {
     }
 }
 
+/// Kruislaaghout. De opbouw blijft leeg: de PDF rendert de laagtabel (nog)
+/// niet, en deze test gaat over het pad dat hij wél loopt — dezelfde
+/// `NamedCheck`s als massief hout, onder dezelfde norm.
+fn clt_beam(beam_id: u32, uc: f64) -> CltBeamCheckResult {
+    CltBeamCheckResult {
+        beam_id,
+        section_name: "CLT 40/20/40/20/40 (h = 160 mm, b = 1000 mm)".into(),
+        strength_class: "C24".into(),
+        service_class: ServiceClass::Sc1,
+        load_duration: LoadDurationClass::MediumTerm,
+        checks: vec![dummy_check(
+            "clt_l1_bending",
+            "Buiging lamel 1",
+            "art. 6.1.6 (6.11)",
+            uc,
+        )],
+        uc_max: uc,
+        status: CheckStatus::Ok,
+        governing_check_id: "clt_l1_bending".into(),
+        layup: CltLayupResult {
+            width_mm: 1000.0,
+            height_mm: 160.0,
+            z0_mm: 80.0,
+            ei_ef_knm2: 1.0,
+            ea_ef_kn: 1.0,
+            i_ef_net_mm4: 1.0,
+            slenderness: 30.0,
+            layers: vec![],
+            governing_layer: Some(1),
+        },
+        notes: vec![],
+    }
+}
+
+/// De vrije spanningstoets: een doorsnede en een OPGEGEVEN toelaatbare
+/// spanning. Het spanningsverloop blijft weg — de PDF tekent het niet, en het
+/// gaat hier om het kader waaronder de staaf in het rapport komt.
+fn vrij_beam(beam_id: u32, uc: f64) -> SpanningBeamCheckResult {
+    SpanningBeamCheckResult {
+        beam_id,
+        section_name: "200 x 200".into(),
+        material_name: "natuursteen".into(),
+        f_toel_mpa: 8.0,
+        gamma_m: 1.0,
+        f_d_mpa: 8.0,
+        checks: vec![dummy_check(
+            "sigma_eq",
+            "Vergelijkspanning (von Mises)",
+            "vrije spanningstoets",
+            uc,
+        )],
+        uc_max: uc,
+        status: CheckStatus::Ok,
+        governing_check_id: "sigma_eq".into(),
+        section: SpanningDoorsnedeResultaat {
+            naam: "200 x 200".into(),
+            hoogte_mm: 200.0,
+            breedte_max_mm: 200.0,
+            z_c_mm: 100.0,
+            a_mm2: 40_000.0,
+            iy_mm4: 133_333_333.0,
+            wel_top_mm3: 1_333_333.0,
+            wel_bot_mm3: 1_333_333.0,
+            bron: "lagenmodel".into(),
+            lagen: vec![],
+        },
+        verloop: None,
+        notes: vec![],
+    }
+}
+
 fn input(steel: Vec<BeamCheckResult>, timber: Vec<TimberBeamCheckResult>) -> ReportInput {
     input_alle(steel, timber, vec![])
 }
@@ -135,14 +214,28 @@ fn input_alle(
     concrete: Vec<ConcreteBeamCheckResult>,
 ) -> ReportInput {
     ReportInput {
+        steel_check_results: steel,
+        timber_check_results: timber,
+        concrete_check_results: concrete,
+        ..leeg_rapport()
+    }
+}
+
+/// Een rapport zonder één toetsresultaat. De tests vullen daaruit alleen de
+/// velden die ze nodig hebben, zodat een volgend resultaatveld hier op één
+/// plaats binnenkomt.
+fn leeg_rapport() -> ReportInput {
+    ReportInput {
         project_name: "Gemengd raamwerk".into(),
         project_number: "MX-001".into(),
         engineer: "Test Engineer".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-09-02".into(),
-        steel_check_results: steel,
-        timber_check_results: timber,
-        concrete_check_results: concrete,
+        steel_check_results: vec![],
+        timber_check_results: vec![],
+        clt_check_results: vec![],
+        concrete_check_results: vec![],
+        stress_check_results: vec![],
         // Deze test gaat over de materiaal-neutrale renderer, niet over het
         // segmentspoor; het betonhoofdstuk blijft dus op de "niet fysisch
         // gerekend"-melding staan.
@@ -169,6 +262,43 @@ fn count_pages(bytes: &[u8]) -> usize {
     digits.parse().expect("Count moet een getal zijn")
 }
 
+/// Staat `woord` als tekst op het papier?
+///
+/// De opmaakmotor schrijft tekst als gliefnummers, dus zoeken op de letters
+/// zelf levert niets op. Een woord wordt hier met dezelfde ingesloten
+/// Liberation Sans vertaald naar de hexreeks waarmee printpdf het opschrijft
+/// (`<0025 0048 …> Tj`) en die reeks wordt in de inhoudsstromen gezocht.
+/// `tests/betonhoofdstuk_pdf.rs` legt de werkwijze uitgebreider uit; hier is ze
+/// nodig omdat de normenregel juist op het OMSLAG en in de KOP staat, en die
+/// twee zijn met een paginatelling niet te controleren.
+fn staat_op_papier(pdf: &[u8], woord: &str) -> bool {
+    const FONT_REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
+    const FONT_BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
+
+    let doc = lopdf::Document::load_mem(pdf).expect("de PDF moet te lezen zijn");
+    let mut stroom = String::new();
+    for (_, id) in doc.get_pages() {
+        let inhoud = doc
+            .get_page_content(id)
+            .expect("de inhoudsstroom moet uit te pakken zijn");
+        stroom.push_str(&String::from_utf8_lossy(&inhoud).to_uppercase());
+    }
+
+    [FONT_REGULAR, FONT_BOLD].iter().any(|font| {
+        let face = ttf_parser::Face::parse(font, 0).expect("het lettertype moet te lezen zijn");
+        let hex: String = woord
+            .chars()
+            .map(|ch| {
+                let gid = face
+                    .glyph_index(ch)
+                    .unwrap_or_else(|| panic!("geen glief voor {ch:?} — kies een ander proefwoord"));
+                format!("{:04X}", gid.0)
+            })
+            .collect();
+        stroom.contains(&hex)
+    })
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -180,7 +310,7 @@ fn report_members_bevat_staal_en_hout_gesorteerd_op_staaf_id() {
 
     // Gesorteerd op staaf-id: hout-staaf 2 vóór staal-staaf 4.
     assert_eq!(members[0].beam_id, 2);
-    assert_eq!(members[0].norm, "EN 1995-1-1");
+    assert_eq!(members[0].norm, Some("EN 1995-1-1"));
     assert_eq!(members[0].section_label, "96 x 450");
     assert_eq!(members[0].grade_label, "C24");
     assert_eq!(members[0].governing_check_id, "bending");
@@ -188,7 +318,7 @@ fn report_members_bevat_staal_en_hout_gesorteerd_op_staaf_id() {
     assert_eq!(members[0].checks.len(), 1);
 
     assert_eq!(members[1].beam_id, 4);
-    assert_eq!(members[1].norm, "EN 1993-1-1");
+    assert_eq!(members[1].norm, Some("EN 1993-1-1"));
     assert_eq!(members[1].section_label, "HEB160");
     assert_eq!(members[1].grade_label, "S235");
 }
@@ -204,15 +334,158 @@ fn norms_line_toont_alleen_aanwezige_normen() {
         vec![timber_beam(2, 0.5)],
         vec![concrete_beam(3, 0.5)],
     );
-    let leeg = input(vec![], vec![]);
 
     assert_eq!(norms_line(&staal_alleen), "EN 1993-1-1");
     assert_eq!(norms_line(&hout_alleen), "EN 1995-1-1");
     assert_eq!(norms_line(&beide), "EN 1993-1-1 / EN 1995-1-1");
     assert_eq!(norms_line(&beton_alleen), "EN 1992-1-1");
     assert_eq!(norms_line(&alle_drie), "EN 1993-1-1 / EN 1995-1-1 / EN 1992-1-1");
-    // Leeg rapport houdt de staalnorm als kader — ongewijzigd gedrag.
-    assert_eq!(norms_line(&leeg), "EN 1993-1-1");
+}
+
+/// De kern van dit bestand: een model zonder staal krijgt nergens "EN 1993-1-1"
+/// te zien. De normenregel staat op het omslag én in de kop van elk vel, dus
+/// een terugval daar is een claim op elke bladzijde.
+#[test]
+fn geen_staal_in_het_model_geen_staalnorm_in_het_rapport() {
+    let clt_alleen = ReportInput {
+        clt_check_results: vec![clt_beam(1, 0.4)],
+        ..leeg_rapport()
+    };
+    let vrij_alleen = ReportInput {
+        stress_check_results: vec![vrij_beam(1, 0.3)],
+        ..leeg_rapport()
+    };
+    let leeg = leeg_rapport();
+
+    // Kruislaaghout wordt per lamel op EN 1995-1-1 getoetst — dat is de norm
+    // die genoemd hoort te worden, en geen andere.
+    assert_eq!(norms_line(&clt_alleen), "EN 1995-1-1");
+
+    // De vrije spanningstoets hoort bij géén norm en zegt dat ook zo.
+    assert_eq!(norms_line(&vrij_alleen), GEEN_NORM);
+
+    // Zonder één toetsresultaat noemt het rapport helemaal niets. Leeg is hier
+    // het juiste antwoord: de aanroepers laten de regel dan weg.
+    assert_eq!(norms_line(&leeg), "");
+
+    for invoer in [&clt_alleen, &vrij_alleen, &leeg] {
+        assert!(
+            !norms_line(invoer).contains("1993"),
+            "de staalnorm mag nergens opduiken in een model zonder staal"
+        );
+    }
+}
+
+#[test]
+fn report_members_neemt_kruislaaghout_en_vrije_spanning_mee() {
+    let inp = ReportInput {
+        steel_check_results: vec![steel_beam(1, 0.42)],
+        clt_check_results: vec![clt_beam(2, 0.55)],
+        stress_check_results: vec![vrij_beam(3, 0.31)],
+        ..leeg_rapport()
+    };
+    let members = report_members(&inp);
+
+    assert_eq!(members.len(), 3, "alle drie de kernen leveren een staaf");
+
+    assert_eq!(members[1].beam_id, 2);
+    assert_eq!(members[1].norm, Some("EN 1995-1-1"));
+    assert_eq!(members[1].norm_label(), "EN 1995-1-1");
+    assert_eq!(members[1].grade_label, "C24");
+
+    assert_eq!(members[2].beam_id, 3);
+    assert_eq!(members[2].norm, None, "geen norm, en dat is geen omissie");
+    assert_eq!(members[2].norm_label(), GEEN_NORM);
+    assert_eq!(members[2].section_label, "200 x 200");
+    assert_eq!(members[2].grade_label, "natuursteen");
+
+    // De regel op omslag en paginakop noemt beide kaders, elk één keer.
+    assert_eq!(
+        norms_line(&inp),
+        format!("EN 1993-1-1 / EN 1995-1-1 / {GEEN_NORM}")
+    );
+}
+
+/// Massief hout en kruislaaghout delen één norm; die hoort één keer op het
+/// omslag te staan en niet twee keer.
+#[test]
+fn hout_en_kruislaaghout_leveren_samen_een_normvermelding() {
+    let inp = ReportInput {
+        timber_check_results: vec![timber_beam(1, 0.5)],
+        clt_check_results: vec![clt_beam(2, 0.5)],
+        ..leeg_rapport()
+    };
+    assert_eq!(norms_line(&inp), "EN 1995-1-1");
+}
+
+/// Een CLT-model levert een echt rapport: cover, samenvatting en een blad per
+/// staaf — niet een omslag met een lege tabel eronder.
+#[test]
+fn clt_rapport_rendert_geldige_pdf() {
+    let bytes = generate_report_pdf(ReportInput {
+        clt_check_results: vec![clt_beam(1, 0.4), clt_beam(2, 0.6)],
+        ..leeg_rapport()
+    });
+
+    assert!(bytes.starts_with(b"%PDF-"), "PDF-magic ontbreekt");
+    assert_eq!(
+        count_pages(&bytes),
+        4,
+        "verwacht cover + samenvatting + 2 staafpagina's"
+    );
+}
+
+/// De proef op de klacht zelf: staat "1993" nog ergens op het papier van een
+/// model zonder één stalen staaf?
+///
+/// Dit is de enige controle die het echte probleem raakt. De normenregel staat
+/// op het omslag en in de kop van elk vel, en dat zijn bladzijden die met een
+/// paginatelling of met `norms_line` alleen niet te betrappen zijn: die tekst
+/// wordt langs een ander pad getekend (`DrawList`) dan de hoofdstukken.
+#[test]
+fn de_staalnorm_staat_niet_op_het_papier_van_een_model_zonder_staal() {
+    let clt_pdf = generate_report_pdf(ReportInput {
+        clt_check_results: vec![clt_beam(1, 0.4)],
+        ..leeg_rapport()
+    });
+    let vrij_pdf = generate_report_pdf(ReportInput {
+        stress_check_results: vec![vrij_beam(1, 0.3)],
+        ..leeg_rapport()
+    });
+    let leeg_pdf = generate_report_pdf(leeg_rapport());
+
+    for (naam, pdf) in [("CLT", &clt_pdf), ("vrij materiaal", &vrij_pdf), ("leeg", &leeg_pdf)] {
+        assert!(
+            !staat_op_papier(pdf, "1993"),
+            "het rapport van een model met {naam} noemt de staalnorm"
+        );
+    }
+
+    // En de norm die er wél bij hoort staat er wel — anders bewijst het
+    // bovenstaande alleen dat de zoekmethode niets vindt.
+    assert!(
+        staat_op_papier(&clt_pdf, "1995"),
+        "een CLT-rapport hoort EN 1995-1-1 te noemen"
+    );
+    assert!(
+        staat_op_papier(&generate_report_pdf(input(vec![steel_beam(1, 0.5)], vec![])), "1993"),
+        "een staalrapport hoort de staalnorm juist wél te noemen"
+    );
+}
+
+/// Zonder toetsresultaten: geen samenvattingstabel met nul regels, maar één
+/// blad met de melding waarom het rapport leeg is. Er blijft dus wél een
+/// document over dat de gebruiker kan lezen.
+#[test]
+fn rapport_zonder_toetsingen_toont_de_reden_in_plaats_van_een_lege_tabel() {
+    let bytes = generate_report_pdf(leeg_rapport());
+
+    assert!(bytes.starts_with(b"%PDF-"), "PDF-magic ontbreekt");
+    assert_eq!(
+        count_pages(&bytes),
+        2,
+        "verwacht cover + het blad met de melding, en geen staafpagina's"
+    );
 }
 
 #[test]
@@ -227,15 +500,15 @@ fn report_members_neemt_beton_mee_met_eigen_norm_en_labels() {
     assert_eq!(members.len(), 3);
     // Gesorteerd op staaf-id: beton 1, hout 2, staal 3.
     assert_eq!(members[0].beam_id, 1);
-    assert_eq!(members[0].norm, "EN 1992-1-1");
+    assert_eq!(members[0].norm, Some("EN 1992-1-1"));
     assert_eq!(members[0].section_label, "300 x 500");
     assert_eq!(members[0].grade_label, "C30/37");
     assert_eq!(members[0].governing_check_id, "6.1_mn_kappa");
     assert!((members[0].uc_max - 0.63).abs() < 1e-12);
     assert_eq!(members[0].checks.len(), 1);
 
-    assert_eq!(members[1].norm, "EN 1995-1-1");
-    assert_eq!(members[2].norm, "EN 1993-1-1");
+    assert_eq!(members[1].norm, Some("EN 1995-1-1"));
+    assert_eq!(members[2].norm, Some("EN 1993-1-1"));
 }
 
 #[test]
@@ -289,7 +562,7 @@ fn gemengd_rapport_rendert_geldige_pdf_met_pagina_per_staaf() {
 }
 
 #[test]
-fn hout_en_beton_hebben_serde_default_voor_bestaande_aanroepen() {
+fn alle_resultaatvelden_hebben_serde_default_voor_bestaande_aanroepen() {
     // Bestaande frontend-aanroepen sturen deze velden niet mee — dat moet
     // deserialiseren naar lege lijsten.
     let json = r#"{
@@ -302,5 +575,7 @@ fn hout_en_beton_hebben_serde_default_voor_bestaande_aanroepen() {
     }"#;
     let parsed: ReportInput = serde_json::from_str(json).expect("legacy JSON moet geldig blijven");
     assert!(parsed.timber_check_results.is_empty());
+    assert!(parsed.clt_check_results.is_empty());
     assert!(parsed.concrete_check_results.is_empty());
+    assert!(parsed.stress_check_results.is_empty());
 }

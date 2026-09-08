@@ -96,7 +96,7 @@ async fn stdio_roundtrip_initialize_list_call() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("tools must be an array");
-    assert_eq!(tools.len(), 18, "expected 18 tools, got {}", tools.len());
+    assert_eq!(tools.len(), 22, "expected 22 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -133,6 +133,16 @@ async fn stdio_roundtrip_initialize_list_call() {
         // c_min,dur uit de door de nationale bijlage voorgeschreven tabel 4.4N.
         "list_exposure_classes",
         "concrete_cover_check",
+        // De vier houttools (NEN-EN 1995-1-1), hout en kruislaaghout. Ze
+        // ontbraken hier terwijl `generate_steel_report_pdf` hierboven wél
+        // `timber_check_results` accepteert; zie `tests/drie_wegen_hout.rs` en
+        // `tests/drie_wegen_kruistabel.rs`. Deze vier heten precies zoals het
+        // Tauri-command en de toetsbrug-opdracht — meervoud, want ze nemen net
+        // als die twee een lijst staven.
+        "list_timber_grades",
+        "check_timber_beams",
+        "list_clt_presets",
+        "check_clt_beams",
     ] {
         assert!(names.contains(&expected), "missing tool: {expected} (have {names:?})");
     }

@@ -180,6 +180,18 @@ const ALLEEN_BRON = new Map([
     "beton-doorsnede",
     "test de profielnaam-grammatica en het korfmodel van de betontoetsing; alleen de solverstijfheid daarvan (resolveSection) zit in de barrel, de rest is invoerbouw en tekenmeetkunde",
   ],
+  [
+    "betonfiguren-referentie",
+    "legt de tekenmeetkunde van wapeningskorf.ts naast de gedeelde referentie die de Rust-kant óók leest (src-tauri/crates/report/tests/golden/betonfiguren-referentie.json); tekenwerk in plaats van solverwerk, en de referentie ligt buiten de bundel",
+  ],
+  [
+    "doorsnede-kleur",
+    "rendert ProfielMiniatuur met react-dom/server en rekent de composietkleur na uit themes.css en ProfielKiezer.css; React en losse stylesheets bestaan in de sidecarbundel niet, en er komt geen rekenwerk aan te pas",
+  ],
+  [
+    "rapportnormen",
+    "bepaalt welke normen het rapport mag noemen (`lib/normenInRapport`) uit de uitgangspunten, de toetsresultaten en de materialen in het model — presentatielogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

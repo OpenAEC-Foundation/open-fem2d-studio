@@ -1,7 +1,7 @@
-//! BEWAKING TEGEN UITEENLOPEN — de meetkunde van de betondoorsnede staat op
-//! twee plaatsen getekend, en dit is de test die ze aan elkaar vastpint.
+//! DE HANDAFLEIDING van de meetkunde van de betondoorsnede: elke verwachte
+//! waarde hieronder is uit de maten afgeleid en niet uit de code overgenomen.
 //!
-//! # Waarom deze test er is
+//! # Waarom deze test er is, en wat hij NIET doet
 //!
 //! De betonfiguren worden twee keer getekend: op het scherm door de frontend,
 //! en in de PDF door `report::betonfiguren`. Twee tekeningen van hetzelfde ding
@@ -9,13 +9,21 @@
 //! invoegen" is overwogen. De keuze is natekenen geworden, en dan moet er een
 //! bewaking tegenover staan.
 //!
+//! **Die bewaking is dit bestand niet.** Er wordt hier geen TypeScript
+//! uitgevoerd; dit zijn Rust-uitkomsten tegen handgetallen. Zolang de frontend
+//! zijn eigen verwachte waarden droeg — op andere bemonsteringspunten, en voor
+//! de staafharten zelfs alleen op een grens — bleef een verschoven punt aan
+//! beide kanten groen.
+//!
+//! **Het uiteenlopen wordt bewaakt door `betonfiguren_referentie.rs`**, dat
+//! samen met `design-mockup/test-betonfiguren-referentie.mjs` één gedeeld
+//! bestand leest: `tests/golden/betonfiguren-referentie.json`. Wat hier staat
+//! blijft daarnaast staan, omdat het uitlegt wáárom een punt ligt waar hij
+//! ligt — de referentie draagt de getallen, dit bestand de redenering.
+//!
 //! **De andere implementatie staat in
 //! `design-mockup/src/components/beton/wapeningskorf.ts`**: `omtrekPunten`,
-//! `staafPosities`, `breedteOpHoogteMm` en `hartXMm`. Dit bestand pint de
-//! uitkomsten van de Rust-kant vast op waarden die met de hand uit de maten
-//! zijn afgeleid — niet op wat de code toevallig teruggeeft. Wijkt één van
-//! beide kanten later af, dan komt iemand deze test tegen vóórdat er twee
-//! verschillende doorsneden in één rapport staan.
+//! `staafPosities`, `breedteOpHoogteMm` en `hartXMm`.
 //!
 //! Wie hier een verwachte waarde aanpast omdat "de test rood is", moet eerst
 //! `wapeningskorf.ts` erbij pakken: of allebei veranderen, of geen van beide.

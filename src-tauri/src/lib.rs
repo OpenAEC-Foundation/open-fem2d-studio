@@ -18,9 +18,15 @@ use timber_check::clt::{CltBeamCheckInput, CltBeamCheckResult};
 use timber_check::{TimberBeamCheckInput, TimberBeamCheckResult};
 
 // De commands hieronder zijn één-op-één gespiegeld in `crates/toetsbrug`
-// (dezelfde functies als JSON-in/JSON-uit voor de browser). Wie hier een
-// command toevoegt, voegt hem daar ook toe — anders werkt hij alleen in de
-// desktop-app.
+// (dezelfde functies als JSON-in/JSON-uit voor de browser) en in de MCP-server
+// `crates/openaec-mcp-server`. Wie hier een command toevoegt, voegt hem daar
+// ook toe — anders werkt hij alleen in de desktop-app.
+//
+// Die drie lijsten worden tegen elkaar gehouden door
+// `crates/openaec-mcp-server/tests/drie_wegen_kruistabel.rs`. Die test valt in
+// beide richtingen om, dus een command dat maar twee wegen krijgt komt niet
+// ongemerkt langs; wat bewust geen derde weg heeft, staat daar met reden in de
+// uitzonderingslijst.
 
 #[tauri::command]
 fn list_steel_profiles() -> Vec<SteelProfile> {
@@ -42,21 +48,14 @@ async fn check_steel_beams(inputs: Vec<BeamCheckInput>) -> Result<Vec<BeamCheckR
 /// welke houtmaterialen toetsbaar zijn.
 #[tauri::command]
 fn list_timber_grades() -> Vec<String> {
-    nen_en_1995_1_1::data::SOFTWOOD
-        .iter()
-        .chain(nen_en_1995_1_1::data::GLULAM.iter())
-        .map(|c| c.name.to_string())
-        .collect()
+    nen_en_1995_1_1::strength_class_names()
 }
 
 #[tauri::command]
 async fn check_timber_beams(
     inputs: Vec<TimberBeamCheckInput>,
 ) -> Result<Vec<TimberBeamCheckResult>, String> {
-    Ok(inputs
-        .into_iter()
-        .map(timber_check::check_timber_beam)
-        .collect())
+    Ok(timber_check::check_all_timber_beams(inputs))
 }
 
 /// Kruislaaghout: standaardopbouwen voor de profielkiezer.
@@ -71,10 +70,7 @@ fn list_clt_presets() -> Vec<CltPreset> {
 async fn check_clt_beams(
     inputs: Vec<CltBeamCheckInput>,
 ) -> Result<Vec<CltBeamCheckResult>, String> {
-    Ok(inputs
-        .into_iter()
-        .map(timber_check::clt::check_clt_beam)
-        .collect())
+    Ok(timber_check::clt::check_all_clt_beams(inputs))
 }
 
 /// Beton (NEN-EN 1992-1-1): sterkteklassen met alle waarden uit tabel 3.1.

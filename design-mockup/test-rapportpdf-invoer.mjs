@@ -7,24 +7,32 @@
 // PDF stilzwijgend een hoofdstuk — en een ontbrekend hoofdstuk valt niet op,
 // want er staat niets waar iets zou moeten staan.
 //
-// DE VIJF MANIEREN WAAROP DIT MIS KAN GAAN, alle vijf hier afgedekt:
+// DE ZES MANIEREN WAAROP DIT MIS KAN GAAN, alle zes hier afgedekt:
 //
-//  1. De toetsresultaten belanden in de verkeerde emmer. Staal, hout en beton
-//     hebben elk hun eigen veld; hout is in `checkTypes` de TERUGVAL, dus een
-//     betonresultaat dat niet herkend wordt komt er stilletjes bij te staan.
+//  1. De toetsresultaten belanden in de verkeerde emmer. Alle vijf de kernen
+//     hebben hun eigen veld; hout is in `checkTypes` de TERUGVAL, dus een
+//     resultaat dat niet herkend wordt komt er stilletjes bij te staan. Een
+//     emmer die helemaal niet gevuld wordt is nog erger: dan is het rapport
+//     leeg en noemt het een norm die er niet in zit.
 //  2. Het spoor wordt verkeerd omgezet. De store schrijft camelCase, de
 //     rekenkern snake_case; één vergeten veld en de tabel is leeg.
-//  3. Een leeg spoor gaat toch mee. Het veld hoort dan WEG te blijven, zodat
-//     het betonhoofdstuk zijn eerlijke melding toont in plaats van een tabel
-//     met nul regels.
+//  3. Lege SEGMENTEN gaan toch mee. Zonder fysische ronde hoort er geen
+//     combinatie in de invoer te staan, zodat het betonhoofdstuk zijn eerlijke
+//     melding toont in plaats van een tabel met nul regels.
 //  4. De reden bij een overgeslagen staaf wordt geherformuleerd. Die tekst komt
 //     uit de rekengang en gaat woordelijk mee.
 //  5. Het kernantwoord wordt onderweg aangeraakt. `SegmentStiffnessResponse`
 //     is aan beide kanten hetzelfde type en moet ONGEWIJZIGD doorgaan.
+//  6. De DOORSNEDEN voor de figuren blijven weg. Ze zaten alleen in het
+//     segmentspoor, en dat spoor bestaat alleen na een fysisch niet-lineaire
+//     ronde — waardoor de doorsnedefiguur bij eerste orde stilzwijgend van het
+//     papier verdween terwijl het live rapport hem wél tekende.
 //
 // Draaien met: npx tsx test-rapportpdf-invoer.mjs
 
-const { bouwRapportInvoer, spoorVoorPdf } = await import("./src/lib/rapportPdfInvoer.ts");
+const { bouwRapportInvoer, spoorVoorPdf, doorsnedenVoorFiguren } = await import(
+  "./src/lib/rapportPdfInvoer.ts"
+);
 
 let passed = 0,
   failed = 0;
@@ -171,11 +179,37 @@ log("\n[1] De toetsresultaten komen in de juiste emmer");
   checkGelijk("staal", invoer.steel_check_results.map((r) => r.beam_id), [1]);
   checkGelijk("hout", (invoer.timber_check_results ?? []).map((r) => r.beam_id), [2]);
   checkGelijk("beton", (invoer.concrete_check_results ?? []).map((r) => r.beam_id), [3]);
+  checkGelijk("vrije spanning", (invoer.stress_check_results ?? []).map((r) => r.beam_id), [4]);
+  checkGelijk("kruislaaghout", (invoer.clt_check_results ?? []).map((r) => r.beam_id), [5]);
   checkWaar(
     "de vrije spanningstoets en kruislaaghout gaan NIET als hout mee",
     !(invoer.timber_check_results ?? []).some((r) => r.beam_id === 4 || r.beam_id === 5),
-    "ReportInput kent er geen veld voor; meesturen zou ze als EN 1995 laten lezen",
+    "elk heeft een eigen veld; als hout meesturen zou ze als EN 1995 laten lezen",
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[1b] Een model zonder staal levert een invoer zonder staalclaim");
+{
+  // De knop Rekenrapport gaat af op checkResults.length. Blijft van die
+  // resultaten niets in de invoer over, dan is het rapport leeg — en dan noemt
+  // de rekenkern een norm die nergens is toegepast, op het omslag én in de kop
+  // van elk vel.
+  const cltModel = bouwRapportInvoer({ project, checkResults: [clt(1), clt(2)] });
+  checkGelijk(
+    "een CLT-model draagt zijn toetsingen",
+    (cltModel.clt_check_results ?? []).length,
+    2,
+  );
+  checkWaar("en geen staaltoetsingen", cltModel.steel_check_results.length === 0);
+
+  const vrijModel = bouwRapportInvoer({ project, checkResults: [vrij(1)] });
+  checkGelijk(
+    "een model met een vrij materiaal draagt zijn toetsingen",
+    (vrijModel.stress_check_results ?? []).length,
+    1,
+  );
+  checkWaar("en geen staaltoetsingen", vrijModel.steel_check_results.length === 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -234,7 +268,7 @@ log("\n[3] Het segmentspoor wordt volledig omgezet");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[4] Een leeg spoor gaat NIET mee");
+log("\n[4] Lege SEGMENTEN gaan NIET mee");
 {
   checkWaar("geen spoor", spoorVoorPdf(undefined) === undefined);
   checkWaar(
@@ -269,8 +303,16 @@ log("\n[4] Een leeg spoor gaat NIET mee");
 
   const zonder = bouwRapportInvoer({ project, checkResults: [beton(1)] });
   checkWaar(
-    "zonder spoor draagt de invoer het veld niet",
-    !("concrete_stiffness_trace" in zonder),
+    "zonder rekengang draagt de invoer geen combinatie en geen overgeslagen staaf",
+    zonder.concrete_stiffness_trace.combinaties.length === 0 &&
+      zonder.concrete_stiffness_trace.overgeslagen.length === 0,
+    "het betonhoofdstuk toont dan zijn eerlijke melding; de doorsneden staan er los van",
+  );
+
+  const staalAlleen = bouwRapportInvoer({ project, checkResults: [staal(1)] });
+  checkWaar(
+    "een zuiver staalrapport draagt het veld helemaal niet",
+    !("concrete_stiffness_trace" in staalAlleen),
   );
 }
 
@@ -293,6 +335,132 @@ log("\n[5] De volledige invoer met spoor");
   checkWaar(
     "de invoer overleeft JSON — dat is de weg naar de rekenkern",
     JSON.stringify(JSON.parse(JSON.stringify(invoer))) === JSON.stringify(invoer),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[6] De doorsnedefiguur hangt niet aan de fysische ronde");
+{
+  // Eerste orde: er is GEEN segmentspoor, en toch hoort de PDF de doorsnede te
+  // tekenen — het live rapport doet dat al, en twee rapporten van hetzelfde
+  // model horen hetzelfde beeld te geven.
+  const eersteOrde = bouwRapportInvoer({ project, checkResults: [beton(1)] });
+  const d = eersteOrde.concrete_stiffness_trace.staafdoorsneden;
+  checkGelijk("zonder rekengang toch één doorsnede", d.length, 1);
+  checkGelijk("bij de juiste staaf", d[0].beam_id, 1);
+  checkGelijk(
+    "met de maten uit de doorsnedenaam van de kern",
+    [d[0].doorsnede.shape, d[0].doorsnede.b_mm, d[0].doorsnede.h_mm],
+    ["Rectangle", 300, 500],
+  );
+  checkGelijk(
+    "en de korf uit de samenvattingsregel van de kern",
+    [
+      d[0].korf.cover_mm,
+      d[0].korf.stirrup_diameter_mm,
+      d[0].korf.bottom.count,
+      d[0].korf.bottom.diameter_mm,
+      d[0].korf.top.count,
+      d[0].korf.top.diameter_mm,
+    ],
+    [30, 8, 3, 16, 2, 12],
+  );
+
+  // Zo levert de rapportknop het werkelijk aan: de store is na `clear()` niet
+  // afwezig maar LEEG, en dat moet dezelfde uitkomst geven.
+  const gewist = bouwRapportInvoer({
+    project,
+    checkResults: [beton(1)],
+    stijfheid: { segmentLengteMm: 0, combinaties: [], overgeslagen: [], staafdoorsneden: [] },
+  });
+  checkGelijk(
+    "een gewiste store levert dezelfde doorsnede",
+    gewist.concrete_stiffness_trace.staafdoorsneden.length,
+    1,
+  );
+
+  // Bij een T draagt `section_name` de MEEWERKENDE flensbreedte waarmee de
+  // kern gerekend heeft, plus het lijf en de flensdikte. Zonder die drie is de
+  // doorsnede niet na te tekenen.
+  const tLigger = {
+    ...beton(4),
+    section_name: "T 1200 x 450 (flens 1200 x 80, lijf 300)",
+  };
+  const tUit = doorsnedenVoorFiguren([tLigger], []);
+  checkGelijk(
+    "een T-doorsnede komt met flens en lijf terug",
+    [
+      tUit[0].doorsnede.shape,
+      tUit[0].doorsnede.b_mm,
+      tUit[0].doorsnede.h_mm,
+      tUit[0].doorsnede.h_f_mm,
+      tUit[0].doorsnede.b_w_mm,
+      tUit[0].doorsnede.flange_at_bottom,
+    ],
+    ["Tee", 1200, 450, 80, 300, false],
+  );
+
+  // De rekengang gaat VOOR: die draagt de maten zoals de kern ze kreeg, en
+  // niet de afgeronde getallen uit een naam.
+  const uitRekengang = [
+    {
+      beam_id: 1,
+      doorsnede: { shape: "Rectangle", b_mm: 305, h_mm: 495 },
+      korf: {
+        cover_mm: 35,
+        stirrup_diameter_mm: 8,
+        top: { count: 2, diameter_mm: 12 },
+        bottom: { count: 3, diameter_mm: 16 },
+      },
+    },
+  ];
+  const gemengd = doorsnedenVoorFiguren([beton(1), beton(2)], uitRekengang);
+  checkGelijk("de gerekende staaf houdt zijn eigen maten", gemengd[0].doorsnede.b_mm, 305);
+  checkGelijk("en de andere staaf krijgt de teruggeparste", gemengd[1].doorsnede.b_mm, 300);
+  checkGelijk("beide staven staan erin", gemengd.length, 2);
+
+  // Niet te herleiden = geen figuur. Een verzonnen doorsnede op papier is
+  // erger dan een lege plek met de melding erbij.
+  const raar = {
+    ...beton(9),
+    section_name: "een of ander profiel",
+    reinforcement_summary: "wapening onbekend",
+  };
+  checkGelijk("een onherleidbare doorsnede levert niets", doorsnedenVoorFiguren([raar], []).length, 0);
+  const alleenRaar = bouwRapportInvoer({ project, checkResults: [raar] });
+  checkWaar(
+    "en dan blijft het veld helemaal weg",
+    !("concrete_stiffness_trace" in alleenRaar),
+    "het betonhoofdstuk meldt zelf dat de doorsnede niet is meegestuurd",
+  );
+
+  // Een korf zonder staven is geen korf: dan blijft de tekening weg.
+  const zonderStaven = { ...beton(10), reinforcement_summary: "beugel Ø8, dekking 30 mm" };
+  checkGelijk(
+    "een samenvattingsregel zonder wapeningsstaven levert niets",
+    doorsnedenVoorFiguren([zonderStaven], []).length,
+    0,
+  );
+
+  // Mét fysische ronde blijft het spoor verder onaangeroerd.
+  const metSpoor = bouwRapportInvoer({
+    project,
+    checkResults: [beton(1)],
+    stijfheid: spoor,
+  });
+  checkGelijk(
+    "met rekengang blijven de segmenten staan",
+    metSpoor.concrete_stiffness_trace.combinaties.length,
+    1,
+  );
+  checkGelijk(
+    "en de doorsnede blijft die van de rekengang",
+    metSpoor.concrete_stiffness_trace.staafdoorsneden[0].doorsnede.b_mm,
+    300,
+  );
+  checkWaar(
+    "de invoer overleeft JSON — dat is de weg naar de rekenkern",
+    JSON.stringify(JSON.parse(JSON.stringify(eersteOrde))) === JSON.stringify(eersteOrde),
   );
 }
 

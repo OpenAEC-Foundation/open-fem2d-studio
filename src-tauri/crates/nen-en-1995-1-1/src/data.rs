@@ -96,6 +96,23 @@ pub const GLULAM: &[StrengthClass] = &[
     glulam("GL36h", 36.0, 28.8, 0.5, 31.0, 2.5, 3.5, 14700.0, 11900.0, 300.0, 650.0, 450.0, 490.0),
 ];
 
+/// De namen van alle ondersteunde sterkteklassen, naaldhout gevolgd door
+/// gelamineerd hout — de lijst die de keuzelijst in de invoer vult.
+///
+/// Waarom dit hier staat en niet in de aanroepers: dezelfde lijst werd op drie
+/// plaatsen opgebouwd (het Tauri-command `list_timber_grades`, de gelijknamige
+/// toetsbrug-opdracht en de MCP-tool). Drie keer dezelfde `chain` betekent drie
+/// kansen dat er één een klasse mist of de volgorde omdraait, en dan biedt de
+/// app per omgeving een ander materiaalaanbod aan terwijl `strength_class_by_name`
+/// ze alle drie kent.
+pub fn strength_class_names() -> Vec<String> {
+    SOFTWOOD
+        .iter()
+        .chain(GLULAM.iter())
+        .map(|c| c.name.to_string())
+        .collect()
+}
+
 /// Zoek een sterkteklasse op naam ("C24", "GL28h", ...).
 pub fn strength_class_by_name(name: &str) -> Option<&'static StrengthClass> {
     SOFTWOOD

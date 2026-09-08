@@ -15,6 +15,11 @@ openaec-layout = { path = "../openaec-layout" }
 steel-check = { path = "../steel-check" }
 timber-check = { path = "../timber-check" }
 concrete-check = { path = "../concrete-check" }
+# De vierde, norm-onafhankelijke kern. Het rapport draagt haar resultaten mee
+# omdat een model met uitsluitend vrije materialen anders een PDF zonder één
+# getoetste staaf oplevert — en een rapport dat niets draagt, valt terug op een
+# norm die nergens is toegepast.
+spanning-check = { path = "../spanning-check" }
 # Alleen voor de betonfiguren (`betonfiguren.rs`): die leiden de doorsnede en de
 # korf af uit `ConcreteSection` / `ReinforcementCage` zelf, zodat de meetkunde
 # uit dezelfde bron komt als de tekening op het scherm.

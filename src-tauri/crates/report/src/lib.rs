@@ -1,5 +1,6 @@
-//! Constructieve-toetsing PDF report (EN 1993-1-1 staal, EN 1995-1-1 hout en
-//! EN 1992-1-1 beton) — built on **OpenAEC Foundation `openaec-layout`**.
+//! Constructieve-toetsing PDF report (EN 1993-1-1 staal, EN 1995-1-1 hout én
+//! kruislaaghout, EN 1992-1-1 beton, plus de norm-onafhankelijke vrije
+//! spanningstoets) — built on **OpenAEC Foundation `openaec-layout`**.
 //!
 //! `openaec-layout` is the Rust equivalent of ReportLab Platypus: Flowables
 //! (Paragraph, Table, Spacer, PageBreak) flow through Frames in PageTemplates,
@@ -7,6 +8,16 @@
 //! printpdf 0.7.
 //!
 //! Fonts: Liberation Sans (OFL), bundled via include_bytes!.
+//!
+//! # Het rapport claimt alleen wat het draagt
+//!
+//! Alle vijf de kernen leveren hetzelfde `NamedCheck`-contract, dus ze lopen
+//! door één renderpad ([`report_members`]). Dat pad is ook de ENIGE bron voor
+//! wat het rapport over normen zegt: [`norms_line`] en het infoblok op het
+//! omslag noemen uitsluitend kaders waarvan er resultaten in de invoer zitten,
+//! en de vrije spanningstoets zegt met zoveel woorden dat zij bij géén norm
+//! hoort. Een rapport zonder ook maar één getoetste staaf noemt dus geen enkele
+//! norm en toont geen samenvattingstabel, maar de reden waarom het leeg is.
 //!
 //! # De betonkant
 //!
@@ -43,7 +54,9 @@ use ts_rs::TS;
 
 use concrete_check::ConcreteBeamCheckResult;
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue};
+use spanning_check::SpanningBeamCheckResult;
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
+use timber_check::clt::CltBeamCheckResult;
 use timber_check::TimberBeamCheckResult;
 
 // ── Bundled fonts (Liberation Sans, OFL licence) ──────────────────────────────
@@ -81,6 +94,16 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(as = "Option<Vec<TimberBeamCheckResult>>", optional)]
     pub timber_check_results: Vec<TimberBeamCheckResult>,
+    /// Kruislaaghout (EN 1995-1-1, een toets per lamel plus de rolschuif uit
+    /// bijlage B). Draagt dezelfde velden als een houtresultaat en volgt
+    /// daarom hetzelfde renderpad; alleen de laagtabel en de laagtekening uit
+    /// het live rapport blijven hier weg.
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij hout: een bestaande
+    /// aanroep zonder dit veld blijft geldig.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<CltBeamCheckResult>>", optional)]
+    pub clt_check_results: Vec<CltBeamCheckResult>,
     /// Betontoetsingen (EN 1992-1-1): buiging met normaalkracht op de
     /// doorsnede. `#[serde(default)]` om dezelfde reden als bij hout —
     /// bestaande aanroepen zonder dit veld blijven geldig.
@@ -100,6 +123,18 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(as = "Option<Vec<ConcreteBeamCheckResult>>", optional)]
     pub concrete_check_results: Vec<ConcreteBeamCheckResult>,
+    /// De vrije spanningstoets: een doorsnede en een OPGEGEVEN toelaatbare
+    /// spanning, getoetst op de vergelijkspanning van von Mises. Hoort bij géén
+    /// norm, en het rapport zegt dat ook zo — zie [`ReportMember::norm`].
+    ///
+    /// Zonder dit veld levert een model met uitsluitend vrije materialen een
+    /// rapport zonder één getoetste staaf, terwijl de gebruiker wél heeft
+    /// getoetst. Daarom reist het mee.
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij de andere kernen.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<SpanningBeamCheckResult>>", optional)]
+    pub stress_check_results: Vec<SpanningBeamCheckResult>,
     /// Het segmentspoor van de fysisch niet-lineaire tweede orde: per
     /// belastingcombinatie de segmenttabel van de laatste ronde, het
     /// convergentieverloop, de doorsnede en de korf per staaf, en de
@@ -128,6 +163,11 @@ pub const NORM_STEEL: &str = "EN 1993-1-1";
 pub const NORM_TIMBER: &str = "EN 1995-1-1";
 /// Kort normlabel voor betontoetsingen.
 pub const NORM_CONCRETE: &str = "EN 1992-1-1";
+/// Wat er staat waar bij de andere kernen een norm staat. De vrije
+/// spanningstoets vergelijkt met een opgegeven toelaatbare spanning; "EN …"
+/// suggereren zou de lezer op het verkeerde been zetten. Zelfde bewoording als
+/// `normLabel` in de frontend.
+pub const GEEN_NORM: &str = "geen norm";
 
 /// Volledige normaanduiding (cover) voor staal.
 const NORM_STEEL_FULL: &str = "NEN-EN 1993-1-1+C2+A1/NB:2016 nl";
@@ -136,17 +176,29 @@ const NORM_TIMBER_FULL: &str = "NEN-EN 1995-1-1+C1+A1:2011/NB:2013 nl";
 /// Volledige normaanduiding (cover) voor beton — dezelfde uitgave als waaruit
 /// de `nen-en-1992-1-1`-crate haar waarden leest (zie de crate-doc daar).
 const NORM_CONCRETE_FULL: &str = "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020 nl";
+/// Wat er in het infoblok op het omslag staat voor de vrije spanningstoets:
+/// geen normaanduiding maar de vermelding dát er geen norm achter zit, zodat
+/// het omslag ook zonder Eurocode-toets iets waars zegt. Kort gehouden, want
+/// deze regel wordt als één lijn getekend en niet afgebroken, en hij begint al
+/// 55 mm van de linkerrand.
+const NORM_VRIJ_FULL: &str = "geen norm — tegen een opgegeven toelaatbare spanning";
 
 /// Uniforme, materiaal-neutrale kijk op één getoetste staaf. De
 /// samenvattingstabel en de per-staaf-blokken worden hieruit gerenderd, zodat
-/// staal, hout en beton gegarandeerd hetzelfde pad volgen.
+/// staal, hout, kruislaaghout, beton en de vrije spanningstoets gegarandeerd
+/// hetzelfde pad volgen.
 pub struct ReportMember<'a> {
     pub beam_id: u32,
-    /// Kort normlabel: [`NORM_STEEL`], [`NORM_TIMBER`] of [`NORM_CONCRETE`].
-    pub norm: &'static str,
+    /// Kort normlabel: [`NORM_STEEL`], [`NORM_TIMBER`] of [`NORM_CONCRETE`] —
+    /// of `None` wanneer er géén norm achter de toets zit (de vrije
+    /// spanningstoets). Het rapport mag geen norm noemen die niet is
+    /// toegepast, en dat onderscheid moet dus in de gegevens staan en niet in
+    /// een tekstuele terugval.
+    pub norm: Option<&'static str>,
     /// Profiel- of doorsnedenaam ("HEB160", "96 x 450", "300 x 500").
     pub section_label: &'a str,
-    /// Staalsoort, sterkteklasse of betonsterkteklasse ("S235", "C24", "C30/37").
+    /// Staalsoort, sterkteklasse, betonsterkteklasse of vrije materiaalnaam
+    /// ("S235", "C24", "C30/37", "natuursteen").
     pub grade_label: &'a str,
     pub uc_max: f64,
     pub status: &'a CheckStatus,
@@ -154,20 +206,29 @@ pub struct ReportMember<'a> {
     pub checks: &'a [NamedCheck],
 }
 
-/// Alle staven (staal + hout + beton) als [`ReportMember`], gesorteerd op
-/// staaf-id. Bij gelijk id blijft de invoegvolgorde staal → hout → beton
-/// staan (stabiele sortering).
+impl ReportMember<'_> {
+    /// Wat er in de kolom "Standard" en achter de kopregel van de staaf komt.
+    pub fn norm_label(&self) -> &'static str {
+        self.norm.unwrap_or(GEEN_NORM)
+    }
+}
+
+/// Alle staven als [`ReportMember`], gesorteerd op staaf-id. Bij gelijk id
+/// blijft de invoegvolgorde staal → hout → kruislaaghout → beton → vrije
+/// spanning staan (stabiele sortering).
 pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     let mut members: Vec<ReportMember<'_>> = Vec::with_capacity(
         input.steel_check_results.len()
             + input.timber_check_results.len()
-            + input.concrete_check_results.len(),
+            + input.clt_check_results.len()
+            + input.concrete_check_results.len()
+            + input.stress_check_results.len(),
     );
 
     for r in &input.steel_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: NORM_STEEL,
+            norm: Some(NORM_STEEL),
             section_label: &r.profile_name,
             grade_label: &r.steel_grade,
             uc_max: r.uc_max,
@@ -180,7 +241,22 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     for r in &input.timber_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: NORM_TIMBER,
+            norm: Some(NORM_TIMBER),
+            section_label: &r.section_name,
+            grade_label: &r.strength_class,
+            uc_max: r.uc_max,
+            status: &r.status,
+            governing_check_id: &r.governing_check_id,
+            checks: &r.checks,
+        });
+    }
+
+    // Kruislaaghout draagt dezelfde norm als massief hout: de lamellen worden
+    // per stuk op art. 6.1.6 en 6.1.7 getoetst, de samenwerking op bijlage B.
+    for r in &input.clt_check_results {
+        members.push(ReportMember {
+            beam_id: r.beam_id,
+            norm: Some(NORM_TIMBER),
             section_label: &r.section_name,
             grade_label: &r.strength_class,
             uc_max: r.uc_max,
@@ -193,9 +269,25 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     for r in &input.concrete_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: NORM_CONCRETE,
+            norm: Some(NORM_CONCRETE),
             section_label: &r.section_name,
             grade_label: &r.concrete_class,
+            uc_max: r.uc_max,
+            status: &r.status,
+            governing_check_id: &r.governing_check_id,
+            checks: &r.checks,
+        });
+    }
+
+    for r in &input.stress_check_results {
+        members.push(ReportMember {
+            beam_id: r.beam_id,
+            // Geen norm, en dat is hier geen omissie maar de aard van de
+            // toets: de weerstand is een OPGEGEVEN toelaatbare spanning. De
+            // artikelregel van elke toets zegt daarom "vrije spanningstoets".
+            norm: None,
+            section_label: &r.section_name,
+            grade_label: &r.material_name,
             uc_max: r.uc_max,
             status: &r.status,
             governing_check_id: &r.governing_check_id,
@@ -207,43 +299,76 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     members
 }
 
-/// Normenregel voor cover en paginakop: alleen normen waarvan resultaten
+/// Welke toetsingskaders zitten er daadwerkelijk in deze invoer?
+///
+/// Alles wat het rapport over normen zegt — de regel op het omslag, de kop van
+/// élk vel en het infoblok — komt hieruit. Eén plaats dus, want de fout die
+/// hier voorkomen wordt is dat de PDF een norm claimt waar niet naar gerekend
+/// is, en die claim staat op elke bladzijde.
+struct ToegepasteKaders {
+    staal: bool,
+    /// Massief hout én kruislaaghout: dezelfde norm, één vermelding.
+    hout: bool,
+    beton: bool,
+    /// Wél getoetst, maar tegen géén norm.
+    vrij: bool,
+}
+
+impl ToegepasteKaders {
+    fn van(input: &ReportInput) -> Self {
+        Self {
+            staal: !input.steel_check_results.is_empty(),
+            hout: !input.timber_check_results.is_empty() || !input.clt_check_results.is_empty(),
+            beton: !input.concrete_check_results.is_empty(),
+            vrij: !input.stress_check_results.is_empty(),
+        }
+    }
+}
+
+/// Normenregel voor cover en paginakop: alleen kaders waarvan resultaten
 /// aanwezig zijn, gescheiden door " / " ("EN 1993-1-1 / EN 1995-1-1").
+///
+/// LEEG wanneer er niets getoetst is. Er wordt niet teruggevallen op een norm:
+/// een omslag dat "EN 1993-1-1" claimt boven een model zonder één stalen staaf
+/// is onwaar, en onwaar is erger dan leeg. De aanroepers laten de regel dan
+/// weg — zie [`generate_report_pdf`].
 pub fn norms_line(input: &ReportInput) -> String {
-    let mut norms: Vec<&str> = Vec::with_capacity(3);
-    if !input.steel_check_results.is_empty() {
-        norms.push(NORM_STEEL);
+    let k = ToegepasteKaders::van(input);
+    let mut delen: Vec<&str> = Vec::with_capacity(4);
+    if k.staal {
+        delen.push(NORM_STEEL);
     }
-    if !input.timber_check_results.is_empty() {
-        norms.push(NORM_TIMBER);
+    if k.hout {
+        delen.push(NORM_TIMBER);
     }
-    if !input.concrete_check_results.is_empty() {
-        norms.push(NORM_CONCRETE);
+    if k.beton {
+        delen.push(NORM_CONCRETE);
     }
-    if norms.is_empty() {
-        // Leeg rapport: toon de staalnorm als kader in plaats van niets.
-        norms.push(NORM_STEEL);
+    if k.vrij {
+        delen.push(GEEN_NORM);
     }
-    norms.join(" / ")
+    delen.join(" / ")
 }
 
 /// Volledige normaanduidingen voor het cover-infoblok, in rapportvolgorde.
 ///
-/// Eén norm per materiaal waarvan resultaten aanwezig zijn; een leeg rapport
-/// valt terug op de staalnorm, zodat het cover-infoblok nooit leeg is.
+/// Eén regel per kader waarvan resultaten aanwezig zijn. Zonder resultaten
+/// blijft de lijst LEEG en staat er geen regel "Standard" op het omslag, in
+/// plaats van een geleende norm.
 fn full_norm_designations(input: &ReportInput) -> Vec<&'static str> {
-    let mut norms: Vec<&'static str> = Vec::with_capacity(3);
-    if !input.steel_check_results.is_empty() {
+    let k = ToegepasteKaders::van(input);
+    let mut norms: Vec<&'static str> = Vec::with_capacity(4);
+    if k.staal {
         norms.push(NORM_STEEL_FULL);
     }
-    if !input.timber_check_results.is_empty() {
+    if k.hout {
         norms.push(NORM_TIMBER_FULL);
     }
-    if !input.concrete_check_results.is_empty() {
+    if k.beton {
         norms.push(NORM_CONCRETE_FULL);
     }
-    if norms.is_empty() {
-        norms.push(NORM_STEEL_FULL);
+    if k.vrij {
+        norms.push(NORM_VRIJ_FULL);
     }
     norms
 }
@@ -385,11 +510,15 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     }
 
     // 2. DocTemplate + page template with header/footer callback.
+    //    De normenregel is leeg wanneer er niets getoetst is; de titel draagt
+    //    dan alleen het onderwerp en geen streepje met niets erachter.
     let norms = norms_line(&input);
-    let mut doc = DocTemplate::new(
-        &format!("Constructieve toetsing — {}", norms),
-        fonts.clone(),
-    );
+    let titel = if norms.is_empty() {
+        "Constructieve toetsing".to_string()
+    } else {
+        format!("Constructieve toetsing — {}", norms)
+    };
+    let mut doc = DocTemplate::new(&titel, fonts.clone());
 
     let margin_x: Pt = Mm(20.0).into();
     let margin_top: Pt = Mm(28.0).into(); // header band
@@ -414,19 +543,26 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     // 3. Cover page (RawPage — drawn directly).
     doc.add_pre_page(build_cover_page(&input, &norms));
 
-    // 4. Build content flowables — steel, timber and concrete members share
-    //    one path (all three deliver the same NamedCheck contract).
+    // 4. Build content flowables — alle vijf de kernen delen één pad (ze
+    //    leveren hetzelfde NamedCheck-contract).
     let members = report_members(&input);
 
     let mut flow: Vec<Box<dyn Flowable>> = Vec::new();
 
-    flow.push(Box::new(
-        Paragraph::new("Summary — Unity Checks", style_h2()).kop(),
-    ));
-    flow.push(Box::new(Spacer::from_mm(2.0)));
+    if members.is_empty() {
+        // Geen enkele getoetste staaf. Een samenvattingshoofdstuk met een lege
+        // tabel zou de lezer laten zoeken naar wat er weggevallen is; deze
+        // melding zegt wat er aan de hand is en wat hij eraan kan doen.
+        extend_with_lege_toetsing(&mut flow);
+    } else {
+        flow.push(Box::new(
+            Paragraph::new("Summary — Unity Checks", style_h2()).kop(),
+        ));
+        flow.push(Box::new(Spacer::from_mm(2.0)));
 
-    flow.push(Box::new(build_summary_table(&members)));
-    flow.push(Box::new(Spacer::from_mm(6.0)));
+        flow.push(Box::new(build_summary_table(&members)));
+        flow.push(Box::new(Spacer::from_mm(6.0)));
+    }
 
     for (idx, m) in members.iter().enumerate() {
         flow.push(Box::new(PageBreak));
@@ -439,7 +575,7 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
                     m.beam_id,
                     m.section_label,
                     m.grade_label,
-                    m.norm
+                    m.norm_label()
                 ),
                 style_h2(),
             )
@@ -459,6 +595,36 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 
     // 5. Render.
     doc.build_to_bytes(flow).expect("openaec-layout build")
+}
+
+// ── Een rapport zonder getoetste staven ───────────────────────────────────────
+
+/// Het hoofdstuk dat in de plaats komt van de samenvattingstabel wanneer er
+/// geen enkele getoetste staaf in de invoer zit.
+///
+/// Zo'n rapport ontstaat wanneer de toetsing niets heeft opgeleverd — geen
+/// enkele staaf die een van de vijf kernen kan verwerken, of alle staven
+/// overgeslagen. De PDF noemt dan ook geen norm (zie [`norms_line`]); zonder
+/// deze melding blijft de lezer met een omslag en niets erachter zitten.
+fn extend_with_lege_toetsing(flow: &mut Vec<Box<dyn Flowable>>) {
+    flow.push(Box::new(
+        Paragraph::new("Geen toetsresultaten", style_h2()).kop(),
+    ));
+    flow.push(Box::new(Spacer::from_mm(2.0)));
+    flow.push(Box::new(Paragraph::new(
+        "Dit rapport bevat geen enkele getoetste staaf. Daarom staat er geen \
+         samenvattingstabel in, en noemt het geen norm: een rapport hoort niets \
+         te beweren over materiaal dat niet in de invoer zit.",
+        style_body(),
+    )));
+    flow.push(Box::new(Paragraph::new(
+        "Toets het model (knop Toetsen) en maak het rapport opnieuw aan. Blijft \
+         het leeg, dan is geen van de staven door een van de rekenkernen \
+         opgepakt — staal, hout, kruislaaghout, beton of een vrij materiaal met \
+         een toelaatbare spanning — en zegt het toetsingspaneel per staaf \
+         waarom.",
+        style_body(),
+    )));
 }
 
 // ── Cover page (drawn manually onto a RawPage) ────────────────────────────────
@@ -511,9 +677,14 @@ fn build_cover_page(input: &ReportInput, norms: &str) -> RawPage {
     dl.set_fill_color(C_TEXT);
     dl.draw_text(left, Mm(95.0).into(), "Constructieve toetsing");
 
-    dl.set_font("LiberationSans-Bold", Pt(22.0));
-    dl.set_fill_color(C_TEXT);
-    dl.draw_text(left, Mm(108.0).into(), norms);
+    // Zonder toetsresultaten blijft deze regel WEG. Hier stond de terugval op
+    // de staalnorm, en die zette een "EN 1993-1-1" op het omslag van een model
+    // zonder één stalen staaf.
+    if !norms.is_empty() {
+        dl.set_font("LiberationSans-Bold", Pt(22.0));
+        dl.set_fill_color(C_TEXT);
+        dl.draw_text(left, Mm(108.0).into(), norms);
+    }
 
     dl.set_font("LiberationSans-Italic", Pt(13.0));
     dl.set_fill_color(C_MUTED);
@@ -605,13 +776,16 @@ impl PageCallback for OpenAecHeaderFooter {
         dl.set_fill_color(C_AMBER);
         dl.draw_text(Pt(left.0 + 28.0), baseline, "AEC");
 
+        // Zonder normen alleen de projectnaam: een streepje met niets ervoor
+        // leest als een weggevallen norm.
+        let kopregel = if self.norms.is_empty() {
+            self.project.clone()
+        } else {
+            format!("{} — {}", self.norms, self.project)
+        };
         dl.set_font("LiberationSans-Regular", Pt(8.5));
         dl.set_fill_color(C_MUTED);
-        dl.draw_text(
-            Pt(left.0 + 60.0),
-            baseline,
-            &format!("{} — {}", self.norms, self.project),
-        );
+        dl.draw_text(Pt(left.0 + 60.0), baseline, &kopregel);
 
         // Page-number on the right of the header
         let right: Pt = Pt(page_size.width.0 - Mm(20.0).0 * 2.834_645_7);
@@ -665,7 +839,7 @@ fn build_summary_table(members: &[ReportMember<'_>]) -> Table {
                 m.beam_id.to_string(),
                 m.section_label.to_string(),
                 m.grade_label.to_string(),
-                m.norm.to_string(),
+                m.norm_label().to_string(),
                 format!("{:.2}", m.uc_max),
                 m.governing_check_id.to_string(),
                 status_label(m.status).into(),

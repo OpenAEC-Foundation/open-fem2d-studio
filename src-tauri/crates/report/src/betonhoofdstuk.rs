@@ -238,6 +238,12 @@ fn extend_met_doorsnedeblok(
     // 1. De doorsnede met de wapeningskorf. Alleen te tekenen als de frontend
     //    de doorsnede en de korf heeft meegestuurd; uit `section_name` en
     //    `reinforcement_summary` terugparsen zou een tweede waarheid opleveren.
+    //
+    //    Dat meesturen hangt NIET aan de fysische ronde: `staafdoorsneden` is
+    //    tekengegeven en geen rekengegeven, en de frontend vult het bij elk
+    //    analysetype (`rapportPdfInvoer.ts`). Een spoor met alleen doorsneden
+    //    erin is dus normaal — dan staat deze figuur er wél en vult de rest van
+    //    het hoofdstuk zich met de eerlijke melding hieronder.
     match spoor.doorsnede(r.beam_id) {
         Some(d) => match d.doorsnede.build() {
             Ok(section) => {

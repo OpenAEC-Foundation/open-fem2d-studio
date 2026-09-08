@@ -231,3 +231,17 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
         governing_check_id,
     }
 }
+
+/// De hele lijst in één keer — de batch-instap van deze kern.
+///
+/// Waarom dit bestaat en niet elke schil zijn eigen lus schrijft: het
+/// Tauri-command, de toetsbrug én de MCP-server voeren alle drie dezelfde
+/// staven door dezelfde toetsing. Zolang die lus in de schil staat, is er drie
+/// keer een plek waar iemand de volgorde omdraait, een staaf overslaat of een
+/// filter toevoegt — en dan geeft hetzelfde raamwerk per omgeving een ander
+/// antwoord. Staal (`steel_check::check_all_beams`) en beton
+/// (`concrete_check::check_all_concrete_beams`) hebben zo'n instap al; hout
+/// hield als enige de lus buiten de bibliotheek.
+pub fn check_all_timber_beams(inputs: Vec<TimberBeamCheckInput>) -> Vec<TimberBeamCheckResult> {
+    inputs.into_iter().map(check_timber_beam).collect()
+}

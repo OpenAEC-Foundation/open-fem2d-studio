@@ -26,10 +26,21 @@
  *
  * WANNEER HET SPOOR WEGBLIJFT
  * ---------------------------
- * Is er niet fysisch niet-lineair gerekend, dan blijft `concrete_stiffness_trace`
- * WEG in plaats van leeg mee te gaan. Het veld heeft `#[serde(default)]`, dus
- * dat is geldig, en de PDF laat het betonhoofdstuk dan de eerlijke melding zien
- * dat er geen fysische ronde is gedraaid — precies zoals het live rapport doet.
+ * Is er niet fysisch niet-lineair gerekend, dan blijven de SEGMENTEN weg in
+ * plaats van leeg mee te gaan. Het veld heeft `#[serde(default)]`, dus dat is
+ * geldig, en de PDF laat het betonhoofdstuk dan de eerlijke melding zien dat er
+ * geen fysische ronde is gedraaid — precies zoals het live rapport doet.
+ *
+ * DE DOORSNEDEFIGUUR HANGT NIET AAN DIE RONDE
+ * -------------------------------------------
+ * `staafdoorsneden` is geen rekengegeven maar tekengegeven: de doorsnede van
+ * een betonstaaf bestaat ook zonder fysische ronde. De store vult dat veld
+ * alleen ná zo'n ronde, dus bij elk ander analysetype wordt het hier alsnog
+ * afgeleid uit de toetsresultaten — met dezelfde terugval die het live rapport
+ * gebruikt (`betonDoorsnedeTerugval`), zodat het scherm en het papier niet uit
+ * elkaar gaan lopen. Daardoor kan `concrete_stiffness_trace` meegaan met
+ * ALLEEN doorsneden erin: het betonhoofdstuk houdt dan zijn eerlijke melding
+ * over de ontbrekende segmenten en tekent toch de doorsnede.
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -40,10 +51,14 @@ import {
   type MemberCheckResult,
 } from "./checkTypes";
 import { isCltCheckResult } from "./cltCheckBuilder";
+import { doorsnedeUitToets } from "./betonDoorsnedeTerugval";
 import type { BeamCheckResult } from "./types/steel/BeamCheckResult";
+import type { BetonStaafDoorsnede } from "./types/concrete/BetonStaafDoorsnede";
 import type { BetonStijfheidSpoor } from "./types/concrete/BetonStijfheidSpoor";
+import type { CltBeamCheckResult } from "./types/timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "./types/concrete/ConcreteBeamCheckResult";
 import type { ReportInput } from "./types/steel/ReportInput";
+import type { SpanningBeamCheckResult } from "./types/spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "./types/timber/TimberBeamCheckResult";
 import type {
   BetonStaafDoorsnedeInvoer,
@@ -82,9 +97,9 @@ export interface RapportPdfBronnen {
  *
  * Er is geen `isTimberCheckResult`-wachter in `checkTypes` — hout is daar de
  * terugval — en die hier alsnog verzinnen zou een zesde definitie van
- * "wat is hout" opleveren. Kruislaaghout valt er apart uit omdat de
- * PDF-uitdraai daar (nog) geen hoofdstuk voor heeft; zie het slot van dit
- * bestand.
+ * "wat is hout" opleveren. Kruislaaghout valt er apart uit omdat het een eigen
+ * veld heeft: het draagt dezelfde norm maar een eigen resultaattype, en het
+ * rapport telt de twee samen als één normvermelding.
  */
 function isHoutResultaat(r: MemberCheckResult): r is TimberBeamCheckResult {
   return (
@@ -134,12 +149,39 @@ export function spoorVoorPdf(
   };
 }
 
+/**
+ * De doorsneden waarmee de PDF de doorsnedefiguren tekent, per betonstaaf.
+ *
+ * De exacte doorsneden uit de rekengang gaan VOOR: dat zijn de maten en de
+ * korf zoals de kern ze gekregen heeft. Voor elke betonstaaf die daar niet bij
+ * staat — bij eerste orde staat er geen enkele — wordt de doorsnede uit het
+ * toetsresultaat herleid. Is dat niet te doen, dan blijft die staaf weg en
+ * meldt het betonhoofdstuk zelf dat de figuur ontbreekt; een verzonnen
+ * doorsnede op papier is erger dan een lege plek.
+ */
+export function doorsnedenVoorFiguren(
+  beton: ConcreteBeamCheckResult[],
+  uitRekengang: BetonStaafDoorsnede[],
+): BetonStaafDoorsnede[] {
+  const uit = [...uitRekengang];
+  for (const r of beton) {
+    if (uit.some((d) => d.beam_id === r.beam_id)) continue;
+    const terugval = doorsnedeUitToets(r);
+    if (!terugval) continue;
+    uit.push({ beam_id: r.beam_id, doorsnede: terugval.doorsnede, korf: terugval.korf });
+  }
+  return uit;
+}
+
 /** De volledige invoer voor `generate_steel_report_pdf`. */
 export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   const staal: BeamCheckResult[] = bron.checkResults.filter(isSteelCheckResult);
   const beton: ConcreteBeamCheckResult[] = bron.checkResults.filter(isConcreteCheckResult);
   const hout: TimberBeamCheckResult[] = bron.checkResults.filter(isHoutResultaat);
+  const clt: CltBeamCheckResult[] = bron.checkResults.filter(isCltCheckResult);
+  const spanning: SpanningBeamCheckResult[] = bron.checkResults.filter(isStressCheckResult);
   const spoor = spoorVoorPdf(bron.stijfheid);
+  const doorsneden = doorsnedenVoorFiguren(beton, spoor?.staafdoorsneden ?? []);
 
   const invoer: ReportInput = {
     project_name: bron.project.name || "Naamloos",
@@ -153,8 +195,27 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   // Rust-kant `#[serde(default)]`, dus een leeg veld en een ontbrekend veld
   // betekenen hetzelfde; weglaten houdt de aanroep leesbaar in de logboeken.
   if (hout.length > 0) invoer.timber_check_results = hout;
+  // Kruislaaghout en de vrije spanningstoets MOETEN mee, ook al tekent de PDF
+  // hun laagtabel en spanningsverloop nog niet. Zonder deze twee regels levert
+  // een model dat alleen daaruit bestaat een rapport met nul getoetste staven,
+  // en dan zegt de PDF niets over wat de gebruiker wél getoetst heeft.
+  if (clt.length > 0) invoer.clt_check_results = clt;
   if (beton.length > 0) invoer.concrete_check_results = beton;
-  if (spoor) invoer.concrete_stiffness_trace = spoor;
+  if (spanning.length > 0) invoer.stress_check_results = spanning;
+  if (spoor) {
+    invoer.concrete_stiffness_trace = { ...spoor, staafdoorsneden: doorsneden };
+  } else if (doorsneden.length > 0) {
+    // Wel doorsneden om te tekenen, geen segmenten om na te vertellen: dat is
+    // elk analysetype behalve "2e orde + fysisch". De segmentlengte is dan
+    // geen weggelaten gegeven maar een niet-bestaand gegeven — er is niet
+    // geknipt — en het hoofdstuk drukt hem in dit geval ook niet af.
+    invoer.concrete_stiffness_trace = {
+      segment_lengte_mm: 0,
+      combinaties: [],
+      overgeslagen: [],
+      staafdoorsneden: doorsneden,
+    };
+  }
   return invoer;
 }
 
@@ -168,15 +229,19 @@ export async function genereerRapportPdf(invoer: ReportInput): Promise<Uint8Arra
 }
 
 /**
- * WAT DEZE UITDRAAI (NOG) NIET DRAAGT, en dus in het live rapport moet blijven:
- * kruislaaghout, de vrije spanningstoets, de plaatspanningen, de
- * krachtsverdeling en de oplegreacties. `ReportInput` kent daar geen velden
- * voor; die resultaten worden hier daarom BEWUST niet meegestuurd in plaats van
- * ze op een naburig veld te laten lijken.
+ * WAT DEZE UITDRAAI (NOG) NIET DRAAGT, en dus in het live rapport moet blijven.
+ *
+ * `ReportInput` kent voor deze onderdelen geen veld; ze worden hier daarom
+ * BEWUST niet meegestuurd in plaats van ze op een naburig veld te laten lijken.
+ *
+ * De TOETSINGEN van kruislaaghout en van de vrije spanningstoets staan er niet
+ * meer bij: die gaan sinds de velden `clt_check_results` en
+ * `stress_check_results` gewoon mee, en komen in de samenvattingstabel en in
+ * het blok per staaf. Alleen hun eigen figuren ontbreken nog.
  */
 export const NIET_IN_PDF = [
-  "kruislaaghout",
-  "vrije spanningstoets",
+  "de laagtabel en de laagtekening van kruislaaghout",
+  "de doorsnedetekening met het spanningsverloop",
   "plaatspanningen",
   "krachtsverdeling",
   "oplegreacties",

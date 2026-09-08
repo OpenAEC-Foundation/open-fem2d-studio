@@ -359,6 +359,17 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
     }
 }
 
+/// De hele lijst in één keer — de batch-instap voor kruislaaghout.
+///
+/// Zelfde reden als [`crate::check_all_timber_beams`]: het Tauri-command, de
+/// toetsbrug en de MCP-server voeren dezelfde staven door dezelfde toetsing.
+/// Met de lus in elke schil is er drie keer een plek waar de volgorde of de
+/// volledigheid van de lijst kan gaan afwijken, en dan geeft dezelfde plaat per
+/// omgeving een ander antwoord.
+pub fn check_all_clt_beams(inputs: Vec<CltBeamCheckInput>) -> Vec<CltBeamCheckResult> {
+    inputs.into_iter().map(check_clt_beam).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

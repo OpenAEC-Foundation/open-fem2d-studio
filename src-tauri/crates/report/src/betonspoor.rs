@@ -22,13 +22,18 @@
 //! [`BetonStaafDoorsnede`] staat niet in de store maar wel in de INVOER van de
 //! kernaanroep (`SegmentStiffnessRequest::section` / `::cage`). Het antwoord
 //! draagt de doorsnede alleen als NAAM ("300 x 500") en de korf alleen als
-//! zin ("onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm"). Het live rapport
-//! plakt die twee met een reguliere expressie weer uit elkaar om te kunnen
-//! tekenen; dat is daar de terugvaloptie voor een losgekoppeld venster zonder
-//! modelstate. Hier is die noodgreep niet nodig én niet gewenst — de frontend
-//! HEEFT de doorsnede en de korf al als gegeven, en een tweede parser op een
-//! zin die de kern samenstelt is precies het soort dubbele waarheid dat dit
-//! project elders bewust vermijdt. Dus reizen ze mee.
+//! zin ("onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm"). Om te kunnen
+//! TEKENEN moeten die twee weer uit elkaar; de frontend doet dat met één
+//! reguliere expressie (`betonDoorsnedeTerugval.ts`), gedeeld door het live
+//! rapport en de PDF-invoer.
+//!
+//! Hier wordt niet geparsed, en dat is een besluit en geen omissie. Een tweede
+//! parser op een zin die de kern zélf samenstelt is precies het soort dubbele
+//! waarheid dat dit project elders bewust vermijdt: hij zou bij de eerste
+//! wijziging van `summary()` stilzwijgend een andere doorsnede tekenen dan het
+//! scherm. Daarom reizen de doorsnede en de korf als GEGEVEN mee, en levert de
+//! frontend ze bij elk analysetype aan — na een fysische ronde uit de
+//! kernaanroep zelf, en anders uit die ene terugval.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

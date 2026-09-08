@@ -236,7 +236,12 @@ checkTrue("T zonder lijfbreedte wordt geweigerd",
     { shape: "Tee", b_mm: 400, h_mm: 450, b_w_mm: null, h_f_mm: 50, flange_at_bottom: false },
     { count: 3, diameter_mm: 16 }, { count: 2, diameter_mm: 12 })) ?? "").includes("lijfbreedte"));
 
-// De staven van een rij liggen binnen de breedte waar ze horen.
+// De staven van een rij liggen binnen de breedte waar ze horen. Bewust een
+// GRENSTOETS: hier gaat het erom dat de tekening en de korfcontrole naar
+// dezelfde breedte kijken, niet om de exacte harten. Die harten staan op
+// waarde vastgepind in `test-betonfiguren-referentie.mjs`, tegen de gedeelde
+// referentie die de Rust-kant óók leest — een grenstoets alléén laat elke
+// verschuiving binnen de grens ongemerkt door.
 const posities = korfmodel.staafPosities(past.korf, grote);
 const onderX = posities.filter((p) => p.rij === "onder").map((p) => p.x);
 checkTrue("onderwapening ligt binnen het lijf (200 tot 400 mm)",

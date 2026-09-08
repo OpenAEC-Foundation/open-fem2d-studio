@@ -23,11 +23,23 @@
 //! De tekencomponenten die daarop leunen zijn `DoorsnedeTekening.tsx`,
 //! `MNKappaGrafiek.tsx`, `InteractieGrafiek.tsx` en `EiVerloopGrafiek.tsx`.
 //!
-//! **De bewaking is `tests/betonfiguren_meetkunde.rs`**: die pint voor een
-//! rechthoek, een T, een omgekeerde T en een L de omtrekpunten en de
-//! staafposities vast op waarden die met de hand uit de maten zijn afgeleid.
-//! Wijkt de frontend later af — of deze kant — dan komt iemand die test tegen
-//! vóórdat er twee verschillende doorsneden in één rapport staan.
+//! **De bewaking loopt over één GEDEELD bestand**:
+//! `tests/golden/betonfiguren-referentie.json` draagt per doorsnede de exacte
+//! omtrekpunten en staafharten, en beide kanten lezen daaruit — hier
+//! `tests/betonfiguren_referentie.rs`, daar
+//! `design-mockup/test-betonfiguren-referentie.mjs`. Geen van beide tests
+//! draagt eigen getallen; verschuift één implementatie een punt, dan valt die
+//! kant om. Hoe je de referentie bewust bijwerkt, staat in het bestand zelf.
+//!
+//! Waarom niet aan elke kant een eigen lijst verwachte waarden: dat wás de
+//! opzet, en die bewaakte niets. Een verschoven staafhart bleef aan beide
+//! kanten groen zolang het getal in beide suites meeverschoof — en de TS-kant
+//! toetste de harten alleen op een grens, waar elke verschuiving binnen die
+//! grens ongemerkt doorheen glipt.
+//!
+//! Daarnaast blijft `tests/betonfiguren_meetkunde.rs` staan: die pint dezelfde
+//! meetkunde vast mét de handafleiding erbij, en legt dus uit wáárom een punt
+//! ligt waar hij ligt.
 //!
 //! # Wat er nog meer uit de frontend is overgenomen
 //!

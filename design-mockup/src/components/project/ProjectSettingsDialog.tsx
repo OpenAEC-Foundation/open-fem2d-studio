@@ -5,6 +5,9 @@ import {
   WINDGEBIEDEN, TERREIN_CATEGORIEEN,
   type Windgebied, type TerreinCategorie,
 } from "../../lib/wind/windEurocode";
+import {
+  NORM_SLEUTELS, gekozenNormen, type NormSleutel,
+} from "../../lib/normenInRapport";
 import "./ProjectSettingsDialog.css";
 
 interface ProjectSettingsDialogProps {
@@ -52,7 +55,14 @@ export const LEVENSDUUR_OMSCHRIJVING: Record<Levensduurklasse, string> = {
 export type WindgebiedId = Windgebied;
 export type TerreinCategorieId = TerreinCategorie;
 
-/** Normen die het project toepast (uitgangspunten van de berekening). */
+/**
+ * Normen die het project toepast (uitgangspunten van de berekening).
+ *
+ * De drie normvlaggen betekenen "óók vermelden zonder dat er materiaal van die
+ * soort in het model zit" — vooruitlopen op wat er nog getekend wordt. Wat er
+ * wél in het model zit of waarop getoetst is, komt sowieso in het rapport; de
+ * regels staan in `lib/normenInRapport`.
+ */
 export interface Uitgangspunten {
   /** EN 1993 — staalconstructies. */
   en1993: boolean;
@@ -60,6 +70,14 @@ export interface Uitgangspunten {
   en1995: boolean;
   /** EN 1992 — betonconstructies (nog niet geïmplementeerd; alleen vermelding). */
   en1992: boolean;
+  /**
+   * De normvinkjes die de gebruiker zelf heeft omgezet. Zonder dit spoor is
+   * aan `en1995: true` niet te zien of het een keuze was of de standaardstand,
+   * en dan meldt een zuiver stalen rapport doodleuk dat EN 1995 is toegepast.
+   * Ontbreekt het veld (projecten van vóór deze wijziging), dan volgen alle
+   * normen het model.
+   */
+  normenHandmatig?: NormSleutel[];
   /** Gevolgklasse volgens EN 1990. */
   gevolgklasse: Gevolgklasse;
   /** Ontwerplevensduurklasse volgens EN 1990 tabel 2.1. */
@@ -78,10 +96,17 @@ export interface Uitgangspunten {
   terreincategorie?: TerreinCategorieId;
 }
 
+/**
+ * De stand van een project waar niemand iets aan heeft gekozen. De drie
+ * normvlaggen staan daarom uit: een vinkje dat de gebruiker nooit heeft gezet
+ * mag zijn norm niet in het rapport zetten. Ze volgen dan het model — staal in
+ * het model levert EN 1993, hout levert EN 1995.
+ */
 export const DEFAULT_UITGANGSPUNTEN: Uitgangspunten = {
-  en1993: true,
-  en1995: true,
+  en1993: false,
+  en1995: false,
   en1992: false,
+  normenHandmatig: [],
   gevolgklasse: "CC2",
   levensduurklasse: "4",
   nationaleBijlage: "NL",
@@ -151,8 +176,13 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
   if (!open) return null;
 
   // Uitgangspunten met terugval op de defaults, zodat projecten van vóór deze
-  // uitbreiding gewoon laden (Eurocode staal + hout, gevolgklasse CC2).
+  // uitbreiding gewoon laden (gevolgklasse CC2, normen volgen het model).
   const uitgangspunten: Uitgangspunten = project.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
+  // De vinkjes tonen alleen wat de gebruiker zelf heeft gezet. In een bestaand
+  // projectbestand staat `en1995: true` zonder dat te achterhalen is wie dat
+  // deed; die stand telt niet als keuze en hoort dus ook niet als aangevinkt
+  // hokje te verschijnen, want het rapport negeert hem eveneens.
+  const gekozen = gekozenNormen(uitgangspunten);
   const updateUitgangspunt = <K extends keyof Uitgangspunten>(
     sleutel: K,
     waarde: Uitgangspunten[K],
@@ -161,6 +191,29 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
       ...prev,
       uitgangspunten: { ...(prev.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN), [sleutel]: waarde },
     }));
+  };
+
+  /**
+   * Een normvinkje omzetten. Naast de stand zelf leggen we vast DÁT de
+   * gebruiker hem heeft gezet — zonder dat spoor is een aangezette norm niet
+   * te onderscheiden van de standaardstand, en dat is precies wat een zuiver
+   * stalen rapport EN 1995 liet melden. Uitzetten telt evengoed als keuze.
+   */
+  const updateNorm = (sleutel: NormSleutel, aan: boolean) => {
+    setProject((prev) => {
+      const vorige = prev.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
+      const handmatig = new Set(vorige.normenHandmatig ?? []);
+      handmatig.add(sleutel);
+      return {
+        ...prev,
+        uitgangspunten: {
+          ...vorige,
+          [sleutel]: aan,
+          // Vaste volgorde, zodat twee gelijke keuzes ook gelijke JSON geven.
+          normenHandmatig: NORM_SLEUTELS.filter((k) => handmatig.has(k)),
+        },
+      };
+    });
   };
 
   const updateField = (field: keyof ProjectInfo, value: string) => {
@@ -323,19 +376,26 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                       key={sleutel}
                       className={`proj-norm${beschikbaar ? "" : " proj-norm-uit"}`}
                       title={beschikbaar
-                        ? "Wordt toegepast bij de normtoetsing"
+                        ? "Altijd vermelden, ook zonder dit materiaal in het model"
                         : "Nog niet beschikbaar — betontoetsing volgt later"}
                     >
                       <input
                         type="checkbox"
                         disabled={!beschikbaar}
-                        checked={!!uitgangspunten[sleutel]}
-                        onChange={(e) => updateUitgangspunt(sleutel, e.target.checked)}
+                        checked={gekozen[sleutel]}
+                        onChange={(e) => updateNorm(sleutel, e.target.checked)}
                       />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
+                <p className="proj-uitleg">
+                  Wat u hier aanvinkt staat altijd in de uitgangspunten van het
+                  rapport, ook als het materiaal nog getekend moet worden. Laat u
+                  het leeg, dan volgen de normen het model: een norm komt in het
+                  rapport zodra er materiaal van die soort in staat of erop
+                  getoetst is. Zo meldt een zuiver stalen berekening geen hout.
+                </p>
               </div>
               <div className="proj-row">
                 <div className="proj-field">

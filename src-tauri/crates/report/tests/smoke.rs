@@ -90,7 +90,9 @@ fn produces_valid_pdf_header() {
             dummy_beam(3, "UNP350", 1.12),
         ],
         timber_check_results: vec![],
+        clt_check_results: vec![],
         concrete_check_results: vec![],
+        stress_check_results: vec![],
         concrete_stiffness_trace: None,
     };
 

@@ -19,7 +19,9 @@
  * Bron van de wapeningskorf voor de tekening: bij voorkeur de
  * staafeigenschappen uit het model (exacte getallen), en anders de
  * samenvattingsregel die de kern zelf meestuurt — zo werkt de sectie ook in
- * het losgekoppelde rapportvenster, waar geen modelstate is.
+ * het losgekoppelde rapportvenster, waar geen modelstate is. Die terugval
+ * staat in `lib/betonDoorsnedeTerugval.ts` en is gedeeld met de PDF-uitdraai,
+ * zodat het scherm en het papier dezelfde doorsnede tekenen.
  *
  * Zonder betonresultaten toont de sectie een expliciete melding; de
  * hoofdsessie bepaalt via reportSections.ts of de sectie in het rapport staat.
@@ -32,10 +34,10 @@ import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportSto
 import { useReportData } from "../ReportDataContext";
 import { isConcreteCheckResult } from "../../../lib/checkTypes";
 import { parseSectionNaam, DEFAULT_N_STRIPS } from "../../../lib/betonCheckBuilder";
+import { doorsnedeUitToets } from "../../../lib/betonDoorsnedeTerugval";
 import { breedteOpHoogteMm, asAfstandMm } from "../../beton/wapeningskorf";
 import type { ConcreteBeamCheckResult } from "../../../lib/types/concrete/ConcreteBeamCheckResult";
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
-import type { RebarRow } from "../../../lib/types/concrete/RebarRow";
 import type { BeffStaafUitkomst } from "../../../lib/beffLiggerlijn";
 import BeffAfleiding, { BEFF_REPORT_CSS } from "../BeffAfleiding";
 import DoorsnedeTekening from "../../beton/DoorsnedeTekening";
@@ -61,53 +63,27 @@ import {
 // De korf terugvinden voor de tekening
 // ═══════════════════════════════════════════════════════════════════════
 
-/** "3Ø16" (of "—") uit de samenvattingsregel van de kern. */
-function rijUitTekst(s: string | undefined): RebarRow {
-  const m = s ? /(\d+)\s*Ø\s*([\d.,]+)/.exec(s) : null;
-  if (!m) return { count: 0, diameter_mm: 0 };
-  return { count: parseInt(m[1], 10), diameter_mm: parseFloat(m[2].replace(",", ".")) };
-}
-
-/**
- * De korf uit `reinforcement_summary`: "onder 3Ø16, boven 2Ø12, beugel Ø8,
- * dekking 30 mm". Die regel komt uit `ReinforcementCage::summary()` in de
- * kern en heeft dus een vaste vorm; dit is de terugvaloptie voor wanneer de
- * modelstate er niet is (losgekoppeld rapportvenster). `null` = niet te
- * herleiden, dan blijft de tekening weg in plaats van een verzonnen korf.
- */
-function korfUitSamenvatting(s: string): ReinforcementCage | null {
-  const dekking = /dekking\s+([\d.,]+)\s*mm/.exec(s);
-  if (!dekking) return null;
-  const beugel = /beugel\s*Ø\s*([\d.,]+)/.exec(s);
-  const cage: ReinforcementCage = {
-    cover_mm: parseFloat(dekking[1].replace(",", ".")),
-    stirrup_diameter_mm: beugel ? parseFloat(beugel[1].replace(",", ".")) : 0,
-    top: rijUitTekst(/boven\s+([^,]+)/.exec(s)?.[1]),
-    bottom: rijUitTekst(/onder\s+([^,]+)/.exec(s)?.[1]),
-  };
-  if (cage.bottom.count === 0 && cage.top.count === 0) return null;
-  return cage;
-}
-
 /**
  * De `Wapeningskorf` waarmee de tekening gemaakt wordt. `aantalStroken` en
  * `staaltak` doen in de tekening niet mee, maar horen bij het type; ze krijgen
  * de standaardwaarden en worden nergens als getoetste invoer getoond.
+ *
+ * De doorsnede en de korf zelf komen uit `betonDoorsnedeTerugval`. Die
+ * terugval deelt deze sectie met de PDF-uitdraai: het scherm en het papier
+ * horen dezelfde doorsnede te tekenen, en twee parsers op dezelfde
+ * samenvattingsregel lopen op den duur uit elkaar.
  */
 function korfVoorTekening(
   r: ConcreteBeamCheckResult,
   uitModel: ReinforcementCage | undefined,
 ): Wapeningskorf | null {
-  // De doorsnedenaam van de KERN — die draagt bij een T ook de flensmaten en
-  // daarmee de b_eff waarmee werkelijk gerekend is.
-  const doorsnede = parseSectionNaam(r.section_name);
-  const cage = uitModel ?? korfUitSamenvatting(r.reinforcement_summary);
-  if (!doorsnede || !cage) return null;
+  const uit = doorsnedeUitToets(r, uitModel);
+  if (!uit) return null;
   return {
-    doorsnede,
+    doorsnede: uit.doorsnede,
     betonklasse: r.concrete_class,
     staalsoort: r.reinforcement_grade,
-    korf: cage,
+    korf: uit.korf,
     // De tekening kent geen milieuklasse — die staat niet in het toetsresultaat
     // en de tekening doet er niets mee. Zie het beperkingenblok bij 4.4.1.2.
     milieuklasse: null,

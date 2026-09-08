@@ -26,7 +26,7 @@ pub mod stability;
 pub mod deflection;
 pub mod clt; pub mod clt_toets; // kruislaaghout: doorsnedemodel + toetsing per lamel
 
-pub use data::{strength_class_by_name, StrengthClass};
+pub use data::{strength_class_by_name, strength_class_names, StrengthClass};
 pub use factors::{
     beta_c, design_strength, gamma_m, k_def, k_h, k_m, k_mod, k_sys,
     LoadDurationClass, ServiceClass, TimberType,

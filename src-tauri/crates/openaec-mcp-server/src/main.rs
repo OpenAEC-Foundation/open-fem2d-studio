@@ -1,6 +1,6 @@
 //! openaec-mcp-server — Model Context Protocol server exposing the
-//! OpenAEC check engines (EN 1993 steel, EN 1992 concrete) and the 2D FEM
-//! solver over stdio (JSON-RPC 2.0).
+//! OpenAEC check engines (EN 1993 steel, EN 1992 concrete, EN 1995 timber and
+//! cross-laminated timber) and the 2D FEM solver over stdio (JSON-RPC 2.0).
 //!
 //! Speaks newline-delimited JSON-RPC on stdin/stdout. stderr is reserved
 //! for human-readable tracing (so it never collides with protocol traffic).
@@ -23,10 +23,17 @@ use tokio::sync::Mutex;
 /// letterlijk dezelfde solver als de app. Zie `fem_tools.rs`.
 mod fem_tools;
 
-/// De vier betontools (NEN-EN 1992-1-1). Ze roepen dezelfde `concrete_check`
+/// De acht betontools (NEN-EN 1992-1-1). Ze roepen dezelfde `concrete_check`
 /// aan als het Tauri-command en de toetsbrug — de derde weg naar één
 /// rekengang. Zie `concrete_tools.rs`.
 mod concrete_tools;
+
+/// De vier houttools (NEN-EN 1995-1-1), hout en kruislaaghout. Ze roepen
+/// dezelfde `timber_check` aan als het Tauri-command en de toetsbrug. Deze weg
+/// ontbrak, terwijl `generate_steel_report_pdf` hieronder wél
+/// `timber_check_results` accepteert — de rapportweg beloofde dus hout dat
+/// langs deze weg niet te maken was. Zie `timber_tools.rs`.
+mod timber_tools;
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "openaec-fem";
@@ -268,9 +275,15 @@ fn schema_custom_section() -> Value {
 /// Nederlandse melding met foutcode en remedie, en blijft `fem_solver_status`
 /// het eerste dat je vraagt.
 ///
-/// De vier betontools uit `concrete_tools` sluiten de rij. Ze hebben, net als
+/// De acht betontools uit `concrete_tools` volgen. Ze hebben, net als
 /// `check_steel_beam`, een volledig en strikt schema: `ConcreteBeamCheckInput`
 /// en `MnKappaRequest` staan op `#[serde(deny_unknown_fields)]`.
+///
+/// De vier houttools uit `timber_tools` sluiten de rij. Hún staafschema's
+/// noemen ook elk veld, maar houden `additionalProperties` op `true`:
+/// `TimberBeamCheckInput` en `CltBeamCheckInput` kennen géén
+/// `deny_unknown_fields`, en een schema dat strenger belooft dan de server is
+/// verplaatst de fout naar de client. De reden staat in `timber_tools.rs`.
 fn tool_definitions() -> Value {
     let mut tools = json!([
         {
@@ -357,7 +370,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "generate_steel_report_pdf",
-            "description": "Generate a complete constructive-check PDF report (EN 1993-1-1 steel, EN 1995-1-1 timber, EN 1992-1-1 concrete). Optionally include concrete_stiffness_trace to add the chapter on physically non-linear second-order analysis: the per-combination assumptions, the segment stiffness tables and the four concrete figures. Returns the PDF as base64 plus byte_count. Heavy operation — runs on a blocking task.",
+            "description": "Generate a complete constructive-check PDF report. Material-neutral despite the name: EN 1993-1-1 steel, EN 1995-1-1 timber and cross-laminated timber, EN 1992-1-1 concrete, plus the norm-independent stress check (von Mises against an allowable stress). The cover and the page header name only the standards actually present. Optionally include concrete_stiffness_trace to add the chapter on physically non-linear second-order analysis: the per-combination assumptions, the segment stiffness tables and the four concrete figures. Returns the PDF as base64 plus byte_count. Heavy operation — runs on a blocking task.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -368,7 +381,9 @@ fn tool_definitions() -> Value {
                     "date":                { "type": "string" },
                     "steel_check_results": { "type": "array" },
                     "timber_check_results":   { "type": "array" },
+                    "clt_check_results":      { "type": "array" },
                     "concrete_check_results": { "type": "array" },
+                    "stress_check_results":   { "type": "array" },
                     "concrete_stiffness_trace": { "type": "object" }
                 },
                 "required": [
@@ -384,6 +399,7 @@ fn tool_definitions() -> Value {
         .expect("de tooldefinities zijn een array");
     lijst.extend(fem_tools::tool_definitions());
     lijst.extend(concrete_tools::tool_definitions());
+    lijst.extend(timber_tools::tool_definitions());
     tools
 }
 
@@ -450,6 +466,13 @@ async fn dispatch_tool(name: &str, args: Value) -> Result<Value, RpcError> {
         beton if concrete_tools::is_concrete_tool(beton) => {
             concrete_tools::dispatch(beton, args).await
         }
+        // De houttools. Ze roepen `timber_check::check_all_timber_beams` en
+        // `timber_check::clt::check_all_clt_beams` aan — dezelfde
+        // batch-instappen die `src-tauri/src/lib.rs` en `crates/toetsbrug`
+        // aanroepen, zodat geen van de drie schillen een eigen lus over de
+        // staven houdt. Zie `timber_tools.rs` en
+        // `tests/drie_wegen_kruistabel.rs`.
+        hout if timber_tools::is_timber_tool(hout) => timber_tools::dispatch(hout, args).await,
         other => Err(RpcError::method_not_found(other)),
     }
 }

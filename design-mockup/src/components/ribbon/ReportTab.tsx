@@ -9,11 +9,19 @@
  * sectiekeuze uit de zijbalk.
  *
  * "Rekenrapport" laat de REKENKERN de PDF zetten (`generate_steel_report_pdf`).
- * Die uitdraai draagt de toetsingen van staal, hout en beton plus het
- * betonhoofdstuk met de segmenttabellen en de vier betonfiguren, en hij wordt
- * vectorieel getekend in plaats van door de browser gerasterd. Wat hij (nog)
- * niet draagt staat opgesomd in `NIET_IN_PDF` in `lib/rapportPdfInvoer.ts`;
- * daarvoor blijft het live rapport de weg.
+ * Die uitdraai draagt de toetsingen van alle vijf de kernen — staal, hout,
+ * kruislaaghout, beton en de vrije spanningstoets — plus het betonhoofdstuk met
+ * de segmenttabellen en de vier betonfiguren, en hij wordt vectorieel getekend
+ * in plaats van door de browser gerasterd. Wat hij (nog) niet draagt staat
+ * opgesomd in `NIET_IN_PDF` in `lib/rapportPdfInvoer.ts`; daarvoor blijft het
+ * live rapport de weg.
+ *
+ * DE DREMPEL ONDER DE KNOP KLOPT ALLEEN ZOLANG DIE VIJF MEEGAAN
+ * ------------------------------------------------------------
+ * De knop kijkt naar `checkResults.length`, en dat is de juiste maat zolang
+ * `bouwRapportInvoer` elk soort resultaat in een eigen veld zet. Verdwijnt een
+ * soort onderweg, dan is de knop actief maar het rapport leeg — en een leeg
+ * rapport noemde vroeger een norm die nergens was toegepast.
  */
 import { useTranslation } from "react-i18next";
 import RibbonGroup from "./RibbonGroup";

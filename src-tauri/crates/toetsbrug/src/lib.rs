@@ -57,13 +57,13 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
         "list_steel_grades" => {
             serde_json::to_value(vec![S235, S275, S355, S420, S460]).map_err(|e| e.to_string())
         }
+        // Hout (NEN-EN 1995-1-1): de sterkteklassen en de toetsing per staaf.
+        // Ook als MCP-tool bereikbaar onder dezelfde naam
+        // (`openaec-mcp-server/src/timber_tools.rs`); de drie wegen delen de
+        // typen en lopen door `timber_check::check_all_timber_beams`.
         "list_timber_grades" => {
-            let klassen: Vec<String> = nen_en_1995_1_1::data::SOFTWOOD
-                .iter()
-                .chain(nen_en_1995_1_1::data::GLULAM.iter())
-                .map(|c| c.name.to_string())
-                .collect();
-            serde_json::to_value(klassen).map_err(|e| e.to_string())
+            serde_json::to_value(nen_en_1995_1_1::strength_class_names())
+                .map_err(|e| e.to_string())
         }
         "check_steel_beams" => {
             let inputs = v.inputs.ok_or("check_steel_beams vraagt om `inputs`")?;
@@ -75,14 +75,15 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let inputs = v.inputs.ok_or("check_timber_beams vraagt om `inputs`")?;
             let inputs: Vec<TimberBeamCheckInput> =
                 serde_json::from_value(inputs).map_err(|e| format!("staafinvoer: {e}"))?;
-            let uit: Vec<_> = inputs
-                .into_iter()
-                .map(timber_check::check_timber_beam)
-                .collect();
-            serde_json::to_value(uit).map_err(|e| e.to_string())
+            serde_json::to_value(timber_check::check_all_timber_beams(inputs))
+                .map_err(|e| e.to_string())
         }
         // Kruislaaghout: standaardopbouwen (voorinstellingen) en de toetsing
-        // per lamel. Zelfde typen als de Tauri-commands.
+        // per lamel. Zelfde typen als de Tauri-commands en als de MCP-tools
+        // van dezelfde naam (`openaec-mcp-server/src/timber_tools.rs`); de
+        // toetsing loopt langs alle drie de wegen door
+        // `timber_check::clt::check_all_clt_beams`, zodat er geen tweede lus
+        // over de staven bestaat.
         "list_clt_presets" => {
             serde_json::to_value(nen_en_1995_1_1::clt::clt_presets()).map_err(|e| e.to_string())
         }
@@ -90,11 +91,8 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let inputs = v.inputs.ok_or("check_clt_beams vraagt om `inputs`")?;
             let inputs: Vec<CltBeamCheckInput> =
                 serde_json::from_value(inputs).map_err(|e| format!("CLT-staafinvoer: {e}"))?;
-            let uit: Vec<_> = inputs
-                .into_iter()
-                .map(timber_check::clt::check_clt_beam)
-                .collect();
-            serde_json::to_value(uit).map_err(|e| e.to_string())
+            serde_json::to_value(timber_check::clt::check_all_clt_beams(inputs))
+                .map_err(|e| e.to_string())
         }
         // Beton (NEN-EN 1992-1-1): sterkteklassen met alle tabel 3.1-waarden,
         // de B500-klassen, de toetsing per staaf en het losse M-N-κ-diagram

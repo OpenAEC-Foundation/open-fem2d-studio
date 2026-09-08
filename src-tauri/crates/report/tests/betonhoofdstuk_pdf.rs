@@ -343,7 +343,9 @@ fn invoer(
         date: "2026-09-08".into(),
         steel_check_results: vec![staalstaaf()],
         timber_check_results: vec![],
+        clt_check_results: vec![],
         concrete_check_results: beton,
+        stress_check_results: vec![],
         concrete_stiffness_trace: trace,
     }
 }
@@ -497,21 +499,95 @@ fn een_zuiver_staalrapport_krijgt_geen_leeg_betonhoofdstuk() {
     }
 }
 
+/// De invoer zoals de frontend hem levert bij ELK ander analysetype dan
+/// "2e orde + fysisch": geen segmenten om na te vertellen, wél de doorsnede om
+/// te tekenen.
+///
+/// Die doorsnede komt daar uit `rapportPdfInvoer.ts`, dat hem bij gebrek aan
+/// een rekengang uit het toetsresultaat herleidt met dezelfde terugval die het
+/// live rapport gebruikt (`betonDoorsnedeTerugval.ts`). De segmentlengte is
+/// dan 0: er is niet geknipt, en het hoofdstuk drukt hem in dit geval ook niet
+/// af.
+fn eerste_orde_spoor() -> BetonStijfheidSpoor {
+    BetonStijfheidSpoor {
+        segment_lengte_mm: 0.0,
+        combinaties: Vec::new(),
+        overgeslagen: Vec::new(),
+        staafdoorsneden: vec![BetonStaafDoorsnede {
+            beam_id: 1,
+            doorsnede: proefdoorsnede(),
+            korf: proefkorf(),
+        }],
+    }
+}
+
 #[test]
 fn beton_zonder_fysische_berekening_houdt_het_hoofdstuk_met_een_eerlijke_melding() {
     // "Kan dit model dit ooit vullen" laat een hoofdstuk weg; "is het nu leeg"
     // is een rekenstand en laat het staan. Er is beton, dus het hoofdstuk
     // blijft — met de melding dat er niet fysisch gerekend is.
+    //
+    // EN DE DOORSNEDEFIGUUR HOORT ER TOCH TE STAAN. Die hangt aan de toetsing
+    // en niet aan de fysische ronde; het live rapport tekent hem in dit geval
+    // ook. Deze test controleerde dat eerder alleen op de KOP "Doorsneden" en
+    // op het woord "dekking" uit de gegevensregel — beide staan er ook als de
+    // figuur ontbreekt, dus het gat viel niet op. Nu wordt de figuur zelf
+    // aangetoond: het bijschrift dat alleen de getekende figuur draagt, een
+    // maatlabel dat alleen de tekenfunctie op het blad zet, en de afwezigheid
+    // van de melding dat er niets te tekenen viel.
     let mk = reken_mn_kappa();
-    let input = invoer(vec![betontoets(&mk)], None);
+    let input = invoer(vec![betontoets(&mk)], Some(eerste_orde_spoor()));
     assert!(betonhoofdstuk::van_toepassing(&input));
 
-    let stroom = inhoudsstromen(&generate_report_pdf(input));
+    let pdf = generate_report_pdf(input);
+    let map = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let pad = map.join("betonhoofdstuk-eerste-orde.pdf");
+    std::fs::write(&pad, &pdf).expect("het proefrapport wegschrijven");
+    println!("proefrapport eerste orde: {}", pad.display());
+
+    let stroom = inhoudsstromen(&pdf);
     eis_erin(&stroom, "Segmentstijfheden");
     eis_erin(&stroom, "analysetype");
-    // De doorsnedefiguren horen er wél te staan: die hangen aan de toetsing.
-    eis_erin(&stroom, "Doorsneden");
-    eis_erin(&stroom, "dekking");
+
+    // ── De doorsnedefiguur, drie keer bewezen ───────────────────────────
+    // 1. Het bijschrift staat alleen onder een GETEKENDE doorsnede.
+    eis_erin(&stroom, "verhouding");
+    // 2. Een maatlabel uit de tekenfunctie zelf. `teken_doorsnede` zet
+    //    "b 300" en "h 500" op de maatlijnen; nergens anders in het hoofdstuk
+    //    staat die schrijfwijze, en zonder tekening staat hij er dus niet.
+    let b_label = format!("b {}", report::betonfiguren::maat(300.0));
+    let h_label = format!("h {}", report::betonfiguren::maat(500.0));
+    eis_erin(&stroom, &b_label);
+    eis_erin(&stroom, &h_label);
+    // 3. De melding dat er niets te tekenen viel, hoort er NIET te staan.
+    assert!(
+        !staat_erin(&stroom, "meegestuurd"),
+        "de PDF meldt dat de doorsnede niet is meegestuurd, terwijl hij er wél in zat"
+    );
+
+    // En het is geen bijschrift zonder plaatje: zonder de doorsnede is het
+    // blad merkbaar leger, want dan vervallen de tekenopdrachten van de figuur.
+    // Diezelfde vergelijking toont meteen aan dat de drie proefwoorden hierboven
+    // WERKELIJK aan de figuur hangen en niet ergens anders in het hoofdstuk
+    // staan — anders is de proef geen proef.
+    let zonder_figuur = generate_report_pdf(invoer(vec![betontoets(&mk)], None));
+    let stroom_zonder = inhoudsstromen(&zonder_figuur);
+    for woord in ["verhouding", b_label.as_str(), h_label.as_str()] {
+        assert!(
+            !staat_erin(&stroom_zonder, woord),
+            "{woord:?} staat óók in de PDF zonder doorsnede — dat woord bewijst de figuur dus \
+             niet"
+        );
+    }
+    eis_erin(&stroom_zonder, "meegestuurd");
+    assert!(
+        pdf.len() > zonder_figuur.len() + 1_000,
+        "de doorsnedefiguur voegt maar {} bytes toe ({} tegen {}) — er wordt dan wel een \
+         bijschrift gezet maar niets getekend",
+        pdf.len().saturating_sub(zonder_figuur.len()),
+        pdf.len(),
+        zonder_figuur.len()
+    );
 }
 
 #[test]

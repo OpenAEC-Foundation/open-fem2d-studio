@@ -6,13 +6,20 @@ Claude Code, etc.). It speaks JSON-RPC 2.0 over stdio and wraps the same
 Rust crates the Tauri desktop app uses, so a tool call from Claude returns
 byte-identical results to clicking through the UI.
 
-Fourteen tools in three groups:
+Twenty-two tools in five groups:
 
 | group | tools |
 |---|---|
-| steel — EN 1993-1-1 | `list_steel_profiles`, `list_steel_grades`, `check_steel_beam`, `compute_section_properties`, `generate_steel_report_pdf` |
+| steel — EN 1993-1-1 | `list_steel_profiles`, `list_steel_grades`, `check_steel_beam`, `compute_section_properties` |
+| timber — EN 1995-1-1 | `list_timber_grades`, `check_timber_beams`, `list_clt_presets`, `check_clt_beams` |
+| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `check_concrete_beam`, `concrete_mn_kappa`, `concrete_segment_stiffness`, `concrete_effective_flange_width`, `list_exposure_classes`, `concrete_cover_check` |
 | 2D FEM solver | `fem_solver_status`, `validate_fem_model`, `load_fem_project`, `solve_fem_model`, `check_fem_model` |
-| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `check_concrete_beam`, `concrete_mn_kappa` |
+| reporting | `generate_steel_report_pdf` |
+
+`generate_steel_report_pdf` sits in its own group on purpose: the name is
+historical, but the report carries steel, timber, cross-laminated timber,
+concrete and the norm-independent stress check. Filing it under steel would
+suggest it only renders EN 1993-1-1.
 
 **De drie wegen.** Elke rekenkern in dit project hoort langs drie wegen
 bereikbaar te zijn: een Tauri-command (de desktop-app), een opdracht in
@@ -225,10 +232,13 @@ multi-page) from check results — typically the output of one or more prior
 `check_steel_beam` / `check_concrete_beam` calls. Returns the PDF as base64
 because MCP transports JSON, not binary.
 
-Despite the name, the report is material-neutral: `steel_check_results`
-(EN 1993-1-1) is required, `timber_check_results` (EN 1995-1-1) and
-`concrete_check_results` (EN 1992-1-1) are optional, and the cover only names
-the standards that are actually present.
+Despite the name, the report is material-neutral. Five result arrays feed it:
+`steel_check_results` (EN 1993-1-1), `timber_check_results` (EN 1995-1-1),
+`clt_check_results` (EN 1995-1-1, cross-laminated timber), `concrete_check_results`
+(EN 1992-1-1) and `stress_check_results` (no standard — von Mises against an
+allowable stress). Only `steel_check_results` is schema-required; for a report
+without steel, pass it as `[]`. The cover and the page header name **only** the
+standards actually present, and claim none when nothing was checked.
 
 `concrete_stiffness_trace` is optional as well and adds the chapter "Beton —
 fysisch niet-lineaire tweede orde": per load combination the assumptions
@@ -250,8 +260,11 @@ was run.
     "engineer":       "M. Vroegindeweij",
     "company":        "OpenAEC Foundation",
     "date":           "2026-05-16",
-    "steel_check_results": [ /* one or more BeamCheckResult objects */ ],
+    "steel_check_results": [ /* BeamCheckResult objects; [] for a report without steel */ ],
+    "timber_check_results":     [ /* optional TimberBeamCheckResult objects */ ],
+    "clt_check_results":        [ /* optional CltBeamCheckResult objects */ ],
     "concrete_check_results":   [ /* optional ConcreteBeamCheckResult objects */ ],
+    "stress_check_results":     [ /* optional SpanningBeamCheckResult objects */ ],
     "concrete_stiffness_trace": { /* optional BetonStijfheidSpoor */ }
   }
 }

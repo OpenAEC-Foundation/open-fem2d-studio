@@ -57,6 +57,15 @@ report = { path = "../report" }
 # betonsterkteklasse is.
 concrete-check = { path = "../concrete-check" }
 nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
+# Hout en kruislaaghout (NEN-EN 1995-1-1). Deze twee ontbraken: de commands
+# `list_timber_grades`, `check_timber_beams`, `list_clt_presets` en
+# `check_clt_beams` bestonden wel in de app en in de toetsbrug, maar niet hier —
+# terwijl `generate_steel_report_pdf` hieronder wél `timber_check_results`
+# accepteert. De rapportweg beloofde dus hout dat langs deze weg niet te maken
+# was. `nen-en-1995-1-1` staat erbij voor de sterkteklassen (`data`) en de
+# CLT-voorinstellingen (`clt::clt_presets`).
+timber-check = { path = "../timber-check" }
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 
 [dev-dependencies]
 # De toetsbrug als bibliotheek: de drie-wegen-verificatie roept zijn werkelijke

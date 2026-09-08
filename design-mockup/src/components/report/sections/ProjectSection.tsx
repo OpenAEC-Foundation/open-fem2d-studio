@@ -15,7 +15,13 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { setSetting } from "../../../store";
 import { useCheckStore } from "../../../stores/checkStore";
+import {
+  normenInModel,
+  normenUitToetsen,
+  normenVoorRapport,
+} from "../../../lib/normenInRapport";
 import { usedNorms } from "../checkReportUtils";
+import { useReportData } from "../ReportDataContext";
 import { useProjectInfo } from "../useProjectInfo";
 import {
   DEFAULT_UITGANGSPUNTEN,
@@ -34,12 +40,14 @@ function formatDate(raw: string): string {
 export default function ProjectSection() {
   const { t } = useTranslation("ribbon");
   const info = useProjectInfo();
-  // De normenregel komt uit de uitgangspunten-instelling, MAAR een norm
-  // waarop daadwerkelijk getoetst is hoort er altijd bij te staan — ook als
-  // de gebruiker hem in de projectinstellingen niet had aangevinkt. Beton
-  // staat daar standaard uit; zonder deze samenvoeging zou een rapport met
-  // een betontoetsing beweren dat EN 1992 niet is toegepast.
+  // De normenregel is een samenspel van drie bronnen: waarop getoetst is, wat
+  // de gebruiker zelf heeft aangevinkt, en wat er aan materiaal in het model
+  // zit. De regels en de reden staan in lib/normenInRapport; hier alleen de
+  // drie ingrediënten. Kort: een getoetste norm staat er altijd, een door de
+  // gebruiker aangevinkte norm ook (hij mag vooruitlopen op wat hij gaat
+  // tekenen), en voor de rest volgt de regel het model.
   const gebruikt = usedNorms(useCheckStore((s) => s.results));
+  const { beams } = useReportData();
 
   // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
   // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
@@ -109,10 +117,15 @@ export default function ProjectSection() {
           Horen vooraan in elk rekenrapport, vóór de invoergegevens. */}
       {(() => {
         const u = info.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
+        const toon = normenVoorRapport(
+          u,
+          normenInModel(beams),
+          normenUitToetsen(gebruikt),
+        );
         const normen = [
-          (u.en1993 || gebruikt.steel) && "Eurocode 3 — Staal (EN 1993-1-1)",
-          (u.en1995 || gebruikt.timber) && "Eurocode 5 — Hout (EN 1995-1-1)",
-          (u.en1992 || gebruikt.concrete) && "Eurocode 2 — Beton (EN 1992-1-1)",
+          toon.en1993 && "Eurocode 3 — Staal (EN 1993-1-1)",
+          toon.en1995 && "Eurocode 5 — Hout (EN 1995-1-1)",
+          toon.en1992 && "Eurocode 2 — Beton (EN 1992-1-1)",
         ].filter(Boolean) as string[];
         const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
         const levensduur = LEVENSDUUR_OMSCHRIJVING[u.levensduurklasse]
