@@ -321,7 +321,7 @@ function ResultsTab({
         })}
       </div>
 
-      {/* Extra toggles: extreme waarden + omhullende */}
+      {/* Extra toggles: extreme waarden + snedetekens + omhullende */}
       <div className="fem-results-section-title">Opties</div>
       <div className="fem-results-toggle-list">
         <button
@@ -332,6 +332,20 @@ function ResultsTab({
           <span className="fem-results-toggle-swatch" style={{ background: "#f59e0b" }} />
           <span className="fem-results-toggle-label">Extreme waarden tonen</span>
           <span className={`fem-switch${displayFlags.showExtremes ? " on" : ""}`} aria-hidden="true">
+            <span className="fem-switch-dot" />
+          </span>
+        </button>
+        {/* Snedetekens. Standaard AAN, dus hier wordt niet op `!vlag` maar op
+            `vlag === false` getoetst: een oudere toestand zonder dit veld hoort
+            als AAN te lezen, niet als UIT. */}
+        <button
+          className={`fem-results-toggle${displayFlags.snedeTekens !== false ? " active" : ""}`}
+          onClick={() => setDisplayFlags(f => ({ ...f, snedeTekens: f.snedeTekens === false }))}
+          title="Afschuiftekens in de dwarskrachtlijn en buigtekens in de momentenlijn — de boog bolt naar de trekzijde, de twee pijlen geven de afschuifzin"
+        >
+          <span className="fem-results-toggle-swatch" style={{ background: "#1d4ed8" }} />
+          <span className="fem-results-toggle-label">Snedetekens</span>
+          <span className={`fem-switch${displayFlags.snedeTekens !== false ? " on" : ""}`} aria-hidden="true">
             <span className="fem-switch-dot" />
           </span>
         </button>

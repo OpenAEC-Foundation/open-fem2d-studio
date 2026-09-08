@@ -31,12 +31,19 @@
 //  (f) ONBEPAALDHEID — portaal 1×, houten ligger 1×, betonnen balk 0×
 //      statisch onbepaald; het hele model dus 2×.
 //  (g) TOETSBAARHEID — de drie bouwers pakken samen alle zes de staven op en
-//      slaan er geen enkele over; de korf komt 1-op-1 door.
+//      slaan er geen enkele over; de korf komt 1-op-1 door, beugelafstand en
+//      aantal beugelbenen incluis.
 //  (h) OMSCHRIJVINGEN — elke last draagt een ingevulde omschrijving.
-//  (i) ECHTE TOETSING — het stalen portaal door de Rust-rekenkern heen: alle
-//      drie de staven Ok, met een marge die noch nipt noch absurd ruim is.
-//      Dit blok start de toetsbrug als apart proces en wordt LUID overgeslagen
-//      als die binary ontbreekt.
+//  (i) ECHTE TOETSING, STAAL — het stalen portaal door de Rust-rekenkern heen:
+//      alle drie de staven Ok, met een marge die noch nipt noch absurd ruim is.
+//  (j) ECHTE TOETSING, BETON — de betonbalk door dezelfde kern: vijftien
+//      toetsen, en de dwarskrachttoets die WERKELIJK iets doet (V_Ed > V_Rd,c,
+//      dus het vakwerkmodel van 6.2.3 is echt nodig). Ook de tegenproef:
+//      zonder beugelafstand en aantal benen vallen §6.2 en drie eisen uit
+//      §9.2.2 stil terug op "niet toetsbaar".
+//
+//      [i] en [j] starten de toetsbrug als apart proces en worden LUID
+//      overgeslagen als die binary ontbreekt.
 //
 // Uitvoeren: npx tsx test-startmodel.mjs   (vanuit design-mockup/)
 //        of: node scripts/run-tests.mjs --filter=startmodel
@@ -345,6 +352,25 @@ log("\n[g] Toetsbaarheid: de drie kernen pakken samen alle zes de staven op");
   check("korf: onderwapening Ø (mm)", bi?.cage.bottom.diameter_mm, 20);
   check("korf: bovenwapening aantal", bi?.cage.top.count, 2);
   check("korf: bovenwapening Ø (mm)", bi?.cage.top.diameter_mm, 12);
+  // DE BEUGELGEGEVENS. Zonder s en n zijn A_sw/s in (6.8) en ρ_w in (9.4)
+  // onbepaald; §9.2.2 kent daar geen standaardwaarde voor (alleen boven-
+  // grenzen), dus de kern neemt niets aan en meldt §6.2 plus drie eisen uit
+  // §9.2.2 als niet-toetsbaar. Blijven ze in de bouwer hangen, dan gebeurt
+  // precies dat — zonder dat er iets rood wordt. Blok [j] rekent na dat deze
+  // waarden voldoen; hier ligt vast WELKE het zijn.
+  check("korf: beugelafstand s (mm)", bi?.cage.stirrup_spacing_mm, 200);
+  check("korf: aantal beugelbenen", bi?.cage.stirrup_legs, 2);
+  // Twee velden die met OPZET leeg zijn. s_t is bij een gesloten tweebenige
+  // beugel zuivere meetkunde (b_w − 2·c_nom − Ø_beugel) en wordt door de kern
+  // zelf afgeleid; hem invullen zou een gevolgtrekking als invoer laten lezen.
+  // f_ywk is er alleen voor een AFWIJKENDE beugelkwaliteit, en de beugels zijn
+  // van hetzelfde B500B als de langswapening.
+  ok("korf: geen s_t opgegeven — de kern leidt hem af",
+    bi?.cage.stirrup_leg_spacing_mm === undefined,
+    `stirrup_leg_spacing_mm = ${JSON.stringify(bi?.cage.stirrup_leg_spacing_mm)}`);
+  ok("korf: geen afwijkende f_ywk voor de beugels",
+    bi?.cage.stirrup_fywk_mpa === undefined,
+    `stirrup_fywk_mpa = ${JSON.stringify(bi?.cage.stirrup_fywk_mpa)}`);
 
   // DE BGT-COMBINATIE VOOR DE SCHEURWIJDTE. §7.3 van EN 1992-1-1 toetst onder
   // de FREQUENTE combinatie (6.15) — de nationale bijlage bij 7.3.1(5)
@@ -385,6 +411,40 @@ log("\n[h] Lastomschrijvingen: elke last draagt een ingevulde naam");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// DE REKENKERN, ÉÉN KEER OPGETUIGD VOOR [i] EN [j].
+//
+// De kern draait als apart proces: JSON op stdin, JSON van stdout — dezelfde
+// weg als de dev-server. En dezelfde ketting als de app: combinatieselectie →
+// oplossen → combineren → invoer bouwen → kern. Geen tweede route, anders
+// bewijzen deze blokken iets over een model dat de gebruiker niet voor zich
+// heeft.
+const KERN_AANWEZIG = existsSync(TOETSBRUG);
+const kern = (opdracht, inputs) => {
+  const r = spawnSync(TOETSBRUG, [], {
+    input: JSON.stringify({ opdracht, inputs }),
+    maxBuffer: 256 * 1024 * 1024,
+    encoding: "utf8",
+  });
+  if (r.error) throw r.error;
+  const data = JSON.parse(r.stdout);
+  if (data && !Array.isArray(data) && typeof data === "object" && "fout" in data) {
+    throw new Error(data.fout);
+  }
+  return data;
+};
+function meldKernOntbreekt() {
+  failed++;
+  log(`  ✗ de rekenkern ontbreekt: ${TOETSBRUG}`);
+  log("    bouw hem met  cargo build --release -p toetsbrug  vanuit src-tauri;");
+  log("    zonder hem is NIET aangetoond dat het startmodel door de toetsing komt.");
+}
+const { actief: actieveCombos } =
+  selecteerCombinaties(defaultCombinations(), s.beams, s.plates);
+const actieveResultaten = new Map(
+  actieveCombos.map((c) => [c.id, combineResults(c, perCase.perCase)]),
+);
+
+// ─────────────────────────────────────────────────────────────────────────
 log("\n[i] Echte rekenkern: het stalen portaal komt door de toetsing");
 //
 // WAAROM DIT BLOK BESTAAT. De doorsneden van het portaal zijn gedimensioneerd
@@ -402,33 +462,9 @@ log("\n[i] Echte rekenkern: het stalen portaal komt door de toetsing");
 // nipt (0,98 leest als toeval) en niet absurd ruim (0,15 leest als een fout in
 // de last). De bovengrens bewaakt dat, de ondergrens ook.
 {
-  if (!existsSync(TOETSBRUG)) {
-    failed++;
-    log(`  ✗ de rekenkern ontbreekt: ${TOETSBRUG}`);
-    log("    bouw hem met  cargo build --release -p toetsbrug  vanuit src-tauri;");
-    log("    zonder hem is NIET aangetoond dat het startmodel door de toetsing komt.");
+  if (!KERN_AANWEZIG) {
+    meldKernOntbreekt();
   } else {
-    const kern = (opdracht, inputs) => {
-      const r = spawnSync(TOETSBRUG, [], {
-        input: JSON.stringify({ opdracht, inputs }),
-        maxBuffer: 256 * 1024 * 1024,
-        encoding: "utf8",
-      });
-      if (r.error) throw r.error;
-      const data = JSON.parse(r.stdout);
-      if (data && !Array.isArray(data) && typeof data === "object" && "fout" in data) {
-        throw new Error(data.fout);
-      }
-      return data;
-    };
-
-    // Dezelfde weg als de app: combinatieselectie → oplossen → combineren →
-    // invoer bouwen → kern. Geen tweede route, anders bewijst dit blok iets
-    // over een model dat de gebruiker niet voor zich heeft.
-    const { actief: combos } = selecteerCombinaties(defaultCombinations(), s.beams, s.plates);
-    const combinationResults = new Map(
-      combos.map((c) => [c.id, combineResults(c, perCase.perCase)]),
-    );
     const profileDb = new Map();
     for (const p of kern("list_steel_profiles")) {
       const sleutel = profileLookupKey(p.name);
@@ -436,7 +472,7 @@ log("\n[i] Echte rekenkern: het stalen portaal komt door de toetsing");
     }
     const { inputs } = buildSteelCheckInputs({
       nodes: s.nodes, beams: s.beams, supports: s.supports,
-      combinations: combos, combinationResults, profileDb,
+      combinations: actieveCombos, combinationResults: actieveResultaten, profileDb,
     });
     check("staal: invoeren die de kern in gaan", inputs.length, 3);
 
@@ -489,6 +525,149 @@ log("\n[i] Echte rekenkern: het stalen portaal komt door de toetsing");
           return ((c?.kind?.data ?? c)?.uc?.uc ?? NaN).toFixed(3);
         })()
       })`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[j] Echte rekenkern: de betonbalk, en wat de beugels daar doen");
+//
+// WAAROM DIT BLOK BESTAAT. De korf droeg wél een beugeldiameter maar geen
+// beugelAFSTAND en geen aantal BENEN. Dat is genoeg om de dwarskrachttoets te
+// laten zeggen dat hij niet kán — §9.2.2 kent voor s en n geen standaardwaarde,
+// alleen bovengrenzen, dus de kern neemt niets aan — en dus bleven §6.2 en drie
+// eisen uit §9.2.2 op "niet toetsbaar" staan. Er werd niets rood; er gebeurde
+// alleen niets. Precies die stilte legt dit blok vast, van twee kanten: mét de
+// beugelgegevens loopt de hele toetsing, en zonder vallen dezelfde vier toetsen
+// weer stil.
+//
+// De grenzen zijn een BAND en geen vaste waarde, om dezelfde reden als in [i]:
+// vastgeprikte unity checks vallen om bij elke verbetering aan de kern zonder
+// dat er iets mis is.
+{
+  if (!KERN_AANWEZIG) {
+    meldKernOntbreekt();
+  } else {
+    const { inputs } = buildBetonCheckInputs({
+      nodes: s.nodes, beams: s.beams, supports: s.supports,
+      combinations: actieveCombos, combinationResults: actieveResultaten,
+      korven: korvenUitStaven(s.beams),
+    });
+    check("beton: invoeren die de kern in gaan", inputs.length, 1);
+
+    const res = kern("check_concrete_beams", inputs)[0];
+    // De kern verpakt elke deeltoets in een `kind`-omhulsel; hier één keer
+    // uitgepakt, zodat de regels hieronder over de toets zelf gaan.
+    const toets = (id) => {
+      const c = (res.checks ?? []).find((x) => x.id === id);
+      return c ? (c.kind?.data ?? c) : undefined;
+    };
+    const uc = (id) => toets(id)?.uc?.uc;
+    const variabele = (id, symbool) =>
+      (toets(id)?.variables ?? []).find((v) => v.symbol === symbool)?.value;
+
+    check("beton: aantal deeltoetsen", (res.checks ?? []).length, 15);
+    ok("beton: status Ok", res.status === "Ok",
+      `maatgevend ${res.governing_check_id}, uc_max ${res.uc_max?.toFixed(3)}`);
+    // NotApplicable is hier géén fout: drie toetsen missen invoer die niet in
+    // de korf zit maar in de constructie (de vorm uit tabel 7.4N voor §7.4.2,
+    // de korrelafmeting d_g voor §9.2(1)e en §8.2). Die velden reizen nog niet
+    // vanaf de staaf mee. NotOk zou wél een fout zijn.
+    const notOk = (res.checks ?? [])
+      .map((c) => ({ id: c.id, status: (c.kind?.data ?? c).status }))
+      .filter((c) => c.status !== "Ok" && c.status !== "NotApplicable");
+    ok("beton: geen enkele deeltoets NotOk", notOk.length === 0,
+      notOk.map((c) => c.id).join(", ") || "—");
+
+    // DE DWARSKRACHTTOETS DOET WERKELIJK IETS. Zonder deze regel zou een balk
+    // waarin V_Ed ruim onder V_Rd,c blijft ook "de dwarskracht is getoetst"
+    // opleveren, terwijl de beugels dan niets dragen en de korf dus niets
+    // bewijst. 6.2.1(3): pas als V_Ed > V_Rd,c is er rekenkundig
+    // dwarskrachtwapening nodig, en dan komt de weerstand volgens 6.2.3
+    // UITSLUITEND uit het vakwerkmodel.
+    check("dwarskracht: de toets is afgerekend", toets("6.2_shear")?.status, "Ok");
+    const vEd = variabele("6.2_shear", "V_{Ed}");
+    const vRdc = variabele("6.2_shear", "V_{Rd,c}");
+    ok("dwarskracht: V_Ed > V_Rd,c, dus het vakwerkmodel van 6.2.3 is echt nodig",
+      vEd !== undefined && vRdc !== undefined && vEd > vRdc,
+      `V_Ed = ${vEd?.toFixed(1)} kN tegen V_Rd,c = ${vRdc?.toFixed(1)} kN`);
+    // V_Rd = min(V_Rd,s; V_Rd,max) — 6.2.3(3). Dat de beugels en niet de
+    // drukdiagonaal maatgevend zijn, hoort bij een balk met deze slanke korf;
+    // draait dat om, dan is er iets aan de doorsnede of de last veranderd.
+    const vRds = variabele("6.2_shear", "V_{Rd,s}");
+    const vRdmax = variabele("6.2_shear", "V_{Rd,max}");
+    ok("dwarskracht: de beugels zijn maatgevend, niet de drukdiagonaal",
+      vRds !== undefined && vRdmax !== undefined && vRds < vRdmax,
+      `V_Rd,s = ${vRds?.toFixed(1)} kN tegen V_Rd,max = ${vRdmax?.toFixed(1)} kN`);
+
+    // De drie beugeleisen van §9.2.2 moeten óók zijn afgerekend: zij zijn de
+    // reden dat s niet zomaar groter mag worden.
+    for (const id of ["9.2.2_rho_w_min", "9.2.2_sl_max", "9.2.2_st_max"]) {
+      check(`detaillering: ${id} is afgerekend`, toets(id)?.status, "Ok");
+    }
+
+    // DE BAND. 0,35 en 0,85 zijn dezelfde grenzen als in [i]: hout staat op
+    // 0,39, staal op 0,60 en 0,74, de buiging van deze balk op 0,52. Niet nipt
+    // (0,98 leest als toeval) en niet absurd ruim (0,15 leest als een fout in
+    // de last).
+    const BAND = { min: 0.35, max: 0.85 };
+    ok(`beton: uc_max geloofwaardig (${BAND.min} ≤ uc ≤ ${BAND.max})`,
+      res.uc_max >= BAND.min && res.uc_max <= BAND.max,
+      `uc_max = ${res.uc_max?.toFixed(3)}`);
+    // De dwarskracht krijgt een RUIMERE ondergrens, en dat is geen verzachting
+    // maar meetkunde: de benutting van de beugels is niet vrij te kiezen. s
+    // wordt begrensd door s_l,max = 300 mm (§9.2.2(6), NB-plafond) en niet door
+    // de sterkte, dus zelfs op die grens komt V_Ed/V_Rd niet boven ongeveer een
+    // half. De bovengrens is hier de eigenlijke bewaker; de ondergrens vangt
+    // alleen een toets die stilletjes betekenisloos is geworden.
+    const BAND_DWARSKRACHT = { min: 0.2, max: BAND.max };
+    ok(`dwarskracht: marge geloofwaardig (${BAND_DWARSKRACHT.min} ≤ uc ≤ ${BAND_DWARSKRACHT.max})`,
+      uc("6.2_shear") >= BAND_DWARSKRACHT.min && uc("6.2_shear") <= BAND_DWARSKRACHT.max,
+      `uc = ${uc("6.2_shear")?.toFixed(3)}`);
+    // Geen enkele detailleringsgrens mag worden gescháámd. s = 200 mm tegen
+    // s_l,max = 300 mm is de krapste van de drie; met s = 300 zou die toets
+    // precies op 1,00 uitkomen, en een startmodel dat een grens raakt leest
+    // als toeval.
+    for (const id of ["9.2.2_rho_w_min", "9.2.2_sl_max", "9.2.2_st_max"]) {
+      ok(`detaillering: ${id} blijft van de grens af`, uc(id) <= 0.9,
+        `uc = ${uc(id)?.toFixed(3)}`);
+    }
+
+    // DE MAATGEVENDE TOETS MAG GEEN MINIMUMEIS ZIJN WAARAAN RUIM WORDT VOLDAAN.
+    //
+    // De detailleringsmodule drukt een minimum-eis uit als "vereist gedeeld
+    // door aanwezig". Voor `9.2.2_min_diameter_beugel` (5 mm vereist volgens de
+    // NB, 8 mm aanwezig) levert dat uc 5/8 = 0,625 — een unity check die
+    // STIJGT naarmate de beugel dunner is en die dus geen benutting uitdrukt.
+    // Vóór dit blok was dat de maatgevende toets van de hele staaf. Deze regel
+    // legt de eigenschap vast die daar de klok bij sloeg: waar je ruim aan
+    // voldoet, hoort niet maatgevend te zijn. Ze houdt nu op het nippertje
+    // (0,667 tegen 0,625) en blijft ook staan als de omkeer in
+    // `nen-en-1992-1-1/src/detaillering.rs` ooit wordt rechtgezet.
+    ok("beton: de maatgevende toets is geen ruim gehaalde minimumeis",
+      res.governing_check_id !== "9.2.2_min_diameter_beugel" &&
+        res.governing_check_id !== "9.2.1.1_min_diameter_langs",
+      `maatgevend is ${res.governing_check_id} (uc ${res.uc_max?.toFixed(3)})`);
+
+    // DE TEGENPROEF. Dezelfde balk, maar met de beugelafstand en het aantal
+    // benen weggehaald: vier toetsen vallen stil terug op "niet toetsbaar".
+    // Dat is precies wat de nieuwe velden in het startmodel dragen, en daarom
+    // staat het hier zwart op wit in plaats van alleen in een commentaarregel.
+    const zonderBeugels = JSON.parse(JSON.stringify(inputs[0]));
+    delete zonderBeugels.cage.stirrup_spacing_mm;
+    delete zonderBeugels.cage.stirrup_legs;
+    const kaal = kern("check_concrete_beams", [zonderBeugels])[0];
+    const kaalStatus = (id) => {
+      const c = (kaal.checks ?? []).find((x) => x.id === id);
+      return (c?.kind?.data ?? c)?.status;
+    };
+    for (const id of ["6.2_shear", "9.2.2_rho_w_min", "9.2.2_sl_max", "9.2.2_st_max"]) {
+      check(`zonder beugelgegevens: ${id} is niet toetsbaar`,
+        kaalStatus(id), "NotApplicable");
+    }
+    // En de buiging blijft gewoon staan: de tegenproef raakt alleen de
+    // dwarskracht, niet de halve toetsing.
+    check("zonder beugelgegevens: de buigtoets loopt onveranderd door",
+      kaalStatus("6.1_bending_stress_block"), "Ok");
   }
 }
 

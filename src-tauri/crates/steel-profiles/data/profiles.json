@@ -7,7 +7,8 @@
       "b": 100,
       "tw": 14,
       "tf": 16,
-      "r": 16
+      "r": 16,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 7665.7,
@@ -3099,7 +3100,8 @@
       "tw": 6,
       "tf": 8,
       "t": 6,
-      "r": 8
+      "r": 8,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 1102.34,
@@ -3135,7 +3137,8 @@
       "tw": 6,
       "tf": 8.5,
       "t": 6,
-      "r": 8.5
+      "r": 8.5,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 1346.14,
@@ -3171,7 +3174,8 @@
       "tw": 7,
       "tf": 9,
       "t": 7,
-      "r": 9
+      "r": 9,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 1698.71,
@@ -3207,7 +3211,8 @@
       "tw": 7,
       "tf": 10,
       "t": 7,
-      "r": 10
+      "r": 10,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 2036.98,
@@ -3243,7 +3248,8 @@
       "tw": 7.5,
       "tf": 10.5,
       "t": 7.5,
-      "r": 10.5
+      "r": 10.5,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 2402.39,
@@ -3279,7 +3285,8 @@
       "tw": 8,
       "tf": 11,
       "t": 8,
-      "r": 11
+      "r": 11,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 2796.57,
@@ -3315,7 +3322,8 @@
       "tw": 8.5,
       "tf": 11.5,
       "t": 8.5,
-      "r": 11.5
+      "r": 11.5,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 3219.53,
@@ -3351,7 +3359,8 @@
       "tw": 9,
       "tf": 12.5,
       "t": 9,
-      "r": 12.5
+      "r": 12.5,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 3745.53,
@@ -3387,7 +3396,8 @@
       "tw": 9.5,
       "tf": 13,
       "t": 9.5,
-      "r": 13
+      "r": 13,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 4230.67,
@@ -3423,7 +3433,8 @@
       "tw": 10,
       "tf": 14,
       "t": 10,
-      "r": 14
+      "r": 14,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 4828.25,
@@ -3459,7 +3470,8 @@
       "tw": 10,
       "tf": 15,
       "t": 10,
-      "r": 15
+      "r": 15,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 5341.98,
@@ -3495,7 +3507,8 @@
       "tw": 10,
       "tf": 16,
       "t": 10,
-      "r": 16
+      "r": 16,
+      "flange_slope": 0.08
     },
     "properties": {
       "area_mm2": 5876.24,
@@ -4615,7 +4628,8 @@
       "b": 50,
       "tw": 4,
       "tf": 7,
-      "r": 10
+      "r": 10,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 1006.92,
@@ -4650,7 +4664,8 @@
       "b": 55,
       "tw": 4.5,
       "tf": 7.5,
-      "r": 10
+      "r": 10,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 1250.42,
@@ -4685,7 +4700,8 @@
       "b": 60,
       "tw": 5,
       "tf": 8,
-      "r": 12
+      "r": 12,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 1541.81,
@@ -4720,7 +4736,8 @@
       "b": 65,
       "tw": 5,
       "tf": 9,
-      "r": 12
+      "r": 12,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 1841.81,
@@ -4755,7 +4772,8 @@
       "b": 70,
       "tw": 5.5,
       "tf": 9.5,
-      "r": 12
+      "r": 12,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 2167.31,
@@ -4790,7 +4808,8 @@
       "b": 75,
       "tw": 5.5,
       "tf": 10.5,
-      "r": 12
+      "r": 12,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 2511.31,
@@ -4825,7 +4844,8 @@
       "b": 80,
       "tw": 6,
       "tf": 11,
-      "r": 13
+      "r": 13,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 2900.54,
@@ -4860,7 +4880,8 @@
       "b": 85,
       "tw": 6.5,
       "tf": 12,
-      "r": 13
+      "r": 13,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 3386.54,
@@ -4895,7 +4916,8 @@
       "b": 90,
       "tw": 7,
       "tf": 12.5,
-      "r": 15
+      "r": 15,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 3851.57,
@@ -4930,7 +4952,8 @@
       "b": 95,
       "tw": 7.5,
       "tf": 13.5,
-      "r": 15
+      "r": 15,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 4484.07,
@@ -4965,7 +4988,8 @@
       "b": 100,
       "tw": 9.5,
       "tf": 15,
-      "r": 15
+      "r": 15,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 5661.57,
@@ -5000,7 +5024,8 @@
       "b": 105,
       "tw": 11,
       "tf": 16,
-      "r": 18
+      "r": 18,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 6777.06,
@@ -5035,7 +5060,8 @@
       "b": 110,
       "tw": 12,
       "tf": 17,
-      "r": 18
+      "r": 18,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 7791.06,
@@ -5070,7 +5096,8 @@
       "b": 115,
       "tw": 13.5,
       "tf": 18,
-      "r": 18
+      "r": 18,
+      "flange_slope": 0
     },
     "properties": {
       "area_mm2": 9193.06,

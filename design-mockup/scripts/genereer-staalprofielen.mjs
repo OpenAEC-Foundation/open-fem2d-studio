@@ -90,7 +90,10 @@ let dims = kop(
   `Staalprofiel-hoofdafmetingen voor de doorsnede-tekening in het rapport
  * (h, b, tw, tf, r in mm; bij buisprofielen geldt tw = tf = wanddikte t,
  * bij CHS is h = b = uitwendige diameter en r = 0), plus de aanvullende
- * doorsnedegrootheden (props) voor de eigenschappentabel.`,
+ * doorsnedegrootheden (props) voor de eigenschappentabel.
+ *
+ * Bij U-profielen staat er ook een flensHelling: 0,08 voor de UNP-reeks
+ * (toelopende flens), 0 voor de UPE-reeks (evenwijdige flenzen).`,
 );
 dims += `export type SteelSectionKind = "ISection" | "Channel" | "Shs" | "Rhs" | "Chs";
 
@@ -137,6 +140,20 @@ export interface SteelSectionDims {
   tf: number;
   /** Afrondingsstraal in mm (walsuitronding; SHS/RHS: hoekstraal; CHS: 0). */
   r: number;
+  /**
+   * Helling van het flensBINNENvlak (U-profielen), als verhouding: 0,08 is
+   * 8 %. 0 betekent evenwijdige flenzen.
+   *
+   * Dit is een TEKENgrootheid, geen rekengrootheid: de doorsnedegrootheden in
+   * \`props\` staan los van dit veld en komen onveranderd uit de catalogus.
+   * Zonder dit veld is een UNP niet van een UPE te onderscheiden en wordt hij
+   * met evenwijdige flenzen getekend — precies de fout die dit veld opheft.
+   *
+   * Ontbreekt het veld, dan tekent \`profielVorm.ts\` evenwijdige flenzen. Een
+   * nieuwe U-reeks met toelopende flens MOET het dus in profiles.json krijgen;
+   * anders ziet niemand dat de tekening de verkeerde vorm laat zien.
+   */
+  flensHelling?: number;
   /** Aanvullende grootheden voor de eigenschappentabel (uit de database). */
   props?: SteelSectionProps;
 }
@@ -151,6 +168,12 @@ for (const [k, p] of uniek) {
   const tw = g.tw ?? t;
   const tf = g.tf ?? t;
   const r = g.r ?? 0;
+  // Flenshelling: alleen meegenomen als de bron hem noemt. Bewust GEEN
+  // terugval op een reeksnaam ("begint met UNP") — dan zou een reeks zonder
+  // veld stilzwijgend een helling krijgen die niemand heeft opgezocht.
+  const helling = g.flange_slope;
+  const hellingVeld =
+    helling === undefined ? "" : `flensHelling: ${num(helling, `${k}.flange_slope`)}, `;
   const props =
     `{ iz: ${num(pr.iz_mm4, `${k}.iz_mm4`)}, ` +
     `welY: ${num(pr.wel_y_mm3, `${k}.wel_y_mm3`)}, welZ: ${num(pr.wel_z_mm3, `${k}.wel_z_mm3`)}, ` +
@@ -162,7 +185,7 @@ for (const [k, p] of uniek) {
     `  "${k}": { kind: "${p.kind}", naam: ${JSON.stringify(p.name)}, ` +
     `h: ${num(g.h, `${k}.h`)}, b: ${num(g.b, `${k}.b`)}, ` +
     `tw: ${num(tw, `${k}.tw`)}, tf: ${num(tf, `${k}.tf`)}, r: ${num(r, `${k}.r`)},\n` +
-    `    props: ${props} },\n`;
+    `    ${hellingVeld}props: ${props} },\n`;
 }
 dims += `};\n`;
 writeFileSync(doelDims, dims, "utf8");

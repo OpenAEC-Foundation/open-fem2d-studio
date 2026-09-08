@@ -39,6 +39,12 @@ export interface DisplayFlags {
   knoopWaarden: boolean;
   /** Show extreme-value labels (Mmax, Vmax, Nmax, umax) at peak locations. */
   showExtremes: boolean;
+  /**
+   * Snedetekens: het afschuifteken in de dwarskrachtlijn en het buigteken in
+   * de momentenlijn. Zie het blok SNEDETEKENS verderop in dit bestand voor de
+   * tekenconventie die ze aanhouden.
+   */
+  snedeTekens: boolean;
   /** Unity-check-badges op staafmidden (maatgevende UC uit de normtoetsing). */
   uc: boolean;
   /** Per-component scale multipliers — 1.0 = auto, slider 0.1–5.0. */
@@ -73,6 +79,11 @@ export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   reactieX: true, reactieZ: true,
   knoopWaarden: false,
   showExtremes: true,
+  // Aan: het teken is de eerste vraag bij een snedekrachtlijn ("trekt hij hier
+  // onder of boven?"), en het antwoord hoort er te staan zonder dat de
+  // gebruiker eerst een vinkje moet vinden. Uitzetten kan in Resultaten →
+  // Opties, voor wie een kale lijn wil.
+  snedeTekens: true,
   uc: false,
   scaleN: 1, scaleV: 1, scaleM: 1, scaleU: 1, scaleR: 1, scaleEI: 1,
   plaatContour: true, plaatComponent: "vonMises", plaatMesh: true,
@@ -106,6 +117,187 @@ export function fmtNl(v: number, dec = 1): string {
   let s = v.toFixed(dec);
   if (parseFloat(s) === 0) s = (0).toFixed(dec);
   return s.replace(".", ",").replace("-", "−");
+}
+
+// ══ SNEDETEKENS ═══════════════════════════════════════════════════════════
+//
+// Het afschuifteken in de dwarskrachtlijn en het buigteken in de momentenlijn
+// — dezelfde tekentjes die op een constructietekening naast de lijn staan. Ze
+// zeggen zonder woorden welk teken waar geldt, zodat de lezer daarvoor niet
+// eerst hoeft uit te zoeken welke kant van de staaf "positief" is.
+//
+// ── DE TEKENCONVENTIE VAN DEZE APP ───────────────────────────────────────
+// Een teken dat de verkeerde kant op wijst is erger dan geen teken, dus staat
+// hier vast waar de conventie vandaan komt. Hij ligt in
+// core/fem/BeamForces.ts (`calculateBeamInternalForces`, kopcommentaar) en
+// wordt door de adapter in solver/engine.ts ONVERANDERD doorgegeven: daar
+// wordt alleen N naar trek-positief geflipt en M van N·m naar N·mm gerekend —
+// aan de TEKENS van M en V raakt niemand meer.
+//
+//   M > 0  trek in de ONDERVEZEL (sagging). Nagerekend op een simpel opgelegde
+//          ligger met neerwaartse q: M = +qL²/8 in het veld. Bij een
+//          doorgaande ligger is M boven het tussensteunpunt negatief.
+//   V > 0  het staafdeel draait MET DE KLOK MEE: aan de knoop-1-zijde van de
+//          snede werkt de dwarskracht naar lokale +y, aan de knoop-2-zijde
+//          naar lokale −y. Nagerekend op dezelfde ligger: V = +qL/2 bij het
+//          steunpunt aan de KNOOP-1-kant.
+//
+// "Lokale +y" is 90° tegen de klok in vanaf de staafas knoop1→knoop2; voor een
+// horizontale staaf van links naar rechts is dat omhoog. Alle diagrammen
+// zetten hun waarde al langs die richting uit (`nxW`/`nzW` in het
+// diagram-sample), dus de tekens gebruiken exact dezelfde assen.
+//
+// ── HOE DE TEKENTJES DAARUIT VOLGEN ──────────────────────────────────────
+// BUIGTEKEN — de boog IS de gebogen vezel. Bij M > 0 trekt de ondervezel, dus
+//   een dal (∪) met de bolle kant naar lokale −y; bij M < 0 een bult (∩). De
+//   momentenlijn wordt hier al op de TREKZIJDE uitgezet (de `-raw`-flip bij
+//   het plotten), waardoor de boog altijd dezelfde kant op bolt als de lob
+//   waarin hij ligt. Eén regel dus: de bolling wijst naar de trekzijde.
+// AFSCHUIFTEKEN — twee tegengesteld gerichte pijlen, samen het koppel uit de
+//   definitie hierboven: bij V > 0 wijst de pijl aan de knoop-1-zijde naar
+//   lokale +y en die aan de knoop-2-zijde naar −y (met de klok mee).
+//
+// ── PLAATSING EN MAAT ────────────────────────────────────────────────────
+//  • Eén teken per ZONE met gelijk teken, niet één per station. Wisselt het
+//    teken binnen één staaf — het geval waar het de gebruiker om gaat, zoals
+//    boven het tussensteunpunt van een doorgaande ligger — dan krijgt elke
+//    zone zijn eigen teken.
+//  • De maat volgt de zoom: hij komt uit de SCHERMlengte van de zone én uit de
+//    diepte van de lob ter plaatse, met een bovengrens. Zo kruipen de tekens
+//    bij uitzoomen niet over elkaar heen, en past het teken altijd binnen het
+//    diagramvlak — het botst dus nooit met de waarde-labels, die juist buiten
+//    de diagramlijn staan.
+//  • Past er geen leesbaar teken meer in (< MIN_TEKEN_PX), dan komt er geen.
+//    Dat is meteen de drempel tegen ruis: een lob die verwaarloosbaar is ten
+//    opzichte van de rest van het model is op het scherm ook ondiep. Daarnaast
+//    telt alles binnen een dode band van 0,1 % van de grootste waarde als NUL,
+//    zodat het afrondingsgruis van een nul-diagram geen tekenwissels verzint.
+
+/** Grootste en kleinste tekenmaat (px). Boven de bovengrens gaat het teken de
+ *  lijn domineren, onder de ondergrens is het een vlekje. */
+const MAX_TEKEN_PX = 11;
+const MIN_TEKEN_PX = 4.5;
+
+/** Eén aaneengesloten stuk van een snedekrachtlijn met hetzelfde teken. */
+export interface TekenZone {
+  /** Index van het eerste en het laatste station in de zone. */
+  i0: number;
+  i1: number;
+  /** Teken van de RUWE grootheid (dus vóór de trekzijde-flip van M). */
+  teken: 1 | -1;
+  /** Grootste |waarde| binnen de zone. */
+  piek: number;
+}
+
+/**
+ * Deelt een reeks stationswaarden op in zones met hetzelfde teken.
+ *
+ * Waarden binnen `dodeBand` tellen als NUL: ze horen bij geen enkele zone en
+ * breken een lopende zone af. Dat is precies wat er bij een nuldoorgang moet
+ * gebeuren (het station ín de nuldoorgang hoort bij geen van beide lobben), en
+ * het voorkomt dat een diagram dat overal nul is uit zijn afrondingsruis een
+ * handvol schijn-zones oplevert.
+ */
+export function bepaalTekenZones(waarden: number[], dodeBand: number): TekenZone[] {
+  const zones: TekenZone[] = [];
+  let lopend: TekenZone | null = null;
+  for (let i = 0; i < waarden.length; i++) {
+    const w = waarden[i];
+    if (!Number.isFinite(w) || Math.abs(w) <= dodeBand) { lopend = null; continue; }
+    const teken: 1 | -1 = w > 0 ? 1 : -1;
+    if (lopend && lopend.teken === teken) {
+      lopend.i1 = i;
+      lopend.piek = Math.max(lopend.piek, Math.abs(w));
+    } else {
+      lopend = { i0: i, i1: i, teken, piek: Math.abs(w) };
+      zones.push(lopend);
+    }
+  }
+  return zones;
+}
+
+/**
+ * Alles wat één tekentje nodig heeft, in SCHERMcoördinaten (px, y naar
+ * beneden). De twee richtingsvectoren zijn eenheidsvectoren en staan loodrecht
+ * op elkaar.
+ */
+export interface TekenMeetkunde {
+  /** Basispunt op de staafas — het hart van de zone. */
+  bx: number;
+  by: number;
+  /** Eenheidsrichting langs de staaf, van knoop 1 naar knoop 2. */
+  exx: number;
+  exy: number;
+  /** Lokale +y (90° tegen de klok in vanaf de staafas, in WERELDassen). */
+  eyx: number;
+  eyy: number;
+  /**
+   * Diepte van de lob ter plaatse, MET teken, in px langs `ey` — dus de al
+   * geplotte waarde (voor M inclusief de trekzijde-flip). Het teken zegt aan
+   * welke kant van de staaf het diagram ligt.
+   */
+  diepte: number;
+  /** Maat van het tekentje (px). */
+  maat: number;
+}
+
+/** Punt op `a` px langs de staaf en `b` px langs lokale +y vanaf het basispunt. */
+function tekenPunt(g: TekenMeetkunde, a: number, b: number): string {
+  const x = g.bx + g.exx * a + g.eyx * b;
+  const y = g.by + g.exy * a + g.eyy * b;
+  return `${x.toFixed(2)} ${y.toFixed(2)}`;
+}
+
+/**
+ * BUIGTEKEN — de gebogen vezel, als kwadratische bézier.
+ *
+ * De boog ligt halverwege de lob en bolt naar dezelfde kant als de lob zelf,
+ * dus naar de trekzijde (zie de conventie hierboven). Een bézier wijkt van
+ * zijn koorde half zoveel af als zijn controlepunt, vandaar de factor 2 op de
+ * bolling; de koorde ligt een halve bolling terug zodat de boog netjes om het
+ * hart van de lob heen ligt.
+ */
+export function buigTekenPad(g: TekenMeetkunde): string {
+  const naarTrek = g.diepte >= 0 ? 1 : -1;
+  const halveKoorde = g.maat;
+  const bolling = g.maat * 0.62;
+  const hart = g.diepte * 0.5;
+  const koorde = hart - naarTrek * bolling * 0.5;
+  return `M ${tekenPunt(g, -halveKoorde, koorde)}` +
+         ` Q ${tekenPunt(g, 0, koorde + naarTrek * bolling * 2)}` +
+         ` ${tekenPunt(g, halveKoorde, koorde)}`;
+}
+
+/**
+ * AFSCHUIFTEKEN — twee tegengesteld gerichte pijlen met hun punt.
+ *
+ * `tekenV` is het teken van de RUWE dwarskracht. Bij +1 wijst de pijl aan de
+ * knoop-1-zijde naar lokale +y en die aan de knoop-2-zijde naar −y: het
+ * koppel dat het staafdeel met de klok mee draait, precies de definitie van
+ * een positieve dwarskracht in deze app.
+ */
+export function afschuifTekenPad(g: TekenMeetkunde, tekenV: 1 | -1): string {
+  const halveAfstand = g.maat * 0.62;   // afstand van de twee pijlen tot het hart
+  const halveLengte = g.maat * 0.85;    // halve pijllengte
+  const kop = g.maat * 0.42;            // lengte van de weerhaken van de pijlpunt
+  const hart = g.diepte * 0.5;
+  const stukken: string[] = [];
+  // Twee keer dezelfde pijl, gespiegeld: `zijde` is de plaats langs de staaf,
+  // `richting` de kant waarheen die pijl wijst.
+  for (const zijde of [-1, 1] as const) {
+    const richting = tekenV * -zijde;   // knoop-1-zijde (−1) wijst naar +y bij V > 0
+    const staart = hart - richting * halveLengte;
+    const punt = hart + richting * halveLengte;
+    const weerhaak = hart + richting * (halveLengte - kop);
+    const a = zijde * halveAfstand;
+    stukken.push(`M ${tekenPunt(g, a, staart)} L ${tekenPunt(g, a, punt)}`);
+    stukken.push(
+      `M ${tekenPunt(g, a - kop * 0.5, weerhaak)}` +
+      ` L ${tekenPunt(g, a, punt)}` +
+      ` L ${tekenPunt(g, a + kop * 0.5, weerhaak)}`,
+    );
+  }
+  return stukken.join(" ");
 }
 
 export default function FemResultsOverlay({
@@ -491,6 +683,11 @@ export default function FemResultsOverlay({
   const renderForceDiagram = (which: "N" | "V" | "M" | "θ", scale: number, classKey: string) => {
     if (scale === 0) return null;
     const showValues = displayFlags.showExtremes ?? false;
+    // Snedetekens alleen bij V en M — N kent geen afschuif- of buigzin, en θ
+    // is een vervormingsgrootheid. Zie het blok SNEDETEKENS bovenaan.
+    const toonTekens = (displayFlags.snedeTekens !== false) &&
+      (which === "V" || which === "M");
+    const globaalMax = which === "M" ? dgMaxM : dgMaxV;
     // Waarde MET eenheid en NL-komma: momenten in kNm, krachten in kN,
     // hoekverdraaiing in mrad (de sample draagt hem al in mrad).
     const fmtValue = (raw: number): string =>
@@ -630,10 +827,70 @@ export default function FemResultsOverlay({
         }
       }
 
+      // ── Snedetekens: één per zone met gelijk teken ──────────────────────
+      // Zie het blok SNEDETEKENS bovenaan voor de conventie en voor de reden
+      // achter de maatvoering hieronder.
+      const tekens: React.ReactNode[] = [];
+      if (toonTekens && pts.length >= 2 && globaalMax > 0) {
+        const zones = bepaalTekenZones(pts.map(p => p.raw), globaalMax * 1e-3);
+        for (const zone of zones) {
+          // Zone van één station heeft geen lengte om een teken in te zetten
+          // (en zou hieronder buiten de reeks interpoleren).
+          if (zone.i1 <= zone.i0) continue;
+          // Hart van de zone LANGS DE STAAF, tussen de twee omliggende
+          // stations geïnterpoleerd. Zou het teken op het dichtstbijzijnde
+          // station gaan zitten, dan verspringt het zichtbaar zodra de zone
+          // een station opschuift (andere belastinggeval, andere combinatie).
+          const xMid = (pts[zone.i0].x + pts[zone.i1].x) / 2;
+          let j = zone.i0;
+          while (j < zone.i1 - 1 && pts[j + 1].x < xMid) j++;
+          const dxSt = pts[j + 1].x - pts[j].x;
+          const t = dxSt > 0 ? Math.min(1, Math.max(0, (xMid - pts[j].x) / dxSt)) : 0;
+          const bx = samples[j].px + t * (samples[j + 1].px - samples[j].px);
+          const by = samples[j].py + t * (samples[j + 1].py - samples[j].py);
+          const vMid = pts[j].vFlip + t * (pts[j + 1].vFlip - pts[j].vFlip);
+          const diepte = vMid * scale;
+
+          // Maat: begrensd door de schermlengte van de zone (anders kruipen de
+          // tekens bij uitzoomen over elkaar), door de diepte van de lob
+          // (anders steekt het teken door de diagramlijn heen) en door een
+          // vaste bovengrens (anders overstemt het teken de lijn zelf).
+          const zoneLenPx = Math.hypot(
+            samples[zone.i1].px - samples[zone.i0].px,
+            samples[zone.i1].py - samples[zone.i0].py,
+          );
+          const maat = Math.min(zoneLenPx * 0.20, Math.abs(diepte) * 0.42, MAX_TEKEN_PX);
+          if (!(maat >= MIN_TEKEN_PX)) continue;
+
+          // Schermassen van deze staaf. `nxW`/`nzW` is lokale +y in WERELD-
+          // assen; het scherm klapt de z-as om (zie worldToScreen), vandaar
+          // het minteken op de y-component. De staafas zelf staat daar 90° op.
+          const { nxW, nzW } = pts[zone.i0];
+          const g: TekenMeetkunde = {
+            bx, by,
+            exx: nzW, exy: nxW,      // langs de staaf, knoop1 → knoop2
+            eyx: nxW, eyy: -nzW,     // lokale +y
+            diepte, maat,
+          };
+          const d = which === "M" ? buigTekenPad(g) : afschuifTekenPad(g, zone.teken);
+          tekens.push(
+            <path
+              key={`tkn-${which}-${beam.id}-${zone.i0}`}
+              d={d}
+              className={`fem-diagram-teken ${classKey}`}
+              // Lijndikte mee laten groeien met de maat: een teken van 4,5 px
+              // met een lijn van 1,8 px is een vlek.
+              style={{ strokeWidth: Math.max(1, maat * 0.16) }}
+            />
+          );
+        }
+      }
+
       return (
         <g key={`dgm-${which}-${beam.id}`}>
           <polygon points={polyPts} className={`fem-diagram-fill ${classKey}`} />
           <polyline points={linePts} className={`fem-diagram-line ${classKey}`} fill="none" />
+          {tekens}
           {valueLabels}
         </g>
       );

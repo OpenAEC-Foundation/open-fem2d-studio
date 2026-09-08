@@ -193,6 +193,14 @@ const ALLEEN_BRON = new Map([
     "bewaakt het model waarmee de app opent (`hooks/useFemStore`): samenstelling, opleggingen, evenwicht en toetsbaarheid. Hij leest de React-hook en de toetsstore, die allebei buiten de barrel van de sidecarbundel vallen, en stubt de staalprofieldatabase omdat die uit de Rust-kern komt",
   ],
   [
+    "snedetekens",
+    "rendert de resultatenoverlay met react-dom/server en meet de RICHTING van de afschuif- en buigtekens in de gerenderde SVG; dat is canvasweergave in plaats van solverwerk, en React bestaat in de sidecarbundel niet",
+  ],
+  [
+    "unp-flenshelling",
+    "meet het oppervlak van de GETEKENDE contour van de U-profielen tegen de cataloguswaarde, om vast te leggen dat een UNP taps toeloopt en een UPE niet; tekenmeetkunde in plaats van solverwerk, en de contourfuncties zitten niet in de barrel",
+  ],
+  [
     "rapportnormen",
     "bepaalt welke normen het rapport mag noemen (`lib/normenInRapport`) uit de uitgangspunten, de toetsresultaten en de materialen in het model — presentatielogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
   ],

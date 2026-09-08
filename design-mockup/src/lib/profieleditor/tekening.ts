@@ -8,7 +8,11 @@
  * walsuitrondingen. Die paden staan in het eigen profielstelsel (oorsprong
  * linksboven, y omlaag); `transform` zet ze in het modelstelsel.
  */
-import { shapePath, type SectionShape } from "../../components/shared/profielVorm";
+import {
+  flensHellingVanProfiel,
+  shapePath,
+  type SectionShape,
+} from "../../components/shared/profielVorm";
 import { gatContourPunten, gatNaarMotor, lamelHoekpunten, deelZwaartepunt } from "./geometrie";
 import { lassenVan, naadmeetkunde } from "./lassen";
 import type { Basisprofiel, Catalogusdeel, DeelUitvoer, DoorsnedeOntwerp, Gat, Lamel, Las } from "./types";
@@ -28,8 +32,20 @@ export function basisVorm(b: Basisprofiel): SectionShape {
     case "ISection":
       return { type: "isection", h: b.h, b: b.b, tw: b.tw, tf: b.tf, r: b.r };
     case "Channel":
+      return { type: "channel", h: b.h, b: b.b, tw: b.tw, tf: b.tf, r: b.r, flensHelling: 0 };
     case "ChannelSchuin":
-      return { type: "channel", h: b.h, b: b.b, tw: b.tw, tf: b.tf, r: b.r };
+      // De soort zegt dát de flens toeloopt; hoevéél staat bij de naam in de
+      // staaldatabase. Een profiel dat daar niet in staat, wordt met
+      // evenwijdige flenzen getekend — geen verzonnen helling.
+      return {
+        type: "channel",
+        h: b.h,
+        b: b.b,
+        tw: b.tw,
+        tf: b.tf,
+        r: b.r,
+        flensHelling: flensHellingVanProfiel(b.naam),
+      };
     case "Shs":
     case "Rhs":
       return { type: "box", h: b.h, b: b.b, t: b.tw, r: b.r };

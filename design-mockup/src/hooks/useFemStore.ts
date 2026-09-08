@@ -101,6 +101,65 @@ const DEFAULT_NODES: Node[] = [
 // bij; dan geldt S4, de NB-waarde voor een ontwerplevensduur van 50 jaar, en
 // dat is ook de klasse waarmee bovenstaande 15 mm is afgelezen.
 //
+// DE BEUGELS ZIJN OOK GEREKEND, EN NIET AANGENOMEN.
+//
+// De korf droeg wél een beugeldiameter, maar geen beugelAFSTAND en geen aantal
+// BENEN. Dat is precies genoeg om de dwarskrachttoets te laten zeggen dat hij
+// niet kán: §9.2.2 kent voor s en n geen standaardwaarde — alleen bovengrenzen
+// — dus de kern neemt niets aan en meldde §6.2 én de drie beugeleisen van
+// §9.2.2 als "niet toetsbaar". Voor een startmodel dat juist bedoeld is om mee
+// te proeven is dat een slecht voorbeeld: vier van de vijftien toetsen bleven
+// leeg terwijl er niets mis was.
+//
+// V_Ed = 99,0 kN op deze balk. De kern rekent V_Rd,c = 65,5 kN ((6.2.a) met de
+// ondergrens (6.2.b)), dus V_Ed > V_Rd,c en de weerstand moet volgens 6.2.3
+// UITSLUITEND uit het vakwerkmodel komen — de betonbijdrage telt daar niet
+// meer mee. Er is dus werkelijk dwarskrachtwapening nodig; dit is geen balk
+// waarin de beugels alleen voor de vorm meelopen.
+//
+// GEKOZEN: gesloten TWEEBENIGE beugel Ø8 h.o.h. 200 mm. Twee benen is bij een
+// lijf van 300 mm het gewone geval en hier ook toereikend, dus er is geen
+// reden ervan af te wijken. De afstand van 200 mm is nagerekend met de kern
+// (opdracht `check_concrete_beams`) en niet geschat:
+//
+//   §6.2.3     A_sw = 2 · π/4 · Ø8² = 100,5 mm² binnen de lengte s (§9.2.2(5));
+//              cot θ = 2,5 — de kern kiest de grootste toelaatbare waarde uit
+//              de NB bij 6.2.3(2), en de drukdiagonaal houdt dat ruim;
+//              z = 0,9·d = 509,4 mm; V_Rd,s = 278,3 kN volgens (6.8) en
+//              V_Rd,max = 556,5 kN volgens (6.9), dus V_Rd = 278,3 kN
+//                                              → uc 99,0 / 278,3 = 0,36
+//   §9.2.2(5)  ρ_w = A_sw/(s·b_w·sin α) = 0,00168 tegen
+//              ρ_w,min = 0,08·√f_ck/f_yk = 0,00088 (NB-waarde bij (9.5N))
+//                                              → uc 0,52
+//   §9.2.2(6)  s_l,max = min{0,75·d·(1 + cot α); 300} = 300 mm. Dat plafond
+//              van 300 mm is de NB-vervanging van (9.6N) en staat niet in de
+//              EN-tekst; bij rechte beugels is het bindend zodra d > 400 mm,
+//              en dat is hier zo.            → uc 200/300 = 0,67
+//   §9.2.2(8)  s_t = b_w − 2·c_nom − Ø_beugel = 252 mm — zuivere meetkunde van
+//              een gesloten tweebenige beugel, die de kern zelf afleidt —
+//              tegen s_t,max = 500 mm, want V_Ed ≤ 0,5·V_Rd,max. Ook die
+//              500 mm is de NB-waarde en niet de 600 mm van de aanbevolen
+//              (9.8N).                       → uc 0,50
+//
+// De d in bovenstaande regels is 566 mm en niet 562: de dwarskracht is bij het
+// steunpunt maatgevend, waar het moment door nul gaat, en de kern rekent daar
+// met de bovenwapening (Ø12) als trekzijde. Dat is de ongunstigste van de twee
+// en dus de veilige kant.
+//
+// WAAROM 200 EN NIET 250 OF 300. Ruimer mág: s = 300 mm haalt §6.2.3 nog
+// steeds (uc 0,53) en is precies s_l,max. Maar dan staat de balk met uc 1,00
+// óp een detailleringsgrens, en een startmodel dat een grens raakt leest als
+// toeval. Bij 250 mm is dat 0,83 — nog altijd de krapste marge van het hele
+// model. Bij 200 mm is de maatgevende toets van de staaf s_l,max met 0,67, in
+// dezelfde orde als de stalen kolommen (0,60) en de regel (0,74), terwijl elke
+// afzonderlijke beugeleis ruim wordt gehaald.
+//
+// NIET INGEVULD, met opzet: `stirrup_leg_spacing_mm` — bij een gesloten
+// tweebenige beugel is s_t zuivere meetkunde en leidt de kern hem zelf af; hem
+// hier intypen zou een gevolgtrekking als invoer laten lezen — en
+// `stirrup_fywk_mpa`, want de beugels zijn van hetzelfde B500B als de
+// langswapening; dat veld is er alleen voor een AFWIJKENDE beugelkwaliteit.
+//
 // DE STALEN DOORSNEDEN ZIJN GEDIMENSIONEERD, NIET OVERGENOMEN.
 //
 // Het portaal stond tot nu toe op HEA 160 — de doorsnede uit het allereerste
@@ -174,6 +233,11 @@ const DEFAULT_BEAMS: Beam[] = [
         stirrup_diameter_mm: 8,
         top: { count: 2, diameter_mm: 12 },
         bottom: { count: 4, diameter_mm: 20 },
+        // Ø8–200, tweebenig. Zonder deze twee velden zijn A_sw/s in (6.8) en
+        // ρ_w in (9.4) onbepaald en blijven §6.2 en drie eisen uit §9.2.2
+        // ongetoetst — zie de afleiding hierboven.
+        stirrup_spacing_mm: 200,
+        stirrup_legs: 2,
       },
       betonMilieuklasse: "XC1",
       // Zonder dit veld vult de betonbouwer B500B in — dezelfde staalsoort,

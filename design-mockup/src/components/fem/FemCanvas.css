@@ -367,6 +367,19 @@
 /* N (normaalkracht) — oranje */
 .fem-diagram-N.fem-diagram-fill { fill: #f59e0b; }
 .fem-diagram-N.fem-diagram-line { stroke: #d97706; }
+/* Snedetekens: het afschuifteken in de V-lijn en het buigteken in de M-lijn.
+   Ze horen bij hun eigen diagram, dus ze krijgen de kleur van de DIAGRAMLIJN
+   (niet van het lichtere vlak) — hetzelfde patroon als de waarde-labels.
+   De lijndikte wordt per teken meegegeven en schaalt mee met de tekenmaat;
+   hier staat alleen de terugval voor als die ontbreekt. */
+.fem-diagram-teken {
+  fill: none;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fem-diagram-M.fem-diagram-teken { stroke: #1d4ed8; }
+.fem-diagram-V.fem-diagram-teken { stroke: #047857; }
 /* θ (hoekverdraaiing) — paars; vervormingsgrootheid, dus bewust een andere
    kleurfamilie dan de drie snedekrachten hierboven. */
 .fem-diagram-R.fem-diagram-fill { fill: #8b5cf6; }

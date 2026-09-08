@@ -4,6 +4,9 @@
  * bij CHS is h = b = uitwendige diameter en r = 0), plus de aanvullende
  * doorsnedegrootheden (props) voor de eigenschappentabel.
  *
+ * Bij U-profielen staat er ook een flensHelling: 0,08 voor de UNP-reeks
+ * (toelopende flens), 0 voor de UPE-reeks (evenwijdige flenzen).
+ *
  * GEGENEREERD uit src-tauri/crates/steel-profiles/data/profiles.json —
  * de bron van waarheid die ook de Rust-toetsing gebruikt. Niet met de hand
  * bijwerken; opnieuw genereren met: node scripts/genereer-staalprofielen.mjs
@@ -55,13 +58,27 @@ export interface SteelSectionDims {
   tf: number;
   /** Afrondingsstraal in mm (walsuitronding; SHS/RHS: hoekstraal; CHS: 0). */
   r: number;
+  /**
+   * Helling van het flensBINNENvlak (U-profielen), als verhouding: 0,08 is
+   * 8 %. 0 betekent evenwijdige flenzen.
+   *
+   * Dit is een TEKENgrootheid, geen rekengrootheid: de doorsnedegrootheden in
+   * `props` staan los van dit veld en komen onveranderd uit de catalogus.
+   * Zonder dit veld is een UNP niet van een UPE te onderscheiden en wordt hij
+   * met evenwijdige flenzen getekend — precies de fout die dit veld opheft.
+   *
+   * Ontbreekt het veld, dan tekent `profielVorm.ts` evenwijdige flenzen. Een
+   * nieuwe U-reeks met toelopende flens MOET het dus in profiles.json krijgen;
+   * anders ziet niemand dat de tekening de verkeerde vorm laat zien.
+   */
+  flensHelling?: number;
   /** Aanvullende grootheden voor de eigenschappentabel (uit de database). */
   props?: SteelSectionProps;
 }
 
 export const STEEL_SECTION_DIMS: Record<string, SteelSectionDims> = {
   "UNP350": { kind: "Channel", naam: "UNP350", h: 350, b: 100, tw: 14, tf: 16, r: 16,
-    props: { iz: 5603739, welY: 725384, welZ: 73447, wplY: 889763, wplZ: 139730, avZ: 4946, it: 603930, iw: 105718000000, iRadY: 128.7, iRadZ: 27 } },
+    flensHelling: 0.08, props: { iz: 5603739, welY: 725384, welZ: 73447, wplY: 889763, wplZ: 139730, avZ: 4946, it: 603930, iw: 105718000000, iRadY: 128.7, iRadZ: 27 } },
   "HFRHS200X200X16": { kind: "Shs", naam: "HFRHS200X200X16", h: 200, b: 200, tw: 16, tf: 16, r: 24,
     props: { iz: 63935400, welY: 639354, welZ: 639354, wplY: 785472, wplZ: 785472, avZ: 5750.65, it: 102440000, iw: 0, iRadY: 74.5585, iRadZ: 74.5585 } },
   "IPE80": { kind: "ISection", naam: "IPE 80", h: 80, b: 46, tw: 3.8, tf: 5.2, r: 5,
@@ -233,29 +250,29 @@ export const STEEL_SECTION_DIMS: Record<string, SteelSectionDims> = {
   "CHS4064X16": { kind: "Chs", naam: "CHS 406.4x16", h: 406.4, b: 406.4, tw: 16, tf: 16, r: 0,
     props: { iz: 374488000, welY: 1842950, welZ: 1842950, wplY: 2439960, wplZ: 2439960, avZ: 12492.8, it: 748976000, iw: 0, iRadY: 138.143, iRadZ: 138.143 } },
   "UNP80": { kind: "Channel", naam: "UNP 80", h: 80, b: 45, tw: 6, tf: 8, r: 8,
-    props: { iz: 193581, welY: 26482.5, welZ: 6351.06, wplY: 31898.3, wplZ: 12081.4, avZ: 494.34, it: 21519.2, iw: 167587000, iRadY: 30.9993, iRadZ: 13.2517 } },
+    flensHelling: 0.08, props: { iz: 193581, welY: 26482.5, welZ: 6351.06, wplY: 31898.3, wplZ: 12081.4, avZ: 494.34, it: 21519.2, iw: 167587000, iRadY: 30.9993, iRadZ: 13.2517 } },
   "UNP100": { kind: "Channel", naam: "UNP 100", h: 100, b: 50, tw: 6, tf: 8.5, r: 8.5,
-    props: { iz: 292339, welY: 41100.7, welZ: 8479.91, wplY: 48997.9, wplZ: 16238.1, avZ: 619.39, it: 28212.4, iw: 413199000, iRadY: 39.0719, iRadZ: 14.7366 } },
+    flensHelling: 0.08, props: { iz: 292339, welY: 41100.7, welZ: 8479.91, wplY: 48997.9, wplZ: 16238.1, avZ: 619.39, it: 28212.4, iw: 413199000, iRadY: 39.0719, iRadZ: 14.7366 } },
   "UNP120": { kind: "Channel", naam: "UNP 120", h: 120, b: 55, tw: 7, tf: 9, r: 9,
-    props: { iz: 430621, welY: 60721.6, welZ: 11058.5, wplY: 72701.8, wplZ: 21267.6, avZ: 852.712, it: 41383.5, iw: 898945000, iRadY: 46.3113, iRadZ: 15.9216 } },
+    flensHelling: 0.08, props: { iz: 430621, welY: 60721.6, welZ: 11058.5, wplY: 72701.8, wplZ: 21267.6, avZ: 852.712, it: 41383.5, iw: 898945000, iRadY: 46.3113, iRadZ: 15.9216 } },
   "UNP140": { kind: "Channel", naam: "UNP 140", h: 140, b: 60, tw: 7, tf: 10, r: 10,
-    props: { iz: 624853, welY: 86401.9, welZ: 14721.2, wplY: 102773, wplZ: 28319.1, avZ: 1006.98, it: 57117.5, iw: 1799770000, iRadY: 54.4901, iRadZ: 17.5144 } },
+    flensHelling: 0.08, props: { iz: 624853, welY: 86401.9, welZ: 14721.2, wplY: 102773, wplZ: 28319.1, avZ: 1006.98, it: 57117.5, iw: 1799770000, iRadY: 54.4901, iRadZ: 17.5144 } },
   "UNP160": { kind: "Channel", naam: "UNP 160", h: 160, b: 65, tw: 7.5, tf: 10.5, r: 10.5,
-    props: { iz: 852430, welY: 115658, welZ: 18298, wplY: 137608, wplZ: 35219.7, avZ: 1226.39, it: 74262.4, iw: 3260040000, iRadY: 62.0599, iRadZ: 18.8368 } },
+    flensHelling: 0.08, props: { iz: 852430, welY: 115658, welZ: 18298, wplY: 137608, wplZ: 35219.7, avZ: 1226.39, it: 74262.4, iw: 3260040000, iRadY: 62.0599, iRadZ: 18.8368 } },
   "UNP180": { kind: "Channel", naam: "UNP 180", h: 180, b: 70, tw: 8, tf: 11, r: 11,
-    props: { iz: 1134990, welY: 150434, welZ: 22379.6, wplY: 179115, wplZ: 43068.1, avZ: 1465.57, it: 95049, iw: 5567450000, iRadY: 69.5796, iRadZ: 20.1457 } },
+    flensHelling: 0.08, props: { iz: 1134990, welY: 150434, welZ: 22379.6, wplY: 179115, wplZ: 43068.1, avZ: 1465.57, it: 95049, iw: 5567450000, iRadY: 69.5796, iRadZ: 20.1457 } },
   "UNP200": { kind: "Channel", naam: "UNP 200", h: 200, b: 75, tw: 8.5, tf: 11.5, r: 11.5,
-    props: { iz: 1480500, welY: 191181, welZ: 26998, wplY: 227850, wplZ: 51957.7, avZ: 1724.53, it: 119949, iw: 9065870000, iRadY: 77.0594, iRadZ: 21.4441 } },
+    flensHelling: 0.08, props: { iz: 1480500, welY: 191181, welZ: 26998, wplY: 227850, wplZ: 51957.7, avZ: 1724.53, it: 119949, iw: 9065870000, iRadY: 77.0594, iRadZ: 21.4441 } },
   "UNP220": { kind: "Channel", naam: "UNP 220", h: 220, b: 80, tw: 9, tf: 12.5, r: 12.5,
-    props: { iz: 1962440, welY: 244758, welZ: 33526.1, wplY: 291604, wplZ: 64456.3, avZ: 2014.28, it: 161334, iw: 14585400000, iRadY: 84.7828, iRadZ: 22.8898 } },
+    flensHelling: 0.08, props: { iz: 1962440, welY: 244758, welZ: 33526.1, wplY: 291604, wplZ: 64456.3, avZ: 2014.28, it: 161334, iw: 14585400000, iRadY: 84.7828, iRadZ: 22.8898 } },
   "UNP240": { kind: "Channel", naam: "UNP 240", h: 240, b: 85, tw: 9.5, tf: 13, r: 13,
-    props: { iz: 2474410, welY: 299901, welZ: 39503.1, wplY: 357666, wplZ: 75960.7, avZ: 2313.17, it: 197903, iw: 22070300000, iRadY: 92.2306, iRadZ: 24.1842 } },
+    flensHelling: 0.08, props: { iz: 2474410, welY: 299901, welZ: 39503.1, wplY: 357666, wplZ: 75960.7, avZ: 2313.17, it: 197903, iw: 22070300000, iRadY: 92.2306, iRadZ: 24.1842 } },
   "UNP260": { kind: "Channel", naam: "UNP 260", h: 260, b: 90, tw: 10, tf: 14, r: 14,
-    props: { iz: 3172710, welY: 371092, welZ: 47838.3, wplY: 442407, wplZ: 91910.2, avZ: 2644.25, it: 257156, iw: 33269000000, iRadY: 99.9581, iRadZ: 25.6342 } },
+    flensHelling: 0.08, props: { iz: 3172710, welY: 371092, welZ: 47838.3, wplY: 442407, wplZ: 91910.2, avZ: 2644.25, it: 257156, iw: 33269000000, iRadY: 99.9581, iRadZ: 25.6342 } },
   "UNP280": { kind: "Channel", naam: "UNP 280", h: 280, b: 95, tw: 10, tf: 15, r: 15,
-    props: { iz: 3981970, welY: 448279, welZ: 57151.5, wplY: 531962, wplZ: 109812, avZ: 2866.98, it: 313525, iw: 48473100000, iRadY: 108.39, iRadZ: 27.3022 } },
+    flensHelling: 0.08, props: { iz: 3981970, welY: 448279, welZ: 57151.5, wplY: 531962, wplZ: 109812, avZ: 2866.98, it: 313525, iw: 48473100000, iRadY: 108.39, iRadZ: 27.3022 } },
   "UNP300": { kind: "Channel", naam: "UNP 300", h: 300, b: 100, tw: 10, tf: 16, r: 16,
-    props: { iz: 4931510, welY: 535178, welZ: 67559.6, wplY: 632364, wplZ: 129913, avZ: 3092.24, it: 379641, iw: 68984300000, iRadY: 116.881, iRadZ: 28.9695 } },
+    flensHelling: 0.08, props: { iz: 4931510, welY: 535178, welZ: 67559.6, wplY: 632364, wplZ: 129913, avZ: 3092.24, it: 379641, iw: 68984300000, iRadY: 116.881, iRadZ: 28.9695 } },
   "HEA450": { kind: "ISection", naam: "HEA 450", h: 440, b: 300, tw: 11.5, tf: 21, r: 27,
     props: { iz: 94653300, welY: 2896440, welZ: 631022, wplY: 3215870, wplZ: 965531, avZ: 6578.28, it: 2501090, iw: 4086790000000, iRadY: 189.191, iRadZ: 72.9162 } },
   "HEA500": { kind: "ISection", naam: "HEA 500", h: 490, b: 300, tw: 12, tf: 23, r: 27,
@@ -319,33 +336,33 @@ export const STEEL_SECTION_DIMS: Record<string, SteelSectionDims> = {
   "HEM1000": { kind: "ISection", naam: "HEM 1000", h: 1008, b: 302, tw: 21, tf: 40, r: 30,
     props: { iz: 184593000, welY: 14331300, welZ: 1222470, wplY: 16567900, wplZ: 1939680, avZ: 23500.6, it: 17129900, iw: 42660300000000, iRadY: 403.243, iRadZ: 64.4638 } },
   "UPE80": { kind: "Channel", naam: "UPE 80", h: 80, b: 50, tw: 4, tf: 7, r: 10,
-    props: { iz: 254133, welY: 26801.1, welZ: 7984.04, wplY: 31226.5, wplZ: 13945.3, avZ: 404.92, it: 14593.9, iw: 237134000, iRadY: 32.6294, iRadZ: 15.8867 } },
+    flensHelling: 0, props: { iz: 254133, welY: 26801.1, welZ: 7984.04, wplY: 31226.5, wplZ: 13945.3, avZ: 404.92, it: 14593.9, iw: 237134000, iRadY: 32.6294, iRadZ: 15.8867 } },
   "UPE100": { kind: "Channel", naam: "UPE 100", h: 100, b: 55, tw: 4.5, tf: 7.5, r: 10,
-    props: { iz: 382139, welY: 41372.6, welZ: 10633.7, wplY: 48012.6, wplZ: 18876.9, avZ: 534.17, it: 20069, iw: 568125000, iRadY: 40.6737, iRadZ: 17.4817 } },
+    flensHelling: 0, props: { iz: 382139, welY: 41372.6, welZ: 10633.7, wplY: 48012.6, wplZ: 18876.9, avZ: 534.17, it: 20069, iw: 568125000, iRadY: 40.6737, iRadZ: 17.4817 } },
   "UPE120": { kind: "Channel", naam: "UPE 120", h: 120, b: 60, tw: 5, tf: 8, r: 12,
-    props: { iz: 553982, welY: 60583.7, welZ: 13791.1, wplY: 70328.2, wplZ: 24799.8, avZ: 717.805, it: 28790.1, iw: 1197150000, iRadY: 48.5555, iRadZ: 18.9554 } },
+    flensHelling: 0, props: { iz: 553982, welY: 60583.7, welZ: 13791.1, wplY: 70328.2, wplZ: 24799.8, avZ: 717.805, it: 28790.1, iw: 1197150000, iRadY: 48.5555, iRadZ: 18.9554 } },
   "UPE140": { kind: "Channel", naam: "UPE 140", h: 140, b: 65, tw: 5, tf: 9, r: 12,
-    props: { iz: 787006, welY: 85637.4, welZ: 18188.8, wplY: 98844.5, wplZ: 32579.6, avZ: 824.805, it: 40316.4, iw: 2337210000, iRadY: 57.0504, iRadZ: 20.6713 } },
+    flensHelling: 0, props: { iz: 787006, welY: 85637.4, welZ: 18188.8, wplY: 98844.5, wplZ: 32579.6, avZ: 824.805, it: 40316.4, iw: 2337210000, iRadY: 57.0504, iRadZ: 20.6713 } },
   "UPE160": { kind: "Channel", naam: "UPE 160", h: 160, b: 70, tw: 5.5, tf: 9.5, r: 12,
-    props: { iz: 1068250, welY: 113883, welZ: 22582.4, wplY: 131610, wplZ: 40723.3, avZ: 1003.56, it: 51875.1, iw: 4179650000, iRadY: 64.8356, iRadZ: 22.2012 } },
+    flensHelling: 0, props: { iz: 1068250, welY: 113883, welZ: 22582.4, wplY: 131610, wplZ: 40723.3, avZ: 1003.56, it: 51875.1, iw: 4179650000, iRadY: 64.8356, iRadZ: 22.2012 } },
   "UPE180": { kind: "Channel", naam: "UPE 180", h: 180, b: 75, tw: 5.5, tf: 10.5, r: 12,
-    props: { iz: 1437050, welY: 150382, welZ: 28556.8, wplY: 172990, wplZ: 51296.3, avZ: 1120.06, it: 69821.2, iw: 7158190000, iRadY: 73.4125, iRadZ: 23.9214 } },
+    flensHelling: 0, props: { iz: 1437050, welY: 150382, welZ: 28556.8, wplY: 172990, wplZ: 51296.3, avZ: 1120.06, it: 69821.2, iw: 7158190000, iRadY: 73.4125, iRadZ: 23.9214 } },
   "UPE200": { kind: "Channel", naam: "UPE 200", h: 200, b: 80, tw: 6, tf: 11, r: 13,
-    props: { iz: 1872970, welY: 190930, welZ: 34428.7, wplY: 220091, wplZ: 62196.7, avZ: 1349.54, it: 88704.7, iw: 11565100000, iRadY: 81.133, iRadZ: 25.4112 } },
+    flensHelling: 0, props: { iz: 1872970, welY: 190930, welZ: 34428.7, wplY: 220091, wplZ: 62196.7, avZ: 1349.54, it: 88704.7, iw: 11565100000, iRadY: 81.133, iRadZ: 25.4112 } },
   "UPE220": { kind: "Channel", naam: "UPE 220", h: 220, b: 85, tw: 6.5, tf: 12, r: 13,
-    props: { iz: 2464350, welY: 243855, welZ: 42507.4, wplY: 281484, wplZ: 76876.1, avZ: 1580.54, it: 120323, iw: 18441200000, iRadY: 88.9988, iRadZ: 26.9757 } },
+    flensHelling: 0, props: { iz: 2464350, welY: 243855, welZ: 42507.4, wplY: 281484, wplZ: 76876.1, avZ: 1580.54, it: 120323, iw: 18441200000, iRadY: 88.9988, iRadZ: 26.9757 } },
   "UPE240": { kind: "Channel", naam: "UPE 240", h: 240, b: 90, tw: 7, tf: 12.5, r: 15,
-    props: { iz: 3109340, welY: 299899, welZ: 50082.1, wplY: 346889, wplZ: 90845.6, avZ: 1876.57, it: 151022, iw: 27762300000, iRadY: 96.6627, iRadZ: 28.4129 } },
+    flensHelling: 0, props: { iz: 3109340, welY: 299899, welZ: 50082.1, wplY: 346889, wplZ: 90845.6, avZ: 1876.57, it: 151022, iw: 27762300000, iRadY: 96.6627, iRadZ: 28.4129 } },
   "UPE270": { kind: "Channel", naam: "UPE 270", h: 270, b: 95, tw: 7.5, tf: 13.5, r: 15,
-    props: { iz: 4010020, welY: 389223, welZ: 60692.6, wplY: 451088, wplZ: 110214, avZ: 2222.82, it: 198802, iw: 45540100000, iRadY: 108.251, iRadZ: 29.9045 } },
+    flensHelling: 0, props: { iz: 4010020, welY: 389223, welZ: 60692.6, wplY: 451088, wplZ: 110214, avZ: 2222.82, it: 198802, iw: 45540100000, iRadY: 108.251, iRadZ: 29.9045 } },
   "UPE300": { kind: "Channel", naam: "UPE 300", h: 300, b: 100, tw: 9.5, tf: 15, r: 15,
-    props: { iz: 5376520, welY: 521546, welZ: 75582.6, wplY: 613351, wplZ: 136714, avZ: 3029.07, it: 314750, iw: 75459400000, iRadY: 117.55, iRadZ: 30.8164 } },
+    flensHelling: 0, props: { iz: 5376520, welY: 521546, welZ: 75582.6, wplY: 613351, wplZ: 136714, avZ: 3029.07, it: 314750, iw: 75459400000, iRadY: 117.55, iRadZ: 30.8164 } },
   "UPE330": { kind: "Channel", naam: "UPE 330", h: 330, b: 105, tw: 11, tf: 16, r: 18,
-    props: { iz: 6814650, welY: 667122, welZ: 89663.5, wplY: 791892, wplZ: 161723, avZ: 3881.06, it: 451135, iw: 116336000000, iRadY: 127.445, iRadZ: 31.7103 } },
+    flensHelling: 0, props: { iz: 6814650, welY: 667122, welZ: 89663.5, wplY: 791892, wplZ: 161723, avZ: 3881.06, it: 451135, iw: 116336000000, iRadY: 127.445, iRadZ: 31.7103 } },
   "UPE360": { kind: "Channel", naam: "UPE 360", h: 360, b: 110, tw: 12, tf: 17, r: 18,
-    props: { iz: 8436980, welY: 823634, welZ: 105069, wplY: 982346, wplZ: 189247, avZ: 4561.06, it: 584003, iw: 172354000000, iRadY: 137.945, iRadZ: 32.9075 } },
+    flensHelling: 0, props: { iz: 8436980, welY: 823634, welZ: 105069, wplY: 982346, wplZ: 189247, avZ: 4561.06, it: 584003, iw: 172354000000, iRadY: 137.945, iRadZ: 32.9075 } },
   "UPE400": { kind: "Channel", naam: "UPE 400", h: 400, b: 115, tw: 13.5, tf: 18, r: 18,
-    props: { iz: 10447200, welY: 1049030, welZ: 122573, wplY: 1262660, wplZ: 220836, avZ: 5620.06, it: 790217, iw: 266306000000, iRadY: 151.071, iRadZ: 33.7109 } },
+    flensHelling: 0, props: { iz: 10447200, welY: 1049030, welZ: 122573, wplY: 1262660, wplZ: 220836, avZ: 5620.06, it: 790217, iw: 266306000000, iRadY: 151.071, iRadZ: 33.7109 } },
   "SHS40X40X3": { kind: "Shs", naam: "SHS 40x40x3", h: 40, b: 40, tw: 3, tf: 3, r: 4.5,
     props: { iz: 97750.5, welY: 4887.52, welZ: 4887.52, wplY: 5969.98, wplZ: 5969.98, avZ: 217.171, it: 156081, iw: 0, iRadY: 15.0018, iRadZ: 15.0018 } },
   "SHS40X40X4": { kind: "Shs", naam: "SHS 40x40x4", h: 40, b: 40, tw: 4, tf: 4, r: 6,
