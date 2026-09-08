@@ -96,7 +96,7 @@ async fn stdio_roundtrip_initialize_list_call() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("tools must be an array");
-    assert_eq!(tools.len(), 16, "expected 16 tools, got {}", tools.len());
+    assert_eq!(tools.len(), 18, "expected 18 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -115,9 +115,9 @@ async fn stdio_roundtrip_initialize_list_call() {
         "load_fem_project",
         "solve_fem_model",
         "check_fem_model",
-        // De zes betontools (NEN-EN 1992-1-1). Dezelfde rekengang als het
-        // Tauri-command en de toetsbrug; zie `tests/drie_wegen_beton.rs` en
-        // `tests/drie_wegen_beff.rs`.
+        // De acht betontools (NEN-EN 1992-1-1). Dezelfde rekengang als het
+        // Tauri-command en de toetsbrug; zie `tests/drie_wegen_beton.rs`,
+        // `tests/drie_wegen_beff.rs` en `tests/drie_wegen_dekking.rs`.
         "list_concrete_classes",
         "list_reinforcement_grades",
         "check_concrete_beam",
@@ -129,6 +129,10 @@ async fn stdio_roundtrip_initialize_list_call() {
         // De meewerkende flensbreedte b_eff per gebied van figuur 5.2
         // (5.3.2.1, alle grenstoestanden).
         "concrete_effective_flange_width",
+        // De milieuklassen van tabel 4.1 en de dekkingstoets van 4.4.1, met
+        // c_min,dur uit de door de nationale bijlage voorgeschreven tabel 4.4N.
+        "list_exposure_classes",
+        "concrete_cover_check",
     ] {
         assert!(names.contains(&expected), "missing tool: {expected} (have {names:?})");
     }

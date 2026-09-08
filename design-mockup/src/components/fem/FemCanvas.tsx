@@ -2460,6 +2460,15 @@ export default function FemCanvas(props: FemCanvasProps) {
   const PUNTLAST_LUCHT_PX = 6;
 
   const renderLoad = (l: Load) => {
+    // De omschrijving van een last komt op het canvas BEWUST NIET als tekst
+    // naast de pijl te staan. "sneeuw op overstek" naast elke pijl maakt van
+    // een portaal met acht lasten een lappendeken; het label bij de pijl is er
+    // voor de GROOTTE (q = −5,0 kN/m) en dat getal moet leesbaar blijven. De
+    // omschrijving hangt er wél als hover-tooltip aan — hetzelfde patroon als
+    // de scharnierbolletjes en de toetsmarkers, en dus zonder één pixel extra
+    // in de tekening. Naast elkaar zien kan in de Tabel-tab en in het rapport.
+    const titelTekst = (l.omschrijving ?? "").trim();
+    const omschrijvingTitel = titelTekst !== "" ? <title>{titelTekst}</title> : null;
     // PUNTLAST op een knoop óf op een vrije positie op een staaf.
     // De pijl wordt ALTIJD boven de (eventueel gestapelde) q-lastband
     // getekend: `vrij` is de hoogte van de banden op die positie, gemeten in
@@ -2511,6 +2520,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             }
           }}
         >
+          {omschrijvingTitel}
           {/* Stippellijn van het aangrijpingspunt naar de opgetilde pijlkop —
               zonder dit is niet te zien wáár de last precies aangrijpt. */}
           {lucht > 0 && (
@@ -2536,6 +2546,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       const path = `M ${p.x + r} ${p.y} A ${r} ${r} 0 1 ${sweepFlag} ${p.x - r} ${p.y}`;
       return (
         <g key={`load${l.id}`}>
+          {omschrijvingTitel}
           <path d={path} fill="none" className="fem-load-vec" markerEnd="url(#fem-load-head)" />
           <text x={p.x} y={p.y - r - 4} className="fem-load-text">{Math.abs(m).toFixed(1)} kNm</text>
         </g>
@@ -2656,6 +2667,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             }
           }}
         >
+          {omschrijvingTitel}
           {/* Invisible hit-region — covers the whole trapezoid for easy clicks */}
           <polygon className="fem-lineload-hit" points={polyPoints} />
           {/* Visible top line connecting all arrow tails */}
@@ -2769,6 +2781,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             }
           }}
         >
+          {omschrijvingTitel}
           <polygon className="fem-lineload-hit" points={polyPoints} />
           <polyline className="fem-lineload-tip" points={tailPts.map(p => `${p.x},${p.y}`).join(" ")} />
           {arrows}
@@ -2798,6 +2811,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       const p = worldToScreen(mx, mz);
       return (
         <g key={`load${l.id}`}>
+          {omschrijvingTitel}
           <circle cx={p.x} cy={p.y} r={6} className="fem-load-thermal" />
           <text x={p.x + 10} y={p.y + 4} className="fem-load-text">ΔT={l.deltaT}°</text>
         </g>

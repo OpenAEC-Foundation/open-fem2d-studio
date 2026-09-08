@@ -3,7 +3,8 @@ use concrete_check::{
     SegmentStiffnessRequest, SegmentStiffnessResponse,
 };
 use nen_en_1992_1_1::{
-    ConcreteClass, EffectiveFlangeWidthRequest, EffectiveFlangeWidthResponse, ReinforcementGrade,
+    ConcreteClass, ConcreteCoverRequest, ConcreteCoverResponse, EffectiveFlangeWidthRequest,
+    EffectiveFlangeWidthResponse, ExposureClassInfo, ReinforcementGrade,
 };
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1993_1_8_las::{LasInput, LasResultaat};
@@ -139,6 +140,28 @@ async fn concrete_effective_flange_width(
     nen_en_1992_1_1::beff::effective_flange_width_request(inputs)
 }
 
+/// De milieuklassen van tabel 4.1, met hun omschrijving en de voorbeelden uit
+/// de tabel. Bedoeld voor de keuzelijst in de invoer: die hoort de tekst van
+/// de norm te tonen en niet een eigen samenvatting.
+#[tauri::command]
+fn list_exposure_classes() -> Vec<ExposureClassInfo> {
+    nen_en_1992_1_1::EXPOSURE_CLASSES.to_vec()
+}
+
+/// De betondekking toetsen aan de milieuklasse (4.4.1).
+///
+/// Uit de milieuklasse en de constructieklasse volgt c_min,dur (tabel 4.4N in
+/// de versie van de nationale bijlage), uit de staafdiameters c_min,b (tabel
+/// 4.2); samen met de ondergrens van 10 mm geeft (4.2) de minimumdekking en
+/// (4.1) de vereiste nominale dekking. Het antwoord draagt de hele keten, zodat
+/// de invoer kan laten zien wáárom een dekking te klein is.
+#[tauri::command]
+async fn concrete_cover_check(
+    inputs: ConcreteCoverRequest,
+) -> Result<ConcreteCoverResponse, String> {
+    nen_en_1992_1_1::dekking::concrete_cover_request(inputs)
+}
+
 /// Vrije spanningstoets (geen norm): een doorsnede plus een toelaatbare
 /// spanning, getoetst op de vergelijkspanning van von Mises. Bedoeld voor
 /// materialen die buiten EN 1992/1993/1995 vallen — natuursteen, een
@@ -221,6 +244,8 @@ pub fn run() {
             concrete_mn_kappa,
             concrete_segment_stiffness,
             concrete_effective_flange_width,
+            list_exposure_classes,
+            concrete_cover_check,
             check_stress_beams,
             check_fillet_welds,
             bereken_doorsneden,

@@ -108,7 +108,7 @@ const MESHCACHE_VELDEN = [
 const LOAD_VELDEN = [
   "id", "type", "caseId", "nodeId", "fx", "fz", "my", "beamId", "posFrac",
   "q", "qStart", "qEnd", "qDir", "qCoord", "startFrac", "endFrac", "deltaT",
-  "plateId", "edge", "edgeIndex", "gegenereerdDoor",
+  "plateId", "edge", "edgeIndex", "gegenereerdDoor", "omschrijving",
 ] as const;
 
 const LOADCASE_VELDEN = ["id", "name", "type", "gegenereerd"] as const;
@@ -463,6 +463,14 @@ export function controleerVelden(rauw: unknown): string[] {
     keurEnum(l.qCoord, ["global", "local"], `${pad}.qCoord`, fouten);
     keurEnum(l.edge, ["bottom", "top", "left", "right"], `${pad}.edge`, fouten);
     keurEnum(l.gegenereerdDoor, ["wind"], `${pad}.gegenereerdDoor`, fouten);
+    // Vrije omschrijving: alleen de VORM wordt gekeurd (het moet tekst zijn).
+    // De inhoud is aan de gebruiker — er wordt niets mee gerekend.
+    if (l.omschrijving !== undefined && typeof l.omschrijving !== "string") {
+      fouten.push(
+        `${pad}.omschrijving: moet tekst zijn, maar is ` +
+          `${JSON.stringify(l.omschrijving)}.`,
+      );
+    }
   });
 
   return fouten;

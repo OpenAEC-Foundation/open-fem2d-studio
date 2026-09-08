@@ -14,6 +14,8 @@ import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSect
 import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
 import type { RebarRow } from "../../lib/types/concrete/RebarRow";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
+import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
+import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
 import { DEFAULT_N_STRIPS, DEFAULT_REINFORCEMENT_GRADE } from "../../lib/betonCheckBuilder";
 
 export interface Wapeningskorf {
@@ -28,6 +30,20 @@ export interface Wapeningskorf {
   /** Wapeningsstaal, bijv. "B500B". */
   staalsoort: string;
   korf: ReinforcementCage;
+  /**
+   * Milieuklasse van tabel 4.1; `null` = nog niet gekozen.
+   *
+   * Er is met opzet GEEN standaardklasse. Zonder milieuklasse is er geen
+   * c_min,dur en dus geen dekkingstoets — en dat staat er dan ook, in plaats
+   * van dat de app stilzwijgend XC1 aanneemt en een dekking goedkeurt die bij
+   * een chloridemilieu ver te dun is.
+   */
+  milieuklasse: ExposureClass | null;
+  /**
+   * Constructieklasse; `null` = de waarde van de nationale bijlage bij
+   * 4.4.1.2(5): S4 voor een ontwerplevensduur van 50 jaar.
+   */
+  constructieklasse: StructuralClass | null;
   /** In hoeveel stroken de doorsnede voor de integratie wordt opgeknipt. */
   aantalStroken: number;
   /** Bovenste tak van het staaldiagram (3.2.7(2)). */
@@ -57,6 +73,9 @@ export const STANDAARD_KORF: Wapeningskorf = {
     top: { count: 2, diameter_mm: 12 },
     bottom: { count: 3, diameter_mm: 16 },
   },
+  // Geen milieuklasse: die moet de constructeur kiezen. Zie het veld zelf.
+  milieuklasse: null,
+  constructieklasse: null,
   aantalStroken: DEFAULT_N_STRIPS,
   staaltak: "Horizontal",
 };
@@ -175,6 +194,48 @@ export const STAAFDIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32, 40] as const;
 
 /** Gangbare beugeldiameters; 0 = geen beugel. */
 export const BEUGELDIAMETERS = [0, 6, 8, 10, 12] as const;
+
+/**
+ * De AANDUIDINGEN van de milieuklassen van tabel 4.1, in de volgorde van de
+ * tabel — als terugval voor de keuzelijst wanneer de rekenkern niet bereikbaar
+ * is (browser zonder toetsbrug-binary).
+ *
+ * Alleen de aanduidingen: de omschrijvingen en de voorbeelden komen uit de
+ * kern (`list_exposure_classes`), zodat de normtekst maar op één plaats staat.
+ * Dezelfde afspraak als `SUPPORTED_CONCRETE_CLASSES` in `betonCheckBuilder`.
+ */
+export const MILIEUKLASSEN = [
+  "X0",
+  "XC1",
+  "XC2",
+  "XC3",
+  "XC4",
+  "XD1",
+  "XD2",
+  "XD3",
+  "XS1",
+  "XS2",
+  "XS3",
+  "XF1",
+  "XF2",
+  "XF3",
+  "XF4",
+  "XA1",
+  "XA2",
+  "XA3",
+] as const;
+
+/** De constructieklassen van 4.4.1.2(5); S4 is de NB-waarde voor 50 jaar. */
+export const CONSTRUCTIEKLASSEN = ["S1", "S2", "S3", "S4", "S5", "S6"] as const;
+
+/**
+ * De grootste diameter van de hoofdwapening in de korf, mm; 0 als er geen
+ * hoofdwapening is. Die maat stelt de aanhechtingseis c_min,b van tabel 4.2.
+ */
+export function grootsteStaafdiameterMm(korf: ReinforcementCage): number {
+  const rijen = [korf.top, korf.bottom].filter((r) => r.count > 0 && r.diameter_mm > 0);
+  return rijen.length === 0 ? 0 : Math.max(...rijen.map((r) => r.diameter_mm));
+}
 
 /** Oppervlakte van één rij hoofdwapening in mm². */
 export function rijOppervlakMm2(rij: RebarRow): number {

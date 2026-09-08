@@ -18,9 +18,16 @@
 export interface BetonTekenKleuren {
   /** Vlak van het beton in de doorsnede. */
   betonVlak: string;
-  /** Omtrek van de doorsnede en de hoofdwapening. */
+  /**
+   * Omtrek van de doorsnede en de hoofdwapening — alles wat ÓP `betonVlak`
+   * ligt. Apart van [`lijn`] omdat dat vlak een vaste lichte kleur heeft: een
+   * omtrek in de themakleur zou in het donkere thema bijna wit op lichtgrijs
+   * staan en de staven onzichtbaar maken.
+   */
+  betonLijn: string;
+  /** Lijn op de ACHTERGROND van het paneel (grafiekas, referentielijn). */
   lijn: string;
-  /** Beugel. */
+  /** Beugel; ligt eveneens op `betonVlak`. */
   beugel: string;
   /** Gewone tekst (waarden in het aanwijskader). */
   tekst: string;
@@ -40,11 +47,20 @@ export interface BetonTekenKleuren {
   rekenpunt: string;
 }
 
-/** Schermweergave: alles uit de theme-tokens, met de oude vaste terugval. */
+/**
+ * Schermweergave: alles uit de theme-tokens, met de oude vaste terugval.
+ *
+ * `betonVlak` is de enige die géén themakleur is: `--theme-beton-vlak` staat
+ * in `themes.css` op #C0C0C0 (192-192-192) en is in élk thema hetzelfde, want
+ * beton is een materiaal en geen thema. Diezelfde token gebruikt
+ * `ProfielMiniatuur` in de profielkiezer, zodat dezelfde doorsnede daar en
+ * hier dezelfde kleur heeft.
+ */
 export const THEMA_KLEUREN: BetonTekenKleuren = {
-  betonVlak: "var(--theme-beton-vlak, var(--theme-border, #e6e5e1))",
+  betonVlak: "var(--theme-beton-vlak, #C0C0C0)",
+  betonLijn: "var(--theme-materiaal-lijn, #2A2A30)",
   lijn: "var(--theme-text, #39424e)",
-  beugel: "var(--theme-text-secondary, #666)",
+  beugel: "var(--theme-materiaal-beugel, #55555E)",
   tekst: "var(--theme-text, #333)",
   tekstZwak: "var(--theme-text-secondary, #555)",
   tekstMaat: "var(--theme-text-muted, #666)",
@@ -58,6 +74,7 @@ export const THEMA_KLEUREN: BetonTekenKleuren = {
 /** Papierweergave: vaste documentkleuren, onafhankelijk van het app-thema. */
 export const RAPPORT_KLEUREN: BetonTekenKleuren = {
   betonVlak: "#dfe4ea",
+  betonLijn: "#39424e",
   lijn: "#39424e",
   beugel: "#5b6470",
   tekst: "#333",

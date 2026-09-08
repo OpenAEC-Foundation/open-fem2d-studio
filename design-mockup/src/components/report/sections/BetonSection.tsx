@@ -108,6 +108,10 @@ function korfVoorTekening(
     betonklasse: r.concrete_class,
     staalsoort: r.reinforcement_grade,
     korf: cage,
+    // De tekening kent geen milieuklasse — die staat niet in het toetsresultaat
+    // en de tekening doet er niets mee. Zie het beperkingenblok bij 4.4.1.2.
+    milieuklasse: null,
+    constructieklasse: null,
     aantalStroken: DEFAULT_N_STRIPS,
     staaltak: "Horizontal",
   };
@@ -604,8 +608,15 @@ const NIET_GETOETST_NA: Beperking[] = [
     artikel: "4.4.1.2",
     key: "report.betonNietDekking",
     nl:
-      "De minimale dekking c_min bij een milieuklasse. De dekking is invoer van de " +
-      "gebruiker en wordt niet aan de norm getoetst.",
+      "De minimale dekking c_min bij een milieuklasse wordt WÉL aan de norm getoetst, " +
+      "maar bij de invoer en niet in deze staaftoetsing: de profielkiezer en het " +
+      "tabblad Norm leggen de opgegeven c_nom naast c_min,dur uit tabel 4.4N (in de " +
+      "versie van de nationale bijlage) en de aanhechtingseis van tabel 4.2. Die " +
+      "uitkomst staat niet in dit rapport, en zonder gekozen milieuklasse is er geen " +
+      "toets. Buiten beschouwing blijven bovendien: de constructieklasse volgens " +
+      "tabel 4.3N (die is invoer en wordt niet afgeleid), de toeslag bij een " +
+      "korrelafmeting groter dan 32 mm, oneffen oppervlakken (4.4.1.2(11)) en de " +
+      "afslijtingsklassen XM1 tot en met XM3.",
   },
   {
     artikel: "6.8",

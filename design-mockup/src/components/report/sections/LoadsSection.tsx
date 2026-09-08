@@ -29,6 +29,12 @@ export default function LoadsSection() {
     ? loadCases.find((c) => c.type === "dead") ?? loadCases[0]
     : undefined;
 
+  // De omschrijvingskolom verschijnt alleen als er érgens in het model een
+  // omschrijving staat — anders zou elk rapport een lege kolom met streepjes
+  // meedragen. De keuze geldt voor het HELE hoofdstuk, niet per geval: tabellen
+  // met wisselende kolomindelingen onder elkaar lezen als een fout.
+  const toontOmschrijving = loads.some((l) => (l.omschrijving ?? "").trim() !== "");
+
   const typeLabel = (l: Load): string => {
     switch (l.type) {
       case "pointForce": return t("home.pointLoad", "Puntlast");
@@ -134,6 +140,9 @@ export default function LoadsSection() {
                       <thead>
                         <tr>
                           <th>{t("report.colLoadType", "Type")}</th>
+                          {toontOmschrijving && (
+                            <th>{t("report.colDescription", "Omschrijving")}</th>
+                          )}
                           <th>{t("report.colTarget", "Op")}</th>
                           <th>{t("report.colValue", "Waarde")}</th>
                           <th>{t("report.colDirection", "Richting")}</th>
@@ -144,6 +153,9 @@ export default function LoadsSection() {
                         {caseLoads.map((l) => (
                           <tr key={l.id}>
                             <td>{typeLabel(l)}</td>
+                            {toontOmschrijving && (
+                              <td>{(l.omschrijving ?? "").trim() || "—"}</td>
+                            )}
                             <td>{targetText(l)}</td>
                             <td>{valueText(l)}</td>
                             <td>{directionText(l)}</td>

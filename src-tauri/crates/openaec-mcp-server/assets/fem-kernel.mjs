@@ -7486,7 +7486,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.1.0";
+var version = "0.3.1";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
@@ -7791,7 +7791,8 @@ var LOAD_VELDEN = [
   "plateId",
   "edge",
   "edgeIndex",
-  "gegenereerdDoor"
+  "gegenereerdDoor",
+  "omschrijving"
 ];
 var LOADCASE_VELDEN = ["id", "name", "type", "gegenereerd"];
 var SUPPORT_TYPES = [
@@ -8069,6 +8070,11 @@ function controleerVelden(rauw) {
     keurEnum(l.qCoord, ["global", "local"], `${pad}.qCoord`, fouten);
     keurEnum(l.edge, ["bottom", "top", "left", "right"], `${pad}.edge`, fouten);
     keurEnum(l.gegenereerdDoor, ["wind"], `${pad}.gegenereerdDoor`, fouten);
+    if (l.omschrijving !== void 0 && typeof l.omschrijving !== "string") {
+      fouten.push(
+        `${pad}.omschrijving: moet tekst zijn, maar is ${JSON.stringify(l.omschrijving)}.`
+      );
+    }
   });
   return fouten;
 }

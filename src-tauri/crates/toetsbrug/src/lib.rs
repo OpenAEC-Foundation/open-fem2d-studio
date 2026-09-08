@@ -29,7 +29,7 @@
 //! aanroeper hoeft stderr niet te lezen.
 
 use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest, SegmentStiffnessRequest};
-use nen_en_1992_1_1::EffectiveFlangeWidthRequest;
+use nen_en_1992_1_1::{ConcreteCoverRequest, EffectiveFlangeWidthRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use nen_en_1993_1_8_las::LasInput;
 use serde::Deserialize;
@@ -141,6 +141,19 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let verzoek: EffectiveFlangeWidthRequest = serde_json::from_value(inputs)
                 .map_err(|e| format!("flensbreedte-invoer: {e}"))?;
             let uit = nen_en_1992_1_1::beff::effective_flange_width_request(verzoek)?;
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // De milieuklassen van tabel 4.1 en de dekkingstoets van 4.4.1. Zelfde
+        // typen als het Tauri-command en de MCP-tool; de rekengang staat in
+        // `nen_en_1992_1_1::dekking` en nergens anders.
+        "list_exposure_classes" => {
+            serde_json::to_value(nen_en_1992_1_1::EXPOSURE_CLASSES).map_err(|e| e.to_string())
+        }
+        "concrete_cover_check" => {
+            let inputs = v.inputs.ok_or("concrete_cover_check vraagt om `inputs`")?;
+            let verzoek: ConcreteCoverRequest =
+                serde_json::from_value(inputs).map_err(|e| format!("dekkingsinvoer: {e}"))?;
+            let uit = nen_en_1992_1_1::dekking::concrete_cover_request(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
         }
         // Vrije spanningstoets: geen norm, alleen een doorsnede en een

@@ -124,6 +124,20 @@ interface CheckState {
   isRunning: boolean;
   error: string | null;
   lastRunAt: number | null;
+  /**
+   * De modelgegevens waarmee de laatste run is gedraaid.
+   *
+   * WAAROM DIE BEWAARD WORDEN. De profielvarianten (`stores/variantStore.ts`)
+   * toetsen dezelfde staaf nog eens met een andere doorsnede, en hebben
+   * daarvoor exact dezelfde invoer nodig: dezelfde knopen, dezelfde
+   * combinaties, hetzelfde krachtsverloop. Ze uit de React-boom opnieuw
+   * doorgeven zou een tweede weg naar dezelfde gegevens openen — met het
+   * risico dat de varianten op een ander model rekenen dan de toetsing die
+   * ernaast staat. Hier is er maar één bron.
+   *
+   * `null` zolang er niet gedraaid is, en weer `null` na `clear()`.
+   */
+  lastRunData: CheckRunData | null;
 
   /** Draai alle kernen in één run. Resolves wanneer de state gevuld is. */
   run: (data: CheckRunData) => Promise<void>;
@@ -137,7 +151,12 @@ let profileDbCache: Map<string, SteelProfile> | null = null;
 let timberGradesCache: string[] | null = null;
 let concreteClassesCache: string[] | null = null;
 
-async function getProfileDb(): Promise<Map<string, SteelProfile>> {
+/**
+ * De profieldatabase van de rekenkern, gesleuteld op `profileLookupKey`.
+ * Geëxporteerd zodat de profielvarianten (`stores/variantStore.ts`) dezelfde
+ * gecachete lijst gebruiken en niet een tweede keer bij de kern langsgaan.
+ */
+export async function getProfileDb(): Promise<Map<string, SteelProfile>> {
   if (profileDbCache) return profileDbCache;
   const profiles = await roepKern<SteelProfile[]>("list_steel_profiles");
   const map = new Map<string, SteelProfile>();
@@ -149,13 +168,15 @@ async function getProfileDb(): Promise<Map<string, SteelProfile>> {
   return map;
 }
 
-async function getTimberGrades(): Promise<string[]> {
+/** Sterkteklassen van de houtkern; zie `getProfileDb` voor het waarom van de export. */
+export async function getTimberGrades(): Promise<string[]> {
   if (timberGradesCache) return timberGradesCache;
   timberGradesCache = await roepKern<string[]>("list_timber_grades");
   return timberGradesCache;
 }
 
-async function getConcreteClasses(): Promise<string[]> {
+/** Betonsterkteklassen van de betonkern; zie `getProfileDb`. */
+export async function getConcreteClasses(): Promise<string[]> {
   if (concreteClassesCache) return concreteClassesCache;
   const klassen = await roepKern<ConcreteClass[]>("list_concrete_classes");
   concreteClassesCache = klassen.map((k) => k.name);
@@ -167,7 +188,7 @@ async function getConcreteClasses(): Promise<string[]> {
  * niet in deze map en wordt door de betonbouwer met reden overgeslagen —
  * er is geen stille standaardkorf.
  */
-function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
+export function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
   const korven = new Map<number, BetonStaafConfig>();
   for (const b of beams) {
     const cfg = b.checkConfig;
@@ -189,6 +210,7 @@ export const useCheckStore = create<CheckState>((set) => ({
   isRunning: false,
   error: null,
   lastRunAt: null,
+  lastRunData: null,
 
   run: async (data: CheckRunData) => {
     // Geen omgevingscontrole meer: de toetsing loopt altijd mee met de
@@ -293,13 +315,22 @@ export const useCheckStore = create<CheckState>((set) => ({
         isRunning: false,
         error: null,
         lastRunAt: Date.now(),
+        lastRunData: data,
       });
     } catch (e) {
       set({ error: String(e), isRunning: false });
     }
   },
 
-  clear: () => set({ results: [], skipped: [], beff: [], error: null, lastRunAt: null }),
+  clear: () =>
+    set({
+      results: [],
+      skipped: [],
+      beff: [],
+      error: null,
+      lastRunAt: null,
+      lastRunData: null,
+    }),
 }));
 
 /**

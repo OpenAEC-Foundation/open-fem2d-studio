@@ -504,11 +504,25 @@ export default function TableView(props: TableViewProps) {
     }),
   });
 
+  /**
+   * Omschrijving van een last bewerken (vrije tekst). Leeg wissen mag: het
+   * veld gaat dan terug naar `undefined`, zodat "geen omschrijving" precies
+   * één vorm heeft — dezelfde regel als in het eigenschappenpaneel.
+   */
+  const commitOmschrijving = (id: number, v: string) => {
+    const tekst = v.trim();
+    updateLoad(id, { omschrijving: tekst === "" ? undefined : tekst });
+  };
+  const OMSCHRIJVING_TITEL =
+    "Vrije naam voor deze belasting; komt in de lastentabel van het rapport"
+    + " te staan en verandert niets aan de berekening.";
+
   const buildPointLoadsSpec = (): TableSpec => {
     const rows = loads.filter((l) => l.type === "pointForce" || l.type === "pointMoment");
     return {
       columns: [
-        t("table.colId"), t("table.colType"), t("table.colCase"), t("table.colNode"),
+        t("table.colId"), t("table.colType"), t("table.colDescription"),
+        t("table.colCase"), t("table.colNode"),
         "Fx [kN]", "Fz [kN]", "My [kNm]",
       ],
       editable: true,
@@ -531,6 +545,7 @@ export default function TableView(props: TableViewProps) {
           exportCells: [
             String(l.id),
             isMoment ? t("table.typeMoment") : t("table.typeForce"),
+            l.omschrijving ?? "",
             caseName(l.caseId), String(l.nodeId ?? ""),
             isMoment ? "" : fmtNum(l.fx ?? 0),
             isMoment ? "" : fmtNum(l.fz ?? 0),
@@ -540,6 +555,13 @@ export default function TableView(props: TableViewProps) {
             <>
               <td className="ftable-id">{l.id}</td>
               <td>{isMoment ? t("table.typeMoment") : t("table.typeForce")}</td>
+              <td>
+                <TextCell
+                  value={l.omschrijving ?? ""} allowEmpty
+                  title={OMSCHRIJVING_TITEL}
+                  onCommit={(v) => commitOmschrijving(l.id, v)}
+                />
+              </td>
               <td>
                 <SelectCell
                   value={String(l.caseId)} options={caseOptions}
@@ -588,7 +610,8 @@ export default function TableView(props: TableViewProps) {
     };
     return {
       columns: [
-        t("table.colId"), t("table.colCase"), t("table.colBeam"), t("table.colDir"),
+        t("table.colId"), t("table.colDescription"),
+        t("table.colCase"), t("table.colBeam"), t("table.colDir"),
         "q [kN/m]", "q₁ [kN/m]", "q₂ [kN/m]",
         t("table.colStartFrac"), t("table.colEndFrac"),
       ],
@@ -611,7 +634,8 @@ export default function TableView(props: TableViewProps) {
           onSelect: () => setSelection({ type: "load", id: l.id }),
           onDelete: () => removeLoad(l.id),
           exportCells: [
-            String(l.id), caseName(l.caseId), String(l.beamId ?? ""),
+            String(l.id), l.omschrijving ?? "",
+            caseName(l.caseId), String(l.beamId ?? ""),
             (l.qDir ?? "z") === "z" ? t("table.dirZ") : t("table.dirX"),
             isTrap ? "" : fmtNum(l.q ?? 0),
             isTrap ? fmtNum(l.qStart) : "",
@@ -621,6 +645,13 @@ export default function TableView(props: TableViewProps) {
           cells: (
             <>
               <td className="ftable-id">{l.id}</td>
+              <td>
+                <TextCell
+                  value={l.omschrijving ?? ""} allowEmpty
+                  title={OMSCHRIJVING_TITEL}
+                  onCommit={(v) => commitOmschrijving(l.id, v)}
+                />
+              </td>
               <td>
                 <SelectCell
                   value={String(l.caseId)} options={caseOptions}
@@ -696,7 +727,10 @@ export default function TableView(props: TableViewProps) {
   const buildThermalSpec = (): TableSpec => {
     const rows = loads.filter((l) => l.type === "thermal");
     return {
-      columns: [t("table.colId"), t("table.colCase"), t("table.colBeam"), "ΔT [K]"],
+      columns: [
+        t("table.colId"), t("table.colDescription"),
+        t("table.colCase"), t("table.colBeam"), "ΔT [K]",
+      ],
       editable: true,
       emptyText: t("table.noRows"),
       onAddRow: () => {
@@ -713,11 +747,19 @@ export default function TableView(props: TableViewProps) {
         onSelect: () => setSelection({ type: "load", id: l.id }),
         onDelete: () => removeLoad(l.id),
         exportCells: [
-          String(l.id), caseName(l.caseId), String(l.beamId ?? ""), fmtNum(l.deltaT ?? 0),
+          String(l.id), l.omschrijving ?? "",
+          caseName(l.caseId), String(l.beamId ?? ""), fmtNum(l.deltaT ?? 0),
         ],
         cells: (
           <>
             <td className="ftable-id">{l.id}</td>
+            <td>
+              <TextCell
+                value={l.omschrijving ?? ""} allowEmpty
+                title={OMSCHRIJVING_TITEL}
+                onCommit={(v) => commitOmschrijving(l.id, v)}
+              />
+            </td>
             <td>
               <SelectCell
                 value={String(l.caseId)} options={caseOptions}

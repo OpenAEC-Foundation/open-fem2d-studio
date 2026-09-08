@@ -17,7 +17,8 @@
 //!
 //! DE NAMEN
 //! `list_concrete_classes`, `list_reinforcement_grades`, `concrete_mn_kappa`,
-//! `concrete_segment_stiffness` en `concrete_effective_flange_width` heten hier
+//! `concrete_segment_stiffness`, `concrete_effective_flange_width`,
+//! `list_exposure_classes` en `concrete_cover_check` heten hier
 //! precies zoals in de andere twee wegen. `check_concrete_beam`
 //! staat in het ENKELVOUD en toetst één staaf, gelijk aan `check_steel_beam`
 //! hiernaast; de Tauri- en toetsbrug-weg heten `check_concrete_beams` en nemen
@@ -47,16 +48,18 @@ use serde_json::{json, Value};
 
 use crate::RpcError;
 
-/// De zes betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
+/// De acht betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
 /// schema's en de dispatch — zodat een tool niet in `tools/list` kan staan
 /// zonder afhandeling, of andersom.
-pub const CONCRETE_TOOLS: [&str; 6] = [
+pub const CONCRETE_TOOLS: [&str; 8] = [
     "list_concrete_classes",
     "list_reinforcement_grades",
     "check_concrete_beam",
     "concrete_mn_kappa",
     "concrete_segment_stiffness",
     "concrete_effective_flange_width",
+    "list_exposure_classes",
+    "concrete_cover_check",
 ];
 
 pub fn is_concrete_tool(naam: &str) -> bool {
@@ -133,6 +136,21 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
                     RpcError::invalid_params(format!("EffectiveFlangeWidthRequest: {e}"))
                 })?;
             let result = nen_en_1992_1_1::beff::effective_flange_width_request(req)
+                .map_err(RpcError::invalid_params)?;
+            serde_json::to_value(result)
+                .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
+        }
+        // Tabel 4.1, ingepakt in een object om dezelfde reden als de andere
+        // lijsttools: `structuredContent` moet een object zijn.
+        "list_exposure_classes" => Ok(json!({ "classes": nen_en_1992_1_1::EXPOSURE_CLASSES })),
+        // De dekkingstoets (4.4.1). Geen blokkerend werk: een tabelopzoeking en
+        // drie vergelijkingen. Onzinnige maten (negatief of niet-eindig) zijn
+        // een toolfout MÉT de reden en geen getal — een stilzwijgend
+        // teruggegeven dekking zou een balk kunnen goedkeuren die er niet is.
+        "concrete_cover_check" => {
+            let req: nen_en_1992_1_1::ConcreteCoverRequest = serde_json::from_value(args)
+                .map_err(|e| RpcError::invalid_params(format!("ConcreteCoverRequest: {e}")))?;
+            let result = nen_en_1992_1_1::dekking::concrete_cover_request(req)
                 .map_err(RpcError::invalid_params)?;
             serde_json::to_value(result)
                 .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
@@ -252,7 +270,7 @@ fn schema_segmentkrachten() -> Value {
     })
 }
 
-/// De zes tooldefinities voor `tools/list`.
+/// De acht tooldefinities voor `tools/list`.
 pub fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
@@ -413,6 +431,42 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "Optioneel. De plaats langs de liggerlijn (mm vanaf `line.start`) waarvoor de afleiding wordt uitgeschreven — meestal het midden van de staaf die b_eff gaat gebruiken. Staat hij erin, dan draagt het antwoord `applied` met het gebied waarin die plaats valt, de b_eff van dat gebied en de UITGESCHREVEN AFLEIDING: de liggerlijn met haar uiteinden, l_0 met de overspanningen ingevuld, b_eff,i per flensdeel met de drie grenzen van (5.7a)/(5.7b) naast elkaar en de grens die won, b_eff volgens (5.7), en de geldigheidsvoorwaarden uit de OPMERKING bij figuur 5.2 met hun getallen. Blijft hij weg, dan is `applied` null en komt alleen de verdeling terug. Een plaats buiten [0, som van de overspanningen] levert eveneens null." }
                 },
                 "required": ["line", "flange"]
+            }
+        }),
+        json!({
+            "name": "list_exposure_classes",
+            "description": "List the EN 1992-1-1 table 4.1 exposure classes (X0, XC1-XC4, XD1-XD3, XS1-XS3, XF1-XF4, XA1-XA3) with the environment description and the informative examples straight from the table, plus the column each class maps to in table 4.4N ('cover_column'); XF and XA have no column because table 4.4N does not list them. Same list as the Tauri command and the toetsbrug opdracht of the same name, wrapped in a 'classes' object.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "concrete_cover_check",
+            "description": "Check a nominal concrete cover against the exposure class per EN 1992-1-1 §4.4.1 AS AMENDED BY THE DUTCH NATIONAL ANNEX. c_min,dur comes from table 4.4N in the NB version (which differs from the EN version in the XD3/XS3 column), c_min,b from table 4.2 (bar diameter), and then c_min = max{c_min,b; c_min,dur + 0 - 0 - 0; 10 mm} (4.2) and c_nom = c_min + 5 mm (4.1, NB value of delta c_dev; the EN recommends 10 mm). Returns the whole chain plus a unity check c_nom,required / c_nom,provided. The structural class is INPUT (default S4, the NB value for a 50-year design life) and is not derived from table 4.3N. NOT included: the +5 mm for aggregate over 32 mm, uneven surfaces (4.4.1.2(11)), abrasion classes XM1-XM3, and prestressing steel (table 4.5N). Same input and output types as the Tauri command and the toetsbrug opdracht of the same name.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "beam_id": { "type": "integer", "minimum": 0,
+                        "description": "Staafnummer; komt onveranderd terug in het resultaat." },
+                    "exposure_class": {
+                        "type": "string",
+                        "enum": ["X0", "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3",
+                                 "XS1", "XS2", "XS3", "XF1", "XF2", "XF3", "XF4",
+                                 "XA1", "XA2", "XA3"],
+                        "description": "Milieuklasse uit tabel 4.1. Bij XF en XA geeft tabel 4.4N geen c_min,dur — 4.4.1.2(12) regelt die klassen via de betonsamenstelling (EN 206-1) — en blijven alleen de aanhechtingseis en de ondergrens van 10 mm over."
+                    },
+                    "structural_class": {
+                        "type": ["string", "null"],
+                        "enum": ["S1", "S2", "S3", "S4", "S5", "S6", null],
+                        "description": "Constructieklasse. Weglaten of null = S4, de NB-waarde voor een ontwerplevensduur van 50 jaar. Wordt NIET automatisch aangepast volgens tabel 4.3N."
+                    },
+                    "cover_mm": { "type": "number", "minimum": 0,
+                        "description": "De opgegeven nominale dekking c_nom in mm, gemeten tot de buitenste wapening (4.4.1.1(1)P)." },
+                    "stirrup_diameter_mm": { "type": "number", "minimum": 0,
+                        "description": "Beugeldiameter in mm; 0 of weglaten = geen beugel, en dan is de hoofdwapening de buitenste wapening." },
+                    "max_bar_diameter_mm": { "type": "number", "minimum": 0,
+                        "description": "De grootste diameter van de hoofdwapening in mm, voor c_min,b uit tabel 4.2." }
+                },
+                "required": ["exposure_class", "cover_mm"]
             }
         }),
     ]

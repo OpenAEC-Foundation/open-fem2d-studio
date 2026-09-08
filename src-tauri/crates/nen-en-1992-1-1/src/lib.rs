@@ -40,7 +40,11 @@
 //! * [`beff_deelstappen`] — diezelfde afleiding UITGESCHREVEN, in hetzelfde
 //!   patroon als [`deelstappen`] en met dezelfde regel: niets wordt opnieuw
 //!   uitgerekend. Zonder die keten staat er in het rapport wel de gebruikte
-//!   b_eff maar niet waarom hij kleiner is dan de ingevoerde flensbreedte.
+//!   b_eff maar niet waarom hij kleiner is dan de ingevoerde flensbreedte;
+//! * [`dekking`] — de betondekking van 4.4.1: de milieuklassen van tabel 4.1,
+//!   c_min,dur uit de door de nationale bijlage voorgeschreven tabel 4.4N, en
+//!   daaruit c_min (4.2) en de vereiste c_nom (4.1). De dekking was tot dan
+//!   toe alleen een geometrisch gegeven voor de nuttige hoogte d.
 //!
 //! Tekenconventie aan de buitengrens (gelijk aan `mechanics`): N positief =
 //! trek, M_y positief = trek in de onderste vezel. Inwendig rekent de
@@ -66,6 +70,7 @@ pub mod bending;
 pub mod checks;
 pub mod data;
 pub mod deelstappen;
+pub mod dekking;
 pub mod factors;
 pub mod mnkappa;
 pub mod section;
@@ -85,6 +90,12 @@ pub use beff_deelstappen::beff_deelstappen;
 pub use data::{
     concrete_class_by_name, reinforcement_grade_by_name, ConcreteClass, DuctilityClass,
     ReinforcementGrade, CONCRETE_CLASSES, REINFORCEMENT_GRADES,
+};
+// De betondekking (4.4.1). Op crate-niveau om dezelfde reden als `beff`: de
+// drie wegen roepen hem alle drie rechtstreeks aan.
+pub use dekking::{
+    c_min_dur_mm, concrete_cover_request, ConcreteCoverRequest, ConcreteCoverResponse,
+    CoverGovernedBy, ExposureClass, ExposureClassInfo, StructuralClass, EXPOSURE_CLASSES,
 };
 pub use factors::{DesignSituation, ALPHA_CC, E_S, GAMMA_CE};
 // De M-N-κ-motor op crate-niveau: `solve_state`, `internal_forces`,

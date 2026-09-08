@@ -117,6 +117,34 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   const [loadDuration, setLoadDuration] = useState<NonNullable<BeamCheckConfig["loadDuration"]>>(
     cfg0.loadDuration ?? "medium",
   );
+  /**
+   * De betonvelden van de toetsconfiguratie: wapeningskorf, milieuklasse,
+   * constructieklasse, wapeningsstaal, stroken en staaldiagram.
+   *
+   * Ze staan hier als één blok in de state omdat `buildCheckConfig` de config
+   * VAN NUL opbouwt. Alles wat deze dialoog niet kent zou daarmee verdwijnen —
+   * en dat gebeurde: wie een betonstaaf dubbelklikte en op OK drukte, was zijn
+   * wapeningskorf kwijt zonder melding. De profielkiezer hieronder schrijft in
+   * deze state; OK zet hem terug.
+   */
+  const [betonCfg, setBetonCfg] = useState<
+    Pick<
+      BeamCheckConfig,
+      | "betonKorf"
+      | "betonMilieuklasse"
+      | "betonConstructieklasse"
+      | "betonStaalsoort"
+      | "betonStroken"
+      | "betonStaaltak"
+    >
+  >({
+    betonKorf: cfg0.betonKorf,
+    betonMilieuklasse: cfg0.betonMilieuklasse,
+    betonConstructieklasse: cfg0.betonConstructieklasse,
+    betonStaalsoort: cfg0.betonStaalsoort,
+    betonStroken: cfg0.betonStroken,
+    betonStaaltak: cfg0.betonStaaltak,
+  });
 
   // Welke norm-velden tonen we? Live op het materiaal in de dialoog, zodat
   // wisselen van materiaal in het Algemeen-tabblad meteen doorwerkt.
@@ -157,6 +185,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     const sigmaZ = parseFloat(sigmaZStr.replace(",", "."));
     if (sigmaZStr.trim() !== "" && Number.isFinite(sigmaZ) && sigmaZ !== 0) {
       cfg.spanningSigmaZ = sigmaZ;
+    }
+    // De betonvelden gaan onveranderd mee; zie de toelichting bij `betonCfg`.
+    for (const [k, v] of Object.entries(betonCfg)) {
+      if (v !== undefined) (cfg as Record<string, unknown>)[k] = v;
     }
     return Object.keys(cfg).length > 0 ? cfg : undefined;
   };
@@ -338,10 +370,24 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     open
                     onClose={() => setKiezerOpen(false)}
                     huidig={{ material, profile }}
+                    huidigBeton={{
+                      korf: betonCfg.betonKorf,
+                      milieuklasse: betonCfg.betonMilieuklasse ?? null,
+                      constructieklasse: betonCfg.betonConstructieklasse ?? null,
+                    }}
                     inGebruik={beams ? profielenInGebruik(beams) : undefined}
                     onApply={(keuze) => {
                       setMaterial(keuze.material);
                       setProfile(keuze.profile);
+                      if (keuze.beton) {
+                        setBetonCfg((c) => ({
+                          ...c,
+                          betonKorf: keuze.beton!.korf,
+                          betonMilieuklasse: keuze.beton!.milieuklasse ?? undefined,
+                          betonConstructieklasse:
+                            keuze.beton!.constructieklasse ?? undefined,
+                        }));
+                      }
                     }}
                   />
                 )}

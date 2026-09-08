@@ -785,7 +785,9 @@ fn schema_loads() -> Value {
                 "edgeIndex": { "type": "integer", "minimum": 0,
                     "description": "Belaste rand van een polygoonplaat: rand i loopt van hoek i naar hoek i+1." },
                 "gegenereerdDoor": { "type": "string", "enum": ["wind"],
-                    "description": "Herkomst; ontbreekt = handmatig ingevoerd." }
+                    "description": "Herkomst; ontbreekt = handmatig ingevoerd." },
+                "omschrijving": { "type": "string",
+                    "description": "Vrije naam van de gebruiker voor deze last (\"sneeuw op overstek\", \"reactie spant 3\"). Documentatie: verandert niets aan de berekening, maar komt wel in de lastentabel van het rapport." }
             }
         }
     })

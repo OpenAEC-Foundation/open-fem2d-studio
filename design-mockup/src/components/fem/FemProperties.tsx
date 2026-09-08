@@ -26,7 +26,7 @@ import {
   parseConcreteSection,
 } from "../../lib/betonCheckBuilder";
 import { BetonKorfPaneel, type Wapeningskorf } from "../beton";
-import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
+import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
 
 interface SectionProps {
   title: string;
@@ -188,6 +188,17 @@ function MultiProperties({ selection, beams, updateBeams }: {
   // Eén combinatie → die staat voorgeselecteerd in de wizard; meerdere →
   // de wizard begint bij de materiaalkeuze.
   const eenduidig = rijen.length === 1 ? rijen[0] : null;
+  // De korf van de eerste geselecteerde staaf die er een heeft, als startpunt
+  // voor de kiezer. Toepassen zet hem daarna op álle geselecteerde staven —
+  // dat is wat "één profiel voor deze staven" betekent.
+  const eersteMetKorf = gekozen.find((b) => b.checkConfig?.betonKorf);
+  const betonVanEerste: Partial<BetonKorfKeuze> = {
+    ...(eersteMetKorf?.checkConfig?.betonKorf
+      ? { korf: eersteMetKorf.checkConfig.betonKorf }
+      : {}),
+    milieuklasse: eersteMetKorf?.checkConfig?.betonMilieuklasse ?? null,
+    constructieklasse: eersteMetKorf?.checkConfig?.betonConstructieklasse ?? null,
+  };
 
   return (
     <div className="fem-properties">
@@ -243,7 +254,35 @@ function MultiProperties({ selection, beams, updateBeams }: {
                 open
                 onClose={() => setKiezerOpen(false)}
                 huidig={eenduidig ? { material: eenduidig.material, profile: eenduidig.profile } : undefined}
-                onApply={(keuze) => updateBeams?.(selection.beamIds, keuze)}
+                // De korf van de eerste geselecteerde betonstaaf als startpunt;
+                // is er geen, dan begint de kiezer met de standaardkorf.
+                huidigBeton={betonVanEerste}
+                onApply={({ beton, ...keuze }) => {
+                  if (!beton) {
+                    updateBeams?.(selection.beamIds, keuze);
+                    return;
+                  }
+                  // Per staaf, niet in één keer: `checkConfig` wordt vervangen
+                  // en niet samengevoegd, dus één gedeelde config zou de
+                  // kniklengtes en kipsteunen van elke staaf wissen.
+                  for (const id of selection.beamIds) {
+                    const b = beams.find((x) => x.id === id);
+                    const bestaand = b?.checkConfig ?? {};
+                    updateBeams?.([id], {
+                      ...keuze,
+                      checkConfig: {
+                        ...bestaand,
+                        betonKorf: beton.korf,
+                        ...(beton.milieuklasse
+                          ? { betonMilieuklasse: beton.milieuklasse }
+                          : {}),
+                        ...(beton.constructieklasse
+                          ? { betonConstructieklasse: beton.constructieklasse }
+                          : {}),
+                      },
+                    });
+                  }
+                }}
                 inGebruik={profielenInGebruik(beams)}
               />
             )}
@@ -411,6 +450,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
     betonklasse: material,
     ...(betonVorm?.ok ? { doorsnede: betonVorm.doorsnede } : {}),
     ...(cfg.betonKorf ? { korf: cfg.betonKorf } : {}),
+    ...(cfg.betonMilieuklasse ? { milieuklasse: cfg.betonMilieuklasse } : {}),
+    ...(cfg.betonConstructieklasse
+      ? { constructieklasse: cfg.betonConstructieklasse }
+      : {}),
     ...(cfg.betonStaalsoort ? { staalsoort: cfg.betonStaalsoort } : {}),
     ...(cfg.betonStroken ? { aantalStroken: cfg.betonStroken } : {}),
     ...(cfg.betonStaaltak ? { staaltak: cfg.betonStaaltak } : {}),
@@ -422,11 +465,23 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       checkConfig: opgeschoond({
         ...cfg,
         betonKorf: k.korf,
+        // `?? undefined` en niet null: `opgeschoond` gooit undefined-velden
+        // weg, en "geen milieuklasse gekozen" hoort ook echt géén veld te
+        // zijn — anders staat er in het projectbestand een leeg gegeven dat
+        // op een keuze lijkt.
+        betonMilieuklasse: k.milieuklasse ?? undefined,
+        betonConstructieklasse: k.constructieklasse ?? undefined,
         betonStaalsoort: k.staalsoort,
         betonStroken: k.aantalStroken,
         betonStaaltak: k.staaltak,
       }),
     });
+  };
+  /** De korf en de milieuklasse zoals de profielkiezer ze verwacht. */
+  const betonKiezerKorf: Partial<BetonKorfKeuze> = {
+    ...(cfg.betonKorf ? { korf: cfg.betonKorf } : {}),
+    milieuklasse: cfg.betonMilieuklasse ?? null,
+    constructieklasse: cfg.betonConstructieklasse ?? null,
   };
   // Ruwe tekst van het kipsteunen-veld apart, zodat tussentijds typen
   // ("0.25, ") niet door de parser wordt teruggeschreven. Synchroniseert
@@ -738,7 +793,25 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               open
               onClose={() => setKiezerOpen(false)}
               huidig={{ material, profile }}
-              onApply={(keuze) => updateBeam?.(beam.id, keuze)}
+              huidigBeton={betonKiezerKorf}
+              // De korf en de milieuklasse landen in `checkConfig` en niet op
+              // de staaf zelf; ze worden hier op de BESTAANDE toetsconfig
+              // gelegd, zodat kniklengtes en kipsteunen blijven staan.
+              onApply={({ beton, ...keuze }) =>
+                updateBeam?.(beam.id, {
+                  ...keuze,
+                  ...(beton
+                    ? {
+                        checkConfig: opgeschoond({
+                          ...cfg,
+                          betonKorf: beton.korf,
+                          betonMilieuklasse: beton.milieuklasse ?? undefined,
+                          betonConstructieklasse: beton.constructieklasse ?? undefined,
+                        }),
+                      }
+                    : {}),
+                })
+              }
               inGebruik={profielenInGebruik(beams)}
             />
           )}
@@ -840,6 +913,11 @@ function LoadProperties({
   const [fzStr, setFzStr] = useState(String(load.fz ?? ""));
   const [myStr, setMyStr] = useState(String(load.my ?? ""));
   const [dtStr, setDtStr] = useState(String(load.deltaT ?? ""));
+  // Omschrijving: vrije tekst, zelfde commit-op-blur/Enter-patroon als de
+  // getalvelden. Apart gehouden van `commitNumber` omdat er niets te parsen
+  // valt — leeg (of alleen spaties) wist het veld in plaats van er een lege
+  // string in te zetten, zodat "geen omschrijving" één vorm houdt.
+  const [omschrijvingStr, setOmschrijvingStr] = useState(load.omschrijving ?? "");
   useEffect(() => {
     setQStr(String(load.q ?? ""));
     setQStartStr(String(load.qStart ?? ""));
@@ -848,7 +926,9 @@ function LoadProperties({
     setFzStr(String(load.fz ?? ""));
     setMyStr(String(load.my ?? ""));
     setDtStr(String(load.deltaT ?? ""));
-  }, [load.id, load.q, load.qStart, load.qEnd, load.fx, load.fz, load.my, load.deltaT]);
+    setOmschrijvingStr(load.omschrijving ?? "");
+  }, [load.id, load.q, load.qStart, load.qEnd, load.fx, load.fz, load.my, load.deltaT,
+      load.omschrijving]);
 
   // Trapezium detection: load is trapezium if qStart or qEnd set (regardless of q).
   const isTrap = load.qStart !== undefined || load.qEnd !== undefined;
@@ -868,6 +948,15 @@ function LoadProperties({
   const commitNumber = (raw: string, field: keyof Load) => {
     const v = Number(raw);
     if (Number.isFinite(v) && updateLoad) updateLoad(load.id, { [field]: v });
+  };
+
+  /** Omschrijving vastleggen; lege tekst wist het veld (→ `undefined`). */
+  const commitOmschrijving = () => {
+    if (!updateLoad) return;
+    const tekst = omschrijvingStr.trim();
+    const nieuw = tekst === "" ? undefined : tekst;
+    if (nieuw === load.omschrijving) { setOmschrijvingStr(load.omschrijving ?? ""); return; }
+    updateLoad(load.id, { omschrijving: nieuw });
   };
 
   const beam = load.beamId !== undefined ? beams.find(b => b.id === load.beamId) : undefined;
@@ -928,6 +1017,22 @@ function LoadProperties({
         <Section title="Algemeen">
           <Row label="ID"><code>{load.id}</code></Row>
           <Row label="Type"><code>{LOAD_TYPE_LABEL[load.type]}</code></Row>
+          {/* Vrije omschrijving — waar komt deze last vandaan? Verandert niets
+              aan de berekening; hij maakt de lastentabel in het rapport
+              leesbaar. Leeg laten mag, en leegmaken wist het veld. */}
+          <Row label="Omschrijving">
+            <input
+              type="text" className="fem-prop-input"
+              value={omschrijvingStr}
+              placeholder="bv. sneeuw op overstek"
+              maxLength={80}
+              spellCheck={false}
+              onChange={e => setOmschrijvingStr(e.target.value)}
+              onBlur={commitOmschrijving}
+              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+              title="Vrije naam voor deze belasting; komt in de lastentabel van het rapport te staan en verandert niets aan de berekening."
+            />
+          </Row>
           <Row label="Lastgeval"><code>{load.caseId}</code></Row>
           {beam && <Row label="Op balk"><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
           {node && <Row label="Op knoop"><code>{node.id}</code></Row>}

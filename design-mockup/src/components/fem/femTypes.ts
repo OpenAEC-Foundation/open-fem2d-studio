@@ -7,6 +7,8 @@
  */
 import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
+import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
+import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
 
 export type Tool =
   | "select"
@@ -112,6 +114,18 @@ export interface BeamCheckConfig {
    * geen stille standaardkorf.
    */
   betonKorf?: ReinforcementCage;
+  /**
+   * Milieuklasse van tabel 4.1, voor de dekkingstoets van 4.4.1.2. Ontbreekt
+   * hij, dan is de dekking NIET aan de norm getoetst — er is met opzet geen
+   * standaardklasse, want die zou een dekking kunnen goedkeuren die bij het
+   * werkelijke milieu ver te dun is.
+   */
+  betonMilieuklasse?: ExposureClass;
+  /**
+   * Constructieklasse van 4.4.1.2(5). Ontbreekt hij, dan S4 — de waarde die
+   * de nationale bijlage voor een ontwerplevensduur van 50 jaar voorschrijft.
+   */
+  betonConstructieklasse?: StructuralClass;
   /** Wapeningsstaal; default "B500B". */
   betonStaalsoort?: string;
   /** Aantal stroken voor de M-N-κ-integratie van de doorsnede; default 50. */
@@ -644,6 +658,24 @@ export interface Load {
    * volgende generatie vervangen. Zo blijft handwerk altijd behouden.
    */
   gegenereerdDoor?: "wind";
+  /**
+   * Vrije omschrijving van de gebruiker: waar komt deze last vandaan?
+   * "sneeuw op overstek", "opslag magazijn", "reactie spant 3". Puur
+   * documentatie — de solver leest dit veld NIET en er verandert geen enkel
+   * getal door. Het bestaat voor de lastentabel in het rapport: een rij
+   * `q = −4,50 kN/m op staaf 7` zegt niets, dezelfde rij met
+   * "gevelbelasting" ernaast zegt alles.
+   *
+   * Optioneel — elk bestaand projectbestand mist het veld en laadt
+   * ongewijzigd. Leeg of alleen witruimte wordt NIET opgeslagen (het veld
+   * gaat dan terug naar `undefined`), zodat "geen omschrijving" precies één
+   * vorm heeft en overal hetzelfde uitpakt.
+   *
+   * Nederlandse veldnaam, net als `gegenereerdDoor`: de Engelse namen op dit
+   * type (`fx`, `qDir`, `startFrac`) zijn formulesymbolen uit de mechanica en
+   * dit is er geen — het is domeintaal van de constructeur.
+   */
+  omschrijving?: string;
 }
 
 export interface LoadCase {

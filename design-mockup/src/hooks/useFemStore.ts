@@ -720,7 +720,13 @@ export function selecteerLastenVanZelfdeSoort(
  * automatisch meedoen.
  */
 function lastSignatuur(l: Omit<Load, "id">): string {
-  const overslaan = new Set(["id", "caseId", "gegenereerdDoor"]);
+  // `omschrijving` telt bewust NIET mee. De signatuur bewaakt één ding: dat
+  // een tweede plakactie de belasting niet stilzwijgend verdubbelt. Twee
+  // lasten met dezelfde q op dezelfde staaf verdubbelen die belasting ook
+  // als de een "sneeuw" heet en de ander "sneeuw op overstek" — de naam is
+  // documentatie, geen mechanisch verschil. Zou hij meetellen, dan glipt een
+  // dubbele last er langs zodra iemand hem hernoemt.
+  const overslaan = new Set(["id", "caseId", "gegenereerdDoor", "omschrijving"]);
   const paren = Object.keys(l)
     .filter(k => !overslaan.has(k))
     .filter(k => (l as Record<string, unknown>)[k] !== undefined)
@@ -738,6 +744,11 @@ function lastSignatuur(l: Omit<Load, "id">): string {
  * windgenerator en wordt bij een volgende generatie vervangen. Een met de
  * hand geplakte kopie hoort daar niet meer bij — die is handwerk en moet
  * blijven staan. Zie `vervangGegenereerdeBelasting`.
+ *
+ * Waarom `omschrijving` er WEL op blijft: je kopieert lasten juist om
+ * "sneeuw op overstek" ook in het volgende belastinggeval te hebben staan.
+ * De naam achterlaten zou de kopie naamloos maken en het rapport onleesbaar
+ * — precies het tegenovergestelde van waarvoor het veld bestaat.
  */
 export function kopieerLastenNaarKlembord(
   loads: Load[], ids: number[],

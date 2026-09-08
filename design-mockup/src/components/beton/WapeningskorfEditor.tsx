@@ -14,15 +14,20 @@
  * elke wijziging gaat via `onChange` terug. Geen eigen state, zodat de
  * aanroeper (het paneel, of later de staafeigenschappen) de bron van
  * waarheid blijft.
+ *
+ * De groep "Wapeningskorf" zelf — milieuklasse, dekking, beugel en de twee
+ * rijen — staat in [`KorfVelden`], omdat de profielkiezer dezelfde velden
+ * toont. Eén component, twee plaatsen, één gegeven; zie de tekst daar.
  */
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
+import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
-import type { RebarRow } from "../../lib/types/concrete/RebarRow";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 import { SUPPORTED_CONCRETE_CLASSES, SUPPORTED_REINFORCEMENT_GRADES } from "../../lib/betonCheckBuilder";
-import { BEUGELDIAMETERS, STAAFDIAMETERS, nl, type Wapeningskorf } from "./wapeningskorf";
+import KorfVelden, { Getal } from "./KorfVelden";
+import { nl, type Wapeningskorf } from "./wapeningskorf";
 import "./beton.css";
 
 interface Props {
@@ -35,96 +40,8 @@ interface Props {
   betonklassen?: ConcreteClass[];
   /** Bijlage C uit de kern; ontbreekt → alleen de namen. */
   staalsoorten?: ReinforcementGrade[];
-}
-
-function Getal({
-  id,
-  label,
-  eenheid,
-  waarde,
-  onChange,
-  min,
-  max,
-  stap,
-}: {
-  id: string;
-  label: string;
-  eenheid?: string;
-  waarde: number;
-  onChange: (v: number) => void;
-  min?: number;
-  max?: number;
-  stap?: number;
-}) {
-  return (
-    <label className="beton-rij" htmlFor={id}>
-      <span className="beton-label">{label}</span>
-      <span className="beton-invoer-met-eenheid">
-        <input
-          id={id}
-          className="beton-invoer"
-          type="number"
-          value={Number.isFinite(waarde) ? waarde : ""}
-          min={min}
-          max={max}
-          step={stap ?? 1}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            if (Number.isFinite(v)) onChange(v);
-          }}
-        />
-        {eenheid && <span className="beton-eenheid">{eenheid}</span>}
-      </span>
-    </label>
-  );
-}
-
-function Rij({
-  id,
-  label,
-  rij,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  rij: RebarRow;
-  onChange: (rij: RebarRow) => void;
-}) {
-  return (
-    <div className="beton-rij">
-      <span className="beton-label">{label}</span>
-      <span className="beton-invoer-groep">
-        <input
-          id={`${id}-aantal`}
-          className="beton-invoer beton-invoer-kort"
-          type="number"
-          min={0}
-          max={30}
-          step={1}
-          value={rij.count}
-          aria-label={`${label}: aantal staven`}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            if (Number.isFinite(v) && v >= 0) onChange({ ...rij, count: v });
-          }}
-        />
-        <span className="beton-eenheid">×</span>
-        <select
-          id={`${id}-diameter`}
-          className="beton-invoer beton-invoer-kort"
-          value={rij.diameter_mm}
-          aria-label={`${label}: staafdiameter`}
-          onChange={(e) => onChange({ ...rij, diameter_mm: parseFloat(e.target.value) })}
-        >
-          {STAAFDIAMETERS.map((d) => (
-            <option key={d} value={d}>
-              Ø{d}
-            </option>
-          ))}
-        </select>
-      </span>
-    </div>
-  );
+  /** Tabel 4.1 uit de kern; ontbreekt → alleen de aanduidingen. */
+  milieuklassen?: ExposureClassInfo[];
 }
 
 export default function WapeningskorfEditor({
@@ -134,9 +51,9 @@ export default function WapeningskorfEditor({
   onNEdChange,
   betonklassen,
   staalsoorten,
+  milieuklassen,
 }: Props) {
   const zet = (patch: Partial<Wapeningskorf>) => onChange({ ...waarde, ...patch });
-  const zetKorf = (patch: Partial<Wapeningskorf["korf"]>) => onChange({ ...waarde, korf: { ...waarde.korf, ...patch } });
   const d = waarde.doorsnede;
   const heeftFlens = d.shape !== "Rectangle";
   const zetDoorsnede = (patch: Partial<ConcreteSectionInput>) =>
@@ -277,24 +194,16 @@ export default function WapeningskorfEditor({
 
       <div className="beton-groep">
         <div className="beton-groep-kop">Wapeningskorf</div>
-        <Getal id="beton-dekking" label="Dekking c_nom" eenheid="mm" waarde={waarde.korf.cover_mm} min={0} max={100} stap={5} onChange={(v) => zetKorf({ cover_mm: v })} />
-        <label className="beton-rij" htmlFor="beton-beugel">
-          <span className="beton-label">Beugel</span>
-          <select
-            id="beton-beugel"
-            className="beton-invoer"
-            value={waarde.korf.stirrup_diameter_mm}
-            onChange={(e) => zetKorf({ stirrup_diameter_mm: parseFloat(e.target.value) })}
-          >
-            {BEUGELDIAMETERS.map((d) => (
-              <option key={d} value={d}>
-                {d === 0 ? "geen" : `Ø${d}`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Rij id="beton-boven" label="Bovenwapening" rij={waarde.korf.top} onChange={(top) => zetKorf({ top })} />
-        <Rij id="beton-onder" label="Onderwapening" rij={waarde.korf.bottom} onChange={(bottom) => zetKorf({ bottom })} />
+        <KorfVelden
+          idPrefix="beton"
+          korf={waarde.korf}
+          onKorfChange={(korf) => zet({ korf })}
+          milieuklasse={waarde.milieuklasse}
+          onMilieuklasseChange={(milieuklasse) => zet({ milieuklasse })}
+          constructieklasse={waarde.constructieklasse}
+          onConstructieklasseChange={(constructieklasse) => zet({ constructieklasse })}
+          milieuklassen={milieuklassen}
+        />
       </div>
 
       <div className="beton-groep">

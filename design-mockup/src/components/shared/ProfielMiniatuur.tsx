@@ -8,8 +8,47 @@
  *
  * Kleuren komen uit de theme-tokens, zodat de tekening in licht én donker
  * leesbaar blijft (het rapport gebruikt bewust vaste papierkleuren).
+ *
+ * DE VULKLEUR HOORT BIJ HET MATERIAAL, NIET BIJ DE VORM. Tot september 2026
+ * koos deze component de vulling op `shape.type === "rect"`: elke rechthoek
+ * kreeg de houtkleur. Een betonnen rechthoek werd dus beige en dezelfde
+ * doorsnede als T-ligger blauwgrijs — twee kleuren voor één materiaal, en
+ * geen ervan de kleur van beton. De aanroeper weet wél welk materiaal het is
+ * en geeft dat nu door in [`Props.materiaal`].
  */
 import { shapePath, buitenmaten, type SectionShape } from "./profielVorm";
+
+/**
+ * Vulling en omtrek per materiaal; zie de materiaalkleuren in `themes.css`.
+ *
+ * Staal en een vrij materiaal krijgen een doorschijnende accenttint over de
+ * paneelkleur; daar volgt de omtrek het thema. Hout en beton hebben een VASTE
+ * lichte vulling in élk thema, en dan moet de omtrek er ook in het donkere
+ * thema donker op staan — de themakleur voor tekst is daar bijna wit.
+ */
+const KLEUREN: Record<Materiaalsoort, { vulling: string; lijn: string }> = {
+  staal: {
+    vulling: "var(--theme-accent-soft, #dbe4f0)",
+    lijn: "var(--theme-text, #39424e)",
+  },
+  hout: {
+    vulling: "var(--theme-hout-vlak, #E9DECA)",
+    lijn: "var(--theme-materiaal-lijn, #2A2A30)",
+  },
+  beton: {
+    vulling: "var(--theme-beton-vlak, #C0C0C0)",
+    lijn: "var(--theme-materiaal-lijn, #2A2A30)",
+  },
+  // Een vrij materiaal heeft geen eigen kleur — het is per definitie niet één
+  // materiaal. Dezelfde neutrale vulling als staal.
+  vrij: {
+    vulling: "var(--theme-accent-soft, #dbe4f0)",
+    lijn: "var(--theme-text, #39424e)",
+  },
+};
+
+/** Het materiaal waarvan de doorsnede is; bepaalt alleen de vulkleur. */
+export type Materiaalsoort = "staal" | "hout" | "beton" | "vrij";
 
 const KADER_W = 132;
 const KADER_H = 132;
@@ -20,6 +59,11 @@ const TICK = 2.5;
 
 interface Props {
   shape: SectionShape;
+  /**
+   * Het materiaal, voor de vulkleur. Standaard "staal" — de neutrale kleur;
+   * er wordt bewust niet uit de vorm geraden welk materiaal het is.
+   */
+  materiaal?: Materiaalsoort;
   /** Toon de b/h-maatlijnen (uit = alleen de contour). */
   maatvoering?: boolean;
   /** Toegankelijke omschrijving; standaard afgeleid van de maten. */
@@ -43,7 +87,13 @@ function Pijl({ x, y, hoek }: { x: number; y: number; hoek: number }) {
   );
 }
 
-export default function ProfielMiniatuur({ shape, maatvoering = true, titel, className }: Props) {
+export default function ProfielMiniatuur({
+  shape,
+  materiaal = "staal",
+  maatvoering = true,
+  titel,
+  className,
+}: Props) {
   const { b: bMm, h: hMm } = buitenmaten(shape);
   if (!(bMm > 0) || !(hMm > 0)) return null;
 
@@ -56,7 +106,6 @@ export default function ProfielMiniatuur({ shape, maatvoering = true, titel, cla
   const y0 = MARGE_BOVEN + (tekenH - h) / 2;
 
   const pad = shapePath(shape, s, x0, y0);
-  const isHout = shape.type === "rect";
   const bLabel = shape.type === "tube" ? `d ${maat(bMm)}` : `b ${maat(bMm)}`;
   const hLabel = `h ${maat(hMm)}`;
 
@@ -73,8 +122,8 @@ export default function ProfielMiniatuur({ shape, maatvoering = true, titel, cla
       <path
         d={pad.d}
         fillRule={pad.fillRule}
-        fill={isHout ? "var(--theme-hout-vlak, #e9deca)" : "var(--theme-accent-soft, #dbe4f0)"}
-        stroke="var(--theme-text, #39424e)"
+        fill={KLEUREN[materiaal].vulling}
+        stroke={KLEUREN[materiaal].lijn}
         strokeWidth="1"
         strokeLinejoin="miter"
         opacity={0.95}

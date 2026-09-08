@@ -40,7 +40,15 @@
 
 /* Vaste vensterafmeting: de inhoud schuift, de voet blijft staan.
    De dialoog groeide eerder mee met zijn inhoud, waardoor hij bij elke stap
-   van maat veranderde en de knoppen onder de muis wegsprongen. */
+   van maat veranderde en de knoppen onder de muis wegsprongen.
+
+   VASTE INDELING, ALLEEN HET LANGE DEEL SCHUIFT
+   `.pk-inhoud` was zelf de schuifbak. Eén scrollbalk verschoof daardoor de
+   hele stap, koppen inbegrepen: je zag "DOORSNEDE" wegrollen en wist niet
+   meer waar je in het formulier zat, en de knoppenbalk werd meegetrokken.
+   Nu schuift er niets aan `.pk-inhoud`; elke kolom houdt zijn eigen kop en
+   samenvatting op hun plaats en heeft één schuifbak ertussen
+   (`.pk-kolom-body`, of `.pk-scroll` voor een lijst). */
 .pk-modal .modal-body {
   padding: 12px 14px;
   gap: 0;
@@ -48,34 +56,66 @@
 .pk-inhoud {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* De materiaalkeuze is geen kolommenscherm maar één lopende lijst; die mag
+   als geheel schuiven. */
+.pk-start {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .pk-stap2 {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-wrap: wrap;
+  /* NIET wrappen op volle breedte. Een flexregel die mag wrappen krijgt zijn
+     hoogte van de INHOUD, niet van de bak: de kolommen groeiden dan langer dan
+     het venster en werden onderaan afgeknipt in plaats van te schuiven. Bij een
+     smal venster mag het wél — daar staan de kolommen onder elkaar en schuift
+     de stap als geheel (zie de media query). */
+  flex-wrap: nowrap;
   gap: 12px;
-  min-height: 260px;
 }
-/* Smalle vensters: kolommen onder elkaar in plaats van horizontaal afsnijden. */
-@media (max-width: 700px) {
+/* Smalle vensters: kolommen onder elkaar in plaats van horizontaal afsnijden.
+   Dan is de stap wél één lange lijst, en schuift `.pk-inhoud` als geheel —
+   kolommen die onder elkaar staan hebben geen eigen hoogte om in te schuiven. */
+@media (max-width: 860px) {
+  .pk-inhoud {
+    overflow-y: auto;
+  }
+  .pk-stap2 {
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
   .pk-kolom-reeks,
   .pk-kolom-maat {
     flex: 1 1 45%;
   }
-  .pk-kolom-detail {
+  .pk-kolom-detail,
+  .pk-kolom-korf {
     flex: 1 1 100%;
+  }
+  .pk-kolom-body,
+  .pk-scroll {
+    overflow: visible;
+    max-height: none;
   }
 }
 .pk-kolom {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-height: 0;
 }
-.pk-kolom-reeks { flex: 0 0 150px; }
+.pk-kolom-reeks { flex: 0 0 140px; }
 .pk-kolom-maat  { flex: 0 0 130px; }
-.pk-kolom-detail { flex: 1; }
+.pk-kolom-detail { flex: 1 1 0; min-width: 200px; }
+.pk-kolom-korf  { flex: 1.15 1 0; min-width: 240px; }
 .pk-kolom-kop {
   font-size: 10px;
   font-weight: 600;
@@ -83,10 +123,24 @@
   letter-spacing: 0.6px;
   color: var(--theme-text-faint);
   margin: 4px 0 2px;
+  flex-shrink: 0;
+}
+/* Het enige deel van een kolom dat schuift. */
+.pk-kolom-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Ruimte voor de schuifbalk, zodat hij niet over de invoervelden valt. */
+  padding-right: 6px;
 }
 .pk-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  max-height: 260px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -166,11 +220,34 @@
   color: var(--theme-text);
 }
 
+/* Blijft onder aan de kolom staan, buiten de schuifbak: het is het antwoord
+   op "wat pas ik straks toe?" en dat hoort niet weg te rollen. */
 .pk-samenvatting {
+  flex-shrink: 0;
   margin-top: auto;
   padding-top: 10px;
   font-size: 12px;
   color: var(--theme-text);
+}
+
+/* De korfvelden komen uit `components/beton` en brengen `beton.css` mee. In
+   deze smallere kolom moeten de invoervelden meeschalen; in het brede paneel
+   van de staafeigenschappen blijven ze op hun eigen maat. */
+.pk-kolom-korf .beton-invoer {
+  width: 100%;
+  max-width: 150px;
+}
+.pk-kolom-korf .beton-invoer-kort {
+  width: 52px;
+}
+.pk-kolom-korf .beton-invoer-met-eenheid .beton-invoer {
+  width: 74px;
+}
+.pk-kolom-korf .beton-rij {
+  font-size: 11px;
+}
+.pk-kolom-korf .beton-hint {
+  font-size: 10.5px;
 }
 
 .pk-voet {
@@ -223,6 +300,9 @@
    dialoog meegroeien tot editorformaat — precies de sprong in vensterafmeting
    die eruit moest. Hij heeft nu zijn eigen venster. */
 .pk-eigen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -238,6 +318,7 @@
 }
 .pk-eigen .pk-scroll {
   align-self: stretch;
+  flex: 0 1 auto;
   max-height: 300px;
 }
 .pk-rij-eigen {

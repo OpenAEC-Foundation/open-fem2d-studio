@@ -190,6 +190,30 @@
   font-size: 11.5px;
 }
 
+/* De vindplaatsen bij de dekkingstoets: normteksten die de kern meestuurt.
+   Ze staan ingeklapt, want ze zijn lang en je hebt ze pas nodig als je wilt
+   weten wáárom er 45 mm staat. */
+.beton-notities {
+  margin-top: 6px;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.beton-notities summary {
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.beton-notities ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.beton-notities li {
+  margin-bottom: 4px;
+}
+
 .beton-tabel {
   margin-top: 8px;
   font-size: 11px;

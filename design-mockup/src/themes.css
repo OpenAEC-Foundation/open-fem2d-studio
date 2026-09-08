@@ -506,3 +506,30 @@
   --theme-btn-secondary-hover-bg: rgba(255, 215, 0, 0.25);
   --theme-btn-secondary-hover-border: #FFD700;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MATERIAALKLEUREN — het vlak van een doorsnede in de tekeningen
+   ═══════════════════════════════════════════════════════════════════════════
+   Dit zijn kleuren van het MATERIAAL en niet van het thema: beton is grijs in
+   élke tekening, of de app nu licht of donker staat. Daarom staan ze in één
+   blok op `:root`, ná de thema's, en niet in elk thema opnieuw. Een thema dat
+   ze tóch wil wijzigen kan dat; niets in de app gaat ervan uit dat ze vastliggen.
+
+   Ze bestonden hiervoor alleen als terugvalwaarde in de SVG's zelf
+   (`var(--theme-hout-vlak, #e9deca)`), en `ProfielMiniatuur` koos ertussen op
+   de VORM: alles wat een rechthoek was, kreeg de houtkleur. Een betonnen
+   rechthoek werd daardoor beige en een betonnen T-ligger blauwgrijs — twee
+   kleuren voor hetzelfde materiaal. De keuze hoort bij het materiaal en staat
+   nu bij de aanroeper. */
+:root {
+  /* Beton, 192-192-192. */
+  --theme-beton-vlak: #C0C0C0;
+  /* Hout: de kleur die er als terugval al in zat. */
+  --theme-hout-vlak: #E9DECA;
+  /* Omtrek en wapening liggen ÓP zo'n vlak, en die vlakken zijn licht in élk
+     thema. Met de themakleur voor tekst zou de omtrek in het donkere thema
+     bijna wit op lichtgrijs worden en waren de staven niet meer te zien. Dus
+     ook deze twee zijn materiaalkleuren en geen themakleuren. */
+  --theme-materiaal-lijn: #2A2A30;
+  --theme-materiaal-beugel: #55555E;
+}

@@ -570,6 +570,12 @@ export function useDetachedReportSync(): ReportData | null {
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
           error: null,
+          // Het snapshot draagt de toetsRESULTATEN, niet het model waarmee ze
+          // gemaakt zijn. De profielvarianten hebben dat model wél nodig (ze
+          // toetsen dezelfde staaf nog eens met een andere doorsnede), dus hier
+          // expliciet leeg: liever geen varianten dan varianten die op een
+          // ander model rekenen dan de resultaten ernaast.
+          lastRunData: null,
         });
         // Een ouder hoofdvenster stuurt dit veld niet mee; dan hoort hier
         // LEEG te staan en niet het spoor van een vorig snapshot.

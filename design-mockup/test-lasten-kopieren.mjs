@@ -312,6 +312,43 @@ log("\n[8] laatsteLastwaarden: sessiegeheugen voor de voorgevulde waarden");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+log("\n[9] Omschrijving: gaat mee bij kopiëren, telt niet mee in de signatuur");
+{
+  const loads = [
+    { id: 1, type: "lineLoad", caseId: 1, beamId: 3, q: -8,
+      omschrijving: "sneeuw op overstek" },
+    { id: 2, type: "pointForce", caseId: 1, nodeId: 4, fx: 0, fz: -12,
+      omschrijving: "reactie spant 3" },
+  ];
+  const klembord = kopieerLastenNaarKlembord(loads, [1, 2]);
+  checkExact("omschrijving van de lijnlast staat op het klembord",
+    klembord[0].omschrijving, "sneeuw op overstek");
+  checkExact("omschrijving van de puntlast staat op het klembord",
+    klembord[1].omschrijving, "reactie spant 3");
+
+  const cur = { nodes: NODES, beams: BEAMS, plates: [], supports: SUPPORTS, loads };
+  const r = computeLastenPlakken(cur, klembord, 2);
+  checkExact("beide lasten geplakt in geval 2", r.geplakt, 2);
+  const nieuw = r.loads.slice(loads.length);
+  checkExact("de geplakte kopie draagt dezelfde omschrijving",
+    nieuw[0].omschrijving, "sneeuw op overstek");
+
+  // De duplicaatbewaking kijkt naar de MECHANICA, niet naar de naam: een last
+  // hernoemen mag hem niet alsnog naast zijn tweelingbroer laten landen —
+  // dan zou de belasting stil verdubbelen.
+  const hernoemd = klembord.map(l => ({ ...l, omschrijving: "andere naam" }));
+  const nogmaals = computeLastenPlakken(
+    { ...cur, loads: r.loads }, hernoemd, 2);
+  checkExact("hernoemde kopie wordt alsnog overgeslagen", nogmaals.geplakt, 0);
+  checkExact("en telt als overgeslagen", nogmaals.overgeslagen, 2);
+
+  // Zonder omschrijving verandert er niets aan het bestaande gedrag.
+  const kaal = kopieerLastenNaarKlembord(basisLasten(), [1]);
+  checkTrue("een last zonder omschrijving krijgt er geen",
+    kaal[0].omschrijving === undefined);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 log(`\n${"─".repeat(60)}`);
 log(`Resultaat: ${passed} geslaagd, ${failed} gefaald`);
 if (failed > 0) process.exit(1);

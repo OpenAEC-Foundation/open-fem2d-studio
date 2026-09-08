@@ -32,7 +32,20 @@ export type LastSoort =
   | "temperatuur"
   | "randlast";
 
-/** Wat er per soort onthouden wordt. Alle velden optioneel per soort. */
+/**
+ * Wat er per soort onthouden wordt. Alle velden optioneel per soort.
+ *
+ * `Load.omschrijving` staat hier BEWUST NIET tussen. Dit geheugen bewaart
+ * GROOTTES — hoe zwaar is de last die je aan het plaatsen bent. Een
+ * omschrijving is geen grootte maar identiteit: "sneeuw op overstek" hoort bij
+ * één plek in het model. Zou hij meeliften, dan kreeg de volgende puntlast —
+ * ergens anders in de constructie, misschien in een ander belastinggeval —
+ * die naam er stilzwijgend bij, en las het rapport een last als iets wat hij
+ * niet is. Een fout getal valt op bij de controle; een foute naam niet, want
+ * hij rekent nergens in mee. Wie dezelfde omschrijving op meer lasten wil,
+ * heeft daar het kopiëren voor (`kopieerLastenNaarKlembord` neemt de
+ * omschrijving juist wél mee).
+ */
 export interface Lastwaarden {
   /** Lijnlast/randlast: q of p in kN/m. */
   q?: number;

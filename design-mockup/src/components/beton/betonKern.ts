@@ -19,6 +19,9 @@
  *  - concrete_effective_flange_width → EffectiveFlangeWidthResponse
  *    (b_eff per gebied van figuur 5.2; de liggerlijn komt uit
  *    lib/beffLiggerlijn.ts)
+ *  - list_exposure_classes      → ExposureClassInfo[]  (tabel 4.1, volledig)
+ *  - concrete_cover_check       → ConcreteCoverResponse (4.4.1: c_min,dur uit
+ *    tabel 4.4N van de nationale bijlage, c_min uit (4.2), c_nom uit (4.1))
  */
 import { roepKern } from "../../stores/checkStore";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
@@ -29,6 +32,9 @@ import type { ConcreteBeamCheckInput } from "../../lib/types/concrete/ConcreteBe
 import type { ConcreteBeamCheckResult } from "../../lib/types/concrete/ConcreteBeamCheckResult";
 import type { EffectiveFlangeWidthRequest } from "../../lib/types/concrete/EffectiveFlangeWidthRequest";
 import type { EffectiveFlangeWidthResponse } from "../../lib/types/concrete/EffectiveFlangeWidthResponse";
+import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
+import type { ConcreteCoverRequest } from "../../lib/types/concrete/ConcreteCoverRequest";
+import type { ConcreteCoverResponse } from "../../lib/types/concrete/ConcreteCoverResponse";
 
 /**
  * Doorgeefluik naar `roepKern`. Blijft bestaan omdat het paneel de aanroep
@@ -40,6 +46,7 @@ export const roepBetonKern = roepKern;
 // Module-level caches — de materiaaltabellen veranderen niet tijdens een sessie.
 let betonklassenCache: ConcreteClass[] | null = null;
 let staalsoortenCache: ReinforcementGrade[] | null = null;
+let milieuklassenCache: ExposureClassInfo[] | null = null;
 
 /** Tabel 3.1 uit de kern (alle kolommen), gecachet. */
 export async function haalBetonklassen(): Promise<ConcreteClass[]> {
@@ -85,4 +92,30 @@ export function bepaalMeewerkendeFlensbreedte(
     "concrete_effective_flange_width",
     verzoek,
   );
+}
+
+/**
+ * Tabel 4.1 uit de kern: de milieuklassen met hun omschrijving en de
+ * informatieve voorbeelden, gecachet.
+ *
+ * De lijst komt uit de kern en staat niet in de frontend, om dezelfde reden
+ * als tabel 3.1: een tweede lijst met normteksten loopt uit de pas met de
+ * eerste, en dan staat er in de keuzelijst iets anders dan in het rapport.
+ */
+export async function haalMilieuklassen(): Promise<ExposureClassInfo[]> {
+  if (milieuklassenCache) return milieuklassenCache;
+  milieuklassenCache = await roepBetonKern<ExposureClassInfo[]>("list_exposure_classes");
+  return milieuklassenCache;
+}
+
+/**
+ * De dekkingstoets van 4.4.1: is de opgegeven c_nom genoeg voor de gekozen
+ * milieuklasse?
+ *
+ * Er wordt hier niets gerekend — c_min,dur (tabel 4.4N in de versie van de
+ * nationale bijlage), c_min (4.2) en c_nom (4.1) komen alle drie uit
+ * `nen_en_1992_1_1::dekking`, langs dezelfde weg als de rest van de toetsing.
+ */
+export function toetsDekking(verzoek: ConcreteCoverRequest): Promise<ConcreteCoverResponse> {
+  return roepBetonKern<ConcreteCoverResponse>("concrete_cover_check", verzoek);
 }

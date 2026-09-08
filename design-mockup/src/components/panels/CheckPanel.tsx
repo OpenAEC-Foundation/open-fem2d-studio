@@ -23,6 +23,7 @@ import {
 import type { SpanningBeamCheckResult } from "../../lib/types/spanning/SpanningBeamCheckResult";
 import SpanningDoorsnedeTekening from "../spanning/SpanningDoorsnedeTekening";
 import CheckBlock from "./CheckBlock";
+import VariantenBlok from "./VariantenBlok";
 import { governingInfo } from "../report/checkReportUtils";
 import "./CheckPanel.css";
 
@@ -172,6 +173,10 @@ function MemberCard({ result, focusToken }: {
       {open && (
         <div className="cp-card-body">
           {isStressCheckResult(result) && <SpanningFiguur r={result} />}
+          {/* Naburige doorsneden — staat vóór de afleidingen omdat de vraag
+              "kan het een maatje kleiner?" bij het OPENVOUWEN gesteld wordt,
+              niet na twintig KaTeX-blokken. Rekent pas op verzoek. */}
+          <VariantenBlok beamId={result.beam_id} />
           {opUnityCheck(result.checks).map((named) => (
             <CheckBlock key={named.id} check={named.kind.data} />
           ))}

@@ -529,8 +529,10 @@ fn nuttige_hoogte_stap(g: &Betongegevens) -> Option<Deelstap> {
          formule — d volgt uit de geometrie van de korf. De afstand van een staafas tot de \
          betonrand is de nominale dekking plus de beugeldiameter plus een halve staafdiameter: \
          {c} + {b} + {ph}/2 = {off} mm. c_nom is invoer van de gebruiker; 4.4.1.1(2)P \
-         definieert hem als c_nom = c_min + Δc_dev (4.1), en deze berekening toetst hem NIET \
-         aan de milieuklasse van 4.4.1.2.",
+         definieert hem als c_nom = c_min + Δc_dev (4.1). DEZE berekening toetst hem niet aan \
+         de milieuklasse; dat doet `dekking::concrete_cover_request` (4.4.1.2, met tabel 4.4N \
+         in de versie van de nationale bijlage), die de invoer apart aanroept. Is daar geen \
+         milieuklasse gekozen, dan is de dekking nergens aan de norm getoetst.",
         c = nl(g.cage.cover_mm, 0),
         b = nl(g.cage.stirrup_diameter_mm, 0),
         ph = nl(rij.diameter_mm, 0),

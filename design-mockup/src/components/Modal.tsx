@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import "./Modal.css";
 
 interface ModalProps {
@@ -124,7 +125,24 @@ export default function Modal({
   const style: React.CSSProperties = { width };
   if (height) style.height = height;
 
-  return (
+  // In een portaal op <body>, en niet op de plaats in de boom waar de dialoog
+  // wordt aangeroepen.
+  //
+  // `.modal-overlay` staat op z-index 10000, maar dat getal telt alleen binnen
+  // de stapelcontext waarin hij staat. Een dialoog uit het eigenschappenpaneel
+  // stond in `.right-panel` (z-index 2) en verloor het daarmee van de
+  // canvas-HUD (`.fem-hud`, z-index 5) — de gereedschapschip en de
+  // assenwidget tekenden dwars over de dialoog heen, en de knoppen eronder
+  // waren niet meer aan te klikken. Dat was altijd al zo; het viel pas op toen
+  // de profielkiezer breed genoeg werd om tot in die hoek te reiken.
+  //
+  // Op <body> staat de overlay in de stapelcontext van de wortel en wint 10000
+  // van alles. React laat gebeurtenissen door een portaal gewoon langs de
+  // REACT-boom omhoog borrelen, dus onClick- en toetsafhandeling van de
+  // aanroeper blijven werken; alleen de plaats in de DOM verandert. Geen enkele
+  // stijl buiten `Modal.css` haakt op een voorouder van de dialoog aan
+  // (gecontroleerd), en de thema-tokens staan op `:root` en erven dus door.
+  return createPortal(
     <div className="modal-overlay" ref={overlayRef}>
       <div
         className={`modal-dialog${className ? ` ${className}` : ""}`}
@@ -140,6 +158,7 @@ export default function Modal({
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

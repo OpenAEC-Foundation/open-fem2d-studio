@@ -153,10 +153,21 @@ interface TextCellProps {
   listId?: string;
   disabled?: boolean;
   title?: string;
+  placeholder?: string;
+  /**
+   * Mag de cel leeggemaakt worden? Standaard NIET: een profielnaam wissen zou
+   * een staaf zonder doorsnede opleveren, dus daar springt de cel terug naar
+   * de modelwaarde. Bij een vrij tekstveld (zoals de omschrijving van een
+   * last) is leegmaken juist een geldige actie — anders kun je een naam wel
+   * typen maar nooit meer weghalen.
+   */
+  allowEmpty?: boolean;
 }
 
 /** Tekstcel met optionele datalist-suggesties (profiel-combobox). */
-export function TextCell({ value, onCommit, listId, disabled, title }: TextCellProps) {
+export function TextCell({
+  value, onCommit, listId, disabled, title, placeholder, allowEmpty = false,
+}: TextCellProps) {
   const [str, setStr] = useState(value);
   const skipCommitRef = useRef(false);
   useEffect(() => { setStr(value); }, [value]);
@@ -168,7 +179,8 @@ export function TextCell({ value, onCommit, listId, disabled, title }: TextCellP
       return;
     }
     const t = str.trim();
-    if (t === "" || t === value) { setStr(value); return; }
+    if (t === value) { setStr(value); return; }
+    if (t === "" && !allowEmpty) { setStr(value); return; }
     onCommit(t);
   };
 
@@ -180,6 +192,7 @@ export function TextCell({ value, onCommit, listId, disabled, title }: TextCellP
       list={listId}
       disabled={disabled}
       title={title}
+      placeholder={placeholder}
       onChange={(e) => setStr(e.target.value)}
       onBlur={commit}
       onClick={(e) => e.stopPropagation()}

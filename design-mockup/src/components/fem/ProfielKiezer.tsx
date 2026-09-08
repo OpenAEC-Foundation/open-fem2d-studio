@@ -7,8 +7,11 @@
  *         - staal: reeks (IPE/HEA/HEB/HEM/UNP/koker/buis) → maat → staalklasse;
  *         - hout: sterkteklasse (C/GL) → massief b×h, óf kruislaaghout als
  *           opbouw (voorinstelling of vrij: "CLT 40/20/40/20/40[:C16][b600]");
- *         - beton: betonklasse (C12/15 … C90/105) → doorsnede b×h; de
- *           wapeningskorf hoort bij de staafeigenschappen (tabblad Norm);
+ *         - beton: betonklasse (C12/15 … C90/105) → doorsnede b×h, plus de
+ *           wapeningskorf en de milieuklasse. Die laatste twee staan hier
+ *           én bij de staafeigenschappen, maar het zijn dezelfde velden
+ *           (`KorfVelden`) die naar hetzelfde gegeven schrijven
+ *           (`checkConfig.betonKorf`); zie de tekst bij die component;
  *         - overig: een VRIJ materiaal — een doorsnede (rechthoek of een
  *           profiel uit de database) plus een naam, E, ρ en een toelaatbare
  *           spanning. Die staaf wordt niet aan een norm getoetst maar op de
@@ -17,9 +20,10 @@
  *           E-modulus of toelaatbare spanning zou een uitkomst zonder invoer
  *           opleveren.
  * Het resultaat is de COMBINATIE { material, profile } die op de staaf landt —
- * precies de twee velden die resolveSection en de toetsing al lezen.
+ * precies de twee velden die resolveSection en de toetsing al lezen — plus,
+ * bij beton, de korf en de milieuklasse voor `checkConfig`.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { STEEL_SECTION_DIMS } from "../../lib/steelSectionDims.generated";
 import { STEEL_SECTIONS } from "../../lib/steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -33,6 +37,19 @@ import {
 import { formatConcreteSection, parseConcreteSection } from "../../lib/betonCheckBuilder";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
+import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
+import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
+import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
+import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
+import KorfVelden from "../beton/KorfVelden";
+import { haalMilieuklassen } from "../beton/betonKern";
+import {
+  STANDAARD_KORF,
+  controleerKorf,
+  korfSamenvatting,
+  nuttigeHoogteMm,
+  rijOppervlakMm2,
+} from "../beton/wapeningskorf";
 import { shapeVanBetonDoorsnede } from "../shared/profielVorm";
 import {
   CLT_STROOKBREEDTE_MM,
@@ -63,9 +80,27 @@ import ProfielMiniatuur from "../shared/ProfielMiniatuur";
 import { shapeVanProfiel } from "../shared/profielVorm";
 import "./ProfielKiezer.css";
 
+/**
+ * De betonkant van de keuze: de wapeningskorf en de duurzaamheidsgegevens.
+ *
+ * Reist apart van `material`/`profile` mee omdat hij niet op de staaf zelf
+ * landt maar in `checkConfig`; de aanroeper voegt hem daar samen met de
+ * overige toetsinstellingen van díe staaf, zodat kniklengtes en kipsteunen
+ * blijven staan.
+ */
+export interface BetonKorfKeuze {
+  korf: ReinforcementCage;
+  /** Milieuklasse van tabel 4.1; `null` = niet gekozen, dus niet getoetst. */
+  milieuklasse: ExposureClass | null;
+  /** Constructieklasse; `null` = S4 (nationale bijlage, 50 jaar). */
+  constructieklasse: StructuralClass | null;
+}
+
 export interface ProfielKeuze {
   material: string;
   profile: string;
+  /** Alleen gevuld wanneer de gekozen soort beton is. */
+  beton?: BetonKorfKeuze;
 }
 
 /** Een combinatie die al ergens in het model staat, met het aantal staven. */
@@ -103,6 +138,12 @@ interface ProfielKiezerProps {
   onClose: () => void;
   /** Huidige waarden van de staaf — bepalen de startstap en voorselectie. */
   huidig?: Partial<ProfielKeuze>;
+  /**
+   * De korf en de milieuklasse die al op de staaf staan. Ontbreken ze, dan
+   * begint de betonstap met [`STANDAARD_KORF`] — maar ZONDER milieuklasse,
+   * want die kan de app niet raden.
+   */
+  huidigBeton?: Partial<BetonKorfKeuze>;
   onApply: (keuze: ProfielKeuze) => void;
   /**
    * Profielen die al in het project gebruikt worden. Staan bovenaan als
@@ -150,8 +191,11 @@ function maatVan(naam: string): number {
  * muis weg. Nu ligt de maat vast en schuift alleen de inhoud, zodat knoppen
  * op hun plek blijven staan.
  */
-const VENSTER_BREEDTE = 720;
-const VENSTER_HOOGTE = 560;
+// Sinds de betonstap er de wapeningskorf en de milieuklasse bij kreeg, staan
+// er in die stap drie kolommen naast elkaar en past 720 niet meer. De maat
+// blijft voor élke stap dezelfde — dát was de afspraak, niet het getal.
+const VENSTER_BREEDTE = 880;
+const VENSTER_HOOGTE = 600;
 
 const HOUT_DOORSNEDE_DEFAULT = { b: 71, h: 171 };
 const BETON_DOORSNEDE_DEFAULT = { b: 300, h: 500, bw: 300, hf: 200 };
@@ -169,7 +213,14 @@ function getalUit(tekst: string): number {
   return Number.isFinite(v) ? v : NaN;
 }
 
-export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebruik }: ProfielKiezerProps) {
+export default function ProfielKiezer({
+  open,
+  onClose,
+  huidig,
+  huidigBeton,
+  onApply,
+  inGebruik,
+}: ProfielKiezerProps) {
   const huidigVrij = parseVrijMateriaal(huidig?.material);
   const huidigIsBeton = !huidigVrij && matchSupportedConcreteClass(huidig?.material) !== null;
   const huidigIsHout =
@@ -228,8 +279,8 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
   // Beton-stap. De doorsnede wordt uit de HUIDIGE profielnaam gelezen met
   // dezelfde parser als de toetsing, zodat een T die er al stond niet bij het
   // heropenen van de kiezer stilzwijgend een rechthoek wordt.
-  const huidigBeton = huidigIsBeton ? parseConcreteSection(huidig?.profile) : null;
-  const huidigBetonD = huidigBeton?.ok ? huidigBeton.doorsnede : null;
+  const huidigBetonProfiel = huidigIsBeton ? parseConcreteSection(huidig?.profile) : null;
+  const huidigBetonD = huidigBetonProfiel?.ok ? huidigBetonProfiel.doorsnede : null;
   const [betonKlasse, setBetonKlasse] = useState(huidigIsBeton ? huidig!.material! : "C30/37");
   const [betonShapeKeuze, setBetonShapeKeuze] = useState<ConcreteShape>(
     huidigBetonD?.shape ?? "Rectangle",
@@ -241,6 +292,30 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
   const [betonFlensOnder, setBetonFlensOnder] = useState(
     huidigBetonD?.flange_at_bottom ?? false,
   );
+  // De wapeningskorf en de duurzaamheidsgegevens. Dezelfde velden als bij de
+  // staafeigenschappen (`KorfVelden`), en ze schrijven naar hetzelfde gegeven.
+  const [betonKorf, setBetonKorf] = useState<ReinforcementCage>(
+    huidigBeton?.korf ?? STANDAARD_KORF.korf,
+  );
+  const [betonMilieuklasse, setBetonMilieuklasse] = useState<ExposureClass | null>(
+    huidigBeton?.milieuklasse ?? null,
+  );
+  const [betonConstructieklasse, setBetonConstructieklasse] =
+    useState<StructuralClass | null>(huidigBeton?.constructieklasse ?? null);
+  // Tabel 4.1 komt uit de kern; zonder kern blijven de aanduidingen over.
+  const [milieuklassen, setMilieuklassen] = useState<ExposureClassInfo[] | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    let actief = true;
+    haalMilieuklassen()
+      .then((m) => actief && setMilieuklassen(m))
+      .catch(() => undefined);
+    return () => {
+      actief = false;
+    };
+  }, []);
+
   const betonHeeftFlens = betonShapeKeuze !== "Rectangle";
   /** De doorsnede zoals de kern hem verwacht — een beschrijving, geen tweede. */
   const betonDoorsnede: ConcreteSectionInput = {
@@ -364,11 +439,35 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
 
   const houtGeldig = houtType === "clt" ? cltGeldig : houtB > 0 && houtH > 0;
   const staalGeldig = !!staalProfiel && !!STEEL_SECTION_DIMS[staalProfiel];
-  const betonGeldig =
+  const betonDoorsnedeGeldig =
     betonB > 0 &&
     betonH > 0 &&
     (!betonHeeftFlens ||
       (betonBw > 0 && betonHf > 0 && betonBw < betonB && betonHf < betonH));
+  /**
+   * De korf langs dezelfde controle als het korfpaneel en de rekenkern — zo
+   * krijgt de gebruiker de reden hier te zien in plaats van bij het toetsen.
+   * `null` = in orde.
+   */
+  const betonKorfFout = useMemo(
+    () =>
+      betonDoorsnedeGeldig
+        ? controleerKorf({
+            ...STANDAARD_KORF,
+            doorsnede: betonDoorsnede,
+            betonklasse: betonKlasse,
+            korf: betonKorf,
+          })
+        : null,
+    [betonDoorsnedeGeldig, betonNaam, betonKlasse, betonKorf],
+  );
+  // Een korf die niet past wordt niet toegepast: de rekenkern zou hem toch
+  // weigeren, en dan komt de melding pas bij het toetsen — ver van de plaats
+  // waar je hem kunt verhelpen.
+  const betonGeldig = betonDoorsnedeGeldig && betonKorfFout === null;
+  const aOnder = rijOppervlakMm2(betonKorf.bottom);
+  const aBoven = rijOppervlakMm2(betonKorf.top);
+  const betonNuttigeHoogte = nuttigeHoogteMm(betonKorf, betonH);
 
   const pasToe = () => {
     if (soort === "staal" && staalGeldig) {
@@ -384,7 +483,15 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
       });
       onClose();
     } else if (soort === "beton" && betonGeldig) {
-      onApply({ material: betonKlasse, profile: betonNaam });
+      onApply({
+        material: betonKlasse,
+        profile: betonNaam,
+        beton: {
+          korf: betonKorf,
+          milieuklasse: betonMilieuklasse,
+          constructieklasse: betonConstructieklasse,
+        },
+      });
       onClose();
     } else if (soort === "overig" && overigGeldig) {
       // Het vrije materiaal reist als NAAM mee (zie vrijMateriaal.ts): zo
@@ -414,7 +521,11 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
       title={soort === null ? "Profiel toewijzen — kies materiaal" : `Profiel toewijzen — ${SOORTEN.find(s => s.id === soort)?.label}`}
     >
       <div className="pk-inhoud">
-      {soort === null && inGebruik && inGebruik.length > 0 && (
+      {/* De materiaalkeuze is één lopende lijst en mag als geheel schuiven;
+          de stappen daarna hebben kolommen die elk hun eigen kop houden. */}
+      {soort === null && (
+        <div className="pk-start">
+      {inGebruik && inGebruik.length > 0 && (
         <div className="pk-gebruikt">
           <div className="pk-kolom-kop">In dit project</div>
           <div className="pk-gebruikt-rij">
@@ -436,20 +547,20 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
         </div>
       )}
 
-      {soort === null && (
-        <div className="pk-soorten">
-          {SOORTEN.map((s) => (
-            <button
-              key={s.id}
-              className={`pk-soort${s.beschikbaar ? "" : " pk-soort-uit"}`}
-              disabled={!s.beschikbaar}
-              title={s.hint}
-              onClick={() => s.beschikbaar && setSoort(s.id)}
-            >
-              <span className="pk-soort-naam">{s.label}</span>
-              <span className="pk-soort-hint">{s.hint}</span>
-            </button>
-          ))}
+      <div className="pk-soorten">
+        {SOORTEN.map((s) => (
+          <button
+            key={s.id}
+            className={`pk-soort${s.beschikbaar ? "" : " pk-soort-uit"}`}
+            disabled={!s.beschikbaar}
+            title={s.hint}
+            onClick={() => s.beschikbaar && setSoort(s.id)}
+          >
+            <span className="pk-soort-naam">{s.label}</span>
+            <span className="pk-soort-hint">{s.hint}</span>
+          </button>
+        ))}
+      </div>
         </div>
       )}
 
@@ -483,6 +594,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
           </div>
           <div className="pk-kolom pk-kolom-detail">
             <div className="pk-kolom-kop">Materiaalklasse</div>
+            <div className="pk-kolom-body">
             <select value={staalKlasse} onChange={(e) => setStaalKlasse(e.target.value)}>
               {STEEL_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
@@ -490,7 +602,11 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
                 het rapport (mét walsuitrondingen), compact en thema-volgend. */}
             {staalVorm && (
               <div className="pk-tekening">
-                <ProfielMiniatuur shape={staalVorm} titel={`Doorsnede ${staalProfiel}`} />
+                <ProfielMiniatuur
+                  shape={staalVorm}
+                  materiaal="staal"
+                  titel={`Doorsnede ${staalProfiel}`}
+                />
               </div>
             )}
             {dims && (
@@ -502,6 +618,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
                 {sectie && <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(sectie.Iy / 1e4)} cm⁴</code></div>}
               </div>
             )}
+            </div>
             <div className="pk-samenvatting">
               {staalGeldig
                 ? <>Keuze: <strong>{staalProfiel} — {staalKlasse}</strong></>
@@ -544,6 +661,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
           {houtType === "massief" && (
             <div className="pk-kolom pk-kolom-detail">
               <div className="pk-kolom-kop">Doorsnede</div>
+              <div className="pk-kolom-body">
               <label className="pk-veld">
                 <span>Breedte b [mm]</span>
                 <input type="number" min={10} step={1} value={houtB}
@@ -556,7 +674,11 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
               </label>
               {houtVorm && (
                 <div className="pk-tekening">
-                  <ProfielMiniatuur shape={houtVorm} titel={`Doorsnede ${houtB}×${houtH} mm`} />
+                  <ProfielMiniatuur
+                    shape={houtVorm}
+                    materiaal="hout"
+                    titel={`Doorsnede ${houtB}×${houtH} mm`}
+                  />
                 </div>
               )}
               {houtGeldig && (
@@ -566,6 +688,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
                   <div className="pk-eig-rij"><span>E₀,mean</span><code>{TIMBER_E_MEAN[houtKlasse] ?? "—"} N/mm²</code></div>
                 </div>
               )}
+              </div>
               <div className="pk-samenvatting">
                 {houtGeldig
                   ? <>Keuze: <strong>{houtB}×{houtH} — {houtKlasse}</strong></>
@@ -577,6 +700,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
           {houtType === "clt" && (
             <div className="pk-kolom pk-kolom-detail">
               <div className="pk-kolom-kop">Opbouw</div>
+              <div className="pk-kolom-body">
               <label className="pk-veld">
                 <span>Voorinstelling</span>
                 <select value={actieveVoorinstelling} onChange={(e) => kiesCltVoorinstelling(e.target.value)}>
@@ -627,6 +751,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
                   )}
                 </div>
               )}
+              </div>
               <div className="pk-samenvatting">
                 {cltGeldig && cltLayup
                   ? <>Keuze: <strong>{formatCltProfiel(cltLayup, houtKlasse)} — {houtKlasse}</strong></>
@@ -657,79 +782,118 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
           </div>
           <div className="pk-kolom pk-kolom-detail">
             <div className="pk-kolom-kop">Doorsnede</div>
-            <label className="pk-veld">
-              <span>Vorm</span>
-              <select
-                value={betonShapeKeuze}
-                onChange={(e) => setBetonShapeKeuze(e.target.value as ConcreteShape)}
-              >
-                <option value="Rectangle">rechthoek</option>
-                <option value="Tee">T-ligger</option>
-                <option value="Ell">L-ligger (randligger)</option>
-              </select>
-            </label>
-            <label className="pk-veld">
-              <span>{betonHeeftFlens ? "Flensbreedte b_eff [mm]" : "Breedte b [mm]"}</span>
-              <input type="number" min={50} step={10} value={betonB}
-                onChange={(e) => setBetonB(Number(e.target.value))} />
-            </label>
-            <label className="pk-veld">
-              <span>Hoogte h [mm]</span>
-              <input type="number" min={50} step={10} value={betonH}
-                onChange={(e) => setBetonH(Number(e.target.value))} />
-            </label>
-            {betonHeeftFlens && (
-              <>
-                <label className="pk-veld">
-                  <span>Lijfbreedte b_w [mm]</span>
-                  <input type="number" min={50} step={10} value={betonBw}
-                    onChange={(e) => setBetonBw(Number(e.target.value))} />
-                </label>
-                <label className="pk-veld">
-                  <span>Flensdikte h_f [mm]</span>
-                  <input type="number" min={20} step={10} value={betonHf}
-                    onChange={(e) => setBetonHf(Number(e.target.value))} />
-                </label>
-                <label className="pk-veld">
-                  <span>Flens ligt</span>
-                  <select
-                    value={betonFlensOnder ? "onder" : "boven"}
-                    onChange={(e) => setBetonFlensOnder(e.target.value === "onder")}
-                  >
-                    <option value="boven">boven</option>
-                    <option value="onder">onder (omgekeerde T)</option>
-                  </select>
-                </label>
-              </>
-            )}
-            {betonVorm && betonGeldig && (
-              <div className="pk-tekening">
-                <ProfielMiniatuur shape={betonVorm} titel={`Doorsnede ${betonNaam}`} />
-              </div>
-            )}
-            {betonGeldig && (
-              <div className="pk-eigenschappen">
-                <div className="pk-eig-rij"><span>A</span><code>{nlGetal(betonSectie.A)} mm²</code></div>
-                <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(betonSectie.I / 1e4)} cm⁴</code></div>
-                <div className="pk-eig-rij"><span>E_cm</span><code>{CONCRETE_E_CM[betonKlasse] ?? "—"} N/mm²</code></div>
-              </div>
-            )}
-            <div className="pk-hint">
-              De wapeningskorf (dekking, beugel, staven) kies je bij de
-              staafeigenschappen onder het tabblad Norm; zonder korf wordt de
-              staaf niet getoetst.
+            <div className="pk-kolom-body">
+              <label className="pk-veld">
+                <span>Vorm</span>
+                <select
+                  value={betonShapeKeuze}
+                  onChange={(e) => setBetonShapeKeuze(e.target.value as ConcreteShape)}
+                >
+                  <option value="Rectangle">rechthoek</option>
+                  <option value="Tee">T-ligger</option>
+                  <option value="Ell">L-ligger (randligger)</option>
+                </select>
+              </label>
+              <label className="pk-veld">
+                <span>{betonHeeftFlens ? "Flensbreedte b_eff [mm]" : "Breedte b [mm]"}</span>
+                <input type="number" min={50} step={10} value={betonB}
+                  onChange={(e) => setBetonB(Number(e.target.value))} />
+              </label>
+              <label className="pk-veld">
+                <span>Hoogte h [mm]</span>
+                <input type="number" min={50} step={10} value={betonH}
+                  onChange={(e) => setBetonH(Number(e.target.value))} />
+              </label>
               {betonHeeftFlens && (
-                <>{" "}De flensbreedte hoort de meewerkende breedte b<sub>eff</sub> te
-                zijn (5.3.2.1(3)); bij het toetsen leidt de rekenkern hem af uit
-                de liggerlijn en vervangt hij de waarde die hier staat.</>
+                <>
+                  <label className="pk-veld">
+                    <span>Lijfbreedte b_w [mm]</span>
+                    <input type="number" min={50} step={10} value={betonBw}
+                      onChange={(e) => setBetonBw(Number(e.target.value))} />
+                  </label>
+                  <label className="pk-veld">
+                    <span>Flensdikte h_f [mm]</span>
+                    <input type="number" min={20} step={10} value={betonHf}
+                      onChange={(e) => setBetonHf(Number(e.target.value))} />
+                  </label>
+                  <label className="pk-veld">
+                    <span>Flens ligt</span>
+                    <select
+                      value={betonFlensOnder ? "onder" : "boven"}
+                      onChange={(e) => setBetonFlensOnder(e.target.value === "onder")}
+                    >
+                      <option value="boven">boven</option>
+                      <option value="onder">onder (omgekeerde T)</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              {betonVorm && betonDoorsnedeGeldig && (
+                <div className="pk-tekening">
+                  <ProfielMiniatuur
+                    shape={betonVorm}
+                    materiaal="beton"
+                    titel={`Doorsnede ${betonNaam}`}
+                  />
+                </div>
+              )}
+              {betonDoorsnedeGeldig && (
+                <div className="pk-eigenschappen">
+                  <div className="pk-eig-rij"><span>A</span><code>{nlGetal(betonSectie.A)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(betonSectie.I / 1e4)} cm⁴</code></div>
+                  <div className="pk-eig-rij"><span>E_cm</span><code>{CONCRETE_E_CM[betonKlasse] ?? "—"} N/mm²</code></div>
+                </div>
+              )}
+              {betonHeeftFlens && (
+                <div className="pk-hint">
+                  De flensbreedte hoort de meewerkende breedte b<sub>eff</sub> te
+                  zijn (5.3.2.1(3)); bij het toetsen leidt de rekenkern hem af uit
+                  de liggerlijn en vervangt hij de waarde die hier staat.
+                </div>
               )}
             </div>
             <div className="pk-samenvatting">
               {betonGeldig
                 ? <>Keuze: <strong>{betonNaam} — {betonKlasse}</strong></>
-                : betonHeeftFlens
-                  ? "De lijfbreedte moet kleiner zijn dan de flensbreedte, en de flensdikte kleiner dan de hoogte."
-                  : "Vul een geldige doorsnede in."}
+                : !betonDoorsnedeGeldig
+                  ? betonHeeftFlens
+                    ? "De lijfbreedte moet kleiner zijn dan de flensbreedte, en de flensdikte kleiner dan de hoogte."
+                    : "Vul een geldige doorsnede in."
+                  : betonKorfFout}
+            </div>
+          </div>
+
+          {/* De wapeningskorf en de milieuklasse. Dit zijn LETTERLIJK dezelfde
+              velden als op het tabblad Norm van de staafeigenschappen: één
+              component, dat naar hetzelfde gegeven schrijft. */}
+          <div className="pk-kolom pk-kolom-korf">
+            <div className="pk-kolom-kop">Wapening en milieu</div>
+            <div className="pk-kolom-body">
+              <KorfVelden
+                idPrefix="pk-beton"
+                korf={betonKorf}
+                onKorfChange={setBetonKorf}
+                milieuklasse={betonMilieuklasse}
+                onMilieuklasseChange={setBetonMilieuklasse}
+                constructieklasse={betonConstructieklasse}
+                onConstructieklasseChange={setBetonConstructieklasse}
+                milieuklassen={milieuklassen}
+              />
+              {betonKorfFout && (
+                <div className="beton-fout" role="alert">{betonKorfFout}</div>
+              )}
+              {!betonKorfFout && betonDoorsnedeGeldig && (
+                <div className="pk-eigenschappen">
+                  <div className="pk-eig-rij"><span>A_s,onder</span><code>{nlGetal(aOnder)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>A_s,boven</span><code>{nlGetal(aBoven)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>d</span><code>{nlGetal(betonNuttigeHoogte)} mm</code></div>
+                </div>
+              )}
+              <div className="pk-hint">
+                {korfSamenvatting(betonKorf)}. Het M-N-κ-diagram bij deze korf
+                staat bij de staafeigenschappen, tabblad Norm — daar zijn dit
+                dezelfde velden.
+              </div>
             </div>
           </div>
         </div>
@@ -804,6 +968,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
               <div className="pk-tekening">
                 <ProfielMiniatuur
                   shape={overigVorm2}
+                  materiaal="vrij"
                   titel={`Doorsnede ${overigProfielnaam}`}
                 />
               </div>
@@ -812,6 +977,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
 
           <div className="pk-kolom pk-kolom-detail">
             <div className="pk-kolom-kop">Vrij materiaal</div>
+            <div className="pk-kolom-body">
             <label className="pk-veld">
               <span>Naam</span>
               <input type="text" value={vrijNaam} spellCheck={false}
@@ -861,6 +1027,7 @@ export default function ProfielKiezer({ open, onClose, huidig, onApply, inGebrui
                 )}
               </div>
             )}
+            </div>
             <div className="pk-samenvatting">
               {overigGeldig
                 ? <>Keuze: <strong>{overigProfielnaam} — {vrijMat.naam}</strong> (f = {nlGetal(vrijMat.fToel, 2)} N/mm²)</>

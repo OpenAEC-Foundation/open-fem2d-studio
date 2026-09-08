@@ -182,7 +182,7 @@ export default function DoorsnedeTekening({
       }
     >
       {/* Beton — de werkelijke omtrek, dus ook de flens van een T of een L */}
-      <polygon points={omtrek} fill={kleuren.betonVlak} stroke={kleuren.lijn} strokeWidth="1" />
+      <polygon points={omtrek} fill={kleuren.betonVlak} stroke={kleuren.betonLijn} strokeWidth="1" />
 
       {/* Beugel om het lijf */}
       {beugelPast && (
@@ -209,7 +209,7 @@ export default function DoorsnedeTekening({
           cx={sx(st.x)}
           cy={sy(st.z)}
           r={Math.max(0.6, (st.diameter / 2) * s)}
-          fill={kleuren.lijn}
+          fill={kleuren.betonLijn}
         />
       ))}
 

@@ -82,6 +82,7 @@ const BUNDEL_TESTS = new Set([
   "checkconfig",
   "doorbuiging-toets",
   "hoekverdraaiing",
+  "lastomschrijving",
   "leeg-geval",
   "n-teken",
   "omhullende",
@@ -161,6 +162,10 @@ const ALLEEN_BRON = new Map([
   [
     "beff-liggerlijn",
     "leidt de liggerlijn van 5.3.2.1 uit de modeltopologie af (knopen, staven, opleggingen); dat is invoerbouw voor de betontoetsing en geen solverwerk, dus hij hoort niet in de barrel",
+  ],
+  [
+    "profielvarianten",
+    "kiest naburige doorsneden uit de profieldatabase en de handelsmatenlijst en bouwt daarmee toetsinvoer; dat is invoerbouw en geen solverwerk, en de korfcontrole die hij meeneemt hoort niet in de barrel",
   ],
   [
     "beton-doorsnede",

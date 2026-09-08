@@ -9,6 +9,9 @@
  */
 export { default as BetonKorfPaneel } from "./BetonKorfPaneel";
 export { default as WapeningskorfEditor } from "./WapeningskorfEditor";
+// De korfvelden zelf (milieuklasse, dekking, beugel, wapening) staan apart,
+// omdat de profielkiezer ze óók toont. Eén component, twee plaatsen.
+export { default as KorfVelden } from "./KorfVelden";
 export { default as DoorsnedeTekening } from "./DoorsnedeTekening";
 export { default as MNKappaGrafiek, puntBijMoment } from "./MNKappaGrafiek";
 export { default as InteractieGrafiek } from "./InteractieGrafiek";

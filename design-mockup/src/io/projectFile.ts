@@ -40,6 +40,14 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      analysetype laadt daardoor onveranderd (true → 2e orde P-Δ, false →
  *      1e orde), en een nieuw bestand blijft leesbaar in een oudere versie
  *      van de app, want die leest alleen de booleaan.
+ *      Eveneens optioneel binnen v2 (geen versie-bump): `Load.omschrijving` —
+ *      de vrije naam die de gebruiker aan een last geeft ("sneeuw op
+ *      overstek"). Reist automatisch mee met de loads-array, precies zoals
+ *      `Load.edgeIndex` en `Beam.checkConfig`. Een bestand zónder het veld
+ *      laadt ongewijzigd (de omschrijving is dan simpelweg leeg) en een
+ *      oudere versie van de app negeert het veld bij het lezen, want die
+ *      leest de lasten ook als geheel. Het veld is documentatie: er verschuift
+ *      geen enkel rekengetal door.
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).

@@ -21,13 +21,19 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
+import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
 import type { MnKappaRequest } from "../../lib/types/concrete/MnKappaRequest";
 import type { MnKappaResponse } from "../../lib/types/concrete/MnKappaResponse";
 import DoorsnedeTekening from "./DoorsnedeTekening";
 import MNKappaGrafiek from "./MNKappaGrafiek";
 import WapeningskorfEditor from "./WapeningskorfEditor";
-import { berekenMnKappa, haalBetonklassen, haalWapeningsstaal } from "./betonKern";
+import {
+  berekenMnKappa,
+  haalBetonklassen,
+  haalMilieuklassen,
+  haalWapeningsstaal,
+} from "./betonKern";
 import {
   STANDAARD_KORF,
   controleerKorf,
@@ -67,6 +73,7 @@ export default function BetonKorfPaneel({
   const [nEd, setNEd] = useState<number>(nEdKnInitieel);
   const [betonklassen, setBetonklassen] = useState<ConcreteClass[] | undefined>(undefined);
   const [staalsoorten, setStaalsoorten] = useState<ReinforcementGrade[] | undefined>(undefined);
+  const [milieuklassen, setMilieuklassen] = useState<ExposureClassInfo[] | undefined>(undefined);
   const [antwoord, setAntwoord] = useState<MnKappaResponse | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
@@ -77,6 +84,7 @@ export default function BetonKorfPaneel({
     let actief = true;
     haalBetonklassen().then((k) => actief && setBetonklassen(k)).catch(() => undefined);
     haalWapeningsstaal().then((g) => actief && setStaalsoorten(g)).catch(() => undefined);
+    haalMilieuklassen().then((m) => actief && setMilieuklassen(m)).catch(() => undefined);
     return () => {
       actief = false;
     };
@@ -152,6 +160,7 @@ export default function BetonKorfPaneel({
           onNEdChange={setNEd}
           betonklassen={betonklassen}
           staalsoorten={staalsoorten}
+          milieuklassen={milieuklassen}
         />
         {geometrieFout && <div className="beton-fout" role="alert">{geometrieFout}</div>}
       </div>
