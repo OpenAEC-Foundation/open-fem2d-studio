@@ -8,6 +8,8 @@
 //!
 //! Fonts: Liberation Sans (OFL), bundled via include_bytes!.
 
+pub mod betonfiguren;
+
 use openaec_layout::{
     doc_template::{DocTemplate, RawPage},
     draw::DrawList,
