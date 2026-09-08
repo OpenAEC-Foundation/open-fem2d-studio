@@ -1,6 +1,6 @@
 [package]
 name = "open-fem2d-studio"
-version = "1.0.0"
+version = "0.3.1"
 description = "Open FEM2D Studio — 2D FEM solver"
 authors = ["OpenAEC Foundation"]
 license = "CC-BY-SA-4.0"

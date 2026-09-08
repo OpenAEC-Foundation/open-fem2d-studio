@@ -693,8 +693,18 @@ function App() {
     setActiveView("check");
     // Ruimte maken voor de afleiding: het eigenschappenpaneel klapt in. Anders
     // staan er drie kolommen naast elkaar en houdt de toetsing te weinig
-    // breedte over voor de formules. Het paneel is met één klik terug.
-    setRightPanelOpen(false);
+    // breedte over voor de formules.
+    //
+    // Dat inklappen wordt ONTHOUDEN als door de app gedaan, zodat het paneel
+    // terugkomt zodra je de toetsing verlaat. Eerder bleef het ingeklapt: je
+    // klikte één UC-badge aan en was daarna je eigenschappenpaneel kwijt, met
+    // alleen nog een smalle strook waarvan niet te zien was dat je erop kon
+    // klikken. Wie het paneel ZELF dichtdoet houdt het dicht — zie het effect
+    // hieronder, dat alleen de eigen ingreep terugdraait.
+    setRightPanelOpen((open) => {
+      if (open) paneelDoorAppIngeklapt.current = true;
+      return false;
+    });
   }, []);
   // Normtoetsing draait ALTIJD mee met een berekening: de toetsing hoort bij
   // het resultaat en is geen losse handeling. Er is bewust geen schakelaar —
@@ -1101,6 +1111,25 @@ function App() {
   const [rightPanelWidth, setRightPanelWidth] = useState(240);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const isRightResizing = useRef(false);
+  /**
+   * Heeft de APP het eigenschappenpaneel ingeklapt, of de gebruiker zelf?
+   *
+   * Alleen het eerste wordt teruggedraaid bij het verlaten van de toetsing.
+   * Zonder dit onderscheid zou het paneel zich opdringen aan wie het bewust
+   * dicht heeft gezet.
+   */
+  const paneelDoorAppIngeklapt = useRef(false);
+
+  /**
+   * Verlaat je de toetsing, dan komt het eigenschappenpaneel terug — maar
+   * alleen als de app het zelf had ingeklapt om ruimte te maken.
+   */
+  useEffect(() => {
+    if (activeView === "check") return;
+    if (!paneelDoorAppIngeklapt.current) return;
+    paneelDoorAppIngeklapt.current = false;
+    setRightPanelOpen(true);
+  }, [activeView]);
 
   const [isResizing, setIsResizing] = useState(false);
 

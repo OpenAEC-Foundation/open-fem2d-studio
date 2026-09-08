@@ -233,7 +233,9 @@ body,
   background: transparent;
   border: none;
   color: var(--theme-text-muted);
-  cursor: default;
+  /* Dit IS een knop die het paneel terugbrengt. Met `default` las de strook als
+     dood decor en zocht de gebruiker zijn eigenschappenpaneel elders. */
+  cursor: pointer;
   padding: 8px 0;
   font-family: inherit;
 }
