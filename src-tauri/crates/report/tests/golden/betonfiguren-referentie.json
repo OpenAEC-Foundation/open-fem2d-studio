@@ -3,11 +3,17 @@
   "waarom": [
     "De betondoorsnede wordt twee keer getekend: op het scherm door de frontend en in de PDF door de rapportcrate. Twee tekeningen van hetzelfde ding lopen uit elkaar.",
     "Zolang elke kant zijn EIGEN verwachte waarden vasthield, bewaakte geen enkele test het uiteenlopen: een verschoven staafhart bleef in beide suites groen zolang je maar in beide suites het getal meeverschoof — of, erger, zolang de ene suite alleen op grenzen toetste en de andere op andere bemonsteringspunten.",
-    "Dit bestand is daarom de ENIGE plaats waar de verwachte punten staan. Beide kanten lezen hier, en geen van beide draagt eigen getallen."
+    "Dit bestand is daarom de ENIGE plaats waar de GEDEELDE verwachte punten staan: de enige plaats die BEIDE implementaties lezen, en geen van beide tests draagt daarnaast eigen getallen."
   ],
   "lezers": [
     "src-tauri/crates/report/tests/betonfiguren_referentie.rs  — leest dit bestand en toetst report::betonfiguren::{omtrek_punten, staaf_posities, breedte_op_hoogte_mm, hart_x_mm}",
     "design-mockup/test-betonfiguren-referentie.mjs           — leest dit bestand en toetst src/components/beton/wapeningskorf.ts::{omtrekPunten, staafPosities, breedteOpHoogteMm, hartXMm}"
+  ],
+  "bewust_geen_lezer": [
+    "src-tauri/crates/report/tests/betonfiguren_meetkunde.rs draagt DEZELFDE getallen nog een keer, met de hand uit de maten afgeleid, en leest hier met opzet NIET.",
+    "Dat is geen vergeten opruimwerk maar de tweede helft van de bewaking. `--schrijf` hieronder schrijft de getallen in dit bestand na uit de TS-kant; een fout die BEIDE implementaties delen wordt daarmee netjes ingeschreven en valt hier daarna nergens meer op. De handafleiding gaat dan wél om, want die is nooit uit code overgenomen.",
+    "De rolverdeling is dus: dit bestand bewaakt of de twee tekeningen UITEENLOPEN, `betonfiguren_meetkunde.rs` bewaakt of ze samen nog kloppen. Zou die test hier gaan lezen, dan verdween de tweede vraag.",
+    "Prijs ervan: wie een figuur bewust verandert, past drie plaatsen aan in plaats van twee. Die derde staat daarom als stap 5 in `bijwerken`."
   ],
   "bijwerken": [
     "EEN FIGUUR BEWUST VERANDEREN GAAT ZO — in deze volgorde, anders bewaakt dit bestand niets meer:",
@@ -15,15 +21,20 @@
     "2. Werk hieronder de `afleiding` van elk geraakt geval bij — met de hand, uit de maten. Die tekst is het eigenlijke bewijs; de getallen zijn er de uitkomst van.",
     "3. Laat de getallen naschrijven: `node test-betonfiguren-referentie.mjs --schrijf` (in design-mockup/). Dat herschrijft `omtrek_mm`, `staven` en `breedte_op_hoogte` uit de TS-kant en laat alle tekstvelden staan.",
     "4. Draai daarna BEIDE tests. De TS-test is na stap 3 per definitie groen; het bewijs zit in `cargo test -p report --test betonfiguren_referentie`. Blijft die rood, dan is stap 1 half gedaan.",
+    "5. Staat de geraakte vorm ook in `betonfiguren_meetkunde.rs` (rechthoek, T en L, elk met de flens boven en onder), werk dan ook DAAR de handafleiding en de getallen bij — met de hand, niet overgeschreven. Zie `bewust_geen_lezer`: die test leest dit bestand niet, en dat is precies waarom hij nog iets bewaakt na stap 3.",
     "Alleen de getallen bijwerken omdat 'de test rood is' is geen bijwerken maar het weghalen van de bewaking."
   ],
   "tolerantie": {
     "absoluut_mm": 1e-9,
     "relatief": 1e-9,
     "toets": "|werkelijk - verwacht| <= absoluut_mm + relatief * |verwacht|",
-    "waarom": "Rust f64 en JS number zijn allebei IEEE-754 binary64 en beide kanten rekenen dezelfde uitdrukking uit dezelfde exact representeerbare maten; het verschil is in de praktijk nul. 1e-9 mm is een nanometer — ruim onder alles wat een tekening kan betekenen, en nog altijd tien decimalen strenger dan de kleinste verschuiving die iemand per ongeluk aanbrengt. Bewust GEEN grenzentoets ('ligt tussen 200 en 400'): daar glipt elke verschuiving binnen de grens ongemerkt doorheen."
+    "waarom": "Rust f64 en JS number zijn allebei IEEE-754 binary64 en beide kanten rekenen dezelfde uitdrukking uit dezelfde exact representeerbare maten; het verschil is in de praktijk nul. 1e-9 mm is een PICOmeter (1e-12 m) — ruim onder alles wat een tekening kan betekenen, en nog altijd tien decimalen strenger dan de kleinste verschuiving die iemand per ongeluk aanbrengt. Bewust GEEN grenzentoets ('ligt tussen 200 en 400'): daar glipt elke verschuiving binnen de grens ongemerkt doorheen."
   },
   "waarom_geen_normaalkracht": "De omtrek en de staafharten volgen uitsluitend uit de doorsnedematen en de korf; een normaalkracht verschuift geen betonrand en geen staafhart. Wat een normaalkracht in de praktijk wél verandert is de WAPENING — symmetrisch bij een kolom, asymmetrisch bij een ligger — en dat onderscheid staat hieronder wél als apart geval.",
+  "wat_er_bewust_niet_in_staat": [
+    "EEN FLENS SMALLER DAN HET LIJF (b_f < b_w). Dat is geen doorsnede die de app kan opleveren: `controleerKorf` weigert hem met 'De lijfbreedte b_w moet kleiner zijn dan de flensbreedte b_f', en de eis hieronder dat elk geval een GELDIGE korf is sluit hem daarmee uit. Nagemeten wat de tekenkant er zonder die weigering van maakt: bij `Tee` met b = 200 en b_w = 400 loopt de omtrek van x = -100 tot x = 300 en staat de eerste onderstaaf op x = -54 — buiten het eigen kader. Beide kanten doen dat op dezelfde manier (b_mm is de OMHULLENDE breedte, en die klopt dan niet meer), dus er valt hier ook niets uiteen; het geval hoort thuis bij de invoercontrole, niet bij de tekenbewaking.",
+    "EEN RECHTHOEK MET `flange_at_bottom: true`. De vlag heeft bij een rechthoek geen betekenis en hoort false te blijven; er is geen band om te spiegelen."
+  ],
   "gevallen": [
     {
       "naam": "rechthoek-300x500-asymmetrisch",
@@ -239,6 +250,79 @@
         { "z_mm": 400, "breedte_mm": 200, "hart_x_mm": 100 },
         { "z_mm": 401, "breedte_mm": 400, "hart_x_mm": 200 },
         { "z_mm": 450, "breedte_mm": 400, "hart_x_mm": 200 }
+      ]
+    },
+    {
+      "naam": "l-400x450-flens-onder",
+      "waarom": "DE L MET DE FLENS ONDER — het geval waarin de twee kanten het meest verschillend te werk gaan, en dat hier tot september 2026 ontbrak. De Rust-kant leidt de omtrek af uit de GESPIEGELDE banden van de kern en haalt de linker- en rechterrand van elke band uit `hart_x_mm` van het midden van díé band; de TS-kant heeft voor `flange_at_bottom` een eigen achtpuntssjabloon met een `x0` die bij een L op 0 wordt gezet. Twee verschillende wegen naar hetzelfde punt, en niets pinde vast dat ze samen uitkomen. Dezelfde maten als `omgekeerde-t-400x450-flens-onder`, zodat het paar naast elkaar te leggen is: alles gelijk behalve de ligging van het lijf.",
+      "doorsnede": { "shape": "Ell", "b_mm": 400, "h_mm": 450, "b_w_mm": 200, "h_f_mm": 50, "flange_at_bottom": true },
+      "korf": { "cover_mm": 30, "stirrup_diameter_mm": 8, "top": { "count": 2, "diameter_mm": 12 }, "bottom": { "count": 3, "diameter_mm": 16 } },
+      "afleiding": [
+        "Banden na spiegelen: flens 0..50 met b = 400, lijf 50..450 met b = 200. Het lijf staat tegen de LINKERRAND, dus van x = 0 tot 200.",
+        "Omtrek tegen de klok in: (0,0) — (400,0) langs de onderrand van de flens — (400,50) omhoog — (200,50) naar binnen tot de rechterkant van het lijf — (200,450) omhoog — (0,450) over de bovenkant — (0,50) omlaag. Daar valt het hoekpunt van het lijf samen met dat van de flens, allebei op x = 0; één van de twee valt af, dus ZEVEN punten en geen acht. Bij de omgekeerde T stonden die twee 100 mm uit elkaar en bleven het er acht.",
+        "Onder: as = 30 + 8 + 16/2 = 46, z = 46 — dat ligt in de FLENS (0..50), breedte 400, hart 200. Eerste = 200 - 200 + 46 = 46, laatste = 200 + 200 - 46 = 354. Drie staven: 46, (46+354)/2 = 200, 354 — gelijk aan de omgekeerde T, want de flens beslaat de volle breedte.",
+        "Boven: as = 30 + 8 + 12/2 = 44, z = 450 - 44 = 406 — dat ligt in het LIJF (50..450), breedte 200, hart 100 (lijf links!). Eerste = 100 - 100 + 44 = 44, laatste = 100 + 100 - 44 = 156. In de omgekeerde T stonden diezelfde twee staven op 144 en 256; dát verschil van 100 mm is wat dit geval vastpint."
+      ],
+      "omtrek_mm": [
+        [0, 0],
+        [400, 0],
+        [400, 50],
+        [200, 50],
+        [200, 450],
+        [0, 450],
+        [0, 50]
+      ],
+      "staven": [
+        { "x_mm": 46, "z_mm": 46, "diameter_mm": 16, "rij": "onder" },
+        { "x_mm": 200, "z_mm": 46, "diameter_mm": 16, "rij": "onder" },
+        { "x_mm": 354, "z_mm": 46, "diameter_mm": 16, "rij": "onder" },
+        { "x_mm": 44, "z_mm": 406, "diameter_mm": 12, "rij": "boven" },
+        { "x_mm": 156, "z_mm": 406, "diameter_mm": 12, "rij": "boven" }
+      ],
+      "breedte_op_hoogte": [
+        { "z_mm": 0, "breedte_mm": 400, "hart_x_mm": 200 },
+        { "z_mm": 49, "breedte_mm": 400, "hart_x_mm": 200 },
+        { "z_mm": 50, "breedte_mm": 200, "hart_x_mm": 100 },
+        { "z_mm": 51, "breedte_mm": 200, "hart_x_mm": 100 },
+        { "z_mm": 450, "breedte_mm": 200, "hart_x_mm": 100 }
+      ]
+    },
+    {
+      "naam": "l-600x500-eenstaaf-in-het-smalle-lijf",
+      "waarom": "Eén staaf in een rij loopt langs een APARTE tak (`count == 1` levert x = hart, niet de verdeling tussen de randen), en die tak werd tot nu toe alleen in een rechthoek geraakt. Daar is hart = b/2 en zou een verwisseling van 'het hart van de doorsnede' met 'het hart van de band waar de rij in ligt' niets uitmaken. Hier wél: de staaf hoort op 75 en niet op 300. Meteen de sterkst asymmetrische L in de reeks — lijf 150 op een flens van 600, dus een uitkraging van 450 mm aan één kant.",
+      "doorsnede": { "shape": "Ell", "b_mm": 600, "h_mm": 500, "b_w_mm": 150, "h_f_mm": 80, "flange_at_bottom": false },
+      "korf": { "cover_mm": 30, "stirrup_diameter_mm": 8, "top": { "count": 5, "diameter_mm": 12 }, "bottom": { "count": 1, "diameter_mm": 20 } },
+      "afleiding": [
+        "Banden: lijf 0..420 met b = 150 (500 - 80), flens 420..500 met b = 600. Lijf tegen de linkerrand: x van 0 tot 150.",
+        "Omtrek: (0,0) — (150,0) — (150,420) — (600,420) — (600,500) — (0,500) — (0,420). Linksboven vallen de twee hoekpunten samen, dus weer zeven punten.",
+        "Onder: as = 30 + 8 + 20/2 = 48, z = 48 — in het LIJF, breedte 150, hart 150/2 = 75. Eén staaf, dus x = hart = 75. NIET 600/2 = 300, en ook niet 48.",
+        "Boven: as = 30 + 8 + 12/2 = 44, z = 500 - 44 = 456 — in de FLENS, breedte 600, hart 300. Eerste = 300 - 300 + 44 = 44, laatste = 300 + 300 - 44 = 556, stap = (556-44)/4 = 128. Vijf staven: 44, 172, 300, 428, 556.",
+        "Op de bandgrens z = 420 geldt de KLEINSTE breedte, 150, en dus ook het hart van het lijf: 75. Eén millimeter hoger, op z = 421, springt het naar 600 en 300. Die sprong staat hieronder bemonsterd."
+      ],
+      "omtrek_mm": [
+        [0, 0],
+        [150, 0],
+        [150, 420],
+        [600, 420],
+        [600, 500],
+        [0, 500],
+        [0, 420]
+      ],
+      "staven": [
+        { "x_mm": 75, "z_mm": 48, "diameter_mm": 20, "rij": "onder" },
+        { "x_mm": 44, "z_mm": 456, "diameter_mm": 12, "rij": "boven" },
+        { "x_mm": 172, "z_mm": 456, "diameter_mm": 12, "rij": "boven" },
+        { "x_mm": 300, "z_mm": 456, "diameter_mm": 12, "rij": "boven" },
+        { "x_mm": 428, "z_mm": 456, "diameter_mm": 12, "rij": "boven" },
+        { "x_mm": 556, "z_mm": 456, "diameter_mm": 12, "rij": "boven" }
+      ],
+      "breedte_op_hoogte": [
+        { "z_mm": 48, "breedte_mm": 150, "hart_x_mm": 75 },
+        { "z_mm": 419, "breedte_mm": 150, "hart_x_mm": 75 },
+        { "z_mm": 420, "breedte_mm": 150, "hart_x_mm": 75 },
+        { "z_mm": 421, "breedte_mm": 600, "hart_x_mm": 300 },
+        { "z_mm": 456, "breedte_mm": 600, "hart_x_mm": 300 },
+        { "z_mm": 500, "breedte_mm": 600, "hart_x_mm": 300 }
       ]
     }
   ]

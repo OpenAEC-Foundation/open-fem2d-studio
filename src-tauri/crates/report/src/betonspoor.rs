@@ -34,6 +34,28 @@
 //! scherm. Daarom reizen de doorsnede en de korf als GEGEVEN mee, en levert de
 //! frontend ze bij elk analysetype aan — na een fysische ronde uit de
 //! kernaanroep zelf, en anders uit die ene terugval.
+//!
+//! # Wat "gedeeld" hier wél en niet betekent
+//!
+//! Eén gedeelde functie garandeert pas hetzelfde beeld als beide kanten er
+//! hetzelfde in stoppen. De terugval kent twee bronnen voor de korf: de EXACTE
+//! korf uit het model, en anders de samenvattingsregel hierboven (afgerond op
+//! één decimaal door `fmt_mm`). Het live rapport in het hoofdvenster heeft
+//! modelstate en geeft die exacte korf mee; het losgekoppelde rapportvenster
+//! heeft die niet en leest de regel. De PDF-invoer draagt de korven daarom
+//! sinds kort óók (`RapportPdfBronnen::korvenUitModel`, gevuld uit dezelfde
+//! staafeigenschappen): levert de aanroeper ze aan, dan tekenen scherm en
+//! papier aantoonbaar hetzelfde; laat hij ze weg, dan staat het papier gelijk
+//! aan het losgekoppelde venster en zit het verschil hoogstens in die
+//! afronding. Dat is de hele belofte — niet meer, en het is er nu ook een die
+//! klopt.
+//!
+//! Eén staaf hoort hier NIET in te staan: die waarvoor de kern geen toets kon
+//! leveren. In zo'n resultaat komen de doorsnedenaam en de wapeningsregel uit
+//! de invoer die de kern juist niet kon verwerken; de terugval zou er een
+//! keurige figuur van maken naast een staaf waarover niets is vastgesteld.
+//! `doorsnedenVoorFiguren` slaat die staaf daarom over, en dit hoofdstuk meldt
+//! zelf dat er geen doorsnede is meegestuurd.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

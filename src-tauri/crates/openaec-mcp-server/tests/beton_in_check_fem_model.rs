@@ -208,41 +208,83 @@ async fn een_staalmodel_uit_een_projectbestand_krijgt_geen_betonmelding() {
     );
 }
 
-/// De wapeningskorf hoort NIET in het rekenmodel dat deze server aanvaardt.
+/// De wapeningskorf hoort WEL in het rekenmodel dat deze server aanvaardt.
 ///
-/// De app bewaart hem wel: `beam.checkConfig.betonKorf`. De veldpoort van de
-/// solverbundel (`controleerVelden`, `CHECKCONFIG_VELDEN`) kent dat veld niet en
-/// weigert het model daarom hard. Dat is bewust gedrag van die poort — een
-/// onbekend veld wordt niet genegeerd — maar het betekent wel dat een
-/// projectbestand mét korven niet door `check_fem_model` heen komt.
+/// Hier stond eerder het omgekeerde vastgepind: de veldpoort van de
+/// solverbundel (`controleerVelden`, `CHECKCONFIG_VELDEN`) kende `betonKorf`
+/// niet en weigerde daarom elk model met wapening. De aantekening erbij noemde
+/// dat bewust gedrag, maar dat was het niet — de app bewaart die korf gewoon in
+/// `beam.checkConfig` en rekent ermee, dus de gewóne toestand van een
+/// betonstaaf kwam niet door de poort. De poort kent de betonvelden inmiddels.
 ///
-/// Deze test legt dat vast zodat het zichtbaar blijft en niet als verrassing
-/// bij een gebruiker terechtkomt. Repareren vraagt een wijziging in de
-/// solverbundel en valt buiten deze taak.
+/// De test bewaakt nu twee dingen tegelijk, want "de korf mag erdoor" alleen
+/// zou ook groen zijn als de poort helemaal open stond: een geldige korf komt
+/// erdoor, en een verzonnen veld ernaast gaat er nog steeds uit.
 #[tokio::test]
-async fn een_model_met_een_wapeningskorf_wordt_geweigerd_door_de_veldpoort() {
+async fn een_model_met_een_wapeningskorf_komt_door_de_veldpoort() {
     eis_node().await;
 
-    let mut model = gemengd_portaal();
-    model["beams"][0]["checkConfig"] = json!({
-        "betonKorf": {
-            "cover_mm": 30, "stirrup_diameter_mm": 8,
-            "top": { "count": 2, "diameter_mm": 12 },
-            "bottom": { "count": 3, "diameter_mm": 16 }
-        }
+    let korf = json!({
+        "cover_mm": 30, "stirrup_diameter_mm": 8,
+        "top": { "count": 2, "diameter_mm": 12 },
+        "bottom": { "count": 3, "diameter_mm": 16 }
     });
+
+    let mut model = gemengd_portaal();
+    model["beams"][0]["checkConfig"] = json!({ "betonKorf": korf });
 
     let result = roep_tool("check_fem_model", json!({ "model": model })).await;
     assert_eq!(
-        result["isError"], true,
-        "de veldpoort hoort `betonKorf` te weigeren, kreeg een resultaat: {result}"
+        result["isError"], false,
+        "een model met een wapeningskorf hoort erdoor te komen: {}",
+        result["content"][0]["text"].as_str().unwrap_or("")
     );
-    let fout = &result["structuredContent"];
-    assert_eq!(fout["error_code"], "INVOER_ONGELDIG");
-    // De meldingstekst verwijst naar `detail`; het geweigerde veld staat daar.
-    let detail = fout["detail"].to_string();
+    // De twee betonstaven worden nog steeds overgeslagen, maar om de JUISTE
+    // reden: dit gereedschap toetst alleen staal. Wie hier ooit de korf als
+    // reden terugziet, kijkt naar een teruggekeerd gat in de veldpoort.
+    let overgeslagen = result["structuredContent"]["skipped_beams"]
+        .as_array()
+        .expect("skipped_beams");
+    assert_eq!(
+        overgeslagen.len(),
+        2,
+        "de twee betonstaven horen te worden overgeslagen: {overgeslagen:?}"
+    );
+    for staaf in overgeslagen {
+        let reden = staaf["reason"].as_str().unwrap_or("");
+        assert!(
+            reden.contains("EN 1993"),
+            "de reden hoort het materiaal te noemen, kreeg: {reden}"
+        );
+        assert!(
+            !reden.contains("staat niet in het rekenmodel"),
+            "de korf staat wél in het rekenmodel; deze reden is achterhaald: {reden}"
+        );
+    }
+    assert_eq!(
+        result["structuredContent"]["results"]
+            .as_array()
+            .expect("results")
+            .len(),
+        1,
+        "de stalen staaf hoort gewoon getoetst te worden"
+    );
+
+    // De poort staat niet open: een veld dat niet bestaat gaat er nog steeds uit.
+    let mut verzonnen = gemengd_portaal();
+    verzonnen["beams"][0]["checkConfig"] = json!({
+        "betonKorf": korf,
+        "betonKleurtje": "grijs"
+    });
+    let fout = roep_tool("check_fem_model", json!({ "model": verzonnen })).await;
+    assert_eq!(
+        fout["isError"], true,
+        "een onbekend veld naast de korf hoort geweigerd te worden, kreeg: {fout}"
+    );
+    assert_eq!(fout["structuredContent"]["error_code"], "INVOER_ONGELDIG");
+    let detail = fout["structuredContent"]["detail"].to_string();
     assert!(
-        detail.contains("betonKorf"),
+        detail.contains("betonKleurtje"),
         "`detail` moet het geweigerde veld noemen, kreeg: {detail}"
     );
 }

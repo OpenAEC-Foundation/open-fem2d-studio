@@ -579,3 +579,148 @@ fn alle_resultaatvelden_hebben_serde_default_voor_bestaande_aanroepen() {
     assert!(parsed.concrete_check_results.is_empty());
     assert!(parsed.stress_check_results.is_empty());
 }
+
+// ── De normenregel op het OMSLAG ─────────────────────────────────────────────
+
+/// De normenregel op het omslag wordt als ÉÉN lijn getekend: `DrawList::draw_text`
+/// breekt niets af en knipt niets weg. Met alle vier de kaders erin was die
+/// lijn breder dan een A4 en liep hij rechts van het papier af — zichtbaar
+/// noch te achterhalen in de PDF. Met drie kaders paste hij nog net, dus het
+/// gebrek dook pas op bij het rapport waarin de lezer het meest aan die regel
+/// heeft.
+///
+/// Deze test meet de GERENDERDE breedte, met dezelfde fontregistratie en
+/// dezelfde lettergrootte als de tekenaar, en legt hem naast de bladbreedte.
+/// Hij is daarmee niet aan vier kaders gebonden: komt er ooit een vijfde bij,
+/// dan wordt die net zo goed nagemeten.
+#[test]
+fn de_normenregel_op_het_omslag_past_op_het_papier() {
+    use openaec_layout::FontRegistry;
+    use report::{omslag_normregels, omslag_tekstbreedte, OMSLAG_NORM_PT};
+
+    const VET: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
+    let mut reg = FontRegistry::new();
+    let vet = reg
+        .register_ttf_bytes("LiberationSans-Bold", VET.to_vec())
+        .expect("het omslagfont hoort bij de crate te zitten");
+    let max = omslag_tekstbreedte();
+
+    let alle_vier = ReportInput {
+        steel_check_results: vec![steel_beam(1, 0.5)],
+        timber_check_results: vec![timber_beam(2, 0.5)],
+        concrete_check_results: vec![concrete_beam(3, 0.5)],
+        stress_check_results: vec![vrij_beam(4, 0.5)],
+        ..leeg_rapport()
+    };
+    let vier = norms_line(&alle_vier);
+    assert_eq!(vier, format!("EN 1993-1-1 / EN 1995-1-1 / EN 1992-1-1 / {GEEN_NORM}"));
+
+    // De vondst zelf, nagemeten: ongebroken past deze regel niet op het vel.
+    // Zou hij ooit tóch passen (kortere aanduidingen, kleinere letter), dan
+    // valt deze assert om en mag het afbreken heroverwogen worden.
+    let ongebroken = reg.text_width(vet, &vier, OMSLAG_NORM_PT);
+    assert!(
+        ongebroken.0 > max.0,
+        "de regel met vier kaders hoort ongebroken NIET te passen: {} pt tegen {} pt",
+        ongebroken.0,
+        max.0,
+    );
+
+    // Elk aantal kaders dat dit rapport kan opleveren, plus één dat er nog
+    // niet is: het omslag mag niet op vier blijven staan.
+    let drie = norms_line(&input_alle(
+        vec![steel_beam(1, 0.5)],
+        vec![timber_beam(2, 0.5)],
+        vec![concrete_beam(3, 0.5)],
+    ));
+    let vijf = format!("{vier} / EN 1994-1-1");
+    let gevallen = [
+        norms_line(&input(vec![steel_beam(1, 0.5)], vec![])),
+        norms_line(&input(vec![steel_beam(1, 0.5)], vec![timber_beam(2, 0.5)])),
+        drie.clone(),
+        vier.clone(),
+        vijf,
+    ];
+
+    for bron in &gevallen {
+        let regels = omslag_normregels(bron, max, &mut |s| {
+            reg.text_width(vet, s, OMSLAG_NORM_PT)
+        });
+        assert!(!regels.is_empty(), "een gevulde normenregel levert regels op");
+        for regel in &regels {
+            let breedte = reg.text_width(vet, regel, OMSLAG_NORM_PT);
+            assert!(
+                breedte.0 <= max.0,
+                "regel {regel:?} is {} pt breed en past niet op de {} pt die het omslag heeft",
+                breedte.0,
+                max.0,
+            );
+        }
+        // Er mag onderweg geen kader zoekraken of dubbel komen te staan. Elke
+        // afgesloten regel eindigt op " /", dus de regels met een spatie aan
+        // elkaar geplakt leveren de oorspronkelijke opsomming terug.
+        assert_eq!(&regels.join(" "), bron, "het afbreken mag niets veranderen");
+    }
+
+    // Drie kaders paste al en moet op één regel BLIJVEN staan: het omslag van
+    // een bestaand rapport hoort er niet anders uit te gaan zien.
+    let drie_regels = omslag_normregels(&drie, max, &mut |s| {
+        reg.text_width(vet, s, OMSLAG_NORM_PT)
+    });
+    assert_eq!(drie_regels.len(), 1, "drie kaders passen op één regel");
+
+    // Vier kaders gaan over twee regels, en de eerste toont dat de opsomming
+    // doorloopt.
+    let vier_regels = omslag_normregels(&vier, max, &mut |s| {
+        reg.text_width(vet, s, OMSLAG_NORM_PT)
+    });
+    assert!(vier_regels.len() >= 2, "vier kaders passen niet op één regel");
+    assert!(vier_regels[0].ends_with(" /"), "een afgesloten regel houdt zijn scheidingsteken");
+
+    // Zonder toetsresultaten blijft de regel helemaal weg — geen lege regel
+    // die als een weggevallen norm leest.
+    assert!(omslag_normregels("", max, &mut |s| reg.text_width(vet, s, OMSLAG_NORM_PT)).is_empty());
+}
+
+/// Eén PDF mag niet twee uitgaven van dezelfde norm noemen. Het omslag zette
+/// "NEN-EN 1995-1-1+C1+A1:2011/NB:2013 nl" neer terwijl de kruislaaghouttoets
+/// in haar notitie "NEN-EN 1995-1-1+A2:2014/NB:2013" op papier zette.
+///
+/// De uitgave die de rekenkern volgt noemt zichzelf op haar titelblad
+/// "NEN-EN 1995-1-1:2005+A2:2014+NB:2013" en bevat blijkens haar eigen lijst
+/// "Inclusief" C1:2006, A1:2008, C1:2012, A2:2014 en NB:2013. Die aanduiding
+/// staat één keer in de code (`clt_toets::NORM_HOUT_AANDUIDING`); deze test
+/// houdt het omslag en de notitie eraan vast.
+#[test]
+fn de_houtnorm_heet_op_het_omslag_hetzelfde_als_in_de_notitie() {
+    use mechanics::InternalForces;
+    use nen_en_1995_1_1::clt::CltLayup;
+    use nen_en_1995_1_1::clt_toets::{rolling_shear_info, NORM_HOUT_AANDUIDING};
+
+    // Het omslag draagt de aanduiding van de norm plus de taal, en niets anders.
+    assert_eq!(report::NORM_TIMBER_FULL, format!("{NORM_HOUT_AANDUIDING} nl"));
+
+    let mech = CltLayup::alternating(1000.0, &[40.0, 20.0, 40.0], "C24")
+        .mechanics()
+        .expect("een drielaagse opbouw is geldig");
+    let info = rolling_shear_info(
+        &mech,
+        1,
+        1.0,
+        ForceStateSnapshot {
+            combination_id: 1,
+            position_mm: 2500.0,
+            forces: InternalForces { vz_ed: 10.0, ..Default::default() },
+        },
+    );
+    let notitie = info.notes.join(" ");
+
+    // Dezelfde uitgave als op het omslag, woordelijk.
+    let op_het_omslag = report::NORM_TIMBER_FULL
+        .strip_suffix(" nl")
+        .expect("de omslagaanduiding eindigt op de taal");
+    assert!(
+        notitie.contains(op_het_omslag),
+        "de notitie bij de rolschuiving noemt een andere uitgave dan het omslag: {notitie}",
+    );
+}

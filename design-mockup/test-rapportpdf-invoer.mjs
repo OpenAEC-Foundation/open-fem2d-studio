@@ -79,16 +79,33 @@ const hout = (id) => ({
   status: "Ok",
   governing_check_id: "bending",
 });
+// Een GETOETSTE betonstaaf draagt minstens één toets. Dat is niet
+// versiering: een leeg `checks` is het teken dat de kern de staaf geweigerd
+// heeft, en de doorsnedefiguur hangt daaraan (zie [7]).
 const beton = (id) => ({
   beam_id: id,
   section_name: "300 x 500",
   concrete_class: "C30/37",
   reinforcement_grade: "B500B",
   reinforcement_summary: "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm",
-  checks: [],
+  checks: [{ id: "6.1_mn_kappa" }],
   uc_max: 0.7,
   status: "Ok",
   governing_check_id: "6.1_mn_kappa",
+});
+
+/**
+ * Zoals `concrete-check::orchestrator::error_result` hem teruggeeft: geen
+ * toetsen, de reden in `governing_check_id`, en een doorsnedenaam en
+ * wapeningsregel die uit de INVOER komen — dus ook uit een invoer die de kern
+ * niet kon verwerken.
+ */
+const betonGeweigerd = (id, reden = "betonsterkteklasse C99 onbekend") => ({
+  ...beton(id),
+  checks: [],
+  uc_max: 0,
+  status: "NotApplicable",
+  governing_check_id: `ERROR: ${reden}`,
 });
 const vrij = (id) => ({
   beam_id: id,
@@ -461,6 +478,118 @@ log("\n[6] De doorsnedefiguur hangt niet aan de fysische ronde");
   checkWaar(
     "de invoer overleeft JSON — dat is de weg naar de rekenkern",
     JSON.stringify(JSON.parse(JSON.stringify(eersteOrde))) === JSON.stringify(eersteOrde),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[7] Een staaf die de kern WEIGERDE krijgt geen figuur");
+{
+  // De terugval leest de doorsnedenaam en de wapeningsregel, en die staan er
+  // ook bij een geweigerde staaf — ze komen uit de invoer. Een keurige
+  // tekening bij een staaf waarover niets is vastgesteld is erger dan geen
+  // tekening: het live rapport zet daar de reden neer en geen beeld.
+  const geweigerd = betonGeweigerd(1);
+  checkGelijk(
+    "een ERROR-resultaat levert geen doorsnede",
+    doorsnedenVoorFiguren([geweigerd], []).length,
+    0,
+  );
+  checkWaar(
+    "en dan blijft het hele veld weg",
+    !("concrete_stiffness_trace" in bouwRapportInvoer({ project, checkResults: [geweigerd] })),
+    "het betonhoofdstuk meldt zelf dat er geen doorsnede is meegestuurd",
+  );
+
+  // Ook zonder ERROR-tekst: een resultaat zonder één toets zegt niets over de
+  // staaf, hoe de reden ook geschreven is.
+  const zonderToetsen = { ...beton(2), checks: [] };
+  checkGelijk(
+    "een resultaat zonder toetsen levert ook niets",
+    doorsnedenVoorFiguren([zonderToetsen], []).length,
+    0,
+  );
+
+  // Andersom moet de figuur er wél zijn zodra er iets getoetst is; anders
+  // repareert deze regel het ene gat door een ander te maken.
+  checkGelijk(
+    "een getoetste staaf houdt zijn figuur",
+    doorsnedenVoorFiguren([beton(3)], []).length,
+    1,
+  );
+  checkGelijk(
+    "naast elkaar: alleen de getoetste staaf",
+    doorsnedenVoorFiguren([beton(4), betonGeweigerd(5)], []).map((d) => d.beam_id),
+    [4],
+  );
+
+  // Wat de kern in de rekengang zelf heeft GEKREGEN blijft staan: die maten
+  // komen uit de aanroep en niet uit een teruggeparste naam.
+  const uitRekengang = [
+    {
+      beam_id: 6,
+      doorsnede: { shape: "Rectangle", b_mm: 305, h_mm: 495 },
+      korf: {
+        cover_mm: 35,
+        stirrup_diameter_mm: 8,
+        top: { count: 2, diameter_mm: 12 },
+        bottom: { count: 3, diameter_mm: 16 },
+      },
+    },
+  ];
+  checkGelijk(
+    "een geweigerde staaf die wél meerekende houdt de maten uit de aanroep",
+    doorsnedenVoorFiguren([betonGeweigerd(6)], uitRekengang).map((d) => d.beam_id),
+    [6],
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[8] De gedeelde terugval krijgt aan beide kanten dezelfde invoer");
+{
+  // Het live rapport geeft `doorsnedeUitToets` de korf uit het model mee. Doet
+  // het papier dat niet, dan tekent het scherm de korf van het model en het
+  // papier de teruggeparste korf — dezelfde functie, twee beelden. De
+  // samenvattingsregel van de kern is afgerond op één decimaal, dus met een
+  // dekking van 32,25 mm is dat verschil meetbaar.
+  const korfUitModel = {
+    cover_mm: 32.25,
+    stirrup_diameter_mm: 8,
+    top: { count: 2, diameter_mm: 12 },
+    bottom: { count: 3, diameter_mm: 16 },
+  };
+  const staaf = {
+    ...beton(1),
+    reinforcement_summary: "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 32.3 mm",
+  };
+
+  checkGelijk(
+    "zonder de modelkorf leest de terugval de afgeronde samenvattingsregel",
+    doorsnedenVoorFiguren([staaf], [])[0].korf.cover_mm,
+    32.3,
+  );
+  checkGelijk(
+    "met de modelkorf staat de exacte dekking op papier",
+    doorsnedenVoorFiguren([staaf], [], new Map([[1, korfUitModel]]))[0].korf.cover_mm,
+    32.25,
+  );
+
+  // En de weg erheen: `bouwRapportInvoer` geeft het veld door aan de terugval.
+  const invoer = bouwRapportInvoer({
+    project,
+    checkResults: [staaf],
+    korvenUitModel: new Map([[1, korfUitModel]]),
+  });
+  checkGelijk(
+    "de rapportinvoer draagt diezelfde korf",
+    invoer.concrete_stiffness_trace.staafdoorsneden[0].korf.cover_mm,
+    32.25,
+  );
+
+  // De kaart gaat op staaf-id: een korf van een andere staaf verandert niets.
+  checkGelijk(
+    "een korf van een andere staaf blijft buiten beeld",
+    doorsnedenVoorFiguren([staaf], [], new Map([[99, korfUitModel]]))[0].korf.cover_mm,
+    32.3,
   );
 }
 

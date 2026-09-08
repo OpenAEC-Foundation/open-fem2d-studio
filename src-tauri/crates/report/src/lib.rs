@@ -171,8 +171,18 @@ pub const GEEN_NORM: &str = "geen norm";
 
 /// Volledige normaanduiding (cover) voor staal.
 const NORM_STEEL_FULL: &str = "NEN-EN 1993-1-1+C2+A1/NB:2016 nl";
-/// Volledige normaanduiding (cover) voor hout.
-const NORM_TIMBER_FULL: &str = "NEN-EN 1995-1-1+C1+A1:2011/NB:2013 nl";
+/// Volledige normaanduiding (cover) voor hout: de aanduiding waarmee de
+/// uitgave zichzelf op elk vel noemt, plus de taal.
+///
+/// Hier stond "NEN-EN 1995-1-1+C1+A1:2011/NB:2013 nl" — de aanduiding van de
+/// nationale bijlage alléén, en van vóór A2:2014 — terwijl de
+/// kruislaaghouttoets in haar eigen notitie een derde schrijfwijze op papier
+/// zette. Eén PDF noemde zo twee uitgaven van dezelfde norm.
+///
+/// Publiek omdat een test hem naast de notitie van de kruislaaghouttoets legt
+/// (`nen_en_1995_1_1::clt_toets::NORM_HOUT_AANDUIDING`, dev-dependency): dat is
+/// de enige manier waarop die twee plaatsen aan elkaar vastzitten.
+pub const NORM_TIMBER_FULL: &str = "NEN-EN 1995-1-1:2005+A2:2014+NB:2013 nl";
 /// Volledige normaanduiding (cover) voor beton — dezelfde uitgave als waaruit
 /// de `nen-en-1992-1-1`-crate haar waarden leest (zie de crate-doc daar).
 const NORM_CONCRETE_FULL: &str = "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020 nl";
@@ -373,6 +383,93 @@ fn full_norm_designations(input: &ReportInput) -> Vec<&'static str> {
     norms
 }
 
+// ── De normenregel op het OMSLAG ─────────────────────────────────────────────
+
+/// De lettergrootte waarin de normenregel op het omslag staat.
+///
+/// Publiek omdat de test die de regel NAMEET met precies dezelfde maat moet
+/// meten als de tekenaar; twee losse getallen zouden geruisloos uiteen lopen.
+pub const OMSLAG_NORM_PT: Pt = Pt(22.0);
+
+/// De marge links op het omslag, mm. Alles op het omslag begint hier, en
+/// rechts wordt dezelfde marge aangehouden.
+const OMSLAG_MARGE_MM: f32 = 20.0;
+
+/// De regelafstand van de normenregel wanneer hij over meer dan één regel
+/// gaat, mm. Ruim boven de 22 pt (≈ 7,8 mm) van de letter zelf.
+const OMSLAG_NORM_REGEL_MM: f32 = 8.5;
+
+/// De hoogte waarop de normenregel begint, mm vanaf de bovenrand.
+const OMSLAG_NORM_TOP_MM: f32 = 108.0;
+
+/// De ruimte onder de laatste normenregel tot de projectnaam, mm.
+const OMSLAG_NA_NORM_MM: f32 = 10.0;
+
+/// De ruimte tussen de projectnaam en het infoblok, mm.
+const OMSLAG_NA_PROJECT_MM: f32 = 27.0;
+
+/// Hoe breed een regel op het omslag hoogstens mag zijn.
+///
+/// `DrawList::draw_text` breekt niets af en knipt niets weg: wat hier niet in
+/// past wordt gewoon voorbij de papierrand getekend en is in de PDF
+/// onzichtbaar. Er is dus geen vangnet ná deze grens — de regel moet vóór het
+/// tekenen al passen.
+pub fn omslag_tekstbreedte() -> Pt {
+    Pt(A4.width.0 - 2.0 * Pt::from(Mm(OMSLAG_MARGE_MM)).0)
+}
+
+/// De normenregel opgeknipt in regels die elk binnen `max_breedte` blijven.
+///
+/// WAAROM DIT MOET. Met alle vier de kaders erin is
+/// "EN 1993-1-1 / EN 1995-1-1 / EN 1992-1-1 / geen norm" bij 22 pt breder dan
+/// een A4: de regel liep dan rechts van het papier af, zonder waarschuwing en
+/// zonder zichtbaar spoor. Met drie kaders paste hij nog net, dus het gebrek
+/// kwam pas boven water bij een model dat staal, hout, beton én een vrij
+/// materiaal draagt — en dat is juist het rapport waarin de lezer het meest
+/// aan die regel heeft.
+///
+/// Er wordt uitsluitend geknipt op de scheiding " / " tussen twee kaders: een
+/// normaanduiding zelf mag niet middendoor. Het scheidingsteken blijft aan het
+/// eind van de afgesloten regel staan, zodat de lezer ziet dat de opsomming
+/// doorloopt. Een vijfde kader knipt vanzelf mee; er is niets dat op vier
+/// staat.
+///
+/// Is één kader in zijn eentje al te breed, dan krijgt het toch zijn eigen
+/// regel. Dat kan met de huidige aanduidingen niet gebeuren, en afkappen zou
+/// een halve norm op het omslag zetten — erger dan een te brede regel.
+///
+/// `meet` levert de gerenderde breedte van een stuk tekst; de aanroeper vult
+/// daar de fontregistratie in waarmee ook getekend wordt.
+pub fn omslag_normregels(
+    norms: &str,
+    max_breedte: Pt,
+    meet: &mut dyn FnMut(&str) -> Pt,
+) -> Vec<String> {
+    if norms.is_empty() {
+        return Vec::new();
+    }
+    let mut regels: Vec<String> = Vec::new();
+    let mut huidig = String::new();
+    for kader in norms.split(" / ") {
+        if huidig.is_empty() {
+            huidig = kader.to_string();
+            continue;
+        }
+        let kandidaat = format!("{huidig} / {kader}");
+        // Gemeten MÉT het scheidingsteken dat er komt te staan zodra er nog
+        // een kader achteraan gaat: zonder dat toevoegsel past een regel
+        // tijdens het opbouwen wél en na het afsluiten niet meer.
+        if meet(&format!("{kandidaat} /")).0 <= max_breedte.0 {
+            huidig = kandidaat;
+        } else {
+            regels.push(format!("{huidig} /"));
+            huidig = kader.to_string();
+        }
+    }
+    regels.push(huidig);
+    regels
+}
+
 // ── Style helpers ─────────────────────────────────────────────────────────────
 // Stylesheet palette — some helpers are unused right now but kept so the
 // cover/page-decoration code can pick them up without re-deriving values.
@@ -541,7 +638,19 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     doc.add_page_template(template);
 
     // 3. Cover page (RawPage — drawn directly).
-    doc.add_pre_page(build_cover_page(&input, &norms));
+    //    De normenregel wordt hier al OPGEDEELD, want alleen hier is de
+    //    fontregistratie bij de hand waarmee straks ook getekend wordt. Meten
+    //    met een ander font of een andere maat dan de tekenaar gebruikt, is
+    //    niet meten.
+    let norm_regels = {
+        let mut reg = fonts.lock().unwrap();
+        let vet = reg
+            .get("LiberationSans-Bold")
+            .expect("bold font is hierboven geregistreerd");
+        let mut meet = |s: &str| reg.text_width(vet, s, OMSLAG_NORM_PT);
+        omslag_normregels(&norms, omslag_tekstbreedte(), &mut meet)
+    };
+    doc.add_pre_page(build_cover_page(&input, &norm_regels));
 
     // 4. Build content flowables — alle vijf de kernen delen één pad (ze
     //    leveren hetzelfde NamedCheck-contract).
@@ -629,7 +738,11 @@ fn extend_with_lege_toetsing(flow: &mut Vec<Box<dyn Flowable>>) {
 
 // ── Cover page (drawn manually onto a RawPage) ────────────────────────────────
 
-fn build_cover_page(input: &ReportInput, norms: &str) -> RawPage {
+/// Het omslag. `norm_regels` is de normenregel zoals [`omslag_normregels`] hem
+/// heeft opgedeeld: één regel als hij past, meer als hij niet past. Alles
+/// eronder — de projectnaam en het infoblok — zakt mee, zodat een tweede
+/// normregel niet over de projectnaam heen valt.
+fn build_cover_page(input: &ReportInput, norm_regels: &[String]) -> RawPage {
     let mut dl = DrawList::new();
 
     // Background tint band at top
@@ -680,20 +793,29 @@ fn build_cover_page(input: &ReportInput, norms: &str) -> RawPage {
     // Zonder toetsresultaten blijft deze regel WEG. Hier stond de terugval op
     // de staalnorm, en die zette een "EN 1993-1-1" op het omslag van een model
     // zonder één stalen staaf.
-    if !norms.is_empty() {
-        dl.set_font("LiberationSans-Bold", Pt(22.0));
+    //
+    // Met alle vier de kaders past de regel niet op één regel; hij komt hier
+    // dan al opgedeeld binnen (zie [`omslag_normregels`]) en de rest van het
+    // omslag zakt eronder mee.
+    let mut norm_onder_mm = OMSLAG_NORM_TOP_MM;
+    if !norm_regels.is_empty() {
+        dl.set_font("LiberationSans-Bold", OMSLAG_NORM_PT);
         dl.set_fill_color(C_TEXT);
-        dl.draw_text(left, Mm(108.0).into(), norms);
+        for (i, regel) in norm_regels.iter().enumerate() {
+            norm_onder_mm = OMSLAG_NORM_TOP_MM + i as f32 * OMSLAG_NORM_REGEL_MM;
+            dl.draw_text(left, Mm(norm_onder_mm).into(), regel);
+        }
     }
 
+    let project_y_mm = norm_onder_mm + OMSLAG_NA_NORM_MM;
     dl.set_font("LiberationSans-Italic", Pt(13.0));
     dl.set_fill_color(C_MUTED);
-    dl.draw_text(left, Mm(118.0).into(), &input.project_name);
+    dl.draw_text(left, Mm(project_y_mm).into(), &input.project_name);
 
     // Project info — manual two-column layout
     let label_x = left;
     let value_x: Pt = Pt(left.0 + Mm(35.0).0 * 2.834_645_7);
-    let mut y_mm = 145.0_f32;
+    let mut y_mm = project_y_mm + OMSLAG_NA_PROJECT_MM;
 
     let mut rows: Vec<(&str, &str)> = vec![
         ("Project", input.project_name.as_str()),

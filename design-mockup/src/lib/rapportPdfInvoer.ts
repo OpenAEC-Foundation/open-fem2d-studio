@@ -41,6 +41,27 @@
  * elkaar gaan lopen. Daardoor kan `concrete_stiffness_trace` meegaan met
  * ALLEEN doorsneden erin: het betonhoofdstuk houdt dan zijn eerlijke melding
  * over de ontbrekende segmenten en tekent toch de doorsnede.
+ *
+ * MAAR NIET BIJ EEN STAAF DIE DE KERN HEEFT GEWEIGERD
+ * ---------------------------------------------------
+ * Een geweigerde toets levert een resultaat waarin de doorsnedenaam en de
+ * wapeningsregel uit de INVOER komen (`concrete-check::orchestrator::
+ * error_result`) — dus ook uit een invoer die de kern niet kon verwerken. De
+ * terugval leest die twee regels en zou er een keurige tekening bij zetten,
+ * naast een staaf waarover niets bekend is. Zie [`toetsGeweigerd`]: die staaf
+ * krijgt geen figuur, en het betonhoofdstuk meldt zelf waarom er geen staat.
+ *
+ * DEZELFDE TERUGVAL MOET OOK DEZELFDE INVOER KRIJGEN
+ * --------------------------------------------------
+ * "Één gedeelde functie" is niets waard zolang de twee kanten er iets anders
+ * in stoppen: het live rapport geeft `doorsnedeUitToets` de korf uit het model
+ * mee (exacte getallen), en het papier deed dat niet. Dan tekent het scherm de
+ * korf van het model en het papier de teruggeparste korf uit de
+ * samenvattingsregel — dezelfde functie, twee beelden. Daarom draagt
+ * [`RapportPdfBronnen`] die korven mee; wie ze aanlevert, krijgt op papier
+ * hetzelfde als op het scherm. Blijven ze weg, dan is de samenvattingsregel de
+ * bron, precies zoals in het losgekoppelde rapportvenster dat ook geen
+ * modelstate heeft.
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -57,6 +78,7 @@ import type { BetonStaafDoorsnede } from "./types/concrete/BetonStaafDoorsnede";
 import type { BetonStijfheidSpoor } from "./types/concrete/BetonStijfheidSpoor";
 import type { CltBeamCheckResult } from "./types/timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "./types/concrete/ConcreteBeamCheckResult";
+import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
 import type { ReportInput } from "./types/steel/ReportInput";
 import type { SpanningBeamCheckResult } from "./types/spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "./types/timber/TimberBeamCheckResult";
@@ -82,6 +104,15 @@ export interface StijfheidSpoorInvoer {
   staafdoorsneden: BetonStaafDoorsnedeInvoer[];
 }
 
+/**
+ * De wapeningskorven zoals ze in het MODEL staan, per staaf-id.
+ *
+ * `checkStore.korvenUitStaven(lastRunData.beams)` levert precies deze kaart,
+ * uit dezelfde staafeigenschappen (`checkConfig.betonKorf`) waar het live
+ * rapport ze uit haalt.
+ */
+export type KorvenUitModel = ReadonlyMap<number, ReinforcementCage>;
+
 /** Alles wat de uitdraai nodig heeft, uit de drie bronnen bij elkaar. */
 export interface RapportPdfBronnen {
   project: RapportProject;
@@ -89,6 +120,18 @@ export interface RapportPdfBronnen {
   checkResults: MemberCheckResult[];
   /** Het spoor uit `betonStijfheidStore`; laat weg als er niets staat. */
   stijfheid?: StijfheidSpoorInvoer;
+  /**
+   * De wapeningskorven uit het model, per staaf-id — de EXACTE getallen.
+   *
+   * Waarom dit erbij hoort: het live rapport geeft ze aan `doorsnedeUitToets`
+   * mee en het papier deed dat niet, dus dezelfde gedeelde terugval kreeg aan
+   * beide kanten andere invoer. Levert de aanroeper ze aan, dan tekenen scherm
+   * en papier aantoonbaar dezelfde korf; laat hij ze weg, dan leest de terugval
+   * de samenvattingsregel van de kern — dat is wat het losgekoppelde
+   * rapportvenster óók doet, en het verschil zit hoogstens in de afronding
+   * waarmee die regel geschreven is.
+   */
+  korvenUitModel?: KorvenUitModel;
 }
 
 /**
@@ -150,6 +193,27 @@ export function spoorVoorPdf(
 }
 
 /**
+ * Heeft de rekenkern deze staaf GEWEIGERD te toetsen?
+ *
+ * Zo ja, dan is er over die staaf niets vastgesteld: geen toetsen, geen UC,
+ * geen status. De kern zet dan de reden in `governing_check_id` met "ERROR: "
+ * ervoor (`concrete-check::orchestrator::error_result`) en laat `checks` leeg;
+ * de doorsnedenaam en de wapeningsregel in dat resultaat komen uit de INVOER,
+ * niet uit een doorsnede die de kern heeft kunnen bouwen.
+ *
+ * Woordelijk dezelfde vraag als in het live rapport
+ * (`components/report/sections/BetonSection.tsx`, `const fout = …`), zodat het
+ * scherm en het papier dezelfde staven overslaan. Beide voorwaarden blijven
+ * staan: een resultaat zonder één toets zegt evenveel als een ERROR-melding,
+ * ook als een toekomstige kern die melding anders zou schrijven.
+ */
+export function toetsGeweigerd(
+  r: Pick<ConcreteBeamCheckResult, "checks" | "governing_check_id">,
+): boolean {
+  return r.checks.length === 0 || r.governing_check_id.startsWith("ERROR:");
+}
+
+/**
  * De doorsneden waarmee de PDF de doorsnedefiguren tekent, per betonstaaf.
  *
  * De exacte doorsneden uit de rekengang gaan VOOR: dat zijn de maten en de
@@ -158,15 +222,28 @@ export function spoorVoorPdf(
  * toetsresultaat herleid. Is dat niet te doen, dan blijft die staaf weg en
  * meldt het betonhoofdstuk zelf dat de figuur ontbreekt; een verzonnen
  * doorsnede op papier is erger dan een lege plek.
+ *
+ * EEN GEWEIGERDE STAAF KRIJGT GEEN TERUGVAL. De doorsnedenaam en de
+ * wapeningsregel van zo'n resultaat zijn de INVOER die de kern niet kon
+ * verwerken; er een tekening bij zetten suggereert dat er iets getoetst is.
+ * Zie [`toetsGeweigerd`]. Wat de kern in de rekengang zelf heeft GEKREGEN
+ * (`uitRekengang`) blijft wél staan: die maten komen niet uit een naam maar
+ * uit de aanroep, en zijn dus ook waar als de toetsing daarna strandde.
+ *
+ * `korvenUitModel` is de exacte korf per staaf, als de aanroeper hem heeft.
+ * Hij gaat één op één door naar dezelfde parameter van `doorsnedeUitToets` die
+ * het live rapport vult — dat is de hele reden dat die parameter hier bestaat.
  */
 export function doorsnedenVoorFiguren(
   beton: ConcreteBeamCheckResult[],
   uitRekengang: BetonStaafDoorsnede[],
+  korvenUitModel?: KorvenUitModel,
 ): BetonStaafDoorsnede[] {
   const uit = [...uitRekengang];
   for (const r of beton) {
     if (uit.some((d) => d.beam_id === r.beam_id)) continue;
-    const terugval = doorsnedeUitToets(r);
+    if (toetsGeweigerd(r)) continue;
+    const terugval = doorsnedeUitToets(r, korvenUitModel?.get(r.beam_id));
     if (!terugval) continue;
     uit.push({ beam_id: r.beam_id, doorsnede: terugval.doorsnede, korf: terugval.korf });
   }
@@ -181,7 +258,11 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   const clt: CltBeamCheckResult[] = bron.checkResults.filter(isCltCheckResult);
   const spanning: SpanningBeamCheckResult[] = bron.checkResults.filter(isStressCheckResult);
   const spoor = spoorVoorPdf(bron.stijfheid);
-  const doorsneden = doorsnedenVoorFiguren(beton, spoor?.staafdoorsneden ?? []);
+  const doorsneden = doorsnedenVoorFiguren(
+    beton,
+    spoor?.staafdoorsneden ?? [],
+    bron.korvenUitModel,
+  );
 
   const invoer: ReportInput = {
     project_name: bron.project.name || "Naamloos",

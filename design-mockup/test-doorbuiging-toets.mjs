@@ -12,10 +12,14 @@ const { defaultCombinations, combineResults } = await import(
   "./src/components/fem/solver/combinations.ts"
 );
 const {
+  bepaalDoorbuigingsInvoer,
   buildSteelCheckInputs,
   collinearContinuations,
   deflectionNotesFor,
   extractFieldDeflectionMm,
+  hellingGradenVanStaaf,
+  isOverwegendVerticaal,
+  zijdelingseVerplaatsingMm,
 } = await import("./src/lib/steelCheckBuilder.ts");
 const { buildTimberCheckInputs } = await import("./src/lib/timberCheckBuilder.ts");
 
@@ -282,6 +286,207 @@ log("\n[7] Doorgeknipte staaf: gemeld in het rapport, niet stilzwijgend per deel
   const nOnbekend = deflectionNotesFor(deel1, ketenNodes, ketenBeams, undefined).join(" ");
   checkTrue("zonder opleggingenlijst wordt het voorbehoud vermeld",
     /niet meegegeven aan de toetsbouwer/.test(nOnbekend));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  [8] Een KOLOM krijgt geen vloercriterium
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Bevinding uit de beproeving van het startmodel: de doorbuigingstoets werd
+// onvoorwaardelijk op elke stalen staaf losgelaten, ook op de twee verticale
+// portaalkolommen. Die kregen daardoor 21,42 mm getoetst aan 3/1 000 · ℓ_rep
+// = 15 mm — unity check 1,43, met in het rapport "overige vloeren en daken die
+// intensief door personen worden gebruikt" onder een kolom. Alle vier de
+// gedachtestreepjes van NEN-EN 1990:2002/NB:2019 A1.4.3(3) gaan over een
+// vloer, een dak of een vloerafscheiding, en A1.4.3(4) begrenst w_max "bij
+// zowel vloeren als daken"; een kolom is geen van beide. Voor een verticale
+// staaf geeft A1.4.3(7) wél een grens: de horizontale verplaatsing over de
+// hoogte, bij de karakteristieke combinatie (6.14b), h/300 voor andere
+// gebouwen dan industriegebouwen.
+//
+// Het model is het stalen portaal uit het startmodel: 12 m overspanning,
+// 5 m hoge kolommen, twee scharnieren aan de voet, q = −5 N/mm op de regel.
+log("\n[8] Kolom: A1.4.3(7) h/300 op de zijdelingse verplaatsing, geen vloereis");
+{
+  // HEA 160, zodat de getallen hieronder dezelfde zijn als in het startmodel:
+  // A = 3 877 mm², I_y = 1 673 cm⁴.
+  const H = 5000, B = 12000, Ihea = 1.673e7;
+  const pNodes = [
+    { id: 1, x: 0, z: 0 }, { id: 2, x: B, z: 0 },
+    { id: 3, x: 0, z: H }, { id: 4, x: B, z: H },
+  ];
+  const pSolverBeams = [
+    { id: 1, from: 1, to: 3, E, A, I: Ihea },
+    { id: 2, from: 2, to: 4, E, A, I: Ihea },
+    { id: 3, from: 3, to: 4, E, A, I: Ihea },
+  ];
+  const pSupports = [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "pinned" }];
+  const pPerCase = new Map([
+    [1, solve({ nodes: pNodes, beams: pSolverBeams, supports: pSupports,
+                loads: [{ beamId: 3, q: -5 }] })],
+  ]);
+  const pCombos = defaultCombinations();
+  const pResults = new Map(pCombos.map((c) => [c.id, combineResults(c, pPerCase)]));
+  const kolom = { id: 1, from: 1, to: 3, material: "S235", profile: "HEA160" };
+  const regel = { id: 3, from: 3, to: 4, material: "S235", profile: "HEA160" };
+  const pBeams = [kolom, { id: 2, from: 2, to: 4, material: "S235", profile: "HEA160" }, regel];
+  const pData = {
+    nodes: pNodes, beams: pBeams, supports: pSupports,
+    combinations: pCombos, combinationResults: pResults,
+  };
+
+  // Sanity: zonder deze twee regels bewijst de rest niets.
+  const slsRes = pResults.get(6);
+  const kromming = extractFieldDeflectionMm(kolom, slsRes);
+  // Precies de twee getallen uit de beproeving van het startmodel: de kolom
+  // kromt 21,4 mm en de regel zakt 144 mm. Zonder deze regels bewijst de rest
+  // niets — dan zou de toets ook "voldoet" melden omdat er niets gebeurt.
+  check("sanity: de kolom kromt 21,4 mm vanaf de koorde", Math.abs(kromming), 21.42, 2);
+  check("sanity: de regel zakt 144 mm",
+    Math.abs(extractFieldDeflectionMm(regel, slsRes)), 143.97, 2);
+  checkTrue("sanity: de oude vloereis 3/1 000 · 5 000 = 15 mm zou hier UC 1,4 geven",
+    Math.abs(kromming) / (H * 3 / 1000) > 1.3);
+
+  const kolomInvoer = bepaalDoorbuigingsInvoer(kolom, pData);
+  check("kolom: eis is de zijdelingse", kolomInvoer.eis === "zijdelings" ? 1 : 0, 1);
+  check("kolom: noemer 300 (h/300, A1.4.3(7))", kolomInvoer.noemerFin, 300);
+  check("kolom: dezelfde noemer voor w_add", kolomInvoer.noemerAdd, 300);
+  checkTrue("kolom: klasse is niet meer een vloer-/dakcategorie",
+    kolomInvoer.klasse === "Custom");
+  checkTrue("kolom: geen ℓ_rep-verdubbeling", kolomInvoer.isUitkraging === false);
+
+  // De getoetste grootheid is u = u_x(boven) − u_x(onder), NIET de kromming.
+  const u = zijdelingseVerplaatsingMm(kolom, pNodes, slsRes);
+  check("kolom: getoetst wordt u_x(boven) − u_x(onder)", kolomInvoer.wMm, u, 0.01);
+  checkTrue("kolom: dat is NIET de kromming vanaf de koorde",
+    Math.abs(kolomInvoer.wMm - kromming) > 5);
+
+  const kn = kolomInvoer.notes.join(" ");
+  checkTrue("kolom: notitie zegt dat de vloer-/dakeis niet is toegepast",
+    /NIET toegepast/.test(kn) && /A1\.4\.3\(3\)/.test(kn));
+  checkTrue("kolom: notitie noemt A1.4.3(7) en h/300",
+    /A1\.4\.3\(7\)/.test(kn) && /h\/300/.test(kn));
+  checkTrue("kolom: notitie noemt de karakteristieke combinatie (6.14b)",
+    /6\.14b/.test(kn) && /Karakteristiek/.test(kn));
+  checkTrue("kolom: aannames (industriegebouw h/150, h, h/500) staan erbij",
+    /h\/150/.test(kn) && /h\/500/.test(kn));
+
+  // De regel is horizontaal en houdt de vloereis.
+  const regelInvoer = bepaalDoorbuigingsInvoer(regel, pData);
+  check("regel: eis blijft de vloer-/dakeis", regelInvoer.eis === "vloerdak" ? 1 : 0, 1);
+  checkTrue("regel: klasse blijft Floor", regelInvoer.klasse === "Floor");
+  check("regel: w blijft de kromming vanaf de koorde",
+    regelInvoer.wMm, extractFieldDeflectionMm(regel, slsRes), 0.01);
+
+  // Hetzelfde langs de volledige bouwer, want dáár komt het rapport vandaan.
+  const { inputs } = buildSteelCheckInputs({
+    ...pData, profileDb: new Map([["HEA160", { geometry: { h: 152 } }]]),
+  });
+  const inKolom = inputs.find((i) => i.beam_id === 1);
+  const inRegel = inputs.find((i) => i.beam_id === 3);
+  checkTrue("bouwer: kolom → Custom met noemer 300",
+    inKolom?.deflection_limit_class === "Custom" &&
+    inKolom?.deflection_limit_numerator === 300 &&
+    inKolom?.deflection_add_limit_numerator === 300);
+  checkTrue("bouwer: regel → Floor met de klassenoemer uit de kern",
+    inRegel?.deflection_limit_class === "Floor" &&
+    inRegel?.deflection_add_limit_numerator === 0);
+  checkTrue("bouwer: kolom-UC op h/300 blijft ruim onder 1 (portaal zwaait niet)",
+    Math.abs(inKolom.deflection_actual_max_mm) / (5000 / 300) < 1);
+
+  // Ontsnappingsluik: kiest de gebruiker zelf een klasse, dan geldt die.
+  const metKlasse = bepaalDoorbuigingsInvoer(
+    { ...kolom, checkConfig: { deflectionClass: "floor" } }, pData,
+  );
+  check("kolom met expliciete klasse: vloereis geldt weer",
+    metKlasse.eis === "vloerdak" ? 1 : 0, 1);
+  checkTrue("kolom met expliciete klasse: klasse Floor", metKlasse.klasse === "Floor");
+
+  // Drempel: 75°, dezelfde die bepaalStandaardRol hanteert.
+  const schuin60 = { id: 9, from: 1, to: 10 };
+  const schuinNodes = [...pNodes, { id: 10, x: 1000, z: 1732 }]; // 60°
+  check("hellingshoek 60° wordt correct berekend",
+    hellingGradenVanStaaf(schuin60, schuinNodes), 60, 0.5);
+  checkTrue("60° telt NIET als verticaal", !isOverwegendVerticaal(schuin60, schuinNodes));
+  const steil80 = { id: 9, from: 1, to: 11 };
+  const steilNodes = [...pNodes, { id: 11, x: 1000, z: 5671 }]; // 80°
+  checkTrue("80° telt WEL als verticaal", isOverwegendVerticaal(steil80, steilNodes));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  [9] w_add, w_perm en de belastingscombinatie staan in het rapport
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Tweede bevinding: de bouwer voerde onvoorwaardelijk de KARAKTERISTIEKE
+// combinatie, terwijl de notitie die de kern bij w_add meestuurt de FREQUENTE
+// (6.15b) noemt — het rapport zei dus niet wat er gerekend was. En
+// `deflection_permanent_mm: 0` maakt w_add gelijk aan w_fin, twee rapportregels
+// met hetzelfde getal, zonder dat ergens stond waarom.
+//
+// Model: vrij opgelegde ligger met een blijvende neerwaartse last (G) en
+// WINDZUIGING (W) omhoog. De standaardcombinaties geven dan:
+//   karakteristiek (6.14b) = G + 0,6·W  → de KLEINSTE zakking
+//   frequent       (6.15b) = G          → de grootste
+//   quasi-blijvend (6.16b) = G          → idem
+// "De karakteristieke is toch altijd de zwaarste" is hier dus aantoonbaar
+// onwaar; wie alleen die combinatie voert, toetst 40 % van de zakking.
+log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
+{
+  const qG = -6, qW = +5; // N/mm — W is zuiging (omhoog)
+  const zuigingCases = new Map([
+    [1, solve({ nodes, beams: solverBeams, supports, loads: [{ beamId: 1, q: qG }] })],
+    [4, solve({ nodes, beams: solverBeams, supports, loads: [{ beamId: 1, q: qW }] })],
+  ]);
+  const zCombos = defaultCombinations();
+  const zResults = new Map(zCombos.map((c) => [c.id, combineResults(c, zuigingCases)]));
+  const ligger = { id: 1, from: 1, to: 2, material: "S235", profile: "HEA160" };
+  const zData = {
+    nodes, beams: [ligger], supports,
+    combinations: zCombos, combinationResults: zResults,
+  };
+
+  const wKar = extractFieldDeflectionMm(ligger, zResults.get(6)); // G + 0,6·W
+  const wFreq = extractFieldDeflectionMm(ligger, zResults.get(7)); // G
+  checkTrue("sanity: de karakteristieke geeft hier de KLEINSTE zakking",
+    Math.abs(wKar) < Math.abs(wFreq) - 1);
+  check("sanity: w_kar = (6 − 0,6·5)/6 · w_freq", wKar, (3 / 6) * wFreq, 0.5);
+
+  const invoer = bepaalDoorbuigingsInvoer(ligger, zData);
+  check("maatgevend is de grootste van de voorgeschreven combinaties",
+    invoer.wMm, wFreq, 0.01);
+  checkTrue("en dus NIET de karakteristieke", Math.abs(invoer.wMm - wKar) > 1);
+
+  const n = invoer.notes.join(" ");
+  checkTrue("notitie noemt de maatgevende combinatie bij naam",
+    /Maatgevend is "SLS Frequent"/.test(n));
+  checkTrue("notitie noemt alle drie de uitdrukkingen die A1.4.3 aanwijst",
+    /6\.14b/.test(n) && /6\.15b/.test(n) && /6\.16b/.test(n));
+  checkTrue("notitie legt uit dat één zakking twee toetsen voedt",
+    /w_fin én w_add uit één zakking/.test(n));
+  checkTrue("notitie meldt dat w_add gelijk is aan w_fin",
+    /w_add is hier GELIJK aan w_fin/.test(n));
+  checkTrue("notitie zegt waarom: w1 is niet af te leiden",
+    /geen BGT-combinatie met uitsluitend de blijvende belasting/.test(n));
+  checkTrue("notitie zegt dat de w_add-regel daarmee geen w2 + w3 is",
+    /geen w2 \+ w3/.test(n));
+
+  // Diezelfde notities moeten ook langs de volledige bouwer in de invoer voor
+  // de kern belanden — daar leest het rapport ze uit.
+  const { inputs } = buildSteelCheckInputs({
+    ...zData, profileDb: new Map([["HEA160", { geometry: { h: 152 } }]]),
+  });
+  const bn = (inputs[0]?.deflection_notes ?? []).join(" ");
+  checkTrue("bouwer: de verantwoording zit in deflection_notes",
+    /Maatgevend is "SLS Frequent"/.test(bn) && /w_add is hier GELIJK aan w_fin/.test(bn));
+  checkTrue("bouwer: de koorde-referentielijn staat er nog steeds bij",
+    /vanaf de koorde/.test(bn));
+
+  // Ontbrekende combinaties worden gemeld, niet stilzwijgend overgeslagen.
+  const alleenKar = zCombos.filter((c) => c.type !== "sls" || /karakter/i.test(c.name));
+  const magerNotes = bepaalDoorbuigingsInvoer(ligger, { ...zData, combinations: alleenKar })
+    .notes.join(" ");
+  checkTrue("ontbrekende voorgeschreven combinaties staan in het rapport",
+    /Niet meegewogen/.test(magerNotes) && /6\.15b en 6\.16b/.test(magerNotes));
 }
 
 log(`\n${"─".repeat(60)}`);

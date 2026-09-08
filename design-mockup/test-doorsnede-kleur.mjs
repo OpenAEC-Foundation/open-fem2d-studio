@@ -1,13 +1,28 @@
 // Doorsnedekleur in de miniatuur — wat er ná het samenstellen op het scherm
 // staat, niet wat er in het bestand staat.
 //
-// Beton heeft één afgesproken vlakkleur: #C0C0C0 = 192-192-192, in élk thema
-// gelijk (materiaalkleurenblok in `themes.css`, en `beton/tekenkleuren.ts`).
+// TWEE materialen hebben een afgesproken vlakkleur die in élk thema gelijk
+// hoort te zijn (materiaalkleurenblok in `themes.css`, en
+// `beton/tekenkleuren.ts`):
+//
+//   beton  --theme-beton-vlak  #C0C0C0 = 192-192-192
+//   hout   --theme-hout-vlak   #E9DECA = 233-222-202
+//
 // Die afspraak is niet te bewaken door alleen de `fill` te lezen: de miniatuur
 // staat in `.pk-tekening` met `background: var(--theme-bg)`, dus zodra het pad
 // een dekking onder 1 heeft mengt de themakleur mee en is de uitkomst zowel
-// afwijkend als thema-afhankelijk. Met de dekking op 0,95 gaf dat
-// rgb(195,195,195) in het lichte thema en rgb(184,184,185) in openaec.
+// afwijkend als thema-afhankelijk. Met de dekking op 0,95:
+//
+//            licht         forge         openaec       blueprint     contrast
+//   beton    195-195-195   185-185-185   184-184-184   183-184-185   182-182-182
+//   hout     234-223-204   224-214-195   223-213-194   222-212-194   221-211-192
+//
+// Geen van die tien is de materiaalkleur, en geen twee kolommen zijn gelijk.
+// Beton is daarom op dekking 1 gezet; hout bleef staan met als reden dat alleen
+// voor beton een exacte RGB-waarde was afgesproken. Dat argument houdt geen
+// stand tegen de belofte "in élk thema dezelfde kleur", die over de kleur op het
+// SCHERM gaat en niet over de kleur in het bestand — dus staat hout nu ook op 1
+// en pint deze test hem net zo hard vast als beton.
 //
 // Deze test rendert de component werkelijk, plukt vulling en dekking uit de
 // SVG, leest de tokens uit `themes.css` en `ProfielKiezer.css`, en stelt de
@@ -63,6 +78,12 @@ function token(css, naam) {
   return treffers[treffers.length - 1][1].trim();
 }
 
+/** Zoals `token`, maar `null` in plaats van een uitzondering als hij ontbreekt. */
+function tokenOfNiets(css, naam) {
+  const treffers = [...css.matchAll(new RegExp(`--${naam}\\s*:\\s*([^;]+);`, "g"))];
+  return treffers.length ? treffers[treffers.length - 1][1].trim() : null;
+}
+
 function hexNaarRgb(hex) {
   const h = hex.replace("#", "");
   const v = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
@@ -106,21 +127,41 @@ const staal = doorsnedePad("staal");
 const hout = doorsnedePad("hout");
 const vrij = doorsnedePad("vrij");
 
-const betonVul = varMetTerugval(beton.fill);
-checkEq("beton vult met de materiaaltoken", betonVul.naam, "--theme-beton-vlak");
-checkEq("beton-terugval in de SVG is 192-192-192", hexNaarRgb(betonVul.terugval), [192, 192, 192]);
-checkEq("beton tekent volledig dekkend", Number(beton.opacity), 1);
+// De twee materialen met een afgesproken kleur: dezelfde eisen voor allebei.
+// Hout stond hier tot september 2026 op 0,95 met als reden dat er voor hout
+// geen exacte RGB-waarde was afgesproken; die uitzondering is weg, want de
+// belofte "in élk thema dezelfde kleur" gaat over de kleur op het scherm.
+const VAST = {
+  beton: { pad: beton, token: "--theme-beton-vlak", rgb: [192, 192, 192] },
+  hout: { pad: hout, token: "--theme-hout-vlak", rgb: [233, 222, 202] },
+};
+for (const [materiaal, { pad, token: tokenNaam, rgb }] of Object.entries(VAST)) {
+  const vul = varMetTerugval(pad.fill);
+  checkEq(`${materiaal} vult met de materiaaltoken`, vul.naam, tokenNaam);
+  checkEq(`${materiaal}-terugval in de SVG is ${rgb.join("-")}`, hexNaarRgb(vul.terugval), rgb);
+  checkEq(`${materiaal} tekent volledig dekkend`, Number(pad.opacity), 1);
+}
 
-// De verzachting hoort te blijven staan waar de vulling het thema tóch volgt.
+// De verzachting hoort te blijven staan waar de vulling het thema tóch volgt:
+// daar is geen afspraak over de precieze RGB-waarde, en er valt dus ook niets
+// van af te wijken.
 checkEq("staal houdt zijn verzachting", Number(staal.opacity), 0.95);
 checkEq("vrij materiaal houdt zijn verzachting", Number(vrij.opacity), 0.95);
-checkEq("hout ongewijzigd (geen exacte afspraak)", Number(hout.opacity), 0.95);
 
 // ── 2. De tokens waarmee de browser rekent ────────────────────────────────
 log("2. Tokens uit themes.css en ProfielKiezer.css");
 
-const betonVlak = token(themesCss, "theme-beton-vlak");
-checkEq("--theme-beton-vlak staat op 192-192-192", hexNaarRgb(betonVlak), [192, 192, 192]);
+// Het materiaalkleurenblok staat op een KAAL `:root {`, ná de thema's. Dat is
+// een andere selector dan de `:root,` van het lichte thema, en er is er maar
+// één van.
+const materiaalBlok = blok(themesCss, ":root {");
+for (const { token: tokenNaam, rgb } of Object.values(VAST)) {
+  checkEq(
+    `${tokenNaam} staat op ${rgb.join("-")}`,
+    hexNaarRgb(token(materiaalBlok, tokenNaam.slice(2))),
+    rgb,
+  );
+}
 
 // De miniatuur staat op de paneelachtergrond; als dat ooit een andere token
 // wordt, verandert ook de menging en moet deze test opnieuw bekeken worden.
@@ -131,47 +172,85 @@ checkTrue(
   paneel.trim().slice(0, 120),
 );
 
+// ALLE thema's uit themes.css, niet een greep eruit. Een thema dat later wordt
+// toegevoegd en hier niet in staat, wordt niet nagerekend; daarom telt de test
+// hieronder ook of het er nog evenveel zijn als er `--theme-bg` in het bestand
+// staan.
 const THEMAS = {
   light: ':root,\n[data-theme="light"]',
+  forge: '[data-theme="forge"]',
   openaec: '[data-theme="openaec"]',
   blueprint: '[data-theme="blueprint"]',
+  contrast: '[data-theme="contrast"]',
 };
 const achtergrond = {};
+const themaBlok = {};
 for (const [naam, selector] of Object.entries(THEMAS)) {
-  achtergrond[naam] = hexNaarRgb(token(blok(themesCss, selector), "theme-bg"));
+  themaBlok[naam] = blok(themesCss, selector);
+  achtergrond[naam] = hexNaarRgb(token(themaBlok[naam], "theme-bg"));
 }
 log(`  · achtergronden: ${Object.entries(achtergrond).map(([k, v]) => `${k} rgb(${v})`).join(", ")}`);
+checkEq(
+  "elk thema in themes.css wordt nagerekend",
+  [...themesCss.matchAll(/--theme-bg\s*:/g)].length,
+  Object.keys(THEMAS).length,
+);
 
 // ── 3. De kleur die op het scherm belandt ─────────────────────────────────
-log("3. Samengestelde betonkleur per thema");
+//
+// Waarom dit méér is dan `meng(kleur, achtergrond, 1) === kleur` — wat een
+// waarheid over `meng` zou zijn en niet over de app: de vulkleur wordt PER
+// THEMA opgezocht. Het materiaalkleurenblok staat op `:root` en een thema mag
+// hem overschrijven (dat zegt themes.css er zelf bij). Doet een thema dat, dan
+// loopt de samengestelde kleur uiteen ook al is de dekking 1, en gaat deze
+// sectie om terwijl sectie 1 groen blijft.
+log("3. Samengestelde materiaalkleur per thema");
 
-const vulRgb = hexNaarRgb(betonVlak);
-const dekking = Number(beton.opacity);
-
-for (const naam of Object.keys(THEMAS)) {
-  checkEq(`beton in ${naam}`, meng(vulRgb, achtergrond[naam], dekking), [192, 192, 192]);
-}
-
-// Vastleggen wat er stukgaat als de dekking terugkomt: dit is de reden dat
-// beton op 1 staat, niet een voorkeur. De laatste bit kan in de browser één
-// schelen (de kanalen landen soms precies op ,5), maar dát het afwijkt en dát
-// het per thema verschilt is niet afrondingsgevoelig.
-log("   (ter vergelijking, dekking 0,95 — de situatie die dit repareerde)");
-for (const naam of Object.keys(THEMAS)) {
-  const oud = meng(vulRgb, achtergrond[naam], 0.95);
-  log(`   · ${naam}: rgb(${oud.join(",")})`);
+for (const [materiaal, { pad, token: tokenNaam, rgb }] of Object.entries(VAST)) {
+  const dekking = Number(pad.opacity);
+  const uitkomsten = [];
+  for (const naam of Object.keys(THEMAS)) {
+    // De token zoals díé zou uitpakken in dit thema: de override van het thema
+    // als hij er is, anders de waarde uit het materiaalkleurenblok.
+    const inThema = tokenOfNiets(themaBlok[naam], tokenNaam.slice(2));
+    const vulRgb = hexNaarRgb(inThema ?? token(materiaalBlok, tokenNaam.slice(2)));
+    const opScherm = meng(vulRgb, achtergrond[naam], dekking);
+    uitkomsten.push(opScherm.join("-"));
+    checkEq(`${materiaal} in ${naam}`, opScherm, rgb);
+  }
   checkTrue(
-    `dekking 0,95 zou in ${naam} afwijken van 192-192-192`,
-    oud.some((v) => v !== 192),
+    `${materiaal} heeft in alle ${uitkomsten.length} thema's dezelfde kleur`,
+    new Set(uitkomsten).size === 1,
+    uitkomsten.join(" | "),
   );
 }
-// Dezelfde menging was ook thema-afhankelijk — dát is de tweede fout.
-const oudeKleuren = Object.keys(THEMAS).map((n) => meng(vulRgb, achtergrond[n], 0.95).join(","));
-checkTrue(
-  "dekking 0,95 gaf per thema een ándere betonkleur",
-  new Set(oudeKleuren).size > 1,
-  oudeKleuren.join(" | "),
-);
+
+// Vastleggen wat er stukgaat als de dekking terugkomt: dát is de reden dat
+// beton én hout op 1 staan, niet een voorkeur. De laatste eenheid kan één
+// schelen waar een kanaal precies op ,5 landt (bij beton in openaec komt het
+// blauwkanaal in exacte rekenkunde op 184,5 en in binary64 op 184,49999…, dus
+// naar beneden), maar dát het afwijkt en dát het per thema verschilt is niet
+// afrondingsgevoelig.
+log("   (ter vergelijking, dekking 0,95 — de situatie die dit repareerde)");
+for (const [materiaal, { rgb }] of Object.entries(VAST)) {
+  const oudeKleuren = [];
+  for (const naam of Object.keys(THEMAS)) {
+    const oud = meng(rgb, achtergrond[naam], 0.95);
+    oudeKleuren.push(oud.join("-"));
+    checkTrue(
+      `dekking 0,95 zou ${materiaal} in ${naam} van ${rgb.join("-")} laten afwijken`,
+      oud.some((v, i) => v !== rgb[i]),
+      oud.join("-"),
+    );
+  }
+  log(`   · ${materiaal}: ${oudeKleuren.join(" | ")}`);
+  // Dezelfde menging was ook thema-afhankelijk — dát is de tweede fout.
+  checkTrue(
+    `dekking 0,95 gaf ${materiaal} per thema een ándere kleur`,
+    new Set(oudeKleuren).size > 1,
+    oudeKleuren.join(" | "),
+  );
+}
 
 // ── 4. De andere plek waar beton getekend wordt ───────────────────────────
 log("4. DoorsnedeTekening tekent beton eveneens dekkend");

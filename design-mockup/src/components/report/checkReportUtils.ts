@@ -10,8 +10,8 @@
  */
 import katex from "katex";
 import type { TFunction } from "i18next";
-import type { MemberCheckResult } from "../../lib/checkTypes";
-import { isConcreteCheckResult, isSteelCheckResult } from "../../lib/checkTypes";
+import type { CheckSoort, MemberCheckResult } from "../../lib/checkTypes";
+import { checkSoort } from "../../lib/checkTypes";
 import type { Deelstap } from "../../lib/types/steel/Deelstap";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
@@ -392,26 +392,62 @@ export function governingInfo(r: MemberCheckResult): GoverningInfo {
 }
 
 /**
- * Welke normen daadwerkelijk in de resultaten voorkomen. Kruislaaghout telt
- * als hout: het is dezelfde norm (EN 1995), alleen per lamel getoetst.
+ * Welke toetsingskaders daadwerkelijk in de resultaten voorkomen — dezelfde
+ * indeling als de rapportkern hanteert.
+ *
+ * `vrij` staat er los in en niet bij `timber`: de vrije spanningstoets is wél
+ * gedraaid maar tegen géén norm. Zonder eigen vlag heeft die soort geen plek
+ * om naartoe te gaan en valt hij vroeg of laat weer bij een norm die niet is
+ * toegepast — precies de fout die dit bestand had.
  */
-export function usedNorms(
-  results: MemberCheckResult[],
-): { steel: boolean; timber: boolean; concrete: boolean } {
-  let steel = false;
-  let timber = false;
-  let concrete = false;
+export interface GebruikteKaders {
+  steel: boolean;
+  timber: boolean;
+  concrete: boolean;
+  /** Wél getoetst, maar tegen géén norm: de vrije spanningstoets. */
+  vrij: boolean;
+}
+
+/**
+ * Welke vlag een soort zet. Kruislaaghout deelt de vlag met massief hout: het
+ * is dezelfde norm (EN 1995), alleen per lamel getoetst.
+ *
+ * Een tabel en geen if/else-keten: er is geen tak die "de rest" opvangt, en
+ * een nieuwe soort in `CheckSoort` moet hier expliciet een vlag krijgen —
+ * anders weigert `tsc` deze `Record`.
+ */
+const VLAG_PER_SOORT: Record<CheckSoort, keyof GebruikteKaders> = {
+  staal: "steel",
+  hout: "timber",
+  clt: "timber",
+  beton: "concrete",
+  spanning: "vrij",
+};
+
+/** Welke normen daadwerkelijk in de resultaten voorkomen. */
+export function usedNorms(results: MemberCheckResult[]): GebruikteKaders {
+  const uit: GebruikteKaders = {
+    steel: false, timber: false, concrete: false, vrij: false,
+  };
   for (const r of results) {
-    if (isSteelCheckResult(r)) steel = true;
-    else if (isConcreteCheckResult(r)) concrete = true;
-    else timber = true;
+    const soort = checkSoort(r);
+    // Een vorm die `checkSoort` niet herkent zet geen enkele vlag: liever geen
+    // norm noemen dan de verkeerde.
+    if (soort !== null) uit[VLAG_PER_SOORT[soort]] = true;
   }
-  return { steel, timber, concrete };
+  return uit;
 }
 
 /**
  * Voetregel met de toetsbasis — alleen de normen die echt gebruikt zijn.
  * `t` hoort bij de "ribbon"-namespace (report.*-sleutels).
+ *
+ * `vrij` levert hier bewust niets op: bij die staven is geen norm toegepast,
+ * dus is er ook geen toetsbasis om te noemen. Wat er wél over die staaf te
+ * zeggen valt, staat per regel in de kolom "Norm" ("geen norm") en in de
+ * kopregel van haar afleiding. Een model dat alleen op vergelijkspanning is
+ * getoetst, krijgt hier dus geen voetregel — in plaats van de onware
+ * "hout: NEN-EN 1995-1-1…" die er stond.
  */
 export function basisText(t: TFunction, results: MemberCheckResult[]): string | null {
   const { steel, timber, concrete } = usedNorms(results);

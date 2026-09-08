@@ -6,8 +6,11 @@ import {
   type Windgebied, type TerreinCategorie,
 } from "../../lib/wind/windEurocode";
 import {
-  NORM_SLEUTELS, gekozenNormen, type NormSleutel,
+  normOordelen, normStanden, normenUitToetsen, zetNormStand,
+  type NormOordeel, type NormSleutel, type NormStand,
 } from "../../lib/normenInRapport";
+import { useCheckStore } from "../../stores/checkStore";
+import { usedNorms } from "../report/checkReportUtils";
 import "./ProjectSettingsDialog.css";
 
 interface ProjectSettingsDialogProps {
@@ -58,26 +61,26 @@ export type TerreinCategorieId = TerreinCategorie;
 /**
  * Normen die het project toepast (uitgangspunten van de berekening).
  *
- * De drie normvlaggen betekenen "óók vermelden zonder dat er materiaal van die
- * soort in het model zit" — vooruitlopen op wat er nog getekend wordt. Wat er
- * wél in het model zit of waarop getoetst is, komt sowieso in het rapport; de
- * regels staan in `lib/normenInRapport`.
+ * Deze twee velden samen dragen per norm ÉÉN van drie standen — "volgt het
+ * model", "altijd vermelden", "niet vermelden". De boolean alleen zegt niets:
+ * hij telt pas als de sleutel ook in `normenHandmatig` staat. De regels, en de
+ * reden dat dit geen aan/uit-vinkje meer is, staan in `lib/normenInRapport`.
  */
 export interface Uitgangspunten {
-  /** EN 1993 — staalconstructies. */
+  /** EN 1993 — staalconstructies. Alleen betekenisvol via `normenHandmatig`. */
   en1993: boolean;
-  /** EN 1995 — houtconstructies. */
+  /** EN 1995 — houtconstructies (inclusief kruislaaghout). */
   en1995: boolean;
-  /** EN 1992 — betonconstructies (nog niet geïmplementeerd; alleen vermelding). */
+  /** EN 1992 — betonconstructies. */
   en1992: boolean;
   /**
-   * De normvinkjes die de gebruiker zelf heeft omgezet. Zonder dit spoor is
-   * aan `en1995: true` niet te zien of het een keuze was of de standaardstand,
-   * en dan meldt een zuiver stalen rapport doodleuk dat EN 1995 is toegepast.
-   * Ontbreekt het veld (projecten van vóór deze wijziging), dan volgen alle
-   * normen het model.
+   * De normen waarover de gebruiker zelf een uitspraak heeft gedaan. Zonder
+   * dit spoor is aan `en1995: true` niet te zien of het een keuze was of de
+   * standaardstand, en dan meldt een zuiver stalen rapport doodleuk dat
+   * EN 1995 is toegepast. Ontbreekt het veld (projecten van vóór deze
+   * wijziging), dan volgen alle normen het model — dat laadt zonder migratie.
    */
-  normenHandmatig?: NormSleutel[];
+  normenHandmatig?: readonly NormSleutel[];
   /** Gevolgklasse volgens EN 1990. */
   gevolgklasse: Gevolgklasse;
   /** Ontwerplevensduurklasse volgens EN 1990 tabel 2.1. */
@@ -97,10 +100,11 @@ export interface Uitgangspunten {
 }
 
 /**
- * De stand van een project waar niemand iets aan heeft gekozen. De drie
- * normvlaggen staan daarom uit: een vinkje dat de gebruiker nooit heeft gezet
- * mag zijn norm niet in het rapport zetten. Ze volgen dan het model — staal in
- * het model levert EN 1993, hout levert EN 1995.
+ * De stand van een project waar niemand iets aan heeft gekozen. `normenHandmatig`
+ * is leeg, dus alle drie de normen staan op "volgt het model" — staal in het
+ * model levert EN 1993, hout levert EN 1995. De drie booleans staan op false
+ * omdat ze in die stand toch niet meetellen; een `true` zou alleen maar
+ * verwarrend in het projectbestand staan.
  */
 export const DEFAULT_UITGANGSPUNTEN: Uitgangspunten = {
   en1993: false,
@@ -148,6 +152,56 @@ const emptyProject: ProjectInfo = {
   uitgangspunten: DEFAULT_UITGANGSPUNTEN,
 };
 
+/**
+ * De drie normen zoals ze in de uitgangspunten staan. `materiaal` is de soort
+ * die deze norm in het model aandraagt — nodig om per stand in gewone taal te
+ * zeggen wat er gebeurt, in plaats van de gebruiker de regel te laten raden.
+ * EN 1992 staat hier gelijkwaardig bij: de betontoetsing draait mee in
+ * `checkStore` en heeft een eigen rapporthoofdstuk, dus een uitgeschakeld
+ * hokje met "volgt later" zou nu een onwaarheid zijn.
+ */
+const NORMEN: ReadonlyArray<{ sleutel: NormSleutel; label: string; materiaal: string }> = [
+  { sleutel: "en1993", label: "Eurocode 3 — Staal (EN 1993)", materiaal: "staal" },
+  { sleutel: "en1995", label: "Eurocode 5 — Hout (EN 1995)", materiaal: "hout of kruislaaghout" },
+  { sleutel: "en1992", label: "Eurocode 2 — Beton (EN 1992)", materiaal: "beton" },
+];
+
+/** De drie standen, in de volgorde waarin de keuzelijst ze aanbiedt. */
+const STAND_LABEL: ReadonlyArray<{ stand: NormStand; label: string }> = [
+  { stand: "model", label: "Volgt het model" },
+  { stand: "aan", label: "Altijd vermelden" },
+  { stand: "uit", label: "Niet vermelden" },
+];
+
+/**
+ * Wat de gekozen stand voor het rapport betekent, in één zin onder de
+ * keuzelijst.
+ *
+ * Dit regeltje is de kern van de reparatie. Het lege hokje van vroeger stond
+ * zowel voor "ik wil deze norm niet zien" als voor "ik heb er nooit iets mee
+ * gedaan", en het zweeg helemaal wanneer een uitgevoerde toetsing de keuze
+ * overrulede. Nu zegt het scherm per norm wat er werkelijk gebeurt — inclusief
+ * het geval waarin de keuze van de gebruiker het aflegt tegen een feit over de
+ * berekening.
+ */
+function normGevolg(oordeel: NormOordeel, stand: NormStand, materiaal: string): string {
+  switch (oordeel) {
+    case "getoetst":
+      return stand === "uit"
+        ? "Staat tóch in het rapport: er is op deze norm getoetst. Een uitgevoerde"
+          + " toetsing is een feit over de berekening en geen voorkeur; uw keuze telt"
+          + " weer zodra die toetsresultaten er niet meer zijn."
+        : "Staat in het rapport: er is op deze norm getoetst.";
+    case "keuze-aan":
+      return `Staat in het rapport, ook zolang er nog geen ${materiaal} in het model zit.`;
+    case "keuze-uit":
+      return `Staat niet in het rapport, ook niet als er ${materiaal} in het model zit.`;
+    case "model":
+      return `Staat in het rapport zodra er ${materiaal} in het model zit of erop`
+        + " getoetst is — anders niet.";
+  }
+}
+
 export default function ProjectSettingsDialog({ open, onClose }: ProjectSettingsDialogProps) {
   const { t } = useTranslation("common");
   const [project, setProject] = useState<ProjectInfo>(emptyProject);
@@ -156,6 +210,13 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
   const [erpSearch, setErpSearch] = useState("");
   const [erpResults, setErpResults] = useState<ErpProject[]>([]);
   const [erpLoading, setErpLoading] = useState(false);
+  // Waarop daadwerkelijk getoetst is. Dat is de enige regel die de keuze van
+  // de gebruiker overrulet, dus de enige die de dialoog erbij moet kunnen
+  // vertellen. Wélk materiaal er in het model zit blijft hier bewust buiten
+  // beeld: de uitgangspunten hebben de staven niet in handen, en een uit de
+  // toetsing gereconstrueerd model zou verouderen zodra er een staaf bij komt
+  // — dan stond er weer iets op het scherm dat niet waar is.
+  const toetsResultaten = useCheckStore((s) => s.results);
 
   useEffect(() => {
     if (!open) return;
@@ -178,11 +239,13 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
   // Uitgangspunten met terugval op de defaults, zodat projecten van vóór deze
   // uitbreiding gewoon laden (gevolgklasse CC2, normen volgen het model).
   const uitgangspunten: Uitgangspunten = project.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
-  // De vinkjes tonen alleen wat de gebruiker zelf heeft gezet. In een bestaand
-  // projectbestand staat `en1995: true` zonder dat te achterhalen is wie dat
-  // deed; die stand telt niet als keuze en hoort dus ook niet als aangevinkt
-  // hokje te verschijnen, want het rapport negeert hem eveneens.
-  const gekozen = gekozenNormen(uitgangspunten);
+  // De keuzelijsten tonen de stand zoals het rapport hem leest — inclusief
+  // "volgt het model" voor een bestaand projectbestand, waarin `en1995: true`
+  // staat zonder dat te achterhalen is wie dat deed. `normOordelen` zegt er
+  // per norm bij welke regel wint, zodat het scherm kan melden dat een
+  // uitgevoerde toetsing de keuze overrulet in plaats van erover te zwijgen.
+  const standen = normStanden(uitgangspunten);
+  const oordelen = normOordelen(uitgangspunten, normenUitToetsen(usedNorms(toetsResultaten)));
   const updateUitgangspunt = <K extends keyof Uitgangspunten>(
     sleutel: K,
     waarde: Uitgangspunten[K],
@@ -194,24 +257,18 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
   };
 
   /**
-   * Een normvinkje omzetten. Naast de stand zelf leggen we vast DÁT de
-   * gebruiker hem heeft gezet — zonder dat spoor is een aangezette norm niet
-   * te onderscheiden van de standaardstand, en dat is precies wat een zuiver
-   * stalen rapport EN 1995 liet melden. Uitzetten telt evengoed als keuze.
+   * Een norm op een andere stand zetten. Alle drie de standen lopen hier
+   * langs, óók "volgt het model": dat is de weg terug die er eerst niet was,
+   * want een vinkje kon zijn eigen spoor in `normenHandmatig` niet meer
+   * uitwissen en de gebruiker zat na één klik vast aan zijn eigen keuze.
+   * `zetNormStand` houdt de twee opgeslagen velden consistent.
    */
-  const updateNorm = (sleutel: NormSleutel, aan: boolean) => {
+  const updateNormStand = (sleutel: NormSleutel, stand: NormStand) => {
     setProject((prev) => {
       const vorige = prev.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN;
-      const handmatig = new Set(vorige.normenHandmatig ?? []);
-      handmatig.add(sleutel);
       return {
         ...prev,
-        uitgangspunten: {
-          ...vorige,
-          [sleutel]: aan,
-          // Vaste volgorde, zodat twee gelijke keuzes ook gelijke JSON geven.
-          normenHandmatig: NORM_SLEUTELS.filter((k) => handmatig.has(k)),
-        },
+        uitgangspunten: { ...vorige, ...zetNormStand(vorige, sleutel, stand) },
       };
     });
   };
@@ -365,36 +422,50 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
             <div className="proj-section-title">Uitgangspunten</div>
             <div className="proj-fields">
               <div className="proj-field">
-                <label>Toegepaste normen</label>
-                <div className="proj-normen">
-                  {([
-                    ["en1993", "Eurocode 3 — Staal (EN 1993)", true],
-                    ["en1995", "Eurocode 5 — Hout (EN 1995)", true],
-                    ["en1992", "Eurocode 2 — Beton (EN 1992)", false],
-                  ] as const).map(([sleutel, label, beschikbaar]) => (
-                    <label
-                      key={sleutel}
-                      className={`proj-norm${beschikbaar ? "" : " proj-norm-uit"}`}
-                      title={beschikbaar
-                        ? "Altijd vermelden, ook zonder dit materiaal in het model"
-                        : "Nog niet beschikbaar — betontoetsing volgt later"}
-                    >
-                      <input
-                        type="checkbox"
-                        disabled={!beschikbaar}
-                        checked={gekozen[sleutel]}
-                        onChange={(e) => updateNorm(sleutel, e.target.checked)}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+                <label id="proj-normen-kop">Toegepaste normen</label>
+                {/* Drie standen per norm, geen vinkje. Een vinkje toonde
+                    "volgt het model" en "niet vermelden" als hetzelfde lege
+                    hokje — twee standen met verschillende uitkomst in het
+                    rapport — en kende geen weg terug naar de eerste. De regel
+                    onder elke keuzelijst zegt wat de stand voor het rapport
+                    betekent, zodat de gebruiker het niet hoeft af te leiden. */}
+                <div className="proj-normen" role="group" aria-labelledby="proj-normen-kop">
+                  {NORMEN.map(({ sleutel, label, materiaal }) => {
+                    const stand = standen[sleutel];
+                    const oordeel = oordelen[sleutel];
+                    // Alleen als een uitgevoerde toetsing de keuze "niet
+                    // vermelden" overrulet staat er iets op het scherm dat de
+                    // gebruiker niet verwacht; dat mag hij niet missen.
+                    const overruled = oordeel === "getoetst" && stand === "uit";
+                    return (
+                      <div key={sleutel} className="proj-norm">
+                        <div className="proj-norm-regel">
+                          <span className="proj-norm-naam">{label}</span>
+                          <select
+                            className="proj-norm-stand"
+                            aria-label={`${label} in het rapport`}
+                            value={stand}
+                            onChange={(e) => updateNormStand(sleutel, e.target.value as NormStand)}
+                          >
+                            {STAND_LABEL.map(({ stand: waarde, label: standLabel }) => (
+                              <option key={waarde} value={waarde}>{standLabel}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <p className={`proj-norm-gevolg${overruled ? " proj-norm-overruled" : ""}`}>
+                          {normGevolg(oordeel, stand, materiaal)}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
                 <p className="proj-uitleg">
-                  Wat u hier aanvinkt staat altijd in de uitgangspunten van het
-                  rapport, ook als het materiaal nog getekend moet worden. Laat u
-                  het leeg, dan volgen de normen het model: een norm komt in het
-                  rapport zodra er materiaal van die soort in staat of erop
-                  getoetst is. Zo meldt een zuiver stalen berekening geen hout.
+                  Deze keuze bepaalt alleen wát het rapport bij de uitgangspunten
+                  vermeldt; aan de berekening verandert ze niets. Standaard volgt
+                  elke norm het model, zodat een zuiver stalen berekening geen
+                  hout meldt. Zet een norm op “Altijd vermelden” als u vooruitloopt
+                  op wat u nog gaat tekenen — “Volgt het model” neemt die keuze
+                  weer terug.
                 </p>
               </div>
               <div className="proj-row">

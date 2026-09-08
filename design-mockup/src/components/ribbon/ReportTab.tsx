@@ -28,7 +28,7 @@ import RibbonGroup from "./RibbonGroup";
 import RibbonButton from "./RibbonButton";
 import RibbonButtonStack from "./RibbonButtonStack";
 import { useReportStore } from "../../stores/reportStore";
-import { useCheckStore } from "../../stores/checkStore";
+import { korvenUitStaven, useCheckStore } from "../../stores/checkStore";
 import { useBetonStijfheidStore } from "../../stores/betonStijfheidStore";
 import { useWindowManager } from "../../hooks/useWindowManager";
 import { useProjectInfo } from "../report/useProjectInfo";
@@ -59,6 +59,11 @@ export default function ReportTab(_props: ReportTabProps) {
 
   const project = useProjectInfo();
   const checkResults = useCheckStore((s) => s.results);
+  // Het model waarmee de toetsing GEDRAAID heeft, niet het model zoals het nu
+  // op het scherm staat. De doorsnedefiguur hoort de korf te tonen waarmee de
+  // toetsingen in ditzelfde rapport zijn gerekend; wie na het toetsen een korf
+  // wijzigt, krijgt anders een tekening die niet bij de tabellen ernaast past.
+  const lastRunData = useCheckStore((s) => s.lastRunData);
   const segmentLengteMm = useBetonStijfheidStore((s) => s.segmentLengteMm);
   const combinaties = useBetonStijfheidStore((s) => s.combinaties);
   const overgeslagen = useBetonStijfheidStore((s) => s.overgeslagen);
@@ -108,6 +113,15 @@ export default function ReportTab(_props: ReportTabProps) {
         },
         checkResults,
         stijfheid: { segmentLengteMm, combinaties, overgeslagen, staafdoorsneden },
+        // De EXACTE korf uit de staafeigenschappen, waar hij er is. Zonder deze
+        // map valt `doorsnedeUitToets` terug op de samenvattingsregel van de
+        // kern ("onder 3Ø16, …"), en dat is een samenvatting: een korf met twee
+        // verschillende staafmaten in één laag komt daar als één maat uit. Het
+        // live rapport voedde die parameter al wél, dus scherm en papier konden
+        // een andere korf tekenen.
+        korvenUitModel: new Map(
+          [...korvenUitStaven(lastRunData?.beams ?? [])].map(([id, cfg]) => [id, cfg.korf]),
+        ),
       });
       const bytes = await genereerRapportPdf(invoer);
       const { save } = await import("@tauri-apps/plugin-dialog");

@@ -43,7 +43,7 @@ import {
 // liet twee van de drie kernen onbeproefd; wie de multi-materiaalketen wilde
 // nalopen moest eerst met de hand een houten en een betonnen ligger tekenen.
 //
-//   x =      0 … 12 000   stalen portaal, 12 × 5 m, HEA 160 in S235
+//   x =      0 … 12 000   stalen portaal, 12 × 5 m, IPE 270 / IPE 330 in S235
 //   x = 16 000 … 26 000   houten ligger op drie steunpunten, 2 × 5 m, GL24h
 //   x = 30 000 … 36 000   betonnen balk op twee steunpunten, 6 m, C30/37
 //
@@ -100,10 +100,70 @@ const DEFAULT_NODES: Node[] = [
 // unity check 1,00 en is daarmee voldoende. De constructieklasse staat er niet
 // bij; dan geldt S4, de NB-waarde voor een ontwerplevensduur van 50 jaar, en
 // dat is ook de klasse waarmee bovenstaande 15 mm is afgelezen.
+//
+// DE STALEN DOORSNEDEN ZIJN GEDIMENSIONEERD, NIET OVERGENOMEN.
+//
+// Het portaal stond tot nu toe op HEA 160 — de doorsnede uit het allereerste
+// startmodel, toen er nog geen toetsing achter zat. Zodra de toetsing meeliep
+// bleek die keuze onhoudbaar: alle drie de staven kwamen NotOk uit de kern
+// (kolommen uc 1,22 op kip; de regel uc 4,00 op doorbuiging, 144 mm koorde-
+// relatieve zakking tegen een grens van 36 mm). Dat maakte het startmodel
+// ongeschikt voor waar het voor is: wie de app opent en rood ziet, weet niet
+// of de KETEN faalt of alleen de doorsnede te klein is.
+//
+// Maatvoering (12 × 5 m), opleggingen en belasting (−5 kN/m permanent op de
+// regel) zijn NIET aangepast — die zijn gegeven. Alleen de doorsneden:
+//   staaf 1 en 2 (kolommen, 5 m)   IPE 270
+//   staaf 3      (regel,    12 m)  IPE 330
+// Verschillende profielen voor kolom en regel is in een portaal gewoon, en
+// hier ook nodig: de twee staven worden door heel verschillende toetsen
+// begrensd (de kolom door kip onder het hoekmoment, de regel door de
+// doorbuiging over 12 m). Doorgerekend met de echte rekenkern geeft dat
+// uc 0,60 / 0,60 / 0,74 — dezelfde orde als de houten (0,39) en de betonnen
+// (0,52) ligger hiernaast, en ruim genoeg van 1,00 om niet als toeval te
+// lezen.
+//
+// KIPSTEUNEN OP DE REGEL — EEN AANNAME, EN WAAROM ZE VERANTWOORD IS.
+//
+// Zonder enige zijdelingse steun is een regel van 12 m op kip niet te krijgen
+// (IPE 330 komt dan op uc 1,36). Maar "geen enkele kipsteun over 12 m" is zelf
+// een zware aanname, en voor DEZE staaf een onjuiste: de last erop heet
+// "eigen gewicht dak en dakbedekking", dus er ligt per definitie een dakvlak
+// op. Gordingen of dakplaten houden de bovenflens zijdelings vast. Aangenomen
+// zijn gordingen op de kwartpunten — h.o.h. 3,0 m, aan de ruime kant voor een
+// stalen dak, dus de voorzichtige kant van wat er werkelijk ligt.
+//
+// De steunen staan op de BOVENflens (`lateralRestraints`) en niet op de onder-
+// flens. Dat is precies wat een gording doet, en de kern gaat er ook zo mee
+// om: `kipsteunen_op_de_gedrukte_flens` telt een bovenflenssteun ALLEEN mee
+// waar het moment ter plaatse positief is — waar de bovenflens dus werkelijk
+// gedrukt is. Bij dit portaal is het moment positief tussen ongeveer 1,5 en
+// 10,5 m, dus alle drie de aangenomen steunen tellen mee en de regel valt in
+// vier kipvelden van 3 m uiteen (het tweede veld is maatgevend). Bij de hoeken
+// is het moment negatief en is juist de ONDERflens gedrukt; daar is met opzet
+// geen steun aangenomen. Keert de belasting ooit om (windzuiging), dan vallen
+// de bovenflenssteunen vanzelf weg en rekent de kern de regel weer als
+// ongesteund door. De aanname is dus niet "de regel is gesteund" maar "het
+// dakvlak steunt de bovenflens", en de kern trekt daar zelf de juiste
+// conclusie uit.
+//
+// De KOLOMMEN krijgen met opzet GEEN kipsteunen. Ook daar zitten in
+// werkelijkheid gevelregels, maar die houden de BUITENflens vast, terwijl
+// onder verticale belasting op het portaal juist de BINNENflens gedrukt is
+// (het hoekmoment trekt de buitenzijde). Een gevelregel zou hier dus de
+// verkeerde flens steunen; de kolommen worden daarom over hun volle hoogte
+// als ongesteund getoetst — de veilige kant, en het is ook de reden dat kip
+// bij de kolom maatgevend is.
 const DEFAULT_BEAMS: Beam[] = [
-  { id: 1, from: 1, to: 3, material: "S235", profile: "HEA160" },
-  { id: 2, from: 2, to: 4, material: "S235", profile: "HEA160" },
-  { id: 3, from: 3, to: 4, material: "S235", profile: "HEA160" },
+  { id: 1, from: 1, to: 3, material: "S235", profile: "IPE270" },
+  { id: 2, from: 2, to: 4, material: "S235", profile: "IPE270" },
+  {
+    id: 3, from: 3, to: 4, material: "S235", profile: "IPE330",
+    // Fracties van de staaflengte, zelfde conventie als
+    // LateralBracing.top_flange_positions in de rekenkern: 0,25 / 0,50 / 0,75
+    // van 12 m is h.o.h. 3,0 m.
+    checkConfig: { lateralRestraints: [0.25, 0.5, 0.75] },
+  },
   { id: 4, from: 5, to: 6, material: "GL24h", profile: "160x400" },
   { id: 5, from: 6, to: 7, material: "GL24h", profile: "160x400" },
   {

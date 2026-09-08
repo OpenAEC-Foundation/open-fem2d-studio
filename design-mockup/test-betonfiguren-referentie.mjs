@@ -193,7 +193,7 @@ log("\n4. Dekking van de referentie");
 
 const gevallen = referentie.gevallen;
 const heeft = (f) => gevallen.some(f);
-checkTrue(`minstens zes doorsneden (${gevallen.length})`, gevallen.length >= 6);
+checkTrue(`minstens negen doorsneden (${gevallen.length})`, gevallen.length >= 9);
 checkTrue("een rechthoek", heeft((g) => g.doorsnede.shape === "Rectangle"));
 checkTrue(
   "een T met de flens boven",
@@ -203,11 +203,35 @@ checkTrue(
   "een omgekeerde T",
   heeft((g) => g.doorsnede.shape === "Tee" && g.doorsnede.flange_at_bottom),
 );
-checkTrue("een L", heeft((g) => g.doorsnede.shape === "Ell"));
+// Alle VIER de flensgevallen apart, en niet één losse eis "er is een L". Die
+// liet de L met de flens ONDER weg, en juist daar gaan de twee kanten het meest
+// verschillend te werk: `omtrekPunten` heeft een eigen sjabloon voor
+// `flange_at_bottom` met een `x0` die bij een L op 0 wordt gezet, terwijl de
+// Rust-kant de omtrek uit de gespiegelde banden van de kern aflegt.
+checkTrue(
+  "een L met de flens boven",
+  heeft((g) => g.doorsnede.shape === "Ell" && !g.doorsnede.flange_at_bottom),
+);
+checkTrue(
+  "een L met de flens onder",
+  heeft((g) => g.doorsnede.shape === "Ell" && g.doorsnede.flange_at_bottom),
+);
 const zelfdeRij = (a, b) => a.count === b.count && a.diameter_mm === b.diameter_mm;
 checkTrue("een symmetrisch gewapend geval", heeft((g) => zelfdeRij(g.korf.top, g.korf.bottom)));
 checkTrue("een asymmetrisch gewapend geval", heeft((g) => !zelfdeRij(g.korf.top, g.korf.bottom)));
 checkTrue("een rij met één staaf", heeft((g) => g.korf.bottom.count === 1));
+// En die ene staaf moet ook ergens ANDERS liggen dan op b/2. In een rechthoek
+// vallen "het hart van de doorsnede" en "het hart van de band waar de rij in
+// ligt" samen, dus daar blijft het verwisselen van die twee onzichtbaar; in een
+// smal lijf onder een brede flens niet.
+checkTrue(
+  "een rij met één staaf buiten het hart van de omhullende breedte",
+  heeft(
+    (g) =>
+      g.korf.bottom.count === 1 &&
+      g.staven.some((s) => s.rij === "onder" && Math.abs(s.x_mm - g.doorsnede.b_mm / 2) > 1e-9),
+  ),
+);
 checkTrue("een geval zonder bovenwapening", heeft((g) => g.korf.top.count === 0));
 
 // Elke korf uit de referentie moet ook door de editorcontrole komen. Een

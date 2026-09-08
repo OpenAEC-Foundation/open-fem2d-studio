@@ -140,30 +140,52 @@
   opacity: 0.6;
 }
 
-/* Uitgangspunten: normkeuze + toelichting. */
+/* Uitgangspunten: normkeuze + toelichting.
+
+   Elke norm heeft DRIE standen (volgt het model / altijd vermelden / niet
+   vermelden), dus een keuzelijst en geen vinkje: een vinkje toonde de eerste
+   en de derde als hetzelfde lege hokje, terwijl ze een verschillend rapport
+   opleveren. Onder elke regel staat wat de stand voor het rapport betekent. */
 .proj-normen {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 9px;
 }
 .proj-norm {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.proj-norm-regel {
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
+}
+.proj-norm-naam {
+  flex: 1;
   font-size: 12px;
   color: var(--theme-dialog-content-text, var(--theme-text));
-  cursor: pointer;
 }
-.proj-norm input {
-  accent-color: var(--theme-accent);
-  width: 14px;
-  height: 14px;
+/* Erft de veldstijl van `.proj-field select`; alleen de maat wijkt af, zodat
+   de drie keuzelijsten naast de normnamen onder elkaar uitlijnen. */
+.proj-norm-stand {
+  flex: 0 0 auto;
+  min-width: 148px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+.proj-norm-gevolg {
   margin: 0;
-  padding: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--theme-dialog-content-secondary);
 }
-.proj-norm-uit {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* De uitgevoerde toetsing overrulet de stand "niet vermelden". Dat is het
+   enige geval waarin het rapport iets anders doet dan de gebruiker koos, dus
+   het enige dat opvallen moet. */
+.proj-norm-overruled {
+  color: var(--theme-accent);
+  font-weight: 500;
 }
 .proj-uitleg {
   margin: 2px 0 0;

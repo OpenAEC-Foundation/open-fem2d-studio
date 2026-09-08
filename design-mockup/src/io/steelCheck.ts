@@ -52,7 +52,13 @@ export function exportCheckResultsCsv(
   for (const r of results) {
     const doorsnede = sectionLabel(r);
     const materiaal = gradeLabel(r);
-    const norm = `${normLabel(r)}-1-1`;
+    // Kant en klaar uit `normLabel`, niet samengesteld. Hier werd een kort
+    // label ("EN 1993") aangevuld met de deelnummers van de norm erachter.
+    // Voor de vrije spanningstoets was dat label "spanning", zodat de kolom
+    // Norm een aanduiding kreeg die niet bestaat — in een bestand dat de
+    // gebruiker aan derden geeft. Wat er nu staat is dezelfde tekst als het
+    // scherm en het PDF-rapport tonen, "geen norm" inbegrepen.
+    const norm = normLabel(r);
     for (const named of r.checks) {
       const d = named.kind.data;
       regels.push(

@@ -17,8 +17,10 @@
 // Checks:
 //  (a) SAMENSTELLING — negen knopen, zes staven, drie delen die elkaar niet
 //      raken; per staaf het materiaal dat de toetsing eruit afleidt.
-//  (b) DOORSNEDEN    — "HEA160", "160x400" en "300x600" komen alle drie door
-//      hun eigen ontleder; geen enkele valt terug op een default.
+//  (b) DOORSNEDEN    — "IPE270", "IPE330", "160x400" en "300x600" komen alle
+//      door hun eigen ontleder; geen enkele valt terug op een default. Ook de
+//      NAMEN zelf liggen hier vast, want ze zijn gedimensioneerd en niet
+//      gekozen (zie [i]), samen met de aangenomen kipsteunen op de regel.
 //  (c) OPLEGGINGEN   — het portaal neemt horizontale kracht op (twee
 //      scharnieren), de twee rechte liggers juist NIET: één scharnier plus
 //      rollen, dus geen axiale dwang.
@@ -31,9 +33,24 @@
 //  (g) TOETSBAARHEID — de drie bouwers pakken samen alle zes de staven op en
 //      slaan er geen enkele over; de korf komt 1-op-1 door.
 //  (h) OMSCHRIJVINGEN — elke last draagt een ingevulde omschrijving.
+//  (i) ECHTE TOETSING — het stalen portaal door de Rust-rekenkern heen: alle
+//      drie de staven Ok, met een marge die noch nipt noch absurd ruim is.
+//      Dit blok start de toetsbrug als apart proces en wordt LUID overgeslagen
+//      als die binary ontbreekt.
 //
 // Uitvoeren: npx tsx test-startmodel.mjs   (vanuit design-mockup/)
 //        of: node scripts/run-tests.mjs --filter=startmodel
+
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HIER = dirname(fileURLToPath(import.meta.url));
+const TOETSBRUG = join(
+  resolve(HIER, ".."), "src-tauri", "target", "release",
+  process.platform === "win32" ? "toetsbrug.exe" : "toetsbrug",
+);
 
 const { makeInitialSnapshot, DEFAULT_LOAD_CASES } = await import(
   "./src/hooks/useFemStore.ts"
@@ -48,7 +65,9 @@ const { defaultCombinations, combineResults } = await import(
 const { bepaalOnbepaaldheid } = await import("./src/lib/statischeOnbepaaldheid.ts");
 const { materiaalVanStaaf } = await import("./src/lib/variantInvoer.ts");
 const { resolveSection } = await import("./src/lib/sectionResolver.ts");
-const { buildSteelCheckInputs } = await import("./src/lib/steelCheckBuilder.ts");
+const { buildSteelCheckInputs, profileLookupKey } =
+  await import("./src/lib/steelCheckBuilder.ts");
+const { selecteerCombinaties } = await import("./src/lib/combinatieSelectie.ts");
 const { buildTimberCheckInputs } = await import("./src/lib/timberCheckBuilder.ts");
 const { buildBetonCheckInputs } = await import("./src/lib/betonCheckBuilder.ts");
 const { korvenUitStaven } = await import("./src/stores/checkStore.ts");
@@ -143,6 +162,34 @@ log("\n[b] Doorsneden: elke profielnaam komt door zijn eigen ontleder");
                             [4, "hout-bxh"], [6, "beton-bxh"]]) {
     const b = s.beams.find((x) => x.id === id);
     check(`staaf ${id} doorsnedebron`, resolveSection(b.material, b.profile).bron, bron);
+  }
+
+  // DE STALEN PROFIELNAMEN LIGGEN VAST, want ze zijn gedimensioneerd en niet
+  // gekozen: het portaal stond op HEA 160 en kwam daarmee op alle drie de
+  // staven NotOk uit de kern (kolommen uc 1,22 op kip, regel uc 4,00 op
+  // doorbuiging). Blok [i] rekent na dát deze doorsneden voldoen; deze regels
+  // leggen vast WELKE dat zijn, zodat een terugval naar het oude profiel niet
+  // pas in een unity check opvalt.
+  for (const [id, profiel] of [[1, "IPE270"], [2, "IPE270"], [3, "IPE330"]]) {
+    check(`staaf ${id} profiel`, s.beams.find((x) => x.id === id).profile, profiel);
+  }
+
+  // De kipsteunen op de regel zijn een AANNAME (een dakvlak dat de bovenflens
+  // vasthoudt) en geen rekenuitkomst. Ze staan hier apart omdat blok [i] laat
+  // zien dat de regel zonder die aanname op kip afkeurt: verdwijnen ze stil
+  // uit het model, dan verandert de uitkomst wezenlijk.
+  const regel = s.beams.find((x) => x.id === 3);
+  check("regel: aangenomen kipsteunen (fracties)",
+    JSON.stringify(regel.checkConfig?.lateralRestraints ?? null),
+    JSON.stringify([0.25, 0.5, 0.75]));
+  ok("regel: geen ONDERflenssteunen aangenomen",
+    regel.checkConfig?.lateralRestraintsBottom === undefined,
+    "een gording houdt de gedrukte onderflens bij de hoeken niet vast");
+  for (const id of [1, 2]) {
+    const kolom = s.beams.find((x) => x.id === id);
+    ok(`kolom ${id}: geen kipsteunen aangenomen`,
+      kolom.checkConfig?.lateralRestraints === undefined,
+      "een gevelregel steunt de buitenflens, terwijl hier de binnenflens gedrukt is");
   }
 }
 
@@ -250,14 +297,28 @@ log("\n[g] Toetsbaarheid: de drie kernen pakken samen alle zes de staven op");
   // De profieldatabase komt in de app uit de rekenkern (`list_steel_profiles`);
   // die draait hier niet. Alleen de hoogte wordt door de bouwer gelezen (voor
   // het aangrijpingspunt van de last), dus die volstaat — dit is een toets op
-  // de NAAM, niet op de profielwaarden.
-  const profileDb = new Map([["HEA160", { geometry: { h: 152 } }]]);
+  // de NAAM, niet op de profielwaarden. (Blok [i] gebruikt wél de echte
+  // database, rechtstreeks uit de kern.)
+  const profileDb = new Map([
+    ["IPE270", { geometry: { h: 270 } }],
+    ["IPE330", { geometry: { h: 330 } }],
+  ]);
   const data = { nodes: s.nodes, beams: s.beams, supports: s.supports,
                  combinations: combos, combinationResults };
 
   const staal = buildSteelCheckInputs({ ...data, profileDb });
   check("staal: aantal toetsinvoeren", staal.inputs.length, 3);
   check("staal: overgeslagen", staal.skipped.length, 0);
+  // De aangenomen kipsteunen moeten ook echt bij de kern aankomen: blijven ze
+  // in de bouwer hangen, dan rekent de kern de regel als ongesteund over 12 m
+  // door en klopt het profiel niet meer bij de aanname.
+  const regelInvoer = staal.inputs.find((i) => i.beam_id === 3);
+  check("staal: kipsteunen van de regel komen door (bovenflens)",
+    JSON.stringify(regelInvoer?.lateral_bracing?.top_flange_positions ?? null),
+    JSON.stringify([0.25, 0.5, 0.75]));
+  check("staal: geen onderflenssteunen naar de kern",
+    JSON.stringify(regelInvoer?.lateral_bracing?.bottom_flange_positions ?? null),
+    JSON.stringify([]));
 
   const hout = buildTimberCheckInputs(data);
   check("hout: aantal toetsinvoeren", hout.inputs.length, 2);
@@ -297,6 +358,114 @@ log("\n[h] Lastomschrijvingen: elke last draagt een ingevulde naam");
     ok(`last ${l.id} heeft een omschrijving`,
       typeof l.omschrijving === "string" && l.omschrijving.trim().length > 0,
       l.omschrijving ?? "(leeg)");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[i] Echte rekenkern: het stalen portaal komt door de toetsing");
+//
+// WAAROM DIT BLOK BESTAAT. De doorsneden van het portaal zijn gedimensioneerd
+// en niet gekozen: op HEA 160 kwamen alle drie de staven NotOk uit de kern
+// (kolommen uc 1,22 op kip; de regel uc 4,00 op doorbuiging, 144 mm tegen een
+// grens van 36 mm). Een startmodel dat half in het rood opent is onbruikbaar
+// voor waar het voor is — wie iets roods ziet weet dan niet of de KETEN faalt
+// of alleen de doorsnede te klein is. Dat de nieuwe doorsneden voldoen is niet
+// met een formule na te rekenen: dat zegt de rekenkern, en dus draait die hier
+// echt (JSON op stdin, JSON van stdout — dezelfde weg als de dev-server).
+//
+// De grenzen zijn een BAND en geen vaste waarde. Vastgeprikte unity checks
+// zouden bij elke verbetering aan de kern omvallen zonder dat er iets mis is;
+// wat het startmodel moet halen is juist een marge die geloofwaardig is: niet
+// nipt (0,98 leest als toeval) en niet absurd ruim (0,15 leest als een fout in
+// de last). De bovengrens bewaakt dat, de ondergrens ook.
+{
+  if (!existsSync(TOETSBRUG)) {
+    failed++;
+    log(`  ✗ de rekenkern ontbreekt: ${TOETSBRUG}`);
+    log("    bouw hem met  cargo build --release -p toetsbrug  vanuit src-tauri;");
+    log("    zonder hem is NIET aangetoond dat het startmodel door de toetsing komt.");
+  } else {
+    const kern = (opdracht, inputs) => {
+      const r = spawnSync(TOETSBRUG, [], {
+        input: JSON.stringify({ opdracht, inputs }),
+        maxBuffer: 256 * 1024 * 1024,
+        encoding: "utf8",
+      });
+      if (r.error) throw r.error;
+      const data = JSON.parse(r.stdout);
+      if (data && !Array.isArray(data) && typeof data === "object" && "fout" in data) {
+        throw new Error(data.fout);
+      }
+      return data;
+    };
+
+    // Dezelfde weg als de app: combinatieselectie → oplossen → combineren →
+    // invoer bouwen → kern. Geen tweede route, anders bewijst dit blok iets
+    // over een model dat de gebruiker niet voor zich heeft.
+    const { actief: combos } = selecteerCombinaties(defaultCombinations(), s.beams, s.plates);
+    const combinationResults = new Map(
+      combos.map((c) => [c.id, combineResults(c, perCase.perCase)]),
+    );
+    const profileDb = new Map();
+    for (const p of kern("list_steel_profiles")) {
+      const sleutel = profileLookupKey(p.name);
+      if (!profileDb.has(sleutel)) profileDb.set(sleutel, p);
+    }
+    const { inputs } = buildSteelCheckInputs({
+      nodes: s.nodes, beams: s.beams, supports: s.supports,
+      combinations: combos, combinationResults, profileDb,
+    });
+    check("staal: invoeren die de kern in gaan", inputs.length, 3);
+
+    const resultaten = kern("check_steel_beams", inputs);
+    check("staal: resultaten uit de kern", resultaten.length, 3);
+
+    // De band. 0,85 is de bovengrens uit de opdracht; 0,35 de ondergrens —
+    // hout staat op 0,39 en beton op 0,52, dus "in dezelfde orde" begint daar.
+    const BAND = { min: 0.35, max: 0.85 };
+    for (const r of resultaten) {
+      const uc = r.uc_max;
+      ok(`staaf ${r.beam_id} (${r.profile_name} ${r.steel_grade}): status Ok`,
+        r.status === "Ok",
+        `maatgevend ${r.governing_check_id}, uc_max ${uc.toFixed(3)}`);
+      ok(`staaf ${r.beam_id}: marge geloofwaardig (${BAND.min} ≤ uc ≤ ${BAND.max})`,
+        uc >= BAND.min && uc <= BAND.max, `uc_max = ${uc.toFixed(3)}`);
+      // Eén NotOk-deeltoets tussen twintig Ok's zou in uc_max verdwijnen als
+      // de kern die toets niet meetelt; daarom ook per toets.
+      const notOk = (r.checks ?? [])
+        .map((c) => ({ id: c.id, status: (c.kind?.data ?? c).status }))
+        .filter((c) => c.status !== "Ok");
+      ok(`staaf ${r.beam_id}: geen enkele deeltoets NotOk`, notOk.length === 0,
+        notOk.map((c) => c.id).join(", ") || "—");
+    }
+
+    // De kolommen worden door kip begrensd en de regel door de doorbuiging.
+    // Dat is geen toeval maar het ontwerp: over 12 m is de zakking de eis die
+    // het profiel bepaalt, bij de 5 m kolom het hoekmoment op de ongesteunde
+    // binnenflens. Zou dat verschuiven, dan is er iets veranderd dat de lezer
+    // van het startmodel moet weten.
+    const per = new Map(resultaten.map((r) => [r.beam_id, r]));
+    check("kolom 1: maatgevende toets", per.get(1)?.governing_check_id, "6.3.2_ltb");
+    check("kolom 2: maatgevende toets", per.get(2)?.governing_check_id, "6.3.2_ltb");
+    check("regel: maatgevende toets", per.get(3)?.governing_check_id, "deflection_w_add");
+
+    // DE KIPSTEUNEN ZIJN NIET COSMETISCH. Dezelfde regel nog eens, maar met de
+    // aanname weggehaald: zonder dakvlak dat de bovenflens vasthoudt keurt de
+    // kern hem op kip AF. Dat is precies wat de aanname draagt, en daarom
+    // staat het hier zwart op wit in plaats van alleen in een commentaarregel.
+    const zonderSteun = JSON.parse(JSON.stringify(inputs.find((i) => i.beam_id === 3)));
+    zonderSteun.lateral_bracing = { top_flange_positions: [], bottom_flange_positions: [] };
+    const kaal = kern("check_steel_beams", [zonderSteun])[0];
+    const kipKaal = (kaal.checks ?? []).find((c) => c.id === "6.3.2_ltb");
+    const ucKaal = (kipKaal?.kind?.data ?? kipKaal)?.uc?.uc;
+    ok("regel zónder de aangenomen kipsteunen: kip keurt af",
+      ucKaal !== undefined && ucKaal > 1,
+      `uc kip = ${ucKaal?.toFixed(3)} (mét steunen: ${
+        (() => {
+          const c = (per.get(3)?.checks ?? []).find((x) => x.id === "6.3.2_ltb");
+          return ((c?.kind?.data ?? c)?.uc?.uc ?? NaN).toFixed(3);
+        })()
+      })`);
   }
 }
 

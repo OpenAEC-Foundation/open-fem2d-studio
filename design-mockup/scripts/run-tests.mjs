@@ -189,6 +189,10 @@ const ALLEEN_BRON = new Map([
     "rendert ProfielMiniatuur met react-dom/server en rekent de composietkleur na uit themes.css en ProfielKiezer.css; React en losse stylesheets bestaan in de sidecarbundel niet, en er komt geen rekenwerk aan te pas",
   ],
   [
+    "startmodel",
+    "bewaakt het model waarmee de app opent (`hooks/useFemStore`): samenstelling, opleggingen, evenwicht en toetsbaarheid. Hij leest de React-hook en de toetsstore, die allebei buiten de barrel van de sidecarbundel vallen, en stubt de staalprofieldatabase omdat die uit de Rust-kern komt",
+  ],
+  [
     "rapportnormen",
     "bepaalt welke normen het rapport mag noemen (`lib/normenInRapport`) uit de uitgangspunten, de toetsresultaten en de materialen in het model — presentatielogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
   ],

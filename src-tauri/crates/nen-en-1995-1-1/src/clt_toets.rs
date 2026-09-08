@@ -11,7 +11,7 @@
 //! Elke dwarslaag krijgt de rolschuifspanning als INFORMATIEVE regel: de
 //! spanning wordt uitgerekend (bijlage B (B.9) met γ = 1, constant over de
 //! dwarslaag), maar er is geen unity check. De rekenwaarde van de
-//! rolschuifsterkte staat niet in NEN-EN 1995-1-1+A2:2014/NB:2013 — de norm
+//! rolschuifsterkte staat niet in [`NORM_HOUT_AANDUIDING`] — de norm
 //! noemt f_v,90,d alleen bij naam in §9.1.2 voor lijf- en flensplaten,
 //! zonder waarde — en niet in de sterkteklassen van EN 338. Een waarde
 //! aannemen zou een verzonnen normwaarde zijn; de toets is daarom expliciet
@@ -35,6 +35,21 @@ use mechanics::ForceStateSnapshot;
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityCheck};
 
 use crate::clt::{CltLayerOrientation, CltMechanics};
+
+/// De uitgave van de houtnorm waarnaar deze crate rekent, zoals de norm
+/// zichzelf noemt op haar titelblad en in de kop van elk vel.
+///
+/// Hier stond in de rapportnotitie "NEN-EN 1995-1-1+A2:2014/NB:2013" en op het
+/// omslag van dezelfde PDF "NEN-EN 1995-1-1+C1+A1:2011/NB:2013": twee
+/// schrijfwijzen van één norm, geen van beide de aanduiding van de uitgave
+/// zelf. Die uitgave draagt volgens haar eigen titelblad de aanduiding
+/// hieronder en bevat blijkens haar lijst "Inclusief" C1:2006, A1:2008,
+/// C1:2012, A2:2014 en NB:2013.
+///
+/// Wie de aanduiding wijzigt, wijzigt hem hier — de test
+/// `de_houtnorm_heet_op_het_omslag_hetzelfde_als_in_de_notitie` in de
+/// `report`-crate legt deze constante naast `report::NORM_TIMBER_FULL`.
+pub const NORM_HOUT_AANDUIDING: &str = "NEN-EN 1995-1-1:2005+A2:2014+NB:2013";
 
 fn laagnaam(mech: &CltMechanics, idx: usize) -> String {
     let l = &mech.layers[idx];
@@ -253,7 +268,11 @@ pub fn rolling_shear_info(
         status: CheckStatus::NotApplicable,
         notes: vec![
             laagligging(mech, idx),
-            "Geen toets: de rekenwaarde van de rolschuifsterkte f_v,rol staat niet in NEN-EN 1995-1-1+A2:2014/NB:2013 (§9.1.2 noemt f_v,90,d alleen bij naam) en niet in de sterkteklassen van EN 338. De spanning is uitgerekend zodat hij naast een gedeclareerde waarde uit een productverklaring gelegd kan worden.".to_string(),
+            // De aanduiding komt uit de constante, zodat het omslag en deze
+            // notitie niet twee uitgaven van dezelfde norm kunnen noemen.
+            format!(
+                "Geen toets: de rekenwaarde van de rolschuifsterkte f_v,rol staat niet in {NORM_HOUT_AANDUIDING} (§9.1.2 noemt f_v,90,d alleen bij naam) en niet in de sterkteklassen van EN 338. De spanning is uitgerekend zodat hij naast een gedeclareerde waarde uit een productverklaring gelegd kan worden."
+            ),
             "De rolschuifspanning is constant over de dwarslaag en gelijk aan de schuifspanning op de grens met de aangrenzende lengtelaag.".to_string(),
         ],
     }

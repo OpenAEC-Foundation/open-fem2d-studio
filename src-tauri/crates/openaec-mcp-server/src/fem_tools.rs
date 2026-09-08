@@ -535,8 +535,8 @@ fn meld_betonstaven(uit: &mut Value, model: Option<&Value>, beam_ids: Option<&[i
             "reason": format!(
                 "materiaal \"{materiaal}\" is een betonsterkteklasse — `check_fem_model` \
                  toetst alleen volgens EN 1993 (staal). De EN 1992-toetsing loopt via de \
-                 tool `check_concrete_beam`; die vraagt een wapeningskorf, en die staat \
-                 niet in het rekenmodel."
+                 tool `check_concrete_beam`, met de wapeningskorf uit \
+                 `checkConfig.betonKorf` van deze staaf."
             ),
         }));
     }

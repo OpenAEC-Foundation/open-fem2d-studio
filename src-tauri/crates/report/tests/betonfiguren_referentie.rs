@@ -201,7 +201,7 @@ fn breedte_en_hart_volgen_de_gedeelde_referentie() {
 #[test]
 fn de_referentie_dekt_alle_vormen() {
     let ref_ = lees();
-    assert!(ref_.gevallen.len() >= 6, "nog maar {} gevallen", ref_.gevallen.len());
+    assert!(ref_.gevallen.len() >= 9, "nog maar {} gevallen", ref_.gevallen.len());
 
     let heeft = |f: &dyn Fn(&Geval) -> bool| ref_.gevallen.iter().any(|g| f(g));
     assert!(heeft(&|g| g.doorsnede.shape == ConcreteShape::Rectangle), "geen rechthoek");
@@ -213,10 +213,34 @@ fn de_referentie_dekt_alle_vormen() {
         heeft(&|g| g.doorsnede.shape == ConcreteShape::Tee && g.doorsnede.flange_at_bottom),
         "geen omgekeerde T"
     );
-    assert!(heeft(&|g| g.doorsnede.shape == ConcreteShape::Ell), "geen L");
+    // Alle VIER de flensgevallen apart, en niet één losse eis "er is een L".
+    // Die liet de L met de flens ONDER weg, en juist daar gaan de twee kanten
+    // het meest verschillend te werk: hier komt de omtrek uit de GESPIEGELDE
+    // banden van de kern, aan de TS-kant uit een eigen `flange_at_bottom`-
+    // sjabloon met een `x0` die bij een L op 0 wordt gezet.
+    assert!(
+        heeft(&|g| g.doorsnede.shape == ConcreteShape::Ell && !g.doorsnede.flange_at_bottom),
+        "geen L met de flens boven"
+    );
+    assert!(
+        heeft(&|g| g.doorsnede.shape == ConcreteShape::Ell && g.doorsnede.flange_at_bottom),
+        "geen L met de flens onder"
+    );
     assert!(heeft(&|g| g.korf.top == g.korf.bottom), "geen symmetrisch gewapend geval");
     assert!(heeft(&|g| g.korf.top != g.korf.bottom), "geen asymmetrisch gewapend geval");
     assert!(heeft(&|g| g.korf.bottom.count == 1), "geen rij met één staaf");
+    // En die ene staaf moet ook ergens ANDERS liggen dan op b/2. In een
+    // rechthoek vallen "het hart van de doorsnede" en "het hart van de band
+    // waar de rij in ligt" samen, dus daar blijft het verwisselen van die twee
+    // onzichtbaar; in een smal lijf onder een brede flens niet.
+    assert!(
+        heeft(&|g| g.korf.bottom.count == 1
+            && g
+                .staven
+                .iter()
+                .any(|s| s.rij == "onder" && (s.x_mm - g.doorsnede.b_mm / 2.0).abs() > 1e-9)),
+        "geen rij met één staaf buiten het hart van de omhullende breedte"
+    );
     assert!(heeft(&|g| g.korf.top.is_empty()), "geen geval zonder bovenwapening");
 
     // Elke korf uit de referentie moet ook door de kerncontrole komen. Een

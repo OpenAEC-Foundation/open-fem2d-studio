@@ -17,9 +17,27 @@
 //!
 //! **Het uiteenlopen wordt bewaakt door `betonfiguren_referentie.rs`**, dat
 //! samen met `design-mockup/test-betonfiguren-referentie.mjs` één gedeeld
-//! bestand leest: `tests/golden/betonfiguren-referentie.json`. Wat hier staat
-//! blijft daarnaast staan, omdat het uitlegt wáárom een punt ligt waar hij
-//! ligt — de referentie draagt de getallen, dit bestand de redenering.
+//! bestand leest: `tests/golden/betonfiguren-referentie.json`.
+//!
+//! # WAAROM DIT BESTAND DAT GEDEELDE BESTAND NIET LEEST
+//!
+//! De getallen hieronder staan ook in die referentie, en dezelfde waarheid op
+//! twee plaatsen is doorgaans een fout. Hier niet, en het verschil zit in de
+//! HERKOMST: de referentie wordt met `--schrijf` uit de TS-kant nageschreven,
+//! terwijl deze getallen met de hand uit de maten zijn afgeleid. Daardoor
+//! beantwoorden de twee bestanden verschillende vragen:
+//!
+//! * `betonfiguren_referentie.rs` en zijn mjs-tegenhanger: **lopen de twee
+//!   tekeningen uiteen?** Verschuift er één, dan valt die kant om.
+//! * dit bestand: **kloppen ze samen nog?** Verschuiven ze allebei — of wordt
+//!   een gedeelde fout met `--schrijf` netjes in de referentie ingeschreven —
+//!   dan blijft die eerste vraag groen en gaat deze test om.
+//!
+//! Zou deze test de referentie gaan lezen, dan verdween die tweede vraag en
+//! bleef er een keten over waarin de code haar eigen huiswerk nakijkt. De prijs
+//! is dat een bewuste wijziging drie plaatsen raakt in plaats van twee; dat
+//! staat als stap 5 in `bijwerken` in het JSON-bestand, met de reden onder
+//! `bewust_geen_lezer`.
 //!
 //! **De andere implementatie staat in
 //! `design-mockup/src/components/beton/wapeningskorf.ts`**: `omtrekPunten`,
@@ -30,8 +48,8 @@
 //!
 //! # De regels die worden vastgepind
 //!
-//! * de omtrek volgt de BANDEN van de doorsnede (rechthoek, T, omgekeerde T, L)
-//!   en niet een aparte parametrisering per vorm;
+//! * de omtrek volgt de BANDEN van de doorsnede — rechthoek, T en L, elk met de
+//!   flens boven én onder — en niet een aparte parametrisering per vorm;
 //! * bij een L staat het lijf tegen de LINKERRAND, bij een T in het midden —
 //!   voor de berekening geen verschil, voor de tekening wél;
 //! * een staafrij wordt verdeeld over de breedte die op ZIJN EIGEN hoogte
@@ -315,6 +333,107 @@ fn l_vorm_lijf_tegen_de_linkerrand() {
     assert_ne!(omtrek_punten(&s), omtrek_punten(&t));
 }
 
+// ── 5. De L met de flens ONDER ────────────────────────────────────────────────
+
+/// Dezelfde L met `flange_at_bottom`: de brede flens ligt onder, het smalle
+/// lijf staat daarboven tegen de LINKERRAND.
+///
+/// Dit is het geval waarin de twee tekenkanten het meest verschillend te werk
+/// gaan, en het ontbrak tot september 2026 aan beide kanten. Hier komt de
+/// omtrek uit de gespiegelde banden van de kern; `omtrekPunten` in de frontend
+/// heeft voor `flange_at_bottom` een eigen achtpuntssjabloon met een `x0` die
+/// bij een L op 0 wordt gezet. Twee verschillende wegen naar hetzelfde punt.
+///
+/// Omtrek met de hand: flens van x = 0 tot 400 over z = 0..50, lijf van x = 0
+/// tot 200 over z = 50..450. Tegen de klok in: (0,0) — (400,0) — (400,50) —
+/// (200,50) — (200,450) — (0,450) — (0,50). Linksonder vallen het hoekpunt van
+/// het lijf en dat van de flens allebei op x = 0; één van de twee valt af, dus
+/// ZEVEN punten. Bij de omgekeerde T stonden diezelfde twee 100 mm uit elkaar
+/// en bleven het er acht.
+///
+/// Staven met de hand:
+///   onderrij op z = 46 ligt in de FLENS: breedte 400, hart 200,
+///   eerste = 46, laatste = 354, drie staven op 46, 200 en 354 — gelijk aan de
+///   omgekeerde T, want de flens beslaat daar én hier de volle breedte.
+///   bovenrij op z = 406 ligt in het LIJF: breedte 200, hart 100 (lijf links!),
+///   eerste = 100 − 100 + 44 = 44, laatste = 156. In de omgekeerde T stonden
+///   die twee op 144 en 256; dát verschil van 100 mm is wat hier wordt
+///   vastgepind.
+#[test]
+fn l_vorm_flens_onder() {
+    let mut invoer = ConcreteSectionInput::ell(400.0, 450.0, 200.0, 50.0);
+    invoer.flange_at_bottom = true;
+    let s = invoer.build().unwrap();
+
+    gelijk(
+        &omtrek_punten(&s),
+        &[
+            (0.0, 0.0),
+            (400.0, 0.0),
+            (400.0, 50.0),
+            (200.0, 50.0),
+            (200.0, 450.0),
+            (0.0, 450.0),
+            (0.0, 50.0),
+        ],
+    );
+
+    assert_eq!(breedte_op_hoogte_mm(&s, 46.0), 400.0, "de onderrij ligt in de flens");
+    assert_eq!(hart_x_mm(&s, 46.0), 200.0, "de flens beslaat de volle breedte");
+    assert_eq!(breedte_op_hoogte_mm(&s, 406.0), 200.0, "de bovenrij ligt in het lijf");
+    assert_eq!(hart_x_mm(&s, 406.0), 100.0, "en dat lijf staat tegen de linkerrand");
+
+    staven_gelijk(
+        &staaf_posities(&korf_3x16_2x12(), &s),
+        &[
+            (46.0, 46.0, 16.0, Rij::Onder),
+            (200.0, 46.0, 16.0, Rij::Onder),
+            (354.0, 46.0, 16.0, Rij::Onder),
+            (44.0, 406.0, 12.0, Rij::Boven),
+            (156.0, 406.0, 12.0, Rij::Boven),
+        ],
+    );
+
+    // Dezelfde banden als de omgekeerde T, en tóch een andere tekening — het
+    // spiegelbeeld van wat `l_vorm_lijf_tegen_de_linkerrand` voor de flens
+    // boven vaststelt.
+    let mut t_invoer = ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0);
+    t_invoer.flange_at_bottom = true;
+    let t = t_invoer.build().unwrap();
+    assert_eq!(s.bands(), t.bands());
+    assert_ne!(omtrek_punten(&s), omtrek_punten(&t));
+}
+
+/// Eén staaf in een rij staat in het midden van de band WAAR DIE RIJ IN LIGT,
+/// en niet in het midden van de omhullende breedte.
+///
+/// In een rechthoek vallen die twee samen, dus `een_staaf_staat_in_het_midden`
+/// hierboven kan het verschil niet zien. Hier wel: L 600 × 500 met een lijf van
+/// 150 onder een flens van 600.
+///
+/// Met de hand: banden lijf 0..420 met b = 150, flens 420..500 met b = 600.
+/// Onderrij 1Ø20, asafstand = 30 + 8 + 10 = 48, dus z = 48 — in het lijf.
+/// Breedte 150, hart 150/2 = 75. Eén staaf, dus x = 75; niet 600/2 = 300 en
+/// ook niet 48.
+#[test]
+fn een_staaf_staat_in_het_midden_van_zijn_eigen_band() {
+    let s = ConcreteSection::ell(600.0, 80.0, 150.0, 500.0).unwrap();
+    let korf = ReinforcementCage {
+        cover_mm: 30.0,
+        stirrup_diameter_mm: 8.0,
+        top: RebarRow { count: 0, diameter_mm: 0.0 },
+        bottom: RebarRow { count: 1, diameter_mm: 20.0 },
+    };
+    staven_gelijk(&staaf_posities(&korf, &s), &[(75.0, 48.0, 20.0, Rij::Onder)]);
+
+    // Op de bandgrens telt de KLEINSTE breedte, en dus ook het hart van het
+    // lijf. Eén millimeter hoger springt het naar de flens.
+    assert_eq!(breedte_op_hoogte_mm(&s, 420.0), 150.0);
+    assert_eq!(hart_x_mm(&s, 420.0), 75.0);
+    assert_eq!(breedte_op_hoogte_mm(&s, 421.0), 600.0);
+    assert_eq!(hart_x_mm(&s, 421.0), 300.0);
+}
+
 // ── De korf en de doorsnede horen bij elkaar ──────────────────────────────────
 
 /// Elke getekende staaf ligt binnen het beton dat op zijn eigen hoogte
@@ -330,6 +449,12 @@ fn geen_staaf_valt_buiten_het_beton() {
         (ConcreteSection::ell(400.0, 50.0, 200.0, 450.0).unwrap(), korf_3x16_4x12()),
         (
             ConcreteSectionInput { flange_at_bottom: true, ..ConcreteSectionInput::tee(400.0, 450.0, 200.0, 50.0) }
+                .build()
+                .unwrap(),
+            korf_3x16_2x12(),
+        ),
+        (
+            ConcreteSectionInput { flange_at_bottom: true, ..ConcreteSectionInput::ell(400.0, 450.0, 200.0, 50.0) }
                 .build()
                 .unwrap(),
             korf_3x16_2x12(),

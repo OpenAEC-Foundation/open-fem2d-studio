@@ -32,19 +32,38 @@ import { shapePath, buitenmaten, type SectionShape } from "./profielVorm";
  * ontnemen; dat mag daar, want die vulling volgt het thema toch al en er is
  * geen afspraak over de precieze RGB-waarde.
  *
- * BETON STAAT OP 1 EN DAT MOET ZO BLIJVEN. `--theme-beton-vlak` is #C0C0C0 =
- * 192-192-192, een vastgelegde waarde die in élk thema gelijk hoort te zijn
- * (zie het materiaalkleurenblok in `themes.css` en `beton/tekenkleuren.ts`).
- * Het paneel eronder — `.pk-tekening`, background `var(--theme-bg)` — mengt
- * mee zodra de dekking onder 1 zakt, en die achtergrond verschilt per thema.
- * Op 0,95 kwam er daardoor rgb(195,195,195) uit in het lichte thema, ruwweg
- * rgb(184,184,184) in openaec en rgb(183,184,184) in blueprint — de laatste
- * bit hangt van het rasterpad af, maar de afwijking en de thema-afhankelijkheid
- * niet, en dat is precies wat een vaste materiaalkleur moest voorkomen.
+ * BETON ÉN HOUT STAAN OP 1 EN DAT MOET ZO BLIJVEN. Allebei hebben ze een
+ * materiaalkleur die in élk thema gelijk hoort te zijn — `--theme-beton-vlak`
+ * #C0C0C0 = 192-192-192 en `--theme-hout-vlak` #E9DECA = 233-222-202 — zie het
+ * materiaalkleurenblok in `themes.css` en `beton/tekenkleuren.ts`. Het paneel
+ * eronder (`.pk-tekening`, background `var(--theme-bg)`) mengt mee zodra de
+ * dekking onder 1 zakt, en die achtergrond verschilt per thema. Dan is de
+ * uitkomst dus zowel afwijkend áls thema-afhankelijk, en dat is precies wat een
+ * vaste materiaalkleur moest voorkomen.
  *
- * Hout heeft dezelfde vaste vulling en daarmee in beginsel dezelfde
- * afwijking, maar staat hier bewust nog op 0,95: alleen voor beton is de
- * exacte waarde afgesproken. Wie hout ook exact wil, zet die 0,95 op 1.
+ * Nagemeten wat 0,95 zou opleveren — src·α + dst·(1−α), per kanaal afgerond:
+ *
+ *              licht         forge         openaec       blueprint     contrast
+ *   beton      195-195-195   185-185-185   184-184-184   183-184-185   182-182-182
+ *   hout       234-223-204   224-214-195   223-213-194   222-212-194   221-211-192
+ *
+ * Niet één van die tien is de materiaalkleur, en geen twee kolommen zijn
+ * gelijk: dát is de fout, in tweevoud.
+ *
+ * De laatste eenheid is niet hard. Bij beton in openaec komt het blauwkanaal in
+ * exacte rekenkunde op precies 184,5 uit; in binary64 wordt dat 184,49999…, dus
+ * naar beneden. Daar liepen twee eerdere commentaren op uit elkaar (184 tegen
+ * 185). Wat NIET afrondingsgevoelig is, is dát er wordt afgeweken en dát het per
+ * thema verschilt — en daar gaat de afspraak over. `test-doorsnede-kleur.mjs`
+ * rekent deze tabel na voor alle vijf de thema's en valt om zodra een van de
+ * twee dekkingen weer onder 1 gaat; de getallen hierboven horen dus met die
+ * test mee te bewegen.
+ *
+ * Hout stond tot september 2026 nog op 0,95, met als reden dat alleen voor
+ * beton een exacte RGB-waarde was afgesproken. Dat argument houdt geen stand
+ * tegen de belofte "in élk thema dezelfde kleur" die dit bestand en
+ * `beton/tekenkleuren.ts` allebei doen: die belofte gaat over de kleur die op
+ * het scherm belandt, niet over de kleur die in het bestand staat.
  */
 const KLEUREN: Record<
   Materiaalsoort,
@@ -58,7 +77,7 @@ const KLEUREN: Record<
   hout: {
     vulling: "var(--theme-hout-vlak, #E9DECA)",
     lijn: "var(--theme-materiaal-lijn, #2A2A30)",
-    dekking: 0.95,
+    dekking: 1,
   },
   beton: {
     vulling: "var(--theme-beton-vlak, #C0C0C0)",
