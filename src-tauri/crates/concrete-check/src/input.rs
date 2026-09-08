@@ -2,7 +2,10 @@
 
 use mechanics::ForcePoint;
 use nen_en_1992_1_1::mnkappa::DEFAULT_N_STRIPS;
-use nen_en_1992_1_1::{ConcreteSectionInput, DesignSituation, ReinforcementCage, SteelBranch};
+use nen_en_1992_1_1::slankheid::StructuralSystem;
+use nen_en_1992_1_1::{
+    ConcreteSectionInput, DesignSituation, ExposureClass, ReinforcementCage, SteelBranch,
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -54,6 +57,61 @@ pub struct ConcreteBeamCheckInput {
     /// Minimale excentriciteit e₀ = max(h/30; 20 mm) toepassen bij druk (6.1(4)).
     #[serde(default = "default_true")]
     pub apply_min_eccentricity: bool,
+
+    // ── Wat de toetsen buiten §6.1 nodig hebben ────────────────────────────
+    //
+    // Alle velden hieronder zijn optioneel en betekenen leeg NIET OPGEGEVEN.
+    // Er wordt er nergens één ingevuld: de toets die het gegeven nodig heeft
+    // meldt in het rapport dat hij niet kan, met de reden. Dat is met opzet —
+    // een stilzwijgende milieuklasse of een aangenomen korrelafmeting stuurt
+    // een grenswaarde zonder dat iemand het ziet.
+    /// Krachtsverloop onder de **frequente** BGT-combinatie, NEN-EN 1990
+    /// uitdrukking (6.15).
+    ///
+    /// De nationale bijlage bij 7.3.1(5) vervangt tabel 7.1N door een tabel
+    /// waarvan alle drie de kolommen "Frequente belastingscombinatie" heten,
+    /// waar de EN-tekst de quasi-blijvende combinatie noemt. §7.3 vraagt de
+    /// staalspanning σ_s in de **gescheurde** doorsnede onder díe combinatie;
+    /// die is uit de UGT-envelop niet af te leiden. Is deze lijst leeg, dan
+    /// komen de scheurtoetsen als "niet uitgevoerd" in het rapport, met de
+    /// reden — er wordt geen UGT-spanning voor in de plaats gezet.
+    #[serde(default)]
+    pub sls_frequent_envelope: Vec<ForcePoint>,
+
+    /// Milieuklasse van dit element (tabel 4.1) — de ingang van tabel 7.1N
+    /// voor w_max. `None` = niet opgegeven; §7.3 kan dan niet.
+    #[serde(default)]
+    #[ts(optional)]
+    pub exposure_class: Option<ExposureClass>,
+
+    /// Grootste nominale korrelafmeting d_g in mm, voor §8.2(2) en §9.2(1)e.
+    ///
+    /// `None` = niet opgegeven. De norm kent er **geen** aanbevolen waarde
+    /// voor — d_g hoort bij de betonspecificatie — dus er wordt er ook geen
+    /// aangenomen; zie [`nen_en_1992_1_1::detaillering::vrije_staafafstand_8_2`].
+    #[serde(default)]
+    #[ts(optional)]
+    pub aggregate_size_mm: Option<f64>,
+
+    /// De regel uit tabel 7.4N voor de slankheidstoets van 7.4.2.
+    ///
+    /// `None` = niet opgegeven. Dit is niet uit een raamwerkmodel af te
+    /// leiden: of een staaf een eindveld, een tussenveld of een uitkraging is
+    /// hangt van de constructie af en niet van de staaf. Zonder deze keuze
+    /// blijft 7.4.2 ongetoetst, met de reden in het rapport.
+    #[serde(default)]
+    #[ts(optional)]
+    pub structural_system: Option<StructuralSystem>,
+
+    /// Werkelijke hart-op-hartafstand van de trekstaven in mm, voor (7.11) en
+    /// tabel 7.3N.
+    ///
+    /// `None` = niet opgegeven; de orchestrator leidt hem dan af uit de korf
+    /// (zuivere meetkunde, één rij, gelijkmatig verdeeld tussen de
+    /// beugelbenen) en meldt dat in de afleiding.
+    #[serde(default)]
+    #[ts(optional)]
+    pub bar_spacing_mm: Option<f64>,
 }
 
 /// Verzoek om het M-N-κ-diagram van een korf, los van een staaf.

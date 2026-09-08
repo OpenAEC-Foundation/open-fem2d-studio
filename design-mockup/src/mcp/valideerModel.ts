@@ -108,12 +108,31 @@ const CHECKCONFIG_VELDEN = [
 ] as const;
 
 /**
- * Velden van één wapeningskorf (`ReinforcementCage`). ALLE VIER verplicht:
- * een korf zonder `bottom` is geen halve korf maar een ander wapeningsplan,
- * en de betonbouwer zou er zonder mopperen een balk zonder onderwapening van
- * maken.
+ * De dragende velden van één wapeningskorf (`ReinforcementCage`). ALLE VIER
+ * verplicht: een korf zonder `bottom` is geen halve korf maar een ander
+ * wapeningsplan, en de betonbouwer zou er zonder mopperen een balk zonder
+ * onderwapening van maken.
  */
-const KORF_VELDEN = ["cover_mm", "stirrup_diameter_mm", "top", "bottom"] as const;
+const KORF_VELDEN_VERPLICHT = ["cover_mm", "stirrup_diameter_mm", "top", "bottom"] as const;
+
+/**
+ * De beugelvelden voor §6.2.3 en §9.2.2. OPTIONEEL: ontbreken betekent "niet
+ * opgegeven", en dan meldt de dwarskrachttoets dat hij niet kan. De norm
+ * schrijft voor geen van de vier een waarde voor — §9.2.2(6) en (8) geven
+ * alleen bovengrenzen — dus een standaardwaarde zou een ontwerpbeslissing zijn
+ * die de app voor de constructeur neemt.
+ *
+ * Ze moeten hier wél staan: `keurVelden` weigert alles wat er niet in staat,
+ * dus zonder deze regel zou een model mét beugelgegevens de poort niet halen.
+ */
+const KORF_VELDEN_BEUGEL = [
+  "stirrup_spacing_mm",
+  "stirrup_legs",
+  "stirrup_leg_spacing_mm",
+  "stirrup_fywk_mpa",
+] as const;
+
+const KORF_VELDEN = [...KORF_VELDEN_VERPLICHT, ...KORF_VELDEN_BEUGEL] as const;
 
 /** Velden van één wapeningsrij (`RebarRow`) — allebei verplicht. */
 const REBARROW_VELDEN = ["count", "diameter_mm"] as const;
@@ -277,9 +296,13 @@ function keurGetal(
 /**
  * Wapeningskorf (`ReinforcementCage`). Anders dan de meeste velden hier is
  * deze niet optioneel-per-onderdeel: staat de korf er, dan moeten alle vier de
- * onderdelen erin staan én kloppen. Een korf waarin `bottom` ontbreekt wordt
- * door de kern gelezen als een balk zonder onderwapening — een ander bouwwerk
- * dan de gebruiker invoerde, met een M_Rd die daarbij past.
+ * DRAGENDE onderdelen erin staan én kloppen. Een korf waarin `bottom`
+ * ontbreekt wordt door de kern gelezen als een balk zonder onderwapening — een
+ * ander bouwwerk dan de gebruiker invoerde, met een M_Rd die daarbij past.
+ *
+ * De vier beugelvelden zijn wél optioneel; zie `KORF_VELDEN_BEUGEL`. Staan ze
+ * er, dan moeten ze een échte maat zijn: nul betekent hier niet "niet
+ * opgegeven" maar een afstand van nul, en die bestaat niet.
  */
 function keurKorf(waarde: unknown, pad: string, fouten: string[]): void {
   if (waarde === undefined) return;
@@ -288,9 +311,21 @@ function keurKorf(waarde: unknown, pad: string, fouten: string[]): void {
     return;
   }
   keurVelden(waarde, KORF_VELDEN, pad, fouten);
-  for (const veld of KORF_VELDEN) {
+  for (const veld of KORF_VELDEN_VERPLICHT) {
     if (waarde[veld] === undefined) {
       fouten.push(`${pad}.${veld} ontbreekt; een wapeningskorf heeft alle vier de onderdelen nodig.`);
+    }
+  }
+  // De beugelvelden: leeglaten mag, maar wat er staat moet groter dan nul
+  // zijn. Zelfde grens als `ReinforcementCage::validate` in de kern.
+  for (const veld of KORF_VELDEN_BEUGEL) {
+    const v = waarde[veld];
+    if (v === undefined || v === null) continue;
+    if (!isGetal(v) || v <= 0) {
+      fouten.push(
+        `${pad}.${veld}: moet een getal > 0 zijn, maar is ${JSON.stringify(v)}. ` +
+          `Laat het veld WEG als het niet is opgegeven — leeg en nul betekenen hier niet hetzelfde.`,
+      );
     }
   }
   // Dekking en beugel mogen nul zijn (geen beugel is een geldige korf), maar

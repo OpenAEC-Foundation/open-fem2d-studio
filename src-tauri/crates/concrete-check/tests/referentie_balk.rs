@@ -13,6 +13,7 @@ fn korf(boven: u32) -> ReinforcementCage {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: boven, diameter_mm: 12.0 },
         bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+        ..ReinforcementCage::default()
     }
 }
 
@@ -37,6 +38,15 @@ fn invoer(boven: u32, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
         steel_branch: Default::default(),
         design_situation: Default::default(),
         apply_min_eccentricity: true,
+        // De gegevens van fase 3 staan hier LEEG. Deze tests gaan over §6.1;
+        // de toetsen die deze velden nodig hebben horen hier dus als "niet
+        // uitgevoerd" met een reden terug te komen, en dat is een eigen test
+        // (`nieuwe_toetsen.rs`).
+        sls_frequent_envelope: vec![],
+        exposure_class: None,
+        aggregate_size_mm: None,
+        structural_system: None,
+        bar_spacing_mm: None,
     }
 }
 
@@ -199,8 +209,17 @@ fn de_vormaannamen_staan_woordelijk_in_het_resultaat() {
     assert!(l.shape_assumptions.iter().any(|a| a.contains("VERHINDERD")));
     assert!(l.shape_assumptions.iter().any(|a| a.contains("geen apart artikel")));
 
-    // Dezelfde teksten staan vooraan in de notes van elke toets — één bron.
-    for c in &l.checks {
+    // Dezelfde teksten staan WOORDELIJK vooraan in de notes van de toetsen die
+    // de doorsnedevorm zelf gebruiken — één bron, geen tweede versie.
+    //
+    // NIET in alle vijftien toetsen. Sinds fase 3 staan daar ook de
+    // scheurwijdte, de slankheid en negen detailleringseisen tussen; die
+    // alledrie dezelfde alinea laten herhalen zou het rapport vijftien keer
+    // dezelfde tekst laten tonen. Daar is `shape_assumptions` voor: één keer
+    // per staaf, en het rapport drukt het één keer af (zie de doc van dat
+    // veld).
+    for id in ["6.1_bending_stress_block", "6.1_mn_kappa", "6.2_shear"] {
+        let c = l.checks.iter().find(|c| c.id == id).expect("toets aanwezig");
         let notes = match &c.kind {
             CheckKind::Resistance(rc) => &rc.notes,
             CheckKind::Stability(_) => unreachable!(),

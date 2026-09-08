@@ -50,19 +50,28 @@ function rijUitTekst(s: string | undefined): RebarRow {
 
 /**
  * De korf uit `reinforcement_summary`: "onder 3Ø16, boven 2Ø12, beugel Ø8,
- * dekking 30 mm". Die regel komt uit `ReinforcementCage::summary()` in de kern
- * en heeft dus een vaste vorm. `null` = niet te herleiden.
+ * dekking 30 mm", of met de beugelgegevens erbij: "… beugel Ø8 h.o.h. 150 mm,
+ * 2-benig, dekking 30 mm". Die regel komt uit `ReinforcementCage::summary()`
+ * in de kern en heeft dus een vaste vorm. `null` = niet te herleiden.
+ *
+ * De beugelafstand en het aantal benen worden alleen overgenomen als ze er
+ * werkelijk staan; ontbreken ze in de regel, dan blijven de velden leeg. Ze
+ * zouden anders uit het niets ontstaan.
  */
 export function korfUitSamenvatting(s: string): ReinforcementCage | null {
   const dekking = /dekking\s+([\d.,]+)\s*mm/.exec(s);
   if (!dekking) return null;
   const beugel = /beugel\s*Ø\s*([\d.,]+)/.exec(s);
+  const afstand = /beugel\s*Ø\s*[\d.,]+\s*h\.o\.h\.\s*([\d.,]+)\s*mm/.exec(s);
+  const benen = /,\s*(\d+)-benig/.exec(s);
   const cage: ReinforcementCage = {
     cover_mm: parseFloat(dekking[1].replace(",", ".")),
     stirrup_diameter_mm: beugel ? parseFloat(beugel[1].replace(",", ".")) : 0,
     top: rijUitTekst(/boven\s+([^,]+)/.exec(s)?.[1]),
     bottom: rijUitTekst(/onder\s+([^,]+)/.exec(s)?.[1]),
   };
+  if (afstand) cage.stirrup_spacing_mm = parseFloat(afstand[1].replace(",", "."));
+  if (benen) cage.stirrup_legs = parseInt(benen[1], 10);
   if (cage.bottom.count === 0 && cage.top.count === 0) return null;
   return cage;
 }

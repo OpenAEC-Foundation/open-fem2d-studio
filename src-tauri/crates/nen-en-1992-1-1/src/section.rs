@@ -53,6 +53,29 @@
 //!
 //! Alle maten in mm. De lengteas `z` loopt van de onderrand (z = 0) naar de
 //! bovenrand (z = h).
+//!
+//! # De dwarskrachtwapening in de korf
+//!
+//! De beugeldiameter alleen zegt waar de hoofdwapening ligt, maar zegt niets
+//! over de weerstand: §9.2.2(5) rekent met A_sw **binnen de lengte s**, en
+//! (6.8) met A_sw/s. Daarvoor zijn drie dingen nodig die uit een diameter niet
+//! zijn af te leiden — de hart-op-hartafstand s, het aantal benen n dat één
+//! verticale doorsnede kruist, en (voor §9.2.2(8)) de hart-op-hartafstand s_t
+//! van die benen in dwarsrichting.
+//!
+//! **Ze zijn alle drie `Option`, en `None` betekent niet-opgegeven.** Niet nul,
+//! en niet een stilzwijgend aangenomen waarde. De norm geeft voor geen van
+//! drieën een aanbevolen waarde — §9.2.2(6) en (8) geven alleen bovengrenzen —
+//! dus elke ingevulde standaardwaarde zou een ontwerpbeslissing zijn die de
+//! app voor de constructeur neemt. Een toets die deze gegevens mist hoort te
+//! zeggen dat hij niet kan; zie [`ReinforcementCage::shear_reinforcement`],
+//! die daarvoor een leesbare reden teruggeeft in plaats van een getal.
+//!
+//! Bestaande projectbestanden blijven daardoor laden: de velden staan op
+//! `#[serde(default)]` en komen als `None` binnen.
+//!
+//! **De hoek α is vastgelegd op 90°** — rechte beugels. Zie
+//! [`STIRRUP_ALPHA_DEG`] voor de afweging.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -654,7 +677,10 @@ impl ConcreteSectionInput {
 }
 
 /// Eén rij hoofdwapening: aantal staven en diameter.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
+///
+/// `Default` is de LEGE rij (0 staven, Ø 0) — geen bruikbare wapening, maar
+/// wel wat [`ReinforcementCage::default`] nodig heeft om te bestaan.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct RebarRow {
@@ -682,8 +708,44 @@ impl RebarRow {
     }
 }
 
+/// De hoek α van de dwarskrachtwapening ten opzichte van de lengteas, in
+/// graden. In dit model **vast op 90°**: rechte beugels.
+///
+/// §9.2.2(1) laat 45° ≤ α ≤ 90° toe. Dat is een toestemming, geen invoereis:
+/// de norm noemt geen aanbevolen waarde en de nationale bijlage wijzigt het
+/// artikel niet. De keuze om α niet als invoerveld op te nemen berust op drie
+/// dingen.
+///
+/// 1. **Een leeg veld blokkeert de toets.** α is niet af te leiden uit
+///    dekking, diameter of doorsnede. Een `Option<f64>` die niemand invult zou
+///    de dwarskrachttoets voor iedereen laten uitvallen, of anders alsnog
+///    stilzwijgend 90° invullen — precies wat we bij s en n vermijden.
+/// 2. **90° is de veilige tak, niet zomaar de gemakkelijke.** In (9.4) staat
+///    sin α in de noemer, dus α = 90° geeft de KLEINSTE ρ_w en daarmee de
+///    scherpste toets tegen ρ_w,min. In (9.6N) staat cot α, dus α = 90° geeft
+///    de KLEINSTE s_l,max. En (6.8) levert minder weerstand dan (6.13). Wie
+///    werkelijk hellende beugels toepast en hier 90° rekent, rekent dus aan de
+///    veilige kant.
+/// 3. **Hellende dwarskrachtwapening komt zelden alleen.** Zij hangt samen met
+///    opgebogen staven, en die brengen §9.2.2(4) (β₃ = 0,5) en §9.2.2(7)
+///    (s_b,max) mee — een tweede wapeningsfamilie die dit model niet kent.
+///
+/// Deze beperking is dus geen stilzwijgende aanname maar een vastgelegde
+/// modelgrens; [`ReinforcementCage::assumptions`] schrijft haar uit, zodat zij
+/// in elke afleiding meeloopt.
+pub const STIRRUP_ALPHA_DEG: f64 = 90.0;
+
 /// Wapeningskorf: dekking, beugel, boven- en onderwapening.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
+///
+/// # `Default` is een LEGE korf, geen standaardkorf
+///
+/// `ReinforcementCage::default()` levert dekking 0, geen beugel en geen
+/// hoofdwapening. Dat is met opzet géén bruikbare korf: [`Self::validate`]
+/// weigert hem met "de korf bevat geen hoofdwapening". `Default` bestaat
+/// alleen zodat code die de beugelvelden niet invult
+/// `..ReinforcementCage::default()` kan schrijven; er is nergens in de norm
+/// een standaardkorf, en die zou hier ook niet mogen ontstaan.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct ReinforcementCage {
@@ -696,6 +758,87 @@ pub struct ReinforcementCage {
     pub top: RebarRow,
     /// Onderwapening (aan de zijde z = 0).
     pub bottom: RebarRow,
+    /// Hart-op-hartafstand s van de beugels, gemeten LANGS de lengteas, in mm
+    /// (§9.2.2(5), symbool s in (9.4); begrensd door s_l,max in §9.2.2(6)).
+    ///
+    /// `None` = niet opgegeven. Dat is iets anders dan 0 (dat zou een
+    /// oneindige hoeveelheid wapening betekenen) en iets anders dan een
+    /// aangenomen waarde: de norm geeft geen aanbevolen s, alleen een
+    /// bovengrens. Zonder s zijn A_sw/s in (6.8) en ρ_w in (9.4) onbepaald.
+    #[serde(default)]
+    #[ts(optional)]
+    pub stirrup_spacing_mm: Option<f64>,
+    /// Aantal beugelbenen n dat één verticale doorsnede kruist.
+    ///
+    /// §9.2.2(5) omschrijft A_sw als "de oppervlakte van de doorsnede van de
+    /// dwarskrachtwapening binnen de lengte s"; bij een gesloten tweebenige
+    /// beugel is dat 2·(π/4)·Ø², bij een vierbenige het dubbele. Dit getal is
+    /// uit dekking of diameter niet af te leiden en is de grootste enkele
+    /// foutbron in een dwarskrachttoets: hij schaalt V_Rd,s recht evenredig.
+    ///
+    /// `None` = niet opgegeven.
+    #[serde(default)]
+    #[ts(optional)]
+    pub stirrup_legs: Option<u32>,
+    /// Hart-op-hartafstand s_t van de beugelbenen in DWARSRICHTING, in mm
+    /// (§9.2.2(8); de nationale bijlage begrenst hem op 500 mm).
+    ///
+    /// `None` = niet opgegeven. Bij een gesloten tweebenige beugel is s_t
+    /// zuivere meetkunde en hoeft hij niet te worden gevraagd; zie
+    /// [`Self::leg_spacing_mm`]. Bij meer benen hangt hij af van de verdeling
+    /// over de breedte en is hij niet af te leiden.
+    #[serde(default)]
+    #[ts(optional)]
+    pub stirrup_leg_spacing_mm: Option<f64>,
+    /// Karakteristieke vloeigrens f_ywk van de DWARSKRACHTWAPENING, in N/mm².
+    ///
+    /// `None` = dezelfde staalsoort als de langswapening. De beugelkwaliteit
+    /// mág afwijken en is niet uit de langswapening af te leiden, dus het veld
+    /// bestaat; maar `None` is hier geen ontbrekend gegeven, want de
+    /// staalsoort van de staaf is wél bekend. Wie het invult, moet het in de
+    /// afleiding terugzien.
+    #[serde(default)]
+    #[ts(optional)]
+    pub stirrup_fywk_mpa: Option<f64>,
+}
+
+/// Waar de dwarsafstand s_t van de beugelbenen vandaan komt.
+///
+/// De herkomst reist mee omdat een afgeleide s_t een meetkundige gevolgtrekking
+/// is en geen invoer: hij geldt alléén voor een gesloten tweebenige beugel, en
+/// dat hoort in de afleiding te staan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LegSpacingSource {
+    /// Door de gebruiker opgegeven.
+    Given,
+    /// Afgeleid uit b_w, c_nom en Ø_beugel bij een tweebenige beugel:
+    /// s_t = b_w − 2·c_nom − Ø_beugel (zuivere meetkunde, geen normregel).
+    DerivedTwoLeg,
+}
+
+/// De dwarskrachtwapening zoals §6.2.3 en §9.2.2 haar nodig hebben, met alles
+/// er al uit gerekend wat meetkunde is.
+///
+/// Dit type bestaat zodat elke toets die de beugels nodig heeft langs één
+/// poort binnenkomt ([`ReinforcementCage::shear_reinforcement`]) en dus
+/// dezelfde A_sw en dezelfde α gebruikt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShearReinforcement {
+    /// Beugeldiameter Ø in mm.
+    pub diameter_mm: f64,
+    /// Hart-op-hartafstand s in de lengterichting, mm (§9.2.2(5)).
+    pub s_mm: f64,
+    /// Aantal benen n dat één verticale doorsnede kruist.
+    pub legs: u32,
+    /// A_sw = n·(π/4)·Ø², mm² — de wapening binnen de lengte s (§9.2.2(5)).
+    pub a_sw_mm2: f64,
+    /// A_sw/s in mm²/mm; de maat die in (6.8) en (6.13) staat.
+    pub a_sw_per_s_mm: f64,
+    /// Hoek α t.o.v. de lengteas, graden. Altijd [`STIRRUP_ALPHA_DEG`].
+    pub alpha_deg: f64,
+    /// f_ywk in N/mm² als er een afwijkende beugelkwaliteit is opgegeven;
+    /// `None` = dezelfde staalsoort als de langswapening.
+    pub f_ywk_mpa: Option<f64>,
 }
 
 /// Eén wapeningslaag in de doorsnedeberekening: ligging en oppervlakte.
@@ -767,10 +910,134 @@ impl ReinforcementCage {
         lagen
     }
 
+    /// De dwarskrachtwapening, of de reden waarom zij niet bekend is.
+    ///
+    /// De reden is bewust een leesbare zin en geen `None`: een toets die
+    /// hierop stukloopt moet in het rapport kunnen zeggen wát er ontbreekt,
+    /// zodat de constructeur het kan invullen. Alle ontbrekende gegevens staan
+    /// in één melding — drie keer achter elkaar hetzelfde formulier openen om
+    /// er één veld bij te leren is geen dienst.
+    ///
+    /// De geleverde A_sw volgt §9.2.2(5): "de oppervlakte van de doorsnede van
+    /// de dwarskrachtwapening binnen de lengte s", dus n benen × π/4 × Ø².
+    pub fn shear_reinforcement(&self) -> Result<ShearReinforcement, String> {
+        let mut ontbreekt: Vec<&str> = Vec::new();
+        if !(self.stirrup_diameter_mm > 0.0) {
+            ontbreekt.push("de beugeldiameter (nu 0 = geen beugel)");
+        }
+        let s = match self.stirrup_spacing_mm {
+            Some(s) if s > 0.0 => Some(s),
+            _ => {
+                ontbreekt.push("de hart-op-hartafstand s van de beugels (§9.2.2(5))");
+                None
+            }
+        };
+        let benen = match self.stirrup_legs {
+            Some(n) if n >= 1 => Some(n),
+            _ => {
+                ontbreekt.push("het aantal beugelbenen n");
+                None
+            }
+        };
+        if !ontbreekt.is_empty() {
+            return Err(format!(
+                "de dwarskrachtwapening is onvolledig opgegeven: {} ontbreekt. \
+                 De norm kent hiervoor geen standaardwaarde — §9.2.2(6) en (8) geven \
+                 alleen bovengrenzen — dus er wordt niets aangenomen.",
+                ontbreekt.join(", ")
+            ));
+        }
+        let (s, benen) = (s.expect("hierboven gecontroleerd"), benen.expect("idem"));
+        let a_sw = benen as f64 * std::f64::consts::PI * (self.stirrup_diameter_mm / 2.0).powi(2);
+        Ok(ShearReinforcement {
+            diameter_mm: self.stirrup_diameter_mm,
+            s_mm: s,
+            legs: benen,
+            a_sw_mm2: a_sw,
+            a_sw_per_s_mm: a_sw / s,
+            alpha_deg: STIRRUP_ALPHA_DEG,
+            f_ywk_mpa: self.stirrup_fywk_mpa,
+        })
+    }
+
+    /// De dwarsafstand s_t van de beugelbenen (§9.2.2(8)), met de herkomst
+    /// erbij. `None` = niet bekend en niet af te leiden.
+    ///
+    /// Opgegeven gaat vóór. Is er niets opgegeven en heeft de beugel precies
+    /// **twee** benen, dan volgt s_t uit de meetkunde: beide benen liggen met
+    /// hun hart op c_nom + Ø_beugel/2 van hun eigen zijkant, dus
+    ///
+    /// ```text
+    ///   s_t = b_w − 2·(c_nom + Ø_beugel/2) = b_w − 2·c_nom − Ø_beugel
+    /// ```
+    ///
+    /// Dat is zuivere meetkunde en staat als zodanig NIET in de norm; daarom
+    /// draagt de uitkomst [`LegSpacingSource::DerivedTwoLeg`]. Bij meer dan
+    /// twee benen wordt niets afgeleid: hoe die over de breedte verdeeld zijn
+    /// is een ontwerpkeuze, en gelijkmatig verdelen zou een aanname zijn.
+    ///
+    /// De breedte is b_w — de kleinste breedte van de doorsnede (§6.2.3(1)) —
+    /// en niet de flensbreedte: de beugel zit in het lijf.
+    pub fn leg_spacing_mm(&self, section: &ConcreteSection) -> Option<(f64, LegSpacingSource)> {
+        if let Some(s_t) = self.stirrup_leg_spacing_mm {
+            if s_t > 0.0 {
+                return Some((s_t, LegSpacingSource::Given));
+            }
+        }
+        if self.stirrup_legs != Some(2) || !(self.stirrup_diameter_mm > 0.0) {
+            return None;
+        }
+        let s_t = section.b_w_mm() - 2.0 * self.cover_mm - self.stirrup_diameter_mm;
+        if s_t > 0.0 {
+            Some((s_t, LegSpacingSource::DerivedTwoLeg))
+        } else {
+            None
+        }
+    }
+
+    /// De modelaannames van de korf, als zinnen voor de afleiding.
+    ///
+    /// Naar de vorm gelijk aan [`ConcreteSection::assumptions`]: wat het model
+    /// vastlegt en de gebruiker niet kan kiezen, reist als tekst mee in plaats
+    /// van stilzwijgend in een formule te zitten.
+    pub fn assumptions(&self) -> Vec<String> {
+        let mut uit = Vec::new();
+        if self.stirrup_diameter_mm > 0.0 {
+            uit.push(format!(
+                "De dwarskrachtwapening wordt als RECHTE beugels gerekend: α = {}° ten opzichte \
+                 van de lengteas. §9.2.2(1) laat 45° t/m 90° toe, maar hellende \
+                 dwarskrachtwapening en opgebogen staven zijn in dit model niet opgenomen; \
+                 α = 90° geeft de kleinste ρ_w in (9.4), de kleinste s_l,max in (9.6N) en de \
+                 kleinste weerstand — het is dus de veilige tak.",
+                fmt_mm(STIRRUP_ALPHA_DEG)
+            ));
+        }
+        if let Some(f_ywk) = self.stirrup_fywk_mpa {
+            uit.push(format!(
+                "Voor de dwarskrachtwapening is een eigen vloeigrens f_ywk = {} N/mm² \
+                 opgegeven; die wijkt af van de staalsoort van de langswapening.",
+                fmt_mm(f_ywk)
+            ));
+        }
+        uit
+    }
+
     /// "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm".
+    ///
+    /// Zijn de beugelgegevens ingevuld, dan staan ze erbij:
+    /// "… beugel Ø8 h.o.h. 150 mm, 2-benig, …". Ontbreken ze, dan blijft de
+    /// regel letterlijk zoals hij was — een korf zonder beugelafstand mag niet
+    /// als een korf mét gaan lezen.
     pub fn summary(&self) -> String {
         let beugel = if self.stirrup_diameter_mm > 0.0 {
-            format!("beugel Ø{}", fmt_mm(self.stirrup_diameter_mm))
+            let mut s = format!("beugel Ø{}", fmt_mm(self.stirrup_diameter_mm));
+            if let Some(a) = self.stirrup_spacing_mm.filter(|v| *v > 0.0) {
+                s.push_str(&format!(" h.o.h. {} mm", fmt_mm(a)));
+            }
+            if let Some(n) = self.stirrup_legs.filter(|n| *n >= 1) {
+                s.push_str(&format!(", {n}-benig"));
+            }
+            s
         } else {
             "geen beugel".to_string()
         };
@@ -801,6 +1068,54 @@ impl ReinforcementCage {
         }
         if self.bottom.is_empty() && self.top.is_empty() {
             return Err("de korf bevat geen hoofdwapening".into());
+        }
+        // De beugelvelden. Nog steeds geen normtoets: alleen of het opgegeven
+        // getal als maat kán bestaan. Een LEEG veld is hier geldig — dat
+        // betekent "niet opgegeven" en wordt pas een probleem bij een toets
+        // die het nodig heeft (zie `shear_reinforcement`).
+        for (naam, waarde) in [
+            ("de beugelafstand s", self.stirrup_spacing_mm),
+            ("de dwarsafstand s_t van de beugelbenen", self.stirrup_leg_spacing_mm),
+            ("de vloeigrens f_ywk van de dwarskrachtwapening", self.stirrup_fywk_mpa),
+        ] {
+            if let Some(v) = waarde {
+                if !(v > 0.0) {
+                    return Err(format!(
+                        "{naam} is {v} opgegeven; dat is geen maat. Laat het veld leeg als \
+                         hij niet is opgegeven — leeg en nul betekenen hier niet hetzelfde."
+                    ));
+                }
+            }
+        }
+        if self.stirrup_legs == Some(0) {
+            return Err("het aantal beugelbenen is 0 opgegeven; laat het veld leeg als er \
+                        geen beugels zijn, of geef het werkelijke aantal benen"
+                .into());
+        }
+        let beugelgegeven = self.stirrup_spacing_mm.is_some()
+            || self.stirrup_legs.is_some()
+            || self.stirrup_leg_spacing_mm.is_some();
+        if beugelgegeven && !(self.stirrup_diameter_mm > 0.0) {
+            return Err("er zijn beugelgegevens (afstand, benen of dwarsafstand) opgegeven \
+                        terwijl de beugeldiameter 0 is; kies een beugeldiameter of laat de \
+                        beugelgegevens leeg"
+                .into());
+        }
+        // s_t is een afstand tussen benen die beide binnen het lijf liggen; de
+        // buitenste twee liggen op c_nom + Ø_beugel/2 van hun eigen zijkant.
+        // Verder uit elkaar dan dat kunnen ze niet staan.
+        if let Some(s_t) = self.stirrup_leg_spacing_mm {
+            let ruimte = section.b_w_mm() - 2.0 * self.cover_mm - self.stirrup_diameter_mm;
+            if s_t > ruimte + 1e-9 {
+                return Err(format!(
+                    "de dwarsafstand van de beugelbenen is {s_t:.0} mm, maar tussen de \
+                     buitenste beenassen past hoogstens {ruimte:.0} mm \
+                     (b_w = {:.0} mm, dekking {:.0} mm, beugel Ø{:.0} mm)",
+                    section.b_w_mm(),
+                    self.cover_mm,
+                    self.stirrup_diameter_mm
+                ));
+            }
         }
         for (naam, rij, z) in [
             ("onderwapening", &self.bottom, self.axis_offset_mm(&self.bottom)),
@@ -839,6 +1154,7 @@ mod tests {
             stirrup_diameter_mm: 8.0,
             top: RebarRow { count: 2, diameter_mm: 12.0 },
             bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+            ..ReinforcementCage::default()
         }
     }
 
@@ -1021,6 +1337,7 @@ mod tests {
             top: RebarRow { count: 8, diameter_mm: 20.0 },
             // Onder, in het lijf: 5Ø20 = 100 mm ≤ 124 mm → past.
             bottom: RebarRow { count: 5, diameter_mm: 20.0 },
+            ..ReinforcementCage::default()
         };
         assert!(k.validate(&s).is_ok());
         // Dezelfde rij van 8Ø20 onderin het lijf past NIET, terwijl hij tegen
@@ -1122,5 +1439,199 @@ mod tests {
             r#"{"b_mm": 300, "h_mm": 500, "width_mm": 300}"#
         )
         .is_err());
+    }
+
+    // ── De dwarskrachtwapening in de korf ────────────────────────────────
+    //
+    // De getallen hieronder zijn met de hand gerekend; ze staan telkens als
+    // som in het commentaar zodat een afwijking van de code niet als
+    // "de code zegt het" wegkomt.
+
+    /// De referentiekorf mét beugelgegevens: Ø8, h.o.h. 150 mm, 2-benig.
+    fn korf_met_beugels() -> ReinforcementCage {
+        ReinforcementCage {
+            stirrup_spacing_mm: Some(150.0),
+            stirrup_legs: Some(2),
+            ..korf()
+        }
+    }
+
+    /// A_sw = n·(π/4)·Ø² (§9.2.2(5)) en A_sw/s, de maat uit (6.8).
+    ///
+    /// Handberekening, Ø8 en twee benen:
+    ///   π/4 · 8²   = 0,7853982 · 64 = 50,265482 mm² per been
+    ///   A_sw = 2 · = 100,530965 mm²
+    ///   A_sw/s     = 100,530965 / 150 = 0,6702064 mm²/mm
+    #[test]
+    fn dwarskrachtwapening_uit_diameter_afstand_en_benen() {
+        let b = korf_met_beugels().shear_reinforcement().expect("volledig opgegeven");
+        assert_relative_eq!(b.a_sw_mm2, 100.530965, max_relative = 1e-8);
+        assert_relative_eq!(b.a_sw_per_s_mm, 0.6702064327, max_relative = 1e-8);
+        assert_eq!(b.legs, 2);
+        assert_relative_eq!(b.s_mm, 150.0);
+        assert_relative_eq!(b.diameter_mm, 8.0);
+        // α ligt vast op 90° — rechte beugels; zie STIRRUP_ALPHA_DEG.
+        assert_relative_eq!(b.alpha_deg, 90.0);
+        assert_eq!(b.f_ywk_mpa, None);
+
+        // Vier benen is exact het dubbele: A_sw = 4 · 50,265482 = 201,061930 mm².
+        let vier = ReinforcementCage { stirrup_legs: Some(4), ..korf_met_beugels() };
+        let b4 = vier.shear_reinforcement().unwrap();
+        assert_relative_eq!(b4.a_sw_mm2, 201.061930, max_relative = 1e-8);
+
+        // Ø10, 2-benig, h.o.h. 200: π/4 · 10² = 78,539816 mm² per been,
+        // A_sw = 157,079633 mm², A_sw/s = 157,079633 / 200 = 0,7853982 mm²/mm.
+        let dik = ReinforcementCage {
+            stirrup_diameter_mm: 10.0,
+            stirrup_spacing_mm: Some(200.0),
+            ..korf_met_beugels()
+        };
+        let b10 = dik.shear_reinforcement().unwrap();
+        assert_relative_eq!(b10.a_sw_mm2, 157.0796327, max_relative = 1e-8);
+        assert_relative_eq!(b10.a_sw_per_s_mm, 0.7853981634, max_relative = 1e-8);
+    }
+
+    /// Ontbrekende beugelgegevens leveren een REDEN en geen aangenomen getal.
+    /// Dat is de kern van de keuze voor `Option`: een toets die zonder s of n
+    /// niet kan, hoort dat te zeggen.
+    #[test]
+    fn onvolledige_beugelgegevens_leveren_een_reden_en_geen_aanname() {
+        // De oude korf: alleen een beugeldiameter. Beide gegevens ontbreken en
+        // ze staan beide in één melding.
+        let fout = korf().shear_reinforcement().unwrap_err();
+        assert!(fout.contains("hart-op-hartafstand"), "kreeg: {fout}");
+        assert!(fout.contains("aantal beugelbenen"), "kreeg: {fout}");
+
+        // Alleen s, geen benen.
+        let alleen_s = ReinforcementCage { stirrup_spacing_mm: Some(150.0), ..korf() };
+        let fout = alleen_s.shear_reinforcement().unwrap_err();
+        assert!(!fout.contains("hart-op-hartafstand"), "kreeg: {fout}");
+        assert!(fout.contains("aantal beugelbenen"), "kreeg: {fout}");
+
+        // Geen beugel: dan is de diameter het eerste dat ontbreekt.
+        let zonder = ReinforcementCage { stirrup_diameter_mm: 0.0, ..korf() };
+        assert!(zonder.shear_reinforcement().unwrap_err().contains("beugeldiameter"));
+    }
+
+    /// s_t bij een gesloten tweebenige beugel is meetkunde, geen invoer:
+    ///   s_t = b_w − 2·c_nom − Ø_beugel = 300 − 60 − 8 = 232 mm.
+    /// Bij een T telt de LIJFbreedte, niet de flensbreedte:
+    ///   s_t = 200 − 60 − 8 = 132 mm.
+    #[test]
+    fn dwarsafstand_van_de_beugelbenen() {
+        let rechthoek = ConcreteSection::new(300.0, 500.0);
+        let (s_t, herkomst) = korf_met_beugels().leg_spacing_mm(&rechthoek).unwrap();
+        assert_relative_eq!(s_t, 232.0);
+        assert_eq!(herkomst, LegSpacingSource::DerivedTwoLeg);
+
+        let t = ConcreteSection::tee(400.0, 50.0, 200.0, 450.0).unwrap();
+        let (s_t_t, _) = korf_met_beugels().leg_spacing_mm(&t).unwrap();
+        assert_relative_eq!(s_t_t, 132.0);
+
+        // Opgegeven gaat vóór afgeleid.
+        let opgegeven =
+            ReinforcementCage { stirrup_leg_spacing_mm: Some(180.0), ..korf_met_beugels() };
+        assert_eq!(opgegeven.leg_spacing_mm(&rechthoek), Some((180.0, LegSpacingSource::Given)));
+
+        // Vier benen: de verdeling over de breedte is een ontwerpkeuze, dus er
+        // wordt niets afgeleid.
+        let vier = ReinforcementCage { stirrup_legs: Some(4), ..korf_met_beugels() };
+        assert_eq!(vier.leg_spacing_mm(&rechthoek), None);
+    }
+
+    /// De meetkundige controles op de nieuwe velden. Geen normtoets — alleen
+    /// of het opgegeven getal als maat kán bestaan.
+    #[test]
+    fn validatie_van_de_beugelgegevens() {
+        let s = ConcreteSection::new(300.0, 500.0);
+        assert!(korf_met_beugels().validate(&s).is_ok());
+
+        // Nul is geen afstand; leeglaten is de manier om "niet opgegeven" te zeggen.
+        let nul = ReinforcementCage { stirrup_spacing_mm: Some(0.0), ..korf() };
+        assert!(nul.validate(&s).unwrap_err().contains("beugelafstand"));
+
+        // Nul benen evenmin.
+        let geen_benen = ReinforcementCage { stirrup_legs: Some(0), ..korf() };
+        assert!(geen_benen.validate(&s).unwrap_err().contains("beugelbenen"));
+
+        // Beugelgegevens zonder beugel is tegenstrijdig.
+        let zonder_beugel = ReinforcementCage {
+            stirrup_diameter_mm: 0.0,
+            stirrup_spacing_mm: Some(150.0),
+            ..korf()
+        };
+        assert!(zonder_beugel.validate(&s).unwrap_err().contains("beugeldiameter"));
+
+        // s_t past hoogstens tussen de buitenste beenassen: 300 − 60 − 8 = 232 mm.
+        let precies = ReinforcementCage { stirrup_leg_spacing_mm: Some(232.0), ..korf() };
+        assert!(precies.validate(&s).is_ok());
+        let teveel = ReinforcementCage { stirrup_leg_spacing_mm: Some(233.0), ..korf() };
+        assert!(teveel.validate(&s).unwrap_err().contains("232"));
+    }
+
+    /// De samenvattingsregel groeit alleen mee als er iets te melden is; een
+    /// korf zonder beugelafstand mag niet als een korf mét gaan lezen.
+    #[test]
+    fn samenvatting_noemt_de_beugelgegevens_alleen_als_ze_er_zijn() {
+        assert_eq!(korf().summary(), "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm");
+        assert_eq!(
+            korf_met_beugels().summary(),
+            "onder 3Ø16, boven 2Ø12, beugel Ø8 h.o.h. 150 mm, 2-benig, dekking 30 mm"
+        );
+        let alleen_benen = ReinforcementCage { stirrup_legs: Some(4), ..korf() };
+        assert_eq!(
+            alleen_benen.summary(),
+            "onder 3Ø16, boven 2Ø12, beugel Ø8, 4-benig, dekking 30 mm"
+        );
+    }
+
+    /// De vastgelegde hoek reist als tekst mee; hij zit niet stilzwijgend in
+    /// een formule (§9.2.2(1) laat 45°–90° toe, dit model rekent 90°).
+    #[test]
+    fn de_vaste_hoek_staat_in_de_aannamen() {
+        let a = korf().assumptions();
+        assert_eq!(a.len(), 1);
+        assert!(a[0].contains("90°"), "kreeg: {}", a[0]);
+        assert!(a[0].contains("9.2.2(1)"), "kreeg: {}", a[0]);
+
+        // Geen beugel: dan valt er over de beugelhoek niets te melden.
+        let zonder = ReinforcementCage { stirrup_diameter_mm: 0.0, ..korf() };
+        assert!(zonder.assumptions().is_empty());
+
+        // Een eigen beugelkwaliteit is óók een gegeven dat zichtbaar hoort te zijn.
+        let eigen = ReinforcementCage { stirrup_fywk_mpa: Some(500.0), ..korf() };
+        assert_eq!(eigen.assumptions().len(), 2);
+        assert!(eigen.assumptions()[1].contains("f_ywk"));
+    }
+
+    /// Bestaande projectbestanden blijven laden: een korf zonder de nieuwe
+    /// velden komt binnen als "niet opgegeven", niet als nul.
+    #[test]
+    fn oude_korf_zonder_beugelgegevens_laadt_nog() {
+        let j = r#"{"cover_mm": 30, "stirrup_diameter_mm": 8,
+                    "top": {"count": 2, "diameter_mm": 12},
+                    "bottom": {"count": 3, "diameter_mm": 16}}"#;
+        let k: ReinforcementCage = serde_json::from_str(j).unwrap();
+        assert_eq!(k, korf());
+        assert_eq!(k.stirrup_spacing_mm, None);
+        assert_eq!(k.stirrup_legs, None);
+        assert_eq!(k.stirrup_leg_spacing_mm, None);
+        assert_eq!(k.stirrup_fywk_mpa, None);
+        assert!(k.shear_reinforcement().is_err());
+
+        // Mét de nieuwe velden leest hij ze wél.
+        let j2 = r#"{"cover_mm": 30, "stirrup_diameter_mm": 8,
+                     "top": {"count": 2, "diameter_mm": 12},
+                     "bottom": {"count": 3, "diameter_mm": 16},
+                     "stirrup_spacing_mm": 150, "stirrup_legs": 2}"#;
+        let k2: ReinforcementCage = serde_json::from_str(j2).unwrap();
+        assert_eq!(k2, korf_met_beugels());
+
+        // En een tikfout blijft een fout — `deny_unknown_fields` geldt nog.
+        let fout = r#"{"cover_mm": 30, "stirrup_diameter_mm": 8,
+                       "top": {"count": 2, "diameter_mm": 12},
+                       "bottom": {"count": 3, "diameter_mm": 16},
+                       "stirrup_spacing": 150}"#;
+        assert!(serde_json::from_str::<ReinforcementCage>(fout).is_err());
     }
 }

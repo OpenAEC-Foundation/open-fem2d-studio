@@ -71,9 +71,13 @@ pub mod checks;
 pub mod data;
 pub mod deelstappen;
 pub mod dekking;
+pub mod detaillering;
+pub mod dwarskracht;
 pub mod factors;
 pub mod mnkappa;
+pub mod scheurwijdte;
 pub mod section;
+pub mod slankheid;
 pub mod stiffness;
 pub mod stress_strain;
 
@@ -109,8 +113,9 @@ pub use mnkappa::{
     MAX_N_STRIPS,
 };
 pub use section::{
-    mirrored_layers, Band, ConcreteSection, ConcreteSectionInput, ConcreteShape, RebarLayer,
-    RebarRow, RectConcreteSection, ReinforcementCage,
+    mirrored_layers, Band, ConcreteSection, ConcreteSectionInput, ConcreteShape, LegSpacingSource,
+    RebarLayer, RebarRow, RectConcreteSection, ReinforcementCage, ShearReinforcement,
+    STIRRUP_ALPHA_DEG,
 };
 pub use stiffness::{
     ei_secant, kappa_from_nm, m0_knm, m_cr_knm, KappaSolution, LoadDuration, SecantStiffness,

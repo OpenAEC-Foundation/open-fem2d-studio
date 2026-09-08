@@ -259,10 +259,53 @@ export function nuttigeHoogteMm(korf: ReinforcementCage, hoogteMm: number): numb
   return hoogteMm - asAfstandMm(korf, korf.bottom);
 }
 
-/** "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm" — gelijk aan de kern. */
+/**
+ * "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm" — gelijk aan de kern.
+ *
+ * Zijn de beugelgegevens ingevuld, dan staan ze erbij: "beugel Ø8 h.o.h.
+ * 150 mm, 2-benig". Letterlijk dezelfde regel als
+ * `ReinforcementCage::summary()` in de kern; die twee moeten gelijk blijven,
+ * want het rapport zet de kernversie neer en de editor deze.
+ */
 export function korfSamenvatting(korf: ReinforcementCage): string {
-  const beugel = korf.stirrup_diameter_mm > 0 ? `beugel Ø${maat(korf.stirrup_diameter_mm)}` : "geen beugel";
+  let beugel = "geen beugel";
+  if (korf.stirrup_diameter_mm > 0) {
+    beugel = `beugel Ø${maat(korf.stirrup_diameter_mm)}`;
+    const s = korf.stirrup_spacing_mm;
+    if (s !== undefined && s !== null && s > 0) beugel += ` h.o.h. ${maat(s)} mm`;
+    const n = korf.stirrup_legs;
+    if (n !== undefined && n !== null && n >= 1) beugel += `, ${n}-benig`;
+  }
   return `onder ${rijLabel(korf.bottom)}, boven ${rijLabel(korf.top)}, ${beugel}, dekking ${maat(korf.cover_mm)} mm`;
+}
+
+/**
+ * De dwarsafstand s_t van de beugelbenen (§9.2.2(8)), met de herkomst erbij —
+ * spiegel van `ReinforcementCage::leg_spacing_mm` in de kern.
+ *
+ * Opgegeven gaat vóór. Anders, en alleen bij een gesloten TWEEBENIGE beugel:
+ *
+ *     s_t = b_w − 2·c_nom − Ø_beugel
+ *
+ * Dat is zuivere meetkunde en staat als zodanig niet in de norm; daarom draagt
+ * de uitkomst zijn herkomst mee. Bij meer benen wordt niets afgeleid: hoe die
+ * over de breedte staan is een ontwerpkeuze en gelijkmatig verdelen zou een
+ * aanname zijn. `null` = niet bekend en niet af te leiden.
+ */
+export function beugelDwarsafstandMm(
+  korf: ReinforcementCage,
+  doorsnede: ConcreteSectionInput,
+): { mm: number; afgeleid: boolean } | null {
+  const opgegeven = korf.stirrup_leg_spacing_mm;
+  if (opgegeven !== undefined && opgegeven !== null && opgegeven > 0) {
+    return { mm: opgegeven, afgeleid: false };
+  }
+  if (korf.stirrup_legs !== 2 || !(korf.stirrup_diameter_mm > 0)) return null;
+  // b_w: de kleinste breedte van de doorsnede (§6.2.3(1)) — de beugel zit in
+  // het lijf, niet in de flens.
+  const bW = Math.min(...banden(doorsnede).map((b) => b.bMm));
+  const st = bW - 2 * korf.cover_mm - korf.stirrup_diameter_mm;
+  return st > 0 ? { mm: st, afgeleid: true } : null;
 }
 
 /** Eén staaf in de tekening: hart (mm vanaf linkerrand resp. onderrand) en diameter. */
@@ -341,6 +384,36 @@ export function controleerKorf(k: Wapeningskorf): string | null {
   const onder = leeg(korf.bottom) ? 0 : asAfstandMm(korf, korf.bottom);
   const boven = leeg(korf.top) ? 0 : asAfstandMm(korf, korf.top);
   if (onder + boven >= d.h_mm) return "Boven- en onderwapening overlappen elkaar in de hoogte.";
+
+  // De beugelvelden. Leeglaten mag — dat betekent "niet opgegeven" — maar wat
+  // er staat moet een echte maat zijn. Zelfde grenzen als
+  // `ReinforcementCage::validate` in de kern.
+  for (const [naam, waarde] of [
+    ["De beugelafstand s", korf.stirrup_spacing_mm],
+    ["De dwarsafstand van de beugelbenen", korf.stirrup_leg_spacing_mm],
+    ["De vloeigrens f_ywk van de beugels", korf.stirrup_fywk_mpa],
+  ] as const) {
+    if (waarde === undefined || waarde === null) continue;
+    if (!(waarde > 0)) return `${naam} moet groter dan nul zijn; laat het veld leeg als hij niet is opgegeven.`;
+  }
+  if (korf.stirrup_legs !== undefined && korf.stirrup_legs !== null && korf.stirrup_legs < 1) {
+    return "Het aantal beugelbenen moet ten minste 1 zijn; laat het veld leeg als er geen beugels zijn.";
+  }
+  const beugelgegeven =
+    (korf.stirrup_spacing_mm ?? null) !== null ||
+    (korf.stirrup_legs ?? null) !== null ||
+    (korf.stirrup_leg_spacing_mm ?? null) !== null;
+  if (beugelgegeven && !(korf.stirrup_diameter_mm > 0)) {
+    return "Er zijn beugelgegevens opgegeven terwijl er geen beugel is; kies een beugeldiameter of laat de beugelgegevens leeg.";
+  }
+  const st = korf.stirrup_leg_spacing_mm;
+  if (st !== undefined && st !== null && st > 0) {
+    const bW = Math.min(...banden(d).map((b) => b.bMm));
+    const ruimte = bW - 2 * korf.cover_mm - korf.stirrup_diameter_mm;
+    if (st > ruimte + 1e-9) {
+      return `De dwarsafstand van de beugelbenen is ${maat(st)} mm, maar tussen de buitenste beenassen past hoogstens ${maat(ruimte)} mm.`;
+    }
+  }
   return null;
 }
 

@@ -6862,7 +6862,7 @@ function materiaalVanStaaf(beam) {
 var LABEL_ZUIVER_STAAL = "niet gebruikt";
 function redenZuiverStaal(combo) {
   const uitdrukking = combo.id === 7 ? "6.15" : "6.16";
-  const gebruiker = combo.id === 7 ? "geen enkele toets in deze app" : "de kruipvervorming van hout en de BGT-tak van beton";
+  const gebruiker = combo.id === 7 ? "de scheurbeheersing van beton (EN 1992-1-1 \xA77.3; de nationale bijlage bij 7.3.1(5) schrijft juist deze combinatie voor)" : "de kruipvervorming van hout en de BGT-tak van beton";
   return `"${combo.name}" (NEN-EN 1990 uitdrukking ${uitdrukking}) is niet doorgerekend: elke staaf in dit model is staal. De doorbuigingstoets van staal gebruikt de karakteristieke BGT-combinatie (6.14); deze combinatie voedt ${gebruiker}. Voeg een houten of betonnen staaf toe \u2014 of wijzig de combinatie zelf \u2014 en hij wordt weer meegenomen.`;
 }
 function isZuivereStaalconstructie(beams, plates = []) {
@@ -8006,7 +8006,14 @@ var CHECKCONFIG_VELDEN = [
   "betonStaaltak",
   "spanningSigmaZ"
 ];
-var KORF_VELDEN = ["cover_mm", "stirrup_diameter_mm", "top", "bottom"];
+var KORF_VELDEN_VERPLICHT = ["cover_mm", "stirrup_diameter_mm", "top", "bottom"];
+var KORF_VELDEN_BEUGEL = [
+  "stirrup_spacing_mm",
+  "stirrup_legs",
+  "stirrup_leg_spacing_mm",
+  "stirrup_fywk_mpa"
+];
+var KORF_VELDEN = [...KORF_VELDEN_VERPLICHT, ...KORF_VELDEN_BEUGEL];
 var REBARROW_VELDEN = ["count", "diameter_mm"];
 var MILIEUKLASSEN = [
   "X0",
@@ -8174,9 +8181,18 @@ function keurKorf(waarde, pad, fouten) {
     return;
   }
   keurVelden(waarde, KORF_VELDEN, pad, fouten);
-  for (const veld of KORF_VELDEN) {
+  for (const veld of KORF_VELDEN_VERPLICHT) {
     if (waarde[veld] === void 0) {
       fouten.push(`${pad}.${veld} ontbreekt; een wapeningskorf heeft alle vier de onderdelen nodig.`);
+    }
+  }
+  for (const veld of KORF_VELDEN_BEUGEL) {
+    const v = waarde[veld];
+    if (v === void 0 || v === null) continue;
+    if (!isGetal(v) || v <= 0) {
+      fouten.push(
+        `${pad}.${veld}: moet een getal > 0 zijn, maar is ${JSON.stringify(v)}. Laat het veld WEG als het niet is opgegeven \u2014 leeg en nul betekenen hier niet hetzelfde.`
+      );
     }
   }
   for (const veld of [`cover_mm`, `stirrup_diameter_mm`]) {

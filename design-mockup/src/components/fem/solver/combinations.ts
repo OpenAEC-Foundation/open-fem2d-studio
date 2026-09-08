@@ -99,7 +99,14 @@ const W = 4; // Wind
  *
  *   6.14 karakteristiek  → de doorbuigingstoets van staal én hout
  *                          (steelCheckBuilder, timberCheckBuilder)
- *   6.15 frequent        → door geen enkele toets gelezen
+ *   6.15 frequent        → de SCHEURBEHEERSING van beton, §7.3
+ *                          (betonCheckBuilder → `sls_frequent_envelope`).
+ *                          Tot september 2026 las geen enkele toets deze
+ *                          combinatie; sinds §7.3 er is, is zij de ENIGE
+ *                          juiste voor de scheurwijdte. De nationale bijlage
+ *                          bij 7.3.1(5) vervangt tabel 7.1N door een tabel
+ *                          waarvan alle kolommen de frequente combinatie
+ *                          noemen, waar de EN-tekst de quasi-blijvende noemt.
  *   6.16 quasi-blijvend  → de kruipvervorming van hout
  *                          (`deflection_quasi_perm_mm`) en, via de BGT-tak met
  *                          tension stiffening, de betonstijfheid

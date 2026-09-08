@@ -932,6 +932,7 @@ export default function ProfielKiezer({
                 constructieklasse={betonConstructieklasse}
                 onConstructieklasseChange={setBetonConstructieklasse}
                 milieuklassen={milieuklassen}
+                doorsnede={betonDoorsnede}
               />
               {betonKorfFout && (
                 <div className="beton-fout" role="alert">{betonKorfFout}</div>

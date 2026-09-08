@@ -198,6 +198,11 @@ export function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
       staalsoort: cfg.betonStaalsoort,
       aantalStroken: cfg.betonStroken,
       staaltak: cfg.betonStaaltak,
+      // De milieuklasse stond al in het model voor de dekkingstoets van
+      // 4.4.1; §7.3 leest hem als ingang van tabel 7.1N (w_max). Zonder deze
+      // regel zou de scheurwijdtetoets in de app altijd melden dat de
+      // milieuklasse ontbreekt terwijl de gebruiker haar heeft ingevuld.
+      milieuklasse: cfg.betonMilieuklasse,
     });
   }
   return korven;

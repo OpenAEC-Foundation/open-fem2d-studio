@@ -893,6 +893,7 @@ mod tests {
             stirrup_diameter_mm: 8.0,
             top: RebarRow { count: 2, diameter_mm: 12.0 },
             bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+            ..ReinforcementCage::default()
         }
     }
 
@@ -904,6 +905,7 @@ mod tests {
             stirrup_diameter_mm: 8.0,
             top: RebarRow { count: 3, diameter_mm: 16.0 },
             bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+            ..ReinforcementCage::default()
         }
     }
 

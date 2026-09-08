@@ -54,7 +54,10 @@ use concrete_check::segments::{SegmentStiffness, SegmentStiffnessResponse, Segme
 use nen_en_1992_1_1::mnkappa::MnKappaDiagram;
 use nen_en_1992_1_1::stiffness::SolveMethod;
 use nen_en_1992_1_1::stress_strain::NonlinearBasis;
+use std::cmp::Ordering;
+
 use steel_check::result::CheckKind;
+use steel_check::NamedCheck;
 
 use crate::betonfiguren::{nl, Figuurstijl};
 use crate::betonspoor::{BetonStijfheidSpoor, StijfheidCombinatie};
@@ -344,6 +347,19 @@ fn mn_kappa_bijschrift(beam_id: u32, diagram: Option<&MnKappaDiagram>, n_ed: Opt
     }
 }
 
+/// De toetsen waarvan `uc.rd` een MOMENT in kNm is. Alleen die mogen het
+/// rekenpunt van de figuren leveren; zie [`maatgevend_punt`]. De ids komen
+/// woordelijk uit `nen_en_1992_1_1::checks`.
+const MOMENTTOETSEN: [&str; 2] = ["6.1_bending_stress_block", "6.1_mn_kappa"];
+
+/// De unity check van een toets, 0 als hij er geen heeft.
+fn uc_van(c: &NamedCheck) -> f64 {
+    match &c.kind {
+        CheckKind::Resistance(res) => res.uc.as_ref().map(|u| u.uc).unwrap_or(0.0),
+        CheckKind::Stability(s) => s.uc.as_ref().map(|u| u.uc).unwrap_or(0.0),
+    }
+}
+
 /// N_Ed, M_Ed en M_Rd van de MAATGEVENDE toets van deze staaf.
 ///
 /// De figuren horen hetzelfde punt te tonen als de toetstabel; daarom niet uit
@@ -351,10 +367,25 @@ fn mn_kappa_bijschrift(beam_id: u32, diagram: Option<&MnKappaDiagram>, n_ed: Opt
 /// maatgevende toets te vinden, dan blijft alles leeg en tekenen de figuren
 /// hun rekenpunt niet — beter geen punt dan een verzonnen punt.
 fn maatgevend_punt(r: &ConcreteBeamCheckResult) -> (Option<f64>, Option<f64>, Option<f64>) {
+    // ALLEEN EEN MOMENTTOETS MAG DIT PUNT LEVEREN. De twee figuren eronder
+    // zijn het M-kappa-diagram en het N-M-interactiediagram; `uc.rd` wordt daar
+    // als M_Rd in kNm getekend. Sinds de staaf ook op dwarskracht, scheurwijdte
+    // en detaillering wordt getoetst, kan `governing_check_id` naar een toets
+    // wijzen waarvan `uc.rd` een dwarskracht in kN of een staafafstand in mm
+    // is; die als M_Rd tekenen levert een geloofwaardige maar verkeerde figuur.
+    // Daarom: de maatgevende toets alleen als hij een momenttoets IS, anders de
+    // zwaarste momenttoets, en pas als die er niet is de eerste toets.
+    let is_moment = |c: &&NamedCheck| MOMENTTOETSEN.contains(&c.id.as_str());
+    let zwaarste_moment = r
+        .checks
+        .iter()
+        .filter(is_moment)
+        .max_by(|a, b| uc_van(a).partial_cmp(&uc_van(b)).unwrap_or(Ordering::Equal));
     let nc = r
         .checks
         .iter()
-        .find(|c| c.id == r.governing_check_id)
+        .find(|c| c.id == r.governing_check_id && is_moment(c))
+        .or(zwaarste_moment)
         .or_else(|| r.checks.first());
     let Some(nc) = nc else {
         return (None, None, None);

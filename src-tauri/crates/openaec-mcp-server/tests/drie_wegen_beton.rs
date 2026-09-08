@@ -71,6 +71,24 @@ fn korf() -> Value {
     })
 }
 
+/// Dezelfde korf, nu mét de beugelgegevens die §6.2.3 en §9.2.2 nodig hebben:
+/// Ø8, h.o.h. 150 mm, tweebenig.
+///
+/// Deze velden zijn optioneel, en juist daarom is deze doorgang de moeite: een
+/// schil die ze niet kent, filtert ze stilzwijgend weg — het MCP-schema staat
+/// op `additionalProperties: false` — zonder ergens een fout te geven. De
+/// toetsing zou langs die weg dan zonder dwarskrachtwapening rekenen.
+fn korf_met_beugels() -> Value {
+    json!({
+        "cover_mm": 30,
+        "stirrup_diameter_mm": 8,
+        "top": { "count": 2, "diameter_mm": 12 },
+        "bottom": { "count": 3, "diameter_mm": 16 },
+        "stirrup_spacing_mm": 150,
+        "stirrup_legs": 2
+    })
+}
+
 /// Vrij opgelegde balk, veldmoment 100 kNm, geen normaalkracht.
 fn invoer_balk() -> Value {
     json!({
@@ -676,7 +694,73 @@ async fn de_t_ligger_rekent_als_een_t_en_niet_als_een_rechthoek() {
 
     // ── De toetsing ─────────────────────────────────────────────────────────
     let mcp = weg_mcp(&mut stdin, &mut reader, 600, "check_concrete_beam", invoer_t_ligger()).await;
-    assert_eq!(mcp["status"], "Ok");
+    // DEZE STAAF IS SINDS FASE 3 NotOk, EN TERECHT — de korf past niet.
+    //
+    // Tot de detailleringstoetsen erbij kwamen werd deze T alleen op buiging
+    // getoetst en stond hij op "Ok". §8.2(2) rekent nu voor dat vier staven
+    // Ø20 niet in een lijf van 200 mm passen:
+    //   binnenmaat = 200 − 2·(30 + 8) = 124 mm
+    //   a_vrij     = (124 − 4·20)/(4 − 1) = 44/3 = 14,667 mm
+    //   vereist    ≥ max{1·20 ; 20} = 20 mm   (d_g is niet opgegeven, dus de
+    //                term d_g + 5 mm blijft buiten beeld; hij kan de eis alleen
+    //                verder verhogen)
+    //   UC = 20/14,667 = 1,3636
+    // De fixture is met opzet NIET aangepast: de getallen hieronder (M_Rd,
+    // b_eff, de banden van de T) zijn de reden dat deze test bestaat, en de
+    // korf verkleinen zou ze allemaal verschuiven. Wat er staat is dus een
+    // echte vondst en geen regressie.
+    assert_eq!(mcp["status"], "NotOk");
+    assert_eq!(mcp["governing_check_id"], "8.2_vrije_staafafstand");
+    let vrij = mcp["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|c| c["id"] == "8.2_vrije_staafafstand")
+        .expect("de staafafstandstoets")["kind"]["data"]
+        .clone();
+    assert!((getal(&vrij, &["uc", "uc"]) - 20.0 / (44.0 / 3.0)).abs() < 1e-6);
+    assert!(
+        (vrij["variables"]
+            .as_array()
+            .expect("variables")
+            .iter()
+            .find(|v| v["symbol"] == "a_{vrij}")
+            .expect("a_vrij")["value"]
+            .as_f64()
+            .unwrap()
+            - 44.0 / 3.0)
+            .abs()
+            < 1e-9
+    );
+    // De dwarskracht kan hier niet worden afgerekend: V_Ed = 100 kN ligt boven
+    // V_Rd,c = 59,3 kN, dus er is rekenkundig dwarskrachtwapening nodig en deze
+    // korf draagt geen beugelafstand. Dat hoort met een reden in het rapport te
+    // staan en niet als "voldoet".
+    let dwars = mcp["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|c| c["id"] == "6.2_shear")
+        .expect("de dwarskrachttoets")["kind"]["data"]
+        .clone();
+    assert_eq!(dwars["status"], "NotApplicable");
+    assert!(dwars["uc"].is_null());
+    assert!(!dwars["notes"].as_array().expect("notes").is_empty());
+    // b_w en niet de flensbreedte: §6.2.2(1) rekent met de kleinste breedte.
+    assert!(
+        (dwars["variables"]
+            .as_array()
+            .expect("variables")
+            .iter()
+            .find(|v| v["symbol"] == "b_w")
+            .expect("b_w")["value"]
+            .as_f64()
+            .unwrap()
+            - 200.0)
+            .abs()
+            < 1e-9
+    );
+
     assert_eq!(mcp["section_name"], "T 400 x 450 (flens 400 x 50, lijf 200)");
     // d = 450 − 30 − 8 − 20/2 = 402 mm.
     assert!((getal(&mcp, &["d_mm"]) - 402.0).abs() < 1e-9);
@@ -708,11 +792,27 @@ async fn de_t_ligger_rekent_als_een_t_en_niet_als_een_rechthoek() {
     // goede kant op staan.
     assert!(uc_blok > 150.0 / 201.0, "de T rekent als een rechthoek van 400 mm breed");
 
-    // De MODELKEUZE achter de splitsing reist mee als tekst, in beide toetsen.
-    for c in mcp["checks"].as_array().unwrap() {
+    // De MODELKEUZE achter de splitsing reist mee als tekst.
+    //
+    // Sinds fase 3 telt deze staaf vijftien toetsen en niet meer twee, en de
+    // vormaannamen staan NIET in alle vijftien: dat zou de lezer dezelfde
+    // alinea vijftien keer voorschotelen. Ze staan één keer per staaf in
+    // `shape_assumptions` — het veld dat daar met zoveel woorden voor is
+    // gemaakt, en dat het rapport één keer afdrukt — en daarnaast in de
+    // toetsen die de doorsnedevorm zelf gebruiken.
+    let vorm = format!("{}", mcp["shape_assumptions"]);
+    assert!(vorm.contains("MODELKEUZE"), "{vorm}");
+    assert!(vorm.contains("5.3.2.1(3)"), "{vorm}");
+    for id in ["6.1_bending_stress_block", "6.1_mn_kappa", "6.2_shear"] {
+        let c = mcp["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap_or_else(|| panic!("toets {id} ontbreekt"));
         let notes = format!("{}", c["kind"]["data"]["notes"]);
-        assert!(notes.contains("MODELKEUZE"), "{}: {notes}", c["id"]);
-        assert!(notes.contains("5.3.2.1(3)"), "{}: {notes}", c["id"]);
+        assert!(notes.contains("MODELKEUZE"), "{id}: {notes}");
+        assert!(notes.contains("5.3.2.1(3)"), "{id}: {notes}");
     }
 
     // ── De ongescheurde stijfheid ───────────────────────────────────────────
@@ -908,6 +1008,191 @@ async fn de_drie_wegen_kennen_dezelfde_sterkteklassen() {
     let bron = tauri_lib_bron();
     assert!(bron.contains("nen_en_1992_1_1::CONCRETE_CLASSES.to_vec()"));
     assert!(bron.contains("nen_en_1992_1_1::REINFORCEMENT_GRADES.to_vec()"));
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// **De beugelgegevens langs de drie wegen.** De korf draagt sinds de
+/// dwarskrachttoets ook s, het aantal benen, s_t en een eigen f_ywk. Die
+/// velden zijn optioneel, dus een schil die ze niet kent geeft geen fout maar
+/// laat ze vallen — en dan rekent die weg zonder dwarskrachtwapening terwijl
+/// de gebruiker haar wél heeft ingevoerd.
+///
+/// De samenvattingsregel is hier het bewijsstuk: hij wordt door de KERN
+/// gemaakt (`ReinforcementCage::summary`) en noemt de beugelafstand alleen als
+/// de kern hem werkelijk heeft ontvangen.
+#[tokio::test]
+async fn de_beugelgegevens_komen_door_alle_drie_de_wegen() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut invoer = invoer_balk();
+    invoer["cage"] = korf_met_beugels();
+
+    let tauri = weg_tauri_check(&invoer);
+    let brug = weg_toetsbrug("check_concrete_beams", json!([invoer]))
+        .as_array()
+        .expect("de toetsbrug levert een lijst")
+        .first()
+        .expect("één staaf erin, één resultaat eruit")
+        .clone();
+    let mcp = weg_mcp(&mut stdin, &mut reader, 500, "check_concrete_beam", invoer).await;
+
+    eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
+    eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
+
+    // Ø8 h.o.h. 150 mm, 2-benig — precies wat er is ingevoerd.
+    let verwacht = "onder 3Ø16, boven 2Ø12, beugel Ø8 h.o.h. 150 mm, 2-benig, dekking 30 mm";
+    for (naam, r) in [("Tauri", &tauri), ("toetsbrug", &brug), ("MCP", &mcp)] {
+        assert_eq!(r["reinforcement_summary"], verwacht, "{naam} verloor de beugelgegevens");
+    }
+
+    // En zónder die velden blijft de regel letterlijk de oude: een korf zonder
+    // beugelafstand mag niet als een korf mét gaan lezen.
+    let zonder = weg_mcp(&mut stdin, &mut reader, 501, "check_concrete_beam", invoer_balk()).await;
+    assert_eq!(
+        zonder["reinforcement_summary"],
+        "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm"
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// De toets met dit id uit een `ConcreteBeamCheckResult`, of een panic met de
+/// lijst van wat er wél in staat.
+fn toets<'a>(r: &'a Value, id: &str) -> &'a Value {
+    r["checks"]
+        .as_array()
+        .expect("checks is een lijst")
+        .iter()
+        // `CheckKind` staat op #[serde(tag = "type", content = "data")], dus de
+        // ResistanceCalc zit onder kind.data en niet op het eerste niveau.
+        .find(|c| c["id"] == id)
+        .map(|c| &c["kind"]["data"])
+        .unwrap_or_else(|| {
+            let alle: Vec<String> = r["checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["id"].to_string())
+                .collect();
+            panic!("toets {id} ontbreekt; aanwezig: {alle:?}")
+        })
+}
+
+/// De waarde van een variabele uit een toets.
+fn variabele(rc: &Value, symbool: &str) -> f64 {
+    rc["variables"]
+        .as_array()
+        .expect("variables")
+        .iter()
+        .find(|v| v["symbol"] == symbool)
+        .unwrap_or_else(|| panic!("variabele {symbool} ontbreekt"))["value"]
+        .as_f64()
+        .expect("een getal")
+}
+
+/// **De gegevens van de toetsen buiten §6.1 langs de drie wegen.**
+///
+/// Sinds fase 3 draagt `ConcreteBeamCheckInput` vijf optionele velden erbij:
+/// de FREQUENTE BGT-omhullende (6.15), de milieuklasse, de korrelafmeting, de
+/// constructievorm van tabel 7.4N en de staafafstand. Optioneel is hier het
+/// gevaar: een schil die er één niet kent, laat hem stilzwijgend vallen — het
+/// MCP-schema staat op `additionalProperties: false` — en dan komt de
+/// scheurwijdte- of slankheidstoets langs díe weg als "niet uitgevoerd" terug
+/// terwijl de gebruiker alles heeft ingevuld.
+///
+/// Het bewijsstuk is de UITKOMST van de toetsen zelf: σ_s hoort bij M = 60 kNm
+/// uit de frequente combinatie en niet bij de 100 kNm van de UGT-omhullende,
+/// en w_max = 0,30 mm hoort bij XC3.
+#[tokio::test]
+async fn de_bgt_combinatie_en_de_nieuwe_gegevens_komen_door_alle_drie_de_wegen() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut invoer = invoer_balk();
+    invoer["cage"] = korf_met_beugels();
+    // De frequente BGT-combinatie: M = 60 kNm in het midden, tegen de 100 kNm
+    // van de UGT-omhullende hierboven.
+    invoer["sls_frequent_envelope"] = json!([
+        { "combination_id": 7, "position_mm": 0,
+          "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 48, "mt_ed": 0, "my_ed": 0, "mz_ed": 0 } },
+        { "combination_id": 7, "position_mm": 2500,
+          "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 0, "mt_ed": 0, "my_ed": 60, "mz_ed": 0 } }
+    ]);
+    invoer["exposure_class"] = json!("XC3");
+    invoer["aggregate_size_mm"] = json!(32);
+    invoer["structural_system"] = json!("SimplySupported");
+
+    let tauri = weg_tauri_check(&invoer);
+    let brug = weg_toetsbrug("check_concrete_beams", json!([invoer]))
+        .as_array()
+        .expect("de toetsbrug levert een lijst")
+        .first()
+        .expect("één staaf erin, één resultaat eruit")
+        .clone();
+    let mcp = weg_mcp(&mut stdin, &mut reader, 600, "check_concrete_beam", invoer).await;
+
+    eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
+    eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
+
+    for (naam, r) in [("Tauri", &tauri), ("toetsbrug", &brug), ("MCP", &mcp)] {
+        // Vijftien toetsen: 6.1 (2×), 6.2, 7.3 (2×), 7.4.2 en negen keer
+        // 9.2/8.2.
+        assert_eq!(
+            r["checks"].as_array().expect("checks").len(),
+            15,
+            "{naam}: er ontbreekt een toets"
+        );
+
+        // §7.3.4 — de frequente combinatie is werkelijk gebruikt.
+        let wk = toets(r, "7.3.4_scheurwijdte");
+        assert_eq!(wk["status"], "Ok", "{naam}: de scheurwijdtetoets is niet uitgevoerd");
+        assert_eq!(
+            wk["force_state"]["combination_id"], 7,
+            "{naam}: de scheurwijdte hangt aan de verkeerde combinatie"
+        );
+        assert!(
+            (wk["force_state"]["forces"]["my_ed"].as_f64().unwrap() - 60.0).abs() < 1e-9,
+            "{naam}: de scheurwijdte rekent niet met M = 60 kNm"
+        );
+        // σ_s bij M = 60 kNm is ≈ 235 N/mm²; met de UGT-omhullende zou hier
+        // ≈ 392 staan.
+        let sigma = variabele(wk, "\\sigma_s");
+        assert!(
+            (sigma - 235.3).abs() < 10.0,
+            "{naam}: σ_s = {sigma:.1} hoort niet bij de frequente combinatie"
+        );
+        // w_max = 0,30 mm hoort bij XC3 (NB-tabel 7.1N, kolom betonstaal).
+        assert!(
+            (variabele(wk, "w_{max}") - 0.30).abs() < 1e-9,
+            "{naam}: de milieuklasse is niet doorgekomen"
+        );
+
+        // §7.4.2 — de constructievorm is doorgekomen: K = 1,0, vrij opgelegd.
+        let slank = toets(r, "7.4.2_slankheid");
+        assert_eq!(slank["status"], "Ok", "{naam}: de slankheidstoets is niet uitgevoerd");
+        assert!((variabele(slank, "K") - 1.0).abs() < 1e-9, "{naam}: K is niet 1,0");
+
+        // §8.2(2) — de korrelafmeting is doorgekomen: zonder d_g doet die
+        // toets géén uitspraak.
+        let vrij = toets(r, "8.2_vrije_staafafstand");
+        assert_eq!(vrij["status"], "Ok", "{naam}: d_g is niet doorgekomen");
+        assert!((variabele(vrij, "d_g") - 32.0).abs() < 1e-9, "{naam}: d_g is verschoven");
+    }
+
+    // EN ZONDER DIE VELDEN: dezelfde drie toetsen komen als "niet uitgevoerd"
+    // terug, met een reden. Niet weggelaten en niet groen.
+    let zonder = weg_mcp(&mut stdin, &mut reader, 601, "check_concrete_beam", invoer_balk()).await;
+    for id in ["7.3.2_minimumwapening", "7.3.4_scheurwijdte", "7.4.2_slankheid"] {
+        let rc = toets(&zonder, id);
+        assert_eq!(rc["status"], "NotApplicable", "{id} meldt iets zonder de gegevens te hebben");
+        assert!(rc["uc"].is_null(), "{id} toont een unity check die er niet is");
+        assert!(
+            !rc["notes"].as_array().expect("notes").is_empty(),
+            "{id} noemt geen reden"
+        );
+    }
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

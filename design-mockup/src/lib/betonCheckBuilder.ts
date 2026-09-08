@@ -28,6 +28,26 @@
  * Gedocumenteerde defaults: wapeningsstaal B500B; 50 stroken; horizontale
  * bovenste tak (3.2.7(2)b); blijvende/tijdelijke ontwerpsituatie; minimale
  * excentriciteit 6.1(4) aan.
+ *
+ * TWEE GRENSTOESTANDEN, TWEE OMHULLENDEN
+ *
+ * `forces_envelope` draagt de UGT-combinaties en voedt §6.1 (buiging), §6.2
+ * (dwarskracht), §7.4.2 (slankheid) en §9.2 (detaillering).
+ * `sls_frequent_envelope` draagt de FREQUENTE BGT-combinatie — NEN-EN 1990
+ * uitdrukking (6.15) — en voedt uitsluitend §7.3 (scheurbeheersing). De
+ * nationale bijlage bij 7.3.1(5) vervangt tabel 7.1N door een tabel waarvan
+ * alle kolommen die frequente combinatie noemen, waar de EN-tekst de
+ * quasi-blijvende noemt; de scheurwijdte hoort dus onder (6.15) te worden
+ * getoetst en onder niets anders.
+ *
+ * De frequente combinatie wordt op NAAM herkend, net als de quasi-blijvende
+ * in `timberCheckBuilder`. Er is met opzet GEEN terugval op een andere
+ * BGT-combinatie: de karakteristieke (6.14) als frequent lezen zou een te
+ * hoge σ_s en dus een te hoge scheurwijdte geven, en de quasi-blijvende
+ * (6.16) een te lage — beide zonder enig signaal. Ontbreekt de combinatie of
+ * heeft de solver haar voor deze staaf niet doorgerekend, dan gaat er een
+ * LEGE lijst mee en meldt de kern in het rapport dat §7.3 niet is uitgevoerd,
+ * met de reden.
  */
 import type { Beam, Node } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
@@ -35,7 +55,9 @@ import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { ConcreteBeamCheckInput } from "./types/concrete/ConcreteBeamCheckInput";
 import type { ConcreteSectionInput } from "./types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "./types/concrete/ConcreteShape";
+import type { ExposureClass } from "./types/concrete/ExposureClass";
 import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
+import type { StructuralSystem } from "./types/concrete/StructuralSystem";
 import type { SteelBranch } from "./types/concrete/SteelBranch";
 import type { CheckSkip } from "./checkTypes";
 import { isSteelProfile, beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
@@ -327,7 +349,15 @@ export function parseSectionNaam(naam: string | undefined): ConcreteSectionInput
 
 /** Per-staaf betoninstellingen zoals de aanroeper ze bijhoudt. */
 export interface BetonStaafConfig {
-  /** De wapeningskorf (dekking, beugel, boven- en onderwapening). */
+  /**
+   * De wapeningskorf (dekking, beugel, boven- en onderwapening, en de
+   * beugelgegevens voor §6.2.3/§9.2.2).
+   *
+   * Hij gaat als GEHEEL het verzoek in (`cage: cfg.korf`) en wordt hier niet
+   * veld voor veld overgeschreven. Dat is met opzet: een bouwer die de velden
+   * opsomt, laat een nieuw veld stilzwijgend vallen, en dan rekent de kern
+   * zonder dwarskrachtwapening terwijl de gebruiker haar wél heeft ingevoerd.
+   */
   korf: ReinforcementCage;
   /** Wapeningsstaal; ontbreekt → B500B. */
   staalsoort?: string;
@@ -335,6 +365,36 @@ export interface BetonStaafConfig {
   aantalStroken?: number;
   /** Bovenste tak van het staaldiagram; ontbreekt → horizontaal. */
   staaltak?: SteelBranch;
+  /**
+   * Milieuklasse van tabel 4.1. Dezelfde die de dekkingstoets van 4.4.1
+   * gebruikt; §7.3 heeft haar nodig als ingang van de door de nationale
+   * bijlage vervangen tabel 7.1N, want daar staat w_max in.
+   *
+   * Ontbreekt zij, dan gaat er niets mee en meldt de kern dat de
+   * scheurtoetsen niet konden worden uitgevoerd. Er is met opzet geen
+   * standaardklasse: die zou een scheurwijdte kunnen goedkeuren die bij het
+   * werkelijke milieu veel te groot is.
+   */
+  milieuklasse?: ExposureClass;
+  /**
+   * Grootste nominale korrelafmeting d_g in mm (§8.2(2), §9.2(1)e). Ontbreekt
+   * hij, dan wordt er GEEN waarde aangenomen — de norm kent er geen — en doet
+   * §8.2(2) alleen de uitspraak die hoe dan ook geldt.
+   */
+  korrelafmetingMm?: number;
+  /**
+   * De regel uit tabel 7.4N voor de slankheidstoets van 7.4.2. Niet uit een
+   * raamwerkmodel af te leiden: of een staaf een eindveld, een tussenveld of
+   * een uitkraging is, hangt van de constructie af. Ontbreekt hij, dan blijft
+   * 7.4.2 ongetoetst, met de reden in het rapport.
+   */
+  constructievorm?: StructuralSystem;
+  /**
+   * Werkelijke hart-op-hartafstand van de trekstaven in mm, voor (7.11) en
+   * tabel 7.3N. Ontbreekt hij, dan leidt de kern hem uit de korf af (zuivere
+   * meetkunde) en meldt dat in de afleiding.
+   */
+  staafafstandMm?: number;
 }
 
 export interface BetonBuildData {
@@ -403,6 +463,17 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
 
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
 
+  // DE FREQUENTE BGT-COMBINATIE (6.15) voor §7.3. Herkend op de naam, zoals
+  // `timberCheckBuilder` de quasi-blijvende herkent — en om dezelfde reden
+  // GEEN terugval op een willekeurige andere BGT-combinatie: die zou de
+  // scheurwijdte onder de verkeerde belasting toetsen zonder dat er iets
+  // opvalt.
+  const slsCombos = data.combinations.filter((c) => c.type === "sls");
+  const slsFrequent = slsCombos.find((c) => /frequent/i.test(c.name)) ?? null;
+  const frequentResult = slsFrequent
+    ? data.combinationResults.get(slsFrequent.id) ?? null
+    : null;
+
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
     const klasse = matchSupportedConcreteClass(materialName, klassen);
@@ -467,6 +538,23 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
       cage: cfg.korf,
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
+      // LEEG ALS ER GEEN ECHT RESULTAAT IS. `buildForcesEnvelope` levert bij
+      // een ontbrekend resultaat één punt met alle krachten nul; dat zou hier
+      // een frequente combinatie met M = 0 voorwenden, en dan komt er een
+      // scheurwijdte van nul uit die er geloofwaardig uitziet. Een lege lijst
+      // laat de kern juist zeggen dat §7.3 niet kon worden uitgevoerd.
+      sls_frequent_envelope:
+        slsFrequent && frequentResult?.elements.has(beam.id)
+          ? buildForcesEnvelope(beam.id, [slsFrequent], data.combinationResults)
+          : [],
+      ...(cfg.milieuklasse ? { exposure_class: cfg.milieuklasse } : {}),
+      ...(cfg.korrelafmetingMm && cfg.korrelafmetingMm > 0
+        ? { aggregate_size_mm: cfg.korrelafmetingMm }
+        : {}),
+      ...(cfg.constructievorm ? { structural_system: cfg.constructievorm } : {}),
+      ...(cfg.staafafstandMm && cfg.staafafstandMm > 0
+        ? { bar_spacing_mm: cfg.staafafstandMm }
+        : {}),
       n_strips: cfg.aantalStroken && cfg.aantalStroken > 0 ? Math.round(cfg.aantalStroken) : DEFAULT_N_STRIPS,
       steel_branch: cfg.staaltak ?? "Horizontal",
       design_situation: "PersistentTransient",

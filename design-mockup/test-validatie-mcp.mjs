@@ -184,6 +184,47 @@ log("\n[4] Types en toegestane waarden");
   }
   ok("een model dat geen object is wordt geweigerd", controleerVelden(null).length === 1);
   ok("het referentieportaal komt schoon door de veldpoort", controleerVelden(PORTAAL()).length === 0);
+
+  // De beugelgegevens van de wapeningskorf (§6.2.3 / §9.2.2). Ze zijn
+  // OPTIONEEL, dus de poort moet ze doorlaten wanneer ze er staan én wanneer
+  // ze ontbreken — maar een afstand van nul is geen "niet opgegeven".
+  const metKorf = (korf) => {
+    const m = PORTAAL();
+    m.beams[0].checkConfig = { ...(m.beams[0].checkConfig ?? {}), betonKorf: korf };
+    return m;
+  };
+  const KAAL = {
+    cover_mm: 30,
+    stirrup_diameter_mm: 8,
+    top: { count: 2, diameter_mm: 12 },
+    bottom: { count: 3, diameter_mm: 16 },
+  };
+  const zonder = controleerVelden(metKorf(KAAL));
+  ok("korf zonder beugelgegevens komt door de poort", zonder.length === 0, zonder[0]);
+
+  const MET = {
+    ...KAAL,
+    stirrup_spacing_mm: 150,
+    stirrup_legs: 2,
+    stirrup_leg_spacing_mm: 232,
+    stirrup_fywk_mpa: 500,
+  };
+  const met = controleerVelden(metKorf(MET));
+  ok("korf mét beugelgegevens komt door de poort", met.length === 0, met[0]);
+
+  const nul = controleerVelden(metKorf({ ...KAAL, stirrup_spacing_mm: 0 }));
+  ok(
+    "een beugelafstand van nul wordt geweigerd — leeg en nul zijn niet hetzelfde",
+    nul.length > 0 && noemt(nul, "stirrup_spacing_mm"),
+    nul[0] ?? "(geen fout gemeld)",
+  );
+
+  const tikfout = controleerVelden(metKorf({ ...KAAL, stirrup_spacing: 150 }));
+  ok(
+    "een tikfout in een beugelveld wordt geweigerd",
+    tikfout.length > 0 && noemt(tikfout, "stirrup_spacing"),
+    tikfout[0] ?? "(geen fout gemeld)",
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────

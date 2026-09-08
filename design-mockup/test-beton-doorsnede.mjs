@@ -295,6 +295,73 @@ const kapot = betonStavenUitModel({
 checkTrue("staaf met onvolledige T wordt overgeslagen", kapot.staven.length === 0);
 checkTrue("met de reden erbij", kapot.overgeslagen[0].reason.includes("lijfbreedte"));
 
+// ── 9. De beugelgegevens: leeg is niet nul ────────────────────────────────
+//
+// De korf draagt sinds de dwarskrachttoets ook s (beugelafstand), n (aantal
+// benen), s_t (dwarsafstand benen) en een eigen f_ywk. Ze zijn OPTIONEEL:
+// ontbreken betekent "niet opgegeven", en de norm geeft er geen aanbevolen
+// waarde voor — §9.2.2(6) en (8) geven alleen bovengrenzen.
+//
+// Handberekening van de afgeleide dwarsafstand bij een tweebenige beugel
+// (zuivere meetkunde; §9.2.2(8) gebruikt s_t maar schrijft hem niet voor):
+//   rechthoek 300 mm:  s_t = 300 − 2·30 − 8 = 232 mm
+//   T met lijf 200 mm: s_t = 200 − 2·30 − 8 = 132 mm  (b_w, niet de flens)
+log("\n9. Beugelgegevens in de korf");
+
+const { korfUitSamenvatting } = await import("./src/lib/betonDoorsnedeTerugval.ts");
+
+const korfKaal = { ...korfBasis, top: { count: 2, diameter_mm: 12 }, bottom: { count: 3, diameter_mm: 16 } };
+const korfBeugels = { ...korfKaal, stirrup_spacing_mm: 150, stirrup_legs: 2 };
+const rechthoek300 = korfmodel.rechthoek(300, 500);
+
+check("s_t afgeleid in een rechthoek van 300 mm",
+  korfmodel.beugelDwarsafstandMm(korfBeugels, rechthoek300).mm, 232);
+checkTrue("en hij zegt dat hij is afgeleid",
+  korfmodel.beugelDwarsafstandMm(korfBeugels, rechthoek300).afgeleid === true);
+check("s_t afgeleid in een T: de LIJFbreedte telt",
+  korfmodel.beugelDwarsafstandMm(korfBeugels, grote).mm, 132);
+check("opgegeven s_t gaat vóór afgeleid",
+  korfmodel.beugelDwarsafstandMm({ ...korfBeugels, stirrup_leg_spacing_mm: 180 }, rechthoek300).mm, 180);
+checkTrue("vier benen: niets afgeleid, want de verdeling is een ontwerpkeuze",
+  korfmodel.beugelDwarsafstandMm({ ...korfBeugels, stirrup_legs: 4 }, rechthoek300) === null);
+checkTrue("zonder beugelgegevens: niets afgeleid",
+  korfmodel.beugelDwarsafstandMm(korfKaal, rechthoek300) === null);
+
+// De samenvattingsregel moet woord voor woord gelijk zijn aan die van de kern
+// (`ReinforcementCage::summary()`), want het rapport zet de kernversie neer.
+checkEq("samenvatting zonder beugelgegevens is onveranderd",
+  korfmodel.korfSamenvatting(korfKaal),
+  "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm");
+checkEq("samenvatting mét beugelgegevens",
+  korfmodel.korfSamenvatting(korfBeugels),
+  "onder 3Ø16, boven 2Ø12, beugel Ø8 h.o.h. 150 mm, 2-benig, dekking 30 mm");
+
+// En terug: de terugvalparser leest ze eruit, maar verzint ze niet.
+const terug = korfUitSamenvatting(korfmodel.korfSamenvatting(korfBeugels));
+checkEq("terugvalparser leest s en n terug",
+  [terug.stirrup_spacing_mm, terug.stirrup_legs], [150, 2]);
+const terugKaal = korfUitSamenvatting(korfmodel.korfSamenvatting(korfKaal));
+checkTrue("terugvalparser verzint ze niet als ze er niet staan",
+  terugKaal.stirrup_spacing_mm === undefined && terugKaal.stirrup_legs === undefined);
+
+// De geometriecontrole: leeg mag, nul niet, en s_t moet passen.
+const metKorf = (k) => ({ ...maakKorf(rechthoek300, k.bottom, k.top), korf: k });
+checkTrue("korf mét geldige beugelgegevens: in orde",
+  korfmodel.controleerKorf(metKorf(korfBeugels)) === null);
+checkTrue("korf zónder beugelgegevens: nog steeds in orde",
+  korfmodel.controleerKorf(metKorf(korfKaal)) === null);
+checkTrue("beugelafstand 0 wordt geweigerd",
+  (korfmodel.controleerKorf(metKorf({ ...korfKaal, stirrup_spacing_mm: 0 })) ?? "").includes("beugelafstand"));
+checkTrue("nul benen wordt geweigerd",
+  (korfmodel.controleerKorf(metKorf({ ...korfKaal, stirrup_legs: 0 })) ?? "").includes("beugelbenen"));
+checkTrue("beugelgegevens zonder beugel is tegenstrijdig",
+  (korfmodel.controleerKorf(metKorf({ ...korfKaal, stirrup_diameter_mm: 0, stirrup_spacing_mm: 150 })) ?? "")
+    .includes("geen beugel"));
+checkTrue("s_t = 232 mm past nog precies",
+  korfmodel.controleerKorf(metKorf({ ...korfBeugels, stirrup_leg_spacing_mm: 232 })) === null);
+checkTrue("s_t = 233 mm past niet meer",
+  (korfmodel.controleerKorf(metKorf({ ...korfBeugels, stirrup_leg_spacing_mm: 233 })) ?? "").includes("232"));
+
 // ── Slot ───────────────────────────────────────────────────────────────────
 log(`\n${passed} geslaagd, ${failed} gefaald`);
 if (failed > 0) process.exit(1);

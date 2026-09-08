@@ -44,6 +44,7 @@ fn proefkorf() -> ReinforcementCage {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: 2, diameter_mm: 12.0 },
         bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+        ..ReinforcementCage::default()
     }
 }
 
@@ -321,6 +322,7 @@ fn een_brede_t_krijgt_een_kader_op_ware_verhouding() {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: 6, diameter_mm: 12.0 },
         bottom: RebarRow { count: 4, diameter_mm: 20.0 },
+        ..ReinforcementCage::default()
     };
     korf.validate(&breed).expect("de proefkorf moet in deze T passen");
     teken_doorsnede(

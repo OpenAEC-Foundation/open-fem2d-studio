@@ -21,10 +21,11 @@
  * eigen benadering, want een dekking die de app zelf goedkeurt terwijl de norm
  * hem afkeurt is precies het soort fout dat pas op de bouwplaats opvalt.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
 import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
 import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
+import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { RebarRow } from "../../lib/types/concrete/RebarRow";
 import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
 import type { ConcreteCoverResponse } from "../../lib/types/concrete/ConcreteCoverResponse";
@@ -34,6 +35,7 @@ import {
   CONSTRUCTIEKLASSEN,
   MILIEUKLASSEN,
   STAAFDIAMETERS,
+  beugelDwarsafstandMm,
   grootsteStaafdiameterMm,
   maat,
 } from "./wapeningskorf";
@@ -74,6 +76,64 @@ export function Getal({
           onChange={(e) => {
             const v = parseFloat(e.target.value);
             if (Number.isFinite(v)) onChange(v);
+          }}
+        />
+        {eenheid && <span className="beton-eenheid">{eenheid}</span>}
+      </span>
+    </label>
+  );
+}
+
+/**
+ * Eén OPTIONEEL getalveld: leeg betekent "niet opgegeven".
+ *
+ * Waarom een eigen component naast [`Getal`]: die laatste stuurt bij een lege
+ * invoer niets door en houdt dus de vorige waarde vast. Voor de beugelvelden
+ * moet leeg juist een betekenis hébben — de norm geeft voor s, n en s_t geen
+ * aanbevolen waarde (§9.2.2(6) en (8) geven alleen bovengrenzen), dus elk
+ * ingevuld getal is een ontwerpkeuze van de constructeur. Wissen moet daarom
+ * `undefined` opleveren en niet 0: nul zou "een beugelafstand van niets"
+ * betekenen, en dat is een andere balk dan "onbekend".
+ */
+export function GetalOptioneel({
+  id,
+  label,
+  eenheid,
+  waarde,
+  onChange,
+  min,
+  stap,
+  geheel,
+}: {
+  id: string;
+  label: ReactNode;
+  eenheid?: string;
+  waarde: number | null | undefined;
+  onChange: (v: number | undefined) => void;
+  min?: number;
+  stap?: number;
+  geheel?: boolean;
+}) {
+  return (
+    <label className="beton-rij" htmlFor={id}>
+      <span className="beton-label">{label}</span>
+      <span className="beton-invoer-met-eenheid">
+        <input
+          id={id}
+          className="beton-invoer"
+          type="number"
+          placeholder="niet opgegeven"
+          value={waarde === null || waarde === undefined ? "" : waarde}
+          min={min}
+          step={stap ?? 1}
+          onChange={(e) => {
+            const t = e.target.value.trim();
+            if (t === "") {
+              onChange(undefined);
+              return;
+            }
+            const v = geheel ? parseInt(t, 10) : parseFloat(t);
+            onChange(Number.isFinite(v) ? v : undefined);
           }}
         />
         {eenheid && <span className="beton-eenheid">{eenheid}</span>}
@@ -197,6 +257,11 @@ interface Props {
    * omschrijving. De teksten staan bewust niet in de frontend.
    */
   milieuklassen?: ExposureClassInfo[];
+  /**
+   * De doorsnede, alleen om de afgeleide dwarsafstand s_t te kunnen tónen.
+   * Ontbreekt hij, dan blijft dat veld gewoon leeg-met-uitleg.
+   */
+  doorsnede?: ConcreteSectionInput;
   /** Voorvoegsel voor de veld-id's; nodig omdat de velden op twee plaatsen staan. */
   idPrefix?: string;
 }
@@ -209,10 +274,14 @@ export default function KorfVelden({
   constructieklasse,
   onConstructieklasseChange,
   milieuklassen,
+  doorsnede,
   idPrefix = "beton",
 }: Props) {
   const zet = (patch: Partial<ReinforcementCage>) => onKorfChange({ ...korf, ...patch });
   const { antwoord, fout } = useDekkingstoets(korf, milieuklasse, constructieklasse);
+  const heeftBeugel = korf.stirrup_diameter_mm > 0;
+  // De afgeleide s_t, om te laten zien wat er gebeurt als het veld leeg blijft.
+  const stAfgeleid = doorsnede ? beugelDwarsafstandMm(korf, doorsnede) : null;
 
   // De klassen gegroepeerd zoals tabel 4.1 ze groepeert, zodat de keuzelijst
   // dezelfde indeling heeft als de tabel waaruit je kiest.
@@ -319,6 +388,80 @@ export default function KorfVelden({
           ))}
         </select>
       </label>
+
+      {/*
+        De beugelgegevens voor §6.2.3 (dwarskracht) en §9.2.2 (detaillering).
+        Leeg = niet opgegeven; er wordt niets aangenomen. De norm kent hier
+        geen standaardwaarde — zij geeft in §9.2.2(6) en (8) alleen
+        bovengrenzen — dus elk getal hier is een ontwerpkeuze.
+      */}
+      {heeftBeugel && (
+        <>
+          <GetalOptioneel
+            id={`${idPrefix}-beugelafstand`}
+            label="Beugelafstand s"
+            eenheid="mm"
+            waarde={korf.stirrup_spacing_mm}
+            min={1}
+            stap={10}
+            onChange={(v) => zet({ stirrup_spacing_mm: v })}
+          />
+          <GetalOptioneel
+            id={`${idPrefix}-beugelbenen`}
+            label="Beugelbenen n"
+            waarde={korf.stirrup_legs}
+            min={1}
+            stap={1}
+            geheel
+            onChange={(v) => zet({ stirrup_legs: v })}
+          />
+          <GetalOptioneel
+            id={`${idPrefix}-beugel-st`}
+            label={
+              <>
+                Dwarsafstand benen s<sub>t</sub>
+              </>
+            }
+            eenheid="mm"
+            waarde={korf.stirrup_leg_spacing_mm}
+            min={1}
+            stap={10}
+            onChange={(v) => zet({ stirrup_leg_spacing_mm: v })}
+          />
+          <GetalOptioneel
+            id={`${idPrefix}-beugel-fywk`}
+            label={
+              <>
+                Beugelstaal f<sub>ywk</sub>
+              </>
+            }
+            eenheid="N/mm²"
+            waarde={korf.stirrup_fywk_mpa}
+            min={1}
+            stap={10}
+            onChange={(v) => zet({ stirrup_fywk_mpa: v })}
+          />
+          <div className="beton-hint">
+            {(korf.stirrup_spacing_mm ?? null) === null || (korf.stirrup_legs ?? null) === null ? (
+              <>
+                <strong>Zonder beugelafstand s en aantal benen n kan de dwarskrachttoets
+                niet draaien.</strong>{" "}
+                A<sub>sw</sub>/s uit (6.8) en ρ<sub>w</sub> uit (9.4) zijn dan onbepaald. De
+                norm kent hier geen standaardwaarde — §9.2.2(6) en (8) geven alleen
+                bovengrenzen — dus er wordt niets aangenomen.{" "}
+              </>
+            ) : null}
+            De hoek α van de beugels ligt vast op 90° (rechte beugels); §9.2.2(1) laat
+            45°–90° toe, maar hellende beugels en opgebogen staven zijn niet
+            gemodelleerd. s<sub>t</sub> leeg laten mag:{" "}
+            {stAfgeleid?.afgeleid
+              ? `bij deze tweebenige beugel volgt s_t = ${maat(stAfgeleid.mm)} mm uit b_w, dekking en beugeldiameter.`
+              : "bij een tweebenige beugel leidt de kern hem meetkundig af uit b_w, dekking en beugeldiameter; bij meer benen blijft §9.2.2(8) ongetoetst."}{" "}
+            f<sub>ywk</sub> leeg laten betekent: dezelfde staalsoort als de langswapening.
+          </div>
+        </>
+      )}
+
       <Rij
         id={`${idPrefix}-boven`}
         label="Bovenwapening"

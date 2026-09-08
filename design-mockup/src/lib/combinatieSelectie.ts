@@ -13,6 +13,18 @@
  * combinatielijst, de resultatentabellen en het rapport met kolommen waar
  * niets mee gedaan wordt.
  *
+ * 6.15 HEEFT SINDS SEPTEMBER 2026 EEN AFNEMER. Toen deze module werd
+ * geschreven las geen enkele toets de frequente combinatie; ze bleef alleen
+ * staan omdat een houten of betonnen staaf haar terug zou kunnen vragen.
+ * Inmiddels vraagt zij haar werkelijk: §7.3 van EN 1992-1-1 toetst de
+ * scheurwijdte van beton onder de FREQUENTE combinatie, want de nationale
+ * bijlage bij 7.3.1(5) vervangt tabel 7.1N door een tabel waarvan alle
+ * kolommen die combinatie noemen (de EN-tekst noemt daar de quasi-blijvende).
+ * Weglaten bij een model MET beton zou dus geen overbodige kolom besparen maar
+ * de scheurwijdtetoets kosten — en die zou dan met een reden als "niet
+ * uitgevoerd" in het rapport komen. Dat is precies waarom de vraag hier "is
+ * ALLES staal" is en niet "zit er hout in".
+ *
  * DE OPLOSSING, EN WAAROM HIJ HIER STAAT
  * Deze module is een ZUIVERE functie van (combinaties, staven, platen) naar
  * een selectie. Hij verandert de opgeslagen lijst niet en wordt aangeroepen op
@@ -88,7 +100,7 @@ export function redenZuiverStaal(combo: LoadCombination): string {
   const uitdrukking = combo.id === 7 ? "6.15" : "6.16";
   const gebruiker =
     combo.id === 7
-      ? "geen enkele toets in deze app"
+      ? "de scheurbeheersing van beton (EN 1992-1-1 §7.3; de nationale bijlage bij 7.3.1(5) schrijft juist deze combinatie voor)"
       : "de kruipvervorming van hout en de BGT-tak van beton";
   return (
     `"${combo.name}" (NEN-EN 1990 uitdrukking ${uitdrukking}) is niet ` +

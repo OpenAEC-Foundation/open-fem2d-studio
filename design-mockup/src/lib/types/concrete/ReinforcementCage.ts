@@ -3,6 +3,15 @@ import type { RebarRow } from "./RebarRow";
 
 /**
  * Wapeningskorf: dekking, beugel, boven- en onderwapening.
+ *
+ * # `Default` is een LEGE korf, geen standaardkorf
+ *
+ * `ReinforcementCage::default()` levert dekking 0, geen beugel en geen
+ * hoofdwapening. Dat is met opzet géén bruikbare korf: [`Self::validate`]
+ * weigert hem met "de korf bevat geen hoofdwapening". `Default` bestaat
+ * alleen zodat code die de beugelvelden niet invult
+ * `..ReinforcementCage::default()` kan schrijven; er is nergens in de norm
+ * een standaardkorf, en die zou hier ook niet mogen ontstaan.
  */
 export type ReinforcementCage = { 
 /**
@@ -21,4 +30,46 @@ top: RebarRow,
 /**
  * Onderwapening (aan de zijde z = 0).
  */
-bottom: RebarRow, };
+bottom: RebarRow, 
+/**
+ * Hart-op-hartafstand s van de beugels, gemeten LANGS de lengteas, in mm
+ * (§9.2.2(5), symbool s in (9.4); begrensd door s_l,max in §9.2.2(6)).
+ *
+ * `None` = niet opgegeven. Dat is iets anders dan 0 (dat zou een
+ * oneindige hoeveelheid wapening betekenen) en iets anders dan een
+ * aangenomen waarde: de norm geeft geen aanbevolen s, alleen een
+ * bovengrens. Zonder s zijn A_sw/s in (6.8) en ρ_w in (9.4) onbepaald.
+ */
+stirrup_spacing_mm?: number, 
+/**
+ * Aantal beugelbenen n dat één verticale doorsnede kruist.
+ *
+ * §9.2.2(5) omschrijft A_sw als "de oppervlakte van de doorsnede van de
+ * dwarskrachtwapening binnen de lengte s"; bij een gesloten tweebenige
+ * beugel is dat 2·(π/4)·Ø², bij een vierbenige het dubbele. Dit getal is
+ * uit dekking of diameter niet af te leiden en is de grootste enkele
+ * foutbron in een dwarskrachttoets: hij schaalt V_Rd,s recht evenredig.
+ *
+ * `None` = niet opgegeven.
+ */
+stirrup_legs?: number, 
+/**
+ * Hart-op-hartafstand s_t van de beugelbenen in DWARSRICHTING, in mm
+ * (§9.2.2(8); de nationale bijlage begrenst hem op 500 mm).
+ *
+ * `None` = niet opgegeven. Bij een gesloten tweebenige beugel is s_t
+ * zuivere meetkunde en hoeft hij niet te worden gevraagd; zie
+ * [`Self::leg_spacing_mm`]. Bij meer benen hangt hij af van de verdeling
+ * over de breedte en is hij niet af te leiden.
+ */
+stirrup_leg_spacing_mm?: number, 
+/**
+ * Karakteristieke vloeigrens f_ywk van de DWARSKRACHTWAPENING, in N/mm².
+ *
+ * `None` = dezelfde staalsoort als de langswapening. De beugelkwaliteit
+ * mág afwijken en is niet uit de langswapening af te leiden, dus het veld
+ * bestaat; maar `None` is hier geen ontbrekend gegeven, want de
+ * staalsoort van de staaf is wél bekend. Wie het invult, moet het in de
+ * afleiding terugzien.
+ */
+stirrup_fywk_mpa?: number, };

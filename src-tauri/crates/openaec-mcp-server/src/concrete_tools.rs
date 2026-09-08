@@ -161,14 +161,22 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
 
 // ── Schema's ────────────────────────────────────────────────────────────────
 
-/// De wapeningskorf (`ReinforcementCage`). Alle vier de velden zijn verplicht:
-/// de Rust-kant kent er geen standaardwaarde voor, en een stilzwijgende korf
-/// zou een toetsing opleveren die bij een andere staaf hoort.
+/// De wapeningskorf (`ReinforcementCage`). De eerste vier velden zijn
+/// verplicht: de Rust-kant kent er geen standaardwaarde voor, en een
+/// stilzwijgende korf zou een toetsing opleveren die bij een andere staaf
+/// hoort.
+///
+/// De vier BEUGELVELDEN zijn optioneel en staan bewust niet in `required`.
+/// Weglaten betekent "niet opgegeven": de dwarskrachttoets zegt dan dat hij
+/// niet kan. Dat is iets anders dan ze op 0 zetten — een beugelafstand van 0
+/// bestaat niet en wordt door de kern geweigerd. Ze moeten hier wél staan,
+/// want `additionalProperties: false` zou ze anders wegfilteren voordat de
+/// kern ze ziet.
 fn schema_korf() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "description": "Wapeningskorf: dekking, beugel, boven- en onderwapening. Er is GEEN standaardkorf; alle velden zijn verplicht.",
+        "description": "Wapeningskorf: dekking, beugel, boven- en onderwapening. Er is GEEN standaardkorf; de eerste vier velden zijn verplicht. De beugelvelden (stirrup_spacing_mm, stirrup_legs, stirrup_leg_spacing_mm, stirrup_fywk_mpa) zijn optioneel; laat ze WEG als ze niet bekend zijn — 0 invullen is iets anders en wordt geweigerd.",
         "required": ["cover_mm", "stirrup_diameter_mm", "top", "bottom"],
         "properties": {
             "cover_mm": { "type": "number", "minimum": 0,
@@ -176,7 +184,15 @@ fn schema_korf() -> Value {
             "stirrup_diameter_mm": { "type": "number", "minimum": 0,
                 "description": "Beugeldiameter in mm; 0 = geen beugel, de hoofdwapening ligt dan direct achter de dekking." },
             "top": schema_wapeningsrij("Bovenwapening (zijde z = h)."),
-            "bottom": schema_wapeningsrij("Onderwapening (zijde z = 0).")
+            "bottom": schema_wapeningsrij("Onderwapening (zijde z = 0)."),
+            "stirrup_spacing_mm": { "type": ["number", "null"], "exclusiveMinimum": 0,
+                "description": "Hart-op-hartafstand s van de beugels LANGS de lengteas, in mm (§9.2.2(5)). Weglaten = niet opgegeven; zonder s zijn A_sw/s in (6.8) en rho_w in (9.4) onbepaald en meldt de dwarskrachttoets dat hij niet kan. De norm geeft hier geen aanbevolen waarde, alleen de bovengrens s_l,max." },
+            "stirrup_legs": { "type": ["integer", "null"], "minimum": 1,
+                "description": "Aantal beugelbenen n dat een verticale doorsnede kruist (2 bij een gewone gesloten beugel, 4 bij een dubbele). A_sw = n·(pi/4)·diameter^2. Weglaten = niet opgegeven; niet af te leiden uit dekking of diameter." },
+            "stirrup_leg_spacing_mm": { "type": ["number", "null"], "exclusiveMinimum": 0,
+                "description": "Hart-op-hartafstand s_t van de beugelbenen in DWARSRICHTING, in mm (§9.2.2(8)). Weglaten mag: bij een tweebenige beugel leidt de kern hem meetkundig af uit b_w, c_nom en de beugeldiameter. Bij meer benen is hij niet af te leiden en blijft 9.2.2(8) ongetoetst." },
+            "stirrup_fywk_mpa": { "type": ["number", "null"], "exclusiveMinimum": 0,
+                "description": "Karakteristieke vloeigrens f_ywk van de DWARSKRACHTWAPENING in N/mm². Weglaten = dezelfde staalsoort als de langswapening (reinforcement_grade); alleen invullen als de beugelkwaliteit werkelijk afwijkt." }
         }
     })
 }
@@ -271,6 +287,51 @@ fn schema_segmentkrachten() -> Value {
 }
 
 /// De acht tooldefinities voor `tools/list`.
+/// Schema van `sls_frequent_envelope`.
+///
+/// Dezelfde vorm als de UGT-omhullende — het is dezelfde `Vec<ForcePoint>` —
+/// maar met een eigen beschrijving, want het is een ANDERE
+/// belastingcombinatie. De twee verwisselen is precies de fout die niemand
+/// ziet: de scheurwijdte komt er dan een derde te hoog uit en de toets blijft
+/// geloofwaardig ogen.
+fn schema_frequente_omhullende() -> Value {
+    let mut v = crate::schema_krachtenomhullende();
+    v["description"] = json!(
+        "Omhullende van de snedekrachten onder de FREQUENTE BGT-combinatie \
+         (NEN-EN 1990 uitdrukking (6.15)) - NIET de UGT-omhullende en NIET de \
+         quasi-blijvende. De nationale bijlage bij 7.3.1(5) vervangt tabel 7.1N \
+         door een tabel waarvan alle kolommen de frequente combinatie noemen. \
+         Art. 7.3 vraagt de staalspanning sigma_s in de gescheurde doorsnede \
+         onder die combinatie; die is uit de UGT-omhullende niet af te leiden. \
+         Weglaten = niet opgegeven: 7.3.2 en 7.3.4 komen dan als NotApplicable \
+         terug met de reden, en er wordt geen UGT-spanning voor in de plaats \
+         gezet. Eenheden kN en kNm; N positief = trek."
+    );
+    v
+}
+
+/// Schema van `exposure_class`. Dezelfde opsomming als bij
+/// `concrete_cover_check`; hier is hij de ingang van tabel 7.1N in plaats van
+/// tabel 4.4N.
+fn schema_milieuklasse() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["X0", "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3",
+                 "XS1", "XS2", "XS3", "XF1", "XF2", "XF3", "XF4",
+                 "XA1", "XA2", "XA3"],
+        "description": "Milieuklasse uit tabel 4.1 - de enige ingang van de door de nationale bijlage vervangen tabel 7.1N, en dus van w_max. Betonstaal: X0/XC1 -> 0,40 mm; XC2-XC4 -> 0,30 mm; XD en XS -> 0,20 mm. Voor XF en XA geeft tabel 7.1N geen w_max en meldt de toets dat. Weglaten = niet opgegeven; er is met opzet geen standaardklasse, want die zou een scheurwijdte kunnen goedkeuren die bij het werkelijke milieu veel te groot is. Zie `list_exposure_classes`."
+    })
+}
+
+/// Schema van `structural_system` - de regel uit tabel 7.4N.
+fn schema_constructievorm() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["SimplySupported", "EndSpan", "InteriorSpan", "FlatSlab", "Cantilever"],
+        "description": "De regel uit tabel 7.4N voor de slankheidstoets van 7.4.2, met K = 1,0 / 1,3 / 1,5 / 1,2 / 0,4. SimplySupported = vrij opgelegde ligger of vrij opgelegde plaat; EndSpan = eindveld van een doorgaande ligger of plaat; InteriorSpan = tussenveld; FlatSlab = vlakke plaatvloer, op basis van de LANGSTE overspanning; Cantilever = uitkraging. Weglaten = niet opgegeven: dit is niet uit een raamwerkmodel af te leiden, dus 7.4.2 komt dan als NotApplicable terug met de reden."
+    })
+}
+
 pub fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
@@ -285,7 +346,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "check_concrete_beam",
-            "description": "Run the EN 1992-1-1 concrete cross-section check on a single rectangular reinforced beam or column: bending with the rectangular stress block (§3.1.7(3)) and bending with axial force through the M-N-kappa relation, including the minimum eccentricity of §6.1(4). Returns a ConcreteBeamCheckResult with the full derivation, the M-kappa diagram at the governing axial force and both N-M interaction diagrams. Same input and output types as the Tauri command `check_concrete_beams` and the toetsbrug opdracht of that name — those take a list, this one takes a single beam, exactly like `check_steel_beam`. NOT included: shear, torsion, crack width, deflection, second-order effects.",
+            "description": "Run the EN 1992-1-1 concrete cross-section check on a single reinforced beam or column (rectangle, T or L). Fifteen checks: bending with the rectangular stress block (3.1.7(3)); bending with axial force through the M-N-kappa relation including the minimum eccentricity of 6.1(4); shear 6.2 (V_Rd,c per (6.2.a)/(6.2.b) or the truss model (6.8)/(6.9)); minimum reinforcement for crack control 7.3.2 and the calculated crack width 7.3.4, both under the FREQUENT SLS combination that the Dutch national annex to 7.3.1(5) prescribes; the span/depth ratio of 7.4.2; and nine detailing rules from 9.2.1, 9.2.2 and 8.2. A check whose input is missing (no stirrup spacing, no sls_frequent_envelope, no exposure_class, no structural_system, no aggregate_size_mm) comes back with status NotApplicable and the reason in its notes: it is never silently dropped, never reported as passing, and nothing is assumed in its place. Returns a ConcreteBeamCheckResult with the full derivation, the M-kappa diagram at the governing axial force and both N-M interaction diagrams. Same input and output types as the Tauri command `check_concrete_beams` and the toetsbrug opdracht of that name - those take a list, this one takes a single beam, exactly like `check_steel_beam`. NOT included: torsion, punching shear, fatigue, second-order effects, and the table route of 7.3.3 (the direct calculation of 7.3.4 is made instead; the two are alternatives).",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -305,7 +366,14 @@ pub fn tool_definitions() -> Vec<Value> {
                     "steel_branch": schema_steel_branch(),
                     "design_situation": schema_design_situation(),
                     "apply_min_eccentricity": { "type": "boolean", "default": true,
-                        "description": "Minimale excentriciteit e_0 = max(h/30; 20 mm) toepassen bij druk (6.1(4)). Default true; op false zetten maakt de toets GUNSTIGER en hoort alleen bij het narekenen van een uitwerking die die regel niet toepast." }
+                        "description": "Minimale excentriciteit e_0 = max(h/30; 20 mm) toepassen bij druk (6.1(4)). Default true; op false zetten maakt de toets GUNSTIGER en hoort alleen bij het narekenen van een uitwerking die die regel niet toepast." },
+                    "sls_frequent_envelope": schema_frequente_omhullende(),
+                    "exposure_class": schema_milieuklasse(),
+                    "aggregate_size_mm": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "Grootste nominale korrelafmeting d_g in mm, voor de vrije staafafstand van 8.2(2) en de minimale balkbreedte van 9.2(1)e. Weglaten = niet opgegeven; de norm kent GEEN standaardwaarde (d_g hoort bij de betonspecificatie), dus er wordt er ook geen aangenomen en 8.2(2) doet dan alleen de uitspraak die hoe dan ook geldt." },
+                    "structural_system": schema_constructievorm(),
+                    "bar_spacing_mm": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "Werkelijke hart-op-hartafstand van de trekstaven in mm, voor (7.11) en tabel 7.3N. Weglaten = de afstand wordt uit de korf afgeleid (zuivere meetkunde: een rij gelijkmatig verdeeld tussen de beugelbenen), en dat staat dan in de afleiding." }
                 },
                 "required": [
                     "beam_id", "section", "concrete_class",
@@ -660,15 +728,40 @@ mod tests {
     fn korfschema_kent_alle_velden_van_de_kern() {
         let korf = schema_korf();
         let velden = korf["properties"].as_object().expect("properties");
-        for veld in ["cover_mm", "stirrup_diameter_mm", "top", "bottom"] {
+        for veld in [
+            "cover_mm",
+            "stirrup_diameter_mm",
+            "top",
+            "bottom",
+            "stirrup_spacing_mm",
+            "stirrup_legs",
+            "stirrup_leg_spacing_mm",
+            "stirrup_fywk_mpa",
+        ] {
             assert!(velden.contains_key(veld), "korfschema mist `{veld}`");
         }
-        assert_eq!(velden.len(), 4, "korfschema kent een veld dat de kern weigert");
+        assert_eq!(velden.len(), 8, "korfschema kent een veld dat de kern weigert");
         for zijde in ["top", "bottom"] {
             let rij = &korf["properties"][zijde]["properties"];
             assert!(rij["count"].is_object());
             assert!(rij["diameter_mm"].is_object());
             assert_eq!(rij.as_object().unwrap().len(), 2);
         }
+    }
+
+    /// De vier beugelvelden zijn OPTIONEEL. Zouden ze in `required` komen te
+    /// staan, dan zou geen enkel bestaand project nog door de MCP-weg passen —
+    /// en zou de app de gebruiker dwingen een ontwerpkeuze te verzinnen die de
+    /// norm nergens voorschrijft.
+    #[test]
+    fn de_beugelvelden_staan_niet_in_required() {
+        let korf = schema_korf();
+        assert_eq!(korf["required"], json!(["cover_mm", "stirrup_diameter_mm", "top", "bottom"]));
+        // En nul is geen geldige waarde: leeglaten is de manier om "niet
+        // opgegeven" te zeggen, precies zoals `ReinforcementCage::validate`.
+        for veld in ["stirrup_spacing_mm", "stirrup_leg_spacing_mm", "stirrup_fywk_mpa"] {
+            assert_eq!(korf["properties"][veld]["exclusiveMinimum"], json!(0), "{veld}");
+        }
+        assert_eq!(korf["properties"]["stirrup_legs"]["minimum"], json!(1));
     }
 }

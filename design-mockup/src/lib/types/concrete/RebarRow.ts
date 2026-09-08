@@ -2,5 +2,8 @@
 
 /**
  * Eén rij hoofdwapening: aantal staven en diameter.
+ *
+ * `Default` is de LEGE rij (0 staven, Ø 0) — geen bruikbare wapening, maar
+ * wel wat [`ReinforcementCage::default`] nodig heeft om te bestaan.
  */
 export type RebarRow = { count: number, diameter_mm: number, };

@@ -5,9 +5,16 @@
 // `defaultCombinations()` levert acht combinaties. Twee daarvan — de frequente
 // (6.15, id 7) en de quasi-blijvende (6.16, id 8) BGT-combinatie — worden bij
 // een zuivere staalconstructie door geen enkele toets gelezen: de
-// doorbuigingstoets van staal gebruikt de karakteristieke (6.14), en 6.16
-// voedt alleen de kruipvervorming van hout en de BGT-tak van beton.
-// `selecteerCombinaties` laat ze dan weg, mét reden.
+// doorbuigingstoets van staal gebruikt de karakteristieke (6.14). 6.15 voedt
+// de SCHEURBEHEERSING van beton (EN 1992-1-1 §7.3; de nationale bijlage bij
+// 7.3.1(5) schrijft juist die combinatie voor) en 6.16 de kruipvervorming van
+// hout en de BGT-tak van de betonstijfheid. `selecteerCombinaties` laat ze bij
+// zuiver staal weg, mét reden.
+//
+// SINDS SEPTEMBER 2026 IS 6.15 GEEN LOZE COMBINATIE MEER. Tot dan las geen
+// enkele toets haar; nu hangt de scheurwijdte van elke betonstaaf eraan.
+// Wegvallen bij een model MET beton kost dus een toets — vandaar dat blok [4]
+// haar terugkomst apart vastpint.
 //
 // DE DRIE MANIEREN WAAROP DIT MIS KAN GAAN, en die hier alle drie afgedekt zijn:
 //
@@ -70,6 +77,14 @@ log("\n[1] Zuiver staal: 6.15 en 6.16 vallen weg, de rest blijft");
     s.overgeslagen.some((o) => o.reden.includes("6.16")));
   checkWaar("de reden zegt hoe je hem terugkrijgt",
     s.overgeslagen.every((o) => /houten of betonnen staaf/.test(o.reden)));
+  // De reden bij 6.15 hoort te noemen WAT er verloren gaat. "Door geen enkele
+  // toets gelezen" was waar tot §7.3 er was; blijft die tekst staan, dan leest
+  // een gebruiker dat een combinatie overbodig is terwijl zijn scheurwijdte
+  // eraan hangt.
+  checkWaar("de reden bij 6.15 noemt de scheurbeheersing van beton",
+    /scheurbeheersing/.test(s.redenPerId.get(7) ?? ""));
+  checkWaar("de reden bij 6.15 noemt het artikel",
+    /7\.3/.test(s.redenPerId.get(7) ?? ""));
   checkWaar("redenPerId is opzoekbaar voor de lijstweergave",
     s.redenPerId.get(7) === s.overgeslagen[0].reden && s.redenPerId.size === 2);
 }
@@ -112,6 +127,17 @@ log("\n[4] Terugkomen: een houten staaf toevoegen brengt ze terug");
   checkWaar("na het toevoegen van hout weer acht", daarna.actief.length === 8);
   checkWaar("de quasi-blijvende (6.16) is er weer — anders zou de kruip stil terugvallen",
     daarna.actief.some((c) => c.id === 8));
+
+  // EN MET BETON DE FREQUENTE (6.15). Die combinatie voedt sinds §7.3 de
+  // scheurwijdtetoets; valt zij weg, dan komt die toets als "niet uitgevoerd"
+  // in het rapport terwijl er niets aan de hand is.
+  const metBeton = selecteerCombinaties(alles, [...staalModel, beton(4)]);
+  checkWaar("na het toevoegen van beton weer acht", metBeton.actief.length === 8);
+  checkWaar("de frequente (6.15) is er weer — anders vervalt de scheurwijdtetoets",
+    metBeton.actief.some((c) => c.id === 7));
+  checkWaar("de quasi-blijvende (6.16) ook", metBeton.actief.some((c) => c.id === 8));
+  checkWaar("er wordt niets overgeslagen zodra er beton in staat",
+    metBeton.overgeslagen.length === 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

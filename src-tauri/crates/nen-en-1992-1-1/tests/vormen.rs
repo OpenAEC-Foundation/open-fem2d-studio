@@ -61,6 +61,7 @@ fn korf(onder: (u32, f64), boven: (u32, f64)) -> ReinforcementCage {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: boven.0, diameter_mm: boven.1 },
         bottom: RebarRow { count: onder.0, diameter_mm: onder.1 },
+        ..ReinforcementCage::default()
     }
 }
 

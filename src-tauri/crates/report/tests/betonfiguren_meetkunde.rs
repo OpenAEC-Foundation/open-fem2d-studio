@@ -71,6 +71,7 @@ fn korf_3x16_2x12() -> ReinforcementCage {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: 2, diameter_mm: 12.0 },
         bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+        ..ReinforcementCage::default()
     }
 }
 
@@ -158,6 +159,7 @@ fn een_staaf_staat_in_het_midden() {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: 0, diameter_mm: 0.0 },
         bottom: RebarRow { count: 1, diameter_mm: 20.0 },
+        ..ReinforcementCage::default()
     };
     // Asafstand = 30 + 8 + 10 = 48 mm.
     staven_gelijk(&staaf_posities(&korf, &s), &[(150.0, 48.0, 20.0, Rij::Onder)]);
@@ -423,6 +425,7 @@ fn een_staaf_staat_in_het_midden_van_zijn_eigen_band() {
         stirrup_diameter_mm: 8.0,
         top: RebarRow { count: 0, diameter_mm: 0.0 },
         bottom: RebarRow { count: 1, diameter_mm: 20.0 },
+        ..ReinforcementCage::default()
     };
     staven_gelijk(&staaf_posities(&korf, &s), &[(75.0, 48.0, 20.0, Rij::Onder)]);
 

@@ -203,6 +203,7 @@ export default function WapeningskorfEditor({
           constructieklasse={waarde.constructieklasse}
           onConstructieklasseChange={(constructieklasse) => zet({ constructieklasse })}
           milieuklassen={milieuklassen}
+          doorsnede={waarde.doorsnede}
         />
       </div>
 

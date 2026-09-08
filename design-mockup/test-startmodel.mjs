@@ -346,6 +346,29 @@ log("\n[g] Toetsbaarheid: de drie kernen pakken samen alle zes de staven op");
   check("korf: bovenwapening aantal", bi?.cage.top.count, 2);
   check("korf: bovenwapening Ø (mm)", bi?.cage.top.diameter_mm, 12);
 
+  // DE BGT-COMBINATIE VOOR DE SCHEURWIJDTE. §7.3 van EN 1992-1-1 toetst onder
+  // de FREQUENTE combinatie (6.15) — de nationale bijlage bij 7.3.1(5)
+  // schrijft die voor waar de EN-tekst de quasi-blijvende noemt. Komt die
+  // omhullende niet mee, dan meldt de kern dat de scheurtoetsen niet konden
+  // worden uitgevoerd, en dan blijft de halve betontoetsing ongedaan zonder
+  // dat er iets ROOD wordt.
+  check("beton: de frequente BGT-combinatie komt mee",
+    (bi?.sls_frequent_envelope?.length ?? 0) > 0, true);
+  check("beton: en die omhullende hoort bij combinatie 7 (SLS Frequent)",
+    new Set((bi?.sls_frequent_envelope ?? []).map((p) => p.combination_id)).size === 1 &&
+      bi?.sls_frequent_envelope[0]?.combination_id, 7);
+  // De frequente combinatie is LICHTER dan de UGT: G + ψ₁·Q + ψ₂·S tegen
+  // 1,35·G. Een omhullende die net zo zwaar is, is de verkeerde omhullende.
+  const maxAbsM = (env) => Math.max(...(env ?? []).map((p) => Math.abs(p.forces.my_ed)), 0);
+  check("beton: de frequente omhullende is lichter dan de UGT-omhullende",
+    maxAbsM(bi?.sls_frequent_envelope) < maxAbsM(bi?.forces_envelope), true);
+
+  // De milieuklasse stond al in het model voor de dekkingstoets van 4.4.1; §7.3
+  // leest hem als ingang van tabel 7.1N (w_max). Blijft hij in de bouwer
+  // hangen, dan meldt de scheurwijdtetoets dat de milieuklasse ontbreekt
+  // terwijl hij gewoon is ingevuld.
+  check("beton: milieuklasse komt door", bi?.exposure_class, "XC1");
+
   const gedekt = new Set([...staal.inputs, ...hout.inputs, ...beton.inputs]
     .map((i) => i.beam_id));
   check("elke staaf komt bij precies één kern terecht", gedekt.size, 6);

@@ -258,6 +258,7 @@ mod tests {
             stirrup_diameter_mm: 8.0,
             top: RebarRow { count: 0, diameter_mm: 12.0 },
             bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+            ..ReinforcementCage::default()
         };
         let r = stress_block(&s, &k.layers(500.0), &mat(), 0.0, 1.0).unwrap();
         let a_s = 3.0 * std::f64::consts::PI * 64.0;
@@ -278,6 +279,7 @@ mod tests {
             stirrup_diameter_mm: 8.0,
             top: RebarRow { count: 2, diameter_mm: 12.0 },
             bottom: RebarRow { count: 3, diameter_mm: 16.0 },
+            ..ReinforcementCage::default()
         };
         let r = stress_block(&s, &k.layers(500.0), &mat(), -3000.0, 1.0);
         assert_eq!(r, Err(StressBlockError::WhollyCompressed));

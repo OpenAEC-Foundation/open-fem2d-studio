@@ -380,11 +380,17 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         "check_concrete_beam moet additionalProperties: false hebben"
     );
 
-    // Elk veld van ConcreteBeamCheckInput, ook de vier met #[serde(default)].
+    // Elk veld van ConcreteBeamCheckInput, ook de negen met #[serde(default)].
+    // De laatste vijf horen bij de toetsen buiten 6.1 (dwarskracht,
+    // scheurbeheersing, slankheid, detaillering): ze zijn optioneel, maar een
+    // client die ze niet in het schema ziet staan, stuurt ze nooit mee - en
+    // dan blijft de halve toetsing ongedaan zonder dat iemand het merkt.
     for veld in [
         "beam_id", "section", "concrete_class",
         "reinforcement_grade", "cage", "length_m", "forces_envelope",
         "n_strips", "steel_branch", "design_situation", "apply_min_eccentricity",
+        "sls_frequent_envelope", "exposure_class", "aggregate_size_mm",
+        "structural_system", "bar_spacing_mm",
     ] {
         assert!(
             props[veld].is_object(),
@@ -393,8 +399,20 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        11,
+        16,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
+    );
+
+    // De frequente BGT-combinatie is een ANDERE combinatie dan de
+    // UGT-omhullende, en het schema hoort dat te zeggen: een client die de
+    // twee verwisselt krijgt een geloofwaardige maar verkeerde scheurwijdte.
+    let bgt = props["sls_frequent_envelope"]["description"]
+        .as_str()
+        .expect("sls_frequent_envelope heeft een beschrijving");
+    assert!(bgt.contains("6.15"), "de beschrijving noemt uitdrukking (6.15) niet: {bgt}");
+    assert!(
+        bgt.contains("NIET de UGT"),
+        "de beschrijving waarschuwt niet voor de verwisseling met de UGT-omhullende"
     );
 
     // De doorsnede: een vorm met benoemde maten, en ook zij weigert onbekende
@@ -420,7 +438,7 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         json!(["PersistentTransient", "Accidental"])
     );
 
-    // De korf: geen standaardwaarden, dus alle vier de velden verplicht.
+    // De korf: geen standaardwaarden, dus de vier dragende velden verplicht.
     let cage = &props["cage"];
     assert_eq!(cage["additionalProperties"], false);
     assert_eq!(
@@ -432,6 +450,21 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         assert_eq!(rij["additionalProperties"], false);
         assert_eq!(rij["required"], json!(["count", "diameter_mm"]));
     }
+    // De beugelvelden staan er wél in, maar niet als verplicht: ze dragen
+    // §6.2.3 en §9.2.2 en zouden door `additionalProperties: false` worden
+    // weggefilterd als het schema ze niet noemde.
+    for veld in [
+        "stirrup_spacing_mm",
+        "stirrup_legs",
+        "stirrup_leg_spacing_mm",
+        "stirrup_fywk_mpa",
+    ] {
+        assert!(
+            cage["properties"][veld].is_object(),
+            "veld '{veld}' ontbreekt in het korfschema"
+        );
+    }
+    assert_eq!(cage["properties"].as_object().unwrap().len(), 8);
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
