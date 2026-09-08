@@ -57,6 +57,10 @@ import {
 import { zoekDubbeleKnopen } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { resolveSection } from "../lib/sectionResolver";
+// De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
+// nageschreven: één lijst, anders keurt deze poort straks een staalsoort af
+// die de kern wél kent.
+import { SUPPORTED_REINFORCEMENT_GRADES } from "../lib/betonCheckBuilder";
 
 /** Uitkomst van de volledige droogloop; alle teksten zijn Nederlands. */
 export interface ValidatieUitkomst {
@@ -89,11 +93,42 @@ const RELEASE_VELDEN = [
   "startTx", "startTz", "startRy", "endTx", "endTz", "endRy",
 ] as const;
 
+// De betonvelden stonden hier NIET, terwijl `BeamCheckConfig` ze al kende.
+// Gevolg: elk model met een wapeningskorf — de gewone toestand van een
+// betonstaaf, en sinds september 2026 ook het startmodel — werd door deze
+// poort afgekeurd met `onbekend veld betonKorf`, terwijl de app hem gewoon
+// opslaat en doorrekent. Dat is de omgekeerde fout van waar de lijst voor is:
+// niet een tikfout tegenhouden, maar een geldig model weigeren.
 const CHECKCONFIG_VELDEN = [
   "bucklingLengthY_m", "bucklingLengthZ_m", "lateralRestraints",
   "lateralRestraintsBottom", "deflectionClass", "deflectionLimitNumerator",
   "deflectionAddLimitNumerator", "preCamber_mm", "serviceClass", "loadDuration",
+  "betonKorf", "betonMilieuklasse", "betonConstructieklasse", "betonStaalsoort",
+  "betonStroken", "betonStaaltak", "spanningSigmaZ",
 ] as const;
+
+/**
+ * Velden van één wapeningskorf (`ReinforcementCage`). ALLE VIER verplicht:
+ * een korf zonder `bottom` is geen halve korf maar een ander wapeningsplan,
+ * en de betonbouwer zou er zonder mopperen een balk zonder onderwapening van
+ * maken.
+ */
+const KORF_VELDEN = ["cover_mm", "stirrup_diameter_mm", "top", "bottom"] as const;
+
+/** Velden van één wapeningsrij (`RebarRow`) — allebei verplicht. */
+const REBARROW_VELDEN = ["count", "diameter_mm"] as const;
+
+/** Milieuklassen van tabel 4.1, in de volgorde van `ExposureClass`. */
+const MILIEUKLASSEN = [
+  "X0", "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3",
+  "XS1", "XS2", "XS3", "XF1", "XF2", "XF3", "XF4", "XA1", "XA2", "XA3",
+] as const;
+
+/** Constructieklassen van 4.4.1.2(5). */
+const CONSTRUCTIEKLASSEN = ["S1", "S2", "S3", "S4", "S5", "S6"] as const;
+
+/** Bovenste tak van het staaldiagram, 3.2.7(2). */
+const STAALTAKKEN = ["Horizontal", "Inclined"] as const;
 
 const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 
@@ -239,6 +274,54 @@ function keurGetal(
   }
 }
 
+/**
+ * Wapeningskorf (`ReinforcementCage`). Anders dan de meeste velden hier is
+ * deze niet optioneel-per-onderdeel: staat de korf er, dan moeten alle vier de
+ * onderdelen erin staan én kloppen. Een korf waarin `bottom` ontbreekt wordt
+ * door de kern gelezen als een balk zonder onderwapening — een ander bouwwerk
+ * dan de gebruiker invoerde, met een M_Rd die daarbij past.
+ */
+function keurKorf(waarde: unknown, pad: string, fouten: string[]): void {
+  if (waarde === undefined) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object zijn (dekking, beugel, boven- en onderwapening).`);
+    return;
+  }
+  keurVelden(waarde, KORF_VELDEN, pad, fouten);
+  for (const veld of KORF_VELDEN) {
+    if (waarde[veld] === undefined) {
+      fouten.push(`${pad}.${veld} ontbreekt; een wapeningskorf heeft alle vier de onderdelen nodig.`);
+    }
+  }
+  // Dekking en beugel mogen nul zijn (geen beugel is een geldige korf), maar
+  // niet negatief — dezelfde grens als `controleerKorf` in de frontend en
+  // `ReinforcementCage::validate` in de kern.
+  for (const veld of [`cover_mm`, `stirrup_diameter_mm`] as const) {
+    const v = waarde[veld];
+    if (v === undefined) continue;
+    if (!isGetal(v) || v < 0) {
+      fouten.push(`${pad}.${veld}: moet een getal ≥ 0 zijn, maar is ${JSON.stringify(v)}.`);
+    }
+  }
+  for (const kant of ["top", "bottom"] as const) {
+    const rij = waarde[kant];
+    if (rij === undefined) continue;
+    if (!isObject(rij)) {
+      fouten.push(`${pad}.${kant}: moet een object met \`count\` en \`diameter_mm\` zijn.`);
+      continue;
+    }
+    keurVelden(rij, REBARROW_VELDEN, `${pad}.${kant}`, fouten);
+    for (const veld of REBARROW_VELDEN) {
+      const v = rij[veld];
+      if (v === undefined) {
+        fouten.push(`${pad}.${kant}.${veld} ontbreekt.`);
+      } else if (!isGetal(v) || v < 0) {
+        fouten.push(`${pad}.${kant}.${veld}: moet een getal ≥ 0 zijn, maar is ${JSON.stringify(v)}.`);
+      }
+    }
+  }
+}
+
 /** Verplicht geheel getal (identiteiten en verwijzingen). */
 function eisGeheel(
   waarde: unknown,
@@ -365,6 +448,14 @@ export function controleerVelden(rauw: unknown): string[] {
             fouten.push(`${cpad}.${veld}: moet een array van getallen (fracties 0..1) zijn.`);
           }
         }
+        // Beton (EN 1992) en de vrije spanningstoets.
+        keurEnum(cc.betonMilieuklasse, MILIEUKLASSEN, `${cpad}.betonMilieuklasse`, fouten);
+        keurEnum(cc.betonConstructieklasse, CONSTRUCTIEKLASSEN, `${cpad}.betonConstructieklasse`, fouten);
+        keurEnum(cc.betonStaalsoort, SUPPORTED_REINFORCEMENT_GRADES, `${cpad}.betonStaalsoort`, fouten);
+        keurEnum(cc.betonStaaltak, STAALTAKKEN, `${cpad}.betonStaaltak`, fouten);
+        keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
+        keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
+        keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
       }
     }
   });

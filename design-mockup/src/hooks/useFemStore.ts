@@ -35,36 +35,157 @@ import {
 } from "../lib/combinatieSelectie";
 
 // ── Defaults ───────────────────────────────────────────────────────────────
+//
+// HET STARTMODEL: DRIE LOSSE CONSTRUCTIES, DRIE MATERIALEN
+//
+// De app opent op een model dat alle drie de toetskernen tegelijk aan het werk
+// zet — staal (EN 1993), hout (EN 1995) en beton (EN 1992). Eén portaal alleen
+// liet twee van de drie kernen onbeproefd; wie de multi-materiaalketen wilde
+// nalopen moest eerst met de hand een houten en een betonnen ligger tekenen.
+//
+//   x =      0 … 12 000   stalen portaal, 12 × 5 m, HEA 160 in S235
+//   x = 16 000 … 26 000   houten ligger op drie steunpunten, 2 × 5 m, GL24h
+//   x = 30 000 … 36 000   betonnen balk op twee steunpunten, 6 m, C30/37
+//
+// De drie delen raken elkaar niet. Dat is bewust: ze staan naast elkaar zoals
+// drie losse berekeningen in één project, en de modelcontrole heeft er geen
+// bezwaar tegen zolang ELK deel zelf voldoende is opgelegd (zie hieronder) —
+// zij eist geen samenhang tussen de delen, alleen dat geen enkel deel vrij kan
+// bewegen.
+//
+// De materiaal- en profielnamen zijn niet vrij gekozen. `materiaalVanStaaf`
+// (lib/variantInvoer.ts) leidt de toetskern uit `material` + `profile` af, dus
+// alleen namen die de kernen kennen leveren een getoetste staaf op:
+//   - "GL24h"  staat in SUPPORTED_TIMBER_GRADES (EN 14080);
+//   - "C30/37" staat in SUPPORTED_CONCRETE_CLASSES (tabel 3.1);
+//   - "160x400" en "300x600" zijn b×h en worden door respectievelijk
+//     `parseTimberRectMm` en `parseConcreteSection` gelezen.
+// Een naam die daarbuiten valt geeft geen fout maar een STIL overgeslagen
+// staaf, en dan is het startmodel waardeloos voor waar het voor bedoeld is.
 const DEFAULT_NODES: Node[] = [
+  // Stalen portaal.
   { id: 1, x: 0,     z: 0 },
   { id: 2, x: 12000, z: 0 },
   { id: 3, x: 0,     z: 5000 },
   { id: 4, x: 12000, z: 5000 },
+  // Houten ligger, twee velden van 5 m.
+  { id: 5, x: 16000, z: 0 },
+  { id: 6, x: 21000, z: 0 },
+  { id: 7, x: 26000, z: 0 },
+  // Betonnen balk, één veld van 6 m.
+  { id: 8, x: 30000, z: 0 },
+  { id: 9, x: 36000, z: 0 },
 ];
 // Expliciet materiaal/profiel: zonder deze velden viel de solver stil terug
 // op dezelfde defaults (HEA 160 / S235) maar met een console-warning per
 // staaf per berekening, en presenteerde het rapport een impliciete default
 // als bewuste profielkeuze.
+//
+// De wapeningskorf van de betonstaaf hangt aan `checkConfig.betonKorf` en is
+// hier VOLLEDIG ingevuld — dekking, beugel, boven- én onderwapening. Een korf
+// waarin één van die vier ontbreekt wordt door de betonbouwer geweigerd (of
+// erger: half gelezen), en een betonstaaf zonder korf wordt zonder meer
+// overgeslagen; er is met opzet geen stille standaardkorf.
+//
+// DE DEKKING IS NIET GEKOZEN MAAR GEREKEND. c_nom komt uit de dekkingstoets
+// van 4.4.1 (`concrete_cover_check` in de rekenkern), niet uit een vuistregel:
+//   c_min,dur = 15 mm  (tabel 4.4N van de nationale bijlage, S4, kolom XC1)
+//   c_min,b   = 12 mm  (tabel 4.2: Ø20 hoofdstaaf − Ø8 beugel; de beugel zelf
+//                       vraagt 8 mm en is dus niet maatgevend)
+//   c_min     = max{12; 15 + 0 − 0 − 0; 10} = 15 mm            (4.2)
+//   c_nom     = 15 + Δc_dev = 15 + 5 = 20 mm                   (4.1)
+// Δc_dev = 5 mm en Δc_dur,γ = Δc_dur,st = Δc_dur,add = 0 mm zijn de waarden
+// die de nationale bijlage voorschrijft. Milieuklasse XC1 ("droog of blijvend
+// nat", een balk binnen) past dus bij deze korf: de toets komt precies uit op
+// unity check 1,00 en is daarmee voldoende. De constructieklasse staat er niet
+// bij; dan geldt S4, de NB-waarde voor een ontwerplevensduur van 50 jaar, en
+// dat is ook de klasse waarmee bovenstaande 15 mm is afgelezen.
 const DEFAULT_BEAMS: Beam[] = [
   { id: 1, from: 1, to: 3, material: "S235", profile: "HEA160" },
   { id: 2, from: 2, to: 4, material: "S235", profile: "HEA160" },
   { id: 3, from: 3, to: 4, material: "S235", profile: "HEA160" },
+  { id: 4, from: 5, to: 6, material: "GL24h", profile: "160x400" },
+  { id: 5, from: 6, to: 7, material: "GL24h", profile: "160x400" },
+  {
+    id: 6, from: 8, to: 9, material: "C30/37", profile: "300x600",
+    checkConfig: {
+      betonKorf: {
+        cover_mm: 20,
+        stirrup_diameter_mm: 8,
+        top: { count: 2, diameter_mm: 12 },
+        bottom: { count: 4, diameter_mm: 20 },
+      },
+      betonMilieuklasse: "XC1",
+      // Zonder dit veld vult de betonbouwer B500B in — dezelfde staalsoort,
+      // maar dan als stille default. Hier staat hij expliciet omdat dit model
+      // ook een VOORBEELD is: wie het openslaat hoort te kunnen zien met welk
+      // wapeningsstaal gerekend is, zonder het uit de kern af te leiden.
+      betonStaalsoort: "B500B",
+    },
+  },
 ];
+// DE OPLEGGINGEN, EN WAAROM PRECIES DEZE
+//
+// De namen zeggen niet vanzelf welke richting vrij is. In de solver
+// (`applySupportToMesh`, solver/engine.ts) zetten ze dit vast:
+//   pinned   x én z vast, rotatie vrij       (scharnier)
+//   fixed    x, z én rotatie vast            (inklemming)
+//   xRoller  ALLEEN x vast, z vrij           (rol die horizontaal steunt)
+//   zRoller  ALLEEN z vast, x vrij           (rol die verticaal steunt)
+// De naam noemt dus de richting die de oplegging VASTHOUDT, niet de richting
+// waarin de rol loopt. Onder een horizontale ligger hoort daarom `zRoller`.
+//
+// Portaal: twee scharnieren aan de voet — een tweescharnierportaal, één keer
+// statisch onbepaald, en de horizontale kracht moet daar juist wél worden
+// opgenomen.
+//
+// Houten en betonnen ligger: ÉÉN scharnier plus verder rollen. Twee
+// scharnieren onder een rechte ligger zouden hem axiaal inklemmen: elke
+// zakking wil de ligger verlengen, en dan ontstaat er een normaalkracht die er
+// in werkelijkheid niet is (en die bij temperatuurlast pas echt uit de hand
+// loopt). Eén scharnier houdt het geheel op zijn plaats, de rollen dragen
+// alleen verticaal — statisch juist, geen mechanisme en geen dwang.
 const DEFAULT_SUPPORTS: Support[] = [
   { nodeId: 1, type: "pinned" },
   { nodeId: 2, type: "pinned" },
+  { nodeId: 5, type: "pinned" },
+  { nodeId: 6, type: "zRoller" },
+  { nodeId: 7, type: "zRoller" },
+  { nodeId: 8, type: "pinned" },
+  { nodeId: 9, type: "zRoller" },
 ];
 const DEFAULT_PLATES: Plate[] = [];
-const DEFAULT_LOAD_CASES: LoadCase[] = [
+// Geëxporteerd om dezelfde reden als `makeInitialSnapshot`: de belastinggevallen
+// horen bij het startmodel en de test heeft ze nodig om het door te rekenen.
+export const DEFAULT_LOAD_CASES: LoadCase[] = [
   { id: 1, name: "Permanent (G)", type: "dead" },
   { id: 2, name: "Variabel (Q)",  type: "live" },
   { id: 3, name: "Sneeuw (S)",    type: "snow" },
   { id: 4, name: "Wind (W)",      type: "wind" },
 ];
-// Pre-populate one line load on top beam (id 3) in the permanent case,
-// so the solver still has something to act on by default.
+// Elke last draagt een `omschrijving`. Dat veld verandert geen enkel getal —
+// de solver leest het niet — maar zonder omschrijving zegt een regel
+// "q = −4,00 kN/m op staaf 4" in de lastentabel van het rapport niets over
+// waar die last vandaan komt. Het startmodel laat daarom meteen zien dat het
+// veld bestaat en waar het opduikt.
 const DEFAULT_LOADS: Load[] = [
-  { id: 1, type: "lineLoad", caseId: 1, beamId: 3, q: -5 /* kN/m */ },
+  // Stalen portaal: alleen permanent, op de bovenregel.
+  { id: 1, type: "lineLoad", caseId: 1, beamId: 3, q: -5 /* kN/m */,
+    omschrijving: "eigen gewicht dak en dakbedekking" },
+  // Houten ligger: beide velden, permanent én veranderlijk.
+  { id: 2, type: "lineLoad", caseId: 1, beamId: 4, q: -4,
+    omschrijving: "eigen gewicht en vloerafwerking" },
+  { id: 3, type: "lineLoad", caseId: 1, beamId: 5, q: -4,
+    omschrijving: "eigen gewicht en vloerafwerking" },
+  { id: 4, type: "lineLoad", caseId: 2, beamId: 4, q: -2.5,
+    omschrijving: "veranderlijke belasting vloer" },
+  { id: 5, type: "lineLoad", caseId: 2, beamId: 5, q: -2.5,
+    omschrijving: "veranderlijke belasting vloer" },
+  // Betonnen balk.
+  { id: 6, type: "lineLoad", caseId: 1, beamId: 6, q: -15,
+    omschrijving: "eigen gewicht en vloerafwerking" },
+  { id: 7, type: "lineLoad", caseId: 2, beamId: 6, q: -10,
+    omschrijving: "veranderlijke belasting vloer" },
 ];
 
 /**
@@ -77,7 +198,15 @@ const DEFAULT_LOADS: Load[] = [
  */
 type HistorieSnapshot = Snapshot & { structuralGrid?: StructuralGrid };
 
-function makeInitialSnapshot(): HistorieSnapshot {
+/**
+ * Het startmodel zoals de app het opent. Geëxporteerd zodat de testbatterij
+ * hem kan nalopen zonder React te starten: dit model is de eerste indruk van
+ * de app én het model waarmee de multi-materiaalketen wordt uitgeprobeerd, en
+ * dan moet vaststaan dat het rekent, valideert en toetsbaar is. Zonder deze
+ * export zou een test het model moeten OVERSCHRIJVEN, en dan bewaakt hij een
+ * kopie in plaats van het echte startmodel.
+ */
+export function makeInitialSnapshot(): HistorieSnapshot {
   return {
     nodes: [...DEFAULT_NODES],
     beams: [...DEFAULT_BEAMS],
