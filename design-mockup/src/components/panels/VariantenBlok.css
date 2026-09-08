@@ -1,0 +1,155 @@
+/* VariantenBlok — naburige doorsneden binnen een staafkaart van het
+   toetsingspaneel. Zelfde tokens als CheckPanel.css. */
+
+.varianten-blok {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--theme-border);
+  border-left: 3px solid var(--theme-accent);
+  border-radius: 4px;
+  background: var(--theme-surface);
+  font-size: 12.5px;
+}
+
+.vb-kop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.vb-titel {
+  font-weight: 600;
+}
+
+.vb-knop,
+.vb-herbereken {
+  padding: 4px 12px;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-content-bg, var(--theme-bg));
+  color: var(--theme-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vb-herbereken {
+  margin-left: auto;
+}
+
+.vb-knop:hover,
+.vb-herbereken:hover {
+  border-color: var(--theme-accent);
+}
+
+.vb-knop-hint {
+  margin-left: 10px;
+  color: var(--theme-text-muted);
+}
+
+.vb-bezig,
+.vb-leeg {
+  color: var(--theme-text-muted);
+}
+
+.vb-fout {
+  margin-bottom: 8px;
+  color: var(--theme-danger-color, #dc2626);
+}
+
+.vb-melding {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  line-height: 1.45;
+}
+
+.vb-melding-ok {
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.35);
+}
+
+.vb-melding-let-op {
+  background: rgba(220, 38, 38, 0.07);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+}
+
+.vb-tabel {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+
+.vb-tabel th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--theme-text-muted);
+  border-bottom: 1px solid var(--theme-border);
+  padding: 4px 6px;
+}
+
+.vb-tabel td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--theme-border);
+  vertical-align: top;
+}
+
+.vb-rij.vb-klikbaar {
+  cursor: pointer;
+}
+
+.vb-rij.vb-klikbaar:hover {
+  background: var(--theme-hover-bg, rgba(127, 127, 127, 0.08));
+}
+
+.vb-huidig {
+  font-weight: 600;
+  background: var(--theme-hover-bg, rgba(127, 127, 127, 0.06));
+}
+
+.vb-stap {
+  width: 52px;
+  white-space: nowrap;
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vb-label {
+  white-space: nowrap;
+}
+
+.vb-uc {
+  width: 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.vb-uc-ok { color: #16a34a; }
+.vb-uc-warn { color: #d97706; }
+.vb-uc-fail { color: var(--theme-danger-color, #dc2626); }
+
+.vb-gov {
+  color: var(--theme-text-muted);
+}
+
+.vb-geen {
+  color: var(--theme-text-muted);
+  font-style: italic;
+}
+
+.vb-afwijking {
+  color: var(--theme-text-muted);
+  max-width: 260px;
+}
+
+.vb-afleiding > td {
+  background: var(--theme-content-bg, var(--theme-bg));
+  padding: 8px 10px;
+}
+
+.vb-voet {
+  color: var(--theme-text-muted);
+  font-size: 11.5px;
+}

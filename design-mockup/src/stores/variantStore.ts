@@ -79,7 +79,8 @@ export interface VariantRegel {
 /** De variantentabel van één staaf. */
 export interface VariantTabel {
   beamId: number;
-  materiaal: "staal" | "hout" | "beton";
+  /** "geen" = een materiaal zonder maatreeks (kruislaaghout, vrij, onbekend). */
+  materiaal: "staal" | "hout" | "beton" | "geen";
   /** De doorsnede waarmee getoetst is, met haar unity check als ijkpunt. */
   huidigLabel: string;
   huidigUc: number | null;
@@ -171,7 +172,7 @@ export const useVariantStore = create<VariantState>((set, get) => ({
 
       if (soort === "clt" || soort === "vrij" || soort === "onbekend") {
         leg(
-          "staal",
+          "geen",
           beam.profile ?? "—",
           soort === "clt"
             ? "Voor kruislaaghout bestaat geen maatreeks van naburige opbouwen — de laagopbouw " +
