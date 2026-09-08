@@ -34,6 +34,11 @@ export * from "./valideerModel";
 
 export * from "../components/fem/solver/engine";
 export * from "../components/fem/solver/combinations";
+// De combinatieselectie hoort IN de bundel: de sidecar past hem toe vlak vóór
+// het combineren, zodat een MCP-solve niet acht combinaties oplevert waar de
+// app er zes toont. Hij trekt `variantInvoer` mee — de materiaalclassificatie
+// die de toetsing ook gebruikt; pure rekencode, geen DOM en geen Tauri.
+export * from "../lib/combinatieSelectie";
 export * from "../lib/steelCheckBuilder";
 export * from "../lib/timberCheckBuilder";
 export * from "../lib/sectionResolver";

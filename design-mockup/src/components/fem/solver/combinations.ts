@@ -88,6 +88,32 @@ const S = 3; // Sneeuw (snow)
 const W = 4; // Wind
 
 /**
+ * De standaardcombinaties die GEEN ENKELE toets van een stalen staaf leest:
+ * de frequente (6.15) en de quasi-blijvende (6.16) BGT-combinatie.
+ *
+ * NEN-EN 1990 6.5.3(1): de te beschouwen belastingscombinaties horen te passen
+ * bij de bruikbaarheidseis die getoetst wordt. De norm merkt daarbij op
+ * (6.5.3(2)) dat de frequente combinatie normaliter voor omkeerbare
+ * grenstoestanden dient en de quasi-blijvende voor langetermijneffecten en het
+ * uiterlijk van de constructie. In DEZE app is dat concreet:
+ *
+ *   6.14 karakteristiek  → de doorbuigingstoets van staal én hout
+ *                          (steelCheckBuilder, timberCheckBuilder)
+ *   6.15 frequent        → door geen enkele toets gelezen
+ *   6.16 quasi-blijvend  → de kruipvervorming van hout
+ *                          (`deflection_quasi_perm_mm`) en, via de BGT-tak met
+ *                          tension stiffening, de betonstijfheid
+ *
+ * Staat er alleen staal in het model, dan leveren deze twee combinaties dus
+ * rekentijd, tabelkolommen en rapportregels op waar niets mee gedaan wordt.
+ * `selecteerCombinaties` (lib/combinatieSelectie.ts) laat ze dan weg — met
+ * zichtbare reden, en uitsluitend zolang ze ONGEWIJZIGD zijn.
+ *
+ * De ids verwijzen naar `defaultCombinations()` hieronder.
+ */
+export const STANDAARD_SLS_BUITEN_STAAL: readonly number[] = [7, 8];
+
+/**
  * EN 1990 default combinations for a residential building (Annex A1.1).
  * Simplified ψ values: ψ₀(Q)=0.7, ψ₀(S)=0.7, ψ₀(W)=0.6; ψ₁(Q)=0.5; ψ₂(Q)=0.3,
  * ψ₂(S)=0.2.  Combined γ·ψ values are baked into the factors below.

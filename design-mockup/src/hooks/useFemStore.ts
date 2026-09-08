@@ -8,7 +8,7 @@
  * Includes a tiny undo/redo history stack — every mutating action pushes
  * a Snapshot, Ctrl+Z restores the previous one.
  */
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type {
   Node, Beam, BeamReleases, Plate, PlaatMeshCache, Support, Load, LoadCase,
   Selection, Snapshot, SupportType, StructuralGrid, Analysetype,
@@ -30,6 +30,9 @@ import type {
   LoadCombination, Envelope,
 } from "../components/fem/solver/combinations";
 import { defaultCombinations } from "../components/fem/solver/combinations";
+import {
+  selecteerCombinaties, type OvergeslagenCombinatie,
+} from "../lib/combinatieSelectie";
 
 // ── Defaults ───────────────────────────────────────────────────────────────
 const DEFAULT_NODES: Node[] = [
@@ -831,7 +834,22 @@ export interface FemStore {
   activeLoadCaseId: number;
 
   // Combinations / envelope (step 2d/2e)
+  /**
+   * De VOLLEDIGE combinatielijst zoals hij in het projectbestand staat en in
+   * de combinatie-editor bewerkt wordt. Wat er werkelijk doorgerekend wordt
+   * staat in `actieveCombinaties` — zie daar.
+   */
   combinations: LoadCombination[];
+  /**
+   * De combinaties die dit model werkelijk nodig heeft (afgeleid uit
+   * `combinations` + het model). Bij een zuivere staalconstructie vallen de
+   * ongewijzigde standaardcombinaties 6.15 en 6.16 hier af; zie
+   * lib/combinatieSelectie.ts. Alles wat rekent, toetst of resultaten toont
+   * gebruikt DEZE lijst — opslaan en bewerken gebruikt `combinations`.
+   */
+  actieveCombinaties: LoadCombination[];
+  /** Wat er is weggelaten en waarom. Leeg = de volledige lijst wordt gebruikt. */
+  overgeslagenCombinaties: OvergeslagenCombinatie[];
   /** Selected combination for canvas display; null = show active LC or envelope. */
   activeCombinationId: number | null;
   /** When true, canvas shows envelope view instead of a single result. */
@@ -1066,6 +1084,19 @@ export function useFemStore(): FemStore {
   const [multiLcResult, setMultiLcResult] = useState<Map<number, SolverResult> | null>(null);
   const [combinationResults, setCombinationResults] = useState<Map<number, SolverResult> | null>(null);
   const [envelope, setEnvelope] = useState<Envelope | null>(null);
+
+  // Welke combinaties dit model werkelijk nodig heeft. AFGELEID, nooit
+  // opgeslagen: `combinations` blijft de volledige lijst die in het
+  // projectbestand terechtkomt en in de editor bewerkt wordt. Zo komt een
+  // combinatie die bij een zuivere staalconstructie wegvalt vanzelf terug
+  // zodra er een houten of betonnen staaf bij komt — de beslissing wordt
+  // opnieuw genomen, niet teruggedraaid. `defaultCombinations()` kan deze
+  // afweging zelf niet maken: die draait vóórdat er een model is.
+  const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
+    useMemo(
+      () => selecteerCombinaties(combinations, beams, plates),
+      [combinations, beams, plates],
+    );
 
   // Structural grid (stramien) — separate from undo history.
   const [structuralGrid, setStructuralGridState] = useState<StructuralGrid>(DEFAULT_STRUCTURAL_GRID);
@@ -1768,7 +1799,8 @@ export function useFemStore(): FemStore {
   return {
     nodes, beams, supports, plates, loads,
     loadCases, activeLoadCaseId,
-    combinations, activeCombinationId, envelopeView,
+    combinations, actieveCombinaties, overgeslagenCombinaties,
+    activeCombinationId, envelopeView,
     multiLcResult, combinationResults, envelope,
     selection,
     setSelection,

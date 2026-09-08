@@ -64,6 +64,7 @@ import type {
   EnvelopeElementSpan,
   EnvelopeReaction,
 } from "../fem/solver/combinations";
+import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 import { isTauriApp } from "../../lib/tauri";
 
 // ── Kanalen & identiteit ──────────────────────────────────────────────────
@@ -110,6 +111,13 @@ interface WireReportData {
   structuralGrid: ReportData["structuralGrid"];
   selfWeightEnabled: boolean;
   combinations: WireCombination[];
+  /**
+   * De overgeslagen combinaties met reden — al JSON-veilig (geen Maps), dus
+   * 1-op-1 mee. Optioneel: een snapshot uit een ouder hoofdvenster draagt het
+   * veld niet, en dan hoort het rapport er niets over te zeggen in plaats van
+   * te doen alsof alles is doorgerekend.
+   */
+  overgeslagenCombinaties?: OvergeslagenCombinatie[];
   combinationResults: [number, WireSolverResult][] | null;
   /** Per-belastinggeval-resultaten (P5.2) — zelfde wire-vorm. */
   caseResults: [number, WireSolverResult][] | null;
@@ -206,6 +214,7 @@ function serializeReportData(d: ReportData): WireReportData {
     structuralGrid: d.structuralGrid,
     selfWeightEnabled: d.selfWeightEnabled,
     combinations: d.combinations.map((c) => ({ ...c, factors: [...c.factors] })),
+    overgeslagenCombinaties: d.overgeslagenCombinaties,
     combinationResults: d.combinationResults
       ? [...d.combinationResults].map(
           ([id, r]) => [id, wireSolverResult(r)] as [number, WireSolverResult],
@@ -247,6 +256,8 @@ function deserializeReportData(w: WireReportData): ReportData {
     structuralGrid: w.structuralGrid,
     selfWeightEnabled: w.selfWeightEnabled,
     combinations: w.combinations.map((c) => ({ ...c, factors: new Map(c.factors) })),
+    // ?? — oudere hoofdvensters sturen dit veld nog niet mee.
+    overgeslagenCombinaties: w.overgeslagenCombinaties ?? [],
     combinationResults: w.combinationResults
       ? new Map(w.combinationResults.map(([id, r]) => [id, unwireSolverResult(r)]))
       : null,
@@ -458,6 +469,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     data.loads,
     data.loadCases,
     data.combinations,
+    data.overgeslagenCombinaties,
     data.structuralGrid,
     data.selfWeightEnabled,
     data.combinationResults,

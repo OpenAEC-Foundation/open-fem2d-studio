@@ -231,7 +231,12 @@ function App() {
     supports: fem.supports,
     loads: fem.loads,
     loadCases: fem.loadCases,
+    // De VOLLEDIGE lijst: het rapport somt ook op wat er NIET is doorgerekend,
+    // met de reden erbij (`overgeslagenCombinaties`). Een lezer die zes
+    // combinaties ziet waar hij er acht verwacht, moet dat in het rapport zelf
+    // kunnen nazien.
     combinations: fem.combinations,
+    overgeslagenCombinaties: fem.overgeslagenCombinaties,
     structuralGrid: fem.structuralGrid,
     selfWeightEnabled: fem.selfWeightEnabled,
     // R3 — resultaten voor de resultaatsecties. useFemStore zet deze op null
@@ -244,7 +249,8 @@ function App() {
     envelope: fem.envelope,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
-    fem.combinations, fem.structuralGrid, fem.selfWeightEnabled,
+    fem.combinations, fem.overgeslagenCombinaties,
+    fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
   ]);
 
@@ -754,10 +760,14 @@ function App() {
       const { perCase } = fem.analysetype !== "eersteOrde"
         ? solveAllCasesNonlinear(multiInput)
         : solveAllCases(multiInput);
+      // `actieveCombinaties`, niet `combinations`: een combinatie die dit model
+      // niet nodig heeft (zuiver staal → 6.15/6.16, zie lib/combinatieSelectie)
+      // wordt niet doorgerekend. Alles wat resultaten toont filtert op de
+      // sleutels van deze Map, dus die volgen vanzelf.
       const combinationResults = new Map(
-        fem.combinations.map(c => [c.id, combineResults(c, perCase)])
+        fem.actieveCombinaties.map(c => [c.id, combineResults(c, perCase)])
       );
-      const envelope = computeEnvelope(fem.combinations, perCase);
+      const envelope = computeEnvelope(fem.actieveCombinaties, perCase);
       const outputs = { perCase, combinationResults, envelope };
       fem.setSolverOutputs(outputs);
       return outputs;
@@ -838,7 +848,11 @@ function App() {
     // krachtsverdeling die er niet is.
     const spoor: StijfheidCombinatie[] = [];
     try {
-      for (const combo of fem.combinations) {
+      // Dezelfde lijst als het lineaire pad: een niet-doorgerekende combinatie
+      // hoort ook geen fysisch niet-lineaire ronde te krijgen. In een model
+      // met beton valt er trouwens niets weg — de selectie grijpt alleen bij
+      // een zuivere staalconstructie.
+      for (const combo of fem.actieveCombinaties) {
         // Besluit B2: in de UGT rekenwaarden zonder betontrek (5.8.6(3)/(5)),
         // in de BGT gemiddelde waarden mét tension stiffening (7.4.3). De
         // grenstoestand van de combinatie bepaalt dus welk diagram de kern
@@ -879,9 +893,9 @@ function App() {
       overgeslagen,
     });
     const combinationResults = new Map(
-      fem.combinations.map(c => [c.id, combineResults(c, outputs.perCase)]),
+      fem.actieveCombinaties.map(c => [c.id, combineResults(c, outputs.perCase)]),
     );
-    const envelope = computeEnvelope(fem.combinations, outputs.perCase);
+    const envelope = computeEnvelope(fem.actieveCombinaties, outputs.perCase);
     const verse = { perCase: outputs.perCase, combinationResults, envelope };
     fem.setSolverOutputs(verse);
     return verse;
@@ -930,7 +944,11 @@ function App() {
       // De doorbuigingstoets onderscheidt hiermee een echt tussensteunpunt van
       // een knoop waar een ligger alleen is doorgeknipt.
       supports: fem.supports,
-      combinations: fem.combinations,
+      // De toetsbouwers zoeken hun combinaties in deze lijst (de karakteristieke
+      // BGT voor de doorbuiging, de quasi-blijvende voor de kruip). Ze moet dus
+      // gelijklopen met de sleutels van `combinationResults`; een combinatie
+      // noemen die niet is doorgerekend levert een lege zakking op.
+      combinations: fem.actieveCombinaties,
       combinationResults,
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
@@ -1318,7 +1336,7 @@ function App() {
                 setStructuralGrid={fem.setStructuralGrid}
                 verplaatsStramienAs={fem.verplaatsStramienAs}
                 grid={grid}
-                combinations={fem.combinations}
+                combinations={fem.actieveCombinaties}
                 activeCombinationId={fem.activeCombinationId}
                 envelopeView={fem.envelopeView}
                 combinationResults={fem.combinationResults}
@@ -1385,7 +1403,7 @@ function App() {
                     addLoad={fem.addLoad}
                     updateLoad={fem.updateLoad}
                     removeLoad={fem.removeLoad}
-                    combinations={fem.combinations}
+                    combinations={fem.actieveCombinaties}
                     combinationResults={fem.combinationResults}
                     caseResults={fem.multiLcResult}
                     envelope={fem.envelope}
@@ -1541,6 +1559,7 @@ function App() {
                     }}
                     addLoadCase={fem.addLoadCase}
                     combinations={fem.combinations}
+                    overgeslagenCombinaties={fem.overgeslagenCombinaties}
                     activeCombinationId={fem.activeCombinationId}
                     setActiveCombinationId={(id) => {
                       // Picking a combination must enable the results overlay
@@ -1692,6 +1711,7 @@ function App() {
         initialTab={loadCasesTab}
         loadCases={fem.loadCases}
         combinations={fem.combinations}
+        overgeslagenCombinaties={fem.overgeslagenCombinaties}
         addLoadCase={fem.addLoadCase}
         updateLoadCase={fem.updateLoadCase}
         removeLoadCase={fem.removeLoadCase}

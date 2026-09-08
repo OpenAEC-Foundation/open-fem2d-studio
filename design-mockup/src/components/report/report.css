@@ -440,6 +440,19 @@
   margin: 0 0 3mm;
 }
 
+/*
+ * Een rij die wel in de tabel hoort maar niet is doorgerekend — een
+ * belastingcombinatie die dit model niet nodig heeft (zie
+ * lib/combinatieSelectie). Gedempt, met "niet gebruikt" achter de naam en de
+ * reden in de noot eronder; de factoren blijven leesbaar, want ze zijn niet
+ * fout — ze zijn alleen niet toegepast. Weglaten zonder spoor zou het rapport
+ * onnavolgbaar maken.
+ */
+.rpt-rij-gedempt td {
+  color: #777;
+  font-style: italic;
+}
+
 .rpt-empty-note {
   font-size: var(--rpt-basis);
   color: #555;

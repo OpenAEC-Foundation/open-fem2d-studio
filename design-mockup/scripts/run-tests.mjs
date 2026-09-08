@@ -80,6 +80,7 @@ const TIJDSLIMIET_MS = 300_000;
  */
 const BUNDEL_TESTS = new Set([
   "checkconfig",
+  "combinatieselectie",
   "doorbuiging-toets",
   "hoekverdraaiing",
   "lastomschrijving",

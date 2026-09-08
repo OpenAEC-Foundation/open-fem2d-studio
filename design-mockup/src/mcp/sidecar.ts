@@ -48,6 +48,10 @@ import {
   type LoadCombination,
 } from "../components/fem/solver/combinations";
 import { buildSteelCheckInputs, profileLookupKey } from "../lib/steelCheckBuilder";
+import {
+  selecteerCombinaties,
+  type OvergeslagenCombinatie,
+} from "../lib/combinatieSelectie";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import {
   PROJECT_FORMAT_VERSION,
@@ -483,7 +487,19 @@ function rekenDoor(payload: Record<string, unknown>) {
     );
   }
 
-  const combinaties = leesCombinaties(payload, gelezen.combinatiesUitBestand);
+  const alleCombinaties = leesCombinaties(payload, gelezen.combinatiesUitBestand);
+  // Dezelfde selectie als de app (lib/combinatieSelectie): bij een zuivere
+  // staalconstructie vallen de ongewijzigde standaardcombinaties 6.15 en 6.16
+  // af, want geen enkele staaltoets leest ze. Dat gebeurt HIER en niet in de
+  // app-laag, zodat een MCP-solve niet acht combinaties oplevert waar de app
+  // er zes toont — hetzelfde model hoort langs elke weg hetzelfde antwoord te
+  // geven. Wat er wegvalt staat in `combinations_skipped` en in `warnings`.
+  const selectie = selecteerCombinaties(
+    alleCombinaties,
+    gelezen.beams,
+    gelezen.model.plates,
+  );
+  const combinaties = selectie.actief;
   const profileDb = leesProfielen(payload);
 
   // Tweede orde: uit het projectbestand als dat er is — een projectbestand
@@ -569,9 +585,15 @@ function rekenDoor(payload: Record<string, unknown>) {
         "overgeslagen; ze tellen als nulbijdrage in de combinaties.",
     );
   }
+  for (const weg of selectie.overgeslagen) {
+    // Luid, niet stil: wie acht combinaties in het bestand zette en er zes
+    // terugkrijgt, moet in het antwoord kunnen lezen waarom.
+    waarschuwingen.push(`Combinatie ${weg.id} overgeslagen — ${weg.reden}`);
+  }
 
   return {
     combinaties,
+    combinatiesOvergeslagen: selectie.overgeslagen,
     combinationResults,
     envelope,
     perCase,
@@ -598,6 +620,16 @@ function opSolve(payload: Record<string, unknown>) {
     cases_requested: d.gevraagd,
     cases_solved: d.opgelost,
     cases_skipped_empty: d.legeGevallen,
+    // Combinaties die dit model niet nodig heeft — zelfde gedachte als
+    // `cases_skipped_empty`: een ontbrekende sleutel in `combinations` leest
+    // anders als "nul" in plaats van als "niet berekend, en wel hierom".
+    combinations_skipped: d.combinatiesOvergeslagen.map(
+      (c: OvergeslagenCombinatie) => ({
+        id: c.id,
+        name: c.naam,
+        reason: c.reden,
+      }),
+    ),
     per_case: mapNaarObject(d.perCase, (r) => vormResultaat(r, d.metStations)),
     combinations: mapNaarObject(d.combinationResults, (r) =>
       vormResultaat(r, d.metStations),
@@ -638,6 +670,13 @@ function opCheck(payload: Record<string, unknown>) {
       cases_requested: d.gevraagd,
       cases_solved: d.opgelost,
       cases_skipped_empty: d.legeGevallen,
+      combinations_skipped: d.combinatiesOvergeslagen.map(
+        (c: OvergeslagenCombinatie) => ({
+          id: c.id,
+          name: c.naam,
+          reason: c.reden,
+        }),
+      ),
       nonlinear_used: d.nonlinear,
       solve_ms: d.solveMs,
     },

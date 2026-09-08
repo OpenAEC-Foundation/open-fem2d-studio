@@ -882,7 +882,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "solve_fem_model",
-            "description": "Rekent het model door met dezelfde solver die de app gebruikt en levert reacties, verplaatsingen en staafkrachten per belastinggeval, per combinatie en als omhullende. Eenheden kN, kNm, mm en rad; N positief = trek, z positief omhoog. Sluitstuk is `steel_check_inputs`: een lijst die ongewijzigd aan `check_steel_beam` kan worden gevoerd. Let op `cases_skipped_empty` — een belastinggeval zonder werkzame last wordt overgeslagen en zou anders als 'nul' lezen.",
+            "description": "Rekent het model door met dezelfde solver die de app gebruikt en levert reacties, verplaatsingen en staafkrachten per belastinggeval, per combinatie en als omhullende. Eenheden kN, kNm, mm en rad; N positief = trek, z positief omhoog. Sluitstuk is `steel_check_inputs`: een lijst die ongewijzigd aan `check_steel_beam` kan worden gevoerd. Let op `cases_skipped_empty` — een belastinggeval zonder werkzame last wordt overgeslagen en zou anders als 'nul' lezen. Let ook op `combinations_skipped`: bij een zuivere staalconstructie worden de ongewijzigde standaardcombinaties 6.15 (frequent) en 6.16 (quasi-blijvend) niet doorgerekend — geen enkele staaltoets leest ze — en dat staat daar met reden vermeld.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,

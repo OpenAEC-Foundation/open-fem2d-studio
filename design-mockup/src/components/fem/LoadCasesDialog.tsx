@@ -5,9 +5,10 @@
  *   2. Combinaties — list of LoadCombination with name/type editor and a
  *      per-case factor matrix. Add / remove combinations.
  */
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import type { LoadCase } from "./femTypes";
 import type { LoadCombination } from "./solver/combinations";
+import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 import "./LoadCasesDialog.css";
 
 interface Props {
@@ -17,6 +18,13 @@ interface Props {
   initialTab?: "cases" | "combos";
   loadCases: LoadCase[];
   combinations: LoadCombination[];
+  /**
+   * Combinaties die dit model niet nodig heeft, met reden (zie
+   * lib/combinatieSelectie). Ze blijven hier gewoon bewerkbaar — wie er iets
+   * aan verandert, maakt er zijn eigen combinatie van en dan wordt hij weer
+   * meegenomen. De regel eronder zegt waarom hij nu wegblijft.
+   */
+  overgeslagenCombinaties?: OvergeslagenCombinatie[];
   addLoadCase: (name: string) => void;
   updateLoadCase: (id: number, patch: Partial<Omit<LoadCase, "id">>) => void;
   removeLoadCase: (id: number) => void;
@@ -33,10 +41,13 @@ const TYPE_LABEL: Record<LoadCase["type"], string> = {
 
 export default function LoadCasesDialog({
   open, onClose, initialTab = "cases",
-  loadCases, combinations,
+  loadCases, combinations, overgeslagenCombinaties = [],
   addLoadCase, updateLoadCase, removeLoadCase,
   addCombination, updateCombination, removeCombination,
 }: Props) {
+  const overgeslagenReden = new Map(
+    overgeslagenCombinaties.map((o) => [o.id, o.reden] as const),
+  );
   const [tab, setTab] = useState<"cases" | "combos">(initialTab);
   // Sync tab when dialog re-opens with a different initialTab.
   useEffect(() => {
@@ -165,8 +176,11 @@ export default function LoadCasesDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {combinations.map(c => (
-                    <tr key={c.id}>
+                  {combinations.map(c => {
+                    const reden = overgeslagenReden.get(c.id);
+                    return (
+                    <Fragment key={c.id}>
+                    <tr style={reden ? { opacity: 0.6 } : undefined}>
                       <td className="lcd-td-id">{c.id}</td>
                       <td>
                         <input
@@ -216,7 +230,16 @@ export default function LoadCasesDialog({
                         >×</button>
                       </td>
                     </tr>
-                  ))}
+                    {reden && (
+                      <tr>
+                        <td colSpan={4 + loadCases.length} className="lcd-combo-note">
+                          {reden}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
 

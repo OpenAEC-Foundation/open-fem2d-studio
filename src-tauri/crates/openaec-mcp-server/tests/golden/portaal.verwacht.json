@@ -178,6 +178,7 @@
     "cases_requested": [1,2],
     "cases_solved": [1,2],
     "cases_skipped_empty": [],
+    "combinations_skipped": [],
     "per_case": {
       "1": {
         "reactions": {

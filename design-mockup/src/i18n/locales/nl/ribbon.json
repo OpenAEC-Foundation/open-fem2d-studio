@@ -301,6 +301,7 @@
     "comboUls": "UGT",
     "comboSls": "BGT",
     "noCombinations": "Geen belastingcombinaties in het model.",
+    "comboSkippedHeading": "Niet in de berekening meegenomen:",
     "sectionCheckTable": "Toetsingsoverzicht",
     "sectionCheckDetail": "Toetsing per staaf",
     "sectionClt": "Kruislaaghout — opbouw en toetsing per lamel",

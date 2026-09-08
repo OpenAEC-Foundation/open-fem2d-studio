@@ -301,6 +301,7 @@
     "comboUls": "ULS",
     "comboSls": "SLS",
     "noCombinations": "No load combinations in the model.",
+    "comboSkippedHeading": "Not included in the calculation:",
     "sectionCheckTable": "Check overview",
     "sectionCheckDetail": "Checks per member",
     "sectionClt": "Cross-laminated timber — layup and check per lamella",

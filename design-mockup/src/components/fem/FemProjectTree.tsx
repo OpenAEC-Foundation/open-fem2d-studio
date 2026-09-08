@@ -9,6 +9,7 @@ import { useState } from "react";
 import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
+import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 import type { DisplayFlags } from "./FemResultsOverlay";
 import { PLAAT_COMPONENTEN } from "./FemCanvas";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
@@ -383,7 +384,15 @@ interface FemProjectTreeProps {
   setActiveLoadCaseId: (id: number) => void;
   addLoadCase: (name: string) => void;
   // Combinations + envelope (step 2d/2e)
+  /** De VOLLEDIGE lijst — de overgeslagen combinaties staan er gedempt bij. */
   combinations: LoadCombination[];
+  /**
+   * Combinaties die dit model niet nodig heeft, met reden (zie
+   * lib/combinatieSelectie). Ze blijven zichtbaar in de boom maar zijn niet
+   * aanklikbaar: er zijn geen resultaten voor. Zonder deze lijst zou de
+   * gebruiker zes combinaties zien waar hij er acht verwacht, zonder uitleg.
+   */
+  overgeslagenCombinaties?: OvergeslagenCombinatie[];
   activeCombinationId: number | null;
   setActiveCombinationId: (id: number | null) => void;
   envelopeView: boolean;
@@ -404,11 +413,18 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     nodes, beams, supports, plates, loads,
     loadCases, activeLoadCaseId, selection,
     setSelection, setActiveLoadCaseId, addLoadCase,
-    combinations, activeCombinationId, setActiveCombinationId,
+    combinations, overgeslagenCombinaties = [],
+    activeCombinationId, setActiveCombinationId,
     envelopeView, setEnvelopeView, envelope,
     displayFlags, setDisplayFlags, hasResults,
     activeTab, setActiveTab,
   } = props;
+  /** Reden per overgeslagen combinatie-id; leeg = alles wordt doorgerekend. */
+  const overgeslagenReden = new Map(
+    overgeslagenCombinaties.map((o) => [o.id, o] as const),
+  );
+  /** De combinaties waar wél resultaten voor zijn — voor de resultaatkiezer. */
+  const actieveCombinaties = combinations.filter((c) => !overgeslagenReden.has(c.id));
   const [internalTab, setInternalTab] = useState<"project" | "results">("project");
   // If controlled (activeTab supplied), use it; otherwise fall back to local.
   const tab    = activeTab    ?? internalTab;
@@ -616,36 +632,48 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                 </span>
               </div>
               {combinations.map(c => {
-                const isActive = !envelopeView && c.id === activeCombinationId;
-                const isGoverning = envelopeView && envelopeGoverningIds.has(c.id);
+                // Overgeslagen combinatie: blijft staan (anders verdwijnt hij
+                // zonder uitleg), maar gedempt en niet aanklikbaar — er zijn
+                // geen resultaten voor. De reden staat in de tooltip.
+                const overgeslagen = overgeslagenReden.get(c.id);
+                const isActive = !overgeslagen && !envelopeView && c.id === activeCombinationId;
+                const isGoverning = !overgeslagen && envelopeView && envelopeGoverningIds.has(c.id);
                 return (
                   <div
                     key={`combo${c.id}`}
-                    className={`fem-tree-leaf clickable${isActive ? " active" : ""}`}
-                    onClick={() => {
+                    className={`fem-tree-leaf${overgeslagen ? "" : " clickable"}${isActive ? " active" : ""}`}
+                    onClick={overgeslagen ? undefined : () => {
                       setActiveCombinationId(c.id);
                       setEnvelopeView(false);
                     }}
-                    title={c.formula}
-                    style={isGoverning ? { background: "rgba(255, 176, 0, 0.15)" } : undefined}
+                    title={overgeslagen ? overgeslagen.reden : c.formula}
+                    style={
+                      overgeslagen
+                        ? { opacity: 0.5, cursor: "help" }
+                        : isGoverning
+                          ? { background: "rgba(255, 176, 0, 0.15)" }
+                          : undefined
+                    }
                   >
                     <span className="fem-tree-leaf-label">
                       {isActive && <span style={{ color: "var(--theme-accent)", marginRight: 4 }}>●</span>}
                       {isGoverning && <span style={{ color: "#ffb000", marginRight: 4 }} title="Maatgevend voor minstens 1 element">★</span>}
-                      {c.name}
+                      {overgeslagen ? <s>{c.name}</s> : c.name}
                     </span>
                     <span
                       className="fem-tree-leaf-value"
                       style={{
-                        background: c.type === "uls" ? "var(--theme-accent)" : "var(--theme-text-faint)",
-                        color: "var(--theme-bg)",
+                        background: overgeslagen
+                          ? "transparent"
+                          : c.type === "uls" ? "var(--theme-accent)" : "var(--theme-text-faint)",
+                        color: overgeslagen ? "var(--theme-text-faint)" : "var(--theme-bg)",
                         padding: "1px 5px",
                         borderRadius: 2,
                         fontSize: 9,
                         fontWeight: 600,
                       }}
                     >
-                      {c.type === "uls" ? "U" : "S"}
+                      {overgeslagen ? overgeslagen.label : c.type === "uls" ? "U" : "S"}
                     </span>
                   </div>
                 );
@@ -662,7 +690,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
             hasPlates={plates.length > 0}
             loadCases={loadCases}
             activeLoadCaseId={activeLoadCaseId}
-            combinations={combinations}
+            combinations={actieveCombinaties}
             activeCombinationId={activeCombinationId}
             envelopeView={envelopeView}
             onSelectScope={(scope) => {

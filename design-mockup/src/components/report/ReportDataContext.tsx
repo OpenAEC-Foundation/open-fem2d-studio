@@ -29,6 +29,7 @@ import type {
   StructuralGrid,
 } from "../fem/femTypes";
 import type { LoadCombination, Envelope } from "../fem/solver/combinations";
+import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 import type { SolverResult } from "../fem/solver/types";
 
 export interface ReportData {
@@ -39,7 +40,15 @@ export interface ReportData {
   supports: Support[];
   loads: Load[];
   loadCases: LoadCase[];
+  /** Alle combinaties uit het model — óók de niet-doorgerekende. */
   combinations: LoadCombination[];
+  /**
+   * De combinaties die dit model niet nodig heeft, met reden (zie
+   * lib/combinatieSelectie). De combinatiesectie zet ze gemarkeerd in de
+   * tabel en schrijft de reden eronder: het rapport hoort te verantwoorden
+   * welke combinaties gehanteerd zijn én welke niet.
+   */
+  overgeslagenCombinaties: OvergeslagenCombinatie[];
   structuralGrid: StructuralGrid;
   selfWeightEnabled: boolean;
   /**
@@ -69,6 +78,7 @@ export const EMPTY_REPORT_DATA: ReportData = {
   loads: [],
   loadCases: [],
   combinations: [],
+  overgeslagenCombinaties: [],
   structuralGrid: { enabled: false, xAxes: [], zAxes: [] },
   selfWeightEnabled: false,
   combinationResults: null,

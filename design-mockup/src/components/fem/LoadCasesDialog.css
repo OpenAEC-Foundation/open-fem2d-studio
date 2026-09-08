@@ -157,3 +157,17 @@
   padding: 1px 5px;
   border-radius: 2px;
 }
+
+/*
+ * Toelichting onder een combinatie die dit model niet nodig heeft (zie
+ * lib/combinatieSelectie). Hij blijft bewerkbaar in de tabel; deze regel
+ * zegt waarom hij nu niet wordt doorgerekend. Weglaten zonder uitleg zou
+ * een constructeur zes combinaties laten zien waar hij er acht verwacht.
+ */
+.lcd-combo-note {
+  padding: 4px 8px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--theme-text-faint);
+  border-bottom: 1px solid var(--theme-border);
+}
