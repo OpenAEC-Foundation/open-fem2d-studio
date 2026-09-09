@@ -55,6 +55,22 @@
 //!   c_min,dur uit de door de nationale bijlage voorgeschreven tabel 4.4N, en
 //!   daaruit c_min (4.2) en de vereiste c_nom (4.1). De dekking was tot dan
 //!   toe alleen een geometrisch gegeven voor de nuttige hoogte d.
+//! * [`dekkingslijn`] — §9.2.1.3 met figuur 9.2: de omhullende van de
+//!   trekkracht met daaroverheen wat de wapening werkelijk kan opnemen, en
+//!   hetzelfde voor de dwarskracht. Rekent op KRACHTniveau zoals de figuur,
+//!   verschuift de omhullende over a_l, en telt staven binnen hun
+//!   verankeringslengte mee met het lineaire krachtverloop van §9.2.1.3(3).
+//!   Daarbij §9.2.1.4/§9.2.1.5 aan beide staafuiteinden. De uitkomst is geen
+//!   plaatje maar gegevens: per plaats de benodigde en de aanwezige waarde met
+//!   het bewijs dat daar gold. De module is nog nergens op aangesloten.
+//! * [`kolom`] — §5.8: de kniklengte l₀ (figuur 5.7, (5.15), (5.16), (5.17)),
+//!   de slankheid λ (5.14), de slankheidsgrens λ_lim waaronder de
+//!   tweede-orde-effecten mogen vervallen (5.8.3.1, door de nationale bijlage
+//!   als EIS gesteld) en de effectieve kruipcoëfficiënt φ_ef (5.19) met de
+//!   drie voorwaarden waaronder φ_ef = 0 mag. Daarbij §9.5, de
+//!   detailleringseisen die alleen voor een kolom gelden. GESCHOORD of
+//!   ONGESCHOORD is daarin een invoerveld en geen afleiding: §5.8.1 noemt het
+//!   uitdrukkelijk een ontwerpaanname. De module is nog nergens op aangesloten.
 //!
 //! Tekenconventie aan de buitengrens (gelijk aan `mechanics`): N positief =
 //! trek, M_y positief = trek in de onderste vezel. Inwendig rekent de
@@ -81,9 +97,11 @@ pub mod checks;
 pub mod data;
 pub mod deelstappen;
 pub mod dekking;
+pub mod dekkingslijn;
 pub mod detaillering;
 pub mod dwarskracht;
 pub mod factors;
+pub mod kolom;
 pub mod mnkappa;
 pub mod scheurwijdte;
 pub mod section;

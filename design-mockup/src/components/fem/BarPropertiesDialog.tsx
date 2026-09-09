@@ -155,9 +155,9 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   /**
    * Bouw een schone checkConfig: alleen expliciet ingevulde waarden; alles
    * op default → undefined zodat het Beam-object (en het projectbestand)
-   * geen dode velden meesleept. Verborgen velden (bijv. kniklengtes bij
-   * hout) behouden hun eerdere waarde — wisselen van materiaal gooit geen
-   * configuratie weg.
+   * geen dode velden meesleept. Verborgen velden (bijv. de zeeg en de losse
+   * w_add-noemer bij hout) behouden hun eerdere waarde — wisselen van
+   * materiaal gooit geen configuratie weg.
    */
   const buildCheckConfig = (): BeamCheckConfig | undefined => {
     const cfg: BeamCheckConfig = {};
@@ -478,46 +478,65 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                 </div>
               )}
 
-              {!isTimber && (
-                <>
-                  <div className="bar-props-section">
-                    <div className="bar-props-section-title">{t("cfg.bucklingTitle")}</div>
-                    <div className="bar-props-row">
-                      <span>L_cr,y (m)</span>
-                      <input
-                        type="number" className="bar-props-input" step="0.1" min="0"
-                        placeholder={systemLengthM}
-                        value={lcyStr}
-                        onChange={(e) => setLcyStr(e.target.value)}
-                      />
-                    </div>
-                    <div className="bar-props-row">
-                      <span>L_cr,z (m)</span>
-                      <input
-                        type="number" className="bar-props-input" step="0.1" min="0"
-                        placeholder={systemLengthM}
-                        value={lczStr}
-                        onChange={(e) => setLczStr(e.target.value)}
-                      />
-                    </div>
-                    <div className="bar-props-hint">{t("cfg.bucklingHint")}</div>
-                  </div>
+              {/* Kniklengtes: staal EN hout. Stond tot september 2026 achter
+                  "niet hout", omdat de houtbuilder de velden niet las —
+                  schijninvoer vermijden. Die reden is vervallen: de EN
+                  1995-kern gebruikt beide assen echt
+                  (nen-en-1995-1-1/src/stability.rs, art. 6.3.2 verg. (6.21)/
+                  (6.22) → k_c,y en k_c,z in (6.23)/(6.24); L_cr,z ook in de
+                  drukterm van de kiptoets (6.35)).
+                  De kipsteunen hieronder blijven staal-alleen: fracties per
+                  flens waar de staalkern op rekent, terwijl EN 1995 art. 6.3.3
+                  één kipsteunafstand vraagt (tabel 6.1 → l_ef) die de
+                  houtbuilder nog niet uitvraagt. */}
+              <div className="bar-props-section">
+                <div className="bar-props-section-title">{t("cfg.bucklingTitle")}</div>
+                <div className="bar-props-row">
+                  <span>L_cr,y (m)</span>
+                  <input
+                    type="number" className="bar-props-input" step="0.1" min="0"
+                    placeholder={systemLengthM}
+                    value={lcyStr}
+                    onChange={(e) => setLcyStr(e.target.value)}
+                  />
+                </div>
+                <div className="bar-props-row">
+                  <span>L_cr,z (m)</span>
+                  <input
+                    type="number" className="bar-props-input" step="0.1" min="0"
+                    placeholder={systemLengthM}
+                    value={lczStr}
+                    onChange={(e) => setLczStr(e.target.value)}
+                  />
+                </div>
+                <div className="bar-props-hint">
+                  {t("cfg.bucklingHint")}
+                  {/* Inline terugval-tekst: de sleutel staat (nog) niet in de
+                      check.json-bestanden onder i18n/locales, en die vallen
+                      buiten deze wijziging. Zonder terugval zou i18next de
+                      kale sleutelnaam tonen. */}
+                  {isTimber && ` ${t(
+                    "cfg.bucklingHintTimber",
+                    "Bij hout telt L_cr,z ook mee in de drukterm van de kiptoets (6.35).",
+                  )}`}
+                </div>
+              </div>
 
-                  <div className="bar-props-section">
-                    <div className="bar-props-section-title">{t("cfg.bracingTitle")}</div>
-                    <div className="bar-props-row">
-                      <span>{t("cfg.bracingLabel")}</span>
-                      <input
-                        type="text" className="bar-props-input"
-                        placeholder="0.25, 0.5, 0.75"
-                        value={restraintsStr}
-                        onChange={(e) => setRestraintsStr(e.target.value)}
-                        spellCheck={false}
-                      />
-                    </div>
-                    <div className="bar-props-hint">{t("cfg.bracingHint")}</div>
+              {!isTimber && (
+                <div className="bar-props-section">
+                  <div className="bar-props-section-title">{t("cfg.bracingTitle")}</div>
+                  <div className="bar-props-row">
+                    <span>{t("cfg.bracingLabel")}</span>
+                    <input
+                      type="text" className="bar-props-input"
+                      placeholder="0.25, 0.5, 0.75"
+                      value={restraintsStr}
+                      onChange={(e) => setRestraintsStr(e.target.value)}
+                      spellCheck={false}
+                    />
                   </div>
-                </>
+                  <div className="bar-props-hint">{t("cfg.bracingHint")}</div>
+                </div>
               )}
 
               {isTimber && (

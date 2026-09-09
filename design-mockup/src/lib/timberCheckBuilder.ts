@@ -18,8 +18,10 @@
  * doorbuigingsklasse. Gedocumenteerde defaults voor ontbrekende velden:
  *  - klimaatklasse 1, belastingduur "middellang" (maatgevend voor de
  *    gebruikelijke UGT-combinatie met veranderlijke vloerbelasting);
- *  - kniklengte = systeemlengte om beide assen; kipsteunafstand =
- *    staaflengte; belastinggeval "gelijkmatig verdeeld" aangrijpend in het
+ *  - kniklengte om beide assen: cfg.bucklingLengthY_m / _Z_m, leeg =
+ *    systeemlengte (sinds september 2026 ook voor hout invoerbaar; zie de
+ *    toelichting bij het `inputs.push`); kipsteunafstand = staaflengte;
+ *    belastinggeval "gelijkmatig verdeeld" aangrijpend in het
  *    zwaartepunt; k_cr = 1,0; geen lastverdelend systeem;
  *  - doorbuiging: klasse "vloer" → w_fin ≤ L/250 en w_add ≤ L/333
  *    (NB-standaard); w_qp komt uit de quasi-blijvende BGT-combinatie
@@ -335,9 +337,9 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
     const wQuasi = quasiPermanentDeflection(beam, slsQuasi, quasiResult, wInstMm);
 
     // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
-    // Kniklengtes (bucklingLengthY/Z_m) en preCamber_mm worden voor hout
-    // bewust niet geconsumeerd: de EN 1995-sectie van de dialoog biedt ze
-    // niet aan, dus consumeren zou onzichtbare invoer zijn.
+    // preCamber_mm wordt voor hout bewust niet geconsumeerd: de houtkern
+    // kent geen zeeg, en de EN 1995-sectie van de dialoog biedt het veld
+    // daarom niet aan.
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
 
@@ -350,8 +352,32 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       load_duration: mapLoadDuration(cfg.loadDuration),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,
-      buckling_length_y_m: lengthMm / 1000,
-      buckling_length_z_m: lengthMm / 1000,
+      // Kniklengtes per as; leeg → systeemlengte, net als bij staal.
+      //
+      // De houtkern gebruikt ze allebei echt: in
+      // nen-en-1995-1-1/src/stability.rs volgt lambda = L_cr / i, en daaruit
+      // via art. 6.3.2 verg. (6.21)/(6.22) de relatieve slankheid en de
+      // knikfactoren k_c,y en k_c,z van (6.23)/(6.24). L_cr,z gaat daarnaast
+      // naar de drukterm van de kiptoets (6.35).
+      //
+      // Tot september 2026 stond hier de systeemlengte hard ingevuld en waren
+      // de invoervelden voor hout verborgen. Gevolg: een houten kolom die
+      // halverwege om de zwakke as gesteund is, of een spant met een
+      // gordingsteun, viel niet te modelleren — de toetsing rekende altijd
+      // met de volle systeemlengte. Dat is veilig-zijdig maar onbruikbaar.
+      // De velden zijn nu zichtbaar (FemProperties / BarPropertiesDialog) en
+      // komen hier binnen.
+      //
+      // Geen extra validatie hier: beide invoerpaden schrijven alleen een
+      // eindige waarde > 0 weg (BarPropertiesDialog.buildCheckConfig, en
+      // valideerModel keurt het veld met `positief: true`).
+      buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1000,
+      buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1000,
+      // Kipsteunafstand voor tabel 6.1; 0 → staaflengte. Bewust NIET
+      // afgeleid uit cfg.lateralRestraints: die fracties zijn per FLENS en
+      // horen bij het staalmodel, terwijl art. 6.3.3 één afstand vraagt
+      // waaruit tabel 6.1 l_ef maakt. Zolang de UI daar geen eigen veld voor
+      // heeft, blijft dit de staaflengte — veilig-zijdig en zichtbaar.
       ltb_segment_length_m: 0, // 0 → staaflengte
       ltb_load_case: "UniformLoad",
       ltb_load_position: "CentreOfGravity",

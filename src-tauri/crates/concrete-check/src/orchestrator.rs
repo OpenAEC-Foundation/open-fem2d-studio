@@ -58,6 +58,22 @@
 //! toets het commentaar in [`check_concrete_beam`] voor de snede die zij
 //! kiest en waarom.
 //!
+//! # Met WELKE KORF een toets wordt uitgevoerd
+//!
+//! Een snede is niet alleen een plaats maar ook een KORF. De wapening mag langs
+//! de staaf verschillen — de onderwapening kort in (§9.2.1.3), de beugels
+//! verdichten bij het steunpunt (§9.2.2) — en `ConcreteBeamCheckInput` draagt
+//! dat als `reinforcement_zones`. Elke doorsnedetoets krijgt op elke snede de
+//! korf die dáár geldt, en de acht detailleringseisen die de korf lezen worden
+//! per STUK STAAF afgerekend. Zie het blok "De wapeningszones" hieronder voor
+//! hoe die stukken worden gemaakt, en de tabel boven [`DetailBasis`] voor welke
+//! eis bij een zone hoort en welke bij het element.
+//!
+//! **Lege zonelijsten geven exact het gedrag van vóór die aansluiting**: dan is
+//! er één stuk dat de hele staaf beslaat met de korf uit `cage`, valt elk
+//! krachtenpunt daar precies één keer in, en is elke reeks letterlijk de
+//! omhullende zoals zij binnenkwam.
+//!
 //! # Wat het kost om elke snede na te lopen
 //!
 //! De omhullende draagt 21 stations per staaf per combinatie, dus bij twintig
@@ -97,15 +113,51 @@
 //! Ter vergelijking: van de 145 ms van de oude toetsing gaat het overgrote deel
 //! op aan de twee interactiediagrammen voor de WEERGAVE (elk 21 M-κ-diagrammen,
 //! samen ongeveer 140 ms). Die stonden er al en zijn hier niet aangeraakt.
+//!
+//! # Wat de WAPENINGSZONES daar bovenop kosten
+//!
+//! Sinds de toetsen de zones lezen is een snede een krachtenpunt PLUS de korf
+//! die daar geldt, en groeit het aantal sneden op twee manieren: een punt dat op
+//! een zonegrens ligt telt twee keer mee (met de korf links en met de korf
+//! rechts), en de M-N-κ-groepering krijgt de korf in haar sleutel, zodat twee
+//! sneden met hetzelfde teken en dezelfde N_Ed maar een andere korf niet meer
+//! samenvallen.
+//!
+//! Gemeten op dezelfde referentiebalk (release-bouw, n_strips = 50) met VIER
+//! vakken die elk een andere korf dragen — de dure kant, want een symmetrische
+//! indeling 3-5-3 levert maar twee verschillende korven — tegenover diezelfde
+//! balk zonder zones:
+//!
+//! | omhullende | sneden | M-κ-groepen | zonder zones | met 4 vakken |
+//! |---|---|---|---|---|
+//! | 1 combinatie (21 punten) | 21 → 24 | 1 → 4 | 140 ms | 149 ms |
+//! | 5 combinaties (105) | 105 → 120 | 1 → 4 | 141 ms | 150 ms |
+//! | 20 combinaties (420) | 420 → 480 | 1 → 4 | 151 ms | 164 ms |
+//! | 50 combinaties (1050) | 1050 → 1200 | 1 → 4 | 175 ms | 190 ms |
+//!
+//! De vaste opslag van ongeveer 9 ms zijn de DRIE extra M-κ-diagrammen (vier
+//! korven in plaats van één); die groeit met het aantal VERSCHILLENDE korven en
+//! niet met de omhullende. Wat er daarnaast bij komt loopt met de omhullende
+//! mee — 14 % meer sneden geeft 14 % meer dwarskracht-, buig- en A_s,min-werk —
+//! en dat is bij vijftig combinaties nog eens 6 ms. De meting staat als
+//! `wat_de_zones_kosten` in `tests/wapeningszones.rs` en is daar opnieuw te
+//! draaien.
 
 use std::collections::HashMap;
 
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
 use nen_en_1992_1_1::bending::stress_block;
 use nen_en_1992_1_1::checks::{check_bending_stress_block, check_mn_kappa};
+// De negen detailleringseisen worden hier STUK VOOR STUK aangeroepen en niet
+// meer als één `detailleringstoetsen(&inv)`. Reden: acht van de negen lezen de
+// KORF, en die verschilt sinds de wapeningszones per stuk staaf; alleen de
+// balkbreedte van NB §9.2(1) leest hem niet. De volgorde waarin ze in het
+// rapport komen is onveranderd die van `detailleringstoetsen`; zie het blok
+// "6. Detaillering" in [`check_concrete_beam`].
 use nen_en_1992_1_1::detaillering::{
-    as_min_9_2_1_1, benodigde_trekwapening_mm2, detailleringstoetsen, is_detailleringstoets,
-    DetailleringInvoer,
+    as_max_9_2_1_1, as_min_9_2_1_1, benodigde_trekwapening_mm2, is_detailleringstoets,
+    min_balkbreedte_9_2, min_diameter_beugel_9_2_2, min_diameter_langsstaaf_9_2_1_1,
+    rho_w_min_9_2_2, s_l_max_9_2_2, s_t_max_9_2_2, vrije_staafafstand_8_2, DetailleringInvoer,
 };
 use nen_en_1992_1_1::dwarskracht::{
     check_shear, shear_resistance, ShearOptions, ShearResistance, Spoor,
@@ -123,7 +175,7 @@ use nen_en_1992_1_1::stiffness::kappa_from_nm;
 use nen_en_1992_1_1::{
     concrete_class_by_name, reinforcement_grade_by_name, ConcreteClass, ConcreteSection,
     ConcreteSectionInput, ConcreteTension, DesignMaterial, NonlinearBasis, ReinforcementCage,
-    ReinforcementGrade,
+    ReinforcementGrade, ReinforcementZones, ZONE_TOLERANCE_MM,
 };
 use nen_en_1993_1_1_section::{CheckStatus, ResistanceCalc};
 use steel_check::{CheckKind, NamedCheck};
@@ -290,6 +342,265 @@ where
     best
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// De wapeningszones — welke korf op welke plaats geldt
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// WAAROM DIT BLOK BESTAAT
+// [`ReinforcementZones`] beschrijft de wapening die LANGS de staaf verandert:
+// de onderwapening die in het veld inkort (§9.2.1.3) en de beugels die bij het
+// steunpunt verdichten (§9.2.2). Dat model reisde al door de hele keten, maar
+// werd nergens gelezen: elke toets rekende met de ENE korf van de staaf. Een
+// staaf met 5Ø16 in het veld en 3Ø16 bij het steunpunt werd dus overal met de
+// korf van de invoer getoetst, en welke van de twee dat was hing af van wat de
+// gebruiker in `cage` had gezet. Het rapport was daarmee niet fout te noemen —
+// het hoorde alleen bij een andere balk.
+//
+// DE VERTALING IS EENVOUDIG: een SNEDE is voortaan een krachtenpunt PLUS de
+// korf die op die plaats geldt. Alle bestaande zoekers (de zwaarste snede op
+// de unity check) blijven werken; ze krijgen alleen per snede een andere korf
+// mee.
+//
+// LEEG BLIJFT LEEG. Zonder zones is er één vak dat de hele staaf beslaat met de
+// korf uit de invoer, valt elk krachtenpunt daar precies één keer in, en levert
+// elke lus letterlijk dezelfde reeks als voorheen. Dat is geen bijkomstigheid
+// maar de voorwaarde waaronder deze wijziging mocht: geen enkele bestaande
+// ankerwaarde mag verschuiven.
+
+/// Eén stuk staaf waarop de wapeningskorf CONSTANT is.
+///
+/// De zones staan in twee GESCHEIDEN lijsten — de langswapening kort in op
+/// andere plaatsen dan waar de beugels verdichten — en hun grenzen vallen in
+/// het algemeen niet samen. Wat een toets nodig heeft is de VERENIGING van
+/// beide grensverzamelingen: tussen twee opeenvolgende grenzen verandert er
+/// niets, dus daar geldt één korf. [`ReinforcementZones::boundaries_mm`]
+/// levert die vereniging al; dit type hangt er de korf aan die er geldt.
+#[derive(Clone, Debug)]
+struct Wapeningsvak {
+    /// [x_start, x_end] langs de staaf, mm. `None` = er zijn geen zones en de
+    /// hele staaf is één vak; dan hoort ELK punt van de omhullende erbij, ook
+    /// een punt dat buiten [0, L] zou liggen.
+    bereik: Option<(f64, f64)>,
+    /// De korf die op dit stuk geldt — uit [`ReinforcementZones::cage_at_mm`].
+    korf: ReinforcementCage,
+    /// Neemt dit vak ook wat er vóór zijn begin ligt? Alleen het eerste vak.
+    /// Zo valt een station op x = −0,001 mm (afrondruis van de rekenkern) niet
+    /// buiten de indeling.
+    open_links: bool,
+    /// Idem voorbij zijn einde. Alleen het laatste vak.
+    open_rechts: bool,
+}
+
+impl Wapeningsvak {
+    /// Hoort de snede op `x_mm` bij dit vak?
+    ///
+    /// Het bereik is aan BEIDE kanten GESLOTEN, en dat is met opzet. Op de
+    /// grens tussen twee vakken houdt het staal van het linkervak werkelijk op
+    /// — dat is precies wat §9.2.1.3 beschrijft — dus die grenssnede hoort bij
+    /// beide vakken en wordt met beide korven doorgerekend: met de korf van
+    /// RECHTS via [`ReinforcementZones::cage_at_mm`], die links gesloten en
+    /// rechts open is, en met de korf van LINKS via dit vak.
+    ///
+    /// Zonder die dubbele weging zou het rechteruiteinde van een vak nooit met
+    /// de korf van dát vak worden getoetst. Juist daar ligt bij een inkorting
+    /// de zwaarste snede: kort de onderwapening op x = 1000 mm van 3Ø16 naar
+    /// 5Ø16 op, dan is x = 1000 mm het punt waar de zwakke korf het grootste
+    /// moment ziet, en `cage_at_mm` levert daar de STERKE korf van rechts.
+    fn bevat(&self, x_mm: f64) -> bool {
+        match self.bereik {
+            None => true,
+            Some((a, b)) => {
+                (self.open_links || x_mm >= a - ZONE_TOLERANCE_MM)
+                    && (self.open_rechts || x_mm <= b + ZONE_TOLERANCE_MM)
+            }
+        }
+    }
+
+    /// Aanduiding voor het rapport.
+    fn label(&self) -> String {
+        match self.bereik {
+            None => "de hele staaf".to_string(),
+            Some((a, b)) => format!("x = {} tot {} mm", a.round() as i64, b.round() as i64),
+        }
+    }
+
+    /// Het midden van het vak — de plaats waar `cage_at_mm` gegarandeerd de
+    /// korf van DIT vak geeft en niet die van een buurvak.
+    fn midden_mm(&self) -> Option<f64> {
+        self.bereik.map(|(a, b)| 0.5 * (a + b))
+    }
+}
+
+/// De staaf opgeknipt in stukken met elk een constante korf.
+///
+/// Zonder zones is dat één vak zonder bereik: de korf van de invoer geldt
+/// overal en elk krachtenpunt valt erin.
+fn wapeningsvakken(zones: &ReinforcementZones, base: &ReinforcementCage) -> Vec<Wapeningsvak> {
+    let grenzen = zones.boundaries_mm();
+    if grenzen.len() < 2 {
+        return vec![Wapeningsvak {
+            bereik: None,
+            korf: *base,
+            open_links: true,
+            open_rechts: true,
+        }];
+    }
+    let laatste = grenzen.len() - 2;
+    grenzen
+        .windows(2)
+        .enumerate()
+        .map(|(i, p)| Wapeningsvak {
+            bereik: Some((p[0], p[1])),
+            // Het MIDDEN, niet de grens: tussen twee grenzen verandert de korf
+            // niet, en op de grens zelf zou `cage_at_mm` de korf van het vak
+            // ERNAAST geven (links gesloten, rechts open).
+            korf: zones.cage_at_mm(base, 0.5 * (p[0] + p[1])),
+            open_links: i == 0,
+            open_rechts: i == laatste,
+        })
+        .collect()
+}
+
+/// Eén rekensnede: een punt uit de omhullende MET de korf die daar geldt.
+///
+/// Dit is het enige wat er voor de doorsnedetoetsen verandert. Waar zij vroeger
+/// `&[ForcePoint]` kregen en er één korf naast, krijgen zij nu `&[Snede]` en
+/// halen de korf uit de snede.
+#[derive(Clone, Copy, Debug)]
+struct Snede {
+    punt: ForcePoint,
+    korf: ReinforcementCage,
+}
+
+/// Elk punt van de omhullende, gekoppeld aan de korf die daar geldt.
+///
+/// Een punt dat precies op een zonegrens ligt komt TWEE KEER voor, met de korf
+/// links en met de korf rechts — zie [`Wapeningsvak::bevat`] voor waarom dat
+/// moet. Zijn de korven van twee aansluitende vakken toevallig gelijk (de
+/// gebruiker mag een zone opknippen zonder er iets aan te veranderen), dan valt
+/// de doublure weg: dezelfde korf op dezelfde snede levert per definitie
+/// dezelfde uitkomst en zou alleen rekentijd kosten.
+fn sneden_met_korf(vakken: &[Wapeningsvak], env: &[ForcePoint]) -> Vec<Snede> {
+    let mut uit: Vec<Snede> = Vec::with_capacity(env.len());
+    for p in env {
+        let begin = uit.len();
+        for vak in vakken {
+            if !vak.bevat(p.position_mm) {
+                continue;
+            }
+            if uit[begin..].iter().any(|s| s.korf == vak.korf) {
+                continue;
+            }
+            uit.push(Snede { punt: *p, korf: vak.korf });
+        }
+    }
+    uit
+}
+
+/// Het maatgevende krachtenpunt BINNEN één vak: hetzelfde criterium als voor de
+/// staaf als geheel — het grootste moment, met de normaalkracht als kleine
+/// bijmenging om een zuivere drukstaaf niet op nul te laten stranden — maar dan
+/// beperkt tot de punten die in dit vak liggen.
+///
+/// `None` = de omhullende draagt in dit vak geen enkel rekenpunt. Dat is een
+/// mededeling en geen fout; wat de toetsing er wél en niet mee kan, staat bij
+/// [`zonemelding`].
+///
+/// Zonder zones is er één vak dat alles bevat, en levert deze functie letterlijk
+/// hetzelfde punt als [`governing_for`] over de hele omhullende.
+fn punt_van_vak(vak: &Wapeningsvak, env: &[ForcePoint]) -> Option<ForcePoint> {
+    let mut beste: Option<ForcePoint> = None;
+    let mut hoogste = f64::NEG_INFINITY;
+    for p in env {
+        if !vak.bevat(p.position_mm) {
+            continue;
+        }
+        let score = p.forces.my_ed.abs() + p.forces.n_ed.abs() * 0.01;
+        if beste.is_none() || score > hoogste {
+            beste = Some(*p);
+            hoogste = score;
+        }
+    }
+    beste
+}
+
+/// De vaste mededeling over de zone-indeling: hoeveel stukken er zijn, hoeveel
+/// sneden dat oplevert, en — dit is de kern — WELKE zonegrenzen de omhullende
+/// niet kon bereiken.
+///
+/// # Waarom er niet wordt geïnterpoleerd
+///
+/// Een zonegrens is de plaats waar de rekenkern een echte rekenknoop hoort te
+/// zetten (`extraSneden` in de solver). Op zo'n knoop staat het station DUBBEL:
+/// het stuk links en het stuk rechts leveren er elk hun eigen waarde, want V
+/// springt bij een puntlast en M bij een aangrijpend moment. Draagt de
+/// omhullende op een grens geen punt, dan is de enige gegeven informatie die
+/// van de twee BUURpunten — en die met elkaar middelen zou een krachtsverloop
+/// opleveren dat over een mogelijke sprong heen loopt en dus nergens optreedt.
+/// Zo'n verzonnen snede kan zowel te hoog als te laag uitvallen en is in het
+/// rapport niet als verzinsel te herkennen. Er wordt daarom NIETS aangenomen:
+/// de grens wordt met naam en plaats gemeld, met wat de gebruiker eraan kan
+/// doen.
+///
+/// `None` zodra er maar één vak is — dan zijn er geen zones, valt er niets te
+/// melden, en blijven de notes van elke toets letterlijk zoals ze waren.
+fn zonemelding(
+    vakken: &[Wapeningsvak],
+    env: &[ForcePoint],
+    aantal_sneden: usize,
+    wat_leest_de_toets: &str,
+) -> Option<String> {
+    if vakken.len() < 2 {
+        return None;
+    }
+    // Alleen de BINNENgrenzen tellen: dat zijn de plaatsen waar de korf
+    // werkelijk verandert. De uiteinden x = 0 en x = L zijn geen sprong maar
+    // het begin en het eind van de staaf, en het eerste en laatste vak nemen
+    // wat daarbuiten valt sowieso mee (zie `Wapeningsvak::bevat`).
+    let mut gemist: Vec<String> = Vec::new();
+    for v in &vakken[..vakken.len() - 1] {
+        let Some((_, g)) = v.bereik else { continue };
+        if !env.iter().any(|p| (p.position_mm - g).abs() <= ZONE_TOLERANCE_MM) {
+            gemist.push(format!("{}", g.round() as i64));
+        }
+    }
+    let leeg: Vec<String> = vakken
+        .iter()
+        .filter(|v| punt_van_vak(v, env).is_none())
+        .map(|v| v.label())
+        .collect();
+
+    let mut tekst = format!(
+        "DE WAPENING VERANDERT LANGS DE STAAF. De staaf valt in {} stukken uiteen waarop de korf \
+         constant is; {wat_leest_de_toets} Uit de {} punten van de omhullende volgen zo {} sneden. \
+         Een punt dat precies op een zonegrens ligt telt twee keer mee — één keer met de korf \
+         links en één keer met de korf rechts — want daar houdt het staal van het linkerstuk \
+         werkelijk op (§9.2.1.3).",
+        vakken.len(),
+        env.len(),
+        aantal_sneden,
+    );
+    if !gemist.is_empty() {
+        tekst.push_str(&format!(
+            " LET OP: op de zonegrens/-grenzen x = {} mm draagt de omhullende GEEN rekenpunt. Daar \
+             is dus niet getoetst. Er wordt ook niet tussen de buurpunten geïnterpoleerd: op een \
+             zonegrens hoort de rekenkern een echte rekenknoop te zetten, en op zo'n knoop staat \
+             het station dubbel omdat V en M er kunnen springen. Middelen over die sprong heen \
+             levert een krachtsverloop op dat nergens optreedt. Geef de zonegrenzen aan de \
+             rekenkern mee als extra sneden en reken opnieuw.",
+            gemist.join(", ")
+        ));
+    }
+    if !leeg.is_empty() {
+        tekst.push_str(&format!(
+            " En op {} draagt de omhullende in het geheel geen rekenpunt; die stukken zijn met de \
+             krachten dus niet getoetst.",
+            leeg.join("; ")
+        ));
+    }
+    Some(tekst)
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // §6.2 — de maatgevende dwarskrachtsnede
 // ───────────────────────────────────────────────────────────────────────────
@@ -297,8 +608,11 @@ where
 /// Wat een keer langs de hele omhullende oplevert voor §6.2 en voor de twee
 /// detailleringseisen die op §6.2 leunen.
 struct DwarskrachtOverzicht {
-    /// De snede met de hoogste unity check — daar wordt §6.2 afgerekend.
-    punt: ForcePoint,
+    /// De snede met de hoogste unity check — daar wordt §6.2 afgerekend. Hij
+    /// draagt zijn eigen korf mee: bij een verdichte beugelzone verschilt
+    /// A_sw/s per stuk staaf, en dan is de weerstand op deze snede niet die van
+    /// de korf uit de invoer.
+    snede: Snede,
     /// De grootste |V_Ed| van de hele omhullende, kN.
     v_ed_max_kn: f64,
     /// De KLEINSTE V_Rd,max van de omhullende. `None` als het vakwerkmodel
@@ -335,20 +649,24 @@ struct DwarskrachtOverzicht {
 /// snede is volledig doorgerekend.
 fn dwarskrachtoverzicht(
     section: &ConcreteSection,
-    cage: &ReinforcementCage,
+    terugval: &ReinforcementCage,
     mat: &DesignMaterial,
-    env: &[ForcePoint],
+    sneden: &[Snede],
     opts: &ShearOptions,
 ) -> DwarskrachtOverzicht {
-    let mut beste: Zwaarste<ForcePoint> = Zwaarste::nieuw();
+    let mut beste: Zwaarste<Snede> = Zwaarste::nieuw();
     let mut v_ed_max_kn = 0.0_f64;
     let mut v_rd_max_min_kn: Option<f64> = None;
     let mut ergens_vakwerkspoor = false;
 
-    for p in env {
-        let fs = ForceStateSnapshot::from_point(p);
-        let r: ShearResistance = shear_resistance(section, cage, mat, &fs, opts);
-        beste.bied(zwaarte_dwarskracht(&r), *p);
+    for s in sneden {
+        let fs = ForceStateSnapshot::from_point(&s.punt);
+        // DE KORF VAN DEZE SNEDE, niet die van de staaf. A_sw/s komt uit de
+        // beugelzone die hier ligt (§9.2.2) en A_sl uit de langswapening die
+        // hier doorloopt (§6.2.2(1) met figuur 6.3); allebei kunnen ze langs
+        // de staaf springen.
+        let r: ShearResistance = shear_resistance(section, &s.korf, mat, &fs, opts);
+        beste.bied(zwaarte_dwarskracht(&r), *s);
 
         v_ed_max_kn = v_ed_max_kn.max(r.v_ed_kn);
         if r.spoor == Spoor::Vakwerkmodel {
@@ -363,15 +681,18 @@ fn dwarskrachtoverzicht(
     }
 
     DwarskrachtOverzicht {
-        punt: beste.uitkomst().unwrap_or(ForcePoint {
-            combination_id: 0,
-            position_mm: 0.0,
-            forces: Default::default(),
+        snede: beste.uitkomst().unwrap_or(Snede {
+            punt: ForcePoint {
+                combination_id: 0,
+                position_mm: 0.0,
+                forces: Default::default(),
+            },
+            korf: *terugval,
         }),
         v_ed_max_kn,
         v_rd_max_min_kn,
         ergens_vakwerkspoor,
-        aantal_sneden: env.len(),
+        aantal_sneden: sneden.len(),
     }
 }
 
@@ -410,8 +731,8 @@ fn zwaarte_dwarskracht(r: &ShearResistance) -> Zwaarte {
 /// Het resultaat van één keer langs de omhullende voor de buigtoets met de
 /// rechthoekige spanningsverdeling.
 struct BuigOverzicht {
-    /// De snede met de hoogste unity check.
-    punt: ForcePoint,
+    /// De snede met de hoogste unity check, mét de korf die daar geldt.
+    snede: Snede,
     /// Op hoeveel sneden de rechthoekige spanningsverdeling niet van
     /// toepassing was (geheel gedrukt, of trek boven de trekcapaciteit).
     aantal_niet_toepasbaar: usize,
@@ -441,31 +762,39 @@ struct BuigOverzicht {
 /// zegt en de andere alles.
 fn buigoverzicht(
     section: &ConcreteSection,
-    cage: &ReinforcementCage,
+    terugval_korf: &ReinforcementCage,
     mat: &DesignMaterial,
     env: &[ForcePoint],
+    sneden: &[Snede],
 ) -> BuigOverzicht {
-    let layers = cage.layers(section.h_mm);
-    let mut beste: Zwaarste<ForcePoint> = Zwaarste::nieuw();
+    let mut beste: Zwaarste<Snede> = Zwaarste::nieuw();
     let mut aantal_niet_toepasbaar = 0usize;
     // De terugval als GEEN ENKELE snede kan worden afgerekend: het grootste
     // |M_Ed|. Dan is er geen unity check om op te rangschikken, en levert die
-    // snede tenminste de reden bij het zwaarste moment.
-    let terugval = governing_for(env, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
+    // snede tenminste de reden bij het zwaarste moment. De korf die daarbij
+    // hoort is die van de invoer; er is immers geen doorgerekende snede die
+    // een andere zou aanwijzen.
+    let terugval = Snede {
+        punt: governing_for(env, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01),
+        korf: *terugval_korf,
+    };
 
-    for p in env {
-        let m_ed = p.forces.my_ed;
+    for s in sneden {
+        // De wapeningslagen PER SNEDE. Bij een ingekorte onderwapening is dat
+        // het hele punt: M_Rd volgt uit de staven die op deze plaats liggen.
+        let layers = s.korf.layers(section.h_mm);
+        let m_ed = s.punt.forces.my_ed;
         let sign = if m_ed < 0.0 { -1.0 } else { 1.0 };
-        match stress_block(section, &layers, mat, p.forces.n_ed, sign) {
+        match stress_block(section, &layers, mat, s.punt.forces.n_ed, sign) {
             Ok(r) => {
                 let uc = if r.m_rd_knm > 0.0 { m_ed.abs() / r.m_rd_knm } else { 0.0 };
-                beste.bied(Zwaarte::bepaald(uc, m_ed.abs()), *p);
+                beste.bied(Zwaarte::bepaald(uc, m_ed.abs()), *s);
             }
             Err(_) => aantal_niet_toepasbaar += 1,
         }
     }
 
-    BuigOverzicht { punt: beste.uitkomst().unwrap_or(terugval), aantal_niet_toepasbaar }
+    BuigOverzicht { snede: beste.uitkomst().unwrap_or(terugval), aantal_niet_toepasbaar }
 }
 
 /// Bovengrens op het aantal sneden waarop de M-N-κ-toets volledig wordt
@@ -506,23 +835,32 @@ const MAX_MN_KAPPA_SNEDEN: usize = 50;
 /// zoveel woorden; zie de mededeling in [`check_concrete_beam`].
 fn sneden_mn_kappa(
     section: &ConcreteSection,
-    cage: &ReinforcementCage,
     mat: &DesignMaterial,
-    env: &[ForcePoint],
-) -> (Vec<ForcePoint>, bool) {
-    let mut index: HashMap<(bool, u64), usize> = HashMap::new();
-    let mut groepen: Vec<ForcePoint> = Vec::new();
-    for p in env {
-        let sleutel = (p.forces.my_ed < 0.0, p.forces.n_ed.to_bits());
+    sneden: &[Snede],
+) -> (Vec<Snede>, bool) {
+    let mut index: HashMap<(bool, u64, Korfsleutel), usize> = HashMap::new();
+    let mut groepen: Vec<Snede> = Vec::new();
+    for s in sneden {
+        // DE KORF HOORT IN DE SLEUTEL. Zonder zones is hij op elke snede
+        // dezelfde en verandert er niets aan de groepering; met zones is hij de
+        // DERDE grootheid waarvan M_Rd afhangt, en twee sneden met hetzelfde
+        // teken en dezelfde N_Ed maar een andere korf hebben dus NIET dezelfde
+        // weerstand. Ze samennemen zou de snede met de zwakste korf laten
+        // verdwijnen achter die met het grootste moment.
+        let sleutel = (
+            s.punt.forces.my_ed < 0.0,
+            s.punt.forces.n_ed.to_bits(),
+            korfsleutel(&s.korf),
+        );
         match index.get(&sleutel) {
             Some(&i) => {
-                if p.forces.my_ed.abs() > groepen[i].forces.my_ed.abs() {
-                    groepen[i] = *p;
+                if s.punt.forces.my_ed.abs() > groepen[i].punt.forces.my_ed.abs() {
+                    groepen[i] = *s;
                 }
             }
             None => {
                 index.insert(sleutel, groepen.len());
-                groepen.push(*p);
+                groepen.push(*s);
             }
         }
     }
@@ -533,86 +871,274 @@ fn sneden_mn_kappa(
     // Voorselectie op de goedkope weerstand. Sneden waar het spanningsblok
     // niets zegt, krijgen een oneindige score: zij mogen juist niet als eerste
     // afvallen, want daar is de M-N-κ-weg de enige die art. 6.1 nog toetst.
-    let layers = cage.layers(section.h_mm);
-    let mut met_score: Vec<(f64, ForcePoint)> = groepen
+    let mut met_score: Vec<(f64, Snede)> = groepen
         .into_iter()
-        .map(|p| {
-            let sign = if p.forces.my_ed < 0.0 { -1.0 } else { 1.0 };
-            let score = match stress_block(section, &layers, mat, p.forces.n_ed, sign) {
-                Ok(r) if r.m_rd_knm > 0.0 => p.forces.my_ed.abs() / r.m_rd_knm,
+        .map(|s| {
+            let layers = s.korf.layers(section.h_mm);
+            let sign = if s.punt.forces.my_ed < 0.0 { -1.0 } else { 1.0 };
+            let score = match stress_block(section, &layers, mat, s.punt.forces.n_ed, sign) {
+                Ok(r) if r.m_rd_knm > 0.0 => s.punt.forces.my_ed.abs() / r.m_rd_knm,
                 Ok(_) => 0.0,
                 Err(_) => f64::INFINITY,
             };
-            (score, p)
+            (score, s)
         })
         .collect();
     met_score.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     met_score.truncate(MAX_MN_KAPPA_SNEDEN);
-    (met_score.into_iter().map(|(_, p)| p).collect(), true)
+    (met_score.into_iter().map(|(_, s)| s).collect(), true)
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// §9.2.1.1(1) — de enige detailleringseis die van de snede afhangt
-// ───────────────────────────────────────────────────────────────────────────
+/// Waarin twee korven moeten verschillen wil hun momentweerstand verschillen.
+///
+/// [`ReinforcementCage`] draagt `f64`-velden en is daarom niet als sleutel van
+/// een [`HashMap`] te gebruiken; dit is de bitpatroonvorm ervan. Er staan
+/// precies de velden in die [`ReinforcementCage::layers`] leest en die
+/// [`ReinforcementZones::cage_at_mm`] kan veranderen: de twee staafrijen en de
+/// beugeldiameter (die de asafstand van de staven verschuift). De DEKKING —
+/// ook die per zijde — staat er met opzet niet in: zij komt altijd van de korf
+/// van de staaf en niet uit een zone, want een betonoppervlak houdt over de
+/// lengte van een staaf dezelfde milieuklasse. Twee korven met dezelfde sleutel
+/// leveren dus letterlijk dezelfde wapeningslagen en daarmee dezelfde M_Rd.
+type Korfsleutel = (u32, u64, u32, u64, u64);
 
-/// §9.2.1.1(1) A_s,min over de HELE omhullende, met de zwaarste snede als
-/// uitkomst.
-///
-/// # Waarom deze ene detailleringseis wél een snede zoekt
-///
-/// De andere acht eisen vergelijken maten van de KORF met elkaar — de
-/// beugeldiameter, de vrije staafafstand, de balkbreedte — en die zijn langs de
-/// hele staaf gelijk. A_s,min niet: de eis zet de vereiste minimumwapening af
-/// tegen de AANWEZIGE trekwapening, en welke rij dat is volgt uit het teken van
-/// M_Ed. Daarbovenop hangt A_s,min zelf van (M_Ed; N_Ed) af, via de
-/// minimumcombinatie van de nationale bijlage en via A_s,min2 = 1,25 × de
-/// UGT-behoefte. Op één snede blijven staan kan de trekzijde met de minste
-/// wapening dus overslaan, en een FALENDE detailleringseis is wél maatgevend
-/// voor de staaf.
-///
-/// `basis` is de uitkomst op de snede met het grootste moment — die is al
-/// gemaakt en doet gewoon mee, zodat deze functie nooit een lagere uitkomst kan
-/// opleveren dan zonder haar.
-fn as_min_over_omhullende(
-    invoer: &DetailleringInvoer<'_>,
-    env: &[ForcePoint],
-    basis: ResistanceCalc,
-) -> ResistanceCalc {
-    let mut beste: Zwaarste<ResistanceCalc> = Zwaarste::nieuw();
-    let belasting_basis = basis.force_state.forces.my_ed.abs();
-    beste.bied(zwaarte_van(&basis, belasting_basis), basis);
+fn korfsleutel(korf: &ReinforcementCage) -> Korfsleutel {
+    (
+        korf.bottom.count,
+        korf.bottom.diameter_mm.to_bits(),
+        korf.top.count,
+        korf.top.diameter_mm.to_bits(),
+        korf.stirrup_diameter_mm.to_bits(),
+    )
+}
 
-    for p in env {
-        let per_snede = DetailleringInvoer {
-            section: invoer.section,
-            cage: invoer.cage,
-            mat: invoer.mat,
-            f_ctm_mpa: invoer.f_ctm_mpa,
-            force_state: ForceStateSnapshot::from_point(p),
-            d_g_mm: invoer.d_g_mm,
-            dwarskrachtwapening_vereist: invoer.dwarskrachtwapening_vereist,
-            v_ed_kn: invoer.v_ed_kn,
-            v_rd_max_kn: invoer.v_rd_max_kn,
-            blijvend_bekiste_oppervlakken: invoer.blijvend_bekiste_oppervlakken,
-            dubbel_wapeningsnet: invoer.dubbel_wapeningsnet,
+// ═══════════════════════════════════════════════════════════════════════════
+// §9.2.1, §9.2.2 en §8.2 — welke eis bij de ZONE hoort en welke bij het ELEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// De negen detailleringseisen zijn niet van dezelfde soort, en met
+// wapeningszones erbij valt dat pas goed op. De indeling, met per eis wat hij
+// werkelijk uitleest:
+//
+// | eis | leest | waar hij geldt |
+// |---|---|---|
+// | §9.2.1.1(1) A_s,min | korf + (M_Ed; N_Ed) | per SNEDE |
+// | §9.2.1.1(3) A_s,max | de twee staafrijen | per ZONE |
+// | NB §9.2.1.1(5) Ø_l,min | de twee staafrijen | per ZONE |
+// | §9.2.2(5) ρ_w,min | A_sw, s en b_w | per ZONE |
+// | §9.2.2(6) s_l,max | s en d | per ZONE |
+// | §9.2.2(8) s_t,max | s_t en d | per ZONE |
+// | NB §9.2.2(9) Ø_sw,min | de beugeldiameter | per ZONE |
+// | NB §9.2(1) b_min | ALLEEN de doorsnede | per ELEMENT |
+// | §8.2(2) a_vrij | de staafrijen en de breedte | per ZONE |
+//
+// ACHT VAN DE NEGEN ZIJN DUS ZONE-AFHANKELIJK. Dat is de omkering van wat er
+// vóór de zones stond: toen was A_s,min "de enige die van de snede afhangt",
+// omdat de korf per definitie over de hele staaf gelijk was. Zodra de
+// beugelafstand bij het steunpunt 150 mm is en in het veld 250 mm, is s_l,max
+// twee verschillende toetsen; hem één keer voor de staaf afrekenen betekent dat
+// de ene zone het antwoord van de andere krijgt. Bij een MINIMUM-eis is dat
+// bovendien niet aan de veilige kant: de zone met de meeste wapening kan de
+// zone met de minste wegdrukken.
+//
+// EÉN EIS BLIJFT BIJ HET ELEMENT: de minimale balkbreedte van NB §9.2(1). Hij
+// leest de korf helemaal niet — alleen b_w, de korrelafmeting d_g en de twee
+// uitvoeringsvragen (blijvende bekisting, dubbel net) — en die zijn eigenschappen
+// van de doorsnede en het werk, niet van een stuk staaf.
+//
+// DRIE INVOERGROOTHEDEN BLIJVEN OOK BIJ HET ELEMENT, en dat is een KEUZE die
+// hieronder in het rapport wordt uitgesproken: `dwarskrachtwapening_vereist`
+// (de tak van s_l,max), `v_ed_kn` en `v_rd_max_kn` (de tak van s_t,max) worden
+// over de HELE staaf genomen — is er ergens vakwerkspoor, dan geldt de strenge
+// tak overal; V_Ed is de grootste van de staaf en V_Rd,max de kleinste. Per zone
+// lezen zou de tak in een rustige zone kunnen VERRUIMEN, en dat is een
+// versoepeling die uit de norm niet ondubbelzinnig volgt: §9.2.2(6) spreekt over
+// "indien dwarskrachtwapening is vereist" zonder te zeggen waar dat wordt
+// vastgesteld. De veilige lezing kost hier niets en staat in de afleiding.
+
+/// Alles wat een [`DetailleringInvoer`] draagt en wat NIET van de plaats langs
+/// de staaf afhangt.
+///
+/// Zonder dit hulpstuk zou elk van de negen aanroepen dezelfde elf velden
+/// moeten overtypen, en is één vergeten veld een stille afwijking tussen twee
+/// toetsen van dezelfde korf.
+struct DetailBasis<'a> {
+    section: &'a ConcreteSection,
+    mat: &'a DesignMaterial,
+    f_ctm_mpa: f64,
+    d_g_mm: Option<f64>,
+    dwarskrachtwapening_vereist: Option<bool>,
+    v_ed_kn: Option<f64>,
+    v_rd_max_kn: Option<f64>,
+}
+
+impl DetailBasis<'_> {
+    /// De invoer voor één plaats: deze korf, dit krachtenpunt.
+    fn invoer<'b>(
+        &'b self,
+        korf: &'b ReinforcementCage,
+        force_state: ForceStateSnapshot,
+    ) -> DetailleringInvoer<'b> {
+        DetailleringInvoer {
+            section: self.section,
+            cage: korf,
+            mat: self.mat,
+            f_ctm_mpa: self.f_ctm_mpa,
+            force_state,
+            d_g_mm: self.d_g_mm,
+            dwarskrachtwapening_vereist: self.dwarskrachtwapening_vereist,
+            v_ed_kn: self.v_ed_kn,
+            v_rd_max_kn: self.v_rd_max_kn,
+            // Twee uitvoeringsvragen die deze orchestrator niet gesteld krijgt.
+            // De toets meldt zelf dat hij ze mist; zie `min_balkbreedte_9_2`.
+            blijvend_bekiste_oppervlakken: None,
+            dubbel_wapeningsnet: None,
+        }
+    }
+}
+
+/// Eén vak, klaar om er een detailleringseis op af te rekenen.
+struct Vakpunt {
+    label: String,
+    korf: ReinforcementCage,
+    /// Het maatgevende krachtenpunt in dit vak — het grootste moment, net als
+    /// vroeger voor de hele staaf. `None` = de omhullende draagt hier geen
+    /// enkel rekenpunt.
+    punt: Option<ForcePoint>,
+    /// Het midden van het vak, voor het geval er geen krachtenpunt is en de
+    /// eis toch een plaats in zijn afleiding moet zetten.
+    midden_mm: f64,
+}
+
+/// Eén detailleringseis op ELK vak, met de zwaarste uitkomst als resultaat.
+///
+/// `leest_de_krachten` zegt of deze eis het krachtenpunt werkelijk gebruikt.
+/// Dat onderscheid doet er alleen toe voor een vak waarin de omhullende geen
+/// rekenpunt draagt:
+///
+/// * leest hij de krachten NIET (A_s,max, de twee minimumdiameters, ρ_w,min en
+///   de vrije staafafstand), dan is de eis daar gewoon af te rekenen — hij
+///   vergelijkt maten van de korf, en die liggen er ook zonder krachten. Het
+///   krachtenpunt dat meegaat is dan het MIDDEN van het vak met nulkrachten,
+///   en dat staat er met zoveel woorden bij zodat niemand die nul voor een
+///   uitkomst aanziet;
+/// * leest hij ze WÉL (s_l,max en s_t,max hebben d nodig, en d volgt uit het
+///   teken van M_Ed), dan wordt dat vak overgeslagen en gemeld. Een nul
+///   invullen zou stilzwijgend "trek onder" kiezen en daarmee een d — en dus
+///   een grenswaarde — verzinnen.
+///
+/// `None` komt alleen terug als er geen enkel vak overbleef; de aanroeper zet
+/// er dan een "niet uitgevoerd" met de reden voor in de plaats.
+fn detail_over_vakken(
+    basis: &DetailBasis<'_>,
+    vakken: &[Vakpunt],
+    leest_de_krachten: bool,
+    toets: impl Fn(&DetailleringInvoer<'_>) -> ResistanceCalc,
+) -> (Option<ResistanceCalc>, Vec<String>) {
+    let mut beste: Zwaarste<(ResistanceCalc, String)> = Zwaarste::nieuw();
+    let mut overgeslagen: Vec<String> = Vec::new();
+
+    for vak in vakken {
+        let (state, zonder_krachten) = match vak.punt {
+            Some(p) => (ForceStateSnapshot::from_point(&p), false),
+            None if leest_de_krachten => {
+                overgeslagen.push(vak.label.clone());
+                continue;
+            }
+            None => (
+                ForceStateSnapshot {
+                    combination_id: 0,
+                    position_mm: vak.midden_mm,
+                    forces: InternalForces::default(),
+                },
+                true,
+            ),
         };
-        let calc = as_min_9_2_1_1(&per_snede);
-        beste.bied(zwaarte_van(&calc, p.forces.my_ed.abs()), calc);
+        let mut calc = toets(&basis.invoer(&vak.korf, state));
+        if zonder_krachten {
+            calc.notes.push(format!(
+                "Op {} draagt de omhullende geen rekenpunt. Deze eis vergelijkt maten van de korf \
+                 en leest de krachten niet, dus hij is er wél af te rekenen; het krachtenpunt in \
+                 de kop staat op het midden van het stuk met nulkrachten en is GEEN uitkomst.",
+                vak.label
+            ));
+        }
+        let belasting = state.forces.my_ed.abs();
+        beste.bied(zwaarte_van(&calc, belasting), (calc, vak.label.clone()));
     }
 
-    let mut uit = beste.uitkomst().expect("de basisuitkomst is altijd geboden");
+    match beste.uitkomst() {
+        Some((mut calc, label)) => {
+            if vakken.len() > 1 {
+                calc.notes.push(format!(
+                    "Deze eis is PER STUK STAAF afgerekend — de wapening verandert langs de staaf, \
+                     dus de eis doet dat ook — en van de {} stukken is {} het zwaarste. De \
+                     afleiding hierboven hoort bij dat stuk. Eén uitkomst voor de hele staaf zou \
+                     hier het antwoord van het ene stuk aan het andere geven; bij een MINIMUM-eis \
+                     is dat niet aan de veilige kant, want het stuk met de meeste wapening drukt \
+                     het stuk met de minste weg.",
+                    vakken.len(),
+                    label
+                ));
+                if !overgeslagen.is_empty() {
+                    calc.notes.push(format!(
+                        "NIET afgerekend op {}: de omhullende draagt daar geen rekenpunt, en deze \
+                         eis heeft er een nodig (d volgt uit het teken van M_Ed). Er is niets voor \
+                         in de plaats aangenomen.",
+                        overgeslagen.join("; ")
+                    ));
+                }
+            }
+            (Some(calc), overgeslagen)
+        }
+        None => (None, overgeslagen),
+    }
+}
+
+/// §9.2.1.1(1) A_s,min over ELKE SNEDE, met de zwaarste als uitkomst.
+///
+/// # Waarom deze eis niet per vak maar per snede loopt
+///
+/// De andere zeven zone-afhankelijke eisen vergelijken maten van de korf; binnen
+/// één vak is hun uitkomst overal dezelfde, dus één snede per vak volstaat.
+/// A_s,min niet: de eis zet de vereiste minimumwapening af tegen de AANWEZIGE
+/// trekwapening, en welke rij dat is volgt uit het teken van M_Ed. Daarbovenop
+/// hangt A_s,min zelf van (M_Ed; N_Ed) af, via de minimumcombinatie van de
+/// nationale bijlage en via A_s,min2 = 1,25 × de UGT-behoefte. Op één snede per
+/// vak blijven staan kan de trekzijde met de minste wapening dus overslaan, en
+/// een FALENDE detailleringseis is wél maatgevend voor de staaf.
+///
+/// `zaad` is de uitkomst op de snede met het grootste moment van het zwaarste
+/// vak — die is al gemaakt en doet gewoon mee, zodat deze functie nooit een
+/// lagere uitkomst kan opleveren dan zonder haar.
+fn as_min_over_sneden(
+    basis: &DetailBasis<'_>,
+    sneden: &[Snede],
+    zaad: ResistanceCalc,
+    aantal_env: usize,
+) -> ResistanceCalc {
+    let mut beste: Zwaarste<ResistanceCalc> = Zwaarste::nieuw();
+    let belasting_zaad = zaad.force_state.forces.my_ed.abs();
+    beste.bied(zwaarte_van(&zaad, belasting_zaad), zaad);
+
+    for s in sneden {
+        let calc = as_min_9_2_1_1(&basis.invoer(&s.korf, ForceStateSnapshot::from_point(&s.punt)));
+        beste.bied(zwaarte_van(&calc, s.punt.forces.my_ed.abs()), calc);
+    }
+
+    let mut uit = beste.uitkomst().expect("de zaaduitkomst is altijd geboden");
     uit.notes.push(snedemelding(
-        "Deze eis is als enige van de negen op ELKE snede van de omhullende nagelopen en op de \
-         hoogste unity check gekozen: A_s,min wordt tegen de AANWEZIGE trekwapening afgezet, en \
-         welke rij dat is volgt uit het teken van M_Ed. De overige acht eisen vergelijken maten \
-         van de korf die langs de hele staaf gelijk zijn en staan daarom op de snede met het \
-         grootste moment.",
+        "Deze eis is op ELKE snede van de omhullende nagelopen en op de hoogste unity check \
+         gekozen: A_s,min wordt tegen de AANWEZIGE trekwapening afgezet, en welke rij dat is volgt \
+         uit het teken van M_Ed. De overige zeven eisen die de korf lezen vergelijken maten die \
+         binnen één stuk staaf niet veranderen; die staan per stuk op de snede met het grootste \
+         moment.",
         &ForcePoint {
             combination_id: uit.force_state.combination_id,
             position_mm: uit.force_state.position_mm,
             forces: uit.force_state.forces,
         },
-        env.len(),
+        aantal_env,
     ));
     uit
 }
@@ -968,41 +1494,78 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         Ok(v) => v,
         Err(e) => return error_result(&input, e),
     };
+    // DE ZONE-INDELING MOET ALS INDELING KLOPPEN voordat er iets mee wordt
+    // gerekend. `validate` weigert een gat, een overlap en een zone die buiten
+    // de staaf steekt, en repareert niets: een gat dichttrekken zou wapening
+    // aannemen die niemand heeft ingevoerd. Bij LEGE zonelijsten keert hij
+    // meteen met Ok terug, dus voor een staaf zonder zones verandert er niets.
+    if let Err(e) =
+        input
+            .reinforcement_zones
+            .validate(&input.cage, &section, input.length_m * 1000.0)
+    {
+        return error_result(&input, format!("de wapeningszones zijn niet bruikbaar: {e}"));
+    }
     let opts = MnKappaOptions { n_strips: input.n_strips.max(1) as usize };
     let layers = input.cage.layers(section.h_mm);
 
     // ── De sneden ──────────────────────────────────────────────────────────
     //
+    // Een SNEDE is een krachtenpunt PLUS de korf die daar geldt. Zonder zones
+    // is dat één vak met de korf van de invoer en valt elk krachtenpunt daar
+    // precies één keer in; de reeks is dan letterlijk de omhullende zoals zij
+    // binnenkwam.
+    //
     // `gov_bending` is het punt met het GROOTSTE MOMENT, en dat blijft het:
     // §7.4.2(2) schrijft met zoveel woorden voor dat de wapeningsverhouding
     // rho "in het midden van de overspanning (bij uitkragingen ter plaatse van
     // de oplegging)" wordt genomen, en het grootste |M| is daar de
-    // benadering van. Het is óók de snede waarop de negen detailleringseisen
-    // worden afgedrukt; zie de aantekening bij blok 6.
+    // benadering van.
     //
     // De doorsnedetoetsen kiezen hun eigen snede, en die kiezen op de UNITY
     // CHECK — zie de moduledoc en de zoekers hierboven.
+    let vakken = wapeningsvakken(&input.reinforcement_zones, &input.cage);
+    let ugt_sneden = sneden_met_korf(&vakken, &input.forces_envelope);
     let gov_bending = governing_for(&input.forces_envelope, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
     let bend_state = ForceStateSnapshot::from_point(&gov_bending);
+    // De korf ter plaatse van die snede. Zonder zones is dat de korf van de
+    // invoer, en bij §7.4.2 hieronder verandert er dus niets.
+    let bend_korf = input
+        .reinforcement_zones
+        .cage_at_mm(&input.cage, gov_bending.position_mm);
 
     let mut checks: Vec<NamedCheck> = Vec::new();
 
     // 1. Buiging met de rechthoekige spanningsverdeling (handberekening),
-    //    op de snede met de hoogste unity check.
-    let buiging = buigoverzicht(&section, &input.cage, &mat, &input.forces_envelope);
-    let mut blok = check_bending_stress_block(
+    //    op de snede met de hoogste unity check, met de korf die dáár ligt.
+    let buiging = buigoverzicht(
         &section,
         &input.cage,
         &mat,
-        ForceStateSnapshot::from_point(&buiging.punt),
+        &input.forces_envelope,
+        &ugt_sneden,
+    );
+    let mut blok = check_bending_stress_block(
+        &section,
+        &buiging.snede.korf,
+        &mat,
+        ForceStateSnapshot::from_point(&buiging.snede.punt),
     );
     blok.notes.push(snedemelding(
         "De maatgevende snede is gezocht op de UNITY CHECK en niet op het grootste moment: \
          M_Rd hangt via het TEKEN van M_Ed af van welke wapeningsrij op trek staat, en bij een \
          asymmetrische korf scheelt dat een factor.",
-        &buiging.punt,
+        &buiging.snede.punt,
         input.forces_envelope.len(),
     ));
+    if let Some(m) = zonemelding(
+        &vakken,
+        &input.forces_envelope,
+        ugt_sneden.len(),
+        "M_Rd is per snede bepaald met de langswapening die daar werkelijk ligt.",
+    ) {
+        blok.notes.push(m);
+    }
     if buiging.aantal_niet_toepasbaar > 0 {
         blok.notes.push(format!(
             "Op {} van de {} sneden van de omhullende is de rechthoekige spanningsverdeling niet \
@@ -1011,58 +1574,58 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
              blijft er wél getoetst: de M-N-κ-toets hieronder kent de geheel gedrukte doorsnede \
              (draaipunt C van figuur 6.1) en neemt ze wél mee.",
             buiging.aantal_niet_toepasbaar,
-            input.forces_envelope.len()
+            ugt_sneden.len()
         ));
     }
     checks.push(make_resistance(blok));
 
-    // 2. M-N-κ. Eén afgevaardigde per (teken van M_Ed; N_Ed) — zie
+    // 2. M-N-κ. Eén afgevaardigde per (teken van M_Ed; N_Ed; korf) — zie
     //    `sneden_mn_kappa` voor waarom dat exact is en niet benaderend.
-    let (mn_sneden, mn_voorgeselecteerd) =
-        sneden_mn_kappa(&section, &input.cage, &mat, &input.forces_envelope);
+    let (mn_sneden, mn_voorgeselecteerd) = sneden_mn_kappa(&section, &mat, &ugt_sneden);
     let mut mn_beste: Zwaarste<_> = Zwaarste::nieuw();
-    for p in &mn_sneden {
+    for s in &mn_sneden {
         let kandidaat = check_mn_kappa(
             &section,
-            &input.cage,
+            &s.korf,
             &mat,
             &opts,
             input.apply_min_eccentricity,
-            ForceStateSnapshot::from_point(p),
+            ForceStateSnapshot::from_point(&s.punt),
         );
-        let zwaarte = zwaarte_van(&kandidaat.calc, p.forces.my_ed.abs());
-        mn_beste.bied(zwaarte, (kandidaat, *p));
+        let zwaarte = zwaarte_van(&kandidaat.calc, s.punt.forces.my_ed.abs());
+        mn_beste.bied(zwaarte, (kandidaat, *s));
     }
-    let (mut mn, mn_punt) = match mn_beste.uitkomst() {
+    let (mut mn, mn_snede) = match mn_beste.uitkomst() {
         Some(v) => v,
         // Alleen bij een lege omhullende. Dan is er niets te kiezen en levert
         // het nulpunt de toets met M_Ed = 0.
         None => {
-            let p = gov_bending;
+            let s = Snede { punt: gov_bending, korf: bend_korf };
             (
                 check_mn_kappa(
                     &section,
-                    &input.cage,
+                    &s.korf,
                     &mat,
                     &opts,
                     input.apply_min_eccentricity,
-                    ForceStateSnapshot::from_point(&p),
+                    ForceStateSnapshot::from_point(&s.punt),
                 ),
-                p,
+                s,
             )
         }
     };
     mn.calc.notes.push(format!(
         "{} Van de {} sneden van de omhullende blijven er {} over die elkaars uitkomst niet \
-         herhalen: M_Rd hangt alleen van het TEKEN van M_Ed en van N_Ed af, dus sneden die daarin \
-         gelijk zijn hebben dezelfde weerstand en wint binnen die groep de grootste |M_Ed| — ook \
-         na de minimale excentriciteit van 6.1(4), want |N_Ed|·e₀ is binnen de groep gelijk.{}",
+         herhalen: M_Rd hangt alleen van het TEKEN van M_Ed, van N_Ed en van de KORF ter plaatse \
+         af, dus sneden die daarin gelijk zijn hebben dezelfde weerstand en wint binnen die groep \
+         de grootste |M_Ed| — ook na de minimale excentriciteit van 6.1(4), want |N_Ed|·e₀ is \
+         binnen de groep gelijk.{}",
         snedemelding(
             "De maatgevende snede is gezocht op de UNITY CHECK.",
-            &mn_punt,
-            input.forces_envelope.len()
+            &mn_snede.punt,
+            ugt_sneden.len()
         ),
-        input.forces_envelope.len(),
+        ugt_sneden.len(),
         mn_sneden.len(),
         if mn_voorgeselecteerd {
             format!(
@@ -1076,6 +1639,14 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
             String::new()
         }
     ));
+    if let Some(m) = zonemelding(
+        &vakken,
+        &input.forces_envelope,
+        ugt_sneden.len(),
+        "de korf ter plaatse hoort daarom bij de sleutel waarop de sneden zijn gegroepeerd.",
+    ) {
+        mn.calc.notes.push(m);
+    }
     let diagram = mn.diagram.clone();
     checks.push(make_resistance(mn.calc));
 
@@ -1090,11 +1661,11 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     // ÉÉN KEER LANGS DE HELE OMHULLENDE. Dat levert in één gang de maatgevende
     // snede (op de unity check, niet op |V_Ed| — zie `dwarskrachtoverzicht`)
     // en de drie grootheden waar §9.2.2 op leunt.
-    let dwars =
-        dwarskrachtoverzicht(&section, &input.cage, &mat, &input.forces_envelope, &shear_opts);
-    let gov_shear = dwars.punt;
+    let dwars = dwarskrachtoverzicht(&section, &input.cage, &mat, &ugt_sneden, &shear_opts);
+    let gov_shear = dwars.snede.punt;
     let shear_state = ForceStateSnapshot::from_point(&gov_shear);
-    let mut shear_calc = check_shear(&section, &input.cage, &mat, shear_state, &shear_opts);
+    let mut shear_calc =
+        check_shear(&section, &dwars.snede.korf, &mat, shear_state, &shear_opts);
     // WELK PUNT ER IS GETOETST, MET HET MOMENT ERBIJ — en dat laatste is geen
     // opsmuk. De dwarskrachtmodule leest aan het TEKEN van M_Ed af welke rij op
     // trek staat, en daarmee zowel d als A_sl. Bij een vrij opgelegde ligger is
@@ -1120,6 +1691,16 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         ),
         dwars.v_ed_max_kn,
     ));
+    if let Some(m) = zonemelding(
+        &vakken,
+        &input.forces_envelope,
+        ugt_sneden.len(),
+        "V_Rd is per snede bepaald met de beugels én de langswapening die daar werkelijk liggen — \
+         A_sw/s uit de beugelzone (§9.2.2) en A_sl uit de langswapening die doorloopt (§6.2.2(1) \
+         met figuur 6.3).",
+    ) {
+        shear_calc.notes.push(m);
+    }
     checks.push(make_resistance(shear_calc));
 
     // ── 4. Scheurbeheersing (§7.3) ─────────────────────────────────────────
@@ -1147,9 +1728,14 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     let mut eerste_bgt_fout: Option<String> = None;
     let mut aantal_bgt_fout = 0usize;
 
+    // De BGT-sneden zijn op dezelfde manier opgebouwd als de UGT-sneden: elk
+    // punt van de frequente envelop met de korf die op die plaats geldt.
+    let bgt_sneden = sneden_met_korf(&vakken, &input.sls_frequent_envelope);
+
     if let Some(klasse) = input.exposure_class {
-        for p in &input.sls_frequent_envelope {
-            let b = match bgt_toestand_op(&section, &input.cage, beton, staal, &input, *p) {
+        for snede in &bgt_sneden {
+            let p = &snede.punt;
+            let b = match bgt_toestand_op(&section, &snede.korf, beton, staal, &input, *p) {
                 Ok(b) => b,
                 Err(e) => {
                     aantal_bgt_fout += 1;
@@ -1161,7 +1747,7 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
 
             let (staafafstand, s_bron) = match input.bar_spacing_mm {
                 Some(s) => (Some(s), format!("opgegeven: s = {s:.0} mm")),
-                None => match staafafstand_uit_korf_mm(&section, &input.cage, b.trek_onder) {
+                None => match staafafstand_uit_korf_mm(&section, &snede.korf, b.trek_onder) {
                     Some(s) => (
                         Some(s),
                         format!(
@@ -1201,7 +1787,11 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
 
             let g = Scheurgegevens {
                 section: &section,
-                cage: &input.cage,
+                // De korf van DEZE snede. §7.3.2 zet A_s,min tegen de aanwezige
+                // trekwapening af en §7.3.4 rekent met de staafdiameter en de
+                // effectieve trekzone; allebei veranderen ze waar de
+                // langswapening inkort.
+                cage: &snede.korf,
                 beton,
                 staal,
                 invoer: &inv,
@@ -1231,7 +1821,7 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
                      §7.3 kunnen daardoor op verschillende sneden staan: de scheurwijdte loopt \
                      met sigma_s mee, terwijl de minimumwapening tegen de AANWEZIGE trekwapening \
                      wordt afgezet en dus vooral aan de trekzijde hangt.",
-                    input.sls_frequent_envelope.len()
+                    bgt_sneden.len()
                 ),
                 format!(
                     "Hart-op-hartafstand van de trekstaven — {s_bron}. Zij bepaalt of (7.11) \
@@ -1275,11 +1865,21 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
                      doorsnede niet op te lossen; die sneden zijn overgeslagen en daar is §7.3 \
                      dus NIET getoetst. De eerste reden luidde: {}",
                     aantal_bgt_fout,
-                    input.sls_frequent_envelope.len(),
+                    bgt_sneden.len(),
                     eerste_bgt_fout.clone().unwrap_or_default()
                 );
                 minimumwapening.notes.push(melding.clone());
                 scheurwijdte.notes.push(melding);
+            }
+            if let Some(m) = zonemelding(
+                &vakken,
+                &input.sls_frequent_envelope,
+                bgt_sneden.len(),
+                "de gescheurde doorsnede, A_s,min en de effectieve trekzone zijn per snede bepaald \
+                 met de langswapening die daar werkelijk ligt.",
+            ) {
+                minimumwapening.notes.push(m.clone());
+                scheurwijdte.notes.push(m);
             }
             checks.push(make_resistance(minimumwapening));
             checks.push(make_resistance(scheurwijdte));
@@ -1331,19 +1931,25 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         )),
         Some(system) => {
             let trek_onder = gov_bending.forces.my_ed >= 0.0;
+            // DE KORF TER PLAATSE van de voorgeschreven snede, niet die van de
+            // invoer. 7.4.2(2) zet rho vast op het midden van de overspanning,
+            // en juist daar is de onderwapening bij een gestaffelde korf op
+            // zijn grootst; hem uit de korf van de invoer aflezen zou een rho
+            // opleveren die bij een ander stuk staaf hoort. Zonder zones is dit
+            // letterlijk `input.cage`.
             let d_mm = if trek_onder {
-                input.cage.d_mm(section.h_mm)
+                bend_korf.d_mm(section.h_mm)
             } else {
-                section.h_mm - input.cage.d2_mm()
+                section.h_mm - bend_korf.d2_mm()
             };
             let a_s_prov = if trek_onder {
-                input.cage.a_s_bottom_mm2()
+                bend_korf.a_s_bottom_mm2()
             } else {
-                input.cage.a_s_top_mm2()
+                bend_korf.a_s_top_mm2()
             };
             match benodigde_trekwapening_mm2(
                 &section,
-                &input.cage,
+                &bend_korf,
                 &mat,
                 gov_bending.forces.my_ed,
                 gov_bending.forces.n_ed,
@@ -1413,11 +2019,22 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
                          {:.0} mm² aan de drukzijde. rho' weglaten verlaagt de grenswaarde en is \
                          dus de veilige kant.",
                         if trek_onder {
-                            input.cage.a_s_top_mm2()
+                            bend_korf.a_s_top_mm2()
                         } else {
-                            input.cage.a_s_bottom_mm2()
+                            bend_korf.a_s_bottom_mm2()
                         }
                     ));
+                    if vakken.len() > 1 {
+                        calc.notes.push(format!(
+                            "De wapening verandert langs de staaf. rho en d zijn genomen met de \
+                             korf die geldt op x = {} mm, de snede met het grootste moment die \
+                             7.4.2(2) voorschrijft — en dus NIET met de korf uit de invoer, die \
+                             ergens anders kan liggen. De grenswaarde van l/d is een uitspraak \
+                             over de HELE overspanning; de norm laat 7.4.2 dan ook op één snede \
+                             beoordelen en niet per stuk staaf.",
+                            gov_bending.position_mm.round() as i64
+                        ));
+                    }
                     checks.push(make_resistance(calc));
                 }
             }
@@ -1426,14 +2043,13 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
 
     // ── 6. Detaillering (§9.2.1, §9.2.2 en §8.2) ───────────────────────────
     //
-    // Negen eisen. Acht ervan gaan over de STAAF en niet over een snede: de
-    // beugeldiameter, de balkbreedte, de vrije staafafstand, de
-    // wapeningsverhouding van de beugels, A_s,max — dat zijn maten van de korf
-    // die langs de hele staaf gelijk zijn. Zij blijven daarom op het punt met
-    // het grootste moment staan, en er wordt voor hen geen snede gezocht.
+    // Negen eisen, en ze zijn niet van dezelfde soort. Welke bij een ZONE hoort
+    // en welke bij het ELEMENT staat in de tabel boven [`DetailBasis`]; kort:
+    // acht van de negen lezen de KORF en horen dus per stuk staaf, en alleen
+    // de balkbreedte van NB §9.2(1) leest hem niet.
     //
-    // Drie grootheden die zij van §6.2 krijgen gelden wél voor de HELE staaf,
-    // en die worden hier dus ook zo bepaald — niet meer uit één snede:
+    // Drie invoergrootheden die zij van §6.2 krijgen blijven bij de HELE staaf,
+    // en dat is een keuze die in de afleiding wordt uitgesproken:
     //
     // * `dwarskrachtwapening_vereist` — de vraag is of er ERGENS in de staaf
     //   rekenkundig dwarskrachtwapening nodig is. Uit één snede aflezen kan
@@ -1447,12 +2063,10 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     // * `v_rd_max_kn` — de KLEINSTE V_Rd,max van de staaf. De tak van s_t,max
     //   hangt aan V_Ed ≤ 0,5·V_Rd,max, en de grootste V_Ed naast de kleinste
     //   V_Rd,max is de veilige lezing van die voorwaarde.
-    let detail_invoer = DetailleringInvoer {
+    let detail_basis = DetailBasis {
         section: &section,
-        cage: &input.cage,
         mat: &mat,
         f_ctm_mpa: beton.f_ctm,
-        force_state: bend_state,
         d_g_mm: input.aggregate_size_mm,
         dwarskrachtwapening_vereist: Some(dwars.ergens_vakwerkspoor),
         v_ed_kn: Some(dwars.v_ed_max_kn),
@@ -1460,27 +2074,119 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         // er geen V_Rd,max en zegt de toets dat, in plaats van in de ruime tak
         // van 500 mm te belanden.
         v_rd_max_kn: dwars.v_rd_max_min_kn,
-        blijvend_bekiste_oppervlakken: None,
-        dubbel_wapeningsnet: None,
     };
-    for c in detailleringstoetsen(&detail_invoer) {
-        // DE NEGENDE EIS IS WÉL SNEDE-AFHANKELIJK. §9.2.1.1(1) zet A_s,min af
-        // tegen de AANWEZIGE trekwapening, en welke rij dat is volgt uit het
-        // teken van M_Ed. Bij de referentiekorf geeft dezelfde A_s,min aan de
-        // bovenzijde (2Ø12 = 226 mm²) een 2,7 keer hogere unity check dan aan
-        // de onderzijde (3Ø16 = 603 mm²). A_s,min zelf hangt bovendien via de
-        // minimumcombinatie van (M_Ed; N_Ed) af. Op de snede met het grootste
-        // moment blijven staan zou de trekzijde met de minste wapening kunnen
-        // overslaan — en een FALENDE detailleringseis is wél maatgevend voor de
-        // staaf, dus dat is niet vrijblijvend.
-        if c.id == "9.2.1.1_as_min" {
-            checks.push(make_resistance(as_min_over_omhullende(
-                &detail_invoer,
+    // Elk vak met het krachtenpunt dat er maatgevend is. Zonder zones is er één
+    // vak dat de hele staaf beslaat, en levert `punt_van_vak` daar letterlijk
+    // `gov_bending`; de terugval erachter dekt de lege omhullende af, waar
+    // `gov_bending` zelf het nulpunt is.
+    let enkel_vak = vakken.len() == 1;
+    let vakpunten: Vec<Vakpunt> = vakken
+        .iter()
+        .map(|v| Vakpunt {
+            label: v.label(),
+            korf: v.korf,
+            punt: punt_van_vak(v, &input.forces_envelope).or(
+                if enkel_vak || input.forces_envelope.is_empty() {
+                    Some(gov_bending)
+                } else {
+                    None
+                },
+            ),
+            midden_mm: v.midden_mm().unwrap_or(gov_bending.position_mm),
+        })
+        .collect();
+
+    // De zeven zone-afhankelijke eisen NAAST A_s,min, in de volgorde waarin het
+    // rapport ze toont. (Zone-afhankelijk zijn er acht; A_s,min hoort erbij maar
+    // loopt per SNEDE en staat daarom hieronder apart.)
+    //
+    // `leest_de_krachten` staat op true zodra de eis het krachtenpunt werkelijk
+    // gebruikt — bij s_l,max en s_t,max is dat zo, want d volgt uit het teken
+    // van M_Ed; zie [`detail_over_vakken`].
+    #[allow(clippy::type_complexity)]
+    let vaktoetsen: [(&str, bool, fn(&DetailleringInvoer) -> ResistanceCalc); 7] = [
+        ("9.2.1.1_as_max", false, as_max_9_2_1_1),
+        ("9.2.1.1_min_diameter_langs", false, min_diameter_langsstaaf_9_2_1_1),
+        ("9.2.2_rho_w_min", false, rho_w_min_9_2_2),
+        ("9.2.2_sl_max", true, s_l_max_9_2_2),
+        ("9.2.2_st_max", true, s_t_max_9_2_2),
+        ("9.2.2_min_diameter_beugel", false, min_diameter_beugel_9_2_2),
+        // De balkbreedte zit hier NIET bij: zij leest de korf niet en hoort
+        // daarom bij het element. Zij komt hieronder één keer, op haar vaste
+        // plaats in de volgorde.
+        ("8.2_vrije_staafafstand", false, vrije_staafafstand_8_2),
+    ];
+
+    // §9.2.1.1(1) A_s,min gaat vóór alle andere, net als voorheen. Zij loopt
+    // over de SNEDEN en niet over de vakken; het zaad is de uitkomst op het
+    // zwaarste vak, zodat zij nooit lager kan uitvallen dan de vakweg alleen.
+    let (as_min_zaad, _) = detail_over_vakken(&detail_basis, &vakpunten, true, as_min_9_2_1_1);
+    match as_min_zaad {
+        Some(zaad) => {
+            let mut c = as_min_over_sneden(
+                &detail_basis,
+                &ugt_sneden,
+                zaad,
+                input.forces_envelope.len(),
+            );
+            if let Some(m) = zonemelding(
+                &vakken,
                 &input.forces_envelope,
-                c,
-            )));
-        } else {
+                ugt_sneden.len(),
+                "de aanwezige trekwapening waartegen A_s,min wordt afgezet is per snede die van \
+                 het stuk staaf waar de snede ligt.",
+            ) {
+                c.notes.push(m);
+            }
             checks.push(make_resistance(c));
+        }
+        // Vangnet: geen enkel vak draagt een krachtenpunt. Eén aanroep op de
+        // korf van de invoer levert de juiste id, titel en artikelverwijzing;
+        // de uitkomst zelf wordt vervangen door de reden, zodat het rapport
+        // deze eis op zijn vaste plaats toont met "N/A" en niet met een getal.
+        None => {
+            let sjabloon = as_min_9_2_1_1(&detail_basis.invoer(&bend_korf, bend_state));
+            checks.push(niet_uitgevoerd(
+                &sjabloon.id,
+                &sjabloon.title,
+                &sjabloon.article,
+                bend_state,
+                "de omhullende draagt in geen enkel stuk van de staaf een rekenpunt, en A_s,min \
+                 hangt van (M_Ed; N_Ed) af. Er is niets aangenomen."
+                    .to_string(),
+            ));
+        }
+    }
+
+    for (id, leest_de_krachten, toets) in vaktoetsen {
+        // Op de plaats waar `detailleringstoetsen` de balkbreedte zet: zij is
+        // de enige die het ELEMENT toetst en niet een stuk staaf, dus zij loopt
+        // één keer, op de snede met het grootste moment zoals altijd.
+        if id == "8.2_vrije_staafafstand" {
+            checks.push(make_resistance(min_balkbreedte_9_2(
+                &detail_basis.invoer(&bend_korf, bend_state),
+            )));
+        }
+        let (uitkomst, overgeslagen) =
+            detail_over_vakken(&detail_basis, &vakpunten, leest_de_krachten, toets);
+        match uitkomst {
+            Some(c) => checks.push(make_resistance(c)),
+            // Zelfde vangnet als bij A_s,min hierboven: de sjabloonaanroep
+            // levert alleen id, titel en artikel, nooit een uitkomst.
+            None => {
+                let sjabloon = toets(&detail_basis.invoer(&bend_korf, bend_state));
+                checks.push(niet_uitgevoerd(
+                    &sjabloon.id,
+                    &sjabloon.title,
+                    &sjabloon.article,
+                    bend_state,
+                    format!(
+                        "deze eis heeft een krachtenpunt nodig (d volgt uit het teken van M_Ed) \
+                         en de omhullende draagt er geen op {}. Er is niets aangenomen.",
+                        overgeslagen.join("; ")
+                    ),
+                ));
+            }
         }
     }
 

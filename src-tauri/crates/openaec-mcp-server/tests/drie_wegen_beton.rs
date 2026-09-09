@@ -1337,20 +1337,30 @@ fn weg_toetsbrug_fout(opdracht: &str, inputs: Value) -> String {
 /// wapening per zone heeft opgegeven. Dat is de gevaarlijkste soort verlies:
 /// er komt een geloofwaardig rapport uit dat bij een andere balk hoort.
 ///
-/// # Wat deze test wél en niet kan aantonen
-///
-/// De zones VERANDEREN NOG NIETS aan de uitkomst. Het aansluiten van de toetsen
-/// op de zones is een volgend brok; deze uitbreiding is een zuivere
-/// type-uitbreiding met "lege lijst = huidig gedrag". Er is dus geen getal in
-/// het antwoord dat verschuift zodra de zones aankomen. Wat er wél is:
+/// # Wat deze test aantoont
 ///
 /// 1. de drie wegen ACCEPTEREN de zones en geven daarop hetzelfde antwoord —
 ///    een weg die het veld niet kende, zou het door `deny_unknown_fields`
 ///    juist WEIGEREN;
-/// 2. dat antwoord is gelijk aan dat zonder zones, wat de belofte "leeg =
-///    huidig gedrag" vastlegt. **Zodra de toetsen op de zones worden
-///    aangesloten, hoort deze gelijkheid te sneuvelen** — dan is dit de plek
-///    om te laten zien welke unity check meebeweegt;
+/// 2. dat antwoord VERSCHILT van het antwoord zonder zones, en wel op de
+///    plaatsen waar het hoort te verschillen. Hier stond eerder de omgekeerde
+///    eis: de zones kwamen toen wel aan maar werden door geen enkele toets
+///    gelezen, en de gelijkheid legde die tussenstand vast. Nu de toetsen ze
+///    lezen is dit de plek waar staat WELKE unity check meebeweegt en waarom —
+///    en die beweegt twee kanten op:
+///
+///    * §6.1 gaat OMLAAG. Het veldmoment van 100 kNm staat op x = 2500 mm, en
+///      daar ligt volgens de zones 5Ø16 in plaats van de 3Ø16 van de staafkorf.
+///      De doorsnede is daar dus sterker dan `cage` doet vermoeden.
+///    * §9.2.2 gaat OMHOOG. In dezelfde zone staan de beugels om de 250 mm in
+///      plaats van de 150 mm van de staafkorf, dus s_l,max (NB bij 9.2.2(6),
+///      300 mm) wordt van 150/300 = 0,5 naar 250/300 = 0,8333, en ρ_w,min
+///      (9.2.2(5) met (9.5N)) beweegt evenredig mee.
+///
+///    Dat de twee TEGENGESTELD bewegen is precies waarom de zones nodig zijn:
+///    één korf voor de hele staaf is voor de ene toets te gunstig en voor de
+///    andere te ongunstig, en welke van de twee het is hangt af van welke zone
+///    de gebruiker toevallig in `cage` heeft gezet;
 /// 3. de drie wegen WEIGEREN alle drie een zone met een tikfout in een
 ///    veldnaam, met een ontbrekend veld en met een verkeerd getypeerd veld.
 ///    Dat is het echte bewijs dat elke schil de zones als ZONES leest en niet
@@ -1381,11 +1391,59 @@ async fn de_wapeningszones_komen_door_alle_drie_de_wegen() {
     eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
     eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
 
-    // 2 — en gelijk aan het antwoord zonder zones. DIT IS DE BELOFTE VAN DIT
-    // BROK; hij hoort te sneuvelen zodra de toetsen op de zones aansluiten.
+    // 2 — en het VERSCHILT van het antwoord zonder zones, op de plaatsen waar
+    // het hoort te verschillen.
     let mcp_zonder =
         weg_mcp(&mut stdin, &mut reader, 701, "check_concrete_beam", zonder.clone()).await;
-    eis_gelijk("met zones", &mcp, "zonder zones", &mcp_zonder);
+    assert!(
+        verschil(&mcp, &mcp_zonder, "").is_some(),
+        "met en zonder zones leveren hetzelfde antwoord — de toetsing leest de zones dus niet"
+    );
+
+    let toets = |r: &Value, id: &str| -> Value {
+        r["checks"]
+            .as_array()
+            .expect("checks")
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap_or_else(|| panic!("toets {id} ontbreekt"))["kind"]["data"]
+            .clone()
+    };
+
+    // §6.1 — het veldmoment staat op 5Ø16 en niet op de 3Ø16 van de staafkorf.
+    let buiging_met = toets(&mcp, "6.1_bending_stress_block");
+    let buiging_zonder = toets(&mcp_zonder, "6.1_bending_stress_block");
+    assert!(
+        getal(&buiging_met, &["value"]) > getal(&buiging_zonder, &["value"]) * 1.4,
+        "M_Rd hoort met de 5Ø16 van de veldzone fors hoger te liggen: {} tegen {}",
+        getal(&buiging_met, &["value"]),
+        getal(&buiging_zonder, &["value"])
+    );
+    assert!(getal(&buiging_met, &["uc", "uc"]) < getal(&buiging_zonder, &["uc", "uc"]));
+    assert!(
+        format!("{}", buiging_met["notes"]).contains("DE WAPENING VERANDERT LANGS DE STAAF"),
+        "de afleiding meldt de zone-indeling niet: {}",
+        buiging_met["notes"]
+    );
+
+    // §9.2.2 — de wijdere beugels van de veldzone zijn maatgevend geworden.
+    let sl_met = toets(&mcp, "9.2.2_sl_max");
+    let sl_zonder = toets(&mcp_zonder, "9.2.2_sl_max");
+    assert!((getal(&sl_met, &["uc", "ed"]) - 250.0).abs() < 1e-9);
+    assert!((getal(&sl_zonder, &["uc", "ed"]) - 150.0).abs() < 1e-9);
+    assert!((getal(&sl_met, &["uc", "uc"]) - 250.0 / 300.0).abs() < 1e-9);
+    assert!((getal(&sl_zonder, &["uc", "uc"]) - 0.5).abs() < 1e-9);
+    assert!(
+        format!("{}", sl_met["notes"]).contains("PER STUK STAAF"),
+        "de detailleringseis zegt niet dat hij per stuk is afgerekend: {}",
+        sl_met["notes"]
+    );
+    let rho_met = toets(&mcp, "9.2.2_rho_w_min");
+    let rho_zonder = toets(&mcp_zonder, "9.2.2_rho_w_min");
+    assert!(
+        getal(&rho_met, &["uc", "uc"]) > getal(&rho_zonder, &["uc", "uc"]) * 1.5,
+        "ρ_w,min hoort met de wijdere beugels van de veldzone hoger uit te vallen"
+    );
 
     // De zones zelf komen wél heel aan: langs de weg die het invoertype
     // rechtstreeks leest is de korf per plaats terug te vragen. Bij het

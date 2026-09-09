@@ -533,32 +533,51 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       </div>
       {propTab === "norm" && (
         <div className="fem-prop-body">
+          {/* Kniklengtes: staal EN hout.
+              Deze sectie stond tot september 2026 achter "niet hout". De reden
+              was niet dat hout geen kniklengte kent, maar dat de houtbuilder
+              de velden niet las: een invoerveld tonen dat nergens aankomt is
+              schijninvoer. Die reden is vervallen — de EN 1995-kern rekent er
+              wel degelijk mee. In nen-en-1995-1-1/src/stability.rs gaan
+              L_cr,y en L_cr,z via lambda = L_cr / i (art. 6.3.2, verg. (6.21)
+              en (6.22)) naar k_c,y en k_c,z in (6.23)/(6.24), en L_cr,z gaat
+              daarnaast naar de drukterm van de kiptoets (6.35). Twee assen,
+              allebei echt gebruikt.
+              De kipsteunen hieronder blijven wel staal-alleen: dat zijn
+              fracties PER FLENS waar de staalkern op rekent, terwijl EN 1995
+              art. 6.3.3 met één kipsteunafstand werkt waaruit tabel 6.1 de
+              effectieve lengte l_ef afleidt. Die grootheid heeft de
+              houtbuilder nog geen invoerveld voor — hem hier tonen zou alsnog
+              schijninvoer zijn. */}
+          <Section title="Kniklengtes">
+            <Row label="L_cr,y [m]">
+              <input
+                type="number" className="fem-prop-input" step="0.1" min="0"
+                placeholder={systeemlengteM}
+                value={cfg.bucklingLengthY_m ?? ""}
+                onChange={(e) => setCfg({
+                  bucklingLengthY_m: e.target.value === "" ? undefined : Number(e.target.value),
+                })}
+              />
+            </Row>
+            <Row label="L_cr,z [m]">
+              <input
+                type="number" className="fem-prop-input" step="0.1" min="0"
+                placeholder={systeemlengteM}
+                value={cfg.bucklingLengthZ_m ?? ""}
+                onChange={(e) => setCfg({
+                  bucklingLengthZ_m: e.target.value === "" ? undefined : Number(e.target.value),
+                })}
+              />
+            </Row>
+            <div className="fem-prop-hint">
+              Leeg = systeemlengte ({systeemlengteM} m).
+              {isHout && " Bij hout telt L_cr,z ook mee in de drukterm van de kiptoets (6.35)."}
+            </div>
+          </Section>
+
           {!isHout && (
             <>
-              <Section title="Kniklengtes">
-                <Row label="L_cr,y [m]">
-                  <input
-                    type="number" className="fem-prop-input" step="0.1" min="0"
-                    placeholder={systeemlengteM}
-                    value={cfg.bucklingLengthY_m ?? ""}
-                    onChange={(e) => setCfg({
-                      bucklingLengthY_m: e.target.value === "" ? undefined : Number(e.target.value),
-                    })}
-                  />
-                </Row>
-                <Row label="L_cr,z [m]">
-                  <input
-                    type="number" className="fem-prop-input" step="0.1" min="0"
-                    placeholder={systeemlengteM}
-                    value={cfg.bucklingLengthZ_m ?? ""}
-                    onChange={(e) => setCfg({
-                      bucklingLengthZ_m: e.target.value === "" ? undefined : Number(e.target.value),
-                    })}
-                  />
-                </Row>
-                <div className="fem-prop-hint">Leeg = systeemlengte ({systeemlengteM} m).</div>
-              </Section>
-
               {/* Kipsteunen per flens. Meestal wil je er gewoon n gelijk
                   verdeeld: vul het aantal in en de posities volgen. Wie een
                   onregelmatige verdeling nodig heeft, past het positieveld

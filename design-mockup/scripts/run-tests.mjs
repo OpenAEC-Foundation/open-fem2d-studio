@@ -90,6 +90,14 @@ const BUNDEL_TESTS = new Set([
   "dakconstructie-referentie",
   "doorbuiging-toets",
   "hoekverdraaiing",
+  // Bewaakt dat de kniklengte van een HOUTEN staaf tot in de toetsinvoer
+  // komt (buckling_length_y_m/_z_m in TimberBeamCheckInput). Praat alleen met
+  // `engine`, `combinations` en de twee check-builders — precies wat de
+  // barrel ontsluit, dus hij kan óók tegen de sidecarbundel. Dat is hier de
+  // bedoeling: als de bundel de kniklengte laat vallen, rekent de sidecar met
+  // de volle systeemlengte terwijl de bron met de opgegeven steunafstand
+  // rekent, en dat verschil hoort luid op te vallen.
+  "hout-kniklengte",
   "lastomschrijving",
   "leeg-geval",
   "n-teken",
