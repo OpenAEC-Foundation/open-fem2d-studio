@@ -41,6 +41,16 @@
 //!   patroon als [`deelstappen`] en met dezelfde regel: niets wordt opnieuw
 //!   uitgerekend. Zonder die keten staat er in het rapport wel de gebruikte
 //!   b_eff maar niet waarom hij kleiner is dan de ingevoerde flensbreedte;
+//! * [`verankering`] — §8.4: de aanhechtspanning f_bd (8.2), de
+//!   basisverankeringslengte l_b,rqd (8.3) en de rekenwaarde l_bd (8.4) met de
+//!   vijf coëfficiënten van tabel 8.2 en de ondergrenzen (8.6)/(8.7). Daarbij
+//!   de regels die de dekkingslijn nodig heeft: de verschuivingsregel a_l van
+//!   §9.2.1.3(2)/6.2.2(5), het LINEAIRE krachtverloop binnen l_bd dat
+//!   §9.2.1.3(3) toestaat, en de doorlopende onderwapening bij de steunpunten
+//!   van §9.2.1.4 en §9.2.1.5. §8.4 kent geen nationaal bepaalde parameters en
+//!   de Nederlandse bijlage wijkt er niet van af; de NB-afwijking die de module
+//!   wél draagt zit in §8.7.3 (tabel NB 8.3 voor α₆). De module rekent per
+//!   staaf en levert een afleiding terug, geen kaal getal;
 //! * [`dekking`] — de betondekking van 4.4.1: de milieuklassen van tabel 4.1,
 //!   c_min,dur uit de door de nationale bijlage voorgeschreven tabel 4.4N, en
 //!   daaruit c_min (4.2) en de vereiste c_nom (4.1). De dekking was tot dan
@@ -80,6 +90,7 @@ pub mod section;
 pub mod slankheid;
 pub mod stiffness;
 pub mod stress_strain;
+pub mod verankering;
 
 // De meewerkende flensbreedte (5.3.2.1). Op crate-niveau omdat de drie wegen
 // — Tauri-command, toetsbrug en MCP-server — hem alle drie rechtstreeks

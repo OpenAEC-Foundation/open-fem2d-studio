@@ -129,6 +129,40 @@ fn invoer_kolom() -> Value {
     })
 }
 
+/// **De doorgaande ligger.** Dezelfde referentiedoorsnede, maar met een
+/// STEUNPUNTSMOMENT: bij x = 0 hangt de balk aan zijn 3Ø16 onder, bij
+/// x = 2500 aan zijn 2Ø12 boven.
+///
+/// Deze staaf staat hier omdat zij de SNEDEKEUZE meet. De weerstand van een
+/// betondoorsnede verschilt per zijde, dus de snede met de grootste belasting
+/// is niet die met de hoogste unity check:
+///
+/// ```text
+///   x = 0    : V_Ed = 60 kN, M_Ed = +40 kNm → V_Rd,c = 64,40 kN, UC = 0,932
+///   x = 2500 : V_Ed = 55 kN, M_Ed = −40 kNm → V_Rd,c = 56,20 kN, UC = 0,979
+/// ```
+///
+/// De MINDER belaste snede is de ZWAARDER benutte. Een weg die de snede op de
+/// belasting zou kiezen, meldt hier 0,932 in plaats van 0,979 — een te lage
+/// unity check, en dus onveilig. De handberekening van beide weerstanden staat
+/// in `concrete-check/tests/maatgevende_snede.rs`.
+fn invoer_doorgaande_ligger() -> Value {
+    json!({
+        "beam_id": 11,
+        "section": { "b_mm": 300, "h_mm": 500 },
+        "concrete_class": "C30/37",
+        "reinforcement_grade": "B500B",
+        "cage": korf(),
+        "length_m": 5,
+        "forces_envelope": [
+            { "combination_id": 1, "position_mm": 0,
+              "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 60, "mt_ed": 0, "my_ed": 40, "mz_ed": 0 } },
+            { "combination_id": 1, "position_mm": 2500,
+              "forces": { "n_ed": 0, "vy_ed": 0, "vz_ed": 55, "mt_ed": 0, "my_ed": -40, "mz_ed": 0 } }
+        ]
+    })
+}
+
 /// **De T-ligger.** Dezelfde doorsnede als
 /// `nen-en-1992-1-1/tests/vormen.rs::drukzone_in_het_lijf_handberekening`:
 /// T 400 × 450 met een flens van 50 mm en een lijf van 200 mm, 4Ø20 onder.
@@ -478,6 +512,11 @@ async fn de_drie_wegen_toetsen_dezelfde_staaf_gelijk() {
         // leest — of hem stilzwijgend als rechthoek behandelt — valt hier door
         // de mand, en niet pas in de app.
         ("T-ligger", invoer_t_ligger()),
+        // En de doorgaande ligger: een weg die de maatgevende SNEDE anders
+        // kiest, valt alleen bij een omhullende met een tekenwisseling door de
+        // mand. Bij de drie staven hierboven is het moment overal positief, dus
+        // zij zouden zo'n verschil niet opmerken.
+        ("doorgaande ligger", invoer_doorgaande_ligger()),
     ] {
         let tauri = weg_tauri_check(&invoer);
         let brug = weg_toetsbrug("check_concrete_beams", json!([invoer]));
@@ -1224,6 +1263,79 @@ async fn de_uitkomst_zelf_staat_vast() {
         mcp["reinforcement_summary"],
         "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm"
     );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// **Ankerwaarde voor de SNEDEKEUZE.**
+///
+/// Gelijklopen bewijst niet dat de juiste snede is gekozen: alle drie de wegen
+/// roepen dezelfde orchestrator aan, dus zij zouden samen op de verkeerde
+/// snede kunnen staan. Dit getal pint vast wélke snede dat is.
+///
+/// De doorgaande ligger draagt bij x = 0 een dwarskracht van 60 kN met een
+/// POSITIEF moment, en bij x = 2500 een van 55 kN met een NEGATIEF moment.
+/// V_Rd,c rekent met d en met A_sl van de zijde die op trek staat:
+///
+/// ```text
+///   x = 0    : d = 454 mm, A_sl = 3Ø16 = 603,185789 mm²
+///              (6.2.a) = 0,12·1,6637233·2,3684556·136 200 = 64,402 kN
+///              (6.2.b) = 0,4113867·136 200               = 56,031 kN
+///              V_Rd,c  = 64,402 kN → UC = 60/64,402 = 0,93165
+///   x = 2500 : d = 456 mm, A_sl = 2Ø12 = 226,194671 mm²
+///              (6.2.a) = 0,12·1,6622662·1,7053190·136 800 = 46,534 kN
+///              (6.2.b) = 0,4108467·136 800                = 56,204 kN
+///              V_Rd,c  = 56,204 kN → UC = 55/56,204 = 0,97858
+/// ```
+///
+/// De maatgevende snede is dus x = 2500 en de unity check 0,979 — niet 0,932.
+/// Zou hier ooit 0,93 komen te staan, dan is de snedekeuze teruggevallen op de
+/// grootste |V_Ed| en meldt de toetsing een TE LAGE benutting.
+#[tokio::test]
+async fn de_maatgevende_snede_staat_vast() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+    let mcp = weg_mcp(
+        &mut stdin,
+        &mut reader,
+        401,
+        "check_concrete_beam",
+        invoer_doorgaande_ligger(),
+    )
+    .await;
+
+    let dwars = mcp["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|c| c["id"] == "6.2_shear")
+        .expect("de dwarskrachttoets")["kind"]["data"]
+        .clone();
+
+    // De GETOETSTE SNEDE: x = 2500 met het negatieve moment, niet x = 0.
+    assert!((getal(&dwars, &["force_state", "position_mm"]) - 2500.0).abs() < 1e-9);
+    assert!((getal(&dwars, &["force_state", "forces", "my_ed"]) + 40.0).abs() < 1e-9);
+    assert!((getal(&dwars, &["force_state", "forces", "vz_ed"]) - 55.0).abs() < 1e-9);
+    // d hoort dan bij de BOVENwapening: 500 − 30 − 8 − 6 = 456 mm.
+    let var = |symbool: &str| -> f64 {
+        dwars["variables"]
+            .as_array()
+            .expect("variables")
+            .iter()
+            .find(|v| v["symbol"] == symbool)
+            .unwrap_or_else(|| panic!("{symbool} ontbreekt"))["value"]
+            .as_f64()
+            .expect("getal")
+    };
+    assert!((var("d") - 456.0).abs() < 1e-9, "d = {}", var("d"));
+    assert!((var(r"A_{sl}") - 226.194671).abs() < 1e-3);
+    assert!((var(r"V_{Rd,c}") - 56.204).abs() < 1e-2, "V_Rd,c = {}", var(r"V_{Rd,c}"));
+
+    // En de unity check van de hele staaf is die van deze snede.
+    assert!((getal(&dwars, &["uc", "uc"]) - 55.0 / 56.204).abs() < 1e-4);
+    assert!((getal(&mcp, &["uc_max"]) - 55.0 / 56.204).abs() < 1e-4);
+    assert_eq!(mcp["governing_check_id"], "6.2_shear");
+    assert_eq!(mcp["status"], "Ok");
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

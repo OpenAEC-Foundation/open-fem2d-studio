@@ -42,13 +42,74 @@
 //! (6.15)) en voedt uitsluitend §7.3 — de nationale bijlage bij 7.3.1(5)
 //! schrijft die combinatie voor waar de EN-tekst de quasi-blijvende noemt.
 //! De twee worden nergens door elkaar gehaald.
+//!
+//! # Op WELKE SNEDE een toets wordt uitgevoerd
+//!
+//! Een doorsnedetoets hoort te worden afgerekend op de snede waar hij het
+//! zwaarst uitvalt, en dat is de snede met de hoogste UNITY CHECK — niet die
+//! met de grootste belasting. Die twee vallen alleen samen als de weerstand
+//! langs de staaf constant is, en dat is zij niet: de trekzijde volgt uit het
+//! TEKEN van M_Ed, en daarmee veranderen de nuttige hoogte d, de langswapening
+//! A_sl (§6.2), de aanwezige trekwapening (§7.3, §9.2.1.1) en de
+//! momentweerstand M_Rd (§6.1). Bij een asymmetrische korf — en dat is de
+//! regel, niet de uitzondering — scheelt dat een factor.
+//!
+//! Zie [`Zwaarte`] voor de rangorde die daarbij wordt aangehouden, en per
+//! toets het commentaar in [`check_concrete_beam`] voor de snede die zij
+//! kiest en waarom.
+//!
+//! # Wat het kost om elke snede na te lopen
+//!
+//! De omhullende draagt 21 stations per staaf per combinatie, dus bij twintig
+//! combinaties gaat het om 420 sneden. Gemeten op de referentiebalk 300 × 500
+//! (release-bouw, n_strips = 50), per rekengang en per snede:
+//!
+//! | rekengang | per snede |
+//! |---|---|
+//! | [`shear_resistance`] (§6.2) | 2,2 µs |
+//! | [`stress_block`] (§6.1, alleen om te rangschikken) | 0,7 µs |
+//! | gescheurde doorsnede + de twee toetsen van §7.3 | 27 µs |
+//! | [`as_min_9_2_1_1`] (§9.2.1.1) | 36 µs |
+//! | één M-κ-diagram (§6.1 M-N-κ) | 4,2 ms |
+//!
+//! De eerste vier zijn goedkoop genoeg om ELKE snede volledig door te rekenen;
+//! er is dus geen voorselectie en geen benadering. Het M-κ-diagram is dat niet,
+//! en daarvoor bestaat de EXACTE groepering in [`sneden_mn_kappa`].
+//!
+//! Wat dat in totaal doet met de toetsing van één staaf, gemeten op dezelfde
+//! balk als doorgaande ligger (met tekenwisseling), vóór en na deze wijziging:
+//!
+//! | omhullende | vóór | na |
+//! |---|---|---|
+//! | 1 combinatie (21 sneden) | 145 ms | 146 ms |
+//! | 5 combinaties (105) | 145 ms | 151 ms |
+//! | 20 combinaties (420) | 145 ms | 161 ms |
+//! | 50 combinaties (1050) | 145 ms | 188 ms |
+//!
+//! Met een normaalkracht die PER COMBINATIE verschilt — een kolom of een
+//! geschoorde staaf — levert elke combinatie twee eigen M-N-κ-groepen op en
+//! loopt het bij vijftig combinaties op tot 434 ms. Dat is de prijs van een
+//! juist antwoord: bij een andere N_Ed is M_Rd werkelijk anders, en die sneden
+//! overslaan zou een te lage unity check opleveren. Boven
+//! [`MAX_MN_KAPPA_SNEDEN`] groepen wordt er wél voorgeselecteerd, en dan zegt
+//! het rapport dat met zoveel woorden.
+//!
+//! Ter vergelijking: van de 145 ms van de oude toetsing gaat het overgrote deel
+//! op aan de twee interactiediagrammen voor de WEERGAVE (elk 21 M-κ-diagrammen,
+//! samen ongeveer 140 ms). Die stonden er al en zijn hier niet aangeraakt.
+
+use std::collections::HashMap;
 
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
+use nen_en_1992_1_1::bending::stress_block;
 use nen_en_1992_1_1::checks::{check_bending_stress_block, check_mn_kappa};
 use nen_en_1992_1_1::detaillering::{
-    benodigde_trekwapening_mm2, detailleringstoetsen, is_detailleringstoets, DetailleringInvoer,
+    as_min_9_2_1_1, benodigde_trekwapening_mm2, detailleringstoetsen, is_detailleringstoets,
+    DetailleringInvoer,
 };
-use nen_en_1992_1_1::dwarskracht::{check_shear, shear_resistance, ShearOptions, Spoor};
+use nen_en_1992_1_1::dwarskracht::{
+    check_shear, shear_resistance, ShearOptions, ShearResistance, Spoor,
+};
 use nen_en_1992_1_1::mnkappa::{
     axial_compression_capacity_kn, axial_tension_capacity_kn, interaction_diagram,
     mn_kappa_diagram, MnKappaOptions,
@@ -70,6 +131,144 @@ use steel_check::{CheckKind, NamedCheck};
 use crate::input::{ConcreteBeamCheckInput, MnKappaRequest};
 use crate::result::{ConcreteBeamCheckResult, MnKappaResponse};
 
+// ═══════════════════════════════════════════════════════════════════════════
+// De maatgevende snede — op de unity check, niet op de belasting
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Hoe zwaar één toets op ÉÉN snede uitvalt, in een vorm die te rangschikken
+/// is.
+///
+/// # De rangorde, en waarom zij zo is
+///
+/// 1. **Een snede waar de toets NIET kon worden afgerekend gaat vóór elke
+///    snede met een uitkomst.** Anders zou een snede waar de weerstand
+///    onbekend is — geen beugelgegevens terwijl er rekenkundig
+///    dwarskrachtwapening nodig is, bijvoorbeeld — wegvallen achter een andere
+///    snede met een keurige unity check van 0,7, en zou het rapport groen
+///    melden waar het "dit weet ik niet" hoort te zeggen. Zoeken op de hoogste
+///    unity check mag nooit een ONTBREKENDE unity check verbergen.
+/// 2. Daarna de `waarde`: de unity check, of — bij een onbepaalde snede — een
+///    maat voor hoe ver die snede over de grens ligt, zodat van twee
+///    onbepaalde sneden de ergste in het rapport komt.
+/// 3. Bij gelijke waarde de `belasting`. Een zuivere scheidsrechter: hij
+///    verandert de uitkomst niet, maar zorgt dat bij een gelijkspel (twee
+///    sneden met dezelfde unity check, wat bij een symmetrische omhullende
+///    voortdurend gebeurt) de zwaarst belaste snede in het rapport staat en
+///    niet toevallig de eerste in de lijst.
+///
+/// De vergelijking is met opzet op `f64` en niet op [`Ord`]: een unity check
+/// mag oneindig zijn (weerstand nul bij een belasting die er wel is), en dat
+/// getal moet gewoon winnen.
+#[derive(Clone, Copy, Debug)]
+struct Zwaarte {
+    /// De toets leverde op deze snede geen unity check op.
+    onbepaald: bool,
+    /// De unity check, of bij `onbepaald` de maat voor de overschrijding.
+    waarde: f64,
+    /// Scheidsrechter bij een gelijkspel: de grootste belasting wint.
+    belasting: f64,
+}
+
+impl Zwaarte {
+    /// De toets is afgerekend en levert `uc`.
+    fn bepaald(uc: f64, belasting: f64) -> Self {
+        Zwaarte { onbepaald: false, waarde: schoon(uc), belasting: schoon(belasting) }
+    }
+
+    /// De toets kon op deze snede niet worden afgerekend. `maat` zegt hoe erg
+    /// dat is — bij de dwarskracht V_Ed/V_Rd,c, de verhouding die de doorsnede
+    /// überhaupt in het vakwerkspoor duwde.
+    fn onbepaald(maat: f64, belasting: f64) -> Self {
+        Zwaarte { onbepaald: true, waarde: schoon(maat), belasting: schoon(belasting) }
+    }
+
+    fn zwaarder_dan(&self, ander: &Zwaarte) -> bool {
+        if self.onbepaald != ander.onbepaald {
+            return self.onbepaald;
+        }
+        if self.waarde != ander.waarde {
+            return self.waarde > ander.waarde;
+        }
+        self.belasting > ander.belasting
+    }
+}
+
+/// NaN kan niet worden vergeleken en zou de rangschikking van de toevallige
+/// volgorde laten afhangen; hij telt hier als nul.
+fn schoon(v: f64) -> f64 {
+    if v.is_nan() {
+        0.0
+    } else {
+        v
+    }
+}
+
+/// Bewaar van een reeks sneden de ZWAARSTE uitkomst, mét alles wat er bij die
+/// snede hoort — de toets zelf, de bijbehorende gegevens, de afleiding.
+///
+/// Dat laatste is de reden dat dit geen simpele `max_by` op de punten is: de
+/// scheurtoetsen leunen op een gescheurde-doorsnedeberekening die per snede
+/// anders uitvalt, en die uitkomst twee keer maken (één keer om te wegen, één
+/// keer om te tonen) zou twee gescheiden rekengangen opleveren die uit elkaar
+/// kunnen lopen.
+struct Zwaarste<T> {
+    beste: Option<(Zwaarte, T)>,
+}
+
+impl<T> Zwaarste<T> {
+    fn nieuw() -> Self {
+        Zwaarste { beste: None }
+    }
+
+    fn bied(&mut self, zwaarte: Zwaarte, waarde: T) {
+        let neem = match &self.beste {
+            None => true,
+            Some((huidig, _)) => zwaarte.zwaarder_dan(huidig),
+        };
+        if neem {
+            self.beste = Some((zwaarte, waarde));
+        }
+    }
+
+    fn uitkomst(self) -> Option<T> {
+        self.beste.map(|(_, t)| t)
+    }
+}
+
+/// De zwaarte van een AFGERONDE toets.
+///
+/// Onbepaald is hier precies "er is geen unity check" — en dus NIET "de status
+/// is N/A". Dat onderscheid is wezenlijk: de dwarskrachttoets zet de status op
+/// N/A zodra V_Ed nul is, maar levert daar wél een unity check (van nul). Zo'n
+/// snede is niet onbekend, hij is onbelast, en hij hoort dus te VERLIEZEN van
+/// elke snede waar wel iets staat.
+fn zwaarte_van(calc: &ResistanceCalc, belasting: f64) -> Zwaarte {
+    match &calc.uc {
+        Some(u) => Zwaarte::bepaald(u.uc, belasting),
+        None => Zwaarte::onbepaald(0.0, belasting),
+    }
+}
+
+/// De vaste zin die bij elke toets vertelt WELKE snede er is getoetst en uit
+/// hoeveel er is gekozen.
+///
+/// Zonder die zin staat er in het rapport een unity check zonder plaats, en
+/// kan een constructeur niet nagaan of de toets bij de doorsnede hoort die hij
+/// in gedachten had. `aanleiding` zegt daarnaast waarom er op die grootheid is
+/// gezocht — dat verschilt per toets.
+fn snedemelding(aanleiding: &str, punt: &ForcePoint, aantal: usize) -> String {
+    format!(
+        "Getoetst op combinatie {} op x = {} mm: M_Ed = {:.1} kNm, V_Ed = {:.1} kN, \
+         N_Ed = {:.1} kN. Gekozen uit de {} sneden van de UGT-omhullende. {aanleiding}",
+        punt.combination_id,
+        punt.position_mm.round() as i64,
+        punt.forces.my_ed,
+        punt.forces.vz_ed,
+        punt.forces.n_ed,
+        aantal,
+    )
+}
+
 /// Zoek het envelop-punt dat `score` maximaliseert — zelfde aanpak als de
 /// staal- en hout-orchestrator.
 fn governing_for<F>(env: &[ForcePoint], score: F) -> ForcePoint
@@ -89,6 +288,332 @@ where
         }
     }
     best
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// §6.2 — de maatgevende dwarskrachtsnede
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Wat een keer langs de hele omhullende oplevert voor §6.2 en voor de twee
+/// detailleringseisen die op §6.2 leunen.
+struct DwarskrachtOverzicht {
+    /// De snede met de hoogste unity check — daar wordt §6.2 afgerekend.
+    punt: ForcePoint,
+    /// De grootste |V_Ed| van de hele omhullende, kN.
+    v_ed_max_kn: f64,
+    /// De KLEINSTE V_Rd,max van de omhullende. `None` als het vakwerkmodel
+    /// nergens kon worden opgebouwd.
+    v_rd_max_min_kn: Option<f64>,
+    /// Is er ERGENS in de staaf rekenkundig dwarskrachtwapening vereist?
+    ergens_vakwerkspoor: bool,
+    /// Hoeveel sneden er zijn doorgerekend — gaat als mededeling het rapport in.
+    aantal_sneden: usize,
+}
+
+/// Loop de hele UGT-omhullende langs en bepaal per snede de dwarskracht-
+/// weerstand die dáár geldt.
+///
+/// # Waarom de grootste |V_Ed| het verkeerde criterium is
+///
+/// V_Rd is geen constante van de staaf. Bij het spoor zonder berekende
+/// dwarskrachtwapening (6.2.2(1)) rekent V_Rd,c met d en met A_sl, en die twee
+/// horen bij de zijde die op TREK staat — de dwarskrachtmodule leest dat aan
+/// het teken van M_Ed af. Bij een asymmetrische korf verschilt V_Rd,c daardoor
+/// per snede. De snede met de grootste dwarskracht kan dus een RUIMERE
+/// weerstand hebben dan een naburige snede met iets minder dwarskracht maar
+/// een veel kleinere A_sl, en dan ligt de werkelijke maatgevende unity check
+/// niet op de eerste maar op de tweede.
+///
+/// Daarom wordt hier de weerstand OP ELKE SNEDE uitgerekend en op de unity
+/// check gerangschikt. Dat mag: [`shear_resistance`] is een gesloten
+/// berekening zonder iteratie (gemeten ≈ 2 µs per snede), zodat een
+/// omhullende van 21 stations maal enkele tientallen combinaties in de orde
+/// van milliseconden blijft — verwaarloosbaar naast de M-N-κ- en
+/// interactiediagrammen die per staaf toch al worden gemaakt. Er is dus geen
+/// goedkope voorselectie nodig en er wordt ook geen benadering gebruikt: elke
+/// snede is volledig doorgerekend.
+fn dwarskrachtoverzicht(
+    section: &ConcreteSection,
+    cage: &ReinforcementCage,
+    mat: &DesignMaterial,
+    env: &[ForcePoint],
+    opts: &ShearOptions,
+) -> DwarskrachtOverzicht {
+    let mut beste: Zwaarste<ForcePoint> = Zwaarste::nieuw();
+    let mut v_ed_max_kn = 0.0_f64;
+    let mut v_rd_max_min_kn: Option<f64> = None;
+    let mut ergens_vakwerkspoor = false;
+
+    for p in env {
+        let fs = ForceStateSnapshot::from_point(p);
+        let r: ShearResistance = shear_resistance(section, cage, mat, &fs, opts);
+        beste.bied(zwaarte_dwarskracht(&r), *p);
+
+        v_ed_max_kn = v_ed_max_kn.max(r.v_ed_kn);
+        if r.spoor == Spoor::Vakwerkmodel {
+            ergens_vakwerkspoor = true;
+        }
+        if let Some(v) = r.vakwerk.as_ref().map(|v| v.v_rd_max_kn) {
+            v_rd_max_min_kn = Some(match v_rd_max_min_kn {
+                Some(huidig) => huidig.min(v),
+                None => v,
+            });
+        }
+    }
+
+    DwarskrachtOverzicht {
+        punt: beste.uitkomst().unwrap_or(ForcePoint {
+            combination_id: 0,
+            position_mm: 0.0,
+            forces: Default::default(),
+        }),
+        v_ed_max_kn,
+        v_rd_max_min_kn,
+        ergens_vakwerkspoor,
+        aantal_sneden: env.len(),
+    }
+}
+
+/// De zwaarte van één dwarskrachtsnede.
+///
+/// Er wordt hier op [`ShearResistance`] gewogen en niet op de afgeronde
+/// [`ResistanceCalc`], om twee redenen. Ten eerste is dit vijftien keer
+/// goedkoper — de afleiding en de deelstappen van [`check_shear`] hoeven maar
+/// één keer te worden opgeschreven, namelijk voor de snede die wint. Ten
+/// tweede kan een snede waar de weerstand NIET bepaald kon worden hier een
+/// zinnige maat meekrijgen: V_Ed/V_Rd,c. Precies die verhouding duwde de
+/// doorsnede in het vakwerkspoor van 6.2.3, en zij zegt dus hoeveel
+/// dwarskrachtwapening er tekortkomt. Van twee onbepaalde sneden komt daarmee
+/// de ergste in het rapport.
+fn zwaarte_dwarskracht(r: &ShearResistance) -> Zwaarte {
+    match r.uc {
+        Some(uc) => Zwaarte::bepaald(uc, r.v_ed_kn),
+        None => {
+            let v_rd_c = r.vrd_c.v_rd_c_kn;
+            let maat = if v_rd_c > 0.0 {
+                r.v_ed_kn / v_rd_c
+            } else if r.v_ed_kn > 0.0 {
+                f64::INFINITY
+            } else {
+                0.0
+            };
+            Zwaarte::onbepaald(maat, r.v_ed_kn)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// §6.1 — de maatgevende buigsnede
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Het resultaat van één keer langs de omhullende voor de buigtoets met de
+/// rechthoekige spanningsverdeling.
+struct BuigOverzicht {
+    /// De snede met de hoogste unity check.
+    punt: ForcePoint,
+    /// Op hoeveel sneden de rechthoekige spanningsverdeling niet van
+    /// toepassing was (geheel gedrukt, of trek boven de trekcapaciteit).
+    aantal_niet_toepasbaar: usize,
+}
+
+/// De maatgevende snede voor de buigtoets met de rechthoekige
+/// spanningsverdeling (§6.1 met 3.1.7(3)).
+///
+/// # Waarom het grootste |M_Ed| het verkeerde criterium is
+///
+/// M_Rd hangt van de snede af via het TEKEN van M_Ed en via N_Ed. Bij de
+/// referentiekorf (onder 3Ø16, boven 2Ø12) is M_Rd bij trek onder 113,3 kNm en
+/// bij trek boven 46,0 kNm — een factor 2,5. Een steunpuntsmoment van 45 kNm
+/// is daarmee zwaarder dan een veldmoment van 100 kNm, terwijl het grootste
+/// |M_Ed| het veldmoment aanwijst.
+///
+/// # Waarom een niet-toepasbare snede hier NIET voorgaat
+///
+/// [`stress_block`] geeft geen antwoord als de doorsnede geheel onder druk
+/// staat (x > h) of als de trek de trekcapaciteit van de wapening overschrijdt.
+/// Anders dan bij de dwarskracht wordt zo'n snede hier niet naar voren
+/// getrokken, en dat is met opzet: art. 6.1 wordt op diezelfde snede ook langs
+/// de M-N-κ-weg getoetst, en díe weg kent de geheel gedrukte doorsnede wél
+/// (draaipunt C van figuur 6.1). Het artikel blijft daar dus getoetst; alleen
+/// de handberekening kan er niet. Hoe vaak dat voorkwam gaat als mededeling
+/// het rapport in, zodat de lezer ziet dat er sneden zijn waar deze weg niets
+/// zegt en de andere alles.
+fn buigoverzicht(
+    section: &ConcreteSection,
+    cage: &ReinforcementCage,
+    mat: &DesignMaterial,
+    env: &[ForcePoint],
+) -> BuigOverzicht {
+    let layers = cage.layers(section.h_mm);
+    let mut beste: Zwaarste<ForcePoint> = Zwaarste::nieuw();
+    let mut aantal_niet_toepasbaar = 0usize;
+    // De terugval als GEEN ENKELE snede kan worden afgerekend: het grootste
+    // |M_Ed|. Dan is er geen unity check om op te rangschikken, en levert die
+    // snede tenminste de reden bij het zwaarste moment.
+    let terugval = governing_for(env, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
+
+    for p in env {
+        let m_ed = p.forces.my_ed;
+        let sign = if m_ed < 0.0 { -1.0 } else { 1.0 };
+        match stress_block(section, &layers, mat, p.forces.n_ed, sign) {
+            Ok(r) => {
+                let uc = if r.m_rd_knm > 0.0 { m_ed.abs() / r.m_rd_knm } else { 0.0 };
+                beste.bied(Zwaarte::bepaald(uc, m_ed.abs()), *p);
+            }
+            Err(_) => aantal_niet_toepasbaar += 1,
+        }
+    }
+
+    BuigOverzicht { punt: beste.uitkomst().unwrap_or(terugval), aantal_niet_toepasbaar }
+}
+
+/// Bovengrens op het aantal sneden waarop de M-N-κ-toets volledig wordt
+/// doorgerekend.
+///
+/// Eén M-κ-diagram kost bij vijftig stroken ongeveer 4 ms — duizend keer zo
+/// veel als een dwarskrachtsnede. Zonder plafond zou een omhullende met veel
+/// combinaties én een langs de staaf variërende normaalkracht de toetsing
+/// merkbaar vertragen. Vijftig sneden is ruim: bij een raamwerkstaaf is N_Ed
+/// per combinatie constant, zodat er per combinatie hooguit twee groepen
+/// overblijven (trek onder en trek boven) en het plafond pas bij vijfentwintig
+/// combinaties in zicht komt.
+const MAX_MN_KAPPA_SNEDEN: usize = 50;
+
+/// De sneden waarop de M-N-κ-toets moet worden afgerekend.
+///
+/// # Een EXACTE reductie, geen benadering
+///
+/// M_Rd hangt bij deze toets van de snede af via precies twee grootheden: het
+/// TEKEN van M_Ed (dat bepaalt welke kant wordt gedrukt) en N_Ed. Twee sneden
+/// met hetzelfde teken en dezelfde N_Ed hebben dus LETTERLIJK dezelfde M_Rd,
+/// en dan wint binnen die groep de snede met de grootste |M_Ed| — ook na de
+/// minimale excentriciteit van 6.1(4), want |N_Ed|·e₀ is binnen de groep
+/// gelijk. Eén afgevaardigde per groep is daarmee niet "goed genoeg" maar
+/// aantoonbaar hetzelfde antwoord als alle sneden doorrekenen.
+///
+/// Bij een staaf zonder normaalkracht blijven er zo hooguit twee groepen over
+/// (trek onder en trek boven), ongeacht hoeveel stations en combinaties de
+/// omhullende draagt.
+///
+/// # Het plafond
+///
+/// Blijven er méér dan [`MAX_MN_KAPPA_SNEDEN`] groepen over, dan wordt er
+/// voorgeselecteerd op de GOEDKOPE spanningsblokweerstand (≈ 0,7 µs per
+/// snede). Dat is een schatting en geen bovengrens — de twee weerstanden
+/// liggen bij dezelfde doorsnede binnen enkele procenten van elkaar — dus dan,
+/// en alleen dan, is de uitkomst een benadering. Het rapport zegt dat met
+/// zoveel woorden; zie de mededeling in [`check_concrete_beam`].
+fn sneden_mn_kappa(
+    section: &ConcreteSection,
+    cage: &ReinforcementCage,
+    mat: &DesignMaterial,
+    env: &[ForcePoint],
+) -> (Vec<ForcePoint>, bool) {
+    let mut index: HashMap<(bool, u64), usize> = HashMap::new();
+    let mut groepen: Vec<ForcePoint> = Vec::new();
+    for p in env {
+        let sleutel = (p.forces.my_ed < 0.0, p.forces.n_ed.to_bits());
+        match index.get(&sleutel) {
+            Some(&i) => {
+                if p.forces.my_ed.abs() > groepen[i].forces.my_ed.abs() {
+                    groepen[i] = *p;
+                }
+            }
+            None => {
+                index.insert(sleutel, groepen.len());
+                groepen.push(*p);
+            }
+        }
+    }
+    if groepen.len() <= MAX_MN_KAPPA_SNEDEN {
+        return (groepen, false);
+    }
+
+    // Voorselectie op de goedkope weerstand. Sneden waar het spanningsblok
+    // niets zegt, krijgen een oneindige score: zij mogen juist niet als eerste
+    // afvallen, want daar is de M-N-κ-weg de enige die art. 6.1 nog toetst.
+    let layers = cage.layers(section.h_mm);
+    let mut met_score: Vec<(f64, ForcePoint)> = groepen
+        .into_iter()
+        .map(|p| {
+            let sign = if p.forces.my_ed < 0.0 { -1.0 } else { 1.0 };
+            let score = match stress_block(section, &layers, mat, p.forces.n_ed, sign) {
+                Ok(r) if r.m_rd_knm > 0.0 => p.forces.my_ed.abs() / r.m_rd_knm,
+                Ok(_) => 0.0,
+                Err(_) => f64::INFINITY,
+            };
+            (score, p)
+        })
+        .collect();
+    met_score.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    met_score.truncate(MAX_MN_KAPPA_SNEDEN);
+    (met_score.into_iter().map(|(_, p)| p).collect(), true)
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// §9.2.1.1(1) — de enige detailleringseis die van de snede afhangt
+// ───────────────────────────────────────────────────────────────────────────
+
+/// §9.2.1.1(1) A_s,min over de HELE omhullende, met de zwaarste snede als
+/// uitkomst.
+///
+/// # Waarom deze ene detailleringseis wél een snede zoekt
+///
+/// De andere acht eisen vergelijken maten van de KORF met elkaar — de
+/// beugeldiameter, de vrije staafafstand, de balkbreedte — en die zijn langs de
+/// hele staaf gelijk. A_s,min niet: de eis zet de vereiste minimumwapening af
+/// tegen de AANWEZIGE trekwapening, en welke rij dat is volgt uit het teken van
+/// M_Ed. Daarbovenop hangt A_s,min zelf van (M_Ed; N_Ed) af, via de
+/// minimumcombinatie van de nationale bijlage en via A_s,min2 = 1,25 × de
+/// UGT-behoefte. Op één snede blijven staan kan de trekzijde met de minste
+/// wapening dus overslaan, en een FALENDE detailleringseis is wél maatgevend
+/// voor de staaf.
+///
+/// `basis` is de uitkomst op de snede met het grootste moment — die is al
+/// gemaakt en doet gewoon mee, zodat deze functie nooit een lagere uitkomst kan
+/// opleveren dan zonder haar.
+fn as_min_over_omhullende(
+    invoer: &DetailleringInvoer<'_>,
+    env: &[ForcePoint],
+    basis: ResistanceCalc,
+) -> ResistanceCalc {
+    let mut beste: Zwaarste<ResistanceCalc> = Zwaarste::nieuw();
+    let belasting_basis = basis.force_state.forces.my_ed.abs();
+    beste.bied(zwaarte_van(&basis, belasting_basis), basis);
+
+    for p in env {
+        let per_snede = DetailleringInvoer {
+            section: invoer.section,
+            cage: invoer.cage,
+            mat: invoer.mat,
+            f_ctm_mpa: invoer.f_ctm_mpa,
+            force_state: ForceStateSnapshot::from_point(p),
+            d_g_mm: invoer.d_g_mm,
+            dwarskrachtwapening_vereist: invoer.dwarskrachtwapening_vereist,
+            v_ed_kn: invoer.v_ed_kn,
+            v_rd_max_kn: invoer.v_rd_max_kn,
+            blijvend_bekiste_oppervlakken: invoer.blijvend_bekiste_oppervlakken,
+            dubbel_wapeningsnet: invoer.dubbel_wapeningsnet,
+        };
+        let calc = as_min_9_2_1_1(&per_snede);
+        beste.bied(zwaarte_van(&calc, p.forces.my_ed.abs()), calc);
+    }
+
+    let mut uit = beste.uitkomst().expect("de basisuitkomst is altijd geboden");
+    uit.notes.push(snedemelding(
+        "Deze eis is als enige van de negen op ELKE snede van de omhullende nagelopen en op de \
+         hoogste unity check gekozen: A_s,min wordt tegen de AANWEZIGE trekwapening afgezet, en \
+         welke rij dat is volgt uit het teken van M_Ed. De overige acht eisen vergelijken maten \
+         van de korf die langs de hele staaf gelijk zijn en staan daarom op de snede met het \
+         grootste moment.",
+        &ForcePoint {
+            combination_id: uit.force_state.combination_id,
+            position_mm: uit.force_state.position_mm,
+            forces: uit.force_state.forces,
+        },
+        env.len(),
+    ));
+    uit
 }
 
 fn make_resistance(check: ResistanceCalc) -> NamedCheck {
@@ -329,31 +854,19 @@ struct BgtToestand {
     trek_onder: bool,
 }
 
-fn bgt_toestand(
+/// De gescheurde-doorsnedeberekening op ÉÉN snede van de frequente envelop.
+///
+/// De keuze van de snede zat vroeger in deze functie (het grootste |M|); zij
+/// is eruit gehaald omdat §7.3.2 en §7.3.4 niet op dezelfde snede maatgevend
+/// hoeven te zijn. Zie [`check_concrete_beam`] voor de rangschikking.
+fn bgt_toestand_op(
     section: &ConcreteSection,
     cage: &ReinforcementCage,
     beton: &ConcreteClass,
     staal: &ReinforcementGrade,
     input: &ConcreteBeamCheckInput,
+    punt: ForcePoint,
 ) -> Result<BgtToestand, String> {
-    if input.sls_frequent_envelope.is_empty() {
-        return Err(format!(
-            "er is geen krachtsverloop onder de frequente BGT-combinatie meegestuurd. \
-             §7.3 vraagt de staalspanning in de gescheurde doorsnede onder de \
-             {COMBINATIE_SCHEURWIJDTE}; die is uit de UGT-envelop niet af te leiden. Reken \
-             NEN-EN 1990 uitdrukking (6.15) door en stuur het krachtsverloop mee in \
-             `sls_frequent_envelope`. Er wordt hier met opzet geen UGT-spanning voor in de \
-             plaats gezet: dat zou een andere en een verkeerde toets zijn."
-        ));
-    }
-
-    // Hetzelfde criterium als bij de buigtoets: het grootste |M| beslist, met
-    // de normaalkracht als scheidsrechter. De scheurwijdte loopt met sigma_s
-    // mee en sigma_s met M, dus dit is ook het punt met de grootste
-    // scheurwijdte.
-    let punt = governing_for(&input.sls_frequent_envelope, |f| {
-        f.my_ed.abs() + f.n_ed.abs() * 0.01
-    });
     let m_knm = punt.forces.my_ed;
     let n_kn = punt.forces.n_ed;
 
@@ -389,6 +902,19 @@ fn bgt_toestand(
         eps_trek_onder: -k.state.eps_bottom,
         trek_onder: m_knm >= 0.0,
     })
+}
+
+/// De reden waarom §7.3 niet kan als er geen frequente BGT-combinatie is
+/// meegestuurd.
+fn geen_bgt_envelop() -> String {
+    format!(
+        "er is geen krachtsverloop onder de frequente BGT-combinatie meegestuurd. \
+         §7.3 vraagt de staalspanning in de gescheurde doorsnede onder de \
+         {COMBINATIE_SCHEURWIJDTE}; die is uit de UGT-envelop niet af te leiden. Reken \
+         NEN-EN 1990 uitdrukking (6.15) door en stuur het krachtsverloop mee in \
+         `sls_frequent_envelope`. Er wordt hier met opzet geen UGT-spanning voor in de \
+         plaats gezet: dat zou een andere en een verkeerde toets zijn."
+    )
 }
 
 /// Hart-op-hartafstand van de staven in de TREKrij, afgeleid uit de korf.
@@ -444,56 +970,129 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     let opts = MnKappaOptions { n_strips: input.n_strips.max(1) as usize };
     let layers = input.cage.layers(section.h_mm);
 
-    // Maatgevende krachtspunten. Buiging: grootste |M| (met N als
-    // scheidsrechter). M-N: daarnaast het punt met de grootste druk — bij
-    // een kolom kan dát maatgevend zijn door de minimale excentriciteit.
+    // ── De sneden ──────────────────────────────────────────────────────────
+    //
+    // `gov_bending` is het punt met het GROOTSTE MOMENT, en dat blijft het:
+    // §7.4.2(2) schrijft met zoveel woorden voor dat de wapeningsverhouding
+    // rho "in het midden van de overspanning (bij uitkragingen ter plaatse van
+    // de oplegging)" wordt genomen, en het grootste |M| is daar de
+    // benadering van. Het is óók de snede waarop de negen detailleringseisen
+    // worden afgedrukt; zie de aantekening bij blok 6.
+    //
+    // De doorsnedetoetsen kiezen hun eigen snede, en die kiezen op de UNITY
+    // CHECK — zie de moduledoc en de zoekers hierboven.
     let gov_bending = governing_for(&input.forces_envelope, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
-    let gov_compression =
-        governing_for(&input.forces_envelope, |f| if f.n_ed < 0.0 { f.n_ed.abs() } else { 0.0 });
     let bend_state = ForceStateSnapshot::from_point(&gov_bending);
-    let comp_state = ForceStateSnapshot::from_point(&gov_compression);
 
     let mut checks: Vec<NamedCheck> = Vec::new();
 
-    // 1. Buiging met de rechthoekige spanningsverdeling (handberekening).
-    checks.push(make_resistance(check_bending_stress_block(&section, &input.cage, &mat, bend_state)));
-
-    // 2. M-N-κ op het buigpunt, en op het drukpunt als dat een ander punt is;
-    //    de zwaarste van de twee telt.
-    let mut mn = check_mn_kappa(&section, &input.cage, &mat, &opts, input.apply_min_eccentricity, bend_state);
-    let ander_punt = gov_compression.forces.n_ed < 0.0
-        && (gov_compression.position_mm != gov_bending.position_mm
-            || gov_compression.combination_id != gov_bending.combination_id);
-    if ander_punt {
-        let mn2 = check_mn_kappa(&section, &input.cage, &mat, &opts, input.apply_min_eccentricity, comp_state);
-        let uc1 = mn.calc.uc.as_ref().map(|u| u.uc).unwrap_or(0.0);
-        let uc2 = mn2.calc.uc.as_ref().map(|u| u.uc).unwrap_or(0.0);
-        if uc2 > uc1 {
-            mn = mn2;
-        }
+    // 1. Buiging met de rechthoekige spanningsverdeling (handberekening),
+    //    op de snede met de hoogste unity check.
+    let buiging = buigoverzicht(&section, &input.cage, &mat, &input.forces_envelope);
+    let mut blok = check_bending_stress_block(
+        &section,
+        &input.cage,
+        &mat,
+        ForceStateSnapshot::from_point(&buiging.punt),
+    );
+    blok.notes.push(snedemelding(
+        "De maatgevende snede is gezocht op de UNITY CHECK en niet op het grootste moment: \
+         M_Rd hangt via het TEKEN van M_Ed af van welke wapeningsrij op trek staat, en bij een \
+         asymmetrische korf scheelt dat een factor.",
+        &buiging.punt,
+        input.forces_envelope.len(),
+    ));
+    if buiging.aantal_niet_toepasbaar > 0 {
+        blok.notes.push(format!(
+            "Op {} van de {} sneden van de omhullende is de rechthoekige spanningsverdeling niet \
+             van toepassing (de doorsnede staat daar geheel onder druk, of de trek overschrijdt de \
+             trekcapaciteit van de wapening). Die sneden doen aan deze toets niet mee. Art. 6.1 \
+             blijft er wél getoetst: de M-N-κ-toets hieronder kent de geheel gedrukte doorsnede \
+             (draaipunt C van figuur 6.1) en neemt ze wél mee.",
+            buiging.aantal_niet_toepasbaar,
+            input.forces_envelope.len()
+        ));
     }
+    checks.push(make_resistance(blok));
+
+    // 2. M-N-κ. Eén afgevaardigde per (teken van M_Ed; N_Ed) — zie
+    //    `sneden_mn_kappa` voor waarom dat exact is en niet benaderend.
+    let (mn_sneden, mn_voorgeselecteerd) =
+        sneden_mn_kappa(&section, &input.cage, &mat, &input.forces_envelope);
+    let mut mn_beste: Zwaarste<_> = Zwaarste::nieuw();
+    for p in &mn_sneden {
+        let kandidaat = check_mn_kappa(
+            &section,
+            &input.cage,
+            &mat,
+            &opts,
+            input.apply_min_eccentricity,
+            ForceStateSnapshot::from_point(p),
+        );
+        let zwaarte = zwaarte_van(&kandidaat.calc, p.forces.my_ed.abs());
+        mn_beste.bied(zwaarte, (kandidaat, *p));
+    }
+    let (mut mn, mn_punt) = match mn_beste.uitkomst() {
+        Some(v) => v,
+        // Alleen bij een lege omhullende. Dan is er niets te kiezen en levert
+        // het nulpunt de toets met M_Ed = 0.
+        None => {
+            let p = gov_bending;
+            (
+                check_mn_kappa(
+                    &section,
+                    &input.cage,
+                    &mat,
+                    &opts,
+                    input.apply_min_eccentricity,
+                    ForceStateSnapshot::from_point(&p),
+                ),
+                p,
+            )
+        }
+    };
+    mn.calc.notes.push(format!(
+        "{} Van de {} sneden van de omhullende blijven er {} over die elkaars uitkomst niet \
+         herhalen: M_Rd hangt alleen van het TEKEN van M_Ed en van N_Ed af, dus sneden die daarin \
+         gelijk zijn hebben dezelfde weerstand en wint binnen die groep de grootste |M_Ed| — ook \
+         na de minimale excentriciteit van 6.1(4), want |N_Ed|·e₀ is binnen de groep gelijk.{}",
+        snedemelding(
+            "De maatgevende snede is gezocht op de UNITY CHECK.",
+            &mn_punt,
+            input.forces_envelope.len()
+        ),
+        input.forces_envelope.len(),
+        mn_sneden.len(),
+        if mn_voorgeselecteerd {
+            format!(
+                " LET OP: er bleven méér dan {MAX_MN_KAPPA_SNEDEN} groepen over. Er is daarom \
+                 voorgeselecteerd op de goedkope spanningsblokweerstand en zijn alleen de \
+                 {MAX_MN_KAPPA_SNEDEN} hoogste groepen volledig doorgerekend. Die voorselectie is \
+                 een SCHATTING en geen bovengrens; de gerapporteerde unity check kan daardoor bij \
+                 hoge uitzondering onder de werkelijke maximale unity check liggen."
+            )
+        } else {
+            String::new()
+        }
+    ));
     let diagram = mn.diagram.clone();
     checks.push(make_resistance(mn.calc));
 
     // ── 3. Dwarskracht (§6.2) ──────────────────────────────────────────────
     //
-    // Eigen maatgevend punt: de grootste |V_Ed|. Dat is bijna nooit het punt
-    // met het grootste moment — bij een ligger op twee steunpunten liggen ze
-    // precies aan weerskanten van de staaf. De dwarskracht op het buigpunt
-    // toetsen zou de toets stilzwijgend op het gunstigste punt uitvoeren.
-    let gov_shear = governing_for(&input.forces_envelope, |f| f.vz_ed.abs());
-    let shear_state = ForceStateSnapshot::from_point(&gov_shear);
     // Geen enkele optie ingevuld: A_sl uit de korf, cot θ automatisch binnen
     // de NB-grenzen, z = 0,9·d (alleen zonder normaalkracht) en géén
     // vermindering volgens 6.2.2(6) — voor die laatste heeft een doorsnedetoets
     // de gegevens niet, en niet toepassen is de veilige kant. De module meldt
     // elk van die keuzes zelf in haar afleiding.
     let shear_opts = ShearOptions::default();
-    // Twee aanroepen op dezelfde gegevens: de eerste levert de uitkomst waar
-    // §9.2.2 op leunt (welk spoor, en V_Rd,max voor de tak van s_t,max), de
-    // tweede de toets zoals het rapport hem toont. Dezelfde invoer, dus
-    // dezelfde uitkomst; er is hier geen tweede rekengang.
-    let sr = shear_resistance(&section, &input.cage, &mat, &shear_state, &shear_opts);
+    // ÉÉN KEER LANGS DE HELE OMHULLENDE. Dat levert in één gang de maatgevende
+    // snede (op de unity check, niet op |V_Ed| — zie `dwarskrachtoverzicht`)
+    // en de drie grootheden waar §9.2.2 op leunt.
+    let dwars =
+        dwarskrachtoverzicht(&section, &input.cage, &mat, &input.forces_envelope, &shear_opts);
+    let gov_shear = dwars.punt;
+    let shear_state = ForceStateSnapshot::from_point(&gov_shear);
     let mut shear_calc = check_shear(&section, &input.cage, &mat, shear_state, &shear_opts);
     // WELK PUNT ER IS GETOETST, MET HET MOMENT ERBIJ — en dat laatste is geen
     // opsmuk. De dwarskrachtmodule leest aan het TEKEN van M_Ed af welke rij op
@@ -504,18 +1103,21 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     // kunnen zien dat het moment daar nul was, in plaats van zich af te vragen
     // waarom de bovenwapening meetelt.
     shear_calc.notes.push(format!(
-        "Getoetst op combinatie {} op x = {} mm: V_Ed = {:.1} kN, M_Ed = {:.1} kNm, \
-         N_Ed = {:.1} kN. Dat is het punt met de grootste |V_Ed| uit de UGT-omhullende, en \
-         dus niet het punt van de buigtoets. Ligt M_Ed hier op nul, zoals bij het steunpunt \
-         van een vrij opgelegde ligger, dan is de trekzijde uit het moment niet te bepalen en \
-         volgt de toets het teken dat de oplosser levert; de rij die daarbij wordt gekozen \
-         staat hierboven bij A_sl. Geef A_sl zelf op als de werkelijke doorlopende \
-         trekwapening daarvan afwijkt.",
-        gov_shear.combination_id,
-        gov_shear.position_mm.round() as i64,
-        gov_shear.forces.vz_ed,
-        gov_shear.forces.my_ed,
-        gov_shear.forces.n_ed,
+        "{} De grootste |V_Ed| van de omhullende is {:.1} kN; de snede hierboven hoeft dat niet \
+         te zijn. V_Rd,c rekent namelijk met d en met A_sl van de zijde die op TREK staat, en \
+         welke zijde dat is leest de module aan het TEKEN van M_Ed af. Een snede met iets minder \
+         dwarskracht maar een veel kleinere A_sl kan daardoor een HOGERE unity check hebben dan \
+         de zwaarst belaste snede; zoeken op |V_Ed| zou die stilzwijgend overslaan. Ligt M_Ed op \
+         de gekozen snede op nul, zoals bij het steunpunt van een vrij opgelegde ligger, dan is \
+         de trekzijde uit het moment niet te bepalen en volgt de toets het teken dat de oplosser \
+         levert; de rij die daarbij wordt gekozen staat hierboven bij A_sl. Geef A_sl zelf op als \
+         de werkelijke doorlopende trekwapening daarvan afwijkt.",
+        snedemelding(
+            "De maatgevende snede is gezocht op de UNITY CHECK en niet op de grootste |V_Ed|.",
+            &gov_shear,
+            dwars.aantal_sneden
+        ),
+        dwars.v_ed_max_kn,
     ));
     checks.push(make_resistance(shear_calc));
 
@@ -524,32 +1126,37 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     // Dit is de enige plaats in de hele toetsing waar de BRUIKBAARHEIDS-
     // grenstoestand meedoet, en wel met de FREQUENTE combinatie (6.15) die de
     // nationale bijlage bij 7.3.1(5) voorschrijft.
-    let bgt = bgt_toestand(&section, &input.cage, beton, staal, &input);
-    let scheur_state = match &bgt {
-        Ok(b) => ForceStateSnapshot::from_point(&b.punt),
-        // Er is geen BGT-punt; het krachtenpunt van de buigtoets zet de
-        // N/A-melding tenminste bij de juiste doorsnede in het rapport.
-        Err(_) => bend_state,
-    };
-    let scheur_reden: Option<String> = match (input.exposure_class, &bgt) {
-        (Some(_), Ok(_)) => None,
-        (None, Ok(_)) => Some(GEEN_MILIEUKLASSE.to_string()),
-        (Some(_), Err(e)) => Some(e.clone()),
-        (None, Err(e)) => Some(format!(
-            "er ontbreken twee gegevens. (1) {GEEN_MILIEUKLASSE} (2) En {e}"
-        )),
-    };
-    match scheur_reden {
-        Some(reden) => {
-            for (id, title, article) in SCHEURTOETSEN {
-                checks.push(niet_uitgevoerd(id, title, article, scheur_state, reden.clone()));
-            }
-        }
-        None => {
-            // Beide zijn hier per constructie gevuld; de `match` hierboven
-            // heeft elk ander geval al afgevangen.
-            let b = bgt.as_ref().expect("scheur_reden is None, dus bgt is Ok");
-            let klasse = input.exposure_class.expect("scheur_reden is None, dus er is een klasse");
+    //
+    // ELKE SNEDE VAN DE FREQUENTE ENVELOP wordt doorgerekend, en de twee
+    // toetsen kiezen ELK HUN EIGEN maatgevende snede. Dat zijn niet
+    // noodzakelijk dezelfde: §7.3.4 loopt met sigma_s mee en dus met M, terwijl
+    // §7.3.2 A_s,min tegen de AANWEZIGE trekwapening afzet en dus vooral aan de
+    // TREKZIJDE hangt. Bij de referentiekorf (onder 3Ø16 = 603 mm², boven
+    // 2Ø12 = 226 mm²) geeft dezelfde A_s,min aan de bovenzijde een 2,7 keer
+    // hogere unity check dan aan de onderzijde; het grootste |M| wijst die
+    // snede niet aan.
+    //
+    // Dat mag ook: de gescheurde-doorsnedeberekening kost ongeveer 15 µs en de
+    // twee toetsen samen nog eens 12 µs, dus een frequente envelop van 21
+    // stations kost hier ordegrootte een halve milliseconde.
+    let scheur_state_bij_fout = bend_state;
+    let klasse_ontbreekt = input.exposure_class.is_none();
+    let mut beste_min: Zwaarste<ResistanceCalc> = Zwaarste::nieuw();
+    let mut beste_wijdte: Zwaarste<ResistanceCalc> = Zwaarste::nieuw();
+    let mut eerste_bgt_fout: Option<String> = None;
+    let mut aantal_bgt_fout = 0usize;
+
+    if let Some(klasse) = input.exposure_class {
+        for p in &input.sls_frequent_envelope {
+            let b = match bgt_toestand_op(&section, &input.cage, beton, staal, &input, *p) {
+                Ok(b) => b,
+                Err(e) => {
+                    aantal_bgt_fout += 1;
+                    eerste_bgt_fout.get_or_insert(e);
+                    continue;
+                }
+            };
+            let scheur_state = ForceStateSnapshot::from_point(&b.punt);
 
             let (staafafstand, s_bron) = match input.bar_spacing_mm {
                 Some(s) => (Some(s), format!("opgegeven: s = {s:.0} mm")),
@@ -618,6 +1225,14 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
                     b.x_mm,
                 ),
                 format!(
+                    "Deze snede is uit de {} sneden van de frequente envelop gekozen op de UNITY \
+                     CHECK van DEZE toets, en niet op het grootste moment. De twee toetsen van \
+                     §7.3 kunnen daardoor op verschillende sneden staan: de scheurwijdte loopt \
+                     met sigma_s mee, terwijl de minimumwapening tegen de AANWEZIGE trekwapening \
+                     wordt afgezet en dus vooral aan de trekzijde hangt.",
+                    input.sls_frequent_envelope.len()
+                ),
+                format!(
                     "Hart-op-hartafstand van de trekstaven — {s_bron}. Zij bepaalt of (7.11) \
                      mag worden gebruikt (voorwaarde s <= 5(c + Ø/2)) en of tabel 7.3N te \
                      lezen is."
@@ -642,8 +1257,59 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
             let mut scheurwijdte = check_scheurwijdte_berekend(&g, scheur_state);
             minimumwapening.notes.extend(herkomst.iter().cloned());
             scheurwijdte.notes.extend(herkomst);
+            let belasting = p.forces.my_ed.abs();
+            beste_min.bied(zwaarte_van(&minimumwapening, belasting), minimumwapening);
+            beste_wijdte.bied(zwaarte_van(&scheurwijdte, belasting), scheurwijdte);
+        }
+    }
+
+    match (beste_min.uitkomst(), beste_wijdte.uitkomst()) {
+        (Some(mut minimumwapening), Some(mut scheurwijdte)) => {
+            // Sneden waar de gescheurde doorsnede niet op te lossen was, zijn
+            // overgeslagen. Dat is geen detail: op die sneden is §7.3 dus NIET
+            // getoetst, en dat hoort er onverbloemd bij te staan.
+            if aantal_bgt_fout > 0 {
+                let melding = format!(
+                    "LET OP: op {} van de {} sneden van de frequente envelop was de gescheurde \
+                     doorsnede niet op te lossen; die sneden zijn overgeslagen en daar is §7.3 \
+                     dus NIET getoetst. De eerste reden luidde: {}",
+                    aantal_bgt_fout,
+                    input.sls_frequent_envelope.len(),
+                    eerste_bgt_fout.clone().unwrap_or_default()
+                );
+                minimumwapening.notes.push(melding.clone());
+                scheurwijdte.notes.push(melding);
+            }
             checks.push(make_resistance(minimumwapening));
             checks.push(make_resistance(scheurwijdte));
+        }
+        // Geen enkele snede leverde een uitkomst: dan geldt voor beide toetsen
+        // dezelfde reden, en die reden is samengesteld uit wat er ontbrak.
+        _ => {
+            let bgt_reden = if input.sls_frequent_envelope.is_empty() {
+                Some(geen_bgt_envelop())
+            } else {
+                eerste_bgt_fout
+            };
+            let reden = match (klasse_ontbreekt, bgt_reden) {
+                (false, Some(e)) => e,
+                (true, None) => GEEN_MILIEUKLASSE.to_string(),
+                (true, Some(e)) => {
+                    format!("er ontbreken twee gegevens. (1) {GEEN_MILIEUKLASSE} (2) En {e}")
+                }
+                // Er is een milieuklasse en er is geen enkele fout gemeld: dan
+                // was de envelop leeg, en dat is hierboven al afgevangen.
+                (false, None) => geen_bgt_envelop(),
+            };
+            for (id, title, article) in SCHEURTOETSEN {
+                checks.push(niet_uitgevoerd(
+                    id,
+                    title,
+                    article,
+                    scheur_state_bij_fout,
+                    reden.clone(),
+                ));
+            }
         }
     }
 
@@ -759,11 +1425,27 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
 
     // ── 6. Detaillering (§9.2.1, §9.2.2 en §8.2) ───────────────────────────
     //
-    // Negen eisen. Ze leunen op de uitkomst van de dwarskrachttoets hierboven:
-    // welke tak van s_l,max geldt hangt ervan af of er rekenkundig
-    // dwarskrachtwapening nodig is, en de tak van s_t,max hangt aan
-    // V_Ed <= 0,5·V_Rd,max. Die twee komen dus uit `sr` en worden hier niet
-    // opnieuw bepaald.
+    // Negen eisen. Acht ervan gaan over de STAAF en niet over een snede: de
+    // beugeldiameter, de balkbreedte, de vrije staafafstand, de
+    // wapeningsverhouding van de beugels, A_s,max — dat zijn maten van de korf
+    // die langs de hele staaf gelijk zijn. Zij blijven daarom op het punt met
+    // het grootste moment staan, en er wordt voor hen geen snede gezocht.
+    //
+    // Drie grootheden die zij van §6.2 krijgen gelden wél voor de HELE staaf,
+    // en die worden hier dus ook zo bepaald — niet meer uit één snede:
+    //
+    // * `dwarskrachtwapening_vereist` — de vraag is of er ERGENS in de staaf
+    //   rekenkundig dwarskrachtwapening nodig is. Uit één snede aflezen kan
+    //   dat missen: de snede met de hoogste dwarskracht-unity-check kan in het
+    //   betonspoor liggen terwijl een andere snede juist wél in het
+    //   vakwerkspoor valt (V_Ed/V_Rd,c > 1 daar, maar met een ruime
+    //   beugelweerstand een lage unity check). Dan zou s_l,max in de ruime tak
+    //   van 300 mm belanden waar de strengere tak min(0,75·d; 300) hoort.
+    // * `v_ed_kn` — de grootste |V_Ed| van de staaf: dát is de dwarskracht die
+    //   de beugels het zwaarst belast.
+    // * `v_rd_max_kn` — de KLEINSTE V_Rd,max van de staaf. De tak van s_t,max
+    //   hangt aan V_Ed ≤ 0,5·V_Rd,max, en de grootste V_Ed naast de kleinste
+    //   V_Rd,max is de veilige lezing van die voorwaarde.
     let detail_invoer = DetailleringInvoer {
         section: &section,
         cage: &input.cage,
@@ -771,20 +1453,34 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         f_ctm_mpa: beton.f_ctm,
         force_state: bend_state,
         d_g_mm: input.aggregate_size_mm,
-        dwarskrachtwapening_vereist: Some(matches!(sr.spoor, Spoor::Vakwerkmodel)),
-        // De dwarskracht van het maatgevende dwarskrachtpunt, niet die van het
-        // buigpunt: s_t,max hoort bij de plaats waar de beugels het zwaarst
-        // belast zijn.
-        v_ed_kn: Some(gov_shear.forces.vz_ed.abs()),
-        // `None` zodra het vakwerkmodel niet kon worden opgebouwd — dan is er
-        // geen V_Rd,max en zegt de toets dat, in plaats van in de ruime tak
+        dwarskrachtwapening_vereist: Some(dwars.ergens_vakwerkspoor),
+        v_ed_kn: Some(dwars.v_ed_max_kn),
+        // `None` zodra het vakwerkmodel nergens kon worden opgebouwd — dan is
+        // er geen V_Rd,max en zegt de toets dat, in plaats van in de ruime tak
         // van 500 mm te belanden.
-        v_rd_max_kn: sr.vakwerk.as_ref().map(|v| v.v_rd_max_kn),
+        v_rd_max_kn: dwars.v_rd_max_min_kn,
         blijvend_bekiste_oppervlakken: None,
         dubbel_wapeningsnet: None,
     };
     for c in detailleringstoetsen(&detail_invoer) {
-        checks.push(make_resistance(c));
+        // DE NEGENDE EIS IS WÉL SNEDE-AFHANKELIJK. §9.2.1.1(1) zet A_s,min af
+        // tegen de AANWEZIGE trekwapening, en welke rij dat is volgt uit het
+        // teken van M_Ed. Bij de referentiekorf geeft dezelfde A_s,min aan de
+        // bovenzijde (2Ø12 = 226 mm²) een 2,7 keer hogere unity check dan aan
+        // de onderzijde (3Ø16 = 603 mm²). A_s,min zelf hangt bovendien via de
+        // minimumcombinatie van (M_Ed; N_Ed) af. Op de snede met het grootste
+        // moment blijven staan zou de trekzijde met de minste wapening kunnen
+        // overslaan — en een FALENDE detailleringseis is wél maatgevend voor de
+        // staaf, dus dat is niet vrijblijvend.
+        if c.id == "9.2.1.1_as_min" {
+            checks.push(make_resistance(as_min_over_omhullende(
+                &detail_invoer,
+                &input.forces_envelope,
+                c,
+            )));
+        } else {
+            checks.push(make_resistance(c));
+        }
     }
 
     // 7. Interactiediagrammen voor de weergave (grover: 21 punten).
