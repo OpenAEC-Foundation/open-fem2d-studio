@@ -584,6 +584,33 @@ log("\n[j] Echte rekenkern: de betonbalk, en wat de beugels daar doen");
     // bewijst. 6.2.1(3): pas als V_Ed > V_Rd,c is er rekenkundig
     // dwarskrachtwapening nodig, en dan komt de weerstand volgens 6.2.3
     // UITSLUITEND uit het vakwerkmodel.
+    //
+    // WAAROM DE DWARSKRACHT-UNITY-CHECK IS GEDAALD (was ≈ 0,98, nu ≈ 0,36).
+    // De kern meldde in het gebied V_Ed ≤ V_Rd,c altijd V_Rd,c als weerstand,
+    // óók waar er beugels lagen. De maatgevende snede werd dan de plaats waar
+    // V_Ed net dóór V_Rd,c zakt, en dáár is V_Ed/V_Rd,c per definitie bijna
+    // 1,0 — een artefact van de spoorgrens, niet van deze balk. 6.2.1(2) geeft
+    // een element MET dwarskrachtwapening de weerstand V_Rd,s; 6.2.1(3) gaat
+    // alleen over de vraag of je die wapening moet ONTWERPEN. De kern meldt nu
+    // max(V_Rd,c ; min(V_Rd,s ; V_Rd,max)), en daarmee valt de maatgevende
+    // snede weer op de grootste dwarskracht. Handberekening voor deze balk
+    // (300 × 600, C30/37, 4Ø20 onder, dekking 20, beugel Ø8-200 tweebenig):
+    //
+    //   d      = 600 − (20 + 8 + 10) = 562 mm ; z = 0,9·562 = 505,8 mm
+    //   A_sl   = 4·π/4·20² = 1256,637 mm² ; ρ_l = 1256,637/168 600 = 0,0074534
+    //   k      = 1 + √(200/562) = 1,596550
+    //   (6.2.a)= 0,12·1,596550·∛22,3602·168 600 = 0,12·1,596550·2,81724·168 600
+    //          = 90 992 N = 91,0 kN = V_Rd,c
+    //   A_sw/s = 100,530965/200 = 0,50265483 mm²/mm ; f_ywd = 434,782609
+    //   teller (6.9) = 1,0·300·505,8·0,528·20 = 1 602 374 N
+    //   K = 1 602 374/99 000 = 16,2 → cot θ op de NB-bovengrens 2,5
+    //   (6.9) V_Rd,max = 1 602 374/2,9 = 552 543 N = 552,5 kN
+    //   (6.8) V_Rd,s = 0,50265483·505,8·434,782609·2,5 = 276 351 N = 276,4 kN
+    //   V_Rd = min(276,4 ; 552,5) = 276,4 kN ; UC = 99,0/276,4 = 0,358
+    //
+    // De balk zelf is NIET aangepast: dezelfde maten, dezelfde korf, dezelfde
+    // lasten. Alleen het getal dat de kern meldt is nu het getal dat bij de
+    // constructie hoort.
     check("dwarskracht: de toets is afgerekend", toets("6.2_shear")?.status, "Ok");
     const vEd = variabele("6.2_shear", "V_{Ed}");
     const vRdc = variabele("6.2_shear", "V_{Rd,c}");
@@ -619,6 +646,12 @@ log("\n[j] Echte rekenkern: de betonbalk, en wat de beugels daar doen");
     // de sterkte, dus zelfs op die grens komt V_Ed/V_Rd niet boven ongeveer een
     // half. De bovengrens is hier de eigenlijke bewaker; de ondergrens vangt
     // alleen een toets die stilletjes betekenisloos is geworden.
+    //
+    // Feitelijk komt de balk op 0,358 uit en valt hij dus ook binnen de
+    // strengere band van [i]. De ruimere ondergrens blijft staan omdat de
+    // redenering erachter niet aan dit getal hangt: zodra s door s_l,max wordt
+    // bepaald in plaats van door de sterkte, ligt de benutting laag zonder dat
+    // er iets mis is.
     const BAND_DWARSKRACHT = { min: 0.2, max: BAND.max };
     ok(`dwarskracht: marge geloofwaardig (${BAND_DWARSKRACHT.min} ≤ uc ≤ ${BAND_DWARSKRACHT.max})`,
       uc("6.2_shear") >= BAND_DWARSKRACHT.min && uc("6.2_shear") <= BAND_DWARSKRACHT.max,

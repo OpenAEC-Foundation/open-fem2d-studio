@@ -77,6 +77,11 @@
 //! **De hoek α is vastgelegd op 90°** — rechte beugels. Zie
 //! [`STIRRUP_ALPHA_DEG`] voor de afweging.
 
+// De twee UITVOERINGSgegevens van §8.4 die een langswapeningszone meedraagt.
+// Ze horen bij de verankering en zijn daar ook gedefinieerd; een tweede kopie
+// hier zou twee opsommingen opleveren die uit elkaar kunnen lopen.
+use crate::dekking::{CoverSide, ExposureClass, FaceCover};
+use crate::verankering::{Staafvorm, Stortpositie};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -749,8 +754,40 @@ pub const STIRRUP_ALPHA_DEG: f64 = 90.0;
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct ReinforcementCage {
-    /// Nominale betondekking c_nom op de beugel, in mm (§4.4.1).
+    /// Nominale betondekking c_nom op de beugel, in mm (§4.4.1) — de dekking
+    /// van het ELEMENT.
+    ///
+    /// Dit is de dekking die geldt aan elke zijde die niets eigens zegt. Wie
+    /// niets anders invult, heeft dus precies wat hij vroeger had: één dekking
+    /// rondom. Zie [`Self::cover_at_mm`] en [`crate::dekking::CoverSide`] voor
+    /// wanneer een zijde ervan afwijkt.
     pub cover_mm: f64,
+    /// De eigen dekking en milieuklasse van de BOVENZIJDE (z = h). `None` =
+    /// niet opgegeven; die van het element gelden dan.
+    ///
+    /// 4.4.1.1(1)P meet de dekking tot "het dichtstbijzijnde betonoppervlak";
+    /// bij een vloer met de bovenzijde binnen (XC1) en de onderzijde buiten
+    /// (XC4) zijn dat twee verschillende eisen en dus twee verschillende
+    /// nuttige hoogtes. Leeg = het gedrag van vóór dit veld — dezelfde
+    /// afspraak als bij de vier beugelvelden hieronder, en dezelfde vorm
+    /// (`Option` met `#[serde(default)]`), zodat een projectbestand dat het
+    /// veld niet kent er niet over struikelt.
+    #[serde(default)]
+    #[ts(optional)]
+    pub cover_top: Option<FaceCover>,
+    /// Idem voor de ONDERZIJDE (z = 0).
+    #[serde(default)]
+    #[ts(optional)]
+    pub cover_bottom: Option<FaceCover>,
+    /// Idem voor de twee verticale ZIJKANTEN samen.
+    ///
+    /// Zij bepalen niet de nuttige hoogte maar de dwarsafstand van de
+    /// beugelbenen (§9.2.2(8)), de vrije staafafstand (§8.2(2)) en de
+    /// binnenmaat waarin een rij staven moet passen. Waarom links en rechts
+    /// niet apart staan, staat bij [`crate::dekking::CoverSide`].
+    #[serde(default)]
+    #[ts(optional)]
+    pub cover_sides: Option<FaceCover>,
     /// Beugeldiameter in mm (0 = geen beugel; de hoofdwapening ligt dan direct
     /// achter de dekking).
     pub stirrup_diameter_mm: f64,
@@ -866,19 +903,127 @@ pub fn mirrored_layers(layers: &[RebarLayer], h_mm: f64) -> Vec<RebarLayer> {
 }
 
 impl ReinforcementCage {
-    /// Afstand van de staafas van een rij tot de betonrand waar hij tegenaan ligt.
+    /// De nominale dekking c_nom aan één zijde, in mm.
+    ///
+    /// **Dit is de enige plek waar wordt beslist welke dekking waar geldt.**
+    /// Zegt de zijde niets eigens, dan is het [`Self::cover_mm`] — en dat is
+    /// precies waarom een korf van vóór deze uitbreiding onveranderd rekent:
+    /// alle drie de zijden vallen dan op hetzelfde getal terug.
+    pub fn cover_at_mm(&self, side: CoverSide) -> f64 {
+        self.face(side).cover_mm.unwrap_or(self.cover_mm)
+    }
+
+    /// De milieuklasse aan één zijde, met de klasse van het element als
+    /// terugval. `None` = ook het element heeft er geen; dan is er geen
+    /// c_min,dur en dus geen dekkingstoets (zie [`crate::dekking`]).
+    pub fn exposure_at(
+        &self,
+        side: CoverSide,
+        element: Option<ExposureClass>,
+    ) -> Option<ExposureClass> {
+        self.face(side).exposure_class.or(element)
+    }
+
+    /// De zijde-gegevens zelf.
+    ///
+    /// Een ontbrekend veld (`None`) en een leeg veld
+    /// (`Some(FaceCover::default())`) betekenen hetzelfde — "deze zijde zegt
+    /// niets eigens" — en die twee worden hier meteen gelijkgeschakeld, zodat
+    /// het onderscheid nergens anders in de kern nog bestaat.
+    pub fn face(&self, side: CoverSide) -> FaceCover {
+        match side {
+            CoverSide::Top => self.cover_top,
+            CoverSide::Bottom => self.cover_bottom,
+            CoverSide::Sides => self.cover_sides,
+        }
+        .unwrap_or_default()
+    }
+
+    /// Is de dekking aan alle drie de zijden dezelfde?
+    ///
+    /// De vergelijking gaat over de UITKOMST en niet over de invoer: drie
+    /// zijden die alle drie uitdrukkelijk 30 mm zeggen, zijn hetzelfde bouwwerk
+    /// als een korf die niets per zijde zegt en 30 mm op het element voert. Wie
+    /// hier naar de aanwezigheid van de velden zou kijken, zou van diezelfde
+    /// balk twee verschillende samenvattingen krijgen.
+    ///
+    /// Exacte gelijkheid van de getallen is hier het juiste criterium: het zijn
+    /// ingevoerde maten en geen uitkomsten van een berekening, dus een
+    /// tolerantie zou alleen maar verschillen wegpoetsen die de gebruiker zelf
+    /// heeft ingetikt.
+    pub fn dekking_is_rondom_gelijk(&self) -> bool {
+        let c = self.cover_at_mm(CoverSide::Top);
+        CoverSide::ALL.iter().all(|z| self.cover_at_mm(*z) == c)
+    }
+
+    /// Afstand van de staafas van een rij tot de betonrand waar hij tegenaan
+    /// ligt: c_nom van DIE rand + Ø_beugel + Ø_staaf/2.
+    ///
+    /// # Hoe deze functie weet aan wélke rand de rij ligt
+    ///
+    /// De rij komt binnen als `&RebarRow` en draagt zijn zijde niet zelf; dat
+    /// kan ook niet, want [`RebarRow`] is een aantal en een diameter en verder
+    /// niets. De zijde wordt daarom afgeleid uit de IDENTITEIT van de
+    /// verwijzing: is het `&self.top` of `&self.bottom`, dan is de zijde
+    /// bekend. Elke aanroeper in dit project geeft inderdaad een verwijzing
+    /// naar een rij VAN DEZE KORF door — de trekrij en de drukrij worden overal
+    /// als `&cage.bottom` / `&cage.top` gekozen — dus dat werkt, en het werkt
+    /// zonder dat één van die aanroepers hoeft te veranderen.
+    ///
+    /// Waarom niet gewoon een `side`-argument? Omdat die signatuur op
+    /// tientallen plaatsen wordt aangeroepen, waaronder in modules die op dit
+    /// moment door anderen worden bewerkt. Een gewijzigde signatuur zou dáár
+    /// een aanpassing afdwingen; deze vorm laat elke bestaande aanroeper
+    /// ongemoeid en maakt hem tegelijk juist. Wie een NIEUWE aanroeper schrijft
+    /// en de zijde al kent, neemt beter [`Self::axis_offset_side_mm`].
+    ///
+    /// Wordt een LOSSE rij meegegeven — een kopie, of een rij die niet uit deze
+    /// korf komt — dan is de zijde niet vast te stellen. Er wordt dan niet
+    /// gegokt maar de GROOTSTE van de drie dekkingen genomen: dat geeft de
+    /// grootste asafstand, dus de kleinste nuttige hoogte, en ligt daarmee aan
+    /// de veilige kant.
     pub fn axis_offset_mm(&self, row: &RebarRow) -> f64 {
-        self.cover_mm + self.stirrup_diameter_mm + row.diameter_mm / 2.0
+        self.cover_voor_rij(row) + self.stirrup_diameter_mm + row.diameter_mm / 2.0
+    }
+
+    /// Als [`Self::axis_offset_mm`], maar met de zijde er expliciet bij. De
+    /// rij is dan die van de korf zelf.
+    pub fn axis_offset_side_mm(&self, side: RebarSide) -> f64 {
+        let row = match side {
+            RebarSide::Bottom => &self.bottom,
+            RebarSide::Top => &self.top,
+        };
+        self.cover_at_mm(side.cover_side()) + self.stirrup_diameter_mm + row.diameter_mm / 2.0
+    }
+
+    /// De dekking die bij een rij hoort; zie de toelichting bij
+    /// [`Self::axis_offset_mm`].
+    fn cover_voor_rij(&self, row: &RebarRow) -> f64 {
+        if std::ptr::eq(row, &self.top) {
+            self.cover_at_mm(CoverSide::Top)
+        } else if std::ptr::eq(row, &self.bottom) {
+            self.cover_at_mm(CoverSide::Bottom)
+        } else {
+            // Onbekende rij: de zwaarste dekking, dus de veilige kant.
+            self.cover_at_mm(CoverSide::Top)
+                .max(self.cover_at_mm(CoverSide::Bottom))
+                .max(self.cover_mm)
+        }
     }
 
     /// Nuttige hoogte d van de onderwapening (voor positief moment), mm.
+    ///
+    /// Gebruikt de dekking van de ONDERZIJDE — de rand waar die wapening
+    /// tegenaan ligt. Elke toets die d via deze functie opvraagt, krijgt
+    /// daarmee vanzelf de juiste kant.
     pub fn d_mm(&self, h_mm: f64) -> f64 {
-        h_mm - self.axis_offset_mm(&self.bottom)
+        h_mm - self.axis_offset_side_mm(RebarSide::Bottom)
     }
 
-    /// Afstand d₂ van de bovenwapening tot de bovenrand, mm.
+    /// Afstand d₂ van de bovenwapening tot de bovenrand, mm — met de dekking
+    /// van de BOVENZIJDE.
     pub fn d2_mm(&self) -> f64 {
-        self.axis_offset_mm(&self.top)
+        self.axis_offset_side_mm(RebarSide::Top)
     }
 
     pub fn a_s_bottom_mm2(&self) -> f64 {
@@ -895,14 +1040,14 @@ impl ReinforcementCage {
         let mut lagen = Vec::with_capacity(2);
         if !self.bottom.is_empty() {
             lagen.push(RebarLayer {
-                z_mm: self.axis_offset_mm(&self.bottom),
+                z_mm: self.axis_offset_side_mm(RebarSide::Bottom),
                 area_mm2: self.bottom.area_mm2(),
                 label: format!("onder {}", self.bottom.label()),
             });
         }
         if !self.top.is_empty() {
             lagen.push(RebarLayer {
-                z_mm: h_mm - self.axis_offset_mm(&self.top),
+                z_mm: h_mm - self.axis_offset_side_mm(RebarSide::Top),
                 area_mm2: self.top.area_mm2(),
                 label: format!("boven {}", self.top.label()),
             });
@@ -978,6 +1123,10 @@ impl ReinforcementCage {
     ///
     /// De breedte is b_w — de kleinste breedte van de doorsnede (§6.2.3(1)) —
     /// en niet de flensbreedte: de beugel zit in het lijf.
+    ///
+    /// De dekking is die van de ZIJKANTEN: het zijn de verticale
+    /// betonoppervlakken waar de twee benen tegenaan liggen, niet de boven- of
+    /// onderrand.
     pub fn leg_spacing_mm(&self, section: &ConcreteSection) -> Option<(f64, LegSpacingSource)> {
         if let Some(s_t) = self.stirrup_leg_spacing_mm {
             if s_t > 0.0 {
@@ -987,7 +1136,8 @@ impl ReinforcementCage {
         if self.stirrup_legs != Some(2) || !(self.stirrup_diameter_mm > 0.0) {
             return None;
         }
-        let s_t = section.b_w_mm() - 2.0 * self.cover_mm - self.stirrup_diameter_mm;
+        let s_t = section.b_w_mm() - 2.0 * self.cover_at_mm(CoverSide::Sides)
+            - self.stirrup_diameter_mm;
         if s_t > 0.0 {
             Some((s_t, LegSpacingSource::DerivedTwoLeg))
         } else {
@@ -1019,6 +1169,18 @@ impl ReinforcementCage {
                 fmt_mm(f_ywk)
             ));
         }
+        if !self.dekking_is_rondom_gelijk() {
+            uit.push(format!(
+                "De dekking verschilt per zijde: boven {} mm, onder {} mm, opzij {} mm \
+                 (4.4.1.1(1)P meet tot \"het dichtstbijzijnde betonoppervlak\"). De nuttige \
+                 hoogte van de onderwapening volgt daarom de dekking van de onderzijde en die \
+                 van de bovenwapening die van de bovenzijde; de dwarsafstand van de beugelbenen \
+                 volgt de zijkanten.",
+                fmt_mm(self.cover_at_mm(CoverSide::Top)),
+                fmt_mm(self.cover_at_mm(CoverSide::Bottom)),
+                fmt_mm(self.cover_at_mm(CoverSide::Sides))
+            ));
+        }
         uit
     }
 
@@ -1041,12 +1203,25 @@ impl ReinforcementCage {
         } else {
             "geen beugel".to_string()
         };
+        // Eén dekking rondom leest als "dekking 30 mm" — precies zoals vroeger.
+        // Verschillen de zijden, dan mag die regel niet blijven staan alsof er
+        // één dekking is; dan staan alle drie erbij.
+        let dekking = if self.dekking_is_rondom_gelijk() {
+            format!("dekking {} mm", fmt_mm(self.cover_at_mm(CoverSide::Bottom)))
+        } else {
+            format!(
+                "dekking boven {} / onder {} / opzij {} mm",
+                fmt_mm(self.cover_at_mm(CoverSide::Top)),
+                fmt_mm(self.cover_at_mm(CoverSide::Bottom)),
+                fmt_mm(self.cover_at_mm(CoverSide::Sides))
+            )
+        };
         format!(
-            "onder {}, boven {}, {}, dekking {} mm",
+            "onder {}, boven {}, {}, {}",
             self.bottom.label(),
             self.top.label(),
             beugel,
-            fmt_mm(self.cover_mm)
+            dekking
         )
     }
 
@@ -1065,6 +1240,21 @@ impl ReinforcementCage {
         }
         if self.cover_mm < 0.0 || self.stirrup_diameter_mm < 0.0 {
             return Err("dekking en beugeldiameter mogen niet negatief zijn".into());
+        }
+        // De dekking per zijde. LEEG mag — dat betekent "volg het element" —
+        // maar wat er staat moet een maat zijn. Nul is hier een geldige maat
+        // (dekking 0 bestaat als getal en de norm keurt hem af, niet dit type);
+        // negatief en NaN zijn dat niet.
+        for zijde in CoverSide::ALL {
+            if let Some(c) = self.face(zijde).cover_mm {
+                if !c.is_finite() || c < 0.0 {
+                    return Err(format!(
+                        "de dekking aan de {} is {c} mm opgegeven; dat is geen maat. Laat het \
+                         veld leeg als deze zijde de dekking van het element volgt.",
+                        zijde.label()
+                    ));
+                }
+            }
         }
         if self.bottom.is_empty() && self.top.is_empty() {
             return Err("de korf bevat geen hoofdwapening".into());
@@ -1103,29 +1293,38 @@ impl ReinforcementCage {
         }
         // s_t is een afstand tussen benen die beide binnen het lijf liggen; de
         // buitenste twee liggen op c_nom + Ø_beugel/2 van hun eigen zijkant.
-        // Verder uit elkaar dan dat kunnen ze niet staan.
+        // Verder uit elkaar dan dat kunnen ze niet staan. De dekking is die van
+        // de ZIJKANTEN: het zijn die randen waar de benen tegenaan liggen.
+        let c_zij = self.cover_at_mm(CoverSide::Sides);
         if let Some(s_t) = self.stirrup_leg_spacing_mm {
-            let ruimte = section.b_w_mm() - 2.0 * self.cover_mm - self.stirrup_diameter_mm;
+            let ruimte = section.b_w_mm() - 2.0 * c_zij - self.stirrup_diameter_mm;
             if s_t > ruimte + 1e-9 {
                 return Err(format!(
                     "de dwarsafstand van de beugelbenen is {s_t:.0} mm, maar tussen de \
                      buitenste beenassen past hoogstens {ruimte:.0} mm \
-                     (b_w = {:.0} mm, dekking {:.0} mm, beugel Ø{:.0} mm)",
+                     (b_w = {:.0} mm, dekking {c_zij:.0} mm, beugel Ø{:.0} mm)",
                     section.b_w_mm(),
-                    self.cover_mm,
                     self.stirrup_diameter_mm
                 ));
             }
         }
+        // De rij ligt in de HOOGTE op de dekking van zijn eigen rand, en in de
+        // BREEDTE tussen de twee zijkanten. Die twee dekkingen hoeven niet
+        // dezelfde te zijn; met één dekking rondom staat er precies wat er
+        // altijd stond.
         for (naam, rij, z) in [
-            ("onderwapening", &self.bottom, self.axis_offset_mm(&self.bottom)),
-            ("bovenwapening", &self.top, section.h_mm - self.axis_offset_mm(&self.top)),
+            ("onderwapening", &self.bottom, self.axis_offset_side_mm(RebarSide::Bottom)),
+            (
+                "bovenwapening",
+                &self.top,
+                section.h_mm - self.axis_offset_side_mm(RebarSide::Top),
+            ),
         ] {
             if rij.is_empty() {
                 continue;
             }
             let breedte = section.width_at_mm(z);
-            let binnenbreedte = breedte - 2.0 * (self.cover_mm + self.stirrup_diameter_mm);
+            let binnenbreedte = breedte - 2.0 * (c_zij + self.stirrup_diameter_mm);
             let benodigd = rij.count as f64 * rij.diameter_mm;
             if benodigd > binnenbreedte + 1e-9 {
                 return Err(format!(
@@ -1134,13 +1333,618 @@ impl ReinforcementCage {
                 ));
             }
         }
-        let onder = if self.bottom.is_empty() { 0.0 } else { self.axis_offset_mm(&self.bottom) };
-        let boven = if self.top.is_empty() { 0.0 } else { self.axis_offset_mm(&self.top) };
+        let onder =
+            if self.bottom.is_empty() { 0.0 } else { self.axis_offset_side_mm(RebarSide::Bottom) };
+        let boven =
+            if self.top.is_empty() { 0.0 } else { self.axis_offset_side_mm(RebarSide::Top) };
         if onder + boven >= section.h_mm {
             return Err("boven- en onderwapening overlappen elkaar in de hoogte".into());
         }
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Wapeningszones — de wapening die LANGS de staaf verandert
+// ---------------------------------------------------------------------------
+//
+// WAAROM DIT BESTAAT
+// [`ReinforcementCage`] beschrijft één DOORSNEDE. Zolang er per staaf maar één
+// korf is, ligt over de hele lengte dezelfde wapening, en dan is de enige
+// dekkingslijn die te tekenen valt een vlakke: overal hetzelfde M_Rd. Terwijl
+// §9.2.1.3 juist over het TEGENOVERGESTELDE gaat — "Inkorting van op trek
+// belaste langswapening" — en §9.2.2 over beugels die bij het steunpunt dichter
+// staan dan in het veld. Om de omhullende van M_Ed te kunnen afzetten tegen wat
+// de wapening op elke plaats werkelijk kan opnemen, moet de wapening langs de
+// lengte-as mogen verschillen. Dat is wat deze typen toevoegen.
+//
+// WAAROM ZE NAAST DE KORF WONEN EN NIET ERIN
+// [`ReinforcementCage`] is `Copy` en wordt op tientallen plaatsen doorgegeven
+// waar alleen een DOORSNEDE nodig is: de buigingsberekening, de M-N-κ-motor,
+// de scheurwijdte en de twee tekenkanten. Een lengte-as in dat type zou zich
+// door al die signaturen heen planten, en een `Vec` erin zou het bovendien zijn
+// `Copy` kosten. De zones staan daarom NAAST de korf, in
+// [`ReinforcementZones`], en leveren via [`ReinforcementZones::cage_at_mm`] op
+// elke plaats x weer een gewone `ReinforcementCage` op. Elke bestaande toets
+// blijft daarmee ongewijzigd werken; wie per snede wil rekenen, vraagt eerst de
+// korf op die plaats op.
+//
+// WAAROM TWEE GESCHEIDEN LIJSTEN EN NIET ÉÉN
+// Overwogen is één gecombineerde lijst waarin elke zone zowel de staaflagen als
+// de beugels draagt. Dat is afgevallen om vier redenen.
+//
+// 1. De GRENZEN vallen in de praktijk niet samen. De beugels verdichten bij het
+//    steunpunt (§9.2.2(6), s ≤ s_l,max), de onderwapening kort af in het veld
+//    (§9.2.1.3). Eén lijst zou de VERENIGING van beide grensverzamelingen
+//    moeten dragen: elke beugelgrens knipt ook de langswapening door en
+//    andersom. Dat levert zones op die alleen bestaan omdat het datamodel ze
+//    afdwingt, en de gebruiker moet in elk van die zones ongewijzigde gegevens
+//    overtypen — precies de plek waar een tikfout onzichtbaar blijft.
+// 2. Ze worden door VERSCHILLENDE toetsen gelezen. De buiging, de scheurwijdte
+//    en de dekkingslijn kijken naar de langswapening; §6.2.3 en §9.2.2 kijken
+//    naar de beugels. Eén lijst zou elke toets dwingen door gegevens heen te
+//    kijken die hem niet aangaan.
+// 3. De langswapening heeft een ZIJDE (boven of onder) en de beugels niet.
+//    Boven- en onderwapening korten onafhankelijk van elkaar af; in één
+//    gecombineerde zone zouden beide zijden dezelfde grenzen krijgen, of er zou
+//    binnen de zone alsnog genest moeten worden — en dan zijn het weer twee
+//    lijsten, alleen slechter zichtbaar.
+// 4. "LEEG = HUIDIG GEDRAG" blijft eenduidig. Met twee lijsten betekent een
+//    lege langswapeningslijst "de rijen van `cage` gelden overal" en een lege
+//    beugellijst "de beugelvelden van `cage` gelden overal", los van elkaar.
+//    In één lijst zou een zone die alleen het beugeldeel invult een stille
+//    keuze afdwingen over wat er met de staaflagen gebeurt.
+//
+// De prijs is dat de twee lijsten los van elkaar te valideren zijn en dus twee
+// keer dezelfde aaneensluitingscontrole nodig hebben. Die staat één keer
+// geschreven, in [`controleer_aaneensluiting`].
+
+/// De speling waarmee zonegrenzen als gelijk gelden, in mm.
+///
+/// Zonegrenzen komen uit een gebruikersinvoer of uit een omrekening van meters
+/// naar millimeters; twee getallen die dezelfde grens bedoelen kunnen daardoor
+/// een laatste bit schelen. Deze speling is met opzet ZEER klein: hij vangt
+/// afrondingsruis op en niet een werkelijk gat of een werkelijke overlap. Een
+/// gat van een tiende millimeter is nog steeds een gat.
+pub const ZONE_TOLERANCE_MM: f64 = 1e-6;
+
+/// De zijde waaraan een langswapeningszone ligt.
+///
+/// Dezelfde tweedeling als [`ReinforcementCage::top`] en
+/// [`ReinforcementCage::bottom`]: `Bottom` is de zijde z = 0, `Top` de zijde
+/// z = h. De zijde is nodig omdat boven- en onderwapening onafhankelijk van
+/// elkaar inkorten — bij een doorgaande ligger loopt de bovenwapening juist
+/// dóór waar de onderwapening ophoudt.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub enum RebarSide {
+    /// Onderwapening, de zijde z = 0 — vult [`ReinforcementCage::bottom`].
+    #[default]
+    Bottom,
+    /// Bovenwapening, de zijde z = h — vult [`ReinforcementCage::top`].
+    Top,
+}
+
+impl RebarSide {
+    /// Woordelijke aanduiding voor meldingen en het rapport.
+    pub fn label(self) -> &'static str {
+        match self {
+            RebarSide::Bottom => "onderwapening",
+            RebarSide::Top => "bovenwapening",
+        }
+    }
+
+    /// Het BETONOPPERVLAK waar deze wapening tegenaan ligt — de zijde waarvan
+    /// de dekking telt (4.4.1.1(1)P).
+    ///
+    /// Twee begrippen die op elkaar lijken maar niet hetzelfde zijn:
+    /// [`RebarSide`] zegt wélke staaflaag, [`CoverSide`] zegt wélk
+    /// betonoppervlak — en dat laatste kent er drie, want de zijkanten dragen
+    /// geen langswapeningslaag maar wél een dekking.
+    pub fn cover_side(self) -> CoverSide {
+        match self {
+            RebarSide::Bottom => CoverSide::Bottom,
+            RebarSide::Top => CoverSide::Top,
+        }
+    }
+}
+
+/// Eén stuk langswapening dat over een deel van de staaf ligt — de eenheid
+/// waarin §9.2.1.3 ("Inkorting van op trek belaste langswapening") denkt.
+///
+/// # De maten x
+///
+/// `x_start_mm` en `x_end_mm` zijn gemeten LANGS de staaf vanaf het beginknoop,
+/// in millimeters, met x_start < x_end. Ze zijn de plaats waar het STAAL
+/// begint en ophoudt, dus de fysieke staafuiteinden — niet de plaats waar de
+/// staaf zijn volle kracht kan leveren. Dat verschil is precies §9.2.1.3(3):
+/// "Met de weerstand van staven binnen hun verankeringslengte mag rekening zijn
+/// gehouden, uitgaande van een lineair krachtverloop, zie figuur 9.2." Binnen
+/// l_bd vanaf elk uiteinde telt de staaf dus LINEAIR mee, van nul op het
+/// uiteinde tot vol op l_bd ervandaan; zie
+/// [`crate::verankering::opneembare_krachtfractie`]. Dit type legt alleen vast
+/// wáár de staaf ligt; wie die schuine tak tekent, rekent l_bd uit met
+/// [`crate::verankering::verankeringslengte`].
+///
+/// # Wat er voor §8.4 in staat, en wat niet
+///
+/// [`crate::verankering::VerankeringInvoer`] vraagt vijftien gegevens. De
+/// meeste daarvan volgen uit iets wat al bekend is en horen dus geen invoerveld
+/// te worden — een tweede plek om hetzelfde te zeggen is een tweede plek om het
+/// verkeerd te zeggen:
+///
+/// * `diameter_mm` — uit [`Self::row`];
+/// * `f_ctk_005_mpa`, `alpha_ct`, `gamma_c`, `f_yd_mpa` — uit de
+///   betonsterkteklasse, de staalsoort en de ontwerpsituatie van de staaf;
+/// * `h_mm` en `z_staaf_boven_onderrand_mm` — uit de doorsnede en de korf: de
+///   staafas ligt op c_nom + Ø_beugel + Ø/2 van de rand aan [`Self::side`];
+/// * `soort` (trek of druk) — dat hangt van het momentteken op de beschouwde
+///   snede af en is dus geen eigenschap van de zone;
+/// * `c_d_mm`, `lambda`, `phi_t_mm`, `p_mpa` — afleidbaar uit de korf, de
+///   beugelzones en de dwarsdruk, en hun onbepaalde waarde (K = 0, geen gelaste
+///   dwarsstaaf, p = 0) ligt aan de VEILIGE kant: elke alfa-factor wordt dan
+///   1,0 en l_bd dus maximaal.
+///
+/// Twee gegevens blijven over die niemand kan afleiden en die daarom hier
+/// staan: [`Self::casting_position`] en [`Self::bar_shape`]. Beide zijn
+/// UITVOERINGSgegevens.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct LongitudinalZone {
+    /// Boven- of onderwapening.
+    pub side: RebarSide,
+    /// Het aantal staven en de diameter die op dit stuk liggen.
+    ///
+    /// Een LEGE rij (0 staven) is geldig en betekent "hier ligt aan deze zijde
+    /// geen langswapening". Zo wordt een afgekorte staaf uitgedrukt: de zone
+    /// waar hij ligt draagt zijn staven, de zone erachter draagt er minder of
+    /// geen.
+    pub row: RebarRow,
+    /// Begin van het staal langs de staaf, in mm vanaf het beginknoop.
+    pub x_start_mm: f64,
+    /// Einde van het staal langs de staaf, in mm vanaf het beginknoop.
+    pub x_end_mm: f64,
+    /// Vorm van de staafeinden — tabel 8.2, regel "Vorm van de staaf".
+    ///
+    /// Standaard [`Staafvorm::Recht`]. Een ombuiging of haak maakt α₁ = 0,7 bij
+    /// c_d > 3Φ en verkort l_bd dus met 30 %; dat mag alleen gelden als de
+    /// staaf werkelijk zo is gebogen, en dat weet alleen de tekenaar.
+    #[serde(default)]
+    pub bar_shape: Staafvorm,
+    /// Waar deze staven lagen ten opzichte van de stortrichting — figuur 8.2,
+    /// bepaalt η₁ in (8.2).
+    ///
+    /// Standaard [`Stortpositie::Onderzijde`], de gewone situatie bij werk ter
+    /// plaatse. Dit is het gegeven dat [`crate::verankering`] uitdrukkelijk PER
+    /// STAAF opgegeven wil hebben: dezelfde balk kan van bovenaf zijn gestort
+    /// of op zijn kant zijn geprefabriceerd, en dat scheelt in l_bd een factor
+    /// 1/0,7 = 1,43. Het model kan het niet afleiden, dus het staat hier.
+    #[serde(default)]
+    pub casting_position: Stortpositie,
+}
+
+impl LongitudinalZone {
+    /// Lengte van het stuk staal, mm.
+    pub fn length_mm(&self) -> f64 {
+        self.x_end_mm - self.x_start_mm
+    }
+
+    /// "onderwapening 3Ø16 van 0 tot 1500 mm" — voor meldingen en het rapport.
+    pub fn label(&self) -> String {
+        format!(
+            "{} {} van {} tot {} mm",
+            self.side.label(),
+            self.row.label(),
+            fmt_mm(self.x_start_mm),
+            fmt_mm(self.x_end_mm)
+        )
+    }
+}
+
+/// Eén stuk beugelwapening dat over een deel van de staaf ligt — §9.2.2.
+///
+/// De vijf gegevens zijn precies wat A_sw/s en ρ_w nodig hebben: §9.2.2(5)
+/// omschrijft A_sw als "de oppervlakte van de doorsnede van de
+/// dwarskrachtwapening binnen de lengte s", dus n benen × (π/4)·Ø², en (9.4)
+/// deelt dat door s·b_w·sin α.
+///
+/// # Alle drie de maten zijn hier VERPLICHT en positief
+///
+/// In [`ReinforcementCage`] mogen `stirrup_spacing_mm` en `stirrup_legs`
+/// ontbreken: leeg betekent daar "niet opgegeven" en de dwarskrachttoets meldt
+/// dan dat hij niet kan. In een zone kan dat niet dezelfde betekenis hebben —
+/// wie een stuk staaf apart benoemt, zegt daarmee wat er ligt. Een zone met een
+/// halve opgave zou de toets op dat stuk stilzwijgend uitzetten terwijl hij op
+/// het stuk ernaast wél loopt, en dat is een gat dat in een rapport niet
+/// opvalt.
+///
+/// Een stuk staaf ZONDER beugels is hierin dus niet uit te drukken, en dat is
+/// met opzet: §6.2.1(4) eist ook waar geen berekende dwarskrachtwapening nodig
+/// is tóch de minimumwapening van §9.2.2, behalve bij platen met dwarsverdeling
+/// en bij elementen van ondergeschikt belang. Voor die uitzonderingen blijft de
+/// beugellijst LEEG en gelden de beugelvelden van [`ReinforcementCage`] — die
+/// mogen wél leeg zijn.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct StirrupZone {
+    /// Begin van de zone langs de staaf, in mm vanaf het beginknoop.
+    pub x_start_mm: f64,
+    /// Einde van de zone langs de staaf, in mm vanaf het beginknoop.
+    pub x_end_mm: f64,
+    /// Hart-op-hartafstand s van de beugels LANGS de lengteas, mm — symbool s
+    /// in (9.4), begrensd door s_l,max in §9.2.2(6).
+    pub spacing_mm: f64,
+    /// Aantal beugelbenen n dat één verticale doorsnede kruist — §9.2.2(5).
+    pub legs: u32,
+    /// Beugeldiameter Ø, mm. De nationale bijlage bij §9.2.2(9) eist ten minste
+    /// 5 mm; die toets hoort bij de detaillering en niet bij deze validatie.
+    pub diameter_mm: f64,
+}
+
+impl StirrupZone {
+    /// Lengte van de zone, mm.
+    pub fn length_mm(&self) -> f64 {
+        self.x_end_mm - self.x_start_mm
+    }
+
+    /// "beugel Ø8 h.o.h. 150 mm, 2-benig van 0 tot 1000 mm".
+    pub fn label(&self) -> String {
+        format!(
+            "beugel Ø{} h.o.h. {} mm, {}-benig van {} tot {} mm",
+            fmt_mm(self.diameter_mm),
+            fmt_mm(self.spacing_mm),
+            self.legs,
+            fmt_mm(self.x_start_mm),
+            fmt_mm(self.x_end_mm)
+        )
+    }
+}
+
+/// De wapening die LANGS de staaf verandert, in twee gescheiden lijsten.
+///
+/// **Beide lijsten leeg is het gedrag van vóór dit type**: dan geldt de korf
+/// van de staaf onveranderd over de hele lengte en levert
+/// [`Self::cage_at_mm`] op elke plaats diezelfde korf terug. Elke bestaande
+/// aanroeper blijft daardoor werken zonder wijziging, en `Default` is die lege
+/// stand.
+///
+/// De twee lijsten staan los van elkaar: een gevulde beugellijst zegt niets
+/// over de langswapening en andersom. Zie de toelichting boven dit blok voor
+/// waarom het er twee zijn en geen één.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct ReinforcementZones {
+    /// De langswapening per stuk — §9.2.1.3. Leeg = de rijen `top` en `bottom`
+    /// van de korf gelden over de hele staaf.
+    #[serde(default)]
+    pub longitudinal: Vec<LongitudinalZone>,
+    /// De beugels per stuk — §9.2.2. Leeg = de beugelvelden van de korf gelden
+    /// over de hele staaf.
+    #[serde(default)]
+    pub stirrups: Vec<StirrupZone>,
+}
+
+impl ReinforcementZones {
+    /// Zijn beide lijsten leeg? Dan is er niets te verdelen en geldt overal
+    /// dezelfde korf.
+    pub fn is_empty(&self) -> bool {
+        self.longitudinal.is_empty() && self.stirrups.is_empty()
+    }
+
+    /// **De korf die op plaats `x_mm` geldt.**
+    ///
+    /// Dit is waar dit hele blok om draait: de bestaande toetsen krijgen straks
+    /// per snede een korf in plaats van één korf voor de hele staaf, en dit is
+    /// de enige plek waar die wordt samengesteld.
+    ///
+    /// De regel is eenvoudig: begin bij `base` en laat elke zone die op `x_mm`
+    /// geldt haar eigen velden overschrijven. Een lege zonelijst overschrijft
+    /// niets en levert dus `*base` terug — daarom blijft een staaf zonder zones
+    /// zich precies gedragen zoals hij nu doet.
+    ///
+    /// Wat NIET uit een zone komt en dus altijd van `base` blijft: de dekking
+    /// c_nom — óók die per zijde, want een betonoppervlak houdt over de lengte
+    /// van een staaf dezelfde milieuklasse en dus dezelfde dekking — de dwarsafstand
+    /// s_t van de beugelbenen en de afwijkende beugelkwaliteit f_ywk. De eerste
+    /// is een eigenschap van het element, de laatste twee horen bij de
+    /// beugelsoort en niet bij de verdichting.
+    ///
+    /// # De grenzen
+    ///
+    /// Een zone geldt op [x_start, x_end]. Waar twee zones aan elkaar sluiten,
+    /// wint de zone die daar BEGINT — het interval is links gesloten en rechts
+    /// open — en het staafeinde x = L hoort nog bij de laatste zone. Dat de
+    /// zones aaneensluiten en elkaar niet overlappen bewaakt [`Self::validate`];
+    /// deze keuze maakt de uitkomst ook zonder die controle eenduidig, zodat
+    /// een aanroeper die vergeet te valideren geen willekeurig antwoord krijgt.
+    pub fn cage_at_mm(&self, base: &ReinforcementCage, x_mm: f64) -> ReinforcementCage {
+        let mut korf = *base;
+        for zijde in [RebarSide::Bottom, RebarSide::Top] {
+            let geldend = kies_zone(
+                self.longitudinal.iter().filter(|z| z.side == zijde),
+                x_mm,
+                |z| (z.x_start_mm, z.x_end_mm),
+            );
+            if let Some(z) = geldend {
+                match zijde {
+                    RebarSide::Bottom => korf.bottom = z.row,
+                    RebarSide::Top => korf.top = z.row,
+                }
+            }
+        }
+        if let Some(z) = kies_zone(self.stirrups.iter(), x_mm, |z| (z.x_start_mm, z.x_end_mm)) {
+            korf.stirrup_diameter_mm = z.diameter_mm;
+            korf.stirrup_spacing_mm = Some(z.spacing_mm);
+            korf.stirrup_legs = Some(z.legs);
+        }
+        korf
+    }
+
+    /// Alle plaatsen waar de korf KAN veranderen: de begin- en eindmaten van
+    /// alle zones, oplopend en zonder doublures.
+    ///
+    /// Wie de dekkingslijn tekent of per segment wil toetsen, heeft precies
+    /// deze lijst nodig: tussen twee opeenvolgende grenzen is de korf constant,
+    /// dus daar volstaat één snede. Bij lege zonelijsten komt er een lege lijst
+    /// terug — er is dan niets dat verandert.
+    pub fn boundaries_mm(&self) -> Vec<f64> {
+        let mut uit: Vec<f64> = self
+            .longitudinal
+            .iter()
+            .flat_map(|z| [z.x_start_mm, z.x_end_mm])
+            .chain(self.stirrups.iter().flat_map(|z| [z.x_start_mm, z.x_end_mm]))
+            .collect();
+        uit.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        uit.dedup_by(|a, b| (*a - *b).abs() <= ZONE_TOLERANCE_MM);
+        uit
+    }
+
+    /// Controleer de zonelijsten. **Geen normtoets** — alleen of de indeling
+    /// als indeling kán bestaan, in dezelfde geest als
+    /// [`ReinforcementCage::validate`]: negatieve maten, zones die elkaar
+    /// overlappen, gaten laten of buiten de staaf steken.
+    ///
+    /// Er wordt niets stilzwijgend gerepareerd. Een gat dichttrekken zou
+    /// betekenen dat het model wapening aanneemt die niemand heeft ingevoerd;
+    /// een overlap laten staan zou betekenen dat de uitkomst van de volgorde in
+    /// de lijst afhangt. Beide zijn erger dan een foutmelding, want beide zijn
+    /// in het rapport niet terug te zien.
+    ///
+    /// # De regels
+    ///
+    /// 1. **Beide lijsten leeg → in orde.** Dat is het gedrag van vóór dit
+    ///    type; er valt niets te controleren.
+    /// 2. Elke zone heeft een POSITIEVE lengte (x_end > x_start) en ligt binnen
+    ///    [0, L].
+    /// 3. Per lijst — en bij de langswapening per ZIJDE, want boven en onder
+    ///    korten los van elkaar in — sluiten de zones AANEEN aan en beslaan
+    ///    samen precies [0, L]: geen overlap en geen gat. Een stuk staaf zonder
+    ///    wapening wordt uitgedrukt met een zone met een lege rij, niet met een
+    ///    gat; anders zou "vergeten" en "er ligt niets" hetzelfde zijn.
+    /// 4. Een beugelzone heeft een positieve s, een positieve Ø en ten minste
+    ///    één been — zie [`StirrupZone`] voor waarom een halve opgave hier niet
+    ///    hetzelfde mag betekenen als in de korf.
+    /// 5. De korf die op elk stuk uit [`Self::cage_at_mm`] rolt, past in de
+    ///    doorsnede. Dat wordt niet nog eens overgeschreven maar aan
+    ///    [`ReinforcementCage::validate`] gevraagd, met de plaats erbij.
+    pub fn validate(
+        &self,
+        base: &ReinforcementCage,
+        section: &ConcreteSection,
+        length_mm: f64,
+    ) -> Result<(), String> {
+        if self.is_empty() {
+            return Ok(());
+        }
+        if !(length_mm > 0.0) {
+            return Err(format!(
+                "de staaflengte is {length_mm} mm; zonder lengte is niet te bepalen of de \
+                 wapeningszones de staaf beslaan"
+            ));
+        }
+
+        // Regel 2 en 4 — de losse zones.
+        for (i, z) in self.longitudinal.iter().enumerate() {
+            controleer_bereik(&format!("langswapeningszone {}", i + 1), &z.label(), z.x_start_mm, z.x_end_mm, length_mm)?;
+            if z.row.count > 0 && !(z.row.diameter_mm > 0.0) {
+                return Err(format!(
+                    "langswapeningszone {} ({}) heeft {} staven met diameter {} mm; \
+                     kies een diameter, of zet het aantal op 0 als hier geen wapening ligt",
+                    i + 1,
+                    z.label(),
+                    z.row.count,
+                    z.row.diameter_mm
+                ));
+            }
+            if z.row.diameter_mm < 0.0 {
+                return Err(format!(
+                    "langswapeningszone {} ({}) heeft een negatieve staafdiameter",
+                    i + 1,
+                    z.label()
+                ));
+            }
+        }
+        for (i, z) in self.stirrups.iter().enumerate() {
+            controleer_bereik(&format!("beugelzone {}", i + 1), &z.label(), z.x_start_mm, z.x_end_mm, length_mm)?;
+            let mut ontbreekt: Vec<String> = Vec::new();
+            if !(z.spacing_mm > 0.0) {
+                ontbreekt.push(format!("de beugelafstand s is {} mm", z.spacing_mm));
+            }
+            if !(z.diameter_mm > 0.0) {
+                ontbreekt.push(format!("de beugeldiameter is {} mm", z.diameter_mm));
+            }
+            if z.legs < 1 {
+                ontbreekt.push("het aantal beugelbenen is 0".to_string());
+            }
+            if !ontbreekt.is_empty() {
+                return Err(format!(
+                    "beugelzone {} ({}): {}. Alle drie de maten zijn in een zone verplicht en \
+                     positief; laat de hele beugellijst leeg als de beugels over de staaf niet \
+                     verschillen, dan gelden de beugelvelden van de korf.",
+                    i + 1,
+                    z.label(),
+                    ontbreekt.join(", ")
+                ));
+            }
+        }
+
+        // Regel 3 — de aaneensluiting, per zijde en voor de beugels.
+        for zijde in [RebarSide::Bottom, RebarSide::Top] {
+            let reeks: Vec<(f64, f64, String)> = self
+                .longitudinal
+                .iter()
+                .filter(|z| z.side == zijde)
+                .map(|z| (z.x_start_mm, z.x_end_mm, z.label()))
+                .collect();
+            controleer_aaneensluiting(
+                &format!("de zones van de {}", zijde.label()),
+                &reeks,
+                length_mm,
+            )?;
+        }
+        let beugelreeks: Vec<(f64, f64, String)> = self
+            .stirrups
+            .iter()
+            .map(|z| (z.x_start_mm, z.x_end_mm, z.label()))
+            .collect();
+        controleer_aaneensluiting("de beugelzones", &beugelreeks, length_mm)?;
+
+        // Regel 5 — past de korf op elk stuk nog in de doorsnede? Tussen twee
+        // grenzen verandert er niets, dus het midden van elk stuk volstaat.
+        let grenzen = self.boundaries_mm();
+        for paar in grenzen.windows(2) {
+            let x = 0.5 * (paar[0] + paar[1]);
+            self.cage_at_mm(base, x).validate(section).map_err(|e| {
+                format!("op x = {} mm past de wapening niet: {e}", fmt_mm(x))
+            })?;
+        }
+        Ok(())
+    }
+}
+
+/// De zone die op plaats `x_mm` geldt: van de zones die op of vóór `x_mm`
+/// beginnen die met het GROOTSTE begin, mits `x_mm` niet voorbij haar einde
+/// ligt.
+///
+/// Zo hoort een grens tussen twee aansluitende zones bij de zone die daar
+/// begint, en hoort x = L nog bij de laatste. De volgorde in de lijst doet er
+/// niet toe.
+fn kies_zone<'a, T, I, G>(zones: I, x_mm: f64, grenzen: G) -> Option<&'a T>
+where
+    I: Iterator<Item = &'a T>,
+    G: Fn(&T) -> (f64, f64),
+{
+    let mut beste: Option<&'a T> = None;
+    for z in zones {
+        let (start, eind) = grenzen(z);
+        if x_mm + ZONE_TOLERANCE_MM < start || x_mm > eind + ZONE_TOLERANCE_MM {
+            continue;
+        }
+        let neem = match beste {
+            None => true,
+            Some(p) => start > grenzen(p).0,
+        };
+        if neem {
+            beste = Some(z);
+        }
+    }
+    beste
+}
+
+/// Regel 2: een zone heeft een positieve lengte en ligt binnen de staaf.
+fn controleer_bereik(
+    aanduiding: &str,
+    omschrijving: &str,
+    x_start_mm: f64,
+    x_end_mm: f64,
+    length_mm: f64,
+) -> Result<(), String> {
+    if !x_start_mm.is_finite() || !x_end_mm.is_finite() {
+        return Err(format!("{aanduiding} ({omschrijving}) heeft een begin of einde dat geen getal is"));
+    }
+    if x_end_mm <= x_start_mm + ZONE_TOLERANCE_MM {
+        return Err(format!(
+            "{aanduiding} ({omschrijving}) begint op {} mm en eindigt op {} mm; een zone moet \
+             een positieve lengte hebben",
+            fmt_mm(x_start_mm),
+            fmt_mm(x_end_mm)
+        ));
+    }
+    if x_start_mm < -ZONE_TOLERANCE_MM || x_end_mm > length_mm + ZONE_TOLERANCE_MM {
+        return Err(format!(
+            "{aanduiding} ({omschrijving}) steekt buiten de staaf: hij loopt van {} tot {} mm \
+             terwijl de staaf van 0 tot {} mm loopt",
+            fmt_mm(x_start_mm),
+            fmt_mm(x_end_mm),
+            fmt_mm(length_mm)
+        ));
+    }
+    Ok(())
+}
+
+/// Regel 3: de zones van één reeks sluiten aaneen en beslaan samen precies
+/// [0, L] — geen overlap en geen gat.
+///
+/// Een LEGE reeks is in orde: dat betekent "voor deze reeks gelden de velden
+/// van de korf", en dat is iets anders dan een reeks met gaten erin.
+fn controleer_aaneensluiting(
+    aanduiding: &str,
+    reeks: &[(f64, f64, String)],
+    length_mm: f64,
+) -> Result<(), String> {
+    if reeks.is_empty() {
+        return Ok(());
+    }
+    let mut op_volgorde: Vec<&(f64, f64, String)> = reeks.iter().collect();
+    op_volgorde.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let eerste = op_volgorde[0];
+    if eerste.0 > ZONE_TOLERANCE_MM {
+        return Err(format!(
+            "{aanduiding} laten een gat van 0 tot {} mm: de eerste zone ({}) begint niet bij \
+             het staafbegin. Vul het hele stuk met zones — een zone met 0 staven zegt \
+             uitdrukkelijk dat daar niets ligt, een gat zegt niets.",
+            fmt_mm(eerste.0),
+            eerste.2
+        ));
+    }
+    for paar in op_volgorde.windows(2) {
+        let (vorige, volgende) = (paar[0], paar[1]);
+        if volgende.0 < vorige.1 - ZONE_TOLERANCE_MM {
+            return Err(format!(
+                "{aanduiding} OVERLAPPEN tussen {} en {} mm: {} en {} beslaan allebei dat stuk. \
+                 Welke van de twee er ligt, is dan niet uit te maken.",
+                fmt_mm(volgende.0),
+                fmt_mm(vorige.1.min(volgende.1)),
+                vorige.2,
+                volgende.2
+            ));
+        }
+        if volgende.0 > vorige.1 + ZONE_TOLERANCE_MM {
+            return Err(format!(
+                "{aanduiding} laten een GAT van {} tot {} mm, tussen {} en {}. Vul het met een \
+                 zone; een zone met 0 staven zegt uitdrukkelijk dat daar niets ligt.",
+                fmt_mm(vorige.1),
+                fmt_mm(volgende.0),
+                vorige.2,
+                volgende.2
+            ));
+        }
+    }
+    let laatste = op_volgorde[op_volgorde.len() - 1];
+    if laatste.1 < length_mm - ZONE_TOLERANCE_MM {
+        return Err(format!(
+            "{aanduiding} laten een gat van {} tot {} mm: de laatste zone ({}) reikt niet tot \
+             het staafeinde.",
+            fmt_mm(laatste.1),
+            fmt_mm(length_mm),
+            laatste.2
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1174,6 +1978,146 @@ mod tests {
         assert_eq!(lagen[0].label, "onder 3Ø16");
         assert_eq!(k.summary(), "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm");
         assert_eq!(ConcreteSection::new(300.0, 500.0).name(), "300 x 500");
+    }
+
+    // ── Dekking per zijde (4.4.1.1(1)P) ────────────────────────────────────
+
+    /// DE HARDE EIS. Een korf zonder zijde-gegevens — dus elk bestaand
+    /// projectbestand — moet bit voor bit hetzelfde opleveren als vóór deze
+    /// uitbreiding. Deze test legt dat vast op de plaatsen waar de dekking
+    /// binnenkomt: d, d₂, de lagen, de samenvatting en de dwarsafstand van de
+    /// beugelbenen.
+    #[test]
+    fn een_korf_zonder_zijden_rekent_precies_als_vroeger() {
+        let k = korf();
+        assert!(k.dekking_is_rondom_gelijk());
+        for zijde in CoverSide::ALL {
+            assert_eq!(k.cover_at_mm(zijde), 30.0, "{}", zijde.label());
+        }
+        // Exact de getallen uit `ligging_en_oppervlakten`, hier nog eens los
+        // vastgelegd: 500 − (30 + 8 + 8) = 454 en 30 + 8 + 6 = 44.
+        assert_relative_eq!(k.d_mm(500.0), 454.0);
+        assert_relative_eq!(k.d2_mm(), 44.0);
+        assert_relative_eq!(k.axis_offset_mm(&k.bottom), 46.0);
+        assert_relative_eq!(k.axis_offset_mm(&k.top), 44.0);
+        assert_eq!(k.summary(), "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm");
+        assert!(k.assumptions().iter().all(|a| !a.contains("verschilt per zijde")));
+        // En de JSON van een oud projectbestand — zonder de nieuwe velden —
+        // levert diezelfde korf op.
+        let oud = r#"{"cover_mm": 30, "stirrup_diameter_mm": 8,
+                      "top": {"count": 2, "diameter_mm": 12},
+                      "bottom": {"count": 3, "diameter_mm": 16}}"#;
+        let uit_json: ReinforcementCage = serde_json::from_str(oud).unwrap();
+        assert_eq!(uit_json, k);
+    }
+
+    /// Het geval uit de praktijk: bovenzijde binnen (dekking 25 mm),
+    /// onderzijde buiten (40 mm). De bovenwapening moet dan hoger komen te
+    /// liggen dan met één dekking van 40 mm, en de onderwapening lager dan met
+    /// één van 25 mm.
+    #[test]
+    fn dekking_per_zijde_verplaatst_de_juiste_wapeningslaag() {
+        let k = ReinforcementCage {
+            cover_top: Some(FaceCover { cover_mm: Some(25.0), ..FaceCover::default() }),
+            cover_bottom: Some(FaceCover { cover_mm: Some(40.0), ..FaceCover::default() }),
+            ..korf()
+        };
+        assert!(!k.dekking_is_rondom_gelijk());
+        assert_eq!(k.cover_at_mm(CoverSide::Top), 25.0);
+        assert_eq!(k.cover_at_mm(CoverSide::Bottom), 40.0);
+        // De zijkanten zeggen niets eigens en volgen dus het element: 30 mm.
+        assert_eq!(k.cover_at_mm(CoverSide::Sides), 30.0);
+
+        // d = 500 − (40 + 8 + 16/2) = 444 mm; d₂ = 25 + 8 + 12/2 = 39 mm.
+        assert_relative_eq!(k.d_mm(500.0), 444.0);
+        assert_relative_eq!(k.d2_mm(), 39.0);
+        // Dezelfde getallen via `axis_offset_mm`, de weg die de bestaande
+        // toetsen nemen.
+        assert_relative_eq!(k.axis_offset_mm(&k.bottom), 56.0);
+        assert_relative_eq!(k.axis_offset_mm(&k.top), 39.0);
+        let lagen = k.layers(500.0);
+        assert_relative_eq!(lagen[0].z_mm, 56.0);
+        assert_relative_eq!(lagen[1].z_mm, 461.0);
+        assert!(k.summary().contains("dekking boven 25 / onder 40 / opzij 30 mm"));
+        assert!(k.assumptions().iter().any(|a| a.contains("verschilt per zijde")));
+    }
+
+    /// De zijkantdekking gaat naar de breedte en niet naar de hoogte: s_t
+    /// (§9.2.2(8)) volgt hem, d niet.
+    #[test]
+    fn de_zijkantdekking_stuurt_de_breedte_en_niet_de_hoogte() {
+        let s = ConcreteSection::new(300.0, 500.0);
+        let basis = ReinforcementCage {
+            stirrup_spacing_mm: Some(150.0),
+            stirrup_legs: Some(2),
+            ..korf()
+        };
+        // Rondom 30 mm: s_t = 300 − 2·30 − 8 = 232 mm.
+        assert_relative_eq!(basis.leg_spacing_mm(&s).unwrap().0, 232.0);
+        // Alleen de zijkanten naar 45 mm: s_t = 300 − 2·45 − 8 = 202 mm,
+        // terwijl d ongemoeid blijft.
+        let breed = ReinforcementCage {
+            cover_sides: Some(FaceCover { cover_mm: Some(45.0), ..FaceCover::default() }),
+            ..basis
+        };
+        assert_relative_eq!(breed.leg_spacing_mm(&s).unwrap().0, 202.0);
+        assert_relative_eq!(breed.d_mm(500.0), basis.d_mm(500.0));
+        assert_relative_eq!(breed.d2_mm(), basis.d2_mm());
+    }
+
+    /// De milieuklasse per zijde valt terug op die van het element.
+    #[test]
+    fn de_milieuklasse_valt_per_zijde_terug_op_het_element() {
+        let k = ReinforcementCage {
+            cover_bottom: Some(FaceCover {
+                cover_mm: Some(40.0),
+                exposure_class: Some(ExposureClass::XC4),
+            }),
+            ..korf()
+        };
+        let element = Some(ExposureClass::XC1);
+        assert_eq!(k.exposure_at(CoverSide::Bottom, element), Some(ExposureClass::XC4));
+        assert_eq!(k.exposure_at(CoverSide::Top, element), Some(ExposureClass::XC1));
+        assert_eq!(k.exposure_at(CoverSide::Sides, element), Some(ExposureClass::XC1));
+        // Zonder klasse op het element én zonder klasse op de zijde is er
+        // niets — dan meldt de dekkingstoets dat hij niet kan.
+        assert_eq!(k.exposure_at(CoverSide::Top, None), None);
+        assert_eq!(k.exposure_at(CoverSide::Bottom, None), Some(ExposureClass::XC4));
+    }
+
+    /// Een LOSSE rij — een kopie in plaats van een verwijzing naar de korf —
+    /// is niet aan een zijde toe te wijzen. Er wordt dan niet gegokt maar de
+    /// zwaarste dekking genomen: de grootste asafstand, dus de kleinste d.
+    #[test]
+    fn een_losse_rij_krijgt_de_zwaarste_dekking() {
+        let k = ReinforcementCage {
+            cover_top: Some(FaceCover { cover_mm: Some(25.0), ..FaceCover::default() }),
+            cover_bottom: Some(FaceCover { cover_mm: Some(40.0), ..FaceCover::default() }),
+            ..korf()
+        };
+        let los = k.bottom; // kopie, geen verwijzing in de korf
+        assert_relative_eq!(k.axis_offset_mm(&los), 40.0 + 8.0 + 8.0);
+        let los_boven = k.top;
+        // Ook hier de zwaarste (40), niet de eigen 25: de zijde is onbekend.
+        assert_relative_eq!(k.axis_offset_mm(&los_boven), 40.0 + 8.0 + 6.0);
+    }
+
+    /// Een negatieve dekking per zijde is geen maat en wordt geweigerd; leeg
+    /// blijft geldig.
+    #[test]
+    fn een_onzinnige_zijdedekking_wordt_geweigerd() {
+        let s = ConcreteSection::new(300.0, 500.0);
+        let fout = ReinforcementCage {
+            cover_top: Some(FaceCover { cover_mm: Some(-5.0), ..FaceCover::default() }),
+            ..korf()
+        };
+        let melding = fout.validate(&s).unwrap_err();
+        assert!(melding.contains("bovenzijde"), "{melding}");
+        let nul = ReinforcementCage {
+            cover_sides: Some(FaceCover { cover_mm: Some(0.0), ..FaceCover::default() }),
+            ..korf()
+        };
+        assert!(nul.validate(&s).is_ok());
     }
 
     #[test]
@@ -1633,5 +2577,282 @@ mod tests {
                        "bottom": {"count": 3, "diameter_mm": 16},
                        "stirrup_spacing": 150}"#;
         assert!(serde_json::from_str::<ReinforcementCage>(fout).is_err());
+    }
+
+    // ── De wapeningszones ───────────────────────────────────────────────────
+
+    /// De staaf waarop de zonetests staan: 5 m, 300 × 500.
+    const L: f64 = 5000.0;
+
+    fn doorsnede() -> ConcreteSection {
+        ConcreteSection::new(300.0, 500.0)
+    }
+
+    fn langs(
+        side: RebarSide,
+        count: u32,
+        diameter_mm: f64,
+        x_start_mm: f64,
+        x_end_mm: f64,
+    ) -> LongitudinalZone {
+        LongitudinalZone {
+            side,
+            row: RebarRow { count, diameter_mm },
+            x_start_mm,
+            x_end_mm,
+            bar_shape: Staafvorm::default(),
+            casting_position: Stortpositie::default(),
+        }
+    }
+
+    fn beugel(x_start_mm: f64, x_end_mm: f64, spacing_mm: f64) -> StirrupZone {
+        StirrupZone { x_start_mm, x_end_mm, spacing_mm, legs: 2, diameter_mm: 8.0 }
+    }
+
+    /// De onderwapening kort in het veld af van 5Ø16 naar 3Ø16, en de beugels
+    /// staan bij de twee steunpunten om de 150 en in het midden om de 250.
+    fn zones() -> ReinforcementZones {
+        ReinforcementZones {
+            longitudinal: vec![
+                langs(RebarSide::Bottom, 3, 16.0, 0.0, 1000.0),
+                langs(RebarSide::Bottom, 5, 16.0, 1000.0, 4000.0),
+                langs(RebarSide::Bottom, 3, 16.0, 4000.0, L),
+            ],
+            stirrups: vec![
+                beugel(0.0, 1000.0, 150.0),
+                beugel(1000.0, 4000.0, 250.0),
+                beugel(4000.0, L, 150.0),
+            ],
+        }
+    }
+
+    /// **LEGE ZONELIJSTEN = HET HUIDIGE GEDRAG.** Dit is de belofte waarop het
+    /// hele brok rust: elke bestaande aanroeper blijft werken zonder wijziging.
+    #[test]
+    fn lege_zones_leveren_de_korf_zelf() {
+        let leeg = ReinforcementZones::default();
+        assert!(leeg.is_empty());
+        assert!(leeg.boundaries_mm().is_empty());
+        // Overal, ook buiten de staaf, komt letterlijk dezelfde korf terug.
+        for x in [-1000.0, 0.0, 1.0, 2500.0, L, 9999.0] {
+            assert_eq!(leeg.cage_at_mm(&korf_met_beugels(), x), korf_met_beugels());
+            assert_eq!(leeg.cage_at_mm(&korf(), x), korf());
+        }
+        // En er valt niets af te keuren.
+        assert!(leeg.validate(&korf(), &doorsnede(), L).is_ok());
+        // Zelfs zonder lengte niet: er is niets dat de staaf hoeft te beslaan.
+        assert!(leeg.validate(&korf(), &doorsnede(), 0.0).is_ok());
+    }
+
+    #[test]
+    fn de_korf_op_x_volgt_de_zones() {
+        let z = zones();
+        let basis = korf_met_beugels();
+        assert!(z.validate(&basis, &doorsnede(), L).is_ok());
+
+        // Bij het steunpunt: 3Ø16 onder, beugels om de 150.
+        let bij_steunpunt = z.cage_at_mm(&basis, 500.0);
+        assert_eq!(bij_steunpunt.bottom, RebarRow { count: 3, diameter_mm: 16.0 });
+        assert_eq!(bij_steunpunt.stirrup_spacing_mm, Some(150.0));
+        // In het veld: 5Ø16 onder, beugels om de 250.
+        let in_het_veld = z.cage_at_mm(&basis, 2500.0);
+        assert_eq!(in_het_veld.bottom, RebarRow { count: 5, diameter_mm: 16.0 });
+        assert_eq!(in_het_veld.stirrup_spacing_mm, Some(250.0));
+
+        // Wat geen zone raakt, blijft van de korf: de bovenwapening (geen
+        // enkele zone heeft `Top`), de dekking en het aantal benen.
+        assert_eq!(in_het_veld.top, basis.top);
+        assert_eq!(in_het_veld.cover_mm, basis.cover_mm);
+        assert_eq!(in_het_veld.stirrup_legs, Some(2));
+
+        // De grens hoort bij de zone die daar BEGINT, en het staafeinde bij de
+        // laatste zone.
+        assert_eq!(z.cage_at_mm(&basis, 1000.0).bottom.count, 5);
+        assert_eq!(z.cage_at_mm(&basis, 4000.0).bottom.count, 3);
+        assert_eq!(z.cage_at_mm(&basis, L).bottom.count, 3);
+
+        // De grenzen: 0, 1000, 4000, 5000 — de beugelgrenzen vallen samen met
+        // die van de langswapening en tellen dus niet dubbel.
+        assert_eq!(z.boundaries_mm(), vec![0.0, 1000.0, 4000.0, L]);
+    }
+
+    /// Een afgekorte staaf: de zone erachter draagt 0 staven. Dat is iets
+    /// anders dan een gat, en het moet uitdrukbaar zijn.
+    #[test]
+    fn een_zone_met_nul_staven_zegt_hier_ligt_niets() {
+        let z = ReinforcementZones {
+            longitudinal: vec![
+                langs(RebarSide::Top, 2, 12.0, 0.0, 1500.0),
+                langs(RebarSide::Top, 0, 0.0, 1500.0, L),
+            ],
+            stirrups: vec![],
+        };
+        let basis = korf_met_beugels();
+        assert!(z.validate(&basis, &doorsnede(), L).is_ok());
+        assert_eq!(z.cage_at_mm(&basis, 500.0).top, RebarRow { count: 2, diameter_mm: 12.0 });
+        assert!(z.cage_at_mm(&basis, 3000.0).top.is_empty());
+        // De onderwapening heeft geen zones en blijft dus die van de korf —
+        // anders zou de korf op x = 3000 helemaal geen hoofdwapening hebben.
+        assert_eq!(z.cage_at_mm(&basis, 3000.0).bottom, basis.bottom);
+    }
+
+    #[test]
+    fn overlap_gat_en_buiten_de_staaf_worden_geweigerd() {
+        let basis = korf_met_beugels();
+        let sec = doorsnede();
+
+        // OVERLAP: 0–3000 en 2000–5000.
+        let overlap = ReinforcementZones {
+            longitudinal: vec![
+                langs(RebarSide::Bottom, 3, 16.0, 0.0, 3000.0),
+                langs(RebarSide::Bottom, 5, 16.0, 2000.0, L),
+            ],
+            stirrups: vec![],
+        };
+        let m = overlap.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("OVERLAPPEN"), "{m}");
+
+        // GAT in het midden: 0–2000 en 3000–5000.
+        let gat = ReinforcementZones {
+            longitudinal: vec![
+                langs(RebarSide::Bottom, 3, 16.0, 0.0, 2000.0),
+                langs(RebarSide::Bottom, 3, 16.0, 3000.0, L),
+            ],
+            stirrups: vec![],
+        };
+        let m = gat.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("GAT"), "{m}");
+
+        // GAT aan het begin en aan het einde.
+        let kort = ReinforcementZones {
+            longitudinal: vec![langs(RebarSide::Bottom, 3, 16.0, 500.0, 4500.0)],
+            stirrups: vec![],
+        };
+        let m = kort.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("gat van 0 tot 500 mm"), "{m}");
+        let tot_vier = ReinforcementZones {
+            longitudinal: vec![langs(RebarSide::Bottom, 3, 16.0, 0.0, 4000.0)],
+            stirrups: vec![],
+        };
+        let m = tot_vier.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("staafeinde"), "{m}");
+
+        // BUITEN DE STAAF.
+        let buiten = ReinforcementZones {
+            longitudinal: vec![langs(RebarSide::Bottom, 3, 16.0, 0.0, 6000.0)],
+            stirrups: vec![],
+        };
+        let m = buiten.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("buiten de staaf"), "{m}");
+
+        // NEGATIEVE EN NUL LENGTE.
+        for (a, b) in [(3000.0, 1000.0), (2000.0, 2000.0)] {
+            let z = ReinforcementZones {
+                longitudinal: vec![langs(RebarSide::Bottom, 3, 16.0, a, b)],
+                stirrups: vec![],
+            };
+            let m = z.validate(&basis, &sec, L).unwrap_err();
+            assert!(m.contains("positieve lengte"), "{m}");
+        }
+    }
+
+    /// Boven en onder korten LOS van elkaar in: een volledige onderreeks naast
+    /// een lege bovenreeks is geldig, en een gat aan één zijde blijft een gat.
+    #[test]
+    fn de_twee_zijden_worden_apart_beoordeeld() {
+        let basis = korf_met_beugels();
+        let sec = doorsnede();
+
+        let alleen_onder = ReinforcementZones {
+            longitudinal: vec![langs(RebarSide::Bottom, 3, 16.0, 0.0, L)],
+            stirrups: vec![],
+        };
+        assert!(alleen_onder.validate(&basis, &sec, L).is_ok());
+
+        // De onderreeks is compleet, de bovenreeks heeft een gat: dat mag de
+        // complete onderreeks niet toedekken.
+        let scheef = ReinforcementZones {
+            longitudinal: vec![
+                langs(RebarSide::Bottom, 3, 16.0, 0.0, L),
+                langs(RebarSide::Top, 2, 12.0, 0.0, 2000.0),
+            ],
+            stirrups: vec![],
+        };
+        let m = scheef.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("bovenwapening"), "{m}");
+    }
+
+    #[test]
+    fn een_beugelzone_moet_alle_drie_de_maten_hebben() {
+        let basis = korf_met_beugels();
+        let sec = doorsnede();
+        for kapot in [
+            StirrupZone { x_start_mm: 0.0, x_end_mm: L, spacing_mm: 0.0, legs: 2, diameter_mm: 8.0 },
+            StirrupZone { x_start_mm: 0.0, x_end_mm: L, spacing_mm: 150.0, legs: 0, diameter_mm: 8.0 },
+            StirrupZone { x_start_mm: 0.0, x_end_mm: L, spacing_mm: 150.0, legs: 2, diameter_mm: 0.0 },
+        ] {
+            let z = ReinforcementZones { longitudinal: vec![], stirrups: vec![kapot] };
+            let m = z.validate(&basis, &sec, L).unwrap_err();
+            assert!(m.contains("beugelzone 1"), "{m}");
+        }
+    }
+
+    /// Regel 5: de korf die uit een zone rolt moet nog in de doorsnede passen,
+    /// en dat wordt aan `ReinforcementCage::validate` gevraagd — niet
+    /// overgeschreven.
+    #[test]
+    fn een_zone_die_niet_in_de_breedte_past_wordt_geweigerd() {
+        let basis = korf_met_beugels();
+        let sec = doorsnede(); // 300 mm breed, binnenmaat 300 − 2·(30+8) = 224 mm
+        let te_veel = ReinforcementZones {
+            longitudinal: vec![langs(RebarSide::Bottom, 15, 16.0, 0.0, L)],
+            stirrups: vec![],
+        };
+        let m = te_veel.validate(&basis, &sec, L).unwrap_err();
+        assert!(m.contains("past de wapening niet"), "{m}");
+        assert!(m.contains("x = 2500 mm"), "{m}");
+    }
+
+    /// De JSON-vorm. Weglaten van het hele zoneveld en van de twee lijsten
+    /// levert de lege stand; `bar_shape` en `casting_position` vallen op hun
+    /// standaard; een tikfout blijft een fout.
+    #[test]
+    fn zones_lezen_uit_json() {
+        let leeg: ReinforcementZones = serde_json::from_str("{}").unwrap();
+        assert_eq!(leeg, ReinforcementZones::default());
+
+        let j = r#"{
+            "longitudinal": [
+                {"side": "Bottom", "row": {"count": 3, "diameter_mm": 16},
+                 "x_start_mm": 0, "x_end_mm": 5000}
+            ],
+            "stirrups": [
+                {"x_start_mm": 0, "x_end_mm": 5000,
+                 "spacing_mm": 150, "legs": 2, "diameter_mm": 8}
+            ]
+        }"#;
+        let z: ReinforcementZones = serde_json::from_str(j).unwrap();
+        assert_eq!(z.longitudinal[0].bar_shape, Staafvorm::Recht);
+        assert_eq!(z.longitudinal[0].casting_position, Stortpositie::Onderzijde);
+        assert_eq!(z.stirrups[0].legs, 2);
+
+        // De twee uitvoeringsgegevens komen wél door als ze er staan.
+        let j2 = r#"{"longitudinal": [
+            {"side": "Top", "row": {"count": 2, "diameter_mm": 12},
+             "x_start_mm": 0, "x_end_mm": 5000,
+             "bar_shape": "AndersDanRecht", "casting_position": "Bovenzijde"}
+        ]}"#;
+        let z2: ReinforcementZones = serde_json::from_str(j2).unwrap();
+        assert_eq!(z2.longitudinal[0].bar_shape, Staafvorm::AndersDanRecht);
+        assert_eq!(z2.longitudinal[0].casting_position, Stortpositie::Bovenzijde);
+
+        // Een tikfout in een veldnaam is een fout en geen stille standaard.
+        let fout = r#"{"longitudinal": [
+            {"side": "Bottom", "row": {"count": 3, "diameter_mm": 16},
+             "x_start_mm": 0, "x_eind_mm": 5000}
+        ]}"#;
+        assert!(serde_json::from_str::<ReinforcementZones>(fout).is_err());
+        let fout2 = r#"{"stirrup": []}"#;
+        assert!(serde_json::from_str::<ReinforcementZones>(fout2).is_err());
     }
 }

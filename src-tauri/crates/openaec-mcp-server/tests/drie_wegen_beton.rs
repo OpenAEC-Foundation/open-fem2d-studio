@@ -1237,6 +1237,269 @@ async fn de_bgt_combinatie_en_de_nieuwe_gegevens_komen_door_alle_drie_de_wegen()
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
 
+// ── De wapeningszones langs alle drie de wegen ───────────────────────────────
+
+/// De wapening die LANGS de staaf verandert, op de balk van 5 m hierboven.
+///
+/// De onderwapening kort in: 3Ø16 bij de steunpunten, 5Ø16 in het veld
+/// (§9.2.1.3). De beugels verdichten omgekeerd: h.o.h. 150 mm bij de
+/// steunpunten waar de dwarskracht zit, 250 mm in het veld (§9.2.2). Dat de
+/// twee grensverzamelingen hier toevallig samenvallen is de eenvoud van dit
+/// voorbeeld; in het datamodel staan ze los, juist omdat ze dat in het
+/// algemeen niet doen.
+///
+/// De twee UITVOERINGSgegevens van §8.4 staan er met opzet in en niet op hun
+/// standaard: `bar_shape` en `casting_position` vallen als eerste weg wanneer
+/// een schil de zone niet als zone leest.
+fn wapeningszones() -> Value {
+    json!({
+        "longitudinal": [
+            { "side": "Bottom", "row": { "count": 3, "diameter_mm": 16 },
+              "x_start_mm": 0, "x_end_mm": 1000,
+              "bar_shape": "AndersDanRecht", "casting_position": "Onderzijde" },
+            { "side": "Bottom", "row": { "count": 5, "diameter_mm": 16 },
+              "x_start_mm": 1000, "x_end_mm": 4000 },
+            { "side": "Bottom", "row": { "count": 3, "diameter_mm": 16 },
+              "x_start_mm": 4000, "x_end_mm": 5000,
+              "bar_shape": "AndersDanRecht", "casting_position": "Onderzijde" },
+            { "side": "Top", "row": { "count": 2, "diameter_mm": 12 },
+              "x_start_mm": 0, "x_end_mm": 5000, "casting_position": "Bovenzijde" }
+        ],
+        "stirrups": [
+            { "x_start_mm": 0, "x_end_mm": 1000,
+              "spacing_mm": 150, "legs": 2, "diameter_mm": 8 },
+            { "x_start_mm": 1000, "x_end_mm": 4000,
+              "spacing_mm": 250, "legs": 2, "diameter_mm": 8 },
+            { "x_start_mm": 4000, "x_end_mm": 5000,
+              "spacing_mm": 150, "legs": 2, "diameter_mm": 8 }
+        ]
+    })
+}
+
+/// De MCP-weg, maar dan met de verwachting dat de tool FAALT. Geeft de
+/// foutregel terug.
+async fn weg_mcp_fout(
+    stdin: &mut ChildStdin,
+    reader: &mut BufReader<ChildStdout>,
+    id: u32,
+    tool: &str,
+    argumenten: Value,
+) -> String {
+    schrijf(
+        stdin,
+        json!({
+            "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": tool, "arguments": argumenten }
+        }),
+    )
+    .await;
+    let resp = lees_bericht(reader).await;
+    assert_eq!(resp["id"], id);
+    let result = &resp["result"];
+    assert_eq!(
+        result["isError"], true,
+        "de MCP-tool {tool} accepteerde invoer die geweigerd hoort te worden: {result}"
+    );
+    result["content"][0]["text"]
+        .as_str()
+        .expect("een foutregel")
+        .to_string()
+}
+
+/// De Tauri-weg met de verwachting dat het LEZEN van de invoer faalt.
+fn weg_tauri_fout(invoer: &Value) -> String {
+    match serde_json::from_value::<Vec<concrete_check::ConcreteBeamCheckInput>>(json!([invoer])) {
+        Ok(_) => panic!(
+            "de Tauri-weg accepteerde invoer die geweigerd hoort te worden: {invoer}"
+        ),
+        Err(e) => e.to_string(),
+    }
+}
+
+/// De toetsbrug met de verwachting dat het lezen van de invoer faalt.
+fn weg_toetsbrug_fout(opdracht: &str, inputs: Value) -> String {
+    let verzoek: toetsbrug::Verzoek =
+        serde_json::from_value(json!({ "opdracht": opdracht, "inputs": inputs }))
+            .expect("toetsbrug-verzoek");
+    match toetsbrug::behandel(verzoek) {
+        Ok(v) => panic!("de toetsbrug accepteerde invoer die geweigerd hoort te worden: {v}"),
+        Err(e) => e,
+    }
+}
+
+/// **De wapeningszones langs alle drie de wegen.**
+///
+/// Zelfde reden als bij de beugelgegevens hierboven: `reinforcement_zones` is
+/// OPTIONEEL, en optionele velden vallen stilzwijgend weg als een schil ze niet
+/// kent. Bij de beugels was het gevolg zichtbaar (de dwarskrachttoets rekende
+/// dan zonder wapening); hier is het gevolg juist onzichtbaar — de toetsing
+/// loopt gewoon door met ÉÉN korf over de hele staaf, terwijl de gebruiker de
+/// wapening per zone heeft opgegeven. Dat is de gevaarlijkste soort verlies:
+/// er komt een geloofwaardig rapport uit dat bij een andere balk hoort.
+///
+/// # Wat deze test wél en niet kan aantonen
+///
+/// De zones VERANDEREN NOG NIETS aan de uitkomst. Het aansluiten van de toetsen
+/// op de zones is een volgend brok; deze uitbreiding is een zuivere
+/// type-uitbreiding met "lege lijst = huidig gedrag". Er is dus geen getal in
+/// het antwoord dat verschuift zodra de zones aankomen. Wat er wél is:
+///
+/// 1. de drie wegen ACCEPTEREN de zones en geven daarop hetzelfde antwoord —
+///    een weg die het veld niet kende, zou het door `deny_unknown_fields`
+///    juist WEIGEREN;
+/// 2. dat antwoord is gelijk aan dat zonder zones, wat de belofte "leeg =
+///    huidig gedrag" vastlegt. **Zodra de toetsen op de zones worden
+///    aangesloten, hoort deze gelijkheid te sneuvelen** — dan is dit de plek
+///    om te laten zien welke unity check meebeweegt;
+/// 3. de drie wegen WEIGEREN alle drie een zone met een tikfout in een
+///    veldnaam, met een ontbrekend veld en met een verkeerd getypeerd veld.
+///    Dat is het echte bewijs dat elke schil de zones als ZONES leest en niet
+///    als een doorgegeven brok JSON: een schil die het veld als vrije waarde
+///    zou doorgeven, accepteert die drie alle drie;
+/// 4. de MCP-tooldefinitie noemt `reinforcement_zones` in zijn schema. Voor de
+///    andere twee wegen volgt dat uit het type, maar een MCP-client stuurt
+///    alleen wat het schema noemt — en `additionalProperties: false` zou de
+///    rest wegfilteren voordat de kern hem ziet.
+#[tokio::test]
+async fn de_wapeningszones_komen_door_alle_drie_de_wegen() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut zonder = invoer_balk();
+    zonder["cage"] = korf_met_beugels();
+    let mut met = zonder.clone();
+    met["reinforcement_zones"] = wapeningszones();
+
+    // 1 — alle drie de wegen nemen de zones aan en lopen gelijk.
+    let tauri = weg_tauri_check(&met);
+    let brug = weg_toetsbrug("check_concrete_beams", json!([met]))
+        .as_array()
+        .expect("de toetsbrug levert een lijst")
+        .first()
+        .expect("één staaf erin, één resultaat eruit")
+        .clone();
+    let mcp = weg_mcp(&mut stdin, &mut reader, 700, "check_concrete_beam", met.clone()).await;
+    eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
+    eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
+
+    // 2 — en gelijk aan het antwoord zonder zones. DIT IS DE BELOFTE VAN DIT
+    // BROK; hij hoort te sneuvelen zodra de toetsen op de zones aansluiten.
+    let mcp_zonder =
+        weg_mcp(&mut stdin, &mut reader, 701, "check_concrete_beam", zonder.clone()).await;
+    eis_gelijk("met zones", &mcp, "zonder zones", &mcp_zonder);
+
+    // De zones zelf komen wél heel aan: langs de weg die het invoertype
+    // rechtstreeks leest is de korf per plaats terug te vragen. Bij het
+    // steunpunt 3Ø16 en beugels om de 150, in het veld 5Ø16 en om de 250.
+    let gelezen: Vec<concrete_check::ConcreteBeamCheckInput> =
+        serde_json::from_value(json!([met])).expect("ConcreteBeamCheckInput met zones");
+    let inv = &gelezen[0];
+    let zones = &inv.reinforcement_zones;
+    let bij_steunpunt = zones.cage_at_mm(&inv.cage, 500.0);
+    assert_eq!(bij_steunpunt.bottom.count, 3);
+    assert_eq!(bij_steunpunt.stirrup_spacing_mm, Some(150.0));
+    let in_het_veld = zones.cage_at_mm(&inv.cage, 2500.0);
+    assert_eq!(in_het_veld.bottom.count, 5);
+    assert_eq!(in_het_veld.stirrup_spacing_mm, Some(250.0));
+    // De twee uitvoeringsgegevens van §8.4 zijn niet onderweg op hun standaard
+    // teruggevallen.
+    assert_eq!(
+        zones.longitudinal[0].bar_shape,
+        nen_en_1992_1_1::Staafvorm::AndersDanRecht
+    );
+    assert_eq!(
+        zones.longitudinal[3].casting_position,
+        nen_en_1992_1_1::Stortpositie::Bovenzijde
+    );
+    // En de indeling is als indeling geldig — geen gat, geen overlap.
+    let doorsnede = inv.section.build().expect("geldige doorsnede");
+    zones
+        .validate(&inv.cage, &doorsnede, inv.length_m * 1000.0)
+        .expect("de zones van deze test horen geldig te zijn");
+
+    // 3 — vier manieren om een zone kapot te maken, op alle drie de niveaus
+    // van het type (het zone-object, een langswapeningszone, een beugelzone),
+    // en alle drie de wegen horen ze alle vier te weigeren.
+    let gevallen: [(&str, Value, &str); 4] = [
+        (
+            "tikfout in een veldnaam van een langswapeningszone",
+            json!({ "longitudinal": [
+                { "side": "Bottom", "row": { "count": 3, "diameter_mm": 16 },
+                  "x_start_mm": 0, "x_eind_mm": 5000 }
+            ]}),
+            "x_eind_mm",
+        ),
+        (
+            "een verplicht veld van een beugelzone ontbreekt",
+            json!({ "stirrups": [
+                { "x_start_mm": 0, "x_end_mm": 5000, "spacing_mm": 150, "legs": 2 }
+            ]}),
+            "diameter_mm",
+        ),
+        (
+            "een onbekende lijstnaam op het zone-object zelf",
+            json!({ "longitudinal": [], "beugels": [] }),
+            "beugels",
+        ),
+        // serde noemt bij een typefout het VELD niet, alleen het verwachte
+        // type. `u32` komt in deze deelboom uitsluitend van `legs` voor, dus
+        // het woord bewijst dat de schil tot in de beugelzone heeft gelezen.
+        (
+            "een veld van een beugelzone met het verkeerde type",
+            json!({ "stirrups": [
+                { "x_start_mm": 0, "x_end_mm": 5000,
+                  "spacing_mm": 150, "legs": "twee", "diameter_mm": 8 }
+            ]}),
+            "u32",
+        ),
+    ];
+    let mut id = 710;
+    for (wat, kapot, verwacht_woord) in gevallen {
+        let mut invoer = zonder.clone();
+        invoer["reinforcement_zones"] = kapot;
+
+        let f1 = weg_tauri_fout(&invoer);
+        let f2 = weg_toetsbrug_fout("check_concrete_beams", json!([invoer]));
+        let f3 = weg_mcp_fout(&mut stdin, &mut reader, id, "check_concrete_beam", invoer).await;
+        id += 1;
+
+        for (weg, melding) in [("Tauri", &f1), ("toetsbrug", &f2), ("MCP", &f3)] {
+            assert!(
+                melding.contains(verwacht_woord),
+                "{weg} weigert '{wat}' zonder '{verwacht_woord}' te noemen: {melding}"
+            );
+        }
+    }
+
+    // 4 — het MCP-schema noemt het veld. Zonder deze regel stuurt een client
+    // de zones nooit mee en merkt niemand er iets van.
+    schrijf(
+        &mut stdin,
+        json!({ "jsonrpc": "2.0", "id": 799, "method": "tools/list", "params": {} }),
+    )
+    .await;
+    let lijst = lees_bericht(&mut reader).await;
+    let tool = lijst["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|t| t["name"] == "check_concrete_beam")
+        .expect("check_concrete_beam staat in tools/list");
+    let zoneschema = &tool["inputSchema"]["properties"]["reinforcement_zones"];
+    assert!(
+        zoneschema.is_object(),
+        "het MCP-schema van check_concrete_beam noemt reinforcement_zones niet"
+    );
+    for lijstnaam in ["longitudinal", "stirrups"] {
+        assert!(
+            zoneschema["properties"][lijstnaam]["items"].is_object(),
+            "het zoneschema noemt de lijst '{lijstnaam}' niet, dus een client kan hem niet vullen"
+        );
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
 /// Ankerwaarden. Gelijklopen is niet genoeg: drie wegen kunnen samen
 /// verschuiven. Deze getallen komen uit de referentie-handberekening
 /// (`nen-en-1992-1-1/tests/handberekening.rs`, M_Rd = 113,33 kNm bij deze korf)

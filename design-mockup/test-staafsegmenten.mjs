@@ -196,6 +196,23 @@ log("\n[4] INVARIANT — N gelijke segmenten geeft hetzelfde als géén segmente
 // Model: portaal, statisch onbepaald, met UDL, horizontale knooplast, een
 // scharnier aan één staafeinde en een verdeelde last — dus alles wat de
 // splitslus moet overleven, tegelijk.
+//
+// WAAROM ER OP GEDEELDE STATIONS WORDT VERGELEKEN. Vroeger was het raster van
+// het gesegmenteerde model altijd een VERFIJNING van dat van het
+// ongesegmenteerde: één staaf met 21 stations tegenover n gelijke stukken met
+// elk 21 stations, en L/20 is altijd een veelvoud van L/(20n). Sinds de solver
+// óók op een DEELLASTGRENS een snede zet, gaat dat niet meer op. Beide
+// modellen krijgen wel dezelfde sneden (0,2 en 0,9 op staaf 1), maar daardoor
+// bestaat het ONGESEGMENTEERDE model uit stukken van 0,2L, 0,7L en 0,1L met
+// elk hun eigen stationsafstand, terwijl het gesegmenteerde model diezelfde
+// stukken nóg eens op de segmentgrenzen knipt. De twee rasters overlappen dan
+// gedeeltelijk in plaats van volledig.
+// Er wordt daarom vergeleken op de stations die BEIDE modellen hebben, en het
+// aantal wordt geteld en getoetst: 30 van de 63 in het ongunstigste geval
+// (7 segmenten, staaf 1 met de deellast) en 21 van de 21 op de staven zonder
+// deellast — nog altijd meer meetpunten per staaf dan het oude raster er in
+// totaal had. De knoopverplaatsingen, de reacties en de eindwaarden N/V/M
+// worden onverkort vergeleken; dáár zit de eigenlijke invariant.
 {
   const bouw = (nSeg) => ({
     nodes: [
@@ -265,13 +282,17 @@ log("\n[4] INVARIANT — N gelijke segmenten geeft hetzelfde als géén segmente
       meet(`Mend[${id}]`, s.M_end, e.M_end, schaalM);
       meet(`L[${id}]`, s.L_mm, e.L_mm, e.L_mm);
       const mSchaal = schaalM, vSchaal = schaalV, wSchaal = schaalW;
+      let gedeeld = 0;
       for (let i = 0; i < e.stations_mm.length; i++) {
         const j = bijX(s, e.stations_mm[i], 1e-6);
-        if (j < 0) { failed++; log(`  ✗ station ${e.stations_mm[i]} ontbreekt in de gesegmenteerde staaf ${id}`); continue; }
+        if (j < 0) continue;   // station bestaat alleen links — zie de kop
+        gedeeld++;
         meet(`M[${id}]@${e.stations_mm[i]}`, s.bendingMoment[j], e.bendingMoment[i], mSchaal);
         meet(`V[${id}]@${e.stations_mm[i]}`, s.shearForce[j], e.shearForce[i], vSchaal);
         meet(`w[${id}]@${e.stations_mm[i]}`, s.deflection[j], e.deflection[i], wSchaal);
       }
+      checkWaar(`${nSeg} segm., staaf ${id}: genoeg gedeelde stations om op te vergelijken`,
+        gedeeld >= 21, `${gedeeld} van de ${e.stations_mm.length}`);
     }
     checkWaar(`${nSeg} gelijke segmenten ≡ ongesegmenteerd`, ergste <= 1e-9,
       `grootste afwijking ${ergste.toExponential(2)} (${ergsteNaam})`);

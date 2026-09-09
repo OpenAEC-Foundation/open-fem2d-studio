@@ -1,9 +1,26 @@
 /**
- * ifcExport.ts — IFC4-export van het REKENMODEL (Structural Analysis Domain).
+ * ifcExport.ts — IFC4-export van het rekenmodel (Structural Analysis Domain)
+ * MÉT het bouwkundige model dat ernaast hoort.
  *
  * Schrijft een geldig STEP Physical File (ISO 10303-21, "SPF") zonder externe
- * dependencies. Geëxporteerd wordt het analytische model — knopen, staven,
- * profielen, materialen, opleggingen en lasten — níét de fysieke geometrie.
+ * dependencies. Er staan TWEE modellen in het bestand, aan elkaar geknoopt:
+ *
+ *  1. het ANALYTISCHE model — knopen, staven, profielen, materialen,
+ *     opleggingen en lasten (IfcStructuralAnalysisModel en wat daaronder
+ *     hangt);
+ *  2. het BOUWKUNDIGE model — IfcBeam en IfcColumn met hun werkelijke
+ *     doorsnede als geëxtrudeerd lichaam, en bij een betonstaaf met
+ *     wapeningskorf de IfcReinforcingBar's daarin.
+ *
+ * De koppeling tussen beide is IfcRelAssignsToProduct: de rekenstaaf wijst
+ * naar het bouwkundige element dat hij voorstelt. Dat is de weg die IFC4
+ * daarvoor heeft; zonder die relatie zijn het twee losse modellen in één
+ * bestand en moet de lezer maar raden welke staaf bij welke ligger hoort.
+ *
+ * Waarom het bouwkundige model erbij hoort: een bestand met alleen het
+ * rekenmodel laat de constructie mét haar lasten zien, maar niet WAARMEE ze
+ * gebouwd is. Een ontvanger ziet dan een lijnenspel zonder doorsnede, zonder
+ * wapening en zonder de uitslag van de toetsing.
  *
  * Schema-keuzes (gedocumenteerd, zie ook het testbestand test-ifc-export.mjs):
  *  - IfcStructuralAnalysisModel met PredefinedType IN_PLANE_LOADING_2D:
@@ -69,6 +86,42 @@
  *    twee exports van hetzelfde model byte-identiek zijn.
  *  - IfcOwnerHistory wordt weggelaten ($) — optioneel in IFC4, en een
  *    tijdstempel daarin zou het determinisme breken.
+ *  - EIGENSCHAPPENSETS. Elke staaf krijgt drie sets: `OpenFEM2D_Doorsnede`
+ *    (profielnaam, materiaal, vorm, h/b, A, I, E), `OpenFEM2D_Staaf`
+ *    (staafnummer, staaftype, ligger/kolom, lengte, helling, scharnieren) en
+ *    — zodra er een toetsuitslag is — `OpenFEM2D_Toetsing` (norm,
+ *    maatgevende toets, normartikel, unity check, voldoet ja/nee). Dezelfde
+ *    set hangt via één IfcRelDefinesByProperties aan zowel de rekenstaaf als
+ *    het bouwkundige element.
+ *
+ *    WAAROM EIGEN NAMEN EN GEEN Pset_*: de Pset-namen van IFC4 zijn
+ *    genormeerd en hun eigenschapsnamen ook. Voor "welke unity check haalt
+ *    deze staaf onder welk normartikel" bestaat er geen genormeerde set; een
+ *    bestaande naam oprekken zou een lezer een betekenis voorspiegelen die
+ *    er niet is. Alleen waar de standaard wél past worden standaardnamen
+ *    gebruikt: Pset_BeamCommon/Pset_ColumnCommon (Reference, LoadBearing) en
+ *    Qto_BeamBaseQuantities/Qto_ColumnBaseQuantities (Length,
+ *    CrossSectionArea, GrossVolume).
+ *  - BOUWKUNDIG MODEL. Per staaf één IfcBeam of IfcColumn — de scheiding is
+ *    de 75°-grens van `isOverwegendVerticaal` (steelCheckBuilder.ts), exact
+ *    dezelfde grens die `bepaalStandaardRol` (femTypes.ts) voor het
+ *    staaftype hanteert; twee drempels in één app zou betekenen dat dezelfde
+ *    staaf in de tabel een kolom is en in het IFC-bestand een ligger. Het
+ *    lichaam is een IfcExtrudedAreaSolid van dezelfde IfcProfileDef die het
+ *    rekenmodel gebruikt, geplaatst met lokaal-z langs de staafas en
+ *    lokaal-y in het rekenvlak loodrecht daarop (de hoogterichting van de
+ *    doorsnede). De elementen hangen met IfcRelContainedInSpatialStructure in
+ *    het gebouw. Zonder profieldefinitie (onbekend profiel) komt er GEEN
+ *    bouwkundig element — een ligger zonder doorsnede is geen ligger.
+ *  - WAPENING. Bij een betonstaaf met wapeningskorf komt de langswapening
+ *    als één IfcReinforcingBar per staaf (.MAIN.) op zijn werkelijke plaats
+ *    in de doorsnede, met diameter, oppervlakte en lengte. De beugels komen
+ *    als één IfcReinforcingBar (.LIGATURE.) die de hele beugelreeks
+ *    voorstelt, met aantal en hart-op-hart in de eigen set
+ *    `OpenFEM2D_Beugels` — losse beugelstaven zouden bij s = 100 mm over een
+ *    lange ligger honderden entiteiten per staaf opleveren. Dat de beugels
+ *    zo zijn samengevat staat in `verzamelIfcBeperkingen`. De staven hangen
+ *    met IfcRelAggregates in het bouwkundige element.
  *
  * Bekende beperkingen: `verzamelIfcBeperkingen()` levert ze als leesbare
  * regels op, zodat de IFC-weergave in beeld kan zeggen wat er NIET in het
@@ -77,11 +130,24 @@
 import type {
   Node, Beam, Support, Load, LoadCase,
 } from "../components/fem/femTypes";
-import { parseRechthoek } from "../lib/sectionResolver";
+import { rolVanStaaf, BEAM_LOAD_ROLE_LABEL } from "../components/fem/femTypes";
+import {
+  parseRechthoek, resolveSection, CONCRETE_E_CM,
+} from "../lib/sectionResolver";
+import { isOverwegendVerticaal } from "../lib/steelCheckBuilder";
+import { parseConcreteSection } from "../lib/betonCheckBuilder";
+import { isCltProfiel, parseCltProfiel } from "../lib/cltCheckBuilder";
 import { SUPPORTED_TIMBER_GRADES } from "../lib/timberCheckBuilder";
 import {
-  STEEL_SECTION_DIMS, type SteelSectionDims,
+  STEEL_SECTION_DIMS,
+  type SteelSectionDims, type SteelSectionProps,
 } from "../lib/steelSectionDims.generated";
+import type { MemberCheckResult } from "../lib/checkTypes";
+import {
+  normLabel, sectionLabel, gradeLabel,
+  isSteelCheckResult, isConcreteCheckResult,
+} from "../lib/checkTypes";
+import type { ReinforcementCage } from "../lib/types/concrete/ReinforcementCage";
 
 // ── Invoertype ──────────────────────────────────────────────────────────────
 
@@ -123,6 +189,14 @@ export interface IfcRekenmodelInput {
   eigenGewicht?: boolean;
   /** Aantal belastingcombinaties. Alleen voor de beperkingenlijst. */
   aantalCombinaties?: number;
+  /**
+   * De uitslag van de normtoetsing per staaf (checkStore.results), als die er
+   * is. ONTBREEKT het veld of is de lijst leeg — er is nog niet getoetst, of
+   * de aanroeper geeft ze niet mee — dan blijft de set `OpenFEM2D_Toetsing`
+   * eenvoudig weg en verandert er verder niets aan het bestand. Zo valt de
+   * export nooit om op een model dat nog niet getoetst is.
+   */
+  toetsresultaten?: MemberCheckResult[];
 }
 
 export interface IfcExportOpties {
@@ -141,6 +215,14 @@ export interface IfcExportOpties {
    * belastingen niet thuishoren.
    */
   zonderLasten?: boolean;
+  /**
+   * Laat het BOUWKUNDIGE model weg: geen IfcBeam/IfcColumn, geen
+   * IfcReinforcingBar, geen hoeveelheden — alleen het analytische model met
+   * zijn eigenschappensets. Voor een ontvanger die uitsluitend de
+   * StructuralAnalysisView leest en fysieke elementen als ruis ziet.
+   * Standaard `false`: het bouwkundige model gaat mee.
+   */
+  zonderBouwkundig?: boolean;
 }
 
 // ── Staalprofiel-afmetingen (mm) ────────────────────────────────────────────
@@ -164,6 +246,28 @@ function profielAfmetingen(profiel: string): SteelSectionDims | undefined {
 function isHoutMateriaal(mat: string): boolean {
   if ((SUPPORTED_TIMBER_GRADES as readonly string[]).includes(mat)) return true;
   return /^(C\d{2}|D\d{2}|GL\d{2}[a-z]?)$/i.test(mat.trim());
+}
+
+/**
+ * Herkenning betonsterkteklasse — dezelfde tabel als de solverstijfheid
+ * (NEN-EN 1992-1-1 tabel 3.1, via `CONCRETE_E_CM`). Let op de volgorde bij
+ * het gebruik: "C24" is hout en "C24/30" beton, dus hout wordt eerst
+ * gevraagd; de betonklassen dragen altijd een schuine streep.
+ */
+function isBetonMateriaal(mat: string): boolean {
+  return Object.prototype.hasOwnProperty.call(CONCRETE_E_CM, mat.trim());
+}
+
+/**
+ * IfcMaterial.Category — de gangbare aanduidingen uit de IFC-praktijk.
+ * "concrete", "steel" en "wood" zijn geen enum maar een IfcLabel; ze staan
+ * hier zodat een ontvanger het materiaal kan filteren zonder de naam te
+ * hoeven ontleden.
+ */
+function materiaalCategorie(mat: string): string {
+  if (isHoutMateriaal(mat)) return "wood";
+  if (isBetonMateriaal(mat)) return "concrete";
+  return "steel";
 }
 
 // ── STEP-primitieven ────────────────────────────────────────────────────────
@@ -320,6 +424,15 @@ export function bouwIfcRekenmodel(
   const context = w.ent("IFCGEOMETRICREPRESENTATIONCONTEXT",
     "$", "'Model'", "3", "1.E-5", ref(wereldAssen), "$");
 
+  // Plaatsingsketen terrein → gebouw → element. Het rekenmodel heeft hem niet
+  // nodig (topologie draagt zijn eigen coördinaten), het bouwkundige model
+  // wel: IfcBeam en IfcColumn hangen met hun IfcLocalPlacement aan het
+  // gebouw, zoals elk fysiek element in IFC. Allebei op de oorsprong — het
+  // model kent geen terreinverschuiving.
+  const plaatsingTerrein = w.ent("IFCLOCALPLACEMENT", "$", ref(wereldAssen));
+  const plaatsingGebouw = w.ent("IFCLOCALPLACEMENT",
+    ref(plaatsingTerrein), ref(wereldAssen));
+
   // ── Project → terrein → gebouw ───────────────────────────────────────────
   // Name = projectnaam, Description = omschrijving, LongName = projectnummer.
   const project = w.ent("IFCPROJECT",
@@ -331,10 +444,10 @@ export function bouwIfcRekenmodel(
   const terrein = w.ent("IFCSITE",
     w.guid("terrein"), "$",
     stepString(projectLocatie ?? "Terrein"),
-    "$", "$", "$", "$", "$",
+    "$", "$", ref(plaatsingTerrein), "$", "$",
     ".ELEMENT.", "$", "$", "$", "$", "$");
   const gebouw = w.ent("IFCBUILDING",
-    w.guid("gebouw"), "$", "'Gebouw'", "$", "$", "$", "$", "$",
+    w.guid("gebouw"), "$", "'Gebouw'", "$", "$", ref(plaatsingGebouw), "$", "$",
     ".ELEMENT.", "$", "$", "$");
   w.ent("IFCRELAGGREGATES",
     w.guid("agg:project-terrein"), "$", "$", "$", ref(project), lijst([terrein]));
@@ -409,6 +522,8 @@ export function bouwIfcRekenmodel(
   const richtingY = w.ent("IFCDIRECTION", "(0.,1.,0.)"); // normaal op het rekenvlak
   const memberPerStaaf = new Map<number, number>();
   const staafInfo = new Map<number, StaafInfo>();
+  /** De staven die het bestand werkelijk haalden, in modelvolgorde. */
+  const verwerkteStaven: VerwerkteStaaf[] = [];
   for (const staaf of model.beams) {
     const van = model.nodes.find(n => n.id === staaf.from);
     const naar = model.nodes.find(n => n.id === staaf.to);
@@ -444,6 +559,19 @@ export function bouwIfcRekenmodel(
       beideEindenScharnier ? ".PIN_JOINED_MEMBER." : ".RIGID_JOINED_MEMBER.",
       ref(richtingY));
     memberPerStaaf.set(staaf.id, member);
+    verwerkteStaven.push({
+      staaf, materiaal, profiel, member,
+      lengteMm, ux: lengteMm > 0 ? (naar.x - van.x) / lengteMm : 1,
+      uz: lengteMm > 0 ? (naar.z - van.z) / lengteMm : 0,
+      xMmVan: van.x, zMmVan: van.z,
+      // Hoek met de horizontaal in radialen, 0..π/2 — dezelfde grootheid als
+      // `hellingGradenVanStaaf` (steelCheckBuilder.ts), maar in de eenheid
+      // die IfcPlaneAngleMeasure hier heeft (RADIAN in de eenhedenlijst).
+      hellingRad: Math.atan2(
+        Math.abs(naar.z - van.z), Math.abs(naar.x - van.x)),
+      kolom: isOverwegendVerticaal(staaf, model.nodes),
+      staaftype: BEAM_LOAD_ROLE_LABEL[rolVanStaaf(staaf, model.nodes)],
+    });
 
     // Verbinding met beide knopen; releases als expliciete randvoorwaarde.
     const einden: Array<["start" | "eind", number, boolean?, boolean?, boolean?]> = [
@@ -467,7 +595,9 @@ export function bouwIfcRekenmodel(
   }
 
   // ── Materiaal + profiel per unieke combinatie ────────────────────────────
-  schrijfMaterialenEnProfielen(w, model.beams, memberPerStaaf);
+  // De koppelrelatie zelf volgt verderop: het bouwkundige model moet er
+  // eerst zijn, zodat IfcBeam en IfcColumn aan dezelfde koppeling hangen.
+  const combos = schrijfMaterialenEnProfielen(w, model.beams, memberPerStaaf);
 
   // ── Lasten ───────────────────────────────────────────────────────────────
   const actiesPerGroep = new Map<number, number[]>();
@@ -487,6 +617,25 @@ export function bouwIfcRekenmodel(
       lijst(acties), "$", ref(groep));
   }
 
+  // ── Bouwkundig model: IfcBeam / IfcColumn en de wapening ─────────────────
+  const bouwkundig = opties.zonderBouwkundig === true
+    ? new Map<number, number>()
+    : schrijfBouwkundigModel(w, {
+      staven: verwerkteStaven, combos, context,
+      plaatsingGebouw, gebouw, richtingZ, richtingY, oorsprong,
+    });
+
+  // ── Materiaalkoppeling: rekenstaaf én bouwkundig element ─────────────────
+  for (const staafje of verwerkteStaven) {
+    const element = bouwkundig.get(staafje.staaf.id);
+    if (element === undefined) continue;
+    combos.get(comboSleutel(staafje.materiaal, staafje.profiel))?.objecten.push(element);
+  }
+  schrijfMateriaalkoppelingen(w, combos);
+
+  // ── Eigenschappensets per staaf ──────────────────────────────────────────
+  schrijfStaafEigenschappen(w, verwerkteStaven, combos, bouwkundig, model.toetsresultaten);
+
   // ── Leden van het analysemodel ───────────────────────────────────────────
   const leden = [...connectiePerKnoop.values(), ...memberPerStaaf.values()];
   if (leden.length > 0) {
@@ -503,10 +652,21 @@ export function bouwIfcRekenmodel(
   // voorschrijft (de lijsten zelf zijn verplicht).
   const auteur = stepString(tekst(model.project?.ingenieur) ?? "");
   const organisatie = stepString(tekst(model.project?.bedrijf) ?? "");
+  // FILE_DESCRIPTION draagt de MVD-aanduiding plus, waar het bouwkundige
+  // model meegaat, één eigen zin die zegt wat er nog meer in staat. Die zin
+  // is met opzet GEEN tweede ViewDefinition-naam: de MVD-namen zijn
+  // genormeerd en er bestaat er geen die "rekenmodel plus staven en wapening"
+  // dekt. Een verzonnen naam zou een ontvanger een contract voorspiegelen.
+  const beschrijving = [
+    "'ViewDefinition [StructuralAnalysisView]'",
+    ...(opties.zonderBouwkundig === true ? [] : [
+      "'Rekenmodel met bouwkundige staven (IfcBeam/IfcColumn) en wapening'",
+    ]),
+  ].join(",");
   return [
     "ISO-10303-21;",
     "HEADER;",
-    "FILE_DESCRIPTION(('ViewDefinition [StructuralAnalysisView]'),'2;1');",
+    `FILE_DESCRIPTION((${beschrijving}),'2;1');`,
     `FILE_NAME(${stepString(bestandsnaam)},${stepString(tijdstempel)},` +
       `(${auteur}),(${organisatie}),` +
       "'Open FEM2D Studio','Open FEM2D Studio','');",
@@ -551,62 +711,649 @@ function schrijfOplegging(w: SpfSchrijver, steun: Support): number {
 
 // ── Materialen en profielen ─────────────────────────────────────────────────
 
+/** Alles wat één (materiaal, profiel)-combinatie in het bestand oplevert. */
+interface ComboInfo {
+  materiaal: string;
+  profiel: string;
+  /** #id van de IfcMaterial. */
+  materiaalDef: number;
+  /** Waar IfcRelAssociatesMaterial naar wijst: profielsetgebruik of materiaal. */
+  koppeling: number;
+  doorsnede: DoorsnedeInfo;
+  /** Alles wat aan deze combinatie hangt: rekenstaven én bouwkundige elementen. */
+  objecten: number[];
+}
+
+/** Sleutel van een (materiaal, profiel)-combinatie; ook de naam van de set. */
+function comboSleutel(materiaal: string, profiel: string): string {
+  return `${materiaal} ${profiel}`;
+}
+
 /**
  * Eén IfcMaterial per klasse en één profielset per unieke
- * (materiaal, profiel)-combinatie; alle staven met die combinatie hangen aan
- * dezelfde IfcRelAssociatesMaterial.
+ * (materiaal, profiel)-combinatie.
+ *
+ * De IfcRelAssociatesMaterial wordt hier NIET geschreven: het bouwkundige
+ * model bestaat op dit punt nog niet, en IfcBeam en IfcColumn horen aan
+ * dezelfde koppeling te hangen als de rekenstaaf die ze voorstellen. Zie
+ * `schrijfMateriaalkoppelingen`, dat de relatie legt zodra alle objecten er
+ * zijn — één relatie per combinatie in plaats van twee.
  */
 function schrijfMaterialenEnProfielen(
   w: SpfSchrijver,
   staven: Beam[],
   memberPerStaaf: Map<number, number>,
-): void {
+): Map<string, ComboInfo> {
   const materiaalIds = new Map<string, number>();
   const materiaalId = (naam: string): number => {
     const bestaand = materiaalIds.get(naam);
     if (bestaand !== undefined) return bestaand;
-    const categorie = isHoutMateriaal(naam) ? "'wood'" : "'steel'";
-    const id = w.ent("IFCMATERIAL", stepString(naam), "$", categorie);
+    const id = w.ent("IFCMATERIAL",
+      stepString(naam), "$", stepString(materiaalCategorie(naam)));
     materiaalIds.set(naam, id);
     return id;
   };
 
   // Groepeer staven per (materiaal, profiel)
-  const combos = new Map<string, { materiaal: string; profiel: string; members: number[] }>();
+  const rauw = new Map<string, { materiaal: string; profiel: string; members: number[] }>();
   for (const staaf of staven) {
     const member = memberPerStaaf.get(staaf.id);
     if (member === undefined) continue;
     const materiaal = staaf.material ?? "S235";
     const profiel = staaf.profile ?? "HEA160";
-    const sleutel = `${materiaal} ${profiel}`;
-    const combo = combos.get(sleutel) ?? { materiaal, profiel, members: [] };
+    const sleutel = comboSleutel(materiaal, profiel);
+    const combo = rauw.get(sleutel) ?? { materiaal, profiel, members: [] };
     combo.members.push(member);
-    combos.set(sleutel, combo);
+    rauw.set(sleutel, combo);
   }
 
-  for (const { materiaal, profiel, members } of combos.values()) {
-    const mat = materiaalId(materiaal);
-    const profielDef = schrijfProfiel(w, materiaal, profiel);
+  const combos = new Map<string, ComboInfo>();
+  for (const [sleutel, { materiaal, profiel, members }] of rauw) {
+    const materiaalDef = materiaalId(materiaal);
+    const doorsnede = schrijfDoorsnede(w, materiaal, profiel);
 
     let koppeling: number;
-    if (profielDef !== undefined) {
+    if (doorsnede.profielDef !== undefined) {
       const matProfiel = w.ent("IFCMATERIALPROFILE",
-        stepString(profiel), "$", ref(mat), ref(profielDef), "$", "$");
+        stepString(profiel), "$", ref(materiaalDef), ref(doorsnede.profielDef), "$", "$");
       const profielSet = w.ent("IFCMATERIALPROFILESET",
-        stepString(`${materiaal} ${profiel}`), "$", lijst([matProfiel]), "$");
+        stepString(sleutel), "$", lijst([matProfiel]), "$");
       koppeling = w.ent("IFCMATERIALPROFILESETUSAGE", ref(profielSet), "$", "$");
     } else {
       // Onbekend profiel: IFC4 kent geen concreet naam-zonder-geometrie-
       // profiel (IfcProfileDef is abstract) — koppel alleen het materiaal.
       // De profielnaam blijft behouden in de Description van de staaf.
       console.warn(`[ifcExport] Profiel "${profiel}" onbekend — alleen materiaal gekoppeld.`);
-      koppeling = mat;
+      koppeling = materiaalDef;
     }
+    combos.set(sleutel, {
+      materiaal, profiel, materiaalDef, koppeling, doorsnede,
+      objecten: [...members],
+    });
+  }
+  return combos;
+}
+
+/** Eén IfcRelAssociatesMaterial per combinatie, over alles wat eraan hangt. */
+function schrijfMateriaalkoppelingen(w: SpfSchrijver, combos: Map<string, ComboInfo>): void {
+  for (const { materiaal, profiel, koppeling, objecten } of combos.values()) {
+    if (objecten.length === 0) continue;
     w.ent("IFCRELASSOCIATESMATERIAL",
       w.guid(`matkoppeling:${materiaal}:${profiel}`), "$", "$", "$",
-      lijst(members), ref(koppeling));
+      lijst(objecten), ref(koppeling));
   }
 }
+
+// ── Eigenschappensets ───────────────────────────────────────────────────────
+
+/**
+ * Eén eigenschap in een IfcPropertySet: de naam plus de VOLLEDIG GETYPEERDE
+ * STEP-waarde, bijvoorbeeld `IFCLABEL('S235')`. Het type staat er expliciet
+ * bij omdat IfcPropertySingleValue.NominalValue een SELECT is: zonder
+ * typenaam weet een lezer niet of `0.15` een lengte, een verhouding of een
+ * gewoon getal is.
+ */
+interface Eigenschap {
+  naam: string;
+  waarde: string;
+}
+
+const eLabel = (naam: string, v: string): Eigenschap =>
+  ({ naam, waarde: `IFCLABEL(${stepString(v)})` });
+const eTekst = (naam: string, v: string): Eigenschap =>
+  ({ naam, waarde: `IFCTEXT(${stepString(v)})` });
+const eKenmerk = (naam: string, v: string): Eigenschap =>
+  ({ naam, waarde: `IFCIDENTIFIER(${stepString(v)})` });
+const eJaNee = (naam: string, v: boolean): Eigenschap =>
+  ({ naam, waarde: `IFCBOOLEAN(${v ? ".T." : ".F."})` });
+const eGeheel = (naam: string, v: number): Eigenschap =>
+  ({ naam, waarde: `IFCINTEGER(${Math.round(v)})` });
+/** Getypeerde meetwaarde; `type` is de IFC4-maatnaam, bv. IFCAREAMEASURE. */
+const eMaat = (naam: string, type: string, v: number): Eigenschap =>
+  ({ naam, waarde: `${type}(${reeel(v)})` });
+
+/**
+ * Schrijft een eigenschappenset en hangt hem aan de opgegeven objecten.
+ * Lege set of geen objecten: er komt niets in het bestand. Zo valt de export
+ * niet om op een model dat de gegevens niet heeft.
+ */
+function schrijfEigenschappen(
+  w: SpfSchrijver,
+  setNaam: string,
+  seed: string,
+  eigenschappen: Eigenschap[],
+  objecten: number[],
+): void {
+  if (eigenschappen.length === 0 || objecten.length === 0) return;
+  const ids = eigenschappen.map(e => w.ent("IFCPROPERTYSINGLEVALUE",
+    stepString(e.naam), "$", e.waarde, "$"));
+  const set = w.ent("IFCPROPERTYSET",
+    w.guid(`pset:${seed}`), "$", stepString(setNaam), "$", lijst(ids));
+  w.ent("IFCRELDEFINESBYPROPERTIES",
+    w.guid(`psetrel:${seed}`), "$", "$", "$", lijst(objecten), ref(set));
+}
+
+// ── Bouwkundig model ────────────────────────────────────────────────────────
+
+/** Eén staaf zoals hij het bestand haalde, met wat het vervolg nodig heeft. */
+interface VerwerkteStaaf {
+  staaf: Beam;
+  materiaal: string;
+  profiel: string;
+  /** #id van de IfcStructuralCurveMember van deze staaf. */
+  member: number;
+  /** Staaflengte in mm (modelmaat). */
+  lengteMm: number;
+  /** Eenheidsvector van→naar in wereldassen (x rechts, z omhoog). */
+  ux: number;
+  uz: number;
+  /** Beginknoop in mm. */
+  xMmVan: number;
+  zMmVan: number;
+  /** Hoek met de horizontaal in radialen, 0..π/2. */
+  hellingRad: number;
+  /** Overwegend verticaal (≥ 75°) → kolom; anders ligger. */
+  kolom: boolean;
+  /** Staaftype-label uit femTypes (BEAM_LOAD_ROLE_LABEL). */
+  staaftype: string;
+}
+
+/** Wat het bouwkundige model uit de hoofdopbouw meekrijgt. */
+interface BouwkundigeInvoer {
+  staven: VerwerkteStaaf[];
+  combos: Map<string, ComboInfo>;
+  /** De 'Model'-context waaronder de 'Body'-subcontext komt te hangen. */
+  context: number;
+  plaatsingGebouw: number;
+  gebouw: number;
+  /** IfcDirection (0,0,1) — de extrusierichting in het lokale assenstelsel. */
+  richtingZ: number;
+  /** IfcDirection (0,1,0) — de referentierichting van elk staafassenstelsel. */
+  richtingY: number;
+  /** IfcCartesianPoint (0,0,0). */
+  oorsprong: number;
+}
+
+/**
+ * Schrijft per staaf een IfcBeam of IfcColumn met zijn werkelijke doorsnede,
+ * koppelt hem aan de rekenstaaf en hangt er de wapening in. Levert per
+ * staaf-id het #id van het bouwkundige element.
+ *
+ * ASSENSTELSEL VAN EEN STAAF. Het lichaam is een extrusie langs de lokale z;
+ * de plaatsing zet lokaal-z op de staafas (van→naar) en lokaal-x op de
+ * globale +Y, de normaal op het rekenvlak. Lokaal-y = z × x volgt dan als
+ * (−u_z, 0, u_x): voor een horizontale ligger is dat recht omhoog, voor een
+ * kolom is het de richting in het rekenvlak. Dat is precies goed: de
+ * doorsnede staat met haar HOOGTE in het vlak waarin gerekend wordt, dus het
+ * lijf van een I-profiel ligt in het buigingsvlak — bij een ligger én bij een
+ * kolom.
+ *
+ * Een staaf zonder profieldefinitie of met lengte nul krijgt GEEN bouwkundig
+ * element: een ligger zonder doorsnede is geen ligger, en een extrusie met
+ * diepte 0 is in IFC geen geldige IfcPositiveLengthMeasure. Beide gevallen
+ * staan in `verzamelIfcBeperkingen`.
+ */
+function schrijfBouwkundigModel(
+  w: SpfSchrijver,
+  invoer: BouwkundigeInvoer,
+): Map<number, number> {
+  const uit = new Map<number, number>();
+  const bruikbaar = invoer.staven.filter(s =>
+    s.lengteMm > 0 &&
+    invoer.combos.get(comboSleutel(s.materiaal, s.profiel))?.doorsnede.profielDef !== undefined);
+  if (bruikbaar.length === 0) return uit;
+
+  // Aparte 'Body'-subcontext voor de vaste geometrie: de bestaande
+  // 'Reference'-representaties van het rekenmodel dragen topologie (punten en
+  // randen) en horen niet met vaste lichamen door elkaar te lopen.
+  const lichaamContext = w.ent("IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+    "'Body'", "'Model'", "*", "*", "*", "*",
+    ref(invoer.context), "$", ".MODEL_VIEW.", "$");
+  // Assenstelsel op de oorsprong met de standaardrichtingen. Dient twee
+  // doelen: de Position van elke extrusie en de plaatsing van elke
+  // wapeningsstaaf ten opzichte van zijn element.
+  const nulAssen = w.ent("IFCAXIS2PLACEMENT3D", ref(invoer.oorsprong), "$", "$");
+
+  const elementen: number[] = [];
+  const wapeningPerSoort = new Map<string, number[]>();
+
+  for (const s of bruikbaar) {
+    const combo = invoer.combos.get(comboSleutel(s.materiaal, s.profiel));
+    const profielDef = combo?.doorsnede.profielDef;
+    if (combo === undefined || profielDef === undefined) continue;
+    const lengteM = s.lengteMm / 1000;
+
+    const punt = w.ent("IFCCARTESIANPOINT",
+      `(${meter(s.xMmVan)},0.,${meter(s.zMmVan)})`);
+    const staafAs = w.ent("IFCDIRECTION", `(${reeel(s.ux)},0.,${reeel(s.uz)})`);
+    const assen = w.ent("IFCAXIS2PLACEMENT3D",
+      ref(punt), ref(staafAs), ref(invoer.richtingY));
+    const plaatsing = w.ent("IFCLOCALPLACEMENT",
+      ref(invoer.plaatsingGebouw), ref(assen));
+
+    const lichaam = w.ent("IFCEXTRUDEDAREASOLID",
+      ref(profielDef), ref(nulAssen), ref(invoer.richtingZ), reeel(lengteM));
+    const weergave = w.ent("IFCSHAPEREPRESENTATION",
+      ref(lichaamContext), "'Body'", "'SweptSolid'", lijst([lichaam]));
+    const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([weergave]));
+
+    const soort = s.kolom ? "Kolom" : "Ligger";
+    const element = w.ent(s.kolom ? "IFCCOLUMN" : "IFCBEAM",
+      w.guid(`element:${s.staaf.id}`), "$",
+      stepString(`${soort} ${s.staaf.id}`),
+      stepString(comboSleutel(s.materiaal, s.profiel)), "$",
+      ref(plaatsing), ref(vorm), stepString(String(s.staaf.id)),
+      s.kolom ? ".COLUMN." : ".BEAM.");
+    uit.set(s.staaf.id, element);
+    elementen.push(element);
+
+    // De brug tussen beide modellen: deze rekenstaaf stelt dit element voor.
+    w.ent("IFCRELASSIGNSTOPRODUCT",
+      w.guid(`rekenkoppeling:${s.staaf.id}`), "$", "$", "$",
+      lijst([s.member]), "$", ref(element));
+
+    schrijfHoeveelheden(w, s, element, lengteM);
+
+    // Pset_BeamCommon / Pset_ColumnCommon: de twee eigenschappen waarvan de
+    // betekenis in IFC4 vaststaat en die dit model werkelijk weet. De rest
+    // van die sets (FireRating, IsExternal, ThermalTransmittance) kent het
+    // model niet en blijft dus weg — een verzonnen waarde is erger dan geen.
+    schrijfEigenschappen(w,
+      s.kolom ? "Pset_ColumnCommon" : "Pset_BeamCommon",
+      `gemeen:${s.staaf.id}`,
+      [eKenmerk("Reference", s.profiel), eJaNee("LoadBearing", true)],
+      [element]);
+
+    const staven = schrijfWapening(w, s, element, plaatsing, nulAssen,
+      lichaamContext, combo.doorsnede);
+    if (staven.length > 0) {
+      const soortStaal = wapeningsstaal(s.staaf);
+      const lijstje = wapeningPerSoort.get(soortStaal) ?? [];
+      lijstje.push(...staven);
+      wapeningPerSoort.set(soortStaal, lijstje);
+    }
+  }
+
+  if (elementen.length > 0) {
+    w.ent("IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      w.guid("bevat:gebouw"), "$", "$", "$", lijst(elementen), ref(invoer.gebouw));
+  }
+  for (const [soortStaal, staven] of wapeningPerSoort) {
+    const mat = w.ent("IFCMATERIAL", stepString(soortStaal), "$", "'steel'");
+    w.ent("IFCRELASSOCIATESMATERIAL",
+      w.guid(`wapeningmateriaal:${soortStaal}`), "$", "$", "$",
+      lijst(staven), ref(mat));
+  }
+  return uit;
+}
+
+/**
+ * Qto_BeamBaseQuantities / Qto_ColumnBaseQuantities met de drie hoeveelheden
+ * die uit de geometrie volgen: lengte, doorsnede-oppervlak en bruto inhoud.
+ * De oppervlakte- en inhoudsmaten blijven weg zodra de doorsnede onbekend is
+ * (`bron === "default"`, de terugval op HEA 160): dan zou er een hoeveelheid
+ * staan die bij een ander profiel hoort dan de gebruiker koos.
+ */
+function schrijfHoeveelheden(
+  w: SpfSchrijver,
+  s: VerwerkteStaaf,
+  element: number,
+  lengteM: number,
+): void {
+  const sectie = resolveSection(s.materiaal, s.profiel);
+  const hoeveelheden = [w.ent("IFCQUANTITYLENGTH",
+    "'Length'", "$", "$", reeel(lengteM), "$")];
+  // Bruto doorsnede: bij kruislaaghout is `A` de meewerkende oppervlakte van
+  // de lengtelagen, terwijl de INHOUD van het element de volle strook is.
+  const aM2 = (sectie.aBruto ?? sectie.A) / 1e6;
+  if (sectie.bron !== "default" && aM2 > 0) {
+    hoeveelheden.push(w.ent("IFCQUANTITYAREA",
+      "'CrossSectionArea'", "$", "$", reeel(aM2), "$"));
+    hoeveelheden.push(w.ent("IFCQUANTITYVOLUME",
+      "'GrossVolume'", "$", "$", reeel(aM2 * lengteM), "$"));
+  }
+  const set = w.ent("IFCELEMENTQUANTITY",
+    w.guid(`hoeveelheden:${s.staaf.id}`), "$",
+    s.kolom ? "'Qto_ColumnBaseQuantities'" : "'Qto_BeamBaseQuantities'",
+    "$", "$", lijst(hoeveelheden));
+  w.ent("IFCRELDEFINESBYPROPERTIES",
+    w.guid(`hoeveelhedenrel:${s.staaf.id}`), "$", "$", "$",
+    lijst([element]), ref(set));
+}
+
+/** Wapeningsstaal van een staaf; ontbreekt het veld, dan de builder-default. */
+function wapeningsstaal(staaf: Beam): string {
+  return staaf.checkConfig?.betonStaalsoort ?? "B500B";
+}
+
+/** "3Ø16" — de gangbare notatie voor een rij hoofdwapening. */
+function rijNotatie(aantal: number, diameterMm: number): string {
+  return `${aantal}Ø${diameterMm}`;
+}
+
+/**
+ * De wapeningskorf van een betonstaaf als IfcReinforcingBar's, geplaatst in
+ * het lokale assenstelsel van het bouwkundige element (lokaal-x = breedte,
+ * lokaal-y = hoogte, lokaal-z = langs de staaf vanaf de beginknoop).
+ *
+ * De ligging volgt uit de korf zoals §4.4.1 hem beschrijft: de nominale
+ * dekking c_nom ligt op de BEUGEL, dus de hartlijn van een hoofdstaaf ligt
+ * op c_nom + Ø_beugel + Ø/2 van de rand. De staven van een rij liggen
+ * gelijkmatig over de beschikbare breedte binnen de beugel.
+ *
+ * De beugels worden NIET als losse staven geschreven maar als één
+ * IfcReinforcingBar (.LIGATURE.) die de hele reeks voorstelt, met aantal en
+ * hart-op-hart in de eigen set `OpenFEM2D_Beugels`. Bij s = 100 mm over een
+ * ligger van 12 m zou een staaf-per-beugel 121 entiteiten per ligger kosten,
+ * en dat maal elke ligger in het model.
+ *
+ * Geen korf, geen betonmateriaal, of een doorsnede waarvan de maten niet
+ * bekend zijn → lege lijst, en verder verandert er niets aan het bestand.
+ */
+function schrijfWapening(
+  w: SpfSchrijver,
+  s: VerwerkteStaaf,
+  element: number,
+  plaatsingElement: number,
+  nulAssen: number,
+  lichaamContext: number,
+  doorsnede: DoorsnedeInfo,
+): number[] {
+  const korf: ReinforcementCage | undefined = s.staaf.checkConfig?.betonKorf;
+  if (korf === undefined || !isBetonMateriaal(s.materiaal)) return [];
+  const hMm = doorsnede.hMm;
+  const bwMm = doorsnede.bwMm;
+  if (hMm === undefined || bwMm === undefined || hMm <= 0 || bwMm <= 0) return [];
+
+  // Dekking per zijde. Sinds de korf per oppervlak een eigen c_nom kan
+  // dragen (4.4.1.1(1)P meet tot het DICHTSTBIJZIJNDE betonoppervlak) is de
+  // dekking van de bovenzijde niet meer per se die van de onderzijde. Leeg =
+  // de dekking van het element, precies zoals `cover_at_mm` in de kern het
+  // leest; oude projectbestanden zonder deze velden krijgen dus onveranderd
+  // c_nom rondom.
+  const cElementMm = Math.max(0, korf.cover_mm);
+  const cBovenMm = Math.max(0, korf.cover_top?.cover_mm ?? cElementMm);
+  const cOnderMm = Math.max(0, korf.cover_bottom?.cover_mm ?? cElementMm);
+  const cZijMm = Math.max(0, korf.cover_sides?.cover_mm ?? cElementMm);
+  const beugelMm = Math.max(0, korf.stirrup_diameter_mm);
+  const soortStaal = wapeningsstaal(s.staaf);
+  const staven: number[] = [];
+
+  /** Eén staaf met zijn eigen lichaam, plaatsing en gegevens. */
+  const schrijfStaaf = (
+    seed: string, naam: string, toelichting: string,
+    punten: Array<[number, number, number]>, gesloten: boolean,
+    diameterMm: number, lengteMm: number, soort: string,
+  ): number => {
+    const puntIds = punten.map(([x, y, z]) =>
+      w.ent("IFCCARTESIANPOINT", `(${meter(x)},${meter(y)},${meter(z)})`));
+    const lijn = w.ent("IFCPOLYLINE",
+      lijst(gesloten ? [...puntIds, puntIds[0]] : puntIds));
+    // IfcSweptDiskSolid: een cirkelvormige doorsnede langs de hartlijn. Bij
+    // een gesloten hartlijn blijven StartParam en EndParam weg, zoals IFC4
+    // voorschrijft.
+    const lichaam = w.ent("IFCSWEPTDISKSOLID",
+      ref(lijn), meter(diameterMm / 2), "$", "$", "$");
+    const weergave = w.ent("IFCSHAPEREPRESENTATION",
+      ref(lichaamContext), "'Body'", "'AdvancedSweptSolid'", lijst([lichaam]));
+    const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([weergave]));
+    const plaatsing = w.ent("IFCLOCALPLACEMENT",
+      ref(plaatsingElement), ref(nulAssen));
+    const oppervlakteM2 = (Math.PI / 4) * (diameterMm / 1000) ** 2;
+    return w.ent("IFCREINFORCINGBAR",
+      w.guid(`wapening:${s.staaf.id}:${seed}`), "$",
+      stepString(naam), stepString(toelichting), "$",
+      ref(plaatsing), ref(vorm), stepString(`${s.staaf.id}-${seed}`),
+      stepString(soortStaal), meter(diameterMm), reeel(oppervlakteM2),
+      meter(lengteMm), soort,
+      // Geribde wapening (B500-reeks); een gladde staaf zou .PLAIN. zijn.
+      ".TEXTURED.");
+  };
+
+  // ── Langswapening (§9.2.1) ───────────────────────────────────────────────
+  const rijen: Array<{ zijde: string; rij: typeof korf.top; teken: 1 | -1; cMm: number }> = [
+    { zijde: "onder", rij: korf.bottom, teken: -1, cMm: cOnderMm },
+    { zijde: "boven", rij: korf.top, teken: 1, cMm: cBovenMm },
+  ];
+  for (const { zijde, rij, teken, cMm } of rijen) {
+    if (!(rij.count > 0 && rij.diameter_mm > 0)) continue;
+    // Hartlijn van de staaf: c_nom ligt op de beugel, de hoofdstaaf ligt
+    // daarachter. Bij een dekking die groter is dan de halve doorsnede
+    // (onmogelijke invoer) valt de staaf op de as in plaats van erbuiten.
+    const yMm = teken * Math.max(0, hMm / 2 - cMm - beugelMm - rij.diameter_mm / 2);
+    // Zijdelings geldt de dekking van de ZIJKANTEN, niet die van boven of
+    // onder: die bepaalt de binnenmaat waarin de rij moet passen (8.2(2)).
+    const halveSpreiding = Math.max(0,
+      bwMm / 2 - cZijMm - beugelMm - rij.diameter_mm / 2);
+    for (let i = 0; i < rij.count; i++) {
+      const xMm = rij.count === 1
+        ? 0
+        : -halveSpreiding + (2 * halveSpreiding * i) / (rij.count - 1);
+      staven.push(schrijfStaaf(
+        `${zijde}:${i + 1}`,
+        `Staaf ${s.staaf.id} ${zijde} ${i + 1}/${rij.count}`,
+        `${rijNotatie(rij.count, rij.diameter_mm)} ${zijde}wapening`,
+        [[xMm, yMm, 0], [xMm, yMm, s.lengteMm]], false,
+        rij.diameter_mm, s.lengteMm, ".MAIN.",
+      ));
+    }
+  }
+
+  // ── Beugels (§9.2.2) ─────────────────────────────────────────────────────
+  // De beugel loopt van onder naar boven; hij ligt dus tussen de dekking van
+  // de onderzijde en die van de bovenzijde. Zijn hartlijn zit daarmee niet
+  // meer per se op halve hoogte, en dat is het punt van de zijde-eigen
+  // dekking.
+  const xs = bwMm / 2 - cZijMm - beugelMm / 2;
+  const yOnder = -hMm / 2 + Math.min(hMm / 2, cOnderMm + beugelMm / 2);
+  const yBoven = hMm / 2 - Math.min(hMm / 2, cBovenMm + beugelMm / 2);
+  const ys = (yBoven - yOnder) / 2;
+  const yMidden = (yBoven + yOnder) / 2;
+  // Een beugel die door de dekking heen valt (een dekking groter dan de halve
+  // breedte of hoogte) is geen beugel; hem toch schrijven zou een lichaam met
+  // samenvallende punten opleveren en een BarLength van 0 — allebei ongeldig
+  // voor de IfcPositiveLengthMeasure die IFC4 hier eist.
+  if (beugelMm > 0 && xs > 0 && ys > 0) {
+    const omtrekMm = 2 * (2 * xs + 2 * ys);
+    const beugel = schrijfStaaf(
+      "beugel",
+      `Staaf ${s.staaf.id} beugel`,
+      `Beugel Ø${beugelMm}` +
+      (korf.stirrup_spacing_mm !== undefined && korf.stirrup_spacing_mm !== null
+        ? ` h.o.h. ${korf.stirrup_spacing_mm} mm` : ""),
+      [
+        [-xs, yMidden - ys, 0], [xs, yMidden - ys, 0],
+        [xs, yMidden + ys, 0], [-xs, yMidden + ys, 0],
+      ], true,
+      beugelMm, omtrekMm, ".LIGATURE.",
+    );
+    staven.push(beugel);
+
+    const eigenschappen: Eigenschap[] = [
+      eMaat("Diameter", "IFCPOSITIVELENGTHMEASURE", beugelMm / 1000),
+      eTekst("Toelichting",
+        "Deze staaf stelt de HELE beugelreeks van de staaf voor; hij is " +
+        "getekend op de plaats van de eerste beugel. Aantal en hart-op-hart " +
+        "staan hieronder."),
+    ];
+    const hoh = korf.stirrup_spacing_mm;
+    if (hoh !== undefined && hoh !== null && hoh > 0) {
+      eigenschappen.push(eMaat("HartOpHart", "IFCPOSITIVELENGTHMEASURE", hoh / 1000));
+      eigenschappen.push(eGeheel("Aantal", Math.floor(s.lengteMm / hoh) + 1));
+    }
+    if (korf.stirrup_legs !== undefined && korf.stirrup_legs !== null) {
+      eigenschappen.push(eGeheel("AantalBenen", korf.stirrup_legs));
+    }
+    schrijfEigenschappen(w, "OpenFEM2D_Beugels",
+      `beugels:${s.staaf.id}`, eigenschappen, [beugel]);
+  }
+
+  if (staven.length > 0) {
+    // De wapening zit IN het element; IfcRelAggregates is in IFC4 de relatie
+    // die dat uitdrukt. De staven horen daarom NIET ook nog eens rechtstreeks
+    // in het gebouw te hangen — een object hoort bij één geheel.
+    w.ent("IFCRELAGGREGATES",
+      w.guid(`wapeningkorf:${s.staaf.id}`), "$", "$", "$",
+      ref(element), lijst(staven));
+
+    // Samenvatting van de korf op het element zelf, zodat een lezer die niet
+    // in de losse staven duikt toch ziet waarmee gewapend is.
+    const samenvatting: Eigenschap[] = [
+      eLabel("Wapeningsstaal", soortStaal),
+      eMaat("Betondekking", "IFCPOSITIVELENGTHMEASURE", cElementMm / 1000),
+    ];
+    if (korf.bottom.count > 0 && korf.bottom.diameter_mm > 0) {
+      samenvatting.push(eLabel("Onderwapening",
+        rijNotatie(korf.bottom.count, korf.bottom.diameter_mm)));
+    }
+    if (korf.top.count > 0 && korf.top.diameter_mm > 0) {
+      samenvatting.push(eLabel("Bovenwapening",
+        rijNotatie(korf.top.count, korf.top.diameter_mm)));
+    }
+    if (beugelMm > 0) {
+      samenvatting.push(eMaat("Beugeldiameter", "IFCPOSITIVELENGTHMEASURE",
+        beugelMm / 1000));
+    }
+    schrijfEigenschappen(w, "OpenFEM2D_Wapeningskorf",
+      `korf:${s.staaf.id}`, samenvatting, [element]);
+  }
+  return staven;
+}
+
+// ── Eigenschappensets per staaf ─────────────────────────────────────────────
+
+/**
+ * De drie sets die elke staaf draagt: `OpenFEM2D_Doorsnede`,
+ * `OpenFEM2D_Staaf` en — alleen als er een toetsuitslag is —
+ * `OpenFEM2D_Toetsing`. Elke set hangt via ÉÉN IfcRelDefinesByProperties aan
+ * zowel de rekenstaaf als het bouwkundige element: het is dezelfde staaf, en
+ * twee kopieën van dezelfde eigenschappen zouden uit elkaar kunnen lopen.
+ *
+ * Alle grootheden staan in SI, zoals de rest van het bestand: m, m², m⁴, Pa.
+ */
+function schrijfStaafEigenschappen(
+  w: SpfSchrijver,
+  staven: VerwerkteStaaf[],
+  combos: Map<string, ComboInfo>,
+  bouwkundig: Map<number, number>,
+  toetsresultaten: MemberCheckResult[] | undefined,
+): void {
+  const uitslagPerStaaf = new Map<number, MemberCheckResult>();
+  for (const r of toetsresultaten ?? []) uitslagPerStaaf.set(r.beam_id, r);
+
+  for (const s of staven) {
+    const doelen = [s.member];
+    const element = bouwkundig.get(s.staaf.id);
+    if (element !== undefined) doelen.push(element);
+    const doorsnede = combos.get(comboSleutel(s.materiaal, s.profiel))?.doorsnede;
+    const sectie = resolveSection(s.materiaal, s.profiel);
+    const bekend = sectie.bron !== "default";
+
+    // ── Doorsnede ──────────────────────────────────────────────────────────
+    const dEig: Eigenschap[] = [
+      eLabel("Profielnaam", s.profiel),
+      eLabel("Materiaal", s.materiaal),
+      eLabel("Materiaalsoort", materiaalCategorie(s.materiaal)),
+      eLabel("Doorsnedevorm", doorsnede?.vorm ?? "onbekend"),
+    ];
+    if (doorsnede?.hMm !== undefined && doorsnede.hMm > 0) {
+      dEig.push(eMaat("Hoogte", "IFCPOSITIVELENGTHMEASURE", doorsnede.hMm / 1000));
+    }
+    if (doorsnede?.bMm !== undefined && doorsnede.bMm > 0) {
+      dEig.push(eMaat("Breedte", "IFCPOSITIVELENGTHMEASURE", doorsnede.bMm / 1000));
+    }
+    if (bekend && sectie.A > 0) {
+      dEig.push(eMaat("Oppervlakte", "IFCAREAMEASURE", sectie.A / 1e6));
+    }
+    if (bekend && sectie.I > 0) {
+      dEig.push(eMaat("TraagheidsmomentY", "IFCMOMENTOFINERTIAMEASURE", sectie.I / 1e12));
+    }
+    if (bekend && sectie.E > 0) {
+      // N/mm² → Pa. De eenhedenlijst van dit bestand is SI, dus ook de
+      // E-modulus staat er in pascal en niet in de N/mm² van het scherm.
+      dEig.push(eMaat("Elasticiteitsmodulus", "IFCMODULUSOFELASTICITYMEASURE",
+        sectie.E * 1e6));
+    }
+    const props = doorsnede?.props;
+    if (props) {
+      dEig.push(eMaat("TraagheidsmomentZ", "IFCMOMENTOFINERTIAMEASURE", props.iz / 1e12));
+      dEig.push(eMaat("WeerstandsmomentElastischY", "IFCSECTIONMODULUSMEASURE", props.welY / 1e9));
+      dEig.push(eMaat("WeerstandsmomentPlastischY", "IFCSECTIONMODULUSMEASURE", props.wplY / 1e9));
+      dEig.push(eMaat("Torsietraagheidsmoment", "IFCMOMENTOFINERTIAMEASURE", props.it / 1e12));
+    }
+    schrijfEigenschappen(w, "OpenFEM2D_Doorsnede",
+      `doorsnede:${s.staaf.id}`, dEig, doelen);
+
+    // ── Staaf ──────────────────────────────────────────────────────────────
+    const rel = s.staaf.releases ?? {};
+    const sEig: Eigenschap[] = [
+      eGeheel("Staafnummer", s.staaf.id),
+      eLabel("Staaftype", s.staaftype),
+      eLabel("Onderdeel", s.kolom ? "Kolom" : "Ligger"),
+      eMaat("HellingMetDeHorizontaal", "IFCPLANEANGLEMEASURE", s.hellingRad),
+      eJaNee("ScharnierBegin", rel.startRy === true),
+      eJaNee("ScharnierEind", rel.endRy === true),
+    ];
+    if (s.lengteMm > 0) {
+      sEig.splice(3, 0,
+        eMaat("Lengte", "IFCPOSITIVELENGTHMEASURE", s.lengteMm / 1000));
+    }
+    schrijfEigenschappen(w, "OpenFEM2D_Staaf", `staaf:${s.staaf.id}`, sEig, doelen);
+
+    // ── Toetsing ───────────────────────────────────────────────────────────
+    const uitslag = uitslagPerStaaf.get(s.staaf.id);
+    if (uitslag === undefined) continue;
+    // De maatgevende toets staat in `checks` onder `governing_check_id`;
+    // vindt hij zichzelf niet (een fout uit de kern), dan is het id zelf de
+    // eerlijkste tekst die er is.
+    const maatgevend = uitslag.checks.find(c => c.id === uitslag.governing_check_id)?.kind.data;
+    const tEig: Eigenschap[] = [
+      eLabel("Norm", normLabel(uitslag)),
+      eLabel("MaatgevendeToets", maatgevend?.title ?? uitslag.governing_check_id),
+      eMaat("UnityCheck", "IFCRATIOMEASURE", uitslag.uc_max),
+      eLabel("GetoetsteDoorsnede", sectionLabel(uitslag)),
+      eLabel("Sterkteklasse", gradeLabel(uitslag)),
+    ];
+    if (maatgevend?.article) {
+      tEig.splice(2, 0, eLabel("Normartikel", maatgevend.article));
+    }
+    // NotApplicable is géén "voldoet niet": er is niet getoetst. Dan blijft
+    // de eigenschap weg in plaats van er een onwaar antwoord neer te zetten.
+    if (uitslag.status !== "NotApplicable") {
+      tEig.push(eJaNee("Voldoet", uitslag.status === "Ok"));
+    }
+    if (isSteelCheckResult(uitslag)) {
+      tEig.push(eLabel("Doorsnedeklasse",
+        uitslag.classification.replace("Class", "klasse ")));
+    }
+    if (isConcreteCheckResult(uitslag) && uitslag.reinforcement_summary) {
+      tEig.push(eTekst("Wapening", uitslag.reinforcement_summary));
+    }
+    schrijfEigenschappen(w, "OpenFEM2D_Toetsing",
+      `toetsing:${s.staaf.id}`, tEig, doelen);
+  }
+}
+
 
 // ── Lasten ──────────────────────────────────────────────────────────────────
 
@@ -656,6 +1403,13 @@ function schrijfLast(
   staafInfoPerStaaf: Map<number, StaafInfo>,
   context: number,
 ): number | undefined {
+  // De vrije omschrijving van de gebruiker ("sneeuw op overstek", "reactie
+  // spant 3") gaat mee als Description van de actie — het IFC-veld dat
+  // daarvoor is. Zonder omschrijving blijft het $; een lege string zou een
+  // ontvanger een omschrijving voorspiegelen die er niet is.
+  const toelichting = last.omschrijving?.trim()
+    ? stepString(last.omschrijving.trim()) : "$";
+
   if (last.type === "pointForce" || last.type === "pointMoment") {
     // kN → N, kNm → N·m
     const kracht = w.ent("IFCSTRUCTURALLOADSINGLEFORCE",
@@ -673,7 +1427,7 @@ function schrijfLast(
     if (connectie !== undefined) {
       const actie = w.ent("IFCSTRUCTURALPOINTACTION",
         w.guid(`last:${last.id}`), "$", naam,
-        "$", "$", "$", "$", ref(kracht), ".GLOBAL_COORDS.", "$");
+        toelichting, "$", "$", "$", ref(kracht), ".GLOBAL_COORDS.", "$");
       w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
         w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(connectie), ref(actie));
       return actie;
@@ -696,7 +1450,7 @@ function schrijfLast(
       const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
       const actie = w.ent("IFCSTRUCTURALPOINTACTION",
         w.guid(`last:${last.id}`), "$", naam,
-        "$", "$", "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$");
+        toelichting, "$", "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$");
       w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
         w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(member), ref(actie));
       return actie;
@@ -722,7 +1476,7 @@ function schrijfLast(
         stepString(`dT ${last.id}`),
         `IFCTHERMODYNAMICTEMPERATUREMEASURE(${reeel(last.deltaT ?? 0)})`, "$", "$");
       actie = w.ent("IFCSTRUCTURALLINEARACTION",
-        w.guid(`last:${last.id}`), "$", stepString(`dT ${last.id}`), "$", "$",
+        w.guid(`last:${last.id}`), "$", stepString(`dT ${last.id}`), toelichting, "$",
         "$", "$", ref(tLast), ".LOCAL_COORDS.", "$", "$", ".CONST.");
     } else {
       const qA = last.qStart ?? last.q ?? 0; // kN/m
@@ -755,7 +1509,7 @@ function schrijfLast(
         // Uniform over de volle lengte: IfcStructuralLinearAction, CONST.
         const qLast = lijnkracht(qA, `q ${last.id}`);
         actie = w.ent("IFCSTRUCTURALLINEARACTION",
-          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), "$", "$",
+          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), toelichting, "$",
           "$", "$", ref(qLast), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".CONST.");
       } else if (!deellast) {
         // Trapezium over de volle lengte: twee waarden op 0 en L.
@@ -765,7 +1519,7 @@ function schrijfLast(
           stepString(`q ${last.id}`), lijst([q1, q2]),
           `((0.),(${reeel(L)}))`);
         actie = w.ent("IFCSTRUCTURALCURVEACTION",
-          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), "$", "$",
+          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), toelichting, "$",
           "$", "$", ref(config), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".LINEAR.");
       } else {
         // Deellast: knikpunten op 0 (nul), a (qA), b (qB) en L (nul). De
@@ -784,7 +1538,7 @@ function schrijfLast(
           stepString(`q ${last.id}`), lijst(waarden),
           `(${posities.map(p => `(${p})`).join(",")})`);
         actie = w.ent("IFCSTRUCTURALCURVEACTION",
-          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), "$", "$",
+          w.guid(`last:${last.id}`), "$", stepString(`q ${last.id}`), toelichting, "$",
           "$", "$", ref(config), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".POLYGONAL.");
       }
     }
@@ -858,16 +1612,18 @@ export function verzamelIfcBeperkingen(
   for (const staaf of model.beams) {
     const materiaal = staaf.material ?? "S235";
     const profiel = staaf.profile ?? "HEA160";
-    const bekend = isHoutMateriaal(materiaal)
-      ? parseRechthoek(profiel) !== null
-      : profielAfmetingen(profiel) !== undefined || parseRechthoek(profiel) !== null;
-    if (!bekend) zonderDoorsnede.add(profiel);
+    // Dezelfde vormbepaling als de export zelf gebruikt — zie `bepaalVorm`.
+    if (bepaalVorm(materiaal, profiel).soort === "onbekend") zonderDoorsnede.add(profiel);
   }
   if (zonderDoorsnede.size > 0) {
     regels.push(
       `Doorsnede onbekend voor ${[...zonderDoorsnede].sort().join(", ")}: die staven ` +
       "krijgen wel materiaal en profielnaam, maar geen parametrische " +
-      "doorsnede (IFC4 kent geen profiel zonder afmetingen).",
+      "doorsnede (IFC4 kent geen profiel zonder afmetingen)" +
+      (opties.zonderBouwkundig === true
+        ? "."
+        : ", en dus ook geen IfcBeam of IfcColumn — een ligger zonder " +
+          "doorsnede is geen ligger."),
     );
   }
 
@@ -892,6 +1648,96 @@ export function verzamelIfcBeperkingen(
       regels.push(
         `${losseLasten.length} belasting(en) verwijzen naar een knoop of staaf die niet ` +
         `bestaat (${losseLasten.map(l => l.id).join(", ")}) — die zijn overgeslagen.`,
+      );
+    }
+  }
+
+  // ── Bouwkundig model en wapening ─────────────────────────────────────────
+  if (opties.zonderBouwkundig === true) {
+    if (model.beams.length > 0) {
+      regels.push(
+        "Bouwkundig model bewust weggelaten: er staan geen IfcBeam, IfcColumn " +
+        "of IfcReinforcingBar in het bestand — alleen het rekenmodel met zijn " +
+        "eigenschappensets.",
+      );
+    }
+  } else {
+    const nulLengte = model.beams.filter(b => {
+      const van = model.nodes.find(n => n.id === b.from);
+      const naar = model.nodes.find(n => n.id === b.to);
+      return van !== undefined && naar !== undefined &&
+        Math.hypot(naar.x - van.x, naar.z - van.z) === 0;
+    });
+    if (nulLengte.length > 0) {
+      regels.push(
+        `${nulLengte.length} staaf/staven met lengte nul (${nulLengte.map(b => b.id).join(", ")}): ` +
+        "die krijgen geen bouwkundig element, want een extrusie met diepte 0 " +
+        "is geen geldige IfcPositiveLengthMeasure.",
+      );
+    }
+
+    const clt = new Set<string>();
+    const lVormig = new Set<string>();
+    const betonZonderKorf: number[] = [];
+    let metKorf = 0;
+    for (const staaf of model.beams) {
+      const materiaal = staaf.material ?? "S235";
+      const profiel = staaf.profile ?? "HEA160";
+      if (isHoutMateriaal(materiaal) && isCltProfiel(profiel)) clt.add(profiel);
+      if (!isBetonMateriaal(materiaal)) continue;
+      if (staaf.checkConfig?.betonKorf) metKorf++;
+      else betonZonderKorf.push(staaf.id);
+      const uitkomst = parseConcreteSection(profiel);
+      if (uitkomst.ok && uitkomst.doorsnede.shape === "Ell") lVormig.add(profiel);
+    }
+    if (clt.size > 0) {
+      regels.push(
+        `Kruislaaghout (${[...clt].sort().join(", ")}): het bouwkundige element is de ` +
+        "volle strook b × Σt als massieve rechthoek. De laagopbouw met haar " +
+        "afwisselende vezelrichting staat er niet in; daarvoor kent IFC4 " +
+        "alleen een gelaagd materiaal, en dat is een andere beschrijving dan " +
+        "de doorsnede waarmee hier gerekend is.",
+      );
+    }
+    if (lVormig.size > 0) {
+      regels.push(
+        `L-vormige betondoorsnede (${[...lVormig].sort().join(", ")}): het lijf is aan de ` +
+        "LINKERzijde getekend. Het model legt niet vast aan welke rand de " +
+        "flens uitkraagt — alleen dát er één uitkragend deel is.",
+      );
+    }
+    if (betonZonderKorf.length > 0) {
+      regels.push(
+        `${betonZonderKorf.length} betonstaaf/staven zonder wapeningskorf ` +
+        `(${betonZonderKorf.join(", ")}): daar staat geen IfcReinforcingBar bij. ` +
+        "Er is met opzet geen standaardkorf.",
+      );
+    }
+    if (metKorf > 0) {
+      regels.push(
+        `Beugels van ${metKorf} betonstaaf/staven: elke reeks staat als ÉÉN ` +
+        "IfcReinforcingBar (.LIGATURE.) in het bestand, met aantal en " +
+        "hart-op-hart in de set OpenFEM2D_Beugels — niet als losse beugels.",
+      );
+    }
+  }
+
+  // ── Toetsing ─────────────────────────────────────────────────────────────
+  if (model.beams.length > 0) {
+    const getoetst = new Set((model.toetsresultaten ?? []).map(r => r.beam_id));
+    const zonder = model.beams.filter(b => !getoetst.has(b.id));
+    if (getoetst.size === 0) {
+      regels.push(
+        "Geen toetsresultaten in het bestand: er is niet getoetst, of de " +
+        "uitslag is niet meegegeven. Draai de toetsing vóór de export, dan " +
+        "krijgt elke staaf de set OpenFEM2D_Toetsing met de maatgevende " +
+        "toets, het normartikel en de unity check.",
+      );
+    } else if (zonder.length > 0) {
+      regels.push(
+        `${zonder.length} van de ${model.beams.length} staven hebben geen toetsuitslag ` +
+        `(${zonder.map(b => b.id).join(", ")}): die dragen geen set ` +
+        "OpenFEM2D_Toetsing. Zie het toetsingspaneel voor de reden per staaf.",
       );
     }
   }
@@ -993,6 +1839,61 @@ export function bouwIfcBoom(
     }
   }
 
+  // Het bouwkundige model hangt náást het rekenmodel in het gebouw, precies
+  // zoals in het bestand: IfcBeam en IfcColumn zijn gebouwelementen, geen
+  // onderdelen van het analysemodel.
+  const kinderenGebouw: IfcBoomKnoop[] = [{
+    type: "IfcStructuralAnalysisModel",
+    naam: `Rekenmodel ${projectNaam}`,
+    kinderen: kinderenModel,
+  }];
+  if (opties.zonderBouwkundig !== true) {
+    const uitslagPerStaaf = new Map(
+      (model.toetsresultaten ?? []).map(r => [r.beam_id, r]));
+    const elementen: IfcBoomKnoop[] = [];
+    for (const b of model.beams) {
+      const materiaal = b.material ?? "S235";
+      const profiel = b.profile ?? "HEA160";
+      const van = model.nodes.find(n => n.id === b.from);
+      const naar = model.nodes.find(n => n.id === b.to);
+      if (!van || !naar) continue;
+      const lengteMm = Math.hypot(naar.x - van.x, naar.z - van.z);
+      if (lengteMm === 0) continue;
+      const kolom = isOverwegendVerticaal(b, model.nodes);
+      const uitslag = uitslagPerStaaf.get(b.id);
+      const staart = uitslag !== undefined
+        ? ` — UC ${nl(uitslag.uc_max, 2)} (${normLabel(uitslag)})`
+        : "";
+      const kinderen: IfcBoomKnoop[] = [];
+      const korf = b.checkConfig?.betonKorf;
+      if (korf && isBetonMateriaal(materiaal)) {
+        const delen: string[] = [];
+        if (korf.bottom.count > 0) delen.push(`onder ${korf.bottom.count}Ø${korf.bottom.diameter_mm}`);
+        if (korf.top.count > 0) delen.push(`boven ${korf.top.count}Ø${korf.top.diameter_mm}`);
+        if (korf.stirrup_diameter_mm > 0) delen.push(`beugel Ø${korf.stirrup_diameter_mm}`);
+        kinderen.push({
+          type: "IfcReinforcingBar",
+          naam: `Wapening — ${delen.join(", ") || "geen staven"}`,
+          aantal: korf.bottom.count + korf.top.count + (korf.stirrup_diameter_mm > 0 ? 1 : 0),
+        });
+      }
+      elementen.push({
+        type: kolom ? "IfcColumn" : "IfcBeam",
+        naam: `${kolom ? "Kolom" : "Ligger"} ${b.id} — ${materiaal} ${profiel}, ` +
+          `${nl(lengteMm / 1000)} m${staart}`,
+        kinderen: kinderen.length > 0 ? kinderen : undefined,
+      });
+    }
+    if (elementen.length > 0) {
+      kinderenGebouw.push({
+        type: "IfcBeam",
+        naam: "Bouwkundige staven",
+        aantal: elementen.length,
+        kinderen: elementen,
+      });
+    }
+  }
+
   return {
     type: "IfcProject",
     naam: projectNaam,
@@ -1002,11 +1903,7 @@ export function bouwIfcBoom(
       kinderen: [{
         type: "IfcBuilding",
         naam: "Gebouw",
-        kinderen: [{
-          type: "IfcStructuralAnalysisModel",
-          naam: `Rekenmodel ${projectNaam}`,
-          kinderen: kinderenModel,
-        }],
+        kinderen: kinderenGebouw,
       }],
     }],
   };
@@ -1061,15 +1958,20 @@ const GUID_TEKENS_SET = new Set(IFC_GUID_TEKENS);
  * GlobalId als eerste attribuut; bij de rest is het eerste attribuut een
  * gewone naam.
  */
-const GEWORTELDE_ENTITEITEN = [
+export const GEWORTELDE_ENTITEITEN = [
   "IFCPROJECT", "IFCSITE", "IFCBUILDING",
   "IFCSTRUCTURALANALYSISMODEL", "IFCSTRUCTURALLOADGROUP",
   "IFCSTRUCTURALPOINTCONNECTION", "IFCSTRUCTURALCURVEMEMBER",
   "IFCSTRUCTURALPOINTACTION", "IFCSTRUCTURALLINEARACTION",
   "IFCSTRUCTURALCURVEACTION",
+  // Bouwkundig model, eigenschappen en hoeveelheden
+  "IFCBEAM", "IFCCOLUMN", "IFCREINFORCINGBAR",
+  "IFCPROPERTYSET", "IFCELEMENTQUANTITY",
   "IFCRELAGGREGATES", "IFCRELSERVICESBUILDINGS",
   "IFCRELCONNECTSSTRUCTURALMEMBER", "IFCRELCONNECTSSTRUCTURALACTIVITY",
   "IFCRELASSOCIATESMATERIAL", "IFCRELASSIGNSTOGROUP",
+  "IFCRELASSIGNSTOPRODUCT", "IFCRELDEFINESBYPROPERTIES",
+  "IFCRELCONTAINEDINSPATIALSTRUCTURE",
 ] as const;
 
 /**
@@ -1097,6 +1999,8 @@ export function valideerIfc(ifc: string): IfcValidatie {
   const dubbeleIds: string[] = [];
   let entiteiten = 0;
   const vormfouten: string[] = [];
+  const leegteFouten: string[] = [];
+  const legeLijsten: string[] = [];
 
   for (const regel of regels) {
     if (!regel.startsWith("#")) continue;
@@ -1117,9 +2021,37 @@ export function valideerIfc(ifc: string): IfcValidatie {
       if (diepte < 0) break;
     }
     if (diepte !== 0 || inString) vormfouten.push(`#${m[1]}: ongebalanceerde haakjes of string`);
+
+    // Lege parameters. STEP kent geen weggelaten attribuut: een niet
+    // ingevulde waarde is "$" (of "*" voor een afgeleide). Twee komma's op
+    // een rij — of een komma tegen een haakje — betekent dat er een attribuut
+    // is overgeslagen, en dan schuiven alle volgende attributen een plaats
+    // op. Dat is de fout die een export in de praktijk maakt en die geen
+    // enkele lezer als fout meldt: hij leest gewoon de verkeerde waarde.
+    let kaal = "";
+    let inTekst = false;
+    for (const c of args) {
+      if (inTekst) { if (c === "'") inTekst = false; continue; }
+      if (c === "'") { inTekst = true; kaal += "x"; continue; }
+      kaal += c;
+    }
+    if (/,,|\(,|,\)/.test(`(${kaal})`)) leegteFouten.push(`#${m[1]}`);
+    if (kaal.includes("()")) legeLijsten.push(`#${m[1]}`);
   }
   if (vormfouten.length > 0) {
     fouten.push(`${vormfouten.length} regel(s) met een ongeldige entiteitsvorm: ${vormfouten.slice(0, 3).join(" | ")}`);
+  }
+  if (leegteFouten.length > 0) {
+    fouten.push(
+      `${leegteFouten.length} entiteit(en) met een LEGE parameter (hoort "$" te zijn): ` +
+      leegteFouten.slice(0, 5).join(", "),
+    );
+  }
+  if (legeLijsten.length > 0) {
+    waarschuwingen.push(
+      `${legeLijsten.length} entiteit(en) met een lege lijst "()": in IFC4 eist bijna ` +
+      "elke verzameling ten minste één element — " + legeLijsten.slice(0, 5).join(", "),
+    );
   }
   if (dubbeleIds.length > 0) fouten.push(`Dubbele entiteits-id's: ${dubbeleIds.slice(0, 5).join(", ")}`);
 
@@ -1232,56 +2164,221 @@ export function downloadIfc(
 // ── Profieldefinities ───────────────────────────────────────────────────────
 
 /**
- * Parametrisch IFC-profiel voor een (materiaal, profiel)-combinatie.
- * Afmetingen mm → m. Retourneert undefined bij een onbekend profiel.
+ * Wat er van een doorsnede bekend is nadat hij is weggeschreven.
+ *
+ * `profielDef` is het #id van de IfcProfileDef; ontbreekt hij, dan kent deze
+ * export de vorm niet en komt er ook geen bouwkundig element (een ligger
+ * zonder doorsnede is geen ligger). De maten staan er in MILLIMETERS bij —
+ * ze zijn er voor de eigenschappensets en voor het plaatsen van de wapening,
+ * en dat rekent in modelmaten.
  */
-function schrijfProfiel(
-  w: SpfSchrijver,
-  materiaal: string,
-  profiel: string,
-): number | undefined {
-  const naam = stepString(profiel);
+interface DoorsnedeInfo {
+  profielDef?: number;
+  /** Leesbare vormaanduiding voor de eigenschappenset. */
+  vorm: string;
+  /** Totale hoogte h in mm, waar die bekend is. */
+  hMm?: number;
+  /** Grootste breedte b in mm, waar die bekend is. */
+  bMm?: number;
+  /**
+   * Lijfbreedte b_w in mm bij een T- of L-betondoorsnede; bij de overige
+   * vormen gelijk aan `bMm`. Dit is de breedte waarbinnen de beugels en de
+   * hoofdwapening liggen.
+   */
+  bwMm?: number;
+  /** Aanvullende grootheden, alleen bij een catalogusprofiel. */
+  props?: SteelSectionProps;
+}
 
+/**
+ * De doorsnede zoals hij UIT DE INVOER volgt, zonder dat er iets geschreven
+ * wordt. Deze functie is de enige plaats waar wordt vastgesteld wélke vorm
+ * een (materiaal, profiel)-combinatie heeft; `schrijfDoorsnede` maakt er een
+ * IfcProfileDef van en `verzamelIfcBeperkingen` vraagt hem of de vorm bekend
+ * is. Twee plaatsen die die vraag apart beantwoorden lopen uit elkaar — dat
+ * gebeurde: de beperkingenlijst meldde een T-vormige betondoorsnede als
+ * "onbekend" terwijl het bestand hem gewoon droeg.
+ */
+type Vormbeschrijving =
+  | {
+    soort: "rechthoek";
+    /** Waar de rechthoek vandaan komt, voor de eigenschappenset. */
+    vorm: "rechthoek" | "kruislaaghout-strook";
+    bMm: number; hMm: number;
+  }
+  | { soort: "catalogus"; dims: SteelSectionDims }
+  | {
+    soort: "betonvorm";
+    tee: boolean;
+    bMm: number; hMm: number; bwMm: number; hfMm: number;
+    flensOnder: boolean;
+  }
+  | { soort: "onbekend" };
+
+/** Vormbepaling uit materiaal en profielnaam. Schrijft niets. */
+function bepaalVorm(materiaal: string, profiel: string): Vormbeschrijving {
   if (isHoutMateriaal(materiaal)) {
-    const rect = parseRechthoek(profiel);
-    if (rect) {
-      return w.ent("IFCRECTANGLEPROFILEDEF",
-        ".AREA.", naam, "$", meter(rect.b), meter(rect.h));
+    // Kruislaaghout: de plaatstrook als massieve rechthoek b × Σt. De
+    // laagopbouw zelf is in IFC4 alleen met een gelaagd materiaal uit te
+    // drukken en zit hier niet in; dat staat in de beperkingenlijst.
+    if (isCltProfiel(profiel)) {
+      const layup = parseCltProfiel(profiel, materiaal);
+      if (layup) {
+        const h = layup.layers.reduce((som, l) => som + l.thickness_mm, 0);
+        if (layup.width_mm > 0 && h > 0) {
+          return {
+            soort: "rechthoek", vorm: "kruislaaghout-strook",
+            bMm: layup.width_mm, hMm: h,
+          };
+        }
+      }
     }
-    return undefined;
+    const rect = parseRechthoek(profiel);
+    if (rect) return { soort: "rechthoek", vorm: "rechthoek", bMm: rect.b, hMm: rect.h };
+    return { soort: "onbekend" };
   }
 
-  // Catalogusprofiel: h/b/tw/tf/r uit de gedeelde tabel. Bij SHS/RHS is
-  // tw = tf = wanddikte en r de hoekstraal; bij CHS is h = b = uitwendige
-  // diameter en tw = wanddikte.
-  const dims = profielAfmetingen(profiel);
-  if (dims) {
-    switch (dims.kind) {
-      case "ISection":
-        return w.ent("IFCISHAPEPROFILEDEF",
-          ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
-          meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$");
-      case "Channel":
-        return w.ent("IFCUSHAPEPROFILEDEF",
-          ".AREA.", naam, "$", meter(dims.h), meter(dims.b),
-          meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$");
-      case "Shs":
-      case "Rhs":
-        return w.ent("IFCRECTANGLEHOLLOWPROFILEDEF",
-          ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
-          meter(dims.tw), "$", dims.r > 0 ? meter(dims.r) : "$");
-      case "Chs":
-        return w.ent("IFCCIRCLEHOLLOWPROFILEDEF",
-          ".AREA.", naam, "$", meter(dims.h / 2), meter(dims.tw));
+  // Beton: rechthoek, T of L.
+  if (isBetonMateriaal(materiaal)) {
+    const uitkomst = parseConcreteSection(profiel);
+    if (uitkomst.ok) {
+      const d = uitkomst.doorsnede;
+      if (d.shape === "Rectangle") {
+        return { soort: "rechthoek", vorm: "rechthoek", bMm: d.b_mm, hMm: d.h_mm };
+      }
+      const bw = d.b_w_mm ?? d.b_mm;
+      const hf = d.h_f_mm ?? 0;
+      if (bw > 0 && hf > 0 && hf < d.h_mm) {
+        return {
+          soort: "betonvorm", tee: d.shape === "Tee",
+          bMm: d.b_mm, hMm: d.h_mm, bwMm: bw, hfMm: hf,
+          flensOnder: d.flange_at_bottom,
+        };
+      }
     }
   }
+
+  // Catalogusprofiel uit de gedeelde tabel.
+  const dims = profielAfmetingen(profiel);
+  if (dims) return { soort: "catalogus", dims };
 
   // Laatste redmiddel: rechthoek-notatie in de naam ("100x200") — ook bij
   // niet-houtmaterialen een eerlijke massieve rechthoek.
   const rect = parseRechthoek(profiel);
-  if (rect) {
-    return w.ent("IFCRECTANGLEPROFILEDEF",
-      ".AREA.", naam, "$", meter(rect.b), meter(rect.h));
+  if (rect) return { soort: "rechthoek", vorm: "rechthoek", bMm: rect.b, hMm: rect.h };
+  return { soort: "onbekend" };
+}
+
+/**
+ * IFC-profiel voor een (materiaal, profiel)-combinatie. Afmetingen mm → m.
+ * Levert altijd een `DoorsnedeInfo`; bij een onbekende vorm zonder
+ * `profielDef` en met vorm "onbekend".
+ *
+ * Bij SHS/RHS is tw = tf = wanddikte en r de hoekstraal; bij CHS is
+ * h = b = uitwendige diameter en tw = wanddikte.
+ *
+ * De T en de L worden als polygoon geschreven
+ * (IfcArbitraryClosedProfileDef); IfcTShapeProfileDef zou de omgekeerde T
+ * alleen met een gedraaid assenstelsel aankunnen en IfcLShapeProfileDef is
+ * een hoekstaal met ÉÉN wanddikte voor beide benen — dat is niet de vorm die
+ * hier ligt.
+ */
+function schrijfDoorsnede(
+  w: SpfSchrijver,
+  materiaal: string,
+  profiel: string,
+): DoorsnedeInfo {
+  const naam = stepString(profiel);
+  const beschrijving = bepaalVorm(materiaal, profiel);
+
+  switch (beschrijving.soort) {
+    case "rechthoek":
+      return {
+        profielDef: w.ent("IFCRECTANGLEPROFILEDEF", ".AREA.", naam, "$",
+          meter(beschrijving.bMm), meter(beschrijving.hMm)),
+        vorm: beschrijving.vorm,
+        hMm: beschrijving.hMm, bMm: beschrijving.bMm, bwMm: beschrijving.bMm,
+      };
+    case "betonvorm":
+      return {
+        profielDef: schrijfBetonPolygoon(w, naam, beschrijving),
+        vorm: beschrijving.tee ? "T-vorm" : "L-vorm",
+        hMm: beschrijving.hMm, bMm: beschrijving.bMm, bwMm: beschrijving.bwMm,
+      };
+    case "catalogus": {
+      const dims = beschrijving.dims;
+      const gemeen = { hMm: dims.h, bMm: dims.b, bwMm: dims.b, props: dims.props };
+      switch (dims.kind) {
+        case "ISection":
+          return {
+            ...gemeen, vorm: "I-profiel",
+            profielDef: w.ent("IFCISHAPEPROFILEDEF",
+              ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
+              meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$"),
+          };
+        case "Channel":
+          return {
+            ...gemeen, vorm: "U-profiel",
+            profielDef: w.ent("IFCUSHAPEPROFILEDEF",
+              ".AREA.", naam, "$", meter(dims.h), meter(dims.b),
+              meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$"),
+          };
+        case "Shs":
+        case "Rhs":
+          return {
+            ...gemeen, vorm: "koker",
+            profielDef: w.ent("IFCRECTANGLEHOLLOWPROFILEDEF",
+              ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
+              meter(dims.tw), "$", dims.r > 0 ? meter(dims.r) : "$"),
+          };
+        case "Chs":
+          return {
+            ...gemeen, vorm: "buis",
+            profielDef: w.ent("IFCCIRCLEHOLLOWPROFILEDEF",
+              ".AREA.", naam, "$", meter(dims.h / 2), meter(dims.tw)),
+          };
+      }
+      return { vorm: "onbekend" };
+    }
+    case "onbekend":
+      return { vorm: "onbekend" };
   }
-  return undefined;
+}
+
+/**
+ * De omtrek van een T- of L-betondoorsnede als IfcArbitraryClosedProfileDef.
+ *
+ * Assenstelsel van het profiel: x naar rechts (breedte), y omhoog (hoogte),
+ * oorsprong in het MIDDEN van de omhullende rechthoek b × h. Dat is dezelfde
+ * afspraak als bij IfcRectangleProfileDef en IfcIShapeProfileDef, zodat de
+ * hartlijn van de staaf in alle vormen op dezelfde plek ligt.
+ *
+ * Bij een T ligt het lijf midden onder de flens; bij een L (randligger) ligt
+ * het lijf tegen de LINKERrand. Welke rand dat in werkelijkheid is, zegt het
+ * model niet — `FlangeGeometry.b_i_mm` heeft bij een L één uitkragend deel
+ * maar geen zijde. Die keuze staat in de beperkingenlijst.
+ */
+function schrijfBetonPolygoon(
+  w: SpfSchrijver,
+  naam: string,
+  vorm: Extract<Vormbeschrijving, { soort: "betonvorm" }>,
+): number {
+  const { bMm, hMm, bwMm, hfMm } = vorm;
+  const b2 = bMm / 2, h2 = hMm / 2, bw2 = bwMm / 2;
+  // Flens boven: van de linkerbovenhoek met de klok mee terug naar het begin.
+  const hoeken: Array<[number, number]> = vorm.tee
+    ? [
+      [-b2, h2], [b2, h2], [b2, h2 - hfMm], [bw2, h2 - hfMm],
+      [bw2, -h2], [-bw2, -h2], [-bw2, h2 - hfMm], [-b2, h2 - hfMm],
+    ]
+    : [
+      [-b2, h2], [b2, h2], [b2, h2 - hfMm], [-b2 + bwMm, h2 - hfMm],
+      [-b2 + bwMm, -h2], [-b2, -h2],
+    ];
+  // Flens onder (omgekeerde T): spiegelen om de x-as.
+  const punten = (vorm.flensOnder ? hoeken.map(([x, y]) => [x, -y] as [number, number]) : hoeken)
+    .map(([x, y]) => w.ent("IFCCARTESIANPOINT", `(${meter(x)},${meter(y)})`));
+  // Een gesloten polylijn herhaalt zijn eerste punt als laatste.
+  const lijn = w.ent("IFCPOLYLINE", lijst([...punten, punten[0]]));
+  return w.ent("IFCARBITRARYCLOSEDPROFILEDEF", ".AREA.", naam, ref(lijn));
 }

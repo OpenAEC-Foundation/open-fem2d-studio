@@ -4,7 +4,8 @@ use mechanics::ForcePoint;
 use nen_en_1992_1_1::mnkappa::DEFAULT_N_STRIPS;
 use nen_en_1992_1_1::slankheid::StructuralSystem;
 use nen_en_1992_1_1::{
-    ConcreteSectionInput, DesignSituation, ExposureClass, ReinforcementCage, SteelBranch,
+    ConcreteCoverRequest, ConcreteSectionInput, CoverSide, DesignSituation, ExposureClass,
+    ReinforcementCage, ReinforcementZones, SteelBranch, StructuralClass,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -39,7 +40,27 @@ pub struct ConcreteBeamCheckInput {
     /// Wapeningsstaal, bijv. "B500B" (bijlage C).
     pub reinforcement_grade: String,
     /// Wapeningskorf: dekking, beugel, boven- en onderwapening.
+    ///
+    /// Dit is de korf die geldt waar `reinforcement_zones` niets zegt — dus bij
+    /// lege zonelijsten over de hele staaf.
     pub cage: ReinforcementCage,
+    /// De wapening die LANGS de staaf verandert: welke staaflaag van waar tot
+    /// waar loopt (§9.2.1.3) en waar de beugels dichter staan (§9.2.2).
+    ///
+    /// Dit veld staat NAAST `cage` en niet erin. `ReinforcementCage` is `Copy`
+    /// en beschrijft één doorsnede; hij wordt op tientallen plaatsen
+    /// doorgegeven waar alleen die doorsnede nodig is (buiging, M-N-κ,
+    /// scheurwijdte, de twee tekenkanten). Een lengte-as in dat type zou zich
+    /// door al die signaturen heen planten en het bovendien zijn `Copy` kosten.
+    /// Zie [`ReinforcementZones`] voor waarom het twee gescheiden lijsten zijn
+    /// en niet één.
+    ///
+    /// **LEEG (of weggelaten) = het gedrag van vóór dit veld**: dan geldt
+    /// `cage` onveranderd over de hele staaf. Dat is geen bijkomstigheid maar
+    /// de voorwaarde waaronder dit veld erbij mocht: geen enkele bestaande
+    /// toets verandert erdoor.
+    #[serde(default)]
+    pub reinforcement_zones: ReinforcementZones,
     /// Staaflengte in m.
     pub length_m: f64,
     /// Krachtsverloop (envelop) langs de staaf; N drukt negatief.
@@ -78,11 +99,44 @@ pub struct ConcreteBeamCheckInput {
     #[serde(default)]
     pub sls_frequent_envelope: Vec<ForcePoint>,
 
-    /// Milieuklasse van dit element (tabel 4.1) — de ingang van tabel 7.1N
+    /// Milieuklasse van dit ELEMENT (tabel 4.1) — de ingang van tabel 7.1N
     /// voor w_max. `None` = niet opgegeven; §7.3 kan dan niet.
+    ///
+    /// # Dit is de klasse van het element, niet van één oppervlak
+    ///
+    /// 4.4.1.1(1)P meet de betondekking tot "het dichtstbijzijnde
+    /// betonoppervlak", en een balk heeft er vier. Een klasse PER ZIJDE staat
+    /// daarom bij de korf: [`ReinforcementCage::cover_top`],
+    /// `cover_bottom` en `cover_sides` dragen elk een eigen milieuklasse en een
+    /// eigen dekking. Dit veld is wat daar de terugval voor is — zie
+    /// [`Self::exposure_at`] — en tegelijk de klasse waarmee §7.3 werkt.
+    ///
+    /// Waarom §7.3 het ELEMENT neemt en niet de trekzijde: tabel 7.1N (in de
+    /// versie van de nationale bijlage bij 7.3.1(5)) geeft w_max per
+    /// milieuklasse, en de scheurwijdte wordt aan de trekzijde beoordeeld. Wie
+    /// die koppeling per zijde wil leggen, moet 7.3 de zijde van het
+    /// maatgevende momentteken laten kiezen; dat gebeurt hier nog niet, en de
+    /// scheurtoets houdt dus deze ene klasse aan.
     #[serde(default)]
     #[ts(optional)]
     pub exposure_class: Option<ExposureClass>,
+
+    /// Constructieklasse S1…S6 van dit ELEMENT (4.4.1.2(5)).
+    ///
+    /// `None` = de waarde van de nationale bijlage: "Als constructieklasse voor
+    /// een ontwerplevensduur van 50 jaar moet S4 zijn aangehouden." Anders dan
+    /// bij de milieuklasse is er hier dus wél een voorgeschreven waarde, en zij
+    /// staat met zoveel woorden in de norm.
+    ///
+    /// De klasse staat NIET per zijde. De vijf criteria van de door de
+    /// nationale bijlage vervangen tabel 4.3N — ontwerplevensduur 100 jaar,
+    /// ontwerplevensduur 75 jaar, sterkteklasse, element met plaatgeometrie en
+    /// gewaarborgde kwaliteitsbeheersing — zijn alle vijf een eigenschap van
+    /// het element; zie [`StructuralClass`] voor de uitwerking en de ene
+    /// nuance daarbij.
+    #[serde(default)]
+    #[ts(optional)]
+    pub structural_class: Option<StructuralClass>,
 
     /// Grootste nominale korrelafmeting d_g in mm, voor §8.2(2) en §9.2(1)e.
     ///
@@ -112,6 +166,55 @@ pub struct ConcreteBeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub bar_spacing_mm: Option<f64>,
+}
+
+impl ConcreteBeamCheckInput {
+    /// De milieuklasse die aan één betonoppervlak geldt: die van de zijde zelf,
+    /// en anders die van het element (4.4.1.1(1)P met (4.2)).
+    ///
+    /// Eén plek waar die terugval wordt gemaakt, zodat de dekkingstoets, de
+    /// tekening en het rapport niet elk hun eigen versie krijgen. `None` =
+    /// nergens een klasse opgegeven; dan is er geen c_min,dur en meldt de toets
+    /// dat hij niet kan.
+    pub fn exposure_at(&self, side: CoverSide) -> Option<ExposureClass> {
+        self.cage.exposure_at(side, self.exposure_class)
+    }
+
+    /// De dekkingsverzoeken voor alle drie de zijden, klaar voor
+    /// [`nen_en_1992_1_1::dekking::concrete_cover_request`].
+    ///
+    /// Zijden zonder milieuklasse leveren geen verzoek op: zonder klasse is er
+    /// geen ingang in tabel 4.4N en dus niets te toetsen. Er wordt niets
+    /// aangenomen — dezelfde afspraak als bij elk ander ontbrekend gegeven in
+    /// dit type.
+    ///
+    /// De aanhechtingseis c_min,b (tabel 4.2) krijgt PER ZIJDE de staaf die
+    /// daar werkelijk ligt: boven de bovenwapening, onder de onderwapening. Bij
+    /// de zijkanten is dat de dikste van de twee — beide rijen raken met hun
+    /// buitenste staaf de zijkant.
+    pub fn cover_requests(&self) -> Vec<ConcreteCoverRequest> {
+        let dikste = self.cage.top.diameter_mm.max(self.cage.bottom.diameter_mm);
+        CoverSide::ALL
+            .iter()
+            .filter_map(|&side| {
+                let klasse = self.exposure_at(side)?;
+                let phi = match side {
+                    CoverSide::Top => self.cage.top.diameter_mm,
+                    CoverSide::Bottom => self.cage.bottom.diameter_mm,
+                    CoverSide::Sides => dikste,
+                };
+                Some(ConcreteCoverRequest {
+                    beam_id: self.beam_id,
+                    side: Some(side),
+                    exposure_class: klasse,
+                    structural_class: self.structural_class,
+                    cover_mm: self.cage.cover_at_mm(side),
+                    stirrup_diameter_mm: self.cage.stirrup_diameter_mm,
+                    max_bar_diameter_mm: phi,
+                })
+            })
+            .collect()
+    }
 }
 
 /// Verzoek om het M-N-κ-diagram van een korf, los van een staaf.

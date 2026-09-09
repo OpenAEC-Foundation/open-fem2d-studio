@@ -20,8 +20,29 @@
  * toetsing. Zonder rekenkern staat er dat de toets niet kon draaien — en géén
  * eigen benadering, want een dekking die de app zelf goedkeurt terwijl de norm
  * hem afkeurt is precies het soort fout dat pas op de bouwplaats opvalt.
+ *
+ * MILIEUKLASSE EN DEKKING PER ZIJDE — hoe de invoer compact blijft
+ * 4.4.1.1(1)P meet de dekking tot "het dichtstbijzijnde betonoppervlak", en een
+ * element heeft er meer dan één: een vloer kan van boven binnen (XC1) en van
+ * onder buiten (XC4) liggen. Dat zijn twee verschillende c_min,dur, twee
+ * verschillende dekkingen en dus twee verschillende nuttige hoogtes.
+ *
+ * De kolom in de app is smal, dus dit mag geen formulier van acht velden
+ * worden. De oplossing is een BASIS met UITZONDERINGEN, precies zoals het
+ * datamodel het ook doet: bovenaan staan één milieuklasse en één dekking voor
+ * het hele element, en die zijn genoeg — verreweg de meeste balken hebben
+ * rondom hetzelfde milieu. Wie ze per zijde nodig heeft, klapt "Per zijde"
+ * open en krijgt drie regels van elk twee velden; wat leeg blijft, volgt de
+ * basis. Zo hoeft niemand vier keer XC1 in te tikken, en is er tegelijk geen
+ * enkele zijde die stilzwijgend iets anders krijgt dan er staat. Het paneel
+ * klapt vanzelf open als er al iets per zijde is ingevuld, want een verstopte
+ * afwijking is erger dan een extra regel.
+ *
+ * De dekkingstoets draait dan drie keer — één keer per betonoppervlak, want dat
+ * is de eenheid van de norm — en de kop toont de zwaarste van de drie.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { CoverSide } from "../../lib/types/concrete/CoverSide";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
 import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
 import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
@@ -35,9 +56,16 @@ import {
   CONSTRUCTIEKLASSEN,
   MILIEUKLASSEN,
   STAAFDIAMETERS,
+  ZIJDEN,
+  ZIJDE_KORT,
+  ZIJDE_LABEL,
   beugelDwarsafstandMm,
+  dekkingVanZijdeMm,
   grootsteStaafdiameterMm,
   maat,
+  milieuklasseVanZijde,
+  zetZijde,
+  zijdeVanKorf,
 } from "./wapeningskorf";
 import "./beton.css";
 
@@ -192,57 +220,101 @@ export function Rij({
 }
 
 /**
+ * De grootste staafdiameter die aan één zijde werkelijk ligt — de maat die de
+ * aanhechtingseis c_min,b van tabel 4.2 stelt.
+ *
+ * Boven telt de bovenwapening, onder de onderwapening; bij de zijkanten de
+ * dikste van de twee, want beide rijen raken met hun buitenste staaf de
+ * zijkant. Spiegel van `ConcreteBeamCheckInput::cover_requests` in de kern.
+ */
+function staafdiameterVanZijde(korf: ReinforcementCage, zijde: CoverSide): number {
+  if (zijde === "Top") return korf.top.count > 0 ? korf.top.diameter_mm : 0;
+  if (zijde === "Bottom") return korf.bottom.count > 0 ? korf.bottom.diameter_mm : 0;
+  return grootsteStaafdiameterMm(korf);
+}
+
+/** Eén dekkingstoets, met de zijde erbij. */
+export interface ZijdeToets {
+  zijde: CoverSide;
+  antwoord: ConcreteCoverResponse;
+}
+
+/**
  * De dekkingstoets uit de kern, met vertraging en bescherming tegen
  * verouderde antwoorden — hetzelfde patroon als het M-κ-diagram in
  * `BetonKorfPaneel`. Zonder milieuklasse wordt er niets gevraagd.
+ *
+ * De toets draait PER BETONOPPERVLAK. 4.4.1.1(1)P meet de dekking tot "het
+ * dichtstbijzijnde betonoppervlak", en (4.2) leidt c_min,dur uit de
+ * milieuklasse van dát oppervlak af; drie zijden zijn dus drie verzoeken aan
+ * dezelfde rekengang, met de zijde als opschrift. Een zijde zonder klasse —
+ * ook niet op het element — levert geen verzoek: dan is er niets te toetsen,
+ * en er wordt niets aangenomen.
  */
 function useDekkingstoets(
   korf: ReinforcementCage,
   milieuklasse: ExposureClass | null,
   constructieklasse: StructuralClass | null,
-): { antwoord: ConcreteCoverResponse | null; fout: string | null } {
-  const [antwoord, setAntwoord] = useState<ConcreteCoverResponse | null>(null);
+): { toetsen: ZijdeToets[]; fout: string | null } {
+  const [toetsen, setToetsen] = useState<ZijdeToets[]>([]);
   const [fout, setFout] = useState<string | null>(null);
   const volgnummer = useRef(0);
-  const staafdiameter = grootsteStaafdiameterMm(korf);
+
+  // De verzoeken als één stabiele sleutel: zo draait het effect alleen als er
+  // werkelijk iets aan de invoer verandert, en niet bij elke render.
+  const verzoeken = useMemo(
+    () =>
+      ZIJDEN.flatMap((zijde) => {
+        const klasse = milieuklasseVanZijde(korf, zijde, milieuklasse);
+        if (!klasse) return [];
+        return [
+          {
+            zijde,
+            verzoek: {
+              beam_id: 0,
+              side: zijde,
+              exposure_class: klasse,
+              structural_class: constructieklasse,
+              cover_mm: dekkingVanZijdeMm(korf, zijde),
+              stirrup_diameter_mm: korf.stirrup_diameter_mm,
+              max_bar_diameter_mm: staafdiameterVanZijde(korf, zijde),
+            },
+          },
+        ];
+      }),
+    [korf, milieuklasse, constructieklasse],
+  );
+  const sleutel = JSON.stringify(verzoeken);
 
   useEffect(() => {
-    if (!milieuklasse) {
-      setAntwoord(null);
+    const lijst: typeof verzoeken = JSON.parse(sleutel);
+    if (lijst.length === 0) {
+      setToetsen([]);
       setFout(null);
       return;
     }
     const nummer = ++volgnummer.current;
     const timer = window.setTimeout(() => {
-      toetsDekking({
-        beam_id: 0,
-        exposure_class: milieuklasse,
-        structural_class: constructieklasse,
-        cover_mm: korf.cover_mm,
-        stirrup_diameter_mm: korf.stirrup_diameter_mm,
-        max_bar_diameter_mm: staafdiameter,
-      })
-        .then((r) => {
+      Promise.all(lijst.map((v) => toetsDekking(v.verzoek)))
+        .then((antwoorden) => {
           if (nummer !== volgnummer.current) return;
-          setAntwoord(r);
+          setToetsen(antwoorden.map((antwoord, i) => ({ zijde: lijst[i].zijde, antwoord })));
           setFout(null);
         })
         .catch((e: unknown) => {
           if (nummer !== volgnummer.current) return;
-          setAntwoord(null);
+          setToetsen([]);
           setFout(e instanceof Error ? e.message : String(e));
         });
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [
-    milieuklasse,
-    constructieklasse,
-    korf.cover_mm,
-    korf.stirrup_diameter_mm,
-    staafdiameter,
-  ]);
+    // `sleutel` draagt de hele invoer; `verzoeken` zelf is elke render een
+    // nieuw object en zou het effect anders bij elke toetsaanslag opnieuw
+    // starten.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sleutel]);
 
-  return { antwoord, fout };
+  return { toetsen, fout };
 }
 
 interface Props {
@@ -278,10 +350,26 @@ export default function KorfVelden({
   idPrefix = "beton",
 }: Props) {
   const zet = (patch: Partial<ReinforcementCage>) => onKorfChange({ ...korf, ...patch });
-  const { antwoord, fout } = useDekkingstoets(korf, milieuklasse, constructieklasse);
+  const { toetsen, fout } = useDekkingstoets(korf, milieuklasse, constructieklasse);
   const heeftBeugel = korf.stirrup_diameter_mm > 0;
   // De afgeleide s_t, om te laten zien wat er gebeurt als het veld leeg blijft.
   const stAfgeleid = doorsnede ? beugelDwarsafstandMm(korf, doorsnede) : null;
+
+  // Het zijdepaneel staat open zodra er iets per zijde is ingevuld: een
+  // afwijking die verstopt zit achter een dichtgeklapt kopje is erger dan een
+  // extra regel in beeld.
+  const heeftAfwijkendeZijde = ZIJDEN.some((z) => {
+    const eigen = zijdeVanKorf(korf, z);
+    return (
+      (eigen.cover_mm ?? null) !== null || (eigen.exposure_class ?? null) !== null
+    );
+  });
+  const [zijdenOpen, setZijdenOpen] = useState(heeftAfwijkendeZijde);
+  // Wordt er van buitenaf een andere korf gekozen die wél zijden draagt, dan
+  // moet het paneel alsnog opengaan; dichtklappen doet de gebruiker zelf.
+  useEffect(() => {
+    if (heeftAfwijkendeZijde) setZijdenOpen(true);
+  }, [heeftAfwijkendeZijde]);
 
   // De klassen gegroepeerd zoals tabel 4.1 ze groepeert, zodat de keuzelijst
   // dezelfde indeling heeft als de tabel waaruit je kiest.
@@ -297,7 +385,36 @@ export default function KorfVelden({
   }, [milieuklassen]);
 
   const gekozen = milieuklassen?.find((i) => i.class === milieuklasse) ?? null;
-  const teDun = antwoord !== null && antwoord.status !== "Ok";
+  // De maatgevende zijde: de grootste unity check. Die staat in de kop; de
+  // andere twee staan in de uitklap eronder, zodat een smalle kolom niet
+  // volloopt met drie alinea's.
+  const maatgevend =
+    toetsen.length === 0
+      ? null
+      : toetsen.reduce((a, b) => (b.antwoord.unity_check > a.antwoord.unity_check ? b : a));
+  const teDun = maatgevend !== null && maatgevend.antwoord.status !== "Ok";
+
+  /** Eén keuzelijst met de milieuklassen van tabel 4.1. */
+  const klasseOpties = (leegLabel: string) => (
+    <>
+      <option value="">{leegLabel}</option>
+      {groepen
+        ? groepen.map((g) => (
+            <optgroup key={g.groep} label={g.groep}>
+              {g.klassen.map((i) => (
+                <option key={i.name} value={i.class}>
+                  {i.name} — {i.description}
+                </option>
+              ))}
+            </optgroup>
+          ))
+        : MILIEUKLASSEN.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+    </>
+  );
 
   return (
     <>
@@ -311,22 +428,7 @@ export default function KorfVelden({
             onMilieuklasseChange(e.target.value === "" ? null : (e.target.value as ExposureClass))
           }
         >
-          <option value="">— kies —</option>
-          {groepen
-            ? groepen.map((g) => (
-                <optgroup key={g.groep} label={g.groep}>
-                  {g.klassen.map((i) => (
-                    <option key={i.name} value={i.class}>
-                      {i.name} — {i.description}
-                    </option>
-                  ))}
-                </optgroup>
-              ))
-            : MILIEUKLASSEN.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
+          {klasseOpties("— kies —")}
         </select>
       </label>
       {gekozen && (
@@ -373,6 +475,100 @@ export default function KorfVelden({
         stap={5}
         onChange={(v) => zet({ cover_mm: v })}
       />
+
+      {/*
+        MILIEUKLASSE EN DEKKING PER ZIJDE (4.4.1.1(1)P).
+
+        Dichtgeklapt zolang er niets per zijde is ingevuld: de balk met één
+        milieu rondom — het gewone geval — houdt daarmee precies de twee velden
+        die hij altijd had. Wie hem openklapt, ziet drie regels van elk twee
+        velden; leeg betekent daar "volg het element", en dat staat er ook. Zo
+        hoeft niemand vier keer dezelfde klasse in te tikken.
+      */}
+      <div className="beton-zijden">
+        <button
+          type="button"
+          className="beton-zijden-knop"
+          aria-expanded={zijdenOpen}
+          aria-controls={`${idPrefix}-zijden`}
+          onClick={() => setZijdenOpen((o) => !o)}
+        >
+          <span aria-hidden="true">{zijdenOpen ? "▾" : "▸"}</span> Per zijde
+          {!zijdenOpen && heeftAfwijkendeZijde ? " (afwijkend)" : ""}
+        </button>
+        {zijdenOpen && (
+          <div id={`${idPrefix}-zijden`} className="beton-zijden-lijst">
+            {ZIJDEN.map((zijde) => {
+              const eigen = zijdeVanKorf(korf, zijde);
+              const klasse = milieuklasseVanZijde(korf, zijde, milieuklasse);
+              return (
+                <div className="beton-zijde-rij" key={zijde}>
+                  <span className="beton-zijde-naam" title={ZIJDE_LABEL[zijde]}>
+                    {ZIJDE_KORT[zijde]}
+                  </span>
+                  <select
+                    id={`${idPrefix}-zijde-${zijde}-klasse`}
+                    className="beton-invoer beton-invoer-zijde"
+                    aria-label={`Milieuklasse ${ZIJDE_LABEL[zijde]}`}
+                    value={eigen.exposure_class ?? ""}
+                    onChange={(e) =>
+                      onKorfChange(
+                        zetZijde(korf, zijde, {
+                          exposure_class:
+                            e.target.value === ""
+                              ? undefined
+                              : (e.target.value as ExposureClass),
+                        }),
+                      )
+                    }
+                  >
+                    {klasseOpties(milieuklasse ? `= ${milieuklasse}` : "— als element —")}
+                  </select>
+                  <input
+                    id={`${idPrefix}-zijde-${zijde}-dekking`}
+                    className="beton-invoer beton-invoer-kort"
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={5}
+                    placeholder={String(maat(korf.cover_mm))}
+                    aria-label={`Dekking ${ZIJDE_LABEL[zijde]} in mm`}
+                    value={eigen.cover_mm ?? ""}
+                    onChange={(e) => {
+                      const t = e.target.value.trim();
+                      const v = parseFloat(t);
+                      onKorfChange(
+                        zetZijde(korf, zijde, {
+                          cover_mm: t === "" || !Number.isFinite(v) ? undefined : v,
+                        }),
+                      );
+                    }}
+                  />
+                  <span className="beton-eenheid">mm</span>
+                  <span className="beton-zijde-uitkomst">
+                    {klasse ? `${klasse} · ${maat(dekkingVanZijdeMm(korf, zijde))}` : "—"}
+                  </span>
+                </div>
+              );
+            })}
+            <div className="beton-hint">
+              4.4.1.1(1)P meet de dekking tot <em>het dichtstbijzijnde</em>{" "}
+              betonoppervlak, dus per zijde. Leeg = die zijde volgt de milieuklasse
+              en de dekking van het element hierboven; er wordt niets aangenomen.
+              De bovenzijde bepaalt de ligging van de bovenwapening (d₂), de
+              onderzijde die van de onderwapening (d), en de zijkanten de
+              dwarsafstand van de beugelbenen (§9.2.2(8)) en de vrije staafafstand
+              (§8.2). Links en rechts staan niet apart: zij komen in elke formule
+              alleen als paar voor (b_w − 2c), dus een splitsing zou geen getal
+              veranderen — verschillen ze werkelijk van milieu, neem dan de
+              zwaarste. De constructieklasse blijft er één voor het hele element:
+              alle vijf de criteria van de door de nationale bijlage vervangen
+              tabel 4.3N zijn eigenschappen van het element.
+            </div>
+          </div>
+        )}
+      </div>
+
       <label className="beton-rij" htmlFor={`${idPrefix}-beugel`}>
         <span className="beton-label">Beugel</span>
         <select
@@ -475,7 +671,14 @@ export default function KorfVelden({
         onChange={(bottom) => zet({ bottom })}
       />
 
-      {antwoord && (
+      {/*
+        De uitkomst. De kop toont de MAATGEVENDE zijde — de grootste unity
+        check — want dat is het getal waarop de balk staat of valt. De hele
+        keten per zijde staat eronder in de uitklap; drie alinea's in een
+        smalle kolom zou onleesbaar zijn, en de twee niet-maatgevende zijden
+        weglaten zou verbergen wat er getoetst is.
+      */}
+      {maatgevend && (
         <div
           className={teDun ? "beton-fout" : "beton-hint"}
           role={teDun ? "alert" : undefined}
@@ -483,34 +686,44 @@ export default function KorfVelden({
           {teDun ? (
             <>
               <strong>
-                Dekking te klein: {maat(antwoord.c_nom_provided_mm)} mm terwijl{" "}
-                {maat(antwoord.c_nom_required_mm)} mm nodig is
+                Dekking te klein aan de {ZIJDE_LABEL[maatgevend.zijde]}:{" "}
+                {maat(maatgevend.antwoord.c_nom_provided_mm)} mm terwijl{" "}
+                {maat(maatgevend.antwoord.c_nom_required_mm)} mm nodig is
               </strong>{" "}
-              (UC = {antwoord.unity_check.toFixed(2).replace(".", ",")}).{" "}
+              (UC = {maatgevend.antwoord.unity_check.toFixed(2).replace(".", ",")}).{" "}
             </>
           ) : (
             <>
-              Dekking in orde: {maat(antwoord.c_nom_provided_mm)} mm ≥{" "}
-              {maat(antwoord.c_nom_required_mm)} mm.{" "}
+              Dekking in orde{toetsen.length > 1 ? " aan alle zijden" : ""}; maatgevend
+              is de {ZIJDE_LABEL[maatgevend.zijde]}:{" "}
+              {maat(maatgevend.antwoord.c_nom_provided_mm)} mm ≥{" "}
+              {maat(maatgevend.antwoord.c_nom_required_mm)} mm.{" "}
             </>
           )}
-          c<sub>min,dur</sub> ={" "}
-          {antwoord.c_min_dur_mm === null
-            ? "— (tabel 4.4N kent deze klasse niet)"
-            : `${maat(antwoord.c_min_dur_mm)} mm`}
-          , c<sub>min,b</sub> = {maat(antwoord.c_min_b_mm)} mm → c<sub>min</sub> ={" "}
-          {maat(antwoord.c_min_mm)} mm; c<sub>nom</sub> = c<sub>min</sub> + Δc
-          <sub>dev</sub> = {maat(antwoord.c_min_mm)} + {maat(antwoord.delta_c_dev_mm)} ={" "}
-          {maat(antwoord.c_nom_required_mm)} mm (4.1/4.2, constructieklasse{" "}
-          {antwoord.structural_class}
-          {antwoord.cover_column ? `, kolom ${antwoord.cover_column}` : ""}).
           <details className="beton-notities">
-            <summary>Waar dit vandaan komt</summary>
-            <ul>
-              {antwoord.notes.map((n, i) => (
-                <li key={i}>{n}</li>
-              ))}
-            </ul>
+            <summary>De keten per zijde (4.1 en 4.2)</summary>
+            {toetsen.map(({ zijde, antwoord }) => (
+              <div key={zijde} className="beton-zijde-uitleg">
+                <strong>{ZIJDE_LABEL[zijde]}</strong> — {antwoord.exposure_class}, c
+                <sub>nom</sub> = {maat(antwoord.c_nom_provided_mm)} mm. c
+                <sub>min,dur</sub> ={" "}
+                {antwoord.c_min_dur_mm === null
+                  ? "— (tabel 4.4N kent deze klasse niet)"
+                  : `${maat(antwoord.c_min_dur_mm)} mm`}
+                , c<sub>min,b</sub> = {maat(antwoord.c_min_b_mm)} mm → c<sub>min</sub> ={" "}
+                {maat(antwoord.c_min_mm)} mm; c<sub>nom,vereist</sub> = c<sub>min</sub> +
+                Δc<sub>dev</sub> = {maat(antwoord.c_min_mm)} +{" "}
+                {maat(antwoord.delta_c_dev_mm)} = {maat(antwoord.c_nom_required_mm)} mm
+                (constructieklasse {antwoord.structural_class}
+                {antwoord.cover_column ? `, kolom ${antwoord.cover_column}` : ""}, UC ={" "}
+                {antwoord.unity_check.toFixed(2).replace(".", ",")}).
+                <ul>
+                  {antwoord.notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </details>
         </div>
       )}

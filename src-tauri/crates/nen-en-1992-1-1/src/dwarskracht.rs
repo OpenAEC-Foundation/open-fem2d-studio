@@ -1,18 +1,59 @@
 //! §6.2 Dwarskracht — V_Rd,c (6.2.a/6.2.b) en het vakwerkmodel (6.8)/(6.9).
 //!
-//! De norm toetst de dwarskracht in **twee sporen die elkaar uitsluiten**:
+//! De norm kent voor één doorsnede **twee bewijsvoeringen**, en die sluiten
+//! elkaar niet uit:
 //!
-//! 1. **Geen berekende dwarskrachtwapening.** Zolang V_Ed ≤ V_Rd,c is er
+//! 1. **Zonder berekende dwarskrachtwapening.** Zolang V_Ed ≤ V_Rd,c is er
 //!    volgens 6.2.1(3) geen berekende dwarskrachtwapening nodig. V_Rd,c volgt
 //!    uit (6.2.a) *met een minimum van* (6.2.b) — dus de **grootste** van
 //!    beide, niet de kleinste.
-//! 2. **Vakwerkmodel.** Zodra V_Ed > V_Rd,c komt de weerstand volgens 6.2.3
-//!    uitsluitend uit het vakwerk: V_Rd = min(V_Rd,s (6.8); V_Rd,max (6.9)).
+//! 2. **Vakwerkmodel.** Een element dat dwarskrachtwapening DRAAGT heeft
+//!    volgens 6.2.1(2) de weerstand V_Rd = V_Rd,s + V_ccd + V_td (6.1); bij
+//!    constante hoogte is dat V_Rd,s, en 6.2.3(3) noemt V_Rd voor verticale
+//!    beugels "de kleinste waarde van" (6.8) en (6.9).
 //!
-//! **De betonbijdrage wordt in spoor 2 NIET opgeteld.** Dat is geen
+//! **De betonbijdrage wordt in het vakwerkmodel NIET opgeteld.** Dat is geen
 //! implementatiekeuze maar de systematiek van 6.2.3: (6.8) en (6.9) staan
 //! zonder betonterm in de norm, en 6.2.3(3) noemt V_Rd "de kleinste waarde
 //! van" die twee. Wie V_Rd = V_Rd,c + V_Rd,s rekent, rekent onveilig.
+//!
+//! ## Waarom de weerstand de GROOTSTE van de twee bewijzen is
+//!
+//! 6.2.1(3) gaat over de vraag of er wapening moet worden ONTWORPEN, niet over
+//! wat de doorsnede kan dragen: "In gebieden van het element waar geldt
+//! V_Ed ≤ V_Rd,c is geen berekende dwarskrachtwapening nodig." Daarnaast staat
+//! er in 6.2.1(2) onvoorwaardelijk: "De dwarskrachtweerstand van een element
+//! met dwarskrachtwapening is gelijk aan: V_Rd = V_Rd,s + V_ccd + V_td (6.1)."
+//! 6.2.1(5) eist alleen in de gebieden waar V_Ed > V_Rd,c dat er zóveel
+//! wapening ligt dat V_Ed ≤ V_Rd. Een doorsnede is dus aantoonbaar in orde
+//! zodra ÉÉN van beide bewijzen sluit, en de weerstand die het rapport meldt is
+//! de grootste van de twee:
+//!
+//! ```text
+//! V_Rd = min( max( V_Rd,c ; min(V_Rd,s; V_Rd,max) ) ; V_Rd,max )
+//! ```
+//!
+//! De buitenste min is 6.2.1(6): "De som van de rekenwaarden van de dwarskracht
+//! en de bijdragen van de flenzen, V_Ed − V_ccd − V_td, behoort op geen enkele
+//! plaats in het element de toelaatbare maximumwaarde V_Rd,max (zie 6.2.3) te
+//! overschrijden." Die bovengrens geldt alleen waar er werkelijk
+//! dwarskrachtwapening ligt: buiten 6.2.3 bestaat V_Rd,max niet.
+//!
+//! **Wat dit repareert.** Werd in het gebied V_Ed ≤ V_Rd,c altijd V_Rd,c als
+//! weerstand gemeld, dan bleef elke ligger mét beugels hangen op de plaats waar
+//! V_Ed precies dóór V_Rd,c zakt: dáár is V_Ed/V_Rd,c per definitie bijna 1,0,
+//! terwijl een paar millimeter verderop dezelfde beugels een veelvoud van die
+//! weerstand leveren. Dat gaf een dwarskracht-unity-check van bijna 1,0 op élke
+//! staaf die ergens rekenkundig wapening nodig heeft — een artefact van de
+//! spoorgrens, niet van de constructie. Met de formule hierboven is de sprong
+//! op die grens weg: V_Rd,s wordt aan weerszijden met dezelfde θ berekend.
+//!
+//! **9.2.2 verandert hier niets aan.** Dat artikel is detaillering: het eist
+//! ρ_w ≥ ρ_w,min (9.4/9.5N) en begrenst s_l,max, s_b,max en s_t,max. Het kent
+//! géén weerstandsbijdrage toe. Minimumbeugels tellen dus niet mee ómdat het
+//! minimumbeugels zijn — ze tellen mee omdat ze ER ZIJN, en daarmee valt de
+//! doorsnede onder "een element met dwarskrachtwapening" van 6.2.1(2)/6.2.3(3).
+//! Ligt er niets, dan is er ook geen V_Rd,s en blijft V_Rd,c de hele weerstand.
 //!
 //! ## Wat hier is overgenomen, en waar het staat
 //!
@@ -290,10 +331,32 @@ pub enum CotThetaKeuze {
     /// Automatisch, maar zelfs bij cot θ = 1 haalt V_Rd,max het niet. Dan is
     /// cot θ = 1 aangehouden: de waarde waarbij (6.9) maximaal is.
     AutomatischDrukdiagonaalTeKlein,
-    /// Er wordt geen wapening ontworpen (spoor A). cot θ = 1 aangehouden,
-    /// omdat (6.9) daar maximaal is en V_Rd,max hier alleen als bovengrens van
-    /// 6.2.1(6) dient.
-    SpoorZonderWapening,
+    /// Er ligt géén dwarskrachtwapening, dus er is niets om θ voor te kiezen:
+    /// (6.8) bestaat hier niet. cot θ = 1 is aangehouden omdat (6.9) daar
+    /// maximaal is en V_Rd,max in dat geval alleen als bovengrens van 6.2.1(6)
+    /// dient.
+    ///
+    /// Dit hangt aan de AANWEZIGHEID van beugels, niet aan de vraag of 6.2.1(3)
+    /// er rekenkundig om vraagt: liggen er beugels, dan is θ ook onder
+    /// V_Ed ≤ V_Rd,c een vrije ontwerpkeuze binnen 1,0 ≤ cot θ ≤ 2,5.
+    GeenDwarskrachtwapening,
+}
+
+/// Welke van de twee door de norm toegelaten bewijsvoeringen de weerstand van
+/// deze doorsnede levert.
+///
+/// Los van [`Spoor`], dat over de ONTWERPvraag van 6.2.1(3) gaat. Een doorsnede
+/// met V_Ed ≤ V_Rd,c die tóch beugels draagt, staat in
+/// [`Spoor::GeenBerekendeWapening`] en kan hier niettemin
+/// [`Weerstandsroute::Dwarskrachtwapening`] zijn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Weerstandsroute {
+    /// 6.2.2(1): V_Rd = V_Rd,c. De doorsnede draagt de dwarskracht zonder dat
+    /// er dwarskrachtwapening voor nodig is (6.2.1(3)).
+    BetonZonderWapening,
+    /// 6.2.1(2)/6.2.3(3): V_Rd = min(V_Rd,s; V_Rd,max) — de aanwezige
+    /// dwarskrachtwapening draagt.
+    Dwarskrachtwapening,
 }
 
 /// Welke tak van het vakwerkmodel maatgevend was.
@@ -356,12 +419,17 @@ pub struct Vakwerk {
     pub delta_f_td_kn: f64,
 }
 
-/// Welk spoor van 6.2 geldt.
+/// Welk spoor van 6.2 geldt — de ONTWERPvraag van 6.2.1(3)/(5).
+///
+/// Dit zegt of er rekenkundig dwarskrachtwapening moet worden ontworpen, niet
+/// welke weerstand de doorsnede heeft; dat laatste is
+/// [`Weerstandsroute`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Spoor {
     /// V_Ed ≤ V_Rd,c — geen berekende dwarskrachtwapening nodig (6.2.1(3)).
     GeenBerekendeWapening,
-    /// V_Ed > V_Rd,c — uitsluitend het vakwerkmodel van 6.2.3 telt.
+    /// V_Ed > V_Rd,c — er MOET dwarskrachtwapening zijn, zodanig dat
+    /// V_Ed ≤ V_Rd (6.2.1(5)); de betonbijdrage telt daarbij niet mee.
     Vakwerkmodel,
 }
 
@@ -407,8 +475,11 @@ pub struct ShearResistance {
     pub vakwerk: Option<Vakwerk>,
     pub vakwerk_reden: Option<String>,
     pub spoor: Spoor,
-    /// De maatgevende weerstand, kN. `None` als het spoor niet kon worden
-    /// afgerekend (zie `reden`).
+    /// Welke bewijsvoering de gemelde weerstand levert. `None` als er geen
+    /// weerstand kon worden bepaald (zie `reden`).
+    pub weerstandsroute: Option<Weerstandsroute>,
+    /// De maatgevende weerstand, kN. `None` als de weerstand niet kon worden
+    /// bepaald (zie `reden`).
     pub v_rd_kn: Option<f64>,
     /// Unity check V_Ed/V_Rd. `None` als `v_rd_kn` dat ook is.
     pub uc: Option<f64>,
@@ -621,6 +692,9 @@ pub fn shear_resistance(
     }
 
     // ── Spoor bepalen ────────────────────────────────────────────────────────
+    // Dit is de ONTWERPvraag van 6.2.1(3)/(5): moet er rekenkundig
+    // dwarskrachtwapening worden ontworpen? Het is NIET de vraag welke
+    // weerstand de doorsnede heeft; die volgt hieronder.
     let spoor = if v_ed_voor_vrd_c <= v_rd_c_kn {
         Spoor::GeenBerekendeWapening
     } else {
@@ -628,68 +702,155 @@ pub fn shear_resistance(
     };
 
     // ── Het vakwerkmodel ─────────────────────────────────────────────────────
-    let (vakwerk, vakwerk_reden) =
-        bouw_vakwerk(cage, mat, opts, d, b_w, n_ed_kn, v_ed_kn, spoor, nu);
+    let (vakwerk, vakwerk_reden) = bouw_vakwerk(cage, mat, opts, d, b_w, n_ed_kn, v_ed_kn, nu);
 
     // ── Weerstand, unity check en de resterende kanttekeningen ───────────────
-    let (v_rd_kn, uc, reden) = match spoor {
-        Spoor::GeenBerekendeWapening => {
-            notes.push(format!(
-                "V_Ed = {} kN ≤ V_Rd,c = {} kN: volgens 6.2.1(3) is er GEEN berekende \
-                 dwarskrachtwapening nodig. 6.2.1(4) eist dan nog wel de minimale \
-                 dwarskrachtwapening van §9.2.2 — die mag alleen worden weggelaten bij platen \
-                 (massief, ribben- of kanaalplaat) waarin herverdeling in dwarsrichting mogelijk \
-                 is, en bij elementen van ondergeschikt belang zoals lateien met een overspanning \
-                 ≤ 2 m. Die detailleringseis wordt hier NIET getoetst.",
-                nl(v_ed_voor_vrd_c, 1),
-                nl(v_rd_c_kn, 1)
-            ));
-            let uc = if v_rd_c_kn > 0.0 {
-                v_ed_voor_vrd_c / v_rd_c_kn
-            } else if v_ed_voor_vrd_c > 0.0 {
+    //
+    // De norm laat twee bewijsvoeringen toe en die sluiten elkaar niet uit; zie
+    // de moduletekst. Beide worden hier als kandidaat uitgerekend, elk met de
+    // V_Ed die bij die route hoort, en de route met de LAAGSTE unity check
+    // wint — want als één bewijs sluit, is de doorsnede aangetoond.
+    //
+    // * Route beton (6.2.2(1)): tegen V_Rd,c, met de V_Ed die volgens 6.2.2(6)
+    //   met β verminderd mag zijn. Alleen geldig zolang V_Ed ≤ V_Rd,c, dus in
+    //   spoor A; in spoor B eist 6.2.1(5) juist wapening.
+    // * Route wapening (6.2.1(2)/6.2.3(3)): tegen min(V_Rd,s; V_Rd,max), altijd
+    //   met de ONVERMINDERDE V_Ed — de β van 6.2.2(6) geldt uitsluitend voor de
+    //   vergelijking met V_Rd,c, en die van 6.2.3(8) is hier niet toegepast.
+    let route_beton: Option<(f64, f64, f64)> = if spoor == Spoor::GeenBerekendeWapening {
+        let uc = if v_rd_c_kn > 0.0 {
+            v_ed_voor_vrd_c / v_rd_c_kn
+        } else if v_ed_voor_vrd_c > 0.0 {
+            f64::INFINITY
+        } else {
+            0.0
+        };
+        Some((v_ed_voor_vrd_c, v_rd_c_kn, uc))
+    } else {
+        None
+    };
+    let route_wapening: Option<(f64, f64, f64)> =
+        vakwerk.as_ref().and_then(|v| v.v_rd_kn).map(|rd| {
+            let uc = if rd > 0.0 {
+                v_ed_kn / rd
+            } else if v_ed_kn > 0.0 {
                 f64::INFINITY
             } else {
                 0.0
             };
-            (Some(v_rd_c_kn), Some(uc), None)
-        }
-        Spoor::Vakwerkmodel => {
-            notes.push(format!(
-                "V_Ed = {} kN > V_Rd,c = {} kN: de weerstand komt volgens 6.2.3 UITSLUITEND uit \
-                 het vakwerkmodel. De bijdrage van het beton V_Rd,c wordt NIET opgeteld — (6.8) \
-                 en (6.9) kennen geen betonterm en 6.2.3(3) noemt V_Rd \"de kleinste waarde van\" \
-                 die twee.",
-                nl(v_ed_kn, 1),
-                nl(v_rd_c_kn, 1)
-            ));
-            match vakwerk.as_ref().and_then(|v| v.v_rd_kn.map(|r| (v, r))) {
-                Some((v, rd)) => {
-                    let uc = if rd > 0.0 { v_ed_kn / rd } else { f64::INFINITY };
-                    if v.tak == Some(VakwerkTak::DrukdiagonaalBezwijkt) {
-                        notes.push(
-                            "V_Rd,max is maatgevend: de betondrukdiagonaal bezwijkt vóór de \
-                             beugels vloeien. Méér beugelwapening helpt hier niet — de doorsnede \
-                             of de betonsterkte moet groter, of θ moet binnen 1,0 ≤ cot θ ≤ 2,5 \
-                             anders worden gekozen."
-                                .to_string(),
-                        );
-                    }
-                    (Some(rd), Some(uc), None)
-                }
-                None => {
-                    let reden = vakwerk
-                        .as_ref()
-                        .and_then(|v| v.v_rd_s_reden.clone())
-                        .or_else(|| vakwerk_reden.clone())
-                        .unwrap_or_else(|| "het vakwerkmodel kon niet worden bepaald".to_string());
-                    (None, None, Some(reden))
-                }
+            (v_ed_kn, rd, uc)
+        });
+
+    match spoor {
+        Spoor::GeenBerekendeWapening => notes.push(format!(
+            "V_Ed = {} kN ≤ V_Rd,c = {} kN: volgens 6.2.1(3) is er GEEN berekende \
+             dwarskrachtwapening nodig. 6.2.1(4) eist dan nog wel de minimale \
+             dwarskrachtwapening van §9.2.2 — die mag alleen worden weggelaten bij platen \
+             (massief, ribben- of kanaalplaat) waarin herverdeling in dwarsrichting mogelijk \
+             is, en bij elementen van ondergeschikt belang zoals lateien met een overspanning \
+             ≤ 2 m. Die detailleringseis wordt hier NIET getoetst.",
+            nl(v_ed_voor_vrd_c, 1),
+            nl(v_rd_c_kn, 1)
+        )),
+        Spoor::Vakwerkmodel => notes.push(format!(
+            "V_Ed = {} kN > V_Rd,c = {} kN: 6.2.1(5) eist hier dwarskrachtwapening, en de \
+             weerstand komt volgens 6.2.3 UITSLUITEND uit het vakwerkmodel. De bijdrage van het \
+             beton V_Rd,c wordt NIET opgeteld — (6.8) en (6.9) kennen geen betonterm en 6.2.3(3) \
+             noemt V_Rd \"de kleinste waarde van\" die twee.",
+            nl(v_ed_kn, 1),
+            nl(v_rd_c_kn, 1)
+        )),
+    }
+
+    let (weerstandsroute, v_rd_kn, uc, reden) = match (route_beton, route_wapening) {
+        (Some((_, rd_c, uc_c)), Some((_, rd_w, uc_w))) => {
+            // Beide bewijzen staan open. De doorsnede is in orde zodra één van
+            // beide sluit, dus de laagste unity check is de maatgevende.
+            if uc_w < uc_c {
+                notes.push(format!(
+                    "De doorsnede DRAAGT dwarskrachtwapening, ook al eist 6.2.1(3) die hier niet \
+                     rekenkundig. 6.2.1(2) geeft voor een element mét dwarskrachtwapening \
+                     V_Rd = V_Rd,s + V_ccd + V_td, bij constante hoogte dus V_Rd,s, en 6.2.3(3) \
+                     begrenst dat op V_Rd,max. Die weerstand ({} kN) is hoger dan V_Rd,c ({} kN) \
+                     en is daarom aangehouden. Zonder deze stap zou de unity check op de plaats \
+                     waar V_Ed door V_Rd,c zakt per definitie bijna 1,0 zijn, terwijl daar \
+                     dezelfde beugels liggen als een millimeter verderop.",
+                    nl(rd_w, 1),
+                    nl(rd_c, 1)
+                ));
+                (Some(Weerstandsroute::Dwarskrachtwapening), Some(rd_w), Some(uc_w), None)
+            } else {
+                notes.push(format!(
+                    "De aanwezige dwarskrachtwapening levert bij de gekozen θ V_Rd = {} kN, \
+                     minder dan V_Rd,c = {} kN. 6.2.1(3) is hier het gunstigste bewijs: zolang \
+                     V_Ed ≤ V_Rd,c is er geen berekende dwarskrachtwapening nodig, dus V_Rd,c \
+                     is aangehouden.",
+                    nl(rd_w, 1),
+                    nl(rd_c, 1)
+                ));
+                (Some(Weerstandsroute::BetonZonderWapening), Some(rd_c), Some(uc_c), None)
             }
+        }
+        (Some((_, rd_c, uc_c)), None) => {
+            (Some(Weerstandsroute::BetonZonderWapening), Some(rd_c), Some(uc_c), None)
+        }
+        (None, Some((_, rd_w, uc_w))) => {
+            (Some(Weerstandsroute::Dwarskrachtwapening), Some(rd_w), Some(uc_w), None)
+        }
+        (None, None) => {
+            let reden = vakwerk
+                .as_ref()
+                .and_then(|v| v.v_rd_s_reden.clone())
+                .or_else(|| vakwerk_reden.clone())
+                .unwrap_or_else(|| "het vakwerkmodel kon niet worden bepaald".to_string());
+            (None, None, None, Some(reden))
         }
     };
 
+    // 6.2.1(6): "De som van de rekenwaarden van de dwarskracht en de bijdragen
+    // van de flenzen, V_Ed − V_ccd − V_td, behoort op geen enkele plaats in het
+    // element de toelaatbare maximumwaarde V_Rd,max (zie 6.2.3) te
+    // overschrijden." Die bovengrens hoort bij 6.2.3 en geldt dus alleen waar
+    // er werkelijk dwarskrachtwapening ligt; zonder beugels bestaat V_Rd,max
+    // niet als weerstand van het element. Hij bijt alleen wanneer V_Rd,c boven
+    // V_Rd,max uitkomt — zeldzaam, maar niet onmogelijk bij een zeer lage z.
+    let v_rd_max_bovengrens = vakwerk
+        .as_ref()
+        .filter(|v| v.v_rd_s_kn.is_some())
+        .map(|v| v.v_rd_max_kn);
+    let (v_rd_kn, uc) = match (v_rd_kn, uc, v_rd_max_bovengrens) {
+        (Some(rd), Some(_), Some(grens)) if rd > grens => {
+            notes.push(format!(
+                "6.2.1(6) begrenst de weerstand op V_Rd,max = {} kN; de route hierboven gaf {} \
+                 kN. Er is met de bovengrens gerekend.",
+                nl(grens, 1),
+                nl(rd, 1)
+            ));
+            let uc = if grens > 0.0 { v_ed_kn / grens } else { f64::INFINITY };
+            (Some(grens), Some(uc))
+        }
+        (rd, uc, _) => (rd, uc),
+    };
+
+    if weerstandsroute == Some(Weerstandsroute::Dwarskrachtwapening) {
+        if let Some(v) = vakwerk.as_ref() {
+            if v.tak == Some(VakwerkTak::DrukdiagonaalBezwijkt) {
+                notes.push(
+                    "V_Rd,max is maatgevend: de betondrukdiagonaal bezwijkt vóór de beugels \
+                     vloeien. Méér beugelwapening helpt hier niet — de doorsnede of de \
+                     betonsterkte moet groter, of θ moet binnen 1,0 ≤ cot θ ≤ 2,5 anders worden \
+                     gekozen."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
     if let Some(v) = vakwerk.as_ref() {
-        if spoor == Spoor::Vakwerkmodel {
+        // (6.18) en (6.12) horen bij het vakwerkmodel: zij gelden zodra de
+        // aanwezige dwarskrachtwapening de weerstand levert, of dat nu omdat
+        // 6.2.1(5) haar eist is of omdat zij er los daarvan ligt.
+        if weerstandsroute == Some(Weerstandsroute::Dwarskrachtwapening) {
             notes.push(format!(
                 "De dwarskracht veroorzaakt volgens (6.18) een bijkomende trekkracht in de \
                  langswapening: ΔF_td = 0,5·V_Ed·(cot θ − cot α) = {} kN. De norm eist bovendien \
@@ -733,6 +894,7 @@ pub fn shear_resistance(
         vakwerk,
         vakwerk_reden,
         spoor,
+        weerstandsroute,
         v_rd_kn,
         uc,
         reden,
@@ -806,7 +968,6 @@ fn bouw_vakwerk(
     b_w_mm: f64,
     n_ed_kn: f64,
     v_ed_kn: f64,
-    spoor: Spoor,
     nu: f64,
 ) -> (Option<Vakwerk>, Option<String>) {
     // z: 6.2.3(1) staat z = 0,9·d alleen toe voor gewapend beton ZONDER
@@ -836,7 +997,23 @@ fn bouw_vakwerk(
     let nu1 = nu; // NB bij 6.2.3(3): ν₁ = ν.
     let teller_n = alpha_cw * b_w_mm * z * nu1 * mat.f_cd();
 
-    // θ: opgegeven gaat vóór; anders automatisch (spoor B) of cot θ = 1 (spoor A).
+    // De dwarskrachtwapening. `shear_reinforcement` is de enige poort naar de
+    // beugels; ontbreekt er iets, dan komt daar één leesbare zin uit.
+    //
+    // Dit staat vóór de θ-keuze omdat die keuze eraan hangt: θ is volgens
+    // 6.2.3(2) een vrije ontwerpkeuze van het VAKWERKMODEL, en dat model bestaat
+    // zodra er beugels liggen. Vroeger hing de keuze aan het spoor van 6.2.1(3),
+    // waardoor dezelfde beugels aan weerszijden van V_Ed = V_Rd,c met een andere
+    // θ werden gerekend en de weerstand daar sprong.
+    let (asw, v_rd_s_reden): (Option<ShearReinforcement>, Option<String>) =
+        match cage.shear_reinforcement() {
+            Ok(a) => (Some(a), None),
+            Err(e) => (None, Some(e)),
+        };
+
+    // θ: opgegeven gaat vóór; anders automatisch zolang er beugels zijn om θ
+    // voor te kiezen, en cot θ = 1 als die er niet zijn — daar is (6.9)
+    // maximaal en dient V_Rd,max alleen als bovengrens.
     let (cot_theta, keuze) = match opts.cot_theta {
         Some(c) => {
             let afgekapt = c.clamp(COT_THETA_MIN, COT_THETA_MAX);
@@ -847,22 +1024,12 @@ fn bouw_vakwerk(
             };
             (afgekapt, keuze)
         }
-        None => match spoor {
-            Spoor::Vakwerkmodel => cot_theta_automatisch(teller_n, v_ed_kn * 1e3),
-            Spoor::GeenBerekendeWapening => (COT_THETA_MIN, CotThetaKeuze::SpoorZonderWapening),
-        },
+        None if asw.is_some() => cot_theta_automatisch(teller_n, v_ed_kn * 1e3),
+        None => (COT_THETA_MIN, CotThetaKeuze::GeenDwarskrachtwapening),
     };
     let tan_theta = 1.0 / cot_theta;
     let theta_deg = cot_theta.recip().atan().to_degrees();
     let v_rd_max_n = teller_n / (cot_theta + tan_theta);
-
-    // De dwarskrachtwapening. `shear_reinforcement` is de enige poort naar de
-    // beugels; ontbreekt er iets, dan komt daar één leesbare zin uit.
-    let (asw, v_rd_s_reden): (Option<ShearReinforcement>, Option<String>) =
-        match cage.shear_reinforcement() {
-            Ok(a) => (Some(a), None),
-            Err(e) => (None, Some(e)),
-        };
 
     // f_ywd: eigen beugelkwaliteit → f_ywk/γ_S; anders de f_yd van de
     // langswapening. De korf legt vast dat `None` "dezelfde staalsoort" betekent.
@@ -1202,9 +1369,10 @@ impl ShearResistance {
             Spoor::GeenBerekendeWapening => uit.push(stap(
                 "dwarskracht_spoor",
                 "Spoorkeuze",
-                r"V_{Rd}",
+                r"V_{Rd,c}",
                 "art. 6.2.1(3) en 6.2.1(4)",
-                r"V_{Ed} \le V_{Rd,c} \Rightarrow V_{Rd} = V_{Rd,c}".to_string(),
+                r"V_{Ed} \le V_{Rd,c} \Rightarrow \text{geen BEREKENDE dwarskrachtwapening nodig}"
+                    .to_string(),
                 format!(
                     r"{ved} \le {vrdc} \text{{ kN}}",
                     ved = lx(self.v_ed_voor_vrd_c_kn, 1),
@@ -1217,11 +1385,14 @@ impl ShearResistance {
                 Some(c.v_rd_c_kn),
                 "kN",
                 vec![
-                    "6.2.1(3): geen BEREKENDE dwarskrachtwapening nodig. 6.2.1(4) eist dan nog \
-                     wel de minimale dwarskrachtwapening van §9.2.2, tenzij het om platen gaat \
-                     waarin herverdeling in dwarsrichting mogelijk is, of om elementen van \
-                     ondergeschikt belang (lateien met overspanning ≤ 2 m). Die detailleringseis \
-                     valt buiten deze toets."
+                    "6.2.1(3): geen BEREKENDE dwarskrachtwapening nodig. Dat gaat over de vraag \
+                     of er wapening moet worden ONTWORPEN, niet over wat deze doorsnede kan \
+                     dragen; liggen er beugels, dan draagt de doorsnede volgens 6.2.1(2) ook \
+                     V_Rd,s. Welke van beide de weerstand levert, staat in de volgende stap. \
+                     6.2.1(4) eist hier bovendien de minimale dwarskrachtwapening van §9.2.2, \
+                     tenzij het om platen gaat waarin herverdeling in dwarsrichting mogelijk is, \
+                     of om elementen van ondergeschikt belang (lateien met overspanning ≤ 2 m). \
+                     Die detailleringseis valt buiten deze toets."
                         .to_string(),
                 ],
             )),
@@ -1240,8 +1411,9 @@ impl ShearResistance {
                 None,
                 "",
                 vec![
-                    "De betonbijdrage V_Rd,c VERVALT hier volledig. (6.8) en (6.9) kennen geen \
-                     betonterm; V_Rd = V_Rd,c + V_Rd,s zou onveilig zijn."
+                    "6.2.1(5) eist hier dwarskrachtwapening. De betonbijdrage V_Rd,c VERVALT \
+                     daarbij volledig: (6.8) en (6.9) kennen geen betonterm, en \
+                     V_Rd = V_Rd,c + V_Rd,s zou onveilig zijn."
                         .to_string(),
                 ],
             )),
@@ -1308,10 +1480,10 @@ impl ShearResistance {
                              betondrukdiagonaal V_Ed niet. cot θ = 1 is aangehouden; de toets \
                              loopt daarna op V_Rd,max stuk."
                                 .to_string(),
-                        CotThetaKeuze::SpoorZonderWapening =>
-                            "Er wordt geen wapening ontworpen, dus θ is geen ontwerpkeuze. \
-                             cot θ = 1 is aangehouden: daar is (6.9) maximaal, en V_Rd,max dient \
-                             hier alleen als de bovengrens van 6.2.1(6)."
+                        CotThetaKeuze::GeenDwarskrachtwapening =>
+                            "Er ligt geen dwarskrachtwapening, dus er is geen vakwerkmodel om θ \
+                             voor te kiezen. cot θ = 1 is aangehouden: daar is (6.9) maximaal, en \
+                             V_Rd,max dient hier alleen als de bovengrens van 6.2.1(6)."
                                 .to_string(),
                     },
                 ],
@@ -1473,6 +1645,78 @@ impl ShearResistance {
             ));
         }
 
+        // Welke bewijsvoering het getal levert. Dit is een eigen stap en geen
+        // voetnoot, omdat de lezer aan V_Rd alleen niet kan zien of hij naar
+        // (6.2.a/b) of naar (6.8)/(6.9) kijkt — en juist dat onderscheid is wat
+        // de norm in 6.2.1(2) tegenover 6.2.1(3) zet.
+        if let (Some(route), Some(rd)) = (self.weerstandsroute, self.v_rd_kn) {
+            let v_rd_s = self.vakwerk.as_ref().and_then(|v| v.v_rd_s_kn);
+            let v_rd_max = self.vakwerk.as_ref().map(|v| v.v_rd_max_kn);
+            let (formule, invulling, toelichting) = match route {
+                Weerstandsroute::BetonZonderWapening => (
+                    r"V_{Rd} = V_{Rd,c}".to_string(),
+                    format!(r"V_{{Rd}} = {r} \text{{ kN}}", r = lx(rd, 1)),
+                    match (v_rd_s, self.spoor) {
+                        (Some(s), Spoor::GeenBerekendeWapening) => format!(
+                            "6.2.1(3) geeft hier het gunstigste bewijs: V_Ed blijft onder V_Rd,c, \
+                             zodat er geen berekende dwarskrachtwapening nodig is. De aanwezige \
+                             beugels leveren bij de gekozen θ {} kN — minder dan V_Rd,c — en zijn \
+                             daarom niet maatgevend.",
+                            nl(s, 1)
+                        ),
+                        _ => "Er is geen dwarskrachtwapening waarvan de weerstand kan worden \
+                              bepaald; V_Rd,c is de hele weerstand (6.2.2(1))."
+                            .to_string(),
+                    },
+                ),
+                Weerstandsroute::Dwarskrachtwapening => (
+                    r"V_{Rd} = \min(V_{Rd,s};\, V_{Rd,max})".to_string(),
+                    format!(
+                        r"V_{{Rd}} = \min({s};\, {m}) = {r} \text{{ kN}}",
+                        s = lx(v_rd_s.unwrap_or(f64::NAN), 1),
+                        m = lx(v_rd_max.unwrap_or(f64::NAN), 1),
+                        r = lx(rd, 1)
+                    ),
+                    match self.spoor {
+                        Spoor::Vakwerkmodel =>
+                            "V_Ed ligt boven V_Rd,c, dus 6.2.1(5) eist wapening en 6.2.3(3) geeft \
+                             de weerstand."
+                                .to_string(),
+                        Spoor::GeenBerekendeWapening => format!(
+                            "6.2.1(3) eist hier geen BEREKENDE dwarskrachtwapening, maar de \
+                             doorsnede DRAAGT wel beugels. 6.2.1(2) geeft voor een element met \
+                             dwarskrachtwapening V_Rd = V_Rd,s + V_ccd + V_td — bij constante \
+                             hoogte dus V_Rd,s — en 6.2.3(3) begrenst dat op V_Rd,max. Die \
+                             weerstand is hoger dan V_Rd,c = {} kN en is daarom aangehouden.",
+                            nl(c.v_rd_c_kn, 1)
+                        ),
+                    },
+                ),
+            };
+            let mut variabelen = vec![nv(r"V_{Rd,c}", c.v_rd_c_kn, "kN")];
+            if let Some(s) = v_rd_s {
+                variabelen.push(nv(r"V_{Rd,s}", s, "kN"));
+            }
+            if let Some(m) = v_rd_max {
+                variabelen.push(nv(r"V_{Rd,max}", m, "kN"));
+            }
+            uit.push(stap(
+                "dwarskracht_weerstandsroute",
+                "Welke weerstand geldt",
+                r"V_{Rd}",
+                match route {
+                    Weerstandsroute::BetonZonderWapening => "art. 6.2.1(3) en 6.2.2(1)",
+                    Weerstandsroute::Dwarskrachtwapening => "art. 6.2.1(2) en 6.2.3(3)",
+                },
+                formule,
+                invulling,
+                variabelen,
+                Some(rd),
+                "kN",
+                vec![toelichting],
+            ));
+        }
+
         if let (Some(rd), Some(uc)) = (self.v_rd_kn, self.uc) {
             uit.push(stap(
                 "dwarskracht_unity_check",
@@ -1496,12 +1740,19 @@ impl ShearResistance {
         uit
     }
 
-    /// De V_Ed waarmee de unity check is gemaakt: in spoor A de (eventueel met
-    /// β verminderde) waarde, in spoor B altijd de onverminderde.
+    /// De V_Ed waarmee de unity check is gemaakt.
+    ///
+    /// De β-vermindering van 6.2.2(6) geldt uitsluitend "voor het controleren
+    /// van V_Rd,c in vergelijking (6.2.a)". Zij telt dus alleen mee wanneer de
+    /// weerstand langs die route komt; levert de dwarskrachtwapening de
+    /// weerstand, dan geldt de ONVERMINDERDE V_Ed.
     pub fn toetsende_v_ed_kn(&self) -> f64 {
-        match self.spoor {
-            Spoor::GeenBerekendeWapening => self.v_ed_voor_vrd_c_kn,
-            Spoor::Vakwerkmodel => self.v_ed_kn,
+        match self.weerstandsroute {
+            Some(Weerstandsroute::BetonZonderWapening) => self.v_ed_voor_vrd_c_kn,
+            Some(Weerstandsroute::Dwarskrachtwapening) => self.v_ed_kn,
+            // Zonder weerstand is er geen unity check; dan is de onverminderde
+            // V_Ed het eerlijkste getal om te tonen.
+            None => self.v_ed_kn,
         }
     }
 }
@@ -1551,15 +1802,18 @@ pub fn check_shear(
     let mut notes = section.assumptions();
     notes.extend(r.notes.iter().cloned());
 
-    let formula_latex = match r.spoor {
-        Spoor::GeenBerekendeWapening => {
-            r"V_{Rd} = V_{Rd,c} = \max\big( (6.2.a); (6.2.b) \big)".to_string()
+    // De kopformule en de vindplaats horen bij de route die het getal levert,
+    // niet bij het spoor: een doorsnede die geen berekende wapening nodig heeft
+    // maar wél beugels draagt, wordt op (6.8)/(6.9) afgerekend.
+    let formula_latex = match r.weerstandsroute {
+        Some(Weerstandsroute::Dwarskrachtwapening) => {
+            r"V_{Rd} = \min(V_{Rd,s};\, V_{Rd,max})".to_string()
         }
-        Spoor::Vakwerkmodel => r"V_{Rd} = \min(V_{Rd,s};\, V_{Rd,max})".to_string(),
+        _ => r"V_{Rd} = V_{Rd,c} = \max\big( (6.2.a); (6.2.b) \big)".to_string(),
     };
-    let article = match r.spoor {
-        Spoor::GeenBerekendeWapening => "art. 6.2.2(1) (6.2.a/6.2.b)".to_string(),
-        Spoor::Vakwerkmodel => "art. 6.2.3(3) (6.8) en (6.9)".to_string(),
+    let article = match r.weerstandsroute {
+        Some(Weerstandsroute::Dwarskrachtwapening) => "art. 6.2.3(3) (6.8) en (6.9)".to_string(),
+        _ => "art. 6.2.2(1) (6.2.a/6.2.b)".to_string(),
     };
 
     let deelstappen = r.deelstappen();

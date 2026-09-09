@@ -78,6 +78,32 @@ fn invoer_xf4() -> Value {
     })
 }
 
+/// De vloer met twee milieus: de bovenzijde binnen (XC1, 25 mm), de onderzijde
+/// buiten (XC4, 40 mm). Twee verzoeken, elk met hun eigen zijde —
+/// 4.4.1.1(1)P meet de dekking tot het DICHTSTBIJZIJNDE betonoppervlak, dus de
+/// toets is er één per oppervlak.
+fn invoer_bovenzijde_binnen() -> Value {
+    json!({
+        "beam_id": 31,
+        "side": "Top",
+        "exposure_class": "XC1",
+        "cover_mm": 25.0,
+        "stirrup_diameter_mm": 0.0,
+        "max_bar_diameter_mm": 10.0
+    })
+}
+
+fn invoer_onderzijde_buiten() -> Value {
+    json!({
+        "beam_id": 31,
+        "side": "Bottom",
+        "exposure_class": "XC4",
+        "cover_mm": 40.0,
+        "stirrup_diameter_mm": 0.0,
+        "max_bar_diameter_mm": 12.0
+    })
+}
+
 /// Onzin: een negatieve dekking. Moet langs alle drie de wegen een FOUT geven.
 fn invoer_negatieve_dekking() -> Value {
     json!({
@@ -295,6 +321,11 @@ async fn de_drie_wegen_leveren_hetzelfde_oordeel() {
         (700, invoer_xd3_te_dun()),
         (701, invoer_xc1_ruim()),
         (702, invoer_xf4()),
+        // De twee zijden van dezelfde vloer: het veld `side` moet langs alle
+        // drie de wegen dezelfde weg vinden, óók door het strikte
+        // MCP-schema heen.
+        (710, invoer_bovenzijde_binnen()),
+        (711, invoer_onderzijde_buiten()),
     ] {
         let tauri = weg_tauri(&invoer).expect("Tauri-weg");
         let brug = weg_toetsbrug(TOOL, invoer.clone()).expect("toetsbrug-weg");
@@ -304,6 +335,63 @@ async fn de_drie_wegen_leveren_hetzelfde_oordeel() {
 
         eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
         eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Een vloer met de bovenzijde binnen en de onderzijde buiten levert twee
+/// verschillende eisen op — het geval waarvoor de zijde bestaat.
+///
+/// XC1/S4 → c_min,dur = 15 mm → c_nom = 20 mm ≤ 25 mm: in orde.
+/// XC4/S4 → c_min,dur = 30 mm → c_nom = 35 mm ≤ 40 mm: in orde.
+/// Zou de onderzijde de 25 mm van de bovenzijde krijgen, dan is hij te dun.
+#[tokio::test]
+async fn twee_zijden_van_dezelfde_vloer_geven_twee_eisen() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let boven = weg_mcp(&mut stdin, &mut reader, 712, TOOL, invoer_bovenzijde_binnen())
+        .await
+        .expect("MCP-weg bovenzijde");
+    assert_eq!(boven["side"], json!("Top"));
+    assert_eq!(boven["c_min_dur_mm"], json!(15.0));
+    assert_eq!(boven["c_nom_required_mm"], json!(20.0));
+    assert_eq!(boven["status"], json!("Ok"));
+    assert!(
+        boven["notes"]
+            .as_array()
+            .expect("notes")
+            .iter()
+            .any(|n| n.as_str().is_some_and(|s| s.contains("bovenzijde"))),
+        "de toelichting moet zeggen welke zijde is getoetst"
+    );
+
+    let onder = weg_mcp(&mut stdin, &mut reader, 713, TOOL, invoer_onderzijde_buiten())
+        .await
+        .expect("MCP-weg onderzijde");
+    assert_eq!(onder["side"], json!("Bottom"));
+    assert_eq!(onder["c_min_dur_mm"], json!(30.0));
+    assert_eq!(onder["c_nom_required_mm"], json!(35.0));
+    assert_eq!(onder["status"], json!("Ok"));
+
+    // Dezelfde onderzijde met de dekking van de bovenzijde: afgekeurd.
+    let mut te_dun = invoer_onderzijde_buiten();
+    te_dun["cover_mm"] = json!(25.0);
+    let uit = weg_mcp(&mut stdin, &mut reader, 714, TOOL, te_dun)
+        .await
+        .expect("MCP-weg te dun");
+    assert_eq!(uit["status"], json!("NotOk"));
+
+    // Zónder zijde verandert er geen getal — het veld is opschrift.
+    let mut zonder = invoer_onderzijde_buiten();
+    zonder["side"] = Value::Null;
+    let kaal = weg_mcp(&mut stdin, &mut reader, 715, TOOL, zonder)
+        .await
+        .expect("MCP-weg zonder zijde");
+    assert_eq!(kaal["side"], Value::Null);
+    for veld in ["c_min_dur_mm", "c_min_mm", "c_nom_required_mm", "unity_check", "status"] {
+        assert_eq!(kaal[veld], onder[veld], "{veld}");
     }
 
     drop(stdin);

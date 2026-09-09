@@ -14,7 +14,7 @@
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nen_en_1992_1_1::dwarskracht::{
     beta_6_2_2_6, check_shear, shear_resistance, CotThetaKeuze, LastNabijSteunpunt, ShearOptions,
-    Spoor, VakwerkTak, VrdCTak,
+    Spoor, VakwerkTak, VrdCTak, Weerstandsroute,
 };
 use nen_en_1992_1_1::{
     concrete_class_by_name, reinforcement_grade_by_name, ConcreteSection, DesignMaterial,
@@ -194,6 +194,176 @@ fn de_betonbijdrage_wordt_in_het_vakwerkspoor_niet_opgeteld() {
         "V_Rd mag niet de som van beton en wapening zijn"
     );
     assert!(r.notes.iter().any(|n| n.contains("NIET opgeteld")));
+}
+
+// ── De weerstand van een doorsnede die beugels DRAAGT ────────────────────────
+//
+// 6.2.1(3) beantwoordt de vraag of er wapening moet worden ONTWORPEN. 6.2.1(2)
+// beantwoordt de vraag wat een element MET dwarskrachtwapening kan dragen. Die
+// twee vragen zijn niet dezelfde, en de vier proeven hieronder houden dat vast.
+
+#[test]
+fn beugels_dragen_ook_waar_6_2_1_3_er_niet_om_vraagt() {
+    // Ligger 300 × 500, C30/37, beugel Ø8 tweebenig h.o.h. 150 mm, V_Ed = 60 kN.
+    //
+    //   V_Rd,c = 64,4028 kN ≥ 60 kN → 6.2.1(3): geen BEREKENDE wapening nodig.
+    //
+    // De beugels liggen er niettemin, en 6.2.1(2) geeft een element met
+    // dwarskrachtwapening de weerstand V_Rd,s (bij constante hoogte; V_ccd en
+    // V_td zijn nul). Met cot θ = 2,5 — de automatische keuze, want
+    // K = 1 294 444,8/60 000 = 21,6 ≫ 2 — is dat:
+    //
+    //   A_sw/s = 100,530965/150 = 0,67020643 mm²/mm ; z = 0,9·454 = 408,6 mm
+    //   (6.8)  V_Rd,s   = 0,67020643·408,6·434,782609·2,5 = 297 659 N = 297,659 kN
+    //   (6.9)  V_Rd,max = 1 294 444,8/2,9                 = 446 360 N = 446,360 kN
+    //   V_Rd = max(64,4028 ; min(297,659; 446,360)) = 297,659 kN
+    //   UC   = 60/297,659 = 0,20157
+    //
+    // Vóór deze reparatie meldde de kern hier 64,4028 kN en UC = 0,932 — een
+    // getal dat uit de spoorgrens kwam en niet uit de constructie.
+    let (s, k, m) = ligger(Some((150.0, 2)));
+    let r = shear_resistance(&s, &k, &m, &snap(0.0, 60.0, 100.0), &ShearOptions::default());
+
+    // Het SPOOR blijft wat het was: 6.2.1(3) eist hier geen berekende wapening.
+    assert_eq!(r.spoor, Spoor::GeenBerekendeWapening);
+    // Maar de WEERSTAND komt van de beugels.
+    assert_eq!(r.weerstandsroute, Some(Weerstandsroute::Dwarskrachtwapening));
+    dichtbij(r.vrd_c.v_rd_c_kn, 64.4028, 2e-2, "V_Rd,c");
+    dichtbij(r.vakwerk.as_ref().unwrap().cot_theta, 2.5, 1e-12, "cot θ");
+    dichtbij(r.vakwerk.as_ref().unwrap().v_rd_s_kn.unwrap(), 297.659, EPS * 10.0, "V_Rd,s");
+    dichtbij(r.v_rd_kn.unwrap(), 297.659, EPS * 10.0, "V_Rd");
+    dichtbij(r.uc.unwrap(), 60.0 / 297.659, 1e-5, "UC");
+    // En de afleiding zegt met zoveel woorden waaróm.
+    assert!(r.notes.iter().any(|n| n.contains("6.2.1(2)")));
+}
+
+#[test]
+fn de_weerstand_springt_niet_op_de_grens_v_ed_gelijk_v_rd_c() {
+    // Dit is het verschijnsel waar de reparatie om begon: aan weerszijden van
+    // V_Ed = V_Rd,c = 64,4028 kN horen dezelfde beugels te dragen.
+    //
+    //   V_Ed = 64 kN → spoor A (6.2.1(3)) ; V_Ed = 65 kN → spoor B (6.2.1(5))
+    //   In beide gevallen K = teller/V_Ed ≫ 2, dus cot θ = 2,5 en
+    //   V_Rd = V_Rd,s = 297,659 kN. Het verschil in unity check is dan
+    //   64/297,659 = 0,21501 tegen 65/297,659 = 0,21837 — de sprong in V_Ed
+    //   zelf, en niets meer.
+    let (s, k, m) = ligger(Some((150.0, 2)));
+    let onder = shear_resistance(&s, &k, &m, &snap(0.0, 64.0, 100.0), &ShearOptions::default());
+    let boven = shear_resistance(&s, &k, &m, &snap(0.0, 65.0, 100.0), &ShearOptions::default());
+
+    assert_eq!(onder.spoor, Spoor::GeenBerekendeWapening);
+    assert_eq!(boven.spoor, Spoor::Vakwerkmodel);
+    dichtbij(onder.v_rd_kn.unwrap(), 297.659, EPS * 10.0, "V_Rd net onder de grens");
+    dichtbij(boven.v_rd_kn.unwrap(), 297.659, EPS * 10.0, "V_Rd net boven de grens");
+    dichtbij(onder.v_rd_kn.unwrap(), boven.v_rd_kn.unwrap(), 1e-9, "geen sprong in V_Rd");
+    dichtbij(onder.uc.unwrap(), 64.0 / 297.659, 1e-5, "UC net onder de grens");
+    dichtbij(boven.uc.unwrap(), 65.0 / 297.659, 1e-5, "UC net boven de grens");
+    // De unity check mag over die grens hooguit met de sprong in V_Ed stijgen.
+    assert!(
+        (boven.uc.unwrap() - onder.uc.unwrap()).abs() < 0.01,
+        "de unity check springt op de spoorgrens: {} → {}",
+        onder.uc.unwrap(),
+        boven.uc.unwrap()
+    );
+}
+
+#[test]
+fn zwakke_beugels_verlagen_de_weerstand_niet_onder_v_rd_c() {
+    // De keerzijde: de weerstand is de GROOTSTE van de twee bewijzen, dus een
+    // magere beugel mag V_Rd,c niet wegdrukken. 6.2.1(3) blijft immers een
+    // geldig bewijs zolang V_Ed ≤ V_Rd,c.
+    //
+    // Beugel Ø8 tweebenig h.o.h. 400 mm, cot θ = 1 opgelegd:
+    //   A_sw/s = 100,530965/400 = 0,25132741 mm²/mm ; z = 408,6 mm
+    //   (6.8) V_Rd,s = 0,25132741·408,6·434,782609·1,0 = 44 649 N = 44,649 kN
+    //   V_Rd,c = 64,4028 kN ≥ V_Ed = 60 kN
+    //   V_Rd = max(64,4028 ; 44,649) = 64,4028 kN ; UC = 60/64,4028 = 0,93163
+    let (s, k, m) = ligger(Some((400.0, 2)));
+    let opts = ShearOptions { cot_theta: Some(1.0), ..ShearOptions::default() };
+    let r = shear_resistance(&s, &k, &m, &snap(0.0, 60.0, 100.0), &opts);
+
+    assert_eq!(r.spoor, Spoor::GeenBerekendeWapening);
+    assert_eq!(r.weerstandsroute, Some(Weerstandsroute::BetonZonderWapening));
+    dichtbij(r.vakwerk.as_ref().unwrap().v_rd_s_kn.unwrap(), 44.649, 2e-2, "V_Rd,s");
+    dichtbij(r.v_rd_kn.unwrap(), 64.4028, 2e-2, "V_Rd = V_Rd,c");
+    dichtbij(r.uc.unwrap(), 60.0 / 64.4028, 1e-4, "UC");
+}
+
+#[test]
+fn zonder_beugels_blijft_v_rd_c_de_hele_weerstand() {
+    // 9.2.2 kent geen weerstandsbijdrage toe; wat telt is of er wapening LIGT.
+    // Ligt er niets, dan is er geen (6.8) en blijft V_Rd,c de hele weerstand —
+    // precies zoals vóór de reparatie.
+    let (s, k, m) = ligger(None);
+    let r = shear_resistance(&s, &k, &m, &snap(0.0, 60.0, 100.0), &ShearOptions::default());
+    assert_eq!(r.spoor, Spoor::GeenBerekendeWapening);
+    assert_eq!(r.weerstandsroute, Some(Weerstandsroute::BetonZonderWapening));
+    assert!(r.vakwerk.as_ref().unwrap().v_rd_s_kn.is_none());
+    // Zonder beugels is er ook geen θ te kiezen; cot θ = 1 maakt (6.9) maximaal.
+    let keuze = r.vakwerk.as_ref().unwrap().cot_theta_keuze;
+    assert_eq!(keuze, CotThetaKeuze::GeenDwarskrachtwapening);
+    dichtbij(r.v_rd_kn.unwrap(), 64.4028, 2e-2, "V_Rd = V_Rd,c");
+    dichtbij(r.uc.unwrap(), 60.0 / 64.4028, 1e-4, "UC");
+}
+
+#[test]
+fn de_bovengrens_van_6_2_1_6_bijt_als_v_rd_c_boven_v_rd_max_uitkomt() {
+    // 6.2.1(6): V_Ed mag "op geen enkele plaats in het element" boven V_Rd,max
+    // uitkomen. Dat kan V_Rd,c overrulen, en met een kunstmatig kleine z is dat
+    // te laten zien. z = 30 mm opgegeven, cot θ = 1, beugel Ø8-400:
+    //
+    //   teller (6.9) = 1,0·300·30·0,528·20 = 95 040 N
+    //   V_Rd,max     = 95 040/(1 + 1) = 47 520 N = 47,52 kN
+    //   (6.8) V_Rd,s = 0,25132741·30·434,782609·1,0 = 3 278 N = 3,278 kN
+    //   V_Rd,c = 64,4028 kN ≥ V_Ed = 60 kN → spoor A, betonroute is het
+    //   gunstigste bewijs, maar 64,4028 > V_Rd,max = 47,52 kN.
+    //   V_Rd = min(64,4028 ; 47,52) = 47,52 kN ; UC = 60/47,52 = 1,26263
+    //
+    // z = 30 mm hoort bij geen enkele echte balk; het is de enige manier om
+    // deze tak zonder normaalkracht te bereiken, en zij moet blijven werken.
+    let (s, k, m) = ligger(Some((400.0, 2)));
+    let opts = ShearOptions {
+        z_mm: Some(30.0),
+        cot_theta: Some(1.0),
+        ..ShearOptions::default()
+    };
+    let r = shear_resistance(&s, &k, &m, &snap(0.0, 60.0, 100.0), &opts);
+
+    assert_eq!(r.spoor, Spoor::GeenBerekendeWapening);
+    dichtbij(r.vakwerk.as_ref().unwrap().v_rd_max_kn, 47.52, 1e-3, "V_Rd,max");
+    dichtbij(r.vakwerk.as_ref().unwrap().v_rd_s_kn.unwrap(), 3.278, 2e-3, "V_Rd,s");
+    dichtbij(r.v_rd_kn.unwrap(), 47.52, 1e-3, "V_Rd begrensd door 6.2.1(6)");
+    dichtbij(r.uc.unwrap(), 60.0 / 47.52, 1e-5, "UC");
+    assert!(r.notes.iter().any(|n| n.contains("6.2.1(6)")));
+}
+
+#[test]
+fn de_afleiding_noemt_welk_bewijs_de_weerstand_levert() {
+    // Wat er ook uit komt, de lezer moet kunnen zien of hij naar (6.2.a/b) of
+    // naar (6.8)/(6.9) kijkt, met welke cot θ, en waarom.
+    let (s, k, m) = ligger(Some((150.0, 2)));
+    let calc = check_shear(&s, &k, &m, snap(0.0, 60.0, 100.0), &ShearOptions::default());
+
+    let route = calc
+        .deelstappen
+        .iter()
+        .find(|d| d.id == "dwarskracht_weerstandsroute")
+        .expect("de deelstap met de weerstandsroute ontbreekt");
+    assert_eq!(route.article, "art. 6.2.1(2) en 6.2.3(3)");
+    dichtbij(route.value.unwrap(), 297.659, EPS * 10.0, "V_Rd in de afleiding");
+    assert!(route.notes.iter().any(|n| n.contains("6.2.1(3)")), "{:?}", route.notes);
+    // De spoorstap blijft ernaast staan en zegt wat 6.2.1(3) vindt.
+    let spoor = calc
+        .deelstappen
+        .iter()
+        .find(|d| d.id == "dwarskracht_spoor")
+        .expect("de spoorstap ontbreekt");
+    assert!(spoor.notes.iter().any(|n| n.contains("geen BEREKENDE")));
+    // En de θ die is gebruikt staat er als eigen stap bij.
+    assert!(calc.deelstappen.iter().any(|d| d.id == "dwarskracht_theta"));
+    // De kop van de toets verwijst naar het vakwerkmodel, want dát levert hier
+    // het getal.
+    assert_eq!(calc.article, "art. 6.2.3(3) (6.8) en (6.9)");
 }
 
 // ── De keuze van θ ───────────────────────────────────────────────────────────

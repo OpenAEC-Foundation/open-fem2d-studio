@@ -510,6 +510,88 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
   }
 
+  // ── Extra sneden op knikken en sprongen in de lijnen ──────────────────────
+  // WAAROM. Elk rekenelement levert een VAST aantal stations (NUM_STATIONS =
+  // 21, zie BeamForces.ts). Wie de krachtenlijn of de weerstandslijn over die
+  // stations volgt, interpoleert dus over alles wat er tússen gebeurt. Op
+  // twee plaatsen is dat aantoonbaar fout:
+  //
+  //   • DEELLASTGRENS. Op x = a en x = b van een deellast knikt V(x) — de
+  //     helling springt van 0 naar −q — en knikt de kromming van M(x). Valt
+  //     daar geen station, dan mist de omhullende die knik: hij leest het
+  //     uiterste af op het dichtstbijzijnde station, tot een halve
+  //     stationsafstand ernaast.
+  //   • ZONEGRENS van de wapening. Daar SPRINGT de opneembare weerstand
+  //     (V_Rd, M_Rd) omdat het aantal staven verandert. Interpoleren over een
+  //     sprong heeft geen betekenis; een dekkingslijn moet daar twee waarden
+  //     kunnen tonen, links en rechts van de grens.
+  //
+  // HOE. Niet met een tweede mechanisme naast het bestaande, maar met exact
+  // dezelfde splitsfracties waarmee de adapter hierboven al knipt voor
+  // plaatranden, staafpuntlasten en segmentgrenzen. Een snede maakt een echte
+  // rekenknoop; het stuk links en het stuk rechts leveren elk hun eigen 21
+  // stations, dus op de snede staat het station DUBBEL. Dat is precies wat
+  // een sprong nodig heeft — dezelfde redenering als bij de gedeelde
+  // plaatrandknoop (zie convertResult) en bij een staafpuntlast, waar V ter
+  // plaatse ook werkelijk springt.
+  //
+  // KOST HET NAUWKEURIGHEID? Nee, het levert ze op. Voor een
+  // Euler-Bernoulli-staaf met consistente knooplasten is de eindige-
+  // elementenoplossing in de KNOPEN exact (de homogene oplossing is kubisch
+  // en ligt dus in de Hermite-ruimte). Een extra knoop midden op een staaf
+  // laat reacties en knoopverplaatsingen daarom ongemoeid — op afrondruis na,
+  // waarvoor MIN_SEGMENT_MM de ondergrens bewaakt — en maakt alleen het
+  // stationsraster fijner.
+  //
+  // TWEE BRONNEN, ÉÉN LIJST:
+  //   (a) de grenzen van elke DEELLAST op de staaf (startFrac/endFrac);
+  //   (b) `SolverBeamInput.extraSneden` — de expliciete lijst waarlangs de
+  //       aanroeper zijn eigen knikken doorgeeft. Daar landen de grenzen van
+  //       de wapeningszones; die zones zelf wonen buiten de solver, naast de
+  //       wapeningskorf, en de solver hoeft er niets van te weten.
+  //
+  // LASTGEVAL-ONAFHANKELIJK, net als de staafpuntlasten hierboven: álle
+  // deellasten uit de invoer leveren hun grenzen, ook die in deze solve
+  // factor 0 hebben. Zo krijgt elk belastinggeval hetzelfde stationsraster en
+  // blijft superpositie van de per-geval-resultaten (combinaties, omhullende)
+  // geldig. Een last die per definitie nul is (q = qStart = qEnd = 0) heeft
+  // geen knik en levert dus geen snede — dat oordeel kijkt naar de LAST, niet
+  // naar de gevalfactor, en breekt de onafhankelijkheid dus niet.
+  const extraSnedeFracties = new Map<number, number[]>();
+  const voegSnedeToe = (beamId: number, t: number): void => {
+    const lijst = extraSnedeFracties.get(beamId) ?? [];
+    lijst.push(t);
+    extraSnedeFracties.set(beamId, lijst);
+  };
+  for (const ld of ((input as any).loads as Array<any> | undefined) ?? []) {
+    const qa = ld.qStart ?? ld.q ?? 0;
+    const qb = ld.qEnd ?? ld.q ?? 0;
+    if (qa === 0 && qb === 0) continue;          // geen last → geen knik
+    const a = Math.min(1, Math.max(0, ld.startFrac ?? 0));
+    const c = Math.min(1, Math.max(0, ld.endFrac ?? 1));
+    if (c - a <= 0) continue;                    // leeg belast deel → geen last
+    if (a > 0) voegSnedeToe(ld.beamId, a);
+    if (c < 1) voegSnedeToe(ld.beamId, c);
+  }
+  for (const b of input.beams) {
+    for (const t of b.extraSneden ?? []) {
+      if (Number.isFinite(t)) voegSnedeToe(b.id, t);
+    }
+  }
+
+  // PLATEN BLIJVEN BUITEN SCHOT. Zodra het model ook maar één plaat bevat,
+  // worden er GEEN extra sneden gezet — op geen enkele staaf. Reden: de
+  // knopen van een plaatmesh en de splitsknopen van een staaf worden
+  // aaneengeknoopt via `mesh.findNodeAt(..., 0.001)`, dus binnen 1 mm. Een
+  // extra snede die toevallig binnen die millimeter van een plaatknoop valt,
+  // zou staaf en plaat op een plek aan elkaar KNOPEN waar het model dat niet
+  // vraagt (of, andersom, een losse knoop tussen twee plaatknopen zetten die
+  // niet meedraagt). Dat is een modelwijziging, geen verfijning. Het gedrag
+  // van elk model met platen blijft daarmee bit-identiek aan voorheen; de
+  // fijnere sneden op een betonstaaf naast een plaat zijn een vervolgtaak
+  // (dan per staaf toetsen op nabije plaatknopen in plaats van modelbreed).
+  const modelHeeftPlaten = plateRects.length > 0 || plaatPolygonen.length > 0;
+
   /**
    * Mesh-knoop-id per splitsfractie, per UI-staaf — inclusief de eindknopen
    * (t = 0 en t = 1). Hiermee vindt het staafpuntlastenblok verderop de knoop
@@ -569,6 +651,56 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
         splitsT.push(s.t0);
       }
       splitsT.sort((p, q) => p - q);
+    }
+
+    // ── Extra sneden erbij (deellastgrenzen en `extraSneden`) ──────────────
+    // Ze komen ALS LAATSTE, ná de dwingende fracties en ná de segmentgrenzen.
+    // Dat is geen willekeur:
+    //  • Ze mogen niets verdringen. Een dwingende fractie draagt een plaat of
+    //    een puntlast, een segmentgrens draagt een eigen I; een extra snede
+    //    draagt alleen een STATION. Bij twijfel verliest dus de extra snede.
+    //  • Daardoor blijft de bestaande samenvoegregel voor segmentgrenzen
+    //    letterlijk zoals hij was: die weegt tegen `dwingend` en heeft nog
+    //    nooit een extra snede gezien.
+    //
+    // De drempel is dezelfde MIN_SEGMENT_MM als hierboven, maar de weging is
+    // STRENGER: een extra snede wordt niet alleen tegen de al aanvaarde
+    // fracties gewogen maar ook tegen de al aanvaarde EXTRA SNEDEN. Twee
+    // deellastgrenzen op 3 mm van elkaar leveren dus één snede en geen
+    // flinterelement van 3 mm — bij zo'n lengte loopt de afrondfout in de
+    // stijfheidsmatrix op tot ~1e-7 relatief (zie de meettabel bij
+    // MIN_SEGMENT_MM). Dat mag hier strenger dan bij de segmentgrenzen, want
+    // het weglaten van een extra snede kost hooguit één tekenpunt, terwijl
+    // het weglaten van een segmentgrens een verkeerde I zou opleveren.
+    // De linkerkandidaat wint (de lijst wordt oplopend afgelopen), zodat de
+    // uitkomst niet van de invoervolgorde van de lasten afhangt.
+    if (!modelHeeftPlaten) {
+      const minFracSnede = L_mm > 0 ? MIN_SEGMENT_MM / L_mm : Infinity;
+      const kandidaten = [...(extraSnedeFracties.get(b.id) ?? [])].sort((p, q) => p - q);
+      let iets = false;
+      for (const t of kandidaten) {
+        // Te dicht op een uiteinde: de last landt daar al op de eindknoop.
+        if (!(t > minFracSnede) || !(t < 1 - minFracSnede)) continue;
+        if (splitsT.some((u) => Math.abs(u - t) < minFracSnede)) continue;
+        // NOOIT AAN EEN BESTAANDE KNOOP LASSEN. De splitslus hieronder
+        // hergebruikt via `mesh.findNodeAt(..., 0.001)` een knoop die al
+        // binnen 1 mm ligt — bedoeld voor plaatrandknopen, die er juist aan
+        // vast MOETEN. Voor een extra snede is dat verkeerd: ligt er een losse
+        // knoop op deze staaf (een kolomvoet die er alleen tegenaan staat, het
+        // einde van een andere staaf), dan zou de snede die knoop ongevraagd
+        // AAN de staaf knopen en het mechanisme repareren dat de gebruiker nog
+        // moet zien. Een verfijning mag de constructie niet veranderen, dus:
+        // ligt er al een knoop, dan vervalt de snede. Dat de uitkomst daarmee
+        // van de staafvolgorde kan afhangen (knopen van eerder gesplitste
+        // staven staan er al) is aanvaard — de uitkomst van die afhankelijkheid
+        // is altijd "niet knippen", nooit een gewijzigd model.
+        const mxT = (nA.x + t * (nB.x - nA.x)) / 1000;
+        const myT = (nA.z + t * (nB.z - nA.z)) / 1000;
+        if (mesh.findNodeAt(mxT, myT, 0.001)) continue;
+        splitsT.push(t);
+        iets = true;
+      }
+      if (iets) splitsT.sort((p, q) => p - q);
     }
 
     /**
@@ -1187,6 +1319,11 @@ function convertResult(
   //   bendingMoment[], deflection[], axialDisp[]
   // We forward ALL of it (with mm/N·mm units for the UI) so the canvas
   // can draw real parabola / step shapes instead of linear interpolation.
+  // LET OP: die 21 gelden PER REKENELEMENT, niet per UI-staaf. Een staaf die
+  // op een plaatrand, een staafpuntlast, een segmentgrens of een extra snede
+  // is geknipt, levert 21 stations per stuk, aaneengeregen tot één reeks —
+  // met een DUBBEL station op elke knip. Elke lezer moet dus over
+  // `stations_mm.length` lopen en nooit een vast aantal aannemen.
   /**
    * Segmentuitkomsten van één staaf (fase D, stap 10): per rekenstuk de
    * x-grenzen langs de staaf, de gebruikte I, en de N/M die erin optraden.

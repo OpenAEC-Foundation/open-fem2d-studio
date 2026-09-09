@@ -166,8 +166,15 @@ checkTrue("validatie telt entiteiten", uitslag.entiteiten > 50);
 checkTrue("statistiek noemt IfcCartesianPoint",
   ifcStatistiek(ifc).some(s => s.type === "IFCCARTESIANPOINT"));
 
-log("  — (h) niets ontbreekt: geen beperkingen te melden");
-checkEq("beperkingenlijst leeg", verzamelIfcBeperkingen(model).length, 0);
+log("  — (h) de enige kanttekening is dat er niet getoetst is");
+// Het model zelf past volledig in het bestand. Wat er NIET in staat is de
+// toetsuitslag, en dat is geen vorm-beperking van IFC maar een lege hand:
+// dit model is niet getoetst. Dat hoort de gebruiker te zien voordat hij het
+// bestand overhandigt, dus het staat in de lijst.
+const kanttekeningen = verzamelIfcBeperkingen(model);
+checkEq("precies een kanttekening", kanttekeningen.length, 1);
+checkTrue("en die gaat over de ontbrekende toetsresultaten",
+  /Geen toetsresultaten/.test(kanttekeningen[0]));
 
 // ─────────────────────────────────────────────────────────────────────────
 log("\n[2] De boomstructuur toont hetzelfde model als het bestand");
@@ -209,9 +216,12 @@ checkEq("geen puntlasten", tel(structureel, "IFCSTRUCTURALPOINTACTION"), 0);
 checkEq("validatie: geen fouten",
   valideerIfc(structureel).fouten.length, 0);
 const structBeperking = verzamelIfcBeperkingen(model, { zonderLasten: true });
-checkEq("weglaten van de lasten wordt gemeld", structBeperking.length, 1);
+checkEq("twee punten gemeld: de lasten en de ontbrekende toetsing",
+  structBeperking.length, 2);
 checkTrue("melding noemt de aantallen",
   structBeperking[0].includes("3 belastingen") && structBeperking[0].includes("2 belastinggevallen"));
+checkTrue("de tweede melding gaat over de toetsing",
+  /Geen toetsresultaten/.test(structBeperking[1]));
 
 // ─────────────────────────────────────────────────────────────────────────
 log("\n[4] Wat niet in IFC past, wordt gemeld (niet stil weggelaten)");
@@ -230,7 +240,11 @@ checkTrue("randbelasting op een plaat wordt gemeld", /randbelasting/.test(alleRe
 checkTrue("eigen gewicht wordt gemeld", /Eigen gewicht/.test(alleRegels));
 checkTrue("combinaties worden gemeld", /4 belastingcombinaties/.test(alleRegels));
 checkTrue("onbekende doorsnede wordt gemeld", /XYZ-onbekend/.test(alleRegels));
-checkEq("vijf punten gemeld", beperkingen.length, 5);
+checkTrue("en dat die staaf ook geen bouwkundig element krijgt",
+  /geen IfcBeam of IfcColumn/.test(alleRegels));
+checkTrue("ontbrekende toetsresultaten worden gemeld",
+  /Geen toetsresultaten/.test(alleRegels));
+checkEq("zes punten gemeld", beperkingen.length, 6);
 
 const kapotModel = {
   ...model,
@@ -291,7 +305,10 @@ checkTrue("staafgebonden puntlast draagt -8 kN",
 checkEq("alle drie de lasten zijn gekoppeld",
   tel(ifcLasten, "IFCRELCONNECTSSTRUCTURALACTIVITY"), 3);
 checkEq("validatie: geen fouten", valideerIfc(ifcLasten).fouten.length, 0);
-checkEq("geen beperkingen te melden", verzamelIfcBeperkingen(lastModel).length, 0);
+const lastBeperking = verzamelIfcBeperkingen(lastModel);
+checkEq("de lasten passen alle drie in het bestand", lastBeperking.length, 1);
+checkTrue("de enige melding gaat over de ontbrekende toetsing",
+  /Geen toetsresultaten/.test(lastBeperking[0]));
 
 // ─────────────────────────────────────────────────────────────────────────
 log("\n[6] De validator vindt een kapot bestand ook echt kapot");
@@ -309,5 +326,79 @@ checkEq("leeg model: nog steeds geldig IFC4", valideerIfc(leeg).fouten.length, 0
 checkEq("leeg model: drie waarschuwingen", valideerIfc(leeg).waarschuwingen.length, 3);
 
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[7] Het bouwkundige model spiegelt hetzelfde model");
+
+// Elke staaf van het portaal met luifel heeft een bekend profiel, dus elke
+// staaf hoort ook als bouwkundig element in het bestand te staan — als ligger
+// of als kolom, zonder dat er eentje wegvalt of dubbel komt.
+const liggers = tel(ifc, "IFCBEAM");
+const kolommen = tel(ifc, "IFCCOLUMN");
+checkEq("elke staaf krijgt een ligger of een kolom",
+  liggers + kolommen, model.beams.length);
+// Staaf 1 (0,0)→(0,4000) en staaf 4 (12000,4000)→(12000,0) staan verticaal.
+checkEq("de twee verticale staven zijn kolommen", kolommen, 2);
+checkEq("elke rekenstaaf wijst naar zijn bouwkundige element",
+  tel(ifc, "IFCRELASSIGNSTOPRODUCT"), model.beams.length);
+checkEq("alle elementen zitten in één gebouwcontainment",
+  tel(ifc, "IFCRELCONTAINEDINSPATIALSTRUCTURE"), 1);
+checkEq("één geëxtrudeerd lichaam per element",
+  tel(ifc, "IFCEXTRUDEDAREASOLID"), model.beams.length);
+checkEq("één hoeveelhedenset per element",
+  tel(ifc, "IFCELEMENTQUANTITY"), model.beams.length);
+// Drie eigen sets per staaf (doorsnede, staaf) plus de gemeenschappelijke set
+// per element; er is niet getoetst, dus OpenFEM2D_Toetsing ontbreekt.
+checkEq("geen toetsingsset zonder toetsuitslag",
+  (ifc.match(/'OpenFEM2D_Toetsing'/g) ?? []).length, 0);
+checkEq("een doorsnedeset per staaf",
+  (ifc.match(/'OpenFEM2D_Doorsnede'/g) ?? []).length, model.beams.length);
+
+log("  — de boom toont de bouwkundige staven ernaast");
+const platB = platteBoom(bouwIfcBoom(model));
+const bouwTak = platB.find(k => k.naam === "Bouwkundige staven");
+checkEq("tak 'Bouwkundige staven' telt het echte aantal",
+  bouwTak?.aantal, model.beams.length);
+const elementTeksten = (bouwTak?.kinderen ?? []).map(k => `${k.type} ${k.naam}`);
+checkTrue("staaf 5 (de luifel) staat er als ligger met zijn koker",
+  elementTeksten.some(t => t.startsWith("IfcBeam Ligger 5") && t.includes("SHS 60x60x4")));
+checkTrue("staaf 1 staat er als kolom",
+  elementTeksten.some(t => t.startsWith("IfcColumn Kolom 1")));
+checkEq("zonder bouwkundig model verdwijnt de tak uit de boom",
+  platteBoom(bouwIfcBoom(model, { zonderBouwkundig: true }))
+    .filter(k => k.naam === "Bouwkundige staven").length, 0);
+
+log("  — een betonstaaf met korf toont zijn wapening");
+const betonModel = {
+  projectNaam: "Betonligger",
+  nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+  beams: [{
+    id: 1, from: 1, to: 2, material: "C30/37", profile: "300x500",
+    checkConfig: {
+      betonStaalsoort: "B500B",
+      betonKorf: {
+        cover_mm: 30, stirrup_diameter_mm: 8,
+        bottom: { count: 3, diameter_mm: 16 },
+        top: { count: 2, diameter_mm: 12 },
+        stirrup_spacing_mm: 200, stirrup_legs: 2,
+      },
+    },
+  }],
+  supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+  loads: [], loadCases: [],
+};
+const wapeningTak = platteBoom(bouwIfcBoom(betonModel))
+  .find(k => k.type === "IfcReinforcingBar");
+checkTrue("de korf staat onder de ligger in de boom",
+  wapeningTak !== undefined && /onder 3/.test(wapeningTak.naam) &&
+  /boven 2/.test(wapeningTak.naam) && /beugel/.test(wapeningTak.naam));
+const betonIfc = bouwIfcRekenmodel(betonModel);
+checkEq("het bestand draagt zes wapeningsstaven",
+  tel(betonIfc, "IFCREINFORCINGBAR"), 6);
+checkEq("validatie: geen fouten", valideerIfc(betonIfc).fouten.length, 0);
+checkEq("validatie: geen waarschuwingen", valideerIfc(betonIfc).waarschuwingen.length, 0);
+const betonRegels = verzamelIfcBeperkingen(betonModel).join("\n");
+checkTrue("de samengevatte beugelreeks wordt eerlijk gemeld",
+  /Beugels van 1 betonstaaf/.test(betonRegels));
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald\n`);
 process.exit(failed === 0 ? 0 : 1);

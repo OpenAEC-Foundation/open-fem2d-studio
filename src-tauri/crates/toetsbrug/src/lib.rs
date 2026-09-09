@@ -105,6 +105,14 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
         "list_reinforcement_grades" => {
             serde_json::to_value(nen_en_1992_1_1::REINFORCEMENT_GRADES).map_err(|e| e.to_string())
         }
+        // Deze weg leest `ConcreteBeamCheckInput` RECHTSTREEKS, dus elk veld dat
+        // aan dat type wordt toegevoegd reist hier mee zonder dat hier iets
+        // hoeft te veranderen — ook `reinforcement_zones`, de wapening die
+        // langs de staaf verschilt (§9.2.1.3, §9.2.2). Dat is precies waarom er
+        // hier geen eigen veldenlijst staat: een tweede opsomming zou uit de
+        // pas kunnen lopen met het type. De MCP-weg heeft die opsomming wél
+        // nodig (een JSON-schema kan niet anders) en is daarom de enige van de
+        // drie die bij een nieuw veld moet worden bijgewerkt.
         "check_concrete_beams" => {
             let inputs = v.inputs.ok_or("check_concrete_beams vraagt om `inputs`")?;
             let inputs: Vec<ConcreteBeamCheckInput> =
@@ -144,6 +152,12 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
         // De milieuklassen van tabel 4.1 en de dekkingstoets van 4.4.1. Zelfde
         // typen als het Tauri-command en de MCP-tool; de rekengang staat in
         // `nen_en_1992_1_1::dekking` en nergens anders.
+        //
+        // `concrete_cover_check` toetst ÉÉN betonoppervlak — 4.4.1.1(1)P meet
+        // de dekking tot "het dichtstbijzijnde betonoppervlak". De invoer
+        // roept hem één keer per zijde aan en zet `side` op "Top", "Bottom" of
+        // "Sides"; dat veld verandert geen getal maar benoemt het antwoord,
+        // zodat drie uitkomsten naast elkaar uit elkaar te houden zijn.
         "list_exposure_classes" => {
             serde_json::to_value(nen_en_1992_1_1::EXPOSURE_CLASSES).map_err(|e| e.to_string())
         }

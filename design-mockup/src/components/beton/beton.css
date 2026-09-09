@@ -100,6 +100,81 @@
   padding: 2px 0 4px;
 }
 
+/* ── Dekking per zijde (4.4.1.1(1)P) ───────────────────────────────────────
+   De kolom is smal, dus dit blok moet zich gedragen: één regel per zijde, met
+   de klassekiezer die de resterende breedte krijgt en een kort dekkingsveld
+   ernaast. Dichtgeklapt kost het één regel. */
+
+.beton-zijden {
+  padding: 2px 0 4px;
+}
+
+.beton-zijden-knop {
+  display: block;
+  width: 100%;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--theme-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.beton-zijden-knop:hover {
+  color: var(--theme-text);
+}
+
+.beton-zijden-knop:focus-visible {
+  outline: 2px solid var(--theme-focus-color);
+  outline-offset: 1px;
+}
+
+.beton-zijden-lijst {
+  padding: 2px 0 0 10px;
+}
+
+.beton-zijde-rij {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.beton-zijde-naam {
+  flex: 0 0 46px;
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+}
+
+/* De klassekiezer krimpt mee; zonder `min-width: 0` duwt de lange optietekst
+   ("XC4 — Wisselend nat en droog") de rij uit de kolom. */
+.beton-invoer-zijde {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+}
+
+.beton-zijde-rij .beton-invoer-kort {
+  flex: 0 0 52px;
+}
+
+/* Wat er werkelijk gaat gelden: de klasse en de dekking ná de terugval op het
+   element. Zonder dat getal is een leeg veld niet van een ingevuld veld te
+   onderscheiden. */
+.beton-zijde-uitkomst {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+}
+
+.beton-zijde-uitleg {
+  margin: 6px 0 0;
+}
+
 /* ── Uitvoer ───────────────────────────────────────────────────────────── */
 
 .beton-tekening-blok {

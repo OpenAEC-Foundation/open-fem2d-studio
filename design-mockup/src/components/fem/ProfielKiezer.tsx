@@ -29,6 +29,16 @@
  * Het resultaat is de COMBINATIE { material, profile } die op de staaf landt —
  * precies de twee velden die resolveSection en de toetsing al lezen — plus,
  * bij beton, de korf en de milieuklasse voor `checkConfig`.
+ *
+ * DE DEKKING PER ZIJDE reist mee in de KORF (`cover_top`, `cover_bottom`,
+ * `cover_sides`) en niet als apart veld naast de korf. Dat is niet toevallig:
+ * 4.4.1.1(1)P koppelt de dekking aan een betonoppervlak en (4.2) koppelt de
+ * milieuklasse aan diezelfde dekking, dus de twee horen in één gegeven. Het
+ * gevolg hier is dat de betonstap er niets extra's voor hoeft te doen —
+ * `KorfVelden` toont de velden en `betonKorf` draagt ze naar `checkConfig`,
+ * langs precies dezelfde weg als de beugelgegevens. Wat de stap er wél bij
+ * toont is de tweede nuttige hoogte: met een eigen dekking boven en onder is
+ * d aan de trekzijde boven niet meer h − d.
  */
 import { useEffect, useMemo, useState } from "react";
 import { STEEL_SECTION_DIMS } from "../../lib/steelSectionDims.generated";
@@ -53,7 +63,9 @@ import { haalMilieuklassen } from "../beton/betonKern";
 import {
   STANDAARD_KORF,
   controleerKorf,
+  dekkingIsRondomGelijk,
   korfSamenvatting,
+  nuttigeHoogteBovenMm,
   nuttigeHoogteMm,
   rijOppervlakMm2,
   type Wapeningskorf,
@@ -667,7 +679,15 @@ export default function ProfielKiezer({
   const betonGeldig = betonDoorsnedeGeldig && betonKorfFout === null;
   const aOnder = rijOppervlakMm2(betonKorf.bottom);
   const aBoven = rijOppervlakMm2(betonKorf.top);
+  // Twee nuttige hoogtes, want er zijn twee trekzijden en sinds de dekking per
+  // betonoppervlak mag verschillen (4.4.1.1(1)P) zijn het ook twee
+  // verschillende getallen. Bij één dekking rondom is d' gewoon h − d en
+  // vertelt de tweede regel niets nieuws; bij een vloer met de bovenzijde
+  // binnen en de onderzijde buiten is het verschil precies waar het om gaat,
+  // en dan moet je het hier zien staan en niet pas in het rapport.
   const betonNuttigeHoogte = nuttigeHoogteMm(betonKorf, betonH);
+  const betonNuttigeHoogteBoven = nuttigeHoogteBovenMm(betonKorf, betonH);
+  const betonDekkingRondomGelijk = dekkingIsRondomGelijk(betonKorf);
 
   const pasToe = () => {
     if (soort === "staal" && staalGeldig) {
@@ -1315,7 +1335,19 @@ export default function ProfielKiezer({
                 <div className="pk-eigenschappen">
                   <div className="pk-eig-rij"><span>A_s,onder</span><code>{nlGetal(aOnder)} mm²</code></div>
                   <div className="pk-eig-rij"><span>A_s,boven</span><code>{nlGetal(aBoven)} mm²</code></div>
-                  <div className="pk-eig-rij"><span>d</span><code>{nlGetal(betonNuttigeHoogte)} mm</code></div>
+                  <div className="pk-eig-rij">
+                    <span>{betonDekkingRondomGelijk ? "d" : "d (trek onder)"}</span>
+                    <code>{nlGetal(betonNuttigeHoogte)} mm</code>
+                  </div>
+                  {/* De tweede nuttige hoogte alleen als hij een eigen verhaal
+                      heeft: bij één dekking rondom is hij uit d en h af te
+                      lezen, bij een dekking per zijde niet. */}
+                  {!betonDekkingRondomGelijk && (
+                    <div className="pk-eig-rij">
+                      <span>d (trek boven)</span>
+                      <code>{nlGetal(betonNuttigeHoogteBoven)} mm</code>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="pk-hint">

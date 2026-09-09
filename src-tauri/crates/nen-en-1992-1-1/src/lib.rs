@@ -110,7 +110,8 @@ pub use data::{
 // drie wegen roepen hem alle drie rechtstreeks aan.
 pub use dekking::{
     c_min_dur_mm, concrete_cover_request, ConcreteCoverRequest, ConcreteCoverResponse,
-    CoverGovernedBy, ExposureClass, ExposureClassInfo, StructuralClass, EXPOSURE_CLASSES,
+    CoverGovernedBy, CoverSide, ExposureClass, ExposureClassInfo, FaceCover, StructuralClass,
+    EXPOSURE_CLASSES,
 };
 pub use factors::{DesignSituation, ALPHA_CC, E_S, GAMMA_CE};
 // De M-N-κ-motor op crate-niveau: `solve_state`, `internal_forces`,
@@ -128,6 +129,16 @@ pub use section::{
     RebarLayer, RebarRow, RectConcreteSection, ReinforcementCage, ShearReinforcement,
     STIRRUP_ALPHA_DEG,
 };
+// De wapening die LANGS de staaf verandert (§9.2.1.3 en §9.2.2). Op
+// crate-niveau om dezelfde reden als `beff` en `dekking`: deze typen zitten in
+// de invoer van de betontoetsing en reizen dus over alle drie de wegen.
+// `Staafvorm` en `Stortpositie` staan erbij omdat een langswapeningszone ze
+// draagt; inhoudelijk horen ze bij [`verankering`] en daar zijn ze ook
+// gedefinieerd.
+pub use section::{
+    LongitudinalZone, RebarSide, ReinforcementZones, StirrupZone, ZONE_TOLERANCE_MM,
+};
+pub use verankering::{Staafvorm, Stortpositie};
 pub use stiffness::{
     ei_secant, kappa_from_nm, m0_knm, m_cr_knm, KappaSolution, LoadDuration, SecantStiffness,
     SolveMethod, StiffnessError, StiffnessOptions, TensionStiffening,

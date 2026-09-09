@@ -315,14 +315,15 @@ struct DwarskrachtOverzicht {
 ///
 /// # Waarom de grootste |V_Ed| het verkeerde criterium is
 ///
-/// V_Rd is geen constante van de staaf. Bij het spoor zonder berekende
-/// dwarskrachtwapening (6.2.2(1)) rekent V_Rd,c met d en met A_sl, en die twee
-/// horen bij de zijde die op TREK staat — de dwarskrachtmodule leest dat aan
-/// het teken van M_Ed af. Bij een asymmetrische korf verschilt V_Rd,c daardoor
-/// per snede. De snede met de grootste dwarskracht kan dus een RUIMERE
-/// weerstand hebben dan een naburige snede met iets minder dwarskracht maar
-/// een veel kleinere A_sl, en dan ligt de werkelijke maatgevende unity check
-/// niet op de eerste maar op de tweede.
+/// V_Rd is geen constante van de staaf. V_Rd,c (6.2.2(1)) rekent met d en met
+/// A_sl, en die twee horen bij de zijde die op TREK staat — de
+/// dwarskrachtmodule leest dat aan het teken van M_Ed af. Bij een asymmetrische
+/// korf verschilt V_Rd,c daardoor per snede. Voor het vakwerkmodel geldt
+/// hetzelfde: z = 0,9·d hangt aan diezelfde d, dus ook V_Rd,s (6.8) en
+/// V_Rd,max (6.9) lopen langs de staaf op en neer. De snede met de grootste
+/// dwarskracht kan dus een RUIMERE weerstand hebben dan een naburige snede met
+/// iets minder dwarskracht maar een veel kleinere A_sl, en dan ligt de
+/// werkelijke maatgevende unity check niet op de eerste maar op de tweede.
 ///
 /// Daarom wordt hier de weerstand OP ELKE SNEDE uitgerekend en op de unity
 /// check gerangschikt. Dat mag: [`shear_resistance`] is een gesloten

@@ -380,17 +380,21 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         "check_concrete_beam moet additionalProperties: false hebben"
     );
 
-    // Elk veld van ConcreteBeamCheckInput, ook de negen met #[serde(default)].
-    // De laatste vijf horen bij de toetsen buiten 6.1 (dwarskracht,
-    // scheurbeheersing, slankheid, detaillering): ze zijn optioneel, maar een
-    // client die ze niet in het schema ziet staan, stuurt ze nooit mee - en
-    // dan blijft de halve toetsing ongedaan zonder dat iemand het merkt.
+    // Elk veld van ConcreteBeamCheckInput, ook de tien met #[serde(default)].
+    // De vijf voor `reinforcement_zones` horen bij de toetsen buiten 6.1
+    // (dwarskracht, scheurbeheersing, slankheid, detaillering): ze zijn
+    // optioneel, maar een client die ze niet in het schema ziet staan, stuurt
+    // ze nooit mee - en dan blijft de halve toetsing ongedaan zonder dat
+    // iemand het merkt. Voor `reinforcement_zones` geldt hetzelfde met een
+    // ander gevolg: die client wordt stilzwijgend met EEN korf over de hele
+    // staaf doorgerekend terwijl hij de wapening per zone heeft opgegeven.
     for veld in [
         "beam_id", "section", "concrete_class",
         "reinforcement_grade", "cage", "length_m", "forces_envelope",
         "n_strips", "steel_branch", "design_situation", "apply_min_eccentricity",
-        "sls_frequent_envelope", "exposure_class", "aggregate_size_mm",
-        "structural_system", "bar_spacing_mm",
+        "sls_frequent_envelope", "exposure_class", "structural_class",
+        "aggregate_size_mm",
+        "structural_system", "bar_spacing_mm", "reinforcement_zones",
     ] {
         assert!(
             props[veld].is_object(),
@@ -399,8 +403,44 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        16,
+        18,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
+    );
+
+    // DE WAPENINGSZONES. Twee gescheiden lijsten, allebei optioneel en allebei
+    // strikt: een tikfout in een zoneveld mag niet stil op een standaard
+    // terugvallen. Zonder deze regels zou een schema dat het veld wel noemt
+    // maar de lijsten niet, elke zone alsnog wegfilteren.
+    let zones = &props["reinforcement_zones"];
+    assert_eq!(zones["additionalProperties"], false);
+    assert!(
+        zones["required"].is_null(),
+        "beide zonelijsten horen optioneel te zijn: leeg = de korf geldt over de hele staaf"
+    );
+    let langs = &zones["properties"]["longitudinal"]["items"];
+    assert_eq!(langs["additionalProperties"], false);
+    assert_eq!(
+        langs["required"],
+        json!(["side", "row", "x_start_mm", "x_end_mm"]),
+        "zijde, rij en de twee maten zijn de dragende gegevens van een langswapeningszone"
+    );
+    assert_eq!(langs["properties"]["side"]["enum"], json!(["Bottom", "Top"]));
+    // De twee UITVOERINGSgegevens van 8.4 die niemand kan afleiden.
+    assert_eq!(
+        langs["properties"]["bar_shape"]["enum"],
+        json!(["Recht", "AndersDanRecht"])
+    );
+    assert_eq!(
+        langs["properties"]["casting_position"]["enum"],
+        json!(["Onderzijde", "Bovenzijde", "Glijbekisting", "GoedAangetoond"])
+    );
+    let beugel = &zones["properties"]["stirrups"]["items"];
+    assert_eq!(beugel["additionalProperties"], false);
+    assert_eq!(
+        beugel["required"],
+        json!(["x_start_mm", "x_end_mm", "spacing_mm", "legs", "diameter_mm"]),
+        "in een beugelzone zijn alle vijf de gegevens verplicht - anders zou de \
+         dwarskrachttoets op dat stuk stilzwijgend uitvallen"
     );
 
     // De frequente BGT-combinatie is een ANDERE combinatie dan de
@@ -464,7 +504,26 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
             "veld '{veld}' ontbreekt in het korfschema"
         );
     }
-    assert_eq!(cage["properties"].as_object().unwrap().len(), 8);
+    // De DEKKING PER ZIJDE (4.4.1.1(1)P) om dezelfde reden: optioneel, maar
+    // wél in het schema. Zou hij ontbreken, dan filtert
+    // `additionalProperties: false` de zijden weg en rekent de client
+    // stilzwijgend met één dekking rondom — precies de fout waarvoor deze
+    // velden zijn gemaakt.
+    for veld in ["cover_top", "cover_bottom", "cover_sides"] {
+        let zijde = &cage["properties"][veld];
+        assert!(zijde.is_object(), "veld '{veld}' ontbreekt in het korfschema");
+        assert_eq!(zijde["additionalProperties"], false, "{veld}");
+        // `null` moet toegestaan blijven: zo zegt een client "deze zijde volgt
+        // het element".
+        assert_eq!(zijde["type"], json!(["object", "null"]), "{veld}");
+        assert!(zijde["properties"]["cover_mm"].is_object(), "{veld}");
+        assert!(zijde["properties"]["exposure_class"].is_object(), "{veld}");
+        assert_eq!(zijde["properties"].as_object().unwrap().len(), 2, "{veld}");
+        // Niets van een zijde is verplicht: alleen de dekking, alleen de
+        // klasse of geen van beide zijn alle drie geldige opgaven.
+        assert!(zijde.get("required").is_none(), "{veld}");
+    }
+    assert_eq!(cage["properties"].as_object().unwrap().len(), 11);
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

@@ -53,6 +53,29 @@
 //! * Voorspanstaal (tabel 4.5N) blijft buiten beschouwing: dit model kent
 //!   alleen slappe wapening.
 //!
+//! DE DEKKING IS EEN UITSPRAAK PER BETONOPPERVLAK, NIET PER ELEMENT
+//!
+//! 4.4.1.1(1)P: "De betondekking is de afstand tussen het oppervlak van de
+//! wapening en het dichtstbijzijnde betonoppervlak (inclusief beugels en
+//! huidwapening voor zover van toepassing)." Er staat *het dichtstbijzijnde*
+//! betonoppervlak — een balk heeft er vier, en (4.2) koppelt c_min,dur aan de
+//! milieuklasse van dát oppervlak. Een vloer met de bovenzijde binnen (XC1) en
+//! de onderzijde buiten (XC4) heeft dus twee verschillende c_min,dur en twee
+//! verschillende dekkingen, en daarmee twee verschillende nuttige hoogtes.
+//!
+//! Deze rekengang blijft daarom bewust een berekening voor ÉÉN oppervlak:
+//! [`ConcreteCoverRequest`] draagt één milieuklasse en één c_nom. Wie een
+//! element per zijde wil toetsen, roept hem één keer per zijde aan; welke zijde
+//! het is, zegt het optionele veld [`ConcreteCoverRequest::side`], zodat het
+//! antwoord zichzelf kan benoemen. Er is met opzet geen tweede rekengang die
+//! drie zijden tegelijk doet — dat zou dezelfde keten van (4.1) en (4.2) een
+//! tweede keer opschrijven.
+//!
+//! Welke zijden er zijn en waarom het er drie zijn, staat bij [`CoverSide`].
+//! Wat een zijde aan eigen gegevens draagt, staat bij [`FaceCover`]; dat type
+//! hangt in [`crate::section::ReinforcementCage`], want de dekking is meetkunde
+//! van de korf.
+//!
 //! De module is bereikbaar langs de drie wegen — Tauri-command, toetsbrug en
 //! MCP-server — net als `beff`, en heeft daarom één rekengang
 //! ([`concrete_cover_request`]) die alle drie aanroepen.
@@ -311,10 +334,141 @@ impl ExposureClass {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// De zijden van de doorsnede
+// ───────────────────────────────────────────────────────────────────────────
+
+/// De zijde van de doorsnede waarop een dekking en een milieuklasse slaan.
+///
+/// # WAAROM DRIE ZIJDEN EN NIET TWEE OF VIER
+///
+/// Een balk heeft vier betonoppervlakken: boven, onder, links en rechts.
+/// 4.4.1.1(1)P kent aan elk daarvan een eigen dekking toe. Toch zijn het er
+/// hier drie, en dat is een keuze met een reden per variant.
+///
+/// * **Boven en onder apart — noodzakelijk.** Zij bepalen de ligging van de
+///   staafas en daarmee de nuttige hoogte d van §1.6 ("effectieve hoogte van
+///   een dwarsdoorsnede"). Boven- en onderwapening liggen aan verschillende
+///   oppervlakken en kunnen dus in een verschillend milieu liggen; met één
+///   dekking voor beide ligt de bovenwapening op de verkeerde plaats zodra de
+///   bovenzijde een andere klasse heeft. Dat is precies het geval waarvoor dit
+///   type bestaat.
+/// * **De twee zijkanten samen — verantwoord.** In elke formule die de
+///   zijdelingse dekking gebruikt komt zij uitsluitend als PAAR voor: de
+///   dwarsafstand van de beugelbenen s_t = b_w − 2·c − Ø_beugel (§9.2.2(8)),
+///   de vrije staafafstand van §8.2(2) en de binnenmaat waarin een rij staven
+///   moet passen. Alleen de SOM van links en rechts telt daar. Links en rechts
+///   uit elkaar trekken zou dus in geen enkele uitkomst zichtbaar worden — het
+///   zou alleen de rij staven uit het midden schuiven, en die meetkunde
+///   (staven scheef in de doorsnede) heeft dit model niet.
+/// * **Vier zou een vierde invoerveld kosten** voor een onderscheid dat geen
+///   getal verandert. Verschillen de twee zijkanten werkelijk van milieu, dan
+///   is de zwaarste van de twee de juiste invoer; die keus is veilig en staat
+///   in de invoerhulp.
+///
+/// De volgorde is die van de tekening: eerst boven, dan onder, dan de
+/// zijkanten.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub enum CoverSide {
+    /// De bovenzijde, z = h — de rand waar [`crate::section::ReinforcementCage::top`]
+    /// tegenaan ligt.
+    Top,
+    /// De onderzijde, z = 0 — de rand waar [`crate::section::ReinforcementCage::bottom`]
+    /// tegenaan ligt.
+    Bottom,
+    /// De twee verticale zijkanten samen; zie de toelichting hierboven.
+    Sides,
+}
+
+impl CoverSide {
+    /// Alle zijden, in de volgorde van de tekening.
+    pub const ALL: [CoverSide; 3] = [CoverSide::Top, CoverSide::Bottom, CoverSide::Sides];
+
+    /// Woordelijke aanduiding voor meldingen, de invoer en het rapport.
+    pub fn label(self) -> &'static str {
+        match self {
+            CoverSide::Top => "bovenzijde",
+            CoverSide::Bottom => "onderzijde",
+            CoverSide::Sides => "zijkanten",
+        }
+    }
+}
+
+/// Wat één betonoppervlak aan EIGEN gegevens draagt: zijn dekking en zijn
+/// milieuklasse.
+///
+/// # `None` betekent "volg het element", niet "nul" en niet "onbekend"
+///
+/// Beide velden leeg — de [`Default`] — is de stand van vóór dit type: de zijde
+/// gebruikt dan de dekking en de milieuklasse van het element. Dat is de reden
+/// dat dit type überhaupt zo mag bestaan: een projectbestand van vóór deze
+/// uitbreiding kent deze velden niet, `#[serde(default)]` maakt ze leeg, en
+/// elke uitkomst blijft daarmee bit voor bit dezelfde. Zie
+/// [`crate::section::ReinforcementCage::cover_at_mm`].
+///
+/// De dekking en de klasse staan met opzet in ÉÉN type en niet in twee losse
+/// lijstjes. (4.2) leidt c_min,dur rechtstreeks uit de milieuklasse af; wie ze
+/// zou scheiden, kan een projectbestand krijgen met een eigen dekking voor de
+/// bovenzijde en een milieuklasse voor het hele element, en niets dat die
+/// tegenspraak opmerkt.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct FaceCover {
+    /// De nominale dekking c_nom van DEZE zijde, in mm. `None` = de dekking van
+    /// het element.
+    #[serde(default)]
+    #[ts(optional)]
+    pub cover_mm: Option<f64>,
+    /// De milieuklasse van DEZE zijde (tabel 4.1). `None` = de milieuklasse van
+    /// het element.
+    #[serde(default)]
+    #[ts(optional)]
+    pub exposure_class: Option<ExposureClass>,
+}
+
+impl FaceCover {
+    /// Zegt deze zijde niets eigens? Dan geldt het element.
+    pub fn is_empty(&self) -> bool {
+        self.cover_mm.is_none() && self.exposure_class.is_none()
+    }
+
+    /// Alleen een eigen dekking, zonder eigen klasse — het geval waarin de
+    /// tekening en de berekening uiteen kunnen lopen als niemand het zegt.
+    pub fn heeft_eigen_dekking(&self) -> bool {
+        self.cover_mm.is_some()
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Constructieklasse en tabel 4.4N
 // ───────────────────────────────────────────────────────────────────────────
 
 /// Constructieklasse S1…S6 (4.4.1.2(5), tabel 4.3N).
+///
+/// # DE CONSTRUCTIEKLASSE HOORT BIJ HET ELEMENT, NIET BIJ DE ZIJDE
+///
+/// De nationale bijlage bij 4.4.1.2(5) schrapt de aanbevolen tabel 4.3N en
+/// schrijft een eigen versie voor: "Constructieve classificatie moet in
+/// overeenstemming met de geamendeerde tabel 4.3N zijn, welke tabel dan als
+/// volgt moet zijn gelezen (normatief)". Die tabel kent vijf criteria, en alle
+/// vijf zijn een eigenschap van het ELEMENT en niet van een oppervlak:
+/// "Ontwerplevensduur 100 jaar" (+2 klassen), "Ontwerplevensduur 75 jaar"
+/// (+1 klasse), "Sterkteklasse" (−1 klasse), "Element met plaatgeometrie
+/// (plaats van de wapening niet beïnvloed door het bouwproces)" (−1 klasse) en
+/// "Specifieke kwaliteitsbeheersing van de betonproductie gewaarborgd"
+/// (−1 klasse). Een balk heeft één ontwerplevensduur, één betonsterkteklasse,
+/// één geometrie en één productiewijze.
+///
+/// Eén nuance hoort erbij, en die is echt: de DREMPEL bij het criterium
+/// sterkteklasse loopt per milieuklassekolom op — "≥ C30/37" bij X0 en XC1,
+/// "≥ C35/45" bij XC2/XC3, "≥ C40/50" bij XC4 en XD1. Wie die aanpassing zelf
+/// toepast, kan met één en dezelfde betonsterkte aan de ene zijde wél en aan de
+/// andere zijde niet een klasse omlaag. Deze module leidt de klasse echter NIET
+/// af — zij is invoer, zie de moduletekst — en houdt daarom één klasse voor het
+/// hele element aan. Dat staat ook in de toelichting bij elke uitkomst, zodat
+/// wie de aanpassing wél zelf doet, weet dat hij hem zelf per zijde moet
+/// invullen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub enum StructuralClass {
@@ -435,7 +589,18 @@ pub struct ConcreteCoverRequest {
     /// staaf uit een model gaat.
     #[serde(default)]
     pub beam_id: u32,
-    /// De milieuklasse van tabel 4.1.
+    /// Welk betonoppervlak dit verzoek betreft (4.4.1.1(1)P).
+    ///
+    /// `None` = niet benoemd; dan is het antwoord een dekkingstoets zonder
+    /// zijde, precies zoals hij vóór deze uitbreiding was. Het veld verandert
+    /// aan de berekening niets: het reist mee zodat het antwoord kan zeggen
+    /// wélke zijde is getoetst, want drie antwoorden naast elkaar zonder
+    /// opschrift zijn niet uit elkaar te houden.
+    #[serde(default)]
+    #[ts(optional)]
+    pub side: Option<CoverSide>,
+    /// De milieuklasse van tabel 4.1 — die van de zijde in [`Self::side`], of
+    /// van het element als er geen zijde is benoemd.
     pub exposure_class: ExposureClass,
     /// De constructieklasse. Blijft het veld weg, dan
     /// [`DEFAULT_STRUCTURAL_CLASS`] — de NB-waarde voor 50 jaar.
@@ -462,6 +627,9 @@ pub struct ConcreteCoverRequest {
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct ConcreteCoverResponse {
     pub beam_id: u32,
+    /// De zijde uit het verzoek, onveranderd terug; `None` als er geen is
+    /// benoemd.
+    pub side: Option<CoverSide>,
     pub exposure_class: ExposureClass,
     pub structural_class: StructuralClass,
     /// De kolomaanduiding uit tabel 4.4N, of `None` bij XF/XA.
@@ -592,7 +760,17 @@ pub fn concrete_cover_request(
         CheckStatus::NotOk
     };
 
-    let mut notes = vec![
+    let mut notes = Vec::new();
+    if let Some(zijde) = req.side {
+        notes.push(format!(
+            "Deze uitkomst geldt voor de {}. 4.4.1.1(1)P meet de dekking tot \"het \
+             dichtstbijzijnde betonoppervlak\", dus per zijde; een element met een andere \
+             milieuklasse aan een andere zijde heeft daar een eigen c_min,dur en een eigen \
+             c_nom, en dus een eigen nuttige hoogte.",
+            zijde.label()
+        ));
+    }
+    notes.extend([
         format!(
             "Milieuklasse {} — {} (tabel 4.1, {}).",
             info.name, info.description, info.group
@@ -606,7 +784,7 @@ pub fn concrete_cover_request(
              Δc_dev = {:.0} mm (4.4.1.3(1)P; de EN beveelt 10 mm aan).",
             DELTA_C_DEV_MM
         ),
-    ];
+    ]);
     match c_min_dur {
         Some(c) => notes.push(format!(
             "c_min,dur = {:.0} mm uit tabel 4.4N (betonstaal), constructieklasse {}, kolom {}. \
@@ -639,9 +817,23 @@ pub fn concrete_cover_request(
          (4.4.1.2(13))."
             .to_string(),
     );
+    if req.side.is_some() {
+        notes.push(
+            "De constructieklasse hoort bij het ELEMENT en niet bij de zijde: alle vijf de \
+             criteria van de door de nationale bijlage vervangen tabel 4.3N — ontwerplevensduur \
+             100 jaar, ontwerplevensduur 75 jaar, sterkteklasse, element met plaatgeometrie en \
+             gewaarborgde kwaliteitsbeheersing — zijn eigenschappen van het element. Alleen de \
+             DREMPEL bij het criterium sterkteklasse loopt per milieuklassekolom op (≥ C30/37 bij \
+             X0 en XC1, ≥ C35/45 bij XC2/XC3, ≥ C40/50 bij XC4 en XD1); wie die aanpassing zelf \
+             toepast kan daardoor per zijde op een andere klasse uitkomen en moet die dan hier \
+             ook per zijde opgeven."
+                .to_string(),
+        );
+    }
 
     Ok(ConcreteCoverResponse {
         beam_id: req.beam_id,
+        side: req.side,
         exposure_class: req.exposure_class,
         structural_class: structural,
         cover_column: info.cover_column.map(|c| c.to_string()),
@@ -670,6 +862,7 @@ mod tests {
     fn verzoek(exposure: ExposureClass, cover: f64) -> ConcreteCoverRequest {
         ConcreteCoverRequest {
             beam_id: 0,
+            side: None,
             exposure_class: exposure,
             structural_class: None,
             cover_mm: cover,
@@ -754,6 +947,7 @@ mod tests {
         // Zware staaf zonder beugel: c_min,b = Ø = 40 mm > c_min,dur (X0: 10).
         let v = ConcreteCoverRequest {
             beam_id: 7,
+            side: None,
             exposure_class: ExposureClass::X0,
             structural_class: Some(StructuralClass::S4),
             cover_mm: 50.0,
@@ -794,6 +988,81 @@ mod tests {
             assert!(!i.examples.is_empty());
             assert_eq!(i.cover_column.is_some(), i.class.cover_column_index().is_some());
         }
+    }
+
+    #[test]
+    fn de_zijde_verandert_de_uitkomst_niet_maar_wel_het_opschrift() {
+        // Het veld `side` is opschrift, geen invoer voor (4.1) of (4.2). Elk
+        // getal moet dus gelijk blijven; alleen de toelichting groeit.
+        let zonder = concrete_cover_request(verzoek(ExposureClass::XC4, 35.0)).unwrap();
+        let mut v = verzoek(ExposureClass::XC4, 35.0);
+        v.side = Some(CoverSide::Top);
+        let met = concrete_cover_request(v).unwrap();
+
+        assert_eq!(zonder.side, None);
+        assert_eq!(met.side, Some(CoverSide::Top));
+        assert_eq!(met.c_min_dur_mm, zonder.c_min_dur_mm);
+        assert_eq!(met.c_min_mm, zonder.c_min_mm);
+        assert_eq!(met.c_nom_required_mm, zonder.c_nom_required_mm);
+        assert_eq!(met.unity_check, zonder.unity_check);
+        assert_eq!(met.status, zonder.status);
+        assert!(met.notes.iter().any(|n| n.contains("bovenzijde")));
+        assert!(met.notes.iter().any(|n| n.contains("4.4.1.1(1)P")));
+        // De uitleg over de constructieklasse komt er alleen bij als er een
+        // zijde is; zonder zijde is er niets om over te verwarren.
+        assert!(met.notes.iter().any(|n| n.contains("hoort bij het ELEMENT")));
+        assert!(!zonder.notes.iter().any(|n| n.contains("hoort bij het ELEMENT")));
+    }
+
+    #[test]
+    fn een_vloer_binnen_boven_en_buiten_onder_geeft_twee_dekkingen() {
+        // Het geval uit de opdracht: bovenzijde binnen (XC1), onderzijde buiten
+        // (XC4). S4 (NB, 50 jaar) → c_min,dur 15 resp. 30 mm; met Δc_dev = 5 mm
+        // wordt de vereiste c_nom 20 resp. 35 mm. Eén dekking voor beide zijden
+        // kan dus niet kloppen.
+        let mut boven = verzoek(ExposureClass::XC1, 25.0);
+        boven.side = Some(CoverSide::Top);
+        let boven = concrete_cover_request(boven).unwrap();
+        let mut onder = verzoek(ExposureClass::XC4, 40.0);
+        onder.side = Some(CoverSide::Bottom);
+        let onder = concrete_cover_request(onder).unwrap();
+
+        assert_eq!(boven.c_nom_required_mm, 20.0);
+        assert_eq!(onder.c_nom_required_mm, 35.0);
+        assert_eq!(boven.status, CheckStatus::Ok);
+        assert_eq!(onder.status, CheckStatus::Ok);
+        // Dezelfde 25 mm die boven ruim voldoet, is onder te dun.
+        let mut te_dun = verzoek(ExposureClass::XC4, 25.0);
+        te_dun.side = Some(CoverSide::Bottom);
+        assert_eq!(
+            concrete_cover_request(te_dun).unwrap().status,
+            CheckStatus::NotOk
+        );
+    }
+
+    #[test]
+    fn elke_zijde_heeft_een_nederlandse_aanduiding() {
+        assert_eq!(CoverSide::ALL.len(), 3);
+        for z in CoverSide::ALL {
+            assert!(!z.label().is_empty());
+        }
+        assert_eq!(CoverSide::Top.label(), "bovenzijde");
+        assert_eq!(CoverSide::Bottom.label(), "onderzijde");
+        assert_eq!(CoverSide::Sides.label(), "zijkanten");
+    }
+
+    #[test]
+    fn een_lege_zijde_zegt_niets_eigens() {
+        let leeg = FaceCover::default();
+        assert!(leeg.is_empty());
+        assert!(!leeg.heeft_eigen_dekking());
+        let met_dekking = FaceCover { cover_mm: Some(40.0), exposure_class: None };
+        assert!(!met_dekking.is_empty());
+        assert!(met_dekking.heeft_eigen_dekking());
+        // Een JSON zonder de velden — een projectbestand van vóór deze
+        // uitbreiding — levert de lege zijde op en dus het oude gedrag.
+        let uit_json: FaceCover = serde_json::from_str("{}").unwrap();
+        assert_eq!(uit_json, leeg);
     }
 
     #[test]

@@ -2,5 +2,29 @@
 
 /**
  * Constructieklasse S1…S6 (4.4.1.2(5), tabel 4.3N).
+ *
+ * # DE CONSTRUCTIEKLASSE HOORT BIJ HET ELEMENT, NIET BIJ DE ZIJDE
+ *
+ * De nationale bijlage bij 4.4.1.2(5) schrapt de aanbevolen tabel 4.3N en
+ * schrijft een eigen versie voor: "Constructieve classificatie moet in
+ * overeenstemming met de geamendeerde tabel 4.3N zijn, welke tabel dan als
+ * volgt moet zijn gelezen (normatief)". Die tabel kent vijf criteria, en alle
+ * vijf zijn een eigenschap van het ELEMENT en niet van een oppervlak:
+ * "Ontwerplevensduur 100 jaar" (+2 klassen), "Ontwerplevensduur 75 jaar"
+ * (+1 klasse), "Sterkteklasse" (−1 klasse), "Element met plaatgeometrie
+ * (plaats van de wapening niet beïnvloed door het bouwproces)" (−1 klasse) en
+ * "Specifieke kwaliteitsbeheersing van de betonproductie gewaarborgd"
+ * (−1 klasse). Een balk heeft één ontwerplevensduur, één betonsterkteklasse,
+ * één geometrie en één productiewijze.
+ *
+ * Eén nuance hoort erbij, en die is echt: de DREMPEL bij het criterium
+ * sterkteklasse loopt per milieuklassekolom op — "≥ C30/37" bij X0 en XC1,
+ * "≥ C35/45" bij XC2/XC3, "≥ C40/50" bij XC4 en XD1. Wie die aanpassing zelf
+ * toepast, kan met één en dezelfde betonsterkte aan de ene zijde wél en aan de
+ * andere zijde niet een klasse omlaag. Deze module leidt de klasse echter NIET
+ * af — zij is invoer, zie de moduletekst — en houdt daarom één klasse voor het
+ * hele element aan. Dat staat ook in de toelichting bij elke uitkomst, zodat
+ * wie de aanpassing wél zelf doet, weet dat hij hem zelf per zijde moet
+ * invullen.
  */
 export type StructuralClass = "S1" | "S2" | "S3" | "S4" | "S5" | "S6";

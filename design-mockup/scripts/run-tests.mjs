@@ -105,6 +105,13 @@ const BUNDEL_TESTS = new Set([
   "releases",
   "scheefstand",
   "sectie-doorvoer",
+  // Toetst waar de adapter zijn rekenknopen legt (deellastgrenzen,
+  // `extraSneden`, de samenvoegregel) en praat daarvoor uitsluitend met
+  // `engine` — solve/solveAllCases, precies wat de barrel ontsluit. Hoort
+  // juist óók in de bundelstand: het stationsraster is wat de sidecar naar
+  // buiten geeft, dus als de bundel daar afwijkt van de bron, moet dat hier
+  // opvallen.
+  "sneden",
   "staafsegmenten",
   "thermiek",
   "tweede-orde",
@@ -202,6 +209,10 @@ const ALLEEN_BRON = new Map([
   [
     "betonfiguren-referentie",
     "legt de tekenmeetkunde van wapeningskorf.ts naast de gedeelde referentie die de Rust-kant óók leest (src-tauri/crates/report/tests/golden/betonfiguren-referentie.json); tekenwerk in plaats van solverwerk, en de referentie ligt buiten de bundel",
+  ],
+  [
+    "dekking-per-zijde",
+    "test het korfmodel van components/beton/wapeningskorf.ts met een eigen dekking en milieuklasse per betonoppervlak (4.4.1.1(1)P): de nuttige hoogte per trekzijde, de staafposities, s_t en de korfcontrole. Dat is invoerbouw en tekenmeetkunde van de frontend — de solver komt er niet aan te pas en wapeningskorf zit niet in de barrel van de sidecarbundel",
   ],
   [
     "cltmeetkunde-referentie",

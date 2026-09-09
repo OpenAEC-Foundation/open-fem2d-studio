@@ -24,6 +24,17 @@
  * de doorsnede vult het beeld. Voor alles wat hoger is dan breed — de gewone
  * balk, de kolom — verandert er niets: die zat al op de bovengrens.
  *
+ * DE DEKKING WORDT PER ZIJDE GETEKEND. 4.4.1.1(1)P meet de dekking tot "het
+ * dichtstbijzijnde betonoppervlak", en die kan per zijde verschillen: bij een
+ * vloer met de bovenzijde binnen en de onderzijde buiten is de bovendekking
+ * kleiner dan de onderdekking. De beugel ligt dan niet meer overal even ver van
+ * de rand, en de tekening moet dat laten zien — anders klopt het beeld niet met
+ * de d waarmee gerekend wordt, en dat is precies de fout die op de bouwplaats
+ * pas opvalt. Zijn de drie dekkingen gelijk, dan komt er geen pixel anders te
+ * liggen dan voorheen. Het onderschrift zegt "dekking 30" bij één dekking en
+ * "dekking ↑25 ↓40 ↔30" zodra ze verschillen; één getal zou dan een onjuiste
+ * samenvatting van de tekening zijn.
+ *
  * Kleuren komen standaard uit de theme-tokens, zodat de tekening in licht én
  * donker leesbaar blijft. Het rapport geeft `RAPPORT_KLEUREN` mee: daar is de
  * tekening papier en volgt hij het app-thema juist niet.
@@ -54,6 +65,8 @@ import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import {
   asAfstandMm,
   banden,
+  dekkingIsRondomGelijk,
+  dekkingVanZijdeMm,
   hartXMm,
   maat,
   nuttigeHoogteMm,
@@ -149,7 +162,15 @@ export default function DoorsnedeTekening({
   const sx = (xMm: number) => x0 + xMm * s;
   const sy = (zMm: number) => y0 + (hMm - zMm) * s;
 
-  const c = korf.korf.cover_mm;
+  // De dekking is een maat PER BETONOPPERVLAK (4.4.1.1(1)P). De beugel ligt
+  // dus niet op één inzet rondom maar op drie: boven, onder en opzij. Zolang
+  // de drie gelijk zijn — de gewone balk — tekent dat precies wat er altijd
+  // stond; verschillen ze, dan is de beugel geen rechthoek meer die overal
+  // even ver van de rand ligt, en dát moet je kunnen zien.
+  const cBoven = dekkingVanZijdeMm(korf.korf, "Top");
+  const cOnder = dekkingVanZijdeMm(korf.korf, "Bottom");
+  const cZij = dekkingVanZijdeMm(korf.korf, "Sides");
+  const eenDekking = dekkingIsRondomGelijk(korf.korf);
   const dBgl = korf.korf.stirrup_diameter_mm;
   // Eén schakelaar, hier bovenaan: `wapening` uit betekent dat er geen staaf,
   // geen beugel, geen rijlabel en geen d-maat is — d hangt immers aan de
@@ -167,11 +188,13 @@ export default function DoorsnedeTekening({
   // een T-ligger zit om het lijf, en de flens draagt daar zijn eigen
   // dwarswapening. Bij een rechthoek is het lijf de hele doorsnede en staat
   // er precies wat er altijd stond.
-  const beugelInzet = c + dBgl / 2;
+  const inzetZij = cZij + dBgl / 2;
+  const inzetBoven = cBoven + dBgl / 2;
+  const inzetOnder = cOnder + dBgl / 2;
   const lijf = banden(d3).reduce((a, b) => (b.bMm < a.bMm ? b : a));
   const lijfHart = hartXMm(d3, 0.5 * (lijf.z0Mm + lijf.z1Mm));
-  const beugelBreedte = lijf.bMm - 2 * beugelInzet;
-  const beugelHoogte = hMm - 2 * beugelInzet;
+  const beugelBreedte = lijf.bMm - 2 * inzetZij;
+  const beugelHoogte = hMm - inzetBoven - inzetOnder;
   const beugelPast = wapening && dBgl > 0 && beugelBreedte > 0 && beugelHoogte > 0;
 
   const yMaatB = y0 - 9;
@@ -184,11 +207,11 @@ export default function DoorsnedeTekening({
   // elkaar dat de labels over elkaar heen vallen. Twee onleesbare labels zijn
   // erger dan geen: dan staan ze in het onderschrift, waar altijd ruimte is.
   const yLabelOnder =
-    sy(asAfstandMm(korf.korf, korf.korf.bottom)) -
+    sy(asAfstandMm(korf.korf, korf.korf.bottom, "onder")) -
     Math.max(3, (korf.korf.bottom.diameter_mm / 2) * s) -
     2.5;
   const yLabelBoven =
-    sy(hMm - asAfstandMm(korf.korf, korf.korf.top)) +
+    sy(hMm - asAfstandMm(korf.korf, korf.korf.top, "boven")) +
     Math.max(3, (korf.korf.top.diameter_mm / 2) * s) +
     8;
   const LABEL_H = 9;
@@ -212,7 +235,16 @@ export default function DoorsnedeTekening({
       ? [`${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`]
       : []),
     ...(d3.shape === "Rectangle" ? [] : [`h_f ${maat(d3.h_f_mm ?? 0)}`]),
-    ...(wapening ? [`dekking ${maat(c)}`] : []),
+    // Eén dekking rondom leest als "dekking 30"; verschillen de zijden, dan
+    // staan ze er alle drie, want dan is één getal een onjuiste samenvatting
+    // van de tekening.
+    ...(wapening
+      ? [
+          eenDekking
+            ? `dekking ${maat(cOnder)}`
+            : `dekking ↑${maat(cBoven)} ↓${maat(cOnder)} ↔${maat(cZij)}`,
+        ]
+      : []),
     ...(wapening && dBgl > 0 ? [`beugel Ø${maat(dBgl)}`] : []),
   ];
 
@@ -236,8 +268,8 @@ export default function DoorsnedeTekening({
       {/* Beugel om het lijf */}
       {beugelPast && (
         <rect
-          x={sx(lijfHart - lijf.bMm / 2 + beugelInzet)}
-          y={sy(hMm - beugelInzet)}
+          x={sx(lijfHart - lijf.bMm / 2 + inzetZij)}
+          y={sy(hMm - inzetBoven)}
           width={beugelBreedte * s}
           height={beugelHoogte * s}
           rx={Math.max(1.5, 2 * dBgl * s)}
@@ -266,7 +298,7 @@ export default function DoorsnedeTekening({
           ze elkaar daar niet raken; anders staan ze in het onderschrift. */}
       {labelsInDeDoorsnede && heeftOnder && (
         <text
-          x={sx(hartXMm(d3, asAfstandMm(korf.korf, korf.korf.bottom)))}
+          x={sx(hartXMm(d3, asAfstandMm(korf.korf, korf.korf.bottom, "onder")))}
           y={yLabelOnder}
           fill={kleuren.tekstZwak}
           fontSize="7.5"
@@ -277,7 +309,7 @@ export default function DoorsnedeTekening({
       )}
       {labelsInDeDoorsnede && heeftBoven && (
         <text
-          x={sx(hartXMm(d3, hMm - asAfstandMm(korf.korf, korf.korf.top)))}
+          x={sx(hartXMm(d3, hMm - asAfstandMm(korf.korf, korf.korf.top, "boven")))}
           y={yLabelBoven}
           fill={kleuren.tekstZwak}
           fontSize="7.5"

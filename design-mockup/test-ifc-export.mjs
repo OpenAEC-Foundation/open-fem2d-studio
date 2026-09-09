@@ -4,7 +4,9 @@
 //
 // Stijl: test-veldzakking.mjs. Draaien met: npx tsx test-ifc-export.mjs
 
-const { bouwIfcRekenmodel } = await import("./src/io/ifcExport.ts");
+const {
+  bouwIfcRekenmodel, valideerIfc, GEWORTELDE_ENTITEITEN,
+} = await import("./src/io/ifcExport.ts");
 
 let passed = 0, failed = 0;
 const log = (s) => process.stdout.write(s + "\n");
@@ -41,9 +43,22 @@ function refIntegriteit(ifc) {
   return kapot;
 }
 
-/** GlobalId's: eerste attribuut van rooted entiteiten, 22 tekens IFC-base64. */
+/**
+ * GlobalId's: eerste attribuut van de GEWORTELDE entiteiten, 22 tekens
+ * IFC-base64.
+ *
+ * De entiteitsnamen komen uit de export zelf (`GEWORTELDE_ENTITEITEN`) en
+ * niet uit een patroon "eerste attribuut is een string van 22 tekens". Dat
+ * patroon telde ook gewone namen mee: een eigenschap die toevallig 22 tekens
+ * lang heet ("Torsietraagheidsmoment") kwam er drie keer in en zag eruit als
+ * een dubbele GlobalId, terwijl geen enkele GUID dubbel was.
+ */
 function globalIds(ifc) {
-  return [...ifc.matchAll(/=IFC[A-Z0-9]+\('([0-9A-Za-z_$]{22})',/g)].map(m => m[1]);
+  // Met tekenklassen ([0-9], [(]) in plaats van escapes: dan staat er in de
+  // bron precies wat de RegExp ziet, zonder verdubbelde backslashes.
+  const re = new RegExp(
+    "^#[0-9]+=(?:" + GEWORTELDE_ENTITEITEN.join("|") + ")[(]'([^']*)'", "gm");
+  return [...ifc.matchAll(re)].map(m => m[1]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -219,5 +234,337 @@ checkTrue("GlobalId's onafhankelijk per entiteit (model 1 ≠ model 2 waar inhou
   ids2.length !== ids.length || ids2.join() !== ids.join());
 
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 3: STEP-syntaxis — elk attribuut aanwezig, geen gat in de rij
+//
+// De grootste stille fout die een SPF-schrijver kan maken is een attribuut
+// OVERSLAAN. Het bestand blijft dan leesbaar, maar alle volgende attributen
+// schuiven een plaats op en de lezer krijgt de verkeerde waarde te zien
+// zonder dat iets meldt dat er iets mis is. Deze tabel legt per entiteit vast
+// hoeveel attributen IFC4 er voorschrijft.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[3] STEP-syntaxis: het aantal attributen per entiteit");
+
+/** Aantal attributen per IFC4-entiteit die deze export schrijft. */
+const ATTRIBUTEN = {
+  IFCSIUNIT: 4, IFCUNITASSIGNMENT: 1,
+  IFCCARTESIANPOINT: 1, IFCDIRECTION: 1,
+  IFCAXIS2PLACEMENT3D: 3, IFCLOCALPLACEMENT: 2,
+  IFCGEOMETRICREPRESENTATIONCONTEXT: 6, IFCGEOMETRICREPRESENTATIONSUBCONTEXT: 10,
+  IFCPROJECT: 9, IFCSITE: 14, IFCBUILDING: 12,
+  IFCRELAGGREGATES: 6, IFCRELSERVICESBUILDINGS: 6,
+  IFCSTRUCTURALLOADGROUP: 10, IFCSTRUCTURALANALYSISMODEL: 10,
+  IFCVERTEXPOINT: 1, IFCTOPOLOGYREPRESENTATION: 4, IFCEDGE: 2,
+  IFCPRODUCTDEFINITIONSHAPE: 3, IFCSHAPEREPRESENTATION: 4,
+  IFCSTRUCTURALPOINTCONNECTION: 9, IFCBOUNDARYNODECONDITION: 7,
+  IFCSTRUCTURALCURVEMEMBER: 9, IFCRELCONNECTSSTRUCTURALMEMBER: 10,
+  IFCMATERIAL: 3, IFCMATERIALPROFILE: 6, IFCMATERIALPROFILESET: 4,
+  IFCMATERIALPROFILESETUSAGE: 3, IFCRELASSOCIATESMATERIAL: 6,
+  IFCISHAPEPROFILEDEF: 10, IFCUSHAPEPROFILEDEF: 10,
+  IFCRECTANGLEPROFILEDEF: 5, IFCRECTANGLEHOLLOWPROFILEDEF: 8,
+  IFCCIRCLEHOLLOWPROFILEDEF: 5, IFCARBITRARYCLOSEDPROFILEDEF: 3,
+  IFCPOLYLINE: 1, IFCEXTRUDEDAREASOLID: 4, IFCSWEPTDISKSOLID: 5,
+  IFCBEAM: 9, IFCCOLUMN: 9, IFCREINFORCINGBAR: 14,
+  IFCPROPERTYSINGLEVALUE: 4, IFCPROPERTYSET: 5, IFCRELDEFINESBYPROPERTIES: 6,
+  IFCELEMENTQUANTITY: 6, IFCQUANTITYLENGTH: 5, IFCQUANTITYAREA: 5,
+  IFCQUANTITYVOLUME: 5,
+  IFCRELCONTAINEDINSPATIALSTRUCTURE: 6, IFCRELASSIGNSTOPRODUCT: 7,
+  IFCRELASSIGNSTOGROUP: 7,
+  IFCSTRUCTURALLOADSINGLEFORCE: 7, IFCSTRUCTURALLOADLINEARFORCE: 7,
+  IFCSTRUCTURALLOADTEMPERATURE: 4, IFCSTRUCTURALLOADCONFIGURATION: 3,
+  IFCSTRUCTURALPOINTACTION: 10, IFCSTRUCTURALLINEARACTION: 12,
+  IFCSTRUCTURALCURVEACTION: 12, IFCRELCONNECTSSTRUCTURALACTIVITY: 6,
+};
+
+/** Splitst de argumentenlijst van één entiteit op het BUITENSTE komma-niveau. */
+function splitsArgumenten(args) {
+  const delen = [];
+  let huidig = "", diepte = 0, inTekst = false;
+  for (const c of args) {
+    if (inTekst) { huidig += c; if (c === "'") inTekst = false; continue; }
+    if (c === "'") { huidig += c; inTekst = true; continue; }
+    if (c === "(") { diepte++; huidig += c; continue; }
+    if (c === ")") { diepte--; huidig += c; continue; }
+    if (c === "," && diepte === 0) { delen.push(huidig); huidig = ""; continue; }
+    huidig += c;
+  }
+  delen.push(huidig);
+  return delen;
+}
+
+/** Alle entiteitsregels als { id, type, args }. */
+function ontleed(ifc) {
+  const uit = [];
+  for (const regel of ifc.split("\n")) {
+    const m = /^#(\d+)=([A-Z][A-Z0-9_]*)\((.*)\);$/.exec(regel);
+    if (m) uit.push({ id: m[1], type: m[2], args: splitsArgumenten(m[3]) });
+  }
+  return uit;
+}
+
+/** Controleert attribuutaantallen en lege gaten; retourneert de klachten. */
+function syntaxKlachten(ifc) {
+  const klachten = [];
+  for (const e of ontleed(ifc)) {
+    const verwacht = ATTRIBUTEN[e.type];
+    if (verwacht === undefined) {
+      klachten.push(`#${e.id}: ${e.type} staat niet in de attributentabel van deze test`);
+      continue;
+    }
+    if (e.args.length !== verwacht) {
+      klachten.push(`#${e.id}=${e.type}: ${e.args.length} attributen, verwacht ${verwacht}`);
+    }
+    e.args.forEach((a, i) => {
+      if (a.trim() === "") klachten.push(`#${e.id}=${e.type}: attribuut ${i + 1} is LEEG`);
+    });
+  }
+  return klachten;
+}
+
+for (const [naam, bestand] of [["portaal", ifc], ["kenmerkenmodel", ifc2]]) {
+  const klachten = syntaxKlachten(bestand);
+  checkEq(`${naam}: geen syntaxklachten`, klachten.length, 0);
+  if (klachten.length > 0) log("    " + klachten.slice(0, 6).join("\n    "));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 4: het bouwkundige model naast het rekenmodel
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[4] Bouwkundig model: liggers, kolommen, eigenschappen en hoeveelheden");
+
+const bouwkundigModel = {
+  projectNaam: "Bouwkundig",
+  nodes: [
+    { id: 1, x: 0,    z: 0 },
+    { id: 2, x: 0,    z: 4000 },
+    { id: 3, x: 8000, z: 4000 },
+  ],
+  beams: [
+    { id: 1, from: 1, to: 2, material: "S235", profile: "HEB300" },  // kolom (90°)
+    { id: 2, from: 2, to: 3, material: "S235", profile: "IPE400" },  // ligger (0°)
+  ],
+  supports: [{ nodeId: 1, type: "fixed" }],
+  loads: [
+    { id: 1, type: "lineLoad", caseId: 1, beamId: 2, q: -8, qDir: "z",
+      omschrijving: "vloer verdieping 1" },
+  ],
+  loadCases: [{ id: 1, name: "Permanent", type: "dead" }],
+  toetsresultaten: [{
+    beam_id: 2, profile_name: "IPE 400", steel_grade: "S235",
+    classification: "Class1",
+    checks: [{ id: "6.2.5", kind: { type: "Resistance", data: {
+      id: "6.2.5", title: "Buigend moment", article: "6.2.5",
+      force_state: {}, formula_latex: "", variables: [], deelstappen: [],
+      value: 1, unit: "kNm", uc: null, status: "Ok", notes: [],
+    } } }],
+    uc_max: 0.76, status: "Ok", governing_check_id: "6.2.5",
+  }],
+};
+const ifcB = bouwIfcRekenmodel(bouwkundigModel);
+
+log("  — (a) een ligger en een kolom, met hun echte doorsnede");
+checkEq("1× IfcBeam (de horizontale staaf)", tel(ifcB, "IFCBEAM"), 1);
+checkEq("1× IfcColumn (de verticale staaf)", tel(ifcB, "IFCCOLUMN"), 1);
+checkTrue("ligger heet 'Ligger 2' met materiaal en profiel",
+  ifcB.includes("'Ligger 2','S235 IPE400'"));
+checkTrue("kolom heet 'Kolom 1' met materiaal en profiel",
+  ifcB.includes("'Kolom 1','S235 HEB300'"));
+checkTrue("PredefinedType .BEAM. en .COLUMN.",
+  /IFCBEAM\([^\n]*,\.BEAM\.\);/.test(ifcB) && /IFCCOLUMN\([^\n]*,\.COLUMN\.\);/.test(ifcB));
+checkEq("2× IfcExtrudedAreaSolid (één lichaam per element)",
+  tel(ifcB, "IFCEXTRUDEDAREASOLID"), 2);
+checkTrue("de extrusie van de ligger is 8 m diep",
+  /IFCEXTRUDEDAREASOLID\(#\d+,#\d+,#\d+,8\.\);/.test(ifcB));
+checkTrue("de extrusie van de kolom is 4 m diep",
+  /IFCEXTRUDEDAREASOLID\(#\d+,#\d+,#\d+,4\.\);/.test(ifcB));
+// Het lichaam verwijst naar dezelfde IfcProfileDef als het rekenmodel: het
+// nummer van de IPE400-profieldefinitie moet in de extrusie terugkomen.
+const ipe = /^#(\d+)=IFCISHAPEPROFILEDEF\(\.AREA\.,'IPE400'/m.exec(ifcB);
+checkTrue("de ligger extrudeert de IPE400-profieldefinitie zelf",
+  ipe !== null && ifcB.includes(`IFCEXTRUDEDAREASOLID(#${ipe[1]},`));
+checkEq("1× IfcRelContainedInSpatialStructure (beide elementen in het gebouw)",
+  tel(ifcB, "IFCRELCONTAINEDINSPATIALSTRUCTURE"), 1);
+checkEq("2× IfcRelAssignsToProduct (rekenstaaf → bouwkundig element)",
+  tel(ifcB, "IFCRELASSIGNSTOPRODUCT"), 2);
+checkTrue("de 'Body'-subcontext staat er",
+  ifcB.includes("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,"));
+
+log("  — (b) eigenschappensets");
+for (const set of [
+  "OpenFEM2D_Doorsnede", "OpenFEM2D_Staaf", "OpenFEM2D_Toetsing",
+  "Pset_BeamCommon", "Pset_ColumnCommon",
+]) {
+  checkTrue(`set ${set} aanwezig`, ifcB.includes(`IFCPROPERTYSET('`) && ifcB.includes(`,'${set}',`));
+}
+checkTrue("profielnaam als IfcLabel",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Profielnaam',$,IFCLABEL('IPE400'),$)"));
+checkTrue("IPE400: A = 8450 mm² → 0,00845 m²",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Oppervlakte',$,IFCAREAMEASURE(0.00845),$)"));
+checkTrue("staal: E = 210000 N/mm² → 2,1E11 Pa",
+  ifcB.includes("IFCMODULUSOFELASTICITYMEASURE(210000000000.)"));
+checkTrue("ligger heet 'Ligger', kolom 'Kolom' in OpenFEM2D_Staaf",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Onderdeel',$,IFCLABEL('Ligger'),$)") &&
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Onderdeel',$,IFCLABEL('Kolom'),$)"));
+checkTrue("kolom staat loodrecht: helling π/2 rad",
+  /IFCPROPERTYSINGLEVALUE\('HellingMetDeHorizontaal',\$,IFCPLANEANGLEMEASURE\(1\.570796327\),\$\)/.test(ifcB));
+
+log("  — (c) de toetsuitslag staat erin");
+checkTrue("norm EN 1993-1-1",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Norm',$,IFCLABEL('EN 1993-1-1'),$)"));
+checkTrue("maatgevende toets bij naam",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('MaatgevendeToets',$,IFCLABEL('Buigend moment'),$)"));
+checkTrue("normartikel 6.2.5",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Normartikel',$,IFCLABEL('6.2.5'),$)"));
+checkTrue("unity check 0,76",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('UnityCheck',$,IFCRATIOMEASURE(0.76),$)"));
+checkTrue("voldoet = waar",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Voldoet',$,IFCBOOLEAN(.T.),$)"));
+checkTrue("doorsnedeklasse 1",
+  ifcB.includes("IFCPROPERTYSINGLEVALUE('Doorsnedeklasse',$,IFCLABEL('klasse 1'),$)"));
+// De staaf zónder uitslag mag er geen krijgen: één set per getoetste staaf.
+checkEq("één OpenFEM2D_Toetsing (alleen de getoetste staaf)",
+  (ifcB.match(/'OpenFEM2D_Toetsing'/g) ?? []).length, 1);
+
+log("  — (d) hoeveelheden");
+checkEq("2× IfcElementQuantity", tel(ifcB, "IFCELEMENTQUANTITY"), 2);
+checkTrue("Qto_BeamBaseQuantities en Qto_ColumnBaseQuantities",
+  ifcB.includes("'Qto_BeamBaseQuantities'") && ifcB.includes("'Qto_ColumnBaseQuantities'"));
+checkTrue("lengte van de ligger = 8 m",
+  ifcB.includes("IFCQUANTITYLENGTH('Length',$,$,8.,$)"));
+checkTrue("bruto inhoud ligger = 0,00845 × 8 = 0,0676 m³",
+  ifcB.includes("IFCQUANTITYVOLUME('GrossVolume',$,$,0.0676,$)"));
+
+log("  — (e) de lastomschrijving staat als Description bij de last");
+checkTrue("lijnlast draagt 'vloer verdieping 1'",
+  /IFCSTRUCTURALLINEARACTION\('[^']+',\$,'q 1','vloer verdieping 1',/.test(ifcB));
+
+log("  — (f) geldigheid en determinisme");
+const uitslagB = valideerIfc(ifcB);
+if (uitslagB.fouten.length > 0) log("    fouten: " + uitslagB.fouten.join(" | "));
+checkEq("validatie: geen fouten", uitslagB.fouten.length, 0);
+checkEq("validatie: geen waarschuwingen", uitslagB.waarschuwingen.length, 0);
+checkEq("STEP-syntaxis: geen klachten", syntaxKlachten(ifcB).length, 0);
+checkEq("geen dangling #-referenties", refIntegriteit(ifcB).length, 0);
+const idsB = globalIds(ifcB);
+checkEq("alle GlobalId's uniek", new Set(idsB).size, idsB.length);
+checkTrue("determinisme", bouwIfcRekenmodel(bouwkundigModel) === ifcB);
+
+log("  — (g) zonder bouwkundig model blijft alleen het rekenmodel over");
+const alleenReken = bouwIfcRekenmodel(bouwkundigModel, { zonderBouwkundig: true });
+checkEq("geen IfcBeam", tel(alleenReken, "IFCBEAM"), 0);
+checkEq("geen IfcColumn", tel(alleenReken, "IFCCOLUMN"), 0);
+checkEq("geen hoeveelheden", tel(alleenReken, "IFCELEMENTQUANTITY"), 0);
+checkEq("geen extrusies", tel(alleenReken, "IFCEXTRUDEDAREASOLID"), 0);
+checkEq("rekenstaven blijven", tel(alleenReken, "IFCSTRUCTURALCURVEMEMBER"), 2);
+checkTrue("de eigenschappensets blijven op de rekenstaaf",
+  alleenReken.includes("'OpenFEM2D_Doorsnede'") &&
+  alleenReken.includes("'OpenFEM2D_Toetsing'"));
+checkEq("validatie: geen fouten", valideerIfc(alleenReken).fouten.length, 0);
+checkEq("STEP-syntaxis: geen klachten", syntaxKlachten(alleenReken).length, 0);
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 5: beton — T-doorsnede en de wapeningskorf
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[5] Beton: T-doorsnede en wapening");
+
+const betonModel = {
+  projectNaam: "Beton",
+  nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }, { id: 3, x: 12000, z: 0 }],
+  beams: [
+    { id: 1, from: 1, to: 2, material: "C30/37", profile: "300x500",
+      checkConfig: {
+        betonStaalsoort: "B500B",
+        betonKorf: {
+          cover_mm: 30, stirrup_diameter_mm: 8,
+          bottom: { count: 3, diameter_mm: 16 },
+          top: { count: 2, diameter_mm: 12 },
+          stirrup_spacing_mm: 200, stirrup_legs: 2,
+        },
+      } },
+    // T-ligger zonder korf: de doorsnede komt er wél in, de wapening niet.
+    { id: 2, from: 2, to: 3, material: "C30/37", profile: "T 800x450 bw=250 hf=80" },
+  ],
+  supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 3, type: "zRoller" }],
+  loads: [],
+  loadCases: [],
+};
+const ifcC = bouwIfcRekenmodel(betonModel);
+
+log("  — (a) de T-doorsnede als gesloten omtrek");
+checkEq("1× IfcArbitraryClosedProfileDef", tel(ifcC, "IFCARBITRARYCLOSEDPROFILEDEF"), 1);
+// b = 800, h = 450, b_w = 250, h_f = 80; oorsprong in het midden van 800 × 450.
+for (const punt of [
+  "(-0.4,0.225)", "(0.4,0.225)", "(0.4,0.145)", "(0.125,0.145)",
+  "(0.125,-0.225)", "(-0.125,-0.225)", "(-0.125,0.145)", "(-0.4,0.145)",
+]) {
+  checkTrue(`T-omtrek bevat hoekpunt ${punt}`,
+    ifcC.includes(`IFCCARTESIANPOINT(${punt})`));
+}
+checkTrue("de omtrek is gesloten (eerste punt = laatste punt)",
+  /IFCPOLYLINE\(\(#(\d+),(?:#\d+,)+#\1\)\)/.test(ifcC));
+checkTrue("materiaalcategorie van beton is 'concrete'",
+  ifcC.includes("IFCMATERIAL('C30/37',$,'concrete')"));
+
+log("  — (b) wapening: 3 onder, 2 boven, 1 beugel");
+checkEq("6× IfcReinforcingBar", tel(ifcC, "IFCREINFORCINGBAR"), 6);
+checkEq("5× hoofdwapening (.MAIN.)",
+  (ifcC.match(/IFCREINFORCINGBAR\([^\n]*\.MAIN\.,/g) ?? []).length, 5);
+checkEq("1× beugel (.LIGATURE.)",
+  (ifcC.match(/IFCREINFORCINGBAR\([^\n]*\.LIGATURE\.,/g) ?? []).length, 1);
+checkTrue("onderstaaf Ø16: diameter 0,016 m en A = π/4·16² mm²",
+  /IFCREINFORCINGBAR\([^\n]*'B500B',0\.016,0\.0002010619298,6\.,\.MAIN\./.test(ifcC));
+checkTrue("bovenstaaf Ø12: diameter 0,012 m",
+  /IFCREINFORCINGBAR\([^\n]*'B500B',0\.012,[^\n]*,\.MAIN\./.test(ifcC));
+// h = 500, c = 30, Ø_beugel = 8, Ø = 16 → y = −(250 − 30 − 8 − 8) = −204 mm.
+checkTrue("onderwapening ligt op y = −0,204 m (c + beugel + Ø/2 vanaf de rand)",
+  ifcC.includes("IFCCARTESIANPOINT((0.,-0.204,0.))"));
+// b = 300 → x = ±(150 − 30 − 8 − 8) = ±104 mm; de middelste staaf op 0.
+checkTrue("de drie onderstaven staan op x = −0,104 / 0 / +0,104 m",
+  ifcC.includes("IFCCARTESIANPOINT((-0.104,-0.204,0.))") &&
+  ifcC.includes("IFCCARTESIANPOINT((0.104,-0.204,0.))"));
+// Bovenwapening Ø12: y = 250 − 30 − 8 − 6 = 206 mm.
+checkTrue("bovenwapening ligt op y = +0,206 m",
+  ifcC.includes("IFCCARTESIANPOINT((-0.106,0.206,0.))"));
+checkTrue("de staven lopen over de volle staaflengte (z van 0 tot 6 m)",
+  ifcC.includes("IFCCARTESIANPOINT((0.,-0.204,6.))"));
+checkTrue("beugel als gesloten rechthoek binnen de dekking (±0,116 / ±0,216 m)",
+  ifcC.includes("IFCCARTESIANPOINT((-0.116,-0.216,0.))") &&
+  ifcC.includes("IFCCARTESIANPOINT((0.116,0.216,0.))"));
+checkEq("6× IfcSweptDiskSolid (elke staaf heeft een lichaam)",
+  tel(ifcC, "IFCSWEPTDISKSOLID"), 6);
+checkTrue("de beugelset noemt aantal en hart-op-hart",
+  ifcC.includes("'OpenFEM2D_Beugels'") &&
+  ifcC.includes("IFCPROPERTYSINGLEVALUE('HartOpHart',$,IFCPOSITIVELENGTHMEASURE(0.2),$)") &&
+  ifcC.includes("IFCPROPERTYSINGLEVALUE('Aantal',$,IFCINTEGER(31),$)"));
+checkTrue("de korfsamenvatting staat op het element",
+  ifcC.includes("'OpenFEM2D_Wapeningskorf'") &&
+  ifcC.includes("IFCPROPERTYSINGLEVALUE('Onderwapening',$,IFCLABEL('3\\X2\\00D8\\X0\\16'),$)"));
+checkTrue("de wapening zit IN het element (IfcRelAggregates)",
+  /IFCRELAGGREGATES\('[^']+',\$,\$,\$,#\d+,\(#\d+,#\d+,#\d+,#\d+,#\d+,#\d+\)\)/.test(ifcC));
+checkTrue("wapeningsstaal B500B als eigen materiaal",
+  ifcC.includes("IFCMATERIAL('B500B',$,'steel')"));
+checkEq("de T-ligger zonder korf krijgt geen wapening",
+  (ifcC.match(/'Staaf 2 /g) ?? []).length, 0);
+
+log("  — (c) geldigheid");
+const uitslagC = valideerIfc(ifcC);
+if (uitslagC.fouten.length > 0) log("    fouten: " + uitslagC.fouten.join(" | "));
+checkEq("validatie: geen fouten", uitslagC.fouten.length, 0);
+checkEq("STEP-syntaxis: geen klachten", syntaxKlachten(ifcC).length, 0);
+checkEq("geen dangling #-referenties", refIntegriteit(ifcC).length, 0);
+const idsC = globalIds(ifcC);
+checkEq("alle GlobalId's uniek", new Set(idsC).size, idsC.length);
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 6: de validator ziet een overgeslagen attribuut
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[6] De validator vindt een LEEG attribuut");
+const metGat = ifcB.replace(
+  /^(#\d+=IFCBEAM\('[^']+',)\$,/m, "$1,");
+checkTrue("een weggelaten attribuut wordt als fout gemeld",
+  metGat !== ifcB &&
+  valideerIfc(metGat).fouten.some(f => /LEGE parameter/.test(f)));
+checkEq("het gave bestand meldt er geen", valideerIfc(ifcB).fouten.length, 0);
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -97,6 +97,15 @@
 
 use crate::deelstappen::{lx, nl, nv, stap};
 use nen_en_1993_1_1_section::Deelstap;
+// [`Stortpositie`] en [`Staafvorm`] zijn UITVOERINGSGEGEVENS: het rekenmodel
+// kan ze niet afleiden, dus ze moeten door een mens worden gezet en dus over de
+// drie wegen (Tauri-command, toetsbrug, MCP-server) reizen. Ze hangen daarom
+// aan een langswapeningszone — zie [`crate::section::LongitudinalZone`] — en
+// dragen om die reden serde en ts-rs. De overige typen van deze module dragen
+// die bewust NIET: die volgen uit de zone, de korf en de materiaalgegevens en
+// horen geen los invoerveld te worden.
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 // ---------------------------------------------------------------------------
 // De normwaarden. Elke constante draagt haar vindplaats.
@@ -274,7 +283,8 @@ impl Aanhechting {
 /// [`Stortpositie::Onderzijde`] is de standaard: dat is de gewone situatie bij
 /// werk ter plaatse, waarbij van bovenaf wordt gestort en de onderwapening dus
 /// in de 'goede' zone ligt.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub enum Stortpositie {
     /// De staaf ligt aan de ONDERZIJDE van de doorsnede zoals gestort.
     ///
@@ -512,7 +522,8 @@ pub enum Verankeringssoort {
 }
 
 /// De vorm van het staafeinde volgens de regel "Vorm van de staaf" in tabel 8.2.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub enum Staafvorm {
     /// Recht.
     #[default]

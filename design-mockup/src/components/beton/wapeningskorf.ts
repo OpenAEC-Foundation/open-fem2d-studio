@@ -8,9 +8,12 @@
  * `Wapeningskorf`, zodat de editor en de tekening één object doorgeven.
  *
  * De ligging van de staafassen volgt dezelfde regel als de kern:
- *   afstand staafas tot betonrand = c_nom + Ø_beugel + Ø_hoofd / 2.
+ *   afstand staafas tot betonrand = c_nom + Ø_beugel + Ø_hoofd / 2,
+ * met de dekking van DIE rand — zie `dekkingVanZijdeMm`.
  */
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
+import type { CoverSide } from "../../lib/types/concrete/CoverSide";
+import type { FaceCover } from "../../lib/types/concrete/FaceCover";
 import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
 import type { RebarRow } from "../../lib/types/concrete/RebarRow";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
@@ -228,6 +231,98 @@ export const MILIEUKLASSEN = [
 /** De constructieklassen van 4.4.1.2(5); S4 is de NB-waarde voor 50 jaar. */
 export const CONSTRUCTIEKLASSEN = ["S1", "S2", "S3", "S4", "S5", "S6"] as const;
 
+// ── De dekking per betonoppervlak (4.4.1.1(1)P) ──────────────────────────────
+//
+// De norm meet de dekking tot "het dichtstbijzijnde betonoppervlak"; een balk
+// heeft er vier. De kern kent er drie — boven, onder en de twee zijkanten
+// samen — en waarom, staat bij `CoverSide` in de gegenereerde typen (afkomstig
+// uit nen-en-1992-1-1/src/dekking.rs). Deze frontend spiegelt die keuze; ze
+// mogen niet uiteenlopen, want de tekening en de berekening moeten dezelfde
+// staaf laten zien.
+
+/** De drie zijden in de volgorde van de tekening. */
+export const ZIJDEN = ["Top", "Bottom", "Sides"] as const satisfies readonly CoverSide[];
+
+/** Nederlandse aanduiding per zijde; gelijk aan `CoverSide::label` in de kern. */
+export const ZIJDE_LABEL: Record<CoverSide, string> = {
+  Top: "bovenzijde",
+  Bottom: "onderzijde",
+  Sides: "zijkanten",
+};
+
+/** Kort label voor de smalle invoerkolom. */
+export const ZIJDE_KORT: Record<CoverSide, string> = {
+  Top: "Boven",
+  Bottom: "Onder",
+  Sides: "Zijkant",
+};
+
+/**
+ * De zijde-gegevens van de korf; een ontbrekende zijde is een lege zijde —
+ * spiegel van `ReinforcementCage::face` in de kern.
+ */
+export function zijdeVanKorf(korf: ReinforcementCage, zijde: CoverSide): FaceCover {
+  const veld =
+    zijde === "Top" ? korf.cover_top : zijde === "Bottom" ? korf.cover_bottom : korf.cover_sides;
+  return veld ?? {};
+}
+
+/** De veldnaam op de korf die bij een zijde hoort. */
+export function zijdeVeld(zijde: CoverSide): "cover_top" | "cover_bottom" | "cover_sides" {
+  return zijde === "Top" ? "cover_top" : zijde === "Bottom" ? "cover_bottom" : "cover_sides";
+}
+
+/**
+ * De nominale dekking c_nom aan één zijde, mm — spiegel van
+ * `ReinforcementCage::cover_at_mm`.
+ *
+ * Zegt de zijde niets eigens, dan geldt de dekking van het element. Daarom
+ * rekent een korf zonder zijde-gegevens precies zoals hij altijd deed.
+ */
+export function dekkingVanZijdeMm(korf: ReinforcementCage, zijde: CoverSide): number {
+  const eigen = zijdeVanKorf(korf, zijde).cover_mm;
+  return eigen === undefined || eigen === null ? korf.cover_mm : eigen;
+}
+
+/**
+ * De milieuklasse aan één zijde, met die van het element als terugval;
+ * `null` = nergens opgegeven, en dan is er geen dekkingstoets.
+ */
+export function milieuklasseVanZijde(
+  korf: ReinforcementCage,
+  zijde: CoverSide,
+  element: ExposureClass | null,
+): ExposureClass | null {
+  return zijdeVanKorf(korf, zijde).exposure_class ?? element;
+}
+
+/** Is de dekking aan alle drie de zijden dezelfde? Vergelijkt de UITKOMST. */
+export function dekkingIsRondomGelijk(korf: ReinforcementCage): boolean {
+  const c = dekkingVanZijdeMm(korf, "Top");
+  return ZIJDEN.every((z) => dekkingVanZijdeMm(korf, z) === c);
+}
+
+/**
+ * Zet de dekking of de milieuklasse van één zijde, en geef een NIEUWE korf
+ * terug.
+ *
+ * Wordt een zijde daarmee leeg — geen eigen dekking en geen eigen klasse meer —
+ * dan verdwijnt het veld ook echt (`undefined`) in plaats van als leeg object
+ * te blijven staan. Zo blijft "deze zijde volgt het element" één ding in
+ * plaats van twee, precies zoals de kern het leest.
+ */
+export function zetZijde(
+  korf: ReinforcementCage,
+  zijde: CoverSide,
+  patch: Partial<FaceCover>,
+): ReinforcementCage {
+  const nieuw: FaceCover = { ...zijdeVanKorf(korf, zijde), ...patch };
+  const leeg =
+    (nieuw.cover_mm === undefined || nieuw.cover_mm === null) &&
+    (nieuw.exposure_class === undefined || nieuw.exposure_class === null);
+  return { ...korf, [zijdeVeld(zijde)]: leeg ? undefined : nieuw };
+}
+
 /**
  * De grootste diameter van de hoofdwapening in de korf, mm; 0 als er geen
  * hoofdwapening is. Die maat stelt de aanhechtingseis c_min,b van tabel 4.2.
@@ -249,14 +344,52 @@ export function rijLabel(rij: RebarRow): string {
   return `${rij.count}Ø${maat(rij.diameter_mm)}`;
 }
 
-/** Afstand van de staafas van een rij tot de betonrand waar hij tegenaan ligt. */
-export function asAfstandMm(korf: ReinforcementCage, rij: RebarRow): number {
-  return korf.cover_mm + korf.stirrup_diameter_mm + rij.diameter_mm / 2;
+/**
+ * Afstand van de staafas van een rij tot de betonrand waar hij tegenaan ligt:
+ * c_nom van DIE rand + Ø_beugel + Ø_staaf / 2.
+ *
+ * De zijde mag als derde argument mee. Blijft hij weg, dan wordt hij afgeleid
+ * uit de IDENTITEIT van de rij — is het `korf.top` of `korf.bottom`, dan is de
+ * zijde bekend. Dat is dezelfde truc als `ReinforcementCage::axis_offset_mm`
+ * in de kern gebruikt, en om dezelfde reden: elke bestaande aanroeper geeft
+ * inderdaad `korf.top` of `korf.bottom` door en hoeft dus niet te veranderen.
+ *
+ * Is de rij een LOSSE kopie, dan is de zijde niet vast te stellen. Er wordt
+ * dan niet gegokt maar de grootste van de twee dekkingen genomen: de grootste
+ * asafstand, dus de kleinste nuttige hoogte, en daarmee de veilige kant.
+ */
+export function asAfstandMm(
+  korf: ReinforcementCage,
+  rij: RebarRow,
+  kant?: "onder" | "boven",
+): number {
+  const zijde: CoverSide | null =
+    kant === "onder" || rij === korf.bottom
+      ? "Bottom"
+      : kant === "boven" || rij === korf.top
+        ? "Top"
+        : null;
+  const dekking =
+    zijde === null
+      ? Math.max(dekkingVanZijdeMm(korf, "Top"), dekkingVanZijdeMm(korf, "Bottom"))
+      : dekkingVanZijdeMm(korf, zijde);
+  return dekking + korf.stirrup_diameter_mm + rij.diameter_mm / 2;
 }
 
-/** Nuttige hoogte d van de onderwapening, mm. */
+/** Nuttige hoogte d van de onderwapening, mm — met de dekking van de ONDERzijde. */
 export function nuttigeHoogteMm(korf: ReinforcementCage, hoogteMm: number): number {
-  return hoogteMm - asAfstandMm(korf, korf.bottom);
+  return hoogteMm - asAfstandMm(korf, korf.bottom, "onder");
+}
+
+/**
+ * Nuttige hoogte van de BOVENwapening, mm: de afstand van de onderrand tot de
+ * as van de bovenwapening — de d die bij een negatief moment geldt.
+ *
+ * Met één dekking rondom is dit gewoon h − d₂; met een eigen dekking boven is
+ * het een ander getal, en juist dat is de reden dat het hier apart staat.
+ */
+export function nuttigeHoogteBovenMm(korf: ReinforcementCage, hoogteMm: number): number {
+  return hoogteMm - asAfstandMm(korf, korf.top, "boven");
 }
 
 /**
@@ -276,7 +409,15 @@ export function korfSamenvatting(korf: ReinforcementCage): string {
     const n = korf.stirrup_legs;
     if (n !== undefined && n !== null && n >= 1) beugel += `, ${n}-benig`;
   }
-  return `onder ${rijLabel(korf.bottom)}, boven ${rijLabel(korf.top)}, ${beugel}, dekking ${maat(korf.cover_mm)} mm`;
+  // Eén dekking rondom leest als "dekking 30 mm" — precies zoals vroeger.
+  // Verschillen de zijden, dan mag die regel niet blijven staan alsof er één
+  // dekking is.
+  const dekking = dekkingIsRondomGelijk(korf)
+    ? `dekking ${maat(dekkingVanZijdeMm(korf, "Bottom"))} mm`
+    : `dekking boven ${maat(dekkingVanZijdeMm(korf, "Top"))} / onder ${maat(
+        dekkingVanZijdeMm(korf, "Bottom"),
+      )} / opzij ${maat(dekkingVanZijdeMm(korf, "Sides"))} mm`;
+  return `onder ${rijLabel(korf.bottom)}, boven ${rijLabel(korf.top)}, ${beugel}, ${dekking}`;
 }
 
 /**
@@ -302,9 +443,10 @@ export function beugelDwarsafstandMm(
   }
   if (korf.stirrup_legs !== 2 || !(korf.stirrup_diameter_mm > 0)) return null;
   // b_w: de kleinste breedte van de doorsnede (§6.2.3(1)) — de beugel zit in
-  // het lijf, niet in de flens.
+  // het lijf, niet in de flens. De dekking is die van de ZIJKANTEN: het zijn
+  // die randen waar de twee benen tegenaan liggen.
   const bW = Math.min(...banden(doorsnede).map((b) => b.bMm));
-  const st = bW - 2 * korf.cover_mm - korf.stirrup_diameter_mm;
+  const st = bW - 2 * dekkingVanZijdeMm(korf, "Sides") - korf.stirrup_diameter_mm;
   return st > 0 ? { mm: st, afgeleid: true } : null;
 }
 
@@ -331,14 +473,20 @@ export function staafPosities(korf: ReinforcementCage, d: ConcreteSectionInput):
     [korf.bottom, "onder"],
     [korf.top, "boven"],
   ];
+  // De inzet vanaf de ZIJKANT is een andere maat dan de asafstand tot boven-
+  // of onderrand zodra de dekkingen verschillen: hij hangt aan de zijkant, de
+  // asafstand aan de eigen rand.
+  const inzetZijkant = (rij: RebarRow) =>
+    dekkingVanZijdeMm(korf, "Sides") + korf.stirrup_diameter_mm + rij.diameter_mm / 2;
   for (const [rij, kant] of rijen) {
     if (rij.count <= 0 || rij.diameter_mm <= 0) continue;
-    const as = asAfstandMm(korf, rij);
+    const as = asAfstandMm(korf, rij, kant);
+    const zijkant = inzetZijkant(rij);
     const z = kant === "onder" ? as : d.h_mm - as;
     const breedte = breedteOpHoogteMm(d, z);
     const hart = hartXMm(d, z);
-    const xEerste = hart - breedte / 2 + as;
-    const xLaatste = hart + breedte / 2 - as;
+    const xEerste = hart - breedte / 2 + zijkant;
+    const xLaatste = hart + breedte / 2 - zijkant;
     for (let i = 0; i < rij.count; i++) {
       const x = rij.count === 1 ? hart : xEerste + ((xLaatste - xEerste) * i) / (rij.count - 1);
       uit.push({ x, z, diameter: rij.diameter_mm, rij: kant });
@@ -363,17 +511,29 @@ export function controleerKorf(k: Wapeningskorf): string | null {
     if (d.h_f_mm >= d.h_mm) return "De flensdikte h_f laat geen lijf over binnen de hoogte h.";
   }
   if (korf.cover_mm < 0 || korf.stirrup_diameter_mm < 0) return "Dekking en beugeldiameter mogen niet negatief zijn.";
+  // De dekking per zijde. Leeg mag — dat betekent "volg het element" — maar
+  // wat er staat moet een maat zijn. Zelfde grens als `validate` in de kern.
+  for (const zijde of ZIJDEN) {
+    const eigen = zijdeVanKorf(korf, zijde).cover_mm;
+    if (eigen === undefined || eigen === null) continue;
+    if (!Number.isFinite(eigen) || eigen < 0) {
+      return `De dekking aan de ${ZIJDE_LABEL[zijde]} is ${eigen} mm; dat is geen maat. Laat het veld leeg als deze zijde de dekking van het element volgt.`;
+    }
+  }
   const leeg = (r: RebarRow) => r.count <= 0 || r.diameter_mm <= 0;
   if (leeg(korf.top) && leeg(korf.bottom)) return "De korf bevat geen hoofdwapening.";
   // De breedte OP DE HOOGTE VAN DE RIJ, net als `ReinforcementCage::validate`
-  // in de kern: in een T-lijf past minder dan in de flens.
+  // in de kern: in een T-lijf past minder dan in de flens. De rij ligt in de
+  // HOOGTE op de dekking van zijn eigen rand en in de BREEDTE tussen de twee
+  // zijkanten; die twee dekkingen hoeven niet dezelfde te zijn.
+  const cZij = dekkingVanZijdeMm(korf, "Sides");
   for (const [naam, rij, z] of [
-    ["Onderwapening", korf.bottom, asAfstandMm(korf, korf.bottom)],
-    ["Bovenwapening", korf.top, d.h_mm - asAfstandMm(korf, korf.top)],
+    ["Onderwapening", korf.bottom, asAfstandMm(korf, korf.bottom, "onder")],
+    ["Bovenwapening", korf.top, d.h_mm - asAfstandMm(korf, korf.top, "boven")],
   ] as const) {
     if (leeg(rij)) continue;
     const breedte = breedteOpHoogteMm(d, z);
-    const binnenbreedte = breedte - 2 * (korf.cover_mm + korf.stirrup_diameter_mm);
+    const binnenbreedte = breedte - 2 * (cZij + korf.stirrup_diameter_mm);
     const benodigd = rij.count * rij.diameter_mm;
     if (benodigd > binnenbreedte + 1e-9) {
       const waar =
@@ -381,8 +541,8 @@ export function controleerKorf(k: Wapeningskorf): string | null {
       return `${naam} ${rijLabel(rij)} past niet in de breedte: ${maat(benodigd)} mm staal in ${maat(binnenbreedte)} mm binnenmaat${waar}.`;
     }
   }
-  const onder = leeg(korf.bottom) ? 0 : asAfstandMm(korf, korf.bottom);
-  const boven = leeg(korf.top) ? 0 : asAfstandMm(korf, korf.top);
+  const onder = leeg(korf.bottom) ? 0 : asAfstandMm(korf, korf.bottom, "onder");
+  const boven = leeg(korf.top) ? 0 : asAfstandMm(korf, korf.top, "boven");
   if (onder + boven >= d.h_mm) return "Boven- en onderwapening overlappen elkaar in de hoogte.";
 
   // De beugelvelden. Leeglaten mag — dat betekent "niet opgegeven" — maar wat
@@ -409,7 +569,7 @@ export function controleerKorf(k: Wapeningskorf): string | null {
   const st = korf.stirrup_leg_spacing_mm;
   if (st !== undefined && st !== null && st > 0) {
     const bW = Math.min(...banden(d).map((b) => b.bMm));
-    const ruimte = bW - 2 * korf.cover_mm - korf.stirrup_diameter_mm;
+    const ruimte = bW - 2 * cZij - korf.stirrup_diameter_mm;
     if (st > ruimte + 1e-9) {
       return `De dwarsafstand van de beugelbenen is ${maat(st)} mm, maar tussen de buitenste beenassen past hoogstens ${maat(ruimte)} mm.`;
     }
@@ -424,8 +584,11 @@ export function controleerKorf(k: Wapeningskorf): string | null {
  */
 export function vrijeStaafafstandMm(korf: ReinforcementCage, rij: RebarRow, breedteMm: number): number | null {
   if (rij.count < 2 || rij.diameter_mm <= 0) return null;
-  const as = asAfstandMm(korf, rij);
-  const hartAfstand = (breedteMm - 2 * as) / (rij.count - 1);
+  // De inzet is die vanaf de ZIJKANT — de staven staan naast elkaar in de
+  // breedte, niet in de hoogte.
+  const inzet =
+    dekkingVanZijdeMm(korf, "Sides") + korf.stirrup_diameter_mm + rij.diameter_mm / 2;
+  const hartAfstand = (breedteMm - 2 * inzet) / (rij.count - 1);
   return hartAfstand - rij.diameter_mm;
 }
 
@@ -436,7 +599,7 @@ export function vrijeStaafafstandMm(korf: ReinforcementCage, rij: RebarRow, bree
  */
 export function rijBreedteMm(k: Wapeningskorf, kant: "onder" | "boven"): number {
   const rij = kant === "onder" ? k.korf.bottom : k.korf.top;
-  const as = asAfstandMm(k.korf, rij);
+  const as = asAfstandMm(k.korf, rij, kant);
   return breedteOpHoogteMm(k.doorsnede, kant === "onder" ? as : k.doorsnede.h_mm - as);
 }
 

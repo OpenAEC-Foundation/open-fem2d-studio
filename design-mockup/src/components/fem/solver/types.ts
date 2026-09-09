@@ -76,6 +76,45 @@ export interface SolverBeamInput {
    */
   segmenten?: SolverBeamSegmentInput[];
   /**
+   * Extra SNEDEN op de staaf: fracties 0..1 vanaf de startknoop waar de
+   * aanroeper een station wil hebben omdat de krachten- of de weerstandslijn
+   * daar knikt of springt.
+   *
+   * WAARVOOR. Elk rekenelement levert een vast aantal stations (21). Een
+   * grootheid die tússen twee stations knikt of springt, wordt door de
+   * omhullende en door elke lijn die op die stations wordt getekend
+   * weggeïnterpoleerd. De solver zet zelf al sneden op de grenzen van elke
+   * DEELLAST (daar knikt V); dit veld is er voor knikken die de solver niet
+   * kan zien. De eerste gebruiker zijn de grenzen van de wapeningszones van
+   * een betonstaaf: daar verandert het aantal staven en springt de
+   * opneembare weerstand, zodat de dekkingslijn er links en rechts een
+   * eigen waarde moet kunnen tonen.
+   *
+   * WAT HET MET DE UITKOMST DOET. Een extra snede maakt een echte rekenknoop
+   * en daarmee twee rekenelementen; op de snede staat het station dus
+   * DUBBEL. Voor een Euler-Bernoulli-staaf met consistente knooplasten is de
+   * oplossing in de knopen exact, dus reacties, knoopverplaatsingen en de
+   * krachtenlijn zelf veranderen niet — alleen het raster waarop ze worden
+   * uitgelezen wordt fijner.
+   *
+   * REGELS. Fracties buiten (0, 1) vervallen (daar zit al een eindknoop);
+   * een fractie binnen MIN_SEGMENT_MM (zie engine.ts) van een uiteinde, van
+   * een plaatrand- of puntlastfractie, van een segmentgrens of van een al
+   * aanvaarde extra snede vervalt eveneens — anders ontstaat er een
+   * flinterelement waarvan de stijfheidsmatrix slecht geconditioneerd is.
+   * De volgorde in de lijst maakt niet uit; de fracties worden oplopend
+   * afgelopen. Ligt er op de snedepositie al een knoop, dan vervalt de snede
+   * eveneens: de adapter zou die knoop anders aan de staaf lassen en zo het
+   * model veranderen in plaats van het fijner uit te lezen.
+   *
+   * BEVAT HET MODEL PLATEN, dan zet de adapter GEEN extra sneden — ook niet
+   * uit dit veld. Staaf- en plaatknopen worden binnen 1 mm aan elkaar
+   * geknoopt, en een extra snede zou daar ongevraagd een verbinding kunnen
+   * leggen of juist een losse knoop achterlaten. Modellen met platen rekenen
+   * dus precies zoals voorheen.
+   */
+  extraSneden?: number[];
+  /**
    * Scharnier-aansluiting per uiteinde:
    *  - 'fixed' (default): rigid moment-resisting joint to the next element.
    *  - 'hinge': moment-free joint — the solver condenses M = 0 at that end.

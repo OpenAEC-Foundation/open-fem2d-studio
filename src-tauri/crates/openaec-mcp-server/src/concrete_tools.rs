@@ -36,7 +36,8 @@
 //!
 //! STRIKTE SCHEMA'S
 //! `ConcreteBeamCheckInput`, `MnKappaRequest`, `SegmentStiffnessRequest`,
-//! `SegmentForces`, `ReinforcementCage` en `RebarRow` staan alle zes op
+//! `SegmentForces`, `ReinforcementCage`, `RebarRow`, `ReinforcementZones`,
+//! `LongitudinalZone` en `StirrupZone` staan alle negen op
 //! `#[serde(deny_unknown_fields)]`. De schema's
 //! hieronder spiegelen dat met `additionalProperties: false` en noemen ALLE
 //! velden, ook die met `#[serde(default)]`. Dat is niet cosmetisch: laat een
@@ -172,15 +173,29 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
 /// bestaat niet en wordt door de kern geweigerd. Ze moeten hier wél staan,
 /// want `additionalProperties: false` zou ze anders wegfilteren voordat de
 /// kern ze ziet.
+///
+/// De drie ZIJDEVELDEN (`cover_top`, `cover_bottom`, `cover_sides`) zijn om
+/// dezelfde reden optioneel: weglaten betekent dat die zijde de dekking en de
+/// milieuklasse van het ELEMENT volgt, en dat is precies het gedrag van vóór
+/// deze velden.
 fn schema_korf() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "description": "Wapeningskorf: dekking, beugel, boven- en onderwapening. Er is GEEN standaardkorf; de eerste vier velden zijn verplicht. De beugelvelden (stirrup_spacing_mm, stirrup_legs, stirrup_leg_spacing_mm, stirrup_fywk_mpa) zijn optioneel; laat ze WEG als ze niet bekend zijn — 0 invullen is iets anders en wordt geweigerd.",
+        "description": "Wapeningskorf: dekking, beugel, boven- en onderwapening. Er is GEEN standaardkorf; de eerste vier velden zijn verplicht. De beugelvelden (stirrup_spacing_mm, stirrup_legs, stirrup_leg_spacing_mm, stirrup_fywk_mpa) zijn optioneel; laat ze WEG als ze niet bekend zijn — 0 invullen is iets anders en wordt geweigerd. De dekking en de milieuklasse mogen PER ZIJDE afwijken via cover_top, cover_bottom en cover_sides; 4.4.1.1(1)P meet de dekking tot het DICHTSTBIJZIJNDE betonoppervlak, dus een vloer met de bovenzijde binnen (XC1) en de onderzijde buiten (XC4) heeft twee verschillende dekkingen en twee verschillende nuttige hoogtes. Weglaten = die zijde volgt cover_mm en de exposure_class van het element.",
         "required": ["cover_mm", "stirrup_diameter_mm", "top", "bottom"],
         "properties": {
             "cover_mm": { "type": "number", "minimum": 0,
-                "description": "Nominale betondekking c_nom op de beugel in mm (EN 1992-1-1 §4.4.1)." },
+                "description": "Nominale betondekking c_nom op de beugel in mm (EN 1992-1-1 §4.4.1) — de dekking van het ELEMENT, die geldt aan elke zijde die niets eigens zegt." },
+            "cover_top": schema_zijdedekking(
+                "de BOVENZIJDE (z = h)",
+                "Stuurt de ligging van de bovenwapening en daarmee d_2."),
+            "cover_bottom": schema_zijdedekking(
+                "de ONDERZIJDE (z = 0)",
+                "Stuurt de ligging van de onderwapening en daarmee de nuttige hoogte d."),
+            "cover_sides": schema_zijdedekking(
+                "de twee verticale ZIJKANTEN samen",
+                "Stuurt de dwarsafstand s_t van de beugelbenen (9.2.2(8)), de vrije staafafstand (8.2(2)) en de binnenmaat waarin een rij staven moet passen - niet de nuttige hoogte. Links en rechts staan met opzet niet apart: in elke formule komt de zijdelingse dekking alleen als PAAR voor (b_w - 2c), dus een splitsing zou geen enkel getal veranderen en alleen de staafrij uit het midden schuiven. Verschillen de twee zijkanten werkelijk van milieu, vul dan de zwaarste van de twee in."),
             "stirrup_diameter_mm": { "type": "number", "minimum": 0,
                 "description": "Beugeldiameter in mm; 0 = geen beugel, de hoofdwapening ligt dan direct achter de dekking." },
             "top": schema_wapeningsrij("Bovenwapening (zijde z = h)."),
@@ -193,6 +208,36 @@ fn schema_korf() -> Value {
                 "description": "Hart-op-hartafstand s_t van de beugelbenen in DWARSRICHTING, in mm (§9.2.2(8)). Weglaten mag: bij een tweebenige beugel leidt de kern hem meetkundig af uit b_w, c_nom en de beugeldiameter. Bij meer benen is hij niet af te leiden en blijft 9.2.2(8) ongetoetst." },
             "stirrup_fywk_mpa": { "type": ["number", "null"], "exclusiveMinimum": 0,
                 "description": "Karakteristieke vloeigrens f_ywk van de DWARSKRACHTWAPENING in N/mm². Weglaten = dezelfde staalsoort als de langswapening (reinforcement_grade); alleen invullen als de beugelkwaliteit werkelijk afwijkt." }
+        }
+    })
+}
+
+/// De eigen dekking en milieuklasse van één betonoppervlak (`FaceCover`).
+///
+/// `type: ["object","null"]`: `null` en weglaten betekenen allebei "deze zijde
+/// zegt niets eigens". Dat is dezelfde vorm als de vier beugelvelden hierboven
+/// en dezelfde als op de Rust-kant, waar het veld een `Option` is.
+fn schema_zijdedekking(welke: &str, gevolg: &str) -> Value {
+    json!({
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "description": format!(
+            "Eigen dekking en milieuklasse van {welke}. {gevolg} Weglaten of null = deze zijde \
+             volgt cover_mm en de exposure_class van het element; dat is het gedrag van voor dit \
+             veld en verandert geen enkel getal."
+        ),
+        "properties": {
+            "cover_mm": { "type": ["number", "null"], "minimum": 0,
+                "description": "Nominale dekking c_nom van DEZE zijde in mm. Weglaten = de dekking van het element (cover_mm van de korf)." },
+            "exposure_class": {
+                "type": ["string", "null"],
+                "enum": [
+                    "X0", "XC1", "XC2", "XC3", "XC4",
+                    "XD1", "XD2", "XD3", "XS1", "XS2", "XS3",
+                    "XF1", "XF2", "XF3", "XF4", "XA1", "XA2", "XA3", null
+                ],
+                "description": "Milieuklasse van DEZE zijde uit tabel 4.1, de ingang van tabel 4.4N voor c_min,dur. Weglaten = de milieuklasse van het element. Zie `list_exposure_classes` en `concrete_cover_check`."
+            }
         }
     })
 }
@@ -310,6 +355,74 @@ fn schema_frequente_omhullende() -> Value {
     v
 }
 
+/// Schema van `reinforcement_zones` — de wapening die LANGS de staaf
+/// verandert.
+///
+/// Twee gescheiden lijsten, omdat de grenzen van de langswapening (§9.2.1.3,
+/// inkorting) en die van de beugels (§9.2.2, verdichting bij het steunpunt) in
+/// de praktijk niet samenvallen en door verschillende toetsen worden gelezen.
+/// Beide lijsten zijn optioneel en BEIDE LEEG betekent: `cage` geldt over de
+/// hele staaf — het gedrag van vóór dit veld.
+///
+/// Het veld moet hier staan ook al is het optioneel: `additionalProperties:
+/// false` zou het anders wegfilteren voordat de kern het ziet, en dan zou een
+/// gebruiker die de wapening netjes per zone opgeeft langs deze weg
+/// stilzwijgend met één korf over de hele staaf worden doorgerekend.
+fn schema_wapeningszones() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "De wapening die LANGS de staaf verandert, in twee gescheiden lijsten: 'longitudinal' voor de inkorting van de langswapening (EN 1992-1-1 §9.2.1.3) en 'stirrups' voor de beugelverdichting (§9.2.2). BEIDE LEEG (of het hele veld weglaten) = de korf uit 'cage' geldt over de hele staaf; dat is het gedrag van voor dit veld. Is een lijst NIET leeg, dan moeten haar zones de hele staaf beslaan zonder gat en zonder overlap: een stuk zonder wapening wordt uitgedrukt met een zone met 0 staven, niet met een gat.",
+        "properties": {
+            "longitudinal": {
+                "type": "array",
+                "description": "De langswapening per stuk (§9.2.1.3 'Inkorting van op trek belaste langswapening'). Per ZIJDE (top/bottom) moeten de zones aaneensluiten en samen de hele staaf beslaan; boven en onder korten los van elkaar in en worden dus apart beoordeeld. Leeg = de rijen 'top' en 'bottom' van 'cage' gelden overal.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["side", "row", "x_start_mm", "x_end_mm"],
+                    "properties": {
+                        "side": { "type": "string", "enum": ["Bottom", "Top"],
+                            "description": "Aan welke zijde deze staven liggen: \"Bottom\" = onderwapening (z = 0), \"Top\" = bovenwapening (z = h). Vult respectievelijk cage.bottom en cage.top op dit stuk." },
+                        "row": schema_wapeningsrij("Het aantal staven en de diameter op dit stuk. Een LEGE rij (count = 0) is geldig en betekent 'hier ligt aan deze zijde geen langswapening' - zo wordt een afgekorte staaf uitgedrukt."),
+                        "x_start_mm": { "type": "number", "minimum": 0,
+                            "description": "Begin van het STAAL langs de staaf, in mm vanaf het beginknoop. Dit is het fysieke staafuiteinde, niet de plaats waar de staaf zijn volle kracht levert: binnen l_bd vanaf het uiteinde telt de staaf volgens §9.2.1.3(3) LINEAIR mee (figuur 9.2)." },
+                        "x_end_mm": { "type": "number", "exclusiveMinimum": 0,
+                            "description": "Einde van het staal langs de staaf, in mm vanaf het beginknoop; groter dan x_start_mm en niet groter dan de staaflengte." },
+                        "bar_shape": { "type": "string", "enum": ["Recht", "AndersDanRecht"], "default": "Recht",
+                            "description": "Vorm van de staafeinden - tabel 8.2, regel 'Vorm van de staaf'. \"Recht\" (default) geeft alpha_1 = 1,0; \"AndersDanRecht\" (ombuiging, haak of lus volgens figuur 8.1 b/c/d) geeft bij een trekstaaf met c_d > 3*diameter alpha_1 = 0,7 en verkort l_bd dus met 30 %. Alleen invullen als de staaf werkelijk zo is gebogen." },
+                        "casting_position": { "type": "string",
+                            "enum": ["Onderzijde", "Bovenzijde", "Glijbekisting", "GoedAangetoond"],
+                            "default": "Onderzijde",
+                            "description": "Waar deze staven lagen ten opzichte van de STORTRICHTING - figuur 8.2, bepaalt eta_1 in (8.2) en dus l_bd. \"Onderzijde\" (default) = de gewone situatie bij werk ter plaatse. \"Bovenzijde\" = eta_1 = 0,7 zodra h > 250 mm. \"Glijbekisting\" = altijd eta_1 = 0,7. \"GoedAangetoond\" = eta_1 = 1,0 omdat is aangetoond dat de aanhechting goed is (art. 8.4.2(2) laat dat uitdrukkelijk toe). Dit is een UITVOERINGSgegeven dat het rekenmodel niet kan afleiden; het scheelt in l_bd een factor 1/0,7 = 1,43." }
+                    }
+                }
+            },
+            "stirrups": {
+                "type": "array",
+                "description": "De beugels per stuk (§9.2.2). De zones moeten aaneensluiten en samen de hele staaf beslaan. Leeg = de beugelvelden van 'cage' gelden overal. Een stuk ZONDER beugels is hierin niet uit te drukken: §6.2.1(4) eist ook zonder rekenkundige noodzaak de minimumwapening van §9.2.2, behalve bij platen met dwarsverdeling en bij elementen van ondergeschikt belang - laat voor die gevallen deze lijst leeg.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["x_start_mm", "x_end_mm", "spacing_mm", "legs", "diameter_mm"],
+                    "properties": {
+                        "x_start_mm": { "type": "number", "minimum": 0,
+                            "description": "Begin van de zone langs de staaf, in mm vanaf het beginknoop." },
+                        "x_end_mm": { "type": "number", "exclusiveMinimum": 0,
+                            "description": "Einde van de zone langs de staaf, in mm vanaf het beginknoop; groter dan x_start_mm en niet groter dan de staaflengte." },
+                        "spacing_mm": { "type": "number", "exclusiveMinimum": 0,
+                            "description": "Hart-op-hartafstand s van de beugels LANGS de lengteas, in mm - symbool s in (9.4), begrensd door s_l,max in §9.2.2(6). In een zone VERPLICHT: wie een stuk staaf apart benoemt, zegt daarmee wat er ligt." },
+                        "legs": { "type": "integer", "minimum": 1,
+                            "description": "Aantal beugelbenen n dat een verticale doorsnede kruist (§9.2.2(5)); A_sw = n*(pi/4)*diameter^2. In een zone VERPLICHT en ten minste 1." },
+                        "diameter_mm": { "type": "number", "exclusiveMinimum": 0,
+                            "description": "Beugeldiameter in mm. In een zone VERPLICHT en groter dan 0; de nationale bijlage bij §9.2.2(9) eist bovendien ten minste 5 mm, wat de detailleringstoets nakijkt." }
+                    }
+                }
+            }
+        }
+    })
+}
+
 /// Schema van `exposure_class`. Dezelfde opsomming als bij
 /// `concrete_cover_check`; hier is hij de ingang van tabel 7.1N in plaats van
 /// tabel 4.4N.
@@ -319,7 +432,17 @@ fn schema_milieuklasse() -> Value {
         "enum": ["X0", "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3",
                  "XS1", "XS2", "XS3", "XF1", "XF2", "XF3", "XF4",
                  "XA1", "XA2", "XA3"],
-        "description": "Milieuklasse uit tabel 4.1 - de enige ingang van de door de nationale bijlage vervangen tabel 7.1N, en dus van w_max. Betonstaal: X0/XC1 -> 0,40 mm; XC2-XC4 -> 0,30 mm; XD en XS -> 0,20 mm. Voor XF en XA geeft tabel 7.1N geen w_max en meldt de toets dat. Weglaten = niet opgegeven; er is met opzet geen standaardklasse, want die zou een scheurwijdte kunnen goedkeuren die bij het werkelijke milieu veel te groot is. Zie `list_exposure_classes`."
+        "description": "Milieuklasse van het ELEMENT uit tabel 4.1 - de enige ingang van de door de nationale bijlage vervangen tabel 7.1N, en dus van w_max. Betonstaal: X0/XC1 -> 0,40 mm; XC2-XC4 -> 0,30 mm; XD en XS -> 0,20 mm. Voor XF en XA geeft tabel 7.1N geen w_max en meldt de toets dat. Dit is tevens de terugval voor de zijden die in de korf (cover_top / cover_bottom / cover_sides) geen eigen klasse dragen. Weglaten = niet opgegeven; er is met opzet geen standaardklasse, want die zou een scheurwijdte kunnen goedkeuren die bij het werkelijke milieu veel te groot is. Zie `list_exposure_classes`."
+    })
+}
+
+/// Schema van `structural_class`. Dezelfde opsomming als bij
+/// `concrete_cover_check`.
+fn schema_constructieklasse() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["S1", "S2", "S3", "S4", "S5", "S6"],
+        "description": "Constructieklasse van het ELEMENT (4.4.1.2(5)), de rij-ingang van tabel 4.4N. Weglaten = S4, de waarde die de nationale bijlage voorschrijft voor een ontwerplevensduur van 50 jaar. De klasse staat NIET per zijde: alle vijf de criteria van de door de nationale bijlage vervangen tabel 4.3N (ontwerplevensduur 100 jaar, ontwerplevensduur 75 jaar, sterkteklasse, element met plaatgeometrie, gewaarborgde kwaliteitsbeheersing) zijn eigenschappen van het element. De klasse wordt niet uit die tabel afgeleid; zij is invoer."
     })
 }
 
@@ -346,7 +469,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "check_concrete_beam",
-            "description": "Run the EN 1992-1-1 concrete cross-section check on a single reinforced beam or column (rectangle, T or L). Fifteen checks: bending with the rectangular stress block (3.1.7(3)); bending with axial force through the M-N-kappa relation including the minimum eccentricity of 6.1(4); shear 6.2 (V_Rd,c per (6.2.a)/(6.2.b) or the truss model (6.8)/(6.9)); minimum reinforcement for crack control 7.3.2 and the calculated crack width 7.3.4, both under the FREQUENT SLS combination that the Dutch national annex to 7.3.1(5) prescribes; the span/depth ratio of 7.4.2; and nine detailing rules from 9.2.1, 9.2.2 and 8.2. A check whose input is missing (no stirrup spacing, no sls_frequent_envelope, no exposure_class, no structural_system, no aggregate_size_mm) comes back with status NotApplicable and the reason in its notes: it is never silently dropped, never reported as passing, and nothing is assumed in its place. Returns a ConcreteBeamCheckResult with the full derivation, the M-kappa diagram at the governing axial force and both N-M interaction diagrams. Same input and output types as the Tauri command `check_concrete_beams` and the toetsbrug opdracht of that name - those take a list, this one takes a single beam, exactly like `check_steel_beam`. NOT included: torsion, punching shear, fatigue, second-order effects, and the table route of 7.3.3 (the direct calculation of 7.3.4 is made instead; the two are alternatives).",
+            "description": "Run the EN 1992-1-1 concrete cross-section check on a single reinforced beam or column (rectangle, T or L). Fifteen checks: bending with the rectangular stress block (3.1.7(3)); bending with axial force through the M-N-kappa relation including the minimum eccentricity of 6.1(4); shear 6.2 (V_Rd,c per (6.2.a)/(6.2.b) or the truss model (6.8)/(6.9)); minimum reinforcement for crack control 7.3.2 and the calculated crack width 7.3.4, both under the FREQUENT SLS combination that the Dutch national annex to 7.3.1(5) prescribes; the span/depth ratio of 7.4.2; and nine detailing rules from 9.2.1, 9.2.2 and 8.2. A check whose input is missing (no stirrup spacing, no sls_frequent_envelope, no exposure_class, no structural_system, no aggregate_size_mm) comes back with status NotApplicable and the reason in its notes: it is never silently dropped, never reported as passing, and nothing is assumed in its place. Returns a ConcreteBeamCheckResult with the full derivation, the M-kappa diagram at the governing axial force and both N-M interaction diagrams. Same input and output types as the Tauri command `check_concrete_beams` and the toetsbrug opdracht of that name - those take a list, this one takes a single beam, exactly like `check_steel_beam`. The reinforcement may VARY ALONG THE MEMBER through `reinforcement_zones` (curtailment of the longitudinal bars per 9.2.1.3, stirrup spacing per 9.2.2); leaving that field out means the single cage in `cage` applies over the whole member. NOT included: torsion, punching shear, fatigue, second-order effects, and the table route of 7.3.3 (the direct calculation of 7.3.4 is made instead; the two are alternatives).",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -359,6 +482,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "reinforcement_grade": { "type": "string",
                         "description": "Wapeningsstaal uit bijlage C, bijvoorbeeld \"B500B\". Zie `list_reinforcement_grades`." },
                     "cage": schema_korf(),
+                    "reinforcement_zones": schema_wapeningszones(),
                     "length_m": { "type": "number",
                         "description": "Staaflengte in m. Alleen voor de rapportage; deze toets kent geen knik." },
                     "forces_envelope": crate::schema_krachtenomhullende(),
@@ -369,6 +493,7 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "Minimale excentriciteit e_0 = max(h/30; 20 mm) toepassen bij druk (6.1(4)). Default true; op false zetten maakt de toets GUNSTIGER en hoort alleen bij het narekenen van een uitwerking die die regel niet toepast." },
                     "sls_frequent_envelope": schema_frequente_omhullende(),
                     "exposure_class": schema_milieuklasse(),
+                    "structural_class": schema_constructieklasse(),
                     "aggregate_size_mm": { "type": "number", "exclusiveMinimum": 0,
                         "description": "Grootste nominale korrelafmeting d_g in mm, voor de vrije staafafstand van 8.2(2) en de minimale balkbreedte van 9.2(1)e. Weglaten = niet opgegeven; de norm kent GEEN standaardwaarde (d_g hoort bij de betonspecificatie), dus er wordt er ook geen aangenomen en 8.2(2) doet dan alleen de uitspraak die hoe dan ook geldt." },
                     "structural_system": schema_constructievorm(),
@@ -508,24 +633,29 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "concrete_cover_check",
-            "description": "Check a nominal concrete cover against the exposure class per EN 1992-1-1 §4.4.1 AS AMENDED BY THE DUTCH NATIONAL ANNEX. c_min,dur comes from table 4.4N in the NB version (which differs from the EN version in the XD3/XS3 column), c_min,b from table 4.2 (bar diameter), and then c_min = max{c_min,b; c_min,dur + 0 - 0 - 0; 10 mm} (4.2) and c_nom = c_min + 5 mm (4.1, NB value of delta c_dev; the EN recommends 10 mm). Returns the whole chain plus a unity check c_nom,required / c_nom,provided. The structural class is INPUT (default S4, the NB value for a 50-year design life) and is not derived from table 4.3N. NOT included: the +5 mm for aggregate over 32 mm, uneven surfaces (4.4.1.2(11)), abrasion classes XM1-XM3, and prestressing steel (table 4.5N). Same input and output types as the Tauri command and the toetsbrug opdracht of the same name.",
+            "description": "Check a nominal concrete cover against the exposure class per EN 1992-1-1 §4.4.1 AS AMENDED BY THE DUTCH NATIONAL ANNEX. c_min,dur comes from table 4.4N in the NB version (which differs from the EN version in the XD3/XS3 column), c_min,b from table 4.2 (bar diameter), and then c_min = max{c_min,b; c_min,dur + 0 - 0 - 0; 10 mm} (4.2) and c_nom = c_min + 5 mm (4.1, NB value of delta c_dev; the EN recommends 10 mm). Returns the whole chain plus a unity check c_nom,required / c_nom,provided. THIS IS A CHECK OF ONE CONCRETE SURFACE: 4.4.1.1(1)P measures the cover to 'the nearest concrete surface', so a member whose top is indoors (XC1) and whose soffit is outdoors (XC4) has two different covers and two different effective depths. Call the tool once per side and say which one through 'side'; that field changes no number, it labels the answer. The structural class is INPUT (default S4, the NB value for a 50-year design life), is not derived from table 4.3N, and belongs to the MEMBER, not to a side - all five criteria of the NB version of table 4.3N are member properties. NOT included: the +5 mm for aggregate over 32 mm, uneven surfaces (4.4.1.2(11)), abrasion classes XM1-XM3, and prestressing steel (table 4.5N). Same input and output types as the Tauri command and the toetsbrug opdracht of the same name.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het resultaat." },
+                    "side": {
+                        "type": ["string", "null"],
+                        "enum": ["Top", "Bottom", "Sides", null],
+                        "description": "Welk betonoppervlak dit verzoek betreft (4.4.1.1(1)P): \"Top\" = bovenzijde, \"Bottom\" = onderzijde, \"Sides\" = de twee verticale zijkanten samen. Weglaten of null = niet benoemd, en dan is het antwoord een dekkingstoets zonder zijde. Het veld verandert de berekening niet; het reist mee zodat drie antwoorden naast elkaar uit elkaar te houden zijn."
+                    },
                     "exposure_class": {
                         "type": "string",
                         "enum": ["X0", "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3",
                                  "XS1", "XS2", "XS3", "XF1", "XF2", "XF3", "XF4",
                                  "XA1", "XA2", "XA3"],
-                        "description": "Milieuklasse uit tabel 4.1. Bij XF en XA geeft tabel 4.4N geen c_min,dur — 4.4.1.2(12) regelt die klassen via de betonsamenstelling (EN 206-1) — en blijven alleen de aanhechtingseis en de ondergrens van 10 mm over."
+                        "description": "Milieuklasse uit tabel 4.1 van de zijde in 'side' (of van het element als er geen zijde is benoemd). Bij XF en XA geeft tabel 4.4N geen c_min,dur — 4.4.1.2(12) regelt die klassen via de betonsamenstelling (EN 206-1) — en blijven alleen de aanhechtingseis en de ondergrens van 10 mm over."
                     },
                     "structural_class": {
                         "type": ["string", "null"],
                         "enum": ["S1", "S2", "S3", "S4", "S5", "S6", null],
-                        "description": "Constructieklasse. Weglaten of null = S4, de NB-waarde voor een ontwerplevensduur van 50 jaar. Wordt NIET automatisch aangepast volgens tabel 4.3N."
+                        "description": "Constructieklasse van het ELEMENT. Weglaten of null = S4, de NB-waarde voor een ontwerplevensduur van 50 jaar. Wordt NIET automatisch aangepast volgens tabel 4.3N, en staat niet per zijde: alle vijf de criteria van die tabel zijn eigenschappen van het element."
                     },
                     "cover_mm": { "type": "number", "minimum": 0,
                         "description": "De opgegeven nominale dekking c_nom in mm, gemeten tot de buitenste wapening (4.4.1.1(1)P)." },
@@ -737,10 +867,26 @@ mod tests {
             "stirrup_legs",
             "stirrup_leg_spacing_mm",
             "stirrup_fywk_mpa",
+            // De dekking per betonoppervlak (4.4.1.1(1)P).
+            "cover_top",
+            "cover_bottom",
+            "cover_sides",
         ] {
             assert!(velden.contains_key(veld), "korfschema mist `{veld}`");
         }
-        assert_eq!(velden.len(), 8, "korfschema kent een veld dat de kern weigert");
+        assert_eq!(velden.len(), 11, "korfschema kent een veld dat de kern weigert");
+        // Elke zijde draagt precies twee gegevens: zijn dekking en zijn
+        // milieuklasse. Meer zou `additionalProperties: false` op de kern
+        // laten stuklopen, minder zou een geldig geval onbereikbaar maken.
+        for zijde in ["cover_top", "cover_bottom", "cover_sides"] {
+            let z = &korf["properties"][zijde]["properties"];
+            assert!(z["cover_mm"].is_object(), "{zijde}");
+            assert!(z["exposure_class"].is_object(), "{zijde}");
+            assert_eq!(z.as_object().unwrap().len(), 2, "{zijde}");
+            // `null` moet mogen: dat is hoe "deze zijde volgt het element"
+            // over de lijn gaat.
+            assert_eq!(korf["properties"][zijde]["type"], json!(["object", "null"]));
+        }
         for zijde in ["top", "bottom"] {
             let rij = &korf["properties"][zijde]["properties"];
             assert!(rij["count"].is_object());

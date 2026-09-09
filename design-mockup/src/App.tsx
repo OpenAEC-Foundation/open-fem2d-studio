@@ -623,10 +623,15 @@ function App() {
     plates: fem.plates,
     eigenGewicht: fem.selfWeightEnabled,
     aantalCombinaties: fem.combinations.length,
+    // De toetsuitslag reist mee: elke getoetste staaf krijgt in het bestand
+    // de eigenschappenset OpenFEM2D_Toetsing met de maatgevende toets, het
+    // normartikel en de unity check. Is er niet getoetst, dan is de lijst
+    // leeg en meldt `verzamelIfcBeperkingen` dat er geen uitslag in staat.
+    toetsresultaten: checkResults,
   }), [
     projectPath, projectInfo,
     fem.nodes, fem.beams, fem.supports, fem.loads, fem.loadCases,
-    fem.plates, fem.selfWeightEnabled, fem.combinations,
+    fem.plates, fem.selfWeightEnabled, fem.combinations, checkResults,
   ]);
 
   /**

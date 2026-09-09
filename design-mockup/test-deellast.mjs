@@ -3,8 +3,17 @@
 // De core kende al startT/endT (fracties 0..1) op element.distributedLoad,
 // maar de adapter (engine.ts) en de UI boden ze niet aan. Deze test verifieert
 // de nieuwe doorvoer via Load.startFrac/endFrac → SolverDistLoadInput →
-// mesh.distributedLoads, en dat N/V/M/w op de 21 stations EXACT zijn
+// mesh.distributedLoads, en dat N/V/M/w op de stations EXACT zijn
 // (stuksgewijze particuliere oplossing in BeamForces.ts).
+//
+// STATIONS WORDEN OP POSITIE OPGEZOCHT, NIET OP INDEX. De solver zet sinds de
+// invoering van de extra sneden een rekenknoop op elke DEELLASTGRENS — daar
+// knikt V(x) namelijk, en zonder knoop wordt die knik weggeïnterpoleerd. Een
+// staaf met een deellast levert dus geen 21 stations meer maar 21 per stuk,
+// met een dubbel station op elke grens. De HANDBEREKENINGEN hieronder zijn
+// ongewijzigd: ze staan op een positie x, niet op een stationsnummer, en
+// `waardeBijX` zoekt die positie op. Wat er bij kwam is dat de gevraagde x nu
+// exact op het raster valt in plaats van bij benadering.
 //
 // Alle referenties zijn analytische handberekeningen (in commentaar) of een
 // fijn onderverdeeld referentiemodel uit dezelfde solver.
@@ -34,6 +43,24 @@ function checkTrue(name, cond) {
   else      { failed++; log(`  ✗ ${name}`); }
 }
 
+/**
+ * Index van het EERSTE station op positie x (mm). −1 als het er niet is.
+ * Op een snede staat het station dubbel (einde links, begin rechts); "eerste"
+ * betekent dus de waarde LINKS van de snede.
+ */
+function bijX(el, x, tol = 1e-6) {
+  for (let i = 0; i < el.stations_mm.length; i++) {
+    if (Math.abs(el.stations_mm[i] - x) <= tol) return i;
+  }
+  return -1;
+}
+
+/** Waarde van een stationsreeks op positie x (mm); NaN als x er niet is. */
+function waardeBijX(el, veld, x) {
+  const i = bijX(el, x);
+  return i < 0 ? NaN : el[veld][i];
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // TEST 1: vrij opgelegde ligger L=6 m, deellast q=10 kN/m ↓ op [2 m, 4 m].
 // Handberekening: W = 10·2 = 20 kN symmetrisch → R_A = R_B = 10 kN.
@@ -53,17 +80,25 @@ let deel1 = null; // resultaat bewaard voor test 3 (w-symmetrie)
   check("R_A = 10 kN", r.reactions.get(1)?.fz ?? NaN, 10000);
   check("R_B = 10 kN", r.reactions.get(2)?.fz ?? NaN, 10000);
   const ef = r.elements.get(1);
-  // Station 10 van 21 = x = 3,0 m (exact op het stationsraster).
-  check("M(3 m) = 25 kNm exact", ef.bendingMoment[10], 25e6, 0.001);
-  // Onbelast deel vóór de last: V constant. Stations 0..6 → x = 0 .. 1,8 m.
-  const Vfront = ef.shearForce.slice(0, 7);
+  // De sneden op 2,0 en 4,0 m maken drie rekenstukken; x = 3,0 m ligt in het
+  // middelste en valt exact op zijn raster (2000 + 10·100).
+  check("M(3 m) = 25 kNm exact", waardeBijX(ef, "bendingMoment", 3000), 25e6, 0.001);
+  // Onbelast deel vóór de last: V constant over het hele stuk [0, 2 m].
+  const Vfront = ef.stations_mm
+    .map((x, i) => (x <= 2000 + 1e-6 ? ef.shearForce[i] : null))
+    .filter((v) => v !== null);
   const vSpread = Math.max(...Vfront) - Math.min(...Vfront);
-  checkTrue(`V constant vóór lastbegin (spreiding ${vSpread.toExponential(2)} N)`, vSpread < 1e-6 * 10000 + 1e-6);
-  check("|V| vóór de last = R_A", Math.abs(ef.shearForce[3]), 10000, 0.001);
-  // M lineair op het onbelaste deel: M(1,8) = R_A·1,8 = 18 kNm (station 6).
-  check("M(1,8 m) = 18 kNm exact", ef.bendingMoment[6], 18e6, 0.001);
+  checkTrue(`V constant vóór lastbegin over ${Vfront.length} stations (spreiding ${vSpread.toExponential(2)} N)`,
+    Vfront.length >= 21 && vSpread < 1e-6 * 10000 + 1e-6);
+  check("|V| vóór de last = R_A", Math.abs(waardeBijX(ef, "shearForce", 900)), 10000, 0.001);
+  // M lineair op het onbelaste deel: M(1,8) = R_A·1,8 = 18 kNm.
+  check("M(1,8 m) = 18 kNm exact", waardeBijX(ef, "bendingMoment", 1800), 18e6, 0.001);
+  // NIEUW DOOR DE SNEDEN: de lastgrens x = 2,0 m is nu zelf een station.
+  // M(2 m) = R_A·2 = 20 kNm; V springt daar niet (V is continu) maar knikt.
+  check("M(2 m) = 20 kNm — de lastgrens is nu zelf een station",
+    waardeBijX(ef, "bendingMoment", 2000), 20e6, 0.001);
   check("M(0) = 0", Math.abs(ef.bendingMoment[0]), 0, 0.001);
-  check("M(L) = 0", Math.abs(ef.bendingMoment[20]), 0, 0.001);
+  check("M(L) = 0", Math.abs(ef.bendingMoment[ef.bendingMoment.length - 1]), 0, 0.001);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -84,14 +119,21 @@ log("\n[2] Asymmetrische deellast [0, 2 m] op L=6 m");
   check("R_A = 16,667 kN", r.reactions.get(1)?.fz ?? NaN, 20000 * 5 / 6, 0.001);
   check("R_B = 3,333 kN", r.reactions.get(2)?.fz ?? NaN, 20000 / 6, 0.001);
   const ef = r.elements.get(1);
-  // Stations 7..20 → x = 2,1 .. 6,0 m: allemaal ná het lasteinde → V constant.
-  const Vtail = ef.shearForce.slice(7);
+  // Alles vanaf x = 2 m ligt ná het lasteinde → V constant. Dat is precies
+  // het tweede rekenstuk, want de snede staat op de lastgrens.
+  const Vtail = ef.stations_mm
+    .map((x, i) => (x >= 2000 - 1e-6 ? ef.shearForce[i] : null))
+    .filter((v) => v !== null);
   const spread = Math.max(...Vtail) - Math.min(...Vtail);
-  checkTrue(`V constant na lasteinde (spreiding ${spread.toExponential(2)} N)`, spread < 1e-6 * 20000 + 1e-6);
-  check("|V| na lasteinde = R_B", Math.abs(ef.shearForce[15]), 20000 / 6, 0.001);
-  check("M(3 m) = R_B·3 = 10 kNm", ef.bendingMoment[10], 10e6, 0.001);
-  // Binnen het belaste deel: M(0,9 m) = R_A·0,9 − 10·0,9²/2 = 15 − 4,05 = 10,95 kNm (station 3).
-  check("M(0,9 m) = 10,95 kNm exact", ef.bendingMoment[3], 10.95e6, 0.001);
+  checkTrue(`V constant na lasteinde over ${Vtail.length} stations (spreiding ${spread.toExponential(2)} N)`,
+    Vtail.length >= 21 && spread < 1e-6 * 20000 + 1e-6);
+  check("|V| na lasteinde = R_B", Math.abs(waardeBijX(ef, "shearForce", 4000)), 20000 / 6, 0.001);
+  check("M(3 m) = R_B·3 = 10 kNm", waardeBijX(ef, "bendingMoment", 3000), 10e6, 0.001);
+  // Binnen het belaste deel: M(0,9 m) = R_A·0,9 − 10·0,9²/2 = 15 − 4,05 = 10,95 kNm.
+  check("M(0,9 m) = 10,95 kNm exact", waardeBijX(ef, "bendingMoment", 900), 10.95e6, 0.001);
+  // De lastgrens zelf: M(2 m) = R_A·2 − 10·2²/2 = 33,3333 − 20 = 13,3333 kNm.
+  check("M(2 m) = 13,333 kNm — lastgrens als station",
+    waardeBijX(ef, "bendingMoment", 2000), (20000 * 5 / 6) * 2000 - 10 * 2000 * 2000 / 2, 0.001);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -108,16 +150,25 @@ log("\n[2] Asymmetrische deellast [0, 2 m] op L=6 m");
 log("\n[3] w(x): symmetrie + w_mid exact + referentiemodel");
 {
   const ef = deel1.elements.get(1);
-  checkTrue("deflection[] aanwezig (21 stations)", Array.isArray(ef.deflection) && ef.deflection.length === 21);
-  let symOK = true;
-  for (let i = 0; i <= 10; i++) {
-    const a = ef.deflection[i], b = ef.deflection[20 - i];
+  // Drie rekenstukken ([0,2], [2,4], [4,6] m) × 21 stations = 63.
+  checkTrue("deflection[] aanwezig (3 stukken × 21 stations)",
+    Array.isArray(ef.deflection) && ef.deflection.length === 63
+    && ef.deflection.length === ef.stations_mm.length);
+  // Symmetrie op POSITIE: bij elk station x hoort een spiegelstation op L−x.
+  // Het raster is symmetrisch (de sneden liggen op 2 en 4 m van de 6 m), dus
+  // elke spiegel bestaat werkelijk — dat wordt hier meteen meegetoetst.
+  let symOK = true, symN = 0;
+  for (let i = 0; i < ef.stations_mm.length; i++) {
+    const j = bijX(ef, 6000 - ef.stations_mm[i]);
+    if (j < 0) { symOK = false; break; }
+    symN++;
+    const a = ef.deflection[i], b = ef.deflection[j];
     if (Math.abs(a - b) > 1e-6 * Math.max(1e-9, Math.abs(a))) { symOK = false; break; }
   }
-  checkTrue("w symmetrisch rond het midden (rel. 1e-6)", symOK);
+  checkTrue(`w symmetrisch rond het midden op alle ${symN} stations (rel. 1e-6)`, symOK);
   const wExp = 85.416666667e12 / (E * I); // 4,06746 mm
-  check("|w_mid| exact (eenheidslastmethode)", Math.abs(ef.deflection[10]), wExp, 0.01);
-  checkTrue("w_mid < 0 (doorhangen negatief)", ef.deflection[10] < 0);
+  check("|w_mid| exact (eenheidslastmethode)", Math.abs(waardeBijX(ef, "deflection", 3000)), wExp, 0.01);
+  checkTrue("w_mid < 0 (doorhangen negatief)", waardeBijX(ef, "deflection", 3000) < 0);
 
   // Referentiemodel: 12 elementen van 0,5 m; q op elementen tussen x=2 en 4 m.
   const nodes = [], beams = [], loads = [];
@@ -133,17 +184,16 @@ log("\n[3] w(x): symmetrie + w_mid exact + referentiemodel");
     loads,
   });
   const wRef = rRef.displacements.get(7)?.uz ?? NaN; // knoop op x=3 m
-  check("w_mid t.o.v. referentiemodel (12 el.)", ef.deflection[10], wRef, 0.5);
-  // w óók exact op een station BINNEN het onbelaste deel (x=0,9 m, station 3):
-  // referentieknoop bestaat niet op 0,9 m → vergelijk met de exacte kromme via
-  // eenheidslastmethode is bewerkelijk; in plaats daarvan: station 4 (x=1,2 m)
-  // tegen referentiemodel-knoop 0? Niet beschikbaar. We checken het volledige
-  // verloop indirect: w op x=2,5 m ligt niet op het referentieraster (wel op
-  // 2,5 m: knoop 6!) → vergelijk daar wél, met Hermite-vrije knoopwaarde.
-  // Station op 2,5 m bestaat niet in het 21-raster (stap 0,3 m) — gebruik
-  // x=1,5 m (station 5) vs. referentieknoop 4 (x=1500).
+  check("w_mid t.o.v. referentiemodel (12 el.)", waardeBijX(ef, "deflection", 3000), wRef, 0.5);
+  // En op een station BINNEN het onbelaste deel: x = 1,5 m, waar het
+  // referentiemodel knoop 4 heeft. Sinds de sneden op de lastgrenzen liggen de
+  // stukken op 100 mm afstand, dus 1500 mm ligt gewoon op het raster.
   const wRef15 = rRef.displacements.get(4)?.uz ?? NaN;
-  check("w(1,5 m) t.o.v. referentiemodel", ef.deflection[5], wRef15, 0.5);
+  check("w(1,5 m) t.o.v. referentiemodel", waardeBijX(ef, "deflection", 1500), wRef15, 0.5);
+  // Extra, nu het kan: 2,5 m ligt óók op het raster (2000 + 5·100) en het
+  // referentiemodel heeft daar knoop 6.
+  const wRef25 = rRef.displacements.get(6)?.uz ?? NaN;
+  check("w(2,5 m) t.o.v. referentiemodel", waardeBijX(ef, "deflection", 2500), wRef25, 0.5);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -164,7 +214,7 @@ log("\n[4] Trapezium-deellast 0→10 kN/m op [2 m, 4 m]");
   check("R_A = 4,444 kN", r.reactions.get(1)?.fz ?? NaN, 10000 * (6 - 10 / 3) / 6, 0.001);
   check("R_B = 5,556 kN", r.reactions.get(2)?.fz ?? NaN, 10000 * (10 / 3) / 6, 0.001);
   const ef = r.elements.get(1);
-  check("M(3 m) = 12,5 kNm exact", ef.bendingMoment[10], 12.5e6, 0.001);
+  check("M(3 m) = 12,5 kNm exact", waardeBijX(ef, "bendingMoment", 3000), 12.5e6, 0.001);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -184,7 +234,7 @@ log("\n[5] Volle-lengte + deellast op dezelfde staaf");
     ],
   });
   check("R_A = 40 kN", r.reactions.get(1)?.fz ?? NaN, 40000, 0.001);
-  check("M_mid = 70 kNm exact", r.elements.get(1).bendingMoment[10], 70e6, 0.001);
+  check("M_mid = 70 kNm exact", waardeBijX(r.elements.get(1), "bendingMoment", 3000), 70e6, 0.001);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -234,7 +284,7 @@ log("\n[7] 2e-orde-combinatiepad met deellast (factor 1,35)");
   checkTrue("combinatie levert resultaat (deellast geactiveerd)", r !== null);
   if (r) {
     check("R_A = 1,35·10 = 13,5 kN", r.reactions.get(1)?.fz ?? NaN, 13500, 0.001);
-    check("M(3 m) = 1,35·25 = 33,75 kNm", r.elements.get(1).bendingMoment[10], 33.75e6, 0.01);
+    check("M(3 m) = 1,35·25 = 33,75 kNm", waardeBijX(r.elements.get(1), "bendingMoment", 3000), 33.75e6, 0.01);
   }
 }
 

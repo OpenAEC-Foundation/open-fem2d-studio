@@ -151,6 +151,16 @@ fn list_exposure_classes() -> Vec<ExposureClassInfo> {
 /// 4.2); samen met de ondergrens van 10 mm geeft (4.2) de minimumdekking en
 /// (4.1) de vereiste nominale dekking. Het antwoord draagt de hele keten, zodat
 /// de invoer kan laten zien wáárom een dekking te klein is.
+///
+/// **Dit is een toets van ÉÉN betonoppervlak.** 4.4.1.1(1)P meet de dekking tot
+/// "het dichtstbijzijnde betonoppervlak", en een element heeft er meer dan één:
+/// een vloer met de bovenzijde binnen (XC1) en de onderzijde buiten (XC4) heeft
+/// twee verschillende c_min,dur en dus twee verschillende nuttige hoogtes. De
+/// invoer roept dit command daarom één keer per zijde aan en zet in
+/// `ConcreteCoverRequest::side` welke; dat veld verandert geen getal, het
+/// benoemt het antwoord. Waar de zijden in het model wonen — bij de korf, in
+/// `cover_top`, `cover_bottom` en `cover_sides` — staat bij
+/// [`nen_en_1992_1_1::CoverSide`].
 #[tauri::command]
 async fn concrete_cover_check(
     inputs: ConcreteCoverRequest,

@@ -4655,6 +4655,28 @@ function buildMesh(input, loadFactor) {
       puntlastFracties.set(bpl.beamId, lijst);
     }
   }
+  const extraSnedeFracties = /* @__PURE__ */ new Map();
+  const voegSnedeToe = (beamId, t) => {
+    const lijst = extraSnedeFracties.get(beamId) ?? [];
+    lijst.push(t);
+    extraSnedeFracties.set(beamId, lijst);
+  };
+  for (const ld of input.loads ?? []) {
+    const qa = ld.qStart ?? ld.q ?? 0;
+    const qb = ld.qEnd ?? ld.q ?? 0;
+    if (qa === 0 && qb === 0) continue;
+    const a = Math.min(1, Math.max(0, ld.startFrac ?? 0));
+    const c = Math.min(1, Math.max(0, ld.endFrac ?? 1));
+    if (c - a <= 0) continue;
+    if (a > 0) voegSnedeToe(ld.beamId, a);
+    if (c < 1) voegSnedeToe(ld.beamId, c);
+  }
+  for (const b of input.beams) {
+    for (const t of b.extraSneden ?? []) {
+      if (Number.isFinite(t)) voegSnedeToe(b.id, t);
+    }
+  }
+  const modelHeeftPlaten = plateRects.length > 0 || plaatPolygonen.length > 0;
   const beamKnoopPerFractie = /* @__PURE__ */ new Map();
   const segmentUitvoer = /* @__PURE__ */ new Map();
   for (const b of input.beams) {
@@ -4688,6 +4710,21 @@ function buildMesh(input, loadFactor) {
         splitsT.push(s.t0);
       }
       splitsT.sort((p, q) => p - q);
+    }
+    if (!modelHeeftPlaten) {
+      const minFracSnede = L_mm > 0 ? MIN_SEGMENT_MM / L_mm : Infinity;
+      const kandidaten = [...extraSnedeFracties.get(b.id) ?? []].sort((p, q) => p - q);
+      let iets = false;
+      for (const t of kandidaten) {
+        if (!(t > minFracSnede) || !(t < 1 - minFracSnede)) continue;
+        if (splitsT.some((u) => Math.abs(u - t) < minFracSnede)) continue;
+        const mxT = (nA.x + t * (nB.x - nA.x)) / 1e3;
+        const myT = (nA.z + t * (nB.z - nA.z)) / 1e3;
+        if (mesh.findNodeAt(mxT, myT, 1e-3)) continue;
+        splitsT.push(t);
+        iets = true;
+      }
+      if (iets) splitsT.sort((p, q) => p - q);
     }
     const doorsnedeVoor = (t0, t1) => {
       if (!segDef) return { sec: section, I_mm4: 0, segmentIndex: -1 };
@@ -5881,11 +5918,18 @@ function schrijf(items) {
   } catch {
   }
 }
+function sorteer(items) {
+  return [...items].sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+}
+function doorsnedeGelijk(a, b) {
+  const kern = (d) => JSON.stringify({ ontwerp: d.ontwerp, eigenschappen: d.eigenschappen, vorm: d.vorm, motor: d.motor });
+  return kern(a) === kern(b);
+}
 var eigenDoorsnedenStore = createStore((set, get) => ({
   items: lees(),
   bewaar: (d) => {
     const rest = get().items.filter((x) => x.id !== d.id && x.naam !== d.naam);
-    const items = [...rest, d].sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+    const items = sorteer([...rest, d]);
     schrijf(items);
     set({ items });
   },
@@ -5895,8 +5939,21 @@ var eigenDoorsnedenStore = createStore((set, get) => ({
     set({ items });
   },
   vervangAlles: (items) => {
+    const gesorteerd = sorteer(items);
+    schrijf(gesorteerd);
+    set({ items: gesorteerd });
+  },
+  voegSamen: (binnen) => {
+    const lokaal = get().items;
+    const overschreven = binnen.filter((b) => {
+      const bestaand = lokaal.find((x) => x.naam === b.naam);
+      return bestaand !== void 0 && !doorsnedeGelijk(bestaand, b);
+    }).map((b) => b.naam);
+    const rest = lokaal.filter((x) => !binnen.some((b) => b.naam === x.naam || b.id === x.id));
+    const items = sorteer([...rest, ...binnen]);
     schrijf(items);
-    set({ items: [...items] });
+    set({ items });
+    return overschreven;
   }
 }));
 function zoekEigenDoorsnede(profile) {
@@ -7732,7 +7789,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.2";
+var version = "0.3.4";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [

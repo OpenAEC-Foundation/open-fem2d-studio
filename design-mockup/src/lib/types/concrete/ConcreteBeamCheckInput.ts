@@ -4,7 +4,9 @@ import type { DesignSituation } from "./DesignSituation";
 import type { ExposureClass } from "./ExposureClass";
 import type { ForcePoint } from "../steel/ForcePoint";
 import type { ReinforcementCage } from "./ReinforcementCage";
+import type { ReinforcementZones } from "./ReinforcementZones";
 import type { SteelBranch } from "./SteelBranch";
+import type { StructuralClass } from "./StructuralClass";
 import type { StructuralSystem } from "./StructuralSystem";
 
 /**
@@ -34,8 +36,29 @@ concrete_class: string,
 reinforcement_grade: string, 
 /**
  * Wapeningskorf: dekking, beugel, boven- en onderwapening.
+ *
+ * Dit is de korf die geldt waar `reinforcement_zones` niets zegt — dus bij
+ * lege zonelijsten over de hele staaf.
  */
 cage: ReinforcementCage, 
+/**
+ * De wapening die LANGS de staaf verandert: welke staaflaag van waar tot
+ * waar loopt (§9.2.1.3) en waar de beugels dichter staan (§9.2.2).
+ *
+ * Dit veld staat NAAST `cage` en niet erin. `ReinforcementCage` is `Copy`
+ * en beschrijft één doorsnede; hij wordt op tientallen plaatsen
+ * doorgegeven waar alleen die doorsnede nodig is (buiging, M-N-κ,
+ * scheurwijdte, de twee tekenkanten). Een lengte-as in dat type zou zich
+ * door al die signaturen heen planten en het bovendien zijn `Copy` kosten.
+ * Zie [`ReinforcementZones`] voor waarom het twee gescheiden lijsten zijn
+ * en niet één.
+ *
+ * **LEEG (of weggelaten) = het gedrag van vóór dit veld**: dan geldt
+ * `cage` onveranderd over de hele staaf. Dat is geen bijkomstigheid maar
+ * de voorwaarde waaronder dit veld erbij mocht: geen enkele bestaande
+ * toets verandert erdoor.
+ */
+reinforcement_zones: ReinforcementZones, 
 /**
  * Staaflengte in m.
  */
@@ -75,10 +98,42 @@ apply_min_eccentricity: boolean,
  */
 sls_frequent_envelope: Array<ForcePoint>, 
 /**
- * Milieuklasse van dit element (tabel 4.1) — de ingang van tabel 7.1N
+ * Milieuklasse van dit ELEMENT (tabel 4.1) — de ingang van tabel 7.1N
  * voor w_max. `None` = niet opgegeven; §7.3 kan dan niet.
+ *
+ * # Dit is de klasse van het element, niet van één oppervlak
+ *
+ * 4.4.1.1(1)P meet de betondekking tot "het dichtstbijzijnde
+ * betonoppervlak", en een balk heeft er vier. Een klasse PER ZIJDE staat
+ * daarom bij de korf: [`ReinforcementCage::cover_top`],
+ * `cover_bottom` en `cover_sides` dragen elk een eigen milieuklasse en een
+ * eigen dekking. Dit veld is wat daar de terugval voor is — zie
+ * [`Self::exposure_at`] — en tegelijk de klasse waarmee §7.3 werkt.
+ *
+ * Waarom §7.3 het ELEMENT neemt en niet de trekzijde: tabel 7.1N (in de
+ * versie van de nationale bijlage bij 7.3.1(5)) geeft w_max per
+ * milieuklasse, en de scheurwijdte wordt aan de trekzijde beoordeeld. Wie
+ * die koppeling per zijde wil leggen, moet 7.3 de zijde van het
+ * maatgevende momentteken laten kiezen; dat gebeurt hier nog niet, en de
+ * scheurtoets houdt dus deze ene klasse aan.
  */
 exposure_class?: ExposureClass, 
+/**
+ * Constructieklasse S1…S6 van dit ELEMENT (4.4.1.2(5)).
+ *
+ * `None` = de waarde van de nationale bijlage: "Als constructieklasse voor
+ * een ontwerplevensduur van 50 jaar moet S4 zijn aangehouden." Anders dan
+ * bij de milieuklasse is er hier dus wél een voorgeschreven waarde, en zij
+ * staat met zoveel woorden in de norm.
+ *
+ * De klasse staat NIET per zijde. De vijf criteria van de door de
+ * nationale bijlage vervangen tabel 4.3N — ontwerplevensduur 100 jaar,
+ * ontwerplevensduur 75 jaar, sterkteklasse, element met plaatgeometrie en
+ * gewaarborgde kwaliteitsbeheersing — zijn alle vijf een eigenschap van
+ * het element; zie [`StructuralClass`] voor de uitwerking en de ene
+ * nuance daarbij.
+ */
+structural_class?: StructuralClass, 
 /**
  * Grootste nominale korrelafmeting d_g in mm, voor §8.2(2) en §9.2(1)e.
  *

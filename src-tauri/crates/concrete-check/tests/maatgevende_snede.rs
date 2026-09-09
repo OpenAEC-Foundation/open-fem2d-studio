@@ -30,7 +30,9 @@ use concrete_check::{
     check_concrete_beam, CheckKind, CheckStatus, ConcreteBeamCheckInput, ConcreteBeamCheckResult,
 };
 use mechanics::{ForcePoint, InternalForces};
-use nen_en_1992_1_1::{ConcreteSectionInput, ExposureClass, RebarRow, ReinforcementCage};
+use nen_en_1992_1_1::{
+    ConcreteSectionInput, ExposureClass, RebarRow, ReinforcementCage, ReinforcementZones,
+};
 use nen_en_1993_1_1_section::ResistanceCalc;
 
 const A_S_ONDER: f64 = 603.185789;
@@ -65,6 +67,10 @@ fn invoer(cage: ReinforcementCage, envelop: Vec<ForcePoint>) -> ConcreteBeamChec
         concrete_class: "C30/37".into(),
         reinforcement_grade: "B500B".into(),
         cage,
+        // Brok 3 heeft `reinforcement_zones` toegevoegd. LEEG betekent hier:
+        // de korf hierboven geldt over de hele staaf, precies zoals voor dat
+        // veld bestond. Deze tests gaan daar dus onveranderd doorheen.
+        reinforcement_zones: ReinforcementZones::default(),
         length_m: 5.0,
         forces_envelope: envelop,
         n_strips: 50,
@@ -73,6 +79,7 @@ fn invoer(cage: ReinforcementCage, envelop: Vec<ForcePoint>) -> ConcreteBeamChec
         apply_min_eccentricity: true,
         sls_frequent_envelope: vec![],
         exposure_class: None,
+        structural_class: None,
         aggregate_size_mm: None,
         structural_system: None,
         bar_spacing_mm: None,
@@ -523,44 +530,68 @@ fn de_minimumwapening_van_9_2_1_1_kijkt_naar_beide_trekzijden() {
 /// §9.2.2(6) leest "is er rekenkundig dwarskrachtwapening vereist?" over de
 /// HELE staaf en niet op één snede.
 ///
-/// Twee sneden, met beugels Ø8 h.o.h. 400 mm:
+/// Twee sneden, met beugels Ø8 h.o.h. 400 mm (A_sw = 2·π/4·8² = 100,530965 mm²,
+/// A_sw/s = 0,25132741 mm²/mm, f_ywd = 434,782609 N/mm², ν₁ = 0,528):
 ///
 /// ```text
-///   A  V_Ed =  60 kN, M_Ed = +40 kNm → V_Rd,c = 64,402 kN ≥ 60 → BETONSPOOR
-///      UC = 60/64,402 = 0,932                       ← de hoogste unity check
-///   B  V_Ed =  70 kN, M_Ed = −40 kNm → V_Rd,c = 56,204 kN <  70 → VAKWERKSPOOR
-///      A_sw/s = 100,530965/400 = 0,25132741 mm²/mm ; z = 0,9·456 = 410,4 mm
-///      teller (6.9) = 1,0·300·410,4·0,528·20 = 1 300 147 N
-///      K = 1 300 147/70 000 = 18,57 → cot θ op de NB-bovengrens 2,5
-///      (6.8) V_Rd,s = 0,25132741·410,4·434,782609·2,5 = 112 118 N = 112,1 kN
-///      UC = 70/112,1 = 0,624
+///   A  V_Ed = 63 kN, M_Ed = +40 kNm → trek ONDER, d = 454 mm, z = 408,6 mm
+///      V_Rd,c   = 64,4028 kN ≥ 63  → SPOOR A: geen BEREKENDE wapening nodig
+///      teller (6.9) = 1,0·300·408,6·0,528·20 = 1 294 445 N
+///      K = 1 294 445/63 000 = 20,55 → cot θ op de NB-bovengrens 2,5
+///      (6.8) V_Rd,s = 0,25132741·408,6·434,782609·2,5 = 111 622 N = 111,6222 kN
+///      (6.9) V_Rd,max = 1 294 445/2,9 = 446,360 kN → de beugels zijn maatgevend
+///      V_Rd = max(64,4028 ; 111,6222) = 111,6222 kN
+///      UC   = 63/111,6222 = 0,56440                 ← de hoogste unity check
+///   B  V_Ed = 57 kN, M_Ed = −40 kNm → trek BOVEN, d = 456 mm, z = 410,4 mm
+///      V_Rd,c   = 56,2038 kN < 57   → SPOOR B: 6.2.1(5) eist wapening
+///      (6.8) V_Rd,s = 0,25132741·410,4·434,782609·2,5 = 112 114 N = 112,1139 kN
+///      (6.9) V_Rd,max = 1 300 147/2,9 = 448,327 kN
+///      V_Rd = min(112,1139 ; 448,327) = 112,1139 kN
+///      UC   = 57/112,1139 = 0,50841
 /// ```
 ///
-/// De snede met de hoogste dwarskracht-unity-check (A, 0,932) ligt in het
-/// BETONspoor; alleen B vraagt rekenkundig om dwarskrachtwapening. Wie die
-/// vraag op één snede beantwoordt, komt hier op "nee" uit en laat s_l,max in de
-/// ruime tak van 300 mm belanden, terwijl de strengere tak
-/// min(0,75·d ; 300 mm) hoort te gelden. Bij d = 454 mm is 0,75·d = 340,5 mm,
-/// dus het NB-plafond van 300 mm blijft in beide takken bindend en de unity
-/// check verandert hier niet — maar de TAK die het rapport noemt wel, en bij
-/// een lagere balk (d < 400 mm) verandert ook het getal.
+/// De snede met de hoogste dwarskracht-unity-check (A, 0,564) ligt in SPOOR A;
+/// alleen B vraagt rekenkundig om dwarskrachtwapening. Wie die vraag op één
+/// snede beantwoordt, komt hier op "nee" uit en laat s_l,max in de ruime tak van
+/// 300 mm belanden, terwijl de strengere tak min(0,75·d ; 300 mm) hoort te
+/// gelden. Bij d = 454 mm is 0,75·d = 340,5 mm, dus het NB-plafond van 300 mm
+/// blijft in beide takken bindend en de unity check verandert hier niet — maar
+/// de TAK die het rapport noemt wel, en bij een lagere balk (d < 400 mm)
+/// verandert ook het getal.
+///
+/// # WAAROM DE GETALLEN ZIJN VERSCHOVEN (was: A 60 kN/0,932, B 70 kN/0,624)
+///
+/// Deze proef stond op de oude regel "spoor A ⇒ V_Rd = V_Rd,c". Daardoor kwam
+/// snede A op 60/64,402 = 0,932 uit — een unity check die niet uit de
+/// constructie kwam maar uit de spoorgrens: waar V_Ed net onder V_Rd,c duikt is
+/// die verhouding per definitie bijna 1,0, terwijl er op diezelfde snede
+/// beugels liggen die 111,6 kN dragen. 6.2.1(2) geeft een element MET
+/// dwarskrachtwapening de weerstand V_Rd,s, ongeacht of 6.2.1(3) daarom vraagt,
+/// dus meldt de kern nu max(V_Rd,c ; V_Rd,s). Met de oude belastingen zou A
+/// daarmee op 0,538 uitkomen en B op 0,624, en zou B de maatgevende snede
+/// worden — precies de opstelling die deze proef NIET wil hebben. De twee
+/// dwarskrachten zijn daarom zó gekozen dat A weer de zwaarst benutte snede is
+/// (63 kN, nog net onder V_Rd,c = 64,4028 kN) en B er nog net boven zit
+/// (57 kN tegen V_Rd,c = 56,2038 kN). Wat de proef bewijst is onveranderd.
 ///
 /// De kern levert V_Rd,c = 56,20379 kN en V_Rd,s = 112,11388 kN tegen de
-/// 56,204 en 112,118 kN hierboven (0,004 %).
+/// 56,2038 en 112,1139 kN hierboven.
 #[test]
 fn de_vraag_of_er_dwarskrachtwapening_vereist_is_geldt_voor_de_hele_staaf() {
-    let a = punt(1, 0.0, 0.0, 60.0, 40.0);
-    let b = punt(1, 2500.0, 0.0, 70.0, -40.0);
+    let a = punt(1, 0.0, 0.0, 63.0, 40.0);
+    let b = punt(1, 2500.0, 0.0, 57.0, -40.0);
     let r = check_concrete_beam(invoer(korf(Some(400.0)), vec![a, b]));
 
     // De opzet klopt alleen als A werkelijk de hoogste dwarskracht-unity-check
-    // heeft en tóch in het betonspoor ligt.
+    // heeft en tóch in spoor A ligt — dus dat 6.2.1(3) daar geen berekende
+    // wapening eist, ook al leveren de beugels er wél de weerstand.
     let dwars = toets(&r, "6.2_shear");
     assert_relative_eq!(dwars.force_state.position_mm, 0.0, max_relative = 1e-12);
-    assert_relative_eq!(uc(dwars), 60.0 / 64.402, max_relative = 1e-3);
+    assert_relative_eq!(dwars.value, 111.6222, max_relative = 1e-4);
+    assert_relative_eq!(uc(dwars), 63.0 / 111.6222, max_relative = 1e-3);
     let los_b = toets(&los_punt(korf(Some(400.0)), b), "6.2_shear").clone();
-    assert_relative_eq!(los_b.value, 112.118, max_relative = 1e-3);
-    assert_relative_eq!(uc(&los_b), 70.0 / 112.118, max_relative = 1e-3);
+    assert_relative_eq!(los_b.value, 112.1139, max_relative = 1e-4);
+    assert_relative_eq!(uc(&los_b), 57.0 / 112.1139, max_relative = 1e-3);
     assert!(uc(&los_b) < uc(dwars), "B is minder benut dan A, en tóch beslist B hier");
 
     // En de detailleringseis leest de STRENGE tak.

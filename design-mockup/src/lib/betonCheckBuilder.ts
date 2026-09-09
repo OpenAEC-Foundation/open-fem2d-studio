@@ -536,6 +536,12 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
       concrete_class: klasse,
       reinforcement_grade: cfg.staalsoort ?? DEFAULT_REINFORCEMENT_GRADE,
       cage: cfg.korf,
+      // De wapening die LANGS de staaf verandert (§9.2.1.3 inkorting van de
+      // langswapening, §9.2.2 beugelverdichting). LEEG betekent: de korf
+      // hierboven geldt over de hele staaf — precies het gedrag van vóór dit
+      // veld. De app kent nog geen invoer per zone; zodra die er is, komt zij
+      // hier binnen zonder dat er verder aan de keten iets hoeft te wijzigen.
+      reinforcement_zones: { longitudinal: [], stirrups: [] },
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
       // LEEG ALS ER GEEN ECHT RESULTAAT IS. `buildForcesEnvelope` levert bij

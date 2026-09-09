@@ -5,7 +5,7 @@
 use approx::assert_relative_eq;
 use concrete_check::{check_concrete_beam, mn_kappa, CheckKind, CheckStatus, ConcreteBeamCheckInput, MnKappaRequest};
 use mechanics::{ForcePoint, InternalForces};
-use nen_en_1992_1_1::{ConcreteSectionInput, RebarRow, ReinforcementCage};
+use nen_en_1992_1_1::{ConcreteSectionInput, RebarRow, ReinforcementCage, ReinforcementZones};
 
 fn korf(boven: u32) -> ReinforcementCage {
     ReinforcementCage {
@@ -32,6 +32,10 @@ fn invoer(boven: u32, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
         concrete_class: "C30/37".into(),
         reinforcement_grade: "B500B".into(),
         cage: korf(boven),
+        // Brok 3 heeft `reinforcement_zones` toegevoegd. LEEG betekent hier:
+        // de korf hierboven geldt over de hele staaf, precies zoals voor dat
+        // veld bestond. Deze tests gaan daar dus onveranderd doorheen.
+        reinforcement_zones: ReinforcementZones::default(),
         length_m: 5.0,
         forces_envelope: envelop,
         n_strips: 50,
@@ -44,6 +48,7 @@ fn invoer(boven: u32, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
         // (`nieuwe_toetsen.rs`).
         sls_frequent_envelope: vec![],
         exposure_class: None,
+        structural_class: None,
         aggregate_size_mm: None,
         structural_system: None,
         bar_spacing_mm: None,
