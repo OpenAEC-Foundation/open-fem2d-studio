@@ -149,6 +149,10 @@ const ALLEEN_BRON = new Map([
   ["ifc-spiegel", "staat los van de solver (IFC-export spiegelt het model)"],
   ["profieleditor-snap", "test de objectsnap van de profieleditor, niet de solver"],
   ["oude-profielen", "controleert de overgetypte profieltabellen tegen de doorsnedemotor, niet de solver"],
+  [
+    "unp-tabel",
+    "houdt de UNP-reeks in profiles.json en de gegenereerde TS-tabellen tegen de gedrukte profieltabel; leest die twee bestanden rechtstreeks en raakt de solver noch de barrel",
+  ],
   ["profieleditor-lassen", "test de schuifstroom per lasnaad uit de doorsnedemeetkunde, niet de solver"],
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
@@ -205,7 +209,7 @@ const ALLEEN_BRON = new Map([
   ],
   [
     "doorsnede-kleur",
-    "rendert ProfielMiniatuur met react-dom/server en rekent de composietkleur na uit themes.css en ProfielKiezer.css; React en losse stylesheets bestaan in de sidecarbundel niet, en er komt geen rekenwerk aan te pas",
+    "rendert ProfielMiniatuur én DoorsnedeTekening met react-dom/server en rekent de composietkleur na uit themes.css en ProfielKiezer.css; React en losse stylesheets bestaan in de sidecarbundel niet, en er komt geen rekenwerk aan te pas",
   ],
   [
     "bgvloer-referentie",
@@ -218,6 +222,10 @@ const ALLEEN_BRON = new Map([
   [
     "snedetekens",
     "rendert de resultatenoverlay met react-dom/server en meet de RICHTING van de afschuif- en buigtekens in de gerenderde SVG; dat is canvasweergave in plaats van solverwerk, en React bestaat in de sidecarbundel niet",
+  ],
+  [
+    "korftekening",
+    "rendert DoorsnedeTekening met react-dom/server en meet de LIGGING van de beugel en de staven terug uit de gerenderde SVG (schaal uit de omtrek, staafharten in millimeters, ligt-de-staaf-in-de-polygoon); tekenwerk in plaats van solverwerk, en React bestaat in de sidecarbundel niet",
   ],
   [
     "unp-flenshelling",

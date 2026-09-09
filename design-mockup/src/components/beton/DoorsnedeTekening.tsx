@@ -27,6 +27,28 @@
  * Kleuren komen standaard uit de theme-tokens, zodat de tekening in licht én
  * donker leesbaar blijft. Het rapport geeft `RAPPORT_KLEUREN` mee: daar is de
  * tekening papier en volgt hij het app-thema juist niet.
+ *
+ * DE HALVE KORF — waarom er een schakelaar [`Props.wapening`] is. In de
+ * profielkiezer wordt deze tekening bijgewerkt terwijl er nog getypt wordt, en
+ * dan is de korf onderweg onvermijdelijk incompleet: het aantal staat er al
+ * maar de diameter nog niet, de dekking is nog die van het vorige veld, de rij
+ * past nog niet in de breedte. `controleerKorf` in `wapeningskorf.ts` weigert
+ * zo'n korf, en terecht — een halve korf is een ánder wapeningsplan, geen
+ * benadering van het bedoelde.
+ *
+ * De tekening mag daar niet op omvallen, en mag al helemaal niet doen alsof de
+ * halve korf er zo ligt. `staafPosities` verdeelt namelijk óók een rij die niet
+ * past: hij smeert de staven uit over een binnenmaat die te klein is, zodat ze
+ * elkaar overlappen, en bij een dekking groter dan de halve breedte komen ze
+ * zelfs buiten het beton te liggen. Dat is een tekening van iets wat niet
+ * bestaat, en juist die is gevaarlijk — hij ziet er precies zo uit als een
+ * goede. `test-korftekening.mjs` legt allebei die uitkomsten vast.
+ *
+ * Daarom tekent deze component met `wapening={false}` ALLEEN het beton — de
+ * omtrek, met b, h en b_w. Niets verzonnen, niets weggelaten wat er wél is; de
+ * aanroeper zet de reden erbij, want die kent hem (in de profielkiezer is dat
+ * de melding van `controleerKorf`). Zodra de korf klopt komt de wapening
+ * terug, in dezelfde tekening op dezelfde plaats.
  */
 import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import {
@@ -77,6 +99,11 @@ function tekenvlakHoogte(bMm: number, hMm: number): number {
 
 interface Props {
   korf: Wapeningskorf;
+  /**
+   * Teken de korf: beugel, staven, rijlabels, de d-maat en de dekking in het
+   * onderschrift. Uit = alleen het beton — zie "DE HALVE KORF" hierboven.
+   */
+  wapening?: boolean;
   /** Toon de maatlijnen b, h en d (uit = alleen de doorsnede). */
   maatvoering?: boolean;
   /** Palet; standaard de theme-tokens, het rapport geeft RAPPORT_KLEUREN mee. */
@@ -98,6 +125,7 @@ function Pijl({ x, y, hoek, kleur }: { x: number; y: number; hoek: number; kleur
 
 export default function DoorsnedeTekening({
   korf,
+  wapening = true,
   maatvoering = true,
   kleuren = THEMA_KLEUREN,
   titel,
@@ -123,9 +151,12 @@ export default function DoorsnedeTekening({
 
   const c = korf.korf.cover_mm;
   const dBgl = korf.korf.stirrup_diameter_mm;
-  const staven = staafPosities(korf.korf, d3);
-  const heeftOnder = korf.korf.bottom.count > 0 && korf.korf.bottom.diameter_mm > 0;
-  const heeftBoven = korf.korf.top.count > 0 && korf.korf.top.diameter_mm > 0;
+  // Eén schakelaar, hier bovenaan: `wapening` uit betekent dat er geen staaf,
+  // geen beugel, geen rijlabel en geen d-maat is — d hangt immers aan de
+  // onderwapening, en zonder korf is er geen nuttige hoogte om te tonen.
+  const staven = wapening ? staafPosities(korf.korf, d3) : [];
+  const heeftOnder = wapening && korf.korf.bottom.count > 0 && korf.korf.bottom.diameter_mm > 0;
+  const heeftBoven = wapening && korf.korf.top.count > 0 && korf.korf.top.diameter_mm > 0;
   const d = nuttigeHoogteMm(korf.korf, hMm);
 
   const omtrek = omtrekPunten(d3)
@@ -141,7 +172,7 @@ export default function DoorsnedeTekening({
   const lijfHart = hartXMm(d3, 0.5 * (lijf.z0Mm + lijf.z1Mm));
   const beugelBreedte = lijf.bMm - 2 * beugelInzet;
   const beugelHoogte = hMm - 2 * beugelInzet;
-  const beugelPast = dBgl > 0 && beugelBreedte > 0 && beugelHoogte > 0;
+  const beugelPast = wapening && dBgl > 0 && beugelBreedte > 0 && beugelHoogte > 0;
 
   const yMaatB = y0 - 9;
   const xMaatH = x0 - 10;
@@ -171,14 +202,32 @@ export default function DoorsnedeTekening({
           d3.h_f_mm ?? 0,
         )} mm dik ${d3.flange_at_bottom ? "onder" : "boven"}, lijf ${maat(d3.b_w_mm ?? 0)} mm`;
 
+  // Het onderschrift: alles wat er niet ín de tekening past. Dekking en beugel
+  // zijn korfgegevens en horen er dus niet te staan als de korf niet getekend
+  // is — dan is er in het beeld ook geen beugel om een maat bij te zetten.
+  const onderschrift = [
+    // De rijen komen alleen hier te staan als ze in de doorsnede zelf niet
+    // leesbaar passen; dan mogen ze niet wegvallen.
+    ...(wapening && !labelsInDeDoorsnede
+      ? [`${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`]
+      : []),
+    ...(d3.shape === "Rectangle" ? [] : [`h_f ${maat(d3.h_f_mm ?? 0)}`]),
+    ...(wapening ? [`dekking ${maat(c)}`] : []),
+    ...(wapening && dBgl > 0 ? [`beugel Ø${maat(dBgl)}`] : []),
+  ];
+
   return (
     <svg
       className={className}
       viewBox={`0 0 ${KADER_W} ${kaderH.toFixed(2)}`}
       role="img"
       aria-label={
+        // Wie de tekening niet ziet maar hoort, hoort hetzelfde als wat er
+        // staat: zonder korf in beeld ook geen staven in de omschrijving.
         titel ??
-        `${vormLabel}, ${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`
+        (wapening
+          ? `${vormLabel}, ${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`
+          : `${vormLabel}, wapening niet getekend`)
       }
     >
       {/* Beton — de werkelijke omtrek, dus ook de flens van een T of een L */}
@@ -316,18 +365,11 @@ export default function DoorsnedeTekening({
               </text>
             </>
           )}
-          <text x={x0 + w / 2} y={y0 + h + 12} fill={kleuren.tekstMaat} fontSize="7" textAnchor="middle">
-            {[
-              // De rijen komen alleen hier te staan als ze in de doorsnede
-              // zelf niet leesbaar passen; dan mogen ze niet wegvallen.
-              ...(labelsInDeDoorsnede
-                ? []
-                : [`${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`]),
-              ...(d3.shape === "Rectangle" ? [] : [`h_f ${maat(d3.h_f_mm ?? 0)}`]),
-              `dekking ${maat(c)}`,
-              ...(dBgl > 0 ? [`beugel Ø${maat(dBgl)}`] : []),
-            ].join(", ")}
-          </text>
+          {onderschrift.length > 0 && (
+            <text x={x0 + w / 2} y={y0 + h + 12} fill={kleuren.tekstMaat} fontSize="7" textAnchor="middle">
+              {onderschrift.join(", ")}
+            </text>
+          )}
         </>
       )}
     </svg>

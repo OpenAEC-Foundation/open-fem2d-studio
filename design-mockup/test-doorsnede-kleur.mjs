@@ -253,19 +253,77 @@ for (const [materiaal, { rgb }] of Object.entries(VAST)) {
 }
 
 // ── 4. De andere plek waar beton getekend wordt ───────────────────────────
-log("4. DoorsnedeTekening tekent beton eveneens dekkend");
+//
+// DIT IS SINDS SEPTEMBER 2026 HETZELFDE PAD. De profielkiezer tekende de
+// betondoorsnede met `ProfielMiniatuur` — de component die sectie 1 t/m 3
+// narekenen. Nu tekent hij hem met `beton/DoorsnedeTekening`, want die kent
+// behalve de omtrek ook de beugel en de staven, en de constructeur hoort de
+// korf terug te zien die hij ernaast invult. Daarmee liep de betonstap uit het
+// bereik van deze test, terwijl juist dáár de vlakkleur van beton op het scherm
+// belandt.
+//
+// Deze sectie rendert die component dus óók echt, en stuurt zijn vulkleur door
+// dezelfde mengsom als sectie 3: het kader eromheen is `.pk-tekening` met
+// `background: var(--theme-bg)`, precies zoals bij de miniatuur.
+log("4. DoorsnedeTekening — de tekening in de betonstap van de profielkiezer");
+
+const DoorsnedeTekening = (await import("./src/components/beton/DoorsnedeTekening.tsx")).default;
+const { STANDAARD_KORF } = await import("./src/components/beton/wapeningskorf.ts");
+
+/** Het eerste `<polygon>` in deze SVG is het betonvlak; daarna komen pijlen. */
+function betonvlak(props = {}) {
+  const html = renderToStaticMarkup(
+    React.createElement(DoorsnedeTekening, { korf: STANDAARD_KORF, ...props }),
+  );
+  const m = /<polygon\b[^>]*>/.exec(html);
+  if (!m) throw new Error("geen betonpolygoon in de SVG van DoorsnedeTekening");
+  const attr = (naam) => new RegExp(`${naam}="([^"]*)"`).exec(m[0])?.[1] ?? null;
+  return { tag: m[0], fill: attr("fill"), opacity: attr("opacity") };
+}
+
+// Twee standen, want de profielkiezer gebruikt ze allebei: mét korf zolang
+// `controleerKorf` hem goedkeurt, en zonder korf terwijl er nog getypt wordt.
+// De kleur van het BETON mag daar niet van afhangen.
+for (const [stand, props] of [
+  ["met wapening", {}],
+  ["zonder wapening", { wapening: false }],
+]) {
+  const vlak = betonvlak(props);
+  const vul = varMetTerugval(vlak.fill);
+  checkEq(`${stand}: vult met --theme-beton-vlak`, vul.naam, "--theme-beton-vlak");
+  checkEq(`${stand}: terugval is 192-192-192`, hexNaarRgb(vul.terugval), [192, 192, 192]);
+  checkTrue(`${stand}: geen dekking op het betonvlak`, vlak.opacity === null, vlak.tag);
+  // Dezelfde mengsom als sectie 3, nu voor deze component: dekking 1, dus per
+  // thema de tokenwaarde zelf — en die hoort in élk thema 192-192-192 te zijn.
+  for (const naam of Object.keys(THEMAS)) {
+    const inThema = tokenOfNiets(themaBlok[naam], "theme-beton-vlak");
+    const vulRgb = hexNaarRgb(inThema ?? token(materiaalBlok, "theme-beton-vlak"));
+    checkEq(`${stand}: op het scherm in ${naam}`, meng(vulRgb, achtergrond[naam], 1), [192, 192, 192]);
+  }
+}
 
 const doorsnedeTsx = lees("src/components/beton/DoorsnedeTekening.tsx");
-const betonPolygoon = /<polygon[^>]*fill=\{kleuren\.betonVlak\}[^>]*\/>/.exec(doorsnedeTsx);
-checkTrue("betonvlak-polygoon gevonden", betonPolygoon !== null);
+checkTrue("geen opacity ergens in DoorsnedeTekening", !/\bopacity/i.test(doorsnedeTsx));
+
+// En vastleggen DAT de betonstap deze component in dát kader zet. Zonder deze
+// controle zou de tekening ongemerkt terug kunnen naar een component die deze
+// test niet narekent, en dan meet sectie 4 een pad dat niemand meer ziet.
+const kiezerTsx = lees("src/components/fem/ProfielKiezer.tsx");
 checkTrue(
-  "betonvlak-polygoon heeft geen opacity",
-  betonPolygoon !== null && !/opacity/i.test(betonPolygoon[0]),
-  betonPolygoon?.[0],
+  "de betonstap tekent met DoorsnedeTekening",
+  /<DoorsnedeTekening\b/.test(kiezerTsx) &&
+    /import DoorsnedeTekening from "\.\.\/beton\/DoorsnedeTekening"/.test(kiezerTsx),
 );
 checkTrue(
-  "geen opacity elders in DoorsnedeTekening",
-  !/\bopacity/i.test(doorsnedeTsx),
+  "en zet hem in het kader pk-tekening pk-tekening-beton",
+  /className="pk-tekening pk-tekening-beton"/.test(kiezerTsx),
+);
+// `.pk-tekening-beton` mag geen eigen achtergrond zetten: dan zou de menging
+// hierboven over de verkeerde kleur gaan.
+checkTrue(
+  "pk-tekening-beton laat de achtergrond van pk-tekening staan",
+  !/background/.test(blok(kiezerCss, ".pk-tekening-beton {")),
+  blok(kiezerCss, ".pk-tekening-beton {").trim(),
 );
 
 // ── Uitslag ───────────────────────────────────────────────────────────────

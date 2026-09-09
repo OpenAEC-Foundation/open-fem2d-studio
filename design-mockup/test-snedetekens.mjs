@@ -110,12 +110,18 @@ function boog(teken) {
   };
 }
 
-/** Afschuifteken: twee pijlen van elk 10 padgetallen (staart, punt, weerhaken).
- *  Teruggegeven van links naar rechts op het scherm. */
+/** Afschuifteken: één getrapte lijn van vier punten (8 padgetallen) — twee
+ *  horizontale helften met een verticale sprong ertussen. Teruggegeven als die
+ *  twee helften, van links naar rechts op het scherm. */
 function pijlen(teken) {
   const g = teken.getal;
-  const maak = (o) => ({ x: g[o], staartY: g[o + 1], puntY: g[o + 3], omhoog: g[o + 3] < g[o + 1] });
-  return [maak(0), maak(10)].sort((a, b) => a.x - b.x);
+  const helft = (o) => ({ x: (g[o] + g[o + 2]) / 2, y: (g[o + 1] + g[o + 3]) / 2 });
+  const [a, b] = [helft(0), helft(4)].sort((p, q) => p.x - q.x);
+  // Scherm-y groeit naar beneden, dus de hoogste helft heeft de KLEINSTE y.
+  return [
+    { ...a, omhoog: a.y < b.y, hart: (a.y + b.y) / 2 },
+    { ...b, omhoog: b.y < a.y, hart: (a.y + b.y) / 2 },
+  ];
 }
 
 // ── Het startmodel en zijn houten ligger ──────────────────────────────────
@@ -239,12 +245,12 @@ log("\n[d] Afschuifteken: bij V > 0 links omhoog en rechts omlaag");
   tekens.forEach((t, i) => {
     const [links, rechts] = pijlen(t);
     const w = verwacht[i];
-    ok(`${w.naam}: linker pijl ${w.positief ? "omhoog" : "omlaag"}`, links.omhoog === w.positief);
-    ok(`${w.naam}: rechter pijl ${w.positief ? "omlaag" : "omhoog"}`, rechts.omhoog === !w.positief);
-    ok(`${w.naam}: de twee pijlen wijzen tegengesteld`, links.omhoog !== rechts.omhoog);
+    ok(`${w.naam}: linkerhelft ${w.positief ? "hoog" : "laag"}`, links.omhoog === w.positief);
+    ok(`${w.naam}: rechterhelft ${w.positief ? "laag" : "hoog"}`, rechts.omhoog === !w.positief);
+    ok(`${w.naam}: de twee helften verspringen tegengesteld`, links.omhoog !== rechts.omhoog);
     // De dwarskrachtlijn wordt met haar eigen teken uitgezet: de positieve lob
     // ligt aan lokale +y, voor deze staven dus BOVEN de as.
-    const hart = (links.staartY + links.puntY) / 2;
+    const hart = links.hart;
     ok(`${w.naam}: teken ligt in de lob (${w.positief ? "boven" : "onder"} de as)`,
       w.positief ? hart < AS_Y : hart > AS_Y, `hart op y = ${hart.toFixed(1)}`);
   });

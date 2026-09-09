@@ -269,35 +269,34 @@ export function buigTekenPad(g: TekenMeetkunde): string {
 }
 
 /**
- * AFSCHUIFTEKEN — twee tegengesteld gerichte pijlen met hun punt.
+ * AFSCHUIFTEKEN — de verspringing: twee staafdelen die langs elkaar schuiven,
+ * getekend als twee evenwijdige lijnen met een verticale sprong ertussen. Dat
+ * is de notatie zoals een constructeur hem op papier zet.
  *
- * `tekenV` is het teken van de RUWE dwarskracht. Bij +1 wijst de pijl aan de
- * knoop-1-zijde naar lokale +y en die aan de knoop-2-zijde naar −y: het
- * koppel dat het staafdeel met de klok mee draait, precies de definitie van
- * een positieve dwarskracht in deze app.
+ * Hij verving twee tegengesteld gerichte pijlen. Die drukten dezelfde zin uit,
+ * maar het is niet de gangbare notatie en het las als een krachtenpaar in
+ * plaats van als een afschuiving.
+ *
+ * `tekenV` is het teken van de RUWE dwarskracht en bepaalt WELKE helft
+ * verspringt. Bij +1 ligt de linkerhelft (de knoop-1-zijde) naar lokale +y en
+ * de rechterhelft naar −y: het koppel dat het staafdeel met de klok mee
+ * draait, precies de definitie van een positieve dwarskracht in deze app. Dat
+ * is dezelfde richting als waar de vroegere pijl aan de knoop-1-zijde heen
+ * wees, dus de tekenafleiding boven in dit bestand blijft ongewijzigd gelden.
  */
 export function afschuifTekenPad(g: TekenMeetkunde, tekenV: 1 | -1): string {
-  const halveAfstand = g.maat * 0.62;   // afstand van de twee pijlen tot het hart
-  const halveLengte = g.maat * 0.85;    // halve pijllengte
-  const kop = g.maat * 0.42;            // lengte van de weerhaken van de pijlpunt
+  const halveLengte = g.maat * 0.95;   // halve breedte van het teken langs de staaf
+  const sprong = g.maat * 0.72;        // halve hoogte van de verspringing
   const hart = g.diepte * 0.5;
-  const stukken: string[] = [];
-  // Twee keer dezelfde pijl, gespiegeld: `zijde` is de plaats langs de staaf,
-  // `richting` de kant waarheen die pijl wijst.
-  for (const zijde of [-1, 1] as const) {
-    const richting = tekenV * -zijde;   // knoop-1-zijde (−1) wijst naar +y bij V > 0
-    const staart = hart - richting * halveLengte;
-    const punt = hart + richting * halveLengte;
-    const weerhaak = hart + richting * (halveLengte - kop);
-    const a = zijde * halveAfstand;
-    stukken.push(`M ${tekenPunt(g, a, staart)} L ${tekenPunt(g, a, punt)}`);
-    stukken.push(
-      `M ${tekenPunt(g, a - kop * 0.5, weerhaak)}` +
-      ` L ${tekenPunt(g, a, punt)}` +
-      ` L ${tekenPunt(g, a + kop * 0.5, weerhaak)}`,
-    );
-  }
-  return stukken.join(" ");
+  const links = hart + tekenV * sprong;
+  const rechts = hart - tekenV * sprong;
+  // Eén doorlopende lijn: horizontaal, verticaal over, horizontaal. De sprong
+  // staat in het midden zodat het teken symmetrisch om het hart van de zone
+  // ligt en bij een smalle zone niet naar één kant uitloopt.
+  return `M ${tekenPunt(g, -halveLengte, links)}` +
+         ` L ${tekenPunt(g, 0, links)}` +
+         ` L ${tekenPunt(g, 0, rechts)}` +
+         ` L ${tekenPunt(g, halveLengte, rechts)}`;
 }
 
 export default function FemResultsOverlay({

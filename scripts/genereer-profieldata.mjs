@@ -845,7 +845,39 @@ const HEM = [
   ["HEM 1000", 1008, 302, 21.0, 40.0, 30],
 ];
 
-/** UNP — DIN 1026-1 (schuine flenzen, 8%). Volledig aanwezig in de database. */
+/**
+ * UNP — DIN 1026-1 (schuine flenzen, 8%). Volledig aanwezig in de database.
+ *
+ * De reeks in de gepubliceerde profieltabel loopt door tot UNP 400 (de maten
+ * 320, 350, 380 en 400 staan er ook in). Die vier staan hier BEWUST NIET, en
+ * dat is een meetresultaat, geen omissie: het 8%-model hierboven reproduceert
+ * de tabel voor 80 t/m 300 op 0,55% nauwkeurig, maar loopt vanaf 320 abrupt
+ * weg. Met de conventie die voor de hele reeks geldt (r1 = tf, r2 = r1/2,
+ * schuinte 8%) tegen de gepubliceerde A / Iy / Wy;el / Iz / Wz;el:
+ *
+ *   maat   A        Iy       Wy;el    Iz       Wz;el
+ *   300    +0,004%  -0,004%  +0,033%  +0,031%  -0,060%   <- binnen de grens
+ *   320    -1,355%  -1,986%  -1,941%  -5,827%  -6,776%
+ *   350    -1,308%  -2,066%  -2,066%  -6,502%  -7,492%
+ *   380    -1,249%  -1,998%  -1,973%  -6,526%  -7,514%
+ *   400    -1,248%  -1,923%  -1,956%  -6,116%  -6,871%
+ *
+ * De sprong zit precies waar de reeks ook in maatvoering springt: van UNP 300
+ * (tw 10) naar UNP 320 (tw 14). Het patroon — A en Iy een procent te laag,
+ * maar Iz en Wz;el een veelvoud daarvan — wijst op een andere flensschuinte
+ * EN een andere walsuitronding bij de zware maten; met alleen een andere
+ * schuinte komt geen enkele waarde binnen 0,5%. Welke waarden dat dan zijn,
+ * staat NIET in de gebruikte tabel (die geeft alleen h, b, tw, tf). Zolang die
+ * twee maten niet uit een bron komen, blijven deze vier eruit: een profiel met
+ * 7% te lage Wz;el maakt de zwakke-as-toetsing stil onveilig, en dat is erger
+ * dan een profiel dat ontbreekt.
+ *
+ * Om dezelfde reden staat hier GEEN regel "UNP 350": de database kent die maat
+ * als "UNP350" (zonder spatie) met waarden uit een andere bron, en die liggen
+ * 2 tot 3 keer dichter bij de tabel dan dit model ze zou zetten (zie sectie 11).
+ * Een regel hier zou bovendien een tweede schrijfwijze van hetzelfde profiel
+ * introduceren; `lookup_key` haalt de spatie weg, dus die twee botsen.
+ */
 const UNP = [
   ["UNP 80", 80, 45, 6.0, 8.0, 8],
   ["UNP 100", 100, 50, 6.0, 8.5, 8.5],
@@ -859,7 +891,6 @@ const UNP = [
   ["UNP 260", 260, 90, 10.0, 14.0, 14],
   ["UNP 280", 280, 95, 10.0, 15.0, 15],
   ["UNP 300", 300, 100, 10.0, 16.0, 16],
-  ["UNP 350", 350, 100, 14.0, 16.0, 16],
 ];
 
 /** UPE — DIN 1026-2 (evenwijdige flenzen). Nieuwe reeks. */
@@ -1614,9 +1645,34 @@ function zelfcontrole(nieuw) {
  *
  * UNP350 krijgt ALLEEN een nieuwe It en Iw. Zijn A, Wpl;y en Av;z zijn op een
  * externe referentie-berekening geijkt (en de generator reproduceert Av;z
- * daarvan onafhankelijk op 4945,7 vs 4946 mm2); zijn A/Iy/Iz vallen echter
- * 1,3-6,3% naast de DIN-tabelwaarden, waardoor het schuinte-model daar niet
- * binnen de gestelde 0,5% komt. Die waarden blijven dus staan.
+ * daarvan onafhankelijk op 4945,7 vs 4946 mm2). De rest van zijn grootheden
+ * blijft staan, en dat is nagemeten tegen de gepubliceerde profieltabel:
+ *
+ *   grootheid   tabel        database   db-tabel   dit model  model-tabel
+ *   A           7725 mm2     7665,7     -0,77%     7624       -1,31%
+ *   Iy          128,45e6     126,94e6   -1,17%     125,80e6   -2,07%
+ *   Wy;el       734e3        725,4e3    -1,17%     718,8e3    -2,07%
+ *   Iz          5,710e6      5,604e6    -1,86%     5,339e6    -6,50%
+ *   Wz;el       75,1e3       73,45e3    -2,20%     69,47e3    -7,49%
+ *
+ * Oftewel: de regel die er staat ligt op ELKE grootheid dichter bij de tabel
+ * dan wat dit script ervan zou maken, op Iz en Wz;el zelfs een factor 3.
+ *
+ * Dat is de valkuil bij deze ene regel. Zolang "UNP 350" in de brontabel stond,
+ * kwam UNP350 in --valideer als slechtste van de hele database uit (Iz -4,7%,
+ * Wz;el -5,4%) en las dat als een fout in de regel. Maar --valideer meet de
+ * database TEGEN DIT MODEL, en voor h = 350 is het model zelf de partij die
+ * ernaast zit (zie de brontabel bij UNP). Die uitslag was dus geen bewijs dat
+ * de regel fout is; hem "herstellen" met berekenUProfielSchuin zou zijn
+ * Iz-fout van 1,9% naar 6,5% brengen en zijn Wz;el-fout van 2,2% naar 7,5%.
+ * Daarom staat UNP350 niet in HERSTEL_UNP en staat "UNP 350" niet in de
+ * brontabel. Alleen It en Iw worden wel vervangen (HERSTEL_UNP_TORSIE): dat
+ * zijn de twee grootheden waarvoor de bovenstaande tabel geen gepubliceerde
+ * waarde geeft, en waarvoor de bovengrens Iw <= Iz*hs^2/4 uit de eindcontrole
+ * het enige houvast is.
+ *
+ * De regel wordt sinds deze ronde wél tegen de gepubliceerde tabel bewaakt,
+ * buiten dit script om: design-mockup/test-unp-tabel.mjs.
  */
 
 /** Holle doorsneden uit de handmatig ingevoerde set (SHS/RHS/CHS). */

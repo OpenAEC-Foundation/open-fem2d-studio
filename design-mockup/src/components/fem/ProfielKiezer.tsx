@@ -56,8 +56,9 @@ import {
   korfSamenvatting,
   nuttigeHoogteMm,
   rijOppervlakMm2,
+  type Wapeningskorf,
 } from "../beton/wapeningskorf";
-import { shapeVanBetonDoorsnede } from "../shared/profielVorm";
+import DoorsnedeTekening from "../beton/DoorsnedeTekening";
 import {
   CLT_STROOKBREEDTE_MM,
   CLT_VOORINSTELLINGEN,
@@ -418,11 +419,10 @@ export default function ProfielKiezer({
     () => (houtB > 0 && houtH > 0 ? ({ type: "rect", b: houtB, h: houtH } as const) : null),
     [houtB, houtH],
   );
-  // De tekenvorm en de solvergrootheden komen allebei uit dezelfde doorsnede
+  // De tekening en de solvergrootheden komen allebei uit dezelfde doorsnede
   // die straks het verzoek in gaat; A en I zijn dus letterlijk die waarmee de
   // solver rekent (sectionResolver, bron "beton-bxh" of "beton-vorm").
   const betonNaam = formatConcreteSection(betonDoorsnede);
-  const betonVorm = useMemo(() => shapeVanBetonDoorsnede(betonDoorsnede), [betonNaam]);
   const betonSectie = useMemo(
     () => resolveSection(betonKlasse, betonNaam),
     [betonKlasse, betonNaam],
@@ -634,21 +634,32 @@ export default function ProfielKiezer({
     (!betonHeeftFlens ||
       (betonBw > 0 && betonHf > 0 && betonBw < betonB && betonHf < betonH));
   /**
+   * De korf zoals de controle én de tekening hem zien: één object, zodat er
+   * geen tweede plaats is waar de doorsnede of de staven anders kunnen
+   * uitpakken. De velden die deze stap niet kent — staalsoort, aantal stroken,
+   * staaltak — komen uit [`STANDAARD_KORF`]; die spelen in de meetkunde en in
+   * `controleerKorf` geen rol en reizen pas bij het toetsen mee.
+   */
+  const betonKorfGeheel: Wapeningskorf = useMemo(
+    () => ({
+      ...STANDAARD_KORF,
+      doorsnede: betonDoorsnede,
+      betonklasse: betonKlasse,
+      korf: betonKorf,
+    }),
+    // betonDoorsnede is elke render een nieuw object; betonNaam is de
+    // tekstvorm ervan en verandert precies wanneer de doorsnede verandert.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [betonNaam, betonKlasse, betonKorf],
+  );
+  /**
    * De korf langs dezelfde controle als het korfpaneel en de rekenkern — zo
    * krijgt de gebruiker de reden hier te zien in plaats van bij het toetsen.
    * `null` = in orde.
    */
   const betonKorfFout = useMemo(
-    () =>
-      betonDoorsnedeGeldig
-        ? controleerKorf({
-            ...STANDAARD_KORF,
-            doorsnede: betonDoorsnede,
-            betonklasse: betonKlasse,
-            korf: betonKorf,
-          })
-        : null,
-    [betonDoorsnedeGeldig, betonNaam, betonKlasse, betonKorf],
+    () => (betonDoorsnedeGeldig ? controleerKorf(betonKorfGeheel) : null),
+    [betonDoorsnedeGeldig, betonKorfGeheel],
   );
   // Een korf die niet past wordt niet toegepast: de rekenkern zou hem toch
   // weigeren, en dan komt de melding pas bij het toetsen — ver van de plaats
@@ -1215,20 +1226,50 @@ export default function ProfielKiezer({
                   </label>
                 </>
               )}
-              {betonVorm && betonDoorsnedeGeldig && (
-                <div className="pk-tekening">
-                  <ProfielMiniatuur
-                    shape={betonVorm}
-                    materiaal="beton"
-                    titel={`Doorsnede ${betonNaam}`}
+              {/* De doorsnede MET de korf erin: dezelfde tekening als bij de
+                  staafeigenschappen (`beton/DoorsnedeTekening`), geen tweede
+                  tekenkant. Wat er rechts in de kolom "Wapening en milieu"
+                  wordt ingevuld, staat hier meteen in beeld.
+
+                  Klopt de korf niet — en tijdens het typen klopt hij geregeld
+                  even niet — dan tekent hij alleen het beton en staat de reden
+                  eronder. Verzonnen staven zijn erger dan geen staven: ze zien
+                  er hetzelfde uit als een korf die er wél zo ligt. */}
+              {betonDoorsnedeGeldig && (
+                <div className="pk-tekening pk-tekening-beton">
+                  <DoorsnedeTekening
+                    korf={betonKorfGeheel}
+                    wapening={betonKorfFout === null}
                   />
+                  {betonKorfFout !== null && (
+                    <div className="pk-tekening-reden">
+                      Alleen de omtrek: de wapening is zo niet te tekenen — zie
+                      de melding onderaan deze kolom.
+                    </div>
+                  )}
                 </div>
               )}
               {betonDoorsnedeGeldig && (
                 <div className="pk-eigenschappen">
-                  <div className="pk-eig-rij"><span>A</span><code>{nlGetal(betonSectie.A)} mm²</code></div>
-                  <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(betonSectie.I / 1e4)} cm⁴</code></div>
+                  <div className="pk-eig-rij"><span>A_c</span><code>{nlGetal(betonSectie.A)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>I_y,c</span><code>{nlGetal(betonSectie.I / 1e4)} cm⁴</code></div>
                   <div className="pk-eig-rij"><span>E_cm</span><code>{CONCRETE_E_CM[betonKlasse] ?? "—"} N/mm²</code></div>
+                </div>
+              )}
+              {/* Waarom hier "A_c" en niet "A" staat: deze drie beschrijven de
+                  ONGESCHEURDE betondoorsnede zónder wapening — precies wat
+                  `sectionResolver` de solver meegeeft. Ze bewegen dus NIET mee
+                  met de korf hiernaast, en dat moet er staan: anders leest een
+                  I_y als de buigstijfheid waarmee straks gerekend wordt,
+                  terwijl de toetsing met de gescheurde doorsnede en de
+                  wapening erin werkt (M-N-κ bij de staafeigenschappen). */}
+              {betonDoorsnedeGeldig && (
+                <div className="pk-hint">
+                  A<sub>c</sub>, I<sub>y,c</sub> en E<sub>cm</sub> zijn van de
+                  ongescheurde betondoorsnede zónder wapening — de stijfheid
+                  waarmee de solver rekent. Ze bewegen dus niet mee met de korf
+                  hiernaast; de toetsing rekent met de gescheurde doorsnede
+                  inclusief de wapening.
                 </div>
               )}
               {betonHeeftFlens && (

@@ -201,6 +201,24 @@
   max-width: 150px;
   height: auto;
 }
+/* De betondoorsnede toont behalve de contour ook de beugel, de staven en de
+   maten b, h en d, in een tekenvlak van 220 breed. Op 150 px geperst staat de
+   maattekst van 7,5 op ruim 5 px en is die niet meer te lezen; op ware breedte
+   klopt hij weer. De reden waarom de wapening soms ontbreekt hoort eronder en
+   niet ernaast, vandaar de kolomrichting. */
+.pk-tekening-beton {
+  flex-direction: column;
+  gap: 4px;
+}
+.pk-tekening-beton svg {
+  max-width: 220px;
+}
+.pk-tekening-reden {
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--theme-text-muted, var(--theme-text));
+}
 /* De CLT-opbouw mag breder dan een profielminiatuur: hij toont geen enkele
    contour maar een stapel lagen met per laag een label ernaast, en op 150 px
    zijn die labels niet meer te lezen. De hoogteopbouw is hier het onderwerp,
