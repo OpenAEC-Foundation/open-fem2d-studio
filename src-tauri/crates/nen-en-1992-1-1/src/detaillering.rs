@@ -1494,6 +1494,60 @@ pub fn detailleringstoetsen(inv: &DetailleringInvoer) -> Vec<ResistanceCalc> {
     ]
 }
 
+/// De id's van alle toetsen die [`detailleringstoetsen`] oplevert.
+///
+/// # Waarom deze lijst bestaat
+///
+/// Een laag die toetsen rangschikt moet kunnen zien WELK SOORT eis een toets
+/// is, en dat is aan een unity check alleen niet af te lezen. Het verschil:
+///
+/// * Een STERKTE- of BRUIKBAARHEIDSTOETS **begrenst de staaf**. Zijn unity
+///   check is de verhouding tussen wat er gebeurt en wat de doorsnede aankan;
+///   0,63 betekent dat er nog 37 % over is vóórdat de staaf bezwijkt of
+///   ontoelaatbaar vervormt. Zo'n getal zegt iets over de grens van het
+///   ontwerp.
+/// * Een DETAILLERINGSEIS is een **uitvoeringsregel**: een aanwezige maat
+///   naast een voorgeschreven maat. "De beugel moet ten minste Ø5 zijn" is
+///   met Ø8 vervuld, en de unity check 5/8 = 0,625 is niet meer dan de
+///   wiskundige uitdrukking van díé vervulling. Ze meet geen reserve — Ø8 is
+///   niet "voor 62 % opgebruikt", en een dunnere beugel maakt de staaf niet
+///   zwaarder belast maar eenvoudigweg niet meer regelconform.
+///
+/// Wie beide soorten louter op unity check sorteert, kan daardoor een eis
+/// waaraan ruim wordt voldaan bovenaan zetten, en meldt dan een MAATGEVENDE
+/// toets die niets begrenst. Zie [`is_detailleringstoets`] voor het gebruik.
+///
+/// De lijst wordt door `de_lijst_dekt_alle_detailleringstoetsen` vastgepind op
+/// wat [`detailleringstoetsen`] werkelijk teruggeeft: komt er een tiende eis
+/// bij, dan valt die test om in plaats van dat de nieuwe eis stilzwijgend als
+/// sterktetoets wordt behandeld.
+pub const DETAILLERINGSTOETS_IDS: [&str; 9] = [
+    "9.2.1.1_as_min",
+    "9.2.1.1_as_max",
+    "9.2.1.1_min_diameter_langs",
+    "9.2.2_rho_w_min",
+    "9.2.2_sl_max",
+    "9.2.2_st_max",
+    "9.2.2_min_diameter_beugel",
+    "9.2_min_balkbreedte",
+    "8.2_vrije_staafafstand",
+];
+
+/// Is `id` de id van een detailleringseis (§9.2.1, §9.2.2, §8.2)?
+///
+/// Bedoeld voor de laag die de MAATGEVENDE toets van een staaf kiest. Een
+/// detailleringseis die VOLDOET hoort daar niet aan mee te doen: hij begrenst
+/// de staaf niet, hij is uitgevoerd (zie [`DETAILLERINGSTOETS_IDS`]). Een
+/// detailleringseis die FAALT hoort er wél aan mee te doen — dan is de korf
+/// niet uit te voeren zoals hij is getekend, en dát begrenst het ontwerp wel
+/// degelijk.
+///
+/// De unity check zelf blijft in beide gevallen gewoon in de toetslijst
+/// staan; er wordt hier niets weggelaten, alleen anders gerangschikt.
+pub fn is_detailleringstoets(id: &str) -> bool {
+    DETAILLERINGSTOETS_IDS.contains(&id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2190,6 +2244,26 @@ mod tests {
         for id in ["9.2.2_rho_w_min", "9.2.2_sl_max", "9.2.2_st_max", "9.2.2_min_diameter_beugel"] {
             let c = alle.iter().find(|c| c.id == id).unwrap();
             assert_eq!(c.status, CheckStatus::NotApplicable, "{id} hoort NotApplicable te zijn");
+        }
+    }
+
+    /// [`DETAILLERINGSTOETS_IDS`] moet EXACT de toetsen dekken die
+    /// [`detailleringstoetsen`] oplevert — niet meer en niet minder.
+    ///
+    /// De lijst stuurt de keuze van de maatgevende toets aan. Een tiende eis
+    /// die er niet in staat, zou daar als sterktetoets meelopen en met een
+    /// gevulde minimum-eis de hele staaf kunnen overnemen. Precies dát moet
+    /// hier omvallen in plaats van in het rapport.
+    #[test]
+    fn de_lijst_dekt_alle_detailleringstoetsen() {
+        let o = opzet();
+        let alle: Vec<String> = detailleringstoetsen(&invoer(&o)).iter().map(|c| c.id.clone()).collect();
+        assert_eq!(alle.len(), DETAILLERINGSTOETS_IDS.len(), "aantal eisen gewijzigd: {alle:?}");
+        for id in &alle {
+            assert!(is_detailleringstoets(id), "{id} ontbreekt in DETAILLERINGSTOETS_IDS");
+        }
+        for id in DETAILLERINGSTOETS_IDS {
+            assert!(alle.iter().any(|a| a == id), "{id} staat in de lijst maar wordt niet meer getoetst");
         }
     }
 }

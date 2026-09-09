@@ -57,6 +57,10 @@ import {
   exporteer as exporteerEigenDoorsneden,
   importeer as importeerEigenDoorsneden,
 } from "./lib/profieleditor/eigenDoorsnedenStore";
+import {
+  exporteer as exporteerCltOpbouwen,
+  importeer as importeerCltOpbouwen,
+} from "./lib/profieleditor/cltOpbouwenStore";
 import { isTauriApp } from "./lib/tauri";
 import { getSetting, setSetting } from "./store";
 import "./themes.css";
@@ -70,6 +74,37 @@ const ThreeViewer = lazy(() => import("./components/panels/ThreeViewer"));
  * behandelen, kort genoeg om als directe reactie te voelen.
  */
 const HERBEREKEN_VERTRAGING_MS = 300;
+
+/**
+ * De bibliotheken uit een geopend projectbestand samenvoegen met de lokale.
+ *
+ * Beide winkels voegen SAMEN in plaats van te vervangen, en het PROJECT wint
+ * bij een gelijke naam — het bestand beschrijft immers waarmee dít model is
+ * doorgerekend. Vroeger verving het openen de lokale lijst compleet: twee
+ * projecten na elkaar openen wiste de doorsneden van het eerste.
+ *
+ * Wat het project overschrijft is geen bijzaak, dus geeft deze functie de
+ * overschreven namen terug om te MELDEN. Stil overschrijven is precies het
+ * probleem dat het samenvoegen oplost; het zou er anders alleen zachter
+ * uitzien.
+ *
+ * Een ouder bestand zonder deze velden laat de lokale bibliotheken ongemoeid.
+ */
+function voegBibliothekenSamen(parsed: {
+  eigenDoorsneden?: Parameters<typeof importeerEigenDoorsneden>[0];
+  eigenCltOpbouwen?: Parameters<typeof importeerCltOpbouwen>[0];
+}): string | null {
+  const delen: string[] = [];
+  if (parsed.eigenDoorsneden) {
+    const namen = importeerEigenDoorsneden(parsed.eigenDoorsneden);
+    if (namen.length > 0) delen.push(`doorsneden: ${namen.join(", ")}`);
+  }
+  if (parsed.eigenCltOpbouwen) {
+    const namen = importeerCltOpbouwen(parsed.eigenCltOpbouwen);
+    if (namen.length > 0) delen.push(`CLT-opbouwen: ${namen.join(", ")}`);
+  }
+  return delen.length > 0 ? delen.join(" · ") : null;
+}
 
 /**
  * Detached window — shows only one view, no ribbon/backstage/etc.
@@ -278,7 +313,13 @@ function App() {
     scheefstandRichting: fem.scheefstandRichting,
     // Eigen doorsneden reizen mee in het projectbestand: een staaf met
     // `EIGEN:<naam>` moet op een andere machine dezelfde doorsnede vinden.
-    eigenDoorsneden: exporteerEigenDoorsneden(),
+    // Alleen de doorsneden die dit model daadwerkelijk gebruikt — anders
+    // draagt elk projectbestand de complete persoonlijke bibliotheek mee.
+    eigenDoorsneden: exporteerEigenDoorsneden(fem.beams),
+    // Idem voor de eigen CLT-vloeropbouwen; die reizen als BIJSCHRIFT mee
+    // (de opbouw zelf staat al in de profielnaam van de staaf), en alleen
+    // voor de opbouwen die in dit model voorkomen.
+    eigenCltOpbouwen: exporteerCltOpbouwen(fem.beams),
   }), [fem]);
 
   // ── C2: dirty-vlag ("niet-opgeslagen wijzigingen") ──────────────────────
@@ -381,9 +422,8 @@ function App() {
     try {
       const parsed = deserializeProject(opened.text);
       baselineResetRef.current = true;
-      // Vóór het model: de staven verwijzen naar deze doorsneden. Een ouder
-      // bestand zonder het veld laat de lokale lijst staan.
-      if (parsed.eigenDoorsneden) importeerEigenDoorsneden(parsed.eigenDoorsneden);
+      // Vóór het model: de staven verwijzen naar deze doorsneden.
+      const overschreven = voegBibliothekenSamen(parsed);
       fem.loadProjectState({
         nodes: parsed.nodes,
         beams: parsed.beams,
@@ -407,8 +447,11 @@ function App() {
       });
       setProjectPath(opened.path);
       addRecentFile(opened.path);
-      const { notifySuccess } = await import("./io/notify");
+      const { notifySuccess, notifyWarning } = await import("./io/notify");
       notifySuccess("Project geopend", opened.path.split(/[\\/]/).pop());
+      if (overschreven) {
+        notifyWarning("Bibliotheek bijgewerkt door dit project", overschreven);
+      }
     } catch (e) {
       const { notifyWarning } = await import("./io/notify");
       notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
@@ -428,7 +471,11 @@ function App() {
       const text = await readTextFile(path);
       const parsed = deserializeProject(text);
       baselineResetRef.current = true;
-      if (parsed.eigenDoorsneden) importeerEigenDoorsneden(parsed.eigenDoorsneden);
+      // Zelfde route als "Openen…": ook een recent bestand moet de
+      // bibliotheken samenvoegen en het overschrijven melden — twee openpaden
+      // die zich anders gedragen is een bug die zich als een instelling
+      // vermomt.
+      const overschreven = voegBibliothekenSamen(parsed);
       fem.loadProjectState({
         nodes: parsed.nodes, beams: parsed.beams, supports: parsed.supports,
         plates: parsed.plates, loads: parsed.loads,
@@ -449,6 +496,9 @@ function App() {
       setProjectPath(path);
       addRecentFile(path);
       notifySuccess("Project geopend", path.split(/[\\/]/).pop());
+      if (overschreven) {
+        notifyWarning("Bibliotheek bijgewerkt door dit project", overschreven);
+      }
     } catch (e) {
       notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
     }

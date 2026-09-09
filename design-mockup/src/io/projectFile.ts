@@ -8,6 +8,7 @@ import type {
 } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { EigenDoorsnede } from "../lib/profieleditor/types";
+import type { EigenCltOpbouw } from "../lib/profieleditor/cltOpbouwenStore";
 
 export const PROJECT_FILE_EXT = "ifcfem2d";
 /**
@@ -48,6 +49,10 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      oudere versie van de app negeert het veld bij het lezen, want die
  *      leest de lasten ook als geheel. Het veld is documentatie: er verschuift
  *      geen enkel rekengetal door.
+ *      Eveneens optioneel binnen v2 (geen versie-bump): `eigenCltOpbouwen` —
+ *      de namen die de gebruiker aan zijn CLT-vloeropbouwen gaf. Puur
+ *      bijschrift: de opbouw zelf staat in de profielnaam van de staaf, dus
+ *      een bestand zonder dit veld rekent identiek door.
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
@@ -140,8 +145,25 @@ export interface ProjectFile {
    * Eigen doorsneden uit de profieleditor waarnaar staven verwijzen
    * (`EIGEN:<naam>`); v2, optioneel — geen versie-bump. Ontbreekt het veld
    * (ouder bestand), dan blijft de lokaal bewaarde lijst ongemoeid.
+   *
+   * Alleen de GEBRUIKTE doorsneden staan erin (zie `exporteer` in
+   * eigenDoorsnedenStore); bij het openen worden ze SAMENGEVOEGD met de
+   * lokale bibliotheek, waarbij het project wint bij een gelijke naam.
    */
   eigenDoorsneden?: EigenDoorsnede[];
+  /**
+   * Eigen CLT-vloeropbouwen: de NAMEN die de gebruiker aan opbouwen gaf,
+   * v2, optioneel — geen versie-bump.
+   *
+   * Anders dan bij `eigenDoorsneden` is dit geen afhankelijkheid maar een
+   * bijschrift: een CLT-staaf draagt zijn opbouw volledig in de profielnaam
+   * ("CLT 40L:C24/20D:C16/40L b600"), dus een bestand zonder dit veld rekent
+   * exact hetzelfde door — je mist alleen de naam waaronder de gebruiker de
+   * opbouw kent. Alleen opbouwen die in dít model voorkomen gaan mee (zie
+   * `exporteer` in cltOpbouwenStore), en bij het openen worden ze op dezelfde
+   * manier samengevoegd als de eigen doorsneden.
+   */
+  eigenCltOpbouwen?: EigenCltOpbouw[];
 }
 
 export function serializeProject(state: Omit<ProjectFile, "format" | "version" | "savedAt">): string {

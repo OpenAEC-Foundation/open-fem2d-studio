@@ -52,6 +52,16 @@ export interface Verloop {
   /** Aslabel, bijv. "σm,d". */
   label: string;
   eenheid: string;
+  /**
+   * Korte regel onder het aslabel, bijv. "bij x = 2,50 m".
+   *
+   * WAAROM DIE REGEL ER MOET STAAN: σ hoort bij het maatgevende MOMENT-punt en
+   * τ bij het maatgevende DWARSKRACHT-punt, en dat zijn twee VERSCHILLENDE
+   * punten in de omhullende. Drie panelen naast elkaar lezen als één toestand
+   * van de doorsnede; zonder deze regel is er niets dat zegt dat het er twee
+   * zijn. De volledige zin hoort in het bijschrift van de figuur.
+   */
+  noot?: string;
 }
 
 /**
@@ -151,16 +161,31 @@ const FRAME_W = XC + WC + 16;
  * labelkolom. Het rapportkader (362 breed) zou hier voor een derde tekening
  * zijn en voor twee derde wit, en de doorsnede daarmee onnodig klein maken.
  *
- * De labelkolom is breed genoeg voor "40 mm · C24"; staat er ook nog
- * "◂ maatgevend" achter, dan moet het kader mee. De ondergrens (178) is de
- * legenda eronder, die breder is dan de laaglabels zelf.
+ * De labelkolom is breed genoeg voor "40 mm · C24", en "◂ maatgevend" staat
+ * op een eigen regel eronder en niet erachter, dus die verbreedt het kader
+ * niet. De ondergrens (178) is de legenda eronder, die breder is dan de
+ * laaglabels zelf.
  */
 const FRAME_W_SMAL = Math.max(XLAB + 56 + 8, 178);
-const FRAME_W_SMAL_GOV = XLAB + 96 + 8;
 const FRAME_H = Y0 + DRAW_H + 32;
 const TICK = 3;
 
-function fmt(v: number, digits = 2): string {
+/**
+ * Aantal decimalen van een spanningslabel: twee, of DRIE zodra de waarde
+ * onder 1 ligt.
+ *
+ * Waarom die uitzondering: schuifspanningen in kruislaaghout liggen in de orde
+ * van honderdsten. Met twee decimalen leest een τ_d van 0,099 N/mm² als "0,1"
+ * terwijl de tabel ernaast 0,099 zegt — dezelfde grootheid, twee antwoorden op
+ * één blad. Spiegel van `spanning_decimalen` in
+ * `src-tauri/crates/report/src/houtfiguren.rs`; de twee moeten gelijk blijven,
+ * anders zegt het papier iets anders dan het scherm.
+ */
+export function spanningsDecimalen(v: number): number {
+  return Math.abs(v) < 1 ? 3 : 2;
+}
+
+function fmt(v: number, digits = spanningsDecimalen(v)): string {
   return v.toLocaleString("nl-NL", { maximumFractionDigits: digits });
 }
 
@@ -293,6 +318,11 @@ function SpanningsPaneel({
       <text x={xAs} y={Y0 + DRAW_H + 12} fill={k.tekst} fontSize="7" textAnchor="middle">
         {verloop.label} ({verloop.eenheid})
       </text>
+      {verloop.noot && (
+        <text x={xAs} y={Y0 + DRAW_H + 20} fill={k.maatlijn} fontSize="5.8" textAnchor="middle">
+          {verloop.noot}
+        </text>
+      )}
     </g>
   );
 }
@@ -334,10 +364,12 @@ export default function CltOpbouwTekening({
   // Zonder spanningen blijft alleen paneel 1 over; het kader krimpt mee zodat
   // de doorsnede de beschikbare breedte pakt in plaats van een strook wit.
   const smal = !sigma && !tau;
-  const frameW = smal ? (gov ? FRAME_W_SMAL_GOV : FRAME_W_SMAL) : FRAME_W;
-  // De legenda-regel over de maatgevende laag past in het smalle kader niet
-  // meer achter "dwarslaag (rolschuiving)"; die krijgt dan een eigen regel.
-  const govOpEigenRegel = smal && gov;
+  const frameW = smal ? FRAME_W_SMAL : FRAME_W;
+  // De uitleg van de zware contour krijgt ALTIJD een eigen regel zodra er een
+  // maatgevende laag is. Achter "dwarslaag (rolschuiving)" aangeplakt loopt hij
+  // in het brede kader tot onder het σ-paneel door, en botst hij daar op de
+  // regel "bij x = … m" die zegt bij welk punt dat paneel hoort.
+  const govOpEigenRegel = gov;
   const frameH = FRAME_H + (govOpEigenRegel ? 10 : 0);
 
   return (
@@ -366,6 +398,14 @@ export default function CltOpbouwTekening({
         const y = Y0 + grenzen[i].zTop * s;
         const h = l.dikte * s;
         const patroon = l.richting === "Longitudinal" ? `${uid}-lengte` : `${uid}-dwars`;
+        // "maatgevend" op een TWEEDE regel, niet achter het label aan. De
+        // labelkolom is 70 eenheden breed en "40 mm · C24 ◂ maatgevend" is er
+        // ruim twintig te lang; die overloop wordt door het σ-paneel — dat
+        // later getekend wordt — gewoon overschilderd, zodat er "maatgeven"
+        // overbleef. Past de tweede regel niet in de laag, dan blijft de zware
+        // contour over, en die staat in de legenda uitgelegd.
+        const tweeRegels = !!l.maatgevend && h >= 16;
+        const yLabel = tweeRegels ? y + h / 2 - 1 : y + h / 2 + 2.4;
         return (
           <g key={i}>
             <rect x={XA} y={y} width={WA} height={h} fill={k.houtVlak} />
@@ -379,15 +419,20 @@ export default function CltOpbouwTekening({
               stroke={l.maatgevend ? k.contourMaatgevend : k.contour}
               strokeWidth={l.maatgevend ? 1.5 : 0.7}
             />
-            <text x={XLAB} y={y + h / 2 + 2.4} fill={k.tekst} fontSize="6.8">
+            <text x={XLAB} y={yLabel} fill={k.tekst} fontSize="6.8">
               {maat(l.dikte)} mm{l.klasse ? ` · ${l.klasse}` : ""}
-              {l.maatgevend && (
-                <tspan fill={k.tekstMaatgevend} fontStyle="italic">
-                  {" "}
-                  ◂ maatgevend
-                </tspan>
-              )}
             </text>
+            {tweeRegels && (
+              <text
+                x={XLAB}
+                y={yLabel + 7.5}
+                fill={k.tekstMaatgevend}
+                fontSize="6.8"
+                fontStyle="italic"
+              >
+                ◂ maatgevend
+              </text>
+            )}
           </g>
         );
       })}

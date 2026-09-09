@@ -53,23 +53,20 @@ import {
 export const CLT_STROOKBREEDTE_MM = 1000;
 
 /**
- * Standaardopbouwen — browser-fallback voor het command `list_clt_presets`
- * en moet daarmee overeenkomen (`nen-en-1995-1-1/src/clt.rs`). Het zijn
- * VOORINSTELLINGEN met ronde lameldikten, geen productmaten; de gebruiker
- * past ze vrij aan.
+ * Standaardopbouwen — GEGENEREERD uit de Rust-kern (`clt_presets()` in
+ * `nen-en-1995-1-1/src/clt.rs`), de bron die ook het command
+ * `list_clt_presets`, de toetsbrug en de MCP-server bedienen.
+ *
+ * Waarom een gegenereerde lijst en niet een aanroep van de kern: de
+ * profielkiezer moet ook werken zonder gebouwde kern (browser, dev-server),
+ * dus een lijst in TypeScript blijft nodig. Die met de hand gelijk houden ging
+ * eerder mis; nu schrijft de generator hem uit de kern.
+ *
+ * Bijwerken doe je dus in de kern, daarna:
+ *   node scripts/genereer-clt-voorinstellingen.mjs
+ * `test-clt-voorinstellingen.mjs` valt om zodra de twee uiteenlopen.
  */
-export const CLT_VOORINSTELLINGEN: readonly CltPreset[] = [
-  { name: "3-laags 60", thicknesses_mm: [20, 20, 20], height_mm: 60 },
-  { name: "3-laags 90", thicknesses_mm: [30, 30, 30], height_mm: 90 },
-  { name: "3-laags 120", thicknesses_mm: [40, 40, 40], height_mm: 120 },
-  { name: "5-laags 100", thicknesses_mm: [20, 20, 20, 20, 20], height_mm: 100 },
-  { name: "5-laags 140", thicknesses_mm: [40, 20, 20, 20, 40], height_mm: 140 },
-  { name: "5-laags 160", thicknesses_mm: [40, 20, 40, 20, 40], height_mm: 160 },
-  { name: "5-laags 200", thicknesses_mm: [40, 40, 40, 40, 40], height_mm: 200 },
-  { name: "7-laags 200", thicknesses_mm: [30, 20, 30, 40, 30, 20, 30], height_mm: 200 },
-  { name: "7-laags 240", thicknesses_mm: [40, 30, 30, 40, 30, 30, 40], height_mm: 240 },
-  { name: "7-laags 280", thicknesses_mm: [40, 40, 40, 40, 40, 40, 40], height_mm: 280 },
-];
+export { CLT_VOORINSTELLINGEN } from "./cltVoorinstellingen.generated";
 
 /** Nederlandse benaming van de laagrichting. */
 export function richtingLabel(r: CltLayerOrientation): string {
@@ -160,6 +157,27 @@ export function formatCltProfiel(layup: CltLayup, standaardKlasse: string): stri
 function maatTekst(v: number): string {
   const r = Math.round(v * 10) / 10;
   return Number.isInteger(r) ? String(r) : String(r);
+}
+
+/**
+ * Canonieke sleutel van een opbouw: twee opbouwen zijn dezelfde opbouw
+ * precies wanneer hun sleutel gelijk is.
+ *
+ * Waaróm dit niet met `formatCltProfiel(layup, klasse)` kan: die naam is
+ * bewust de KORTSTE — richting en klasse verdwijnen eruit zodra ze met de
+ * standaard samenvallen. Twee opbouwen die alleen in richting of klasse
+ * verschillen kunnen daardoor dezelfde korte naam krijgen, en dan lijken ze
+ * gelijk terwijl ze mechanisch niets met elkaar te maken hebben. De sleutel
+ * gebruikt daarom een standaardklasse die nooit voorkomt (lege tekst), zodat
+ * élke laag zijn klasse voluit schrijft, en zet de strookbreedte er altijd
+ * bij in plaats van alleen bij afwijking.
+ *
+ * Gebruikt om te herkennen welke voorinstelling of bewaarde opbouw op het
+ * scherm staat, en om bij het opslaan van een project te zien welke bewaarde
+ * opbouwen daadwerkelijk op een staaf voorkomen.
+ */
+export function cltOpbouwSleutel(layup: CltLayup): string {
+  return `b${maatTekst(layup.width_mm)}|${formatCltProfiel(layup, "")}`;
 }
 
 /** Totale dikte h = Σ t_i (mm). */
@@ -285,6 +303,178 @@ export function cltTauOpZ(mech: CltMechanica, z: number, vKn: number, kCr = 1): 
   const bEf = kCr * mech.breedte;
   if (!(mech.eiEf > 0) || !(bEf > 0)) return 0;
   return (Math.abs(vKn) * 1e3 * Math.abs(cltEsBoven(mech, z))) / (mech.eiEf * bEf);
+}
+
+// ── De opbouw van I_y ───────────────────────────────────────────────────────
+
+/**
+ * E van de bovenste lengtelaag: de referentiestijfheid waartegen I_ef,net
+ * wordt afgemeten. Spiegel van `CltMechanics::reference_e_mpa`.
+ */
+export function cltReferentieEMpa(mech: CltMechanica): number | null {
+  const l = mech.lagen.find((x) => x.e > 0);
+  return l ? l.e : null;
+}
+
+/**
+ * I_ef,net = (EI)_ef / E_ref (mm⁴). Spiegel van `CltMechanics::i_ef_net_mm4`.
+ *
+ * HULPGROOTHEID, geen rekenwaarde: de toetsing rekent met (EI)_ef zelf. Hij
+ * hoort in de uitdraai omdat hij de opbouw vergelijkbaar maakt met een
+ * massieve rechthoek — en omdat het verschil tussen Σ(I_i + A_i·a_i²) en
+ * I_ef,net precies laat zien wat een AFWIJKENDE E-modulus per laag doet.
+ * Zijn alle lengtelagen van dezelfde sterkteklasse, dan vallen die twee
+ * samen; zijn ze dat niet, dan is I_ef,net een E-gewogen grootheid en de
+ * meetkundige som niet. Zie [`cltLagenZelfdeE`].
+ */
+export function cltIEfNetMm4(mech: CltMechanica): number {
+  const eRef = cltReferentieEMpa(mech);
+  return eRef !== null && eRef > 0 ? mech.eiEf / eRef : 0;
+}
+
+/**
+ * Hebben alle DRAGENDE (lengte)lagen dezelfde E? Alleen dan is de
+ * meetkundige som Σ(I_i + A_i·a_i²) gelijk aan I_ef,net, en mag een tabel de
+ * som als I_ef,net opschrijven.
+ */
+export function cltLagenZelfdeE(mech: CltMechanica): boolean {
+  const e = cltReferentieEMpa(mech);
+  if (e === null) return false;
+  return mech.lagen.every((l) => l.e === 0 || l.e === e);
+}
+
+/** Eén regel in de tabel "opbouw van I_y" — bijlage B (B.1) t/m (B.3), (B.6). */
+export interface CltLaagStijfheid {
+  /** 1-gebaseerd, zoals in het kernresultaat en in alle tabellen. */
+  index: number;
+  richting: CltLayerOrientation;
+  /** Laagdikte t_i (mm). */
+  t: number;
+  /** E_i in de spanrichting (N/mm²); 0 voor een dwarslaag. */
+  e: number;
+  /** A_i = b·t_i (mm²) — (B.2). */
+  a: number;
+  /** I_i = b·t_i³/12 (mm⁴) — (B.3). */
+  iEigen: number;
+  /** a_i: laagzwaartepunt → zwaartelijn (mm), positief naar beneden — (B.6). */
+  arm: number;
+  /** De Steiner-term A_i·a_i² (mm⁴). */
+  steiner: number;
+  /** I_i + A_i·a_i² (mm⁴); de bijdrage aan I_ef,net van een dragende laag. */
+  iTotaal: number;
+  /** E_i·(I_i + A_i·a_i²) (N·mm²) — de bijdrage aan (EI)_ef. */
+  eiBijdrage: number;
+  /** Draagt deze laag in de spanrichting? (E_i > 0, dus een lengtelaag.) */
+  draagt: boolean;
+}
+
+/**
+ * De opbouw van I_y per laag: A_i, het eigen traagheidsmoment I_i, de arm a_i
+ * en de Steiner-term A_i·a_i², plus de E-gewogen bijdrage aan (EI)_ef.
+ *
+ * ALLE lagen komen terug, ook de dwarslagen. Hun A_i en I_i bestaan wel
+ * degelijk; met E_i = 0 dragen ze alleen niets bij. Dat verschil is juist wat
+ * de tabel moet tonen — wie de dwarslagen weglaat, laat de lezer zelf raden
+ * waarom de som niet op b·h³/12 uitkomt.
+ *
+ * Spiegel van `LayerGeometry` in `nen-en-1995-1-1/src/clt.rs`
+ * (`area_mm2`, `i_own_mm4`, `arm_mm`, `ei_contribution_nmm2`).
+ */
+export function cltLaagStijfheden(mech: CltMechanica): CltLaagStijfheid[] {
+  return mech.lagen.map((l, i) => {
+    const t = l.zOnder - l.zBoven;
+    const a = mech.breedte * t;
+    const iEigen = (mech.breedte * t * t * t) / 12;
+    const arm = (l.zBoven + l.zOnder) / 2 - mech.z0;
+    const steiner = a * arm * arm;
+    return {
+      index: i + 1,
+      richting: l.richting,
+      t,
+      e: l.e,
+      a,
+      iEigen,
+      arm,
+      steiner,
+      iTotaal: iEigen + steiner,
+      eiBijdrage: l.e * (iEigen + steiner),
+      draagt: l.e > 0,
+    };
+  });
+}
+
+// ── Het getekende spanningsverloop ──────────────────────────────────────────
+
+/** Monsterpunten per lengtelaag; τ verloopt daar parabolisch. */
+export const CLT_TAU_MONSTERS_LENGTELAAG = 9;
+/** Monsterpunten per dwarslaag; τ is daar constant (E = 0 ⇒ (ES) constant). */
+export const CLT_TAU_MONSTERS_DWARSLAAG = 2;
+/**
+ * Twee monsterhoogten die dichter dan dit bij elkaar liggen zijn hetzelfde
+ * punt. Nodig voor de gedeelde laaggrens (de onderkant van laag i is de
+ * bovenkant van laag i+1) en voor een zwaartelijn die toevallig op zo'n grens
+ * valt. 10⁻⁹ mm is een picometer: ruim onder alles wat een tekening kan
+ * betekenen.
+ */
+export const CLT_MONSTER_SAMENVAL_MM = 1e-9;
+
+/**
+ * De hoogten (mm vanaf boven) waarop het τ-verloop wordt bemonsterd.
+ *
+ * DE ZWAARTELIJN IS EEN VAST MONSTERPUNT wanneer hij BINNEN een lengtelaag
+ * valt. Daar ligt de piek van τ, en de kern evalueert hem daar expliciet:
+ * `CltMechanics::layer_max_shear` voegt z₀ als kandidaat toe onder precies
+ * deze voorwaarde (`e_mpa > 0 && z0 > z_top && z0 < z_bot`). Zonder dat punt
+ * viel de getekende piek bij een ASYMMETRISCHE opbouw LAGER uit dan de τ_d in
+ * de tabel ernaast — dezelfde grootheid, twee antwoorden op één blad. Bij een
+ * symmetrische opbouw viel dat niet op, omdat z₀ daar samenvalt met een
+ * gelijkmatig monsterpunt.
+ *
+ * In een dwarslaag wordt z₀ NIET toegevoegd, om dezelfde reden als in de
+ * kern: met E = 0 verandert (ES) daar niet, dus is τ over de hele laag gelijk
+ * en is er geen piek om te raken.
+ */
+export function cltTauMonsterZ(mech: CltMechanica): number[] {
+  const uit: number[] = [];
+  const voegToe = (z: number) => {
+    const laatste = uit[uit.length - 1];
+    if (laatste !== undefined && Math.abs(z - laatste) <= CLT_MONSTER_SAMENVAL_MM) return;
+    uit.push(z);
+  };
+  for (const l of mech.lagen) {
+    const n = l.e > 0 ? CLT_TAU_MONSTERS_LENGTELAAG : CLT_TAU_MONSTERS_DWARSLAAG;
+    const punten: number[] = [];
+    for (let k = 0; k < n; k++) punten.push(l.zBoven + ((l.zOnder - l.zBoven) * k) / (n - 1));
+    if (l.e > 0 && mech.z0 > l.zBoven && mech.z0 < l.zOnder) punten.push(mech.z0);
+    punten.sort((a, b) => a - b);
+    for (const z of punten) voegToe(z);
+  }
+  return uit;
+}
+
+/** Eén punt van een spanningsverloop: hoogte vanaf boven, en de waarde. */
+export interface CltVerlooppunt {
+  z: number;
+  v: number;
+}
+
+/**
+ * Het τ-verloop over de hoogte als één doorlopende reeks punten; V in kN,
+ * b_ef = k_cr·b.
+ */
+export function cltTauVerloop(mech: CltMechanica, vKn: number, kCr = 1): CltVerlooppunt[] {
+  return cltTauMonsterZ(mech).map((z) => ({ z, v: cltTauOpZ(mech, z, vKn, kCr) }));
+}
+
+/**
+ * Het σ-verloop als één segment per laag: lineair van boven- naar onderkant,
+ * nul in de dwarslagen. Spiegel van `CltMechanics::layer_edge_stresses`.
+ */
+export function cltSigmaVerloop(mech: CltMechanica, mKnm: number): CltVerlooppunt[][] {
+  return mech.lagen.map((l, i) => [
+    { z: l.zBoven, v: cltSigmaOpZ(mech, i, l.zBoven, mKnm) },
+    { z: l.zOnder, v: cltSigmaOpZ(mech, i, l.zOnder, mKnm) },
+  ]);
 }
 
 /**

@@ -27,6 +27,14 @@
 //! De reden staat in het rapport; het getal kan niet liegen over iets wat
 //! niet is uitgerekend.
 //!
+//! # Wat "maatgevend" hier betekent
+//!
+//! `governing_check_id` en `uc_max` wijzen de toets aan die de staaf
+//! BEGRENST. Een detailleringseis waaraan wordt VOLDAAN begrenst niets — hij
+//! is een uitvoeringsregel, geen draagvermogen — en doet daarom niet mee aan
+//! die keuze; faalt hij, dan doet hij wél mee. Zie `mag_maatgevend_zijn`.
+//! Alle toetsen blijven onverkort in `checks` staan.
+//!
 //! # De twee grenstoestanden naast elkaar
 //!
 //! `forces_envelope` is de UGT-envelop en voedt §6.1, §6.2, §7.4.2 en §9.2.
@@ -38,7 +46,7 @@
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
 use nen_en_1992_1_1::checks::{check_bending_stress_block, check_mn_kappa};
 use nen_en_1992_1_1::detaillering::{
-    benodigde_trekwapening_mm2, detailleringstoetsen, DetailleringInvoer,
+    benodigde_trekwapening_mm2, detailleringstoetsen, is_detailleringstoets, DetailleringInvoer,
 };
 use nen_en_1992_1_1::dwarskracht::{check_shear, shear_resistance, ShearOptions, Spoor};
 use nen_en_1992_1_1::mnkappa::{
@@ -104,6 +112,60 @@ fn uc_of(c: &NamedCheck) -> f64 {
             }
         }
     }
+}
+
+/// Faalt deze toets? Alleen [`CheckStatus::NotOk`] telt als falen; N/A is
+/// "niet uitgerekend" en Ok is "voldoet".
+fn faalt(c: &NamedCheck) -> bool {
+    match &c.kind {
+        CheckKind::Resistance(r) => matches!(r.status, CheckStatus::NotOk),
+        CheckKind::Stability(s) => matches!(s.status, CheckStatus::NotOk),
+    }
+}
+
+/// Mag deze toets de MAATGEVENDE toets van de staaf worden?
+///
+/// # Wat "maatgevend" moet betekenen
+///
+/// Maatgevend is de toets die de staaf BEGRENST: die aanwijst waar het
+/// ontwerp tegenaan loopt en wat er dus moet veranderen als de belasting
+/// omhoog gaat. Een sterkte- of bruikbaarheidstoets doet dat altijd — zijn
+/// unity check is belasting gedeeld door capaciteit, en 0,63 zegt dat er nog
+/// 37 % capaciteit over is.
+///
+/// Een DETAILLERINGSEIS zegt iets heel anders. Hij vergelijkt een aanwezige
+/// maat met een voorgeschreven maat: een uitvoeringsregel, geen grens aan het
+/// draagvermogen. Bij een MINIMUM-eis wordt die vergelijking als "vereist
+/// gedeeld door aanwezig" uitgedrukt zodat "te weinig" opnieuw uc > 1 geeft
+/// (zie de moduledoc van [`nen_en_1992_1_1::detaillering`]) — maar dat maakt
+/// de uitkomst nog geen benuttingsgraad. De minimumdiameter van een beugel
+/// (NB §9.2.2(9): ten minste Ø5) levert met de gebruikelijke Ø8 een uc van
+/// 5/8 = 0,625, en die 0,625 is geen reserve maar de mate waarin de eis is
+/// overtroffen. Zo'n eis mocht tot nu toe met 0,625 de maatgevende toets van
+/// een hele balk worden zodra de sterktetoetsen daar onder lagen — bij deze
+/// balk al vanaf een beugelafstand onder 187,5 mm, want dan zakt ook
+/// s_l,max = s/300 onder 0,625. Voor de constructeur wees het rapport dan een
+/// eis aan waaraan hij ruim voldoet, terwijl de werkelijke grens elders lag.
+///
+/// # De regel
+///
+/// Een detailleringseis doet niet mee aan de KEUZE zolang hij VOLDOET, en wél
+/// zodra hij FAALT: een korf die niet aan §8.2 of §9.2 voldoet is niet uit te
+/// voeren zoals hij is getekend, en dát begrenst het ontwerp wel degelijk.
+///
+/// De toets zelf blijft onveranderd in `checks` staan, met zijn unity check,
+/// zijn status en zijn afleiding. Er verdwijnt geen informatie; alleen de
+/// rangschikking verandert. En omdat een falende eis blijft meetellen, kan
+/// `uc_max` nooit onder 1 zakken terwijl een detailleringseis wordt
+/// overschreden — de staaf blijft dan NotOk.
+///
+/// Staal, hout en kruislaaghout kennen deze vraag niet: die kernen toetsen
+/// uitsluitend sterkte, stabiliteit en doorbuiging, en dat zijn stuk voor
+/// stuk toetsen die de staaf begrenzen. Hun aggregatielus blijft dus zoals
+/// hij is; er komt hier geen vierde eigen regel bij, alleen een filter op de
+/// ene toetssoort die zij niet hebben.
+fn mag_maatgevend_zijn(c: &NamedCheck) -> bool {
+    !is_detailleringstoets(&c.id) || faalt(c)
 }
 
 /// Het resultaat waarin alleen de reden staat. De doorsnede kán hier
@@ -730,14 +792,23 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     let interaction_positive = interaction_diagram(&section, &layers, &mat, 1.0, 21, &inter_opts);
     let interaction_negative = interaction_diagram(&section, &layers, &mat, -1.0, 21, &inter_opts);
 
-    // 8. Aggregatie. Alle toetsen doen mee, dus de maatgevende toets van een
-    //    staaf kan voortaan ook de dwarskracht, de scheurwijdte of een
-    //    detailleringseis zijn — niet langer alleen een van de twee buigtoetsen.
+    // 8. Aggregatie. De maatgevende toets van een staaf kan de buiging, de
+    //    dwarskracht, de scheurwijdte, de slankheid of een FALENDE
+    //    detailleringseis zijn. Een detailleringseis waaraan wordt voldaan
+    //    doet niet mee: zie [`mag_maatgevend_zijn`] voor het waarom.
+    //
+    //    `uc_max` volgt dezelfde keuze, en dat moet ook: het rapport zet in de
+    //    samenvattingstabel de kolommen "UC" en "Governing" naast elkaar. Zou
+    //    uc_max wél de vervulde detailleringseis tonen, dan stond er een
+    //    getal van de ene toets naast de naam van een andere. Veilig blijft
+    //    het: een detailleringseis die voldoet heeft per definitie uc ≤ 1, dus
+    //    deze keuze kan uc_max alleen verlagen binnen het gebied waar de staaf
+    //    toch al voldoet — nooit een overschrijding wegpoetsen.
     let mut uc_max = 0.0_f64;
     let mut governing_check_id = String::new();
     for c in &checks {
         let uc = uc_of(c);
-        if uc > uc_max {
+        if uc > uc_max && mag_maatgevend_zijn(c) {
             uc_max = uc;
             governing_check_id = c.id.clone();
         }

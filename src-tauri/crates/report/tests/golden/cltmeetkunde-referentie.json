@@ -1,0 +1,506 @@
+{
+  "wat": "De GEDEELDE referentie voor de meetkunde en de mechanica van kruislaaghout: per opbouw de zwaartelijn, de effectieve stijfheden, de ontleding van I_y per laag, de randspanningen en het BEMONSTERDE tau-verloop waarmee de figuur getekend wordt.",
+  "waarom": [
+    "De mechanica van een CLT-opbouw staat TWEE keer in dit project: in de rekenkern (src-tauri/crates/nen-en-1995-1-1/src/clt.rs, CltMechanics) en in de frontend (design-mockup/src/lib/cltCheckBuilder.ts, cltMechanica).",
+    "Die tweede is geen tekenhulpje. Hij levert via sectionResolver.ts de E, A en I waarmee de SOLVER rekent, en hij tekent het spanningsverloop in het rapport op het scherm. Loopt hij weg van de kern, dan rekent het model met een andere plaat dan er getoetst wordt.",
+    "Sinds het houthoofdstuk tekent ook de PDF die figuur na (src-tauri/crates/report/src/houtfiguren.rs). Daarmee zijn er twee tekeningen van hetzelfde ding, en twee tekeningen van hetzelfde ding lopen uit elkaar.",
+    "Zolang elke kant zijn EIGEN verwachte waarden zou vasthouden, bewaakt geen enkele test het uiteenlopen: een verschoven laaggrens blijft in beide suites groen zolang je maar in beide suites het getal meeverschuift.",
+    "Dit bestand is daarom de ENIGE plaats waar de GEDEELDE verwachte waarden staan: de enige plaats die BEIDE implementaties lezen, en geen van beide tests draagt daarnaast eigen getallen."
+  ],
+  "lezers": [
+    "src-tauri/crates/report/tests/cltmeetkunde_referentie.rs  — leest dit bestand en toetst nen_en_1995_1_1::clt::CltMechanics plus report::houtfiguren::{tau_verloop, tau_monster_z, sigma_verloop}",
+    "design-mockup/test-cltmeetkunde-referentie.mjs           — leest dit bestand en toetst src/lib/cltCheckBuilder.ts::{cltMechanica, cltIEfNetMm4, cltLaagStijfheden, cltTauVerloop, cltSigmaVerloop}"
+  ],
+  "bewust_geen_lezer": [
+    "design-mockup/test-clt-builder.mjs draagt DEZELFDE handberekening nog een keer, met de hand uit de laagmaten afgeleid, en leest hier met opzet NIET.",
+    "Dat is geen vergeten opruimwerk maar de tweede helft van de bewaking. `--schrijf` hieronder schrijft de getallen in dit bestand na uit de TS-kant; een fout die BEIDE implementaties delen wordt daarmee netjes ingeschreven en valt hier daarna nergens meer op. De handafleiding gaat dan wél om, want die is nooit uit code overgenomen.",
+    "De rolverdeling is dus: dit bestand bewaakt of de twee implementaties UITEENLOPEN, test-clt-builder.mjs en de eenheidstests in clt.rs bewaken of ze samen nog kloppen.",
+    "Prijs ervan: wie de mechanica bewust verandert, past drie plaatsen aan in plaats van twee. Die derde staat daarom als stap 5 in `bijwerken`."
+  ],
+  "bijwerken": [
+    "DE MECHANICA OF DE BEMONSTERING BEWUST VERANDEREN GAAT ZO — in deze volgorde, anders bewaakt dit bestand niets meer:",
+    "1. Pas BEIDE implementaties aan: cltCheckBuilder.ts en de Rust-kant (nen-en-1995-1-1/src/clt.rs en/of report/src/houtfiguren.rs). Één kant aanpassen is per definitie het uiteenlopen dat dit bestand tegenhoudt.",
+    "2. Werk hieronder de `afleiding` van elk geraakt geval bij — met de hand, uit de laagmaten. Die tekst is het eigenlijke bewijs; de getallen zijn er de uitkomst van.",
+    "3. Laat de getallen naschrijven: `node node_modules/tsx/dist/cli.mjs test-cltmeetkunde-referentie.mjs --schrijf` (in design-mockup/). Dat herschrijft `mechanica`, `lagen` en `tau_verloop` uit de TS-kant en laat alle tekstvelden staan.",
+    "4. Draai daarna BEIDE tests. De TS-test is na stap 3 per definitie groen; het bewijs zit in `cargo test -p report --test cltmeetkunde_referentie`. Blijft die rood, dan is stap 1 half gedaan.",
+    "5. Raakt de wijziging de handberekening, werk dan ook test-clt-builder.mjs en de eenheidstests in nen-en-1995-1-1/src/clt.rs bij — met de hand, niet overgeschreven. Zie `bewust_geen_lezer`.",
+    "Alleen de getallen bijwerken omdat 'de test rood is' is geen bijwerken maar het weghalen van de bewaking."
+  ],
+  "tolerantie": {
+    "absoluut": 1e-9,
+    "relatief": 1e-9,
+    "toets": "|werkelijk - verwacht| <= absoluut + relatief * |verwacht|",
+    "waarom": "Rust f64 en JS number zijn allebei IEEE-754 binary64, en beide kanten rekenen dezelfde uitdrukking in dezelfde volgorde uit dezelfde exact representeerbare laagmaten; het verschil is in de praktijk nul. De relatieve tak draagt de grote grootheden ((EI)_ef in de orde 1e12 N.mm2), de absolute tak de waarden die exact nul horen te zijn (de arm van een laag op de zwaartelijn, sigma in een dwarslaag, tau aan de bovenrand). Bewust GEEN grenzentoets: daar glipt elke verschuiving binnen de grens ongemerkt doorheen."
+  },
+  "e0_mean_mpa": { "C16": 8000, "C24": 11000 },
+  "waarom_e0_mean_hier_staat": [
+    "E_0,mean staat ook twee keer: in nen-en-1995-1-1/src/data.rs (SOFTWOOD, EN 338 tabel 1) en in design-mockup/src/lib/sectionResolver.ts (TIMBER_E_MEAN). Twee met de hand overgetypte tabellen.",
+    "Voor de TS-kant is deze kaart de INVOER van cltMechanica (die krijgt E per klasse van de aanroeper mee), en beide lezers toetsen daarnaast hun EIGEN tabel tegen deze waarden. Wijkt één tabel af, dan valt die kant om — en anders zou een verschoven E hier stilzwijgend in alle andere getallen meelopen."
+  ],
+  "waarom_geen_wy": "Er staat GEEN weerstandsmoment in dit bestand, en dat is een keuze en geen omissie: in een samengestelde doorsnede met verschillende E per laag bestaat de randspanning niet als M/W. Bijlage B geeft de spanning per laag rechtstreeks ((B.7)+(B.8): sigma_i = E_i*M*(z - z_0)/(EI)_ef), en de hele keten - kern, solver, tabel, figuur - rekent daarmee. Er is nergens in dit project een W_y voor kruislaaghout gedefinieerd; hem hier voor het eerst bedenken zou een verzonnen grootheid in de bewaking zetten.",
+  "eenheden": {
+    "z_mm": "hoogte vanaf de BOVENKANT van de plaat, mm",
+    "e_mpa": "E in de spanrichting, N/mm2; 0 voor een dwarslaag",
+    "a_mm2": "A_i = b*t_i, mm2 (bijlage B (B.2))",
+    "i_eigen_mm4": "I_i = b*t_i^3/12, mm4 (bijlage B (B.3))",
+    "arm_mm": "a_i, laagzwaartepunt tot zwaartelijn, mm, positief naar beneden (bijlage B (B.6))",
+    "steiner_mm4": "A_i*a_i^2, mm4",
+    "ei_ef_nmm2": "(EI)_ef = som E_i*(I_i + A_i*a_i^2), N.mm2",
+    "ea_ef_n": "(EA)_ef = som E_i*A_i, N",
+    "i_ef_net_mm4": "(EI)_ef / E_ref met E_ref de E van de BOVENSTE lengtelaag, mm4",
+    "sigma_mpa": "buigspanning, N/mm2, trek positief",
+    "tau_verloop": "paren [z_mm, tau_mpa] in de volgorde waarin de figuur ze aan elkaar tekent"
+  },
+  "gevallen": [
+    {
+      "naam": "symmetrisch-5-laags-C24",
+      "waarom": "De handberekening die ook in clt.rs en in test-clt-builder.mjs staat. Symmetrisch, dus z_0 valt samen met een gelijkmatig monsterpunt — precies het geval waarin de fout in de bemonstering NIET zichtbaar was.",
+      "opbouw": {
+        "width_mm": 1000,
+        "layers": [
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" }
+        ]
+      },
+      "krachten": { "my_ed_knm": 20, "vz_ed_kn": 10, "k_cr": 1 },
+      "afleiding": [
+        "h = 40+20+40+20+40 = 160. Alleen de lagen 1, 3 en 5 dragen (E = 11000); de lagen 2 en 4 hebben E = 0.",
+        "(EA)_ef = 3 * 11000 * 1000*40 = 1,32e9 N. Symmetrisch, dus z_0 = 80 mm.",
+        "Per lengtelaag: A_i = 1000*40 = 40 000 mm2, I_i = 1000*40^3/12 = 5,3333e6 mm4.",
+        "Armen: laag 1 op 20 -> a = -60; laag 3 op 80 -> a = 0; laag 5 op 140 -> a = +60.",
+        "Steiner: 40 000 * 60^2 = 1,44e8 mm4 voor laag 1 en 5, nul voor laag 3.",
+        "som (I_i + A_i*a_i^2) = 2*(5,3333e6 + 1,44e8) + 5,3333e6 = 3,04e8 mm4 = I_ef,net (alle lengtelagen dezelfde E).",
+        "(EI)_ef = 11000 * 3,04e8 = 3,344e12 N.mm2 = 3344 kNm2.",
+        "M = 20 kNm: sigma aan de onderrand (z = 160) = 11000*20e6*80/3,344e12 = +5,263 N/mm2; aan de bovenrand -5,263.",
+        "V = 10 kN: (ES)(40) = 11000*1000*((40^2-0)/2 - 80*40) = -2,64e10 -> tau = 10e3*2,64e10/(3,344e12*1000) = 0,078947 N/mm2 (de rolschuifspanning in laag 2).",
+        "(ES)(80) = -2,64e10 + 11000*1000*((80^2-60^2)/2 - 80*20) = -2,86e10 -> tau_max = 0,085526 N/mm2 op de zwaartelijn.",
+        "Bemonstering: 9 punten in elke lengtelaag, 2 in elke dwarslaag, gedeelde laaggrenzen één keer; z_0 = 80 valt op het middelste punt van laag 3 en komt er dus niet nog een keer bij. Samen 27 punten."
+      ],
+      "mechanica": { "hoogte_mm": 160, "z0_mm": 80, "ei_ef_nmm2": 3344000000000, "ea_ef_n": 1320000000, "i_ef_net_mm4": 304000000, "lagen_zelfde_e": true },
+      "lagen": [
+        {
+          "index": 1,
+          "z_top_mm": 0,
+          "z_bot_mm": 40,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": -60,
+          "steiner_mm4": 144000000,
+          "sigma_top_mpa": -5.2631578947368425,
+          "sigma_bot_mpa": -2.6315789473684212
+        },
+        { "index": 2, "z_top_mm": 40, "z_bot_mm": 60, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": -30, "steiner_mm4": 18000000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 3,
+          "z_top_mm": 60,
+          "z_bot_mm": 100,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": 0,
+          "steiner_mm4": 0,
+          "sigma_top_mpa": -1.3157894736842106,
+          "sigma_bot_mpa": 1.3157894736842106
+        },
+        { "index": 4, "z_top_mm": 100, "z_bot_mm": 120, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": 30, "steiner_mm4": 18000000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 5,
+          "z_top_mm": 120,
+          "z_bot_mm": 160,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": 60,
+          "steiner_mm4": 144000000,
+          "sigma_top_mpa": 2.6315789473684212,
+          "sigma_bot_mpa": 5.2631578947368425
+        }
+      ],
+      "tau_verloop": [
+        [0, 0],
+        [5, 0.01274671052631579],
+        [10, 0.024671052631578948],
+        [15, 0.03577302631578947],
+        [20, 0.046052631578947366],
+        [25, 0.055509868421052634],
+        [30, 0.06414473684210527],
+        [35, 0.07195723684210527],
+        [40, 0.07894736842105263],
+        [60, 0.07894736842105263],
+        [65, 0.08182565789473684],
+        [70, 0.08388157894736842],
+        [75, 0.08511513157894737],
+        [80, 0.08552631578947369],
+        [85, 0.08511513157894737],
+        [90, 0.08388157894736842],
+        [95, 0.08182565789473684],
+        [100, 0.07894736842105263],
+        [120, 0.07894736842105263],
+        [125, 0.07195723684210527],
+        [130, 0.06414473684210527],
+        [135, 0.055509868421052634],
+        [140, 0.046052631578947366],
+        [145, 0.03577302631578947],
+        [150, 0.024671052631578948],
+        [155, 0.01274671052631579],
+        [160, 0]
+      ]
+    },
+    {
+      "naam": "asymmetrisch-5-laags-C24",
+      "waarom": "HET GEVAL WAARVOOR DE BEWAKING BESTAAT. De opbouw is asymmetrisch, dus z_0 valt NIET op een gelijkmatig monsterpunt. De TS-kant nam z_0 niet als vast monsterpunt mee en tekende daardoor een piek die LAGER lag dan de tau_d in de tabel ernaast — dezelfde grootheid, twee antwoorden op één blad.",
+      "opbouw": {
+        "width_mm": 1000,
+        "layers": [
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 30, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 60, "orientation": "Longitudinal", "strength_class": "C24" }
+        ]
+      },
+      "krachten": { "my_ed_knm": 20, "vz_ed_kn": 10, "k_cr": 1 },
+      "afleiding": [
+        "h = 40+20+30+20+60 = 170. Lengtelagen: 1 (0-40), 3 (60-90), 5 (110-170); alle C24, E = 11000.",
+        "(EA)_ef = 11000*1000*(40+30+60) = 1,43e9 N.",
+        "z_0 = (40*20 + 30*75 + 60*140) / (40+30+60) = 11 450 / 130 = 88,0769230769... mm.",
+        "Die waarde ligt IN laag 3 (60 tot 90). De gelijkmatige monsterpunten daar liggen op 60; 63,75; 67,5; 71,25; 75; 78,75; 82,5; 86,25; 90 — 88,08 zit daar niet bij, dus z_0 moet er als extra monsterpunt bij.",
+        "De kern doet hetzelfde: CltMechanics::layer_max_shear voegt z_0 als kandidaat toe zodra hij binnen een lengtelaag valt. Zonder dat punt is de hoogste GETEKENDE tau die op z = 86,25 of z = 90, en dat is niet tau_max."
+      ],
+      "mechanica": { "hoogte_mm": 170, "z0_mm": 88.07692307692308, "ei_ef_nmm2": 4156378205128.205, "ea_ef_n": 1430000000, "i_ef_net_mm4": 377852564.1025641, "lagen_zelfde_e": true },
+      "lagen": [
+        {
+          "index": 1,
+          "z_top_mm": 0,
+          "z_bot_mm": 40,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": -68.07692307692308,
+          "steiner_mm4": 185378698.2248521,
+          "sigma_top_mpa": -4.661973025701926,
+          "sigma_bot_mpa": -2.54474510136568
+        },
+        {
+          "index": 2,
+          "z_top_mm": 40,
+          "z_bot_mm": 60,
+          "e_mpa": 0,
+          "a_mm2": 20000,
+          "i_eigen_mm4": 666666.6666666666,
+          "arm_mm": -38.07692307692308,
+          "steiner_mm4": 28997041.42011835,
+          "sigma_top_mpa": 0,
+          "sigma_bot_mpa": 0
+        },
+        {
+          "index": 3,
+          "z_top_mm": 60,
+          "z_bot_mm": 90,
+          "e_mpa": 11000,
+          "a_mm2": 30000,
+          "i_eigen_mm4": 2250000,
+          "arm_mm": -13.07692307692308,
+          "steiner_mm4": 5130177.514792902,
+          "sigma_top_mpa": -1.4861311391975573,
+          "sigma_bot_mpa": 0.10178980405462702
+        },
+        {
+          "index": 4,
+          "z_top_mm": 90,
+          "z_bot_mm": 110,
+          "e_mpa": 0,
+          "a_mm2": 20000,
+          "i_eigen_mm4": 666666.6666666666,
+          "arm_mm": 11.92307692307692,
+          "steiner_mm4": 2843195.266272188,
+          "sigma_top_mpa": 0,
+          "sigma_bot_mpa": 0
+        },
+        {
+          "index": 5,
+          "z_top_mm": 110,
+          "z_bot_mm": 170,
+          "e_mpa": 11000,
+          "a_mm2": 60000,
+          "i_eigen_mm4": 18000000,
+          "arm_mm": 51.92307692307692,
+          "steiner_mm4": 161760355.02958578,
+          "sigma_top_mpa": 1.1604037662227498,
+          "sigma_bot_mpa": 4.3362456527271185
+        }
+      ],
+      "tau_verloop": [
+        [0, 0],
+        [5, 0.011324115701077277],
+        [10, 0.021986597675799475],
+        [15, 0.0319874459241666],
+        [20, 0.041326660446178644],
+        [25, 0.05000424124183561],
+        [30, 0.058020188311137505],
+        [35, 0.06537450165408432],
+        [40, 0.07206718127067606],
+        [60, 0.07206718127067606],
+        [63.75, 0.07466759267113411],
+        [67.5, 0.07689583510051745],
+        [71.25, 0.07875190855882604],
+        [75, 0.0802358130460599],
+        [78.75, 0.08134754856221903],
+        [82.5, 0.08208711510730343],
+        [86.25, 0.08245451268131311],
+        [88.07692307692308, 0.08249867869004354],
+        [90, 0.08244974128424805],
+        [110, 0.08244974128424805],
+        [117.5, 0.07735388921876327],
+        [125, 0.07076936126897956],
+        [132.5, 0.06269615743489695],
+        [140, 0.05313427771651541],
+        [147.5, 0.04208372211383495],
+        [155, 0.029544490626855557],
+        [162.5, 0.015516583255577254],
+        [170, 1.8355871758341753e-17]
+      ]
+    },
+    {
+      "naam": "gemengde-klassen-C24-C16",
+      "waarom": "Twee VERSCHILLENDE sterkteklassen in de lengtelagen. Dan is de meetkundige som som(I_i + A_i*a_i^2) NIET gelijk aan I_ef,net = (EI)_ef/E_ref, en dat verschil is precies wat de tabel in de uitdraai moet laten zien. Ook de enige plaats waar E per laag verschilt, dus waar het verwisselen van E_i en E_ref opvalt.",
+      "opbouw": {
+        "width_mm": 1000,
+        "layers": [
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C16" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" }
+        ]
+      },
+      "krachten": { "my_ed_knm": 20, "vz_ed_kn": 10, "k_cr": 1 },
+      "afleiding": [
+        "Zelfde maten als het symmetrische geval, maar de middelste lengtelaag is C16 (E = 8000) in plaats van C24 (E = 11000).",
+        "De E-verdeling is nog steeds symmetrisch om h/2, dus z_0 = 80 mm blijft staan.",
+        "(EA)_ef = (11000 + 8000 + 11000) * 40 000 = 1,2e9 N.",
+        "(EI)_ef = 2 * 11000 * (5,3333e6 + 1,44e8) + 8000 * 5,3333e6 = 3,285333e12 + 4,26667e10 = 3,328e12 N.mm2.",
+        "E_ref is de E van de BOVENSTE lengtelaag = 11000, dus I_ef,net = 3,328e12 / 11000 = 3,0255e8 mm4.",
+        "De meetkundige som is nog altijd 3,04e8 mm4. Het verschil van ruim 1,4 % is geen afrondingsrest maar het E-gewicht, en daarom mag de somregel in de tabel alleen 'I_ef,net' heten als alle lengtelagen dezelfde E hebben."
+      ],
+      "mechanica": { "hoogte_mm": 160, "z0_mm": 80, "ei_ef_nmm2": 3328000000000, "ea_ef_n": 1200000000, "i_ef_net_mm4": 302545454.54545456, "lagen_zelfde_e": false },
+      "lagen": [
+        {
+          "index": 1,
+          "z_top_mm": 0,
+          "z_bot_mm": 40,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": -60,
+          "steiner_mm4": 144000000,
+          "sigma_top_mpa": -5.288461538461538,
+          "sigma_bot_mpa": -2.644230769230769
+        },
+        { "index": 2, "z_top_mm": 40, "z_bot_mm": 60, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": -30, "steiner_mm4": 18000000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 3,
+          "z_top_mm": 60,
+          "z_bot_mm": 100,
+          "e_mpa": 8000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": 0,
+          "steiner_mm4": 0,
+          "sigma_top_mpa": -0.9615384615384616,
+          "sigma_bot_mpa": 0.9615384615384616
+        },
+        { "index": 4, "z_top_mm": 100, "z_bot_mm": 120, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": 30, "steiner_mm4": 18000000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 5,
+          "z_top_mm": 120,
+          "z_bot_mm": 160,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": 60,
+          "steiner_mm4": 144000000,
+          "sigma_top_mpa": 2.644230769230769,
+          "sigma_bot_mpa": 5.288461538461538
+        }
+      ],
+      "tau_verloop": [
+        [0, 0],
+        [5, 0.012807992788461538],
+        [10, 0.02478966346153846],
+        [15, 0.03594501201923077],
+        [20, 0.046274038461538464],
+        [25, 0.055776742788461536],
+        [30, 0.064453125],
+        [35, 0.07230318509615384],
+        [40, 0.07932692307692307],
+        [60, 0.07932692307692307],
+        [65, 0.08143028846153846],
+        [70, 0.0829326923076923],
+        [75, 0.08383413461538461],
+        [80, 0.08413461538461539],
+        [85, 0.08383413461538461],
+        [90, 0.0829326923076923],
+        [95, 0.08143028846153846],
+        [100, 0.07932692307692307],
+        [120, 0.07932692307692307],
+        [125, 0.07230318509615384],
+        [130, 0.064453125],
+        [135, 0.055776742788461536],
+        [140, 0.046274038461538464],
+        [145, 0.03594501201923077],
+        [150, 0.02478966346153846],
+        [155, 0.012807992788461538],
+        [160, 0]
+      ]
+    },
+    {
+      "naam": "dwarslaag-als-buitenlaag-kcr-067",
+      "waarom": "Drie dingen tegelijk die elders niet voorkomen: dwarslagen aan BEIDE buitenzijden (de kern waarschuwt daar terecht voor, maar hij moet hem wel kunnen rekenen), een NEGATIEF moment (trek boven, dus sigma van teken gewisseld), en k_cr = 0,67 in plaats van 1 — de enige plaats waar b_ef ongelijk aan b is.",
+      "opbouw": {
+        "width_mm": 1000,
+        "layers": [
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 60, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 20, "orientation": "Transverse", "strength_class": "C24" }
+        ]
+      },
+      "krachten": { "my_ed_knm": -15, "vz_ed_kn": 8, "k_cr": 0.67 },
+      "afleiding": [
+        "h = 20+40+20+60+20 = 160. Lengtelagen: 2 (20-60) en 4 (80-140).",
+        "(EA)_ef = 11000*1000*(40+60) = 1,1e9 N.",
+        "z_0 = (40*40 + 60*110) / (40+60) = 8200 / 100 = 82 mm — dat ligt IN laag 4 (80 tot 140), en niet op een gelijkmatig monsterpunt (die liggen op 80; 87,5; 95; ...).",
+        "M is negatief, dus trek BOVEN: sigma is positief voor z < z_0 en negatief eronder.",
+        "tau = V*|(ES)|/((EI)_ef * b_ef) met b_ef = 0,67*1000 = 670 mm; alle tau-waarden liggen dus een factor 1/0,67 hoger dan bij k_cr = 1.",
+        "De buitenste lagen zijn dwarslagen: daar is (ES) nul aan de rand en verandert hij niet binnen de laag, dus tau is er nul respectievelijk constant."
+      ],
+      "mechanica": { "hoogte_mm": 160, "z0_mm": 82, "ei_ef_nmm2": 1550266666666.6665, "ea_ef_n": 1100000000, "i_ef_net_mm4": 140933333.3333333, "lagen_zelfde_e": true },
+      "lagen": [
+        { "index": 1, "z_top_mm": 0, "z_bot_mm": 20, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": -72, "steiner_mm4": 103680000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 2,
+          "z_top_mm": 20,
+          "z_bot_mm": 60,
+          "e_mpa": 11000,
+          "a_mm2": 40000,
+          "i_eigen_mm4": 5333333.333333333,
+          "arm_mm": -42,
+          "steiner_mm4": 70560000,
+          "sigma_top_mpa": 6.598864711447494,
+          "sigma_bot_mpa": 2.3415326395458846
+        },
+        { "index": 3, "z_top_mm": 60, "z_bot_mm": 80, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": -12, "steiner_mm4": 2880000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 4,
+          "z_top_mm": 80,
+          "z_bot_mm": 140,
+          "e_mpa": 11000,
+          "a_mm2": 60000,
+          "i_eigen_mm4": 18000000,
+          "arm_mm": 28,
+          "steiner_mm4": 47040000,
+          "sigma_top_mpa": 0.21286660359508044,
+          "sigma_bot_mpa": -6.1731315042573325
+        },
+        { "index": 5, "z_top_mm": 140, "z_bot_mm": 160, "e_mpa": 0, "a_mm2": 20000, "i_eigen_mm4": 666666.6666666666, "arm_mm": 68, "steiner_mm4": 92480000, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 }
+      ],
+      "tau_verloop": [
+        [0, 0],
+        [20, 0],
+        [25, 0.025205100326183654],
+        [30, 0.04829212499470482],
+        [35, 0.06926107400556349],
+        [40, 0.08811194735875967],
+        [45, 0.10484474505429335],
+        [50, 0.11945946709216455],
+        [55, 0.13195611347237327],
+        [60, 0.14233468419491946],
+        [80, 0.14233468419491946],
+        [82, 0.14250413024753247],
+        [87.5, 0.14122269447464667],
+        [95, 0.13534503452463323],
+        [102.5, 0.12470170434487922],
+        [110, 0.1092927039353846],
+        [117.5, 0.08911803329614935],
+        [125, 0.06417769242717351],
+        [132.5, 0.03447168132845706],
+        [140, 0],
+        [160, 0]
+      ]
+    },
+    {
+      "naam": "drielaags-minimum-C24",
+      "waarom": "Het kleinste aantal lagen dat de kern aanvaardt, én het enige geval waarin z_0 midden in een DWARSLAAG valt. Daar mag z_0 juist GEEN extra monsterpunt worden: met E = 0 verandert (ES) er niet, dus tau is over de hele laag gelijk en er is geen piek om te raken. Precies dezelfde uitzondering die layer_max_shear in de kern maakt.",
+      "opbouw": {
+        "width_mm": 1000,
+        "layers": [
+          { "thickness_mm": 30, "orientation": "Longitudinal", "strength_class": "C24" },
+          { "thickness_mm": 30, "orientation": "Transverse", "strength_class": "C24" },
+          { "thickness_mm": 30, "orientation": "Longitudinal", "strength_class": "C24" }
+        ]
+      },
+      "krachten": { "my_ed_knm": 6, "vz_ed_kn": 4, "k_cr": 1 },
+      "afleiding": [
+        "h = 90; lengtelagen 1 (0-30) en 3 (60-90), symmetrisch, dus z_0 = 45 mm — midden in de dwarslaag.",
+        "(EA)_ef = 11000*1000*60 = 6,6e8 N.",
+        "Per lengtelaag: A_i = 30 000 mm2, I_i = 1000*30^3/12 = 2,25e6 mm4, a = -30 respectievelijk +30, Steiner = 30 000*900 = 2,7e7 mm4.",
+        "som (I_i + A_i*a_i^2) = 2*(2,25e6 + 2,7e7) = 5,85e7 mm4 = I_ef,net; (EI)_ef = 11000*5,85e7 = 6,435e11 N.mm2 = 643,5 kNm2.",
+        "Bemonstering: 9 punten in laag 1, 2 in laag 2, 9 in laag 3, gedeelde grenzen één keer = 18 punten. z_0 = 45 ligt in de dwarslaag en komt er NIET bij; stond hij er wel bij, dan waren het er 19."
+      ],
+      "mechanica": { "hoogte_mm": 90, "z0_mm": 45, "ei_ef_nmm2": 643500000000, "ea_ef_n": 660000000, "i_ef_net_mm4": 58500000, "lagen_zelfde_e": true },
+      "lagen": [
+        {
+          "index": 1,
+          "z_top_mm": 0,
+          "z_bot_mm": 30,
+          "e_mpa": 11000,
+          "a_mm2": 30000,
+          "i_eigen_mm4": 2250000,
+          "arm_mm": -30,
+          "steiner_mm4": 27000000,
+          "sigma_top_mpa": -4.615384615384615,
+          "sigma_bot_mpa": -1.5384615384615385
+        },
+        { "index": 2, "z_top_mm": 30, "z_bot_mm": 60, "e_mpa": 0, "a_mm2": 30000, "i_eigen_mm4": 2250000, "arm_mm": 0, "steiner_mm4": 0, "sigma_top_mpa": 0, "sigma_bot_mpa": 0 },
+        {
+          "index": 3,
+          "z_top_mm": 60,
+          "z_bot_mm": 90,
+          "e_mpa": 11000,
+          "a_mm2": 30000,
+          "i_eigen_mm4": 2250000,
+          "arm_mm": 30,
+          "steiner_mm4": 27000000,
+          "sigma_top_mpa": 1.5384615384615385,
+          "sigma_bot_mpa": 4.615384615384615
+        }
+      ],
+      "tau_verloop": [
+        [0, 0],
+        [3.75, 0.011057692307692308],
+        [7.5, 0.021153846153846155],
+        [11.25, 0.03028846153846154],
+        [15, 0.038461538461538464],
+        [18.75, 0.04567307692307692],
+        [22.5, 0.051923076923076926],
+        [26.25, 0.05721153846153846],
+        [30, 0.06153846153846154],
+        [60, 0.06153846153846154],
+        [63.75, 0.05721153846153846],
+        [67.5, 0.051923076923076926],
+        [71.25, 0.04567307692307692],
+        [75, 0.038461538461538464],
+        [78.75, 0.03028846153846154],
+        [82.5, 0.021153846153846155],
+        [86.25, 0.011057692307692308],
+        [90, 0]
+      ]
+    }
+  ]
+}

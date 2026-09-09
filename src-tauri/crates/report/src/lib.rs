@@ -31,11 +31,26 @@
 //!   `betonStijfheidStore` in de frontend;
 //! * [`betonhoofdstuk`] zet die drie om in het hoofdstuk zelf, en bepaalt of
 //!   het hoofdstuk überhaupt van toepassing is.
+//!
+//! # De kruislaaghoutkant
+//!
+//! Twee modules dragen het hoofdstuk "Kruislaaghout — opbouw, I_y en toetsing
+//! per lamel":
+//!
+//! * [`houtfiguren`] tekent de opbouw met het spanningsverloop, en bemonstert
+//!   dat verloop uit `CltMechanics` — dezelfde mechanica als de toets;
+//! * [`houthoofdstuk`] zet daar het hoofdstuk omheen: de ontleding van I_y per
+//!   laag, de tabel per lamel en de meldingen van de kern.
+//!
+//! [`figuur`] draagt beide: het is de opsomming van álle figuren die het
+//! rapport kent.
 
 pub mod betonfiguren;
 pub mod betonhoofdstuk;
 pub mod betonspoor;
 pub mod figuur;
+pub mod houtfiguren;
+pub mod houthoofdstuk;
 
 use openaec_layout::{
     doc_template::{DocTemplate, RawPage},
@@ -701,6 +716,11 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     //     convergentiespoor en de vier figuren. Blijft in zijn geheel weg bij
     //     een rapport zonder beton; zie `betonhoofdstuk::van_toepassing`.
     betonhoofdstuk::extend_with_betonhoofdstuk(&mut flow, &input);
+
+    // 4c. Kruislaaghout — de opbouw, de ontleding van I_y en de toetsing per
+    //     lamel, met de opbouwfiguur. Blijft weg bij een rapport zonder
+    //     kruislaaghout; zie `houthoofdstuk::van_toepassing`.
+    houthoofdstuk::extend_with_houthoofdstuk(&mut flow, &input);
 
     // 5. Render.
     doc.build_to_bytes(flow).expect("openaec-layout build")

@@ -25,10 +25,14 @@ import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportSto
 import type { CltBeamCheckResult } from "../../../lib/types/timber/CltBeamCheckResult";
 import type { CltLayerResult } from "../../../lib/types/timber/CltLayerResult";
 import {
+  cltLaagStijfheden,
+  cltLagenZelfdeE,
   cltMechanicaUitResultaat,
-  cltTauOpZ,
+  cltReferentieEMpa,
+  cltTauVerloop,
   isCltCheckResult,
   richtingLabel,
+  type CltMechanica,
 } from "../../../lib/cltCheckBuilder";
 import CltOpbouwTekening, { type Verloop } from "../../clt/CltOpbouwTekening";
 import {
@@ -43,26 +47,60 @@ import {
   statusLabel,
 } from "../checkReportUtils";
 
-/** Krachten waarop de kern de lagen getoetst heeft, uit de toetsen zelf. */
-function toetskrachten(r: CltBeamCheckResult): { m: number; v: number; kCr: number } {
+/**
+ * De twee krachtstoestanden waarop de kern getoetst heeft, uit de toetsen
+ * zelf — INCLUSIEF de plaats waar ze vandaan komen.
+ *
+ * Het zijn er TWEE: art. 6.1.6 rekent op het punt met de grootste |M_y| in de
+ * omhullende, art. 6.1.7 op het punt met de grootste |V_z|. Alleen bij een
+ * uitkraging vallen die samen. De positie reist daarom mee, zodat de figuur
+ * en het bijschrift kunnen zeggen dat de twee panelen niet één toestand van
+ * de doorsnede tonen.
+ */
+interface Toetskrachten {
+  m: number;
+  /** Plaats van het maatgevende momentpunt (mm langs de staaf), of null. */
+  mX: number | null;
+  v: number;
+  /** Plaats van het maatgevende dwarskrachtpunt (mm langs de staaf), of null. */
+  vX: number | null;
+  kCr: number;
+}
+
+function toetskrachten(r: CltBeamCheckResult): Toetskrachten {
   let m = 0;
+  let mX: number | null = null;
   let v = 0;
+  let vX: number | null = null;
   let kCr = 1;
   for (const c of r.checks) {
     const d = c.kind.data;
     if (c.id.startsWith("clt_6.1.6_")) {
       m = d.force_state.forces.my_ed;
+      mX = d.force_state.position_mm;
     } else if (c.id.startsWith("clt_6.1.7_") || c.id.startsWith("clt_rolschuif_")) {
       v = d.force_state.forces.vz_ed;
+      vX = d.force_state.position_mm;
       const k = d.variables.find((x) => x.symbol === "k_{cr}");
       if (k) kCr = k.value;
     }
   }
-  return { m, v, kCr };
+  return { m, mX, v, vX, kCr };
 }
 
-/** σ per laag: lineair van boven- naar onderkant; dwarslagen nul. */
-function sigmaVerloop(r: CltBeamCheckResult): Verloop {
+/** "bij x = 2,50 m", of niets als de plaats niet bekend is. */
+function plaatsNoot(xMm: number | null): string | undefined {
+  return xMm === null ? undefined : `bij x = ${fmtValue(xMm / 1000, 2)} m`;
+}
+
+/**
+ * σ per laag: lineair van boven- naar onderkant, dwarslagen nul.
+ *
+ * De waarden komen RECHTSTREEKS uit het kernresultaat en worden hier niet
+ * nagerekend — de tabel ernaast toont dezelfde velden, dus twee getallen uit
+ * één bron.
+ */
+function sigmaVerloop(r: CltBeamCheckResult, k: Toetskrachten): Verloop {
   return {
     segmenten: r.layup.layers.map((l) => [
       { z: l.z_top_mm, v: l.sigma_top_mpa },
@@ -70,24 +108,25 @@ function sigmaVerloop(r: CltBeamCheckResult): Verloop {
     ]),
     label: "σm,d",
     eenheid: "N/mm²",
+    noot: plaatsNoot(k.mX),
   };
 }
 
-/** τ over de hoogte, opnieuw uitgerekend uit de opbouw (parabolisch per lengtelaag). */
-function tauVerloop(r: CltBeamCheckResult, v: number, kCr: number): Verloop {
-  const mech = cltMechanicaUitResultaat(r.layup);
-  const punten: Array<{ z: number; v: number }> = [];
-  mech.lagen.forEach((l, i) => {
-    const n = l.richting === "Longitudinal" ? 9 : 2;
-    for (let k = 0; k < n; k++) {
-      // De gedeelde laaggrens één keer.
-      if (i > 0 && k === 0) continue;
-      const z = l.zBoven + ((l.zOnder - l.zBoven) * k) / (n - 1);
-      punten.push({ z, v: cltTauOpZ(mech, z, v, kCr) });
-    }
-  });
-  if (punten.length === 0 || punten[0].z > 0) punten.unshift({ z: 0, v: 0 });
-  return { segmenten: [punten], label: "τd", eenheid: "N/mm²" };
+/**
+ * τ over de hoogte, uit de opbouw bemonsterd (parabolisch per lengtelaag).
+ *
+ * De bemonstering zelf staat in `cltTauVerloop`: die neemt de zwaartelijn als
+ * VAST monsterpunt mee, net als de kern doet bij het bepalen van τ_d per laag.
+ * Zonder dat punt lag de getekende piek bij een asymmetrische opbouw onder de
+ * τ_d uit de tabel ernaast.
+ */
+function tauVerloop(mech: CltMechanica, k: Toetskrachten): Verloop {
+  return {
+    segmenten: [cltTauVerloop(mech, k.v, k.kCr)],
+    label: "τd",
+    eenheid: "N/mm²",
+    noot: plaatsNoot(k.vX),
+  };
 }
 
 /** Status van één laag: hoogste van de twee UC's; dwarslaag = ter informatie. */
@@ -98,28 +137,44 @@ function laagStatus(l: CltLayerResult): "Ok" | "NotOk" | "NotApplicable" {
   return Math.max(...ucs) <= 1 ? "Ok" : "NotOk";
 }
 
-function StijfheidsAfleiding({ r }: { r: CltBeamCheckResult }) {
+/**
+ * De opbouw van I_y: per laag A_i, het eigen traagheidsmoment I_i, de arm a_i
+ * tot de zwaartelijn en de Steiner-term A_i·a_i², met I_ef,net als somregel —
+ * en er direct naast de E-GEWOGEN kolom, want (EI)_ef is wat de toetsing
+ * werkelijk gebruikt.
+ *
+ * Waarom hier geen weerstandsmoment W_y staat: in een samengestelde doorsnede
+ * met verschillende E per laag bestaat "de" randspanning niet als M/W. De
+ * norm geeft in bijlage B (B.7)+(B.8) de spanning per laag rechtstreeks
+ * (σ_i = E_i·M·(z − z_0)/(EI)_ef), en de hele keten — kern, solver, tabel —
+ * rekent daarmee. Een W_y zou hier voor het eerst bedacht moeten worden, en
+ * een bedachte definitie in een rekenrapport is een verzonnen grootheid.
+ *
+ * DWARSLAGEN STAAN ER WÉL IN. Hun A_i en I_i bestaan; met E_i = 0 dragen ze
+ * alleen niets bij, en dat is precies wat een lezer moet zien om te begrijpen
+ * waarom de som niet op b·h³/12 uitkomt.
+ */
+function OpbouwVanIy({ r, mech }: { r: CltBeamCheckResult; mech: CltMechanica }) {
   const { t } = useTranslation("ribbon");
-  const b = r.layup.width_mm;
-  const lengte = r.layup.layers.filter((l) => l.orientation === "Longitudinal");
-  const rijen = lengte.map((l) => {
-    const tk = l.thickness_mm;
-    const a = b * tk;
-    const i = (b * tk * tk * tk) / 12;
-    const arm = (l.z_top_mm + l.z_bot_mm) / 2 - r.layup.z0_mm;
-    const bijdrage = (l.e_mpa * (i + a * arm * arm)) * 1e-9; // N·mm² → kNm²
-    return { l, a, i, arm, bijdrage };
-  });
+  const rijen = cltLaagStijfheden(mech);
+  const somI = rijen.reduce((s, x) => s + (x.draagt ? x.iTotaal : 0), 0);
+  const zelfdeE = cltLagenZelfdeE(mech);
+  const eRef = cltReferentieEMpa(mech);
+  const komma = (v: number, d: number) => fmtValue(v, d).replace(",", "{,}");
+
   return (
     <div className="rpt-clt-stijfheid">
       <p className="rpt-clt-kopje">
-        {t("report.cltStijfheidKop", "Effectieve buigstijfheid (bijlage B, starre verbinding: γ = 1)")}
+        {t(
+          "report.cltIyKop",
+          "Opbouw van I_y en de effectieve buigstijfheid (bijlage B, starre verbinding: γ = 1)",
+        )}
       </p>
       <div
         className="rpt-clt-formule"
         dangerouslySetInnerHTML={{
           __html: renderLatexHtml(
-            String.raw`z_0 = \frac{\sum_i E_i A_i z_i}{\sum_i E_i A_i} = ${fmtValue(r.layup.z0_mm, 1).replace(",", "{,}")}\;\mathrm{mm} \qquad (EI)_{ef} = \sum_i E_i \left( I_i + A_i\, a_i^{2} \right) = ${fmtValue(r.layup.ei_ef_knm2, 0).replace(/\./g, "")}\;\mathrm{kNm}^{2}`,
+            String.raw`z_0 = \frac{\sum_i E_i A_i z_i}{\sum_i E_i A_i} = ${komma(r.layup.z0_mm, 1)}\;\mathrm{mm} \qquad I_{ef,net} = \frac{(EI)_{ef}}{E_{ref}} = ${komma(r.layup.i_ef_net_mm4 / 1e6, 1)}\cdot 10^{6}\;\mathrm{mm}^{4} \qquad (EI)_{ef} = \sum_i E_i \left( I_i + A_i\, a_i^{2} \right) = ${fmtValue(r.layup.ei_ef_knm2, 0).replace(/\./g, "")}\;\mathrm{kNm}^{2}`,
             true,
           ),
         }}
@@ -128,30 +183,57 @@ function StijfheidsAfleiding({ r }: { r: CltBeamCheckResult }) {
         <thead>
           <tr>
             <th>{t("report.cltLaag", "Laag")}</th>
-            <th>E_i (N/mm²)</th>
-            <th>A_i = b·t_i (mm²)</th>
+            <th>{t("report.cltRichting", "Richting")}</th>
+            <th>A_i = b·t_i (10³ mm²)</th>
             <th>I_i = b·t_i³/12 (10⁶ mm⁴)</th>
             <th>a_i (mm)</th>
+            <th>A_i·a_i² (10⁶ mm⁴)</th>
+            <th>I_i + A_i·a_i² (10⁶ mm⁴)</th>
+            <th>E_i (N/mm²)</th>
             <th>E_i·(I_i + A_i·a_i²) (kNm²)</th>
           </tr>
         </thead>
         <tbody>
-          {rijen.map(({ l, a, i, arm, bijdrage }) => (
-            <tr key={l.index}>
-              <td>{l.index}</td>
-              <td className="rpt-num">{fmtValue(l.e_mpa, 0)}</td>
-              <td className="rpt-num">{fmtValue(a, 0)}</td>
-              <td className="rpt-num">{fmtValue(i / 1e6, 3)}</td>
-              <td className="rpt-num">{fmtValue(arm, 1)}</td>
-              <td className="rpt-num">{fmtValue(bijdrage, 0)}</td>
+          {rijen.map((x) => (
+            <tr key={x.index} className={x.draagt ? "" : "rpt-clt-rij-dwars"}>
+              <td>{x.index}</td>
+              <td>{richtingLabel(x.richting)}</td>
+              <td className="rpt-num">{fmtValue(x.a / 1e3, 1)}</td>
+              <td className="rpt-num">{fmtValue(x.iEigen / 1e6, 3)}</td>
+              <td className="rpt-num">{fmtValue(x.arm, 1)}</td>
+              <td className="rpt-num">{fmtValue(x.steiner / 1e6, 1)}</td>
+              <td className="rpt-num">{x.draagt ? fmtValue(x.iTotaal / 1e6, 1) : "—"}</td>
+              <td className="rpt-num">{fmtValue(x.e, 0)}</td>
+              <td className="rpt-num">{x.draagt ? fmtValue(x.eiBijdrage * 1e-9, 0) : "—"}</td>
             </tr>
           ))}
           <tr className="rpt-clt-rij-som">
-            <td colSpan={5}>(EI)_ef</td>
+            <td colSpan={6}>
+              {zelfdeE
+                ? t("report.cltSomIefNet", "Σ over de lengtelagen = I_ef,net")
+                : t("report.cltSomMeetkundig", "Σ over de lengtelagen (meetkundig)")}
+            </td>
+            <td className="rpt-num">{fmtValue(somI / 1e6, 1)}</td>
+            <td />
             <td className="rpt-num">{fmtValue(r.layup.ei_ef_knm2, 0)}</td>
           </tr>
         </tbody>
       </table>
+      <p className="rpt-clt-somnoot">
+        {zelfdeE
+          ? t("report.cltIefNetGelijk", {
+              defaultValue:
+                "Alle lengtelagen hebben dezelfde E-modulus (E_ref = {{e}} N/mm²), dus de meetkundige som Σ(I_i + A_i·a_i²) is gelijk aan I_ef,net = (EI)_ef/E_ref. I_ef,net is een vergelijkingsgrootheid met een massieve doorsnede; de toetsing rekent met (EI)_ef zelf.",
+              e: fmtValue(eRef ?? 0, 0),
+            })
+          : t("report.cltIefNetAfwijkend", {
+              defaultValue:
+                "De lengtelagen hebben NIET dezelfde E-modulus, dus de meetkundige som Σ(I_i + A_i·a_i²) = {{som}}·10⁶ mm⁴ is niet gelijk aan I_ef,net = (EI)_ef/E_ref = {{ief}}·10⁶ mm⁴ met E_ref = {{e}} N/mm² (de bovenste lengtelaag). I_ef,net is een vergelijkingsgrootheid; de toetsing rekent met (EI)_ef zelf.",
+              som: fmtValue(somI / 1e6, 1),
+              ief: fmtValue(r.layup.i_ef_net_mm4 / 1e6, 1),
+              e: fmtValue(eRef ?? 0, 0),
+            })}
+      </p>
     </div>
   );
 }
@@ -159,8 +241,12 @@ function StijfheidsAfleiding({ r }: { r: CltBeamCheckResult }) {
 function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
   const { t } = useTranslation("ribbon");
   const { t: tCheck } = useTranslation("check");
-  const { m, v, kCr } = toetskrachten(r);
+  const krachten = toetskrachten(r);
+  const { m, v } = krachten;
   const fout = r.checks.length === 0;
+  // Alleen opbouwen die de kern hééft doorgerekend hebben een mechanica; bij
+  // een foutresultaat zijn de lagen leeg en is er niets om te spiegelen.
+  const mech = fout ? null : cltMechanicaUitResultaat(r.layup);
 
   const meta =
     `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(r.service_class)}` +
@@ -170,7 +256,13 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
     ).toLowerCase()}` +
     (fout
       ? ""
-      : ` · (EI)ef = ${fmtValue(r.layup.ei_ef_knm2, 0)} kNm² · z₀ = ${fmtValue(r.layup.z0_mm, 1)} mm · L/h = ${fmtValue(r.layup.slenderness, 1)}`);
+      : ` · (EI)ef = ${fmtValue(r.layup.ei_ef_knm2, 0)} kNm² · Ief,net = ${fmtValue(
+          r.layup.i_ef_net_mm4 / 1e6,
+          1,
+        )}·10⁶ mm⁴ · (EA)ef = ${fmtValue(
+          r.layup.ea_ef_kn,
+          0,
+        )} kN · z₀ = ${fmtValue(r.layup.z0_mm, 1)} mm · L/h = ${fmtValue(r.layup.slenderness, 1)}`);
 
   return (
     <div className="rpt-clt-member">
@@ -189,7 +281,7 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
         )}
       </div>
 
-      {fout ? (
+      {fout || !mech ? (
         <p className="rpt-empty-note">{r.notes.join(" ")}</p>
       ) : (
         <>
@@ -204,16 +296,18 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
               }))}
               breedteMm={r.layup.width_mm}
               z0Mm={r.layup.z0_mm}
-              sigma={sigmaVerloop(r)}
-              tau={tauVerloop(r, v, kCr)}
+              sigma={sigmaVerloop(r, krachten)}
+              tau={tauVerloop(mech, krachten)}
               titel={`${r.section_name}: opbouw en spanningsverloop`}
             />
             <div className="rpt-figuur-bijschrift">
               {t("report.cltFiguurBijschrift", {
                 defaultValue:
-                  "Opbouw van boven naar beneden, buigspanning σm,d (trek positief) en schuifspanning τd over de hoogte bij My,Ed = {{m}} kNm en Vz,Ed = {{v}} kN.",
+                  "Opbouw van boven naar beneden, met de buigspanning σm,d (trek positief) en de schuifspanning τd over de hoogte. LET OP: de twee spanningspanelen horen bij TWEE VERSCHILLENDE punten in de omhullende — σm,d bij het maatgevende momentpunt (My,Ed = {{m}} kNm{{mx}}), τd bij het maatgevende dwarskrachtpunt (Vz,Ed = {{v}} kN{{vx}}). Naast elkaar getekend, maar samen géén toestand van één doorsnede.",
                 m: fmtValue(m, 2),
+                mx: krachten.mX === null ? "" : ` op x = ${fmtValue(krachten.mX / 1000, 2)} m`,
                 v: fmtValue(v, 2),
+                vx: krachten.vX === null ? "" : ` op x = ${fmtValue(krachten.vX / 1000, 2)} m`,
               })}
             </div>
           </div>
@@ -277,7 +371,7 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
             </tbody>
           </table>
 
-          <StijfheidsAfleiding r={r} />
+          <OpbouwVanIy r={r} mech={mech} />
 
           {r.notes.length > 0 && (
             <ul className="rpt-clt-notes">
@@ -382,7 +476,17 @@ const CLT_REPORT_CSS = `
 .rpt-clt-info { font-size: 0.9em; color: #666; white-space: nowrap; }
 
 .rpt-clt-stijfheid { margin: 3mm 0 0; }
-.rpt-clt-stijfheidstabel { width: auto; min-width: 60%; }
+/* De I_y-tabel telt negen kolommen en moet de volle breedte pakken; met
+   width:auto viel hij terug op de tekstbreedte en liepen de kopregels over
+   twee regels. (Geen accenttekens in dit blok: het staat in een JS-template
+   en een accent zou de literal sluiten.) */
+.rpt-clt-stijfheidstabel { width: 100%; }
+
+.rpt-clt-somnoot {
+  margin: 1mm 0 0;
+  font-size: calc(var(--rpt-basis) * 0.78);
+  color: #555;
+}
 .rpt-clt-rij-som td { font-weight: 600; border-top: 0.3mm solid #666; }
 
 .rpt-clt-formule {

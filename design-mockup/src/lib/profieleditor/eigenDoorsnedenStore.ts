@@ -52,8 +52,14 @@ interface EigenDoorsnedenState {
   /** Voeg toe of vervang (op id én op naam: een naam is uniek). */
   bewaar: (d: EigenDoorsnede) => void;
   verwijder: (id: string) => void;
-  /** Vervang de complete lijst (projectbestand laden). */
+  /** Vervang de complete lijst — alleen voor "bibliotheek leegmaken". */
   vervangAlles: (items: EigenDoorsnede[]) => void;
+  /**
+   * Voeg binnenkomende doorsneden samen met de lokale; bij een gelijke naam
+   * wint de BINNENKOMENDE (zie `importeer`). Geeft de namen terug die
+   * daarbij inhoudelijk zijn overschreven.
+   */
+  voegSamen: (binnen: EigenDoorsnede[]) => string[];
 }
 
 function lees(): EigenDoorsnede[] {
@@ -75,11 +81,27 @@ function schrijf(items: EigenDoorsnede[]): void {
   }
 }
 
+function sorteer(items: EigenDoorsnede[]): EigenDoorsnede[] {
+  return [...items].sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+}
+
+/**
+ * Inhoudelijk gelijk? Vergelijkt alles wat de doorsnede BESCHRIJFT en laat
+ * `id` en `berekendOp` er bewust buiten: dezelfde doorsnede die op twee
+ * machines is bewaard heeft daar altijd andere waarden, en dan zou elke
+ * projectopening als "overschreven" gemeld worden.
+ */
+function doorsnedeGelijk(a: EigenDoorsnede, b: EigenDoorsnede): boolean {
+  const kern = (d: EigenDoorsnede) =>
+    JSON.stringify({ ontwerp: d.ontwerp, eigenschappen: d.eigenschappen, vorm: d.vorm, motor: d.motor });
+  return kern(a) === kern(b);
+}
+
 export const eigenDoorsnedenStore = createStore<EigenDoorsnedenState>((set, get) => ({
   items: lees(),
   bewaar: (d) => {
     const rest = get().items.filter((x) => x.id !== d.id && x.naam !== d.naam);
-    const items = [...rest, d].sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+    const items = sorteer([...rest, d]);
     schrijf(items);
     set({ items });
   },
@@ -89,8 +111,26 @@ export const eigenDoorsnedenStore = createStore<EigenDoorsnedenState>((set, get)
     set({ items });
   },
   vervangAlles: (items) => {
+    const gesorteerd = sorteer(items);
+    schrijf(gesorteerd);
+    set({ items: gesorteerd });
+  },
+  voegSamen: (binnen) => {
+    const lokaal = get().items;
+    const overschreven = binnen
+      .filter((b) => {
+        const bestaand = lokaal.find((x) => x.naam === b.naam);
+        return bestaand !== undefined && !doorsnedeGelijk(bestaand, b);
+      })
+      .map((b) => b.naam);
+    // Weg met alles wat de binnenkomende lijst opnieuw beschrijft — op naam
+    // (de staaf verwijst met `EIGEN:<naam>`, dus de naam is de sleutel) én op
+    // id, zodat er nooit twee rijen met hetzelfde id overblijven.
+    const rest = lokaal.filter((x) => !binnen.some((b) => b.naam === x.naam || b.id === x.id));
+    const items = sorteer([...rest, ...binnen]);
     schrijf(items);
-    set({ items: [...items] });
+    set({ items });
+    return overschreven;
   },
 }));
 
@@ -101,14 +141,50 @@ export function zoekEigenDoorsnede(profile: string | undefined): EigenDoorsnede 
   return eigenDoorsnedenStore.getState().items.find((d) => d.naam === naam);
 }
 
-/** Alle bewaarde doorsneden als kopie — voor opname in een projectbestand. */
-export function exporteer(): EigenDoorsnede[] {
-  return eigenDoorsnedenStore.getState().items.map((d) => ({ ...d }));
+/**
+ * De doorsneden waarnaar DIT project verwijst — meer hoort er niet in het
+ * projectbestand.
+ *
+ * De vorige regel ("alles wat lokaal bewaard is") maakte van elk
+ * projectbestand een kopie van de hele persoonlijke bibliotheek: open je zo'n
+ * bestand op een andere machine, dan kreeg die er doorsneden bij die met het
+ * project niets te maken hebben — en met het oude, vervangende laden wiste
+ * dat bovendien wat daar al stond.
+ *
+ * Wat er wél in moet is niet onderhandelbaar: een staaf met `EIGEN:<naam>`
+ * heeft geen doorsnede meer zonder deze rij, want de doorsnedemotor-uitvoer
+ * is niet uit de naam terug te rekenen. Daarom precies de gebruikte namen.
+ */
+export function exporteer(
+  staven: Iterable<{ profile?: string }>,
+): EigenDoorsnede[] {
+  const gebruikt = new Set<string>();
+  for (const s of staven) {
+    const naam = eigenNaamVan(s.profile);
+    if (naam !== null) gebruikt.add(naam);
+  }
+  return eigenDoorsnedenStore
+    .getState()
+    .items.filter((d) => gebruikt.has(d.naam))
+    .map((d) => ({ ...d }));
 }
 
-/** Projectbestand → store (vervangt de lokale lijst). */
-export function importeer(items: EigenDoorsnede[]): void {
-  eigenDoorsnedenStore.getState().vervangAlles(items);
+/**
+ * Projectbestand → winkel: SAMENVOEGEN, waarbij het project wint bij een
+ * gelijke naam.
+ *
+ * Niet vervangen. Vervangen wiste bij het openen van het tweede project de
+ * doorsneden van het eerste, zonder dat de gebruiker daar iets voor deed. Het
+ * project wint wél bij een gelijke naam: de staven in dat bestand verwijzen
+ * met `EIGEN:<naam>` naar déze doorsnede, en zouden anders met een lokale
+ * naamgenoot doorgerekend worden.
+ *
+ * Geeft de namen terug die daarbij inhoudelijk zijn overschreven, zodat de
+ * aanroeper dat kan MELDEN — stil overschrijven is precies het probleem dat
+ * deze regel oplost.
+ */
+export function importeer(items: EigenDoorsnede[]): string[] {
+  return eigenDoorsnedenStore.getState().voegSamen(items);
 }
 
 /**

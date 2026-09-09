@@ -418,20 +418,34 @@ fn hout_en_kruislaaghout_leveren_samen_een_normvermelding() {
     assert_eq!(norms_line(&inp), "EN 1995-1-1");
 }
 
-/// Een CLT-model levert een echt rapport: cover, samenvatting en een blad per
-/// staaf — niet een omslag met een lege tabel eronder.
+/// Een CLT-model levert een echt rapport: cover, samenvatting, een blad per
+/// staaf én het houthoofdstuk — niet een omslag met een lege tabel eronder.
 #[test]
 fn clt_rapport_rendert_geldige_pdf() {
-    let bytes = generate_report_pdf(ReportInput {
+    let inp = ReportInput {
         clt_check_results: vec![clt_beam(1, 0.4), clt_beam(2, 0.6)],
         ..leeg_rapport()
-    });
+    };
+    assert!(
+        report::houthoofdstuk::van_toepassing(&inp),
+        "een model met kruislaaghout hoort het houthoofdstuk te krijgen"
+    );
+    let bytes = generate_report_pdf(inp);
 
     assert!(bytes.starts_with(b"%PDF-"), "PDF-magic ontbreekt");
+    // Het vijfde blad is het houthoofdstuk. Dat kwam erbij toen kruislaaghout
+    // zijn eigen hoofdstuk kreeg: de opbouw, de ontleding van I_y en de
+    // meldingen van de kern stonden tot dan toe alleen op het scherm.
+    //
+    // De proefstaven hierboven dragen een LEGE lagenlijst — het is een stub en
+    // geen uitkomst van de rekenkern — dus het hoofdstuk meldt daar dat er
+    // geen opbouw te tekenen valt in plaats van er een te verzinnen. Dat het
+    // hoofdstuk zich met een écht toetsresultaat wél vult, staat in
+    // `tests/houthoofdstuk_pdf.rs`.
     assert_eq!(
         count_pages(&bytes),
-        4,
-        "verwacht cover + samenvatting + 2 staafpagina's"
+        5,
+        "verwacht cover + samenvatting + 2 staafpagina's + het houthoofdstuk"
     );
 }
 

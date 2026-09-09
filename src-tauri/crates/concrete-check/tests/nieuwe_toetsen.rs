@@ -661,3 +661,119 @@ fn de_t_ligger_gebruikt_b_w_waar_de_norm_b_w_vraagt() {
     let slank = toets(&r, "7.4.2_slankheid");
     assert_relative_eq!(var(slank, r"k_{flens}"), 1.0, max_relative = 1e-12);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Wat is de MAATGEVENDE toets? — een eis waaraan je voldoet begrenst niets
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// De toets met de hoogste unity check van het hele resultaat, ongeacht soort.
+fn hoogste_uc(r: &ConcreteBeamCheckResult) -> (String, f64) {
+    let mut top = (String::new(), 0.0_f64);
+    for c in &r.checks {
+        let CheckKind::Resistance(rc) = &c.kind else {
+            unreachable!("betontoetsen zijn geen stabiliteitstoetsen")
+        };
+        if rc.status == CheckStatus::NotApplicable {
+            continue;
+        }
+        let u = rc.uc.as_ref().map(|u| u.uc).unwrap_or(0.0);
+        if u > top.1 {
+            top = (rc.id.clone(), u);
+        }
+    }
+    top
+}
+
+/// **Een detailleringseis waaraan ruim wordt voldaan, mag de maatgevende
+/// toets van de staaf NIET zijn.**
+///
+/// Referentiebalk 300 × 500, beugel Ø8 tweebenig h.o.h. 150 mm, M_Ed = 60 kNm
+/// en V_Ed = 20 kN. Alles is met de hand na te rekenen uit de getallen die
+/// eerder in dit bestand zijn afgeleid:
+///
+/// ```text
+///   STERKTE
+///   6.1 spanningsblok : 60/113,33  = 0,5294     (M_Rd uit handberekening 1)
+///   6.1 M-N-κ         : binnen 2 % daarvan
+///   6.2 dwarskracht   : V_Ed = 20 kN < V_Rd,c = 64,402 kN → de betontak,
+///                       UC = 20/64,402 = 0,3106
+///   7.3 en 7.4.2      : N/A — geen BGT-combinatie, geen constructievorm
+///
+///   DETAILLERING
+///   9.2.2(9) Ø_sw,min : 5/8       = 0,625   ← de HOOGSTE UC van de staaf
+///   9.2.2(6) s_l,max  : geen dwarskrachtwapening vereist → 300 mm,
+///                       UC = 150/300 = 0,5
+///   9.2.1.1(5) Ø_langs: 6/12      = 0,5
+///   9.2.2(5) ρ_w,min  : 0,00087636/0,00223402 = 0,3923
+/// ```
+///
+/// De beugel is Ø8 waar Ø5 volstaat. Die eis is dus ruim vervuld en begrenst
+/// niets: het ontwerp loopt vast op de buiging, niet op de beugeldiameter.
+/// Zonder de regel uit `mag_maatgevend_zijn` wees `governing_check_id` hier
+/// `9.2.2_min_diameter_beugel` aan met 0,625 — een uitvoeringsregel als
+/// maatgevende toets van de staaf.
+#[test]
+fn een_vervulde_detailleringseis_wordt_niet_de_maatgevende_toets() {
+    let r = check_concrete_beam(invoer(korf_met_beugels(150.0), ugt(20.0, 60.0)));
+
+    // De opzet klopt alleen als de detailleringseis werkelijk de hoogste UC
+    // van het hele resultaat heeft — anders bewijst de test niets.
+    let beugel = toets(&r, "9.2.2_min_diameter_beugel");
+    assert_eq!(beugel.status, CheckStatus::Ok, "de eis hoort te VOLDOEN");
+    assert_relative_eq!(uc(beugel), 5.0 / 8.0, max_relative = 1e-12);
+    let (top_id, top_uc) = hoogste_uc(&r);
+    assert_eq!(top_id, "9.2.2_min_diameter_beugel", "de opzet is verschoven: {top_id} = {top_uc}");
+
+    // En tóch is de maatgevende toets een STERKTEtoets, met de bijbehorende UC.
+    assert_eq!(r.governing_check_id, "6.1_mn_kappa");
+    assert_relative_eq!(r.uc_max, uc(toets(&r, "6.1_mn_kappa")), max_relative = 1e-12);
+    assert!(
+        r.uc_max < uc(beugel),
+        "uc_max {} zou onder de vervulde detailleringseis {} moeten liggen",
+        r.uc_max,
+        uc(beugel)
+    );
+    assert_eq!(r.status, CheckStatus::Ok);
+
+    // Er verdwijnt niets: alle vijftien toetsen staan er nog, mét hun unity
+    // check. Alleen de RANGSCHIKKING is anders.
+    assert_eq!(r.checks.len(), 15);
+    assert!(beugel.uc.is_some());
+}
+
+/// **Een detailleringseis die FAALT is wél maatgevend** — dan is de korf niet
+/// uit te voeren zoals hij is getekend, en dát begrenst het ontwerp.
+///
+/// Dezelfde balk en dezelfde krachten, maar de beugel staat op 400 mm:
+///
+/// ```text
+///   9.2.2(6) s_l,max  : V_Ed = 20 kN < V_Rd,c = 64,402 kN, dus rekenkundig
+///                       geen dwarskrachtwapening vereist → s_l,max = 300 mm
+///                       (het NB-plafond), UC = 400/300 = 1,3333  → VOLDOET NIET
+///   9.2.2(5) ρ_w,min  : ρ_w = 100,530965/(400·300) = 0,000837758
+///                       UC = 0,00087636/0,000837758 = 1,0461      → VOLDOET NIET
+///   9.2.2(9) Ø_sw,min : 5/8 = 0,625                               → voldoet
+///   6.1 en 6.2        : ongewijzigd, alle onder 0,55
+/// ```
+///
+/// De hoogste UC is nu 1,3333 en die hóórt bovenaan te staan: de staaf is
+/// NotOk en het rapport moet aanwijzen waarom.
+#[test]
+fn een_falende_detailleringseis_is_wel_maatgevend() {
+    let r = check_concrete_beam(invoer(korf_met_beugels(400.0), ugt(20.0, 60.0)));
+
+    let sl = toets(&r, "9.2.2_sl_max");
+    assert_eq!(sl.status, CheckStatus::NotOk);
+    assert_relative_eq!(uc(sl), 400.0 / 300.0, max_relative = 1e-12);
+
+    assert_eq!(r.governing_check_id, "9.2.2_sl_max");
+    assert_relative_eq!(r.uc_max, 400.0 / 300.0, max_relative = 1e-12);
+    assert_eq!(r.status, CheckStatus::NotOk);
+
+    // De vervulde eis met 0,625 blijft ondergeschikt, ook al staat hij in
+    // dezelfde lijst — het onderscheid zit in "faalt hij", niet in "is het
+    // een detailleringseis".
+    let beugel = toets(&r, "9.2.2_min_diameter_beugel");
+    assert_eq!(beugel.status, CheckStatus::Ok);
+    assert_relative_eq!(uc(beugel), 5.0 / 8.0, max_relative = 1e-12);
+}

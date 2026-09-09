@@ -6,7 +6,14 @@
  * Stap 2: het profiel BINNEN die soort, samen met de materiaalklasse:
  *         - staal: reeks (IPE/HEA/HEB/HEM/UNP/koker/buis) → maat → staalklasse;
  *         - hout: sterkteklasse (C/GL) → massief b×h, óf kruislaaghout als
- *           opbouw (voorinstelling of vrij: "CLT 40/20/40/20/40[:C16][b600]");
+ *           opbouw. Die opbouw stel je samen in de rijeneditor, kies je uit de
+ *           voorinstellingen of uit je eigen bewaarde opbouwen, of typ je als
+ *           profielnaam. Grammatica van die naam, met de haakjes op de plek
+ *           waar ze horen: "CLT 40[L][:C24]/20[D][:C16]/40 [b600]" — `L`/`D`
+ *           (richting) en `:klasse` horen bij ÉÉN LAAG en mogen per laag
+ *           verschillen; alleen `b…` geldt voor de hele strook. Een opbouw
+ *           mag dus asymmetrisch zijn en per laag een eigen sterkteklasse
+ *           hebben (zie `parseCltProfiel`);
  *         - beton: betonklasse (C12/15 … C90/105) → doorsnede b×h, plus de
  *           wapeningskorf en de milieuklasse. Die laatste twee staan hier
  *           én bij de staafeigenschappen, maar het zijn dezelfde velden
@@ -26,7 +33,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { STEEL_SECTION_DIMS } from "../../lib/steelSectionDims.generated";
 import { STEEL_SECTIONS } from "../../lib/steelSections.generated";
-import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
+import { SUPPORTED_TIMBER_GRADES, matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
 import {
   CONCRETE_E_CM,
@@ -56,10 +63,13 @@ import {
   CLT_VOORINSTELLINGEN,
   cltHoogteMm,
   cltMechanica,
+  cltOpbouwSleutel,
   cltVanVoorinstelling,
   formatCltProfiel,
   isCltProfiel,
   parseCltProfiel,
+  richtingLabel,
+  standaardRichting,
 } from "../../lib/cltCheckBuilder";
 import {
   SUPPORTED_CONCRETE_CLASSES,
@@ -68,12 +78,17 @@ import {
 import { profileLookupKey } from "../../lib/steelCheckBuilder";
 import { formatVrijMateriaal, parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import type { CltPreset } from "../../lib/types/timber/CltPreset";
+import type { CltLayer } from "../../lib/types/timber/CltLayer";
+import type { CltLayerOrientation } from "../../lib/types/timber/CltLayerOrientation";
+import type { CltLayup } from "../../lib/types/timber/CltLayup";
 import type { EigenDoorsnede } from "../../lib/profieleditor/types";
 import {
   isEigenProfiel,
   profielnaamVan,
 } from "../../lib/profieleditor/eigenDoorsnedenStore";
 import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
+import { useCltOpbouwen } from "../../lib/profieleditor/useCltOpbouwen";
+import { nieuwId } from "../../lib/profieleditor/id";
 import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import CltOpbouwTekening, { CLT_THEMA_KLEUREN } from "../clt/CltOpbouwTekening";
@@ -203,6 +218,18 @@ const BETON_DOORSNEDE_DEFAULT = { b: 300, h: 500, bw: 300, hf: 200 };
 /** Startopbouw voor kruislaaghout: de gangbare 5-laags 160. */
 const CLT_PRESET_DEFAULT: CltPreset =
   CLT_VOORINSTELLINGEN.find((p) => p.name === "5-laags 160") ?? CLT_VOORINSTELLINGEN[0];
+/**
+ * Minder dan drie lagen is geen kruislaaghout: `parseCltProfiel` weigert zo'n
+ * naam. De rijeneditor mag dus niet onder dit aantal komen — anders maakt hij
+ * zijn eigen invoer onleesbaar.
+ */
+const CLT_MIN_LAGEN = 3;
+/**
+ * Voorvoegsel waarmee een eigen opbouw zich in de keuzelijst onderscheidt van
+ * een voorinstelling. Alleen een `<option value>`; er komt niets van in de
+ * profielnaam of in het model terecht.
+ */
+const EIGEN_OPBOUW_WAARDE = "eigen:";
 
 function nlGetal(v: number, decimalen = 0): string {
   return v.toLocaleString("nl-NL", { maximumFractionDigits: decimalen });
@@ -415,24 +442,154 @@ export default function ProfielKiezer({
   );
   const cltBreedte = cltLayup?.width_mm ?? CLT_STROOKBREEDTE_MM;
 
-  const kiesCltVoorinstelling = (naam: string) => {
-    const p = CLT_VOORINSTELLINGEN.find((x) => x.name === naam);
-    if (!p) return;
-    setCltTekst(formatCltProfiel(cltVanVoorinstelling(p, houtKlasse, cltBreedte), houtKlasse));
+  /**
+   * De opbouw op het scherm zetten.
+   *
+   * De TEKST blijft de enige bron van waarheid: de rijeneditor is een lezing
+   * van `cltLayup`, en `cltLayup` is een lezing van `cltTekst`. Elke bewerking
+   * — rijen én voorinstellingen — schrijft daarom terug naar de tekst, en de
+   * rijen volgen vanzelf. Zo kunnen de twee invoerwijzen niet uit de pas
+   * lopen: er is er maar één.
+   */
+  const zetCltLayup = (layup: CltLayup, klasse: string = houtKlasse) => {
+    setCltTekst(formatCltProfiel(layup, klasse));
+  };
+  /**
+   * Een complete opbouw kiezen (voorinstelling of bewaarde opbouw).
+   *
+   * Heeft die opbouw één sterkteklasse voor alle lagen, dan wordt dát ook de
+   * sterkteklasse van de staaf. Anders staat de staaf op C24 terwijl de opbouw
+   * uit C18 bestaat, en schrijft de naam bij élke laag ":C18" — twee verhalen
+   * over hetzelfde hout. Bij een opbouw met gemengde klassen blijft de klasse
+   * van de staaf staan; die is dan alleen nog de terugval voor lagen zonder
+   * eigen klasse.
+   */
+  const kiesCltLayup = (layup: CltLayup) => {
+    const klassen = [...new Set(layup.layers.map((l) => l.strength_class))];
+    const enige = klassen.length === 1 ? matchSupportedTimberGrade(klassen[0]) : null;
+    const klasse = enige ?? houtKlasse;
+    if (klasse !== houtKlasse) setHoutKlasse(klasse);
+    zetCltLayup(layup, klasse);
   };
   const zetCltBreedte = (breedte: number) => {
     if (!cltLayup || !(breedte > 0)) return;
-    setCltTekst(formatCltProfiel({ ...cltLayup, width_mm: breedte }, houtKlasse));
+    zetCltLayup({ ...cltLayup, width_mm: breedte });
   };
-  /** Welke voorinstelling bij de huidige tekst hoort — of geen (vrij). */
+
+  // ── Rijeneditor: één laag per rij ────────────────────────────────────────
+  // Elke bewerking maakt een nieuwe opbouw en schrijft die als tekst terug.
+  const wijzigCltLaag = (index: number, wijziging: Partial<CltLayer>) => {
+    if (!cltLayup) return;
+    zetCltLayup({
+      ...cltLayup,
+      layers: cltLayup.layers.map((l, i) => (i === index ? { ...l, ...wijziging } : l)),
+    });
+  };
+  const voegCltLaagToe = () => {
+    if (!cltLayup) return;
+    // De nieuwe laag erft dikte en klasse van de onderste laag en krijgt de
+    // richting die op zijn plaats hoort (afwisselend); dat is bijna altijd wat
+    // je wilt en anders één klik verder aan te passen.
+    const onderste = cltLayup.layers[cltLayup.layers.length - 1];
+    zetCltLayup({
+      ...cltLayup,
+      layers: [
+        ...cltLayup.layers,
+        {
+          thickness_mm: onderste.thickness_mm,
+          orientation: standaardRichting(cltLayup.layers.length),
+          strength_class: onderste.strength_class,
+        },
+      ],
+    });
+  };
+  const verwijderCltLaag = (index: number) => {
+    // Onder de drie lagen is het geen kruislaaghout meer en weigert
+    // `parseCltProfiel` de naam; dan zou de editor zichzelf onleesbaar maken.
+    if (!cltLayup || cltLayup.layers.length <= CLT_MIN_LAGEN) return;
+    zetCltLayup({ ...cltLayup, layers: cltLayup.layers.filter((_, i) => i !== index) });
+  };
+  const verplaatsCltLaag = (van: number, naar: number) => {
+    if (!cltLayup || van === naar) return;
+    if (naar < 0 || naar >= cltLayup.layers.length) return;
+    const layers = [...cltLayup.layers];
+    const [laag] = layers.splice(van, 1);
+    layers.splice(naar, 0, laag);
+    zetCltLayup({ ...cltLayup, layers });
+  };
+  /** Rij die op dit moment versleept wordt; null = er wordt niet gesleept. */
+  const [cltSleepIndex, setCltSleepIndex] = useState<number | null>(null);
+
+  // ── Eigen opbouwen: de bibliotheek van de gebruiker ──────────────────────
+  const cltOpbouwen = useCltOpbouwen((s) => s.items);
+  const bewaarCltOpbouw = useCltOpbouwen((s) => s.bewaar);
+  const verwijderCltOpbouw = useCltOpbouwen((s) => s.verwijder);
+  const [cltNieuweNaam, setCltNieuweNaam] = useState("");
+  // Twee opbouwen zijn dezelfde opbouw wanneer hun canonieke sleutel gelijk
+  // is — dikte, richting, klasse én strookbreedte, niet alleen de dikten.
+  const cltSleutel = useMemo(() => (cltLayup ? cltOpbouwSleutel(cltLayup) : null), [cltLayup]);
+  /** De bewaarde opbouw die exact op het scherm staat — of geen. */
+  const cltBewaardAls = useMemo(
+    () =>
+      cltSleutel === null
+        ? undefined
+        : cltOpbouwen.find((o) => cltOpbouwSleutel(o.layup) === cltSleutel),
+    [cltSleutel, cltOpbouwen],
+  );
+  const cltNaamBestaat = cltOpbouwen.some(
+    (o) => o.naam.toLowerCase() === cltNieuweNaam.trim().toLowerCase(),
+  );
+  const bewaarHuidigeCltOpbouw = () => {
+    const naam = cltNieuweNaam.trim();
+    if (!naam || !cltLayup || !cltGeldig) return;
+    // Bestaat de naam al, dan houdt de opbouw zijn id en zijn oorspronkelijke
+    // schrijfwijze: dit is een wijziging van dezelfde bibliotheekregel en geen
+    // tweede regel die er bijna hetzelfde uitziet.
+    const bestaand = cltOpbouwen.find((o) => o.naam.toLowerCase() === naam.toLowerCase());
+    bewaarCltOpbouw({
+      id: bestaand?.id ?? nieuwId(),
+      naam: bestaand?.naam ?? naam,
+      layup: cltLayup,
+      bewaardOp: new Date().toISOString(),
+    });
+    setCltNieuweNaam("");
+  };
+
+  /**
+   * Welke voorinstelling bij de huidige opbouw hoort — of geen (vrij).
+   *
+   * Vergelijkt de HELE opbouw en niet alleen de laagdikten. Op de dikten
+   * alleen werd "CLT 40D/20L/40D" als "3-laags 120" aangewezen, en één klik in
+   * de keuzelijst gooide dan richting én per-laag klassen weg zonder dat er
+   * iets over veranderde.
+   */
   const actieveVoorinstelling =
-    cltLayup
-      ? CLT_VOORINSTELLINGEN.find(
-          (p) =>
-            p.thicknesses_mm.length === cltLayup.layers.length &&
-            p.thicknesses_mm.every((t, i) => t === cltLayup.layers[i].thickness_mm),
-        )?.name ?? ""
-      : "";
+    cltSleutel === null
+      ? ""
+      : CLT_VOORINSTELLINGEN.find(
+          (p) => cltOpbouwSleutel(cltVanVoorinstelling(p, houtKlasse, cltBreedte)) === cltSleutel,
+        )?.name ?? "";
+  /**
+   * Wat er in de keuzelijst geselecteerd staat: een voorinstelling op naam,
+   * een eigen opbouw als `EIGEN_OPBOUW_WAARDE + id`, of niets (vrij).
+   */
+  const cltKeuzeWaarde =
+    actieveVoorinstelling !== ""
+      ? actieveVoorinstelling
+      : cltBewaardAls
+        ? `${EIGEN_OPBOUW_WAARDE}${cltBewaardAls.id}`
+        : "";
+  const kiesUitCltLijst = (waarde: string) => {
+    if (waarde.startsWith(EIGEN_OPBOUW_WAARDE)) {
+      const o = cltOpbouwen.find((x) => x.id === waarde.slice(EIGEN_OPBOUW_WAARDE.length));
+      if (o) kiesCltLayup(o.layup);
+      return;
+    }
+    const p = CLT_VOORINSTELLINGEN.find((x) => x.name === waarde);
+    // De strookbreedte hoort bij de plaat en niet bij de voorinstelling, dus
+    // die blijft staan als je van opbouw wisselt.
+    if (p) kiesCltLayup(cltVanVoorinstelling(p, houtKlasse, cltBreedte));
+  };
 
   // ── Overig: doorsnede, materiaal en de afgeleide grootheden ─────────────
   const overigDims = overigVorm === "profiel" ? STEEL_SECTION_DIMS[overigProfiel] : undefined;
@@ -730,18 +887,34 @@ export default function ProfielKiezer({
           )}
 
           {houtType === "clt" && (
-            <div className="pk-kolom pk-kolom-detail">
+            <>
+            {/* Kolom 1 — de opbouw SAMENSTELLEN. De rijeneditor en het
+                tekstveld zijn twee vensters op dezelfde opbouw: de tekst is de
+                bron, de rijen zijn de lezing ervan, en elke rijbewerking
+                schrijft de tekst terug. Ze kunnen dus niet uit elkaar lopen. */}
+            <div className="pk-kolom pk-kolom-detail pk-kolom-clt">
               <div className="pk-kolom-kop">Opbouw</div>
               <div className="pk-kolom-body">
               <label className="pk-veld">
-                <span>Voorinstelling</span>
-                <select value={actieveVoorinstelling} onChange={(e) => kiesCltVoorinstelling(e.target.value)}>
+                <span>Kies een opbouw</span>
+                <select value={cltKeuzeWaarde} onChange={(e) => kiesUitCltLijst(e.target.value)}>
                   <option value="">— vrij —</option>
-                  {CLT_VOORINSTELLINGEN.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name} ({p.thicknesses_mm.join("/")})
-                    </option>
-                  ))}
+                  {cltOpbouwen.length > 0 && (
+                    <optgroup label="Eigen opbouwen">
+                      {cltOpbouwen.map((o) => (
+                        <option key={o.id} value={`${EIGEN_OPBOUW_WAARDE}${o.id}`}>
+                          {o.naam} ({o.layup.layers.map((l) => l.thickness_mm).join("/")})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Voorinstellingen">
+                    {CLT_VOORINSTELLINGEN.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name} ({p.thicknesses_mm.join("/")})
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </label>
               <label className="pk-veld">
@@ -749,8 +922,113 @@ export default function ProfielKiezer({
                 <input type="number" min={10} step={10} value={cltBreedte}
                   onChange={(e) => zetCltBreedte(Number(e.target.value))} />
               </label>
+
+              <div className="pk-kolom-kop">Lagen (boven → beneden)</div>
+              {cltLayup ? (
+                <div className="pk-clt-rijen">
+                  {cltLayup.layers.map((l, i) => (
+                    <div
+                      key={i}
+                      className={`pk-clt-rij${cltSleepIndex === i ? " pk-clt-rij-sleept" : ""}`}
+                      // Alleen een drop toestaan wanneer er ook echt een rij
+                      // gesleept wordt; anders vangt de rij ook bestanden van
+                      // buiten de app op.
+                      onDragOver={(e) => { if (cltSleepIndex !== null) e.preventDefault(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (cltSleepIndex !== null) verplaatsCltLaag(cltSleepIndex, i);
+                        setCltSleepIndex(null);
+                      }}
+                    >
+                      {/* De greep is het enige dat sleept; zat `draggable` op de
+                          hele rij, dan kon je geen tekst meer selecteren in het
+                          diktevak. */}
+                      <span
+                        className="pk-clt-greep"
+                        draggable
+                        title="Versleep om de laag te verplaatsen"
+                        onDragStart={() => setCltSleepIndex(i)}
+                        onDragEnd={() => setCltSleepIndex(null)}
+                      >
+                        ⠿
+                      </span>
+                      <span className="pk-clt-nr">{i + 1}</span>
+                      <input
+                        className="pk-clt-dikte"
+                        type="number"
+                        min={1}
+                        step={5}
+                        value={l.thickness_mm}
+                        title="Laagdikte in mm"
+                        // Een dikte van 0 of leeg maakt de opbouw onleesbaar en
+                        // laat de rijen verdwijnen terwijl je aan het typen
+                        // bent; zo'n tussenstand nemen we niet over.
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (v > 0) wijzigCltLaag(i, { thickness_mm: v });
+                        }}
+                      />
+                      <select
+                        className="pk-clt-richting"
+                        value={l.orientation}
+                        title="Vezelrichting: lengte draagt in de spanrichting, dwars niet"
+                        onChange={(e) =>
+                          wijzigCltLaag(i, { orientation: e.target.value as CltLayerOrientation })
+                        }
+                      >
+                        <option value="Longitudinal">{richtingLabel("Longitudinal")}</option>
+                        <option value="Transverse">{richtingLabel("Transverse")}</option>
+                      </select>
+                      <select
+                        className="pk-clt-klasse"
+                        value={l.strength_class}
+                        title="Sterkteklasse van de lamellen in deze laag"
+                        onChange={(e) => wijzigCltLaag(i, { strength_class: e.target.value })}
+                      >
+                        {SUPPORTED_TIMBER_GRADES.map((g) => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                        {/* Een klasse die uit het tekstveld komt en niet in de
+                            lijst staat mag niet stil in een andere veranderen:
+                            hij blijft zichtbaar, met de reden erbij. */}
+                        {matchSupportedTimberGrade(l.strength_class) === null && (
+                          <option value={l.strength_class}>{l.strength_class} (onbekend)</option>
+                        )}
+                      </select>
+                      <button
+                        className="pk-clt-knopje"
+                        title="Laag omhoog"
+                        disabled={i === 0}
+                        onClick={() => verplaatsCltLaag(i, i - 1)}
+                      >↑</button>
+                      <button
+                        className="pk-clt-knopje"
+                        title="Laag omlaag"
+                        disabled={i === cltLayup.layers.length - 1}
+                        onClick={() => verplaatsCltLaag(i, i + 1)}
+                      >↓</button>
+                      <button
+                        className="pk-clt-knopje"
+                        title={
+                          cltLayup.layers.length <= CLT_MIN_LAGEN
+                            ? `Een opbouw heeft minstens ${CLT_MIN_LAGEN} lagen`
+                            : "Laag verwijderen"
+                        }
+                        disabled={cltLayup.layers.length <= CLT_MIN_LAGEN}
+                        onClick={() => verwijderCltLaag(i)}
+                      >×</button>
+                    </div>
+                  ))}
+                  <button className="pk-knop pk-knop-klein" onClick={voegCltLaagToe}>
+                    + Laag onderaan
+                  </button>
+                </div>
+              ) : (
+                <div className="pk-clt-rijen-leeg">{cltOpbouwReden(cltTekst)}</div>
+              )}
+
               <label className="pk-veld">
-                <span>Lagen (boven → beneden)</span>
+                <span>Als profielnaam</span>
                 <input
                   type="text"
                   value={cltTekst}
@@ -760,10 +1038,61 @@ export default function ProfielKiezer({
                 />
               </label>
               <div className="pk-hint">
-                Dikten in mm, gescheiden door "/". Lagen wisselen lengte/dwars af,
-                beginnend met een lengtelaag; optioneel L of D per laag en een
-                eigen klasse, bijv. <code>40L:C24/20D:C16/40L</code>.
+                Dit is de naam die op de staaf landt, en tegelijk het snelle
+                invoerveld: wat je hier typt verschijnt hierboven als rijen.
+                Dikten in mm, gescheiden door "/", van boven naar beneden. Lagen
+                wisselen lengte/dwars af, beginnend met een lengtelaag; per laag
+                mag je daarvan afwijken met <code>L</code> of <code>D</code> en
+                met een eigen klasse — <code>40L:C24/20D:C16/40L</code>. Alleen
+                de strookbreedte (<code>b600</code>) geldt voor de hele plaat.
               </div>
+
+              <div className="pk-kolom-kop">Eigen opbouwen</div>
+              {cltBewaardAls ? (
+                <div className="pk-clt-bewaard">
+                  <span>In je bibliotheek als <strong>{cltBewaardAls.naam}</strong></span>
+                  <button
+                    className="pk-knop pk-knop-klein"
+                    title="Uit de bibliotheek halen; de staaf en de opbouw op dit scherm veranderen er niet van"
+                    onClick={() => verwijderCltOpbouw(cltBewaardAls.id)}
+                  >
+                    Verwijderen
+                  </button>
+                </div>
+              ) : (
+                <div className="pk-clt-bewaren">
+                  <input
+                    type="text"
+                    value={cltNieuweNaam}
+                    placeholder="Naam, bijv. Vloer begane grond"
+                    onChange={(e) => setCltNieuweNaam(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); bewaarHuidigeCltOpbouw(); }
+                    }}
+                  />
+                  <button
+                    className="pk-knop pk-knop-klein"
+                    disabled={!cltGeldig || cltNieuweNaam.trim() === ""}
+                    onClick={bewaarHuidigeCltOpbouw}
+                  >
+                    {cltNaamBestaat ? "Overschrijven" : "Bewaren"}
+                  </button>
+                </div>
+              )}
+              <div className="pk-hint">
+                Een bewaarde opbouw staat in de keuzelijst bovenaan, blijft over
+                projecten heen bestaan en reist mee in het projectbestand. De
+                staaf krijgt de OPBOUW als profielnaam en niet de naam uit je
+                bibliotheek: een project rekent dus ook door op een machine die
+                deze bibliotheek niet kent.
+              </div>
+              </div>
+            </div>
+
+            {/* Kolom 2 — wat die opbouw is. */}
+            <div className="pk-kolom pk-kolom-detail">
+              <div className="pk-kolom-kop">Doorsnede</div>
+              <div className="pk-kolom-body">
               {/* De opbouw als tekening — bij kruislaaghout bepaalt de
                   laagrichting het gedrag, en dat lees je niet af aan een rij
                   getallen. Dezelfde component als de rapportfiguur, maar zonder
@@ -788,20 +1117,23 @@ export default function ProfielKiezer({
               )}
               {cltLayup && (
                 <div className="pk-eigenschappen">
-                  {cltLayup.layers.map((l, i) => (
-                    <div key={i} className="pk-eig-rij">
-                      <span>laag {i + 1}</span>
-                      <code>
-                        {l.thickness_mm} mm · {l.orientation === "Longitudinal" ? "lengte" : "dwars"} · {l.strength_class}
-                      </code>
-                    </div>
-                  ))}
+                  <div className="pk-eig-rij"><span>lagen</span><code>{cltLayup.layers.length}</code></div>
                   <div className="pk-eig-rij"><span>h</span><code>{cltHoogteMm(cltLayup)} mm</code></div>
                   {cltMech && (
-                    <div className="pk-eig-rij">
-                      <span>(EI)_ef</span>
-                      <code>{nlGetal(cltMech.eiEf / 1e9, 1)} kNm²</code>
-                    </div>
+                    <>
+                      {/* Bij een asymmetrische opbouw ligt de zwaartelijn niet
+                          op halve hoogte, en dát is precies waarom hij hier
+                          staat: het is de eerste plek waar je ziet dat je
+                          opbouw niet symmetrisch is. */}
+                      <div className="pk-eig-rij">
+                        <span>z₀ (v.a. boven)</span>
+                        <code>{nlGetal(cltMech.z0, 1)} mm</code>
+                      </div>
+                      <div className="pk-eig-rij">
+                        <span>(EI)_ef</span>
+                        <code>{nlGetal(cltMech.eiEf / 1e9, 1)} kNm²</code>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
@@ -814,6 +1146,7 @@ export default function ProfielKiezer({
                     : "Geen geldige opbouw — zie de notatie hierboven."}
               </div>
             </div>
+            </>
           )}
         </div>
       )}

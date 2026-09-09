@@ -81,6 +81,13 @@ const TIJDSLIMIET_MS = 300_000;
 const BUNDEL_TESTS = new Set([
   "checkconfig",
   "combinatieselectie",
+  // Rekent een externe referentie-berekening na (twee houten liggerlijnen) en
+  // raakt daarbij uitsluitend de adapterlaag: `engine`, `combinations`,
+  // `sectionResolver` en de twee check-builders — precies wat de barrel
+  // ontsluit. Juist deze verificatie hoort óók in de bundelstand: zij is de
+  // proef dat de sidecar dezelfde krachtsverdeling geeft als de bron, tegen
+  // getallen van buiten dit project.
+  "dakconstructie-referentie",
   "doorbuiging-toets",
   "hoekverdraaiing",
   "lastomschrijving",
@@ -145,6 +152,14 @@ const ALLEEN_BRON = new Map([
   ["profieleditor-lassen", "test de schuifstroom per lasnaad uit de doorsnedemeetkunde, niet de solver"],
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
+  [
+    "clt-opbouwen",
+    "test de bibliotheken van eigen CLT-opbouwen en eigen doorsneden: de winkels op localStorage, het samenvoegen bij het openen van een project en wat er in een projectbestand terechtkomt. Dat is invoerbeheer van de frontend — de solver komt er niet aan te pas en de winkels horen niet in de barrel",
+  ],
+  [
+    "clt-voorinstellingen",
+    "houdt de gegenereerde CLT-voorinstellingen tegen de Rust-kern aan: hij leest clt.rs als BRONBESTAND en importeert de generator uit scripts/ — allebei staan ze buiten de barrel, en tegen de bundel zou hij juist de generatiestap overslaan die hij moet bewaken",
+  ],
   ["spanning-builder", "test de invoerbouwer voor de spanningstoets, niet de solver"],
   [
     "rapportpdf-invoer",
@@ -185,8 +200,16 @@ const ALLEEN_BRON = new Map([
     "legt de tekenmeetkunde van wapeningskorf.ts naast de gedeelde referentie die de Rust-kant óók leest (src-tauri/crates/report/tests/golden/betonfiguren-referentie.json); tekenwerk in plaats van solverwerk, en de referentie ligt buiten de bundel",
   ],
   [
+    "cltmeetkunde-referentie",
+    "legt de CLT-mechanica van cltCheckBuilder.ts (zwaartelijn, (EI)_ef, I_ef,net, de opbouw van I_y per laag en de bemonstering van het τ-verloop) naast de gedeelde referentie die de Rust-kant óók leest (src-tauri/crates/report/tests/golden/cltmeetkunde-referentie.json); die referentie is een bronbestand buiten de bundel, en de test importeert daarnaast TIMBER_E_MEAN uit sectionResolver om de tweede E-tabel te toetsen — rapport- en tekenwerk, geen solverwerk",
+  ],
+  [
     "doorsnede-kleur",
     "rendert ProfielMiniatuur met react-dom/server en rekent de composietkleur na uit themes.css en ProfielKiezer.css; React en losse stylesheets bestaan in de sidecarbundel niet, en er komt geen rekenwerk aan te pas",
+  ],
+  [
+    "bgvloer-referentie",
+    "legt een betonnen plaatstrook uit een externe referentie-berekening naast de hele keten: hij bouwt de toetsinvoer met `lib/betonCheckBuilder` én `stores/checkStore` (de toetsstore valt buiten de barrel) en start de toetsbrug als apart proces voor de echte EN 1992-toetsing; zonder die binary faalt hij luid",
   ],
   [
     "startmodel",

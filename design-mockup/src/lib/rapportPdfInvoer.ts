@@ -276,10 +276,13 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   // Rust-kant `#[serde(default)]`, dus een leeg veld en een ontbrekend veld
   // betekenen hetzelfde; weglaten houdt de aanroep leesbaar in de logboeken.
   if (hout.length > 0) invoer.timber_check_results = hout;
-  // Kruislaaghout en de vrije spanningstoets MOETEN mee, ook al tekent de PDF
-  // hun laagtabel en spanningsverloop nog niet. Zonder deze twee regels levert
-  // een model dat alleen daaruit bestaat een rapport met nul getoetste staven,
-  // en dan zegt de PDF niets over wat de gebruiker wél getoetst heeft.
+  // Kruislaaghout en de vrije spanningstoets MOETEN mee. Zonder deze twee
+  // regels levert een model dat alleen daaruit bestaat een rapport met nul
+  // getoetste staven, en dan zegt de PDF niets over wat de gebruiker wél
+  // getoetst heeft. Voor kruislaaghout draagt dit veld sinds het houthoofdstuk
+  // ook de FIGUUR en de laagtabellen: `report::houthoofdstuk` leest `layup` en
+  // `notes` en tekent daaruit de opbouw, de ontleding van I_y en het
+  // spanningsverloop. Wat hier niet meegaat, staat dus ook niet op papier.
   if (clt.length > 0) invoer.clt_check_results = clt;
   if (beton.length > 0) invoer.concrete_check_results = beton;
   if (spanning.length > 0) invoer.stress_check_results = spanning;
@@ -318,11 +321,19 @@ export async function genereerRapportPdf(invoer: ReportInput): Promise<Uint8Arra
  * De TOETSINGEN van kruislaaghout en van de vrije spanningstoets staan er niet
  * meer bij: die gaan sinds de velden `clt_check_results` en
  * `stress_check_results` gewoon mee, en komen in de samenvattingstabel en in
- * het blok per staaf. Alleen hun eigen figuren ontbreken nog.
+ * het blok per staaf.
+ *
+ * KRUISLAAGHOUT IS HIER HELEMAAL AF. Het hoofdstuk `report::houthoofdstuk`
+ * tekent sinds deze wijziging ook de opbouwfiguur met het spanningsverloop, de
+ * ontleding van I_y per laag (A_i, I_i, a_i, A_i·a_i², I_ef,net en de
+ * E-gewogen kolom) en de tabel per lamel, en het drukt de meldingen van de
+ * kern woordelijk af. De regel "de laagtabel en de laagtekening van
+ * kruislaaghout" stond hier daarom ten onrechte en is weg; wat er nog wél
+ * staat, is de doorsnedetekening van de OVERIGE materialen (staal en massief
+ * hout), die nog geen eigen figuur in de PDF hebben.
  */
 export const NIET_IN_PDF = [
-  "de laagtabel en de laagtekening van kruislaaghout",
-  "de doorsnedetekening met het spanningsverloop",
+  "de doorsnedetekening met het spanningsverloop van staal en massief hout",
   "plaatspanningen",
   "krachtsverdeling",
   "oplegreacties",

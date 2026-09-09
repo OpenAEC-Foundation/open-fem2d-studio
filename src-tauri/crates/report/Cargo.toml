@@ -24,6 +24,11 @@ spanning-check = { path = "../spanning-check" }
 # korf af uit `ConcreteSection` / `ReinforcementCage` zelf, zodat de meetkunde
 # uit dezelfde bron komt als de tekening op het scherm.
 nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
+# Voor de houtfiguren (`houtfiguren.rs`): het τ-verloop in de figuur wordt uit
+# `CltMechanics` bemonsterd — dezelfde mechanica die de toets zelf gebruikt —
+# in plaats van uit een tweede formulering van bijlage B. Daarmee is deze
+# crate geen dev-afhankelijkheid meer maar een gewone.
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
 
@@ -36,5 +41,4 @@ mechanics = { path = "../mechanics" }
 # de afhankelijkheidsboom (printpdf gebruikt ze), dus dit kost geen nieuwe crate.
 lopdf = "0.31"
 ttf-parser = "0.25"
-nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 serde_json = { workspace = true }

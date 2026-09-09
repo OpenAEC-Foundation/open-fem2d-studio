@@ -312,6 +312,126 @@
   font-size: 10.5px;
 }
 
+/* ── CLT: de rijeneditor en de eigen bibliotheek ──────────────────────────
+   De CLT-stap heeft twee kolommen: links samenstellen, rechts wat het
+   geworden is. De linkerkolom draagt een rij per laag en heeft daarvoor meer
+   breedte nodig dan een gewone detailkolom — anders passen dikte, richting,
+   klasse en de drie knopjes niet naast elkaar en breken de rijen. */
+.pk-kolom-clt {
+  flex: 1.4 1 0;
+  min-width: 300px;
+}
+/* Staat de stap in een smal venster onder elkaar (zie de media query
+   hierboven), dan geldt voor deze kolom hetzelfde als voor elke andere
+   detailkolom: volle breedte. Dat moet hier herhaald worden omdat de regel
+   hierboven eerder in het bestand staat en `.pk-kolom-clt` hem anders wint. */
+@media (max-width: 860px) {
+  .pk-kolom-clt {
+    flex: 1 1 100%;
+  }
+}
+.pk-clt-rijen {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.pk-clt-rij {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 2px 2px 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.pk-clt-rij:hover {
+  border-color: var(--theme-border-subtle);
+}
+/* De rij die op dit moment aan de greep hangt. */
+.pk-clt-rij-sleept {
+  opacity: 0.5;
+  border-color: var(--theme-accent);
+}
+.pk-clt-greep {
+  cursor: grab;
+  padding: 0 3px;
+  color: var(--theme-text-faint);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+}
+.pk-clt-greep:active { cursor: grabbing; }
+.pk-clt-nr {
+  width: 14px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--theme-text-faint);
+}
+.pk-clt-rij input,
+.pk-clt-rij select {
+  padding: 3px 5px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-size: 11px;
+}
+.pk-clt-dikte { width: 54px; }
+.pk-clt-richting { width: 74px; }
+.pk-clt-klasse { flex: 1 1 62px; min-width: 62px; }
+/* Klein en vierkant: drie ervan naast elkaar mogen de rij niet opeten. */
+.pk-clt-knopje {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pk-clt-knopje:hover:not(:disabled) { border-color: var(--theme-accent); }
+.pk-clt-knopje:disabled { opacity: 0.35; cursor: not-allowed; }
+/* Geen leesbare opbouw = geen rijen, maar wél de reden — zelfde kader als de
+   lege tekening, zodat de kolom niet verspringt terwijl je typt. */
+.pk-clt-rijen-leeg {
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--theme-text-muted, var(--theme-text));
+}
+.pk-clt-bewaren,
+.pk-clt-bewaard {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--theme-text-muted, var(--theme-text));
+}
+.pk-clt-bewaren input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-size: 12px;
+}
+.pk-clt-bewaard strong { color: var(--theme-text); }
+.pk-knop-klein {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 /* Stap "Eigen doorsnede": staalklasse, de bewaarde doorsneden en de knop naar
    de profieleditor. De editor zat hier eerst ingebouwd, maar dan moest deze
    dialoog meegroeien tot editorformaat — precies de sprong in vensterafmeting

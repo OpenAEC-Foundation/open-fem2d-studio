@@ -1,4 +1,12 @@
-//! `FiguurFlowable` — een betonfiguur als volwaardig opmaakelement.
+//! `FiguurFlowable` — een rapportfiguur als volwaardig opmaakelement.
+//!
+//! Deze module begon als de betonkant en draagt sinds het houthoofdstuk ook de
+//! opbouwfiguur van kruislaaghout. Dat is de bedoelde groei: [`Figuur`] is de
+//! opsomming van álle figuren die het rapport kent, en [`Figuur::kader`] en
+//! [`Figuur::teken`] gaan bij elke uitbreiding mee. De tekenfuncties zelf
+//! blijven per materiaal in hun eigen module ([`crate::betonfiguren`],
+//! [`crate::houtfiguren`]); hier staat alleen wat ze met de paginering te
+//! maken hebben.
 //!
 //! # Waarom dit in `report` staat en niet in `openaec-layout`
 //!
@@ -45,8 +53,9 @@ use crate::betonfiguren::{
     doorsnede_kader, teken_doorsnede, teken_ei_verloop, teken_interactie, teken_mn_kappa,
     Figuurstijl, KADER_EI, KADER_INTERACTIE, KADER_MN_KAPPA,
 };
+use crate::houtfiguren::{clt_kader, teken_clt_opbouw, CltOpbouwFiguur, Houtstijl};
 
-/// Welke van de vier figuren, met de gegevens die erbij horen.
+/// Welke figuur, met de gegevens die erbij horen.
 ///
 /// Een enum en geen closure: een [`Flowable`] moet `Debug` en `Send` zijn, en
 /// dat is een geboxte closure niet zonder handwerk. Bovendien is hiermee in
@@ -75,6 +84,14 @@ pub enum Figuur {
     EiVerloop {
         respons: Box<SegmentStiffnessResponse>,
     },
+    /// De opbouw van een kruislaaghout-doorsnede met het spanningsverloop.
+    ///
+    /// Geboxt omdat deze variant de lagen én twee spanningsverlopen draagt en
+    /// daarmee veruit de grootste is; zonder box zou elke `Figuur` — ook een
+    /// leeg M-κ-diagram — die omvang meedragen.
+    CltOpbouw {
+        opbouw: Box<CltOpbouwFiguur>,
+    },
 }
 
 impl Figuur {
@@ -86,6 +103,7 @@ impl Figuur {
             Figuur::MnKappa { .. } => KADER_MN_KAPPA,
             Figuur::Interactie { .. } => KADER_INTERACTIE,
             Figuur::EiVerloop { .. } => KADER_EI,
+            Figuur::CltOpbouw { opbouw } => clt_kader(opbouw),
         }
     }
 
@@ -108,6 +126,13 @@ impl Figuur {
                 dl, vlak, positief, negatief, *n_ed_kn, *m_ed_knm, *m_rd_knm, stijl,
             ),
             Figuur::EiVerloop { respons } => teken_ei_verloop(dl, vlak, respons, stijl),
+            // Het houtpalet komt NIET uit `Figuurstijl`: dat draagt de
+            // betonkleuren, en houtvlak/arcering/dwarslaag hebben daar niets
+            // mee te maken. Wat de twee wél delen is het lettertype, en dat
+            // gaat hier over — één plaats waar het rapport zijn font doorgeeft.
+            Figuur::CltOpbouw { opbouw } => {
+                teken_clt_opbouw(dl, vlak, opbouw, &Houtstijl::met_font(&stijl.font))
+            }
         }
     }
 }
