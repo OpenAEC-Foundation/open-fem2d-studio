@@ -104,7 +104,27 @@ const CHECKCONFIG_VELDEN = [
   "lateralRestraintsBottom", "deflectionClass", "deflectionLimitNumerator",
   "deflectionAddLimitNumerator", "preCamber_mm", "serviceClass", "loadDuration",
   "betonKorf", "betonMilieuklasse", "betonConstructieklasse", "betonStaalsoort",
-  "betonStroken", "betonStaaltak", "spanningSigmaZ",
+  "betonStroken", "betonStaaltak", "betonKolom", "spanningSigmaZ",
+] as const;
+
+/** De velden van het §5.8-blok (`ConcreteColumnInput`). */
+const KOLOM_VELDEN = [
+  "bracing", "buckling_length", "phi_inf_t0", "stirrup_zone", "lap_situation",
+] as const;
+
+/** De twee waarden van `Schoring` — het ontwerpbesluit van §5.8.1. */
+const SCHORINGEN = ["Geschoord", "Ongeschoord"] as const;
+
+/** De vijf vakjes van figuur 5.7 met een VASTE l₀. */
+const KNIKGEVALLEN_GELDIG = [
+  "ScharnierendScharnierend", "Console", "IngeklemdScharnierend",
+  "TweezijdigIngeklemdGeschoord", "TweezijdigIngeklemdOngeschoord",
+] as const;
+
+const BEUGELZONES = ["Regulier", "BijBalkOfPlaat", "BijOverlappingslas"] as const;
+
+const OVERLAPPINGSSITUATIES = [
+  "GeenLassen", "LassenBuitenDezeDoorsnede", "TerPlaatseVanLas",
 ] as const;
 
 /**
@@ -357,6 +377,66 @@ function keurKorf(waarde: unknown, pad: string, fouten: string[]): void {
   }
 }
 
+/**
+ * De §5.8-gegevens van een kolom (`checkConfig.betonKolom`).
+ *
+ * TWEE VERPLICHTE VELDEN ZODRA HET BLOK BESTAAT: `bracing` en
+ * `buckling_length`. Dat is geen strengheid om de strengheid — §5.8.1 noemt
+ * geschoord uitdrukkelijk een aanname in de BEREKENING, en het scheelt een
+ * factor twee in de kniklengte. Een blok met alleen een kniklengte zou de kern
+ * doen weigeren; hier komt de melding vóórdat het model die kant op gaat.
+ *
+ * De drie overige velden zijn optioneel: leeg betekent "niet opgegeven", en dan
+ * meldt de toets dat hij niet kan in plaats van de ruimste tak aan te nemen.
+ */
+function keurKolom(waarde: unknown, pad: string, fouten: string[]): void {
+  if (waarde === undefined) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object zijn (schoring, kniklengte en de §9.5-keuzen).`);
+    return;
+  }
+  keurVelden(waarde, KOLOM_VELDEN, pad, fouten);
+  if (waarde.bracing === undefined) {
+    fouten.push(
+      `${pad}.bracing ontbreekt. Geschoord of ongeschoord is het ontwerpbesluit van art. 5.8.1 ` +
+        `en heeft met opzet geen standaardwaarde; zonder die keuze is er geen kniklengte en geen ` +
+        `slankheidsgrens.`,
+    );
+  }
+  keurEnum(waarde.bracing, SCHORINGEN, `${pad}.bracing`, fouten);
+  keurGetal(waarde.phi_inf_t0, `${pad}.phi_inf_t0`, fouten, { positief: true });
+  keurEnum(waarde.stirrup_zone, BEUGELZONES, `${pad}.stirrup_zone`, fouten);
+  keurEnum(waarde.lap_situation, OVERLAPPINGSSITUATIES, `${pad}.lap_situation`, fouten);
+
+  const kl = waarde.buckling_length;
+  if (kl === undefined) {
+    fouten.push(`${pad}.buckling_length ontbreekt; zonder l₀ is er geen slankheid λ = l₀/i.`);
+    return;
+  }
+  if (!isObject(kl)) {
+    fouten.push(`${pad}.buckling_length: moet een object met \`soort\` zijn.`);
+    return;
+  }
+  if (kl.soort === "Figuur57") {
+    keurVelden(kl, ["soort", "geval"], `${pad}.buckling_length`, fouten);
+    keurEnum(kl.geval, KNIKGEVALLEN_GELDIG, `${pad}.buckling_length.geval`, fouten);
+    if (kl.geval === undefined) {
+      fouten.push(`${pad}.buckling_length.geval ontbreekt.`);
+    }
+  } else if (kl.soort === "Opgegeven") {
+    keurVelden(kl, ["soort", "l0_m"], `${pad}.buckling_length`, fouten);
+    if (kl.l0_m === undefined) {
+      fouten.push(`${pad}.buckling_length.l0_m ontbreekt; l₀ is hier het hele gegeven.`);
+    }
+    keurGetal(kl.l0_m, `${pad}.buckling_length.l0_m`, fouten, { positief: true });
+  } else {
+    fouten.push(
+      `${pad}.buckling_length.soort: ${JSON.stringify(kl.soort)} bestaat niet. ` +
+        `Toegestaan: Figuur57 (een vakje van figuur 5.7) of Opgegeven (l₀ rechtstreeks).`,
+    );
+  }
+}
+
 /** Verplicht geheel getal (identiteiten en verwijzingen). */
 function eisGeheel(
   waarde: unknown,
@@ -491,6 +571,7 @@ export function controleerVelden(rauw: unknown): string[] {
         keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
         keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
         keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
+        keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
       }
     }
   });

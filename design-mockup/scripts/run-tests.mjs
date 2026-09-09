@@ -195,6 +195,10 @@ const ALLEEN_BRON = new Map([
     "drijft de lus uit lib/betonStijfheid, die de Rust-rekenkern nodig heeft en dus niet in de barrel hoort; het echte-kernblok start de toetsbrug als apart proces en wordt luid overgeslagen als die binary ontbreekt",
   ],
   [
+    "kolomtoets",
+    "de §5.8-invoer van een betonnen kolom: de gevallen van figuur 5.7 uit components/beton/kolomgegevens, de doorvoer via korvenUitStaven (een zustand-store) en betonCheckBuilder, en een blok dat de toetsbrug als apart proces aanroept. Twee van die drie modules staan buiten de barrel — het korfmodel en de store — en de Rust-kern hoort er sowieso niet in, dus tegen de sidecarbundel zou de test juist de laag overslaan die hij moet bewaken",
+  ],
+  [
     "sidecar",
     "start de sidecar als eigen proces — en draait daarin zelf al bron én bundel",
   ],
@@ -247,12 +251,24 @@ const ALLEEN_BRON = new Map([
     "rendert DoorsnedeTekening met react-dom/server en meet de LIGGING van de beugel en de staven terug uit de gerenderde SVG (schaal uit de omtrek, staafharten in millimeters, ligt-de-staaf-in-de-polygoon); tekenwerk in plaats van solverwerk, en React bestaat in de sidecarbundel niet",
   ],
   [
+    "dekkingsvenster",
+    "het betonvenster onderin: het zonemodel (de TS-spiegel van ReinforcementZones), de afleiding van de vier lagen, en AanzichtTekening gerenderd met react-dom/server waaruit de LIGGING van de trapjes en van het rode tekortvak in millimeters wordt teruggemeten. Drie redenen om op de bron te blijven: React bestaat in de sidecarbundel niet, het korf- en zonemodel van de frontend zit niet in de barrel, en het laatste blok start de toetsbrug als apart proces voor de echte EN 1992-uitkomsten",
+  ],
+  [
     "unp-flenshelling",
     "meet het oppervlak van de GETEKENDE contour van de U-profielen tegen de cataloguswaarde, om vast te leggen dat een UNP taps toeloopt en een UPE niet; tekenmeetkunde in plaats van solverwerk, en de contourfuncties zitten niet in de barrel",
   ],
   [
     "rapportnormen",
     "bepaalt welke normen het rapport mag noemen (`lib/normenInRapport`) uit de uitgangspunten, de toetsresultaten en de materialen in het model — presentatielogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
+  ],
+  [
+    "dekkingslijn",
+    "legt de hele keten van de dekkingslijn vast: de zonegrenzen uit `lib/betonZoneSneden` worden rekenknopen via `bouwMultiInput`, de zones reizen door `lib/betonCheckBuilder` en `lib/betonDekkingslijnBuilder` naar de kern, en het slotblok start de toetsbrug als apart proces voor het echte `concrete_dekkingslijn`. Hij leest daarvoor `stores/checkStore` (de toetsstore) en de twee invoerbouwers, en die vallen alle drie buiten de barrel van de sidecarbundel; tegen de bundel zou hij juist de aansluiting overslaan die hij moet bewaken. De solverkant van hetzelfde mechanisme — `extraSneden` als zodanig — staat in `test-sneden` en draait wél tegen de bundel",
+  ],
+  [
+    "scheefstand-norm",
+    "rekent φ uit volgens EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1) en leidt h en m uit het model af (`lib/scheefstandNorm`). Dat is een PROJECTINSTELLING van de frontend: de gebruiker kiest de norm, en de sidecar krijgt het resultaat gewoon als getal (`scheefstandNoemer`) binnen. De module zit daarom niet in de barrel — de motorkant van dezelfde zaak (H = φ·V) staat in `test-scheefstand`, en die draait wél tegen de bundel",
   ],
 ]);
 

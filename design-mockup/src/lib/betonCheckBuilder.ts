@@ -29,7 +29,7 @@
  * bovenste tak (3.2.7(2)b); blijvende/tijdelijke ontwerpsituatie; minimale
  * excentriciteit 6.1(4) aan.
  *
- * TWEE GRENSTOESTANDEN, TWEE OMHULLENDEN
+ * TWEE GRENSTOESTANDEN, DRIE OMHULLENDEN
  *
  * `forces_envelope` draagt de UGT-combinaties en voedt §6.1 (buiging), §6.2
  * (dwarskracht), §7.4.2 (slankheid) en §9.2 (detaillering).
@@ -48,11 +48,30 @@
  * heeft de solver haar voor deze staaf niet doorgerekend, dan gaat er een
  * LEGE lijst mee en meldt de kern in het rapport dat §7.3 niet is uitgevoerd,
  * met de reden.
+ *
+ * `sls_quasi_permanent_envelope` is de DERDE, en zij hoort bij §5.8.4: M₀Eqp
+ * in (5.19) is het eerste-orde-moment onder de QUASI-BLIJVENDE combinatie
+ * (6.16). Dat is precies de combinatie die §7.3 in Nederland NIET gebruikt, en
+ * dat maakt de twee onverwisselbaar: de frequente als quasi-blijvende lezen
+ * geeft een te grote φ_ef en dus een te lage λ_lim, andersom een te hoge.
+ * Ook zij wordt op naam herkend en heeft geen terugval.
+ *
+ * §5.8 ZELF — GESCHOORD IS INVOER
+ *
+ * Naast die derde omhullende reist het blok `column` mee: het ontwerpbesluit
+ * geschoord/ongeschoord (§5.8.1), de kniklengte, φ(∞,t₀) en de twee keuzen van
+ * §9.5. Het komt uit `checkConfig.betonKolom` van de staaf en wordt hier niet
+ * afgeleid. Welke staaf de app als KOLOM aanbiedt is een andere vraag; die
+ * beantwoordt het invoerscherm met `isOverwegendVerticaal` (75° t.o.v. de
+ * horizontaal, dezelfde drempel als `bepaalStandaardRol`). Of §5.8 werkelijk
+ * van toepassing is, beslist de kern uit de normaalDRUK — een schuine schoor
+ * met 400 kN druk is voor §5.8 net zo goed een op druk belast element.
  */
 import type { Beam, Node } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { ConcreteBeamCheckInput } from "./types/concrete/ConcreteBeamCheckInput";
+import type { ConcreteColumnInput } from "./types/concrete/ConcreteColumnInput";
 import type { ConcreteSectionInput } from "./types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "./types/concrete/ConcreteShape";
 import type { ExposureClass } from "./types/concrete/ExposureClass";
@@ -395,6 +414,21 @@ export interface BetonStaafConfig {
    * meetkunde) en meldt dat in de afleiding.
    */
   staafafstandMm?: number;
+  /**
+   * De §5.8-gegevens: geschoord of ongeschoord, de kniklengte, φ(∞,t₀) en de
+   * twee keuzen van §9.5.
+   *
+   * Gaat als GEHEEL het verzoek in (`column: cfg.kolom`), om dezelfde reden
+   * als de korf hierboven: een bouwer die de velden opsomt, laat een nieuw
+   * veld stilzwijgend vallen, en dan rekent de kern met een andere kniklengte
+   * dan de gebruiker heeft ingevoerd.
+   *
+   * Ontbreekt het blok, dan wordt §5.8 niet getoetst en staat de reden in het
+   * rapport. Er wordt niets aangenomen: §5.8.1 noemt geschoord uitdrukkelijk
+   * een aanname in de berekening, en een aangenomen "geschoord" levert een
+   * groene kolom op die in werkelijkheid twee keer zo slank is.
+   */
+  kolom?: ConcreteColumnInput;
 }
 
 export interface BetonBuildData {
@@ -474,6 +508,20 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
     ? data.combinationResults.get(slsFrequent.id) ?? null
     : null;
 
+  // DE QUASI-BLIJVENDE BGT-COMBINATIE (6.16) voor §5.8.4. Herkend op de naam,
+  // net als de frequente hierboven en net als in `timberCheckBuilder`. Zij
+  // voedt uitsluitend M₀Eqp in (5.19), de effectieve kruipcoëfficiënt — §5.8.4
+  // koppelt φ_ef uitdrukkelijk aan déze combinatie, waar §7.3 (in de versie van
+  // de nationale bijlage) juist de frequente vraagt.
+  //
+  // De twee zijn dus niet uitwisselbaar, en er is opnieuw GEEN terugval: de
+  // frequente als quasi-blijvende lezen geeft een te grote M₀Eqp en dus een te
+  // grote φ_ef, wat A = 1/(1+0,2·φ_ef) verlaagt en λ_lim mee. Ontbreekt de
+  // combinatie, dan gaat er een lege lijst mee en meldt de kern dat φ_ef
+  // onbekend blijft, met de reden.
+  const slsQuasi = slsCombos.find((c) => /quasi/i.test(c.name)) ?? null;
+  const quasiResult = slsQuasi ? data.combinationResults.get(slsQuasi.id) ?? null : null;
+
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
     const klasse = matchSupportedConcreteClass(materialName, klassen);
@@ -539,9 +587,15 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
       // De wapening die LANGS de staaf verandert (§9.2.1.3 inkorting van de
       // langswapening, §9.2.2 beugelverdichting). LEEG betekent: de korf
       // hierboven geldt over de hele staaf — precies het gedrag van vóór dit
-      // veld. De app kent nog geen invoer per zone; zodra die er is, komt zij
-      // hier binnen zonder dat er verder aan de keten iets hoeft te wijzigen.
-      reinforcement_zones: { longitudinal: [], stirrups: [] },
+      // veld, en dus ook het gedrag van elk model dat geen zones draagt.
+      //
+      // De zones komen uit `checkConfig.betonZones`, DEZELFDE bron waaruit
+      // `bouwMultiInput` de rekenknopen op de zonegrenzen haalt
+      // (`lib/betonZoneSneden.ts`) en waaruit `betonDekkingslijnBuilder` de
+      // dekkingslijn voedt. Eén bron voor die drie: zouden de toetsing en de
+      // dekkingslijn elk hun eigen zonelijst lezen, dan kunnen zij over
+      // dezelfde staaf iets anders zeggen.
+      reinforcement_zones: beam.checkConfig?.betonZones ?? { longitudinal: [], stirrups: [] },
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
       // LEEG ALS ER GEEN ECHT RESULTAAT IS. `buildForcesEnvelope` levert bij
@@ -553,6 +607,13 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
         slsFrequent && frequentResult?.elements.has(beam.id)
           ? buildForcesEnvelope(beam.id, [slsFrequent], data.combinationResults)
           : [],
+      // Idem voor de QUASI-BLIJVENDE combinatie (6.16), die alleen M₀Eqp in
+      // (5.19) voedt. Dezelfde regel: liever leeg dan een verzonnen nulpunt,
+      // want dat zou een φ_ef van nul opleveren die er geloofwaardig uitziet.
+      sls_quasi_permanent_envelope:
+        slsQuasi && quasiResult?.elements.has(beam.id)
+          ? buildForcesEnvelope(beam.id, [slsQuasi], data.combinationResults)
+          : [],
       ...(cfg.milieuklasse ? { exposure_class: cfg.milieuklasse } : {}),
       ...(cfg.korrelafmetingMm && cfg.korrelafmetingMm > 0
         ? { aggregate_size_mm: cfg.korrelafmetingMm }
@@ -561,6 +622,10 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
       ...(cfg.staafafstandMm && cfg.staafafstandMm > 0
         ? { bar_spacing_mm: cfg.staafafstandMm }
         : {}),
+      // §5.8 als GEHEEL. Geen veld-voor-veld overschrijving — zie `kolom` in
+      // `BetonStaafConfig`. Zonder blok geen §5.8-toets, met de reden uit de
+      // kern in plaats van een aangenomen schoring.
+      ...(cfg.kolom ? { column: cfg.kolom } : {}),
       n_strips: cfg.aantalStroken && cfg.aantalStroken > 0 ? Math.round(cfg.aantalStroken) : DEFAULT_N_STRIPS,
       steel_branch: cfg.staaltak ?? "Horizontal",
       design_situation: "PersistentTransient",

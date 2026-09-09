@@ -1,11 +1,15 @@
 use concrete_check::{
-    ConcreteBeamCheckInput, ConcreteBeamCheckResult, MnKappaRequest, MnKappaResponse,
-    SegmentStiffnessRequest, SegmentStiffnessResponse,
+    ConcreteBeamCheckInput, ConcreteBeamCheckResult, DekkingslijnAntwoord, DekkingslijnVerzoek,
+    MnKappaRequest, MnKappaResponse, SegmentStiffnessRequest, SegmentStiffnessResponse,
 };
 use nen_en_1992_1_1::{
     ConcreteClass, ConcreteCoverRequest, ConcreteCoverResponse, EffectiveFlangeWidthRequest,
     EffectiveFlangeWidthResponse, ExposureClassInfo, ReinforcementGrade,
 };
+// §5.8 — de kolomtoets. Apart van de `use` hierboven omdat die regel al door
+// meer dan één spoor tegelijk wordt bewerkt; twee `use`-regels naar dezelfde
+// crate is toegestaan en houdt de wijzigingen uit elkaars vaarwater.
+use concrete_check::{ConcreteColumnCheckRequest, ConcreteColumnCheckResponse};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1993_1_8_las::{LasInput, LasResultaat};
 use nen_en_1995_1_1::clt::CltPreset;
@@ -113,6 +117,61 @@ async fn concrete_segment_stiffness(
     inputs: SegmentStiffnessRequest,
 ) -> Result<SegmentStiffnessResponse, String> {
     concrete_check::segment_stiffness(inputs)
+}
+
+/// De KOLOMTOETS van §5.8 los van een volledige staaftoetsing: de kniklengte
+/// l₀, de slankheid λ = l₀/i (5.14) en de slankheidsgrens λ_lim = 20·A·B·C/√n
+/// waaronder de tweede-orde-effecten mogen worden verwaarloosd — door de
+/// nationale bijlage bij 5.8.3.1(1) als EIS gesteld in plaats van als
+/// aanbeveling. Daarbij de effectieve kruipcoëfficiënt φ_ef (5.19) met de drie
+/// voorwaarden van 5.8.4(4), en de detailleringseisen van §9.5.
+///
+/// **Geschoord of ongeschoord is invoer en geen afleiding.** §5.8.1 noemt het
+/// uitdrukkelijk een aanname in de berekening: een raamwerk mét windverband
+/// ziet er in een 2D-model niet anders uit dan hetzelfde raamwerk zonder. Het
+/// verschil is groot — een factor twee in l₀ tussen (5.15) en (5.16), en
+/// C = 0,7 dat voor een ongeschoord element is voorgeschreven — dus er wordt
+/// niets aangenomen; zonder dat gegeven is er geen toets.
+///
+/// Dit command draait exact dezelfde rekengang als `check_concrete_beams`
+/// (`concrete_check::kolomtoetsen`) en bestaat naast dat command om dezelfde
+/// reden als `concrete_cover_check` naast de dekkingstoets in de staaftoetsing:
+/// het invoerscherm moet λ en λ_lim kunnen tonen terwijl de gebruiker typt,
+/// zonder er een hele toetsronde voor te draaien.
+#[tauri::command]
+async fn concrete_column_check(
+    inputs: ConcreteColumnCheckRequest,
+) -> Result<ConcreteColumnCheckResponse, String> {
+    concrete_check::column_check(inputs)
+}
+
+/// De dekkingslijn van één betonstaaf: §9.2.1.3 met figuur 9.2 voor de
+/// momenten, en §6.2 voor de dwarskracht — als GEGEVENS, niet als plaatje.
+///
+/// Per plaats langs de staaf komen de benodigde en de aanwezige waarde terug,
+/// met per punt het bewijs dat daar gold: welke staafbundels er liggen, of zij
+/// binnen hun verankeringslengte vallen (het lineaire krachtverloop van
+/// 9.2.1.3(3)), en welke bewijsvoering van §6.2 de dwarskrachtweerstand
+/// leverde. Op een zonegrens staan twee punten met dezelfde x — links en
+/// rechts van de sprong — want interpoleren over een sprong heeft geen
+/// betekenis.
+///
+/// Stateloos, net als `concrete_segment_stiffness`: één verzoek, één antwoord,
+/// niets blijft achter. Het verzoek draagt de betonstaaf in HETZELFDE type dat
+/// `check_concrete_beams` krijgt, zodat er geen tweede invoertype en geen
+/// tweede frontendbouwer ontstaat; zie de moduletekst van
+/// `concrete_check::dekkingslijn`.
+///
+/// Voor een lijn met punten op de plaatsen waar de weerstand SPRINGT moeten de
+/// zonegrenzen rekenknopen zijn. Dat gebeurt aan de solverkant, via
+/// `SolverBeamInput.extraSneden` (zie `lib/betonZoneSneden.ts`); zonder die
+/// knopen mist de omhullende de sprong en meldt de lijn dat hij een grens niet
+/// kon bereiken.
+#[tauri::command]
+async fn concrete_dekkingslijn(
+    inputs: DekkingslijnVerzoek,
+) -> Result<DekkingslijnAntwoord, String> {
+    concrete_check::dekkingslijn(inputs)
 }
 
 /// De meewerkende flensbreedte b_eff van een T- of L-ligger (5.3.2.1), per
@@ -249,6 +308,8 @@ pub fn run() {
             check_concrete_beams,
             concrete_mn_kappa,
             concrete_segment_stiffness,
+            concrete_column_check,
+            concrete_dekkingslijn,
             concrete_effective_flange_width,
             list_exposure_classes,
             concrete_cover_check,

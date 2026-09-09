@@ -9,6 +9,9 @@
 import { useState } from "react";
 import type { LoadCase, Load, Analysetype } from "./femTypes";
 import { ANALYSETYPEN, ANALYSETYPE_LABEL, ANALYSETYPE_OMSCHRIJVING } from "./femTypes";
+import {
+  SCHEEFSTAND_BRONNEN, SCHEEFSTAND_BRON_LABEL, type ScheefstandBron,
+} from "../../lib/scheefstandNorm";
 import "./LoadCaseTabBar.css";
 
 interface Props {
@@ -44,6 +47,31 @@ interface Props {
   /** Richting van de equivalente horizontale krachten: +1 = +x, −1 = −x. */
   scheefstandRichting?: 1 | -1;
   setScheefstandRichting?: (v: 1 | -1) => void;
+  /**
+   * Waar φ vandaan komt: `"vast"` (de noemer hierboven, en de stand van elk
+   * bestaand project) of een van de drie normen — zie `lib/scheefstandNorm.ts`.
+   */
+  scheefstandBron?: ScheefstandBron;
+  setScheefstandBron?: (v: ScheefstandBron) => void;
+  /** Handmatige h in m voor α_h; `null` = de afgeleide waarde tonen. */
+  scheefstandHoogteM?: number | null;
+  setScheefstandHoogteM?: (v: number | null) => void;
+  /** Handmatige m voor α_m; `null` = de afgeleide waarde tonen. */
+  scheefstandAantalElementen?: number | null;
+  setScheefstandAantalElementen?: (v: number | null) => void;
+  /**
+   * 1/φ zoals er is GEREKEND. De balk rekent zelf niets uit — App.tsx bepaalt
+   * φ op één plek, zodat het scherm nooit iets anders kan tonen dan de motor
+   * heeft gekregen.
+   */
+  scheefstandPhiNoemer?: number;
+  /** De uit het model afgeleide h en m — de plaatshouder in de invoervelden. */
+  scheefstandAfgeleideHoogteM?: number;
+  scheefstandAfgeleidAantal?: number;
+  /** De volledige afleiding met alle tussenwaarden, voor de tooltip. */
+  scheefstandToelichting?: string;
+  /** Wat er mis kan zijn met de afleiding; leeg = niets. */
+  scheefstandWaarschuwingen?: string[];
   /** Model-view tab: when false, no LC loads are drawn on the canvas. */
   showLoads?: boolean;
   setShowLoads?: (v: boolean) => void;
@@ -75,6 +103,12 @@ export default function LoadCaseTabBar({
   scheefstandEnabled, setScheefstandEnabled,
   scheefstandNoemer, setScheefstandNoemer,
   scheefstandRichting, setScheefstandRichting,
+  scheefstandBron = "vast", setScheefstandBron,
+  scheefstandHoogteM = null, setScheefstandHoogteM,
+  scheefstandAantalElementen = null, setScheefstandAantalElementen,
+  scheefstandPhiNoemer, scheefstandAfgeleideHoogteM = 0,
+  scheefstandAfgeleidAantal = 1, scheefstandToelichting = "",
+  scheefstandWaarschuwingen = [],
   showLoads = true, setShowLoads,
   hasResults = false, resultsActive = false, onShowResults,
 }: Props) {
@@ -258,7 +292,13 @@ export default function LoadCaseTabBar({
       {setScheefstandEnabled && (
         <label
           className={`lc-tab-toggle${scheefstandEnabled ? " active" : ""}`}
-          title="Scheefstand meenemen: elke verticale last krijgt een horizontale metgezel H = φ·V (EN 1993-1-1 §5.3.2)"
+          title={
+            "Scheefstand (initiële imperfectie) meenemen: elke verticale last " +
+            "krijgt een horizontale metgezel H = φ·V. Waar φ vandaan komt kies " +
+            "je hiernaast — de vaste noemer (de basiswaarde, en de stand van " +
+            "elk bestaand project) of de normformule van EN 1993-1-1 (5.5), " +
+            "EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1)."
+          }
         >
           <input
             type="checkbox"
@@ -268,8 +308,43 @@ export default function LoadCaseTabBar({
           <span>Scheefstand</span>
         </label>
       )}
-      {setScheefstandEnabled && scheefstandEnabled && (
-        <span className="lc-tab-phi" title="Scheefstand φ als 1/x (default 1/200) en richting van de horizontale krachten">
+      {/* Waar φ vandaan komt. "vast" is de beginstand en de stand van elk
+          bestaand projectbestand: de ingetikte noemer, zonder de
+          reductiefactoren van de norm. Kiest de gebruiker een norm, dan
+          verdwijnt het noemerveld en verschijnen h en m — de twee grootheden
+          die (5.5)/(5.1) nodig hebben. */}
+      {setScheefstandEnabled && scheefstandEnabled && setScheefstandBron && (
+        <span
+          className="lc-tab-phi"
+          title={
+            "Waar φ vandaan komt.\n\n" +
+            "vaste noemer — het ingetikte getal, zonder α_h en α_m. Dit is de " +
+            "basiswaarde van de norm en dus de veilige bovengrens; het is ook " +
+            "de stand van elk project dat vóór deze keuze is gemaakt.\n" +
+            "EN 1993-1-1 (5.5) — φ = φ₀·α_h·α_m met φ₀ = 1/200 (staal).\n" +
+            "EN 1992-1-1 (5.1) — θ_i = θ₀·α_h·α_m met θ₀ = 1/300 volgens de " +
+            "Nederlandse nationale bijlage (beton).\n" +
+            "EN 1995-1-1 (5.1) — φ = 0,005 voor h ≤ 5 m, anders 0,005·√(5/h); " +
+            "geen α_m (hout).\n" +
+            "ongunstigste — rekent alle normen door die op dit model van " +
+            "toepassing zijn en neemt de grootste φ."
+          }
+        >
+          <span className="lc-tab-phi-label">φ uit</span>
+          <select
+            className="lc-tab-phi-dir"
+            value={scheefstandBron}
+            onChange={(e) => setScheefstandBron(e.target.value as ScheefstandBron)}
+          >
+            {SCHEEFSTAND_BRONNEN.map((b) => (
+              <option key={b} value={b}>{SCHEEFSTAND_BRON_LABEL[b]}</option>
+            ))}
+          </select>
+        </span>
+      )}
+
+      {setScheefstandEnabled && scheefstandEnabled && scheefstandBron === "vast" && (
+        <span className="lc-tab-phi" title="Scheefstand φ als 1/x (default 1/200)">
           <span className="lc-tab-phi-label">φ = 1/</span>
           <input
             type="number"
@@ -282,11 +357,75 @@ export default function LoadCaseTabBar({
               if (Number.isFinite(v) && v > 0) setScheefstandNoemer?.(v);
             }}
           />
+        </span>
+      )}
+
+      {/* Bij een normkeuze: h en m met de AFGELEIDE waarde als plaatshouder,
+          de uitkomst van (5.5)/(5.1) ernaast, en de hele afleiding met alle
+          tussenwaarden in de tooltip. Leeg laten = de afleiding gebruiken;
+          een getal invullen overschrijft haar. */}
+      {setScheefstandEnabled && scheefstandEnabled && scheefstandBron !== "vast" && (
+        <span className="lc-tab-phi" title={scheefstandToelichting}>
+          <span className="lc-tab-phi-label">h =</span>
+          <input
+            type="number"
+            className="lc-tab-phi-input"
+            min={0}
+            step={0.5}
+            placeholder={scheefstandAfgeleideHoogteM.toFixed(2)}
+            value={scheefstandHoogteM ?? ""}
+            onChange={(e) => {
+              const t = e.target.value.trim();
+              if (t === "") { setScheefstandHoogteM?.(null); return; }
+              const v = Number(t);
+              if (Number.isFinite(v) && v > 0) setScheefstandHoogteM?.(v);
+            }}
+            title={
+              "Hoogte h in m voor α_h = 2/√h. Leeg = uit het model afgeleid " +
+              `(${scheefstandAfgeleideHoogteM.toFixed(3)} m): van de laagste ` +
+              "oplegging tot de bovenkant van de constructie (EN 1993-1-1 " +
+              "figuur 5.2; EN 1992-1-1 §5.2(6) voor de schorende constructie)."
+            }
+          />
+          <span className="lc-tab-phi-label">m</span>
+          <input
+            type="number"
+            className="lc-tab-phi-input"
+            min={1}
+            step={1}
+            placeholder={String(scheefstandAfgeleidAantal)}
+            value={scheefstandAantalElementen ?? ""}
+            onChange={(e) => {
+              const t = e.target.value.trim();
+              if (t === "") { setScheefstandAantalElementen?.(null); return; }
+              const v = Number(t);
+              if (Number.isFinite(v) && v >= 1) setScheefstandAantalElementen?.(Math.floor(v));
+            }}
+            title={
+              "Aantal dragende verticale elementen m voor α_m = √(0,5(1+1/m)). " +
+              `Leeg = uit het model afgeleid (${scheefstandAfgeleidAantal}): het ` +
+              "aantal kolomlijnen, waarbij staven die op elkaar staan één kolom " +
+              "vormen. Het 50 %-criterium van EN 1993-1-1 5.3.2(3)a kan hier " +
+              "niet worden toegepast (het vraagt de kolomkrachten, en die " +
+              "volgen pas uit de berekening); haal een licht belaste stijl er " +
+              "met de hand uit — kleinere m geeft grotere φ."
+            }
+          />
+          <span className="lc-tab-phi-label">
+            {scheefstandWaarschuwingen.length > 0 ? "⚠ " : ""}
+            φ = 1/{scheefstandPhiNoemer !== undefined
+              ? scheefstandPhiNoemer.toFixed(0)
+              : "—"}
+          </span>
+        </span>
+      )}
+
+      {setScheefstandEnabled && scheefstandEnabled && (
+        <span className="lc-tab-phi" title="Richting van de equivalente horizontale krachten">
           <select
             className="lc-tab-phi-dir"
             value={scheefstandRichting ?? 1}
             onChange={(e) => setScheefstandRichting?.(Number(e.target.value) === -1 ? -1 : 1)}
-            title="Richting van de equivalente horizontale krachten"
           >
             <option value={1}>+X</option>
             <option value={-1}>−X</option>

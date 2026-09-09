@@ -83,6 +83,12 @@ fn invoer(cage: ReinforcementCage, envelop: Vec<ForcePoint>) -> ConcreteBeamChec
         aggregate_size_mm: None,
         structural_system: None,
         bar_spacing_mm: None,
+        // §5.8: deze staaf is geen kolom in de zin van de toets — er zijn
+        // geen kniklengte en geen schoring opgegeven, dus de slankheidsgrens
+        // komt als "niet uitgevoerd" terug. Leeg laten is hier het punt: zo
+        // blijft deze test precies de test die hij was.
+        column: None,
+        sls_quasi_permanent_envelope: vec![],
     }
 }
 

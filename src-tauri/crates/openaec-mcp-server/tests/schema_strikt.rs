@@ -395,6 +395,14 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         "sls_frequent_envelope", "exposure_class", "structural_class",
         "aggregate_size_mm",
         "structural_system", "bar_spacing_mm", "reinforcement_zones",
+        // §5.8. `column` draagt het ontwerpbesluit geschoord/ongeschoord en de
+        // kniklengte; ontbreekt het in het schema, dan stuurt een client het
+        // nooit mee en blijft de slankheidsgrens ongetoetst bij een staaf die
+        // wél normaaldruk draagt — precies de toets die zegt of er nog een
+        // tweede-orde-berekening moet volgen. `sls_quasi_permanent_envelope`
+        // is de DERDE omhullende, alleen voor M₀Eqp in (5.19); zonder haar
+        // blijft φ_ef onbekend en valt λ_lim terug op A = 0,7.
+        "sls_quasi_permanent_envelope", "column",
     ] {
         assert!(
             props[veld].is_object(),
@@ -403,9 +411,36 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        18,
+        20,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
     );
+
+    // HET KOLOMBLOK. `bracing` en `buckling_length` zijn er VERPLICHT zodra het
+    // blok bestaat: §5.8.1 noemt geschoord uitdrukkelijk een aanname in de
+    // berekening, en een standaardwaarde zou dat besluit stilzwijgend nemen.
+    // De twee §9.5-keuzen zijn juist optioneel — hun toets komt dan als
+    // NotApplicable terug in plaats van dat de ruimste tak wordt aangenomen.
+    let kolom = &props["column"];
+    assert_eq!(kolom["additionalProperties"], false);
+    assert_eq!(kolom["required"], json!(["bracing", "buckling_length"]));
+    assert_eq!(kolom["properties"]["bracing"]["enum"], json!(["Geschoord", "Ongeschoord"]));
+    // De twee wegen naar l₀, en niet meer dan twee: de gevallen f) en g) van
+    // figuur 5.7 vragen k = (θ/M)·(EI/l) en staan er bewust niet in.
+    let l0 = &kolom["properties"]["buckling_length"]["oneOf"];
+    assert_eq!(l0.as_array().unwrap().len(), 2);
+    assert_eq!(l0[0]["properties"]["soort"]["const"], "Figuur57");
+    assert_eq!(
+        l0[0]["properties"]["geval"]["enum"],
+        json!([
+            "ScharnierendScharnierend",
+            "Console",
+            "IngeklemdScharnierend",
+            "TweezijdigIngeklemdGeschoord",
+            "TweezijdigIngeklemdOngeschoord"
+        ]),
+        "alleen de vijf vakjes van figuur 5.7 met een VASTE l₀; f) en g) geven een bereik"
+    );
+    assert_eq!(l0[1]["properties"]["soort"]["const"], "Opgegeven");
 
     // DE WAPENINGSZONES. Twee gescheiden lijsten, allebei optioneel en allebei
     // strikt: een tikfout in een zoneveld mag niet stil op een standaard

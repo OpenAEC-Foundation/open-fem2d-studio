@@ -92,6 +92,20 @@ const KRUISTABEL: &[Rij] = &[
     Rij { tauri: Some("check_concrete_beams"), toetsbrug: Some("check_concrete_beams"), mcp: Some("check_concrete_beam"), reden: "" },
     Rij { tauri: Some("concrete_mn_kappa"), toetsbrug: Some("concrete_mn_kappa"), mcp: Some("concrete_mn_kappa"), reden: "" },
     Rij { tauri: Some("concrete_segment_stiffness"), toetsbrug: Some("concrete_segment_stiffness"), mcp: Some("concrete_segment_stiffness"), reden: "" },
+    // De kolomtoets van §5.8: l₀, λ = l₀/i, de slankheidsgrens λ_lim waaronder
+    // de tweede-orde-effecten mogen vervallen, φ_ef en de §9.5-detaillering.
+    // Eén naam langs alle drie de wegen — hij neemt ÉÉN staaf, dus hier is geen
+    // meervoud/enkelvoud-voetangel zoals bij `check_concrete_beams`. Dezelfde
+    // rekengang (`concrete_check::kolomtoetsen`) draait óók binnen
+    // `check_concrete_beams`; deze losse weg bestaat naast die toetsing om
+    // dezelfde reden als `concrete_cover_check`: het invoerscherm moet λ en
+    // λ_lim kunnen tonen terwijl de gebruiker typt.
+    Rij { tauri: Some("concrete_column_check"), toetsbrug: Some("concrete_column_check"), mcp: Some("concrete_column_check"), reden: "" },
+    // De dekkingslijn: §9.2.1.3 met figuur 9.2 voor de momenten en §6.2 voor de
+    // dwarskracht, als gegevens. Eén naam langs alle drie de wegen — hij neemt
+    // ÉÉN staaf, dus hier is geen meervoud/enkelvoud-voetangel zoals bij
+    // `check_concrete_beams`.
+    Rij { tauri: Some("concrete_dekkingslijn"), toetsbrug: Some("concrete_dekkingslijn"), mcp: Some("concrete_dekkingslijn"), reden: "" },
     Rij { tauri: Some("concrete_effective_flange_width"), toetsbrug: Some("concrete_effective_flange_width"), mcp: Some("concrete_effective_flange_width"), reden: "" },
     Rij { tauri: Some("list_exposure_classes"), toetsbrug: Some("list_exposure_classes"), mcp: Some("list_exposure_classes"), reden: "" },
     Rij { tauri: Some("concrete_cover_check"), toetsbrug: Some("concrete_cover_check"), mcp: Some("concrete_cover_check"), reden: "" },

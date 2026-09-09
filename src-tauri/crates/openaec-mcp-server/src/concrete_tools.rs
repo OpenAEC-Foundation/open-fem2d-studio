@@ -17,7 +17,8 @@
 //!
 //! DE NAMEN
 //! `list_concrete_classes`, `list_reinforcement_grades`, `concrete_mn_kappa`,
-//! `concrete_segment_stiffness`, `concrete_effective_flange_width`,
+//! `concrete_segment_stiffness`, `concrete_dekkingslijn`,
+//! `concrete_effective_flange_width`,
 //! `list_exposure_classes` en `concrete_cover_check` heten hier
 //! precies zoals in de andere twee wegen. `check_concrete_beam`
 //! staat in het ENKELVOUD en toetst één staaf, gelijk aan `check_steel_beam`
@@ -34,10 +35,19 @@
 //! dezelfde keuze als bij `list_steel_grades`. De lijst binnen dat object is
 //! byte-voor-byte wat de andere twee wegen kaal teruggeven.
 //!
+//! ÉÉN SCHEMA VOOR DE BETONSTAAF
+//! `check_concrete_beam` en `concrete_dekkingslijn` voeren allebei
+//! `ConcreteBeamCheckInput` in — de eerste kaal, de tweede genest onder `beam`.
+//! Dat is aan de Rust-kant letterlijk hetzelfde type, en daarom staat het
+//! schema ervan hier in één functie ([`schema_betonstaaf`]) en niet twee keer
+//! uitgeschreven: met `additionalProperties: false` zou een nieuw veld dat maar
+//! aan één van beide plekken wordt bijgewerkt bij de andere tool worden
+//! weggefilterd vóórdat de kern het ziet.
+//!
 //! STRIKTE SCHEMA'S
 //! `ConcreteBeamCheckInput`, `MnKappaRequest`, `SegmentStiffnessRequest`,
-//! `SegmentForces`, `ReinforcementCage`, `RebarRow`, `ReinforcementZones`,
-//! `LongitudinalZone` en `StirrupZone` staan alle negen op
+//! `SegmentForces`, `DekkingslijnVerzoek`, `ReinforcementCage`, `RebarRow`,
+//! `ReinforcementZones`, `LongitudinalZone` en `StirrupZone` staan alle tien op
 //! `#[serde(deny_unknown_fields)]`. De schema's
 //! hieronder spiegelen dat met `additionalProperties: false` en noemen ALLE
 //! velden, ook die met `#[serde(default)]`. Dat is niet cosmetisch: laat een
@@ -49,15 +59,17 @@ use serde_json::{json, Value};
 
 use crate::RpcError;
 
-/// De acht betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
+/// De tien betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
 /// schema's en de dispatch — zodat een tool niet in `tools/list` kan staan
 /// zonder afhandeling, of andersom.
-pub const CONCRETE_TOOLS: [&str; 8] = [
+pub const CONCRETE_TOOLS: [&str; 10] = [
     "list_concrete_classes",
     "list_reinforcement_grades",
     "check_concrete_beam",
     "concrete_mn_kappa",
     "concrete_segment_stiffness",
+    "concrete_column_check",
+    "concrete_dekkingslijn",
     "concrete_effective_flange_width",
     "list_exposure_classes",
     "concrete_cover_check",
@@ -120,6 +132,45 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
                 // hoort — is een toolfout met de reden erbij. Een segment dat
                 // niet convergeert is dat NIET: dat staat als `Failed` in de
                 // tabel, met de reden en zonder getal.
+                .map_err(RpcError::invalid_params)?;
+            serde_json::to_value(result)
+                .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
+        }
+        // §5.8 los van een volledige staaftoetsing. Geen `spawn_blocking`: dit
+        // is een handvol formules — l₀, λ = l₀/i, λ_lim = 20·A·B·C/√n, φ_ef en
+        // zeven detailleringseisen — en geen enkele integratie over de
+        // doorsnede. Dezelfde rekengang (`concrete_check::kolomtoetsen`) die
+        // ook in `check_concrete_beam` zit; er is er maar één.
+        "concrete_column_check" => {
+            let req: concrete_check::ConcreteColumnCheckRequest = serde_json::from_value(args)
+                .map_err(|e| {
+                    RpcError::invalid_params(format!("ConcreteColumnCheckRequest: {e}"))
+                })?;
+            // Een onuitvoerbaar verzoek — onbekende sterkteklasse, een korf die
+            // niet in de doorsnede past, een knikgeval dat niet bij de opgegeven
+            // schoring hoort — is een toolfout MET de reden. Een leeg antwoord
+            // zou als "geen tweede orde nodig" kunnen lezen, en dat is precies
+            // de verkeerde kant.
+            let result = concrete_check::column_check(req).map_err(RpcError::invalid_params)?;
+            serde_json::to_value(result)
+                .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
+        }
+        "concrete_dekkingslijn" => {
+            let req: concrete_check::DekkingslijnVerzoek = serde_json::from_value(args)
+                .map_err(|e| RpcError::invalid_params(format!("DekkingslijnVerzoek: {e}")))?;
+            // Blokkerend werk: de lijn loopt over een raster dat per zonegrens,
+            // per bundeleinde en per station ± a_l een punt krijgt, en op elk
+            // van die punten wordt de hele dwarskrachttoets van §6.2 gedraaid,
+            // voor elke combinatie van de omhullende. Op de stdio-lus zou dat
+            // de lezer laten stilstaan.
+            let result = tokio::task::spawn_blocking(move || concrete_check::dekkingslijn(req))
+                .await
+                .map_err(|e| RpcError::tool_exec(format!("join error: {e}")))?
+                // Een onuitvoerbaar verzoek — onbekende sterkteklasse, een korf
+                // die niet past, zones met een gat of een overlap, een lege
+                // omhullende, of z = 0,9·d terwijl er een normaalkracht werkt —
+                // is een toolfout MET de reden. Een lege lijst punten zou als
+                // "overal gedekt" kunnen lezen.
                 .map_err(RpcError::invalid_params)?;
             serde_json::to_value(result)
                 .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
@@ -446,6 +497,136 @@ fn schema_constructieklasse() -> Value {
     })
 }
 
+/// Schema van `column` — de §5.8-gegevens van een op druk belast element.
+///
+/// GESCHOORD IS VERPLICHT ZODRA DIT BLOK BESTAAT, en dat is geen strengheid om
+/// de strengheid: §5.8.1 definieert geschoord als een ONTWERPAANNAME en niet
+/// als een eigenschap van de constructie, en het verschil is groot — een factor
+/// twee in l₀ tussen (5.15) en (5.16), en C = 0,7 die voor een ongeschoord
+/// element is voorgeschreven terwijl een geschoorde kolom C > 1,7 kan halen.
+/// Een standaardwaarde zou dat besluit stilzwijgend nemen.
+fn schema_kolom() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "De §5.8-gegevens van een op DRUK belast element: het ontwerpbesluit geschoord/ongeschoord, de kniklengte, de kruip en de twee keuzen die §9.5 nodig heeft. Weglaten = niet opgegeven; staat er normaaldruk op de staaf, dan komt §5.8.3.1 als NotApplicable terug met de reden, en staat er geen druk op, dan meldt de toets dat §5.8 niet van toepassing is. Er wordt nooit iets aangenomen.",
+        "properties": {
+            "bracing": {
+                "type": "string",
+                "enum": ["Geschoord", "Ongeschoord"],
+                "description": "Draagt dit element bij aan de horizontale stabiliteit? (§5.8.1). VERPLICHT en zonder standaardwaarde: de norm noemt dit tweemaal letterlijk iets dat 'in de berekeningen is aangenomen'. Geschoord = het element draagt NIET bij aan de stabiliteit; Ongeschoord (schorend) = het draagt er wel aan bij en krijgt daarmee C = 0,7 opgelegd."
+            },
+            "buckling_length": {
+                "type": "object",
+                "description": "Hoe l0 wordt bepaald. Twee wegen: een vast geval uit figuur 5.7, of l0 rechtstreeks. De vakjes f) en g) van figuur 5.7 (gedeeltelijke inklemming, vergelijkingen (5.15) en (5.16)) worden hier NIET aangeboden: die vragen k = (theta/M)*(EI/l) per staafeind, inclusief het effect van scheurvorming in de verhinderende elementen (§5.8.3.2(5)), en dat getal is uit een raamwerkmodel niet af te lezen. Wie het wel heeft, rekent (5.15)/(5.16) uit en vult de uitkomst in als 'Opgegeven'.",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "soort": { "const": "Figuur57" },
+                            "geval": {
+                                "type": "string",
+                                "enum": ["ScharnierendScharnierend", "Console", "IngeklemdScharnierend",
+                                         "TweezijdigIngeklemdGeschoord", "TweezijdigIngeklemdOngeschoord"],
+                                "description": "Het vakje uit figuur 5.7. a) ScharnierendScharnierend: l0 = l, geschoord. b) Console: l0 = 2l, ongeschoord (een console houdt zichzelf overeind). c) IngeklemdScharnierend: l0 = 0,7l, geschoord. d) TweezijdigIngeklemdGeschoord: l0 = l/2. e) TweezijdigIngeklemdOngeschoord: l0 = l, rotatie verhinderd maar bovenaan zijdelings vrij. Het geval moet bij `bracing` passen; doet het dat niet, dan komt er een leesbare fout en geen getal."
+                            }
+                        },
+                        "required": ["soort", "geval"]
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "soort": { "const": "Opgegeven" },
+                            "l0_m": { "type": "number", "exclusiveMinimum": 0,
+                                "description": "De kniklengte l0 in m, rechtstreeks. Voor wie (5.15), (5.16) of (5.17) zelf heeft doorgerekend of een aparte knikanalyse heeft gedaan; de afleiding legt dan vast DAT l0 is opgegeven en niet waaruit." }
+                        },
+                        "required": ["soort", "l0_m"]
+                    }
+                ]
+            },
+            "phi_inf_t0": { "type": "number", "minimum": 0,
+                "description": "Eindwaarde van de kruipcoefficient phi(oneindig,t0) volgens §3.1.4. Weglaten = niet opgegeven; §3.1.4 wordt niet gerekend (dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h0, de cementklasse en de ouderdom t0). Zonder deze waarde blijft phi_ef onbekend en staat §5.8.3.1(1) A = 0,7 toe - GEEN veilige kant maar de waarde bij phi_ef van ongeveer 2,14." },
+            "stirrup_zone": {
+                "type": "string",
+                "enum": ["Regulier", "BijBalkOfPlaat", "BijOverlappingslas"],
+                "description": "Waar in de kolom ligt de beschouwde doorsnede, voor s_cl,tmax (§9.5.3(4))? Regulier = de volle waarde van §9.5.3(3). BijBalkOfPlaat = binnen een afstand gelijk aan de grootste kolomafmeting boven of onder een balk of plaat: maal 0,6. BijOverlappingslas = nabij een overlappingslas met Phi_l groter dan 14 mm: maal 0,6. Weglaten = niet opgegeven; s_cl,tmax komt dan als NotApplicable terug. 'Regulier' wordt NIET aangenomen: dat is de ruimste tak."
+            },
+            "lap_situation": {
+                "type": "string",
+                "enum": ["GeenLassen", "LassenBuitenDezeDoorsnede", "TerPlaatseVanLas"],
+                "description": "Overlappingssituatie voor A_s,max (NB bij §9.5.2(3)): GeenLassen en TerPlaatseVanLas geven 0,08*A_c, LassenBuitenDezeDoorsnede 0,04*A_c. Weglaten = niet opgegeven; A_s,max komt dan als NotApplicable terug. Er wordt niets aangenomen: het verschil is een factor twee en 'geen lassen' is de ruimste tak."
+            }
+        },
+        "required": ["bracing", "buckling_length"]
+    })
+}
+
+/// Schema van `sls_quasi_permanent_envelope` — de derde omhullende.
+fn schema_quasi_blijvende_omhullende() -> Value {
+    let mut v = crate::schema_krachtenomhullende();
+    v["description"] = json!(
+        "Krachtsverloop onder de QUASI-BLIJVENDE BGT-combinatie, NEN-EN 1990 uitdrukking (6.16). \
+         Uitsluitend voor M_0Eqp in (5.19), de effectieve kruipcoefficient van §5.8.4 - die \
+         paragraaf koppelt phi_ef uitdrukkelijk aan deze combinatie. Niet uitwisselbaar met \
+         `sls_frequent_envelope` (6.15), die voor de scheurwijdte van §7.3 dient: (6.15) als \
+         (6.16) lezen geeft een te grote phi_ef en andersom een te kleine. Weglaten = phi_ef blijft \
+         onbekend en §5.8.3.1(1) staat dan A = 0,7 toe, met die melding in het rapport."
+    );
+    v
+}
+
+/// Het schema van `ConcreteBeamCheckInput` — de betonstaaf zelf.
+///
+/// EEN FUNCTIE EN GEEN TWEE INLINE BLOKKEN. Twee tools voeren dit type in:
+/// `check_concrete_beam` (kaal, als het hele verzoek) en
+/// `concrete_dekkingslijn` (genest, als het veld `beam`). De Rust-kant deelt
+/// letterlijk hetzelfde type — dat is de reden dat de dekkingslijn geen tweede,
+/// bijna gelijk invoertype heeft gekregen — en een tweede overgetypt schema
+/// hier zou dat weer uit elkaar trekken: een nieuw veld op de betonstaaf zou
+/// dan door `additionalProperties: false` bij één van de twee tools worden
+/// weggefilterd vóórdat de kern het ziet.
+fn schema_betonstaaf() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "beam_id": { "type": "integer", "minimum": 0,
+                "description": "Staafnummer; komt onveranderd terug in het resultaat." },
+            "section": schema_doorsnede(),
+            "concrete_class": { "type": "string",
+                "description": "Betonsterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\". Een onbekende naam levert een resultaat met 'governing_check_id' = \"ERROR: …\" en géén toetsen; vraag de geldige namen op met `list_concrete_classes`." },
+            "reinforcement_grade": { "type": "string",
+                "description": "Wapeningsstaal uit bijlage C, bijvoorbeeld \"B500B\". Zie `list_reinforcement_grades`." },
+            "cage": schema_korf(),
+            "reinforcement_zones": schema_wapeningszones(),
+            "length_m": { "type": "number",
+                "description": "Staaflengte in m. Alleen voor de rapportage; deze toets kent geen knik." },
+            "forces_envelope": crate::schema_krachtenomhullende(),
+            "n_strips": schema_n_strips(),
+            "steel_branch": schema_steel_branch(),
+            "design_situation": schema_design_situation(),
+            "apply_min_eccentricity": { "type": "boolean", "default": true,
+                "description": "Minimale excentriciteit e_0 = max(h/30; 20 mm) toepassen bij druk (6.1(4)). Default true; op false zetten maakt de toets GUNSTIGER en hoort alleen bij het narekenen van een uitwerking die die regel niet toepast." },
+            "sls_frequent_envelope": schema_frequente_omhullende(),
+            "exposure_class": schema_milieuklasse(),
+            "structural_class": schema_constructieklasse(),
+            "aggregate_size_mm": { "type": "number", "exclusiveMinimum": 0,
+                "description": "Grootste nominale korrelafmeting d_g in mm, voor de vrije staafafstand van 8.2(2) en de minimale balkbreedte van 9.2(1)e. Weglaten = niet opgegeven; de norm kent GEEN standaardwaarde (d_g hoort bij de betonspecificatie), dus er wordt er ook geen aangenomen en 8.2(2) doet dan alleen de uitspraak die hoe dan ook geldt." },
+            "structural_system": schema_constructievorm(),
+            "bar_spacing_mm": { "type": "number", "exclusiveMinimum": 0,
+                "description": "Werkelijke hart-op-hartafstand van de trekstaven in mm, voor (7.11) en tabel 7.3N. Weglaten = de afstand wordt uit de korf afgeleid (zuivere meetkunde: een rij gelijkmatig verdeeld tussen de beugelbenen), en dat staat dan in de afleiding." },
+            "sls_quasi_permanent_envelope": schema_quasi_blijvende_omhullende(),
+            "column": schema_kolom()
+        },
+        "required": [
+            "beam_id", "section", "concrete_class",
+            "reinforcement_grade", "cage", "length_m", "forces_envelope"
+        ]
+    })
+}
+
 /// Schema van `structural_system` - de regel uit tabel 7.4N.
 fn schema_constructievorm() -> Value {
     json!({
@@ -470,41 +651,7 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "check_concrete_beam",
             "description": "Run the EN 1992-1-1 concrete cross-section check on a single reinforced beam or column (rectangle, T or L). Fifteen checks: bending with the rectangular stress block (3.1.7(3)); bending with axial force through the M-N-kappa relation including the minimum eccentricity of 6.1(4); shear 6.2 (V_Rd,c per (6.2.a)/(6.2.b) or the truss model (6.8)/(6.9)); minimum reinforcement for crack control 7.3.2 and the calculated crack width 7.3.4, both under the FREQUENT SLS combination that the Dutch national annex to 7.3.1(5) prescribes; the span/depth ratio of 7.4.2; and nine detailing rules from 9.2.1, 9.2.2 and 8.2. A check whose input is missing (no stirrup spacing, no sls_frequent_envelope, no exposure_class, no structural_system, no aggregate_size_mm) comes back with status NotApplicable and the reason in its notes: it is never silently dropped, never reported as passing, and nothing is assumed in its place. Returns a ConcreteBeamCheckResult with the full derivation, the M-kappa diagram at the governing axial force and both N-M interaction diagrams. Same input and output types as the Tauri command `check_concrete_beams` and the toetsbrug opdracht of that name - those take a list, this one takes a single beam, exactly like `check_steel_beam`. The reinforcement may VARY ALONG THE MEMBER through `reinforcement_zones` (curtailment of the longitudinal bars per 9.2.1.3, stirrup spacing per 9.2.2); leaving that field out means the single cage in `cage` applies over the whole member. NOT included: torsion, punching shear, fatigue, second-order effects, and the table route of 7.3.3 (the direct calculation of 7.3.4 is made instead; the two are alternatives).",
-            "inputSchema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "beam_id": { "type": "integer", "minimum": 0,
-                        "description": "Staafnummer; komt onveranderd terug in het resultaat." },
-                    "section": schema_doorsnede(),
-                    "concrete_class": { "type": "string",
-                        "description": "Betonsterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\". Een onbekende naam levert een resultaat met 'governing_check_id' = \"ERROR: …\" en géén toetsen; vraag de geldige namen op met `list_concrete_classes`." },
-                    "reinforcement_grade": { "type": "string",
-                        "description": "Wapeningsstaal uit bijlage C, bijvoorbeeld \"B500B\". Zie `list_reinforcement_grades`." },
-                    "cage": schema_korf(),
-                    "reinforcement_zones": schema_wapeningszones(),
-                    "length_m": { "type": "number",
-                        "description": "Staaflengte in m. Alleen voor de rapportage; deze toets kent geen knik." },
-                    "forces_envelope": crate::schema_krachtenomhullende(),
-                    "n_strips": schema_n_strips(),
-                    "steel_branch": schema_steel_branch(),
-                    "design_situation": schema_design_situation(),
-                    "apply_min_eccentricity": { "type": "boolean", "default": true,
-                        "description": "Minimale excentriciteit e_0 = max(h/30; 20 mm) toepassen bij druk (6.1(4)). Default true; op false zetten maakt de toets GUNSTIGER en hoort alleen bij het narekenen van een uitwerking die die regel niet toepast." },
-                    "sls_frequent_envelope": schema_frequente_omhullende(),
-                    "exposure_class": schema_milieuklasse(),
-                    "structural_class": schema_constructieklasse(),
-                    "aggregate_size_mm": { "type": "number", "exclusiveMinimum": 0,
-                        "description": "Grootste nominale korrelafmeting d_g in mm, voor de vrije staafafstand van 8.2(2) en de minimale balkbreedte van 9.2(1)e. Weglaten = niet opgegeven; de norm kent GEEN standaardwaarde (d_g hoort bij de betonspecificatie), dus er wordt er ook geen aangenomen en 8.2(2) doet dan alleen de uitspraak die hoe dan ook geldt." },
-                    "structural_system": schema_constructievorm(),
-                    "bar_spacing_mm": { "type": "number", "exclusiveMinimum": 0,
-                        "description": "Werkelijke hart-op-hartafstand van de trekstaven in mm, voor (7.11) en tabel 7.3N. Weglaten = de afstand wordt uit de korf afgeleid (zuivere meetkunde: een rij gelijkmatig verdeeld tussen de beugelbenen), en dat staat dan in de afleiding." }
-                },
-                "required": [
-                    "beam_id", "section", "concrete_class",
-                    "reinforcement_grade", "cage", "length_m", "forces_envelope"
-                ]
-            }
+            "inputSchema": schema_betonstaaf()
         }),
         json!({
             "name": "concrete_mn_kappa",
@@ -577,6 +724,55 @@ pub fn tool_definitions() -> Vec<Value> {
                     "beam_id", "section", "concrete_class",
                     "reinforcement_grade", "cage", "length_m"
                 ]
+            }
+        }),
+        json!({
+            "name": "concrete_column_check",
+            "description": "Run the EN 1992-1-1 §5.8 slenderness gate on ONE compression member, plus the column detailing rules of §9.5 - without running a full cross-section check. Returns the effective length l0 (figure 5.7, or given directly), the slenderness lambda = l0/i of (5.14) computed on the UNCRACKED concrete section per 5.8.3.2(1), and the limit lambda_lim = 20*A*B*C/sqrt(n). That limit is NOT the EN recommendation: the Dutch national annex struck the note containing (5.13N) and reinstated the identical formula as a REQUIREMENT ('De waarde van lambda_lim moet gelijk aan 20*A*B*C/sqrt(n) zijn genomen'). lambda < lambda_lim means 5.8.3.1(1) permits SECOND-ORDER EFFECTS TO BE NEGLECTED; lambda >= lambda_lim does NOT mean the column fails - it means the internal forces must come from a second-order analysis (§5.8.6; in this app the physically non-linear route through `concrete_segment_stiffness`). This tool cannot see whether the envelope you pass already is second order, and says so in its notes. BRACED OR UNBRACED IS INPUT, NEVER DERIVED: §5.8.1 defines it twice over as something 'assumed in the design', a frame with a bracing wall looks identical to one without in a 2D model, and the difference is a factor two in l0 between (5.15) and (5.16) plus C = 0,7 imposed on any unbraced member. Also computes the effective creep ratio phi_ef of (5.19) from the QUASI-PERMANENT SLS combination (6.16) when phi(inf,t0) and that envelope are supplied, and evaluates the three conditions of 5.8.4(4) under which phi_ef = 0 may be used. The two end moments M01 and M02 for C = 1,7 - rm are read from the envelope of the governing combination, and the presence of TRANSVERSE LOADING is established from the moment diagram (a larger |M| between the ends than at either end) rather than asked - a member with wind on it falls in the rm = 1,0 branch whether the user knows it or not. §9.5.2(4) (a bar in every corner) and §9.5.3(6) (every corner bar restrained, no bar further than 150 mm from a restrained bar) are NOT checked: the cage model has only a top and a bottom row, so the position of each bar in the plane of the section is unknown; the reasons are returned as notes. Same input type (ConcreteColumnCheckRequest), output type (ConcreteColumnCheckResponse) and calculation path as the Tauri command `concrete_column_check` and the toetsbrug opdracht of that name; the same path also runs inside `check_concrete_beam`.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "beam_id": { "type": "integer", "minimum": 0,
+                        "description": "Staafnummer; komt onveranderd terug in het antwoord." },
+                    "section": schema_doorsnede(),
+                    "concrete_class": { "type": "string",
+                        "description": "Betonsterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\". Zie `list_concrete_classes`." },
+                    "reinforcement_grade": { "type": "string",
+                        "description": "Wapeningsstaal uit bijlage C, bijvoorbeeld \"B500B\". Zie `list_reinforcement_grades`." },
+                    "cage": schema_korf(),
+                    "length_m": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "De VRIJE lengte l tussen de eindaansluitingen, in m (§5.8.3.2(3)) - de lengte waarmee de l0-factor van figuur 5.7 wordt vermenigvuldigd." },
+                    "forces_envelope": crate::schema_krachtenomhullende(),
+                    "sls_quasi_permanent_envelope": schema_quasi_blijvende_omhullende(),
+                    "column": schema_kolom(),
+                    "steel_branch": schema_steel_branch(),
+                    "design_situation": schema_design_situation()
+                },
+                "required": [
+                    "beam_id", "section", "concrete_class", "reinforcement_grade",
+                    "cage", "length_m", "column", "forces_envelope"
+                ]
+            }
+        }),
+        json!({
+            "name": "concrete_dekkingslijn",
+            "description": "Curtailment diagram (Dutch: dekkingslijn) of ONE reinforced-concrete member as DATA, not as a picture: EN 1992-1-1 figure 9.2 of §9.2.1.3 for the longitudinal bars, and §6.2 for the shear. Per position along the member you get the REQUIRED and the AVAILABLE value with the evidence that applied there. For bending these are FORCES, exactly as figure 9.2 draws them: line A = the envelope of M_Ed/z + N_Ed, line B = A after the shift over a_l of 9.2.1.3(2)/(9.2), line C = the resisting tensile force of the bars actually present, full where they are developed and dropping LINEARLY to zero within l_bd of each bar end (9.2.1.3(3)). With an ENVELOPE of many combinations 'the unfavourable direction' of 6.2.2(5) has no single direction, so the shift is read pointwise as the maximum of A over the closed window [x - a_l, x + a_l]; that coincides with the norm wherever the norm is unambiguous and is never below it elsewhere. For shear each point carries ONE V_Rd with the route that produced it: V_Rd,c and V_Rd,s are NOT added anywhere - 6.2.1(2) gives V_Rd = V_Rd,s + V_ccd + V_td without a concrete term, 6.2.3(3) calls V_Rd 'the smallest value of' (6.8) and (6.9), and 6.2.1(3) is a second, separate line of proof. At every reinforcement-zone boundary the resistance JUMPS, so two points share the same x, one marked Links (left) and one Rechts (right); interpolating across a jump has no meaning. Also returns the bar bundles with the full l_bd derivation of §8.4, and the end-support requirements of §9.2.1.4/§9.2.1.5 at both member ends (the required LENGTH is reported, not judged: 9.2.1.4(3) measures it from the tangent between beam and support, and this model has point supports without a bearing face). A COMPRESSIVE N_Ed is deliberately not offset against the tensile force (the safe side); the value is reported per point so the report can show what was left out. 6.2.1(8) is not applied, for the same reason: no bearing face, no face of support. NOT included: bent-up bars (9.2.1.3(4)), lap lengths (8.7.3), and the beta reduction of 6.2.2(6) - that applies to ONE section with a caller-supplied a_v and would be wrong to apply along a whole line. The member is described by the SAME ConcreteBeamCheckInput type as `check_concrete_beam`, nested under `beam`, so there is no second input type and no second caller-side builder. Same input type (DekkingslijnVerzoek) and output type (DekkingslijnAntwoord) as the Tauri command `concrete_dekkingslijn` and the toetsbrug opdracht of that name.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "beam": schema_betonstaaf(),
+                    "z_mm": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "De inwendige hefboomsarm z in mm waarmee figuur 9.2 het moment op kracht omrekent (F = M_Ed/z). Weglaten = z = 0,9*d per snede volgens 6.2.3(1), maar dat mag UITSLUITEND \"voor gewapend beton zonder normaalkracht\". Werkt er wel een normaalkracht in de omhullende, dan is het verzoek een FOUT met die reden en komt er geen lijn: stilzwijgend 0,9*d invullen zou de benodigde trekkracht te laag maken." },
+                    "c_d_mm": { "type": "number", "minimum": 0,
+                        "description": "c_d volgens figuur 8.3 in mm - de maat die alpha_2 van tabel 8.2 bepaalt. Weglaten = 0 mm, de ONBEPAALDE waarde: alle alfa-factoren worden 1,0 en l_bd is maximaal, dus de schuine takken van figuur 9.2 zijn zo lang als de norm ze kan maken. Dat is de veilige kant. Gevolg: een omgebogen staafeinde verkort l_bd dan NIET, want alpha_1 = 0,7 vergt c_d > 3*Phi." },
+                    "a_sl_mm2": { "type": "number", "minimum": 0,
+                        "description": "A_sl in mm2 volgens 6.2.2(1): de trekwapening die >= (l_bd + d) voorbij de beschouwde doorsnede DOORLOOPT (figuur 6.3). Weglaten = de trekrij van de korf die op die plaats geldt; met wapeningszones volgt dat de staffeling, maar het is nog niet de doorloopeis. Elk punt van de dwarskrachtlijn meldt daarom zowel de gebruikte A_sl als de deelverzameling die aantoonbaar naar beide kanten ver genoeg doorloopt." },
+                    "cot_theta": { "type": "number", "minimum": 1, "maximum": 2.5,
+                        "description": "cot theta van de betondrukdiagonaal, binnen 1,0 <= cot theta <= 2,5 (NB bij 6.2.3(2)). Weglaten = de dwarskrachttoets kiest theta per snede zelf, en voor de verschuiving a_l wordt de bovengrens 2,5 aangehouden: een grotere cot theta geeft volgens (9.2) een grotere a_l en dus een zwaardere eis." }
+                },
+                "required": ["beam"]
             }
         }),
         json!({

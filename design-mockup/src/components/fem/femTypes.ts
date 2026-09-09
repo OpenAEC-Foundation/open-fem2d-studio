@@ -6,9 +6,11 @@
  * and FemProperties (reactive details) without circular imports.
  */
 import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCage";
+import type { ReinforcementZones } from "../../lib/types/concrete/ReinforcementZones";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
 import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
+import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
 
 export type Tool =
   | "select"
@@ -132,6 +134,44 @@ export interface BeamCheckConfig {
   betonStroken?: number;
   /** Bovenste tak van het staaldiagram (3.2.7); default horizontaal. */
   betonStaaltak?: SteelBranch;
+  /**
+   * De §5.8-gegevens van een op DRUK belaste betonstaaf: geschoord of
+   * ongeschoord, de kniklengte, de kruipcoëfficiënt en de twee keuzen die
+   * §9.5 nodig heeft.
+   *
+   * EEN BLOK EN GEEN LOSSE VELDEN, precies zoals `betonKorf` er één is. De
+   * bouwer geeft het als geheel door (`column: cfg.betonKolom`) en somt de
+   * velden niet op; een bouwer die dat wél doet, laat een nieuw veld
+   * stilzwijgend vallen, en dan rekent de kern met een andere kniklengte dan
+   * de gebruiker heeft ingevoerd. Het type komt letterlijk uit de Rust-kern.
+   *
+   * ONTBREEKT HET VELD, dan wordt §5.8 niet getoetst en staat de reden in het
+   * rapport. Er is met opzet geen standaardwaarde: §5.8.1 noemt geschoord
+   * uitdrukkelijk een aanname in de BEREKENING en niet een eigenschap van de
+   * constructie — een raamwerk met een windverband ziet er in dit 2D-model
+   * niet anders uit dan hetzelfde raamwerk zonder — en het verschil is een
+   * factor twee in de kniklengte. Dezelfde afspraak als bij
+   * `betonMilieuklasse`: liever geen toets dan een aangenomen antwoord.
+   */
+  betonKolom?: ConcreteColumnInput;
+  /**
+   * De wapening die LANGS de staaf verandert: welke staaflaag van waar tot
+   * waar loopt (§9.2.1.3) en waar de beugels dichter staan (§9.2.2). Maten in
+   * mm vanaf de beginknoop.
+   *
+   * ONTBREEKT OF LEEG = het gedrag van vóór dit veld: `betonKorf` geldt dan
+   * onveranderd over de hele staaf, de solver zet geen extra rekenknopen en de
+   * dekkingslijn krijgt per zijde één bundel over [0, L].
+   *
+   * Staat het veld er wél, dan gebeuren er twee dingen tegelijk, en die horen
+   * bij elkaar: de betontoetsing krijgt per snede de korf die daar werkelijk
+   * ligt (`reinforcement_zones` in de toetsinvoer), en de solver legt op elke
+   * zonegrens een rekenknoop (`extraSneden`, zie `lib/betonZoneSneden.ts`).
+   * Zonder die tweede stap zou de omhullende geen punt hebben op de plaats waar
+   * de weerstand SPRINGT, en zou de dekkingslijn daar een benodigde kracht van
+   * elders naast een weerstand van hier zetten.
+   */
+  betonZones?: ReinforcementZones;
   // Vrije spanningstoets (geen norm)
   /**
    * Dwarsspanning σ_z in N/mm² voor de vergelijkspanning, bijvoorbeeld een

@@ -170,6 +170,9 @@ use nen_en_1992_1_1::scheurwijdte::{
     check_minimumwapening, check_scheurwijdte_berekend, Belastingsduur, Rekverdeling,
     Scheurgegevens, Scheurinvoer, COMBINATIE_SCHEURWIJDTE,
 };
+// §9.5 kent zijn eigen lijst met detailleringseisen, naast die van §9.2 in
+// `detaillering`. Zie [`mag_maatgevend_zijn`] voor waarom het er twee zijn.
+use nen_en_1992_1_1::kolom::{is_kolomdetailleringstoets, niet_getoetste_9_5_eisen};
 use nen_en_1992_1_1::slankheid::{check_span_depth_ratio, SlendernessRequest};
 use nen_en_1992_1_1::stiffness::kappa_from_nm;
 use nen_en_1992_1_1::{
@@ -181,6 +184,7 @@ use nen_en_1993_1_1_section::{CheckStatus, ResistanceCalc};
 use steel_check::{CheckKind, NamedCheck};
 
 use crate::input::{ConcreteBeamCheckInput, MnKappaRequest};
+use crate::kolom::kolomtoetsen;
 use crate::result::{ConcreteBeamCheckResult, MnKappaResponse};
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1216,8 +1220,16 @@ fn faalt(c: &NamedCheck) -> bool {
 /// stuk toetsen die de staaf begrenzen. Hun aggregatielus blijft dus zoals
 /// hij is; er komt hier geen vierde eigen regel bij, alleen een filter op de
 /// ene toetssoort die zij niet hebben.
+///
+/// De §9.5-eisen van een KOLOM tellen hier mee met dezelfde regel als de
+/// §9.2-eisen van een balk. Ze staan in een eigen lijst
+/// ([`nen_en_1992_1_1::kolom::KOLOMDETAILLERINGSTOETS_IDS`]) omdat §9.2 de balk
+/// is en §9.5 de kolom; een staaf krijgt de ene reeks of de andere, nooit
+/// allebei. De §5.8-toetsen staan er NIET in: de slankheidsgrens is geen
+/// uitvoeringsregel maar bepaalt of er nog een hele tweede-orde-berekening
+/// achteraan moet, en dat begrenst het ontwerp wel degelijk.
 fn mag_maatgevend_zijn(c: &NamedCheck) -> bool {
-    !is_detailleringstoets(&c.id) || faalt(c)
+    !(is_detailleringstoets(&c.id) || is_kolomdetailleringstoets(&c.id)) || faalt(c)
 }
 
 /// Het resultaat waarin alleen de reden staat. De doorsnede kán hier
@@ -2038,6 +2050,70 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
                     checks.push(make_resistance(calc));
                 }
             }
+        }
+    }
+
+    // ── 5b. De KOLOM: knik (§5.8) en de kolomdetaillering (§9.5) ───────────
+    //
+    // WAAROM DEZE TOETS ALTIJD IN DE LIJST STAAT, OOK ALS ER NIETS IS INGEVULD
+    //
+    // §5.8 is de POORT: hij zegt of de doorsnedetoetsen hierboven op de goede
+    // krachten zijn gedraaid, of dat er eerst nog een tweede-orde-berekening
+    // moet komen. Een rapport dat die vraag weglaat bij een staaf waar wél
+    // normaaldruk op staat, laat de lezer denken dat hij alles heeft gezien.
+    // De toets komt er dus altijd in: als uitgevoerde toets, als "niet van
+    // toepassing — geen normaaldruk", of als "niet uitgevoerd" met de reden dat
+    // het ontwerpbesluit geschoord/ongeschoord ontbreekt.
+    //
+    // WELKE OMHULLENDE. De UGT-omhullende, dezelfde als voor §6.1 en §6.2 —
+    // §5.8 is een uiterste-grenstoestandsvraag. De quasi-blijvende omhullende
+    // gaat er als tweede lijst naast mee: alleen (5.19) gebruikt haar, voor
+    // M₀Eqp. Zij mag NIET voor de frequente doorgaan en andersom ook niet; zie
+    // het veld `sls_quasi_permanent_envelope`.
+    //
+    // WELKE KORF. Die van de invoer, niet de korf per zone. §5.8 is een
+    // uitspraak over de STAAF als geheel — λ = l₀/i met l₀ over de vrije lengte
+    // — en niet over één snede. Wapening die langs de staaf verandert, verandert
+    // ω en daarmee B; welke korf dan maatgevend is, is een vraag die §5.8 niet
+    // stelt. De korf van de invoer is de korf die over de hele staaf geldt zodra
+    // er geen zones zijn, en dat is het geval waarvoor deze toets is gebouwd.
+    let kolom = kolomtoetsen(
+        &section,
+        &input.cage,
+        &mat,
+        input.column.as_ref(),
+        input.length_m * 1000.0,
+        &input.forces_envelope,
+        &input.sls_quasi_permanent_envelope,
+    );
+    let kolom_getoetst = kolom.slankheid.is_some();
+    checks.extend(kolom.checks);
+    // Wat §9.5 met dit korfmodel NIET kan, hoort in het rapport te staan en
+    // niet in de code te blijven hangen. De teksten komen woordelijk uit de
+    // kern; ze worden hier aan de slankheidstoets gehangen omdat dat de toets
+    // is die zegt dat deze staaf als kolom is behandeld.
+    if kolom_getoetst {
+        if let Some(NamedCheck { kind: CheckKind::Resistance(r), .. }) =
+            checks.iter_mut().find(|c| c.id == crate::kolom::SLANKHEIDSGRENS_ID)
+        {
+            r.notes.push(
+                "LET OP DE TWEE DETAILLERINGSREEKSEN. Deze staaf krijgt hieronder zowel de \
+                 §9.5-eisen (KOLOMMEN, die met deze toets zijn meegekomen) als de §9.2-eisen \
+                 (BALKEN, die elke betonstaaf in deze toetsing krijgt). Het zijn twee \
+                 verschillende paragrafen van de norm en ze gelden niet allebei: §9.2.1.1 stelt \
+                 een minimum aan de TREKwapening van een balk om broos bezwijken te voorkomen, en \
+                 dat is een andere vraag dan de A_s,min van §9.5.2 die bij een drukelement hoort. \
+                 De §9.2-uitkomsten staan er dus wel, maar voor een kolom zijn de §9.5-eisen de \
+                 maatgevende; deze toetsing kiest die scheiding niet voor u."
+                    .to_string(),
+            );
+            r.notes.push(
+                "Niet elke eis van §9.5 is te toetsen met een wapeningsmodel dat alleen een \
+                 boven- en een onderrij kent. Wat er ontbreekt, staat hieronder — het is niet \
+                 overgeslagen, het kan niet."
+                    .to_string(),
+            );
+            r.notes.extend(niet_getoetste_9_5_eisen());
         }
     }
 

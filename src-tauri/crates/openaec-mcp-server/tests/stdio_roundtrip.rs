@@ -96,7 +96,11 @@ async fn stdio_roundtrip_initialize_list_call() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("tools must be an array");
-    assert_eq!(tools.len(), 22, "expected 22 tools, got {}", tools.len());
+    // Het AANTAL, niet alleen de namen: een tool die erbij komt zonder dat
+    // iemand hem hier noemt, hoort op te vallen. De namenlijst hieronder is
+    // niet uitputtend, dus zonder deze telling zou zo'n tool ongemerkt
+    // meeliften.
+    assert_eq!(tools.len(), 24, "expected 24 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -115,7 +119,7 @@ async fn stdio_roundtrip_initialize_list_call() {
         "load_fem_project",
         "solve_fem_model",
         "check_fem_model",
-        // De acht betontools (NEN-EN 1992-1-1). Dezelfde rekengang als het
+        // De betontools (NEN-EN 1992-1-1). Dezelfde rekengang als het
         // Tauri-command en de toetsbrug; zie `tests/drie_wegen_beton.rs`,
         // `tests/drie_wegen_beff.rs` en `tests/drie_wegen_dekking.rs`.
         "list_concrete_classes",
@@ -126,6 +130,10 @@ async fn stdio_roundtrip_initialize_list_call() {
         // orde (5.8.6): segmentindeling, secante EI per segment en het
         // convergentie-oordeel.
         "concrete_segment_stiffness",
+        // De dekkingslijn: §9.2.1.3 met figuur 9.2 voor de momenten en §6.2
+        // voor de dwarskracht, per plaats de benodigde naast de aanwezige
+        // waarde met het bewijs erbij.
+        "concrete_dekkingslijn",
         // De meewerkende flensbreedte b_eff per gebied van figuur 5.2
         // (5.3.2.1, alle grenstoestanden).
         "concrete_effective_flange_width",

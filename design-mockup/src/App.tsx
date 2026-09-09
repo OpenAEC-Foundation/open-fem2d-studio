@@ -46,7 +46,20 @@ import {
 } from "./lib/betonStijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
+// Scheefstand: φ komt óf uit de vaste noemer (het oude gedrag, en de stand van
+// elk bestaand projectbestand) óf uit de normformule van EN 1993-1-1 (5.5),
+// EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1) — zie lib/scheefstandNorm.ts.
+import {
+  bepaalScheefstand,
+  leidScheefstandGeometrieAf,
+  scheefstandToelichting,
+  toepasselijkeScheefstandNormen,
+} from "./lib/scheefstandNorm";
 import { useCheckStore, anyCheckableBeams, roepKern } from "./stores/checkStore";
+// Het venster onderin bij een betonstaaf: de aanzicht met de dekkingslijnen,
+// de doorsnede op de aangewezen snede en de invoer van de wapeningszones.
+import BetonStaafVenster from "./components/beton/dekking/BetonStaafVenster";
+import { matchSupportedConcreteClass } from "./lib/betonCheckBuilder";
 import { bEffWaardenPerStaaf, bepaalBeffPerStaaf } from "./lib/beffLiggerlijn";
 import {
   useBetonStijfheidStore,
@@ -311,6 +324,12 @@ function App() {
     scheefstandEnabled: fem.scheefstandEnabled,
     scheefstandNoemer: fem.scheefstandNoemer,
     scheefstandRichting: fem.scheefstandRichting,
+    // De normkeuze voor φ reist mee. De vaste noemer hierboven blijft óók in
+    // het bestand staan: hij is de stand waarop een lezer die deze velden niet
+    // kent terugvalt, en dan verandert er niets aan zijn berekening.
+    scheefstandBron: fem.scheefstandBron,
+    scheefstandHoogteM: fem.scheefstandHoogteM,
+    scheefstandAantalElementen: fem.scheefstandAantalElementen,
     // Eigen doorsneden reizen mee in het projectbestand: een staaf met
     // `EIGEN:<naam>` moet op een andere machine dezelfde doorsnede vinden.
     // Alleen de doorsneden die dit model daadwerkelijk gebruikt — anders
@@ -444,6 +463,12 @@ function App() {
         scheefstandEnabled: parsed.scheefstandEnabled,
         scheefstandNoemer: parsed.scheefstandNoemer,
         scheefstandRichting: parsed.scheefstandRichting,
+        // Ontbreekt `scheefstandBron` (elk bestand van vóór de normkeuze),
+        // dan valt de store terug op "vast" en rekent het bestand precies
+        // zoals het altijd deed.
+        scheefstandBron: parsed.scheefstandBron,
+        scheefstandHoogteM: parsed.scheefstandHoogteM,
+        scheefstandAantalElementen: parsed.scheefstandAantalElementen,
       });
       setProjectPath(opened.path);
       addRecentFile(opened.path);
@@ -492,6 +517,12 @@ function App() {
         scheefstandEnabled: parsed.scheefstandEnabled,
         scheefstandNoemer: parsed.scheefstandNoemer,
         scheefstandRichting: parsed.scheefstandRichting,
+        // Ontbreekt `scheefstandBron` (elk bestand van vóór de normkeuze),
+        // dan valt de store terug op "vast" en rekent het bestand precies
+        // zoals het altijd deed.
+        scheefstandBron: parsed.scheefstandBron,
+        scheefstandHoogteM: parsed.scheefstandHoogteM,
+        scheefstandAantalElementen: parsed.scheefstandAantalElementen,
       });
       setProjectPath(path);
       addRecentFile(path);
@@ -528,13 +559,45 @@ function App() {
     setActiveView("default");
   }, [fem, setActiveView, confirmUnsavedAction]);
 
+  /**
+   * De scheefstand φ die deze berekening in gaat — DE ENIGE plek waar hij
+   * wordt bepaald, zodat het canvas-pad (single-LC), het multi-LC-pad en het
+   * scherm nooit een ander getal kunnen tonen dan er is gerekend.
+   *
+   * Bij `scheefstandBron = "vast"` (de beginstand en de stand van élk bestand
+   * van vóór deze keuze) is de uitkomst exact 1/noemer: het oude gedrag,
+   * ongewijzigd. Kiest de gebruiker een norm, dan volgt φ uit (5.5)/(5.1) met
+   * h en m uit het model — of uit de handmatige waarden die hij ervoor in de
+   * plaats heeft gezet.
+   */
+  const scheefstandGeometrie = useMemo(
+    () => leidScheefstandGeometrieAf({
+      nodes: fem.nodes, beams: fem.beams, supports: fem.supports,
+    }),
+    [fem.nodes, fem.beams, fem.supports]);
+
+  const scheefstandUitkomst = useMemo(
+    () => bepaalScheefstand(
+      {
+        bron: fem.scheefstandBron,
+        noemer: fem.scheefstandNoemer,
+        hoogteM: fem.scheefstandHoogteM,
+        aantalElementen: fem.scheefstandAantalElementen,
+      },
+      scheefstandGeometrie,
+      toepasselijkeScheefstandNormen(fem.beams),
+    ),
+    [fem.scheefstandBron, fem.scheefstandNoemer, fem.scheefstandHoogteM,
+     fem.scheefstandAantalElementen, scheefstandGeometrie, fem.beams]);
+
   // Scheefstand voor het canvas-pad (single-LC) — zelfde afleiding als het
-  // multi-LC-pad in computeAndStoreSolverOutputs.
+  // multi-LC-pad in computeAndStoreSolverOutputs. Beide gaan via de NOEMER
+  // van dezelfde uitkomst, zodat de twee paden bit voor bit dezelfde φ zien.
   const scheefstandInput = useMemo(() =>
     fem.scheefstandEnabled
-      ? { phi: 1 / fem.scheefstandNoemer, richting: fem.scheefstandRichting }
+      ? { phi: 1 / scheefstandUitkomst.noemer, richting: fem.scheefstandRichting }
       : undefined,
-    [fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting]);
+    [fem.scheefstandEnabled, scheefstandUitkomst.noemer, fem.scheefstandRichting]);
 
   /**
    * Wat de interface over de fysisch niet-lineaire stand moet zeggen: hoeveel
@@ -806,7 +869,11 @@ function App() {
         loads: fem.loads,
         selfWeightEnabled: fem.selfWeightEnabled,
         scheefstandEnabled: fem.scheefstandEnabled,
-        scheefstandNoemer: fem.scheefstandNoemer,
+        // De NORMNOEMER, niet de ingetikte: bij `scheefstandBron = "vast"` is
+        // dat exact `fem.scheefstandNoemer` (dus ongewijzigd gedrag), en bij
+        // een normkeuze de 1/φ uit (5.5)/(5.1). Zo rekent het multi-LC-pad met
+        // hetzelfde getal als het canvas-pad hierboven.
+        scheefstandNoemer: scheefstandUitkomst.noemer,
         scheefstandRichting: fem.scheefstandRichting,
       });
       // Beide tweede-orde-standen lopen via hetzelfde per-combinatie-pad. De
@@ -831,7 +898,7 @@ function App() {
       fem.setSolverOutputs(null);
       return null;
     }
-  }, [fem]);
+  }, [fem, scheefstandUitkomst.noemer]);
 
   /**
    * De fysisch niet-lineaire ronde over de zojuist berekende uitkomsten.
@@ -1142,7 +1209,11 @@ function App() {
       fem.analysetype, fem.betonSegmentLengteMm,
       // v2: combinaties + stramien + scheefstand reizen mee in de snapshot-JSON.
       fem.combinations, fem.structuralGrid,
-      fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting]);
+      fem.scheefstandEnabled, fem.scheefstandNoemer, fem.scheefstandRichting,
+      // De normkeuze staat óók in de snapshot; zonder deze drie zou een
+      // gewijzigde scheefstandbron het bestand niet als "gewijzigd" markeren
+      // en stil verloren gaan bij het afsluiten.
+      fem.scheefstandBron, fem.scheefstandHoogteM, fem.scheefstandAantalElementen]);
 
   // C2: sluitbeveiliging. Tauri: onCloseRequested + native dialoog (dekt de
   // titelbalk-sluitknop, Bestand → Afsluiten en Alt+F4). Browser: beforeunload.
@@ -1211,6 +1282,22 @@ function App() {
     paneelDoorAppIngeklapt.current = false;
     setRightPanelOpen(true);
   }, [activeView]);
+
+  // Onderpaneel (Betonstaaf) — het derde dock, onder de tekening en over de
+  // volle breedte. Zelfde drie stukken state als de zijpanelen: een maat, een
+  // open/dicht-vlag en een ref voor het slepen.
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(380);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(true);
+  const isBottomResizing = useRef(false);
+  /**
+   * Heeft de GEBRUIKER het venster dichtgedaan?
+   *
+   * Zo ja, dan blijft het dicht bij de volgende betonstaaf die hij aanklikt —
+   * anders duwt het zich bij elke selectie opnieuw op. Zelfde onderscheid als
+   * `paneelDoorAppIngeklapt` hierboven maakt, alleen andersom: dáár gaat het
+   * om wat de app zelf heeft dichtgeklapt, hier om wat de gebruiker zelf koos.
+   */
+  const bottomDoorGebruikerGesloten = useRef(false);
 
   const [isResizing, setIsResizing] = useState(false);
 
@@ -1290,6 +1377,35 @@ function App() {
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
+  // Onderpaneel verslepen. Zelfde patroon als de twee handlers hierboven; het
+  // paneel groeit naar BOVEN, dus de hoogte is de afstand van de muis tot de
+  // onderkant van het venster en niet omgekeerd.
+  const handleBottomResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isBottomResizing.current = true;
+    setIsResizing(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!isBottomResizing.current) return;
+      const nieuw = Math.max(140, Math.min(window.innerHeight - 220, window.innerHeight - ev.clientY));
+      setBottomPanelHeight(nieuw);
+    };
+
+    const handleMouseUp = () => {
+      isBottomResizing.current = false;
+      setIsResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
+
   // Split-divider tussen canvas en tabel (Tabel-weergave) verslepen.
   const handleSplitResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -1324,6 +1440,41 @@ function App() {
   // model tonen, niet in de plaats daarvan. Zo blijft het model in beeld
   // terwijl je de afleiding leest, en zie je welke staaf je voor je hebt.
   const isFullWidthView = activeView === "viewer" || activeView === "ifc" || activeView === "report" || activeView === "insights";
+
+  /**
+   * De geselecteerde BETONstaaf, of `null`.
+   *
+   * Alleen bij één staaf: het venster onderin toont één aanzicht met één
+   * doorsnede, en bij een groepsselectie zou het willekeurig één staaf moeten
+   * kiezen. Herkenning gaat via `matchSupportedConcreteClass` — dezelfde
+   * functie waarmee de toetsing en de staafeigenschappen een betonstaaf
+   * herkennen, zodat het venster niet opengaat bij een staaf die de
+   * betontoetsing vervolgens overslaat.
+   */
+  const geselecteerdeBetonStaaf = useMemo(() => {
+    const sel = fem.selection;
+    const id =
+      sel?.type === "beam"
+        ? sel.id
+        : sel?.type === "multi" &&
+            sel.beamIds.length === 1 &&
+            sel.nodeIds.length === 0 &&
+            sel.plateIds.length === 0
+          ? sel.beamIds[0]
+          : null;
+    if (id === null) return null;
+    const staaf = fem.beams.find((b) => b.id === id);
+    if (!staaf) return null;
+    return matchSupportedConcreteClass(staaf.material) !== null ? staaf : null;
+  }, [fem.selection, fem.beams]);
+
+  // Het venster opent bij het selecteren van een betonstaaf — tenzij de
+  // gebruiker het zelf had dichtgedaan; dat onthoudt het.
+  useEffect(() => {
+    if (!geselecteerdeBetonStaaf) return;
+    if (bottomDoorGebruikerGesloten.current) return;
+    setBottomPanelOpen(true);
+  }, [geselecteerdeBetonStaaf]);
 
   const renderMainContent = () => {
     switch (activeView) {
@@ -1710,6 +1861,53 @@ function App() {
           </aside>
         )}
       </div>
+
+      {/* Onderpaneel — het betonvenster. Het staat NAAST `.content` en niet
+          erin: alleen zo beslaat het de volle breedte onder de tekening, zoals
+          een dekkingslijn hem nodig heeft. Het verschijnt bij een geselecteerde
+          betonstaaf en verdwijnt weer bij het loslaten van die selectie: het
+          venster hoort bij die ene staaf. */}
+      {!isFullWidthView && geselecteerdeBetonStaaf && (
+        <aside
+          className={`bottom-panel${bottomPanelOpen ? "" : " collapsed"}${isResizing ? " no-transition" : ""}`}
+          style={{ height: bottomPanelOpen ? bottomPanelHeight : 26 }}
+        >
+          {bottomPanelOpen ? (
+            <>
+              <div
+                className="bottom-panel-resize"
+                onMouseDown={handleBottomResizeMouseDown}
+                title="Sleep om het betonvenster hoger of lager te maken"
+              />
+              <div className="bottom-panel-body">
+                <BetonStaafVenster
+                  key={geselecteerdeBetonStaaf.id}
+                  beam={geselecteerdeBetonStaaf}
+                  nodes={fem.nodes}
+                  supports={fem.supports}
+                  updateBeam={fem.updateBeam}
+                  onSluiten={() => {
+                    bottomDoorGebruikerGesloten.current = true;
+                    setBottomPanelOpen(false);
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <button
+              className="bottom-panel-collapsed-tab"
+              onClick={() => {
+                bottomDoorGebruikerGesloten.current = false;
+                setBottomPanelOpen(true);
+              }}
+              title="Betonstaaf — aanzicht, doorsnede en dekkingslijnen"
+            >
+              <span>{`Betonstaaf ${geselecteerdeBetonStaaf.id} — dekkingslijnen`}</span>
+            </button>
+          )}
+        </aside>
+      )}
+
       {/* Load case tab strip — hidden on full-width IFC/Report views. */}
       {!isFullWidthView && (
         <LoadCaseTabBar
@@ -1732,6 +1930,22 @@ function App() {
           setScheefstandNoemer={fem.setScheefstandNoemer}
           scheefstandRichting={fem.scheefstandRichting}
           setScheefstandRichting={fem.setScheefstandRichting}
+          scheefstandBron={fem.scheefstandBron}
+          setScheefstandBron={fem.setScheefstandBron}
+          scheefstandHoogteM={fem.scheefstandHoogteM}
+          setScheefstandHoogteM={fem.setScheefstandHoogteM}
+          scheefstandAantalElementen={fem.scheefstandAantalElementen}
+          setScheefstandAantalElementen={fem.setScheefstandAantalElementen}
+          // De uitkomst en de afleiding gaan als GEGEVEN mee naar de balk: de
+          // balk toont wat er is gerekend en rekent niets zelf, zodat er geen
+          // tweede plek is waar φ kan ontstaan.
+          scheefstandPhiNoemer={scheefstandUitkomst.noemer}
+          scheefstandAfgeleideHoogteM={scheefstandGeometrie.hoogteM}
+          scheefstandAfgeleidAantal={scheefstandGeometrie.aantalElementen}
+          scheefstandToelichting={
+            scheefstandToelichting(scheefstandUitkomst, scheefstandGeometrie)
+          }
+          scheefstandWaarschuwingen={scheefstandUitkomst.waarschuwingen}
           showLoads={fem.showLoads}
           setShowLoads={(v) => { fem.setShowLoads(v); setResultsTabActive(false); }}
           hasResults={solverResult !== null || fem.envelope !== null}

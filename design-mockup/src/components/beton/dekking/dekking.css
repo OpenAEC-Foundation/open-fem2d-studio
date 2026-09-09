@@ -1,0 +1,275 @@
+/* Het betonvenster onderin — aanzicht links, doorsnede rechts, zones eronder.
+   Alle kleuren komen uit de theme-tokens, zodat het venster in licht én donker
+   leesbaar blijft; dezelfde afspraak als de rest van de betonfiguren
+   (zie tekenkleuren.ts). */
+
+.dek-venster {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--theme-text);
+  font-size: 12px;
+}
+
+/* ── Werkbalk met de vier laagschakelaars ───────────────────────────────── */
+
+.dek-werkbalk {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-lighter);
+}
+
+.dek-staafnaam {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--theme-accent);
+  white-space: nowrap;
+}
+
+.dek-lagen {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* De schakelaar zelf komt uit FemProjectTree.css; hier alleen de maat, want
+   in een werkbalk staan ze naast elkaar en niet onder elkaar. */
+.dek-laagknop {
+  width: auto;
+  gap: 6px;
+  padding: 1px 8px 1px 6px;
+}
+
+.dek-werkbalk-rechts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.dek-bezig {
+  font-size: 10.5px;
+  color: var(--theme-text-muted);
+  font-style: italic;
+}
+
+.dek-knop {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--theme-btn-secondary-hover-border, var(--theme-border));
+  background: var(--theme-btn-secondary-bg, var(--theme-surface));
+  color: var(--theme-btn-secondary-text, var(--theme-text));
+  cursor: pointer;
+}
+
+.dek-knop:hover:not(:disabled) {
+  background: var(--theme-btn-secondary-hover-bg, var(--theme-hover));
+}
+
+.dek-knop:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dek-knop-primair {
+  background: var(--theme-btn-primary-bg, var(--theme-accent));
+  border-color: var(--theme-btn-primary-border, var(--theme-accent));
+  color: var(--theme-btn-primary-text, #fff);
+}
+
+.dek-sluit {
+  padding: 2px 7px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* ── Body: aanzicht + meldingen + zones links, doorsnede rechts ─────────── */
+
+.dek-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dek-links {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 6px 8px 10px;
+}
+
+.dek-tekenvlak {
+  width: 100%;
+  min-width: 0;
+}
+
+.dek-aanzicht {
+  display: block;
+  max-width: 100%;
+  /* De breedte wordt gemeten en als attribuut meegegeven, maar tussen twee
+     metingen in kan het kader smaller zijn dan de tekening. `height: auto`
+     laat hem dan evenredig meekrimpen in plaats van in elkaar gedrukt te
+     worden. */
+  height: auto;
+  /* Klikken wijst een snede aan; het kruisje zegt dat zonder woorden. */
+  cursor: crosshair;
+}
+
+.dek-rechts {
+  flex: 0 0 268px;
+  border-left: 1px solid var(--theme-border);
+  padding: 6px 8px;
+  overflow: auto;
+  background: var(--theme-bg);
+}
+
+.dek-snedekop {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--theme-text-muted);
+  margin-bottom: 4px;
+}
+
+.dek-doorsnede {
+  width: 100%;
+  max-width: 230px;
+  height: auto;
+}
+
+/* ── De aflezing op de aangewezen snede ─────────────────────────────────── */
+
+.dek-aflezing {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dek-aflezing th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--theme-text-muted);
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.dek-aflezing td {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+.dek-aflezing-paar {
+  display: block;
+}
+
+.dek-uc {
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.dek-eindzone-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--theme-hover, rgba(0, 0, 0, 0.06));
+  color: var(--theme-text-muted);
+}
+
+.dek-reden {
+  display: block;
+  color: var(--theme-text-faint);
+  font-size: 10.5px;
+}
+
+/* ── Meldingen ──────────────────────────────────────────────────────────── */
+
+.dek-meldingen {
+  margin: 4px 0 8px;
+}
+
+.dek-let-op {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--theme-accent);
+  background: var(--theme-accent-soft, var(--theme-hover));
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* ── Zone-invoer ────────────────────────────────────────────────────────── */
+
+.dek-zones {
+  border-top: 1px solid var(--theme-border);
+  padding-top: 6px;
+}
+
+.dek-zones-leeg {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dek-zones-kop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 3px;
+}
+
+.dek-zones-titel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--theme-text-muted);
+}
+
+.dek-zonetabel {
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.dek-zonetabel th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 10.5px;
+  color: var(--theme-text-muted);
+  padding: 0 8px 2px 0;
+  white-space: nowrap;
+}
+
+.dek-zonetabel td {
+  padding: 1px 8px 1px 0;
+  vertical-align: middle;
+}
+
+.dek-zone-acties {
+  display: flex;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.dek-zonefout {
+  margin-top: 6px;
+  max-width: 720px;
+}

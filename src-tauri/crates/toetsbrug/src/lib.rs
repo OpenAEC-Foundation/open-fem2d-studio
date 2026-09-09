@@ -28,7 +28,12 @@
 //! JSON. Een fout komt terug als `{"fout": "…"}` met afsluitcode 1; de
 //! aanroeper hoeft stderr niet te lezen.
 
-use concrete_check::{ConcreteBeamCheckInput, MnKappaRequest, SegmentStiffnessRequest};
+use concrete_check::{
+    ConcreteBeamCheckInput, DekkingslijnVerzoek, MnKappaRequest, SegmentStiffnessRequest,
+};
+// §5.8 — de kolomtoets. Apart van de `use` hierboven omdat die regel al door
+// meer dan één spoor tegelijk wordt bewerkt.
+use concrete_check::ConcreteColumnCheckRequest;
 use nen_en_1992_1_1::{ConcreteCoverRequest, EffectiveFlangeWidthRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use nen_en_1993_1_8_las::LasInput;
@@ -135,6 +140,41 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let verzoek: SegmentStiffnessRequest = serde_json::from_value(inputs)
                 .map_err(|e| format!("segmentstijfheidsinvoer: {e}"))?;
             let uit = concrete_check::segment_stiffness(verzoek)?;
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // §5.8 los van een volledige staaftoetsing: de kniklengte l₀, λ = l₀/i
+        // (5.14) en de slankheidsgrens λ_lim = 20·A·B·C/√n waaronder de
+        // tweede-orde-effecten mogen vervallen — door de nationale bijlage bij
+        // 5.8.3.1(1) als EIS gesteld. Daarbij φ_ef (5.19) met de drie
+        // voorwaarden van 5.8.4(4), en de §9.5-detaillering.
+        //
+        // Geschoord of ongeschoord is INVOER: §5.8.1 noemt het uitdrukkelijk
+        // een aanname in de berekening, en het scheelt een factor twee in l₀.
+        // Zelfde typen en dezelfde rekengang (`concrete_check::kolomtoetsen`)
+        // als het Tauri-command en het MCP-gereedschap van dezelfde naam; die
+        // rekengang zit óók in `check_concrete_beams`, zodat de losse toets en
+        // de staaftoetsing niet uit elkaar kunnen lopen.
+        "concrete_column_check" => {
+            let inputs = v.inputs.ok_or("concrete_column_check vraagt om `inputs`")?;
+            let verzoek: ConcreteColumnCheckRequest =
+                serde_json::from_value(inputs).map_err(|e| format!("kolominvoer: {e}"))?;
+            let uit = concrete_check::column_check(verzoek)?;
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // De dekkingslijn van één staaf: §9.2.1.3 met figuur 9.2 voor de
+        // momenten en §6.2 voor de dwarskracht, als GEGEVENS. Per plaats de
+        // benodigde en de aanwezige waarde, met per punt het bewijs; op een
+        // zonegrens twee punten met dezelfde x, links en rechts van de sprong.
+        //
+        // Het verzoek draagt de betonstaaf in `beam` als
+        // `ConcreteBeamCheckInput` — hetzelfde type als `check_concrete_beams`
+        // hierboven, en ook hier RECHTSTREEKS gelezen, zodat elk veld dat aan
+        // dat type wordt toegevoegd vanzelf meereist.
+        "concrete_dekkingslijn" => {
+            let inputs = v.inputs.ok_or("concrete_dekkingslijn vraagt om `inputs`")?;
+            let verzoek: DekkingslijnVerzoek = serde_json::from_value(inputs)
+                .map_err(|e| format!("dekkingslijninvoer: {e}"))?;
+            let uit = concrete_check::dekkingslijn(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
         }
         // De meewerkende flensbreedte van een T- of L-ligger (5.3.2.1), per

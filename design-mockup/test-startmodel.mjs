@@ -565,7 +565,10 @@ log("\n[j] Echte rekenkern: de betonbalk, en wat de beugels daar doen");
     const variabele = (id, symbool) =>
       (toets(id)?.variables ?? []).find((v) => v.symbol === symbool)?.value;
 
-    check("beton: aantal deeltoetsen", (res.checks ?? []).length, 15);
+    // Zestien: de vijftien van vóór de kolomtoets, plus de §5.8-regel die er
+    // sindsdien altijd in staat. Deze ligger draagt geen normaaldruk, dus die
+    // regel meldt dat §5.8 niet van toepassing is in plaats van te zwijgen.
+    check("beton: aantal deeltoetsen", (res.checks ?? []).length, 16);
     ok("beton: status Ok", res.status === "Ok",
       `maatgevend ${res.governing_check_id}, uc_max ${res.uc_max?.toFixed(3)}`);
     // NotApplicable is hier géén fout: drie toetsen missen invoer die niet in

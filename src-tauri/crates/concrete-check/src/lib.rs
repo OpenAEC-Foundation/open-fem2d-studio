@@ -18,16 +18,36 @@
 //! bewust in de kern en niet in de aanroeper — zie de moduletoelichting van
 //! [`segments`].
 //!
+//! En [`dekkingslijn`]: de momenten- en dwarskrachtdekking van één staaf als
+//! GEGEVENS — figuur 9.2 van §9.2.1.3 in getallen, met per punt het bewijs dat
+//! daar gold. Ook die dienst is stateloos, en ook zij rekent zelf niets uit:
+//! de rekengang staat in `nen_en_1992_1_1::dekkingslijn` en dit is de laag die
+//! haar uitkomst serialiseerbaar maakt, zodat alle drie de wegen erbij kunnen.
+//! Zie de moduletoelichting van [`dekkingslijn`] voor waarom zij
+//! [`ConcreteBeamCheckInput`] hergebruikt in plaats van een tweede, bijna
+//! gelijk invoertype te dragen.
+//!
 //! TODO: `ResistanceCalc`/`NamedCheck`/`CheckKind`/`CheckStatus` wonen nu in
 //! staal-crates; verhuis ze naar een materiaal-neutrale `check-core` crate
 //! zodra die bestaat.
 
+pub mod dekkingslijn;
 pub mod input;
+pub mod kolom;
 pub mod orchestrator;
 pub mod result;
 pub mod segments;
 
+pub use dekkingslijn::{dekkingslijn, DekkingslijnAntwoord, DekkingslijnVerzoek};
 pub use input::{ConcreteBeamCheckInput, MnKappaRequest};
+// §5.8: de kniklengte, de slankheid en de slankheidsgrens waaronder de
+// tweede-orde-effecten mogen vervallen, plus §9.5. `kolomtoetsen` is de
+// rekengang die de volledige staaftoetsing én het losse `column_check`
+// gebruiken; er is er maar één, zodat de twee wegen niet uit elkaar lopen.
+pub use kolom::{
+    column_check, kolomtoetsen, ConcreteColumnCheckRequest, ConcreteColumnCheckResponse,
+    ConcreteColumnInput, Kniklengtekeuze, Kolomuitkomst, KRUIP_ID, SLANKHEIDSGRENS_ID,
+};
 pub use orchestrator::{check_all_concrete_beams, check_concrete_beam, mn_kappa};
 pub use result::{ConcreteBeamCheckResult, MnKappaResponse};
 pub use segments::{

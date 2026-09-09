@@ -25,7 +25,12 @@ import {
   matchSupportedConcreteClass,
   parseConcreteSection,
 } from "../../lib/betonCheckBuilder";
-import { BetonKorfPaneel, type Wapeningskorf } from "../beton";
+import { BetonKorfPaneel, KolomVelden, type Wapeningskorf } from "../beton";
+// §5.8-invoer wordt aangeboden waar de meetkunde een kolom vermoedt. Dezelfde
+// drempel van 75° als `bepaalStandaardRol` hierboven; twee drempels in één app
+// zou betekenen dat dezelfde staaf in de staaftypentabel een kolom is en in dit
+// paneel niet.
+import { isOverwegendVerticaal } from "../../lib/steelCheckBuilder";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
 
 interface SectionProps {
@@ -674,6 +679,39 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               <div className="fem-prop-hint">
                 Zonder korf wordt de staaf niet getoetst; dat staat dan met reden in het toetsingspaneel.
               </div>
+            </Section>
+          )}
+
+          {/*
+            KNIK VAN EEN BETONNEN KOLOM (art. 5.8).
+
+            OPEN OF DICHT VOLGT DE MEETKUNDE, DE TOETS NIET. Het paneel staat
+            open zodra de staaf overwegend verticaal is (≥ 75° t.o.v. de
+            horizontaal — `isOverwegendVerticaal`, dezelfde drempel die
+            `bepaalStandaardRol` voor het staaftype gebruikt), want dán is de
+            kans het grootst dat de gebruiker hier iets moet invullen. Het staat
+            óók open zodra er al iets is ingevuld: een verstopte
+            §5.8-invoer is erger dan een extra regel in beeld.
+
+            Of art. 5.8 werkelijk van toepassing IS, beslist de rekenkern uit de
+            normaalDRUK en niet uit de hoek: een schuine schoor onder 60° met
+            400 kN druk is voor 5.8 net zo goed een op druk belast element. Er
+            zijn dus twee vragen — waar vragen we het, en waar toetsen we het —
+            en ze horen op twee verschillende plaatsen thuis.
+          */}
+          {isBeton && (
+            <Section
+              title="Kolom — knik (art. 5.8)"
+              defaultOpen={cfg.betonKolom !== undefined || isOverwegendVerticaal(beam, nodes)}
+            >
+              <KolomVelden
+                key={beam.id}
+                waarde={cfg.betonKolom}
+                onChange={(k) => setCfg({ betonKolom: k })}
+                lengteMm={L}
+                overwegendVerticaal={isOverwegendVerticaal(beam, nodes)}
+                idPrefix={`kolom-${beam.id}`}
+              />
             </Section>
           )}
 

@@ -587,8 +587,12 @@ if (!KERN_AANWEZIG) {
   const [r1, r2] = uitkomst;
 
   ok("de kern levert een resultaat per staaf", uitkomst.length === 2);
-  ok("staaf 1: vijftien deeltoetsen", (r1.checks ?? []).length === 15);
-  ok("staaf 2: vijftien deeltoetsen", (r2.checks ?? []).length === 15);
+  // Zestien: de vijftien die er altijd waren, plus de §5.8-regel die er sinds
+  // de kolomtoets ALTIJD in staat. Deze vloerplaten dragen geen normaaldruk,
+  // dus die regel meldt dat §5.8 niet van toepassing is — met de reden, want
+  // een weggelaten toets is niet te onderscheiden van een toets die slaagde.
+  ok("staaf 1: zestien deeltoetsen", (r1.checks ?? []).length === 16);
+  ok("staaf 2: zestien deeltoetsen", (r2.checks ?? []).length === 16);
 
   // ── De nuttige hoogte ───────────────────────────────────────────────────
   // d = h − c_nom − Ø/2, met c_nom = 25 mm en Ø = 10 mm: 250 en 110 mm. Dat
@@ -739,11 +743,16 @@ if (!KERN_AANWEZIG) {
       }
     }
   }
-  // Vier van de vijf horen bij de ontbrekende beugels — een plaat heeft ze
-  // niet, en de bron toont ze ook niet. De vijfde is 7.4.2; zie [e].
+  // Vier van de zes horen bij de ontbrekende beugels — een plaat heeft ze
+  // niet, en de bron toont ze ook niet. De vijfde is 7.4.2; zie [e]. De zesde
+  // is de slankheidsgrens van 5.8.3.1: deze platen dragen geen normaaldruk, dus
+  // §5.8 is er niet op van toepassing en de toets zegt dat.
   const na1 = (r1.checks ?? []).filter((c) => (c.kind?.data ?? c).status === "NotApplicable").map((c) => c.id);
-  ok("niet-toetsbaar zijn precies de vier beugeleisen plus de slankheid",
-    na1.length === 5 && na1.filter((i) => i.startsWith("9.2.2")).length === 4 && na1.includes("7.4.2_slankheid"),
+  ok("niet-toetsbaar zijn precies de vier beugeleisen, de slankheid en 5.8",
+    na1.length === 6
+      && na1.filter((i) => i.startsWith("9.2.2")).length === 4
+      && na1.includes("7.4.2_slankheid")
+      && na1.includes("5.8.3.1_slankheidsgrens"),
     na1.join(", "));
   // NotOk mag hier niet stilletjes ergens anders opduiken.
   const onverwacht = [...(r1.checks ?? []), ...(r2.checks ?? [])]

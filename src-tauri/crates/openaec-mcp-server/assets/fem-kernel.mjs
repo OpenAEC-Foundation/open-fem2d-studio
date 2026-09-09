@@ -7641,6 +7641,40 @@ function thermalAlphaForMaterial(material) {
   return material !== void 0 && material in TIMBER_E_MEAN ? ALPHA_HOUT : ALPHA_STAAL;
 }
 
+// src/lib/betonZoneSneden.ts
+var ZONE_TOLERANTIE_MM = 1e-6;
+function zoneGrenzenMm(zones) {
+  if (!zones) return [];
+  const ruw = [
+    ...zones.longitudinal.flatMap((z) => [z.x_start_mm, z.x_end_mm]),
+    ...zones.stirrups.flatMap((z) => [z.x_start_mm, z.x_end_mm])
+  ].filter((x) => Number.isFinite(x));
+  ruw.sort((a, b) => a - b);
+  const uit = [];
+  for (const x of ruw) {
+    if (uit.length === 0 || Math.abs(x - uit[uit.length - 1]) > ZONE_TOLERANTIE_MM) uit.push(x);
+  }
+  return uit;
+}
+function zoneSnedeFracties(zones, lengteMm) {
+  if (!(lengteMm > 0)) return [];
+  return zoneGrenzenMm(zones).filter((x) => x > ZONE_TOLERANTIE_MM && x < lengteMm - ZONE_TOLERANTIE_MM).map((x) => x / lengteMm);
+}
+function zoneSnedenUitStaven(beams, nodes) {
+  const knoop = new Map(nodes.map((n) => [n.id, n]));
+  const uit = /* @__PURE__ */ new Map();
+  for (const b of beams) {
+    const zones = b.checkConfig?.betonZones;
+    if (!zones || zones.longitudinal.length === 0 && zones.stirrups.length === 0) continue;
+    const a = knoop.get(b.from);
+    const c = knoop.get(b.to);
+    if (!a || !c) continue;
+    const fracties = zoneSnedeFracties(zones, Math.hypot(c.x - a.x, c.z - a.z));
+    if (fracties.length > 0) uit.set(b.id, fracties);
+  }
+  return uit;
+}
+
 // src/lib/modelNaarSolverInput.ts
 function liftSpringK(s) {
   if (s.k === void 0) return void 0;
@@ -7649,10 +7683,12 @@ function liftSpringK(s) {
   return void 0;
 }
 function bouwMultiInput(model) {
+  const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput = {
     nodes: model.nodes.map((n) => ({ id: n.id, x: n.x, z: n.z })),
     beams: model.beams.map((b) => {
       const sec = resolveSection(b.material, b.profile);
+      const sneden = zoneSneden.get(b.id);
       return {
         id: b.id,
         from: b.from,
@@ -7666,7 +7702,10 @@ function bouwMultiInput(model) {
         // er een translatie-release in zit.
         startConnection: b.releases?.startRy ? "hinge" : "fixed",
         endConnection: b.releases?.endRy ? "hinge" : "fixed",
-        releases: b.releases
+        releases: b.releases,
+        // Alleen aanwezig als er werkelijk zonegrenzen zijn; een leeg veld zou
+        // de invoer van een model zonder beton onnodig veranderen.
+        ...sneden && sneden.length > 0 ? { extraSneden: sneden } : {}
       };
     }),
     supports: model.supports.map((s) => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
@@ -8085,7 +8124,29 @@ var CHECKCONFIG_VELDEN = [
   "betonStaalsoort",
   "betonStroken",
   "betonStaaltak",
+  "betonKolom",
   "spanningSigmaZ"
+];
+var KOLOM_VELDEN = [
+  "bracing",
+  "buckling_length",
+  "phi_inf_t0",
+  "stirrup_zone",
+  "lap_situation"
+];
+var SCHORINGEN = ["Geschoord", "Ongeschoord"];
+var KNIKGEVALLEN_GELDIG = [
+  "ScharnierendScharnierend",
+  "Console",
+  "IngeklemdScharnierend",
+  "TweezijdigIngeklemdGeschoord",
+  "TweezijdigIngeklemdOngeschoord"
+];
+var BEUGELZONES = ["Regulier", "BijBalkOfPlaat", "BijOverlappingslas"];
+var OVERLAPPINGSSITUATIES = [
+  "GeenLassen",
+  "LassenBuitenDezeDoorsnede",
+  "TerPlaatseVanLas"
 ];
 var KORF_VELDEN_VERPLICHT = ["cover_mm", "stirrup_diameter_mm", "top", "bottom"];
 var KORF_VELDEN_BEUGEL = [
@@ -8301,6 +8362,49 @@ function keurKorf(waarde, pad, fouten) {
     }
   }
 }
+function keurKolom(waarde, pad, fouten) {
+  if (waarde === void 0) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object zijn (schoring, kniklengte en de \xA79.5-keuzen).`);
+    return;
+  }
+  keurVelden(waarde, KOLOM_VELDEN, pad, fouten);
+  if (waarde.bracing === void 0) {
+    fouten.push(
+      `${pad}.bracing ontbreekt. Geschoord of ongeschoord is het ontwerpbesluit van art. 5.8.1 en heeft met opzet geen standaardwaarde; zonder die keuze is er geen kniklengte en geen slankheidsgrens.`
+    );
+  }
+  keurEnum(waarde.bracing, SCHORINGEN, `${pad}.bracing`, fouten);
+  keurGetal(waarde.phi_inf_t0, `${pad}.phi_inf_t0`, fouten, { positief: true });
+  keurEnum(waarde.stirrup_zone, BEUGELZONES, `${pad}.stirrup_zone`, fouten);
+  keurEnum(waarde.lap_situation, OVERLAPPINGSSITUATIES, `${pad}.lap_situation`, fouten);
+  const kl = waarde.buckling_length;
+  if (kl === void 0) {
+    fouten.push(`${pad}.buckling_length ontbreekt; zonder l\u2080 is er geen slankheid \u03BB = l\u2080/i.`);
+    return;
+  }
+  if (!isObject(kl)) {
+    fouten.push(`${pad}.buckling_length: moet een object met \`soort\` zijn.`);
+    return;
+  }
+  if (kl.soort === "Figuur57") {
+    keurVelden(kl, ["soort", "geval"], `${pad}.buckling_length`, fouten);
+    keurEnum(kl.geval, KNIKGEVALLEN_GELDIG, `${pad}.buckling_length.geval`, fouten);
+    if (kl.geval === void 0) {
+      fouten.push(`${pad}.buckling_length.geval ontbreekt.`);
+    }
+  } else if (kl.soort === "Opgegeven") {
+    keurVelden(kl, ["soort", "l0_m"], `${pad}.buckling_length`, fouten);
+    if (kl.l0_m === void 0) {
+      fouten.push(`${pad}.buckling_length.l0_m ontbreekt; l\u2080 is hier het hele gegeven.`);
+    }
+    keurGetal(kl.l0_m, `${pad}.buckling_length.l0_m`, fouten, { positief: true });
+  } else {
+    fouten.push(
+      `${pad}.buckling_length.soort: ${JSON.stringify(kl.soort)} bestaat niet. Toegestaan: Figuur57 (een vakje van figuur 5.7) of Opgegeven (l\u2080 rechtstreeks).`
+    );
+  }
+}
 function eisGeheel(waarde, pad, fouten) {
   if (!isGeheel(waarde)) {
     fouten.push(
@@ -8400,6 +8504,7 @@ function controleerVelden(rauw) {
         keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
         keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
         keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
+        keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
       }
     }
   });

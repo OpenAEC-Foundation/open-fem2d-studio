@@ -21,6 +21,12 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      scheefstand-instellingen (`scheefstandEnabled`, `scheefstandNoemer`,
  *      `scheefstandRichting`) — ontbreken ze, dan laadt het bestand met
  *      scheefstand uit (noemer 200, richting +x).
+ *      Daarna, óók optioneel: de normberekening van φ (`scheefstandBron`,
+ *      `scheefstandHoogteM`, `scheefstandAantalElementen`). Ontbreekt
+ *      `scheefstandBron`, dan geldt "vast" en rekent het bestand met de
+ *      noemer hierboven — dus precies zoals het altijd deed. Een oudere
+ *      versie van de app die deze drie velden niet kent leest hetzelfde
+ *      bestand ook zo; de noemer blijft daarom altijd meegeschreven.
  *      Eveneens optioneel binnen v2: plaat-rekenvelden op `Plate`
  *      (`thickness`, `E`, `nu`, `rho`, `meshSize`) — reizen automatisch mee
  *      met de plates-array (zoals `Beam.checkConfig`); ontbreken ze, dan
@@ -141,6 +147,19 @@ export interface ProjectFile {
   scheefstandNoemer?: number;
   /** Richting van de equivalente horizontale krachten (v2, optioneel — ontbreekt = +1). */
   scheefstandRichting?: 1 | -1;
+  /**
+   * Waar φ vandaan komt (v2, optioneel — ontbreekt = "vast", dus de noemer
+   * hierboven). Geldige waarden: "vast" | "en1993" | "en1992" | "en1995" |
+   * "ongunstigste", zie `lib/scheefstandNorm.ts`. Bewust als `string`
+   * getypeerd, net als `analysetype`: een bestand uit een nieuwere versie mag
+   * hier een onbekende waarde in hebben staan zonder dat het laden omvalt —
+   * de store valt dan terug op "vast".
+   */
+  scheefstandBron?: string;
+  /** Handmatige hoogte h in m voor α_h (v2, optioneel — ontbreekt = afleiden). */
+  scheefstandHoogteM?: number | null;
+  /** Handmatig aantal verticale elementen m voor α_m (v2, optioneel — ontbreekt = afleiden). */
+  scheefstandAantalElementen?: number | null;
   /**
    * Eigen doorsneden uit de profieleditor waarnaar staven verwijzen
    * (`EIGEN:<naam>`); v2, optioneel — geen versie-bump. Ontbreekt het veld

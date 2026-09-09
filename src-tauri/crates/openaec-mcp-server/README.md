@@ -6,13 +6,14 @@ Claude Code, etc.). It speaks JSON-RPC 2.0 over stdio and wraps the same
 Rust crates the Tauri desktop app uses, so a tool call from Claude returns
 byte-identical results to clicking through the UI.
 
-Twenty-two tools in five groups:
+The tools, in five groups (the exact roster is pinned by
+`tests/stdio_roundtrip.rs` and `tests/drie_wegen_kruistabel.rs`):
 
 | group | tools |
 |---|---|
 | steel — EN 1993-1-1 | `list_steel_profiles`, `list_steel_grades`, `check_steel_beam`, `compute_section_properties` |
 | timber — EN 1995-1-1 | `list_timber_grades`, `check_timber_beams`, `list_clt_presets`, `check_clt_beams` |
-| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `check_concrete_beam`, `concrete_mn_kappa`, `concrete_segment_stiffness`, `concrete_effective_flange_width`, `list_exposure_classes`, `concrete_cover_check` |
+| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `check_concrete_beam`, `concrete_mn_kappa`, `concrete_segment_stiffness`, `concrete_dekkingslijn`, `concrete_effective_flange_width`, `list_exposure_classes`, `concrete_cover_check` |
 | 2D FEM solver | `fem_solver_status`, `validate_fem_model`, `load_fem_project`, `solve_fem_model`, `check_fem_model` |
 | reporting | `generate_steel_report_pdf` |
 
@@ -397,6 +398,51 @@ Unlike `check_concrete_beam`, an invalid request here **is** a tool error
 (`isError: true`) with the reason — an empty diagram would read as "no
 capacity".
 
+### `concrete_dekkingslijn`
+
+The curtailment diagram of one member as data: figure 9.2 of §9.2.1.3 for the
+longitudinal bars and §6.2 for the shear. Per position the required and the
+available value, with the evidence that applied there.
+
+The member goes in under `beam` as the **same** `ConcreteBeamCheckInput` that
+`check_concrete_beam` takes — there is deliberately no second, near-identical
+input type, so a field added to the beam travels to both tools at once. Four
+extra choices sit next to it, all optional and all meaning *not supplied* when
+left out: `z_mm`, `c_d_mm`, `a_sl_mm2`, `cot_theta`.
+
+```json
+{
+  "name": "concrete_dekkingslijn",
+  "arguments": {
+    "beam": { "beam_id": 7, "section": { "...": "as check_concrete_beam" },
+              "concrete_class": "C30/37", "reinforcement_grade": "B500B",
+              "cage": { "...": "" },
+              "reinforcement_zones": { "longitudinal": [], "stirrups": [] },
+              "length_m": 6.0, "forces_envelope": [] }
+  }
+}
+```
+
+What the response carries: `onder` and `boven` (one moment line per face, each
+with its points, its governing index and the bar bundles with the full §8.4
+l_bd derivation), `dwarskracht` (one V_Rd per point with the route and the
+§6.2.1(3)/(5) track that produced it — V_Rd,c and V_Rd,s are never added),
+`steunpunten` (§9.2.1.4/§9.2.1.5 at both member ends, reported and not judged),
+`a_l_mm` with its article, the two governing unity checks, and `notes`.
+
+Two things to know before reading a line:
+
+- **Zone boundaries must be stations.** The resistance jumps where the
+  reinforcement changes, and two points then share the same `x_mm`, marked
+  `Links` and `Rechts`. If the envelope has no station there, the line puts a
+  required force from somewhere else next to a resistance from here. In the app
+  `bouwMultiInput` places a calculation node on every boundary through
+  `SolverBeamInput.extraSneden`; a caller feeding this tool by hand should
+  sample the envelope on those boundaries too.
+- **An axial force without `z_mm` is an error, not a line.** 6.2.3(1) allows
+  z = 0,9·d only "for reinforced concrete without axial force"; silently
+  filling it in would make the required tensile force too low.
+
 ## Architecture
 
 - **Transport**: newline-delimited JSON-RPC 2.0 on stdin/stdout. One message
@@ -426,6 +472,7 @@ cargo test -p openaec-mcp-server
 | `stdio_roundtrip.rs` | the full handshake against the real binary: `initialize` → `notifications/initialized` → `tools/list` → `tools/call`, and the complete tool roster |
 | `schema_strikt.rs` | the input schemas of `check_steel_beam`, `check_concrete_beam` and `concrete_mn_kappa` are complete and strict; a typo in a field name is refused, not silently defaulted |
 | `drie_wegen_beton.rs` | **the three ways give the same answer**: the same JSON through the Tauri command's engine call, through `toetsbrug::behandel` and through the real MCP binary, compared field by field, plus anchor values so all three cannot drift together |
+| `drie_wegen_dekkingslijn.rs` | the same for `concrete_dekkingslijn` (§9.2.1.3 / figure 9.2 and §6.2): one member through all three ways, plus anchor values that follow from the norm — two bar bundles for a 3/5/3 curtailment, two points on every zone boundary (left and right of the jump), and the full tensile force jumping by 5/3 there. Also pins that an axial force without a supplied `z_mm` fails on ALL three ways with 6.2.3(1) in the reason, and that a typo in a field name is refused |
 | `beton_in_check_fem_model.rs` | a concrete beam in a mixed model is reported in `skipped_beams` instead of vanishing; `beam_ids` is respected; a model carrying a reinforcement cage is refused by the field gate |
 | `fem_golden.rs`, `sidecar.rs`, `fout_paden.rs` | the FEM chain: golden values, the Node sidecar, and the error paths |
 

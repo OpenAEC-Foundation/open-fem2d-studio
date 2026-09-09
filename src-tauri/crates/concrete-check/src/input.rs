@@ -10,6 +10,8 @@ use nen_en_1992_1_1::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::kolom::ConcreteColumnInput;
+
 fn default_n_strips() -> u32 {
     DEFAULT_N_STRIPS as u32
 }
@@ -166,6 +168,37 @@ pub struct ConcreteBeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub bar_spacing_mm: Option<f64>,
+
+    /// Krachtsverloop onder de **quasi-blijvende** BGT-combinatie, NEN-EN 1990
+    /// uitdrukking (6.16).
+    ///
+    /// Dit is de DERDE omhullende van dit type, en zij heeft een eigen taak.
+    /// `forces_envelope` draagt de UGT; `sls_frequent_envelope` draagt (6.15)
+    /// voor §7.3, omdat de nationale bijlage bij 7.3.1(5) de scheurwijdte
+    /// onder de frequente combinatie beoordeeld wil hebben. Deze lijst draagt
+    /// (6.16) voor M₀Eqp in (5.19) — de effectieve kruipcoëfficiënt van
+    /// §5.8.4, die de norm uitdrukkelijk aan de QUASI-BLIJVENDE combinatie
+    /// koppelt.
+    ///
+    /// De drie zijn niet uitwisselbaar en er is met opzet geen terugval van de
+    /// een op de ander: (6.15) als (6.16) lezen geeft een te grote M₀Eqp en
+    /// dus een te grote φ_ef, en andersom een te kleine. Is deze lijst leeg,
+    /// dan blijft φ_ef onbekend, staat §5.8.3.1(1) A = 0,7 toe, en zegt de
+    /// kruiptoets dat met de reden erbij.
+    #[serde(default)]
+    pub sls_quasi_permanent_envelope: Vec<ForcePoint>,
+
+    /// De §5.8-gegevens: geschoord of ongeschoord, de kniklengte, de kruip en
+    /// de twee keuzen die §9.5 nodig heeft.
+    ///
+    /// `None` = niet opgegeven. Staat er normaaldruk op de staaf, dan komt
+    /// §5.8.3.1 als "niet uitgevoerd" in het rapport met de reden; staat er
+    /// geen druk op, dan is §5.8 niet van toepassing en zegt de toets dát.
+    /// Er wordt niets aangenomen — zie [`ConcreteColumnInput`] voor waarom
+    /// geschoord en l₀ geen standaardwaarde mogen hebben.
+    #[serde(default)]
+    #[ts(optional)]
+    pub column: Option<ConcreteColumnInput>,
 }
 
 impl ConcreteBeamCheckInput {

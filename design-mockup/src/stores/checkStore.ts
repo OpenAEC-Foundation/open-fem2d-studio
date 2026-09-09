@@ -203,6 +203,11 @@ export function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
       // regel zou de scheurwijdtetoets in de app altijd melden dat de
       // milieuklasse ontbreekt terwijl de gebruiker haar heeft ingevuld.
       milieuklasse: cfg.betonMilieuklasse,
+      // §5.8. Het blok gaat als GEHEEL door naar de bouwer en van daar naar de
+      // kern; hier wordt het niet uitgepakt. Ontbreekt het, dan blijft het
+      // `undefined` en meldt de kern dat §5.8 niet is getoetst — met de reden,
+      // en zonder een aangenomen schoring of kniklengte.
+      kolom: cfg.betonKolom,
     });
   }
   return korven;

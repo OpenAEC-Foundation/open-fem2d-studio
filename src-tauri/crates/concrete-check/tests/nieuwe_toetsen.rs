@@ -95,6 +95,12 @@ fn invoer(cage: ReinforcementCage, envelop: Vec<ForcePoint>) -> ConcreteBeamChec
         aggregate_size_mm: None,
         structural_system: None,
         bar_spacing_mm: None,
+        // §5.8: deze staaf is geen kolom in de zin van de toets — er zijn
+        // geen kniklengte en geen schoring opgegeven, dus de slankheidsgrens
+        // komt als "niet uitgevoerd" terug. Leeg laten is hier het punt: zo
+        // blijft deze test precies de test die hij was.
+        column: None,
+        sls_quasi_permanent_envelope: vec![],
     }
 }
 
@@ -528,7 +534,15 @@ fn de_negen_detailleringstoetsen_staan_in_het_resultaat() {
     ] {
         let _ = toets(&r, id);
     }
-    assert_eq!(r.checks.len(), 15, "6.1 (2×), 6.2, 7.3 (2×), 7.4.2 en negen keer 9.2/8.2");
+    // Zestien en niet vijftien: naast de vijftien hierboven staat er sinds
+    // §5.8 altijd één kolomregel in de lijst. Deze balk draagt geen
+    // normaaldruk, dus die regel zegt dat §5.8 niet van toepassing is — met
+    // de reden, en niet door hem weg te laten.
+    assert_eq!(
+        r.checks.len(),
+        16,
+        "6.1 (2×), 6.2, 7.3 (2×), 7.4.2, negen keer 9.2/8.2 en één keer 5.8"
+    );
 }
 
 /// HANDBEREKENING §9.2.2 — de twee eisen die op de UITKOMST van §6.2 leunen.
@@ -622,7 +636,9 @@ fn een_toets_die_niet_kon_zwijgt_niet_en_meldt_niet_groen() {
 
     for (naam, inp) in gevallen {
         let r = check_concrete_beam(inp);
-        assert_eq!(r.checks.len(), 15, "{naam}: er ontbreekt een toets");
+        // Vijftien toetsen plus de ene kolomregel van §5.8; zie
+        // `de_negen_detailleringstoetsen_staan_in_het_resultaat`.
+        assert_eq!(r.checks.len(), 16, "{naam}: er ontbreekt een toets");
         for c in &r.checks {
             let CheckKind::Resistance(rc) = &c.kind else {
                 unreachable!()
@@ -742,9 +758,9 @@ fn een_vervulde_detailleringseis_wordt_niet_de_maatgevende_toets() {
     );
     assert_eq!(r.status, CheckStatus::Ok);
 
-    // Er verdwijnt niets: alle vijftien toetsen staan er nog, mét hun unity
+    // Er verdwijnt niets: alle zestien toetsen staan er nog, mét hun unity
     // check. Alleen de RANGSCHIKKING is anders.
-    assert_eq!(r.checks.len(), 15);
+    assert_eq!(r.checks.len(), 16);
     assert!(beugel.uc.is_some());
 }
 

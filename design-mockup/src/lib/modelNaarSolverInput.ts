@@ -24,6 +24,7 @@ import { withPlateDefaults } from "../components/fem/femTypes";
 import type { MultiInput } from "../components/fem/solver/types";
 import { resolveSection, eigenGewichtPerMeter } from "./sectionResolver";
 import { thermalAlphaForMaterial } from "./thermalAlpha";
+import { zoneSnedenUitStaven } from "./betonZoneSneden";
 
 /**
  * Het deel van het modelbestand dat de solver-invoer bepaalt. Bewust een eigen
@@ -72,6 +73,17 @@ export function liftSpringK(s: { type: string; k?: number }): number | undefined
  * globale toestand aan.
  */
 export function bouwMultiInput(model: FemModelInvoer): MultiInput {
+  // ZONEGRENZEN WORDEN REKENKNOPEN. Waar de wapening verandert SPRINGT de
+  // opneembare weerstand, en de dekkingslijn (§9.2.1.3, figuur 9.2) moet daar
+  // links en rechts een eigen waarde kunnen tonen. Zonder een station op die
+  // plaats leest zij de benodigde kracht af op een station ernaast — tot een
+  // halve stationsafstand fout — terwijl de weerstand daar al gesprongen is.
+  //
+  // De grenzen komen uit dezelfde zonelijsten (`checkConfig.betonZones`) die de
+  // toetsing als `reinforcement_zones` krijgt: één bron, geen tweede regel.
+  // Geen zones ⇒ een lege map ⇒ `extraSneden` blijft weg en elk bestaand model
+  // rekent bit-identiek aan voorheen. Zie `lib/betonZoneSneden.ts`.
+  const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput: MultiInput = {
     nodes: model.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
     beams: model.beams.map(b => {
@@ -81,6 +93,7 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
       // (HEA 160 / S235) en kreeg de toetsing krachten en zakkingen van
       // het verkeerde model.
       const sec = resolveSection(b.material, b.profile);
+      const sneden = zoneSneden.get(b.id);
       return {
         id: b.id, from: b.from, to: b.to,
         E: sec.E, A: sec.A, I: sec.I,
@@ -91,6 +104,9 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
         startConnection: b.releases?.startRy ? 'hinge' as const : 'fixed' as const,
         endConnection:   b.releases?.endRy   ? 'hinge' as const : 'fixed' as const,
         releases: b.releases,
+        // Alleen aanwezig als er werkelijk zonegrenzen zijn; een leeg veld zou
+        // de invoer van een model zonder beton onnodig veranderen.
+        ...(sneden && sneden.length > 0 ? { extraSneden: sneden } : {}),
       };
     }),
     supports: model.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),

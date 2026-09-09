@@ -81,5 +81,120 @@ log("\n[6] Zonder scheefstand: geen horizontale reactie");
   check("fx = 0 (N)", r.reactions.get(1).fx, 0, 0.001);
 }
 
+// ── Uitbreiding: de motor moet met ELKE φ overweg kunnen ────────────────────
+// De keuze tussen de vaste noemer en de normformule van EN 1993-1-1 (5.5),
+// EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1) valt buiten de motor: die krijgt φ
+// als getal binnen en zet H = φ·V. Zie `lib/scheefstandNorm.ts` en
+// `test-scheefstand-norm.mjs` voor de formules zelf. Wat híér telt, is dat de
+// motor een normwaarde net zo behandelt als 1/200 — hij is lineair in φ en
+// raakt precies de verticale lastcomponenten, niet meer en niet minder.
+
+/**
+ * φ volgens EN 1993-1-1 (5.5) voor een portaal van 9 m met twee kolommen:
+ * φ = φ₀·α_h·α_m = 1/200 · 2/3 · √0,75 = 1/346,41. Bewust als LETTERLIJKE
+ * uitdrukking, niet uit de normmodule geïmporteerd: deze test draait óók tegen
+ * de sidecarbundel, en die kent alleen de motor.
+ */
+const PHI_5_5 = (1 / 200) * (2 / 3) * Math.sqrt(0.75);
+
+log("\n[7] Portaal, φ uit EN 1993-1-1 (5.5) = 1/346: Σ fx-reacties = −φ·ΣV");
+{
+  const P = 100000;   // N op elke kolomtop
+  const r = solveAllCases({
+    nodes: [
+      { id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 9000 },
+      { id: 3, x: 6000, z: 9000 }, { id: 4, x: 6000, z: 0 },
+    ],
+    beams: [
+      { id: 1, from: 1, to: 2, E: E0, A: A0, I: I0 },
+      { id: 2, from: 2, to: 3, E: E0, A: A0, I: I0 },
+      { id: 3, from: 4, to: 3, E: E0, A: A0, I: I0 },
+    ],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 4, type: "zRoller" }],
+    cases: [{ id: 1, name: "G" }],
+    loads: [],
+    pointLoads: [
+      { nodeId: 2, fz: -P, caseId: 1 },
+      { nodeId: 3, fz: -P, caseId: 1 },
+    ],
+    scheefstand: { phi: PHI_5_5, richting: 1 },
+  }).perCase.get(1);
+  check("Σ fx = −φ·2P (N)",
+    r.reactions.get(1).fx + r.reactions.get(4).fx, -PHI_5_5 * 2 * P);
+  check("verticaal ongewijzigd: ΣFz = 200 kN",
+    (r.reactions.get(1).fz + r.reactions.get(4).fz) / 1e3, 200);
+}
+
+log("\n[8] Lineair in φ: de normfactoren α_h·α_m schalen H mee, niets anders");
+{
+  const kolom = (phi) => solveAllCases({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 9000 }],
+    beams: [{ id: 1, from: 1, to: 2, E: E0, A: A0, I: I0 }],
+    supports: [{ nodeId: 1, type: "fixed" }],
+    cases: [{ id: 1, name: "G" }],
+    loads: [],
+    pointLoads: [{ nodeId: 2, fz: -100000, caseId: 1 }],
+    scheefstand: { phi, richting: 1 },
+  }).perCase.get(1);
+  const basis = kolom(PHI);
+  const norm = kolom(PHI_5_5);
+  // α_h·α_m = 2/3·√0,75; de horizontale reactie hoort met exact die factor mee
+  // te schalen, want de motor is lineair in φ.
+  check("fx schaalt met α_h·α_m",
+    norm.reactions.get(1).fx / basis.reactions.get(1).fx, (2 / 3) * Math.sqrt(0.75));
+  check("het inklemmoment schaalt mee",
+    norm.reactions.get(1).my / basis.reactions.get(1).my, (2 / 3) * Math.sqrt(0.75));
+  check("de verticale reactie schaalt NIET mee",
+    norm.reactions.get(1).fz, basis.reactions.get(1).fz);
+}
+
+log("\n[9] Alleen VERTICALE componenten krijgen een metgezel");
+{
+  // Een horizontale puntlast en een koppel horen niets toe te voegen: de
+  // scheefstand kantelt de verticale lastafdracht, hij vermenigvuldigt niet
+  // alles wat er op de knoop staat.
+  const r = solveAllCases({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 3000 }],
+    beams: [{ id: 1, from: 1, to: 2, E: E0, A: A0, I: I0 }],
+    supports: [{ nodeId: 1, type: "fixed" }],
+    cases: [{ id: 1, name: "G" }],
+    loads: [],
+    pointLoads: [{ nodeId: 2, fx: 5000, my: 2e6, caseId: 1 }],
+    scheefstand: { phi: PHI_5_5, richting: 1 },
+  }).perCase.get(1);
+  check("fx = −5000 N, geen opslag door φ", r.reactions.get(1).fx, -5000);
+}
+
+log("\n[10] Een OPWAARTSE last (windzuiging) keert de metgezel om");
+{
+  const r = solveAllCases({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 3000 }],
+    beams: [{ id: 1, from: 1, to: 2, E: E0, A: A0, I: I0 }],
+    supports: [{ nodeId: 1, type: "fixed" }],
+    cases: [{ id: 1, name: "W" }],
+    loads: [],
+    pointLoads: [{ nodeId: 2, fz: 40000, caseId: 1 }],   // omhoog
+    scheefstand: { phi: PHI_5_5, richting: 1 },
+  }).perCase.get(1);
+  check("fx = +φ·40 kN (tegengesteld aan een drukkende last)",
+    r.reactions.get(1).fx, PHI_5_5 * 40000);
+}
+
+log("\n[11] Een puntlast midden op een staaf krijgt óók zijn metgezel");
+{
+  const r = solveAllCases({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, E: E0, A: A0, I: I0 }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    cases: [{ id: 1, name: "G" }],
+    loads: [],
+    beamPointLoads: [{ beamId: 1, posFrac: 0.5, fz: -80000, caseId: 1 }],
+    scheefstand: { phi: PHI_5_5, richting: 1 },
+  }).perCase.get(1);
+  check("fx = −φ·80 kN", r.reactions.get(1).fx, -PHI_5_5 * 80000);
+  check("verticaal ongewijzigd: ΣFz = 80 kN",
+    (r.reactions.get(1).fz + r.reactions.get(2).fz) / 1e3, 80);
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

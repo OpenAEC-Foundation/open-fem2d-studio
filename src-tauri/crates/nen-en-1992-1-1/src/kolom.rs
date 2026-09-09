@@ -2108,6 +2108,33 @@ pub fn kolomdetailleringstoetsen(inv: &KolomdetailleringInvoer) -> Vec<Resistanc
     ]
 }
 
+/// De id's van de §9.5-eisen, in de volgorde van
+/// [`kolomdetailleringstoetsen`].
+///
+/// Waarom deze lijst bestaat: de laag die de MAATGEVENDE toets van een staaf
+/// kiest, moet een detailleringseis kunnen herkennen. Een eis die VOLDOET
+/// begrenst het ontwerp niet — hij is uitgevoerd — en hoort dus niet als
+/// "maatgevend" in de samenvattingstabel te belanden met een unity check die
+/// geen benuttingsgraad is; een eis die FAALT hoort er wél aan mee te doen.
+/// Dezelfde redenering en dezelfde vorm als
+/// [`crate::detaillering::DETAILLERINGSTOETS_IDS`] voor §9.2. Twee lijsten en
+/// niet één, omdat §9.2 de BALK is en §9.5 de KOLOM: een staaf krijgt de ene
+/// reeks of de andere, nooit allebei.
+pub const KOLOMDETAILLERINGSTOETS_IDS: [&str; 7] = [
+    "9.5.1_toepassingsgebied",
+    "9.5.1_min_dwarsafmeting",
+    "9.5.2_min_diameter_langs",
+    "9.5.2_as_min",
+    "9.5.2_as_max",
+    "9.5.3_min_diameter_dwars",
+    "9.5.3_s_cl_tmax",
+];
+
+/// Is `id` de id van een kolomdetailleringseis (§9.5)?
+pub fn is_kolomdetailleringstoets(id: &str) -> bool {
+    KOLOMDETAILLERINGSTOETS_IDS.contains(&id)
+}
+
 /// De §9.5-eisen die deze module NIET toetst, met de reden. Bedoeld om
 /// letterlijk in het rapport te zetten: een detailleringshoofdstuk dat zwijgt
 /// over wat het niet heeft nagekeken, is misleidend.

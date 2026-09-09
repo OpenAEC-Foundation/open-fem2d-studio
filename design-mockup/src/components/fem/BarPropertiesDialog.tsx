@@ -136,6 +136,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
       | "betonStaalsoort"
       | "betonStroken"
       | "betonStaaltak"
+      // §5.8: schoring, kniklengte, kruip en de twee keuzen van §9.5. Deze
+      // dialoog TOONT het blok niet — dat doet het eigenschappenpaneel — maar
+      // hij moet het wél bewaren. Zonder deze regel raakt wie een kolom
+      // dubbelklikt en op OK drukt zijn ontwerpbesluit geschoord/ongeschoord
+      // kwijt zonder melding, en meldt de toetsing daarna dat §5.8 niet is
+      // getoetst. Precies de fout die hierboven al voor de korf beschreven
+      // staat.
+      | "betonKolom"
     >
   >({
     betonKorf: cfg0.betonKorf,
@@ -144,6 +152,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     betonStaalsoort: cfg0.betonStaalsoort,
     betonStroken: cfg0.betonStroken,
     betonStaaltak: cfg0.betonStaaltak,
+    betonKolom: cfg0.betonKolom,
   });
 
   // Welke norm-velden tonen we? Live op het materiaal in de dialoog, zodat

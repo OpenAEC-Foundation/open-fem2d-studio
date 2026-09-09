@@ -33,6 +33,10 @@ import { defaultCombinations } from "../components/fem/solver/combinations";
 import {
   selecteerCombinaties, type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
+// De scheefstandbron (vaste noemer of normformule) — de lijst met geldige
+// waarden hoort hier omdat het INLEZEN van een projectbestand een onbekende
+// waarde moet kunnen terugzetten op "vast".
+import { SCHEEFSTAND_BRONNEN, type ScheefstandBron } from "../lib/scheefstandNorm";
 
 // ── Defaults ───────────────────────────────────────────────────────────────
 //
@@ -1274,6 +1278,35 @@ export interface FemStore {
   /** Richting van de equivalente horizontale krachten: +1 = +x, −1 = −x. */
   scheefstandRichting: 1 | -1;
   setScheefstandRichting: (v: 1 | -1) => void;
+  /**
+   * Waar φ vandaan komt: de vaste noemer hierboven, of de normformule van
+   * EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1) — zie
+   * `lib/scheefstandNorm.ts`.
+   *
+   * BEGINSTAND `"vast"`, en dat is geen smaakkwestie. α_h en α_m zijn allebei
+   * ≤ 1, dus de norm maakt de scheefstand ALTIJD kleiner dan de basiswaarde.
+   * Zou een bestaand projectbestand hier stilzwijgend op een norm uitkomen,
+   * dan rekende het na een update ineens met tot ruim de helft minder
+   * scheefstand — kleinere kolomvoetmomenten en een gunstiger toets, zonder
+   * dat iemand daarom heeft gevraagd. De normberekening is daarom een keuze
+   * die de gebruiker zelf aanzet.
+   */
+  scheefstandBron: ScheefstandBron;
+  setScheefstandBron: (v: ScheefstandBron) => void;
+  /**
+   * Handmatige hoogte h in m voor α_h; `null` = de uit het model afgeleide
+   * waarde (`leidScheefstandGeometrieAf`). Alleen van invloed als
+   * `scheefstandBron` een norm is.
+   */
+  scheefstandHoogteM: number | null;
+  setScheefstandHoogteM: (v: number | null) => void;
+  /**
+   * Handmatig aantal dragende verticale elementen m voor α_m; `null` = de
+   * afgeleide waarde. Verlagen mag altijd: kleinere m geeft grotere α_m en
+   * dus grotere φ — de veilige kant.
+   */
+  scheefstandAantalElementen: number | null;
+  setScheefstandAantalElementen: (v: number | null) => void;
   /** Canvas view mode: false = model-only (no loads drawn), true = LC active loads visible. */
   showLoads: boolean;
   setShowLoads: (v: boolean) => void;
@@ -1316,6 +1349,14 @@ export interface FemStore {
     scheefstandEnabled?: boolean;
     scheefstandNoemer?: number;
     scheefstandRichting?: 1 | -1;
+    /**
+     * v2: normberekening van φ. Ontbreekt `scheefstandBron` — élk bestand van
+     * vóór deze velden — dan `"vast"`, en dan rekent het bestand tot op de
+     * laatste decimaal zoals het altijd deed.
+     */
+    scheefstandBron?: string;
+    scheefstandHoogteM?: number | null;
+    scheefstandAantalElementen?: number | null;
   }) => void;
 }
 
@@ -1363,6 +1404,12 @@ export function useFemStore(): FemStore {
   const [scheefstandEnabled, setScheefstandEnabled] = useState<boolean>(false);
   const [scheefstandNoemer, setScheefstandNoemer]   = useState<number>(200);
   const [scheefstandRichting, setScheefstandRichting] = useState<1 | -1>(1);
+  // Normberekening van φ — beginstand "vast" (= het oude gedrag), zie de
+  // toelichting bij `scheefstandBron` hierboven. h en m op null = afleiden.
+  const [scheefstandBron, setScheefstandBron] = useState<ScheefstandBron>("vast");
+  const [scheefstandHoogteM, setScheefstandHoogteM] = useState<number | null>(null);
+  const [scheefstandAantalElementen, setScheefstandAantalElementen] =
+    useState<number | null>(null);
   // Canvas view mode: false = "Model" tab (no loads drawn), true = LC active.
   const [showLoads, setShowLoads] = useState<boolean>(true);
   // Cross-panel focus hint: when the user clicks a value on the canvas (e.g.
@@ -2077,6 +2124,9 @@ export function useFemStore(): FemStore {
     scheefstandEnabled, setScheefstandEnabled,
     scheefstandNoemer, setScheefstandNoemer,
     scheefstandRichting, setScheefstandRichting,
+    scheefstandBron, setScheefstandBron,
+    scheefstandHoogteM, setScheefstandHoogteM,
+    scheefstandAantalElementen, setScheefstandAantalElementen,
     showLoads, setShowLoads,
     pendingLoadFocus, setPendingLoadFocus,
     canUndo, canRedo, undo, redo,
@@ -2128,6 +2178,9 @@ export function useFemStore(): FemStore {
       scheefstandEnabled?: boolean;
       scheefstandNoemer?: number;
       scheefstandRichting?: 1 | -1;
+      scheefstandBron?: string;
+      scheefstandHoogteM?: number | null;
+      scheefstandAantalElementen?: number | null;
     }) => {
       // Oude bestanden zonder plaat-rekenvelden → defaults aanvullen
       // (dikte 20 mm, staal, meshSize 500 mm), zie withPlateDefaults.
@@ -2157,6 +2210,23 @@ export function useFemStore(): FemStore {
           ? p.scheefstandNoemer : 200,
       );
       setScheefstandRichting(p.scheefstandRichting === -1 ? -1 : 1);
+      // De normberekening van φ. Een onbekende of ontbrekende bron valt terug
+      // op "vast" — het oude gedrag. Dat is de harde eis: een bestaand
+      // projectbestand mag na een update niet stilzwijgend met een kleinere
+      // scheefstand gaan rekenen.
+      setScheefstandBron(
+        (SCHEEFSTAND_BRONNEN as readonly string[]).includes(p.scheefstandBron ?? "")
+          ? (p.scheefstandBron as ScheefstandBron)
+          : "vast",
+      );
+      setScheefstandHoogteM(
+        typeof p.scheefstandHoogteM === "number" && p.scheefstandHoogteM > 0
+          ? p.scheefstandHoogteM : null,
+      );
+      setScheefstandAantalElementen(
+        typeof p.scheefstandAantalElementen === "number" && p.scheefstandAantalElementen >= 1
+          ? Math.floor(p.scheefstandAantalElementen) : null,
+      );
       // v2-velden; v1-bestanden (of Nieuw) vallen terug op de defaults.
       setCombinations(p.combinations ?? defaultCombinations());
       const nieuwGrid = p.structuralGrid ?? DEFAULT_STRUCTURAL_GRID;
