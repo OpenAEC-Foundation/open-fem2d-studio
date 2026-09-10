@@ -115,8 +115,17 @@
 //!   (die deze module wél levert), en een aanname voor de krommingsverdeling
 //!   (de factor c). Alleen bruikbaar voor geschoorde, op zichzelf staande
 //!   elementen; voor een ongeschoorde kolom mag hij in Nederland niet.
-//! * **§5.8.9 (dubbele buiging), §5.8.2(6) (de 10 %-regel) en de
-//!   imperfecties van §5.2** — geen van drieën hier.
+//! * **§5.8.9 (dubbele buiging) — niet gerekend, wél gemeld.** De
+//!   orchestrator (`concrete_check::kolomtoetsen`) geeft een toets
+//!   `5.8.9_dubbele_buiging` met status `NotApplicable` en de reden terug
+//!   zodra de UGT-omhullende een moment om de zwakke as draagt van meer dan
+//!   5 % van dat om de sterke as. Daarvóór verdween M_z geruisloos: dezelfde
+//!   toetsen, dezelfde statussen, en niets dat verried dat een halve belasting
+//!   buiten beschouwing bleef. Wat de paragraaf zelf zou vragen — de
+//!   voorwaarden van 5.8.9(2), anders de interactie (5.39) met exponent a —
+//!   staat in die melding, en met de hand uitgewerkt in referentie R29.
+//! * **§5.8.2(6) (de 10 %-regel) en de imperfecties van §5.2** — geen van
+//!   beide hier.
 //! * **De hele §5.8.3.3** — zie hierboven; in Nederland zinledig.
 //!
 //! Deze module is nog nergens op aangesloten: geen orchestrator, geen

@@ -277,6 +277,20 @@ pub struct Kolomuitkomst {
 /// ze kan groeperen.
 pub const SLANKHEIDSGRENS_ID: &str = "5.8.3.1_slankheidsgrens";
 pub const KRUIP_ID: &str = "5.8.4_kruip";
+pub const DUBBELE_BUIGING_ID: &str = "5.8.9_dubbele_buiging";
+
+/// Vanaf welk moment om de ZWAKKE as §5.8.9 zich meldt, als deel van het
+/// moment om de sterke as.
+///
+/// Niet nul, want een omhullende draagt vrijwel altijd een spoortje M_z uit
+/// afrondingen en scheve knooplasten; daarop een melding geven zou de melding
+/// waardeloos maken. Vijf procent is klein genoeg om alles wat er werkelijk
+/// toe doet te vangen, en groot genoeg om ruis buiten te laten. §5.8.9(2)
+/// zelf kent een strengere ontsnapping (de twee excentriciteitsvoorwaarden),
+/// maar die vraagt de doorsnedeafmetingen in BEIDE richtingen én de
+/// bijbehorende slankheden — precies wat deze module niet heeft, en dus niet
+/// mag aannemen.
+const M_Z_MELDGRENS: f64 = 0.05;
 
 /// Getal met een decimale komma, zoals de rest van het rapport het toont.
 fn nl(v: f64, cijfers: usize) -> String {
@@ -839,6 +853,71 @@ pub fn kolomtoetsen(
         poort.notes.push(kant.clone());
     }
     checks.push(benoem(poort));
+
+    // ── 1b. Dubbele buiging (§5.8.9) ──────────────────────────────────────
+    //
+    // Alles hierboven en hieronder rekent met M_y: één buigingsrichting. Staat
+    // er ook een noemenswaardig moment om de ZWAKKE as, dan is dit geval
+    // §5.8.9 — en die paragraaf is in deze crate niet gebouwd.
+    //
+    // WAAROM DAT HIER MOET STAAN. Zonder deze melding verdwijnt M_z geruisloos:
+    // de toetsen komen terug met dezelfde statussen als bij M_z = 0, en niets
+    // in het antwoord verraadt dat er een halve belasting buiten beschouwing is
+    // gebleven. Dat is precies het soort stilte waar de rest van deze module
+    // zich tegen verzet — een niet-opgegeven beugelzone levert `NotApplicable`
+    // mét de reden, en een genegeerd tweede-richtingsmoment hoort dat óók te
+    // doen. De uitkomst is niet fout: hij is ONVOLLEDIG, en dat is een verschil
+    // dat de lezer zelf moet kunnen zien.
+    //
+    // Wat §5.8.9 zou vragen: de slankheid in BEIDE richtingen, de twee
+    // excentriciteiten met de voorwaarden van 5.8.9(2) die een aparte toetsing
+    // per richting toestaan, en anders de interactie (5.39) met de exponent a
+    // uit de tabel bij N_Ed/N_Rd. Dat vraagt een doorsnedemodel dat wapening
+    // langs alle vier de zijden kent; het korfmodel hier kent alleen een boven-
+    // en een onderrij.
+    let m_z_grootste = ugt
+        .iter()
+        .map(|p| p.forces.mz_ed.abs())
+        .fold(0.0_f64, f64::max);
+    let m_y_grootste = ugt
+        .iter()
+        .map(|p| p.forces.my_ed.abs())
+        .fold(0.0_f64, f64::max);
+    if m_z_grootste > M_Z_MELDGRENS * m_y_grootste.max(1e-9) {
+        let state = ugt
+            .iter()
+            .max_by(|a, b| a.forces.mz_ed.abs().total_cmp(&b.forces.mz_ed.abs()))
+            .map(ForceStateSnapshot::from_point)
+            .unwrap_or_else(leeg_punt);
+        checks.push(benoem(calc(
+            DUBBELE_BUIGING_ID,
+            "Dubbele buiging — is er een moment om de tweede as?",
+            "art. 5.8.9",
+            state,
+            CheckStatus::NotApplicable,
+            vec![
+                format!(
+                    "In de UGT-omhullende staat een moment om de ZWAKKE as: M_z = {} kNm naast \
+                     M_y = {} kNm. Dit is een geval van dubbele buiging (§5.8.9), en die paragraaf \
+                     is NIET uitgevoerd. Alle §5.8-uitkomsten hierboven — λ, λ_lim, φ_ef — en alle \
+                     doorsnedetoetsen van deze staaf gaan uitsluitend over M_y. Zij zijn niet fout, \
+                     maar ONVOLLEDIG: de tweede richting is er niet in verwerkt.",
+                    nl(m_z_grootste, 1),
+                    nl(m_y_grootste, 1)
+                ),
+                "Wat §5.8.9 vraagt: de slankheid in beide richtingen, en dan óf de twee \
+                 voorwaarden van 5.8.9(2) — die een aparte toetsing per richting toestaan zodra de \
+                 slankheidsverhouding binnen 2 blijft en de betrekkelijke excentriciteiten binnen \
+                 0,2 — óf de interactie van (5.39), (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1, met a \
+                 uit de tabel bij N_Ed/N_Rd. Dat vraagt een doorsnedemodel met wapening langs alle \
+                 vier de zijden; het korfmodel van deze crate kent een boven- en een onderrij."
+                    .to_string(),
+                "Zolang dit niet is gebouwd hoort een kolom met dubbele buiging met de hand te \
+                 worden nagegaan, of moet het model zo zijn gekozen dat M_z verwaarloosbaar is."
+                    .to_string(),
+            ],
+        )));
+    }
 
     // ── 2. De kruip ───────────────────────────────────────────────────────
     let mut kruip = calc(
