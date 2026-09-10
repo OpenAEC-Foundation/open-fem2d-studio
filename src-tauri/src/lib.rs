@@ -21,6 +21,13 @@ use steel_profiles::SteelProfile;
 use timber_check::clt::{CltBeamCheckInput, CltBeamCheckResult};
 use timber_check::{TimberBeamCheckInput, TimberBeamCheckResult};
 
+/// Het bedieningskanaal van de app — alleen actief met `OPENAEC_GUI_CONTROL=1`.
+/// Geen rekenkern en dus geen drie-wegen-regel; zie de moduletekst.
+mod gui_control;
+use gui_control::GuiControl;
+use std::sync::Arc;
+use tauri::Manager;
+
 // De commands hieronder zijn één-op-één gespiegeld in `crates/toetsbrug`
 // (dezelfde functies als JSON-in/JSON-uit voor de browser) en in de MCP-server
 // `crates/openaec-mcp-server`. Wie hier een command toevoegt, voegt hem daar
@@ -289,6 +296,29 @@ async fn generate_steel_report_pdf(input: ReportInput) -> Result<Vec<u8>, String
     Ok(generate_report_pdf(input))
 }
 
+// ── Het bedieningskanaal ────────────────────────────────────────────────────
+// Twee commands, dun: de logica staat in `gui_control`. Ze staan hier als
+// functie omdat elke naam in `generate_handler!` een functie in dít bestand
+// hoort te zijn — dat bewaakt `tests/drie_wegen_kruistabel.rs`, en die regel
+// geldt voor deze twee net zo goed als voor de rekenkern-commands.
+
+/// Staat het kanaal aan? De pagina vraagt dit bij het laden en luistert
+/// alleen dan — in een gewone sessie kost `bediening.ts` niets.
+#[tauri::command]
+fn gui_control_actief(control: tauri::State<'_, Arc<GuiControl>>) -> bool {
+    control.is_actief()
+}
+
+/// Het antwoord van de pagina op een opdracht met dit id.
+#[tauri::command]
+fn gui_control_antwoord(
+    control: tauri::State<'_, Arc<GuiControl>>,
+    id: u64,
+    uitkomst: serde_json::Value,
+) -> Result<(), String> {
+    control.antwoord(id, uitkomst)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -317,7 +347,25 @@ pub fn run() {
             check_fillet_welds,
             bereken_doorsneden,
             generate_steel_report_pdf,
+            gui_control_actief,
+            gui_control_antwoord,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(|app| {
+            // Zet het bedieningskanaal op, of niet — `start` kijkt zelf naar de
+            // omgevingsvariabele en levert anders een kanaal dat "uit" zegt.
+            let control = gui_control::start(app.handle());
+            app.manage(control);
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Bij afsluiten het vindbestand weghalen: een achtergebleven
+            // gui-control.json zou een client naar een dode poort sturen.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(control) = app.try_state::<Arc<GuiControl>>() {
+                    control.opruimen();
+                }
+            }
+        });
 }

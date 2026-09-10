@@ -138,6 +138,26 @@ interface CheckState {
    * `null` zolang er niet gedraaid is, en weer `null` na `clear()`.
    */
   lastRunData: CheckRunData | null;
+  /**
+   * De KERNINVOER van de laatste run, per kern, precies zoals de vijf bouwers
+   * hem samenstelden en naar de rekenkern stuurden.
+   *
+   * WAAROM. `results` is wat de kern terugstuurde; zonder de bijbehorende
+   * invoer is dat niet te reproduceren. Wie dezelfde staaf rechtstreeks door
+   * de kern wil halen — de GUI-bediening doet dat om te bewijzen dat de app
+   * hetzelfde antwoord toont als de kern geeft, en een rapport-invoerhoofdstuk
+   * heeft hetzelfde nodig — vindt hier de exacte verzoeken. Het is dezelfde
+   * "één bron"-gedachte als bij `lastRunData`, één laag dieper.
+   *
+   * `null` zolang er niet gedraaid is, en weer `null` na `clear()`.
+   */
+  lastRunInputs: {
+    steel: ReturnType<typeof buildSteelCheckInputs>["inputs"];
+    timber: ReturnType<typeof buildTimberCheckInputs>["inputs"];
+    clt: ReturnType<typeof buildCltCheckInputs>["inputs"];
+    beton: ReturnType<typeof buildBetonCheckInputs>["inputs"];
+    spanning: ReturnType<typeof buildSpanningCheckInputs>["inputs"];
+  } | null;
 
   /** Draai alle kernen in één run. Resolves wanneer de state gevuld is. */
   run: (data: CheckRunData) => Promise<void>;
@@ -221,6 +241,7 @@ export const useCheckStore = create<CheckState>((set) => ({
   error: null,
   lastRunAt: null,
   lastRunData: null,
+  lastRunInputs: null,
 
   run: async (data: CheckRunData) => {
     // Geen omgevingscontrole meer: de toetsing loopt altijd mee met de
@@ -326,6 +347,13 @@ export const useCheckStore = create<CheckState>((set) => ({
         error: null,
         lastRunAt: Date.now(),
         lastRunData: data,
+        lastRunInputs: {
+          steel: steel.inputs,
+          timber: timber.inputs,
+          clt: clt.inputs,
+          beton: beton.inputs,
+          spanning: spanning.inputs,
+        },
       });
     } catch (e) {
       set({ error: String(e), isRunning: false });
@@ -340,6 +368,7 @@ export const useCheckStore = create<CheckState>((set) => ({
       error: null,
       lastRunAt: null,
       lastRunData: null,
+      lastRunInputs: null,
     }),
 }));
 

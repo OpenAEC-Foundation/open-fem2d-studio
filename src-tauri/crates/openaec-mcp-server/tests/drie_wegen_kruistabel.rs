@@ -118,7 +118,39 @@ const KRUISTABEL: &[Rij] = &[
 ///   een bestand op schijf bestaat in een browser niet), en
 /// - een gat dat gewoon nog open staat. Dat mag hier staan, maar niet
 ///   stilzwijgend.
+/// De reden voor elke `gui_*`-rij hieronder. Eén tekst, want het is één
+/// argument: dit zijn geen rekenkern-opdrachten.
+const BEDIENING_REDEN: &str =
+    "Bedieningsopdracht, geen rekenkern-opdracht: de gui_*-tools sturen de draaiende \
+     desktop-app aan over haar bedieningskanaal (src-tauri/src/gui_control.rs) en zíjn daarmee \
+     de weg naar de GUI. Er wordt niets gerekend dat langs de toetsbrug of een Tauri-command \
+     zou moeten kunnen; de app is de enige plek waar een korf gezet of een venster geopend \
+     kan worden.";
+
+/// De reden voor de twee Tauri-commands van het kanaal zelf.
+const KANAAL_REDEN: &str =
+    "Het bedieningskanaal zelf: hiermee vraagt de pagina aan Rust of het kanaal aanstaat, en \
+     meldt zij wat een opdracht opleverde. Geen rekenkern; de toetsbrug en de MCP-server hebben \
+     er niets aan.";
+
 const UITZONDERINGEN: &[Rij] = &[
+    // ── Het bedieningskanaal (gui_control.rs) en zijn MCP-tools ──────────────
+    Rij { tauri: Some("gui_control_actief"), toetsbrug: None, mcp: None, reden: KANAAL_REDEN },
+    Rij { tauri: Some("gui_control_antwoord"), toetsbrug: None, mcp: None, reden: KANAAL_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_status"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_load_model"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_build_model"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_select_member"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_set_cage"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_set_analysis"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_solve"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_run_checks"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_open_curtailment"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_set_view"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_detach_report"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_read_checks"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_screenshot"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_quit"), reden: BEDIENING_REDEN },
     Rij {
         tauri: Some("check_stress_beams"),
         toetsbrug: Some("check_stress_beams"),

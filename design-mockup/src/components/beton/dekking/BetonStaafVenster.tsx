@@ -50,6 +50,11 @@ import {
 import { parseConcreteSection } from "../../../lib/betonCheckBuilder";
 import { zoneGrenzenMm } from "../../../lib/betonZoneSneden";
 import { getConcreteClasses, korvenUitStaven, roepKern, useCheckStore } from "../../../stores/checkStore";
+// Het laatste antwoord gaat óók naar een store: de GUI-bediening (en straks
+// het rapport) moet kunnen zien wanneer dit venster klaar is en wat het kreeg,
+// zonder de DOM te schrapen. De lokale state hieronder blijft leidend voor het
+// tekenen; de store krijgt een kopie op dezelfde momenten.
+import { useDekkingslijnStore } from "../../../stores/dekkingslijnStore";
 import DoorsnedeTekening from "../DoorsnedeTekening";
 import { STANDAARD_KORF, maat, nl, type Wapeningskorf } from "../wapeningskorf";
 import AanzichtTekening, {
@@ -175,22 +180,27 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, o
     if (!verzoek.verzoek) {
       setAntwoord(null);
       setFout(verzoek.reden);
+      useDekkingslijnStore.getState().zetFout(beam.id, verzoek.reden);
       return;
     }
     const nummer = ++volgnummer.current;
     const v = verzoek.verzoek;
     const timer = window.setTimeout(() => {
       setBezig(true);
+      useDekkingslijnStore.getState().zetBezig(beam.id, v);
       haalDekkingslijn(v)
         .then((r) => {
           if (nummer !== volgnummer.current) return;
           setAntwoord(r);
           setFout(null);
+          useDekkingslijnStore.getState().zetAntwoord(beam.id, r);
         })
         .catch((e: unknown) => {
           if (nummer !== volgnummer.current) return;
+          const tekst = e instanceof Error ? e.message : String(e);
           setAntwoord(null);
-          setFout(e instanceof Error ? e.message : String(e));
+          setFout(tekst);
+          useDekkingslijnStore.getState().zetFout(beam.id, tekst);
         })
         .finally(() => {
           if (nummer === volgnummer.current) setBezig(false);

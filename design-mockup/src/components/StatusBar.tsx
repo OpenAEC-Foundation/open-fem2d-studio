@@ -28,6 +28,12 @@ interface StatusBarProps {
    * rapportvenster-variant (DetachedApp) heeft er geen.
    */
   toonSnap?: boolean;
+  /**
+   * Staat het bedieningskanaal aan (app gestart met OPENAEC_GUI_CONTROL=1)?
+   * Dan hoort dat zichtbaar te zijn: iemand die de app ziet, weet zo dat er
+   * van buiten aan wordt gedraaid.
+   */
+  bedieningActief?: boolean;
 }
 
 export default function StatusBar({
@@ -37,6 +43,7 @@ export default function StatusBar({
   zoomPct,
   solverStatus,
   toonSnap = false,
+  bedieningActief = false,
 }: StatusBarProps) {
   const { t } = useTranslation();
   const [version, setVersion] = useState("");
@@ -89,6 +96,23 @@ export default function StatusBar({
           <div className="status-item">
             <span className="status-item-label">{statusLabel}</span>
           </div>
+        )}
+        {bedieningActief && (
+          <>
+            <div className="status-separator" />
+            <div
+              className="status-item status-bediening"
+              title={t(
+                "remoteControlHint",
+                "De app is gestart met OPENAEC_GUI_CONTROL=1 en wordt via het bedieningskanaal aangestuurd.",
+              )}
+            >
+              <span className="status-bediening-dot" aria-hidden="true" />
+              <span className="status-item-label">
+                {t("remoteControlActive", "bediening op afstand actief")}
+              </span>
+            </div>
+          </>
         )}
         {nodeCount !== undefined && (
           <>

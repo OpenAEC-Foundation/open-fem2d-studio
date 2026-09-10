@@ -31,12 +31,16 @@ import WindGeneratorDialog from "./lib/wind/WindGeneratorDialog";
 import { useWindGenerator } from "./stores/windStore";
 import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
+// Het bedieningskanaal (OPENAEC_GUI_CONTROL=1): dezelfde closures als de knoppen,
+// aangesproken van buiten. Doet niets zolang Rust zegt dat het kanaal uit staat.
+import { useBediening } from "./bediening/bediening";
 import { useFemStore } from "./hooks/useFemStore";
 import type { GridSettings, Tool } from "./components/fem/femTypes";
 import { DEFAULT_GRID, nonlinearVoorBestand } from "./components/fem/femTypes";
 import type { SolverResult } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
-import { zetCombinatieResultaat, getSecondOrderInput } from "./components/fem/solver/engine";
+import { zetCombinatieResultaat, getSecondOrderInput, zetSolverLogOpvanger } from "./components/fem/solver/engine";
+import { maakSolverLogOpvanger } from "./stores/solverLogStore";
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
 import {
   betonStavenUitModel,
@@ -433,13 +437,18 @@ function App() {
     return window.confirm(t("unsaved.confirmDiscard"));
   }, [handleSaveProject, t]);
 
-  const handleOpenProject = useCallback(async () => {
-    if (!(await confirmUnsavedAction())) return;
-    const { openProject, deserializeProject } = await import("./io/projectFile");
-    const opened = await openProject();
-    if (!opened) return;
-    try {
-      const parsed = deserializeProject(opened.text);
+  /**
+   * Eén gelezen projectbestand → de store. DE ENIGE plek waar die mapping
+   * staat: "Openen…", een recent bestand én de GUI-bediening lopen er alle
+   * drie doorheen. Twee openpaden die zich anders gedragen is een bug die zich
+   * als een instelling vermomt — en drie is dat nog meer.
+   *
+   * Geeft terug wat `voegBibliothekenSamen` meldde (overschreven doorsneden),
+   * zodat de aanroeper dat kan tonen; met `path` worden ook het projectpad en
+   * de recente-lijst bijgewerkt.
+   */
+  const pasProjectToe = useCallback(
+    (parsed: ReturnType<(typeof import("./io/projectFile"))["deserializeProject"]>, path?: string) => {
       baselineResetRef.current = true;
       // Vóór het model: de staven verwijzen naar deze doorsneden.
       const overschreven = voegBibliothekenSamen(parsed);
@@ -470,8 +479,22 @@ function App() {
         scheefstandHoogteM: parsed.scheefstandHoogteM,
         scheefstandAantalElementen: parsed.scheefstandAantalElementen,
       });
-      setProjectPath(opened.path);
-      addRecentFile(opened.path);
+      if (path) {
+        setProjectPath(path);
+        addRecentFile(path);
+      }
+      return overschreven;
+    },
+    [fem, addRecentFile],
+  );
+
+  const handleOpenProject = useCallback(async () => {
+    if (!(await confirmUnsavedAction())) return;
+    const { openProject, deserializeProject } = await import("./io/projectFile");
+    const opened = await openProject();
+    if (!opened) return;
+    try {
+      const overschreven = pasProjectToe(deserializeProject(opened.text), opened.path);
       const { notifySuccess, notifyWarning } = await import("./io/notify");
       notifySuccess("Project geopend", opened.path.split(/[\\/]/).pop());
       if (overschreven) {
@@ -481,7 +504,16 @@ function App() {
       const { notifyWarning } = await import("./io/notify");
       notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
     }
-  }, [fem, confirmUnsavedAction, addRecentFile]);
+  }, [pasProjectToe, confirmUnsavedAction]);
+
+  /**
+   * Voor de GUI-bediening: projecttekst → store, langs precies dezelfde weg.
+   * De tekst komt van Rust (die mag elk pad lezen; de pagina niet).
+   */
+  const laadProjectTekst = useCallback(async (tekst: string, pad?: string) => {
+    const { deserializeProject } = await import("./io/projectFile");
+    pasProjectToe(deserializeProject(tekst), pad);
+  }, [pasProjectToe]);
 
   /**
    * Open een project via een bekend pad (recente bestanden — backstage én
@@ -494,38 +526,8 @@ function App() {
     const { notifyWarning, notifySuccess } = await import("./io/notify");
     try {
       const text = await readTextFile(path);
-      const parsed = deserializeProject(text);
-      baselineResetRef.current = true;
-      // Zelfde route als "Openen…": ook een recent bestand moet de
-      // bibliotheken samenvoegen en het overschrijven melden — twee openpaden
-      // die zich anders gedragen is een bug die zich als een instelling
-      // vermomt.
-      const overschreven = voegBibliothekenSamen(parsed);
-      fem.loadProjectState({
-        nodes: parsed.nodes, beams: parsed.beams, supports: parsed.supports,
-        plates: parsed.plates, loads: parsed.loads,
-        loadCases: parsed.loadCases, activeLoadCaseId: parsed.activeLoadCaseId,
-        selfWeightEnabled: parsed.selfWeightEnabled,
-        // Beide velden gaan mee: ontbreekt `analysetype` (elk bestand van
-        // vóór de drie standen), dan bepaalt de oude booleaan de stand.
-        nonlinearEnabled: parsed.nonlinearEnabled,
-        analysetype: parsed.analysetype,
-        betonSegmentLengteMm: parsed.betonSegmentLengteMm,
-        // v2-velden; undefined bij v1-bestanden → store-defaults.
-        combinations: combinationsFromFile(parsed.combinations),
-        structuralGrid: parsed.structuralGrid,
-        scheefstandEnabled: parsed.scheefstandEnabled,
-        scheefstandNoemer: parsed.scheefstandNoemer,
-        scheefstandRichting: parsed.scheefstandRichting,
-        // Ontbreekt `scheefstandBron` (elk bestand van vóór de normkeuze),
-        // dan valt de store terug op "vast" en rekent het bestand precies
-        // zoals het altijd deed.
-        scheefstandBron: parsed.scheefstandBron,
-        scheefstandHoogteM: parsed.scheefstandHoogteM,
-        scheefstandAantalElementen: parsed.scheefstandAantalElementen,
-      });
-      setProjectPath(path);
-      addRecentFile(path);
+      // Zelfde route als "Openen…" — via `pasProjectToe`, de enige mapping.
+      const overschreven = pasProjectToe(deserializeProject(text), path);
       notifySuccess("Project geopend", path.split(/[\\/]/).pop());
       if (overschreven) {
         notifyWarning("Bibliotheek bijgewerkt door dit project", overschreven);
@@ -533,7 +535,7 @@ function App() {
     } catch (e) {
       notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
     }
-  }, [fem, confirmUnsavedAction, addRecentFile]);
+  }, [pasProjectToe, confirmUnsavedAction]);
 
   // Bestand → Nieuw: direct een LEEG project (geen confirm, geen reload,
   // geen demo-model). Standaard belastinggevallen blijven beschikbaar zodat
@@ -876,6 +878,13 @@ function App() {
         scheefstandNoemer: scheefstandUitkomst.noemer,
         scheefstandRichting: fem.scheefstandRichting,
       });
+      // Vanaf hier meldt de solver wat hij doet: assembly, randvoorwaarden en
+      // elke Newton-Raphson-iteratie met zijn twee normen. `maakSolverLogOpvanger`
+      // leegt het log eerst, zodat het paneel één berekening toont en niet twee
+      // achter elkaar. De opvanger blijft daarna staan — dat kost niets zolang
+      // er niet gerekend wordt, en het tweede-orde-pad rekent verderop nog door
+      // vanuit `combineResults`, dat zijn eigen aanroepketen heeft.
+      zetSolverLogOpvanger(maakSolverLogOpvanger());
       // Beide tweede-orde-standen lopen via hetzelfde per-combinatie-pad. De
       // fysisch niet-lineaire stand doet daar ná deze (synchrone) rekengang
       // nog een ronde overheen — zie `rekenFysischNietlineair`.
@@ -1631,6 +1640,21 @@ function App() {
     }
   };
 
+  // Het bedieningskanaal. Ná alle closures hierboven, want het krijgt ze mee;
+  // luistert alleen als Rust zegt dat OPENAEC_GUI_CONTROL=1 gezet was.
+  const bedieningActief = useBediening({
+    fem,
+    activeView,
+    selection: fem.selection,
+    setSelection: fem.setSelection,
+    setActiveView,
+    setBottomPanelOpen,
+    handleRunMemberChecks,
+    computeAndStoreSolverOutputs,
+    createDetachedWindow,
+    laadProjectTekst,
+  });
+
   return (
     <>
       <TitleBar
@@ -1971,6 +1995,7 @@ function App() {
         // Snapknopjes horen bij de tekenweergave; in de rapport-/IFC-weergave
         // valt er niets te snappen.
         toonSnap={!isFullWidthView}
+        bedieningActief={bedieningActief}
       />
       <Backstage
         open={backstageOpen}

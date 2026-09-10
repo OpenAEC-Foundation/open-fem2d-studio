@@ -28,6 +28,11 @@ mod fem_tools;
 /// rekengang. Zie `concrete_tools.rs`.
 mod concrete_tools;
 
+/// De GUI-tools: bedienen de DRAAIENDE desktop-app over haar bedieningskanaal
+/// (`OPENAEC_GUI_CONTROL=1`). Geen rekenkern-opdrachten en dus buiten de
+/// drie-wegen-regel — zij zíjn de weg naar de GUI. Zie `gui_tools.rs`.
+mod gui_tools;
+
 /// De vier houttools (NEN-EN 1995-1-1), hout en kruislaaghout. Ze roepen
 /// dezelfde `timber_check` aan als het Tauri-command en de toetsbrug. Deze weg
 /// ontbrak, terwijl `generate_steel_report_pdf` hieronder wél
@@ -400,6 +405,7 @@ fn tool_definitions() -> Value {
     lijst.extend(fem_tools::tool_definitions());
     lijst.extend(concrete_tools::tool_definitions());
     lijst.extend(timber_tools::tool_definitions());
+    lijst.extend(gui_tools::tool_definitions());
     tools
 }
 
@@ -473,6 +479,9 @@ async fn dispatch_tool(name: &str, args: Value) -> Result<Value, RpcError> {
         // staven houdt. Zie `timber_tools.rs` en
         // `tests/drie_wegen_kruistabel.rs`.
         hout if timber_tools::is_timber_tool(hout) => timber_tools::dispatch(hout, args).await,
+        // De GUI-tools: geen rekenwerk, maar opdrachten aan de draaiende app
+        // over haar bedieningskanaal. Zie `gui_tools.rs`.
+        gui if gui_tools::is_gui_tool(gui) => gui_tools::dispatch(gui, args).await,
         other => Err(RpcError::method_not_found(other)),
     }
 }

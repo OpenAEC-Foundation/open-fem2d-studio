@@ -116,3 +116,22 @@
 .status-bar-logo svg {
   display: block;
 }
+
+/* Bedieningskanaal aan (OPENAEC_GUI_CONTROL=1): zichtbaar, niet schreeuwend. */
+.status-bediening .status-item-label {
+  color: var(--theme-accent, #d97706);
+  font-weight: 600;
+}
+.status-bediening-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--theme-accent, #d97706);
+  animation: status-bediening-puls 1.6s ease-in-out infinite;
+}
+@keyframes status-bediening-puls {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

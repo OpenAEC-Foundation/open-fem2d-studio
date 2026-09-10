@@ -1,6 +1,6 @@
 [package]
 name = "open-fem2d-studio"
-version = "0.3.5"
+version = "0.3.6"
 description = "Open FEM2D Studio — 2D FEM solver"
 authors = ["OpenAEC Foundation"]
 license = "CC-BY-SA-4.0"
@@ -24,7 +24,11 @@ tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip: getallen die de pagina naar Rust stuurt (elk command, en het
+# bedieningskanaal) komen anders 1 ULP verschoven aan — 52,2 wordt 52,199999999999996.
+# De MCP-crate had dit al; zonder deze regel toont de GUI-weg een ander laatste cijfer
+# dan de kern rechtstreeks. Zie referentie-gui/wapening-workflow.mjs, stap ⑥b.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 steel-check = { path = "crates/steel-check" }
 steel-profiles = { path = "crates/steel-profiles" }
 nen-en-1993-1-1-section = { path = "crates/nen-en-1993-1-1-section" }
@@ -36,6 +40,16 @@ section-properties = { path = "crates/section-properties" }
 spanning-check = { path = "crates/spanning-check" }
 nen-en-1993-1-8-las = { path = "crates/nen-en-1993-1-8-las" }
 report = { path = "crates/report" }
+# ── GUI-bediening (module `gui_control`, alleen actief met OPENAEC_GUI_CONTROL=1) ──
+# tiny_http: synchrone localhost-luisteraar; de app-crate heeft geen tokio.
+# rand/png/raw-window-handle staan al in de lock via Tauri — zelfde versies,
+# dus geen extra compilatie. windows: alleen de drie modules voor PrintWindow.
+tiny_http = "0.12"
+rand = "0.9"
+png = "0.17"
+raw-window-handle = "0.6"
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps"] }
 
 # Workaround for GNU linker "export ordinal too large" on Windows.
 # Tauri pulls in 366+ crates and the GNU ld.exe symbol table overflows.
@@ -55,7 +69,9 @@ members = [".", "crates/*"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip voor élke crate: JSON-getallen van buiten (pagina, toetsbrug, MCP)
+# komen anders 1 ULP verschoven aan. Toelichting bij de app-crate hierboven.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 ts-rs = "10"
 approx = "0.5"
 insta = { version = "1", features = ["json"] }

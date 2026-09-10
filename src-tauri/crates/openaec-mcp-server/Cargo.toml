@@ -42,6 +42,8 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 base64 = "0.22"
+# ureq: kleine synchrone HTTP-client voor de gui_*-tools (bedieningskanaal van de app).
+ureq = { version = "2", features = ["json"] }
 # Hashpoort op de solverbundel (build.rs en sidecar.rs).
 sha2 = "0.10"
 # Engine crates

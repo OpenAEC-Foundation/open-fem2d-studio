@@ -527,3 +527,47 @@ silently. The steel and concrete check tools run entirely in Rust, so
   Done differently, and better: `generate_steel_report_pdf` itself now carries
   concrete — the checks, the segment stiffness chapter and the four figures.
   A second tool would have meant a second report for the same structure.
+
+## GUI tools: driving the running desktop app (`gui_*`)
+
+Fourteen tools operate the **running** Open FEM2D Studio desktop app through
+its control channel. They are not engine calls and are therefore outside the
+three-ways rule — they *are* the way to the GUI.
+
+Start the app with the channel enabled:
+
+```
+set OPENAEC_GUI_CONTROL=1
+"%LOCALAPPDATA%\Open FEM2D Studio\open-fem2d-studio.exe"
+```
+
+The app then listens on `127.0.0.1:<free port>` with a per-session token and
+writes `gui-control.json` (`{pid, poort, token, versie}`) to
+`%LOCALAPPDATA%\org.openaec.fem2d-studio\`. The tools find it there
+(override with `OPENAEC_GUI_CONTROL_FILE`). While the channel is active the
+status bar shows *bediening op afstand actief*. Nothing listens without the
+variable, nothing accepts a call without the token, and the file is removed
+on exit (`gui_quit` exits through the app's own path so that happens).
+
+| Tool | What it does in the app |
+|---|---|
+| `gui_status` | reachable? pid, port, version, active view, selection, member count |
+| `gui_load_model {path}` | loads a `.femp`/`.ifcfem2d` (read by the app process) |
+| `gui_build_model {...}` | builds nodes/beams/supports/loads through the store actions |
+| `gui_select_member {id}` | selects a member as if clicked |
+| `gui_set_cage {beam_id, cage}` | sets `checkConfig.betonKorf` (same `ReinforcementCage` as `check_concrete_beam`) |
+| `gui_set_analysis {analysis_type}` | `eersteOrde` / `tweedeOrdeGeometrisch` / `tweedeOrdeFysisch` |
+| `gui_solve` | runs the solver; returns per-combination extremes |
+| `gui_run_checks` | runs the code checks and waits for the check store |
+| `gui_open_curtailment {beam_id}` | opens the dekkingslijn panel and returns the kernel answer |
+| `gui_set_view {view}` | `default`, `check`, `report`, `insights`, `ifc` |
+| `gui_detach_report` | opens the live report in its own window; returns its label |
+| `gui_read_checks` | reads the current check results |
+| `gui_screenshot {window, path, dom?}` | real pixels via `PrintWindow` (or `dom: true` → html2canvas) |
+| `gui_quit` | closes the app gracefully |
+
+Every action returns only once the app *is* in the new state (store
+subscriptions, not timers), and a failure carries the app's own message.
+
+End-to-end example — the reinforcement workflow through the installed app,
+with screenshots: `node design-mockup/referentie-gui/wapening-workflow.mjs`.
