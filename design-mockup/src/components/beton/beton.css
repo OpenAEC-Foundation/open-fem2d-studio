@@ -316,3 +316,17 @@
   color: var(--theme-text-muted);
   font-weight: 500;
 }
+
+/* Klikbare rijlabels in de doorsnedetekening, en de rij-invoer die erbij
+   hoort (RijBewerker) — gedeeld door het betonvenster en de profielkiezer. */
+.beton-rijlabel-klikbaar:hover { text-decoration: underline; }
+.beton-rijbewerker {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin: 6px 0 4px; padding: 6px 8px;
+  border: 1px solid var(--theme-border, #ddd); border-radius: 4px;
+  background: var(--theme-surface-2, #fafafa); font-size: 12px;
+}
+.beton-rijbewerker-titel { font-weight: 600; width: 100%; }
+.beton-rijbewerker label { display: inline-flex; align-items: center; gap: 4px; }
+.beton-rijbewerker input[type="number"] { width: 56px; }
+.beton-rijbewerker-fout { color: var(--theme-danger, #b91c1c); }

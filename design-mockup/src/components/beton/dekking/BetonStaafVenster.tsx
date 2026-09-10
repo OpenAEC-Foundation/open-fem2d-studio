@@ -56,6 +56,7 @@ import { getConcreteClasses, korvenUitStaven, roepKern, useCheckStore } from "..
 // tekenen; de store krijgt een kopie op dezelfde momenten.
 import { useDekkingslijnStore } from "../../../stores/dekkingslijnStore";
 import DoorsnedeTekening from "../DoorsnedeTekening";
+import RijBewerker from "../RijBewerker";
 import { STANDAARD_KORF, maat, nl, type Wapeningskorf } from "../wapeningskorf";
 import AanzichtTekening, {
   type BeugelTekening,
@@ -80,7 +81,7 @@ import {
   type LijnPunt,
 } from "./dekkingLagen";
 import { haalScheurwijdteLijn, type ScheurwijdteLijn } from "./scheurwijdteLijn";
-import { korfOpX } from "./zoneModel";
+import { korfOpX, staafLengteMm } from "./zoneModel";
 // De laagschakelaars zijn LETTERLIJK de schakelaars van de resultatenlijst in
 // de verkenner (`fem-results-toggle` + `fem-switch`). Een eigen soort
 // schakelaar verzinnen zou betekenen dat dezelfde handeling er in dit venster
@@ -143,7 +144,8 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, o
   const knoopVan = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const a = knoopVan.get(beam.from);
   const b = knoopVan.get(beam.to);
-  const lengteMm = a && b ? Math.hypot(b.x - a.x, b.z - a.z) * 1000 : 0;
+  // UI-knopen zijn al in mm — géén ×1000 (zie `staafLengteMm`).
+  const lengteMm = a && b ? staafLengteMm(a, b) : 0;
 
   const doorsnede = parseConcreteSection(beam.profile);
   const korf: ReinforcementCage = beam.checkConfig?.betonKorf ?? STANDAARD_KORF.korf;
@@ -787,57 +789,3 @@ function Meldingen({
   );
 }
 
-// ── De rij-invoer onder de doorsnedetekening ────────────────────────────────
-
-/** De gangbare staafdiameters van bijlage C, in mm. */
-const STAAFDIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32, 40];
-
-/**
- * Aantal en diameter van één rij, geopend door een klik op het rijlabel in de
- * doorsnede. Enter slaat op, Esc sluit; een aantal onder 1 wordt geweigerd —
- * een rij zonder staven is geen rij maar het weghalen ervan, en dat is een
- * ander besluit dan hier wordt genomen.
- */
-function RijBewerker({
-  zijde, rij, onOpslaan, onSluiten,
-}: {
-  zijde: "top" | "bottom";
-  rij: { count: number; diameter_mm: number };
-  onOpslaan: (rij: { count: number; diameter_mm: number }) => void;
-  onSluiten: () => void;
-}) {
-  const [aantal, setAantal] = useState(String(rij.count));
-  const [diameter, setDiameter] = useState(rij.diameter_mm);
-  const n = Math.round(Number(aantal));
-  const geldig = Number.isFinite(n) && n >= 1 && n <= 40;
-  const opslaan = () => { if (geldig) onOpslaan({ count: n, diameter_mm: diameter }); };
-  return (
-    <form
-      className="dek-rijbewerker"
-      onSubmit={(e) => { e.preventDefault(); opslaan(); }}
-      onKeyDown={(e) => { if (e.key === "Escape") onSluiten(); }}
-    >
-      <span className="dek-rijbewerker-titel">
-        {zijde === "bottom" ? "Onderwapening" : "Bovenwapening"}
-      </span>
-      <label>
-        aantal
-        <input
-          type="number" min={1} max={40} step={1} value={aantal} autoFocus
-          onChange={(e) => setAantal(e.target.value)}
-          onFocus={(e) => e.currentTarget.select()}
-        />
-      </label>
-      <label>
-        Ø
-        <select value={diameter} onChange={(e) => setDiameter(Number(e.target.value))}>
-          {STAAFDIAMETERS.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
-        mm
-      </label>
-      <button type="submit" disabled={!geldig}>OK</button>
-      <button type="button" onClick={onSluiten}>Annuleren</button>
-      {!geldig && <span className="dek-rijbewerker-fout">aantal 1–40</span>}
-    </form>
-  );
-}

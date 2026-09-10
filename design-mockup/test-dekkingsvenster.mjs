@@ -626,3 +626,28 @@ if (!existsSync(TOETSBRUG)) {
 log("\n" + "─".repeat(78));
 log(`${passed} geslaagd, ${failed} gefaald${overgeslagen ? `, ${overgeslagen} blok overgeslagen` : ""}`);
 process.exit(failed === 0 ? 0 : 1);
+
+// ── Regressie: de staaflengte in het venster is in mm, niet ×1000 ──────────
+//
+// Het venster berekende de lengte uit de UI-knopen met ×1000 — de gewoonte
+// van de rekenkern (meters) toegepast op UI-coördinaten (mm). Gevolg: een
+// staaf van 6 m was in het venster 6 000 000 mm lang, de standaardzones liepen
+// tot 6 000 000 en de titel zei "L = 6.000,00 m". Deze test houdt de ene
+// plek waar die lengte vandaan komt op de UI-conventie.
+{
+  const { staafLengteMm, standaardZonesUitKorf } = await import("./src/components/beton/dekking/zoneModel.ts");
+  const { STANDAARD_KORF } = await import("./src/components/beton/wapeningskorf.ts");
+  const L = staafLengteMm({ x: 0, z: 0 }, { x: 6000, z: 0 });
+  const ok1 = Math.abs(L - 6000) < 1e-9;
+  process.stdout.write(`  ${ok1 ? "✓" : "✗"} staaflengte uit UI-knopen (0,0)-(6000,0) is 6000 mm, niet 6 000 000: ${L}\n`);
+  ok1 ? passed++ : failed++;
+  const schuin = staafLengteMm({ x: 1000, z: 2000 }, { x: 4000, z: 6000 });
+  const ok2 = Math.abs(schuin - 5000) < 1e-9;
+  process.stdout.write(`  ${ok2 ? "✓" : "✗"} schuine staaf 3-4-5: ${schuin} mm\n`);
+  ok2 ? passed++ : failed++;
+  const zones = standaardZonesUitKorf(STANDAARD_KORF.korf, L);
+  const eind = zones.stirrups[0]?.x_end_mm;
+  const ok3 = eind === 6000;
+  process.stdout.write(`  ${ok3 ? "✓" : "✗"} de standaard-beugelzone eindigt op de staaflengte: ${eind} mm\n`);
+  ok3 ? passed++ : failed++;
+}

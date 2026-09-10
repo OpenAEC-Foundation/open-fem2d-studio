@@ -53,6 +53,21 @@ export const ZIJDE_NAAM: Record<RebarSide, string> = {
   Top: "boven",
 };
 
+/**
+ * De lengte van een staaf uit zijn twee UI-knopen, in mm.
+ *
+ * UI-knopen staan in MILLIMETERS (`femTypes.Node`: "model coords (mm)"); de
+ * rekenkern werkt in meters, en die twee werelden lopen precies op de
+ * adaptergrens uit elkaar. Deze functie bestaat omdat het betonvenster de
+ * lengte eerst met ×1000 berekende — de kern-gewoonte, toegepast op
+ * UI-coördinaten — waardoor een staaf van 6 m in het venster 6 000 000 mm
+ * lang was: standaardzones tot 6 000 000, "L = 6.000,00 m" in de titel, en
+ * zones die naar de kern gingen ver buiten de staaf. Eén plek, mét test.
+ */
+export function staafLengteMm(a: { x: number; z: number }, b: { x: number; z: number }): number {
+  return Math.hypot(b.x - a.x, b.z - a.z);
+}
+
 /** Zijn beide lijsten leeg? Dan geldt de korf van de staaf over de hele lengte. */
 export function zonesZijnLeeg(zones: ReinforcementZones | undefined): boolean {
   return !zones || (zones.longitudinal.length === 0 && zones.stirrups.length === 0);

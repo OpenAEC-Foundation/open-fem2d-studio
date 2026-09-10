@@ -108,6 +108,9 @@ import CltOpbouwTekening, { CLT_THEMA_KLEUREN } from "../clt/CltOpbouwTekening";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";
 import { shapeVanProfiel } from "../shared/profielVorm";
 import "./ProfielKiezer.css";
+// Klik op een rijlabel in de doorsnedetekening → aantal en diameter invullen,
+// dezelfde invoer als in het betonvenster.
+import RijBewerker from "../beton/RijBewerker";
 
 /**
  * De betonkant van de keuze: de wapeningskorf en de duurzaamheidsgegevens.
@@ -366,6 +369,8 @@ export default function ProfielKiezer({
   const [betonKorf, setBetonKorf] = useState<ReinforcementCage>(
     huidigBeton?.korf ?? STANDAARD_KORF.korf,
   );
+  /** Welke rij van de korf staat open in de rij-invoer onder de tekening. */
+  const [betonBewerkRij, setBetonBewerkRij] = useState<"top" | "bottom" | null>(null);
   const [betonMilieuklasse, setBetonMilieuklasse] = useState<ExposureClass | null>(
     huidigBeton?.milieuklasse ?? null,
   );
@@ -1260,7 +1265,19 @@ export default function ProfielKiezer({
                   <DoorsnedeTekening
                     korf={betonKorfGeheel}
                     wapening={betonKorfFout === null}
+                    onRij={betonKorfFout === null ? (zijde) => setBetonBewerkRij(zijde) : undefined}
                   />
+                  {betonBewerkRij && (
+                    <RijBewerker
+                      zijde={betonBewerkRij}
+                      rij={betonKorf[betonBewerkRij]}
+                      onOpslaan={(rij) => {
+                        setBetonKorf((k) => ({ ...k, [betonBewerkRij]: rij }));
+                        setBetonBewerkRij(null);
+                      }}
+                      onSluiten={() => setBetonBewerkRij(null)}
+                    />
+                  )}
                   {betonKorfFout !== null && (
                     <div className="pk-tekening-reden">
                       Alleen de omtrek: de wapening is zo niet te tekenen — zie
