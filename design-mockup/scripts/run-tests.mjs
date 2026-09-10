@@ -142,6 +142,14 @@ const ALLEEN_BRON = new Map([
   ["plaat-ids", "raakt kerninterne klassen (Mesh, PlateRegion)"],
   ["plaat-lasten", "raakt kerninterne klassen (Mesh, PlateRegion, PlateLoads)"],
   ["plaat-mixed", "raakt kerninterne klassen (Mesh, PlateRegion, NonlinearSolver)"],
+  [
+    "tweede-orde-platen",
+    "toetst de geometrische stijfheid van de wandschijven op matrixniveau en bouwt zijn modellen met Mesh + PlateRegion; Triangle, Quad4 en PlateRegion staan bewust niet in de barrel (PlateRegion zou TriangleService en window.location de bundel in trekken). Het engine-pad dat hij aan het eind wél aanroept, is daar niet los van te knippen",
+  ],
+  [
+    "solverlog",
+    "leest het solverlogboek uit de zustand-store en geeft de kern rechtstreeks een onLog-callback; de store hoort niet in de barrel en de sidecar zet juist géén opvanger — tegen de bundel zou deze test dus het tegenovergestelde bewijzen van wat hij moet bewaken",
+  ],
   ["plaat-schijf", "raakt kerninterne klassen (Triangle, Quad4, GaussElimination)"],
   [
     "oplossers",

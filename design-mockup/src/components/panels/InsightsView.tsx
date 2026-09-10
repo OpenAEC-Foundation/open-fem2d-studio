@@ -17,7 +17,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildMatricesOnly, type ExposedBeamCache } from "../fem/solver/solver";
 import type { Node, Beam, Support } from "../fem/femTypes";
+import { useSolverLogStore } from "../../stores/solverLogStore";
+import type { SolverLogRegel } from "../../core/solver/NonlinearSolver";
 import "./InsightsView.css";
+
+/** Het merkteken vóór elke logregel — dezelfde breedte als de assembly-regels. */
+const LOG_TAG: Record<SolverLogRegel["soort"], string> = {
+  info: "[OK]",
+  iteratie: "[..]",
+  waarschuwing: "[!!]",
+  fout: "[XX]",
+};
 
 interface Props {
   nodes: Node[];
@@ -117,6 +127,12 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
   const [focusPane, setFocusPane] = useState<PaneFocus | null>(null);
   const firstModeRun = useRef(true);
   const systemWrapRef = useRef<HTMLDivElement>(null);
+
+  // Twee losse selectors, geen object: een selector die `{regels, verloren}`
+  // teruggeeft maakt elke render een nieuw object en laat zustand het paneel
+  // bij élke store-aanraking hertekenen.
+  const solverLog = useSolverLogStore((s) => s.regels);
+  const verlorenRegels = useSolverLogStore((s) => s.verlorenRegels);
 
   const asm = useMemo(() => {
     try {
@@ -372,10 +388,26 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
 {`[OK]  Mesh opgebouwd: ${nodes.length} knopen, ${beams.length} staven
 [OK]  DOF's: ${asm.nDof} (${asm.springs.length} veer-DOF's)
 [OK]  Stijfheidsmatrix geassembleerd (${asm.K.length}×${asm.K[0]?.length ?? 0})
-[OK]  Randvoorwaarden toegepast: ${constrainedDofs.size} star
-[--]  Solver-logstreaming nog niet aangesloten — waarden hierboven komen uit
-      de laatste assembly. Volledige iteratiehistorie volgt in een latere sessie.`}
+[OK]  Randvoorwaarden toegepast: ${constrainedDofs.size} star`}
             </pre>
+            {/* Hierboven staat de assembly die DIT paneel zelf opbouwt (de
+                matrices die je ernaast ziet); hieronder wat de SOLVER meldde
+                tijdens de laatste berekening. Twee bronnen, dus twee blokken —
+                ze door elkaar zetten zou suggereren dat het één reeks is. */}
+            {solverLog.length === 0 ? (
+              <div className="insights-noerror">
+                Er is nog niet gerekend. Zodra de solver draait staat hier zijn
+                logboek: de assembly per belastinggeval, en bij een niet-lineaire
+                berekening elke iteratie met ‖Δu‖ en ‖u‖.
+              </div>
+            ) : (
+              <pre className="insights-log">
+                {verlorenRegels > 0
+                  ? `[..]  ${verlorenRegels} oudere regel(s) weggelaten\n`
+                  : ""}
+                {solverLog.map((r) => `${LOG_TAG[r.soort]}  ${r.tekst}`).join("\n")}
+              </pre>
+            )}
           </div>
         )}
         {bottomOpen === "errors" && (

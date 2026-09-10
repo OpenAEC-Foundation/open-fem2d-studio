@@ -9,7 +9,7 @@
 
 import { Matrix } from '../math/Matrix';
 import { INode, IMaterial, AnalysisType } from './types';
-import { getConstitutiveMatrix } from './Triangle';
+import { getConstitutiveMatrix, membraneGeometricFromGradients, type IMembraneStress } from './Triangle';
 
 /** 2x2 Gauss points and weights */
 const GP = 1 / Math.sqrt(3);
@@ -217,4 +217,77 @@ export function calculateQuadStiffnessExpanded(
   }
 
   return Ke12;
+}
+
+/**
+ * Geometrische (initiële-spannings)stijfheid van een vierknoops membraan —
+ * 8×8, DOF-volgorde [u1,v1, u2,v2, u3,v3, u4,v4].
+ *
+ * Kg = ∫ Gᵀ·S·G · t dA, met 2×2 Gauss — dezelfde integratie als
+ * `calculateQuadStiffness`, zodat de twee matrices op dezelfde punten worden
+ * bemonsterd en niet elk hun eigen benadering maken.
+ *
+ * BENADERING, EN WELKE
+ * De spanning wordt in élk Gauss-punt gelijk genomen aan de meegegeven
+ * elementspanning. Die is bij `calculateQuadStress` al het gemiddelde over de
+ * vier punten, dus voor een element met een spanningsgradiënt is dit een
+ * elementgemiddelde en niet de puntwaarde. Voor een rechthoekig element onder
+ * een constante spanningstoestand — het geval waarvoor de wandschijf in dit
+ * model bedoeld is — vallen de twee samen en is er geen verschil. De driehoek
+ * kent deze benadering niet: daar is de spanning per definitie constant.
+ *
+ * Zie `calculateTriangleGeometricStiffness` voor wat dit wél en niet is; ook
+ * hier gaat het om het in-vlak effect en niet om plaatknik uit het vlak.
+ */
+export function calculateQuadGeometricStiffness(
+  n1: INode, n2: INode, n3: INode, n4: INode,
+  stress: IMembraneStress,
+  thickness: number
+): Matrix {
+  const x = [n1.x, n2.x, n3.x, n4.x];
+  const y = [n1.y, n2.y, n3.y, n4.y];
+
+  const Kg = new Matrix(8, 8);
+
+  for (const gp of GAUSS_POINTS) {
+    const { dNdxi, dNdeta } = shapeFunctionDerivatives(gp.xi, gp.eta);
+    const { detJ, invJ } = jacobian(gp.xi, gp.eta, x, y);
+    if (detJ <= 0) {
+      throw new Error('Quad element has non-positive Jacobian determinant (bad element shape)');
+    }
+
+    const G = new Matrix(4, 8);
+    for (let i = 0; i < 4; i++) {
+      const dNdx = invJ[0][0] * dNdxi[i] + invJ[0][1] * dNdeta[i];
+      const dNdy = invJ[1][0] * dNdxi[i] + invJ[1][1] * dNdeta[i];
+      G.set(0, 2 * i, dNdx);      // ∂u/∂x
+      G.set(1, 2 * i, dNdy);      // ∂u/∂y
+      G.set(2, 2 * i + 1, dNdx);  // ∂v/∂x
+      G.set(3, 2 * i + 1, dNdy);  // ∂v/∂y
+    }
+
+    const bijdrage = membraneGeometricFromGradients(
+      G, stress, gp.w * thickness * detJ, 8
+    );
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) Kg.addAt(i, j, bijdrage.get(i, j));
+    }
+  }
+
+  return Kg;
+}
+
+/**
+ * Breid een 8×8 membraan-Kg uit naar 12×12 met nulrijen/-kolommen voor θ —
+ * dezelfde afbeelding als `calculateQuadStiffnessExpanded`.
+ */
+export function expandQuadGeometricStiffness(Kg8: Matrix): Matrix {
+  const Kg12 = new Matrix(12, 12);
+  const mapping = [0, 1, 3, 4, 6, 7, 9, 10];
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 8; j++) {
+      Kg12.set(mapping[i], mapping[j], Kg8.get(i, j));
+    }
+  }
+  return Kg12;
 }

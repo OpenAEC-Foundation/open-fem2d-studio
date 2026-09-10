@@ -17,8 +17,8 @@ import {
 } from '../fem/Beam';
 import { calculateBeamInternalForces } from '../fem/BeamForces';
 import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
-import { calculateElementStress, calculatePrincipalStresses } from '../fem/Triangle';
-import { calculateQuadStress } from '../fem/Quad4';
+import { calculateElementStress, calculatePrincipalStresses, calculateTriangleGeometricStiffness, expandTriangleGeometricStiffness } from '../fem/Triangle';
+import { calculateQuadStress, calculateQuadGeometricStiffness, expandQuadGeometricStiffness } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
 import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, buildNodeIdToIndex } from './Assembler';
 // De keuze welke stelseloplosser draait loopt via één plek: `LinearSolver`.
@@ -34,6 +34,34 @@ import {
   updateSectionState,
 } from './NonlinearMaterial';
 
+/**
+ * Eén regel solverlogboek.
+ *
+ * De solver MELDT; hij bewaart niets. Dat is met opzet: het log is juist het
+ * meest waard wanneer de solver daarna een fout gooit (divergentie, singuliere
+ * K), en dan komt er nooit een resultaatobject waar het log in had kunnen
+ * zitten. Een callback levert de regels wél, tot en met de laatste iteratie
+ * vóór de fout.
+ *
+ * `soort` stuurt de weergave, niet de inhoud:
+ *   - `info`        — een stap die gelukt is (assembly, randvoorwaarden)
+ *   - `iteratie`    — één Newton-Raphson-stap, met de twee normen
+ *   - `waarschuwing`— iets wat de uitkomst kleurt maar hem niet verwerpt
+ *   - `fout`        — de reden waarom er zo meteen niets terugkomt
+ */
+export interface SolverLogRegel {
+  soort: 'info' | 'iteratie' | 'waarschuwing' | 'fout';
+  tekst: string;
+  /** Laststap (1-gebaseerd); alleen bij `iteratie`. */
+  laststap?: number;
+  /** Iteratienummer binnen de laststap (1-gebaseerd); alleen bij `iteratie`. */
+  iteratie?: number;
+  /** ‖Δu‖ van deze iteratie. */
+  incrementNorm?: number;
+  /** ‖u‖ na deze iteratie — samen met de vorige de convergentiemaat. */
+  verplaatsingsNorm?: number;
+}
+
 export interface NonlinearSolverOptions {
   analysisType: AnalysisType;
   geometricNonlinear: boolean;
@@ -44,6 +72,13 @@ export interface NonlinearSolverOptions {
   maxIterations: number;
   tolerance: number;
   loadSteps: number;
+  /**
+   * Ontvangt elke logregel zodra hij ontstaat. Weglaten = geen log, en dan
+   * kost dit niets: er wordt geen tekst opgebouwd die niemand leest.
+   *
+   * De ontvanger mag NIET gooien — hij draait midden in de iteratielus.
+   */
+  onLog?: (regel: SolverLogRegel) => void;
 }
 
 const DEFAULT_OPTIONS: NonlinearSolverOptions = {
@@ -769,6 +804,24 @@ export function solveNonlinear(
   let displacements = new Array(numDofs).fill(0);
   let axialForces = new Map<number, number>();
 
+  /**
+   * Meld een regel, als er iemand luistert. De tekst wordt binnen deze functie
+   * opgebouwd, dus zonder luisteraar kost het log niets.
+   */
+  const log = (regel: SolverLogRegel): void => {
+    opts.onLog?.(regel);
+  };
+
+  const soortAnalyse = opts.materialNonlinear
+    ? (opts.geometricNonlinear ? 'fysisch én geometrisch niet-lineair' : 'fysisch niet-lineair')
+    : (opts.geometricNonlinear ? 'geometrisch niet-lineair (P-Δ)' : 'lineair');
+  log({
+    soort: 'info',
+    tekst:
+      `Model: ${mesh.getNodeCount()} knopen, ${mesh.beamElements.size} staven, ` +
+      `${numDofs} vrijheidsgraden — ${soortAnalyse}`,
+  });
+
   // Check if any beam has tension/pressure-only connections
   let hasAxialConstraints = false;
   for (const beam of mesh.beamElements.values()) {
@@ -817,8 +870,11 @@ export function solveNonlinear(
     }
 
     const K = assembleGlobalStiffnessWithGeometric(mesh, axialForces, false);
+    log({ soort: 'info', tekst: `Stijfheidsmatrix geassembleerd (${K.rows}×${K.cols})` });
     const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
+    log({ soort: 'info', tekst: 'Randvoorwaarden toegepast' });
     displacements = solveLinearSystem(Kbc, Fbc);
+    log({ soort: 'info', tekst: 'Stelsel opgelost — één keer, want lineair' });
 
     const { beamForces, axialForces: newAxial } = calculateAllInternalForces(mesh, displacements);
     axialForces = newAxial;
@@ -925,7 +981,17 @@ export function solveNonlinear(
       const incrNorm = Math.sqrt(deltaU.reduce((s, d) => s + d * d, 0));
       const dispNorm = Math.sqrt(displacements.reduce((s, d) => s + d * d, 0));
 
+      log({
+        soort: 'iteratie',
+        laststap: step,
+        iteratie: iter + 1,
+        incrementNorm: incrNorm,
+        verplaatsingsNorm: dispNorm,
+        tekst: `‖Δu‖ = ${incrNorm.toExponential(3)}, ‖u‖ = ${dispNorm.toExponential(3)}`,
+      });
+
       if (!Number.isFinite(incrNorm) || !Number.isFinite(dispNorm)) {
+        log({ soort: 'fout', tekst: 'De normen zijn niet-eindig — het stelsel loopt weg' });
         if (opts.geometricNonlinear) throw new Error(DIVERGENCE_MSG);
         break;
       }
@@ -933,6 +999,12 @@ export function solveNonlinear(
       // Convergentie: relatieve increment-norm
       if (incrNorm <= opts.tolerance * Math.max(dispNorm, 1e-30)) {
         converged = true;
+        log({
+          soort: 'info',
+          tekst:
+            `Laststap ${step} geconvergeerd in ${iter + 1} iteratie(s) ` +
+            `(tolerantie ${opts.tolerance.toExponential(0)})`,
+        });
         break;
       }
 
@@ -943,9 +1015,22 @@ export function solveNonlinear(
         growthCount = 0;
       }
       if (growthCount >= 3 && opts.geometricNonlinear) {
+        log({
+          soort: 'fout',
+          tekst: 'De increment-norm groeit drie iteraties op rij — de last ligt op of boven de kniklast',
+        });
         throw new Error(DIVERGENCE_MSG);
       }
       prevIncrNorm = incrNorm;
+    }
+
+    if (!converged && !opts.geometricNonlinear) {
+      log({
+        soort: 'waarschuwing',
+        tekst:
+          `Laststap ${step} bereikte ${opts.maxIterations} iteraties zonder te convergeren; ` +
+          `de laatste stand wordt aangehouden`,
+      });
     }
 
     if (!converged && opts.geometricNonlinear) {
@@ -979,11 +1064,19 @@ export function solveNonlinear(
   // dat via negatieve pivots (Sylvester) op de finale K mét randvoorwaarden.
   if (opts.geometricNonlinear) {
     const { K: Kstab } = applyBoundaryConditions(K, F, mesh);
-    if (countNonPositivePivots(Kstab) > 0) {
+    const nietPositief = countNonPositivePivots(Kstab);
+    if (nietPositief > 0) {
+      log({
+        soort: 'fout',
+        tekst:
+          `Stabiliteitscontrole: ${nietPositief} niet-positieve pivot(s) in K = Ke + Kg — ` +
+          `de matrix is indefiniet en de oplossing fysisch betekenisloos`,
+      });
       throw new Error(
         'Second-order (P-Delta) analysis is unstable — the applied load is at or above the critical (buckling) load'
       );
     }
+    log({ soort: 'info', tekst: 'Stabiliteitscontrole: K = Ke + Kg is positief definiet' });
   }
 
   const reactions = K.multiplyVector(displacements);
@@ -1353,17 +1446,150 @@ function solvePlateOrPlane(
 }
 
 /**
+ * De geometrische stijfheid van het GEMENGDE stelsel: staven én wandschijven,
+ * beide in het 3-DOF-schema (u, v, θ) dat `mixed_beam_plate` gebruikt.
+ *
+ * Twee bronnen, één matrix:
+ *
+ * * **Staven** — dezelfde `calculateGeometricStiffness(L, N)` als het
+ *   frame-pad, met N uit de huidige verplaatsingen. De tekenafspraak is hier
+ *   eenvoudiger dan in het frame-pad: N wordt hieronder rechtstreeks uit de
+ *   lokale rekking bepaald en is dus TREK-positief, precies zoals
+ *   `calculateGeometricStiffness` hem wil. Er wordt niets omgeklapt.
+ * * **Wandschijven** — de initiële-spanningsstijfheid van het membraan, uit
+ *   de heersende σx, σy en τxy (zie `calculateTriangleGeometricStiffness`).
+ *
+ * De θ-vrijheidsgraden van de schijven blijven leeg, net als bij de elastische
+ * matrix: een membraan draagt geen moment in zijn knopen.
+ *
+ * Waarom de index hier opnieuw wordt opgebouwd en niet die van het frame-pad
+ * hergebruikt: `mixed_beam_plate` nummert alleen de ACTIEVE knopen (via
+ * `buildNodeIdToIndex`), terwijl het frame-pad alle knopen op volgorde neemt.
+ * Dezelfde staaf krijgt in de twee schema's dus andere DOF-nummers, en de
+ * meegegeven `nodeIdToIndex` is de enige die bij dit stelsel hoort.
+ */
+function assembleGeometricStiffnessMixed(
+  mesh: Mesh,
+  displacements: number[],
+  nodeIdToIndex: Map<number, number>,
+  numDofs: number
+): Matrix {
+  const Kg = new Matrix(numDofs, numDofs);
+
+  // ── Staven ────────────────────────────────────────────────────────────────
+  for (const beam of mesh.beamElements.values()) {
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (!nodes) continue;
+    const material = mesh.getMaterial(beam.materialId);
+    if (!material) continue;
+
+    const [n1, n2] = nodes;
+    const idx1 = nodeIdToIndex.get(n1.id);
+    const idx2 = nodeIdToIndex.get(n2.id);
+    if (idx1 === undefined || idx2 === undefined) continue;
+
+    const L = calculateBeamLength(n1, n2);
+    if (L < 1e-10) continue;
+    const angle = calculateBeamAngle(n1, n2);
+
+    const dofIndices = [
+      idx1 * 3, idx1 * 3 + 1, idx1 * 3 + 2,
+      idx2 * 3, idx2 * 3 + 1, idx2 * 3 + 2,
+    ];
+
+    // Lokale verplaatsingen u_l = T·u_g, en daaruit de rekking. N = EA/L·Δu
+    // is trek-positief.
+    const T = createTransformationMatrix(angle);
+    const ug = dofIndices.map(d => displacements[d]);
+    const ul = T.multiplyVector(ug);
+    const N = (material.E * beam.section.A / L) * (ul[3] - ul[0]);
+
+    const KgLokaal = calculateGeometricStiffness(L, N);
+    const KgGlobaal = T.transpose().multiply(KgLokaal.multiply(T));
+
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) {
+        Kg.addAt(dofIndices[i], dofIndices[j], KgGlobaal.get(i, j));
+      }
+    }
+  }
+
+  // ── Wandschijven ──────────────────────────────────────────────────────────
+  for (const element of mesh.elements.values()) {
+    const nodes = mesh.getElementNodes(element);
+    if (nodes.length < 3 || nodes.length > 4) continue;
+    const material = mesh.getMaterial(element.materialId);
+    if (!material) continue;
+
+    const dofIndices: number[] = [];
+    const elemDisp: number[] = [];
+    let compleet = true;
+    for (const node of nodes) {
+      const idx = nodeIdToIndex.get(node.id);
+      if (idx === undefined) { compleet = false; break; }
+      dofIndices.push(idx * 3, idx * 3 + 1, idx * 3 + 2);
+      elemDisp.push(displacements[idx * 3], displacements[idx * 3 + 1]);
+    }
+    if (!compleet) continue;
+
+    try {
+      if (nodes.length === 4) {
+        const [n1, n2, n3, n4] = nodes;
+        const s = calculateQuadStress(n1, n2, n3, n4, material, elemDisp, 'plane_stress');
+        const Kg12 = expandQuadGeometricStiffness(
+          calculateQuadGeometricStiffness(n1, n2, n3, n4, s, element.thickness)
+        );
+        for (let i = 0; i < 12; i++) {
+          for (let j = 0; j < 12; j++) Kg.addAt(dofIndices[i], dofIndices[j], Kg12.get(i, j));
+        }
+      } else {
+        const [n1, n2, n3] = nodes;
+        const s = calculateElementStress(n1, n2, n3, material, elemDisp, 'plane_stress');
+        const Kg9 = expandTriangleGeometricStiffness(
+          calculateTriangleGeometricStiffness(n1, n2, n3, s, element.thickness)
+        );
+        for (let i = 0; i < 9; i++) {
+          for (let j = 0; j < 9; j++) Kg.addAt(dofIndices[i], dofIndices[j], Kg9.get(i, j));
+        }
+      }
+    } catch {
+      // Een ontaard element levert geen geometrische bijdrage. De elastische
+      // assemblage slaat hem op dezelfde grond over (met een console.warn);
+      // hier stil, anders staat dezelfde melding tweemaal per iteratie.
+    }
+  }
+
+  return Kg;
+}
+
+/**
  * Solve mixed beam+plate analysis.
  * Uses unified 3 DOFs per node (u, v, θ) with expanded plate stiffness matrices.
  * Beam elements use their native 6×6 (3 DOF/node) stiffness.
  * Plate elements are expanded from 6×6 or 8×8 to 9×9 or 12×12 (3 DOF/node).
+ *
+ * Met `geometricNonlinear` wordt er geïtereerd: elke ronde bouwt K = Ke + Kg
+ * met de spanningen en normaalkrachten van de vorige stand, tot de
+ * verplaatsingen niet meer veranderen. Zie `assembleGeometricStiffnessMixed`.
+ *
+ * WAT DIT PAD NIET DOET, en het raamwerkpad wél:
+ * `opts.loadSteps` wordt hier genegeerd — de last gaat er in één keer op. Het
+ * raamwerkpad kent een laststappenlus die de belasting in stappen opbouwt.
+ * Voor geometrische niet-lineariteit maakt dat geen verschil: het eindpunt
+ * hangt niet van de weg erheen af, en de directe iteratie vindt hetzelfde vaste
+ * punt. Het zou pas gaan tellen bij fysische niet-lineariteit, en die loopt
+ * voor schijven niet via deze weg. Niemand zet `loadSteps` vandaag: de
+ * standaard is 1 en geen enkele aanroeper in de app of de sidecar wijkt daarvan
+ * af. Wordt dat ooit anders, dan hoort hier eerst een laststappenlus omheen.
  */
 function solveMixed(
   mesh: Mesh,
-  _opts: NonlinearSolverOptions  // Reserved for future nonlinear mixed analysis
+  opts: NonlinearSolverOptions
 ): ISolverResult {
   const analysisType = 'mixed_beam_plate';
   const dofsPerNode = 3; // u, v, θ for all nodes
+
+  const log = (regel: SolverLogRegel): void => { opts.onLog?.(regel); };
 
   // Validate model
   if (mesh.elements.size < 1 && mesh.getBeamCount() < 1) {
@@ -1408,20 +1634,165 @@ function solveMixed(
     throw new Error('No loads applied - add forces to nodes or elements');
   }
 
-  // Apply boundary conditions (penalty method)
-  const Kmod = K.clone();
-  const Fmod = [...F];
-  const penalty = 1e20;
-  for (const dof of constrainedDofs) {
-    Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
-    Fmod[dof] = 0;
+  /**
+   * Los K·u = F op met de opgelegde vrijheidsgraden erin. Penaltymethode,
+   * net als voorheen — apart gezet omdat de niet-lineaire lus hem per
+   * iteratie opnieuw nodig heeft, met een andere K.
+   */
+  const losOp = (Kt: Matrix): number[] => {
+    const Kmod = Kt.clone();
+    const Fmod = [...F];
+    const penalty = 1e20;
+    for (const dof of constrainedDofs) {
+      Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
+      Fmod[dof] = 0;
+    }
+    return solveLinearSystem(Kmod, Fmod);
+  };
+
+  const numDofsMixed = K.rows;
+  log({
+    soort: 'info',
+    tekst:
+      `Gemengd model: ${mesh.beamElements.size} staven en ${mesh.elements.size} ` +
+      `schijfelementen, ${numDofsMixed} vrijheidsgraden` +
+      (opts.geometricNonlinear ? ' — geometrisch niet-lineair (P-Δ)' : ' — lineair'),
+  });
+
+  let displacements = losOp(K);
+
+  /**
+   * De matrix waaruit de oplegreacties volgen. Lineair is dat de elastische K;
+   * bij tweede orde de raakstijfheid Ke + Kg van de eindstand, want dát is de
+   * matrix waarmee het evenwicht is gevonden. Het frame-pad doet hetzelfde.
+   */
+  let Kreactie: Matrix = K;
+
+  // ── Geometrisch niet-lineair: itereren op K = Ke + Kg ─────────────────────
+  //
+  // Directe iteratie op de secansstijfheid, niet Newton-Raphson: Kg volgt uit
+  // de spanningstoestand, en die volgt weer uit u. Elke ronde bouwt Kg met de
+  // stand van de vorige en lost opnieuw op. Voor P-Δ convergeert dat met
+  // ratio ≈ P/P_kr per ronde — hetzelfde gedrag als het frame-pad, dat langs
+  // dezelfde weg tot P ≈ 0,87·P_kr komt.
+  //
+  // De elastische K blijft staan en wordt per ronde opgeteld bij een VERSE Kg;
+  // Kg accumuleren zou de tweede orde tweemaal tellen.
+  if (opts.geometricNonlinear) {
+    let vorigeNorm = Infinity;
+    let groei = 0;
+    let geconvergeerd = false;
+
+    for (let iter = 0; iter < opts.maxIterations; iter++) {
+      const Kg = assembleGeometricStiffnessMixed(
+        mesh, displacements, nodeIdToIndex, numDofsMixed
+      );
+      const Kt = K.clone();
+      for (let i = 0; i < numDofsMixed; i++) {
+        for (let j = 0; j < numDofsMixed; j++) Kt.addAt(i, j, Kg.get(i, j));
+      }
+
+      let nieuw: number[];
+      try {
+        nieuw = losOp(Kt);
+      } catch {
+        log({ soort: 'fout', tekst: 'Het stelsel K = Ke + Kg is niet oplosbaar' });
+        throw new Error(
+          'Second-order (P-Delta) analysis is unstable — the applied load is at or above the critical (buckling) load'
+        );
+      }
+
+      let som = 0, somU = 0;
+      for (let i = 0; i < numDofsMixed; i++) {
+        const d = nieuw[i] - displacements[i];
+        som += d * d;
+        somU += nieuw[i] * nieuw[i];
+      }
+      const incrNorm = Math.sqrt(som);
+      const dispNorm = Math.sqrt(somU);
+      displacements = nieuw;
+
+      log({
+        soort: 'iteratie',
+        laststap: 1,
+        iteratie: iter + 1,
+        incrementNorm: incrNorm,
+        verplaatsingsNorm: dispNorm,
+        tekst: `‖Δu‖ = ${incrNorm.toExponential(3)}, ‖u‖ = ${dispNorm.toExponential(3)}`,
+      });
+
+      if (!Number.isFinite(incrNorm) || !Number.isFinite(dispNorm)) {
+        log({ soort: 'fout', tekst: 'De normen zijn niet-eindig — het stelsel loopt weg' });
+        throw new Error(
+          'Second-order (P-Delta) analysis did not converge — the applied load is at or above the critical (buckling) load'
+        );
+      }
+
+      if (incrNorm <= opts.tolerance * Math.max(dispNorm, 1e-30)) {
+        geconvergeerd = true;
+        log({
+          soort: 'info',
+          tekst: `Geconvergeerd in ${iter + 1} iteratie(s) (tolerantie ${opts.tolerance.toExponential(0)})`,
+        });
+        break;
+      }
+
+      if (iter >= 1 && incrNorm > vorigeNorm) groei++; else groei = 0;
+      if (groei >= 3) {
+        log({
+          soort: 'fout',
+          tekst: 'De increment-norm groeit drie iteraties op rij — de last ligt op of boven de kniklast',
+        });
+        throw new Error(
+          'Second-order (P-Delta) analysis did not converge — the applied load is at or above the critical (buckling) load'
+        );
+      }
+      vorigeNorm = incrNorm;
+    }
+
+    if (!geconvergeerd) {
+      throw new Error(
+        `Second-order (P-Delta) analysis did not converge within ${opts.maxIterations} iterations — the load is at, above, or very close to the critical (buckling) load`
+      );
+    }
+
+    // De raakstijfheid van de EINDSTAND. Hij dient twee doelen: de
+    // stabiliteitscontrole hieronder, en straks de reacties — die horen uit
+    // dezelfde matrix te komen waarmee het evenwicht is gevonden, precies
+    // zoals het frame-pad dat doet.
+    const Kg = assembleGeometricStiffnessMixed(
+      mesh, displacements, nodeIdToIndex, numDofsMixed
+    );
+    const Kt = K.clone();
+    for (let i = 0; i < numDofsMixed; i++) {
+      for (let j = 0; j < numDofsMixed; j++) Kt.addAt(i, j, Kg.get(i, j));
+    }
+    Kreactie = Kt;
+
+    // Stabiliteitscontrole op de eindstand, langs dezelfde weg als het
+    // frame-pad: boven de kniklast kan de directe iteratie alsnog een vast
+    // punt vinden terwijl K = Ke + Kg indefiniet is. Dan is er wel een
+    // getal, maar het betekent niets. De penalty gaat op een KLOON — anders
+    // zou 1e20 op de diagonaal in de reactieberekening meeliften.
+    const Kstab = Kt.clone();
+    for (const dof of constrainedDofs) Kstab.set(dof, dof, Kstab.get(dof, dof) + 1e20);
+    const nietPositief = countNonPositivePivots(Kstab);
+    if (nietPositief > 0) {
+      log({
+        soort: 'fout',
+        tekst:
+          `Stabiliteitscontrole: ${nietPositief} niet-positieve pivot(s) in K = Ke + Kg — ` +
+          `de matrix is indefiniet en de oplossing fysisch betekenisloos`,
+      });
+      throw new Error(
+        'Second-order (P-Delta) analysis is unstable — the applied load is at or above the critical (buckling) load'
+      );
+    }
+    log({ soort: 'info', tekst: 'Stabiliteitscontrole: K = Ke + Kg is positief definiet' });
   }
 
-  // Solve linear system
-  const displacements = solveLinearSystem(Kmod, Fmod);
-
   // Calculate reactions: R = K·u - F
-  const reactions = K.multiplyVector(displacements);
+  const reactions = Kreactie.multiplyVector(displacements);
   for (let i = 0; i < reactions.length; i++) {
     reactions[i] = reactions[i] - F[i];
   }

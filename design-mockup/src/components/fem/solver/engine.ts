@@ -19,7 +19,7 @@
  * NO FEM math itself — that all sits in `src/core/`.
  */
 import { Mesh } from "../../../core/fem/Mesh";
-import { solveNonlinear } from "../../../core/solver/NonlinearSolver";
+import { solveNonlinear, type NonlinearSolverOptions } from "../../../core/solver/NonlinearSolver";
 import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode } from "../../../core/solver/Assembler";
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
 import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
@@ -1525,6 +1525,49 @@ function convertResult(
   };
 }
 
+// ── Solverlogboek ───────────────────────────────────────────────────────────
+
+/**
+ * De opvanger die de kern zijn regels geeft, of `undefined` als niemand luistert.
+ *
+ * WAAROM EEN MODULE-GLOBALE EN GEEN PARAMETER
+ * Het log moet uit drie paden komen: de losse belastinggevallen, de tweede orde
+ * per combinatie, en de enkele solve. Het tweede-orde-pad wordt niet vanuit de
+ * app aangeroepen maar vanuit `combineResults` in `combinations.ts`, en dié
+ * functie heeft zelf een handvol aanroepers. Een parameter zou dus door vijf
+ * lagen moeten die er verder niets mee doen — en elk van die lagen zou hem
+ * kunnen vergeten, waarna één pad stilletjes niet meer logt.
+ *
+ * Deze module zit in de sidecar-bundel en mag daarom niets van de UI kennen.
+ * Dat blijft zo: hier staat alleen een functietype. De app zet er een opvanger
+ * in die naar `stores/solverLogStore` schrijft; het kale Node-proces van de
+ * sidecar zet niets en logt dus ook niets — dan blijft dit `undefined` en wordt
+ * er in de kern geen tekst opgebouwd.
+ */
+let actieveLogOpvanger: NonlinearSolverOptions["onLog"];
+
+/**
+ * Zet (of wis, met `undefined`) de ontvanger van het solverlogboek.
+ *
+ * De aanroeper hoort hem vóór de berekening te zetten. Wissen is niet nodig:
+ * de volgende berekening overschrijft hem, en een opvanger die blijft staan
+ * kost niets zolang er niet gerekend wordt.
+ */
+export function zetSolverLogOpvanger(f: NonlinearSolverOptions["onLog"]): void {
+  actieveLogOpvanger = f;
+}
+
+/**
+ * De opvanger met een vast voorvoegsel — het belastinggeval of de combinatie.
+ * Zonder dat staan de assemblies van vier gevallen onder elkaar zonder dat te
+ * zien is welke bij welk hoort, en juist bij een divergentie is dát de vraag.
+ */
+function logMet(voorvoegsel: string): NonlinearSolverOptions["onLog"] {
+  const opvanger = actieveLogOpvanger;
+  if (!opvanger) return undefined;
+  return (r) => opvanger({ ...r, tekst: `[${voorvoegsel}] ${r.tekst}` });
+}
+
 // ── Public engine functions ─────────────────────────────────────────────────
 
 export function solve(input: SolverInput): SolverResult {
@@ -1554,6 +1597,7 @@ export function solveAllCases(input: MultiInput): MultiLcResult {
     const engineResult = solveNonlinear(mesh, {
       analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
       geometricNonlinear: false,
+      onLog: logMet(c.name),
     });
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
     perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer));
@@ -1693,27 +1737,31 @@ export function solveCombinationSecondOrder(
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
   );
 
-  // Platen + 2e orde is nog niet ondersteund: solveMixed is puur lineair
-  // (geen geometrische membraanstijfheid, geen koppeling met het P-Δ-pad —
-  // zie backlog platenplan). Lineair rekenen en het "2e orde" noemen zou
-  // misleiden, dus een duidelijke fout via de bestaande engine-foutroute.
-  if (plateInfo.length > 0) {
-    throw new Error(
-      `2e-orde-berekening met platen wordt nog niet ondersteund — schakel ` +
-      `"2e orde (P-Δ)" uit of verwijder de platen.`);
-  }
-
   // Geen geactiveerde lasten in deze combinatie? → aanroeper superponeert (nul).
   if (!meshHeeftLasten(mesh)) return null;
 
+  // Wandschijven in het model? Dan het gemengde pad, dat sinds de
+  // membraan-Kg óók geometrisch niet-lineair kan. De staven houden hun
+  // bestaande P-Δ; de schijven krijgen hun initiële-spanningsstijfheid erbij
+  // (zie `assembleGeometricStiffnessMixed` in NonlinearSolver.ts).
+  //
+  // Let op wat dit NIET is: uitknikken van een schijf LOODRECHT op het vlak.
+  // Dit model heeft per knoop u, v en θ en geen verplaatsing uit het vlak, dus
+  // die vorm van instabiliteit bestaat hier niet en kan ook niet gevonden
+  // worden. Wat er wél in zit is het in-vlak effect.
+  const heeftPlaten = plateInfo.length > 0;
+
   try {
     const engineResult = solveNonlinear(mesh, {
-      analysisType: "frame",
+      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
       geometricNonlinear: true,
       // Geïtereerde P-Δ convergeert met ratio ≈ P/P_kr per iteratie; 100
       // iteraties dekt tot P ≈ 0.87·P_kr bij tol 1e-6. Daarboven → nette fout.
       maxIterations: 100,
       tolerance: 1e-6,
+      // De combinatienaam erbij. Juist hier telt dat: divergeert er één
+      // combinatie, dan is het log het enige wat vertelt wélke.
+      onLog: logMet(combo.name),
     });
     // beamSegments/segmentUitvoer gaan hier MEE. Zonder die twee zou een
     // gesplitste staaf (staafpuntlast, of straks een segmentindeling) in het
@@ -1721,9 +1769,14 @@ export function solveCombinationSecondOrder(
     // 1e-orde-pad rijgt de deelstukken al wél aaneen. Dit is dus geen extra
     // vrijheid maar het wegwerken van een verschil tussen de twee paden; op
     // modellen zónder splitsing is beide Maps leeg en verandert er niets.
+    // Met schijven erbij horen `plateInfo` en de knoopindex van het gemengde
+    // stelsel mee — anders komen de schijfspanningen niet in het resultaat en
+    // toont het canvas na een 2e-orde-som een leeg schijfbeeld. Zonder schijven
+    // blijven beide `undefined` en is dit bit-identiek aan voorheen.
+    const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
     return convertResult(
       mesh, engineResult, nodeIdMap, beamIdMap, input.supports,
-      undefined, undefined, beamSegments, segmentUitvoer,
+      heeftPlaten ? plateInfo : undefined, nodeIndex, beamSegments, segmentUitvoer,
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

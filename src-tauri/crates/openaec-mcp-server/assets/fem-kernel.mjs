@@ -1430,6 +1430,65 @@ function calculateTriangleStiffnessExpanded(n1, n2, n3, material, thickness, ana
   }
   return Ke9;
 }
+function calculateTriangleGeometricStiffness(n1, n2, n3, stress, thickness) {
+  const area = calculateTriangleArea(n1, n2, n3);
+  if (area < 1e-12) {
+    throw new Error("Triangle has zero or negative area");
+  }
+  const factor = 1 / (2 * area);
+  const dNdx = [
+    factor * (n2.y - n3.y),
+    factor * (n3.y - n1.y),
+    factor * (n1.y - n2.y)
+  ];
+  const dNdy = [
+    factor * (n3.x - n2.x),
+    factor * (n1.x - n3.x),
+    factor * (n2.x - n1.x)
+  ];
+  const G3 = new Matrix(4, 6);
+  for (let i = 0; i < 3; i++) {
+    G3.set(0, 2 * i, dNdx[i]);
+    G3.set(1, 2 * i, dNdy[i]);
+    G3.set(2, 2 * i + 1, dNdx[i]);
+    G3.set(3, 2 * i + 1, dNdy[i]);
+  }
+  return multiplyGtSG(G3, stress, thickness * area, 6);
+}
+function multiplyGtSG(G3, stress, c, n) {
+  const { sigmaX, sigmaY, tauXY } = stress;
+  const SG = new Matrix(4, n);
+  for (let j = 0; j < n; j++) {
+    const gux = G3.get(0, j), guy = G3.get(1, j);
+    const gvx = G3.get(2, j), gvy = G3.get(3, j);
+    SG.set(0, j, sigmaX * gux + tauXY * guy);
+    SG.set(1, j, tauXY * gux + sigmaY * guy);
+    SG.set(2, j, sigmaX * gvx + tauXY * gvy);
+    SG.set(3, j, tauXY * gvx + sigmaY * gvy);
+  }
+  const Kg = new Matrix(n, n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += G3.get(k, i) * SG.get(k, j);
+      Kg.set(i, j, c * s);
+    }
+  }
+  return Kg;
+}
+function membraneGeometricFromGradients(G3, stress, c, n) {
+  return multiplyGtSG(G3, stress, c, n);
+}
+function expandTriangleGeometricStiffness(Kg6) {
+  const Kg9 = new Matrix(9, 9);
+  const mapping = [0, 1, 3, 4, 6, 7];
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      Kg9.set(mapping[i], mapping[j], Kg6.get(i, j));
+    }
+  }
+  return Kg9;
+}
 
 // src/core/fem/Quad4.ts
 var GP = 1 / Math.sqrt(3);
@@ -1541,6 +1600,47 @@ function calculateQuadStiffnessExpanded(n1, n2, n3, n4, material, thickness, ana
     }
   }
   return Ke12;
+}
+function calculateQuadGeometricStiffness(n1, n2, n3, n4, stress, thickness) {
+  const x = [n1.x, n2.x, n3.x, n4.x];
+  const y = [n1.y, n2.y, n3.y, n4.y];
+  const Kg = new Matrix(8, 8);
+  for (const gp of GAUSS_POINTS) {
+    const { dNdxi, dNdeta } = shapeFunctionDerivatives(gp.xi, gp.eta);
+    const { detJ, invJ } = jacobian(gp.xi, gp.eta, x, y);
+    if (detJ <= 0) {
+      throw new Error("Quad element has non-positive Jacobian determinant (bad element shape)");
+    }
+    const G3 = new Matrix(4, 8);
+    for (let i = 0; i < 4; i++) {
+      const dNdx = invJ[0][0] * dNdxi[i] + invJ[0][1] * dNdeta[i];
+      const dNdy = invJ[1][0] * dNdxi[i] + invJ[1][1] * dNdeta[i];
+      G3.set(0, 2 * i, dNdx);
+      G3.set(1, 2 * i, dNdy);
+      G3.set(2, 2 * i + 1, dNdx);
+      G3.set(3, 2 * i + 1, dNdy);
+    }
+    const bijdrage = membraneGeometricFromGradients(
+      G3,
+      stress,
+      gp.w * thickness * detJ,
+      8
+    );
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) Kg.addAt(i, j, bijdrage.get(i, j));
+    }
+  }
+  return Kg;
+}
+function expandQuadGeometricStiffness(Kg8) {
+  const Kg12 = new Matrix(12, 12);
+  const mapping = [0, 1, 3, 4, 6, 7, 9, 10];
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 8; j++) {
+      Kg12.set(mapping[i], mapping[j], Kg8.get(i, j));
+    }
+  }
+  return Kg12;
 }
 
 // src/core/fem/DKT.ts
@@ -3380,6 +3480,14 @@ function solveNonlinear(mesh, options = {}) {
   const numDofs = mesh.getNodeCount() * 3;
   let displacements = new Array(numDofs).fill(0);
   let axialForces = /* @__PURE__ */ new Map();
+  const log = (regel) => {
+    opts.onLog?.(regel);
+  };
+  const soortAnalyse = opts.materialNonlinear ? opts.geometricNonlinear ? "fysisch \xE9n geometrisch niet-lineair" : "fysisch niet-lineair" : opts.geometricNonlinear ? "geometrisch niet-lineair (P-\u0394)" : "lineair";
+  log({
+    soort: "info",
+    tekst: `Model: ${mesh.getNodeCount()} knopen, ${mesh.beamElements.size} staven, ${numDofs} vrijheidsgraden \u2014 ${soortAnalyse}`
+  });
   let hasAxialConstraints = false;
   for (const beam of mesh.beamElements.values()) {
     const { start, end } = getConnectionTypes(beam);
@@ -3408,8 +3516,11 @@ function solveNonlinear(mesh, options = {}) {
       return solveWithAxialConstraints(mesh, F, opts);
     }
     const K2 = assembleGlobalStiffnessWithGeometric(mesh, axialForces, false);
+    log({ soort: "info", tekst: `Stijfheidsmatrix geassembleerd (${K2.rows}\xD7${K2.cols})` });
     const { K: Kbc, F: Fbc } = applyBoundaryConditions(K2, F, mesh);
+    log({ soort: "info", tekst: "Randvoorwaarden toegepast" });
     displacements = solveLinearSystem2(Kbc, Fbc);
+    log({ soort: "info", tekst: "Stelsel opgelost \u2014 \xE9\xE9n keer, want lineair" });
     const { beamForces: beamForces2, axialForces: newAxial } = calculateAllInternalForces(mesh, displacements);
     axialForces = newAxial;
     const reactions2 = K2.multiplyVector(displacements);
@@ -3471,12 +3582,25 @@ function solveNonlinear(mesh, options = {}) {
       }
       const incrNorm = Math.sqrt(deltaU.reduce((s, d) => s + d * d, 0));
       const dispNorm = Math.sqrt(displacements.reduce((s, d) => s + d * d, 0));
+      log({
+        soort: "iteratie",
+        laststap: step,
+        iteratie: iter + 1,
+        incrementNorm: incrNorm,
+        verplaatsingsNorm: dispNorm,
+        tekst: `\u2016\u0394u\u2016 = ${incrNorm.toExponential(3)}, \u2016u\u2016 = ${dispNorm.toExponential(3)}`
+      });
       if (!Number.isFinite(incrNorm) || !Number.isFinite(dispNorm)) {
+        log({ soort: "fout", tekst: "De normen zijn niet-eindig \u2014 het stelsel loopt weg" });
         if (opts.geometricNonlinear) throw new Error(DIVERGENCE_MSG);
         break;
       }
       if (incrNorm <= opts.tolerance * Math.max(dispNorm, 1e-30)) {
         converged = true;
+        log({
+          soort: "info",
+          tekst: `Laststap ${step} geconvergeerd in ${iter + 1} iteratie(s) (tolerantie ${opts.tolerance.toExponential(0)})`
+        });
         break;
       }
       if (iter >= 1 && incrNorm > prevIncrNorm) {
@@ -3485,9 +3609,19 @@ function solveNonlinear(mesh, options = {}) {
         growthCount = 0;
       }
       if (growthCount >= 3 && opts.geometricNonlinear) {
+        log({
+          soort: "fout",
+          tekst: "De increment-norm groeit drie iteraties op rij \u2014 de last ligt op of boven de kniklast"
+        });
         throw new Error(DIVERGENCE_MSG);
       }
       prevIncrNorm = incrNorm;
+    }
+    if (!converged && !opts.geometricNonlinear) {
+      log({
+        soort: "waarschuwing",
+        tekst: `Laststap ${step} bereikte ${opts.maxIterations} iteraties zonder te convergeren; de laatste stand wordt aangehouden`
+      });
     }
     if (!converged && opts.geometricNonlinear) {
       throw new Error(
@@ -3513,11 +3647,17 @@ function solveNonlinear(mesh, options = {}) {
   }
   if (opts.geometricNonlinear) {
     const { K: Kstab } = applyBoundaryConditions(K, F, mesh);
-    if (countNonPositivePivots(Kstab) > 0) {
+    const nietPositief = countNonPositivePivots(Kstab);
+    if (nietPositief > 0) {
+      log({
+        soort: "fout",
+        tekst: `Stabiliteitscontrole: ${nietPositief} niet-positieve pivot(s) in K = Ke + Kg \u2014 de matrix is indefiniet en de oplossing fysisch betekenisloos`
+      });
       throw new Error(
         "Second-order (P-Delta) analysis is unstable \u2014 the applied load is at or above the critical (buckling) load"
       );
     }
+    log({ soort: "info", tekst: "Stabiliteitscontrole: K = Ke + Kg is positief definiet" });
   }
   const reactions = K.multiplyVector(displacements);
   for (let i = 0; i < reactions.length; i++) {
@@ -3802,9 +3942,89 @@ function solvePlateOrPlane(mesh, opts) {
     stressRanges: ranges
   };
 }
-function solveMixed(mesh, _opts) {
+function assembleGeometricStiffnessMixed(mesh, displacements, nodeIdToIndex, numDofs) {
+  const Kg = new Matrix(numDofs, numDofs);
+  for (const beam of mesh.beamElements.values()) {
+    const nodes = mesh.getBeamElementNodes(beam);
+    if (!nodes) continue;
+    const material = mesh.getMaterial(beam.materialId);
+    if (!material) continue;
+    const [n1, n2] = nodes;
+    const idx1 = nodeIdToIndex.get(n1.id);
+    const idx2 = nodeIdToIndex.get(n2.id);
+    if (idx1 === void 0 || idx2 === void 0) continue;
+    const L = calculateBeamLength(n1, n2);
+    if (L < 1e-10) continue;
+    const angle = calculateBeamAngle(n1, n2);
+    const dofIndices = [
+      idx1 * 3,
+      idx1 * 3 + 1,
+      idx1 * 3 + 2,
+      idx2 * 3,
+      idx2 * 3 + 1,
+      idx2 * 3 + 2
+    ];
+    const T = createTransformationMatrix(angle);
+    const ug = dofIndices.map((d) => displacements[d]);
+    const ul = T.multiplyVector(ug);
+    const N = material.E * beam.section.A / L * (ul[3] - ul[0]);
+    const KgLokaal = calculateGeometricStiffness(L, N);
+    const KgGlobaal = T.transpose().multiply(KgLokaal.multiply(T));
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) {
+        Kg.addAt(dofIndices[i], dofIndices[j], KgGlobaal.get(i, j));
+      }
+    }
+  }
+  for (const element of mesh.elements.values()) {
+    const nodes = mesh.getElementNodes(element);
+    if (nodes.length < 3 || nodes.length > 4) continue;
+    const material = mesh.getMaterial(element.materialId);
+    if (!material) continue;
+    const dofIndices = [];
+    const elemDisp = [];
+    let compleet = true;
+    for (const node of nodes) {
+      const idx = nodeIdToIndex.get(node.id);
+      if (idx === void 0) {
+        compleet = false;
+        break;
+      }
+      dofIndices.push(idx * 3, idx * 3 + 1, idx * 3 + 2);
+      elemDisp.push(displacements[idx * 3], displacements[idx * 3 + 1]);
+    }
+    if (!compleet) continue;
+    try {
+      if (nodes.length === 4) {
+        const [n1, n2, n3, n4] = nodes;
+        const s = calculateQuadStress(n1, n2, n3, n4, material, elemDisp, "plane_stress");
+        const Kg12 = expandQuadGeometricStiffness(
+          calculateQuadGeometricStiffness(n1, n2, n3, n4, s, element.thickness)
+        );
+        for (let i = 0; i < 12; i++) {
+          for (let j = 0; j < 12; j++) Kg.addAt(dofIndices[i], dofIndices[j], Kg12.get(i, j));
+        }
+      } else {
+        const [n1, n2, n3] = nodes;
+        const s = calculateElementStress(n1, n2, n3, material, elemDisp, "plane_stress");
+        const Kg9 = expandTriangleGeometricStiffness(
+          calculateTriangleGeometricStiffness(n1, n2, n3, s, element.thickness)
+        );
+        for (let i = 0; i < 9; i++) {
+          for (let j = 0; j < 9; j++) Kg.addAt(dofIndices[i], dofIndices[j], Kg9.get(i, j));
+        }
+      }
+    } catch {
+    }
+  }
+  return Kg;
+}
+function solveMixed(mesh, opts) {
   const analysisType = "mixed_beam_plate";
   const dofsPerNode = 3;
+  const log = (regel) => {
+    opts.onLog?.(regel);
+  };
   if (mesh.elements.size < 1 && mesh.getBeamCount() < 1) {
     throw new Error("Mixed analysis requires at least one plate or beam element");
   }
@@ -3835,15 +4055,122 @@ function solveMixed(mesh, _opts) {
   if (!hasLoads) {
     throw new Error("No loads applied - add forces to nodes or elements");
   }
-  const Kmod = K.clone();
-  const Fmod = [...F];
-  const penalty = 1e20;
-  for (const dof of constrainedDofs) {
-    Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
-    Fmod[dof] = 0;
+  const losOp = (Kt) => {
+    const Kmod = Kt.clone();
+    const Fmod = [...F];
+    const penalty = 1e20;
+    for (const dof of constrainedDofs) {
+      Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
+      Fmod[dof] = 0;
+    }
+    return solveLinearSystem2(Kmod, Fmod);
+  };
+  const numDofsMixed = K.rows;
+  log({
+    soort: "info",
+    tekst: `Gemengd model: ${mesh.beamElements.size} staven en ${mesh.elements.size} schijfelementen, ${numDofsMixed} vrijheidsgraden` + (opts.geometricNonlinear ? " \u2014 geometrisch niet-lineair (P-\u0394)" : " \u2014 lineair")
+  });
+  let displacements = losOp(K);
+  let Kreactie = K;
+  if (opts.geometricNonlinear) {
+    let vorigeNorm = Infinity;
+    let groei = 0;
+    let geconvergeerd = false;
+    for (let iter = 0; iter < opts.maxIterations; iter++) {
+      const Kg2 = assembleGeometricStiffnessMixed(
+        mesh,
+        displacements,
+        nodeIdToIndex,
+        numDofsMixed
+      );
+      const Kt2 = K.clone();
+      for (let i = 0; i < numDofsMixed; i++) {
+        for (let j = 0; j < numDofsMixed; j++) Kt2.addAt(i, j, Kg2.get(i, j));
+      }
+      let nieuw;
+      try {
+        nieuw = losOp(Kt2);
+      } catch {
+        log({ soort: "fout", tekst: "Het stelsel K = Ke + Kg is niet oplosbaar" });
+        throw new Error(
+          "Second-order (P-Delta) analysis is unstable \u2014 the applied load is at or above the critical (buckling) load"
+        );
+      }
+      let som = 0, somU = 0;
+      for (let i = 0; i < numDofsMixed; i++) {
+        const d = nieuw[i] - displacements[i];
+        som += d * d;
+        somU += nieuw[i] * nieuw[i];
+      }
+      const incrNorm = Math.sqrt(som);
+      const dispNorm = Math.sqrt(somU);
+      displacements = nieuw;
+      log({
+        soort: "iteratie",
+        laststap: 1,
+        iteratie: iter + 1,
+        incrementNorm: incrNorm,
+        verplaatsingsNorm: dispNorm,
+        tekst: `\u2016\u0394u\u2016 = ${incrNorm.toExponential(3)}, \u2016u\u2016 = ${dispNorm.toExponential(3)}`
+      });
+      if (!Number.isFinite(incrNorm) || !Number.isFinite(dispNorm)) {
+        log({ soort: "fout", tekst: "De normen zijn niet-eindig \u2014 het stelsel loopt weg" });
+        throw new Error(
+          "Second-order (P-Delta) analysis did not converge \u2014 the applied load is at or above the critical (buckling) load"
+        );
+      }
+      if (incrNorm <= opts.tolerance * Math.max(dispNorm, 1e-30)) {
+        geconvergeerd = true;
+        log({
+          soort: "info",
+          tekst: `Geconvergeerd in ${iter + 1} iteratie(s) (tolerantie ${opts.tolerance.toExponential(0)})`
+        });
+        break;
+      }
+      if (iter >= 1 && incrNorm > vorigeNorm) groei++;
+      else groei = 0;
+      if (groei >= 3) {
+        log({
+          soort: "fout",
+          tekst: "De increment-norm groeit drie iteraties op rij \u2014 de last ligt op of boven de kniklast"
+        });
+        throw new Error(
+          "Second-order (P-Delta) analysis did not converge \u2014 the applied load is at or above the critical (buckling) load"
+        );
+      }
+      vorigeNorm = incrNorm;
+    }
+    if (!geconvergeerd) {
+      throw new Error(
+        `Second-order (P-Delta) analysis did not converge within ${opts.maxIterations} iterations \u2014 the load is at, above, or very close to the critical (buckling) load`
+      );
+    }
+    const Kg = assembleGeometricStiffnessMixed(
+      mesh,
+      displacements,
+      nodeIdToIndex,
+      numDofsMixed
+    );
+    const Kt = K.clone();
+    for (let i = 0; i < numDofsMixed; i++) {
+      for (let j = 0; j < numDofsMixed; j++) Kt.addAt(i, j, Kg.get(i, j));
+    }
+    Kreactie = Kt;
+    const Kstab = Kt.clone();
+    for (const dof of constrainedDofs) Kstab.set(dof, dof, Kstab.get(dof, dof) + 1e20);
+    const nietPositief = countNonPositivePivots(Kstab);
+    if (nietPositief > 0) {
+      log({
+        soort: "fout",
+        tekst: `Stabiliteitscontrole: ${nietPositief} niet-positieve pivot(s) in K = Ke + Kg \u2014 de matrix is indefiniet en de oplossing fysisch betekenisloos`
+      });
+      throw new Error(
+        "Second-order (P-Delta) analysis is unstable \u2014 the applied load is at or above the critical (buckling) load"
+      );
+    }
+    log({ soort: "info", tekst: "Stabiliteitscontrole: K = Ke + Kg is positief definiet" });
   }
-  const displacements = solveLinearSystem2(Kmod, Fmod);
-  const reactions = K.multiplyVector(displacements);
+  const reactions = Kreactie.multiplyVector(displacements);
   for (let i = 0; i < reactions.length; i++) {
     reactions[i] = reactions[i] - F[i];
   }
@@ -5339,6 +5666,15 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
     ...plateResults ? { plateElements: plateResults } : {}
   };
 }
+var actieveLogOpvanger;
+function zetSolverLogOpvanger(f) {
+  actieveLogOpvanger = f;
+}
+function logMet(voorvoegsel) {
+  const opvanger = actieveLogOpvanger;
+  if (!opvanger) return void 0;
+  return (r) => opvanger({ ...r, tekst: `[${voorvoegsel}] ${r.tekst}` });
+}
 function solve(input) {
   const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input);
   const heeftPlaten = plateInfo.length > 0;
@@ -5357,7 +5693,8 @@ function solveAllCases(input) {
     const heeftPlaten = plateInfo.length > 0;
     const engineResult = solveNonlinear(mesh, {
       analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
-      geometricNonlinear: false
+      geometricNonlinear: false,
+      onLog: logMet(c.name)
     });
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
     perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer));
@@ -5400,29 +5737,29 @@ function solveCombinationSecondOrder(input, combo) {
     input,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0
   );
-  if (plateInfo.length > 0) {
-    throw new Error(
-      `2e-orde-berekening met platen wordt nog niet ondersteund \u2014 schakel "2e orde (P-\u0394)" uit of verwijder de platen.`
-    );
-  }
   if (!meshHeeftLasten(mesh)) return null;
+  const heeftPlaten = plateInfo.length > 0;
   try {
     const engineResult = solveNonlinear(mesh, {
-      analysisType: "frame",
+      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
       geometricNonlinear: true,
       // Geïtereerde P-Δ convergeert met ratio ≈ P/P_kr per iteratie; 100
       // iteraties dekt tot P ≈ 0.87·P_kr bij tol 1e-6. Daarboven → nette fout.
       maxIterations: 100,
-      tolerance: 1e-6
+      tolerance: 1e-6,
+      // De combinatienaam erbij. Juist hier telt dat: divergeert er één
+      // combinatie, dan is het log het enige wat vertelt wélke.
+      onLog: logMet(combo.name)
     });
+    const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
     return convertResult(
       mesh,
       engineResult,
       nodeIdMap,
       beamIdMap,
       input.supports,
-      void 0,
-      void 0,
+      heeftPlaten ? plateInfo : void 0,
+      nodeIndex,
       beamSegments,
       segmentUitvoer
     );
@@ -7852,7 +8189,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.4";
+var version = "0.3.5";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
@@ -10347,5 +10684,6 @@ export {
   verwerkVerzoek,
   withPlateDefaults,
   zetCombinatieResultaat,
+  zetSolverLogOpvanger,
   zijdelingseVerplaatsingMm
 };

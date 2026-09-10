@@ -175,3 +175,138 @@ export function calculateTriangleStiffnessExpanded(
 
   return Ke9;
 }
+
+/**
+ * De in-vlak spanningstoestand van een membraanelement, in Pa.
+ * Dezelfde drie componenten die `calculateElementStress` teruggeeft.
+ */
+export interface IMembraneStress {
+  sigmaX: number;
+  sigmaY: number;
+  tauXY: number;
+}
+
+/**
+ * Geometrische (initiële-spannings)stijfheid van een CST-membraan — 6×6,
+ * DOF-volgorde [u1,v1, u2,v2, u3,v3].
+ *
+ * WAT DIT IS
+ * Kg = ∫ Gᵀ·S·G · t dA, met G de gradiënten van u en v en S de heersende
+ * spanningstoestand. Het is de tweede-ordeterm van de rekenergie: een schijf
+ * die al onder druk staat, verzet zich mínder tegen een volgende vervorming
+ * (en onder trek juist méér). Voor een raamwerkstaaf doet
+ * `calculateGeometricStiffness` in NonlinearSolver.ts precies hetzelfde met N.
+ *
+ * WAAROM DIT VOOR EEN CST EXACT IS
+ * De vormfuncties van een driehoek met drie knopen zijn lineair, dus hun
+ * gradiënten zijn over het hele element constant — net als de spanning die de
+ * CST oplevert. De integrand is daarmee constant en de integraal is niets meer
+ * dan vermenigvuldigen met t·A. Er wordt hier dus niets benaderd; bij de
+ * vierhoek ligt dat anders (zie `calculateQuadGeometricStiffness`).
+ *
+ * WAT DIT NIET IS
+ * Geen plaatknik. Dit model is vlak: de knopen hebben u, v en θ en géén
+ * verplaatsing loodrecht op het vlak. Uitknikken uit het vlak — de klassieke
+ * plaatstabiliteit — heeft die vrijheidsgraad nodig en kan hier per definitie
+ * niet worden gevonden. Wat hier staat is het in-vlak effect, en dat is ook
+ * precies wat het raamwerk eromheen nodig heeft.
+ */
+export function calculateTriangleGeometricStiffness(
+  n1: INode, n2: INode, n3: INode,
+  stress: IMembraneStress,
+  thickness: number
+): Matrix {
+  const area = calculateTriangleArea(n1, n2, n3);
+  if (area < 1e-12) {
+    throw new Error('Triangle has zero or negative area');
+  }
+
+  // Dezelfde β en γ als in getStrainDisplacementMatrix: ∂N_i/∂x = β_i/(2A),
+  // ∂N_i/∂y = γ_i/(2A).
+  const factor = 1 / (2 * area);
+  const dNdx = [
+    factor * (n2.y - n3.y),
+    factor * (n3.y - n1.y),
+    factor * (n1.y - n2.y),
+  ];
+  const dNdy = [
+    factor * (n3.x - n2.x),
+    factor * (n1.x - n3.x),
+    factor * (n2.x - n1.x),
+  ];
+
+  // G (4×6): de vier gradiënten ∂u/∂x, ∂u/∂y, ∂v/∂x, ∂v/∂y.
+  const G = new Matrix(4, 6);
+  for (let i = 0; i < 3; i++) {
+    G.set(0, 2 * i, dNdx[i]);      // ∂u/∂x
+    G.set(1, 2 * i, dNdy[i]);      // ∂u/∂y
+    G.set(2, 2 * i + 1, dNdx[i]);  // ∂v/∂x
+    G.set(3, 2 * i + 1, dNdy[i]);  // ∂v/∂y
+  }
+
+  return multiplyGtSG(G, stress, thickness * area, 6);
+}
+
+/**
+ * Kg = c · Gᵀ·S·G, met S tweemaal het 2×2 spanningsblok op de diagonaal —
+ * één blok voor de u-gradiënten en één voor de v-gradiënten.
+ *
+ * Apart van beide elementen omdat de driehoek en de vierhoek alleen in hun
+ * G verschillen; de rest van de som is identiek, en tweemaal uitgeschreven
+ * zou tweemaal fout kunnen gaan.
+ */
+function multiplyGtSG(
+  G: Matrix,
+  stress: IMembraneStress,
+  c: number,
+  n: number
+): Matrix {
+  const { sigmaX, sigmaY, tauXY } = stress;
+  // S·G, rij voor rij: de rijen 0/1 horen bij u, de rijen 2/3 bij v.
+  const SG = new Matrix(4, n);
+  for (let j = 0; j < n; j++) {
+    const gux = G.get(0, j), guy = G.get(1, j);
+    const gvx = G.get(2, j), gvy = G.get(3, j);
+    SG.set(0, j, sigmaX * gux + tauXY * guy);
+    SG.set(1, j, tauXY * gux + sigmaY * guy);
+    SG.set(2, j, sigmaX * gvx + tauXY * gvy);
+    SG.set(3, j, tauXY * gvx + sigmaY * gvy);
+  }
+
+  const Kg = new Matrix(n, n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += G.get(k, i) * SG.get(k, j);
+      Kg.set(i, j, c * s);
+    }
+  }
+  return Kg;
+}
+
+/** Zoals `multiplyGtSG`, maar bruikbaar vanuit Quad4.ts. */
+export function membraneGeometricFromGradients(
+  G: Matrix,
+  stress: IMembraneStress,
+  c: number,
+  n: number
+): Matrix {
+  return multiplyGtSG(G, stress, c, n);
+}
+
+/**
+ * Breid een 6×6 membraan-Kg uit naar 9×9 door nulrijen/-kolommen voor de
+ * θ-vrijheidsgraden — dezelfde afbeelding als
+ * `calculateTriangleStiffnessExpanded`, zodat beide matrices op precies
+ * dezelfde plekken in het stelsel terechtkomen.
+ */
+export function expandTriangleGeometricStiffness(Kg6: Matrix): Matrix {
+  const Kg9 = new Matrix(9, 9);
+  const mapping = [0, 1, 3, 4, 6, 7];
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      Kg9.set(mapping[i], mapping[j], Kg6.get(i, j));
+    }
+  }
+  return Kg9;
+}
