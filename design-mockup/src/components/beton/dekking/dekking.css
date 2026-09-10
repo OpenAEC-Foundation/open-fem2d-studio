@@ -273,3 +273,16 @@
   margin-top: 6px;
   max-width: 720px;
 }
+
+/* Klikbare rijlabels in de doorsnede, en de rij-invoer die erbij hoort. */
+.beton-rijlabel-klikbaar:hover { text-decoration: underline; }
+.dek-rijbewerker {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin: 6px 0 4px; padding: 6px 8px;
+  border: 1px solid var(--theme-border, #ddd); border-radius: 4px;
+  background: var(--theme-surface-2, #fafafa); font-size: 12px;
+}
+.dek-rijbewerker-titel { font-weight: 600; width: 100%; }
+.dek-rijbewerker label { display: inline-flex; align-items: center; gap: 4px; }
+.dek-rijbewerker input[type="number"] { width: 56px; }
+.dek-rijbewerker-fout { color: var(--theme-danger, #b91c1c); }

@@ -107,6 +107,11 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
         // Alleen aanwezig als er werkelijk zonegrenzen zijn; een leeg veld zou
         // de invoer van een model zonder beton onnodig veranderen.
         ...(sneden && sneden.length > 0 ? { extraSneden: sneden } : {}),
+        // Bedding: k [kN/m³] · b [mm] → lijnstijfheid in N/mm². 1 kN/m³ =
+        // 1e3 N / 1e9 mm³ = 1e-6 N/mm³. Alleen aanwezig als er een bedding is.
+        ...(b.bedding && b.bedding.k > 0 && b.bedding.b > 0
+          ? { bedding: { kLijn: b.bedding.k * 1e-6 * b.bedding.b } }
+          : {}),
       };
     }),
     supports: model.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),

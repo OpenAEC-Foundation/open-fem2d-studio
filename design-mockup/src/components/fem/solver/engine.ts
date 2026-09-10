@@ -577,6 +577,17 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     for (const t of b.extraSneden ?? []) {
       if (Number.isFinite(t)) voegSnedeToe(b.id, t);
     }
+    // Een staaf op bedding wordt fijn geknipt: de veren zitten alleen op de
+    // knopen, dus de indeling bepaalt hoe goed de bedding wordt gevolgd.
+    if (b.bedding) {
+      const nA = nodeById.get(b.from), nB = nodeById.get(b.to);
+      if (nA && nB) {
+        const L_mm = Math.hypot(nB.x - nA.x, nB.z - nA.z);
+        for (const t of beddingSplitsFracties(L_mm, b.E ?? 210000, b.I ?? 1.673e7, b.bedding.kLijn)) {
+          voegSnedeToe(b.id, t);
+        }
+      }
+    }
   }
 
   // PLATEN BLIJVEN BUITEN SCHOT. Zodra het model ook maar één plaat bevat,
@@ -720,6 +731,19 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       };
     };
 
+    /**
+     * De bedding van de kern op één mesh-element: `k` in N/m² met b = 1, dus
+     * de lijnstijfheid k·b uit de invoer (N/mm²) maal 1e6. De kern zet er
+     * veren kL/2 op beide knopen van het element; een tussenknoop krijgt zo
+     * van beide buren samen kL — de tributaire lengte.
+     */
+    const zetBedding = (meshId: number): void => {
+      if (!b.bedding) return;
+      mesh.updateBeamElement(meshId, {
+        onGrade: { enabled: true, k: b.bedding.kLijn * 1e6, b: 1 },
+      });
+    };
+
     if (splitsT.length === 0) {
       // Ongesplitst — het bestaande pad (bit-identiek zonder platen).
       const d = doorsnedeVoor(0, 1);
@@ -727,6 +751,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       if (!meshBeam) continue;
       beamIdMap.set(b.id, meshBeam.id);
       pasReleasesToe(meshBeam.id, b, true, true);
+      zetBedding(meshBeam.id);
       beamKnoopPerFractie.set(b.id, [
         { t: 0, meshNodeId: fromId }, { t: 1, meshNodeId: toId },
       ]);
@@ -757,6 +782,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
         const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, d.sec);
         if (!mb) continue;
         pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
+        zetBedding(mb.id);
         segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
         stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex });
       }
@@ -1523,6 +1549,37 @@ function convertResult(
     displacements, reactions, elements, maxDisplacement: maxDisp,
     ...(plateResults ? { plateElements: plateResults } : {}),
   };
+}
+
+// ── Staaf op bedding: de indeling ───────────────────────────────────────────
+
+/**
+ * De splitsfracties (0 < t < 1) waarmee een staaf op bedding wordt geknipt.
+ *
+ * De kern legt de bedding als veren op de KNOPEN (kL/2 per element-einde).
+ * Hoe goed dat de continue bedding volgt hangt dus af van de elementlengte,
+ * afgezet tegen de karakteristieke lengte van de ligger op bedding:
+ *
+ *     λ = (k·b / (4·E·I))^¼        [1/mm]
+ *
+ * Een puntlast klinkt uit over ongeveer π/λ; om die golf te volgen hoort een
+ * element niet langer te zijn dan ~0,15/λ. Referentie R26 (SSLL15) laat de
+ * convergentie van deze knoopveren zien: 2 → 8 → … → 512 elementen. Hier:
+ * ten minste 8 elementen, en verder zo veel als 0,15/λ vraagt, met een
+ * bovengrens van 200 — een staaf van 20 m op stijve grond wordt dan
+ * 100 mm-elementen, en dat is nog steeds een klein stelsel.
+ *
+ * Geëxporteerd zodat een test dezelfde indeling kan nabouwen met losse
+ * Z-veren en aantonen dat bedding en handveren hetzelfde stelsel geven.
+ */
+export function beddingSplitsFracties(L_mm: number, E_nmm2: number, I_mm4: number, kLijn: number): number[] {
+  if (!(L_mm > 0) || !(kLijn > 0) || !(E_nmm2 > 0) || !(I_mm4 > 0)) return [];
+  const lambda = Math.pow(kLijn / (4 * E_nmm2 * I_mm4), 0.25);   // 1/mm
+  const maxLengte = 0.15 / lambda;                                // mm
+  const n = Math.min(200, Math.max(8, Math.ceil(L_mm / maxLengte)));
+  const uit: number[] = [];
+  for (let i = 1; i < n; i++) uit.push(i / n);
+  return uit;
 }
 
 // ── Solverlogboek ───────────────────────────────────────────────────────────

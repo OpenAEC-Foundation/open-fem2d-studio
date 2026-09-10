@@ -85,6 +85,20 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     endRy:   beam.releases?.endRy   ?? false,
   });
 
+  // ── Staaf op bedding ─────────────────────────────────────────────────────
+  // Aan/uit plus k en b als tekst, zodat een leeg veld leeg kan blijven tot
+  // OK; pas bij OK wordt er een `bedding` gezet of weggehaald.
+  const [beddingAan, setBeddingAan] = useState(!!beam.bedding);
+  const [beddingKStr, setBeddingKStr] = useState(beam.bedding?.k?.toString() ?? "50000");
+  const [beddingBStr, setBeddingBStr] = useState(beam.bedding?.b?.toString() ?? "");
+  const buildBedding = (): Beam["bedding"] => {
+    if (!beddingAan) return undefined;
+    const k = Number(beddingKStr.replace(",", "."));
+    const b = Number(beddingBStr.replace(",", "."));
+    if (!(k > 0) || !(b > 0)) return undefined;
+    return { k, b };
+  };
+
   // ── Toetsconfiguratie (Beam.checkConfig) ─────────────────────────────────
   // Getalvelden als string zodat "leeg" = builder-default kan blijven.
   const cfg0 = beam.checkConfig ?? {};
@@ -203,7 +217,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   };
 
   const handleConfirm = () => {
-    onUpdate?.({ material, profile, releases, checkConfig: buildCheckConfig() });
+    onUpdate?.({ material, profile, releases, checkConfig: buildCheckConfig(), bedding: buildBedding() });
     onClose();
   };
 
@@ -218,7 +232,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
    * oude profiel staan, terwijl de gebruiker het wel degelijk had toegewezen.
    */
   const huidigeInvoer = JSON.stringify({
-    material, profile, releases, cfg: buildCheckConfig() ?? null,
+    material, profile, releases, cfg: buildCheckConfig() ?? null, bedding: buildBedding() ?? null,
   });
   const [beginInvoer] = useState(huidigeInvoer);
   const gewijzigd = huidigeInvoer !== beginInvoer;
@@ -430,6 +444,43 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   </tbody>
                 </table>
                 <div className="bar-props-hint">Aangevinkt = vrijheidsgraad ontkoppeld (scharnier)</div>
+              </div>
+
+              <div className="bar-props-section">
+                <div className="bar-props-section-title">Staaf op bedding</div>
+                <label className="bar-props-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input type="checkbox" checked={beddingAan}
+                    onChange={(e) => setBeddingAan(e.target.checked)} />
+                  Verend gesteund over de hele lengte (Winkler)
+                </label>
+                {beddingAan && (
+                  <table className="bar-props-release-table">
+                    <tbody>
+                      <tr>
+                        <td>Beddingsconstante k</td>
+                        <td>
+                          <input type="text" inputMode="decimal" value={beddingKStr} style={{ width: 90 }}
+                            onChange={(e) => setBeddingKStr(e.target.value)} />
+                        </td>
+                        <td>kN/m³</td>
+                      </tr>
+                      <tr>
+                        <td>Contactbreedte b</td>
+                        <td>
+                          <input type="text" inputMode="decimal" value={beddingBStr} style={{ width: 90 }}
+                            placeholder="bijv. 300"
+                            onChange={(e) => setBeddingBStr(e.target.value)} />
+                        </td>
+                        <td>mm</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+                <div className="bar-props-hint">
+                  {beddingAan && !buildBedding()
+                    ? "Vul k én b groter dan nul in; anders wordt er geen bedding gezet."
+                    : "Lijnstijfheid k·b; de staaf wordt automatisch fijn genoeg geknipt op 1/λ = (4EI/(k·b))^¼."}
+                </div>
               </div>
 
               {beamForces && (

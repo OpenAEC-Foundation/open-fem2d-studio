@@ -124,6 +124,13 @@ interface Props {
   /** Toegankelijke titel; standaard een omschrijving van de doorsnede. */
   titel?: string;
   className?: string;
+  /**
+   * Maak de rijlabels ("4Ø20", "2Ø12") klikbaar. De tekening bewerkt zelf
+   * niets: zij meldt welke rij is aangeklikt, en de eigenaar (het
+   * betonvenster) opent er een invoer voor. Zonder deze prop blijft de
+   * tekening een plaatje — zoals in het rapport.
+   */
+  onRij?: (zijde: "top" | "bottom") => void;
 }
 
 function Pijl({ x, y, hoek, kleur }: { x: number; y: number; hoek: number; kleur: string }) {
@@ -141,6 +148,7 @@ export default function DoorsnedeTekening({
   wapening = true,
   maatvoering = true,
   kleuren = THEMA_KLEUREN,
+  onRij,
   titel,
   className,
 }: Props) {
@@ -300,10 +308,14 @@ export default function DoorsnedeTekening({
         <text
           x={sx(hartXMm(d3, asAfstandMm(korf.korf, korf.korf.bottom, "onder")))}
           y={yLabelOnder}
-          fill={kleuren.tekstZwak}
+          fill={onRij ? kleuren.tekst : kleuren.tekstZwak}
           fontSize="7.5"
           textAnchor="middle"
+          className={onRij ? "beton-rijlabel-klikbaar" : undefined}
+          style={onRij ? { cursor: "pointer" } : undefined}
+          onClick={onRij ? () => onRij("bottom") : undefined}
         >
+          {onRij && <title>Klik om aantal en diameter van de onderwapening te wijzigen</title>}
           {rijLabel(korf.korf.bottom)}
         </text>
       )}
@@ -311,10 +323,14 @@ export default function DoorsnedeTekening({
         <text
           x={sx(hartXMm(d3, hMm - asAfstandMm(korf.korf, korf.korf.top, "boven")))}
           y={yLabelBoven}
-          fill={kleuren.tekstZwak}
+          fill={onRij ? kleuren.tekst : kleuren.tekstZwak}
           fontSize="7.5"
           textAnchor="middle"
+          className={onRij ? "beton-rijlabel-klikbaar" : undefined}
+          style={onRij ? { cursor: "pointer" } : undefined}
+          onClick={onRij ? () => onRij("top") : undefined}
         >
+          {onRij && <title>Klik om aantal en diameter van de bovenwapening te wijzigen</title>}
           {rijLabel(korf.korf.top)}
         </text>
       )}

@@ -494,6 +494,19 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, o
     });
   };
 
+  // ── Een rij wijzigen vanuit de doorsnedetekening ─────────────────────────
+  // Klik op "4Ø20" of "2Ø12" in de doorsnede opent een kleine invoer voor
+  // aantal en diameter. Die schrijft naar de BASISKORF (`checkConfig.betonKorf`)
+  // — dezelfde plek als de staafeigenschappen. Een zone die ter plaatse van de
+  // cursor iets anders voorschrijft, blijft dat doen: zones hebben hun eigen
+  // editor hieronder, en de tekening volgt beide.
+  const [bewerkRij, setBewerkRij] = useState<"top" | "bottom" | null>(null);
+  const zetRij = (zijde: "top" | "bottom", rij: { count: number; diameter_mm: number }) => {
+    const cfg = { ...(beam.checkConfig ?? {}) };
+    cfg.betonKorf = { ...korf, [zijde]: rij };
+    updateBeam?.(beam.id, { checkConfig: cfg });
+  };
+
   return (
     <div className="dek-venster">
       {/* ── Werkbalk: de vier lagen, elk los aan en uit ─────────────────── */}
@@ -602,7 +615,21 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, o
               : `Doorsnede op x = ${maat(Math.round(cursorXMm))} mm`}
           </div>
           {tekenKorf ? (
-            <DoorsnedeTekening korf={tekenKorf} className="dek-doorsnede" />
+            <>
+              <DoorsnedeTekening
+                korf={tekenKorf}
+                className="dek-doorsnede"
+                onRij={updateBeam ? (zijde) => setBewerkRij(zijde) : undefined}
+              />
+              {bewerkRij && (
+                <RijBewerker
+                  zijde={bewerkRij}
+                  rij={korf[bewerkRij]}
+                  onOpslaan={(rij) => { zetRij(bewerkRij, rij); setBewerkRij(null); }}
+                  onSluiten={() => setBewerkRij(null)}
+                />
+              )}
+            </>
           ) : (
             <p className="beton-hint">
               De doorsnede is niet uit de profielnaam &ldquo;{beam.profile ?? "—"}&rdquo; te lezen;
@@ -757,5 +784,60 @@ function Meldingen({
         </details>
       )}
     </div>
+  );
+}
+
+// ── De rij-invoer onder de doorsnedetekening ────────────────────────────────
+
+/** De gangbare staafdiameters van bijlage C, in mm. */
+const STAAFDIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32, 40];
+
+/**
+ * Aantal en diameter van één rij, geopend door een klik op het rijlabel in de
+ * doorsnede. Enter slaat op, Esc sluit; een aantal onder 1 wordt geweigerd —
+ * een rij zonder staven is geen rij maar het weghalen ervan, en dat is een
+ * ander besluit dan hier wordt genomen.
+ */
+function RijBewerker({
+  zijde, rij, onOpslaan, onSluiten,
+}: {
+  zijde: "top" | "bottom";
+  rij: { count: number; diameter_mm: number };
+  onOpslaan: (rij: { count: number; diameter_mm: number }) => void;
+  onSluiten: () => void;
+}) {
+  const [aantal, setAantal] = useState(String(rij.count));
+  const [diameter, setDiameter] = useState(rij.diameter_mm);
+  const n = Math.round(Number(aantal));
+  const geldig = Number.isFinite(n) && n >= 1 && n <= 40;
+  const opslaan = () => { if (geldig) onOpslaan({ count: n, diameter_mm: diameter }); };
+  return (
+    <form
+      className="dek-rijbewerker"
+      onSubmit={(e) => { e.preventDefault(); opslaan(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onSluiten(); }}
+    >
+      <span className="dek-rijbewerker-titel">
+        {zijde === "bottom" ? "Onderwapening" : "Bovenwapening"}
+      </span>
+      <label>
+        aantal
+        <input
+          type="number" min={1} max={40} step={1} value={aantal} autoFocus
+          onChange={(e) => setAantal(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+      </label>
+      <label>
+        Ø
+        <select value={diameter} onChange={(e) => setDiameter(Number(e.target.value))}>
+          {STAAFDIAMETERS.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        mm
+      </label>
+      <button type="submit" disabled={!geldig}>OK</button>
+      <button type="button" onClick={onSluiten}>Annuleren</button>
+      {!geldig && <span className="dek-rijbewerker-fout">aantal 1–40</span>}
+    </form>
   );
 }

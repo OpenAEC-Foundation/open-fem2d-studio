@@ -889,6 +889,11 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               onChange={(e) => setRelease("endRy", e.target.checked)}
             />
           </Row>
+          <Row label="Bedding">
+            {beam.bedding
+              ? <code>k = {beam.bedding.k} kN/m³ · b = {beam.bedding.b} mm</code>
+              : <code>geen</code>}
+          </Row>
         </Section>
 
         <Section title="Belastingen" defaultOpen={false}>

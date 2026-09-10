@@ -5002,6 +5002,15 @@ function buildMesh(input, loadFactor) {
     for (const t of b.extraSneden ?? []) {
       if (Number.isFinite(t)) voegSnedeToe(b.id, t);
     }
+    if (b.bedding) {
+      const nA = nodeById.get(b.from), nB = nodeById.get(b.to);
+      if (nA && nB) {
+        const L_mm = Math.hypot(nB.x - nA.x, nB.z - nA.z);
+        for (const t of beddingSplitsFracties(L_mm, b.E ?? 21e4, b.I ?? 1673e4, b.bedding.kLijn)) {
+          voegSnedeToe(b.id, t);
+        }
+      }
+    }
   }
   const modelHeeftPlaten = plateRects.length > 0 || plaatPolygonen.length > 0;
   const beamKnoopPerFractie = /* @__PURE__ */ new Map();
@@ -5063,12 +5072,19 @@ function buildMesh(input, loadFactor) {
         segmentIndex: s.index
       };
     };
+    const zetBedding = (meshId) => {
+      if (!b.bedding) return;
+      mesh.updateBeamElement(meshId, {
+        onGrade: { enabled: true, k: b.bedding.kLijn * 1e6, b: 1 }
+      });
+    };
     if (splitsT.length === 0) {
       const d = doorsnedeVoor(0, 1);
       const meshBeam = mesh.addBeamElement([fromId, toId], matId, d.sec);
       if (!meshBeam) continue;
       beamIdMap.set(b.id, meshBeam.id);
       pasReleasesToe(meshBeam.id, b, true, true);
+      zetBedding(meshBeam.id);
       beamKnoopPerFractie.set(b.id, [
         { t: 0, meshNodeId: fromId },
         { t: 1, meshNodeId: toId }
@@ -5100,6 +5116,7 @@ function buildMesh(input, loadFactor) {
         const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, d.sec);
         if (!mb) continue;
         pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
+        zetBedding(mb.id);
         segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
         stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex });
       }
@@ -5665,6 +5682,15 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
     maxDisplacement: maxDisp,
     ...plateResults ? { plateElements: plateResults } : {}
   };
+}
+function beddingSplitsFracties(L_mm, E_nmm2, I_mm4, kLijn) {
+  if (!(L_mm > 0) || !(kLijn > 0) || !(E_nmm2 > 0) || !(I_mm4 > 0)) return [];
+  const lambda = Math.pow(kLijn / (4 * E_nmm2 * I_mm4), 0.25);
+  const maxLengte = 0.15 / lambda;
+  const n = Math.min(200, Math.max(8, Math.ceil(L_mm / maxLengte)));
+  const uit = [];
+  for (let i = 1; i < n; i++) uit.push(i / n);
+  return uit;
 }
 var actieveLogOpvanger;
 function zetSolverLogOpvanger(f) {
@@ -8042,7 +8068,10 @@ function bouwMultiInput(model) {
         releases: b.releases,
         // Alleen aanwezig als er werkelijk zonegrenzen zijn; een leeg veld zou
         // de invoer van een model zonder beton onnodig veranderen.
-        ...sneden && sneden.length > 0 ? { extraSneden: sneden } : {}
+        ...sneden && sneden.length > 0 ? { extraSneden: sneden } : {},
+        // Bedding: k [kN/m³] · b [mm] → lijnstijfheid in N/mm². 1 kN/m³ =
+        // 1e3 N / 1e9 mm³ = 1e-6 N/mm³. Alleen aanwezig als er een bedding is.
+        ...b.bedding && b.bedding.k > 0 && b.bedding.b > 0 ? { bedding: { kLijn: b.bedding.k * 1e-6 * b.bedding.b } } : {}
       };
     }),
     supports: model.supports.map((s) => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
@@ -8189,7 +8218,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.5";
+var version = "0.3.6";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
@@ -10614,6 +10643,7 @@ export {
   aantalAfbeeldingen,
   analysetypeUitBestand,
   beamLengthMm,
+  beddingSplitsFracties,
   beeldKernfoutAf,
   bepaalDoorbuigingsInvoer,
   bepaalStandaardRol,

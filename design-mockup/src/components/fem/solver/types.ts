@@ -64,6 +64,12 @@ export interface SolverBeamInput {
   A?: number;            // mm²     default 3877  (HEA 160)
   I?: number;            // mm⁴     default 1.673e7 (HEA 160 Iy)
   /**
+   * Staaf op bedding: lijnstijfheid k·b in N/mm² (N per mm zakking, per mm
+   * staaflengte). De adapter knipt de staaf op 1/λ en zet op elk mesh-element
+   * de Winkler-bedding van de kern; zie `beddingSplitsFracties`.
+   */
+  bedding?: { kLijn: number };
+  /**
    * Optionele segmentindeling met een eigen I per segment (mm⁴) — zie
    * SolverBeamSegmentInput. ONTBREEKT het veld, dan rekent de staaf precies
    * zoals hij dat zonder segmenten deed: één doorsnede over de volle lengte.

@@ -250,6 +250,25 @@ export interface Beam {
    * De veldnaam blijft `loadRole` omdat hij zo op schijf staat.
    */
   loadRole?: BeamLoadRole;
+  /**
+   * Staaf op bedding (Winkler). ONTBREEKT het veld — alle bestaande
+   * projectbestanden — dan ligt de staaf niet op een bedding.
+   *
+   * De rekenkern kent de bedding al (`onGrade`, veren kL/2 per knoop); de
+   * adapter rekent uit `k · b` de lijnstijfheid en knipt de staaf fijn genoeg
+   * op de karakteristieke lengte 1/λ = (4EI/(k·b))^¼, zodat de tussenknopen
+   * samen de tributaire veerstijfheid dragen — precies wat referentie R26
+   * met de hand doet.
+   */
+  bedding?: BeamBedding;
+}
+
+/** Bedding onder een staaf: beddingsconstante en contactbreedte. */
+export interface BeamBedding {
+  /** Beddingsconstante k in kN/m³ (typisch 10 000 – 100 000 voor grond). */
+  k: number;
+  /** Contactbreedte b in mm — de breedte van de staaf op de bedding. */
+  b: number;
 }
 
 /**
