@@ -559,7 +559,7 @@ on exit (`gui_quit` exits through the app's own path so that happens).
 | `gui_set_analysis {analysis_type}` | `eersteOrde` / `tweedeOrdeGeometrisch` / `tweedeOrdeFysisch` |
 | `gui_solve` | runs the solver; returns per-combination extremes |
 | `gui_run_checks` | runs the code checks and waits for the check store |
-| `gui_open_curtailment {beam_id}` | opens the dekkingslijn panel and returns the kernel answer |
+| `gui_open_curtailment {beam_id}` | opens the dekkingslijn panel and returns `{verzoek, antwoord}` — replay `verzoek` through `concrete_dekkingslijn` to verify the GUI against the engine |
 | `gui_set_view {view}` | `default`, `check`, `report`, `insights`, `ifc` |
 | `gui_detach_report` | opens the live report in its own window; returns its label |
 | `gui_read_checks` | reads the current check results |
