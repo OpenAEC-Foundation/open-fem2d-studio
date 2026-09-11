@@ -19,8 +19,26 @@
  *   - lijnlast q:     kN/m = N/mm, dus ongewijzigd
  *   - geometrie:      mm, z positief omhoog
  */
-import type { Beam, Load, LoadCase, Node, Plate, Support } from "../components/fem/femTypes";
+import type { Beam, BeamEindVeren, Load, LoadCase, Node, Plate, Support } from "../components/fem/femTypes";
 import { withPlateDefaults } from "../components/fem/femTypes";
+
+/**
+ * Verende aansluitingen van de UI (kN/mm, kNm/rad) naar de canonieke
+ * solvereenheden (N/mm, N·mm/rad). Alleen velden > 0 gaan mee; zonder één
+ * zo'n veld komt er geen `veren`-sleutel — dan blijft de invoer van een
+ * model zonder veren byte-gelijk aan vroeger.
+ */
+export function verenNaarCanoniek(v: BeamEindVeren | undefined): { veren?: NonNullable<MultiInput["beams"][number]["veren"]> } {
+  if (!v) return {};
+  const uit: Record<string, number> = {};
+  for (const k of ["startTx", "startTz", "endTx", "endTz"] as const) {
+    if (v[k] !== undefined && v[k]! > 0) uit[k] = v[k]! * 1e3;
+  }
+  for (const k of ["startRy", "endRy"] as const) {
+    if (v[k] !== undefined && v[k]! > 0) uit[k] = v[k]! * 1e6;
+  }
+  return Object.keys(uit).length > 0 ? { veren: uit } : {};
+}
 import type { MultiInput } from "../components/fem/solver/types";
 import { resolveSection, eigenGewichtPerMeter } from "./sectionResolver";
 import { thermalAlphaForMaterial } from "./thermalAlpha";
@@ -104,6 +122,9 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
         startConnection: b.releases?.startRy ? 'hinge' as const : 'fixed' as const,
         endConnection:   b.releases?.endRy   ? 'hinge' as const : 'fixed' as const,
         releases: b.releases,
+        // Verende aansluitingen: UI kN/mm → N/mm (×1e3), kNm/rad → N·mm/rad
+        // (×1e6). Alleen aanwezig als er echt een veer > 0 is opgegeven.
+        ...(verenNaarCanoniek(b.veren)),
         // Alleen aanwezig als er werkelijk zonegrenzen zijn; een leeg veld zou
         // de invoer van een model zonder beton onnodig veranderen.
         ...(sneden && sneden.length > 0 ? { extraSneden: sneden } : {}),

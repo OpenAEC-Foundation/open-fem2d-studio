@@ -1,4 +1,4 @@
-import { INode, IBeamElement, IBeamForces, IMaterial, getReleasedLocalDofs, getBeamDistributedLoads } from './types';
+import { INode, IBeamElement, IBeamForces, IMaterial, getReleasedLocalDofs, getSprungLocalDofs, getBeamDistributedLoads } from './types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -10,7 +10,7 @@ import {
   calculatePartialDistributedLoadVector,
   projectDistributedLoadToLocal,
 } from './Beam';
-import { applyEndReleases } from '../solver/Assembler';
+import { applyEndReleases, applyEndConnections } from '../solver/Assembler';
 import { calculateBeamThermalLocalForces } from './ThermalLoad';
 
 const NUM_STATIONS = 21; // Number of points along beam for diagrams
@@ -206,38 +206,46 @@ export function calculateBeamInternalForces(
   // released ends) and correctly redistributes fixed-end forces from
   // distributed loads to the remaining DOFs.
   const releasedLocalDofs = getReleasedLocalDofs(element);
+  const veren = getSprungLocalDofs(element).filter((v) => !releasedLocalDofs.includes(v.dof));
 
   // ── Werkelijke lokale eind-DOF's voor de verplaatsingskromme ──────────────
   // Bij een release is het eind-DOF van het ELEMENT niet gelijk aan het
   // knoop-DOF. Terugrekenen uit de nul-krachtvoorwaarde op de released
   // DOF's, met de ORIGINELE (niet-gecondenseerde) Kl en belastingvector:
   //   K_RR·d_R = F_R^eq − K_RC·d_C   (want interne kracht = K·d − F^eq = 0)
-  // Algemeen klein stelsel (1..n released DOF's) met Gauss + partiële
-  // pivotering; een singuliere K_RR (mechanisme, bv. dezelfde translatie aan
-  // beide einden los) laat de knoopwaarden staan — de solve zelf is dan al
-  // op een singulier stelsel gestrand. Moet vóór applyEndReleases gebeuren
-  // omdat die Kl/F in-place muteert.
+  // Bij een VEER is de voorwaarde niet "kracht nul" maar "kracht = veerkracht":
+  //   (K·e)_s − F_s = k·(n_s − e_s)   ⇒   (K_ss + k)·e_s = F_s + k·n_s − K_sc·n_c
+  // — dezelfde vorm, met k op de diagonaal en k·n_s in het rechterlid; een
+  // scharnier is het geval k = 0. Algemeen klein stelsel (1..n DOF's) met
+  // Gauss + partiële pivotering; een singuliere matrix (mechanisme, bv.
+  // dezelfde translatie aan beide einden los) laat de knoopwaarden staan —
+  // de solve zelf is dan al op een singulier stelsel gestrand. Moet vóór de
+  // condensatie gebeuren omdat die Kl/F in-place muteert.
   const dLoc = localDisp.slice();
-  if (releasedLocalDofs.length > 0) {
-    const m = releasedLocalDofs.length;
+  const losseDofs = [...releasedLocalDofs, ...veren.map((v) => v.dof)];
+  const kVan = (dof: number) => veren.find((v) => v.dof === dof)?.k ?? 0;
+  if (losseDofs.length > 0) {
+    const m = losseDofs.length;
     const A: number[][] = [];
     const b: number[] = [];
     for (let r = 0; r < m; r++) {
-      const i = releasedLocalDofs[r];
-      let rhs = equivalentNodalForces[i];
+      const i = losseDofs[r];
+      let rhs = equivalentNodalForces[i] + kVan(i) * dLoc[i];
       for (let j = 0; j < 6; j++) {
-        if (!releasedLocalDofs.includes(j)) rhs -= Kl.get(i, j) * dLoc[j];
+        if (!losseDofs.includes(j)) rhs -= Kl.get(i, j) * dLoc[j];
       }
       b.push(rhs);
-      A.push(releasedLocalDofs.map(jj => Kl.get(i, jj)));
+      A.push(losseDofs.map(jj => Kl.get(i, jj) + (jj === i ? kVan(i) : 0)));
     }
     const sol = solveKleinStelsel(A, b);
     if (sol) {
-      for (let r = 0; r < m; r++) dLoc[releasedLocalDofs[r]] = sol[r];
+      for (let r = 0; r < m; r++) dLoc[losseDofs[r]] = sol[r];
     }
   }
 
-  if (releasedLocalDofs.length > 0) {
+  if (veren.length > 0) {
+    applyEndConnections(Kl, releasedLocalDofs, veren, equivalentNodalForces);
+  } else if (releasedLocalDofs.length > 0) {
     applyEndReleases(Kl, releasedLocalDofs, equivalentNodalForces);
   }
 

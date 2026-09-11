@@ -17,7 +17,8 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Beam, BeamCheckConfig, BeamReleases, Node } from "./femTypes";
+import type { Beam, BeamCheckConfig, BeamEindVeren, BeamReleases, Node } from "./femTypes";
+import AansluitingKeuze from "./AansluitingKeuze";
 import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult } from "../../lib/checkTypes";
 import { matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
@@ -76,14 +77,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   // ProfielKiezer-wizard (profiel + materiaal als één combinatie) — de keuze
   // landt in de lokale dialoogstate en wordt pas bij OK gecommit.
   const [kiezerOpen, setKiezerOpen] = useState(false);
-  const [releases, setReleases] = useState<Required<BeamReleases>>({
-    startTx: beam.releases?.startTx ?? false,
-    startTz: beam.releases?.startTz ?? false,
-    startRy: beam.releases?.startRy ?? false,
-    endTx:   beam.releases?.endTx   ?? false,
-    endTz:   beam.releases?.endTz   ?? false,
-    endRy:   beam.releases?.endRy   ?? false,
-  });
+  // Aansluitingen: scharnieren (releases) én veren, samen bewerkt per DOF
+  // via AansluitingKeuze; pas bij OK gecommit.
+  const [releases, setReleases] = useState<BeamReleases | undefined>(beam.releases);
+  const [veren, setVeren] = useState<BeamEindVeren | undefined>(beam.veren);
 
   // ── Staaf op bedding ─────────────────────────────────────────────────────
   // Aan/uit plus k en b als tekst, zodat een leeg veld leeg kan blijven tot
@@ -217,7 +214,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   };
 
   const handleConfirm = () => {
-    onUpdate?.({ material, profile, releases, checkConfig: buildCheckConfig(), bedding: buildBedding() });
+    onUpdate?.({ material, profile, releases, veren, checkConfig: buildCheckConfig(), bedding: buildBedding() });
     onClose();
   };
 
@@ -232,7 +229,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
    * oude profiel staan, terwijl de gebruiker het wel degelijk had toegewezen.
    */
   const huidigeInvoer = JSON.stringify({
-    material, profile, releases, cfg: buildCheckConfig() ?? null, bedding: buildBedding() ?? null,
+    material, profile, releases, veren, cfg: buildCheckConfig() ?? null, bedding: buildBedding() ?? null,
   });
   const [beginInvoer] = useState(huidigeInvoer);
   const gewijzigd = huidigeInvoer !== beginInvoer;
@@ -417,33 +414,28 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
               </div>
 
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Scharnieren (releases)</div>
+                <div className="bar-props-section-title">Aansluitingen</div>
                 <table className="bar-props-release-table">
-                  <thead>
-                    <tr><th></th><th>uX</th><th>uZ</th><th>φY</th></tr>
-                  </thead>
                   <tbody>
                     <tr>
                       <td>Start A</td>
-                      <td><input type="checkbox" checked={releases.startTx}
-                        onChange={(e) => setReleases(r => ({ ...r, startTx: e.target.checked }))} /></td>
-                      <td><input type="checkbox" checked={releases.startTz}
-                        onChange={(e) => setReleases(r => ({ ...r, startTz: e.target.checked }))} /></td>
-                      <td><input type="checkbox" checked={releases.startRy}
-                        onChange={(e) => setReleases(r => ({ ...r, startRy: e.target.checked }))} /></td>
+                      <td>
+                        <AansluitingKeuze zijde="start" releases={releases} veren={veren}
+                          onChange={(w) => { setReleases(w.releases); setVeren(w.veren); }} />
+                      </td>
                     </tr>
                     <tr>
                       <td>Eind B</td>
-                      <td><input type="checkbox" checked={releases.endTx}
-                        onChange={(e) => setReleases(r => ({ ...r, endTx: e.target.checked }))} /></td>
-                      <td><input type="checkbox" checked={releases.endTz}
-                        onChange={(e) => setReleases(r => ({ ...r, endTz: e.target.checked }))} /></td>
-                      <td><input type="checkbox" checked={releases.endRy}
-                        onChange={(e) => setReleases(r => ({ ...r, endRy: e.target.checked }))} /></td>
+                      <td>
+                        <AansluitingKeuze zijde="end" releases={releases} veren={veren}
+                          onChange={(w) => { setReleases(w.releases); setVeren(w.veren); }} />
+                      </td>
                     </tr>
                   </tbody>
                 </table>
-                <div className="bar-props-hint">Aangevinkt = vrijheidsgraad ontkoppeld (scharnier)</div>
+                <div className="bar-props-hint">
+                  Per einde N, V en M: vast, scharnier (los) of veer met stijfheid — N en V in kN/mm, M in kNm/rad.
+                </div>
               </div>
 
               <div className="bar-props-section">

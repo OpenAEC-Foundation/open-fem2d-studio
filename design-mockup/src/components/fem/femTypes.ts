@@ -52,6 +52,24 @@ export interface BeamReleases {
 }
 
 /**
+ * Verende aansluitingen per DOF aan een staafeinde — de derde keuze naast
+ * star en scharnier. Een waarde is de veerstijfheid tussen het staafeinde
+ * en de knoop: `Tx`/`Tz` (normaalkracht, dwarskracht) in kN/mm, `Ry`
+ * (moment) in kNm/rad — "K5000" op een momentaansluiting is dus 5000
+ * kNm/rad. Ontbreekt een veld of is het ≤ 0, dan geldt wat `releases` zegt
+ * (star of scharnier). Staat op hetzelfde DOF óók een release, dan wint de
+ * release: een losse aansluiting kan geen veer dragen.
+ */
+export interface BeamEindVeren {
+  startTx?: number;
+  startTz?: number;
+  startRy?: number;
+  endTx?: number;
+  endTz?: number;
+  endRy?: number;
+}
+
+/**
  * Per-staaf toetsconfiguratie voor de normtoetsing (EN 1993 staal,
  * EN 1995 hout en kruislaaghout, EN 1992 beton). Alle velden zijn optioneel: een ontbrekend veld betekent
  * "gebruik de gedocumenteerde default van de builder" (zie
@@ -240,6 +258,8 @@ export interface Beam {
   profile?: string;
   /** DOF releases per end (default: all rigid = no releases). */
   releases?: BeamReleases;
+  /** Verende aansluitingen per end (kN/mm, kNm/rad); zie BeamEindVeren. */
+  veren?: BeamEindVeren;
   /** Per-staaf toetsconfiguratie; ontbreekt → builder-defaults. */
   checkConfig?: BeamCheckConfig;
   /**

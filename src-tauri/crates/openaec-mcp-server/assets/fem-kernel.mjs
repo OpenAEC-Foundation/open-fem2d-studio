@@ -1305,6 +1305,20 @@ function getReleasedLocalDofs(beam) {
   if (end.Rz === "hinge") dofs.push(5);
   return dofs;
 }
+function getSprungLocalDofs(beam) {
+  const { start, end } = getDOFConnectionTypes(beam);
+  const uit = [];
+  const zet = (dof, type, k) => {
+    if (type === "spring" && k !== void 0 && k > 0) uit.push({ dof, k });
+  };
+  zet(0, start.Tx, start.springTx);
+  zet(1, start.Tz, start.springTz);
+  zet(2, start.Rz, start.springRz);
+  zet(3, end.Tx, end.springTx);
+  zet(4, end.Tz, end.springTz);
+  zet(5, end.Rz, end.springRz);
+  return uit;
+}
 function getConnectionTypes(beam) {
   if (beam.startConnections || beam.endConnections) {
     const start = beam.startConnections ?? DEFAULT_DOF_CONNECTIONS;
@@ -1932,13 +1946,15 @@ function assembleGlobalStiffnessMatrix(mesh, analysisType, axialReleasedBeamIds)
         if (axialReleasedBeamIds?.has(beam.id)) {
           for (const d of [0, 3]) if (!releasedLocalDofs.includes(d)) releasedLocalDofs.push(d);
         }
+        const veren = getSprungLocalDofs(beam);
         let Ke;
-        if (releasedLocalDofs.length > 0) {
+        if (releasedLocalDofs.length > 0 || veren.length > 0) {
           const L = calculateBeamLength(n1, n2);
           const angle = calculateBeamAngle(n1, n2);
           if (L < 1e-10) throw new Error("Beam element has zero length");
           const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-          applyEndReleases(Kl, releasedLocalDofs);
+          if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren);
+          else applyEndReleases(Kl, releasedLocalDofs);
           const T = createTransformationMatrix(angle);
           Ke = T.transpose().multiply(Kl.multiply(T));
         } else {
@@ -2021,13 +2037,15 @@ function assembleGlobalStiffnessMatrix(mesh, analysisType, axialReleasedBeamIds)
         if (axialReleasedBeamIds?.has(beam.id)) {
           for (const d of [0, 3]) if (!releasedLocalDofs.includes(d)) releasedLocalDofs.push(d);
         }
+        const veren = getSprungLocalDofs(beam);
         let Ke;
-        if (releasedLocalDofs.length > 0) {
+        if (releasedLocalDofs.length > 0 || veren.length > 0) {
           const L = calculateBeamLength(n1, n2);
           const angle = calculateBeamAngle(n1, n2);
           if (L < 1e-10) throw new Error("Beam element has zero length");
           const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-          applyEndReleases(Kl, releasedLocalDofs);
+          if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren);
+          else applyEndReleases(Kl, releasedLocalDofs);
           const T = createTransformationMatrix(angle);
           Ke = T.transpose().multiply(Kl.multiply(T));
         } else {
@@ -2243,11 +2261,13 @@ function assembleForceVector(mesh, analysisType = "plane_stress") {
         for (let i = 0; i < 6; i++) localForces[i] += fThermal[i];
       }
       const releasedLocalDofs = getReleasedLocalDofs(beam);
-      if (releasedLocalDofs.length > 0) {
+      const veren = getSprungLocalDofs(beam);
+      if (releasedLocalDofs.length > 0 || veren.length > 0) {
         const material2 = mesh.getMaterial(beam.materialId);
         if (material2) {
           const Kl = calculateBeamLocalStiffness(L, material2.E, beam.section.A, beam.section.I);
-          applyEndReleases(Kl, releasedLocalDofs, localForces);
+          if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren, localForces);
+          else applyEndReleases(Kl, releasedLocalDofs, localForces);
         }
       }
       const globalForces = transformLocalToGlobal(localForces, angle);
@@ -2324,6 +2344,45 @@ function applyEndReleases(Ke, releasedDofs, F) {
       Ke.set(c, i, 0);
     }
     eliminated.add(c);
+  }
+}
+function applyEndConnections(Ke, hingedDofs, springs, F) {
+  const n = 6;
+  const stappen = [
+    ...hingedDofs.map((dof) => ({ dof, k: 0 })),
+    ...springs.filter((s) => !hingedDofs.includes(s.dof))
+  ];
+  for (const { dof: c, k } of stappen) {
+    const kcc = Ke.get(c, c) + k;
+    if (Math.abs(kcc) < 1e-20) {
+      for (let i = 0; i < n; i++) {
+        Ke.set(i, c, 0);
+        Ke.set(c, i, 0);
+      }
+      if (F) F[c] = 0;
+      continue;
+    }
+    const kcc0 = Ke.get(c, c);
+    const anderen = [];
+    for (let i = 0; i < n; i++) if (i !== c) anderen.push(i);
+    const col = anderen.map((i) => Ke.get(i, c));
+    const row = anderen.map((j) => Ke.get(c, j));
+    if (F) {
+      const fc = F[c];
+      for (let a = 0; a < anderen.length; a++) F[anderen[a]] -= col[a] / kcc * fc;
+      F[c] = k * fc / kcc;
+    }
+    for (let a = 0; a < anderen.length; a++) {
+      for (let b = 0; b < anderen.length; b++) {
+        Ke.addAt(anderen[a], anderen[b], -col[a] * row[b] / kcc);
+      }
+    }
+    for (let a = 0; a < anderen.length; a++) {
+      const v = col[a] * k / kcc;
+      Ke.set(anderen[a], c, v);
+      Ke.set(c, anderen[a], v);
+    }
+    Ke.set(c, c, k * kcc0 / kcc);
   }
 }
 
@@ -2425,26 +2484,31 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
     equivalentNodalForces[i] += thermalLocal[i];
   }
   const releasedLocalDofs = getReleasedLocalDofs(element);
+  const veren = getSprungLocalDofs(element).filter((v) => !releasedLocalDofs.includes(v.dof));
   const dLoc = localDisp.slice();
-  if (releasedLocalDofs.length > 0) {
-    const m = releasedLocalDofs.length;
+  const losseDofs = [...releasedLocalDofs, ...veren.map((v) => v.dof)];
+  const kVan = (dof) => veren.find((v) => v.dof === dof)?.k ?? 0;
+  if (losseDofs.length > 0) {
+    const m = losseDofs.length;
     const A = [];
     const b = [];
     for (let r = 0; r < m; r++) {
-      const i = releasedLocalDofs[r];
-      let rhs = equivalentNodalForces[i];
+      const i = losseDofs[r];
+      let rhs = equivalentNodalForces[i] + kVan(i) * dLoc[i];
       for (let j = 0; j < 6; j++) {
-        if (!releasedLocalDofs.includes(j)) rhs -= Kl.get(i, j) * dLoc[j];
+        if (!losseDofs.includes(j)) rhs -= Kl.get(i, j) * dLoc[j];
       }
       b.push(rhs);
-      A.push(releasedLocalDofs.map((jj) => Kl.get(i, jj)));
+      A.push(losseDofs.map((jj) => Kl.get(i, jj) + (jj === i ? kVan(i) : 0)));
     }
     const sol = solveKleinStelsel(A, b);
     if (sol) {
-      for (let r = 0; r < m; r++) dLoc[releasedLocalDofs[r]] = sol[r];
+      for (let r = 0; r < m; r++) dLoc[losseDofs[r]] = sol[r];
     }
   }
-  if (releasedLocalDofs.length > 0) {
+  if (veren.length > 0) {
+    applyEndConnections(Kl, releasedLocalDofs, veren, equivalentNodalForces);
+  } else if (releasedLocalDofs.length > 0) {
     applyEndReleases(Kl, releasedLocalDofs, equivalentNodalForces);
   }
   const localForces = new Array(6).fill(0);
@@ -3077,7 +3141,10 @@ function assembleGlobalStiffnessWithGeometric(mesh, axialForces, includeGeometri
     if (L < 1e-10) continue;
     const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
     const releasedLocalDofs = getReleasedLocalDofs(beam);
-    if (releasedLocalDofs.length > 0) {
+    const veren = getSprungLocalDofs(beam);
+    if (veren.length > 0) {
+      applyEndConnections(Kl, releasedLocalDofs, veren);
+    } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
     }
     if (includeGeometric) {
@@ -3191,7 +3258,10 @@ function assembleGlobalStiffnessFNL(mesh, sectionStates, axialForces, includeGeo
     const EI_eff = sectionState?.tangentStiffness ?? material.E * beam.section.I;
     const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
     const releasedLocalDofs = getReleasedLocalDofs(beam);
-    if (releasedLocalDofs.length > 0) {
+    const veren = getSprungLocalDofs(beam);
+    if (veren.length > 0) {
+      applyEndConnections(Kl, releasedLocalDofs, veren);
+    } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
     }
     if (includeGeometric) {
@@ -3325,9 +3395,11 @@ function assembleForceVector2(mesh) {
       for (let i = 0; i < 6; i++) fLocal[i] += fThermal[i];
     }
     const releasedLocalDofs = getReleasedLocalDofs(beam);
-    if (releasedLocalDofs.length > 0 && material) {
+    const veren = getSprungLocalDofs(beam);
+    if ((releasedLocalDofs.length > 0 || veren.length > 0) && material) {
       const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-      applyEndReleases(Kl, releasedLocalDofs, fLocal);
+      if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren, fLocal);
+      else applyEndReleases(Kl, releasedLocalDofs, fLocal);
     }
     const T = createTransformationMatrix(angle);
     const TT = T.transpose();
@@ -4951,17 +5023,33 @@ function buildMesh(input, loadFactor) {
     const eTx = !!(metEindzijde && rel?.endTx);
     const eTz = !!(metEindzijde && rel?.endTz);
     const eRy = !!(metEindzijde && (rel?.endRy || b.endConnection === "hinge"));
+    const veer = b.veren;
+    const kOf = (aan, los, k) => aan && !los && k !== void 0 && k > 0 ? k : void 0;
+    const vSTx = kOf(metStartzijde, sTx, veer?.startTx);
+    const vSTz = kOf(metStartzijde, sTz, veer?.startTz);
+    const vSRy = kOf(metStartzijde, sRy, veer?.startRy);
+    const vETx = kOf(metEindzijde, eTx, veer?.endTx);
+    const vETz = kOf(metEindzijde, eTz, veer?.endTz);
+    const vERy = kOf(metEindzijde, eRy, veer?.endRy);
+    const heeftVeer = [vSTx, vSTz, vSRy, vETx, vETz, vERy].some((k) => k !== void 0);
     const updates = {};
-    if (sTx || sTz || eTx || eTz) {
+    if (sTx || sTz || eTx || eTz || heeftVeer) {
+      const soort = (los, k) => los ? "hinge" : k !== void 0 ? "spring" : "fixed";
       updates.startConnections = {
-        Tx: sTx ? "hinge" : "fixed",
-        Tz: sTz ? "hinge" : "fixed",
-        Rz: sRy ? "hinge" : "fixed"
+        Tx: soort(sTx, vSTx),
+        Tz: soort(sTz, vSTz),
+        Rz: soort(sRy, vSRy),
+        ...vSTx !== void 0 ? { springTx: vSTx * 1e3 } : {},
+        ...vSTz !== void 0 ? { springTz: vSTz * 1e3 } : {},
+        ...vSRy !== void 0 ? { springRz: vSRy / 1e3 } : {}
       };
       updates.endConnections = {
-        Tx: eTx ? "hinge" : "fixed",
-        Tz: eTz ? "hinge" : "fixed",
-        Rz: eRy ? "hinge" : "fixed"
+        Tx: soort(eTx, vETx),
+        Tz: soort(eTz, vETz),
+        Rz: soort(eRy, vERy),
+        ...vETx !== void 0 ? { springTx: vETx * 1e3 } : {},
+        ...vETz !== void 0 ? { springTz: vETz * 1e3 } : {},
+        ...vERy !== void 0 ? { springRz: vERy / 1e3 } : {}
       };
     } else {
       if (sRy) updates.startConnection = "hinge";
@@ -8060,6 +8148,17 @@ function zoneSnedenUitStaven(beams, nodes) {
 }
 
 // src/lib/modelNaarSolverInput.ts
+function verenNaarCanoniek(v) {
+  if (!v) return {};
+  const uit = {};
+  for (const k of ["startTx", "startTz", "endTx", "endTz"]) {
+    if (v[k] !== void 0 && v[k] > 0) uit[k] = v[k] * 1e3;
+  }
+  for (const k of ["startRy", "endRy"]) {
+    if (v[k] !== void 0 && v[k] > 0) uit[k] = v[k] * 1e6;
+  }
+  return Object.keys(uit).length > 0 ? { veren: uit } : {};
+}
 function liftSpringK(s) {
   if (s.k === void 0) return void 0;
   if (s.type === "zSpring" || s.type === "xSpring") return s.k * 1e3;
@@ -8087,6 +8186,9 @@ function bouwMultiInput(model) {
         startConnection: b.releases?.startRy ? "hinge" : "fixed",
         endConnection: b.releases?.endRy ? "hinge" : "fixed",
         releases: b.releases,
+        // Verende aansluitingen: UI kN/mm → N/mm (×1e3), kNm/rad → N·mm/rad
+        // (×1e6). Alleen aanwezig als er echt een veer > 0 is opgegeven.
+        ...verenNaarCanoniek(b.veren),
         // Alleen aanwezig als er werkelijk zonegrenzen zijn; een leeg veld zou
         // de invoer van een model zonder beton onnodig veranderen.
         ...sneden && sneden.length > 0 ? { extraSneden: sneden } : {},
@@ -10138,7 +10240,8 @@ var STANDAARD_WIND_INSTELLINGEN = {
   cpeDakLoef: null,
   cpeDakLij: null,
   cpeDakHaaks: null,
-  combinatiesGenereren: true
+  combinatiesGenereren: true,
+  gevelhoogte_m: null
 };
 var nl3 = (v, d) => v.toFixed(d).replace(".", ",");
 var RICHTING_LABEL = {
@@ -10195,9 +10298,10 @@ var GAMMA_BRON = "NEN-EN 1990 tabel A1.2(B) (6.10a/6.10b) en tabel A1.2(A) (EQU)
 var WIND_COMBI_PREFIX = "Wind-gen \xB7 ";
 function genereerWindbelasting(model, inst) {
   const meldingen = [];
+  let geometrie = null;
   const fout = (tekst) => {
     meldingen.push({ niveau: "fout", tekst });
-    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null };
+    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null, geometrie };
   };
   if (model.nodes.length < 2 || model.beams.length === 0) {
     return fout("Er is nog geen constructie om wind op te zetten.");
@@ -10205,8 +10309,8 @@ function genereerWindbelasting(model, inst) {
   const geos = model.beams.map((b) => staafGeo(b, model.nodes)).filter((g) => g !== null).sort((a, b) => a.beam.id - b.beam.id);
   const zs = model.nodes.map((n) => n.z);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
-  const h_m = (maxZ - minZ) / 1e3;
-  if (h_m <= 0) return fout("De constructie heeft geen hoogte \u2014 wind is niet te bepalen.");
+  const modelhoogte_m = (maxZ - minZ) / 1e3;
+  if (modelhoogte_m <= 0) return fout("De constructie heeft geen hoogte \u2014 wind is niet te bepalen.");
   const gevelL = geos.filter((g) => g.rol === "gevelLinks");
   const gevelR = geos.filter((g) => g.rol === "gevelRechts");
   const xsAlles = model.nodes.map((n) => n.x);
@@ -10214,10 +10318,38 @@ function genereerWindbelasting(model, inst) {
   const xRechts = gevelR.length > 0 ? Math.max(...gevelR.flatMap((g) => [g.x1, g.x2])) : Math.max(...xsAlles);
   const d_m = (xRechts - xLinks) / 1e3;
   if (d_m <= 0) return fout("De constructie heeft geen breedte \u2014 wind is niet te bepalen.");
-  if (gevelL.length === 0 && gevelR.length === 0) {
+  const heeftGevels = gevelL.length > 0 || gevelR.length > 0;
+  const kapZonderGevel = !heeftGevels && inst.gevelhoogte_m !== null && inst.gevelhoogte_m > 0;
+  const h_m = modelhoogte_m + (kapZonderGevel ? inst.gevelhoogte_m : 0);
+  const heeftHellendDak = geos.some((g) => g.rol === "dakHellend");
+  geometrie = {
+    h_m,
+    modelhoogte_m,
+    d_m,
+    xLinks_m: xLinks / 1e3,
+    xRechts_m: xRechts / 1e3,
+    heeftHellendDak,
+    heeftGevels,
+    kapZonderGevel,
+    dakhelling_graden: Math.max(0, ...geos.filter((g) => g.rol === "dakHellend").map((g) => g.helling)),
+    staven: geos.map((g) => ({
+      beamId: g.beam.id,
+      rol: g.rol,
+      x1: g.x1 / 1e3,
+      z1: g.z1 / 1e3,
+      x2: g.x2 / 1e3,
+      z2: g.z2 / 1e3
+    }))
+  };
+  if (kapZonderGevel) {
+    meldingen.push({
+      niveau: "info",
+      tekst: `Kap zonder gevel: de gevels staan niet in het model. Bouwhoogte h = ${nl3(inst.gevelhoogte_m, 2)} m (gevel) + ${nl3(modelhoogte_m, 2)} m (kap) = ${nl3(h_m, 2)} m. De windlast op de gevels zelf is niet gegenereerd; die valt op de wanden en niet op dit spant.`
+    });
+  } else if (!heeftGevels) {
     meldingen.push({
       niveau: "waarschuwing",
-      tekst: "Geen enkele staaf heeft het belastingtype linker- of rechtergevel. Controleer de belastingtypen in de staafeigenschappen \u2014 zonder gevelvlak krijgt het spant geen horizontale windbelasting."
+      tekst: "Geen enkele staaf heeft het belastingtype linker- of rechtergevel. Staan de gevels wel in het model, controleer dan de belastingtypen in de staafeigenschappen. Is dit een kap op wanden die niet getekend zijn, vul dan de gevelhoogte in: de stuwdruk hoort bij de werkelijke bouwhoogte."
     });
   }
   if (!(inst.hohSpant_m > 0)) return fout("Vul een h.o.h.-afstand van de spanten in (> 0 m).");
@@ -10226,7 +10358,6 @@ function genereerWindbelasting(model, inst) {
     return fout("Kies minstens \xE9\xE9n windrichting.");
   }
   const breedte_m = inst.belastingbreedteOverride_m !== null && inst.belastingbreedteOverride_m > 0 ? inst.belastingbreedteOverride_m : inst.positieSpant === "kopgevelspant" ? inst.hohSpant_m / 2 : inst.hohSpant_m;
-  const heeftHellendDak = geos.some((g) => g.rol === "dakHellend");
   if (heeftHellendDak) {
     if (inst.cpeDakLoef === null || inst.cpeDakLij === null) {
       return fout(
@@ -10264,7 +10395,7 @@ function genereerWindbelasting(model, inst) {
       niveau: "fout",
       tekst: `De bouwhoogte (${nl3(ze_m, 1)} m) ligt boven z_max = ${ZMAX_M} m; de snelheidsprofielformules van \xA74.3.2 gelden daar niet meer.`
     });
-    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null };
+    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null, geometrie };
   }
   if (h_m >= CSCD_GRENSHOOGTE_M) {
     meldingen.push({
@@ -10339,7 +10470,8 @@ function genereerWindbelasting(model, inst) {
             cpi: cpiHier,
             w_kNm2: w,
             q_kNm: q,
-            bron
+            bron,
+            ...startFrac !== void 0 ? { startFrac, endFrac } : {}
           });
           if (Math.abs(q) < 1e-12) return;
           lasten.push({
@@ -10582,7 +10714,8 @@ function genereerWindbelasting(model, inst) {
       belastingbreedte_m: breedte_m,
       stuwdruk,
       perGeval
-    }
+    },
+    geometrie
   };
 }
 function handtekeningVanGeneratie(gevallen, lasten, combinaties) {
@@ -10731,6 +10864,7 @@ export {
   timberDeflectionNumerators,
   valideerModel,
   valideerPlaatPolygoon,
+  verenNaarCanoniek,
   verwerkRegel,
   verwerkVerzoek,
   withPlateDefaults,

@@ -502,10 +502,19 @@ export function computeBeamSplitOpKnoop(
     rel && (rel.endTx || rel.endTz || rel.endRy)
       ? { endTx: rel.endTx, endTz: rel.endTz, endRy: rel.endRy }
       : undefined;
+  // Veren volgen dezelfde regel als de releases: de startveren met deel 1,
+  // de eindveren met deel 2; de tussenknoop is star.
+  const v = beam.veren;
+  const startVeren = v && ((v.startTx ?? 0) > 0 || (v.startTz ?? 0) > 0 || (v.startRy ?? 0) > 0)
+    ? { startTx: v.startTx, startTz: v.startTz, startRy: v.startRy }
+    : undefined;
+  const endVeren = v && ((v.endTx ?? 0) > 0 || (v.endTz ?? 0) > 0 || (v.endRy ?? 0) > 0)
+    ? { endTx: v.endTx, endTz: v.endTz, endRy: v.endRy }
+    : undefined;
   // `...beam` neemt materiaal/profiel (en toekomstige velden) mee; id/from/to/
-  // releases worden expliciet overschreven.
-  const beam1: Beam = { ...beam, id: maxBeamId + 1, from: beam.from, to: newNodeId, releases: startRel };
-  const beam2: Beam = { ...beam, id: maxBeamId + 2, from: newNodeId, to: beam.to, releases: endRel };
+  // releases/veren worden expliciet overschreven.
+  const beam1: Beam = { ...beam, id: maxBeamId + 1, from: beam.from, to: newNodeId, releases: startRel, veren: startVeren };
+  const beam2: Beam = { ...beam, id: maxBeamId + 2, from: newNodeId, to: beam.to, releases: endRel, veren: endVeren };
   const beams = cur.beams.filter(b => b.id !== beamId).concat([beam1, beam2]);
 
   let nextLoadId = cur.loads.length === 0 ? 1 : Math.max(...cur.loads.map(l => l.id)) + 1;

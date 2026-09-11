@@ -141,6 +141,15 @@ export interface SolverBeamInput {
     startTx?: boolean; startTz?: boolean; startRy?: boolean;
     endTx?: boolean; endTz?: boolean; endRy?: boolean;
   };
+  /**
+   * Verende aansluitingen per DOF aan een staafeinde, in canonieke eenheden:
+   * Tx/Tz in N/mm, Ry in N·mm/rad. Alleen velden > 0 tellen; een release op
+   * hetzelfde DOF gaat vóór (dan is het een scharnier, geen veer).
+   */
+  veren?: {
+    startTx?: number; startTz?: number; startRy?: number;
+    endTx?: number; endTz?: number; endRy?: number;
+  };
 }
 
 export type SupportType =

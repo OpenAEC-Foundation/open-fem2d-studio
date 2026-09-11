@@ -460,17 +460,40 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     const eTx = !!(metEindzijde && rel?.endTx);
     const eTz = !!(metEindzijde && rel?.endTz);
     const eRy = !!(metEindzijde && (rel?.endRy || b.endConnection === "hinge"));
+    // Verende aansluitingen (canoniek N/mm resp. N·mm/rad) → core (N/m resp.
+    // N·m/rad): translatie ×1000, rotatie /1000 — dezelfde omzetting als de
+    // veeropleggingen hierboven. Een veer op een DOF dat al los is, telt niet.
+    const veer = b.veren as {
+      startTx?: number; startTz?: number; startRy?: number;
+      endTx?: number; endTz?: number; endRy?: number;
+    } | undefined;
+    const kOf = (aan: boolean, los: boolean, k: number | undefined) =>
+      aan && !los && k !== undefined && k > 0 ? k : undefined;
+    const vSTx = kOf(metStartzijde, sTx, veer?.startTx);
+    const vSTz = kOf(metStartzijde, sTz, veer?.startTz);
+    const vSRy = kOf(metStartzijde, sRy, veer?.startRy);
+    const vETx = kOf(metEindzijde, eTx, veer?.endTx);
+    const vETz = kOf(metEindzijde, eTz, veer?.endTz);
+    const vERy = kOf(metEindzijde, eRy, veer?.endRy);
+    const heeftVeer = [vSTx, vSTz, vSRy, vETx, vETz, vERy].some((k) => k !== undefined);
     const updates: any = {};
-    if (sTx || sTz || eTx || eTz) {
+    if (sTx || sTz || eTx || eTz || heeftVeer) {
+      const soort = (los: boolean, k: number | undefined) => (los ? "hinge" : k !== undefined ? "spring" : "fixed");
       updates.startConnections = {
-        Tx: sTx ? "hinge" : "fixed",
-        Tz: sTz ? "hinge" : "fixed",
-        Rz: sRy ? "hinge" : "fixed",
+        Tx: soort(sTx, vSTx),
+        Tz: soort(sTz, vSTz),
+        Rz: soort(sRy, vSRy),
+        ...(vSTx !== undefined ? { springTx: vSTx * 1000 } : {}),
+        ...(vSTz !== undefined ? { springTz: vSTz * 1000 } : {}),
+        ...(vSRy !== undefined ? { springRz: vSRy / 1000 } : {}),
       };
       updates.endConnections = {
-        Tx: eTx ? "hinge" : "fixed",
-        Tz: eTz ? "hinge" : "fixed",
-        Rz: eRy ? "hinge" : "fixed",
+        Tx: soort(eTx, vETx),
+        Tz: soort(eTz, vETz),
+        Rz: soort(eRy, vERy),
+        ...(vETx !== undefined ? { springTx: vETx * 1000 } : {}),
+        ...(vETz !== undefined ? { springTz: vETz * 1000 } : {}),
+        ...(vERy !== undefined ? { springRz: vERy / 1000 } : {}),
       };
     } else {
       if (sRy) updates.startConnection = "hinge";

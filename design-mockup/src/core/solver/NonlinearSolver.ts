@@ -7,7 +7,7 @@
 
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes, getReleasedLocalDofs, getBeamDistributedLoads } from '../fem/types';
+import { ISolverResult, IBeamForces, IElementStress, AnalysisType, getConnectionTypes, getReleasedLocalDofs, getSprungLocalDofs, getBeamDistributedLoads } from '../fem/types';
 import {
   calculateBeamLength,
   calculateBeamAngle,
@@ -20,7 +20,7 @@ import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
 import { calculateElementStress, calculatePrincipalStresses, calculateTriangleGeometricStiffness, expandTriangleGeometricStiffness } from '../fem/Triangle';
 import { calculateQuadStress, calculateQuadGeometricStiffness, expandQuadGeometricStiffness } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
-import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, buildNodeIdToIndex } from './Assembler';
+import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, applyEndConnections, buildNodeIdToIndex } from './Assembler';
 // De keuze welke stelseloplosser draait loopt via één plek: `LinearSolver`.
 // De zeven aanroepen hieronder houden hun bestaande handtekening en weten niet
 // welke oplosser eronder zit. Standaard is dat nog steeds de dichte
@@ -186,7 +186,10 @@ function assembleGlobalStiffnessWithGeometric(
     // translatie-releases (Tx = axiaal / normaalkrachthuls, Tz = dwars),
     // in LOKALE assen — vandaar vóór de transformatie naar globaal.
     const releasedLocalDofs = getReleasedLocalDofs(beam);
-    if (releasedLocalDofs.length > 0) {
+    const veren = getSprungLocalDofs(beam);
+    if (veren.length > 0) {
+      applyEndConnections(Kl, releasedLocalDofs, veren);
+    } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
     }
 
@@ -379,7 +382,10 @@ function assembleGlobalStiffnessFNL(
 
     // Releases condenseren (Rz-scharnieren + Tx/Tz-hulzen, lokale assen)
     const releasedLocalDofs = getReleasedLocalDofs(beam);
-    if (releasedLocalDofs.length > 0) {
+    const veren = getSprungLocalDofs(beam);
+    if (veren.length > 0) {
+      applyEndConnections(Kl, releasedLocalDofs, veren);
+    } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
     }
 
@@ -575,9 +581,11 @@ function assembleForceVector(mesh: Mesh): number[] {
     // de equivalente knoopkrachten moeten consistent met de gecondenseerde
     // stijfheid meelopen.
     const releasedLocalDofs = getReleasedLocalDofs(beam);
-    if (releasedLocalDofs.length > 0 && material) {
+    const veren = getSprungLocalDofs(beam);
+    if ((releasedLocalDofs.length > 0 || veren.length > 0) && material) {
       const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-      applyEndReleases(Kl, releasedLocalDofs, fLocal);
+      if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren, fLocal);
+      else applyEndReleases(Kl, releasedLocalDofs, fLocal);
     }
 
     // Transform to global

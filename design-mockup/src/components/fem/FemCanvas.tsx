@@ -2886,25 +2886,43 @@ export default function FemCanvas(props: FemCanvasProps) {
     p2: { x: number; y: number },
   ) => {
     const rel = b.releases;
-    if (!rel?.startRy && !rel?.endRy) return null;
+    // Een verende momentaansluiting krijgt een klein vierkant in plaats van
+    // het bolletje: wél een symbool (er wordt een ander moment overgedragen
+    // dan bij een starre aansluiting), maar geen scharnier.
+    const veerStart = !rel?.startRy && (b.veren?.startRy ?? 0) > 0 ? b.veren!.startRy! : null;
+    const veerEind = !rel?.endRy && (b.veren?.endRy ?? 0) > 0 ? b.veren!.endRy! : null;
+    if (!rel?.startRy && !rel?.endRy && veerStart === null && veerEind === null) return null;
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
     const len = Math.hypot(dx, dy);
     if (len < 4) return null;
     const d = Math.min(SCHARNIER_AFSTAND_PX, len * 0.3);
     const ux = dx / len, uy = dy / len;
+    const r = SCHARNIER_R_PX;
     return (
       <g pointerEvents="none">
-        {rel.startRy && (
-          <circle cx={p1.x + ux * d} cy={p1.y + uy * d} r={SCHARNIER_R_PX}
+        {rel?.startRy && (
+          <circle cx={p1.x + ux * d} cy={p1.y + uy * d} r={r}
             className="fem-scharnier">
             <title>Scharnier aan de startzijde (staaf {b.id})</title>
           </circle>
         )}
-        {rel.endRy && (
-          <circle cx={p2.x - ux * d} cy={p2.y - uy * d} r={SCHARNIER_R_PX}
+        {rel?.endRy && (
+          <circle cx={p2.x - ux * d} cy={p2.y - uy * d} r={r}
             className="fem-scharnier">
             <title>Scharnier aan de eindzijde (staaf {b.id})</title>
           </circle>
+        )}
+        {veerStart !== null && (
+          <rect x={p1.x + ux * d - r} y={p1.y + uy * d - r} width={2 * r} height={2 * r}
+            className="fem-scharnier fem-veer">
+            <title>{`Verende momentaansluiting aan de startzijde: k = ${veerStart} kNm/rad (staaf ${b.id})`}</title>
+          </rect>
+        )}
+        {veerEind !== null && (
+          <rect x={p2.x - ux * d - r} y={p2.y - uy * d - r} width={2 * r} height={2 * r}
+            className="fem-scharnier fem-veer">
+            <title>{`Verende momentaansluiting aan de eindzijde: k = ${veerEind} kNm/rad (staaf ${b.id})`}</title>
+          </rect>
         )}
       </g>
     );

@@ -32,6 +32,7 @@ import { BetonKorfPaneel, KolomVelden, type Wapeningskorf } from "../beton";
 // paneel niet.
 import { isOverwegendVerticaal } from "../../lib/steelCheckBuilder";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
+import AansluitingKeuze from "./AansluitingKeuze";
 
 interface SectionProps {
   title: string;
@@ -419,8 +420,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   // gemount zodat elke keer openen met de actuele staafwaarden voorselecteert.
   const [kiezerOpen, setKiezerOpen] = useState(false);
 
-  const setRelease = (key: "startRy" | "endRy", checked: boolean) => {
-    updateBeam?.(beam.id, { releases: { ...beam.releases, [key]: checked } });
+  // Aansluitingen per einde (N/V/M: vast, scharnier of veer) landen in
+  // `releases` én `veren`; AansluitingKeuze levert beide velden samen.
+  const setAansluiting = (w: { releases: Beam["releases"]; veren: Beam["veren"] }) => {
+    updateBeam?.(beam.id, { releases: w.releases, veren: w.veren });
   };
 
   // Norm-tabblad: de toetsconfiguratie per staaf (kniklengtes, kipsteunen,
@@ -875,19 +878,11 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
         </Section>
 
         <Section title="Randvoorwaarden" defaultOpen={false}>
-          <Row label="Start scharnierend">
-            <input
-              type="checkbox" className="fem-prop-checkbox"
-              checked={beam.releases?.startRy ?? false}
-              onChange={(e) => setRelease("startRy", e.target.checked)}
-            />
+          <Row label="Aansluiting start">
+            <AansluitingKeuze zijde="start" releases={beam.releases} veren={beam.veren} onChange={setAansluiting} />
           </Row>
-          <Row label="Eind scharnierend">
-            <input
-              type="checkbox" className="fem-prop-checkbox"
-              checked={beam.releases?.endRy ?? false}
-              onChange={(e) => setRelease("endRy", e.target.checked)}
-            />
+          <Row label="Aansluiting eind">
+            <AansluitingKeuze zijde="end" releases={beam.releases} veren={beam.veren} onChange={setAansluiting} />
           </Row>
           <Row label="Bedding">
             {beam.bedding

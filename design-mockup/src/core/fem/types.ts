@@ -227,6 +227,35 @@ export function getReleasedLocalDofs(beam: IBeamElement): number[] {
   return dofs;
 }
 
+/** Eén verend aangesloten lokaal DOF met zijn veerstijfheid (N/m of N·m/rad). */
+export interface SprungLocalDof {
+  dof: number;
+  k: number;
+}
+
+/**
+ * Verend aangesloten lokale DOF's (zelfde nummering als getReleasedLocalDofs)
+ * met hun stijfheid: een veer tussen het staafeinde en de knoop. Alleen
+ * 'spring' met een stijfheid > 0 telt; een 'spring' zonder stijfheid gedraagt
+ * zich als 'fixed' (dat is de veilige lezing van een ontbrekend getal). De
+ * condensatie staat in applyEndConnections (Assembler.ts); een scharnier is
+ * daar het geval k = 0.
+ */
+export function getSprungLocalDofs(beam: IBeamElement): SprungLocalDof[] {
+  const { start, end } = getDOFConnectionTypes(beam);
+  const uit: SprungLocalDof[] = [];
+  const zet = (dof: number, type: ConnectionType, k: number | undefined) => {
+    if (type === 'spring' && k !== undefined && k > 0) uit.push({ dof, k });
+  };
+  zet(0, start.Tx, start.springTx);
+  zet(1, start.Tz, start.springTz);
+  zet(2, start.Rz, start.springRz);
+  zet(3, end.Tx, end.springTx);
+  zet(4, end.Tz, end.springTz);
+  zet(5, end.Rz, end.springRz);
+  return uit;
+}
+
 /**
  * Get connection types for a beam, with backward compatibility from legacy endReleases.
  * Returns the primary (Rz/moment) connection type for rendering symbols.

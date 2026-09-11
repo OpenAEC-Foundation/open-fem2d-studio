@@ -1,6 +1,6 @@
 import { Matrix } from '../math/Matrix';
 import { Mesh } from '../fem/Mesh';
-import { AnalysisType, getReleasedLocalDofs, getBeamDistributedLoads } from '../fem/types';
+import { AnalysisType, getReleasedLocalDofs, getSprungLocalDofs, getBeamDistributedLoads } from '../fem/types';
 import { calculateElementStiffness, calculateTriangleStiffnessExpanded } from '../fem/Triangle';
 import { calculateQuadStiffness, calculateQuadStiffnessExpanded } from '../fem/Quad4';
 import { calculateDKTStiffness } from '../fem/DKT';
@@ -96,13 +96,15 @@ export function assembleGlobalStiffnessMatrix(
         if (axialReleasedBeamIds?.has(beam.id)) {
           for (const d of [0, 3]) if (!releasedLocalDofs.includes(d)) releasedLocalDofs.push(d);
         }
+        const veren = getSprungLocalDofs(beam);
         let Ke: Matrix;
-        if (releasedLocalDofs.length > 0) {
+        if (releasedLocalDofs.length > 0 || veren.length > 0) {
           const L = calculateBeamLength(n1, n2);
           const angle = calculateBeamAngle(n1, n2);
           if (L < 1e-10) throw new Error('Beam element has zero length');
           const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-          applyEndReleases(Kl, releasedLocalDofs);
+          if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren);
+          else applyEndReleases(Kl, releasedLocalDofs);
           const T = createTransformationMatrix(angle);
           Ke = T.transpose().multiply(Kl.multiply(T));
         } else {
@@ -206,13 +208,15 @@ export function assembleGlobalStiffnessMatrix(
         if (axialReleasedBeamIds?.has(beam.id)) {
           for (const d of [0, 3]) if (!releasedLocalDofs.includes(d)) releasedLocalDofs.push(d);
         }
+        const veren = getSprungLocalDofs(beam);
         let Ke: Matrix;
-        if (releasedLocalDofs.length > 0) {
+        if (releasedLocalDofs.length > 0 || veren.length > 0) {
           const L = calculateBeamLength(n1, n2);
           const angle = calculateBeamAngle(n1, n2);
           if (L < 1e-10) throw new Error('Beam element has zero length');
           const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-          applyEndReleases(Kl, releasedLocalDofs);
+          if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren);
+          else applyEndReleases(Kl, releasedLocalDofs);
           const T = createTransformationMatrix(angle);
           Ke = T.transpose().multiply(Kl.multiply(T));
         } else {
@@ -488,11 +492,13 @@ export function assembleForceVector(mesh: Mesh, analysisType: AnalysisType = 'pl
       // Krachtcondensatie voor releases (Rz-scharnieren + Tx/Tz-hulzen) —
       // consistent met de gecondenseerde stijfheid, in lokale assen.
       const releasedLocalDofs = getReleasedLocalDofs(beam);
-      if (releasedLocalDofs.length > 0) {
+      const veren = getSprungLocalDofs(beam);
+      if (releasedLocalDofs.length > 0 || veren.length > 0) {
         const material = mesh.getMaterial(beam.materialId);
         if (material) {
           const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
-          applyEndReleases(Kl, releasedLocalDofs, localForces);
+          if (veren.length > 0) applyEndConnections(Kl, releasedLocalDofs, veren, localForces);
+          else applyEndReleases(Kl, releasedLocalDofs, localForces);
         }
       }
 
@@ -611,5 +617,77 @@ export function applyEndReleases(Ke: Matrix, releasedDofs: number[], F?: number[
       Ke.set(c, i, 0);
     }
     eliminated.add(c);
+  }
+}
+
+/**
+ * Statische condensatie van staafeinden die scharnierend ÓF verend zijn
+ * aangesloten — de algemene vorm van applyEndReleases, in place op de
+ * lokale 6×6 en (optioneel) op de krachtvector.
+ *
+ * Model: op een verend DOF c zit tussen het ELEMENT-eind e_c en de KNOOP n_c
+ * een veer k (energie ½·k·(n_c − e_c)²). e_c is een inwendige onbekende en
+ * wordt weggewerkt; de plek c in de matrix is daarna van de knoop-DOF. Uit
+ * de evenwichtsvergelijking van e_c,
+ *
+ *   Σ_j K_cj·e_j + k·(e_c − n_c) = F_c   ⇒   e_c = (F_c − Σ_{j≠c} K_cj·e_j + k·n_c) / (K_cc + k),
+ *
+ * volgt voor de overige DOF's i, j (alle andere plekken, ook eerder
+ * omgezette knoop-DOF's):
+ *
+ *   K_ij ← K_ij − K_ic·K_cj/(K_cc + k)         F_i ← F_i − K_ic·F_c/(K_cc + k)
+ *   K_ic ← K_ic·k/(K_cc + k)  (en symmetrisch)  F_c ← k·F_c/(K_cc + k)
+ *   K_cc ← k·K_cc/(K_cc + k)
+ *
+ * Met k = 0 is dit precies applyEndReleases (rij en kolom c worden nul: het
+ * scharnier), met k → ∞ verandert er niets (star). De volgorde van
+ * elimineren doet er niet toe — het is Gauss-eliminatie van inwendige
+ * onbekenden — zolang elke stap álle nog aanwezige koppelingen meeneemt.
+ *
+ * Scharnieren gaan hier als k = 0 door dezelfde formules. Een staaf ZONDER
+ * veren blijft op applyEndReleases lopen (bit-identiek aan vroeger); deze
+ * routine is alleen voor staven met minstens één veer.
+ */
+export function applyEndConnections(
+  Ke: Matrix,
+  hingedDofs: number[],
+  springs: { dof: number; k: number }[],
+  F?: number[],
+): void {
+  const n = 6;
+  const stappen: { dof: number; k: number }[] = [
+    ...hingedDofs.map((dof) => ({ dof, k: 0 })),
+    ...springs.filter((s) => !hingedDofs.includes(s.dof)),
+  ];
+  for (const { dof: c, k } of stappen) {
+    const kcc = Ke.get(c, c) + k;
+    if (Math.abs(kcc) < 1e-20) {
+      // Geen stijfheid op dit DOF en geen veer: alleen ontkoppelen.
+      for (let i = 0; i < n; i++) { Ke.set(i, c, 0); Ke.set(c, i, 0); }
+      if (F) F[c] = 0;
+      continue;
+    }
+    const kcc0 = Ke.get(c, c);
+    const anderen: number[] = [];
+    for (let i = 0; i < n; i++) if (i !== c) anderen.push(i);
+    const col = anderen.map((i) => Ke.get(i, c));
+    const row = anderen.map((j) => Ke.get(c, j));
+
+    if (F) {
+      const fc = F[c];
+      for (let a = 0; a < anderen.length; a++) F[anderen[a]] -= col[a] / kcc * fc;
+      F[c] = k * fc / kcc;
+    }
+    for (let a = 0; a < anderen.length; a++) {
+      for (let b = 0; b < anderen.length; b++) {
+        Ke.addAt(anderen[a], anderen[b], -col[a] * row[b] / kcc);
+      }
+    }
+    for (let a = 0; a < anderen.length; a++) {
+      const v = col[a] * k / kcc;
+      Ke.set(anderen[a], c, v);
+      Ke.set(c, anderen[a], v);
+    }
+    Ke.set(c, c, k * kcc0 / kcc);
   }
 }
