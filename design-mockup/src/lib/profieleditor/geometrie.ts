@@ -131,6 +131,7 @@ export function lijfHart(basis: Basisprofiel): number {
     case "Rhs":
       return basis.tw / 2;
     case "ISection":
+    case "ISectionSchuin":
     case "Chs":
     case "Rechthoek":
       return basis.b / 2;
@@ -188,6 +189,7 @@ export function gatOppervlak(g: Gat, basis: Basisprofiel): number {
 export function toegestanePlaatsen(basis: Basisprofiel): GatPlaats[] {
   switch (basis.soort) {
     case "ISection":
+    case "ISectionSchuin":
     case "Channel":
     case "ChannelSchuin":
     case "Shs":

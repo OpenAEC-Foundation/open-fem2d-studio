@@ -15,7 +15,22 @@ import { parseConcreteSection } from "../../lib/betonCheckBuilder";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 
 export type SectionShape =
-  | { type: "isection"; h: number; b: number; tw: number; tf: number; r: number }
+  /**
+   * I-profiel. `flensHelling` is de helling van het flens*binnen*vlak als
+   * verhouding (0,14 = 14 % bij de INP-reeks); 0 of weggelaten geeft
+   * evenwijdige flenzen (IPE, HE, de oude Differdinger reeksen). Bij een
+   * toelopende flens geldt `tf` op een kwart van de flensbreedte vanaf de
+   * tip, de afspraak van DIN 1025-1; zie `flensDikteI`.
+   */
+  | {
+      type: "isection";
+      h: number;
+      b: number;
+      tw: number;
+      tf: number;
+      r: number;
+      flensHelling?: number;
+    }
   /**
    * U-profiel. `flensHelling` is de helling van het flens*binnen*vlak als
    * verhouding (0,08 = 8 %); 0 geeft evenwijdige flenzen.
@@ -81,6 +96,26 @@ export function flensDikte(shape: ChannelShape, x: number): number {
   return shape.tf + shape.flensHelling * (shape.b / 2 - x);
 }
 
+/** De I-vorm los, zodat de flensmeetkunde hem als parameter kan aannemen. */
+export type IShape = Extract<SectionShape, { type: "isection" }>;
+
+/**
+ * Flensdikte van een I-profiel op afstand `u` van het lijfvlak (mm), per
+ * zijde gemeten; `u = 0` is het lijf, `u = (b − tw)/2` de flenstip.
+ *
+ * Bij een toelopende flens (INP) geldt de catalogusmaat `tf` op `b/4` vanaf
+ * de tip — het meetpunt van DIN 1025-1. Dat is gemeten, niet gekozen: met
+ * `tf` op het midden van de uitstek ligt de contour over de hele reeks
+ * I 80–600 stelselmatig 1,3 % boven de gedrukte A en 2,4 % boven I_z; met
+ * `b/4` valt dat weg (zie scripts/genereer-oude-profielen.mjs --valideer).
+ * Bij `flensHelling` 0 of weggelaten geeft dit gewoon `tf`.
+ */
+export function flensDikteI(shape: IShape, u: number): number {
+  const helling = Math.max(0, shape.flensHelling ?? 0);
+  const c = (shape.b - shape.tw) / 2;
+  return shape.tf + helling * (c - shape.b / 4 - u);
+}
+
 /**
  * Flenshelling die bij een profielnaam hoort; 0 = evenwijdige flenzen.
  *
@@ -98,7 +133,17 @@ export function steelShape(dims: SteelSectionDims | undefined): SectionShape | n
   if (!dims) return null;
   switch (dims.kind) {
     case "ISection":
-      return { type: "isection", h: dims.h, b: dims.b, tw: dims.tw, tf: dims.tf, r: dims.r };
+      return {
+        type: "isection",
+        h: dims.h,
+        b: dims.b,
+        tw: dims.tw,
+        tf: dims.tf,
+        r: dims.r,
+        // Zelfde afspraak als bij de U: de helling staat in profiles.json
+        // (0,14 voor INP) of hij is er niet, en dan is de flens evenwijdig.
+        flensHelling: dims.flensHelling ?? 0,
+      };
     case "Channel":
       return {
         type: "channel",
@@ -192,17 +237,56 @@ export function shapePath(shape: SectionShape, s: number, x0: number, y0: number
   switch (shape.type) {
     case "isection": {
       const { h, b, tw, tf } = shape;
-      // Straal defensief begrensd zodat de boog altijd binnen het profiel past.
-      const r = Math.max(0, Math.min(shape.r, (b - tw) / 2 - 0.5, (h - 2 * tf) / 2 - 0.5));
       const wl = (b - tw) / 2; // flensuitstek links van het lijf
       const wr = wl + tw; // rechterkant lijf
+      // NB: `s` is in deze functie de SCHAALFACTOR; de flenshelling heet `helling`.
+      const helling = Math.max(0, shape.flensHelling ?? 0);
+      const tPunt = flensDikteI(shape, wl); // dikte aan de flenstip
+      if (helling === 0 || tPunt <= 0) {
+        // Straal defensief begrensd zodat de boog altijd binnen het profiel past.
+        const r = Math.max(0, Math.min(shape.r, (b - tw) / 2 - 0.5, (h - 2 * tf) / 2 - 0.5));
+        return {
+          d:
+            `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, tf)} L ${P(wr + r, tf)} ` +
+            `${A(r, wr, tf + r, 0)} L ${P(wr, h - tf - r)} ${A(r, wr + r, h - tf, 0)} ` +
+            `L ${P(b, h - tf)} L ${P(b, h)} L ${P(0, h)} L ${P(0, h - tf)} ` +
+            `L ${P(wl - r, h - tf)} ${A(r, wl, h - tf - r, 0)} L ${P(wl, tf + r)} ` +
+            `${A(r, wl - r, tf, 0)} L ${P(0, tf)} Z`,
+        };
+      }
+      // ── Toelopende flens (INP) ──────────────────────────────────────────
+      // De U-constructie hieronder, tweemaal gespiegeld om het lijf: elke
+      // flenshelft is een U-flens. Walsuitronding r1 (middelpunt in de
+      // holte) en tipafronding r2 = 0,6·r1 (DIN 1025-1; middelpunt in het
+      // materiaal). Dezelfde contour als `i_profiel_schuin` in
+      // src-tauri/crates/section-properties/src/contour.rs, zodat tekening en
+      // rekenkern één vorm beschrijven. `u` is de afstand tot het lijfvlak.
+      const hh = h / 2;
+      const c = wl; // uitstek per zijde
+      const k = Math.sqrt(1 + helling * helling);
+      const a = hh - tf - helling * (c - b / 4); // tf op b/4 vanaf de tip
+      const r1 = Math.max(0, Math.min(shape.r, c / 2, a));
+      const r2 = Math.max(0, Math.min(0.6 * shape.r, c / 2, tPunt / k));
+      const uc1 = r1;
+      const d1 = a + helling * uc1 - r1 * k;
+      const ut1 = uc1 - (r1 * helling) / k;
+      const uc2 = c - r2;
+      const d2 = a + helling * uc2 + r2 * k;
+      const ut2 = uc2 + (r2 * helling) / k;
+      const bin = (u: number) => flensDikteI(shape, u); // binnenvlak bovenflens
       return {
         d:
-          `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, tf)} L ${P(wr + r, tf)} ` +
-          `${A(r, wr, tf + r, 0)} L ${P(wr, h - tf - r)} ${A(r, wr + r, h - tf, 0)} ` +
-          `L ${P(b, h - tf)} L ${P(b, h)} L ${P(0, h)} L ${P(0, h - tf)} ` +
-          `L ${P(wl - r, h - tf)} ${A(r, wl, h - tf - r, 0)} L ${P(wl, tf + r)} ` +
-          `${A(r, wl - r, tf, 0)} L ${P(0, tf)} Z`,
+          // Bovenflens rechts, lijf rechts, onderflens rechts.
+          `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, hh - d2)} ` +
+          `${A(r2, wr + ut2, bin(ut2), 1)} L ${P(wr + ut1, bin(ut1))} ` +
+          `${A(r1, wr, hh - d1, 0)} L ${P(wr, hh + d1)} ` +
+          `${A(r1, wr + ut1, h - bin(ut1), 0)} L ${P(wr + ut2, h - bin(ut2))} ` +
+          `${A(r2, b, hh + d2, 1)} L ${P(b, h)} L ${P(0, h)} ` +
+          // Onderflens links, lijf links, bovenflens links (spiegelbeeld).
+          `L ${P(0, hh + d2)} ${A(r2, wl - ut2, h - bin(ut2), 1)} ` +
+          `L ${P(wl - ut1, h - bin(ut1))} ${A(r1, wl, hh + d1, 0)} ` +
+          `L ${P(wl, hh - d1)} ${A(r1, wl - ut1, bin(ut1), 0)} ` +
+          `L ${P(wl - ut2, bin(ut2))} ${A(r2, 0, hh - d2, 1)} Z`,
       };
     }
     case "channel": {

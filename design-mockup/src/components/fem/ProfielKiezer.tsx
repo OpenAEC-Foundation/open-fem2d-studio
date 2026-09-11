@@ -102,6 +102,12 @@ import {
 import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
 import { useCltOpbouwen } from "../../lib/profieleditor/useCltOpbouwen";
 import { nieuwId } from "../../lib/profieleditor/id";
+import {
+  REEKSEN,
+  profielLabel,
+  profielenVanReeks,
+  reeksVanProfiel,
+} from "../../lib/profieleditor/catalogus";
 import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import CltOpbouwTekening, { CLT_THEMA_KLEUREN } from "../clt/CltOpbouwTekening";
@@ -197,22 +203,14 @@ const SOORTEN: Array<{ id: MateriaalSoort; label: string; beschikbaar: boolean; 
   { id: "overig", label: "Overig", beschikbaar: true, hint: "Vrij materiaal: eigen naam, E, ρ en toelaatbare spanning; getoetst op de vergelijkspanning (von Mises), zonder norm" },
 ];
 
-/** Reeks-indeling van de staaldatabase op naamprefix. */
-const STAAL_REEKSEN: Array<{ id: string; label: string; match: (naam: string) => boolean }> = [
-  { id: "IPE", label: "IPE", match: (n) => n.startsWith("IPE") },
-  { id: "HEA", label: "HEA", match: (n) => n.startsWith("HEA") },
-  { id: "HEB", label: "HEB", match: (n) => n.startsWith("HEB") },
-  { id: "HEM", label: "HEM", match: (n) => n.startsWith("HEM") },
-  { id: "UNP", label: "UNP", match: (n) => n.startsWith("UNP") },
-  { id: "KOKER", label: "Koker (SHS/RHS)", match: (n) => n.startsWith("SHS") || n.startsWith("RHS") || n.startsWith("HFRHS") },
-  { id: "CHS", label: "Buis (CHS)", match: (n) => n.startsWith("CHS") },
-];
-
-/** Sorteersleutel: eerste getal in de naam (maat), daarna alfabetisch. */
-function maatVan(naam: string): number {
-  const m = /(\d+)/.exec(naam);
-  return m ? parseInt(m[1], 10) : 0;
-}
+/**
+ * Reeks-indeling van de staaldatabase: dezelfde lijst als de profieleditor
+ * (`lib/profieleditor/catalogus.ts`), zodat een reeks die daar bijkomt — UPE,
+ * de oude Differdinger reeksen, INP — hier niet vergeten kan worden. Deze
+ * dialoog had eerder een eigen, kortere lijst en liet daardoor UPE en de
+ * oude reeksen niet zien terwijl ze wel in de database zaten.
+ */
+const STAAL_REEKSEN = REEKSEN;
 
 /**
  * Vaste maat van het venster, gelijk voor élke stap.
@@ -325,9 +323,7 @@ export default function ProfielKiezer({
   };
 
   // Staal-stap
-  const eersteReeks = huidig?.profile
-    ? STAAL_REEKSEN.find((r) => r.match(huidig.profile!.toUpperCase()))?.id ?? "HEA"
-    : "HEA";
+  const eersteReeks = (huidig?.profile ? reeksVanProfiel(huidig.profile) : null) ?? "HEA";
   const [reeks, setReeks] = useState(eersteReeks);
   const [staalProfiel, setStaalProfiel] = useState(huidig?.profile ?? "");
   const [staalKlasse, setStaalKlasse] = useState(
@@ -421,13 +417,8 @@ export default function ProfielKiezer({
   const [vrijF, setVrijF] = useState(huidigVrij ? String(huidigVrij.fToel) : "");
   const [vrijGamma, setVrijGamma] = useState(huidigVrij ? String(huidigVrij.gammaM) : "1");
 
-  const reeksProfielen = useMemo(() => {
-    const r = STAAL_REEKSEN.find((x) => x.id === reeks);
-    if (!r) return [];
-    return Object.keys(STEEL_SECTION_DIMS)
-      .filter((naam) => r.match(naam))
-      .sort((a, b) => maatVan(a) - maatVan(b) || a.localeCompare(b));
-  }, [reeks]);
+  // Op maat gesorteerd, met de decimaal erin: "DIN 42.5" hoort tussen 40 en 45.
+  const reeksProfielen = useMemo(() => profielenVanReeks(reeks), [reeks]);
 
   const dims = staalProfiel ? STEEL_SECTION_DIMS[staalProfiel] : undefined;
   const sectie = staalProfiel ? STEEL_SECTIONS[staalProfiel] : undefined;
@@ -812,7 +803,7 @@ export default function ProfielKiezer({
                   className={`pk-rij${staalProfiel === naam ? " actief" : ""}`}
                   onClick={() => setStaalProfiel(naam)}
                 >
-                  {naam}
+                  {profielLabel(naam)}
                 </button>
               ))}
             </div>
@@ -1436,7 +1427,7 @@ export default function ProfielKiezer({
                       className={`pk-rij${overigProfiel === naam ? " actief" : ""}`}
                       onClick={() => setOverigProfiel(naam)}
                     >
-                      {naam}
+                      {profielLabel(naam)}
                     </button>
                   ))}
                 </div>

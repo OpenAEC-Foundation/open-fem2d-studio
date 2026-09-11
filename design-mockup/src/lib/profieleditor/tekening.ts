@@ -30,7 +30,18 @@ export interface TekenItem {
 export function basisVorm(b: Basisprofiel): SectionShape {
   switch (b.soort) {
     case "ISection":
-      return { type: "isection", h: b.h, b: b.b, tw: b.tw, tf: b.tf, r: b.r };
+      return { type: "isection", h: b.h, b: b.b, tw: b.tw, tf: b.tf, r: b.r, flensHelling: 0 };
+    case "ISectionSchuin":
+      // Zie ChannelSchuin: de helling komt uit de staaldatabase, niet uit de soort.
+      return {
+        type: "isection",
+        h: b.h,
+        b: b.b,
+        tw: b.tw,
+        tf: b.tf,
+        r: b.r,
+        flensHelling: flensHellingVanProfiel(b.naam),
+      };
     case "Channel":
       return { type: "channel", h: b.h, b: b.b, tw: b.tw, tf: b.tf, r: b.r, flensHelling: 0 };
     case "ChannelSchuin":

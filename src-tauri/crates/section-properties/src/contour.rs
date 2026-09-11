@@ -1275,6 +1275,111 @@ pub fn unp(h: f64, b: f64, tw: f64, tf: f64, r: f64) -> Doorsnede {
     u_profiel_schuin(h, b, tw, tf, r, r / 2.0, UNP_SCHUINTE)
 }
 
+/// I-contour met **toelopende** flenzen (DIN 1025-1, de INP-reeks).
+///
+/// Dezelfde meetkunde als [`u_profiel_schuin`], tweemaal gespiegeld om het
+/// lijf: elke flenshelft is een U-flens. Het flens*buiten*vlak blijft vlak op
+/// `z = 0` en `z = h`; het *binnen*vlak loopt met `schuinte` (14 % bij INP)
+/// van het lijf naar de tip toe. De nominale flensdikte `tf` geldt volgens
+/// DIN 1025-1 op **een kwart van de flensbreedte vanaf de tip**, dus op
+/// `u = c − b/4` met `c = (b − tw)/2` de uitstek per zijde en `u` de afstand
+/// tot het lijfvlak:
+///
+/// ```text
+/// binnenvlak bovenflens, rechts:  z = h/2 + a + s·u,   a = h/2 − tf − s·(c − b/4)
+/// ```
+///
+/// Dat meetpunt is geen keuze maar een meting: met `tf` op het midden van de
+/// uitstek (`u = c/2`) ligt de motor over de hele reeks I 80–600 stelselmatig
+/// 1,2–1,4 % boven de gedrukte `A` en 2,2–2,9 % boven `I_z`; met `b/4` vanaf
+/// de tip valt die afwijking weg (zie `scripts/genereer-oude-profielen.mjs
+/// --valideer`). Walsuitronding `r1` (middelpunt in
+/// de holte) en flenstipafronding `r2` (middelpunt in het materiaal) liggen
+/// vast zoals bij de U-contour, met `k = √(1+s²)`:
+///
+/// ```text
+/// u_c1 = r1        d1 = a + s·u_c1 − r1·k     u_t1 = u_c1 − r1·s/k
+/// u_c2 = c − r2    d2 = a + s·u_c2 + r2·k     u_t2 = u_c2 + r2·s/k
+/// ```
+///
+/// De linkerhelft is het spiegelbeeld `y → b − y`, in omgekeerde volgorde
+/// doorlopen zodat de buitenrand als één gesloten lus tegen de klok in blijft
+/// gaan. Met `s = 0` en `r2 = 0` gaat deze contour exact over in
+/// [`i_profiel`].
+pub fn i_profiel_schuin(
+    h: f64,
+    b: f64,
+    tw: f64,
+    tf: f64,
+    r1: f64,
+    r2: f64,
+    schuinte: f64,
+) -> Doorsnede {
+    let s = schuinte.max(0.0);
+    if s == 0.0 && r2 <= 0.0 {
+        return i_profiel(h, b, tw, tf, r1);
+    }
+    let hh = h / 2.0;
+    let c = (b - tw) / 2.0; // flensuitstek per zijde
+    let a = hh - tf - s * (c - b / 4.0); // tf geldt op b/4 vanaf de tip
+    let k = (1.0 + s * s).sqrt();
+    // De uitronding moet in de holte passen, de tipafronding in het dunste
+    // deel van de flens (dikte aan de tip: tf − s·c/2).
+    let r1 = begrens_straal(r1, c / 2.0, a);
+    let r2 = begrens_straal(r2, c / 2.0, hh - a - s * c);
+
+    let yl = c; // linkervlak van het lijf
+    let yr = c + tw; // rechtervlak van het lijf
+
+    // Alles in `u`, de afstand tot het lijfvlak; rechts is y = yr + u,
+    // links y = yl − u.
+    let uc1 = r1;
+    let d1 = a + s * uc1 - r1 * k;
+    let ut1 = uc1 - r1 * s / k;
+    let uc2 = c - r2;
+    let d2 = a + s * uc2 + r2 * k;
+    let ut2 = uc2 + r2 * s / k;
+    let vlak = |u: f64| a + s * u;
+
+    let c = ContourBouwer::nieuw(0.0, 0.0)
+        // Onderflens rechts, omhoog langs de tip.
+        .lijn(b, 0.0)
+        .lijn(b, hh - d2)
+        .boog((yr + uc2, hh - d2), (yr + ut2, hh - vlak(ut2)), true)
+        .lijn(yr + ut1, hh - vlak(ut1))
+        .boog((yr + uc1, hh - d1), (yr, hh - d1), false)
+        // Lijf rechts.
+        .lijn(yr, hh + d1)
+        // Bovenflens rechts.
+        .boog((yr + uc1, hh + d1), (yr + ut1, hh + vlak(ut1)), false)
+        .lijn(yr + ut2, hh + vlak(ut2))
+        .boog((yr + uc2, hh + d2), (b, hh + d2), true)
+        .lijn(b, h)
+        // Bovenflens links, in spiegelbeeld en omgekeerde volgorde.
+        .lijn(0.0, h)
+        .lijn(0.0, hh + d2)
+        .boog((yl - uc2, hh + d2), (yl - ut2, hh + vlak(ut2)), true)
+        .lijn(yl - ut1, hh + vlak(ut1))
+        .boog((yl - uc1, hh + d1), (yl, hh + d1), false)
+        // Lijf links.
+        .lijn(yl, hh - d1)
+        // Onderflens links.
+        .boog((yl - uc1, hh - d1), (yl - ut1, hh - vlak(ut1)), false)
+        .lijn(yl - ut2, hh - vlak(ut2))
+        .boog((yl - uc2, hh - d2), (0.0, hh - d2), true)
+        .sluit();
+    Doorsnede::nieuw().met(c)
+}
+
+/// Flensschuinte van de INP-reeks volgens DIN 1025-1: 14 %.
+pub const INP_SCHUINTE: f64 = 0.14;
+
+/// INP-contour uit de vier catalogusmaten plus de walsuitronding.
+/// De flenstipafronding is `0,6·r` (DIN 1025-1: `r₂ = 0,6·r₁`).
+pub fn inp(h: f64, b: f64, tw: f64, tf: f64, r: f64) -> Doorsnede {
+    i_profiel_schuin(h, b, tw, tf, r, 0.6 * r, INP_SCHUINTE)
+}
+
 /// Koker met een **concentrische** wand: de binnenstraal is `r_buiten − t`,
 /// zodat de wanddikte overal exact `t` is.
 ///

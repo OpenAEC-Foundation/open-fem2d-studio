@@ -4,8 +4,9 @@
  * bij CHS is h = b = uitwendige diameter en r = 0), plus de aanvullende
  * doorsnedegrootheden (props) voor de eigenschappentabel.
  *
- * Bij U-profielen staat er ook een flensHelling: 0,08 voor de UNP-reeks
- * (toelopende flens), 0 voor de UPE-reeks (evenwijdige flenzen).
+ * Bij profielen met een toelopende flens staat er ook een flensHelling:
+ * 0,08 voor de UNP-reeks, 0,14 voor de INP-reeks; 0 voor de UPE-reeks
+ * (evenwijdige flenzen), weggelaten bij de overige I-profielen.
  *
  * GEGENEREERD uit src-tauri/crates/steel-profiles/data/profiles.json —
  * de bron van waarheid die ook de Rust-toetsing gebruikt. Niet met de hand
@@ -59,16 +60,18 @@ export interface SteelSectionDims {
   /** Afrondingsstraal in mm (walsuitronding; SHS/RHS: hoekstraal; CHS: 0). */
   r: number;
   /**
-   * Helling van het flensBINNENvlak (U-profielen), als verhouding: 0,08 is
-   * 8 %. 0 betekent evenwijdige flenzen.
+   * Helling van het flensBINNENvlak, als verhouding: 0,08 is 8 % (UNP),
+   * 0,14 is 14 % (INP). 0 betekent evenwijdige flenzen.
    *
    * Dit is een TEKENgrootheid, geen rekengrootheid: de doorsnedegrootheden in
    * `props` staan los van dit veld en komen onveranderd uit de catalogus.
-   * Zonder dit veld is een UNP niet van een UPE te onderscheiden en wordt hij
-   * met evenwijdige flenzen getekend — precies de fout die dit veld opheft.
+   * Zonder dit veld is een UNP niet van een UPE te onderscheiden, en een INP
+   * niet van een IPE, en worden ze met evenwijdige flenzen getekend — precies
+   * de fout die dit veld opheft. De profieleditor leest er ook de motorsoort
+   * uit af (`ISectionSchuin` / `ChannelSchuin`).
    *
    * Ontbreekt het veld, dan tekent `profielVorm.ts` evenwijdige flenzen. Een
-   * nieuwe U-reeks met toelopende flens MOET het dus in profiles.json krijgen;
+   * nieuwe reeks met toelopende flens MOET het dus in profiles.json krijgen;
    * anders ziet niemand dat de tekening de verkeerde vorm laat zien.
    */
   flensHelling?: number;
@@ -1069,4 +1072,46 @@ export const STEEL_SECTION_DIMS: Record<string, SteelSectionDims> = {
     props: { iz: 162729000, welY: 12062200, welZ: 1084860, wplY: 13866900, wplZ: 1711760, avZ: 20298.6, it: 12592400, iw: 33544100000000, iRadY: 383.022, iRadZ: 64.5501 } },
   "DIN100": { kind: "ISection", naam: "DIN 100", h: 1000, b: 300, tw: 19, tf: 36, r: 30,
     props: { iz: 162758000, welY: 12895000, welZ: 1085050, wplY: 14855100, wplZ: 1716270, avZ: 21248.6, it: 12705400, iw: 37337000000000, iRadY: 401.458, iRadZ: 63.7846 } },
+  "INP80": { kind: "ISection", naam: "INP 80", h: 80, b: 42, tw: 3.9, tf: 5.9, r: 3.9,
+    flensHelling: 0.14, props: { iz: 62748.1, welY: 19413.7, welZ: 2988, wplY: 22699.9, wplZ: 4977.01, avZ: 330.601, it: 8175.76, iw: 81087900, iRadY: 32.0248, iRadZ: 9.10339 } },
+  "INP100": { kind: "ISection", naam: "INP 100", h: 100, b: 50, tw: 4.5, tf: 6.8, r: 4.5,
+    flensHelling: 0.14, props: { iz: 121504, welY: 34054.1, welZ: 4860.17, wplY: 39735, wplZ: 8121.37, avZ: 474.246, it: 15094, iw: 249367000, iRadY: 40.0329, iRadZ: 10.6941 } },
+  "INP120": { kind: "ISection", naam: "INP 120", h: 120, b: 58, tw: 5.1, tf: 7.7, r: 5.1,
+    flensHelling: 0.14, props: { iz: 214055, welY: 54518.3, welZ: 7381.2, wplY: 63534.5, wplZ: 12362.5, avZ: 642.632, it: 25664, iw: 639482000, iRadY: 48.0292, iRadZ: 12.2863 } },
+  "INP140": { kind: "ISection", naam: "INP 140", h: 140, b: 66, tw: 5.7, tf: 8.6, r: 5.7,
+    flensHelling: 0.14, props: { iz: 351353, welY: 81764.3, welZ: 10647.1, wplY: 95210.6, wplZ: 17863.5, avZ: 835.761, it: 40997.2, iw: 1439690000, iRadY: 56.0183, iRadZ: 13.8794 } },
+  "INP160": { kind: "ISection", naam: "INP 160", h: 160, b: 74, tw: 6.3, tf: 9.5, r: 6.3,
+    flensHelling: 0.14, props: { iz: 545887, welY: 116750, welZ: 14753.7, wplY: 135876, wplZ: 24787.5, avZ: 1053.63, it: 62307, iw: 2938370000, iRadY: 64.0027, iRadZ: 15.4731 } },
+  "INP180": { kind: "ISection", naam: "INP 180", h: 180, b: 82, tw: 6.9, tf: 10.4, r: 6.9,
+    flensHelling: 0.14, props: { iz: 811682, welY: 160434, welZ: 19797.1, wplY: 186642, wplZ: 33297.6, avZ: 1296.24, it: 91019, iw: 5554240000, iRadY: 71.9838, iRadZ: 17.0671 } },
+  "INP200": { kind: "ISection", naam: "INP 200", h: 200, b: 90, tw: 7.5, tf: 11.3, r: 7.5,
+    flensHelling: 0.14, props: { iz: 1164300, welY: 213774, welZ: 25873.3, wplY: 248623, wplZ: 43556.9, avZ: 1563.6, it: 128650, iw: 9871010000, iRadY: 79.9625, iRadZ: 18.6613 } },
+  "INP220": { kind: "ISection", naam: "INP 220", h: 220, b: 98, tw: 8.1, tf: 12.2, r: 8.1,
+    flensHelling: 0.14, props: { iz: 1620830, welY: 277727, welZ: 33078.1, wplY: 322929, wplZ: 55728.5, avZ: 1855.7, it: 176908, iw: 16675500000, iRadY: 87.9393, iRadZ: 20.2556 } },
+  "INP240": { kind: "ISection", naam: "INP 240", h: 240, b: 106, tw: 8.7, tf: 13.1, r: 8.7,
+    flensHelling: 0.14, props: { iz: 2199910, welY: 353253, welZ: 41507.6, wplY: 410674, wplZ: 69975.5, avZ: 2172.54, it: 237499, iw: 27000700000, iRadY: 95.9148, iRadZ: 21.8501 } },
+  "INP260": { kind: "ISection", naam: "INP 260", h: 260, b: 113, tw: 9.4, tf: 14.1, r: 9.4,
+    flensHelling: 0.14, props: { iz: 2873030, welY: 441089, welZ: 50850, wplY: 513371, wplZ: 85836.2, avZ: 2543.18, it: 317715, iw: 41423200000, iRadY: 103.701, iRadZ: 23.2123 } },
+  "INP280": { kind: "ISection", naam: "INP 280", h: 280, b: 119, tw: 10.1, tf: 15.2, r: 10.1,
+    flensHelling: 0.14, props: { iz: 3631180, welY: 541119, welZ: 61028.2, wplY: 630706, wplZ: 103088, avZ: 2944.72, it: 418989, iw: 60728400000, iRadY: 111.425, iRadZ: 24.3947 } },
+  "INP300": { kind: "ISection", naam: "INP 300", h: 300, b: 125, tw: 10.8, tf: 16.2, r: 10.8,
+    flensHelling: 0.14, props: { iz: 4495750, welY: 652361, welZ: 71932, wplY: 761486, wplZ: 121697, avZ: 3374.58, it: 536268, iw: 86378100000, iRadY: 119.09, iRadZ: 25.5262 } },
+  "INP320": { kind: "ISection", naam: "INP 320", h: 320, b: 131, tw: 11.5, tf: 17.3, r: 11.5,
+    flensHelling: 0.14, props: { iz: 5542750, welY: 780864, welZ: 84622.2, wplY: 912550, wplZ: 143260, avZ: 3834.86, it: 684482, iw: 121172000000, iRadY: 126.8, iRadZ: 26.7076 } },
+  "INP340": { kind: "ISection", naam: "INP 340", h: 340, b: 137, tw: 12.2, tf: 18.3, r: 12.2,
+    flensHelling: 0.14, props: { iz: 6717980, welY: 921709, welZ: 98072.8, wplY: 1078460, wplZ: 166268, avZ: 4323.32, it: 851730, iw: 165893000000, iRadY: 134.452, iRadZ: 27.8398 } },
+  "INP360": { kind: "ISection", naam: "INP 360", h: 360, b: 143, tw: 13, tf: 19.5, r: 13,
+    flensHelling: 0.14, props: { iz: 8166280, welY: 1087490, welZ: 114214, wplY: 1274260, wplZ: 193819, avZ: 4881.78, it: 1078070, iw: 225871000000, iRadY: 142.07, iRadZ: 29.0178 } },
+  "INP380": { kind: "ISection", naam: "INP 380", h: 380, b: 149, tw: 13.7, tf: 20.5, r: 13.7,
+    flensHelling: 0.14, props: { iz: 9724710, welY: 1261960, welZ: 130533, wplY: 1480170, wplZ: 221797, avZ: 5431.05, it: 1310930, iw: 299846000000, iRadY: 149.713, iRadZ: 30.1507 } },
+  "INP400": { kind: "ISection", naam: "INP 400", h: 400, b: 155, tw: 14.4, tf: 21.6, r: 14.4,
+    flensHelling: 0.14, props: { iz: 11557500, welY: 1458580, welZ: 149129, wplY: 1712130, wplZ: 253531, avZ: 6011.01, it: 1595230, iw: 394843000000, iRadY: 157.406, iRadZ: 31.3309 } },
+  "INP450": { kind: "ISection", naam: "INP 450", h: 450, b: 170, tw: 16.2, tf: 24.3, r: 16.2,
+    flensHelling: 0.14, props: { iz: 17219000, welY: 2035090, welZ: 202576, wplY: 2393680, wplZ: 345096, avZ: 7612.65, it: 2502740, iw: 744484000000, iRadY: 176.53, iRadZ: 34.2325 } },
+  "INP500": { kind: "ISection", naam: "INP 500", h: 500, b: 185, tw: 18, tf: 27, r: 18,
+    flensHelling: 0.14, props: { iz: 24731700, welY: 2745870, welZ: 267370, wplY: 3235110, wplZ: 456293, avZ: 9403.23, it: 3750850, iw: 1320030000000, iRadY: 195.64, iRadZ: 37.1342 } },
+  "INP550": { kind: "ISection", naam: "INP 550", h: 550, b: 200, tw: 19, tf: 30, r: 19,
+    flensHelling: 0.14, props: { iz: 34880400, welY: 3599800, welZ: 348804, wplY: 4231180, wplZ: 591532, avZ: 10921.5, it: 5311640, iw: 2254880000000, iRadY: 216.033, iRadZ: 40.5513 } },
+  "INP600": { kind: "ISection", naam: "INP 600", h: 600, b: 215, tw: 21.6, tf: 32.4, r: 21.6,
+    flensHelling: 0.14, props: { iz: 46799200, welY: 4626250, welZ: 435341, wplY: 5464800, wplZ: 745187, avZ: 13551.2, it: 7579710, iw: 3596220000000, iRadY: 233.829, iRadZ: 42.938 } },
 };

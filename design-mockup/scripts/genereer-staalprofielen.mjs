@@ -92,8 +92,9 @@ let dims = kop(
  * bij CHS is h = b = uitwendige diameter en r = 0), plus de aanvullende
  * doorsnedegrootheden (props) voor de eigenschappentabel.
  *
- * Bij U-profielen staat er ook een flensHelling: 0,08 voor de UNP-reeks
- * (toelopende flens), 0 voor de UPE-reeks (evenwijdige flenzen).`,
+ * Bij profielen met een toelopende flens staat er ook een flensHelling:
+ * 0,08 voor de UNP-reeks, 0,14 voor de INP-reeks; 0 voor de UPE-reeks
+ * (evenwijdige flenzen), weggelaten bij de overige I-profielen.`,
 );
 dims += `export type SteelSectionKind = "ISection" | "Channel" | "Shs" | "Rhs" | "Chs";
 
@@ -141,16 +142,18 @@ export interface SteelSectionDims {
   /** Afrondingsstraal in mm (walsuitronding; SHS/RHS: hoekstraal; CHS: 0). */
   r: number;
   /**
-   * Helling van het flensBINNENvlak (U-profielen), als verhouding: 0,08 is
-   * 8 %. 0 betekent evenwijdige flenzen.
+   * Helling van het flensBINNENvlak, als verhouding: 0,08 is 8 % (UNP),
+   * 0,14 is 14 % (INP). 0 betekent evenwijdige flenzen.
    *
    * Dit is een TEKENgrootheid, geen rekengrootheid: de doorsnedegrootheden in
    * \`props\` staan los van dit veld en komen onveranderd uit de catalogus.
-   * Zonder dit veld is een UNP niet van een UPE te onderscheiden en wordt hij
-   * met evenwijdige flenzen getekend — precies de fout die dit veld opheft.
+   * Zonder dit veld is een UNP niet van een UPE te onderscheiden, en een INP
+   * niet van een IPE, en worden ze met evenwijdige flenzen getekend — precies
+   * de fout die dit veld opheft. De profieleditor leest er ook de motorsoort
+   * uit af (\`ISectionSchuin\` / \`ChannelSchuin\`).
    *
    * Ontbreekt het veld, dan tekent \`profielVorm.ts\` evenwijdige flenzen. Een
-   * nieuwe U-reeks met toelopende flens MOET het dus in profiles.json krijgen;
+   * nieuwe reeks met toelopende flens MOET het dus in profiles.json krijgen;
    * anders ziet niemand dat de tekening de verkeerde vorm laat zien.
    */
   flensHelling?: number;

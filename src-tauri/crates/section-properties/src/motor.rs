@@ -42,6 +42,8 @@ use crate::SectionProperties;
 pub enum Profielvorm {
     /// Gewalst I/H-profiel met vier walsuitrondingen (IPE, HEA, HEB, HEM).
     IProfiel { h: f64, b: f64, tw: f64, tf: f64, r: f64 },
+    /// I-profiel met **toelopende** flenzen (INP, DIN 1025-1, 14 % schuinte).
+    IProfielSchuin { h: f64, b: f64, tw: f64, tf: f64, r: f64 },
     /// U-profiel met **evenwijdige** flenzen (UPE, DIN 1026-2).
     UProfiel { h: f64, b: f64, tw: f64, tf: f64, r: f64 },
     /// U-profiel met **toelopende** flenzen (UNP, DIN 1026-1, 8 % schuinte).
@@ -59,6 +61,7 @@ impl Profielvorm {
     pub fn doorsnede(&self) -> Doorsnede {
         match *self {
             Profielvorm::IProfiel { h, b, tw, tf, r } => contour::i_profiel(h, b, tw, tf, r),
+            Profielvorm::IProfielSchuin { h, b, tw, tf, r } => contour::inp(h, b, tw, tf, r),
             Profielvorm::UProfiel { h, b, tw, tf, r } => contour::u_profiel(h, b, tw, tf, r),
             Profielvorm::UProfielSchuin { h, b, tw, tf, r } => contour::unp(h, b, tw, tf, r),
             Profielvorm::Koker { h, b, t } => contour::koker_en10210(h, b, t),
@@ -73,6 +76,7 @@ impl Profielvorm {
     fn maten(&self) -> (f64, f64, f64, f64, f64) {
         match *self {
             Profielvorm::IProfiel { h, b, tw, tf, r }
+            | Profielvorm::IProfielSchuin { h, b, tw, tf, r }
             | Profielvorm::UProfiel { h, b, tw, tf, r }
             | Profielvorm::UProfielSchuin { h, b, tw, tf, r } => (h, b, tw, tf, r),
             // De opgeslagen `r` van een koker is de BUITENhoekstraal 1,5·t.
@@ -93,8 +97,11 @@ impl Profielvorm {
     pub fn afschuifoppervlakken(&self, a: f64) -> (f64, f64) {
         const ETA: f64 = 1.0;
         match *self {
-            // (a) gewalste I/H, belasting evenwijdig aan het lijf.
-            Profielvorm::IProfiel { h, b, tw, tf, r } => {
+            // (a) gewalste I/H, belasting evenwijdig aan het lijf. Voor de
+            // toelopende flens telt dezelfde regel met de nominale `tf`; de
+            // norm maakt daar geen onderscheid.
+            Profielvorm::IProfiel { h, b, tw, tf, r }
+            | Profielvorm::IProfielSchuin { h, b, tw, tf, r } => {
                 let hw = h - 2.0 * tf;
                 let av_z = (a - 2.0 * b * tf + (tw + 2.0 * r) * tf).max(ETA * hw * tw);
                 (2.0 * b * tf, av_z)
@@ -340,6 +347,61 @@ mod tests {
                 f_schuin * 100.0
             );
         }
+    }
+
+    /// De INP-contour met 14 % schuinte moet de gedrukte DIN 1025-1-waarden
+    /// halen; het prismatische I-model ligt op `Iz` ruim 10 % te hoog, want
+    /// de schuinte haalt materiaal weg precies aan de flenstip.
+    #[test]
+    fn inp_schuinte_haalt_de_gedrukte_tabel() {
+        // DIN 1025-1: h, b, s, t, r₁ (mm); A (cm²), Iy, Iz (cm⁴).
+        for &(h, b, tw, tf, r, a_cm2, iy_cm4, iz_cm4) in &[
+            (80.0, 42.0, 3.9, 5.9, 3.9, 7.57, 77.8, 6.29),
+            (200.0, 90.0, 7.5, 11.3, 7.5, 33.4, 2140.0, 117.0),
+            (300.0, 125.0, 10.8, 16.2, 10.8, 69.0, 9800.0, 451.0),
+            (600.0, 215.0, 21.6, 32.4, 21.6, 254.0, 139_000.0, 4670.0),
+        ] {
+            let schuin = bereken(&Profielvorm::IProfielSchuin { h, b, tw, tf, r });
+            let recht = bereken(&Profielvorm::IProfiel { h, b, tw, tf, r });
+            for (naam, gemeten, tabel) in [
+                ("A", schuin.area_mm2, a_cm2 * 100.0),
+                ("Iy", schuin.iy_mm4, iy_cm4 * 1e4),
+                ("Iz", schuin.iz_mm4, iz_cm4 * 1e4),
+            ] {
+                let f = rel(gemeten, tabel);
+                assert!(
+                    f < 0.015,
+                    "INP {h}: {naam} schuin {gemeten:.0} tegen tabel {tabel:.0} = {:.2} %",
+                    f * 100.0
+                );
+            }
+            assert!(
+                rel(recht.iz_mm4, iz_cm4 * 1e4) > rel(schuin.iz_mm4, iz_cm4 * 1e4),
+                "INP {h}: het prismatische model hoort op Iz slechter te zijn dan het schuine"
+            );
+            // Dubbelsymmetrisch: zwaartepunt én schuifmiddelpunt in het hart
+            // (beide in het beschrijvingsstelsel, dus op y = b/2).
+            let u = bereken_uitgebreid(&Profielvorm::IProfielSchuin { h, b, tw, tf, r }, None);
+            assert!((u.props.y_c_mm - b / 2.0).abs() < 1e-6, "y_c = {:.4}", u.props.y_c_mm);
+            assert!((u.props.y_s_mm - b / 2.0).abs() < 1e-3, "y_s = {:.4}", u.props.y_s_mm);
+        }
+    }
+
+    /// Zonder schuinte en zonder tipafronding is de schuine I-contour de
+    /// gewone I-contour — dezelfde punten, dus dezelfde grootheden.
+    #[test]
+    fn i_profiel_schuin_zonder_schuinte_is_i_profiel() {
+        let (h, b, tw, tf, r) = (300.0, 150.0, 7.1, 10.7, 15.0);
+        let recht = contour::i_profiel(h, b, tw, tf, r).bereken();
+        let schuin = contour::i_profiel_schuin(h, b, tw, tf, r, 0.0, 0.0).bereken();
+        assert!(rel(schuin.a_mm2, recht.a_mm2) < 1e-12);
+        assert!(rel(schuin.iy_mm4, recht.iy_mm4) < 1e-12);
+        assert!(rel(schuin.iz_mm4, recht.iz_mm4) < 1e-12);
+        // En met een minieme schuinte blijft hij er vlak naast — de
+        // spiegeling om het lijf mag geen sprong in de contour geven.
+        let bijna = contour::i_profiel_schuin(h, b, tw, tf, r, 0.0, 1e-6).bereken();
+        assert!(rel(bijna.a_mm2, recht.a_mm2) < 1e-6);
+        assert!(rel(bijna.iz_mm4, recht.iz_mm4) < 1e-5);
     }
 
     /// Een UNP is niet symmetrisch om de z-as: het schuifmiddelpunt moet aan

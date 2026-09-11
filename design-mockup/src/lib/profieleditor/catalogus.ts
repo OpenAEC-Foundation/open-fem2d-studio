@@ -4,7 +4,10 @@
  * Bron: `steelSectionDims.generated.ts` (gegenereerd uit de Rust-
  * profieldatabase). De vertaling naar de `soort` die de motor verwacht staat
  * hier op één plek: de database noemt UNP én UPE "Channel", maar de motor
- * rekent een UNP met de toelopende flens van DIN 1026-1 (`ChannelSchuin`).
+ * rekent een UNP met de toelopende flens van DIN 1026-1 (`ChannelSchuin`);
+ * net zo noemt zij INP én IPE "ISection", terwijl de INP met de toelopende
+ * flens van DIN 1025-1 gaat (`ISectionSchuin`). Bij de I beslist de
+ * flenshelling uit de database, niet de naam.
  */
 import { STEEL_SECTION_DIMS, type SteelSectionDims } from "../steelSectionDims.generated";
 import { STEEL_SECTIONS } from "../steelSections.generated";
@@ -24,6 +27,8 @@ export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) =
   { id: "DIE", label: "DIE (oud)", match: (n) => n.startsWith("DIE") },
   { id: "DIL", label: "DIL (oud)", match: (n) => n.startsWith("DIL") },
   { id: "DIN", label: "DIN (oud)", match: (n) => n.startsWith("DIN") },
+  // Normaalprofiel DIN 1025-1, toelopende flenzen; zelfde generator.
+  { id: "INP", label: "INP (oud)", match: (n) => n.startsWith("INP") },
   { id: "KOKER", label: "Koker (SHS/RHS)", match: (n) => n.startsWith("SHS") || n.startsWith("RHS") || n.startsWith("HFRHS") },
   { id: "CHS", label: "Buis (CHS)", match: (n) => n.startsWith("CHS") },
 ];
@@ -67,7 +72,8 @@ export function reeksVanProfiel(naam: string): string | null {
 function motorSoort(naam: string, dims: SteelSectionDims): MotorSoort {
   switch (dims.kind) {
     case "ISection":
-      return "ISection";
+      // DIN 1025-1 (INP) heeft 14 % flensschuinte; de moderne reeksen niet.
+      return (dims.flensHelling ?? 0) > 0 ? "ISectionSchuin" : "ISection";
     case "Channel":
       // DIN 1026-1 (UNP) heeft 8 % flensschuinte; UPE heeft evenwijdige flenzen.
       return profileLookupKey(naam).startsWith("UNP") ? "ChannelSchuin" : "Channel";

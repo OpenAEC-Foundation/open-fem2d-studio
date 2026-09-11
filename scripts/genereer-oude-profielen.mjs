@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * genereer-oude-profielen.mjs — de oude Nederlandse breedflensreeksen
- * DIE, DIL en DIN aan de profieldatabase toevoegen.
+ * genereer-oude-profielen.mjs — de oude reeksen DIE, DIL, DIN (Differdinger
+ * breedflensbalken) en INP (normaalprofielen) aan de profieldatabase toevoegen.
  *
  * ── Wat dit voor reeksen zijn ───────────────────────────────────────────────
  *
@@ -21,14 +21,31 @@
  *
  * Alle drie de reeksen hebben EVENWIJDIGE flenzen; ze gaan daarom als gewone
  * `ISection` de database in en de doorsnedemotor hoeft er niets nieuws voor te
- * kunnen. (De oudere Differdinger B-profielen en de Duitse normaalprofielen
- * INP hebben wél schuine flenzen — 9 % respectievelijk 14 % — en zitten hier
- * bewust niet in; zie de aantekening onderaan dit bestand.)
+ * kunnen.
+ *
+ *   INP  Normaalprofiel (DIN 1025-1) — het smalle I-profiel met TOELOPENDE
+ *        flenzen (14 %), in Nederland tot ver na de oorlog het gewone
+ *        I-profiel; in bestaande bouw nog overal aanwezig.
+ *
+ * De INP gaat óók als `ISection` de database in (de toetsing kent geen apart
+ * pad voor een schuine flens), maar wordt met `soort: "ISectionSchuin"` door
+ * de motor gerekend en krijgt `flange_slope: 0.14` in zijn geometrie, zodat de
+ * tekening de toelopende flens laat zien — dezelfde constructie als de UNP.
+ * De flensdikte `t` van DIN 1025-1 geldt op een kwart van de flensbreedte
+ * vanaf de tip (`b/4`) — niet op het midden van de uitstek; met dat laatste
+ * ligt de motor stelselmatig 1,3 % boven de gedrukte `A` en 2,4 % boven
+ * `I_z`, met `b/4` niet. De flenstipafronding is `r₂ = 0,6·r₁`, en die
+ * verhouding wordt hieronder per maat tegen de tabel gecontroleerd. (De oudere Differdinger B-profielen,
+ * 9 % schuinte, zitten er nog niet in; zie de aantekening onderaan.)
  *
  * ── Bron van de maten ───────────────────────────────────────────────────────
  *
- * Gescande bladzijden 80 t/m 85 van een Nederlands staaltabellenboek, met per
- * reeks een eigen tabel:
+ * INP: de maattabel van DIN 1025-1 (I 80 t/m I 600, 21 maten) met `h`, `b`,
+ * `s` (lijfdikte), `t` (flensdikte), `r₁`, `r₂`, `A`, `I_y` en `I_z`, zoals die
+ * in de gangbare staaltabellen is overgenomen.
+ *
+ * DIE, DIL, DIN: gescande bladzijden 80 t/m 85 van een Nederlands
+ * staaltabellenboek, met per reeks een eigen tabel:
  *
  *   blz. 80/81  "DIN (Differdange Normal) — Differdinger parallelflensbalken
  *                (Grey)"           — 30 maten, DIN 10 t/m DIN 100
@@ -53,9 +70,9 @@
  * ── Gebruik ─────────────────────────────────────────────────────────────────
  *
  *   node scripts/genereer-oude-profielen.mjs --valideer
- *       Rekent de 82 profielen door met de motor en zet A, I_y en I_z naast de
- *       gedrukte tabelwaarden. Dit is het bewijs dat de overgetypte geometrie
- *       klopt.
+ *       Rekent de 103 profielen door met de motor en zet A, I_y en I_z naast
+ *       de gedrukte tabelwaarden. Dit is het bewijs dat de overgetypte
+ *       geometrie klopt.
  *   node scripts/genereer-oude-profielen.mjs --schrijf
  *       Voegt de profielen toe aan
  *       src-tauri/crates/steel-profiles/data/profiles.json. Bestaande regels
@@ -181,10 +198,53 @@ const DIN = [
   ["100", 1000, 300, 19, 36, 30, 400, 644700, 16280],
 ];
 
+/**
+ * INP — normaalprofielen volgens DIN 1025-1, toelopende flenzen (14 %).
+ *
+ * Kolommen: [maat, h, b, s(=tw), t(=tf), r₁, r₂, A_cm2, Iy_cm4, Iz_cm4].
+ * `r₂` staat er alleen ter controle: de motor rekent met `r₂ = 0,6·r₁`, en
+ * `--valideer` laat zien dat de tabel die verhouding voor élke maat haalt.
+ */
+const INP = [
+  ["80", 80, 42, 3.9, 5.9, 3.9, 2.3, 7.57, 77.8, 6.29],
+  ["100", 100, 50, 4.5, 6.8, 4.5, 2.7, 10.6, 171, 12.2],
+  ["120", 120, 58, 5.1, 7.7, 5.1, 3.1, 14.2, 328, 21.5],
+  ["140", 140, 66, 5.7, 8.6, 5.7, 3.4, 18.2, 573, 35.2],
+  ["160", 160, 74, 6.3, 9.5, 6.3, 3.8, 22.8, 935, 54.7],
+  ["180", 180, 82, 6.9, 10.4, 6.9, 4.1, 27.9, 1450, 81.3],
+  ["200", 200, 90, 7.5, 11.3, 7.5, 4.5, 33.4, 2140, 117],
+  ["220", 220, 98, 8.1, 12.2, 8.1, 4.9, 39.5, 3060, 162],
+  ["240", 240, 106, 8.7, 13.1, 8.7, 5.2, 46.1, 4250, 221],
+  ["260", 260, 113, 9.4, 14.1, 9.4, 5.6, 53.3, 5740, 288],
+  ["280", 280, 119, 10.1, 15.2, 10.1, 6.1, 61.0, 7590, 364],
+  ["300", 300, 125, 10.8, 16.2, 10.8, 6.5, 69.0, 9800, 451],
+  ["320", 320, 131, 11.5, 17.3, 11.5, 6.9, 77.7, 12510, 555],
+  ["340", 340, 137, 12.2, 18.3, 12.2, 7.3, 86.7, 15700, 674],
+  ["360", 360, 143, 13.0, 19.5, 13.0, 7.8, 97.0, 19610, 818],
+  ["380", 380, 149, 13.7, 20.5, 13.7, 8.2, 107, 24010, 975],
+  ["400", 400, 155, 14.4, 21.6, 14.4, 8.6, 118, 29210, 1160],
+  ["450", 450, 170, 16.2, 24.3, 16.2, 9.7, 147, 45850, 1730],
+  ["500", 500, 185, 18.0, 27.0, 18.0, 10.8, 179, 68740, 2480],
+  ["550", 550, 200, 19.0, 30.0, 19.0, 11.4, 212, 99180, 3490],
+  ["600", 600, 215, 21.6, 32.4, 21.6, 13.0, 254, 139000, 4670],
+];
+
+/** Flensschuinte van INP volgens DIN 1025-1 — dezelfde constante als `INP_SCHUINTE` in de motor. */
+const INP_SCHUINTE = 0.14;
+
+/**
+ * Per reeks: de motorsoort en de flenshelling die de tekening krijgt. Een
+ * reeks zonder `flange_slope` gaat zonder dat veld de database in, zodat een
+ * evenwijdige flens nooit stilzwijgend een helling krijgt.
+ */
 const REEKSEN = [
-  { prefix: "DIE", omschrijving: "Differdange Économique", blz: "82/83", rijen: DIE },
-  { prefix: "DIL", omschrijving: "Differdange Léger", blz: "84/85", rijen: DIL },
-  { prefix: "DIN", omschrijving: "Differdange Normal", blz: "80/81", rijen: DIN },
+  { prefix: "DIE", omschrijving: "Differdange Économique", blz: "82/83", rijen: DIE, soort: "ISection" },
+  { prefix: "DIL", omschrijving: "Differdange Léger", blz: "84/85", rijen: DIL, soort: "ISection" },
+  { prefix: "DIN", omschrijving: "Differdange Normal", blz: "80/81", rijen: DIN, soort: "ISection" },
+  {
+    prefix: "INP", omschrijving: "Normaalprofiel DIN 1025-1", blz: "DIN 1025-1", rijen: INP,
+    soort: "ISectionSchuin", flange_slope: INP_SCHUINTE, metR2: true,
+  },
 ];
 
 /* ==================================================================== *
@@ -214,12 +274,19 @@ function knikkrommen({ h, b, tf }) {
 function alleKandidaten() {
   const uit = [];
   for (const r of REEKSEN) {
-    for (const [maat, h, b, tw, tf, rr, F, Ix, Iy] of r.rijen) {
+    for (const rij of r.rijen) {
+      // De INP-tabel draagt een extra kolom r₂ tussen r₁ en A.
+      const [maat, h, b, tw, tf, rr] = rij;
+      const [r2, F, Ix, Iy] = r.metR2 ? rij.slice(6) : [undefined, ...rij.slice(6)];
       uit.push({
         name: `${r.prefix} ${maat}`,
         reeks: r.prefix,
         kind: "ISection",
-        geometry: { h, b, tw, tf, r: rr },
+        soort: r.soort,
+        geometry: r.flange_slope === undefined
+          ? { h, b, tw, tf, r: rr }
+          : { h, b, tw, tf, r: rr, flange_slope: r.flange_slope },
+        r2,
         // Gedrukte tabelwaarden, omgerekend naar mm² / mm⁴. Alleen ter controle.
         tabel: { area_mm2: F * 100, iy_mm4: Ix * 1e4, iz_mm4: Iy * 1e4 },
       });
@@ -272,7 +339,7 @@ function draaiMotor(lijst) {
 function motorInvoerVan(k) {
   return {
     naam: k.name,
-    soort: "ISection",
+    soort: k.soort,
     h: k.geometry.h,
     b: k.geometry.b,
     tw: k.geometry.tw,
@@ -315,9 +382,13 @@ function afgerond(x) {
  * overgetypt — en dat laat zich zien: één verkeerd cijfer in b of t geeft
  * meteen tientallen procenten op I_z.
  *
- * Gemeten: over alle 82 profielen × 3 grootheden is de grootste afwijking
- * 0,43 %. De grens hieronder ligt daar ruim boven en ver onder wat een
- * tikfout zou geven, en is daarmee een echte controle en geen formaliteit.
+ * Gemeten: over alle 103 profielen × 3 grootheden is de grootste afwijking
+ * 0,49 % (0,43 % bij DIE/DIL/DIN, 0,49 % bij INP). De grens hieronder ligt
+ * daar ruim boven en ver onder wat een tikfout zou geven, en is daarmee een
+ * echte controle en geen formaliteit. Bij de INP ving zij ook iets anders:
+ * met `tf` op het midden van de uitstek in plaats van op b/4 vanaf de tip
+ * zat de héle reeks stelselmatig op +2,4 % voor I_z — geen tikfout, maar een
+ * verkeerd meetpunt, en dat is precies wat deze vergelijking hoort te zien.
  */
 const GRENS_PCT = 1.5;
 
@@ -345,6 +416,12 @@ function valideer() {
   for (let i = 0; i < kandidaten.length; i += 1) {
     const k = kandidaten[i];
     const m = uit[i];
+    // De motor rekent de INP-tipafronding als 0,6·r₁; de tabel moet dat
+    // voor elke maat bevestigen, anders rekent de motor een andere contour
+    // dan de tabel beschrijft.
+    if (k.r2 !== undefined && Math.abs(k.r2 - 0.6 * k.geometry.r) > 0.06) {
+      erg.push(`${k.name}: r₂ = ${k.r2} is geen 0,6·r₁ (= ${(0.6 * k.geometry.r).toFixed(2)})`);
+    }
     const d = (bereken, tabel) => ((bereken - tabel) / tabel) * 100;
     const dA = d(m.area_mm2, k.tabel.area_mm2);
     const dIy = d(m.iy_mm4, k.tabel.iy_mm4);
@@ -442,16 +519,13 @@ function schrijf() {
  * 86/87 (of een gelijkwaardige bron) er is, past de reeks er in dezelfde vorm
  * bij: DIR is óók een parallelflensprofiel en heeft dus niets nieuws nodig.
  *
- * INP (Duitse normaalprofielen, DIN 1025-1) en de oudere Differdinger
- * B-profielen. Van deze reeksen zijn de maten wél te vinden, maar hun flenzen
- * lopen toe (14 % respectievelijk 9 %). De doorsnedemotor kent op dit moment
- * één vorm met een toelopende flens — `ChannelSchuin`, het UNP-profiel — en
- * geen I-profiel met toelopende flenzen. Ze als `ISection` opnemen zou de
- * flens over de volle dikte doorrekenen tot aan de tip; bij de UNP-reeks is
- * gemeten wat dat kost: 2 à 3 % te veel oppervlak en ongeveer 14 % te veel
- * I_z, allebei aan de onveilige kant. Daarom niet opgenomen. Wat ervoor nodig
- * is, is één nieuwe contour naast `contour::u_profiel_schuin` — de meetkunde
- * is dezelfde, tweemaal gespiegeld — plus een `Profielvorm::IProfielSchuin`.
+ * De oudere Differdinger B-profielen (9 % flensschuinte). De maten zijn te
+ * vinden, maar er is nog geen tabel overgetypt en gecontroleerd. De motor kan
+ * ze inmiddels wel aan: `ISectionSchuin` neemt elke schuinte, dus de reeks
+ * past er in dezelfde vorm bij als de INP — een brontabel, een regel in
+ * REEKSEN met `soort: "ISectionSchuin"` en de juiste `flange_slope`, en de
+ * schuinte als parameter in `contour::i_profiel_schuin` (nu vast 14 % via
+ * `contour::inp`; voor 9 % hoort daar een tweede constructor naast).
  */
 
 const vlaggen = process.argv.slice(2);

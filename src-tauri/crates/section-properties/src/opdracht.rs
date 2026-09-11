@@ -28,8 +28,9 @@
 //!    "tw": 5.6, "tf": 8.5, "r": 12 }]
 //! ```
 //!
-//! `soort` is `ISection` | `Channel` | `ChannelSchuin` | `Shs` | `Rhs` | `Chs`
-//! | `Rechthoek`. Bij een koker telt alleen `t`; bij een buis is `h` de
+//! `soort` is `ISection` | `ISectionSchuin` | `Channel` | `ChannelSchuin` |
+//! `Shs` | `Rhs` | `Chs` | `Rechthoek` (`…Schuin` = toelopende flenzen: INP
+//! met 14 %, UNP met 8 %). Bij een koker telt alleen `t`; bij een buis is `h` de
 //! buitendiameter. Optioneel `elementen_per_wand` (standaard 8) om de mesh van
 //! de torsieoplossing fijner te zetten.
 //!
@@ -536,6 +537,8 @@ fn vorm_van_maten(soort: &str, h: f64, b: f64, tw: f64, tf: f64, t: f64, r: f64)
     let dikte = if t > 0.0 { t } else { tw };
     Ok(match soort {
         "ISection" => Profielvorm::IProfiel { h, b, tw, tf, r },
+        // Toelopende flenzen (INP, DIN 1025-1).
+        "ISectionSchuin" => Profielvorm::IProfielSchuin { h, b, tw, tf, r },
         // Evenwijdige flenzen (UPE, DIN 1026-2).
         "Channel" => Profielvorm::UProfiel { h, b, tw, tf, r },
         // Toelopende flenzen (UNP, DIN 1026-1).
@@ -557,6 +560,7 @@ fn vorm_van(i: &Invoer) -> Result<Profielvorm, String> {
 fn maten_van(vorm: &Profielvorm) -> (f64, f64, f64, f64, f64) {
     match *vorm {
         Profielvorm::IProfiel { h, b, tw, tf, r }
+        | Profielvorm::IProfielSchuin { h, b, tw, tf, r }
         | Profielvorm::UProfiel { h, b, tw, tf, r }
         | Profielvorm::UProfielSchuin { h, b, tw, tf, r } => (h, b, tw, tf, r),
         Profielvorm::Koker { h, b, t } => (h, b, t, t, 1.5 * t),

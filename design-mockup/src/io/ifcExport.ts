@@ -2308,20 +2308,29 @@ function schrijfDoorsnede(
     case "catalogus": {
       const dims = beschrijving.dims;
       const gemeen = { hMm: dims.h, bMm: dims.b, bwMm: dims.b, props: dims.props };
+      // Toelopende flens (INP 14 %, UNP 8 %): IFC4 kent daarvoor FlangeSlope
+      // (IfcPlaneAngleMeasure, hier in radialen) en de flenstipafronding
+      // FlangeEdgeRadius/EdgeRadius. De tipstraal staat niet in de database;
+      // hij volgt uit de walsnorm: 0,6·r bij DIN 1025-1, r/2 bij DIN 1026-1
+      // — dezelfde verhoudingen als de tekening en de doorsnedemotor.
+      const helling = dims.flensHelling ?? 0;
+      const flensHoek = helling > 0 ? reeel(Math.atan(helling)) : "$";
       switch (dims.kind) {
         case "ISection":
           return {
             ...gemeen, vorm: "I-profiel",
             profielDef: w.ent("IFCISHAPEPROFILEDEF",
               ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
-              meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$"),
+              meter(dims.tw), meter(dims.tf), meter(dims.r),
+              helling > 0 ? meter(0.6 * dims.r) : "$", flensHoek),
           };
         case "Channel":
           return {
             ...gemeen, vorm: "U-profiel",
             profielDef: w.ent("IFCUSHAPEPROFILEDEF",
               ".AREA.", naam, "$", meter(dims.h), meter(dims.b),
-              meter(dims.tw), meter(dims.tf), meter(dims.r), "$", "$"),
+              meter(dims.tw), meter(dims.tf), meter(dims.r),
+              helling > 0 ? meter(dims.r / 2) : "$", flensHoek),
           };
         case "Shs":
         case "Rhs":

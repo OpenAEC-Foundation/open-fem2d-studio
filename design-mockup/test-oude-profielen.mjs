@@ -55,10 +55,15 @@ const STEEKPROEF = [
   ["DIN20", 200, 200, 10, 16, 15, 82.7, 5950, 2140],
   ["DIN475", 475, 300, 15, 28, 23, 235, 95120, 12620],
   ["DIN100", 1000, 300, 19, 36, 30, 400, 644700, 16280],
+  // INP (DIN 1025-1): toelopende flens; de tabelwaarden gelden voor de
+  // schuine contour, en alleen dáármee haalt de motor ze binnen de grens.
+  ["INP80", 80, 42, 3.9, 5.9, 3.9, 7.57, 77.8, 6.29],
+  ["INP200", 200, 90, 7.5, 11.3, 7.5, 33.4, 2140, 117],
+  ["INP600", 600, 215, 21.6, 32.4, 21.6, 254, 139000, 4670],
 ];
 
 log("\nOude profielreeksen — aanwezig en compleet");
-for (const [prefix, aantal] of [["DIE", 30], ["DIL", 22], ["DIN", 30]]) {
+for (const [prefix, aantal] of [["DIE", 30], ["DIL", 22], ["DIN", 30], ["INP", 21]]) {
   const n = Object.keys(STEEL_SECTION_DIMS).filter((k) => k.startsWith(prefix)).length;
   check(`${prefix}: ${aantal} maten`, n === aantal, `waren er ${n}`);
   check(
@@ -121,6 +126,31 @@ log("\nOude profielreeksen — de historische halve maten blijven leesbaar");
     "een oude reeks is een gewoon I-profiel voor de motor",
     basisprofielVan("DIE 30")?.soort === "ISection",
   );
+}
+
+log("\nINP — toelopende flens, uit de database en niet uit de naam");
+{
+  const inp = STEEL_SECTION_DIMS.INP200;
+  check("INP 200 heeft kind ISection (de toetsing kent geen apart pad)", inp?.kind === "ISection");
+  check("INP 200 draagt flensHelling 0,14 (DIN 1025-1)", inp?.flensHelling === 0.14, `${inp?.flensHelling}`);
+  check("IPE 200 draagt géén flenshelling", !(STEEL_SECTION_DIMS.IPE200?.flensHelling > 0));
+  check("DIE 20 draagt géén flenshelling", !(STEEL_SECTION_DIMS.DIE20?.flensHelling > 0));
+  check(
+    "de motor rekent een INP als ISectionSchuin",
+    basisprofielVan("INP 200")?.soort === "ISectionSchuin",
+    basisprofielVan("INP 200")?.soort,
+  );
+  check("en een IPE gewoon als ISection", basisprofielVan("IPE 200")?.soort === "ISection");
+  check('reeks van "INP 80" is INP', reeksVanProfiel("INP 80") === "INP");
+  const maten = profielenVanReeks("INP").map(profielLabel);
+  check("INP loopt van 80 tot 600", maten[0] === "INP 80" && maten[maten.length - 1] === "INP 600", maten.join(","));
+  // Knikkromme volgens tabel 6.2 voor een gewalst I met h/b > 1,2 en tf ≤ 40 mm.
+  // De TS-tabel draagt de krommen niet; de kern wel — hier alleen de maten die
+  // de regel bepalen, zodat een verkeerde tabelregel opvalt.
+  check("elke INP heeft h/b > 1,2 (smal profiel → krommen a/b)", profielenVanReeks("INP").every((k) => {
+    const d = STEEL_SECTION_DIMS[k];
+    return d.h / d.b > 1.2 && d.tf <= 40;
+  }));
 }
 
 log("");

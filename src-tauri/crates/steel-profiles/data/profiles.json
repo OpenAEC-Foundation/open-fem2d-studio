@@ -17831,5 +17831,782 @@
       "y_axis": "a",
       "z_axis": "b"
     }
+  },
+  {
+    "name": "INP 80",
+    "kind": "ISection",
+    "geometry": {
+      "h": 80,
+      "b": 42,
+      "tw": 3.9,
+      "tf": 5.9,
+      "r": 3.9,
+      "flange_slope": 0.14,
+      "t": 3.9
+    },
+    "properties": {
+      "area_mm2": 757.171,
+      "iy_mm4": 776547,
+      "iz_mm4": 62748.1,
+      "wel_y_mm3": 19413.7,
+      "wel_z_mm3": 2988,
+      "wpl_y_mm3": 22699.9,
+      "wpl_z_mm3": 4977.01,
+      "av_y_mm2": 495.6,
+      "av_z_mm2": 330.601,
+      "it_mm4": 8175.76,
+      "iw_mm6": 81087900,
+      "iy_radius_mm": 32.0248,
+      "iz_radius_mm": 9.10339,
+      "h_mm": 80,
+      "b_mm": 42,
+      "tw_mm": 3.9,
+      "tf_mm": 5.9,
+      "r_mm": 3.9
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 100",
+    "kind": "ISection",
+    "geometry": {
+      "h": 100,
+      "b": 50,
+      "tw": 4.5,
+      "tf": 6.8,
+      "r": 4.5,
+      "flange_slope": 0.14,
+      "t": 4.5
+    },
+    "properties": {
+      "area_mm2": 1062.45,
+      "iy_mm4": 1702710,
+      "iz_mm4": 121504,
+      "wel_y_mm3": 34054.1,
+      "wel_z_mm3": 4860.17,
+      "wpl_y_mm3": 39735,
+      "wpl_z_mm3": 8121.37,
+      "av_y_mm2": 680,
+      "av_z_mm2": 474.246,
+      "it_mm4": 15094,
+      "iw_mm6": 249367000,
+      "iy_radius_mm": 40.0329,
+      "iz_radius_mm": 10.6941,
+      "h_mm": 100,
+      "b_mm": 50,
+      "tw_mm": 4.5,
+      "tf_mm": 6.8,
+      "r_mm": 4.5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 120",
+    "kind": "ISection",
+    "geometry": {
+      "h": 120,
+      "b": 58,
+      "tw": 5.1,
+      "tf": 7.7,
+      "r": 5.1,
+      "flange_slope": 0.14,
+      "t": 5.1
+    },
+    "properties": {
+      "area_mm2": 1418.02,
+      "iy_mm4": 3271100,
+      "iz_mm4": 214055,
+      "wel_y_mm3": 54518.3,
+      "wel_z_mm3": 7381.2,
+      "wpl_y_mm3": 63534.5,
+      "wpl_z_mm3": 12362.5,
+      "av_y_mm2": 893.2,
+      "av_z_mm2": 642.632,
+      "it_mm4": 25664,
+      "iw_mm6": 639482000,
+      "iy_radius_mm": 48.0292,
+      "iz_radius_mm": 12.2863,
+      "h_mm": 120,
+      "b_mm": 58,
+      "tw_mm": 5.1,
+      "tf_mm": 7.7,
+      "r_mm": 5.1
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 140",
+    "kind": "ISection",
+    "geometry": {
+      "h": 140,
+      "b": 66,
+      "tw": 5.7,
+      "tf": 8.6,
+      "r": 5.7,
+      "flange_slope": 0.14,
+      "t": 5.7
+    },
+    "properties": {
+      "area_mm2": 1823.9,
+      "iy_mm4": 5723500,
+      "iz_mm4": 351353,
+      "wel_y_mm3": 81764.3,
+      "wel_z_mm3": 10647.1,
+      "wpl_y_mm3": 95210.6,
+      "wpl_z_mm3": 17863.5,
+      "av_y_mm2": 1135.2,
+      "av_z_mm2": 835.761,
+      "it_mm4": 40997.2,
+      "iw_mm6": 1439690000,
+      "iy_radius_mm": 56.0183,
+      "iz_radius_mm": 13.8794,
+      "h_mm": 140,
+      "b_mm": 66,
+      "tw_mm": 5.7,
+      "tf_mm": 8.6,
+      "r_mm": 5.7
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 160",
+    "kind": "ISection",
+    "geometry": {
+      "h": 160,
+      "b": 74,
+      "tw": 6.3,
+      "tf": 9.5,
+      "r": 6.3,
+      "flange_slope": 0.14,
+      "t": 6.3
+    },
+    "properties": {
+      "area_mm2": 2280.08,
+      "iy_mm4": 9340010,
+      "iz_mm4": 545887,
+      "wel_y_mm3": 116750,
+      "wel_z_mm3": 14753.7,
+      "wpl_y_mm3": 135876,
+      "wpl_z_mm3": 24787.5,
+      "av_y_mm2": 1406,
+      "av_z_mm2": 1053.63,
+      "it_mm4": 62307,
+      "iw_mm6": 2938370000,
+      "iy_radius_mm": 64.0027,
+      "iz_radius_mm": 15.4731,
+      "h_mm": 160,
+      "b_mm": 74,
+      "tw_mm": 6.3,
+      "tf_mm": 9.5,
+      "r_mm": 6.3
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 180",
+    "kind": "ISection",
+    "geometry": {
+      "h": 180,
+      "b": 82,
+      "tw": 6.9,
+      "tf": 10.4,
+      "r": 6.9,
+      "flange_slope": 0.14,
+      "t": 6.9
+    },
+    "properties": {
+      "area_mm2": 2786.56,
+      "iy_mm4": 14439000,
+      "iz_mm4": 811682,
+      "wel_y_mm3": 160434,
+      "wel_z_mm3": 19797.1,
+      "wpl_y_mm3": 186642,
+      "wpl_z_mm3": 33297.6,
+      "av_y_mm2": 1705.6,
+      "av_z_mm2": 1296.24,
+      "it_mm4": 91019,
+      "iw_mm6": 5554240000,
+      "iy_radius_mm": 71.9838,
+      "iz_radius_mm": 17.0671,
+      "h_mm": 180,
+      "b_mm": 82,
+      "tw_mm": 6.9,
+      "tf_mm": 10.4,
+      "r_mm": 6.9
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 200",
+    "kind": "ISection",
+    "geometry": {
+      "h": 200,
+      "b": 90,
+      "tw": 7.5,
+      "tf": 11.3,
+      "r": 7.5,
+      "flange_slope": 0.14,
+      "t": 7.5
+    },
+    "properties": {
+      "area_mm2": 3343.35,
+      "iy_mm4": 21377400,
+      "iz_mm4": 1164300,
+      "wel_y_mm3": 213774,
+      "wel_z_mm3": 25873.3,
+      "wpl_y_mm3": 248623,
+      "wpl_z_mm3": 43556.9,
+      "av_y_mm2": 2034,
+      "av_z_mm2": 1563.6,
+      "it_mm4": 128650,
+      "iw_mm6": 9871010000,
+      "iy_radius_mm": 79.9625,
+      "iz_radius_mm": 18.6613,
+      "h_mm": 200,
+      "b_mm": 90,
+      "tw_mm": 7.5,
+      "tf_mm": 11.3,
+      "r_mm": 7.5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 220",
+    "kind": "ISection",
+    "geometry": {
+      "h": 220,
+      "b": 98,
+      "tw": 8.1,
+      "tf": 12.2,
+      "r": 8.1,
+      "flange_slope": 0.14,
+      "t": 8.1
+    },
+    "properties": {
+      "area_mm2": 3950.44,
+      "iy_mm4": 30550000,
+      "iz_mm4": 1620830,
+      "wel_y_mm3": 277727,
+      "wel_z_mm3": 33078.1,
+      "wpl_y_mm3": 322929,
+      "wpl_z_mm3": 55728.5,
+      "av_y_mm2": 2391.2,
+      "av_z_mm2": 1855.7,
+      "it_mm4": 176908,
+      "iw_mm6": 16675500000,
+      "iy_radius_mm": 87.9393,
+      "iz_radius_mm": 20.2556,
+      "h_mm": 220,
+      "b_mm": 98,
+      "tw_mm": 8.1,
+      "tf_mm": 12.2,
+      "r_mm": 8.1
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 240",
+    "kind": "ISection",
+    "geometry": {
+      "h": 240,
+      "b": 106,
+      "tw": 8.7,
+      "tf": 13.1,
+      "r": 8.7,
+      "flange_slope": 0.14,
+      "t": 8.7
+    },
+    "properties": {
+      "area_mm2": 4607.83,
+      "iy_mm4": 42390400,
+      "iz_mm4": 2199910,
+      "wel_y_mm3": 353253,
+      "wel_z_mm3": 41507.6,
+      "wpl_y_mm3": 410674,
+      "wpl_z_mm3": 69975.5,
+      "av_y_mm2": 2777.2,
+      "av_z_mm2": 2172.54,
+      "it_mm4": 237499,
+      "iw_mm6": 27000700000,
+      "iy_radius_mm": 95.9148,
+      "iz_radius_mm": 21.8501,
+      "h_mm": 240,
+      "b_mm": 106,
+      "tw_mm": 8.7,
+      "tf_mm": 13.1,
+      "r_mm": 8.7
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 260",
+    "kind": "ISection",
+    "geometry": {
+      "h": 260,
+      "b": 113,
+      "tw": 9.4,
+      "tf": 14.1,
+      "r": 9.4,
+      "flange_slope": 0.14,
+      "t": 9.4
+    },
+    "properties": {
+      "area_mm2": 5332.16,
+      "iy_mm4": 57341600,
+      "iz_mm4": 2873030,
+      "wel_y_mm3": 441089,
+      "wel_z_mm3": 50850,
+      "wpl_y_mm3": 513371,
+      "wpl_z_mm3": 85836.2,
+      "av_y_mm2": 3186.6,
+      "av_z_mm2": 2543.18,
+      "it_mm4": 317715,
+      "iw_mm6": 41423200000,
+      "iy_radius_mm": 103.701,
+      "iz_radius_mm": 23.2123,
+      "h_mm": 260,
+      "b_mm": 113,
+      "tw_mm": 9.4,
+      "tf_mm": 14.1,
+      "r_mm": 9.4
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 280",
+    "kind": "ISection",
+    "geometry": {
+      "h": 280,
+      "b": 119,
+      "tw": 10.1,
+      "tf": 15.2,
+      "r": 10.1,
+      "flange_slope": 0.14,
+      "t": 10.1
+    },
+    "properties": {
+      "area_mm2": 6101.76,
+      "iy_mm4": 75756700,
+      "iz_mm4": 3631180,
+      "wel_y_mm3": 541119,
+      "wel_z_mm3": 61028.2,
+      "wpl_y_mm3": 630706,
+      "wpl_z_mm3": 103088,
+      "av_y_mm2": 3617.6,
+      "av_z_mm2": 2944.72,
+      "it_mm4": 418989,
+      "iw_mm6": 60728400000,
+      "iy_radius_mm": 111.425,
+      "iz_radius_mm": 24.3947,
+      "h_mm": 280,
+      "b_mm": 119,
+      "tw_mm": 10.1,
+      "tf_mm": 15.2,
+      "r_mm": 10.1
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 300",
+    "kind": "ISection",
+    "geometry": {
+      "h": 300,
+      "b": 125,
+      "tw": 10.8,
+      "tf": 16.2,
+      "r": 10.8,
+      "flange_slope": 0.14,
+      "t": 10.8
+    },
+    "properties": {
+      "area_mm2": 6899.7,
+      "iy_mm4": 97854100,
+      "iz_mm4": 4495750,
+      "wel_y_mm3": 652361,
+      "wel_z_mm3": 71932,
+      "wpl_y_mm3": 761486,
+      "wpl_z_mm3": 121697,
+      "av_y_mm2": 4050,
+      "av_z_mm2": 3374.58,
+      "it_mm4": 536268,
+      "iw_mm6": 86378100000,
+      "iy_radius_mm": 119.09,
+      "iz_radius_mm": 25.5262,
+      "h_mm": 300,
+      "b_mm": 125,
+      "tw_mm": 10.8,
+      "tf_mm": 16.2,
+      "r_mm": 10.8
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 320",
+    "kind": "ISection",
+    "geometry": {
+      "h": 320,
+      "b": 131,
+      "tw": 11.5,
+      "tf": 17.3,
+      "r": 11.5,
+      "flange_slope": 0.14,
+      "t": 11.5
+    },
+    "properties": {
+      "area_mm2": 7770.61,
+      "iy_mm4": 124938000,
+      "iz_mm4": 5542750,
+      "wel_y_mm3": 780864,
+      "wel_z_mm3": 84622.2,
+      "wpl_y_mm3": 912550,
+      "wpl_z_mm3": 143260,
+      "av_y_mm2": 4532.6,
+      "av_z_mm2": 3834.86,
+      "it_mm4": 684482,
+      "iw_mm6": 121172000000,
+      "iy_radius_mm": 126.8,
+      "iz_radius_mm": 26.7076,
+      "h_mm": 320,
+      "b_mm": 131,
+      "tw_mm": 11.5,
+      "tf_mm": 17.3,
+      "r_mm": 11.5
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 340",
+    "kind": "ISection",
+    "geometry": {
+      "h": 340,
+      "b": 137,
+      "tw": 12.2,
+      "tf": 18.3,
+      "r": 12.2,
+      "flange_slope": 0.14,
+      "t": 12.2
+    },
+    "properties": {
+      "area_mm2": 8667.74,
+      "iy_mm4": 156690000,
+      "iz_mm4": 6717980,
+      "wel_y_mm3": 921709,
+      "wel_z_mm3": 98072.8,
+      "wpl_y_mm3": 1078460,
+      "wpl_z_mm3": 166268,
+      "av_y_mm2": 5014.2,
+      "av_z_mm2": 4323.32,
+      "it_mm4": 851730,
+      "iw_mm6": 165893000000,
+      "iy_radius_mm": 134.452,
+      "iz_radius_mm": 27.8398,
+      "h_mm": 340,
+      "b_mm": 137,
+      "tw_mm": 12.2,
+      "tf_mm": 18.3,
+      "r_mm": 12.2
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 360",
+    "kind": "ISection",
+    "geometry": {
+      "h": 360,
+      "b": 143,
+      "tw": 13,
+      "tf": 19.5,
+      "r": 13,
+      "flange_slope": 0.14,
+      "t": 13
+    },
+    "properties": {
+      "area_mm2": 9698.28,
+      "iy_mm4": 195749000,
+      "iz_mm4": 8166280,
+      "wel_y_mm3": 1087490,
+      "wel_z_mm3": 114214,
+      "wpl_y_mm3": 1274260,
+      "wpl_z_mm3": 193819,
+      "av_y_mm2": 5577,
+      "av_z_mm2": 4881.78,
+      "it_mm4": 1078070,
+      "iw_mm6": 225871000000,
+      "iy_radius_mm": 142.07,
+      "iz_radius_mm": 29.0178,
+      "h_mm": 360,
+      "b_mm": 143,
+      "tw_mm": 13,
+      "tf_mm": 19.5,
+      "r_mm": 13
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 380",
+    "kind": "ISection",
+    "geometry": {
+      "h": 380,
+      "b": 149,
+      "tw": 13.7,
+      "tf": 20.5,
+      "r": 13.7,
+      "flange_slope": 0.14,
+      "t": 13.7
+    },
+    "properties": {
+      "area_mm2": 10697.5,
+      "iy_mm4": 239772000,
+      "iz_mm4": 9724710,
+      "wel_y_mm3": 1261960,
+      "wel_z_mm3": 130533,
+      "wpl_y_mm3": 1480170,
+      "wpl_z_mm3": 221797,
+      "av_y_mm2": 6109,
+      "av_z_mm2": 5431.05,
+      "it_mm4": 1310930,
+      "iw_mm6": 299846000000,
+      "iy_radius_mm": 149.713,
+      "iz_radius_mm": 30.1507,
+      "h_mm": 380,
+      "b_mm": 149,
+      "tw_mm": 13.7,
+      "tf_mm": 20.5,
+      "r_mm": 13.7
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 400",
+    "kind": "ISection",
+    "geometry": {
+      "h": 400,
+      "b": 155,
+      "tw": 14.4,
+      "tf": 21.6,
+      "r": 14.4,
+      "flange_slope": 0.14,
+      "t": 14.4
+    },
+    "properties": {
+      "area_mm2": 11773.9,
+      "iy_mm4": 291716000,
+      "iz_mm4": 11557500,
+      "wel_y_mm3": 1458580,
+      "wel_z_mm3": 149129,
+      "wpl_y_mm3": 1712130,
+      "wpl_z_mm3": 253531,
+      "av_y_mm2": 6696,
+      "av_z_mm2": 6011.01,
+      "it_mm4": 1595230,
+      "iw_mm6": 394843000000,
+      "iy_radius_mm": 157.406,
+      "iz_radius_mm": 31.3309,
+      "h_mm": 400,
+      "b_mm": 155,
+      "tw_mm": 14.4,
+      "tf_mm": 21.6,
+      "r_mm": 14.4
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 450",
+    "kind": "ISection",
+    "geometry": {
+      "h": 450,
+      "b": 170,
+      "tw": 16.2,
+      "tf": 24.3,
+      "r": 16.2,
+      "flange_slope": 0.14,
+      "t": 16.2
+    },
+    "properties": {
+      "area_mm2": 14693.7,
+      "iy_mm4": 457896000,
+      "iz_mm4": 17219000,
+      "wel_y_mm3": 2035090,
+      "wel_z_mm3": 202576,
+      "wpl_y_mm3": 2393680,
+      "wpl_z_mm3": 345096,
+      "av_y_mm2": 8262,
+      "av_z_mm2": 7612.65,
+      "it_mm4": 2502740,
+      "iw_mm6": 744484000000,
+      "iy_radius_mm": 176.53,
+      "iz_radius_mm": 34.2325,
+      "h_mm": 450,
+      "b_mm": 170,
+      "tw_mm": 16.2,
+      "tf_mm": 24.3,
+      "r_mm": 16.2
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 500",
+    "kind": "ISection",
+    "geometry": {
+      "h": 500,
+      "b": 185,
+      "tw": 18,
+      "tf": 27,
+      "r": 18,
+      "flange_slope": 0.14,
+      "t": 18
+    },
+    "properties": {
+      "area_mm2": 17935.2,
+      "iy_mm4": 686468000,
+      "iz_mm4": 24731700,
+      "wel_y_mm3": 2745870,
+      "wel_z_mm3": 267370,
+      "wpl_y_mm3": 3235110,
+      "wpl_z_mm3": 456293,
+      "av_y_mm2": 9990,
+      "av_z_mm2": 9403.23,
+      "it_mm4": 3750850,
+      "iw_mm6": 1320030000000,
+      "iy_radius_mm": 195.64,
+      "iz_radius_mm": 37.1342,
+      "h_mm": 500,
+      "b_mm": 185,
+      "tw_mm": 18,
+      "tf_mm": 27,
+      "r_mm": 18
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 550",
+    "kind": "ISection",
+    "geometry": {
+      "h": 550,
+      "b": 200,
+      "tw": 19,
+      "tf": 30,
+      "r": 19,
+      "flange_slope": 0.14,
+      "t": 19
+    },
+    "properties": {
+      "area_mm2": 21211.5,
+      "iy_mm4": 989944000,
+      "iz_mm4": 34880400,
+      "wel_y_mm3": 3599800,
+      "wel_z_mm3": 348804,
+      "wpl_y_mm3": 4231180,
+      "wpl_z_mm3": 591532,
+      "av_y_mm2": 12000,
+      "av_z_mm2": 10921.5,
+      "it_mm4": 5311640,
+      "iw_mm6": 2254880000000,
+      "iy_radius_mm": 216.033,
+      "iz_radius_mm": 40.5513,
+      "h_mm": 550,
+      "b_mm": 200,
+      "tw_mm": 19,
+      "tf_mm": 30,
+      "r_mm": 19
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
+  },
+  {
+    "name": "INP 600",
+    "kind": "ISection",
+    "geometry": {
+      "h": 600,
+      "b": 215,
+      "tw": 21.6,
+      "tf": 32.4,
+      "r": 21.6,
+      "flange_slope": 0.14,
+      "t": 21.6
+    },
+    "properties": {
+      "area_mm2": 25383.7,
+      "iy_mm4": 1387880000,
+      "iz_mm4": 46799200,
+      "wel_y_mm3": 4626250,
+      "wel_z_mm3": 435341,
+      "wpl_y_mm3": 5464800,
+      "wpl_z_mm3": 745187,
+      "av_y_mm2": 13932,
+      "av_z_mm2": 13551.2,
+      "it_mm4": 7579710,
+      "iw_mm6": 3596220000000,
+      "iy_radius_mm": 233.829,
+      "iz_radius_mm": 42.938,
+      "h_mm": 600,
+      "b_mm": 215,
+      "tw_mm": 21.6,
+      "tf_mm": 32.4,
+      "r_mm": 21.6
+    },
+    "buckling_curves": {
+      "y_axis": "a",
+      "z_axis": "b"
+    }
   }
 ]

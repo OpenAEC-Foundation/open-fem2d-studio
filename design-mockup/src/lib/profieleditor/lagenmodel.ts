@@ -157,6 +157,7 @@ function deelBijdragen(d: Catalogusdeel, uit?: DeelUitvoer): Bijdrage[] | string
 
   switch (p.soort) {
     case "ISection":
+    case "ISectionSchuin":
     case "Channel":
     case "ChannelSchuin":
       if (!(p.tf > 0) || !(p.tw > 0) || p.h <= 2 * p.tf) {

@@ -81,6 +81,7 @@ export function stelVormVoor(o: DoorsnedeOntwerp): CustomDoorsnedevorm {
   if (o.soort === "gat") {
     switch (o.basis.soort) {
       case "ISection":
+      case "ISectionSchuin":
         return gatenDubbelsymmetrisch(o.basis, o.gaten)
           ? "GelasteIDubbelsymmetrisch"
           : "GelasteIMonosymmetrisch";

@@ -15,6 +15,7 @@ import type { Lassoort } from "../types/las/Lassoort";
 /** Vormaanduidingen die de motor kent (`soort` in de JSON-invoer). */
 export type MotorSoort =
   | "ISection"
+  | "ISectionSchuin"
   | "Channel"
   | "ChannelSchuin"
   | "Shs"
