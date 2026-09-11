@@ -81,10 +81,6 @@ const TIJDSLIMIET_MS = 300_000;
 const BUNDEL_TESTS = new Set([
   "checkconfig",
   "combinatieselectie",
-  // Leest alleen de JSON-taalbestanden en config.ts van schijf; geen barrel,
-  // geen tsx. Draait dus in beide standen, en hoort in de bundelstand mee
-  // omdat een vergeten vertaling anders alleen in de app opvalt.
-  "i18n-talen",
   // Rekent een externe referentie-berekening na (twee houten liggerlijnen) en
   // raakt daarbij uitsluitend de adapterlaag: `engine`, `combinations`,
   // `sectionResolver` en de twee check-builders — precies wat de barrel
@@ -273,6 +269,10 @@ const ALLEEN_BRON = new Map([
   [
     "unp-flenshelling",
     "meet het oppervlak van de GETEKENDE contour van de U-profielen tegen de cataloguswaarde, om vast te leggen dat een UNP taps toeloopt en een UPE niet; tekenmeetkunde in plaats van solverwerk, en de contourfuncties zitten niet in de barrel",
+  ],
+  [
+    "i18n-talen",
+    "leest alleen de JSON-taalbestanden en config.ts van schijf en importeert geen enkele bronmodule; de bundelstand heeft er dus niets in te toetsen, en de runner weigert terecht een test zonder ./src-import",
   ],
   [
     "inp-flenshelling",
