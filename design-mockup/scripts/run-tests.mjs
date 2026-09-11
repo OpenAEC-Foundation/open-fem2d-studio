@@ -112,7 +112,7 @@ const BUNDEL_TESTS = new Set([
   "qrichting",
   "releases",
   // Verende staafaansluitingen: engine + bouwMultiInput, allebei in de barrel.
-  "veren",
+  "staafveren",
   "scheefstand",
   "sectie-doorvoer",
   // Toetst waar de adapter zijn rekenknopen legt (deellastgrenzen,
