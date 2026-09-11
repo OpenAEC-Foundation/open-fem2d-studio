@@ -43,6 +43,14 @@
  *    einden wordt PIN_JOINED_MEMBER; elke release wordt daarnaast altijd
  *    expliciet als IfcBoundaryNodeCondition op de eindverbinding gezet
  *    (vrijgegeven DOF = IfcBoolean(.F.)) — expliciet wint van impliciet.
+ *    Verende aansluitingen (Beam.veren) gaan dezelfde weg, als stijfheids-
+ *    maat op het DOF (IfcLinearStiffnessMeasure N/m, IfcRotationalStiffness-
+ *    Measure N·m/rad); bedding staat als BeddingK/BeddingBreedte in de set
+ *    OpenFEM2D_Staaf, want IFC4 heeft daar geen eigen entiteit voor in dit
+ *    domein.
+ *  - Belastingcombinaties: één IfcStructuralLoadGroup (LOAD_COMBINATION) per
+ *    combinatie, met per belastinggeval een IfcRelAssignsToGroupByFactor die
+ *    de factor draagt; UGT/BGT staat in Purpose.
  *  - Profiel + materiaal: IfcRelAssociatesMaterial →
  *    IfcMaterialProfileSetUsage → IfcMaterialProfileSet → IfcMaterialProfile
  *    met IfcMaterial (naam = klasse, bv. S235/C24) en een parametrisch
@@ -189,6 +197,13 @@ export interface IfcRekenmodelInput {
   eigenGewicht?: boolean;
   /** Aantal belastingcombinaties. Alleen voor de beperkingenlijst. */
   aantalCombinaties?: number;
+  /**
+   * De belastingcombinaties: elk wordt een IfcStructuralLoadGroup met
+   * PredefinedType LOAD_COMBINATION, en per belastinggeval een
+   * IfcRelAssignsToGroupByFactor met de factor. Ontbreekt het veld, dan
+   * blijven de combinaties uit het bestand (en de beperkingenlijst zegt dat).
+   */
+  combinations?: { id: number; name: string; type: "uls" | "sls"; factors: Map<number, number> }[];
   /**
    * De uitslag van de normtoetsing per staaf (checkStore.results), als die er
    * is. ONTBREEKT het veld of is de lijst leeg — er is nog niet getoetst, of
@@ -481,13 +496,38 @@ export function bouwIfcRekenmodel(
     groepPerCase.set(geval.id, groep);
   }
 
+  // ── Belastingcombinaties ───────────────────────────────────────────────
+  // Eén IfcStructuralLoadGroup (LOAD_COMBINATION) per combinatie, met per
+  // belastinggeval een IfcRelAssignsToGroupByFactor die het geval mét zijn
+  // factor in de combinatie zet — de weg die IFC4 daarvoor heeft. UGT en BGT
+  // krijgen ActionType/ActionSource "USERDEFINED" met de soort in Purpose,
+  // want de combinatie is geen enkelvoudige belastingsoort meer. Alleen
+  // gevallen die ook echt in het bestand staan doen mee.
+  const combinatieGroepen: number[] = [];
+  const combinaties = zonderLasten ? [] : (model.combinations ?? []);
+  for (const combo of combinaties) {
+    const groep = w.ent("IFCSTRUCTURALLOADGROUP",
+      w.guid(`combinatie:${combo.id}`), "$", stepString(combo.name), "$", "$",
+      ".LOAD_COMBINATION.", ".USERDEFINED.", ".USERDEFINED.", "$",
+      stepString(combo.type === "uls" ? "UGT" : "BGT"));
+    combinatieGroepen.push(groep);
+    const factoren = [...combo.factors.entries()]
+      .filter(([caseId, f]) => f !== 0 && groepPerCase.has(caseId))
+      .sort((a, b) => a[0] - b[0]);
+    for (const [caseId, factor] of factoren) {
+      w.ent("IFCRELASSIGNSTOGROUPBYFACTOR",
+        w.guid(`combinatie:${combo.id}:geval:${caseId}`), "$", "$", "$",
+        lijst([groepPerCase.get(caseId)!]), "$", ref(groep), reeel(factor));
+    }
+  }
+
   // ── Analysemodel (2D, XZ-vlak) ───────────────────────────────────────────
   // As van het rekenvlak = (0,-1,0) met refrichting (1,0,0): lokaal-x =
   // globaal-X, lokaal-y = globaal-Z (omhoog), rechtsdraaiend.
   const richtingMinY = w.ent("IFCDIRECTION", "(0.,-1.,0.)");
   const vlakAssen = w.ent("IFCAXIS2PLACEMENT3D",
     ref(oorsprong), ref(richtingMinY), ref(richtingX));
-  const groepIds = [...groepPerCase.values()];
+  const groepIds = [...groepPerCase.values(), ...combinatieGroepen];
   const analyseModel = w.ent("IFCSTRUCTURALANALYSISMODEL",
     w.guid("analysemodel"), "$", stepString(`Rekenmodel ${projectNaam}`), "$", "$",
     ".IN_PLANE_LOADING_2D.", ref(vlakAssen),
@@ -573,19 +613,31 @@ export function bouwIfcRekenmodel(
       staaftype: BEAM_LOAD_ROLE_LABEL[rolVanStaaf(staaf, model.nodes)],
     });
 
-    // Verbinding met beide knopen; releases als expliciete randvoorwaarde.
-    const einden: Array<["start" | "eind", number, boolean?, boolean?, boolean?]> = [
-      ["start", connectiePerKnoop.get(staaf.from)!, rel.startTx, rel.startTz, rel.startRy],
-      ["eind",  connectiePerKnoop.get(staaf.to)!,   rel.endTx,   rel.endTz,   rel.endRy],
+    // Verbinding met beide knopen; releases én veren als expliciete
+    // randvoorwaarde op de eindverbinding: een los DOF = IfcBoolean(.F.),
+    // een veer = stijfheidsmaat (kN/mm → N/m ×1e6, kNm/rad → N·m/rad ×1e3),
+    // star = IfcBoolean(.T.). Een release wint van een veer, net als in de
+    // rekenkern.
+    const veer = staaf.veren ?? {};
+    const einden: Array<["start" | "eind", number, boolean?, boolean?, boolean?, number?, number?, number?]> = [
+      ["start", connectiePerKnoop.get(staaf.from)!, rel.startTx, rel.startTz, rel.startRy, veer.startTx, veer.startTz, veer.startRy],
+      ["eind",  connectiePerKnoop.get(staaf.to)!,   rel.endTx,   rel.endTz,   rel.endRy,   veer.endTx,   veer.endTz,   veer.endRy],
     ];
-    for (const [kant, connectie, losTx, losTz, losRy] of einden) {
+    for (const [kant, connectie, losTx, losTz, losRy, kTx, kTz, kRy] of einden) {
       let conditie: number | undefined;
-      if (losTx === true || losTz === true || losRy === true) {
+      const veerTx = losTx !== true && kTx !== undefined && kTx > 0;
+      const veerTz = losTz !== true && kTz !== undefined && kTz > 0;
+      const veerRy = losRy !== true && kRy !== undefined && kRy > 0;
+      if (losTx === true || losTz === true || losRy === true || veerTx || veerTz || veerRy) {
+        const dof = (los: boolean | undefined, veer: boolean, k: number | undefined, draai: boolean) =>
+          los === true ? "IFCBOOLEAN(.F.)"
+            : veer ? (draai ? `IFCROTATIONALSTIFFNESSMEASURE(${reeel(k! * 1e3)})` : `IFCLINEARSTIFFNESSMEASURE(${reeel(k! * 1e6)})`)
+              : "IFCBOOLEAN(.T.)";
         conditie = w.ent("IFCBOUNDARYNODECONDITION",
-          "'Scharnier'",
-          `IFCBOOLEAN(${losTx === true ? ".F." : ".T."})`, "$",
-          `IFCBOOLEAN(${losTz === true ? ".F." : ".T."})`, "$",
-          `IFCBOOLEAN(${losRy === true ? ".F." : ".T."})`, "$");
+          stepString(veerTx || veerTz || veerRy ? "Verende aansluiting" : "Scharnier"),
+          dof(losTx, veerTx, kTx, false), "$",
+          dof(losTz, veerTz, kTz, false), "$",
+          dof(losRy, veerRy, kRy, true), "$");
       }
       w.ent("IFCRELCONNECTSSTRUCTURALMEMBER",
         w.guid(`staafrel:${staaf.id}:${kant}`), "$", "$", "$",
@@ -1314,6 +1366,26 @@ function schrijfStaafEigenschappen(
       eJaNee("ScharnierBegin", rel.startRy === true),
       eJaNee("ScharnierEind", rel.endRy === true),
     ];
+    // Verende aansluitingen en bedding als leesbare eigenschappen naast de
+    // randvoorwaarde-entiteiten: wie het bestand als tabel leest, ziet ze
+    // ook. Eenheden SI: N/m, N·m/rad, N/m³ (kN/m³ ×1e3), m.
+    const veer = s.staaf.veren ?? {};
+    const veerEig = (naam: string, k: number | undefined, draai: boolean) => {
+      if (k === undefined || !(k > 0)) return;
+      sEig.push(draai
+        ? eMaat(naam, "IFCROTATIONALSTIFFNESSMEASURE", k * 1e3)
+        : eMaat(naam, "IFCLINEARSTIFFNESSMEASURE", k * 1e6));
+    };
+    veerEig("VeerNBegin", rel.startTx ? undefined : veer.startTx, false);
+    veerEig("VeerVBegin", rel.startTz ? undefined : veer.startTz, false);
+    veerEig("VeerMBegin", rel.startRy ? undefined : veer.startRy, true);
+    veerEig("VeerNEind", rel.endTx ? undefined : veer.endTx, false);
+    veerEig("VeerVEind", rel.endTz ? undefined : veer.endTz, false);
+    veerEig("VeerMEind", rel.endRy ? undefined : veer.endRy, true);
+    if (s.staaf.bedding && s.staaf.bedding.k > 0 && s.staaf.bedding.b > 0) {
+      sEig.push(eMaat("BeddingK", "IFCMODULUSOFSUBGRADEREACTIONMEASURE", s.staaf.bedding.k * 1e3));
+      sEig.push(eMaat("BeddingBreedte", "IFCPOSITIVELENGTHMEASURE", s.staaf.bedding.b / 1000));
+    }
     if (s.lengteMm > 0) {
       sEig.splice(3, 0,
         eMaat("Lengte", "IFCPOSITIVELENGTHMEASURE", s.lengteMm / 1000));
@@ -1597,7 +1669,7 @@ export function verzamelIfcBeperkingen(
       );
     }
     const combinaties = model.aantalCombinaties ?? 0;
-    if (combinaties > 0) {
+    if (combinaties > 0 && !model.combinations) {
       regels.push(
         `${combinaties} belastingcombinatie${combinaties === 1 ? "" : "s"}: alleen de ` +
         "losse belastinggevallen worden geëxporteerd, niet de combinaties " +
@@ -1969,7 +2041,7 @@ export const GEWORTELDE_ENTITEITEN = [
   "IFCPROPERTYSET", "IFCELEMENTQUANTITY",
   "IFCRELAGGREGATES", "IFCRELSERVICESBUILDINGS",
   "IFCRELCONNECTSSTRUCTURALMEMBER", "IFCRELCONNECTSSTRUCTURALACTIVITY",
-  "IFCRELASSOCIATESMATERIAL", "IFCRELASSIGNSTOGROUP",
+  "IFCRELASSOCIATESMATERIAL", "IFCRELASSIGNSTOGROUP", "IFCRELASSIGNSTOGROUPBYFACTOR",
   "IFCRELASSIGNSTOPRODUCT", "IFCRELDEFINESBYPROPERTIES",
   "IFCRELCONTAINEDINSPATIALSTRUCTURE",
 ] as const;

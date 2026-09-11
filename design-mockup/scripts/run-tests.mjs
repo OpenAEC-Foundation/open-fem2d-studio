@@ -277,6 +277,10 @@ const ALLEEN_BRON = new Map([
     "leest alleen de JSON-taalbestanden en config.ts van schijf en importeert geen enkele bronmodule; de bundelstand heeft er dus niets in te toetsen, en de runner weigert terecht een test zonder ./src-import",
   ],
   [
+    "projectbestand",
+    "serialiseert en leest het projectbestand terug (io/projectFile) en zet de rapportinstellingen in de zustand-store; projectFile en de rapportstore staan niet in de barrel",
+  ],
+  [
     "wind-schema",
     "rendert de doorsnede- en plattegrondtekening van het windvenster met react-dom/server en leest de staven, pijlen en maten terug uit de SVG; tekenwerk, en React bestaat in de sidecarbundel niet",
   ],

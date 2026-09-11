@@ -29,6 +29,8 @@ import LoadCaseTabBar from "./components/fem/LoadCaseTabBar";
 import LoadCasesDialog from "./components/fem/LoadCasesDialog";
 import WindGeneratorDialog from "./lib/wind/WindGeneratorDialog";
 import { useWindGenerator } from "./stores/windStore";
+import { pasRapportSnapshotToe, rapportSnapshot } from "./stores/reportStore";
+import { setSetting as zetInstelling } from "./store";
 import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
 // Het bedieningskanaal (OPENAEC_GUI_CONTROL=1): dezelfde closures als de knoppen,
@@ -221,8 +223,13 @@ function App() {
   // FEM model state lifted to App.tsx via useFemStore.
   const fem = useFemStore();
   // Projectgegevens uit de projectinstellingen — voeden onder meer de
-  // IFC-export (projectnaam, nummer, ingenieur, bedrijf, locatie).
+  // IFC-export (projectnaam, nummer, ingenieur, bedrijf, locatie) en reizen
+  // mee in het projectbestand.
   const projectInfo = useProjectInfo();
+  // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
+  // in de constructie (idempotent, zie windStore.ts). Staat hier boven de
+  // snapshot-opbouw omdat zijn instellingen in het projectbestand gaan.
+  const windGenerator = useWindGenerator(fem);
   const { addRecentFile } = useRecentFiles();
   // Normtoetsing (EN 1993 staal + EN 1995 hout) — resultaten in checkStore.
   const checkRun = useCheckStore((s) => s.run);
@@ -343,7 +350,24 @@ function App() {
     // (de opbouw zelf staat al in de profielnaam van de staaf), en alleen
     // voor de opbouwen die in dit model voorkomen.
     eigenCltOpbouwen: exporteerCltOpbouwen(fem.beams),
-  }), [fem]);
+    // Projectgegevens, windinstellingen en rapportinstellingen horen bij het
+    // project en niet bij de machine; zie projectFile.ts voor de motivatie.
+    projectInfo: projectInfo as unknown as Record<string, unknown>,
+    windInstellingen: windGenerator.instellingen as unknown as Record<string, unknown>,
+    rapport: rapportSnapshot() as unknown as Record<string, unknown>,
+  }), [fem, projectInfo, windGenerator.instellingen]);
+
+  /**
+   * De JSON waarop de dirty-vlag rust: het MODEL, zonder projectgegevens,
+   * wind- en rapportinstellingen. Die drie komen na het openen van een
+   * bestand pas even later uit hun stores terug (instellingen zijn
+   * asynchroon), en zouden een net geopend project meteen "gewijzigd"
+   * maken. Ze gaan wél altijd mee bij het opslaan.
+   */
+  const modelJson = useCallback((snap: ReturnType<typeof buildProjectSnapshot>) => {
+    const { projectInfo: _p, windInstellingen: _w, rapport: _r, ...model } = snap;
+    return JSON.stringify(model);
+  }, []);
 
   // ── C2: dirty-vlag ("niet-opgeslagen wijzigingen") ──────────────────────
   const [isDirty, setIsDirty] = useState(false);
@@ -375,7 +399,7 @@ function App() {
         // Native dialoog geannuleerd — er is niets weggeschreven.
         return false;
       }
-      lastSavedRef.current = JSON.stringify(snap);
+      lastSavedRef.current = modelJson(snap);
       setDirty(false);
       notifySuccess("Bestand opgeslagen", newPath || "Download gestart in browser.");
       return true;
@@ -396,7 +420,7 @@ function App() {
       const snap = buildProjectSnapshot();
       const text = serializeProject(snap);
       await saveProjectTo(projectPath, text);
-      lastSavedRef.current = JSON.stringify(snap);
+      lastSavedRef.current = modelJson(snap);
       setDirty(false);
       notifySuccess("Bestand opgeslagen", projectPath.split(/[\\/]/).pop());
       return true;
@@ -479,13 +503,22 @@ function App() {
         scheefstandHoogteM: parsed.scheefstandHoogteM,
         scheefstandAantalElementen: parsed.scheefstandAantalElementen,
       });
+      // Projectgegevens, wind- en rapportinstellingen uit het bestand — elk
+      // optioneel; een ouder bestand laat de huidige stand staan.
+      if (parsed.projectInfo && typeof parsed.projectInfo === "object") {
+        void zetInstelling("projectInfo", parsed.projectInfo);
+      }
+      if (parsed.windInstellingen && typeof parsed.windInstellingen === "object") {
+        windGenerator.setInstellingen(parsed.windInstellingen as Partial<typeof windGenerator.instellingen>);
+      }
+      pasRapportSnapshotToe(parsed.rapport as Parameters<typeof pasRapportSnapshotToe>[0]);
       if (path) {
         setProjectPath(path);
         addRecentFile(path);
       }
       return overschreven;
     },
-    [fem, addRecentFile],
+    [fem, addRecentFile, windGenerator],
   );
 
   const handleOpenProject = useCallback(async () => {
@@ -688,6 +721,7 @@ function App() {
     plates: fem.plates,
     eigenGewicht: fem.selfWeightEnabled,
     aantalCombinaties: fem.combinations.length,
+    combinations: fem.combinations,
     // De toetsuitslag reist mee: elke getoetste staaf krijgt in het bestand
     // de eigenschappenset OpenFEM2D_Toetsing met de maatgevende toets, het
     // normartikel en de unity check. Is er niet getoetst, dan is de lijst
@@ -801,7 +835,6 @@ function App() {
   // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
   // in de constructie (idempotent, zie windStore.ts).
   const [windGeneratorOpen, setWindGeneratorOpen] = useState(false);
-  const windGenerator = useWindGenerator(fem);
   // Check-tab state.
   const [activeCode, setActiveCode] = useState<"EN1993" | "EN1995" | "EN1992">("EN1993");
   // UC-badge op het canvas geklikt → toetsingspaneel openen gefocust op die
@@ -1204,7 +1237,7 @@ function App() {
   // wijzigt (array-identiteiten veranderen per mutatie), nooit per render —
   // de JSON-vergelijking is dus event-gedreven en goedkoop.
   useEffect(() => {
-    const json = JSON.stringify(buildProjectSnapshot());
+    const json = modelJson(buildProjectSnapshot());
     if (baselineResetRef.current || lastSavedRef.current === null) {
       baselineResetRef.current = false;
       lastSavedRef.current = json;

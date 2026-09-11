@@ -171,6 +171,30 @@ export interface ProjectFile {
    */
   eigenDoorsneden?: EigenDoorsnede[];
   /**
+   * De projectgegevens (naam, nummer, ingenieur, bedrijf, datum, locatie,
+   * omschrijving, uitgangspunten met normen, gevolgklasse, windgebied en
+   * terreincategorie). Die stonden alleen in de app-instellingen van de
+   * machine, niet in het bestand: wie een project doorstuurde, stuurde het
+   * zonder zijn gegevens, en wie een ander project opende hield de vorige
+   * projectnaam. Optioneel: een ouder bestand laadt zonder en laat de
+   * instellingen staan. Bewust als losse JSON (geen ProjectInfo-import):
+   * dit bestand kent de dialoog niet, en onbekende velden reizen zo mee.
+   */
+  projectInfo?: Record<string, unknown>;
+  /**
+   * De instellingen van de windbelastinggenerator, zodat "Genereren" op een
+   * andere machine dezelfde lasten oplevert. Optioneel; de gegenereerde
+   * lasten zelf staan al in `loads` en `loadCases`.
+   */
+  windInstellingen?: Record<string, unknown>;
+  /**
+   * De rapportinstellingen die de inhoud bepalen: rapporttype, toetsdetail,
+   * aan/uit per sectie, staafkeuze, inhoudsopgavediepte, opmaak en
+   * papierformaat. Geen zoom of actieve sectie — dat is scherm, geen
+   * project.
+   */
+  rapport?: Record<string, unknown>;
+  /**
    * Eigen CLT-vloeropbouwen: de NAMEN die de gebruiker aan opbouwen gaf,
    * v2, optioneel — geen versie-bump.
    *

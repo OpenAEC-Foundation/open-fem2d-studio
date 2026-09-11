@@ -5,7 +5,7 @@
 // Stijl: test-veldzakking.mjs. Draaien met: npx tsx test-ifc-export.mjs
 
 const {
-  bouwIfcRekenmodel, valideerIfc, GEWORTELDE_ENTITEITEN,
+  bouwIfcRekenmodel, valideerIfc, verzamelIfcBeperkingen, GEWORTELDE_ENTITEITEN,
 } = await import("./src/io/ifcExport.ts");
 
 let passed = 0, failed = 0;
@@ -565,6 +565,62 @@ checkTrue("een weggelaten attribuut wordt als fout gemeld",
   metGat !== ifcB &&
   valideerIfc(metGat).fouten.some(f => /LEGE parameter/.test(f)));
 checkEq("het gave bestand meldt er geen", valideerIfc(ifcB).fouten.length, 0);
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[8] Combinaties, verende aansluitingen en bedding");
+{
+  const model = {
+    projectNaam: "Volledig",
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }, { id: 3, x: 12000, z: 0 }],
+    beams: [
+      // Staaf 1: momentveer aan het eind, normaalkrachtveer aan het begin;
+      // staaf 2: scharnier aan het begin (wint van de opgegeven veer) én bedding.
+      { id: 1, from: 1, to: 2, material: "S235", profile: "IPE300", veren: { endRy: 5000, startTx: 200 } },
+      { id: 2, from: 2, to: 3, material: "S235", profile: "IPE300",
+        releases: { startRy: true }, veren: { startRy: 9999 }, bedding: { k: 50000, b: 300 } },
+    ],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 3, type: "pinned" }],
+    loads: [
+      { id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -10, qDir: "z" },
+      { id: 2, type: "lineLoad", caseId: 2, beamId: 2, q: -5, qDir: "z" },
+    ],
+    loadCases: [{ id: 1, name: "Permanent", type: "dead" }, { id: 2, name: "Veranderlijk", type: "live" }],
+    aantalCombinaties: 2,
+    combinations: [
+      { id: 1, name: "UGT 6.10b", type: "uls", formula: "1,2G + 1,5Q", factors: new Map([[1, 1.2], [2, 1.5]]) },
+      { id: 2, name: "BGT", type: "sls", formula: "G + Q", factors: new Map([[1, 1.0], [2, 1.0], [99, 3]]) },
+    ],
+  };
+  const ifc = bouwIfcRekenmodel(model);
+  checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
+  checkEq("validatie: geen fouten", valideerIfc(ifc).fouten.length, 0);
+  // Combinaties
+  checkEq("vier lastgroepen: twee gevallen + twee combinaties", tel(ifc, "IFCSTRUCTURALLOADGROUP"), 4);
+  checkEq("twee LOAD_COMBINATION-groepen", (ifc.match(/\.LOAD_COMBINATION\./g) ?? []).length, 2);
+  checkEq("vier factortoewijzingen (het onbekende geval 99 valt af)", tel(ifc, "IFCRELASSIGNSTOGROUPBYFACTOR"), 4);
+  checkTrue("factor 1,2 en 1,5 staan erin",
+    /IFCRELASSIGNSTOGROUPBYFACTOR\(.*,1\.2\);/m.test(ifc) && /IFCRELASSIGNSTOGROUPBYFACTOR\(.*,1\.5\);/m.test(ifc));
+  checkTrue("UGT en BGT in Purpose", ifc.includes("'UGT'") && ifc.includes("'BGT'"));
+  checkTrue("de combinaties hangen aan het analysemodel (LoadedBy)",
+    /IFCSTRUCTURALANALYSISMODEL\([^)]*\(#\d+,#\d+,#\d+,#\d+\)/.test(ifc));
+  checkTrue("de beperkingenlijst noemt de combinaties niet meer als weggelaten",
+    !verzamelIfcBeperkingen(model).some((r) => /combinatie/.test(r)));
+  // Veren
+  checkTrue("momentveer 5000 kNm/rad = 5e6 N·m/rad op de eindverbinding",
+    /IFCBOUNDARYNODECONDITION\('Verende aansluiting',IFCBOOLEAN\(\.T\.\),\$,IFCBOOLEAN\(\.T\.\),\$,IFCROTATIONALSTIFFNESSMEASURE\(5000000\.?\d*\),\$\)/.test(ifc));
+  checkTrue("normaalkrachtveer 200 kN/mm = 2e8 N/m op de beginverbinding",
+    /IFCBOUNDARYNODECONDITION\('Verende aansluiting',IFCLINEARSTIFFNESSMEASURE\(200000000\.?\d*\),\$,IFCBOOLEAN\(\.T\.\)/.test(ifc));
+  checkTrue("scharnier wint van de veer: staaf 2 begin is .F., geen stijfheidsmaat 9999",
+    /IFCBOUNDARYNODECONDITION\('Scharnier',IFCBOOLEAN\(\.T\.\),\$,IFCBOOLEAN\(\.T\.\),\$,IFCBOOLEAN\(\.F\.\),\$\)/.test(ifc)
+    && !ifc.includes("9999000"));
+  checkTrue("VeerMEind en VeerNBegin in OpenFEM2D_Staaf", ifc.includes("'VeerMEind'") && ifc.includes("'VeerNBegin'"));
+  // Bedding
+  checkTrue("BeddingK 50000 kN/m³ = 5e7 N/m³", /'BeddingK',\$,IFCMODULUSOFSUBGRADEREACTIONMEASURE\(50000000\.?\d*\)/.test(ifc));
+  checkTrue("BeddingBreedte 300 mm = 0,3 m", /'BeddingBreedte',\$,IFCPOSITIVELENGTHMEASURE\(0\.3\)/.test(ifc));
+  checkTrue("zonder combinaties in de invoer blijft de melding staan",
+    verzamelIfcBeperkingen({ ...model, combinations: undefined }).some((r) => /combinatie/.test(r)));
+  checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
+}
 
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -291,3 +291,54 @@ export function isToetsStaafZichtbaar(
 ): boolean {
   return !keuze[String(beamId)];
 }
+
+// ── Projectbestand ────────────────────────────────────────────────────────
+// De instellingen die de INHOUD van het rapport bepalen reizen mee in het
+// projectbestand; wat alleen scherm is (zoom, actieve sectie, de gekozen
+// resultaatcombinatie) niet.
+
+/** De rapportinstellingen zoals ze in het projectbestand staan. */
+export interface RapportBestandInstellingen extends ReportOpmaak {
+  pageSize: ReportPageSize;
+  orientation: ReportOrientation;
+  hiddenSections: Record<string, boolean>;
+  rapportType: RapportType;
+  toetsingDetail: ToetsingDetail;
+  verborgenToetsStaven: ToetsStaafKeuze;
+  inhoudsopgaveDiepte: 1 | 2;
+}
+
+export function rapportSnapshot(): RapportBestandInstellingen {
+  const s = useReportStore.getState();
+  return {
+    margeBoven: s.margeBoven, margeOnder: s.margeOnder,
+    margeBinnen: s.margeBinnen, margeBuiten: s.margeBuiten,
+    basisLettergrootte: s.basisLettergrootte, regelafstand: s.regelafstand,
+    pageSize: s.pageSize, orientation: s.orientation,
+    hiddenSections: { ...s.hiddenSections },
+    rapportType: s.rapportType, toetsingDetail: s.toetsingDetail,
+    verborgenToetsStaven: { ...s.verborgenToetsStaven },
+    inhoudsopgaveDiepte: s.inhoudsopgaveDiepte,
+  };
+}
+
+/**
+ * Zet de rapportinstellingen uit een projectbestand terug. Alleen bekende
+ * velden met een geldige waarde worden overgenomen; wat ontbreekt blijft
+ * zoals het staat, zodat een half of ouder bestand niets kapotmaakt.
+ */
+export function pasRapportSnapshotToe(r: Partial<RapportBestandInstellingen> | undefined): void {
+  if (!r || typeof r !== "object") return;
+  const patch: Partial<ReportState> = {};
+  const getal = (k: keyof ReportOpmaak) => { if (typeof r[k] === "number" && Number.isFinite(r[k])) (patch as Record<string, unknown>)[k] = r[k]; };
+  getal("margeBoven"); getal("margeOnder"); getal("margeBinnen"); getal("margeBuiten");
+  getal("basisLettergrootte"); getal("regelafstand");
+  if (r.pageSize === "A4" || r.pageSize === "A3") patch.pageSize = r.pageSize;
+  if (r.orientation === "portrait" || r.orientation === "landscape") patch.orientation = r.orientation;
+  if (r.hiddenSections && typeof r.hiddenSections === "object") patch.hiddenSections = { ...r.hiddenSections };
+  if (r.rapportType === "volledig" || r.rapportType === "beperkt") patch.rapportType = r.rapportType;
+  if (r.toetsingDetail === "beknopt" || r.toetsingDetail === "gedetailleerd") patch.toetsingDetail = r.toetsingDetail;
+  if (r.verborgenToetsStaven && typeof r.verborgenToetsStaven === "object") patch.verborgenToetsStaven = { ...r.verborgenToetsStaven };
+  if (r.inhoudsopgaveDiepte === 1 || r.inhoudsopgaveDiepte === 2) patch.inhoudsopgaveDiepte = r.inhoudsopgaveDiepte;
+  if (Object.keys(patch).length > 0) useReportStore.setState(patch);
+}
