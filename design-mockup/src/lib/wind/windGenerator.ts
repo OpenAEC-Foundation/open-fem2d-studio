@@ -77,6 +77,16 @@ export interface WindInstellingen {
 
   /** Ook belastingcombinaties aanmaken (EN 1990 6.10a/6.10b/EQU/6.14b). */
   combinatiesGenereren: boolean;
+
+  /**
+   * Kap zonder gevel: de gevels staan niet in het model (een kapspant dat op
+   * gemetselde wanden rust), en dit is de hoogte van de onderkant van de kap
+   * boven maaiveld, in m. De referentiehoogte wordt dan gevelhoogte +
+   * kaphoogte, want de stuwdruk hoort bij de werkelijke bouwhoogte en niet
+   * bij de hoogte van wat er toevallig getekend is. `null` = niet van
+   * toepassing (de gevels staan in het model, of de kap staat op de grond).
+   */
+  gevelhoogte_m: number | null;
 }
 
 export const STANDAARD_WIND_INSTELLINGEN: WindInstellingen = {
@@ -98,6 +108,7 @@ export const STANDAARD_WIND_INSTELLINGEN: WindInstellingen = {
   cpeDakLij: null,
   cpeDakHaaks: null,
   combinatiesGenereren: true,
+  gevelhoogte_m: null,
 };
 
 // ── Uitvoer ──────────────────────────────────────────────────────────────
@@ -150,6 +161,9 @@ export interface VlakRegel {
   w_kNm2: number;
   q_kNm: number;
   bron: string;
+  /** Deellast: fracties langs de staaf vanaf de startknoop; leeg = hele staaf. */
+  startFrac?: number;
+  endFrac?: number;
 }
 
 export interface WindSamenvatting {
@@ -162,6 +176,39 @@ export interface WindSamenvatting {
   perGeval: { sleutel: string; naam: string; regels: VlakRegel[] }[];
 }
 
+/** Eén staaf van het spant zoals de schematekening hem nodig heeft, in m. */
+export interface WindSchemaStaaf {
+  beamId: number;
+  rol: BeamLoadRole;
+  x1: number; z1: number; x2: number; z2: number;
+}
+
+/**
+ * Wat er van de constructie is afgeleid vóór er ook maar iets is gerekend:
+ * de maten en de rollen die de tekening in het venster laat zien. Staat er
+ * ook wanneer de generatie op een ontbrekende invoer strandt, zodat het
+ * venster de constructie kan tonen terwijl het om die invoer vraagt.
+ */
+export interface WindGeometrie {
+  /** Bouwhoogte in m — inclusief de gevelhoogte bij een kap zonder gevel. */
+  h_m: number;
+  /** Hoogte van het model zelf in m. */
+  modelhoogte_m: number;
+  /** Spanwijdte tussen de gevels (of de omhullende van het model) in m. */
+  d_m: number;
+  xLinks_m: number;
+  xRechts_m: number;
+  /** Er zijn staven met rol hellend dak. */
+  heeftHellendDak: boolean;
+  /** Er zijn gevelstaven in het model. */
+  heeftGevels: boolean;
+  /** Kap zonder gevel: geen gevelstaven én een gevelhoogte opgegeven. */
+  kapZonderGevel: boolean;
+  /** Grootste dakhelling in graden (0 bij een plat dak). */
+  dakhelling_graden: number;
+  staven: WindSchemaStaaf[];
+}
+
 export interface WindGeneratieResultaat {
   /** false ⇒ er is NIETS gegenereerd; zie de meldingen met niveau "fout". */
   ok: boolean;
@@ -170,6 +217,8 @@ export interface WindGeneratieResultaat {
   lasten: GegenereerdeLast[];
   combinaties: GegenereerdeCombinatie[];
   samenvatting: WindSamenvatting | null;
+  /** De constructie zoals de generator haar las; null als er geen is. */
+  geometrie: WindGeometrie | null;
 }
 
 // ── Hulpfuncties ─────────────────────────────────────────────────────────
@@ -280,9 +329,10 @@ export function genereerWindbelasting(
   inst: WindInstellingen,
 ): WindGeneratieResultaat {
   const meldingen: WindMelding[] = [];
+  let geometrie: WindGeometrie | null = null;
   const fout = (tekst: string): WindGeneratieResultaat => {
     meldingen.push({ niveau: "fout", tekst });
-    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null };
+    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null, geometrie };
   };
 
   // ── Geometrie ──────────────────────────────────────────────────────────
@@ -296,8 +346,8 @@ export function genereerWindbelasting(
 
   const zs = model.nodes.map((n) => n.z);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
-  const h_m = (maxZ - minZ) / 1000;
-  if (h_m <= 0) return fout("De constructie heeft geen hoogte — wind is niet te bepalen.");
+  const modelhoogte_m = (maxZ - minZ) / 1000;
+  if (modelhoogte_m <= 0) return fout("De constructie heeft geen hoogte — wind is niet te bepalen.");
 
   // Spanwijdte d: afstand tussen de GEVELS, niet de omhullende van het model
   // (een overstek steekt buiten de gevel uit en mag d niet vergroten).
@@ -313,12 +363,40 @@ export function genereerWindbelasting(
   const d_m = (xRechts - xLinks) / 1000;
   if (d_m <= 0) return fout("De constructie heeft geen breedte — wind is niet te bepalen.");
 
-  if (gevelL.length === 0 && gevelR.length === 0) {
+  // Kap zonder gevel: de gevels staan niet in het model maar bestaan wel
+  // (een kapspant op gemetselde wanden). De bouwhoogte — en daarmee de
+  // referentiehoogte van de stuwdruk en h/d van de wandzones — is dan de
+  // gevelhoogte plus de hoogte van de kap, niet de hoogte van de kap alleen.
+  const heeftGevels = gevelL.length > 0 || gevelR.length > 0;
+  const kapZonderGevel = !heeftGevels && inst.gevelhoogte_m !== null && inst.gevelhoogte_m > 0;
+  const h_m = modelhoogte_m + (kapZonderGevel ? inst.gevelhoogte_m! : 0);
+  const heeftHellendDak = geos.some((g) => g.rol === "dakHellend");
+  geometrie = {
+    h_m, modelhoogte_m, d_m,
+    xLinks_m: xLinks / 1000, xRechts_m: xRechts / 1000,
+    heeftHellendDak, heeftGevels, kapZonderGevel,
+    dakhelling_graden: Math.max(0, ...geos.filter((g) => g.rol === "dakHellend").map((g) => g.helling)),
+    staven: geos.map((g) => ({
+      beamId: g.beam.id, rol: g.rol,
+      x1: g.x1 / 1000, z1: g.z1 / 1000, x2: g.x2 / 1000, z2: g.z2 / 1000,
+    })),
+  };
+
+  if (kapZonderGevel) {
+    meldingen.push({
+      niveau: "info",
+      tekst: `Kap zonder gevel: de gevels staan niet in het model. Bouwhoogte h = ` +
+        `${nl(inst.gevelhoogte_m!, 2)} m (gevel) + ${nl(modelhoogte_m, 2)} m (kap) = ` +
+        `${nl(h_m, 2)} m. De windlast op de gevels zelf is niet gegenereerd; die valt ` +
+        "op de wanden en niet op dit spant.",
+    });
+  } else if (!heeftGevels) {
     meldingen.push({
       niveau: "waarschuwing",
       tekst: "Geen enkele staaf heeft het belastingtype linker- of rechtergevel. " +
-        "Controleer de belastingtypen in de staafeigenschappen — zonder gevelvlak " +
-        "krijgt het spant geen horizontale windbelasting.",
+        "Staan de gevels wel in het model, controleer dan de belastingtypen in de " +
+        "staafeigenschappen. Is dit een kap op wanden die niet getekend zijn, vul " +
+        "dan de gevelhoogte in: de stuwdruk hoort bij de werkelijke bouwhoogte.",
     });
   }
 
@@ -332,7 +410,6 @@ export function genereerWindbelasting(
     ? inst.belastingbreedteOverride_m
     : (inst.positieSpant === "kopgevelspant" ? inst.hohSpant_m / 2 : inst.hohSpant_m);
 
-  const heeftHellendDak = geos.some((g) => g.rol === "dakHellend");
   if (heeftHellendDak) {
     // Vormfactoren van hellende daken (tabel 7.4a/7.4b) worden BEWUST niet
     // automatisch ingevuld — zie de kop van windEurocode.ts.
@@ -390,7 +467,7 @@ export function genereerWindbelasting(
       tekst: `De bouwhoogte (${nl(ze_m, 1)} m) ligt boven z_max = ${ZMAX_M} m; ` +
         "de snelheidsprofielformules van §4.3.2 gelden daar niet meer.",
     });
-    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null };
+    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null, geometrie };
   }
   if (h_m >= CSCD_GRENSHOOGTE_M) {
     meldingen.push({
@@ -491,6 +568,7 @@ export function genereerWindbelasting(
           regels.push({
             beamId: g.beam.id, rol: g.rol, zone: zone + deel, cpe, cpi: cpiHier,
             w_kNm2: w, q_kNm: q, bron,
+            ...(startFrac !== undefined ? { startFrac, endFrac } : {}),
           });
           if (Math.abs(q) < 1e-12) return;
           lasten.push({
@@ -723,6 +801,7 @@ export function genereerWindbelasting(
       hoogte_m: h_m, spanwijdte_m: d_m, hOverD: h_m / d_m,
       belastingbreedte_m: breedte_m, stuwdruk, perGeval,
     },
+    geometrie,
   };
 }
 

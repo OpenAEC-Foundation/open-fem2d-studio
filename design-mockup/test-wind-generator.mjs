@@ -451,5 +451,60 @@ log("\n[11] Evenwicht door de echte solver — handberekening (e)");
   check("Σ reacties Fz = −12,0 kN (evenwicht)", fz / 1000, -12.0, 0.05);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[12] Kap zonder gevel — een kapspant op wanden die niet in het model staan");
+{
+  // Zadeldakspant: twee spanten van 6,00 m breed, nok 1,50 m boven de voet,
+  // trekband onderin. Geen enkele verticale staaf → geen gevelrol.
+  const kapNodes = [
+    { id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }, { id: 3, x: 3000, z: 1500 },
+  ];
+  const kapBeams = [
+    { id: 1, from: 1, to: 3 }, { id: 2, from: 3, to: 2 }, { id: 3, from: 1, to: 2 },
+  ];
+  const model = { nodes: kapNodes, beams: kapBeams, loadCases: basisGevallen };
+  const rollen = kapBeams.map((b) => rolVanStaaf(b, kapNodes));
+  checkTrue("de spanten zijn hellend dak, de trekband een vloer", rollen[0] === "dakHellend" && rollen[1] === "dakHellend" && rollen[2] === "vloer", rollen.join(","));
+
+  // Zonder gevelhoogte: hij rekent, maar met de kaphoogte als bouwhoogte en
+  // een waarschuwing die de gevelhoogte aanwijst.
+  const zonder = genereerWindbelasting(model, { ...basis, stuwdrukBron: "berekend", cpeDakLoef: 0.2, cpeDakLij: -0.4 });
+  checkTrue("zonder gevelhoogte: generatie slaagt", zonder.ok, zonder.meldingen.map((m) => m.tekst).join(" | "));
+  check("zonder gevelhoogte: h = kaphoogte 1,50 m", zonder.geometrie.h_m, 1.5);
+  checkTrue("zonder gevelhoogte: waarschuwing wijst de gevelhoogte aan",
+    zonder.meldingen.some((m) => m.niveau === "waarschuwing" && m.tekst.includes("gevelhoogte")));
+  checkTrue("geometrie: geen gevels, wel hellend dak, geen kap-zonder-gevel",
+    zonder.geometrie.heeftGevels === false && zonder.geometrie.heeftHellendDak === true && zonder.geometrie.kapZonderGevel === false);
+
+  // Met gevelhoogte 3,00 m: bouwhoogte 4,50 m, en dat is de referentiehoogte
+  // van de stuwdruk.
+  const met = genereerWindbelasting(model, { ...basis, stuwdrukBron: "berekend", cpeDakLoef: 0.2, cpeDakLij: -0.4, gevelhoogte_m: 3 });
+  checkTrue("met gevelhoogte: generatie slaagt", met.ok, met.meldingen.map((m) => m.tekst).join(" | "));
+  check("met gevelhoogte: h = 3,00 + 1,50 = 4,50 m", met.geometrie.h_m, 4.5);
+  check("de stuwdruk staat op z_e = 4,50 m", met.samenvatting.stuwdruk.ze_m, 4.5);
+  checkTrue("de stuwdruk is hoger dan bij 1,50 m (de gevel telt mee)",
+    met.samenvatting.stuwdruk.qp_kNm2 > zonder.samenvatting.stuwdruk.qp_kNm2,
+    `${met.samenvatting.stuwdruk.qp_kNm2} > ${zonder.samenvatting.stuwdruk.qp_kNm2}`);
+  checkTrue("geometrie meldt kap zonder gevel", met.geometrie.kapZonderGevel === true);
+  checkTrue("info-melding legt de opbouw van h uit",
+    met.meldingen.some((m) => m.niveau === "info" && m.tekst.includes("Kap zonder gevel") && m.tekst.includes("4,50 m")));
+  checkTrue("geen waarschuwing over ontbrekende gevels meer",
+    !met.meldingen.some((m) => m.niveau === "waarschuwing" && m.tekst.includes("gevelhoogte")));
+  checkTrue("alleen de dakstaven dragen wind", met.lasten.every((l) => l.beamId === 1 || l.beamId === 2) && met.lasten.length > 0);
+  checkTrue("de staven staan in meters in de geometrie",
+    met.geometrie.staven.length === 3 && met.geometrie.staven[2].x2 === 6 && met.geometrie.d_m === 6);
+
+  // Met gevels in het model doet de gevelhoogte niets: de bouwhoogte komt
+  // uit het model en de instelling wordt genegeerd.
+  const portaal = genereerWindbelasting({ nodes: portaalNodes, beams: portaalBeams, loadCases: basisGevallen }, { ...basis, gevelhoogte_m: 3 });
+  check("met gevels in het model blijft h de modelhoogte", portaal.geometrie.h_m, 6.0);
+  checkTrue("en kapZonderGevel is dan onwaar", portaal.geometrie.kapZonderGevel === false);
+
+  // Strandt de generatie op ontbrekende c_pe, dan is de geometrie er tóch —
+  // het venster tekent het spant terwijl het om de invoer vraagt.
+  const zonderCpe = genereerWindbelasting(model, { ...basis, gevelhoogte_m: 3 });
+  checkTrue("zonder c_pe: geen generatie, wél geometrie", !zonderCpe.ok && zonderCpe.geometrie !== null && zonderCpe.geometrie.heeftHellendDak);
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);
