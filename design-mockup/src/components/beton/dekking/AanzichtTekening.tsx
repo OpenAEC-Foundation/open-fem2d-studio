@@ -37,6 +37,7 @@ import { useMemo, type MouseEvent } from "react";
 import type { SupportType } from "../../fem/femTypes";
 import {
   laanMaximum,
+  type LijnPunt,
   eindzoneVakken,
   tekortVakken,
   ucKlasse,
@@ -89,8 +90,6 @@ interface Props {
   /** De lanen, in de volgorde waarin ze onder de staaf komen te liggen. */
   lanenBoven: readonly Laan[];
   lanenOnder: readonly Laan[];
-  /** Regel A van figuur 9.2 per laan-titel: de omhullende vóór de verschuiving. */
-  omhullenden?: Record<string, readonly { xMm: number; waarde: number }[]>;
   ucVakken: readonly UcVak[];
   lagen: LaagVlaggen;
   /** De aangewezen snede, mm vanaf de beginknoop; `null` = geen aanwijzer. */
@@ -129,7 +128,6 @@ export default function AanzichtTekening({
   zoneGrenzenMm,
   lanenBoven,
   lanenOnder,
-  omhullenden,
   ucVakken,
   lagen,
   cursorXMm,
@@ -214,7 +212,6 @@ export default function AanzichtTekening({
           y1={rij.y1}
           sx={sx}
           lengteMm={lengteMm}
-          omhullende={omhullenden?.[rij.laan.titel]}
         />
       ))}
 
@@ -237,7 +234,6 @@ export default function AanzichtTekening({
           y1={rij.y1}
           sx={sx}
           lengteMm={lengteMm}
-          omhullende={omhullenden?.[rij.laan.titel]}
         />
       ))}
 
@@ -544,14 +540,12 @@ function LaanTekening({
   y1,
   sx,
   lengteMm,
-  omhullende,
 }: {
   laan: Laan;
   y0: number;
   y1: number;
   sx: (x: number) => number;
   lengteMm: number;
-  omhullende?: readonly { xMm: number; waarde: number }[];
 }) {
   const max = laanMaximum(laan.punten);
   const bruikbaar = y1 - y0 - LAAN_KOP - 3;
@@ -605,6 +599,18 @@ function LaanTekening({
         {`${laan.titel} — ${laan.benodigdLabel} / ${laan.aanwezigLabel} [${laan.eenheid}], max ${nl(max, max < 10 ? 3 : 0)}`}
         {geenTrek ? `  ·  ${laan.benodigdLabel} is overal nul: aan deze zijde werkt geen trek` : ""}
       </text>
+      {laan.tweede && laan.tweede.punten.length > 1 && (
+        <text
+          x={sx(lengteMm)}
+          y={y0 + 9}
+          fontSize="9"
+          textAnchor="end"
+          fill={laan.tweede.kleur}
+          className="dek-tweede-kop"
+        >
+          {`${laan.tweede.benodigdLabel} / ${laan.tweede.aanwezigLabel} [${laan.tweede.eenheid}] (eigen schaal), max ${nl(laanMaximum(laan.tweede.punten), 3)}`}
+        </text>
+      )}
 
       {/* De eindzones: binnen l_bd van een staafeinde geldt §9.2.1.4/§9.2.1.5
           en niet de vrije dekkingslijn. De weerstandslijn begint daar per
@@ -645,23 +651,6 @@ function LaanTekening({
         />
       ))}
 
-      {/* Regel A van figuur 9.2 — de omhullende vóór de verschuiving over a_l.
-          Het verschil met de dikke lijn IS de verschuiving; zonder deze
-          stippellijn lijkt de benodigde kracht bij het steunpunt uit de lucht
-          te komen. */}
-      {omhullende && omhullende.length > 1 && (
-        <path
-          d={omhullende
-            .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.xMm).toFixed(2)} ${sy(p.waarde).toFixed(2)}`)
-            .join(" ")}
-          fill="none"
-          stroke={laan.kleur}
-          strokeWidth="0.8"
-          strokeDasharray="3 2"
-          opacity="0.65"
-        />
-      )}
-
       <path
         d={pad((p) => p.aanwezig)}
         fill="none"
@@ -676,6 +665,34 @@ function LaanTekening({
         strokeWidth="1.8"
         className="dek-benodigd"
       />
+
+      {/* De tweede reeks (scheurwijdte) in dezelfde laan, op eigen schaal:
+          w_max als gestreepte grenslijn, w_k als doorgetrokken lijn. Waar w_k
+          boven w_max komt, ligt de lijn boven de streep — dat is het tekort,
+          en het staat ook in de kleurbalk. */}
+      {laan.tweede && laan.tweede.punten.length > 1 && (() => {
+        const t = laan.tweede;
+        const max2 = laanMaximum(t.punten);
+        const schaal2 = max2 > 0 ? bruikbaar / max2 : 0;
+        const sy2 = (v: number) => (laan.richting === "omhoog" ? basis - v * schaal2 : basis + v * schaal2);
+        const pad2 = (kies: (p: LijnPunt) => number | null) => {
+          const stukken: string[] = [];
+          let open = false;
+          for (const p of t.punten) {
+            const v = kies(p);
+            if (v === null) { open = false; continue; }
+            stukken.push(`${open ? "L" : "M"} ${sx(p.xMm).toFixed(2)} ${sy2(v).toFixed(2)}`);
+            open = true;
+          }
+          return stukken.join(" ");
+        };
+        return (
+          <g className="dek-tweede">
+            <path d={pad2((p) => p.aanwezig)} fill="none" stroke={t.kleur} strokeWidth="1" strokeDasharray="4 3" opacity="0.8" className="dek-tweede-grens" />
+            <path d={pad2((p) => p.benodigd)} fill="none" stroke={t.kleur} strokeWidth="1.6" className="dek-tweede-lijn" />
+          </g>
+        );
+      })()}
 
       <line
         x1={sx(0)}

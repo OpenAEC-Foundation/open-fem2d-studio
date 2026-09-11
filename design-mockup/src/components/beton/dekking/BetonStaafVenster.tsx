@@ -70,7 +70,6 @@ import {
   STANDAARD_LAGEN,
   dwarskrachtLaan,
   momentLaan,
-  omhullendeLijn,
   puntBijX,
   ucKlasse,
   ucVerloop,
@@ -285,8 +284,22 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
         : null,
     [antwoord, lagen.dwarskracht],
   );
-  const laanScheur: Laan | null = useMemo(() => {
-    if (!lagen.scheurwijdte || !scheur || scheur.punten.length === 0) return null;
+  // De scheurwijdte staat niet in een eigen laan maar als tweede reeks in de
+  // laan van de momentendekking ONDER, op eigen schaal: dezelfde trekzijde,
+  // dezelfde sneden, en naast elkaar is te zien waar de scheur meer staal
+  // vraagt dan de dekking. Staat de momentlaag uit, dan krijgt de scheur
+  // toch een laan, anders zou de schakelaar niets tonen.
+  const laanOnderMetScheur: Laan | null = useMemo(() => {
+    const scheurAan = lagen.scheurwijdte && scheur && scheur.punten.length > 0;
+    if (!scheurAan) return laanOnder;
+    const tweede = {
+      benodigdLabel: "w_k",
+      aanwezigLabel: "w_max",
+      eenheid: "mm",
+      punten: scheur.punten,
+      kleur: kleurVan("scheurwijdte"),
+    };
+    if (laanOnder) return { ...laanOnder, tweede };
     return {
       titel: "Scheurwijdte",
       eenheid: "mm",
@@ -296,20 +309,10 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       richting: "omlaag",
       kleur: kleurVan("scheurwijdte"),
     };
-  }, [lagen.scheurwijdte, scheur]);
+  }, [laanOnder, lagen.scheurwijdte, scheur]);
 
-  const lanenOnder = [laanOnder, laanV, laanScheur].filter((l): l is Laan => l !== null);
+  const lanenOnder = [laanOnderMetScheur, laanV].filter((l): l is Laan => l !== null);
   const lanenBoven = [laanBoven].filter((l): l is Laan => l !== null);
-
-  // Regel A van figuur 9.2 per laan, op de TITEL van de laan gesleuteld — dat
-  // is de enige sleutel die de tekening ook heeft; zij kent de zijden niet.
-  const omhullenden = useMemo((): Record<string, { xMm: number; waarde: number }[]> => {
-    if (!antwoord || !lagen.moment) return {};
-    return {
-      "Momentendekking boven": omhullendeLijn(antwoord.boven),
-      "Momentendekking onder": omhullendeLijn(antwoord.onder),
-    };
-  }, [antwoord, lagen.moment]);
 
   // De kleurbalk verzamelt de unity checks van alle lijnen die er ZIJN, ook
   // wanneer hun eigen laan uit staat: de balk is bedoeld als samenvatting, en
@@ -596,7 +599,6 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                 zoneGrenzenMm={zoneGrenzenMm(liveZones)}
                 lanenBoven={lanenBoven}
                 lanenOnder={lanenOnder}
-                omhullenden={omhullenden}
                 ucVakken={ucVakken}
                 lagen={lagen}
                 cursorXMm={cursorXMm}

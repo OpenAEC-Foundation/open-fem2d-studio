@@ -360,6 +360,45 @@ const tekenArgs = {
   breedtePx: BREEDTE,
 };
 
+// ── De scheurwijdte als tweede reeks in de laan van de momentendekking ────
+// Eigen schaal, eigen kop rechts; en de omhullende vóór de verschuiving (de
+// dunne stippellijn van regel A) is uit de tekening — zij las als een derde
+// lijn die er niet hoort.
+{
+  const scheurPunten = LAAN_HAND.punten.map((p, i) => ({
+    xMm: p.xMm, benodigd: 0.05 + 0.01 * i, aanwezig: 0.3, uc: (0.05 + 0.01 * i) / 0.3, eindzone: false,
+  }));
+  const metScheur = {
+    ...LAAN_HAND,
+    tweede: { benodigdLabel: "w_k", aanwezigLabel: "w_max", eenheid: "mm", punten: scheurPunten, kleur: "#7c3aed" },
+  };
+  const svg = renderToStaticMarkup(
+    React.createElement(AanzichtTekening, { ...tekenArgs, lanenOnder: [metScheur] }),
+  );
+  const paden = elementen(svg, "path");
+  const lijn = paden.find((p) => (p.class ?? "").includes("dek-tweede-lijn"));
+  const grens = paden.find((p) => (p.class ?? "").includes("dek-tweede-grens"));
+  ok("w_k staat als lijn in de momentlaan", lijn !== undefined && lijn.stroke === "#7c3aed");
+  ok("w_max staat als gestreepte grens in dezelfde laan", grens !== undefined && !!grens["stroke-dasharray"]);
+  ok("de tweede reeks heeft een eigen kop rechts, in haar kleur",
+    /<text[^>]*text-anchor="end"[^>]*fill="#7c3aed"[^>]*>w_k \/ w_max \[mm\] \(eigen schaal\), max 0,300<\/text>/.test(svg), svg.match(/<text[^>]*dek-tweede-kop[^<]*<\/text>/)?.[0]);
+  // Eigen schaal: w_max = 0,3 mm vult dezelfde laanhoogte als het maximum
+  // van de momentlaan (400 kN), dus de grenslijn ligt op de hoogte van de
+  // grootste F_Rs, niet op 0,3/400 daarvan.
+  const grensPunten = padPunten(grens?.d ?? "");
+  const laanY = paden
+    .filter((p) => /dek-(aanwezig|benodigd)/.test(p.class ?? ""))
+    .flatMap((p) => padPunten(p.d ?? "").map((q) => q[1]));
+  const maxLaanY = Math.max(...laanY);
+  ok("de grens w_max ligt op de volle laanhoogte (eigen schaal, niet die van kN)",
+    grensPunten.length > 1 && Math.abs(grensPunten[0][1] - maxLaanY) < 0.05,
+    `grens y = ${grensPunten[0]?.[1]}, laanmaximum y = ${maxLaanY}`);
+  ok("de omhullende vóór de verschuiving wordt niet meer getekend",
+    !paden.some((p) => (p["stroke-dasharray"] ?? "") === "3 2"));
+  ok("zonder tweede reeks geen tweede kop",
+    !renderToStaticMarkup(React.createElement(AanzichtTekening, tekenArgs)).includes("dek-tweede-kop"));
+}
+
 {
   const svg = renderToStaticMarkup(React.createElement(AanzichtTekening, tekenArgs));
 

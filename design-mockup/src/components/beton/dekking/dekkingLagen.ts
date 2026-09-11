@@ -136,6 +136,26 @@ export interface Laan {
   richting: "omhoog" | "omlaag";
   /** Kleur van de reeks. */
   kleur: string;
+  /**
+   * Een tweede reeks in DEZELFDE laan, op een eigen schaal: de scheurwijdte
+   * w_k naast de momentendekking onder. Beide gaan over dezelfde trekzijde
+   * en dezelfde sneden, en wie de scheur naast de dekking ziet, ziet meteen
+   * waar meer staal nodig is en waar de scheur dat al vraagt. De schaal
+   * staat rechts in de kop, in de kleur van de reeks.
+   */
+  tweede?: TweedeReeks;
+}
+
+/** Een tweede lijn in een laan, met eigen labels, eenheid en schaal. */
+export interface TweedeReeks {
+  /** "w_k" — de dikke lijn. */
+  benodigdLabel: string;
+  /** "w_max" — de grenslijn (gestreept). */
+  aanwezigLabel: string;
+  /** "mm". */
+  eenheid: string;
+  punten: LijnPunt[];
+  kleur: string;
 }
 
 /** Een aaneengesloten stuk van de staaf, in mm vanaf de beginknoop. */
@@ -155,8 +175,9 @@ function isSprong(a: LijnPunt, b: LijnPunt): boolean {
  * `benodigd_kn` is regel B van figuur 9.2 — de trekkracht ná de verschuiving
  * over a_l — en `aanwezig_kn` regel C, de weerstand van de staven die er
  * werkelijk liggen, met het lineaire krachtverloop van §9.2.1.3(3) binnen
- * l_bd al verrekend. De omhullende zelf (regel A) wordt apart doorgegeven; zie
- * [`omhullendeLijn`].
+ * l_bd al verrekend. De omhullende vóór de verschuiving (regel A) wordt niet
+ * getekend: als dunne stippellijn naast F_s las zij als een derde lijn die er
+ * niet hoort; a_l staat als getal in de kanttekeningen.
  */
 export function momentLaan(dekking: Momentdekking, kleur: string): Laan {
   return {
@@ -185,19 +206,6 @@ function momentPunt(p: Momentpunt): LijnPunt {
     uc: p.uc ?? null,
     eindzone: p.in_eindzone,
   };
-}
-
-/**
- * Regel A van figuur 9.2: de omhullende van M_Ed/z + N_Ed op de plaats zelf,
- * dus vóór de verschuiving over a_l.
- *
- * Zij wordt als dunne stippellijn onder de benodigde lijn getekend. Dat is de
- * enige manier om a_l te ZIEN: het verschil tussen de twee lijnen ís de
- * verschuiving, en zonder regel A lijkt de benodigde kracht bij het steunpunt
- * uit de lucht te komen.
- */
-export function omhullendeLijn(dekking: Momentdekking): { xMm: number; waarde: number }[] {
-  return dekking.punten.map((p) => ({ xMm: p.x_mm, waarde: p.omhullende_kn }));
 }
 
 /** De dwarskrachtdekking als laan: |V_Ed| naast V_Rd. */
