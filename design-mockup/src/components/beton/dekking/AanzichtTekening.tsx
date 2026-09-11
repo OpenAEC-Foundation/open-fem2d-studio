@@ -426,25 +426,30 @@ function StaafTekening({
       })}
 
       {/* De wapeningsbundels. Binnen l_bd van elk uiteinde loopt de staaf
-          volgens §9.2.1.3(3) lineair op van nul tot vol; die aanloop wordt als
-          schuine aanzet getekend, zodat te zien is dat een staaf die net begint
-          nog niet zijn volle kracht levert. */}
+          volgens §9.2.1.3(3) lineair op van nul tot vol; dat stuk wordt
+          gestreept getekend, op dezelfde hoogte als de rest. Het stond eerst
+          als schuine aanzet in de tekening, maar een staaf die naar de
+          betonrand wegloopt leest als een gebogen staaf, en dat is hij niet. */}
       {bundels.map((b, i) => {
         const y = yBundel(b);
         const x0 = sx(b.xStartMm);
         const x1 = sx(b.xEindMm);
         const lBdPx = b.lBdMm > 0 ? sx(b.lBdMm) - sx(0) : 0;
         const aanloop = Math.min(lBdPx, (x1 - x0) / 2);
-        const dyAanloop = b.zijde === "boven" ? -3.5 : 3.5;
+        const kleur = "var(--theme-materiaal-lijn, #2A2A30)";
         return (
           <g key={`s${i}`}>
-            <path
-              d={`M ${x0} ${y + dyAanloop} L ${x0 + aanloop} ${y} L ${x1 - aanloop} ${y} L ${x1} ${y + dyAanloop}`}
-              fill="none"
-              stroke="var(--theme-materiaal-lijn, #2A2A30)"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
+            <line x1={x0 + aanloop} y1={y} x2={x1 - aanloop} y2={y} stroke={kleur} strokeWidth="2" strokeLinecap="round" />
+            {aanloop > 0 && (
+              <>
+                <line x1={x0} y1={y} x2={x0 + aanloop} y2={y} stroke={kleur} strokeWidth="2" strokeDasharray="4 3" strokeLinecap="butt">
+                  <title>{`Verankeringslengte l_bd = ${maat(b.lBdMm)} mm: de staaf levert hier nog niet zijn volle kracht (§9.2.1.3(3))`}</title>
+                </line>
+                <line x1={x1 - aanloop} y1={y} x2={x1} y2={y} stroke={kleur} strokeWidth="2" strokeDasharray="4 3" strokeLinecap="butt">
+                  <title>{`Verankeringslengte l_bd = ${maat(b.lBdMm)} mm: de staaf levert hier nog niet zijn volle kracht (§9.2.1.3(3))`}</title>
+                </line>
+              </>
+            )}
             {/* Het label staat waar de bundel zijn VOLLE kracht bereikt, dus
                 net voorbij de aanloop van l_bd — en niet in het midden. Twee
                 bundels aan dezelfde zijde overlappen elkaar in het midden bijna

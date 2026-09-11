@@ -1910,6 +1910,7 @@ function App() {
                   nodes={fem.nodes}
                   supports={fem.supports}
                   updateBeam={fem.updateBeam}
+                  beams={fem.beams}
                   onSluiten={() => {
                     bottomDoorGebruikerGesloten.current = true;
                     setBottomPanelOpen(false);

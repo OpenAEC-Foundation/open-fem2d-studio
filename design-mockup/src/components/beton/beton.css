@@ -330,3 +330,7 @@
 .beton-rijbewerker label { display: inline-flex; align-items: center; gap: 4px; }
 .beton-rijbewerker input[type="number"] { width: 56px; }
 .beton-rijbewerker-fout { color: var(--theme-danger, #b91c1c); }
+
+/* De "−"/"+" naast een rijlabel in de doorsnedetekening: één staaf minder of meer. */
+.beton-rijknop { opacity: 0.55; }
+.beton-rijknop:hover { opacity: 1; }

@@ -36,7 +36,8 @@
  * al klopt.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Beam, Node, Support } from "../../fem/femTypes";
+import type { Beam, BeamCheckConfig, Node, Support } from "../../fem/femTypes";
+import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "../../fem/ProfielKiezer";
 import type { ConcreteBeamCheckInput } from "../../../lib/types/concrete/ConcreteBeamCheckInput";
 import type { DekkingslijnAntwoord } from "../../../lib/types/concrete/DekkingslijnAntwoord";
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
@@ -100,11 +101,31 @@ interface Props {
   nodes: Node[];
   supports: Support[];
   updateBeam?: (id: number, updates: Partial<Beam>) => void;
+  /**
+   * Alle staven van het model, voor de profielkiezer die op dubbelklik op de
+   * doorsnede opent (hij toont welke profielen al in gebruik zijn).
+   */
+  beams?: Beam[];
   /** Sluit het venster (de kruisknop in de werkbalk van het dock). */
   onSluiten?: () => void;
 }
 
-export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, onSluiten }: Props) {
+/** checkConfig zonder lege velden; `undefined` als er niets overblijft. */
+function opgeschoond(c: BeamCheckConfig): BeamCheckConfig | undefined {
+  const nieuw: BeamCheckConfig = { ...c };
+  for (const k of Object.keys(nieuw) as (keyof BeamCheckConfig)[]) {
+    const v = nieuw[k];
+    if (v === undefined || (Array.isArray(v) && v.length === 0)) delete nieuw[k];
+  }
+  return Object.keys(nieuw).length > 0 ? nieuw : undefined;
+}
+
+export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, beams, onSluiten }: Props) {
+  // Dubbelklik op de doorsnede opent de profielkiezer voor deze staaf:
+  // doorsnede, betonklasse, korf én milieuklasse op één plek. De uitkomst
+  // landt zoals bij het eigenschappenpaneel: korf en klassen in checkConfig,
+  // bovenop de bestaande toetsconfig, zodat kniklengtes blijven staan.
+  const [kiezerOpen, setKiezerOpen] = useState(false);
   const [lagen, setLagen] = useState<LaagVlaggen>(STANDAARD_LAGEN);
   const [cursorXMm, setCursorXMm] = useState<number | null>(null);
   const [antwoord, setAntwoord] = useState<DekkingslijnAntwoord | null>(null);
@@ -622,6 +643,13 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, o
                 korf={tekenKorf}
                 className="dek-doorsnede"
                 onRij={updateBeam ? (zijde) => setBewerkRij(zijde) : undefined}
+                onRijAantal={updateBeam
+                  ? (zijde, delta) => zetRij(zijde, {
+                      ...korf[zijde],
+                      count: Math.min(40, Math.max(1, korf[zijde].count + delta)),
+                    })
+                  : undefined}
+                onDubbelklik={updateBeam ? () => setKiezerOpen(true) : undefined}
               />
               {bewerkRij && (
                 <RijBewerker
@@ -631,6 +659,38 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, o
                   onSluiten={() => setBewerkRij(null)}
                 />
               )}
+              {kiezerOpen && (() => {
+                const cfg = beam.checkConfig ?? {};
+                const huidigBeton: Partial<BetonKorfKeuze> = {
+                  ...(cfg.betonKorf ? { korf: cfg.betonKorf } : {}),
+                  milieuklasse: cfg.betonMilieuklasse ?? null,
+                  constructieklasse: cfg.betonConstructieklasse ?? null,
+                };
+                return (
+                  <ProfielKiezer
+                    open
+                    onClose={() => setKiezerOpen(false)}
+                    huidig={{ material: beam.material, profile: beam.profile }}
+                    huidigBeton={huidigBeton}
+                    onApply={({ beton, ...keuze }) =>
+                      updateBeam?.(beam.id, {
+                        ...keuze,
+                        ...(beton
+                          ? {
+                              checkConfig: opgeschoond({
+                                ...cfg,
+                                betonKorf: beton.korf,
+                                betonMilieuklasse: beton.milieuklasse ?? undefined,
+                                betonConstructieklasse: beton.constructieklasse ?? undefined,
+                              }),
+                            }
+                          : {}),
+                      })
+                    }
+                    inGebruik={profielenInGebruik(beams ?? [beam])}
+                  />
+                );
+              })()}
             </>
           ) : (
             <p className="beton-hint">

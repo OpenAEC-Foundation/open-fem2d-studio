@@ -61,6 +61,7 @@
  * de melding van `controleerKorf`). Zodra de korf klopt komt de wapening
  * terug, in dezelfde tekening op dezelfde plaats.
  */
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import {
   asAfstandMm,
@@ -131,6 +132,92 @@ interface Props {
    * tekening een plaatje — zoals in het rapport.
    */
   onRij?: (zijde: "top" | "bottom") => void;
+  /**
+   * Zet een "−" en "+" naast elk rijlabel om er in één klik een staaf af te
+   * halen of bij te leggen. De eigenaar begrenst het aantal; de tekening
+   * meldt alleen de richting.
+   */
+  onRijAantal?: (zijde: "top" | "bottom", delta: 1 | -1) => void;
+  /**
+   * Dubbelklik op de tekening: de eigenaar opent er iets groters voor (de
+   * profielkiezer met doorsnede, korf en milieuklasse). Zonder deze prop
+   * doet dubbelklikken niets.
+   */
+  onDubbelklik?: () => void;
+}
+
+/**
+ * Het rijlabel ("4Ø20"), klikbaar als de eigenaar dat wil, met een "−" en
+ * "+" ernaast om er in één klik een staaf af te halen of bij te leggen.
+ * Dubbelklik wordt hier gestopt, zodat hij niet doorloopt naar de tekening
+ * (die er de profielkiezer voor opent).
+ */
+function RijLabel({
+  x, y, zijde, tekst, kleuren, onRij, onRijAantal,
+}: {
+  x: number;
+  y: number;
+  zijde: "top" | "bottom";
+  tekst: string;
+  kleuren: BetonTekenKleuren;
+  onRij?: (zijde: "top" | "bottom") => void;
+  onRijAantal?: (zijde: "top" | "bottom", delta: 1 | -1) => void;
+}) {
+  const naam = zijde === "bottom" ? "onderwapening" : "bovenwapening";
+  // Halve labelbreedte, geschat op de tekenbreedte van de letters (7,5 px
+  // hoog, gemiddeld ruim de helft breed), zodat de knopjes net naast het
+  // label staan en er niet overheen vallen.
+  const halfBreedte = tekst.length * 7.5 * 0.56 / 2;
+  const stop = (e: ReactMouseEvent) => e.stopPropagation();
+  return (
+    <g onDoubleClick={stop}>
+      <text
+        x={x}
+        y={y}
+        fill={onRij ? kleuren.tekst : kleuren.tekstZwak}
+        fontSize="7.5"
+        textAnchor="middle"
+        className={onRij ? "beton-rijlabel-klikbaar" : undefined}
+        style={onRij ? { cursor: "pointer" } : undefined}
+        onClick={onRij ? () => onRij(zijde) : undefined}
+      >
+        {onRij && <title>{`Klik om aantal en diameter van de ${naam} te wijzigen`}</title>}
+        {tekst}
+      </text>
+      {onRijAantal && (
+        <>
+          <text
+            x={x - halfBreedte - 5}
+            y={y}
+            fill={kleuren.tekst}
+            fontSize="8.5"
+            fontWeight="700"
+            textAnchor="middle"
+            className="beton-rijknop"
+            style={{ cursor: "pointer" }}
+            onClick={() => onRijAantal(zijde, -1)}
+          >
+            <title>{`Eén staaf minder in de ${naam}`}</title>
+            −
+          </text>
+          <text
+            x={x + halfBreedte + 5}
+            y={y}
+            fill={kleuren.tekst}
+            fontSize="8.5"
+            fontWeight="700"
+            textAnchor="middle"
+            className="beton-rijknop"
+            style={{ cursor: "pointer" }}
+            onClick={() => onRijAantal(zijde, 1)}
+          >
+            <title>{`Eén staaf meer in de ${naam}`}</title>
+            +
+          </text>
+        </>
+      )}
+    </g>
+  );
 }
 
 function Pijl({ x, y, hoek, kleur }: { x: number; y: number; hoek: number; kleur: string }) {
@@ -149,6 +236,8 @@ export default function DoorsnedeTekening({
   maatvoering = true,
   kleuren = THEMA_KLEUREN,
   onRij,
+  onRijAantal,
+  onDubbelklik,
   titel,
   className,
 }: Props) {
@@ -261,6 +350,8 @@ export default function DoorsnedeTekening({
       className={className}
       viewBox={`0 0 ${KADER_W} ${kaderH.toFixed(2)}`}
       role="img"
+      onDoubleClick={onDubbelklik}
+      style={onDubbelklik ? { cursor: "zoom-in" } : undefined}
       aria-label={
         // Wie de tekening niet ziet maar hoort, hoort hetzelfde als wat er
         // staat: zonder korf in beeld ook geen staven in de omschrijving.
@@ -287,6 +378,31 @@ export default function DoorsnedeTekening({
           strokeLinejoin="round"
         />
       )}
+      {/* Binnenbenen: bij meer dan twee beugelbenen (§9.2.2(8)) staan de
+          extra benen gelijkmatig tussen de twee buitenbenen — dezelfde
+          verdeling waarmee de dwarsafstand s_t is afgeleid. Zo is aan de
+          tekening te zien dat een vierbenige beugel geen gewone beugel is. */}
+      {beugelPast && (korf.korf.stirrup_legs ?? 2) > 2 && (() => {
+        const n = Math.round(korf.korf.stirrup_legs ?? 2);
+        const xLinks = lijfHart - lijf.bMm / 2 + inzetZij;
+        const stap = beugelBreedte / (n - 1);
+        const yTop = sy(hMm - inzetBoven);
+        const yOnder = sy(inzetOnder);
+        return Array.from({ length: n - 2 }, (_, k) => (
+          <line
+            key={`been${k}`}
+            x1={sx(xLinks + (k + 1) * stap)}
+            y1={yTop}
+            x2={sx(xLinks + (k + 1) * stap)}
+            y2={yOnder}
+            stroke={kleuren.beugel}
+            strokeWidth={Math.max(0.8, dBgl * s)}
+            strokeLinecap="round"
+          >
+            <title>{`Beugelbeen ${k + 2} van ${n}`}</title>
+          </line>
+        ));
+      })()}
 
       {/* Hoofdwapening op ware schaal. De ondergrens is er alleen zodat een
           staaf bij een zeer brede doorsnede niet als onzichtbare stip
@@ -305,34 +421,26 @@ export default function DoorsnedeTekening({
       {/* Labels van de rijen: in het beton, naast de staven — maar alleen als
           ze elkaar daar niet raken; anders staan ze in het onderschrift. */}
       {labelsInDeDoorsnede && heeftOnder && (
-        <text
+        <RijLabel
           x={sx(hartXMm(d3, asAfstandMm(korf.korf, korf.korf.bottom, "onder")))}
           y={yLabelOnder}
-          fill={onRij ? kleuren.tekst : kleuren.tekstZwak}
-          fontSize="7.5"
-          textAnchor="middle"
-          className={onRij ? "beton-rijlabel-klikbaar" : undefined}
-          style={onRij ? { cursor: "pointer" } : undefined}
-          onClick={onRij ? () => onRij("bottom") : undefined}
-        >
-          {onRij && <title>Klik om aantal en diameter van de onderwapening te wijzigen</title>}
-          {rijLabel(korf.korf.bottom)}
-        </text>
+          zijde="bottom"
+          tekst={rijLabel(korf.korf.bottom)}
+          kleuren={kleuren}
+          onRij={onRij}
+          onRijAantal={onRijAantal}
+        />
       )}
       {labelsInDeDoorsnede && heeftBoven && (
-        <text
+        <RijLabel
           x={sx(hartXMm(d3, hMm - asAfstandMm(korf.korf, korf.korf.top, "boven")))}
           y={yLabelBoven}
-          fill={onRij ? kleuren.tekst : kleuren.tekstZwak}
-          fontSize="7.5"
-          textAnchor="middle"
-          className={onRij ? "beton-rijlabel-klikbaar" : undefined}
-          style={onRij ? { cursor: "pointer" } : undefined}
-          onClick={onRij ? () => onRij("top") : undefined}
-        >
-          {onRij && <title>Klik om aantal en diameter van de bovenwapening te wijzigen</title>}
-          {rijLabel(korf.korf.top)}
-        </text>
+          zijde="top"
+          tekst={rijLabel(korf.korf.top)}
+          kleuren={kleuren}
+          onRij={onRij}
+          onRijAantal={onRijAantal}
+        />
       )}
 
       {maatvoering && (

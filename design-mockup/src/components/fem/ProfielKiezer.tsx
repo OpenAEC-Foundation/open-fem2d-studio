@@ -1257,6 +1257,12 @@ export default function ProfielKiezer({
                     korf={betonKorfGeheel}
                     wapening={betonKorfFout === null}
                     onRij={betonKorfFout === null ? (zijde) => setBetonBewerkRij(zijde) : undefined}
+                    onRijAantal={betonKorfFout === null
+                      ? (zijde, delta) => setBetonKorf((k) => ({
+                          ...k,
+                          [zijde]: { ...k[zijde], count: Math.min(40, Math.max(1, k[zijde].count + delta)) },
+                        }))
+                      : undefined}
                   />
                   {betonBewerkRij && (
                     <RijBewerker

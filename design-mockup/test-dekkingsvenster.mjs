@@ -431,15 +431,22 @@ const tekenArgs = {
     teksten.includes("3Ø16") && teksten.includes("2Ø16"), teksten.join(" | "));
   ok("de lengte staat erbij", teksten.some((t) => t.includes("L = 1,00 m")), teksten.join(" | "));
   ok("de beugelzone staat erbij", teksten.includes("Ø8-200"));
+  // Een bundel is een rechte lijn op één hoogte: het volle deel doorgetrokken,
+  // de verankeringslengte aan weerszijden gestreept — maar op DEZELFDE
+  // hoogte, niet als schuine aanzet naar de betonrand (dat las als een
+  // gebogen staaf).
+  const bundelLijnen = lijnen.filter((l) => (l.stroke ?? "").includes("materiaal-lijn"));
+  const volleDelen = bundelLijnen.filter((l) => !l["stroke-dasharray"]);
   ok("de twee bundels liggen op VERSCHILLENDE hoogtes",
     (() => {
-      const bundelPaden = paden
-        .filter((p) => (p.d ?? "").startsWith("M ") && !(p.class ?? ""))
-        .map((p) => padPunten(p.d))
-        .filter((q) => q.length === 4);
-      const hoogtes = new Set(bundelPaden.map((q) => q[1][1].toFixed(2)));
-      return bundelPaden.length === 2 && hoogtes.size === 2;
-    })());
+      const hoogtes = new Set(volleDelen.map((l) => Number(l.y1).toFixed(2)));
+      return volleDelen.length === 2 && hoogtes.size === 2;
+    })(), `${volleDelen.length} volle delen op ${new Set(volleDelen.map((l) => l.y1)).size} hoogte(s)`);
+  ok("elke bundel loopt recht: aanloop en vol deel op dezelfde hoogte, geen schuine aanzet",
+    bundelLijnen.every((l) => Number(l.y1).toFixed(2) === Number(l.y2).toFixed(2)),
+    bundelLijnen.map((l) => `${l.y1}→${l.y2}`).join(", "));
+  ok("de verankeringslengte staat gestreept aan beide einden van elke bundel",
+    bundelLijnen.filter((l) => l["stroke-dasharray"]).length === 2 * volleDelen.length);
   ok("er zijn twee opleggingen getekend",
     elementen(svg, "polygon").length + elementen(svg, "circle").length >= 3);
 }

@@ -455,6 +455,12 @@ export default function FemCanvas(props: FemCanvasProps) {
   const [snapNode, setSnapNode] = useState<number | null>(null);
   const [snapBeam, setSnapBeam] = useState<number | null>(null);
   const [beamStart, setBeamStart] = useState<number | null>(null);
+  /**
+   * Doorgaand tekenen: na het tweede punt van een staaf wordt dat punt meteen
+   * het begin van de volgende, als een polylijn in CAD. Escape of een
+   * andere tool breekt de reeks af. Uit = elke staaf apart (twee klikken).
+   */
+  const [beamDoorgaan, setBeamDoorgaan] = useState(false);
   const [plateCorners, setPlateCorners] = useState<number[]>([]);
   // First-click anchor for transform tools (move/copy/rotate/mirror)
   const [transformAnchor, setTransformAnchor] = useState<{ x: number; z: number } | null>(null);
@@ -551,7 +557,32 @@ export default function FemCanvas(props: FemCanvasProps) {
     originModel: { x: number; z: number };                // world-coord at drag start
     originPositions: Map<number, { x: number; z: number }>; // pre-drag positions
     currentDelta: { dx: number; dz: number };             // snapped delta in mm
+    /** Schermpositie van de muisknop-indruk, om een klik van een sleep te onderscheiden. */
+    startSX: number; startSY: number;
+    /**
+     * Pas `true` zodra de muis verder dan `SLEEP_DREMPEL_PX` is bewogen. Tot
+     * die tijd is het een klik: geen schaduw, geen greep-cursor en bij
+     * loslaten geen verplaatsing. Zonder deze drempel was het aanklikken van
+     * een betonstaaf al een sleep — het betonvenster ging open, de canvas
+     * kromp onder de muis, het loslaten bereikte de canvas niet meer en de
+     * staaf bleef aan de muis hangen.
+     */
+    engaged: boolean;
   } | null>(null);
+  /** Zoveel pixels moet de muis bewegen voordat een klik op een selectie een sleep wordt. */
+  const SLEEP_DREMPEL_PX = 4;
+
+  // Loslaten buiten de canvas (over een paneel dat onder de muis is
+  // opengegaan, of buiten het venster) beëindigt de sleep zonder commit: een
+  // verplaatsing hoort alleen te gebeuren als de muis op de canvas losgelaten
+  // wordt. De React-handler op de svg loopt éérder dan deze window-listener,
+  // dus een normale sleep is dan al gecommit en dit ruimt alleen de rest op.
+  useEffect(() => {
+    if (!dragState) return;
+    const los = () => setDragState(null);
+    window.addEventListener("mouseup", los);
+    return () => window.removeEventListener("mouseup", los);
+  }, [dragState]);
 
   // ── Deellast-greep-sleep (shape-handles op de lastband) ────────────────
   // Bij een geselecteerde lijnlast staan vierkante grepen op de uiteinden
@@ -1115,7 +1146,9 @@ export default function FemCanvas(props: FemCanvasProps) {
 
   /** Begin a drag-to-move operation. Captures original positions of every node
    *  reachable via the current selection (node ids, beam endpoints, plate corners). */
-  const startDragFromSelection = useCallback((sel: Selection, originX: number, originZ: number) => {
+  const startDragFromSelection = useCallback((
+    sel: Selection, originX: number, originZ: number, startSX: number, startSY: number,
+  ) => {
     const nodeIds = selectionNodeIds(sel);
     if (nodeIds.length === 0) return;
     const orig = new Map<number, { x: number; z: number }>();
@@ -1128,6 +1161,8 @@ export default function FemCanvas(props: FemCanvasProps) {
       originModel: { x: snap(originX), z: snap(originZ) },
       originPositions: orig,
       currentDelta: { dx: 0, dz: 0 },
+      startSX, startSY,
+      engaged: false,
     });
   }, [selectionNodeIds, nodes, snap]);
 
@@ -1242,12 +1277,17 @@ export default function FemCanvas(props: FemCanvasProps) {
       setSnapBeam(beamSnapTools ? (findSnapBeam(sx, sy)?.beamId ?? null) : null);
     }
 
-    // Drag-to-move: update ghost preview delta in mm (snapped).
+    // Drag-to-move: update ghost preview delta in mm (snapped) — maar pas
+    // zodra de muis echt bewogen is; tot die tijd is het een klik.
     if (dragState) {
+      if (!dragState.engaged
+          && Math.hypot(sx - dragState.startSX, sy - dragState.startSY) < SLEEP_DREMPEL_PX) {
+        return;
+      }
       const snappedDrag = snapPunt(world.x, world.z);
       const dx = snappedDrag.x - dragState.originModel.x;
       const dz = snappedDrag.z - dragState.originModel.z;
-      setDragState({ ...dragState, currentDelta: { dx, dz } });
+      setDragState({ ...dragState, engaged: true, currentDelta: { dx, dz } });
       return;
     }
 
@@ -1283,6 +1323,10 @@ export default function FemCanvas(props: FemCanvasProps) {
     setSnapNode(null);
     setSnapBeam(null);
     panRef.current.active = false;
+    // Een sleep die de canvas verlaat vervalt zonder commit; anders blijft
+    // de selectie aan de muis hangen zodra de canvas onder de muis vandaan
+    // schuift (het betonvenster dat opengaat).
+    setDragState(null);
   };
 
   const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -1332,7 +1376,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           }
           setSelection(newSel);
         }
-        startDragFromSelection(newSel, world.x, world.z);
+        startDragFromSelection(newSel, world.x, world.z, sx, sy);
         return;
       }
       if (overBeam) {
@@ -1347,7 +1391,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           }
           setSelection(newSel);
         }
-        startDragFromSelection(newSel, world.x, world.z);
+        startDragFromSelection(newSel, world.x, world.z, sx, sy);
         return;
       }
       // Empty area — start box-select.
@@ -1378,10 +1422,11 @@ export default function FemCanvas(props: FemCanvasProps) {
       setLoadHandleDrag(null);
       return;
     }
-    // Commit drag-to-move on left-button release.
+    // Commit drag-to-move on left-button release — alleen als het een sleep
+    // was en geen klik (zie `engaged`).
     if (e.button === 0 && dragState) {
       const { nodeIds, currentDelta } = dragState;
-      if ((currentDelta.dx !== 0 || currentDelta.dz !== 0) && translateNodes) {
+      if (dragState.engaged && (currentDelta.dx !== 0 || currentDelta.dz !== 0) && translateNodes) {
         translateNodes(nodeIds, currentDelta.dx, currentDelta.dz);
       }
       setDragState(null);
@@ -1511,7 +1556,8 @@ export default function FemCanvas(props: FemCanvasProps) {
         setBeamLengte(null);
       } else if (beamStart !== nodeId) {
         addBeam(beamStart, nodeId);
-        setBeamStart(null);
+        // Doorgaand: het eindpunt is meteen het begin van de volgende staaf.
+        setBeamStart(beamDoorgaan ? nodeId : null);
         setBeamLengte(null);
       }
       return;
@@ -2907,7 +2953,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   const cursorStyle = panRef.current.active ? "grabbing"
     : spaceHeld ? "grab"
     : loadHandleDrag ? "grabbing"
-    : dragState ? "grabbing"
+    : dragState?.engaged ? "grabbing"
     : grabMode ? "move"
     : rotateMode ? "alias"
     : boxSelect ? "crosshair"
@@ -3741,7 +3787,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         })()}
 
         {/* Drag ghost preview — translucent dots/lines for nodes being moved */}
-        {dragState && (() => {
+        {dragState && dragState.engaged && (() => {
           const ghosts: React.ReactNode[] = [];
           const movedNodeIds = new Set(dragState.nodeIds);
           for (const id of dragState.nodeIds) {
@@ -4023,6 +4069,19 @@ export default function FemCanvas(props: FemCanvasProps) {
         <div className="fem-hud-card">
           <span className="fem-hud-muted">Tool:</span>
           <span className="fem-hud-strong">{toolLabel(tool)}</span>
+          {tool === "addBeam" && (
+            <label
+              className="fem-hud-muted fem-hud-optie"
+              title="Doorgaand tekenen: het eindpunt van een staaf is meteen het begin van de volgende (polylijn). Escape breekt de reeks af."
+            >
+              <input
+                type="checkbox"
+                checked={beamDoorgaan}
+                onChange={(e) => setBeamDoorgaan(e.target.checked)}
+              />
+              {" "}doorgaan
+            </label>
+          )}
           {tool === "addBeam" && beamStart !== null && beamLengte === null && (
             <span className="fem-hud-muted">
               — klik tweede knoop, of typ een lengte in m
@@ -4044,7 +4103,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             </span>
           )}
           {(tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") && !selection && (
-            <span className="fem-hud-muted">— selecteer eerst een knoop/balk</span>
+            <span className="fem-hud-muted">— selecteer eerst een knoop/staaf</span>
           )}
           {(tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") && selection && transformAnchor === null && (
             <span className="fem-hud-muted">— klik ankerpunt</span>
@@ -4099,7 +4158,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       </div>
       <div className="fem-hud fem-hud-tr">
         <div className="fem-hud-card fem-hud-mono">
-          <span>{nodes.length} knopen · {beams.length} balken{plates.length ? ` · ${plates.length} platen` : ""}</span>
+          <span>{nodes.length} knopen · {beams.length} staven{plates.length ? ` · ${plates.length} platen` : ""}</span>
         </div>
         <div className="fem-hud-card fem-hud-mono" style={{ marginTop: 6 }}>
           <span>{zoomPct}%</span>
@@ -4530,7 +4589,7 @@ function toolLabel(t: Tool): string {
   switch (t) {
     case "select":     return "Selecteren";
     case "addNode":    return "Knoop";
-    case "addBeam":    return "Balk";
+    case "addBeam":    return "Staaf";
     case "addSubNode": return "Subknoop";
     case "addPlate":   return "Plaat";
     case "addPinned":  return "Scharnier";

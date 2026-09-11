@@ -490,6 +490,44 @@ log("6. Zonder de prop tekent hij de korf, zoals altijd");
   checkEq("en er staan vijf staven", cirkelsVan(zonderProp).length, 5);
 }
 
+// ── De plus/min-knopjes en de dubbelklik: alleen als de eigenaar erom vraagt ──
+{
+  const korf = korfVan(rechthoek(300, 500), {
+    bottom: { count: 3, diameter_mm: 16 },
+    top: { count: 2, diameter_mm: 12 },
+  });
+  const plaatje = teken(korf);
+  const teksten = (svg) => [...svg.matchAll(/<text[^>]*>(?:<title>[^<]*<\/title>)?([^<]*)<\/text>/g)].map((m) => m[1]);
+  checkTrue("zonder onRijAantal geen − en + in de tekening (het rapport blijft een plaatje)",
+    !teksten(plaatje).includes("−") && !teksten(plaatje).includes("+"));
+  const gemeld = [];
+  const bedienbaar = teken(korf, { onRijAantal: (zijde, delta) => gemeld.push([zijde, delta]) });
+  checkEq("met onRijAantal staan er twee −", teksten(bedienbaar).filter((t) => t === "−").length, 2);
+  checkEq("en twee +", teksten(bedienbaar).filter((t) => t === "+").length, 2);
+  checkTrue("de knopjes zeggen wat ze doen", bedienbaar.includes("Eén staaf meer in de onderwapening")
+    && bedienbaar.includes("Eén staaf minder in de bovenwapening"));
+  checkTrue("zonder onDubbelklik geen dubbelklik-cursor", !plaatje.includes("zoom-in"));
+  checkTrue("met onDubbelklik wél", teken(korf, { onDubbelklik: () => {} }).includes("zoom-in"));
+}
+
+// ── Beugelbenen: bij meer dan twee benen staan de binnenbenen in de tekening ──
+{
+  const twee = teken(korfVan(rechthoek(300, 500), { bottom: { count: 3, diameter_mm: 16 } }));
+  const vier = teken(korfVan(rechthoek(300, 500), {
+    bottom: { count: 3, diameter_mm: 16 }, stirrup_legs: 4,
+  }));
+  const benen = (svg) => [...svg.matchAll(/<title>Beugelbeen [^<]*<\/title>/g)].length;
+  checkEq("tweebenige beugel: geen binnenbenen", benen(twee), 0);
+  checkEq("vierbenige beugel: twee binnenbenen", benen(vier), 2);
+  // Gelijkmatig tussen de buitenbenen: de x-posities delen de beugelbreedte in drieën.
+  const xs = [...vier.matchAll(/<line[^>]*x1="([^"]+)"[^>]*>\s*<title>Beugelbeen/g)].map((m) => Number(m[1]));
+  const rectX = Number(/<rect[^>]*x="([^"]+)"[^>]*rx=/.exec(vier)?.[1]);
+  const rectW = Number(/<rect[^>]*width="([^"]+)"[^>]*rx=/.exec(vier)?.[1]);
+  checkTrue("de binnenbenen delen de beugelbreedte in drie gelijke delen",
+    xs.length === 2 && Math.abs(xs[0] - (rectX + rectW / 3)) < 0.05 && Math.abs(xs[1] - (rectX + (2 * rectW) / 3)) < 0.05,
+    `x = ${xs.join(", ")} bij rect x=${rectX} w=${rectW}`);
+}
+
 // ── Uitslag ───────────────────────────────────────────────────────────────
 log(`\n${failed === 0 ? "ALLE TESTS GESLAAGD" : "TESTS GEFAALD"} — ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

@@ -518,7 +518,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                 {beams.map(b => (
                   <Leaf
                     key={`tb${b.id}`}
-                    label={`Balk ${b.id}`}
+                    label={`Staaf ${b.id}`}
                     value={`${b.from}-${b.to}`}
                     active={selection?.type === "beam" && selection.id === b.id}
                     onClick={() => setSelection({ type: "beam", id: b.id })}

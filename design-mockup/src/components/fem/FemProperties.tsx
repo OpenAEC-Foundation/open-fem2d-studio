@@ -122,7 +122,7 @@ export default function FemProperties(props: FemPropertiesProps) {
   if (selection.type === "beam") {
     const b = beams.find(bb => bb.id === selection.id);
     if (!b) {
-      return <div className="fem-properties"><div className="fem-prop-empty">Balk niet gevonden.</div></div>;
+      return <div className="fem-properties"><div className="fem-prop-empty">Staaf niet gevonden.</div></div>;
     }
     const nFrom = nodes.find(n => n.id === b.from);
     const nTo = nodes.find(n => n.id === b.to);
@@ -520,7 +520,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
     <div className="fem-properties">
       <div className="fem-prop-selection">
         <span className="fem-prop-selection-label">Selectie</span>
-        <span className="fem-prop-selection-value">Balk {beam.id}</span>
+        <span className="fem-prop-selection-value">Staaf {beam.id}</span>
       </div>
       <div className="fem-prop-tabs">
         <button
@@ -780,7 +780,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       <div className="fem-prop-body">
         <Section title="Geometrie">
           <Row label="ID"><code>{beam.id}</code></Row>
-          <Row label="Type"><code>Balk</code></Row>
+          <Row label="Type"><code>Staaf</code></Row>
           <Row label="Knoop start">
             <code>{beam.from}{nFrom ? ` (${nFrom.x}, ${nFrom.z})` : ""}</code>
           </Row>
@@ -898,7 +898,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
 
         <Section title="Belastingen" defaultOpen={false}>
           {beamLoads.length === 0 ? (
-            <Row label="—"><code>Geen lasten op deze balk</code></Row>
+            <Row label="—"><code>Geen lasten op deze staaf</code></Row>
           ) : beamLoads.map(l => (
             <Row key={`bl${l.id}`} label={l.type}>
               <code>
@@ -1096,7 +1096,7 @@ function LoadProperties({
             />
           </Row>
           <Row label="Lastgeval"><code>{load.caseId}</code></Row>
-          {beam && <Row label="Op balk"><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
+          {beam && <Row label="Op staaf"><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
           {node && <Row label="Op knoop"><code>{node.id}</code></Row>}
           {/* Puntlast op een vrije positie op de staaf: positie achteraf
               bij te stellen, in meters vanaf de startknoop. */}

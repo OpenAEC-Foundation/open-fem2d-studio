@@ -340,7 +340,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
       <div className="bar-props-dialog" onClick={(e) => e.stopPropagation()} role="dialog">
         <div className="bar-props-header">
           <h2 className="bar-props-title">
-            Eigenschappen balk #{beam.id}
+            Eigenschappen staaf #{beam.id}
             {/* Zichtbaar dat er nog iets op OK wacht. */}
             {gewijzigd && <span className="bar-props-dirty" title="Nog niet opgeslagen — bevestig met OK"> ●</span>}
           </h2>
