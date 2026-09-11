@@ -1,0 +1,86 @@
+{
+  "title": "Paramètres",
+  "resetToDefaults": "Rétablir les valeurs par défaut",
+  "resetConfirm": "Voulez-vous vraiment rétablir tous les paramètres à leurs valeurs par défaut ?",
+  "tabs": {
+    "general": "Général",
+    "appearance": "Apparence",
+    "editor": "Éditeur",
+    "files": "Fichiers",
+    "shortcuts": "Raccourcis",
+    "plugins": "Extensions",
+    "about": "À propos"
+  },
+  "general": {
+    "application": "Application",
+    "language": "Langue",
+    "startup": "Démarrage",
+    "restoreSession": "Restaurer la dernière session au démarrage",
+    "checkUpdates": "Vérifier automatiquement les mises à jour",
+    "author": "Auteur",
+    "authorName": "Nom de l'auteur"
+  },
+  "appearance": {
+    "theme": "Thème",
+    "themeDescription": "Choisissez un thème de couleurs pour l'application.",
+    "light": "Clair",
+    "forge": "Forge (sombre)",
+    "dark": "OpenAEC (sombre)",
+    "blueprint": "Blueprint",
+    "contrast": "Contraste élevé",
+    "font": "Police",
+    "uiFontSize": "Taille de police de l'interface"
+  },
+  "editor": {
+    "general": "Général",
+    "wordWrap": "Retour à la ligne",
+    "lineNumbers": "Afficher les numéros de ligne",
+    "minimap": "Afficher la minimap",
+    "indentation": "Indentation",
+    "tabSize": "Taille des tabulations",
+    "insertSpaces": "Insérer des espaces au lieu de tabulations",
+    "nSpaces": "{{count}} espaces"
+  },
+  "files": {
+    "autoSave": "Enregistrement automatique",
+    "autoSaveOption": "Enregistrement automatique",
+    "off": "Désactivé",
+    "afterDelay": "Après un délai",
+    "onFocusChange": "Au changement de focus",
+    "onWindowChange": "Au changement de fenêtre",
+    "encoding": "Encodage des fichiers",
+    "defaultEncoding": "Encodage par défaut",
+    "backup": "Sauvegarde",
+    "autoBackup": "Créer des sauvegardes automatiques"
+  },
+  "shortcuts": {
+    "placeholder": "La configuration des raccourcis apparaîtra ici."
+  },
+  "plugins": {
+    "placeholder": "La gestion des extensions apparaîtra ici."
+  },
+  "library": {
+    "title": "Bibliothèque",
+    "subtitle": "Bibliothèque — référence en lecture seule. Les valeurs proviennent de la base de profils et des tableaux normatifs (EN 338 / EN 14080) ; la modification n'est pas possible ici.",
+    "tabSections": "Profilés acier",
+    "tabMaterials": "Matériaux",
+    "search": "Rechercher…",
+    "noResults": "Aucun résultat pour ce filtre.",
+    "colName": "Nom",
+    "colA": "A [mm²]",
+    "colIy": "Iy [×10⁶ mm⁴]",
+    "colDims": "h × b × tw × tf [mm]",
+    "colFy": "fy [N/mm²]",
+    "colE": "E [N/mm²]",
+    "colEmean": "E₀,mean [N/mm²]",
+    "steelGroup": "Nuances d'acier (EN 1993)",
+    "timberGroup": "Classes de résistance du bois (EN 338 / EN 14080)"
+  },
+  "about": {
+    "appName": "Open FEM2D Studio",
+    "version": "Version",
+    "framework": "Framework",
+    "license": "Licence",
+    "description": "Une application modèle pour créer des applications de bureau multiplateformes avec Tauri."
+  }
+}

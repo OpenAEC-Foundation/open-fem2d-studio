@@ -81,6 +81,10 @@ const TIJDSLIMIET_MS = 300_000;
 const BUNDEL_TESTS = new Set([
   "checkconfig",
   "combinatieselectie",
+  // Leest alleen de JSON-taalbestanden en config.ts van schijf; geen barrel,
+  // geen tsx. Draait dus in beide standen, en hoort in de bundelstand mee
+  // omdat een vergeten vertaling anders alleen in de app opvalt.
+  "i18n-talen",
   // Rekent een externe referentie-berekening na (twee houten liggerlijnen) en
   // raakt daarbij uitsluitend de adapterlaag: `engine`, `combinations`,
   // `sectionResolver` en de twee check-builders — precies wat de barrel

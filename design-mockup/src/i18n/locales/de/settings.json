@@ -1,0 +1,86 @@
+{
+  "title": "Einstellungen",
+  "resetToDefaults": "Standardwerte wiederherstellen",
+  "resetConfirm": "Möchten Sie wirklich alle Einstellungen auf die Standardwerte zurücksetzen?",
+  "tabs": {
+    "general": "Allgemein",
+    "appearance": "Darstellung",
+    "editor": "Editor",
+    "files": "Dateien",
+    "shortcuts": "Tastenkürzel",
+    "plugins": "Erweiterungen",
+    "about": "Über"
+  },
+  "general": {
+    "application": "Anwendung",
+    "language": "Sprache",
+    "startup": "Start",
+    "restoreSession": "Letzte Sitzung beim Start wiederherstellen",
+    "checkUpdates": "Automatisch auf Updates prüfen",
+    "author": "Autor",
+    "authorName": "Autorname"
+  },
+  "appearance": {
+    "theme": "Design",
+    "themeDescription": "Wählen Sie ein Farbschema für die Anwendung.",
+    "light": "Hell",
+    "forge": "Forge (dunkel)",
+    "dark": "OpenAEC (dunkel)",
+    "blueprint": "Blueprint",
+    "contrast": "Hoher Kontrast",
+    "font": "Schriftart",
+    "uiFontSize": "UI-Schriftgröße"
+  },
+  "editor": {
+    "general": "Allgemein",
+    "wordWrap": "Zeilenumbruch",
+    "lineNumbers": "Zeilennummern anzeigen",
+    "minimap": "Minimap anzeigen",
+    "indentation": "Einrückung",
+    "tabSize": "Tabulatorbreite",
+    "insertSpaces": "Leerzeichen statt Tabulatoren einfügen",
+    "nSpaces": "{{count}} Leerzeichen"
+  },
+  "files": {
+    "autoSave": "Automatisch speichern",
+    "autoSaveOption": "Automatisch speichern",
+    "off": "Aus",
+    "afterDelay": "Nach Verzögerung",
+    "onFocusChange": "Bei Fokuswechsel",
+    "onWindowChange": "Bei Fensterwechsel",
+    "encoding": "Dateikodierung",
+    "defaultEncoding": "Standardkodierung",
+    "backup": "Sicherung",
+    "autoBackup": "Automatische Sicherungen erstellen"
+  },
+  "shortcuts": {
+    "placeholder": "Die Konfiguration der Tastenkürzel erscheint hier."
+  },
+  "plugins": {
+    "placeholder": "Die Verwaltung der Erweiterungen erscheint hier."
+  },
+  "library": {
+    "title": "Bibliothek",
+    "subtitle": "Bibliothek — Nachschlagewerk, nur lesend. Die Werte stammen aus der Profildatenbank und den Normtabellen (EN 338 / EN 14080); Bearbeiten ist hier nicht möglich.",
+    "tabSections": "Stahlprofile",
+    "tabMaterials": "Werkstoffe",
+    "search": "Suchen…",
+    "noResults": "Keine Ergebnisse für diesen Suchfilter.",
+    "colName": "Name",
+    "colA": "A [mm²]",
+    "colIy": "Iy [×10⁶ mm⁴]",
+    "colDims": "h × b × tw × tf [mm]",
+    "colFy": "fy [N/mm²]",
+    "colE": "E [N/mm²]",
+    "colEmean": "E₀,mean [N/mm²]",
+    "steelGroup": "Stahlsorten (EN 1993)",
+    "timberGroup": "Holzfestigkeitsklassen (EN 338 / EN 14080)"
+  },
+  "about": {
+    "appName": "Open FEM2D Studio",
+    "version": "Version",
+    "framework": "Framework",
+    "license": "Lizenz",
+    "description": "Eine Vorlagenanwendung zum Erstellen plattformunabhängiger Desktop-Apps mit Tauri."
+  }
+}
