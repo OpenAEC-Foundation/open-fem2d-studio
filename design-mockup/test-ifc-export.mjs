@@ -622,5 +622,55 @@ log("\n[8] Combinaties, verende aansluitingen en bedding");
   checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[9] Platen als IfcStructuralSurfaceMember, met randlasten");
+{
+  const model = {
+    projectNaam: "Wandschijf",
+    nodes: [
+      { id: 1, x: 0, z: 0 }, { id: 2, x: 4000, z: 0 }, { id: 3, x: 4000, z: 3000 }, { id: 4, x: 0, z: 3000 },
+      { id: 5, x: 8000, z: 0 },
+    ],
+    beams: [{ id: 1, from: 2, to: 5, material: "S235", profile: "IPE200" }],
+    supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 2, type: "fixed" }, { nodeId: 5, type: "pinned" }],
+    plates: [
+      { id: 1, nodeIds: [1, 2, 3, 4], thickness: 200, E: 33000, nu: 0.2, rho: 2500, meshSize: 250 },
+      { id: 2 }, // zonder hoekknopen: kan niet getekend worden
+    ],
+    loads: [
+      { id: 1, type: "edgeLoad", caseId: 1, plateId: 1, edge: "top", q: -12, qDir: "z" },
+      { id: 2, type: "edgeLoad", caseId: 1, plateId: 1, edgeIndex: 1, q: 5, qDir: "x" },
+      { id: 3, type: "edgeLoad", caseId: 1, plateId: 2, edge: "top", q: -3, qDir: "z" },
+    ],
+    loadCases: [{ id: 1, name: "Permanent", type: "dead" }],
+  };
+  const ifc = bouwIfcRekenmodel(model);
+  checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
+  checkEq("validatie: geen fouten", valideerIfc(ifc).fouten.length, 0);
+  checkEq("één vlaklid (de plaat zonder hoekknopen blijft weg)", tel(ifc, "IFCSTRUCTURALSURFACEMEMBER"), 1);
+  checkTrue("SHELL met dikte 0,2 m", /IFCSTRUCTURALSURFACEMEMBER\(.*\.SHELL\.,IFCPOSITIVELENGTHMEASURE\(0\.2\)\)/m.test(ifc));
+  checkEq("één vlak met vier hoekpunten in de polyloop", tel(ifc, "IFCFACESURFACE"), 1);
+  checkTrue("de polyloop heeft vier punten", /IFCPOLYLOOP\(\(#\d+,#\d+,#\d+,#\d+\)\)/.test(ifc));
+  checkEq("vier verbindingen plaat–hoekknoop (plus twee van de staaf)", tel(ifc, "IFCRELCONNECTSSTRUCTURALMEMBER"), 6);
+  checkTrue("OpenFEM2D_Plaat met E = 33 GPa, ν, ρ en meshgrootte",
+    ifc.includes("'OpenFEM2D_Plaat'")
+    && /'Elasticiteitsmodulus',\$,IFCMODULUSOFELASTICITYMEASURE\(33000000000\.?\d*\)/.test(ifc)
+    && /'Dwarscontractiecoefficient',\$,IFCRATIOMEASURE\(0\.2\)/.test(ifc)
+    && /'Dichtheid',\$,IFCMASSDENSITYMEASURE\(2500\.?\d*\)/.test(ifc)
+    && /'Meshgrootte',\$,IFCPOSITIVELENGTHMEASURE\(0\.25\)/.test(ifc));
+  checkTrue("het vlaklid is lid van het analysemodel",
+    /IFCRELASSIGNSTOGROUP\('[^']+',\$,\$,\$,\([^)]*\),\$,#\d+\);/.test(ifc));
+  // Randlasten: twee op de geëxporteerde plaat, de derde valt met plaat 2 weg.
+  checkEq("twee randlasten als lineaire acties", tel(ifc, "IFCSTRUCTURALLINEARACTION"), 2);
+  checkTrue("randlast boven: −12 kN/m = −12000 N/m in z", /IFCSTRUCTURALLOADLINEARFORCE\('q 1',\$,\$,IFCLINEARFORCEMEASURE\(-12000\.?\d*\)/.test(ifc));
+  checkTrue("randlast op rand 1 (knoop 2→3): 5000 N/m in x", /IFCSTRUCTURALLOADLINEARFORCE\('q 2',IFCLINEARFORCEMEASURE\(5000\.?\d*\),\$,\$/.test(ifc));
+  checkEq("elke randlast hangt aan het vlaklid (plus geen staaflast)", tel(ifc, "IFCRELCONNECTSSTRUCTURALACTIVITY"), 2);
+  const beperkingen = verzamelIfcBeperkingen(model).join("\n");
+  checkTrue("beperkingen: alleen de plaat zonder hoekknopen en haar randlast", /1 plaat zonder hoekknopen/.test(beperkingen) && /1 randbelasting/.test(beperkingen));
+  checkTrue("een model met alleen getekende platen meldt niets over platen",
+    !verzamelIfcBeperkingen({ ...model, plates: [model.plates[0]], loads: model.loads.slice(0, 2) }).some((r) => /plaat|randbelasting/i.test(r)));
+  checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald\n`);
 process.exit(failed === 0 ? 0 : 1);

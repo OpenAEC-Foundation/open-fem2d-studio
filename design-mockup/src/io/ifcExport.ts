@@ -51,6 +51,12 @@
  *  - Belastingcombinaties: één IfcStructuralLoadGroup (LOAD_COMBINATION) per
  *    combinatie, met per belastinggeval een IfcRelAssignsToGroupByFactor die
  *    de factor draagt; UGT/BGT staat in Purpose.
+ *  - Platen (wandschijven): IfcStructuralSurfaceMember (SHELL) met de dikte
+ *    op het lid, een IfcFaceSurface in het rekenvlak met de hoekknopen als
+ *    IfcPolyLoop, IfcRelConnectsStructuralMember naar elke hoekknoop, en de
+ *    set OpenFEM2D_Plaat (dikte, E, ν, ρ, meshgrootte). Randlasten op een
+ *    plaat: IfcStructuralLinearAction met de rand (IfcEdge van de twee
+ *    hoekknopen) als eigen topologie, gekoppeld aan het vlaklid.
  *  - Profiel + materiaal: IfcRelAssociatesMaterial →
  *    IfcMaterialProfileSetUsage → IfcMaterialProfileSet → IfcMaterialProfile
  *    met IfcMaterial (naam = klasse, bv. S235/C24) en een parametrisch
@@ -188,11 +194,14 @@ export interface IfcRekenmodelInput {
   loads: Load[];
   loadCases: LoadCase[];
   /**
-   * Platen in het model. Ze worden NIET geëxporteerd (zie
-   * verzamelIfcBeperkingen); alleen het aantal telt, om dat eerlijk te
-   * kunnen melden.
+   * Platen in het model. Een plaat mét hoekknopen (`nodeIds`, minstens
+   * drie) wordt een IfcStructuralSurfaceMember (SHELL) met zijn dikte,
+   * verbonden aan de puntconnecties van zijn hoeken, en met de set
+   * OpenFEM2D_Plaat (dikte, E, ν, ρ, meshgrootte). Een plaat zonder
+   * hoekknopen kan niet getekend worden en wordt alleen geteld, zodat de
+   * beperkingenlijst hem eerlijk meldt.
    */
-  plates?: { id: number }[];
+  plates?: { id: number; nodeIds?: number[]; thickness?: number; E?: number; nu?: number; rho?: number; meshSize?: number }[];
   /** Staat de eigen-gewichtsberekening aan? Alleen voor de beperkingenlijst. */
   eigenGewicht?: boolean;
   /** Aantal belastingcombinaties. Alleen voor de beperkingenlijst. */
@@ -541,11 +550,13 @@ export function bouwIfcRekenmodel(
 
   const connectiePerKnoop = new Map<number, number>();
   const vertexPerKnoop = new Map<number, number>();
+  const puntPerKnoop = new Map<number, number>();
   for (const kn of model.nodes) {
     const punt = w.ent("IFCCARTESIANPOINT",
       `(${meter(kn.x)},0.,${meter(kn.z)})`);
     const vertex = w.ent("IFCVERTEXPOINT", ref(punt));
     vertexPerKnoop.set(kn.id, vertex);
+    puntPerKnoop.set(kn.id, punt);
     const topo = w.ent("IFCTOPOLOGYREPRESENTATION",
       ref(context), "'Reference'", "'Vertex'", lijst([vertex]));
     const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
@@ -651,10 +662,51 @@ export function bouwIfcRekenmodel(
   // eerst zijn, zodat IfcBeam en IfcColumn aan dezelfde koppeling hangen.
   const combos = schrijfMaterialenEnProfielen(w, model.beams, memberPerStaaf);
 
+  // ── Platen: IfcStructuralSurfaceMember (SHELL) ────────────────────────
+  // Topologie: één IfcFaceSurface in het rekenvlak met de hoekknopen als
+  // IfcPolyLoop — dezelfde punten als de puntconnecties, zodat een lezer de
+  // plaat aan de knopen kan hangen. De dikte staat op het lid zelf; E, ν, ρ
+  // en de meshgrootte in de set OpenFEM2D_Plaat, want een wandschijf zonder
+  // materiaalnaam heeft geen IfcMaterialProfile.
+  const plaatInfo = new Map<number, PlaatInfo>();
+  const knoopPerId = new Map<number, Node>(model.nodes.map((n) => [n.id, n]));
+  for (const plaat of model.plates ?? []) {
+    const ids = (plaat.nodeIds ?? []).filter((id) => puntPerKnoop.has(id));
+    if (ids.length < 3) continue;
+    const lus = w.ent("IFCPOLYLOOP", lijst(ids.map((id) => puntPerKnoop.get(id)!)));
+    const rand = w.ent("IFCFACEOUTERBOUND", ref(lus), ".T.");
+    const vlak = w.ent("IFCPLANE", ref(vlakAssen));
+    const vlakStuk = w.ent("IFCFACESURFACE", lijst([rand]), ref(vlak), ".T.");
+    const topo = w.ent("IFCTOPOLOGYREPRESENTATION",
+      ref(context), "'Reference'", "'Face'", lijst([vlakStuk]));
+    const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
+    const dikteMm = plaat.thickness ?? 20;
+    const member = w.ent("IFCSTRUCTURALSURFACEMEMBER",
+      w.guid(`plaat:${plaat.id}`), "$", stepString(`Plaat ${plaat.id}`),
+      stepString(`wandschijf t = ${nl(dikteMm, 0)} mm`), "$", "$", ref(vorm),
+      ".SHELL.", `IFCPOSITIVELENGTHMEASURE(${reeel(dikteMm / 1000)})`);
+    for (const id of ids) {
+      w.ent("IFCRELCONNECTSSTRUCTURALMEMBER",
+        w.guid(`plaatrel:${plaat.id}:${id}`), "$", "$", "$",
+        ref(member), ref(connectiePerKnoop.get(id)!), "$", "$", "$", "$");
+    }
+    const eig: Eigenschap[] = [
+      eGeheel("Plaatnummer", plaat.id),
+      eMaat("Dikte", "IFCPOSITIVELENGTHMEASURE", dikteMm / 1000),
+      eMaat("Elasticiteitsmodulus", "IFCMODULUSOFELASTICITYMEASURE", (plaat.E ?? 210000) * 1e6),
+      eMaat("Dwarscontractiecoefficient", "IFCRATIOMEASURE", plaat.nu ?? 0.3),
+      eMaat("Dichtheid", "IFCMASSDENSITYMEASURE", plaat.rho ?? 7850),
+      eMaat("Meshgrootte", "IFCPOSITIVELENGTHMEASURE", (plaat.meshSize ?? 500) / 1000),
+      eLabel("Hoekknopen", ids.join(", ")),
+    ];
+    schrijfEigenschappen(w, "OpenFEM2D_Plaat", `plaat:${plaat.id}`, eig, [member]);
+    plaatInfo.set(plaat.id, { member, nodeIds: ids, knopen: knoopPerId, vertexPerKnoop });
+  }
+
   // ── Lasten ───────────────────────────────────────────────────────────────
   const actiesPerGroep = new Map<number, number[]>();
   for (const last of teExporterenLasten) {
-    const actie = schrijfLast(w, last, connectiePerKnoop, memberPerStaaf, staafInfo, context);
+    const actie = schrijfLast(w, last, connectiePerKnoop, memberPerStaaf, staafInfo, context, plaatInfo);
     if (actie === undefined) continue;
     const groep = groepPerCase.get(last.caseId);
     if (groep !== undefined) {
@@ -689,7 +741,11 @@ export function bouwIfcRekenmodel(
   schrijfStaafEigenschappen(w, verwerkteStaven, combos, bouwkundig, model.toetsresultaten);
 
   // ── Leden van het analysemodel ───────────────────────────────────────────
-  const leden = [...connectiePerKnoop.values(), ...memberPerStaaf.values()];
+  const leden = [
+    ...connectiePerKnoop.values(),
+    ...memberPerStaaf.values(),
+    ...[...plaatInfo.values()].map((p) => p.member),
+  ];
   if (leden.length > 0) {
     w.ent("IFCRELASSIGNSTOGROUP",
       w.guid("toekenning:model"), "$", "$", "$",
@@ -1467,6 +1523,39 @@ function lastComponenten(
  * Retourneert het action-#id, of undefined als de last niet te exporteren is
  * (dat geval staat dan in `verzamelIfcBeperkingen`).
  */
+/** Een geëxporteerde plaat, voor de randlasten die eraan hangen. */
+interface PlaatInfo {
+  member: number;
+  nodeIds: number[];
+  knopen: Map<number, Node>;
+  vertexPerKnoop: Map<number, number>;
+}
+
+/**
+ * De twee hoekknopen van een plaatrand. Een polygoonplaat noemt de rand met
+ * een index (rand i loopt van hoek i naar hoek i+1); een rechthoek met een
+ * naam, en die wordt uit de coördinaten gelezen: onder = de twee laagste
+ * knopen, boven = de twee hoogste, links/rechts idem in x.
+ */
+function randKnopen(info: PlaatInfo, last: Load): [number, number] | undefined {
+  const n = info.nodeIds.length;
+  if (last.edgeIndex !== undefined) {
+    if (last.edgeIndex < 0 || last.edgeIndex >= n) return undefined;
+    return [info.nodeIds[last.edgeIndex], info.nodeIds[(last.edgeIndex + 1) % n]];
+  }
+  if (!last.edge) return undefined;
+  const punten = info.nodeIds
+    .map((id) => { const k = info.knopen.get(id); return k ? { id, x: k.x, z: k.z } : undefined; })
+    .filter((p): p is { id: number; x: number; z: number } => p !== undefined);
+  const sorteer = (kies: (p: { x: number; z: number }) => number, hoogste: boolean) =>
+    [...punten].sort((a, b) => (hoogste ? kies(b) - kies(a) : kies(a) - kies(b))).slice(0, 2).map((p) => p.id);
+  const paar = last.edge === "bottom" ? sorteer((p) => p.z, false)
+    : last.edge === "top" ? sorteer((p) => p.z, true)
+      : last.edge === "left" ? sorteer((p) => p.x, false)
+        : sorteer((p) => p.x, true);
+  return paar.length === 2 ? [paar[0], paar[1]] : undefined;
+}
+
 function schrijfLast(
   w: SpfSchrijver,
   last: Load,
@@ -1474,6 +1563,7 @@ function schrijfLast(
   memberPerStaaf: Map<number, number>,
   staafInfoPerStaaf: Map<number, StaafInfo>,
   context: number,
+  plaatInfo: Map<number, PlaatInfo> = new Map(),
 ): number | undefined {
   // De vrije omschrijving van de gebruiker ("sneeuw op overstek", "reactie
   // spant 3") gaat mee als Description van de actie — het IFC-veld dat
@@ -1530,6 +1620,34 @@ function schrijfLast(
 
     console.warn(`[ifcExport] Last ${last.id} verwijst naar ontbrekende knoop of staaf — overgeslagen.`);
     return undefined;
+  }
+
+  if (last.type === "edgeLoad") {
+    // Randlast op een plaat: een lijnlast langs één rand, als
+    // IfcStructuralLinearAction met een eigen randtopologie (de twee
+    // hoekknopen), gekoppeld aan het vlaklid. Altijd in wereldassen: qDir
+    // "x" of "z", kN/m → N/m.
+    const info = last.plateId !== undefined ? plaatInfo.get(last.plateId) : undefined;
+    const paar = info ? randKnopen(info, last) : undefined;
+    if (!info || !paar) {
+      console.warn(`[ifcExport] Randlast ${last.id} verwijst naar een plaat of rand die niet in het bestand staat — overgeslagen.`);
+      return undefined;
+    }
+    const q = (last.q ?? 0) * 1e3;
+    const kracht = w.ent("IFCSTRUCTURALLOADLINEARFORCE",
+      stepString(`q ${last.id}`),
+      last.qDir === "x" ? `IFCLINEARFORCEMEASURE(${reeel(q)})` : "$", "$",
+      last.qDir === "x" ? "$" : `IFCLINEARFORCEMEASURE(${reeel(q)})`,
+      "$", "$", "$");
+    const rand = w.ent("IFCEDGE", ref(info.vertexPerKnoop.get(paar[0])!), ref(info.vertexPerKnoop.get(paar[1])!));
+    const topo = w.ent("IFCTOPOLOGYREPRESENTATION", ref(context), "'Reference'", "'Edge'", lijst([rand]));
+    const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
+    const actie = w.ent("IFCSTRUCTURALLINEARACTION",
+      w.guid(`last:${last.id}`), "$", stepString(`q ${last.id} (plaatrand)`), toelichting, "$",
+      "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".CONST.");
+    w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
+      w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(info.member), ref(actie));
+    return actie;
   }
 
   if (last.type === "lineLoad" || last.type === "thermal") {
@@ -1636,20 +1754,28 @@ export function verzamelIfcBeperkingen(
 ): string[] {
   const regels: string[] = [];
 
-  const platen = model.plates?.length ?? 0;
+  // Platen mét hoekknopen gaan als IfcStructuralSurfaceMember mee; een
+  // plaat zonder (een oude aanroeper die alleen id's geeft) kan niet
+  // getekend worden en wordt gemeld.
+  const geexporteerdePlaten = new Set(
+    (model.plates ?? []).filter((p) => (p.nodeIds?.length ?? 0) >= 3).map((p) => p.id),
+  );
+  const platen = (model.plates?.length ?? 0) - geexporteerdePlaten.size;
   if (platen > 0) {
     regels.push(
-      `${platen} ${platen === 1 ? "plaat" : "platen"}: platen worden niet ` +
-      "geëxporteerd. IFC4 heeft hiervoor IfcStructuralSurfaceMember; deze " +
-      "export schrijft alleen het staafwerk.",
+      `${platen} ${platen === 1 ? "plaat" : "platen"} zonder hoekknopen: die ` +
+      "kunnen niet als IfcStructuralSurfaceMember getekend worden en staan " +
+      "niet in het bestand.",
     );
   }
 
-  const randlasten = model.loads.filter(l => l.type === "edgeLoad").length;
+  const randlasten = model.loads.filter(
+    (l) => l.type === "edgeLoad" && !(l.plateId !== undefined && geexporteerdePlaten.has(l.plateId)),
+  ).length;
   if (randlasten > 0) {
     regels.push(
       `${randlasten} ${randlasten === 1 ? "randbelasting" : "randbelastingen"} op een plaat: ` +
-      "hoort bij een plaat en valt dus met de platen buiten het bestand.",
+      "hoort bij een plaat die niet in het bestand staat en valt dus mee weg.",
     );
   }
 
@@ -1884,12 +2010,23 @@ export function bouwIfcBoom(
     })),
   };
 
-  const kinderenModel: IfcBoomKnoop[] = [knopen, staven, opleggingen];
+  const platenInBoom = (model.plates ?? []).filter((p) => (p.nodeIds?.length ?? 0) >= 3);
+  const platen: IfcBoomKnoop = {
+    type: "IfcStructuralSurfaceMember",
+    naam: "Platen",
+    aantal: platenInBoom.length,
+    kinderen: platenInBoom.map((p) => ({
+      type: "IfcFaceSurface",
+      naam: `Plaat ${p.id} — t = ${nl(p.thickness ?? 20, 0)} mm, hoeken ${(p.nodeIds ?? []).join(", ")}`,
+    })),
+  };
+  const kinderenModel: IfcBoomKnoop[] = platenInBoom.length > 0
+    ? [knopen, staven, platen, opleggingen]
+    : [knopen, staven, opleggingen];
 
   if (opties.zonderLasten !== true) {
     const perGeval = new Map<number, number>();
     for (const l of model.loads) {
-      if (l.type === "edgeLoad") continue;
       perGeval.set(l.caseId, (perGeval.get(l.caseId) ?? 0) + 1);
     }
     for (const geval of model.loadCases) {
@@ -1898,11 +2035,11 @@ export function bouwIfcBoom(
         naam: geval.name,
         aantal: perGeval.get(geval.id) ?? 0,
         kinderen: model.loads
-          .filter(l => l.caseId === geval.id && l.type !== "edgeLoad")
+          .filter(l => l.caseId === geval.id)
           .map(l => ({
             type: l.type === "lineLoad"
               ? "IfcStructuralCurveAction"
-              : l.type === "thermal"
+              : l.type === "thermal" || l.type === "edgeLoad"
                 ? "IfcStructuralLinearAction"
                 : "IfcStructuralPointAction",
             naam: omschrijfLast(l),
@@ -2033,7 +2170,7 @@ const GUID_TEKENS_SET = new Set(IFC_GUID_TEKENS);
 export const GEWORTELDE_ENTITEITEN = [
   "IFCPROJECT", "IFCSITE", "IFCBUILDING",
   "IFCSTRUCTURALANALYSISMODEL", "IFCSTRUCTURALLOADGROUP",
-  "IFCSTRUCTURALPOINTCONNECTION", "IFCSTRUCTURALCURVEMEMBER",
+  "IFCSTRUCTURALPOINTCONNECTION", "IFCSTRUCTURALCURVEMEMBER", "IFCSTRUCTURALSURFACEMEMBER",
   "IFCSTRUCTURALPOINTACTION", "IFCSTRUCTURALLINEARACTION",
   "IFCSTRUCTURALCURVEACTION",
   // Bouwkundig model, eigenschappen en hoeveelheden
