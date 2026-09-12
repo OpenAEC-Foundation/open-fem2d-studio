@@ -722,6 +722,14 @@ function App() {
     eigenGewicht: fem.selfWeightEnabled,
     aantalCombinaties: fem.combinations.length,
     combinations: fem.combinations,
+    structuralGrid: fem.structuralGrid,
+    analysetype: fem.analysetype,
+    scheefstand: {
+      enabled: fem.scheefstandEnabled,
+      noemer: fem.scheefstandNoemer,
+      richting: fem.scheefstandRichting,
+      bron: fem.scheefstandBron,
+    },
     // De toetsuitslag reist mee: elke getoetste staaf krijgt in het bestand
     // de eigenschappenset OpenFEM2D_Toetsing met de maatgevende toets, het
     // normartikel en de unity check. Is er niet getoetst, dan is de lijst

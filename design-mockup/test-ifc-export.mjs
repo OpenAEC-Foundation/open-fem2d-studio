@@ -672,5 +672,40 @@ log("\n[9] Platen als IfcStructuralSurfaceMember, met randlasten");
   checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[10] Stramien als IfcGrid en rekeninstellingen op het analysemodel");
+{
+  const model = {
+    ...portaal,
+    structuralGrid: {
+      enabled: true,
+      xAxes: [{ id: "A", label: "A", position: 0 }, { id: "B", label: "B", position: 12000 }],
+      zAxes: [{ id: "1", label: "1", position: 0 }, { id: "2", label: "2", position: 5000 }],
+    },
+    analysetype: "tweede-orde",
+    scheefstand: { enabled: true, noemer: 300, richting: -1, bron: "NEN-EN 1993-1-1 5.3.2" },
+  };
+  const ifc = bouwIfcRekenmodel(model);
+  checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
+  checkEq("validatie: geen fouten", valideerIfc(ifc).fouten.length, 0);
+  checkEq("één IfcGrid", tel(ifc, "IFCGRID"), 1);
+  checkEq("vier stramienassen", tel(ifc, "IFCGRIDAXIS"), 4);
+  checkTrue("de assen dragen hun labels", ["'A'", "'B'", "'1'", "'2'"].every((l) => new RegExp(`IFCGRIDAXIS\\(${l},#\\d+,\\.T\\.\\)`).test(ifc)));
+  checkTrue("RECTANGULAR, twee U-assen en twee V-assen",
+    /IFCGRID\([^)]*\$,\$,\(#\d+,#\d+\),\(#\d+,#\d+\),\$,\.RECTANGULAR\.\)/.test(ifc));
+  checkTrue("het stramien hangt in het gebouw", /IFCRELCONTAINEDINSPATIALSTRUCTURE\('[^']+',\$,\$,\$,\(#\d+\),#\d+\);/.test(ifc));
+  checkTrue("as A loopt verticaal op x = 0 (twee punten met dezelfde x)", /IFCCARTESIANPOINT\(\(0\.,0\.,-1\.\)\)/.test(ifc) && /IFCCARTESIANPOINT\(\(0\.,0\.,6\.\)\)/.test(ifc));
+  checkTrue("OpenFEM2D_Analyse met analysetype en scheefstand",
+    ifc.includes("'OpenFEM2D_Analyse'") && /'Analysetype',\$,IFCLABEL\('tweede-orde'\)/.test(ifc)
+    && /'ScheefstandNoemer',\$,IFCINTEGER\(300\)/.test(ifc) && /'ScheefstandRichting',\$,IFCLABEL\('-x'\)/.test(ifc)
+    && /'ScheefstandBron',\$,IFCLABEL\('NEN-EN 1993-1-1 5\.3\.2'\)/.test(ifc));
+  const uit = bouwIfcRekenmodel({ ...model, structuralGrid: { ...model.structuralGrid, enabled: false }, scheefstand: { enabled: false, noemer: 300, richting: 1 } });
+  checkEq("stramien uit: geen IfcGrid", tel(uit, "IFCGRID"), 0);
+  checkTrue("scheefstand uit: alleen de vlag, geen noemer", /'Scheefstand',\$,IFCBOOLEAN\(\.F\.\)/.test(uit) && !uit.includes("'ScheefstandNoemer'"));
+  const half = bouwIfcRekenmodel({ ...model, structuralGrid: { enabled: true, xAxes: model.structuralGrid.xAxes, zAxes: [] } });
+  checkEq("alleen x-assen: geen IfcGrid (die vraagt beide richtingen)", tel(half, "IFCGRID"), 0);
+  checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald\n`);
 process.exit(failed === 0 ? 0 : 1);

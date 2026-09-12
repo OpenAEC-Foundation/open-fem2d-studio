@@ -57,6 +57,11 @@
  *    set OpenFEM2D_Plaat (dikte, E, ν, ρ, meshgrootte). Randlasten op een
  *    plaat: IfcStructuralLinearAction met de rand (IfcEdge van de twee
  *    hoekknopen) als eigen topologie, gekoppeld aan het vlaklid.
+ *  - Stramien: IfcGrid (RECTANGULAR) in het gebouw, de x-assen als UAxes en
+ *    de z-assen als VAxes, elk een IfcGridAxis met het aslabel en een lijn
+ *    over de omhullende van het model. Rekeninstellingen (analysetype,
+ *    scheefstand met noemer, richting en bron) staan als set
+ *    OpenFEM2D_Analyse op het IfcStructuralAnalysisModel.
  *  - Profiel + materiaal: IfcRelAssociatesMaterial →
  *    IfcMaterialProfileSetUsage → IfcMaterialProfileSet → IfcMaterialProfile
  *    met IfcMaterial (naam = klasse, bv. S235/C24) en een parametrisch
@@ -213,6 +218,16 @@ export interface IfcRekenmodelInput {
    * blijven de combinaties uit het bestand (en de beperkingenlijst zegt dat).
    */
   combinations?: { id: number; name: string; type: "uls" | "sls"; factors: Map<number, number> }[];
+  /**
+   * Het stramien: als IfcGrid (RECTANGULAR) in het gebouw, met de x-assen
+   * als UAxes en de z-assen als VAxes, elk een IfcGridAxis met label en een
+   * lijn over de omhullende van het model. Alleen als het stramien aan staat
+   * en minstens één as heeft.
+   */
+  structuralGrid?: { enabled: boolean; xAxes: { id: string; label: string; position: number }[]; zAxes: { id: string; label: string; position: number }[] };
+  /** Rekeninstellingen voor de set OpenFEM2D_Analyse op het analysemodel. */
+  analysetype?: string;
+  scheefstand?: { enabled: boolean; noemer: number; richting: 1 | -1; bron?: string };
   /**
    * De uitslag van de normtoetsing per staaf (checkStore.results), als die er
    * is. ONTBREEKT het veld of is de lijst leeg — er is nog niet getoetst, of
@@ -543,6 +558,51 @@ export function bouwIfcRekenmodel(
     groepIds.length > 0 ? lijst(groepIds) : "$", "$", "$");
   w.ent("IFCRELSERVICESBUILDINGS",
     w.guid("dienst:model-gebouw"), "$", "$", "$", ref(analyseModel), lijst([gebouw]));
+
+  // ── Rekeninstellingen op het analysemodel ──────────────────────────────
+  // Analysetype en scheefstand horen bij het rekenmodel als geheel; ze
+  // staan als set OpenFEM2D_Analyse op het IfcStructuralAnalysisModel.
+  {
+    const eig: Eigenschap[] = [];
+    if (model.analysetype) eig.push(eLabel("Analysetype", model.analysetype));
+    if (model.scheefstand) {
+      eig.push(eJaNee("Scheefstand", model.scheefstand.enabled));
+      if (model.scheefstand.enabled) {
+        eig.push(eGeheel("ScheefstandNoemer", model.scheefstand.noemer));
+        eig.push(eLabel("ScheefstandRichting", model.scheefstand.richting > 0 ? "+x" : "-x"));
+        if (model.scheefstand.bron) eig.push(eLabel("ScheefstandBron", model.scheefstand.bron));
+      }
+    }
+    schrijfEigenschappen(w, "OpenFEM2D_Analyse", "analyse", eig, [analyseModel]);
+  }
+
+  // ── Stramien: IfcGrid in het gebouw ────────────────────────────────────
+  // De x-assen (verticale lijnen op x = positie) als UAxes, de z-assen als
+  // VAxes; elke as loopt over de omhullende van het model met wat marge,
+  // zodat de lijn in een viewer iets buiten de constructie uitsteekt.
+  // IfcGrid vraagt UAxes én VAxes; met maar één richting is er geen grid.
+  const stramien = model.structuralGrid;
+  if (stramien?.enabled && stramien.xAxes.length > 0 && stramien.zAxes.length > 0 && model.nodes.length > 0) {
+    const xs = model.nodes.map((n) => n.x), zs = model.nodes.map((n) => n.z);
+    const marge = 1000;
+    const xMin = Math.min(...xs, ...stramien.xAxes.map((a) => a.position)) - marge;
+    const xMax = Math.max(...xs, ...stramien.xAxes.map((a) => a.position)) + marge;
+    const zMin = Math.min(...zs, ...stramien.zAxes.map((a) => a.position)) - marge;
+    const zMax = Math.max(...zs, ...stramien.zAxes.map((a) => a.position)) + marge;
+    const as = (label: string, p1: [number, number], p2: [number, number]) => {
+      const a = w.ent("IFCCARTESIANPOINT", `(${meter(p1[0])},0.,${meter(p1[1])})`);
+      const b = w.ent("IFCCARTESIANPOINT", `(${meter(p2[0])},0.,${meter(p2[1])})`);
+      const lijn = w.ent("IFCPOLYLINE", lijst([a, b]));
+      return w.ent("IFCGRIDAXIS", stepString(label), ref(lijn), ".T.");
+    };
+    const uAssen = stramien.xAxes.map((a) => as(a.label, [a.position, zMin], [a.position, zMax]));
+    const vAssen = stramien.zAxes.map((a) => as(a.label, [xMin, a.position], [xMax, a.position]));
+    const grid = w.ent("IFCGRID",
+      w.guid("stramien"), "$", "'Stramien'", "$", "$", "$", "$",
+      lijst(uAssen), lijst(vAssen), "$", ".RECTANGULAR.");
+    w.ent("IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      w.guid("bevat:stramien"), "$", "$", "$", lijst([grid]), ref(gebouw));
+  }
 
   // ── Knopen: puntconnecties + opleggingen ─────────────────────────────────
   const steunPerKnoop = new Map<number, Support>();
@@ -2168,7 +2228,7 @@ const GUID_TEKENS_SET = new Set(IFC_GUID_TEKENS);
  * gewone naam.
  */
 export const GEWORTELDE_ENTITEITEN = [
-  "IFCPROJECT", "IFCSITE", "IFCBUILDING",
+  "IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCGRID",
   "IFCSTRUCTURALANALYSISMODEL", "IFCSTRUCTURALLOADGROUP",
   "IFCSTRUCTURALPOINTCONNECTION", "IFCSTRUCTURALCURVEMEMBER", "IFCSTRUCTURALSURFACEMEMBER",
   "IFCSTRUCTURALPOINTACTION", "IFCSTRUCTURALLINEARACTION",
