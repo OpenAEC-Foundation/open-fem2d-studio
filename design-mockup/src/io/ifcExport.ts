@@ -48,6 +48,11 @@
  *    Measure N·m/rad); bedding staat als BeddingK/BeddingBreedte in de set
  *    OpenFEM2D_Staaf, want IFC4 heeft daar geen eigen entiteit voor in dit
  *    domein.
+ *  - Eigen doorsneden ("EIGEN:<naam>"): een samenstelling wordt een
+ *    IfcCompositeProfileDef van rechthoeken (lamellen, elk op zijn plaats en
+ *    hoek) en parametrische catalogusdelen; een catalogusprofiel met gaten
+ *    blijft het parametrische basisprofiel met de gaten in de vormaanduiding.
+ *    h, b en de doorsnedegrootheden komen uit de bewaarde motoruitkomst.
  *  - Belastingcombinaties: één IfcStructuralLoadGroup (LOAD_COMBINATION) per
  *    combinatie, met per belastinggeval een IfcRelAssignsToGroupByFactor die
  *    de factor draagt; UGT/BGT staat in Purpose.
@@ -162,6 +167,8 @@ import {
   type SteelSectionDims, type SteelSectionProps,
 } from "../lib/steelSectionDims.generated";
 import type { MemberCheckResult } from "../lib/checkTypes";
+import { isEigenProfiel, zoekEigenDoorsnede } from "../lib/profieleditor/eigenDoorsnedenStore";
+import type { EigenDoorsnede } from "../lib/profieleditor/types";
 import {
   normLabel, sectionLabel, gradeLabel,
   isSteelCheckResult, isConcreteCheckResult,
@@ -2476,6 +2483,7 @@ type Vormbeschrijving =
     bMm: number; hMm: number;
   }
   | { soort: "catalogus"; dims: SteelSectionDims }
+  | { soort: "eigen"; doorsnede: EigenDoorsnede }
   | {
     soort: "betonvorm";
     tee: boolean;
@@ -2527,6 +2535,13 @@ function bepaalVorm(materiaal: string, profiel: string): Vormbeschrijving {
     }
   }
 
+  // Eigen doorsnede uit de profieleditor ("EIGEN:<naam>"): de bewaarde
+  // doorsnede draagt haar bouwstenen, en die zijn als profiel te schrijven.
+  if (isEigenProfiel(profiel)) {
+    const d = zoekEigenDoorsnede(profiel);
+    if (d) return { soort: "eigen", doorsnede: d };
+  }
+
   // Catalogusprofiel uit de gedeelde tabel.
   const dims = profielAfmetingen(profiel);
   if (dims) return { soort: "catalogus", dims };
@@ -2576,51 +2591,148 @@ function schrijfDoorsnede(
       };
     case "catalogus": {
       const dims = beschrijving.dims;
-      const gemeen = { hMm: dims.h, bMm: dims.b, bwMm: dims.b, props: dims.props };
-      // Toelopende flens (INP 14 %, UNP 8 %): IFC4 kent daarvoor FlangeSlope
-      // (IfcPlaneAngleMeasure, hier in radialen) en de flenstipafronding
-      // FlangeEdgeRadius/EdgeRadius. De tipstraal staat niet in de database;
-      // hij volgt uit de walsnorm: 0,6·r bij DIN 1025-1, r/2 bij DIN 1026-1
-      // — dezelfde verhoudingen als de tekening en de doorsnedemotor.
-      const helling = dims.flensHelling ?? 0;
-      const flensHoek = helling > 0 ? reeel(Math.atan(helling)) : "$";
-      switch (dims.kind) {
-        case "ISection":
-          return {
-            ...gemeen, vorm: "I-profiel",
-            profielDef: w.ent("IFCISHAPEPROFILEDEF",
-              ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
-              meter(dims.tw), meter(dims.tf), meter(dims.r),
-              helling > 0 ? meter(0.6 * dims.r) : "$", flensHoek),
-          };
-        case "Channel":
-          return {
-            ...gemeen, vorm: "U-profiel",
-            profielDef: w.ent("IFCUSHAPEPROFILEDEF",
-              ".AREA.", naam, "$", meter(dims.h), meter(dims.b),
-              meter(dims.tw), meter(dims.tf), meter(dims.r),
-              helling > 0 ? meter(dims.r / 2) : "$", flensHoek),
-          };
-        case "Shs":
-        case "Rhs":
-          return {
-            ...gemeen, vorm: "koker",
-            profielDef: w.ent("IFCRECTANGLEHOLLOWPROFILEDEF",
-              ".AREA.", naam, "$", meter(dims.b), meter(dims.h),
-              meter(dims.tw), "$", dims.r > 0 ? meter(dims.r) : "$"),
-          };
-        case "Chs":
-          return {
-            ...gemeen, vorm: "buis",
-            profielDef: w.ent("IFCCIRCLEHOLLOWPROFILEDEF",
-              ".AREA.", naam, "$", meter(dims.h / 2), meter(dims.tw)),
-          };
-      }
-      return { vorm: "onbekend" };
+      const p = parametrischProfiel(w, naam, dims, "$");
+      if (!p) return { vorm: "onbekend" };
+      return { hMm: dims.h, bMm: dims.b, bwMm: dims.b, props: dims.props, profielDef: p.profielDef, vorm: p.vorm };
     }
+    case "eigen":
+      return schrijfEigenDoorsnede(w, naam, beschrijving.doorsnede);
     case "onbekend":
       return { vorm: "onbekend" };
   }
+}
+
+/**
+ * Het parametrische IFC-profiel van een catalogusprofiel, met een
+ * plaatsing (`positie`: "$" voor het profiel zelf, een IfcAxis2Placement2D
+ * voor een deel van een samenstelling).
+ *
+ * Toelopende flens (INP 14 %, UNP 8 %): IFC4 kent daarvoor FlangeSlope
+ * (IfcPlaneAngleMeasure, hier in radialen) en de flenstipafronding
+ * FlangeEdgeRadius/EdgeRadius. De tipstraal staat niet in de database; hij
+ * volgt uit de walsnorm: 0,6·r bij DIN 1025-1, r/2 bij DIN 1026-1 —
+ * dezelfde verhoudingen als de tekening en de doorsnedemotor.
+ */
+function parametrischProfiel(
+  w: SpfSchrijver,
+  naam: string,
+  dims: SteelSectionDims,
+  positie: string,
+): { profielDef: number; vorm: string } | undefined {
+  const helling = dims.flensHelling ?? 0;
+  const flensHoek = helling > 0 ? reeel(Math.atan(helling)) : "$";
+  switch (dims.kind) {
+    case "ISection":
+      return {
+        vorm: "I-profiel",
+        profielDef: w.ent("IFCISHAPEPROFILEDEF",
+          ".AREA.", naam, positie, meter(dims.b), meter(dims.h),
+          meter(dims.tw), meter(dims.tf), meter(dims.r),
+          helling > 0 ? meter(0.6 * dims.r) : "$", flensHoek),
+      };
+    case "Channel":
+      return {
+        vorm: "U-profiel",
+        profielDef: w.ent("IFCUSHAPEPROFILEDEF",
+          ".AREA.", naam, positie, meter(dims.h), meter(dims.b),
+          meter(dims.tw), meter(dims.tf), meter(dims.r),
+          helling > 0 ? meter(dims.r / 2) : "$", flensHoek),
+      };
+    case "Shs":
+    case "Rhs":
+      return {
+        vorm: "koker",
+        profielDef: w.ent("IFCRECTANGLEHOLLOWPROFILEDEF",
+          ".AREA.", naam, positie, meter(dims.b), meter(dims.h),
+          meter(dims.tw), "$", dims.r > 0 ? meter(dims.r) : "$"),
+      };
+    case "Chs":
+      return {
+        vorm: "buis",
+        profielDef: w.ent("IFCCIRCLEHOLLOWPROFILEDEF",
+          ".AREA.", naam, positie, meter(dims.h / 2), meter(dims.tw)),
+      };
+  }
+  return undefined;
+}
+
+/**
+ * Een eigen doorsnede uit de profieleditor als IFC-profiel.
+ *
+ * Een SAMENSTELLING wordt een IfcCompositeProfileDef: elke lamel een
+ * IfcRectangleProfileDef op zijn eigen IfcAxis2Placement2D (plaats en hoek),
+ * elk catalogusdeel het parametrische profiel op zijn plaats. Het
+ * assenstelsel is dat van de profieleditor: y naar rechts, z omhoog, in m —
+ * dezelfde x/y van het IFC-profielvlak als bij de andere profielen. Een
+ * spiegeling van een catalogusdeel is niet uit te drukken in een plaatsing
+ * en staat in de Description.
+ *
+ * Een catalogusprofiel MET GATEN blijft het parametrische basisprofiel: de
+ * I-, U- en kokerprofielen van IFC4 kennen geen uitsparingen, en een
+ * willekeurig profiel met gaten zou de walsuitrondingen verliezen. De gaten
+ * staan in de Description en in de eigenschappenset.
+ *
+ * h, b en de doorsnedegrootheden komen uit de bewaarde motoruitkomst, zodat
+ * de eigenschappenset OpenFEM2D_Doorsnede dezelfde getallen draagt als de
+ * toetsing.
+ */
+function schrijfEigenDoorsnede(w: SpfSchrijver, naam: string, d: EigenDoorsnede): DoorsnedeInfo {
+  const e = d.eigenschappen;
+  const props = Number.isFinite(e.iz_mm4)
+    ? {
+        iz: e.iz_mm4, welY: e.wel_y_mm3, welZ: e.wel_z_mm3, wplY: e.wpl_y_mm3, wplZ: e.wpl_z_mm3,
+        avZ: e.av_z_mm2, it: e.it_mm4, iw: e.iw_mm6, iRadY: e.iy_radius_mm, iRadZ: e.iz_radius_mm,
+      }
+    : undefined;
+  const gemeen = {
+    hMm: Number.isFinite(e.h_mm) && e.h_mm > 0 ? e.h_mm : undefined,
+    bMm: Number.isFinite(e.b_mm) && e.b_mm > 0 ? e.b_mm : undefined,
+    bwMm: Number.isFinite(e.b_mm) && e.b_mm > 0 ? e.b_mm : undefined,
+    props,
+  };
+  const plaatsing = (yMm: number, zMm: number, hoekGraden: number): number => {
+    const punt = w.ent("IFCCARTESIANPOINT", `(${meter(yMm)},${meter(zMm)})`);
+    const rad = (hoekGraden * Math.PI) / 180;
+    // cos(90°) is 6e-17 in floating point; dat hoort als 0. in het bestand.
+    const netjes = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
+    const richting = w.ent("IFCDIRECTION", `(${reeel(netjes(Math.cos(rad)))},${reeel(netjes(Math.sin(rad)))})`);
+    return w.ent("IFCAXIS2PLACEMENT2D", ref(punt), ref(richting));
+  };
+
+  if (d.ontwerp.soort === "gat") {
+    const basis = d.ontwerp.basis;
+    const dims = profielAfmetingen(basis.naam);
+    const p = dims ? parametrischProfiel(w, naam, dims, "$") : undefined;
+    const gaten = d.ontwerp.gaten.length;
+    return {
+      ...gemeen,
+      vorm: p ? `${p.vorm} met ${gaten} gat${gaten === 1 ? "" : "en"} (niet in het profiel)` : "onbekend",
+      ...(p ? { profielDef: p.profielDef } : {}),
+    };
+  }
+
+  const delen: number[] = [];
+  let deelnamen: string[] = [];
+  for (const l of d.ontwerp.lamellen) {
+    delen.push(w.ent("IFCRECTANGLEPROFILEDEF",
+      ".AREA.", stepString(`lamel ${l.b_mm}x${l.t_mm}`), ref(plaatsing(l.y_mm, l.z_mm, l.alphaGraden)),
+      meter(l.b_mm), meter(l.t_mm)));
+    deelnamen.push(`lamel ${l.b_mm}x${l.t_mm}`);
+  }
+  for (const c of d.ontwerp.catalogusdelen) {
+    const dims = profielAfmetingen(c.profiel.naam);
+    if (!dims) continue;
+    const p = parametrischProfiel(w, stepString(c.profiel.naam), dims,
+      ref(plaatsing(c.y_mm, c.z_mm, c.alphaGraden)));
+    if (!p) continue;
+    delen.push(p.profielDef);
+    deelnamen.push(`${c.profiel.naam}${c.gespiegeld ? " (gespiegeld)" : ""}`);
+  }
+  if (delen.length === 0) return { ...gemeen, vorm: "onbekend" };
+  deelnamen = deelnamen.slice(0, 12);
+  const composiet = w.ent("IFCCOMPOSITEPROFILEDEF",
+    ".AREA.", naam, lijst(delen), stepString(deelnamen.join(", ")));
+  return { ...gemeen, vorm: `samenstelling van ${delen.length} delen`, profielDef: composiet };
 }
 
 /**

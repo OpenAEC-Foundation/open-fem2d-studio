@@ -707,5 +707,56 @@ log("\n[10] Stramien als IfcGrid en rekeninstellingen op het analysemodel");
   checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[11] Eigen doorsneden uit de profieleditor als IFC-profiel");
+{
+  const eds = await import("./src/lib/profieleditor/eigenDoorsnedenStore.ts");
+  const leegMotor = {
+    methode: "lamellen", wpl_bepaald: true, iw_bepaald: true, schuifmiddelpunt_bepaald: true,
+    it_onzekerheid: 0, a_gaten_mm2: 0, y_min_mm: 0, y_max_mm: 0, z_min_mm: 0, z_max_mm: 0, delen: [], meldingen: [],
+  };
+  const eigenschappen = {
+    area_mm2: 9700, iy_mm4: 2.6e8, iz_mm4: 2.0e7, wel_y_mm3: 1.3e6, wel_z_mm3: 2.0e5, wpl_y_mm3: 1.5e6, wpl_z_mm3: 3.0e5,
+    av_y_mm2: 6000, av_z_mm2: 3700, it_mm4: 5.0e5, iw_mm6: 7.4e11, iy_radius_mm: 164, iz_radius_mm: 45,
+    h_mm: 400, b_mm: 200, tw_mm: 10, tf_mm: 15, r_mm: 0,
+  };
+  eds.importeer([
+    { id: "ifc1", naam: "gelaste ligger ifc", eigenschappen, vorm: "GelasteIDubbelsymmetrisch", motor: leegMotor, berekendOp: "",
+      ontwerp: { soort: "samenstelling", celMeenemen: false,
+        catalogusdelen: [{ id: "u", profiel: { naam: "UNP200", soort: "ChannelSchuin", h: 200, b: 75, tw: 8.5, tf: 11.5, r: 11.5 }, y_mm: 250, z_mm: 200, alphaGraden: 0, gespiegeld: true }],
+        lamellen: [
+          { id: "of", b_mm: 200, t_mm: 15, y_mm: 0, z_mm: 7.5, alphaGraden: 0 },
+          { id: "lf", b_mm: 370, t_mm: 10, y_mm: 0, z_mm: 200, alphaGraden: 90 },
+          { id: "bf", b_mm: 200, t_mm: 15, y_mm: 0, z_mm: 392.5, alphaGraden: 0 },
+        ] } },
+    { id: "ifc2", naam: "IPE300 met gat ifc", eigenschappen: { ...eigenschappen, h_mm: 300, b_mm: 150 }, vorm: "GelasteIDubbelsymmetrisch", motor: leegMotor, berekendOp: "",
+      ontwerp: { soort: "gat", basis: { naam: "IPE300", soort: "ISection", h: 300, b: 150, tw: 7.1, tf: 10.7, r: 15 },
+        gaten: [{ id: "g", plaats: "lijf", vorm: "rond", y: 0, z: 150, d: 100 }] } },
+  ]);
+  const model = {
+    ...portaal,
+    beams: [
+      { id: 1, from: 1, to: 2, material: "S235", profile: "EIGEN:gelaste ligger ifc" },
+      { id: 2, from: 2, to: 3, material: "S235", profile: "EIGEN:IPE300 met gat ifc" },
+      { id: 3, from: 3, to: 4, material: "S235", profile: "EIGEN:bestaat niet" },
+    ],
+  };
+  const ifc = bouwIfcRekenmodel(model);
+  checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
+  checkEq("validatie: geen fouten", valideerIfc(ifc).fouten.length, 0);
+  checkEq("de samenstelling is één IfcCompositeProfileDef", tel(ifc, "IFCCOMPOSITEPROFILEDEF"), 1);
+  checkEq("drie lamellen als rechthoekprofielen", tel(ifc, "IFCRECTANGLEPROFILEDEF"), 3);
+  checkTrue("het lijf staat 90° gedraaid (richting (0,1))", /IFCDIRECTION\(\(0\.,1\.\)\)/.test(ifc));
+  checkTrue("de lamellen staan op hun plaats (bovenflens op z = 0,3925 m)", /IFCCARTESIANPOINT\(\(0\.,0\.3925\)\)/.test(ifc));
+  checkEq("het UNP-deel staat er als U-profiel mét plaatsing", (ifc.match(/IFCUSHAPEPROFILEDEF\(\.AREA\.,'UNP200',#\d+,/g) ?? []).length, 1);
+  checkTrue("de spiegeling staat in het label van de samenstelling", /IFCCOMPOSITEPROFILEDEF\(\.AREA\.,'EIGEN:gelaste ligger ifc',\([^)]*\),'[^']*UNP200 \(gespiegeld\)'\)/.test(ifc));
+  checkTrue("het profiel met gat blijft het IPE-basisprofiel, met de gaten in de vorm", /IFCISHAPEPROFILEDEF\(\.AREA\.,'EIGEN:IPE300 met gat ifc',\$,0\.15,0\.3/.test(ifc)
+    && /'Doorsnedevorm',\$,IFCLABEL\('I-profiel met 1 gat \(niet in het profiel\)'\)/.test(ifc));
+  checkTrue("h en b uit de motoruitkomst in OpenFEM2D_Doorsnede", /'Hoogte',\$,IFCPOSITIVELENGTHMEASURE\(0\.4\)/.test(ifc) && /'Breedte',\$,IFCPOSITIVELENGTHMEASURE\(0\.2\)/.test(ifc));
+  const beperkingen = verzamelIfcBeperkingen(model).join("\n");
+  checkTrue("alleen de onbekende eigen doorsnede staat in de beperkingen", /bestaat niet/.test(beperkingen) && !/gelaste ligger ifc/.test(beperkingen));
+  checkEq("determinisme", bouwIfcRekenmodel(model), ifc);
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald\n`);
 process.exit(failed === 0 ? 0 : 1);
