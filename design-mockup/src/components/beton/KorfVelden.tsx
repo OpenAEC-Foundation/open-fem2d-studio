@@ -64,8 +64,10 @@ import {
   grootsteStaafdiameterMm,
   maat,
   milieuklasseVanZijde,
+  zetKorfRij,
   zetZijde,
   zijdeVanKorf,
+  zijstaafRij,
 } from "./wapeningskorf";
 import "./beton.css";
 
@@ -176,11 +178,14 @@ export function Rij({
   label,
   rij,
   onChange,
+  toelichting,
 }: {
   id: string;
   label: string;
   rij: RebarRow;
   onChange: (rij: RebarRow) => void;
+  /** Korte uitleg onder het veld, voor een rij die anders leest dan hij is. */
+  toelichting?: ReactNode;
 }) {
   return (
     <div className="beton-rij">
@@ -215,6 +220,7 @@ export function Rij({
           ))}
         </select>
       </span>
+      {toelichting && <span className="beton-rij-toelichting">{toelichting}</span>}
     </div>
   );
 }
@@ -669,6 +675,42 @@ export default function KorfVelden({
         label="Onderwapening"
         rij={korf.bottom}
         onChange={(bottom) => zet({ bottom })}
+      />
+      {/*
+        DE DERDE RIJ: de staven langs de twee verticale zijkanten. Zij maken van
+        een balkkorf een KOLOMkorf, en zonder hen zijn §9.5.2(4) (in iedere hoek
+        een staaf) en §9.5.3(6) (geen staaf verder dan 150 mm van een opgesloten
+        staaf) niet te toetsen.
+
+        Het AANTAL IS PER ZIJKANT. De korf is links-rechts symmetrisch, dus er
+        liggen er tweemaal zoveel in de doorsnede; het label en de toelichting
+        zeggen dat allebei, want wie het als totaal leest voert de helft van de
+        wapening in. Bij A_s,max van §9.5.2(3) werkt dat naar de ONVEILIGE kant.
+
+        0 staven = geen zijstaven, en dan verdwijnt het veld ook echt uit de
+        korf (`zetKorfRij`) — een balk blijft dus een balk.
+      */}
+      <Rij
+        id={`${idPrefix}-opzij`}
+        label="Zijstaven per zijkant"
+        rij={zijstaafRij(korf)}
+        onChange={(sides) => onKorfChange(zetKorfRij(korf, "sides", sides))}
+        toelichting={
+          zijstaafRij(korf).count > 0 ? (
+            <>
+              {zijstaafRij(korf).count} per zijkant, dus{" "}
+              <strong>{2 * zijstaafRij(korf).count} in de doorsnede</strong>, tussen de
+              hoekstaven in. Zij worden gelijkmatig verdeeld tussen de onder- en de
+              bovenrij — een modelkeuze, geen normvoorschrift; §9.5.3(6) begrenst
+              alleen de afstand tot een opgesloten staaf op 150 mm.
+            </>
+          ) : (
+            <>
+              Alleen voor een kolom. 0 = geen zijstaven; de hoekstaven horen bij de
+              boven- en de onderrij en niet hier.
+            </>
+          )
+        }
       />
 
       {/*

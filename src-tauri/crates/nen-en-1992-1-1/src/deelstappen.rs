@@ -549,11 +549,24 @@ fn nuttige_hoogte_stap(g: &Betongegevens) -> Option<Deelstap> {
     if g.layers.len() > 1 {
         let druk = g.layers.iter().min_by(|a, b| g.diepte(a).total_cmp(&g.diepte(b)));
         if let Some(dl) = druk {
+            // Bij twee lagen is de andere laag DE andere; bij een kolomkorf met
+            // zijstaven zijn het er meer, en dan mag deze regel niet doen alsof
+            // er maar één tegenover staat. Genoemd wordt steeds de laag die het
+            // DICHTST bij de gedrukte rand ligt — die heet d₂.
+            let hoeveel = g.layers.len() - 1;
             notes.push(format!(
-                "De andere laag ({}) ligt op d₂ = {} mm van de gedrukte rand. Of hij werkelijk \
+                "{} ligt op d₂ = {} mm van de gedrukte rand. Of hij werkelijk \
                  gedrukt is, hangt af van de drukzonehoogte x en blijkt pas uit de \
                  rekverdeling verderop.",
-                dl.label,
+                if hoeveel == 1 {
+                    format!("De andere laag ({})", dl.label)
+                } else {
+                    format!(
+                        "Er staan nog {hoeveel} andere lagen tegenover; de laag die het dichtst \
+                         bij de gedrukte rand ligt ({})",
+                        dl.label
+                    )
+                },
                 nl(g.diepte(dl), 1)
             ));
         }

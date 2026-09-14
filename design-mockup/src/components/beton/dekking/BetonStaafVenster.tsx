@@ -58,7 +58,14 @@ import { getConcreteClasses, korvenUitStaven, roepKern, useCheckStore } from "..
 import { useDekkingslijnStore } from "../../../stores/dekkingslijnStore";
 import DoorsnedeTekening from "../DoorsnedeTekening";
 import RijBewerker from "../RijBewerker";
-import { STANDAARD_KORF, maat, nl, type Wapeningskorf } from "../wapeningskorf";
+import {
+  STANDAARD_KORF,
+  korfRij,
+  maat,
+  nl,
+  type KorfRij,
+  type Wapeningskorf,
+} from "../wapeningskorf";
 import AanzichtTekening, {
   type BeugelTekening,
   type BundelTekening,
@@ -526,10 +533,15 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   // — dezelfde plek als de staafeigenschappen. Een zone die ter plaatse van de
   // cursor iets anders voorschrijft, blijft dat doen: zones hebben hun eigen
   // editor hieronder, en de tekening volgt beide.
-  const [bewerkRij, setBewerkRij] = useState<"top" | "bottom" | null>(null);
-  const zetRij = (zijde: "top" | "bottom", rij: { count: number; diameter_mm: number }) => {
+  const [bewerkRij, setBewerkRij] = useState<KorfRij | null>(null);
+  const zetRij = (zijde: KorfRij, rij: { count: number; diameter_mm: number }) => {
     const cfg = { ...(beam.checkConfig ?? {}) };
-    cfg.betonKorf = { ...korf, [zijde]: rij };
+    // Zijstaven met 0 staven zijn geen zijstaven: dan gaat het veld WEG, zodat
+    // de korf weer precies is wat hij was voordat er zijstaven in kwamen.
+    cfg.betonKorf =
+      zijde === "sides" && rij.count <= 0
+        ? { ...korf, sides: undefined }
+        : { ...korf, [zijde]: rij };
     updateBeam?.(beam.id, { checkConfig: cfg });
   };
 
@@ -647,8 +659,15 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                 onRij={updateBeam ? (zijde) => setBewerkRij(zijde) : undefined}
                 onRijAantal={updateBeam
                   ? (zijde, delta) => zetRij(zijde, {
-                      ...korf[zijde],
-                      count: Math.min(40, Math.max(1, korf[zijde].count + delta)),
+                      ...korfRij(korf, zijde),
+                      // De zijstaven mogen wél op 0 uitkomen: dat is de manier
+                      // om ze met de "−" weer helemaal weg te halen. Bij de
+                      // boven- en onderrij is 1 de ondergrens — een rij
+                      // weghalen is een ander besluit dan er een staaf af.
+                      count: Math.min(
+                        40,
+                        Math.max(zijde === "sides" ? 0 : 1, korfRij(korf, zijde).count + delta),
+                      ),
                     })
                   : undefined}
                 onDubbelklik={updateBeam ? () => setKiezerOpen(true) : undefined}
@@ -656,7 +675,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
               {bewerkRij && (
                 <RijBewerker
                   zijde={bewerkRij}
-                  rij={korf[bewerkRij]}
+                  rij={korfRij(korf, bewerkRij)}
                   onOpslaan={(rij) => { zetRij(bewerkRij, rij); setBewerkRij(null); }}
                   onSluiten={() => setBewerkRij(null)}
                 />

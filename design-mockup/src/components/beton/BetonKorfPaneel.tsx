@@ -41,7 +41,10 @@ import {
   nl,
   nuttigeHoogteMm,
   rijBreedteMm,
+  heeftZijstaven,
   rijOppervlakMm2,
+  totaleWapeningMm2,
+  zijstavenOppervlakMm2,
   vrijeStaafafstandMm,
   type Wapeningskorf,
 } from "./wapeningskorf";
@@ -139,6 +142,13 @@ export default function BetonKorfPaneel({
 
   const aOnder = rijOppervlakMm2(korf.korf.bottom);
   const aBoven = rijOppervlakMm2(korf.korf.top);
+  // De zijstaven van een KOLOMkorf. A_s,opzij is die van BEIDE zijkanten
+  // samen, want het ingevoerde aantal geldt per zijkant. A_s,tot is wat
+  // §9.5.2(2) "de totale hoeveelheid langswapening" noemt — het getal waarmee
+  // A_s,min en A_s,max worden getoetst.
+  const heeftZij = heeftZijstaven(korf.korf);
+  const aZij = zijstavenOppervlakMm2(korf.korf);
+  const aTotaal = totaleWapeningMm2(korf.korf);
   const d = nuttigeHoogteMm(korf.korf, korf.doorsnede.h_mm);
   // Het wapeningspercentage van de trekwapening rekent met de breedte waarin
   // die wapening LIGT — bij een T-lijf dus b_w en niet de flensbreedte, anders
@@ -175,6 +185,14 @@ export default function BetonKorfPaneel({
             <dd>{nl(aOnder, 0)} mm² (ρ = {nl(rho, 2)} %)</dd>
             <dt>A<sub>s,boven</sub></dt>
             <dd>{nl(aBoven, 0)} mm²</dd>
+            {heeftZij && (
+              <>
+                <dt>A<sub>s,opzij</sub></dt>
+                <dd>{nl(aZij, 0)} mm² (beide zijkanten samen)</dd>
+                <dt>A<sub>s,tot</sub></dt>
+                <dd>{nl(aTotaal, 0)} mm²</dd>
+              </>
+            )}
             <dt>d</dt>
             <dd>{nl(d, 0)} mm</dd>
             {vrijOnder !== null && (

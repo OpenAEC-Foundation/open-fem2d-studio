@@ -528,6 +528,127 @@ log("6. Zonder de prop tekent hij de korf, zoals altijd");
     `x = ${xs.join(", ")} bij rect x=${rectX} w=${rectW}`);
 }
 
+// ══ De KOLOMKORF: staven langs de twee zijkanten ═════════════════════════
+//
+// Een kolom heeft staven langs alle vier de zijden. Zolang de tekening alleen
+// de boven- en de onderrij liet zien, tekende zij een andere kolom dan er
+// getoetst werd — en dat is precies het soort verschil waar deze test voor is.
+//
+// Handberekening voor 300 × 600 met dekking 30 en beugel Ø8.
+//   hoekstaven Ø20: asafstand 30 + 8 + 10 = 48 mm  → z = 48 en z = 600 − 48 = 552
+//                   in de breedte op x = 48, 150 en 252 (drie staven per rij)
+//   zijstaven Ø16:  inzet 30 + 8 + 8 = 46 mm       → x = 46 en x = 300 − 46 = 254
+//                   gelijkmatig tussen z = 48 en z = 552: 504/3 = 168 mm steek,
+//                   dus z = 216 en z = 384
+// In totaal 3 + 3 + 2 × 2 = 10 staven.
+log("7. Kolom 300 × 600 — 3Ø20 onder, 3Ø20 boven, 2Ø16 per zijkant");
+{
+  const korf = korfVan(rechthoek(300, 600), {
+    bottom: { count: 3, diameter_mm: 20 },
+    top: { count: 3, diameter_mm: 20 },
+    sides: { count: 2, diameter_mm: 16 },
+  });
+  checkEq("de kolomkorf is geldig", controleerKorf(korf), null);
+  const html = teken(korf);
+  const m = meetlint(html, 300, 600);
+  const staven = cirkelsVan(html)
+    .map((c) => ({ x: m.xMm(c.cx), z: m.zMm(c.cy), d: m.lengteMm(c.r) * 2, cx: c.cx, cy: c.cy, r: c.r }))
+    .sort((a, b) => a.z - b.z || a.x - b.x);
+  checkEq("tien staven getekend", staven.length, 10);
+
+  const hoek = staven.filter((st) => Math.abs(st.d - 20) < 0.5);
+  const zij = staven.filter((st) => Math.abs(st.d - 16) < 0.5);
+  checkEq("zes hoek- en tussenstaven Ø20", hoek.length, 6);
+  checkEq("vier zijstaven Ø16 (2 per zijkant)", zij.length, 4);
+
+  checkMm("onderrij op z = 48", hoek[0].z, 48);
+  checkMm("bovenrij op z = 552", hoek[5].z, 552);
+  for (const [i, verwacht] of [48, 150, 252].entries()) {
+    checkMm(`onderstaaf ${i + 1} op x = ${verwacht}`, hoek[i].x, verwacht);
+  }
+
+  // De zijstaven: twee hoogtes, elk met een staaf links en rechts.
+  checkMm("eerste zijstaafhoogte z = 216", zij[0].z, 216);
+  checkMm("tweede zijstaafhoogte z = 384", zij[2].z, 384);
+  checkMm("zijstaaf links op x = 46", zij[0].x, 46);
+  checkMm("zijstaaf rechts op x = 254", zij[1].x, 254);
+  checkMm("en op de tweede hoogte ook", zij[3].x, 254);
+  checkTrue(
+    "de zijstaven liggen links en rechts symmetrisch om de hartlijn",
+    Math.abs(zij[0].x + zij[1].x - 300) < 0.05,
+    `${zij[0].x} en ${zij[1].x}`,
+  );
+  checkTrue(
+    "en tussen de onder- en de bovenrij in, niet erbuiten",
+    zij.every((st) => st.z > 48 + 1e-6 && st.z < 552 - 1e-6),
+    zij.map((st) => st.z).join(", "),
+  );
+  // Gelijkmatig: de drie steken tussen onderrij, beide zijhoogtes en bovenrij
+  // zijn even groot.
+  const hoogtes = [48, zij[0].z, zij[2].z, 552];
+  const steken = hoogtes.slice(1).map((z, i) => z - hoogtes[i]);
+  checkTrue(
+    "de vier hoogtes staan op gelijke steek (3 × 168 mm)",
+    steken.every((st) => Math.abs(st - 168) < 0.05),
+    steken.join(", "),
+  );
+
+  for (const st of staven) {
+    checkTrue(
+      `staaf (${st.cx.toFixed(1)}, ${st.cy.toFixed(1)}) ligt met zijn hele diameter in het beton`,
+      inPolygoon([st.cx, st.cy], m.omtrek) &&
+        afstandTotRand([st.cx, st.cy], m.omtrek) >= st.r - 1e-9,
+    );
+  }
+  // En binnen de beugel: de zijstaven horen tegen de beugel aan te liggen en
+  // er niet buiten te steken.
+  const beugel = beugelVan(html);
+  const beugelLinks = m.xMm(beugel.x);
+  const beugelRechts = m.xMm(beugel.x + beugel.w);
+  checkTrue(
+    "de zijstaven liggen binnen de beugel",
+    zij.every((st) => st.x - st.d / 2 >= beugelLinks - 0.05 && st.x + st.d / 2 <= beugelRechts + 0.05),
+    `beugel van ${beugelLinks} tot ${beugelRechts}`,
+  );
+
+  const teksten = tekstenVan(html);
+  checkTrue("het zijstaaflabel 2Ø16 staat in de tekening", teksten.includes("2Ø16"), teksten.join(" | "));
+  checkTrue(
+    "met erbij dat het aantal PER ZIJDE geldt",
+    teksten.includes("per zijde"),
+    teksten.join(" | "),
+  );
+  checkTrue(
+    "en het aria-label noemt de zijstaven ook",
+    ariaVan(html).includes("2Ø16 per zijkant"),
+    ariaVan(html),
+  );
+}
+
+// ══ Zonder zijstaven verandert er niets ═══════════════════════════════════
+//
+// De harde eis: elke bestaande korf tekent zoals hij altijd tekende. Dat is
+// hierboven al per doorsnede vastgelegd; hier staat het nog eens als één
+// vergelijking, omdat het de reden is dat dit veld optioneel is.
+log("8. Zonder zijstaven is de tekening bit voor bit dezelfde");
+{
+  const zonder = korfVan(rechthoek(300, 600), {
+    bottom: { count: 3, diameter_mm: 20 },
+    top: { count: 3, diameter_mm: 20 },
+  });
+  const nul = korfVan(rechthoek(300, 600), {
+    bottom: { count: 3, diameter_mm: 20 },
+    top: { count: 3, diameter_mm: 20 },
+    sides: { count: 0, diameter_mm: 16 },
+  });
+  checkEq("geen `sides` en 0 zijstaven leveren dezelfde SVG", teken(zonder), teken(nul));
+  checkEq("zes staven, geen tiende", cirkelsVan(teken(zonder)).length, 6);
+  checkTrue(
+    "en geen \"per zijde\" in de tekening",
+    !tekstenVan(teken(zonder)).includes("per zijde"),
+  );
+}
+
 // ── Uitslag ───────────────────────────────────────────────────────────────
 log(`\n${failed === 0 ? "ALLE TESTS GESLAAGD" : "TESTS GEFAALD"} — ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

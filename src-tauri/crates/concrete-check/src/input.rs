@@ -226,7 +226,17 @@ impl ConcreteBeamCheckInput {
     /// de zijkanten is dat de dikste van de twee — beide rijen raken met hun
     /// buitenste staaf de zijkant.
     pub fn cover_requests(&self) -> Vec<ConcreteCoverRequest> {
-        let dikste = self.cage.top.diameter_mm.max(self.cage.bottom.diameter_mm);
+        // De ZIJKANT wordt geraakt door de buitenste staaf van de boven- én
+        // die van de onderrij, en — als de korf ze heeft — ook door de
+        // zijstaven; die liggen immers per definitie tegen die rand. c_min,b
+        // van tabel 4.2 is de diameter van de staaf die het oppervlak raakt,
+        // dus de dikste van de drie.
+        let dikste = self
+            .cage
+            .top
+            .diameter_mm
+            .max(self.cage.bottom.diameter_mm)
+            .max(self.cage.side_row().diameter_mm);
         CoverSide::ALL
             .iter()
             .filter_map(|&side| {

@@ -26,8 +26,9 @@ use approx::assert_relative_eq;
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nen_en_1992_1_1::factors::{f_cd, f_yd, gamma_c, gamma_s, ALPHA_CC};
 use nen_en_1992_1_1::kolom::{
-    as_max_9_5_2_mm2, as_min_9_5_2_mm2, factor_a, factor_b, grondslag_c, k_begrensd,
-    kolom_deelstappen, kolomdetailleringstoetsen, kolomslankheid, kruip_verwaarloosbaar_5_8_4_4,
+    as_max_9_5_2_mm2, as_min_9_5_2_mm2, factor_a, factor_b, grondslag_c, hoekstaven_9_5_2,
+    k_begrensd, kolom_deelstappen, kolomdetailleringstoetsen, kolomslankheid,
+    kruip_verwaarloosbaar_5_8_4_4, opgesloten_staven_9_5_3,
     l0_geschoord_5_15, l0_ongeschoord_5_16, l0_uit_knikbelasting_5_17, lambda_lim_5_13n,
     min_diameter_dwarswapening_9_5_3_mm, niet_getoetste_9_5_eisen, omega, phi_ef_5_19,
     s_cl_tmax_9_5_3_mm, slankheid_5_14, traagheidsstraal_rechthoek_mm, Beugelzone, Cgrondslag,
@@ -35,7 +36,7 @@ use nen_en_1992_1_1::kolom::{
     Schoring, ScltmaxTak,
 };
 use nen_en_1992_1_1::{concrete_class_by_name, reinforcement_grade_by_name, CheckStatus,
-    DesignSituation};
+    ConcreteSection, DesignSituation, RebarRow, ReinforcementCage};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Gedeelde uitgangspunten: één kolom die in bijna alle tests terugkomt.
@@ -577,7 +578,25 @@ fn punt() -> ForceStateSnapshot {
     }
 }
 
+/// De korf van de kolom 300 x 300: 2 O20 onder, 2 O20 boven, dekking 30 mm,
+/// beugel O8. Vier staven, alle vier in een hoek.
+///
+/// De asafstand is 30 + 8 + 20/2 = 48 mm, dus de vier harten liggen op
+/// (x, z) = (+/-102, 48) en (+/-102, 252) ten opzichte van de hartlijn en de
+/// onderrand.
+fn korf_4o20() -> ReinforcementCage {
+    ReinforcementCage {
+        cover_mm: 30.0,
+        stirrup_diameter_mm: 8.0,
+        stirrup_legs: Some(2),
+        top: RebarRow { count: 2, diameter_mm: 20.0 },
+        bottom: RebarRow { count: 2, diameter_mm: 20.0 },
+        ..ReinforcementCage::default()
+    }
+}
+
 fn detaillering() -> KolomdetailleringInvoer {
+    let doorsnede = ConcreteSection::new(H_MM, H_MM);
     KolomdetailleringInvoer {
         force_state: punt(),
         h_mm: H_MM,
@@ -588,10 +607,12 @@ fn detaillering() -> KolomdetailleringInvoer {
         phi_l_max_mm: 20.0,
         phi_dwars_mm: Some(8.0),
         s_dwars_mm: Some(250.0),
+        n_beugelbenen: Some(2),
         zone: Beugelzone::Regulier,
         overlapping: Overlappingssituatie::GeenLassen,
         n_ed_druk_kn: 900.0,
         f_yd_mpa: f_yd_b500(),
+        staafposities: korf_4o20().staafposities(&doorsnede),
     }
 }
 
@@ -696,11 +717,11 @@ fn min_diameter_dwarswapening_9_5_3_handberekening() {
     assert_relative_eq!(min_diameter_dwarswapening_9_5_3_mm(32.0), 8.0, max_relative = 1e-12);
 }
 
-/// De zeven §9.5-toetsen op een rij voor een kolom die aan alles voldoet.
+/// De negen §9.5-toetsen op een rij voor een kolom die aan alles voldoet.
 #[test]
-fn een_deugdelijke_kolom_haalt_alle_zeven_de_toetsen() {
+fn een_deugdelijke_kolom_haalt_alle_negen_de_toetsen() {
     let toetsen = kolomdetailleringstoetsen(&detaillering());
-    assert_eq!(toetsen.len(), 7);
+    assert_eq!(toetsen.len(), 9);
     for t in &toetsen {
         assert_eq!(t.status, CheckStatus::Ok, "toets {} ({}) faalt", t.id, t.title);
         assert!(!t.article.is_empty(), "toets {} mist een vindplaats", t.id);
@@ -759,10 +780,153 @@ fn ontbrekende_beugelgegevens_leveren_geen_stilzwijgend_groen_vinkje() {
 #[test]
 fn de_niet_getoetste_eisen_worden_met_reden_opgesomd() {
     let lijst = niet_getoetste_9_5_eisen();
-    assert_eq!(lijst.len(), 5);
+    assert_eq!(lijst.len(), 3);
     for eis in &lijst {
         assert!(eis.starts_with("§9.5"), "elke regel begint met het artikel: {eis}");
     }
-    assert!(lijst.iter().any(|e| e.contains("9.5.2(4)")));
-    assert!(lijst.iter().any(|e| e.contains("9.5.3(6)")));
+    // §9.5.2(4) en §9.5.3(6) staan er NIET meer in: die worden sinds de korf
+    // staven per zijde kent werkelijk getoetst. Zou een van beide hier
+    // terugkomen, dan zegt het rapport twee dingen tegelijk — dat de eis niet
+    // is nagekeken, terwijl er een uitkomst in de tabel staat.
+    for artikel in ["9.5.2(4)", "9.5.3(6)"] {
+        assert!(
+            !lijst.iter().any(|e| e.contains(artikel)),
+            "{artikel} wordt getoetst en hoort niet in de lijst van niet-getoetste eisen"
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §9.5.2(4) en §9.5.3(6) — de twee eisen die de LIGGING van de staven vragen
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Een kolomdetaillering met een eigen korf en doorsnede, zodat de twee
+/// nieuwe toetsen op werkelijk verschillende korven zijn na te rekenen.
+fn detaillering_met(korf: &ReinforcementCage, b_mm: f64, h_mm: f64) -> KolomdetailleringInvoer {
+    let doorsnede = ConcreteSection::new(b_mm, h_mm);
+    KolomdetailleringInvoer {
+        h_mm,
+        b_mm,
+        a_c_mm2: b_mm * h_mm,
+        a_s_mm2: korf.a_s_total_mm2(),
+        phi_dwars_mm: if korf.stirrup_diameter_mm > 0.0 {
+            Some(korf.stirrup_diameter_mm)
+        } else {
+            None
+        },
+        n_beugelbenen: korf.stirrup_legs,
+        staafposities: korf.staafposities(&doorsnede),
+        ..detaillering()
+    }
+}
+
+/// §9.5.2(4) — "ten minste één staaf in iedere hoek". Met de hand: een korf
+/// met twee staven onder en twee boven bezet alle vier de hoeken; een korf met
+/// één staaf onder en één boven bezet er geen enkele, want een enkele staaf
+/// staat in het MIDDEN van zijn rij.
+#[test]
+fn hoekstaven_9_5_2_telt_de_vier_hoeken_en_niet_de_staven() {
+    let goed = hoekstaven_9_5_2(&detaillering_met(&korf_4o20(), H_MM, H_MM));
+    assert_eq!(goed.status, CheckStatus::Ok);
+    assert_relative_eq!(goed.value, 4.0, max_relative = 1e-12);
+
+    let midden = ReinforcementCage {
+        top: RebarRow { count: 1, diameter_mm: 20.0 },
+        bottom: RebarRow { count: 1, diameter_mm: 20.0 },
+        ..korf_4o20()
+    };
+    let fout = hoekstaven_9_5_2(&detaillering_met(&midden, H_MM, H_MM));
+    assert_eq!(fout.status, CheckStatus::NotOk, "twee staven op de hartlijn bezetten geen hoek");
+    assert_relative_eq!(fout.value, 0.0, max_relative = 1e-12);
+    // uc bij een minimumeis is vereist/aanwezig; met nul hoekstaven is dat
+    // oneindig, en dat hoort een afkeuring te zijn en geen deling door nul.
+    assert!(fout.uc.as_ref().unwrap().uc.is_infinite());
+}
+
+/// Zijstaven zijn géén hoekstaven: zij liggen per definitie tussen de hoeken
+/// in. Een korf met zijstaven mag dus niet meer hoeken gaan tellen.
+#[test]
+fn zijstaven_tellen_niet_als_hoekstaaf() {
+    let met_zij = ReinforcementCage {
+        sides: Some(RebarRow { count: 2, diameter_mm: 16.0 }),
+        ..korf_4o20()
+    };
+    let toets = hoekstaven_9_5_2(&detaillering_met(&met_zij, H_MM, 600.0));
+    assert_eq!(toets.status, CheckStatus::Ok);
+    assert_relative_eq!(toets.value, 4.0, max_relative = 1e-12);
+    // 2 onder + 2 boven + 2 x 2 opzij = 8 langsstaven, waarvan 4 in een hoek.
+    let n_langs = toets.variables.iter().find(|v| v.symbol == "n_langs").unwrap().value;
+    assert_relative_eq!(n_langs, 8.0, max_relative = 1e-12);
+}
+
+/// §9.5.3(6), tweede zin — 150 mm, net wel en net niet.
+///
+/// Handberekening. Dekking 30 mm, beugel Ø8, staven Ø20: de asafstand tot elke
+/// rand is 30 + 8 + 10 = 48 mm. Met drie staven in een rij ligt de middelste op
+/// de hartlijn en liggen de buitenste op b/2 − 48 daarvandaan. Die afstand is
+/// precies wat de norm begrenst:
+///
+///   b = 396 mm → 396/2 − 48 = 150,0 mm  → uc = 150/150 = 1,00 → voldoet
+///   b = 400 mm → 400/2 − 48 = 152,0 mm  → uc = 152/150 = 1,0133 → voldoet niet
+#[test]
+fn de_150_mm_regel_van_9_5_3_6_net_wel_en_net_niet() {
+    let drie = ReinforcementCage {
+        top: RebarRow { count: 3, diameter_mm: 20.0 },
+        bottom: RebarRow { count: 3, diameter_mm: 20.0 },
+        ..korf_4o20()
+    };
+    let net_wel = opgesloten_staven_9_5_3(&detaillering_met(&drie, 396.0, 300.0));
+    assert_relative_eq!(net_wel.value, 150.0, max_relative = 1e-9);
+    assert_eq!(net_wel.status, CheckStatus::Ok);
+    assert_relative_eq!(net_wel.uc.as_ref().unwrap().uc, 1.0, max_relative = 1e-9);
+
+    let net_niet = opgesloten_staven_9_5_3(&detaillering_met(&drie, 400.0, 300.0));
+    assert_relative_eq!(net_niet.value, 152.0, max_relative = 1e-9);
+    assert_eq!(net_niet.status, CheckStatus::NotOk);
+    assert_relative_eq!(net_niet.uc.as_ref().unwrap().uc, 152.0 / 150.0, max_relative = 1e-9);
+}
+
+/// §9.5.3(6), eerste zin — zonder beugel wordt geen enkele hoekstaaf op zijn
+/// plaats gehouden. Dat is een AFKEURING en geen ontbrekend gegeven: de
+/// beugeldiameter 0 zegt dat er niets ligt.
+#[test]
+fn zonder_beugel_is_geen_staaf_opgesloten() {
+    let kaal = ReinforcementCage { stirrup_diameter_mm: 0.0, stirrup_legs: None, ..korf_4o20() };
+    let toets = opgesloten_staven_9_5_3(&detaillering_met(&kaal, H_MM, H_MM));
+    assert_eq!(toets.status, CheckStatus::NotOk);
+    assert!(toets.notes.iter().any(|n| n.contains("AFGEKEURD op de eerste zin")));
+}
+
+/// Meer dan twee beugelbenen: er zijn tussenbeugels of haarspelden, en hun
+/// ligging is geen invoer. Dan geen oordeel — maar wél de gemeten afstand,
+/// zodat de lezer ziet waar het om gaat.
+#[test]
+fn meer_dan_twee_beugelbenen_levert_geen_oordeel_maar_wel_de_maat() {
+    let breed = ReinforcementCage {
+        stirrup_legs: Some(4),
+        top: RebarRow { count: 3, diameter_mm: 20.0 },
+        bottom: RebarRow { count: 3, diameter_mm: 20.0 },
+        ..korf_4o20()
+    };
+    let toets = opgesloten_staven_9_5_3(&detaillering_met(&breed, 400.0, 300.0));
+    assert_eq!(toets.status, CheckStatus::NotApplicable);
+    assert!(toets.uc.is_none(), "zonder oordeel hoort geen unity check");
+    assert_relative_eq!(toets.value, 152.0, max_relative = 1e-9);
+    assert!(toets.notes.iter().any(|n| n.contains("Niet te toetsen")));
+}
+
+/// Zonder bekende staafplaatsen: geen groen vinkje, maar `NotApplicable` met
+/// de reden — dezelfde afspraak als bij de ontbrekende beugelgegevens.
+#[test]
+fn zonder_bekende_staafplaatsen_geen_stilzwijgend_groen_vinkje() {
+    let inv = KolomdetailleringInvoer { staafposities: Vec::new(), ..detaillering() };
+    for toets in [hoekstaven_9_5_2(&inv), opgesloten_staven_9_5_3(&inv)] {
+        assert_eq!(toets.status, CheckStatus::NotApplicable, "toets {}", toets.id);
+        assert!(toets.uc.is_none(), "toets {} hoort geen unity check te hebben", toets.id);
+        assert!(
+            toets.notes.iter().any(|n| n.contains("Niet te toetsen")),
+            "toets {} moet de reden noemen",
+            toets.id
+        );
+    }
 }

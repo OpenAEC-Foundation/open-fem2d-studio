@@ -146,6 +146,7 @@ use ts_rs::TS;
 use mechanics::ForceStateSnapshot;
 
 use crate::deelstappen::{lx, nl, nv, stap};
+use crate::section::Staafpositie;
 use crate::{CheckStatus, Deelstap, NamedValue, ResistanceCalc, UnityCheck};
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1645,30 +1646,31 @@ pub fn valt_onder_9_5(h_mm: f64, b_mm: f64) -> bool {
 
 /// Alles wat §9.5 van een kolom moet weten.
 ///
-/// # Wat het korfmodel hiervoor mist
+/// # De staven langs de vier zijden
 ///
-/// [`crate::ReinforcementCage`] kent één BOVENrij en één ONDERrij. Een kolom
-/// heeft staven langs alle vier de zijden, en drie van de regels hieronder
-/// hangen daaraan:
+/// [`crate::ReinforcementCage`] kende lange tijd alleen een BOVENrij en een
+/// ONDERrij. Een kolom heeft staven langs alle vier de zijden, en drie van de
+/// regels hieronder hangen daaraan. Met
+/// [`crate::ReinforcementCage::sides`] en
+/// [`crate::ReinforcementCage::staafposities`] zijn die drie nu wél te doen:
 ///
 /// * **§9.5.2(4)** — "ten minste één staaf in iedere hoek" bij een veelhoekige
-///   doorsnede, en ten minste vier staven bij een ronde. Met twee rijen is niet
-///   te zien of de hoeken bezet zijn; deze eis is daarom NIET gebouwd.
+///   doorsnede, en ten minste vier staven bij een ronde. Zie
+///   [`hoekstaven_9_5_2`]; hij leest [`Self::staafposities`].
 /// * **§9.5.3(6)** — "Elke langsstaaf of staafbundel in een hoek behoort op zijn
 ///   plaats te zijn gehouden door dwarswapening. Geen enkele staaf binnen een
 ///   drukzone behoort verder dan 150 mm vanaf een opgesloten staaf te liggen."
-///   Dat vraagt de LIGGING van elke staaf in het vlak van de doorsnede, niet
-///   alleen zijn hoogte. Ook niet gebouwd.
-/// * **A_s** in A_s,min en A_s,max is de TOTALE langswapening. Met twee rijen is
-///   dat te vullen, maar alleen als de zijstaven bij een van beide rijen worden
-///   opgeteld — en dan klopt hun ligging niet meer voor de buigtoets. Daarom
-///   komt A_s hier als apart getal binnen en wordt de korf niet aangesproken.
+///   Zie [`opgesloten_staven_9_5_3`].
+/// * **A_s** in A_s,min en A_s,max is de TOTALE langswapening — §9.5.2(2)
+///   spreekt van "de totale hoeveelheid langswapening" en (3) van "de
+///   oppervlakte van de doorsnede van de langswapening". Dat is nu
+///   [`crate::ReinforcementCage::a_s_total_mm2`], inclusief de zijstaven.
+///   Zolang die niet meetelden, kon A_s,max ten onrechte groen staan; die
+///   afwijking is hiermee weg.
 ///
-/// Wat een kolomkorf nodig heeft, is een derde begrip naast "boven" en "onder":
-/// een rij staven per ZIJDE met hun onderlinge afstand, plus het aantal staven
-/// per zijde. Zolang dat er niet is, zijn §9.5.2(4) en §9.5.3(6) niet te
-/// toetsen en moet dat met zoveel woorden in het rapport staan — niet als
-/// stilzwijgend groen vinkje.
+/// A_s komt nog steeds als apart getal binnen en niet als korf: deze module
+/// kent de doorsnede niet en zou dus toch niet uit de korf kunnen aflezen wat
+/// er ligt. De AANROEPER vult hem, en die heeft de korf wel.
 #[derive(Clone, Debug)]
 pub struct KolomdetailleringInvoer {
     /// Het maatgevende krachtenpunt, alleen om de toets in het rapport te
@@ -1691,6 +1693,13 @@ pub struct KolomdetailleringInvoer {
     /// Aanwezige hart-op-hartafstand van de dwarswapening, mm. `None` = niet
     /// opgegeven.
     pub s_dwars_mm: Option<f64>,
+    /// Aantal beugelbenen n dat één doorsnede kruist. `None` = niet opgegeven.
+    ///
+    /// Alleen §9.5.3(6) leest dit. Bij één gesloten beugel (twee benen) staat
+    /// vast wélke staven zijn opgesloten: de vier in de beugelhoeken. Bij méér
+    /// benen sluiten die extra benen ook staven op, maar wáár zij zitten is in
+    /// dit model geen invoer, en dan wordt er niet gegokt.
+    pub n_beugelbenen: Option<u32>,
     /// De zone waarin de beschouwde doorsnede ligt (§9.5.3(4)).
     pub zone: Beugelzone,
     /// Overlappingssituatie voor A_s,max (NB bij §9.5.2(3)).
@@ -1700,6 +1709,14 @@ pub struct KolomdetailleringInvoer {
     pub n_ed_druk_kn: f64,
     /// f_yd, N/mm².
     pub f_yd_mpa: f64,
+    /// De ligging van elke langsstaaf in het vlak van de doorsnede, uit
+    /// [`crate::ReinforcementCage::staafposities`].
+    ///
+    /// **LEEG betekent NIET BEKEND, niet "er liggen geen staven".** §9.5.2(4)
+    /// en §9.5.3(6) leveren dan [`CheckStatus::NotApplicable`] met de reden
+    /// erbij — nooit een stilzwijgend groen vinkje. Zo blijft een aanroeper
+    /// die de posities (nog) niet kan geven eerlijk in het rapport staan.
+    pub staafposities: Vec<Staafpositie>,
 }
 
 // ── Hulpstukken voor de detailleringstoetsen ────────────────────────────────
@@ -1896,9 +1913,10 @@ pub fn as_min_9_5_2(inv: &KolomdetailleringInvoer) -> ResistanceCalc {
             "De NB heeft de EN-aanbeveling doorgehaald en met dezelfde inhoud als eis teruggezet. \
              N_Ed is hier de aangrijpende normaalDRUKkracht; de norm schrijft dat woordelijk zo."
                 .to_string(),
-            "A_s is de TOTALE langswapening van de doorsnede, dus alle vier de zijden. Het \
-             korfmodel van deze crate kent alleen een boven- en een onderrij; A_s komt daarom als \
-             apart getal binnen en is niet uit de korf afgeleid."
+            "A_s is de TOTALE langswapening van de doorsnede, dus alle vier de zijden — §9.5.2(2) \
+             spreekt letterlijk van \"de totale hoeveelheid langswapening\". De aanroeper vult hem \
+             uit de korf, met de zijstaven erbij; deze module kent de doorsnede niet en kan hem \
+             dus niet zelf aflezen."
                 .to_string(),
         ],
     )
@@ -2096,15 +2114,291 @@ pub fn s_cl_tmax_9_5_3(inv: &KolomdetailleringInvoer) -> ResistanceCalc {
     }
 }
 
+/// §9.5.2(4) — het aantal staven dat een hoek van de doorsnede bezet.
+///
+/// "Voor kolommen met een veelhoekige dwarsdoorsnede behoort ten minste één
+/// staaf in iedere hoek te zijn geplaatst." Een rechthoek heeft er vier. De
+/// tweede zin van het lid ("Het aantal langsstaven in cirkelvormige kolommen
+/// behoort niet kleiner te zijn dan vier") komt op hetzelfde getal uit; ronde
+/// kolommen kent dit model niet, en dat staat in de kanttekening.
+pub const MIN_HOEKSTAVEN_9_5_2: u32 = 4;
+
+/// §9.5.3(6) — de grootste afstand van een staaf tot een opgesloten staaf, mm.
+///
+/// "Geen enkele staaf binnen een drukzone behoort verder dan 150 mm vanaf een
+/// opgesloten staaf te liggen." Zwarte EN-tekst; de nationale bijlage wijzigt
+/// §9.5.3(6) niet.
+pub const MAX_AFSTAND_TOT_OPGESLOTEN_STAAF_MM: f64 = 150.0;
+
+/// §9.5.2(4) — in iedere hoek een staaf.
+///
+/// Telt de staven die volgens [`crate::ReinforcementCage::staafposities`] een
+/// hoek bezetten en houdt dat aantal tegen de vier hoeken van een rechthoek.
+/// Een rij met maar ÉÉN staaf bezet geen hoek: die staat in het midden. Zo
+/// valt een korf met 1Ø20 onder en 1Ø20 boven terecht af, terwijl hij op A_s
+/// misschien ruim voldoet.
+pub fn hoekstaven_9_5_2(inv: &KolomdetailleringInvoer) -> ResistanceCalc {
+    let artikel = "art. 9.5.2(4)";
+    let formule = r"n_{\text{hoek}} \ \ge\ 4";
+    let mut notes = vec![
+        "\"Voor kolommen met een veelhoekige dwarsdoorsnede behoort ten minste één staaf in \
+         iedere hoek te zijn geplaatst. Het aantal langsstaven in cirkelvormige kolommen behoort \
+         niet kleiner te zijn dan vier.\" Zwarte EN-tekst; de nationale bijlage wijzigt §9.5.2(4) \
+         niet."
+            .to_string(),
+        "Als hoekstaaf telt de buitenste staaf van de onder- en van de bovenrij. Een rij met één \
+         staaf bezet geen hoek — die staat in het midden van de rij — en de zijstaven liggen \
+         tussen de hoeken in. Een rechthoek heeft dus vier hoekstaven zodra de onder- én de \
+         bovenrij elk ten minste twee staven tellen."
+            .to_string(),
+        "Ronde kolommen kent dit doorsnedemodel niet; de tweede zin van het lid komt op hetzelfde \
+         getal vier uit, dus de toets is voor beide vormen dezelfde grens."
+            .to_string(),
+    ];
+    if inv.staafposities.is_empty() {
+        notes.push(
+            "Niet te toetsen: de ligging van de langsstaven in het vlak van de doorsnede is niet \
+             meegegeven. Er wordt niets aangenomen — een korf zonder bekende staafplaatsen mag \
+             hier geen groen vinkje krijgen."
+                .to_string(),
+        );
+        return eis(
+            "9.5.2_hoekstaven",
+            "Een staaf in iedere hoek",
+            artikel,
+            formule,
+            inv.force_state,
+            Vec::new(),
+            f64::NAN,
+            "staven",
+            None,
+            CheckStatus::NotApplicable,
+            notes,
+        );
+    }
+    let hoekstaven = inv.staafposities.iter().filter(|s| s.in_hoek).count() as u32;
+    let (uc, status) =
+        uc_minimum(hoekstaven as f64, MIN_HOEKSTAVEN_9_5_2 as f64, r"n_{\text{hoek,eis}} / n_{\text{hoek}}");
+    notes.push(format!(
+        "Van de {} langsstaven in de doorsnede bezetten er {hoekstaven} een hoek.",
+        inv.staafposities.len()
+    ));
+    eis(
+        "9.5.2_hoekstaven",
+        "Een staaf in iedere hoek",
+        artikel,
+        formule,
+        inv.force_state,
+        vec![
+            nv("n_hoek", hoekstaven as f64, "staven"),
+            nv("n_hoek,eis", MIN_HOEKSTAVEN_9_5_2 as f64, "staven"),
+            nv("n_langs", inv.staafposities.len() as f64, "staven"),
+        ],
+        hoekstaven as f64,
+        "staven",
+        Some(uc),
+        status,
+        notes,
+    )
+}
+
+/// §9.5.3(6) — elke hoekstaaf opgesloten, en geen staaf verder dan 150 mm van
+/// een opgesloten staaf.
+///
+/// Het lid heeft twee zinnen en ze worden allebei getoetst.
+///
+/// 1. "Elke langsstaaf of staafbundel in een hoek behoort op zijn plaats te
+///    zijn gehouden door dwarswapening." Zonder beugel is er niets dat een
+///    hoekstaaf op zijn plaats houdt; dan faalt de eis, en niet omdat er iets
+///    ontbreekt maar omdat er iets NIET LIGT.
+/// 2. "Geen enkele staaf binnen een drukzone behoort verder dan 150 mm vanaf
+///    een opgesloten staaf te liggen." Voor elke staaf wordt de kleinste
+///    hart-op-hartafstand tot een opgesloten staaf bepaald; de grootste
+///    daarvan is de maatgevende maat.
+///
+/// # Wélke staven als opgesloten gelden
+///
+/// Bij ÉÉN gesloten beugel — twee benen — staat dat vast: de vier staven in de
+/// beugelhoeken. Meer benen (een tweede beugel, een haarspeld) sluiten ook
+/// staven op, maar wáár die benen zitten is in dit model geen invoer:
+/// [`Self::n_beugelbenen`] is een AANTAL en geen ligging. Dan wordt de toets
+/// niet gedaan alsof die benen er niet zijn — dat zou een kolom afkeuren die
+/// juist netjes is gedetailleerd — maar levert hij
+/// [`CheckStatus::NotApplicable`] met de gemeten afstand erbij, zodat de lezer
+/// ziet hoe ver het zonder die benen zou zijn. Niet groen, niet rood, en met
+/// de reden erbij.
+///
+/// # "Binnen een drukzone" geldt hier voor ALLE langsstaven
+///
+/// Welk deel van de doorsnede gedrukt is, hangt van het belastinggeval af en
+/// verschilt per combinatie; de eis op alle staven leggen kan nooit te ruim
+/// zijn.
+pub fn opgesloten_staven_9_5_3(inv: &KolomdetailleringInvoer) -> ResistanceCalc {
+    let artikel = "art. 9.5.3(6)";
+    let formule = r"a_{\max} \ \le\ 150\ \text{mm}";
+    let id = "9.5.3_opgesloten_staven";
+    let titel = "Opgesloten staven en de 150 mm-regel";
+    let mut notes = vec![
+        "\"Elke langsstaaf of staafbundel in een hoek behoort op zijn plaats te zijn gehouden \
+         door dwarswapening. Geen enkele staaf binnen een drukzone behoort verder dan 150 mm \
+         vanaf een opgesloten staaf te liggen.\" Zwarte EN-tekst; de nationale bijlage wijzigt \
+         §9.5.3(6) niet."
+            .to_string(),
+        "Als OPGESLOTEN gelden hier de vier staven in de beugelhoeken. Bij één gesloten beugel — \
+         twee benen — zijn dat er precies vier en is de toets exact."
+            .to_string(),
+        "\"Binnen een drukzone\" is hier op ALLE langsstaven toegepast. Welk deel van de \
+         doorsnede gedrukt is, verschilt per belastingcombinatie; de eis op alle staven leggen \
+         kan nooit te ruim zijn."
+            .to_string(),
+    ];
+    if inv.staafposities.is_empty() {
+        notes.push(
+            "Niet te toetsen: de ligging van de langsstaven in het vlak van de doorsnede is niet \
+             meegegeven. Zonder die plaatsen is er geen afstand te meten, en er wordt niets \
+             aangenomen."
+                .to_string(),
+        );
+        return eis(
+            id,
+            titel,
+            artikel,
+            formule,
+            inv.force_state,
+            Vec::new(),
+            f64::NAN,
+            "mm",
+            None,
+            CheckStatus::NotApplicable,
+            notes,
+        );
+    }
+    // De eerste zin. Geen beugel = geen dwarswapening die een hoekstaaf op zijn
+    // plaats houdt. Dat is geen ontbrekend gegeven maar een afkeuring: de
+    // beugeldiameter 0 zegt dat er niets ligt.
+    let beugel = inv.phi_dwars_mm.filter(|d| *d > 0.0);
+    if beugel.is_none() {
+        notes.push(
+            "AFGEKEURD op de eerste zin: er is geen dwarswapening. Zonder beugel wordt geen enkele \
+             hoekstaaf op zijn plaats gehouden, en dan is de tweede zin niet eens aan de orde — er \
+             is geen opgesloten staaf om vanaf te meten."
+                .to_string(),
+        );
+        return eis(
+            id,
+            titel,
+            artikel,
+            formule,
+            inv.force_state,
+            vec![nv("n_langs", inv.staafposities.len() as f64, "staven")],
+            f64::INFINITY,
+            "mm",
+            None,
+            CheckStatus::NotOk,
+            notes,
+        );
+    }
+    let opgesloten: Vec<&Staafpositie> = inv.staafposities.iter().filter(|s| s.in_hoek).collect();
+    if opgesloten.is_empty() {
+        notes.push(
+            "AFGEKEURD op de eerste zin: er staat in geen enkele hoek een staaf, dus er is geen \
+             opgesloten staaf. Zie ook §9.5.2(4) hierboven."
+                .to_string(),
+        );
+        return eis(
+            id,
+            titel,
+            artikel,
+            formule,
+            inv.force_state,
+            vec![nv("n_langs", inv.staafposities.len() as f64, "staven")],
+            f64::INFINITY,
+            "mm",
+            None,
+            CheckStatus::NotOk,
+            notes,
+        );
+    }
+    // De tweede zin: per staaf de kleinste afstand tot een opgesloten staaf, en
+    // daarvan de grootste. Een opgesloten staaf zelf levert 0 — hij ís
+    // opgesloten.
+    let a_max = inv
+        .staafposities
+        .iter()
+        .map(|s| {
+            opgesloten.iter().map(|h| s.afstand_mm(h)).fold(f64::INFINITY, f64::min)
+        })
+        .fold(0.0_f64, f64::max);
+    notes.push(format!(
+        "Er staan {} langsstaven in de doorsnede, waarvan {} in een hoek en dus opgesloten door \
+         de beugel Ø{} mm. De staaf die het verst van een opgesloten staaf ligt, ligt er {} mm \
+         vandaan.",
+        inv.staafposities.len(),
+        opgesloten.len(),
+        g(beugel.expect("hierboven gecontroleerd")),
+        g(a_max)
+    ));
+    let vars = vec![
+        nv("a_max", a_max, "mm"),
+        nv("a_eis", MAX_AFSTAND_TOT_OPGESLOTEN_STAAF_MM, "mm"),
+        nv("n_langs", inv.staafposities.len() as f64, "staven"),
+        nv("n_hoek", opgesloten.len() as f64, "staven"),
+    ];
+    // Meer dan twee benen: er zijn tussenbeugels of haarspelden, en die sluiten
+    // staven op die deze toets niet kan zien. Rood zetten zou een net
+    // gedetailleerde kolom afkeuren, groen zetten zou een niet-gedetailleerde
+    // goedkeuren. Dus geen van beide, met de gemeten afstand erbij.
+    if inv.n_beugelbenen.is_some_and(|n| n > 2) {
+        notes.push(format!(
+            "Niet te toetsen: er zijn {} beugelbenen opgegeven. Alles boven twee betekent een \
+             tussenbeugel of een haarspeld, en die sluit staven op die hier niet als opgesloten \
+             gelden — hun ligging is in dit model geen invoer. De {} mm hierboven is dus de \
+             afstand ZONDER die extra benen; met de hand na te gaan.",
+            inv.n_beugelbenen.unwrap_or_default(),
+            g(a_max)
+        ));
+        return eis(
+            id,
+            titel,
+            artikel,
+            formule,
+            inv.force_state,
+            vars,
+            a_max,
+            "mm",
+            None,
+            CheckStatus::NotApplicable,
+            notes,
+        );
+    }
+    let (uc, status) = uc_maximum(a_max, MAX_AFSTAND_TOT_OPGESLOTEN_STAAF_MM, r"a_{\max} / 150");
+    eis(
+        id,
+        titel,
+        artikel,
+        formule,
+        inv.force_state,
+        vars,
+        a_max,
+        "mm",
+        Some(uc),
+        status,
+        notes,
+    )
+}
+
 /// Alle §9.5-toetsen die met het huidige model te maken zijn, op een rij.
 ///
-/// **Niet compleet, en dat staat er ook bij.** §9.5.2(4) (een staaf in iedere
-/// hoek, minimaal vier bij een ronde kolom) en §9.5.3(6) (elke hoekstaaf
-/// opgesloten, geen staaf verder dan 150 mm van een opgesloten staaf) zijn niet
-/// te toetsen zolang het korfmodel geen staven per zijde kent. Zie de doc bij
-/// [`KolomdetailleringInvoer`]. §9.5.3(2) ("de dwarswapening behoort voldoende
-/// te zijn verankerd") en §9.5.3(5) (knikken in de langsstaven) zijn
-/// beoordelingen en geen rekenregels.
+/// **Nog steeds niet compleet, en dat staat er ook bij.** §9.5.3(2) ("de
+/// dwarswapening behoort voldoende te zijn verankerd") en §9.5.3(5) (knikken in
+/// de langsstaven) zijn beoordelingen en geen rekenregels; §9.5.3(4)ii eist
+/// naast de gereduceerde beugelafstand ook een AANTAL beugels, en dat is niet
+/// getoetst. Zie [`niet_getoetste_9_5_eisen`].
+///
+/// §9.5.2(4) en §9.5.3(6) zitten er sinds de korf staven per zijde kent wél
+/// bij. Zij leveren [`CheckStatus::NotApplicable`] zodra
+/// [`KolomdetailleringInvoer::staafposities`] leeg is — dan is de ligging niet
+/// bekend en wordt er niets aangenomen.
 pub fn kolomdetailleringstoetsen(inv: &KolomdetailleringInvoer) -> Vec<ResistanceCalc> {
     vec![
         toepassingsgebied_9_5_1(inv),
@@ -2112,8 +2406,10 @@ pub fn kolomdetailleringstoetsen(inv: &KolomdetailleringInvoer) -> Vec<Resistanc
         min_diameter_langsstaaf_9_5_2(inv),
         as_min_9_5_2(inv),
         as_max_9_5_2(inv),
+        hoekstaven_9_5_2(inv),
         min_diameter_dwarswapening_9_5_3(inv),
         s_cl_tmax_9_5_3(inv),
+        opgesloten_staven_9_5_3(inv),
     ]
 }
 
@@ -2129,14 +2425,16 @@ pub fn kolomdetailleringstoetsen(inv: &KolomdetailleringInvoer) -> Vec<Resistanc
 /// [`crate::detaillering::DETAILLERINGSTOETS_IDS`] voor §9.2. Twee lijsten en
 /// niet één, omdat §9.2 de BALK is en §9.5 de KOLOM: een staaf krijgt de ene
 /// reeks of de andere, nooit allebei.
-pub const KOLOMDETAILLERINGSTOETS_IDS: [&str; 7] = [
+pub const KOLOMDETAILLERINGSTOETS_IDS: [&str; 9] = [
     "9.5.1_toepassingsgebied",
     "9.5.1_min_dwarsafmeting",
     "9.5.2_min_diameter_langs",
     "9.5.2_as_min",
     "9.5.2_as_max",
+    "9.5.2_hoekstaven",
     "9.5.3_min_diameter_dwars",
     "9.5.3_s_cl_tmax",
+    "9.5.3_opgesloten_staven",
 ];
 
 /// Is `id` de id van een kolomdetailleringseis (§9.5)?
@@ -2149,10 +2447,6 @@ pub fn is_kolomdetailleringstoets(id: &str) -> bool {
 /// over wat het niet heeft nagekeken, is misleidend.
 pub fn niet_getoetste_9_5_eisen() -> Vec<String> {
     vec![
-        "§9.5.2(4) — ten minste één staaf in iedere hoek van een veelhoekige doorsnede, en ten \
-         minste vier langsstaven in een ronde kolom. Niet getoetst: het wapeningsmodel kent alleen \
-         een boven- en een onderrij en weet niet welke hoeken bezet zijn."
-            .to_string(),
         "§9.5.3(2) — de dwarswapening behoort voldoende te zijn verankerd. Een beoordeling van de \
          detaillering, geen rekenregel."
             .to_string(),
@@ -2163,10 +2457,6 @@ pub fn niet_getoetste_9_5_eisen() -> Vec<String> {
         "§9.5.3(5) — bij een richtingsverandering van de langsstaven moet de beugelafstand op de \
          dwarskrachten worden berekend; verwaarloosbaar bij een verandering van ten hoogste 1 op \
          12. Niet getoetst: de kolomafmeting per verdieping is geen invoer."
-            .to_string(),
-        "§9.5.3(6) — elke hoekstaaf moet door dwarswapening op zijn plaats worden gehouden, en \
-         geen staaf in een drukzone mag verder dan 150 mm van een opgesloten staaf liggen. Niet \
-         getoetst: dat vraagt de ligging van elke staaf in het vlak van de doorsnede."
             .to_string(),
     ]
 }

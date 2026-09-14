@@ -105,7 +105,9 @@ use openaec_layout::{
 use concrete_check::dekkingslijn::Momentdekking;
 use concrete_check::segments::SegmentStiffnessResponse;
 use nen_en_1992_1_1::mnkappa::{FailureMode, InteractionPoint, MnKappaDiagram};
-use nen_en_1992_1_1::section::{ConcreteSection, ConcreteShape, RebarSide, ReinforcementCage};
+use nen_en_1992_1_1::section::{
+    ConcreteSection, ConcreteShape, RebarSide, ReinforcementCage, Staafrij,
+};
 
 // ── Kleuren ───────────────────────────────────────────────────────────────────
 
@@ -285,11 +287,12 @@ pub fn omtrek_punten(section: &ConcreteSection) -> Vec<(f64, f64)> {
 }
 
 /// Aan welke zijde van de doorsnede een staafrij ligt.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rij {
-    Onder,
-    Boven,
-}
+///
+/// Dit is [`Staafrij`] van de kern onder een tekenaarsnaam. Eén type en geen
+/// tweede lijstje: zou de kern er een rij bij krijgen die deze figuur niet
+/// kent, dan hoort de tekening te breken en niet stilzwijgend staven weg te
+/// laten.
+pub type Rij = Staafrij;
 
 /// Eén staaf in de tekening: het hart (mm vanaf de linkerrand resp. de
 /// onderrand) en de diameter.
@@ -304,39 +307,28 @@ pub struct StaafPositie {
 /// Staafposities in de doorsnede: elke rij gelijkmatig verdeeld tussen de
 /// binnenhoeken van de beugel; bij één staaf staat die in het midden.
 ///
-/// De rij wordt verdeeld over de breedte die op **zijn eigen hoogte** aanwezig
-/// is, niet over de grootste breedte van de doorsnede. Bij een T-lijf zou dat
-/// laatste staven buiten het beton tekenen; dezelfde regel als
-/// [`ReinforcementCage::validate`], die ook naar `width_at_mm` kijkt.
+/// **De meetkunde komt uit de kern**, uit
+/// [`ReinforcementCage::staafposities`] — dezelfde functie die §9.5.2(4) en
+/// §9.5.3(6) toetsen. Hier wordt alleen de x-as omgerekend: de kern telt vanaf
+/// de HARTLIJN en kent geen linker- of rechterrand, deze figuur tekent vanaf
+/// de LINKERrand en zet de flens van een L links. Dat verschil zit volledig in
+/// [`hart_x_mm`], en daarmee is de figuur de tekening van precies wat er is
+/// getoetst.
 ///
-/// De ligging in de hoogte volgt [`ReinforcementCage::axis_offset_mm`]:
-/// `c_nom + Ø_beugel + Ø_hoofd / 2`. Diezelfde maat is ook de inzet vanaf de
-/// zijkant. Spiegel van `staafPosities`; de volgorde is onder-eerst.
+/// Zijstaven doen dus mee: een kolomkorf met staven langs de zijkanten wordt
+/// mét die staven getekend. Een korf zonder zijstaven levert onveranderd de
+/// twee rijen op, in dezelfde volgorde als voorheen — onder eerst.
 pub fn staaf_posities(korf: &ReinforcementCage, section: &ConcreteSection) -> Vec<StaafPositie> {
-    let mut uit = Vec::new();
-    for (rij, kant) in [(&korf.bottom, Rij::Onder), (&korf.top, Rij::Boven)] {
-        if rij.is_empty() {
-            continue;
-        }
-        let as_afstand = korf.axis_offset_mm(rij);
-        let z = match kant {
-            Rij::Onder => as_afstand,
-            Rij::Boven => section.h_mm - as_afstand,
-        };
-        let breedte = breedte_op_hoogte_mm(section, z);
-        let hart = hart_x_mm(section, z);
-        let x_eerste = hart - breedte / 2.0 + as_afstand;
-        let x_laatste = hart + breedte / 2.0 - as_afstand;
-        for i in 0..rij.count {
-            let x = if rij.count == 1 {
-                hart
-            } else {
-                x_eerste + (x_laatste - x_eerste) * i as f64 / (rij.count - 1) as f64
-            };
-            uit.push(StaafPositie { x_mm: x, z_mm: z, diameter_mm: rij.diameter_mm, rij: kant });
-        }
-    }
-    uit
+    korf
+        .staafposities(section)
+        .into_iter()
+        .map(|p| StaafPositie {
+            x_mm: hart_x_mm(section, p.z_mm) + p.x_mm,
+            z_mm: p.z_mm,
+            diameter_mm: p.diameter_mm,
+            rij: p.rij,
+        })
+        .collect()
 }
 
 // ── Asverdeling — dezelfde regel als op het scherm ────────────────────────────

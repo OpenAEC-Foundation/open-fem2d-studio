@@ -233,7 +233,7 @@ fn schema_korf() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "description": "Wapeningskorf: dekking, beugel, boven- en onderwapening. Er is GEEN standaardkorf; de eerste vier velden zijn verplicht. De beugelvelden (stirrup_spacing_mm, stirrup_legs, stirrup_leg_spacing_mm, stirrup_fywk_mpa) zijn optioneel; laat ze WEG als ze niet bekend zijn — 0 invullen is iets anders en wordt geweigerd. De dekking en de milieuklasse mogen PER ZIJDE afwijken via cover_top, cover_bottom en cover_sides; 4.4.1.1(1)P meet de dekking tot het DICHTSTBIJZIJNDE betonoppervlak, dus een vloer met de bovenzijde binnen (XC1) en de onderzijde buiten (XC4) heeft twee verschillende dekkingen en twee verschillende nuttige hoogtes. Weglaten = die zijde volgt cover_mm en de exposure_class van het element.",
+        "description": "Wapeningskorf: dekking, beugel, boven- en onderwapening, en desgewenst zijstaven (`sides`) langs de twee verticale zijkanten, waarmee de korf een KOLOMkorf wordt. Er is GEEN standaardkorf; de eerste vier velden zijn verplicht. De beugelvelden (stirrup_spacing_mm, stirrup_legs, stirrup_leg_spacing_mm, stirrup_fywk_mpa) zijn optioneel; laat ze WEG als ze niet bekend zijn — 0 invullen is iets anders en wordt geweigerd. De dekking en de milieuklasse mogen PER ZIJDE afwijken via cover_top, cover_bottom en cover_sides; 4.4.1.1(1)P meet de dekking tot het DICHTSTBIJZIJNDE betonoppervlak, dus een vloer met de bovenzijde binnen (XC1) en de onderzijde buiten (XC4) heeft twee verschillende dekkingen en twee verschillende nuttige hoogtes. Weglaten = die zijde volgt cover_mm en de exposure_class van het element.",
         "required": ["cover_mm", "stirrup_diameter_mm", "top", "bottom"],
         "properties": {
             "cover_mm": { "type": "number", "minimum": 0,
@@ -251,6 +251,7 @@ fn schema_korf() -> Value {
                 "description": "Beugeldiameter in mm; 0 = geen beugel, de hoofdwapening ligt dan direct achter de dekking." },
             "top": schema_wapeningsrij("Bovenwapening (zijde z = h)."),
             "bottom": schema_wapeningsrij("Onderwapening (zijde z = 0)."),
+            "sides": schema_zijstaven(),
             "stirrup_spacing_mm": { "type": ["number", "null"], "exclusiveMinimum": 0,
                 "description": "Hart-op-hartafstand s van de beugels LANGS de lengteas, in mm (§9.2.2(5)). Weglaten = niet opgegeven; zonder s zijn A_sw/s in (6.8) en rho_w in (9.4) onbepaald en meldt de dwarskrachttoets dat hij niet kan. De norm geeft hier geen aanbevolen waarde, alleen de bovengrens s_l,max." },
             "stirrup_legs": { "type": ["integer", "null"], "minimum": 1,
@@ -289,6 +290,29 @@ fn schema_zijdedekking(welke: &str, gevolg: &str) -> Value {
                 ],
                 "description": "Milieuklasse van DEZE zijde uit tabel 4.1, de ingang van tabel 4.4N voor c_min,dur. Weglaten = de milieuklasse van het element. Zie `list_exposure_classes` en `concrete_cover_check`."
             }
+        }
+    })
+}
+
+/// De zijstaven (`ReinforcementCage::sides`): de rij die van een balkkorf een
+/// KOLOMkorf maakt.
+///
+/// Eigen functie en niet [`schema_wapeningsrij`], om twee redenen die allebei
+/// in de beschrijving moeten staan: `count` is het aantal per ZIJKANT en niet
+/// het totaal, en de hoekstaven horen hier NIET in. Wie dat verkeerd leest,
+/// voert de helft of anderhalf keer de wapening in en merkt het niet.
+///
+/// `type: ["object","null"]`: null en weglaten betekenen allebei "er zijn geen
+/// zijstaven" — dezelfde vorm als de dekking per zijde en de beugelvelden.
+fn schema_zijstaven() -> Value {
+    json!({
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "description": "Wapening langs de twee verticale ZIJKANTEN: de staven die van een balkkorf een kolomkorf maken. Weglaten of null = er zijn er geen; dat is het gedrag van voor dit veld en verandert geen enkel getal. LET OP TWEE DINGEN. (1) `count` is het aantal staven op EEN zijkant; de korf wordt links-rechts symmetrisch verondersteld, dus er liggen er tweemaal zoveel in de doorsnede. \"4 boven, 4 onder, 2 per zijde\" is een kolom met 12 staven. (2) De HOEKstaven zitten hier NIET in: die horen bij `top` en `bottom`. Zonder die afspraak telt een hoekstaaf twee keer mee in A_s en is 9.5.2(4) (ten minste een staaf in iedere hoek) niet meer te toetsen. De zijstaven worden in de doorsnedeberekening GELIJKMATIG verdeeld tussen de as van de onderrij en die van de bovenrij; dat is een modelkeuze en geen normvoorschrift, en zij komt als aanname in de afleiding terug.",
+        "required": ["count", "diameter_mm"],
+        "properties": {
+            "count": { "type": "integer", "minimum": 0, "description": "Aantal zijstaven op EEN zijkant, de hoekstaven niet meegerekend; 0 = geen zijstaven." },
+            "diameter_mm": { "type": "number", "minimum": 0, "description": "Staafdiameter in mm." }
         }
     })
 }
@@ -728,7 +752,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "concrete_column_check",
-            "description": "Run the EN 1992-1-1 §5.8 slenderness gate on ONE compression member, plus the column detailing rules of §9.5 - without running a full cross-section check. Returns the effective length l0 (figure 5.7, or given directly), the slenderness lambda = l0/i of (5.14) computed on the UNCRACKED concrete section per 5.8.3.2(1), and the limit lambda_lim = 20*A*B*C/sqrt(n). That limit is NOT the EN recommendation: the Dutch national annex struck the note containing (5.13N) and reinstated the identical formula as a REQUIREMENT ('De waarde van lambda_lim moet gelijk aan 20*A*B*C/sqrt(n) zijn genomen'). lambda < lambda_lim means 5.8.3.1(1) permits SECOND-ORDER EFFECTS TO BE NEGLECTED; lambda >= lambda_lim does NOT mean the column fails - it means the internal forces must come from a second-order analysis (§5.8.6; in this app the physically non-linear route through `concrete_segment_stiffness`). This tool cannot see whether the envelope you pass already is second order, and says so in its notes. BRACED OR UNBRACED IS INPUT, NEVER DERIVED: §5.8.1 defines it twice over as something 'assumed in the design', a frame with a bracing wall looks identical to one without in a 2D model, and the difference is a factor two in l0 between (5.15) and (5.16) plus C = 0,7 imposed on any unbraced member. Also computes the effective creep ratio phi_ef of (5.19) from the QUASI-PERMANENT SLS combination (6.16) when phi(inf,t0) and that envelope are supplied, and evaluates the three conditions of 5.8.4(4) under which phi_ef = 0 may be used. The two end moments M01 and M02 for C = 1,7 - rm are read from the envelope of the governing combination, and the presence of TRANSVERSE LOADING is established from the moment diagram (a larger |M| between the ends than at either end) rather than asked - a member with wind on it falls in the rm = 1,0 branch whether the user knows it or not. §9.5.2(4) (a bar in every corner) and §9.5.3(6) (every corner bar restrained, no bar further than 150 mm from a restrained bar) are NOT checked: the cage model has only a top and a bottom row, so the position of each bar in the plane of the section is unknown; the reasons are returned as notes. Same input type (ConcreteColumnCheckRequest), output type (ConcreteColumnCheckResponse) and calculation path as the Tauri command `concrete_column_check` and the toetsbrug opdracht of that name; the same path also runs inside `check_concrete_beam`.",
+            "description": "Run the EN 1992-1-1 §5.8 slenderness gate on ONE compression member, plus the column detailing rules of §9.5 - without running a full cross-section check. Returns the effective length l0 (figure 5.7, or given directly), the slenderness lambda = l0/i of (5.14) computed on the UNCRACKED concrete section per 5.8.3.2(1), and the limit lambda_lim = 20*A*B*C/sqrt(n). That limit is NOT the EN recommendation: the Dutch national annex struck the note containing (5.13N) and reinstated the identical formula as a REQUIREMENT ('De waarde van lambda_lim moet gelijk aan 20*A*B*C/sqrt(n) zijn genomen'). lambda < lambda_lim means 5.8.3.1(1) permits SECOND-ORDER EFFECTS TO BE NEGLECTED; lambda >= lambda_lim does NOT mean the column fails - it means the internal forces must come from a second-order analysis (§5.8.6; in this app the physically non-linear route through `concrete_segment_stiffness`). This tool cannot see whether the envelope you pass already is second order, and says so in its notes. BRACED OR UNBRACED IS INPUT, NEVER DERIVED: §5.8.1 defines it twice over as something 'assumed in the design', a frame with a bracing wall looks identical to one without in a 2D model, and the difference is a factor two in l0 between (5.15) and (5.16) plus C = 0,7 imposed on any unbraced member. Also computes the effective creep ratio phi_ef of (5.19) from the QUASI-PERMANENT SLS combination (6.16) when phi(inf,t0) and that envelope are supplied, and evaluates the three conditions of 5.8.4(4) under which phi_ef = 0 may be used. The two end moments M01 and M02 for C = 1,7 - rm are read from the envelope of the governing combination, and the presence of TRANSVERSE LOADING is established from the moment diagram (a larger |M| between the ends than at either end) rather than asked - a member with wind on it falls in the rm = 1,0 branch whether the user knows it or not. §9.5.2(4) (a bar in every corner) and §9.5.3(6) (every corner bar restrained, no bar further than 150 mm from a restrained bar) ARE checked: the cage carries a `sides` row, so the position of every longitudinal bar in the plane of the section is known. Two things follow. A_s in §9.5.2(2) and (3) is the TOTAL longitudinal reinforcement including the side bars - so A_s,max can no longer be passed by leaving bars out. And §9.5.3(6) only counts the four STIRRUP CORNERS as restrained; with more than two stirrup legs there are intermediate links whose position is not an input, and the check then returns NotApplicable with the measured distance rather than a verdict. Same input type (ConcreteColumnCheckRequest), output type (ConcreteColumnCheckResponse) and calculation path as the Tauri command `concrete_column_check` and the toetsbrug opdracht of that name; the same path also runs inside `check_concrete_beam`.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -1067,10 +1091,12 @@ mod tests {
             "cover_top",
             "cover_bottom",
             "cover_sides",
+            // De zijstaven van een kolomkorf (9.5.2(4), 9.5.3(6)).
+            "sides",
         ] {
             assert!(velden.contains_key(veld), "korfschema mist `{veld}`");
         }
-        assert_eq!(velden.len(), 11, "korfschema kent een veld dat de kern weigert");
+        assert_eq!(velden.len(), 12, "korfschema kent een veld dat de kern weigert");
         // Elke zijde draagt precies twee gegevens: zijn dekking en zijn
         // milieuklasse. Meer zou `additionalProperties: false` op de kern
         // laten stuklopen, minder zou een geldig geval onbereikbaar maken.
@@ -1083,12 +1109,20 @@ mod tests {
             // over de lijn gaat.
             assert_eq!(korf["properties"][zijde]["type"], json!(["object", "null"]));
         }
-        for zijde in ["top", "bottom"] {
+        for zijde in ["top", "bottom", "sides"] {
             let rij = &korf["properties"][zijde]["properties"];
-            assert!(rij["count"].is_object());
-            assert!(rij["diameter_mm"].is_object());
-            assert_eq!(rij.as_object().unwrap().len(), 2);
+            assert!(rij["count"].is_object(), "{zijde}");
+            assert!(rij["diameter_mm"].is_object(), "{zijde}");
+            assert_eq!(rij.as_object().unwrap().len(), 2, "{zijde}");
         }
+        // De zijstaven zijn OPTIONEEL en mogen `null` zijn: zo gaat "deze korf
+        // heeft er geen" over de lijn, en zo blijft elk bestaand verzoek geldig.
+        assert_eq!(korf["properties"]["sides"]["type"], json!(["object", "null"]));
+        // En het schema moet zeggen dat `count` per ZIJKANT telt; wie dat
+        // verkeerd leest voert de helft van de wapening in.
+        let omschrijving = korf["properties"]["sides"]["description"].as_str().unwrap();
+        assert!(omschrijving.contains("EEN zijkant"), "{omschrijving}");
+        assert!(omschrijving.contains("HOEKstaven"), "{omschrijving}");
     }
 
     /// De vier beugelvelden zijn OPTIONEEL. Zouden ze in `required` komen te

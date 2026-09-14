@@ -323,12 +323,56 @@ export function zetZijde(
   return { ...korf, [zijdeVeld(zijde)]: leeg ? undefined : nieuw };
 }
 
+/** De LEGE rij: geen staven, geen diameter. */
+const LEGE_RIJ: RebarRow = { count: 0, diameter_mm: 0 };
+
+/**
+ * De zijstaven als rij, of de lege rij als er geen zijn — spiegel van
+ * `ReinforcementCage::side_row` in de kern.
+ *
+ * `count` is het aantal staven op EEN zijkant; de korf is links-rechts
+ * symmetrisch, dus er liggen er tweemaal zoveel in de doorsnede. De hoekstaven
+ * zitten er NIET in: die horen bij `top` en `bottom`.
+ */
+export function zijstaafRij(korf: ReinforcementCage): RebarRow {
+  return korf.sides ?? LEGE_RIJ;
+}
+
+/** Zijn er zijstaven? */
+export function heeftZijstaven(korf: ReinforcementCage): boolean {
+  const r = zijstaafRij(korf);
+  return r.count > 0 && r.diameter_mm > 0;
+}
+
+/**
+ * Staaldoorsnede van de zijstaven in mm² — BEIDE zijkanten samen, dus tweemaal
+ * het rijoppervlak. Spiegel van `a_s_sides_mm2` in de kern.
+ */
+export function zijstavenOppervlakMm2(korf: ReinforcementCage): number {
+  return 2 * rijOppervlakMm2(zijstaafRij(korf));
+}
+
+/**
+ * De TOTALE langswapening: onder + boven + beide zijkanten, mm². Dat is de
+ * A_s die §9.5.2(2) en (3) bedoelen. Spiegel van `a_s_total_mm2` in de kern.
+ */
+export function totaleWapeningMm2(korf: ReinforcementCage): number {
+  return (
+    rijOppervlakMm2(korf.bottom) + rijOppervlakMm2(korf.top) + zijstavenOppervlakMm2(korf)
+  );
+}
+
 /**
  * De grootste diameter van de hoofdwapening in de korf, mm; 0 als er geen
  * hoofdwapening is. Die maat stelt de aanhechtingseis c_min,b van tabel 4.2.
+ *
+ * De zijstaven tellen mee: zij raken de ZIJKANT en stellen daar dus hun eigen
+ * aanhechtingseis.
  */
 export function grootsteStaafdiameterMm(korf: ReinforcementCage): number {
-  const rijen = [korf.top, korf.bottom].filter((r) => r.count > 0 && r.diameter_mm > 0);
+  const rijen = [korf.top, korf.bottom, zijstaafRij(korf)].filter(
+    (r) => r.count > 0 && r.diameter_mm > 0,
+  );
   return rijen.length === 0 ? 0 : Math.max(...rijen.map((r) => r.diameter_mm));
 }
 
@@ -417,7 +461,12 @@ export function korfSamenvatting(korf: ReinforcementCage): string {
     : `dekking boven ${maat(dekkingVanZijdeMm(korf, "Top"))} / onder ${maat(
         dekkingVanZijdeMm(korf, "Bottom"),
       )} / opzij ${maat(dekkingVanZijdeMm(korf, "Sides"))} mm`;
-  return `onder ${rijLabel(korf.bottom)}, boven ${rijLabel(korf.top)}, ${beugel}, ${dekking}`;
+  // De zijstaven staan er alleen als ze er zijn; een balkkorf leest dus
+  // letterlijk zoals hij altijd las. Zelfde volgorde als `summary()` in de kern.
+  const zijstaven = heeftZijstaven(korf)
+    ? `opzij ${rijLabel(zijstaafRij(korf))} per zijde, `
+    : "";
+  return `onder ${rijLabel(korf.bottom)}, boven ${rijLabel(korf.top)}, ${zijstaven}${beugel}, ${dekking}`;
 }
 
 /**
@@ -450,12 +499,67 @@ export function beugelDwarsafstandMm(
   return st > 0 ? { mm: st, afgeleid: true } : null;
 }
 
+/** Uit welke rij van de korf een staaf komt. */
+export type Staafrij = "boven" | "onder" | "opzij";
+
+/**
+ * De drie rijen van de korf, met de veldnaam van `ReinforcementCage` als
+ * waarde. Zo is een rij overal met hetzelfde woord aan te wijzen — in de
+ * tekening, in de rij-invoer en in de aanroeper die hem wegschrijft.
+ */
+export type KorfRij = "top" | "bottom" | "sides";
+
+/** Het opschrift van een rij, in lopende tekst. */
+export const KORFRIJ_LABEL: Record<KorfRij, string> = {
+  top: "bovenwapening",
+  bottom: "onderwapening",
+  sides: "zijstaven",
+};
+
+/**
+ * De rij zelf uit de korf. `sides` kan ontbreken — dan is het de lege rij, en
+ * betekent dat "er zijn geen zijstaven".
+ */
+export function korfRij(korf: ReinforcementCage, rij: KorfRij): RebarRow {
+  if (rij === "sides") return zijstaafRij(korf);
+  return rij === "top" ? korf.top : korf.bottom;
+}
+
+/**
+ * Eén rij van de korf vervangen, met de korf als uitkomst.
+ *
+ * Voor de zijstaven geldt één afspraak die hier één keer staat in plaats van
+ * bij elke aanroeper: NUL zijstaven betekent dat het veld WEG gaat. Zo is de
+ * korf daarna bit voor bit de korf die hij was voordat er zijstaven in kwamen,
+ * en leest een projectbestand zonder zijstaven ook weer zonder.
+ */
+export function zetKorfRij(
+  korf: ReinforcementCage,
+  rij: KorfRij,
+  waarde: RebarRow,
+): ReinforcementCage {
+  if (rij === "sides") {
+    return waarde.count > 0 && waarde.diameter_mm > 0
+      ? { ...korf, sides: waarde }
+      : { ...korf, sides: undefined };
+  }
+  return { ...korf, [rij]: waarde };
+}
+
 /** Eén staaf in de tekening: hart (mm vanaf linkerrand resp. onderrand) en diameter. */
 export interface StaafPositie {
   x: number;
   z: number;
   diameter: number;
-  rij: "boven" | "onder";
+  rij: Staafrij;
+  /**
+   * Ligt deze staaf in een HOEK van de doorsnede? Alleen de buitenste staven
+   * van de onder- en de bovenrij; een rij met één staaf staat in het midden en
+   * bezet dus geen hoek, en een zijstaaf ligt per definitie tussen de hoeken
+   * in. Dit is wat §9.5.2(4) en §9.5.3(6) van de tekening moeten kunnen
+   * aflezen — spiegel van `Staafpositie::in_hoek` in de kern.
+   */
+  inHoek: boolean;
 }
 
 /**
@@ -489,10 +593,61 @@ export function staafPosities(korf: ReinforcementCage, d: ConcreteSectionInput):
     const xLaatste = hart + breedte / 2 - zijkant;
     for (let i = 0; i < rij.count; i++) {
       const x = rij.count === 1 ? hart : xEerste + ((xLaatste - xEerste) * i) / (rij.count - 1);
-      uit.push({ x, z, diameter: rij.diameter_mm, rij: kant });
+      // De buitenste staaf van de onder- en de bovenrij ligt in een hoek van de
+      // doorsnede — dat is wat §9.5.2(4) vraagt. Eén staaf in een rij staat in
+      // het MIDDEN en bezet dus geen hoek.
+      const inHoek = rij.count >= 2 && (i === 0 || i === rij.count - 1);
+      uit.push({ x, z, diameter: rij.diameter_mm, rij: kant, inHoek });
+    }
+  }
+  // De zijstaven: op elke hoogte één links en één rechts, gelijkmatig verdeeld
+  // tussen de as van de onderrij en die van de bovenrij. Die verdeling is een
+  // MODELKEUZE en geen normvoorschrift; zij staat zo in `layers()` van de kern
+  // en in de aannames die met de afleiding meereizen.
+  const zij = zijstaafRij(korf);
+  if (zij.count > 0 && zij.diameter_mm > 0) {
+    const [zOnder, zBoven] = zijstaafSpanMm(korf, d, zij);
+    const zijkant = inzetZijkant(zij);
+    for (let k = 1; k <= zij.count; k++) {
+      const z = zOnder + ((zBoven - zOnder) * k) / (zij.count + 1);
+      const hart = hartXMm(d, z);
+      const halveBinnenmaat = breedteOpHoogteMm(d, z) / 2 - zijkant;
+      for (const teken of [-1, 1]) {
+        uit.push({
+          x: hart + teken * halveBinnenmaat,
+          z,
+          diameter: zij.diameter_mm,
+          rij: "opzij",
+          inHoek: false,
+        });
+      }
     }
   }
   return uit;
+}
+
+/**
+ * De hoogte van de as van de onderste en die van de bovenste staaflaag, mm —
+ * de twee einden waartussen de zijstaven worden verdeeld. Spiegel van
+ * `zijstaaf_span_mm` in de kern.
+ *
+ * Is een van beide rijen leeg, dan wordt de as genomen waar een staaf van de
+ * ZIJRIJ zou liggen als hij die rand raakte: de plaats van het eerste
+ * staafhart dat de dekking van die rand toelaat.
+ */
+function zijstaafSpanMm(
+  korf: ReinforcementCage,
+  d: ConcreteSectionInput,
+  zij: RebarRow,
+): [number, number] {
+  const diameter = (r: RebarRow) =>
+    r.count > 0 && r.diameter_mm > 0 ? r.diameter_mm : zij.diameter_mm;
+  const zOnder =
+    dekkingVanZijdeMm(korf, "Bottom") + korf.stirrup_diameter_mm + diameter(korf.bottom) / 2;
+  const zBoven =
+    d.h_mm -
+    (dekkingVanZijdeMm(korf, "Top") + korf.stirrup_diameter_mm + diameter(korf.top) / 2);
+  return [zOnder, zBoven];
 }
 
 /**
@@ -521,7 +676,16 @@ export function controleerKorf(k: Wapeningskorf): string | null {
     }
   }
   const leeg = (r: RebarRow) => r.count <= 0 || r.diameter_mm <= 0;
-  if (leeg(korf.top) && leeg(korf.bottom)) return "De korf bevat geen hoofdwapening.";
+  const zij = zijstaafRij(korf);
+  if (leeg(korf.top) && leeg(korf.bottom)) {
+    if (leeg(zij)) return "De korf bevat geen hoofdwapening.";
+    // Zijstaven worden verdeeld TUSSEN de onder- en de bovenrij, en §9.5.2(4)
+    // eist in iedere hoek een staaf. Zonder die twee rijen is er geen korf.
+    return "De korf heeft alleen zijstaven en geen boven- of onderwapening.";
+  }
+  if (zij.count > 0 && !(zij.diameter_mm > 0)) {
+    return `Er zijn ${zij.count} zijstaven per zijkant opgegeven zonder diameter; kies een staafdiameter of zet het aantal op 0.`;
+  }
   // De breedte OP DE HOOGTE VAN DE RIJ, net als `ReinforcementCage::validate`
   // in de kern: in een T-lijf past minder dan in de flens. De rij ligt in de
   // HOOGTE op de dekking van zijn eigen rand en in de BREEDTE tussen de twee
@@ -544,6 +708,24 @@ export function controleerKorf(k: Wapeningskorf): string | null {
   const onder = leeg(korf.bottom) ? 0 : asAfstandMm(korf, korf.bottom, "onder");
   const boven = leeg(korf.top) ? 0 : asAfstandMm(korf, korf.top, "boven");
   if (onder + boven >= d.h_mm) return "Boven- en onderwapening overlappen elkaar in de hoogte.";
+
+  // De zijstaven: passen ze naast elkaar in de breedte en onder elkaar in de
+  // hoogte? Geen normregel, zuivere meetkunde — zelfde grenzen als
+  // `ReinforcementCage::validate` in de kern.
+  if (!leeg(zij)) {
+    const [zOnder, zBoven] = zijstaafSpanMm(korf, d, zij);
+    const inzet = cZij + korf.stirrup_diameter_mm + zij.diameter_mm / 2;
+    for (const z of [zOnder, zBoven]) {
+      const hartOpHart = breedteOpHoogteMm(d, z) - 2 * inzet;
+      if (hartOpHart < zij.diameter_mm - 1e-9) {
+        return `De zijstaven ${rijLabel(zij)} per zijde passen niet naast elkaar: hun harten liggen ${maat(hartOpHart)} mm uit elkaar terwijl Ø${maat(zij.diameter_mm)} mm nodig is.`;
+      }
+    }
+    const steek = (zBoven - zOnder) / (zij.count + 1);
+    if (steek < zij.diameter_mm - 1e-9) {
+      return `De zijstaven ${rijLabel(zij)} per zijde passen niet in de hoogte: zij komen op ${maat(steek)} mm uit elkaar te liggen, minder dan hun eigen Ø${maat(zij.diameter_mm)} mm.`;
+    }
+  }
 
   // De beugelvelden. Leeglaten mag — dat betekent "niet opgegeven" — maar wat
   // er staat moet een echte maat zijn. Zelfde grenzen als

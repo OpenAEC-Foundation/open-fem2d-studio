@@ -62,10 +62,11 @@ const KRUIP: &str = "5.8.4_kruip";
 
 /// De kolomkorf: dekking 30, beugel Ø8 h.o.h. 200, boven 2Ø16, onder 2Ø16.
 ///
-/// Symmetrisch, want een kolom heeft geen trek- en drukzijde die vastligt. Wat
-/// er ONTBREEKT is de wapening langs de twee zijkanten; het korfmodel kent
-/// alleen een boven- en een onderrij. Zie de toets zelf: A_s is hier dus de som
-/// van die twee rijen, en dat staat ook in de afleiding.
+/// Symmetrisch, want een kolom heeft geen trek- en drukzijde die vastligt. Deze
+/// korf heeft GEEN zijstaven — vier staven in de vier hoeken, en verder niets.
+/// Dat is met opzet: hij is de proef dat een korf zonder `sides` blijft rekenen
+/// zoals hij deed, en tegelijk het eenvoudigste geval waarin §9.5.2(4) en
+/// §9.5.3(6) een uitkomst hebben (vier hoeken bezet, a_max = 0 mm).
 fn korf() -> ReinforcementCage {
     ReinforcementCage {
         cover_mm: 30.0,
@@ -471,11 +472,11 @@ fn kruipcoefficient_zonder_quasi_blijvende_combinatie() {
 
 // ── §9.5 ────────────────────────────────────────────────────────────────────
 
-/// De zeven kolomdetailleringseisen staan in het resultaat, en de twee die een
+/// De negen kolomdetailleringseisen staan in het resultaat, en de twee die een
 /// keuze nodig hebben melden dat zij die niet hebben. Er wordt NIET stilzwijgend
 /// de ruimste tak aangehouden.
 #[test]
-fn de_zeven_kolomdetailleringseisen_staan_in_het_resultaat() {
+fn de_negen_kolomdetailleringseisen_staan_in_het_resultaat() {
     let a = column_check(verzoek(
         kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend),
         ugt_geschoord(),
@@ -487,13 +488,15 @@ fn de_zeven_kolomdetailleringseisen_staan_in_het_resultaat() {
         "9.5.2_min_diameter_langs",
         "9.5.2_as_min",
         "9.5.2_as_max",
+        "9.5.2_hoekstaven",
         "9.5.3_min_diameter_dwars",
         "9.5.3_s_cl_tmax",
+        "9.5.3_opgesloten_staven",
     ] {
         let _ = toets(&a.checks, id);
     }
-    // Twee toetsen van §5.8 plus zeven van §9.5.
-    assert_eq!(a.checks.len(), 9);
+    // Twee toetsen van §5.8 plus negen van §9.5.
+    assert_eq!(a.checks.len(), 11);
 
     assert_eq!(toets(&a.checks, "9.5.2_as_max").status, CheckStatus::NotApplicable);
     assert!(toets(&a.checks, "9.5.2_as_max")
@@ -624,10 +627,15 @@ fn een_vervulde_kolomdetailleringseis_wordt_niet_maatgevend() {
     );
 }
 
-/// WAT §9.5 NIET KAN, STAAT IN HET RAPPORT. De twee eisen die de ligging van
-/// elke staaf in het vlak van de doorsnede vragen, kunnen met een korf van twee
-/// rijen niet — en dat hoort er te staan, niet als groen vinkje en niet als
-/// stilte.
+/// WAT §9.5 NIET KAN, STAAT IN HET RAPPORT — en wat het wél kan, staat als
+/// toets in de tabel en niet als excuus in de kanttekeningen.
+///
+/// §9.5.2(4) en §9.5.3(6) worden sinds de korf staven per zijde kent werkelijk
+/// getoetst; zij mogen dus NIET meer in de opsomming van niet-getoetste eisen
+/// voorkomen. Wat er overblijft zijn de drie eisen die geen rekenregel zijn.
+/// Met de hand voor deze kolom 300 × 300 met 2Ø16 onder en 2Ø16 boven: de
+/// asafstand is 30 + 8 + 8 = 46 mm, dus er staan vier staven in de vier hoeken
+/// en is er geen staaf die niet zelf opgesloten is — a_max = 0 mm ≤ 150 mm.
 #[test]
 fn de_ontbrekende_9_5_eisen_staan_met_reden_in_het_rapport() {
     let r = check_concrete_beam(staaf(
@@ -635,10 +643,25 @@ fn de_ontbrekende_9_5_eisen_staan_met_reden_in_het_rapport() {
         ugt_geschoord(),
     ));
     let tekst = toets_van_staaf(&r, SLANKHEIDSGRENS).notes.join(" ");
-    assert!(tekst.contains("§9.5.2(4)"), "de hoekstaafeis hoort genoemd te worden: {tekst}");
-    assert!(tekst.contains("§9.5.3(6)"), "de 150 mm-eis hoort genoemd te worden");
+    for artikel in ["§9.5.3(2)", "§9.5.3(4)ii", "§9.5.3(5)"] {
+        assert!(tekst.contains(artikel), "{artikel} hoort genoemd te worden: {tekst}");
+    }
+    for artikel in ["§9.5.2(4)", "§9.5.3(6)"] {
+        assert!(
+            !tekst.contains(artikel),
+            "{artikel} wordt getoetst en hoort niet meer als ongetoetst te worden gemeld"
+        );
+    }
     assert!(
-        tekst.contains("ZIJKANTEN"),
-        "en de afleiding hoort te zeggen dat A_s alleen de twee gemodelleerde rijen is"
+        tekst.contains("TOTALE langswapening"),
+        "en de afleiding hoort te zeggen dat A_s alle drie de rijen omvat"
     );
+
+    let hoeken = toets_van_staaf(&r, "9.5.2_hoekstaven");
+    assert_eq!(hoeken.status, CheckStatus::Ok);
+    assert_relative_eq!(hoeken.value, 4.0, max_relative = 1e-12);
+
+    let opgesloten = toets_van_staaf(&r, "9.5.3_opgesloten_staven");
+    assert_eq!(opgesloten.status, CheckStatus::Ok);
+    assert_relative_eq!(opgesloten.value, 0.0, max_relative = 1e-12);
 }
