@@ -2083,6 +2083,8 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         &section,
         &input.cage,
         &mat,
+        input.design_situation,
+        input.n_strips.max(1) as usize,
         input.column.as_ref(),
         input.length_m * 1000.0,
         &input.forces_envelope,

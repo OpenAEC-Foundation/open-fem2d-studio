@@ -521,6 +521,46 @@ fn schema_constructieklasse() -> Value {
     })
 }
 
+/// Schema van een [`Kniklengtekeuze`]: een vakje van figuur 5.7 of l₀ zelf.
+///
+/// EÉN FUNCTIE VOOR BEIDE ASSEN. `buckling_length` (het rekenvlak) en
+/// `buckling_length_z` (de tweede as) dragen hetzelfde Rust-type; een tweede
+/// overgetypt schema zou uiteenlopen zodra er een vakje bij komt, en dan
+/// filtert `additionalProperties: false` op één van de twee assen een geldige
+/// keuze weg.
+fn schema_kniklengtekeuze(richting: &str) -> Value {
+    json!({
+        "type": "object",
+        "description": format!("Hoe l0 {richting} wordt bepaald. Twee wegen: een vast geval uit figuur 5.7, of l0 rechtstreeks. De vakjes f) en g) van figuur 5.7 (gedeeltelijke inklemming, vergelijkingen (5.15) en (5.16)) worden hier NIET aangeboden: die vragen k = (theta/M)*(EI/l) per staafeind, inclusief het effect van scheurvorming in de verhinderende elementen (§5.8.3.2(5)), en dat getal is uit een raamwerkmodel niet af te lezen. Wie het wel heeft, rekent (5.15)/(5.16) uit en vult de uitkomst in als 'Opgegeven'."),
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "soort": { "const": "Figuur57" },
+                    "geval": {
+                        "type": "string",
+                        "enum": ["ScharnierendScharnierend", "Console", "IngeklemdScharnierend",
+                                 "TweezijdigIngeklemdGeschoord", "TweezijdigIngeklemdOngeschoord"],
+                        "description": "Het vakje uit figuur 5.7. a) ScharnierendScharnierend: l0 = l, geschoord. b) Console: l0 = 2l, ongeschoord (een console houdt zichzelf overeind). c) IngeklemdScharnierend: l0 = 0,7l, geschoord. d) TweezijdigIngeklemdGeschoord: l0 = l/2. e) TweezijdigIngeklemdOngeschoord: l0 = l, rotatie verhinderd maar bovenaan zijdelings vrij. Het geval moet bij de schoring van dezelfde as passen; doet het dat niet, dan komt er een leesbare fout en geen getal."
+                    }
+                },
+                "required": ["soort", "geval"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "soort": { "const": "Opgegeven" },
+                    "l0_m": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "De kniklengte l0 in m, rechtstreeks. Voor wie (5.15), (5.16) of (5.17) zelf heeft doorgerekend of een aparte knikanalyse heeft gedaan; de afleiding legt dan vast DAT l0 is opgegeven en niet waaruit." }
+                },
+                "required": ["soort", "l0_m"]
+            }
+        ]
+    })
+}
+
 /// Schema van `column` — de §5.8-gegevens van een op druk belast element.
 ///
 /// GESCHOORD IS VERPLICHT ZODRA DIT BLOK BESTAAT, en dat is geen strengheid om
@@ -529,47 +569,32 @@ fn schema_constructieklasse() -> Value {
 /// twee in l₀ tussen (5.15) en (5.16), en C = 0,7 die voor een ongeschoord
 /// element is voorgeschreven terwijl een geschoorde kolom C > 1,7 kan halen.
 /// Een standaardwaarde zou dat besluit stilzwijgend nemen.
+///
+/// DE TWEEDE AS. `bracing_z`, `buckling_length_z` en `m0_edz_knm` zijn de
+/// gegevens om de z-as voor §5.8.9 (dubbele buiging). Zij MOETEN hier staan
+/// ook al zijn ze optioneel: `additionalProperties: false` zou ze anders
+/// wegfilteren vóórdat de kern ze ziet, en dan rekent een cliënt die de
+/// schoring om z wél heeft opgegeven stilzwijgend met die van het rekenvlak.
 fn schema_kolom() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "description": "De §5.8-gegevens van een op DRUK belast element: het ontwerpbesluit geschoord/ongeschoord, de kniklengte, de kruip en de twee keuzen die §9.5 nodig heeft. Weglaten = niet opgegeven; staat er normaaldruk op de staaf, dan komt §5.8.3.1 als NotApplicable terug met de reden, en staat er geen druk op, dan meldt de toets dat §5.8 niet van toepassing is. Er wordt nooit iets aangenomen.",
+        "description": "De §5.8-gegevens van een op DRUK belast element: het ontwerpbesluit geschoord/ongeschoord, de kniklengte, de kruip, de twee keuzen die §9.5 nodig heeft, en de gegevens om de TWEEDE as (z) voor §5.8.9. Weglaten = niet opgegeven; staat er normaaldruk op de staaf, dan komt §5.8.3.1 als NotApplicable terug met de reden, en staat er geen druk op, dan meldt de toets dat §5.8 niet van toepassing is. Er wordt nooit iets aangenomen.",
         "properties": {
             "bracing": {
                 "type": "string",
                 "enum": ["Geschoord", "Ongeschoord"],
-                "description": "Draagt dit element bij aan de horizontale stabiliteit? (§5.8.1). VERPLICHT en zonder standaardwaarde: de norm noemt dit tweemaal letterlijk iets dat 'in de berekeningen is aangenomen'. Geschoord = het element draagt NIET bij aan de stabiliteit; Ongeschoord (schorend) = het draagt er wel aan bij en krijgt daarmee C = 0,7 opgelegd."
+                "description": "Draagt dit element bij aan de horizontale stabiliteit? (§5.8.1), om de y-as (in het rekenvlak). VERPLICHT en zonder standaardwaarde: de norm noemt dit tweemaal letterlijk iets dat 'in de berekeningen is aangenomen'. Geschoord = het element draagt NIET bij aan de stabiliteit; Ongeschoord (schorend) = het draagt er wel aan bij en krijgt daarmee C = 0,7 opgelegd."
             },
-            "buckling_length": {
-                "type": "object",
-                "description": "Hoe l0 wordt bepaald. Twee wegen: een vast geval uit figuur 5.7, of l0 rechtstreeks. De vakjes f) en g) van figuur 5.7 (gedeeltelijke inklemming, vergelijkingen (5.15) en (5.16)) worden hier NIET aangeboden: die vragen k = (theta/M)*(EI/l) per staafeind, inclusief het effect van scheurvorming in de verhinderende elementen (§5.8.3.2(5)), en dat getal is uit een raamwerkmodel niet af te lezen. Wie het wel heeft, rekent (5.15)/(5.16) uit en vult de uitkomst in als 'Opgegeven'.",
-                "oneOf": [
-                    {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "soort": { "const": "Figuur57" },
-                            "geval": {
-                                "type": "string",
-                                "enum": ["ScharnierendScharnierend", "Console", "IngeklemdScharnierend",
-                                         "TweezijdigIngeklemdGeschoord", "TweezijdigIngeklemdOngeschoord"],
-                                "description": "Het vakje uit figuur 5.7. a) ScharnierendScharnierend: l0 = l, geschoord. b) Console: l0 = 2l, ongeschoord (een console houdt zichzelf overeind). c) IngeklemdScharnierend: l0 = 0,7l, geschoord. d) TweezijdigIngeklemdGeschoord: l0 = l/2. e) TweezijdigIngeklemdOngeschoord: l0 = l, rotatie verhinderd maar bovenaan zijdelings vrij. Het geval moet bij `bracing` passen; doet het dat niet, dan komt er een leesbare fout en geen getal."
-                            }
-                        },
-                        "required": ["soort", "geval"]
-                    },
-                    {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "soort": { "const": "Opgegeven" },
-                            "l0_m": { "type": "number", "exclusiveMinimum": 0,
-                                "description": "De kniklengte l0 in m, rechtstreeks. Voor wie (5.15), (5.16) of (5.17) zelf heeft doorgerekend of een aparte knikanalyse heeft gedaan; de afleiding legt dan vast DAT l0 is opgegeven en niet waaruit." }
-                        },
-                        "required": ["soort", "l0_m"]
-                    }
-                ]
+            "buckling_length": schema_kniklengtekeuze("om de y-as (in het rekenvlak)"),
+            "bracing_z": {
+                "type": "string",
+                "enum": ["Geschoord", "Ongeschoord"],
+                "description": "Geschoord of ongeschoord om de Z-AS, de richting loodrecht op het rekenvlak (§5.8.1). Een kolom kan in het vlak geschoord zijn en er loodrecht op niet, dus dit is een EIGEN gegeven. Weglaten = de keuze van `bracing` wordt ook om z aangehouden, en de toets meldt dat; het is een terugval en geen afleiding."
             },
+            "buckling_length_z": schema_kniklengtekeuze("om de z-as (loodrecht op het rekenvlak)"),
+            "m0_edz_knm": { "type": "number",
+                "description": "Een EXTERN eerste-orde-moment om de z-as in kNm, constant over de staaf, opgeteld bij het M_z uit de omhullende. Weglaten = 0. Het veld bestaat omdat de vlakke raamwerkoplosser geen M_z levert; een ruimtelijk model of een handberekening vult het. Ook zonder dit veld is M_Edz NIET nul: de imperfectie van §5.2 en het tweede-orde-effect om z komen er altijd bij." },
             "phi_inf_t0": { "type": "number", "minimum": 0,
                 "description": "Eindwaarde van de kruipcoefficient phi(oneindig,t0) volgens §3.1.4. Weglaten = niet opgegeven; §3.1.4 wordt niet gerekend (dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h0, de cementklasse en de ouderdom t0). Zonder deze waarde blijft phi_ef onbekend en staat §5.8.3.1(1) A = 0,7 toe - GEEN veilige kant maar de waarde bij phi_ef van ongeveer 2,14." },
             "stirrup_zone": {
@@ -752,7 +777,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "concrete_column_check",
-            "description": "Run the EN 1992-1-1 §5.8 slenderness gate on ONE compression member, plus the column detailing rules of §9.5 - without running a full cross-section check. Returns the effective length l0 (figure 5.7, or given directly), the slenderness lambda = l0/i of (5.14) computed on the UNCRACKED concrete section per 5.8.3.2(1), and the limit lambda_lim = 20*A*B*C/sqrt(n). That limit is NOT the EN recommendation: the Dutch national annex struck the note containing (5.13N) and reinstated the identical formula as a REQUIREMENT ('De waarde van lambda_lim moet gelijk aan 20*A*B*C/sqrt(n) zijn genomen'). lambda < lambda_lim means 5.8.3.1(1) permits SECOND-ORDER EFFECTS TO BE NEGLECTED; lambda >= lambda_lim does NOT mean the column fails - it means the internal forces must come from a second-order analysis (§5.8.6; in this app the physically non-linear route through `concrete_segment_stiffness`). This tool cannot see whether the envelope you pass already is second order, and says so in its notes. BRACED OR UNBRACED IS INPUT, NEVER DERIVED: §5.8.1 defines it twice over as something 'assumed in the design', a frame with a bracing wall looks identical to one without in a 2D model, and the difference is a factor two in l0 between (5.15) and (5.16) plus C = 0,7 imposed on any unbraced member. Also computes the effective creep ratio phi_ef of (5.19) from the QUASI-PERMANENT SLS combination (6.16) when phi(inf,t0) and that envelope are supplied, and evaluates the three conditions of 5.8.4(4) under which phi_ef = 0 may be used. The two end moments M01 and M02 for C = 1,7 - rm are read from the envelope of the governing combination, and the presence of TRANSVERSE LOADING is established from the moment diagram (a larger |M| between the ends than at either end) rather than asked - a member with wind on it falls in the rm = 1,0 branch whether the user knows it or not. §9.5.2(4) (a bar in every corner) and §9.5.3(6) (every corner bar restrained, no bar further than 150 mm from a restrained bar) ARE checked: the cage carries a `sides` row, so the position of every longitudinal bar in the plane of the section is known. Two things follow. A_s in §9.5.2(2) and (3) is the TOTAL longitudinal reinforcement including the side bars - so A_s,max can no longer be passed by leaving bars out. And §9.5.3(6) only counts the four STIRRUP CORNERS as restrained; with more than two stirrup legs there are intermediate links whose position is not an input, and the check then returns NotApplicable with the measured distance rather than a verdict. Same input type (ConcreteColumnCheckRequest), output type (ConcreteColumnCheckResponse) and calculation path as the Tauri command `concrete_column_check` and the toetsbrug opdracht of that name; the same path also runs inside `check_concrete_beam`.",
+            "description": "Run the EN 1992-1-1 §5.8 slenderness gate on ONE compression member, plus the column detailing rules of §9.5 - without running a full cross-section check. Returns the effective length l0 (figure 5.7, or given directly), the slenderness lambda = l0/i of (5.14) computed on the UNCRACKED concrete section per 5.8.3.2(1), and the limit lambda_lim = 20*A*B*C/sqrt(n). That limit is NOT the EN recommendation: the Dutch national annex struck the note containing (5.13N) and reinstated the identical formula as a REQUIREMENT ('De waarde van lambda_lim moet gelijk aan 20*A*B*C/sqrt(n) zijn genomen'). lambda < lambda_lim means 5.8.3.1(1) permits SECOND-ORDER EFFECTS TO BE NEGLECTED; lambda >= lambda_lim does NOT mean the column fails - it means the internal forces must come from a second-order analysis (§5.8.6; in this app the physically non-linear route through `concrete_segment_stiffness`). This tool cannot see whether the envelope you pass already is second order, and says so in its notes. BRACED OR UNBRACED IS INPUT, NEVER DERIVED: §5.8.1 defines it twice over as something 'assumed in the design', a frame with a bracing wall looks identical to one without in a 2D model, and the difference is a factor two in l0 between (5.15) and (5.16) plus C = 0,7 imposed on any unbraced member. Also computes the effective creep ratio phi_ef of (5.19) from the QUASI-PERMANENT SLS combination (6.16) when phi(inf,t0) and that envelope are supplied, and evaluates the three conditions of 5.8.4(4) under which phi_ef = 0 may be used. The two end moments M01 and M02 for C = 1,7 - rm are read from the envelope of the governing combination, and the presence of TRANSVERSE LOADING is established from the moment diagram (a larger |M| between the ends than at either end) rather than asked - a member with wind on it falls in the rm = 1,0 branch whether the user knows it or not. §9.5.2(4) (a bar in every corner) and §9.5.3(6) (every corner bar restrained, no bar further than 150 mm from a restrained bar) ARE checked: the cage carries a `sides` row, so the position of every longitudinal bar in the plane of the section is known. Two things follow. A_s in §9.5.2(2) and (3) is the TOTAL longitudinal reinforcement including the side bars - so A_s,max can no longer be passed by leaving bars out. And §9.5.3(6) only counts the four STIRRUP CORNERS as restrained; with more than two stirrup legs there are intermediate links whose position is not an input, and the check then returns NotApplicable with the measured distance rather than a verdict. THE SECOND AXIS AND BIAXIAL BENDING (§5.8.9) ARE CHECKED TOO, ALWAYS: three more checks come back - `5.8.3.1_slankheidsgrens_z` (lambda_z = l0_z/i_z against lambda_lim_z, with its OWN bracing `bracing_z` and effective length `buckling_length_z`; left out, the in-plane choice is reused and the check says so), `5.8.9_moment_z` (M_Edz = max{M_0Edz + N_Ed*(e_i + e_2); N_Ed*e_0} against M_Rdz: e_i = theta_i*l0_z/2 from §5.2 with theta_0 = 1/300 from the Dutch annex, e_2 from the general method of §5.8.6 on the critical section when lambda_z >= lambda_lim_z - an equilibrium iteration on the M-N-kappa diagram ABOUT Z with the bars laid in layers across the width - and e_0 = max(b/30; 20 mm) of 6.1(4)), and `5.8.9_dubbele_buiging` ((5.38a) lambda_y/lambda_z <= 2 and lambda_z/lambda_y <= 2 plus (5.38b) on every compressed station; where they do not both hold, the interaction (5.39) (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a <= 1 with a from the table in 5.8.9(4), linearly interpolated on N_Ed/N_Rd, N_Rd = A_c*f_cd + A_s*f_yd). A planar frame solver gives M_z = 0; that does NOT make M_Edz zero, because the imperfection and the second-order effect about z do not depend on the model. `m0_edz_knm` adds an external first-order moment about z (default 0) for a spatial model or a hand calculation. Rectangular sections only for the second axis; a T or L returns the three checks as NotApplicable with the reason. Same input type (ConcreteColumnCheckRequest), output type (ConcreteColumnCheckResponse) and calculation path as the Tauri command `concrete_column_check` and the toetsbrug opdracht of that name; the same path also runs inside `check_concrete_beam`.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,

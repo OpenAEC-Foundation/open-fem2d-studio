@@ -1058,3 +1058,319 @@ fn zonder_bekende_staafplaatsen_geen_stilzwijgend_groen_vinkje() {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.2 — de imperfectie als excentriciteit, en §5.8.9 — dubbele buiging.
+//
+// Elke verwachte waarde is met de hand uitgerekend; het rekenwerk staat bij de
+// test. De formules zijn van de gerenderde bladzijden 68, 95 en 96 gelezen.
+// ═══════════════════════════════════════════════════════════════════════════
+mod tweede_as {
+    use approx::assert_relative_eq;
+    use nen_en_1992_1_1::kolom::{
+        dubbele_buiging_deelstappen, e_i_5_2_mm, exponent_a_5_39, interactie_5_39,
+        moment_tweede_as_deelstappen, n_rd_5_39_n, scheefstand_5_1, voorwaarde_5_38a,
+        voorwaarde_5_38b, AlphaHGrens, DubbeleBuiging, ExponentAGrondslag, MomentTweedeAs,
+        TweedeOrdeDeel, EXPONENT_A_ROND_5_39, EXPONENT_A_TABEL_5_39, THETA_0_NB,
+    };
+    use nen_en_1992_1_1::{ConcreteSection, RebarRow, ReinforcementCage};
+
+    /// De NB bij §5.2(5): θ₀ = 1/300, en niet de EN-aanbeveling 1/200.
+    #[test]
+    fn theta_0_is_de_waarde_van_de_nationale_bijlage() {
+        assert_relative_eq!(THETA_0_NB, 1.0 / 300.0, max_relative = 1e-15);
+        assert!(THETA_0_NB < 1.0 / 200.0, "1/300 is kleiner dan de EN-aanbeveling 1/200");
+    }
+
+    /// α_h = 2/√l met 2/3 ≤ α_h ≤ 1, en α_m = √(0,5·(1 + 1/m)).
+    ///
+    /// ```text
+    ///   l = 4 m:  2/√4  = 1,0000 — precies op de bovengrens, niet begrensd
+    ///   l = 1 m:  2/√1  = 2 > 1  → α_h = 1,      begrensd boven
+    ///   l = 9 m:  2/√9  = 0,6667 — precies op de ondergrens, niet begrensd
+    ///   l = 25 m: 2/√25 = 0,4    → α_h = 2/3,    begrensd onder
+    ///   l = 6 m:  2/√6  = 0,816497
+    ///   m = 1: α_m = √(0,5·2) = 1;  m = 3: α_m = √(0,5·(1 + 1/3)) = 0,816497
+    /// ```
+    #[test]
+    fn alpha_h_en_alpha_m_handberekend() {
+        let s4 = scheefstand_5_1(4.0, 1).unwrap();
+        assert_relative_eq!(s4.alpha_h, 1.0, max_relative = 1e-12);
+        assert_eq!(s4.alpha_h_grens, None);
+
+        let s1 = scheefstand_5_1(1.0, 1).unwrap();
+        assert_relative_eq!(s1.alpha_h, 1.0, max_relative = 1e-12);
+        assert_eq!(s1.alpha_h_grens, Some(AlphaHGrens::Boven));
+
+        let s9 = scheefstand_5_1(9.0, 1).unwrap();
+        assert_relative_eq!(s9.alpha_h, 2.0 / 3.0, max_relative = 1e-12);
+        assert_eq!(s9.alpha_h_grens, None);
+
+        let s25 = scheefstand_5_1(25.0, 1).unwrap();
+        assert_relative_eq!(s25.alpha_h, 2.0 / 3.0, max_relative = 1e-12);
+        assert_eq!(s25.alpha_h_grens, Some(AlphaHGrens::Onder));
+
+        let s6 = scheefstand_5_1(6.0, 1).unwrap();
+        assert_relative_eq!(s6.alpha_h, 0.816_496_580_927_726, max_relative = 1e-12);
+        assert_relative_eq!(s6.alpha_m, 1.0, max_relative = 1e-12);
+        // θ_i = θ₀·α_h·α_m = 0,816497/300 = 0,00272166
+        assert_relative_eq!(s6.theta_i, 0.002_721_655_269_759, max_relative = 1e-9);
+
+        let s6m3 = scheefstand_5_1(6.0, 3).unwrap();
+        assert_relative_eq!(s6m3.alpha_m, 0.816_496_580_927_726, max_relative = 1e-12);
+
+        assert!(scheefstand_5_1(0.0, 1).is_err());
+        assert!(scheefstand_5_1(6.0, 0).is_err());
+    }
+
+    /// (5.2): e_i = θ_i·l₀/2. Kolom van 6 m, l₀ = l (figuur 5.7 a):
+    /// e_i = 0,00272166 · 6000 / 2 = 8,16497 mm. Met de EN-waarde 1/200 zou
+    /// het 12,247 mm zijn; de vereenvoudiging l₀/400 zou 15 mm geven.
+    #[test]
+    fn e_i_handberekend() {
+        let s = scheefstand_5_1(6.0, 1).unwrap();
+        let e_i = e_i_5_2_mm(s.theta_i, 6000.0).unwrap();
+        assert_relative_eq!(e_i, 8.164_965_809_277_26, max_relative = 1e-9);
+        assert!(e_i < 6000.0 / 400.0, "de vereenvoudiging l₀/400 hoort bij θ₀ = 1/200");
+        assert!(e_i_5_2_mm(s.theta_i, 0.0).is_err());
+        assert!(e_i_5_2_mm(-1.0, 6000.0).is_err());
+    }
+
+    /// N_Rd = A_c·f_cd + A_s·f_yd voor 300 × 300, C30/37, B500B, 4Ø16:
+    ///   90 000 · 20 + 804,2477 · 434,7826 = 1 800 000 + 349 672,9 = 2 149 672,9 N
+    #[test]
+    fn n_rd_handberekend() {
+        let a_s = 4.0 * std::f64::consts::PI * 64.0;
+        let n_rd = n_rd_5_39_n(90_000.0, 20.0, a_s, 500.0 / 1.15).unwrap();
+        assert_relative_eq!(n_rd, 2_149_672.921_443_04, max_relative = 1e-9);
+        assert!(n_rd_5_39_n(0.0, 20.0, a_s, 434.8).is_err());
+        assert!(n_rd_5_39_n(90_000.0, 20.0, -1.0, 434.8).is_err());
+    }
+
+    /// De tabel bij (5.39) en de lineaire interpolatie ertussen.
+    ///
+    /// ```text
+    ///   N_Ed/N_Rd = 0,1  → a = 1,0        (ankerpunt)
+    ///               0,4  → 1,0 + (0,3/0,6)·0,5 = 1,25
+    ///               0,7  → 1,5        (ankerpunt)
+    ///               0,85 → 1,5 + (0,15/0,3)·0,5 = 1,75
+    ///               1,0  → 2,0        (ankerpunt)
+    ///               0,05 → onder de tabel: 1,0 aangehouden (de strengste)
+    ///               1,2  → boven de tabel: 2,0, en N_Ed > N_Rd
+    /// ```
+    #[test]
+    fn exponent_a_tabel_en_interpolatie() {
+        assert_eq!(EXPONENT_A_TABEL_5_39, [(0.1, 1.0), (0.7, 1.5), (1.0, 2.0)]);
+        assert_relative_eq!(EXPONENT_A_ROND_5_39, 2.0);
+        let n_rd = 1000.0;
+        let a = |n: f64| exponent_a_5_39(n, n_rd).unwrap();
+        assert_relative_eq!(a(100.0).0, 1.0, max_relative = 1e-12);
+        assert_relative_eq!(a(400.0).0, 1.25, max_relative = 1e-12);
+        assert_eq!(a(400.0).1, ExponentAGrondslag::Geinterpoleerd);
+        assert_relative_eq!(a(700.0).0, 1.5, max_relative = 1e-12);
+        assert_relative_eq!(a(850.0).0, 1.75, max_relative = 1e-12);
+        assert_relative_eq!(a(1000.0).0, 2.0, max_relative = 1e-12);
+        assert_eq!(a(50.0), (1.0, ExponentAGrondslag::OnderTabel));
+        assert_eq!(a(1200.0), (2.0, ExponentAGrondslag::BovenTabel));
+        assert!(exponent_a_5_39(100.0, 0.0).is_err());
+        assert!(exponent_a_5_39(-1.0, 1000.0).is_err());
+    }
+
+    /// (5.38a) precies op de grens: λ_z/λ_y = 2 voldoet, 2,001 niet.
+    #[test]
+    fn voorwaarde_5_38a_op_de_grens() {
+        let net_wel = voorwaarde_5_38a(34.641, 69.282).unwrap();
+        assert_relative_eq!(net_wel.z_door_y, 2.0, max_relative = 1e-12);
+        assert!(net_wel.voldaan);
+        let net_niet = voorwaarde_5_38a(34.641, 69.282 * 1.0005).unwrap();
+        assert!(net_niet.z_door_y > 2.0 && !net_niet.voldaan);
+        // Symmetrisch: de andere kant om ook.
+        assert!(!voorwaarde_5_38a(69.282 * 1.0005, 34.641).unwrap().voldaan);
+        assert!(voorwaarde_5_38a(0.0, 10.0).is_err());
+    }
+
+    /// (5.38b) met de kolom van referentie R29: 300 × 300, N_Ed = 600 kN,
+    /// M_Edy = 40 kNm, M_Edz = 35 kNm.
+    ///
+    /// ```text
+    ///   i_y = i_z = 300/√12 = 86,6025 mm → b_eq = h_eq = 300 mm
+    ///   e_y = M_Edz/N_Ed = 35/600 = 58,333 mm;  e_y/h_eq = 0,19444
+    ///   e_z = M_Edy/N_Ed = 40/600 = 66,667 mm;  e_z/b_eq = 0,22222
+    ///   (e_y/h_eq)/(e_z/b_eq) = 0,875;  omgekeerd 1,143 → geen van beide ≤ 0,2
+    ///   met M_Edz = 5 kNm: e_y = 8,333 mm; 0,02778/0,22222 = 0,125 ≤ 0,2 → voldaan
+    /// ```
+    #[test]
+    fn voorwaarde_5_38b_handberekend() {
+        let i = 300.0 / 12.0_f64.sqrt();
+        let v = voorwaarde_5_38b(35.0 / 600.0 * 1e3, 40.0 / 600.0 * 1e3, i, i).unwrap();
+        assert_relative_eq!(v.b_eq_mm, 300.0, max_relative = 1e-12);
+        assert_relative_eq!(v.h_eq_mm, 300.0, max_relative = 1e-12);
+        assert_relative_eq!(v.e_y_rel, 0.194_444_444, max_relative = 1e-8);
+        assert_relative_eq!(v.e_z_rel, 0.222_222_222, max_relative = 1e-8);
+        assert_relative_eq!(v.y_door_z, 0.875, max_relative = 1e-9);
+        assert!(!v.voldaan);
+
+        let klein = voorwaarde_5_38b(5.0 / 600.0 * 1e3, 40.0 / 600.0 * 1e3, i, i).unwrap();
+        assert_relative_eq!(klein.y_door_z, 0.125, max_relative = 1e-9);
+        assert!(klein.voldaan);
+
+        // Enkelvoudige buiging: e_y = 0 → de verhouding is 0 en niet "deling
+        // door nul"; de voorwaarde is vervuld.
+        let enkel = voorwaarde_5_38b(0.0, 66.667, i, i).unwrap();
+        assert!(enkel.voldaan);
+        assert_relative_eq!(enkel.y_door_z, 0.0);
+        assert!(enkel.z_door_y.is_infinite());
+        // Zuivere druk: allebei nul, ook vervuld.
+        assert!(voorwaarde_5_38b(0.0, 0.0, i, i).unwrap().voldaan);
+        // Het teken doet er niet toe.
+        let neg = voorwaarde_5_38b(-58.333, 66.667, i, i).unwrap();
+        assert_relative_eq!(neg.e_y_mm, 58.333);
+        assert!(voorwaarde_5_38b(1.0, 1.0, 0.0, i).is_err());
+    }
+
+    /// (5.39): (30/60)^1,5 + (20/50)^1,5 = 0,3535534 + 0,2529822 = 0,6065356.
+    #[test]
+    fn interactie_5_39_handberekend() {
+        let som = interactie_5_39(30.0, 60.0, 20.0, 50.0, 1.5).unwrap();
+        assert_relative_eq!(som, 0.606_535_6, max_relative = 1e-7);
+        // a = 1: gewoon de som van de twee verhoudingen.
+        assert_relative_eq!(interactie_5_39(30.0, 60.0, 20.0, 50.0, 1.0).unwrap(), 0.9);
+        // Het teken van de momenten doet er niet toe.
+        assert_relative_eq!(interactie_5_39(-30.0, 60.0, -20.0, 50.0, 1.0).unwrap(), 0.9);
+        assert!(interactie_5_39(30.0, 0.0, 20.0, 50.0, 1.0).is_err());
+        assert!(interactie_5_39(30.0, 60.0, 20.0, 50.0, 0.5).is_err());
+    }
+
+    /// I_z van een rechthoek: 300 × 600 → h·b³/12 = 600·300³/12 = 1,35·10⁹ mm⁴,
+    /// en i_z = √(I_z/A) = 300/√12.
+    #[test]
+    fn i_z_van_een_rechthoek() {
+        let s = ConcreteSection::rectangle(300.0, 600.0);
+        assert_relative_eq!(s.i_z_centroid_mm4(), 1.35e9, max_relative = 1e-12);
+        assert_relative_eq!(s.i_centroid_mm4(), 5.4e9, max_relative = 1e-12);
+        let i_z = (s.i_z_centroid_mm4() / s.area_mm2()).sqrt();
+        assert_relative_eq!(i_z, 300.0 / 12.0_f64.sqrt(), max_relative = 1e-12);
+    }
+
+    /// De staven in lagen over de breedte, voor het M-N-κ-diagram om z.
+    ///
+    /// 300 × 300, dekking 30, beugel Ø8, 3Ø20 onder en 3Ø20 boven, 1Ø12 per
+    /// zijkant. Halve binnenmaat van de Ø20-rijen: 150 − 30 − 8 − 10 = 102 mm,
+    /// dus x = −102, 0, +102; van de zijstaven 150 − 30 − 8 − 6 = 106 mm.
+    /// Gedraaid (b wordt de hoogte): lagen op x + 150 =
+    ///   44 (1Ø12), 48 (2Ø20), 150 (2Ø20), 252 (2Ø20), 256 (1Ø12).
+    #[test]
+    fn lagen_om_z_groeperen_op_x() {
+        let korf = ReinforcementCage {
+            cover_mm: 30.0,
+            stirrup_diameter_mm: 8.0,
+            top: RebarRow { count: 3, diameter_mm: 20.0 },
+            bottom: RebarRow { count: 3, diameter_mm: 20.0 },
+            sides: Some(RebarRow { count: 1, diameter_mm: 12.0 }),
+            ..ReinforcementCage::default()
+        };
+        let s = ConcreteSection::rectangle(300.0, 300.0);
+        let (gedraaid, lagen) = korf.lagen_om_z(&s).unwrap();
+        assert_relative_eq!(gedraaid.b_mm, 300.0);
+        assert_relative_eq!(gedraaid.h_mm, 300.0);
+        let o20 = std::f64::consts::PI * 100.0;
+        let o12 = std::f64::consts::PI * 36.0;
+        let verwacht = [(44.0, o12), (48.0, 2.0 * o20), (150.0, 2.0 * o20), (252.0, 2.0 * o20), (256.0, o12)];
+        assert_eq!(lagen.len(), verwacht.len(), "{lagen:?}");
+        for (laag, (z, opp)) in lagen.iter().zip(verwacht) {
+            assert_relative_eq!(laag.z_mm, z, max_relative = 1e-12);
+            assert_relative_eq!(laag.area_mm2, opp, max_relative = 1e-12);
+        }
+        // Het totale oppervlak blijft dat van de korf.
+        let som: f64 = lagen.iter().map(|l| l.area_mm2).sum();
+        assert_relative_eq!(som, korf.a_s_total_mm2(), max_relative = 1e-12);
+
+        // Een niet-vierkante rechthoek draait mee: 300 breed × 600 hoog wordt
+        // 600 breed × 300 hoog.
+        let (gedraaid2, _) = korf.lagen_om_z(&ConcreteSection::rectangle(300.0, 600.0)).unwrap();
+        assert_relative_eq!(gedraaid2.b_mm, 600.0);
+        assert_relative_eq!(gedraaid2.h_mm, 300.0);
+    }
+
+    #[test]
+    fn lagen_om_z_weigert_een_t_met_reden() {
+        let korf = ReinforcementCage {
+            cover_mm: 30.0,
+            stirrup_diameter_mm: 8.0,
+            top: RebarRow { count: 2, diameter_mm: 16.0 },
+            bottom: RebarRow { count: 2, diameter_mm: 16.0 },
+            ..ReinforcementCage::default()
+        };
+        let t = ConcreteSection::tee(600.0, 150.0, 300.0, 500.0).unwrap();
+        let fout = korf.lagen_om_z(&t).unwrap_err();
+        assert!(fout.contains("rechthoek"), "{fout}");
+        assert!(fout.contains("5.8.9(4)"), "{fout}");
+    }
+
+    /// De afleidingen noemen de vindplaatsen en dragen de ingevulde getallen.
+    #[test]
+    fn de_deelstappen_noemen_de_artikelen() {
+        let s = scheefstand_5_1(6.0, 1).unwrap();
+        let m = MomentTweedeAs {
+            n_ed_druk_kn: 600.0,
+            m0_knm: 35.0,
+            scheefstand: s,
+            l0_mm: 6000.0,
+            e_i_mm: 8.165,
+            tweede_orde: TweedeOrdeDeel::Gerekend {
+                e_2_mm: 18.6,
+                kappa_per_m: 0.0248,
+                c: 8.0,
+                iteraties: 7,
+                phi_ef: 0.0,
+                lambda: 69.3,
+                lambda_lim: 23.5,
+            },
+            e_0_mm: 20.0,
+            e_0_bindend: false,
+            m_ed_knm: 51.06,
+            m_rd_knm: Some(117.1),
+        };
+        let stappen = moment_tweede_as_deelstappen(&m);
+        let ids: Vec<&str> = stappen.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, ["theta_i", "e_i", "e_2", "m_ed_tweede_as", "m_rd_tweede_as"]);
+        assert!(stappen[0].article.contains("5.2(5)") && stappen[0].article.contains("1/300"));
+        assert!(stappen[1].article.contains("5.2(7)"));
+        assert!(stappen[2].article.contains("5.8.6(6)"));
+        assert!(stappen[2].notes.iter().any(|n| n.contains("c = 8")));
+        assert!(stappen[3].article.contains("6.1(4)"));
+        assert_relative_eq!(stappen[3].value.unwrap(), 51.06);
+
+        let d = DubbeleBuiging {
+            voorwaarde_a: voorwaarde_5_38a(69.3, 69.3).unwrap(),
+            voorwaarde_b: voorwaarde_5_38b(58.3, 66.7, 86.6, 86.6).unwrap(),
+            apart_toegestaan: false,
+            n_ed_druk_kn: 600.0,
+            n_rd_kn: 2619.5,
+            a_c_mm2: 90_000.0,
+            a_s_mm2: 1885.0,
+            f_cd_mpa: 20.0,
+            f_yd_mpa: 434.8,
+            n_verhouding: 0.229,
+            a: 1.1075,
+            a_grondslag: ExponentAGrondslag::Geinterpoleerd,
+            m_edy_knm: 40.0,
+            m_rdy_knm: 142.0,
+            m_edz_knm: 51.06,
+            m_rdz_knm: 117.1,
+            interactie: 0.644,
+        };
+        let stappen = dubbele_buiging_deelstappen(&d);
+        let ids: Vec<&str> = stappen.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["voorwaarde_5_38a", "voorwaarde_5_38b", "n_rd", "exponent_a", "interactie_5_39"]
+        );
+        assert!(stappen[0].article.contains("(5.38a)"));
+        assert!(stappen[1].article.contains("(5.38b)"));
+        assert!(stappen[1].notes.iter().any(|n| n.contains("NIET vervuld")));
+        assert!(stappen[3].notes.iter().any(|n| n.contains("lineaire interpolatie")));
+        assert!(stappen[4].article.contains("(5.39)"));
+        assert_relative_eq!(stappen[4].value.unwrap(), 0.644);
+    }
+}

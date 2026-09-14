@@ -374,6 +374,21 @@ impl ConcreteSection {
         }
     }
 
+    /// Traagheidsmoment van de bruto betondoorsnede om de Z-AS — de as
+    /// loodrecht op het rekenvlak, door de hartlijn — mm⁴. Bij één band de
+    /// gesloten vorm h·b³/12.
+    ///
+    /// Elke band ligt gecentreerd om de hartlijn (zie [`Self::bands`]), dus de
+    /// som van de eigen traagheidsmomenten h_band·b_band³/12 is exact; er is
+    /// geen Steiner-term. Nodig voor i_z = √(I_z/A) in (5.14) om de tweede as
+    /// (§5.8.9(3), (5.38a)).
+    pub fn i_z_centroid_mm4(&self) -> f64 {
+        self.bands()
+            .iter()
+            .map(|b| b.height_mm() * b.b_mm * b.b_mm * b.b_mm / 12.0)
+            .sum()
+    }
+
     /// Weerstandsmoment voor de ONDERSTE vezel: W = I / z_g, mm³.
     /// Bij één band de gesloten vorm b·h²/6.
     pub fn w_bottom_mm3(&self) -> f64 {
@@ -1334,6 +1349,79 @@ impl ReinforcementCage {
             }
         }
         uit
+    }
+
+    /// De wapening in LAGEN OVER DE BREEDTE, plus de doorsnede zoals de
+    /// M-N-κ-kern haar dan ziet — voor buiging om de Z-AS (§5.8.9).
+    ///
+    /// # Waarom dit kan
+    ///
+    /// De kern rekent met een hoogte-as z en lagen op een afstand `z_mm` van
+    /// de onderrand ([`RebarLayer`]); de vorm van de doorsnede komt er alleen
+    /// als banden in voor. Om de z-as buigen is dezelfde som met de doorsnede
+    /// een kwartslag gedraaid: de breedte b wordt de "hoogte" en de hoogte h
+    /// de "breedte". [`Self::staafposities`] geeft elke staaf zijn x ten
+    /// opzichte van de hartlijn; staven met dezelfde x liggen in de gedraaide
+    /// stand op dezelfde "hoogte" x + b/2 en hebben dus dezelfde rek
+    /// (6.1(2)P, vlakke doorsneden) — zij vormen samen één laag.
+    ///
+    /// # Alleen een rechthoek
+    ///
+    /// Een T of L is om de z-as geen stapel banden over de hoogte meer: de
+    /// gedraaide doorsnede is drie banden breed en dat draagt
+    /// [`ConcreteSection`] niet. §5.8.9(4) geeft de exponent a bovendien
+    /// alleen voor cirkel, ellips en rechthoek, en §9.5 ziet ook alleen een
+    /// rechthoekige of ronde kolom. Voor een T of L komt hier een leesbare
+    /// reden en geen getal.
+    ///
+    /// De staven worden op x afgerond op 0,01 mm gegroepeerd, zodat een
+    /// linker- en een rechterzijstaaf op −halve_binnenmaat en
+    /// +halve_binnenmaat twee lagen blijven en de staven van de onder- en
+    /// bovenrij op dezelfde x één laag worden.
+    pub fn lagen_om_z(
+        &self,
+        section: &ConcreteSection,
+    ) -> Result<(ConcreteSection, Vec<RebarLayer>), String> {
+        if section.shape != ConcreteShape::Rectangle {
+            return Err(format!(
+                "de wapening in lagen over de breedte is alleen voor een rechthoek bepaald; deze                  doorsnede is een {}. Om de z-as is een T of L geen stapel banden over de hoogte                  meer, en §5.8.9(4) geeft de exponent a ook alleen voor cirkel, ellips en rechthoek.",
+                section.shape.label()
+            ));
+        }
+        let gedraaid = ConcreteSection::rectangle(section.h_mm, section.b_mm);
+        // Sorteer op x, groepeer op x afgerond op 0,01 mm.
+        let mut staven = self.staafposities(section);
+        staven.sort_by(|a, b| a.x_mm.total_cmp(&b.x_mm));
+        let mut lagen: Vec<RebarLayer> = Vec::new();
+        let mut huidige: Option<(f64, f64, u32, f64)> = None; // (x, oppervlak, aantal, diameter)
+        let sluit = |lagen: &mut Vec<RebarLayer>, laag: (f64, f64, u32, f64)| {
+            let (x, opp, n, d) = laag;
+            lagen.push(RebarLayer {
+                z_mm: x + section.b_mm / 2.0,
+                area_mm2: opp,
+                label: format!("x = {}{} mm: {n}Ø{}", if x >= 0.0 { "+" } else { "" }, fmt_mm(x), fmt_mm(d)),
+            });
+        };
+        for st in &staven {
+            let x = (st.x_mm * 100.0).round() / 100.0;
+            let opp = std::f64::consts::PI * (st.diameter_mm / 2.0).powi(2);
+            match huidige {
+                Some((hx, hopp, n, d)) if (hx - x).abs() < 1e-9 => {
+                    // Verschillende diameters op één x: het label noemt de
+                    // grootste; het oppervlak is exact.
+                    huidige = Some((hx, hopp + opp, n + 1, d.max(st.diameter_mm)));
+                }
+                Some(laag) => {
+                    sluit(&mut lagen, laag);
+                    huidige = Some((x, opp, 1, st.diameter_mm));
+                }
+                None => huidige = Some((x, opp, 1, st.diameter_mm)),
+            }
+        }
+        if let Some(laag) = huidige {
+            sluit(&mut lagen, laag);
+        }
+        Ok((gedraaid, lagen))
     }
 
     /// De dwarskrachtwapening, of de reden waarom zij niet bekend is.

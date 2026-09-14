@@ -109,8 +109,8 @@ fn verzoek_standaard() -> Value {
     verzoek("Geschoord", "ScharnierendScharnierend")
 }
 
-/// Hetzelfde verzoek, maar met een moment om de ZWAKKE as in de omhullende.
-/// Dat maakt het een geval van §5.8.9, en de kern hoort dat dan te melden —
+/// Hetzelfde verzoek, maar met een moment om de TWEEDE as in de omhullende.
+/// Dat maakt het een geval van §5.8.9 waarin de interactie (5.39) vereist is —
 /// langs alle drie de wegen hetzelfde.
 fn verzoek_dubbele_buiging() -> Value {
     let mut v = verzoek_standaard();
@@ -432,12 +432,13 @@ async fn de_kniklengte_en_de_slankheid_staan_vast() {
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
 
-/// Dubbele buiging: een moment om de zwakke as in de omhullende. De kern
-/// rekent §5.8.9 niet, maar MELDT het — en die melding hoort langs alle drie
-/// de wegen hetzelfde te zijn, mét dezelfde reden. Een weg die de omhullende
-/// zou afvlakken tot M_y alleen, zou hier de melding kwijt zijn.
+/// Dubbele buiging: een moment om de tweede as in de omhullende. §5.8.9 is
+/// GEBOUWD — de drie toetsen om de z-as (de poort om z, het moment om z en de
+/// interactie) komen langs alle drie de wegen hetzelfde terug, mét dezelfde
+/// getallen en dezelfde afleiding. Een weg die de omhullende zou afvlakken tot
+/// M_y alleen, zou hier een andere M_Edz en een andere som van (5.39) geven.
 #[tokio::test]
-async fn de_drie_wegen_melden_dubbele_buiging_gelijk() {
+async fn de_drie_wegen_toetsen_dubbele_buiging_gelijk() {
     let (mut child, mut stdin, mut reader) = start_server().await;
 
     let inv = verzoek_dubbele_buiging();
@@ -450,23 +451,48 @@ async fn de_drie_wegen_melden_dubbele_buiging_gelijk() {
     eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
     eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
 
-    let melding = tauri["checks"]
-        .as_array()
-        .expect("checks")
-        .iter()
-        .find(|c| c["kind"]["data"]["id"] == json!("5.8.9_dubbele_buiging"))
-        .expect("een moment om de zwakke as hoort §5.8.9 te laten melden");
-    assert_eq!(melding["kind"]["data"]["status"], json!("NotApplicable"));
-
-    // En zónder M_z is de melding er niet — anders is hij ruis.
-    let standaard = weg_tauri(&verzoek_standaard()).expect("Tauri-weg");
-    assert!(
-        !standaard["checks"]
+    let zoek = |uit: &Value, id: &str| -> Value {
+        uit["checks"]
             .as_array()
-            .unwrap()
+            .expect("checks")
             .iter()
-            .any(|c| c["kind"]["data"]["id"] == json!("5.8.9_dubbele_buiging")),
-        "zonder M_z hoort er geen §5.8.9-melding te zijn"
+            .find(|c| c["kind"]["data"]["id"] == json!(id))
+            .unwrap_or_else(|| panic!("toets {id} hoort in het antwoord te staan"))
+            .clone()
+    };
+    // Met M_z = 35 kNm naast M_y = 40 kNm is (5.38b) niet vervuld en is de
+    // interactie (5.39) vereist: een unity check, en geen "niet uitgevoerd".
+    let db = zoek(&tauri, "5.8.9_dubbele_buiging");
+    assert_ne!(db["kind"]["data"]["status"], json!("NotApplicable"));
+    assert!(
+        db["kind"]["data"]["uc"].is_object(),
+        "met een moment om beide assen hoort (5.39) een unity check te geven"
+    );
+    assert!(
+        tauri["m_edz_knm"].as_f64().unwrap_or(0.0) > 35.0,
+        "M_Edz hoort boven het model-M_z van 35 kNm te liggen: imperfectie en tweede orde erbij"
+    );
+    assert!(tauri["interactie_5_39"].as_f64().is_some());
+
+    // En ZONDER M_z bestaan de drie toetsen om z óók: M_Edz is dan niet nul
+    // door de imperfectie van §5.2 en de tweede orde om z. Of het dan apart
+    // mag, is een uitkomst van (5.38b) en geen aanname: bij deze kolom (900 kN
+    // druk, M_y aan het bovenste eind maar 20 kNm) is e_y = e_i + e₂ ≈ 10 mm
+    // tegenover e_z = 22 mm, dus 0,45 > 0,2 en (5.39) blijft vereist. De toets
+    // is dan UITGEVOERD, niet "niet van toepassing".
+    let standaard = weg_tauri(&verzoek_standaard()).expect("Tauri-weg");
+    for id in ["5.8.3.1_slankheidsgrens_z", "5.8.9_moment_z", "5.8.9_dubbele_buiging"] {
+        let _ = zoek(&standaard, id);
+    }
+    let db = zoek(&standaard, "5.8.9_dubbele_buiging");
+    assert_ne!(db["kind"]["data"]["status"], json!("NotApplicable"));
+    assert!(
+        standaard["m_edz_knm"].as_f64().unwrap_or(0.0) > 0.0,
+        "M_Edz is ook zonder M_z niet nul: de imperfectie van §5.2 zit erin"
+    );
+    assert!(
+        standaard["e_i_z_mm"].as_f64().unwrap_or(0.0) > 0.0,
+        "en de imperfectie zelf staat in het antwoord"
     );
 
     drop(stdin);

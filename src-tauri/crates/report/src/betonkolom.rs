@@ -52,7 +52,7 @@ use nen_en_1992_1_1::kolom::{is_kolomdetailleringstoets, niet_getoetste_9_5_eise
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue};
 use steel_check::result::{CheckKind, NamedCheck};
 
-use concrete_check::kolom::DUBBELE_BUIGING_ID;
+use concrete_check::kolom::{DUBBELE_BUIGING_ID, MOMENT_Z_ID, SLANKHEIDSGRENS_Z_ID};
 use concrete_check::{ConcreteBeamCheckResult, KRUIP_ID, SLANKHEIDSGRENS_ID};
 
 use crate::betonfiguren::nl;
@@ -62,7 +62,8 @@ use crate::{
 };
 
 /// De kop van het hoofdstuk.
-pub const KOP: &str = "Beton — kolommen: slankheid (5.8.3), kruip (5.8.4) en detaillering (9.5)";
+pub const KOP: &str =
+    "Beton — kolommen: slankheid (5.8.3), kruip (5.8.4), dubbele buiging (5.8.9) en detaillering (9.5)";
 
 // ═══════════════════════════════════════════════════════════════════════
 // Toepasselijkheid
@@ -72,6 +73,8 @@ pub const KOP: &str = "Beton — kolommen: slankheid (5.8.3), kruip (5.8.4) en d
 fn is_kolomtoets(id: &str) -> bool {
     id == SLANKHEIDSGRENS_ID
         || id == KRUIP_ID
+        || id == SLANKHEIDSGRENS_Z_ID
+        || id == MOMENT_Z_ID
         || id == DUBBELE_BUIGING_ID
         || is_kolomdetailleringstoets(id)
 }
@@ -118,6 +121,19 @@ pub fn extend_with_kolomhoofdstuk(flow: &mut Vec<Box<dyn Flowable>>, input: &Rep
          grootste moment: n = N_Ed/(A_c·f_cd) staat onder een wortel in de NOEMER van λ_lim, dus \
          hoe groter de druk, hoe kleiner λ_lim. M₀Ed komt uit diezelfde snede en dus uit dezelfde \
          combinatie.",
+        style_body(),
+    )));
+
+    flow.push(Box::new(Paragraph::new(
+        "De TWEEDE as krijgt per staaf drie eigen toetsen. De raamwerkoplosser rekent in één vlak \
+         en levert M_z = 0, maar dat is een eigenschap van het model en niet van de kolom: om de \
+         z-as werken de imperfectie van art. 5.2 (θ₀ = 1/300 volgens de nationale bijlage) en het \
+         tweede-orde-effect net zo goed. De slankheidsgrens om z (art. 5.8.3.1(2)) zegt of e₂ om z \
+         moet worden meegenomen; is dat zo, dan wordt e₂ met de algemene methode van art. 5.8.6 op \
+         de maatgevende doorsnede bepaald — de nominale kromming van art. 5.8.8 laat de nationale \
+         bijlage alleen voor geschoorde, op zichzelf staande elementen toe. Daarna volgt art. 5.8.9: \
+         mogen de twee richtingen apart worden getoetst ((5.38a) en (5.38b)), en zo niet, dan de \
+         interactie (5.39).",
         style_body(),
     )));
 
@@ -317,16 +333,18 @@ fn extend_met_staaf(flow: &mut Vec<Box<dyn Flowable>>, r: &ConcreteBeamCheckResu
         }
     }
 
-    // ── Dubbele buiging: alleen als de kern hem gemeld heeft ─────────────
-    if let Some(notes) = notes_van(r, DUBBELE_BUIGING_ID) {
-        flow.push(Box::new(Paragraph::new(
-            "Dubbele buiging (art. 5.8.9) — NIET uitgevoerd:",
-            style_mono(),
-        )));
-        for n in notes {
-            // Rood: hier staat dat er een halve belasting buiten beschouwing is
-            // gebleven. Daar moet de lezer over struikelen.
-            flow.push(Box::new(Paragraph::new(n.clone(), let_op_stijl())));
+    // ── De tweede as: de poort om z, het moment om z en art. 5.8.9 ───────
+    //
+    // Drie toetsen met elk een eigen afleiding, uitgeschreven zoals de poort
+    // om y hierboven. Ook hier geldt: niet-van-toepassing is een uitkomst met
+    // een reden, en die reden staat er woordelijk.
+    for (id, kop) in [
+        (SLANKHEIDSGRENS_Z_ID, "Slankheidsgrens om de z-as (art. 5.8.3.1(2))"),
+        (MOMENT_Z_ID, "Moment om de z-as — imperfectie (art. 5.2), tweede orde (art. 5.8.6) en weerstand (art. 6.1)"),
+        (DUBBELE_BUIGING_ID, "Dubbele buiging (art. 5.8.9)"),
+    ] {
+        if let Some(nc) = r.checks.iter().find(|c| c.id == id) {
+            extend_met_toets_tweede_as(flow, nc, kop);
         }
     }
 
@@ -413,6 +431,45 @@ fn extend_met_poort(flow: &mut Vec<Box<dyn Flowable>>, nc: &NamedCheck) {
     // ω zonder zijstaven, en bij n.v.t. de reden dat art. 5.8 niet kon.
     for n in &c.notes {
         flow.push(Box::new(Paragraph::new(n.clone(), style_note())));
+    }
+}
+
+/// Eén toets om de tweede as: kop met uitkomst, de afleiding, de unity check
+/// als die er is, en de kanttekeningen woordelijk.
+///
+/// Rood waar het rood hoort: een afgekeurde toets, en de reden van een toets
+/// die niet kon. Een kolom die om z knikt terwijl het model M_z = 0 zegt, is
+/// precies het soort uitkomst waar de lezer over moet struikelen.
+fn extend_met_toets_tweede_as(flow: &mut Vec<Box<dyn Flowable>>, nc: &NamedCheck, kop: &str) {
+    let CheckKind::Resistance(c) = &nc.kind else {
+        flow.push(Box::new(Paragraph::new(
+            format!("{kop} — kwam in een andere vorm terug dan verwacht; de afleiding is niet uitgeschreven."),
+            style_note(),
+        )));
+        return;
+    };
+    flow.push(Box::new(Paragraph::new(
+        format!("{kop} — {}", status_label(&c.status)),
+        style_mono(),
+    )));
+    if !c.deelstappen.is_empty() {
+        extend_with_deelstappen(flow, &c.deelstappen);
+    }
+    if let Some(uc) = &c.uc {
+        flow.push(Box::new(Paragraph::new(
+            format!(
+                "{} = {} / {} = {}.",
+                uc.formula_latex.replace('\\', "").replace(['{', '}'], ""),
+                nl(uc.ed, 2),
+                nl(uc.rd, 2),
+                nl(uc.uc, 3)
+            ),
+            style_mono(),
+        )));
+    }
+    let stijl = if matches!(c.status, CheckStatus::Ok) { style_note() } else { let_op_stijl() };
+    for n in &c.notes {
+        flow.push(Box::new(Paragraph::new(n.clone(), stijl.clone())));
     }
 }
 

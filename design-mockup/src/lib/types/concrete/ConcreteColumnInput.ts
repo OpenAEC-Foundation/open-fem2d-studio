@@ -26,13 +26,21 @@ import type { Schoring } from "./Schoring";
  * [`Schoring`] hier verplicht zodra het blok bestaat, en wordt het nergens
  * afgeleid.
  *
- * # Per as
+ * # Twee assen
  *
- * Dit blok geldt voor de as waarin dit model rekent: buiging om de y-as, in
- * het vlak van het raamwerk. Een kolom kan in het vlak geschoord zijn en er
- * loodrecht op ongeschoord; die tweede richting bestaat in een 2D-model niet
- * en wordt hier dus ook niet gesuggereerd. Wie de zwakke as nodig heeft,
- * toetst hem in een model van dát vlak.
+ * `bracing` en `buckling_length` gelden voor de as waarin dit model rekent:
+ * buiging om de y-as, in het vlak van het raamwerk. Een kolom heeft ook een
+ * tweede as, en knikt daar even goed om uit — met de imperfectie van §5.2 en
+ * het tweede-orde-effect in díe richting, ook als de raamwerkoplosser M_z = 0
+ * levert. Daarom dragen `bracing_z` en `buckling_length_z` de schoring en de
+ * kniklengte om de z-as: een EIGEN gegeven, want de schoring verschilt vaak
+ * per richting (een kolom kan in het vlak geschoord zijn en er loodrecht op
+ * niet). Blijven ze leeg, dan wordt de keuze van het rekenvlak overgenomen
+ * en zegt de toets dat met zoveel woorden. `m0_edz_knm` is een extern
+ * eerste-orde-moment om de z-as, nul als beginwaarde, zodat een ruimtelijk
+ * model hem straks kan vullen zonder dat dit type verandert. De velden zijn
+ * per as benoemd en niet als vaste lijst van twee: een derde grootheid
+ * (wringing, een schuine as) past er later naast.
  */
 export type ConcreteColumnInput = { 
 /**
@@ -72,4 +80,32 @@ stirrup_zone?: Beugelzone,
  * buiten een las — een factor twee, en de ruimste tak. Aannemen mag dus
  * niet.
  */
-lap_situation?: Overlappingssituatie, };
+lap_situation?: Overlappingssituatie, 
+/**
+ * Geschoord of ongeschoord om de Z-AS — het ontwerpbesluit van §5.8.1
+ * voor de richting loodrecht op het rekenvlak.
+ *
+ * `None` = niet apart opgegeven; dan geldt `bracing` ook om z, en de
+ * toets meldt dat. Dat is een terugval en geen afleiding: wie weet dat
+ * de schoring per richting verschilt, vult dit veld in.
+ */
+bracing_z?: Schoring, 
+/**
+ * Hoe l₀ om de Z-AS wordt bepaald: dezelfde keuze als `buckling_length`
+ * (een vakje van figuur 5.7, of l₀ zelf), maar voor de richting loodrecht
+ * op het rekenvlak. Het vakje moet bij `bracing_z` passen.
+ *
+ * `None` = niet apart opgegeven; dan geldt `buckling_length` ook om z, en
+ * de toets meldt dat.
+ */
+buckling_length_z?: Kniklengtekeuze, 
+/**
+ * Een EXTERN eerste-orde-moment om de z-as, kNm, constant over de staaf,
+ * dat bij het M_z uit de omhullende wordt opgeteld.
+ *
+ * `None` = 0. Het veld bestaat omdat de vlakke raamwerkoplosser geen M_z
+ * levert; een ruimtelijk model of een handberekening vult het. Het teken
+ * doet er niet toe: de korf is symmetrisch om de hartlijn en de toets
+ * rekent met de grootte.
+ */
+m0_edz_knm?: number, };

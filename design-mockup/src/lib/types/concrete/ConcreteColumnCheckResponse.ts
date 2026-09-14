@@ -30,4 +30,44 @@ tweede_orde_verwaarloosbaar?: boolean,
 /**
  * De effectieve kruipcoëfficiënt φ_ef uit (5.19), als hij te bepalen was.
  */
-phi_ef?: number, };
+phi_ef?: number, 
+/**
+ * λ_z = l₀,z/i_z om de z-as. `None` als de tweede as niet kon.
+ */
+lambda_z?: number, 
+/**
+ * λ_lim,z om de z-as.
+ */
+lambda_lim_z?: number, 
+/**
+ * l₀,z in mm.
+ */
+l0_z_mm?: number, 
+/**
+ * λ_z < λ_lim,z: e₂ om z mocht vervallen.
+ */
+tweede_orde_verwaarloosbaar_z?: boolean, 
+/**
+ * De imperfectie e_i = θ_i·l₀,z/2 om z, mm (§5.2).
+ */
+e_i_z_mm?: number, 
+/**
+ * Het tweede-orde-deel e₂ om z, mm; 0 als het mocht vervallen, `None` bij
+ * instabiliteit om z.
+ */
+e_2_z_mm?: number, 
+/**
+ * M_Edz op de maatgevende snede, kNm — inclusief imperfectie, tweede orde
+ * en de minimale excentriciteit van 6.1(4). Bij instabiliteit om z (geen
+ * evenwicht; `e_2_z_mm` is dan `None`) het laatste moment waarvoor nog
+ * een kromming is gezocht, en geen rekenwaarde — de toets zegt dat.
+ */
+m_edz_knm?: number, 
+/**
+ * M_Rdz op die snede, kNm.
+ */
+m_rdz_knm?: number, 
+/**
+ * De grootste som van (5.39), alleen als §5.8.9(4) haar vereiste.
+ */
+interactie_5_39?: number, };

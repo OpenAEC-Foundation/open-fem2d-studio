@@ -49,27 +49,37 @@
 //! moment van de ene combinatie naast de grootste druk van een andere zetten
 //! zou een belastinggeval opleveren dat niet bestaat.
 //!
-//! # Wat deze module NIET doet
+//! # Wat deze module NIET doet — en wat zij om de tweede as wél doet
 //!
-//! Zij rekent geen tweede orde uit. Dat doet de algemene methode van §5.8.6,
-//! die in deze app bestaat als de fysisch niet-lineaire keten
-//! ([`crate::segment_stiffness`] met `lib/betonStijfheid.ts`). Deze module
-//! beantwoordt alleen de voorvraag, en kan aan een krachtsverloop niet zien of
-//! het al uit zo'n tweede-orde-berekening komt. Dat staat bij de toets.
+//! In het REKENVLAK rekent zij geen tweede orde uit. Dat doet de algemene
+//! methode van §5.8.6, die in deze app bestaat als de fysisch niet-lineaire
+//! keten ([`crate::segment_stiffness`] met `lib/betonStijfheid.ts`). Voor die
+//! as beantwoordt deze module alleen de voorvraag, en kan zij aan een
+//! krachtsverloop niet zien of het al uit zo'n tweede-orde-berekening komt.
+//! Dat staat bij de toets.
+//!
+//! Om de TWEEDE as (z) bestaat die keten niet — de raamwerkoplosser rekent in
+//! één vlak — en daar rekent deze module het tweede-orde-deel wél zelf, met de
+//! algemene methode op de maatgevende doorsnede (§5.8.6(6)), samen met de
+//! imperfectie van §5.2 en de toetsen van §5.8.9. Zie [`TweedeAsUitkomst`].
 
 use mechanics::{ForcePoint, ForceStateSnapshot};
+use nen_en_1992_1_1::checks::minimum_eccentricity_mm;
 use nen_en_1992_1_1::kolom::{
-    as_max_9_5_2, as_min_9_5_2, hoekstaven_9_5_2, kolom_deelstappen, kolomslankheid,
+    as_max_9_5_2, as_min_9_5_2, dubbele_buiging_deelstappen, e_i_5_2_mm, exponent_a_5_39,
+    hoekstaven_9_5_2, interactie_5_39, kolom_deelstappen, kolomslankheid,
     min_diameter_dwarswapening_9_5_3, min_diameter_langsstaaf_9_5_2, min_dwarsafmeting_9_5_1,
-    opgesloten_staven_9_5_3, s_cl_tmax_9_5_3, toepassingsgebied_9_5_1, traagheidsstraal_mm,
-    Beugelzone, Knikgeval,
-    Kniklengtebepaling, KolomInvoer, KolomdetailleringInvoer, Kolomslankheid,
-    Overlappingssituatie, Schoring,
+    moment_tweede_as_deelstappen, n_rd_5_39_n, opgesloten_staven_9_5_3, s_cl_tmax_9_5_3,
+    scheefstand_5_1, toepassingsgebied_9_5_1, traagheidsstraal_mm, voorwaarde_5_38a,
+    voorwaarde_5_38b, Beugelzone, DubbeleBuiging, Knikgeval, Kniklengtebepaling, KolomInvoer,
+    KolomdetailleringInvoer, Kolomslankheid, MomentTweedeAs, Overlappingssituatie, Schoring,
+    TweedeOrdeDeel,
 };
 use nen_en_1992_1_1::{
-    concrete_class_by_name, reinforcement_grade_by_name, CheckStatus, ConcreteSection,
-    ConcreteSectionInput, ConcreteShape, DesignMaterial, DesignSituation, NamedValue,
-    ReinforcementCage, ResistanceCalc, SteelBranch, UnityCheck,
+    concrete_class_by_name, kappa_from_nm, mn_kappa_diagram, reinforcement_grade_by_name,
+    CheckStatus, ConcreteSection, ConcreteSectionInput, ConcreteShape, DesignMaterial,
+    DesignSituation, MnKappaOptions, NamedValue, NonlinearBasis, RebarLayer, ReinforcementCage,
+    ResistanceCalc, SteelBranch, UnityCheck,
 };
 use serde::{Deserialize, Serialize};
 use steel_check::{CheckKind, NamedCheck};
@@ -153,13 +163,21 @@ pub enum Kniklengtekeuze {
 /// [`Schoring`] hier verplicht zodra het blok bestaat, en wordt het nergens
 /// afgeleid.
 ///
-/// # Per as
+/// # Twee assen
 ///
-/// Dit blok geldt voor de as waarin dit model rekent: buiging om de y-as, in
-/// het vlak van het raamwerk. Een kolom kan in het vlak geschoord zijn en er
-/// loodrecht op ongeschoord; die tweede richting bestaat in een 2D-model niet
-/// en wordt hier dus ook niet gesuggereerd. Wie de zwakke as nodig heeft,
-/// toetst hem in een model van dát vlak.
+/// `bracing` en `buckling_length` gelden voor de as waarin dit model rekent:
+/// buiging om de y-as, in het vlak van het raamwerk. Een kolom heeft ook een
+/// tweede as, en knikt daar even goed om uit — met de imperfectie van §5.2 en
+/// het tweede-orde-effect in díe richting, ook als de raamwerkoplosser M_z = 0
+/// levert. Daarom dragen `bracing_z` en `buckling_length_z` de schoring en de
+/// kniklengte om de z-as: een EIGEN gegeven, want de schoring verschilt vaak
+/// per richting (een kolom kan in het vlak geschoord zijn en er loodrecht op
+/// niet). Blijven ze leeg, dan wordt de keuze van het rekenvlak overgenomen
+/// en zegt de toets dat met zoveel woorden. `m0_edz_knm` is een extern
+/// eerste-orde-moment om de z-as, nul als beginwaarde, zodat een ruimtelijk
+/// model hem straks kan vullen zonder dat dit type verandert. De velden zijn
+/// per as benoemd en niet als vaste lijst van twee: een derde grootheid
+/// (wringing, een schuine as) past er later naast.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
@@ -198,6 +216,34 @@ pub struct ConcreteColumnInput {
     #[serde(default)]
     #[ts(optional)]
     pub lap_situation: Option<Overlappingssituatie>,
+    /// Geschoord of ongeschoord om de Z-AS — het ontwerpbesluit van §5.8.1
+    /// voor de richting loodrecht op het rekenvlak.
+    ///
+    /// `None` = niet apart opgegeven; dan geldt `bracing` ook om z, en de
+    /// toets meldt dat. Dat is een terugval en geen afleiding: wie weet dat
+    /// de schoring per richting verschilt, vult dit veld in.
+    #[serde(default)]
+    #[ts(optional)]
+    pub bracing_z: Option<Schoring>,
+    /// Hoe l₀ om de Z-AS wordt bepaald: dezelfde keuze als `buckling_length`
+    /// (een vakje van figuur 5.7, of l₀ zelf), maar voor de richting loodrecht
+    /// op het rekenvlak. Het vakje moet bij `bracing_z` passen.
+    ///
+    /// `None` = niet apart opgegeven; dan geldt `buckling_length` ook om z, en
+    /// de toets meldt dat.
+    #[serde(default)]
+    #[ts(optional)]
+    pub buckling_length_z: Option<Kniklengtekeuze>,
+    /// Een EXTERN eerste-orde-moment om de z-as, kNm, constant over de staaf,
+    /// dat bij het M_z uit de omhullende wordt opgeteld.
+    ///
+    /// `None` = 0. Het veld bestaat omdat de vlakke raamwerkoplosser geen M_z
+    /// levert; een ruimtelijk model of een handberekening vult het. Het teken
+    /// doet er niet toe: de korf is symmetrisch om de hartlijn en de toets
+    /// rekent met de grootte.
+    #[serde(default)]
+    #[ts(optional)]
+    pub m0_edz_knm: Option<f64>,
 }
 
 /// Verzoek voor de LOSSE kolomtoets — dezelfde rekengang als in de volledige
@@ -261,6 +307,37 @@ pub struct ConcreteColumnCheckResponse {
     /// De effectieve kruipcoëfficiënt φ_ef uit (5.19), als hij te bepalen was.
     #[ts(optional)]
     pub phi_ef: Option<f64>,
+    /// λ_z = l₀,z/i_z om de z-as. `None` als de tweede as niet kon.
+    #[ts(optional)]
+    pub lambda_z: Option<f64>,
+    /// λ_lim,z om de z-as.
+    #[ts(optional)]
+    pub lambda_lim_z: Option<f64>,
+    /// l₀,z in mm.
+    #[ts(optional)]
+    pub l0_z_mm: Option<f64>,
+    /// λ_z < λ_lim,z: e₂ om z mocht vervallen.
+    #[ts(optional)]
+    pub tweede_orde_verwaarloosbaar_z: Option<bool>,
+    /// De imperfectie e_i = θ_i·l₀,z/2 om z, mm (§5.2).
+    #[ts(optional)]
+    pub e_i_z_mm: Option<f64>,
+    /// Het tweede-orde-deel e₂ om z, mm; 0 als het mocht vervallen, `None` bij
+    /// instabiliteit om z.
+    #[ts(optional)]
+    pub e_2_z_mm: Option<f64>,
+    /// M_Edz op de maatgevende snede, kNm — inclusief imperfectie, tweede orde
+    /// en de minimale excentriciteit van 6.1(4). Bij instabiliteit om z (geen
+    /// evenwicht; `e_2_z_mm` is dan `None`) het laatste moment waarvoor nog
+    /// een kromming is gezocht, en geen rekenwaarde — de toets zegt dat.
+    #[ts(optional)]
+    pub m_edz_knm: Option<f64>,
+    /// M_Rdz op die snede, kNm.
+    #[ts(optional)]
+    pub m_rdz_knm: Option<f64>,
+    /// De grootste som van (5.39), alleen als §5.8.9(4) haar vereiste.
+    #[ts(optional)]
+    pub interactie_5_39: Option<f64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -272,26 +349,21 @@ pub struct ConcreteColumnCheckResponse {
 pub struct Kolomuitkomst {
     pub checks: Vec<NamedCheck>,
     pub slankheid: Option<Kolomslankheid>,
+    /// Wat er om de tweede as is vastgesteld; `None` als §5.8 als geheel niet
+    /// aan de orde was.
+    pub tweede_as: Option<TweedeAsUitkomst>,
 }
 
 /// De ids van de §5.8-toetsen, zodat een test ze kan terugvinden en een rapport
 /// ze kan groeperen.
 pub const SLANKHEIDSGRENS_ID: &str = "5.8.3.1_slankheidsgrens";
 pub const KRUIP_ID: &str = "5.8.4_kruip";
+/// §5.8.3.1 om de z-as: λ_z tegen λ_lim,z.
+pub const SLANKHEIDSGRENS_Z_ID: &str = "5.8.3.1_slankheidsgrens_z";
+/// Het moment om de z-as — imperfectie, tweede orde en weerstand — tegen M_Rdz.
+pub const MOMENT_Z_ID: &str = "5.8.9_moment_z";
+/// §5.8.9: de voorwaarden (5.38a)/(5.38b) en, waar nodig, de interactie (5.39).
 pub const DUBBELE_BUIGING_ID: &str = "5.8.9_dubbele_buiging";
-
-/// Vanaf welk moment om de ZWAKKE as §5.8.9 zich meldt, als deel van het
-/// moment om de sterke as.
-///
-/// Niet nul, want een omhullende draagt vrijwel altijd een spoortje M_z uit
-/// afrondingen en scheve knooplasten; daarop een melding geven zou de melding
-/// waardeloos maken. Vijf procent is klein genoeg om alles wat er werkelijk
-/// toe doet te vangen, en groot genoeg om ruis buiten te laten. §5.8.9(3)
-/// zelf kent een strengere ontsnapping — (5.38b), de verhouding van de twee
-/// betrekkelijke excentriciteiten — maar die geldt alleen SAMEN met (5.38a),
-/// en (5.38a) vraagt de slankheid in BEIDE richtingen, met een kniklengte om
-/// de zwakke as die dit model niet heeft en dus niet mag aannemen.
-const M_Z_MELDGRENS: f64 = 0.05;
 
 /// Getal met een decimale komma, zoals de rest van het rapport het toont.
 fn nl(v: f64, cijfers: usize) -> String {
@@ -398,8 +470,15 @@ enum Eindmomenten {
 }
 
 ///
-/// Zie [`Eindmomenten`] voor de drie uitkomsten.
-fn eindmomenten(env: &[ForcePoint], combinatie: u32, lengte_mm: f64) -> Eindmomenten {
+/// Zie [`Eindmomenten`] voor de drie uitkomsten. `moment` kiest de component:
+/// M_y voor het rekenvlak, M_z (plus een extern deel) voor de tweede as —
+/// dezelfde regels gelden voor allebei.
+fn eindmomenten(
+    env: &[ForcePoint],
+    combinatie: u32,
+    lengte_mm: f64,
+    moment: impl Fn(&ForcePoint) -> f64,
+) -> Eindmomenten {
     let mut punten: Vec<&ForcePoint> =
         env.iter().filter(|p| p.combination_id == combinatie).collect();
     if punten.len() < 2 || !(lengte_mm > 0.0) {
@@ -415,13 +494,13 @@ fn eindmomenten(env: &[ForcePoint], combinatie: u32, lengte_mm: f64) -> Eindmome
     if eerste.position_mm > tol || laatste.position_mm < lengte_mm - tol {
         return Eindmomenten::Onbekend;
     }
-    let m_a = eerste.forces.my_ed;
-    let m_b = laatste.forces.my_ed;
+    let m_a = moment(eerste);
+    let m_b = moment(laatste);
     // |M₀₂| ≥ |M₀₁| is de definitie van de norm; welke van de twee einden dat
     // is, doet er verder niet toe.
     let (m01, m02) = if m_a.abs() <= m_b.abs() { (m_a, m_b) } else { (m_b, m_a) };
     let grootste_eind = m01.abs().max(m02.abs());
-    let grootste_veld = punten.iter().map(|p| p.forces.my_ed.abs()).fold(0.0_f64, f64::max);
+    let grootste_veld = punten.iter().map(|p| moment(p).abs()).fold(0.0_f64, f64::max);
     // 1 % speling: een numeriek verschil in de laatste cijfers van de oplosser
     // mag geen dwarsbelasting voorwenden.
     if grootste_veld > grootste_eind * 1.01 + 1e-9 {
@@ -480,10 +559,22 @@ fn geen_kolomgegevens() -> String {
 /// getoetst, met [`ReinforcementCage::staafposities`] als invoer — dezelfde
 /// meetkunde als waarmee de doorsnede wordt getekend, zodat het beeld en de
 /// toets niet uiteen kunnen lopen.
+///
+/// # De tweede as
+///
+/// Na de poort om y volgen drie toetsen om de z-as — de slankheidsgrens om z,
+/// het moment om z (imperfectie, tweede orde, weerstand) en §5.8.9 — zie
+/// [`TweedeAsUitkomst`] en de toelichting daarboven. `situation` en
+/// `n_strips` zijn daarvoor: de algemene methode om z vraagt de (3.14)-kromme
+/// op rekenwaarden, en het M-N-κ-diagram om z dezelfde strokenverdeling als de
+/// doorsnedetoetsing.
+#[allow(clippy::too_many_arguments)]
 pub fn kolomtoetsen(
     section: &ConcreteSection,
     cage: &ReinforcementCage,
     mat: &DesignMaterial,
+    situation: DesignSituation,
+    n_strips: usize,
     kolom: Option<&ConcreteColumnInput>,
     lengte_mm: f64,
     ugt: &[ForcePoint],
@@ -523,6 +614,7 @@ pub fn kolomtoetsen(
                     ],
                 ))],
                 slankheid: None,
+                tweede_as: None,
             };
         }
     };
@@ -540,6 +632,7 @@ pub fn kolomtoetsen(
                 vec![geen_kolomgegevens()],
             ))],
             slankheid: None,
+            tweede_as: None,
         };
     };
 
@@ -561,6 +654,7 @@ pub fn kolomtoetsen(
                     vec![format!("de traagheidsstraal i is niet te bepalen: {e}")],
                 ))],
                 slankheid: None,
+                tweede_as: None,
             };
         }
     };
@@ -594,6 +688,7 @@ pub fn kolomtoetsen(
                     )],
                 ))],
                 slankheid: None,
+                tweede_as: None,
             };
         }
     };
@@ -621,12 +716,13 @@ pub fn kolomtoetsen(
                     )],
                 ))],
                 slankheid: None,
+                tweede_as: None,
             };
         }
     }
 
     // ── De eindmomenten en de dwarsbelastingvraag ─────────────────────────
-    let einden = eindmomenten(ugt, gov.combination_id, lengte_mm);
+    let einden = eindmomenten(ugt, gov.combination_id, lengte_mm, |p| p.forces.my_ed);
     let (eindmomenten_knm, r_m_is_een) = match einden {
         Eindmomenten::Paar { m01, m02 } => (Some((m01, m02)), false),
         Eindmomenten::RmIsEen { .. } => (None, true),
@@ -695,6 +791,7 @@ pub fn kolomtoetsen(
                     vec![format!("§5.8.3 kon niet worden doorgerekend: {e}")],
                 ))],
                 slankheid: None,
+                tweede_as: None,
             };
         }
     };
@@ -852,113 +949,17 @@ pub fn kolomtoetsen(
     }
     checks.push(benoem(poort));
 
-    // ── 1b. Dubbele buiging (§5.8.9) ──────────────────────────────────────
+    // ── 1b. De tweede as: §5.8.3 om z, §5.2, e₂ om z en §5.8.9 ────────────
     //
-    // Alles hierboven en hieronder rekent met M_y: één buigingsrichting. Staat
-    // er ook een noemenswaardig moment om de ZWAKKE as, dan is dit geval
-    // §5.8.9 — en die paragraaf is in deze crate niet gebouwd.
-    //
-    // WAAROM DAT HIER MOET STAAN. Zonder deze melding verdwijnt M_z geruisloos:
-    // de toetsen komen terug met dezelfde statussen als bij M_z = 0, en niets
-    // in het antwoord verraadt dat er een halve belasting buiten beschouwing is
-    // gebleven. Dat is precies het soort stilte waar de rest van deze module
-    // zich tegen verzet — een niet-opgegeven beugelzone levert `NotApplicable`
-    // mét de reden, en een genegeerd tweede-richtingsmoment hoort dat óók te
-    // doen. De uitkomst is niet fout: hij is ONVOLLEDIG, en dat is een verschil
-    // dat de lezer zelf moet kunnen zien.
-    //
-    // WAAROM §5.8.9 NIET IS GEREKEND — en waarom de vroegere reden vervalt.
-    // Hier stond dat het korfmodel alleen een boven- en een onderrij kende.
-    // Dat is achterhaald: `ReinforcementCage::sides` draagt de staven langs de
-    // twee zijkanten. Het obstakel is dus een ander; er zijn er drie.
-    //
-    // 1. In dit model KAN M_z niet bestaan. De raamwerkoplosser rekent in één
-    //    vlak, en het pad dat de omhullende vult zet vy_ed, mt_ed en mz_ed
-    //    stuk voor stuk op nul (`forcePointsForCombination` in
-    //    `steelCheckBuilder.ts`, dat ook de betonstaven bedient). Een §5.8.9
-    //    die vanuit de app wordt aangeroepen zou dus ALTIJD hetzelfde zeggen.
-    //    De melding hieronder kan alleen afgaan bij een aanroeper buiten de
-    //    app — de toetsbrug of de MCP-server, waar de krachten met de hand in
-    //    het verzoek staan — en juist daar is zij het vangnet dat zij hoort te
-    //    zijn.
-    // 2. (5.38a) vraagt λ_y/λ_z ≤ 2 én λ_z/λ_y ≤ 2. λ_z = l₀,z/i_z vraagt een
-    //    kniklengte om de ZWAKKE as, en `ConcreteColumnInput` draagt er één:
-    //    die van het vlak waarin het raamwerk rekent. Een kolom kan in het
-    //    vlak geschoord zijn en er loodrecht op ongeschoord, dus l₀,z
-    //    gelijkstellen aan l₀,y poetst juist het verschil weg dat telt. Zonder
-    //    λ_z is de ontsnapping van §5.8.9(3) niet te beoordelen — en omdat
-    //    (5.38a) én (5.38b) allebei moeten gelden, helpt het niet dat (5.38b)
-    //    op zichzelf wél te rekenen zou zijn.
-    // 3. (5.39) vraagt M_Rdz, de momentweerstand om de zwakke as. Daarvoor
-    //    moet bekend zijn waar de staven over de BREEDTE liggen, en dat draagt
-    //    de korf niet: `top` en `bottom` zijn een aantal en een diameter
-    //    zonder y-plaatsen, en `sides` is het paar zijkanten als geheel.
-    //    Bovendien wil (5.39) M_Edz ínclusief het tweede-orde-moment in díe
-    //    richting, en dat is §5.8.6 of §5.8.8 om de zwakke as — met opnieuw
-    //    l₀,z als ingang.
-    //
-    // Wat §5.8.9 vraagt staat daarom in de melding en niet in een rekengang:
-    // een toets die elke keer hetzelfde antwoord geeft is geen toets, en een
-    // toets die l₀,z aanneemt is erger dan geen.
-    let m_z_grootste = ugt
-        .iter()
-        .map(|p| p.forces.mz_ed.abs())
-        .fold(0.0_f64, f64::max);
-    let m_y_grootste = ugt
-        .iter()
-        .map(|p| p.forces.my_ed.abs())
-        .fold(0.0_f64, f64::max);
-    if m_z_grootste > M_Z_MELDGRENS * m_y_grootste.max(1e-9) {
-        let state = ugt
-            .iter()
-            .max_by(|a, b| a.forces.mz_ed.abs().total_cmp(&b.forces.mz_ed.abs()))
-            .map(ForceStateSnapshot::from_point)
-            .unwrap_or_else(leeg_punt);
-        checks.push(benoem(calc(
-            DUBBELE_BUIGING_ID,
-            "Dubbele buiging — is er een moment om de tweede as?",
-            "art. 5.8.9",
-            state,
-            CheckStatus::NotApplicable,
-            vec![
-                format!(
-                    "In de UGT-omhullende staat een moment om de ZWAKKE as: M_z = {} kNm naast \
-                     M_y = {} kNm. Dit is een geval van dubbele buiging (§5.8.9), en die paragraaf \
-                     is NIET uitgevoerd. Alle §5.8-uitkomsten hierboven — λ, λ_lim, φ_ef — en alle \
-                     doorsnedetoetsen van deze staaf gaan uitsluitend over M_y. Zij zijn niet fout, \
-                     maar ONVOLLEDIG: de tweede richting is er niet in verwerkt.",
-                    nl(m_z_grootste, 1),
-                    nl(m_y_grootste, 1)
-                ),
-                "Wat §5.8.9 vraagt. §5.8.9(2) staat toe eerst in iedere hoofdrichting \
-                 afzonderlijk te rekenen. §5.8.9(3) laat het daarbij als de slankheden voldoen aan \
-                 (5.38a) — λ_y/λ_z ≤ 2 én λ_z/λ_y ≤ 2 — ÉN de betrekkelijke excentriciteiten aan \
-                 één van de twee vormen van (5.38b): (e_y/h_eq)/(e_z/b_eq) ≤ 0,2 of \
-                 (e_z/b_eq)/(e_y/h_eq) ≤ 0,2, met b_eq = i_y·√12 en h_eq = i_z·√12, e_y = \
-                 M_Edz/N_Ed en e_z = M_Edy/N_Ed. Is daaraan niet voldaan, dan vraagt §5.8.9(4) de \
-                 interactie (5.39): (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1,0, met a = 2 voor een \
-                 cirkel of ellips en voor een rechthoek a = 1,0 / 1,5 / 2,0 bij N_Ed/N_Rd = 0,1 / \
-                 0,7 / 1,0 met lineaire interpolatie daartussen, waarin N_Rd = A_c·f_cd + A_s·f_yd."
-                    .to_string(),
-                "Waarom die rekengang hier niet staat. λ_z = l₀,z/i_z vraagt een kniklengte om de \
-                 ZWAKKE as, en het §5.8-blok draagt er één: die van het vlak waarin dit raamwerk \
-                 rekent. Een kolom kan in het vlak geschoord zijn en er loodrecht op ongeschoord, \
-                 dus l₀,z mag niet worden gelijkgesteld aan l₀,y. Zonder λ_z is (5.38a) niet te \
-                 beoordelen, en omdat (5.38a) én (5.38b) allebei moeten gelden helpt het niet dat \
-                 (5.38b) op zichzelf te rekenen zou zijn. (5.39) vraagt bovendien M_Rdz — waarvoor \
-                 bekend moet zijn waar de staven over de BREEDTE liggen, en de korf draagt alleen \
-                 aantallen en diameters per rij — en M_Edz ínclusief het tweede-orde-moment om die \
-                 zwakke as, dus §5.8.6 of §5.8.8 met opnieuw l₀,z als ingang."
-                    .to_string(),
-                "Zolang dit niet is gebouwd hoort een kolom met dubbele buiging met de hand te \
-                 worden nagegaan, of moet het model zo zijn gekozen dat M_z verwaarloosbaar is. \
-                 Let op: de raamwerkoplosser van deze app rekent in één vlak en zet M_z altijd op \
-                 nul, dus deze melding kan alleen afgaan bij een aanroeper die de krachten zelf in \
-                 het verzoek zet."
-                    .to_string(),
-            ],
-        )));
-    }
+    // Hier stond een melding dat §5.8.9 NIET was gebouwd en dat M_z buiten
+    // beschouwing bleef. Dat is voorbij: de drie toetsen komen uit
+    // `tweede_as_toetsen`, en zij komen er ALTIJD — ook bij M_z = 0 uit het
+    // model, want dan is M_Edz door de imperfectie en de tweede orde om z
+    // nog steeds niet nul. Zie de toelichting boven [`TweedeAsUitkomst`].
+    let (checks_z, tweede_as) = tweede_as_toetsen(
+        section, cage, mat, situation, k, lengte_mm, ugt, bgt_qp, &gov, &slank, n_strips,
+    );
+    checks.extend(checks_z);
 
     // ── 2. De kruip ───────────────────────────────────────────────────────
     let mut kruip = calc(
@@ -1181,7 +1182,7 @@ pub fn kolomtoetsen(
     }
     checks.push(benoem(opgesloten));
 
-    Kolomuitkomst { checks, slankheid: Some(slank) }
+    Kolomuitkomst { checks, slankheid: Some(slank), tweede_as: Some(tweede_as) }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1211,12 +1212,16 @@ pub fn column_check(
         &section,
         &req.cage,
         &mat,
+        req.design_situation,
+        nen_en_1992_1_1::DEFAULT_N_STRIPS,
         Some(&req.column),
         req.length_m * 1000.0,
         &req.forces_envelope,
         &req.sls_quasi_permanent_envelope,
     );
 
+    let z = uit.tweede_as.as_ref();
+    let slank_z = z.and_then(|t| t.slankheid.as_ref());
     Ok(ConcreteColumnCheckResponse {
         beam_id: req.beam_id,
         section_name: section.name(),
@@ -1228,6 +1233,1018 @@ pub fn column_check(
             .as_ref()
             .map(|s| s.tweede_orde_verwaarloosbaar),
         phi_ef: uit.slankheid.as_ref().and_then(|s| s.phi_ef),
+        lambda_z: slank_z.map(|s| s.lambda),
+        lambda_lim_z: slank_z.map(|s| s.lambda_lim),
+        l0_z_mm: slank_z.map(|s| s.l0_mm),
+        tweede_orde_verwaarloosbaar_z: slank_z.map(|s| s.tweede_orde_verwaarloosbaar),
+        e_i_z_mm: z.and_then(|t| t.e_i_mm),
+        e_2_z_mm: z.and_then(|t| t.e_2_mm),
+        m_edz_knm: z.and_then(|t| t.m_edz_knm),
+        m_rdz_knm: z.and_then(|t| t.m_rdz_knm),
+        interactie_5_39: z.and_then(|t| t.interactie_5_39),
         checks: uit.checks,
     })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// De tweede as — §5.2 (imperfectie), §5.8.3 om z, §5.8.6(6) voor e₂ en §5.8.9
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// WAAROM DIT ER IS. De raamwerkoplosser van deze app rekent in één vlak en
+// levert M_z = 0. Dat is een eigenschap van het MODEL en niet van de kolom:
+// een kolom in een vlak raamwerk heeft een tweede as, en knikt daar even goed
+// om uit. Wat er om die as wél is, staat in de norm: de imperfectie van §5.2
+// (e_i = θ_i·l₀,z/2 — een gegeven van de uitvoering, niet van de belasting),
+// het tweede-orde-effect in die richting, en de minimale excentriciteit van
+// 6.1(4). M₀Edz = 0 uit het model betekent dus NIET M_Edz = 0.
+//
+// WAT ER OM DE TWEEDE AS GEBEURT, in de volgorde van de norm:
+//
+// 1. §5.8.3.1 om z: λ_z = l₀,z/i_z tegen λ_lim,z, met een EIGEN schoring en
+//    kniklengte om z — de schoring verschilt vaak per richting. Ontbreken ze,
+//    dan wordt de keuze van het rekenvlak overgenomen en dat wordt gemeld.
+//    5.8.3.1(2): "In gevallen met dubbele buiging mag het slankheidscriterium
+//    voor iedere richting afzonderlijk zijn gecontroleerd."
+// 2. §5.2(7)a: e_i om z, met θ₀ = 1/300 (NB).
+// 3. Het tweede-orde-deel e₂ om z. Alleen als λ_z ≥ λ_lim,z (anders staat
+//    §5.8.3.1(1) toe het te verwaarlozen, en §5.8.9(4) neemt dat over). De
+//    NB laat de nominale kromming (§5.8.8) alleen toe voor GESCHOORDE, op
+//    zichzelf staande elementen; de algemene methode van §5.8.6 mag altijd
+//    en is ook de methode die deze app in het rekenvlak gebruikt. Hier is zij
+//    in de vereenvoudigde vorm van §5.8.6(6) gebruikt: alleen de maatgevende
+//    doorsnede, met een aangenomen krommingsverloop (de factor c van
+//    5.8.8.2(3)/(4)), en de kromming uit het M-N-κ-diagram om de z-as met de
+//    (3.14)-kromme van §5.8.6(3), kruip volgens §5.8.6(4). Omdat e₂ in het
+//    moment zit waarbij de kromming wordt gezocht, is dat een
+//    evenwichtsiteratie; convergeert zij niet, dan bestaat er geen
+//    evenwicht en knikt de kolom om z.
+// 4. M_Edz = max(M₀Edz + N_Ed·(e_i + e₂) ; N_Ed·e₀) per snede, tegen M_Rdz
+//    uit het M-N-κ-diagram om z (§6.1) — de "afzonderlijke berekening" in de
+//    tweede hoofdrichting van §5.8.9(2).
+// 5. §5.8.9(3): (5.38a) op de staaf en (5.38b) per snede; waar die niet
+//    allebei gelden §5.8.9(4), de interactie (5.39) met de exponent a.
+//
+// WAAR M_Rdz VANDAAN KOMT. `ReinforcementCage::lagen_om_z` legt de staven op
+// hun plaats over de BREEDTE in lagen en draait de doorsnede een kwartslag;
+// de M-N-κ-kern ziet dan een rechthoek h × b met lagen op afstand x + b/2.
+// Alleen voor een rechthoek: een T of L is om z geen stapel banden, en
+// §5.8.9(4) geeft a ook alleen voor cirkel, ellips en rechthoek.
+//
+// WAT ER NIET IN ZIT. Een echte ruimtelijke tweede-orde-berekening; dit is
+// de algemene methode op één snede. En M_Edy wordt genomen zoals de
+// omhullende hem levert: of dáár tweede orde in zit, kan deze module niet
+// zien — dat zegt de poort om y al.
+
+/// Wat er om de tweede as is vastgesteld, voor het antwoord van het losse
+/// verzoek. Alles `None` als de tweede as niet kon worden doorgerekend; de
+/// reden staat dan in de toetsen.
+#[derive(Clone, Debug, Default)]
+pub struct TweedeAsUitkomst {
+    pub slankheid: Option<Kolomslankheid>,
+    /// e_i om z, mm.
+    pub e_i_mm: Option<f64>,
+    /// e₂ om z, mm; 0 als hij mocht vervallen, `None` bij instabiliteit.
+    pub e_2_mm: Option<f64>,
+    /// M_Edz op de maatgevende snede van de toets om z, kNm.
+    pub m_edz_knm: Option<f64>,
+    /// M_Rdz op die snede, kNm.
+    pub m_rdz_knm: Option<f64>,
+    /// De grootste som van (5.39) over de sneden waar zij is vereist.
+    pub interactie_5_39: Option<f64>,
+}
+
+/// De factor c van 5.8.8.2(4) bij een over de lengte CONSTANT eerste-orde-
+/// moment: "8 is een ondergrens, overeenkomend met een constant totaal
+/// moment". De veilige kant.
+const C_CONSTANT_MOMENT: f64 = 8.0;
+/// De factor c van 5.8.8.2(4) in het algemeen: "c = 10 (≈ π²)".
+const C_ALGEMEEN: f64 = 10.0;
+/// Plafond voor de evenwichtsiteratie van e₂. Een kolom die na zoveel stappen
+/// nog niet tot rust is, staat op of boven zijn kniklast.
+const MAX_ITERATIES_E2: u32 = 500;
+
+/// De drie toetsen om de tweede as als "niet uitgevoerd", met één reden.
+///
+/// Drie en niet één: het rapport en de tests zoeken elke toets op haar eigen
+/// id, en een ontbrekende toets is niet te onderscheiden van een geslaagde.
+fn tweede_as_niet_uitgevoerd(state: ForceStateSnapshot, reden: String) -> Vec<NamedCheck> {
+    let mk = |id: &str, titel: &str, artikel: &str| {
+        benoem(calc(id, titel, artikel, state, CheckStatus::NotApplicable, vec![reden.clone()]))
+    };
+    vec![
+        mk(
+            SLANKHEIDSGRENS_Z_ID,
+            "Slankheidsgrens om de z-as — moet e₂ om z worden meegenomen?",
+            "art. 5.8.3.1(1) en (2), om de z-as",
+        ),
+        mk(
+            MOMENT_Z_ID,
+            "Moment om de z-as: imperfectie, tweede orde en weerstand",
+            "art. 5.2(7), 5.8.6(6), 5.8.9(2) en 6.1",
+        ),
+        mk(
+            DUBBELE_BUIGING_ID,
+            "Dubbele buiging — de twee richtingen samen",
+            "art. 5.8.9(3) en (4)",
+        ),
+    ]
+}
+
+/// M_Rd bij N_Ed uit het M-N-κ-diagram (§6.1), of `None` als de doorsnede
+/// N_Ed al niet draagt.
+fn m_rd_bij_n(
+    section: &ConcreteSection,
+    lagen: &[RebarLayer],
+    mat: &DesignMaterial,
+    n_ed_kn: f64,
+    sign: f64,
+    opts: &MnKappaOptions,
+) -> Option<f64> {
+    let d = mn_kappa_diagram(section, lagen, mat, n_ed_kn, sign, opts);
+    if d.points.is_empty() || !(d.m_max_knm > 0.0) {
+        None
+    } else {
+        Some(d.m_max_knm)
+    }
+}
+
+/// De evenwichtsiteratie van §5.8.6(6) om de z-as: e₂ = (1/r)·l₀²/c met 1/r
+/// de kromming bij het TOTALE moment M₁ + N_Ed·e₂.
+///
+/// De afbeelding e₂ → (1/r)(M₁ + N·e₂)·l₀²/c is stijgend; van e₂ = 0 af loopt
+/// de rij monotoon op naar het laagste vaste punt als dat bestaat, en anders
+/// tot het moment boven de momentweerstand van de doorsnede uitkomt en er
+/// geen kromming meer is. Dat laatste is geen numeriek ongeluk maar de
+/// mechanische uitkomst: geen evenwicht, dus knik.
+///
+/// `Ok((e₂, 1/r, stappen))` of `Err((laatste M, stappen))`.
+fn e_2_iteratie(
+    section_z: &ConcreteSection,
+    lagen_z: &[RebarLayer],
+    mat_nl: &DesignMaterial,
+    n_ed_kn: f64,
+    m1_knm: f64,
+    l0_mm: f64,
+    c: f64,
+    opts: &MnKappaOptions,
+) -> Result<(f64, f64, u32), (f64, u32)> {
+    let n_druk = -n_ed_kn;
+    let mut e2 = 0.0_f64;
+    let mut m = m1_knm;
+    for stap in 1..=MAX_ITERATIES_E2 {
+        m = m1_knm + n_druk * e2 * 1e-3;
+        match kappa_from_nm(section_z, lagen_z, mat_nl, n_ed_kn, m, opts) {
+            Ok(sol) if !sol.beyond_eps_cu1 => {
+                let kappa = sol.kappa_per_m.abs();
+                // κ in 1/m → 1/mm; l₀ in mm; e₂ in mm.
+                let e2_nieuw = kappa * 1e-3 * l0_mm * l0_mm / c;
+                if (e2_nieuw - e2).abs() <= 1e-4_f64.max(1e-6 * e2_nieuw) {
+                    return Ok((e2_nieuw, kappa, stap));
+                }
+                e2 = e2_nieuw;
+            }
+            _ => return Err((m, stap)),
+        }
+    }
+    Err((m, MAX_ITERATIES_E2))
+}
+
+/// Eén snede van de omhullende, doorgerekend voor §5.8.9.
+struct Snede {
+    punt: ForcePoint,
+    n_druk_kn: f64,
+    m0z_knm: f64,
+    /// M_Edz voor de toets om z alleen: mét de ondergrens N_Ed·e₀ van 6.1(4).
+    m_edz_knm: f64,
+    e_0_bindend: bool,
+    /// M_Edz zoals §5.8.9 hem vraagt: M₀Edz + N_Ed·(e_i + e₂), inclusief
+    /// imperfectie en tweede orde, ZONDER de ondergrens van 6.1(4).
+    m_edz_589_knm: f64,
+    /// M_Edy zoals §5.8.9 hem vraagt: |M_y| uit de omhullende, zonder 6.1(4).
+    m_edy_589_knm: f64,
+    m_rdz_knm: Option<f64>,
+    m_rdy_knm: Option<f64>,
+    voorwaarde_b: nen_en_1992_1_1::kolom::Voorwaarde538b,
+    apart: bool,
+    n_verhouding: f64,
+    a: f64,
+    a_grondslag: nen_en_1992_1_1::kolom::ExponentAGrondslag,
+    interactie: Option<f64>,
+}
+
+impl Snede {
+    fn uc_z(&self) -> Option<f64> {
+        self.m_rdz_knm.map(|m_rd| self.m_edz_knm / m_rd)
+    }
+}
+
+/// De toetsen om de tweede as. Zie de toelichting boven [`TweedeAsUitkomst`].
+#[allow(clippy::too_many_arguments)]
+fn tweede_as_toetsen(
+    section: &ConcreteSection,
+    cage: &ReinforcementCage,
+    mat: &DesignMaterial,
+    situation: DesignSituation,
+    k: &ConcreteColumnInput,
+    lengte_mm: f64,
+    ugt: &[ForcePoint],
+    bgt_qp: &[ForcePoint],
+    gov: &ForcePoint,
+    slank_y: &Kolomslankheid,
+    n_strips: usize,
+) -> (Vec<NamedCheck>, TweedeAsUitkomst) {
+    let state = ForceStateSnapshot::from_point(gov);
+    let n_gov_kn = -gov.forces.n_ed;
+    let leeg = TweedeAsUitkomst::default();
+    let opts = MnKappaOptions { n_strips };
+
+    // ── Alleen een rechthoek ──────────────────────────────────────────────
+    let (section_z, lagen_z) = match cage.lagen_om_z(section) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                tweede_as_niet_uitgevoerd(
+                    state,
+                    format!(
+                        "de tweede as is niet doorgerekend: {e} Ook §9.5 ziet alleen een \
+                         rechthoekige of ronde kolom. Een T of L met dubbele buiging vraagt een \
+                         doorsnedeberekening om de z-as die deze kern niet draagt."
+                    ),
+                ),
+                leeg,
+            );
+        }
+    };
+
+    // ── Schoring en kniklengte om z, met terugval op het rekenvlak ────────
+    let (bracing_z, bracing_z_overgenomen) = match k.bracing_z {
+        Some(b) => (b, false),
+        None => (k.bracing, true),
+    };
+    let (keuze_z, keuze_z_overgenomen) = match k.buckling_length_z {
+        Some(b) => (b, false),
+        None => (k.buckling_length, true),
+    };
+    let (kniklengte_z, l0_opgegeven_z) = match keuze_z {
+        Kniklengtekeuze::Figuur57 { geval } => (Kniklengtebepaling::Standaardgeval(geval), None),
+        Kniklengtekeuze::Opgegeven { l0_m } if l0_m > 0.0 => {
+            (Kniklengtebepaling::Opgegeven, Some(l0_m * 1000.0))
+        }
+        Kniklengtekeuze::Opgegeven { l0_m } => {
+            return (
+                tweede_as_niet_uitgevoerd(
+                    state,
+                    format!(
+                        "de kniklengte om de z-as is als 'opgegeven' aangemerkt maar l₀,z = {} m, \
+                         en dat is geen lengte. Vul l₀,z in, kies een vast geval uit figuur 5.7, of \
+                         laat het veld leeg om de keuze van het rekenvlak over te nemen.",
+                        nl(l0_m, 3)
+                    ),
+                ),
+                leeg,
+            );
+        }
+    };
+
+    let i_z = match traagheidsstraal_mm(section.i_z_centroid_mm4(), section.area_mm2()) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                tweede_as_niet_uitgevoerd(state, format!("i_z is niet te bepalen: {e}")),
+                leeg,
+            )
+        }
+    };
+
+    // M_z langs de staaf: uit het model plus het extern opgegeven deel.
+    let m0_extern = k.m0_edz_knm.unwrap_or(0.0);
+    let mz_van = |p: &ForcePoint| p.forces.mz_ed + m0_extern;
+
+    // ── Eerste doorgang: l₀,z en λ_z, meer niet ──────────────────────────
+    let basis = KolomInvoer {
+        l_mm: lengte_mm,
+        kniklengte: kniklengte_z.clone(),
+        l0_opgegeven_mm: l0_opgegeven_z,
+        schoring: bracing_z,
+        i_mm: i_z,
+        a_c_mm2: section.area_mm2(),
+        a_s_mm2: cage.a_s_total_mm2(),
+        f_cd_mpa: mat.f_cd(),
+        f_yd_mpa: mat.f_yd(),
+        n_ed_kn: gov.forces.n_ed,
+        m0_ed_knm: None,
+        m0_eqp_knm: None,
+        phi_inf_t0: None,
+        h_mm: None,
+        eindmomenten_knm: None,
+        eerste_orde_vooral_imperfecties_of_dwarsbelasting: true,
+    };
+    let voorlopig = match kolomslankheid(&basis) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                tweede_as_niet_uitgevoerd(
+                    state,
+                    format!("§5.8.3 om de z-as kon niet worden doorgerekend: {e}"),
+                ),
+                leeg,
+            )
+        }
+    };
+    let l0_z = voorlopig.l0_mm;
+
+    // ── §5.2: de imperfectie om z ─────────────────────────────────────────
+    let scheef = match scheefstand_5_1(lengte_mm / 1000.0, 1) {
+        Ok(v) => v,
+        Err(e) => return (tweede_as_niet_uitgevoerd(state, format!("§5.2: {e}")), leeg),
+    };
+    let e_i = match e_i_5_2_mm(scheef.theta_i, l0_z) {
+        Ok(v) => v,
+        Err(e) => return (tweede_as_niet_uitgevoerd(state, format!("§5.2: {e}")), leeg),
+    };
+
+    // ── M₀Ed om z op de maatgevende snede, inclusief imperfectie ─────────
+    //
+    // 5.8.8.2(1): M₀Ed is "het eerste-orde-moment, inclusief het effect van
+    // imperfecties". Voor (5.19) en voor de derde voorwaarde van §5.8.4(4)
+    // is dat het moment dat telt.
+    let m0z_gov = mz_van(gov).abs();
+    let m0_ed_z = m0z_gov + n_gov_kn * e_i * 1e-3;
+    // M₀Eqp om z. Het imperfectiemoment is evenredig met N, dus de verhouding
+    // M₀Eqp/M₀Ed van (5.19) is de verhouding van de normaalkrachten in de
+    // quasi-blijvende en de UGT-combinatie — op dezelfde snede. Een extern
+    // M₀Edz kent geen quasi-blijvende tegenhanger; ook daarop is die
+    // verhouding toegepast, en dat staat in de kanttekening.
+    let n_qp_druk = bgt_qp
+        .iter()
+        .min_by(|a, b| {
+            (a.position_mm - gov.position_mm)
+                .abs()
+                .total_cmp(&(b.position_mm - gov.position_mm).abs())
+        })
+        .map(|p| -p.forces.n_ed)
+        .filter(|n| *n > 0.0);
+    let m0_eqp_z = n_qp_druk.map(|nqp| m0_ed_z * nqp / n_gov_kn);
+
+    let einden_z = eindmomenten(ugt, gov.combination_id, lengte_mm, mz_van);
+    let (eindmomenten_z, r_m_is_een_z) = match einden_z {
+        Eindmomenten::Paar { m01, m02 } => (Some((m01, m02)), false),
+        Eindmomenten::RmIsEen { .. } => (None, true),
+        Eindmomenten::Onbekend => (None, false),
+    };
+
+    let invoer_z = KolomInvoer {
+        m0_ed_knm: Some(m0_ed_z),
+        m0_eqp_knm: m0_eqp_z,
+        phi_inf_t0: k.phi_inf_t0,
+        h_mm: Some(section.b_mm),
+        eindmomenten_knm: eindmomenten_z,
+        eerste_orde_vooral_imperfecties_of_dwarsbelasting: r_m_is_een_z,
+        ..basis
+    };
+    let slank_z = match kolomslankheid(&invoer_z) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                tweede_as_niet_uitgevoerd(
+                    state,
+                    format!("§5.8.3 om de z-as kon niet worden doorgerekend: {e}"),
+                ),
+                leeg,
+            )
+        }
+    };
+
+    let herkomst_z = format!(
+        "Om de z-as geldt: schoring {} ({}), kniklengte {} ({}). l₀,z = {} mm, i_z = √(I_z/A) = {} \
+         mm (voor een rechthoek b/√12), λ_z = l₀,z/i_z = {}.",
+        bracing_z.label(),
+        if bracing_z_overgenomen {
+            "NIET apart opgegeven — overgenomen van het rekenvlak; een kolom kan in het vlak \
+             geschoord zijn en er loodrecht op niet, dus controleer dit"
+        } else {
+            "apart opgegeven voor deze as"
+        },
+        match kniklengte_z {
+            Kniklengtebepaling::Standaardgeval(g) => g.omschrijving().to_string(),
+            _ => "rechtstreeks opgegeven".to_string(),
+        },
+        if keuze_z_overgenomen {
+            "NIET apart opgegeven — overgenomen van het rekenvlak"
+        } else {
+            "apart opgegeven voor deze as"
+        },
+        nl(slank_z.l0_mm, 0),
+        nl(i_z, 2),
+        nl(slank_z.lambda, 1)
+    );
+
+    let mut checks: Vec<NamedCheck> = Vec::new();
+
+    // ── Toets 1: de poort om z ────────────────────────────────────────────
+    //
+    // GEEN unity check en ALTIJD status Ok als zij kon worden bepaald. De
+    // poort om y zet NotOk als λ ≥ λ_lim, omdat de app dáár de tweede orde
+    // niet zelf kan toevoegen: de krachten komen uit de raamwerkoplosser. Om
+    // z voegt deze module e₂ zélf toe zodra de poort dat vraagt, dus er blijft
+    // niets ongedaan en er valt niets af te keuren. Een uc λ_z/λ_lim,z > 1 zou
+    // via uc_max de hele staaf rood maken voor iets dat verwerkt is; vandaar
+    // `uc: None`. Het antwoord staat in de waarde, de grootheden en de tekst.
+    let mut poort_z = calc(
+        SLANKHEIDSGRENS_Z_ID,
+        "Slankheidsgrens om de z-as — moet e₂ om z worden meegenomen?",
+        "art. 5.8.3.1(1) en (2), om de z-as; NB: λ_lim = 20·A·B·C/√n als eis",
+        state,
+        CheckStatus::Ok,
+        Vec::new(),
+    );
+    poort_z.formula_latex = r"\lambda_z < \lambda_{lim,z} = \frac{20\,A\,B\,C}{\sqrt{n}}".to_string();
+    poort_z.variables = vec![
+        NamedValue { symbol: "l_0,z".to_string(), value: slank_z.l0_mm, unit: "mm".to_string() },
+        NamedValue { symbol: "i_z".to_string(), value: slank_z.i_mm, unit: "mm".to_string() },
+        NamedValue { symbol: "λ_z".to_string(), value: slank_z.lambda, unit: "-".to_string() },
+        NamedValue { symbol: "n".to_string(), value: slank_z.n, unit: "-".to_string() },
+        NamedValue { symbol: "ω".to_string(), value: slank_z.omega, unit: "-".to_string() },
+        NamedValue { symbol: "A".to_string(), value: slank_z.a, unit: "-".to_string() },
+        NamedValue { symbol: "B".to_string(), value: slank_z.b, unit: "-".to_string() },
+        NamedValue { symbol: "C".to_string(), value: slank_z.c, unit: "-".to_string() },
+        NamedValue {
+            symbol: "λ_lim,z".to_string(),
+            value: slank_z.lambda_lim,
+            unit: "-".to_string(),
+        },
+    ];
+    poort_z.deelstappen = kolom_deelstappen(&slank_z);
+    poort_z.value = slank_z.lambda_lim;
+    poort_z.unit = "-".to_string();
+    poort_z.notes.push(herkomst_z.clone());
+    poort_z.notes.push(format!(
+        "5.8.3.1(2): bij dubbele buiging mag het slankheidscriterium per richting afzonderlijk \
+         worden gecontroleerd. λ_z = {} tegen λ_lim,z = {}: {}",
+        nl(slank_z.lambda, 1),
+        nl(slank_z.lambda_lim, 1),
+        if slank_z.tweede_orde_verwaarloosbaar {
+            "de tweede-orde-effecten om z mogen worden verwaarloosd (§5.8.3.1(1)); e₂ = 0 in \
+             M_Edz."
+        } else {
+            "de tweede-orde-effecten om z mogen NIET worden verwaarloosd. Anders dan om y keurt \
+             deze poort daarmee niets af: e₂ om z wordt hieronder met de algemene methode (§5.8.6) \
+             bepaald en in M_Edz verwerkt."
+        }
+    ));
+    poort_z.notes.push(format!(
+        "M₀Ed om z voor λ_lim,z en (5.19) is genomen op dezelfde snede als de poort om y (x = {} \
+         mm, combinatie {}): |M_z uit het model + extern M₀Edz| = |{} + {}| = {} kNm, plus het \
+         imperfectiemoment N_Ed·e_i = {} · {} mm = {} kNm (5.8.8.2(1): M₀Ed is inclusief het \
+         effect van imperfecties), samen {} kNm. {}",
+        gov.position_mm.round() as i64,
+        gov.combination_id,
+        nl(gov.forces.mz_ed, 2),
+        nl(m0_extern, 2),
+        nl(m0z_gov, 2),
+        nl(n_gov_kn, 1),
+        nl(e_i, 2),
+        nl(n_gov_kn * e_i * 1e-3, 2),
+        nl(m0_ed_z, 2),
+        match n_qp_druk {
+            Some(nqp) => format!(
+                "M₀Eqp om z is daaruit afgeleid als M₀Ed,z · N_Eqp/N_Ed = {} · {}/{} = {} kNm: het \
+                 imperfectiemoment is evenredig met de normaalkracht, dus de verhouding van (5.19) \
+                 is die van de normaalkrachten in de quasi-blijvende en de UGT-combinatie. Op een \
+                 extern opgegeven M₀Edz is dezelfde verhouding toegepast; dat is een aanname.",
+                nl(m0_ed_z, 2),
+                nl(nqp, 1),
+                nl(n_gov_kn, 1),
+                nl(m0_eqp_z.unwrap_or(0.0), 2)
+            ),
+            None => "Er is geen quasi-blijvende combinatie met normaaldruk meegestuurd, dus \
+                     M₀Eqp om z en daarmee φ_ef,z zijn onbekend."
+                .to_string(),
+        }
+    ));
+    match einden_z {
+        Eindmomenten::Paar { m01, m02 } => poort_z.notes.push(format!(
+            "De eindmomenten om z uit combinatie {}: M₀₁ = {} kNm en M₀₂ = {} kNm, dus r_m = M₀₁/M₀₂ \
+             bepaalt C.",
+            gov.combination_id,
+            nl(m01, 2),
+            nl(m02, 2)
+        )),
+        Eindmomenten::RmIsEen { dwarsbelasting: true, .. } => poort_z.notes.push(
+            "Tussen de einden staat om z een groter |M| dan aan de einden: dwarsbelasting, dus \
+             r_m = 1,0 en C = 0,7 (§5.8.3.1(1))."
+                .to_string(),
+        ),
+        Eindmomenten::RmIsEen { dwarsbelasting: false, .. } => poort_z.notes.push(
+            "Om de z-as staan er geen eerste-orde-eindmomenten (het model levert M_z = 0 en er is \
+             geen extern M₀Edz), of ze zijn gelijk: wat er aan eerste-orde-effect is komt uit \
+             imperfecties, en §5.8.3.1(1) wijst dan r_m = 1,0 aan — C = 0,7."
+                .to_string(),
+        ),
+        Eindmomenten::Onbekend => poort_z.notes.push(
+            "De twee eindmomenten om z waren niet allebei terug te vinden in de omhullende; r_m \
+             blijft onbekend en §5.8.3.1(1) staat dan C = 0,7 toe."
+                .to_string(),
+        ),
+    }
+    for kant in &slank_z.kanttekeningen {
+        poort_z.notes.push(kant.clone());
+    }
+    checks.push(benoem(poort_z));
+
+    // ── φ_ef om z voor de algemene methode ────────────────────────────────
+    let (phi_ef_z, phi_note) = match (&slank_z.kruip, slank_z.phi_ef) {
+        (Some(v), _) if v.toegestaan => (
+            0.0,
+            format!(
+                "§5.8.4(4): φ(∞,t₀) ≤ 2, λ_z ≤ 75 en M₀Ed/N_Ed ≥ b zijn alle drie vervuld, dus \
+                 φ_ef = 0 mag worden aangehouden; e₂ is zonder kruip bepaald (φ_ef,z = 0, \
+                 waar (5.19) {} zou geven).",
+                slank_z.phi_ef.map(|p| nl(p, 3)).unwrap_or_else(|| "geen waarde".to_string())
+            ),
+        ),
+        (_, Some(p)) => (
+            p,
+            format!(
+                "Kruip in de algemene methode volgens §5.8.6(4): alle betonrekken van de \
+                 (3.14)-kromme zijn met (1 + φ_ef,z) = {} vermenigvuldigd, met φ_ef,z = {} uit \
+                 (5.19) om de z-as.",
+                nl(1.0 + p, 3),
+                nl(p, 3)
+            ),
+        ),
+        (_, None) => (
+            0.0,
+            "LET OP: φ_ef om z is onbekend (φ(∞,t₀) niet opgegeven, of geen quasi-blijvende \
+             combinatie meegestuurd), dus e₂ is ZONDER kruip bepaald. Voor een blijvend belaste \
+             kolom is dat de onveilige kant: kruip vergroot de kromming en daarmee e₂. Geef \
+             φ(∞,t₀) op en stuur de quasi-blijvende combinatie mee om dit te verhelpen."
+                .to_string(),
+        ),
+    };
+
+    // ── e₂ om z ───────────────────────────────────────────────────────────
+    //
+    // De factor c: het eerste-orde-moment om z is in dit model bijna altijd
+    // constant over de lengte (de imperfectie N·e_i en een vast extern
+    // M₀Edz). 5.8.8.2(4) zegt dan een lagere c te overwegen, met 8 als
+    // ondergrens; die ondergrens is de veilige kant en wordt genomen. Varieert
+    // M_z uit het model wél langs de staaf, dan c = 10 (≈ π²).
+    let mz_gov_combi: Vec<f64> = ugt
+        .iter()
+        .filter(|p| p.combination_id == gov.combination_id)
+        .map(|p| mz_van(p).abs())
+        .collect();
+    let mz_max = mz_gov_combi.iter().cloned().fold(0.0_f64, f64::max);
+    let mz_min = mz_gov_combi.iter().cloned().fold(f64::INFINITY, f64::min);
+    let mz_varieert = mz_gov_combi.len() > 1 && mz_max - mz_min > 0.01 * mz_max + 1e-9;
+    let c = if mz_varieert { C_ALGEMEEN } else { C_CONSTANT_MOMENT };
+
+    // De (3.14)-kromme van §5.8.6(3) op rekenwaarden, met kruip volgens
+    // §5.8.6(4) — het materiaal van de constructieve berekening, niet dat van
+    // de doorsnedetoetsing (dat blijft `mat`).
+    let beton = concrete_class_by_name(mat.concrete_name);
+    let staal = reinforcement_grade_by_name(mat.steel_name);
+    let (Some(beton), Some(staal)) = (beton, staal) else {
+        return (
+            tweede_as_niet_uitgevoerd(
+                state,
+                "het materiaal van de doorsnede is niet in de tabellen terug te vinden".to_string(),
+            ),
+            leeg,
+        );
+    };
+    let mat_nl = DesignMaterial::nonlinear(
+        beton,
+        staal,
+        situation,
+        mat.steel.branch,
+        NonlinearBasis::DesignValues,
+        phi_ef_z,
+    );
+
+    let m1_gov = m0z_gov + n_gov_kn * e_i * 1e-3;
+    let tweede_orde = if slank_z.tweede_orde_verwaarloosbaar {
+        TweedeOrdeDeel::Verwaarloosd { lambda: slank_z.lambda, lambda_lim: slank_z.lambda_lim }
+    } else {
+        match e_2_iteratie(&section_z, &lagen_z, &mat_nl, gov.forces.n_ed, m1_gov, l0_z, c, &opts) {
+            Ok((e_2_mm, kappa_per_m, iteraties)) => TweedeOrdeDeel::Gerekend {
+                e_2_mm,
+                kappa_per_m,
+                c,
+                iteraties,
+                phi_ef: phi_ef_z,
+                lambda: slank_z.lambda,
+                lambda_lim: slank_z.lambda_lim,
+            },
+            Err((laatste_m_knm, iteraties)) => TweedeOrdeDeel::Instabiel {
+                laatste_m_knm,
+                c,
+                iteraties,
+                phi_ef: phi_ef_z,
+                lambda: slank_z.lambda,
+                lambda_lim: slank_z.lambda_lim,
+            },
+        }
+    };
+    let e_2 = match tweede_orde {
+        TweedeOrdeDeel::Gerekend { e_2_mm, .. } => e_2_mm,
+        _ => 0.0,
+    };
+    let instabiel = matches!(tweede_orde, TweedeOrdeDeel::Instabiel { .. });
+
+    // ── Per snede: M_Edz, M_Rdz, M_Edy, M_Rdy, (5.38b), a en (5.39) ──────
+    let e_0z = minimum_eccentricity_mm(section.b_mm);
+    let lagen_y = cage.layers(section.h_mm);
+    let n_rd_n = n_rd_5_39_n(section.area_mm2(), mat.f_cd(), cage.a_s_total_mm2(), mat.f_yd())
+        .unwrap_or(0.0);
+    let voorwaarde_a = voorwaarde_5_38a(slank_y.lambda, slank_z.lambda).ok();
+
+    // Kleine caches op N (op 0,1 kN afgerond): sneden met dezelfde
+    // normaalkracht hebben letterlijk dezelfde M_Rd.
+    let mut cache_z: Vec<(i64, Option<f64>)> = Vec::new();
+    let mut cache_y: Vec<(i64, f64, Option<f64>)> = Vec::new();
+    let mut sneden: Vec<Snede> = Vec::new();
+    for p in ugt.iter().filter(|p| p.forces.n_ed < 0.0) {
+        let n_druk = -p.forces.n_ed;
+        let sleutel = (n_druk * 10.0).round() as i64;
+        let m_rdz = match cache_z.iter().find(|(s, _)| *s == sleutel) {
+            Some((_, v)) => *v,
+            None => {
+                let v = m_rd_bij_n(&section_z, &lagen_z, mat, p.forces.n_ed, 1.0, &opts);
+                cache_z.push((sleutel, v));
+                v
+            }
+        };
+        let sign_y = if p.forces.my_ed < 0.0 { -1.0 } else { 1.0 };
+        let m_rdy = match cache_y.iter().find(|(s, t, _)| *s == sleutel && *t == sign_y) {
+            Some((_, _, v)) => *v,
+            None => {
+                let v = m_rd_bij_n(section, &lagen_y, mat, p.forces.n_ed, sign_y, &opts);
+                cache_y.push((sleutel, sign_y, v));
+                v
+            }
+        };
+        let m0z = mz_van(p).abs();
+        let m_edz_ruw = m0z + n_druk * (e_i + e_2) * 1e-3;
+        let m_min_z = n_druk * e_0z * 1e-3;
+        let e_0_bindend = m_min_z > m_edz_ruw;
+        let m_edz = m_edz_ruw.max(m_min_z);
+        let m_edy = p.forces.my_ed.abs();
+        // (5.38b) en (5.39) vragen "de rekenwaarde van het moment, inclusief
+        // tweede-orde-moment" — de werkelijke rekenmomenten, dus zónder de
+        // ondergrens N_Ed·e₀ van 6.1(4). Die ondergrens is een eis aan de
+        // DOORSNEDETOETS per richting (§6.1 om y, de toets om z hierboven) en
+        // hoort daar; hem in beide richtingen tegelijk in de interactie zetten
+        // zou elke centrisch gedrukte kolom een dubbele buiging opdringen die
+        // er niet is.
+        let voorwaarde_b = match voorwaarde_5_38b(
+            m_edz_ruw / n_druk * 1e3,
+            m_edy / n_druk * 1e3,
+            slank_y.i_mm,
+            i_z,
+        ) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let apart = voorwaarde_a.map(|a| a.voldaan).unwrap_or(false) && voorwaarde_b.voldaan;
+        let (a, a_grondslag) = exponent_a_5_39(n_druk * 1e3, n_rd_n).unwrap_or((
+            1.0,
+            nen_en_1992_1_1::kolom::ExponentAGrondslag::OnderTabel,
+        ));
+        let interactie = match (m_rdz, m_rdy) {
+            (Some(rz), Some(ry)) => interactie_5_39(m_edz_ruw, rz, m_edy, ry, a).ok(),
+            _ => None,
+        };
+        sneden.push(Snede {
+            punt: *p,
+            n_druk_kn: n_druk,
+            m0z_knm: m0z,
+            m_edz_knm: m_edz,
+            e_0_bindend,
+            m_edz_589_knm: m_edz_ruw,
+            m_edy_589_knm: m_edy,
+            m_rdz_knm: m_rdz,
+            m_rdy_knm: m_rdy,
+            voorwaarde_b,
+            apart,
+            n_verhouding: n_druk * 1e3 / n_rd_n.max(1e-9),
+            a,
+            a_grondslag,
+            interactie,
+        });
+    }
+
+    // ── Toets 2: het moment om z tegen M_Rdz ─────────────────────────────
+    let gov_snede = sneden
+        .iter()
+        .find(|s| s.punt.combination_id == gov.combination_id && s.punt.position_mm == gov.position_mm);
+    let maatgevend_z = sneden
+        .iter()
+        .filter(|s| s.uc_z().is_some())
+        .max_by(|a, b| a.uc_z().unwrap().total_cmp(&b.uc_z().unwrap()))
+        .or(gov_snede)
+        .or(sneden.first());
+
+    let mut uit = TweedeAsUitkomst {
+        slankheid: Some(slank_z.clone()),
+        e_i_mm: Some(e_i),
+        e_2_mm: if instabiel { None } else { Some(e_2) },
+        m_edz_knm: None,
+        m_rdz_knm: None,
+        interactie_5_39: None,
+    };
+
+    let mut moment_z = calc(
+        MOMENT_Z_ID,
+        "Moment om de z-as: imperfectie, tweede orde en weerstand",
+        "art. 5.2(7) (5.2), 5.8.6(6), 5.8.9(2) en 6.1",
+        state,
+        CheckStatus::Ok,
+        Vec::new(),
+    );
+    moment_z.formula_latex =
+        r"M_{Edz} = \max\{M_{0Edz} + N_{Ed}(e_i + e_2)\ ;\ N_{Ed} e_0\} \le M_{Rdz}".to_string();
+    moment_z.unit = "kNm".to_string();
+    moment_z.notes.push(
+        "De raamwerkoplosser van deze app rekent in één vlak en levert M_z = 0. Dat is een \
+         eigenschap van het model en niet van de kolom: om de z-as werken de imperfectie van \
+         §5.2 (een gegeven van de uitvoering) en het tweede-orde-effect net zo goed, en 6.1(4) \
+         stelt bovendien een minimale excentriciteit. M₀Edz = 0 betekent dus NIET M_Edz = 0. Een \
+         extern M₀Edz (invoerveld, nul als niets is opgegeven) en een M_z in de omhullende — uit \
+         een ruimtelijk model — tellen hier gewoon mee."
+            .to_string(),
+    );
+    moment_z.notes.push(herkomst_z);
+    moment_z.notes.push(phi_note.clone());
+    match maatgevend_z {
+        Some(s) => {
+            let m_rd = s.m_rdz_knm;
+            let mta = MomentTweedeAs {
+                n_ed_druk_kn: s.n_druk_kn,
+                m0_knm: s.m0z_knm,
+                scheefstand: scheef,
+                l0_mm: l0_z,
+                e_i_mm: e_i,
+                tweede_orde,
+                e_0_mm: e_0z,
+                e_0_bindend: s.e_0_bindend,
+                m_ed_knm: if instabiel {
+                    match tweede_orde {
+                        TweedeOrdeDeel::Instabiel { laatste_m_knm, .. } => laatste_m_knm,
+                        _ => s.m_edz_knm,
+                    }
+                } else {
+                    s.m_edz_knm
+                },
+                m_rd_knm: m_rd,
+            };
+            moment_z.force_state = ForceStateSnapshot::from_point(&s.punt);
+            moment_z.deelstappen = moment_tweede_as_deelstappen(&mta);
+            moment_z.value = mta.m_ed_knm;
+            moment_z.variables = vec![
+                NamedValue { symbol: "N_Ed".to_string(), value: s.n_druk_kn, unit: "kN".to_string() },
+                NamedValue { symbol: "M_0Edz".to_string(), value: s.m0z_knm, unit: "kNm".to_string() },
+                NamedValue { symbol: "e_i".to_string(), value: e_i, unit: "mm".to_string() },
+                NamedValue { symbol: "e_2".to_string(), value: e_2, unit: "mm".to_string() },
+                NamedValue { symbol: "e_0".to_string(), value: e_0z, unit: "mm".to_string() },
+                NamedValue { symbol: "M_Edz".to_string(), value: mta.m_ed_knm, unit: "kNm".to_string() },
+                NamedValue {
+                    symbol: "M_Rdz".to_string(),
+                    value: m_rd.unwrap_or(0.0),
+                    unit: "kNm".to_string(),
+                },
+            ];
+            moment_z.notes.push(format!(
+                "Maatgevend is de snede x = {} mm van combinatie {} — de snede met de grootste \
+                 M_Edz/M_Rdz over alle sneden met normaaldruk ({} sneden). e₂ is bepaald op de snede \
+                 met de grootste normaaldruk (x = {} mm, combinatie {}) en op elke snede gebruikt: \
+                 e₂ groeit met N, dus dat is de veilige kant. De imperfectie e_i geldt langs de \
+                 hele staaf.",
+                s.punt.position_mm.round() as i64,
+                s.punt.combination_id,
+                sneden.len(),
+                gov.position_mm.round() as i64,
+                gov.combination_id
+            ));
+            uit.m_edz_knm = Some(mta.m_ed_knm);
+            uit.m_rdz_knm = m_rd;
+            match (instabiel, m_rd) {
+                (true, Some(rd)) => {
+                    let ed = mta.m_ed_knm;
+                    moment_z.status = CheckStatus::NotOk;
+                    moment_z.uc = Some(UnityCheck {
+                        ed,
+                        rd,
+                        uc: (ed / rd).max(1.0),
+                        formula_latex: r"M_{Edz} / M_{Rdz}".to_string(),
+                    });
+                    moment_z.notes.push(
+                        "GEEN EVENWICHT om de z-as: de kolom knikt in die richting. De unity check \
+                         is op ten minste 1,0 gezet — er bestaat geen toestand waarin de doorsnede \
+                         het totale moment draagt, dus zij is per definitie overschreden."
+                            .to_string(),
+                    );
+                }
+                (false, Some(rd)) => {
+                    let uc = mta.m_ed_knm / rd;
+                    moment_z.uc = Some(UnityCheck {
+                        ed: mta.m_ed_knm,
+                        rd,
+                        uc,
+                        formula_latex: r"M_{Edz} / M_{Rdz}".to_string(),
+                    });
+                    moment_z.status = if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk };
+                }
+                (_, None) => {
+                    moment_z.status = CheckStatus::NotOk;
+                    moment_z.notes.push(
+                        "De doorsnede draagt de normaalkracht van deze snede al niet bij κ = 0; \
+                         er is geen momentweerstand om z meer over."
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        None => {
+            moment_z.status = CheckStatus::NotApplicable;
+            moment_z.notes.push(
+                "Er is geen snede met normaaldruk waarop M_Edz kon worden bepaald.".to_string(),
+            );
+        }
+    }
+    checks.push(benoem(moment_z));
+
+    // ── Toets 3: §5.8.9 — apart, of de interactie (5.39) ─────────────────
+    let mut db = calc(
+        DUBBELE_BUIGING_ID,
+        "Dubbele buiging — de twee richtingen samen",
+        "art. 5.8.9(3) (5.38a), (5.38b) en 5.8.9(4) (5.39)",
+        state,
+        CheckStatus::Ok,
+        Vec::new(),
+    );
+    db.formula_latex =
+        r"\left(\frac{M_{Edz}}{M_{Rdz}}\right)^a + \left(\frac{M_{Edy}}{M_{Rdy}}\right)^a \le 1{,}0"
+            .to_string();
+    db.unit = "-".to_string();
+    db.notes.push(
+        "M_Edy is genomen zoals de omhullende hem levert; of daar al tweede orde in zit, kan deze \
+         toets niet zien — zie de poort om y. M_Edz = M₀Edz + N_Ed·(e_i + e₂) is de rekenwaarde \
+         om z inclusief imperfectie en tweede orde. De ondergrens N_Ed·e₀ van 6.1(4) zit in GEEN \
+         van beide: (5.38b) en (5.39) vragen de werkelijke rekenmomenten, en 6.1(4) is een eis \
+         aan de doorsnedetoets per richting — die staat om y in §6.1 en om z in de toets hierboven. \
+         Beide momenten zijn per snede genomen; §5.8.9(1) vraagt bijzondere aandacht voor de \
+         doorsnede met de kritieke combinatie van momenten, en daarom is elke snede met \
+         normaaldruk nagegaan."
+            .to_string(),
+    );
+    let (Some(va), false) = (voorwaarde_a, instabiel) else {
+        db.status = CheckStatus::NotApplicable;
+        db.notes.push(if instabiel {
+            "Er is geen M_Edz: de kolom knikt om de z-as (zie de toets van het moment om z). \
+             Zolang er om z geen evenwicht is, heeft de interactie van (5.39) geen betekenis."
+                .to_string()
+        } else {
+            "(5.38a) kon niet worden opgesteld: een van de twee slankheden is nul.".to_string()
+        });
+        checks.push(benoem(db));
+        return (checks, uit);
+    };
+
+    let vereist: Vec<&Snede> = sneden.iter().filter(|s| !s.apart).collect();
+    let gekozen: Option<&Snede> = if vereist.is_empty() {
+        // Overal apart toegestaan: toon de snede die het dichtst bij de grens
+        // van (5.38b) zit — de grootste van de kleinste van de twee verhoudingen.
+        sneden.iter().max_by(|a, b| {
+            let ka = a.voorwaarde_b.y_door_z.min(a.voorwaarde_b.z_door_y);
+            let kb = b.voorwaarde_b.y_door_z.min(b.voorwaarde_b.z_door_y);
+            ka.total_cmp(&kb)
+        })
+    } else {
+        // De interactie is vereist: de grootste som telt. Een snede waar M_Rd
+        // ontbreekt (de doorsnede draagt N al niet) gaat vóór alles.
+        vereist
+            .iter()
+            .find(|s| s.interactie.is_none())
+            .copied()
+            .or_else(|| {
+                vereist
+                    .iter()
+                    .max_by(|a, b| a.interactie.unwrap().total_cmp(&b.interactie.unwrap()))
+                    .copied()
+            })
+    };
+
+    match gekozen {
+        None => {
+            db.status = CheckStatus::NotApplicable;
+            db.notes.push(
+                "Er is geen snede met normaaldruk waarop §5.8.9 kon worden nagegaan.".to_string(),
+            );
+        }
+        Some(s) => {
+            db.force_state = ForceStateSnapshot::from_point(&s.punt);
+            let apart_toegestaan = vereist.is_empty();
+            match (s.m_rdz_knm, s.m_rdy_knm) {
+                (Some(rz), Some(ry)) => {
+                    let som = s.interactie.unwrap_or(f64::NAN);
+                    let d = DubbeleBuiging {
+                        voorwaarde_a: va,
+                        voorwaarde_b: s.voorwaarde_b,
+                        apart_toegestaan,
+                        n_ed_druk_kn: s.n_druk_kn,
+                        n_rd_kn: n_rd_n * 1e-3,
+                        a_c_mm2: section.area_mm2(),
+                        a_s_mm2: cage.a_s_total_mm2(),
+                        f_cd_mpa: mat.f_cd(),
+                        f_yd_mpa: mat.f_yd(),
+                        n_verhouding: s.n_verhouding,
+                        a: s.a,
+                        a_grondslag: s.a_grondslag,
+                        m_edy_knm: s.m_edy_589_knm,
+                        m_rdy_knm: ry,
+                        m_edz_knm: s.m_edz_589_knm,
+                        m_rdz_knm: rz,
+                        interactie: som,
+                    };
+                    db.deelstappen = dubbele_buiging_deelstappen(&d);
+                    db.variables = vec![
+                        NamedValue { symbol: "λ_y".to_string(), value: va.lambda_y, unit: "-".to_string() },
+                        NamedValue { symbol: "λ_z".to_string(), value: va.lambda_z, unit: "-".to_string() },
+                        NamedValue { symbol: "e_y".to_string(), value: s.voorwaarde_b.e_y_mm, unit: "mm".to_string() },
+                        NamedValue { symbol: "e_z".to_string(), value: s.voorwaarde_b.e_z_mm, unit: "mm".to_string() },
+                        NamedValue { symbol: "N_Ed".to_string(), value: s.n_druk_kn, unit: "kN".to_string() },
+                        NamedValue { symbol: "N_Rd".to_string(), value: n_rd_n * 1e-3, unit: "kN".to_string() },
+                        NamedValue { symbol: "a".to_string(), value: s.a, unit: "-".to_string() },
+                        NamedValue { symbol: "M_Edz".to_string(), value: s.m_edz_589_knm, unit: "kNm".to_string() },
+                        NamedValue { symbol: "M_Rdz".to_string(), value: rz, unit: "kNm".to_string() },
+                        NamedValue { symbol: "M_Edy".to_string(), value: s.m_edy_589_knm, unit: "kNm".to_string() },
+                        NamedValue { symbol: "M_Rdy".to_string(), value: ry, unit: "kNm".to_string() },
+                    ];
+                    db.value = som;
+                    if apart_toegestaan {
+                        db.status = CheckStatus::Ok;
+                        db.notes.push(format!(
+                            "§5.8.9(3): (5.38a) is vervuld (λ_y/λ_z = {}, λ_z/λ_y = {}) en (5.38b) \
+                             is op elke snede met normaaldruk vervuld; op de snede die er het \
+                             dichtst bij zit (x = {} mm, combinatie {}) is de kleinste van de twee \
+                             verhoudingen {} ≤ 0,2. Geen verdere controle nodig: de twee richtingen \
+                             zijn elk afzonderlijk getoetst — om y in de doorsnedetoetsen van §6.1, \
+                             om z in de toets hierboven (§5.8.9(2)). Deze toets heeft daarom geen \
+                             unity check; de som van (5.39) staat ter informatie in de afleiding.",
+                            nl(va.y_door_z, 3),
+                            nl(va.z_door_y, 3),
+                            s.punt.position_mm.round() as i64,
+                            s.punt.combination_id,
+                            nl(s.voorwaarde_b.y_door_z.min(s.voorwaarde_b.z_door_y), 3)
+                        ));
+                    } else {
+                        db.uc = Some(UnityCheck {
+                            ed: som,
+                            rd: 1.0,
+                            uc: som,
+                            formula_latex:
+                                r"\left(M_{Edz}/M_{Rdz}\right)^a + \left(M_{Edy}/M_{Rdy}\right)^a"
+                                    .to_string(),
+                        });
+                        db.status = if som <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk };
+                        db.notes.push(format!(
+                            "§5.8.9(3) is niet vervuld{}: op {} van de {} sneden met normaaldruk \
+                             geldt (5.38b) niet. §5.8.9(4) vraagt dan de interactie (5.39); de \
+                             grootste som staat op x = {} mm van combinatie {}: {} met a = {} bij \
+                             N_Ed/N_Rd = {}.",
+                            if va.voldaan {
+                                ""
+                            } else {
+                                " — al door (5.38a): de slankheden verschillen meer dan een factor 2"
+                            },
+                            vereist.len(),
+                            sneden.len(),
+                            s.punt.position_mm.round() as i64,
+                            s.punt.combination_id,
+                            nl(som, 3),
+                            nl(s.a, 3),
+                            nl(s.n_verhouding, 3)
+                        ));
+                        uit.interactie_5_39 = Some(som);
+                    }
+                }
+                _ => {
+                    db.status = CheckStatus::NotOk;
+                    db.notes.push(format!(
+                        "Op de snede x = {} mm van combinatie {} draagt de doorsnede de \
+                         normaalkracht N_Ed = {} kN al niet bij κ = 0; er is geen momentweerstand \
+                         om een van beide assen over en (5.39) is niet op te stellen.",
+                        s.punt.position_mm.round() as i64,
+                        s.punt.combination_id,
+                        nl(s.n_druk_kn, 1)
+                    ));
+                }
+            }
+        }
+    }
+    checks.push(benoem(db));
+
+    (checks, uit)
 }

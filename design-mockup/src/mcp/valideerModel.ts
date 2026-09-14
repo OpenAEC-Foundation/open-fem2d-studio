@@ -107,9 +107,13 @@ const CHECKCONFIG_VELDEN = [
   "betonStroken", "betonStaaltak", "betonKolom", "spanningSigmaZ",
 ] as const;
 
-/** De velden van het §5.8-blok (`ConcreteColumnInput`). */
+/**
+ * De velden van het §5.8-blok (`ConcreteColumnInput`), inclusief de drie om de
+ * TWEEDE as voor §5.8.9: `bracing_z`, `buckling_length_z` en `m0_edz_knm`.
+ */
 const KOLOM_VELDEN = [
   "bracing", "buckling_length", "phi_inf_t0", "stirrup_zone", "lap_situation",
+  "bracing_z", "buckling_length_z", "m0_edz_knm",
 ] as const;
 
 /** De twee waarden van `Schoring` — het ontwerpbesluit van §5.8.1. */
@@ -386,8 +390,12 @@ function keurKorf(waarde: unknown, pad: string, fouten: string[]): void {
  * factor twee in de kniklengte. Een blok met alleen een kniklengte zou de kern
  * doen weigeren; hier komt de melding vóórdat het model die kant op gaat.
  *
- * De drie overige velden zijn optioneel: leeg betekent "niet opgegeven", en dan
+ * De overige velden zijn optioneel: leeg betekent "niet opgegeven", en dan
  * meldt de toets dat hij niet kan in plaats van de ruimste tak aan te nemen.
+ * Voor de TWEEDE as (`bracing_z`, `buckling_length_z`, `m0_edz_knm`) betekent
+ * leeg: de keuze van het rekenvlak wordt overgenomen (met melding), en
+ * M₀Ed,z = 0 — de kern rekent de imperfectie en de tweede orde om z dan nog
+ * steeds uit.
  */
 function keurKolom(waarde: unknown, pad: string, fouten: string[]): void {
   if (waarde === undefined) return;
@@ -407,31 +415,46 @@ function keurKolom(waarde: unknown, pad: string, fouten: string[]): void {
   keurGetal(waarde.phi_inf_t0, `${pad}.phi_inf_t0`, fouten, { positief: true });
   keurEnum(waarde.stirrup_zone, BEUGELZONES, `${pad}.stirrup_zone`, fouten);
   keurEnum(waarde.lap_situation, OVERLAPPINGSSITUATIES, `${pad}.lap_situation`, fouten);
+  // De tweede as: dezelfde soorten als in het vlak, allemaal optioneel. Het
+  // teken van M₀Ed,z doet er niet toe (de korf is symmetrisch), dus geen eis
+  // "positief".
+  keurEnum(waarde.bracing_z, SCHORINGEN, `${pad}.bracing_z`, fouten);
+  keurGetal(waarde.m0_edz_knm, `${pad}.m0_edz_knm`, fouten);
+  if (waarde.buckling_length_z !== undefined) {
+    keurKniklengte(waarde.buckling_length_z, `${pad}.buckling_length_z`, fouten);
+  }
 
-  const kl = waarde.buckling_length;
-  if (kl === undefined) {
+  if (waarde.buckling_length === undefined) {
     fouten.push(`${pad}.buckling_length ontbreekt; zonder l₀ is er geen slankheid λ = l₀/i.`);
     return;
   }
+  keurKniklengte(waarde.buckling_length, `${pad}.buckling_length`, fouten);
+}
+
+/**
+ * Eén kniklengtekeuze (`Kniklengtekeuze`): een vakje van figuur 5.7 of l₀
+ * rechtstreeks. Dezelfde regels voor het rekenvlak en voor de z-as.
+ */
+function keurKniklengte(kl: unknown, pad: string, fouten: string[]): void {
   if (!isObject(kl)) {
-    fouten.push(`${pad}.buckling_length: moet een object met \`soort\` zijn.`);
+    fouten.push(`${pad}: moet een object met \`soort\` zijn.`);
     return;
   }
   if (kl.soort === "Figuur57") {
-    keurVelden(kl, ["soort", "geval"], `${pad}.buckling_length`, fouten);
-    keurEnum(kl.geval, KNIKGEVALLEN_GELDIG, `${pad}.buckling_length.geval`, fouten);
+    keurVelden(kl, ["soort", "geval"], pad, fouten);
+    keurEnum(kl.geval, KNIKGEVALLEN_GELDIG, `${pad}.geval`, fouten);
     if (kl.geval === undefined) {
-      fouten.push(`${pad}.buckling_length.geval ontbreekt.`);
+      fouten.push(`${pad}.geval ontbreekt.`);
     }
   } else if (kl.soort === "Opgegeven") {
-    keurVelden(kl, ["soort", "l0_m"], `${pad}.buckling_length`, fouten);
+    keurVelden(kl, ["soort", "l0_m"], pad, fouten);
     if (kl.l0_m === undefined) {
-      fouten.push(`${pad}.buckling_length.l0_m ontbreekt; l₀ is hier het hele gegeven.`);
+      fouten.push(`${pad}.l0_m ontbreekt; l₀ is hier het hele gegeven.`);
     }
-    keurGetal(kl.l0_m, `${pad}.buckling_length.l0_m`, fouten, { positief: true });
+    keurGetal(kl.l0_m, `${pad}.l0_m`, fouten, { positief: true });
   } else {
     fouten.push(
-      `${pad}.buckling_length.soort: ${JSON.stringify(kl.soort)} bestaat niet. ` +
+      `${pad}.soort: ${JSON.stringify(kl.soort)} bestaat niet. ` +
         `Toegestaan: Figuur57 (een vakje van figuur 5.7) of Opgegeven (l₀ rechtstreeks).`,
     );
   }

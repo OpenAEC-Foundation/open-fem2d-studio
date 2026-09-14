@@ -230,6 +230,10 @@ const ALLEEN_BRON = new Map([
     "de §5.8-invoer van een betonnen kolom: de gevallen van figuur 5.7 uit components/beton/kolomgegevens, de doorvoer via korvenUitStaven (een zustand-store) en betonCheckBuilder, en een blok dat de toetsbrug als apart proces aanroept. Twee van die drie modules staan buiten de barrel — het korfmodel en de store — en de Rust-kern hoort er sowieso niet in, dus tegen de sidecarbundel zou de test juist de laag overslaan die hij moet bewaken",
   ],
   [
+    "dubbele-buiging",
+    "dubbele buiging bij kolommen (art. 5.8.9): `maakZConsistent` uit components/beton/kolomgegevens (buiten de barrel), de modelpoort uit mcp/valideerModel voor de drie velden om de z-as, en een blok dat de toetsbrug als apart proces aanroept en de imperfectie van art. 5.2, de grens van (5.38a) en de exponent a van (5.39) met de hand narekent. De Rust-kern hoort niet in de sidecarbundel, en de twee frontendmodules staan buiten de barrel",
+  ],
+  [
     "sidecar",
     "start de sidecar als eigen proces — en draait daarin zelf al bron én bundel",
   ],

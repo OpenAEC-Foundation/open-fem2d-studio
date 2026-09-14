@@ -145,6 +145,12 @@ async fn concrete_segment_stiffness(
 /// reden als `concrete_cover_check` naast de dekkingstoets in de staaftoetsing:
 /// het invoerscherm moet λ en λ_lim kunnen tonen terwijl de gebruiker typt,
 /// zonder er een hele toetsronde voor te draaien.
+///
+/// **De tweede as zit erin.** Naast de poort om y komen drie toetsen om de
+/// z-as terug (§5.8.3.1 om z, het moment om z met de imperfectie van §5.2 en
+/// de tweede orde van §5.8.6, en §5.8.9). Dat de raamwerkoplosser M_z = 0
+/// levert, maakt M_Edz niet nul: de imperfectie en de tweede orde om z hangen
+/// niet van het model af.
 #[tauri::command]
 async fn concrete_column_check(
     inputs: ConcreteColumnCheckRequest,
