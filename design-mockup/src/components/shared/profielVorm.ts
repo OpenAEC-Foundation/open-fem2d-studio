@@ -53,6 +53,19 @@ export type SectionShape =
   | { type: "tube"; d: number; t: number }
   | { type: "rect"; h: number; b: number }
   /**
+   * Hoeklijn (L-profiel, EN 10056-1). De hiel ligt linksonder; `h` is het
+   * LANGE been (verticaal) en `b` het korte (horizontaal). Die stand is geen
+   * tekenkeuze: NEN-EN 1993-1-1 par. 1.7(2) legt de y-as evenwijdig aan het
+   * kleinste been, dus het lange been staat langs z.
+   *
+   * Twee stralen: `r` is de walsuitronding in de holle hoek tussen de benen,
+   * `r2` de teenafronding aan het eind van elk been. Zonder `r2` zou de
+   * tekening scherpe teenhoeken laten zien — zichtbaar een andere vorm dan
+   * het gewalste profiel, en dan zou de contour niet meer met de rekenkern
+   * overeenkomen.
+   */
+  | { type: "angle"; h: number; b: number; t: number; r: number; r2: number }
+  /**
    * Betonnen T- of L-ligger. `bw` is de lijfbreedte, `hf` de flensdikte en
    * `b` de flensbreedte (in de toetsing de meewerkende breedte b_eff).
    *
@@ -162,6 +175,11 @@ export function steelShape(dims: SteelSectionDims | undefined): SectionShape | n
       return { type: "box", h: dims.h, b: dims.b, t: dims.tw, r: dims.r };
     case "Chs":
       return { type: "tube", d: dims.h, t: dims.tw };
+    case "Angle":
+      // Ontbreekt r2 in de database, dan tekenen we scherpe teenhoeken. Dat is
+      // zichtbaar fout voor een gewalste hoeklijn — daarom hoort de maat in
+      // profiles.json, net als de flenshelling van een UNP.
+      return { type: "angle", h: dims.h, b: dims.b, t: dims.tw, r: dims.r, r2: dims.r2 ?? 0 };
   }
 }
 
@@ -376,6 +394,33 @@ export function shapePath(shape: SectionShape, s: number, x0: number, y0: number
     case "rect": {
       const { h, b } = shape;
       return { d: `M ${P(0, 0)} L ${P(b, 0)} L ${P(b, h)} L ${P(0, h)} Z` };
+    }
+    case "angle": {
+      // Zelfde contour als `hoeklijn` in
+      // src-tauri/crates/section-properties/src/contour.rs, maar met de
+      // y-as van het scherm: daar loopt z omhoog en hier omlaag, dus de hiel
+      // ligt hier LINKSONDER, op (0, h). Het lange been h staat verticaal en
+      // het korte been b horizontaal — de stand van NEN-EN 1993-1-1 1.7(2).
+      //
+      // De lus loopt met de klok mee over het scherm (zelfde richting als de
+      // I en de U hierboven), dus een bolle hoek krijgt sweep 1 en de holle
+      // walsuitronding sweep 0.
+      const { h, b, t } = shape;
+      // Dezelfde begrenzing als in de rekenkern, zodat de tekening nooit een
+      // vorm laat zien die de motor niet kan maken.
+      const r2 = Math.max(0, Math.min(shape.r2, t, (Math.min(b, h) - t) / 2));
+      const r1 = Math.max(0, Math.min(shape.r, b - t - r2, h - t - r2));
+      return {
+        d:
+          // Buitenzijde van het lange been, omlaag langs de teen erbovenaan.
+          `M ${P(0, 0)} L ${P(t - r2, 0)} ${A(r2, t, r2, 1)} ` +
+          // Binnenzijde van het lange been, omlaag naar de holle hoek.
+          `L ${P(t, h - t - r1)} ${A(r1, t + r1, h - t, 0)} ` +
+          // Bovenkant van het korte been, naar de teen aan het uiteinde.
+          `L ${P(b - r2, h - t)} ${A(r2, b, h - t + r2, 1)} ` +
+          // Kopse kant en onderkant, terug naar de hiel.
+          `L ${P(b, h)} L ${P(0, h)} Z`,
+      };
     }
     case "tee": {
       // y = 0 is hier de BOVENrand van de tekening. Geen afrondingsstralen:

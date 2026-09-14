@@ -25,6 +25,8 @@ export function ontwerpNaarMotor(o: DoorsnedeOntwerp, naam: string): MotorInvoer
       tf: b.tf,
       t: b.tw,
       r: b.r,
+      // Alleen een hoeklijn draagt een tweede straal; de rest laat hem weg.
+      ...(b.r2 === undefined ? {} : { r2: b.r2 }),
       gaten: o.gaten.map((g) => gatNaarMotor(g, b)),
     };
   }
@@ -46,6 +48,7 @@ export function ontwerpNaarMotor(o: DoorsnedeOntwerp, naam: string): MotorInvoer
       tw: d.profiel.tw,
       tf: d.profiel.tf,
       r: d.profiel.r,
+      ...(d.profiel.r2 === undefined ? {} : { r2: d.profiel.r2 }),
       y_mm: d.y_mm,
       z_mm: d.z_mm,
       alpha_rad: radialen(d.alphaGraden),
