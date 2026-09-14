@@ -7120,13 +7120,32 @@ function buildTimberCheckInputs(data) {
       // valideerModel keurt het veld met `positief: true`).
       buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1e3,
       buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1e3,
-      // Kipsteunafstand voor tabel 6.1; 0 → staaflengte. Bewust NIET
-      // afgeleid uit cfg.lateralRestraints: die fracties zijn per FLENS en
-      // horen bij het staalmodel, terwijl art. 6.3.3 één afstand vraagt
-      // waaruit tabel 6.1 l_ef maakt. Zolang de UI daar geen eigen veld voor
-      // heeft, blijft dit de staaflengte — veilig-zijdig en zichtbaar.
-      ltb_segment_length_m: 0,
-      // 0 → staaflengte
+      // Kipsteunafstand voor tabel 6.1; 0 → staaflengte.
+      //
+      // Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt
+      // (l_ef = verhouding · ℓ, met 1,0 / 0,9 / 0,8 voor een ligger op twee
+      // steunpunten en 0,5 / 0,8 voor een uitkraging). l_ef gaat naar
+      // σ_m,crit in (6.31)/(6.32) en daarmee naar k_crit in (6.33)/(6.35):
+      // een kleinere steunafstand geeft een hogere kritieke buigspanning en
+      // dus een lichtere kiptoets.
+      //
+      // Het is een EIGEN veld en geen afgeleide van cfg.lateralRestraints.
+      // Die fracties zijn per FLENS en horen bij het staalmodel; art. 6.3.3
+      // kent dat onderscheid niet en vraagt één afstand. Uit de fracties
+      // afleiden zou l_ef stilzwijgend verkleinen op grond van invoer die
+      // over iets anders gaat — precies de stille gunst die deze bouwer
+      // nergens maakt.
+      //
+      // Terugval is de STAAFLENGTE en niet L_cr,z: dat zijn twee
+      // verschillende grootheden. L_cr,z is de kniklengte om de zwakke as
+      // (art. 6.3.2) en kan door een steun aan één flens al korter zijn,
+      // terwijl kip de hele doorsnede laat uitwijken en torderen.
+      //
+      // Geen eigen validatie: alleen een eindige waarde > 0 gaat door; al
+      // het andere (leeg, 0, negatief, NaN) wordt 0 en dan neemt de kern de
+      // staaflengte — de veilige kant, want de volle lengte geeft de laagste
+      // σ_m,crit.
+      ltb_segment_length_m: Number.isFinite(cfg.ltbSupportSpacing_m) && cfg.ltbSupportSpacing_m > 0 ? cfg.ltbSupportSpacing_m : 0,
       ltb_load_case: "UniformLoad",
       ltb_load_position: "CentreOfGravity",
       ltb_effective_length_override_m: 0,
@@ -8496,7 +8515,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.7";
+var version = "0.3.9";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
