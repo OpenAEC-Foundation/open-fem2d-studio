@@ -121,9 +121,22 @@
 //!   zodra de UGT-omhullende een moment om de zwakke as draagt van meer dan
 //!   5 % van dat om de sterke as. Daarvóór verdween M_z geruisloos: dezelfde
 //!   toetsen, dezelfde statussen, en niets dat verried dat een halve belasting
-//!   buiten beschouwing bleef. Wat de paragraaf zelf zou vragen — de
-//!   voorwaarden van 5.8.9(2), anders de interactie (5.39) met exponent a —
-//!   staat in die melding, en met de hand uitgewerkt in referentie R29.
+//!   buiten beschouwing bleef. Wat de paragraaf zelf vraagt — de ontsnapping
+//!   van 5.8.9(3) met (5.38a) en (5.38b), anders de interactie (5.39) met
+//!   exponent a — staat in die melding, en met de hand uitgewerkt in
+//!   referentie R29.
+//!
+//!   **Waarom het bij melden blijft.** Niet meer om de wapeningskorf: die
+//!   draagt sinds de kolomkorf staven langs alle vier de zijden. Wel om drie
+//!   andere dingen. (a) De raamwerkoplosser rekent in één vlak en zet M_z
+//!   altijd op nul, dus vanuit de app zou de toets altijd hetzelfde zeggen.
+//!   (b) (5.38a) vraagt λ_z = l₀,z/i_z, en er is één kniklengte — die van het
+//!   rekenvlak; l₀,z gelijkstellen aan l₀,y wist juist het verschil uit tussen
+//!   een kolom die in het vlak geschoord is en er loodrecht op niet.
+//!   (c) (5.39) vraagt M_Rdz, waarvoor de y-plaatsen van de staven over de
+//!   breedte nodig zijn — de korf draagt aantallen en diameters per rij — en
+//!   M_Edz ínclusief tweede-orde-moment om de zwakke as, dus §5.8.6 of §5.8.8
+//!   met opnieuw l₀,z als ingang.
 //! * **§5.8.2(6) (de 10 %-regel) en de imperfecties van §5.2** — geen van
 //!   beide hier.
 //! * **De hele §5.8.3.3** — zie hierboven; in Nederland zinledig.
@@ -1455,6 +1468,36 @@ pub const S_CL_TMAX_PLAFOND_MM: f64 = 400.0;
 /// §9.5.3(4) — de reductiefactor op s_cl,tmax.
 pub const S_CL_TMAX_REDUCTIE: f64 = 0.6;
 
+/// §9.5.3(4)ii — vanaf welke langsstaafdiameter de regels bij een
+/// overlappingslas gaan gelden, mm.
+///
+/// "nabij overlappingslassen indien de maximale diameter van de langsstaven
+/// groter is dan 14 mm" — zowel de factor 0,6 als de eis van drie beugels hangt
+/// aan deze drempel.
+pub const PHI_L_DREMPEL_LAS_9_5_3_MM: f64 = 14.0;
+
+/// §9.5.3(4)ii — het minimumaantal beugels over een overlappingslas.
+///
+/// "Een minimum van drie staven, gelijkmatig verdeeld over de
+/// overlappingslengte, is vereist."
+pub const MIN_AANTAL_BEUGELS_LAS_9_5_3: u32 = 3;
+
+/// §8.7.3(1) met (8.11) — de ondergrens van de overlappingslengte l₀ die hoe
+/// dan ook geldt, mm.
+///
+/// (8.10) eist l₀ ≥ l₀,min en (8.11) zet
+/// l₀,min ≥ max{0,3·α₆·l_b,rqd ; 15Φ ; 200 mm}. De eerste tak vraagt l_b,rqd en
+/// α₆ en is hier dus niet te vullen; hij kan de uitkomst alleen VERHOGEN, want
+/// (8.11) is een maximum. Wat overblijft — max{15Φ ; 200 mm} — is daarmee een
+/// gegarandeerde ondergrens van l₀ en niet de waarde van l₀ zelf. Alleen als
+/// zodanig gebruiken: een toets die hem als de werkelijke lengte behandelt,
+/// keurt af waar de norm dat niet doet.
+///
+/// `phi_mm` is de diameter van de overlappende staaf.
+pub fn l0_ondergrens_8_11_mm(phi_mm: f64) -> f64 {
+    (15.0 * phi_mm).max(200.0)
+}
+
 /// Waar in de kolom bevindt de beschouwde doorsnede zich? §9.5.3(4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
@@ -1467,7 +1510,7 @@ pub enum Beugelzone {
     /// §9.5.3(4)ii — nabij overlappingslassen als de maximale diameter van de
     /// langsstaven groter is dan 14 mm: factor 0,6. De norm eist daar bovendien
     /// ten minste drie staven, gelijkmatig verdeeld over de overlappingslengte;
-    /// dat aantal is hier niet getoetst.
+    /// dat aantal toetst [`aantal_beugels_las_9_5_3`].
     BijOverlappingslas,
 }
 
@@ -1489,7 +1532,7 @@ impl Beugelzone {
             Beugelzone::BijOverlappingslas => {
                 "§9.5.3(4)ii — nabij een overlappingslas met Φ_l > 14 mm: ×0,6. De norm eist daar \
                  óók ten minste drie beugels, gelijkmatig over de overlappingslengte verdeeld; dat \
-                 aantal wordt hier niet getoetst."
+                 aantal staat in een eigen toets."
             }
         }
     }
@@ -2114,6 +2157,181 @@ pub fn s_cl_tmax_9_5_3(inv: &KolomdetailleringInvoer) -> ResistanceCalc {
     }
 }
 
+/// §9.5.3(4)ii — het AANTAL beugels over een overlappingslas.
+///
+/// "Een minimum van drie staven, gelijkmatig verdeeld over de overlappingslengte,
+/// is vereist." Drie beugels gelijkmatig over l₀ betekent twee tussenruimten van
+/// l₀/2, dus de eis is s ≤ l₀/2.
+///
+/// # Waarom hier met een ONDERGRENS van l₀ wordt gerekend
+///
+/// l₀ zelf is geen invoer van een raamwerkmodel: §8.7.3(1) bepaalt hem met
+/// (8.10) uit l_b,rqd en de coëfficiënten α₁, α₂, α₃, α₅ en α₆, en die vragen de
+/// spanning in de staaf, de dekkingsmaat c_d, de aanwezige dwarswapening en het
+/// overlappingspercentage ρ₁ — geen daarvan staat in de korf.
+///
+/// Wat de norm wél onvoorwaardelijk garandeert is de ONDERgrens: (8.10) eist
+/// l₀ ≥ l₀,min en (8.11) zet l₀,min ≥ max{0,3·α₆·l_b,rqd ; 15Φ ; 200 mm}. Omdat
+/// α₆ ≥ 1 en l_b,rqd > 0, geldt dus altijd
+///
+/// > l₀ ≥ max{15Φ ; 200 mm}
+///
+/// Daarmee is de toets EENZIJDIG te maken. Past s binnen de helft van die
+/// ondergrens, dan passen er drie beugels over l₀ — hoe lang de werkelijke
+/// overlapping ook is — en dat is een uitkomst die staat. Past s daar niet
+/// binnen, dan is er NIETS bewezen: de werkelijke l₀ is doorgaans een veelvoud
+/// van de ondergrens, dus die tak levert [`CheckStatus::NotApplicable`] met de
+/// reden en nadrukkelijk GEEN afkeuring.
+///
+/// Φ in (8.11) is de diameter van de overlappende staaf. Welke staven in deze
+/// kolom worden gelast is geen invoer, dus hier staat de KLEINSTE aanwezige
+/// langsstaafdiameter: die geeft de kleinste — en dus de enige gegarandeerde —
+/// ondergrens van l₀.
+pub fn aantal_beugels_las_9_5_3(inv: &KolomdetailleringInvoer) -> ResistanceCalc {
+    const ID: &str = "9.5.3_aantal_beugels_las";
+    const TITEL: &str = "Aantal beugels over een overlappingslas";
+    const ARTIKEL: &str = "art. 9.5.3(4)ii, met art. 8.7.3(1) en (8.11)";
+    const FORMULE: &str = r"s \ \le\ l_0/2 \quad\Longrightarrow\quad n \ \ge\ 3";
+
+    let niet_toetsbaar = |notes: Vec<String>, vars: Vec<NamedValue>, waarde: f64| {
+        eis(
+            ID,
+            TITEL,
+            ARTIKEL,
+            FORMULE,
+            inv.force_state,
+            vars,
+            waarde,
+            "mm",
+            None,
+            CheckStatus::NotApplicable,
+            notes,
+        )
+    };
+
+    // De eis hoort bij de las én bij de dikke staaf: §9.5.3(4)ii geldt "nabij
+    // overlappingslassen indien de maximale diameter van de langsstaven groter
+    // is dan 14 mm". Valt een van beide weg, dan is er geen eis — en dan hoort
+    // er ook geen groen vinkje te staan dat suggereert dat er iets is nagegaan.
+    if inv.zone != Beugelzone::BijOverlappingslas {
+        return niet_toetsbaar(
+            vec![
+                "Niet van toepassing: deze doorsnede is niet opgegeven als een doorsnede nabij een \
+                 overlappingslas. §9.5.3(4)ii stelt de eis van drie beugels alleen daar."
+                    .to_string(),
+            ],
+            Vec::new(),
+            f64::NAN,
+        );
+    }
+    if !(inv.phi_l_max_mm > PHI_L_DREMPEL_LAS_9_5_3_MM) {
+        return niet_toetsbaar(
+            vec![format!(
+                "Niet van toepassing: §9.5.3(4)ii geldt alleen als de maximale diameter van de \
+                 langsstaven groter is dan {} mm; hier is Φ_l,max = {} mm.",
+                g(PHI_L_DREMPEL_LAS_9_5_3_MM),
+                g(inv.phi_l_max_mm)
+            )],
+            vec![nv("Φ_l,max", inv.phi_l_max_mm, "mm")],
+            f64::NAN,
+        );
+    }
+    if !(inv.phi_l_min_mm > 0.0) {
+        return niet_toetsbaar(
+            vec![
+                "Niet te toetsen: de kleinste diameter van de langsstaven moet groter dan nul zijn; \
+                 zonder Φ is de ondergrens 15·Φ van (8.11) niet te bepalen."
+                    .to_string(),
+            ],
+            Vec::new(),
+            f64::NAN,
+        );
+    }
+
+    let l0_ondergrens = l0_ondergrens_8_11_mm(inv.phi_l_min_mm);
+    let s_max = l0_ondergrens / (MIN_AANTAL_BEUGELS_LAS_9_5_3 as f64 - 1.0);
+    let vars = vec![
+        nv("Φ_l,min", inv.phi_l_min_mm, "mm"),
+        nv("15·Φ_l,min", 15.0 * inv.phi_l_min_mm, "mm"),
+        nv("l₀,ondergrens", l0_ondergrens, "mm"),
+        nv("s_max", s_max, "mm"),
+    ];
+    let mut notes = vec![
+        format!(
+            "§9.5.3(4)ii eist ten minste {} beugels, gelijkmatig verdeeld over de \
+             overlappingslengte l₀. Gelijkmatig verdeeld betekent {} tussenruimten, dus de eis is \
+             s ≤ l₀/{}.",
+            MIN_AANTAL_BEUGELS_LAS_9_5_3,
+            MIN_AANTAL_BEUGELS_LAS_9_5_3 - 1,
+            MIN_AANTAL_BEUGELS_LAS_9_5_3 - 1
+        ),
+        format!(
+            "l₀ zelf is geen invoer — §8.7.3(1) bepaalt hem met (8.10) uit l_b,rqd en de \
+             coëfficiënten α₁ tot en met α₆. Wat wél vaststaat is de ondergrens van (8.11): \
+             l₀ ≥ max{{0,3·α₆·l_b,rqd ; 15·Φ ; 200 mm}}, en met α₆ ≥ 1 dus altijd \
+             l₀ ≥ max{{15·Φ ; 200 mm}} = max{{{} ; 200}} = {} mm.",
+            g(15.0 * inv.phi_l_min_mm),
+            g(l0_ondergrens)
+        ),
+        "Φ in (8.11) is de diameter van de overlappende staaf. Welke staven worden gelast is geen \
+         invoer, dus hier staat de KLEINSTE aanwezige langsstaafdiameter: die geeft de enige \
+         ondergrens die hoe dan ook geldt."
+            .to_string(),
+    ];
+
+    match inv.s_dwars_mm {
+        Some(s) if s > 0.0 => {
+            if s <= s_max + 1e-9 {
+                let (uc, _) = uc_maximum(s, s_max, r"s / (l_0/2)");
+                let mut vars = vars;
+                vars.insert(0, nv("s", s, "mm"));
+                notes.push(format!(
+                    "s = {} mm ≤ {} mm: over de kortst mogelijke overlapping passen er al {} \
+                     beugels, en de werkelijke l₀ kan alleen langer zijn. De eis is daarmee \
+                     gehaald, wat l₀ ook is.",
+                    g(s),
+                    g(s_max),
+                    MIN_AANTAL_BEUGELS_LAS_9_5_3
+                ));
+                eis(
+                    ID,
+                    TITEL,
+                    ARTIKEL,
+                    FORMULE,
+                    inv.force_state,
+                    vars,
+                    s_max,
+                    "mm",
+                    Some(uc),
+                    CheckStatus::Ok,
+                    notes,
+                )
+            } else {
+                let mut vars = vars;
+                vars.insert(0, nv("s", s, "mm"));
+                notes.push(format!(
+                    "s = {} mm > {} mm: met de ondergrens van l₀ is NIET aan te tonen dat er drie \
+                     beugels over de las staan. Dit is nadrukkelijk geen afkeuring — de \
+                     werkelijke overlappingslengte is doorgaans een veelvoud van die ondergrens. \
+                     Niet te toetsen zonder l₀ volgens §8.7.3(1); reken hem met de hand na, of \
+                     leg ten minste {} beugels gelijkmatig over de las.",
+                    g(s),
+                    g(s_max),
+                    MIN_AANTAL_BEUGELS_LAS_9_5_3
+                ));
+                niet_toetsbaar(notes, vars, s_max)
+            }
+        }
+        _ => {
+            notes.push(
+                "Niet te toetsen: er is geen hart-op-hartafstand van de dwarswapening opgegeven."
+                    .to_string(),
+            );
+            niet_toetsbaar(notes, vars, s_max)
+        }
+    }
+}
+
 /// §9.5.2(4) — het aantal staven dat een hoek van de doorsnede bezet.
 ///
 /// "Voor kolommen met een veelhoekige dwarsdoorsnede behoort ten minste één
@@ -2389,11 +2607,16 @@ pub fn opgesloten_staven_9_5_3(inv: &KolomdetailleringInvoer) -> ResistanceCalc 
 
 /// Alle §9.5-toetsen die met het huidige model te maken zijn, op een rij.
 ///
-/// **Nog steeds niet compleet, en dat staat er ook bij.** §9.5.3(2) ("de
-/// dwarswapening behoort voldoende te zijn verankerd") en §9.5.3(5) (knikken in
-/// de langsstaven) zijn beoordelingen en geen rekenregels; §9.5.3(4)ii eist
-/// naast de gereduceerde beugelafstand ook een AANTAL beugels, en dat is niet
-/// getoetst. Zie [`niet_getoetste_9_5_eisen`].
+/// **Nog steeds niet compleet, en dat staat er ook bij.** §9.5.3(2) (de
+/// verankering van de beugeluiteinden, §8.5 met figuur 8.5) en §9.5.3(5) (de
+/// richtingsverandering van de langsstaven) vragen invoer die dit model niet
+/// draagt; zij staan met hun reden in [`niet_getoetste_9_5_eisen`].
+///
+/// §9.5.3(4)ii — het AANTAL beugels over een overlappingslas — is er sinds
+/// [`aantal_beugels_las_9_5_3`] wél bij, maar EENZIJDIG: hij bewijst dat er
+/// drie beugels passen zolang s binnen de helft van de gegarandeerde ondergrens
+/// van l₀ blijft, en levert daarbuiten [`CheckStatus::NotApplicable`] met de
+/// reden. De werkelijke l₀ van §8.7.3 is geen invoer.
 ///
 /// §9.5.2(4) en §9.5.3(6) zitten er sinds de korf staven per zijde kent wél
 /// bij. Zij leveren [`CheckStatus::NotApplicable`] zodra
@@ -2409,6 +2632,7 @@ pub fn kolomdetailleringstoetsen(inv: &KolomdetailleringInvoer) -> Vec<Resistanc
         hoekstaven_9_5_2(inv),
         min_diameter_dwarswapening_9_5_3(inv),
         s_cl_tmax_9_5_3(inv),
+        aantal_beugels_las_9_5_3(inv),
         opgesloten_staven_9_5_3(inv),
     ]
 }
@@ -2425,7 +2649,7 @@ pub fn kolomdetailleringstoetsen(inv: &KolomdetailleringInvoer) -> Vec<Resistanc
 /// [`crate::detaillering::DETAILLERINGSTOETS_IDS`] voor §9.2. Twee lijsten en
 /// niet één, omdat §9.2 de BALK is en §9.5 de KOLOM: een staaf krijgt de ene
 /// reeks of de andere, nooit allebei.
-pub const KOLOMDETAILLERINGSTOETS_IDS: [&str; 9] = [
+pub const KOLOMDETAILLERINGSTOETS_IDS: [&str; 10] = [
     "9.5.1_toepassingsgebied",
     "9.5.1_min_dwarsafmeting",
     "9.5.2_min_diameter_langs",
@@ -2434,6 +2658,7 @@ pub const KOLOMDETAILLERINGSTOETS_IDS: [&str; 9] = [
     "9.5.2_hoekstaven",
     "9.5.3_min_diameter_dwars",
     "9.5.3_s_cl_tmax",
+    "9.5.3_aantal_beugels_las",
     "9.5.3_opgesloten_staven",
 ];
 
@@ -2447,16 +2672,21 @@ pub fn is_kolomdetailleringstoets(id: &str) -> bool {
 /// over wat het niet heeft nagekeken, is misleidend.
 pub fn niet_getoetste_9_5_eisen() -> Vec<String> {
     vec![
-        "§9.5.3(2) — de dwarswapening behoort voldoende te zijn verankerd. Een beoordeling van de \
-         detaillering, geen rekenregel."
+        "§9.5.3(2) — de dwarswapening behoort voldoende te zijn verankerd. Wat \"voldoende\" is, \
+         staat in §8.5: de verankering gebeurt door ombuigingen en haken of met aangelaste \
+         dwarswapening, binnen een haak of ombuiging hoort een staaf te zijn aangebracht, en de \
+         vorm moet overeenkomen met figuur 8.5. Dat zijn eisen aan het UITEINDE van de beugel — \
+         de ombuigingshoek, de rechte verlenging erachter, de las — en geen van die drie is \
+         invoer van dit model; de korf draagt van de beugel alleen de diameter, de afstand en het \
+         aantal benen."
             .to_string(),
-        "§9.5.3(4)ii — bij een overlappingslas met Φ_l > 14 mm zijn ten minste drie beugels \
-         vereist, gelijkmatig over de overlappingslengte verdeeld. Het AANTAL beugels is niet \
-         getoetst; alleen de gereduceerde afstand."
-            .to_string(),
-        "§9.5.3(5) — bij een richtingsverandering van de langsstaven moet de beugelafstand op de \
-         dwarskrachten worden berekend; verwaarloosbaar bij een verandering van ten hoogste 1 op \
-         12. Niet getoetst: de kolomafmeting per verdieping is geen invoer."
+        "§9.5.3(5) — als de richting van de langsstaven verandert (bijvoorbeeld bij een \
+         verandering in de kolomafmeting) moet de beugelafstand worden berekend op de daarbij \
+         optredende dwarskrachten; verwaarloosbaar bij een richtingsverandering van ten hoogste 1 \
+         op 12. Niet getoetst: elke staaf in dit model heeft één prismatische doorsnede over haar \
+         hele lengte, dus een richtingsverandering bestaat er niet in. Waar zij in werkelijkheid \
+         zit — op de aansluiting met het kolomdeel erboven of eronder — kent het model noch de \
+         versprongen maat noch de staafgeometrie."
             .to_string(),
     ]
 }

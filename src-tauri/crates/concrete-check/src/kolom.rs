@@ -286,11 +286,11 @@ pub const DUBBELE_BUIGING_ID: &str = "5.8.9_dubbele_buiging";
 /// Niet nul, want een omhullende draagt vrijwel altijd een spoortje M_z uit
 /// afrondingen en scheve knooplasten; daarop een melding geven zou de melding
 /// waardeloos maken. Vijf procent is klein genoeg om alles wat er werkelijk
-/// toe doet te vangen, en groot genoeg om ruis buiten te laten. §5.8.9(2)
-/// zelf kent een strengere ontsnapping (de twee excentriciteitsvoorwaarden),
-/// maar die vraagt de doorsnedeafmetingen in BEIDE richtingen én de
-/// bijbehorende slankheden — precies wat deze module niet heeft, en dus niet
-/// mag aannemen.
+/// toe doet te vangen, en groot genoeg om ruis buiten te laten. §5.8.9(3)
+/// zelf kent een strengere ontsnapping — (5.38b), de verhouding van de twee
+/// betrekkelijke excentriciteiten — maar die geldt alleen SAMEN met (5.38a),
+/// en (5.38a) vraagt de slankheid in BEIDE richtingen, met een kniklengte om
+/// de zwakke as die dit model niet heeft en dus niet mag aannemen.
 const M_Z_MELDGRENS: f64 = 0.05;
 
 /// Getal met een decimale komma, zoals de rest van het rapport het toont.
@@ -867,12 +867,39 @@ pub fn kolomtoetsen(
     // doen. De uitkomst is niet fout: hij is ONVOLLEDIG, en dat is een verschil
     // dat de lezer zelf moet kunnen zien.
     //
-    // Wat §5.8.9 zou vragen: de slankheid in BEIDE richtingen, de twee
-    // excentriciteiten met de voorwaarden van 5.8.9(2) die een aparte toetsing
-    // per richting toestaan, en anders de interactie (5.39) met de exponent a
-    // uit de tabel bij N_Ed/N_Rd. Dat vraagt een doorsnedemodel dat wapening
-    // langs alle vier de zijden kent; het korfmodel hier kent alleen een boven-
-    // en een onderrij.
+    // WAAROM §5.8.9 NIET IS GEREKEND — en waarom de vroegere reden vervalt.
+    // Hier stond dat het korfmodel alleen een boven- en een onderrij kende.
+    // Dat is achterhaald: `ReinforcementCage::sides` draagt de staven langs de
+    // twee zijkanten. Het obstakel is dus een ander; er zijn er drie.
+    //
+    // 1. In dit model KAN M_z niet bestaan. De raamwerkoplosser rekent in één
+    //    vlak, en het pad dat de omhullende vult zet vy_ed, mt_ed en mz_ed
+    //    stuk voor stuk op nul (`forcePointsForCombination` in
+    //    `steelCheckBuilder.ts`, dat ook de betonstaven bedient). Een §5.8.9
+    //    die vanuit de app wordt aangeroepen zou dus ALTIJD hetzelfde zeggen.
+    //    De melding hieronder kan alleen afgaan bij een aanroeper buiten de
+    //    app — de toetsbrug of de MCP-server, waar de krachten met de hand in
+    //    het verzoek staan — en juist daar is zij het vangnet dat zij hoort te
+    //    zijn.
+    // 2. (5.38a) vraagt λ_y/λ_z ≤ 2 én λ_z/λ_y ≤ 2. λ_z = l₀,z/i_z vraagt een
+    //    kniklengte om de ZWAKKE as, en `ConcreteColumnInput` draagt er één:
+    //    die van het vlak waarin het raamwerk rekent. Een kolom kan in het
+    //    vlak geschoord zijn en er loodrecht op ongeschoord, dus l₀,z
+    //    gelijkstellen aan l₀,y poetst juist het verschil weg dat telt. Zonder
+    //    λ_z is de ontsnapping van §5.8.9(3) niet te beoordelen — en omdat
+    //    (5.38a) én (5.38b) allebei moeten gelden, helpt het niet dat (5.38b)
+    //    op zichzelf wél te rekenen zou zijn.
+    // 3. (5.39) vraagt M_Rdz, de momentweerstand om de zwakke as. Daarvoor
+    //    moet bekend zijn waar de staven over de BREEDTE liggen, en dat draagt
+    //    de korf niet: `top` en `bottom` zijn een aantal en een diameter
+    //    zonder y-plaatsen, en `sides` is het paar zijkanten als geheel.
+    //    Bovendien wil (5.39) M_Edz ínclusief het tweede-orde-moment in díe
+    //    richting, en dat is §5.8.6 of §5.8.8 om de zwakke as — met opnieuw
+    //    l₀,z als ingang.
+    //
+    // Wat §5.8.9 vraagt staat daarom in de melding en niet in een rekengang:
+    // een toets die elke keer hetzelfde antwoord geeft is geen toets, en een
+    // toets die l₀,z aanneemt is erger dan geen.
     let m_z_grootste = ugt
         .iter()
         .map(|p| p.forces.mz_ed.abs())
@@ -903,15 +930,31 @@ pub fn kolomtoetsen(
                     nl(m_z_grootste, 1),
                     nl(m_y_grootste, 1)
                 ),
-                "Wat §5.8.9 vraagt: de slankheid in beide richtingen, en dan óf de twee \
-                 voorwaarden van 5.8.9(2) — die een aparte toetsing per richting toestaan zodra de \
-                 slankheidsverhouding binnen 2 blijft en de betrekkelijke excentriciteiten binnen \
-                 0,2 — óf de interactie van (5.39), (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1, met a \
-                 uit de tabel bij N_Ed/N_Rd. Dat vraagt een doorsnedemodel met wapening langs alle \
-                 vier de zijden; het korfmodel van deze crate kent een boven- en een onderrij."
+                "Wat §5.8.9 vraagt. §5.8.9(2) staat toe eerst in iedere hoofdrichting \
+                 afzonderlijk te rekenen. §5.8.9(3) laat het daarbij als de slankheden voldoen aan \
+                 (5.38a) — λ_y/λ_z ≤ 2 én λ_z/λ_y ≤ 2 — ÉN de betrekkelijke excentriciteiten aan \
+                 één van de twee vormen van (5.38b): (e_y/h_eq)/(e_z/b_eq) ≤ 0,2 of \
+                 (e_z/b_eq)/(e_y/h_eq) ≤ 0,2, met b_eq = i_y·√12 en h_eq = i_z·√12, e_y = \
+                 M_Edz/N_Ed en e_z = M_Edy/N_Ed. Is daaraan niet voldaan, dan vraagt §5.8.9(4) de \
+                 interactie (5.39): (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1,0, met a = 2 voor een \
+                 cirkel of ellips en voor een rechthoek a = 1,0 / 1,5 / 2,0 bij N_Ed/N_Rd = 0,1 / \
+                 0,7 / 1,0 met lineaire interpolatie daartussen, waarin N_Rd = A_c·f_cd + A_s·f_yd."
+                    .to_string(),
+                "Waarom die rekengang hier niet staat. λ_z = l₀,z/i_z vraagt een kniklengte om de \
+                 ZWAKKE as, en het §5.8-blok draagt er één: die van het vlak waarin dit raamwerk \
+                 rekent. Een kolom kan in het vlak geschoord zijn en er loodrecht op ongeschoord, \
+                 dus l₀,z mag niet worden gelijkgesteld aan l₀,y. Zonder λ_z is (5.38a) niet te \
+                 beoordelen, en omdat (5.38a) én (5.38b) allebei moeten gelden helpt het niet dat \
+                 (5.38b) op zichzelf te rekenen zou zijn. (5.39) vraagt bovendien M_Rdz — waarvoor \
+                 bekend moet zijn waar de staven over de BREEDTE liggen, en de korf draagt alleen \
+                 aantallen en diameters per rij — en M_Edz ínclusief het tweede-orde-moment om die \
+                 zwakke as, dus §5.8.6 of §5.8.8 met opnieuw l₀,z als ingang."
                     .to_string(),
                 "Zolang dit niet is gebouwd hoort een kolom met dubbele buiging met de hand te \
-                 worden nagegaan, of moet het model zo zijn gekozen dat M_z verwaarloosbaar is."
+                 worden nagegaan, of moet het model zo zijn gekozen dat M_z verwaarloosbaar is. \
+                 Let op: de raamwerkoplosser van deze app rekent in één vlak en zet M_z altijd op \
+                 nul, dus deze melding kan alleen afgaan bij een aanroeper die de krachten zelf in \
+                 het verzoek zet."
                     .to_string(),
             ],
         )));

@@ -554,9 +554,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               De kipsteunen hieronder blijven wel staal-alleen: dat zijn
               fracties PER FLENS waar de staalkern op rekent, terwijl EN 1995
               art. 6.3.3 met één kipsteunafstand werkt waaruit tabel 6.1 de
-              effectieve lengte l_ef afleidt. Die grootheid heeft de
-              houtbuilder nog geen invoerveld voor — hem hier tonen zou alsnog
-              schijninvoer zijn. */}
+              effectieve lengte l_ef afleidt. Hout krijgt daarvoor een EIGEN
+              veld, hieronder bij "Kip (art. 6.3.3)" — afleiden uit de
+              flensfracties zou l_ef stilzwijgend verkleinen en de kiptoets
+              gunstiger maken dan de invoer rechtvaardigt. */}
           <Section title="Kniklengtes">
             <Row label="L_cr,y [m]">
               <input
@@ -641,6 +642,26 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 );
               })}
             </>
+          )}
+
+          {isHout && (
+            <Section title="Kip (art. 6.3.3)">
+              <Row label="Kipsteunafstand [m]">
+                <input
+                  type="number" className="fem-prop-input" step="0.1" min="0"
+                  placeholder={systeemlengteM}
+                  value={cfg.ltbSupportSpacing_m ?? ""}
+                  onChange={(e) => setCfg({
+                    ltbSupportSpacing_m: e.target.value === "" ? undefined : Number(e.target.value),
+                  })}
+                />
+              </Row>
+              <div className="fem-prop-hint">
+                Leeg = staaflengte ({systeemlengteM} m). Dit is de ℓ waaruit tabel 6.1 de
+                meewerkende lengte l_ef maakt (l_ef = 0,9·ℓ bij een gelijkmatig verdeelde
+                belasting op twee steunpunten); l_ef bepaalt σ_m,crit en daarmee k_crit.
+              </div>
+            </Section>
           )}
 
           {isHout && (

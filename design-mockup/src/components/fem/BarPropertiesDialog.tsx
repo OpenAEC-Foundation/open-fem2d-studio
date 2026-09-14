@@ -101,6 +101,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   const cfg0 = beam.checkConfig ?? {};
   const [lcyStr, setLcyStr] = useState(cfg0.bucklingLengthY_m?.toString() ?? "");
   const [lczStr, setLczStr] = useState(cfg0.bucklingLengthZ_m?.toString() ?? "");
+  // Kipsteunafstand voor EN 1995-1-1 art. 6.3.3 (tabel 6.1 -> l_ef). Leeg =
+  // staaflengte. Eigen veld, geen afgeleide van de kipsteunfracties: die zijn
+  // per FLENS en horen bij het staalmodel.
+  const [ltbStr, setLtbStr] = useState(cfg0.ltbSupportSpacing_m?.toString() ?? "");
   const [restraintsStr, setRestraintsStr] = useState(
     cfg0.lateralRestraints?.join(", ") ?? "",
   );
@@ -199,6 +203,12 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     const camber = parseFloat(preCamberStr.replace(",", "."));
     if (preCamberStr.trim() !== "" && Number.isFinite(camber) && camber !== 0) {
       cfg.preCamber_mm = camber;
+    }
+    // Onvoorwaardelijk, net als de zeeg hierboven: wie tijdelijk van
+    // materiaal wisselt, hoort zijn kipsteunafstand niet kwijt te raken.
+    const ltb = parseFloat(ltbStr.replace(",", "."));
+    if (ltbStr.trim() !== "" && Number.isFinite(ltb) && ltb > 0) {
+      cfg.ltbSupportSpacing_m = ltb;
     }
     if (serviceClass !== 1) cfg.serviceClass = serviceClass;
     if (loadDuration !== "medium") cfg.loadDuration = loadDuration;
@@ -539,8 +549,9 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   drukterm van de kiptoets (6.35)).
                   De kipsteunen hieronder blijven staal-alleen: fracties per
                   flens waar de staalkern op rekent, terwijl EN 1995 art. 6.3.3
-                  één kipsteunafstand vraagt (tabel 6.1 → l_ef) die de
-                  houtbuilder nog niet uitvraagt. */}
+                  één kipsteunafstand vraagt (tabel 6.1 → l_ef). Hout krijgt
+                  daarvoor een eigen veld in het houtblok hieronder; afleiden
+                  uit de flensfracties zou l_ef stilzwijgend verkleinen. */}
               <div className="bar-props-section">
                 <div className="bar-props-section-title">{t("cfg.bucklingTitle")}</div>
                 <div className="bar-props-row">
@@ -618,7 +629,26 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       ))}
                     </select>
                   </div>
+                  <div className="bar-props-row">
+                    {/* Inline terugval-tekst, net als bij bucklingHintTimber:
+                        de sleutel staat nog niet in de check.json-bestanden
+                        onder i18n/locales, en die vallen buiten deze
+                        wijziging. */}
+                    <span>{t("cfg.ltbSupportSpacing", "Kipsteunafstand (m)")}</span>
+                    <input
+                      type="number" className="bar-props-input" step="0.1" min="0"
+                      placeholder={systemLengthM}
+                      value={ltbStr}
+                      onChange={(e) => setLtbStr(e.target.value)}
+                    />
+                  </div>
                   <div className="bar-props-hint">{t("cfg.timberHint")}</div>
+                  <div className="bar-props-hint">
+                    {t(
+                      "cfg.ltbSupportSpacingHint",
+                      "Kipsteunafstand leeg = staaflengte. Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt; l_ef bepaalt σ_m,crit en daarmee k_crit (6.33)/(6.35).",
+                    )}
+                  </div>
                 </div>
               )}
 

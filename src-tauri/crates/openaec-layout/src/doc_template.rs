@@ -220,6 +220,39 @@ impl DocTemplate {
 
                 if flowable.is_page_break() {
                     idx += 1;
+                    // Een paginaovergang op een vel waar nog NIETS op getekend
+                    // is, levert een leeg vel op: de paginasjabloon zet er in
+                    // de tweede doorloop alsnog een kop en een voet op, en de
+                    // lezer krijgt een blad met alleen die twee. De overgang
+                    // is op zo'n vel al bereikt — we staan immers bovenaan een
+                    // vers vel — dus hij mag worden overgeslagen.
+                    //
+                    // Dat gebeurt in drie gevallen: een overgang als eerste
+                    // element van de inhoud, twee overgangen achter elkaar, en
+                    // — het geval dat je in een gerenderde PDF terugziet — een
+                    // hoofdstuk dat precies op de bladspiegel eindigt, waarna
+                    // alleen de RESTANT-witruimte van een gesplitste witregel
+                    // naar dit vel is doorgeschoven en de overgang van het
+                    // volgende hoofdstuk er direct achteraan komt.
+                    //
+                    // Dat derde geval is niet gezocht: een rapport zet achter
+                    // de samenvattingstabel een witregel en begint het eerste
+                    // staafhoofdstuk met een overgang. Eindigt die tabel
+                    // binnen die witregel van het bladeinde — wat van het
+                    // AANTAL staven afhangt — dan splitst de witregel, landt
+                    // het restant bovenaan het volgende vel, en gaat dat vel
+                    // leeg de PDF in. Daarom viel het in de ene proef-PDF wel
+                    // op en in de andere niet.
+                    //
+                    // De maatstaf is de tekenlijst en niet `cursor_y`: een
+                    // witregel verhoogt `cursor_y` zonder iets zichtbaars neer
+                    // te zetten, en juist dat derde geval zou anders blijven
+                    // staan. Bij overslaan vervalt die doorgeschoven witruimte
+                    // ook, want een paginaovergang betekent "bovenaan verder".
+                    if draw_list.ops.is_empty() {
+                        cursor_y = Pt(0.0);
+                        continue;
+                    }
                     break;
                 }
 
@@ -718,7 +751,7 @@ mod tests {
     use super::*;
     use crate::frame::Frame;
     use crate::paragraph::{Paragraph, ParagraphStyle};
-    use crate::spacer::Spacer;
+    use crate::spacer::{PageBreak, Spacer};
     use crate::types::{Rect, A4};
 
     /// Een document met één vel van `hoogte` punten aan inhoudsruimte.
@@ -876,5 +909,92 @@ mod tests {
         let t = teksten_per_vel(&vellen);
         assert!(t[0].contains(&"KOP".to_string()), "de kop hoort op vel 1: {t:?}");
         assert!(vellen.len() <= 3, "onverwacht veel vellen: {}", vellen.len());
+    }
+
+    // ── Paginaovergangen: TEL de vellen ───────────────────────────────────
+    //
+    // Deze vier tellen met opzet het AANTAL vellen en niet of er een PDF uit
+    // komt: een leeg vel is een geldige PDF, en juist daarom bleef het staan.
+
+    #[test]
+    fn een_gewone_paginaovergang_levert_precies_twee_vellen() {
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![regel("A"), Box::new(PageBreak), regel("B")],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert_eq!(vellen.len(), 2, "verwacht twee vellen, kreeg {}: {t:?}", vellen.len());
+        assert!(t[0].contains(&"A".to_string()), "A hoort op vel 1: {t:?}");
+        assert!(t[1].contains(&"B".to_string()), "B hoort op vel 2: {t:?}");
+    }
+
+    #[test]
+    fn een_paginaovergang_als_eerste_element_levert_geen_leeg_vel() {
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(vec![Box::new(PageBreak), regel("A")], &ctx);
+        let t = teksten_per_vel(&vellen);
+        assert_eq!(
+            vellen.len(),
+            1,
+            "de overgang vóór het eerste element gaf een leeg vel: {t:?}"
+        );
+        assert!(t[0].contains(&"A".to_string()), "A hoort op vel 1: {t:?}");
+    }
+
+    #[test]
+    fn twee_paginaovergangen_achter_elkaar_leveren_geen_leeg_vel() {
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![
+                regel("A"),
+                Box::new(PageBreak),
+                Box::new(PageBreak),
+                regel("B"),
+            ],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert_eq!(
+            vellen.len(),
+            2,
+            "de tweede overgang gaf een leeg vel: {t:?}"
+        );
+        assert!(t[0].contains(&"A".to_string()) && t[1].contains(&"B".to_string()), "{t:?}");
+    }
+
+    #[test]
+    fn doorgeschoven_witruimte_voor_een_paginaovergang_levert_geen_leeg_vel() {
+        // Dit is het geval uit de gerenderde PDF. De witregel van 250 pt past
+        // niet meer op vel 1; het restant (62,5 pt) schuift door naar vel 2 en
+        // zet daar `cursor_y` op een waarde boven nul zonder iets te tekenen.
+        // Stond de maatstaf op `cursor_y`, dan zou de overgang hier alsnog
+        // breken en vel 2 leeg de PDF in gaan.
+        let d = doc(200.0);
+        let ctx = LayoutContext { fonts: d.fonts.clone() };
+        let vellen = d.layout_pages(
+            vec![
+                regel("A"),
+                Box::new(Spacer::new(Pt(250.0))),
+                Box::new(PageBreak),
+                regel("B"),
+            ],
+            &ctx,
+        );
+        let t = teksten_per_vel(&vellen);
+        assert_eq!(
+            vellen.len(),
+            2,
+            "de doorgeschoven witruimte gaf een leeg vel: {t:?}"
+        );
+        assert!(t[0].contains(&"A".to_string()), "A hoort op vel 1: {t:?}");
+        assert!(t[1].contains(&"B".to_string()), "B hoort op vel 2: {t:?}");
+        assert!(
+            !t.iter().any(|vel| vel.is_empty()),
+            "er staat een vel zonder enige tekst in het document: {t:?}"
+        );
     }
 }
