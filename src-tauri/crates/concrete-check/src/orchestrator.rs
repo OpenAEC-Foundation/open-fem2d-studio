@@ -1665,10 +1665,12 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     // ── 3. Dwarskracht (§6.2) ──────────────────────────────────────────────
     //
     // Geen enkele optie ingevuld: A_sl uit de korf, cot θ automatisch binnen
-    // de NB-grenzen, z = 0,9·d (alleen zonder normaalkracht) en géén
-    // vermindering volgens 6.2.2(6) — voor die laatste heeft een doorsnedetoets
-    // de gegevens niet, en niet toepassen is de veilige kant. De module meldt
-    // elk van die keuzes zelf in haar afleiding.
+    // de NB-grenzen, z volgens 6.2.3(1) — 0,9·d zonder normaalkracht, mét
+    // normaalkracht uit het spanningsblok bij N_Ed en begrensd op 0,9·d (zie
+    // `nen_en_1992_1_1::hefboomsarm`) — en géén vermindering
+    // volgens 6.2.2(6): voor die laatste heeft een doorsnedetoets de gegevens
+    // niet, en niet toepassen is de veilige kant. De module meldt elk van die
+    // keuzes zelf in haar afleiding.
     let shear_opts = ShearOptions::default();
     // ÉÉN KEER LANGS DE HELE OMHULLENDE. Dat levert in één gang de maatgevende
     // snede (op de unity check, niet op |V_Ed| — zie `dwarskrachtoverzicht`)

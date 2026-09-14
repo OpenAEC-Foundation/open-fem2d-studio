@@ -425,15 +425,31 @@ if (!existsSync(TOETSBRUG)) {
       a.notes.some((n) => n.includes("V_Rd,c") && n.includes("opgeteld")),
     `${a.notes.length} regels`);
 
-  // Een normaalkracht zonder opgegeven z hoort een FOUT te zijn en geen lijn.
+  // Een normaalkracht zonder opgegeven z is GEEN fout meer maar een lijn met
+  // z per snede uit het spanningsblok bij N_Ed (6.2.3(1)), begrensd op
+  // 0,9·d, en de grondslag per punt. Vroeger was dit een weigering, en met de
+  // scheefstand aan trof die élke betonstaaf onder een lijnlast. Met 250 kN
+  // druk op 3Ø16 ligt de arm van de buigweerstand (≈ 514 mm) boven
+  // 0,9·d = 498,6 mm, dus overal begrensd.
   {
     const metN = JSON.parse(JSON.stringify(verzoeken[0]));
     for (const p of metN.beam.forces_envelope) p.forces.n_ed = -250;
-    let melding = null;
-    try { await echteKern("concrete_dekkingslijn", metN); }
+    let lijn = null, melding = null;
+    try { lijn = await echteKern("concrete_dekkingslijn", metN); }
     catch (e) { melding = e instanceof Error ? e.message : String(e); }
-    ok("normaalkracht zonder z levert een fout met het artikel erbij",
-      melding !== null && melding.includes("6.2.3(1)"), melding ?? "er kwam een lijn terug");
+    ok("normaalkracht zonder z levert een lijn en geen fout", lijn !== null, melding ?? "");
+    if (lijn) {
+      const d = 600 - 30 - 8 - 8; // 554 mm → 0,9·d = 498,6 mm
+      ok("geen enkele z komt boven 0,9·d",
+        lijn.onder.punten.every((p) => p.z_mm <= 0.9 * d + 1e-9),
+        `max z = ${Math.max(...lijn.onder.punten.map((p) => p.z_mm)).toFixed(1)} mm`);
+      ok("overal komt z uit het spanningsblok, begrensd op 0,9·d, en reist de werkelijke arm mee",
+        lijn.onder.punten.every((p) => p.z_grondslag === "EvenwichtBegrensd" &&
+          p.z_werkelijk_mm > 0.9 * d && Math.abs(p.z_mm - 0.9 * d) < 1e-9),
+        [...new Set(lijn.onder.punten.map((p) => p.z_grondslag))].join(", "));
+      ok("de kanttekeningen noemen het doorsnede-evenwicht",
+        lijn.notes.some((n) => n.includes("doorsnede-evenwicht")));
+    }
   }
 }
 

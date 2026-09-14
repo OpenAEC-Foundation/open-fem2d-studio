@@ -71,12 +71,13 @@ export interface DekkingslijnKeuzes {
    * De inwendige hefboomsarm z in mm waarmee figuur 9.2 het moment op kracht
    * omrekent (F = M_Ed/z).
    *
-   * Ontbreekt hij, dan houdt de kern z = 0,9·d per snede aan volgens 6.2.3(1)
-   * — maar UITSLUITEND als er nergens een normaalkracht werkt. Werkt die er
-   * wél, dan komt er een fout met die reden en géén lijn. Dat is de bedoelde
-   * uitkomst: 6.2.3(1) staat de vereenvoudiging alleen toe "voor gewapend
-   * beton zonder normaalkracht", en stilzwijgend 0,9·d invullen zou de
-   * benodigde trekkracht te laag maken.
+   * Ontbreekt hij, dan bepaalt de kern z per snede volgens 6.2.3(1): zonder
+   * normaalkracht de benadering z = 0,9·d; mét normaalkracht — en met de
+   * scheefstand aan draagt elke ligger onder een lijnlast er een — de
+   * werkelijke hefboomsarm uit het spanningsblok van 3.1.7(3) bij N_Ed (de
+   * arm van de buigweerstand), begrensd op 0,9·d, of 0,9·d als terugval met
+   * de reden erbij. Elk punt van het antwoord meldt zijn grondslag in
+   * `z_grondslag`.
    */
   zMm?: number;
   /**

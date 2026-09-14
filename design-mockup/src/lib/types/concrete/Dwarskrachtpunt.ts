@@ -2,6 +2,7 @@
 import type { Snedezijde } from "./Snedezijde";
 import type { Spoor } from "./Spoor";
 import type { Weerstandsroute } from "./Weerstandsroute";
+import type { ZGrondslag } from "./ZGrondslag";
 
 /**
  * Eén plaats op de DWARSKRACHTdekkingslijn.
@@ -59,4 +60,18 @@ a_sl_doorlopend_mm2: number,
 /**
  * De combinatie die deze snede maatgevend maakte.
  */
-combinatie_id: number, };
+combinatie_id: number, 
+/**
+ * De inwendige hefboomsarm van het vakwerkmodel op deze plaats, mm.
+ * Leeg als er geen vakwerkmodel is opgebouwd.
+ */
+z_mm?: number, 
+/**
+ * Waar die z vandaan komt — 6.2.3(1). Leeg als `z_mm` dat ook is.
+ */
+z_grondslag?: ZGrondslag, 
+/**
+ * De werkelijke, onbegrensde hefboomsarm uit het spanningsblok bij N_Ed,
+ * mm. Alleen gevuld bij `Evenwicht` en `EvenwichtBegrensd`.
+ */
+z_werkelijk_mm?: number, };

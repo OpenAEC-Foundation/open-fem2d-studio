@@ -51,6 +51,7 @@ use openaec_layout::{
 use concrete_check::dekkingslijn::{
     DekkingslijnAntwoord, Dwarskrachtdekking, Dwarskrachtpunt, MomentBewijs, Momentdekking,
     Momentpunt, Snedezijde, Spoor, Staafbundel, Staafeinde, SteunpuntEis, Weerstandsroute,
+    ZGrondslag,
 };
 use nen_en_1992_1_1::section::RebarSide;
 
@@ -295,6 +296,39 @@ fn extend_met_zijde(
                 style_note(),
             )));
         }
+    }
+
+    // ── Waar z vandaan kwam ──────────────────────────────────────────────
+    //
+    // Alleen vermeld als het ergens níét de gewone benadering 0,9·d was: dan
+    // staat er in de kolom z iets anders dan de lezer verwacht, en hoort hij
+    // te weten dat 6.2.3(1) dat mét normaalkracht ook vraagt. Geteld over de
+    // HELE lijn, niet alleen over de afgedrukte kritieke plaatsen.
+    let (n_ev, n_begrensd, n_terug) =
+        dekking.punten.iter().fold((0usize, 0usize, 0usize), |(e, b, t), p| match p.z_grondslag {
+            ZGrondslag::Evenwicht => (e + 1, b, t),
+            ZGrondslag::EvenwichtBegrensd => (e, b + 1, t),
+            ZGrondslag::Terugval => (e, b, t + 1),
+            ZGrondslag::Opgegeven | ZGrondslag::Benadering => (e, b, t),
+        });
+    if n_ev + n_begrensd + n_terug > 0 {
+        flow.push(Box::new(Paragraph::new(
+            format!(
+                "z volgens art. 6.2.3(1): er werkt een normaalkracht, dus de benadering \
+                 z = 0,9·d is niet toegestaan en z is per plaats de inwendige hefboomsarm van de \
+                 buigweerstand bij N_Ed — het spanningsblok van art. 3.1.7(3), dezelfde kern als \
+                 de buigtoets — nooit groter dan 0,9·d. Van de {} plaatsen op deze zijde is z op \
+                 {} de werkelijke arm (kleiner dan 0,9·d), op {} op 0,9·d gehouden omdat de \
+                 werkelijke arm erboven lag, en op {} op 0,9·d teruggevallen omdat het \
+                 spanningsblok geen arm leverde (geen wapening, geheel gedrukt of trekcapaciteit \
+                 overschreden).",
+                dekking.punten.len(),
+                n_ev,
+                n_begrensd,
+                n_terug
+            ),
+            style_note(),
+        )));
     }
 
     // ── De bundels waaruit de weerstandslijn is opgebouwd ────────────────

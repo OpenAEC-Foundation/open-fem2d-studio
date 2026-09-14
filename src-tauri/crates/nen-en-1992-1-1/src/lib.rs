@@ -101,6 +101,7 @@ pub mod dekkingslijn;
 pub mod detaillering;
 pub mod dwarskracht;
 pub mod factors;
+pub mod hefboomsarm;
 pub mod kolom;
 pub mod mnkappa;
 pub mod scheurwijdte;
@@ -132,6 +133,13 @@ pub use dekking::{
     EXPOSURE_CLASSES,
 };
 pub use factors::{DesignSituation, ALPHA_CC, E_S, GAMMA_CE};
+// De inwendige hefboomsarm van 6.2.3(1): de dwarskrachttoets en de
+// dekkingslijn bepalen hem allebei hiermee, en de vertaallaag van de
+// betontoetsing heeft de grondslag nodig om hem door te geven.
+pub use hefboomsarm::{
+    bepaal_z, hefboomsarm_bij_normaalkracht, z_0_9d, z_uit_uitkomst, Hefboomsarm,
+    HefboomsarmFout, HefboomsarmUitkomst, ZBepaling, ZGrondslag, N_NUMERIEK_NUL_KN,
+};
 // De M-N-κ-motor op crate-niveau: `solve_state`, `internal_forces`,
 // `exceeded_limit` en `MnKappaOptions` waren alleen via `mnkappa::…`
 // bereikbaar. De stijfheidslaag gebruikt ze, en wie de kern van buiten

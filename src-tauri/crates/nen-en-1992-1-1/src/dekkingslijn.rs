@@ -64,6 +64,27 @@
 //! [`Momentpunt::n_ed_kn`], zodat het rapport kan laten zien wat er is
 //! weggelaten.
 //!
+//! # De hefboomsarm z mét normaalkracht
+//!
+//! 6.2.3(1) noemt z "de inwendige hefboomsarm … overeenkomend met het buigend
+//! moment" en staat de benadering 0,9·d alleen "zonder normaalkracht" toe.
+//! Deze module WEIGERDE vroeger zodra |N_Ed| boven de numerieke nul kwam en
+//! z niet was opgegeven. Met de scheefstand aan draagt elke ligger onder een
+//! lijnlast een normaalkracht — 0,486 kN bij 6 m, q = 12 kN/m en φ = 1/200 —
+//! en kreeg dus geen enkele betonstaaf nog een dekkingslijn. Nu wordt z in
+//! dat geval per snede en per combinatie uit het spanningsblok van 3.1.7(3)
+//! bij N_Ed gehaald — de arm van de buigweerstand van de zijde die op trek
+//! staat — begrensd op 0,9·d, en anders op 0,9·d teruggevallen met de reden
+//! erbij. De regel, de richting (druk maakt z kleiner, trek groter), de
+//! begrenzing en waarom niet de toestand bij (M_Ed, N_Ed) zelf is genomen
+//! staan in [`crate::hefboomsarm`]; elk punt draagt zijn grondslag in
+//! [`Momentpunt::z_bepaling`] en [`Dwarskrachtpunt::z_bepaling`]. Zonder
+//! normaalkracht blijft 0,9·d de snelle weg, precies zoals de norm het zegt.
+//!
+//! Het spanningsblok hangt alleen van N_Ed en de trekzijde af, niet van M_Ed,
+//! en wordt daarom per (plaats, combinatie, N_Ed, trekzijde) één keer
+//! opgelost en door de momentlijn en de dwarskrachtlijn gedeeld.
+//!
 //! # De dwarskrachtlijn: V_Rd,c en V_Rd,s worden NIET opgeteld
 //!
 //! Dat is nagekeken in de normtekst zelf, niet aangenomen:
@@ -139,11 +160,18 @@
 //! * **Zij verrekent de overlappingslengte van §8.7.3 niet.** Een overlapping
 //!   is geen inkorting; l₀ hoort niet in de weerstandslijn thuis.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
 
 use crate::deelstappen::nl;
 use crate::dwarskracht::{
-    shear_resistance, ShearOptions, ShearResistance, Spoor, Weerstandsroute, COT_THETA_MAX,
+    shear_resistance_met_hefboomsarm, ShearOptions, ShearResistance, Spoor, Weerstandsroute,
+    COT_THETA_MAX,
+};
+use crate::hefboomsarm::{
+    bepaal_z, hefboomsarm_bij_normaalkracht, HefboomsarmUitkomst, ZBepaling, N_NUMERIEK_NUL_KN,
 };
 use crate::section::{
     ConcreteSection, RebarRow, RebarSide, ReinforcementCage, ReinforcementZones,
@@ -178,11 +206,6 @@ pub const SPRONG_OFFSET_MM: f64 = 1e-3;
 /// mm. Ruimer dan de zonetolerantie, want dit vangt ook de ruis op van
 /// stationsposities die uit een deling van de staaflengte komen.
 pub const X_TOLERANTIE_MM: f64 = 1e-6;
-
-/// De grens waarboven een normaalkracht 6.2.3(1) blokkeert, kN. Gelijk aan de
-/// grens die [`crate::dwarskracht`] hanteert, zodat beide modules dezelfde
-/// doorsnede op dezelfde manier beoordelen.
-const N_TOLERANTIE_KN: f64 = 1e-6;
 
 // ───────────────────────────────────────────────────────────────────────────
 // Uitkomsttypen
@@ -288,8 +311,12 @@ pub struct Momentpunt {
     /// Welk bewijs hier gold.
     pub bewijs: MomentBewijs,
     /// De inwendige hefboomsarm z waarmee M_Ed hier op kracht is omgerekend,
-    /// mm.
+    /// mm. Gelijk aan `z_bepaling.z_mm`.
     pub z_mm: f64,
+    /// Waar die z vandaan komt — opgegeven, 0,9·d, het spanningsblok bij
+    /// N_Ed of de terugval — met de werkelijke hefboomsarm erbij als die is
+    /// bepaald. Zie [`crate::hefboomsarm`].
+    pub z_bepaling: ZBepaling,
     /// De normaalkracht van de maatgevende combinatie op deze plaats, kN
     /// (trek positief). Een DRUKkracht is niet in `omhullende_kn` verrekend;
     /// zie de moduletekst.
@@ -339,6 +366,9 @@ pub struct Dwarskrachtpunt {
     pub a_sl_doorlopend_mm2: f64,
     /// De combinatie die deze snede maatgevend maakte.
     pub combinatie_id: u32,
+    /// De inwendige hefboomsarm van het vakwerkmodel op deze plaats, met zijn
+    /// grondslag. `None` als er geen vakwerkmodel is opgebouwd.
+    pub z_bepaling: Option<ZBepaling>,
 }
 
 /// Eén staafbundel: een groep staven met dezelfde diameter die over hetzelfde
@@ -590,11 +620,11 @@ pub struct DekkingslijnInvoer<'a> {
     pub omhullende: &'a [ForcePoint],
     /// De inwendige hefboomsarm z, mm.
     ///
-    /// `None` → z = 0,9·d per snede, maar **alleen** als er nergens een
-    /// normaalkracht werkt: 6.2.3(1) staat die vereenvoudiging uitsluitend toe
-    /// "voor gewapend beton zonder normaalkracht". Werkt er wél een
-    /// normaalkracht, dan levert [`dekkingslijn`] een `Err` met die reden in
-    /// plaats van stilzwijgend 0,9·d in te vullen.
+    /// `None` → volgens 6.2.3(1): zonder normaalkracht z = 0,9·d per snede;
+    /// mét normaalkracht per snede en per combinatie de werkelijke
+    /// hefboomsarm uit het spanningsblok van 3.1.7(3) bij N_Ed, begrensd op
+    /// 0,9·d, of 0,9·d als terugval met de reden erbij. Zie
+    /// [`crate::hefboomsarm`] en de moduletekst.
     pub z_mm: Option<f64>,
     /// c_d volgens figuur 8.3, mm — zie [`crate::verankering::c_d_mm`].
     ///
@@ -618,7 +648,7 @@ pub struct DekkingslijnInvoer<'a> {
 ///
 /// `Err` waar de norm niet te volgen is zonder iets te verzinnen: een lege of
 /// ongeldige zone-indeling, een ontbrekende staaflengte, een omhullende zonder
-/// punten, of z = 0,9·d terwijl er een normaalkracht werkt.
+/// punten, of een opgegeven z die niet positief is.
 pub fn dekkingslijn(inv: &DekkingslijnInvoer<'_>) -> Result<Dekkingslijn, String> {
     if !(inv.lengte_mm > 0.0) {
         return Err(format!(
@@ -655,23 +685,17 @@ pub fn dekkingslijn(inv: &DekkingslijnInvoer<'_>) -> Result<Dekkingslijn, String
     // Twee verschillende veilige kanten, en die vallen niet samen:
     //
     // * voor de KRACHT F = M_Ed/z is een KLEINE z ongunstig, dus z wordt per
-    //   snede uit de korf ter plaatse bepaald en nergens gemiddeld;
+    //   snede — en mét normaalkracht per combinatie, uit het spanningsblok —
+    //   bepaald en nergens gemiddeld;
     // * voor de VERSCHUIVING a_l = z(cot θ − cot α)/2 is een GROTE z ongunstig,
-    //   dus daar wordt de grootste d van de hele staaf gebruikt.
+    //   dus daar wordt de grootste d van de hele staaf gebruikt. Omdat de z
+    //   uit het spanningsblok op 0,9·d is begrensd, blijft 0,9·d_max ook mét
+    //   normaalkracht de bovengrens.
     let n_max_kn = inv
         .omhullende
         .iter()
         .fold(0.0_f64, |m, p| m.max(p.forces.n_ed.abs()));
-    if inv.z_mm.is_none() && n_max_kn > N_TOLERANTIE_KN {
-        return Err(format!(
-            "de inwendige hefboomsarm z is niet opgegeven en er werkt een normaalkracht \
-             (max |N_Ed| = {} kN). 6.2.3(1) staat de vereenvoudiging z = 0,9·d uitsluitend toe \
-             \"in de dwarskrachtberekening van gewapend beton zonder normaalkracht\". Geef z op \
-             — de werkelijke hefboomsarm bij het buigend moment — dan volgt de dekkingslijn \
-             alsnog.",
-            nl(n_max_kn, 1)
-        ));
-    }
+    let armen = Hefboomsarmen::nieuw(inv);
 
     let mut toelichting: Vec<String> = Vec::new();
 
@@ -729,12 +753,32 @@ pub fn dekkingslijn(inv: &DekkingslijnInvoer<'_>) -> Result<Dekkingslijn, String
         toelichting.push(t.clone());
     }
     if inv.z_mm.is_none() {
-        toelichting.push(format!(
-            "z is niet opgegeven en er werkt geen normaalkracht; per snede is z = 0,9·d \
-             aangehouden volgens 6.2.3(1). Voor a_l is de grootste d van de staaf gebruikt \
-             (d = {} mm), want een grotere z geeft een grotere verschuiving.",
-            nl(d_max, 0)
-        ));
+        if n_max_kn > N_NUMERIEK_NUL_KN {
+            toelichting.push(format!(
+                "z is niet opgegeven en er werkt een normaalkracht (max |N_Ed| = {} kN). \
+                 6.2.3(1) staat de benadering z = 0,9·d alleen toe \"zonder normaalkracht\"; \
+                 daarom is z per snede en per combinatie uit het doorsnede-evenwicht van het \
+                 spanningsblok (3.1.7(3)) bij N_Ed bepaald — z = d − λ·x_u/2, de afstand \
+                 tussen het betondrukblok en de trekwapening van de zijde die op trek staat, \
+                 met x_u uit het evenwicht met N_Ed — en begrensd op 0,9·d, zodat een \
+                 normaalkracht de lijn nooit gunstiger maakt dan de norm zonder normaalkracht \
+                 toestaat. Druk maakt die arm kleiner, trek groter. Waar het spanningsblok geen \
+                 hefboomsarm levert (geen wapening, een bij deze normaalkracht geheel gedrukte \
+                 doorsnede, een overschreden trekcapaciteit, of een drukzone tot voorbij de \
+                 trekwapening) is 0,9·d aangehouden; elk punt draagt zijn grondslag. Voor a_l \
+                 is 0,9·d met de grootste d van de staaf gebruikt (d = {} mm): de begrensde z \
+                 komt daar nooit boven, en een grotere z geeft een grotere verschuiving.",
+                nl(n_max_kn, 3),
+                nl(d_max, 0)
+            ));
+        } else {
+            toelichting.push(format!(
+                "z is niet opgegeven en er werkt geen normaalkracht; per snede is z = 0,9·d \
+                 aangehouden volgens 6.2.3(1). Voor a_l is de grootste d van de staaf gebruikt \
+                 (d = {} mm), want een grotere z geeft een grotere verschuiving.",
+                nl(d_max, 0)
+            ));
+        }
     }
     if inv.c_d_mm.is_none() {
         toelichting.push(
@@ -756,6 +800,7 @@ pub fn dekkingslijn(inv: &DekkingslijnInvoer<'_>) -> Result<Dekkingslijn, String
         bundels_onder,
         &xs,
         &reeksen,
+        &armen,
         a_l.a_l_mm,
         f_yd,
     );
@@ -765,12 +810,14 @@ pub fn dekkingslijn(inv: &DekkingslijnInvoer<'_>) -> Result<Dekkingslijn, String
         bundels_boven,
         &xs,
         &reeksen,
+        &armen,
         a_l.a_l_mm,
         f_yd,
     );
 
     // ── De dwarskrachtlijn ──────────────────────────────────────────────────
-    let dwarskracht = bouw_dwarskrachtdekking(inv, &xs, &reeksen, &onder.bundels, &boven.bundels);
+    let dwarskracht =
+        bouw_dwarskrachtdekking(inv, &xs, &reeksen, &armen, &onder.bundels, &boven.bundels);
 
     // ── §9.2.1.4 en §9.2.1.5 ────────────────────────────────────────────────
     let steunpunten =
@@ -890,6 +937,107 @@ impl Reeksen {
             }
         }
         uit
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// De hefboomsarm per snede
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Eén spanningsblok per (plaats, combinatie, N_Ed, trekzijde), gedeeld door
+/// de momentlijn en de dwarskrachtlijn.
+///
+/// De werkelijke hefboomsarm van 6.2.3(1) hangt niet van M_Ed af — het is de
+/// arm van de buigweerstand bij N_Ed voor de zijde die op trek staat — dus de
+/// momentlijn van een zijde en de dwarskrachttoets die diezelfde zijde als
+/// trekzijde leest, delen één uitkomst. De sleutel draagt N_Ed zelf, zodat
+/// een dubbel station (twee geldige krachtstoestanden op dezelfde x) twee
+/// aparte uitkomsten krijgt, en de monsterplaats, zodat links van een
+/// zonegrens de korf van links geldt.
+///
+/// Het spanningsblok wordt alleen opgelost waar het nodig is: zonder
+/// opgegeven z en mét normaalkracht. Zonder normaalkracht kost de lijn dus
+/// niets meer dan vroeger.
+struct Hefboomsarmen<'a> {
+    inv: &'a DekkingslijnInvoer<'a>,
+    geheugen: RefCell<HashMap<(u64, u32, u64, bool), HefboomsarmUitkomst>>,
+}
+
+impl<'a> Hefboomsarmen<'a> {
+    fn nieuw(inv: &'a DekkingslijnInvoer<'a>) -> Self {
+        Hefboomsarmen { inv, geheugen: RefCell::new(HashMap::new()) }
+    }
+
+    /// Is het spanningsblok bij deze krachtstoestand nodig? Alleen zonder
+    /// opgegeven z en mét normaalkracht — dezelfde volgorde als
+    /// [`bepaal_z`].
+    fn nodig(&self, f: &InternalForces) -> bool {
+        !matches!(self.inv.z_mm, Some(z) if z > 0.0) && f.n_ed.abs() > N_NUMERIEK_NUL_KN
+    }
+
+    /// De uitkomst van het spanningsblok bij N_Ed met de korf op
+    /// `monster_x`, voor de zijde die op trek staat, uit het geheugen of vers
+    /// berekend.
+    fn uitkomst(
+        &self,
+        monster_x: f64,
+        comb: u32,
+        n_ed_kn: f64,
+        trek_onder: bool,
+    ) -> HefboomsarmUitkomst {
+        let sleutel = (monster_x.to_bits(), comb, n_ed_kn.to_bits(), trek_onder);
+        if let Some(u) = self.geheugen.borrow().get(&sleutel) {
+            return u.clone();
+        }
+        let korf = self.inv.zones.cage_at_mm(self.inv.cage, monster_x);
+        let h = self.inv.section.h_mm;
+        let lagen = korf.layers(h);
+        let side = if trek_onder { RebarSide::Bottom } else { RebarSide::Top };
+        let u = hefboomsarm_bij_normaalkracht(
+            self.inv.section,
+            &lagen,
+            self.inv.mat,
+            n_ed_kn,
+            trek_onder,
+            d_zijde(&korf, h, side),
+        );
+        self.geheugen.borrow_mut().insert(sleutel, u.clone());
+        u
+    }
+
+    /// De al bepaalde uitkomst voor de dwarskrachttoets, als die hem nodig
+    /// heeft. De trekzijde volgt daar uit het teken van M_Ed — dezelfde regel
+    /// als in [`shear_resistance_met_hefboomsarm`].
+    fn vooraf(&self, monster_x: f64, comb: u32, f: &InternalForces) -> Option<HefboomsarmUitkomst> {
+        if self.nodig(f) {
+            Some(self.uitkomst(monster_x, comb, f.n_ed, f.my_ed >= 0.0))
+        } else {
+            None
+        }
+    }
+
+    /// De z van 6.2.3(1) voor één zijde, op één plaats, bij één
+    /// krachtstoestand — via [`bepaal_z`], zodat de regel maar op één plek
+    /// staat. De trekzijde is hier de zijde van de lijn zelf.
+    fn z(&self, monster_x: f64, side: RebarSide, comb: u32, f: &InternalForces) -> ZBepaling {
+        let korf = self.inv.zones.cage_at_mm(self.inv.cage, monster_x);
+        let d = d_zijde(&korf, self.inv.section.h_mm, side);
+        let trek_onder = side == RebarSide::Bottom;
+        let vooraf = if self.nodig(f) {
+            Some(self.uitkomst(monster_x, comb, f.n_ed, trek_onder))
+        } else {
+            None
+        };
+        bepaal_z(
+            self.inv.section,
+            &korf,
+            self.inv.mat,
+            trek_onder,
+            f.n_ed,
+            d,
+            self.inv.z_mm,
+            vooraf,
+        )
     }
 }
 
@@ -1296,19 +1444,35 @@ fn d_zijde(korf: &ReinforcementCage, h_mm: f64, side: RebarSide) -> f64 {
 // De momentlijn
 // ───────────────────────────────────────────────────────────────────────────
 
+/// Regel A van figuur 9.2 op één plaats, voor één zijde: de maatgevende
+/// combinatie met haar krachten en de z waarmee zij op kracht is omgerekend.
+struct OmhullendeA {
+    /// F_A = M_Ed/z + N_Ed (alleen trek), kN.
+    f_a_kn: f64,
+    m_ed_knm: f64,
+    n_ed_kn: f64,
+    combinatie_id: u32,
+    z: ZBepaling,
+}
+
 /// De omhullende trekkracht A van figuur 9.2 op één plaats, voor één zijde.
 ///
-/// Levert (F_A in kN, M_Ed in kNm, N_Ed in kN, combinatie-id) van de
-/// maatgevende combinatie.
+/// De krachten worden op `x_mm` gelezen; de korf — en daarmee d en het
+/// spanningsblok voor z — op `monster_x`. Die twee verschillen alleen links
+/// van een zonegrens, waar de korf van links hoort te gelden bij de krachten
+/// op de grens zelf. Omdat z mét normaalkracht per combinatie uit het
+/// spanningsblok komt, wordt hij hier per combinatie bepaald en niet van
+/// buiten aangereikt.
 fn omhullende_trekkracht(
     reeksen: &Reeksen,
     x_mm: f64,
     side: RebarSide,
-    z_mm: f64,
-) -> (f64, f64, f64, u32) {
-    let mut beste = (0.0_f64, 0.0_f64, 0.0_f64, 0_u32);
-    let mut gevonden = false;
+    monster_x: f64,
+    armen: &Hefboomsarmen<'_>,
+) -> OmhullendeA {
+    let mut beste: Option<OmhullendeA> = None;
     for (id, f) in reeksen.op(x_mm) {
+        let z = armen.z(monster_x, side, id, &f);
         // Tekenafspraak van de kern: M_y positief = trek in de ONDERSTE vezel.
         let m_voor_zijde = match side {
             RebarSide::Bottom => f.my_ed,
@@ -1316,13 +1480,30 @@ fn omhullende_trekkracht(
         };
         // Alleen een TREKkracht wordt verrekend; zie de moduletekst.
         let n_trek = f.n_ed.max(0.0);
-        let f_a = (m_voor_zijde * 1000.0 / z_mm + n_trek).max(0.0);
-        if !gevonden || f_a > beste.0 {
-            beste = (f_a, f.my_ed, f.n_ed, id);
-            gevonden = true;
+        let f_a = (m_voor_zijde * 1000.0 / z.z_mm + n_trek).max(0.0);
+        if beste.as_ref().map_or(true, |b| f_a > b.f_a_kn) {
+            beste = Some(OmhullendeA {
+                f_a_kn: f_a,
+                m_ed_knm: f.my_ed,
+                n_ed_kn: f.n_ed,
+                combinatie_id: id,
+                z,
+            });
         }
     }
-    beste
+    beste.unwrap_or_else(|| {
+        // Kan niet voorkomen — `dekkingslijn` weigert een lege omhullende en
+        // `Reeksen::op` levert voor elke combinatie een waarde — maar een
+        // nulpunt is hier beter dan een paniek in een rekenkern.
+        let f = InternalForces::default();
+        OmhullendeA {
+            f_a_kn: 0.0,
+            m_ed_knm: 0.0,
+            n_ed_kn: 0.0,
+            combinatie_id: 0,
+            z: armen.z(monster_x, side, 0, &f),
+        }
+    })
 }
 
 /// De lijn van één zijde.
@@ -1333,25 +1514,17 @@ fn bouw_momentdekking(
     bundels: Vec<Staafbundel>,
     xs: &[f64],
     reeksen: &Reeksen,
+    armen: &Hefboomsarmen<'_>,
     a_l_mm: f64,
     f_yd_mpa: f64,
 ) -> Momentdekking {
-    let h = inv.section.h_mm;
     let l = inv.lengte_mm;
     let sprongen = sprongen(inv, xs);
-
-    // z per plaats: uit de korf ter plaatse, tenzij hij is opgegeven.
-    let z_op = |monster_x: f64| -> f64 {
-        match inv.z_mm {
-            Some(z) if z > 0.0 => z,
-            _ => 0.9 * d_zijde(&inv.zones.cage_at_mm(inv.cage, monster_x), h, side),
-        }
-    };
 
     // A op elk rasterpunt: de basis voor de vensterberekening van B.
     let a_op_raster: Vec<f64> = xs
         .iter()
-        .map(|&x| omhullende_trekkracht(reeksen, x, side, z_op(x)).0)
+        .map(|&x| omhullende_trekkracht(reeksen, x, side, x, armen).f_a_kn)
         .collect();
 
     // De eindzones: binnen l_bd van een staafeinde dat op een STAAFEINDE valt.
@@ -1372,21 +1545,24 @@ fn bouw_momentdekking(
             None => vec![(Snedezijde::Enkel, x)],
         };
         for (zijde, monster_x) in kanten {
-            let z = z_op(monster_x);
-            let (a_hier, m_ed, n_ed, comb) = omhullende_trekkracht(reeksen, x, side, z);
+            let a = omhullende_trekkracht(reeksen, x, side, monster_x, armen);
 
             // Regel B: het maximum van A over [x − a_l; x + a_l] ∩ [0, L].
             let onder_grens = (x - a_l_mm).max(0.0);
             let boven_grens = (x + a_l_mm).min(l);
-            let mut f_s = a_hier;
+            let mut f_s = a.f_a_kn;
             for (j, &xj) in xs.iter().enumerate() {
                 if xj >= onder_grens - X_TOLERANTIE_MM && xj <= boven_grens + X_TOLERANTIE_MM {
                     f_s = f_s.max(a_op_raster[j]);
                 }
             }
-            // De vensterranden zelf liggen zelden op een rasterpunt.
+            // De vensterranden zelf liggen zelden op een rasterpunt; liggen ze
+            // er wél op, dan is de lus hierboven al langs geweest.
             for rand in [onder_grens, boven_grens] {
-                f_s = f_s.max(omhullende_trekkracht(reeksen, rand, side, z_op(rand)).0);
+                let op_raster = xs.iter().any(|&xj| (xj - rand).abs() <= X_TOLERANTIE_MM);
+                if !op_raster {
+                    f_s = f_s.max(omhullende_trekkracht(reeksen, rand, side, rand, armen).f_a_kn);
+                }
             }
 
             // Regel C.
@@ -1425,7 +1601,7 @@ fn bouw_momentdekking(
             punten.push(Momentpunt {
                 x_mm: x,
                 zijde,
-                omhullende_kn: a_hier,
+                omhullende_kn: a.f_a_kn,
                 benodigd_kn: f_s,
                 aanwezig_kn: aanwezig,
                 aanwezig_volledig_kn: volledig,
@@ -1433,10 +1609,11 @@ fn bouw_momentdekking(
                 uc,
                 tekort_kn: tekort,
                 bewijs,
-                z_mm: z,
-                n_ed_kn: n_ed,
-                m_ed_knm: m_ed,
-                combinatie_id: comb,
+                z_mm: a.z.z_mm,
+                z_bepaling: a.z,
+                n_ed_kn: a.n_ed_kn,
+                m_ed_knm: a.m_ed_knm,
+                combinatie_id: a.combinatie_id,
                 in_eindzone,
             });
         }
@@ -1492,6 +1669,7 @@ fn bouw_dwarskrachtdekking(
     inv: &DekkingslijnInvoer<'_>,
     xs: &[f64],
     reeksen: &Reeksen,
+    armen: &Hefboomsarmen<'_>,
     bundels_onder: &[Staafbundel],
     bundels_boven: &[Staafbundel],
 ) -> Dwarskrachtdekking {
@@ -1517,7 +1695,18 @@ fn bouw_dwarskrachtdekking(
                     position_mm: x,
                     forces: f,
                 };
-                let r = shear_resistance(inv.section, &korf, inv.mat, &fs, &inv.shear_opts);
+                // Hetzelfde spanningsblok als de momentlijn van de zijde die
+                // hier op trek staat, niet opnieuw opgelost; de begrenzing
+                // op 0,9·d maakt de toets zelf.
+                let vooraf = armen.vooraf(monster_x, id, &f);
+                let r = shear_resistance_met_hefboomsarm(
+                    inv.section,
+                    &korf,
+                    inv.mat,
+                    &fs,
+                    &inv.shear_opts,
+                    vooraf,
+                );
                 let neem = match &zwaarste {
                     None => true,
                     Some((huidig, _)) => zwaarder_dwarskracht(&r, huidig),
@@ -1561,6 +1750,7 @@ fn bouw_dwarskrachtdekking(
                 a_sl_gebruikt_mm2: r.vrd_c.a_sl_mm2,
                 a_sl_doorlopend_mm2: a_sl_doorlopend,
                 combinatie_id: comb,
+                z_bepaling: r.vakwerk.as_ref().map(|v| v.z_bepaling.clone()),
             };
             let maat = (punt.uc, (punt.benodigd_kn - punt.aanwezig_kn.unwrap_or(0.0)).max(0.0), punt.benodigd_kn);
             let neem = match &beste_maat {
@@ -2058,15 +2248,19 @@ mod tests {
         assert!(v_rd < v_rd_c + v_rd_s - 1e-9 || v_rd_c <= 1e-9 || v_rd_s <= 1e-9);
     }
 
-    /// Zonder opgegeven z én mét normaalkracht weigert de module, in plaats van
-    /// stilzwijgend 0,9·d in te vullen.
+    /// Zonder opgegeven z én mét normaalkracht weigert de module NIET meer: z
+    /// komt per snede uit het spanningsblok bij N_Ed, begrensd op 0,9·d — ook
+    /// bij de steunpunten, want die arm hangt niet van M_Ed af.
     #[test]
-    fn normaalkracht_zonder_z_wordt_geweigerd() {
+    fn normaalkracht_zonder_z_levert_een_lijn_met_z_uit_het_evenwicht() {
+        use crate::hefboomsarm::ZGrondslag;
         let s = sectie();
         let c = korf();
         let z = ReinforcementZones::default();
-        let mut p = punt(3000.0, 90.0, 0.0);
-        p.forces.n_ed = -120.0;
+        let mut env = [punt(0.0, 0.0, 60.0), punt(3000.0, 90.0, 0.0), punt(6000.0, 0.0, -60.0)];
+        for p in env.iter_mut() {
+            p.forces.n_ed = -120.0;
+        }
         let inv = DekkingslijnInvoer {
             section: &s,
             cage: &c,
@@ -2074,12 +2268,52 @@ mod tests {
             mat: &mat(),
             f_ctk_005_mpa: f_ctk(),
             lengte_mm: 6000.0,
-            omhullende: &[punt(0.0, 0.0, 60.0), p, punt(6000.0, 0.0, -60.0)],
+            omhullende: &env,
             z_mm: None,
             c_d_mm: None,
             shear_opts: ShearOptions::default(),
         };
-        let e = dekkingslijn(&inv).expect_err("hoort te weigeren");
-        assert!(e.contains("6.2.3(1)"), "{e}");
+        let d = dekkingslijn(&inv).expect("mét normaalkracht hoort er nu een lijn te komen");
+        let d_onder = c.d_mm(s.h_mm);
+        let midden = d
+            .onder
+            .punten
+            .iter()
+            .find(|p| (p.x_mm - 3000.0).abs() < 1e-6)
+            .expect("het midden staat in het raster");
+        assert!(
+            matches!(midden.z_bepaling.grondslag, ZGrondslag::Evenwicht { .. }),
+            "{:?}",
+            midden.z_bepaling.grondslag
+        );
+        assert!(midden.z_mm <= 0.9 * d_onder + 1e-9, "z = {} > 0,9·d", midden.z_mm);
+        assert!(midden.z_mm > 0.5 * d_onder);
+        assert_relative_eq!(midden.z_mm, midden.z_bepaling.z_mm);
+        // Ook bij het steunpunt (M = 0) komt z uit het spanningsblok: de arm
+        // van de buigweerstand bij N_Ed hangt niet van M_Ed af. Licht
+        // gewapend ligt hij boven 0,9·d en is hij dus begrensd.
+        let begin = d.onder.punten.first().expect("x = 0");
+        assert!(
+            matches!(begin.z_bepaling.grondslag, ZGrondslag::Evenwicht { begrensd: true, .. }),
+            "{:?}",
+            begin.z_bepaling.grondslag
+        );
+        assert_relative_eq!(begin.z_mm, 0.9 * d_onder);
+        // De dwarskrachtlijn draagt dezelfde grondslag mee.
+        let dw_begin = d.dwarskracht.punten.first().expect("x = 0");
+        let zb = dw_begin.z_bepaling.as_ref().expect("het vakwerk hoort er te zijn");
+        assert!(!zb.is_0_9d());
+        assert!(matches!(zb.grondslag, ZGrondslag::Evenwicht { .. }));
+        // Elk punt heeft z uit het spanningsblok, en nooit boven 0,9·d.
+        for p in d.onder.punten.iter().chain(d.boven.punten.iter()) {
+            assert!(
+                matches!(p.z_bepaling.grondslag, ZGrondslag::Evenwicht { .. }),
+                "x = {}: {:?}",
+                p.x_mm,
+                p.z_bepaling.grondslag
+            );
+            assert!(p.z_mm <= p.z_bepaling.d_mm * 0.9 + 1e-9);
+        }
+        assert!(d.toelichting.iter().any(|t| t.contains("doorsnede-evenwicht")));
     }
 }
