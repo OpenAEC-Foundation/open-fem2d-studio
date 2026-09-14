@@ -22,17 +22,26 @@
  * `bouwRapportInvoer` elk soort resultaat in een eigen veld zet. Verdwijnt een
  * soort onderweg, dan is de knop actief maar het rapport leeg — en een leeg
  * rapport noemde vroeger een norm die nergens was toegepast.
+ *
+ * DE DEKKINGSLIJNEN WORDEN HIER OPGEHAALD, OP DE KNOP
+ * ---------------------------------------------------
+ * `concrete_dekkingslijn` neemt één staaf tegelijk, dus een model met vier
+ * betonstaven kost vier aanroepen van de kern met elk de hele omhullende erin.
+ * Dat is te duur om doorlopend mee te laten lopen — vandaar hier, op het moment
+ * dat iemand het papier werkelijk vraagt, en niet in een store die zich bij
+ * elke modelwijziging bijwerkt. Zie `haalAlleDekkingslijnen`.
  */
 import { useTranslation } from "react-i18next";
 import RibbonGroup from "./RibbonGroup";
 import RibbonButton from "./RibbonButton";
 import RibbonButtonStack from "./RibbonButtonStack";
 import { useReportStore } from "../../stores/reportStore";
-import { korvenUitStaven, useCheckStore } from "../../stores/checkStore";
+import { getConcreteClasses, korvenUitStaven, useCheckStore } from "../../stores/checkStore";
 import { useBetonStijfheidStore } from "../../stores/betonStijfheidStore";
-import { useDekkingslijnStore } from "../../stores/dekkingslijnStore";
 import { useWindowManager } from "../../hooks/useWindowManager";
 import { useProjectInfo } from "../report/useProjectInfo";
+import { bEffWaardenPerStaaf } from "../../lib/beffLiggerlijn";
+import { haalAlleDekkingslijnen } from "../../lib/betonDekkingslijnBuilder";
 import { bouwRapportInvoer, genereerRapportPdf } from "../../lib/rapportPdfInvoer";
 import { isTauriApp } from "../../lib/tauri";
 
@@ -47,9 +56,20 @@ const landscapeIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24
 interface ReportTabProps {
   /** @deprecated Ongebruikt — de losse HTML-export is vervangen door het live rapport zelf. */
   onExportHtml?: () => void;
+  /**
+   * De afleiding van de initiële scheefstand, woordelijk zoals
+   * `lib/scheefstandNorm.scheefstandToelichting` haar opstelt.
+   *
+   * Komt uit App.tsx, waar φ op één plaats wordt bepaald — dezelfde tekst die
+   * de balk onder het canvas als tooltip toont en die het live rapport bij de
+   * uitgangspunten zet. Leeg of afwezig betekent: er is GEEN scheefstand in de
+   * rekengang gezet, en dan hoort de PDF erover te zwijgen in plaats van een
+   * aanname te noemen die nergens is toegepast.
+   */
+  scheefstandToelichting?: string;
 }
 
-export default function ReportTab(_props: ReportTabProps) {
+export default function ReportTab({ scheefstandToelichting }: ReportTabProps) {
   const { t } = useTranslation("ribbon");
 
   const pageSize = useReportStore((s) => s.pageSize);
@@ -74,11 +94,14 @@ export default function ReportTab(_props: ReportTabProps) {
   // gerekend. Zonder deze regel toont het rapport bij een ingekorte staaf
   // alleen de basiskorf, en dan is een unity check niet na te rekenen.
   const lastRunInputs = useCheckStore((s) => s.lastRunInputs);
-  // Het laatste dekkingslijn-antwoord dat het betonvenster van de kern kreeg.
-  // Eén staaf tegelijk — het venster toont er ook maar één — en `beamId` zegt
-  // bij welke staaf het hoort, zodat het antwoord van de vórige staaf hier
-  // nooit voor dat van de huidige kan doorgaan.
-  const dekkingslijn = useDekkingslijnStore((s) => s.antwoord);
+  // De reden dat de laatste toetsronde niets opleverde, als die er is. Nodig om
+  // "nog niet getoetst" te kunnen onderscheiden van "de rekenkern weigerde" —
+  // zie de melding hieronder.
+  const checkFout = useCheckStore((s) => s.error);
+  // De b_eff-afleiding van de laatste toetsronde. De dekkingslijn moet met
+  // DEZELFDE meewerkende flensbreedte rekenen als de toetsing ernaast, anders
+  // gaan de twee over een andere doorsnede.
+  const beff = useCheckStore((s) => s.beff);
 
   // De Rapport-tab is alleen actief wanneer de rapportview getoond wordt
   // (Ribbon koppelt tab ↔ view), dus window.print() print het rapport.
@@ -104,6 +127,24 @@ export default function ReportTab(_props: ReportTabProps) {
       return;
     }
     if (checkResults.length === 0) {
+      // Twee verschillende oorzaken, twee verschillende meldingen. Er is een
+      // VERSCHIL tussen "er is nog niet getoetst" (druk op de knop) en "de
+      // toetsronde is gedraaid maar de rekenkern gaf een fout" (daar helpt de
+      // knop niet tegen). Dezelfde melding voor allebei stuurt de gebruiker
+      // naar een knop die zijn probleem niet oplost.
+      if (checkFout) {
+        notifyWarning(
+          t("report.kernPdf", "Rekenrapport"),
+          t("report.kernPdfToetsingMislukt", {
+            defaultValue:
+              "De laatste toetsronde leverde geen resultaten; het rekenrapport zou leeg zijn. " +
+              "Nog eens toetsen verandert daar niets aan zolang de reden blijft staan. " +
+              "De rekenkern meldde: {{fout}}",
+            fout: checkFout,
+          }),
+        );
+        return;
+      }
       notifyInfo(
         t("report.kernPdf", "Rekenrapport"),
         t(
@@ -114,6 +155,40 @@ export default function ReportTab(_props: ReportTabProps) {
       return;
     }
     try {
+      // ── De dekkingslijnen van ALLE betonstaven ──────────────────────────
+      //
+      // Hier en niet doorlopend: de kern neemt één staaf per aanroep, dus dit
+      // kost N aanroepen met elk de hele omhullende. Zie `haalAlleDekkingslijnen`
+      // voor de afweging. De invoer is die van de LAATSTE TOETSRONDE
+      // (`lastRunData`), niet het model van nu — dezelfde reden als bij de
+      // korven hieronder: de lijn hoort bij de tabellen ernaast.
+      //
+      // Faalt de hele ophaal (geen rekenronde, kern onbereikbaar), dan gaat het
+      // rapport door ZONDER dekkingslijnhoofdstuk. Een PDF die niet komt omdat
+      // één hoofdstuk niet lukte, is erger dan een PDF zonder dat hoofdstuk.
+      let dekkingslijnen: Awaited<ReturnType<typeof haalAlleDekkingslijnen>> = {
+        lijnen: [],
+        mislukt: [],
+      };
+      if (lastRunData) {
+        try {
+          dekkingslijnen = await haalAlleDekkingslijnen({
+            nodes: lastRunData.nodes,
+            beams: lastRunData.beams,
+            combinations: lastRunData.combinations,
+            combinationResults: lastRunData.combinationResults,
+            korven: korvenUitStaven(lastRunData.beams),
+            supportedClasses: await getConcreteClasses(),
+            bEffPerStaaf: bEffWaardenPerStaaf(beff),
+          });
+        } catch (e) {
+          dekkingslijnen = {
+            lijnen: [],
+            mislukt: [{ beamId: 0, reason: e instanceof Error ? e.message : String(e) }],
+          };
+        }
+      }
+
       const invoer = bouwRapportInvoer({
         project: {
           name: project.name,
@@ -133,12 +208,15 @@ export default function ReportTab(_props: ReportTabProps) {
         korvenUitModel: new Map(
           [...korvenUitStaven(lastRunData?.beams ?? [])].map(([id, cfg]) => [id, cfg.korf]),
         ),
-        // De dekkingslijn is een APARTE vraag aan de kern, gesteld vanuit het
-        // betonvenster. Is zij nooit gesteld, dan is er geen antwoord en blijft
-        // het hoofdstuk weg — er wordt hier niet alsnog om gevraagd, want dat
-        // zou een rapportknop een rekenronde laten starten.
-        dekkingslijnen: dekkingslijn ? [dekkingslijn] : undefined,
+        // Eén lijn per betonstaaf, zojuist bij de kern opgehaald. Leeg blijft
+        // leeg: dan staat er geen hoofdstuk, wat juist is als er geen betonstaaf
+        // is of als de kern ze alle geweigerd heeft (dat laatste wordt gemeld).
+        dekkingslijnen: dekkingslijnen.lijnen.length > 0 ? dekkingslijnen.lijnen : undefined,
         betonInvoer: lastRunInputs?.beton,
+        // De scheefstand die deze berekening IN is gegaan. App.tsx levert hem
+        // alleen als hij werkelijk is toegepast; een lege tekst laat het
+        // hoofdstuk Uitgangspunten vanzelf weg.
+        scheefstandToelichting,
       });
       const bytes = await genereerRapportPdf(invoer);
       const { save } = await import("@tauri-apps/plugin-dialog");
@@ -150,6 +228,21 @@ export default function ReportTab(_props: ReportTabProps) {
       const { writeFile } = await import("@tauri-apps/plugin-fs");
       await writeFile(pad as string, bytes);
       notifySuccess(t("report.kernPdf", "Rekenrapport"), pad as string);
+      // Wat er NIET in staat, wordt gemeld. Een rapport met drie van de vier
+      // dekkingslijnen erin zonder woord over de vierde is precies de fout die
+      // `haalAlleDekkingslijnen` moest oplossen: de figuur ziet er af uit, en
+      // dat er een staaf ontbreekt valt niet op.
+      if (dekkingslijnen.mislukt.length > 0) {
+        notifyWarning(
+          t("report.kernPdf", "Rekenrapport"),
+          t("report.kernPdfGeenDekkingslijn", {
+            defaultValue: "Zonder dekkingslijn in het rapport: {{staven}}",
+            staven: dekkingslijnen.mislukt
+              .map((m) => `staaf ${m.beamId} — ${m.reason}`)
+              .join("; "),
+          }),
+        );
+      }
     } catch (e) {
       notifyWarning(
         t("report.kernPdf", "Rekenrapport"),

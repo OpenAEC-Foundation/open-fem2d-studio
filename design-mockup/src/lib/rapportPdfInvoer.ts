@@ -136,15 +136,22 @@ export interface RapportPdfBronnen {
    */
   korvenUitModel?: KorvenUitModel;
   /**
-   * De dekkingslijnen die de rekenkern heeft geleverd, per staaf.
+   * De dekkingslijnen die de rekenkern heeft geleverd — ÉÉN PER BETONSTAAF.
    *
-   * Dit is een APARTE vraag aan de kern (`concrete_dekkingslijn`), die het
-   * betonvenster stelt en die in `dekkingslijnStore` blijft staan. Zij is geen
-   * bijproduct van de toetsing: de lijn vraagt om een z, een c_d en eventueel
-   * een A_sl die de doorsnedetoets niet nodig heeft, en zij wordt dus alleen
-   * gerekend als iemand ernaar heeft gevraagd. Levert de aanroeper niets aan,
-   * dan blijft het dekkingslijnhoofdstuk in de PDF weg — een hoofdstuk dat om
-   * een antwoord vraagt dat nooit is gevraagd, is geen eerlijke leegte.
+   * Dit is een APARTE vraag aan de kern (`concrete_dekkingslijn`), en zij neemt
+   * één staaf tegelijk: de lijn vraagt om een z, een c_d en eventueel een A_sl
+   * die de doorsnedetoets niet nodig heeft. De aanroeper haalt ze daarom op met
+   * `haalAlleDekkingslijnen` op het moment dat iemand het rapport vraagt (zie
+   * de moduletekst daar voor die afweging), en geeft ze hier alle mee.
+   *
+   * Het was er lange tijd ÉÉN: die van de staaf die het betonvenster het laatst
+   * had opgevraagd. Een rapport over vier betonstaven droeg dan figuur 9.2 van
+   * één staaf zonder dat ergens stond dat de andere drie ontbraken — een
+   * hoofdstuk dat er af uitziet en het niet is.
+   *
+   * Levert de aanroeper niets aan, dan blijft het dekkingslijnhoofdstuk weg —
+   * een hoofdstuk dat om een antwoord vraagt dat nooit is gevraagd, is geen
+   * eerlijke leegte.
    */
   dekkingslijnen?: readonly DekkingslijnAntwoord[];
   /**

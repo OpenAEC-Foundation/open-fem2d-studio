@@ -279,6 +279,61 @@ function App() {
     });
   }, [createDetachedWindow, tRibbon]);
 
+  /**
+   * De scheefstand φ die deze berekening in gaat — DE ENIGE plek waar hij
+   * wordt bepaald, zodat het canvas-pad (single-LC), het multi-LC-pad en het
+   * scherm nooit een ander getal kunnen tonen dan er is gerekend.
+   *
+   * Bij `scheefstandBron = "vast"` (de beginstand en de stand van élk bestand
+   * van vóór deze keuze) is de uitkomst exact 1/noemer: het oude gedrag,
+   * ongewijzigd. Kiest de gebruiker een norm, dan volgt φ uit (5.5)/(5.1) met
+   * h en m uit het model — of uit de handmatige waarden die hij ervoor in de
+   * plaats heeft gezet.
+   *
+   * Deze drie memo's staan BOVEN `reportData` omdat dat object de toelichting
+   * meedraagt naar het live rapport. Een `const` die verderop in dezelfde
+   * functie staat, bestaat op dit punt nog niet (tijdelijke dode zone) — de
+   * rapportsectie zou dan bij de eerste render omvallen in plaats van de
+   * scheefstand te tonen.
+   */
+  const scheefstandGeometrie = useMemo(
+    () => leidScheefstandGeometrieAf({
+      nodes: fem.nodes, beams: fem.beams, supports: fem.supports,
+    }),
+    [fem.nodes, fem.beams, fem.supports]);
+
+  const scheefstandUitkomst = useMemo(
+    () => bepaalScheefstand(
+      {
+        bron: fem.scheefstandBron,
+        noemer: fem.scheefstandNoemer,
+        hoogteM: fem.scheefstandHoogteM,
+        aantalElementen: fem.scheefstandAantalElementen,
+      },
+      scheefstandGeometrie,
+      toepasselijkeScheefstandNormen(fem.beams),
+    ),
+    [fem.scheefstandBron, fem.scheefstandNoemer, fem.scheefstandHoogteM,
+     fem.scheefstandAantalElementen, scheefstandGeometrie, fem.beams]);
+
+  /**
+   * Diezelfde afleiding als tekstblok, voor de drie plaatsen die hem tonen:
+   * de tooltip op de φ-knop onder het canvas, de uitgangspunten van het live
+   * rapport en het hoofdstuk Uitgangspunten van de PDF-uitdraai. Eén bron, dus
+   * de drie kunnen niet uit elkaar lopen.
+   *
+   * LEEG zolang de schakelaar uit staat. Dat is geen bezuiniging maar de
+   * bedoeling: staat er geen scheefstand op de lasten, dan zit zij in geen
+   * enkele kracht waarop is getoetst, en dan hoort het rapport erover te
+   * zwijgen. Een uitgangspunt noemen dat de rekengang niet heeft gebruikt, is
+   * erger dan het niet noemen.
+   */
+  const scheefstandTekst = useMemo(
+    () => (fem.scheefstandEnabled
+      ? scheefstandToelichting(scheefstandUitkomst, scheefstandGeometrie)
+      : ""),
+    [fem.scheefstandEnabled, scheefstandUitkomst, scheefstandGeometrie]);
+
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
   // vensters. useMemo op veld-identiteiten: alleen echte mutaties leveren
@@ -306,11 +361,17 @@ function App() {
     // plaatspanningssectie superponeert hier zelf combinaties uit.
     caseResults: fem.multiLcResult,
     envelope: fem.envelope,
+    // De scheefstand hoort bij de UITGANGSPUNTEN en niet bij de resultaten: zij
+    // is een eigenschap van de constructie (één bouwwerk staat één keer scheef)
+    // en zij zit als H = φ·V in élke kracht waarop hierna is getoetst. Daarom
+    // reist zij mee met de modelgegevens en niet met `combinationResults`.
+    scheefstandToelichting: scheefstandTekst,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
     fem.combinations, fem.overgeslagenCombinaties,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
+    scheefstandTekst,
   ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
@@ -593,37 +654,6 @@ function App() {
     setProjectPath("");
     setActiveView("default");
   }, [fem, setActiveView, confirmUnsavedAction]);
-
-  /**
-   * De scheefstand φ die deze berekening in gaat — DE ENIGE plek waar hij
-   * wordt bepaald, zodat het canvas-pad (single-LC), het multi-LC-pad en het
-   * scherm nooit een ander getal kunnen tonen dan er is gerekend.
-   *
-   * Bij `scheefstandBron = "vast"` (de beginstand en de stand van élk bestand
-   * van vóór deze keuze) is de uitkomst exact 1/noemer: het oude gedrag,
-   * ongewijzigd. Kiest de gebruiker een norm, dan volgt φ uit (5.5)/(5.1) met
-   * h en m uit het model — of uit de handmatige waarden die hij ervoor in de
-   * plaats heeft gezet.
-   */
-  const scheefstandGeometrie = useMemo(
-    () => leidScheefstandGeometrieAf({
-      nodes: fem.nodes, beams: fem.beams, supports: fem.supports,
-    }),
-    [fem.nodes, fem.beams, fem.supports]);
-
-  const scheefstandUitkomst = useMemo(
-    () => bepaalScheefstand(
-      {
-        bron: fem.scheefstandBron,
-        noemer: fem.scheefstandNoemer,
-        hoogteM: fem.scheefstandHoogteM,
-        aantalElementen: fem.scheefstandAantalElementen,
-      },
-      scheefstandGeometrie,
-      toepasselijkeScheefstandNormen(fem.beams),
-    ),
-    [fem.scheefstandBron, fem.scheefstandNoemer, fem.scheefstandHoogteM,
-     fem.scheefstandAantalElementen, scheefstandGeometrie, fem.beams]);
 
   // Scheefstand voor het canvas-pad (single-LC) — zelfde afleiding als het
   // multi-LC-pad in computeAndStoreSolverOutputs. Beide gaan via de NOEMER
@@ -1743,6 +1773,10 @@ function App() {
         onOpenLoadCombinations={() => { setLoadCasesTab("combos"); setLoadCasesOpen(true); }}
         onOpenWindGenerator={() => setWindGeneratorOpen(true)}
         onExportHtml={handleExportHtmlReport}
+        // De Rapport-tab zet met deze tekst het hoofdstuk Uitgangspunten in de
+        // PDF-uitdraai. Dezelfde tekst gaat via `reportData` naar het live
+        // rapport, zodat het scherm en het papier hetzelfde zeggen.
+        scheefstandToelichting={scheefstandTekst}
         onExportIfc={() => { void handleExportIfc(false); }}
         onExportIfcStructural={() => { void handleExportIfc(true); }}
         onValidateIfc={() => { void handleValidateIfc(); }}
@@ -2008,6 +2042,9 @@ function App() {
           scheefstandPhiNoemer={scheefstandUitkomst.noemer}
           scheefstandAfgeleideHoogteM={scheefstandGeometrie.hoogteM}
           scheefstandAfgeleidAantal={scheefstandGeometrie.aantalElementen}
+          // De balk toont de afleiding ook wanneer de schakelaar uit staat —
+          // daar is zij een vooruitblik op wat aanzetten zou opleveren. Het
+          // rapport krijgt `scheefstandTekst`, die dan juist leeg is.
           scheefstandToelichting={
             scheefstandToelichting(scheefstandUitkomst, scheefstandGeometrie)
           }

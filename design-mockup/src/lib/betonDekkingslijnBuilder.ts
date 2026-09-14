@@ -219,6 +219,79 @@ export async function haalDekkingslijn(
   return roepKern<DekkingslijnAntwoord>("concrete_dekkingslijn", verzoek);
 }
 
+/** De dekkingslijnen van een heel model, met de staven die er geen kregen. */
+export interface AlleDekkingslijnen {
+  /** Eén antwoord per betonstaaf die de kern heeft kunnen tekenen. */
+  lijnen: DekkingslijnAntwoord[];
+  /** De staven die geen lijn kregen, met de reden woordelijk van de kern. */
+  mislukt: CheckSkip[];
+}
+
+/**
+ * De dekkingslijn van ELKE betonstaaf in één keer.
+ *
+ * ── WAAROM DIT BESTAAT ─────────────────────────────────────────────────────
+ *
+ * Het rapportveld `concrete_dekkingslijnen` is een lijst en het hoofdstuk in de
+ * rekenkern loopt er netjes overheen, maar er kwam er maar één in: die van de
+ * staaf die het betonvenster het laatst had opgevraagd
+ * (`stores/dekkingslijnStore`). Een rapport over vier betonstaven droeg dan
+ * figuur 9.2 van één staaf, zonder dat er ergens stond dat de andere drie
+ * ontbraken. Deze functie haalt ze alle vier.
+ *
+ * ── WAAROM OP AANVRAAG EN NIET DOORLOPEND ──────────────────────────────────
+ *
+ * De doorsnedetoets neemt alle staven in ÉÉN aanroep (`check_concrete_beams`),
+ * de dekkingslijn niet: `concrete_dekkingslijn` neemt er één tegelijk, net als
+ * `concrete_mn_kappa`, omdat een staaf die faalt — een korf die niet past,
+ * zones met een gat — de andere niet mag meeslepen. N betonstaven zijn dus N
+ * aanroepen van de kern, elk met de hele omhullende erin, en dat is te duur om
+ * bij elke modelwijziging mee te laten lopen; het betonvenster wacht er niet
+ * voor niets een kwart seconde mee.
+ *
+ * Daarom hangt deze functie aan de RAPPORTKNOP en niet aan een store die zich
+ * doorlopend bijwerkt: één keer betalen op het moment dat iemand het papier
+ * werkelijk vraagt. Het betonvenster blijft zijn eigen, losse vraag stellen
+ * voor de staaf die op het scherm staat — dat is een andere vraag, op een
+ * ander moment, en die hoort niet te wachten op de andere staven.
+ *
+ * ── WAT ER MET EEN GEWEIGERDE STAAF GEBEURT ────────────────────────────────
+ *
+ * Die komt in `mislukt` met de reden die de kern heeft gegeven, en de andere
+ * staven gaan gewoon door. De aanroeper hoort dat te melden: een rapport met
+ * drie van de vier lijnen erin zonder woord over de vierde is precies de fout
+ * die deze functie moest oplossen.
+ */
+export async function haalAlleDekkingslijnen(
+  data: DekkingslijnBuildData,
+  roep?: RoepKern,
+): Promise<AlleDekkingslijnen> {
+  const { verzoeken, skipped } = bouwDekkingslijnVerzoeken(data);
+  const uitkomsten = await Promise.all(
+    verzoeken.map((v) =>
+      haalDekkingslijn(v, roep).then(
+        (lijn) => ({ lijn, beamId: v.beam.beam_id, fout: null as string | null }),
+        (e: unknown) => ({
+          lijn: null,
+          beamId: v.beam.beam_id,
+          fout: e instanceof Error ? e.message : String(e),
+        }),
+      ),
+    ),
+  );
+  const lijnen: DekkingslijnAntwoord[] = [];
+  // De staven die de bouwer al niet herkende, gaan mee als "mislukt": ook dat
+  // is een betonstaaf zonder lijn, en de reden is dezelfde soort reden.
+  const mislukt: CheckSkip[] = [...skipped];
+  for (const u of uitkomsten) {
+    if (u.lijn) lijnen.push(u.lijn);
+    else mislukt.push({ beamId: u.beamId, reason: u.fout ?? "geen antwoord van de rekenkern" });
+  }
+  lijnen.sort((a, b) => a.beam_id - b.beam_id);
+  mislukt.sort((a, b) => a.beamId - b.beamId);
+  return { lijnen, mislukt };
+}
+
 /**
  * De maatgevende unity checks van één antwoord, als één regel voor het paneel.
  *

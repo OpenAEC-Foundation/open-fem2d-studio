@@ -482,6 +482,28 @@
   color: #1a1a1a;
 }
 
+/* De scheefstandafleiding bij de uitgangspunten.
+   Vaste letterbreedte omdat de regels van `scheefstandToelichting` op hun
+   symbool zijn uitgelijnd (phi_0 = …, alpha_h = …); in een proportioneel
+   lettertype valt die uitlijning weg. Dezelfde keuze maakt de PDF-uitdraai,
+   die deze regels in `style_mono()` zet. */
+.rpt-scheefstand {
+  font-family: "Consolas", "Liberation Mono", ui-monospace, monospace;
+  font-size: calc(var(--rpt-basis) * 0.85);
+  line-height: 1.35;
+}
+
+.rpt-scheefstand-wit {
+  height: 1.5mm;
+}
+
+/* Een regel die met "!" begint is een waarschuwing uit de norm-afleiding —
+   zelfde rood als een niet-voldoende unity check, zodat zij niet tussen de
+   tussenwaarden verdwijnt. Ook dat volgt de PDF, die deze regels in C_FAIL zet. */
+.rpt-scheefstand-waarschuwing {
+  color: #b91c1c;
+}
+
 /* Gegevens-/resultaattabellen — referentiestijl: dunne randen, lichtgrijze
    kopregel, compacte regelafstand; getallen rechts via .rpt-num per cel. */
 .rpt-table {

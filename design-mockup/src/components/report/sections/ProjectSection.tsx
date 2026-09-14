@@ -11,7 +11,7 @@
  * is). Opslag: extra veld `reportHeader` in de projectinfo-setting.
  * Logo-upload is bewust R5+ — nu alleen tekst.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { setSetting } from "../../../store";
 import { useCheckStore } from "../../../stores/checkStore";
@@ -37,6 +37,38 @@ function formatDate(raw: string): string {
   return d.toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
 }
 
+/**
+ * De scheefstandafleiding als blok: elke regel van `scheefstandToelichting`
+ * op een eigen regel, in dezelfde volgorde en met dezelfde woorden.
+ *
+ * Regel voor regel en niet als één stuk tekst, om dezelfde reden als in de
+ * PDF-uitdraai (`report::extend_with_uitgangspunten`): de tussenwaarden zijn
+ * uitgelijnd op hun symbool, en een regel die met "!" begint is daar een
+ * WAARSCHUWING — die hoort op te vallen en niet in dezelfde grijze kleur te
+ * verdwijnen als de getallen eromheen. Zo zeggen het scherm en het papier
+ * hetzelfde, in dezelfde vorm.
+ */
+function ScheefstandBlok({ tekst }: { tekst: string }) {
+  return (
+    <div className="rpt-scheefstand">
+      {tekst.split("\n").map((regel, i) =>
+        regel.trim() === "" ? (
+          <div key={i} className="rpt-scheefstand-wit" />
+        ) : (
+          <div
+            key={i}
+            className={
+              regel.startsWith("!") ? "rpt-scheefstand-waarschuwing" : "rpt-scheefstand-regel"
+            }
+          >
+            {regel}
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
 export default function ProjectSection() {
   const { t } = useTranslation("ribbon");
   const info = useProjectInfo();
@@ -47,7 +79,11 @@ export default function ProjectSection() {
   // gebruiker aangevinkte norm ook (hij mag vooruitlopen op wat hij gaat
   // tekenen), en voor de rest volgt de regel het model.
   const gebruikt = usedNorms(useCheckStore((s) => s.results));
-  const { beams } = useReportData();
+  // `scheefstandToelichting` is de afleiding van φ zoals App.tsx hem heeft
+  // bepaald — dezelfde tekst die de PDF-uitdraai in haar hoofdstuk
+  // Uitgangspunten zet. Hier wordt niets herrekend: stond er geen scheefstand
+  // op de lasten, dan is de tekst leeg en zwijgt ook dit blok erover.
+  const { beams, scheefstandToelichting } = useReportData();
 
   // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
   // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
@@ -130,12 +166,24 @@ export default function ProjectSection() {
         const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
         const levensduur = LEVENSDUUR_OMSCHRIJVING[u.levensduurklasse]
           .replace(/^Klasse \d+ — /, "");
-        const rijen: Array<[string, string]> = [
+        const rijen: Array<[string, ReactNode]> = [
           [t("report.fieldNormen", "Toegepaste normen"), normen.length > 0 ? normen.join("; ") : "—"],
           [t("report.fieldNationaleBijlage", "Nationale bijlage"), "Nederland"],
           [t("report.fieldGevolgklasse", "Gevolgklasse"), `${u.gevolgklasse} (K_FI = ${kfi})`],
           [t("report.fieldLevensduur", "Ontwerplevensduur"), levensduur],
         ];
+        // De vierde rij: de initiële scheefstand, woordelijk zoals zij is
+        // toegepast. Zij hoort hier en niet bij de resultaten — zij is een
+        // eigenschap van de constructie en zit als H = φ·V in élke kracht
+        // waarop hieronder is getoetst. Staat de schakelaar uit, dan is de
+        // tekst leeg en blijft de rij weg; dan is er niets toegepast om te
+        // melden, en de PDF-uitdraai laat haar hoofdstuk om dezelfde reden weg.
+        if (scheefstandToelichting.trim() !== "") {
+          rijen.push([
+            t("report.fieldScheefstand", "Initiële scheefstand"),
+            <ScheefstandBlok tekst={scheefstandToelichting} />,
+          ]);
+        }
         return (
           <>
             <div className="rpt-uitgangspunten-kop">

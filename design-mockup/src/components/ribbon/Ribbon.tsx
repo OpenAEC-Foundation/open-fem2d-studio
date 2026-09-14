@@ -66,6 +66,14 @@ interface RibbonProps {
   onFilterSelection?: () => void;
   /** Export standalone HTML report (browser + Tauri). */
   onExportHtml?: () => void;
+  /**
+   * De afleiding van de initiële scheefstand als tekstblok, uit App.tsx.
+   *
+   * Gaat ongewijzigd door naar de Rapport-tab, die hem in de PDF-uitdraai zet.
+   * De ribbon leest hem niet en rekent er niets mee: φ hoort op één plaats te
+   * ontstaan, en dat is App.tsx.
+   */
+  scheefstandToelichting?: string;
   /** IFC4-export van het rekenmodel (Structural Analysis Domain). */
   onExportIfc?: () => void;
   /** Idem, maar alleen het draagsysteem — zonder belastinggevallen. */
@@ -115,7 +123,7 @@ export default function Ribbon({
   activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
   onExportCheck,
   onFilterSelection,
-  onExportHtml,
+  onExportHtml, scheefstandToelichting,
   onExportIfc, onExportIfcStructural, onValidateIfc, onOpenIfcView,
   tableDataset, onTableDataset, onTableExportCsv, onTableCopy, onTableFocusFilter,
 }: RibbonProps) {
@@ -284,7 +292,10 @@ export default function Ribbon({
           onExportCheck={onExportCheck}
         />;
       case "report":
-        return <ReportTab onExportHtml={onExportHtml} />;
+        return <ReportTab
+          onExportHtml={onExportHtml}
+          scheefstandToelichting={scheefstandToelichting}
+        />;
     }
   };
 
