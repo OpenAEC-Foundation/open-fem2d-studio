@@ -466,22 +466,50 @@ fn boven_cot_theta_1_wordt_6_12_niet_getoetst() {
 // ── z, f_ywd en ΔF_td ────────────────────────────────────────────────────────
 
 #[test]
-fn z_is_0_9d_alleen_zonder_normaalkracht() {
+fn z_is_0_9d_zonder_normaalkracht_en_uit_het_evenwicht_met() {
+    use nen_en_1992_1_1::hefboomsarm::ZGrondslag;
+
     let (s, k, m) = ligger(Some((150.0, 2)));
     // Zonder normaalkracht: 6.2.3(1) staat z = 0,9 · 454 = 408,6 mm toe.
     let r = shear_resistance(&s, &k, &m, &snap(0.0, 250.0, 100.0), &ShearOptions::default());
     let v = r.vakwerk.as_ref().unwrap();
     assert!(v.z_is_0_9d);
+    assert_eq!(v.z_bepaling.grondslag, ZGrondslag::Benadering);
     dichtbij(v.z_mm, 408.6, 1e-9, "z");
 
-    // MET normaalkracht en zonder opgegeven z: geen vakwerk, wél een reden.
+    // MET normaalkracht en zonder opgegeven z vervalt het vakwerk NIET meer:
+    // z komt uit het spanningsblok van 3.1.7(3) bij N_Ed en is begrensd op
+    // 0,9·d. Met de hand, 200 kN druk op 3Ø16 (A_s·f_yd = 262,254 kN):
+    //   F_c = 262,254 + 200 = 462,254 kN
+    //   x_u = 462 254/(1,0·20·300·0,8) = 96,303 mm
+    //   z_u = d − λ·x_u/2 = 454 − 0,4·96,303 = 415,479 mm  > 0,9·d = 408,6 mm
+    // dus z = 408,6 mm (begrensd), en (6.8) is lineair in z:
+    //   V_Rd,s ≤ 0,67020643 · 408,6 · 434,782609 · 2,5 = 297 659 N.
     let r = shear_resistance(&s, &k, &m, &snap(-200.0, 250.0, 100.0), &ShearOptions::default());
-    assert!(r.vakwerk.is_none());
-    let reden = r.vakwerk_reden.as_ref().unwrap();
-    assert!(reden.contains("6.2.3(1)"), "de reden moet het artikel noemen: {reden}");
-    assert!(r.v_rd_kn.is_none());
+    let v = r.vakwerk.as_ref().expect("het vakwerk hoort er mét normaalkracht te zijn");
+    assert!(r.vakwerk_reden.is_none());
+    assert!(!v.z_is_0_9d, "z hoort hier uit het spanningsblok te komen");
+    match &v.z_bepaling.grondslag {
+        ZGrondslag::Evenwicht { werkelijk, begrensd } => {
+            assert!(*begrensd);
+            dichtbij(werkelijk.x_mm, 96.303, 1e-2, "x_u");
+            dichtbij(werkelijk.z_mm, 415.479, 1e-2, "z_u");
+            dichtbij(werkelijk.f_c_kn, 462.254, 1e-2, "F_c");
+            assert_eq!(werkelijk.n_ed_kn, -200.0);
+            assert!(werkelijk.trek_onder);
+        }
+        andere => panic!("verwachtte het evenwicht als grondslag, kreeg {andere:?}"),
+    }
+    dichtbij(v.z_mm, 408.6, 1e-9, "z, begrensd op 0,9·d");
+    assert!(v.v_rd_s_kn.unwrap() <= 297.659 + 1e-3);
+    assert!(r.v_rd_kn.is_some(), "mét z is er ook een V_Rd");
 
-    // Met een opgegeven z rekent hij wél door.
+    // De afleiding schrijft de grondslag uit en noemt het artikel.
+    let stap_z = r.deelstappen().into_iter().find(|d| d.id == "dwarskracht_z").expect("stap z");
+    assert!(stap_z.notes.iter().any(|n| n.contains("6.2.3(1)")), "{:?}", stap_z.notes);
+    assert!(stap_z.variables.iter().any(|v| v.symbol == "F_c"));
+
+    // Met een opgegeven z rekent hij onveranderd door.
     let opts = ShearOptions {
         z_mm: Some(400.0),
         cot_theta: Some(2.5),
@@ -490,8 +518,27 @@ fn z_is_0_9d_alleen_zonder_normaalkracht() {
     let r = shear_resistance(&s, &k, &m, &snap(-200.0, 250.0, 100.0), &opts);
     let v = r.vakwerk.as_ref().unwrap();
     assert!(!v.z_is_0_9d);
+    assert_eq!(v.z_bepaling.grondslag, ZGrondslag::Opgegeven);
     // V_Rd,s = 0,67020643 · 400 · 434,782609 · 2,5 = 291 394 N = 291,394 kN.
     dichtbij(v.v_rd_s_kn.unwrap(), 291.394, 2e-2, "V_Rd,s met opgegeven z");
+
+    // Bij het steunpunt — M = 0 — verandert er niets: de arm van de
+    // buigweerstand hangt niet van M_Ed af, dus dezelfde z en dezelfde
+    // grondslag, en dus ook een vakwerk en een V_Rd.
+    let r = shear_resistance(&s, &k, &m, &snap(-200.0, 250.0, 0.0), &ShearOptions::default());
+    let v = r.vakwerk.as_ref().expect("vakwerk bij M = 0");
+    assert!(!v.z_is_0_9d);
+    assert!(matches!(v.z_bepaling.grondslag, ZGrondslag::Evenwicht { begrensd: true, .. }));
+    dichtbij(v.z_mm, 408.6, 1e-9, "z bij M = 0");
+    assert!(r.v_rd_kn.is_some());
+
+    // Zware druk: de doorsnede staat ook in de uiterste grenstoestand geheel
+    // onder druk, en dan valt z met reden op 0,9·d terug.
+    let r = shear_resistance(&s, &k, &m, &snap(-5000.0, 250.0, 0.0), &ShearOptions::default());
+    let v = r.vakwerk.as_ref().expect("vakwerk bij de terugval");
+    assert!(v.z_is_0_9d);
+    assert!(matches!(v.z_bepaling.grondslag, ZGrondslag::Terugval { .. }));
+    dichtbij(v.z_mm, 408.6, 1e-9, "z bij de terugval");
 }
 
 #[test]

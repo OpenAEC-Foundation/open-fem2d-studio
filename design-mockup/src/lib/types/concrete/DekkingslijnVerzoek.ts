@@ -29,12 +29,16 @@ beam: ConcreteBeamCheckInput,
  * De inwendige hefboomsarm z in mm waarmee figuur 9.2 het moment op
  * kracht omrekent.
  *
- * Leeg = niet opgegeven: dan z = 0,9·d per snede volgens 6.2.3(1), maar
- * **alleen** als er nergens een normaalkracht werkt. Werkt er wél een
- * normaalkracht, dan is dit verzoek een FOUT met die reden — 6.2.3(1)
- * staat de vereenvoudiging uitsluitend toe "voor gewapend beton zonder
- * normaalkracht", en stilzwijgend 0,9·d invullen zou de benodigde
- * trekkracht te laag maken.
+ * Leeg = niet opgegeven: dan volgt z per snede uit 6.2.3(1). Zonder
+ * normaalkracht is dat de benadering z = 0,9·d. Mét normaalkracht staat
+ * de norm die benadering niet toe en is z de werkelijke inwendige
+ * hefboomsarm uit het spanningsblok van 3.1.7(3) bij de N_Ed van die
+ * snede — de arm van de buigweerstand, dezelfde kern als de buigtoets —
+ * begrensd op 0,9·d zodat een normaalkracht de lijn nooit gunstiger
+ * maakt dan zonder; waar het spanningsblok geen arm levert (geen
+ * wapening, bij deze normaalkracht geheel gedrukt, trekcapaciteit
+ * overschreden) geldt 0,9·d met de reden erbij. Elk punt meldt zijn
+ * grondslag in `z_grondslag`.
  */
 z_mm?: number, 
 /**

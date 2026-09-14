@@ -54,10 +54,12 @@
 //! # De vier keuzes die hier bijkomen
 //!
 //! * `z_mm` — de inwendige hefboomsarm waarmee figuur 9.2 het moment op kracht
-//!   omrekent (F = M_Ed/z). Leeg → z = 0,9·d per snede, maar 6.2.3(1) staat die
-//!   vereenvoudiging uitsluitend toe "voor gewapend beton zonder
-//!   normaalkracht"; werkt er wél een normaalkracht, dan komt er een FOUT met
-//!   die reden en geen getal.
+//!   omrekent (F = M_Ed/z). Leeg → volgens 6.2.3(1): zonder normaalkracht
+//!   z = 0,9·d per snede; mét normaalkracht per snede en per combinatie de
+//!   werkelijke hefboomsarm uit het spanningsblok van 3.1.7(3) bij N_Ed —
+//!   dezelfde kern als de buigtoets — begrensd op 0,9·d, of 0,9·d als
+//!   terugval met de reden erbij. Elk punt draagt zijn grondslag in
+//!   `z_grondslag`; de regel staat in `nen_en_1992_1_1::hefboomsarm`.
 //! * `c_d_mm` — c_d volgens figuur 8.3. Leeg → 0 mm, de ONBEPAALDE waarde:
 //!   alle alfa-factoren van tabel 8.2 worden 1,0 en l_bd is maximaal. Dat is de
 //!   veilige kant.
@@ -128,12 +130,16 @@ pub struct DekkingslijnVerzoek {
     /// De inwendige hefboomsarm z in mm waarmee figuur 9.2 het moment op
     /// kracht omrekent.
     ///
-    /// Leeg = niet opgegeven: dan z = 0,9·d per snede volgens 6.2.3(1), maar
-    /// **alleen** als er nergens een normaalkracht werkt. Werkt er wél een
-    /// normaalkracht, dan is dit verzoek een FOUT met die reden — 6.2.3(1)
-    /// staat de vereenvoudiging uitsluitend toe "voor gewapend beton zonder
-    /// normaalkracht", en stilzwijgend 0,9·d invullen zou de benodigde
-    /// trekkracht te laag maken.
+    /// Leeg = niet opgegeven: dan volgt z per snede uit 6.2.3(1). Zonder
+    /// normaalkracht is dat de benadering z = 0,9·d. Mét normaalkracht staat
+    /// de norm die benadering niet toe en is z de werkelijke inwendige
+    /// hefboomsarm uit het spanningsblok van 3.1.7(3) bij de N_Ed van die
+    /// snede — de arm van de buigweerstand, dezelfde kern als de buigtoets —
+    /// begrensd op 0,9·d zodat een normaalkracht de lijn nooit gunstiger
+    /// maakt dan zonder; waar het spanningsblok geen arm levert (geen
+    /// wapening, bij deze normaalkracht geheel gedrukt, trekcapaciteit
+    /// overschreden) geldt 0,9·d met de reden erbij. Elk punt meldt zijn
+    /// grondslag in `z_grondslag`.
     #[serde(default)]
     #[ts(optional)]
     pub z_mm: Option<f64>,
@@ -226,6 +232,46 @@ impl From<kern::MomentBewijs> for MomentBewijs {
             kern::MomentBewijs::BinnenVerankeringslengte => {
                 MomentBewijs::BinnenVerankeringslengte
             }
+        }
+    }
+}
+
+/// Waar de inwendige hefboomsarm z van een punt vandaan komt — 6.2.3(1), zie
+/// `nen_en_1992_1_1::hefboomsarm`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub enum ZGrondslag {
+    /// Door de aanroeper opgegeven (`z_mm` in het verzoek).
+    Opgegeven,
+    /// z = 0,9·d — de benadering die 6.2.3(1) zonder normaalkracht toestaat.
+    Benadering,
+    /// Uit het spanningsblok van 3.1.7(3) bij N_Ed: er werkt een
+    /// normaalkracht en de werkelijke arm lag onder 0,9·d, dus hij geldt.
+    Evenwicht,
+    /// Uit het spanningsblok, maar de werkelijke arm lag BOVEN 0,9·d en is op
+    /// 0,9·d gehouden: een normaalkracht maakt de lijn nooit gunstiger dan de
+    /// norm zonder normaalkracht toestaat. `z_werkelijk_mm` draagt de
+    /// onbegrensde arm.
+    EvenwichtBegrensd,
+    /// Er werkt een normaalkracht, maar het spanningsblok leverde geen arm
+    /// (geen wapening, bij deze normaalkracht geheel gedrukt, trekcapaciteit
+    /// overschreden); 0,9·d is aangehouden. De reden staat in de
+    /// kanttekeningen van de lijn.
+    Terugval,
+}
+
+impl From<&nen_en_1992_1_1::ZGrondslag> for ZGrondslag {
+    fn from(g: &nen_en_1992_1_1::ZGrondslag) -> Self {
+        match g {
+            nen_en_1992_1_1::ZGrondslag::Opgegeven => ZGrondslag::Opgegeven,
+            nen_en_1992_1_1::ZGrondslag::Benadering => ZGrondslag::Benadering,
+            nen_en_1992_1_1::ZGrondslag::Evenwicht { begrensd: false, .. } => {
+                ZGrondslag::Evenwicht
+            }
+            nen_en_1992_1_1::ZGrondslag::Evenwicht { begrensd: true, .. } => {
+                ZGrondslag::EvenwichtBegrensd
+            }
+            nen_en_1992_1_1::ZGrondslag::Terugval { .. } => ZGrondslag::Terugval,
         }
     }
 }
@@ -335,6 +381,12 @@ pub struct Momentpunt {
     pub bewijs: MomentBewijs,
     /// De inwendige hefboomsarm z waarmee M_Ed hier op kracht is omgerekend, mm.
     pub z_mm: f64,
+    /// Waar die z vandaan komt — 6.2.3(1).
+    pub z_grondslag: ZGrondslag,
+    /// De werkelijke, onbegrensde hefboomsarm uit het spanningsblok bij N_Ed,
+    /// mm. Alleen gevuld bij `Evenwicht` en `EvenwichtBegrensd`.
+    #[ts(optional)]
+    pub z_werkelijk_mm: Option<f64>,
     /// De normaalkracht van de maatgevende combinatie op deze plaats, kN (trek
     /// positief). Een DRUKkracht is NIET in `omhullende_kn` verrekend: het
     /// aftrekken van de volle drukkracht van de trekgordel veronderstelt een
@@ -390,6 +442,17 @@ pub struct Dwarskrachtpunt {
     pub a_sl_doorlopend_mm2: f64,
     /// De combinatie die deze snede maatgevend maakte.
     pub combinatie_id: u32,
+    /// De inwendige hefboomsarm van het vakwerkmodel op deze plaats, mm.
+    /// Leeg als er geen vakwerkmodel is opgebouwd.
+    #[ts(optional)]
+    pub z_mm: Option<f64>,
+    /// Waar die z vandaan komt — 6.2.3(1). Leeg als `z_mm` dat ook is.
+    #[ts(optional)]
+    pub z_grondslag: Option<ZGrondslag>,
+    /// De werkelijke, onbegrensde hefboomsarm uit het spanningsblok bij N_Ed,
+    /// mm. Alleen gevuld bij `Evenwicht` en `EvenwichtBegrensd`.
+    #[ts(optional)]
+    pub z_werkelijk_mm: Option<f64>,
 }
 
 /// De afleiding van l_bd van één bundel volgens §8.4 — (8.2), (8.3), (8.4) en
@@ -640,9 +703,9 @@ pub struct DekkingslijnAntwoord {
 /// `Err` waar de norm niet te volgen is zonder iets te verzinnen: een onbekende
 /// sterkteklasse of staalsoort, een korf die niet in de doorsnede past, een
 /// ongeldige zone-indeling, een ontbrekende staaflengte, een lege omhullende,
-/// of z = 0,9·d terwijl er een normaalkracht werkt. Er komt dan géén lijn
-/// terug — een dekkingslijn met een verzonnen hefboomsarm ziet er
-/// geloofwaardig uit en is dat niet.
+/// of een opgegeven z die niet positief is. Een normaalkracht zonder
+/// opgegeven z is géén fout meer: z komt dan per snede uit het
+/// spanningsblok bij N_Ed (6.2.3(1)); zie `z_mm` en `Momentpunt::z_grondslag`.
 pub fn dekkingslijn(verzoek: DekkingslijnVerzoek) -> Result<DekkingslijnAntwoord, String> {
     let b = &verzoek.beam;
 
@@ -744,6 +807,8 @@ fn uit_momentpunt(p: &kern::Momentpunt) -> Momentpunt {
         tekort_kn: p.tekort_kn,
         bewijs: p.bewijs.into(),
         z_mm: p.z_mm,
+        z_grondslag: (&p.z_bepaling.grondslag).into(),
+        z_werkelijk_mm: p.z_bepaling.z_werkelijk_mm(),
         n_ed_kn: p.n_ed_kn,
         m_ed_knm: p.m_ed_knm,
         combinatie_id: p.combinatie_id,
@@ -768,6 +833,9 @@ fn uit_dwarskrachtdekking(d: &kern::Dwarskrachtdekking) -> Dwarskrachtdekking {
                 a_sl_gebruikt_mm2: p.a_sl_gebruikt_mm2,
                 a_sl_doorlopend_mm2: p.a_sl_doorlopend_mm2,
                 combinatie_id: p.combinatie_id,
+                z_mm: p.z_bepaling.as_ref().map(|z| z.z_mm),
+                z_grondslag: p.z_bepaling.as_ref().map(|z| (&z.grondslag).into()),
+                z_werkelijk_mm: p.z_bepaling.as_ref().and_then(|z| z.z_werkelijk_mm()),
             })
             .collect(),
         maatgevend: d.maatgevend.map(|i| i as u32),
@@ -1036,17 +1104,52 @@ mod tests {
         }
     }
 
-    /// Een normaalkracht ZONDER opgegeven z is een fout en geen lijn:
-    /// 6.2.3(1) staat z = 0,9·d uitsluitend toe "voor gewapend beton zonder
-    /// normaalkracht".
+    /// Een normaalkracht ZONDER opgegeven z is geen fout meer maar een lijn
+    /// waarvan z per snede uit het spanningsblok bij N_Ed komt (6.2.3(1)),
+    /// begrensd op 0,9·d, met de grondslag per punt — ook over deze
+    /// vertaallaag heen.
+    ///
+    /// Met de hand, 250 kN druk op de referentiebalk (300 × 600, 3Ø16 onder,
+    /// 2Ø12 boven, d = 554 mm): de drukzone wordt zo'n 100 mm diep, dus
+    /// z_u ≈ 554 − 0,4·100 ≈ 514 mm > 0,9·d = 498,6 mm — begrensd, en de
+    /// gebruikte z is precies 0,9·d.
     #[test]
-    fn normaalkracht_zonder_z_is_een_fout() {
+    fn normaalkracht_zonder_z_levert_een_lijn_met_grondslag() {
         let mut v = verzoek(ReinforcementZones::default());
         for p in &mut v.beam.forces_envelope {
             p.forces.n_ed = -250.0;
         }
-        let fout = dekkingslijn(v).expect_err("hier hoort geen lijn uit te komen");
-        assert!(fout.contains("6.2.3(1)"), "de reden hoort het artikel te noemen: {fout}");
+        let a = dekkingslijn(v).expect("mét normaalkracht hoort er nu een lijn te komen");
+        let d = 600.0 - 30.0 - 8.0 - 8.0;
+        for p in &a.onder.punten {
+            assert_eq!(p.z_grondslag, ZGrondslag::EvenwichtBegrensd, "x = {}", p.x_mm);
+            assert!((p.z_mm - 0.9 * d).abs() < 1e-9, "x = {}: z = {}", p.x_mm, p.z_mm);
+            let werkelijk = p.z_werkelijk_mm.expect("de werkelijke arm reist mee");
+            assert!(werkelijk > 0.9 * d && werkelijk < d, "x = {}: z_u = {werkelijk}", p.x_mm);
+        }
+        // De dwarskrachtlijn draagt z en zijn grondslag ook.
+        let dw = a.dwarskracht.punten.first().expect("x = 0");
+        assert_eq!(dw.z_grondslag, Some(ZGrondslag::EvenwichtBegrensd));
+        assert!((dw.z_mm.unwrap() - 0.9 * d).abs() < 1e-9);
+        // En de JSON-vorm noemt de grondslag bij naam, zodat de frontend hem
+        // kan tonen.
+        let json = serde_json::to_string(&a).unwrap();
+        assert!(json.contains("\"z_grondslag\":\"EvenwichtBegrensd\""), "{}", &json[..200]);
+        assert!(a.notes.iter().any(|n| n.contains("doorsnede-evenwicht")));
+    }
+
+    /// Zonder normaalkracht verandert er niets: elke z is de benadering
+    /// 0,9·d en de werkelijke arm is niet bepaald.
+    #[test]
+    fn zonder_normaalkracht_blijft_z_de_benadering() {
+        let a = dekkingslijn(verzoek(ReinforcementZones::default())).unwrap();
+        for p in a.onder.punten.iter().chain(a.boven.punten.iter()) {
+            assert_eq!(p.z_grondslag, ZGrondslag::Benadering, "x = {}", p.x_mm);
+            assert!(p.z_werkelijk_mm.is_none());
+        }
+        for p in &a.dwarskracht.punten {
+            assert_eq!(p.z_grondslag, Some(ZGrondslag::Benadering), "x = {}", p.x_mm);
+        }
     }
 
     /// Dezelfde staaf mét opgegeven z levert wél een lijn — de aanroeper die de

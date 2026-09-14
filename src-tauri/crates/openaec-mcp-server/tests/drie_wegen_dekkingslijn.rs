@@ -432,13 +432,14 @@ async fn de_uitkomst_zelf_staat_vast() {
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
 
-/// Een normaalkracht ZONDER opgegeven z faalt langs alle drie de wegen, met
-/// dezelfde reden: 6.2.3(1) staat z = 0,9·d uitsluitend toe "voor gewapend
-/// beton zonder normaalkracht". Stilzwijgend 0,9·d invullen zou de benodigde
-/// trekkracht te laag maken, en een te lage benodigde kracht is in een
-/// dekkingslijn niet te zien.
+/// Een normaalkracht ZONDER opgegeven z levert langs alle drie de wegen
+/// DEZELFDE lijn, met z per snede uit het spanningsblok bij N_Ed (6.2.3(1)),
+/// begrensd op 0,9·d, en de grondslag per punt. Vroeger faalden de drie wegen
+/// hier; met de scheefstand aan draagt elke ligger onder een lijnlast een
+/// normaalkracht, dus dat was voor een echt model het einde van de
+/// dekkingslijn.
 #[tokio::test]
-async fn normaalkracht_zonder_z_faalt_langs_alle_drie_de_wegen() {
+async fn normaalkracht_zonder_z_levert_langs_alle_drie_de_wegen_dezelfde_lijn() {
     let (mut child, mut stdin, mut reader) = start_server().await;
 
     let mut inv = verzoek();
@@ -446,18 +447,30 @@ async fn normaalkracht_zonder_z_faalt_langs_alle_drie_de_wegen() {
         p["forces"]["n_ed"] = json!(-250.0);
     }
 
-    let tauri = weg_tauri(&inv).expect_err("de Tauri-weg hoort te falen");
-    let brug = weg_toetsbrug(inv.clone()).expect_err("de toetsbrug hoort te falen");
+    let tauri = weg_tauri(&inv).expect("de Tauri-weg hoort een lijn te geven");
+    let brug = weg_toetsbrug(inv.clone()).expect("de toetsbrug hoort een lijn te geven");
     let mcp = weg_mcp(&mut stdin, &mut reader, 702, inv)
         .await
-        .expect_err("de MCP-weg hoort te falen");
+        .expect("de MCP-weg hoort een lijn te geven");
+    eis_gelijk("toetsbrug", &brug, "Tauri-command", &tauri);
+    eis_gelijk("MCP-server", &mcp, "Tauri-command", &tauri);
 
-    for (weg, melding) in [("Tauri", &tauri), ("toetsbrug", &brug), ("MCP", &mcp)] {
-        assert!(
-            melding.contains("6.2.3(1)"),
-            "de {weg}-weg hoort het artikel te noemen: {melding}"
-        );
+    // d = 600 − 30 − 8 − 8 = 554 mm → 0,9·d = 498,6 mm. Met 250 kN druk op
+    // 3Ø16 wordt de drukzone zo'n 100 mm diep en ligt z_u ≈ 514 mm boven
+    // 0,9·d: overal begrensd, en de gebruikte z is overal precies 0,9·d.
+    let punten = tauri["onder"]["punten"].as_array().unwrap();
+    for p in punten {
+        let z = p["z_mm"].as_f64().unwrap();
+        assert!((z - 498.6).abs() < 1e-9, "x = {}: z = {z} ≠ 0,9·d", p["x_mm"]);
+        assert_eq!(p["z_grondslag"], json!("EvenwichtBegrensd"), "x = {}", p["x_mm"]);
+        let zu = p["z_werkelijk_mm"].as_f64().unwrap();
+        assert!(zu > 498.6 && zu < 554.0, "x = {}: z_u = {zu}", p["x_mm"]);
     }
+    assert!(tauri["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|n| n.as_str().unwrap().contains("doorsnede-evenwicht")));
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

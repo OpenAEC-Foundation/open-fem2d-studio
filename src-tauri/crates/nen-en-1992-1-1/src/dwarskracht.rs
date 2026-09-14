@@ -70,7 +70,7 @@
 //! | C_Rd,c = 0,18/γ_C, v_min, k₁ = 0,15 | NB bij 6.2.2(1) | tekstlaag, letterlijk |
 //! | (6.5) en ν = 0,6[1 − f_ck/250] | 6.2.2(6) + NB | tekstlaag, letterlijk |
 //! | β = a_v/2d en zijn voorwaarden | 6.2.2(6) | tekstlaag, letterlijk |
-//! | z = 0,9·d "zonder normaalkracht" | 6.2.3(1) | tekstlaag, letterlijk |
+//! | z = 0,9·d "zonder normaalkracht" | 6.2.3(1) | tekstlaag, letterlijk; NB grijpt niet in (gerenderde bladzijde 114) |
 //! | 1,0 ≤ cot θ ≤ 2,5 | NB bij 6.2.3(2) | tekstlaag, letterlijk |
 //! | (6.8) V_Rd,s = (A_sw/s)·z·f_ywd·cot θ | 6.2.3(3) | gerenderde bladzijde 115 |
 //! | (6.9) V_Rd,max = α_cw·b_w·z·ν₁·f_cd/(cot θ + tan θ) | 6.2.3(3) | tekstlaag, letterlijk |
@@ -84,6 +84,20 @@
 //! (A_sw/s)·z·f_ywd = α_cw·b_w·z·ν₁·f_cd/2, en delen door b_w geeft precies
 //! A_sw·f_ywd/(b_w·s) = ½·α_cw·ν₁·f_cd. Dat de norm dezelfde uitkomst geeft,
 //! is daarmee een controle op (6.8) en (6.9) zelf.
+//!
+//! ## z mét normaalkracht
+//!
+//! 6.2.3(1) noemt z "de inwendige hefboomsarm … overeenkomend met het buigend
+//! moment in het beschouwde element" en staat 0,9·d alleen toe "zonder
+//! normaalkracht". Vroeger VERVIEL het vakwerkmodel hier zodra |N_Ed| boven
+//! de numerieke nul kwam en z niet was opgegeven — en met de scheefstand aan
+//! draagt elke ligger onder een lijnlast een normaalkracht, hoe klein ook.
+//! Nu wordt z in dat geval uit het spanningsblok van 3.1.7(3) bij N_Ed
+//! gehaald — de arm van de buigweerstand, "z uit de buigtoets" — begrensd op
+//! 0,9·d, en anders op 0,9·d teruggevallen met de reden erbij. De hele regel,
+//! met de richting (druk maakt z kleiner) en de begrenzing, staat in
+//! [`crate::hefboomsarm`]; deze module past hem alleen toe en schrijft de
+//! grondslag in [`Vakwerk::z_bepaling`].
 //!
 //! ## Wat deze module NIET doet
 //!
@@ -120,6 +134,7 @@ use mechanics::ForceStateSnapshot;
 use nen_en_1993_1_1_section::{CheckStatus, Deelstap, ResistanceCalc, UnityCheck};
 
 use crate::deelstappen::{lx, nl, nv, stap};
+use crate::hefboomsarm::{bepaal_z, HefboomsarmUitkomst, ZBepaling, ZGrondslag};
 use crate::section::{ConcreteSection, ReinforcementCage, ShearReinforcement, STIRRUP_ALPHA_DEG};
 use crate::stress_strain::DesignMaterial;
 
@@ -198,13 +213,9 @@ pub fn nu_gescheurd_beton(f_ck: f64) -> f64 {
     0.6 * (1.0 - f_ck / 250.0)
 }
 
-/// De inwendige hefboomsarm die 6.2.3(1) toestaat: z = 0,9·d.
-///
-/// Alleen "in de dwarskrachtberekening van gewapend beton **zonder
-/// normaalkracht**"; zie [`ShearOptions::z_mm`].
-pub fn z_0_9d(d_mm: f64) -> f64 {
-    0.9 * d_mm
-}
+/// De inwendige hefboomsarm die 6.2.3(1) toestaat: z = 0,9·d — woont in
+/// [`crate::hefboomsarm`], hier onder zijn oude naam bereikbaar.
+pub use crate::hefboomsarm::z_0_9d;
 
 // ── Invoer ────────────────────────────────────────────────────────────────────
 
@@ -249,13 +260,11 @@ pub struct ShearOptions {
     /// `None` → automatisch, zie [`CotThetaKeuze::Automatisch`]. Een waarde
     /// buiten de grenzen wordt afgekapt en dat wordt gemeld.
     pub cot_theta: Option<f64>,
-    /// z in mm. `None` → 0,9·d, maar **alleen** als er geen normaalkracht is;
-    /// 6.2.3(1) staat die vereenvoudiging uitsluitend toe voor "gewapend beton
-    /// zonder normaalkracht". Met normaalkracht is z de werkelijke inwendige
-    /// hefboomsarm bij het buigend moment in de beschouwde doorsnede, en die
-    /// moet hier worden opgegeven — bijvoorbeeld uit de buigtoets. Ontbreekt
-    /// hij dan, dan vervalt de vakwerktak met een leesbare reden in plaats van
-    /// dat er stilzwijgend 0,9·d wordt ingevuld.
+    /// z in mm. `None` → volgens 6.2.3(1): zonder normaalkracht de
+    /// benadering 0,9·d; mét normaalkracht de werkelijke inwendige
+    /// hefboomsarm uit het spanningsblok van 3.1.7(3) bij N_Ed, begrensd op
+    /// 0,9·d, of 0,9·d als terugval met de reden erbij. De grondslag staat in
+    /// [`Vakwerk::z_bepaling`]; de regel zelf in [`crate::hefboomsarm`].
     pub z_mm: Option<f64>,
     /// 6.2.2(6) — een last dicht bij het steunpunt. `None` = niet van
     /// toepassing; de toets rekent dan met de onverminderde V_Ed en blijft op
@@ -384,8 +393,13 @@ pub enum FywdBron {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Vakwerk {
     pub z_mm: f64,
-    /// `true` als z = 0,9·d is aangehouden (6.2.3(1)), `false` als z is opgegeven.
+    /// `true` als z = 0,9·d is aangehouden — als benadering zonder
+    /// normaalkracht (6.2.3(1)) of als terugval mét normaalkracht; `false`
+    /// als z is opgegeven of uit het doorsnede-evenwicht komt.
     pub z_is_0_9d: bool,
+    /// Waar z vandaan komt, met de werkelijke hefboomsarm erbij als die is
+    /// bepaald. Zie [`crate::hefboomsarm`].
+    pub z_bepaling: ZBepaling,
     pub cot_theta: f64,
     pub theta_deg: f64,
     pub cot_theta_keuze: CotThetaKeuze,
@@ -503,6 +517,25 @@ pub fn shear_resistance(
     mat: &DesignMaterial,
     force_state: &ForceStateSnapshot,
     opts: &ShearOptions,
+) -> ShearResistance {
+    shear_resistance_met_hefboomsarm(section, cage, mat, force_state, opts, None)
+}
+
+/// Als [`shear_resistance`], maar met een al bepaalde uitkomst van het
+/// spanningsblok voor de hefboomsarm.
+///
+/// De dekkingslijn bouwt uit één snede de momentlijn en de dwarskrachtlijn
+/// en lost het spanningsblok bij N_Ed daarvoor één keer op; via `vooraf`
+/// geeft zij het hier door. `None` → deze functie bepaalt z zelf. De uitkomst
+/// wordt alleen gebruikt als z niet is opgegeven én er een normaalkracht
+/// werkt; zie [`crate::hefboomsarm::bepaal_z`].
+pub fn shear_resistance_met_hefboomsarm(
+    section: &ConcreteSection,
+    cage: &ReinforcementCage,
+    mat: &DesignMaterial,
+    force_state: &ForceStateSnapshot,
+    opts: &ShearOptions,
+    vooraf: Option<HefboomsarmUitkomst>,
 ) -> ShearResistance {
     let v_ed_kn = force_state.forces.vz_ed.abs();
     let n_ed_kn = force_state.forces.n_ed;
@@ -702,7 +735,14 @@ pub fn shear_resistance(
     };
 
     // ── Het vakwerkmodel ─────────────────────────────────────────────────────
-    let (vakwerk, vakwerk_reden) = bouw_vakwerk(cage, mat, opts, d, b_w, n_ed_kn, v_ed_kn, nu);
+    //
+    // z volgens 6.2.3(1): opgegeven, anders 0,9·d zonder normaalkracht, anders
+    // uit het spanningsblok bij N_Ed voor de rij die op trek staat. De regel
+    // staat in `crate::hefboomsarm`; d is die van diezelfde rij.
+    let z_bepaling =
+        bepaal_z(section, cage, mat, trek_onder, n_ed_kn, d, opts.z_mm, vooraf);
+    let (vakwerk, vakwerk_reden) =
+        bouw_vakwerk(cage, mat, opts, b_w, v_ed_kn, nu, z_bepaling);
 
     // ── Weerstand, unity check en de resterende kanttekeningen ───────────────
     //
@@ -959,39 +999,23 @@ pub fn cot_theta_automatisch(v_rd_max_teller_n: f64, v_ed_n: f64) -> (f64, CotTh
     (c.clamp(COT_THETA_MIN, COT_THETA_MAX), CotThetaKeuze::Automatisch)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Het vakwerkmodel van 6.2.3 bij een al bepaalde hefboomsarm.
+///
+/// De tweede waarde van het paar is de reden waarom er géén vakwerk is; sinds
+/// z altijd bepaalbaar is (opgegeven, 0,9·d, evenwicht of terugval — zie
+/// [`crate::hefboomsarm`]) blijft die leeg. Het paar staat er nog omdat
+/// [`ShearResistance::vakwerk_reden`] deel van de afleiding is.
 fn bouw_vakwerk(
     cage: &ReinforcementCage,
     mat: &DesignMaterial,
     opts: &ShearOptions,
-    d_mm: f64,
     b_w_mm: f64,
-    n_ed_kn: f64,
     v_ed_kn: f64,
     nu: f64,
+    z_bepaling: ZBepaling,
 ) -> (Option<Vakwerk>, Option<String>) {
-    // z: 6.2.3(1) staat z = 0,9·d alleen toe voor gewapend beton ZONDER
-    // normaalkracht. Met normaalkracht moet de werkelijke hefboomsarm worden
-    // opgegeven; er wordt hier niets aangenomen.
-    let (z, z_is_0_9d) = match opts.z_mm {
-        Some(z) if z > 0.0 => (z, false),
-        _ => {
-            if n_ed_kn.abs() > 1e-6 {
-                return (
-                    None,
-                    Some(format!(
-                        "de inwendige hefboomsarm z is niet bepaald. 6.2.3(1) staat de \
-                         vereenvoudiging z = 0,9·d uitsluitend toe \"in de dwarskrachtberekening \
-                         van gewapend beton zonder normaalkracht\", en hier werkt N_Ed = {} kN. \
-                         Geef z op — de werkelijke hefboomsarm bij het buigend moment in deze \
-                         doorsnede — dan volgt de vakwerktoets alsnog.",
-                        nl(n_ed_kn, 1)
-                    )),
-                );
-            }
-            (z_0_9d(d_mm), true)
-        }
-    };
+    let z = z_bepaling.z_mm;
+    let z_is_0_9d = z_bepaling.is_0_9d();
 
     let alpha_cw = ALPHA_CW_NIET_VOORGESPANNEN;
     let nu1 = nu; // NB bij 6.2.3(3): ν₁ = ν.
@@ -1091,6 +1115,7 @@ fn bouw_vakwerk(
         Some(Vakwerk {
             z_mm: z,
             z_is_0_9d,
+            z_bepaling,
             cot_theta,
             theta_deg,
             cot_theta_keuze: keuze,
@@ -1420,30 +1445,51 @@ impl ShearResistance {
         }
 
         if let Some(v) = &self.vakwerk {
+            // De formule, de ingevulde regel en de grootheden hangen van de
+            // grondslag af; de kanttekening komt woordelijk uit
+            // `ZBepaling::toelichting`, zodat rapport en kern niet uiteenlopen.
+            let (formule, ingevuld, mut variabelen) = match &v.z_bepaling.grondslag {
+                ZGrondslag::Opgegeven => {
+                    (r"z".to_string(), String::new(), vec![nv("d", c.d_mm, "mm")])
+                }
+                ZGrondslag::Benadering | ZGrondslag::Terugval { .. } => (
+                    r"z = 0{,}9\, d".to_string(),
+                    format!(r"z = 0{{,}}9 \cdot {d}", d = lx(c.d_mm, 0)),
+                    vec![nv("d", c.d_mm, "mm")],
+                ),
+                ZGrondslag::Evenwicht { werkelijk: w, .. } => (
+                    r"z = \min\left(d - a_c;\; 0{,}9\, d\right),\quad a_c = \lambda\, x_u / 2"
+                        .to_string(),
+                    format!(
+                        r"z = \min\left({d} - {ac};\; 0{{,}}9 \cdot {d}\right) = \min\left({zw};\; {z9}\right)",
+                        d = lx(c.d_mm, 0),
+                        ac = lx(w.a_c_mm, 1),
+                        zw = lx(w.z_mm, 1),
+                        z9 = lx(z_0_9d(c.d_mm), 1)
+                    ),
+                    vec![
+                        nv("d", c.d_mm, "mm"),
+                        nv(r"N_{Ed}", w.n_ed_kn, "kN"),
+                        nv("x_u", w.x_mm, "mm"),
+                        nv("a_c", w.a_c_mm, "mm"),
+                        nv("F_c", w.f_c_kn, "kN"),
+                        nv("F_t", w.f_t_kn, "kN"),
+                        nv(r"M_{Rd}", w.m_rd_knm, "kNm"),
+                    ],
+                ),
+            };
+            variabelen.push(nv("z", v.z_mm, "mm"));
             uit.push(stap(
                 "dwarskracht_z",
                 "Inwendige hefboomsarm",
                 "z",
                 "art. 6.2.3(1)",
-                if v.z_is_0_9d { r"z = 0{,}9\, d".to_string() } else { r"z".to_string() },
-                if v.z_is_0_9d {
-                    format!(r"z = 0{{,}}9 \cdot {d}", d = lx(c.d_mm, 0))
-                } else {
-                    String::new()
-                },
-                vec![nv("d", c.d_mm, "mm")],
+                formule,
+                ingevuld,
+                variabelen,
                 Some(v.z_mm),
                 "mm",
-                vec![if v.z_is_0_9d {
-                    "6.2.3(1): \"In de dwarskrachtberekening van gewapend beton zonder \
-                     normaalkracht mag in het algemeen de benaderende waarde z = 0,9 d zijn \
-                     gebruikt.\" Er is hier geen normaalkracht, dus die vereenvoudiging is \
-                     toegestaan."
-                        .to_string()
-                } else {
-                    "z is opgegeven; 6.2.3(1) staat z = 0,9·d alleen toe zonder normaalkracht."
-                        .to_string()
-                }],
+                vec![v.z_bepaling.toelichting()],
             ));
 
             uit.push(stap(
@@ -2018,9 +2064,25 @@ mod tests {
         let r = shear_resistance(&s, &k, &m, &snap(150.0, 20.0, 100.0), &ShearOptions::default());
         assert_relative_eq!(r.vrd_c.sigma_cp_mpa, -1.0, max_relative = 1e-12);
         assert_relative_eq!(r.vrd_c.v_6_2a_kn, 43.972, max_relative = 1e-4);
-        // Zonder z (want er IS normaalkracht) vervalt de vakwerktak met reden.
-        assert!(r.vakwerk.is_none());
-        assert!(r.vakwerk_reden.as_ref().unwrap().contains("6.2.3(1)"));
+        // Mét normaalkracht en zonder opgegeven z vervalt het vakwerk NIET
+        // meer: z komt uit het spanningsblok bij N_Ed, begrensd op 0,9·d.
+        // Met de hand: 150 kN trek aan 3Ø16 (A_s·f_yd = 262,25 kN) laat
+        // F_c = 262,25 − 150 = 112,25 kN over → x_u = 112 250/(20·300·0,8)
+        // = 23,39 mm → z_u = 454 − 0,4·23,39 = 444,6 mm > 0,9·d = 408,6 mm,
+        // dus begrensd op 0,9·d.
+        let v = r.vakwerk.as_ref().expect("het vakwerk hoort er te zijn");
+        assert!(r.vakwerk_reden.is_none());
+        match &v.z_bepaling.grondslag {
+            ZGrondslag::Evenwicht { werkelijk, begrensd } => {
+                assert!(*begrensd);
+                assert_relative_eq!(werkelijk.x_mm, 23.386, max_relative = 1e-3);
+                assert_relative_eq!(werkelijk.z_mm, 444.65, max_relative = 1e-3);
+            }
+            andere => panic!("verwachtte het evenwicht, kreeg {andere:?}"),
+        }
+        assert!(!v.z_is_0_9d);
+        assert_relative_eq!(v.z_mm, 0.9 * 454.0, max_relative = 1e-12);
+        assert!(v.z_bepaling.toelichting().contains("6.2.3(1)"));
     }
 
     #[test]

@@ -738,31 +738,98 @@ fn zonder_beugels_is_a_l_gelijk_aan_d() {
 // Wat er NIET mag gebeuren
 // ───────────────────────────────────────────────────────────────────────────
 
-/// Een normaalkracht zonder opgegeven z levert een foutmelding, geen
-/// stilzwijgende 0,9·d. Dezelfde discipline als in [`nen_en_1992_1_1::dwarskracht`].
+/// Een normaalkracht zonder opgegeven z is geen weigering meer maar een lijn
+/// met z uit het spanningsblok bij N_Ed, begrensd op 0,9·d (6.2.3(1); zie
+/// [`nen_en_1992_1_1::hefboomsarm`]). Dezelfde regel als in
+/// [`nen_en_1992_1_1::dwarskracht`].
+///
+/// Met de hand, op de referentiebalk (A_s·f_yd = 262,25 kN, 2Ø12 boven laat
+/// zich niet in één regel meenemen; daarom staan hier de ONGELIJKHEDEN):
+///
+/// ```text
+///   op x = 3000 met N_Ed = +75 kN (trek):
+///     z ≤ 0,9·d = 498,6 mm  →  A = M/z + N ≥ 180 000/498,6 + 75 = 436,01 kN
+///   op x = 3000 met N_Ed = −75 kN (druk):
+///     z ≤ 498,6 mm, N niet verrekend  →  A ≥ 180 000/498,6 = 361,01 kN
+///   en x_u(druk) > x_u(trek): de drukzone groeit bij druk.
+/// ```
 #[test]
-fn normaalkracht_zonder_z_levert_een_leesbare_weigering() {
+fn normaalkracht_zonder_z_levert_z_uit_het_evenwicht() {
+    use nen_en_1992_1_1::hefboomsarm::ZGrondslag;
+
     let section = sectie();
     let cage = korf();
     let zones = ReinforcementZones::default();
     let m = mat();
-    let mut env = omhullende();
-    env[6].forces.n_ed = 75.0;
-    let inv = DekkingslijnInvoer {
-        section: &section,
-        cage: &cage,
-        zones: &zones,
-        mat: &m,
-        f_ctk_005_mpa: f_ctk(),
-        lengte_mm: L_MM,
-        omhullende: &env,
-        z_mm: None,
-        c_d_mm: None,
-        shear_opts: ShearOptions::default(),
+
+    let lijn_met = |n_kn: f64| -> Dekkingslijn {
+        let mut env = omhullende();
+        env[6].forces.n_ed = n_kn;
+        let inv = DekkingslijnInvoer {
+            section: &section,
+            cage: &cage,
+            zones: &zones,
+            mat: &m,
+            f_ctk_005_mpa: f_ctk(),
+            lengte_mm: L_MM,
+            omhullende: &env,
+            z_mm: None,
+            c_d_mm: None,
+            shear_opts: ShearOptions::default(),
+        };
+        dekkingslijn(&inv).expect("mét normaalkracht hoort er een lijn te komen")
     };
-    let e = dekkingslijn(&inv).expect_err("hoort te weigeren");
-    assert!(e.contains("6.2.3(1)"), "{e}");
-    assert!(e.contains("Geef z op"), "{e}");
+
+    let trek = lijn_met(75.0);
+    let druk = lijn_met(-75.0);
+
+    let midden_trek = punt_op(&trek.onder.punten, 3000.0, Snedezijde::Enkel);
+    let midden_druk = punt_op(&druk.onder.punten, 3000.0, Snedezijde::Enkel);
+
+    // De grondslag is het evenwicht, en de gebruikte z blijft onder 0,9·d.
+    for p in [midden_trek, midden_druk] {
+        assert!(
+            matches!(p.z_bepaling.grondslag, ZGrondslag::Evenwicht { .. }),
+            "{:?}",
+            p.z_bepaling.grondslag
+        );
+        assert!(p.z_mm <= Z_MM + TOL, "z = {} mm hoort ≤ 0,9·d = {Z_MM} te zijn", p.z_mm);
+        assert_relative_eq!(p.z_bepaling.d_mm, 554.0, max_relative = TOL);
+    }
+    assert!(midden_trek.omhullende_kn >= 180_000.0 / Z_MM + 75.0 - TOL);
+    assert!(midden_druk.omhullende_kn >= 180_000.0 / Z_MM - TOL);
+    assert_relative_eq!(midden_druk.n_ed_kn, -75.0, max_relative = TOL);
+
+    // De richting: bij druk is de drukzone dieper dan bij trek. (De arm zelf
+    // is hier bij trek NIET groter dan bij druk: bij +75 kN komt de 2Ø12
+    // boven in de trekzone en trekt zij de trekresultante omhoog — zie de
+    // moduletekst van `hefboomsarm`. Beide armen liggen boven 0,9·d en zijn
+    // dus begrensd.)
+    let x_van = |p: &Momentpunt| match &p.z_bepaling.grondslag {
+        ZGrondslag::Evenwicht { werkelijk, begrensd } => {
+            assert!(*begrensd, "x = {}: {:?}", p.x_mm, p.z_bepaling.grondslag);
+            werkelijk.x_mm
+        }
+        andere => panic!("verwachtte het evenwicht, kreeg {andere:?}"),
+    };
+    assert!(x_van(midden_druk) > x_van(midden_trek));
+    assert!(midden_trek.z_bepaling.z_werkelijk_mm().unwrap() > Z_MM);
+    assert!(midden_druk.z_bepaling.z_werkelijk_mm().unwrap() > Z_MM);
+
+    // Waar geen normaalkracht werkt — de stations buiten 2500…3500 mm — geldt
+    // gewoon de benadering 0,9·d, ongewijzigd.
+    let bij_1000 = punt_op(&trek.onder.punten, 1000.0, Snedezijde::Enkel);
+    assert_eq!(bij_1000.z_bepaling.grondslag, ZGrondslag::Benadering);
+    assert_relative_eq!(bij_1000.z_mm, Z_MM, max_relative = TOL);
+    assert_relative_eq!(bij_1000.omhullende_kn, 100_000.0 / Z_MM, max_relative = TOL);
+
+    // De dwarskrachtlijn draagt op het midden dezelfde grondslag.
+    let dw = dwarspunt_op(&trek.dwarskracht.punten, 3000.0, Snedezijde::Enkel);
+    let zb = dw.z_bepaling.as_ref().expect("vakwerk");
+    assert!(matches!(zb.grondslag, ZGrondslag::Evenwicht { .. }));
+    assert!(zb.z_mm <= Z_MM + TOL);
+
+    assert!(trek.toelichting.iter().any(|t| t.contains("doorsnede-evenwicht")));
 }
 
 /// Een niet-positieve z wordt geweigerd: op z wordt gedeeld.

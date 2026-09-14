@@ -25,9 +25,11 @@
 //   [4] DE LIJNEN        — `haalAlleDekkingslijnen`: ÉÉN PER BETONSTAAF, niet
 //                          één voor het hele model.
 //   [5] DE TEGENPROEF    — met een LIJNLAST krijgen dezelfde staven wél een
-//                          normaalkracht, en dan weigert de kern beide lijnen
-//                          met 6.2.3(1). Ze komen dan in `mislukt` terecht en
-//                          worden dus gemeld in plaats van stil weggelaten.
+//                          normaalkracht (H = φ·V als verdeelde axiale last),
+//                          en dan komt er TOCH een lijn per staaf: z volgt
+//                          per snede uit het spanningsblok bij N_Ed (6.2.3(1)),
+//                          begrensd op 0,9·d. Vroeger weigerde de kern hier,
+//                          en daarmee voor elk echt model met scheefstand.
 //   [6] DE RAPPORTINVOER — beide lijnen én de scheefstandtekst in één
 //                          `ReportInput`.
 //   [7] DE PDF           — de rekenkern zet hem echt. De proef is een
@@ -91,10 +93,11 @@ function ok(naam, voorwaarde, extra = "") {
 //
 // De scheefstand zet op elke VERTICALE lastcomponent een horizontale metgezel
 // H = φ·V. Bij een lijnlast is dat een verdeelde axiale last óp de staaf, en
-// dan draagt de staaf een normaalkracht — hoe klein ook. De dekkingslijn
-// weigert dat zonder opgegeven z: 6.2.3(1) staat z = 0,9·d uitsluitend toe
-// "in de dwarskrachtberekening van gewapend beton zonder normaalkracht".
-// Blok [5] bewijst dat met dezelfde staven.
+// dan draagt de staaf een normaalkracht — hoe klein ook. Blok [1]–[4] houdt
+// die er bewust buiten, zodat de lijn hier met de gewone z = 0,9·d van
+// 6.2.3(1) wordt gebouwd en het rapport zonder ruis te tellen is; blok [5]
+// zet de lijnlast er wél op en bewijst dat de lijn dan óók komt, met z uit
+// het spanningsblok bij N_Ed.
 //
 // Bij een KNOOPlast valt de metgezel op de knoop zelf. Staat die knoop
 // horizontaal vast — knoop 2 heeft hier een xRoller, het stabiliteitspunt van
@@ -330,8 +333,12 @@ if (!existsSync(TOETSBRUG)) {
   //
   // Dit legt de koppeling vast die anders pas in de praktijk opvalt: zodra de
   // scheefstand op een VERDEELDE last werkt, draagt de staaf een normaalkracht
-  // en weigert de kern de dekkingslijn (6.2.3(1)). De staven horen dan in
-  // `mislukt` te staan met die reden — niet stil te verdwijnen.
+  // — hier van de orde van een halve kilonewton, een spanning van enkele
+  // duizendsten van een N/mm². De kern WEIGERDE daar vroeger op met 6.2.3(1),
+  // en daarmee kreeg geen enkele betonstaaf van een echt model met scheefstand
+  // nog een dekkingslijn. Nu hoort er een lijn per staaf te komen, met z per
+  // snede uit het spanningsblok bij N_Ed, begrensd op 0,9·d, en de grondslag
+  // per punt.
   {
     const lijnlastModel = bouwModel("lijnlast");
     const lijnlastData = {
@@ -341,13 +348,37 @@ if (!existsSync(TOETSBRUG)) {
       combinationResults: rekenDoor(lijnlastModel),
       korven: korvenUitStaven(lijnlastModel.beams),
     };
+    const lijnlastInvoer = buildBetonCheckInputs(lijnlastData);
+    for (const b of lijnlastInvoer.inputs) {
+      const nMax = b.forces_envelope.reduce((m, p) => Math.max(m, Math.abs(p.forces.n_ed)), 0);
+      ok(`staaf ${b.beam_id} draagt door de scheefstand een kleine normaalkracht`,
+        nMax > 1e-6 && nMax < 5, `max|N_Ed| = ${nMax.toFixed(3)} kN`);
+    }
     const uit = await haalAlleDekkingslijnen(lijnlastData, echteKern);
-    ok("geen enkele lijn, en beide staven staan met reden in `mislukt`",
-      uit.lijnen.length === 0 && uit.mislukt.length === 2,
-      `${uit.lijnen.length} lijnen, ${uit.mislukt.length} gemeld`);
-    ok("de reden noemt het normartikel en de normaalkracht",
-      uit.mislukt.every((m) => /6\.2\.3\(1\)/.test(m.reason) && /normaalkracht/.test(m.reason)),
-      uit.mislukt[0]?.reason?.slice(0, 90) ?? "");
+    ok("beide staven krijgen tóch een lijn; niets staat in `mislukt`",
+      uit.lijnen.length === 2 && uit.mislukt.length === 0,
+      `${uit.lijnen.length} lijnen, ${uit.mislukt.length} gemeld${uit.mislukt[0] ? `: ${uit.mislukt[0].reason.slice(0, 90)}` : ""}`);
+    for (const l of uit.lijnen) {
+      const d = l.section_name.includes("600") ? 600 - 30 - 8 - 8 : 500 - 30 - 8 - 8;
+      const punten = [...l.onder.punten, ...l.boven.punten];
+      ok(`staaf ${l.beam_id}: geen enkele z komt boven 0,9·d`,
+        l.onder.punten.every((p) => p.z_mm <= 0.9 * d + 1e-9),
+        `max z onder = ${Math.max(...l.onder.punten.map((p) => p.z_mm)).toFixed(1)} mm, 0,9·d = ${(0.9 * d).toFixed(1)} mm`);
+      // De arm van de buigweerstand hangt niet van M_Ed af, dus de grondslag
+      // volgt alleen de normaalkracht: nul (het vrije uiteinde, waar de
+      // verdeelde axiale last nog niets heeft opgebouwd) is de benadering,
+      // elke andere waarde het spanningsblok.
+      ok(`staaf ${l.beam_id}: zonder normaalkracht de benadering, met normaalkracht het spanningsblok`,
+        punten.every((p) => (Math.abs(p.n_ed_kn) > 1e-6
+          ? /^Evenwicht/.test(p.z_grondslag)
+          : p.z_grondslag === "Benadering")),
+        [...new Set(punten.map((p) => p.z_grondslag))].join(", "));
+      ok(`staaf ${l.beam_id}: een halve kilonewton verandert de lijn niet meetbaar — z blijft op 0,9·d`,
+        l.onder.punten.every((p) => Math.abs(p.z_mm - 0.9 * d) < 1e-6),
+        "de werkelijke arm ligt bij deze licht gewapende liggers boven 0,9·d en is dus begrensd");
+      ok(`staaf ${l.beam_id}: de kanttekeningen leggen de grondslag uit`,
+        l.notes.some((n) => n.includes("doorsnede-evenwicht") && n.includes("6.2.3(1)")));
+    }
   }
 }
 
