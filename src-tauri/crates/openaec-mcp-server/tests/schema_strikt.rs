@@ -558,7 +558,16 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         // klasse of geen van beide zijn alle drie geldige opgaven.
         assert!(zijde.get("required").is_none(), "{veld}");
     }
-    assert_eq!(cage["properties"].as_object().unwrap().len(), 11);
+    // De ZIJSTAVEN van een kolomkorf, om dezelfde reden: zonder dit veld
+    // filtert `additionalProperties: false` ze weg en rekent de client met een
+    // kolom die de helft van zijn wapening mist. Dat is geen veilige kant —
+    // A_s,max van §9.5.2(3) wordt daarmee te ruim.
+    let zijstaven = &cage["properties"]["sides"];
+    assert!(zijstaven.is_object(), "veld 'sides' ontbreekt in het korfschema");
+    assert_eq!(zijstaven["additionalProperties"], false);
+    assert_eq!(zijstaven["type"], json!(["object", "null"]));
+    assert_eq!(zijstaven["required"], json!(["count", "diameter_mm"]));
+    assert_eq!(cage["properties"].as_object().unwrap().len(), 12);
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

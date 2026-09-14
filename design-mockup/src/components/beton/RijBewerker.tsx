@@ -8,6 +8,12 @@
  * krijgt een rij en geeft een rij terug. Enter slaat op, Esc sluit; een aantal
  * onder 1 wordt geweigerd — een rij zonder staven is geen rij maar het
  * weghalen ervan, en dat is een ander besluit dan hier wordt genomen.
+ *
+ * DE DERDE RIJ ZIJN DE ZIJSTAVEN van een kolomkorf. Daar telt het aantal PER
+ * ZIJKANT: "2Ø16 per zijde" zijn er vier in de doorsnede, want de korf is
+ * links-rechts symmetrisch. Dat staat met zoveel woorden in het opschrift en
+ * onder het veld, want wie het als totaal leest voert de helft van de wapening
+ * in — en bij A_s,max van §9.5.2(3) werkt dat naar de onveilige kant.
  */
 import { useState } from "react";
 import "./beton.css";
@@ -20,10 +26,19 @@ export interface Rij {
   diameter_mm: number;
 }
 
+/** De drie rijen van de korf, met de veldnaam van `ReinforcementCage`. */
+export type RijZijde = "top" | "bottom" | "sides";
+
+const TITEL: Record<RijZijde, string> = {
+  bottom: "Onderwapening",
+  top: "Bovenwapening",
+  sides: "Zijstaven (per zijkant)",
+};
+
 export default function RijBewerker({
   zijde, rij, onOpslaan, onSluiten,
 }: {
-  zijde: "top" | "bottom";
+  zijde: RijZijde;
   rij: Rij;
   onOpslaan: (rij: Rij) => void;
   onSluiten: () => void;
@@ -39,9 +54,7 @@ export default function RijBewerker({
       onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); opslaan(); }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onSluiten(); } }}
     >
-      <span className="beton-rijbewerker-titel">
-        {zijde === "bottom" ? "Onderwapening" : "Bovenwapening"}
-      </span>
+      <span className="beton-rijbewerker-titel">{TITEL[zijde]}</span>
       <label>
         aantal
         <input
@@ -60,6 +73,11 @@ export default function RijBewerker({
       <button type="submit" disabled={!geldig}>OK</button>
       <button type="button" onClick={onSluiten}>Annuleren</button>
       {!geldig && <span className="beton-rijbewerker-fout">aantal 1–40</span>}
+      {zijde === "sides" && (
+        <span className="beton-rijbewerker-hint">
+          {n >= 1 ? `${n} per zijkant, dus ${2 * n} in de doorsnede` : "aantal per zijkant"}
+        </span>
+      )}
     </form>
   );
 }

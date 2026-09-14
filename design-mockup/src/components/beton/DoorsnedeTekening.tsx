@@ -69,11 +69,15 @@ import {
   dekkingIsRondomGelijk,
   dekkingVanZijdeMm,
   hartXMm,
+  heeftZijstaven,
+  KORFRIJ_LABEL,
   maat,
   nuttigeHoogteMm,
   omtrekPunten,
   rijLabel,
   staafPosities,
+  zijstaafRij,
+  type KorfRij,
   type Wapeningskorf,
 } from "./wapeningskorf";
 
@@ -131,13 +135,13 @@ interface Props {
    * betonvenster) opent er een invoer voor. Zonder deze prop blijft de
    * tekening een plaatje — zoals in het rapport.
    */
-  onRij?: (zijde: "top" | "bottom") => void;
+  onRij?: (zijde: KorfRij) => void;
   /**
    * Zet een "−" en "+" naast elk rijlabel om er in één klik een staaf af te
    * halen of bij te leggen. De eigenaar begrenst het aantal; de tekening
    * meldt alleen de richting.
    */
-  onRijAantal?: (zijde: "top" | "bottom", delta: 1 | -1) => void;
+  onRijAantal?: (zijde: KorfRij, delta: 1 | -1) => void;
   /**
    * Dubbelklik op de tekening: de eigenaar opent er iets groters voor (de
    * profielkiezer met doorsnede, korf en milieuklasse). Zonder deze prop
@@ -157,13 +161,13 @@ function RijLabel({
 }: {
   x: number;
   y: number;
-  zijde: "top" | "bottom";
+  zijde: KorfRij;
   tekst: string;
   kleuren: BetonTekenKleuren;
-  onRij?: (zijde: "top" | "bottom") => void;
-  onRijAantal?: (zijde: "top" | "bottom", delta: 1 | -1) => void;
+  onRij?: (zijde: KorfRij) => void;
+  onRijAantal?: (zijde: KorfRij, delta: 1 | -1) => void;
 }) {
-  const naam = zijde === "bottom" ? "onderwapening" : "bovenwapening";
+  const naam = KORFRIJ_LABEL[zijde];
   // Halve labelbreedte, geschat op de tekenbreedte van de letters (7,5 px
   // hoog, gemiddeld ruim de helft breed), zodat de knopjes net naast het
   // label staan en er niet overheen vallen.
@@ -275,6 +279,11 @@ export default function DoorsnedeTekening({
   const staven = wapening ? staafPosities(korf.korf, d3) : [];
   const heeftOnder = wapening && korf.korf.bottom.count > 0 && korf.korf.bottom.diameter_mm > 0;
   const heeftBoven = wapening && korf.korf.top.count > 0 && korf.korf.top.diameter_mm > 0;
+  // De zijstaven van een KOLOMkorf. Zij liggen tussen de hoekstaven in, en hun
+  // label komt daarom midden in de doorsnede te staan — daar is bij een kolom
+  // ruimte, en het wijst naar de twee kolommen staven links en rechts.
+  const zijstaven = staven.filter((st) => st.rij === "opzij");
+  const heeftZij = wapening && heeftZijstaven(korf.korf) && zijstaven.length > 0;
   const d = nuttigeHoogteMm(korf.korf, hMm);
 
   const omtrek = omtrekPunten(d3)
@@ -325,11 +334,21 @@ export default function DoorsnedeTekening({
   // Het onderschrift: alles wat er niet ín de tekening past. Dekking en beugel
   // zijn korfgegevens en horen er dus niet te staan als de korf niet getekend
   // is — dan is er in het beeld ook geen beugel om een maat bij te zetten.
+  // Het hart van de zijstaven: het midden van hun hoogtes, op de hartlijn van
+  // de doorsnede op die hoogte.
+  const zMiddenZij = heeftZij
+    ? zijstaven.reduce((a, st) => a + st.z, 0) / zijstaven.length
+    : 0;
+
   const onderschrift = [
     // De rijen komen alleen hier te staan als ze in de doorsnede zelf niet
     // leesbaar passen; dan mogen ze niet wegvallen.
     ...(wapening && !labelsInDeDoorsnede
-      ? [`${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`]
+      ? [
+          `${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven${
+            heeftZij ? `, ${rijLabel(zijstaafRij(korf.korf))} per zijkant` : ""
+          }`,
+        ]
       : []),
     ...(d3.shape === "Rectangle" ? [] : [`h_f ${maat(d3.h_f_mm ?? 0)}`]),
     // Eén dekking rondom leest als "dekking 30"; verschillen de zijden, dan
@@ -357,7 +376,9 @@ export default function DoorsnedeTekening({
         // staat: zonder korf in beeld ook geen staven in de omschrijving.
         titel ??
         (wapening
-          ? `${vormLabel}, ${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven`
+          ? `${vormLabel}, ${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven${
+              heeftZij ? `, ${rijLabel(zijstaafRij(korf.korf))} per zijkant` : ""
+            }`
           : `${vormLabel}, wapening niet getekend`)
       }
     >
@@ -441,6 +462,31 @@ export default function DoorsnedeTekening({
           onRij={onRij}
           onRijAantal={onRijAantal}
         />
+      )}
+      {/* De zijstaven: "2Ø16" met erachter "per zijde", want dat aantal is het
+          aantal op ÉÉN zijkant. Zonder die twee woorden leest de tekening als
+          twee staven in totaal terwijl er vier liggen. */}
+      {labelsInDeDoorsnede && heeftZij && (
+        <>
+          <RijLabel
+            x={sx(hartXMm(d3, zMiddenZij))}
+            y={sy(zMiddenZij) - 2}
+            zijde="sides"
+            tekst={rijLabel(zijstaafRij(korf.korf))}
+            kleuren={kleuren}
+            onRij={onRij}
+            onRijAantal={onRijAantal}
+          />
+          <text
+            x={sx(hartXMm(d3, zMiddenZij))}
+            y={sy(zMiddenZij) + 6}
+            fill={kleuren.tekstZwak}
+            fontSize="6"
+            textAnchor="middle"
+          >
+            per zijde
+          </text>
+        </>
       )}
 
       {maatvoering && (

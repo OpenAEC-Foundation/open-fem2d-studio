@@ -521,3 +521,54 @@ fn getallen_staan_er_nederlands_in() {
     assert_eq!(maat(2780.0), "2.780");
     assert_eq!(maat(12.5), "12,5");
 }
+
+// ── 8. De kolomkorf met staven langs de zijkanten ─────────────────────────────
+
+/// Een kolom 300 × 300 met 2Ø20 onder, 2Ø20 boven en 2Ø16 per zijkant.
+///
+/// Met de hand. De asafstand van de hoekstaven is 30 + 8 + 20/2 = 48 mm en van
+/// de zijstaven 30 + 8 + 16/2 = 46 mm. De onderrij ligt dus op z = 48 en de
+/// bovenrij op z = 252; de twee zijstaven verdelen die 204 mm in drie stukken
+/// van 68 mm en liggen op z = 116 en z = 184. In de breedte: de hoekstaven op
+/// x = 48 en 252, de zijstaven op x = 46 en 254.
+///
+/// Deze test bewaakt dat de PDF de zijstaven werkelijk tekent. Zou de figuur
+/// alleen de twee rijen blijven tekenen, dan laat het rapport wapening weg die
+/// in de toetsing wél meetelt — en dat is precies het soort verschil tussen
+/// beeld en berekening waar deze figurenmodule tegen is gebouwd.
+#[test]
+fn kolomkorf_met_zijstaven_wordt_volledig_getekend() {
+    let s = ConcreteSection::new(300.0, 300.0);
+    let korf = ReinforcementCage {
+        cover_mm: 30.0,
+        stirrup_diameter_mm: 8.0,
+        top: RebarRow { count: 2, diameter_mm: 20.0 },
+        bottom: RebarRow { count: 2, diameter_mm: 20.0 },
+        sides: Some(RebarRow { count: 2, diameter_mm: 16.0 }),
+        ..ReinforcementCage::default()
+    };
+    staven_gelijk(
+        &staaf_posities(&korf, &s),
+        &[
+            (48.0, 48.0, 20.0, Rij::Onder),
+            (252.0, 48.0, 20.0, Rij::Onder),
+            (48.0, 252.0, 20.0, Rij::Boven),
+            (252.0, 252.0, 20.0, Rij::Boven),
+            (46.0, 116.0, 16.0, Rij::Opzij),
+            (254.0, 116.0, 16.0, Rij::Opzij),
+            (46.0, 184.0, 16.0, Rij::Opzij),
+            (254.0, 184.0, 16.0, Rij::Opzij),
+        ],
+    );
+    // Zonder zijstaven blijven het er vier, op precies dezelfde plaatsen.
+    let zonder = ReinforcementCage { sides: None, ..korf };
+    staven_gelijk(
+        &staaf_posities(&zonder, &s),
+        &[
+            (48.0, 48.0, 20.0, Rij::Onder),
+            (252.0, 48.0, 20.0, Rij::Onder),
+            (48.0, 252.0, 20.0, Rij::Boven),
+            (252.0, 252.0, 20.0, Rij::Boven),
+        ],
+    );
+}

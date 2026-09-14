@@ -49,6 +49,18 @@
   justify-content: space-between;
   gap: 8px;
   padding: 3px 0;
+  /* Een rij mag een toelichting onder zich krijgen (de zijstaven leggen uit
+     dat hun aantal PER ZIJKANT telt). Die staat op een eigen regel en duwt de
+     invoer dus niet uit het midden. */
+  flex-wrap: wrap;
+}
+
+.beton-rij-toelichting {
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--theme-text-muted);
+  padding-bottom: 2px;
 }
 
 .beton-label {
@@ -330,6 +342,9 @@
 .beton-rijbewerker label { display: inline-flex; align-items: center; gap: 4px; }
 .beton-rijbewerker input[type="number"] { width: 56px; }
 .beton-rijbewerker-fout { color: var(--theme-danger, #b91c1c); }
+/* "2 per zijkant, dus 4 in de doorsnede" — het getal dat de gebruiker anders
+   verkeerd leest, meteen naast het veld. */
+.beton-rijbewerker-hint { width: 100%; color: var(--theme-text-muted); font-size: 11px; }
 
 /* De "−"/"+" naast een rijlabel in de doorsnedetekening: één staaf minder of meer. */
 .beton-rijknop { opacity: 0.55; }

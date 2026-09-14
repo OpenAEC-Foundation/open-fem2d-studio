@@ -64,10 +64,13 @@ import {
   STANDAARD_KORF,
   controleerKorf,
   dekkingIsRondomGelijk,
+  korfRij,
   korfSamenvatting,
   nuttigeHoogteBovenMm,
   nuttigeHoogteMm,
   rijOppervlakMm2,
+  zetKorfRij,
+  type KorfRij,
   type Wapeningskorf,
 } from "../beton/wapeningskorf";
 import DoorsnedeTekening from "../beton/DoorsnedeTekening";
@@ -366,7 +369,7 @@ export default function ProfielKiezer({
     huidigBeton?.korf ?? STANDAARD_KORF.korf,
   );
   /** Welke rij van de korf staat open in de rij-invoer onder de tekening. */
-  const [betonBewerkRij, setBetonBewerkRij] = useState<"top" | "bottom" | null>(null);
+  const [betonBewerkRij, setBetonBewerkRij] = useState<KorfRij | null>(null);
   const [betonMilieuklasse, setBetonMilieuklasse] = useState<ExposureClass | null>(
     huidigBeton?.milieuklasse ?? null,
   );
@@ -1258,18 +1261,24 @@ export default function ProfielKiezer({
                     wapening={betonKorfFout === null}
                     onRij={betonKorfFout === null ? (zijde) => setBetonBewerkRij(zijde) : undefined}
                     onRijAantal={betonKorfFout === null
-                      ? (zijde, delta) => setBetonKorf((k) => ({
-                          ...k,
-                          [zijde]: { ...k[zijde], count: Math.min(40, Math.max(1, k[zijde].count + delta)) },
+                      ? (zijde, delta) => setBetonKorf((k) => zetKorfRij(k, zijde, {
+                          ...korfRij(k, zijde),
+                          // Zijstaven mogen op 0 uitkomen — zo haal je ze met
+                          // de "−" weer helemaal weg; de boven- en onderrij
+                          // houden 1 als ondergrens.
+                          count: Math.min(
+                            40,
+                            Math.max(zijde === "sides" ? 0 : 1, korfRij(k, zijde).count + delta),
+                          ),
                         }))
                       : undefined}
                   />
                   {betonBewerkRij && (
                     <RijBewerker
                       zijde={betonBewerkRij}
-                      rij={betonKorf[betonBewerkRij]}
+                      rij={korfRij(betonKorf, betonBewerkRij)}
                       onOpslaan={(rij) => {
-                        setBetonKorf((k) => ({ ...k, [betonBewerkRij]: rij }));
+                        setBetonKorf((k) => zetKorfRij(k, betonBewerkRij, rij));
                         setBetonBewerkRij(null);
                       }}
                       onSluiten={() => setBetonBewerkRij(null)}

@@ -2108,8 +2108,9 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
                     .to_string(),
             );
             r.notes.push(
-                "Niet elke eis van §9.5 is te toetsen met een wapeningsmodel dat alleen een \
-                 boven- en een onderrij kent. Wat er ontbreekt, staat hieronder — het is niet \
+                "Niet elke eis van §9.5 is een rekenregel; §9.5.3(2) en (5) zijn beoordelingen \
+                 van de detaillering en §9.5.3(4)ii eist naast een afstand ook een AANTAL \
+                 beugels. Wat er daardoor niet is nagekeken, staat hieronder — het is niet \
                  overgeslagen, het kan niet."
                     .to_string(),
             );

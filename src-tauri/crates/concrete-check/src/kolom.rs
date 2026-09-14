@@ -59,9 +59,10 @@
 
 use mechanics::{ForcePoint, ForceStateSnapshot};
 use nen_en_1992_1_1::kolom::{
-    as_max_9_5_2, as_min_9_5_2, kolom_deelstappen, kolomslankheid,
+    as_max_9_5_2, as_min_9_5_2, hoekstaven_9_5_2, kolom_deelstappen, kolomslankheid,
     min_diameter_dwarswapening_9_5_3, min_diameter_langsstaaf_9_5_2, min_dwarsafmeting_9_5_1,
-    s_cl_tmax_9_5_3, toepassingsgebied_9_5_1, traagheidsstraal_mm, Beugelzone, Knikgeval,
+    opgesloten_staven_9_5_3, s_cl_tmax_9_5_3, toepassingsgebied_9_5_1, traagheidsstraal_mm,
+    Beugelzone, Knikgeval,
     Kniklengtebepaling, KolomInvoer, KolomdetailleringInvoer, Kolomslankheid,
     Overlappingssituatie, Schoring,
 };
@@ -456,33 +457,29 @@ fn geen_kolomgegevens() -> String {
 
 /// §5.8 en §9.5 voor één staaf.
 ///
-/// # Wat A_s hier is, en wat er in een kolom aan ontbreekt
+/// # Wat A_s hier is
 ///
 /// ω = A_s·f_yd/(A_c·f_cd) en A_s,min/A_s,max van §9.5.2 vragen de TOTALE
-/// langswapening. [`ReinforcementCage`] kent één bovenrij en één onderrij; een
-/// kolom heeft staven langs alle vier de zijden. A_s is hier dus de som van de
-/// twee rijen die het model kent, en dat is wat er in de afleiding staat.
+/// langswapening — §9.5.2(2) schrijft "de totale hoeveelheid langswapening" en
+/// (3) "de oppervlakte van de doorsnede van de langswapening". Dat is hier
+/// [`ReinforcementCage::a_s_total_mm2`]: de onderrij, de bovenrij én de
+/// zijstaven van beide zijkanten.
 ///
-/// Dat maakt de toets niet onbruikbaar, en de richting van de afwijking is te
-/// benoemen:
+/// Dat was niet altijd zo. Zolang de korf alleen een boven- en een onderrij
+/// kende, ontbraken de zijstaven in A_s, en dat werkte twee kanten op: bij
+/// A_s,min en bij λ_lim naar de veilige kant, maar bij **A_s,max naar de
+/// ONVEILIGE** — een te lage A_s laat een bovengrens ruimer lijken dan hij is.
+/// Die afwijking bestaat niet meer, en de kanttekeningen die haar aankondigden
+/// zijn dus weggehaald in plaats van blijven staan.
 ///
-/// * **λ_lim** — ontbrekende zijstaven verlagen ω en daarmee B = √(1+2ω), dus
-///   λ_lim. Een te lage λ_lim zegt eerder "tweede orde nodig" dan nodig: de
-///   VEILIGE kant.
-/// * **A_s,min (9.12N)** — een te lage A_s laat de eis eerder falen. Ook de
-///   veilige kant.
-/// * **A_s,max** — een te lage A_s laat de bovengrens juist ruimer lijken. Wie
-///   de zijstaven niet invoert, kan hier dus een overschrijding missen. Dat
-///   staat bij de toets.
+/// # De twee eisen die de LIGGING vragen
 ///
-/// Twee eisen zijn zónder de zijstaven helemaal NIET te toetsen, en die worden
-/// dan ook niet stilzwijgend overgeslagen maar als tekst meegeleverd
-/// ([`nen_en_1992_1_1::kolom::niet_getoetste_9_5_eisen`]): §9.5.2(4) — ten
-/// minste één staaf in iedere hoek — en §9.5.3(6) — elke hoekstaaf opgesloten
-/// en geen staaf verder dan 150 mm van een opgesloten staaf. Beide vragen de
-/// LIGGING van elke staaf in het vlak van de doorsnede, niet alleen haar
-/// hoogte. Zolang het korfmodel geen rij per zijde kent, kunnen ze niet, en
-/// zeggen ze dat.
+/// §9.5.2(4) (ten minste één staaf in iedere hoek) en §9.5.3(6) (elke
+/// hoekstaaf opgesloten, geen staaf verder dan 150 mm van een opgesloten
+/// staaf) vragen niet de hoogte maar de PLAATS van elke staaf. Zij worden nu
+/// getoetst, met [`ReinforcementCage::staafposities`] als invoer — dezelfde
+/// meetkunde als waarmee de doorsnede wordt getekend, zodat het beeld en de
+/// toets niet uiteen kunnen lopen.
 pub fn kolomtoetsen(
     section: &ConcreteSection,
     cage: &ReinforcementCage,
@@ -673,7 +670,7 @@ pub fn kolomtoetsen(
         schoring: k.bracing,
         i_mm,
         a_c_mm2: section.area_mm2(),
-        a_s_mm2: cage.a_s_top_mm2() + cage.a_s_bottom_mm2(),
+        a_s_mm2: cage.a_s_total_mm2(),
         f_cd_mpa: mat.f_cd(),
         f_yd_mpa: mat.f_yd(),
         n_ed_kn: gov.forces.n_ed,
@@ -841,13 +838,14 @@ pub fn kolomtoetsen(
         slank.c_grondslag.toelichting()
     ));
     poort.notes.push(format!(
-        "ω = A_s·f_yd/(A_c·f_cd) = {} is genomen met A_s = {} mm², de SOM van de boven- en de \
-         onderrij van de korf. Het wapeningsmodel kent geen staven langs de ZIJKANTEN van een \
-         kolom; die tellen dus niet mee. De afwijking is naar de veilige kant: minder A_s geeft \
-         een lagere B = √(1+2ω) en dus een lagere λ_lim, waardoor deze toets eerder \"tweede orde \
-         nodig\" zegt dan strikt nodig is.",
+        "ω = A_s·f_yd/(A_c·f_cd) = {} is genomen met A_s = {} mm², de TOTALE langswapening: de \
+         onderrij ({} mm²), de bovenrij ({} mm²) en de zijstaven van beide zijkanten samen \
+         ({} mm²).",
         nl(slank.omega, 3),
-        nl(cage.a_s_top_mm2() + cage.a_s_bottom_mm2(), 0)
+        nl(cage.a_s_total_mm2(), 0),
+        nl(cage.a_s_bottom_mm2(), 0),
+        nl(cage.a_s_top_mm2(), 0),
+        nl(cage.a_s_sides_mm2(), 0)
     ));
     for kant in &slank.kanttekeningen {
         poort.notes.push(kant.clone());
@@ -1030,25 +1028,17 @@ pub fn kolomtoetsen(
     // Ze horen hier en niet bij §9.2: §9.2 is de BALK. Een staaf krijgt deze
     // eisen zodra er §5.8-gegevens voor zijn opgegeven — dat is het moment
     // waarop de constructeur zegt dat dit een op druk belast element is.
-    let phi_l: Vec<f64> = [&cage.top, &cage.bottom]
-        .iter()
-        .filter(|r| r.count > 0 && r.diameter_mm > 0.0)
-        .map(|r| r.diameter_mm)
-        .collect();
-    let (phi_min, phi_max) = if phi_l.is_empty() {
-        (0.0, 0.0)
-    } else {
-        (
-            phi_l.iter().copied().fold(f64::INFINITY, f64::min),
-            phi_l.iter().copied().fold(0.0_f64, f64::max),
-        )
-    };
+    // Φ_l,min en Φ_l,max over ALLE drie de rijen. Dat is niet hetzelfde als
+    // "de dikste en de dunste van boven en onder": §9.5.3(3) noemt
+    // uitdrukkelijk de MINIMUMdiameter en §9.5.3(1) de MAXIMALE, dus dunne
+    // zijstaven verscherpen s_cl,tmax en dikke zijstaven de beugeldiameter.
+    let (phi_min, phi_max) = cage.phi_l_min_max_mm().unwrap_or((0.0, 0.0));
     let detail = KolomdetailleringInvoer {
         force_state: state,
         h_mm: section.h_mm,
         b_mm: section.b_w_mm(),
         a_c_mm2: section.area_mm2(),
-        a_s_mm2: cage.a_s_top_mm2() + cage.a_s_bottom_mm2(),
+        a_s_mm2: cage.a_s_total_mm2(),
         phi_l_min_mm: phi_min,
         phi_l_max_mm: phi_max,
         phi_dwars_mm: if cage.stirrup_diameter_mm > 0.0 {
@@ -1057,6 +1047,7 @@ pub fn kolomtoetsen(
             None
         },
         s_dwars_mm: cage.stirrup_spacing_mm,
+        n_beugelbenen: cage.stirrup_legs,
         // Beide zijn hieronder alleen in gebruik bij de toets die ze nodig
         // heeft; de andere toetsen lezen ze niet. De waarde die hier staat is
         // dus nooit een stilzwijgende aanname.
@@ -1064,6 +1055,10 @@ pub fn kolomtoetsen(
         overlapping: k.lap_situation.unwrap_or(Overlappingssituatie::GeenLassen),
         n_ed_druk_kn: n_druk_kn,
         f_yd_mpa: mat.f_yd(),
+        // De ligging van elke langsstaaf, voor §9.5.2(4) en §9.5.3(6). De korf
+        // levert hem zelf, zodat de toets en de doorsnedetekening dezelfde
+        // meetkunde gebruiken.
+        staafposities: cage.staafposities(section),
     };
 
     let mut toepassing = toepassingsgebied_9_5_1(&detail);
@@ -1080,28 +1075,16 @@ pub fn kolomtoetsen(
     checks.push(benoem(min_dwarsafmeting_9_5_1(&detail)));
     checks.push(benoem(min_diameter_langsstaaf_9_5_2(&detail)));
 
-    let mut as_min = as_min_9_5_2(&detail);
-    as_min.notes.push(
-        "A_s is de SOM van de boven- en de onderrij van de korf. Staven langs de ZIJKANTEN kent \
-         het wapeningsmodel niet; liggen ze er wel, dan is de werkelijke A_s groter en is deze \
-         minimumeis dus strenger getoetst dan nodig — de veilige kant."
-            .to_string(),
-    );
-    checks.push(benoem(as_min));
+    // A_s is hier de TOTALE langswapening — onderrij, bovenrij en de zijstaven
+    // van beide zijkanten. Dat is wat §9.5.2(2) ("de totale hoeveelheid
+    // langswapening") en (3) ("de oppervlakte van de doorsnede van de
+    // langswapening") vragen. Zolang de zijstaven niet meetelden, stond hier
+    // een kanttekening dat A_s,max in werkelijkheid overschreden kon zijn; die
+    // afwijking bestaat niet meer en de kanttekening dus ook niet.
+    checks.push(benoem(as_min_9_5_2(&detail)));
 
     match k.lap_situation {
-        Some(_) => {
-            let mut as_max = as_max_9_5_2(&detail);
-            as_max.notes.push(
-                "LET OP, hier werkt het ontbreken van de zijstaven de ANDERE kant op. A_s is de \
-                 som van de twee rijen die het model kent; staven langs de zijkanten tellen niet \
-                 mee, dus de werkelijke A_s is groter en deze BOVENgrens kan in werkelijkheid wél \
-                 zijn overschreden terwijl hier staat dat hij voldoet. Voer de zijstaven mee in de \
-                 twee rijen als hun oppervlakte moet meetellen."
-                    .to_string(),
-            );
-            checks.push(benoem(as_max));
-        }
+        Some(_) => checks.push(benoem(as_max_9_5_2(&detail))),
         None => checks.push(benoem(calc(
             "9.5.2_as_max",
             "Maximale langswapening in een kolom",
@@ -1118,6 +1101,7 @@ pub fn kolomtoetsen(
         ))),
     }
 
+    checks.push(benoem(hoekstaven_9_5_2(&detail)));
     checks.push(benoem(min_diameter_dwarswapening_9_5_3(&detail)));
 
     match k.stirrup_zone {
@@ -1138,6 +1122,21 @@ pub fn kolomtoetsen(
             ],
         ))),
     }
+
+    // §9.5.3(6) staat als laatste van de §9.5-reeks, want hij leunt op de
+    // hoekstaven van §9.5.2(4): zonder hoekstaaf is er geen opgesloten staaf om
+    // vanaf te meten, en dan zegt deze toets dat met zoveel woorden.
+    let mut opgesloten = opgesloten_staven_9_5_3(&detail);
+    if section.shape != ConcreteShape::Rectangle {
+        opgesloten.notes.push(
+            "Deze doorsnede is geen rechthoek. De staven zijn per rij verdeeld over de breedte \
+             die op hun eigen hoogte aanwezig is, dus over het LIJF waar de rij in het lijf ligt \
+             en over de flens waar hij in de flens ligt. Een T of L als kolom is buiten het beeld \
+             van §9.5; lees de gemeten afstand met die beperking."
+                .to_string(),
+        );
+    }
+    checks.push(benoem(opgesloten));
 
     Kolomuitkomst { checks, slankheid: Some(slank) }
 }

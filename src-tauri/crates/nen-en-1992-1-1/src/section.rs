@@ -795,6 +795,36 @@ pub struct ReinforcementCage {
     pub top: RebarRow,
     /// Onderwapening (aan de zijde z = 0).
     pub bottom: RebarRow,
+    /// Wapening langs de twee verticale ZIJKANTEN — de staven die van een
+    /// balkkorf een KOLOMkorf maken. `None` = ze zijn er niet, en dat is
+    /// letterlijk het gedrag van vóór dit veld.
+    ///
+    /// # `count` is het aantal staven op ÉÉN zijkant
+    ///
+    /// De korf wordt links-rechts symmetrisch verondersteld, dus in de
+    /// doorsnede liggen er tweemaal zoveel. "4Ø20 boven, 4Ø20 onder, 2Ø16 per
+    /// zijde" is dus een kolom met 12 staven — precies zoals een constructeur
+    /// een kolom uitschrijft. [`Self::a_s_sides_mm2`] rekent daarom met het
+    /// DUBBELE van het rijoppervlak.
+    ///
+    /// # De hoekstaven zitten hier NIET in
+    ///
+    /// Die horen bij [`Self::top`] en [`Self::bottom`]; deze rij telt alleen
+    /// de staven ertussen. Zonder die afspraak zou een hoekstaaf twee keer in
+    /// A_s meetellen en zou §9.5.2(4) niet meer te toetsen zijn — de vraag
+    /// "staat er in iedere hoek een staaf" is dan de vraag of de boven- en de
+    /// onderrij elk minstens twee staven hebben.
+    ///
+    /// # Waarom dit een `Option` met `serde(default)` is
+    ///
+    /// Dezelfde afspraak als bij de beugelvelden en de dekking per zijde: de
+    /// struct draagt `deny_unknown_fields`, en een projectbestand van vóór dit
+    /// veld moet zonder wijziging inleesbaar blijven. `None` en
+    /// `Some(lege rij)` betekenen hetzelfde en worden door
+    /// [`Self::side_row`] meteen gelijkgeschakeld.
+    #[serde(default)]
+    #[ts(optional)]
+    pub sides: Option<RebarRow>,
     /// Hart-op-hartafstand s van de beugels, gemeten LANGS de lengteas, in mm
     /// (§9.2.2(5), symbool s in (9.4); begrensd door s_l,max in §9.2.2(6)).
     ///
@@ -886,6 +916,63 @@ pub struct RebarLayer {
     pub area_mm2: f64,
     /// "onder 3Ø16" / "boven 2Ø12".
     pub label: String,
+}
+
+/// De plaats van ÉÉN langsstaaf in het vlak van de doorsnede.
+///
+/// Bestaat omdat §9.5.2(4) en §9.5.3(6) niet naar hoogte maar naar PLAATS
+/// vragen: "ten minste één staaf in iedere hoek" en "geen enkele staaf …
+/// verder dan 150 mm vanaf een opgesloten staaf". [`RebarLayer`] kan die twee
+/// niet beantwoorden — een laag heeft geen breedte.
+///
+/// Wordt geleverd door [`ReinforcementCage::staafposities`]; daar staat ook
+/// waar de twee assen vandaan komen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Staafpositie {
+    /// x van het staafhart ten opzichte van de HARTLIJN, mm; naar rechts
+    /// positief.
+    pub x_mm: f64,
+    /// z van het staafhart boven de ONDERRAND, mm.
+    pub z_mm: f64,
+    pub diameter_mm: f64,
+    /// Uit welke rij van de korf deze staaf komt.
+    pub rij: Staafrij,
+    /// Ligt deze staaf in een hoek van de doorsnede? Alleen de buitenste
+    /// staven van de onder- en de bovenrij; zie
+    /// [`ReinforcementCage::staafposities`].
+    pub in_hoek: bool,
+}
+
+/// Uit welke rij van de korf een staaf komt.
+///
+/// Draagt geen rekenwaarde — de toetsen kijken naar `x_mm`, `z_mm` en
+/// `in_hoek` — maar wel de herkomst, zodat een tekening of een tabel de staaf
+/// kan benoemen zonder hem uit zijn hoogte te moeten terugrekenen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Staafrij {
+    /// [`ReinforcementCage::bottom`], de zijde z = 0.
+    Onder,
+    /// [`ReinforcementCage::top`], de zijde z = h.
+    Boven,
+    /// [`ReinforcementCage::sides`], de twee verticale zijkanten.
+    Opzij,
+}
+
+impl Staafrij {
+    pub fn label(self) -> &'static str {
+        match self {
+            Staafrij::Onder => "onder",
+            Staafrij::Boven => "boven",
+            Staafrij::Opzij => "opzij",
+        }
+    }
+}
+
+impl Staafpositie {
+    /// Hart-op-hartafstand tot een andere staaf, mm.
+    pub fn afstand_mm(&self, ander: &Staafpositie) -> f64 {
+        (self.x_mm - ander.x_mm).hypot(self.z_mm - ander.z_mm)
+    }
 }
 
 /// Spiegel de wapeningslagen in de hoogte (z → h − z), om een negatief moment
@@ -1034,16 +1121,127 @@ impl ReinforcementCage {
         self.top.area_mm2()
     }
 
+    /// De zijstaven als rij, of de LEGE rij als er geen zijn.
+    ///
+    /// `None` en een rij met 0 staven betekenen hetzelfde; die twee worden
+    /// hier één keer gelijkgeschakeld zodat het onderscheid nergens anders in
+    /// de crate nog bestaat — dezelfde vorm als [`Self::face`].
+    pub fn side_row(&self) -> RebarRow {
+        self.sides.unwrap_or_default()
+    }
+
+    /// Staaldoorsnede van de zijstaven in mm² — **beide** zijkanten samen.
+    ///
+    /// `count` van de rij is het aantal per zijkant (zie [`Self::sides`]), dus
+    /// dit is tweemaal het rijoppervlak. Wie hier het enkelvoudige getal zou
+    /// nemen, telt de helft van de zijstaven niet mee, en dat werkt bij
+    /// A_s,max van §9.5.2(3) naar de ONveilige kant.
+    pub fn a_s_sides_mm2(&self) -> f64 {
+        2.0 * self.side_row().area_mm2()
+    }
+
+    /// De TOTALE langswapening van de doorsnede in mm²: onder + boven + beide
+    /// zijkanten.
+    ///
+    /// Dit is de A_s die §9.5.2(2) en (3) bedoelen. De norm schrijft daar "de
+    /// totale hoeveelheid langswapening" respectievelijk "de oppervlakte van
+    /// de doorsnede van de langswapening" — alle staven dus, niet alleen die
+    /// van twee rijen.
+    pub fn a_s_total_mm2(&self) -> f64 {
+        self.a_s_bottom_mm2() + self.a_s_top_mm2() + self.a_s_sides_mm2()
+    }
+
+    /// De grootste en de kleinste diameter die in de korf werkelijk voorkomt,
+    /// over ALLE drie de rijen. `None` = er ligt geen hoofdwapening.
+    ///
+    /// Φ_l,min stuurt s_cl,tmax (§9.5.3(3), tak "20 maal de minimumdiameter")
+    /// en Φ_l,max de minimumdiameter van de dwarswapening (§9.5.3(1)). Zonder
+    /// de zijstaven zou een korf met dikke hoekstaven en dunne tussenstaven de
+    /// verkeerde kant op rekenen: de norm zegt op de ene plaats uitdrukkelijk
+    /// MINIMUMdiameter en op de andere MAXIMALE diameter.
+    pub fn phi_l_min_max_mm(&self) -> Option<(f64, f64)> {
+        let aanwezig: Vec<f64> = [self.bottom, self.top, self.side_row()]
+            .iter()
+            .filter(|r| !r.is_empty())
+            .map(|r| r.diameter_mm)
+            .collect();
+        if aanwezig.is_empty() {
+            return None;
+        }
+        Some((
+            aanwezig.iter().copied().fold(f64::INFINITY, f64::min),
+            aanwezig.iter().copied().fold(0.0_f64, f64::max),
+        ))
+    }
+
+    /// De hoogte van de as van de onderste en van de bovenste staaflaag, mm —
+    /// de twee einden waartussen de zijstaven worden verdeeld.
+    ///
+    /// Is een van beide rijen leeg, dan wordt de as genomen waar een staaf van
+    /// de ZIJRIJ zou liggen als hij die rand raakte. Dat is geen aanname over
+    /// wapening die er niet is: het is de plaats van het eerste staafhart dat
+    /// de dekking van die rand toelaat, en dus het juiste eindpunt van de
+    /// verdeling.
+    fn zijstaaf_span_mm(&self, h_mm: f64, zij: &RebarRow) -> (f64, f64) {
+        let diameter = |r: &RebarRow| if r.is_empty() { zij.diameter_mm } else { r.diameter_mm };
+        let z_onder = self.cover_at_mm(CoverSide::Bottom)
+            + self.stirrup_diameter_mm
+            + diameter(&self.bottom) / 2.0;
+        let z_boven = h_mm
+            - (self.cover_at_mm(CoverSide::Top)
+                + self.stirrup_diameter_mm
+                + diameter(&self.top) / 2.0);
+        (z_onder, z_boven)
+    }
+
     /// De wapeningslagen voor de doorsnedeberekening. Lege rijen (0 staven)
     /// leveren geen laag.
+    ///
+    /// # De zijstaven doen mee
+    ///
+    /// Elke zijstaafhoogte levert een eigen laag met het oppervlak van TWEE
+    /// staven — links en rechts liggen op dezelfde hoogte en hebben dus
+    /// dezelfde rek. Dat volgt rechtstreeks uit 6.1(2)P: "de rekken in
+    /// aanhechtend betonstaal … zijn gelijk aan die in het omringende beton",
+    /// zonder enige beperking tot twee lagen. Een korf zonder zijstaven
+    /// levert onveranderd twee lagen op, dus geen bestaande berekening
+    /// verschuift.
+    ///
+    /// # Waar zij liggen is een MODELKEUZE
+    ///
+    /// De norm schrijft de onderlinge afstand van de zijstaven niet voor; hij
+    /// begrenst haar alleen (§9.5.3(6): geen staaf verder dan 150 mm van een
+    /// opgesloten staaf). Dit model verdeelt ze GELIJKMATIG tussen de as van
+    /// de onderrij en die van de bovenrij, want dat is hoe een kolomkorf
+    /// gewoonlijk wordt uitgevoerd. [`Self::assumptions`] schrijft die keuze
+    /// uit, zoals ook de vaste beugelhoek van 90° daar staat.
     pub fn layers(&self, h_mm: f64) -> Vec<RebarLayer> {
-        let mut lagen = Vec::with_capacity(2);
+        let zij = self.side_row();
+        let mut lagen = Vec::with_capacity(2 + zij.count as usize);
         if !self.bottom.is_empty() {
             lagen.push(RebarLayer {
                 z_mm: self.axis_offset_side_mm(RebarSide::Bottom),
                 area_mm2: self.bottom.area_mm2(),
                 label: format!("onder {}", self.bottom.label()),
             });
+        }
+        if !zij.is_empty() {
+            let (z_onder, z_boven) = self.zijstaaf_span_mm(h_mm, &zij);
+            let n = zij.count;
+            // Eén staaf per zijkant op elke hoogte, dus twee in de doorsnede;
+            // vandaar het oppervlak van twee staven per laag.
+            let oppervlak = 2.0 * std::f64::consts::PI * (zij.diameter_mm / 2.0).powi(2);
+            for k in 1..=n {
+                lagen.push(RebarLayer {
+                    z_mm: z_onder + (z_boven - z_onder) * k as f64 / (n + 1) as f64,
+                    area_mm2: oppervlak,
+                    label: if n == 1 {
+                        format!("opzij 2Ø{}", fmt_mm(zij.diameter_mm))
+                    } else {
+                        format!("opzij 2Ø{} ({k} van {n})", fmt_mm(zij.diameter_mm))
+                    },
+                });
+            }
         }
         if !self.top.is_empty() {
             lagen.push(RebarLayer {
@@ -1053,6 +1251,89 @@ impl ReinforcementCage {
             });
         }
         lagen
+    }
+
+    /// De ligging van ELKE langsstaaf in het vlak van de doorsnede.
+    ///
+    /// Nodig voor §9.5.2(4) ("ten minste één staaf in iedere hoek") en
+    /// §9.5.3(6) ("geen enkele staaf … verder dan 150 mm vanaf een opgesloten
+    /// staaf"): die twee eisen gaan niet over hoogte maar over PLAATS, en zijn
+    /// daarom met [`Self::layers`] alleen niet te beantwoorden.
+    ///
+    /// # De maten
+    ///
+    /// * `x_mm` telt vanaf de HARTLIJN van de doorsnede, naar rechts positief.
+    ///   De kern kent geen linker- of rechterrand: elke band ligt gecentreerd
+    ///   om de hartlijn (zie [`ConcreteSection::bands`]), en dat de flens van
+    ///   een L in het RAPPORT links wordt getekend is een tekenkeuze en geen
+    ///   rekengrootheid.
+    /// * `z_mm` telt vanaf de onderrand, net als bij [`RebarLayer`].
+    ///
+    /// # De verdeling
+    ///
+    /// Elke rij ligt gecentreerd op de breedte die op ZIJN EIGEN hoogte
+    /// aanwezig is — dezelfde regel als [`Self::validate`] en als
+    /// `staafPosities` in de frontend, zodat de tekening en de toets niet
+    /// uiteen kunnen lopen. De inzet vanaf de zijkant is
+    /// `c_zijkant + Ø_beugel + Ø_staaf/2`; bij één staaf in een rij staat die
+    /// in het midden.
+    pub fn staafposities(&self, section: &ConcreteSection) -> Vec<Staafpositie> {
+        let mut uit: Vec<Staafpositie> = Vec::new();
+        let inzet = |rij: &RebarRow| {
+            self.cover_at_mm(CoverSide::Sides) + self.stirrup_diameter_mm + rij.diameter_mm / 2.0
+        };
+        for (rij, welke) in [(self.bottom, Staafrij::Onder), (self.top, Staafrij::Boven)] {
+            if rij.is_empty() {
+                continue;
+            }
+            let z = if welke == Staafrij::Boven {
+                section.h_mm - self.axis_offset_side_mm(RebarSide::Top)
+            } else {
+                self.axis_offset_side_mm(RebarSide::Bottom)
+            };
+            let halve_binnenmaat = section.width_at_mm(z) / 2.0 - inzet(&rij);
+            for i in 0..rij.count {
+                // De buitenste staaf van de onder- en de bovenrij ligt in een
+                // hoek van de doorsnede; §9.5.2(4) vraagt precies naar die
+                // vier. Eén staaf in een rij staat in het MIDDEN en bezet dus
+                // geen hoek — dan is de eis niet gehaald, en dat hoort te
+                // blijken.
+                let in_hoek = rij.count >= 2 && (i == 0 || i == rij.count - 1);
+                let x = if rij.count == 1 {
+                    0.0
+                } else {
+                    -halve_binnenmaat
+                        + 2.0 * halve_binnenmaat * i as f64 / (rij.count - 1) as f64
+                };
+                uit.push(Staafpositie {
+                    x_mm: x,
+                    z_mm: z,
+                    diameter_mm: rij.diameter_mm,
+                    rij: welke,
+                    in_hoek,
+                });
+            }
+        }
+        let zij = self.side_row();
+        if !zij.is_empty() {
+            let (z_onder, z_boven) = self.zijstaaf_span_mm(section.h_mm, &zij);
+            let n = zij.count;
+            for k in 1..=n {
+                let z = z_onder + (z_boven - z_onder) * k as f64 / (n + 1) as f64;
+                let halve_binnenmaat = section.width_at_mm(z) / 2.0 - inzet(&zij);
+                for teken in [-1.0, 1.0] {
+                    uit.push(Staafpositie {
+                        x_mm: teken * halve_binnenmaat,
+                        z_mm: z,
+                        diameter_mm: zij.diameter_mm,
+                        rij: Staafrij::Opzij,
+                        // Een zijstaaf ligt tussen de hoeken in, nooit erin.
+                        in_hoek: false,
+                    });
+                }
+            }
+        }
+        uit
     }
 
     /// De dwarskrachtwapening, of de reden waarom zij niet bekend is.
@@ -1169,6 +1450,21 @@ impl ReinforcementCage {
                 fmt_mm(f_ywk)
             ));
         }
+        let zij = self.side_row();
+        if !zij.is_empty() {
+            uit.push(format!(
+                "Er liggen zijstaven: {} per zijkant, links en rechts gelijk, dus {} staven \
+                 tussen de hoekstaven. Hun onderlinge afstand is een MODELKEUZE en geen \
+                 normvoorschrift — de norm begrenst haar alleen (§9.5.3(6): geen staaf verder \
+                 dan 150 mm vanaf een opgesloten staaf). Zij zijn hier GELIJKMATIG verdeeld \
+                 tussen de as van de onderrij en die van de bovenrij. Elke hoogte levert één \
+                 wapeningslaag met twee staven; dat zij meerekenen volgt uit 6.1(2)P, dat de \
+                 rek in aanhechtend betonstaal gelijkstelt aan die in het omringende beton, \
+                 zonder beperking tot twee lagen.",
+                zij.label(),
+                2 * zij.count
+            ));
+        }
         if !self.dekking_is_rondom_gelijk() {
             uit.push(format!(
                 "De dekking verschilt per zijde: boven {} mm, onder {} mm, opzij {} mm \
@@ -1216,8 +1512,16 @@ impl ReinforcementCage {
                 fmt_mm(self.cover_at_mm(CoverSide::Sides))
             )
         };
+        // De zijstaven staan er alleen als ze er zijn. Een korf zonder
+        // zijstaven leest dus letterlijk zoals hij altijd las.
+        let zij = self.side_row();
+        let zijstaven = if zij.is_empty() {
+            String::new()
+        } else {
+            format!("opzij {} per zijde, ", zij.label())
+        };
         format!(
-            "onder {}, boven {}, {}, {}",
+            "onder {}, boven {}, {zijstaven}{}, {}",
             self.bottom.label(),
             self.top.label(),
             beugel,
@@ -1257,7 +1561,25 @@ impl ReinforcementCage {
             }
         }
         if self.bottom.is_empty() && self.top.is_empty() {
-            return Err("de korf bevat geen hoofdwapening".into());
+            if self.side_row().is_empty() {
+                return Err("de korf bevat geen hoofdwapening".into());
+            }
+            // Zijstaven zonder boven- of onderrij bestaan niet als korf: de
+            // zijstaven worden verdeeld TUSSEN die twee rijen, en §9.5.2(4)
+            // eist juist in iedere hoek een staaf. Dit is een aparte melding
+            // en niet "geen hoofdwapening", want er staat wél iets — het staat
+            // alleen op een plaats die zonder hoekstaven geen betekenis heeft.
+            return Err("de korf heeft alleen zijstaven en geen boven- of onderwapening; \
+                        de zijstaven worden verdeeld tussen de onder- en de bovenrij, en \
+                        §9.5.2(4) eist bovendien in iedere hoek een staaf"
+                .into());
+        }
+        if self.side_row().count > 0 && !(self.side_row().diameter_mm > 0.0) {
+            return Err(format!(
+                "er zijn {} zijstaven per zijkant opgegeven zonder diameter; kies een \
+                 staafdiameter of zet het aantal op 0",
+                self.side_row().count
+            ));
         }
         // De beugelvelden. Nog steeds geen normtoets: alleen of het opgegeven
         // getal als maat kán bestaan. Een LEEG veld is hier geldig — dat
@@ -1339,6 +1661,41 @@ impl ReinforcementCage {
             if self.top.is_empty() { 0.0 } else { self.axis_offset_side_mm(RebarSide::Top) };
         if onder + boven >= section.h_mm {
             return Err("boven- en onderwapening overlappen elkaar in de hoogte".into());
+        }
+        // De zijstaven. Twee meetkundige eisen, allebei zonder normregel: zij
+        // moeten in de BREEDTE naast elkaar passen (links en rechts, met de
+        // dekking van de zijkanten ertussen) en in de HOOGTE tussen de onder-
+        // en de bovenrij, zonder elkaar te raken.
+        let zij = self.side_row();
+        if !zij.is_empty() {
+            let (z_onder, z_boven) = self.zijstaaf_span_mm(section.h_mm, &zij);
+            let inzet = c_zij + self.stirrup_diameter_mm + zij.diameter_mm / 2.0;
+            for z in [z_onder, z_boven] {
+                let breedte = section.width_at_mm(z);
+                let hart_op_hart = breedte - 2.0 * inzet;
+                if hart_op_hart < zij.diameter_mm - 1e-9 {
+                    return Err(format!(
+                        "de zijstaven {} per zijde passen niet naast elkaar: hun harten liggen \
+                         {hart_op_hart:.0} mm uit elkaar terwijl Ø{:.0} mm nodig is (de \
+                         doorsnede is op z = {z:.0} mm {breedte:.0} mm breed, dekking opzij \
+                         {c_zij:.0} mm, beugel Ø{:.0} mm)",
+                        zij.label(),
+                        zij.diameter_mm,
+                        self.stirrup_diameter_mm
+                    ));
+                }
+            }
+            let steek = (z_boven - z_onder) / (zij.count + 1) as f64;
+            if steek < zij.diameter_mm - 1e-9 {
+                return Err(format!(
+                    "de zijstaven {} per zijde passen niet in de hoogte: tussen de as van de \
+                     onderrij (z = {z_onder:.0} mm) en die van de bovenrij (z = {z_boven:.0} mm) \
+                     komen ze op {steek:.0} mm uit elkaar te liggen, minder dan hun eigen \
+                     diameter Ø{:.0} mm",
+                    zij.label(),
+                    zij.diameter_mm
+                ));
+            }
         }
         Ok(())
     }
@@ -2854,5 +3211,187 @@ mod tests {
         assert!(serde_json::from_str::<ReinforcementZones>(fout).is_err());
         let fout2 = r#"{"stirrup": []}"#;
         assert!(serde_json::from_str::<ReinforcementZones>(fout2).is_err());
+    }
+
+    // -- Zijstaven: de kolomkorf (9.5.2(4), 9.5.3(6), 6.1(2)P) -------------
+
+    /// De kolomkorf uit de tests: 300 x 300, 2 Ø20 onder, 2 Ø20 boven,
+    /// 2 Ø16 per zijkant, dekking 30 mm, beugel Ø8.
+    fn kolomkorf() -> ReinforcementCage {
+        ReinforcementCage {
+            cover_mm: 30.0,
+            stirrup_diameter_mm: 8.0,
+            stirrup_legs: Some(2),
+            top: RebarRow { count: 2, diameter_mm: 20.0 },
+            bottom: RebarRow { count: 2, diameter_mm: 20.0 },
+            sides: Some(RebarRow { count: 2, diameter_mm: 16.0 }),
+            ..ReinforcementCage::default()
+        }
+    }
+
+    /// DE HARDE EIS, opnieuw: een korf zonder zijstaven — dus elk bestaand
+    /// projectbestand — verschuift geen bit, en de oude JSON leest nog steeds
+    /// dezelfde korf in.
+    #[test]
+    fn een_korf_zonder_zijstaven_verandert_niet() {
+        let k = korf();
+        assert!(k.side_row().is_empty());
+        assert_relative_eq!(k.a_s_sides_mm2(), 0.0);
+        assert_relative_eq!(k.a_s_total_mm2(), k.a_s_bottom_mm2() + k.a_s_top_mm2());
+        assert_eq!(k.layers(500.0).len(), 2);
+        assert_eq!(k.summary(), "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm");
+        let oud = r#"{"cover_mm": 30, "stirrup_diameter_mm": 8,
+                      "top": {"count": 2, "diameter_mm": 12},
+                      "bottom": {"count": 3, "diameter_mm": 16}}"#;
+        let uit_json: ReinforcementCage = serde_json::from_str(oud).unwrap();
+        assert_eq!(uit_json, k);
+        assert!(uit_json.sides.is_none());
+    }
+
+    /// `count` van de zijrij is het aantal per ZIJKANT; A_s telt er dus twee
+    /// keer zoveel.
+    ///
+    /// Met de hand: 2 Ø20 = 2 · π · 10² = 628,3185 mm² per rij, dus onder en
+    /// boven samen 1256,637 mm². De zijstaven: 2 per zijde, dus vier Ø16 =
+    /// 4 · π · 8² = 804,2477 mm². Totaal 2060,885 mm².
+    #[test]
+    fn zijstaven_tellen_dubbel_want_count_is_per_zijkant() {
+        let k = kolomkorf();
+        assert_relative_eq!(k.a_s_bottom_mm2(), 628.318_530_7, max_relative = 1e-9);
+        assert_relative_eq!(k.a_s_sides_mm2(), 804.247_719_3, max_relative = 1e-9);
+        assert_relative_eq!(k.a_s_total_mm2(), 2060.884_781_7, max_relative = 1e-9);
+        // Phi_l,min en Phi_l,max lopen over alle drie de rijen: de dunste is de
+        // zijstaaf Ø16, de dikste de hoekstaaf Ø20.
+        assert_eq!(k.phi_l_min_max_mm(), Some((16.0, 20.0)));
+        assert_eq!(
+            k.summary(),
+            "onder 2Ø20, boven 2Ø20, opzij 2Ø16 per zijde, beugel Ø8, 2-benig, dekking 30 mm"
+        );
+    }
+
+    /// 6.1(2)P kent geen beperking tot twee lagen: elke zijstaafhoogte levert
+    /// een eigen laag met TWEE staven, links en rechts.
+    ///
+    /// Handberekening voor de kolom 300 x 300. De asafstand van de hoekstaven
+    /// is 30 + 8 + 20/2 = 48 mm, dus de onderrij ligt op z = 48 en de bovenrij
+    /// op z = 252. Twee zijstaven verdelen die 204 mm in drie gelijke stukken
+    /// van 68 mm: z = 116 en z = 184 mm.
+    #[test]
+    fn zijstaven_leveren_eigen_lagen_gelijkmatig_verdeeld() {
+        let lagen = kolomkorf().layers(300.0);
+        assert_eq!(lagen.len(), 4, "onder, twee zijlagen, boven");
+        let z: Vec<f64> = lagen.iter().map(|l| l.z_mm).collect();
+        assert_relative_eq!(z[0], 48.0, max_relative = 1e-12);
+        assert_relative_eq!(z[1], 116.0, max_relative = 1e-12);
+        assert_relative_eq!(z[2], 184.0, max_relative = 1e-12);
+        assert_relative_eq!(z[3], 252.0, max_relative = 1e-12);
+        // Elke zijlaag draagt twee staven Ø16: 2 · π · 8² = 402,1239 mm².
+        assert_relative_eq!(lagen[1].area_mm2, 402.123_859_7, max_relative = 1e-9);
+        assert_eq!(lagen[1].label, "opzij 2Ø16 (1 van 2)");
+        assert_eq!(lagen[2].label, "opzij 2Ø16 (2 van 2)");
+    }
+
+    /// De staafposities: vier hoekstaven en vier zijstaven, op de plaatsen die
+    /// met de hand na te rekenen zijn.
+    ///
+    /// De inzet vanaf de zijkant is c + Ø_beugel + Ø_staaf/2, dus 48 mm voor de
+    /// hoekstaven Ø20 en 46 mm voor de zijstaven Ø16. Ten opzichte van de
+    /// hartlijn liggen zij dus op x = ±(150 − 48) = ±102 en
+    /// x = ±(150 − 46) = ±104 mm.
+    #[test]
+    fn staafposities_van_een_kolomkorf() {
+        let s = ConcreteSection::new(300.0, 300.0);
+        let staven = kolomkorf().staafposities(&s);
+        assert_eq!(staven.len(), 8);
+        assert_eq!(staven.iter().filter(|p| p.in_hoek).count(), 4);
+        for p in staven.iter().filter(|p| p.in_hoek) {
+            assert_relative_eq!(p.x_mm.abs(), 102.0, max_relative = 1e-12);
+            assert!(p.z_mm == 48.0 || p.z_mm == 252.0, "z = {}", p.z_mm);
+        }
+        let zij: Vec<&Staafpositie> = staven.iter().filter(|p| !p.in_hoek).collect();
+        assert_eq!(zij.len(), 4);
+        for p in &zij {
+            assert_relative_eq!(p.x_mm.abs(), 104.0, max_relative = 1e-12);
+            assert_relative_eq!(p.diameter_mm, 16.0);
+        }
+        // De grootste afstand van een staaf tot een hoekstaaf: de zijstaaf op
+        // z = 116 ligt van de hoekstaaf op (102, 48) af op
+        // sqrt(2^2 + 68^2) = 68,0294 mm.
+        let hoeken: Vec<&Staafpositie> = staven.iter().filter(|p| p.in_hoek).collect();
+        let verste = staven
+            .iter()
+            .map(|p| hoeken.iter().map(|h| p.afstand_mm(h)).fold(f64::INFINITY, f64::min))
+            .fold(0.0_f64, f64::max);
+        assert_relative_eq!(verste, 68.029_405_0, max_relative = 1e-8);
+    }
+
+    /// Eén staaf in een rij staat in het MIDDEN en bezet dus geen hoek. Dat is
+    /// precies wat 9.5.2(4) moet kunnen zien.
+    #[test]
+    fn een_enkele_staaf_in_een_rij_bezet_geen_hoek() {
+        let k = ReinforcementCage {
+            top: RebarRow { count: 1, diameter_mm: 20.0 },
+            bottom: RebarRow { count: 1, diameter_mm: 20.0 },
+            sides: None,
+            ..kolomkorf()
+        };
+        let staven = k.staafposities(&ConcreteSection::new(300.0, 300.0));
+        assert_eq!(staven.len(), 2);
+        assert!(staven.iter().all(|p| !p.in_hoek));
+        assert!(staven.iter().all(|p| p.x_mm == 0.0));
+    }
+
+    /// Zijstaven die niet passen worden geweigerd, en de melding zegt waarom.
+    #[test]
+    fn zijstaven_die_niet_passen_worden_geweigerd() {
+        let s = ConcreteSection::new(300.0, 300.0);
+        assert!(kolomkorf().validate(&s).is_ok());
+
+        // Twintig zijstaven per zijkant in 204 mm hoogte: de steek wordt
+        // 204/21 = 9,7 mm, minder dan hun eigen Ø16.
+        let dicht = ReinforcementCage {
+            sides: Some(RebarRow { count: 20, diameter_mm: 16.0 }),
+            ..kolomkorf()
+        };
+        let fout = dicht.validate(&s).unwrap_err();
+        assert!(fout.contains("in de hoogte"), "{fout}");
+
+        // Een smalle doorsnede met dikke zijstaven. Hoekstaven Ø12 (inzet
+        // 30 + 8 + 6 = 44 mm) en zijstaven Ø20 (inzet 30 + 8 + 10 = 48 mm): in
+        // 110 mm breedte liggen de twee zijstaafassen 110 − 2·48 = 14 mm uit
+        // elkaar, minder dan hun eigen Ø20. De hoekrijen passen wél — anders
+        // zou de melding over de breedte van die rijen gaan en niet over de
+        // zijstaven.
+        let smal = ConcreteSection::new(110.0, 300.0);
+        let dik_opzij = ReinforcementCage {
+            top: RebarRow { count: 2, diameter_mm: 12.0 },
+            bottom: RebarRow { count: 2, diameter_mm: 12.0 },
+            sides: Some(RebarRow { count: 1, diameter_mm: 20.0 }),
+            ..kolomkorf()
+        };
+        let fout = dik_opzij.validate(&smal).unwrap_err();
+        assert!(fout.contains("naast elkaar"), "{fout}");
+
+        // Zijstaven zonder boven- of onderwapening zijn geen korf.
+        let alleen_zij = ReinforcementCage {
+            top: RebarRow::default(),
+            bottom: RebarRow::default(),
+            ..kolomkorf()
+        };
+        let fout = alleen_zij.validate(&s).unwrap_err();
+        assert!(fout.contains("alleen zijstaven"), "{fout}");
+    }
+
+    /// De modelkeuze over de verdeling staat in de aannames, niet stilzwijgend
+    /// in een formule.
+    #[test]
+    fn de_verdeling_van_de_zijstaven_staat_in_de_aannames() {
+        let aannames = kolomkorf().assumptions();
+        assert!(
+            aannames.iter().any(|a| a.contains("GELIJKMATIG") && a.contains("6.1(2)P")),
+            "{aannames:?}"
+        );
+        // Zonder zijstaven staat die zin er niet.
+        assert!(korf().assumptions().iter().all(|a| !a.contains("zijstaven")));
     }
 }

@@ -144,8 +144,8 @@ pub use mnkappa::{
 };
 pub use section::{
     mirrored_layers, Band, ConcreteSection, ConcreteSectionInput, ConcreteShape, LegSpacingSource,
-    RebarLayer, RebarRow, RectConcreteSection, ReinforcementCage, ShearReinforcement,
-    STIRRUP_ALPHA_DEG,
+    RebarLayer, RebarRow, RectConcreteSection, ReinforcementCage, ShearReinforcement, Staafpositie,
+    Staafrij, STIRRUP_ALPHA_DEG,
 };
 // De wapening die LANGS de staaf verandert (§9.2.1.3 en §9.2.2). Op
 // crate-niveau om dezelfde reden als `beff` en `dekking`: deze typen zitten in

@@ -65,6 +65,36 @@ top: RebarRow,
  */
 bottom: RebarRow, 
 /**
+ * Wapening langs de twee verticale ZIJKANTEN — de staven die van een
+ * balkkorf een KOLOMkorf maken. `None` = ze zijn er niet, en dat is
+ * letterlijk het gedrag van vóór dit veld.
+ *
+ * # `count` is het aantal staven op ÉÉN zijkant
+ *
+ * De korf wordt links-rechts symmetrisch verondersteld, dus in de
+ * doorsnede liggen er tweemaal zoveel. "4Ø20 boven, 4Ø20 onder, 2Ø16 per
+ * zijde" is dus een kolom met 12 staven — precies zoals een constructeur
+ * een kolom uitschrijft. [`Self::a_s_sides_mm2`] rekent daarom met het
+ * DUBBELE van het rijoppervlak.
+ *
+ * # De hoekstaven zitten hier NIET in
+ *
+ * Die horen bij [`Self::top`] en [`Self::bottom`]; deze rij telt alleen
+ * de staven ertussen. Zonder die afspraak zou een hoekstaaf twee keer in
+ * A_s meetellen en zou §9.5.2(4) niet meer te toetsen zijn — de vraag
+ * "staat er in iedere hoek een staaf" is dan de vraag of de boven- en de
+ * onderrij elk minstens twee staven hebben.
+ *
+ * # Waarom dit een `Option` met `serde(default)` is
+ *
+ * Dezelfde afspraak als bij de beugelvelden en de dekking per zijde: de
+ * struct draagt `deny_unknown_fields`, en een projectbestand van vóór dit
+ * veld moet zonder wijziging inleesbaar blijven. `None` en
+ * `Some(lege rij)` betekenen hetzelfde en worden door
+ * [`Self::side_row`] meteen gelijkgeschakeld.
+ */
+sides?: RebarRow, 
+/**
  * Hart-op-hartafstand s van de beugels, gemeten LANGS de lengteas, in mm
  * (§9.2.2(5), symbool s in (9.4); begrensd door s_l,max in §9.2.2(6)).
  *
