@@ -26,7 +26,10 @@
 //      ook als er kipsteunfracties in de config staan: die fracties zijn per
 //      FLENS en horen bij het staalmodel, terwijl EN 1995 art. 6.3.3 één
 //      kipsteunafstand vraagt waaruit tabel 6.1 l_ef afleidt. Bewust niet
-//      afgeleid — veilig-zijdig en zichtbaar;
+//      afgeleid — veilig-zijdig en zichtbaar. De kipsteunafstand heeft
+//      inmiddels een EIGEN veld (`ltbSupportSpacing_m`); dat die weg werkt
+//      staat in test-hout-kipsteunafstand.mjs. Hier blijft alleen staan dat
+//      de flensfracties hem niet vullen;
 //  (d) de staalbouwer leest dezelfde twee velden ongewijzigd, zodat hout en
 //      staal aantoonbaar dezelfde invoer krijgen.
 //
@@ -155,10 +158,11 @@ log("\n[4] De kniklengte staat los van de andere houtvelden");
 log("\n[5] Kipsteunfracties leiden NIET tot een kipsteunafstand voor hout");
 {
   // lateralRestraints is een staalveld: fracties per flens. EN 1995 art. 6.3.3
-  // vraagt één kipsteunafstand waaruit tabel 6.1 l_ef maakt. Zolang de UI daar
-  // geen eigen veld voor heeft, blijft ltb_segment_length_m 0 (= staaflengte).
-  // Zou hij hier stilzwijgend uit de fracties worden afgeleid, dan werd l_ef
-  // KLEINER en de toetsing gunstiger dan de invoer rechtvaardigt.
+  // vraagt één kipsteunafstand waaruit tabel 6.1 l_ef maakt, en die heeft een
+  // eigen veld (`ltbSupportSpacing_m`). Zonder dat veld blijft
+  // ltb_segment_length_m 0 (= staaflengte). Zou hij hier stilzwijgend uit de
+  // fracties worden afgeleid, dan werd l_ef KLEINER en de toetsing gunstiger
+  // dan de invoer rechtvaardigt.
   const i = hout({ bucklingLengthZ_m: 1.5, lateralRestraints: [0.25, 0.5, 0.75] });
   check("ltb_segment_length_m blijft 0 (= staaflengte)", i.ltb_segment_length_m, 0);
   check("L_cr,z komt wél door", i.buckling_length_z_m, 1.5);

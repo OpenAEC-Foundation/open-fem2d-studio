@@ -127,6 +127,30 @@ export interface BeamCheckConfig {
   serviceClass?: 1 | 2 | 3;
   /** Belastingduurklasse §2.3.1.2; default "medium" (middellang). */
   loadDuration?: "permanent" | "long" | "medium" | "short" | "instantaneous";
+  /**
+   * Kipsteunafstand in m voor EN 1995-1-1 art. 6.3.3; default: de
+   * staaflengte.
+   *
+   * Dit is de ℓ waarmee tabel 6.1 de meewerkende (effectieve) lengte l_ef
+   * bepaalt: l_ef = verhouding · ℓ, waarbij de verhouding 1,0 / 0,9 / 0,8
+   * is voor een ligger op twee steunpunten bij respectievelijk een constant
+   * moment, een gelijkmatig verdeelde belasting en een puntlast in het
+   * midden, en 0,5 / 0,8 voor een uitkraging. l_ef gaat vervolgens in de
+   * kritieke buigspanning σ_m,crit van (6.31)/(6.32) en daarmee in k_crit
+   * van (6.33)/(6.35). Een ligger met tussensteunen tegen kip heeft dus een
+   * kleinere ℓ dan zijn systeemlengte, en daarmee een hogere σ_m,crit.
+   *
+   * WAAROM DIT EEN EIGEN VELD IS EN NIET UIT `lateralRestraints` VOLGT.
+   * Die lijst is een STAALveld: fracties per FLENS, waar de EN 1993-kern de
+   * boven- en onderflens afzonderlijk mee steunt. EN 1995 art. 6.3.3 kent
+   * dat onderscheid niet en vraagt één afstand. Zou die uit de fracties
+   * worden afgeleid, dan werd l_ef stilzwijgend kleiner — en dus de
+   * toetsing gunstiger — op grond van invoer die over iets anders gaat.
+   *
+   * Leeg = de staaflengte. Dat is de veilige kant: de volle lengte geeft de
+   * laagste σ_m,crit en dus de zwaarste kiptoets.
+   */
+  ltbSupportSpacing_m?: number;
   // Beton (EN 1992)
   /**
    * Wapeningskorf: dekking, beugel, boven- en onderwapening. Zonder korf

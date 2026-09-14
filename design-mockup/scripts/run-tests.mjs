@@ -98,6 +98,15 @@ const BUNDEL_TESTS = new Set([
   // de volle systeemlengte terwijl de bron met de opgegeven steunafstand
   // rekent, en dat verschil hoort luid op te vallen.
   "hout-kniklengte",
+  // Bewaakt dat de KIPSTEUNAFSTAND van een houten staaf tot in de
+  // toetsinvoer komt (ltb_segment_length_m in TimberBeamCheckInput), en dat
+  // de kipsteunfracties per flens hem nog steeds niet stilzwijgend vullen.
+  // Praat alleen met `engine`, `combinations` en de houtbouwer — precies wat
+  // de barrel ontsluit, dus hij kan óók tegen de sidecarbundel. Dat is hier
+  // de bedoeling: laat de bundel dit veld vallen, dan rekent de sidecar de
+  // kiptoets op de volle staaflengte terwijl de bron met de steunafstand
+  // rekent, en dat scheelt in l_ef een factor die je in de UC terugziet.
+  "hout-kipsteunafstand",
   "lastomschrijving",
   "leeg-geval",
   "n-teken",
