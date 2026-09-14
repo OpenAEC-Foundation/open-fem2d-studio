@@ -305,6 +305,10 @@ const ALLEEN_BRON = new Map([
     "legt de hele keten van de dekkingslijn vast: de zonegrenzen uit `lib/betonZoneSneden` worden rekenknopen via `bouwMultiInput`, de zones reizen door `lib/betonCheckBuilder` en `lib/betonDekkingslijnBuilder` naar de kern, en het slotblok start de toetsbrug als apart proces voor het echte `concrete_dekkingslijn`. Hij leest daarvoor `stores/checkStore` (de toetsstore) en de twee invoerbouwers, en die vallen alle drie buiten de barrel van de sidecarbundel; tegen de bundel zou hij juist de aansluiting overslaan die hij moet bewaken. De solverkant van hetzelfde mechanisme — `extraSneden` als zodanig — staat in `test-sneden` en draait wél tegen de bundel",
   ],
   [
+    "rapport-gevuld",
+    "loopt de hele rapportketen van het model tot een gezette PDF: `lib/rapportPdfInvoer` en `lib/scheefstandNorm` (rapportagelogica van de frontend), de toetsstore `stores/checkStore` voor de korven, en twee Rust-binaries als apart proces — de toetsbrug voor `check_concrete_beams` en `concrete_dekkingslijn`, en de MCP-server voor `generate_steel_report_pdf`. Geen van die vier hoort in de barrel van de sidecarbundel, en tegen de bundel zou de test juist de rapportlaag overslaan die hij moet bewaken; de solverkant die hij aanroept (`bouwMultiInput` + `solveAllCases`) staat al in `test-sneden` en `test-scheefstand`",
+  ],
+  [
     "scheefstand-norm",
     "rekent φ uit volgens EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1) en leidt h en m uit het model af (`lib/scheefstandNorm`). Dat is een PROJECTINSTELLING van de frontend: de gebruiker kiest de norm, en de sidecar krijgt het resultaat gewoon als getal (`scheefstandNoemer`) binnen. De module zit daarom niet in de barrel — de motorkant van dezelfde zaak (H = φ·V) staat in `test-scheefstand`, en die draait wél tegen de bundel",
   ],
