@@ -26,9 +26,9 @@ use approx::assert_relative_eq;
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nen_en_1992_1_1::factors::{f_cd, f_yd, gamma_c, gamma_s, ALPHA_CC};
 use nen_en_1992_1_1::kolom::{
-    as_max_9_5_2_mm2, as_min_9_5_2_mm2, factor_a, factor_b, grondslag_c, hoekstaven_9_5_2,
-    k_begrensd, kolom_deelstappen, kolomdetailleringstoetsen, kolomslankheid,
-    kruip_verwaarloosbaar_5_8_4_4, opgesloten_staven_9_5_3,
+    aantal_beugels_las_9_5_3, as_max_9_5_2_mm2, as_min_9_5_2_mm2, factor_a, factor_b, grondslag_c,
+    hoekstaven_9_5_2, k_begrensd, kolom_deelstappen, kolomdetailleringstoetsen, kolomslankheid,
+    kruip_verwaarloosbaar_5_8_4_4, l0_ondergrens_8_11_mm, opgesloten_staven_9_5_3,
     l0_geschoord_5_15, l0_ongeschoord_5_16, l0_uit_knikbelasting_5_17, lambda_lim_5_13n,
     min_diameter_dwarswapening_9_5_3_mm, niet_getoetste_9_5_eisen, omega, phi_ef_5_19,
     s_cl_tmax_9_5_3_mm, slankheid_5_14, traagheidsstraal_rechthoek_mm, Beugelzone, Cgrondslag,
@@ -717,13 +717,22 @@ fn min_diameter_dwarswapening_9_5_3_handberekening() {
     assert_relative_eq!(min_diameter_dwarswapening_9_5_3_mm(32.0), 8.0, max_relative = 1e-12);
 }
 
-/// De negen §9.5-toetsen op een rij voor een kolom die aan alles voldoet.
+/// De tien §9.5-toetsen op een rij voor een kolom die aan alles voldoet.
+///
+/// Negen staan op `Ok`. De tiende — §9.5.3(4)ii, het aantal beugels over een
+/// overlappingslas — hoort op `NotApplicable` te staan: deze doorsnede ligt niet
+/// nabij een las, en een eis die niet geldt hoort geen groen vinkje te krijgen.
 #[test]
-fn een_deugdelijke_kolom_haalt_alle_negen_de_toetsen() {
+fn een_deugdelijke_kolom_haalt_alle_toetsen_die_op_hem_van_toepassing_zijn() {
     let toetsen = kolomdetailleringstoetsen(&detaillering());
-    assert_eq!(toetsen.len(), 9);
+    assert_eq!(toetsen.len(), 10);
     for t in &toetsen {
-        assert_eq!(t.status, CheckStatus::Ok, "toets {} ({}) faalt", t.id, t.title);
+        let verwacht = if t.id == "9.5.3_aantal_beugels_las" {
+            CheckStatus::NotApplicable
+        } else {
+            CheckStatus::Ok
+        };
+        assert_eq!(t.status, verwacht, "toets {} ({})", t.id, t.title);
         assert!(!t.article.is_empty(), "toets {} mist een vindplaats", t.id);
     }
 }
@@ -774,21 +783,140 @@ fn ontbrekende_beugelgegevens_leveren_geen_stilzwijgend_groen_vinkje() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// §9.5.3(4)ii — het AANTAL beugels over een overlappingslas
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// (8.11) — l₀,min ≥ max{0,3·α₆·l_b,rqd ; 15Φ ; 200 mm}, waarvan hier de twee
+/// takken overblijven die zonder l_b,rqd te vullen zijn.
+///
+/// Handberekening:
+///   Ø12: 15·12 = 180 mm  <  200 mm  → de absolute tak van 200 mm wint
+///   Ø20: 15·20 = 300 mm  >  200 mm  → de diametertak wint
+///   Ø32: 15·32 = 480 mm             → idem
+#[test]
+fn de_ondergrens_van_de_overlappingslengte_kent_beide_takken() {
+    assert_relative_eq!(l0_ondergrens_8_11_mm(12.0), 200.0, max_relative = 1e-12);
+    assert_relative_eq!(l0_ondergrens_8_11_mm(20.0), 300.0, max_relative = 1e-12);
+    assert_relative_eq!(l0_ondergrens_8_11_mm(32.0), 480.0, max_relative = 1e-12);
+}
+
+/// De eis geldt alleen nabij een las én bij Φ_l,max > 14 mm. Buiten die twee
+/// hoort er GEEN groen vinkje te staan: er is niets nagegaan.
+#[test]
+fn het_beugelaantal_geldt_alleen_nabij_een_las_met_dikke_staven() {
+    // Reguliere doorsnede: geen las, dus geen eis.
+    let t = aantal_beugels_las_9_5_3(&detaillering());
+    assert_eq!(t.status, CheckStatus::NotApplicable);
+    assert!(t.uc.is_none(), "zonder eis hoort er geen unity check te staan");
+    assert!(
+        t.notes.iter().any(|n| n.contains("Niet van toepassing")),
+        "de reden hoort erbij: {:?}",
+        t.notes
+    );
+
+    // Wél een las, maar met Ø14 — de drempel van §9.5.3(4)ii is "groter dan
+    // 14 mm", dus precies 14 telt niet mee.
+    let mut inv = detaillering();
+    inv.zone = Beugelzone::BijOverlappingslas;
+    inv.phi_l_min_mm = 14.0;
+    inv.phi_l_max_mm = 14.0;
+    let t = aantal_beugels_las_9_5_3(&inv);
+    assert_eq!(t.status, CheckStatus::NotApplicable);
+    assert!(
+        t.notes.iter().any(|n| n.contains("14")),
+        "de drempel hoort in de reden te staan: {:?}",
+        t.notes
+    );
+}
+
+/// Handberekening bij Ø20 langsstaven nabij een las:
+///   l₀ ≥ max{15·20 ; 200} = 300 mm         (8.11)
+///   drie beugels gelijkmatig over l₀ → twee tussenruimten → s ≤ l₀/2 = 150 mm
+///   s = 100 mm → UC = 100/150 = 0,6667 → voldoet
+///   s = 150 mm → UC = 1,0 → voldoet nog net
+#[test]
+fn drie_beugels_passen_zodra_s_binnen_de_helft_van_de_ondergrens_blijft() {
+    let mut inv = detaillering();
+    inv.zone = Beugelzone::BijOverlappingslas;
+
+    inv.s_dwars_mm = Some(100.0);
+    let t = aantal_beugels_las_9_5_3(&inv);
+    assert_eq!(t.status, CheckStatus::Ok, "{:?}", t.notes);
+    assert_relative_eq!(t.value, 150.0, max_relative = 1e-12);
+    assert_relative_eq!(t.uc.as_ref().unwrap().uc, 0.666_666_7, max_relative = 1e-6);
+
+    inv.s_dwars_mm = Some(150.0);
+    let t = aantal_beugels_las_9_5_3(&inv);
+    assert_eq!(t.status, CheckStatus::Ok, "precies op de grens hoort te voldoen");
+    assert_relative_eq!(t.uc.as_ref().unwrap().uc, 1.0, max_relative = 1e-9);
+}
+
+/// Boven die helft is er NIETS bewezen — en dat is iets anders dan afgekeurd.
+/// De werkelijke l₀ van §8.7.3 is doorgaans een veelvoud van de ondergrens, dus
+/// een `NotOk` zou een kolom afkeuren die de norm niet afkeurt.
+#[test]
+fn boven_de_ondergrens_wordt_er_niet_afgekeurd_maar_gemeld() {
+    let mut inv = detaillering();
+    inv.zone = Beugelzone::BijOverlappingslas;
+    inv.s_dwars_mm = Some(250.0);
+    let t = aantal_beugels_las_9_5_3(&inv);
+    assert_eq!(t.status, CheckStatus::NotApplicable, "{:?}", t.notes);
+    assert!(t.uc.is_none(), "een onbeslist geval hoort geen unity check te dragen");
+    assert!(
+        t.notes.iter().any(|n| n.contains("geen afkeuring")),
+        "de melding moet zeggen dat dit geen afkeuring is: {:?}",
+        t.notes
+    );
+}
+
+/// De dunste staaf bepaalt de ondergrens, niet de dikste: met Ø12 tussenstaven
+/// naast Ø20 hoekstaven wordt 15·12 = 180 mm, en dan wint de absolute tak van
+/// 200 mm. s_max wordt 100 mm in plaats van de 150 mm bij enkel Ø20.
+#[test]
+fn de_dunste_langsstaaf_bepaalt_de_ondergrens_van_de_overlappingslengte() {
+    let mut inv = detaillering();
+    inv.zone = Beugelzone::BijOverlappingslas;
+    inv.phi_l_min_mm = 12.0;
+    inv.phi_l_max_mm = 20.0;
+    inv.s_dwars_mm = Some(100.0);
+    let t = aantal_beugels_las_9_5_3(&inv);
+    assert_eq!(t.status, CheckStatus::Ok, "{:?}", t.notes);
+    assert_relative_eq!(t.value, 100.0, max_relative = 1e-12);
+}
+
+/// Zonder h.o.h.-afstand is er niets te toetsen — en dus geen vinkje.
+#[test]
+fn zonder_beugelafstand_blijft_het_beugelaantal_onbeslist() {
+    let mut inv = detaillering();
+    inv.zone = Beugelzone::BijOverlappingslas;
+    inv.s_dwars_mm = None;
+    let t = aantal_beugels_las_9_5_3(&inv);
+    assert_eq!(t.status, CheckStatus::NotApplicable);
+    assert!(t.uc.is_none());
+    assert!(
+        t.notes.iter().any(|n| n.contains("Niet te toetsen")),
+        "de reden hoort erbij: {:?}",
+        t.notes
+    );
+}
+
 /// Wat §9.5 wél eist maar deze module niet toetst, hoort opgesomd te worden.
 /// Een detailleringshoofdstuk dat zwijgt over wat het niet heeft nagekeken,
 /// wekt de indruk dat het alles heeft nagekeken.
 #[test]
 fn de_niet_getoetste_eisen_worden_met_reden_opgesomd() {
     let lijst = niet_getoetste_9_5_eisen();
-    assert_eq!(lijst.len(), 3);
+    assert_eq!(lijst.len(), 2);
     for eis in &lijst {
         assert!(eis.starts_with("§9.5"), "elke regel begint met het artikel: {eis}");
     }
-    // §9.5.2(4) en §9.5.3(6) staan er NIET meer in: die worden sinds de korf
-    // staven per zijde kent werkelijk getoetst. Zou een van beide hier
+    // §9.5.2(4), §9.5.3(6) en §9.5.3(4)ii staan er NIET meer in: die worden
+    // werkelijk getoetst — de eerste twee sinds de korf staven per zijde kent,
+    // de derde sinds `aantal_beugels_las_9_5_3`. Zou een van drieën hier
     // terugkomen, dan zegt het rapport twee dingen tegelijk — dat de eis niet
     // is nagekeken, terwijl er een uitkomst in de tabel staat.
-    for artikel in ["9.5.2(4)", "9.5.3(6)"] {
+    for artikel in ["9.5.2(4)", "9.5.3(6)", "9.5.3(4)ii"] {
         assert!(
             !lijst.iter().any(|e| e.contains(artikel)),
             "{artikel} wordt getoetst en hoort niet in de lijst van niet-getoetste eisen"
