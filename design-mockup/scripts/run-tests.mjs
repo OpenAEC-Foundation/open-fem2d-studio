@@ -183,6 +183,10 @@ const ALLEEN_BRON = new Map([
     "houdt de hoeklijnreeksen (L-profielen) in profiles.json en in de gegenereerde TS-tabellen tegen de gedrukte profieltabel, en controleert de as-afspraak van NEN-EN 1993-1-1 1.7(2) (lang been langs z, hoofdassen u-u/v-v) plus de tekenvorm. Hij leest profiles.json rechtstreeks als bronbestand en importeert de tekenmodule; de solver en de barrel komen er niet aan te pas",
   ],
   [
+    "csp-wasm",
+    "leest src-tauri/tauri.conf.json rechtstreeks en controleert dat het CSP WebAssembly toestaat; raakt de solver noch de barrel, en de sidecar heeft geen CSP",
+  ],
+  [
     "unp-tabel",
     "houdt de UNP-reeks in profiles.json en de gegenereerde TS-tabellen tegen de gedrukte profieltabel; leest die twee bestanden rechtstreeks en raakt de solver noch de barrel",
   ],
