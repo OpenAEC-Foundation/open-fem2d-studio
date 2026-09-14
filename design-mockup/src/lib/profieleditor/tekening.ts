@@ -64,6 +64,12 @@ export function basisVorm(b: Basisprofiel): SectionShape {
       return { type: "tube", d: b.h, t: b.tw };
     case "Rechthoek":
       return { type: "rect", h: b.h, b: b.b };
+    case "Angle":
+      // Twee stralen: `r` in de holle hoek, `r2` aan de teen van elk been.
+      // Draagt het basisprofiel geen `r2` (een profiel dat niet uit de
+      // catalogus komt), dan tekenen we scherpe teenhoeken in plaats van een
+      // verzonnen afronding.
+      return { type: "angle", h: b.h, b: b.b, t: b.tw, r: b.r, r2: b.r2 ?? 0 };
   }
 }
 

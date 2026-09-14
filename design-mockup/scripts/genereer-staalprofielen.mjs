@@ -96,7 +96,7 @@ let dims = kop(
  * 0,08 voor de UNP-reeks, 0,14 voor de INP-reeks; 0 voor de UPE-reeks
  * (evenwijdige flenzen), weggelaten bij de overige I-profielen.`,
 );
-dims += `export type SteelSectionKind = "ISection" | "Channel" | "Shs" | "Rhs" | "Chs";
+dims += `export type SteelSectionKind = "ISection" | "Channel" | "Shs" | "Rhs" | "Chs" | "Angle";
 
 /** Aanvullende doorsnedegrootheden voor de eigenschappentabel in het rapport. */
 export interface SteelSectionProps {
@@ -142,6 +142,17 @@ export interface SteelSectionDims {
   /** Afrondingsstraal in mm (walsuitronding; SHS/RHS: hoekstraal; CHS: 0). */
   r: number;
   /**
+   * Tweede afrondingsstraal in mm — alleen bij een hoeklijn (kind "Angle").
+   * Daar is r de walsuitronding in de HOLLE hoek tussen de benen en r2 de
+   * teenafronding aan het eind van elk been. Elke andere soort heeft er maar
+   * één en draagt dit veld niet.
+   *
+   * Net als flensHelling is dit een maat uit de catalogus en geen afgeleide:
+   * zonder dit veld tekent profielVorm.ts scherpe teenhoeken, en dat is een
+   * zichtbaar andere vorm dan de gewalste hoeklijn.
+   */
+  r2?: number;
+  /**
    * Helling van het flensBINNENvlak, als verhouding: 0,08 is 8 % (UNP),
    * 0,14 is 14 % (INP). 0 betekent evenwijdige flenzen.
    *
@@ -177,6 +188,11 @@ for (const [k, p] of uniek) {
   const helling = g.flange_slope;
   const hellingVeld =
     helling === undefined ? "" : `flensHelling: ${num(helling, `${k}.flange_slope`)}, `;
+  // Tweede afrondingsstraal: alleen meenemen als de bron er een noemt en hij
+  // niet nul is. Zelfde regel als bij de flenshelling — een profiel zonder
+  // tweede straal hoort het veld niet stilzwijgend op 0 te krijgen.
+  const straal2 = g.r2;
+  const straal2Veld = !straal2 ? "" : `r2: ${num(straal2, `${k}.r2`)}, `;
   const props =
     `{ iz: ${num(pr.iz_mm4, `${k}.iz_mm4`)}, ` +
     `welY: ${num(pr.wel_y_mm3, `${k}.wel_y_mm3`)}, welZ: ${num(pr.wel_z_mm3, `${k}.wel_z_mm3`)}, ` +
@@ -188,7 +204,7 @@ for (const [k, p] of uniek) {
     `  "${k}": { kind: "${p.kind}", naam: ${JSON.stringify(p.name)}, ` +
     `h: ${num(g.h, `${k}.h`)}, b: ${num(g.b, `${k}.b`)}, ` +
     `tw: ${num(tw, `${k}.tw`)}, tf: ${num(tf, `${k}.tf`)}, r: ${num(r, `${k}.r`)},\n` +
-    `    ${hellingVeld}props: ${props} },\n`;
+    `    ${straal2Veld}${hellingVeld}props: ${props} },\n`;
 }
 dims += `};\n`;
 writeFileSync(doelDims, dims, "utf8");

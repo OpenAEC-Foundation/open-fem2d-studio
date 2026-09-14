@@ -122,13 +122,19 @@ export function plaatdikte(basis: Basisprofiel, plaats: GatPlaats): number {
   }
 }
 
-/** y van het hart van het lijf (I: midden; U en koker: linkerplaat). */
+/**
+ * y van het hart van het lijf (I: midden; U, koker en hoeklijn: linkerplaat).
+ *
+ * Bij een hoeklijn is "het lijf" het LANGE been: dat staat langs z, met de
+ * hiel op de oorsprong, dus het hart ligt op t/2 — precies zoals bij een U.
+ */
 export function lijfHart(basis: Basisprofiel): number {
   switch (basis.soort) {
     case "Channel":
     case "ChannelSchuin":
     case "Shs":
     case "Rhs":
+    case "Angle":
       return basis.tw / 2;
     case "ISection":
     case "ISectionSchuin":
@@ -199,17 +205,26 @@ export function toegestanePlaatsen(basis: Basisprofiel): GatPlaats[] {
       return ["wand"];
     case "Rechthoek":
       return ["vlak"];
+    // Een hoeklijn heeft twee platen en geen derde: het lange been (dat hier
+    // de rol van "lijf" speelt, want het staat langs z) en het korte been
+    // (dat de rol van "onderflens" speelt, want het ligt op z = 0). Een
+    // bovenflens is er niet — een gat daar zou in de leegte hangen.
+    case "Angle":
+      return ["lijf", "flensOnder"];
   }
 }
 
 export function plaatsLabel(plaats: GatPlaats, basis: Basisprofiel): string {
   const koker = isKoker(basis);
+  const hoeklijn = basis.soort === "Angle";
   switch (plaats) {
     case "lijf":
+      if (hoeklijn) return "door het lange been";
       return koker ? "door de linkerwand" : "door het lijf";
     case "flensBoven":
       return koker ? "door de bovenwand" : "door de bovenflens";
     case "flensOnder":
+      if (hoeklijn) return "door het korte been";
       return koker ? "door de onderwand" : "door de onderflens";
     case "wand":
       return "door de buiswand";

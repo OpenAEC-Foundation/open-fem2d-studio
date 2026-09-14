@@ -183,6 +183,61 @@ pub const MELDING_VORM_NIET_CONTROLEERBAAR: &str =
     "doorsnede is alleen via haar eigenschappen opgegeven; de gedeclareerde vorm is niet aan \
      lamellen getoetst";
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Hoekprofielen — wat er wél en niet gerekend wordt, en waarom
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Een hoeklijn is de enige catalogusvorm zonder symmetrieas die met de
+// beschrijvingsassen samenvalt. NEN-EN 1993-1-1 par. 1.7(2) legt de y-as
+// evenwijdig aan het KLEINSTE been, en de OPMERKING erbij zegt dat alle regels
+// in de Eurocode op de HOOFDassen slaan — voor hoekprofielen u-u en v-v. Dat
+// heeft vier gevolgen, en alle vier horen ze in het rapport te staan en niet
+// alleen in de broncode.
+
+/// Geweigerd: kip 6.3.2 (en daarmee 6.3.3) op een hoekprofiel.
+///
+/// `m_cr_i_section` en `m_cr_algemeen` gaan uit van dubbelsymmetrie: zij
+/// werken met `I_z`, `I_t` en `I_w` om de eigen assen en kennen geen
+/// monosymmetrieparameter. Bij een hoeklijn is `I_yz ≠ 0` en valt de gedrukte
+/// vezel niet in een symmetrievlak; `M_cr` uit die formules is dan geen
+/// benadering maar een verkeerd getal.
+pub const REDEN_KIP_HOEKPROFIEL: &str =
+    "kip 6.3.2 is voor een hoekprofiel niet gerekend: M_cr veronderstelt dubbelsymmetrie, en bij \
+     een hoekprofiel zijn y-y en z-z geen hoofdassen (NEN-EN 1993-1-1 1.7(2), OPMERKING) — \
+     beoordeel de kipstabiliteit handmatig of voorkom kip met kipsteunen";
+
+/// Melding bij kolomknik 6.3.1 van een hoekprofiel: de slankheid wordt om de
+/// hoofdassen bepaald.
+pub const MELDING_KNIK_HOOFDASSEN: &str =
+    "Hoekprofiel: de slankheid is om de HOOFDassen u-u en v-v bepaald, met i_u en i_v in plaats \
+     van i_y en i_z (NEN-EN 1993-1-1 1.7(2), OPMERKING: de regels van deze Eurocode hebben \
+     betrekking op de eigenschappen van de hoofdassen, die voor hoekprofielen door u-u en v-v \
+     zijn gedefinieerd). De opgegeven kniklengtes gelden daarbij als L_cr;u respectievelijk \
+     L_cr;v. Omdat i_v < i_z is dat de ongunstige — en dus de veilige — kant.";
+
+/// Melding bij de buigingstoetsen 6.2.5 van een hoekprofiel.
+pub const MELDING_BUIGING_HOEKPROFIEL: &str =
+    "Hoekprofiel: y-y en z-z zijn geen hoofdassen (NEN-EN 1993-1-1 1.7(2), OPMERKING), dus een \
+     moment om y-y alleen geeft ook kromming om z-z. De toets is elastisch met W_el uitgevoerd — \
+     tabel 5.2, blad 3 van 3 geeft hoekprofielen alleen een klasse-3-regel en dus geen plastische \
+     momentcapaciteit. Voor buiging om de eigen assen geeft de norm voor hoekprofielen geen \
+     regel; beoordeel een op buiging belast hoekprofiel om de hoofdassen.";
+
+/// Melding bij de afschuiftoetsen 6.2.6 van een hoekprofiel.
+pub const MELDING_AFSCHUIVING_HOEKPROFIEL: &str =
+    "Hoekprofiel: NEN-EN 1993-1-1 6.2.6(3) geeft geen uitdrukking voor A_v van een hoekprofiel — \
+     de lijst (a) t/m (g) slaat die vorm over. A_v is daarom onder 6.2.6(2) zelf bepaald als het \
+     been dat evenwijdig aan de dwarskracht loopt, over zijn volle lengte (A_v;z = h·t, \
+     A_v;y = b·t).";
+
+/// Melding bij de normaalkrachttoets 6.2.4 van een hoekprofiel dat met één
+/// been kan zijn aangesloten (6.2.3(5)).
+pub const MELDING_AANSLUITING_HOEKPROFIEL: &str =
+    "Hoekprofiel: is de staaf met slechts één been aangesloten, dan gelden voor de trek- en \
+     drukweerstand de aanvullende regels van NEN-EN 1993-1-8 3.10.3 (NEN-EN 1993-1-1 6.2.3(5)); \
+     die excentriciteit zit niet in deze toets. Wordt het hoekprofiel als wandstaaf van een \
+     vakwerk gebruikt, zie dan bijlage BB.1.2 voor de effectieve slankheid.";
+
 /// Weigering van de schuiftoets wegens lijfplooi (NEN-EN 1993-1-5 §5.1(2)).
 pub fn reden_lijfplooi(hw_over_tw: f64, grens: f64) -> String {
     format!(

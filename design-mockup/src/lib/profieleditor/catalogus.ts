@@ -31,7 +31,29 @@ export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) =
   { id: "INP", label: "INP (oud)", match: (n) => n.startsWith("INP") },
   { id: "KOKER", label: "Koker (SHS/RHS)", match: (n) => n.startsWith("SHS") || n.startsWith("RHS") || n.startsWith("HFRHS") },
   { id: "CHS", label: "Buis (CHS)", match: (n) => n.startsWith("CHS") },
+  // Hoeklijnen (EN 10056-1) in twee reeksen. Beide heten "L lang×kort×dikte",
+  // dus het onderscheid zit in de eerste twee getallen: gelijk = gelijkbenig.
+  // Ze door elkaar in één lijst zetten geeft een keuzelijst waarin
+  // "L 100x100x10" en "L 100x50x8" naast elkaar staan zonder dat te zien is
+  // dat de eerste twee even lange benen heeft — en de keuze tussen die twee
+  // is bij een hoeklijn ingrijpender dan bij welk ander profiel ook, want zij
+  // bepaalt waar de hoofdassen liggen. Zie scripts/genereer-hoeklijnen.mjs
+  // voor de bron van de maten.
+  { id: "L", label: "L gelijkbenig", match: (n) => hoeklijnBenen(n)?.gelijk === true },
+  { id: "LO", label: "L ongelijkbenig", match: (n) => hoeklijnBenen(n)?.gelijk === false },
 ];
+
+/**
+ * De twee beenlengten uit een hoeklijnsleutel ("L200X100X14"), of null als de
+ * naam geen hoeklijn is.
+ */
+function hoeklijnBenen(sleutel: string): { h: number; b: number; gelijk: boolean } | null {
+  const m = /^L(\d+)X(\d+)X\d+$/.exec(sleutel);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const b = Number(m[2]);
+  return { h, b, gelijk: h === b };
+}
 
 /**
  * Naam om te tónen bij een databasesleutel: "DIN425" → "DIN 42.5".
@@ -45,13 +67,29 @@ export function profielLabel(sleutel: string): string {
 }
 
 /**
- * Sorteersleutel: het eerste getal in de LEESBARE naam, dus met de decimaal
- * erin ("DIN 42.5" → 42,5). Op de sleutel sorteren zou 42.5 als 425 lezen en
- * de maat achteraan zetten.
+ * Sorteersleutel: ALLE getallen in de LEESBARE naam, met de decimaal erin
+ * ("DIN 42.5" → [42,5]; "L 100x50x8" → [100, 50, 8]). Op de sleutel sorteren
+ * zou 42.5 als 425 lezen en de maat achteraan zetten.
+ *
+ * Dat het er méér dan één zijn, telt bij elke reeks waar de tweede en derde
+ * maat variëren: bij "L 100x50x6/8/10" en bij de kokers zou een vergelijking
+ * op tekst 10 vóór 6 zetten.
  */
-function maatVan(sleutel: string): number {
-  const m = /(\d+(?:[.,]\d+)?)/.exec(profielLabel(sleutel));
-  return m ? parseFloat(m[1].replace(",", ".")) : 0;
+function matenVan(sleutel: string): number[] {
+  return (profielLabel(sleutel).match(/\d+(?:[.,]\d+)?/g) ?? [])
+    .map((m) => parseFloat(m.replace(",", ".")));
+}
+
+/** Getal-voor-getal vergelijken; de kortste naam eerst bij gelijke maten. */
+function vergelijkMaten(a: string, b: string): number {
+  const ma = matenVan(a);
+  const mb = matenVan(b);
+  for (let i = 0; i < Math.max(ma.length, mb.length); i += 1) {
+    const va = ma[i] ?? -Infinity;
+    const vb = mb[i] ?? -Infinity;
+    if (va !== vb) return va - vb;
+  }
+  return a.localeCompare(b);
 }
 
 /** Profielnamen (databasesleutels) van één reeks, op maat gesorteerd. */
@@ -60,7 +98,7 @@ export function profielenVanReeks(reeksId: string): string[] {
   if (!r) return [];
   return Object.keys(STEEL_SECTION_DIMS)
     .filter((naam) => r.match(naam))
-    .sort((a, b) => maatVan(a) - maatVan(b) || a.localeCompare(b));
+    .sort(vergelijkMaten);
 }
 
 /** Reeks waarin een profielnaam valt; null als geen reeks past. */
@@ -83,6 +121,8 @@ function motorSoort(naam: string, dims: SteelSectionDims): MotorSoort {
       return "Rhs";
     case "Chs":
       return "Chs";
+    case "Angle":
+      return "Angle";
   }
 }
 
@@ -103,6 +143,10 @@ export function basisprofielVan(naam: string): Basisprofiel | undefined {
     tw: dims.tw,
     tf: dims.tf,
     r: dims.r,
+    // Alleen een hoeklijn draagt een tweede straal (de teenafronding); bij de
+    // rest blijft het veld weg, zodat de motorinvoer er niet stilzwijgend een
+    // nul voor krijgt.
+    ...(dims.r2 === undefined ? {} : { r2: dims.r2 }),
   };
 }
 

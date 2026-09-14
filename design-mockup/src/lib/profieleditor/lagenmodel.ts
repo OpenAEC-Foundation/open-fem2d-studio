@@ -198,6 +198,16 @@ function deelBijdragen(d: Catalogusdeel, uit?: DeelUitvoer): Bijdrage[] | string
     }
     case "Rechthoek":
       return [plaat(0, p.h, p.b)];
+    // Hoeklijn: van de hiel tot de bovenkant van het korte been is de breedte
+    // het volle korte been, daarboven alleen de dikte van het lange been.
+    // Twee platen dus, en die verdeling is exact — de walsuitronding en de
+    // teenafrondingen zitten er niet in, net zomin als bij de I en de U
+    // hierboven.
+    case "Angle": {
+      const t = p.tw > 0 ? p.tw : p.tf;
+      if (!(t > 0) || p.h <= t) return `Profiel "${p.naam}" heeft geen bruikbare beendikte.`;
+      return [plaat(0, t, p.b), plaat(t, p.h, t)];
+    }
   }
 }
 

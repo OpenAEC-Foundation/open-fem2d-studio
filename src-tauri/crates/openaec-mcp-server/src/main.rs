@@ -508,6 +508,16 @@ fn compute_section_props(
             // Not implemented analytically — fall back to catalogue values.
             profile.properties
         }
+        ProfileKind::Angle => {
+            // Voor een hoeklijn bestaat hier geen gesloten formulepad zoals
+            // `i_section_props` dat voor de I heeft, en er hoort er ook geen
+            // te komen: de exacte contour van `section_properties::contour`
+            // vult de catalogus al, inclusief I_yz en de hoofdassen. Die
+            // waarden teruggeven is dus geen terugval maar de bron zelf. Een
+            // I-, U- of kokerformule op deze vorm loslaten zou stilzwijgend
+            // een verkeerde doorsnede opleveren.
+            profile.properties
+        }
     };
     Ok(props)
 }

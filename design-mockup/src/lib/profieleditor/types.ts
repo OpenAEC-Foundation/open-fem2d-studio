@@ -21,7 +21,8 @@ export type MotorSoort =
   | "Shs"
   | "Rhs"
   | "Chs"
-  | "Rechthoek";
+  | "Rechthoek"
+  | "Angle";
 
 /** Een catalogusprofiel met de maten die de motor nodig heeft. */
 export interface Basisprofiel {
@@ -38,6 +39,13 @@ export interface Basisprofiel {
   tf: number;
   /** Walsuitronding (koker: hoekstraal; buis: 0). */
   r: number;
+  /**
+   * Tweede afrondingsstraal — alleen bij een hoeklijn (`soort: "Angle"`).
+   * Daar is `r` de walsuitronding in de holle hoek tussen de benen en `r2` de
+   * teenafronding aan het eind van elk been. Elke andere soort heeft er maar
+   * één en laat dit veld weg.
+   */
+  r2?: number;
 }
 
 /**

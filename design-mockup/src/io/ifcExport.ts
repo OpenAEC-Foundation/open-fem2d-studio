@@ -2652,6 +2652,21 @@ function parametrischProfiel(
         profielDef: w.ent("IFCCIRCLEHOLLOWPROFILEDEF",
           ".AREA.", naam, positie, meter(dims.h / 2), meter(dims.tw)),
       };
+    case "Angle":
+      // IfcLShapeProfileDef (IFC4): Depth, Width, Thickness, FilletRadius,
+      // EdgeRadius, LegSlope. Depth is het been langs de y-as van het profiel
+      // en Width dat langs de x-as — dezelfde verdeling als hier: het LANGE
+      // been h staat langs z/y (NEN-EN 1993-1-1 1.7(2)) en het korte been b
+      // ligt horizontaal. FilletRadius is de walsuitronding in de holle hoek,
+      // EdgeRadius de teenafronding; een gewalste hoeklijn heeft geen
+      // beenschuinte, dus LegSlope blijft leeg.
+      return {
+        vorm: "hoeklijn",
+        profielDef: w.ent("IFCLSHAPEPROFILEDEF",
+          ".AREA.", naam, positie, meter(dims.h), meter(dims.b),
+          meter(dims.tw), meter(dims.r),
+          dims.r2 ? meter(dims.r2) : "$", "$"),
+      };
   }
   return undefined;
 }

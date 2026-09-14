@@ -54,6 +54,16 @@ pub enum Profielvorm {
     Buis { d: f64, t: f64 },
     /// Massieve rechthoek (hout, vrije maatvoering).
     Rechthoek { h: f64, b: f64 },
+    /// Gewalste hoeklijn (EN 10056-1), gelijk- of ongelijkbenig. `h` is het
+    /// **lange** been (langs z), `b` het korte (langs y) — de stand die
+    /// NEN-EN 1993-1-1 par. 1.7(2) voorschrijft. `r1` is de walsuitronding in
+    /// de holle hoek, `r2` de teenafronding aan het eind van elk been.
+    ///
+    /// Bij een hoeklijn zijn y-y en z-z **geen hoofdassen**: `iyz_mm4` is
+    /// ongelijk aan nul en de norm rekent volgens de OPMERKING bij par. 1.7
+    /// met u-u en v-v. Wie deze vorm doorrekent krijgt `iu_mm4`, `iv_mm4` en
+    /// `alpha_hoofdas_rad` mee en hoort ze te gebruiken.
+    Hoeklijn { h: f64, b: f64, t: f64, r1: f64, r2: f64 },
 }
 
 impl Profielvorm {
@@ -67,6 +77,7 @@ impl Profielvorm {
             Profielvorm::Koker { h, b, t } => contour::koker_en10210(h, b, t),
             Profielvorm::Buis { d, t } => contour::buis(d, t),
             Profielvorm::Rechthoek { h, b } => contour::rechthoek(h, b),
+            Profielvorm::Hoeklijn { h, b, t, r1, r2 } => contour::hoeklijn(h, b, t, r1, r2),
         }
     }
 
@@ -83,6 +94,12 @@ impl Profielvorm {
             Profielvorm::Koker { h, b, t } => (h, b, t, t, 1.5 * t),
             Profielvorm::Buis { d, t } => (d, d, t, t, 0.0),
             Profielvorm::Rechthoek { h, b } => (h, b, b, h, 0.0),
+            // Een hoeklijn heeft één dikte voor beide benen; die komt daarom
+            // zowel in `tw_mm` als in `tf_mm`. `r_mm` is de walsuitronding
+            // `r1`; de teenafronding `r2` past niet in deze vijf velden en
+            // hoort bij de GEOMETRIE (`ProfileGeometry.r2` in de catalogus),
+            // niet bij de doorsnedegrootheden.
+            Profielvorm::Hoeklijn { h, b, t, r1, .. } => (h, b, t, t, r1),
         }
     }
 
@@ -122,6 +139,20 @@ impl Profielvorm {
             }
             // Massieve rechthoek: de schuifspanning is parabolisch, dus ⅔A.
             Profielvorm::Rechthoek { .. } => (2.0 * a / 3.0, 2.0 * a / 3.0),
+            // Hoeklijn: §6.2.6(3) heeft GEEN rij voor hoekprofielen — de lijst
+            // loopt van (a) gewalste I/H tot (g) ronde buizen en slaat het
+            // hoekprofiel over. A_v valt hier dus onder de algemene regel
+            // §6.2.6(2), "A_v is de oppervlakte van het werkzame
+            // afschuifoppervlak", en die moet zelf bepaald worden.
+            //
+            // Genomen is het been dat EVENWIJDIG aan de kracht loopt, over
+            // zijn volle lengte: het lange been `h·t` draagt de dwarskracht in
+            // z, het korte been `b·t` die in y. De hiel (`t × t`) telt daardoor
+            // in beide richtingen mee — dat is dezelfde ruimhartigheid als
+            // §6.2.6(3)(a), die de walsuitrondingen ook bij het lijf optelt.
+            // Deze keuze is een normkeuze en geen meetkunde, en hoort daarom
+            // BIJ DE TOETS te worden gemeld; `steel-check` doet dat.
+            Profielvorm::Hoeklijn { h, b, t, .. } => (b * t, h * t),
         }
     }
 
@@ -419,6 +450,80 @@ mod tests {
         assert!(p.y_c_mm > 0.0 && p.y_c_mm < b);
         let grens = p.iz_mm4 * (h - tf).powi(2) / 4.0;
         assert!(p.iw_mm6 < grens, "Iw {:.3e} ≥ bovengrens {:.3e}", p.iw_mm6, grens);
+    }
+
+    /// Een gelijkbenige hoeklijn: het schuifmiddelpunt ligt op het snijpunt
+    /// van de twee beenmiddellijnen, dus op `(t/2, t/2)` — vlak bij de hiel en
+    /// ver van het zwaartepunt. Dat is de scherpste toets op de torsiemotor
+    /// voor deze vorm, want het volgt uit de dunwandige theorie en niet uit
+    /// een tabel. `A_v` volgt de eigen regel onder §6.2.6(2).
+    #[test]
+    fn hoeklijn_schuifmiddelpunt_ligt_op_de_hiel() {
+        let (h, b, t, r1, r2) = (100.0, 100.0, 10.0, 12.0, 6.0);
+        let m = bereken_uitgebreid(&Profielvorm::Hoeklijn { h, b, t, r1, r2 }, None);
+        let p = m.props;
+        // De maattabel geeft A = 1915 à 1920 mm² voor L 100×100×10.
+        assert!(rel(p.area_mm2, 1915.0) < 5e-3, "A = {:.1} mm²", p.area_mm2);
+        // Scherpe hoeklijn (geen stralen): de dunwandige theorie zegt dat het
+        // schuifmiddelpunt exact op het snijpunt van de twee beenmiddellijnen
+        // ligt, dus op (t/2, t/2). Dat is een uitkomst van de theorie en geen
+        // tabelwaarde, en daarom de scherpste toets op de torsiemotor.
+        // De theorie geldt in de limiet t/h → 0, dus de proef loopt over een
+        // reeks steeds dunnere benen: de fout hoort mee te krimpen.
+        let mut vorige = f64::INFINITY;
+        for dun in [10.0_f64, 5.0, 2.5] {
+            let s = bereken(&Profielvorm::Hoeklijn { h, b, t: dun, r1: 0.0, r2: 0.0 });
+            let fout = (s.y_s_mm - dun / 2.0).abs().max((s.z_s_mm - dun / 2.0).abs()) / dun;
+            assert!(
+                fout < vorige,
+                "t = {dun}: fout {:.4}·t hoort kleiner dan {:.4}·t",
+                fout,
+                vorige
+            );
+            vorige = fout;
+        }
+        assert!(vorige < 0.02, "dunwandige limiet niet gehaald: {vorige:.4}·t");
+        let scherp = bereken(&Profielvorm::Hoeklijn { h, b, t, r1: 0.0, r2: 0.0 });
+        assert!(
+            (scherp.y_s_mm - t / 2.0).abs() < 0.05 * t
+                && (scherp.z_s_mm - t / 2.0).abs() < 0.05 * t,
+            "scherp: schuifmiddelpunt op ({:.3}, {:.3}), verwacht ({:.1}, {:.1})",
+            scherp.y_s_mm,
+            scherp.z_s_mm,
+            t / 2.0,
+            t / 2.0
+        );
+        // Mét walsuitronding schuift het middelpunt naar buiten — de holle
+        // hoek is materiaal dat de dunwandige theorie niet kent. Het blijft
+        // wel bij de hiel en dus ver van het zwaartepunt; dat verschil is
+        // precies wat een hoeklijn zo torsiegevoelig maakt.
+        assert!(
+            (p.y_s_mm - t / 2.0).abs() < t && (p.z_s_mm - t / 2.0).abs() < t,
+            "schuifmiddelpunt op ({:.3}, {:.3})",
+            p.y_s_mm,
+            p.z_s_mm
+        );
+        assert!(p.y_s_mm < p.y_c_mm / 2.0 && p.z_s_mm < p.z_c_mm / 2.0);
+        // Zwaartepunt ligt op 28,22 mm van de hiel (tweede catalogus).
+        assert!((p.y_c_mm - 28.22).abs() < 0.1, "y_c = {:.2} mm", p.y_c_mm);
+        // A_v onder §6.2.6(2): het been evenwijdig aan de kracht.
+        assert_eq!(p.av_z_mm2, h * t);
+        assert_eq!(p.av_y_mm2, b * t);
+        // Open doorsnede van gelijke dikte: I_t ≈ ⅓·Σ l·t³ met l de
+        // middellijnlengte (h + b − t). De walsuitronding maakt hem wat
+        // groter, dus de dunwandige waarde is een ONDERgrens.
+        let it_dun = (h + b - t) * t.powi(3) / 3.0;
+        assert!(
+            p.it_mm4 > it_dun && p.it_mm4 < 1.6 * it_dun,
+            "I_t = {:.0} mm⁴ hoort tussen {:.0} en {:.0}",
+            p.it_mm4,
+            it_dun,
+            1.6 * it_dun
+        );
+        // De hoofdassen staan onder 45°, en de zwakke hoofdas is écht zwakker
+        // dan de z-as: dat is waarom kolomknik om u-u en v-v moet.
+        assert!((p.alpha_hoofdas_rad - PI / 4.0).abs() < 1e-9);
+        assert!(p.iv_mm4 < p.iz_mm4, "I_v = {:.4e} ≥ I_z = {:.4e}", p.iv_mm4, p.iz_mm4);
     }
 
     /// De motor moet dezelfde uitkomst geven als je hem via de contour

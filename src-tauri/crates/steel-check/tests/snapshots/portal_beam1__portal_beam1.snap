@@ -466,6 +466,16 @@ expression: run()
               "symbol": "\\gamma_{M1}",
               "value": 1.0,
               "unit": "-"
+            },
+            {
+              "symbol": "i_y",
+              "value": 128.7,
+              "unit": "mm"
+            },
+            {
+              "symbol": "i_z",
+              "value": 27.0,
+              "unit": "mm"
             }
           ],
           "intermediate_values": [

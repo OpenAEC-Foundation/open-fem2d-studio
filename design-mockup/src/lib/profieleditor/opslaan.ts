@@ -94,6 +94,14 @@ export function stelVormVoor(o: DoorsnedeOntwerp): CustomDoorsnedevorm {
       case "ChannelSchuin":
       case "Rechthoek":
         return "Onbekend";
+      // Een hoekprofiel mét gaten heeft geen vormaanduiding die de toetsing
+      // kent: `CustomDoorsnedevorm` heeft geen rij voor blad 3 van tabel 5.2,
+      // en de I-, koker- en buisrijen zijn geen van drieën van toepassing.
+      // "Onbekend" is hier dus de juiste uitkomst en geen restwaarde — de
+      // toetsing weigert zo'n doorsnede met zoveel woorden, in plaats van hem
+      // stilzwijgend als I-profiel te classificeren.
+      case "Angle":
+        return "Onbekend";
     }
   }
   return "Onbekend";

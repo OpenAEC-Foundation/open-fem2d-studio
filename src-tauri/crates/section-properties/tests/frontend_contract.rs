@@ -107,3 +107,46 @@ fn rechthoek_uit_de_editor() {
     // W_pl,y = b·h²/4 = 100 · 300²/4
     assert!((json["wpl_y_mm3"].as_f64().unwrap() - 2_250_000.0).abs() < 1e-3);
 }
+
+/// Een hoeklijn langs dezelfde JSON-weg. Deze vorm is de enige met TWEE
+/// afrondingsstralen, en `r2` is een nieuw veld: raakt het onderweg zoek, dan
+/// leest `serde` er een nul en tekent de motor scherpe teenhoeken. Dat zou aan
+/// het oppervlak nauwelijks te zien zijn (0,2 %), dus de test kijkt naar het
+/// verschil met de scherpe variant én naar de hoofdassen, die bij een
+/// hoekprofiel de rekengrootheden zijn (NEN-EN 1993-1-1 1.7(2), OPMERKING).
+#[test]
+fn hoeklijn_uit_de_editor() {
+    let invoer = lees(
+        r#"{ "naam": "L 200x100x14", "soort": "Angle",
+             "h": 200, "b": 100, "tw": 14, "tf": 14, "t": 14, "r": 15, "r2": 7.5 }"#,
+    );
+    let u = reken(&invoer).expect("een hoeklijn hoort altijd te lukken");
+    let json = serde_json::to_value(&u).unwrap();
+
+    // Gedrukte tabelwaarde A = 4030 mm².
+    let a = json["area_mm2"].as_f64().unwrap();
+    assert!((a - 4030.0).abs() / 4030.0 < 5e-3, "A = {a}");
+    // Het lange been staat langs z, dus I_y is de grote (par. 1.7(2)).
+    assert!(json["iy_mm4"].as_f64().unwrap() > json["iz_mm4"].as_f64().unwrap());
+    // De hoofdassen: I_yz ≠ 0 en de hoek ligt tussen 0 en 90°.
+    assert!(json["iyz_mm4"].as_f64().unwrap().abs() > 1e5);
+    let graden = json["alpha_hoofdas_rad"].as_f64().unwrap().to_degrees();
+    assert!(graden > 0.0 && graden < 90.0, "α = {graden}°");
+    assert!(json["iv_mm4"].as_f64().unwrap() < json["iz_mm4"].as_f64().unwrap());
+    // A_v onder 6.2.6(2): het been evenwijdig aan de kracht.
+    assert!((json["av_z_mm2"].as_f64().unwrap() - 200.0 * 14.0).abs() < 1e-9);
+    assert!((json["av_y_mm2"].as_f64().unwrap() - 100.0 * 14.0).abs() < 1e-9);
+    // De afschuifoppervlakken om de HOOFDassen zijn niet bepaald: §6.2.6(3)
+    // laat zich niet meedraaien, en de motor zegt dat eerlijk in plaats van
+    // een getal te verzinnen.
+    assert_eq!(json["av_hoofdas_bepaald"].as_bool(), Some(false));
+
+    // Zonder r2 is het een andere doorsnede — klein verschil, maar meetbaar.
+    let scherp = lees(
+        r#"{ "naam": "L zonder teenafronding", "soort": "Angle",
+             "h": 200, "b": 100, "tw": 14, "tf": 14, "t": 14, "r": 15 }"#,
+    );
+    let s = serde_json::to_value(&reken(&scherp).unwrap()).unwrap();
+    let a_scherp = s["area_mm2"].as_f64().unwrap();
+    assert!(a_scherp > a, "zonder teenafronding hoort A groter te zijn: {a_scherp} tegen {a}");
+}

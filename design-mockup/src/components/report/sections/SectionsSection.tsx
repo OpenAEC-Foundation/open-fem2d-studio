@@ -155,8 +155,14 @@ export default function SectionsSection() {
             { label: t("report.propMaterial", "Materiaal"), value: material },
           ];
           if (steelDims) {
-            const isBuis =
-              steelDims.kind === "Shs" || steelDims.kind === "Rhs" || steelDims.kind === "Chs";
+            // Eén wanddikte in plaats van lijf en flens: bij een koker en een
+            // buis is dat de wand, bij een hoeklijn de beendikte — die is voor
+            // beide benen gelijk.
+            const eenDikte =
+              steelDims.kind === "Shs" ||
+              steelDims.kind === "Rhs" ||
+              steelDims.kind === "Chs" ||
+              steelDims.kind === "Angle";
             if (steelDims.kind === "Chs") {
               kopRijen.push({ label: "d [mm]", value: fmtMaat(steelDims.h) });
             } else {
@@ -164,12 +170,21 @@ export default function SectionsSection() {
               kopRijen.push({ label: "b [mm]", value: fmtMaat(steelDims.b) });
             }
             kopRijen.push({
-              label: isBuis ? "t [mm]" : "tw [mm]",
+              label: eenDikte ? "t [mm]" : "tw [mm]",
               value: fmtMaat(steelDims.tw),
             });
             if (steelDims.kind === "ISection" || steelDims.kind === "Channel") {
               kopRijen.push({ label: "tf [mm]", value: fmtMaat(steelDims.tf) });
               kopRijen.push({ label: "r [mm]", value: fmtMaat(steelDims.r) });
+            }
+            if (steelDims.kind === "Angle") {
+              // Een hoeklijn heeft twee stralen: de walsuitronding in de holle
+              // hoek en de teenafronding aan het eind van elk been. Alleen de
+              // eerste tonen zou de maatvoering onvolledig laten.
+              kopRijen.push({ label: "r₁ [mm]", value: fmtMaat(steelDims.r) });
+              if (steelDims.r2) {
+                kopRijen.push({ label: "r₂ [mm]", value: fmtMaat(steelDims.r2) });
+              }
             }
           }
           if (timberRect) {

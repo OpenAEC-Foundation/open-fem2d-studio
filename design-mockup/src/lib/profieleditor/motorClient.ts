@@ -41,6 +41,8 @@ export interface MotorDeel {
   tw: number;
   tf: number;
   r: number;
+  /** Teenafronding; alleen bij `soort: "Angle"`. */
+  r2?: number;
   y_mm: number;
   z_mm: number;
   alpha_rad: number;
@@ -63,6 +65,11 @@ export interface MotorInvoer {
   tf?: number;
   t?: number;
   r?: number;
+  /**
+   * Teenafronding van een hoeklijn (`soort: "Angle"`). Die vorm is de enige
+   * met twee stralen: `r` in de holle hoek, `r2` aan het eind van elk been.
+   */
+  r2?: number;
   elementen_per_wand?: number;
   gaten?: MotorGat[];
   lamellen?: MotorLamel[];
