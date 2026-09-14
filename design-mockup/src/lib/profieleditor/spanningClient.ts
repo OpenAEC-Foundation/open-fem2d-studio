@@ -26,7 +26,22 @@ async function roepKern<T>(opdracht: string, inputs: unknown, signal?: AbortSign
     body: JSON.stringify({ opdracht, inputs }),
     signal,
   });
-  const data = await antwoord.json().catch(() => null);
+  // Geen `.json().catch(() => null)`: een statische webbouw heeft geen
+  // dev-brug en beantwoordt /api/toetsing met de index.html van de app, status
+  // 200. Dat werd dan `null` en ging als RESULTAAT naar de aanroeper — een
+  // leeg diagram zonder één woord waarom. Zie dezelfde afweging bij `roepKern`
+  // in `stores/checkStore.ts`.
+  const ruw = await antwoord.text();
+  let data: unknown = null;
+  try {
+    data = JSON.parse(ruw);
+  } catch {
+    throw new Error(
+      `De rekenkern is hier niet bereikbaar: /api/toetsing gaf geen JSON terug ` +
+        `(status ${antwoord.status}). Buiten de desktop-app loopt de toetsing via de ` +
+        `dev-brug van de ontwikkelserver; in een gebouwde webversie bestaat die niet.`,
+    );
+  }
   if (!antwoord.ok || (data && typeof data === "object" && "fout" in data)) {
     throw new Error(
       (data as { fout?: string } | null)?.fout ??

@@ -93,6 +93,10 @@ function ResultsTab({
   // Zijn er toetsresultaten? Bepaalt de hint onder de Unity-check-rij.
   // (Hook vóór de early-return — hooks-regels.)
   const hasCheckResults = useCheckStore((s) => s.results.length > 0);
+  // ...en zo nee, waarom niet? Er is verschil tussen "nog niet getoetst" en
+  // "de toetsronde is gedraaid maar de rekenkern gaf een fout". Alleen in het
+  // eerste geval helpt de knop waar de hint naar wijst.
+  const checkFout = useCheckStore((s) => s.error);
   // Draagt het getoonde resultaat segmentstijfheden? Bepaalt of de EI-rij
   // bruikbaar is; het canvas zet dit vlaggetje bij elke solve (zie
   // resultaatInfoStore).
@@ -261,11 +265,25 @@ function ResultsTab({
                 </div>
               )}
               {/* Unity-check zonder toetsresultaten: korte hint i.p.v. lege
-                  badges (bv. browser zonder desktop-backend). */}
+                  badges. Twee oorzaken, twee teksten — hier stond één regel
+                  ("voer eerst de toetsing uit"), ook wanneer de toetsing wél
+                  had gedraaid en de rekenkern onbereikbaar bleek. Dat is de
+                  browser zonder dev-brug, en dan wijst die regel naar een knop
+                  die het niet oplost. De reden van de kern staat voluit in het
+                  toetsingspaneel; hier past alleen de verwijzing ernaartoe. */}
               {row.key === "uc" && active && !hasCheckResults && (
-                <div className="fem-results-scale-row" title="De badges verschijnen zodra de normtoetsing resultaten heeft">
+                <div
+                  className="fem-results-scale-row"
+                  title={
+                    checkFout
+                      ? `De laatste toetsronde is mislukt: ${checkFout}`
+                      : "De badges verschijnen zodra de normtoetsing resultaten heeft"
+                  }
+                >
                   <span style={{ fontSize: 10, color: "var(--theme-text-faint)" }}>
-                    Voer eerst de toetsing uit (tabblad Toetsing).
+                    {checkFout
+                      ? "De toetsing is mislukt — zie het tabblad Toetsing voor de reden."
+                      : "Voer eerst de toetsing uit (tabblad Toetsing)."}
                   </span>
                 </div>
               )}

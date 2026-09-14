@@ -122,6 +122,13 @@ interface WireReportData {
   /** Per-belastinggeval-resultaten (P5.2) — zelfde wire-vorm. */
   caseResults: [number, WireSolverResult][] | null;
   envelope: WireEnvelope | null;
+  /**
+   * De afleiding van de initiële scheefstand — al platte tekst, dus 1-op-1
+   * mee. Optioneel: een snapshot uit een ouder hoofdvenster draagt het veld
+   * niet, en dan hoort het losgekoppelde rapport over de scheefstand te
+   * zwijgen in plaats van er een te verzinnen.
+   */
+  scheefstandToelichting?: string;
 }
 
 /** Toetsresultaten (checkStore) — al JSON-veilig, 1-op-1 mee in het snapshot. */
@@ -233,6 +240,7 @@ function serializeReportData(d: ReportData): WireReportData {
           maxDisplacementCombinationId: d.envelope.maxDisplacementCombinationId,
         }
       : null,
+    scheefstandToelichting: d.scheefstandToelichting,
   };
 }
 
@@ -266,6 +274,9 @@ function deserializeReportData(w: WireReportData): ReportData {
       ? new Map(w.caseResults.map(([id, r]) => [id, unwireSolverResult(r)]))
       : null,
     envelope,
+    // ?? — oudere hoofdvensters sturen dit veld nog niet mee; leeg betekent
+    // "geen scheefstand te melden", precies wat de sectie dan toont.
+    scheefstandToelichting: w.scheefstandToelichting ?? "",
   };
 }
 
@@ -475,6 +486,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     data.combinationResults,
     data.caseResults,
     data.envelope,
+    data.scheefstandToelichting,
     pageSize,
     orientation,
     hiddenSections,

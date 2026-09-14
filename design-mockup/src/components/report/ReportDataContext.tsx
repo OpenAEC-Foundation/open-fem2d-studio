@@ -68,6 +68,22 @@ export interface ReportData {
    */
   caseResults: Map<number, SolverResult> | null;
   envelope: Envelope | null;
+  /**
+   * De afleiding van de initiële scheefstand, woordelijk zoals
+   * `lib/scheefstandNorm.scheefstandToelichting` haar opstelt.
+   *
+   * Waarom hij hier meereist en niet in de rapportsectie wordt uitgerekend: φ
+   * wordt in App.tsx op ÉÉN plaats bepaald — daar gaan het canvas-pad en het
+   * multi-LC-pad allebei doorheen — en het rapport hoort te tonen wat er
+   * gerekend IS. Een tweede afleiding in een sectie zou een getal op papier
+   * kunnen zetten dat in geen enkele kracht zit.
+   *
+   * LEEG betekent: er is geen scheefstand op de lasten gezet (de schakelaar
+   * staat uit). Dan hoort het rapport erover te zwijgen in plaats van een
+   * aanname te noemen die nergens is toegepast — dezelfde regel als in de
+   * PDF-uitdraai, waar een leeg veld het hoofdstuk Uitgangspunten weglaat.
+   */
+  scheefstandToelichting: string;
 }
 
 export const EMPTY_REPORT_DATA: ReportData = {
@@ -84,6 +100,7 @@ export const EMPTY_REPORT_DATA: ReportData = {
   combinationResults: null,
   caseResults: null,
   envelope: null,
+  scheefstandToelichting: "",
 };
 
 const ReportDataContext = createContext<ReportData>(EMPTY_REPORT_DATA);

@@ -3,17 +3,25 @@
  * van de rekenkern kreeg, voor wie het buiten dat venster nodig heeft.
  *
  * `BetonStaafVenster` hield dit tot nu toe in lokale React-state. Dat is
- * voor het venster zelf prima, maar twee lezers komen er niet bij: de
+ * voor het venster zelf prima, maar één lezer komt er niet bij: de
  * GUI-bediening (`bediening/bediening.ts`), die na `dekkingslijn_openen`
  * moet weten wanneer het venster KLAAR is en wat het kreeg — zonder de DOM
- * te schrapen — en straks het rapport. Het venster schrijft hier dus mee wat
- * het toch al in handen heeft; zijn eigen state blijft leidend voor het
- * tekenen.
+ * te schrapen. Het venster schrijft hier dus mee wat het toch al in handen
+ * heeft; zijn eigen state blijft leidend voor het tekenen.
  *
  * Eén staaf tegelijk: het venster toont er ook maar één. Een tweede
  * betonstaaf selecteren overschrijft dit; `beamId` zegt bij welke staaf het
  * antwoord hoort, zodat een lezer nooit het antwoord van de vórige staaf
  * voor dat van de huidige aanziet.
+ *
+ * ── HET RAPPORT LEEST HIER NIET ────────────────────────────────────────────
+ *
+ * Dat deed het wel, en dat was fout: een rapport over vier betonstaven kreeg
+ * dan de lijn van de staaf die toevallig het laatst op het scherm stond, en
+ * over de andere drie stond er niets. Deze winkel draagt per definitie één
+ * antwoord — het venster toont er één — en is dus geen bron voor een document
+ * dat over het hele model gaat. De rapportknop haalt ze zelf op, alle staven in
+ * één keer; zie `lib/betonDekkingslijnBuilder.haalAlleDekkingslijnen`.
  */
 import { create } from "zustand";
 import type { DekkingslijnAntwoord } from "../lib/types/concrete/DekkingslijnAntwoord";

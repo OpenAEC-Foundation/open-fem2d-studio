@@ -50,6 +50,10 @@ import {
 } from "../../../lib/betonDekkingslijnBuilder";
 import { parseConcreteSection } from "../../../lib/betonCheckBuilder";
 import { zoneGrenzenMm } from "../../../lib/betonZoneSneden";
+// Alleen om te kúnnen zeggen WAAR de gebruiker is als de kern niet antwoordt:
+// in de desktop-app is de rekenkern er altijd, in de browser hangt zij aan de
+// dev-brug. De melding hieronder maakt dat onderscheid.
+import { isTauriApp } from "../../../lib/tauri";
 import { getConcreteClasses, korvenUitStaven, roepKern, useCheckStore } from "../../../stores/checkStore";
 // Het laatste antwoord gaat óók naar een store: de GUI-bediening (en straks
 // het rapport) moet kunnen zien wanneer dit venster klaar is en wat het kreeg,
@@ -146,6 +150,11 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
 
   const lastRunData = useCheckStore((s) => s.lastRunData);
   const beff = useCheckStore((s) => s.beff);
+  // De reden dat de laatste toetsronde geen invoer heeft opgeleverd, als die er
+  // is. Zonder dit veld ziet dit venster geen verschil tussen "er is nog niet
+  // gerekend" en "er ís gerekend, maar de rekenkern was onbereikbaar" — en dan
+  // stuurt het de gebruiker naar een knop waar hij al op heeft gedrukt.
+  const toetsFout = useCheckStore((s) => s.error);
 
   // De betonsterkteklassen van de kern; zonder deze lijst valt de bouwer op
   // zijn statische lijst terug en herkent hij een klasse die de kern wél kent
@@ -631,6 +640,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
             looptAchter={looptAchter}
             gemisteGrenzen={gemisteGrenzen}
             geenRun={lastRunData === null}
+            toetsFout={toetsFout}
             lagen={lagen}
           />
 
@@ -759,8 +769,13 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
               ))}
               {aflezing.length === 0 && (
                 <tr>
+                  {/* Geen tweede verklaring: deze cel WEET niet waarom er geen
+                      lijn is (nog niet gerekend, kern onbereikbaar, of een
+                      staaf die de kern heeft geweigerd), en "reken het model
+                      door" was daarom in twee van de drie gevallen onjuist. De
+                      reden staat één keer, bij de meldingen onder de tekening. */}
                   <td className="beton-hint">
-                    Nog geen dekkingslijn. Reken het model door; de lijn komt uit de rekenkern.
+                    Nog geen dekkingslijn — de reden staat bij de meldingen onder de tekening.
                   </td>
                 </tr>
               )}
@@ -777,6 +792,19 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
  *
  * Ze staan bij elkaar en niet verspreid: een lijn die om een van deze redenen
  * niet klopt, ziet er precies zo uit als een lijn die wel klopt.
+ *
+ * ── WAAROM ER TWEE LEGE-MELDINGEN ZIJN ─────────────────────────────────────
+ *
+ * Er stond hier één regel: "druk op Berekenen". Die is waar zolang de enige
+ * reden voor een lege tekening is dat er nog niet gerekend is. In de browser is
+ * er een tweede reden: `concrete_dekkingslijn` is een opdracht aan de
+ * RUST-rekenkern, en die is buiten de desktop-app alleen bereikbaar via de
+ * dev-brug van de ontwikkelserver (`/api/toetsing`, zie `vite.config.ts`). Is
+ * die brug er niet — een statische bouw, of de binary is nooit gebouwd — dan
+ * faalt élke toetsronde, blijft `lastRunData` leeg, en bleef de oude regel
+ * staan ná het drukken op Berekenen. Wie dat leest, drukt nog eens, en nog
+ * eens. Daarom staat er nu wat er werkelijk aan de hand is, met de reden van
+ * de kern erbij.
  */
 function Meldingen({
   fout,
@@ -787,6 +815,7 @@ function Meldingen({
   looptAchter,
   gemisteGrenzen,
   geenRun,
+  toetsFout,
   lagen,
 }: {
   fout: string | null;
@@ -797,14 +826,27 @@ function Meldingen({
   looptAchter: boolean;
   gemisteGrenzen: number[];
   geenRun: boolean;
+  /** De fout van de laatste toetsronde (`checkStore.error`), of null. */
+  toetsFout: string | null;
   lagen: LaagVlaggen;
 }) {
   return (
     <div className="dek-meldingen">
-      {geenRun && (
+      {geenRun && !toetsFout && (
         <p className="beton-hint">
           Er is nog niet gerekend. De dekkingslijn komt uit de rekenkern en heeft de
           krachtsverdeling van de UGT-combinaties nodig; druk op Berekenen.
+        </p>
+      )}
+      {geenRun && toetsFout && (
+        <p className="dek-let-op">
+          {"De laatste rekengang heeft de rekenkern niet bereikt, dus er is geen dekkingslijn. " +
+            "Nog eens op Berekenen drukken verandert daar niets aan. De kern meldde: "}
+          <span className="dek-kernreden">{toetsFout}</span>
+          {!isTauriApp() &&
+            " Deze weergave draait in een browser: de dekkingslijn komt uit de Rust-rekenkern, " +
+              "die hier alleen bereikbaar is via de dev-brug van de ontwikkelserver. Zonder die " +
+              "brug werkt zij uitsluitend in de desktop-app."}
         </p>
       )}
       {looptAchter && (
