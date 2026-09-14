@@ -346,6 +346,21 @@ fn lagen_profiel(p: &SteelProfile) -> Result<Vec<SpanningLaag>, String> {
             }
             Ok(lagen)
         }
+        // Een hoeklijn past niet in het lagenmodel, en dat is geen tekortkoming
+        // van de opbouw maar van de aanname eronder. Het vezelmodel rekent
+        // buiging om de y-as uit lagen met een constante breedte, en dat mag
+        // alleen als y-y een HOOFDas is: anders geeft M_y ook kromming om z-z
+        // en klopt σ = M·z/I_y niet meer. Bij een hoekprofiel is `I_yz ≠ 0` —
+        // NEN-EN 1993-1-1 par. 1.7(2) OPMERKING noemt daarvoor juist de
+        // hoofdassen u-u en v-v. Een lagenmodel dat toch iets teruggeeft, zou
+        // een spanning tonen die de doorsnede niet heeft.
+        ProfileKind::Angle => Err(format!(
+            "profiel \"{}\" is een hoekprofiel: de spanningstoets rekent met buiging om de y-as \
+             in een vezelmodel, en dat veronderstelt dat y-y een hoofdas is. Bij een hoekprofiel \
+             is dat niet zo (NEN-EN 1993-1-1 1.7(2), OPMERKING: hoofdassen u-u en v-v), dus \
+             σ = M_y·z/I_y zou hier een spanning geven die er niet is",
+            p.name
+        )),
     }
 }
 

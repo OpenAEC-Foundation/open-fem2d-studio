@@ -9,9 +9,17 @@ use section_properties::SectionProperties;
 
 const PROFILES_JSON: &str = include_str!("../data/profiles.json");
 
+/// De doorsnedesoorten in de catalogus.
+///
+/// `Angle` is de hoeklijn (EN 10056-1), gelijk- of ongelijkbenig. Hij staat
+/// hier apart en niet onder `ISection` omdat er niets van de I-regels op hem
+/// van toepassing is: NEN-EN 1993-1-1 tabel 5.2 heeft er een eigen blad voor
+/// (blad 3 van 3), par. 1.7(2) legt de assen anders, en de y-y- en z-z-as zijn
+/// geen hoofdassen. Wie hem als I-profiel zou meenemen, rekent stilzwijgend
+/// met de verkeerde regels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
-pub enum ProfileKind { ISection, Channel, Rhs, Shs, Chs }
+pub enum ProfileKind { ISection, Channel, Rhs, Shs, Chs, Angle }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
@@ -21,6 +29,12 @@ pub struct ProfileGeometry {
     #[serde(default)] pub tf: f64,
     #[serde(default)] pub t: f64,
     #[serde(default)] pub r: f64,
+    /// Tweede afrondingsstraal, in mm. Alleen de hoeklijn heeft er twee: `r`
+    /// is de walsuitronding in de holle hoek tussen de benen en `r2` de
+    /// teenafronding aan het eind van elk been. Beide staan in de maattabel.
+    /// Voor elke andere soort blijft dit veld nul, en dat is ook precies wat
+    /// de bestaande regels in `profiles.json` opleveren — ze noemen het niet.
+    #[serde(default)] pub r2: f64,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]

@@ -29,10 +29,13 @@
 //! ```
 //!
 //! `soort` is `ISection` | `ISectionSchuin` | `Channel` | `ChannelSchuin` |
-//! `Shs` | `Rhs` | `Chs` | `Rechthoek` (`…Schuin` = toelopende flenzen: INP
-//! met 14 %, UNP met 8 %). Bij een koker telt alleen `t`; bij een buis is `h` de
-//! buitendiameter. Optioneel `elementen_per_wand` (standaard 8) om de mesh van
-//! de torsieoplossing fijner te zetten.
+//! `Shs` | `Rhs` | `Chs` | `Rechthoek` | `Angle` (`…Schuin` = toelopende
+//! flenzen: INP met 14 %, UNP met 8 %). Bij een koker telt alleen `t`; bij een
+//! buis is `h` de buitendiameter. Bij een hoeklijn (`Angle`) is `h` het LANGE
+//! been, `b` het korte, `t` de beendikte, `r` de walsuitronding en `r2` de
+//! teenafronding — de stand en de maatvoering van NEN-EN 1993-1-1 par. 1.7(2)
+//! respectievelijk EN 10056-1. Optioneel `elementen_per_wand` (standaard 8) om
+//! de mesh van de torsieoplossing fijner te zetten.
 //!
 //! **2. Catalogusvorm met gaten** — dezelfde invoer plus `gaten`. Twee
 //! soorten, met het middelpunt telkens in het beschrijvingsassenstelsel van
@@ -125,6 +128,12 @@ pub struct Invoer {
     t: f64,
     #[serde(default)]
     r: f64,
+    /// Teenafronding van een hoeklijn (`soort = "Angle"`), in mm. Alleen die
+    /// vorm kent twee stralen: `r` is de walsuitronding in de holle hoek en
+    /// `r2` de afronding aan het eind van elk been. Beide staan in de
+    /// maattabel, dus geen van beide wordt uit de ander afgeleid.
+    #[serde(default)]
+    r2: f64,
     /// Aantal driehoeken door de dunste wand; standaard 8.
     #[serde(default)]
     elementen_per_wand: Option<f64>,
@@ -205,6 +214,9 @@ struct DeelInvoer {
     t: f64,
     #[serde(default)]
     r: f64,
+    /// Teenafronding; alleen bij `soort = "Angle"` (zie `Invoer::r2`).
+    #[serde(default)]
+    r2: f64,
     y_mm: f64,
     z_mm: f64,
     #[serde(default)]
@@ -533,7 +545,17 @@ fn dichtheid_van(i: &Invoer) -> f64 {
 
 // ── Vormen ────────────────────────────────────────────────────────────────────
 
-fn vorm_van_maten(soort: &str, h: f64, b: f64, tw: f64, tf: f64, t: f64, r: f64) -> Result<Profielvorm, String> {
+#[allow(clippy::too_many_arguments)]
+fn vorm_van_maten(
+    soort: &str,
+    h: f64,
+    b: f64,
+    tw: f64,
+    tf: f64,
+    t: f64,
+    r: f64,
+    r2: f64,
+) -> Result<Profielvorm, String> {
     let dikte = if t > 0.0 { t } else { tw };
     Ok(match soort {
         "ISection" => Profielvorm::IProfiel { h, b, tw, tf, r },
@@ -546,12 +568,17 @@ fn vorm_van_maten(soort: &str, h: f64, b: f64, tw: f64, tf: f64, t: f64, r: f64)
         "Shs" | "Rhs" => Profielvorm::Koker { h, b, t: dikte },
         "Chs" => Profielvorm::Buis { d: h, t: dikte },
         "Rechthoek" => Profielvorm::Rechthoek { h, b },
+        // Hoeklijn (EN 10056-1). `h` is het LANGE been, `b` het korte — de
+        // stand van NEN-EN 1993-1-1 par. 1.7(2). `r` is de walsuitronding en
+        // `r2` de teenafronding; beide staan in de maattabel, dus geen van
+        // beide wordt uit de ander afgeleid.
+        "Angle" => Profielvorm::Hoeklijn { h, b, t: dikte, r1: r, r2 },
         anders => return Err(format!("onbekende soort: {anders}")),
     })
 }
 
 fn vorm_van(i: &Invoer) -> Result<Profielvorm, String> {
-    vorm_van_maten(&i.soort, i.h, i.b, i.tw, i.tf, i.t, i.r)
+    vorm_van_maten(&i.soort, i.h, i.b, i.tw, i.tf, i.t, i.r, i.r2)
 }
 
 /// De vijf maatvelden zoals `SectionProperties` ze administreert — dezelfde
@@ -566,6 +593,8 @@ fn maten_van(vorm: &Profielvorm) -> (f64, f64, f64, f64, f64) {
         Profielvorm::Koker { h, b, t } => (h, b, t, t, 1.5 * t),
         Profielvorm::Buis { d, t } => (d, d, t, t, 0.0),
         Profielvorm::Rechthoek { h, b } => (h, b, b, h, 0.0),
+        // Eén beendikte, dus zowel `t_w` als `t_f`; `r` is de walsuitronding.
+        Profielvorm::Hoeklijn { h, b, t, r1, .. } => (h, b, t, t, r1),
     }
 }
 
@@ -1227,7 +1256,7 @@ fn reken_samenstelling(i: &Invoer) -> Result<Uitvoer, String> {
     }
     let mut delen = Vec::with_capacity(i.catalogusdelen.len());
     for d in &i.catalogusdelen {
-        let vorm = vorm_van_maten(&d.soort, d.h, d.b, d.tw, d.tf, d.t, d.r)?;
+        let vorm = vorm_van_maten(&d.soort, d.h, d.b, d.tw, d.tf, d.t, d.r, d.r2)?;
         // Het deel zelf door de motor: exacte contour + numerieke torsie, met
         // het zwaartepunt in het eigen beschrijvingsassenstelsel — precies
         // wat `CatalogusDeel` nodig heeft om zijn uitersten te kennen.

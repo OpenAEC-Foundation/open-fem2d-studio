@@ -16,7 +16,7 @@ use nen_en_1993_1_1_section::{
 use nen_en_1993_1_1_stability::{
     StabilityCalc,
     buckling_curve::BucklingCurve,
-    column_buckling::n_b_rd,
+    column_buckling::{n_b_rd, Knikassen},
     interaction_factors::{interaction_factors_method_2, cm_uniform_or_psi},
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
@@ -24,8 +24,10 @@ use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel, Kipprofiel, Kipveld};
 use section_properties::SectionProperties;
 use steel_profiles::{db, ProfileKind};
 use crate::input::{
-    BeamCheckInput, CustomDoorsnedevorm, MELDING_VORM_NIET_CONTROLEERBAAR,
-    REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD, REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
+    BeamCheckInput, CustomDoorsnedevorm, MELDING_AANSLUITING_HOEKPROFIEL,
+    MELDING_AFSCHUIVING_HOEKPROFIEL, MELDING_BUIGING_HOEKPROFIEL, MELDING_KNIK_HOOFDASSEN,
+    MELDING_VORM_NIET_CONTROLEERBAAR, REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD,
+    REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_HOEKPROFIEL, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
     REDEN_KLASSE_4, reden_lijfplooi,
 };
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
@@ -148,6 +150,33 @@ struct Doorsnede {
     meldingen: Vec<(&'static str, &'static str, String)>,
     /// Notities die bij de kipcontrole horen als die wél draait.
     kip_notities: Vec<String>,
+    /// Om welke assen §6.3.1 de slankheid bepaalt. Voor elke doorsnede met een
+    /// symmetrieas zijn dat de eigen assen y-y en z-z; voor een hoekprofiel de
+    /// hoofdassen u-u en v-v (par. 1.7(2), OPMERKING).
+    knikassen: Knikassen,
+    /// Notities die aan een bestaande toets worden geplakt: `(toets-id,
+    /// tekst)`. Zo staat een beperking BIJ de toets waarop zij slaat en niet
+    /// alleen in een commentaarregel of in een losse melding onderaan.
+    toets_notities: Vec<(&'static str, String)>,
+}
+
+/// Plakt een notitie achter de notities van één toets.
+fn plak_notitie(c: &mut NamedCheck, tekst: &str) {
+    match &mut c.kind {
+        CheckKind::Resistance(r) => r.notes.push(tekst.to_string()),
+        CheckKind::Stability(s) => s.notes.push(tekst.to_string()),
+    }
+}
+
+/// Hangt elke notitie aan de toets met dat id. Een id dat niet in de lijst
+/// voorkomt wordt overgeslagen — dat gebeurt als een toets al eerder om een
+/// andere reden is weggelaten.
+fn hang_toets_notities(checks: &mut [NamedCheck], notities: &[(&'static str, String)]) {
+    for (id, tekst) in notities {
+        for c in checks.iter_mut().filter(|c| c.id == *id) {
+            plak_notitie(c, tekst);
+        }
+    }
 }
 
 /// De twaalf toetsen die bij een weigering met naam en artikel in de lijst
@@ -254,6 +283,27 @@ fn resolveer_doorsnede(
             ProfileKind::Channel  => SectionShape::Channel,
             ProfileKind::Shs | ProfileKind::Rhs => SectionShape::BoxSection,
             ProfileKind::Chs      => SectionShape::CircularHollow,
+            // Tabel 5.2, blad 3 van 3 heeft een eigen kopje "Hoekprofielen",
+            // met alleen een klasse-3-regel. Een hoeklijn onder ISection laten
+            // vallen zou hem met de lijf/flens-regels van blad 1 en 2 toetsen,
+            // en dat zijn niet de regels die de norm hem geeft.
+            ProfileKind::Angle => SectionShape::Angle,
+        };
+        // Een hoekprofiel is de enige catalogusvorm zonder symmetrieas die met
+        // de beschrijvingsassen samenvalt. Wat daar aan beperkingen uit volgt,
+        // hangt hieronder BIJ de toetsen waarop het slaat.
+        let is_hoeklijn = matches!(profile.kind, ProfileKind::Angle);
+        let toets_notities: Vec<(&'static str, String)> = if is_hoeklijn {
+            vec![
+                ("6.2.4_compression", MELDING_AANSLUITING_HOEKPROFIEL.to_string()),
+                ("6.2.5_bending_y", MELDING_BUIGING_HOEKPROFIEL.to_string()),
+                ("6.2.5_bending_z", MELDING_BUIGING_HOEKPROFIEL.to_string()),
+                ("6.2.6_shear_z", MELDING_AFSCHUIVING_HOEKPROFIEL.to_string()),
+                ("6.2.6_shear_y", MELDING_AFSCHUIVING_HOEKPROFIEL.to_string()),
+                ("6.3.1_buckling", MELDING_KNIK_HOOFDASSEN.to_string()),
+            ]
+        } else {
+            vec![]
         };
         return Ok(Doorsnede {
             naam: input.profile_name.clone(),
@@ -265,19 +315,27 @@ fn resolveer_doorsnede(
                 .unwrap_or(BucklingCurve::C),
             is_channel: matches!(profile.kind, ProfileKind::Channel),
             // Tabel 6.5 kent alleen rijen voor I-profielen. Alles uit de
-            // catalogus is gewalst; kokers en buizen vallen buiten de tabel.
+            // catalogus is gewalst; kokers, buizen en hoeklijnen vallen buiten
+            // de tabel — bij de hoeklijn draait de kiptoets sowieso niet.
             kip_profielsoort: match profile.kind {
                 ProfileKind::ISection => Kipprofiel::GewalsteI,
                 ProfileKind::Channel
                 | ProfileKind::Shs
                 | ProfileKind::Rhs
-                | ProfileKind::Chs => Kipprofiel::Overig,
+                | ProfileKind::Chs
+                | ProfileKind::Angle => Kipprofiel::Overig,
             },
-            kip_weigering: None,
+            kip_weigering: is_hoeklijn.then(|| REDEN_KIP_HOEKPROFIEL.to_string()),
             schuif_weigering: None,
             totaal_weigering: None,
             meldingen: vec![],
             kip_notities: vec![],
+            knikassen: if is_hoeklijn {
+                Knikassen::hoofdassen(p)
+            } else {
+                Knikassen::eigen_assen(p)
+            },
+            toets_notities,
         });
     };
 
@@ -408,6 +466,11 @@ fn resolveer_doorsnede(
         totaal_weigering,
         meldingen,
         kip_notities,
+        // Een inline doorsnede is uit platen samengesteld en heeft geen
+        // catalogusvorm; de eigen assen blijven de assen waarin zij is
+        // ingevoerd.
+        knikassen: Knikassen::eigen_assen(&props),
+        toets_notities: vec![],
     })
 }
 
@@ -513,6 +576,11 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         checks.push(make_resistance(met_invoernotities(defl_fin, &input)));
         checks.push(make_resistance(defl_add));
 
+        // Ook op het klasse-4-pad hoort een doorsnedegebonden beperking bij de
+        // toets te staan waarop zij slaat; de toets is er, hij is alleen
+        // geweigerd.
+        hang_toets_notities(&mut checks, &doorsnede.toets_notities);
+
         let mut uc_max = 0.0_f64;
         for c in &checks {
             uc_max = uc_max.max(uc_of(c));
@@ -587,27 +655,23 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     // 6. Member stability — column buckling 6.3.1 (compression-governing location)
     let curve_y = doorsnede.curve_y;
     let curve_z = doorsnede.curve_z;
-    let buckling = n_b_rd(p, &grade, input.buckling_length_y_m, input.buckling_length_z_m, curve_y, curve_z, comp_state);
+    // De slankheid gaat om de assen die de doorsnede voorschrijft: y-y en z-z,
+    // of bij een hoekprofiel de hoofdassen u-u en v-v (par. 1.7(2)).
+    let knik = n_b_rd(
+        p, &grade, input.buckling_length_y_m, input.buckling_length_z_m,
+        doorsnede.knikassen, curve_y, curve_z, comp_state,
+    );
 
-    // Extract chi_y, chi_z and lambda_bar values from intermediate_values for use in §6.3.3.
-    // Symbols match exactly what column_buckling.rs stores: r"\chi_y", r"\chi_z",
-    // r"\bar{\lambda}_y", r"\bar{\lambda}_z".
-    let chi_y = buckling.intermediate_values.iter()
-        .find(|v| v.symbol == r"\chi_y")
-        .map(|v| v.value).unwrap_or(1.0);
-    let chi_z = buckling.intermediate_values.iter()
-        .find(|v| v.symbol == r"\chi_z")
-        .map(|v| v.value).unwrap_or(1.0);
+    // χ en λ̄ komen als velden mee en worden niet uit `intermediate_values`
+    // opgezocht: de symboolnamen dragen de asnaam ("\chi_u" bij een
+    // hoekprofiel), en een zoekopdracht op "\chi_y" zou daar stilzwijgend op
+    // de standaardwaarde 1,0 uitkomen — een knikreductie die er niet is.
     let n_pl_rd_kn = p.area_mm2 * grade.fy_mpa * 1e-3;
-    let n_b_rd_y_kn = chi_y * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
-    let n_b_rd_z_kn = chi_z * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
-    let lambda_bar_y = buckling.intermediate_values.iter()
-        .find(|v| v.symbol == r"\bar{\lambda}_y")
-        .map(|v| v.value).unwrap_or(0.0);
-    let lambda_bar_z = buckling.intermediate_values.iter()
-        .find(|v| v.symbol == r"\bar{\lambda}_z")
-        .map(|v| v.value).unwrap_or(0.0);
-    checks.push(make_stability(buckling));
+    let n_b_rd_y_kn = knik.chi_1 * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
+    let n_b_rd_z_kn = knik.chi_2 * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
+    let lambda_bar_y = knik.lambda_bar_1;
+    let lambda_bar_z = knik.lambda_bar_2;
+    checks.push(make_stability(knik.calc));
 
     // 7. LTB 6.3.2 — channel sections use monosymmetric (conservative) Mcr × 0.7.
     //    Doubly-symmetric I/H sections use the standard I-section formula.
@@ -818,6 +882,12 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 
     // Apply consequence class factor (KFI) — for v1, just note; not yet applied to individual UCs
     let _k_fi: f64 = input.consequence_class.k_fi();
+
+    // 9b. De doorsnedegebonden beperkingen bij de toetsen waarop zij slaan.
+    //     Zij staan NIET als losse regel onderaan het rapport: wie de
+    //     knikweerstand van een hoeklijn leest, hoort dáár te zien dat de
+    //     slankheid om u-u en v-v is bepaald.
+    hang_toets_notities(&mut checks, &doorsnede.toets_notities);
 
     // 10. Aggregate
     let mut uc_max = 0.0_f64;

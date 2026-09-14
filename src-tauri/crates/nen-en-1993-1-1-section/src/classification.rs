@@ -8,7 +8,9 @@
 //!   I-profiel of U-profiel, en *alle vier* de wanden van een koker.
 //! * **Blad 2 — uitkragende flenzen** (aan één rand gesteund, andere rand
 //!   vrij): de flenzen van een I-profiel en van een U-profiel.
-//! * **Blad 3 — ronde buizen**: grenzen op d/t in plaats van c/t.
+//! * **Blad 3 — hoekprofielen en ronde buizen**: hoekprofielen krijgen
+//!   `h/t` en `(b+h)/(2t)` en kennen daar **alleen een klasse-3-regel**;
+//!   ronde buizen krijgen grenzen op d/t in plaats van c/t.
 //!
 //! Tot sept 2026 werden de I-profielregels (blad 1 voor het lijf + blad 2 voor
 //! de flens) op élk profiel losgelaten, dus ook op kokers en ronde buizen. Een
@@ -49,6 +51,9 @@ pub enum SectionShape {
     BoxSection,
     /// Ronde buis: blad 3, grenzen op d/t.
     CircularHollow,
+    /// Hoeklijn: blad 3, en dat blad kent voor hoekprofielen **alleen een
+    /// klasse-3-regel**. Zie [`classify_section`] voor wat daaruit volgt.
+    Angle,
 }
 
 pub fn epsilon(grade: &SteelGrade) -> f64 {
@@ -107,6 +112,44 @@ pub fn classify_section(
             // h_mm is bij een ronde buis de uitwendige diameter d.
             let d_over_t = p.h_mm / p.tw_mm.max(1e-9);
             klasse_uit(d_over_t, 50.0 * eps * eps, 70.0 * eps * eps, 90.0 * eps * eps)
+        }
+
+        SectionShape::Angle => {
+            // Tabel 5.2, blad 3 van 3, kopje "Hoekprofielen". Dat blad geeft
+            // voor een hoekprofiel maar ÉÉN regel, en die staat op de rij van
+            // klasse 3:
+            //
+            //     h/t ≤ 15ε   én   (b + h)/(2t) ≤ 11,5ε
+            //
+            // Er is geen rij voor klasse 1 en geen rij voor klasse 2. Een
+            // hoeklijn kan hier dus alleen klasse 3 worden of, als een van
+            // beide grenzen wordt overschreden, klasse 4. Dat is geen
+            // voorzichtigheid van ons maar wat er staat: buigen om y-y of z-z
+            // is voor een hoekprofiel geen hoofdassenbuiging (par. 1.7(2)
+            // OPMERKING), en de norm geeft er dan ook geen plastische
+            // momentcapaciteit voor.
+            //
+            // `h` en `b` zijn de twee beenlengten en `t` de beendikte; welke
+            // van de twee benen "h" heet maakt voor de tweede voorwaarde niet
+            // uit, maar wel voor de eerste — daar telt het LANGSTE been, en
+            // dat is in ons beschrijvingsassenstelsel `h_mm` (par. 1.7(2)).
+            //
+            // De tabel voegt er twee opmerkingen aan toe die hier bewust NIET
+            // in code staan omdat ze niet uit de doorsnede alleen volgen:
+            //   * "Zie ook 'Uitkragende flenzen' (blad 2 van 3)" — de benen
+            //     zijn ook uitkragingen; die regel is minder streng en zou
+            //     alleen bij buiging om een been een rol spelen.
+            //   * "Geldt niet voor hoekprofielen die over de volle lengte met
+            //     andere componenten zijn verbonden" — of dat zo is, weet de
+            //     doorsnede niet.
+            let t = p.tw_mm.max(1e-9);
+            let h_over_t = p.h_mm / t;
+            let som = (p.b_mm + p.h_mm) / (2.0 * t);
+            if h_over_t <= 15.0 * eps && som <= 11.5 * eps {
+                CrossSectionClass::Class3
+            } else {
+                CrossSectionClass::Class4
+            }
         }
 
         SectionShape::BoxSection => {
@@ -912,6 +955,59 @@ mod tests {
         );
     }
 
+    // ── Hoeklijn: tabel 5.2 blad 3 kent alleen klasse 3 ─────────────────────
+
+    /// L 100×100×10, S235: h/t = 10 ≤ 15 en (b+h)/(2t) = 10 ≤ 11,5. Klasse 3
+    /// — en dus NIET klasse 1, hoe gedrongen het profiel ook is. Dat is de
+    /// kern van blad 3: voor een hoekprofiel bestaat er in tabel 5.2 geen rij
+    /// voor klasse 1 of 2.
+    #[test]
+    fn hoeklijn_binnen_de_grenzen_is_klasse3_en_nooit_klasse1() {
+        let p = maten(100.0, 100.0, 10.0, 10.0, 12.0, 1915.0);
+        for krachten in [buiging(), druk(200.0)] {
+            assert_eq!(
+                classify_section(&p, &S235, &krachten, SectionShape::Angle),
+                CrossSectionClass::Class3
+            );
+        }
+    }
+
+    /// Een been dat te slank is valt in klasse 4. L 200×100×6 (niet
+    /// leverbaar, maar de rekenregel moet hem kunnen afwijzen):
+    /// h/t = 33,3 > 15 en (b+h)/(2t) = 25 > 11,5.
+    #[test]
+    fn te_slanke_hoeklijn_is_klasse4() {
+        let p = maten(200.0, 100.0, 6.0, 6.0, 15.0, 1750.0);
+        assert_eq!(
+            classify_section(&p, &S235, &buiging(), SectionShape::Angle),
+            CrossSectionClass::Class4
+        );
+    }
+
+    /// Beide voorwaarden tellen apart. L 150×75×9: h/t = 16,7 > 15 (afgekeurd)
+    /// terwijl (b+h)/(2t) = 12,5 in S235 óók net boven 11,5 ligt. In S355
+    /// (ε = 0,81) worden de grenzen 12,2 en 9,3 en is hij nog steeds klasse 4;
+    /// dat ε meeschaalt hoort zichtbaar te zijn.
+    #[test]
+    fn hoeklijn_grenzen_schalen_met_epsilon() {
+        let p = maten(150.0, 75.0, 9.0, 9.0, 10.5, 1950.0);
+        assert_eq!(
+            classify_section(&p, &S235, &buiging(), SectionShape::Angle),
+            CrossSectionClass::Class4
+        );
+        // L 90×90×9 haalt het in S235 (h/t = 10, som = 10) maar niet in S355
+        // (grenzen 12,2 en 9,3): de somvoorwaarde valt er dan buiten.
+        let q = maten(90.0, 90.0, 9.0, 9.0, 11.0, 1550.0);
+        assert_eq!(
+            classify_section(&q, &S235, &buiging(), SectionShape::Angle),
+            CrossSectionClass::Class3
+        );
+        assert_eq!(
+            classify_section(&q, &S355, &buiging(), SectionShape::Angle),
+            CrossSectionClass::Class4
+        );
+    }
+
     // ── Regressie op de echte catalogus ──────────────────────────────────────
 
     /// De profielen die vóór de correctie ten onrechte klasse 3 werden.
@@ -927,6 +1023,7 @@ mod tests {
                 steel_profiles::ProfileKind::Shs | steel_profiles::ProfileKind::Rhs => SectionShape::BoxSection,
                 steel_profiles::ProfileKind::Channel => SectionShape::Channel,
                 steel_profiles::ProfileKind::ISection => SectionShape::ISection,
+                steel_profiles::ProfileKind::Angle => SectionShape::Angle,
             };
             assert_eq!(
                 classify_section(&prof.properties, &S235, &buiging(), shape),

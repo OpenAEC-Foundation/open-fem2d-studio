@@ -1537,6 +1537,90 @@ pub fn rechthoek(h: f64, b: f64) -> Doorsnede {
     Doorsnede::nieuw().met(Contour::rechthoek(0.0, 0.0, b, h))
 }
 
+/// Hoeklijn (gelijk- of ongelijkbenig), gewalst volgens de maatvoering van
+/// EN 10056-1: hiel op de oorsprong, één walsuitronding in de holle hoek en
+/// één teenafronding aan het eind van elk been.
+///
+/// ## Waarom het lange been langs z staat
+///
+/// Dat is geen tekenkeuze maar een normvoorschrift. NEN-EN 1993-1-1 par.
+/// 1.7(2) zegt bij "voor hoekprofielen": *y-y as evenwijdig aan het kleinste
+/// been, z-z as loodrecht op het kleinste been*. Het kleinste been ligt dus
+/// langs y — het is het been met lengte `b` — en het langste been (`h`) staat
+/// langs z. Met de hiel op de oorsprong blijft daarmee `y ∈ [0, b]` en
+/// `z ∈ [0, h]`, hetzelfde beschrijvingsassenstelsel als elke andere contour
+/// in deze module.
+///
+/// Let op wat daar NIET uit volgt: y-y en z-z zijn hier géén hoofdassen. Het
+/// traagheidsproduct `I_yz` is bij een hoeklijn ongelijk aan nul, en de
+/// OPMERKING bij par. 1.7 zegt met zoveel woorden dat de regels van de
+/// Eurocode op de hoofdassen slaan, die voor hoekprofielen `u-u` en `v-v`
+/// heten. [`ContourEigenschappen`] geeft `iyz_mm4`, `iu_mm4`, `iv_mm4` en
+/// `alpha_hoofdas_rad`; wie een hoeklijn toetst hoort die te gebruiken.
+///
+/// ## De contour
+///
+/// ```text
+///   z = h  ┌──┐                     r1 : walsuitronding in de HOLLE hoek,
+///          │  │                          middelpunt op (t+r1, t+r1)
+///          │  │  ← lang been h      r2 : teenafronding, middelpunt IN het
+///          │  └──────────┐               materiaal — één per been
+///   z = t  │             ╲
+///          └──────────────┘  ← kort been b
+///        y = 0          y = b
+/// ```
+///
+/// Daaruit volgt het gesloten oppervlak waarmee de gedrukte maattabellen zijn
+/// opgesteld:
+///
+/// ```text
+/// A = t·(h + b − t) + (1 − π/4)·(r1² − 2·r2²)
+/// ```
+///
+/// De walsuitronding vult een hoek (vierkant min kwartcirkel, dus `+`), elke
+/// teenafronding neemt er een weg (`−`, tweemaal). [`hoeklijn_oppervlak`]
+/// rekent die formule uit; de test `hoeklijn_oppervlak_is_de_tabelformule`
+/// legt hem naast de contour.
+///
+/// De stralen worden begrensd tot wat er meetkundig past, zodat onzinnige
+/// invoer geen zelfsnijdende contour oplevert.
+pub fn hoeklijn(h: f64, b: f64, t: f64, r1: f64, r2: f64) -> Doorsnede {
+    let t = t.max(0.0).min(b.max(0.0)).min(h.max(0.0));
+    // De teenafronding moet in de beendikte passen (middelpunt op t − r2 ≥ 0)
+    // en mag het been niet opeten.
+    let r2 = begrens_straal(r2, t, (b.min(h) - t) / 2.0);
+    // De walsuitronding moet tussen de holle hoek en de twee teenafrondingen
+    // blijven: t + r1 ≤ b − r2 en t + r1 ≤ h − r2.
+    let r1 = begrens_straal(r1, b - t - r2, h - t - r2);
+
+    let c = ContourBouwer::nieuw(0.0, 0.0)
+        // Onderkant van het korte been, naar de teen toe.
+        .lijn(b, 0.0)
+        .lijn(b, t - r2)
+        // Teenafronding korte been: bolle hoek, dus tegen de klok in.
+        .boog((b - r2, t - r2), (b - r2, t), true)
+        // Bovenkant van het korte been, terug naar de holte.
+        .lijn(t + r1, t)
+        // Walsuitronding: holle hoek, dus met de klok mee.
+        .boog((t + r1, t + r1), (t, t + r1), false)
+        // Binnenzijde van het lange been, omhoog naar de teen.
+        .lijn(t, h - r2)
+        // Teenafronding lange been.
+        .boog((t - r2, h - r2), (t - r2, h), true)
+        .lijn(0.0, h)
+        .sluit();
+    Doorsnede::nieuw().met(c)
+}
+
+/// Het oppervlak van een hoeklijn volgens de gesloten tabelformule
+/// `A = t·(h + b − t) + (1 − π/4)·(r1² − 2·r2²)`.
+///
+/// Staat hier los van [`hoeklijn`] zodat de contour ertegen te ijken is: als
+/// de twee uiteenlopen, klopt de opgebouwde meetkunde niet.
+pub fn hoeklijn_oppervlak(h: f64, b: f64, t: f64, r1: f64, r2: f64) -> f64 {
+    t * (h + b - t) + (1.0 - PI / 4.0) * (r1 * r1 - 2.0 * r2 * r2)
+}
+
 fn begrens_straal(r: f64, max1: f64, max2: f64) -> f64 {
     r.max(0.0).min(max1.max(0.0)).min(max2.max(0.0))
 }
@@ -1937,6 +2021,101 @@ mod tests {
         let scherp = koker(h, b, t, 0.0).bereken();
         let iy = b * h.powi(3) / 12.0 - (b - 2.0 * t) * (h - 2.0 * t).powi(3) / 12.0;
         eis("koker(r=0) Iy", scherp.iy_mm4, iy, iy);
+    }
+
+    // ── Hoeklijn ────────────────────────────────────────────────────────────
+
+    /// Zonder stralen is de hoeklijn letterlijk twee rechthoeken: het korte
+    /// been `b × t` en daarbovenop het lange been `t × (h − t)`. Elk moment
+    /// moet dan tot op machineprecisie kloppen — dat is de proef dat de lus
+    /// in de goede richting draait en de hiel maar één keer meetelt.
+    #[test]
+    fn hoeklijn_zonder_stralen_is_twee_rechthoeken() {
+        let (h, b, t) = (100.0, 65.0, 9.0);
+        let scherp = hoeklijn(h, b, t, 0.0, 0.0);
+        let los = Doorsnede::nieuw()
+            .met(Contour::rechthoek(0.0, 0.0, b, t))
+            .met(Contour::rechthoek(0.0, t, t, h - t));
+        let (a1, sy1, sz1, iy1, iz1, iyz1) = scherp.momenten_om_oorsprong();
+        let (a2, sy2, sz2, iy2, iz2, iyz2) = los.momenten_om_oorsprong();
+        eis("hoeklijn(0,0) A", a1, a2, a2);
+        eis("hoeklijn(0,0) Sy", sy1, sy2, sy2);
+        eis("hoeklijn(0,0) Sz", sz1, sz2, sz2);
+        eis("hoeklijn(0,0) Iy", iy1, iy2, iy2);
+        eis("hoeklijn(0,0) Iz", iz1, iz2, iz2);
+        eis("hoeklijn(0,0) Iyz", iyz1, iyz2, iy2);
+        // En het oppervlak is de tabelformule zonder de straaltermen.
+        eis("hoeklijn(0,0) A analytisch", a1, t * (h + b - t), t * (h + b - t));
+    }
+
+    /// Met stralen moet de contour precies op de gesloten tabelformule
+    /// uitkomen: `A = t(h+b−t) + (1 − π/4)(r1² − 2r2²)`. De walsuitronding
+    /// telt op (vierkant min kwartcirkel), elke teenafronding trekt af.
+    /// Getoetst op de maatvoering van een reeks catalogusmaten.
+    #[test]
+    fn hoeklijn_oppervlak_is_de_tabelformule() {
+        for &(h, b, t, r1, r2) in &[
+            (20.0, 20.0, 3.0, 3.5, 2.0),
+            (100.0, 100.0, 10.0, 12.0, 6.0),
+            (200.0, 200.0, 20.0, 18.0, 9.0),
+            (50.0, 40.0, 5.0, 4.0, 2.0),
+            (100.0, 50.0, 10.0, 9.0, 4.5),
+            (200.0, 100.0, 14.0, 15.0, 7.5),
+        ] {
+            let p = hoeklijn(h, b, t, r1, r2).bereken();
+            let a = hoeklijn_oppervlak(h, b, t, r1, r2);
+            eis(&format!("hoeklijn {h}×{b}×{t} A"), p.a_mm2, a, a);
+            // De omhullende rechthoek is precies b × h: geen straal steekt
+            // buiten de benen uit.
+            eis("hoeklijn y_min", p.y_min_mm, 0.0, b);
+            eis("hoeklijn y_max", p.y_max_mm, b, b);
+            eis("hoeklijn z_min", p.z_min_mm, 0.0, h);
+            eis("hoeklijn z_max", p.z_max_mm, h, h);
+        }
+    }
+
+    /// Een gelijkbenige hoeklijn is spiegelsymmetrisch in de diagonaal door de
+    /// hiel. Daaruit volgt alles wat een hoeklijn bijzonder maakt:
+    /// `I_y = I_z`, `I_yz ≠ 0`, de sterke hoofdas onder 45° en `i_v < i_z`.
+    /// Dat laatste is de reden dat kolomknik om de hoofdassen moet: knik om
+    /// v-v is ongunstiger dan knik om z-z.
+    #[test]
+    fn gelijkbenige_hoeklijn_heeft_de_hoofdas_op_45_graden() {
+        let (h, b, t, r1, r2) = (100.0, 100.0, 10.0, 12.0, 6.0);
+        let p = hoeklijn(h, b, t, r1, r2).bereken();
+        eis("L100 y_c = z_c", p.y_c_mm, p.z_c_mm, 100.0);
+        eis("L100 Iy = Iz", p.iy_mm4, p.iz_mm4, p.iy_mm4);
+        eis("L100 alpha", p.alpha_hoofdas_rad, PI / 4.0, PI);
+        // Iyz is negatief: het materiaal zit in de kwadranten (−,+) en (+,−)
+        // om het zwaartepunt. Iu = Iy + |Iyz|, Iv = Iy − |Iyz|.
+        assert!(p.iyz_mm4 < 0.0, "Iyz = {:.4e} hoort negatief te zijn", p.iyz_mm4);
+        eis("L100 Iu", p.iu_mm4, p.iy_mm4 - p.iyz_mm4, p.iu_mm4);
+        eis("L100 Iv", p.iv_mm4, p.iy_mm4 + p.iyz_mm4, p.iu_mm4);
+        // i_v < i_z < i_u: de zwakste as is de hoofdas, niet de z-as.
+        let i_v = (p.iv_mm4 / p.a_mm2).sqrt();
+        assert!(
+            i_v < p.i_z_straal_mm,
+            "i_v = {i_v:.3} mm hoort onder i_z = {:.3} mm te liggen",
+            p.i_z_straal_mm
+        );
+    }
+
+    /// De ongelijkbenige hoeklijn tegen de gedrukte maattabel: oppervlak en
+    /// zwaartepunt van L 200×100×14 uit de profielcatalogus op de
+    /// bedrijfsschijf (A = 4030 mm², zwaartepunt op 21,78 / 71,2 mm van de
+    /// hiel). Het zwaartepunt komt uit een tweede, onafhankelijke catalogus,
+    /// dus dit is een kruiscontrole en geen zelfbevestiging.
+    #[test]
+    fn ongelijkbenige_hoeklijn_haalt_de_gedrukte_tabel() {
+        let p = hoeklijn(200.0, 100.0, 14.0, 15.0, 7.5).bereken();
+        let f = |gemeten: f64, tabel: f64| ((gemeten - tabel) / tabel).abs();
+        assert!(f(p.a_mm2, 4030.0) < 5e-3, "A = {:.1} mm² tegen 4030", p.a_mm2);
+        assert!((p.y_c_mm - 21.78).abs() < 0.1, "y_c = {:.2} mm tegen 21,78", p.y_c_mm);
+        assert!((p.z_c_mm - 71.2).abs() < 0.1, "z_c = {:.2} mm tegen 71,2", p.z_c_mm);
+        // Het lange been staat langs z (par. 1.7(2)), dus I_y is de grote.
+        assert!(p.iy_mm4 > p.iz_mm4, "I_y hoort groter dan I_z");
+        assert!(f(p.iy_mm4, 1650e4) < 0.015, "I_y = {:.4e} tegen 1650 cm⁴", p.iy_mm4);
+        assert!(f(p.iz_mm4, 282e4) < 0.015, "I_z = {:.4e} tegen 282 cm⁴", p.iz_mm4);
     }
 
     #[test]
