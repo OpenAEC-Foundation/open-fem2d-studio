@@ -200,6 +200,19 @@ impl Segment {
         }
     }
 
+    /// Bijdrage van dit segment aan de koordelengte op hoogte `z`:
+    /// `Σ sign(dz)·y` over de snijpunten met de lijn `z = constant`, gemeten
+    /// in de doorlooprichting. Zie [`Doorsnede::breedte_op`] voor het waarom
+    /// en voor de halfopen afspraak `z₁ ≤ z < z₂`.
+    fn breedte_bijdrage(&self, z: f64) -> f64 {
+        match *self {
+            Segment::Lijn { van, naar } => breedte_lijn(van, naar, z),
+            Segment::Boog { centrum, straal, theta1, theta2 } => {
+                breedte_boog(centrum, straal, theta1, theta2, z)
+            }
+        }
+    }
+
     /// De vier **derde**-orde momenten van dit segment, om de oorsprong.
     fn derde_momenten(&self) -> DerdeMomenten {
         match *self {
@@ -589,6 +602,70 @@ fn uitersten_boog(centrum: (f64, f64), r: f64, t1: f64, t2: f64) -> (f64, f64, f
 /// exact. De integralen zijn bewust in de *stabiele* vorm geschreven
 /// (verschil van de eindwaarden, niet delen door `b`), zodat een bijna
 /// horizontaal segment geen uitdoving geeft.
+/// Snijdt de rechte `p1 → p2` de lijn `z`, dan `sign(dz)·y` op dat snijpunt,
+/// anders 0. Halfopen in de doorlooprichting: `z₁ ≤ z < z₂`, zodat een
+/// hoekpunt dat door twee randen wordt gedeeld precies één keer telt. Een
+/// horizontale rand (`dz = 0`) draagt niets bij — die snijdt de lijn niet,
+/// hij valt ermee samen.
+fn breedte_lijn(p1: (f64, f64), p2: (f64, f64), z: f64) -> f64 {
+    let (y1, z1) = p1;
+    let (y2, z2) = p2;
+    let dz = z2 - z1;
+    if dz == 0.0 {
+        return 0.0;
+    }
+    let binnen = if dz > 0.0 { z1 <= z && z < z2 } else { z2 <= z && z < z1 };
+    if !binnen {
+        return 0.0;
+    }
+    let t = (z - z1) / dz;
+    let y = y1 + t * (y2 - y1);
+    if dz > 0.0 {
+        y
+    } else {
+        -y
+    }
+}
+
+/// Idem voor een boog. De snijpunten volgen uit `sin θ = (z − z_c)/r`; per
+/// oplossing is `dz/dθ = r·cos θ`, met het teken van de doorlooprichting
+/// (`θ₂ > θ₁` = tegen de klok in) erbij. Alle hoekomwentelingen die binnen
+/// het doorlopen bereik vallen tellen mee; dat bereik is bij een gesloten
+/// contour hoogstens één omwenteling, maar de lus rekent er ruim omheen zodat
+/// een boog met verschoven hoekgrenzen niet stilzwijgend wegvalt.
+fn breedte_boog(centrum: (f64, f64), r: f64, t1: f64, t2: f64, z: f64) -> f64 {
+    if r == 0.0 || t1 == t2 {
+        return 0.0;
+    }
+    let s = (z - centrum.1) / r;
+    if !(-1.0..=1.0).contains(&s) {
+        return 0.0;
+    }
+    let richting = if t2 > t1 { 1.0 } else { -1.0 };
+    let (lo, hi) = if t2 > t1 { (t1, t2) } else { (t2, t1) };
+    let alpha = s.asin();
+    let mut som = 0.0;
+    for basis in [alpha, PI - alpha] {
+        let k_min = ((lo - basis) / TAU).floor() as i32 - 1;
+        let k_max = ((hi - basis) / TAU).ceil() as i32 + 1;
+        for k in k_min..=k_max {
+            let theta = basis + TAU * f64::from(k);
+            // Halfopen in de doorlooprichting, net als bij een rechte.
+            let binnen = if richting > 0.0 { t1 <= theta && theta < t2 } else { t2 < theta && theta <= t1 };
+            if !binnen {
+                continue;
+            }
+            let cos = theta.cos();
+            if cos == 0.0 {
+                continue; // raaklijn: geen doorgang, geen bijdrage
+            }
+            let y = centrum.0 + r * cos;
+            som += (cos * richting).signum() * y;
+        }
+    }
+    som
+}
+
 fn boven_lijn(p1: (f64, f64), p2: (f64, f64), snij: f64) -> (f64, f64) {
     let (y1, z1) = p1;
     let (y2, z2) = p2;
@@ -1009,6 +1086,37 @@ impl Doorsnede {
     /// `Q⁺ = ∬_{z > snij} (z − snij) dA`.
     pub fn statisch_moment_boven(&self, snij: f64) -> f64 {
         self.alle_segmenten().map(|s| s.boven(snij).1).sum()
+    }
+
+    /// De **koordelengte** van de doorsnede op hoogte `z`: de totale breedte
+    /// van het materiaal dat de horizontale lijn `z = constant` snijdt (mm).
+    ///
+    /// WAAROM DEZE ER MOET ZIJN
+    /// De schuifspanning van NEN-EN 1995-1-1 art. 6.1.7 is `τ = V·S/(I·b)`, en
+    /// `b` is daar volgens (6.13a) "de breedte van het van toepassing zijnde
+    /// deel van het element" — dus de breedte op de beschouwde vezel, niet de
+    /// omhullende breedte van de doorsnede. Bij een I-vormige balk scheelt dat
+    /// een orde van grootte: de flens is 1000 mm breed, het lijf 71 mm. Die
+    /// breedte is niet uit `A`, `I` of `W` af te leiden — die weten niet wáár
+    /// het materiaal zit.
+    ///
+    /// HOE
+    /// Langs een tegen-de-klok-in doorlopen rand ligt het inwendige links van
+    /// een opgaande rand en rechts van een neergaande. De maat van het
+    /// inwendige op de lijn `z` is daarmee `Σ sign(dz)·y` over alle
+    /// snijpunten. Een gat (met de klok mee) trekt zichzelf zo vanzelf af,
+    /// net als bij `A` en `I`.
+    ///
+    /// TWEE AFSPRAKEN, BEWUST
+    /// * **Optellen, niet verenigen.** Overlappen twee contouren elkaar, dan
+    ///   telt de overlap dubbel — net als bij [`Doorsnede::momenten_om_oorsprong`]
+    ///   en bij een lamellenmodel, dat per definitie een *som* is.
+    /// * **Halfopen.** Een rand telt mee op `z₁ ≤ z < z₂`, gemeten in de
+    ///   doorlooprichting. Op een sprong — de overgang van lijf naar flens —
+    ///   levert deze functie dus de breedte van de strook eróver. Meet daarom
+    ///   op het midden van een strook zodra de waarde bij een sprong ertoe doet.
+    pub fn breedte_op(&self, z: f64) -> f64 {
+        self.alle_segmenten().map(|s| s.breedte_bijdrage(z)).sum()
     }
 
     /// Plastisch weerstandsmoment om een **willekeurige** as door het
@@ -1476,6 +1584,59 @@ mod tests {
     }
 
     // ── Cirkel als vier bogen ───────────────────────────────────────────────
+
+    // ── Koordelengte (breedte op een vezel) ──────────────────────
+
+    #[test]
+    fn breedte_van_een_rechthoek_is_overal_de_breedte() {
+        let (b, h) = (96.0, 450.0);
+        let d = rechthoek(h, b);
+        eis("rechthoek breedte onder", d.breedte_op(0.001), b, b);
+        eis("rechthoek breedte midden", d.breedte_op(h / 2.0), b, b);
+        eis("rechthoek breedte boven", d.breedte_op(h - 0.001), b, b);
+        // Buiten de doorsnede is er geen materiaal en dus geen breedte.
+        eis("rechthoek breedte eronder", d.breedte_op(-1.0), 0.0, b);
+        eis("rechthoek breedte erboven", d.breedte_op(h + 1.0), 0.0, b);
+    }
+
+    #[test]
+    fn breedte_van_een_rechthoek_links_van_de_oorsprong() {
+        // Het teken van y mag niet uitmaken: de rand aan de −y-zijde loopt
+        // omlaag en telt daardoor met een minteken mee.
+        let d = Doorsnede::nieuw().met(Contour::rechthoek(-60.0, 0.0, 96.0, 450.0));
+        eis("verschoven rechthoek breedte", d.breedte_op(225.0), 96.0, 96.0);
+    }
+
+    #[test]
+    fn breedte_van_een_i_vorm_springt_van_flens_naar_lijf() {
+        // De samengestelde doorsnede van de externe referentie-berekening:
+        // flenzen 1000 × 40 boven en onder, lijf 71 breed, totale hoogte 120.
+        let d = Doorsnede::nieuw()
+            .met(Contour::rechthoek(0.0, 0.0, 1000.0, 40.0))
+            .met(Contour::rechthoek(464.5, 40.0, 71.0, 40.0))
+            .met(Contour::rechthoek(0.0, 80.0, 1000.0, 40.0));
+        eis("I-vorm breedte onderflens", d.breedte_op(20.0), 1000.0, 1000.0);
+        eis("I-vorm breedte lijf", d.breedte_op(60.0), 71.0, 1000.0);
+        eis("I-vorm breedte bovenflens", d.breedte_op(100.0), 1000.0, 1000.0);
+        // Halfopen: op de sprong geldt de strook eróver.
+        eis("I-vorm breedte op de sprong", d.breedte_op(40.0), 71.0, 1000.0);
+    }
+
+    #[test]
+    fn breedte_van_een_buis_volgt_de_koorde() {
+        // Ronde buis: door het hart is de koorde tweemaal de wanddikte. Zo
+        // blijkt dat ook bogen meetellen.
+        let (ro, ri) = (100.0, 90.0);
+        let m = (0.0, 0.0);
+        let d = Doorsnede::nieuw()
+            .met(Contour::cirkel(m, ro))
+            .met_gat(Contour::cirkel(m, ri));
+        eis("buis breedte door het hart", d.breedte_op(0.0), 2.0 * (ro - ri), ro);
+        // Boven het gat is de koorde die van de volle buitencirkel.
+        let z = 95.0;
+        let verwacht = 2.0 * (ro * ro - z * z).sqrt();
+        eis("buis breedte boven het gat", d.breedte_op(z), verwacht, ro);
+    }
 
     #[test]
     fn cirkel_uit_vier_bogen_exact() {

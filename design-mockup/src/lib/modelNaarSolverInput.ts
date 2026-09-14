@@ -40,7 +40,12 @@ export function verenNaarCanoniek(v: BeamEindVeren | undefined): { veren?: NonNu
   return Object.keys(uit).length > 0 ? { veren: uit } : {};
 }
 import type { MultiInput } from "../components/fem/solver/types";
-import { resolveSection, eigenGewichtPerMeter } from "./sectionResolver";
+import {
+  DoorsnedeOnbekendFout,
+  eigenGewichtPerMeter,
+  onbekendeDoorsneden,
+  resolveSection,
+} from "./sectionResolver";
 import { thermalAlphaForMaterial } from "./thermalAlpha";
 import { zoneSnedenUitStaven } from "./betonZoneSneden";
 
@@ -101,6 +106,35 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
   // toetsing als `reinforcement_zones` krijgt: één bron, geen tweede regel.
   // Geen zones ⇒ een lege map ⇒ `extraSneden` blijft weg en elk bestaand model
   // rekent bit-identiek aan voorheen. Zie `lib/betonZoneSneden.ts`.
+  // DOORSNEDECONTROLE VÓÓR HET REKENEN. Een staaf waarvan de doorsnede niet
+  // te bepalen is, viel tot september 2026 terug op de solver-default
+  // (HEA 160 / S235) met alleen een `console.warn`. Bij een HOUTEN staaf met
+  // een eigen doorsnede betekende dat E = 210 000 in plaats van 11 000: een
+  // factor negentien in de stijfheid, en een zakking die er volstrekt normaal
+  // uitziet. Dat is de gevaarlijkste soort fout — de berekening loopt door en
+  // het antwoord ziet er goed uit.
+  //
+  // Daarom stopt de rekengang hier, met de staafnummers en de reden erbij, in
+  // dezelfde vorm als de modelcontrole en de overgeslagen staven van de
+  // betontoetsing. `resolveSection` zelf blijft wél een waarde geven: het
+  // rapport en de profielkiezer moeten "doorsnede onbekend" kunnen TÓNEN, en
+  // een halfgetikte profielnaam mag geen scherm laten omvallen.
+  const onbekend = onbekendeDoorsneden(model.beams);
+  if (onbekend.length > 0) {
+    // Hoogstens vijf staven in de melding; bij een groot model zou de
+    // volledige lijst onleesbaar worden en zegt het aantal genoeg.
+    const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
+    const rest = onbekend.length - eerste.length;
+    throw new DoorsnedeOnbekendFout(
+      `De berekening is gestopt: van ${onbekend.length} ` +
+        `${onbekend.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te ` +
+        `bepalen. ${eerste.join("; ")}` +
+        (rest > 0 ? `; en nog ${rest} andere` : "") +
+        ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij " +
+        "een ander model dan is ingevoerd.",
+      onbekend,
+    );
+  }
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput: MultiInput = {
     nodes: model.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
@@ -110,6 +144,9 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
       // (combinaties/envelope/toetsing) élke staaf met de solver-default
       // (HEA 160 / S235) en kreeg de toetsing krachten en zakkingen van
       // het verkeerde model.
+      //
+      // De uitkomst kan hier geen "default" meer zijn: de controle bovenaan
+      // heeft die gevallen er al uit gegooid.
       const sec = resolveSection(b.material, b.profile);
       const sneden = zoneSneden.get(b.id);
       return {

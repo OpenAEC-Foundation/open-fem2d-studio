@@ -75,7 +75,10 @@ import { isCltCheckResult } from "./cltCheckBuilder";
 import { doorsnedeUitToets } from "./betonDoorsnedeTerugval";
 import type { BeamCheckResult } from "./types/steel/BeamCheckResult";
 import type { BetonStaafDoorsnede } from "./types/concrete/BetonStaafDoorsnede";
+import type { BetonStaafZones } from "./types/concrete/BetonStaafZones";
 import type { BetonStijfheidSpoor } from "./types/concrete/BetonStijfheidSpoor";
+import type { ConcreteBeamCheckInput } from "./types/concrete/ConcreteBeamCheckInput";
+import type { DekkingslijnAntwoord } from "./types/concrete/DekkingslijnAntwoord";
 import type { CltBeamCheckResult } from "./types/timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "./types/concrete/ConcreteBeamCheckResult";
 import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
@@ -132,6 +135,50 @@ export interface RapportPdfBronnen {
    * waarmee die regel geschreven is.
    */
   korvenUitModel?: KorvenUitModel;
+  /**
+   * De dekkingslijnen die de rekenkern heeft geleverd, per staaf.
+   *
+   * Dit is een APARTE vraag aan de kern (`concrete_dekkingslijn`), die het
+   * betonvenster stelt en die in `dekkingslijnStore` blijft staan. Zij is geen
+   * bijproduct van de toetsing: de lijn vraagt om een z, een c_d en eventueel
+   * een A_sl die de doorsnedetoets niet nodig heeft, en zij wordt dus alleen
+   * gerekend als iemand ernaar heeft gevraagd. Levert de aanroeper niets aan,
+   * dan blijft het dekkingslijnhoofdstuk in de PDF weg — een hoofdstuk dat om
+   * een antwoord vraagt dat nooit is gevraagd, is geen eerlijke leegte.
+   */
+  dekkingslijnen?: readonly DekkingslijnAntwoord[];
+  /**
+   * De betoninvoer van de laatste toetsronde — `checkStore.lastRunInputs.beton`.
+   *
+   * Hieruit komen de WAPENINGSZONES. Waarom uit de invoer en niet uit het
+   * resultaat: `ConcreteBeamCheckResult` draagt de korf alleen als
+   * samenvattingsregel ("onder 3Ø16, …"), en die regel is de BASISkorf. De
+   * zones staan nergens in het antwoord, terwijl de toetsing er per snede mee
+   * heeft gerekend (`cage_at_mm`) — zonder hen is een unity check op een
+   * ingekorte plaats niet na te rekenen.
+   *
+   * Het is bovendien de invoer van de RUN, niet het model van nu: wie na het
+   * toetsen een zone verschuift, hoort in dit rapport nog de zones te zien
+   * waarmee de tabellen ernaast gerekend zijn. Dezelfde reden waarom
+   * `korvenUitModel` uit `lastRunData` komt.
+   */
+  betonInvoer?: readonly ConcreteBeamCheckInput[];
+  /**
+   * Het tekstblok van de initiële scheefstand, woordelijk zoals
+   * `scheefstandToelichting` in `lib/scheefstandNorm.ts` het opstelt: per regel
+   * het symbool, de waarde en het normartikel, daarna de afleiding van h en m,
+   * en tot slot de waarschuwingen.
+   *
+   * Woordelijk en niet als losse getallen, omdat die functie de drie normen
+   * kent (EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1)), de stand
+   * "ongunstigste", en het verschil tussen een handmatig opgegeven h of m en
+   * een afgeleide. Dat aan de rapportkant naspelen zou een tweede lezing van
+   * dezelfde norm opleveren.
+   *
+   * Ontbreekt hij, dan zwijgt de PDF over de scheefstand in plaats van een
+   * vaste 1/200 te suggereren.
+   */
+  scheefstandToelichting?: string;
 }
 
 /**
@@ -250,6 +297,41 @@ export function doorsnedenVoorFiguren(
   return uit;
 }
 
+/**
+ * De wapeningszones per betonstaaf, in de vorm van de rekenkern.
+ *
+ * Alleen staven die WERKELIJK een indeling dragen komen erin. Een staaf met
+ * twee lege lijsten heeft overal dezelfde korf, en die staat al in de
+ * gegevensregel van die staaf; een tabel met één rij die datzelfde herhaalt
+ * maakt het rapport langer en niet duidelijker. De Rust-kant maakt dezelfde
+ * afweging (`betonzones::zones_van`), dus een staaf die hier onverhoopt tóch
+ * meekomt levert nog steeds geen leeg blok op.
+ *
+ * De lengte gaat in MILLIMETER mee omdat de zonegrenzen dat ook zijn; de
+ * invoer draagt haar in meters (`length_m`) en dit is de enige plaats waar die
+ * omrekening gebeurt.
+ *
+ * Zuiver: leest geen store en roept niets aan, zodat de test hem zonder DOM en
+ * zonder Tauri kan draaien.
+ */
+export function zonesVoorRapport(
+  betonInvoer: readonly ConcreteBeamCheckInput[] | undefined,
+): BetonStaafZones[] {
+  if (!betonInvoer) return [];
+  const uit: BetonStaafZones[] = [];
+  for (const b of betonInvoer) {
+    const z = b.reinforcement_zones;
+    if (!z || (z.longitudinal.length === 0 && z.stirrups.length === 0)) continue;
+    uit.push({
+      beam_id: b.beam_id,
+      lengte_mm: b.length_m * 1000,
+      korf: b.cage,
+      zones: z,
+    });
+  }
+  return uit;
+}
+
 /** De volledige invoer voor `generate_steel_report_pdf`. */
 export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   const staal: BeamCheckResult[] = bron.checkResults.filter(isSteelCheckResult);
@@ -286,6 +368,22 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   if (clt.length > 0) invoer.clt_check_results = clt;
   if (beton.length > 0) invoer.concrete_check_results = beton;
   if (spanning.length > 0) invoer.stress_check_results = spanning;
+  // De dekkingslijnen, de wapeningszones en de scheefstand: alleen meesturen
+  // als er iets in zit. De Rust-kant heeft `#[serde(default)]` op alle drie, en
+  // een leeg veld en een ontbrekend veld betekenen daar hetzelfde; weglaten
+  // houdt de aanroep leesbaar in de logboeken en laat de drie bijbehorende
+  // blokken vanzelf weg.
+  if (bron.dekkingslijnen && bron.dekkingslijnen.length > 0) {
+    invoer.concrete_dekkingslijnen = [...bron.dekkingslijnen];
+  }
+  const zones = zonesVoorRapport(bron.betonInvoer);
+  if (zones.length > 0) invoer.concrete_reinforcement_zones = zones;
+  // Woordelijk door. Een lege of witte tekst telt als "niet meegestuurd": het
+  // rapport hoort dan te zwijgen over de scheefstand en niet een leeg kopje
+  // "Uitgangspunten" op te leveren.
+  if (bron.scheefstandToelichting && bron.scheefstandToelichting.trim() !== "") {
+    invoer.scheefstand_toelichting = bron.scheefstandToelichting;
+  }
   if (spoor) {
     invoer.concrete_stiffness_trace = { ...spoor, staafdoorsneden: doorsneden };
   } else if (doorsneden.length > 0) {
@@ -331,6 +429,14 @@ export async function genereerRapportPdf(invoer: ReportInput): Promise<Uint8Arra
  * kruislaaghout" stond hier daarom ten onrechte en is weg; wat er nog wél
  * staat, is de doorsnedetekening van de OVERIGE materialen (staal en massief
  * hout), die nog geen eigen figuur in de PDF hebben.
+ *
+ * DRIE STUKKEN ZIJN ER SINDSDIEN BIJ GEKOMEN, en staan hier dus óók niet meer:
+ * de dekkingslijn van 9.2.1.3 (met figuur, kritieke plaatsen, bundels,
+ * dwarskracht en de eisen bij de steunpunten), de wapeningszones met de korf op
+ * de maatgevende snede, en de initiële scheefstand bij de uitgangspunten. Alle
+ * drie reizen ze mee via `RapportPdfBronnen`; wie ze niet aanlevert, krijgt de
+ * bijbehorende blokken niet — en dat is precies wat het rapport hoort te doen
+ * met een gegeven dat niet bestaat.
  */
 export const NIET_IN_PDF = [
   "de doorsnedetekening met het spanningsverloop van staal en massief hout",

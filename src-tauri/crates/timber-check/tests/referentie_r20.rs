@@ -142,6 +142,8 @@ fn invoer(
         beam_id: 2,
         width_mm: B_MM,
         height_mm: H_MM,
+        // Rechthoek b x h: geen samengestelde doorsnede.
+        custom_section: None,
         // GL28c bestaat niet in de kern; GL28h is de naaste buur.
         strength_class: "GL28h".to_string(),
         // Gebruiksklasse 2, KLED kort → k_mod = 0,90, k_def = 0,80.

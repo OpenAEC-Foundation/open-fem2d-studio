@@ -293,6 +293,10 @@ const ALLEEN_BRON = new Map([
     "bepaalt welke normen het rapport mag noemen (`lib/normenInRapport`) uit de uitgangspunten, de toetsresultaten en de materialen in het model — presentatielogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
   ],
   [
+    "hout-eigen-doorsnede",
+    "legt de terugval van `resolveSection` vast: een HOUTEN staaf met een eigen doorsnede (profielnaam met het voorvoegsel EIGEN) kreeg stilzwijgend HEA 160 / S235, dus E = 210 000 in plaats van 11 000. De test zet daarvoor een doorsnede in de winkel `profieleditor/eigenDoorsnedenStore` — een localStorage-winkel die net als de CLT-opbouwen buiten de barrel valt — en gaat verder door `lib/modelNaarSolverInput` (ook niet in de barrel, zie het bedding-punt hierboven) en `lib/timberCheckBuilder`. Tegen de sidecarbundel zou hij juist de winkel overslaan waar de doorsnede vandaan moet komen",
+  ],
+  [
     "dekkingslijn",
     "legt de hele keten van de dekkingslijn vast: de zonegrenzen uit `lib/betonZoneSneden` worden rekenknopen via `bouwMultiInput`, de zones reizen door `lib/betonCheckBuilder` en `lib/betonDekkingslijnBuilder` naar de kern, en het slotblok start de toetsbrug als apart proces voor het echte `concrete_dekkingslijn`. Hij leest daarvoor `stores/checkStore` (de toetsstore) en de twee invoerbouwers, en die vallen alle drie buiten de barrel van de sidecarbundel; tegen de bundel zou hij juist de aansluiting overslaan die hij moet bewaken. De solverkant van hetzelfde mechanisme — `extraSneden` als zodanig — staat in `test-sneden` en draait wél tegen de bundel",
   ],

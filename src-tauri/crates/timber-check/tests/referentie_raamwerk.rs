@@ -41,6 +41,8 @@ fn basis(beam_id: u32) -> TimberBeamCheckInput {
         beam_id,
         width_mm: 96.0,
         height_mm: 450.0,
+        // Rechthoek b x h: geen samengestelde doorsnede.
+        custom_section: None,
         strength_class: "C24".to_string(),
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,

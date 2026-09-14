@@ -7024,20 +7024,47 @@ function buildTimberCheckInputs(data) {
       }
       continue;
     }
-    if (isSteelProfile(beam.profile)) {
-      skipped.push({
-        beamId: beam.id,
-        reason: `materiaal "${materialName}" is hout maar profiel "${beam.profile}" is een staalprofiel \u2014 kies een houtdoorsnede (bijv. "60x100") of een staalsoort`
-      });
-      continue;
-    }
-    const rect = parseTimberRectMm(beam.profile);
-    if (!rect) {
-      skipped.push({
-        beamId: beam.id,
-        reason: `doorsnede "${beam.profile ?? "\u2014"}" is geen herkenbare rechthoek b\xD7h \u2014 gebruik bijv. "60x100" of "96x450 GL" als profielnaam`
-      });
-      continue;
+    let custom;
+    let bMm;
+    let hMm;
+    if (isEigenProfiel(beam.profile)) {
+      const eigen = zoekEigenDoorsnede(beam.profile);
+      if (!eigen) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `eigen doorsnede "${eigenNaamVan(beam.profile)}" is niet (meer) bewaard \u2014 open de profieleditor en bewaar hem opnieuw`
+        });
+        continue;
+      }
+      const cs = naarCustomSection(eigen);
+      if (cs.lamellen.length === 0) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `eigen doorsnede "${eigen.naam}" is niet uit platen opgebouwd \u2014 de houttoetsing heeft de vorm zelf nodig voor de dwarskracht (art. 6.1.7 vraagt de breedte op de beschouwde vezel); teken hem als samenstelling van lamellen`
+        });
+        continue;
+      }
+      custom = cs;
+      bMm = eigen.motor.y_max_mm - eigen.motor.y_min_mm;
+      hMm = eigen.motor.z_max_mm - eigen.motor.z_min_mm;
+    } else {
+      if (isSteelProfile(beam.profile)) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `materiaal "${materialName}" is hout maar profiel "${beam.profile}" is een staalprofiel \u2014 kies een houtdoorsnede (bijv. "60x100") of een staalsoort`
+        });
+        continue;
+      }
+      const rect = parseTimberRectMm(beam.profile);
+      if (!rect) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `doorsnede "${beam.profile ?? "\u2014"}" is geen herkenbare rechthoek b\xD7h \u2014 gebruik bijv. "60x100" of "96x450 GL" als profielnaam, of teken hem in de profieleditor`
+        });
+        continue;
+      }
+      bMm = rect.bMm;
+      hMm = rect.hMm;
     }
     const lengthMm = beamLengthMm(beam, data.nodes);
     if (lengthMm <= 0) {
@@ -7061,8 +7088,12 @@ function buildTimberCheckInputs(data) {
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
     inputs.push({
       beam_id: beam.id,
-      width_mm: rect.bMm,
-      height_mm: rect.hMm,
+      width_mm: bMm,
+      height_mm: hMm,
+      // Aanwezig = samengestelde doorsnede uit de profieleditor; de kern
+      // rekent dan met de lamellen in plaats van met b × h. Afwezig = de
+      // rechthoek hierboven, precies zoals voorheen.
+      ...custom ? { custom_section: custom } : {},
       strength_class: grade,
       service_class: mapServiceClass(cfg.serviceClass),
       load_duration: mapLoadDuration(cfg.loadDuration),
@@ -7110,6 +7141,16 @@ function buildTimberCheckInputs(data) {
       //
       // Dus: 1,0 is hier de normwaarde. Naar 0,67 gaan zou de
       // dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
+      //
+      // LET OP — dit geldt alleen voor de RECHTHOEK. Sinds een eigen
+      // doorsnede hier ook binnenkomt, is de zin "deze toetsing rekent
+      // uitsluitend met rechthoekige doorsneden" niet meer waar. Voor een
+      // samengestelde doorsnede leest de NB k_cr af uit de verhouding
+      // lijfdikte / flensbreedte (0,8 zodra het lijf dunner is dan de halve
+      // flens), en die verhouding kent deze bouwer niet — de kern wél. De
+      // kern negeert dit veld daarom bij een niet-rechthoekige doorsnede en
+      // bepaalt k_cr zelf; zie `shear::k_cr_nb` en de toelichting bij
+      // `check_timber_beam`.
       k_cr: 1,
       load_sharing: false,
       deflection_inst_mm: wInstMm,
@@ -8012,6 +8053,16 @@ var CONCRETE_E_CM = {
 var RHO_BETON = 2500;
 var RHO_STAAL = 7850;
 var G2 = 9.81;
+var DEFAULT_DOORSNEDE = { E: E_STAAL, A: 3877, I: 1673e4, bron: "default" };
+var DoorsnedeOnbekendFout = class extends Error {
+  /** De staven waar het om gaat, met per staaf de reden. */
+  staven;
+  constructor(bericht, staven) {
+    super(bericht);
+    this.name = "DoorsnedeOnbekendFout";
+    this.staven = staven;
+  }
+};
 function parseRechthoek(profiel) {
   if (!profiel) return null;
   const m = /^\s*(\d+(?:[.,]\d+)?)\s*[xX×]\s*(\d+(?:[.,]\d+)?)/.exec(profiel);
@@ -8046,25 +8097,57 @@ function betonDoorsnede(profile) {
   const I = bF * hF ** 3 / 12 + aF * (zF - zG) ** 2 + bW * hW ** 3 / 12 + aW * (zW - zG) ** 2;
   return { A, I, bron: "beton-vorm" };
 }
+function eVanMateriaal(material) {
+  const vrij = parseVrijMateriaal(material);
+  if (vrij) return { E: vrij.eMod, soort: "vrij" };
+  const mat = material ?? "S235";
+  if (mat in CONCRETE_E_CM) return { E: CONCRETE_E_CM[mat], soort: "beton" };
+  const isHout = SUPPORTED_TIMBER_GRADES.includes(mat) || mat in TIMBER_E_MEAN;
+  if (isHout) return { E: TIMBER_E_MEAN[mat] ?? 11e3, soort: "hout" };
+  return { E: E_STAAL, soort: "staal" };
+}
+function voorbeeldProfiel(soort) {
+  switch (soort) {
+    case "hout":
+      return 'een rechthoek als "96x450", een kruislaaghoutopbouw of een eigen doorsnede uit de profieleditor';
+    case "beton":
+      return 'een rechthoek als "300x500", een T of L als "T 400x450 bw=200 hf=50", of een eigen doorsnede uit de profieleditor';
+    case "vrij":
+      return 'een rechthoek als "100x200", een catalogusprofiel als "HEA 200" of een eigen doorsnede uit de profieleditor';
+    case "staal":
+      return 'een catalogusprofiel als "HEA 200" of een eigen doorsnede uit de profieleditor';
+  }
+}
 function resolveSection(material, profile) {
   const mat = material ?? "S235";
-  const isHout = SUPPORTED_TIMBER_GRADES.includes(mat) || mat in TIMBER_E_MEAN;
-  const vrij = parseVrijMateriaal(material);
-  if (vrij) {
+  const { E, soort } = eVanMateriaal(material);
+  if (isEigenProfiel(profile)) {
+    const eigen = zoekEigenDoorsnede(profile);
+    if (eigen) {
+      return {
+        E,
+        A: eigen.eigenschappen.area_mm2,
+        I: eigen.eigenschappen.iy_mm4,
+        bron: "eigen"
+      };
+    }
+    return {
+      ...DEFAULT_DOORSNEDE,
+      reden: `eigen doorsnede "${eigenNaamVan(profile)}" is niet (meer) bewaard \u2014 open de profieleditor en bewaar hem opnieuw, of kies een ander profiel`
+    };
+  }
+  if (soort === "vrij") {
     const rect = parseRechthoek(profile);
     if (rect) {
       const { b, h } = rect;
-      return { E: vrij.eMod, A: b * h, I: b * h * h * h / 12, bron: "vrij" };
+      return { E, A: b * h, I: b * h * h * h / 12, bron: "vrij" };
     }
     const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
-    if (sec) return { E: vrij.eMod, A: sec.A, I: sec.Iy, bron: "vrij" };
-  }
-  if (mat in CONCRETE_E_CM) {
+    if (sec) return { E, A: sec.A, I: sec.Iy, bron: "vrij" };
+  } else if (soort === "beton") {
     const vorm = betonDoorsnede(profile);
-    if (vorm) {
-      return { E: CONCRETE_E_CM[mat], A: vorm.A, I: vorm.I, bron: vorm.bron };
-    }
-  } else if (isHout) {
+    if (vorm) return { E, A: vorm.A, I: vorm.I, bron: vorm.bron };
+  } else if (soort === "hout") {
     if (isCltProfiel(profile)) {
       const layup = parseCltProfiel(profile, mat);
       const d = layup ? cltSolverDoorsnede(layup, (k) => TIMBER_E_MEAN[k]) : null;
@@ -8073,30 +8156,36 @@ function resolveSection(material, profile) {
     const rect = parseRechthoek(profile);
     if (rect) {
       const { b, h } = rect;
-      return {
-        E: TIMBER_E_MEAN[mat] ?? 11e3,
-        A: b * h,
-        I: b * h * h * h / 12,
-        bron: "hout-bxh"
-      };
+      return { E, A: b * h, I: b * h * h * h / 12, bron: "hout-bxh" };
     }
   } else {
-    const eigen = zoekEigenDoorsnede(profile);
-    if (eigen) {
-      return {
-        E: E_STAAL,
-        A: eigen.eigenschappen.area_mm2,
-        I: eigen.eigenschappen.iy_mm4,
-        bron: "eigen"
-      };
-    }
     const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
-    if (sec) return { E: E_STAAL, A: sec.A, I: sec.Iy, bron: "staal-db" };
+    if (sec) return { E, A: sec.A, I: sec.Iy, bron: "staal-db" };
   }
-  console.warn(
-    `[solver] Doorsnede onbekend voor materiaal "${material}" + profiel "${profile}" \u2014 reken met default HEA 160 / S235. Controleer de staafeigenschappen.`
+  return {
+    ...DEFAULT_DOORSNEDE,
+    reden: profile ? `profiel "${profile}" hoort niet bij materiaal "${mat}" \u2014 verwacht ${voorbeeldProfiel(soort)}` : `er is geen profiel toegewezen \u2014 kies ${voorbeeldProfiel(soort)}`
+  };
+}
+function doorsnedeVoorSolver(material, profile, beamId) {
+  const sec = resolveSection(material, profile);
+  if (sec.bron !== "default") return sec;
+  const reden = sec.reden ?? "doorsnede onbekend";
+  const waar = beamId === void 0 ? "Een staaf" : `Staaf ${beamId}`;
+  throw new DoorsnedeOnbekendFout(
+    `${waar}: ${reden}. De berekening is gestopt \u2014 doorrekenen met een vervangende doorsnede zou een antwoord geven bij een ander model.`,
+    [{ beamId: beamId ?? -1, reden }]
   );
-  return { E: E_STAAL, A: 3877, I: 1673e4, bron: "default" };
+}
+function onbekendeDoorsneden(staven) {
+  const uit = [];
+  for (const b of staven) {
+    const sec = resolveSection(b.material, b.profile);
+    if (sec.bron === "default") {
+      uit.push({ beamId: b.id, reden: sec.reden ?? "doorsnede onbekend" });
+    }
+  }
+  return uit;
 }
 function eigenGewichtPerMeter(material, profile) {
   const { A, aBruto } = resolveSection(material, profile);
@@ -8166,6 +8255,15 @@ function liftSpringK(s) {
   return void 0;
 }
 function bouwMultiInput(model) {
+  const onbekend = onbekendeDoorsneden(model.beams);
+  if (onbekend.length > 0) {
+    const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
+    const rest = onbekend.length - eerste.length;
+    throw new DoorsnedeOnbekendFout(
+      `De berekening is gestopt: van ${onbekend.length} ${onbekend.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te bepalen. ${eerste.join("; ")}` + (rest > 0 ? `; en nog ${rest} andere` : "") + ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij een ander model dan is ingevoerd.",
+      onbekend
+    );
+  }
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput = {
     nodes: model.nodes.map((n) => ({ id: n.id, x: n.x, z: n.z })),
@@ -8341,7 +8439,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.6";
+var version = "0.3.7";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
@@ -10770,6 +10868,7 @@ export {
   DEFAULT_GRID,
   DEFAULT_STRUCTURAL_GRID,
   DEFAULT_VIEW,
+  DoorsnedeOnbekendFout,
   E_STAAL,
   G2 as G,
   K_I,
@@ -10821,6 +10920,7 @@ export {
   defaultCombinations,
   deflectionNotesFor,
   deserializeProject,
+  doorsnedeVoorSolver,
   eigenGewichtPerMeter,
   equivalentUdlFromMoments,
   extractFieldDeflectionMm,
@@ -10843,6 +10943,7 @@ export {
   mapServiceClass,
   matchSupportedTimberGrade,
   nonlinearVoorBestand,
+  onbekendeDoorsneden,
   parseRechthoek,
   parseTimberRectMm,
   profileLookupKey,

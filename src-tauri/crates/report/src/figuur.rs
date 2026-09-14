@@ -45,13 +45,14 @@ use openaec_layout::{
     types::{Pt, Rect, Size},
 };
 
+use concrete_check::dekkingslijn::Momentdekking;
 use concrete_check::segments::SegmentStiffnessResponse;
 use nen_en_1992_1_1::mnkappa::{InteractionPoint, MnKappaDiagram};
 use nen_en_1992_1_1::section::{ConcreteSection, ReinforcementCage};
 
 use crate::betonfiguren::{
-    doorsnede_kader, teken_doorsnede, teken_ei_verloop, teken_interactie, teken_mn_kappa,
-    Figuurstijl, KADER_EI, KADER_INTERACTIE, KADER_MN_KAPPA,
+    doorsnede_kader, teken_dekkingslijn, teken_doorsnede, teken_ei_verloop, teken_interactie,
+    teken_mn_kappa, Figuurstijl, KADER_DEKKINGSLIJN, KADER_EI, KADER_INTERACTIE, KADER_MN_KAPPA,
 };
 use crate::houtfiguren::{clt_kader, teken_clt_opbouw, CltOpbouwFiguur, Houtstijl};
 
@@ -92,6 +93,18 @@ pub enum Figuur {
     CltOpbouw {
         opbouw: Box<CltOpbouwFiguur>,
     },
+    /// De momentendekkingslijn van één zijde van een betonstaaf — figuur 9.2
+    /// als tekening, met de omhullende, de benodigde en de aanwezige
+    /// trekkracht.
+    ///
+    /// Geboxt om dezelfde reden als [`Figuur::CltOpbouw`]: de dekking draagt
+    /// een punt per station plus alle bundels met hun verankeringsafleiding,
+    /// en is daarmee veruit de grootste variant.
+    Dekkingslijn {
+        dekking: Box<Momentdekking>,
+        /// Staaflengte, mm — de rechtergrens van de x-as.
+        lengte_mm: f64,
+    },
 }
 
 impl Figuur {
@@ -104,6 +117,7 @@ impl Figuur {
             Figuur::Interactie { .. } => KADER_INTERACTIE,
             Figuur::EiVerloop { .. } => KADER_EI,
             Figuur::CltOpbouw { opbouw } => clt_kader(opbouw),
+            Figuur::Dekkingslijn { .. } => KADER_DEKKINGSLIJN,
         }
     }
 
@@ -132,6 +146,9 @@ impl Figuur {
             // gaat hier over — één plaats waar het rapport zijn font doorgeeft.
             Figuur::CltOpbouw { opbouw } => {
                 teken_clt_opbouw(dl, vlak, opbouw, &Houtstijl::met_font(&stijl.font))
+            }
+            Figuur::Dekkingslijn { dekking, lengte_mm } => {
+                teken_dekkingslijn(dl, vlak, dekking, *lengte_mm, stijl)
             }
         }
     }

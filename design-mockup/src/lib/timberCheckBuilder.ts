@@ -8,10 +8,20 @@
  *    sterkteklasse is ("C24", "GL28h", …). De lijst komt runtime uit het
  *    Tauri-command `list_timber_grades`; de statische lijst hieronder is de
  *    browser-fallback en moet daarmee overeenkomen.
- *  - De doorsnede moet een rechthoek b × h zijn, herkenbaar aan de
- *    profielnaam ("60x100", "38x89 SLS", "96x450 GL"). Dit model slaat
- *    geen numerieke doorsnede-eigenschappen per staaf op, dus de naam is de
- *    enige bron — geen naam-match betekent eerlijk overslaan.
+ *  - De doorsnede is óf een rechthoek b × h, herkenbaar aan de profielnaam
+ *    ("60x100", "38x89 SLS", "96x450 GL"), óf een eigen doorsnede uit de
+ *    profieleditor ("EIGEN:…"). Geen van beide betekent eerlijk overslaan.
+ *
+ *    Die tweede weg is er sinds september 2026. Zonder hem viel een houten
+ *    staaf met een eigen doorsnede door `isSteelProfile` — dat geeft `true`
+ *    voor elke `EIGEN:`-naam — en werd hij overgeslagen met de misleidende
+ *    reden "profiel is een staalprofiel". Erger nog was wat de SOLVER deed:
+ *    die viel voor diezelfde staaf terug op HEA 160 / S235 (zie de toelichting
+ *    in `sectionResolver.ts`). De eigen doorsnede gaat nu als `custom_section`
+ *    naar de kern, die A, I, W én de maatgevende schuifvezel uit de lamellen
+ *    berekent. Dat laatste is geen luxe: art. 6.1.7 toetst de dwarskracht met
+ *    de breedte op de beschouwde vezel, en bij een samengestelde ligger is dat
+ *    de lijfdikte en niet de omhullende breedte.
  *
  * Per-staaf toetsconfiguratie komt uit `beam.checkConfig` (EN 1995-sectie
  * van het staaf-eigenschappenvenster): klimaatklasse, belastingduur en
@@ -44,6 +54,13 @@ import {
   deflectionNotesFor,
   extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
+import {
+  eigenNaamVan,
+  isEigenProfiel,
+  naarCustomSection,
+  zoekEigenDoorsnede,
+} from "./profieleditor/eigenDoorsnedenStore";
+import type { CustomSection } from "./types/steel/CustomSection";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-klimaatklasse (1/2/3) → ts-rs/Rust-enum. Ontbreekt → Sc1. */
@@ -289,24 +306,63 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       continue;
     }
 
-    // Staalprofiel + houtmateriaal is een inconsistent model — niet toetsen
-    // met verzonnen eigenschappen (de staalbouwer slaat hem ook over omdat
-    // het materiaal geen staalsoort is).
-    if (isSteelProfile(beam.profile)) {
-      skipped.push({
-        beamId: beam.id,
-        reason: `materiaal "${materialName}" is hout maar profiel "${beam.profile}" is een staalprofiel — kies een houtdoorsnede (bijv. "60x100") of een staalsoort`,
-      });
-      continue;
-    }
+    // Eigen doorsnede uit de profieleditor. Deze tak moet VÓÓR de
+    // staalprofielcontrole staan: `isSteelProfile` geeft `true` voor elke
+    // `EIGEN:`-naam — dat klopt voor de staalbouwer, waar een eigen doorsnede
+    // altijd staal is, maar het maakte elke houten staaf met een eigen
+    // doorsnede onbereikbaar voor deze bouwer.
+    let custom: CustomSection | undefined;
+    let bMm: number;
+    let hMm: number;
+    if (isEigenProfiel(beam.profile)) {
+      const eigen = zoekEigenDoorsnede(beam.profile);
+      if (!eigen) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `eigen doorsnede "${eigenNaamVan(beam.profile)}" is niet (meer) bewaard — open de profieleditor en bewaar hem opnieuw`,
+        });
+        continue;
+      }
+      const cs = naarCustomSection(eigen);
+      if (cs.lamellen.length === 0) {
+        // Geen lamellen betekent geen contour, en zonder contour is er geen
+        // breedte op een vezel te meten. De houtkern weigert zo'n doorsnede
+        // (zie `doorsnede_uit` in timber-check); dat hier al melden geeft de
+        // gebruiker de reden bij zijn staaf in plaats van in een toetsfout.
+        skipped.push({
+          beamId: beam.id,
+          reason: `eigen doorsnede "${eigen.naam}" is niet uit platen opgebouwd — de houttoetsing heeft de vorm zelf nodig voor de dwarskracht (art. 6.1.7 vraagt de breedte op de beschouwde vezel); teken hem als samenstelling van lamellen`,
+        });
+        continue;
+      }
+      custom = cs;
+      // De omhullende maten uit de doorsnedemotor. Ze sturen de toetsing niet
+      // meer — de kern rekent met de lamellen — maar ze staan wél in de invoer
+      // en horen dus bij deze doorsnede te passen.
+      bMm = eigen.motor.y_max_mm - eigen.motor.y_min_mm;
+      hMm = eigen.motor.z_max_mm - eigen.motor.z_min_mm;
+    } else {
+      // Staalprofiel + houtmateriaal is een inconsistent model — niet toetsen
+      // met verzonnen eigenschappen (de staalbouwer slaat hem ook over omdat
+      // het materiaal geen staalsoort is).
+      if (isSteelProfile(beam.profile)) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `materiaal "${materialName}" is hout maar profiel "${beam.profile}" is een staalprofiel — kies een houtdoorsnede (bijv. "60x100") of een staalsoort`,
+        });
+        continue;
+      }
 
-    const rect = parseTimberRectMm(beam.profile);
-    if (!rect) {
-      skipped.push({
-        beamId: beam.id,
-        reason: `doorsnede "${beam.profile ?? "—"}" is geen herkenbare rechthoek b×h — gebruik bijv. "60x100" of "96x450 GL" als profielnaam`,
-      });
-      continue;
+      const rect = parseTimberRectMm(beam.profile);
+      if (!rect) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `doorsnede "${beam.profile ?? "—"}" is geen herkenbare rechthoek b×h — gebruik bijv. "60x100" of "96x450 GL" als profielnaam, of teken hem in de profieleditor`,
+        });
+        continue;
+      }
+      bMm = rect.bMm;
+      hMm = rect.hMm;
     }
 
     const lengthMm = beamLengthMm(beam, data.nodes);
@@ -345,8 +401,12 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
 
     inputs.push({
       beam_id: beam.id,
-      width_mm: rect.bMm,
-      height_mm: rect.hMm,
+      width_mm: bMm,
+      height_mm: hMm,
+      // Aanwezig = samengestelde doorsnede uit de profieleditor; de kern
+      // rekent dan met de lamellen in plaats van met b × h. Afwezig = de
+      // rechthoek hierboven, precies zoals voorheen.
+      ...(custom ? { custom_section: custom } : {}),
       strength_class: grade,
       service_class: mapServiceClass(cfg.serviceClass),
       load_duration: mapLoadDuration(cfg.loadDuration),
@@ -393,6 +453,16 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       //
       // Dus: 1,0 is hier de normwaarde. Naar 0,67 gaan zou de
       // dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
+      //
+      // LET OP — dit geldt alleen voor de RECHTHOEK. Sinds een eigen
+      // doorsnede hier ook binnenkomt, is de zin "deze toetsing rekent
+      // uitsluitend met rechthoekige doorsneden" niet meer waar. Voor een
+      // samengestelde doorsnede leest de NB k_cr af uit de verhouding
+      // lijfdikte / flensbreedte (0,8 zodra het lijf dunner is dan de halve
+      // flens), en die verhouding kent deze bouwer niet — de kern wél. De
+      // kern negeert dit veld daarom bij een niet-rechthoekige doorsnede en
+      // bepaalt k_cr zelf; zie `shear::k_cr_nb` en de toelichting bij
+      // `check_timber_beam`.
       k_cr: 1.0,
       load_sharing: false,
       deflection_inst_mm: wInstMm,

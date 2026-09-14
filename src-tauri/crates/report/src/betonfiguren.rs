@@ -102,9 +102,10 @@ use openaec_layout::{
     types::{Color, Pt, Rect},
 };
 
+use concrete_check::dekkingslijn::Momentdekking;
 use concrete_check::segments::SegmentStiffnessResponse;
 use nen_en_1992_1_1::mnkappa::{FailureMode, InteractionPoint, MnKappaDiagram};
-use nen_en_1992_1_1::section::{ConcreteSection, ConcreteShape, ReinforcementCage};
+use nen_en_1992_1_1::section::{ConcreteSection, ConcreteShape, RebarSide, ReinforcementCage};
 
 // ── Kleuren ───────────────────────────────────────────────────────────────────
 
@@ -1455,4 +1456,255 @@ pub fn teken_ei_verloop(
     dl.draw_text(k.x(EI_LEGENDA_X + 12.0), k.y(14.5), "gescheurd");
     dl.draw_text(k.x(EI_LEGENDA_X + 84.0), k.y(14.5), "ongescheurd");
     dl.draw_text(k.x(EI_LEGENDA_X + 178.0), k.y(14.5), "E_c·I_c (vergelijkingswaarde)");
+}
+
+// ── Figuur 5: de momentendekkingslijn van één zijde ───────────────────────────
+
+const DEK_MARGE_LINKS: f32 = 62.0;
+const DEK_MARGE_RECHTS: f32 = 14.0;
+const DEK_MARGE_BOVEN: f32 = 26.0;
+const DEK_MARGE_ONDER: f32 = 34.0;
+/// Waar de legenda in de bovenste band begint — om dezelfde reden als
+/// [`EI_LEGENDA_X`]: links staat de titel van de verticale as, die de
+/// tekenmotor niet kan draaien.
+const DEK_LEGENDA_X: f32 = 150.0;
+
+/// Ontwerpmaat van de dekkingslijnfiguur. Dezelfde verhouding als het
+/// EI-verloop: allebei zetten ze een grootheid uit tegen de plaats langs de
+/// staaf, en twee liggende figuren van gelijke maat lezen in één rapport als
+/// één reeks.
+pub const KADER_DEKKINGSLIJN: (f32, f32) = (560.0, 210.0);
+
+/// Figuur 9.2 als tekening, voor één zijde van de doorsnede.
+///
+/// Drie lijnen, en dat is precies de opbouw van de figuur in de norm:
+///
+/// * **A** — de omhullende trekkracht op de plaats zelf, M_Ed/z (+ N_Ed).
+///   Streeplijn, want zij is een tussenstap en geen eis.
+/// * **B** — F_s, de benodigde trekkracht ná de verschuiving over a_l
+///   (art. 9.2.1.3(2)). Dit is wat de wapening moet kunnen.
+/// * **C** — F_Rs, de weerstandbiedende trekkracht van de staven die hier
+///   liggen. Binnen l_bd van een staafeinde loopt zij SCHUIN op, want
+///   art. 9.2.1.3(3) staat toe met een lineair krachtverloop te rekenen; die
+///   schuine tak komt uit de gegevens zelf en wordt hier niet nagebootst.
+///
+/// Waar B boven C uitkomt is er een tekort, en dat wordt met een vlak
+/// aangegeven — niet met een kleurtje op de lijn, want in grijstinten is een
+/// vlak het enige dat opvalt.
+///
+/// Op een zonegrens SPRINGT C. De punten komen daar dubbel binnen (twee punten
+/// met dezelfde `x_mm`, zie `Snedezijde` van de kern); door ze gewoon op volgorde te
+/// verbinden ontstaat het verticale stuk vanzelf. Er wordt dus niet
+/// geïnterpoleerd over een sprong — dat zou een weerstand tekenen die nergens
+/// geldt.
+///
+/// De eindzones krijgen een lichte band: daar geldt niet de vrije
+/// dekkingslijn maar art. 9.2.1.4/art. 9.2.1.5, en die eis staat als tabel in
+/// het hoofdstuk.
+pub fn teken_dekkingslijn(
+    dl: &mut DrawList,
+    vlak: Rect,
+    dekking: &Momentdekking,
+    lengte_mm: f64,
+    stijl: &Figuurstijl,
+) {
+    let (kw, kh) = KADER_DEKKINGSLIJN;
+    let k = Kader::nieuw(vlak, kw, kh);
+    let kl = &stijl.kleuren;
+    let plot_w = kw - DEK_MARGE_LINKS - DEK_MARGE_RECHTS;
+    let plot_h = kh - DEK_MARGE_BOVEN - DEK_MARGE_ONDER;
+    let y_basis = DEK_MARGE_BOVEN + plot_h;
+
+    let lengte_m = (lengte_mm / 1000.0).max(1e-9);
+    let f_max = dekking
+        .punten
+        .iter()
+        .flat_map(|p| [p.omhullende_kn, p.benodigd_kn, p.aanwezig_kn])
+        .filter(|v| v.is_finite())
+        .fold(1.0_f64, f64::max);
+
+    let y_ticks = ticks(f_max);
+    let y_as_max = *y_ticks.last().unwrap();
+    let x_ticks = ticks(lengte_m);
+    let x_as_max = *x_ticks.last().unwrap();
+    // Decimalen van de x-as uit de STAP en niet uit de waarde; zelfde reden als
+    // bij het EI-verloop.
+    let x_dec = if x_ticks.len() > 1 && x_ticks[1] - x_ticks[0] < 1.0 { 1 } else { 0 };
+
+    let sx = |x_mm: f64| DEK_MARGE_LINKS + (x_mm / 1000.0 / x_as_max) as f32 * plot_w;
+    let sy = |f: f64| DEK_MARGE_BOVEN + plot_h - (f.max(0.0) / y_as_max) as f32 * plot_h;
+
+    // Eindzones eerst: ze liggen ACHTER de lijnen.
+    let band = meng_met_wit(kl.maatlijn, 0.10);
+    dl.set_fill_color(band);
+    for paar in dekking.punten.windows(2) {
+        if !(paar[0].in_eindzone && paar[1].in_eindzone) {
+            continue;
+        }
+        let x0 = sx(paar[0].x_mm);
+        let x1 = sx(paar[1].x_mm);
+        dl.draw_rect(
+            k.x(x0),
+            k.y(DEK_MARGE_BOVEN),
+            k.l((x1 - x0).max(0.0)),
+            k.l(plot_h),
+            true,
+            false,
+        );
+    }
+
+    // Raster en assen.
+    dl.set_stroke_color(kl.raster);
+    dl.set_line_width(k.l(0.6));
+    for t in &y_ticks {
+        dl.draw_line(
+            k.x(DEK_MARGE_LINKS),
+            k.y(sy(*t)),
+            k.x(DEK_MARGE_LINKS + plot_w),
+            k.y(sy(*t)),
+        );
+    }
+    for t in &x_ticks {
+        let x = DEK_MARGE_LINKS + (t / x_as_max) as f32 * plot_w;
+        dl.draw_line(k.x(x), k.y(DEK_MARGE_BOVEN), k.x(x), k.y(y_basis));
+    }
+    dl.set_stroke_color(kl.maatlijn);
+    dl.set_line_width(k.l(0.8));
+    dl.draw_line(k.x(DEK_MARGE_LINKS), k.y(y_basis), k.x(DEK_MARGE_LINKS + plot_w), k.y(y_basis));
+    dl.draw_line(k.x(DEK_MARGE_LINKS), k.y(DEK_MARGE_BOVEN), k.x(DEK_MARGE_LINKS), k.y(y_basis));
+
+    dl.set_font(&stijl.font, k.l(8.0));
+    dl.set_fill_color(kl.tekst_maat);
+    for t in &y_ticks {
+        dl.draw_text_right(k.x(DEK_MARGE_LINKS - 5.0), k.y(sy(*t) + 2.8), &nl(*t, 0));
+    }
+    for t in &x_ticks {
+        let x = DEK_MARGE_LINKS + (t / x_as_max) as f32 * plot_w;
+        dl.draw_text_center(k.x(x), k.y(y_basis + 11.0), &nl(*t, x_dec));
+    }
+    dl.set_font(&stijl.font, k.l(8.5));
+    dl.draw_text_center(
+        k.x(DEK_MARGE_LINKS + plot_w / 2.0),
+        k.y(kh - 6.0),
+        "plaats langs de staaf x [m]",
+    );
+    dl.draw_text(k.x(6.0), k.y(14.5), "trekkracht [kN]");
+
+    // De tekortvakken: waar B boven C uitkomt. Een viervlak per paar punten, en
+    // dus geen benadering — de lijnen zijn tussen twee punten recht.
+    let tekort_vulling = meng_met_wit(kl.rekenpunt, 0.22);
+    dl.set_fill_color(tekort_vulling);
+    for paar in dekking.punten.windows(2) {
+        let (a, b) = (&paar[0], &paar[1]);
+        if a.tekort_kn <= 0.0 && b.tekort_kn <= 0.0 {
+            continue;
+        }
+        dl.draw_polygon(
+            vec![
+                (k.x(sx(a.x_mm)), k.y(sy(a.aanwezig_kn))),
+                (k.x(sx(a.x_mm)), k.y(sy(a.benodigd_kn))),
+                (k.x(sx(b.x_mm)), k.y(sy(b.benodigd_kn))),
+                (k.x(sx(b.x_mm)), k.y(sy(b.aanwezig_kn))),
+            ],
+            true,
+            false,
+        );
+    }
+
+    // Regel A — de omhullende vóór de verschuiving, als streeplijn.
+    dl.set_stroke_color(kl.tekst_zwak);
+    dl.set_line_width(k.l(0.8));
+    for paar in dekking.punten.windows(2) {
+        streeplijn(
+            dl,
+            k.x(sx(paar[0].x_mm)),
+            k.y(sy(paar[0].omhullende_kn)),
+            k.x(sx(paar[1].x_mm)),
+            k.y(sy(paar[1].omhullende_kn)),
+            k.l(4.0),
+            k.l(3.0),
+        );
+    }
+
+    // Regel C — de aanwezige weerstand F_Rs.
+    dl.set_stroke_color(kl.reeks);
+    dl.set_line_width(k.l(1.8));
+    for paar in dekking.punten.windows(2) {
+        dl.draw_line(
+            k.x(sx(paar[0].x_mm)),
+            k.y(sy(paar[0].aanwezig_kn)),
+            k.x(sx(paar[1].x_mm)),
+            k.y(sy(paar[1].aanwezig_kn)),
+        );
+    }
+
+    // Regel B — de benodigde trekkracht F_s. Bovenop C getekend: waar zij
+    // eronder ligt is het juist goed, en waar zij erboven ligt moet zij
+    // zichtbaar zijn.
+    dl.set_stroke_color(kl.beton_lijn);
+    dl.set_line_width(k.l(1.3));
+    for paar in dekking.punten.windows(2) {
+        dl.draw_line(
+            k.x(sx(paar[0].x_mm)),
+            k.y(sy(paar[0].benodigd_kn)),
+            k.x(sx(paar[1].x_mm)),
+            k.y(sy(paar[1].benodigd_kn)),
+        );
+    }
+
+    // Het maatgevende punt als ruitje — dezelfde vorm als het rekenpunt in het
+    // interactiediagram, en dus ook in grijstinten te herkennen.
+    if let Some(i) = dekking.maatgevend.and_then(|i| dekking.punten.get(i as usize)) {
+        dl.set_fill_color(kl.rekenpunt);
+        ruit(dl, k.x(sx(i.x_mm)), k.y(sy(i.benodigd_kn)), k.l(3.2));
+        dl.set_font(&stijl.font, k.l(7.5));
+        dl.draw_text_center(
+            k.x(sx(i.x_mm)),
+            k.y(sy(i.benodigd_kn) - 6.0),
+            &format!(
+                "UC {}",
+                i.uc.map(|u| nl(u, 2)).unwrap_or_else(|| "—".to_string())
+            ),
+        );
+    }
+
+    // Legenda, zodat de figuur zonder bijschrift te lezen is.
+    //
+    // De afstanden zijn NAGEMETEN op het gerenderde blad en niet geraden: de
+    // tekenmotor breekt tekst niet af en knipt niets weg, dus een te krap
+    // gezette legenda schuift het ene bijschrift gewoon over het volgende
+    // markeerstreepje heen. Bij 7,5 pt is een teken ongeveer 3,8
+    // ontwerpeenheden breed, en "A: M_Ed/z op de plaats zelf" is het langste
+    // van de drie.
+    dl.set_stroke_color(kl.tekst_zwak);
+    dl.set_line_width(k.l(0.8));
+    streeplijn(dl, k.x(DEK_LEGENDA_X), k.y(11.5), k.x(DEK_LEGENDA_X + 18.0), k.y(11.5), k.l(4.0), k.l(3.0));
+    dl.set_stroke_color(kl.beton_lijn);
+    dl.set_line_width(k.l(1.3));
+    dl.draw_line(k.x(DEK_LEGENDA_X + 130.0), k.y(11.5), k.x(DEK_LEGENDA_X + 148.0), k.y(11.5));
+    dl.set_stroke_color(kl.reeks);
+    dl.set_line_width(k.l(1.8));
+    dl.draw_line(k.x(DEK_LEGENDA_X + 256.0), k.y(11.5), k.x(DEK_LEGENDA_X + 274.0), k.y(11.5));
+    dl.set_font(&stijl.font, k.l(7.5));
+    dl.set_fill_color(kl.tekst_zwak);
+    dl.draw_text(k.x(DEK_LEGENDA_X + 22.0), k.y(14.5), "A: M_Ed/z op de plaats zelf");
+    dl.draw_text(k.x(DEK_LEGENDA_X + 152.0), k.y(14.5), "B: F_s na verschuiving a_l");
+    dl.draw_text(k.x(DEK_LEGENDA_X + 278.0), k.y(14.5), "C: F_Rs aanwezig");
+
+    // De zijde waar deze lijn over gaat, linksboven — twee gelijk ogende
+    // figuren onder elkaar moeten uit zichzelf uit elkaar te houden zijn.
+    //
+    // Niet op DEK_MARGE_LINKS: daar eindigt de titel van de verticale as al
+    // ("trekkracht [kN]" loopt bij 8,5 pt tot ongeveer 70), en de twee stonden
+    // dan aan elkaar geplakt.
+    dl.set_font(&stijl.font, k.l(8.5));
+    dl.set_fill_color(kl.tekst);
+    dl.draw_text(
+        k.x(DEK_MARGE_LINKS + 16.0),
+        k.y(14.5),
+        match dekking.side {
+            RebarSide::Bottom => "onderwapening",
+            RebarSide::Top => "bovenwapening",
+        },
+    );
 }

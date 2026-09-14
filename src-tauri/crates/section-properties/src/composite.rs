@@ -210,6 +210,22 @@ impl Default for CompositeSection {
     }
 }
 
+/// De maatgevende vezel voor de schuifspanning, met de twee grootheden die
+/// `τ = V·S/(I·b)` daar nodig heeft.
+#[derive(Clone, Copy, Debug)]
+pub struct Schuifvezel {
+    /// Hoogte van de vezel in het invoerstelsel (mm).
+    pub z_mm: f64,
+    /// Statisch moment van het deel bóven de vezel om de neutrale lijn (mm³).
+    pub s_mm3: f64,
+    /// Breedte van de doorsnede op die vezel (mm) — de `b` van (6.13a).
+    pub b_mm: f64,
+    /// Grootste koordelengte van de doorsnede (mm). De Nederlandse nationale
+    /// bijlage bij 6.1.7 leest `k_cr` af uit de verhouding lijfdikte /
+    /// flensbreedte; dit is die flensbreedte.
+    pub b_max_mm: f64,
+}
+
 /// Uitkomst van de berekening, inclusief eerlijke vlaggen over wat wél en niet
 /// bepaald kon worden.
 #[derive(Clone, Copy, Debug)]
@@ -305,6 +321,84 @@ impl CompositeSection {
             d = d.met(c);
         }
         d
+    }
+
+    /// De **maatgevende schuifvezel** van een lamellendoorsnede: de hoogte
+    /// waar `Q(z)/b(z)` het grootst is, met het bijbehorende statisch moment
+    /// en de bijbehorende breedte.
+    ///
+    /// WAARVOOR
+    /// NEN-EN 1995-1-1 art. 6.1.7(1)P eist `τ_d ≤ f_v,d` en laat `τ_d` "de
+    /// rekenwaarde van de schuifspanning" zijn — de norm schrijft geen formule
+    /// voor. Dat is dus de gewone schuifspanningsformule van Jourawski,
+    /// `τ = V·Q/(I·b)`, met volgens (6.13a) `b` de breedte van "het van
+    /// toepassing zijnde deel van het element". Alleen voor een rechthoek valt
+    /// dat samen met `1,5·V/A`; bij een I- of kokervorm niet, en dan is die
+    /// vereenvoudiging onveilig omdat zij met de flensbreedte rekent in plaats
+    /// van met de lijfdikte.
+    ///
+    /// WELKE VEZEL
+    /// `Q(z) = ∬_{z' > z} (z' − z_c) dA`, met `z_c` de neutrale lijn. Er geldt
+    /// `dQ/dz = −(z − z_c)·b(z)`, dus `Q` heeft zijn maximum op de neutrale
+    /// lijn en daalt naar beide randen. Binnen een strook met constante
+    /// breedte ligt het maximum van `Q/b` daarom op het punt van die strook
+    /// dat het dichtst bij `z_c` ligt. De stroken volgen uit de z-hoogten van
+    /// de lamelhoekpunten: daartussen is de breedte constant. Zo wordt de
+    /// werkelijk maatgevende vezel gevonden — bij een T-vorm, waar de
+    /// neutrale lijn in de flens ligt, is dat de bovenkant van het lijf en
+    /// niet de neutrale lijn zelf.
+    ///
+    /// `None` zodra de doorsnede geen lamellen heeft of er een catalogusdeel
+    /// in zit: zo'n deel is een verzameling grootheden zonder contour, dus er
+    /// valt geen breedte op een vezel te meten. Raden zou hier een getal
+    /// opleveren dat nergens vandaan komt.
+    pub fn maatgevende_schuifvezel(&self) -> Option<Schuifvezel> {
+        if self.lamellen.is_empty() || !self.delen.is_empty() {
+            return None;
+        }
+        let d = self.lamellen_doorsnede();
+        let (a, integraal_z, ..) = d.momenten_om_oorsprong();
+        if a <= 0.0 {
+            return None;
+        }
+        let z_c = integraal_z / a;
+
+        // De z-hoogten waar de breedte kan springen: elk hoekpunt van elke
+        // lamel. Daartussen is `b(z)` constant.
+        let mut grenzen: Vec<f64> = Vec::new();
+        for l in &self.lamellen {
+            for (_, z) in l.hoekpunten() {
+                grenzen.push(z);
+            }
+        }
+        grenzen.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+        grenzen.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+        if grenzen.len() < 2 {
+            return None;
+        }
+
+        let mut beste: Option<Schuifvezel> = None;
+        let mut b_max: f64 = 0.0;
+        for paar in grenzen.windows(2) {
+            let (onder, boven) = (paar[0], paar[1]);
+            if boven - onder < 1e-9 {
+                continue;
+            }
+            let b = d.breedte_op(0.5 * (onder + boven));
+            if b <= 0.0 {
+                continue;
+            }
+            b_max = b_max.max(b);
+            // Het punt van deze strook dat het dichtst bij de neutrale lijn ligt.
+            let z = z_c.clamp(onder, boven);
+            // Q(z) = ∬_{z'>z}(z'−z) dA + (z − z_c)·A_boven(z).
+            let q = d.statisch_moment_boven(z) + (z - z_c) * d.oppervlak_boven(z);
+            let verhouding = q / b;
+            if beste.as_ref().is_none_or(|v| verhouding > v.s_mm3 / v.b_mm) {
+                beste = Some(Schuifvezel { z_mm: z, s_mm3: q, b_mm: b, b_max_mm: b });
+            }
+        }
+        beste.map(|v| Schuifvezel { b_max_mm: b_max, ..v })
     }
 
     /// Reken de complete doorsnede door.
@@ -899,6 +993,77 @@ mod tests {
             .met_lamel(Lamella::liggend(200.0, 15.0, 0.0, 207.5))
             .met_lamel(Lamella::liggend(200.0, 15.0, 0.0, -207.5))
             .met_lamel(Lamella::staand(400.0, 10.0, 0.0, 0.0))
+    }
+
+    // ── Maatgevende schuifvezel (EN 1995-1-1 art. 6.1.7) ────────────────
+
+    #[test]
+    fn schuifvezel_van_een_rechthoek_is_de_neutrale_lijn() {
+        // Rechthoek 96 × 450 als één lamel: S = b·h²/8 = 2,43e6 mm³, b = 96.
+        let (b, h) = (96.0, 450.0);
+        let sec = CompositeSection::nieuw().met_lamel(Lamella::liggend(b, h, 0.0, h / 2.0));
+        let v = sec.maatgevende_schuifvezel().expect("rechthoek heeft een schuifvezel");
+        assert_relative_eq!(v.z_mm, h / 2.0, max_relative = 1e-12);
+        assert_relative_eq!(v.s_mm3, b * h * h / 8.0, max_relative = 1e-12);
+        assert_relative_eq!(v.b_mm, b, max_relative = 1e-12);
+        assert_relative_eq!(v.b_max_mm, b, max_relative = 1e-12);
+    }
+
+    #[test]
+    fn schuifvezel_van_de_referentiedoorsnede_ligt_in_het_lijf() {
+        // De samengestelde doorsnede van de externe referentie-berekening:
+        // flenzen 1000 × 40 boven en onder, lijf 71 × 40, totale hoogte 120.
+        // Met de hand:
+        //   A       = 2·1000·40 + 71·40 = 82 840 mm²
+        //   z_c     = 60 mm (symmetrisch)
+        //   S (NA)  = 40 000·40 + 71·20·10 = 1 614 200 mm³
+        //   b (NA)  = 71 mm
+        let sec = CompositeSection::nieuw()
+            .met_lamel(Lamella::liggend(1000.0, 40.0, 0.0, 20.0))
+            .met_lamel(Lamella::liggend(71.0, 40.0, 0.0, 60.0))
+            .met_lamel(Lamella::liggend(1000.0, 40.0, 0.0, 100.0));
+        let v = sec.maatgevende_schuifvezel().expect("I-vorm heeft een schuifvezel");
+        assert_relative_eq!(v.z_mm, 60.0, max_relative = 1e-12);
+        assert_relative_eq!(v.s_mm3, 1_614_200.0, max_relative = 1e-12);
+        assert_relative_eq!(v.b_mm, 71.0, max_relative = 1e-12);
+        assert_relative_eq!(v.b_max_mm, 1000.0, max_relative = 1e-12);
+
+        // En de kern van de zaak: τ = V·S/(I·b) is hier NEGEN keer zo groot als
+        // de rechthoekvereenvoudiging 1,5·V/A. Wie een samengestelde doorsnede
+        // als b × h behandelt, rekent de dwarskracht dus zwaar te gunstig.
+        let p = sec.bereken().props;
+        assert_relative_eq!(p.area_mm2, 82_840.0, max_relative = 1e-12);
+        let via_norm = v.s_mm3 / (p.iy_mm4 * v.b_mm);
+        let via_rechthoek = 1.5 / p.area_mm2;
+        assert!(
+            via_norm / via_rechthoek > 8.0,
+            "verhouding {} — verwacht ruim boven 8",
+            via_norm / via_rechthoek
+        );
+    }
+
+    #[test]
+    fn schuifvezel_van_een_t_vorm_ligt_op_de_lijfkop_en_niet_op_de_neutrale_lijn() {
+        // T-vorm: lijf 40 breed van z = 0 tot 160, flens 800 × 40 daarboven.
+        //   A   = 6 400 + 32 000 = 38 400 mm²
+        //   z_c = (6 400·80 + 32 000·180) / 38 400 = 163,33 mm → in de FLENS
+        // Op de neutrale lijn is b = 800; op de lijfkop (z = 160) is b = 40 en
+        // S = 32 000·(180 − 163,33) = 533 333 mm³. Q/b is daar twintigmaal zo
+        // groot, dus daar ligt de maatgevende vezel.
+        let sec = CompositeSection::nieuw()
+            .met_lamel(Lamella::liggend(40.0, 160.0, 0.0, 80.0))
+            .met_lamel(Lamella::liggend(800.0, 40.0, 0.0, 180.0));
+        let v = sec.maatgevende_schuifvezel().expect("T-vorm heeft een schuifvezel");
+        assert_relative_eq!(v.z_mm, 160.0, max_relative = 1e-12);
+        assert_relative_eq!(v.b_mm, 40.0, max_relative = 1e-12);
+        assert_relative_eq!(v.s_mm3, 32_000.0 * (180.0 - 6_272_000.0 / 38_400.0), max_relative = 1e-10);
+        assert_relative_eq!(v.b_max_mm, 800.0, max_relative = 1e-12);
+    }
+
+    #[test]
+    fn schuifvezel_ontbreekt_zonder_contour() {
+        // Leeg: niets te meten.
+        assert!(CompositeSection::nieuw().maatgevende_schuifvezel().is_none());
     }
 
     // ── Groep 1: gelaste I uit drie platen ───────────────────────────────────

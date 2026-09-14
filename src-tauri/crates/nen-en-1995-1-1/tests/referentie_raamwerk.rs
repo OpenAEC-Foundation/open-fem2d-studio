@@ -35,7 +35,7 @@ fn rekenwaarden_conform_referentietabel() {
 
 #[test]
 fn staaf2_volledige_afleiding() {
-    let sectie = RectTimberSection::new(96.0, 450.0);
+    let sectie = TimberSection::rechthoek(96.0, 450.0);
     let mat = c24();
     let (f_c0d, f_myd, f_mzd, f_vd) = rekenwaarden();
 

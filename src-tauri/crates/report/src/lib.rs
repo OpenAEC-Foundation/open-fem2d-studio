@@ -24,13 +24,27 @@
 //! Vier modules dragen samen het hoofdstuk "Beton — fysisch niet-lineaire
 //! tweede orde":
 //!
-//! * [`betonfiguren`] tekent de vier figuren native op een `DrawList`
-//!   (doorsnede met korf, M-κ, N-M-interactie en het EI-verloop);
+//! * [`betonfiguren`] tekent de figuren native op een `DrawList` (doorsnede met
+//!   korf, M-κ, N-M-interactie, het EI-verloop en de dekkingslijn);
 //! * [`figuur`] maakt daar een opmaakelement van dat meedoet in de paginering;
 //! * [`betonspoor`] is het invoertype van het segmentspoor — de spiegel van
 //!   `betonStijfheidStore` in de frontend;
 //! * [`betonhoofdstuk`] zet die drie om in het hoofdstuk zelf, en bepaalt of
 //!   het hoofdstuk überhaupt van toepassing is.
+//!
+//! Daarnaast dragen drie modules wat de betonkern verder oplevert en het
+//! rapport eerder niet toonde:
+//!
+//! * [`betonkolom`] — art. 5.8.3.1 met de afleiding van λ_lim, de kruip van
+//!   art. 5.8.4 en de detailleringseisen van art. 9.5, inclusief de eisen die
+//!   de kern niet KAN toetsen en die dus nergens anders in het rapport staan;
+//! * [`betondekking`] — de dekkingslijn van art. 9.2.1.3 (figuur 9.2) met de
+//!   figuur per zijde, de kritieke plaatsen, de bundels met hun l_bd, de
+//!   dwarskrachtdekking en de eisen bij de steunpunten;
+//! * [`betonzones`] — de wapeningszones en de korf die op de MAATGEVENDE snede
+//!   gold. Dat blok staat niet in een eigen hoofdstuk maar achter de kop van de
+//!   staaf zelf: het is de verantwoording van de unity check die er direct
+//!   onder staat.
 //!
 //! # De kruislaaghoutkant
 //!
@@ -44,10 +58,26 @@
 //!
 //! [`figuur`] draagt beide: het is de opsomming van álle figuren die het
 //! rapport kent.
+//!
+//! # Wat het rapport nu wél verantwoordt
+//!
+//! Drie dingen kwamen er sinds de eerste uitdraai bij, en alle drie om dezelfde
+//! reden: zonder hen is een getal in het rapport niet NA TE REKENEN.
+//!
+//! * **De uitgangspunten** (`extend_with_uitgangspunten`) — nu de initiële
+//!   scheefstand, die in élke kracht zit waarop getoetst is.
+//! * **De afleiding van de maatgevende toets**
+//!   (`extend_with_maatgevende_afleiding`) — de `deelstappen` die de kernen
+//!   al leveren en die tot nu toe alleen op het scherm stonden. Materiaal-
+//!   neutraal: een toets zonder keten levert een lege lijst en dus niets.
+//! * **De wapeningszones** — welke korf op de maatgevende snede gold.
 
+pub mod betondekking;
 pub mod betonfiguren;
 pub mod betonhoofdstuk;
+pub mod betonkolom;
 pub mod betonspoor;
+pub mod betonzones;
 pub mod figuur;
 pub mod houtfiguren;
 pub mod houthoofdstuk;
@@ -67,8 +97,9 @@ use openaec_layout::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use concrete_check::dekkingslijn::DekkingslijnAntwoord;
 use concrete_check::ConcreteBeamCheckResult;
-use nen_en_1993_1_1_section::{CheckStatus, NamedValue};
+use nen_en_1993_1_1_section::{CheckStatus, Deelstap, NamedValue};
 use spanning_check::SpanningBeamCheckResult;
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
 use timber_check::clt::CltBeamCheckResult;
@@ -168,6 +199,49 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(optional)]
     pub concrete_stiffness_trace: Option<betonspoor::BetonStijfheidSpoor>,
+    /// De dekkingslijnen die de rekenkern heeft geleverd — figuur 9.2 van
+    /// art. 9.2.1.3 als gegevens, per staaf.
+    ///
+    /// Dit is een APARTE vraag aan de kern (`concrete_dekkingslijn`) en geen
+    /// bijproduct van de toetsing: de dekkingslijn vraagt om een z, een c_d en
+    /// eventueel een A_sl die de doorsnedetoets niet nodig heeft. Zij komt er
+    /// dus alleen in als iemand haar heeft opgevraagd, en het hoofdstuk blijft
+    /// anders weg — zie [`crate::betondekking::van_toepassing`].
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij de andere kernen: een
+    /// bestaande aanroep zonder dit veld blijft geldig.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<DekkingslijnAntwoord>>", optional)]
+    pub concrete_dekkingslijnen: Vec<DekkingslijnAntwoord>,
+    /// De wapeningszones per betonstaaf, zoals de toetsing ze gekregen heeft.
+    ///
+    /// Zonder dit veld toont het rapport bij een staaf met ingekorte wapening
+    /// alleen de BASISkorf, terwijl er per snede met `cage_at_mm` is gerekend —
+    /// en dan is een unity check niet na te rekenen. Zie [`crate::betonzones`].
+    ///
+    /// `#[serde(default)]`: een aanroeper die geen zones kent, stuurt niets mee
+    /// en het blok blijft weg.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<betonzones::BetonStaafZones>>", optional)]
+    pub concrete_reinforcement_zones: Vec<betonzones::BetonStaafZones>,
+    /// De scheefstand die deze berekening in is gegaan, als tekstblok met alle
+    /// tussenwaarden en normartikelen.
+    ///
+    /// WOORDELIJK uit `design-mockup/src/lib/scheefstandNorm.ts`
+    /// (`scheefstandToelichting`), en dat is de hele reden dat dit een String
+    /// is en geen verzameling getallen: die functie kent de drie normen
+    /// (EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1)), de stand
+    /// "ongunstigste", de vraag of h en m handmatig zijn opgegeven of uit de
+    /// meetkunde volgen, en de waarschuwingen die daarbij horen. Dat hier
+    /// naspelen zou een tweede lezing van dezelfde norm opleveren, en de twee
+    /// zouden uiteen gaan lopen zonder dat iemand het ziet.
+    ///
+    /// Leeg of afwezig = de aanroeper heeft de scheefstand niet meegestuurd;
+    /// het rapport zwijgt er dan over in plaats van een vaste 1/200 te
+    /// suggereren.
+    #[serde(default)]
+    #[ts(optional)]
+    pub scheefstand_toelichting: Option<String>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -541,6 +615,24 @@ pub(crate) fn style_label() -> ParagraphStyle {
     }
 }
 
+/// De kop boven één deelstap van een afleiding: vet maar klein.
+///
+/// Bewust geen [`style_h3`]: een keten heeft er acht tot twaalf achter elkaar,
+/// en met een kopregel van 11 pt leest zo'n afleiding als twaalf paragrafen in
+/// plaats van als één redenering.
+pub(crate) fn style_stap() -> ParagraphStyle {
+    ParagraphStyle {
+        font_name: "LiberationSans".into(),
+        font_size: Pt(9.0),
+        leading: Pt(12.0),
+        text_color: C_TEXT,
+        space_before: Pt(4.0),
+        space_after: Pt(1.0),
+        bold: true,
+        ..Default::default()
+    }
+}
+
 pub(crate) fn style_body() -> ParagraphStyle {
     ParagraphStyle {
         font_name: "LiberationSans".into(),
@@ -673,6 +765,12 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 
     let mut flow: Vec<Box<dyn Flowable>> = Vec::new();
 
+    // 3b. Uitgangspunten — wat er vóór de toetsing is aangenomen en dus overal
+    //     in doorwerkt. Dit blok staat met opzet VOOR de samenvatting: een
+    //     aanname die pas achterin het rapport opduikt, is een aanname die de
+    //     lezer al vier hoofdstukken lang niet had.
+    extend_with_uitgangspunten(&mut flow, &input);
+
     if members.is_empty() {
         // Geen enkele getoetste staaf. Een samenvattingshoofdstuk met een lege
         // tabel zou de lezer laten zoeken naar wat er weggevallen is; deze
@@ -707,9 +805,22 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
         ));
         flow.push(Box::new(Spacer::from_mm(3.0)));
 
+        // De wapeningszones van deze staaf, mét de korf die op de maatgevende
+        // snede gold. Blijft weg bij elke staaf die geen zones draagt — dus bij
+        // staal, hout en elke betonstaaf met één korf over de hele lengte.
+        if let Some(z) = betonzones::zones_van(&input.concrete_reinforcement_zones, m.beam_id) {
+            betonzones::extend_met_zoneblok(&mut flow, z, m.checks, m.governing_check_id);
+        }
+
         for nc in m.checks {
             extend_with_check_block(&mut flow, &nc.kind);
         }
+
+        // De afleiding van de MAATGEVENDE toets, uitgeschreven. Dezelfde keuze
+        // als in het live rapport ("Maatgevende toets, uitgeschreven"): elke
+        // toets zijn hele keten geven zou het rapport verdubbelen, en de keten
+        // die telt is die van de toets die het ontwerp begrenst.
+        extend_with_maatgevende_afleiding(&mut flow, m);
     }
 
     // 4b. Beton — fysisch niet-lineaire tweede orde: de segmenttabellen, het
@@ -722,8 +833,170 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     //     kruislaaghout; zie `houthoofdstuk::van_toepassing`.
     houthoofdstuk::extend_with_houthoofdstuk(&mut flow, &input);
 
+    // 4d. Beton — de kolommen: de slankheidsgrens van art. 5.8.3.1 met haar
+    //     afleiding, de kruip van art. 5.8.4 en de detailleringseisen van
+    //     art. 9.5, inclusief de eisen die de kern NIET kan toetsen. Blijft weg
+    //     bij een rapport zonder art. 5.8-toets; zie `betonkolom::van_toepassing`.
+    betonkolom::extend_with_kolomhoofdstuk(&mut flow, &input);
+
+    // 4e. Beton — de dekkingslijn (art. 9.2.1.3, figuur 9.2): per zijde de
+    //     figuur, de kritieke plaatsen, de bundels met hun l_bd, de
+    //     dwarskrachtdekking en de eisen bij de steunpunten. Blijft weg zolang
+    //     er geen dekkingslijn is opgevraagd; zie `betondekking::van_toepassing`.
+    betondekking::extend_with_dekkingshoofdstuk(&mut flow, &input);
+
     // 5. Render.
     doc.build_to_bytes(flow).expect("openaec-layout build")
+}
+
+// ── Uitgangspunten ────────────────────────────────────────────────────────────
+
+/// Het hoofdstuk "Uitgangspunten": wat er vóór de toetsing is aangenomen en
+/// daarom in élke uitkomst erachter doorwerkt.
+///
+/// Nu draagt het één ding — de initiële scheefstand — en het blijft in zijn
+/// geheel weg zolang de aanroeper die niet meestuurt. Dat is geen bescheiden
+/// begin maar het hele punt: een uitgangspuntenblok dat een aanname noemt die
+/// de rekengang niet heeft gebruikt, is erger dan geen blok.
+///
+/// De scheefstand is een eigenschap van de CONSTRUCTIE en niet van een staaf —
+/// één bouwwerk staat één keer scheef — en hoort daarom vooraan en niet bij een
+/// staaf. Zij levert bovendien een vervangende horizontale kracht H = φ·V op
+/// élke verticale lastcomponent, dus zij zit in alle krachten waarop de
+/// toetsingen hierna zijn gedraaid.
+///
+/// De tekst gaat WOORDELIJK mee zoals `scheefstandToelichting` hem opstelt:
+/// regel voor regel het symbool, de waarde en het normartikel, daarna de
+/// afleiding van h en m, en tot slot de waarschuwingen. Hij wordt hier per
+/// regel als eigen alinea gezet omdat de opmaakmotor geen harde regeleinden in
+/// één alinea kent; er wordt niets aan de inhoud veranderd.
+fn extend_with_uitgangspunten(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportInput) {
+    let Some(tekst) = input.scheefstand_toelichting.as_ref().filter(|t| !t.trim().is_empty())
+    else {
+        return;
+    };
+
+    flow.push(Box::new(Paragraph::new("Uitgangspunten", style_h2()).kop()));
+    flow.push(Box::new(
+        Paragraph::new("Initiële scheefstand", style_h3()).kop(),
+    ));
+    flow.push(Box::new(Paragraph::new(
+        "De scheefstand is een eigenschap van de constructie als geheel en niet van een staaf: zij \
+         beschrijft hoe scheef het bouwwerk staat. Zij is als vervangende horizontale kracht \
+         H = φ·V op elke verticale lastcomponent gezet, en werkt dus door in alle krachten waarop \
+         de toetsingen hieronder zijn gedraaid.",
+        style_body(),
+    )));
+    for regel in tekst.lines() {
+        if regel.trim().is_empty() {
+            flow.push(Box::new(Spacer::from_mm(1.5)));
+            continue;
+        }
+        // Een regel die met "!" begint is in `scheefstandToelichting` een
+        // WAARSCHUWING. Die hoort op te vallen, en niet in dezelfde grijze
+        // kleur te verdwijnen als de tussenwaarden eromheen.
+        let stijl = if regel.starts_with('!') {
+            ParagraphStyle { text_color: C_FAIL, ..style_note() }
+        } else {
+            style_mono()
+        };
+        flow.push(Box::new(Paragraph::new(regel.to_string(), stijl)));
+    }
+    flow.push(Box::new(Spacer::from_mm(4.0)));
+}
+
+// ── De afleiding van een toets, uitgeschreven ─────────────────────────────────
+
+/// De keten die aan de MAATGEVENDE toets van deze staaf voorafgaat.
+///
+/// Materiaal-neutraal, net als de rest van dit renderpad: de betontoetsen
+/// vullen `deelstappen`, de kipketen van staal ook, en een toets die er geen
+/// heeft levert een lege lijst en dus geen enkel opmaakelement. Er hoeft dus
+/// nergens naar het materiaal te worden gekeken.
+///
+/// ALLEEN de maatgevende toets, en dat is dezelfde keuze als in het live
+/// rapport. Elke toets zijn hele keten geven zou een rapport van vijftien
+/// bladzijden er dertig maken, en de keten die telt is die van de toets die het
+/// ontwerp begrenst. Wie de afleiding van een NIET-maatgevende toets nodig
+/// heeft — de slankheidsgrens van een kolom die op buiging bezwijkt,
+/// bijvoorbeeld — vindt haar in het hoofdstuk van die toets; `betonkolom` doet
+/// dat met zoveel woorden.
+fn extend_with_maatgevende_afleiding(flow: &mut Vec<Box<dyn Flowable>>, m: &ReportMember<'_>) {
+    let Some(nc) = m.checks.iter().find(|c| c.id == m.governing_check_id) else {
+        return;
+    };
+    let (titel, stappen) = match &nc.kind {
+        CheckKind::Resistance(r) => (&r.title, &r.deelstappen),
+        CheckKind::Stability(s) => (&s.title, &s.deelstappen),
+    };
+    if stappen.is_empty() {
+        return;
+    }
+    flow.push(Box::new(
+        Paragraph::new(format!("Maatgevende toets, uitgeschreven: {titel}"), style_h3()).kop(),
+    ));
+    extend_with_deelstappen(flow, stappen);
+}
+
+/// Een reeks deelstappen als opmaakelementen: per stap de kop met het artikel,
+/// de formule symbolisch, dezelfde formule met de getallen ingevuld, de
+/// uitkomst en de kanttekeningen.
+///
+/// `ingevuld_latex` komt KANT-EN-KLAAR uit de rekenkern en wordt hier dus niet
+/// uit `formula_latex` en `variables` in elkaar gezet. Zie de doctekst van
+/// [`Deelstap`]: zo'n tekstvervanging loopt stuk op wortels met losse
+/// hoofdletters, sommaties over wapeningslagen en eenheidsomrekeningen die
+/// helemaal geen symbool hebben.
+///
+/// De grootheden komen alleen als lijst in beeld bij een stap ZONDER formule —
+/// de uitgangspuntenstap. Bij de overige stappen staan diezelfde grootheden al
+/// ingevuld in de formule, en zou een lijst eronder ze een tweede keer
+/// herhalen. Dezelfde regel als in `components/report/Deelstappen.tsx`.
+pub(crate) fn extend_with_deelstappen(flow: &mut Vec<Box<dyn Flowable>>, stappen: &[Deelstap]) {
+    for (i, stap) in stappen.iter().enumerate() {
+        flow.push(Box::new(
+            Paragraph::new(
+                if stap.article.is_empty() {
+                    format!("{}. {}", i + 1, stap.titel)
+                } else {
+                    format!("{}. {}    [{}]", i + 1, stap.titel, stap.article)
+                },
+                style_stap(),
+            )
+            // De kop van een stap hoort bij de formule eronder; zonder deze
+            // schakel blijft hij onderaan een vel achter.
+            .kop(),
+        ));
+        if !stap.formula_latex.is_empty() {
+            flow.push(Box::new(Paragraph::new(stap.formula_latex.clone(), style_body())));
+        }
+        if !stap.ingevuld_latex.is_empty() {
+            flow.push(Box::new(Paragraph::new(stap.ingevuld_latex.clone(), style_body())));
+        }
+        if stap.formula_latex.is_empty() && !stap.variables.is_empty() {
+            let vars: String = stap
+                .variables
+                .iter()
+                .map(|v| format!("{} = {:.3} {}", v.symbol, v.value, v.unit))
+                .collect::<Vec<_>>()
+                .join("   ");
+            flow.push(Box::new(Paragraph::new(vars, style_mono())));
+        }
+        if let Some(v) = stap.value {
+            let symbool = if stap.symbol.is_empty() { String::new() } else { format!("{} = ", stap.symbol) };
+            flow.push(Box::new(Paragraph::new(
+                format!("{symbool}{:.3} {}", v, stap.unit),
+                style_amber_value(),
+            )));
+        }
+        // De kanttekeningen van de stap: welke tak van de norm gold, welke
+        // aanname eronder ligt, welke grens NIET is getoetst. Een afleiding die
+        // stilzwijgend een aanname doet is erger dan geen afleiding.
+        for n in &stap.notes {
+            flow.push(Box::new(Paragraph::new(n.clone(), style_note())));
+        }
+    }
+    flow.push(Box::new(Spacer::from_mm(2.0)));
 }
 
 // ── Een rapport zonder getoetste staven ───────────────────────────────────────
@@ -1160,7 +1433,7 @@ fn extract(kind: &CheckKind) -> ExtractedFields<'_> {
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
-fn status_label(s: &CheckStatus) -> &'static str {
+pub(crate) fn status_label(s: &CheckStatus) -> &'static str {
     match s {
         CheckStatus::Ok => "OK",
         CheckStatus::NotOk => "FAIL",

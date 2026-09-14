@@ -139,7 +139,14 @@ log("\n[5] Limieten en bit-identiteit zonder veren");
   // De UI-omzetting: kN/mm → N/mm, kNm/rad → N·mm/rad; niets zonder veren.
   const mi = bouwMultiInput({
     nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: L, z: 0 }],
-    beams: [{ id: 1, from: 1, to: 2, veren: { startTx: 200, endRy: 5000 } }, { id: 2, from: 1, to: 2 }],
+    // Materiaal en profiel horen erbij: `bouwMultiInput` weigert sinds
+    // september 2026 een staaf waarvan de doorsnede niet te bepalen is, in
+    // plaats van stilzwijgend terug te vallen op HEA 160 / S235. Voor dit
+    // veren-onderdeel maakt de keuze niets uit; hij moet alleen bestaan.
+    beams: [
+      { id: 1, from: 1, to: 2, material: "S235", profile: "HEA160", veren: { startTx: 200, endRy: 5000 } },
+      { id: 2, from: 1, to: 2, material: "S235", profile: "HEA160" },
+    ],
     supports: [], loads: [], loadCases: [{ id: 1, name: "G", type: "dead" }], plates: [],
     selfWeightEnabled: false, scheefstandEnabled: false, scheefstandNoemer: 300, scheefstandRichting: 1,
   });

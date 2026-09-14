@@ -228,6 +228,12 @@ fn invoer(clt: Vec<CltBeamCheckResult>) -> ReportInput {
         concrete_check_results: vec![],
         stress_check_results: vec![],
         concrete_stiffness_trace: None,
+        // Nieuw in deze uitdraai: de dekkingslijnen, de wapeningszones en de
+        // scheefstand. Deze proef gaat er niet over en laat ze dus leeg — dan
+        // blijven de drie bijbehorende blokken vanzelf weg.
+        concrete_dekkingslijnen: Vec::new(),
+        concrete_reinforcement_zones: Vec::new(),
+        scheefstand_toelichting: None,
     }
 }
 

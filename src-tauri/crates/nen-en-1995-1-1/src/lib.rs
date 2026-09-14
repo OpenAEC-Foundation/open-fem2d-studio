@@ -31,7 +31,7 @@ pub use factors::{
     beta_c, design_strength, gamma_m, k_def, k_h, k_m, k_mod, k_sys,
     LoadDurationClass, ServiceClass, TimberType,
 };
-pub use section::RectTimberSection;
+pub use section::TimberSection;
 
 // Hergebruikte resultaattypen (zie TODO in de crate-doc).
 pub use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityCheck};

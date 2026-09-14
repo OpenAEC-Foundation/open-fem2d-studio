@@ -27,10 +27,17 @@
 //     segmentspoor, en dat spoor bestaat alleen na een fysisch niet-lineaire
 //     ronde — waardoor de doorsnedefiguur bij eerste orde stilzwijgend van het
 //     papier verdween terwijl het live rapport hem wél tekende.
+//  7. De WAPENINGSZONES, de DEKKINGSLIJN en de SCHEEFSTAND gaan niet mee. Alle
+//     drie zijn ze het soort gegeven dat een rapport pas mist als iemand een
+//     unity check probeert na te rekenen: de zones zeggen wélke korf op de
+//     maatgevende snede gold, de dekkingslijn is figuur 9.2 in getallen, en de
+//     scheefstand zit in élke kracht waarop getoetst is. Ze reizen alle drie
+//     ALLEEN mee als de aanroeper ze aanlevert; een leeg veld hoort weg te
+//     blijven, zodat de PDF geen hoofdstuk opent dat niets te melden heeft.
 //
 // Draaien met: npx tsx test-rapportpdf-invoer.mjs
 
-const { bouwRapportInvoer, spoorVoorPdf, doorsnedenVoorFiguren } = await import(
+const { bouwRapportInvoer, spoorVoorPdf, doorsnedenVoorFiguren, zonesVoorRapport } = await import(
   "./src/lib/rapportPdfInvoer.ts"
 );
 
@@ -591,6 +598,139 @@ log("\n[8] De gedeelde terugval krijgt aan beide kanten dezelfde invoer");
     doorsnedenVoorFiguren([staaf], [], new Map([[99, korfUitModel]]))[0].korf.cover_mm,
     32.3,
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 9. De wapeningszones, de dekkingslijn en de scheefstand — punt 7 van de kop
+// ═══════════════════════════════════════════════════════════════════════
+{
+  log("\n[9] wapeningszones, dekkingslijn en scheefstand");
+
+  /** De korf van de staaf: wat geldt waar de zonelijsten niets zeggen. */
+  const basisKorf = {
+    cover_mm: 30,
+    stirrup_diameter_mm: 8,
+    top: { count: 2, diameter_mm: 12 },
+    bottom: { count: 3, diameter_mm: 16 },
+  };
+  /** Onder 3Ø16 aan de einden en 5Ø16 in het veld — één echte sprong. */
+  const zones = {
+    longitudinal: [
+      {
+        side: "Bottom",
+        row: { count: 3, diameter_mm: 16 },
+        x_start_mm: 0,
+        x_end_mm: 1500,
+        bar_shape: "Recht",
+        casting_position: "Onderzijde",
+      },
+      {
+        side: "Bottom",
+        row: { count: 5, diameter_mm: 16 },
+        x_start_mm: 1500,
+        x_end_mm: 4500,
+        bar_shape: "Recht",
+        casting_position: "Onderzijde",
+      },
+    ],
+    stirrups: [
+      { x_start_mm: 0, x_end_mm: 6000, spacing_mm: 200, legs: 2, diameter_mm: 8 },
+    ],
+  };
+  const leegZones = { longitudinal: [], stirrups: [] };
+
+  const betonInvoer = [
+    { beam_id: 1, cage: basisKorf, reinforcement_zones: zones, length_m: 6 },
+    // Een staaf met één korf over de hele lengte: die hoort NIET in de lijst.
+    // Haar korf staat al in de gegevensregel van die staaf, en een tabel met
+    // één rij die datzelfde herhaalt maakt het rapport langer en niet
+    // duidelijker.
+    { beam_id: 2, cage: basisKorf, reinforcement_zones: leegZones, length_m: 4 },
+  ];
+
+  const uit = zonesVoorRapport(betonInvoer);
+  checkGelijk("alleen de staaf met een echte indeling komt erin", uit.map((z) => z.beam_id), [1]);
+  checkGelijk("de lengte gaat in millimeter mee, niet in meter", uit[0].lengte_mm, 6000);
+  checkWaar(
+    "de korf gaat ONGEWIJZIGD mee",
+    JSON.stringify(uit[0].korf) === JSON.stringify(basisKorf),
+  );
+  checkWaar(
+    "de zone-indeling gaat ONGEWIJZIGD mee",
+    JSON.stringify(uit[0].zones) === JSON.stringify(zones),
+  );
+  checkGelijk("zonder betoninvoer is er niets te tonen", zonesVoorRapport(undefined), []);
+
+  // ── De weg naar de rapportinvoer ───────────────────────────────────────
+  const lijn = {
+    beam_id: 1,
+    section_name: "300 x 500",
+    concrete_class: "C30/37",
+    reinforcement_grade: "B500B",
+    reinforcement_summary: "onder 3Ø16, boven 2Ø12, beugel Ø8, dekking 30 mm",
+    lengte_mm: 6000,
+    f_yd_mpa: 435,
+    f_ctk_005_mpa: 2.0,
+    a_l_mm: 409,
+    a_l_artikel: "art. 9.2.1.3(2) (9.2)",
+    z_voor_a_l_mm: 409,
+    onder: { side: "Bottom", punten: [], bundels: [], toelichting: [] },
+    boven: { side: "Top", punten: [], bundels: [], toelichting: [] },
+    dwarskracht: { punten: [], toelichting: [] },
+    steunpunten: [],
+    notes: ["a_l is gelezen als een lengte en niet als een richting."],
+  };
+  const scheefstand =
+    "Scheefstand volgens NEN-EN 1993-1-1 art. 5.3.2(3)a (5.5).\n\nphi = 1/346   [art. 5.3.2(3)a (5.5)]";
+
+  const vol = bouwRapportInvoer({
+    project,
+    checkResults: [beton(1)],
+    betonInvoer,
+    dekkingslijnen: [lijn],
+    scheefstandToelichting: scheefstand,
+  });
+  checkGelijk(
+    "de zones staan in de rapportinvoer",
+    vol.concrete_reinforcement_zones.map((z) => z.beam_id),
+    [1],
+  );
+  checkWaar(
+    "de dekkingslijn gaat WOORDELIJK mee, inclusief de kanttekening",
+    JSON.stringify(vol.concrete_dekkingslijnen) === JSON.stringify([lijn]),
+  );
+  checkWaar(
+    "de scheefstandtekst gaat woordelijk mee",
+    vol.scheefstand_toelichting === scheefstand,
+  );
+
+  // ── En weglaten wanneer er niets is ────────────────────────────────────
+  const kaal = bouwRapportInvoer({ project, checkResults: [beton(1)] });
+  checkWaar(
+    "zonder zones staat het veld er niet",
+    !("concrete_reinforcement_zones" in kaal),
+  );
+  checkWaar(
+    "zonder dekkingslijn staat het veld er niet",
+    !("concrete_dekkingslijnen" in kaal),
+  );
+  checkWaar(
+    "zonder scheefstand staat het veld er niet",
+    !("scheefstand_toelichting" in kaal),
+  );
+
+  // Een tekst van alleen witruimte is geen uitgangspunt. Zou hij tóch meegaan,
+  // dan opent de PDF een hoofdstuk "Uitgangspunten" met niets erin.
+  const wit = bouwRapportInvoer({
+    project,
+    checkResults: [beton(1)],
+    scheefstandToelichting: "   \n  ",
+    dekkingslijnen: [],
+    betonInvoer: [],
+  });
+  checkWaar("een lege scheefstandtekst telt als niet meegestuurd", !("scheefstand_toelichting" in wit));
+  checkWaar("een lege dekkingslijnlijst telt als niet meegestuurd", !("concrete_dekkingslijnen" in wit));
+  checkWaar("een lege betoninvoer telt als niet meegestuurd", !("concrete_reinforcement_zones" in wit));
 }
 
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);

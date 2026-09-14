@@ -15,7 +15,7 @@ use ts_rs::TS;
 
 use crate::bending::sigma_m_mpa;
 use crate::compression::sigma_axial_mpa;
-use crate::section::RectTimberSection;
+use crate::section::TimberSection;
 
 // ---------------------------------------------------------------------------
 // §6.3.2 — kolomknik
@@ -72,17 +72,17 @@ pub struct ColumnStabilityInput {
 /// (6.19)/(6.20) gebruikt (kwadratische drukterm, geen k_c); anders
 /// (6.23)/(6.24). UC = maximum van beide vergelijkingen.
 pub fn check_column_stability(
-    section: &RectTimberSection,
+    section: &TimberSection,
     input: &ColumnStabilityInput,
     force_state: ForceStateSnapshot,
 ) -> StabilityCalc {
     let n_ed = force_state.forces.n_ed;
-    let sigma_c = sigma_axial_mpa(n_ed, section.area_mm2());
-    let sigma_my = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3());
-    let sigma_mz = sigma_m_mpa(force_state.forces.mz_ed, section.w_z_mm3());
+    let sigma_c = sigma_axial_mpa(n_ed, section.a_mm2);
+    let sigma_my = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3);
+    let sigma_mz = sigma_m_mpa(force_state.forces.mz_ed, section.w_z_mm3);
 
-    let lambda_y = slenderness(input.l_cr_y_mm, section.radius_y_mm());
-    let lambda_z = slenderness(input.l_cr_z_mm, section.radius_z_mm());
+    let lambda_y = slenderness(input.l_cr_y_mm, section.radius_y_mm);
+    let lambda_z = slenderness(input.l_cr_z_mm, section.radius_z_mm);
     let lambda_rel_y = lambda_rel(lambda_y, input.f_c0k_mpa, input.e0_05_mpa);
     let lambda_rel_z = lambda_rel(lambda_z, input.f_c0k_mpa, input.e0_05_mpa);
     let k_y = k_factor(lambda_rel_y, input.beta_c);
@@ -225,8 +225,17 @@ pub fn effective_length_mm(l_mm: f64, case: LtbLoadCase, position: LtbLoadPositi
 
 /// Kritieke buigspanning voor een rechthoekige naaldhoutdoorsnede,
 /// vergelijking (6.32): sigma_m,crit = 0,78·b² / (h·l_ef) · E_0,05.
-pub fn sigma_m_crit_rect_mpa(section: &RectTimberSection, l_ef_mm: f64, e0_05_mpa: f64) -> f64 {
-    if section.h_mm <= 0.0 || l_ef_mm <= 0.0 {
+///
+/// LET OP HET TOEPASSINGSGEBIED. Art. 6.3.3(2) geeft (6.32) uitdrukkelijk
+/// "voor naaldhout met een gezaagde rechthoekige doorsnede". De algemene
+/// uitdrukking is (6.31), sigma_m,crit = pi·sqrt(E_0,05·I_z·G_0,05·I_tor) /
+/// (l_ef·W_y), en die vraagt G_0,05 en I_tor — twee grootheden die deze
+/// toetsing niet kent. (6.32) op een samengestelde doorsnede loslaten zou de
+/// omhullende breedte als lijfbreedte gebruiken en dus een veel te hoge
+/// kritieke spanning geven; daarom weigert `check_beam_stability` dat en
+/// meldt hij het. Zie de vlag `rechthoekig` op [`TimberSection`].
+pub fn sigma_m_crit_rect_mpa(section: &TimberSection, l_ef_mm: f64, e0_05_mpa: f64) -> f64 {
+    if section.h_mm <= 0.0 || l_ef_mm <= 0.0 || !section.rechthoekig {
         return 0.0;
     }
     0.78 * section.b_mm * section.b_mm / (section.h_mm * l_ef_mm) * e0_05_mpa
@@ -275,20 +284,28 @@ pub struct BeamStabilityInput {
 /// Met drukkracht:  (sigma_m,d / (k_crit·f_m,d))² + sigma_c,d / (k_c,z·f_c,0,d)
 /// <= 1 (6.35), met k_c,z volgens §6.3.2 voor knik om de zwakke as.
 pub fn check_beam_stability(
-    section: &RectTimberSection,
+    section: &TimberSection,
     input: &BeamStabilityInput,
     force_state: ForceStateSnapshot,
 ) -> StabilityCalc {
     let n_ed = force_state.forces.n_ed;
-    let sigma_m = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3());
-    let sigma_c = if n_ed < 0.0 { sigma_axial_mpa(n_ed, section.area_mm2()) } else { 0.0 };
+    let sigma_m = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3);
+    let sigma_c = if n_ed < 0.0 { sigma_axial_mpa(n_ed, section.a_mm2) } else { 0.0 };
+
+    // Niet-rechthoekig: (6.32) geldt niet en (6.31) is met de beschikbare
+    // gegevens niet te maken. Dan wordt de toets NIET uitgevoerd én dat
+    // hardop gezegd — een kipfactor uit de omhullende breedte zou een te
+    // gunstig antwoord geven zonder dat iemand het ziet.
+    if !section.rechthoekig {
+        return kip_niet_bepaalbaar(section, input, force_state, sigma_m, sigma_c);
+    }
 
     let s_crit = sigma_m_crit_rect_mpa(section, input.l_ef_mm, input.e0_05_mpa);
     let l_rel_m = lambda_rel_m(input.f_mk_mpa, s_crit);
     let kcrit = k_crit(l_rel_m);
 
     // k_c,z voor de drukterm in (6.35).
-    let lambda_z = slenderness(input.l_cr_z_mm, section.radius_z_mm());
+    let lambda_z = slenderness(input.l_cr_z_mm, section.radius_z_mm);
     let lambda_rel_z = lambda_rel(lambda_z, input.f_c0k_mpa, input.e0_05_mpa);
     let k_z = k_factor(lambda_rel_z, input.beta_c);
     let k_c_z = k_c(k_z, lambda_rel_z);
@@ -353,14 +370,70 @@ pub fn check_beam_stability(
     }
 }
 
+/// De kiptoets van §6.3.3 voor een doorsnede die geen rechthoek is: niet
+/// uitgevoerd, met de reden erbij.
+///
+/// WAAROM GEEN GETAL
+/// (6.32) — sigma_m,crit = 0,78·b²/(h·l_ef)·E_0,05 — geldt volgens
+/// art. 6.3.3(2) alleen voor naaldhout met een gezaagde rechthoekige
+/// doorsnede. Bij een I- of kokervorm zou `b` daarin de omhullende breedte
+/// zijn, en die is een veelvoud van wat er werkelijk aan zijdelingse
+/// stijfheid is: de uitkomst zou te gunstig zijn. De algemene (6.31) vraagt
+/// G_0,05 en het torsietraagheidsmoment; die staan niet in de sterkteklassen
+/// van deze kern en worden hier dus niet geraden.
+///
+/// De toets komt wél in het resultaat te staan, als `NotApplicable` met een
+/// notitie. Weglaten zou de indruk wekken dat er niets te toetsen viel.
+fn kip_niet_bepaalbaar(
+    section: &TimberSection,
+    input: &BeamStabilityInput,
+    force_state: ForceStateSnapshot,
+    sigma_m: f64,
+    sigma_c: f64,
+) -> StabilityCalc {
+    StabilityCalc {
+        id: "6.3.3_beam_stability".to_string(),
+        title: "Kipstabiliteit (buiging en druk)".to_string(),
+        article: "art. 6.3.3 (6.31)".to_string(),
+        force_state,
+        formula_latex:
+            r"\sigma_{m,crit} = \frac{\pi \sqrt{E_{0,05} I_z \, G_{0,05} I_{tor}}}{l_{ef} W_y}"
+                .to_string(),
+        variables: vec![
+            NamedValue { symbol: r"\sigma_{m,y,d}".to_string(), value: sigma_m, unit: "N/mm²".to_string() },
+            NamedValue { symbol: r"\sigma_{c,0,d}".to_string(), value: sigma_c, unit: "N/mm²".to_string() },
+            NamedValue { symbol: r"l_{ef}".to_string(), value: input.l_ef_mm, unit: "mm".to_string() },
+            NamedValue { symbol: "I_z".to_string(), value: section.i_z_mm4, unit: "mm⁴".to_string() },
+            NamedValue { symbol: "W_y".to_string(), value: section.w_y_mm3, unit: "mm³".to_string() },
+        ],
+        intermediate_values: vec![],
+        deelstappen: vec![],
+        value: 0.0,
+        unit: "-".to_string(),
+        uc: None,
+        status: CheckStatus::NotApplicable,
+        notes: vec![
+            concat!(
+                "Kip is NIET getoetst. De doorsnede is niet rechthoekig, en de ",
+                "vereenvoudigde sigma_m,crit van (6.32) geldt volgens art. 6.3.3(2) ",
+                "alleen voor naaldhout met een gezaagde rechthoekige doorsnede. De ",
+                "algemene (6.31) vraagt G_0,05 en het torsietraagheidsmoment I_tor; ",
+                "die zijn hier niet beschikbaar en worden niet geschat. Toets de ",
+                "kipstabiliteit van deze ligger apart, of steun hem zijdelings af.",
+            )
+            .to_string(),
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
     use mechanics::InternalForces;
 
-    fn sectie() -> RectTimberSection {
-        RectTimberSection::new(96.0, 450.0)
+    fn sectie() -> TimberSection {
+        TimberSection::rechthoek(96.0, 450.0)
     }
 
     fn snap(n: f64, my: f64) -> ForceStateSnapshot {
@@ -389,8 +462,8 @@ mod tests {
     fn slankheden_referentie_staaf2() {
         // lambda_y = 6342/129,9 = 48,82; lambda_z = 1268/27,7 = 45,77.
         let s = sectie();
-        assert_relative_eq!(slenderness(6342.0, s.radius_y_mm()), 48.82, max_relative = 1e-3);
-        assert_relative_eq!(slenderness(1268.0, s.radius_z_mm()), 45.77, max_relative = 1e-3);
+        assert_relative_eq!(slenderness(6342.0, s.radius_y_mm), 48.82, max_relative = 1e-3);
+        assert_relative_eq!(slenderness(1268.0, s.radius_z_mm), 45.77, max_relative = 1e-3);
         // lambda_rel,y = 0,828; lambda_rel,z = 0,776.
         assert_relative_eq!(lambda_rel(48.821, 21.0, 7400.0), 0.828, max_relative = 1e-3);
         assert_relative_eq!(lambda_rel(45.755, 21.0, 7400.0), 0.776, max_relative = 1e-3);

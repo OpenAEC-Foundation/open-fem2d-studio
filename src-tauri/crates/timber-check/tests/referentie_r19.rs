@@ -108,6 +108,8 @@ fn invoer(
         beam_id: 1,
         width_mm: B_MM,
         height_mm: H_MM,
+        // Rechthoek b x h: geen samengestelde doorsnede.
+        custom_section: None,
         strength_class: "C24".to_string(),
         // Gebruiksklasse 1, KLED middellang → k_mod = 0,80, k_def = 0,60.
         service_class: ServiceClass::Sc1,

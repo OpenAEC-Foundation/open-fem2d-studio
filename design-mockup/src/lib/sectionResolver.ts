@@ -13,14 +13,48 @@
  *   A = b·h, Iy = b·h³/12, E = E_0,mean per sterkteklasse (EN 338 / EN 14080).
  *   De TOETSING gebruikt de Rust-kern als bron; deze E-tabel stuurt alleen de
  *   stijfheid in de solver.
+ * - Beton: rechthoek, T of L uit de profielnaam, ongescheurd, E = E_cm per
+ *   sterkteklasse (NEN-EN 1992-1-1 tabel 3.1).
  * - Vrij materiaal ("VRIJ:… E=… rho=… f=…"): E en ρ komen uit de naam zelf,
  *   de doorsnede uit het profiel (rechthoek of catalogusprofiel). Geen norm,
  *   geen tabel — de gebruiker geeft de getallen.
+ * - Eigen doorsnede uit de profieleditor ("EIGEN:<naam>"): A en I_y zoals de
+ *   doorsnedemotor ze heeft bepaald, met de E van het MATERIAAL van de staaf.
+ *
+ * # MATERIAAL EN DOORSNEDE ZIJN TWEE VRAGEN, GEEN ÉÉN
+ *
+ * Deze functie was opgebouwd als één keten van if / else-if: eerst beton, dan
+ * hout, en in de laatste `else` — en dus ALLEEN daar — de eigen doorsneden uit
+ * de profieleditor. Gevolg: een HOUTEN staaf met een eigen doorsnede
+ * ("EIGEN:…") kwam nooit langs die tak, viel door alle takken heen en belandde
+ * op de terugval HEA 160 / S235. De berekening liep gewoon door, met
+ * E = 210 000 in plaats van 11 000: een factor negentien in de stijfheid, en
+ * een zakking die er volstrekt normaal uitziet. Alleen een `console.warn`
+ * verried het. Hetzelfde gold voor beton met een eigen doorsnede.
+ *
+ * De volgorde is daarom omgekeerd. Het MATERIAAL bepaalt de E-modulus
+ * (`eVanMateriaal`) en het PROFIEL bepaalt A en I — en een eigen doorsnede is
+ * een profielvorm, geen materiaalsoort. Een eigen doorsnede werkt dus voor
+ * hout, beton, staal en vrij materiaal, elk met zijn eigen E.
+ *
+ * # WAT ER GEBEURT ALS HET NIET LUKT
+ *
+ * Niets verzinnen. `resolveSection` geeft dan `bron: "default"` én een `reden`
+ * in leesbaar Nederlands; wie leest mag dat tonen (het rapport doet dat), maar
+ * wie REKENT hoort te stoppen. Daarvoor zijn `doorsnedeVoorSolver` (één staaf)
+ * en `onbekendeDoorsneden` (het hele model); allebei leveren ze de tekst die
+ * de gebruiker te zien krijgt. `bouwMultiInput` doet die controle als eerste
+ * en gooit [`DoorsnedeOnbekendFout`], zodat een onoplosbare doorsnede een
+ * foutmelding oplevert en geen antwoord dat bij een ander model hoort.
  */
 import { STEEL_SECTIONS } from "./steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
 import { cltSolverDoorsnede, isCltProfiel, parseCltProfiel } from "./cltCheckBuilder";
-import { zoekEigenDoorsnede } from "./profieleditor/eigenDoorsnedenStore";
+import {
+  eigenNaamVan,
+  isEigenProfiel,
+  zoekEigenDoorsnede,
+} from "./profieleditor/eigenDoorsnedenStore";
 import { parseConcreteSection } from "./betonCheckBuilder";
 import { parseVrijMateriaal } from "./vrijMateriaal";
 
@@ -62,6 +96,18 @@ export const RHO_STAAL = 7850;
 /** Valversnelling in m/s². */
 export const G = 9.81;
 
+/**
+ * De doorsnede waarmee de solver rekent als hij er GEEN kan bepalen: HEA 160
+ * in S235. Dat getal is geen keuze maar een erfenis — het is de ingebouwde
+ * default van de solveradapter, en hij staat hier zodat wie hem tegenkomt in
+ * één oogopslag ziet dat het NIET de doorsnede van de staaf is.
+ *
+ * Elke uitkomst met `bron: "default"` draagt daarom een `reden`. Wie leest
+ * (rapport, profielkiezer, modelvalidatie) toont die; wie rekent gebruikt
+ * `doorsnedeVoorSolver` en krijgt een uitzondering in plaats van deze getallen.
+ */
+const DEFAULT_DOORSNEDE = { E: E_STAAL, A: 3877, I: 1.673e7, bron: "default" } as const;
+
 export interface ResolvedSection {
   E: number;      // N/mm²
   A: number;      // mm²
@@ -83,6 +129,34 @@ export interface ResolvedSection {
    * dwarslagen wegen wél mee maar dragen niet in de spanrichting.
    */
   aBruto?: number;
+  /**
+   * Waarom de doorsnede niet te bepalen was — alleen gevuld bij
+   * `bron: "default"`. In leesbaar Nederlands, met de staafeigenschap die
+   * moet worden aangepast erbij, zodat de melding rechtstreeks aan de
+   * gebruiker getoond kan worden.
+   */
+  reden?: string;
+}
+
+/**
+ * De doorsnede van een staaf is niet te bepalen. Gegooid door
+ * `doorsnedeVoorSolver` en door `bouwMultiInput`; de tekst is bedoeld om
+ * ongewijzigd op het scherm te komen.
+ */
+export class DoorsnedeOnbekendFout extends Error {
+  /** De staven waar het om gaat, met per staaf de reden. */
+  readonly staven: OnbekendeDoorsnede[];
+  constructor(bericht: string, staven: OnbekendeDoorsnede[]) {
+    super(bericht);
+    this.name = "DoorsnedeOnbekendFout";
+    this.staven = staven;
+  }
+}
+
+/** Eén staaf waarvan de doorsnede niet te bepalen is. */
+export interface OnbekendeDoorsnede {
+  beamId: number;
+  reden: string;
 }
 
 /** "96x450", "96 x 450", "60x100 GL" → { b, h } in mm; anders null. */
@@ -141,28 +215,86 @@ function betonDoorsnede(
   return { A, I, bron: "beton-vorm" };
 }
 
+/** Waar de E-modulus van een staaf vandaan komt. */
+type Materiaalsoort = "vrij" | "hout" | "beton" | "staal";
+
+/**
+ * De E-modulus die bij het MATERIAAL hoort, los van de doorsnede.
+ *
+ * Dit is de helft van de vertaling die vroeger in een if/else-keten zat en
+ * daar met de doorsnedekeuze verstrengeld was — met als gevolg dat een eigen
+ * doorsnede alleen bij staal werd herkend. Materiaal en doorsnede staan nu
+ * los van elkaar, en dus kan elke doorsnedevorm met elk materiaal.
+ */
+function eVanMateriaal(material: string | undefined): { E: number; soort: Materiaalsoort } {
+  const vrij = parseVrijMateriaal(material);
+  if (vrij) return { E: vrij.eMod, soort: "vrij" };
+  const mat = material ?? "S235";
+  if (mat in CONCRETE_E_CM) return { E: CONCRETE_E_CM[mat], soort: "beton" };
+  const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(mat) || mat in TIMBER_E_MEAN;
+  // De terugval 11000 (C24) staat er alleen voor een sterkteklasse die de
+  // runtime-lijst wél kent maar deze tabel niet; SUPPORTED_TIMBER_GRADES en
+  // TIMBER_E_MEAN lopen gelijk, dus in de praktijk gebeurt dat niet.
+  if (isHout) return { E: TIMBER_E_MEAN[mat] ?? 11000, soort: "hout" };
+  return { E: E_STAAL, soort: "staal" };
+}
+
+/** Een voorbeeld van wat er wél als profielnaam wordt begrepen, per materiaal. */
+function voorbeeldProfiel(soort: Materiaalsoort): string {
+  switch (soort) {
+    case "hout":  return 'een rechthoek als "96x450", een kruislaaghoutopbouw of een eigen doorsnede uit de profieleditor';
+    case "beton": return 'een rechthoek als "300x500", een T of L als "T 400x450 bw=200 hf=50", of een eigen doorsnede uit de profieleditor';
+    case "vrij":  return 'een rechthoek als "100x200", een catalogusprofiel als "HEA 200" of een eigen doorsnede uit de profieleditor';
+    case "staal": return 'een catalogusprofiel als "HEA 200" of een eigen doorsnede uit de profieleditor';
+  }
+}
+
 export function resolveSection(material: string | undefined, profile: string | undefined): ResolvedSection {
   const mat = material ?? "S235";
-  const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(mat) || mat in TIMBER_E_MEAN;
+  const { E, soort } = eVanMateriaal(material);
 
-  // Vrij materiaal: de E-modulus komt uit de materiaalnaam, de doorsnede uit
-  // het profiel. Dat kan een rechthoek zijn of een catalogusprofiel — "even
-  // staal op spanning toetsen" is dezelfde route als natuursteen, alleen met
-  // een andere f_toel. Past het profiel bij geen van beide, dan valt de staaf
-  // door naar de waarschuwing onderaan; de spanningstoets meldt hem apart met
-  // reden bij de overgeslagen staven.
-  const vrij = parseVrijMateriaal(material);
-  if (vrij) {
+  // ── 1. Eigen doorsnede uit de profieleditor ────────────────────────────
+  //
+  // Eerst, en voor ELK materiaal. `EIGEN:` is een profielvorm en zegt niets
+  // over het materiaal: de motor heeft A en I_y al exact bepaald, de
+  // E-modulus komt van de staaf. Zolang deze tak alleen voor staal gold,
+  // rekende een houten balk met een eigen doorsnede met E = 210 000.
+  //
+  // Een naam die niet (meer) bewaard is, is een FOUT in het model: de
+  // doorsnedemotor-uitvoer is niet uit de naam terug te rekenen, dus er valt
+  // niets te herstellen. Dat wordt gemeld, niet stil vervangen — dezelfde
+  // regel die `steelCheckBuilder` bij de overgeslagen staven hanteert.
+  if (isEigenProfiel(profile)) {
+    const eigen = zoekEigenDoorsnede(profile);
+    if (eigen) {
+      return {
+        E,
+        A: eigen.eigenschappen.area_mm2,
+        I: eigen.eigenschappen.iy_mm4,
+        bron: "eigen",
+      };
+    }
+    return {
+      ...DEFAULT_DOORSNEDE,
+      reden:
+        `eigen doorsnede "${eigenNaamVan(profile)}" is niet (meer) bewaard — open de ` +
+        "profieleditor en bewaar hem opnieuw, of kies een ander profiel",
+    };
+  }
+
+  // ── 2. Doorsnede uit de profielnaam, per materiaalsoort ───────────────
+  if (soort === "vrij") {
+    // Vrij materiaal: de doorsnede mag een rechthoek zijn of een
+    // catalogusprofiel — "even staal op spanning toetsen" is dezelfde route
+    // als natuursteen, alleen met een andere f_toel.
     const rect = parseRechthoek(profile);
     if (rect) {
       const { b, h } = rect;
-      return { E: vrij.eMod, A: b * h, I: (b * h * h * h) / 12, bron: "vrij" };
+      return { E, A: b * h, I: (b * h * h * h) / 12, bron: "vrij" };
     }
     const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
-    if (sec) return { E: vrij.eMod, A: sec.A, I: sec.Iy, bron: "vrij" };
-  }
-
-  if (mat in CONCRETE_E_CM) {
+    if (sec) return { E, A: sec.A, I: sec.Iy, bron: "vrij" };
+  } else if (soort === "beton") {
     // Beton: ongescheurde doorsnede met E_cm. De wapening telt niet mee in de
     // stijfheid — de gebruikelijke lineaire aanname voor de krachtsverdeling;
     // de doorsnedetoetsing zelf zit in de kern.
@@ -173,10 +305,8 @@ export function resolveSection(material: string | undefined, profile: string | u
     // krachtsverdeling wordt bepaald. b_f·h³/12 zou een T van 400 × 450 met
     // een flens van 50 mm ruim 60 % te stijf maken.
     const vorm = betonDoorsnede(profile);
-    if (vorm) {
-      return { E: CONCRETE_E_CM[mat], A: vorm.A, I: vorm.I, bron: vorm.bron };
-    }
-  } else if (isHout) {
+    if (vorm) return { E, A: vorm.A, I: vorm.I, bron: vorm.bron };
+  } else if (soort === "hout") {
     // Kruislaaghout: E·A en E·I van de samengestelde doorsnede (alleen de
     // lengtelagen dragen), uitgedrukt in de E van de bovenste lengtelaag.
     if (isCltProfiel(profile)) {
@@ -187,36 +317,71 @@ export function resolveSection(material: string | undefined, profile: string | u
     const rect = parseRechthoek(profile);
     if (rect) {
       const { b, h } = rect;
-      return {
-        E: TIMBER_E_MEAN[mat] ?? 11000,
-        A: b * h,
-        I: (b * h * h * h) / 12,
-        bron: "hout-bxh",
-      };
+      return { E, A: b * h, I: (b * h * h * h) / 12, bron: "hout-bxh" };
     }
   } else {
-    // Eigen doorsnede uit de profieleditor (`EIGEN:<naam>`): de motor heeft
-    // A en I_y al exact bepaald; eigen doorsneden zijn staal.
-    const eigen = zoekEigenDoorsnede(profile);
-    if (eigen) {
-      return {
-        E: E_STAAL,
-        A: eigen.eigenschappen.area_mm2,
-        I: eigen.eigenschappen.iy_mm4,
-        bron: "eigen",
-      };
-    }
     const sec = STEEL_SECTIONS[normaliseer(profile ?? "")];
-    if (sec) return { E: E_STAAL, A: sec.A, I: sec.Iy, bron: "staal-db" };
+    if (sec) return { E, A: sec.A, I: sec.Iy, bron: "staal-db" };
   }
 
-  // Onbekende combinatie: val terug op de solver-default en zeg dat hardop —
-  // stil doorrekenen met een verzonnen doorsnede is precies wat we niet willen.
-  console.warn(
-    `[solver] Doorsnede onbekend voor materiaal "${material}" + profiel "${profile}" — ` +
-    `reken met default HEA 160 / S235. Controleer de staafeigenschappen.`,
+  // ── 3. Niet te bepalen ─────────────────────────────────────
+  return {
+    ...DEFAULT_DOORSNEDE,
+    reden: profile
+      ? `profiel "${profile}" hoort niet bij materiaal "${mat}" — verwacht ` +
+        `${voorbeeldProfiel(soort)}`
+      : `er is geen profiel toegewezen — kies ${voorbeeldProfiel(soort)}`,
+  };
+}
+
+/**
+ * De doorsnede zoals de SOLVER hem moet krijgen — of een uitzondering.
+ *
+ * WAAROM DIT NAAST `resolveSection` STAAT
+ * `resolveSection` heeft twee soorten afnemers. Het rapport, de profielkiezer
+ * en de modelvalidatie LEZEN hem: die willen een antwoord terug, ook als het
+ * "onbekend" is, en tonen dat zelf netjes. De solverpaden REKENEN ermee, en
+ * daar is doorgaan met een vervangende doorsnede het gevaar: de uitkomst ziet
+ * er normaal uit en hoort bij een model dat niemand heeft ingevoerd.
+ *
+ * Beide gedragingen in één functie proppen kan niet zonder de lezers te laten
+ * omvallen op invoer die nog half getikt is. Vandaar twee ingangen op één
+ * bepaling.
+ */
+export function doorsnedeVoorSolver(
+  material: string | undefined,
+  profile: string | undefined,
+  beamId?: number,
+): ResolvedSection {
+  const sec = resolveSection(material, profile);
+  if (sec.bron !== "default") return sec;
+  const reden = sec.reden ?? "doorsnede onbekend";
+  const waar = beamId === undefined ? "Een staaf" : `Staaf ${beamId}`;
+  throw new DoorsnedeOnbekendFout(
+    `${waar}: ${reden}. De berekening is gestopt — doorrekenen met een ` +
+      "vervangende doorsnede zou een antwoord geven bij een ander model.",
+    [{ beamId: beamId ?? -1, reden }],
   );
-  return { E: E_STAAL, A: 3877, I: 1.673e7, bron: "default" };
+}
+
+/**
+ * Alle staven waarvan de doorsnede niet te bepalen is, met reden.
+ *
+ * Bedoeld voor een controle VÓÓR het rekenen, in dezelfde vorm als de
+ * bevindingen van `modelControle` en de overgeslagen staven van
+ * `betonCheckBuilder`: staafnummer plus wat eraan mankeert.
+ */
+export function onbekendeDoorsneden(
+  staven: Iterable<{ id: number; material?: string; profile?: string }>,
+): OnbekendeDoorsnede[] {
+  const uit: OnbekendeDoorsnede[] = [];
+  for (const b of staven) {
+    const sec = resolveSection(b.material, b.profile);
+    if (sec.bron === "default") {
+      uit.push({ beamId: b.id, reden: sec.reden ?? "doorsnede onbekend" });
+    }
+  }
+  return uit;
 }
 
 /**

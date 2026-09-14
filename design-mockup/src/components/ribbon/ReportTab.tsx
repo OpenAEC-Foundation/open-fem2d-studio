@@ -30,6 +30,7 @@ import RibbonButtonStack from "./RibbonButtonStack";
 import { useReportStore } from "../../stores/reportStore";
 import { korvenUitStaven, useCheckStore } from "../../stores/checkStore";
 import { useBetonStijfheidStore } from "../../stores/betonStijfheidStore";
+import { useDekkingslijnStore } from "../../stores/dekkingslijnStore";
 import { useWindowManager } from "../../hooks/useWindowManager";
 import { useProjectInfo } from "../report/useProjectInfo";
 import { bouwRapportInvoer, genereerRapportPdf } from "../../lib/rapportPdfInvoer";
@@ -68,6 +69,16 @@ export default function ReportTab(_props: ReportTabProps) {
   const combinaties = useBetonStijfheidStore((s) => s.combinaties);
   const overgeslagen = useBetonStijfheidStore((s) => s.overgeslagen);
   const staafdoorsneden = useBetonStijfheidStore((s) => s.staafdoorsneden);
+  // De KERNINVOER van de laatste toetsronde. Daar staan de wapeningszones in;
+  // in het RESULTAAT staan ze niet, terwijl de toetsing er per snede mee heeft
+  // gerekend. Zonder deze regel toont het rapport bij een ingekorte staaf
+  // alleen de basiskorf, en dan is een unity check niet na te rekenen.
+  const lastRunInputs = useCheckStore((s) => s.lastRunInputs);
+  // Het laatste dekkingslijn-antwoord dat het betonvenster van de kern kreeg.
+  // Eén staaf tegelijk — het venster toont er ook maar één — en `beamId` zegt
+  // bij welke staaf het hoort, zodat het antwoord van de vórige staaf hier
+  // nooit voor dat van de huidige kan doorgaan.
+  const dekkingslijn = useDekkingslijnStore((s) => s.antwoord);
 
   // De Rapport-tab is alleen actief wanneer de rapportview getoond wordt
   // (Ribbon koppelt tab ↔ view), dus window.print() print het rapport.
@@ -122,6 +133,12 @@ export default function ReportTab(_props: ReportTabProps) {
         korvenUitModel: new Map(
           [...korvenUitStaven(lastRunData?.beams ?? [])].map(([id, cfg]) => [id, cfg.korf]),
         ),
+        // De dekkingslijn is een APARTE vraag aan de kern, gesteld vanuit het
+        // betonvenster. Is zij nooit gesteld, dan is er geen antwoord en blijft
+        // het hoofdstuk weg — er wordt hier niet alsnog om gevraagd, want dat
+        // zou een rapportknop een rekenronde laten starten.
+        dekkingslijnen: dekkingslijn ? [dekkingslijn] : undefined,
+        betonInvoer: lastRunInputs?.beton,
       });
       const bytes = await genereerRapportPdf(invoer);
       const { save } = await import("@tauri-apps/plugin-dialog");

@@ -3,7 +3,7 @@
 use mechanics::ForceStateSnapshot;
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityCheck};
 
-use crate::section::RectTimberSection;
+use crate::section::TimberSection;
 
 /// Buigspanning |M|/W in N/mm2 (M in kNm, W in mm3).
 pub fn sigma_m_mpa(m_ed_knm: f64, w_mm3: f64) -> f64 {
@@ -25,14 +25,14 @@ pub fn sigma_m_mpa(m_ed_knm: f64, w_mm3: f64) -> f64 {
 /// maar dezelfde buigtermen sigma_m,y,d/f_m,y,d + k_m·sigma_m,z,d/f_m,z,d
 /// komen geverifieerd terug in (6.23): 22,3/14,8 + 0,7·0/16,1.
 pub fn check_bending(
-    section: &RectTimberSection,
+    section: &TimberSection,
     f_myd_mpa: f64,
     f_mzd_mpa: f64,
     k_m: f64,
     force_state: ForceStateSnapshot,
 ) -> ResistanceCalc {
-    let sigma_my = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3());
-    let sigma_mz = sigma_m_mpa(force_state.forces.mz_ed, section.w_z_mm3());
+    let sigma_my = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3);
+    let sigma_mz = sigma_m_mpa(force_state.forces.mz_ed, section.w_z_mm3);
 
     let term_y = if f_myd_mpa > 0.0 { sigma_my / f_myd_mpa } else { 0.0 };
     let term_z = if f_mzd_mpa > 0.0 { sigma_mz / f_mzd_mpa } else { 0.0 };
@@ -95,14 +95,14 @@ mod tests {
     #[test]
     fn buigspanning_referentie() {
         // Referentie: sigma_m,y,d = 72,170e6 / 3,24e6 = 22,3 N/mm2.
-        let s = RectTimberSection::new(96.0, 450.0);
-        assert_relative_eq!(sigma_m_mpa(72.170, s.w_y_mm3()), 22.27, max_relative = 1e-3);
+        let s = TimberSection::rechthoek(96.0, 450.0);
+        assert_relative_eq!(sigma_m_mpa(72.170, s.w_y_mm3), 22.27, max_relative = 1e-3);
     }
 
     #[test]
     fn enkelvoudige_buiging_uc_conform_referentietermen() {
         // Buigterm uit (6.23): 22,3/14,8 = 1,51.
-        let s = RectTimberSection::new(96.0, 450.0);
+        let s = TimberSection::rechthoek(96.0, 450.0);
         let r = check_bending(&s, 14.769, 16.149, 0.7, snap(72.170, 0.0));
         assert_relative_eq!(r.uc.as_ref().unwrap().uc, 1.508, max_relative = 2e-3);
         assert_eq!(r.status, CheckStatus::NotOk);
@@ -112,10 +112,10 @@ mod tests {
     fn dubbele_buiging_beide_vergelijkingen() {
         // Symmetrische controle van (6.11)/(6.12) met k_m = 0,7:
         // termen 0,5 en 0,4 → 6.11: 0,5+0,7·0,4 = 0,78; 6.12: 0,7·0,5+0,4 = 0,75.
-        let s = RectTimberSection::new(100.0, 100.0);
+        let s = TimberSection::rechthoek(100.0, 100.0);
         // W_y = W_z = 166667 mm3; f_d = 10 → M voor sigma=5: 0,833 kNm; sigma=4: 0,667.
-        let m_y = 5.0 * s.w_y_mm3() / 1e6;
-        let m_z = 4.0 * s.w_z_mm3() / 1e6;
+        let m_y = 5.0 * s.w_y_mm3 / 1e6;
+        let m_z = 4.0 * s.w_z_mm3 / 1e6;
         let r = check_bending(&s, 10.0, 10.0, 0.7, snap(m_y, m_z));
         assert_relative_eq!(r.uc.as_ref().unwrap().uc, 0.78, max_relative = 1e-6);
         assert_eq!(r.status, CheckStatus::Ok);
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn zonder_moment_niet_van_toepassing() {
-        let s = RectTimberSection::new(96.0, 450.0);
+        let s = TimberSection::rechthoek(96.0, 450.0);
         let r = check_bending(&s, 14.769, 16.149, 0.7, snap(0.0, 0.0));
         assert_eq!(r.status, CheckStatus::NotApplicable);
     }
