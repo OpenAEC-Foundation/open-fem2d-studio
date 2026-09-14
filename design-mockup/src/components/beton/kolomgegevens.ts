@@ -15,6 +15,7 @@
  * wordt er in de Rust-kern (`nen_en_1992_1_1::kolom::Knikgeval::l0_factor`),
  * zodat er niet twee plaatsen zijn waar deze getallen kunnen verschuiven.
  */
+import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
 import type { Knikgeval } from "../../lib/types/concrete/Knikgeval";
 import type { Kniklengtekeuze } from "../../lib/types/concrete/Kniklengtekeuze";
 import type { Schoring } from "../../lib/types/concrete/Schoring";
@@ -117,4 +118,56 @@ export function kniklengteVoorSchoring(
     if (lijst.some((g) => g.geval === huidig.geval)) return huidig;
   }
   return { soort: "Figuur57", geval: lijst[0].geval };
+}
+
+// ── De tweede as ──────────────────────────────────────────────────────────
+
+/**
+ * De schoring die om de z-as WERKELIJK geldt: de eigen keuze, of anders die
+ * van het vlak. Dezelfde terugval als in de Rust-kern
+ * (`concrete_check::kolom::tweede_as_toetsen`), die haar ook zo meldt.
+ */
+export function effectieveSchoringZ(k: ConcreteColumnInput): Schoring {
+  return k.bracing_z ?? k.bracing;
+}
+
+/**
+ * De kniklengtekeuze die om de z-as WERKELIJK geldt: de eigen keuze, of anders
+ * die van het vlak.
+ */
+export function effectieveKniklengteZ(k: ConcreteColumnInput): Kniklengtekeuze {
+  return k.buckling_length_z ?? k.buckling_length;
+}
+
+/**
+ * Houdt het vakje om de z-as bij de schoring om de z-as.
+ *
+ * De kern WEIGERT een vakje van figuur 5.7 dat niet bij de schoring van
+ * dezelfde as past (een console die "geschoord" heet), en doet dat ook om z.
+ * Het venijn zit in de terugval: laat de gebruiker `buckling_length_z` leeg,
+ * dan geldt de keuze van het VLAK ook om z — en die kan met een eigen
+ * `bracing_z` in tegenspraak zijn, of ermee in tegenspraak raken zodra de
+ * schoring in het vlak wisselt. Deze functie sluit dat uit:
+ *
+ * * past de werkelijke keuze om z bij de werkelijke schoring om z, dan
+ *   verandert er niets — een leeg veld blijft leeg, een eigen keuze blijft
+ *   staan, en een opgegeven l₀,z is bij elke schoring geldig;
+ * * anders krijgt `buckling_length_z` een EIGEN waarde: het eerste vakje van
+ *   de lijst die bij de schoring om z hoort.
+ *
+ * Zij is idempotent en wordt na elke wijziging van het blok aangeroepen.
+ */
+export function maakZConsistent(k: ConcreteColumnInput): ConcreteColumnInput {
+  const schoringZ = effectieveSchoringZ(k);
+  if (kniklengtePastBij(effectieveKniklengteZ(k), schoringZ)) return k;
+  return { ...k, buckling_length_z: { soort: "Figuur57", geval: knikgevallenVoor(schoringZ)[0].geval } };
+}
+
+/**
+ * Past deze kniklengtekeuze bij deze schoring? Een opgegeven l₀ altijd; een
+ * vakje van figuur 5.7 alleen als het in de lijst van die schoring staat.
+ */
+export function kniklengtePastBij(keuze: Kniklengtekeuze, schoring: Schoring): boolean {
+  if (keuze.soort === "Opgegeven") return true;
+  return knikgevallenVoor(schoring).some((g) => g.geval === keuze.geval);
 }

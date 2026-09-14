@@ -2,12 +2,20 @@
 //! tweede-orde-effecten mogen vervallen, en de effectieve kruipcoëfficiënt.
 //! Daarbij §9.5, de detailleringseisen die alleen voor een kolom gelden.
 //!
-//! Deze module beantwoordt één vraag: **moet deze kolom op tweede-orde-effecten
-//! worden gerekend, en met welke kruip?** Zij rekent zelf géén tweede orde uit.
-//! Dat doet de algemene methode van §5.8.6, die in deze app al bestaat
-//! (fysisch niet-lineair, M-N-κ per segment). De twee vereenvoudigde methoden
-//! — nominale stijfheid (§5.8.7) en nominale kromming (§5.8.8) — zijn hier
-//! bewust NIET gebouwd; wat zij zouden vragen staat onderaan deze doc.
+//! Deze module beantwoordt in de eerste plaats één vraag: **moet deze kolom op
+//! tweede-orde-effecten worden gerekend, en met welke kruip?** Voor het
+//! rekenvlak rekent zij zelf géén tweede orde uit; dat doet de algemene
+//! methode van §5.8.6, die in deze app al bestaat (fysisch niet-lineair,
+//! M-N-κ per segment). De twee vereenvoudigde methoden — nominale stijfheid
+//! (§5.8.7) en nominale kromming (§5.8.8) — zijn hier bewust NIET gebouwd;
+//! wat zij zouden vragen staat onderaan deze doc.
+//!
+//! Daarnaast draagt zij de rekenregels van §5.2 (de imperfectie van een
+//! afzonderlijk element als excentriciteit e_i) en van §5.8.9 (dubbele
+//! buiging): de voorwaarden (5.38a) en (5.38b), N_Rd, de exponent a en de
+//! interactie (5.39), met de afleiding erbij. Wie ze aan een staaf koppelt —
+//! de omhullende, de tweede as, het M-N-κ-diagram om die as — is
+//! `concrete_check::kolomtoetsen`.
 //!
 //! # De keten, met vindplaats per stap
 //!
@@ -115,30 +123,19 @@
 //!   (die deze module wél levert), en een aanname voor de krommingsverdeling
 //!   (de factor c). Alleen bruikbaar voor geschoorde, op zichzelf staande
 //!   elementen; voor een ongeschoorde kolom mag hij in Nederland niet.
-//! * **§5.8.9 (dubbele buiging) — niet gerekend, wél gemeld.** De
-//!   orchestrator (`concrete_check::kolomtoetsen`) geeft een toets
-//!   `5.8.9_dubbele_buiging` met status `NotApplicable` en de reden terug
-//!   zodra de UGT-omhullende een moment om de zwakke as draagt van meer dan
-//!   5 % van dat om de sterke as. Daarvóór verdween M_z geruisloos: dezelfde
-//!   toetsen, dezelfde statussen, en niets dat verried dat een halve belasting
-//!   buiten beschouwing bleef. Wat de paragraaf zelf vraagt — de ontsnapping
-//!   van 5.8.9(3) met (5.38a) en (5.38b), anders de interactie (5.39) met
-//!   exponent a — staat in die melding, en met de hand uitgewerkt in
-//!   referentie R29.
-//!
-//!   **Waarom het bij melden blijft.** Niet meer om de wapeningskorf: die
-//!   draagt sinds de kolomkorf staven langs alle vier de zijden. Wel om drie
-//!   andere dingen. (a) De raamwerkoplosser rekent in één vlak en zet M_z
-//!   altijd op nul, dus vanuit de app zou de toets altijd hetzelfde zeggen.
-//!   (b) (5.38a) vraagt λ_z = l₀,z/i_z, en er is één kniklengte — die van het
-//!   rekenvlak; l₀,z gelijkstellen aan l₀,y wist juist het verschil uit tussen
-//!   een kolom die in het vlak geschoord is en er loodrecht op niet.
-//!   (c) (5.39) vraagt M_Rdz, waarvoor de y-plaatsen van de staven over de
-//!   breedte nodig zijn — de korf draagt aantallen en diameters per rij — en
-//!   M_Edz ínclusief tweede-orde-moment om de zwakke as, dus §5.8.6 of §5.8.8
-//!   met opnieuw l₀,z als ingang.
-//! * **§5.8.2(6) (de 10 %-regel) en de imperfecties van §5.2** — geen van
-//!   beide hier.
+//! * **§5.8.9 (dubbele buiging) — GEBOUWD**, zie de sectie §5.8.9 hieronder
+//!   en `concrete_check::kolomtoetsen`. Dat de raamwerkoplosser geen M_z
+//!   levert, betekent niet dat er geen M_z is: een kolom in een vlak raamwerk
+//!   heeft een tweede as en knikt daar even goed om uit, met de imperfectie
+//!   van §5.2 en het tweede-orde-effect in díe richting. Daarom draagt de
+//!   invoer nu een eigen schoring en kniklengte om de tweede as (terugval:
+//!   die van het rekenvlak, met melding), een extern M₀Ed om die as (nul als
+//!   beginwaarde, zodat een ruimtelijk model hem kan vullen), en legt de
+//!   korf de staven op hun plaats over de breedte in lagen voor het
+//!   M-N-κ-diagram om de tweede as (`ReinforcementCage::lagen_om_z`).
+//! * **§5.2 (imperfecties) — gebouwd voor een afzonderlijk element**: (5.1)
+//!   met θ₀ = 1/300 uit de nationale bijlage, en (5.2). Zie de sectie §5.2.
+//! * **§5.8.2(6) (de 10 %-regel)** — niet hier.
 //! * **De hele §5.8.3.3** — zie hierboven; in Nederland zinledig.
 //!
 //! Deze module is nog nergens op aangesloten: geen orchestrator, geen
@@ -1430,6 +1427,909 @@ pub fn kolom_deelstappen(k: &Kolomslankheid) -> Vec<Deelstap> {
              deze app is dat de algemene methode van §5.8.6."
                 .to_string(),
         ],
+    ));
+
+    stappen
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.2 — geometrische imperfecties van een afzonderlijk element, als
+// excentriciteit e_i
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Nagekeken op de gerenderde bladzijden 68 en 69 van de PDF-uitgave.
+//
+// * §5.2(5), (5.1): θ_i = θ₀·α_h·α_m, met α_h = 2/√l en 2/3 ≤ α_h ≤ 1, en
+//   α_m = √(0,5·(1 + 1/m)). De twee formules staan als afbeelding in de PDF
+//   en zijn van de gerenderde bladzijde gelezen.
+// * De OPMERKING bij (5.1) — "de aanbevolen waarde is 1/200" — is oranje
+//   DOORGEHAALD, en eronder staat in oranje: "De waarde van θ₀ moet gelijk aan
+//   1/300 zijn genomen." De nationale bijlage wijkt hier dus af, en het is
+//   een eis.
+// * §5.2(6): voor het effect op een afzonderlijk element is l de feitelijke
+//   lengte van het element en m = 1. Geen oranje.
+// * §5.2(7)a, (5.2): e_i = θ_i·l₀/2 met l₀ de effectieve lengte van
+//   §5.8.3.2. De vereenvoudiging "e_i = l₀/400, overeenkomend met α_h = 1"
+//   staat er in zwart bij; zij is EN-tekst en hoort bij θ₀ = 1/200. Met de
+//   Nederlandse θ₀ = 1/300 zou α_h = 1 op l₀/600 uitkomen. Deze module
+//   gebruikt de vereenvoudiging NIET maar (5.1) en (5.2) voluit, zodat de
+//   NB-waarde van θ₀ er ook werkelijk in zit.
+
+/// θ₀ — de basiswaarde van de scheefstand, nationale bijlage bij §5.2(5).
+///
+/// "De waarde van θ₀ moet gelijk aan 1/300 zijn genomen." De EN-aanbeveling
+/// 1/200 is op de gerenderde bladzijde 68 oranje doorgehaald.
+pub const THETA_0_NB: f64 = 1.0 / 300.0;
+
+/// Welke grens van α_h heeft ingegrepen — §5.2(5): 2/3 ≤ α_h ≤ 1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AlphaHGrens {
+    /// 2/√l zou boven 1 uitkomen (l < 4 m); α_h = 1.
+    Boven,
+    /// 2/√l zou onder 2/3 uitkomen (l > 9 m); α_h = 2/3.
+    Onder,
+}
+
+/// De scheefstand θ_i van (5.1), met de twee reductiefactoren erbij.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scheefstand {
+    /// De lengte l in m — voor een afzonderlijk element zijn feitelijke lengte
+    /// (§5.2(6)).
+    pub l_m: f64,
+    /// Het aantal verticale elementen m dat aan het effect bijdraagt; 1 voor
+    /// een afzonderlijk element.
+    pub m: u32,
+    pub alpha_h: f64,
+    pub alpha_h_grens: Option<AlphaHGrens>,
+    pub alpha_m: f64,
+    /// θ₀ zoals gebruikt: [`THETA_0_NB`].
+    pub theta_0: f64,
+    /// θ_i = θ₀·α_h·α_m, rad.
+    pub theta_i: f64,
+}
+
+/// (5.1): θ_i = θ₀·α_h·α_m, met θ₀ = 1/300 uit de nationale bijlage.
+pub fn scheefstand_5_1(l_m: f64, m: u32) -> Result<Scheefstand, String> {
+    if !(l_m > 0.0) {
+        return Err(format!("de lengte l voor α_h moet groter dan nul zijn, kreeg {l_m} m"));
+    }
+    if m == 0 {
+        return Err("het aantal elementen m voor α_m moet ten minste 1 zijn".to_string());
+    }
+    let ruw = 2.0 / l_m.sqrt();
+    let (alpha_h, alpha_h_grens) = if ruw > 1.0 {
+        (1.0, Some(AlphaHGrens::Boven))
+    } else if ruw < 2.0 / 3.0 {
+        (2.0 / 3.0, Some(AlphaHGrens::Onder))
+    } else {
+        (ruw, None)
+    };
+    let alpha_m = (0.5 * (1.0 + 1.0 / m as f64)).sqrt();
+    Ok(Scheefstand {
+        l_m,
+        m,
+        alpha_h,
+        alpha_h_grens,
+        alpha_m,
+        theta_0: THETA_0_NB,
+        theta_i: THETA_0_NB * alpha_h * alpha_m,
+    })
+}
+
+/// (5.2): e_i = θ_i·l₀/2 — de imperfectie van een afzonderlijk element als
+/// excentriciteit, §5.2(7)a. l₀ is de effectieve lengte van §5.8.3.2, in mm.
+pub fn e_i_5_2_mm(theta_i: f64, l0_mm: f64) -> Result<f64, String> {
+    if !(theta_i >= 0.0) {
+        return Err(format!("θ_i kan niet negatief zijn, kreeg {theta_i}"));
+    }
+    if !(l0_mm > 0.0) {
+        return Err(format!("l₀ moet groter dan nul zijn voor e_i = θ_i·l₀/2, kreeg {l0_mm} mm"));
+    }
+    Ok(theta_i * l0_mm / 2.0)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.8.9 — dubbele buiging
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Nagekeken op de gerenderde bladzijden 95 en 96. Geen oranje: de nationale
+// bijlage wijkt in §5.8.9 nergens af. De formules (5.38b) en (5.39) staan als
+// afbeelding in de PDF en zijn van de gerenderde bladzijde gelezen.
+//
+// * §5.8.9(1): de algemene methode van §5.8.6 mag ook voor dubbele buiging.
+//   Bij vereenvoudigde methoden gelden de voorwaarden hieronder.
+// * §5.8.9(2): eerst mag in iedere hoofdrichting afzonderlijk worden
+//   gerekend, zonder dubbele buiging. Met imperfecties hoeft alleen rekening
+//   te zijn gehouden in de richting waarin ze het meest ongunstig werken.
+// * §5.8.9(3): geen verdere controle als (5.38a) λ_y/λ_z ≤ 2 én λ_z/λ_y ≤ 2,
+//   en als de betrekkelijke excentriciteiten aan (5.38b) voldoen:
+//   (e_y/h_eq)/(e_z/b_eq) ≤ 0,2 óf (e_z/b_eq)/(e_y/h_eq) ≤ 0,2, met
+//   b_eq = i_y·√12 en h_eq = i_z·√12, e_y = M_Edz/N_Ed en e_z = M_Edy/N_Ed,
+//   de momenten INCLUSIEF het tweede-orde-moment.
+// * §5.8.9(4): anders de interactie (5.39):
+//   (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1,0, met a = 2 voor een cirkel of
+//   ellips en voor een rechthoek a = 1,0 / 1,5 / 2,0 bij N_Ed/N_Rd = 0,1 /
+//   0,7 / 1,0 "met lineaire interpolatie voor tussenliggende waarden";
+//   N_Rd = A_c·f_cd + A_s·f_yd.
+//
+// ASSEN. Figuur 5.8 van de norm tekent h LANGS de y-as en b langs de z-as;
+// deze crate noemt de breedte (langs y) b en de hoogte (langs z) h. De
+// formules staan in i_y en i_z en trekken zich daar niets van aan:
+// b_eq = i_y·√12 is de maat in de richting van e_z (voor een rechthoek van
+// deze crate: h), h_eq = i_z·√12 die in de richting van e_y (hier: b). De
+// afleiding drukt beide af, zodat de lezer het kan narekenen.
+
+/// De drie ankerpunten (N_Ed/N_Rd, a) van de tabel in §5.8.9(4) voor een
+/// RECHTHOEKIGE doorsnede.
+pub const EXPONENT_A_TABEL_5_39: [(f64, f64); 3] = [(0.1, 1.0), (0.7, 1.5), (1.0, 2.0)];
+
+/// a = 2 voor cirkelvormige en elliptische doorsneden, §5.8.9(4).
+pub const EXPONENT_A_ROND_5_39: f64 = 2.0;
+
+/// Hoe de exponent a van (5.39) tot stand kwam.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExponentAGrondslag {
+    /// N_Ed/N_Rd ≤ 0,1. De tabel BEGINT bij 0,1 met a = 1,0; daaronder geeft
+    /// de norm niets. Hier is a = 1,0 aangehouden: dat is de lineaire
+    /// interactie, de strengste van de drie, dus de veilige kant.
+    OnderTabel,
+    /// Tussen twee ankerpunten (of er precies op): lineair geïnterpoleerd,
+    /// zoals de tabel voorschrijft.
+    Geinterpoleerd,
+    /// N_Ed/N_Rd ≥ 1,0: a = 2,0. N_Ed ≥ N_Rd is op zichzelf al een
+    /// overschrijding; de exponent is dan het minste probleem.
+    BovenTabel,
+}
+
+/// N_Rd = A_c·f_cd + A_s·f_yd — de rekenwaarde van de opneembare
+/// normaalkracht in §5.8.9(4), in N. A_c is de BRUTO betondoorsnede.
+pub fn n_rd_5_39_n(a_c_mm2: f64, f_cd_mpa: f64, a_s_mm2: f64, f_yd_mpa: f64) -> Result<f64, String> {
+    if !(a_c_mm2 > 0.0 && f_cd_mpa > 0.0) {
+        return Err(format!(
+            "N_Rd vraagt A_c > 0 en f_cd > 0, kreeg A_c = {a_c_mm2} mm² en f_cd = {f_cd_mpa} N/mm²"
+        ));
+    }
+    if !(a_s_mm2 >= 0.0 && f_yd_mpa >= 0.0) {
+        return Err(format!(
+            "N_Rd vraagt A_s ≥ 0 en f_yd ≥ 0, kreeg A_s = {a_s_mm2} mm² en f_yd = {f_yd_mpa} N/mm²"
+        ));
+    }
+    Ok(a_c_mm2 * f_cd_mpa + a_s_mm2 * f_yd_mpa)
+}
+
+/// De exponent a van (5.39) voor een RECHTHOEKIGE doorsnede, uit de tabel in
+/// §5.8.9(4) met lineaire interpolatie tussen de ankerpunten.
+///
+/// N_Ed als DRUK, positief, in N; N_Rd uit [`n_rd_5_39_n`].
+pub fn exponent_a_5_39(n_ed_druk_n: f64, n_rd_n: f64) -> Result<(f64, ExponentAGrondslag), String> {
+    if !(n_rd_n > 0.0) {
+        return Err(format!("N_Rd moet groter dan nul zijn, kreeg {n_rd_n} N"));
+    }
+    if !(n_ed_druk_n >= 0.0) {
+        return Err(format!(
+            "de exponent a vraagt N_Ed als drukkracht (positief), kreeg {n_ed_druk_n} N"
+        ));
+    }
+    let v = n_ed_druk_n / n_rd_n;
+    let [(v0, a0), (v1, a1), (v2, a2)] = EXPONENT_A_TABEL_5_39;
+    if v <= v0 {
+        return Ok((a0, ExponentAGrondslag::OnderTabel));
+    }
+    if v >= v2 {
+        return Ok((a2, ExponentAGrondslag::BovenTabel));
+    }
+    let a = if v <= v1 {
+        a0 + (v - v0) / (v1 - v0) * (a1 - a0)
+    } else {
+        a1 + (v - v1) / (v2 - v1) * (a2 - a1)
+    };
+    Ok((a, ExponentAGrondslag::Geinterpoleerd))
+}
+
+/// (5.38a): λ_y/λ_z ≤ 2 én λ_z/λ_y ≤ 2.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Voorwaarde538a {
+    pub lambda_y: f64,
+    pub lambda_z: f64,
+    /// λ_y/λ_z.
+    pub y_door_z: f64,
+    /// λ_z/λ_y.
+    pub z_door_y: f64,
+    pub voldaan: bool,
+}
+
+/// De slankheidsvoorwaarde (5.38a) van §5.8.9(3).
+pub fn voorwaarde_5_38a(lambda_y: f64, lambda_z: f64) -> Result<Voorwaarde538a, String> {
+    if !(lambda_y > 0.0 && lambda_z > 0.0) {
+        return Err(format!(
+            "(5.38a) vraagt twee slankheden groter dan nul, kreeg λ_y = {lambda_y} en λ_z = {lambda_z}"
+        ));
+    }
+    let y_door_z = lambda_y / lambda_z;
+    let z_door_y = lambda_z / lambda_y;
+    Ok(Voorwaarde538a {
+        lambda_y,
+        lambda_z,
+        y_door_z,
+        z_door_y,
+        voldaan: y_door_z <= 2.0 && z_door_y <= 2.0,
+    })
+}
+
+/// (5.38b): (e_y/h_eq)/(e_z/b_eq) ≤ 0,2 óf (e_z/b_eq)/(e_y/h_eq) ≤ 0,2.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Voorwaarde538b {
+    /// e_y = M_Edz/N_Ed, mm — de excentriciteit in de richting van de y-as
+    /// (over de breedte van deze crate).
+    pub e_y_mm: f64,
+    /// e_z = M_Edy/N_Ed, mm — in de richting van de z-as (over de hoogte).
+    pub e_z_mm: f64,
+    pub i_y_mm: f64,
+    pub i_z_mm: f64,
+    /// b_eq = i_y·√12 — de gelijkwaardige maat in de richting van e_z.
+    pub b_eq_mm: f64,
+    /// h_eq = i_z·√12 — de gelijkwaardige maat in de richting van e_y.
+    pub h_eq_mm: f64,
+    /// e_y/h_eq.
+    pub e_y_rel: f64,
+    /// e_z/b_eq.
+    pub e_z_rel: f64,
+    /// (e_y/h_eq)/(e_z/b_eq); ∞ als e_z = 0.
+    pub y_door_z: f64,
+    /// (e_z/b_eq)/(e_y/h_eq); ∞ als e_y = 0.
+    pub z_door_y: f64,
+    pub voldaan: bool,
+}
+
+/// De excentriciteitsvoorwaarde (5.38b) van §5.8.9(3).
+///
+/// De excentriciteiten worden als grootte genomen (het teken doet er voor de
+/// verhouding niet toe). Is één van beide nul, dan is de buiging in
+/// werkelijkheid enkelvoudig en is de voorwaarde vervuld: de verhouding is
+/// dan 0 en niet "deling door nul". De vergelijking wordt daarom zonder
+/// deling gedaan: e_y,rel ≤ 0,2·e_z,rel óf e_z,rel ≤ 0,2·e_y,rel.
+pub fn voorwaarde_5_38b(
+    e_y_mm: f64,
+    e_z_mm: f64,
+    i_y_mm: f64,
+    i_z_mm: f64,
+) -> Result<Voorwaarde538b, String> {
+    if !(i_y_mm > 0.0 && i_z_mm > 0.0) {
+        return Err(format!(
+            "(5.38b) vraagt twee traagheidsstralen groter dan nul, kreeg i_y = {i_y_mm} en i_z = {i_z_mm} mm"
+        ));
+    }
+    if !(e_y_mm.is_finite() && e_z_mm.is_finite()) {
+        return Err("(5.38b) vraagt eindige excentriciteiten".to_string());
+    }
+    let e_y = e_y_mm.abs();
+    let e_z = e_z_mm.abs();
+    let sqrt12 = 12.0_f64.sqrt();
+    let b_eq_mm = i_y_mm * sqrt12;
+    let h_eq_mm = i_z_mm * sqrt12;
+    let e_y_rel = e_y / h_eq_mm;
+    let e_z_rel = e_z / b_eq_mm;
+    let deel = |t: f64, n: f64| if n > 0.0 { t / n } else if t > 0.0 { f64::INFINITY } else { 0.0 };
+    Ok(Voorwaarde538b {
+        e_y_mm: e_y,
+        e_z_mm: e_z,
+        i_y_mm,
+        i_z_mm,
+        b_eq_mm,
+        h_eq_mm,
+        e_y_rel,
+        e_z_rel,
+        y_door_z: deel(e_y_rel, e_z_rel),
+        z_door_y: deel(e_z_rel, e_y_rel),
+        voldaan: e_y_rel <= 0.2 * e_z_rel || e_z_rel <= 0.2 * e_y_rel,
+    })
+}
+
+/// (5.39): (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a — de som, te toetsen aan 1,0.
+///
+/// De momenten worden als grootte genomen; de momentweerstanden moeten groter
+/// dan nul zijn en de exponent ten minste 1.
+pub fn interactie_5_39(
+    m_edz_knm: f64,
+    m_rdz_knm: f64,
+    m_edy_knm: f64,
+    m_rdy_knm: f64,
+    a: f64,
+) -> Result<f64, String> {
+    if !(m_rdz_knm > 0.0 && m_rdy_knm > 0.0) {
+        return Err(format!(
+            "(5.39) vraagt twee momentweerstanden groter dan nul, kreeg M_Rdz = {m_rdz_knm} en M_Rdy = {m_rdy_knm} kNm"
+        ));
+    }
+    if !(a >= 1.0) {
+        return Err(format!("de exponent a van (5.39) is ten minste 1,0, kreeg {a}"));
+    }
+    Ok((m_edz_knm.abs() / m_rdz_knm).powf(a) + (m_edy_knm.abs() / m_rdy_knm).powf(a))
+}
+
+// ── De afleiding van het moment om de tweede as ───────────────────────────
+
+/// Hoe het tweede-orde-deel e₂ van het moment om de tweede as is bepaald.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TweedeOrdeDeel {
+    /// λ < λ_lim in deze richting: §5.8.3.1(1) staat toe de tweede-orde-
+    /// effecten te verwaarlozen, en §5.8.9(4) verwijst daar uitdrukkelijk
+    /// naar ("tenzij ze mogen zijn verwaarloosd volgens 5.8.2(6) of 5.8.3").
+    Verwaarloosd { lambda: f64, lambda_lim: f64 },
+    /// Gerekend met de algemene methode (§5.8.6) op de maatgevende doorsnede
+    /// (§5.8.6(6)): e₂ = (1/r)·l₀²/c, met 1/r de kromming uit het M-N-κ-
+    /// diagram met de (3.14)-kromme bij het TOTALE moment, en dat tot het
+    /// evenwicht niet meer verandert.
+    Gerekend {
+        e_2_mm: f64,
+        kappa_per_m: f64,
+        c: f64,
+        iteraties: u32,
+        phi_ef: f64,
+        lambda: f64,
+        lambda_lim: f64,
+    },
+    /// Geen evenwicht: bij het opvoeren van e₂ liep het totale moment boven de
+    /// momentweerstand van de doorsnede uit. De kolom knikt in deze richting.
+    Instabiel {
+        laatste_m_knm: f64,
+        c: f64,
+        iteraties: u32,
+        phi_ef: f64,
+        lambda: f64,
+        lambda_lim: f64,
+    },
+}
+
+/// De rekenwaarde van het moment om de TWEEDE as, opgebouwd uit zijn delen:
+/// het eerste-orde-moment uit het model, de imperfectie van §5.2, het
+/// tweede-orde-deel en de minimale excentriciteit van 6.1(4).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MomentTweedeAs {
+    /// N_Ed als druk, positief, kN.
+    pub n_ed_druk_kn: f64,
+    /// |M₀Ed| om deze as uit het model plus een extern opgegeven deel, kNm —
+    /// zonder imperfectie.
+    pub m0_knm: f64,
+    pub scheefstand: Scheefstand,
+    /// l₀ om deze as, mm.
+    pub l0_mm: f64,
+    /// e_i = θ_i·l₀/2, mm.
+    pub e_i_mm: f64,
+    pub tweede_orde: TweedeOrdeDeel,
+    /// e₀ = max(b/30; 20 mm) van 6.1(4), met b de doorsnedemaat in de richting
+    /// van de excentriciteit, mm.
+    pub e_0_mm: f64,
+    /// Heeft N_Ed·e₀ het moment opgetild?
+    pub e_0_bindend: bool,
+    /// De rekenwaarde M_Ed = max(M₀Ed + N_Ed·(e_i + e₂) ; N_Ed·e₀), kNm. Bij
+    /// [`TweedeOrdeDeel::Instabiel`] het laatste moment waarvoor nog evenwicht
+    /// werd gezocht.
+    pub m_ed_knm: f64,
+    /// De momentweerstand om deze as bij N_Ed (§6.1), kNm; `None` als de
+    /// doorsnede N_Ed al niet draagt.
+    pub m_rd_knm: Option<f64>,
+}
+
+/// De afleiding van [`MomentTweedeAs`] als deelstappen. Rekent niets opnieuw
+/// uit; schrijft op wat er al is bepaald.
+pub fn moment_tweede_as_deelstappen(m: &MomentTweedeAs) -> Vec<Deelstap> {
+    let mut stappen = Vec::new();
+    let s = &m.scheefstand;
+
+    // Stap 1 — θ_i.
+    let mut notes_theta = vec![
+        "θ₀ = 1/300 is de waarde van de nationale bijlage bij §5.2(5); de EN-aanbeveling 1/200 \
+         is daar doorgehaald."
+            .to_string(),
+        format!(
+            "Voor een afzonderlijk element is l de feitelijke lengte van het element en m = 1 \
+             (§5.2(6)): α_m = √(0,5·(1 + 1/1)) = 1. α_h = 2/√l = 2/√{} = {}, binnen \
+             2/3 ≤ α_h ≤ 1.",
+            nl(s.l_m, 3),
+            nl(2.0 / s.l_m.sqrt(), 4)
+        ),
+    ];
+    match s.alpha_h_grens {
+        Some(AlphaHGrens::Boven) => notes_theta.push(
+            "2/√l ligt boven 1; α_h is op de bovengrens 1 gezet.".to_string(),
+        ),
+        Some(AlphaHGrens::Onder) => notes_theta.push(
+            "2/√l ligt onder 2/3; α_h is op de ondergrens 2/3 gezet.".to_string(),
+        ),
+        None => {}
+    }
+    stappen.push(stap(
+        "theta_i",
+        "Scheefstand",
+        r"\theta_i",
+        "art. 5.2(5) (5.1), NB: θ₀ = 1/300",
+        r"\theta_i = \theta_0 \cdot \alpha_h \cdot \alpha_m".to_string(),
+        format!(
+            r"\theta_i = \frac{{1}}{{300}} \cdot {} \cdot {} = {}",
+            lx(s.alpha_h, 4),
+            lx(s.alpha_m, 4),
+            lx(s.theta_i, 6)
+        ),
+        vec![
+            nv("l", s.l_m, "m"),
+            nv("m", s.m as f64, "-"),
+            nv("α_h", s.alpha_h, "-"),
+            nv("α_m", s.alpha_m, "-"),
+            nv("θ_i", s.theta_i, "rad"),
+        ],
+        Some(s.theta_i),
+        "rad",
+        notes_theta,
+    ));
+
+    // Stap 2 — e_i.
+    stappen.push(stap(
+        "e_i",
+        "Imperfectie als excentriciteit",
+        "e_i",
+        "art. 5.2(7)a (5.2)",
+        r"e_i = \theta_i \cdot l_0 / 2".to_string(),
+        format!(
+            r"e_i = {} \cdot {} / 2 = {}\ \mathrm{{mm}}",
+            lx(s.theta_i, 6),
+            lx(m.l0_mm, 0),
+            lx(m.e_i_mm, 2)
+        ),
+        vec![nv("θ_i", s.theta_i, "rad"), nv("l_0", m.l0_mm, "mm"), nv("e_i", m.e_i_mm, "mm")],
+        Some(m.e_i_mm),
+        "mm",
+        vec![
+            "l₀ is de effectieve lengte om DEZE as (§5.8.3.2), niet die van het rekenvlak. De \
+             vereenvoudiging e_i = l₀/400 van §5.2(7)a is niet gebruikt: zij hoort bij θ₀ = 1/200."
+                .to_string(),
+            "§5.8.9(2) staat toe met imperfecties alleen rekening te houden in de richting waarin \
+             zij het meest ongunstig werken. Hier is de imperfectie om deze as ALTIJD meegenomen; \
+             dat is de veilige kant, want welke richting het ongunstigst is blijkt pas uit de \
+             uitkomst."
+                .to_string(),
+        ],
+    ));
+
+    // Stap 3 — e₂.
+    match m.tweede_orde {
+        TweedeOrdeDeel::Verwaarloosd { lambda, lambda_lim } => stappen.push(stap(
+            "e_2",
+            "Tweede-orde-uitbuiging",
+            "e_2",
+            "art. 5.8.3.1(1) en 5.8.9(4)",
+            r"e_2 = 0".to_string(),
+            String::new(),
+            vec![nv("λ", lambda, "-"), nv("λ_lim", lambda_lim, "-")],
+            Some(0.0),
+            "mm",
+            vec![format!(
+                "λ = {} < λ_lim = {} om deze as: §5.8.3.1(1) staat toe de tweede-orde-effecten te \
+                 verwaarlozen, en §5.8.9(4) neemt die ontsnapping uitdrukkelijk over (\"tenzij ze \
+                 mogen zijn verwaarloosd volgens 5.8.2(6) of 5.8.3\"). e₂ = 0.",
+                nl(lambda, 1),
+                nl(lambda_lim, 1)
+            )],
+        )),
+        TweedeOrdeDeel::Gerekend { e_2_mm, kappa_per_m, c, iteraties, phi_ef, lambda, lambda_lim } => {
+            stappen.push(stap(
+                "e_2",
+                "Tweede-orde-uitbuiging (algemene methode)",
+                "e_2",
+                "art. 5.8.6(6) met de krommingsverdeling van 5.8.8.2(3)/(4)",
+                r"e_2 = \frac{1}{r} \cdot \frac{l_0^2}{c}".to_string(),
+                format!(
+                    r"e_2 = {} \cdot 10^{{-3}} \cdot \frac{{{}^2}}{{{}}} = {}\ \mathrm{{mm}}",
+                    lx(kappa_per_m, 5),
+                    lx(m.l0_mm, 0),
+                    lx(c, 0),
+                    lx(e_2_mm, 2)
+                ),
+                vec![
+                    nv("1/r", kappa_per_m, "1/m"),
+                    nv("l_0", m.l0_mm, "mm"),
+                    nv("c", c, "-"),
+                    nv("φ_ef", phi_ef, "-"),
+                    nv("λ", lambda, "-"),
+                    nv("λ_lim", lambda_lim, "-"),
+                    nv("e_2", e_2_mm, "mm"),
+                ],
+                Some(e_2_mm),
+                "mm",
+                vec![
+                    format!(
+                        "λ = {} ≥ λ_lim = {} om deze as: de tweede-orde-effecten mogen NIET worden \
+                         verwaarloosd (§5.8.3.1(1)).",
+                        nl(lambda, 1),
+                        nl(lambda_lim, 1)
+                    ),
+                    format!(
+                        "De algemene methode van §5.8.6, in de vereenvoudigde vorm van §5.8.6(6): \
+                         alleen de maatgevende doorsnede is beschouwd, met een aangenomen verloop \
+                         van de kromming daartussen. 1/r is de kromming uit het M-N-κ-diagram van \
+                         de doorsnede om deze as — met de (3.14)-kromme op rekenwaarden f_cd en \
+                         E_cd = E_cm/γ_cE van §5.8.6(3), zonder betontrek (§5.8.6(5)), en met alle \
+                         betonrekken vermenigvuldigd met (1 + φ_ef) = {} volgens §5.8.6(4) — bij \
+                         het TOTALE moment M₀Ed + N_Ed·(e_i + e₂). Omdat e₂ zelf in dat moment \
+                         zit, is dit een evenwichtsiteratie; zij is na {} stappen niet meer \
+                         veranderd.",
+                        nl(1.0 + phi_ef, 3),
+                        iteraties
+                    ),
+                    format!(
+                        "c = {} is de factor voor de krommingsverdeling. §5.8.8.2(4): voor een \
+                         constante doorsnede is in het algemeen c = 10 (≈ π²); is het \
+                         eerste-orde-moment constant, dan behoort een lagere waarde te zijn \
+                         overwogen, met 8 als ondergrens (constant totaal moment). {}",
+                        nl(c, 0),
+                        if c < 9.0 {
+                            "Het eerste-orde-moment om deze as is hier constant over de lengte \
+                             (imperfectie en een vast opgegeven M₀Ed), dus c = 8: de veilige kant."
+                        } else {
+                            "Het eerste-orde-moment om deze as varieert over de lengte, dus c = 10."
+                        }
+                    ),
+                ],
+            ));
+        }
+        TweedeOrdeDeel::Instabiel { laatste_m_knm, c, iteraties, phi_ef, lambda, lambda_lim } => {
+            stappen.push(stap(
+                "e_2",
+                "Tweede-orde-uitbuiging (algemene methode) — GEEN EVENWICHT",
+                "e_2",
+                "art. 5.8.6(6)",
+                r"e_2 = \frac{1}{r} \cdot \frac{l_0^2}{c}".to_string(),
+                String::new(),
+                vec![
+                    nv("l_0", m.l0_mm, "mm"),
+                    nv("c", c, "-"),
+                    nv("φ_ef", phi_ef, "-"),
+                    nv("λ", lambda, "-"),
+                    nv("λ_lim", lambda_lim, "-"),
+                    nv("M_laatste", laatste_m_knm, "kNm"),
+                ],
+                None,
+                "mm",
+                vec![format!(
+                    "λ = {} ≥ λ_lim = {}: tweede orde is nodig, maar bij het opvoeren van e₂ liep \
+                     het totale moment na {} stappen boven de momentweerstand van de doorsnede \
+                     uit (laatst beproefd: {} kNm). Er bestaat geen evenwichtstoestand: de kolom \
+                     KNIKT om deze as. Met (1 + φ_ef) = {} en c = {}.",
+                    nl(lambda, 1),
+                    nl(lambda_lim, 1),
+                    iteraties,
+                    nl(laatste_m_knm, 1),
+                    nl(1.0 + phi_ef, 3),
+                    nl(c, 0)
+                )],
+            ));
+        }
+    }
+
+    // Stap 4 — M_Ed.
+    let e_2 = match m.tweede_orde {
+        TweedeOrdeDeel::Gerekend { e_2_mm, .. } => e_2_mm,
+        _ => 0.0,
+    };
+    let mut notes_m = vec![format!(
+        "M₀Ed = {} kNm is het eerste-orde-moment om deze as uit het model (plus een eventueel \
+         extern opgegeven deel), zonder imperfectie. N_Ed·(e_i + e₂) = {} · ({} + {}) mm = {} kNm.",
+        nl(m.m0_knm, 2),
+        nl(m.n_ed_druk_kn, 1),
+        nl(m.e_i_mm, 2),
+        nl(e_2, 2),
+        nl(m.n_ed_druk_kn * (m.e_i_mm + e_2) * 1e-3, 2)
+    )];
+    notes_m.push(format!(
+        "6.1(4): bij druk geldt een minimale excentriciteit e₀ = max(b/30; 20 mm) = {} mm in de \
+         richting van de excentriciteit, dus M_Ed ≥ N_Ed·e₀ = {} kNm. {}",
+        nl(m.e_0_mm, 1),
+        nl(m.n_ed_druk_kn * m.e_0_mm * 1e-3, 2),
+        if m.e_0_bindend {
+            "Die ondergrens is hier BINDEND: het moment uit imperfectie en tweede orde ligt eronder."
+        } else {
+            "Die ondergrens is hier niet bindend."
+        }
+    ));
+    if matches!(m.tweede_orde, TweedeOrdeDeel::Instabiel { .. }) {
+        notes_m.push(
+            "Er is geen evenwicht gevonden; het getal hieronder is het laatste moment waarvoor \
+             nog een kromming is gezocht, en geen rekenwaarde."
+                .to_string(),
+        );
+    }
+    stappen.push(stap(
+        "m_ed_tweede_as",
+        "Rekenwaarde van het moment om de tweede as",
+        r"M_{Ed}",
+        "art. 5.8.8.2(1) (5.31) en 6.1(4)",
+        r"M_{Ed} = \max\left\{M_{0Ed} + N_{Ed}\,(e_i + e_2)\ ;\ N_{Ed}\,e_0\right\}".to_string(),
+        format!(
+            r"M_{{Ed}} = \max\left\{{{} + {} \cdot ({} + {}) \cdot 10^{{-3}}\ ;\ {} \cdot {} \cdot 10^{{-3}}\right\}} = {}\ \mathrm{{kNm}}",
+            lx(m.m0_knm, 2),
+            lx(m.n_ed_druk_kn, 1),
+            lx(m.e_i_mm, 2),
+            lx(e_2, 2),
+            lx(m.n_ed_druk_kn, 1),
+            lx(m.e_0_mm, 1),
+            lx(m.m_ed_knm, 2)
+        ),
+        vec![
+            nv("N_Ed", m.n_ed_druk_kn, "kN"),
+            nv("M_0Ed", m.m0_knm, "kNm"),
+            nv("e_i", m.e_i_mm, "mm"),
+            nv("e_2", e_2, "mm"),
+            nv("e_0", m.e_0_mm, "mm"),
+            nv("M_Ed", m.m_ed_knm, "kNm"),
+        ],
+        Some(m.m_ed_knm),
+        "kNm",
+        notes_m,
+    ));
+
+    // Stap 5 — M_Rd.
+    match m.m_rd_knm {
+        Some(m_rd) => stappen.push(stap(
+            "m_rd_tweede_as",
+            "Momentweerstand om de tweede as",
+            r"M_{Rd}",
+            "art. 6.1",
+            r"M_{Rd} = \max M(\kappa)\ \text{bij}\ N_{Ed}".to_string(),
+            format!(r"M_{{Rd}} = {}\ \mathrm{{kNm}}", lx(m_rd, 2)),
+            vec![nv("M_Rd", m_rd, "kNm")],
+            Some(m_rd),
+            "kNm",
+            vec![
+                "Het grootste moment op het M-N-κ-diagram om deze as bij N_Ed, met het \
+                 parabool-rechthoekdiagram van 3.1.7(1) en het bilineaire staaldiagram van 3.2.7 \
+                 — dezelfde doorsnedeberekening als de momenttoets om de eerste as. De staven \
+                 zijn daarvoor op hun plaats over de BREEDTE in lagen gelegd."
+                    .to_string(),
+            ],
+        )),
+        None => stappen.push(stap(
+            "m_rd_tweede_as",
+            "Momentweerstand om de tweede as",
+            r"M_{Rd}",
+            "art. 6.1",
+            String::new(),
+            String::new(),
+            vec![],
+            None,
+            "kNm",
+            vec![
+                "De doorsnede draagt N_Ed al niet bij κ = 0: er is geen momentweerstand meer over."
+                    .to_string(),
+            ],
+        )),
+    }
+
+    stappen
+}
+
+// ── De afleiding van §5.8.9 op één snede ──────────────────────────────────
+
+/// §5.8.9 op de maatgevende snede: de twee voorwaarden van (3) en, als die
+/// niet allebei gelden, de interactie (5.39) van (4).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DubbeleBuiging {
+    pub voorwaarde_a: Voorwaarde538a,
+    pub voorwaarde_b: Voorwaarde538b,
+    /// (5.38a) én (5.38b) vervuld: de richtingen mogen apart worden getoetst.
+    pub apart_toegestaan: bool,
+    /// N_Ed als druk, positief, kN.
+    pub n_ed_druk_kn: f64,
+    /// N_Rd = A_c·f_cd + A_s·f_yd, kN.
+    pub n_rd_kn: f64,
+    pub a_c_mm2: f64,
+    pub a_s_mm2: f64,
+    pub f_cd_mpa: f64,
+    pub f_yd_mpa: f64,
+    pub n_verhouding: f64,
+    pub a: f64,
+    pub a_grondslag: ExponentAGrondslag,
+    pub m_edy_knm: f64,
+    pub m_rdy_knm: f64,
+    pub m_edz_knm: f64,
+    pub m_rdz_knm: f64,
+    /// De som van (5.39). Ook uitgerekend als de richtingen apart mogen; dan
+    /// is hij ter informatie.
+    pub interactie: f64,
+}
+
+/// De afleiding van [`DubbeleBuiging`] als deelstappen.
+pub fn dubbele_buiging_deelstappen(d: &DubbeleBuiging) -> Vec<Deelstap> {
+    let mut stappen = Vec::new();
+    let a = &d.voorwaarde_a;
+    let b = &d.voorwaarde_b;
+
+    stappen.push(stap(
+        "voorwaarde_5_38a",
+        "Slankheidsvoorwaarde",
+        "",
+        "art. 5.8.9(3) (5.38a)",
+        r"\lambda_y/\lambda_z \le 2 \ \text{en}\ \lambda_z/\lambda_y \le 2".to_string(),
+        format!(
+            r"{}/{} = {} \ \text{{en}}\ {}/{} = {}",
+            lx(a.lambda_y, 1),
+            lx(a.lambda_z, 1),
+            lx(a.y_door_z, 3),
+            lx(a.lambda_z, 1),
+            lx(a.lambda_y, 1),
+            lx(a.z_door_y, 3)
+        ),
+        vec![
+            nv("λ_y", a.lambda_y, "-"),
+            nv("λ_z", a.lambda_z, "-"),
+            nv("λ_y/λ_z", a.y_door_z, "-"),
+            nv("λ_z/λ_y", a.z_door_y, "-"),
+        ],
+        None,
+        "-",
+        vec![format!(
+            "λ_y = l₀,y/i_y en λ_z = l₀,z/i_z, elk met de eigen kniklengte. (5.38a) is {}.",
+            if a.voldaan { "vervuld" } else { "NIET vervuld" }
+        )],
+    ));
+
+    stappen.push(stap(
+        "voorwaarde_5_38b",
+        "Excentriciteitsvoorwaarde",
+        "",
+        "art. 5.8.9(3) (5.38b), figuur 5.8",
+        r"\frac{e_y/h_{eq}}{e_z/b_{eq}} \le 0{,}2\ \text{of}\ \frac{e_z/b_{eq}}{e_y/h_{eq}} \le 0{,}2"
+            .to_string(),
+        format!(
+            r"\frac{{{}/{}}}{{{}/{}}} = {}\ \text{{of}}\ \frac{{{}/{}}}{{{}/{}}} = {}",
+            lx(b.e_y_mm, 1),
+            lx(b.h_eq_mm, 1),
+            lx(b.e_z_mm, 1),
+            lx(b.b_eq_mm, 1),
+            lx(b.y_door_z, 3),
+            lx(b.e_z_mm, 1),
+            lx(b.b_eq_mm, 1),
+            lx(b.e_y_mm, 1),
+            lx(b.h_eq_mm, 1),
+            lx(b.z_door_y, 3)
+        ),
+        vec![
+            nv("e_y", b.e_y_mm, "mm"),
+            nv("e_z", b.e_z_mm, "mm"),
+            nv("i_y", b.i_y_mm, "mm"),
+            nv("i_z", b.i_z_mm, "mm"),
+            nv("b_eq", b.b_eq_mm, "mm"),
+            nv("h_eq", b.h_eq_mm, "mm"),
+            nv("e_y/h_eq", b.e_y_rel, "-"),
+            nv("e_z/b_eq", b.e_z_rel, "-"),
+        ],
+        None,
+        "-",
+        vec![
+            format!(
+                "e_y = M_Edz/N_Ed = {}/{} = {} mm en e_z = M_Edy/N_Ed = {}/{} = {} mm, met de \
+                 momenten inclusief imperfectie en tweede-orde-deel. b_eq = i_y·√12 = {} mm en \
+                 h_eq = i_z·√12 = {} mm zijn de maten van de gelijkwaardige rechthoek: figuur 5.8 \
+                 tekent h langs de y-as en b langs de z-as, dus h_eq hoort bij e_y en b_eq bij e_z.",
+                nl(d.m_edz_knm, 2),
+                nl(d.n_ed_druk_kn, 1),
+                nl(b.e_y_mm, 1),
+                nl(d.m_edy_knm, 2),
+                nl(d.n_ed_druk_kn, 1),
+                nl(b.e_z_mm, 1),
+                nl(b.b_eq_mm, 1),
+                nl(b.h_eq_mm, 1)
+            ),
+            format!(
+                "(5.38b) is {}. {}",
+                if b.voldaan { "vervuld" } else { "NIET vervuld" },
+                if d.apart_toegestaan {
+                    "Samen met (5.38a) betekent dat: §5.8.9(3) vraagt geen verdere controle; de \
+                     twee richtingen zijn elk afzonderlijk getoetst (§5.8.9(2))."
+                } else {
+                    "Er is dus niet aan (5.38) voldaan en §5.8.9(4) vraagt de interactie (5.39)."
+                }
+            ),
+        ],
+    ));
+
+    stappen.push(stap(
+        "n_rd",
+        "Opneembare normaalkracht",
+        r"N_{Rd}",
+        "art. 5.8.9(4)",
+        r"N_{Rd} = A_c f_{cd} + A_s f_{yd}".to_string(),
+        format!(
+            r"N_{{Rd}} = ({} \cdot {} + {} \cdot {}) \cdot 10^{{-3}} = {}\ \mathrm{{kN}}",
+            lx(d.a_c_mm2, 0),
+            lx(d.f_cd_mpa, 2),
+            lx(d.a_s_mm2, 0),
+            lx(d.f_yd_mpa, 1),
+            lx(d.n_rd_kn, 1)
+        ),
+        vec![
+            nv("A_c", d.a_c_mm2, "mm²"),
+            nv("f_cd", d.f_cd_mpa, "N/mm²"),
+            nv("A_s", d.a_s_mm2, "mm²"),
+            nv("f_yd", d.f_yd_mpa, "N/mm²"),
+            nv("N_Rd", d.n_rd_kn, "kN"),
+        ],
+        Some(d.n_rd_kn),
+        "kN",
+        vec!["A_c is de bruto betondoorsnede en A_s de totale langswapening.".to_string()],
+    ));
+
+    stappen.push(stap(
+        "exponent_a",
+        "Exponent van de interactie",
+        "a",
+        "art. 5.8.9(4), tabel bij (5.39)",
+        r"a = f(N_{Ed}/N_{Rd})".to_string(),
+        format!(
+            r"N_{{Ed}}/N_{{Rd}} = {}/{} = {} \Rightarrow a = {}",
+            lx(d.n_ed_druk_kn, 1),
+            lx(d.n_rd_kn, 1),
+            lx(d.n_verhouding, 3),
+            lx(d.a, 3)
+        ),
+        vec![nv("N_Ed/N_Rd", d.n_verhouding, "-"), nv("a", d.a, "-")],
+        Some(d.a),
+        "-",
+        vec![match d.a_grondslag {
+            ExponentAGrondslag::OnderTabel => {
+                "N_Ed/N_Rd ≤ 0,1. De tabel begint bij 0,1 met a = 1,0 en zegt niets over \
+                 kleinere waarden; a = 1,0 is aangehouden — de lineaire interactie, de strengste \
+                 van de drie."
+                    .to_string()
+            }
+            ExponentAGrondslag::Geinterpoleerd => {
+                "Rechthoekige doorsnede: a = 1,0 bij N_Ed/N_Rd = 0,1, 1,5 bij 0,7 en 2,0 bij 1,0, \
+                 met lineaire interpolatie voor tussenliggende waarden."
+                    .to_string()
+            }
+            ExponentAGrondslag::BovenTabel => {
+                "N_Ed/N_Rd ≥ 1,0: a = 2,0. Let op: N_Ed ≥ N_Rd is op zichzelf al een \
+                 overschrijding van de normaalkrachtcapaciteit."
+                    .to_string()
+            }
+        }],
+    ));
+
+    stappen.push(stap(
+        "interactie_5_39",
+        "Interactie van de twee momenten",
+        "",
+        "art. 5.8.9(4) (5.39)",
+        r"\left(\frac{M_{Edz}}{M_{Rdz}}\right)^a + \left(\frac{M_{Edy}}{M_{Rdy}}\right)^a \le 1{,}0"
+            .to_string(),
+        format!(
+            r"\left(\frac{{{}}}{{{}}}\right)^{{{}}} + \left(\frac{{{}}}{{{}}}\right)^{{{}}} = {}",
+            lx(d.m_edz_knm, 2),
+            lx(d.m_rdz_knm, 2),
+            lx(d.a, 3),
+            lx(d.m_edy_knm, 2),
+            lx(d.m_rdy_knm, 2),
+            lx(d.a, 3),
+            lx(d.interactie, 3)
+        ),
+        vec![
+            nv("M_Edz", d.m_edz_knm, "kNm"),
+            nv("M_Rdz", d.m_rdz_knm, "kNm"),
+            nv("M_Edy", d.m_edy_knm, "kNm"),
+            nv("M_Rdy", d.m_rdy_knm, "kNm"),
+            nv("a", d.a, "-"),
+        ],
+        Some(d.interactie),
+        "-",
+        vec![if d.apart_toegestaan {
+            "Ter informatie: §5.8.9(3) vraagt deze interactie hier niet, omdat (5.38a) en (5.38b) \
+             allebei zijn vervuld. De som staat er zodat te zien is hoe ver de kolom van de grens \
+             af zit; hij is niet de unity check van deze toets."
+                .to_string()
+        } else {
+            "M_Edz en M_Edy zijn de rekenwaarden inclusief tweede-orde-moment; M_Rdz en M_Rdy de \
+             momentweerstanden bij N_Ed in de respectievelijke richtingen (§6.1)."
+                .to_string()
+        }],
     ));
 
     stappen

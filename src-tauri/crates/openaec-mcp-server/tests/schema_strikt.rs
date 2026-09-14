@@ -442,6 +442,28 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     );
     assert_eq!(l0[1]["properties"]["soort"]["const"], "Opgegeven");
 
+    // DE TWEEDE AS (§5.8.9). Drie optionele velden die er MOETEN staan: met
+    // `additionalProperties: false` zou een cliënt die de schoring om z wél
+    // opgeeft, stilzwijgend met die van het rekenvlak worden doorgerekend.
+    for veld in ["bracing_z", "buckling_length_z", "m0_edz_knm"] {
+        assert!(
+            kolom["properties"][veld].is_object(),
+            "veld '{veld}' ontbreekt in het schema van `column`"
+        );
+    }
+    assert_eq!(kolom["properties"]["bracing_z"]["enum"], json!(["Geschoord", "Ongeschoord"]));
+    let l0z = &kolom["properties"]["buckling_length_z"]["oneOf"];
+    assert_eq!(l0z.as_array().unwrap().len(), 2, "om z dezelfde twee wegen naar l₀");
+    assert_eq!(
+        l0z[0]["properties"]["geval"]["enum"],
+        l0[0]["properties"]["geval"]["enum"],
+        "beide assen kennen dezelfde vakjes van figuur 5.7"
+    );
+    assert!(
+        !kolom["required"].as_array().unwrap().iter().any(|v| v.as_str().unwrap().ends_with("_z")),
+        "de velden om z zijn optioneel: leeg = de keuze van het rekenvlak, met melding"
+    );
+
     // DE WAPENINGSZONES. Twee gescheiden lijsten, allebei optioneel en allebei
     // strikt: een tikfout in een zoneveld mag niet stil op een standaard
     // terugvallen. Zonder deze regels zou een schema dat het veld wel noemt

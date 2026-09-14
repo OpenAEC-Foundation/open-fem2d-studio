@@ -814,7 +814,7 @@ export default function BetonSection() {
                 <strong>{t("report.betonBeperkingVormLabel", "Toepassingsgebied")}</strong> —{" "}
                 {t(
                   "report.betonBeperkingVorm",
-                  "een rechthoek b × h, een T of een L, met buiging om de sterke as. Scheve buiging (M_y en M_z samen) en andere doorsnedevormen worden niet getoetst. Bij een T of L rust de berekening bovendien op de aannamen die per staaf bij de doorsnede staan.",
+                  "een rechthoek b × h, een T of een L, met buiging om de sterke as. Dubbele buiging (art. 5.8.9) wordt getoetst voor een rechthoekige kolom met art. 5.8-gegevens: de imperfectie en de tweede orde om de z-as en de interactie (5.39); voor een T of L niet. Andere doorsnedevormen worden niet getoetst. Bij een T of L rust de berekening bovendien op de aannamen die per staaf bij de doorsnede staan.",
                 )}
               </li>
             </ul>

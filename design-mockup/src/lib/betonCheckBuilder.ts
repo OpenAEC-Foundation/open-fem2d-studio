@@ -415,8 +415,9 @@ export interface BetonStaafConfig {
    */
   staafafstandMm?: number;
   /**
-   * De §5.8-gegevens: geschoord of ongeschoord, de kniklengte, φ(∞,t₀) en de
-   * twee keuzen van §9.5.
+   * De §5.8-gegevens: geschoord of ongeschoord, de kniklengte, φ(∞,t₀), de
+   * twee keuzen van §9.5, en de gegevens om de tweede as voor §5.8.9
+   * (schoring en kniklengte om z, een extern M₀Ed,z).
    *
    * Gaat als GEHEEL het verzoek in (`column: cfg.kolom`), om dezelfde reden
    * als de korf hierboven: een bouwer die de velden opsomt, laat een nieuw

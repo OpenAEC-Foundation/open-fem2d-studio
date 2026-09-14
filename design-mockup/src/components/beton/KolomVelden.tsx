@@ -1,7 +1,7 @@
 /**
  * KolomVelden — de invoer van §5.8 voor een betonnen staaf: geschoord of
- * ongeschoord, de kniklengte, de kruipcoëfficiënt en de twee keuzen die §9.5
- * nodig heeft.
+ * ongeschoord, de kniklengte, de kruipcoëfficiënt, de twee keuzen die §9.5
+ * nodig heeft, en de gegevens om de TWEEDE as voor §5.8.9.
  *
  * WAAROM SCHORING DE EERSTE VRAAG IS
  * §5.8.1 definieert geschoord twee keer letterlijk als iets dat "in de
@@ -37,11 +37,17 @@
  * weigering in de kern blijft staan voor de andere twee wegen (toetsbrug en
  * MCP), die dit scherm niet gebruiken.
  *
- * ÉÉN AS
- * Deze gegevens gelden voor de as waarin dit model rekent: buiging om de
- * y-as, in het vlak van het raamwerk. Een kolom kan in het vlak geschoord zijn
- * en er loodrecht op ongeschoord; die tweede richting bestaat in een 2D-model
- * niet en wordt hier dus ook niet gesuggereerd.
+ * TWEE ASSEN
+ * De eerste drie velden gelden voor de as waarin dit model rekent: buiging om
+ * de y-as, in het vlak van het raamwerk. Een kolom heeft ook een tweede as en
+ * knikt daar even goed om uit — de raamwerkoplosser levert M_z = 0, maar de
+ * imperfectie van art. 5.2 en het tweede-orde-effect om z hangen niet van het
+ * model af. Daarom vraagt het blok "Om de z-as" een EIGEN schoring en
+ * kniklengte voor die richting (een kolom kan in het vlak geschoord zijn en er
+ * loodrecht op niet) en een extern M₀Edz met nul als beginwaarde. Blijven de
+ * twee keuzen leeg, dan neemt de kern die van het vlak over en zegt dat in het
+ * rapport. Ook hier mag geen tegenspraak ontstaan: `maakZConsistent` in
+ * `kolomgegevens.ts` houdt het vakje om z bij de schoring om z.
  */
 import type { Beugelzone } from "../../lib/types/concrete/Beugelzone";
 import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
@@ -54,7 +60,14 @@ import type { Schoring } from "../../lib/types/concrete/Schoring";
 // schermlogica, en een test moet ze kunnen aanroepen zonder DOM en zonder de
 // CSS-import die een component meebrengt. Dezelfde scheiding als
 // `wapeningskorf.ts` naast `KorfVelden.tsx`.
-import { knikgevallenVoor, kniklengteVoorSchoring, l0FactorVan } from "./kolomgegevens";
+import {
+  effectieveSchoringZ,
+  knikgevallenVoor,
+  kniklengtePastBij,
+  kniklengteVoorSchoring,
+  l0FactorVan,
+  maakZConsistent,
+} from "./kolomgegevens";
 import { Getal, GetalOptioneel } from "./KorfVelden";
 import "./beton.css";
 
@@ -67,8 +80,19 @@ import "./beton.css";
  * kunnen, maar dan zou de gebruiker eerst een SOORT moeten kiezen voordat hij
  * ziet wat er te kiezen valt.
  */
-function sleutelVan(keuze: Kniklengtekeuze): string {
+function sleutelVan(keuze: Kniklengtekeuze | undefined): string {
+  if (keuze === undefined) return "";
   return keuze.soort === "Opgegeven" ? "Opgegeven" : `Figuur57:${keuze.geval}`;
+}
+
+function keuzeVanSleutel(v: string, lengteMm: number): Kniklengtekeuze | undefined {
+  if (v === "") return undefined;
+  if (v === "Opgegeven") return { soort: "Opgegeven", l0_m: Math.round(lengteMm) / 1000 };
+  return { soort: "Figuur57", geval: v.slice("Figuur57:".length) as Knikgeval };
+}
+
+function toonM(mm: number): string {
+  return (mm / 1000).toFixed(2).replace(".", ",");
 }
 
 interface Props {
@@ -94,9 +118,12 @@ export default function KolomVelden({
   overwegendVerticaal,
   idPrefix = "kolom",
 }: Props) {
+  // Elke wijziging loopt door `maakZConsistent`: het vakje om z mag nooit in
+  // tegenspraak raken met de schoring om z — ook niet als de gebruiker de
+  // schoring in het VLAK wisselt terwijl z die overneemt.
   const zet = (patch: Partial<ConcreteColumnInput>) => {
     if (!waarde) return;
-    onChange({ ...waarde, ...patch });
+    onChange(maakZConsistent({ ...waarde, ...patch }));
   };
 
   const kiesSchoring = (s: Schoring | null) => {
@@ -104,25 +131,39 @@ export default function KolomVelden({
       onChange(undefined);
       return;
     }
-    onChange({
-      bracing: s,
-      buckling_length: kniklengteVoorSchoring(waarde?.buckling_length, s),
-      ...(waarde?.phi_inf_t0 !== undefined ? { phi_inf_t0: waarde.phi_inf_t0 } : {}),
-      ...(waarde?.stirrup_zone !== undefined ? { stirrup_zone: waarde.stirrup_zone } : {}),
-      ...(waarde?.lap_situation !== undefined ? { lap_situation: waarde.lap_situation } : {}),
-    });
+    onChange(
+      maakZConsistent({
+        bracing: s,
+        buckling_length: kniklengteVoorSchoring(waarde?.buckling_length, s),
+        ...(waarde?.phi_inf_t0 !== undefined ? { phi_inf_t0: waarde.phi_inf_t0 } : {}),
+        ...(waarde?.stirrup_zone !== undefined ? { stirrup_zone: waarde.stirrup_zone } : {}),
+        ...(waarde?.lap_situation !== undefined ? { lap_situation: waarde.lap_situation } : {}),
+        ...(waarde?.bracing_z !== undefined ? { bracing_z: waarde.bracing_z } : {}),
+        ...(waarde?.buckling_length_z !== undefined
+          ? { buckling_length_z: waarde.buckling_length_z }
+          : {}),
+        ...(waarde?.m0_edz_knm !== undefined ? { m0_edz_knm: waarde.m0_edz_knm } : {}),
+      }),
+    );
   };
 
   const gevallen = waarde ? knikgevallenVoor(waarde.bracing) : [];
   const keuze = waarde?.buckling_length;
   // l₀ zoals de gebruiker hem hier kiest, alleen om te TONEN. Gerekend wordt er
   // in de Rust-kern; deze regel mag daar nooit een tweede bron naast worden.
-  const l0Mm =
-    keuze === undefined
+  const l0Van = (k: Kniklengtekeuze | undefined): number | null =>
+    k === undefined
       ? null
-      : keuze.soort === "Opgegeven"
-        ? keuze.l0_m * 1000
-        : (l0FactorVan(keuze.geval) ?? 0) * lengteMm;
+      : k.soort === "Opgegeven"
+        ? k.l0_m * 1000
+        : (l0FactorVan(k.geval) ?? 0) * lengteMm;
+  const l0Mm = l0Van(keuze);
+
+  // De tweede as: wat er WERKELIJK geldt, ook als de velden leeg zijn.
+  const schoringZ = waarde ? effectieveSchoringZ(waarde) : undefined;
+  const gevallenZ = schoringZ ? knikgevallenVoor(schoringZ) : [];
+  const keuzeZ = waarde?.buckling_length_z ?? waarde?.buckling_length;
+  const l0zMm = l0Van(keuzeZ);
 
   return (
     <>
@@ -166,13 +207,8 @@ export default function KolomVelden({
               className="beton-invoer"
               value={sleutelVan(waarde.buckling_length)}
               onChange={(e) => {
-                const v = e.target.value;
-                zet({
-                  buckling_length:
-                    v === "Opgegeven"
-                      ? { soort: "Opgegeven", l0_m: Math.round(lengteMm) / 1000 }
-                      : { soort: "Figuur57", geval: v.slice("Figuur57:".length) as Knikgeval },
-                });
+                const k = keuzeVanSleutel(e.target.value, lengteMm);
+                if (k) zet({ buckling_length: k });
               }}
             >
               {gevallen.map((g) => (
@@ -199,8 +235,7 @@ export default function KolomVelden({
           <div className="beton-hint">
             {l0Mm !== null && lengteMm > 0 && (
               <>
-                l₀ = {(l0Mm / 1000).toFixed(2).replace(".", ",")} m bij een vrije
-                lengte l = {(lengteMm / 1000).toFixed(2).replace(".", ",")} m.{" "}
+                l₀ = {toonM(l0Mm)} m bij een vrije lengte l = {toonM(lengteMm)} m.{" "}
               </>
             )}
             De gevallen f) en g) van figuur 5.7 — gedeeltelijke inklemming — staan
@@ -229,9 +264,95 @@ export default function KolomVelden({
             relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de
             ouderdom t₀ bij eerste belasting. Zonder deze waarde blijft φ_ef
             onbekend en rekent 5.8.3.1(1) met A = 0,7 — dat is niet de veilige
-            kant maar de waarde bij φ_ef ≈ 2,14.
+            kant maar de waarde bij φ_ef ≈ 2,14. Om de z-as wordt e₂ dan zonder
+            kruip bepaald, en ook dat meldt het rapport.
           </div>
 
+          {/* ── De tweede as ─────────────────────────────────────────── */}
+          <div className="beton-groep-kop">Om de z-as (loodrecht op het vlak) — art. 5.8.9</div>
+
+          <label className="beton-rij" htmlFor={`${idPrefix}-schoring-z`}>
+            <span className="beton-label">Schoring om z</span>
+            <select
+              id={`${idPrefix}-schoring-z`}
+              className="beton-invoer"
+              value={waarde.bracing_z ?? ""}
+              onChange={(e) =>
+                zet({
+                  bracing_z:
+                    e.target.value === "" ? undefined : (e.target.value as Schoring),
+                })
+              }
+            >
+              <option value="">
+                — gelijk aan in het vlak ({waarde.bracing.toLowerCase()}) —
+              </option>
+              <option value="Geschoord">Geschoord om z</option>
+              <option value="Ongeschoord">Ongeschoord (schorend) om z</option>
+            </select>
+          </label>
+
+          <label className="beton-rij" htmlFor={`${idPrefix}-knikgeval-z`}>
+            <span className="beton-label">Kniklengte l₀,z</span>
+            <select
+              id={`${idPrefix}-knikgeval-z`}
+              className="beton-invoer"
+              value={sleutelVan(waarde.buckling_length_z)}
+              onChange={(e) => zet({ buckling_length_z: keuzeVanSleutel(e.target.value, lengteMm) })}
+            >
+              {/* "Gelijk aan in het vlak" is alleen te kiezen als de keuze
+                  van het vlak bij de schoring om z past; anders zou dit
+                  scherm een tegenspraak aanbieden die de kern weigert. */}
+              {schoringZ !== undefined && kniklengtePastBij(waarde.buckling_length, schoringZ) && (
+                <option value="">— gelijk aan in het vlak —</option>
+              )}
+              {gevallenZ.map((g) => (
+                <option key={g.geval} value={`Figuur57:${g.geval}`}>
+                  {g.label}
+                </option>
+              ))}
+              <option value="Opgegeven">l₀,z zelf opgeven…</option>
+            </select>
+          </label>
+
+          {waarde.buckling_length_z?.soort === "Opgegeven" && (
+            <Getal
+              id={`${idPrefix}-l0-z`}
+              label="l₀,z"
+              eenheid="m"
+              waarde={waarde.buckling_length_z.l0_m}
+              min={0}
+              stap={0.1}
+              onChange={(v) => zet({ buckling_length_z: { soort: "Opgegeven", l0_m: v } })}
+            />
+          )}
+
+          <Getal
+            id={`${idPrefix}-m0edz`}
+            label="M₀Ed,z extern"
+            eenheid="kNm"
+            waarde={waarde.m0_edz_knm ?? 0}
+            stap={1}
+            onChange={(v) => zet({ m0_edz_knm: v })}
+          />
+
+          <div className="beton-hint">
+            {l0zMm !== null && lengteMm > 0 && <>l₀,z = {toonM(l0zMm)} m. </>}
+            De raamwerkoplosser rekent in één vlak en levert M_z = 0, maar een kolom
+            knikt ook om de z-as: de imperfectie van art. 5.2 (θ₀ = 1/300, nationale
+            bijlage) en het tweede-orde-effect in die richting hangen niet van het
+            model af. De kern rekent daarom altijd M_Ed,z = M₀Ed,z + N_Ed·(e_i + e₂)
+            uit, toetst hem aan M_Rd,z met de staven op hun plaats over de breedte,
+            en gaat dan art. 5.8.9 na: mogen de richtingen apart ((5.38a) en
+            (5.38b)), en zo niet, dan de interactie (5.39). De schoring en de
+            kniklengte om z zijn EIGEN gegevens — een kolom kan in het vlak
+            geschoord zijn en er loodrecht op niet; leeg = de keuze van het vlak
+            wordt overgenomen, met die melding in het rapport. M₀Ed,z extern is een
+            eerste-orde-moment om z uit een ruimtelijk model of een handberekening;
+            0 = geen.
+          </div>
+
+          {/* ── §9.5 ──────────────────────────────────────────────────── */}
           <label className="beton-rij" htmlFor={`${idPrefix}-zone`}>
             <span className="beton-label">Beugelzone</span>
             <select
@@ -293,10 +414,8 @@ export default function KolomVelden({
           <div className="beton-hint">
             Art. 9.5.2(4) (een staaf in iedere hoek) en 9.5.3(6) (elke hoekstaaf
             opgesloten, geen staaf verder dan 150 mm van een opgesloten staaf)
-            worden NIET getoetst: de wapeningskorf kent alleen een boven- en een
-            onderrij, dus de ligging van elke staaf in het vlak van de doorsnede
-            is onbekend. A_s in ω en in 9.5.2 is daarom de som van die twee rijen;
-            dat staat ook in het rapport.
+            worden getoetst met de ligging van elke staaf uit de korf — ook de
+            zijstaven. A_s in ω en in 9.5.2 is de TOTALE langswapening.
           </div>
         </>
       )}

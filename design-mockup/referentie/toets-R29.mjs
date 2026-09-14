@@ -1,36 +1,29 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// R29 — DUBBELE BUIGING (§5.8.9): wat de kern ervan zegt, en wat de norm
-//       ervan zou vragen.
+// R29 — DUBBELE BUIGING (§5.8.9): de handberekening naast de kern.
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// WAAROM DEZE REFERENTIE ANDERS IS DAN R27 EN R28
-// R27 en R28 leggen een uitkomst van de app naast een handberekening. Dat kan
-// hier niet: §5.8.9 is in de kern niet gebouwd. Wat er WEL te toetsen valt —
-// en wat vóór deze referentie niet klopte — is of de kern dat ZEGT.
+// DE GESCHIEDENIS VAN DEZE REFERENTIE
+// R29 is ontstaan als vangnet: een kolom met M_y = 40 kNm en M_z = 35 kNm
+// leverde exact dezelfde toetsen als dezelfde kolom met M_z = 0, en nergens
+// stond dat een moment om de tweede as buiten beschouwing was gebleven. De
+// kern ging dat MELDEN (toets `5.8.9_dubbele_buiging`, status NotApplicable),
+// en dit bestand bewaakte die melding en rekende met de hand uit wat §5.8.9
+// zou vragen — als ankerpunt voor wie de paragraaf ooit zou bouwen.
 //
-// De vondst die tot R29 leidde: een kolom met M_y = 40 kNm en M_z = 35 kNm
-// leverde exact dezelfde toetsen, dezelfde statussen en dezelfde λ_lim als
-// dezelfde kolom met M_z = 0. Nergens in het antwoord stond dat een moment
-// om de tweede as buiten beschouwing was gebleven. Voor een rekenprogramma is
-// dat de gevaarlijkste soort fout: niet een verkeerd getal, maar een
-// onvolledig antwoord dat er volledig uitziet.
-//
-// Sinds R29 meldt de kern dat als toets `5.8.9_dubbele_buiging` met status
-// NotApplicable en de reden erbij, zodra |M_z| meer dan 5 % van |M_y| is.
-// Dit bestand bewaakt drie dingen:
-//   ① dat die melding er komt als M_z ertoe doet, en niet als M_z ruis is;
-//   ② dat de M_y-uitkomsten er NIET door veranderen — het antwoord is
-//      onvolledig, niet fout, en dat verschil moet blijven bestaan;
-//   ③ wat §5.8.9 voor deze kolom met de hand zou opleveren: de voorwaarden
-//      van 5.8.9(2) die een aparte toetsing per richting toestaan, en — als
-//      die niet gelden — de exponent a van de interactie (5.39). Zodat wie de
-//      paragraaf ooit bouwt een ankerpunt heeft dat níét uit de app komt.
+// Die paragraaf is nu gebouwd. De handberekening van ② is dus niet langer een
+// belofte maar een controle: de kern hoort (5.38a), (5.38b), N_Rd en de
+// exponent a op dezelfde getallen uit te komen. Wat dit bestand nu bewaakt:
+//   ① §5.8.9(3) en (4) met de hand, onafhankelijk van de app;
+//   ② de kern geeft voor DEZE kolom dezelfde voorwaarden, dezelfde a en een
+//      interactie (5.39) met een unity check — geen "niet uitgevoerd" meer;
+//   ③ zonder M_z bestaan de toetsen om de tweede as óók (M_Edz is dan niet nul
+//      door de imperfectie van §5.2), maar mag het apart: geen interactie-uc;
+//   ④ de M_y-uitkomsten (λ, λ_lim, l₀, de poort) veranderen niet met M_z.
 //
 // DE KOLOM
 // Dezelfde als R27 (300 × 300, C30/37, B500B, 2×3Ø20, l = 6,00 m, geschoord,
-// N_Ed = 600 kN, M_y = 40 kNm), nu met M_z = 35 kNm erbij. Een vierkante
-// kolom, zodat λ_y = λ_z en de eerste voorwaarde van 5.8.9(2) triviaal is:
-// dan hangt alles aan de tweede, de excentriciteitsvoorwaarde.
+// N_Ed = 600 kN, M_y = 40 kNm), met M_z = 35 kNm erbij. Een vierkante kolom,
+// zodat λ_y = λ_z en (5.38a) triviaal is: dan hangt alles aan (5.38b).
 //
 // Draaien: npx tsx referentie/toets-R29.mjs   (vanuit design-mockup/)
 // Vereist: cargo build --release -p toetsbrug   (in ../src-tauri)
@@ -75,23 +68,30 @@ log("R29 — Dubbele buiging: kolom 300×300, N_Ed = 600 kN, M_y = 40 kNm, M_z =
 log("═══════════════════════════════════════════════════════════════════════");
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 2. §5.8.9 MET DE HAND — wat de norm hier zou vragen
+// 2. §5.8.9 MET DE HAND
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 5.8.9(2): de twee richtingen mogen APART worden getoetst als
-//   (a) λ_y/λ_z ≤ 2 en λ_z/λ_y ≤ 2, en
-//   (b) (e_y/h_eq)/(e_z/b_eq) ≤ 0,2  óf  (e_z/b_eq)/(e_y/h_eq) ≤ 0,2
-// met e = M/N de excentriciteit en h_eq = b_eq = i·√12 voor een rechthoek.
-// Is aan (a) of (b) niet voldaan, dan geldt de interactie (5.39):
+// 5.8.9(3): de twee richtingen mogen APART worden getoetst als
+//   (5.38a) λ_y/λ_z ≤ 2 en λ_z/λ_y ≤ 2, en
+//   (5.38b) (e_y/h_eq)/(e_z/b_eq) ≤ 0,2  óf  (e_z/b_eq)/(e_y/h_eq) ≤ 0,2
+// met e_y = M_Edz/N_Ed, e_z = M_Edy/N_Ed en h_eq = b_eq = i·√12 voor een
+// vierkant. Is aan (5.38) niet voldaan, dan 5.8.9(4), de interactie (5.39):
 //   (M_Edz/M_Rdz)^a + (M_Edy/M_Rdy)^a ≤ 1
 // met a uit de tabel bij N_Ed/N_Rd: 1,0 bij 0,1 · 1,5 bij 0,7 · 2,0 bij 1,0,
 // lineair ertussen; N_Rd = A_c·f_cd + A_s·f_yd.
+//
+// LET OP: de kern neemt in M_Edz ook de imperfectie van §5.2 en het
+// tweede-orde-deel om z mee (5.8.9: "inclusief tweede-orde-moment"). De
+// handberekening hieronder gebruikt het KALE model-M_z = 35 kNm; de kern komt
+// daardoor op een grotere e_y uit, en dat maakt (5.38b) hier alleen maar
+// duidelijker onvervuld. De exponent a en N_Rd hangen niet van M_z af en
+// horen exact overeen te komen.
 
 const i_MM = H / Math.sqrt(12);
 const LAMBDA_Y = L_MM / i_MM, LAMBDA_Z = L_MM / i_MM;   // vierkant: gelijk
 const H_EQ = i_MM * Math.sqrt(12), B_EQ = i_MM * Math.sqrt(12);
-const E_Y = (M_Y_KNM * 1e6) / (N_ED_KN * 1e3);         // mm
-const E_Z = (M_Z_KNM * 1e6) / (N_ED_KN * 1e3);
+const E_Y = (M_Z_KNM * 1e6) / (N_ED_KN * 1e3);         // mm
+const E_Z = (M_Y_KNM * 1e6) / (N_ED_KN * 1e3);
 
 const VOORW_A = LAMBDA_Y / LAMBDA_Z <= 2 && LAMBDA_Z / LAMBDA_Y <= 2;
 const VERH_1 = (E_Y / H_EQ) / (E_Z / B_EQ);
@@ -109,33 +109,41 @@ function exponentA(nv) {
 }
 const A_EXP = exponentA(VERH_N);
 
-log("\n─── ① §5.8.9(2) met de hand: mag het per richting apart? ──────────────");
+// De imperfectie van §5.2 om z, met θ₀ = 1/300 (nationale bijlage):
+//   α_h = 2/√6 = 0,8165; α_m = 1; θ_i = 0,8165/300 = 0,0027217
+//   e_i = θ_i·l₀/2 = 0,0027217 · 6000/2 = 8,165 mm
+const ALPHA_H = Math.min(1, Math.max(2 / 3, 2 / Math.sqrt(L_MM / 1000)));
+const THETA_I = ALPHA_H / 300;
+const E_I_MM = THETA_I * L_MM / 2;
+
+log("\n─── ① §5.8.9(3) met de hand: mag het per richting apart? ──────────────");
 log(`  i = h/√12 = ${i_MM.toFixed(4)} mm · λ_y = λ_z = ${LAMBDA_Y.toFixed(4)} (vierkant)`);
 log(`  (a) λ_y/λ_z = ${(LAMBDA_Y / LAMBDA_Z).toFixed(3)} ≤ 2  →  ${VOORW_A ? "voldaan" : "NIET voldaan"}`);
-log(`  e_y = M_y/N = ${E_Y.toFixed(3)} mm · e_z = M_z/N = ${E_Z.toFixed(3)} mm · h_eq = b_eq = ${H_EQ.toFixed(1)} mm`);
+log(`  e_y = M_z/N = ${E_Y.toFixed(3)} mm · e_z = M_y/N = ${E_Z.toFixed(3)} mm · h_eq = b_eq = ${H_EQ.toFixed(1)} mm`);
 log(`  (b) (e_y/h_eq)/(e_z/b_eq) = ${VERH_1.toFixed(4)} · omgekeerd ${VERH_2.toFixed(4)}  →  ` +
   `${VOORW_B ? "één ≤ 0,2: voldaan" : "geen van beide ≤ 0,2: NIET voldaan"}`);
 log(`  ⇒ aparte toetsing per richting ${APART_TOEGESTAAN ? "TOEGESTAAN" : "NIET toegestaan — (5.39) is verplicht"}`);
 log(`  N_Rd = A_c·f_cd + A_s·f_yd = ${N_RD_KN.toFixed(1)} kN · N_Ed/N_Rd = ${VERH_N.toFixed(4)} · a = ${A_EXP.toFixed(4)}`);
+log(`  e_i om z (§5.2, θ₀ = 1/300) = ${E_I_MM.toFixed(3)} mm`);
 
-eis("de eerste voorwaarde van 5.8.9(2) is voor een vierkant triviaal", VOORW_A);
+eis("de eerste voorwaarde van 5.8.9(3) is voor een vierkant triviaal", VOORW_A);
 eis("de tweede voorwaarde is hier NIET vervuld — dit geval vraagt écht om (5.39)",
   !APART_TOEGESTAAN, `verhouding ${VERH_1.toFixed(3)}, niet ≤ 0,2 en niet ≥ 5`);
 eis("de exponent a ligt tussen 1,0 en 1,5 (N_Ed/N_Rd tussen 0,1 en 0,7)",
   A_EXP > 1.0 && A_EXP < 1.5, `a = ${A_EXP.toFixed(4)}`);
 
-// Een geval waar 5.8.9(2) WÉL apart toestaat: M_z klein tegenover M_y.
+// Een geval waar 5.8.9(3) WÉL apart toestaat: M_z klein tegenover M_y.
 {
   const mzKlein = 5;                                  // kNm
   const ez = (mzKlein * 1e6) / (N_ED_KN * 1e3);
   const verh = (ez / B_EQ) / (E_Y / H_EQ);
   log(`  (ter vergelijking, M_z = ${mzKlein} kNm: verhouding ${verh.toFixed(4)} ≤ 0,2 → apart toegestaan)`);
-  eis("bij M_z = 5 kNm staat 5.8.9(2) aparte toetsing wél toe", verh <= 0.2,
+  eis("bij M_z = 5 kNm staat 5.8.9(3) aparte toetsing wél toe", verh <= 0.2,
     `${verh.toFixed(4)} ≤ 0,2`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3. DE KERN — zegt hij het, en verandert er verder niets?
+// 3. DE KERN
 // ═══════════════════════════════════════════════════════════════════════════
 
 if (!existsSync(TOETSBRUG)) {
@@ -185,59 +193,69 @@ if (!existsSync(TOETSBRUG)) {
     })),
   });
 
-  const vind = (r) => r.checks.find((c) => c.kind?.data?.id === "5.8.9_dubbele_buiging");
+  const vind = (r, id) => r.checks.find((c) => c.kind?.data?.id === id)?.kind?.data;
+  const variabele = (t, symbool) => t?.variables?.find((v) => v.symbol === symbool)?.value;
   const ids = (r) => r.checks.map((c) => c.kind?.data?.id).sort();
+  const dicht = (a, b, tol) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
 
   const zonder = await roepKern("concrete_column_check", verzoek(0));
   const met = await roepKern("concrete_column_check", verzoek(M_Z_KNM));
-  const ruis = await roepKern("concrete_column_check", verzoek(0.01 * M_Y_KNM));
 
-  log("\n─── ② De kern: de melding komt wanneer hij moet ────────────────────────");
-  const melding = vind(met);
-  eis("mét M_z = 35 kNm staat de toets 5.8.9_dubbele_buiging in het antwoord",
-    melding !== undefined);
-  if (melding) {
-    const d = melding.kind.data;
-    eis("met status NotApplicable — niet Ok, want er is niets getoetst; niet " +
-      "NotOk, want er is niets afgekeurd", d.status === "NotApplicable", d.status);
-    eis("en noemt beide momenten in de reden",
-      (d.notes ?? []).some((n) => /M_z = 35,0/.test(n) && /M_y = 40,0/.test(n)),
-      (d.notes ?? [])[0]?.slice(0, 120));
-    eis("en zegt dat de rest ONVOLLEDIG is, niet fout",
-      (d.notes ?? []).some((n) => /ONVOLLEDIG/.test(n)));
-    eis("en noemt de interactie (5.39) en de exponent a",
-      (d.notes ?? []).some((n) => /\(5\.39\)/.test(n) && /exponent|\^a/.test(n)));
-    eis("het krachtenpunt bij de melding is dat met de grootste |M_z|",
-      Math.abs(d.force_state?.forces?.mz_ed ?? 0) === M_Z_KNM);
+  log("\n─── ② De kern: §5.8.9 op dezelfde getallen als de hand ────────────────");
+  const db = vind(met, "5.8.9_dubbele_buiging");
+  eis("mét M_z = 35 kNm staat de toets 5.8.9_dubbele_buiging in het antwoord", db !== undefined);
+  if (db) {
+    eis("en hij is UITGEVOERD — niet meer NotApplicable", db.status !== "NotApplicable", db.status);
+    eis("N_Rd = A_c·f_cd + A_s·f_yd zoals met de hand",
+      dicht(variabele(db, "N_Rd"), N_RD_KN, 1e-9), `${variabele(db, "N_Rd")} vs ${N_RD_KN}`);
+    eis("de exponent a zoals met de hand",
+      dicht(variabele(db, "a"), A_EXP, 1e-9), `${variabele(db, "a")} vs ${A_EXP}`);
+    eis("(5.38b) is niet vervuld, dus (5.39) is vereist: er is een unity check",
+      db.uc != null && db.notes.some((n) => /§5\.8\.9\(3\) is niet vervuld/.test(n)));
+    eis("λ_y = λ_z: (5.38a) is triviaal vervuld",
+      dicht(variabele(db, "λ_y"), variabele(db, "λ_z"), 1e-12));
+    eis("de afleiding noemt (5.38a), (5.38b), N_Rd, a en (5.39)",
+      ["voorwaarde_5_38a", "voorwaarde_5_38b", "n_rd", "exponent_a", "interactie_5_39"]
+        .every((id) => db.deelstappen.some((d) => d.id === id)));
+    // De som van (5.39) is precies de formule met de gerapporteerde delen.
+    const som = (variabele(db, "M_Edz") / variabele(db, "M_Rdz")) ** variabele(db, "a")
+      + (variabele(db, "M_Edy") / variabele(db, "M_Rdy")) ** variabele(db, "a");
+    eis("de unity check is de som van (5.39) met de gerapporteerde M_Ed en M_Rd",
+      dicht(db.uc.uc, som, 1e-12), `${db.uc.uc}`);
+    eis("M_Edz ligt boven het model-M_z: de imperfectie en de tweede orde om z zitten erin",
+      variabele(db, "M_Edz") > M_Z_KNM, `${variabele(db, "M_Edz")} kNm`);
   }
+  const mz = vind(met, "5.8.9_moment_z");
+  eis("het moment om z heeft een eigen toets met de imperfectie e_i van §5.2",
+    mz !== undefined && dicht(variabele(mz, "e_i"), E_I_MM, 1e-9), `${variabele(mz, "e_i")} vs ${E_I_MM}`);
+  eis("λ_z ≥ λ_lim,z: e₂ om z is gerekend en groter dan nul",
+    met.tweede_orde_verwaarloosbaar_z === false && met.e_2_z_mm > 0, `e₂ = ${met.e_2_z_mm}`);
 
-  eis("zonder M_z is er GEEN melding — anders is de melding ruis",
-    vind(zonder) === undefined);
-  eis("bij M_z = 1 % van M_y (afrondingsruis) óók niet",
-    vind(ruis) === undefined, `M_z = ${0.01 * M_Y_KNM} kNm`);
+  log("\n─── ③ De kern zonder M_z: de tweede as bestaat, maar mag apart ─────────");
+  const dbZonder = vind(zonder, "5.8.9_dubbele_buiging");
+  eis("ook zonder M_z staan de drie toetsen om z in het antwoord",
+    ["5.8.3.1_slankheidsgrens_z", "5.8.9_moment_z", "5.8.9_dubbele_buiging"]
+      .every((id) => vind(zonder, id) !== undefined));
+  eis("M_Edz is zonder M_z NIET nul — de imperfectie en 6.1(4) zorgen daarvoor",
+    zonder.m_edz_knm > 0, `${zonder.m_edz_knm} kNm`);
+  eis("(5.38b) is dan vervuld: apart toetsen mag, en er is geen interactie-uc",
+    dbZonder !== undefined && dbZonder.status === "Ok" && dbZonder.uc == null);
 
-  log("\n─── ③ De kern: de M_y-uitkomsten veranderen niet ───────────────────────");
-  // Het antwoord is onvolledig, niet fout: λ, λ_lim en de poort horen
-  // bit-identiek te blijven. Zou M_z hier ergens in lekken, dan was het
-  // ineens een half-gebouwde §5.8.9, en dat is erger dan geen.
-  eis("λ is identiek met en zonder M_z", met.lambda === zonder.lambda,
-    `${met.lambda?.toFixed(4)}`);
-  eis("λ_lim is identiek", met.lambda_lim === zonder.lambda_lim,
-    `${met.lambda_lim?.toFixed(4)}`);
+  log("\n─── ④ De M_y-uitkomsten veranderen niet met M_z ─────────────────────────");
+  eis("λ is identiek met en zonder M_z", met.lambda === zonder.lambda, `${met.lambda?.toFixed(4)}`);
+  eis("λ_lim is identiek", met.lambda_lim === zonder.lambda_lim, `${met.lambda_lim?.toFixed(4)}`);
   eis("l₀ is identiek", met.l0_mm === zonder.l0_mm);
   eis("de conclusie over de poort is identiek",
     met.tweede_orde_verwaarloosbaar === zonder.tweede_orde_verwaarloosbaar);
-
-  const idsZonder = ids(zonder);
-  const idsMet = ids(met).filter((id) => id !== "5.8.9_dubbele_buiging");
-  eis("alle overige toetsen zijn dezelfde — de melding komt erbij, vervangt niets",
-    JSON.stringify(idsZonder) === JSON.stringify(idsMet),
-    `${idsZonder.length} toetsen`);
-  const statusZonder = zonder.checks.map((c) => `${c.kind.data.id}:${c.kind.data.status}`).sort();
-  const statusMet = met.checks
-    .filter((c) => c.kind.data.id !== "5.8.9_dubbele_buiging")
+  eis("de lijst toetsen is dezelfde — M_z verandert de uitkomst, niet het aantal",
+    JSON.stringify(ids(zonder)) === JSON.stringify(ids(met)), `${ids(zonder).length} toetsen`);
+  const statusZonder = zonder.checks
+    .filter((c) => !c.kind.data.id.startsWith("5.8.9"))
     .map((c) => `${c.kind.data.id}:${c.kind.data.status}`).sort();
-  eis("en hun statussen ook",
+  const statusMet = met.checks
+    .filter((c) => !c.kind.data.id.startsWith("5.8.9"))
+    .map((c) => `${c.kind.data.id}:${c.kind.data.status}`).sort();
+  eis("en de statussen buiten §5.8.9 ook",
     JSON.stringify(statusZonder) === JSON.stringify(statusMet));
 }
 

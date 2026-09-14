@@ -6320,7 +6320,7 @@ function computeEnvelope(combinations, perCase) {
   return { elements, reactions, maxDisplacement, maxDisplacementCombinationId };
 }
 
-// node_modules/zustand/esm/vanilla.mjs
+// ../../../../design-mockup/node_modules/zustand/esm/vanilla.mjs
 var createStoreImpl = (createState) => {
   let state;
   const listeners = /* @__PURE__ */ new Set();
@@ -8795,7 +8795,10 @@ var KOLOM_VELDEN = [
   "buckling_length",
   "phi_inf_t0",
   "stirrup_zone",
-  "lap_situation"
+  "lap_situation",
+  "bracing_z",
+  "buckling_length_z",
+  "m0_edz_knm"
 ];
 var SCHORINGEN = ["Geschoord", "Ongeschoord"];
 var KNIKGEVALLEN_GELDIG = [
@@ -9041,30 +9044,37 @@ function keurKolom(waarde, pad, fouten) {
   keurGetal(waarde.phi_inf_t0, `${pad}.phi_inf_t0`, fouten, { positief: true });
   keurEnum(waarde.stirrup_zone, BEUGELZONES, `${pad}.stirrup_zone`, fouten);
   keurEnum(waarde.lap_situation, OVERLAPPINGSSITUATIES, `${pad}.lap_situation`, fouten);
-  const kl = waarde.buckling_length;
-  if (kl === void 0) {
+  keurEnum(waarde.bracing_z, SCHORINGEN, `${pad}.bracing_z`, fouten);
+  keurGetal(waarde.m0_edz_knm, `${pad}.m0_edz_knm`, fouten);
+  if (waarde.buckling_length_z !== void 0) {
+    keurKniklengte(waarde.buckling_length_z, `${pad}.buckling_length_z`, fouten);
+  }
+  if (waarde.buckling_length === void 0) {
     fouten.push(`${pad}.buckling_length ontbreekt; zonder l\u2080 is er geen slankheid \u03BB = l\u2080/i.`);
     return;
   }
+  keurKniklengte(waarde.buckling_length, `${pad}.buckling_length`, fouten);
+}
+function keurKniklengte(kl, pad, fouten) {
   if (!isObject(kl)) {
-    fouten.push(`${pad}.buckling_length: moet een object met \`soort\` zijn.`);
+    fouten.push(`${pad}: moet een object met \`soort\` zijn.`);
     return;
   }
   if (kl.soort === "Figuur57") {
-    keurVelden(kl, ["soort", "geval"], `${pad}.buckling_length`, fouten);
-    keurEnum(kl.geval, KNIKGEVALLEN_GELDIG, `${pad}.buckling_length.geval`, fouten);
+    keurVelden(kl, ["soort", "geval"], pad, fouten);
+    keurEnum(kl.geval, KNIKGEVALLEN_GELDIG, `${pad}.geval`, fouten);
     if (kl.geval === void 0) {
-      fouten.push(`${pad}.buckling_length.geval ontbreekt.`);
+      fouten.push(`${pad}.geval ontbreekt.`);
     }
   } else if (kl.soort === "Opgegeven") {
-    keurVelden(kl, ["soort", "l0_m"], `${pad}.buckling_length`, fouten);
+    keurVelden(kl, ["soort", "l0_m"], pad, fouten);
     if (kl.l0_m === void 0) {
-      fouten.push(`${pad}.buckling_length.l0_m ontbreekt; l\u2080 is hier het hele gegeven.`);
+      fouten.push(`${pad}.l0_m ontbreekt; l\u2080 is hier het hele gegeven.`);
     }
-    keurGetal(kl.l0_m, `${pad}.buckling_length.l0_m`, fouten, { positief: true });
+    keurGetal(kl.l0_m, `${pad}.l0_m`, fouten, { positief: true });
   } else {
     fouten.push(
-      `${pad}.buckling_length.soort: ${JSON.stringify(kl.soort)} bestaat niet. Toegestaan: Figuur57 (een vakje van figuur 5.7) of Opgegeven (l\u2080 rechtstreeks).`
+      `${pad}.soort: ${JSON.stringify(kl.soort)} bestaat niet. Toegestaan: Figuur57 (een vakje van figuur 5.7) of Opgegeven (l\u2080 rechtstreeks).`
     );
   }
 }

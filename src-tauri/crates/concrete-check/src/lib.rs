@@ -46,7 +46,8 @@ pub use input::{ConcreteBeamCheckInput, MnKappaRequest};
 // gebruiken; er is er maar één, zodat de twee wegen niet uit elkaar lopen.
 pub use kolom::{
     column_check, kolomtoetsen, ConcreteColumnCheckRequest, ConcreteColumnCheckResponse,
-    ConcreteColumnInput, Kniklengtekeuze, Kolomuitkomst, KRUIP_ID, SLANKHEIDSGRENS_ID,
+    ConcreteColumnInput, Kniklengtekeuze, Kolomuitkomst, TweedeAsUitkomst, DUBBELE_BUIGING_ID,
+    KRUIP_ID, MOMENT_Z_ID, SLANKHEIDSGRENS_ID, SLANKHEIDSGRENS_Z_ID,
 };
 pub use orchestrator::{check_all_concrete_beams, check_concrete_beam, mn_kappa};
 pub use result::{ConcreteBeamCheckResult, MnKappaResponse};
