@@ -215,6 +215,16 @@
   line-height: 1.45;
 }
 
+/* De reden zoals de rekenkern hem WOORDELIJK gaf, binnen een melding. Vaste
+   letterbreedte: het is geen zin maar een foutmelding, vaak met een pad of een
+   opdrachtregel erin, en die hoort herkenbaar te zijn als iets om over te
+   typen in plaats van iets om te lezen. */
+.dek-kernreden {
+  font-family: "Consolas", "Liberation Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  word-break: break-word;
+}
+
 /* ── Zone-invoer ────────────────────────────────────────────────────────── */
 
 .dek-zones {
