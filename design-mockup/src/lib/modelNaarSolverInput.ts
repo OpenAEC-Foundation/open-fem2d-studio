@@ -39,12 +39,19 @@ export function verenNaarCanoniek(v: BeamEindVeren | undefined): { veren?: NonNu
   }
   return Object.keys(uit).length > 0 ? { veren: uit } : {};
 }
-import type { MultiInput } from "../components/fem/solver/types";
+import type {
+  MultiInput, SolverBeamInput, SolverBeamSegmentInput,
+} from "../components/fem/solver/types";
+import { MIN_SEGMENT_MM } from "../components/fem/solver/engine";
 import {
   DoorsnedeOnbekendFout,
+  bepaalVerloop,
+  doorsnedeOpPositie,
   eigenGewichtPerMeter,
+  eigenGewichtVanDoorsnede,
   onbekendeDoorsneden,
   resolveSection,
+  type VerlopendeDoorsnede,
 } from "./sectionResolver";
 import { thermalAlphaForMaterial } from "./thermalAlpha";
 import { zoneSnedenUitStaven } from "./betonZoneSneden";
@@ -103,10 +110,37 @@ export function liftSpringK(s: { type: string; k?: number }): number | undefined
  * één controle: daarom deze functie.
  */
 export function controleerDoorsneden(
-  beams: Iterable<{ id: number; material?: string; profile?: string }>,
+  beams: Iterable<{ id: number; material?: string; profile?: string; profileEnd?: string }>,
+  opties: {
+    /**
+     * Bevat het model platen? Dan wordt een VERLOPENDE staaf geweigerd: het
+     * plaatpad zet geen extra sneden (staaf- en plaatknopen worden binnen
+     * 1 mm aan elkaar geknoopt, en een segmentgrens vlak bij een plaatknoop
+     * zou een verbinding maken die het model niet vraagt). Zolang die
+     * afweging per staaf niet bestaat, is weigeren met reden het enige
+     * eerlijke antwoord; zie het ontwerp van 15 september 2026, §4.3.
+     */
+    heeftPlaten?: boolean;
+  } = {},
 ): void {
-  const onbekend = onbekendeDoorsneden(beams);
-  if (onbekend.length === 0) return;
+  const lijst = Array.from(beams);
+  const onbekend = onbekendeDoorsneden(lijst);
+  if (onbekend.length === 0) {
+    if (!opties.heeftPlaten) return;
+    const verlopend = lijst.filter(
+      (b) => bepaalVerloop(b.material, b.profile, b.profileEnd).status === "verlopend",
+    );
+    if (verlopend.length === 0) return;
+    const reden =
+      "een verlopend profiel wordt in een model met platen nog niet ondersteund — " +
+      "maak de staaf prismatisch (verwijder het eindprofiel) of haal de platen uit het model";
+    throw new DoorsnedeOnbekendFout(
+      `De berekening is gestopt: ${verlopend.length === 1 ? "staaf" : "staven"} ` +
+        `${verlopend.map((b) => b.id).join(", ")} ${verlopend.length === 1 ? "heeft" : "hebben"} ` +
+        `een verlopend profiel en het model bevat platen; ${reden}.`,
+      verlopend.map((b) => ({ beamId: b.id, reden })),
+    );
+  }
   // Hoogstens vijf staven in de melding; bij een groot model zou de
   // volledige lijst onleesbaar worden en zegt het aantal genoeg.
   const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
@@ -120,6 +154,143 @@ export function controleerDoorsneden(
       "een ander model dan is ingevoerd.",
     onbekend,
   );
+}
+
+// ── Verlopende profielen: van (profile, profileEnd) naar segmenten ──────────
+//
+// De solver kent geen verlopende staaf; hij kent segmenten met elk een eigen
+// E·I en E·A (`SolverBeamInput.segmenten`). Een verlopende staaf wordt daarom
+// HIER, in de mapping, in segmenten gedeeld — de app, het canvas, de
+// matrixweergave en de MCP-sidecar lopen allemaal door deze functies, zodat
+// er één opdeling bestaat en niet drie.
+//
+// TRAPSGEWIJS, NIET LINEAIR. Elk segment krijgt de doorsnede van zijn MIDDEN
+// en rekent daarmee als prismatisch stuk; de werkelijke I(x) ~ h(x)³ wordt
+// dus als trap benaderd. Met 20 segmenten blijft dat ruim binnen 1 % op de
+// zakking van een uitkrager waarvan de hoogte halveert (gemeten in
+// test-verlopend-profiel.mjs: 0,11 % bij h 400 → 200), omdat de fout van de middenregel per
+// stuk met (ℓ/L)² afneemt en de resten van buurstukken elkaar deels opheffen.
+// De segmentgrenzen worden echte rekenknopen, dus de snedekrachten en de
+// zakking komen op 21 stations PER SEGMENT beschikbaar — 420 punten op een
+// volle staaf, elk met de doorsnede van dat segment.
+//
+// NIET KORTER DAN MIN_SEGMENT_MM. Een korte staaf krijgt minder segmenten,
+// nooit kortere: onder 25 mm verliest de stijfheidsmatrix cijfers (zie de
+// meting bij MIN_SEGMENT_MM in engine.ts), en de adapter zou zulke grenzen
+// bovendien zelf laten vallen.
+
+/** Standaardaantal segmenten van een verlopende staaf. */
+export const VERLOOP_SEGMENTEN = 20;
+
+/**
+ * Aantal segmenten voor een verlopende staaf van `L_mm`: `aantal`, tenzij de
+ * stukken dan korter dan MIN_SEGMENT_MM worden; minstens één.
+ */
+export function aantalVerloopSegmenten(L_mm: number, aantal = VERLOOP_SEGMENTEN): number {
+  if (!(L_mm > 0)) return 1;
+  return Math.max(1, Math.min(aantal, Math.floor(L_mm / MIN_SEGMENT_MM)));
+}
+
+/**
+ * De segmentindeling van een verlopende staaf: `n` gelijke stukken, elk met
+ * A en I van de doorsnede in zijn midden. De fracties zijn i/n, zodat de
+ * grenzen bit-gelijk zijn aan de deellastgrenzen van het eigen gewicht
+ * (`eigenGewichtLasten`) en de adapter ze als één snede herkent.
+ */
+export function segmentenVoorVerloop(
+  verloop: VerlopendeDoorsnede,
+  L_mm: number,
+  aantal = VERLOOP_SEGMENTEN,
+): SolverBeamSegmentInput[] {
+  const n = aantalVerloopSegmenten(L_mm, aantal);
+  const uit: SolverBeamSegmentInput[] = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    const d = doorsnedeOpPositie(verloop, (t0 + t1) / 2);
+    uit.push({ tStart: t0, tEnd: t1, I: d.I, A: d.A });
+  }
+  return uit;
+}
+
+/** Lengte van een staaf in mm uit de knoopcoördinaten; 0 als een knoop ontbreekt. */
+export function staafLengteMm(
+  b: { from: number; to: number },
+  nodes: Iterable<{ id: number; x: number; z: number }>,
+): number {
+  let nA: { x: number; z: number } | undefined;
+  let nB: { x: number; z: number } | undefined;
+  for (const n of nodes) {
+    if (n.id === b.from) nA = n;
+    if (n.id === b.to) nB = n;
+  }
+  return nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
+}
+
+/**
+ * De doorsnedevelden van één staaf voor de solver: E, A en I — en bij een
+ * verlopend profiel ook de segmenten. DE ENIGE plek waar (materiaal, profiel,
+ * eindprofiel) in solverstijfheid wordt omgezet; `bouwMultiInput`, het
+ * canvaspad en de matrixweergave roepen hem alle drie aan.
+ *
+ * Prismatisch: exact `{ E, A, I }` uit `resolveSection`, in die volgorde en
+ * zonder verdere sleutels, zodat de invoer van elk bestaand model byte-gelijk
+ * blijft. Verlopend: E van het materiaal, A en I van het MIDDEN van de staaf
+ * als staafwaarde (de segmenten overschrijven ze stuk voor stuk; de
+ * staafwaarde dient alleen nog de bedding-indeling en lezers die één getal
+ * willen), plus de segmenten.
+ *
+ * Een eindprofiel dat niet bij het beginprofiel past is hier een fout en geen
+ * terugval op het beginprofiel: `controleerDoorsneden` heeft dat normaal al
+ * gemeld, maar wie deze functie rechtstreeks aanroept krijgt dezelfde
+ * uitzondering in plaats van stil een prismatische staaf.
+ */
+export function doorsnedeVeldenVoorSolver(
+  b: { id: number; material?: string; profile?: string; profileEnd?: string },
+  L_mm: number,
+): Pick<SolverBeamInput, "E" | "A" | "I" | "segmenten"> {
+  const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+  if (verloop.status === "fout") {
+    throw new DoorsnedeOnbekendFout(
+      `Staaf ${b.id}: ${verloop.reden}. De berekening is gestopt.`,
+      [{ beamId: b.id, reden: verloop.reden }],
+    );
+  }
+  if (verloop.status === "prismatisch") {
+    const sec = resolveSection(b.material, b.profile);
+    return { E: sec.E, A: sec.A, I: sec.I };
+  }
+  const v = verloop.verloop;
+  const midden = doorsnedeOpPositie(v, 0.5);
+  return { E: v.E, A: midden.A, I: midden.I, segmenten: segmentenVoorVerloop(v, L_mm) };
+}
+
+/**
+ * Het eigen gewicht van één staaf als solverlasten in belastinggeval
+ * `caseId`. Prismatisch: één lijnlast q = −ρ·A·g over de volle lengte, of
+ * niets als q verwaarloosbaar is — precies het bestaande gedrag. Verlopend:
+ * per segment een deellast met de A van het midden van dat segment, op
+ * dezelfde fracties als de segmenten zelf. Zo weegt elk stuk wat het is, en
+ * is de som over de segmenten voor een lineair verlopende A exact
+ * gemiddelde A · ρ · g · L (middenregel is exact voor een lineaire functie).
+ */
+export function eigenGewichtLasten(
+  b: { id: number; material?: string; profile?: string; profileEnd?: string },
+  L_mm: number,
+  caseId: number,
+): MultiInput["loads"] {
+  const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+  if (verloop.status !== "verlopend") {
+    const q = eigenGewichtPerMeter(b.material, b.profile);
+    return Math.abs(q) > 1e-9 ? [{ beamId: b.id, q, caseId }] : [];
+  }
+  return segmentenVoorVerloop(verloop.verloop, L_mm).map((s) => ({
+    beamId: b.id,
+    q: eigenGewichtVanDoorsnede(b.material, s.A!),
+    startFrac: s.tStart,
+    endFrac: s.tEnd,
+    caseId,
+  }));
 }
 
 /**
@@ -223,7 +394,7 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
   // betontoetsing. `resolveSection` zelf blijft wél een waarde geven: het
   // rapport en de profielkiezer moeten "doorsnede onbekend" kunnen TÓNEN, en
   // een halfgetikte profielnaam mag geen scherm laten omvallen.
-  controleerDoorsneden(model.beams);
+  controleerDoorsneden(model.beams, { heeftPlaten: model.plates.length > 0 });
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput: MultiInput = {
     nodes: model.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
@@ -235,12 +406,12 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
       // het verkeerde model.
       //
       // De uitkomst kan hier geen "default" meer zijn: de controle bovenaan
-      // heeft die gevallen er al uit gegooid.
-      const sec = resolveSection(b.material, b.profile);
+      // heeft die gevallen er al uit gegooid. Een verlopend profiel levert
+      // hier bovendien zijn segmenten (zie doorsnedeVeldenVoorSolver).
       const sneden = zoneSneden.get(b.id);
       return {
         id: b.id, from: b.from, to: b.to,
-        E: sec.E, A: sec.A, I: sec.I,
+        ...doorsnedeVeldenVoorSolver(b, staafLengteMm(b, model.nodes)),
         // Releases naar de engine: buigscharnieren via het legacy paar,
         // en het volledige object (mét Tx/Tz-hulzen in lokale assen)
         // ernaast — de engine kiest zelf het rijkere per-DOF-model zodra
@@ -287,14 +458,7 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
     const deadCase = model.loadCases.find(c => c.type === "dead");
     if (deadCase) {
       for (const b of model.beams) {
-        const q = eigenGewichtPerMeter(b.material, b.profile);
-        if (Math.abs(q) > 1e-9) {
-          multiInput.loads.push({
-            beamId: b.id,
-            q,
-            caseId: deadCase.id,
-          });
-        }
+        multiInput.loads.push(...eigenGewichtLasten(b, staafLengteMm(b, model.nodes), deadCase.id));
       }
       // Plaat-eigengewicht: zelfde dead-geval als de staven. De engine
       // (buildMesh) zet dit via PlateLoads om in exacte ρ·g·t·A-

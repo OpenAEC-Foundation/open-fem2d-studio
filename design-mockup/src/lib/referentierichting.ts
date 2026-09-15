@@ -311,6 +311,14 @@ export function staafInReferentierichting(beam: Beam, nodes: Node[]): Beam {
   if (!referentieVanStaaf(beam, nodes).gespiegeld) return beam;
   const lengteMm = beamLengthMm(beam, nodes);
   const uit: Beam = { ...beam, from: beam.to, to: beam.from };
+  // Een verlopend profiel draait mee: wat aan `from` zat, zit na het
+  // spiegelen aan `to`. Zonder deze wissel zou de toetsing de zware
+  // doorsnede aan het lichte einde zetten. Alleen als er een eindprofiel is:
+  // een prismatische staaf blijft zonder het veld, zoals hij was.
+  if (beam.profileEnd !== undefined) {
+    uit.profile = beam.profileEnd;
+    uit.profileEnd = beam.profile;
+  }
   if (beam.releases) uit.releases = spiegelEinden(beam.releases);
   if (beam.veren) uit.veren = spiegelEinden(beam.veren);
   if (beam.checkConfig) uit.checkConfig = spiegelToetsconfig(beam.checkConfig, lengteMm);
@@ -557,7 +565,8 @@ export const SPIEGELREGELS_STAAF: { [K in keyof Required<Beam>]: string } = {
   from: "wordt de eindknoop",
   to: "wordt de beginknoop",
   material: "gelijk",
-  profile: "gelijk",
+  profile: "wordt het eindprofiel als er een verloop is (profileEnd); anders gelijk",
+  profileEnd: "wordt het beginprofiel: begin en eind van het verloop verwisseld",
   releases: "begin en eind verwisseld",
   veren: "begin en eind verwisseld",
   checkConfig: "per veld, zie SPIEGELREGELS_TOETSCONFIG",

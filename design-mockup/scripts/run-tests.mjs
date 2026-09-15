@@ -175,6 +175,14 @@ const BUNDEL_TESTS = new Set([
   "v2-stations",
   "validatie-mcp",
   "veldzakking",
+  // Verlopende profielen (deel 1): doorsnede op positie x, segmenten met A
+  // en I, eigen gewicht per segment, de poorten en de in-proces sidecar.
+  // Praat met `engine`, `sectionResolver`, `modelNaarSolverInput`,
+  // `valideerModel`, `sidecar`, `referentierichting` en de
+  // projectbestandfuncties — alles in de barrel. Hoort juist óók tegen de
+  // bundel: de MCP-weg moet een verlopende staaf precies zo opdelen als de
+  // app, anders rekent de sidecar stil prismatisch met het beginprofiel.
+  "verlopend-profiel",
   "veren",
   "wind-generator",
   "wind-eurocode",

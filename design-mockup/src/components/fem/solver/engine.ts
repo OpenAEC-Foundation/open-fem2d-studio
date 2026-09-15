@@ -136,7 +136,7 @@ const KNOOP_TOL_MM = 1;
  * segmentlengte uit besluit B3, dus er gaat nooit een echt segment verloren —
  * alleen grenzen die praktisch al samenvielen met een bestaande splitsing.
  */
-const MIN_SEGMENT_MM = 25;
+export const MIN_SEGMENT_MM = 25;
 
 /**
  * Segmentinvoer van één staaf controleren en normaliseren.
@@ -148,7 +148,7 @@ const MIN_SEGMENT_MM = 25;
  */
 function normaliseerSegmenten(
   beamId: number, segmenten: SolverBeamSegmentInput[] | undefined, L_mm: number,
-): { t0: number; t1: number; I_mm4: number; index: number }[] | undefined {
+): { t0: number; t1: number; I_mm4: number; A_mm2?: number; index: number }[] | undefined {
   if (segmenten === undefined) return undefined;
   if (!Array.isArray(segmenten) || segmenten.length === 0) {
     throw new Error(
@@ -173,6 +173,14 @@ function normaliseerSegmenten(
     if (!(I_mm4 > 0)) {
       throw new Error(`Staaf ${beamId}, segment ${i + 1}: I moet groter dan nul zijn (mm⁴).`);
     }
+    // A per segment is optioneel (verlopend profiel); staat hij er, dan moet
+    // hij net als I een positief getal zijn — een A van nul geeft een
+    // rekstijfheid nul en een singulier stelsel zonder aanwijsbare oorzaak.
+    const A_mm2 = s.A;
+    if (A_mm2 !== undefined && !(Number.isFinite(A_mm2) && A_mm2 > 0)) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: A moet, als hij is opgegeven, groter dan nul zijn (mm²).`);
+    }
     // Ondergrens die het REKENMESH stelt, niet de nauwkeurigheid: twee
     // splitsposities binnen KNOOP_TOL_MM krijgen dezelfde mesh-knoop en het
     // segment ertussen wordt een element van lengte nul (doorbuiging NaN).
@@ -185,7 +193,7 @@ function normaliseerSegmenten(
         `Zo'n segment levert een element van lengte nul op. Gebruik een grovere ` +
         `segmentindeling.`);
     }
-    return { t0, t1, I_mm4, index: i };
+    return { t0, t1, I_mm4, ...(A_mm2 !== undefined ? { A_mm2 } : {}), index: i };
   });
   // Partitie-eis: oplopend, sluitend van 0 tot 1, zonder gaten of overlap.
   if (Math.abs(uit[0].t0) > TOL || Math.abs(uit[uit.length - 1].t1 - 1) > TOL) {
@@ -324,7 +332,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
    * `segmenten`-veld droeg; anders leeg, en dan blijft convertResult op het
    * bestaande pad. Eén item per mesh-element, op volgorde langs de staaf.
    */
-  segmentUitvoer: Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>;
+  segmentUitvoer: Map<number, { meshId: number; I_mm4: number; A_mm2?: number; segmentIndex: number }[]>;
   /**
    * Staafknopen die op een plaatrand tussen twee randknopen liggen en daaraan
    * kinematisch gekoppeld worden (leeg zonder zulke knopen, en altijd leeg
@@ -691,7 +699,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   const beamKnoopPerFractie = new Map<number, { t: number; meshNodeId: number }[]>();
 
   // Rekenstukken van gesegmenteerde staven — zie het returntype hierboven.
-  const segmentUitvoer = new Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>();
+  const segmentUitvoer = new Map<number, { meshId: number; I_mm4: number; A_mm2?: number; segmentIndex: number }[]>();
 
   for (const b of input.beams) {
     const fromId = nodeIdMap.get(b.from);
@@ -811,18 +819,25 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
 
     /**
-     * Doorsnede van het rekenstuk [t0, t1]: A en h van de staaf, I van het
+     * Doorsnede van het rekenstuk [t0, t1]: h van de staaf, I van het
      * segment waarin het MIDDEN van het stuk valt (zonder segmenten: de
-     * staaf-I, en dan is dit hetzelfde object als voorheen).
+     * staaf-I, en dan is dit hetzelfde object als voorheen), en A van
+     * datzelfde segment als het er een draagt (verlopend profiel), anders
+     * de A van de staaf.
      */
     const doorsnedeVoor = (t0: number, t1: number):
-      { sec: typeof section; I_mm4: number; segmentIndex: number } => {
+      { sec: typeof section; I_mm4: number; A_mm2?: number; segmentIndex: number } => {
       if (!segDef) return { sec: section, I_mm4: 0, segmentIndex: -1 };
       const mid = (t0 + t1) / 2;
       const s = segDef.find((d) => mid >= d.t0 && mid < d.t1) ?? segDef[segDef.length - 1];
       return {
-        sec: { A: section.A, I: s.I_mm4 * 1e-12, h: section.h },
+        sec: {
+          A: s.A_mm2 !== undefined ? s.A_mm2 * 1e-6 : section.A,
+          I: s.I_mm4 * 1e-12,
+          h: section.h,
+        },
         I_mm4: s.I_mm4,
+        ...(s.A_mm2 !== undefined ? { A_mm2: s.A_mm2 } : {}),
         segmentIndex: s.index,
       };
     };
@@ -853,7 +868,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       ]);
       if (segDef) {
         segmentUitvoer.set(b.id,
-          [{ meshId: meshBeam.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex }]);
+          [{ meshId: meshBeam.id, I_mm4: d.I_mm4, A_mm2: d.A_mm2, segmentIndex: d.segmentIndex }]);
       }
     } else {
       // Tussenknopen op de gridposities van de plaatrand. findNodeAt
@@ -893,7 +908,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       beamKnoopPerFractie.set(b.id,
         grens.map((t, i) => ({ t, meshNodeId: knoopIds[i] })));
       const segs: { meshId: number; t0: number; t1: number }[] = [];
-      const stukken: { meshId: number; I_mm4: number; segmentIndex: number }[] = [];
+      const stukken: { meshId: number; I_mm4: number; A_mm2?: number; segmentIndex: number }[] = [];
       for (let i = 0; i < knoopIds.length - 1; i++) {
         const d = doorsnedeVoor(grens[i], grens[i + 1]);
         const mb = mesh.addBeamElement([knoopIds[i], knoopIds[i + 1]], matId, d.sec);
@@ -901,7 +916,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
         pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
         zetBedding(mb.id);
         segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
-        stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex });
+        stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, A_mm2: d.A_mm2, segmentIndex: d.segmentIndex });
       }
       if (segs.length > 0) {
         beamIdMap.set(b.id, segs[0].meshId);
@@ -1569,7 +1584,7 @@ function convertResult(
   plateInfo?: PlateRegionInfo[],
   nodeIndex?: Map<number, number>,
   beamSegments?: Map<number, { meshId: number; t0: number; t1: number }[]>,
-  segmentUitvoer?: Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>,
+  segmentUitvoer?: Map<number, { meshId: number; I_mm4: number; A_mm2?: number; segmentIndex: number }[]>,
 ): SolverResult {
   const displacements = new Map<number, NodalDisp>();
   const reactions = new Map<number, NodalReaction>();
@@ -1642,7 +1657,7 @@ function convertResult(
    * van N·m naar N·mm.
    */
   const bouwSegmentUitvoer = (
-    stukken: { meshId: number; I_mm4: number; segmentIndex: number }[],
+    stukken: { meshId: number; I_mm4: number; A_mm2?: number; segmentIndex: number }[],
   ): BeamSegmentForces[] | undefined => {
     const uit: BeamSegmentForces[] = [];
     let offset_m = 0;
@@ -1662,6 +1677,7 @@ function convertResult(
         xStart: offset_m * 1000,
         xEnd: (offset_m + L_stuk_m) * 1000,
         I: stuk.I_mm4,
+        ...(stuk.A_mm2 !== undefined ? { A: stuk.A_mm2 } : {}),
         segmentIndex: stuk.segmentIndex,
         N_start: -(nArr[0] ?? 0),
         N_end:   -(nArr[nArr.length - 1] ?? 0),

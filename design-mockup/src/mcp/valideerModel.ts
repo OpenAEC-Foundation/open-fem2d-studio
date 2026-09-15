@@ -57,7 +57,7 @@ import {
 } from "../components/fem/femTypes";
 import { zoekDubbeleKnopen } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
-import { resolveSection } from "../lib/sectionResolver";
+import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
 // De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
 // nageschreven: één lijst, anders keurt deze poort straks een staalsoort af
 // die de kern wél kent.
@@ -95,6 +95,10 @@ const NODE_VELDEN = ["id", "x", "z"] as const;
 const BEAM_VELDEN = [
   "id", "from", "to", "material", "profile", "releases", "checkConfig",
   "loadRole",
+  // Eindprofiel van een verlopende staaf (ontwerp 15 september 2026, §4.1);
+  // `profile` is dan het beginprofiel. Zelfde spiegel in `schema_beams`
+  // (openaec-mcp-server/src/fem_tools.rs), bewaakt door een Rust-test.
+  "profileEnd",
 ] as const;
 
 const RELEASE_VELDEN = [
@@ -603,7 +607,7 @@ export function controleerVelden(rauw: unknown): string[] {
     eisGeheel(b.id, `${pad}.id`, fouten);
     eisGeheel(b.from, `${pad}.from`, fouten);
     eisGeheel(b.to, `${pad}.to`, fouten);
-    for (const veld of ["material", "profile"] as const) {
+    for (const veld of ["material", "profile", "profileEnd"] as const) {
       if (b[veld] !== undefined && typeof b[veld] !== "string") {
         fouten.push(`${pad}.${veld}: moet tekst zijn.`);
       }
@@ -933,6 +937,7 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
   const nodes = (m.nodes ?? []) as { id: number; x: number; z: number }[];
   const beams = (m.beams ?? []) as {
     id: number; from: number; to: number; material?: string; profile?: string;
+    profileEnd?: string;
   }[];
   const supports = (m.supports ?? []) as { nodeId: number; type: string; k?: number }[];
   const plates = (m.plates ?? []) as {
@@ -1001,6 +1006,22 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
           `+ profiel "${b.profile ?? "(leeg)"}". De solver zou terugvallen op ` +
           "HEA 160 / S235 en met een andere doorsnede rekenen dan opgegeven.",
       );
+    } else {
+      // Verlopend profiel: het eindprofiel moet bij het beginprofiel passen,
+      // en in een model met platen is een verloop (nog) niet toegestaan —
+      // dezelfde twee weigeringen als `controleerDoorsneden` in de mapping,
+      // hier als droogloopfout met staafnummer in plaats van een uitzondering
+      // halverwege het rekenen.
+      const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+      if (verloop.status === "fout") {
+        errors.push(`Staaf ${b.id}: ${verloop.reden}.`);
+      } else if (verloop.status === "verlopend" && plates.length > 0) {
+        errors.push(
+          `Staaf ${b.id} heeft een verlopend profiel ("${b.profile}" → "${b.profileEnd}") ` +
+            "en het model bevat platen; dat wordt nog niet ondersteund. Maak de staaf " +
+            "prismatisch (verwijder `profileEnd`) of haal de platen uit het model.",
+        );
+      }
     }
   }
 

@@ -48,6 +48,7 @@
  * foutmelding oplevert en geen antwoord dat bij een ander model hoort.
  */
 import { STEEL_SECTIONS } from "./steelSections.generated";
+import { STEEL_SECTION_DIMS } from "./steelSectionDims.generated";
 import { SUPPORTED_TIMBER_GRADES } from "./timberCheckBuilder";
 import { cltSolverDoorsnede, isCltProfiel, parseCltProfiel } from "./cltCheckBuilder";
 import {
@@ -390,14 +391,20 @@ export function doorsnedeVoorSolver(
  * `betonCheckBuilder`: staafnummer plus wat eraan mankeert.
  */
 export function onbekendeDoorsneden(
-  staven: Iterable<{ id: number; material?: string; profile?: string }>,
+  staven: Iterable<{ id: number; material?: string; profile?: string; profileEnd?: string }>,
 ): OnbekendeDoorsnede[] {
   const uit: OnbekendeDoorsnede[] = [];
   for (const b of staven) {
     const sec = resolveSection(b.material, b.profile);
     if (sec.bron === "default") {
       uit.push({ beamId: b.id, reden: sec.reden ?? "doorsnede onbekend" });
+      continue;
     }
+    // Een verlopend profiel is pas een doorsnede als ook het eindprofiel
+    // klopt en bij het beginprofiel past; anders is de doorsnede net zo
+    // onbekend als bij een niet-bestaande profielnaam.
+    const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+    if (verloop.status === "fout") uit.push({ beamId: b.id, reden: verloop.reden });
   }
   return uit;
 }
@@ -418,13 +425,265 @@ export function eigenGewichtPerMeter(
   profile: string | undefined,
 ): number {
   const { A, aBruto } = resolveSection(material, profile);
+  // Voor het gewicht telt de volle doorsnede, niet alleen het meewerkende deel.
+  return eigenGewichtVanDoorsnede(material, aBruto ?? A);
+}
+
+/**
+ * Dichtheid in kg/m³ die bij het MATERIAAL van een staaf hoort: vrij
+ * materiaal geeft hem zelf op, hout per sterkteklasse, beton en staal uit
+ * EN 1991-1-1 tabel A. Eén plek, zodat het eigen gewicht van een prismatische
+ * en van een verlopende staaf nooit een andere dichtheid kunnen krijgen.
+ */
+export function dichtheidVanMateriaal(material: string | undefined): number {
   const mat = material ?? "S235";
   const vrij = parseVrijMateriaal(material);
-  const rho =
+  return (
     vrij?.dichtheid ??
     TIMBER_RHO_MEAN[mat] ??
-    (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
-  // A in mm² → m²; resultaat N/m → kN/m. Voor het gewicht telt de volle
-  // doorsnede, niet alleen het meewerkende deel.
-  return -(rho * ((aBruto ?? A) * 1e-6) * G) / 1000;
+    (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL)
+  );
 }
+
+/**
+ * Eigen gewicht in kN/m (negatief: omlaag) van een doorsnede `A_mm2` in het
+ * materiaal `material`: q = ρ · A · g. A in mm² → m²; N/m → kN/m.
+ */
+export function eigenGewichtVanDoorsnede(material: string | undefined, A_mm2: number): number {
+  return -(dichtheidVanMateriaal(material) * (A_mm2 * 1e-6) * G) / 1000;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERLOPENDE PROFIELEN — doorsnede op positie x langs de staaf
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Een staaf met `profile` (begin) én `profileEnd` (eind) heeft een doorsnede
+// waarvan de MATEN lineair verlopen tussen de twee profielen; de grootheden
+// (A, I) volgen op elke positie uit gesloten formules op die maten. Dat is
+// iets anders dan A en I zelf lineair interpoleren: I gaat met h³. Bij een
+// rechthoek die van h = 300 naar h = 200 verloopt is I in het midden
+// b·250³/12 = 1,302e6·b; het gemiddelde van de eind-I's is b·(300³+200³)/24 =
+// 1,458e6·b — een lineaire I zou de ligger daar 12 % te stijf maken.
+//
+// Twee doorsnedesoorten kennen een verloop (ontwerpbesluit van 15 september
+// 2026):
+//   • rechthoek b × h (hout, vrij materiaal): b en h verlopen;
+//   • I/H-profiel uit de staalcatalogus: h, b, t_w en t_f verlopen, en de
+//     doorsnede telt als GELAST I-profiel zonder afrondingsstraal — een
+//     tussenmaat staat in geen enkele walstabel, en de walsuitronding hoort bij
+//     één specifiek gewalst profiel. Daardoor wijken A en I aan de uiteinden
+//     iets af van de catalogus (bij een IPE 300: A zonder uitronding
+//     2·150·10,7 + 278,6·7,1 = 5 188 tegen 5 380 mm² in de tabel, I 8,00e7
+//     tegen 8,36e7 mm⁴); dat is bewust en geldt over de hele staaf, zodat de
+//     doorsnede nergens springt. Een prismatische staaf (geen of hetzelfde
+//     eindprofiel) rekent gewoon met de catalogus.
+// Alles daarbuiten — koker, buis, hoeklijn, U-profiel, I-profiel met
+// toelopende flenzen, kruislaaghout, beton, eigen doorsnede — wordt geweigerd
+// met reden, nooit stil benaderd.
+//
+// De toetsing (Rust-kern, deel 2) rekent dezelfde formules na; wie hier een
+// formule wijzigt, wijzigt hem daar ook en houdt de tabeltest gelijk.
+
+/** Doorsnedesoort waarvoor een verloop bestaat. */
+export type Verloopsoort = "rechthoek" | "gelastI";
+
+/** Hoofdmaten van een doorsnede in mm; t_w en t_f alleen bij het I-profiel. */
+export interface VerloopMaten {
+  b: number;
+  h: number;
+  tw?: number;
+  tf?: number;
+}
+
+/** Een verlopende doorsnede: maten aan begin en eind plus de E van het materiaal. */
+export interface VerlopendeDoorsnede {
+  soort: Verloopsoort;
+  /** E-modulus van het materiaal in N/mm² — verloopt niet. */
+  E: number;
+  /** Maten bij t = 0 (knoop `from`). */
+  begin: VerloopMaten;
+  /** Maten bij t = 1 (knoop `to`). */
+  eind: VerloopMaten;
+}
+
+/** Uitkomst van `bepaalVerloop`. */
+export type VerloopUitkomst =
+  /** Geen eindprofiel, of hetzelfde profiel: de staaf is prismatisch. */
+  | { status: "prismatisch" }
+  | { status: "verlopend"; verloop: VerlopendeDoorsnede }
+  /** Het eindprofiel is er wel, maar er is geen geldig verloop uit te maken. */
+  | { status: "fout"; reden: string };
+
+/** Grootheden van een rechthoek b × h: A = b·h, I = b·h³/12. */
+function rechthoekGrootheden(m: VerloopMaten): { A: number; I: number } {
+  return { A: m.b * m.h, I: (m.b * m.h ** 3) / 12 };
+}
+
+/**
+ * Grootheden van een gelast, dubbelsymmetrisch I-profiel zonder
+ * afrondingsstraal: twee flenzen b × t_f en een lijf (h − 2·t_f) × t_w.
+ *   A   = 2·b·t_f + (h − 2·t_f)·t_w
+ *   I_y = [b·h³ − (b − t_w)·(h − 2·t_f)³] / 12   (volle rechthoek min de twee
+ *         uitsparingen naast het lijf, om dezelfde as)
+ */
+function gelastIGrootheden(m: VerloopMaten): { A: number; I: number } {
+  const tw = m.tw ?? 0;
+  const tf = m.tf ?? 0;
+  const hw = m.h - 2 * tf;
+  return {
+    A: 2 * m.b * tf + hw * tw,
+    I: (m.b * m.h ** 3 - (m.b - tw) * hw ** 3) / 12,
+  };
+}
+
+/**
+ * De maten op relatieve positie t = x/L (0 = begin, 1 = eind), lineair
+ * tussen begin en eind. Buiten [0, 1] wordt t afgekapt: een rekenpositie ligt
+ * altijd op de staaf.
+ */
+export function matenOpPositie(v: VerlopendeDoorsnede, t: number): VerloopMaten {
+  const s = Math.min(1, Math.max(0, t));
+  const lin = (a: number, b: number): number => a + (b - a) * s;
+  const uit: VerloopMaten = { b: lin(v.begin.b, v.eind.b), h: lin(v.begin.h, v.eind.h) };
+  if (v.begin.tw !== undefined && v.eind.tw !== undefined) uit.tw = lin(v.begin.tw, v.eind.tw);
+  if (v.begin.tf !== undefined && v.eind.tf !== undefined) uit.tf = lin(v.begin.tf, v.eind.tf);
+  return uit;
+}
+
+/**
+ * De doorsnede op relatieve positie t: A (mm²) en I_y (mm⁴) uit de
+ * plaatselijke maten. Voor het eigen gewicht is A hier ook de volle
+ * doorsnede (beide soorten zijn massief).
+ */
+export function doorsnedeOpPositie(
+  v: VerlopendeDoorsnede,
+  t: number,
+): { A: number; I: number; maten: VerloopMaten } {
+  const maten = matenOpPositie(v, t);
+  const g = v.soort === "rechthoek" ? rechthoekGrootheden(maten) : gelastIGrootheden(maten);
+  return { ...g, maten };
+}
+
+/** Naam van de doorsnedesoort van een catalogusprofiel, voor meldingen. */
+function soortNaam(kind: string): string {
+  switch (kind) {
+    case "Shs":
+    case "Rhs": return "koker";
+    case "Chs": return "buis";
+    case "Angle": return "hoeklijn";
+    case "Channel": return "U-profiel";
+    default: return kind;
+  }
+}
+
+/**
+ * Is er een verloop, en zo ja welk? Leest `profile` en `profileEnd` van een
+ * staaf en beslist:
+ *   - `prismatisch`: geen eindprofiel, een leeg eindprofiel, of hetzelfde
+ *     profiel (ook in een andere schrijfwijze, "IPE 300" naast "IPE300").
+ *     De aanroeper rekent dan langs het bestaande pad en er verandert niets.
+ *   - `verlopend`: beide profielen zijn van dezelfde ondersteunde soort.
+ *   - `fout`: met de reden, klaar om aan de gebruiker te tonen.
+ *
+ * Het BEGINprofiel wordt hier niet opnieuw gekeurd: `resolveSection` doet
+ * dat al, en wie hier komt heeft die keuring achter de rug (zie
+ * `onbekendeDoorsneden`).
+ */
+export function bepaalVerloop(
+  material: string | undefined,
+  profile: string | undefined,
+  profileEnd: string | undefined,
+): VerloopUitkomst {
+  const eind = profileEnd?.trim() ?? "";
+  if (eind === "") return { status: "prismatisch" };
+  const beginNaam = profile?.trim() ?? "";
+  if (eind === beginNaam) return { status: "prismatisch" };
+  if (material === undefined || material.trim() === "") {
+    return {
+      status: "fout",
+      reden: "er is geen materiaal toegewezen, dus ook geen verlopend profiel",
+    };
+  }
+  const { E, soort } = eVanMateriaal(material);
+  const nietOndersteund = (wat: string): VerloopUitkomst => ({
+    status: "fout",
+    reden:
+      `verlopend profiel wordt voor deze doorsnede niet ondersteund (${wat}) — ` +
+      "alleen een rechthoek b×h of een I/H-profiel uit de staalcatalogus kan verlopen",
+  });
+  if (soort === "beton") return nietOndersteund("beton");
+  if (isEigenProfiel(profile) || isEigenProfiel(eind)) return nietOndersteund("eigen doorsnede");
+  if (isCltProfiel(profile) || isCltProfiel(eind)) return nietOndersteund("kruislaaghout");
+
+  // ── Rechthoek ↔ rechthoek ──────────────────────────────────────────────
+  const rB = parseRechthoek(profile);
+  const rE = parseRechthoek(eind);
+  if (rB && rE) {
+    if (rB.b === rE.b && rB.h === rE.h) return { status: "prismatisch" };
+    return {
+      status: "verlopend",
+      verloop: { soort: "rechthoek", E, begin: { b: rB.b, h: rB.h }, eind: { b: rE.b, h: rE.h } },
+    };
+  }
+  if (soort === "hout") {
+    // Bij hout is de rechthoek de enige verlopende vorm. Het beginprofiel is
+    // al goedgekeurd door resolveSection; is het geen rechthoek, dan is het
+    // een vorm zonder verloop, anders is het eindprofiel de afwijker.
+    if (!rB) return nietOndersteund(`"${profile}"`);
+    return {
+      status: "fout",
+      reden:
+        `eindprofiel "${eind}" is geen rechthoek zoals beginprofiel "${profile}" — ` +
+        "beide profielen van een verlopende houten staaf moeten een rechthoek b×h zijn",
+    };
+  }
+
+  // ── I/H ↔ I/H uit de staalcatalogus (staal en vrij materiaal) ──────────
+  if (rB || rE) {
+    // Eén rechthoek en één catalogusprofiel (of iets onbekends): nooit
+    // dezelfde soort.
+    return {
+      status: "fout",
+      reden:
+        `beginprofiel "${profile}" en eindprofiel "${eind}" zijn niet van dezelfde ` +
+        "doorsnedesoort — een verlopende staaf gaat van rechthoek naar rechthoek of van " +
+        "I/H-profiel naar I/H-profiel",
+    };
+  }
+  const dB = STEEL_SECTION_DIMS[normaliseer(profile ?? "")];
+  const dE = STEEL_SECTION_DIMS[normaliseer(eind)];
+  if (!dB) {
+    // Het beginprofiel kwam door resolveSection maar staat niet in de
+    // maattabel: geen vorm waarvan de maten bekend zijn.
+    return nietOndersteund(`"${profile}"`);
+  }
+  if (!dE) {
+    return {
+      status: "fout",
+      reden:
+        `eindprofiel "${eind}" is niet bekend in de staalcatalogus — verwacht een ` +
+        `I/H-profiel zoals beginprofiel "${dB.naam}"`,
+    };
+  }
+  if (dB.kind !== "ISection" || dE.kind !== "ISection") {
+    const wat = dB.kind !== "ISection" ? dB : dE;
+    return nietOndersteund(`${soortNaam(wat.kind)} "${wat.naam}"`);
+  }
+  // Een I-profiel met toelopende flenzen (INP) heeft geen vaste t_f; het
+  // gelaste rekenmodel met evenwijdige flenzen zou het stil anders maken.
+  const schuin = [dB, dE].find((d) => (d.flensHelling ?? 0) > 0);
+  if (schuin) {
+    return nietOndersteund(`I-profiel met toelopende flenzen "${schuin.naam}"`);
+  }
+  if (dB === dE) return { status: "prismatisch" };
+  return {
+    status: "verlopend",
+    verloop: {
+      soort: "gelastI",
+      E,
+      begin: { b: dB.b, h: dB.h, tw: dB.tw, tf: dB.tf },
+      eind: { b: dE.b, h: dE.h, tw: dE.tw, tf: dE.tf },
+    },
+  };
+}
+

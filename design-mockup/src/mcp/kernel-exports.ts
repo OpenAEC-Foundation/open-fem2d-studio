@@ -46,6 +46,12 @@ export * from "../lib/combinatieBeheer";
 // die de toetsing ook gebruikt; pure rekencode, geen DOM en geen Tauri.
 export * from "../lib/combinatieSelectie";
 export * from "../lib/steelCheckBuilder";
+// De referentierichting (spiegelen van staaf, uitkomst en toetsconfig): al in
+// de bundel via de staalbouwer, maar zonder deze regel niet aanroepbaar in de
+// bundelstand van de regressierunner. Pure rekencode: sinds het verlopende
+// profiel wisselt hij ook begin- en eindprofiel, en dat hoort tegen de bundel
+// bewezen te worden.
+export * from "../lib/referentierichting";
 export * from "../lib/timberCheckBuilder";
 export * from "../lib/sectionResolver";
 export * from "../lib/modelNaarSolverInput";
