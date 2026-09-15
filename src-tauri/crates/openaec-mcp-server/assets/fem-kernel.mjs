@@ -1890,6 +1890,17 @@ function calculateBeamThermalLocalForces(beam, material) {
 }
 
 // src/core/solver/Assembler.ts
+var PlaatElementFout = class extends Error {
+  meshElementId;
+  constructor(meshElementId, oorzaak, hoekenM) {
+    const hoeken = hoekenM.map((h) => `(${Math.round(h.x * 1e4) / 10}, ${Math.round(h.y * 1e4) / 10})`).join(", ");
+    super(
+      `schijfelement ${meshElementId} met hoeken ${hoeken} mm is niet op te bouwen (${oorzaak}). Overslaan zou een gat in de stijfheid geven en een krachtsverdeling bij een ander model; de berekening stopt. Wijzig de plaat (bijvoorbeeld de meshSize) zodat het rekenmesh opnieuw wordt gemaakt.`
+    );
+    this.name = "PlaatElementFout";
+    this.meshElementId = meshElementId;
+  }
+};
 function getActiveNodeIds(mesh, analysisType) {
   const activeIds = /* @__PURE__ */ new Set();
   if (analysisType === "frame") {
@@ -2122,7 +2133,11 @@ function assembleGlobalStiffnessMatrix(mesh, analysisType, axialReleasedBeamIds)
           }
         }
       } catch (e) {
-        console.warn(`Skipping element ${element.id} in mixed analysis: ${e}`);
+        throw new PlaatElementFout(
+          element.id,
+          e instanceof Error ? e.message : String(e),
+          nodes
+        );
       }
     }
     const beamNodeIds = /* @__PURE__ */ new Set();
@@ -4162,7 +4177,12 @@ function assembleGeometricStiffnessMixed(mesh, displacements, nodeIdToIndex, num
           for (let j = 0; j < 9; j++) Kg.addAt(dofIndices[i], dofIndices[j], Kg9.get(i, j));
         }
       }
-    } catch {
+    } catch (e) {
+      throw new PlaatElementFout(
+        element.id,
+        e instanceof Error ? e.message : String(e),
+        nodes
+      );
     }
   }
   return Kg;
@@ -4203,15 +4223,93 @@ function solveMixed(mesh, opts) {
   if (!hasLoads) {
     throw new Error("No loads applied - add forces to nodes or elements");
   }
+  const slaafDofs = [];
+  for (const k of opts.randKoppelingen ?? []) {
+    const si = nodeIdToIndex.get(k.slaafKnoopId);
+    if (si === void 0) {
+      throw new Error(`Randkoppeling: knoop ${k.slaafKnoopId} is geen actieve rekenknoop.`);
+    }
+    const som = k.meesters.reduce((s, m) => s + m.gewicht, 0);
+    if (!(Math.abs(som - 1) <= 1e-9)) {
+      throw new Error(`Randkoppeling van knoop ${k.slaafKnoopId}: de gewichten tellen op tot ${som}, niet 1.`);
+    }
+    for (const d of [0, 1]) {
+      slaafDofs.push({
+        dof: si * dofsPerNode + d,
+        meesters: k.meesters.map((m) => {
+          const mi = nodeIdToIndex.get(m.knoopId);
+          if (mi === void 0) {
+            throw new Error(`Randkoppeling van knoop ${k.slaafKnoopId}: meester ${m.knoopId} is geen actieve rekenknoop.`);
+          }
+          return { dof: mi * dofsPerNode + d, w: m.gewicht };
+        })
+      });
+    }
+  }
+  const slaafSet = new Set(slaafDofs.map((s) => s.dof));
+  for (const s of slaafDofs) {
+    if (s.meesters.some((m) => slaafSet.has(m.dof))) {
+      throw new Error("Randkoppeling: een meesterknoop is zelf aan een rand gekoppeld.");
+    }
+  }
+  if (constrainedDofs.some((d) => slaafSet.has(d))) {
+    throw new Error("Randkoppeling: een aan een plaatrand gekoppelde knoop draagt een starre oplegging.");
+  }
+  if (slaafDofs.length > 0) {
+    log({
+      soort: "info",
+      tekst: `${slaafDofs.length / 2} staafknopen kinematisch aan een plaatrand gekoppeld (lineaire interpolatie)`
+    });
+  }
+  const gecondenseerdeKloon = (M) => {
+    const C = M.clone();
+    if (slaafDofs.length === 0) return C;
+    const a = C.data;
+    const n = C.rows;
+    for (const sl of slaafDofs) {
+      for (const m of sl.meesters) {
+        if (m.w === 0) continue;
+        for (let i = 0; i < n; i++) a[i][m.dof] += m.w * a[i][sl.dof];
+      }
+      for (let i = 0; i < n; i++) a[i][sl.dof] = 0;
+    }
+    for (const sl of slaafDofs) {
+      const rij = a[sl.dof];
+      for (const m of sl.meesters) {
+        if (m.w === 0) continue;
+        const doel = a[m.dof];
+        for (let j = 0; j < n; j++) doel[j] += m.w * rij[j];
+      }
+      for (let j = 0; j < n; j++) rij[j] = 0;
+      rij[sl.dof] = 1;
+    }
+    return C;
+  };
+  const Fc = slaafDofs.length === 0 ? F : (() => {
+    const g = [...F];
+    for (const sl of slaafDofs) {
+      for (const m of sl.meesters) g[m.dof] += m.w * F[sl.dof];
+      g[sl.dof] = 0;
+    }
+    return g;
+  })();
+  const herstel = (u) => {
+    for (const sl of slaafDofs) {
+      let v = 0;
+      for (const m of sl.meesters) v += m.w * u[m.dof];
+      u[sl.dof] = v;
+    }
+    return u;
+  };
   const losOp = (Kt) => {
-    const Kmod = Kt.clone();
-    const Fmod = [...F];
+    const Kmod = gecondenseerdeKloon(Kt);
+    const Fmod = [...Fc];
     const penalty = 1e20;
     for (const dof of constrainedDofs) {
       Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
       Fmod[dof] = 0;
     }
-    return solveLinearSystem2(Kmod, Fmod);
+    return herstel(solveLinearSystem2(Kmod, Fmod));
   };
   const numDofsMixed = K.rows;
   log({
@@ -4304,7 +4402,7 @@ function solveMixed(mesh, opts) {
       for (let j = 0; j < numDofsMixed; j++) Kt.addAt(i, j, Kg.get(i, j));
     }
     Kreactie = Kt;
-    const Kstab = Kt.clone();
+    const Kstab = gecondenseerdeKloon(Kt);
     for (const dof of constrainedDofs) Kstab.set(dof, dof, Kstab.get(dof, dof) + 1e20);
     const nietPositief = countNonPositivePivots(Kstab);
     if (nietPositief > 0) {
@@ -4318,9 +4416,11 @@ function solveMixed(mesh, opts) {
     }
     log({ soort: "info", tekst: "Stabiliteitscontrole: K = Ke + Kg is positief definiet" });
   }
-  const reactions = Kreactie.multiplyVector(displacements);
+  const reactions = slaafDofs.length === 0 ? Kreactie.multiplyVector(displacements) : gecondenseerdeKloon(Kreactie).multiplyVector(
+    displacements.map((v, i) => slaafSet.has(i) ? 0 : v)
+  );
   for (let i = 0; i < reactions.length; i++) {
-    reactions[i] = reactions[i] - F[i];
+    reactions[i] = reactions[i] - Fc[i];
   }
   const beamForces = /* @__PURE__ */ new Map();
   for (const beam of mesh.beamElements.values()) {
@@ -4665,6 +4765,57 @@ function computeSelfWeightNodalForces(mesh, options = {}) {
 function computeEdgeLoadNodalForces(mesh, edgeNodeIds, px, py) {
   return convertEdgeNodeIdsToNodalForces(mesh, edgeNodeIds, px, py);
 }
+function verdeelRandlastConsistent(nodeIds, s, sA, sB, pxA, pyA, pxB, pyB) {
+  const perKnoop = /* @__PURE__ */ new Map();
+  const tel = (nodeId, fx, fy) => {
+    const oud = perKnoop.get(nodeId) ?? { fx: 0, fy: 0 };
+    perKnoop.set(nodeId, { fx: oud.fx + fx, fy: oud.fy + fy });
+  };
+  const lengte = sB - sA;
+  if (!(lengte > 0)) return [];
+  const px = (x) => pxA + (pxB - pxA) * ((x - sA) / lengte);
+  const py = (x) => pyA + (pyB - pyA) * ((x - sA) / lengte);
+  for (let j = 0; j + 1 < nodeIds.length; j++) {
+    const s0 = s[j], s1 = s[j + 1];
+    const l = s1 - s0;
+    if (!(l > 0)) continue;
+    const lo = Math.max(s0, sA);
+    const hi = Math.min(s1, sB);
+    if (!(hi > lo)) continue;
+    const m = 0.5 * (lo + hi);
+    const w = (hi - lo) / 6;
+    const Nj = (x) => (s1 - x) / l;
+    const Nk = (x) => (x - s0) / l;
+    tel(
+      nodeIds[j],
+      w * (Nj(lo) * px(lo) + 4 * Nj(m) * px(m) + Nj(hi) * px(hi)),
+      w * (Nj(lo) * py(lo) + 4 * Nj(m) * py(m) + Nj(hi) * py(hi))
+    );
+    tel(
+      nodeIds[j + 1],
+      w * (Nk(lo) * px(lo) + 4 * Nk(m) * px(m) + Nk(hi) * px(hi)),
+      w * (Nk(lo) * py(lo) + 4 * Nk(m) * py(m) + Nk(hi) * py(hi))
+    );
+  }
+  return nodeIds.filter((id) => perKnoop.has(id)).map((id) => ({ nodeId: id, ...perKnoop.get(id) }));
+}
+function verdeelRandpuntlastConsistent(nodeIds, s, sP, fx, fy) {
+  const n = nodeIds.length;
+  if (n === 0) return [];
+  const x = Math.min(s[n - 1], Math.max(s[0], sP));
+  for (let j = 0; j + 1 < n; j++) {
+    const s0 = s[j], s1 = s[j + 1];
+    if (x < s0 || x > s1) continue;
+    const l = s1 - s0;
+    if (!(l > 0)) continue;
+    const t = (x - s0) / l;
+    return [
+      { nodeId: nodeIds[j], fx: (1 - t) * fx, fy: (1 - t) * fy },
+      { nodeId: nodeIds[j + 1], fx: t * fx, fy: t * fy }
+    ];
+  }
+  return [{ nodeId: nodeIds[0], fx, fy }];
+}
 function applyNodalForces(mesh, forces) {
   for (const f of forces) {
     const node = mesh.getNode(f.nodeId);
@@ -4820,20 +4971,102 @@ function valideerPlaatPolygoon(punten, tolMm = 1) {
 function berekenPlaatMeshSignatuur(punten, meshSizeMm) {
   return `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
 }
-var meshCacheRegister = /* @__PURE__ */ new Map();
-var polygoonRandlastRegister = [];
-function registreerPlaatMeshCaches(perPlaat) {
-  meshCacheRegister.clear();
-  for (const [plateId, cache] of perPlaat) meshCacheRegister.set(plateId, cache);
+var PLAAT_RAND_NAAM_NL = {
+  bottom: "onderrand",
+  top: "bovenrand",
+  left: "linkerrand",
+  right: "rechterrand"
+};
+var PLAAT_RAND_NAMEN = ["bottom", "top", "left", "right"];
+function bepaalPlaatRand(punten, adres, tolMm = 1) {
+  const n = punten.length;
+  const rechthoek = n === 4 && isAsgelijndeRechthoek(punten, tolMm);
+  const soort = rechthoek ? "rechthoek" : "polygoon";
+  const heeftNaam = adres.edge !== void 0;
+  const heeftIndex = adres.edgeIndex !== void 0;
+  if (heeftNaam && heeftIndex) {
+    return {
+      ok: false,
+      reden: "de last noemt zowel een benoemde rand (`edge`) als een rand-index (`edgeIndex`). Geef er \xE9\xE9n: met twee adressen is niet te zeggen welke rand bedoeld is en vanaf welke hoek de posities tellen."
+    };
+  }
+  if (!heeftNaam && !heeftIndex) {
+    return {
+      ok: false,
+      reden: "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar hoek i+1) of, bij een asgelijnde rechthoek, `edge`."
+    };
+  }
+  if (n < 3) {
+    return { ok: false, reden: `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.` };
+  }
+  if (heeftIndex) {
+    const i = adres.edgeIndex;
+    if (!Number.isInteger(i) || i < 0 || i >= n) {
+      return {
+        ok: false,
+        reden: `rand-index ${i} bestaat niet: de plaat heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`
+      };
+    }
+    const j = (i + 1) % n;
+    const van2 = punten[i], naar2 = punten[j];
+    const lengte = Math.hypot(naar2.x - van2.x, naar2.z - van2.z);
+    if (!rechthoek) {
+      return { ok: true, soort, hoekVan: i, hoekNaar: j, van: van2, naar: naar2, lengte, edgeIndex: i };
+    }
+    const xs2 = punten.map((p) => p.x), zs2 = punten.map((p) => p.z);
+    const minX2 = Math.min(...xs2), maxX2 = Math.max(...xs2);
+    const minZ2 = Math.min(...zs2), maxZ2 = Math.max(...zs2);
+    const op = (a, b) => Math.abs(a - b) <= tolMm;
+    let naam2;
+    if (op(van2.z, minZ2) && op(naar2.z, minZ2)) naam2 = "bottom";
+    else if (op(van2.z, maxZ2) && op(naar2.z, maxZ2)) naam2 = "top";
+    else if (op(van2.x, minX2) && op(naar2.x, minX2)) naam2 = "left";
+    else if (op(van2.x, maxX2) && op(naar2.x, maxX2)) naam2 = "right";
+    if (!naam2) {
+      return {
+        ok: false,
+        reden: `rand ${i + 1} (edgeIndex ${i}, hoek ${i + 1} \u2192 hoek ${j + 1}) loopt niet langs de omtrek: de hoeken van deze rechthoek staan niet in omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met een benoemde rand (\`edge\`) of teken de plaat opnieuw in omtrekvolgorde.`
+      };
+    }
+    return { ok: true, soort, hoekVan: i, hoekNaar: j, van: van2, naar: naar2, lengte, naam: naam2, edgeIndex: i };
+  }
+  const naam = adres.edge;
+  if (!PLAAT_RAND_NAMEN.includes(naam)) {
+    return {
+      ok: false,
+      reden: `"${adres.edge}" is geen benoemde rand. Toegestaan: ${PLAAT_RAND_NAMEN.join(", ")}.`
+    };
+  }
+  if (!rechthoek) {
+    return {
+      ok: false,
+      reden: `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een rand-index (\`edgeIndex\`: rand i loopt van hoek i naar hoek i+1).`
+    };
+  }
+  const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const [doelVan, doelNaar] = naam === "bottom" ? [{ x: minX, z: minZ }, { x: maxX, z: minZ }] : naam === "top" ? [{ x: minX, z: maxZ }, { x: maxX, z: maxZ }] : naam === "left" ? [{ x: minX, z: minZ }, { x: minX, z: maxZ }] : [{ x: maxX, z: minZ }, { x: maxX, z: maxZ }];
+  const zoek = (d) => punten.findIndex((p) => Math.abs(p.x - d.x) <= tolMm && Math.abs(p.z - d.z) <= tolMm);
+  const hoekVan = zoek(doelVan), hoekNaar = zoek(doelNaar);
+  const van = punten[hoekVan], naar = punten[hoekNaar];
+  return {
+    ok: true,
+    soort,
+    hoekVan,
+    hoekNaar,
+    van,
+    naar,
+    lengte: Math.hypot(naar.x - van.x, naar.z - van.z),
+    naam
+  };
 }
-function leesPlaatMeshCache(plateId) {
-  return meshCacheRegister.get(plateId);
-}
-function registreerPolygoonRandlasten(lasten) {
-  polygoonRandlastRegister = [...lasten];
-}
-function leesPolygoonRandlasten(plateId) {
-  return polygoonRandlastRegister.filter((l) => l.plateId === plateId);
+function plaatRandLabel(adres) {
+  if (adres.edgeIndex !== void 0) return `rand ${adres.edgeIndex + 1}`;
+  if (adres.edge !== void 0 && PLAAT_RAND_NAMEN.includes(adres.edge)) {
+    return PLAAT_RAND_NAAM_NL[adres.edge];
+  }
+  return "rand onbekend";
 }
 var meshCacheCommitter = null;
 function registreerPlaatMeshCacheCommitter(fn) {
@@ -5079,7 +5312,7 @@ function buildMesh(input, loadFactor) {
         const width = maxX - minX, height = maxZ - minZ;
         const nx = Math.max(1, Math.round(width / meshSize));
         const ny = Math.max(1, Math.round(height / meshSize));
-        plateRects.push({ p, minX, minZ, width, height, nx, ny });
+        plateRects.push({ p, minX, minZ, width, height, nx, ny, punten });
         continue;
       }
       const vormFout = valideerPlaatPolygoon(punten, TOL_MM);
@@ -5087,21 +5320,52 @@ function buildMesh(input, loadFactor) {
         throw new Error(`Plaat ${p.id}: ${vormFout}`);
       }
       const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
-      const kandidaten = [p.meshCache, leesPlaatMeshCache(p.id)];
-      const cache = kandidaten.find((c) => c && c.signature === handtekening);
+      const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : void 0;
       if (!cache) {
         throw new Error(
           `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als polygonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. Open het canvas (het mesh wordt daar automatisch gegenereerd) en reken daarna opnieuw.`
         );
       }
-      const nPts = cache.points.length;
-      const indexOk = cache.triangles.every((t) => t.length === 3 && t.every((i) => Number.isInteger(i) && i >= 0 && i < nPts)) && cache.edgeNodeIndices.every((rand) => rand.every((i) => Number.isInteger(i) && i >= 0 && i < nPts));
-      if (!indexOk || nPts < 3 || cache.triangles.length < 1) {
+      const beschadigd = (waarom) => {
         throw new Error(
-          `Plaat ${p.id}: de meshcache is beschadigd. Wijzig de plaat (bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`
+          `Plaat ${p.id}: de meshcache is beschadigd \u2014 ${waarom}. Wijzig de plaat (bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`
+        );
+      };
+      const nPts = cache.points.length;
+      const driehoekenOk = Array.isArray(cache.triangles) && cache.triangles.every((t) => Array.isArray(t) && t.length === 3 && t.every((i) => Number.isInteger(i) && i >= 0 && i < nPts));
+      if (!driehoekenOk || nPts < 3 || cache.triangles.length < 1) {
+        beschadigd("de driehoeken verwijzen naar punten die niet bestaan");
+      }
+      if (!Array.isArray(cache.edgeNodeIndices)) {
+        beschadigd("`edgeNodeIndices` ontbreekt");
+      }
+      if (cache.edgeNodeIndices.length !== punten.length) {
+        beschadigd(
+          `\`edgeNodeIndices\` beschrijft ${cache.edgeNodeIndices.length} randen, maar de plaat heeft ${punten.length} hoeken en dus ${punten.length} randen`
         );
       }
-      plaatPolygonen.push({ p, cache });
+      cache.edgeNodeIndices.forEach((rand, i) => {
+        if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => Number.isInteger(k) && k >= 0 && k < nPts)) {
+          beschadigd(`rand ${i + 1} heeft geen geldige lijst randknopen (minstens de twee hoeken)`);
+        }
+        const a = punten[i], b = punten[(i + 1) % punten.length];
+        const L = Math.hypot(b.x - a.x, b.z - a.z);
+        let tMin = Infinity, tMax = -Infinity;
+        for (const k of rand) {
+          const q = cache.points[k];
+          const t = ((q.x - a.x) * (b.x - a.x) + (q.z - a.z) * (b.z - a.z)) / L;
+          const d = Math.abs((q.x - a.x) * (b.z - a.z) - (q.z - a.z) * (b.x - a.x)) / L;
+          if (!(d <= TOL_MM) || t < -TOL_MM || t > L + TOL_MM) {
+            beschadigd(`punt ${k} van rand ${i + 1} ligt niet op die rand`);
+          }
+          tMin = Math.min(tMin, t);
+          tMax = Math.max(tMax, t);
+        }
+        if (tMin > TOL_MM || tMax < L - TOL_MM) {
+          beschadigd(`de randknopen van rand ${i + 1} reiken niet van hoek tot hoek`);
+        }
+      });
+      plaatPolygonen.push({ p, cache, punten });
     }
   }
   const pasReleasesToe = (meshBeamId, b, metStartzijde, metEindzijde) => {
@@ -5332,7 +5596,7 @@ function buildMesh(input, loadFactor) {
     })));
   };
   if (plateRects.length > 0) {
-    for (const { p, minX, minZ, width, height, nx, ny } of plateRects) {
+    for (const { p, minX, minZ, width, height, nx, ny, punten } of plateRects) {
       const mat = mesh.addMaterial({
         name: `Plaat ${p.id}`,
         E: p.E * 1e6,
@@ -5357,12 +5621,12 @@ function buildMesh(input, loadFactor) {
         elementType: "quad"
       });
       mesh.addPlateRegion(region);
-      plateInfo.push({ plateId: p.id, region });
+      plateInfo.push({ plateId: p.id, region, hoeken: punten });
       pasPlaatEigengewichtToe(p, region.elementIds);
     }
   }
   if (plaatPolygonen.length > 0) {
-    for (const { p, cache } of plaatPolygonen) {
+    for (const { p, cache, punten } of plaatPolygonen) {
       const mat = mesh.addMaterial({
         name: `Plaat ${p.id}`,
         E: p.E * 1e6,
@@ -5408,8 +5672,8 @@ function buildMesh(input, loadFactor) {
         cornerNodeIds: [nodeIds[0], nodeIds[0], nodeIds[0], nodeIds[0]],
         elementIds,
         // Polygonmesh heeft geen benoemde randen: randlasten lopen via de
-        // rand-index (edgeNodeIds hieronder); een benoemde-rand-last op een
-        // polygonplaat vervalt daardoor stil in het randlastenblok.
+        // rand-index (edgeNodeIds hieronder); een benoemde rand op een
+        // polygonplaat wordt door `bepaalPlaatRand` geweigerd.
         edges: {
           bottom: { nodeIds: [] },
           top: { nodeIds: [] },
@@ -5421,8 +5685,100 @@ function buildMesh(input, loadFactor) {
       };
       mesh.addPlateRegion(region);
       const edgeNodeIds = cache.edgeNodeIndices.map((rand) => rand.map((i) => knoopIdPerPunt[i]));
-      plateInfo.push({ plateId: p.id, region, edgeNodeIds });
+      plateInfo.push({ plateId: p.id, region, edgeNodeIds, hoeken: punten });
       pasPlaatEigengewichtToe(p, elementIds);
+    }
+  }
+  const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
+  const randKnopenVan = (plateId, adres, wat) => {
+    const info = infoByPlateId.get(plateId);
+    if (!info) {
+      throw new Error(
+        `Plaat ${plateId} staat niet in het model, maar ${wat} verwijst ernaar. Een last zonder plaat overslaan zou een berekening geven zonder die last.`
+      );
+    }
+    const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
+    if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} \u2014 ${rand.reden}`);
+    const kandidaten = rand.soort === "rechthoek" ? info.region.edges[rand.naam].nodeIds : info.edgeNodeIds[rand.edgeIndex];
+    const ax = rand.van.x / 1e3, az = rand.van.z / 1e3;
+    const L = rand.lengte / 1e3;
+    const ex = (rand.naar.x - rand.van.x) / rand.lengte;
+    const ez = (rand.naar.z - rand.van.z) / rand.lengte;
+    const rij = [...new Set(kandidaten)].map((nid) => {
+      const nd = mesh.getNode(nid);
+      return { nid, s: nd ? (nd.x - ax) * ex + (nd.y - az) * ez : NaN };
+    });
+    if (rij.length < 2 || rij.some((r) => !Number.isFinite(r.s))) {
+      throw new Error(
+        `Plaat ${plateId}: ${wat} \u2014 de rand heeft geen bruikbare rekenknopen (het rekenmesh is onvolledig). Wijzig de plaat zodat het mesh opnieuw wordt gemaakt.`
+      );
+    }
+    rij.sort((a, b) => a.s - b.s);
+    return { nodeIds: rij.map((r) => r.nid), s: rij.map((r) => r.s), L };
+  };
+  const randKoppelingen = [];
+  if (plateInfo.length > 0) {
+    const uiIdVan = /* @__PURE__ */ new Map();
+    for (const [uiId, meshId] of nodeIdMap) uiIdVan.set(meshId, uiId);
+    const knoopNaam = (meshId) => {
+      const ui = uiIdVan.get(meshId);
+      if (ui !== void 0) return `knoop ${ui}`;
+      const nd = mesh.getNode(meshId);
+      return nd ? `de rekenknoop op (${Math.round(nd.x * 1e4) / 10}, ${Math.round(nd.y * 1e4) / 10}) mm` : `rekenknoop ${meshId}`;
+    };
+    const plaatKnopen = /* @__PURE__ */ new Set();
+    for (const el of mesh.elements.values()) for (const nid of el.nodeIds) plaatKnopen.add(nid);
+    const rijen = [];
+    for (const info of plateInfo) {
+      const adressen = info.edgeNodeIds ? info.hoeken.map((_, i) => ({ edgeIndex: i })) : ["bottom", "top", "left", "right"].map((edge) => ({ edge }));
+      for (const adres of adressen) {
+        rijen.push({ plateId: info.plateId, nodeIds: randKnopenVan(info.plateId, adres, "een plaatrand").nodeIds });
+      }
+    }
+    const staafKnopen = /* @__PURE__ */ new Set();
+    for (const be of mesh.beamElements.values()) for (const nid of be.nodeIds) staafKnopen.add(nid);
+    const TOL_M = TOL_MM / 1e3;
+    for (const nid of staafKnopen) {
+      if (plaatKnopen.has(nid)) continue;
+      const nd = mesh.getNode(nid);
+      if (!nd) continue;
+      const perPlaat = /* @__PURE__ */ new Map();
+      for (const rij of rijen) {
+        for (let j = 0; j + 1 < rij.nodeIds.length; j++) {
+          const na = mesh.getNode(rij.nodeIds[j]);
+          const nb = mesh.getNode(rij.nodeIds[j + 1]);
+          if (!na || !nb) continue;
+          const dx = nb.x - na.x, dy = nb.y - na.y;
+          const l2 = dx * dx + dy * dy;
+          if (!(l2 > 0)) continue;
+          const t = ((nd.x - na.x) * dx + (nd.y - na.y) * dy) / l2;
+          if (t < 0 || t > 1) continue;
+          const d = Math.abs((nd.x - na.x) * dy - (nd.y - na.y) * dx) / Math.sqrt(l2);
+          if (d > TOL_M) continue;
+          const oud = perPlaat.get(rij.plateId);
+          if (!oud || d < oud.d) perPlaat.set(rij.plateId, { a: na.id, b: nb.id, t, d });
+        }
+      }
+      if (perPlaat.size === 0) continue;
+      const [[eerstePlaat, k0], ...rest] = [...perPlaat.entries()];
+      for (const [pid, k] of rest) {
+        const zelfde = k.a === k0.a && k.b === k0.b && Math.abs(k.t - k0.t) < 1e-9 || k.a === k0.b && k.b === k0.a && Math.abs(k.t - (1 - k0.t)) < 1e-9;
+        if (!zelfde) {
+          throw new Error(
+            `Plaat ${eerstePlaat} en plaat ${pid}: ${knoopNaam(nid)} ligt op de rand van beide platen, maar tussen verschillende rekenknopen van die randen. Aan welke rand de staaf dan hangt, is niet eenduidig. Geef beide platen langs die rand dezelfde rekenknopen (gelijke meshSize en ligging), of laat de staaf op een hoek of rekenknoop aansluiten.`
+          );
+        }
+      }
+      const c = nd.constraints;
+      if (c.x && c.springX == null || c.y && c.springY == null) {
+        throw new Error(
+          `Plaat ${eerstePlaat}: de oplegging op ${knoopNaam(nid)} staat op een staafknoop die tussen twee rekenknopen op de plaatrand ligt. Zo'n knoop wordt kinematisch aan die rand gekoppeld (lineaire interpolatie tussen de twee randknopen); een starre oplegging in x of z erop is dan niet eenduidig te verwerken. Zet de oplegging op een hoek of rekenknoop van de plaat, of kies de meshSize zodat deze knoop een rekenknoop wordt.`
+        );
+      }
+      randKoppelingen.push({
+        slaafKnoopId: nid,
+        meesters: [{ knoopId: k0.a, gewicht: 1 - k0.t }, { knoopId: k0.b, gewicht: k0.t }]
+      });
     }
   }
   if (plateInfo.length > 0) {
@@ -5548,53 +5904,65 @@ function buildMesh(input, loadFactor) {
       }
     }
   }
-  const edgeLds = input.edgeLoads;
-  if (plateInfo.length > 0) {
-    const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
-    const pasRandlastToe = (randNodeIds, p_kNm, dir, f) => {
-      if (!randNodeIds || randNodeIds.length < 2) return;
-      const p_Nm = p_kNm * 1e3 * f;
-      const px = dir === "x" ? p_Nm : 0;
-      const py = dir === "z" ? p_Nm : 0;
-      const krachten = computeEdgeLoadNodalForces(mesh, randNodeIds, px, py);
-      applyNodalForces(mesh, krachten.map((kr) => ({
-        nodeId: kr.nodeId,
-        fx: kr.fx + schFactor * -kr.fy,
-        fy: kr.fy
-      })));
-    };
-    const invoerIndexBewust = /* @__PURE__ */ new Set();
-    if (edgeLds && edgeLds.length > 0) {
-      for (const el of edgeLds) {
-        if (el.edgeIndex !== void 0 && el.plateId !== void 0) {
-          invoerIndexBewust.add(el.plateId);
-        }
-      }
-      for (const el of edgeLds) {
-        const f = loadFactor ? loadFactor(el.caseId) : 1;
-        if (f === 0 || !el.p) continue;
-        const info = infoByPlateId.get(el.plateId);
-        if (!info) continue;
-        const dir = el.dir ?? "z";
-        if (el.edgeIndex !== void 0) {
-          pasRandlastToe(info.edgeNodeIds?.[el.edgeIndex] ?? [], el.p, dir, f);
-          continue;
-        }
-        const rand = info.region.edges?.[el.edge];
-        if (!rand || rand.nodeIds.length < 2) continue;
-        pasRandlastToe(rand.nodeIds, el.p, dir, f);
-      }
+  const edgeLds = input.edgeLoads ?? [];
+  const zetRandkrachten = (krachten) => {
+    applyNodalForces(mesh, krachten.map((kr) => ({
+      nodeId: kr.nodeId,
+      fx: kr.fx + schFactor * -kr.fy,
+      fy: kr.fy
+    })));
+  };
+  for (const el of edgeLds) {
+    const rand = randKnopenVan(el.plateId, el, "een randlast");
+    const a = el.startFrac ?? 0;
+    const b = el.endFrac ?? 1;
+    if (!(Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b <= 1 && a < b)) {
+      throw new Error(
+        `Plaat ${el.plateId}: een randlast heeft een belast deel dat niet binnen de rand ligt of niet v\xF3\xF3r zijn einde begint (startFrac ${a}, endFrac ${b}). Geef 0 \u2264 startFrac < endFrac \u2264 1, gemeten vanaf de beginhoek van de rand.`
+      );
     }
-    const invoerCaseId = input.caseId;
-    for (const pi of plateInfo) {
-      if (!pi.edgeNodeIds) continue;
-      if (invoerIndexBewust.has(pi.plateId)) continue;
-      for (const rl of leesPolygoonRandlasten(pi.plateId)) {
-        const f = loadFactor ? loadFactor(rl.caseId) : invoerCaseId !== void 0 && rl.caseId !== invoerCaseId ? 0 : 1;
-        if (f === 0 || !rl.p) continue;
-        pasRandlastToe(pi.edgeNodeIds[rl.edgeIndex] ?? [], rl.p, rl.dir, f);
-      }
+    const f = loadFactor ? loadFactor(el.caseId) : 1;
+    if (f === 0) continue;
+    const pA = el.pStart ?? el.p ?? 0;
+    const pB = el.pEnd ?? el.p ?? 0;
+    if (pA === 0 && pB === 0) continue;
+    const dir = el.dir ?? "z";
+    if (a === 0 && b === 1 && pA === pB) {
+      const p_Nm = pA * 1e3 * f;
+      zetRandkrachten(computeEdgeLoadNodalForces(
+        mesh,
+        rand.nodeIds,
+        dir === "x" ? p_Nm : 0,
+        dir === "z" ? p_Nm : 0
+      ));
+      continue;
     }
+    const qa = pA * 1e3 * f, qb = pB * 1e3 * f;
+    zetRandkrachten(verdeelRandlastConsistent(
+      rand.nodeIds,
+      rand.s,
+      a * rand.L,
+      b * rand.L,
+      dir === "x" ? qa : 0,
+      dir === "z" ? qa : 0,
+      dir === "x" ? qb : 0,
+      dir === "z" ? qb : 0
+    ));
+  }
+  const randPls = input.edgePointLoads ?? [];
+  for (const pl of randPls) {
+    const rand = randKnopenVan(pl.plateId, pl, "een puntlast op de plaatrand");
+    const t = pl.posFrac;
+    if (typeof t !== "number" || !Number.isFinite(t) || t < 0 || t > 1) {
+      throw new Error(
+        `Plaat ${pl.plateId}: een puntlast op de plaatrand heeft ` + (t === void 0 ? "geen positie" : `een positie buiten de rand (posFrac ${t})`) + ". Geef posFrac als fractie 0 \u2026 1 langs de rand, gemeten vanaf de beginhoek."
+      );
+    }
+    const f = loadFactor ? loadFactor(pl.caseId) : 1;
+    if (f === 0) continue;
+    const fx = (pl.fx ?? 0) * f, fz = (pl.fz ?? 0) * f;
+    if (fx === 0 && fz === 0) continue;
+    zetRandkrachten(verdeelRandpuntlastConsistent(rand.nodeIds, rand.s, t * rand.L, fx, fz));
   }
   const pasKnooplastToe = (meshNid, fx_N, fz_N, my_Nmm, f) => {
     const node = mesh.getNode(meshNid);
@@ -5653,7 +6021,7 @@ function buildMesh(input, loadFactor) {
       }
     }
   }
-  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer };
+  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen };
 }
 function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer) {
   const displacements = /* @__PURE__ */ new Map();
@@ -5891,7 +6259,11 @@ function logMet(voorvoegsel) {
   if (!opvanger) return void 0;
   return (r) => opvanger({ ...r, tekst: `[${voorvoegsel}] ${r.tekst}` });
 }
-function metKnoopnummer(e, nodeIdMap) {
+function metKnoopnummer(e, nodeIdMap, plateInfo = []) {
+  if (e instanceof PlaatElementFout) {
+    const plaat = plateInfo.find((pi) => pi.region.elementIds.includes(e.meshElementId));
+    return new Error(plaat ? `Plaat ${plaat.plateId}: ${e.message}` : e.message);
+  }
   if (!(e instanceof SingulierStelselFout)) return e;
   for (const [uiId, meshId] of nodeIdMap) {
     if (meshId === e.meshKnoopId) return new Error(e.tekstVoor(`knoop ${uiId}`));
@@ -5928,16 +6300,17 @@ function eisEindigeUitkomst(r, wat) {
   return r;
 }
 function solve(input) {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input);
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(input);
   const heeftPlaten = plateInfo.length > 0;
   let engineResult;
   try {
     engineResult = solveNonlinear(mesh, {
       analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
-      geometricNonlinear: false
+      geometricNonlinear: false,
+      randKoppelingen
     });
   } catch (e) {
-    throw metKnoopnummer(e, nodeIdMap);
+    throw metKnoopnummer(e, nodeIdMap, plateInfo);
   }
   const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
   return eisEindigeUitkomst(
@@ -5948,7 +6321,7 @@ function solve(input) {
 function solveAllCases(input) {
   const perCase = /* @__PURE__ */ new Map();
   for (const c of input.cases) {
-    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input, (caseId) => caseId === c.id ? 1 : 0);
+    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(input, (caseId) => caseId === c.id ? 1 : 0);
     if (!meshHeeftLasten(mesh)) continue;
     const heeftPlaten = plateInfo.length > 0;
     let engineResult;
@@ -5956,10 +6329,11 @@ function solveAllCases(input) {
       engineResult = solveNonlinear(mesh, {
         analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
         geometricNonlinear: false,
-        onLog: logMet(c.name)
+        onLog: logMet(c.name),
+        randKoppelingen
       });
     } catch (e) {
-      throw metKnoopnummer(e, nodeIdMap);
+      throw metKnoopnummer(e, nodeIdMap, plateInfo);
     }
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
     perCase.set(c.id, eisEindigeUitkomst(
@@ -6001,7 +6375,7 @@ function getSecondOrderInput(perCase) {
   return getSecondOrderState(perCase)?.input;
 }
 function solveCombinationSecondOrder(input, combo) {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(
     input,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0
   );
@@ -6011,6 +6385,7 @@ function solveCombinationSecondOrder(input, combo) {
     const engineResult = solveNonlinear(mesh, {
       analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
       geometricNonlinear: true,
+      randKoppelingen,
       // Geïtereerde P-Δ convergeert met ratio ≈ P/P_kr per iteratie; 100
       // iteraties dekt tot P ≈ 0.87·P_kr bij tol 1e-6. Daarboven → nette fout.
       maxIterations: 100,
@@ -6035,7 +6410,7 @@ function solveCombinationSecondOrder(input, combo) {
       ` in combinatie "${combo.name}"`
     );
   } catch (e) {
-    const vertaald = metKnoopnummer(e, nodeIdMap);
+    const vertaald = metKnoopnummer(e, nodeIdMap, plateInfo);
     if (vertaald !== e) throw vertaald;
     const msg = e instanceof Error ? e.message : String(e);
     if (/P-Delta/.test(msg)) {
@@ -7883,7 +8258,8 @@ function zijdelingseEis(beam, data, slsCombos) {
   const noemer = hoogteMm > 0 ? Math.ceil(300 * lengteMm / hoogteMm) : 300;
   const grensMm = noemer > 0 ? lengteMm / noemer : 0;
   const karakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
-  const kandidaten = karakteristiek.length > 0 ? karakteristiek : slsCombos;
+  const nietHerkend = slsCombos.filter((c) => soortVanCombinatie(c) === null);
+  const kandidaten = karakteristiek.length > 0 ? [...karakteristiek, ...nietHerkend] : slsCombos;
   const gemeten = [];
   for (const combo of kandidaten) {
     const r = data.combinationResults.get(combo.id) ?? null;
@@ -7911,9 +8287,15 @@ function zijdelingseEis(beam, data, slsCombos) {
       `u = ${nl2(u, 2)} mm, de grootste over alle BGT-combinaties; maatgevend is "${maatgevend.combo.name}". LET OP: het model kent GEEN karakteristieke combinatie (uitdrukking 6.14b). Dit is dus geen toetsing volgens A1.4.3(7), maar een vervanger \u2014 voeg de karakteristieke combinaties toe (of kies de standaardcombinaties) om de eis letterlijk uit te voeren.`
     );
   } else {
+    const nietHerkendGemeten = gemeten.filter((g) => nietHerkend.includes(g.combo));
     notes.push(
-      `u = ${nl2(u, 2)} mm: de grootste horizontale verplaatsing over de ${gemeten.length} karakteristieke BGT-combinaties (6.14b) \u2014 ` + gemeten.map((g) => `"${g.combo.name}" ${nl2(g.u, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.combo.name}".`
+      `u = ${nl2(u, 2)} mm: de grootste horizontale verplaatsing over de ${gemeten.length - nietHerkendGemeten.length} karakteristieke BGT-combinaties (6.14b)` + (nietHerkendGemeten.length > 0 ? ` en ${nietHerkendGemeten.length} niet herkende BGT-combinatie(s)` : "") + " \u2014 " + gemeten.map((g) => `"${g.combo.name}" ${nl2(g.u, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.combo.name}".`
     );
+    if (nietHerkendGemeten.length > 0) {
+      notes.push(
+        "Ook meegewogen, veilig-zijdig: " + nietHerkendGemeten.map((g) => `"${g.combo.name}"`).join(", ") + '. Deze BGT-combinatie(s) zijn niet als 6.14b, 6.15b of 6.16b herkend (geen kenmerk, en de naam bevat geen "karakter", "frequent" of "quasi"); welke uitdrukking ze zijn is niet af te lezen, en weglaten zou een grotere verplaatsing stil laten vallen.'
+      );
+    }
     const zonderLeiding = nooitLeidend(karakteristiek);
     if (zonderLeiding.length > 0) {
       notes.push(
@@ -7954,16 +8336,17 @@ function vloerDakEis(beam, data, slsCombos) {
     }
     if (!gevonden) ontbreekt.push(norm.uitdrukking);
   }
-  if (gewogen.length === 0 && slsCombos.length > 0) {
-    const combo = slsCombos[0];
+  const nietHerkend = [];
+  for (const combo of slsCombos) {
+    if (soortVanCombinatie(combo) !== null) continue;
     const result = data.combinationResults.get(combo.id) ?? null;
-    if (result && result.elements.has(beam.id)) {
-      gewogen.push({
-        naam: combo.name,
-        uitdrukking: "niet herkend als 6.14b/6.15b/6.16b",
-        w: extractFieldDeflectionMm(beam, result)
-      });
-    }
+    if (!result || !result.elements.has(beam.id)) continue;
+    gewogen.push({
+      naam: combo.name,
+      uitdrukking: "niet herkend als 6.14b/6.15b/6.16b",
+      w: extractFieldDeflectionMm(beam, result)
+    });
+    nietHerkend.push(combo.name);
   }
   let maatgevend = gewogen.length > 0 ? gewogen[0] : null;
   for (const g of gewogen) {
@@ -7979,6 +8362,11 @@ function vloerDakEis(beam, data, slsCombos) {
       "w is de grootste zakking over de BGT-combinaties die NEN-EN 1990 A1.4.3 aanwijst en die dit model kent: " + gewogen.map((g) => `"${g.naam}" (${g.uitdrukking}) ${nl2(g.w, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.naam}".`,
       `De rekenkern leidt w_fin \xE9n w_add uit \xE9\xE9n zakking af, terwijl de norm er twee combinaties voor aanwijst: w_max bij de QUASI-BLIJVENDE combinatie (uitdrukking 6.16b, A1.4.3(4)) en w2 + w3 bij ${wAddCombinatieVanKlasse(klasse)}. Door de grootste van de voorgeschreven combinaties te nemen is geen van beide toetsen lichter dan de norm vraagt; is de maatgevende combinatie zwaarder dan de voorgeschreven, dan valt de toets strenger uit.`
     );
+    if (nietHerkend.length > 0) {
+      notes.push(
+        "Ook meegewogen, veilig-zijdig: " + nietHerkend.map((n) => `"${n}"`).join(", ") + '. Deze BGT-combinatie(s) zijn niet als 6.14b, 6.15b of 6.16b herkend (geen kenmerk, en de naam bevat geen "karakter", "frequent" of "quasi"); welke uitdrukking ze zijn is niet af te lezen, en weglaten zou een grotere zakking stil laten vallen. Is een ervan een van de drie, geef haar dan een herkenbare naam.'
+      );
+    }
     if (ontbreekt.length > 0) {
       notes.push(
         `Niet meegewogen omdat dit model ze niet kent of niet heeft doorgerekend: uitdrukking ${ontbreekt.join(" en ")}. Zit de combinatie die A1.4.3 voor deze categorie voorschrijft daarbij, dan is de zakking hierboven een vervanger en geen letterlijke uitvoering van dat artikel.`
@@ -8147,6 +8535,138 @@ function buildSteelCheckInputs(ruweData) {
   return { inputs, skipped };
 }
 
+// src/lib/belastingduur.ts
+var DUURKLASSEN = [
+  "Permanent",
+  "LongTerm",
+  "MediumTerm",
+  "ShortTerm",
+  "Instantaneous"
+];
+var DUURKLASSE_NAAM = {
+  Permanent: "blijvend",
+  LongTerm: "lang",
+  MediumTerm: "middellang",
+  ShortTerm: "kort",
+  Instantaneous: "zeer kort"
+};
+var rang = (d) => DUURKLASSEN.indexOf(d);
+function langsteKlasse(klassen) {
+  return klassen.reduce((a, b) => rang(b) < rang(a) ? b : a, "Instantaneous");
+}
+function duurklasseVanGeval(lc) {
+  switch (lc.type) {
+    case "dead":
+      return { klasse: "Permanent", reden: "blijvend: eigen gewicht (NB tabel 2.2)" };
+    case "snow":
+      return { klasse: "ShortTerm", reden: "kort: sneeuw (NB tabel 2.2)" };
+    case "wind":
+      return { klasse: "ShortTerm", reden: "kort: wind (NB tabel 2.2)" };
+    case "live": {
+      const cat = lc.categorie ?? "A";
+      switch (cat) {
+        case "A":
+        case "B":
+        case "C":
+        case "D":
+          return {
+            klasse: "MediumTerm",
+            reden: `middellang: opgelegde vloerbelasting, categorie ${cat}${lc.categorie ? "" : " (geen categorie = A)"} (NB tabel 2.2)`
+          };
+        case "E":
+        case "industrie-lang":
+          return { klasse: "LongTerm", reden: `lang: opslag, categorie ${cat} (NB tabel 2.2)` };
+        case "H":
+          return {
+            klasse: "ShortTerm",
+            reden: "kort: onderhoudsbelasting op daken, categorie H \u2014 tabel 2.2 noemt daken niet; kortdurend is een besluit van de constructeur (september 2026)"
+          };
+        default:
+          return {
+            klasse: "MediumTerm",
+            reden: `middellang: categorie ${cat} staat niet in tabel 2.2; veilig-zijdig de langere klasse aangehouden (een langere klasse geeft een lagere k_mod)`
+          };
+      }
+    }
+    default:
+      return {
+        klasse: null,
+        reden: `type ${lc.type === "other" ? '"overig"' : "onbekend"} heeft geen belastingduurklasse en maakt de duur niet korter`
+      };
+  }
+}
+var gevalNaam = (lc) => `geval ${lc.id} "${lc.name}"`;
+function leidAf(combinatie, gevallen, gevuld) {
+  const dragend = [];
+  const notities = [];
+  for (const [id, factor] of combinatie.factors) {
+    if (factor === 0) continue;
+    const lc = gevallen.get(id);
+    if (!lc) {
+      notities.push(`geval ${id} bestaat niet en telt niet mee`);
+      continue;
+    }
+    if (gevuld && !gevuld(id)) {
+      notities.push(`${gevalNaam(lc)} heeft geen werkzame last en telt niet mee`);
+      continue;
+    }
+    const duur = duurklasseVanGeval(lc);
+    if (duur.klasse === null) {
+      notities.push(`${gevalNaam(lc)}: ${duur.reden}`);
+      continue;
+    }
+    dragend.push({ lc, duur });
+  }
+  if (!gevuld) {
+    notities.push(
+      "of een geval een werkzame last heeft is niet meegegeven; elk geval met een factor telt mee"
+    );
+  }
+  let klasse;
+  let basis;
+  if (dragend.length === 0) {
+    klasse = "Permanent";
+    basis = "geen belastinggeval met werkzame last en een duurklasse; blijvend aangehouden (de langste klasse, veilig-zijdig)";
+  } else {
+    klasse = dragend.reduce((a, d) => rang(d.duur.klasse) > rang(a) ? d.duur.klasse : a, "Permanent");
+    const bepalend = dragend.find((d) => d.duur.klasse === klasse);
+    basis = klasse === "Permanent" ? `alleen blijvende belasting: ${gevalNaam(bepalend.lc)}, ${bepalend.duur.reden}` : `kortste: ${gevalNaam(bepalend.lc)}, ${bepalend.duur.reden}`;
+  }
+  if (notities.length > 0) basis += `; ${notities.join("; ")}`;
+  const alleenBlijvend = dragend.length > 0 && dragend.every((d) => d.duur.klasse === "Permanent");
+  return { klasse, basis, alleenBlijvend };
+}
+function belastingduurPerCombinatie(p) {
+  const gevallen = new Map(p.loadCases.map((lc) => [lc.id, lc]));
+  const uit = [];
+  for (const c of p.combinaties) {
+    if (c.type !== "uls") continue;
+    const a = leidAf(c, gevallen, p.gevuld);
+    let klasse = a.klasse;
+    let basis = a.basis;
+    if (p.ondergrens !== void 0) {
+      const naam = DUURKLASSE_NAAM[p.ondergrens];
+      if (rang(p.ondergrens) < rang(klasse)) {
+        klasse = p.ondergrens;
+        basis += `; verlengd tot ${naam} door de opgegeven belastingduur van de staaf (een opgegeven klasse werkt als ondergrens)`;
+      } else if (rang(p.ondergrens) > rang(klasse)) {
+        basis += `; de opgegeven belastingduur "${naam}" van de staaf is korter en telt niet: een opgegeven klasse mag de duur nooit korter maken dan de belasting in de combinatie (3.1.3(2))`;
+      }
+    }
+    uit.push({ combination_id: c.id, load_duration: klasse, basis: `${c.name}: ${basis}` });
+  }
+  return uit;
+}
+function ontbrekendeBlijvendeCombinatie(p) {
+  const gevallen = new Map(p.loadCases.map((lc) => [lc.id, lc]));
+  const blijvend = p.loadCases.filter((lc) => lc.type === "dead" && (!p.gevuld || p.gevuld(lc.id)));
+  if (blijvend.length === 0) return null;
+  const uls = p.combinaties.filter((c) => c.type === "uls");
+  if (uls.length === 0) return null;
+  const heeft = uls.some((c) => leidAf(c, gevallen, p.gevuld).alleenBlijvend);
+  return heeft ? null : blijvend;
+}
+
 // src/lib/timberCheckBuilder.ts
 function mapServiceClass(sc) {
   switch (sc) {
@@ -8269,6 +8789,9 @@ function buildTimberCheckInputs(ruweData) {
   const slsCombos = data.combinations.filter((c) => c.type === "sls");
   const slsKarakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
   const slsQuasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
+  const slsNietHerkend = slsCombos.filter((c) => soortVanCombinatie(c) === null);
+  const metLast = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
+  const gevuld = metLast ? (id) => metLast.has(id) : void 0;
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
     const grade = matchSupportedTimberGrade(materialName, grades);
@@ -8347,12 +8870,16 @@ function buildTimberCheckInputs(ruweData) {
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
     const inst = grootsteZakking(
       beam,
-      slsKarakteristiek.length > 0 ? slsKarakteristiek : slsCombos,
+      slsKarakteristiek.length > 0 ? [...slsKarakteristiek, ...slsNietHerkend] : slsCombos,
       data.combinationResults
     );
     const wInstMm = inst ? inst.w : 0;
+    const nietHerkendGemeten = inst ? inst.alle.filter((a) => slsNietHerkend.includes(a.combo)) : [];
     const instNotes = inst ? [
-      (slsKarakteristiek.length > 0 ? "w_inst is de grootste zakking over de karakteristieke BGT-combinaties (6.14b): " : "LET OP: het model kent GEEN karakteristieke BGT-combinatie (6.14b); w_inst is daarom de grootste zakking over alle BGT-combinaties: ") + inst.alle.map((a) => `"${a.combo.name}" ${a.w.toFixed(2).replace(".", ",")} mm`).join("; ") + `. Maatgevend is "${inst.combo.name}".`
+      (slsKarakteristiek.length > 0 ? "w_inst is de grootste zakking over de karakteristieke BGT-combinaties (6.14b): " : "LET OP: het model kent GEEN karakteristieke BGT-combinatie (6.14b); w_inst is daarom de grootste zakking over alle BGT-combinaties: ") + inst.alle.map((a) => `"${a.combo.name}" ${a.w.toFixed(2).replace(".", ",")} mm`).join("; ") + `. Maatgevend is "${inst.combo.name}".`,
+      ...slsKarakteristiek.length > 0 && nietHerkendGemeten.length > 0 ? [
+        'Ook meegewogen, veilig-zijdig: BGT-combinatie(s) die niet als 6.14b, 6.15b of 6.16b herkend worden (geen kenmerk, en de naam bevat geen "karakter", "frequent" of "quasi"): ' + nietHerkendGemeten.map((a) => `"${a.combo.name}"`).join(", ") + ". Welke uitdrukking ze zijn is niet af te lezen; ze weglaten zou een grotere zakking stil laten vallen."
+      ] : []
     ] : [
       "GEEN UITKOMST voor w_inst: geen enkele BGT-combinatie levert een zakking voor deze staaf \u2014 reken het model opnieuw door. De 0 is een ontbrekende uitkomst."
     ];
@@ -8365,6 +8892,12 @@ function buildTimberCheckInputs(ruweData) {
     );
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+    const duurPerCombinatie = data.loadCases ? belastingduurPerCombinatie({
+      combinaties: ulsCombos,
+      loadCases: data.loadCases,
+      gevuld,
+      ondergrens: cfg.loadDuration !== void 0 ? mapLoadDuration(cfg.loadDuration) : void 0
+    }) : [];
     inputs.push({
       beam_id: beam.id,
       width_mm: bMm,
@@ -8375,7 +8908,10 @@ function buildTimberCheckInputs(ruweData) {
       ...custom ? { custom_section: custom } : {},
       strength_class: grade,
       service_class: mapServiceClass(cfg.serviceClass),
-      load_duration: mapLoadDuration(cfg.loadDuration),
+      // Met de lijst per combinatie is dit alleen nog de terugval voor een
+      // combinatie die er niet in staat; de LANGSTE klasse is de veilige kant.
+      load_duration: duurPerCombinatie.length > 0 ? langsteKlasse(duurPerCombinatie.map((d) => d.load_duration)) : mapLoadDuration(cfg.loadDuration),
+      load_duration_per_combination: duurPerCombinatie,
       length_m: lengthMm / 1e3,
       forces_envelope: forcesEnvelope,
       // Kniklengtes per as; leeg → systeemlengte, net als bij staal.
@@ -8480,6 +9016,159 @@ function buildTimberCheckInputs(ruweData) {
         ...instNotes,
         ...wQuasi.notes
       ]
+    });
+  }
+  return { inputs, skipped };
+}
+
+// src/lib/cltCheckBuilder.ts
+var CLT_STROOKBREEDTE_MM = 1e3;
+function standaardRichting(index) {
+  return index % 2 === 0 ? "Longitudinal" : "Transverse";
+}
+function isCltProfiel(profileName) {
+  return /^\s*CLT\b/i.test(profileName ?? "");
+}
+var LAAG_TOKEN = /^(\d+(?:[.,]\d+)?)([LD])?(?::([A-Za-z]+\d+[A-Za-z]*))?$/i;
+function parseCltProfiel(profileName, standaardKlasse) {
+  const naam = profileName?.trim();
+  if (!naam) return null;
+  const m = /^CLT\s+(\S+)(?:\s+b\s*=?\s*(\d+(?:[.,]\d+)?))?$/i.exec(naam);
+  if (!m) return null;
+  const breedte = m[2] ? parseFloat(m[2].replace(",", ".")) : CLT_STROOKBREEDTE_MM;
+  if (!(breedte > 0)) return null;
+  const tokens = m[1].split("/");
+  if (tokens.length < 3) return null;
+  const layers = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tm = LAAG_TOKEN.exec(tokens[i]);
+    if (!tm) return null;
+    const dikte = parseFloat(tm[1].replace(",", "."));
+    if (!(dikte > 0)) return null;
+    const richting = tm[2] ? tm[2].toUpperCase() === "L" ? "Longitudinal" : "Transverse" : standaardRichting(i);
+    layers.push({
+      thickness_mm: dikte,
+      orientation: richting,
+      strength_class: tm[3] ?? standaardKlasse
+    });
+  }
+  return { width_mm: breedte, layers };
+}
+function cltMechanica(layup, eVanKlasse) {
+  if (!(layup.width_mm > 0) || layup.layers.length === 0) return null;
+  const lagen = [];
+  let z = 0;
+  let ea = 0;
+  let eaz = 0;
+  for (const l of layup.layers) {
+    if (!(l.thickness_mm > 0)) return null;
+    const e0 = eVanKlasse(l.strength_class);
+    if (e0 === void 0) return null;
+    const e = l.orientation === "Longitudinal" ? e0 : 0;
+    const zBoven = z;
+    const zOnder = z + l.thickness_mm;
+    z = zOnder;
+    const a = layup.width_mm * l.thickness_mm;
+    ea += e * a;
+    eaz += e * a * (zBoven + zOnder) / 2;
+    lagen.push({ zBoven, zOnder, e, richting: l.orientation });
+  }
+  if (!(ea > 0)) return null;
+  const z0 = eaz / ea;
+  return { breedte: layup.width_mm, hoogte: z, z0, eiEf: eiEfVan(layup.width_mm, z0, lagen), eaEf: ea, lagen };
+}
+function eiEfVan(b, z0, lagen) {
+  let ei = 0;
+  for (const l of lagen) {
+    if (l.e === 0) continue;
+    const t = l.zOnder - l.zBoven;
+    const arm = (l.zBoven + l.zOnder) / 2 - z0;
+    ei += l.e * (b * t * t * t / 12 + b * t * arm * arm);
+  }
+  return ei;
+}
+function cltSolverDoorsnede(layup, eVanKlasse) {
+  const mech = cltMechanica(layup, eVanKlasse);
+  if (!mech) return null;
+  const eRef = mech.lagen.find((l) => l.e > 0)?.e;
+  if (!eRef) return null;
+  return {
+    E: eRef,
+    A: mech.eaEf / eRef,
+    I: mech.eiEf / eRef,
+    aBruto: mech.breedte * mech.hoogte
+  };
+}
+function buildCltCheckInputs(ruweData) {
+  const data = toetsdataInReferentierichting(ruweData);
+  const inputs = [];
+  const skipped = [];
+  const grades = data.supportedGrades && data.supportedGrades.length > 0 ? data.supportedGrades : SUPPORTED_TIMBER_GRADES;
+  const ulsCombos = data.combinations.filter((c) => c.type === "uls");
+  const metLast = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
+  const gevuld = metLast ? (id) => metLast.has(id) : void 0;
+  for (const beam of data.beams) {
+    if (!isCltProfiel(beam.profile)) continue;
+    const materialName = beam.material?.trim() ?? "";
+    const grade = matchSupportedTimberGrade(materialName, grades);
+    if (!grade) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `materiaal "${materialName || "\u2014"}" is geen ondersteunde sterkteklasse voor de lamellen \u2014 kies bijv. C24`
+      });
+      continue;
+    }
+    const layup = parseCltProfiel(beam.profile, grade);
+    if (!layup) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `profiel "${beam.profile}" is geen geldige CLT-opbouw \u2014 gebruik bijv. "CLT 40/20/40/20/40" (lagen van boven naar beneden, optioneel L/D en :klasse per laag, optioneel b600)`
+      });
+      continue;
+    }
+    const onbekend = layup.layers.find((l) => !matchSupportedTimberGrade(l.strength_class, grades));
+    if (onbekend) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `sterkteklasse "${onbekend.strength_class}" in de opbouw is onbekend \u2014 bekend zijn ${grades.join(", ")}`
+      });
+      continue;
+    }
+    if (!layup.layers.some((l) => l.orientation === "Longitudinal")) {
+      skipped.push({ beamId: beam.id, reason: "de CLT-opbouw heeft geen lengtelaag \u2014 niets draagt in de spanrichting" });
+      continue;
+    }
+    const lengthMm = beamLengthMm(beam, data.nodes);
+    if (lengthMm <= 0) {
+      skipped.push({ beamId: beam.id, reason: "staaflengte is 0 \u2014 knopen ontbreken" });
+      continue;
+    }
+    const hasAnyResult = ulsCombos.some((c) => data.combinationResults.get(c.id)?.elements.has(beam.id));
+    if (!hasAnyResult) {
+      skipped.push({
+        beamId: beam.id,
+        reason: "geen krachtsverloop in de UGT-combinaties \u2014 reken het model eerst door"
+      });
+      continue;
+    }
+    const cfg = beam.checkConfig ?? {};
+    const duurPerCombinatie = data.loadCases ? belastingduurPerCombinatie({
+      combinaties: ulsCombos,
+      loadCases: data.loadCases,
+      gevuld,
+      ondergrens: cfg.loadDuration !== void 0 ? mapLoadDuration(cfg.loadDuration) : void 0
+    }) : [];
+    inputs.push({
+      beam_id: beam.id,
+      layup,
+      service_class: mapServiceClass(cfg.serviceClass),
+      load_duration: duurPerCombinatie.length > 0 ? langsteKlasse(duurPerCombinatie.map((d) => d.load_duration)) : mapLoadDuration(cfg.loadDuration),
+      load_duration_per_combination: duurPerCombinatie,
+      length_m: lengthMm / 1e3,
+      forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
+      // NB bij 6.1.7: k_cr = 1,0 voor liggers met een prismatische doorsnede.
+      k_cr: 1,
+      load_sharing: false
     });
   }
   return { inputs, skipped };
@@ -8630,85 +9319,6 @@ function parseConcreteSection(profileName) {
       h_f_mm: hF,
       flange_at_bottom: flensOnder
     }
-  };
-}
-
-// src/lib/cltCheckBuilder.ts
-var CLT_STROOKBREEDTE_MM = 1e3;
-function standaardRichting(index) {
-  return index % 2 === 0 ? "Longitudinal" : "Transverse";
-}
-function isCltProfiel(profileName) {
-  return /^\s*CLT\b/i.test(profileName ?? "");
-}
-var LAAG_TOKEN = /^(\d+(?:[.,]\d+)?)([LD])?(?::([A-Za-z]+\d+[A-Za-z]*))?$/i;
-function parseCltProfiel(profileName, standaardKlasse) {
-  const naam = profileName?.trim();
-  if (!naam) return null;
-  const m = /^CLT\s+(\S+)(?:\s+b\s*=?\s*(\d+(?:[.,]\d+)?))?$/i.exec(naam);
-  if (!m) return null;
-  const breedte = m[2] ? parseFloat(m[2].replace(",", ".")) : CLT_STROOKBREEDTE_MM;
-  if (!(breedte > 0)) return null;
-  const tokens = m[1].split("/");
-  if (tokens.length < 3) return null;
-  const layers = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const tm = LAAG_TOKEN.exec(tokens[i]);
-    if (!tm) return null;
-    const dikte = parseFloat(tm[1].replace(",", "."));
-    if (!(dikte > 0)) return null;
-    const richting = tm[2] ? tm[2].toUpperCase() === "L" ? "Longitudinal" : "Transverse" : standaardRichting(i);
-    layers.push({
-      thickness_mm: dikte,
-      orientation: richting,
-      strength_class: tm[3] ?? standaardKlasse
-    });
-  }
-  return { width_mm: breedte, layers };
-}
-function cltMechanica(layup, eVanKlasse) {
-  if (!(layup.width_mm > 0) || layup.layers.length === 0) return null;
-  const lagen = [];
-  let z = 0;
-  let ea = 0;
-  let eaz = 0;
-  for (const l of layup.layers) {
-    if (!(l.thickness_mm > 0)) return null;
-    const e0 = eVanKlasse(l.strength_class);
-    if (e0 === void 0) return null;
-    const e = l.orientation === "Longitudinal" ? e0 : 0;
-    const zBoven = z;
-    const zOnder = z + l.thickness_mm;
-    z = zOnder;
-    const a = layup.width_mm * l.thickness_mm;
-    ea += e * a;
-    eaz += e * a * (zBoven + zOnder) / 2;
-    lagen.push({ zBoven, zOnder, e, richting: l.orientation });
-  }
-  if (!(ea > 0)) return null;
-  const z0 = eaz / ea;
-  return { breedte: layup.width_mm, hoogte: z, z0, eiEf: eiEfVan(layup.width_mm, z0, lagen), eaEf: ea, lagen };
-}
-function eiEfVan(b, z0, lagen) {
-  let ei = 0;
-  for (const l of lagen) {
-    if (l.e === 0) continue;
-    const t = l.zOnder - l.zBoven;
-    const arm = (l.zBoven + l.zOnder) / 2 - z0;
-    ei += l.e * (b * t * t * t / 12 + b * t * arm * arm);
-  }
-  return ei;
-}
-function cltSolverDoorsnede(layup, eVanKlasse) {
-  const mech = cltMechanica(layup, eVanKlasse);
-  if (!mech) return null;
-  const eRef = mech.lagen.find((l) => l.e > 0)?.e;
-  if (!eRef) return null;
-  return {
-    E: eRef,
-    A: mech.eaEf / eRef,
-    I: mech.eiEf / eRef,
-    aBruto: mech.breedte * mech.hoogte
   };
 }
 
@@ -10097,6 +10707,29 @@ function meldingenBelastinggevallen(p) {
   })) {
     meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a) });
   }
+  if (p.metHout) {
+    const zonder = ontbrekendeBlijvendeCombinatie({
+      combinaties: p.combinations,
+      loadCases: p.loadCases,
+      gevuld
+    });
+    if (zonder) {
+      meldingen.push({
+        niveau: "fout",
+        caseId: null,
+        vervangAdvies: true,
+        tekst: `Er staan houten staven in het model en ${zonder.map((c) => naamVan(c.id)).join(", ")} ${zonder.length === 1 ? "is een blijvend belastinggeval" : "zijn blijvende belastinggevallen"}, maar geen enkele UGT-combinatie bevat alleen blijvende belasting (zoals 6.10a zonder veranderlijke belasting, 1,35\xB7G). EN 1995-1-1 3.1.3(2): k_mod hoort bij de kortste belastingsduur in een combinatie. Zonder zo'n combinatie wordt de houttoets nooit met k_mod "blijvend" (0,60 in klimaatklasse 1 en 2) uitgevoerd, terwijl juist die bij een kleine veranderlijke belasting maatgevend is \u2014 de toetsing kan dan te gunstig uitvallen. Voeg de combinatie toe, of gebruik de standaardcombinaties.`
+      });
+    }
+  }
+  const nietHerkendeBgt = p.combinations.filter((c) => c.type === "sls" && soortVanCombinatie(c) === null);
+  if (nietHerkendeBgt.length > 0) {
+    meldingen.push({
+      niveau: "waarschuwing",
+      caseId: null,
+      tekst: `BGT-combinatie ${nietHerkendeBgt.map((c) => `${c.id} ("${c.name}")`).join(", ")} ${nietHerkendeBgt.length === 1 ? "is" : "zijn"} niet herkend als karakteristiek (6.14b), frequent (6.15b) of quasi-blijvend (6.16b): het kenmerk ontbreekt en de naam bevat geen "karakter", "frequent" of "quasi". De doorbuigingstoets van staal en hout weegt ${nietHerkendeBgt.length === 1 ? "haar" : "ze"} veilig-zijdig mee in de omhullende; de betontoetsing gebruikt ${nietHerkendeBgt.length === 1 ? "haar" : "ze"} NIET (de scheurwijdte van \xA77.3 vraagt 6.15b, de kruip van \xA75.8.4 vraagt 6.16b). Is de combinatie een van de drie, geef haar dan een herkenbare naam.`
+    });
+  }
   if (p.gevolgklasse !== void 0) {
     const wind = verouderdeWindCombinaties({ loadCases: p.loadCases, combinations: alle, gevolgklasse: p.gevolgklasse });
     if (wind) {
@@ -10448,6 +11081,49 @@ function controleerDoorsneden(beams) {
     onbekend
   );
 }
+function plaatNaarSolverInput(p) {
+  const d = withPlateDefaults(p);
+  return {
+    id: d.id,
+    nodeIds: d.nodeIds,
+    thickness: d.thickness,
+    E: d.E,
+    nu: d.nu,
+    rho: d.rho,
+    meshSize: d.meshSize,
+    // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
+    // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
+    ...d.meshCache ? { meshCache: d.meshCache } : {}
+  };
+}
+function randlastNaarSolverInput(l) {
+  if (l.type !== "edgeLoad" || l.plateId === void 0 || l.q === void 0) return null;
+  return {
+    plateId: l.plateId,
+    ...l.edge !== void 0 ? { edge: l.edge } : {},
+    ...l.edgeIndex !== void 0 ? { edgeIndex: l.edgeIndex } : {},
+    p: l.q,
+    // Deellast en trapezium: dezelfde velden en dezelfde betekenis als bij een
+    // staaf, maar langs de rand vanaf de beginhoek. Alleen aanwezig als ze
+    // ingevoerd zijn, zodat een volle gelijkmatige randlast byte-gelijk blijft.
+    ...l.qStart !== void 0 ? { pStart: l.qStart } : {},
+    ...l.qEnd !== void 0 ? { pEnd: l.qEnd } : {},
+    ...l.startFrac !== void 0 ? { startFrac: l.startFrac } : {},
+    ...l.endFrac !== void 0 ? { endFrac: l.endFrac } : {},
+    dir: l.qDir
+  };
+}
+function randpuntlastNaarSolverInput(l) {
+  if (l.type !== "pointForce" || l.plateId === void 0) return null;
+  return {
+    plateId: l.plateId,
+    ...l.edge !== void 0 ? { edge: l.edge } : {},
+    ...l.edgeIndex !== void 0 ? { edgeIndex: l.edgeIndex } : {},
+    posFrac: l.posFrac,
+    fx: (l.fx ?? 0) * 1e3,
+    fz: (l.fz ?? 0) * 1e3
+  };
+}
 function bouwMultiInput(model) {
   controleerDoorsneden(model.beams);
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
@@ -10482,20 +11158,9 @@ function bouwMultiInput(model) {
       };
     }),
     supports: model.supports.map((s) => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
-    // Platen (wandschijven, P2.3): rekenvelden met defaults aangevuld —
-    // de engine meshet en schakelt zelf naar mixed_beam_plate.
-    plates: model.plates.map((p) => {
-      const d = withPlateDefaults(p);
-      return {
-        id: d.id,
-        nodeIds: d.nodeIds,
-        thickness: d.thickness,
-        E: d.E,
-        nu: d.nu,
-        rho: d.rho,
-        meshSize: d.meshSize
-      };
-    }),
+    // Platen (wandschijven, P2.3): rekenvelden met defaults aangevuld plus de
+    // meshcache — de engine meshet en schakelt zelf naar mixed_beam_plate.
+    plates: model.plates.map(plaatNaarSolverInput),
     cases: model.loadCases.map((lc) => ({ id: lc.id, name: lc.name })),
     loads: [],
     pointLoads: [],
@@ -10535,6 +11200,9 @@ function bouwMultiInput(model) {
         endFrac: l.endFrac,
         caseId: l.caseId
       });
+    } else if (l.type === "pointForce" && l.plateId !== void 0) {
+      const rp = randpuntlastNaarSolverInput(l);
+      (multiInput.edgePointLoads ??= []).push({ ...rp, caseId: l.caseId });
     } else if (l.type === "pointForce" && l.nodeId !== void 0) {
       multiInput.pointLoads.push({
         nodeId: l.nodeId,
@@ -10564,14 +11232,9 @@ function bouwMultiInput(model) {
         alpha: thermalAlphaForMaterial(beam?.material),
         caseId: l.caseId
       });
-    } else if (l.type === "edgeLoad" && l.plateId !== void 0 && l.q !== void 0) {
-      multiInput.edgeLoads.push({
-        plateId: l.plateId,
-        edge: l.edge ?? "top",
-        p: l.q,
-        dir: l.qDir,
-        caseId: l.caseId
-      });
+    } else if (l.type === "edgeLoad") {
+      const rl = randlastNaarSolverInput(l);
+      if (rl) multiInput.edgeLoads.push({ ...rl, caseId: l.caseId });
     }
   }
   return multiInput;
@@ -10944,7 +11607,11 @@ var CHECKCONFIG_VELDEN = [
   "betonStroken",
   "betonStaaltak",
   "betonKolom",
-  "spanningSigmaZ"
+  "spanningSigmaZ",
+  // De kipsteunafstand van hout (EN 1995-1-1 art. 6.3.3). De UI schrijft hem
+  // weg en `timberCheckBuilder` leest hem, maar hij stond hier niet: elk
+  // houtmodel met een kipsteunafstand werd langs de MCP-weg geweigerd.
+  "ltbSupportSpacing_m"
 ];
 var KOLOM_VELDEN = [
   "bracing",
@@ -11250,6 +11917,42 @@ function leesArray(model, veld, fouten) {
   }
   return waarde;
 }
+function keurCheckConfig(waarde, cpad) {
+  const fouten = [];
+  if (!isObject(waarde)) {
+    fouten.push(`${cpad}: moet een object zijn.`);
+    return fouten;
+  }
+  const cc = waarde;
+  keurVelden(cc, CHECKCONFIG_VELDEN, cpad, fouten);
+  keurGetal(cc.bucklingLengthY_m, `${cpad}.bucklingLengthY_m`, fouten, { positief: true });
+  keurGetal(cc.bucklingLengthZ_m, `${cpad}.bucklingLengthZ_m`, fouten, { positief: true });
+  keurGetal(cc.deflectionLimitNumerator, `${cpad}.deflectionLimitNumerator`, fouten, { positief: true });
+  keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
+  keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
+  keurGetal(cc.ltbSupportSpacing_m, `${cpad}.ltbSupportSpacing_m`, fouten, { positief: true });
+  keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
+  keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
+  if (cc.serviceClass !== void 0 && ![1, 2, 3].includes(cc.serviceClass)) {
+    fouten.push(`${cpad}.serviceClass: moet 1, 2 of 3 zijn.`);
+  }
+  for (const veld of ["lateralRestraints", "lateralRestraintsBottom"]) {
+    const lijst = cc[veld];
+    if (lijst === void 0) continue;
+    if (!Array.isArray(lijst) || !lijst.every(isGetal)) {
+      fouten.push(`${cpad}.${veld}: moet een array van getallen (fracties 0..1) zijn.`);
+    }
+  }
+  keurEnum(cc.betonMilieuklasse, MILIEUKLASSEN, `${cpad}.betonMilieuklasse`, fouten);
+  keurEnum(cc.betonConstructieklasse, CONSTRUCTIEKLASSEN, `${cpad}.betonConstructieklasse`, fouten);
+  keurEnum(cc.betonStaalsoort, SUPPORTED_REINFORCEMENT_GRADES, `${cpad}.betonStaalsoort`, fouten);
+  keurEnum(cc.betonStaaltak, STAALTAKKEN, `${cpad}.betonStaaltak`, fouten);
+  keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
+  keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
+  keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
+  keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
+  return fouten;
+}
 function controleerVelden(rauw) {
   const fouten = [];
   if (!isObject(rauw)) {
@@ -11303,38 +12006,7 @@ function controleerVelden(rauw) {
       }
     }
     if (b.checkConfig !== void 0) {
-      if (!isObject(b.checkConfig)) {
-        fouten.push(`${pad}.checkConfig: moet een object zijn.`);
-      } else {
-        const cc = b.checkConfig;
-        const cpad = `${pad}.checkConfig`;
-        keurVelden(cc, CHECKCONFIG_VELDEN, cpad, fouten);
-        keurGetal(cc.bucklingLengthY_m, `${cpad}.bucklingLengthY_m`, fouten, { positief: true });
-        keurGetal(cc.bucklingLengthZ_m, `${cpad}.bucklingLengthZ_m`, fouten, { positief: true });
-        keurGetal(cc.deflectionLimitNumerator, `${cpad}.deflectionLimitNumerator`, fouten, { positief: true });
-        keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
-        keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
-        keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
-        keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
-        if (cc.serviceClass !== void 0 && ![1, 2, 3].includes(cc.serviceClass)) {
-          fouten.push(`${cpad}.serviceClass: moet 1, 2 of 3 zijn.`);
-        }
-        for (const veld of ["lateralRestraints", "lateralRestraintsBottom"]) {
-          const lijst = cc[veld];
-          if (lijst === void 0) continue;
-          if (!Array.isArray(lijst) || !lijst.every(isGetal)) {
-            fouten.push(`${cpad}.${veld}: moet een array van getallen (fracties 0..1) zijn.`);
-          }
-        }
-        keurEnum(cc.betonMilieuklasse, MILIEUKLASSEN, `${cpad}.betonMilieuklasse`, fouten);
-        keurEnum(cc.betonConstructieklasse, CONSTRUCTIEKLASSEN, `${cpad}.betonConstructieklasse`, fouten);
-        keurEnum(cc.betonStaalsoort, SUPPORTED_REINFORCEMENT_GRADES, `${cpad}.betonStaalsoort`, fouten);
-        keurEnum(cc.betonStaaltak, STAALTAKKEN, `${cpad}.betonStaaltak`, fouten);
-        keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
-        keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
-        keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
-        keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
-      }
+      fouten.push(...keurCheckConfig(b.checkConfig, `${pad}.checkConfig`));
     }
   });
   const supports = leesArray(rauw, "supports", fouten);
@@ -11376,6 +12048,25 @@ function controleerVelden(rauw) {
         }
         if (!Array.isArray(p.meshCache.points) || !Array.isArray(p.meshCache.triangles)) {
           fouten.push(`${pad}.meshCache: \`points\` en \`triangles\` zijn verplichte arrays.`);
+        }
+        const randen = p.meshCache.edgeNodeIndices;
+        if (!Array.isArray(randen)) {
+          fouten.push(
+            `${pad}.meshCache.edgeNodeIndices: verplichte array met per plaatrand (rand i loopt van hoek i naar hoek i+1) de indices van de meshknopen op die rand. Zonder die lijsten vindt geen randlast, randpuntlast of staafaansluiting zijn rand.`
+          );
+        } else {
+          if (Array.isArray(p.nodeIds) && randen.length !== p.nodeIds.length) {
+            fouten.push(
+              `${pad}.meshCache.edgeNodeIndices: beschrijft ${randen.length} ${randen.length === 1 ? "rand" : "randen"}, maar de plaat heeft ${p.nodeIds.length} hoeken en dus ${p.nodeIds.length} randen.`
+            );
+          }
+          randen.forEach((rand, r) => {
+            if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => isGeheel(k) && k >= 0)) {
+              fouten.push(
+                `${pad}.meshCache.edgeNodeIndices[${r}]: moet een lijst van minstens twee puntindices (gehele getallen \u2265 0) zijn \u2014 de twee hoeken en de knopen ertussen.`
+              );
+            }
+          });
         }
       }
     }
@@ -11458,7 +12149,7 @@ function teltLastMee(last, loadCases) {
     scheefstandRichting: 1
   };
   const mi = bouwMultiInput(proef);
-  return mi.loads.length + (mi.pointLoads?.length ?? 0) + (mi.beamPointLoads?.length ?? 0) + (mi.thermalLoads?.length ?? 0) + (mi.edgeLoads?.length ?? 0) > 0;
+  return mi.loads.length + (mi.pointLoads?.length ?? 0) + (mi.beamPointLoads?.length ?? 0) + (mi.thermalLoads?.length ?? 0) + (mi.edgeLoads?.length ?? 0) + (mi.edgePointLoads?.length ?? 0) > 0;
 }
 function alsModelInvoer(m) {
   const arr = (waarde) => Array.isArray(waarde) ? waarde : [];
@@ -11486,6 +12177,7 @@ function gevallenMetLast(model) {
   for (const l of mi.beamPointLoads ?? []) noteer(l.caseId);
   for (const l of mi.thermalLoads ?? []) noteer(l.caseId);
   for (const l of mi.edgeLoads ?? []) noteer(l.caseId);
+  for (const l of mi.edgePointLoads ?? []) noteer(l.caseId);
   for (const p of mi.plates ?? []) noteer(p.selfWeightCaseId);
   return ids;
 }
@@ -11671,9 +12363,7 @@ function valideerModel(rauw, opties = {}) {
     }
     const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize : 500;
     const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
-    const cache = [p.meshCache, leesPlaatMeshCache(p.id)].find(
-      (c) => c && c.signature === handtekening
-    );
+    const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : void 0;
     if (!cache) {
       errors.push(
         `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als polygoonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. Reken via een projectbestand waarin het mesh is opgeslagen; de MCP-server genereert zelf geen meshes.`
@@ -11692,6 +12382,17 @@ function valideerModel(rauw, opties = {}) {
     }
     if (l.plateId !== void 0 && !plateIds.has(l.plateId)) {
       errors.push(`Last ${id} verwijst naar plaat ${l.plateId}, die niet bestaat.`);
+    } else if (l.plateId !== void 0) {
+      const plaat = plates.find((p) => p.id === l.plateId);
+      const hoeken = (plaat?.nodeIds ?? []).map((nid) => knoopById.get(nid));
+      if (plaat && hoeken.every((h) => h !== void 0)) {
+        const rand = bepaalPlaatRand(
+          hoeken,
+          { edge: l.edge, edgeIndex: l.edgeIndex },
+          1
+        );
+        if (!rand.ok) errors.push(`Last ${id} op plaat ${l.plateId}: ${rand.reden}`);
+      }
     }
     if (l.nodeId !== void 0) {
       if (!knoopById.has(l.nodeId)) {
@@ -11702,9 +12403,41 @@ function valideerModel(rauw, opties = {}) {
         );
       }
     }
+    const heeftRandadres = l.edge !== void 0 || l.edgeIndex !== void 0;
+    if (l.plateId !== void 0 && l.type !== "edgeLoad" && l.type !== "pointForce") {
+      errors.push(
+        `Last ${id} (type "${String(l.type)}") noemt een plaat (\`plateId\`), maar op een plaat kan alleen een randlast (edgeLoad) of een puntlast op een plaatrand (pointForce) staan. Deze last wordt daar niet meegerekend.`
+      );
+    }
+    if (heeftRandadres && l.plateId === void 0) {
+      errors.push(
+        `Last ${id} noemt een plaatrand (\`edge\`/\`edgeIndex\`) maar geen plaat (\`plateId\`); die rand hoort bij niets en wordt niet meegerekend.`
+      );
+    }
+    if (l.type === "pointForce" && l.plateId !== void 0) {
+      if (l.nodeId !== void 0 || l.beamId !== void 0) {
+        errors.push(
+          `Last ${id} is een puntlast op plaat ${l.plateId} \xE9n noemt een ${l.nodeId !== void 0 ? "knoop" : "staaf"}. E\xE9n last hoort op \xE9\xE9n plek te staan: geef \xF3f \`plateId\` met een rand en \`posFrac\`, \xF3f een knoop of staaf.`
+        );
+      }
+      if (l.posFrac === void 0) {
+        errors.push(
+          `Last ${id} is een puntlast op plaat ${l.plateId} zonder positie (\`posFrac\`: fractie 0..1 langs de rand vanaf de beginhoek). Een ontbrekende positie wordt niet als 0 gelezen; de berekening weigert hem.`
+        );
+      }
+    }
+    if (l.type === "edgeLoad" && (l.startFrac !== void 0 || l.endFrac !== void 0)) {
+      const a = l.startFrac ?? 0;
+      const b = l.endFrac ?? 1;
+      if (!(a < b)) {
+        errors.push(
+          `Last ${id} (randlast): het belaste deel begint niet v\xF3\xF3r zijn einde (startFrac ${a}, endFrac ${b}). Een leeg of omgekeerd deel is geen last.`
+        );
+      }
+    }
     if (!teltLastMee(l, loadCases)) {
       errors.push(
-        `Last ${id} (type "${String(l.type)}") levert geen invoer voor de solver op en telt dus niet mee. Controleer of alle velden voor dit lasttype ingevuld zijn (een lijnlast heeft \`beamId\` en \`q\` nodig, een puntlast \`nodeId\` of \`beamId\`, een thermische last \`beamId\` en \`deltaT\`, een randlast \`plateId\` en \`q\`).`
+        `Last ${id} (type "${String(l.type)}") levert geen invoer voor de solver op en telt dus niet mee. Controleer of alle velden voor dit lasttype ingevuld zijn (een lijnlast heeft \`beamId\` en \`q\` nodig, een puntlast \`nodeId\` of \`beamId\` \u2014 of op een plaatrand \`plateId\`, een rand en \`posFrac\` \u2014, een thermische last \`beamId\` en \`deltaT\`, een randlast \`plateId\`, een rand en \`q\`).`
       );
     }
   }
@@ -11733,7 +12466,12 @@ function valideerModel(rauw, opties = {}) {
     alleCombinaties: opties.alleCombinaties,
     gevolgklasse: opties.gevolgklasse,
     loads,
-    selfWeightEnabled: m.selfWeightEnabled === true
+    selfWeightEnabled: m.selfWeightEnabled === true,
+    // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod,
+    // EN 1995-1-1 3.1.3(2)); zie `meldingenBelastinggevallen`.
+    metHout: (Array.isArray(m.beams) ? m.beams : []).some(
+      (b) => typeof b?.material === "string" && matchSupportedTimberGrade(b.material) !== null
+    )
   }).filter((mld) => opties.combinaties !== void 0 || mld.caseId === null);
   for (const mld of gevalMeldingen) {
     (mld.niveau === "fout" ? errors : warnings).push(mld.tekst);
@@ -12084,9 +12822,33 @@ function leesProfielen(payload) {
   }
   return db;
 }
+function leesHoutklassen(payload) {
+  if (payload.timber_grades === void 0) return null;
+  const lijst = eisArray(payload.timber_grades, "timber_grades");
+  if (!lijst.every((g) => typeof g === "string")) {
+    throw new InvoerFout("Elk item in `timber_grades` moet tekst zijn.");
+  }
+  return lijst;
+}
 function pasCheckConfigToe(beams, payload) {
   if (payload.check_config === void 0) return beams;
   const configs = eisObject(payload.check_config, "check_config");
+  const bestaand = new Set(beams.map((b) => String(b.id)));
+  const fouten = [];
+  for (const [sleutel, cc] of Object.entries(configs)) {
+    if (!bestaand.has(sleutel)) {
+      fouten.push(
+        `check_config.${sleutel}: het model heeft geen staaf met dit nummer; deze instellingen zouden nergens worden toegepast.`
+      );
+    }
+    fouten.push(...keurCheckConfig(cc, `check_config.${sleutel}`));
+  }
+  if (fouten.length > 0) {
+    throw new InvoerFout(
+      `\`check_config\` bevat ${fouten.length} invoerfout(en) \u2014 zie \`detail.fouten\`. Een onbekend veld of staafnummer wordt geweigerd, niet genegeerd: genegeerd levert het een toetsing op met de standaardwaarde in plaats van de bedoelde instelling.`,
+      { fouten }
+    );
+  }
   return beams.map((beam) => {
     const extra = configs[String(beam.id)];
     if (extra === void 0) return beam;
@@ -12247,7 +13009,28 @@ function rekenDoor(payload) {
     profileDb,
     gevolgklasse
   });
+  const houtklassen = leesHoutklassen(payload);
+  const houtData = {
+    nodes: gelezen.model.nodes,
+    supports: gelezen.model.supports,
+    combinations: combinaties,
+    combinationResults,
+    supportedGrades: houtklassen ?? void 0,
+    loadCases: gelezen.model.loadCases,
+    gevallenMetLast: opgelost
+  };
+  const hout = buildTimberCheckInputs({
+    ...houtData,
+    beams: staafSelectie.filter((b) => !isCltProfiel(b.profile))
+  });
+  const clt = buildCltCheckInputs({ ...houtData, beams: staafSelectie });
+  const metHout = gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null);
   const waarschuwingen = [];
+  if (houtklassen === null && metHout) {
+    waarschuwingen.push(
+      "Geen houtsterkteklassen meegegeven (`timber_grades`); de bundel valt terug op zijn eigen lijst, die uit de pas kan lopen met de rekenkern."
+    );
+  }
   if (profileDb.size === 0) {
     waarschuwingen.push(
       "Geen profieldatabase meegegeven (`profiles`); `steel_check_inputs` blijft daardoor leeg. Lever de lijst uit de staalprofielendatabase mee."
@@ -12273,7 +13056,8 @@ function rekenDoor(payload) {
     alleCombinaties,
     gevolgklasse,
     loads: gelezen.model.loads,
-    selfWeightEnabled: gelezen.model.selfWeightEnabled
+    selfWeightEnabled: gelezen.model.selfWeightEnabled,
+    metHout
   })) {
     waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
   }
@@ -12290,6 +13074,8 @@ function rekenDoor(payload) {
     opgelost,
     legeGevallen,
     staal,
+    hout,
+    clt,
     onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion
@@ -12297,6 +13083,16 @@ function rekenDoor(payload) {
 }
 function redenBestaatNiet(id) {
   return `bestaat niet in het model \u2014 staaf ${id} is gevraagd in \`beam_ids\`, maar het model heeft geen staaf met dit nummer; er is niets getoetst`;
+}
+function eenmaalPerStaaf(lijst, getoetst) {
+  const gezien = /* @__PURE__ */ new Set();
+  const uit = [];
+  for (const s of lijst) {
+    if (getoetst.has(s.beam_id) || gezien.has(s.beam_id)) continue;
+    gezien.add(s.beam_id);
+    uit.push(s);
+  }
+  return uit;
 }
 function opSolve(payload) {
   const d = rekenDoor(payload);
@@ -12359,12 +13155,17 @@ function opCheck(payload) {
     },
     units: EENHEDEN,
     steel_check_inputs: d.staal.inputs,
+    // Het bestaan van deze twee sleutels zegt de server dat deze bundel hout
+    // toetsbaar maakt; een oudere bundel heeft ze niet, en dan meldt de server
+    // dat in `skipped_beams` in plaats van "nul houtstaven" te lezen.
+    timber_check_inputs: d.hout.inputs,
+    clt_check_inputs: d.clt.inputs,
     // Elk gevraagd nummer staat in de toetsinvoer of hier — ook een nummer dat
-    // geen staaf is.
-    skipped_beams: [
-      ...d.staal.skipped.map((s) => ({ beam_id: s.beamId, reason: s.reason })),
-      ...d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) }))
-    ],
+    // geen staaf is — en elk maar één keer.
+    skipped_beams: eenmaalPerStaaf(
+      [...d.staal.skipped, ...d.hout.skipped, ...d.clt.skipped].map((s) => ({ beam_id: s.beamId, reason: s.reason })).concat(d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) }))),
+      new Set([...d.staal.inputs, ...d.hout.inputs, ...d.clt.inputs].map((i) => i.beam_id))
+    ),
     warnings: d.waarschuwingen
   };
 }
@@ -12415,7 +13216,8 @@ function opLoadProject(payload) {
     alleCombinaties: lijst,
     gevolgklasse: klasse.klasse,
     loads: m.loads,
-    selfWeightEnabled: m.selfWeightEnabled
+    selfWeightEnabled: m.selfWeightEnabled,
+    metHout: gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null)
   })) {
     warnings.push(mld.niveau === "fout" ? `FOUT: ${mld.tekst}` : mld.tekst);
   }
@@ -12579,6 +13381,7 @@ export {
   MELDING_ZONE_I,
   OUDE_STANDAARDSET,
   PARTIELE_FACTOREN,
+  PLAAT_RAND_NAAM_NL,
   PLATE_DEFAULTS,
   PROJECT_FILE_EXT,
   PROJECT_FORMAT_VERSION,
@@ -12614,6 +13417,7 @@ export {
   begeleidendeOpstellingen,
   beoordeelCombinatiesBijOpenen,
   bepaalDoorbuigingsInvoer,
+  bepaalPlaatRand,
   bepaalStandaardRol,
   berekenE,
   berekenPlaatMeshSignatuur,
@@ -12662,9 +13466,8 @@ export {
   isSteelProfile,
   isWindgeneratorCombinatie,
   isZuivereStaalconstructie,
+  keurCheckConfig,
   klasseUitKenmerk,
-  leesPlaatMeshCache,
-  leesPolygoonRandlasten,
   liftSpringK,
   mapDeflectionClass,
   mapLoadDuration,
@@ -12677,12 +13480,14 @@ export {
   openCombinatieStaat,
   parseRechthoek,
   parseTimberRectMm,
+  plaatNaarSolverInput,
+  plaatRandLabel,
   profileLookupKey,
   quasiPermanentDeflection,
+  randlastNaarSolverInput,
+  randpuntlastNaarSolverInput,
   redenZuiverStaal,
   registreerPlaatMeshCacheCommitter,
-  registreerPlaatMeshCaches,
-  registreerPolygoonRandlasten,
   resolveSection,
   rolVanStaaf,
   sanitizeRestraintFractions,
