@@ -209,7 +209,7 @@ const UITZONDERINGEN: &[Rij] = &[
         tauri: None,
         toetsbrug: None,
         mcp: Some("check_fem_model"),
-        reden: "Zelfde reden als `solve_fem_model`: de solve zit in de bundel. De toetsing die erop volgt gaat wél door de gedeelde kern `steel_check::check_all_beams`, en die is als `check_steel_beams` langs alle drie de wegen bereikbaar.",
+        reden: "Zelfde reden als `solve_fem_model`: de solve en de invoerbouw zitten in de bundel. De toetsing die erop volgt gaat wél door de gedeelde kernen `steel_check::check_all_beams`, `timber_check::check_all_timber_beams` en `timber_check::clt::check_all_clt_beams`, en die zijn als `check_steel_beams`, `check_timber_beams` en `check_clt_beams` langs alle drie de wegen bereikbaar.",
     },
 ];
 

@@ -318,7 +318,7 @@ fn schema_zijstaven() -> Value {
 }
 
 /// Eén rij hoofdwapening (`RebarRow`): aantal staven en diameter.
-fn schema_wapeningsrij(omschrijving: &str) -> Value {
+pub(crate) fn schema_wapeningsrij(omschrijving: &str) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
@@ -370,7 +370,7 @@ fn schema_n_strips() -> Value {
     })
 }
 
-fn schema_steel_branch() -> Value {
+pub(crate) fn schema_steel_branch() -> Value {
     json!({
         "type": "string", "enum": ["Horizontal", "Inclined"], "default": "Horizontal",
         "description": "Bovenste tak van het staaldiagram (3.2.7(2), figuur 3.8). \"Horizontal\" = 3.2.7(2)b, horizontaal op f_yd zonder rekgrens (default). \"Inclined\" = 3.2.7(2)a, hellend tot k·f_yk/gamma_S bij eps_uk, met rekgrens eps_ud = 0,9·eps_uk (NB)."
@@ -501,7 +501,7 @@ fn schema_wapeningszones() -> Value {
 /// Schema van `exposure_class`. Dezelfde opsomming als bij
 /// `concrete_cover_check`; hier is hij de ingang van tabel 7.1N in plaats van
 /// tabel 4.4N.
-fn schema_milieuklasse() -> Value {
+pub(crate) fn schema_milieuklasse() -> Value {
     json!({
         "type": "string",
         "enum": ["X0", "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3",
@@ -513,7 +513,7 @@ fn schema_milieuklasse() -> Value {
 
 /// Schema van `structural_class`. Dezelfde opsomming als bij
 /// `concrete_cover_check`.
-fn schema_constructieklasse() -> Value {
+pub(crate) fn schema_constructieklasse() -> Value {
     json!({
         "type": "string",
         "enum": ["S1", "S2", "S3", "S4", "S5", "S6"],
@@ -575,7 +575,7 @@ fn schema_kniklengtekeuze(richting: &str) -> Value {
 /// ook al zijn ze optioneel: `additionalProperties: false` zou ze anders
 /// wegfilteren vóórdat de kern ze ziet, en dan rekent een cliënt die de
 /// schoring om z wél heeft opgegeven stilzwijgend met die van het rekenvlak.
-fn schema_kolom() -> Value {
+pub(crate) fn schema_kolom() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,

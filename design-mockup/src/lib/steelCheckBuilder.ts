@@ -21,7 +21,7 @@
 import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
-import { combinatiesVanSoort } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, soortVanCombinatie } from "../components/fem/solver/combinations";
 import {
   STANDAARD_GEVOLGKLASSE, type CombinatieSoort, type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
@@ -678,7 +678,12 @@ function zijdelingseEis(
   // BGT-combinaties — maar met een notitie dat dit GEEN toetsing volgens
   // A1.4.3(7) is, in plaats van 6.14b te claimen.
   const karakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
-  const kandidaten = karakteristiek.length > 0 ? karakteristiek : slsCombos;
+  // Een BGT-combinatie die niet als 6.14b/6.15b/6.16b te herkennen is, telt
+  // VEILIG-ZIJDIG mee: welke uitdrukking zij is, is niet af te lezen, en tot
+  // september 2026 viel zij hier stil weg zodra er één herkende
+  // karakteristieke combinatie was.
+  const nietHerkend = slsCombos.filter((c) => soortVanCombinatie(c) === null);
+  const kandidaten = karakteristiek.length > 0 ? [...karakteristiek, ...nietHerkend] : slsCombos;
   const gemeten: { combo: LoadCombination; u: number }[] = [];
   for (const combo of kandidaten) {
     const r = data.combinationResults.get(combo.id) ?? null;
@@ -744,12 +749,26 @@ function zijdelingseEis(
         "standaardcombinaties) om de eis letterlijk uit te voeren.",
     );
   } else {
+    const nietHerkendGemeten = gemeten.filter((g) => nietHerkend.includes(g.combo));
     notes.push(
       `u = ${nl(u, 2)} mm: de grootste horizontale verplaatsing over de ` +
-        `${gemeten.length} karakteristieke BGT-combinaties (6.14b) — ` +
+        `${gemeten.length - nietHerkendGemeten.length} karakteristieke BGT-combinaties (6.14b)` +
+        (nietHerkendGemeten.length > 0
+          ? ` en ${nietHerkendGemeten.length} niet herkende BGT-combinatie(s)`
+          : "") +
+        " — " +
         gemeten.map((g) => `"${g.combo.name}" ${nl(g.u, 2)} mm`).join("; ") +
         `. Maatgevend is "${maatgevend.combo.name}".`,
     );
+    if (nietHerkendGemeten.length > 0) {
+      notes.push(
+        "Ook meegewogen, veilig-zijdig: " +
+          nietHerkendGemeten.map((g) => `"${g.combo.name}"`).join(", ") +
+          ". Deze BGT-combinatie(s) zijn niet als 6.14b, 6.15b of 6.16b herkend (geen kenmerk, " +
+          'en de naam bevat geen "karakter", "frequent" of "quasi"); welke uitdrukking ze ' +
+          "zijn is niet af te lezen, en weglaten zou een grotere verplaatsing stil laten vallen.",
+      );
+    }
     const zonderLeiding = nooitLeidend(karakteristiek);
     if (zonderLeiding.length > 0) {
       notes.push(
@@ -822,18 +841,29 @@ function vloerDakEis(
     }
     if (!gevonden) ontbreekt.push(norm.uitdrukking);
   }
-  // Terugval: geen enkele herkende normcombinatie → de eerste BGT-combinatie
-  // die er wél is. Beter dan 0, en de notitie zegt dat het een terugval is.
-  if (gewogen.length === 0 && slsCombos.length > 0) {
-    const combo = slsCombos[0];
+  // BGT-combinaties die niet als 6.14b/6.15b/6.16b te herkennen zijn (geen
+  // kenmerk, en een naam zonder "karakter", "frequent" of "quasi") tellen
+  // ALTIJD mee, veilig-zijdig: welke uitdrukking zij zijn is niet af te lezen.
+  //
+  // Tot september 2026 stond hier een terugval die alleen werkte als er NIETS
+  // herkend was, en die dan de EERSTE BGT-combinatie nam in plaats van de
+  // grootste. Twee gevolgen, allebei stil: zodra er één herkende combinatie
+  // was, vielen de niet herkende weg, en zonder herkende hing de zakking van de
+  // lijstvolgorde af. Gemeten: IPE 80 S235, L = 5250 mm, dak, eigen
+  // combinaties "BGT kar.: G + onderhoud" en "BGT kar.: G + sneeuw" naast de
+  // herkende "BGT quasi-blijvend: G" gaf w = 10,99 mm (UC 0,52) waar 46,86 mm
+  // (UC 2,23) hoort.
+  const nietHerkend: string[] = [];
+  for (const combo of slsCombos) {
+    if (soortVanCombinatie(combo) !== null) continue;
     const result = data.combinationResults.get(combo.id) ?? null;
-    if (result && result.elements.has(beam.id)) {
-      gewogen.push({
-        naam: combo.name,
-        uitdrukking: "niet herkend als 6.14b/6.15b/6.16b",
-        w: extractFieldDeflectionMm(beam, result),
-      });
-    }
+    if (!result || !result.elements.has(beam.id)) continue;
+    gewogen.push({
+      naam: combo.name,
+      uitdrukking: "niet herkend als 6.14b/6.15b/6.16b",
+      w: extractFieldDeflectionMm(beam, result),
+    });
+    nietHerkend.push(combo.name);
   }
   let maatgevend = gewogen.length > 0 ? gewogen[0] : null;
   for (const g of gewogen) {
@@ -864,6 +894,16 @@ function vloerDakEis(
         "dan de norm vraagt; is de maatgevende combinatie zwaarder dan de " +
         "voorgeschreven, dan valt de toets strenger uit.",
     );
+    if (nietHerkend.length > 0) {
+      notes.push(
+        "Ook meegewogen, veilig-zijdig: " +
+          nietHerkend.map((n) => `"${n}"`).join(", ") +
+          ". Deze BGT-combinatie(s) zijn niet als 6.14b, 6.15b of 6.16b herkend (geen kenmerk, " +
+          'en de naam bevat geen "karakter", "frequent" of "quasi"); welke uitdrukking ze zijn ' +
+          "is niet af te lezen, en weglaten zou een grotere zakking stil laten vallen. Is een " +
+          "ervan een van de drie, geef haar dan een herkenbare naam.",
+      );
+    }
     if (ontbreekt.length > 0) {
       notes.push(
         "Niet meegewogen omdat dit model ze niet kent of niet heeft doorgerekend: " +

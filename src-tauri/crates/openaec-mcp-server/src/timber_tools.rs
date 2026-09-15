@@ -153,7 +153,31 @@ fn schema_belastingduur() -> Value {
     json!({
         "type": "string",
         "enum": ["Permanent", "LongTerm", "MediumTerm", "ShortTerm", "Instantaneous"],
-        "description": "Maatgevende belastingduurklasse van de UGT-combinatie (§2.3.1.2). §3.1.3: de KORTST durende belasting in de combinatie bepaalt k_mod, dus een klasse die te lang is gekozen maakt de toets ongunstiger en een die te kort is gekozen gunstiger."
+        "description": "Belastingduurklasse (§2.3.1.2). §3.1.3(2): de KORTST durende belasting in een combinatie bepaalt k_mod, dus een klasse die te lang is gekozen maakt de toets ongunstiger en een die te kort is gekozen gunstiger. LET OP: zonder `load_duration_per_combination` geldt deze ene klasse voor ALLE combinaties — dan wordt de combinatie met alleen de blijvende belasting NIET met k_mod 'blijvend' getoetst. Met die lijst is dit alleen de terugval voor een combinatie die er niet in staat."
+    })
+}
+
+/// `load_duration_per_combination` (`CombinationLoadDuration`), gedeeld door
+/// de houten staaf en de CLT-staaf.
+fn schema_belastingduur_per_combinatie() -> Value {
+    json!({
+        "type": "array",
+        "default": [],
+        "description": "De belastingduurklasse PER UGT-combinatie (EN 1995-1-1 3.1.3(2): de kortstdurende belasting in die combinatie bepaalt k_mod). Gevuld: de kern groepeert `forces_envelope` per klasse, toetst elke klasse met haar eigen k_mod en neemt per toets de hoogste unity check; het resultaat draagt `k_mod_per_load_duration` en `governing_combination_id`, en elke sterktetoets noemt zijn k_mod in de notities. Leeg of weggelaten: één klasse (`load_duration`) voor alles. `check_fem_model` vult deze lijst zelf uit de belastinggevallen (NB tabel 2.2).",
+        "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["combination_id", "load_duration"],
+            "properties": {
+                "combination_id": { "type": "integer", "minimum": 0,
+                    "description": "Id van de UGT-combinatie, gelijk aan `combination_id` in `forces_envelope`." },
+                "load_duration": { "type": "string",
+                    "enum": ["Permanent", "LongTerm", "MediumTerm", "ShortTerm", "Instantaneous"],
+                    "description": "De kortste belastingsduur in deze combinatie." },
+                "basis": { "type": "string",
+                    "description": "Waarop de klasse berust, leesbaar voor het rapport. Weglaten mag." }
+            }
+        }
     })
 }
 
@@ -179,6 +203,7 @@ fn schema_houten_staaf() -> Value {
                 "description": "Sterkteklasse, bijvoorbeeld \"C24\" (EN 338) of \"GL28h\" (EN 14080). Zie `list_timber_grades`. Een onbekende naam levert een resultaat met 'governing_check_id' = \"ERROR: …\" en géén toetsen." },
             "service_class": schema_klimaatklasse(),
             "load_duration": schema_belastingduur(),
+            "load_duration_per_combination": schema_belastingduur_per_combinatie(),
             "length_m": { "type": "number",
                 "description": "Staaflengte in m; noemer van de doorbuigingseis en terugvalwaarde voor de kipsteunafstand." },
             "forces_envelope": crate::schema_krachtenomhullende(),
@@ -291,6 +316,7 @@ fn schema_clt_staaf() -> Value {
             "layup": schema_opbouw(),
             "service_class": schema_klimaatklasse(),
             "load_duration": schema_belastingduur(),
+            "load_duration_per_combination": schema_belastingduur_per_combinatie(),
             "length_m": { "type": "number", "exclusiveMinimum": 0,
                 "description": "Staaflengte in m. Wordt alleen gebruikt voor de slankheid L/h, die aangeeft of de aanname van een starre verbinding tussen de lagen nog opgaat; beneden L/h = 20 komt daarover een waarschuwing in de notities." },
             "forces_envelope": crate::schema_krachtenomhullende(),
@@ -334,7 +360,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "check_timber_beams",
-            "description": "Run the EN 1995-1-1 (+C1+A1:2011/NB:2013) timber check on a list of rectangular b x h members: tension and compression parallel to the grain (§6.1), bending with k_m (§6.1.6), shear with k_cr (§6.1.7), column buckling (§6.3.2), lateral-torsional buckling (§6.3.3) and the deflection pair w_fin/w_add including creep k_def (§7.2). Returns one TimberBeamCheckResult per member with the full derivation, in the order of the input list. Same input and output types as the Tauri command `check_timber_beams` and the toetsbrug opdracht of that name; all three run through `timber_check::check_all_timber_beams`. NOT included: compression perpendicular to the grain, notched members, connections, fire and vibration.",
+            "description": "Run the EN 1995-1-1 (+C1+A1:2011/NB:2013) timber check on a list of rectangular b x h members: tension and compression parallel to the grain (§6.1), bending with k_m (§6.1.6), shear with k_cr (§6.1.7), column buckling (§6.3.2), lateral-torsional buckling (§6.3.3) and the deflection pair w_fin/w_add including creep k_def (§7.2). k_mod: `load_duration` applies to ALL combinations unless `load_duration_per_combination` gives the class per ULS combination (EN 1995-1-1 3.1.3(2), the shortest-duration load in a combination governs); without that list the permanent-only combination is NOT checked with k_mod 'Permanent'. `check_fem_model` builds the list from the load cases. Returns one TimberBeamCheckResult per member with the full derivation, in the order of the input list. Same input and output types as the Tauri command `check_timber_beams` and the toetsbrug opdracht of that name; all three run through `timber_check::check_all_timber_beams`. NOT included: compression perpendicular to the grain, notched members, connections, fire and vibration.",
             "inputSchema": schema_invoerlijst(
                 schema_houten_staaf(),
                 "De houten staven die getoetst moeten worden.",
@@ -442,6 +468,7 @@ mod tests {
             "strength_class",
             "service_class",
             "load_duration",
+            "load_duration_per_combination",
             "length_m",
             "forces_envelope",
             "buckling_length_y_m",
@@ -513,6 +540,7 @@ mod tests {
             "layup",
             "service_class",
             "load_duration",
+            "load_duration_per_combination",
             "length_m",
             "forces_envelope",
             "k_cr",

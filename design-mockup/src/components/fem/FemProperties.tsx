@@ -764,11 +764,16 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               <Row label="Belastingduur">
                 <select
                   className="fem-prop-select"
-                  value={cfg.loadDuration ?? "medium"}
+                  value={cfg.loadDuration ?? "auto"}
                   onChange={(e) => setCfg({
-                    loadDuration: e.target.value as NonNullable<BeamCheckConfig["loadDuration"]>,
+                    // "auto" = geen klasse opgeven: de toetsing leidt de duur per
+                    // UGT-combinatie af (EN 1995-1-1 3.1.3(2)).
+                    loadDuration: e.target.value === "auto"
+                      ? undefined
+                      : (e.target.value as NonNullable<BeamCheckConfig["loadDuration"]>),
                   })}
                 >
+                  <option value="auto">Automatisch (per combinatie)</option>
                   <option value="permanent">Permanent</option>
                   <option value="long">Lang</option>
                   <option value="medium">Middellang</option>
@@ -776,7 +781,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   <option value="instantaneous">Momentaan</option>
                 </select>
               </Row>
-              <div className="fem-prop-hint">Bepaalt k_mod en k_def in de houttoetsing.</div>
+              <div className="fem-prop-hint">
+                Klimaatklasse: k_mod en k_def. Belastingduur automatisch: k_mod per UGT-combinatie uit de
+                kortstdurende belasting (EN 1995-1-1 3.1.3(2)); een gekozen klasse werkt als ondergrens.
+              </div>
             </Section>
           )}
 

@@ -37,7 +37,7 @@ import {
 import CltOpbouwTekening, { type Verloop } from "../../clt/CltOpbouwTekening";
 import {
   CHECK_REPORT_CSS,
-  LOAD_DURATION_LABELS,
+  belastingduurTekst,
   fmtCheckedAt,
   fmtUc,
   fmtValue,
@@ -250,10 +250,7 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
 
   const meta =
     `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(r.service_class)}` +
-    ` · ${t("report.loadDuration", "belastingduur")} ${tCheck(
-      LOAD_DURATION_LABELS[r.load_duration].key,
-      LOAD_DURATION_LABELS[r.load_duration].fallback,
-    ).toLowerCase()}` +
+    ` · ${belastingduurTekst(r, t, tCheck)}` +
     (fout
       ? ""
       : ` · (EI)ef = ${fmtValue(r.layup.ei_ef_knm2, 0)} kNm² · Ief,net = ${fmtValue(

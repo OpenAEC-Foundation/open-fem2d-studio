@@ -1230,7 +1230,7 @@ function App() {
    */
   const handleRunMemberChecks = useCallback(async (opts?: {
     openPanel?: boolean;
-    outputs?: { combinationResults: Map<number, SolverResult> } | null;
+    outputs?: { combinationResults: Map<number, SolverResult>; perCase?: Map<number, SolverResult> } | null;
   }) => {
     const openPanel = opts?.openPanel ?? true;
     const { notifyInfo, notifyWarning } = await import("./io/notify");
@@ -1247,8 +1247,14 @@ function App() {
       return;
     }
     let combinationResults = opts?.outputs?.combinationResults ?? fem.combinationResults;
+    // De gevallen die de solve werkelijk doorrekende (de sleutels van perCase).
+    // Een geval zonder werkzame last slaat de solve over, en het mag de
+    // belastingduur van een combinatie niet korter maken (EN 1995-1-1 3.1.3(2)).
+    let perCase = opts?.outputs ? opts.outputs.perCase ?? null : fem.multiLcResult;
     if (!combinationResults) {
-      combinationResults = computeAndStoreSolverOutputs()?.combinationResults ?? null;
+      const vers = computeAndStoreSolverOutputs();
+      combinationResults = vers?.combinationResults ?? null;
+      perCase = vers?.perCase ?? null;
     }
     if (!combinationResults) {
       // De ECHTE reden. "Controleer het model (opleggingen, belastingen)" stond
@@ -1275,6 +1281,10 @@ function App() {
       combinationResults,
       // Ter vermelding in de staalkern; de factoren zitten al in de combinaties.
       gevolgklasse: fem.gevolgklasse,
+      // De hout- en CLT-toetsing leiden hieruit de belastingduur PER
+      // UGT-combinatie af (k_mod, EN 1995-1-1 3.1.3(2)).
+      loadCases: fem.loadCases,
+      gevallenMetLast: perCase ? [...perCase.keys()] : undefined,
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 

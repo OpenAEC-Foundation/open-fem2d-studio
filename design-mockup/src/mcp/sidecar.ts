@@ -11,7 +11,7 @@
  * DE KETEN, en waarom precies deze
  *   bouwMultiInput  → solveAllCases / solveAllCasesNonlinear
  *                   → combineResults → computeEnvelope
- *                   → buildSteelCheckInputs
+ *                   → buildSteelCheckInputs, buildTimberCheckInputs, buildCltCheckInputs
  * NOOIT rechtstreeks `solveNonlinear` of `core/fem/Mesh`: die leveren andere
  * EENHEDEN én andere TEKENS. De omslag naar trek-positief gebeurt pas in de
  * adapterlaag (`engine.ts`, convertResult), dus wie de kern rechtstreeks
@@ -48,6 +48,8 @@ import {
   type LoadCombination,
 } from "../components/fem/solver/combinations";
 import { buildSteelCheckInputs, profileLookupKey } from "../lib/steelCheckBuilder";
+import { buildTimberCheckInputs, matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
+import { buildCltCheckInputs, isCltProfiel } from "../lib/cltCheckBuilder";
 import {
   selecteerCombinaties,
   type OvergeslagenCombinatie,
@@ -80,7 +82,7 @@ import type { Beam, BeamCheckConfig } from "../components/fem/femTypes";
 import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import { version as PAKKET_VERSIE } from "../../package.json";
 import { beeldKernfoutAf } from "./fouten";
-import { controleerVelden, valideerModel } from "./valideerModel";
+import { controleerVelden, keurCheckConfig, valideerModel } from "./valideerModel";
 import {
   SIDECAR_OPS,
   SIDECAR_PROTOCOL,
@@ -485,10 +487,52 @@ function leesProfielen(payload: Record<string, unknown>): Map<string, SteelProfi
   return db;
 }
 
-/** `check_config`: per staaf-id de store-eigen `BeamCheckConfig`. */
+/**
+ * De houtsterkteklassen uit de payload. De bron is de Rust-kern
+ * (`nen_en_1995_1_1::strength_class_names`); de bundel draagt alleen een
+ * statische terugval, en die kan uit de pas lopen. `null` = niet meegegeven.
+ */
+function leesHoutklassen(payload: Record<string, unknown>): string[] | null {
+  if (payload.timber_grades === undefined) return null;
+  const lijst = eisArray(payload.timber_grades, "timber_grades");
+  if (!lijst.every((g) => typeof g === "string")) {
+    throw new InvoerFout("Elk item in `timber_grades` moet tekst zijn.");
+  }
+  return lijst as string[];
+}
+
+/**
+ * `check_config`: per staaf-id de store-eigen `BeamCheckConfig`.
+ *
+ * GEKEURD met dezelfde poort als de `checkConfig` van een staaf in het model
+ * (`keurCheckConfig`). Tot september 2026 werd dit argument zonder keuring
+ * samengevoegd: een tikfout (`ltbSupportSpacing` zonder `_m`, `loadDuraton`)
+ * viel stil terug op de standaardwaarde, en een sleutel die geen staaf is werd
+ * genegeerd. Allebei leveren ze een geslaagde toetsing die bij een ander model
+ * hoort; daarom een fout.
+ */
 function pasCheckConfigToe(beams: Beam[], payload: Record<string, unknown>): Beam[] {
   if (payload.check_config === undefined) return beams;
   const configs = eisObject(payload.check_config, "check_config");
+  const bestaand = new Set(beams.map((b) => String(b.id)));
+  const fouten: string[] = [];
+  for (const [sleutel, cc] of Object.entries(configs)) {
+    if (!bestaand.has(sleutel)) {
+      fouten.push(
+        `check_config.${sleutel}: het model heeft geen staaf met dit nummer; deze instellingen ` +
+          "zouden nergens worden toegepast.",
+      );
+    }
+    fouten.push(...keurCheckConfig(cc, `check_config.${sleutel}`));
+  }
+  if (fouten.length > 0) {
+    throw new InvoerFout(
+      `\`check_config\` bevat ${fouten.length} invoerfout(en) — zie \`detail.fouten\`. ` +
+        "Een onbekend veld of staafnummer wordt geweigerd, niet genegeerd: genegeerd levert " +
+        "het een toetsing op met de standaardwaarde in plaats van de bedoelde instelling.",
+      { fouten },
+    );
+  }
   return beams.map((beam) => {
     const extra = configs[String(beam.id)];
     if (extra === undefined) return beam;
@@ -710,7 +754,37 @@ function rekenDoor(payload: Record<string, unknown>) {
     gevolgklasse,
   });
 
+  // Hout en kruislaaghout: DEZELFDE bouwers als de app, met dezelfde filters
+  // (stores/checkStore.ts): de houtbouwer ziet de CLT-staven niet, want hun
+  // profiel is een opbouw en geen b × h. De belastingduur per UGT-combinatie
+  // (k_mod, EN 1995-1-1 3.1.3(2)) volgt uit de belastinggevallen; de gevallen
+  // zonder werkzame last — die de solve oversloeg — tellen daarbij niet mee.
+  // De toetsing zelf gebeurt in Rust (`check_all_timber_beams`,
+  // `check_all_clt_beams`).
+  const houtklassen = leesHoutklassen(payload);
+  const houtData = {
+    nodes: gelezen.model.nodes,
+    supports: gelezen.model.supports,
+    combinations: combinaties,
+    combinationResults,
+    supportedGrades: houtklassen ?? undefined,
+    loadCases: gelezen.model.loadCases,
+    gevallenMetLast: opgelost,
+  };
+  const hout = buildTimberCheckInputs({
+    ...houtData,
+    beams: staafSelectie.filter((b) => !isCltProfiel(b.profile)),
+  });
+  const clt = buildCltCheckInputs({ ...houtData, beams: staafSelectie });
+  const metHout = gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null);
+
   const waarschuwingen: string[] = [];
+  if (houtklassen === null && metHout) {
+    waarschuwingen.push(
+      "Geen houtsterkteklassen meegegeven (`timber_grades`); de bundel valt terug op zijn " +
+        "eigen lijst, die uit de pas kan lopen met de rekenkern.",
+    );
+  }
   if (profileDb.size === 0) {
     waarschuwingen.push(
       "Geen profieldatabase meegegeven (`profiles`); `steel_check_inputs` " +
@@ -752,6 +826,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     gevolgklasse,
     loads: gelezen.model.loads,
     selfWeightEnabled: gelezen.model.selfWeightEnabled,
+    metHout,
   })) {
     waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
   }
@@ -769,6 +844,8 @@ function rekenDoor(payload: Record<string, unknown>) {
     opgelost,
     legeGevallen,
     staal,
+    hout,
+    clt,
     onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion,
@@ -785,6 +862,26 @@ function redenBestaatNiet(id: number): string {
     `bestaat niet in het model — staaf ${id} is gevraagd in \`beam_ids\`, maar het ` +
     "model heeft geen staaf met dit nummer; er is niets getoetst"
   );
+}
+
+/**
+ * Een staaf hoort precies één keer in het antwoord: in een toetsinvoer óf in
+ * `skipped_beams`, en daar maar één keer. Twee bouwers kunnen dezelfde staaf
+ * met een reden overslaan; dubbel melden leest als twee staven. De eerste reden
+ * blijft staan, en een staaf die wél toetsinvoer heeft staat hier niet.
+ */
+function eenmaalPerStaaf(
+  lijst: { beam_id: number; reason: string }[],
+  getoetst: ReadonlySet<number>,
+): { beam_id: number; reason: string }[] {
+  const gezien = new Set<number>();
+  const uit: { beam_id: number; reason: string }[] = [];
+  for (const s of lijst) {
+    if (getoetst.has(s.beam_id) || gezien.has(s.beam_id)) continue;
+    gezien.add(s.beam_id);
+    uit.push(s);
+  }
+  return uit;
 }
 
 function opSolve(payload: Record<string, unknown>) {
@@ -837,8 +934,9 @@ function opSolve(payload: Record<string, unknown>) {
 
 /**
  * `check`: dezelfde doorrekening, maar het antwoord is toegespitst op de
- * toetsing. De normtoetsing zelf gebeurt in Rust (`steel_check::check_all_beams`)
- * — dezelfde functie die de app aanroept. De sidecar levert alleen de invoer,
+ * toetsing. De normtoetsing zelf gebeurt in Rust (`steel_check::check_all_beams`,
+ * `timber_check::check_all_timber_beams` en `…::clt::check_all_clt_beams`) —
+ * dezelfde functies die de app aanroept. De sidecar levert alleen de invoer,
  * en levert die ook zichtbaar mee terug, zodat te zien is wát er getoetst is.
  */
 function opCheck(payload: Record<string, unknown>) {
@@ -860,12 +958,19 @@ function opCheck(payload: Record<string, unknown>) {
     },
     units: EENHEDEN,
     steel_check_inputs: d.staal.inputs,
+    // Het bestaan van deze twee sleutels zegt de server dat deze bundel hout
+    // toetsbaar maakt; een oudere bundel heeft ze niet, en dan meldt de server
+    // dat in `skipped_beams` in plaats van "nul houtstaven" te lezen.
+    timber_check_inputs: d.hout.inputs,
+    clt_check_inputs: d.clt.inputs,
     // Elk gevraagd nummer staat in de toetsinvoer of hier — ook een nummer dat
-    // geen staaf is.
-    skipped_beams: [
-      ...d.staal.skipped.map((s) => ({ beam_id: s.beamId, reason: s.reason })),
-      ...d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) })),
-    ],
+    // geen staaf is — en elk maar één keer.
+    skipped_beams: eenmaalPerStaaf(
+      [...d.staal.skipped, ...d.hout.skipped, ...d.clt.skipped]
+        .map((s) => ({ beam_id: s.beamId, reason: s.reason }))
+        .concat(d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) }))),
+      new Set([...d.staal.inputs, ...d.hout.inputs, ...d.clt.inputs].map((i) => i.beam_id)),
+    ),
     warnings: d.waarschuwingen,
   };
 }
@@ -942,6 +1047,7 @@ function opLoadProject(payload: Record<string, unknown>) {
     gevolgklasse: klasse.klasse,
     loads: m.loads,
     selfWeightEnabled: m.selfWeightEnabled,
+    metHout: gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null),
   })) {
     warnings.push(mld.niveau === "fout" ? `FOUT: ${mld.tekst}` : mld.tekst);
   }

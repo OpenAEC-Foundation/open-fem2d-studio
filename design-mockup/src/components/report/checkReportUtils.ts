@@ -480,6 +480,39 @@ export const LOAD_DURATION_LABELS: Record<LoadDurationClass, { key: string; fall
   Instantaneous: { key: "cfg.durInstantaneous", fallback: "Zeer kort" },
 };
 
+/**
+ * De belastingduur in de kop van een hout- of CLT-staaf.
+ *
+ * Met k_mod per belastingduurklasse (EN 1995-1-1 3.1.3(2): de kortstdurende
+ * belasting in een combinatie bepaalt k_mod) per klasse de k_mod en de
+ * combinaties, plus de maatgevende klasse en combinatie. Zonder die lijst de
+ * ene klasse uit de invoer, zoals voorheen — dan heeft de kern ook maar met
+ * één klasse gerekend.
+ */
+export function belastingduurTekst(
+  r: {
+    load_duration: LoadDurationClass;
+    k_mod_per_load_duration?: { load_duration: LoadDurationClass; k_mod: number; combination_ids: number[] }[];
+    governing_combination_id?: number | null;
+  },
+  t: TFunction,
+  tCheck: TFunction,
+): string {
+  const naam = (d: LoadDurationClass) =>
+    tCheck(LOAD_DURATION_LABELS[d].key, LOAD_DURATION_LABELS[d].fallback).toLowerCase();
+  const lijst = r.k_mod_per_load_duration ?? [];
+  if (lijst.length === 0) return `${t("report.loadDuration", "belastingduur")} ${naam(r.load_duration)}`;
+  const comb = t("report.combinationShort", "comb.");
+  const delen = lijst.map(
+    (k) => `${naam(k.load_duration)} (k_mod ${k.k_mod.toFixed(2).replace(".", ",")}) ${comb} ${k.combination_ids.join(", ")}`,
+  );
+  const maatgevend =
+    r.governing_combination_id !== undefined && r.governing_combination_id !== null
+      ? ` · ${t("report.governingLoadDuration", "maatgevend")}: ${naam(r.load_duration)}, ${comb} ${r.governing_combination_id}`
+      : "";
+  return `${t("report.loadDurationPerCombination", "belastingduur per combinatie")}: ${delen.join("; ")}${maatgevend}`;
+}
+
 /** Statuslabel via de bestaande report.*-sleutels. */
 export function statusLabel(t: TFunction, status: CheckStatus): string {
   switch (status) {

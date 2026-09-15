@@ -241,6 +241,10 @@ const ALLEEN_BRON = new Map([
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
   [
+    "hout-kmod-combinatie",
+    "leidt de belastingduur per UGT-combinatie af (lib/belastingduur) en bouwt daarmee de hout- en CLT-invoer; de afleiding en de CLT-bouwer staan niet in de barrel, en het slotblok start de toetsbrug als apart proces voor de echte EN 1995-kern (k_mod 0,60 bij alleen G, UC 1,068). De sidecarweg van dezelfde afleiding bewaakt hout_in_check_fem_model.rs tegen de gebouwde MCP-server",
+  ],
+  [
     "clt-opbouwen",
     "test de bibliotheken van eigen CLT-opbouwen en eigen doorsneden: de winkels op localStorage, het samenvoegen bij het openen van een project en wat er in een projectbestand terechtkomt. Dat is invoerbeheer van de frontend — de solver komt er niet aan te pas en de winkels horen niet in de barrel",
   ],

@@ -508,6 +508,114 @@ log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
     /Niet meegewogen/.test(magerNotes) && /6\.15b en 6\.16b/.test(magerNotes));
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[BGT] Niet herkende BGT-combinaties vallen niet meer stil weg");
+{
+  const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
+  const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
+  const { meldingenBelastinggevallen } = await import("./src/lib/combinatieBeheer.ts");
+  const c = (id, name, type, f) => ({
+    id, name, type, formula: "", factors: new Map(Object.entries(f).map(([k, v]) => [Number(k), v])),
+  });
+
+  // REPRODUCTIE (docs/superpowers/specs/2026-09-15-verlopende-profielen-design.md):
+  // IPE 80 S235, L = 5250 mm, scharnier/rol, dak. Eigen gewicht aan.
+  // Hand: IPE 80 A = 764 mm², I_y = 80,1·10⁴ mm⁴; eigen gewicht
+  // 764·10⁻⁶ m² · 7850 kg/m³ · 9,81 = 0,0588 kN/m.
+  //   G           = 0,1281 + 0,0588          = 0,1869 kN/m → w = 10,99 mm
+  //   G + onderh. = 0,1869 + 0,61            = 0,7969 kN/m → w = 46,86 mm
+  //   G + sneeuw  = 0,1869 + 0,3416          = 0,5285 kN/m → w = 31,08 mm
+  // met w = 5·q·L⁴/(384·E·I), E = 210 000, L⁴ = 7,597·10¹⁴ mm⁴.
+  // Grens dak w_fin ≤ L/250 = 21 mm → UC 46,86/21 = 2,23 (was 10,99/21 = 0,52).
+  const model = {
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 5250, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material: "S235", profile: "IPE 80", checkConfig: { deflectionClass: "roof" } }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    plates: [],
+    loadCases: [
+      { id: 1, name: "G", type: "dead" },
+      { id: 2, name: "Onderhoud", type: "live", categorie: "H" },
+      { id: 3, name: "Sneeuw", type: "snow" },
+    ],
+    loads: [
+      { id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -0.1281 },
+      { id: 2, type: "lineLoad", caseId: 2, beamId: 1, q: -0.61 },
+      { id: 3, type: "lineLoad", caseId: 3, beamId: 1, q: -0.3416 },
+    ],
+    selfWeightEnabled: true, scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+  };
+  const { perCase } = solveAllCases(bouwMultiInput(model));
+  const uls = [c(1, "UGT 1", "uls", { 1: 1.35 }), c(2, "UGT 2", "uls", { 1: 1.2, 2: 1.5 }), c(3, "UGT 3", "uls", { 1: 1.2, 3: 1.5 })];
+  const onderhoud = c(11, "BGT kar.: G + onderhoud", "sls", { 1: 1, 2: 1 });
+  const sneeuw = c(12, "BGT kar.: G + sneeuw", "sls", { 1: 1, 3: 1 });
+  const quasi = c(13, "BGT quasi-blijvend: G", "sls", { 1: 1 });
+  const invoer = (sls) => {
+    const combinations = [...uls, ...sls];
+    const combinationResults = new Map(combinations.map((x) => [x.id, combineResults(x, perCase)]));
+    return bepaalDoorbuigingsInvoer(model.beams[0], {
+      nodes: model.nodes, beams: model.beams, supports: model.supports, combinations, combinationResults,
+    });
+  };
+  const w = (q) => 5 * q * 5250 ** 4 / (384 * 210000 * 80.1e4);
+  const eg = 764e-6 * 7850 * 9.81 / 1000;
+
+  const alle = invoer([onderhoud, sneeuw, quasi]);
+  check("IPE 80: w = G + onderhoud (46,86 mm), niet de herkende 6.16b (10,99 mm)", -alle.wMm, 46.86, 0.3);
+  check("IPE 80: hand 5qL⁴/384EI met q = 0,7969 kN/m", -alle.wMm, w(0.1281 + eg + 0.61), 0.3);
+  checkTrue("notitie noemt de niet herkende combinaties",
+    /Ook meegewogen, veilig-zijdig/.test(alle.notes.join(" ")) && /BGT kar\.: G \+ onderhoud/.test(alle.notes.join(" ")));
+  check("UC w_fin dak (L/250 = 21 mm) = 2,23", -alle.wMm / (5250 / 250), 2.23, 0.3);
+
+  // Volgorde-onafhankelijk, ook zonder één herkende combinatie (vroeger nam de
+  // terugval dan de EERSTE BGT-combinatie).
+  const omgekeerd = invoer([quasi, sneeuw, onderhoud]);
+  check("omgekeerde volgorde: zelfde w", omgekeerd.wMm, alle.wMm, 1e-9);
+  const zonderHerkend1 = invoer([sneeuw, onderhoud]);
+  const zonderHerkend2 = invoer([onderhoud, sneeuw]);
+  check("zonder herkende combinatie, sneeuw eerst: de grootste (46,86)", -zonderHerkend1.wMm, 46.86, 0.3);
+  check("zonder herkende combinatie, onderhoud eerst: dezelfde", zonderHerkend2.wMm, zonderHerkend1.wMm, 1e-9);
+
+  // Hout: w_inst weegt een niet herkende combinatie naast 6.14b mee.
+  // C24 100×300 (E = 11 000, I = 2,25·10⁸), L = 3 m, G = 2 en Q = 3 kN/m:
+  //   w(G) = 5·2·3000⁴/(384·11000·2,25·10⁸) = 0,852 mm; w(G+Q) = 2,131 mm.
+  const houtModel = {
+    ...model,
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 3000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material: "C24", profile: "100x300" }],
+    loadCases: [{ id: 1, name: "G", type: "dead" }, { id: 2, name: "Q", type: "live" }],
+    loads: [
+      { id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -2 },
+      { id: 2, type: "lineLoad", caseId: 2, beamId: 1, q: -3 },
+    ],
+    selfWeightEnabled: false,
+  };
+  const hPerCase = solveAllCases(bouwMultiInput(houtModel)).perCase;
+  const hCombos = [
+    c(1, "UGT", "uls", { 1: 1.35, 2: 1.5 }),
+    c(2, "BGT karakteristiek 6.14b — alleen G", "sls", { 1: 1 }),
+    c(3, "BGT eigen: G + Q", "sls", { 1: 1, 2: 1 }),
+  ];
+  const hIn = buildTimberCheckInputs({
+    nodes: houtModel.nodes, beams: houtModel.beams, supports: houtModel.supports, combinations: hCombos,
+    combinationResults: new Map(hCombos.map((x) => [x.id, combineResults(x, hPerCase)])),
+  }).inputs[0];
+  check("hout: w_inst = G + Q (2,131 mm), niet de herkende 6.14b (0,852 mm)",
+    -hIn.deflection_inst_mm, 5 * 5 * 3000 ** 4 / (384 * 11000 * 2.25e8), 0.5);
+  checkTrue("hout: notitie noemt de niet herkende combinatie",
+    hIn.deflection_notes.some((n) => /Ook meegewogen, veilig-zijdig/.test(n) && /BGT eigen: G \+ Q/.test(n)));
+
+  // Eén modelbrede melding, met wat staal, hout en beton ermee doen.
+  const meld = meldingenBelastinggevallen({
+    loadCases: model.loadCases, combinations: [...uls, onderhoud, sneeuw, quasi], loads: model.loads,
+  });
+  const m = meld.find((x) => /niet herkend als karakteristiek/.test(x.tekst));
+  checkTrue("melding over de niet herkende BGT-combinaties", m !== undefined && m.niveau === "waarschuwing");
+  checkTrue("melding noemt beide combinaties en niet de herkende",
+    m !== undefined && /11 \("BGT kar\.: G \+ onderhoud"\)/.test(m.tekst) && /12 \(/.test(m.tekst) && !/13 \(/.test(m.tekst));
+  checkTrue("melding: staal en hout wegen mee, beton gebruikt ze niet",
+    m !== undefined && /staal en hout weegt/.test(m.tekst) && /betontoetsing gebruikt ze NIET/.test(m.tekst));
+}
+
 log(`\n${"─".repeat(60)}`);
 log(`Totaal: ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

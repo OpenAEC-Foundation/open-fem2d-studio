@@ -186,11 +186,11 @@ fn extend_met_staaf(
     flow.push(Box::new(
         Paragraph::new(
             format!(
-                "EN 1995-1-1 · klimaatklasse {} · belastingduur {} · h = {} mm · b = {} mm · \
+                "EN 1995-1-1 · klimaatklasse {} · {} · h = {} mm · b = {} mm · \
                  z_0 = {} mm · (EI)_ef = {} kNm² · I_ef,net = {}·10^6 mm⁴ · (EA)_ef = {} kN · \
                  L/h = {} · UC = {} ({})",
                 klimaatklasse(r.service_class),
-                belastingduur(r.load_duration),
+                belastingduur_regel(r),
                 nl(r.layup.height_mm, 0),
                 nl(r.layup.width_mm, 0),
                 nl(r.layup.z0_mm, 1),
@@ -633,6 +633,33 @@ fn klimaatklasse(s: ServiceClass) -> &'static str {
         ServiceClass::Sc2 => "2",
         ServiceClass::Sc3 => "3",
     }
+}
+
+/// De belastingduur in de kop: één klasse, of per klasse k_mod met de
+/// combinaties en de maatgevende (EN 1995-1-1 3.1.3(2): de kortstdurende
+/// belasting in een combinatie bepaalt k_mod). Dezelfde opbouw als
+/// `belastingduurTekst` in het rapport op het scherm.
+fn belastingduur_regel(r: &CltBeamCheckResult) -> String {
+    if r.k_mod_per_load_duration.is_empty() {
+        return format!("belastingduur {}", belastingduur(r.load_duration));
+    }
+    let delen: Vec<String> = r
+        .k_mod_per_load_duration
+        .iter()
+        .map(|k| {
+            format!(
+                "{} (k_mod {}) comb. {}",
+                belastingduur(k.load_duration),
+                nl(k.k_mod, 2),
+                k.combination_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ")
+            )
+        })
+        .collect();
+    let mut regel = format!("belastingduur per combinatie: {}", delen.join("; "));
+    if let Some(c) = r.governing_combination_id {
+        regel.push_str(&format!(" · maatgevend: {}, comb. {c}", belastingduur(r.load_duration)));
+    }
+    regel
 }
 
 /// Dezelfde bewoording als `LOAD_DURATION_LABELS` op het scherm.

@@ -111,6 +111,7 @@ import {
   type StandaardCombinatie,
 } from "../components/fem/solver/normcombinaties";
 import { genereerWindCombinaties, WIND_COMBI_PREFIX } from "./wind/windGenerator";
+import { ontbrekendeBlijvendeCombinatie } from "./belastingduur";
 
 // ── Staat ─────────────────────────────────────────────────────────────────
 
@@ -1395,6 +1396,12 @@ export function meldingenBelastinggevallen(p: {
   gevolgklasse?: Gevolgklasse;
   loads?: readonly Pick<Load, "caseId">[];
   selfWeightEnabled?: boolean;
+  /**
+   * Staat er hout (of kruislaaghout) in het model? Dan hoort er een
+   * UGT-combinatie met alleen blijvende belasting te zijn, anders wordt de
+   * houttoets nooit met k_mod "blijvend" uitgevoerd (EN 1995-1-1 3.1.3(2)).
+   */
+  metHout?: boolean;
 }): GevalMelding[] {
   const meldingen: GevalMelding[] = [];
   const blijvend = p.loadCases.find((c) => c.type === "dead");
@@ -1459,6 +1466,49 @@ export function meldingenBelastinggevallen(p: {
     loadCases: p.loadCases, combinations: p.combinations, gevuld,
   })) {
     meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a) });
+  }
+  // Hout zonder UGT-combinatie met alleen blijvende belasting. De standaardset
+  // heeft haar altijd (6.10a zonder veranderlijke gevallen); een eigen set
+  // mogelijk niet, en dan kan de houttoets te gunstig uitvallen.
+  if (p.metHout) {
+    const zonder = ontbrekendeBlijvendeCombinatie({
+      combinaties: p.combinations, loadCases: p.loadCases, gevuld,
+    });
+    if (zonder) {
+      meldingen.push({
+        niveau: "fout",
+        caseId: null,
+        vervangAdvies: true,
+        tekst:
+          `Er staan houten staven in het model en ${zonder.map((c) => naamVan(c.id)).join(", ")} ` +
+          `${zonder.length === 1 ? "is een blijvend belastinggeval" : "zijn blijvende belastinggevallen"}, ` +
+          "maar geen enkele UGT-combinatie bevat alleen blijvende belasting (zoals 6.10a zonder " +
+          "veranderlijke belasting, 1,35·G). EN 1995-1-1 3.1.3(2): k_mod hoort bij de kortste " +
+          "belastingsduur in een combinatie. Zonder zo'n combinatie wordt de houttoets nooit met " +
+          'k_mod "blijvend" (0,60 in klimaatklasse 1 en 2) uitgevoerd, terwijl juist die bij een ' +
+          "kleine veranderlijke belasting maatgevend is — de toetsing kan dan te gunstig " +
+          "uitvallen. Voeg de combinatie toe, of gebruik de standaardcombinaties.",
+      });
+    }
+  }
+  // BGT-combinaties die geen toets kan plaatsen. Tot september 2026 vielen ze
+  // bij de doorbuiging stil weg zodra er één herkende combinatie was, en bij
+  // beton altijd.
+  const nietHerkendeBgt = p.combinations.filter((c) => c.type === "sls" && soortVanCombinatie(c) === null);
+  if (nietHerkendeBgt.length > 0) {
+    meldingen.push({
+      niveau: "waarschuwing",
+      caseId: null,
+      tekst:
+        `BGT-combinatie ${nietHerkendeBgt.map((c) => `${c.id} ("${c.name}")`).join(", ")} ` +
+        `${nietHerkendeBgt.length === 1 ? "is" : "zijn"} niet herkend als karakteristiek (6.14b), ` +
+        'frequent (6.15b) of quasi-blijvend (6.16b): het kenmerk ontbreekt en de naam bevat geen ' +
+        '"karakter", "frequent" of "quasi". De doorbuigingstoets van staal en hout weegt ' +
+        `${nietHerkendeBgt.length === 1 ? "haar" : "ze"} veilig-zijdig mee in de omhullende; de ` +
+        "betontoetsing gebruikt " + `${nietHerkendeBgt.length === 1 ? "haar" : "ze"} NIET ` +
+        "(de scheurwijdte van §7.3 vraagt 6.15b, de kruip van §5.8.4 vraagt 6.16b). Is de " +
+        "combinatie een van de drie, geef haar dan een herkenbare naam.",
+    });
   }
   if (p.gevolgklasse !== undefined) {
     const wind = verouderdeWindCombinaties({ loadCases: p.loadCases, combinations: alle, gevolgklasse: p.gevolgklasse });

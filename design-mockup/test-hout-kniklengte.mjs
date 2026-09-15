@@ -151,7 +151,10 @@ log("\n[4] De kniklengte staat los van de andere houtvelden");
   // mag geen enkele k_mod- of k_def-keuze verschuiven.
   const i = hout({ bucklingLengthZ_m: 2, serviceClass: 2, loadDuration: "short" });
   check("service_class Sc2", i.service_class, "Sc2");
-  check("load_duration ShortTerm", i.load_duration, "ShortTerm");
+  // Zonder `loadCases` gaat de opgegeven klasse 1-op-1 door (de terugval). Met
+  // belastinggevallen is zij sinds september 2026 een ondergrens; dat staat in
+  // test-hout-kmod-combinatie.mjs. Hier gaat het alleen om de onafhankelijkheid.
+  check("zonder loadCases: load_duration ShortTerm (terugval)", i.load_duration, "ShortTerm");
   check("buckling_length_z_m 2", i.buckling_length_z_m, 2);
 }
 

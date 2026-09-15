@@ -56,6 +56,8 @@
     "durMedium": "Middellang",
     "durShort": "Kort",
     "durInstantaneous": "Zeer kort",
+    "durAuto": "Automatisch (per combinatie)",
+    "durHint": "Automatisch: k_mod volgt per UGT-combinatie uit de kortstdurende belasting (EN 1995-1-1 3.1.3(2)). Een gekozen klasse werkt als ondergrens: zij kan de duur alleen verlengen.",
     "timberHint": "Bepaalt k_mod en k_def in de EN 1995-toetsing.",
     "staleResultHint": "Het getoonde resultaat is van een eerdere run met een ander materiaaltype — voer de toetsing opnieuw uit.",
     "sprongLiggendFlens": "Let op: deze staaf helt naar links onder {{helling}}, {{afstand}} onder de grens van {{grens}} waar een staaf staand gaat heten. Boven is nu de fysieke bovenzijde (rechtsboven). Vanaf {{grens}} wordt boven de linkerzijde — bij deze helling de fysieke onderzijde (linksonder). Een kleine wijziging van de knopen keert dan zonder verdere melding om aan welke zijde deze steunen staan.",

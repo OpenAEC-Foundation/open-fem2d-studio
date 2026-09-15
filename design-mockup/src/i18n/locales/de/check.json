@@ -56,6 +56,8 @@
     "durMedium": "Mittel",
     "durShort": "Kurz",
     "durInstantaneous": "Sehr kurz",
+    "durAuto": "Automatisch (je Kombination)",
+    "durHint": "Automatisch: k_mod folgt je GZT-Kombination aus der Einwirkung mit der kürzesten Dauer (EN 1995-1-1 3.1.3(2)). Eine gewählte Klasse wirkt als Untergrenze: sie kann die Dauer nur verlängern.",
     "timberHint": "Bestimmt k_mod und k_def im EN-1995-Nachweis.",
     "staleResultHint": "Das angezeigte Ergebnis stammt aus einem früheren Durchlauf mit einem anderen Werkstofftyp — führen Sie den Nachweis erneut aus.",
     "sprongLiggendFlens": "Achtung: Dieser Stab neigt sich unter {{helling}} nach links, {{afstand}} unter der Grenze von {{grens}}, ab der ein Stab als stehend gilt. Oben ist jetzt die physische Oberseite (rechts oben). Ab {{grens}} wird oben zur linken Seite — bei dieser Neigung die physische Unterseite (links unten). Eine kleine Änderung der Knoten kehrt dann ohne weitere Meldung um, auf welcher Seite diese Halterungen liegen.",

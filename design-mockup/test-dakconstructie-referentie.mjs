@@ -405,6 +405,12 @@ const PROFIEL_RECHT = "1000x120";                        // de rechthoek-vervang
 
   // Buiging 6.1.6. De referentie rekent sigma = 4,018e6 / 2 317 422 = 1,73
   // N/mm2 tegen f_m,y,d = 15,4 N/mm2 (middellange duur), UC 0,11.
+  //
+  // F_MD en F_VD hieronder zijn de rekenwaarden VAN DE REFERENTIE (één klasse,
+  // middellang), en worden hier met de hand gebruikt, niet uit de kern. Onze
+  // kern leidt k_mod sinds september 2026 per UGT-combinatie af (EN 1995-1-1
+  // 3.1.3(2)); deze getallen veranderen daardoor niet, maar een vergelijking met
+  // de kern hoort de klasse per combinatie te noemen.
   const M_ED = 4.018e6;                                  // N*mm, staaf 4 knoop 6
   const F_MD = 15.44;                                    // N/mm2, uit de uitdraai
   const sigRef = M_ED / WY_MM3;

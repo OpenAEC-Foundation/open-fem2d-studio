@@ -18,15 +18,25 @@
 //! - doorbuiging §7.2: k_def (tabel 3.2) kent geen rij voor kruislaaghout;
 //!   in plaats van een geleende waarde blijft de toets weg. De stijfheid
 //!   (EI)_ef is wel beschikbaar voor de solver.
+//!
+//! BELASTINGDUUR PER COMBINATIE. Net als bij massief hout (zie
+//! `crate::belastingduur`): met `load_duration_per_combination` wordt de
+//! omhullende per belastingduurklasse getoetst, elke klasse met haar eigen
+//! k_mod (EN 1995-1-1 3.1.3(2)), en telt per toets de zwaarste uitkomst.
 
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
 use nen_en_1993_1_1_section::CheckStatus;
-use nen_en_1995_1_1::clt::{CltLayerOrientation, CltLayup};
+use nen_en_1995_1_1::clt::{CltLayerOrientation, CltLayup, CltMechanics};
 use nen_en_1995_1_1::clt_toets::{check_layer_bending, check_layer_shear, rolling_shear_info};
 use nen_en_1995_1_1::{design_strength, gamma_m, k_mod, k_sys, LoadDurationClass, ServiceClass};
 use serde::{Deserialize, Serialize};
 use steel_check::{CheckKind, NamedCheck};
 use ts_rs::TS;
+
+use crate::belastingduur::{
+    self, duurklasse_naam, kmod_notitie, nl, CombinationLoadDuration, Groep, KlasseUc,
+    KmodPerLoadDuration,
+};
 
 fn default_one() -> f64 {
     1.0
@@ -47,8 +57,17 @@ pub struct CltBeamCheckInput {
     pub layup: CltLayup,
     /// Klimaatklasse §2.3.1.3.
     pub service_class: ServiceClass,
-    /// Maatgevende belastingduurklasse van de UGT-combinatie (§3.1.3).
+    /// Belastingduurklasse (§2.3.1.2) voor de hele omhullende, en de terugval
+    /// voor een combinatie die niet in `load_duration_per_combination` staat.
+    /// Zonder die lijst geldt deze ene klasse voor ALLE combinaties, en wordt
+    /// de combinatie met alleen de blijvende belasting dus niet met k_mod
+    /// "blijvend" getoetst (§3.1.3(2)).
     pub load_duration: LoadDurationClass,
+    /// De belastingduurklasse per UGT-combinatie (§3.1.3(2)); leeg = het
+    /// gedrag van vóór dit veld. Zie `crate::belastingduur`.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<CombinationLoadDuration>>", optional)]
+    pub load_duration_per_combination: Vec<CombinationLoadDuration>,
     /// Staaflengte in m (voor de slankheidsindicatie L/h).
     pub length_m: f64,
     /// Krachtsverloop (envelop) langs de staaf.
@@ -125,6 +144,8 @@ pub struct CltBeamCheckResult {
     /// Sterkteklasse(n) van de lamellen, bijv. "C24" of "C24/C16".
     pub strength_class: String,
     pub service_class: ServiceClass,
+    /// Zonder belastingduur per combinatie: de klasse uit de invoer; met die
+    /// lijst: de klasse van de maatgevende toets.
     pub load_duration: LoadDurationClass,
     pub checks: Vec<NamedCheck>,
     pub uc_max: f64,
@@ -134,6 +155,15 @@ pub struct CltBeamCheckResult {
     pub layup: CltLayupResult,
     /// Aannamen en meldingen voor het rapport.
     pub notes: Vec<String>,
+    /// k_mod per belastingduurklasse met de combinaties erin (§3.1.3(2));
+    /// leeg zonder belastingduur per combinatie.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<KmodPerLoadDuration>>", optional)]
+    pub k_mod_per_load_duration: Vec<KmodPerLoadDuration>,
+    /// De combinatie van het maatgevende krachtpunt van de zwaarste toets.
+    #[serde(default)]
+    #[ts(optional)]
+    pub governing_combination_id: Option<u32>,
 }
 
 fn governing_for<F>(env: &[ForcePoint], score: F) -> ForcePoint
@@ -163,6 +193,20 @@ fn uc_of(c: &NamedCheck) -> Option<f64> {
     }
 }
 
+fn force_state_van(c: &NamedCheck) -> ForceStateSnapshot {
+    match &c.kind {
+        CheckKind::Resistance(r) => r.force_state,
+        CheckKind::Stability(s) => s.force_state,
+    }
+}
+
+fn notes_van(c: &mut NamedCheck) -> &mut Vec<String> {
+    match &mut c.kind {
+        CheckKind::Resistance(r) => &mut r.notes,
+        CheckKind::Stability(s) => &mut s.notes,
+    }
+}
+
 /// Resultaat voor een opbouw die niet rekenbaar is: geen toetsen, de reden
 /// in `governing_check_id` (zelfde conventie als de houtorkestratie) en in
 /// de notities.
@@ -189,19 +233,25 @@ fn foutresultaat(input: &CltBeamCheckInput, reden: String) -> CltBeamCheckResult
             governing_layer: None,
         },
         notes: vec![format!("Opbouw niet rekenbaar: {reden}")],
+        k_mod_per_load_duration: vec![],
+        governing_combination_id: None,
     }
 }
 
-pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
-    let mech = match input.layup.mechanics() {
-        Ok(m) => m,
-        Err(e) => return foutresultaat(&input, e),
-    };
-
+/// De toetsen per lamel voor één omhullende en één belastingduurklasse.
+///
+/// Zonder belastingduur per combinatie wordt dit één keer aangeroepen met de
+/// hele omhullende en `load_duration` — de rekengang van vóór september 2026.
+fn lagen_toetsen(
+    input: &CltBeamCheckInput,
+    mech: &CltMechanics,
+    omhullende: &[ForcePoint],
+    duur: LoadDurationClass,
+) -> (Vec<NamedCheck>, Vec<CltLayerResult>) {
     // Maatgevende krachtspunten: grootste |M_y| voor buiging, grootste |V_z|
     // voor dwarskracht — dezelfde strategie als de houtorkestratie.
-    let gov_bending = governing_for(&input.forces_envelope, |f| f.my_ed.abs());
-    let gov_shear = governing_for(&input.forces_envelope, |f| f.vz_ed.abs());
+    let gov_bending = governing_for(omhullende, |f| f.my_ed.abs());
+    let gov_shear = governing_for(omhullende, |f| f.vz_ed.abs());
     let bend_state = ForceStateSnapshot::from_point(&gov_bending);
     let shear_state = ForceStateSnapshot::from_point(&gov_shear);
 
@@ -218,12 +268,12 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
                 // Rekenwaarden per laag: k_mod en γ_M uit het materiaaltype
                 // van de sterkteklasse van die laag; k_h = 1,0 (zie clt_toets).
                 let gamma = gamma_m(l.class.timber_type);
-                let kmod = k_mod(l.class.timber_type, input.service_class, input.load_duration);
+                let kmod = k_mod(l.class.timber_type, input.service_class, duur);
                 let f_md = design_strength(l.class.f_mk, kmod, gamma, 1.0, ksys);
                 let f_vd = design_strength(l.class.f_vk, kmod, gamma, 1.0, ksys);
 
-                let b = check_layer_bending(&mech, l.index, f_md, bend_state);
-                let v = check_layer_shear(&mech, l.index, f_vd, input.k_cr, shear_state);
+                let b = check_layer_bending(mech, l.index, f_md, bend_state);
+                let v = check_layer_shear(mech, l.index, f_vd, input.k_cr, shear_state);
                 let uc_b = b.uc.as_ref().map(|u| u.uc);
                 let uc_v = v.uc.as_ref().map(|u| u.uc);
                 ids.push(b.id.clone());
@@ -233,7 +283,7 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
                 (f_md, f_vd, uc_b, uc_v)
             }
             CltLayerOrientation::Transverse => {
-                let r = rolling_shear_info(&mech, l.index, input.k_cr, shear_state);
+                let r = rolling_shear_info(mech, l.index, input.k_cr, shear_state);
                 ids.push(r.id.clone());
                 checks.push(NamedCheck { id: r.id.clone(), kind: CheckKind::Resistance(r) });
                 (0.0, 0.0, None, None)
@@ -258,6 +308,157 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
             check_ids: ids,
         });
     }
+    (checks, layers)
+}
+
+/// Wat de toetsing per klasse oplevert, samengevoegd.
+struct PerKlasse {
+    checks: Vec<NamedCheck>,
+    layers: Vec<CltLayerResult>,
+    k_mod_per_load_duration: Vec<KmodPerLoadDuration>,
+    governing_combination_id: Option<u32>,
+    maatgevende_duur: LoadDurationClass,
+}
+
+/// Per klasse de lamellen toetsen en per toets de zwaarste uitkomst houden.
+///
+/// Welke klasse "de zwaarste" is: de hoogste unity check. Een toets zonder
+/// unity check (de rolschuifspanning in een dwarslaag is een informatieve
+/// regel) neemt de klasse met de grootste dwarskracht in zijn krachtpunt, zodat
+/// hij de grootste spanning toont. Bij gelijkstand wint de langste klasse.
+/// De regel per lamel volgt dezelfde keuze: buigspanning en f_m,d uit de klasse
+/// van de buigtoets, schuifspanning en f_v,d uit die van de dwarskrachttoets.
+fn toets_per_klasse(input: &CltBeamCheckInput, mech: &CltMechanics, groepen: &[Groep]) -> PerKlasse {
+    let service = input.service_class;
+    // k_mod hangt in tabel 3.1 niet van het materiaaltype af; de klasse van de
+    // eerste lengtelaag volstaat voor de regel in het rapport.
+    let type_voor_kmod = mech
+        .layers
+        .iter()
+        .find(|l| l.orientation == CltLayerOrientation::Longitudinal)
+        .map(|l| l.class.timber_type)
+        .unwrap_or(mech.layers[0].class.timber_type);
+    let kmods: Vec<f64> = groepen.iter().map(|g| k_mod(type_voor_kmod, service, g.duur)).collect();
+    let uitkomsten: Vec<(Vec<NamedCheck>, Vec<CltLayerResult>)> =
+        groepen.iter().map(|g| lagen_toetsen(input, mech, &g.punten, g.duur)).collect();
+
+    let n = uitkomsten[0].0.len();
+    let mut gekozen_klasse: Vec<usize> = Vec::with_capacity(n);
+    let mut checks = Vec::with_capacity(n);
+    let mut maatgevend: Option<(f64, usize, u32)> = None;
+    for i in 0..n {
+        let mut beste = 0usize;
+        for gi in 1..uitkomsten.len() {
+            let kandidaat = &uitkomsten[gi].0[i];
+            let huidig = &uitkomsten[beste].0[i];
+            debug_assert_eq!(kandidaat.id, huidig.id);
+            let beter = match (uc_of(kandidaat), uc_of(huidig)) {
+                (Some(a), Some(b)) => a > b,
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (None, None) => {
+                    force_state_van(kandidaat).forces.vz_ed.abs()
+                        > force_state_van(huidig).forces.vz_ed.abs()
+                }
+            };
+            if beter {
+                beste = gi;
+            }
+        }
+        gekozen_klasse.push(beste);
+        let mut c = uitkomsten[beste].0[i].clone();
+        if let Some(uc) = uc_of(&c) {
+            let combinatie = force_state_van(&c).combination_id;
+            let gekozen = KlasseUc {
+                duur: groepen[beste].duur,
+                k_mod: kmods[beste],
+                combinaties: groepen[beste].combinaties.clone(),
+                uc: Some(uc),
+            };
+            let andere: Vec<KlasseUc> = groepen
+                .iter()
+                .enumerate()
+                .filter(|(gi, _)| *gi != beste)
+                .map(|(gi, g)| KlasseUc {
+                    duur: g.duur,
+                    k_mod: kmods[gi],
+                    combinaties: g.combinaties.clone(),
+                    uc: uc_of(&uitkomsten[gi].0[i]),
+                })
+                .collect();
+            notes_van(&mut c).push(kmod_notitie(service, &gekozen, combinatie, &andere));
+            if maatgevend.map_or(true, |(u, _, _)| uc > u) {
+                maatgevend = Some((uc, beste, combinatie));
+            }
+        }
+        checks.push(c);
+    }
+
+    let klasse_van_id = |id: &str| -> usize {
+        checks
+            .iter()
+            .position(|c| c.id == id)
+            .map(|i| gekozen_klasse[i])
+            .unwrap_or(0)
+    };
+    let mut layers: Vec<CltLayerResult> = Vec::with_capacity(uitkomsten[0].1.len());
+    for j in 0..uitkomsten[0].1.len() {
+        let ids = &uitkomsten[0].1[j].check_ids;
+        let buig = ids.first().map(|id| klasse_van_id(id)).unwrap_or(0);
+        let schuif = ids.get(1).map(|id| klasse_van_id(id)).unwrap_or(buig);
+        let b = &uitkomsten[buig].1[j];
+        let s = &uitkomsten[schuif].1[j];
+        layers.push(CltLayerResult {
+            sigma_top_mpa: b.sigma_top_mpa,
+            sigma_bot_mpa: b.sigma_bot_mpa,
+            f_md_mpa: b.f_md_mpa,
+            uc_bending: b.uc_bending,
+            tau_max_mpa: s.tau_max_mpa,
+            f_vd_mpa: s.f_vd_mpa,
+            uc_shear: s.uc_shear,
+            ..b.clone()
+        });
+    }
+
+    let k_mod_per_load_duration = groepen
+        .iter()
+        .enumerate()
+        .map(|(gi, g)| KmodPerLoadDuration {
+            load_duration: g.duur,
+            k_mod: kmods[gi],
+            combination_ids: g.combinaties.clone(),
+            bases: g.bases.clone(),
+        })
+        .collect();
+    let (governing_combination_id, maatgevende_duur) = match maatgevend {
+        Some((u, gi, combinatie)) if u > 0.0 => (Some(combinatie), groepen[gi].duur),
+        _ => (None, groepen[0].duur),
+    };
+    PerKlasse { checks, layers, k_mod_per_load_duration, governing_combination_id, maatgevende_duur }
+}
+
+pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
+    let mech = match input.layup.mechanics() {
+        Ok(m) => m,
+        Err(e) => return foutresultaat(&input, e),
+    };
+
+    let groepen = belastingduur::groepeer(
+        &input.forces_envelope,
+        &input.load_duration_per_combination,
+        input.load_duration,
+    );
+    let (checks, mut layers, k_mod_per_load_duration, governing_combination_id, load_duration) =
+        match &groepen {
+            None => {
+                let (c, l) = lagen_toetsen(&input, &mech, &input.forces_envelope, input.load_duration);
+                (c, l, Vec::new(), None, input.load_duration)
+            }
+            Some(g) => {
+                let pk = toets_per_klasse(&input, &mech, g);
+                (pk.checks, pk.layers, pk.k_mod_per_load_duration, pk.governing_combination_id, pk.maatgevende_duur)
+            }
+        };
 
     // Aggregatie: hoogste UC over de toetsen die meetellen; de laag waarin
     // die toets zit wordt gemarkeerd.
@@ -302,6 +503,25 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
         "Rolschuiving in de dwarslagen: spanning ter informatie, geen toets — f_v,rol staat niet in NEN-EN 1995-1-1/NB:2013 en niet in EN 338.".to_string(),
         "Niet getoetst: normaalkracht, buiging om de zwakke as, knik/kip en doorbuiging §7.2 (tabel 3.2 kent geen k_def voor kruislaaghout).".to_string(),
     ];
+    if !k_mod_per_load_duration.is_empty() {
+        let delen: Vec<String> = k_mod_per_load_duration
+            .iter()
+            .map(|k| {
+                format!(
+                    "{} (k_mod {}): combinatie {}",
+                    duurklasse_naam(k.load_duration),
+                    nl(k.k_mod, 2),
+                    k.combination_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ")
+                )
+            })
+            .collect();
+        notes.push(format!(
+            "Belastingduur per combinatie (EN 1995-1-1 3.1.3(2), de kortstdurende belasting in een \
+             combinatie bepaalt k_mod): {}. Elke lamel is per klasse getoetst; per toets telt de \
+             zwaarste uitkomst.",
+            delen.join("; ")
+        ));
+    }
     if slenderness > 0.0 && slenderness < 20.0 {
         notes.push(format!(
             "Let op: slankheid L/h = {slenderness:.1} < 20. De starre verbinding verwaarloost de schuifvervorming van de dwarslagen; bij korte, dikke platen overschat dat (EI)_ef en onderschat het de randspanningen. Controleer met de gamma-methode zodra een rolschuifmodulus uit een productverklaring beschikbaar is."
@@ -345,7 +565,7 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
         ),
         strength_class: input.layup.strength_classes_label(),
         service_class: input.service_class,
-        load_duration: input.load_duration,
+        load_duration,
         checks,
         uc_max,
         status,
@@ -362,6 +582,8 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
             governing_layer,
         },
         notes,
+        k_mod_per_load_duration,
+        governing_combination_id,
     }
 }
 
@@ -397,6 +619,7 @@ mod tests {
             layup: CltLayup::alternating(1000.0, &[40.0, 20.0, 40.0, 20.0, 40.0], "C24"),
             service_class: ServiceClass::Sc1,
             load_duration: LoadDurationClass::MediumTerm,
+            load_duration_per_combination: vec![],
             length_m: 5.0,
             forces_envelope: vec![punt(0.0, 10.0, 0.0), punt(2500.0, 0.0, 20.0), punt(5000.0, -10.0, 0.0)],
             k_cr: 1.0,
@@ -440,6 +663,10 @@ mod tests {
         // Geen normaalkracht → geen N-melding; slank genoeg → geen waarschuwing.
         assert!(!r.notes.iter().any(|n| n.contains("Normaalkracht")));
         assert!(!r.notes.iter().any(|n| n.contains("slankheid")));
+        // Zonder belastingduur per combinatie: geen k_mod-lijst, het oude gedrag.
+        assert!(r.k_mod_per_load_duration.is_empty());
+        assert_eq!(r.governing_combination_id, None);
+        assert_eq!(r.load_duration, LoadDurationClass::MediumTerm);
     }
 
     #[test]
@@ -505,5 +732,6 @@ mod tests {
         let i: CltBeamCheckInput = serde_json::from_value(ruw).unwrap();
         assert_relative_eq!(i.k_cr, 1.0);
         assert!(!i.load_sharing);
+        assert!(i.load_duration_per_combination.is_empty());
     }
 }

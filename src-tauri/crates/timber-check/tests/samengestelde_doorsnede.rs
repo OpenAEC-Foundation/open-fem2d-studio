@@ -71,6 +71,7 @@ fn invoer(custom: Option<CustomSection>, vz_kn: f64, my_knm: f64) -> TimberBeamC
         strength_class: "C24".to_string(),
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         length_m: 4.0,
         forces_envelope: vec![punt(vz_kn, my_knm)],
         buckling_length_y_m: 4.0,
