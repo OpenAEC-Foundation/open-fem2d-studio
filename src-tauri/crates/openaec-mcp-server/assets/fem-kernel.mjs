@@ -6320,7 +6320,7 @@ function computeEnvelope(combinations, perCase) {
   return { elements, reactions, maxDisplacement, maxDisplacementCombinationId };
 }
 
-// node_modules/zustand/esm/vanilla.mjs
+// ../../../../design-mockup/node_modules/zustand/esm/vanilla.mjs
 var createStoreImpl = (createState) => {
   let state;
   const listeners = /* @__PURE__ */ new Set();
@@ -6859,8 +6859,14 @@ function buildSteelCheckInputs(data) {
         top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
         bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom)
       },
-      buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1e3,
-      buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1e3,
+      // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
+      // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
+      // tussen plaatsen met een kipsteun aan beide flenzen, anders de
+      // staaflengte — en zet de herkomst in de toets 6.3.1. Hier stond tot
+      // september 2026 `?? lengthMm / 1000`: de toets kon een terugval dan niet
+      // van een opgave onderscheiden, en het rapport zweeg erover.
+      buckling_length_y_m: cfg.bucklingLengthY_m ?? 0,
+      buckling_length_z_m: cfg.bucklingLengthZ_m ?? 0,
       // Welke doorbuigingseis hier geldt, met welke verplaatsing en welke
       // grens — zie `bepaalDoorbuigingsInvoer`. Een overwegend verticale staaf
       // krijgt de zijdelingse eis van A1.4.3(7) in plaats van een vloereis.
@@ -7118,8 +7124,21 @@ function buildTimberCheckInputs(data) {
       // Geen extra validatie hier: beide invoerpaden schrijven alleen een
       // eindige waarde > 0 weg (BarPropertiesDialog.buildCheckConfig, en
       // valideerModel keurt het veld met `positief: true`).
-      buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1e3,
-      buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1e3,
+      //
+      // Sinds september 2026 gaat een leeg veld als 0 = "niet opgegeven" door.
+      // De kern kiest dan zelf en zet de herkomst in de kolomtoets en in de
+      // drukterm van de kiptoets: om y de staaflengte, om z de grootste
+      // afstand tussen plaatsen met een steun aan de boven- ÉN onderrand
+      // (`lateral_bracing` hieronder), anders de staaflengte.
+      buckling_length_y_m: cfg.bucklingLengthY_m ?? 0,
+      buckling_length_z_m: cfg.bucklingLengthZ_m ?? 0,
+      // Zijdelingse steunen per rand — ALLEEN voor de kniklengte om z. Dezelfde
+      // twee lijsten als bij staal (boven = bovenrand, onder = onderrand). De
+      // kipsteunafstand hieronder blijft er uitdrukkelijk los van.
+      lateral_bracing: {
+        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
+        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom)
+      },
       // Kipsteunafstand voor tabel 6.1; 0 → staaflengte.
       //
       // Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt
@@ -8515,7 +8534,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.9";
+var version = "0.3.10";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [

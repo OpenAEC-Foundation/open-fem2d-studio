@@ -1145,6 +1145,65 @@ pub fn kolomslankheid(inv: &KolomInvoer) -> Result<Kolomslankheid, String> {
 ///
 /// Rekent NIETS opnieuw uit — hetzelfde contract als [`crate::deelstappen`]:
 /// deze functie schrijft op wat [`kolomslankheid`] al bepaald heeft.
+/// Dezelfde afleiding als [`kolom_deelstappen`], maar voor een BENOEMDE as —
+/// in de app de tweede as z, loodrecht op het rekenvlak.
+///
+/// WAAROM. De slankheidspoort om z (5.8.3.1(2): het criterium mag per richting
+/// worden gecontroleerd) liep door dezelfde keten als die om y, en de stappen
+/// heetten daardoor l₀, λ en λ_lim — dezelfde symbolen als in het vlak. Wie het
+/// rapport leest, kon de twee assen alleen aan de kop van de toets uit elkaar
+/// houden, en een losse stap "λ = 69,3" zei niet om welke as het ging. Hier
+/// krijgt elke grootheid die per as verschilt de asnaam in haar symbool:
+/// l₀,z, i_z, λ_z en λ_lim,z. De ids blijven gelijk; dat zijn sleutels, geen
+/// rapporttekst.
+///
+/// De keten zelf wordt niet opnieuw opgebouwd: de stappen van
+/// [`kolom_deelstappen`] krijgen alleen andere symbolen, zodat de twee assen
+/// nooit een verschillende afleiding kunnen krijgen.
+pub fn kolom_deelstappen_om_as(k: &Kolomslankheid, as_naam: &str) -> Vec<Deelstap> {
+    // `\lambda` gevolgd door iets anders dan een onderstreping of een letter:
+    // de slankheid zelf. `\lambda_{lim}` en `\lambda_1` blijven zo ongemoeid.
+    fn met_as_lambda(tekst: &str, as_naam: &str) -> String {
+        let mut uit = String::with_capacity(tekst.len() + 8);
+        let mut rest = tekst;
+        while let Some(pos) = rest.find(r"\lambda") {
+            let (voor, na) = rest.split_at(pos + r"\lambda".len());
+            uit.push_str(voor);
+            let volgende = na.chars().next();
+            if !matches!(volgende, Some(c) if c == '_' || c.is_alphabetic()) {
+                uit.push_str(&format!("_{{{as_naam}}}"));
+            }
+            rest = na;
+        }
+        uit.push_str(rest);
+        uit
+    }
+    let latex = |t: &str| -> String {
+        let t = t
+            .replace(r"\lambda_{lim}", &format!(r"\lambda_{{lim,{as_naam}}}"))
+            .replace("l_0", &format!("l_{{0,{as_naam}}}"))
+            .replace("{i}", &format!("{{i_{as_naam}}}"));
+        met_as_lambda(&t, as_naam)
+    };
+    let mut stappen = kolom_deelstappen(k);
+    for s in &mut stappen {
+        s.titel = format!("{} — om de {as_naam}-as", s.titel);
+        s.symbol = latex(&s.symbol);
+        s.formula_latex = latex(&s.formula_latex);
+        s.ingevuld_latex = latex(&s.ingevuld_latex);
+        for v in &mut s.variables {
+            v.symbol = match v.symbol.as_str() {
+                "l₀" => format!("l₀,{as_naam}"),
+                "λ" => format!("λ_{as_naam}"),
+                "λ_lim" => format!("λ_lim,{as_naam}"),
+                "i" => format!("i_{as_naam}"),
+                _ => latex(&v.symbol),
+            };
+        }
+    }
+    stappen
+}
+
 pub fn kolom_deelstappen(k: &Kolomslankheid) -> Vec<Deelstap> {
     let mut stappen = Vec::new();
 

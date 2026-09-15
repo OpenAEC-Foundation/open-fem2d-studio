@@ -13,6 +13,10 @@ use nen_en_1993_1_1_stability::StabilityCalc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use nen_en_1993_1_1_stability::kniklengte::{kniklengte_deelstap, vlak_label, Kniklengte};
+use nen_en_1993_1_1_stability::opmaak::{lx, nl, nv, stap};
+use nen_en_1993_1_1_stability::Deelstap;
+
 use crate::bending::sigma_m_mpa;
 use crate::compression::sigma_axial_mpa;
 use crate::section::TimberSection;
@@ -53,10 +57,18 @@ pub fn k_c(k: f64, lambda_rel: f64) -> f64 {
 }
 
 /// Invoer voor de kolomkniktoets §6.3.2.
-#[derive(Clone, Copy, Debug)]
+///
+/// De kniklengten komen als [`Kniklengte`] binnen en niet als kale getallen:
+/// de toets moet in zijn afleiding kunnen zeggen waar L_cr vandaan komt
+/// (opgegeven, uit de zijdelingse steunen, of de staaflengte als terugval) en
+/// of de raamwerkberekening die knikrichting ziet. Om de z-as ziet zij hem in
+/// het vlakke model nooit.
+#[derive(Clone, Debug)]
 pub struct ColumnStabilityInput {
-    pub l_cr_y_mm: f64,
-    pub l_cr_z_mm: f64,
+    /// Kniklengte om de y-as (doorbuiging in de z-richting, art. 6.3.2(1)).
+    pub kniklengte_y: Kniklengte,
+    /// Kniklengte om de z-as (doorbuiging in de y-richting, art. 6.3.2(1)).
+    pub kniklengte_z: Kniklengte,
     pub f_c0k_mpa: f64,
     pub e0_05_mpa: f64,
     pub beta_c: f64,
@@ -68,9 +80,21 @@ pub struct ColumnStabilityInput {
 
 /// §6.3.2: druk of gecombineerde druk en buiging met kniktoeslag.
 ///
-/// Wanneer lambda_rel,y én lambda_rel,z <= 0,3 geldt §6.3.2(3) en worden
+/// Wanneer lambda_rel,y én lambda_rel,z <= 0,3 geldt §6.3.2(2) en worden
 /// (6.19)/(6.20) gebruikt (kwadratische drukterm, geen k_c); anders
 /// (6.23)/(6.24). UC = maximum van beide vergelijkingen.
+///
+/// EEN TOETS, TWEE TAKKEN. (6.23) hoort bij knik om de y-as (k_c,y) en (6.24)
+/// bij knik om de z-as (k_c,z). De afleiding schrijft ze als twee volledige
+/// takken uit — L_cr met herkomst, i, λ, λ_rel, k, k_c en de vergelijking — en
+/// zet ze aan het eind tegen elkaar. Het id `6.3.2_column_stability` blijft
+/// daarmee de toets die het altijd was; zie `column_buckling` in
+/// `nen-en-1993-1-1-stability` voor dezelfde afweging bij staal.
+///
+/// De formulebeelden van (6.25), (6.28) en (6.29) ontbreken in de lokale
+/// uitdraai van de norm; (6.21)–(6.24), (6.26) en (6.27) zijn leesbaar. De
+/// afleiding schrijft op wat `k_factor` en `k_c` rekenen en voegt geen formule
+/// toe.
 pub fn check_column_stability(
     section: &TimberSection,
     input: &ColumnStabilityInput,
@@ -80,9 +104,11 @@ pub fn check_column_stability(
     let sigma_c = sigma_axial_mpa(n_ed, section.a_mm2);
     let sigma_my = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3);
     let sigma_mz = sigma_m_mpa(force_state.forces.mz_ed, section.w_z_mm3);
+    let l_cr_y_mm = input.kniklengte_y.l_cr_mm;
+    let l_cr_z_mm = input.kniklengte_z.l_cr_mm;
 
-    let lambda_y = slenderness(input.l_cr_y_mm, section.radius_y_mm);
-    let lambda_z = slenderness(input.l_cr_z_mm, section.radius_z_mm);
+    let lambda_y = slenderness(l_cr_y_mm, section.radius_y_mm);
+    let lambda_z = slenderness(l_cr_z_mm, section.radius_z_mm);
     let lambda_rel_y = lambda_rel(lambda_y, input.f_c0k_mpa, input.e0_05_mpa);
     let lambda_rel_z = lambda_rel(lambda_z, input.f_c0k_mpa, input.e0_05_mpa);
     let k_y = k_factor(lambda_rel_y, input.beta_c);
@@ -96,9 +122,9 @@ pub fn check_column_stability(
     let term_mz = if input.f_mzd_mpa > 0.0 { sigma_mz / input.f_mzd_mpa } else { 0.0 };
 
     let low_slenderness = lambda_rel_y <= 0.3 && lambda_rel_z <= 0.3;
+    let ratio_c = sigma_c / input.f_c0d_mpa;
     let (eq_a, eq_b, formula, article) = if low_slenderness {
-        // §6.3.2(3) → (6.19)/(6.20): kwadratische drukterm zonder k_c.
-        let ratio_c = sigma_c / input.f_c0d_mpa;
+        // §6.3.2(2) → (6.19)/(6.20): kwadratische drukterm zonder k_c.
         (
             ratio_c * ratio_c + term_my + input.k_m * term_mz,
             ratio_c * ratio_c + input.k_m * term_my + term_mz,
@@ -123,9 +149,105 @@ pub fn check_column_stability(
         CheckStatus::NotOk
     };
 
+    let takken = [
+        Tak {
+            k: &input.kniklengte_y,
+            radius_mm: section.radius_y_mm,
+            traagheid_mm4: section.i_y_mm4,
+            lambda: lambda_y,
+            lambda_rel: lambda_rel_y,
+            k_fac: k_y,
+            k_c: k_c_y,
+            vergelijking: eq_a,
+            drukterm: if low_slenderness { ratio_c * ratio_c } else { term_c_y },
+            buigterm_y: term_my,
+            buigterm_z: input.k_m * term_mz,
+            nr: if low_slenderness { "(6.19)" } else { "(6.23)" },
+            nr_rel: "(6.21)",
+            nr_k: "(6.27)",
+            nr_kc: "(6.25)",
+            doorbuiging: "z",
+        },
+        Tak {
+            k: &input.kniklengte_z,
+            radius_mm: section.radius_z_mm,
+            traagheid_mm4: section.i_z_mm4,
+            lambda: lambda_z,
+            lambda_rel: lambda_rel_z,
+            k_fac: k_z,
+            k_c: k_c_z,
+            vergelijking: eq_b,
+            drukterm: if low_slenderness { ratio_c * ratio_c } else { term_c_z },
+            buigterm_y: input.k_m * term_my,
+            buigterm_z: term_mz,
+            nr: if low_slenderness { "(6.20)" } else { "(6.24)" },
+            nr_rel: "(6.22)",
+            nr_k: "(6.28)",
+            nr_kc: "(6.26)",
+            doorbuiging: "y",
+        },
+    ];
+    // Bij gelijke uitkomst de eerste tak; de UC is dan toch dezelfde.
+    let maatgevend = if eq_b > eq_a { 1 } else { 0 };
+
+    let mut notes: Vec<String> = takken
+        .iter()
+        .map(|t| {
+            format!(
+                "Om de {a}-as ({vlak}): {lcr}, λ_rel,{a} = {lr}, k_c,{a} = {kc}, {nr} = {v}.",
+                a = t.k.as_naam,
+                vlak = vlak_label(t.k),
+                lcr = t.k.samenvatting(),
+                lr = nl(t.lambda_rel, 3),
+                kc = nl(t.k_c, 3),
+                nr = t.nr,
+                v = nl(t.vergelijking, 3),
+            )
+        })
+        .collect();
+    let deelstappen = if n_ed < 0.0 {
+        notes.push(format!(
+            "Maatgevend is {} — knik om de {}-as ({}).",
+            takken[maatgevend].nr,
+            takken[maatgevend].k.as_naam,
+            vlak_label(takken[maatgevend].k)
+        ));
+        kolom_deelstappen(
+            section,
+            input,
+            &force_state,
+            &takken,
+            maatgevend,
+            Spanningen { sigma_c, sigma_my, sigma_mz },
+            low_slenderness,
+            uc,
+        )
+    } else {
+        notes.push(
+            "N_Ed is geen drukkracht: kolomknik is hier niet van toepassing en er is niets af te \
+             leiden. De kniklengten hierboven gelden zodra de staaf wél gedrukt wordt."
+                .to_string(),
+        );
+        Vec::new()
+    };
+    if let Some(t) = takken.iter().find(|t| !t.k.in_rekenvlak) {
+        notes.push(format!(
+            "Knik om de {}-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: \
+             de toets met k_c is daarvoor altijd nodig.",
+            t.k.as_naam
+        ));
+    }
+
     StabilityCalc {
         id: "6.3.2_column_stability".to_string(),
-        title: "Kolomknik (druk en buiging)".to_string(),
+        title: format!(
+            "Kolomknik (druk en buiging) — {}",
+            takken
+                .iter()
+                .map(|t| format!("om {} ({})", t.k.as_naam, vlak_label(t.k)))
+                .collect::<Vec<_>>()
+                .join(" en ")
+        ),
         article,
         force_state,
         formula_latex: formula,
@@ -137,8 +259,8 @@ pub fn check_column_stability(
             NamedValue { symbol: r"f_{m,y,d}".to_string(), value: input.f_myd_mpa, unit: "N/mm²".to_string() },
             NamedValue { symbol: r"f_{m,z,d}".to_string(), value: input.f_mzd_mpa, unit: "N/mm²".to_string() },
             NamedValue { symbol: "k_m".to_string(), value: input.k_m, unit: "-".to_string() },
-            NamedValue { symbol: r"L_{cr,y}".to_string(), value: input.l_cr_y_mm, unit: "mm".to_string() },
-            NamedValue { symbol: r"L_{cr,z}".to_string(), value: input.l_cr_z_mm, unit: "mm".to_string() },
+            NamedValue { symbol: r"L_{cr,y}".to_string(), value: l_cr_y_mm, unit: "mm".to_string() },
+            NamedValue { symbol: r"L_{cr,z}".to_string(), value: l_cr_z_mm, unit: "mm".to_string() },
         ],
         intermediate_values: vec![
             NamedValue { symbol: r"\lambda_y".to_string(), value: lambda_y, unit: "-".to_string() },
@@ -152,9 +274,7 @@ pub fn check_column_stability(
             NamedValue { symbol: "(6.23)".to_string(), value: eq_a, unit: "-".to_string() },
             NamedValue { symbol: "(6.24)".to_string(), value: eq_b, unit: "-".to_string() },
         ],
-        // De houttoetsen hebben (nog) geen uitgeschreven afleiding; hun
-        // tussenwaarden blijven ongewijzigd de weergave.
-        deelstappen: vec![],
+        deelstappen,
         value: uc,
         unit: "-".to_string(),
         uc: Some(UnityCheck {
@@ -164,8 +284,315 @@ pub fn check_column_stability(
             formula_latex: r"\max\left[(6.23), (6.24)\right]".to_string(),
         }),
         status,
-        notes: vec![],
+        notes,
     }
+}
+
+/// Eén tak van de kolomtoets: alles wat bij knik om één as hoort.
+struct Tak<'a> {
+    k: &'a Kniklengte,
+    radius_mm: f64,
+    traagheid_mm4: f64,
+    lambda: f64,
+    lambda_rel: f64,
+    k_fac: f64,
+    k_c: f64,
+    vergelijking: f64,
+    drukterm: f64,
+    buigterm_y: f64,
+    buigterm_z: f64,
+    /// Nummer van de vergelijking van deze tak: (6.23)/(6.24), of
+    /// (6.19)/(6.20) bij lage slankheid.
+    nr: &'static str,
+    nr_rel: &'static str,
+    nr_k: &'static str,
+    nr_kc: &'static str,
+    /// De richting van de doorbuiging die bij deze as hoort (art. 6.3.2(1)).
+    doorbuiging: &'static str,
+}
+
+/// De drie rekenspanningen op de getoetste plaats (N/mm²).
+#[derive(Clone, Copy)]
+struct Spanningen {
+    sigma_c: f64,
+    sigma_my: f64,
+    sigma_mz: f64,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn kolom_deelstappen(
+    section: &TimberSection,
+    input: &ColumnStabilityInput,
+    force_state: &ForceStateSnapshot,
+    takken: &[Tak<'_>],
+    maatgevend: usize,
+    s: Spanningen,
+    low_slenderness: bool,
+    uc: f64,
+) -> Vec<Deelstap> {
+    let Spanningen { sigma_c, sigma_my, sigma_mz } = s;
+    let n_c = force_state.forces.n_ed.abs();
+    let mut uit = Vec::with_capacity(2 + 7 * takken.len() + 1);
+
+    uit.push(stap(
+        "uitgangspunten",
+        "Uitgangspunten van de kolomtoets",
+        "",
+        "art. 6.3.2",
+        String::new(),
+        String::new(),
+        vec![
+            nv("N_{c,Ed}", n_c, "kN"),
+            nv("A", section.a_mm2, "mm²"),
+            nv("f_{c,0,k}", input.f_c0k_mpa, "N/mm²"),
+            nv("E_{0,05}", input.e0_05_mpa, "N/mm²"),
+            nv(r"\beta_c", input.beta_c, "-"),
+            nv("f_{c,0,d}", input.f_c0d_mpa, "N/mm²"),
+            nv(r"\sigma_{m,y,d}", sigma_my, "N/mm²"),
+            nv("f_{m,y,d}", input.f_myd_mpa, "N/mm²"),
+            nv(r"\sigma_{m,z,d}", sigma_mz, "N/mm²"),
+            nv("f_{m,z,d}", input.f_mzd_mpa, "N/mm²"),
+            nv("k_m", input.k_m, "-"),
+        ],
+        None,
+        "",
+        vec![
+            format!(
+                "De toets is gedaan op de plaats van het maatgevende buigmoment (combinatie {}, x = {} \
+                 mm), met de normaalkracht die daar werkt.",
+                force_state.combination_id,
+                nl(force_state.position_mm, 0)
+            ),
+            "E_0,05 is de 5-percentielwaarde van de elasticiteitsmodulus evenwijdig aan de vezel; \
+             art. 6.3.1(2) schrijft voor dat de stabiliteit met de karakteristieke stijfheid wordt \
+             getoetst. β_c is de factor van (6.29) voor elementen binnen de rechtheidsgrenzen van \
+             hoofdstuk 10."
+                .to_string(),
+            "Elke as krijgt hieronder een eigen, volledige tak. (6.23) hoort bij knik om de y-as en \
+             (6.24) bij knik om de z-as; de toets is de grootste van de twee."
+                .to_string(),
+        ],
+    ));
+
+    uit.push(stap(
+        "sigma_c",
+        "Drukspanning evenwijdig aan de vezel",
+        r"\sigma_{c,0,d}",
+        "art. 6.1.4",
+        r"\sigma_{c,0,d} = \frac{N_{c,Ed} \cdot 10^3}{A}".to_string(),
+        format!(r"\sigma_{{c,0,d}} = \frac{{{} \cdot 10^3}}{{{}}}", lx(n_c, 2), lx(section.a_mm2, 0)),
+        vec![nv("N_{c,Ed}", n_c, "kN"), nv("A", section.a_mm2, "mm²")],
+        Some(sigma_c),
+        "N/mm²",
+        Vec::new(),
+    ));
+
+    for t in takken {
+        let a = t.k.as_naam.as_str();
+        let lcr = t.k.symbool();
+        uit.push(kniklengte_deelstap(t.k, "art. 6.3.2(1)", ""));
+
+        uit.push(stap(
+            &format!("i_{a}"),
+            &format!("Traagheidsstraal om de {a}-as"),
+            &format!("i_{{{a}}}"),
+            "art. 6.3.2(1)",
+            format!(r"i_{{{a}}} = \sqrt{{\frac{{I_{{{a}}}}}{{A}}}}"),
+            format!(r"i_{{{a}}} = \sqrt{{\frac{{{}}}{{{}}}}}", lx(t.traagheid_mm4, 0), lx(section.a_mm2, 0)),
+            vec![nv(&format!("I_{{{a}}}"), t.traagheid_mm4, "mm⁴"), nv("A", section.a_mm2, "mm²")],
+            Some(t.radius_mm),
+            "mm",
+            Vec::new(),
+        ));
+
+        uit.push(stap(
+            &format!("lambda_{a}"),
+            &format!("Slankheid om de {a}-as"),
+            &format!(r"\lambda_{{{a}}}"),
+            "art. 6.3.2(1)",
+            format!(r"\lambda_{{{a}}} = \frac{{{lcr}}}{{i_{{{a}}}}}"),
+            format!(r"\lambda_{{{a}}} = \frac{{{}}}{{{}}}", lx(t.k.l_cr_mm, 0), lx(t.radius_mm, 2)),
+            vec![nv(&lcr, t.k.l_cr_mm, "mm"), nv(&format!("i_{{{a}}}"), t.radius_mm, "mm")],
+            Some(t.lambda),
+            "-",
+            vec![format!(
+                "De slankheid overeenkomend met de buiging om de {a}-as (doorbuiging in de {}-richting), \
+                 zoals art. 6.3.2(1) haar omschrijft.",
+                t.doorbuiging
+            )],
+        ));
+
+        uit.push(stap(
+            &format!("lambda_rel_{a}"),
+            &format!("Relatieve slankheid om de {a}-as"),
+            &format!(r"\lambda_{{rel,{a}}}"),
+            &format!("art. 6.3.2(1) {}", t.nr_rel),
+            format!(r"\lambda_{{rel,{a}}} = \frac{{\lambda_{{{a}}}}}{{\pi}} \sqrt{{\frac{{f_{{c,0,k}}}}{{E_{{0,05}}}}}}"),
+            format!(
+                r"\lambda_{{rel,{a}}} = \frac{{{}}}{{\pi}} \sqrt{{\frac{{{}}}{{{}}}}}",
+                lx(t.lambda, 2),
+                lx(input.f_c0k_mpa, 1),
+                lx(input.e0_05_mpa, 0)
+            ),
+            vec![
+                nv(&format!(r"\lambda_{{{a}}}"), t.lambda, "-"),
+                nv("f_{c,0,k}", input.f_c0k_mpa, "N/mm²"),
+                nv("E_{0,05}", input.e0_05_mpa, "N/mm²"),
+            ],
+            Some(t.lambda_rel),
+            "-",
+            Vec::new(),
+        ));
+
+        if low_slenderness {
+            uit.push(stap(
+                &format!("vergelijking_{a}"),
+                &format!("Toets om de {a}-as — {}", t.nr),
+                t.nr,
+                &format!("art. 6.3.2(2), art. 6.2.4 {}", t.nr),
+                if a == "y" {
+                    r"\left(\frac{\sigma_{c,0,d}}{f_{c,0,d}}\right)^2 + \frac{\sigma_{m,y,d}}{f_{m,y,d}} + k_m\frac{\sigma_{m,z,d}}{f_{m,z,d}} \le 1".to_string()
+                } else {
+                    r"\left(\frac{\sigma_{c,0,d}}{f_{c,0,d}}\right)^2 + k_m\frac{\sigma_{m,y,d}}{f_{m,y,d}} + \frac{\sigma_{m,z,d}}{f_{m,z,d}} \le 1".to_string()
+                },
+                format!(r"{} + {} + {}", lx(t.drukterm, 4), lx(t.buigterm_y, 4), lx(t.buigterm_z, 4)),
+                Vec::new(),
+                Some(t.vergelijking),
+                "-",
+                vec![format!(
+                    "λ_rel,y én λ_rel,z ≤ 0,3: art. 6.3.2(2) verwijst naar (6.19) en (6.20) in 6.2.4, \
+                     zonder knikfactor. Drukterm {}, buigterm om y {}, buigterm om z {}.",
+                    nl(t.drukterm, 4),
+                    nl(t.buigterm_y, 4),
+                    nl(t.buigterm_z, 4)
+                )],
+            ));
+            continue;
+        }
+
+        uit.push(stap(
+            &format!("k_{a}"),
+            &format!("Instabiliteitsfactor om de {a}-as"),
+            &format!("k_{{{a}}}"),
+            &format!("art. 6.3.2(3) {}", t.nr_k),
+            format!(
+                r"k_{{{a}}} = 0{{,}}5 \left( 1 + \beta_c \left( \lambda_{{rel,{a}}} - 0{{,}}3 \right) + \lambda_{{rel,{a}}}^2 \right)"
+            ),
+            format!(
+                r"k_{{{a}}} = 0{{,}}5 \left( 1 + {} \left( {} - 0{{,}}3 \right) + {}^2 \right)",
+                lx(input.beta_c, 2),
+                lx(t.lambda_rel, 4),
+                lx(t.lambda_rel, 4)
+            ),
+            vec![nv(r"\beta_c", input.beta_c, "-"), nv(&format!(r"\lambda_{{rel,{a}}}"), t.lambda_rel, "-")],
+            Some(t.k_fac),
+            "-",
+            Vec::new(),
+        ));
+
+        let wortel = t.k_fac * t.k_fac - t.lambda_rel * t.lambda_rel;
+        let kc_ruw = 1.0 / (t.k_fac + wortel.max(0.0).sqrt());
+        let mut notes_kc = Vec::new();
+        if kc_ruw > 1.0 {
+            notes_kc.push(format!(
+                "De breuk geeft {}; de kern begrenst k_c op 1,0 — een knikfactor boven 1 zou de \
+                 drukterm kleiner maken dan zonder knik.",
+                nl(kc_ruw, 4)
+            ));
+        }
+        uit.push(stap(
+            &format!("k_c_{a}"),
+            &format!("Knikfactor om de {a}-as"),
+            &format!("k_{{c,{a}}}"),
+            &format!("art. 6.3.2(3) {}", t.nr_kc),
+            format!(r"k_{{c,{a}}} = \frac{{1}}{{k_{{{a}}} + \sqrt{{k_{{{a}}}^2 - \lambda_{{rel,{a}}}^2}}}}"),
+            format!(
+                r"k_{{c,{a}}} = \frac{{1}}{{{} + \sqrt{{{}^2 - {}^2}}}}",
+                lx(t.k_fac, 4),
+                lx(t.k_fac, 4),
+                lx(t.lambda_rel, 4)
+            ),
+            vec![nv(&format!("k_{{{a}}}"), t.k_fac, "-"), nv(&format!(r"\lambda_{{rel,{a}}}"), t.lambda_rel, "-")],
+            Some(t.k_c),
+            "-",
+            notes_kc,
+        ));
+
+        let (formule, ingevuld) = if a == "y" {
+            (
+                r"\frac{\sigma_{c,0,d}}{k_{c,y} f_{c,0,d}} + \frac{\sigma_{m,y,d}}{f_{m,y,d}} + k_m\frac{\sigma_{m,z,d}}{f_{m,z,d}} \le 1".to_string(),
+                format!(
+                    r"\frac{{{sc}}}{{{kc} \cdot {fc}}} + \frac{{{smy}}}{{{fmy}}} + {km} \cdot \frac{{{smz}}}{{{fmz}}}",
+                    sc = lx(sigma_c, 3),
+                    kc = lx(t.k_c, 4),
+                    fc = lx(input.f_c0d_mpa, 3),
+                    smy = lx(sigma_my, 3),
+                    fmy = lx(input.f_myd_mpa, 3),
+                    km = lx(input.k_m, 2),
+                    smz = lx(sigma_mz, 3),
+                    fmz = lx(input.f_mzd_mpa, 3),
+                ),
+            )
+        } else {
+            (
+                r"\frac{\sigma_{c,0,d}}{k_{c,z} f_{c,0,d}} + k_m\frac{\sigma_{m,y,d}}{f_{m,y,d}} + \frac{\sigma_{m,z,d}}{f_{m,z,d}} \le 1".to_string(),
+                format!(
+                    r"\frac{{{sc}}}{{{kc} \cdot {fc}}} + {km} \cdot \frac{{{smy}}}{{{fmy}}} + \frac{{{smz}}}{{{fmz}}}",
+                    sc = lx(sigma_c, 3),
+                    kc = lx(t.k_c, 4),
+                    fc = lx(input.f_c0d_mpa, 3),
+                    km = lx(input.k_m, 2),
+                    smy = lx(sigma_my, 3),
+                    fmy = lx(input.f_myd_mpa, 3),
+                    smz = lx(sigma_mz, 3),
+                    fmz = lx(input.f_mzd_mpa, 3),
+                ),
+            )
+        };
+        uit.push(stap(
+            &format!("vergelijking_{a}"),
+            &format!("Toets om de {a}-as — {}", t.nr),
+            t.nr,
+            &format!("art. 6.3.2(3) {}", t.nr),
+            formule,
+            ingevuld,
+            vec![
+                nv(&format!("k_{{c,{a}}}"), t.k_c, "-"),
+                nv(r"\sigma_{c,0,d}", sigma_c, "N/mm²"),
+                nv("f_{c,0,d}", input.f_c0d_mpa, "N/mm²"),
+            ],
+            Some(t.vergelijking),
+            "-",
+            vec![format!(
+                "Drukterm {}, buigterm om y {}, buigterm om z {}. {}",
+                nl(t.drukterm, 4),
+                nl(t.buigterm_y, 4),
+                nl(t.buigterm_z, 4),
+                if t.vergelijking <= 1.0 { "Om deze as voldoet de staaf." } else { "Om deze as voldoet de staaf NIET." }
+            )],
+        ));
+    }
+
+    let nrs: Vec<&str> = takken.iter().map(|t| t.nr).collect();
+    let waarden: Vec<String> = takken.iter().map(|t| lx(t.vergelijking, 4)).collect();
+    uit.push(stap(
+        "maatgevend",
+        "Unity check — de grootste van de takken",
+        "UC",
+        "art. 6.3.2(3)",
+        format!(r"UC = \max\left[ {} \right]", nrs.join(r" \,;\, ")),
+        format!(r"UC = \max\left[ {} \right]", waarden.join(r" \,;\, ")),
+        Vec::new(),
+        Some(uc),
+        "-",
+        vec![format!(
+            "Maatgevend is {} — knik om de {}-as ({}).",
+            takken[maatgevend].nr,
+            takken[maatgevend].k.as_naam,
+            vlak_label(takken[maatgevend].k)
+        )],
+    ));
+    uit
 }
 
 // ---------------------------------------------------------------------------
@@ -446,8 +873,8 @@ mod tests {
 
     fn kolom_invoer() -> ColumnStabilityInput {
         ColumnStabilityInput {
-            l_cr_y_mm: 6342.0,
-            l_cr_z_mm: 1268.0,
+            kniklengte_y: Kniklengte::opgegeven("y", 6342.0, true),
+            kniklengte_z: Kniklengte::opgegeven("z", 1268.0, false),
             f_c0k_mpa: 21.0,
             e0_05_mpa: 7400.0,
             beta_c: 0.2,
@@ -502,8 +929,8 @@ mod tests {
         // Staaf 1 (gereconstrueerd uit de UC-tabel): L_cr = 3313 om beide assen,
         // N = -92,812 kN, M = -66,964 kNm → (6.24) maatgevend = 1,74.
         let invoer = ColumnStabilityInput {
-            l_cr_y_mm: 3313.0,
-            l_cr_z_mm: 3313.0,
+            kniklengte_y: Kniklengte::opgegeven("y", 3313.0, true),
+            kniklengte_z: Kniklengte::opgegeven("z", 3313.0, false),
             ..kolom_invoer()
         };
         let r = check_column_stability(&sectie(), &invoer, snap(-92.812, -66.964));
@@ -520,8 +947,8 @@ mod tests {
     fn lage_slankheid_gebruikt_kwadratische_drukterm() {
         // Zeer korte kniklengten → lambda_rel <= 0,3 → (6.19)/(6.20).
         let invoer = ColumnStabilityInput {
-            l_cr_y_mm: 300.0,
-            l_cr_z_mm: 100.0,
+            kniklengte_y: Kniklengte::opgegeven("y", 300.0, true),
+            kniklengte_z: Kniklengte::opgegeven("z", 100.0, false),
             ..kolom_invoer()
         };
         let r = check_column_stability(&sectie(), &invoer, snap(-57.64, 0.0));

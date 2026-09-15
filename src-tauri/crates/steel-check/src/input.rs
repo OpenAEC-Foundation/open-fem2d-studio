@@ -66,7 +66,27 @@ pub struct BeamCheckInput {
     pub length_m: f64,
     pub forces_envelope: Vec<ForcePoint>,
     pub lateral_bracing: LateralBracing,
+    /// Kniklengte om de sterke y-as, in m — knik IN het vlak van het model.
+    ///
+    /// `0` of weglaten = niet opgegeven: de kern houdt dan de staaflengte aan
+    /// en zegt dat in de afleiding ("staaflengte (terugval)"). Tot september
+    /// 2026 vulde de frontend die terugval zelf in, en kon de toets niet zien
+    /// dat het een terugval was. Een negatieve of niet-eindige waarde wordt
+    /// genegeerd mét een kanttekening; een kniklengte van nul zou χ = 1 geven.
+    ///
+    /// In het vlakke model van deze app is y altijd de sterke as in het vlak:
+    /// de oplosser rekent met I_y, en een staaf kent geen doorsnederotatie.
+    #[serde(default)]
     pub buckling_length_y_m: f64,
+    /// Kniklengte om de zwakke z-as, in m — knik UIT het vlak van het model.
+    ///
+    /// `0` of weglaten = niet opgegeven. De kern leidt L_cr,z dan af uit
+    /// [`Self::lateral_bracing`], maar ALLEEN op plaatsen waar een kipsteun aan
+    /// de boven- én aan de onderflens zit: alleen daar wordt de doorsnede als
+    /// geheel zijdelings gehouden. Zonder zo'n paar geldt de staaflengte. Zie
+    /// `nen_en_1993_1_1_stability::kniklengte` voor de regel en de normgrond;
+    /// de gebruikte waarde en haar herkomst staan in de toets.
+    #[serde(default)]
     pub buckling_length_z_m: f64,
     pub deflection_limit_class: DeflectionClass,
     pub deflection_limit_numerator: u32,

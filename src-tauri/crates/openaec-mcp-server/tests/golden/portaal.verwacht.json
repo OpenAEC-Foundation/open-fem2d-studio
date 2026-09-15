@@ -2032,8 +2032,8 @@
           }
         ],
         "lateral_bracing": {"top_flange_positions":[],"bottom_flange_positions":[]},
-        "buckling_length_y_m": 4,
-        "buckling_length_z_m": 4,
+        "buckling_length_y_m": 0,
+        "buckling_length_z_m": 0,
         "deflection_limit_class": "Custom",
         "deflection_limit_numerator": 300,
         "deflection_add_limit_numerator": 300,
@@ -2313,8 +2313,8 @@
           }
         ],
         "lateral_bracing": {"top_flange_positions":[],"bottom_flange_positions":[]},
-        "buckling_length_y_m": 6,
-        "buckling_length_z_m": 6,
+        "buckling_length_y_m": 0,
+        "buckling_length_z_m": 0,
         "deflection_limit_class": "Floor",
         "deflection_limit_numerator": 333,
         "deflection_add_limit_numerator": 0,
@@ -2591,8 +2591,8 @@
           }
         ],
         "lateral_bracing": {"top_flange_positions":[],"bottom_flange_positions":[]},
-        "buckling_length_y_m": 4,
-        "buckling_length_z_m": 4,
+        "buckling_length_y_m": 0,
+        "buckling_length_z_m": 0,
         "deflection_limit_class": "Custom",
         "deflection_limit_numerator": 300,
         "deflection_add_limit_numerator": 300,

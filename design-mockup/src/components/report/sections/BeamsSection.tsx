@@ -8,6 +8,11 @@ import { useTranslation } from "react-i18next";
 import type { Beam } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
+import {
+  HERKOMST_OPGEGEVEN,
+  HERKOMST_STAAFLENGTE,
+  voorspelKniklengte,
+} from "../../../lib/kniklengte";
 import { fmtLenM, fmtNum } from "../reportFormat";
 
 /** Scharnieren compact: "begin: Ry · einde: Ry" — leeg = star ("—"). */
@@ -25,16 +30,30 @@ function releasesText(beam: Beam): string {
   return parts.join(" · ");
 }
 
-/** Kern van de toetsconfig: alleen expliciet ingestelde velden, compact. */
-function checkConfigText(beam: Beam): string {
+/**
+ * Kern van de toetsconfig: expliciet ingestelde velden, compact — plus een
+ * AFGELEIDE kniklengte om z.
+ *
+ * Een kniklengte staat hier met haar herkomst. Een opgegeven waarde heet
+ * "opgegeven"; een L_cr,z die de rekenkern uit kipsteunen aan boven- én
+ * onderflens afleidt, staat er ook als niemand haar invulde — anders zou deze
+ * tabel zwijgen over een kniklengte die de toetsing wél gebruikt. De terugval op
+ * de staaflengte wordt hier niet herhaald: die staat bij elke knikcontrole zelf,
+ * en in deze tabel zou hij bij elke staaf dezelfde ruis geven.
+ */
+function checkConfigText(beam: Beam, nodes: Parameters<typeof beamLengthMm>[1]): string {
   const cfg = beam.checkConfig;
   if (!cfg) return "—";
   const parts: string[] = [];
   if (cfg.bucklingLengthY_m !== undefined) {
-    parts.push(`Lcr,y = ${fmtNum(cfg.bucklingLengthY_m, 2)} m`);
+    parts.push(`Lcr,y = ${fmtNum(cfg.bucklingLengthY_m, 2)} m (${HERKOMST_OPGEGEVEN}, in het vlak)`);
   }
-  if (cfg.bucklingLengthZ_m !== undefined) {
-    parts.push(`Lcr,z = ${fmtNum(cfg.bucklingLengthZ_m, 2)} m`);
+  const z = voorspelKniklengte(cfg.bucklingLengthZ_m, beamLengthMm(beam, nodes), {
+    boven: cfg.lateralRestraints,
+    onder: cfg.lateralRestraintsBottom,
+  });
+  if (z.herkomst !== HERKOMST_STAAFLENGTE) {
+    parts.push(`Lcr,z = ${fmtNum(z.lCrMm / 1000, 2)} m (${z.herkomst}, uit het vlak)`);
   }
   if (cfg.lateralRestraints && cfg.lateralRestraints.length > 0) {
     const pos = cfg.lateralRestraints.map((f) => `${fmtNum(f, 2)}·L`).join(", ");
@@ -48,7 +67,7 @@ export default function BeamsSection() {
   const { nodes, beams } = useReportData();
 
   const sorted = [...beams].sort((a, b) => a.id - b.id);
-  const anyCheckConfig = sorted.some((b) => checkConfigText(b) !== "—");
+  const anyCheckConfig = sorted.some((b) => checkConfigText(b, nodes) !== "—");
 
   return (
     <div className="rpt-block">
@@ -82,7 +101,7 @@ export default function BeamsSection() {
                 <td>{b.material ?? "S235"}</td>
                 <td>{b.profile ?? "HEA160"}</td>
                 <td>{releasesText(b)}</td>
-                {anyCheckConfig && <td>{checkConfigText(b)}</td>}
+                {anyCheckConfig && <td>{checkConfigText(b, nodes)}</td>}
               </tr>
             ))}
           </tbody>

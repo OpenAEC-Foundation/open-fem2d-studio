@@ -3,6 +3,7 @@
 
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
 use nen_en_1993_1_1_section::{CheckStatus, ResistanceCalc};
+use nen_en_1993_1_1_stability::kniklengte::{bepaal_kniklengte, Steunen, Steunrand};
 use nen_en_1993_1_1_stability::StabilityCalc;
 use nen_en_1995_1_1::stability::{
     check_beam_stability, check_column_stability, effective_length_mm, BeamStabilityInput,
@@ -272,12 +273,32 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
 
     // 5. Kolomknik §6.3.2 op het maatgevende buigpunt (conform de
     //    referentie-uitwerking: veldmoment + normaalkracht).
+    //
+    //    De kniklengten beslist de kern, mét herkomst (zie
+    //    `nen_en_1993_1_1_stability::kniklengte`): opgegeven, of om z uit
+    //    steunen aan BEIDE randen, of de staaflengte. Dezelfde L_cr,z gaat
+    //    hieronder ook naar de drukterm van de kiptoets.
     let bc = beta_c(mat.timber_type);
+    let l_staaf_mm = input.length_m * 1e3;
+    let kniklengte_y = bepaal_kniklengte("y", true, input.buckling_length_y_m, l_staaf_mm, None);
+    let kniklengte_z = bepaal_kniklengte(
+        "z",
+        false,
+        input.buckling_length_z_m,
+        l_staaf_mm,
+        input.lateral_bracing.as_ref().map(|b| Steunen {
+            boven: &b.top_flange_positions,
+            onder: &b.bottom_flange_positions,
+            soort: Steunrand::Rand,
+        }),
+    );
+    let l_cr_z_mm = kniklengte_z.l_cr_mm;
+    let kniklengte_z_samenvatting = kniklengte_z.samenvatting();
     checks.push(make_stability(check_column_stability(
         &section,
         &ColumnStabilityInput {
-            l_cr_y_mm: input.buckling_length_y_m * 1e3,
-            l_cr_z_mm: input.buckling_length_z_m * 1e3,
+            kniklengte_y,
+            kniklengte_z,
             f_c0k_mpa: mat.f_c0k,
             e0_05_mpa: mat.e0_05,
             beta_c: bc,
@@ -306,11 +327,11 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
                 section.h_mm,
             )
         };
-        checks.push(make_stability(check_beam_stability(
+        let mut kip = check_beam_stability(
             &section,
             &BeamStabilityInput {
                 l_ef_mm,
-                l_cr_z_mm: input.buckling_length_z_m * 1e3,
+                l_cr_z_mm,
                 f_mk_mpa: mat.f_mk,
                 f_c0k_mpa: mat.f_c0k,
                 e0_05_mpa: mat.e0_05,
@@ -319,7 +340,16 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
                 f_c0d_mpa: f_c0d,
             },
             bend_state,
-        )));
+        );
+        // Waar de kniklengte in de drukterm van (6.35) vandaan komt. Zonder
+        // deze regel ziet de lezer van de kiptoets k_c,z staan maar niet met
+        // welke L_cr,z hij bepaald is — en die kan op de staaflengte zijn
+        // teruggevallen.
+        kip.notes.push(format!(
+            "k_c,z in de drukterm van (6.35) is bepaald met {kniklengte_z_samenvatting} — dezelfde \
+             kniklengte als in de kolomtoets van art. 6.3.2, waar haar afleiding staat."
+        ));
+        checks.push(make_stability(kip));
     }
 
     // 7. Doorbuiging §7.2 met kruip.

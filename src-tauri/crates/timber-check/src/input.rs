@@ -1,6 +1,7 @@
 //! Invoertypen voor de hout-orchestrator.
 
 use mechanics::ForcePoint;
+use nen_en_1993_1_1_ltb::LateralBracing;
 use nen_en_1995_1_1::stability::{LtbLoadCase, LtbLoadPosition};
 use nen_en_1995_1_1::{LoadDurationClass, ServiceClass};
 use serde::{Deserialize, Serialize};
@@ -76,10 +77,35 @@ pub struct TimberBeamCheckInput {
     pub length_m: f64,
     /// Krachtsverloop (envelop) langs de staaf; N drukt negatief.
     pub forces_envelope: Vec<ForcePoint>,
-    /// Kniklengte om de sterke as (m).
+    /// Kniklengte om de sterke y-as (m) — knik IN het vlak van het model.
+    ///
+    /// `0` of weglaten = niet opgegeven: de kern houdt de staaflengte aan en
+    /// zegt dat in de afleiding ("staaflengte (terugval)"). Negatief of niet
+    /// eindig wordt genegeerd mét een kanttekening.
+    #[serde(default)]
     pub buckling_length_y_m: f64,
-    /// Kniklengte om de zwakke as (m) — bij kipsteunen de steunafstand.
+    /// Kniklengte om de zwakke z-as (m) — knik UIT het vlak van het model.
+    ///
+    /// `0` of weglaten = niet opgegeven. De kern leidt L_cr,z dan af uit
+    /// [`Self::lateral_bracing`], maar alleen op plaatsen waar een steun aan
+    /// de boven- ÉN aan de onderrand zit; anders geldt de staaflengte. De
+    /// gebruikte waarde en haar herkomst staan in de kolomtoets en in de
+    /// drukterm van de kiptoets.
+    #[serde(default)]
     pub buckling_length_z_m: f64,
+    /// Zijdelingse steunen als fracties van de staaflengte, per rand — dezelfde
+    /// vorm als bij staal (`top_flange_positions` = bovenrand,
+    /// `bottom_flange_positions` = onderrand).
+    ///
+    /// ALLEEN voor de kniklengte om de z-as. De kiptoets van art. 6.3.3 rekent
+    /// met zijn eigen [`Self::ltb_segment_length_m`] en leidt niets uit deze
+    /// posities af; dat besluit is bewust en blijft staan (zie de toelichting
+    /// bij dat veld in de invoerbouwer).
+    ///
+    /// Weglaten = geen steunen, dus geen afleiding.
+    #[serde(default)]
+    #[ts(optional)]
+    pub lateral_bracing: Option<LateralBracing>,
     /// Kipsteunafstand (m) voor tabel 6.1; 0 → staaflengte.
     #[serde(default)]
     pub ltb_segment_length_m: f64,

@@ -7,6 +7,10 @@ use nen_en_1993_1_1_section::{NamedValue, UnityCheck, CheckStatus};
 
 pub mod buckling_curve;
 pub mod column_buckling;
+/// De kniklengte per as mét haar herkomst; gedeeld door staal en hout.
+pub mod kniklengte;
+/// Opmaakhulpjes voor deelstappen; gedeeld door staal en hout.
+pub mod opmaak;
 pub mod interaction_factors;
 pub mod combined_n_m;
 

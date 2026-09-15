@@ -78,15 +78,36 @@ export interface BeamEindVeren {
  * Rust-kern verwacht (DeflectionClass, ServiceClass, LoadDurationClass).
  */
 export interface BeamCheckConfig {
-  // Staal (EN 1993)
-  /** Kniklengte sterke as in m; default: systeemlengte. */
+  // Staal (EN 1993) en hout (EN 1995)
+  /**
+   * Kniklengte om de sterke y-as in m — knik IN het vlak van het model.
+   *
+   * In deze app is y altijd de as in het vlak: een staaf kent geen
+   * doorsnederotatie en de oplosser rekent met I_y. Leeg = de kern houdt de
+   * staaflengte aan en noemt dat in de toets "staaflengte (terugval)".
+   */
   bucklingLengthY_m?: number;
-  /** Kniklengte zwakke as in m; default: systeemlengte. */
+  /**
+   * Kniklengte om de zwakke z-as in m — knik UIT het vlak van het model.
+   * Die richting ziet de raamwerkberekening nooit, ook niet tweede-orde; de
+   * knikcontrole is daar altijd nodig.
+   *
+   * Leeg = de kern kiest: de grootste afstand tussen plaatsen waar een
+   * kipsteun aan de boven- ÉN de onderflens zit (`lateralRestraints` en
+   * `lateralRestraintsBottom` op dezelfde fractie), anders de staaflengte. De
+   * herkomst staat in de toets; `lib/kniklengte.ts` voorspelt hem voor de
+   * placeholder.
+   */
   bucklingLengthZ_m?: number;
   /**
    * Kipsteunposities BOVENFLENS als fractie 0..1 van de staaflengte —
    * zelfde conventie als LateralBracing.top_flange_positions in de
    * Rust-kern (lambda_chi.rs vermenigvuldigt met de staaflengte).
+   *
+   * Twee gebruikers: de KIP van staal (een steun aan de gedrukte flens telt),
+   * en de kniklengte om z van staal én hout (alleen waar ook de onderflens —
+   * bij hout de onderrand — op dezelfde plaats gesteund is). De kiptoets van
+   * hout leidt er niets uit af; die heeft `ltbSupportSpacing_m`.
    */
   lateralRestraints?: number[];
   /**

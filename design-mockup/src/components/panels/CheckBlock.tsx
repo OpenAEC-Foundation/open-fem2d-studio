@@ -19,8 +19,11 @@ import "./CheckPanel.css";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
 import type { StabilityCalc } from "../../lib/types/steel/StabilityCalc";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
+import type { Deelstap } from "../../lib/types/steel/Deelstap";
 import {
   afleidingLatex,
+  deelstapRegels,
+  deelstappenVan,
   splitsArtikel,
   unityCheckLatex,
 } from "../report/checkReportUtils";
@@ -81,6 +84,52 @@ function nl(v: number, digits: number): string {
   });
 }
 
+/**
+ * De uitgeschreven afleiding van de kern, inklapbaar.
+ *
+ * Tot september 2026 toonde het paneel alleen de losse tussenwaarden; de
+ * deelstappen stonden alleen in het rapport. Voor knik is dat te weinig: wie
+ * in het paneel "Kolomknik" ziet staan, hoort daar ook te kunnen lezen met
+ * welke L_cr,z om de zwakke as is gerekend en of die opgegeven, afgeleid of
+ * teruggevallen is. De regels komen uit `deelstapRegels`, dezelfde functie
+ * die het rapport gebruikt — paneel en rapport vertellen zo hetzelfde.
+ */
+function Afleiding({ stappen }: { stappen: Deelstap[] }) {
+  if (stappen.length === 0) return null;
+  return (
+    <details className="check-intermediates check-afleiding">
+      <summary>Afleiding ({stappen.length} stappen)</summary>
+      <ol className="check-afleiding-stappen">
+        {stappen.map((s, i) => {
+          const { formule, uitkomst } = deelstapRegels(s);
+          return (
+            <li key={`${s.id}-${i}`} className="check-afleiding-stap">
+              <div className="check-afleiding-kop">
+                <span>{s.titel}</span>
+                {s.article && <span className="check-article">{s.article}</span>}
+              </div>
+              {formule && (
+                <div dangerouslySetInnerHTML={{ __html: renderLatex(formule, false) }} />
+              )}
+              {uitkomst && (
+                <div dangerouslySetInnerHTML={{ __html: renderLatex(uitkomst, false) }} />
+              )}
+              {!formule && <VariableLine vars={s.variables} />}
+              {s.notes.length > 0 && (
+                <ul className="check-notes">
+                  {s.notes.map((n, j) => (
+                    <li key={j}>{n}</li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </details>
+  );
+}
+
 export default function CheckBlock({ check }: { check: CheckLike }) {
   const formulaRef = useRef<HTMLDivElement>(null);
   const ucRef = useRef<HTMLDivElement>(null);
@@ -130,6 +179,8 @@ export default function CheckBlock({ check }: { check: CheckLike }) {
           <StatusBadge status={check.status} />
         </div>
       )}
+
+      <Afleiding stappen={deelstappenVan(check)} />
 
       {intermediates.length > 0 && (
         <details className="check-intermediates">

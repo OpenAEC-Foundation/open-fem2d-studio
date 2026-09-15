@@ -156,7 +156,8 @@ log("\n[5] Kipsteunafstand en L_cr,z zijn twee verschillende grootheden");
   check("kipsteunafstand = 4", i.ltb_segment_length_m, 4);
 
   const alleenKip = hout({ ltbSupportSpacing_m: 1.5 });
-  check("L_cr,z valt terug op de systeemlengte", alleenKip.buckling_length_z_m, 6);
+  // 0 = niet opgegeven; de kern kiest en meldt de herkomst (test-zwakke-as.mjs).
+  check("L_cr,z niet opgegeven = 0", alleenKip.buckling_length_z_m, 0);
   check("kipsteunafstand = 1,5", alleenKip.ltb_segment_length_m, 1.5);
 
   const alleenKnik = hout({ bucklingLengthZ_m: 1.5 });

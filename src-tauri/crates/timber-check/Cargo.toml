@@ -12,6 +12,10 @@ ts-rs = { workspace = true }
 mechanics = { path = "../mechanics" }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 nen-en-1993-1-1-stability = { path = "../nen-en-1993-1-1-stability" }
+# Alleen voor het type `LateralBracing`: de zijdelingse steunen per rand,
+# waaruit de kern L_cr,z afleidt. Dezelfde vorm als bij staal, zodat de
+# invoerbouwer en het MCP-schema niet twee steuntypen hoeven te kennen.
+nen-en-1993-1-1-ltb = { path = "../nen-en-1993-1-1-ltb" }
 nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 steel-check = { path = "../steel-check" }
 # Voor de doorsnedegrootheden van een samengestelde (eigen) doorsnede:

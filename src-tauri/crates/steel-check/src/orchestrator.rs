@@ -16,7 +16,8 @@ use nen_en_1993_1_1_section::{
 use nen_en_1993_1_1_stability::{
     StabilityCalc,
     buckling_curve::BucklingCurve,
-    column_buckling::{n_b_rd, Knikassen},
+    column_buckling::{n_b_rd, Knikas, Knikassen},
+    kniklengte::{bepaal_kniklengte, Steunen, Steunrand},
     interaction_factors::{interaction_factors_method_2, cm_uniform_or_psi},
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
@@ -134,6 +135,9 @@ struct Doorsnede {
     klasse: CrossSectionClass,
     curve_y: BucklingCurve,
     curve_z: BucklingCurve,
+    /// Welke rij van tabel 6.2 de twee knikkrommen levert, als tekst voor de
+    /// afleiding van 6.3.1.
+    kromme_toelichting: String,
     is_channel: bool,
     /// Welke rij van tabel 6.5 de kipkromme levert (art. 6.3.2.3). Dit is een
     /// ANDERE tabel dan de 6.2 waar `curve_y`/`curve_z` uit komen: die gaan
@@ -313,6 +317,11 @@ fn resolveer_doorsnede(
                 .unwrap_or(BucklingCurve::B),
             curve_z: BucklingCurve::from_char(profile.buckling_curves.z_axis)
                 .unwrap_or(BucklingCurve::C),
+            kromme_toelichting: format!(
+                "Tabel 6.2 via de profieldatabase: bij {} staat knikkromme '{}' om de eerste as en \
+                 '{}' om de tweede as.",
+                input.profile_name, profile.buckling_curves.y_axis, profile.buckling_curves.z_axis
+            ),
             is_channel: matches!(profile.kind, ProfileKind::Channel),
             // Tabel 6.5 kent alleen rijen voor I-profielen. Alles uit de
             // catalogus is gewalst; kokers, buizen en hoeklijnen vallen buiten
@@ -455,6 +464,15 @@ fn resolveer_doorsnede(
         klasse,
         curve_y,
         curve_z,
+        kromme_toelichting: format!(
+            "Tabel 6.2, gelaste profielen: dikste plaat t_f = {} mm {} 40 mm, dus knikkromme {} om \
+             y-y en {} om z-z. Een samengestelde doorsnede krijgt nooit de gunstiger kromme van een \
+             gewalst profiel.",
+            nl_getal(custom.flensdikte_mm()),
+            if custom.flensdikte_mm() <= 40.0 { "≤" } else { ">" },
+            curve_y.letter(),
+            curve_z.letter()
+        ),
         is_channel: false,
         // Een inline doorsnede heeft geen catalogusgeschiedenis en is per
         // definitie uit platen samengesteld, dus gelast. Kip draait hier
@@ -653,24 +671,67 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     }
 
     // 6. Member stability — column buckling 6.3.1 (compression-governing location)
-    let curve_y = doorsnede.curve_y;
-    let curve_z = doorsnede.curve_z;
+    //
+    // De kniklengten beslist de kern zelf, mét herkomst (zie
+    // `nen_en_1993_1_1_stability::kniklengte`). Om de eerste as (y, in het vlak)
+    // is dat de opgegeven waarde of de staaflengte. Om de tweede as (z, uit het
+    // vlak) kan het ook de grootste afstand zijn tussen plaatsen waar een
+    // kipsteun aan BEIDE flenzen zit — een steun aan één flens houdt de
+    // doorsnede niet als geheel vast.
+    //
+    // Bij een hoekprofiel zijn de assen u en v: geen van beide valt samen met
+    // het vlak van het model, en "boven- en onderflens" betekent daar niets.
+    // Dan geen afleiding uit steunen; de opgegeven lengte of de staaflengte.
+    let assen_info = doorsnede.knikassen;
+    let eigen_assen = assen_info.naam_1 == "y" && assen_info.naam_2 == "z";
+    let l_staaf_mm = input.length_m * 1000.0;
+    let kniklengte_1 = bepaal_kniklengte(
+        assen_info.naam_1,
+        eigen_assen,
+        input.buckling_length_y_m,
+        l_staaf_mm,
+        None,
+    );
+    let kniklengte_2 = bepaal_kniklengte(
+        assen_info.naam_2,
+        false,
+        input.buckling_length_z_m,
+        l_staaf_mm,
+        eigen_assen.then_some(Steunen {
+            boven: &input.lateral_bracing.top_flange_positions,
+            onder: &input.lateral_bracing.bottom_flange_positions,
+            soort: Steunrand::Flens,
+        }),
+    );
+    let knikassen = [
+        Knikas {
+            kniklengte: kniklengte_1,
+            i_mm: assen_info.i_1_mm,
+            traagheid_mm4: assen_info.traagheid_1_mm4,
+            kromme: doorsnede.curve_y,
+            kromme_toelichting: doorsnede.kromme_toelichting.clone(),
+        },
+        Knikas {
+            kniklengte: kniklengte_2,
+            i_mm: assen_info.i_2_mm,
+            traagheid_mm4: assen_info.traagheid_2_mm4,
+            kromme: doorsnede.curve_z,
+            kromme_toelichting: doorsnede.kromme_toelichting.clone(),
+        },
+    ];
     // De slankheid gaat om de assen die de doorsnede voorschrijft: y-y en z-z,
     // of bij een hoekprofiel de hoofdassen u-u en v-v (par. 1.7(2)).
-    let knik = n_b_rd(
-        p, &grade, input.buckling_length_y_m, input.buckling_length_z_m,
-        doorsnede.knikassen, curve_y, curve_z, comp_state,
-    );
+    let knik = n_b_rd(p, &grade, &knikassen, comp_state);
 
     // χ en λ̄ komen als velden mee en worden niet uit `intermediate_values`
     // opgezocht: de symboolnamen dragen de asnaam ("\chi_u" bij een
     // hoekprofiel), en een zoekopdracht op "\chi_y" zou daar stilzwijgend op
     // de standaardwaarde 1,0 uitkomen — een knikreductie die er niet is.
     let n_pl_rd_kn = p.area_mm2 * grade.fy_mpa * 1e-3;
-    let n_b_rd_y_kn = knik.chi_1 * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
-    let n_b_rd_z_kn = knik.chi_2 * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
-    let lambda_bar_y = knik.lambda_bar_1;
-    let lambda_bar_z = knik.lambda_bar_2;
+    let n_b_rd_y_kn = knik.per_as[0].chi * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
+    let n_b_rd_z_kn = knik.per_as[1].chi * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
+    let lambda_bar_y = knik.per_as[0].lambda_bar;
+    let lambda_bar_z = knik.per_as[1].lambda_bar;
     checks.push(make_stability(knik.calc));
 
     // 7. LTB 6.3.2 — channel sections use monosymmetric (conservative) Mcr × 0.7.
@@ -918,4 +979,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 #[inline]
 fn n_pl_rd_rd_fn(n_pl_rd_kn: f64, gamma_m1: f64) -> f64 {
     n_pl_rd_kn / gamma_m1
+}
+
+/// Een maat in mm als tekst met decimaalkomma, voor een kanttekening.
+fn nl_getal(v: f64) -> String {
+    let s = format!("{v:.1}");
+    s.strip_suffix(".0").unwrap_or(&s).replace('.', ",")
 }

@@ -75,6 +75,7 @@ fn invoer(custom: Option<CustomSection>, vz_kn: f64, my_knm: f64) -> TimberBeamC
         forces_envelope: vec![punt(vz_kn, my_knm)],
         buckling_length_y_m: 4.0,
         buckling_length_z_m: 4.0,
+        lateral_bracing: None,
         ltb_segment_length_m: 0.0,
         ltb_load_case: LtbLoadCase::UniformLoad,
         ltb_load_position: LtbLoadPosition::CentreOfGravity,

@@ -821,7 +821,8 @@ function vloerDakEis(
  * Per-staaf toetsconfiguratie komt uit `beam.checkConfig` (ingesteld via de
  * EN 1993-tab van het staaf-eigenschappenvenster). Gedocumenteerde defaults
  * voor ontbrekende velden:
- *  - kniklengte = systeemlengte om beide assen; geen kipsteunen;
+ *  - kniklengte: leeg → 0, en de kern kiest (staaflengte, of om z uit
+ *    kipsteunen aan beide flenzen) en meldt de herkomst; geen kipsteunen;
  *  - doorbuiging: zie `bepaalDoorbuigingsInvoer` — een overwegend horizontale
  *    staaf krijgt klasse "vloer" (w_fin op L/333, w_add op 3/1 000 · ℓ_rep uit
  *    NEN-EN 1990:2002/NB:2019 A1.4.3(3), tweede gedachtestreepje), een
@@ -924,8 +925,14 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
         top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
         bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom),
       },
-      buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1000,
-      buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1000,
+      // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
+      // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
+      // tussen plaatsen met een kipsteun aan beide flenzen, anders de
+      // staaflengte — en zet de herkomst in de toets 6.3.1. Hier stond tot
+      // september 2026 `?? lengthMm / 1000`: de toets kon een terugval dan niet
+      // van een opgave onderscheiden, en het rapport zweeg erover.
+      buckling_length_y_m: cfg.bucklingLengthY_m ?? 0,
+      buckling_length_z_m: cfg.bucklingLengthZ_m ?? 0,
       // Welke doorbuigingseis hier geldt, met welke verplaatsing en welke
       // grens — zie `bepaalDoorbuigingsInvoer`. Een overwegend verticale staaf
       // krijgt de zijdelingse eis van A1.4.3(7) in plaats van een vloereis.

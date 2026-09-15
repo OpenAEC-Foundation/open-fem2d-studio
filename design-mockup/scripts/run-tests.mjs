@@ -329,6 +329,10 @@ const ALLEEN_BRON = new Map([
     "scheefstand-norm",
     "rekent φ uit volgens EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1) en leidt h en m uit het model af (`lib/scheefstandNorm`). Dat is een PROJECTINSTELLING van de frontend: de gebruiker kiest de norm, en de sidecar krijgt het resultaat gewoon als getal (`scheefstandNoemer`) binnen. De module zit daarom niet in de barrel — de motorkant van dezelfde zaak (H = φ·V) staat in `test-scheefstand`, en die draait wél tegen de bundel",
   ],
+  [
+    "zwakke-as",
+    "knik om de zwakke as over de hele keten: de invoerbouwers (een leeg kniklengteveld gaat als 0 door), de spiegel `lib/kniklengte.ts` die de placeholder in het eigenschappenpaneel voedt — die staat buiten de barrel — en de toetsbrug als apart proces voor de echte EN 1993- en EN 1995-kern, die zelf de kniklengte kiest en haar herkomst noemt. Tegen de sidecarbundel zou de test juist de spiegel en de Rust-kern overslaan die hij tegen elkaar moet houden",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

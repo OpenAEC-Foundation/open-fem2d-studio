@@ -182,10 +182,20 @@ fn schema_houten_staaf() -> Value {
             "length_m": { "type": "number",
                 "description": "Staaflengte in m; noemer van de doorbuigingseis en terugvalwaarde voor de kipsteunafstand." },
             "forces_envelope": crate::schema_krachtenomhullende(),
-            "buckling_length_y_m": { "type": "number",
-                "description": "Kniklengte om de sterke as in m (§6.3.2)." },
-            "buckling_length_z_m": { "type": "number",
-                "description": "Kniklengte om de zwakke as in m; bij kipsteunen de steunafstand." },
+            "buckling_length_y_m": { "type": "number", "default": 0,
+                "description": "Kniklengte om de sterke y-as in m (§6.3.2): knik IN het vlak van het model. 0 (of weglaten) = niet opgegeven; de kern houdt dan de staaflengte aan en zet in de kolomtoets dat die lengte een terugval is." },
+            "buckling_length_z_m": { "type": "number", "default": 0,
+                "description": "Kniklengte om de zwakke z-as in m (§6.3.2): knik UIT het vlak van het model, een richting die de raamwerkberekening nooit ziet. 0 (of weglaten) = niet opgegeven; de kern leidt L_cr,z dan af uit 'lateral_bracing', maar ALLEEN op plaatsen waar een steun aan de boven- EN aan de onderrand zit (binnen 1 mm). Anders de staaflengte. De gebruikte waarde en haar herkomst staan in de kolomtoets en in de drukterm van de kiptoets." },
+            "lateral_bracing": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Zijdelingse steunen als fracties van de staaflengte (0..1), per rand: 'top_flange_positions' = bovenrand, 'bottom_flange_positions' = onderrand. ALLEEN voor de kniklengte om de z-as (zie 'buckling_length_z_m'); de kiptoets gebruikt 'ltb_segment_length_m' en leidt uit deze posities niets af. Weglaten = geen steunen.",
+                "required": ["top_flange_positions", "bottom_flange_positions"],
+                "properties": {
+                    "top_flange_positions":    { "type": "array", "items": { "type": "number" } },
+                    "bottom_flange_positions": { "type": "array", "items": { "type": "number" } }
+                }
+            },
             "ltb_segment_length_m": { "type": "number", "default": 0,
                 "description": "Kipsteunafstand in m voor tabel 6.1. 0 (of weglaten) = de staaflengte, en dat is de LANGSTE keuze en dus de ongunstigste." },
             "ltb_load_case": {
@@ -224,8 +234,7 @@ fn schema_houten_staaf() -> Value {
         },
         "required": [
             "beam_id", "width_mm", "height_mm", "strength_class",
-            "service_class", "load_duration", "length_m", "forces_envelope",
-            "buckling_length_y_m", "buckling_length_z_m"
+            "service_class", "load_duration", "length_m", "forces_envelope"
         ]
     })
 }
@@ -426,6 +435,7 @@ mod tests {
             "forces_envelope",
             "buckling_length_y_m",
             "buckling_length_z_m",
+            "lateral_bracing",
             "ltb_segment_length_m",
             "ltb_load_case",
             "ltb_load_position",
@@ -465,9 +475,7 @@ mod tests {
                 "service_class",
                 "load_duration",
                 "length_m",
-                "forces_envelope",
-                "buckling_length_y_m",
-                "buckling_length_z_m"
+                "forces_envelope"
             ]
         );
     }

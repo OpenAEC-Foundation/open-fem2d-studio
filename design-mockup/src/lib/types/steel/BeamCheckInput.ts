@@ -14,7 +14,31 @@ import type { LateralBracing } from "./LateralBracing";
  * `z_a_mm` valt de kiptoets daarmee *gunstiger* uit dan hij hoort te zijn —
  * onveilig aan de verkeerde kant, en onzichtbaar in het resultaat.
  */
-export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, buckling_length_y_m: number, buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, 
+export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, 
+/**
+ * Kniklengte om de sterke y-as, in m — knik IN het vlak van het model.
+ *
+ * `0` of weglaten = niet opgegeven: de kern houdt dan de staaflengte aan
+ * en zegt dat in de afleiding ("staaflengte (terugval)"). Tot september
+ * 2026 vulde de frontend die terugval zelf in, en kon de toets niet zien
+ * dat het een terugval was. Een negatieve of niet-eindige waarde wordt
+ * genegeerd mét een kanttekening; een kniklengte van nul zou χ = 1 geven.
+ *
+ * In het vlakke model van deze app is y altijd de sterke as in het vlak:
+ * de oplosser rekent met I_y, en een staaf kent geen doorsnederotatie.
+ */
+buckling_length_y_m: number, 
+/**
+ * Kniklengte om de zwakke z-as, in m — knik UIT het vlak van het model.
+ *
+ * `0` of weglaten = niet opgegeven. De kern leidt L_cr,z dan af uit
+ * [`Self::lateral_bracing`], maar ALLEEN op plaatsen waar een kipsteun aan
+ * de boven- én aan de onderflens zit: alleen daar wordt de doorsnede als
+ * geheel zijdelings gehouden. Zonder zo'n paar geldt de staaflengte. Zie
+ * `nen_en_1993_1_1_stability::kniklengte` voor de regel en de normgrond;
+ * de gebruikte waarde en haar herkomst staan in de toets.
+ */
+buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, 
 /**
  * Is deze staaf een uitkraging?
  *
