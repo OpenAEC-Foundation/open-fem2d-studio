@@ -266,6 +266,58 @@ log("\n[2] Foutpaden — elk met zijn eigen code, proces blijft exitcode 0");
     r.antwoorden[0]?.error?.code,
   );
 }
+{
+  // Een doorsnede die niet te bepalen is, is INVOER van de gebruiker. Tot
+  // september 2026 kwamen deze gevallen als INTERN terug ("Onverwachte fout in
+  // de sidecar"), met de juiste Nederlandse reden alleen in een stacktrace.
+  const losseLigger = (beam) => ({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 5000, z: 0 }],
+    beams: [beam],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    plates: [],
+    loadCases: [{ id: 1, name: "G", type: "dead" }],
+    loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -5 }],
+    selfWeightEnabled: false, scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+  });
+  const gevallen = [
+    ["geen materiaal", { id: 1, from: 1, to: 2, profile: "HEA 200" }, /geen materiaal/],
+    ["leeg materiaal", { id: 1, from: 1, to: 2, material: "", profile: "HEA 200" }, /geen materiaal/],
+    ["S235 met HEA 999", { id: 1, from: 1, to: 2, material: "S235", profile: "HEA 999" }, /"HEA 999"/],
+    ["C24 met HEA 200", { id: 1, from: 1, to: 2, material: "C24", profile: "HEA 200" }, /hoort niet bij materiaal "C24"/],
+  ];
+  for (const op of ["solve", "check"]) {
+    const r = await roepAan(gevallen.map(([, beam], i) => verzoek(i + 1, op, { model: losseLigger(beam), profiles: PROFIELEN })));
+    gevallen.forEach(([naam, , reden], i) => {
+      const f = r.antwoorden[i]?.error;
+      ok(`${op}, ${naam}: DOORSNEDE_ONBEKEND en niet INTERN`, f?.code === "DOORSNEDE_ONBEKEND", `${f?.code}: ${f?.melding}`);
+      ok(`${op}, ${naam}: de melding noemt staaf 1 en de reden`, reden.test(f?.melding ?? "") && /staaf 1/.test(f?.melding ?? ""), f?.melding);
+      ok(`${op}, ${naam}: detail.staven noemt staaf 1 met dezelfde reden`,
+        f?.detail?.staven?.length === 1 && f.detail.staven[0].beam_id === 1 && reden.test(f.detail.staven[0].reason ?? ""),
+        JSON.stringify(f?.detail));
+    });
+  }
+}
+{
+  // `beam_ids`: elk gevraagd nummer staat in de toetsinvoer of in
+  // `skipped_beams`, ook een nummer dat geen staaf is; en leeg = alle staven.
+  // Gemeten vóór deze regels: [1, 99] zweeg over 99, en [] toetste niets.
+  const r = await roepAan([
+    verzoek(1, "check", { model: PORTAAL, combinations: COMBI_12G_15Q, profiles: PROFIELEN, beam_ids: [2, 99, 99] }),
+    verzoek(2, "check", { model: PORTAAL, combinations: COMBI_12G_15Q, profiles: PROFIELEN, beam_ids: [] }),
+  ]);
+  const A = r.antwoorden[0]?.result ?? {};
+  ok("beam_ids [2, 99, 99]: alleen staaf 2 getoetst",
+    JSON.stringify((A.steel_check_inputs ?? []).map((i) => i.beam_id)) === "[2]",
+    JSON.stringify((A.steel_check_inputs ?? []).map((i) => i.beam_id)));
+  const s99 = (A.skipped_beams ?? []).filter((s) => s.beam_id === 99);
+  ok("beam_ids [2, 99, 99]: 99 staat één keer in skipped_beams, reden \"bestaat niet in het model\"",
+    s99.length === 1 && s99[0].reason.startsWith("bestaat niet in het model") && (A.skipped_beams ?? []).length === 1,
+    JSON.stringify(A.skipped_beams));
+  const B = r.antwoorden[1]?.result ?? {};
+  ok("beam_ids []: alle drie de staalstaven getoetst en niets overgeslagen (leeg = alle)",
+    B.steel_check_inputs?.length === 3 && (B.skipped_beams ?? []).length === 0,
+    `${B.steel_check_inputs?.length} getoetst, skipped ${JSON.stringify(B.skipped_beams)}`);
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 log("\n[3] Referentieportaal §5.1 — getallen met analytische controle");

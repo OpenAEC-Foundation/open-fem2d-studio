@@ -58,14 +58,26 @@ export type SidecarOp = (typeof SIDECAR_OPS)[number];
  *  - INVOER_ONGELDIG    de regel of de payload deugt niet (vorm, veld, type)
  *  - BESTAND_ONLEESBAAR de meegestuurde projectinhoud is niet te lezen
  *  - MODEL_ONOPLOSBAAR  de solver weigerde het model (mechanisme, singulier, …)
+ *  - DOORSNEDE_ONBEKEND van één of meer staven is de doorsnede niet te bepalen
+ *                       uit `material` en `profile`: geen of een leeg
+ *                       materiaal, een profiel dat niet bestaat, of een profiel
+ *                       dat niet bij het materiaal hoort. Een INVOERfout van de
+ *                       gebruiker, geen storing; `detail.staven` noemt elke
+ *                       staaf met zijn reden
  *  - TIJD_OVERSCHREDEN  gereserveerd voor de Rust-kant, die de klok bewaakt
  *  - INTERN             onverwachte fout; originele tekst gaat mee in `detail`
+ *
+ * Een code TOEVOEGEN hoogt `SIDECAR_PROTOCOL` niet op: een Rust-kant die de code
+ * niet kent, geeft er zijn algemene remedie bij en laat melding en `detail`
+ * ongemoeid, dus er breekt niets. Een code weghalen of van betekenis veranderen
+ * is wél brekend.
  */
 export const FOUTCODES = [
   "PROTOCOL_MISMATCH",
   "INVOER_ONGELDIG",
   "BESTAND_ONLEESBAAR",
   "MODEL_ONOPLOSBAAR",
+  "DOORSNEDE_ONBEKEND",
   "TIJD_OVERSCHREDEN",
   "INTERN",
 ] as const;
