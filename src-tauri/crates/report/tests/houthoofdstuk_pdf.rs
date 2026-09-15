@@ -136,6 +136,7 @@ fn cltstaaf() -> CltBeamCheckResult {
         layup,
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         // L/h = 3000/170 = 17,6 < 20 → de kern waarschuwt.
         length_m: 3.0,
         forces_envelope: vec![
@@ -173,6 +174,7 @@ fn geweigerde_cltstaaf() -> CltBeamCheckResult {
         layup,
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         length_m: 4.0,
         forces_envelope: vec![punt(0.0, 5.0, 0.0, 0.0)],
         k_cr: 1.0,

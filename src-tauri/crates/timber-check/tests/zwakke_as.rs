@@ -54,6 +54,7 @@ fn houten_staaf(
         strength_class: "C24".to_string(),
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         length_m: l_mm / 1000.0,
         forces_envelope: envelop,
         buckling_length_y_m: l_cr_y_m,

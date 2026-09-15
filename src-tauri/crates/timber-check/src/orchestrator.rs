@@ -11,10 +11,11 @@ use nen_en_1995_1_1::stability::{
 };
 use nen_en_1995_1_1::{
     bending, beta_c, compression, deflection, design_strength, gamma_m, k_def, k_h, k_m, k_mod,
-    k_sys, shear, strength_class_by_name, TimberSection,
+    k_sys, shear, strength_class_by_name, LoadDurationClass, StrengthClass, TimberSection,
 };
 use steel_check::{CheckKind, CustomSection, NamedCheck};
 
+use crate::belastingduur::{self, kmod_notitie, Groep, KlasseUc, KmodPerLoadDuration};
 use crate::input::TimberBeamCheckInput;
 use crate::result::TimberBeamCheckResult;
 
@@ -66,6 +67,34 @@ fn uc_of(c: &NamedCheck) -> f64 {
         0.0
     } else {
         uc_opt.unwrap_or(0.0)
+    }
+}
+
+/// De unity check zoals de k_mod-notitie hem noemt: `None` als de toets niet
+/// van toepassing is of geen unity check heeft — dat is geen 0,00.
+fn uc_optie(c: &NamedCheck) -> Option<f64> {
+    match &c.kind {
+        CheckKind::Resistance(r) if !matches!(r.status, CheckStatus::NotApplicable) => {
+            r.uc.as_ref().map(|u| u.uc)
+        }
+        CheckKind::Stability(s) if !matches!(s.status, CheckStatus::NotApplicable) => {
+            s.uc.as_ref().map(|u| u.uc)
+        }
+        _ => None,
+    }
+}
+
+fn force_state_van(c: &NamedCheck) -> ForceStateSnapshot {
+    match &c.kind {
+        CheckKind::Resistance(r) => r.force_state,
+        CheckKind::Stability(s) => s.force_state,
+    }
+}
+
+fn notes_van(c: &mut NamedCheck) -> &mut Vec<String> {
+    match &mut c.kind {
+        CheckKind::Resistance(r) => &mut r.notes,
+        CheckKind::Stability(s) => &mut s.notes,
     }
 }
 
@@ -159,54 +188,28 @@ fn doorsnede_uit(input: &TimberBeamCheckInput) -> Result<(TimberSection, String)
     ))
 }
 
-pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
-    // 0. De doorsnede. Lukt dat niet, dan STOPT de toetsing van deze staaf met
-    //    de reden erbij -- er wordt geen vervangende doorsnede verzonnen.
-    let (section, section_name) = match doorsnede_uit(&input) {
-        Ok(paar) => paar,
-        Err(reden) => {
-            return TimberBeamCheckResult {
-                beam_id: input.beam_id,
-                section_name: input
-                    .custom_section
-                    .as_ref()
-                    .map(|c| c.naam.clone())
-                    .unwrap_or_default(),
-                strength_class: input.strength_class.clone(),
-                service_class: input.service_class,
-                load_duration: input.load_duration,
-                checks: vec![],
-                uc_max: 0.0,
-                status: CheckStatus::NotApplicable,
-                governing_check_id: format!("ERROR: {reden}"),
-            }
-        }
-    };
+/// Wat de toetsketen nodig heeft en NIET van de belastingduurklasse afhangt.
+struct Keten<'a> {
+    input: &'a TimberBeamCheckInput,
+    section: &'a TimberSection,
+    mat: &'static StrengthClass,
+}
 
-    // 1. Sterkteklasse opzoeken.
-    let mat = match strength_class_by_name(&input.strength_class) {
-        Some(m) => m,
-        None => {
-            return TimberBeamCheckResult {
-                beam_id: input.beam_id,
-                section_name,
-                strength_class: input.strength_class.clone(),
-                service_class: input.service_class,
-                load_duration: input.load_duration,
-                checks: vec![],
-                uc_max: 0.0,
-                status: CheckStatus::NotApplicable,
-                governing_check_id: format!(
-                    "ERROR: sterkteklasse {} onbekend",
-                    input.strength_class
-                ),
-            }
-        }
-    };
+/// De toetsen die van k_mod afhangen — doorsneden §6.1 en stabiliteit §6.3.2
+/// en §6.3.3 — voor één omhullende en één belastingduurklasse.
+///
+/// Zonder belastingduur per combinatie wordt dit één keer aangeroepen, met de
+/// hele omhullende en `load_duration` van de staaf: precies de keten van vóór
+/// september 2026. Met die lijst één keer per aanwezige klasse, met de punten
+/// van die klasse (zie `crate::belastingduur`).
+fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> Vec<NamedCheck> {
+    let input = k.input;
+    let section = k.section;
+    let mat = k.mat;
 
-    // 2. Factoren en rekenwaarden.
+    // Factoren en rekenwaarden.
     let gamma = gamma_m(mat.timber_type);
-    let kmod = k_mod(mat.timber_type, input.service_class, input.load_duration);
+    let kmod = k_mod(mat.timber_type, input.service_class, duur);
     let ksys = k_sys(input.load_sharing);
     // k_h geldt volgens §3.2(3) en §3.3(3) uitdrukkelijk bij een RECHTHOEKIGE
     // doorsnede ("bij rechthoekig gezaagd hout", "bij rechthoekig gelijmd
@@ -242,42 +245,41 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
     let f_mzd = design_strength(mat.f_mk, kmod, gamma, kh_z, ksys);
     let f_vd = design_strength(mat.f_vk, kmod, gamma, 1.0, ksys);
 
-    // 3. Maatgevende krachtspunten per toets (zelfde strategie als staal).
-    let gov_compression = governing_for(&input.forces_envelope, |f| {
+    // Maatgevende krachtspunten per toets (zelfde strategie als staal).
+    let gov_compression = governing_for(omhullende, |f| {
         if f.n_ed < 0.0 { f.n_ed.abs() } else { 0.0 }
     });
-    let gov_tension = governing_for(&input.forces_envelope, |f| f.n_ed.max(0.0));
-    let gov_bending =
-        governing_for(&input.forces_envelope, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
-    let gov_shear = governing_for(&input.forces_envelope, |f| f.vz_ed.abs());
+    let gov_tension = governing_for(omhullende, |f| f.n_ed.max(0.0));
+    let gov_bending = governing_for(omhullende, |f| f.my_ed.abs() + f.n_ed.abs() * 0.01);
+    let gov_shear = governing_for(omhullende, |f| f.vz_ed.abs());
 
     let comp_state = ForceStateSnapshot::from_point(&gov_compression);
     let tens_state = ForceStateSnapshot::from_point(&gov_tension);
     let bend_state = ForceStateSnapshot::from_point(&gov_bending);
     let shear_state = ForceStateSnapshot::from_point(&gov_shear);
 
-    // 4. Doorsnedetoetsen.
+    // Doorsnedetoetsen.
     let mut checks: Vec<NamedCheck> = Vec::new();
     checks.push(make_resistance(compression::check_tension_parallel(
-        &section, f_t0d, tens_state,
+        section, f_t0d, tens_state,
     )));
     checks.push(make_resistance(compression::check_compression_parallel(
-        &section, f_c0d, comp_state,
+        section, f_c0d, comp_state,
     )));
     checks.push(make_resistance(bending::check_bending(
-        &section, f_myd, f_mzd, km, bend_state,
+        section, f_myd, f_mzd, km, bend_state,
     )));
     checks.push(make_resistance(shear::check_shear(
-        &section, f_vd, k_cr, shear_state,
+        section, f_vd, k_cr, shear_state,
     )));
 
-    // 5. Kolomknik §6.3.2 op het maatgevende buigpunt (conform de
-    //    referentie-uitwerking: veldmoment + normaalkracht).
+    // Kolomknik §6.3.2 op het maatgevende buigpunt (conform de
+    // referentie-uitwerking: veldmoment + normaalkracht).
     //
-    //    De kniklengten beslist de kern, mét herkomst (zie
-    //    `nen_en_1993_1_1_stability::kniklengte`): opgegeven, of om z uit
-    //    steunen aan BEIDE randen, of de staaflengte. Dezelfde L_cr,z gaat
-    //    hieronder ook naar de drukterm van de kiptoets.
+    // De kniklengten beslist de kern, mét herkomst (zie
+    // `nen_en_1993_1_1_stability::kniklengte`): opgegeven, of om z uit
+    // steunen aan BEIDE randen, of de staaflengte. Dezelfde L_cr,z gaat
+    // hieronder ook naar de drukterm van de kiptoets.
     let bc = beta_c(mat.timber_type);
     let l_staaf_mm = input.length_m * 1e3;
     let kniklengte_y = bepaal_kniklengte("y", true, input.buckling_length_y_m, l_staaf_mm, None);
@@ -295,7 +297,7 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
     let l_cr_z_mm = kniklengte_z.l_cr_mm;
     let kniklengte_z_samenvatting = kniklengte_z.samenvatting();
     checks.push(make_stability(check_column_stability(
-        &section,
+        section,
         &ColumnStabilityInput {
             kniklengte_y,
             kniklengte_z,
@@ -310,7 +312,7 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
         bend_state,
     )));
 
-    // 6. Kipstabiliteit §6.3.3.
+    // Kipstabiliteit §6.3.3.
     if input.perform_ltb_check {
         let segment_mm = if input.ltb_segment_length_m > 0.0 {
             input.ltb_segment_length_m * 1e3
@@ -328,7 +330,7 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
             )
         };
         let mut kip = check_beam_stability(
-            &section,
+            section,
             &BeamStabilityInput {
                 l_ef_mm,
                 l_cr_z_mm,
@@ -352,7 +354,158 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
         checks.push(make_stability(kip));
     }
 
-    // 7. Doorbuiging §7.2 met kruip.
+    checks
+}
+
+/// Wat de toetsing per belastingduurklasse oplevert.
+struct PerKlasse {
+    checks: Vec<NamedCheck>,
+    k_mod_per_load_duration: Vec<KmodPerLoadDuration>,
+    governing_combination_id: Option<u32>,
+    maatgevende_duur: LoadDurationClass,
+}
+
+/// De keten per klasse, en per toets de zwaarste uitkomst over de klassen.
+///
+/// Elke klasse levert dezelfde toetsen in dezelfde volgorde (de keten hangt
+/// alleen via k_mod en de omhullende van de klasse af), dus toets i van de ene
+/// klasse is toets i van de andere. Bij gelijke unity check wint de LANGSTE
+/// klasse (die staat vooraan): dat is de kant met de laagste k_mod.
+fn toets_per_klasse(k: &Keten, groepen: &[Groep]) -> PerKlasse {
+    let service = k.input.service_class;
+    let kmods: Vec<f64> =
+        groepen.iter().map(|g| k_mod(k.mat.timber_type, service, g.duur)).collect();
+    let uitkomsten: Vec<Vec<NamedCheck>> =
+        groepen.iter().map(|g| toetsketen(k, &g.punten, g.duur)).collect();
+
+    let n = uitkomsten[0].len();
+    let mut checks = Vec::with_capacity(n);
+    let mut maatgevend: Option<(f64, usize, u32)> = None;
+    for i in 0..n {
+        let mut beste = 0usize;
+        for (gi, u) in uitkomsten.iter().enumerate().skip(1) {
+            debug_assert_eq!(u[i].id, uitkomsten[0][i].id, "de ketens horen dezelfde toetsvolgorde te hebben");
+            if uc_of(&u[i]) > uc_of(&uitkomsten[beste][i]) {
+                beste = gi;
+            }
+        }
+        let mut c = uitkomsten[beste][i].clone();
+        let uc = uc_of(&c);
+        let combinatie = force_state_van(&c).combination_id;
+        let gekozen = KlasseUc {
+            duur: groepen[beste].duur,
+            k_mod: kmods[beste],
+            combinaties: groepen[beste].combinaties.clone(),
+            uc: uc_optie(&c),
+        };
+        let andere: Vec<KlasseUc> = groepen
+            .iter()
+            .enumerate()
+            .filter(|(gi, _)| *gi != beste)
+            .map(|(gi, g)| KlasseUc {
+                duur: g.duur,
+                k_mod: kmods[gi],
+                combinaties: g.combinaties.clone(),
+                uc: uc_optie(&uitkomsten[gi][i]),
+            })
+            .collect();
+        notes_van(&mut c).push(kmod_notitie(service, &gekozen, combinatie, &andere));
+        if uc > 0.0 && maatgevend.map_or(true, |(u, _, _)| uc > u) {
+            maatgevend = Some((uc, beste, combinatie));
+        }
+        checks.push(c);
+    }
+
+    let k_mod_per_load_duration = groepen
+        .iter()
+        .enumerate()
+        .map(|(gi, g)| KmodPerLoadDuration {
+            load_duration: g.duur,
+            k_mod: kmods[gi],
+            combination_ids: g.combinaties.clone(),
+            bases: g.bases.clone(),
+        })
+        .collect();
+    let (governing_combination_id, maatgevende_duur) = match maatgevend {
+        Some((_, gi, combinatie)) => (Some(combinatie), groepen[gi].duur),
+        None => (None, groepen[0].duur),
+    };
+    PerKlasse { checks, k_mod_per_load_duration, governing_combination_id, maatgevende_duur }
+}
+
+pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
+    // 0. De doorsnede. Lukt dat niet, dan STOPT de toetsing van deze staaf met
+    //    de reden erbij -- er wordt geen vervangende doorsnede verzonnen.
+    let (section, section_name) = match doorsnede_uit(&input) {
+        Ok(paar) => paar,
+        Err(reden) => {
+            return TimberBeamCheckResult {
+                beam_id: input.beam_id,
+                section_name: input
+                    .custom_section
+                    .as_ref()
+                    .map(|c| c.naam.clone())
+                    .unwrap_or_default(),
+                strength_class: input.strength_class.clone(),
+                service_class: input.service_class,
+                load_duration: input.load_duration,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!("ERROR: {reden}"),
+                k_mod_per_load_duration: vec![],
+                governing_combination_id: None,
+            }
+        }
+    };
+
+    // 1. Sterkteklasse opzoeken.
+    let mat = match strength_class_by_name(&input.strength_class) {
+        Some(m) => m,
+        None => {
+            return TimberBeamCheckResult {
+                beam_id: input.beam_id,
+                section_name,
+                strength_class: input.strength_class.clone(),
+                service_class: input.service_class,
+                load_duration: input.load_duration,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!(
+                    "ERROR: sterkteklasse {} onbekend",
+                    input.strength_class
+                ),
+                k_mod_per_load_duration: vec![],
+                governing_combination_id: None,
+            }
+        }
+    };
+
+    // 2-6. De toetsen die van k_mod afhangen. Zonder belastingduur per
+    //      combinatie één keten met `load_duration`; met die lijst één keten
+    //      per aanwezige klasse (EN 1995-1-1 3.1.3(2)).
+    let keten = Keten { input: &input, section: &section, mat };
+    let (mut checks, k_mod_per_load_duration, governing_combination_id, load_duration) =
+        match belastingduur::groepeer(
+            &input.forces_envelope,
+            &input.load_duration_per_combination,
+            input.load_duration,
+        ) {
+            None => (
+                toetsketen(&keten, &input.forces_envelope, input.load_duration),
+                Vec::new(),
+                None,
+                input.load_duration,
+            ),
+            Some(groepen) => {
+                let pk = toets_per_klasse(&keten, &groepen);
+                (pk.checks, pk.k_mod_per_load_duration, pk.governing_combination_id, pk.maatgevende_duur)
+            }
+        };
+
+    // 7. Doorbuiging §7.2 met kruip. Hangt niet van k_mod af (wel van k_def),
+    //    en wordt dus één keer getoetst.
     let kdef = k_def(mat.timber_type, input.service_class);
     let (mut fin, add) = deflection::check_deflection_pair(
         input.deflection_inst_mm,
@@ -387,11 +540,13 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
         section_name,
         strength_class: mat.name.to_string(),
         service_class: input.service_class,
-        load_duration: input.load_duration,
+        load_duration,
         checks,
         uc_max,
         status,
         governing_check_id,
+        k_mod_per_load_duration,
+        governing_combination_id,
     }
 }
 

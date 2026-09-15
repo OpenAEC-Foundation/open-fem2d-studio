@@ -130,8 +130,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
       ? String(cfg0.spanningSigmaZ)
       : "",
   );
-  const [loadDuration, setLoadDuration] = useState<NonNullable<BeamCheckConfig["loadDuration"]>>(
-    cfg0.loadDuration ?? "medium",
+  // "auto" = geen klasse opgegeven: de toetsing leidt de belastingduur per
+  // UGT-combinatie af (EN 1995-1-1 3.1.3(2)). Een gekozen klasse is een
+  // ondergrens. Een bestand zonder `loadDuration` opent dus als "auto".
+  const [loadDuration, setLoadDuration] = useState<NonNullable<BeamCheckConfig["loadDuration"]> | "auto">(
+    cfg0.loadDuration ?? "auto",
   );
   /**
    * De betonvelden van de toetsconfiguratie: wapeningskorf, milieuklasse,
@@ -212,7 +215,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
       cfg.ltbSupportSpacing_m = ltb;
     }
     if (serviceClass !== 1) cfg.serviceClass = serviceClass;
-    if (loadDuration !== "medium") cfg.loadDuration = loadDuration;
+    // Alleen een uitdrukkelijke keuze gaat het bestand in. Tot september 2026
+    // werd "middellang" als standaard niet weggeschreven; zo'n bestand leest nu
+    // als "automatisch". Wie middellang KIEST, krijgt het als ondergrens.
+    if (loadDuration !== "auto") cfg.loadDuration = loadDuration;
     const sigmaZ = parseFloat(sigmaZStr.replace(",", "."));
     if (sigmaZStr.trim() !== "" && Number.isFinite(sigmaZ) && sigmaZ !== 0) {
       cfg.spanningSigmaZ = sigmaZ;
@@ -279,7 +285,8 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     { value: "custom",       label: t("cfg.deflCustom") },
   ];
 
-  const durationOptions: Array<{ value: NonNullable<BeamCheckConfig["loadDuration"]>; label: string }> = [
+  const durationOptions: Array<{ value: NonNullable<BeamCheckConfig["loadDuration"]> | "auto"; label: string }> = [
+    { value: "auto",          label: t("cfg.durAuto", "Automatisch (per combinatie)") },
     { value: "permanent",     label: t("cfg.durPermanent") },
     { value: "long",          label: t("cfg.durLong") },
     { value: "medium",        label: t("cfg.durMedium") },
@@ -641,12 +648,18 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     <select
                       className="bar-props-select"
                       value={loadDuration}
-                      onChange={(e) => setLoadDuration(e.target.value as NonNullable<BeamCheckConfig["loadDuration"]>)}
+                      onChange={(e) => setLoadDuration(e.target.value as typeof loadDuration)}
                     >
                       {durationOptions.map((o) => (
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
                     </select>
+                  </div>
+                  <div className="bar-props-hint">
+                    {t(
+                      "cfg.durHint",
+                      "Automatisch: k_mod volgt per UGT-combinatie uit de kortstdurende belasting (EN 1995-1-1 3.1.3(2)). Een gekozen klasse werkt als ondergrens: zij kan de duur alleen verlengen.",
+                    )}
                   </div>
                   <div className="bar-props-row">
                     {/* Inline terugval-tekst, net als bij bucklingHintTimber:

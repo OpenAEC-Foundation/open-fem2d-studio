@@ -68,6 +68,7 @@ import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
 // Eén regel voor "telt dit geval mee": dezelfde functie voedt de projectboom,
 // het rapport en de solve-waarschuwingen van de sidecar.
 import { meldingenBelastinggevallen } from "../lib/combinatieBeheer";
+import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
 
 /** Uitkomst van de volledige droogloop; alle teksten zijn Nederlands. */
 export interface ValidatieUitkomst {
@@ -112,6 +113,10 @@ const CHECKCONFIG_VELDEN = [
   "deflectionAddLimitNumerator", "preCamber_mm", "serviceClass", "loadDuration",
   "betonKorf", "betonMilieuklasse", "betonConstructieklasse", "betonStaalsoort",
   "betonStroken", "betonStaaltak", "betonKolom", "spanningSigmaZ",
+  // De kipsteunafstand van hout (EN 1995-1-1 art. 6.3.3). De UI schrijft hem
+  // weg en `timberCheckBuilder` leest hem, maar hij stond hier niet: elk
+  // houtmodel met een kipsteunafstand werd langs de MCP-weg geweigerd.
+  "ltbSupportSpacing_m",
 ] as const;
 
 /**
@@ -507,6 +512,53 @@ function leesArray(
  * vóór `solve` draait, en die mag nooit weigeren om iets dat alleen maar
  * verdacht is.
  */
+/**
+ * De keuring van één `checkConfig` — voor een staaf in het model én voor het
+ * argument `check_config` van `check_fem_model` (sidecar.ts). Eén poort voor
+ * beide: tot september 2026 werd `check_config` NIET gekeurd, en viel een
+ * tikfout daar stil terug op de standaardwaarde (bijvoorbeeld een
+ * kipsteunafstand die de staaflengte werd).
+ */
+export function keurCheckConfig(waarde: unknown, cpad: string): string[] {
+  const fouten: string[] = [];
+  if (!isObject(waarde)) {
+    fouten.push(`${cpad}: moet een object zijn.`);
+    return fouten;
+  }
+  const cc = waarde;
+  keurVelden(cc, CHECKCONFIG_VELDEN, cpad, fouten);
+  keurGetal(cc.bucklingLengthY_m, `${cpad}.bucklingLengthY_m`, fouten, { positief: true });
+  keurGetal(cc.bucklingLengthZ_m, `${cpad}.bucklingLengthZ_m`, fouten, { positief: true });
+  keurGetal(cc.deflectionLimitNumerator, `${cpad}.deflectionLimitNumerator`, fouten, { positief: true });
+  keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
+  keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
+  // Een kipsteunafstand van 0 of minder betekent in de bouwer "de staaflengte";
+  // hier opgegeven hoort hij dus positief te zijn, net als de kniklengten.
+  keurGetal(cc.ltbSupportSpacing_m, `${cpad}.ltbSupportSpacing_m`, fouten, { positief: true });
+  keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
+  keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
+  if (cc.serviceClass !== undefined && ![1, 2, 3].includes(cc.serviceClass as number)) {
+    fouten.push(`${cpad}.serviceClass: moet 1, 2 of 3 zijn.`);
+  }
+  for (const veld of ["lateralRestraints", "lateralRestraintsBottom"] as const) {
+    const lijst = cc[veld];
+    if (lijst === undefined) continue;
+    if (!Array.isArray(lijst) || !lijst.every(isGetal)) {
+      fouten.push(`${cpad}.${veld}: moet een array van getallen (fracties 0..1) zijn.`);
+    }
+  }
+  // Beton (EN 1992) en de vrije spanningstoets.
+  keurEnum(cc.betonMilieuklasse, MILIEUKLASSEN, `${cpad}.betonMilieuklasse`, fouten);
+  keurEnum(cc.betonConstructieklasse, CONSTRUCTIEKLASSEN, `${cpad}.betonConstructieklasse`, fouten);
+  keurEnum(cc.betonStaalsoort, SUPPORTED_REINFORCEMENT_GRADES, `${cpad}.betonStaalsoort`, fouten);
+  keurEnum(cc.betonStaaltak, STAALTAKKEN, `${cpad}.betonStaaltak`, fouten);
+  keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
+  keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
+  keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
+  keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
+  return fouten;
+}
+
 export function controleerVelden(rauw: unknown): string[] {
   const fouten: string[] = [];
   if (!isObject(rauw)) {
@@ -570,39 +622,7 @@ export function controleerVelden(rauw: unknown): string[] {
       }
     }
     if (b.checkConfig !== undefined) {
-      if (!isObject(b.checkConfig)) {
-        fouten.push(`${pad}.checkConfig: moet een object zijn.`);
-      } else {
-        const cc = b.checkConfig;
-        const cpad = `${pad}.checkConfig`;
-        keurVelden(cc, CHECKCONFIG_VELDEN, cpad, fouten);
-        keurGetal(cc.bucklingLengthY_m, `${cpad}.bucklingLengthY_m`, fouten, { positief: true });
-        keurGetal(cc.bucklingLengthZ_m, `${cpad}.bucklingLengthZ_m`, fouten, { positief: true });
-        keurGetal(cc.deflectionLimitNumerator, `${cpad}.deflectionLimitNumerator`, fouten, { positief: true });
-        keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
-        keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
-        keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
-        keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
-        if (cc.serviceClass !== undefined && ![1, 2, 3].includes(cc.serviceClass as number)) {
-          fouten.push(`${cpad}.serviceClass: moet 1, 2 of 3 zijn.`);
-        }
-        for (const veld of ["lateralRestraints", "lateralRestraintsBottom"] as const) {
-          const lijst = cc[veld];
-          if (lijst === undefined) continue;
-          if (!Array.isArray(lijst) || !lijst.every(isGetal)) {
-            fouten.push(`${cpad}.${veld}: moet een array van getallen (fracties 0..1) zijn.`);
-          }
-        }
-        // Beton (EN 1992) en de vrije spanningstoets.
-        keurEnum(cc.betonMilieuklasse, MILIEUKLASSEN, `${cpad}.betonMilieuklasse`, fouten);
-        keurEnum(cc.betonConstructieklasse, CONSTRUCTIEKLASSEN, `${cpad}.betonConstructieklasse`, fouten);
-        keurEnum(cc.betonStaalsoort, SUPPORTED_REINFORCEMENT_GRADES, `${cpad}.betonStaalsoort`, fouten);
-        keurEnum(cc.betonStaaltak, STAALTAKKEN, `${cpad}.betonStaaltak`, fouten);
-        keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
-        keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
-        keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
-        keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
-      }
+      fouten.push(...keurCheckConfig(b.checkConfig, `${pad}.checkConfig`));
     }
   });
 
@@ -1165,6 +1185,11 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     gevolgklasse: opties.gevolgklasse,
     loads: loads as unknown as { caseId: number }[],
     selfWeightEnabled: m.selfWeightEnabled === true,
+    // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod,
+    // EN 1995-1-1 3.1.3(2)); zie `meldingenBelastinggevallen`.
+    metHout: ((Array.isArray(m.beams) ? m.beams : []) as { material?: unknown }[]).some(
+      (b) => typeof b?.material === "string" && matchSupportedTimberGrade(b.material) !== null,
+    ),
   }).filter((mld) => opties.combinaties !== undefined || mld.caseId === null);
   for (const mld of gevalMeldingen) {
     (mld.niveau === "fout" ? errors : warnings).push(mld.tekst);

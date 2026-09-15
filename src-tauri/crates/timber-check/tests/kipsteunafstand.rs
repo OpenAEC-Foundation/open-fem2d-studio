@@ -66,6 +66,7 @@ fn ligger(segment_m: f64, l_ef_override_m: f64) -> TimberBeamCheckResult {
         strength_class: "C24".to_string(),
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         length_m: L_M,
         forces_envelope: vec![ForcePoint {
             combination_id: 1,

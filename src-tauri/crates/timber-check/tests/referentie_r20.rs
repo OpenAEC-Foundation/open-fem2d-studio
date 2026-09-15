@@ -149,6 +149,7 @@ fn invoer(
         // Gebruiksklasse 2, KLED kort → k_mod = 0,90, k_def = 0,80.
         service_class: ServiceClass::Sc2,
         load_duration: LoadDurationClass::ShortTerm,
+        load_duration_per_combination: vec![],
         length_m: L_SPAN_M,
         // Envelop met de drie maatgevende punten: veldmoment in het midden,
         // kragarmmoment en dwarskracht op de oplegging.

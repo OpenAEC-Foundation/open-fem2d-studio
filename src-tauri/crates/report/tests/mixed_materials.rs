@@ -105,6 +105,8 @@ fn timber_beam(beam_id: u32, uc: f64) -> TimberBeamCheckResult {
         uc_max: uc,
         status: CheckStatus::Ok,
         governing_check_id: "bending".into(),
+        k_mod_per_load_duration: vec![],
+        governing_combination_id: None,
     }
 }
 
@@ -164,6 +166,8 @@ fn clt_beam(beam_id: u32, uc: f64) -> CltBeamCheckResult {
             governing_layer: Some(1),
         },
         notes: vec![],
+        k_mod_per_load_duration: vec![],
+        governing_combination_id: None,
     }
 }
 

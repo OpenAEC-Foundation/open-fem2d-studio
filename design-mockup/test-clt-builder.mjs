@@ -148,7 +148,26 @@ checkTrue("reden staaf 5 noemt D40", /D40/.test(skipped[2].reason));
 const inp = inputs[0];
 check("lengte 5 m", inp.length_m, 5);
 checkEq("klimaatklasse uit checkConfig", inp.service_class, "Sc2");
-checkEq("belastingduur uit checkConfig", inp.load_duration, "ShortTerm");
+// Zonder `loadCases` de oude terugval: de opgegeven klasse voor alles.
+checkEq("zonder loadCases: belastingduur uit checkConfig (terugval)", inp.load_duration, "ShortTerm");
+{
+  // Met belastinggevallen: k_mod per UGT-combinatie (3.1.3(2)), en de opgegeven
+  // "short" is een ondergrens — de combinaties zonder veranderlijke last
+  // blijven blijvend. G en Q zijn hier gevuld, S en W leeg.
+  const gevallen = [
+  { id: 1, name: "Permanent (G)", type: "dead" },
+  { id: 2, name: "Variabel (Q)", type: "live" },
+  { id: 3, name: "Sneeuw (S)", type: "snow" },
+  { id: 4, name: "Wind (W)", type: "wind" },
+];
+  const met = clt.buildCltCheckInputs({
+    nodes, beams, combinations, combinationResults, loadCases: gevallen, gevallenMetLast: [1, 2],
+  }).inputs[0];
+  checkTrue("met loadCases: 'short' maakt geen combinatie kort",
+    met.load_duration_per_combination.length > 0 &&
+    met.load_duration_per_combination.every((c) => c.load_duration !== "ShortTerm"));
+  checkEq("met loadCases: terugval = de langste klasse", met.load_duration, "Permanent");
+}
 check("k_cr = 1,0 (NB, prismatisch)", inp.k_cr, 1);
 checkTrue("opbouw met 5 lagen", inp.layup.layers.length === 5 && inp.layup.width_mm === 1000);
 checkTrue("krachtsverloop gevuld", inp.forces_envelope.length > 0);

@@ -56,6 +56,8 @@
     "durMedium": "Moyenne durée",
     "durShort": "Courte durée",
     "durInstantaneous": "Instantanée",
+    "durAuto": "Automatique (par combinaison)",
+    "durHint": "Automatique : k_mod suit, pour chaque combinaison ELU, la charge de plus courte durée (EN 1995-1-1 3.1.3(2)). Une classe choisie agit comme borne inférieure : elle ne peut qu'allonger la durée.",
     "timberHint": "Détermine k_mod et k_def dans la vérification EN 1995.",
     "staleResultHint": "Le résultat affiché provient d'une passe antérieure avec un autre type de matériau — relancez la vérification.",
     "sprongLiggendFlens": "Attention : cette barre penche vers la gauche à {{helling}}, {{afstand}} sous la limite de {{grens}} au-delà de laquelle une barre est considérée comme verticale. Le haut est actuellement la face physique supérieure (en haut à droite). À partir de {{grens}}, le haut devient le côté gauche — à cette inclinaison la face physique inférieure (en bas à gauche). Une petite modification des nœuds inverse alors, sans autre avertissement, le côté où se trouvent ces maintiens.",

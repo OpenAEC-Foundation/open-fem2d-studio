@@ -239,6 +239,12 @@ export const useVariantStore = create<VariantState>((set, get) => ({
           supports: data.supports,
           combinations: data.combinations,
           combinationResults: data.combinationResults,
+          // Uitdrukkelijk mee, want `gedeeld` spreidt `data` niet: zonder deze
+          // twee rekende een profielvariant van een houten staaf met één
+          // belastingduur voor alle combinaties, terwijl de toetsing ernaast
+          // k_mod per combinatie afleidt (EN 1995-1-1 3.1.3(2)).
+          loadCases: data.loadCases,
+          gevallenMetLast: data.gevallenMetLast,
         };
 
         if (soort === "staal") {

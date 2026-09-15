@@ -114,6 +114,7 @@ fn invoer(
         // Gebruiksklasse 1, KLED middellang → k_mod = 0,80, k_def = 0,60.
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         length_m: L_M,
         // Envelop met de twee maatgevende punten: het veldmoment op het
         // midden en de dwarskracht op de oplegging.

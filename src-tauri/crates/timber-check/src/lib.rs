@@ -11,11 +11,13 @@
 //! `nen-en-1993-1-1-stability`, `steel-check`); verhuis ze naar een
 //! materiaal-neutrale `check-core` crate zodra die bestaat.
 
+pub mod belastingduur; // k_mod per belastingduurklasse, EN 1995-1-1 3.1.3(2)
 pub mod input;
 pub mod orchestrator;
 pub mod result;
 pub mod clt; // kruislaaghout: CltBeamCheckInput → CltBeamCheckResult, toets per lamel
 
+pub use belastingduur::{CombinationLoadDuration, KmodPerLoadDuration};
 pub use input::TimberBeamCheckInput;
 pub use orchestrator::{check_all_timber_beams, check_timber_beam};
 pub use result::TimberBeamCheckResult;

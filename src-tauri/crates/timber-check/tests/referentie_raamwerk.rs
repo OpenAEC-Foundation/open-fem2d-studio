@@ -46,6 +46,7 @@ fn basis(beam_id: u32) -> TimberBeamCheckInput {
         strength_class: "C24".to_string(),
         service_class: ServiceClass::Sc1,
         load_duration: LoadDurationClass::MediumTerm,
+        load_duration_per_combination: vec![],
         length_m: 0.0,
         forces_envelope: vec![],
         buckling_length_y_m: 0.0,

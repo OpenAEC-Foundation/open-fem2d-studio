@@ -48,6 +48,7 @@ import {
   matchSupportedTimberGrade,
 } from "../lib/timberCheckBuilder";
 import { buildCltCheckInputs, isCltProfiel } from "../lib/cltCheckBuilder";
+import type { TimberBuildData } from "../lib/timberCheckBuilder";
 import {
   buildBetonCheckInputs,
   matchSupportedConcreteClass,
@@ -136,6 +137,18 @@ export interface CheckRunData {
    * (`consequence_class`); de factoren zitten al in de combinaties. Ontbreekt → CC2.
    */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * De belastinggevallen, voor de belastingduur PER UGT-combinatie van de
+   * hout- en CLT-toetsing (EN 1995-1-1 3.1.3(2), `lib/belastingduur.ts`).
+   * Ontbreekt de lijst, dan rekenen die met één klasse voor alle combinaties.
+   */
+  loadCases?: TimberBuildData["loadCases"];
+  /**
+   * De gevallen met een werkzame last (de sleutels van `perCase`): een leeg
+   * geval maakt een combinatie niet korter. Staat hier zodat de
+   * profielvarianten precies dezelfde afleiding krijgen als de toetsing.
+   */
+  gevallenMetLast?: readonly number[];
 }
 
 interface CheckState {

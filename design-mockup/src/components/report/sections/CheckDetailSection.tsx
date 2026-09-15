@@ -48,7 +48,7 @@ import {
 import Deelstappen, { Waarden } from "../Deelstappen";
 import {
   CHECK_REPORT_CSS,
-  LOAD_DURATION_LABELS,
+  belastingduurTekst,
   afleidingLatex,
   basisText,
   crossSectionClassLabel,
@@ -206,10 +206,7 @@ function MemberBlock({
       ? `EN 1992 · ${result.reinforcement_summary} · f_cd = ${result.f_cd_mpa.toFixed(1)} N/mm² · f_yd = ${result.f_yd_mpa.toFixed(0)} N/mm²`
       : isStressCheckResult(result)
         ? `${t("report.spanningGeenNorm", "vrije spanningstoets (geen norm)")} · f_toel = ${fmtValue(result.f_toel_mpa, 2)} N/mm² · γ_M = ${fmtValue(result.gamma_m, 2)} · f_d = ${fmtValue(result.f_d_mpa, 2)} N/mm²`
-        : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${t("report.loadDuration", "belastingduur")} ${tCheck(
-            LOAD_DURATION_LABELS[result.load_duration].key,
-            LOAD_DURATION_LABELS[result.load_duration].fallback,
-          ).toLowerCase()}`;
+        : `EN 1995 · ${t("report.serviceClass", "klimaatklasse")} ${serviceClassLabel(result.service_class)} · ${belastingduurTekst(result, t, tCheck)}`;
 
   // Beknopt: alleen de maatgevende toets — de UC die telt, met dezelfde
   // volledige afleiding, maar zonder de toetsen die niet maatgevend waren.
@@ -235,6 +232,16 @@ function MemberBlock({
           {statusLabel(t, result.status)}
         </span>
       </div>
+
+      {/* Gedetailleerd: waarop elke belastingduurklasse berust, per combinatie
+          (3.1.3(2)); de k_mod zelf staat bij elke toets in de toelichting. */}
+      {gedetailleerd && "k_mod_per_load_duration" in result && (result.k_mod_per_load_duration?.length ?? 0) > 0 && (
+        <ul className="rpt-chk-notes">
+          {(result.k_mod_per_load_duration ?? []).flatMap((k) => k.bases).map((b, i) => (
+            <li key={i}>{b}</li>
+          ))}
+        </ul>
+      )}
 
       {toetsen.map((named) => (
         <DerivationBlock

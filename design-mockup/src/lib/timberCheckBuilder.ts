@@ -26,8 +26,15 @@
  * Per-staaf toetsconfiguratie komt uit `beam.checkConfig` (EN 1995-sectie
  * van het staaf-eigenschappenvenster): klimaatklasse, belastingduur en
  * doorbuigingsklasse. Gedocumenteerde defaults voor ontbrekende velden:
- *  - klimaatklasse 1, belastingduur "middellang" (maatgevend voor de
- *    gebruikelijke UGT-combinatie met veranderlijke vloerbelasting);
+ *  - klimaatklasse 1;
+ *  - belastingduur: PER UGT-COMBINATIE afgeleid uit de belastinggevallen
+ *    (`lib/belastingduur.ts`, EN 1995-1-1 3.1.3(2): de kortste belastingsduur
+ *    in de combinatie bepaalt k_mod), zodra `loadCases` is meegegeven. Een
+ *    opgegeven `checkConfig.loadDuration` is dan een ONDERGRENS: hij maakt de
+ *    duur alleen langer. Zonder `loadCases` (alleen losse tests die de bouwer
+ *    rechtstreeks aanroepen) blijft de oude terugval: de opgegeven klasse, of
+ *    "middellang", voor alle combinaties — en dan toetst de kern de
+ *    combinatie met alleen G niet met k_mod "blijvend";
  *  - kniklengte om beide assen: cfg.bucklingLengthY_m / _Z_m; leeg → 0 en
  *    de kern kiest (staaflengte, of om z uit steunen aan beide randen) en
  *    meldt de herkomst (zie de toelichting bij het `inputs.push`);
@@ -41,10 +48,11 @@
  *    (nog) niet — preCamber_mm wordt hier bewust NIET geconsumeerd en de UI
  *    toont het veld niet voor hout.
  */
-import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, LoadCase, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
-import { combinatiesVanSoort } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, soortVanCombinatie } from "../components/fem/solver/combinations";
+import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
 import type { LoadDurationClass } from "./types/timber/LoadDurationClass";
 import type { ServiceClass } from "./types/timber/ServiceClass";
@@ -77,7 +85,12 @@ export function mapServiceClass(sc: BeamCheckConfig["serviceClass"]): ServiceCla
   }
 }
 
-/** UI-belastingduurklasse → ts-rs/Rust-enum. Ontbreekt → MediumTerm. */
+/**
+ * UI-belastingduurklasse → ts-rs/Rust-enum. Ontbreekt → MediumTerm.
+ *
+ * Alleen nog de terugval voor een aanroep zonder `loadCases`, en de vertaling
+ * van een opgegeven klasse naar de ondergrens van de afleiding per combinatie.
+ */
 export function mapLoadDuration(d: BeamCheckConfig["loadDuration"]): LoadDurationClass {
   switch (d) {
     case "permanent":     return "Permanent";
@@ -278,6 +291,20 @@ export interface TimberBuildData {
   combinationResults: Map<number, SolverResult>;
   /** Runtime-lijst uit `list_timber_grades`; leeg → statische fallback. */
   supportedGrades?: string[];
+  /**
+   * De belastinggevallen. Aanwezig = de belastingduur wordt PER UGT-combinatie
+   * afgeleid (EN 1995-1-1 3.1.3(2)) en gaat als
+   * `load_duration_per_combination` naar de kern. Afwezig = één klasse voor
+   * alles (de terugval van `mapLoadDuration`).
+   */
+  loadCases?: readonly Pick<LoadCase, "id" | "name" | "type" | "categorie">[];
+  /**
+   * De id's van de gevallen met een werkzame last: de sleutels van `perCase`
+   * uit de solve. Een leeg geval slaat de solve over, en het mag een
+   * combinatie niet korter maken. Afwezig = elk geval met een factor telt mee,
+   * en de basis in de kerninvoer zegt dat.
+   */
+  gevallenMetLast?: readonly number[];
 }
 
 export interface TimberBuildResult {
@@ -312,6 +339,15 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
   // dat zou de karakteristieke combinatie stilzwijgend als quasi-blijvend
   // doorgeven, precies de aanname die hier wordt weggehaald.
   const slsQuasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
+  // BGT-combinaties die niet als 6.14b, 6.15b of 6.16b te herkennen zijn (geen
+  // kenmerk, en een naam zonder "karakter", "frequent" of "quasi"). Ze tellen
+  // VEILIG-ZIJDIG mee in w_inst: welke uitdrukking ze zijn is niet af te lezen,
+  // en weglaten liet tot september 2026 een zwaardere zakking stil vallen zodra
+  // er één herkende karakteristieke combinatie was. Voor w_qp tellen ze niet:
+  // daar zou een karakteristieke combinatie als quasi-blijvend doorgaan.
+  const slsNietHerkend = slsCombos.filter((c) => soortVanCombinatie(c) === null);
+  const metLast = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
+  const gevuld = metLast ? (id: number) => metLast.has(id) : undefined;
 
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
@@ -420,10 +456,13 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     // mee samen; zie extractFieldDeflectionMm).
     const inst = grootsteZakking(
       beam,
-      slsKarakteristiek.length > 0 ? slsKarakteristiek : slsCombos,
+      slsKarakteristiek.length > 0 ? [...slsKarakteristiek, ...slsNietHerkend] : slsCombos,
       data.combinationResults,
     );
     const wInstMm = inst ? inst.w : 0;
+    const nietHerkendGemeten = inst
+      ? inst.alle.filter((a) => slsNietHerkend.includes(a.combo))
+      : [];
     const instNotes: string[] = inst
       ? [
           (slsKarakteristiek.length > 0
@@ -432,6 +471,16 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
               "daarom de grootste zakking over alle BGT-combinaties: ") +
             inst.alle.map((a) => `"${a.combo.name}" ${a.w.toFixed(2).replace(".", ",")} mm`).join("; ") +
             `. Maatgevend is "${inst.combo.name}".`,
+          ...(slsKarakteristiek.length > 0 && nietHerkendGemeten.length > 0
+            ? [
+                "Ook meegewogen, veilig-zijdig: BGT-combinatie(s) die niet als 6.14b, 6.15b of " +
+                  "6.16b herkend worden (geen kenmerk, en de naam bevat geen \"karakter\", " +
+                  "\"frequent\" of \"quasi\"): " +
+                  nietHerkendGemeten.map((a) => `"${a.combo.name}"`).join(", ") +
+                  ". Welke uitdrukking ze zijn is niet af te lezen; ze weglaten zou een grotere " +
+                  "zakking stil laten vallen.",
+              ]
+            : []),
         ]
       : [
           "GEEN UITKOMST voor w_inst: geen enkele BGT-combinatie levert een zakking voor " +
@@ -451,6 +500,16 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     // daarom niet aan.
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+    // Belastingduur per UGT-combinatie (3.1.3(2)). Een opgegeven klasse is een
+    // ondergrens: zie `lib/belastingduur.ts`.
+    const duurPerCombinatie = data.loadCases
+      ? belastingduurPerCombinatie({
+          combinaties: ulsCombos,
+          loadCases: data.loadCases,
+          gevuld,
+          ondergrens: cfg.loadDuration !== undefined ? mapLoadDuration(cfg.loadDuration) : undefined,
+        })
+      : [];
 
     inputs.push({
       beam_id: beam.id,
@@ -462,7 +521,13 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       ...(custom ? { custom_section: custom } : {}),
       strength_class: grade,
       service_class: mapServiceClass(cfg.serviceClass),
-      load_duration: mapLoadDuration(cfg.loadDuration),
+      // Met de lijst per combinatie is dit alleen nog de terugval voor een
+      // combinatie die er niet in staat; de LANGSTE klasse is de veilige kant.
+      load_duration:
+        duurPerCombinatie.length > 0
+          ? langsteKlasse(duurPerCombinatie.map((d) => d.load_duration))
+          : mapLoadDuration(cfg.loadDuration),
+      load_duration_per_combination: duurPerCombinatie,
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,
       // Kniklengtes per as; leeg → systeemlengte, net als bij staal.

@@ -76,6 +76,14 @@ const perCase = new Map([
   [2, solve({ nodes, beams: solverBeams, supports, loads })],
 ]);
 const combos = defaultCombinations();
+// De vier startgevallen waar `defaultCombinations()` bij hoort. Alleen G en Q
+// hebben hier een werkzame last (de solve heeft ze allebei); S en W zijn leeg.
+const STANDAARD_GEVALLEN = [
+  { id: 1, name: "Permanent (G)", type: "dead" },
+  { id: 2, name: "Variabel (Q)", type: "live" },
+  { id: 3, name: "Sneeuw (S)", type: "snow" },
+  { id: 4, name: "Wind (W)", type: "wind" },
+];
 const combinationResults = new Map(combos.map((c) => [c.id, combineResults(c, perCase)]));
 
 const profileDb = new Map([["HEA160", { geometry: { h: 152 } }]]);
@@ -180,10 +188,32 @@ log("\n[3] Hout ZONDER checkConfig → gedocumenteerde defaults");
   checkTrue("1 hout-input, 0 skipped", inputs.length === 1 && skipped.length === 0);
   const i = inputs[0];
   check("service_class Sc1", i.service_class, "Sc1");
-  check("load_duration MediumTerm", i.load_duration, "MediumTerm");
+  // Zonder `loadCases` (zoals hier) blijft de oude terugval: één klasse,
+  // middellang, voor alle combinaties, en géén lijst per combinatie. De app en
+  // check_fem_model geven de belastinggevallen wél mee — zie [3b] en
+  // test-hout-kmod-combinatie.mjs.
+  check("zonder loadCases: load_duration MediumTerm (terugval)", i.load_duration, "MediumTerm");
+  check("zonder loadCases: geen belastingduur per combinatie", JSON.stringify(i.load_duration_per_combination), "[]");
   check("deflection_limit_fin 250", i.deflection_limit_fin, 250);
   check("deflection_limit_add 333", i.deflection_limit_add, 333);
   check("buckling_length_y_m = 0 (kern kiest)", i.buckling_length_y_m, 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[3b] Hout ZONDER checkConfig, MET belastinggevallen → k_mod per combinatie");
+{
+  // EN 1995-1-1 3.1.3(2): de kortste belastingsduur per UGT-combinatie. Met G en
+  // Q (categorie A) gevuld en S en W leeg: de combinaties zonder Q (en die met
+  // een leeg S- of W-geval) zijn blijvend, die met Q middellang.
+  const { inputs } = buildTimberCheckInputs({
+    nodes, beams: [timberBeamNoCfg], combinations: combos, combinationResults,
+    loadCases: STANDAARD_GEVALLEN, gevallenMetLast: [1, 2],
+  });
+  const lijst = inputs[0].load_duration_per_combination;
+  check("één klasse per UGT-combinatie", lijst.length, combos.filter((c) => c.type === "uls").length);
+  checkDeep("alleen blijvend en middellang",
+    [...new Set(lijst.map((c) => c.load_duration))].sort(), ["MediumTerm", "Permanent"]);
+  check("terugval load_duration = de langste klasse", inputs[0].load_duration, "Permanent");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -196,15 +226,29 @@ log("\n[4] Hout MET checkConfig → klimaatklasse/duurklasse/doorbuiging 1-op-1"
 
   const a = run({ serviceClass: 3, loadDuration: "long" });
   check("serviceClass 3 → Sc3", a.service_class, "Sc3");
-  check('loadDuration "long" → LongTerm', a.load_duration, "LongTerm");
+  check('zonder loadCases: loadDuration "long" → LongTerm (terugval, 1-op-1)', a.load_duration, "LongTerm");
 
   const durMap = [
     ["permanent", "Permanent"], ["long", "LongTerm"], ["medium", "MediumTerm"],
     ["short", "ShortTerm"], ["instantaneous", "Instantaneous"],
   ];
   for (const [ui, rust] of durMap) {
-    check(`duurklasse "${ui}" → ${rust}`, run({ loadDuration: ui }).load_duration, rust);
+    check(`zonder loadCases: duurklasse "${ui}" → ${rust}`, run({ loadDuration: ui }).load_duration, rust);
   }
+  // Met belastinggevallen is een opgegeven klasse een ONDERGRENS: zij verlengt,
+  // maar maakt geen combinatie korter dan de belasting erin (3.1.3(2)). Een
+  // opgegeven "short" op 1,35·G was precies de fout uit de audit.
+  const metGevallen = (cfg) => buildTimberCheckInputs({
+    nodes, beams: [mk(cfg)], combinations: combos, combinationResults,
+    loadCases: STANDAARD_GEVALLEN, gevallenMetLast: [1, 2],
+  }).inputs[0].load_duration_per_combination;
+  checkTrue('met loadCases: "short" maakt geen enkele combinatie kort',
+    metGevallen({ loadDuration: "short" }).every((c) => c.load_duration !== "ShortTerm"));
+  const lang = metGevallen({ loadDuration: "long" });
+  checkTrue('met loadCases: "long" verlengt middellang tot lang, blijvend blijft blijvend',
+    lang.some((c) => c.load_duration === "LongTerm") &&
+    lang.some((c) => c.load_duration === "Permanent") &&
+    lang.every((c) => ["Permanent", "LongTerm"].includes(c.load_duration)));
 
   // NB-categorieën uit NEN-EN 1990:2002/NB:2019 A1.4.3(3) voor w_add (w2 + w3),
   // met A1.4.3(4) (w_max ≤ ℓ_rep/250) voor w_fin.
@@ -238,6 +282,8 @@ log("\n[5] Projectbestand v2: round-trip serialize → deserialize → identiek"
     nodes,
     beams: [
       { ...steelBeamNoCfg, checkConfig: { bucklingLengthY_m: 9, lateralRestraints: [0.5], deflectionClass: "roof", preCamber_mm: 5 } },
+      // Bestandsinhoud: "short" blijft zo in het bestand staan. De toetsing
+      // leest een opgegeven klasse sinds september 2026 als ondergrens.
       { ...timberBeamNoCfg, checkConfig: { serviceClass: 2, loadDuration: "short" } },
     ],
     supports, plates: [], loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -5 }],

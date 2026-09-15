@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use steel_check::CustomSection;
 use ts_rs::TS;
 
+use crate::belastingduur::CombinationLoadDuration;
+
 fn default_one() -> f64 {
     1.0
 }
@@ -79,9 +81,24 @@ pub struct TimberBeamCheckInput {
     pub strength_class: String,
     /// Klimaatklasse (service class) §2.3.1.3.
     pub service_class: ServiceClass,
-    /// Maatgevende belastingduurklasse van de UGT-combinatie (§3.1.3:
-    /// de kortst durende belasting in de combinatie bepaalt k_mod).
+    /// Belastingduurklasse (§2.3.1.2) voor de hele omhullende, en de TERUGVAL
+    /// voor een combinatie die niet in [`Self::load_duration_per_combination`]
+    /// staat.
+    ///
+    /// LET OP: zonder die lijst geldt deze ene klasse voor ALLE
+    /// UGT-combinaties. §3.1.3(2) wil de kortste belastingsduur PER
+    /// combinatie; met één klasse wordt de combinatie met alleen de blijvende
+    /// belasting dus niet met k_mod "blijvend" getoetst.
     pub load_duration: LoadDurationClass,
+    /// De belastingduurklasse per UGT-combinatie (§3.1.3(2)).
+    ///
+    /// Gevuld: de kern groepeert de omhullende per klasse, toetst elke klasse
+    /// met haar eigen k_mod en neemt per toets de hoogste unity check. Leeg
+    /// (of weggelaten): het gedrag van vóór dit veld, met `load_duration` voor
+    /// alles. Zie `crate::belastingduur`.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<CombinationLoadDuration>>", optional)]
+    pub load_duration_per_combination: Vec<CombinationLoadDuration>,
     /// Staaflengte in m.
     pub length_m: f64,
     /// Krachtsverloop (envelop) langs de staaf; N drukt negatief.

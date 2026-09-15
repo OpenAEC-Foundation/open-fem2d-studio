@@ -423,6 +423,62 @@ async fn de_drie_wegen_toetsen_dezelfde_clt_plaat_gelijk() {
     let _ = child.kill().await;
 }
 
+/// Dezelfde houten ligger, maar met de belastingduur PER UGT-combinatie
+/// (EN 1995-1-1 3.1.3(2)). Het nieuwe veld `load_duration_per_combination` moet
+/// langs alle drie de wegen hetzelfde doen: een weg die het veld zou weigeren of
+/// negeren, geeft hier een ander resultaat of een fout.
+///
+/// De omhullende van de referentie wordt gesplitst: de twee steunpunten horen
+/// bij combinatie 12 (blijvend), het veld en het rechter einde bij combinatie 13
+/// (kort). Er wordt hier geen unity check vastgelegd — alleen dat de drie wegen
+/// gelijk zijn en dat de k_mod-lijst uit tabel 3.1 komt (0,60 en 0,90).
+#[tokio::test]
+async fn de_drie_wegen_toetsen_de_belastingduur_per_combinatie_gelijk() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut invoer = invoer_ligger();
+    let punten = invoer["forces_envelope"].as_array_mut().expect("omhullende");
+    punten[2]["combination_id"] = json!(13);
+    punten[3]["combination_id"] = json!(13);
+    invoer["load_duration_per_combination"] = json!([
+        { "combination_id": 12, "load_duration": "Permanent", "basis": "alleen blijvende belasting" },
+        { "combination_id": 13, "load_duration": "ShortTerm", "basis": "kortste: sneeuw" }
+    ]);
+
+    let tauri = weg_tauri_hout(&invoer);
+    let brug = eerste(&weg_toetsbrug("check_timber_beams", Some(json!([invoer]))));
+    let mcp = weg_mcp(&mut stdin, &mut reader, 15, "check_timber_beams", json!({ "inputs": [invoer] })).await;
+    let mcp = mcp["results"][0].clone();
+    eis_gelijk("het Tauri-command", &tauri, "de toetsbrug", &brug);
+    eis_gelijk("het Tauri-command", &tauri, "de MCP-server", &mcp);
+
+    let kmod: Vec<(String, f64)> = mcp["k_mod_per_load_duration"]
+        .as_array()
+        .expect("k_mod_per_load_duration")
+        .iter()
+        .map(|k| (k["load_duration"].as_str().unwrap().to_owned(), getal(k, "k_mod")))
+        .collect();
+    assert_eq!(kmod, vec![("Permanent".to_owned(), 0.60), ("ShortTerm".to_owned(), 0.90)]);
+    assert!(mcp["governing_combination_id"].is_u64(), "{}", mcp["governing_combination_id"]);
+
+    // Ook CLT: dezelfde lijst, drie wegen.
+    let mut clt = invoer_clt();
+    clt["forces_envelope"][1]["combination_id"] = json!(13);
+    clt["load_duration_per_combination"] = json!([
+        { "combination_id": 12, "load_duration": "Permanent" },
+        { "combination_id": 13, "load_duration": "ShortTerm" }
+    ]);
+    let tauri = weg_tauri_clt(&clt);
+    let brug = eerste(&weg_toetsbrug("check_clt_beams", Some(json!([clt]))));
+    let mcp = weg_mcp(&mut stdin, &mut reader, 16, "check_clt_beams", json!({ "inputs": [clt] })).await;
+    let mcp = mcp["results"][0].clone();
+    eis_gelijk("CLT: het Tauri-command", &tauri, "de toetsbrug", &brug);
+    eis_gelijk("CLT: het Tauri-command", &tauri, "de MCP-server", &mcp);
+    assert_eq!(mcp["k_mod_per_load_duration"].as_array().map(|l| l.len()), Some(2));
+
+    let _ = child.kill().await;
+}
+
 /// De twee lijsten langs de drie wegen. De MCP-weg pakt ze in een object in
 /// (`structuredContent` moet een object zijn); de lijst daarbinnen hoort
 /// byte-voor-byte te zijn wat de andere twee wegen kaal teruggeven.

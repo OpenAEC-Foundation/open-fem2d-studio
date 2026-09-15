@@ -48,7 +48,9 @@ import {
   mapServiceClass,
   matchSupportedTimberGrade,
   SUPPORTED_TIMBER_GRADES,
+  type TimberBuildData,
 } from "./timberCheckBuilder";
+import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
 
 /** Standaard strookbreedte van een CLT-plaat in het 2D-model (per meter). */
 export const CLT_STROOKBREEDTE_MM = 1000;
@@ -509,6 +511,10 @@ export interface CltBuildData {
   combinationResults: Map<number, SolverResult>;
   /** Runtime-lijst uit `list_timber_grades`; leeg → statische fallback. */
   supportedGrades?: string[];
+  /** Belastinggevallen; zie `TimberBuildData.loadCases` (k_mod per combinatie). */
+  loadCases?: TimberBuildData["loadCases"];
+  /** Gevallen met een werkzame last; zie `TimberBuildData.gevallenMetLast`. */
+  gevallenMetLast?: readonly number[];
 }
 
 export interface CltBuildResult {
@@ -521,8 +527,11 @@ export interface CltBuildResult {
  * Bouwt CltBeamCheckInput[] voor alle staven met een CLT-profiel. Staven
  * zonder CLT-profiel zijn geen zaak van deze bouwer (die gaan naar de
  * staal- of houtbouwer). Defaults, gedocumenteerd:
- *  - klimaatklasse 1 en belastingduur "middellang" wanneer `checkConfig`
- *    ze niet geeft (zelfde keuze als de houtbouwer);
+ *  - klimaatklasse 1 wanneer `checkConfig` hem niet geeft;
+ *  - belastingduur per UGT-combinatie uit de belastinggevallen, met een
+ *    opgegeven `checkConfig.loadDuration` als ondergrens — dezelfde afleiding
+ *    als de houtbouwer (`lib/belastingduur.ts`, EN 1995-1-1 3.1.3(2)). Zonder
+ *    `loadCases` de oude terugval: één klasse, standaard "middellang";
  *  - k_cr = 1,0 (NB bij 6.1.7, prismatische doorsnede); geen lastverdelend
  *    systeem (k_sys = 1,0).
  */
@@ -536,6 +545,8 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
       ? data.supportedGrades
       : SUPPORTED_TIMBER_GRADES;
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
+  const metLast = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
+  const gevuld = metLast ? (id: number) => metLast.has(id) : undefined;
 
   for (const beam of data.beams) {
     if (!isCltProfiel(beam.profile)) continue;
@@ -586,11 +597,23 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
     }
 
     const cfg = beam.checkConfig ?? {};
+    const duurPerCombinatie = data.loadCases
+      ? belastingduurPerCombinatie({
+          combinaties: ulsCombos,
+          loadCases: data.loadCases,
+          gevuld,
+          ondergrens: cfg.loadDuration !== undefined ? mapLoadDuration(cfg.loadDuration) : undefined,
+        })
+      : [];
     inputs.push({
       beam_id: beam.id,
       layup,
       service_class: mapServiceClass(cfg.serviceClass),
-      load_duration: mapLoadDuration(cfg.loadDuration),
+      load_duration:
+        duurPerCombinatie.length > 0
+          ? langsteKlasse(duurPerCombinatie.map((d) => d.load_duration))
+          : mapLoadDuration(cfg.loadDuration),
+      load_duration_per_combination: duurPerCombinatie,
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
       // NB bij 6.1.7: k_cr = 1,0 voor liggers met een prismatische doorsnede.

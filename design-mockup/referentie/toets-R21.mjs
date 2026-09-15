@@ -130,6 +130,12 @@ const PROFIEL = "79.53x183.64";        // b × h in mm, afgerond op 2 decimalen
 // checkConfig: klimaatklasse 2 en belastingduur "kort" geven samen kmod = 0,90
 // zoals de bron gebruikt; doorbuigingsgrens L/400 (bron: wmax = 1 100/400 =
 // 2,75 mm) via deflectionClass "custom" + numerator 400.
+//
+// LET OP sinds september 2026: in de app is "kort" een ONDERGRENS. De toetsing
+// leidt k_mod per UGT-combinatie af (EN 1995-1-1 3.1.3(2)); de combinatie met
+// alleen de blijvende belasting krijgt dus 0,60 en niet de 0,90 van de bron.
+// De UC's in dit script komen uit de weerstanden van de bron, niet uit de kern;
+// (e) hieronder toont per combinatie welke klasse de kern zou krijgen.
 const beams = [1, 2, 3].map((i) => ({
   id: i, from: i, to: i + 1,
   material: MATERIAAL, profile: PROFIEL,
@@ -294,7 +300,7 @@ function reken(json) {
   const perCase = solveAllCases(bouwMultiInput(model)).perCase;
   const perCombo = new Map();
   for (const c of combos) perCombo.set(c.id, combineResults(c, perCase));
-  return { bestand, model, combos, perCombo };
+  return { bestand, model, combos, perCombo, perCase };
 }
 
 const UNI = reken(jsonUniform);
@@ -782,6 +788,10 @@ log("\n═══ 6. Toetsen ═══");
   log("  (e) Overdracht naar de EN 1995-kern (buildTimberCheckInputs):");
   const { inputs, skipped } = buildTimberCheckInputs({
     nodes, beams, combinations, combinationResults: UNI.perCombo,
+    // Zoals de app: de belastinggevallen en de gevallen met werkzame last,
+    // zodat de belastingduur per combinatie wordt afgeleid.
+    loadCases: UNI.bestand.loadCases,
+    gevallenMetLast: [...UNI.perCase.keys()],
   });
   if (skipped.length) for (const s of skipped) log(`      ! staaf ${s.beamId} overgeslagen: ${s.reason}`);
   for (const inp of inputs) {
@@ -793,9 +803,14 @@ log("\n═══ 6. Toetsen ═══");
       vMax = Math.max(vMax, Math.abs(p.forces.vz_ed));
     }
     log(`      staaf ${inp.beam_id}: ${inp.strength_class} ${fmt(inp.width_mm, 2)}×${fmt(inp.height_mm, 2)} mm,` +
-        ` klimaatklasse ${inp.service_class}, duur ${inp.load_duration},` +
+        ` klimaatklasse ${inp.service_class}, duur (terugval) ${inp.load_duration},` +
         ` |My|max = ${fmt(mMax)} kNm, |Vz|max = ${fmt(vMax)} kN,` +
         ` w_inst = ${fmt(inp.deflection_inst_mm, 4)} mm, grens L/${inp.deflection_limit_fin}`);
+  }
+  for (const inp of inputs.slice(0, 1)) {
+    const perKlasse = {};
+    for (const d of inp.load_duration_per_combination ?? []) (perKlasse[d.load_duration] ??= []).push(d.combination_id);
+    log(`      belastingduur per combinatie (3.1.3(2), "kort" als ondergrens): ${JSON.stringify(perKlasse)}`);
   }
   log(`      → de kern zou met de SUBSTITUUT-rechthoek rekenen; Wel,y klopt (zie kop),`);
   log(`        maar de dwarskrachtweerstand niet. De UC's hierboven zijn daarom met`);

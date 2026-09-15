@@ -43,6 +43,7 @@ import {
   zetGevolgklasse,
   type CombinatieAfwijking, type CombinatieStaat, type CombinatieVervanging, type GevalMelding,
 } from "../lib/combinatieBeheer";
+import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
 import {
   STANDAARD_GEVOLGKLASSE, type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
@@ -1662,8 +1663,10 @@ export function useFemStore(opties?: {
     () => meldingenBelastinggevallen({
       loadCases, combinations: actieveCombinaties, alleCombinaties: combinations, gevolgklasse,
       loads, selfWeightEnabled,
+      // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod).
+      metHout: beams.some((b) => matchSupportedTimberGrade(b.material) !== null),
     }),
-    [loadCases, actieveCombinaties, combinations, gevolgklasse, loads, selfWeightEnabled],
+    [loadCases, actieveCombinaties, combinations, gevolgklasse, loads, selfWeightEnabled, beams],
   );
 
   const [selection, setSelection] = useState<Selection>(null);

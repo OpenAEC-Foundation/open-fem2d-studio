@@ -23,13 +23,14 @@ import { useTranslation } from "react-i18next";
 import { useReportData } from "../ReportDataContext";
 import { fmtFactor } from "../reportFormat";
 import { meldingenBelastinggevallen } from "../../../lib/combinatieBeheer";
+import { matchSupportedTimberGrade } from "../../../lib/timberCheckBuilder";
 import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
 
 export default function CombinationsSection() {
   const { t } = useTranslation("ribbon");
   const {
     combinations, overgeslagenCombinaties, loadCases, loads, selfWeightEnabled, gevolgklasse,
-    combinatieVervanging,
+    combinatieVervanging, beams,
   } = useReportData();
   const overgeslagen = new Map(overgeslagenCombinaties.map((o) => [o.id, o] as const));
   const actief = combinations.filter((c) => !overgeslagen.has(c.id));
@@ -38,6 +39,7 @@ export default function CombinationsSection() {
   // factoren die niet bij zijn type passen.
   const meldingen = meldingenBelastinggevallen({
     loadCases, combinations: actief, alleCombinaties: combinations, gevolgklasse, loads, selfWeightEnabled,
+    metHout: beams.some((b) => matchSupportedTimberGrade(b.material) !== null),
   });
   const klassen = [...new Set(combinations.flatMap((c) => (c.standaard ? [c.standaard.gevolgklasse] : [])))];
   const aantalEigen = combinations.filter((c) => !c.standaard).length;
