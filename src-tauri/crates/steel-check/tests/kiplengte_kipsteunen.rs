@@ -93,6 +93,7 @@ fn ligger(
         z_a_mm: Z_A,
         custom_section: None,
         staafstand: None,
+        staafstand_notities: None,
     })
 }
 
