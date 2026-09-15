@@ -297,6 +297,7 @@
     "noLoadsInCase": "Geen lasten in dit geval.",
     "selfWeightIncluded": "Eigen gewicht van alle staven wordt in dit geval automatisch meegenomen (q = ρ·A·g per staaf).",
     "selfWeightOff": "Eigen gewicht is uitgeschakeld — niet in de berekening meegenomen.",
+    "selfWeightNoDeadCase": "Eigen gewicht staat aan, maar er is geen belastinggeval van type “Permanent”: het eigen gewicht is NIET in de berekening meegenomen.",
     "caseType_dead": "Permanent",
     "caseType_live": "Variabel",
     "caseType_snow": "Sneeuw",

@@ -479,8 +479,12 @@ log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
     /w_fin én w_add uit één zakking/.test(n));
   checkTrue("notitie meldt dat w_add gelijk is aan w_fin",
     /w_add is hier GELIJK aan w_fin/.test(n));
-  checkTrue("notitie zegt waarom: w1 is niet af te leiden",
-    /geen BGT-combinatie met uitsluitend de blijvende belasting/.test(n));
+  // Sinds september 2026 kent de standaardset meestal wél een BGT-combinatie
+  // met alleen de blijvende belasting (6.16b zonder veranderlijke gevallen);
+  // de notitie zegt daarom niet meer dat die ontbreekt, maar dat deze toets w1
+  // niet uit de combinaties afleidt.
+  checkTrue("notitie zegt waarom: w1 wordt niet uit de combinaties afgeleid",
+    /die leidt deze toets niet uit de doorgerekende combinaties af/.test(n));
   checkTrue("notitie zegt dat de w_add-regel daarmee geen w2 + w3 is",
     /geen w2 \+ w3/.test(n));
 

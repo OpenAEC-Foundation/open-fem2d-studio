@@ -55,6 +55,7 @@ import {
 import {
   beoordeelCombinatiesBijOpenen,
   meldingenBelastinggevallen,
+  verwijderWeesFactoren,
 } from "../lib/combinatieBeheer";
 import {
   GEVOLGKLASSEN,
@@ -543,12 +544,21 @@ function rekenDoor(payload: Record<string, unknown>) {
 
   const { klasse: gevolgklasse, aangenomen: klasseAangenomen } =
     leesGevolgklasse(payload, gelezen);
-  const { lijst: alleCombinaties, bron: combinatieBron } = leesCombinaties(
+  const gelezenCombinaties = leesCombinaties(
     payload,
     gelezen.combinatiesUitBestand,
     gelezen.model.loadCases,
     gevolgklasse,
   );
+  const combinatieBron = gelezenCombinaties.bron;
+  // Een projectbestand van vóór september 2026 kan factoren dragen voor een
+  // belastinggeval dat niet meer bestaat (basisaudit nr 14). Ze tellen nergens
+  // mee, maar gaan eruit en worden gemeld — dezelfde functie als bij het
+  // openen in de app.
+  const { combinaties: alleCombinaties, wees: weesFactoren } =
+    combinatieBron === "bestand"
+      ? verwijderWeesFactoren(gelezenCombinaties.lijst, gelezen.model.loadCases)
+      : { combinaties: gelezenCombinaties.lijst, wees: [] };
   // Dezelfde selectie als de app (lib/combinatieSelectie): bij een zuivere
   // staalconstructie vallen de ongewijzigde standaardcombinaties 6.15b en
   // 6.16b af, want geen enkele staaltoets leest ze. Dat gebeurt HIER en niet
@@ -677,6 +687,7 @@ function rekenDoor(payload: Record<string, unknown>) {
       loadCases: gelezen.model.loadCases,
       gevolgklasse,
       eigenCombinatiesBewust: gelezen.bestandMetTellers,
+      weesFactoren,
     });
     if (afwijking) waarschuwingen.push(afwijking.samenvatting);
   }

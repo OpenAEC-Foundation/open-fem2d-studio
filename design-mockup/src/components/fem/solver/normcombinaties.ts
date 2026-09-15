@@ -23,30 +23,61 @@
  * Veranderlijk: elke veranderlijke belasting krijgt een beurt als LEIDENDE
  * last, zoals 6.4.3.2(2) en 6.5.3(2) vragen ("de overheersende veranderlijke
  * belasting" met "de hiermee samengaande"):
- *   - UGT 6.10a        γ_G,sup·G + Σ γ_Q·ψ₀,i·Q_i               (één keer)
+ *   - UGT 6.10a        γ_G,sup·G + Σ γ_Q·ψ₀,i·Q_i               (geen leidende)
  *   - UGT 6.10b        γ_G,sup·G + γ_Q·Q_1 + Σ γ_Q·ψ₀,i·Q_i     (per leidende last)
- *   - UGT 6.10b gunst. γ_G,inf·G + γ_Q·Q_1                      (per leidende last)
+ *   - UGT 6.10b gunst. γ_G,inf·G + γ_Q·Q_1 + Σ γ_Q·ψ₀,i·Q_i     (per leidende last)
  *   - BGT 6.14b        G + Q_1 + Σ ψ₀,i·Q_i                      (per leidende last)
  *   - BGT 6.15b        G + ψ₁,1·Q_1 + Σ ψ₂,i·Q_i                 (per leidende last)
- *   - BGT 6.16b        G + Σ ψ₂,i·Q_i                            (één keer)
+ *   - BGT 6.16b        G + Σ ψ₂,i·Q_i                            (geen leidende)
  * De factoren γ komen uit NB tabel NB.4 (CC2) en NB.5 (CC1, CC3); de kolom
  * "Gunstig 0,9 G_k,j,inf" staat in beide tabellen voor 6.10a én 6.10b. In
  * 6.10a krijgt ook de belangrijkste veranderlijke belasting ψ₀ (NB.4:
- * "1,5 ψ₀,1 Q_k,1"), dus daar is geen leidende last en volstaat één
- * combinatie.
+ * "1,5 ψ₀,1 Q_k,1"), dus daar is geen leidende last.
+ * Elk van die uitdrukkingen komt in ELKE OPSTELLING van de veranderlijke
+ * gevallen: ieder veranderlijk geval is aanwezig of afwezig (zie hieronder).
+ *
+ * WAAROM ELK VERANDERLIJK GEVAL OOK AFWEZIG MAG ZIJN
+ * Een veranderlijke belasting telt alleen waar ze ongunstig werkt:
+ *  - EN 1991-1-1 6.2.1(1)P: de gebruiksbelasting moet in rekening zijn
+ *    gebracht "als een vrije belasting ter plaatse van het meest ongunstige
+ *    deel van de invloedsoppervlakte"; 6.2.2(1): bij kolommen en wanden "op
+ *    alle ongunstige plaatsen". Een vrije belasting is volgens EN 1990
+ *    1.5.3.9 een "belasting die verscheidene ruimtelijke verdelingen over de
+ *    constructie kan hebben".
+ *  - EN 1990 tabel A1.2(B), opmerking 2: γ_Q "daar waar ongunstig (0 daar
+ *    waar gunstig)". NB.4/NB.5 vervangen de getallen, en geven voor
+ *    veranderlijke belastingen ook alleen de ongunstige waarde.
+ * Wie een vloerlast per veld in een eigen geval zet, beschrijft zo'n
+ * verdeling. Krijgen die gevallen altijd samen dezelfde factor, dan bestaat de
+ * maatgevende verdeling nooit: een doorgaande ligger 2 × 6 m met q per veld gaf
+ * 37,80 kNm veldmoment waar de belasting op één veld 1,5·49/512·q·L² =
+ * 51,68 kNm geeft (gemeten in september 2026). De omhullende over
+ * alle opstellingen is per snede precies de som van de ongunstige bijdragen.
+ * Daarom maakt deze module per uitdrukking elke combinatie van aan- en
+ * afwezige veranderlijke gevallen: de leidende last met minstens één aanwezig
+ * geval, de begeleidende in elke deelverzameling, ook de lege. Opstellingen die
+ * op dezelfde factoren uitkomen (een geval met ψ = 0 aan of uit) staan er één
+ * keer in.
+ * Grens: boven MAX_VRIJE_GEVALLEN veranderlijke gebruiksbelastinggevallen
+ * groeit het aantal als 2ⁿ. Dan gaan de gevallen van één categorie weer samen
+ * aan of uit, en `lib/combinatieBeheer.ts` meldt dat de patroonbelasting dan
+ * niet volledig is beschouwd.
  *
  * WAT EEN "VERANDERLIJKE BELASTING" HIER IS — een expliciete keuze
  *  - Veranderlijke gevallen (type "live") met dezelfde gebruikscategorie
- *    vormen SAMEN één belasting. EN 1991-1-1 6.2.1(1) behandelt de opgelegde
- *    belasting op de vloeren van één bouwlaag als één veranderlijke
- *    belasting; wie een vloerlast over twee gevallen verdeelt, bedoelt meestal
- *    geen twee onafhankelijke belastingen. Gevallen met een ANDERE categorie
- *    zijn wel onafhankelijk (een dak, cat. H, naast een vloer, cat. A).
+ *    vormen samen één belasting: als LEIDENDE last krijgen ze dezelfde γ_Q, als
+ *    begeleidende dezelfde ψ. Hun gevallen zijn de delen van die vrije
+ *    belasting, die elk aan- of afwezig zijn (zie hierboven). Gevallen met een
+ *    ANDERE categorie zijn onafhankelijke belastingen (een dak, cat. H, naast
+ *    een vloer, cat. A), elk met een eigen beurt als leidende last.
  *  - Sneeuwgevallen en windgevallen zijn elk een ALTERNATIEF binnen hun soort
  *    (wind van links óf van rechts; volle óf asymmetrische sneeuw): ze leiden
  *    elk apart en worden nooit bij elkaar opgeteld. Met de NB-waarden
  *    ψ₀ = ψ₂ = 0 voor sneeuw en wind zou optellen als begeleidende last toch
  *    al nul geven; de uitsluiting maakt het ook zonder dat toeval waar.
+ *    `lib/combinatieBeheer.ts` meldt deze aanname zodra er twee of meer
+ *    windgevallen (of sneeuwgevallen) zijn: wie één windrichting over twee
+ *    gevallen verdeelt, krijgt ze anders nooit samen.
  *  - Type "other" krijgt GEEN factor: er bestaat geen normwaarde voor "overig".
  *    `lib/combinatieBeheer.ts` maakt daar een melding van, nooit een stille nul.
  *  - Windgevallen van de windgenerator (`gegenereerd.bron === "wind"`) blijven
@@ -190,11 +221,33 @@ export const STANDAARD_BELASTINGGEVALLEN: readonly GevalInvoer[] = [
   { id: 4, name: "Wind (W)", type: "wind" },
 ];
 
+/**
+ * Tot en met dit aantal veranderlijke gebruiksbelastinggevallen (type "live")
+ * zet de standaardset elk geval afzonderlijk aan en uit. Bij n gevallen zijn
+ * dat tot 2ⁿ opstellingen per uitdrukking. Met vier gevallen is een doorgaande
+ * ligger over vier velden nog volledig beschouwd en blijft de lijst te
+ * overzien. Daarboven gaan de gevallen van één categorie samen aan of uit, en
+ * `lib/combinatieBeheer.ts` meldt dat.
+ */
+export const MAX_VRIJE_GEVALLEN = 4;
+
+/** Het aantal veranderlijke gebruiksbelastinggevallen dat de set aan- en uitzet. */
+export function aantalGebruiksgevallen(gevallen: readonly GevalInvoer[]): number {
+  return gevallen.filter((c) => c.type === "live" && c.gegenereerd?.bron !== "wind").length;
+}
+
+/** Eén belastinggeval als deel van een veranderlijke belasting. */
+export interface Deel {
+  id: number;
+  naam: string;
+}
+
 /** Eén veranderlijke belasting: de eenheid die als leidende last een beurt krijgt. */
 interface Actie {
   sleutel: string;
   soort: "Q" | "S" | "W";
-  ids: number[];
+  /** De belastinggevallen van deze belasting; elk is aan- of afwezig. */
+  delen: Deel[];
   psi: PsiWaarden;
   /** Voor in de naam van de combinatie. */
   label: string;
@@ -230,7 +283,7 @@ function verzamelActies(gevallen: readonly GevalInvoer[]): Actie[] {
     acties.push({
       sleutel: `Q:${cat}`,
       soort: "Q",
-      ids: leden.map((c) => c.id),
+      delen: leden.map((c) => ({ id: c.id, naam: c.name })),
       psi: PSI_GEBRUIK[cat],
       label: leden.length === 1 ? leden[0].name : `Q cat. ${cat}`,
       symbool: categorieen.length === 1 ? "Q" : `Q(${cat})`,
@@ -246,7 +299,7 @@ function verzamelActies(gevallen: readonly GevalInvoer[]): Actie[] {
       acties.push({
         sleutel: `${soort}:${c.id}`,
         soort,
-        ids: [c.id],
+        delen: [{ id: c.id, naam: c.name }],
         psi,
         label: c.name,
         symbool: leden.length === 1 ? soort : `${soort}[${c.name}]`,
@@ -283,11 +336,131 @@ function bouw(
   };
 }
 
+// ── Opstellingen ──────────────────────────────────────────────────────────
+
+/** Een veranderlijke belasting in een uitdrukking, met haar factor en haar rol. */
+interface Bijdrage {
+  actie: Actie;
+  factor: number;
+  leidend: boolean;
+  /** De tekst in de formule, gegeven het symbool van de aanwezige gevallen. */
+  tekst: (symbool: string) => string;
+}
+
+/** Eén opstelling: per bijdrage de aanwezige gevallen, en alle afwezige. */
+interface Opstelling {
+  aanwezig: Deel[][];
+  zonder: Deel[];
+}
+
+function aantalBits(m: number): number {
+  let n = 0;
+  for (let x = m; x > 0; x >>= 1) n += x & 1;
+  return n;
+}
+
+/**
+ * Alle opstellingen van de bijdragen. Wat samen aan- of uitgaat heet hier een
+ * eenheid: één belastinggeval (`perGeval`), of — boven MAX_VRIJE_GEVALLEN —
+ * een hele begeleidende belasting, terwijl de leidende dan volledig aanwezig
+ * blijft. De leidende last houdt altijd minstens één aanwezig geval: zonder
+ * leidende last is het een andere uitdrukking (6.10a of 6.16b). Een bijdrage
+ * met factor 0 telt niet mee en wordt dus ook niet gevarieerd.
+ * Volgorde: eerst alles aanwezig, dan steeds meer afwezig.
+ */
+function opstellingen(bijdragen: readonly Bijdrage[], perGeval: boolean): Opstelling[] {
+  const eenheden: Deel[][] = [];
+  for (const b of bijdragen) {
+    if (b.factor === 0) continue;
+    if (perGeval) for (const d of b.actie.delen) eenheden.push([d]);
+    else if (!b.leidend) eenheden.push(b.actie.delen);
+  }
+  const maskers = Array.from({ length: 2 ** eenheden.length }, (_, m) => m)
+    .sort((a, b) => aantalBits(a) - aantalBits(b) || a - b);
+  const uit: Opstelling[] = [];
+  for (const masker of maskers) {
+    const zonder = eenheden.filter((_, j) => (masker & (1 << j)) !== 0).flat();
+    const afwezig = new Set(zonder.map((d) => d.id));
+    const aanwezig = bijdragen.map((b) =>
+      b.factor === 0 ? [] : b.actie.delen.filter((d) => !afwezig.has(d.id)));
+    if (bijdragen.some((b, i) => b.leidend && b.factor !== 0 && aanwezig[i].length === 0)) continue;
+    uit.push({ aanwezig, zonder });
+  }
+  return uit;
+}
+
+/** Het symbool van een belasting waarvan alleen deze gevallen aanwezig zijn. */
+function symboolVan(actie: Actie, aanwezig: readonly Deel[]): string {
+  return aanwezig.length === actie.delen.length
+    ? actie.symbool
+    : `${actie.symbool}[${aanwezig.map((d) => d.naam).join(" + ")}]`;
+}
+
+/**
+ * Eén uitdrukking in al haar opstellingen. `naam` en `sleutel` horen bij de
+ * volledige opstelling; een opstelling met afwezige gevallen krijgt
+ * "zonder …" in de naam en "|zonder:<ids>" in de sleutel. Zo houdt een
+ * bestaande combinatie haar sleutel — en in de store haar id — als er een
+ * belastinggeval bijkomt.
+ */
+function uitdrukking(
+  naam: string,
+  type: "uls" | "sls",
+  soort: CombinatieSoort,
+  sleutel: string,
+  g: Term,
+  bijdragen: Bijdrage[],
+  bron: string,
+  gevolgklasse: Gevolgklasse,
+  perGeval: boolean,
+): StandaardCombinatie[] {
+  return opstellingen(bijdragen, perGeval).map((o) => {
+    const termen: Term[] = [
+      g,
+      ...bijdragen.map((b, i) => ({
+        ids: o.aanwezig[i].map((d) => d.id),
+        factor: b.factor,
+        tekst: b.tekst(symboolVan(b.actie, o.aanwezig[i])),
+      })),
+    ];
+    const zonderNaam = o.zonder.length === 0
+      ? ""
+      : `${naam.includes(" — ") ? "," : " —"} zonder ${o.zonder.map((d) => d.naam).join(", ")}`;
+    const zonderSleutel = o.zonder.length === 0
+      ? ""
+      : `|zonder:${o.zonder.map((d) => d.id).sort((a, b) => a - b).join("+")}`;
+    return bouw(naam + zonderNaam, type, termen, bron, {
+      sleutel: sleutel + zonderSleutel, soort, gevolgklasse,
+    });
+  });
+}
+
+/**
+ * Opstellingen die op precies dezelfde factoren uitkomen staan er één keer in:
+ * een geval met factor 0 aan of uit maakt geen andere combinatie. Een
+ * combinatie zonder enige factor vervalt (6.10a zonder blijvend geval en
+ * zonder aanwezige veranderlijke gevallen). Vergeleken binnen één soort:
+ * 6.14b en 6.16b met gelijke factoren blijven allebei, want elke toets zoekt
+ * zijn eigen soort.
+ */
+function ontdubbel(set: readonly StandaardCombinatie[]): StandaardCombinatie[] {
+  const gezien = new Set<string>();
+  return set.filter((c) => {
+    if (c.factors.size === 0) return false;
+    const inhoud = [...c.factors].sort((a, b) => a[0] - b[0]).map(([id, x]) => `${id}:${x}`).join(",");
+    const k = `${c.type}|${c.standaard.soort}|${inhoud}`;
+    if (gezien.has(k)) return false;
+    gezien.add(k);
+    return true;
+  });
+}
+
 /**
  * De standaardcombinaties voor deze belastinggevallen in deze gevolgklasse,
  * in vaste volgorde: eerst de UGT (6.10a, 6.10b per leidende last, 6.10b met
  * gunstig werkende blijvende last), dan de BGT (6.14b, 6.15b per leidende
- * last, 6.16b). Zonder id's; die deelt de store uit.
+ * last, 6.16b); binnen elke uitdrukking de opstellingen, de volledige eerst.
+ * Zonder id's; die deelt de store uit.
  */
 export function genereerStandaardCombinaties(
   loadCases: readonly GevalInvoer[],
@@ -298,6 +471,7 @@ export function genereerStandaardCombinaties(
   const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
   const acties = verzamelActies(eigen);
   if (G.length === 0 && acties.length === 0) return [];
+  const perGeval = aantalGebruiksgevallen(eigen) <= MAX_VRIJE_GEVALLEN;
 
   const ugtBron = `γ: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
   const bgtBron = `NEN-EN 1990; ${PSI_BRON}`;
@@ -307,58 +481,62 @@ export function genereerStandaardCombinaties(
   const g = (factor: number): Term => ({
     ids: G, factor, tekst: factor === 1 ? "G" : `${nlGetal(factor)}·G`,
   });
-  /** Begeleidende lasten bij leidende last `leidend` (null = geen leidende). */
+  const leidend = (a: Actie, factor: number): Bijdrage => ({
+    actie: a, factor, leidend: true,
+    tekst: (s) => (factor === 1 ? s : `${nlGetal(factor)}·${s}`),
+  });
+  /** Begeleidende lasten bij leidende last `hoofd` (null = geen leidende). */
   const begeleidend = (
-    leidend: Actie | null,
+    hoofd: Actie | null,
     ψ: (a: Actie) => number,
     γ: number,
-  ): Term[] =>
+  ): Bijdrage[] =>
     acties
-      .filter((a) => a !== leidend)
+      .filter((a) => a !== hoofd)
       // Sneeuw- en windgevallen zijn alternatieven binnen hun soort: ze gaan
       // nooit samen met de leidende last van dezelfde soort.
-      .filter((a) => !(leidend && a.soort === leidend.soort && a.soort !== "Q"))
+      .filter((a) => !(hoofd && a.soort === hoofd.soort && a.soort !== "Q"))
       .map((a) => ({
-        ids: a.ids,
+        actie: a,
         factor: product(γ, ψ(a)),
-        tekst: γ === 1
-          ? `${nlGetal(ψ(a))}·${a.symbool}`
-          : `${nlGetal(γ)}·${nlGetal(ψ(a))}·${a.symbool}`,
+        leidend: false,
+        tekst: (s: string) => (γ === 1
+          ? `${nlGetal(ψ(a))}·${s}`
+          : `${nlGetal(γ)}·${nlGetal(ψ(a))}·${s}`),
       }));
+  const ψ0 = (a: Actie) => a.psi.psi0;
+  const ψ2 = (a: Actie) => a.psi.psi2;
 
   const ugt: StandaardCombinatie[] = [];
   const bgt: StandaardCombinatie[] = [];
 
   // UGT 6.10a — geen leidende last: alle veranderlijke lasten met ψ₀.
-  ugt.push(bouw(
-    "UGT 6.10a", "uls",
-    [g(f.gGsup610a), ...begeleidend(null, (a) => a.psi.psi0, f.gQ)],
-    ugtBron, herkomst("6.10a", "6.10a"),
+  ugt.push(...uitdrukking(
+    "UGT 6.10a", "uls", "6.10a", "6.10a",
+    g(f.gGsup610a), begeleidend(null, ψ0, f.gQ), ugtBron, gevolgklasse, perGeval,
   ));
 
   for (const a of acties) {
-    ugt.push(bouw(
-      `UGT 6.10b — ${a.label} leidend`, "uls",
-      [
-        g(f.gGsup610b),
-        { ids: a.ids, factor: f.gQ, tekst: `${nlGetal(f.gQ)}·${a.symbool}` },
-        ...begeleidend(a, (b) => b.psi.psi0, f.gQ),
-      ],
-      ugtBron, herkomst(`6.10b|${a.sleutel}`, "6.10b"),
+    ugt.push(...uitdrukking(
+      `UGT 6.10b — ${a.label} leidend`, "uls", "6.10b", `6.10b|${a.sleutel}`,
+      g(f.gGsup610b), [leidend(a, f.gQ), ...begeleidend(a, ψ0, f.gQ)],
+      ugtBron, gevolgklasse, perGeval,
     ));
   }
   // Blijvende last gunstig (γ_G,inf): maatgevend waar de veranderlijke last
   // de blijvende tegenwerkt — opwaartse wind, een omkerend moment. Zonder
   // blijvend geval valt deze combinatie samen met 6.10b en blijft ze weg.
-  // De begeleidende veranderlijke lasten ontbreken hier bewust: werkt de
-  // blijvende last gunstig, dan werken neerwaartse begeleidende lasten dat
-  // doorgaans ook, en een gunstige veranderlijke last telt voor 0 mee.
+  // De begeleidende veranderlijke lasten staan erin zoals in 6.10b, in al hun
+  // opstellingen: de opstelling zonder begeleidende lasten dekt de gewone
+  // opwaartse wind, die met een ongunstig werkende begeleidende last het
+  // geval waarin blijvende en begeleidende last elkaar tegenwerken.
   if (G.length > 0) {
     for (const a of acties) {
-      ugt.push(bouw(
-        `UGT 6.10b — ${a.label} leidend, blijvend gunstig`, "uls",
-        [g(f.gGinf), { ids: a.ids, factor: f.gQ, tekst: `${nlGetal(f.gQ)}·${a.symbool}` }],
-        ugtBron, herkomst(`6.10b-gunstig|${a.sleutel}`, "6.10b"),
+      ugt.push(...uitdrukking(
+        `UGT 6.10b — ${a.label} leidend, blijvend gunstig`, "uls", "6.10b",
+        `6.10b-gunstig|${a.sleutel}`,
+        g(f.gGinf), [leidend(a, f.gQ), ...begeleidend(a, ψ0, f.gQ)],
+        ugtBron, gevolgklasse, perGeval,
       ));
     }
   }
@@ -372,29 +550,60 @@ export function genereerStandaardCombinaties(
       herkomst("6.15b|G", "6.15b")));
   } else {
     for (const a of acties) {
-      bgt.push(bouw(
-        `BGT karakteristiek 6.14b — ${a.label} leidend`, "sls",
-        [g(1), { ids: a.ids, factor: 1, tekst: a.symbool }, ...begeleidend(a, (b) => b.psi.psi0, 1)],
-        bgtBron, herkomst(`6.14b|${a.sleutel}`, "6.14b"),
+      bgt.push(...uitdrukking(
+        `BGT karakteristiek 6.14b — ${a.label} leidend`, "sls", "6.14b", `6.14b|${a.sleutel}`,
+        g(1), [leidend(a, 1), ...begeleidend(a, ψ0, 1)], bgtBron, gevolgklasse, perGeval,
       ));
     }
     for (const a of acties) {
-      bgt.push(bouw(
-        `BGT frequent 6.15b — ${a.label} leidend`, "sls",
-        [
-          g(1),
-          { ids: a.ids, factor: a.psi.psi1, tekst: `${nlGetal(a.psi.psi1)}·${a.symbool}` },
-          ...begeleidend(a, (b) => b.psi.psi2, 1),
-        ],
-        bgtBron, herkomst(`6.15b|${a.sleutel}`, "6.15b"),
+      bgt.push(...uitdrukking(
+        `BGT frequent 6.15b — ${a.label} leidend`, "sls", "6.15b", `6.15b|${a.sleutel}`,
+        g(1), [leidend(a, a.psi.psi1), ...begeleidend(a, ψ2, 1)], bgtBron, gevolgklasse, perGeval,
       ));
     }
   }
-  bgt.push(bouw(
-    "BGT quasi-blijvend 6.16b", "sls",
-    [g(1), ...begeleidend(null, (b) => b.psi.psi2, 1)],
-    bgtBron, herkomst("6.16b", "6.16b"),
+  bgt.push(...uitdrukking(
+    "BGT quasi-blijvend 6.16b", "sls", "6.16b", "6.16b",
+    g(1), begeleidend(null, ψ2, 1), bgtBron, gevolgklasse, perGeval,
   ));
 
-  return [...ugt, ...bgt];
+  return ontdubbel([...ugt, ...bgt]);
+}
+
+// ── Voor de windgenerator ─────────────────────────────────────────────────
+
+/** Eén opstelling van de begeleidende veranderlijke belastingen. */
+export interface BegeleidendeOpstelling {
+  /** [caseId, factor] van elk aanwezig begeleidend geval (factor ≠ 0). */
+  factoren: [number, number][];
+  /** De begeleidende gevallen die in deze opstelling afwezig zijn. */
+  zonder: Deel[];
+}
+
+/**
+ * De opstellingen van de begeleidende veranderlijke belastingen bij een
+ * leidende last van soort `leidendeSoort` die zelf niet in `gevallen` staat:
+ * de windgenerator laat zijn eigen windgevallen leiden. Dezelfde regels als de
+ * standaardset — ψ per soort en gebruikscategorie, sneeuw en wind als
+ * alternatieven binnen hun soort, elk veranderlijk geval aan- of afwezig
+ * (EN 1991-1-1 6.2.1(1)P) — zodat een gegenereerde windcombinatie geen
+ * opstelling mist die de standaardset wel heeft.
+ * `factor` krijgt de ψ-waarden van een belasting en geeft haar factor
+ * (γ_Q·ψ₀, ψ₀ of ψ₂).
+ */
+export function begeleidendeOpstellingen(
+  gevallen: readonly GevalInvoer[],
+  leidendeSoort: "Q" | "S" | "W",
+  factor: (psi: PsiWaarden) => number,
+): BegeleidendeOpstelling[] {
+  const eigen = gevallen.filter((c) => c.gegenereerd?.bron !== "wind");
+  const bijdragen: Bijdrage[] = verzamelActies(eigen)
+    .filter((a) => !(a.soort === leidendeSoort && a.soort !== "Q"))
+    .map((a) => ({ actie: a, factor: product(factor(a.psi)), leidend: false, tekst: (s: string) => s }));
+  const perGeval = aantalGebruiksgevallen(eigen) <= MAX_VRIJE_GEVALLEN;
+  return opstellingen(bijdragen, perGeval).map((o) => ({
+    factoren: bijdragen.flatMap((b, i) =>
+      b.factor === 0 ? [] : o.aanwezig[i].map((d) => [d.id, b.factor] as [number, number])),
+    zonder: o.zonder,
+  }));
 }

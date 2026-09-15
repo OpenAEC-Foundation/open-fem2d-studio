@@ -24,6 +24,7 @@ import { readFileSync } from "node:fs";
 
 const {
   genereerStandaardCombinaties, PARTIELE_FACTOREN, PSI_GEBRUIK, PSI_SNEEUW, PSI_WIND, K_FI,
+  MAX_VRIJE_GEVALLEN,
 } = await import("./src/components/fem/solver/normcombinaties.ts");
 const {
   defaultCombinations, combineResults, computeEnvelope, combinatiesVanSoort,
@@ -31,12 +32,12 @@ const {
 const {
   voegBelastinggevalToe, wijzigBelastinggeval, verwijderBelastinggeval, zetGevolgklasse,
   vervangDoorStandaard, wijzigCombinatie, voegCombinatieToe, meldingenBelastinggevallen,
-  beoordeelCombinatiesBijOpenen,
+  beoordeelCombinatiesBijOpenen, openCombinatieStaat,
 } = await import("./src/lib/combinatieBeheer.ts");
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
 const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
 const { bepaalDoorbuigingsInvoer } = await import("./src/lib/steelCheckBuilder.ts");
-const { combinationsToFile, combinationsFromFile } = await import("./src/io/projectFile.ts");
+const { combinationsToFile, combinationsFromFile, deserializeProject } = await import("./src/io/projectFile.ts");
 const { verwerkVerzoek } = await import("./src/mcp/sidecar.ts");
 
 let passed = 0, failed = 0;
@@ -141,29 +142,45 @@ log("\n[1] De tabellen zijn die van NEN-EN 1990:2002/NB:2019 (pdftotext -raw)");
 log("\n[2] De standaardset voor de vier startgevallen, CC2 — met de hand");
 {
   // G = 1, Q = 2 (cat. A: ψ 0,4/0,5/0,3), S = 3, W = 4 (ψ 0/0,2/0).
-  //  6.10a: 1,35·G + 1,5·0,4·Q = 1,35 G + 0,6 Q   (S, W: 1,5·0 = 0)
-  //  6.10b Q leidend: 1,2 G + 1,5 Q;  S leidend: 1,2 G + 1,5 S + 0,6 Q;  W idem
-  //  gunstig: 0,9 G + 1,5 × leidend
-  //  6.14b: G + leidend + 0,4 Q (als Q begeleidt)
-  //  6.15b: G + ψ₁·leidend (0,5 Q; 0,2 S; 0,2 W) + ψ₂·Q = 0,3 Q
-  //  6.16b: G + 0,3 Q
+  // Elke uitdrukking in elke opstelling van de veranderlijke gevallen: Q is
+  // aan- of afwezig (EN 1991-1-1 6.2.1(1)P, vrije belasting; EN 1990 tabel
+  // A1.2(B) opm. 2: γ_Q "0 daar waar gunstig"). S en W begeleiden met
+  // 1,5·0 = 0 (NB.2) en variëren dus niet mee; als leidende last zijn ze er altijd.
+  //  6.10a: 1,35·G + 1,5·0,4·Q = 1,35 G + 0,6 Q  | zonder Q: 1,35 G
+  //  6.10b Q leidend: 1,2 G + 1,5 Q
+  //        S leidend: 1,2 G + 1,5 S + 0,6 Q      | zonder Q: 1,2 G + 1,5 S;  W idem
+  //  gunstig: 0,9 G + 1,5 × leidend (+ 0,6 Q     | zonder Q, als Q begeleidt)
+  //  6.14b: G + leidend (+ 0,4 Q                 | zonder Q, als Q begeleidt)
+  //  6.15b: G + ψ₁·leidend (0,5 Q; 0,2 S; 0,2 W) (+ ψ₂·Q = 0,3 Q | zonder Q)
+  //  6.16b: G + 0,3 Q                            | zonder Q: G
+  // 2 + 5 + 5 (UGT) + 5 + 5 + 2 (BGT) = 24.
   const c = defaultCombinations();
-  checkWaar("veertien combinaties, id 1…14", c.length === 14 && c.every((x, i) => x.id === i + 1));
+  checkWaar("vierentwintig combinaties, id 1…24", c.length === 24 && c.every((x, i) => x.id === i + 1));
   const verwacht = [
     ["UGT 6.10a", "uls", { 1: 1.35, 2: 0.6 }],
+    ["UGT 6.10a — zonder Variabel (Q)", "uls", { 1: 1.35 }],
     ["UGT 6.10b — Variabel (Q) leidend", "uls", { 1: 1.2, 2: 1.5 }],
     ["UGT 6.10b — Sneeuw (S) leidend", "uls", { 1: 1.2, 2: 0.6, 3: 1.5 }],
+    ["UGT 6.10b — Sneeuw (S) leidend, zonder Variabel (Q)", "uls", { 1: 1.2, 3: 1.5 }],
     ["UGT 6.10b — Wind (W) leidend", "uls", { 1: 1.2, 2: 0.6, 4: 1.5 }],
+    ["UGT 6.10b — Wind (W) leidend, zonder Variabel (Q)", "uls", { 1: 1.2, 4: 1.5 }],
     ["UGT 6.10b — Variabel (Q) leidend, blijvend gunstig", "uls", { 1: 0.9, 2: 1.5 }],
-    ["UGT 6.10b — Sneeuw (S) leidend, blijvend gunstig", "uls", { 1: 0.9, 3: 1.5 }],
-    ["UGT 6.10b — Wind (W) leidend, blijvend gunstig", "uls", { 1: 0.9, 4: 1.5 }],
+    ["UGT 6.10b — Sneeuw (S) leidend, blijvend gunstig", "uls", { 1: 0.9, 2: 0.6, 3: 1.5 }],
+    ["UGT 6.10b — Sneeuw (S) leidend, blijvend gunstig, zonder Variabel (Q)", "uls", { 1: 0.9, 3: 1.5 }],
+    ["UGT 6.10b — Wind (W) leidend, blijvend gunstig", "uls", { 1: 0.9, 2: 0.6, 4: 1.5 }],
+    ["UGT 6.10b — Wind (W) leidend, blijvend gunstig, zonder Variabel (Q)", "uls", { 1: 0.9, 4: 1.5 }],
     ["BGT karakteristiek 6.14b — Variabel (Q) leidend", "sls", { 1: 1, 2: 1 }],
     ["BGT karakteristiek 6.14b — Sneeuw (S) leidend", "sls", { 1: 1, 2: 0.4, 3: 1 }],
+    ["BGT karakteristiek 6.14b — Sneeuw (S) leidend, zonder Variabel (Q)", "sls", { 1: 1, 3: 1 }],
     ["BGT karakteristiek 6.14b — Wind (W) leidend", "sls", { 1: 1, 2: 0.4, 4: 1 }],
+    ["BGT karakteristiek 6.14b — Wind (W) leidend, zonder Variabel (Q)", "sls", { 1: 1, 4: 1 }],
     ["BGT frequent 6.15b — Variabel (Q) leidend", "sls", { 1: 1, 2: 0.5 }],
     ["BGT frequent 6.15b — Sneeuw (S) leidend", "sls", { 1: 1, 2: 0.3, 3: 0.2 }],
+    ["BGT frequent 6.15b — Sneeuw (S) leidend, zonder Variabel (Q)", "sls", { 1: 1, 3: 0.2 }],
     ["BGT frequent 6.15b — Wind (W) leidend", "sls", { 1: 1, 2: 0.3, 4: 0.2 }],
+    ["BGT frequent 6.15b — Wind (W) leidend, zonder Variabel (Q)", "sls", { 1: 1, 4: 0.2 }],
     ["BGT quasi-blijvend 6.16b", "sls", { 1: 1, 2: 0.3 }],
+    ["BGT quasi-blijvend 6.16b — zonder Variabel (Q)", "sls", { 1: 1 }],
   ];
   verwacht.forEach(([naam, type, f], i) => {
     checkWaar(`${i + 1}: naam en type "${naam}"`, c[i]?.name === naam && c[i]?.type === type, c[i]?.name);
@@ -173,7 +190,9 @@ log("\n[2] De standaardset voor de vier startgevallen, CC2 — met de hand");
   checkWaar("de formule noemt de vindplaats (NB.4 in de UGT, NB.2 overal)",
     c.filter((x) => x.type === "uls").every((x) => /NB\.4/.test(x.formula)) &&
     c.every((x) => /NB\.2/.test(x.formula)));
-  checkWaar("combinatiesVanSoort vindt drie karakteristieke combinaties", combinatiesVanSoort(c, "6.14b").length === 3);
+  checkWaar("combinatiesVanSoort vindt vijf karakteristieke combinaties", combinatiesVanSoort(c, "6.14b").length === 5);
+  checkWaar("de volledige opstelling houdt haar sleutel; een opstelling zonder Q krijgt |zonder:2",
+    c[3]?.standaard.sleutel === "6.10b|S:3" && c[4]?.standaard.sleutel === "6.10b|S:3|zonder:2");
 
   // Categorie E (opslag) begeleidt met ψ₀ = 1,0 en is quasi-blijvend met 0,8;
   // tot september 2026 was dat 0,7 en 0,3 (ruw 39, te gunstig voor kruip).
@@ -383,7 +402,7 @@ log("\n[7] Een oud projectbestand opent met een melding — en er wordt niets ov
   });
   checkWaar("er is een melding", afw !== null);
   checkWaar("alle acht oude combinaties worden genoemd", afw?.afwijkend.length === 8);
-  checkWaar("de nieuwe standaard (14) staat erbij", afw?.standaard.length === 14 && afw?.ontbrekend.length === 14);
+  checkWaar("de nieuwe standaard (24, zie [2]) staat erbij", afw?.standaard.length === 24 && afw?.ontbrekend.length === 24);
   checkWaar("de melding zegt dat er niets is overschreven", /NIETS overschreven/.test(afw?.samenvatting ?? ""));
   checkWaar("en noemt de expliciete actie", /Vervang door standaardcombinaties/.test(afw?.samenvatting ?? ""));
 
@@ -395,7 +414,8 @@ log("\n[7] Een oud projectbestand opent met een melding — en er wordt niets ov
   checkWaar("een CC2-bestand geopend als CC3: de UGT-combinaties worden gemeld, de BGT niet",
     (() => {
       const a = beoordeelCombinatiesBijOpenen({ combinations: terug, loadCases: START, gevolgklasse: "CC3", eigenCombinatiesBewust: true });
-      return a && a.afwijkend.length === 7 && a.afwijkend.every((x) => /^UGT/.test(x.naam));
+      // De twaalf UGT-combinaties van [2] hebben onder CC3 andere γ; de twaalf BGT niet.
+      return a && a.afwijkend.length === 12 && a.afwijkend.every((x) => /^UGT/.test(x.naam));
     })());
   const kapot = combinationsFromFile([{ id: 1, name: "x", type: "uls", formula: "", factors: { 1: 1 }, standaard: { sleutel: "6.10a", soort: "onzin", gevolgklasse: "CC2" } }]);
   checkWaar("een onleesbaar kenmerk maakt er een eigen combinatie van", kapot[0].standaard === undefined);
@@ -406,8 +426,8 @@ log("\n[7] Een oud projectbestand opent met een melding — en er wordt niets ov
     combinations: [...OUDE_STANDAARD, { id: 20, name: "Wind-gen · UGT x", type: "uls", formula: "…", factors: new Map([[1, 1.2]]) }],
   };
   const vervangen = vervangDoorStandaard(staat);
-  checkWaar("vervangen: 14 standaard + 1 windgenerator",
-    vervangen.combinations.length === 15 && vervangen.combinations.filter((c) => c.standaard).length === 14);
+  checkWaar("vervangen: 24 standaard + 1 windgenerator",
+    vervangen.combinations.length === 25 && vervangen.combinations.filter((c) => c.standaard).length === 24);
   checkWaar("vervangen: nieuwe id's vanaf de teller, geen hergebruik",
     vervangen.combinations.filter((c) => c.standaard).every((c) => c.id >= 21));
 }
@@ -459,10 +479,11 @@ log("\n[9] De MCP-weg: dezelfde standaardset, dezelfde meldingen, de gevolgklass
 
   const cc3 = solve({ model: model(), gevolgklasse: "CC3" });
   checkWaar("solve met gevolgklasse CC3 slaagt", cc3.ok === true, JSON.stringify(cc3.error ?? {}));
-  // G + Q: UGT 6.10a, 6.10b, gunstig; BGT 6.14b, 6.15b, 6.16b. Zuiver staal
-  // laat 6.15b en 6.16b weg → vier doorgerekend.
-  checkWaar("de standaardset komt uit de gevallen van het model: 4 doorgerekend, 2 overgeslagen",
-    Object.keys(cc3.result?.combinations ?? {}).length === 4 && (cc3.result?.combinations_skipped ?? []).length === 2);
+  // G + Q: UGT 6.10a met en zonder Q, 6.10b Q leidend, gunstig Q leidend (4);
+  // BGT 6.14b Q, 6.15b Q, 6.16b met en zonder Q (4). Zuiver staal laat 6.15b en
+  // beide 6.16b weg → vijf doorgerekend, drie overgeslagen.
+  checkWaar("de standaardset komt uit de gevallen van het model: 5 doorgerekend, 3 overgeslagen",
+    Object.keys(cc3.result?.combinations ?? {}).length === 5 && (cc3.result?.combinations_skipped ?? []).length === 3);
   checkWaar("geen waarschuwing over een aangenomen klasse", !(cc3.result?.warnings ?? []).some((w) => /Geen gevolgklasse/.test(w)));
 
   const zonder = solve({ model: model() });
@@ -479,6 +500,197 @@ log("\n[9] De MCP-weg: dezelfde standaardset, dezelfde meldingen, de gevolgklass
   const validate = verwerkVerzoek({ v: 1, id: 2, op: "validate", payload: { model: model({ id: 3, name: "Onbekend", type: "other" }) } });
   checkWaar("validate: hetzelfde geval is een fout (ok: false)",
     validate.result?.ok === false && validate.result.errors.some((e) => /Belastinggeval 3/.test(e)));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[10] Bevinding nr 14 via een OUD projectbestand — wees-factoren gaan eruit, het id komt niet terug");
+{
+  // Een bestand van 0.3.11: het windgeval (id 4) was verwijderd, maar zes
+  // combinaties dragen nog een factor voor 4, en tellers ontbreken. Tot deze
+  // correctie kreeg het volgende nieuwe geval id 4 en erfde het die factoren
+  // (HEA200: UGT 47,25 en BGT 30,60 kNm waar 48,60 en 36,00 horen).
+  // Dezelfde weg als de app: JSON → deserializeProject → combinationsFromFile
+  // (App.tsx) → openCombinatieStaat (useFemStore.loadProjectState).
+  const gevallen = START.filter((c) => c.id !== 4);
+  const tekst = JSON.stringify({
+    format: "open-fem2d-studio-v2", version: 2, savedAt: "2026-09-01T00:00:00Z",
+    nodes: [], beams: [], supports: [], plates: [], loads: [], activeLoadCaseId: 1, selfWeightEnabled: false,
+    loadCases: gevallen, combinations: combinationsToFile(OUDE_STANDAARD),
+  });
+  const p = deserializeProject(tekst);
+  const uitBestand = combinationsFromFile(p.combinations);
+  const { staat, afwijking } = openCombinatieStaat({
+    loadCases: p.loadCases, combinations: uitBestand, gevolgklasse: "CC2", idTellers: p.idTellers,
+  });
+  checkWaar("na openen draagt geen combinatie nog een factor voor id 4", staat.combinations.every((c) => !c.factors.has(4)));
+  checkWaar("de melding noemt de zes combinaties met een wees-factor voor 4",
+    afwijking?.weesFactoren.length === 6 && afwijking.weesFactoren.every((w) => JSON.stringify(w.caseIds) === "[4]"));
+  checkWaar("de samenvatting zegt dat ze zijn weggehaald en dat er verder niets is overschreven",
+    /belastinggeval 4, dat in dit project niet \(meer\) bestaat/.test(afwijking?.samenvatting ?? "") &&
+    /weggehaald/.test(afwijking?.samenvatting ?? "") && /NIETS overschreven/.test(afwijking?.samenvatting ?? ""),
+    afwijking?.samenvatting);
+  checkWaar("de eigen combinaties uit het bestand blijven staan (acht, zelfde id's)",
+    JSON.stringify(staat.combinations.map((c) => c.id)) === "[1,2,3,4,5,6,7,8]");
+
+  // Weghalen verandert geen uitkomst: een factor voor een geval zonder last
+  // vermenigvuldigt niets. HEA200 6 m met G = 5, Q = 2, S = 1 kN/m:
+  //   ULS 6.10b (Q leidend) 1,2·5 + 1,5·2 + 1,05·1 = 10,05 kN/m
+  //   ULS 6.10a             1,35·5 + 1,05·2 + 1,05·1 = 9,90
+  //   ULS 6.10b (S leidend) 1,2·5 + 1,5·1 + 1,05·2  = 9,60
+  //   → M = 10,05·6²/8 = 45,225 kNm, met en zonder de wees-factoren.
+  const hea200 = (loads, cases) => solveAllCases({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, E: 210000, A: 5383, I: 3.692e7 }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    loads, pointLoads: [], cases: cases.map((c) => ({ id: c.id, name: c.name })),
+  }).perCase;
+  const pcOud = hea200([{ beamId: 1, q: -5, caseId: 1 }, { beamId: 1, q: -2, caseId: 2 }, { beamId: 1, q: -1, caseId: 3 }], gevallen);
+  check("met wees-factoren: M = 10,05·36/8 = 45,225 kNm", mMax(uitBestand, pcOud, "uls"), 45.225);
+  check("na weghalen: dezelfde 45,225 kNm", mMax(staat.combinations, pcOud, "uls"), 45.225);
+
+  // De teller: boven het hoogste geval (3) én boven de hoogste factorsleutel (4).
+  checkWaar("volgendGevalId = 5, niet 4", staat.volgendGevalId === 5, String(staat.volgendGevalId));
+  const { staat: na, id } = voegBelastinggevalToe(staat, "Permanent afbouw", "dead");
+  checkWaar("het nieuwe blijvende geval krijgt id 5", id === 5, `id ${id}`);
+  checkWaar("en erft nergens een factor", na.combinations.every((c) => !c.factors.has(5)));
+  // De acht oude combinaties zijn eigen combinaties: de app vult ze niet aan.
+  // Dan telt het nieuwe geval nergens mee — en dat is een FOUT, geen stille nul.
+  const meld = meldingenBelastinggevallen({
+    loadCases: na.loadCases, combinations: na.combinations, loads: [{ caseId: 1 }, { caseId: 5 }],
+  }).find((m) => m.caseId === 5);
+  checkWaar("…met een FOUT die naar de standaardcombinaties wijst",
+    meld?.niveau === "fout" && /telt in geen enkele UGT-combinatie mee/.test(meld.tekst) && /vervang/.test(meld.tekst), meld?.tekst);
+  const vervangen = vervangDoorStandaard(na);
+  const pcNa = hea200([{ beamId: 1, q: -5, caseId: 1 }, { beamId: 1, q: -3, caseId: 5 }], na.loadCases);
+  // Hand: blijvend 5 + 3 = 8 kN/m; 6.10a 1,35·8 = 10,8 → 10,8·36/8 = 48,60 kNm;
+  // BGT 1,0·8 → 36,00 kNm. De auditwaarden 47,25 en 30,60 kwamen van de windfactoren.
+  check("na Vervang door standaardcombinaties: UGT 1,35·8·36/8 = 48,60 kNm", mMax(vervangen.combinations, pcNa, "uls"), 48.6);
+  check("en BGT 8·36/8 = 36,00 kNm", mMax(vervangen.combinations, pcNa, "sls"), 36.0);
+
+  // De tweede grendel los: een wees-factor voor 7 in een bestand met gevallen
+  // 1…3 zet de teller op 8, ook als de factor een id boven elk geval heeft.
+  const zeven = openCombinatieStaat({
+    loadCases: gevallen, gevolgklasse: "CC2",
+    combinations: [{ id: 1, name: "eigen", type: "uls", formula: "", factors: new Map([[1, 1.2], [7, 1.5]]) }],
+  });
+  checkWaar("wees-factor voor 7 → volgendGevalId 8", zeven.staat.volgendGevalId === 8, String(zeven.staat.volgendGevalId));
+  checkWaar("een teller uit het bestand die hoger is, wint", openCombinatieStaat({
+    loadCases: gevallen, gevolgklasse: "CC2", combinations: [], idTellers: { belastinggeval: 12, combinatie: 1 },
+  }).staat.volgendGevalId === 12);
+  checkWaar("een bestand zonder combinaties krijgt de standaardset van zijn gevallen, zonder melding", (() => {
+    const r = openCombinatieStaat({ loadCases: START, gevolgklasse: "CC2" });
+    return r.afwijking === null && r.staat.combinations.every((c) => c.standaard) && r.staat.combinations.length === defaultCombinations().length;
+  })());
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[11] Een veranderlijk geval mag afwezig zijn — patroonbelasting (EN 1991-1-1 6.2.1(1)P)");
+{
+  // Doorgaande ligger over n velden van 6 m, EI constant, Q = 10 kN/m per veld
+  // in een eigen veranderlijk geval (cat. A), blijvend geval leeg. De
+  // gebruiksbelasting is een vrije belasting "ter plaatse van het meest
+  // ongunstige deel van de invloedsoppervlakte" (6.2.1(1)P).
+  const q = 10, L = 6000;
+  const ligger = (n, loads, gevallen) => {
+    const nodes = Array.from({ length: n + 1 }, (_, i) => ({ id: i + 1, x: i * L, z: 0 }));
+    return solveAllCases({
+      nodes,
+      beams: Array.from({ length: n }, (_, i) => ({ id: i + 1, from: i + 1, to: i + 2, E: 210000, A: 5381, I: 8.356e7 })),
+      supports: nodes.map((k, i) => ({ nodeId: k.id, type: i === 0 ? "pinned" : "zRoller" })),
+      loads, pointLoads: [], cases: gevallen.map((c) => ({ id: c.id, name: c.name })),
+    }).perCase;
+  };
+  const momenten = (c, perCase, staaf) => combineResults(c, perCase).elements.get(staaf)?.bendingMoment.map((x) => x / 1e6) ?? [0];
+  const maxVeld = (combos, perCase) => Math.max(...combos.filter((c) => c.type === "uls").map((c) => Math.max(...momenten(c, perCase, 1))));
+
+  // Twee velden. Hand (vergelijking van drie momenten, p₁ en p₂ op veld 1 en 2):
+  //   M_B = −(p₁ + p₂)·L²/16;  R_A = p₁·L/2 + M_B/L;  M_veld = R_A²/(2·p₁)
+  //   alleen veld 1 (p₂ = 0): M_B = −p·L²/16, R_A = 7/16·p·L → M_veld = 49/512·p·L²
+  //   beide velden:           M_B = −p·L²/8,  R_A = 3/8·p·L  → M_veld = 9/128·p·L²
+  // UGT 6.10b: p = 1,5·10 = 15 kN/m → veld 49/512·15·36 = 51,68 kNm; steunpunt 15·36/8 = 67,50 kNm.
+  // Met beide gevallen altijd samen gaf de app 9/128·15·36 = 37,97 (gemeten 37,80): 27 % te laag.
+  const twee = [{ id: 1, name: "G", type: "dead" }, { id: 2, name: "Q veld 1", type: "live" }, { id: 3, name: "Q veld 2", type: "live" }];
+  const pc2 = ligger(2, [{ beamId: 1, q: -q, caseId: 2 }, { beamId: 2, q: -q, caseId: 3 }], twee);
+  const set2 = defaultCombinations(twee);
+  checkFactoren("er is een 6.10b met alleen Q op veld 1",
+    set2.find((c) => c.name === "UGT 6.10b — Q cat. A leidend, zonder Q veld 2"), { 1: 1.2, 2: 1.5 });
+  // Marge 0,2 %: het maximum ligt tussen twee stations van de staaf (3/8·L of 7/16·L).
+  check("veldmoment veld 1 = 1,5·49/512·q·L² = 51,68 kNm", maxVeld(set2, pc2), 1.5 * 49 / 512 * q * 36, 0.2);
+  const steun = Math.max(...set2.filter((c) => c.type === "uls").map((c) => Math.abs(momenten(c, pc2, 1).at(-1))));
+  check("steunpuntsmoment = 1,5·q·L²/8 = 67,50 kNm (beide velden blijven samen bestaan)", steun, 67.5, 0.01);
+  checkWaar("20 combinaties: 6.10a en 6.16b ×4, 6.10b, gunstig, 6.14b en 6.15b ×3", set2.length === 20, String(set2.length));
+
+  // Drie velden: het veldmoment van veld 1 is maximaal met veld 1 én 3 belast —
+  // geen enkel veld en ook niet alle velden. Hand: M_B = M_C = −p·L²/20,
+  // R_A = p·L/2 − p·L/20 = 0,45·p·L → M_veld = 0,45²/2·p·L² = 0,10125·p·L².
+  // p = 15 → 0,10125·15·36 = 54,675 kNm. Dat bewijst dat ÉLKE deelverzameling er is.
+  const drie = [{ id: 1, name: "G", type: "dead" }, ...[2, 3, 4].map((id) => ({ id, name: `Q${id - 1}`, type: "live" }))];
+  const pc3 = ligger(3, [2, 3, 4].map((caseId, i) => ({ beamId: i + 1, q: -q, caseId })), drie);
+  check("3 velden, veld 1 en 3 belast: 1,5·0,10125·q·L² = 54,675 kNm", maxVeld(defaultCombinations(drie), pc3), 54.675, 0.2);
+
+  // Ook een BEGELEIDENDE veranderlijke last mag afwezig zijn. Sneeuw leidend op
+  // veld 1 (20 kN/m), Q per veld begeleidend (ψ₀ = 0,4 → 1,5·0,4 = 0,6):
+  //   met Q op veld 2:  p₁ = 1,5·20 + 0,6·10 = 36, p₂ = 6 → M_B = −42·36/16 = −94,5;
+  //                     R_A = 108 − 15,75 = 92,25 → M_veld = 92,25²/72 = 118,20 kNm
+  //   zonder Q veld 2:  p₁ = 36, p₂ = 0 → 49/512·36·36 = 124,03 kNm  (maatgevend)
+  const metS = [...twee, { id: 5, name: "S", type: "snow" }];
+  const pcS = ligger(2, [{ beamId: 1, q: -q, caseId: 2 }, { beamId: 2, q: -q, caseId: 3 }, { beamId: 1, q: -20, caseId: 5 }], metS);
+  check("S leidend, begeleidende Q alleen op veld 1: 49/512·36·6² = 124,03 kNm", maxVeld(defaultCombinations(metS), pcS), 49 / 512 * 36 * 36, 0.2);
+
+  // Gunstig werkende veranderlijke last telt voor 0 (EN 1990 tabel A1.2(B),
+  // opmerking 2: "0 daar waar gunstig"). Ligger 6 m, G = 4 omlaag, W = 10
+  // omhoog (zuiging), Q = 3 omlaag. Opwaarts maatgevend:
+  //   0,9·(−4) + 1,5·10 = 11,4 kN/m → 11,4·36/8 = 51,30 kNm (zonder Q)
+  //   met begeleidende Q: 11,4 − 0,6·3 = 9,6 → 43,20 kNm
+  const pcW = ligger(1, [{ beamId: 1, q: -4, caseId: 1 }, { beamId: 1, q: 10, caseId: 4 }, { beamId: 1, q: -3, caseId: 2 }], START);
+  const opwaarts = Math.max(...defaultCombinations().filter((c) => c.type === "uls").map((c) => Math.max(...momenten(c, pcW, 1).map((x) => -x))));
+  check("opwaarts: 0,9·G + 1,5·W zonder Q = 11,4·36/8 = 51,30 kNm", opwaarts, 51.3, 0.01);
+  // En een geval dat alleen de nieuwe opstellingen vangen: G = 10 omlaag, Q = 3
+  // OMHOOG (een gunstig werkende veranderlijke last), geen S of W.
+  //   6.10a zonder Q:     1,35·10         = 13,5 kN/m → 13,5·36/8 = 60,75 kNm (maatgevend)
+  //   6.10a met Q:        13,5 − 1,5·0,4·3 = 11,7     → 52,65 kNm (het maximum van vóór deze correctie)
+  //   6.10b Q leidend:    1,2·10 − 1,5·3   = 7,5
+  const pcGunstig = ligger(1, [{ beamId: 1, q: -10, caseId: 1 }, { beamId: 1, q: 3, caseId: 2 }], START);
+  check("gunstige Q telt voor 0: 1,35·10·36/8 = 60,75 kNm (was 52,65)",
+    mMax(defaultCombinations(), pcGunstig, "uls"), 60.75, 0.01);
+
+  // Geen dubbele combinaties: opstellingen met dezelfde factoren staan er één keer in.
+  for (const [naam, set] of [["START", defaultCombinations()], ["twee velden", set2], ["cat. H", defaultCombinations([{ id: 1, name: "G", type: "dead" }, { id: 2, name: "Dak", type: "live", categorie: "H" }])]]) {
+    const sleutels = set.map((c) => `${c.type}|${c.standaard.soort}|${JSON.stringify(factoren(c))}`);
+    checkWaar(`${naam}: geen twee combinaties van één soort met dezelfde factoren`, new Set(sleutels).size === sleutels.length);
+    checkWaar(`${naam}: geen combinatie zonder factoren`, set.every((c) => c.factors.size > 0));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[12] De grens van MAX_VRIJE_GEVALLEN, en de aanname over wind- en sneeuwgevallen — gemeld");
+{
+  const metQ = (n) => [{ id: 1, name: "G", type: "dead" }, ...Array.from({ length: n }, (_, i) => ({ id: 10 + i, name: `Q${i + 1}`, type: "live" }))];
+  const tel = (set, voorvoegsel) => set.filter((c) => c.standaard.sleutel === voorvoegsel || c.standaard.sleutel.startsWith(voorvoegsel + "|")).length;
+  checkWaar("de grens is 4", MAX_VRIJE_GEVALLEN === 4);
+  const vier = defaultCombinations(metQ(4));
+  // 2⁴ − 1 = 15 opstellingen met Q leidend (minstens één aanwezig), 2⁴ = 16 zonder leidende.
+  checkWaar("4 gevallen: 6.10b Q leidend in 2⁴ − 1 = 15 opstellingen", tel(vier, "6.10b|Q:A") === 15, String(tel(vier, "6.10b|Q:A")));
+  checkWaar("4 gevallen: 6.10a in 2⁴ = 16 opstellingen", tel(vier, "6.10a") === 16, String(tel(vier, "6.10a")));
+  checkWaar("4 gevallen: geen melding over de grens",
+    !meldingenBelastinggevallen({ loadCases: metQ(4), combinations: vier }).some((m) => /hoogstens/.test(m.tekst)));
+  const vijf = defaultCombinations(metQ(5));
+  checkWaar("5 gevallen: de categorie gaat samen — 6.10b Q leidend één keer", tel(vijf, "6.10b|Q:A") === 1, String(tel(vijf, "6.10b|Q:A")));
+  checkWaar("5 gevallen: 6.10a met en zonder de hele categorie", tel(vijf, "6.10a") === 2, String(tel(vijf, "6.10a")));
+  const grens = meldingenBelastinggevallen({ loadCases: metQ(5), combinations: vijf }).find((m) => /hoogstens 4/.test(m.tekst));
+  checkWaar("5 gevallen: een waarschuwing die 6.2.1(1)P noemt", grens?.niveau === "waarschuwing" && /6\.2\.1\(1\)P/.test(grens.tekst), grens?.tekst);
+
+  const tweeWind = [{ id: 1, name: "G", type: "dead" }, { id: 7, name: "Wind links", type: "wind" }, { id: 8, name: "Wind rechts", type: "wind" }];
+  const alt = meldingenBelastinggevallen({ loadCases: tweeWind, combinations: defaultCombinations(tweeWind) }).find((m) => /ALTERNATIEVEN/.test(m.tekst));
+  checkWaar("twee windgevallen: de aanname 'alternatieven' wordt gemeld", alt?.niveau === "waarschuwing" && /7 \("Wind links"\), 8 \("Wind rechts"\)/.test(alt.tekst), alt?.tekst);
+  checkWaar("één windgeval: geen melding",
+    !meldingenBelastinggevallen({ loadCases: START, combinations: defaultCombinations() }).some((m) => /ALTERNATIEVEN/.test(m.tekst)));
+  const gegenereerd = [{ id: 1, name: "G", type: "dead" }, { id: 7, name: "W1", type: "wind", gegenereerd: { bron: "wind", sleutel: "a" } }, { id: 8, name: "W2", type: "wind", gegenereerd: { bron: "wind", sleutel: "b" } }];
+  checkWaar("gegenereerde windgevallen: geen melding (de generator combineert ze zelf)",
+    !meldingenBelastinggevallen({ loadCases: gegenereerd, combinations: defaultCombinations(gegenereerd) }).some((m) => /ALTERNATIEVEN/.test(m.tekst)));
+  checkWaar("alleen eigen combinaties: geen van beide meldingen (die stelt de gebruiker zelf op)",
+    meldingenBelastinggevallen({ loadCases: tweeWind, combinations: [{ id: 1, name: "x", type: "uls", formula: "", factors: new Map([[1, 1.2], [7, 1.5], [8, 1.5]]) }] })
+      .every((m) => !/ALTERNATIEVEN|hoogstens/.test(m.tekst)));
 }
 
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);

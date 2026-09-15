@@ -36,7 +36,7 @@ import {
 // Belastinggevallen en combinaties samen bijhouden: de regels staan in
 // lib/combinatieBeheer (puur, zodat de tests precies deze code aanroepen).
 import {
-  beoordeelCombinatiesBijOpenen, meldingenBelastinggevallen, synchroniseerStandaard,
+  meldingenBelastinggevallen, openCombinatieStaat, synchroniseerStandaard,
   vervangDoorStandaard, verwijderBelastinggeval, verwijderCombinatie, voegBelastinggevalToe,
   voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie, zetGevolgklasse,
   type CombinatieAfwijking, type CombinatieStaat, type GevalMelding,
@@ -2328,28 +2328,22 @@ export function useFemStore(): FemStore {
       setSupports(p.supports);
       setPlates(plates);
       setLoads(p.loads);
-      // Gevallen, combinaties, klasse en tellers in één keer. Een bestand
-      // zonder combinaties (v1, of Nieuw) krijgt de standaardset van ZIJN
-      // gevallen. Een bestand MET combinaties rekent met die combinaties —
-      // ook als ze van de standaard afwijken. Dat wordt gemeld
-      // (`combinatieAfwijking`), niet stil overschreven.
+      // Gevallen, combinaties, klasse en tellers in één keer, via
+      // `openCombinatieStaat` (lib/combinatieBeheer). Een bestand zonder
+      // combinaties (v1, of Nieuw) krijgt de standaardset van ZIJN gevallen.
+      // Een bestand MET combinaties rekent met die combinaties — ook als ze
+      // van de standaard afwijken. Dat wordt gemeld (`combinatieAfwijking`),
+      // niet stil overschreven. Alleen factoren voor gevallen die niet
+      // bestaan gaan eruit, en de teller komt boven elk id uit de
+      // factortabellen: anders erfde een nieuw geval ze (basisaudit nr 14).
       const klasse = p.gevolgklasse ?? combiRef.current.gevolgklasse;
-      const combos = p.combinations ?? defaultCombinations(p.loadCases, klasse);
-      const afwijking = p.combinations
-        ? beoordeelCombinatiesBijOpenen({
-            combinations: p.combinations,
-            loadCases: p.loadCases,
-            gevolgklasse: klasse,
-            eigenCombinatiesBewust: p.idTellers !== undefined,
-          })
-        : null;
-      pasCombiStaatToe({
+      const { staat: geopend, afwijking } = openCombinatieStaat({
         loadCases: p.loadCases,
-        combinations: combos,
+        combinations: p.combinations,
         gevolgklasse: klasse,
-        volgendGevalId: volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1),
-        volgendCombinatieId: volgendVrijId(combos, p.idTellers?.combinatie ?? 1),
+        idTellers: p.idTellers,
       });
+      pasCombiStaatToe(geopend);
       setCombinatieAfwijking(afwijking);
       setActiveLoadCaseId(p.activeLoadCaseId);
       setSelfWeightEnabled(!!p.selfWeightEnabled);

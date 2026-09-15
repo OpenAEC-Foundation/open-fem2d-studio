@@ -856,18 +856,19 @@ function vloerDakEis(
     }
   }
 
-  // w_perm — het blijvende deel w1 uit figuur NB.1 — is uit de meegegeven
-  // combinatieresultaten niet af te leiden: de bouwer krijgt alleen
-  // COMBINATIES, en de standaardset kent geen BGT-combinatie met uitsluitend
-  // de blijvende belasting. Er gaat daarom 0 naar de kern, en dat betekent
+  // w_perm — het blijvende deel w1 uit figuur NB.1 — wordt hier niet uit de
+  // combinatieresultaten afgeleid: de bouwer krijgt alleen COMBINATIES, en
+  // welke daarvan "alleen de blijvende belasting" is, ligt niet vast. Sinds
+  // september 2026 bevat de standaardset er meestal een (de quasi-blijvende
+  // zonder veranderlijke gevallen), een eigen of oude set vaak niet; tot dan
+  // stond hier dat de standaardset er geen kende. Er gaat daarom 0 naar de kern, en dat betekent
   // w_add = w_fin. Veilig-zijdig (w2 + w3 ≤ w_tot), maar het is niet de
   // grootheid die A1.4.3(3) bedoelt — en tot september 2026 stond dat nergens
   // in het rapport: twee regels met hetzelfde getal, zonder uitleg.
   notes.push(
     "w_add is hier GELIJK aan w_fin. De norm meet w2 + w3 vanaf w1, de zakking " +
-      "onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die is " +
-      "uit de doorgerekende combinaties niet af te leiden, want het model kent " +
-      "geen BGT-combinatie met uitsluitend de blijvende belasting. " +
+      "onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die leidt " +
+      "deze toets niet uit de doorgerekende combinaties af. " +
       "w_BGT,permanent is daarom 0: w_add krijgt de VOLLEDIGE zakking in plaats " +
       "van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar " +
       "de w_add-regel is daarmee geen w2 + w3, en de twee doorbuigingsregels " +

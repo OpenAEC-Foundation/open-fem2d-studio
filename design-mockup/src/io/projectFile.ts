@@ -180,8 +180,10 @@ export interface ProjectFile {
   /**
    * Tellers voor nieuwe id's (v2, optioneel — september 2026). Ze lopen nooit
    * terug, zodat een verwijderd belastinggeval of een verwijderde combinatie
-   * zijn id nooit aan een nieuwe doorgeeft. Ontbreekt het veld, dan leidt de
-   * store de tellers af uit de hoogste id's; zie `idTellers` in useFemStore.
+   * zijn id nooit aan een nieuwe doorgeeft. Ontbreekt het veld, dan leidt
+   * `openCombinatieStaat` (lib/combinatieBeheer) de tellers af uit de hoogste
+   * id's — van de gevallen én van de factortabellen, zodat een wees-factor uit
+   * een ouder bestand nooit door een nieuw geval wordt geërfd.
    */
   idTellers?: { belastinggeval: number; combinatie: number };
   /** Stramien (v2). */

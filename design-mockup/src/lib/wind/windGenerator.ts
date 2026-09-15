@@ -27,8 +27,8 @@
 import type { Beam, Load, LoadCase, Node } from "../../components/fem/femTypes";
 import { rolVanStaaf, type BeamLoadRole } from "../../components/fem/femTypes";
 import {
-  PARTIELE_FACTOREN, PSI_BRON, PSI_GEBRUIK, PSI_SNEEUW, PSI_WIND,
-  STANDAARD_CATEGORIE, STANDAARD_GEVOLGKLASSE, type Gevolgklasse,
+  begeleidendeOpstellingen, PARTIELE_FACTOREN, PSI_BRON, PSI_WIND,
+  STANDAARD_GEVOLGKLASSE, type Gevolgklasse, type PsiWaarden,
 } from "../../components/fem/solver/normcombinaties";
 import {
   berekenE, berekenStuwdruk, handmatigeStuwdruk, cpeWand,
@@ -742,11 +742,6 @@ export function genereerWindbelasting(
     const klasse = model.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
     const f = PARTIELE_FACTOREN[klasse];
     const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
-    // Veranderlijke gevallen per stuk: elk draagt de ψ van zijn eigen
-    // gebruikscategorie.
-    const Q = eigen.filter((c) => c.type === "live")
-      .map((c) => ({ id: c.id, psi: PSI_GEBRUIK[c.categorie ?? STANDAARD_CATEGORIE] }));
-    const S = eigen.filter((c) => c.type === "snow").map((c) => c.id);
     const overig = eigen.filter((c) => c.type === "other");
     if (overig.length > 0) {
       meldingen.push({
@@ -758,8 +753,6 @@ export function genereerWindbelasting(
     }
     /** Afronden op 1e-9: 1,5 · 0,4 is in drijvende komma 0,6000000000000001. */
     const r = (x: number) => Math.round(x * 1e9) / 1e9;
-    const psiQ = (ψ: "psi0" | "psi2") =>
-      Q.map((q) => [q.id, q.psi[ψ]] as [number, number]);
     const bron = `γ: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
 
     for (const gv of gevallen) {
@@ -770,29 +763,34 @@ export function genereerWindbelasting(
       // (NB.4, "1,5 ψ₀,1 Q_k,1"), dus wind telt daar voor 0 en de combinatie
       // valt samen met de 6.10a van de standaardset. Tot september 2026, met
       // ψ₀,W = 0,6, maakte de generator er per windgeval een.
+      // De begeleidende veranderlijke gevallen komen in elke opstelling: elk
+      // aan- of afwezig, net als in de standaardset (normcombinaties.ts,
+      // EN 1991-1-1 6.2.1(1)P). Een veranderlijke last die gunstig werkt telt
+      // zo voor 0, en een per veld verdeelde vloerlast kan op één veld staan.
       const sets: {
         naam: string; type: "uls" | "sls"; formule: string;
-        wind: number; g: number; q: [number, number][]; s: number;
+        wind: number; g: number; begeleidend: (psi: PsiWaarden) => number;
       }[] = [
         {
           naam: `UGT 6.10b — ${gv.naam} leidend`, type: "uls",
           formule: `${nl(f.gGsup610b, 2)}·G + ${nl(f.gQ, 2)}·W + ${nl(f.gQ, 2)}·ψ₀,Q·Q + ${nl(f.gQ, 2)}·ψ₀,S·S`,
-          g: f.gGsup610b, wind: f.gQ,
-          q: psiQ("psi0").map(([id, ψ]) => [id, r(f.gQ * ψ)]), s: r(f.gQ * PSI_SNEEUW.psi0),
+          g: f.gGsup610b, wind: f.gQ, begeleidend: (psi) => r(f.gQ * psi.psi0),
         },
         {
           // STR/GEO met gunstig werkende blijvende belasting: de kolom
           // "Gunstig 0,9 G_k,j,inf" van NB.4/NB.5. Dit is GEEN EQU (NB.3
           // hanteert daar 1,1/0,9 voor het statisch evenwicht); tot september
-          // 2026 heette deze combinatie ten onrechte zo.
+          // 2026 heette deze combinatie ten onrechte zo. Tot dezelfde maand
+          // stond er geen begeleidende last in; de opstelling zonder
+          // begeleidende gevallen is precies die oude combinatie.
           naam: `UGT 6.10b — ${gv.naam} leidend, blijvend gunstig`, type: "uls",
-          formule: `${nl(f.gGinf, 2)}·G + ${nl(f.gQ, 2)}·W`,
-          g: f.gGinf, wind: f.gQ, q: [], s: 0,
+          formule: `${nl(f.gGinf, 2)}·G + ${nl(f.gQ, 2)}·W + ${nl(f.gQ, 2)}·ψ₀,Q·Q + ${nl(f.gQ, 2)}·ψ₀,S·S`,
+          g: f.gGinf, wind: f.gQ, begeleidend: (psi) => r(f.gQ * psi.psi0),
         },
         {
           naam: `BGT karakteristiek 6.14b — ${gv.naam} leidend`, type: "sls",
           formule: "G + W + ψ₀,Q·Q + ψ₀,S·S",
-          g: 1.0, wind: 1.0, q: psiQ("psi0"), s: PSI_SNEEUW.psi0,
+          g: 1.0, wind: 1.0, begeleidend: (psi) => psi.psi0,
         },
         {
           // 6.15b met wind leidend (ψ₁,W = 0,2): de scheurwijdte van beton
@@ -800,23 +798,24 @@ export function genereerWindbelasting(
           // gegenereerde windlast daar nooit in voorkomen.
           naam: `BGT frequent 6.15b — ${gv.naam} leidend`, type: "sls",
           formule: "G + ψ₁,W·W + ψ₂,Q·Q + ψ₂,S·S",
-          g: 1.0, wind: PSI_WIND.psi1, q: psiQ("psi2"), s: PSI_SNEEUW.psi2,
+          g: 1.0, wind: PSI_WIND.psi1, begeleidend: (psi) => psi.psi2,
         },
       ];
       for (const s of sets) {
-        const factoren: [number, number][] = [
-          ...G.map((id) => [id, s.g] as [number, number]),
-          ...s.q,
-          ...S.map((id) => [id, s.s] as [number, number]),
-        ];
-        combinaties.push({
-          naam: WIND_COMBI_PREFIX + s.naam,
-          type: s.type,
-          formule: `${s.formule}   [${bron}]`,
-          factorenPerCaseId: factoren.filter(([, fac]) => fac !== 0),
-          windSleutel: gv.sleutel,
-          windFactor: s.wind,
-        });
+        for (const o of begeleidendeOpstellingen(eigen, "W", s.begeleidend)) {
+          const zonder = o.zonder.map((d) => d.naam).join(", ");
+          combinaties.push({
+            naam: WIND_COMBI_PREFIX + s.naam + (zonder ? `, zonder ${zonder}` : ""),
+            type: s.type,
+            formule: `${s.formule}${zonder ? ` (zonder ${zonder})` : ""}   [${bron}]`,
+            factorenPerCaseId: [
+              ...G.map((id) => [id, s.g] as [number, number]),
+              ...o.factoren,
+            ],
+            windSleutel: gv.sleutel,
+            windFactor: s.wind,
+          });
+        }
       }
     }
     meldingen.push({

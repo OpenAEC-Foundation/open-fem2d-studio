@@ -86,7 +86,10 @@ export default function CombinationsSection() {
             {klassen.length > 0
               ? `Standaardcombinaties: afgeleid uit de belastinggevallen, met γ uit NEN-EN 1990 ` +
                 `${klassen.map((k) => PARTIELE_FACTOREN[k].bron).join(" en ")} en ψ uit tabel ` +
-                "NB.2–A1.1 (veranderlijke belasting per gebruikscategorie, zonder categorie A)."
+                "NB.2–A1.1 (veranderlijke belasting per gebruikscategorie, zonder categorie A). " +
+                "Elk veranderlijk belastinggeval staat in combinaties mét en zonder dat geval " +
+                "(\"zonder …\"): een veranderlijke belasting telt alleen waar ze ongunstig werkt " +
+                "(vrije belasting, NEN-EN 1991-1-1 6.2.1(1)P)."
               : "Geen van de combinaties is een standaardcombinatie."}
             {aantalEigen > 0
               ? ` ${aantalEigen} combinatie(s) gemarkeerd met "(eigen)" zijn door de gebruiker ` +

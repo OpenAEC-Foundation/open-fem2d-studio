@@ -836,7 +836,7 @@ fn schema_fem_model() -> Value {
 fn schema_combinations() -> Value {
     json!({
         "type": "array",
-        "description": "Belastingcombinaties. Ontbreekt dit veld, dan gelden de combinaties uit het projectbestand, en anders de standaardset die de app afleidt uit `loadCases` (type en categorie) en de gevolgklasse: 6.10a, 6.10b per leidende veranderlijke last (ook met gunstig werkende blijvende last), 6.14b en 6.15b per leidende last, en 6.16b — met γ uit NEN-EN 1990 NB tabel NB.4/NB.5 en ψ uit tabel NB.2–A1.1.",
+        "description": "Belastingcombinaties. Ontbreekt dit veld, dan gelden de combinaties uit het projectbestand, en anders de standaardset die de app afleidt uit `loadCases` (type en categorie) en de gevolgklasse: 6.10a, 6.10b per leidende veranderlijke last (ook met gunstig werkende blijvende last), 6.14b en 6.15b per leidende last, en 6.16b — met γ uit NEN-EN 1990 NB tabel NB.4/NB.5 en ψ uit tabel NB.2–A1.1. Elke uitdrukking komt in elke opstelling van de veranderlijke gevallen: ieder veranderlijk geval aan- of afwezig (naam \"… zonder <geval>\"), want een veranderlijke belasting telt alleen waar ze ongunstig werkt (NEN-EN 1991-1-1 6.2.1(1)P). Boven 4 gebruiksbelastinggevallen gaan de gevallen van één categorie samen aan of uit, en dat staat in `warnings`. Wind- en sneeuwgevallen zijn alternatieven en staan nooit samen in één combinatie.",
         "items": {
             "type": "object",
             "additionalProperties": false,

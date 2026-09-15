@@ -23,6 +23,11 @@
  *    eruit verdwijnt — uit ALLE combinaties, standaard of eigen.
  *  - Id's lopen via tellers die nooit teruglopen en in het projectbestand
  *    meereizen. Een verwijderd id komt nooit terug.
+ *  - Een projectbestand van vóór september 2026 draagt geen tellers, en kan
+ *    factoren dragen voor een geval dat toen al verwijderd was. Bij het openen
+ *    (`openCombinatieStaat`) gaan die wees-factoren eruit — ze vermenigvuldigden
+ *    geen last, dus geen uitkomst verandert — en komt de teller boven elk id
+ *    dat in een factortabel stond. Dat wordt gemeld.
  *  - Wat dan nog niet meetelt, wordt gemeld (`meldingenBelastinggevallen`):
  *    een geval met last maar zonder UGT-factor is een FOUT, geen voetnoot.
  *
@@ -32,9 +37,11 @@
  * van een nagebouwde kopie.
  */
 import type { Load, LoadCase } from "../components/fem/femTypes";
-import type { LoadCombination } from "../components/fem/solver/combinations";
+import { defaultCombinations, type LoadCombination } from "../components/fem/solver/combinations";
 import {
+  aantalGebruiksgevallen,
   genereerStandaardCombinaties,
+  MAX_VRIJE_GEVALLEN,
   PARTIELE_FACTOREN,
   type Gevolgklasse,
   type StandaardCombinatie,
@@ -119,6 +126,96 @@ function zonderOnbekendeGevallen(c: LoadCombination, ids: ReadonlySet<number>): 
 
 function perSleutel(set: readonly StandaardCombinatie[]): Map<string, StandaardCombinatie> {
   return new Map(set.map((c) => [c.standaard.sleutel, c]));
+}
+
+/** Een combinatie met factoren voor belastinggevallen die er niet (meer) zijn. */
+export interface WeesFactor {
+  combinatieId: number;
+  naam: string;
+  caseIds: number[];
+}
+
+/**
+ * Haal de factoren weg van gevallen die niet in `loadCases` staan, en zeg
+ * welke dat waren. Zo'n factor vermenigvuldigt geen enkele last, dus het
+ * weghalen verandert geen uitkomst. Blijft hij staan, dan erft het volgende
+ * geval met dat id hem: een blijvende last met de factoren van wind
+ * (basisaudit nr 14). Een projectbestand van vóór september 2026 kan zulke
+ * factoren dragen, want daar liet het verwijderen van een geval ze staan.
+ */
+export function verwijderWeesFactoren(
+  combinations: readonly LoadCombination[],
+  loadCases: readonly Pick<LoadCase, "id">[],
+): { combinaties: LoadCombination[]; wees: WeesFactor[] } {
+  const ids = new Set(loadCases.map((c) => c.id));
+  const wees: WeesFactor[] = [];
+  const combinaties = combinations.map((c) => {
+    const onbekend = [...c.factors.keys()].filter((id) => !ids.has(id)).sort((a, b) => a - b);
+    if (onbekend.length === 0) return c;
+    wees.push({ combinatieId: c.id, naam: c.name, caseIds: onbekend });
+    return zonderOnbekendeGevallen(c, ids);
+  });
+  return { combinaties, wees };
+}
+
+/**
+ * Een project openen: gevallen, combinaties, klasse en tellers in één keer, en
+ * de melding over wat er afwijkt. De store (`loadProjectState`) roept precies
+ * deze functie aan, zodat een test het gedrag van de app bewijst.
+ *
+ *  - Zonder combinaties in het bestand (v1, of Nieuw): de standaardset van
+ *    zijn gevallen.
+ *  - Met combinaties: die rekenen, ook als ze van de standaard afwijken —
+ *    gemeld, niet overschreven. Alleen factoren voor gevallen die niet bestaan
+ *    gaan eruit (zie `verwijderWeesFactoren`); ook dat staat in de melding.
+ *  - De geval-teller komt boven het hoogste id van de gevallen, boven de teller
+ *    uit het bestand, én boven elk id dat in een factortabel van het bestand
+ *    stond. Het laatste is de tweede grendel tegen nr 14: een bestand zonder
+ *    tellers waarin het hoogste geval al verwijderd was, gaf anders dat id
+ *    opnieuw uit (gemeten: HEA200, "Permanent afbouw" kreeg id 4 en erfde de
+ *    windfactoren — UGT 47,25 en BGT 30,60 kNm waar 48,60 en 36,00 horen).
+ */
+export function openCombinatieStaat(p: {
+  loadCases: LoadCase[];
+  combinations?: LoadCombination[];
+  gevolgklasse: Gevolgklasse;
+  idTellers?: { belastinggeval?: number; combinatie?: number };
+}): { staat: CombinatieStaat; afwijking: CombinatieAfwijking | null } {
+  const gevalTeller = volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1);
+  if (!p.combinations) {
+    const combinations = defaultCombinations(p.loadCases, p.gevolgklasse);
+    return {
+      staat: {
+        loadCases: p.loadCases,
+        combinations,
+        gevolgklasse: p.gevolgklasse,
+        volgendGevalId: gevalTeller,
+        volgendCombinatieId: volgendVrijId(combinations, p.idTellers?.combinatie ?? 1),
+      },
+      afwijking: null,
+    };
+  }
+  const { combinaties, wees } = verwijderWeesFactoren(p.combinations, p.loadCases);
+  const hoogsteFactorSleutel = p.combinations
+    .flatMap((c) => [...c.factors.keys()])
+    .filter((id) => Number.isFinite(id))
+    .reduce((m, id) => Math.max(m, id), 0);
+  return {
+    staat: {
+      loadCases: p.loadCases,
+      combinations: combinaties,
+      gevolgklasse: p.gevolgklasse,
+      volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
+      volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1),
+    },
+    afwijking: beoordeelCombinatiesBijOpenen({
+      combinations: combinaties,
+      loadCases: p.loadCases,
+      gevolgklasse: p.gevolgklasse,
+      eigenCombinatiesBewust: p.idTellers !== undefined,
+      weesFactoren: wees,
+    }),
+  };
 }
 
 // ── Bijhouden ─────────────────────────────────────────────────────────────
@@ -329,7 +426,8 @@ const TYPE_TEKST: Record<string, string> = {
  * kant.
  */
 export function meldingenBelastinggevallen(p: {
-  loadCases: readonly Pick<LoadCase, "id" | "name" | "type">[];
+  loadCases: readonly (Pick<LoadCase, "id" | "name" | "type"> &
+    Partial<Pick<LoadCase, "categorie" | "gegenereerd">>)[];
   combinations: readonly LoadCombination[];
   loads?: readonly Pick<Load, "caseId">[];
   selfWeightEnabled?: boolean;
@@ -355,6 +453,46 @@ export function meldingenBelastinggevallen(p: {
         "bij een veranderlijk geval ψ₂ = 0,3 in de quasi-blijvende combinatie in plaats " +
         'van 1,0. Maak een belastinggeval van type "blijvend" aan.',
     });
+  }
+
+  // Twee aannames van de standaardset die de gebruiker moet kunnen zien. Alleen
+  // als er standaardcombinaties worden doorgerekend: eigen combinaties stelt de
+  // gebruiker zelf op.
+  if (p.combinations.some((c) => c.standaard)) {
+    const eigen = p.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
+    const aantal = aantalGebruiksgevallen(eigen);
+    if (aantal > MAX_VRIJE_GEVALLEN) {
+      meldingen.push({
+        niveau: "waarschuwing",
+        caseId: null,
+        tekst:
+          `Er zijn ${aantal} veranderlijke belastinggevallen (gebruiksbelasting). De ` +
+          `standaardcombinaties zetten er hoogstens ${MAX_VRIJE_GEVALLEN} afzonderlijk aan en uit; ` +
+          "bij meer gaan de gevallen van één gebruikscategorie samen aan of uit. Een " +
+          "gebruiksbelasting is een vrije belasting die op het meest ongunstige deel moet staan " +
+          "(NEN-EN 1991-1-1 6.2.1(1)P): een per veld verdeelde vloerlast op alleen het " +
+          "ongunstigste veld zit nu NIET in de set, en de omhullende kan daardoor te laag zijn. " +
+          "Voeg die opstellingen toe als eigen combinaties, of beperk het aantal veranderlijke gevallen.",
+      });
+    }
+    const soorten = [
+      { type: "wind", meervoud: "windgevallen", voorbeeld: "druk op de gevel en zuiging op het dak bij één windrichting" },
+      { type: "snow", meervoud: "sneeuwgevallen", voorbeeld: "de sneeuw op twee dakvlakken bij één sneeuwverdeling" },
+    ] as const;
+    for (const s of soorten) {
+      const alternatieven = eigen.filter((c) => c.type === s.type);
+      if (alternatieven.length < 2) continue;
+      meldingen.push({
+        niveau: "waarschuwing",
+        caseId: null,
+        tekst:
+          `De ${s.meervoud} ${alternatieven.map((c) => `${c.id} ("${c.name}")`).join(", ")} gelden ` +
+          "in de standaardcombinaties als ALTERNATIEVEN: elk leidt apart, en ze staan nooit samen " +
+          "in één combinatie (zoals wind van links óf van rechts). Horen ze bij dezelfde " +
+          `belasting — bijvoorbeeld ${s.voorbeeld} — zet ze dan in één belastinggeval; anders ` +
+          "telt steeds maar een deel ervan mee.",
+      });
+    }
   }
 
   for (const c of p.loadCases) {
@@ -405,6 +543,8 @@ export interface CombinatieAfwijking {
   ontbrekend: { naam: string; formule: string }[];
   /** De standaardset voor deze gevallen en deze klasse — "wat het zou worden". */
   standaard: { naam: string; formule: string }[];
+  /** Factoren voor gevallen die niet bestaan; bij het openen weggehaald. */
+  weesFactoren: WeesFactor[];
   /** Eén alinea voor de melding bij het openen. */
   samenvatting: string;
 }
@@ -420,12 +560,17 @@ export interface CombinatieAfwijking {
  * combinatie, en een ontbrekende standaardcombinatie is bewust weggehaald —
  * geen van beide wordt dan gemeld. Bij een ouder bestand kan de app dat
  * onderscheid niet maken, en meldt ze alles.
+ *
+ * `weesFactoren`: wat `verwijderWeesFactoren` bij het openen weghaalde. Dat
+ * komt in de melding, ook als de combinaties verder gelijk zijn aan de
+ * standaard.
  */
 export function beoordeelCombinatiesBijOpenen(p: {
   combinations: readonly LoadCombination[];
   loadCases: readonly LoadCase[];
   gevolgklasse: Gevolgklasse;
   eigenCombinatiesBewust: boolean;
+  weesFactoren?: readonly WeesFactor[];
 }): CombinatieAfwijking | null {
   const set = genereerStandaardCombinaties(p.loadCases, p.gevolgklasse);
   const perS = perSleutel(set);
@@ -472,10 +617,13 @@ export function beoordeelCombinatiesBijOpenen(p: {
   const ontbrekend = p.eigenCombinatiesBewust
     ? []
     : set.filter((c) => !gezien.has(c.standaard.sleutel)).map((c) => ({ naam: c.name, formule: c.formula }));
-  if (afwijkend.length === 0 && ontbrekend.length === 0) return null;
+  const weesFactoren = [...(p.weesFactoren ?? [])];
+  if (afwijkend.length === 0 && ontbrekend.length === 0 && weesFactoren.length === 0) return null;
 
   const standaard = set.map((c) => ({ naam: c.name, formule: c.formula }));
   const bron = PARTIELE_FACTOREN[p.gevolgklasse].bron;
+  const weesIds = [...new Set(weesFactoren.flatMap((w) => w.caseIds))].sort((a, b) => a - b);
+  const teVervangen = afwijkend.length > 0 || ontbrekend.length > 0;
   const samenvatting =
     (afwijkend.length > 0
       ? `${afwijkend.length} belastingcombinatie(s) in dit project wijken af van de ` +
@@ -486,9 +634,23 @@ export function beoordeelCombinatiesBijOpenen(p: {
       ? `De standaardset voor deze belastinggevallen zou bestaan uit ${standaard.length} ` +
         `combinaties: ${standaard.map((s) => `"${s.naam}"`).join(", ")}. `
       : "") +
-    "Er is NIETS overschreven: het project rekent met de combinaties uit het bestand. " +
-    'Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties om de ' +
-    "standaardset te gebruiken.";
+    (weesFactoren.length > 0
+      ? `In ${weesFactoren.length} belastingcombinatie(s) ` +
+        `(${weesFactoren.map((w) => `"${w.naam}"`).join(", ")}) stonden factoren voor ` +
+        (weesIds.length === 1
+          ? `belastinggeval ${weesIds[0]}, dat in dit project niet (meer) bestaat`
+          : `belastinggevallen ${weesIds.join(", ")}, die in dit project niet (meer) bestaan`) +
+        ": een rest van een verwijderd geval. Die factoren zijn bij het openen weggehaald. Ze " +
+        "vermenigvuldigden geen enkele last, dus geen uitkomst van dit project verandert; een " +
+        `nieuw belastinggeval krijgt een id boven ${weesIds[weesIds.length - 1]} en kan ze niet ` +
+        "meer erven. "
+      : "") +
+    (teVervangen
+      ? `${weesFactoren.length > 0 ? "Verder is er" : "Er is"} NIETS overschreven: het project ` +
+        "rekent met de combinaties uit het bestand. " +
+        'Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties om de ' +
+        "standaardset te gebruiken."
+      : "Verder is er niets veranderd.");
 
-  return { gevolgklasse: p.gevolgklasse, afwijkend, ontbrekend, standaard, samenvatting };
+  return { gevolgklasse: p.gevolgklasse, afwijkend, ontbrekend, standaard, weesFactoren, samenvatting };
 }

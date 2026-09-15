@@ -343,7 +343,13 @@ log("\n[9] Combinaties (NEN-EN 1990 met NB) met vindplaats");
   // "1,5 ψ₀,1 Q_k,1"), en ψ₀,W = 0 — ze viel samen met de 6.10a van de
   // standaardset. De 6.15b is erbij: de scheurwijdte van beton leest de
   // frequente combinatie, en zonder deze kwam gegenereerde wind daar nooit in.
-  checkExact("4 combinaties per windgeval", res.combinaties.length, 4);
+  // Sinds de correctie op de opstellingen (september 2026) komt elke
+  // uitdrukking twee keer: met en zonder het veranderlijke geval (cat. A), want
+  // een veranderlijke belasting telt alleen waar ze ongunstig werkt
+  // (EN 1991-1-1 6.2.1(1)P; EN 1990 tabel A1.2(B) opm. 2: "0 daar waar
+  // gunstig"). Sneeuw begeleidt met 1,5·0 = 0 en varieert niet mee.
+  // 4 uitdrukkingen × 2 opstellingen = 8.
+  checkExact("8 combinaties per windgeval (4 uitdrukkingen × Q aan/uit)", res.combinaties.length, 8);
   checkTrue("alle namen dragen het generatorvoorvoegsel",
     res.combinaties.every((c) => c.naam.startsWith(WIND_COMBI_PREFIX)));
   checkTrue("geen 6.10a per windgeval (ψ₀,W = 0 volgens NB.2)",
@@ -359,7 +365,16 @@ log("\n[9] Combinaties (NEN-EN 1990 met NB) met vindplaats");
   checkTrue("6.10b: sneeuw begeleidt niet, 1,5·ψ₀,S = 1,5·0 (was 0,75)", factor(b, 3) === undefined);
   check("blijvend gunstig: γ_G,inf = 0,90 (kolom Gunstig van NB.4)", factor(gunstig, 1), 0.9);
   check("blijvend gunstig: wind 1,50", gunstig.windFactor, 1.5);
-  checkExact("blijvend gunstig bevat geen Q of S", gunstig.factorenPerCaseId.length, 1);
+  // 0,9·G + 1,5·W + 1,5·0,4·Q, en dezelfde zonder Q — die tweede was tot
+  // september 2026 de enige, en dekt de gewone opwaartse wind.
+  check("blijvend gunstig: begeleidende Q 1,5·0,4 = 0,60", factor(gunstig, 2), 0.6);
+  const gunstigZonder = res.combinaties.find((c) => c.naam.includes("blijvend gunstig, zonder Veranderlijk"));
+  checkExact("blijvend gunstig zonder Q: alleen G (naast de wind)", gunstigZonder?.factorenPerCaseId.length, 1);
+  checkTrue("elke uitdrukking staat er ook zonder het veranderlijke geval",
+    ["UGT 6.10b — ", "blijvend gunstig", "6.14b", "6.15b"].every((d) => res.combinaties.some((c) =>
+      c.naam.includes(d) && c.naam.endsWith("zonder Veranderlijk") && !c.factorenPerCaseId.some(([i]) => i === 2))));
+  checkTrue("de formule van zo'n opstelling zegt het", res.combinaties
+    .filter((c) => c.naam.endsWith("zonder Veranderlijk")).every((c) => /\(zonder Veranderlijk\)/.test(c.formule)));
   checkTrue("die combinatie heet niet langer EQU (NB.3 hanteert 1,1/0,9)",
     !res.combinaties.some((c) => c.naam.includes("EQU")));
   check("BGT 6.14b: wind leidend 1,0", kar.windFactor, 1.0);

@@ -228,7 +228,11 @@ export default function LoadCasesDialog({
                 Een nieuw geval heeft type “Overig” en telt pas mee als u het een type
                 geeft: dan vullen de standaardcombinaties het aan (blijvend → γ<sub>G</sub>,
                 veranderlijk, sneeuw en wind → een eigen beurt als leidende last en ψ als
-                begeleidende). De factoren volgen NEN-EN 1990 {bron} en tabel NB.2–A1.1.
+                begeleidende). Elk veranderlijk geval komt daarbij voor in combinaties mét en
+                zonder dat geval: een veranderlijke belasting telt alleen waar ze ongunstig
+                werkt (vrije belasting, NEN-EN 1991-1-1 6.2.1(1)P), zodat een per veld verdeelde
+                vloerlast ook op één veld staat. De factoren volgen NEN-EN 1990 {bron} en tabel
+                NB.2–A1.1.
               </p>
             </>
           )}
