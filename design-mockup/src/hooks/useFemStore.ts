@@ -33,6 +33,17 @@ import { defaultCombinations } from "../components/fem/solver/combinations";
 import {
   selecteerCombinaties, type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
+// Belastinggevallen en combinaties samen bijhouden: de regels staan in
+// lib/combinatieBeheer (puur, zodat de tests precies deze code aanroepen).
+import {
+  beoordeelCombinatiesBijOpenen, meldingenBelastinggevallen, synchroniseerStandaard,
+  vervangDoorStandaard, verwijderBelastinggeval, verwijderCombinatie, voegBelastinggevalToe,
+  voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie, zetGevolgklasse,
+  type CombinatieAfwijking, type CombinatieStaat, type GevalMelding,
+} from "../lib/combinatieBeheer";
+import {
+  STANDAARD_GEVOLGKLASSE, type Gevolgklasse,
+} from "../components/fem/solver/normcombinaties";
 // De scheefstandbron (vaste noemer of normformule) — de lijst met geldige
 // waarden hoort hier omdat het INLEZEN van een projectbestand een onbekende
 // waarde moet kunnen terugzetten op "vast".
@@ -1116,6 +1127,29 @@ export interface FemStore {
   actieveCombinaties: LoadCombination[];
   /** Wat er is weggelaten en waarom. Leeg = de volledige lijst wordt gebruikt. */
   overgeslagenCombinaties: OvergeslagenCombinatie[];
+  /**
+   * Gevolgklasse van het project. Bepaalt de partiële factoren van de
+   * standaardcombinaties (NB tabel NB.4/NB.5); App.tsx zet hem vanuit de
+   * projectgegevens. Zie `setGevolgklasse`.
+   */
+  gevolgklasse: Gevolgklasse;
+  /**
+   * Belastinggevallen die niet (volledig) in de doorgerekende combinaties
+   * meetellen, en eigen gewicht zonder blijvend geval. Afgeleid, nooit
+   * opgeslagen; projectboom, combinatievenster en rapport tonen deze lijst.
+   */
+  belastingMeldingen: GevalMelding[];
+  /**
+   * Wat er bij het OPENEN van het project afweek van de standaardcombinaties,
+   * of null. Er is niets overschreven; `vervangDoorStandaardCombinaties` is de
+   * expliciete actie.
+   */
+  combinatieAfwijking: CombinatieAfwijking | null;
+  /**
+   * Tellers voor nieuwe id's; lopen nooit terug en reizen mee in het
+   * projectbestand, zodat een verwijderd id nooit terugkomt.
+   */
+  idTellers: { belastinggeval: number; combinatie: number };
   /** Selected combination for canvas display; null = show active LC or envelope. */
   activeCombinationId: number | null;
   /** When true, canvas shows envelope view instead of a single result. */
@@ -1219,7 +1253,13 @@ export interface FemStore {
   plakLasten: (klembord: Omit<Load, "id">[], doelCaseId: number) => {
     geplakt: number; overgeslagen: number; verweesd: number; gevalNaam: string;
   };
-  addLoadCase: (name: string) => void;
+  /**
+   * Nieuw belastinggeval met een id van de teller. Zonder type wordt het
+   * "other": de app raadt geen type, en `belastingMeldingen` meldt het geval
+   * tot de gebruiker kiest. Met een type vullen de standaardcombinaties het
+   * meteen aan.
+   */
+  addLoadCase: (name: string, type?: LoadCase["type"]) => void;
 
   /**
    * Vervang in ÉÉN stap alles wat een generator (vandaag: de windbelasting-
@@ -1330,11 +1370,20 @@ export interface FemStore {
   redo: () => void;
 
   // ── Load case + combination management ────────────────────────────────
+  /** Wijzig naam, type of categorie; de standaardcombinaties volgen. */
   updateLoadCase: (id: number, patch: Partial<Omit<LoadCase, "id">>) => void;
+  /** Verwijder het geval, zijn lasten en zijn factor uit ELKE combinatie. */
   removeLoadCase: (id: number) => void;
   addCombination: (combo: Omit<LoadCombination, "id">) => void;
+  /** Elke wijziging maakt van een standaardcombinatie een eigen combinatie. */
   updateCombination: (id: number, patch: Partial<Omit<LoadCombination, "id">>) => void;
   removeCombination: (id: number) => void;
+  /** Andere gevolgklasse: de standaardcombinaties krijgen de factoren van NB.4/NB.5. */
+  setGevolgklasse: (gevolgklasse: Gevolgklasse) => void;
+  /** Vervang alle combinaties (behalve die van de windgenerator) door de standaardset. */
+  vervangDoorStandaardCombinaties: () => void;
+  /** Sluit de melding van `combinatieAfwijking` zonder iets te veranderen. */
+  sluitCombinatieAfwijking: () => void;
 
   /** Replace all model state from a deserialized project file. */
   loadProjectState: (p: {
@@ -1366,7 +1415,20 @@ export interface FemStore {
     scheefstandBron?: string;
     scheefstandHoogteM?: number | null;
     scheefstandAantalElementen?: number | null;
-  }) => void;
+    /**
+     * Gevolgklasse uit de projectgegevens van het bestand. Ontbreekt → de
+     * huidige klasse van de store. Nodig VÓÓR de vergelijking met de
+     * standaardcombinaties, anders zou die tegen de klasse van het vorige
+     * project vergelijken.
+     */
+    gevolgklasse?: Gevolgklasse;
+    /**
+     * Id-tellers uit het bestand. Ontbreekt (bestand van vóór september 2026)
+     * → afgeleid uit de hoogste id's, én dan geldt elke combinatie zonder
+     * kenmerk als mogelijk verouderd in de melding bij het openen.
+     */
+    idTellers?: { belastinggeval?: number; combinatie?: number };
+  }) => CombinatieAfwijking | null;
 }
 
 export function useFemStore(): FemStore {
@@ -1381,7 +1443,46 @@ export function useFemStore(): FemStore {
   const [activeLoadCaseId, setActiveLoadCaseId] = useState<number>(1);
 
   // Combinations + cached solver outputs (step 2d/2e)
-  const [combinations, setCombinations] = useState<LoadCombination[]>(() => defaultCombinations());
+  const [combinations, setCombinations] = useState<LoadCombination[]>(
+    () => defaultCombinations(DEFAULT_LOAD_CASES, STANDAARD_GEVOLGKLASSE));
+  const [gevolgklasse, setGevolgklasseState] = useState<Gevolgklasse>(STANDAARD_GEVOLGKLASSE);
+  const [idTellers, setIdTellers] = useState(() => ({
+    belastinggeval: volgendVrijId(DEFAULT_LOAD_CASES, 1),
+    combinatie: volgendVrijId(defaultCombinations(DEFAULT_LOAD_CASES, STANDAARD_GEVOLGKLASSE), 1),
+  }));
+  const [combinatieAfwijking, setCombinatieAfwijking] = useState<CombinatieAfwijking | null>(null);
+
+  // Gevallen, combinaties, klasse en tellers veranderen SAMEN (zie
+  // lib/combinatieBeheer). De mutatoren rekenen daarom op één verse staat in
+  // plaats van op vier losse setState-updaters: `model_bouwen` voegt meerdere
+  // gevallen toe binnen één event, en elk moet het id en de combinaties van
+  // het vorige zien. De ref wordt in de mutator meteen bijgewerkt en bij elke
+  // render gelijkgezet aan de state.
+  const combiRef = useRef<CombinatieStaat>({
+    loadCases, combinations, gevolgklasse,
+    volgendGevalId: idTellers.belastinggeval, volgendCombinatieId: idTellers.combinatie,
+  });
+  combiRef.current = {
+    loadCases, combinations, gevolgklasse,
+    volgendGevalId: idTellers.belastinggeval, volgendCombinatieId: idTellers.combinatie,
+  };
+  const pasCombiStaatToe = useCallback((volgend: CombinatieStaat) => {
+    const huidig = combiRef.current;
+    if (volgend === huidig) return;
+    combiRef.current = volgend;
+    if (volgend.loadCases !== huidig.loadCases) setLoadCases(volgend.loadCases);
+    if (volgend.combinations !== huidig.combinations) setCombinations(volgend.combinations);
+    if (volgend.gevolgklasse !== huidig.gevolgklasse) setGevolgklasseState(volgend.gevolgklasse);
+    if (
+      volgend.volgendGevalId !== huidig.volgendGevalId ||
+      volgend.volgendCombinatieId !== huidig.volgendCombinatieId
+    ) {
+      setIdTellers({ belastinggeval: volgend.volgendGevalId, combinatie: volgend.volgendCombinatieId });
+    }
+  }, []);
+  const setGevolgklasse = useCallback((klasse: Gevolgklasse) => {
+    pasCombiStaatToe(zetGevolgklasse(combiRef.current, klasse));
+  }, [pasCombiStaatToe]);
   const [activeCombinationId, setActiveCombinationId] = useState<number | null>(null);
   const [envelopeView, setEnvelopeView] = useState<boolean>(false);
   const [multiLcResult, setMultiLcResult] = useState<Map<number, SolverResult> | null>(null);
@@ -1397,8 +1498,8 @@ export function useFemStore(): FemStore {
   // afweging zelf niet maken: die draait vóórdat er een model is.
   const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
     useMemo(
-      () => selecteerCombinaties(combinations, beams, plates),
-      [combinations, beams, plates],
+      () => selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse }),
+      [combinations, beams, plates, loadCases, gevolgklasse],
     );
 
   // Structural grid (stramien) — separate from undo history.
@@ -1441,6 +1542,15 @@ export function useFemStore(): FemStore {
     setCombinationResults(m.combinationResults);
     setEnvelope(m.envelope);
   }, []);
+
+  // Wat er aan de gevallen niet meetelt — tegen de ACTIEF doorgerekende
+  // combinaties, want alleen die bepalen de toetsing.
+  const belastingMeldingen = useMemo(
+    () => meldingenBelastinggevallen({
+      loadCases, combinations: actieveCombinaties, loads, selfWeightEnabled,
+    }),
+    [loadCases, actieveCombinaties, loads, selfWeightEnabled],
+  );
 
   const [selection, setSelection] = useState<Selection>(null);
 
@@ -1955,12 +2065,12 @@ export function useFemStore(): FemStore {
     return r.stappen;
   }, [pushHistory]);
 
-  const addLoadCase = useCallback((name: string) => {
-    setLoadCases(prev => {
-      const newId = prev.length === 0 ? 1 : Math.max(...prev.map(c => c.id)) + 1;
-      return [...prev, { id: newId, name, type: "other" }];
-    });
-  }, []);
+  // Tot september 2026: id = hoogste + 1 en géén combinatiefactor. Een nieuw
+  // geval telde daardoor in geen enkele combinatie mee, en na het verwijderen
+  // van het hoogste id erfde het de factoren van het verwijderde geval.
+  const addLoadCase = useCallback((name: string, type?: LoadCase["type"]) => {
+    pasCombiStaatToe(voegBelastinggevalToe(combiRef.current, name, type).staat);
+  }, [pasCombiStaatToe]);
 
   /**
    * Zie de documentatie bij FemStore.vervangGegenereerdeBelasting. Één
@@ -1984,27 +2094,37 @@ export function useFemStore(): FemStore {
     setLoads(nextLoads);
     pushHistory({ ...cur, loads: nextLoads });
 
-    setLoadCases(prev => {
-      const behouden = prev.filter(c => !p.gevalHoortBijGeneratie(c));
-      const volgend = [...behouden, ...p.gevallen];
-      return volgend.length > 0 ? volgend : prev; // nooit alles wegnemen
-    });
+    const staat = combiRef.current;
+    const behoudenGevallen = staat.loadCases.filter(c => !p.gevalHoortBijGeneratie(c));
+    const volgendeGevallen = [...behoudenGevallen, ...p.gevallen];
+    const gevallen = volgendeGevallen.length > 0 ? volgendeGevallen : staat.loadCases; // nooit alles wegnemen
     // Wees de actieve tab naar een geval dat nog bestaat.
-    setActiveLoadCaseId(curr => {
-      const nogAanwezig = [
-        ...loadCases.filter(c => !p.gevalHoortBijGeneratie(c)),
-        ...p.gevallen,
-      ];
-      return nogAanwezig.some(c => c.id === curr) ? curr : (nogAanwezig[0]?.id ?? curr);
-    });
+    setActiveLoadCaseId(curr =>
+      gevallen.some(c => c.id === curr) ? curr : (gevallen[0]?.id ?? curr));
 
-    setCombinations(prev => {
-      const behouden = prev.filter(c => !p.combinatieHoortBijGeneratie(c));
-      let nextId = behouden.reduce((m, c) => Math.max(m, c.id), 0) + 1;
-      return [...behouden, ...p.combinaties.map(c => ({ ...c, id: nextId++ }))];
-    });
+    // Id's van de teller, niet "hoogste + 1": een weggehaalde gegenereerde
+    // combinatie mag haar id niet aan een nieuwe doorgeven. De volgorde maakt
+    // voor de toetsing niet meer uit — de toetsbouwers envelopperen over alle
+    // combinaties van een soort in plaats van de eerste treffer te nemen.
+    let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
+    const combinaties = [
+      ...staat.combinations.filter(c => !p.combinatieHoortBijGeneratie(c)),
+      ...p.combinaties.map(c => ({ ...c, id: volgendId++ })),
+    ];
+    // De gegenereerde gevallen staan buiten de standaardset; de synchronisatie
+    // wist hier alleen factoren van gevallen die niet meer bestaan.
+    pasCombiStaatToe(synchroniseerStandaard(
+      {
+        ...staat,
+        loadCases: gevallen,
+        combinations: combinaties,
+        volgendGevalId: volgendVrijId(gevallen, staat.volgendGevalId),
+        volgendCombinatieId: volgendId,
+      },
+      { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse },
+    ));
     setActiveCombinationId(null);
-  }, [pushHistory, loadCases]);
+  }, [pushHistory, pasCombiStaatToe]);
 
   /** Bulk-translate the given nodeIds by (dx, dz). One snapshot push. */
   const translateNodes = useCallback((nodeIds: number[], dx: number, dz: number) => {
@@ -2109,6 +2229,7 @@ export function useFemStore(): FemStore {
     nodes, beams, supports, plates, loads,
     loadCases, activeLoadCaseId,
     combinations, actieveCombinaties, overgeslagenCombinaties,
+    gevolgklasse, setGevolgklasse, belastingMeldingen, combinatieAfwijking, idTellers,
     activeCombinationId, envelopeView,
     multiLcResult, combinationResults, envelope,
     selection,
@@ -2140,33 +2261,39 @@ export function useFemStore(): FemStore {
     pendingLoadFocus, setPendingLoadFocus,
     canUndo, canRedo, undo, redo,
     // ── Load case + combination mutators ─────────────────────────────────
+    // De vijf mutatoren hieronder rekenen via lib/combinatieBeheer: de
+    // standaardcombinaties volgen elke wijziging aan de gevallen, en een
+    // verwijderd geval verdwijnt uit ELKE factortabel (bevinding 14 van de
+    // basisaudit: voorheen erfde het volgende geval de wees-factoren).
     updateLoadCase: (id, patch) => {
-      setLoadCases(prev => prev.map(lc => lc.id === id ? { ...lc, ...patch } : lc));
+      pasCombiStaatToe(wijzigBelastinggeval(combiRef.current, id, patch));
     },
     removeLoadCase: (id) => {
-      setLoadCases(prev => {
-        const next = prev.filter(lc => lc.id !== id);
-        if (next.length === 0) return prev; // nooit alles wissen
-        return next;
-      });
+      const voor = combiRef.current;
+      const na = verwijderBelastinggeval(voor, id);
+      if (na === voor) return; // onbekend id, of het laatste geval — nooit alles wissen
+      pasCombiStaatToe(na);
       // Detach loads die naar deze case verwijzen.
       setLoads(prev => prev.filter(l => l.caseId !== id));
       // Switch actieve case als die verdwijnt.
-      setActiveLoadCaseId(curr => curr === id ? (loadCases.find(c => c.id !== id)?.id ?? 1) : curr);
+      setActiveLoadCaseId(curr => curr === id ? (na.loadCases[0]?.id ?? 1) : curr);
     },
     addCombination: (combo) => {
-      setCombinations(prev => {
-        const maxId = prev.reduce((m, c) => Math.max(m, c.id), 0);
-        return [...prev, { ...combo, id: maxId + 1 }];
-      });
+      pasCombiStaatToe(voegCombinatieToe(combiRef.current, combo));
     },
     updateCombination: (id, patch) => {
-      setCombinations(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+      pasCombiStaatToe(wijzigCombinatie(combiRef.current, id, patch));
     },
     removeCombination: (id) => {
-      setCombinations(prev => prev.filter(c => c.id !== id));
+      pasCombiStaatToe(verwijderCombinatie(combiRef.current, id));
       setActiveCombinationId(curr => curr === id ? null : curr);
     },
+    vervangDoorStandaardCombinaties: () => {
+      pasCombiStaatToe(vervangDoorStandaard(combiRef.current));
+      setCombinatieAfwijking(null);
+      setActiveCombinationId(null);
+    },
+    sluitCombinatieAfwijking: () => setCombinatieAfwijking(null),
 
     /** Replace the entire model from a deserialized project file. */
     loadProjectState: (p: {
@@ -2190,6 +2317,8 @@ export function useFemStore(): FemStore {
       scheefstandBron?: string;
       scheefstandHoogteM?: number | null;
       scheefstandAantalElementen?: number | null;
+      gevolgklasse?: Gevolgklasse;
+      idTellers?: { belastinggeval?: number; combinatie?: number };
     }) => {
       // Oude bestanden zonder plaat-rekenvelden → defaults aanvullen
       // (dikte 20 mm, staal, meshSize 500 mm), zie withPlateDefaults.
@@ -2199,7 +2328,29 @@ export function useFemStore(): FemStore {
       setSupports(p.supports);
       setPlates(plates);
       setLoads(p.loads);
-      setLoadCases(p.loadCases);
+      // Gevallen, combinaties, klasse en tellers in één keer. Een bestand
+      // zonder combinaties (v1, of Nieuw) krijgt de standaardset van ZIJN
+      // gevallen. Een bestand MET combinaties rekent met die combinaties —
+      // ook als ze van de standaard afwijken. Dat wordt gemeld
+      // (`combinatieAfwijking`), niet stil overschreven.
+      const klasse = p.gevolgklasse ?? combiRef.current.gevolgklasse;
+      const combos = p.combinations ?? defaultCombinations(p.loadCases, klasse);
+      const afwijking = p.combinations
+        ? beoordeelCombinatiesBijOpenen({
+            combinations: p.combinations,
+            loadCases: p.loadCases,
+            gevolgklasse: klasse,
+            eigenCombinatiesBewust: p.idTellers !== undefined,
+          })
+        : null;
+      pasCombiStaatToe({
+        loadCases: p.loadCases,
+        combinations: combos,
+        gevolgklasse: klasse,
+        volgendGevalId: volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1),
+        volgendCombinatieId: volgendVrijId(combos, p.idTellers?.combinatie ?? 1),
+      });
+      setCombinatieAfwijking(afwijking);
       setActiveLoadCaseId(p.activeLoadCaseId);
       setSelfWeightEnabled(!!p.selfWeightEnabled);
       // Terugleesbaarheid: een bestand zonder `analysetype` valt terug op de
@@ -2237,7 +2388,7 @@ export function useFemStore(): FemStore {
           ? Math.floor(p.scheefstandAantalElementen) : null,
       );
       // v2-velden; v1-bestanden (of Nieuw) vallen terug op de defaults.
-      setCombinations(p.combinations ?? defaultCombinations());
+      // (De combinaties zijn hierboven al gezet, samen met de gevallen.)
       const nieuwGrid = p.structuralGrid ?? DEFAULT_STRUCTURAL_GRID;
       gridRef.current = nieuwGrid;
       setStructuralGridState(nieuwGrid);
@@ -2252,6 +2403,7 @@ export function useFemStore(): FemStore {
       }]);
       setHistoryIdx(0);
       historyIdxRef.current = 0;
+      return afwijking;
     },
   };
 }

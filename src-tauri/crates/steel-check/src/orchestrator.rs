@@ -941,8 +941,13 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     checks.push(make_resistance(met_invoernotities(defl_fin, &input)));
     checks.push(make_resistance(defl_add));
 
-    // Apply consequence class factor (KFI) — for v1, just note; not yet applied to individual UCs
-    let _k_fi: f64 = input.consequence_class.k_fi();
+    // Gevolgklasse (K_FI): hier BEWUST NIET toegepast. NEN-EN 1990:2002/NB:2019
+    // verwerkt K_FI in de partiële belastingsfactoren zelf — tabel NB.4 (CC2)
+    // en NB.5 (CC1, CC3), bijvoorbeeld 6.10b γ_G = 1,1 / 1,2 / 1,3 en
+    // γ_Q = 1,35 / 1,5 / 1,65. De krachten in `forces_envelope` komen uit
+    // combinaties die die factoren al dragen (design-mockup/src/components/fem/
+    // solver/normcombinaties.ts). Nog eens met K_FI vermenigvuldigen zou de
+    // klasse dubbel tellen; `consequence_class` is in deze kern vermelding.
 
     // 9b. De doorsnedegebonden beperkingen bij de toetsen waarop zij slaan.
     //     Zij staan NIET als losse regel onderaan het rapport: wie de

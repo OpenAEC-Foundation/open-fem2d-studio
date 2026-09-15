@@ -56,7 +56,15 @@ buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection
  * andere manier om hetzelfde uit te drukken, en dat staat als notitie in
  * het rapport.
  */
-is_cantilever: boolean, consequence_class: ConsequenceClass, 
+is_cantilever: boolean, 
+/**
+ * Gevolgklasse van het project — in deze kern ALLEEN ter vermelding.
+ * NEN-EN 1990:2002/NB:2019 verwerkt K_FI in de partiële belastingsfactoren
+ * zelf (tabel NB.4 voor CC2, NB.5 voor CC1 en CC3); de krachten in
+ * `forces_envelope` dragen die factoren al. De kern vermenigvuldigt dus
+ * niets met K_FI, want dan telde de klasse dubbel.
+ */
+consequence_class: ConsequenceClass, 
 /**
  * Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.
  */

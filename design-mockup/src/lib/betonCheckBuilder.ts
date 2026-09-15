@@ -70,6 +70,7 @@
 import type { Beam, Node } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort } from "../components/fem/solver/combinations";
 import type { ConcreteBeamCheckInput } from "./types/concrete/ConcreteBeamCheckInput";
 import type { ConcreteColumnInput } from "./types/concrete/ConcreteColumnInput";
 import type { ConcreteSectionInput } from "./types/concrete/ConcreteSectionInput";
@@ -498,19 +499,19 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
 
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
 
-  // DE FREQUENTE BGT-COMBINATIE (6.15) voor §7.3. Herkend op de naam, zoals
-  // `timberCheckBuilder` de quasi-blijvende herkent — en om dezelfde reden
+  // DE FREQUENTE BGT-COMBINATIES (6.15b) voor §7.3. Herkend via het kenmerk
+  // van een standaardcombinatie of, bij een eigen combinatie, de naam — en
   // GEEN terugval op een willekeurige andere BGT-combinatie: die zou de
   // scheurwijdte onder de verkeerde belasting toetsen zonder dat er iets
-  // opvalt.
+  // opvalt. ALLE frequente combinaties gaan mee, niet de eerste treffer: er is
+  // er een per leidende veranderlijke last (ψ₁ op de leidende, ψ₂ op de
+  // andere), en bij een kolom onder wind is die met wind leidend maatgevend.
   const slsCombos = data.combinations.filter((c) => c.type === "sls");
-  const slsFrequent = slsCombos.find((c) => /frequent/i.test(c.name)) ?? null;
-  const frequentResult = slsFrequent
-    ? data.combinationResults.get(slsFrequent.id) ?? null
-    : null;
+  const frequentLijst = combinatiesVanSoort(slsCombos, "6.15b");
 
-  // DE QUASI-BLIJVENDE BGT-COMBINATIE (6.16) voor §5.8.4. Herkend op de naam,
-  // net als de frequente hierboven en net als in `timberCheckBuilder`. Zij
+  // DE QUASI-BLIJVENDE BGT-COMBINATIE (6.16b) voor §5.8.4. Herkend via het
+  // kenmerk of de naam, net als de frequente hierboven en net als in
+  // `timberCheckBuilder`. Zij
   // voedt uitsluitend M₀Eqp in (5.19), de effectieve kruipcoëfficiënt — §5.8.4
   // koppelt φ_ef uitdrukkelijk aan déze combinatie, waar §7.3 (in de versie van
   // de nationale bijlage) juist de frequente vraagt.
@@ -520,8 +521,10 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
   // grote φ_ef, wat A = 1/(1+0,2·φ_ef) verlaagt en λ_lim mee. Ontbreekt de
   // combinatie, dan gaat er een lege lijst mee en meldt de kern dat φ_ef
   // onbekend blijft, met de reden.
-  const slsQuasi = slsCombos.find((c) => /quasi/i.test(c.name)) ?? null;
-  const quasiResult = slsQuasi ? data.combinationResults.get(slsQuasi.id) ?? null : null;
+  const quasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
+  /** De combinaties uit `lijst` met een echt krachtsverloop voor deze staaf. */
+  const metResultaat = (lijst: LoadCombination[], beamId: number) =>
+    lijst.filter((c) => data.combinationResults.get(c.id)?.elements.has(beamId) ?? false);
 
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
@@ -605,15 +608,15 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
       // scheurwijdte van nul uit die er geloofwaardig uitziet. Een lege lijst
       // laat de kern juist zeggen dat §7.3 niet kon worden uitgevoerd.
       sls_frequent_envelope:
-        slsFrequent && frequentResult?.elements.has(beam.id)
-          ? buildForcesEnvelope(beam.id, [slsFrequent], data.combinationResults)
+        metResultaat(frequentLijst, beam.id).length > 0
+          ? buildForcesEnvelope(beam.id, metResultaat(frequentLijst, beam.id), data.combinationResults)
           : [],
       // Idem voor de QUASI-BLIJVENDE combinatie (6.16), die alleen M₀Eqp in
       // (5.19) voedt. Dezelfde regel: liever leeg dan een verzonnen nulpunt,
       // want dat zou een φ_ef van nul opleveren die er geloofwaardig uitziet.
       sls_quasi_permanent_envelope:
-        slsQuasi && quasiResult?.elements.has(beam.id)
-          ? buildForcesEnvelope(beam.id, [slsQuasi], data.combinationResults)
+        metResultaat(quasiLijst, beam.id).length > 0
+          ? buildForcesEnvelope(beam.id, metResultaat(quasiLijst, beam.id), data.combinationResults)
           : [],
       ...(cfg.milieuklasse ? { exposure_class: cfg.milieuklasse } : {}),
       ...(cfg.korrelafmetingMm && cfg.korrelafmetingMm > 0

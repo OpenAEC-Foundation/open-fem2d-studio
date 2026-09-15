@@ -79,6 +79,13 @@ const TIJDSLIMIET_MS = 300_000;
  * ontsluit.
  */
 const BUNDEL_TESTS = new Set([
+  // Belastinggevallen en combinaties tegen de NB-tabellen en de hand: de
+  // afleiding van de standaardset (`normcombinaties`), het bijhouden bij
+  // toevoegen/wijzigen/verwijderen (`combinatieBeheer`), de zijdelingse toets
+  // (`steelCheckBuilder`) en de MCP-weg (`sidecar`). Alles staat in de barrel,
+  // en juist de sidecar gebruikt deze afleiding voor zijn standaardset — dus
+  // hoort hij ook tegen de bundel te bewijzen dat die dezelfde factoren geeft.
+  "belastingcombinaties",
   "checkconfig",
   "combinatieselectie",
   // Rekent een externe referentie-berekening na (twee houten liggerlijnen) en

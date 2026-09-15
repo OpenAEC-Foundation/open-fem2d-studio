@@ -10,6 +10,7 @@ import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
+import type { CombinatieAfwijking, GevalMelding } from "../../lib/combinatieBeheer";
 import type { DisplayFlags } from "./FemResultsOverlay";
 import { PLAAT_COMPONENTEN } from "./FemCanvas";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
@@ -425,6 +426,16 @@ interface FemProjectTreeProps {
    * gebruiker zes combinaties zien waar hij er acht verwacht, zonder uitleg.
    */
   overgeslagenCombinaties?: OvergeslagenCombinatie[];
+  /**
+   * Belastinggevallen die in de doorgerekende combinaties niet meetellen
+   * (lib/combinatieBeheer). Een geval met een fout staat rood in de boom:
+   * zijn last telt dan in elke toets als nul.
+   */
+  belastingMeldingen?: GevalMelding[];
+  /** Combinaties die bij het openen afweken van de standaard; null = niets. */
+  combinatieAfwijking?: CombinatieAfwijking | null;
+  /** Open het combinatievenster (voor de afwijkingsmelding). */
+  onOpenCombinaties?: () => void;
   activeCombinationId: number | null;
   setActiveCombinationId: (id: number | null) => void;
   envelopeView: boolean;
@@ -446,6 +457,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     loadCases, activeLoadCaseId, selection,
     setSelection, setActiveLoadCaseId, addLoadCase,
     combinations, overgeslagenCombinaties = [],
+    belastingMeldingen = [], combinatieAfwijking = null, onOpenCombinaties,
     activeCombinationId, setActiveCombinationId,
     envelopeView, setEnvelopeView, envelope,
     displayFlags, setDisplayFlags, hasResults,
@@ -609,18 +621,32 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
             </TreeNode>
 
             <TreeNode label="Belastingen" defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l-3 3h2v8h2V4h2z"/></svg>}>
+              {belastingMeldingen.filter((m) => m.caseId === null).map((m, i) => (
+                <div key={`lcm${i}`} className="fem-tree-leaf fem-tree-melding-fout" title={m.tekst}>
+                  <span className="fem-tree-leaf-label">⚠ {m.tekst.split(". ")[0]}.</span>
+                </div>
+              ))}
               {loadCases.map(lc => {
                 const count = loads.filter(l => l.caseId === lc.id).length;
                 const isActive = lc.id === activeLoadCaseId;
+                // Een fout = de last van dit geval telt nergens mee. Rood, met de
+                // volledige uitleg als tooltip — nooit stil.
+                const meldingen = belastingMeldingen.filter((m) => m.caseId === lc.id);
+                const fout = meldingen.find((m) => m.niveau === "fout");
+                const waarschuwing = meldingen.find((m) => m.niveau === "waarschuwing");
                 return (
                   <div
                     key={`lc${lc.id}`}
-                    className={`fem-tree-leaf clickable${isActive ? " active" : ""}`}
+                    className={`fem-tree-leaf clickable${isActive ? " active" : ""}${fout ? " fem-tree-melding-fout" : ""}`}
                     onClick={() => setActiveLoadCaseId(lc.id)}
+                    title={(fout ?? waarschuwing)?.tekst}
                   >
                     <span className="fem-tree-leaf-label">
                       {isActive && <span style={{ color: "var(--theme-accent)", marginRight: 4 }}>●</span>}
+                      {(fout || waarschuwing) && <span style={{ marginRight: 4 }}>⚠</span>}
                       {lc.name}
+                      {fout && lc.type === "other" && " — kies een type"}
+                      {fout && lc.type !== "other" && " — telt niet mee"}
                     </span>
                     <span className="fem-tree-leaf-value">{count}</span>
                   </div>
@@ -636,6 +662,17 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
             </TreeNode>
 
             <TreeNode label="Combinaties" count={combinations.length} defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4h12M2 8h12M2 12h12" /></svg>}>
+              {combinatieAfwijking && (
+                <div
+                  className="fem-tree-leaf clickable fem-tree-melding-fout"
+                  title={combinatieAfwijking.samenvatting}
+                  onClick={() => onOpenCombinaties?.()}
+                >
+                  <span className="fem-tree-leaf-label">
+                    ⚠ Wijken af van de standaard — bekijken
+                  </span>
+                </div>
+              )}
               {/* Envelope header — click to view envelope across all combos */}
               <div
                 className={`fem-tree-leaf clickable${envelopeView ? " active" : ""}`}

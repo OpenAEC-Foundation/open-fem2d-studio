@@ -242,7 +242,12 @@ export const useVariantStore = create<VariantState>((set, get) => ({
         };
 
         if (soort === "staal") {
-          const bouw = buildSteelCheckInputs({ ...gedeeld, profileDb: await getProfileDb() });
+          const bouw = buildSteelCheckInputs({
+            ...gedeeld,
+            profileDb: await getProfileDb(),
+            // Dezelfde gevolgklasse als de toetsing waarnaast de variant staat.
+            gevolgklasse: data.gevolgklasse,
+          });
           if (bouw.inputs.length === 0) {
             bouwFout.set(voorstel.id, bouw.skipped[0]?.reason ?? "de toetsbouwer leverde geen invoer");
             continue;

@@ -143,7 +143,7 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
   const draai = useCallback((): WindGeneratieResultaat => {
     const f = femRef.current;
     return genereerWindbelasting(
-      { nodes: f.nodes, beams: f.beams, loadCases: f.loadCases },
+      { nodes: f.nodes, beams: f.beams, loadCases: f.loadCases, gevolgklasse: f.gevolgklasse },
       instRef.current,
     );
   }, []);
@@ -157,11 +157,15 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
     if (!res.ok) return "mislukt";
 
     // Stabiele id's: bestaande sleutel houdt zijn id, nieuwe sleutels krijgen
-    // het eerstvolgende vrije id.
+    // het eerstvolgende vrije id — vanaf de TELLER van de store, zodat ook de
+    // generator nooit het id van een eerder verwijderd geval hergebruikt.
     const bestaand = new Map(
       f.loadCases.filter(isWindGeval).map((c) => [c.gegenereerd!.sleutel, c.id]));
     const bezet = new Set(f.loadCases.map((c) => c.id));
-    let volgend = f.loadCases.reduce((m, c) => Math.max(m, c.id), 0) + 1;
+    let volgend = Math.max(
+      f.loadCases.reduce((m, c) => Math.max(m, c.id), 0) + 1,
+      f.idTellers.belastinggeval,
+    );
     const idVan = new Map<string, number>();
     for (const gv of res.gevallen) {
       const oud = bestaand.get(gv.sleutel);
@@ -258,6 +262,17 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
   // Let op de afhankelijkheden: nodes, beams en instellingen — NIET loads,
   // loadCases of combinations. Wat de generator zelf schrijft mag hem niet
   // opnieuw aanzwengelen.
+  //
+  // Wél: de gevolgklasse en de NIET-gegenereerde gevallen (id, type,
+  // categorie). Die bepalen de factoren van de windcombinaties; zonder deze
+  // twee zou een nieuw blijvend geval of een andere gevolgklasse in de
+  // windcombinaties nooit aankomen. De generator schrijft alleen gevallen met
+  // `gegenereerd.bron === "wind"`, dus deze sleutel verandert niet door zijn
+  // eigen werk en kan hem niet opnieuw aanzwengelen.
+  const eigenGevallenSleutel = fem.loadCases
+    .filter((c) => !isWindGeval(c))
+    .map((c) => `${c.id}:${c.type}:${c.categorie ?? ""}`)
+    .join(",");
   const pasToeRef = useRef(pasToe);
   useEffect(() => { pasToeRef.current = pasToe; });
   const draaiRef = useRef(draai);
@@ -273,7 +288,7 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
       telMeeRef.current(pasToeRef.current(res));
     }, REGENERATIE_VERTRAGING_MS);
     return () => window.clearTimeout(id);
-  }, [actief, fem.nodes, fem.beams, instellingen]);
+  }, [actief, fem.nodes, fem.beams, instellingen, fem.gevolgklasse, eigenGevallenSleutel]);
 
   return {
     instellingen, setInstellingen, actief, laatste, modelVersie,

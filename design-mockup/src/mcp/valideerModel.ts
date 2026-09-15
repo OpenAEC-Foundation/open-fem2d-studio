@@ -48,6 +48,7 @@
  * plaatvormcontrole uit `valideerPlaatPolygoon` / `isAsgelijndeRechthoek`.
  */
 import {
+  GEBRUIKSCATEGORIEEN,
   berekenPlaatMeshSignatuur,
   isAsgelijndeRechthoek,
   leesPlaatMeshCache,
@@ -61,6 +62,11 @@ import { resolveSection } from "../lib/sectionResolver";
 // nageschreven: één lijst, anders keurt deze poort straks een staalsoort af
 // die de kern wél kent.
 import { SUPPORTED_REINFORCEMENT_GRADES } from "../lib/betonCheckBuilder";
+import type { LoadCase } from "../components/fem/femTypes";
+import type { LoadCombination } from "../components/fem/solver/combinations";
+// Eén regel voor "telt dit geval mee": dezelfde functie voedt de projectboom,
+// het rapport en de solve-waarschuwingen van de sidecar.
+import { meldingenBelastinggevallen } from "../lib/combinatieBeheer";
 
 /** Uitkomst van de volledige droogloop; alle teksten zijn Nederlands. */
 export interface ValidatieUitkomst {
@@ -189,7 +195,7 @@ const LOAD_VELDEN = [
   "plateId", "edge", "edgeIndex", "gegenereerdDoor", "omschrijving",
 ] as const;
 
-const LOADCASE_VELDEN = ["id", "name", "type", "gegenereerd"] as const;
+const LOADCASE_VELDEN = ["id", "name", "type", "categorie", "gegenereerd"] as const;
 
 const SUPPORT_TYPES = [
   "pinned", "fixed", "xRoller", "zRoller", "zSpring", "xSpring", "rotSpring",
@@ -659,6 +665,9 @@ export function controleerVelden(rauw: unknown): string[] {
     // `type` mag ontbreken (oude bestanden); een verkeerde waarde niet — die
     // zou het eigengewicht in het verkeerde geval kunnen zetten.
     keurEnum(lc.type, LOADCASE_TYPES, `${pad}.type`, fouten);
+    // Gebruikscategorie (NB tabel NB.2–A1.1): een tikfout zou stil categorie A
+    // opleveren, met ψ₂ = 0,3 waar bijvoorbeeld opslag (E) 0,8 vraagt.
+    keurEnum(lc.categorie, GEBRUIKSCATEGORIEEN, `${pad}.categorie`, fouten);
   });
 
   // Lasten.
@@ -841,7 +850,17 @@ function samenhangendeDelen(
  * dan stoppen we daar — constructieve controles op een model met verkeerde
  * types leveren alleen ruis op boven de echte oorzaak.
  */
-export function valideerModel(rauw: unknown): ValidatieUitkomst {
+/** Wat de droogloop naast het model mag weten. */
+export interface ValidatieOpties {
+  /**
+   * De combinaties die bij het rekenen gebruikt worden. Zonder deze lijst kan
+   * niet worden bepaald of een belastinggeval ergens meetelt, en blijft die
+   * controle achterwege.
+   */
+  combinaties?: LoadCombination[];
+}
+
+export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): ValidatieUitkomst {
   const veldFouten = controleerVelden(rauw);
   if (veldFouten.length > 0) {
     return { ok: false, errors: veldFouten, warnings: [] };
@@ -1113,14 +1132,29 @@ export function valideerModel(rauw: unknown): ValidatieUitkomst {
     }
   }
 
-  for (const lc of loadCases) {
-    if (lc.type === undefined) {
-      warnings.push(
-        `Belastinggeval ${lc.id} ("${lc.name}") heeft geen \`type\`. Zonder ` +
-          "type kan het eigengewicht niet aan het permanente geval worden " +
-          "toegewezen.",
-      );
+  if (opties.combinaties === undefined) {
+    for (const lc of loadCases) {
+      if (lc.type === undefined) {
+        warnings.push(
+          `Belastinggeval ${lc.id} ("${lc.name}") heeft geen \`type\`. Zonder ` +
+            "type telt het geval in geen enkele standaardcombinatie mee, en kan " +
+            "het eigen gewicht er niet aan worden toegewezen.",
+        );
+      }
     }
+  }
+
+  // Eigen gewicht zonder blijvend geval (dat valt NIET meer stil in het eerste
+  // geval), en — als de combinaties bekend zijn — gevallen met een last die in
+  // geen enkele UGT-combinatie meetellen. Een fout: die last telt als nul.
+  const gevalMeldingen = meldingenBelastinggevallen({
+    loadCases: loadCases as unknown as Pick<LoadCase, "id" | "name" | "type">[],
+    combinations: opties.combinaties ?? [],
+    loads: loads as unknown as { caseId: number }[],
+    selfWeightEnabled: m.selfWeightEnabled === true,
+  }).filter((mld) => opties.combinaties !== undefined || mld.caseId === null);
+  for (const mld of gevalMeldingen) {
+    (mld.niveau === "fout" ? errors : warnings).push(mld.tekst);
   }
 
   return { ok: errors.length === 0, errors, warnings };

@@ -3,13 +3,12 @@
  * heeft, en waarom de rest wegblijft.
  *
  * HET PROBLEEM
- * `defaultCombinations()` levert acht combinaties, want die lijst wordt gemaakt
- * vóórdat er een model is: bij het starten van de store en bij het laden van
- * een bestand zonder combinaties. Op dat moment is er geen materiaal om op te
- * beslissen. Twee van die acht — de frequente (6.15) en de quasi-blijvende
- * (6.16) BGT-combinatie — worden bij een zuivere staalconstructie door geen
- * enkele toets gelezen (zie `STANDAARD_SLS_BUITEN_STAAL` in
- * solver/combinations.ts). Ze kosten dan rekentijd en vullen de
+ * De standaardset (`normcombinaties.ts`) wordt afgeleid uit de belastinggevallen
+ * en de gevolgklasse — niet uit het materiaal: er is op dat moment geen reden
+ * om op staal of hout te beslissen. Twee soorten daarin — de frequente (6.15b)
+ * en de quasi-blijvende (6.16b) BGT-combinatie — worden bij een zuivere
+ * staalconstructie door geen enkele toets gelezen (zie `SOORTEN_BUITEN_STAAL`
+ * in solver/combinations.ts). Ze kosten dan rekentijd en vullen de
  * combinatielijst, de resultatentabellen en het rapport met kolommen waar
  * niets mee gedaan wordt.
  *
@@ -40,9 +39,10 @@
  *    landen.
  *
  * WAT MET RUST WORDT GELATEN
- * Alleen een ONGEWIJZIGDE standaardcombinatie wordt overgeslagen: id, naam,
- * type, formule én alle factoren moeten exact gelijk zijn aan wat
- * `defaultCombinations()` levert. Heeft de gebruiker de combinatie hernoemd,
+ * Alleen een ONGEWIJZIGDE standaardcombinatie wordt overgeslagen: ze draagt het
+ * kenmerk `standaard`, en naam, type, formule én alle factoren zijn exact gelijk
+ * aan wat de generator voor de gevallen en de gevolgklasse van dit model levert.
+ * Heeft de gebruiker de combinatie hernoemd,
  * een factor bijgesteld of hem zelf toegevoegd, dan is het zijn combinatie en
  * blijft hij staan — ook in een zuivere staalconstructie. Dezelfde regel maakt
  * dat de windgenerator (die eigen combinaties met eigen namen schrijft) hier
@@ -58,10 +58,18 @@
 import type { Beam, Plate } from "../components/fem/femTypes";
 import { PLATE_DEFAULTS } from "../components/fem/femTypes";
 import {
-  defaultCombinations,
-  STANDAARD_SLS_BUITEN_STAAL,
+  SOORTEN_BUITEN_STAAL,
+  soortVanCombinatie,
   type LoadCombination,
 } from "../components/fem/solver/combinations";
+import {
+  genereerStandaardCombinaties,
+  STANDAARD_BELASTINGGEVALLEN,
+  STANDAARD_GEVOLGKLASSE,
+  type GevalInvoer,
+  type Gevolgklasse,
+  type StandaardCombinatie,
+} from "../components/fem/solver/normcombinaties";
 import { materiaalVanStaaf } from "./variantInvoer";
 
 /** Eén combinatie die niet is doorgerekend, met de reden erbij. */
@@ -97,9 +105,10 @@ export const LABEL_ZUIVER_STAAL = "niet gebruikt";
  * raadsel zijn.
  */
 export function redenZuiverStaal(combo: LoadCombination): string {
-  const uitdrukking = combo.id === 7 ? "6.15" : "6.16";
+  const frequent = soortVanCombinatie(combo) === "6.15b";
+  const uitdrukking = frequent ? "6.15b" : "6.16b";
   const gebruiker =
-    combo.id === 7
+    frequent
       ? "de scheurbeheersing van beton (EN 1992-1-1 §7.3; de nationale bijlage bij 7.3.1(5) schrijft juist deze combinatie voor)"
       : "de kruipvervorming van hout en de BGT-tak van beton";
   return (
@@ -146,15 +155,28 @@ function zelfdeFactoren(a: Map<number, number>, b: Map<number, number>): boolean
  * Is `combo` letterlijk de standaardcombinatie `standaard`, ongewijzigd?
  * Alles telt mee: naam en formule zijn wat de gebruiker ziet, de factoren zijn
  * wat er gerekend wordt. Eén verschil en het is zijn combinatie geworden.
+ * Het id telt NIET: dat deelt de store uit en zegt niets over de inhoud.
  */
-function isOngewijzigd(combo: LoadCombination, standaard: LoadCombination): boolean {
+function isOngewijzigd(combo: LoadCombination, standaard: StandaardCombinatie): boolean {
   return (
-    combo.id === standaard.id &&
     combo.name === standaard.name &&
     combo.type === standaard.type &&
     combo.formula === standaard.formula &&
     zelfdeFactoren(combo.factors, standaard.factors)
   );
+}
+
+/** Waartegen een combinatie als "ongewijzigde standaard" wordt vergeleken. */
+export interface SelectieOpties {
+  /**
+   * De belastinggevallen van het model. Ontbreekt dit, dan wordt vergeleken
+   * met de standaardset van een NIEUW model (G = 1, Q = 2, S = 3, W = 4) —
+   * dezelfde aanname als vóór september 2026. De store en de sidecar geven de
+   * echte gevallen mee.
+   */
+  loadCases?: readonly GevalInvoer[];
+  /** De gevolgklasse van het project; ontbreekt → CC2. */
+  gevolgklasse?: Gevolgklasse;
 }
 
 /**
@@ -165,24 +187,28 @@ export function selecteerCombinaties(
   combinations: LoadCombination[],
   beams: Beam[],
   plates: Plate[] = [],
+  opties: SelectieOpties = {},
 ): CombinatieSelectie {
   const redenPerId = new Map<number, string>();
   if (!isZuivereStaalconstructie(beams, plates)) {
     return { actief: combinations, overgeslagen: [], redenPerId };
   }
 
-  // De kandidaten uit de standaardset, per id opzoekbaar. Alleen combinaties
-  // die hier exact op passen komen in aanmerking.
+  // De kandidaten uit de standaardset, per sleutel opzoekbaar. Alleen
+  // combinaties met dat kenmerk die er exact op passen komen in aanmerking.
   const kandidaten = new Map(
-    defaultCombinations()
-      .filter((c) => STANDAARD_SLS_BUITEN_STAAL.includes(c.id))
-      .map((c) => [c.id, c] as const),
+    genereerStandaardCombinaties(
+      opties.loadCases ?? STANDAARD_BELASTINGGEVALLEN,
+      opties.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
+    )
+      .filter((c) => SOORTEN_BUITEN_STAAL.includes(c.standaard.soort))
+      .map((c) => [c.standaard.sleutel, c] as const),
   );
 
   const actief: LoadCombination[] = [];
   const overgeslagen: OvergeslagenCombinatie[] = [];
   for (const combo of combinations) {
-    const standaard = kandidaten.get(combo.id);
+    const standaard = combo.standaard ? kandidaten.get(combo.standaard.sleutel) : undefined;
     if (standaard && isOngewijzigd(combo, standaard)) {
       const reden = redenZuiverStaal(combo);
       overgeslagen.push({

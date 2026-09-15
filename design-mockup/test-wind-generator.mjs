@@ -324,7 +324,7 @@ log("\n[8] Wind haaks: alleen zuiging, conservatief per zone");
     res.meldingen.some((m) => /haaks/.test(m.tekst) && m.niveau === "waarschuwing"));
 }
 
-log("\n[9] Combinaties (EN 1990) met vindplaats");
+log("\n[9] Combinaties (NEN-EN 1990 met NB) met vindplaats");
 {
   const gevallen = [
     { id: 1, name: "Eigen gewicht", type: "dead" },
@@ -334,28 +334,55 @@ log("\n[9] Combinaties (EN 1990) met vindplaats");
   const res = genereerWindbelasting(
     { nodes: portaalNodes, beams: portaalBeams, loadCases: gevallen },
     { ...basis, combinatiesGenereren: true });
+  // Sinds september 2026 NB-waarden (NEN-EN 1990:2002/NB:2019): γ uit tabel
+  // NB.4 (CC2), ψ uit tabel NB.2–A1.1 — veranderlijk cat. A 0,4/0,5/0,3,
+  // sneeuw en wind 0/0,2/0. Tot dan de EN-aanbevolen ψ₀ (0,7 / 0,5 / 0,6).
+  // Vier per windgeval: 6.10b wind leidend, 6.10b met gunstig werkend
+  // blijvend, 6.14b en 6.15b met wind leidend. De 6.10a per windgeval is weg:
+  // in 6.10a krijgt ook de belangrijkste veranderlijke last ψ₀ (NB.4,
+  // "1,5 ψ₀,1 Q_k,1"), en ψ₀,W = 0 — ze viel samen met de 6.10a van de
+  // standaardset. De 6.15b is erbij: de scheurwijdte van beton leest de
+  // frequente combinatie, en zonder deze kwam gegenereerde wind daar nooit in.
   checkExact("4 combinaties per windgeval", res.combinaties.length, 4);
   checkTrue("alle namen dragen het generatorvoorvoegsel",
     res.combinaties.every((c) => c.naam.startsWith(WIND_COMBI_PREFIX)));
-  const a = res.combinaties.find((c) => c.naam.includes("6.10a"));
-  const b = res.combinaties.find((c) => c.naam.includes("6.10b"));
-  const equ = res.combinaties.find((c) => c.naam.includes("EQU"));
-  const bgt = res.combinaties.find((c) => c.type === "sls");
-  check("6.10a: γ_G = 1,35", a.factorenPerCaseId.find(([id]) => id === 1)[1], 1.35);
-  check("6.10a: 1,5·ψ₀,W = 0,90", a.windFactor, 0.9);
-  check("6.10a: 1,5·ψ₀,Q = 1,05", a.factorenPerCaseId.find(([id]) => id === 2)[1], 1.05);
-  check("6.10a: 1,5·ψ₀,S = 0,75", a.factorenPerCaseId.find(([id]) => id === 3)[1], 0.75);
-  check("6.10b: γ_G = 1,20", b.factorenPerCaseId.find(([id]) => id === 1)[1], 1.2);
-  check("6.10b: wind leidend γ_Q = 1,50", b.windFactor, 1.5);
-  check("EQU: γ_G,inf = 0,90", equ.factorenPerCaseId.find(([id]) => id === 1)[1], 0.9);
-  check("EQU: wind 1,50", equ.windFactor, 1.5);
-  checkExact("EQU bevat geen Q of S", equ.factorenPerCaseId.length, 1);
-  check("BGT karakteristiek: ψ₀,Q = 0,70", bgt.factorenPerCaseId.find(([id]) => id === 2)[1], 0.7);
-  check("BGT karakteristiek: ψ₀,S = 0,50", bgt.factorenPerCaseId.find(([id]) => id === 3)[1], 0.5);
-  checkTrue("formule noemt de vindplaats van γ en ψ₀",
-    res.combinaties.every((c) => /A1\.2\(B\)/.test(c.formule) && /A1\.1/.test(c.formule)));
-  checkTrue("K_FI-beperking wordt hardop gemeld",
-    res.meldingen.some((m) => /K_FI/.test(m.tekst)));
+  checkTrue("geen 6.10a per windgeval (ψ₀,W = 0 volgens NB.2)",
+    !res.combinaties.some((c) => c.naam.includes("6.10a")));
+  const factor = (c, id) => c.factorenPerCaseId.find(([i]) => i === id)?.[1];
+  const b = res.combinaties.find((c) => c.naam.includes("6.10b") && !c.naam.includes("gunstig"));
+  const gunstig = res.combinaties.find((c) => c.naam.includes("blijvend gunstig"));
+  const kar = res.combinaties.find((c) => c.naam.includes("6.14b"));
+  const freq = res.combinaties.find((c) => c.naam.includes("6.15b"));
+  check("6.10b: γ_G = 1,20 (NB.4)", factor(b, 1), 1.2);
+  check("6.10b: wind leidend γ_Q = 1,50 (NB.4)", b.windFactor, 1.5);
+  check("6.10b: 1,5·ψ₀,Q = 1,5·0,4 = 0,60 (NB.2 cat. A; was 1,05)", factor(b, 2), 0.6);
+  checkTrue("6.10b: sneeuw begeleidt niet, 1,5·ψ₀,S = 1,5·0 (was 0,75)", factor(b, 3) === undefined);
+  check("blijvend gunstig: γ_G,inf = 0,90 (kolom Gunstig van NB.4)", factor(gunstig, 1), 0.9);
+  check("blijvend gunstig: wind 1,50", gunstig.windFactor, 1.5);
+  checkExact("blijvend gunstig bevat geen Q of S", gunstig.factorenPerCaseId.length, 1);
+  checkTrue("die combinatie heet niet langer EQU (NB.3 hanteert 1,1/0,9)",
+    !res.combinaties.some((c) => c.naam.includes("EQU")));
+  check("BGT 6.14b: wind leidend 1,0", kar.windFactor, 1.0);
+  check("BGT 6.14b: ψ₀,Q = 0,40 (NB.2 cat. A; was 0,70)", factor(kar, 2), 0.4);
+  checkTrue("BGT 6.14b: ψ₀,S = 0 (NB.2; was 0,50)", factor(kar, 3) === undefined);
+  check("BGT 6.15b: ψ₁,W = 0,20 (NB.2)", freq.windFactor, 0.2);
+  check("BGT 6.15b: ψ₂,Q = 0,30 (NB.2 cat. A)", factor(freq, 2), 0.3);
+  checkTrue("formule noemt de vindplaats van γ en ψ",
+    res.combinaties.every((c) => /NB\.4/.test(c.formule) && /NB\.2/.test(c.formule)));
+  checkTrue("de gevolgklasse en K_FI worden gemeld",
+    res.meldingen.some((m) => /K_FI/.test(m.tekst) && /CC2/.test(m.tekst)));
+  // CC3, NB tabel NB.5: 6.10b 1,3·G + 1,65·W + 1,65·0,4·Q = 0,66·Q;
+  // γ_G,inf blijft 0,9.
+  const cc3 = genereerWindbelasting(
+    { nodes: portaalNodes, beams: portaalBeams, loadCases: gevallen, gevolgklasse: "CC3" },
+    { ...basis, combinatiesGenereren: true });
+  const b3 = cc3.combinaties.find((c) => c.naam.includes("6.10b") && !c.naam.includes("gunstig"));
+  const g3 = cc3.combinaties.find((c) => c.naam.includes("blijvend gunstig"));
+  check("CC3 6.10b: γ_G = 1,30 (NB.5)", factor(b3, 1), 1.3);
+  check("CC3 6.10b: wind γ_Q = 1,65 (NB.5)", b3.windFactor, 1.65);
+  check("CC3 6.10b: 1,65·0,4 = 0,66 op Q", factor(b3, 2), 0.66);
+  check("CC3 blijvend gunstig: γ_G,inf = 0,90 (NB.5)", factor(g3, 1), 0.9);
+  checkTrue("CC3: de formule noemt NB.5", b3.formule.includes("NB.5"));
   // Belastinggeval met type "overig" wordt niet stil meegenomen.
   const metOverig = genereerWindbelasting(
     { nodes: portaalNodes, beams: portaalBeams,

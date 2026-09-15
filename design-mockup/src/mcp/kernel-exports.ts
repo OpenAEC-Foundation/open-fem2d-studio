@@ -34,6 +34,12 @@ export * from "./valideerModel";
 
 export * from "../components/fem/solver/engine";
 export * from "../components/fem/solver/combinations";
+// De afleiding van de standaardcombinaties (NB-tabellen, gevolgklasse) en het
+// bijhouden van gevallen en combinaties: de sidecar gebruikt ze voor zijn
+// standaardset en zijn meldingen, en hun tests horen óók tegen de bundel te
+// draaien. Pure rekencode, geen DOM en geen Tauri.
+export * from "../components/fem/solver/normcombinaties";
+export * from "../lib/combinatieBeheer";
 // De combinatieselectie hoort IN de bundel: de sidecar past hem toe vlak vóór
 // het combineren, zodat een MCP-solve niet acht combinaties oplevert waar de
 // app er zes toont. Hij trekt `variantInvoer` mee — de materiaalclassificatie

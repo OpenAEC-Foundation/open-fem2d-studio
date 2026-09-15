@@ -45,9 +45,16 @@ function checkTrue(name, cond) {
 // ─────────────────────────────────────────────────────────────────────────
 // Model: vrij opgelegde ligger L=6 m, twee lastgevallen
 //   G (case 1): q = -5 N/mm,  Q (case 2): q = -5 N/mm
-// SLS Karakteristiek (combo 6) = 1,0·G + 1,0·Q → q = 10 N/mm
+// BGT karakteristiek 6.14b met Q leidend = 1,0·G + 1,0·Q → q = 10 N/mm
 //   w_mid = 5qL⁴/384EI = 5·10·6000⁴/(384·210000·1e8) = 8,0357 mm (omlaag)
+//
+// Sinds september 2026 is de standaardset afgeleid uit de belastinggevallen
+// (normcombinaties.ts) en hebben combinaties geen vaste id meer: de oude
+// "SLS Karakteristiek" was id 6, en id 6 is nu een UGT-combinatie. De tests
+// zoeken hun combinatie daarom op het KENMERK. De verwachte getallen blijven
+// dezelfde handberekeningen.
 // ─────────────────────────────────────────────────────────────────────────
+const bijSleutel = (lijst, sleutel) => lijst.find((c) => c.standaard?.sleutel === sleutel);
 const nodes = [{ id: 1, x: 0, z: 0 }, { id: 2, x: L, z: 0 }];
 const solverBeams = [{ id: 1, from: 1, to: 2, E, A, I }];
 const supports = [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }];
@@ -67,7 +74,7 @@ const wExp = 5 * 10 * Math.pow(L, 4) / (384 * E * I); // 8,0357 mm
 // ─────────────────────────────────────────────────────────────────────────
 log("\n[1] Sanity: knopen zakken niet, veld wel (anders test dit niets)");
 {
-  const slsRes = combinationResults.get(6);
+  const slsRes = combinationResults.get(bijSleutel(combos, "6.14b|Q:A").id);
   const d1 = slsRes.displacements.get(1), d2 = slsRes.displacements.get(2);
   checkTrue("|uz| eindknopen < 0.01 mm", Math.abs(d1.uz) < 0.01 && Math.abs(d2.uz) < 0.01);
   check("|w_mid| station-array = 5qL⁴/384EI", Math.abs(slsRes.elements.get(1).deflection[10]), wExp, 1);
@@ -107,8 +114,9 @@ log("\n[3] Hout: w_inst uit de karakteristieke, w_qp uit de QUASI-BLIJVENDE comb
   checkTrue("w_inst negatief (omlaag)", wi < 0);
 
   // Bevroren grenswaarde. G (case 1) en Q (case 2) leveren elk q = -5 N/mm.
-  //   SLS Karakteristiek (combo 6) = 1,0·G + 1,0·Q       → q = -10   → w_inst
-  //   SLS Quasi-permanent (combo 8) = 1,0·G + ψ₂·Q, ψ₂ = 0,3
+  //   w_inst: de grootste over de karakteristieke combinaties; hier
+  //   6.14b met Q leidend = 1,0·G + 1,0·Q                → q = -10   → w_inst
+  //   6.16b quasi-blijvend = 1,0·G + ψ₂·Q, ψ₂ = 0,3 (NB.2 cat. A, gelijk aan EN)
   //                                                      → q = -6,5  → w_qp
   // w is lineair in q, dus w_qp/w_inst = 6,5/10 = 0,65 exact.
   // Vóór september 2026 stond hier w_qp = w_inst (de volle last), 1/0,65 ≈ 1,54
@@ -116,7 +124,7 @@ log("\n[3] Hout: w_inst uit de karakteristieke, w_qp uit de QUASI-BLIJVENDE comb
   check("w_qp = 0,65 · w_inst (G + ψ₂·Q, ψ₂ = 0,3 voor Q)", wq, 0.65 * wi, 0.01);
   const notes = (inputs[0]?.deflection_notes ?? []).join(" ");
   checkTrue("notitie noemt de gebruikte combinatie",
-    /quasi-blijvende BGT-combinatie "SLS Quasi-permanent"/.test(notes));
+    /quasi-blijvende BGT-combinatie "BGT quasi-blijvend 6\.16b"/.test(notes));
   checkTrue("notitie noemt de koorde als referentielijn", /vanaf de koorde/.test(notes));
 }
 
@@ -335,8 +343,9 @@ log("\n[8] Kolom: A1.4.3(7) h/300 op de zijdelingse verplaatsing, geen vloereis"
     combinations: pCombos, combinationResults: pResults,
   };
 
-  // Sanity: zonder deze twee regels bewijst de rest niets.
-  const slsRes = pResults.get(6);
+  // Sanity: zonder deze twee regels bewijst de rest niets. Alleen G is belast,
+  // dus elke karakteristieke combinatie is hier 1,0·G; die met Q leidend.
+  const slsRes = pResults.get(bijSleutel(pCombos, "6.14b|Q:A").id);
   const kromming = extractFieldDeflectionMm(kolom, slsRes);
   // Precies de twee getallen uit de beproeving van het startmodel: de kolom
   // kromt 21,4 mm en de regel zakt 144 mm. Zonder deze regels bewijst de rest
@@ -367,7 +376,7 @@ log("\n[8] Kolom: A1.4.3(7) h/300 op de zijdelingse verplaatsing, geen vloereis"
   checkTrue("kolom: notitie noemt A1.4.3(7) en h/300",
     /A1\.4\.3\(7\)/.test(kn) && /h\/300/.test(kn));
   checkTrue("kolom: notitie noemt de karakteristieke combinatie (6.14b)",
-    /6\.14b/.test(kn) && /Karakteristiek/.test(kn));
+    /6\.14b/.test(kn) && /karakteristiek/i.test(kn));
   checkTrue("kolom: aannames (industriegebouw h/150, h, h/500) staan erbij",
     /h\/150/.test(kn) && /h\/500/.test(kn));
 
@@ -424,12 +433,16 @@ log("\n[8] Kolom: A1.4.3(7) h/300 op de zijdelingse verplaatsing, geen vloereis"
 // met hetzelfde getal, zonder dat ergens stond waarom.
 //
 // Model: vrij opgelegde ligger met een blijvende neerwaartse last (G) en
-// WINDZUIGING (W) omhoog. De standaardcombinaties geven dan:
-//   karakteristiek (6.14b) = G + 0,6·W  → de KLEINSTE zakking
-//   frequent       (6.15b) = G          → de grootste
-//   quasi-blijvend (6.16b) = G          → idem
-// "De karakteristieke is toch altijd de zwaarste" is hier dus aantoonbaar
-// onwaar; wie alleen die combinatie voert, toetst 40 % van de zakking.
+// WINDZUIGING (W) omhoog. De standaardcombinaties (NB-ψ, sinds september 2026
+// één karakteristieke en één frequente per leidende veranderlijke last) geven:
+//   6.14b met W leidend = G + 1,0·W        → de KLEINSTE zakking, (6 − 5)/6 · w_G
+//   6.14b met Q leidend = G + Q (Q = 0)    → w_G, de grootste
+//   6.15b met W leidend = G + 0,2·W        → (6 − 1)/6 · w_G
+//   6.16b quasi-blijvend = G               → w_G
+// "De combinatie met de windlast is de zwaarste" is hier dus aantoonbaar
+// onwaar; wie alleen die combinatie voert, toetst 1/6 van de zakking. Tot
+// september 2026 was de karakteristieke G + 0,6·W (EN-ψ₀,W begeleidend) en
+// was dat 3/6; de NB laat wind leidend met 1,0 meetellen.
 log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
 {
   const qG = -6, qW = +5; // N/mm — W is zuiging (omhoog)
@@ -445,20 +458,21 @@ log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
     combinations: zCombos, combinationResults: zResults,
   };
 
-  const wKar = extractFieldDeflectionMm(ligger, zResults.get(6)); // G + 0,6·W
-  const wFreq = extractFieldDeflectionMm(ligger, zResults.get(7)); // G
-  checkTrue("sanity: de karakteristieke geeft hier de KLEINSTE zakking",
+  const wKar = extractFieldDeflectionMm(ligger, zResults.get(bijSleutel(zCombos, "6.14b|W:4").id)); // G + 1,0·W
+  const wFreq = extractFieldDeflectionMm(ligger, zResults.get(bijSleutel(zCombos, "6.15b|Q:A").id)); // G (Q = 0)
+  checkTrue("sanity: de karakteristieke met wind leidend geeft hier de KLEINSTE zakking",
     Math.abs(wKar) < Math.abs(wFreq) - 1);
-  check("sanity: w_kar = (6 − 0,6·5)/6 · w_freq", wKar, (3 / 6) * wFreq, 0.5);
+  check("sanity: w_kar,W = (6 − 1,0·5)/6 · w_G", wKar, (1 / 6) * wFreq, 0.5);
 
   const invoer = bepaalDoorbuigingsInvoer(ligger, zData);
   check("maatgevend is de grootste van de voorgeschreven combinaties",
     invoer.wMm, wFreq, 0.01);
-  checkTrue("en dus NIET de karakteristieke", Math.abs(invoer.wMm - wKar) > 1);
+  checkTrue("en dus NIET de karakteristieke met wind leidend", Math.abs(invoer.wMm - wKar) > 1);
 
   const n = invoer.notes.join(" ");
+  // Bij gelijke |w| wint de eerste in de lijst: 6.14b met Q leidend (= G).
   checkTrue("notitie noemt de maatgevende combinatie bij naam",
-    /Maatgevend is "SLS Frequent"/.test(n));
+    /Maatgevend is "BGT karakteristiek 6\.14b — Variabel \(Q\) leidend"/.test(n));
   checkTrue("notitie noemt alle drie de uitdrukkingen die A1.4.3 aanwijst",
     /6\.14b/.test(n) && /6\.15b/.test(n) && /6\.16b/.test(n));
   checkTrue("notitie legt uit dat één zakking twee toetsen voedt",
@@ -477,7 +491,8 @@ log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
   });
   const bn = (inputs[0]?.deflection_notes ?? []).join(" ");
   checkTrue("bouwer: de verantwoording zit in deflection_notes",
-    /Maatgevend is "SLS Frequent"/.test(bn) && /w_add is hier GELIJK aan w_fin/.test(bn));
+    /Maatgevend is "BGT karakteristiek 6\.14b — Variabel \(Q\) leidend"/.test(bn) &&
+    /w_add is hier GELIJK aan w_fin/.test(bn));
   checkTrue("bouwer: de koorde-referentielijn staat er nog steeds bij",
     /vanaf de koorde/.test(bn));
 

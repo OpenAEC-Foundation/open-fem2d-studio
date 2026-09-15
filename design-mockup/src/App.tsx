@@ -226,6 +226,17 @@ function App() {
   // IFC-export (projectnaam, nummer, ingenieur, bedrijf, locatie) en reizen
   // mee in het projectbestand.
   const projectInfo = useProjectInfo();
+  // De gevolgklasse uit de projectgegevens bepaalt de partiële factoren van de
+  // standaardcombinaties (NB tabel NB.4/NB.5). Tot september 2026 stond die
+  // keuze alleen in de dialoog en het rapport; de combinaties rekenden altijd
+  // met CC2. Een onbekende of ontbrekende waarde laat de store ongemoeid.
+  const projectGevolgklasse = projectInfo.uitgangspunten?.gevolgklasse;
+  const setFemGevolgklasse = fem.setGevolgklasse;
+  useEffect(() => {
+    if (projectGevolgklasse === "CC1" || projectGevolgklasse === "CC2" || projectGevolgklasse === "CC3") {
+      setFemGevolgklasse(projectGevolgklasse);
+    }
+  }, [projectGevolgklasse, setFemGevolgklasse]);
   // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
   // in de constructie (idempotent, zie windStore.ts). Staat hier boven de
   // snapshot-opbouw omdat zijn instellingen in het projectbestand gaan.
@@ -392,6 +403,9 @@ function App() {
     betonSegmentLengteMm: fem.betonSegmentLengteMm,
     // v2: combinaties (Map-factoren → JSON-object) + stramien + scheefstand.
     combinations: combinationsToFile(fem.combinations),
+    // De id-tellers reizen mee, zodat een verwijderd belastinggeval ook na
+    // opslaan en openen zijn id nooit aan een nieuw geval doorgeeft.
+    idTellers: fem.idTellers,
     structuralGrid: fem.structuralGrid,
     scheefstandEnabled: fem.scheefstandEnabled,
     scheefstandNoemer: fem.scheefstandNoemer,
@@ -537,7 +551,13 @@ function App() {
       baselineResetRef.current = true;
       // Vóór het model: de staven verwijzen naar deze doorsneden.
       const overschreven = voegBibliothekenSamen(parsed);
-      fem.loadProjectState({
+      // De gevolgklasse van het BESTAND, vóór het laden: de vergelijking met
+      // de standaardcombinaties hoort tegen de klasse van dit project te gaan,
+      // niet tegen die van het vorige.
+      const uitgangspunten = (parsed.projectInfo as { uitgangspunten?: { gevolgklasse?: unknown } } | undefined)
+        ?.uitgangspunten;
+      const bestandsklasse = uitgangspunten?.gevolgklasse;
+      const afwijking = fem.loadProjectState({
         nodes: parsed.nodes,
         beams: parsed.beams,
         supports: parsed.supports,
@@ -563,7 +583,18 @@ function App() {
         scheefstandBron: parsed.scheefstandBron,
         scheefstandHoogteM: parsed.scheefstandHoogteM,
         scheefstandAantalElementen: parsed.scheefstandAantalElementen,
+        gevolgklasse:
+          bestandsklasse === "CC1" || bestandsklasse === "CC2" || bestandsklasse === "CC3"
+            ? bestandsklasse
+            : undefined,
+        idTellers: parsed.idTellers,
       });
+      // Afwijkende combinaties: MELDEN, niet stil overschrijven. De expliciete
+      // actie om ze te vervangen staat in Belastinggevallen & combinaties.
+      if (afwijking) {
+        void import("./io/notify").then(({ notifyWarning }) =>
+          notifyWarning("Combinaties wijken af van de standaard", afwijking.samenvatting));
+      }
       // Projectgegevens, wind- en rapportinstellingen uit het bestand — elk
       // optioneel; een ouder bestand laat de huidige stand staan.
       if (parsed.projectInfo && typeof parsed.projectInfo === "object") {
@@ -1160,6 +1191,8 @@ function App() {
       // noemen die niet is doorgerekend levert een lege zakking op.
       combinations: fem.actieveCombinaties,
       combinationResults,
+      // Ter vermelding in de staalkern; de factoren zitten al in de combinaties.
+      gevolgklasse: fem.gevolgklasse,
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 
@@ -1873,6 +1906,9 @@ function App() {
                     addLoadCase={fem.addLoadCase}
                     combinations={fem.combinations}
                     overgeslagenCombinaties={fem.overgeslagenCombinaties}
+                    belastingMeldingen={fem.belastingMeldingen}
+                    combinatieAfwijking={fem.combinatieAfwijking}
+                    onOpenCombinaties={() => { setLoadCasesTab("combos"); setLoadCasesOpen(true); }}
                     activeCombinationId={fem.activeCombinationId}
                     setActiveCombinationId={(id) => {
                       // Picking a combination must enable the results overlay
@@ -2093,6 +2129,11 @@ function App() {
         loadCases={fem.loadCases}
         combinations={fem.combinations}
         overgeslagenCombinaties={fem.overgeslagenCombinaties}
+        belastingMeldingen={fem.belastingMeldingen}
+        combinatieAfwijking={fem.combinatieAfwijking}
+        onVervangDoorStandaard={fem.vervangDoorStandaardCombinaties}
+        onSluitAfwijking={fem.sluitCombinatieAfwijking}
+        gevolgklasse={fem.gevolgklasse}
         addLoadCase={fem.addLoadCase}
         updateLoadCase={fem.updateLoadCase}
         removeLoadCase={fem.removeLoadCase}

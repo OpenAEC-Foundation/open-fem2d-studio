@@ -193,8 +193,16 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
   };
   // Optioneel: eigen gewicht als extra verdeelde lasten op het eerste
   // permanente (dead) belastinggeval. Per staaf → q = -ρ·A·g (omlaag in +Z).
+  //
+  // ZONDER blijvend geval wordt het eigen gewicht NIET toegepast. Tot september
+  // 2026 viel het dan stil in `loadCases[0]`, welk type dat ook had: in een
+  // veranderlijk geval kreeg het ψ₂ = 0,3 in de quasi-blijvende combinatie in
+  // plaats van 1,0 (houtkruip −26 %) en γ_Q in de UGT. Een blijvende last met
+  // de factoren van een andere soort is geen veilige terugval. De melding staat
+  // in `meldingenBelastinggevallen` (lib/combinatieBeheer) en komt in de
+  // projectboom, het rapport en de MCP-antwoorden.
   if (model.selfWeightEnabled) {
-    const deadCase = model.loadCases.find(c => c.type === "dead") ?? model.loadCases[0];
+    const deadCase = model.loadCases.find(c => c.type === "dead");
     if (deadCase) {
       for (const b of model.beams) {
         const q = eigenGewichtPerMeter(b.material, b.profile);

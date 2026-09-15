@@ -66,7 +66,7 @@ const { valideerModel } = await import("./src/mcp/valideerModel.ts");
 const { controleerModel } = await import("./src/lib/modelControle.ts");
 const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
-const { defaultCombinations, combineResults } = await import(
+const { defaultCombinations, combineResults, combinatiesVanSoort } = await import(
   "./src/components/fem/solver/combinations.ts"
 );
 const { bepaalOnbepaaldheid } = await import("./src/lib/statischeOnbepaaldheid.ts");
@@ -380,9 +380,14 @@ log("\n[g] Toetsbaarheid: de drie kernen pakken samen alle zes de staven op");
   // dat er iets ROOD wordt.
   check("beton: de frequente BGT-combinatie komt mee",
     (bi?.sls_frequent_envelope?.length ?? 0) > 0, true);
-  check("beton: en die omhullende hoort bij combinatie 7 (SLS Frequent)",
-    new Set((bi?.sls_frequent_envelope ?? []).map((p) => p.combination_id)).size === 1 &&
-      bi?.sls_frequent_envelope[0]?.combination_id, 7);
+  // Sinds september 2026 is er een frequente combinatie PER leidende
+  // veranderlijke last (6.15b: ψ₁ op de leidende, ψ₂ op de andere), en de
+  // scheurwijdte envelopt over alle drie in plaats van de eerste treffer te
+  // nemen. Voor de vier startgevallen zijn dat id 11 (Q), 12 (S) en 13 (W).
+  const frequenteIds = combinatiesVanSoort(defaultCombinations(), "6.15b").map((c) => c.id);
+  check("beton: en die omhullende omvat precies de drie frequente combinaties (6.15b)",
+    JSON.stringify([...new Set((bi?.sls_frequent_envelope ?? []).map((p) => p.combination_id))].sort((a, b) => a - b)),
+    JSON.stringify(frequenteIds));
   // De frequente combinatie is LICHTER dan de UGT: G + ψ₁·Q + ψ₂·S tegen
   // 1,35·G. Een omhullende die net zo zwaar is, is de verkeerde omhullende.
   const maxAbsM = (env) => Math.max(...(env ?? []).map((p) => Math.abs(p.forces.my_ed)), 0);
