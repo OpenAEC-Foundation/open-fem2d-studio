@@ -75,6 +75,7 @@ import {
   parseConcreteSection,
 } from "./betonCheckBuilder";
 import { beamLengthMm, isSteelProfile } from "./steelCheckBuilder";
+import { referentieVanStaaf } from "./referentierichting";
 import { getLinearSolver, type LinearSolverId } from "../core/math/LinearSolver";
 
 // ── Vaste waarden ──────────────────────────────────────────────────────────
@@ -145,6 +146,14 @@ export interface BetonSegmentStaaf {
   lengteMm: number;
   aantalStroken: number;
   staaltak: SteelBranch;
+  /**
+   * −1 als de staaf tegen zijn referentierichting in is getekend. Het moment
+   * uit de solver staat in lokale assen; de korf noemt boven en onder in de
+   * referentierichting. Bij een ongelijke korf bepaalt dat teken welke rij op
+   * trek staat en dus de secant-EI. Ontbreekt → 1. Zie
+   * `lib/referentierichting.ts`.
+   */
+  momentTeken?: 1 | -1;
 }
 
 export interface BetonStavenInvoer {
@@ -217,6 +226,7 @@ export function betonStavenUitModel(
           ? Math.round(cfg.betonStroken)
           : DEFAULT_N_STRIPS,
       staaltak: cfg.betonStaaltak ?? "Horizontal",
+      momentTeken: referentieVanStaaf(beam, data.nodes).gespiegeld ? -1 : 1,
     });
   }
   return { staven, overgeslagen };
@@ -496,6 +506,13 @@ export function krachtenPerSegment(
   el: ElementForces,
   segmentGrenzenMm: { x0: number; x1: number }[],
   beamId: number,
+  /**
+   * −1 voor een staaf die tegen zijn referentierichting in is getekend: dan
+   * staat het moment hier in de referentierichting, waarin de korf boven en
+   * onder noemt. De segmentgrenzen blijven vanaf de beginknoop — de EI per
+   * segment gaat terug naar de solver, en de korf is langs de staaf gelijk.
+   */
+  momentTeken: 1 | -1 = 1,
 ): SegmentForces[] {
   const records: BeamSegmentForces[] | undefined = el.segmenten;
   if (!records || records.length === 0) {
@@ -521,7 +538,7 @@ export function krachtenPerSegment(
     }
     return {
       n_ed_kn: beste.N_bij_M_max / 1000,
-      m_ed_knm: beste.M_max / 1e6,
+      m_ed_knm: (momentTeken * beste.M_max) / 1e6,
     };
   });
 }
@@ -617,7 +634,7 @@ export async function losCombinatieFysischOp(
         );
       }
       const grenzen = grenzenUitAntwoord(indeling.get(staaf.beamId)!);
-      const krachten = krachtenPerSegment(el, grenzen, staaf.beamId);
+      const krachten = krachtenPerSegment(el, grenzen, staaf.beamId, staaf.momentTeken ?? 1);
       const antwoord = await o.roep<SegmentStiffnessResponse>(
         "concrete_segment_stiffness",
         bouwVerzoek(staaf, o, krachten, eiVorig.get(staaf.beamId)!),

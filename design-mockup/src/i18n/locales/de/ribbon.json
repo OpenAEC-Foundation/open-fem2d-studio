@@ -435,7 +435,7 @@
     "colPosition": "x [m]",
     "nodalDispTitle": "Knotenverschiebungen",
     "fieldDeflTitle": "Felddurchbiegung je Stab (max |w|)",
-    "fieldDeflNote": "w = lokale Durchbiegung senkrecht zur Stabachse (negativ = Durchhang); x gemessen vom Anfangsknoten.",
+    "fieldDeflNote": "w = Durchbiegung senkrecht zur Stabachse, von links nach rechts gerechnet (ein stehender Stab vom Fuß zum Kopf): negativ = Durchhang, bei einem stehenden Stab nach rechts; x gemessen vom linken Ende bzw. vom Fuß.",
     "governingDispNote": "Umhüllende gewählt — gezeigt wird die maßgebende Kombination (größte Verschiebung):",
     "sectionPlates": "Platten",
     "sectionPlateStresses": "Plattenspannungen",

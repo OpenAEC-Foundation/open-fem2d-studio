@@ -16,6 +16,7 @@
 import { useTranslation } from "react-i18next";
 import { useReportData } from "../ReportDataContext";
 import { fmtLenM, fmtNum } from "../reportFormat";
+import { referentieVanStaaf, spiegelElementKrachten } from "../../../lib/referentierichting";
 import {
   NotComputedNote,
   ScopePrintLine,
@@ -63,7 +64,13 @@ export default function DisplacementsSection() {
 
   // Veldmaximum |w| per staaf uit de deflection-stations.
   const fieldRows = sortedBeams.flatMap((beam) => {
-    const ef = result!.elements.get(beam.id);
+    // In de referentierichting (liggend van links naar rechts, staand van voet
+    // naar kop): dan betekent een negatieve w bij elke liggende staaf
+    // doorhangen, en loopt x vanaf het linker uiteinde of de voet — zoals de
+    // toetsing de staaf ziet. Zie `lib/referentierichting.ts`.
+    const lokaal = result!.elements.get(beam.id);
+    const ef =
+      lokaal && referentieVanStaaf(beam, nodes).gespiegeld ? spiegelElementKrachten(lokaal) : lokaal;
     if (!ef || !ef.deflection || ef.deflection.length !== ef.stations_mm.length) {
       return [];
     }
@@ -155,7 +162,7 @@ export default function DisplacementsSection() {
           <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
             {t(
               "report.fieldDeflNote",
-              "w = lokale zakking loodrecht op de staafas (negatief = doorhangen); x gemeten vanaf de beginknoop.",
+              "w = zakking loodrecht op de staafas, gerekend van links naar rechts (een staande staaf van voet naar kop): negatief = doorhangen, bij een staande staaf naar rechts; x gemeten vanaf het linker uiteinde of de voet.",
             )}
           </p>
         </>

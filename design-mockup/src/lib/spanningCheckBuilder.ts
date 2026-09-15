@@ -42,6 +42,7 @@ import type { SpanningBeamCheckResult } from "./types/spanning/SpanningBeamCheck
 import type { SpanningDoorsnede } from "./types/spanning/SpanningDoorsnede";
 import type { CheckSkip, MemberCheckResult } from "./checkTypes";
 import { beamLengthMm, buildForcesEnvelope, profileLookupKey } from "./steelCheckBuilder";
+import { toetsdataInReferentierichting } from "./referentierichting";
 import { isCltProfiel } from "./cltCheckBuilder";
 import { parseRechthoek } from "./sectionResolver";
 import { STEEL_SECTION_DIMS } from "./steelSectionDims.generated";
@@ -116,7 +117,11 @@ export function doorsnedeVanProfiel(profile: string | undefined): SpanningDoorsn
  *  - γ_M komt uit de materiaalnaam; ontbreekt hij daar, dan 1,0 — dan is
  *    f_toel zelf de rekenwaarde.
  */
-export function buildSpanningCheckInputs(data: SpanningBuildData): SpanningBuildResult {
+export function buildSpanningCheckInputs(ruweData: SpanningBuildData): SpanningBuildResult {
+  // Elke staaf in zijn referentierichting: bij een onsymmetrische doorsnede
+  // bepaalt het teken van M welke vezel op trek staat. Zie
+  // `lib/referentierichting.ts`.
+  const data = toetsdataInReferentierichting(ruweData);
   const inputs: SpanningBeamCheckInput[] = [];
   const skipped: CheckSkip[] = [];
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");

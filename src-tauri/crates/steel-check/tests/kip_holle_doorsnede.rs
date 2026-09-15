@@ -62,6 +62,7 @@ fn koker(l_m: f64, q_n_per_mm: f64) -> BeamCheckResult {
         // Belasting op de bovenflens: z_a = h/2 = 100 mm (destabiliserend).
         z_a_mm: 100.0,
         custom_section: None,
+        staafstand: None,
     })
 }
 

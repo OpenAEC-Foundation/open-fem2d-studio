@@ -21,6 +21,11 @@
 import { useTranslation } from "react-i18next";
 import type { Beam, Node, StructuralGrid, Support } from "../../fem/femTypes";
 import type { ElementForces, SolverResult } from "../../fem/solver/types";
+import {
+  referentieVanStaaf,
+  spiegelElementKrachten,
+  staafInReferentierichting,
+} from "../../../lib/referentierichting";
 import { useReportData } from "../ReportDataContext";
 import {
   buildSchemaTransform,
@@ -533,11 +538,20 @@ export default function DiagramsSection() {
 
   // Per staaf de stationsreeksen verzamelen (staven zonder resultaat overslaan).
   const data: BeamSeriesData[] = [];
-  for (const beam of [...beams].sort((a, b) => a.id - b.id)) {
+  for (const ruweStaaf of [...beams].sort((a, b) => a.id - b.id)) {
+    // Elke staaf in zijn referentierichting (liggend van links naar rechts,
+    // staand van voet naar kop). Het beeld verandert daar niet door — de staaf
+    // en het teken klappen samen om — maar de waarden bij de lijn krijgen het
+    // teken dat de toetsing ook ziet. Zie `lib/referentierichting.ts`.
+    const gespiegeld = referentieVanStaaf(ruweStaaf, nodes).gespiegeld;
+    const beam = staafInReferentierichting(ruweStaaf, nodes);
+    const inRef = (ef: ElementForces): ElementForces =>
+      gespiegeld ? spiegelElementKrachten(ef) : ef;
     if (isEnvelope) {
       const efs = rs.combosWithResults
         .map((c) => combinationResults.get(c.id)?.elements.get(beam.id))
-        .filter((ef): ef is ElementForces => !!ef && ef.stations_mm.length > 1);
+        .filter((ef): ef is ElementForces => !!ef && ef.stations_mm.length > 1)
+        .map(inRef);
       if (efs.length === 0) continue;
       const ref = efs[0];
       data.push({
@@ -549,8 +563,9 @@ export default function DiagramsSection() {
         N: envelopeSeries(efs, (ef) => ef.normalForce),
       });
     } else {
-      const ef = rs.result?.elements.get(beam.id);
-      if (!ef || ef.stations_mm.length < 2) continue;
+      const lokaal = rs.result?.elements.get(beam.id);
+      if (!lokaal || lokaal.stations_mm.length < 2) continue;
+      const ef = inRef(lokaal);
       data.push({
         beam,
         L_mm: ef.L_mm,
@@ -611,7 +626,7 @@ export default function DiagramsSection() {
       <p className="rpt-note">
         {t(
           "report.diagramsConvention",
-          "Tekenconventie: momenten aan de trekzijde getekend, waarden met teken (sagging-positief); eenheden kNm, kN en mm.",
+          "Tekenconventie: momenten aan de trekzijde getekend, waarden met teken (sagging-positief), met elke staaf gerekend van links naar rechts en een staande staaf van voet naar kop; eenheden kNm, kN en mm.",
         )}
       </p>
 

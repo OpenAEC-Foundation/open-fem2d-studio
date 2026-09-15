@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use mechanics::ForcePoint;
+use mechanics::{ForcePoint, Staafstand};
 use nen_en_1990::ConsequenceClass;
 use nen_en_1993_1_1_ltb::LateralBracing;
 use section_properties::SectionProperties;
@@ -108,7 +108,11 @@ pub struct BeamCheckInput {
     /// het rapport.
     pub is_cantilever: bool,
     pub consequence_class: ConsequenceClass,
-    /// Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.
+    /// Zeeg (pre-camber) in mm, POSITIEF = OMHOOG: een zeeg die tegen een
+    /// doorhangende ligger in werkt is een positief getal. De zakking zelf
+    /// ([`Self::deflection_actual_max_mm`]) is negatief omlaag, dus de
+    /// eindzakking is w_fin = w_z + w_zeeg; zie
+    /// [`crate::deflection::w_fin_mm`] voor de grond in NEN-EN 1990 figuur A1.1.
     #[serde(default)]
     pub pre_camber_mm: f64,
     /// Doorbuiging onder de permanente BGT-combinatie (mm), voor w_add.
@@ -157,6 +161,18 @@ pub struct BeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub custom_section: Option<CustomSection>,
+    /// Hoe de staaf in het model staat — alleen voor de benaming van de
+    /// flenzen in de afleiding van de kiptoets.
+    ///
+    /// De krachtenomhullende hoort in de referentierichting van de staaf te
+    /// staan: liggend van links naar rechts, staand van voet naar kop. "Boven-
+    /// flens" en "onderflens" zijn dan bij een liggende staaf letterlijk; bij
+    /// een staande staaf is de bovenflens de LINKERflens en de onderflens de
+    /// RECHTERflens, en dat zet de kern er dan bij. `None` of weglaten =
+    /// [`Staafstand::Liggend`], het gedrag van vóór dit veld.
+    #[serde(default)]
+    #[ts(optional)]
+    pub staafstand: Option<Staafstand>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -205,6 +205,10 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         "q_equiv_n_per_mm",
         "z_a_mm",
         "custom_section",
+        // De staafstand noemt de flenzen in wereldtermen bij een staande
+        // staaf; zonder dit veld in het schema weigert `additionalProperties:
+        // false` een client die hem meestuurt.
+        "staafstand",
     ] {
         assert!(
             props[veld].is_object(),
@@ -403,6 +407,9 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         // is de DERDE omhullende, alleen voor M₀Eqp in (5.19); zonder haar
         // blijft φ_ef onbekend en valt λ_lim terug op A = 0,7.
         "sls_quasi_permanent_envelope", "column",
+        // Noemt bij een staande staaf de zijden in wereldtermen; zonder dit
+        // veld in het schema weigert `additionalProperties: false` het.
+        "staafstand",
     ] {
         assert!(
             props[veld].is_object(),
@@ -411,7 +418,7 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        20,
+        21,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
     );
 

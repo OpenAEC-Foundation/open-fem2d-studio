@@ -1,7 +1,7 @@
 //! Top-level orchestrator: take BeamCheckInput, run all EN 1993 checks,
 //! return BeamCheckResult with full derivation trace.
 
-use mechanics::{ForceStateSnapshot, ForcePoint, InternalForces};
+use mechanics::{ForceStateSnapshot, ForcePoint, InternalForces, Staafstand};
 use nen_en_1993_1_1_section::{
     grade_by_name, S235, SteelGrade,
     ResistanceCalc, CheckStatus,
@@ -886,6 +886,15 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         make_stability(ltb)
     };
     checks.push(ltb_check);
+    // Welke flens "boven" is, in wereldtermen. De kiptoets kiest per steun de
+    // gedrukte flens uit het teken van M_y en de afleiding noemt die flens
+    // BOVEN of ONDER. Bij een staande staaf is dat geen wereldbegrip; zie
+    // `mechanics::Staafstand`.
+    if let Some(tekst) = flenzen_in_wereldtermen(input.staafstand.unwrap_or_default()) {
+        if let Some(kip) = checks.last_mut() {
+            plak_notitie(kip, &tekst);
+        }
+    }
 
     // 8. Combined N+M 6.3.3 (bending-governing location)
     let cm_y = cm_uniform_or_psi(0.0);
@@ -985,4 +994,28 @@ fn n_pl_rd_rd_fn(n_pl_rd_kn: f64, gamma_m1: f64) -> f64 {
 fn nl_getal(v: f64) -> String {
     let s = format!("{v:.1}");
     s.strip_suffix(".0").unwrap_or(&s).replace('.', ",")
+}
+
+/// De kanttekening die bij een STAANDE staaf zegt welke flens in de afleiding
+/// de boven- en welke de onderflens is. `None` bij een liggende staaf: daar is
+/// de benaming letterlijk.
+///
+/// De krachten komen bij een staande staaf van voet naar kop binnen, met
+/// lokaal +y 90° tegen de klok in vanaf de staafas — dat is naar LINKS. "M_y
+/// positief = trek in de onderste vezel" betekent dan trek in de rechterflens
+/// en druk in de linkerflens. Zie `mechanics::Staafstand`.
+pub fn flenzen_in_wereldtermen(stand: Staafstand) -> Option<String> {
+    match stand {
+        Staafstand::Liggend => None,
+        Staafstand::Staand => Some(
+            "Flenzen in wereldtermen. Deze staaf staat overwegend verticaal (75° of meer met de \
+             horizontaal) en is getoetst van VOET naar KOP. De tekenafspraak \"M_y positief = \
+             trek in de onderste vezel\" geldt in die richting: de BOVENflens in deze afleiding \
+             is de LINKERflens van de staaf zoals hij in het model staat, de ONDERflens is de \
+             RECHTERflens. Een positief moment drukt de linkerflens, een negatief moment de \
+             rechterflens. De kipsteunen die als bovenflens en onderflens zijn opgegeven, zitten \
+             dus aan de linker- en de rechterflens."
+                .to_string(),
+        ),
+    }
 }

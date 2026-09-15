@@ -4,5 +4,15 @@
  * Internal forces at a point along a beam.
  * Sign convention: N positive = tension; My positive = bottom fibre tension.
  * Units: kN (forces), kNm (moments).
+ *
+ * "Onder" is hier een LOKAAL begrip: de zijde tegenover lokaal +y, dat 90°
+ * tegen de klok in vanaf de staafas staat. Het wordt pas een wereldbegrip
+ * doordat de aanroeper elke staaf in zijn REFERENTIERICHTING aanlevert —
+ * een liggende staaf van links naar rechts, een staande staaf (75° of meer
+ * met de horizontaal) van voet naar kop; zie
+ * `design-mockup/src/lib/referentierichting.ts`. Bij een liggende staaf is
+ * "onder" dan letterlijk de onderzijde. Bij een staande staaf ligt "onder"
+ * aan de RECHTERzijde en "boven" aan de linkerzijde; [`Staafstand`] laat de
+ * afleiding dat in wereldtermen zeggen.
  */
 export type InternalForces = { n_ed: number, vy_ed: number, vz_ed: number, mt_ed: number, my_ed: number, mz_ed: number, };

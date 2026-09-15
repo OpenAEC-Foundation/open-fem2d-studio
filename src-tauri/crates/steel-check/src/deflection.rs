@@ -86,17 +86,36 @@ pub fn check_deflection(
     }
 }
 
-/// Eindzakking: w_fin = w_z − w_zeeg.
+/// Eindzakking: w_fin = w_z + w_zeeg.
 ///
-/// Beide in mm met teken (negatief = naar beneden). Een zeeg (pre-camber)
-/// wordt in dezelfde tekenconventie opgegeven en compenseert de zakking.
-pub fn w_fin_mm(w_z_mm: f64, w_pre_camber_mm: f64) -> f64 {
-    w_z_mm - w_pre_camber_mm
+/// TEKENS. De zakking w_z is negatief OMLAAG: een doorhangende ligger geeft een
+/// negatief getal. De zeeg w_zeeg is positief OMHOOG: de ligger is vooraf
+/// opgebogen. Een zeeg omhoog verkleint dus een zakking omlaag (−14,4 + 10 =
+/// −4,4 mm), en vergroot een OPWAARTSE zakking, bijvoorbeeld onder windzuiging
+/// (+40 + 10 = +50 mm): die ligger stond al hoger.
+///
+/// NORMGROND. NEN-EN 1990:2002+A1:2019/NB:2019 A1.4.3(2), figuur A1.1 (NB.1):
+/// "w_max maximale doorbuiging, rekening houdend met de zeeg, w_tot − w_c",
+/// met w_c de "zeeg van het onbelaste constructief element". De figuur meet
+/// beide omlaag positief; in de tekenafspraak van deze kern (omhoog positief)
+/// staat daar w_fin = w_z + w_zeeg.
+///
+/// Tot september 2026 stond hier w_z − w_zeeg, met als toelichting "zelfde
+/// tekenconventie als de zakking". De invoerhint zei "negatief = omlaag", dus
+/// een zeeg omhoog werd als +10 ingevoerd — en vergrootte dan de zakking.
+pub fn w_fin_mm(w_z_mm: f64, w_zeeg_omhoog_mm: f64) -> f64 {
+    w_z_mm + w_zeeg_omhoog_mm
 }
 
-/// Bijkomende zakking na oplevering: w_add = w_fin − w_BGT,permanent.
-pub fn w_add_mm(w_fin_mm: f64, w_sls_permanent_mm: f64) -> f64 {
-    w_fin_mm - w_sls_permanent_mm
+/// Bijkomende zakking: w_add = w_z − w_BGT,permanent, ZONDER zeeg.
+///
+/// A1.4.3(3) begrenst "de som van de vervorming w_2 en w_3", de doorbuiging
+/// bovenop het blijvende deel. De zeeg w_c staat in figuur A1.1 alleen in
+/// w_max; hij hoort w_2 + w_3 dus niet te verkleinen. Tot september 2026 werd
+/// hier w_fin gebruikt, zodat een zeeg ook de bijkomende doorbuiging kleiner
+/// maakte dan de norm toelaat.
+pub fn w_add_mm(w_z_mm: f64, w_sls_permanent_mm: f64) -> f64 {
+    w_z_mm - w_sls_permanent_mm
 }
 
 /// Grenswaarde L/noemer in mm.
@@ -350,7 +369,8 @@ pub fn check_deflection_pair(
     let noemer_fin = default_numerator(class, limit_numerator) as f64;
 
     let w_fin = w_fin_mm(w_z_mm, w_pre_camber_mm);
-    let w_add = w_add_mm(w_fin, w_sls_permanent_mm);
+    // Uit w_z en niet uit w_fin: de zeeg hoort niet in w_2 + w_3; zie w_add_mm.
+    let w_add = w_add_mm(w_z_mm, w_sls_permanent_mm);
     let add = w_add_grens(lengte_mm, class, limit_numerator, w_add_limit_numerator, is_cantilever);
 
     let calc = |id: &str,
@@ -388,17 +408,34 @@ pub fn check_deflection_pair(
         }
     };
 
+    let mut fin = calc(
+        "deflection_w_fin", "Doorbuiging w_fin (BGT)", "NEN-EN 1990 (BGT)",
+        w_fin, noemer_fin, lengte_mm,
+        r"w_{fin,z} = w_z + w_{zeeg,z}",
+        vec![],
+    );
+    // Met een zeeg is w_fin niet uit w alleen na te rekenen: dan staan w_z en
+    // de zeeg er als eigen regels bij, met het teken van beide uitgeschreven.
+    if w_pre_camber_mm != 0.0 {
+        let nl2 = |v: f64| format!("{v:.2}").replace('.', ",");
+        fin.variables.push(NamedValue { symbol: "w_z".to_string(), value: w_z_mm, unit: "mm".to_string() });
+        fin.variables.push(NamedValue { symbol: "w_{zeeg}".to_string(), value: w_pre_camber_mm, unit: "mm".to_string() });
+        fin.notes.push(format!(
+            "Zeeg verrekend: w_fin = w_z + w_zeeg = {} + {} = {} mm. De zakking w_z is negatief \
+             omlaag, de zeeg positief omhoog (NEN-EN 1990 A1.4.3(2), figuur A1.1: w_max = w_tot − \
+             w_c, daar beide omlaag positief). De zeeg telt NIET mee in w_add: A1.4.3(3) begrenst \
+             w_2 + w_3, en daarin zit de zeeg niet.",
+            nl2(w_z_mm),
+            nl2(w_pre_camber_mm),
+            nl2(w_fin),
+        ));
+    }
     (
-        calc(
-            "deflection_w_fin", "Doorbuiging w_fin (BGT)", "NEN-EN 1990 (BGT)",
-            w_fin, noemer_fin, lengte_mm,
-            r"w_{fin,z} = w_z - w_{zeeg,z}",
-            vec![],
-        ),
+        fin,
         calc(
             "deflection_w_add", "Doorbuiging w_add (BGT)", add.artikel,
             w_add, add.noemer, add.l_rep_mm,
-            r"w_{add,z} = w_{fin,z} - w_{BGT,perm,z}",
+            r"w_{add,z} = w_z - w_{BGT,perm,z}",
             add.toelichting,
         ),
     )

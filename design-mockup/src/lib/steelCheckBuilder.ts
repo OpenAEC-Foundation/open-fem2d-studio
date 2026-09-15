@@ -32,6 +32,12 @@ import {
   naarCustomSection,
   zoekEigenDoorsnede,
 } from "./profieleditor/eigenDoorsnedenStore";
+import {
+  referentieVanStaaf,
+  toetsdataInReferentierichting,
+  zeegNotities,
+  zeegVoorToets,
+} from "./referentierichting";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -833,7 +839,11 @@ function vloerDakEis(
  *  - blijvende BGT-zakking (w1) niet af te leiden uit de combinatieresultaten
  *    → 0, dus w_add = w_fin; dat staat als notitie in het rapport.
  */
-export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
+export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResult {
+  // DE GRENS tussen solver en toetsing: elke staaf in zijn referentierichting,
+  // met gespiegelde krachten, zakkingen en kipsteunfracties — zie
+  // `lib/referentierichting.ts`. Alles hieronder ziet alleen die staven.
+  const data = toetsdataInReferentierichting(ruweData);
   const inputs: BeamCheckInput[] = [];
   const skipped: CheckSkip[] = [];
 
@@ -911,7 +921,8 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
     const govPoints = forcesEnvelope.filter((p) => p.combination_id === govComboId);
 
     // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
-    const cfg = beam.checkConfig ?? {};
+    // Bij een staande staaf zonder zeeg: zie `zeegVoorToets`.
+    const cfg = zeegVoorToets(beam, data.nodes);
     const doorbuiging = bepaalDoorbuigingsInvoer(beam, data);
 
     inputs.push({
@@ -925,6 +936,11 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
         top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
         bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom),
       },
+      // Bij een staande staaf noemt de kern de boven- en onderflens in
+      // wereldtermen (links en rechts); weglaten betekent liggend.
+      ...(referentieVanStaaf(beam, data.nodes).staafstand === "Staand"
+        ? { staafstand: "Staand" as const }
+        : {}),
       // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
       // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
       // tussen plaatsen met een kipsteun aan beide flenzen, anders de
@@ -941,7 +957,7 @@ export function buildSteelCheckInputs(data: SteelBuildData): SteelBuildResult {
       deflection_add_limit_numerator: doorbuiging.noemerAdd,
       // Waar de verplaatsing vandaan komt, uit welke combinatie, en wat er bij
       // is aangenomen. Landt in de notes van de w_fin-regel van het rapport.
-      deflection_notes: doorbuiging.notes,
+      deflection_notes: [...doorbuiging.notes, ...zeegNotities(beam, data.nodes)],
       // mm met teken: bij een ligger het veldmaximum vanaf de koorde
       // (negatief = omlaag), bij een kolom de zijdelingse verplaatsing.
       deflection_actual_max_mm: doorbuiging.wMm,

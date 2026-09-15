@@ -679,6 +679,16 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         vanaf de startknoop.
                       </div>
                     )}
+                    {/* Bij een staande staaf is "boven" geen wereldbegrip: de
+                        toetsing rekent van voet naar kop, en dan wijst lokaal
+                        +y naar links. Zie lib/referentierichting.ts. */}
+                    {isOverwegendVerticaal(beam, nodes) && (
+                      <div className="fem-prop-hint">
+                        Staande staaf, getoetst van voet naar kop: {sleutel === "boven"
+                          ? "boven is hier de LINKERzijde"
+                          : "onder is hier de RECHTERzijde"} zoals de staaf in het model staat.
+                      </div>
+                    )}
                     {huidig.length === 0 && (
                       <div className="fem-prop-hint">
                         Vul een aantal in voor gelijke verdeling, of typ zelf fracties (0–1).
@@ -749,6 +759,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               <div className="fem-prop-hint">
                 Zonder korf wordt de staaf niet getoetst; dat staat dan met reden in het toetsingspaneel.
               </div>
+              {isOverwegendVerticaal(beam, nodes) && (
+                <div className="fem-prop-hint">
+                  Staande staaf, getoetst van voet naar kop: de ONDERwapening ligt RECHTS en de
+                  BOVENwapening LINKS, zoals de staaf in het model staat. Een positief moment geeft
+                  trek rechts.
+                </div>
+              )}
             </Section>
           )}
 
@@ -842,6 +859,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   })}
                 />
               </Row>
+            )}
+            {!isHout && !isBeton && (
+              <div className="fem-prop-hint">{t("cfg.preCamberHint")}</div>
             )}
           </Section>
         </div>

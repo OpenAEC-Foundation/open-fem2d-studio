@@ -780,7 +780,14 @@ pub fn dekkingslijn(verzoek: DekkingslijnVerzoek) -> Result<DekkingslijnAntwoord
         steunpunten: d.steunpunten.iter().map(uit_steunpunt).collect(),
         uc_moment_max,
         uc_dwarskracht_max,
-        notes: d.toelichting.clone(),
+        // Bij een staande staaf zeggen "onder" en "boven" hierboven niets over
+        // links en rechts; de kanttekening zegt het in wereldtermen.
+        notes: d
+            .toelichting
+            .iter()
+            .cloned()
+            .chain(crate::orchestrator::zijden_in_wereldtermen(b.staafstand.unwrap_or_default()))
+            .collect(),
     })
 }
 
@@ -989,6 +996,7 @@ mod tests {
             // blijft deze test precies de test die hij was.
             column: None,
             sls_quasi_permanent_envelope: vec![],
+            staafstand: None,
         }
     }
 

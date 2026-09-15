@@ -333,6 +333,10 @@ const ALLEEN_BRON = new Map([
     "zwakke-as",
     "knik om de zwakke as over de hele keten: de invoerbouwers (een leeg kniklengteveld gaat als 0 door), de spiegel `lib/kniklengte.ts` die de placeholder in het eigenschappenpaneel voedt — die staat buiten de barrel — en de toetsbrug als apart proces voor de echte EN 1993- en EN 1995-kern, die zelf de kniklengte kiest en haar herkomst noemt. Tegen de sidecarbundel zou de test juist de spiegel en de Rust-kern overslaan die hij tegen elkaar moet houden",
   ],
+  [
+    "tekenrichting",
+    "stuurt dezelfde constructie in beide tekenrichtingen door de hele toetsketen en eist gelijke uitkomsten plus de handberekening: de grens `lib/referentierichting.ts`, de invoerbouwers voor staal en beton, de dekkingslijnbouwer, en de toetsbrug als apart proces voor de echte EN 1992- en EN 1993-kern. De toetsbrug hoort niet in de sidecarbundel, en de betonbouwer met zijn korven staat buiten de barrel; tegen de bundel zou de test juist de kernen overslaan die de wereldtermen in de afleiding zetten",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import type { ExposureClass } from "./ExposureClass";
 import type { ForcePoint } from "../steel/ForcePoint";
 import type { ReinforcementCage } from "./ReinforcementCage";
 import type { ReinforcementZones } from "./ReinforcementZones";
+import type { Staafstand } from "../steel/Staafstand";
 import type { SteelBranch } from "./SteelBranch";
 import type { StructuralClass } from "./StructuralClass";
 import type { StructuralSystem } from "./StructuralSystem";
@@ -190,4 +191,16 @@ sls_quasi_permanent_envelope: Array<ForcePoint>,
  * Er wordt niets aangenomen — zie [`ConcreteColumnInput`] voor waarom
  * geschoord en l₀ geen standaardwaarde mogen hebben.
  */
-column?: ConcreteColumnInput, };
+column?: ConcreteColumnInput, 
+/**
+ * Hoe de staaf in het model staat — alleen voor de benaming van de zijden
+ * in de afleiding.
+ *
+ * De krachtenomhullende en de zones horen in de referentierichting van de
+ * staaf te staan: liggend van links naar rechts, staand van voet naar
+ * kop. "Onderwapening" en "bovenwapening" zijn dan bij een liggende staaf
+ * letterlijk; bij een staande staaf ligt de onderwapening RECHTS en de
+ * bovenwapening LINKS, en dat zet de kern er bij elke toets die een
+ * trekzijde kiest bij. `None` of weglaten = [`Staafstand::Liggend`].
+ */
+staafstand?: Staafstand, };

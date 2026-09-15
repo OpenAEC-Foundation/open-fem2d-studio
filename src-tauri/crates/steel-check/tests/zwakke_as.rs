@@ -85,6 +85,7 @@ fn staaf(
         q_equiv_n_per_mm: 8.0 * m_top_knm * 1e6 / (l_mm * l_mm),
         z_a_mm: 100.0,
         custom_section: None,
+        staafstand: None,
     })
 }
 

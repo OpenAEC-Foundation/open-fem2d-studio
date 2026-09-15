@@ -62,6 +62,7 @@ import {
   naarCustomSection,
   zoekEigenDoorsnede,
 } from "./profieleditor/eigenDoorsnedenStore";
+import { toetsdataInReferentierichting } from "./referentierichting";
 import type { CustomSection } from "./types/steel/CustomSection";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
@@ -262,7 +263,9 @@ export interface TimberBuildResult {
   skipped: CheckSkip[];
 }
 
-export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult {
+export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildResult {
+  // Elke staaf in zijn referentierichting — zie `lib/referentierichting.ts`.
+  const data = toetsdataInReferentierichting(ruweData);
   const inputs: TimberBeamCheckInput[] = [];
   const skipped: CheckSkip[] = [];
 
