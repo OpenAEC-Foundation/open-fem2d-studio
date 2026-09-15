@@ -15,6 +15,7 @@ fn veld(m_a: f64, m_b: f64, l_st: f64, tussen_gaffels: bool) -> Kipveld {
         // over β, L_kip en de kipkromme.
         m_midden_knm: 0.0,
         tussen_gaffels,
+        uitkraging: false,
     }
 }
 

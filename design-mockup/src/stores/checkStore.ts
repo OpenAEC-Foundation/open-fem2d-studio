@@ -129,6 +129,13 @@ export interface CheckRunData {
    * onderscheid niet gemaakt kon worden.
    */
   supports?: Support[];
+  /**
+   * Platen (wandschijven). De staal- en houtbouwer gebruiken de hoekknopen
+   * om een staafeind in een plaat niet als vrij eind aan te zien
+   * (`lib/doorgaandeLijn.ts`). Optioneel: zonder lijst geldt een knoop zonder
+   * oplegging en zonder andere staaf als vrij.
+   */
+  plates?: { nodeIds: number[] }[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
   /**
@@ -297,9 +304,13 @@ export const useCheckStore = create<CheckState>((set) => ({
       // ze als "geen ondersteunde staalsoort" terwijl de spanningskern ze
       // wél toetst. Zelfde reden als waarom de houtbouwer de CLT-staven niet
       // ziet.
+      // `alleBeams`: de doorgaande lijn en het vrije staafeind worden op het
+      // HELE model herkend, ook als een deel van de staven hieronder wordt
+      // weggefilterd.
       const steel = buildSteelCheckInputs({
         ...data,
         beams: data.beams.filter((b) => !isVrijMateriaal(b.material)),
+        alleBeams: data.beams,
         profileDb,
       });
       // De houtbouwer krijgt de CLT-staven niet te zien: qua materiaal zijn
@@ -308,6 +319,7 @@ export const useCheckStore = create<CheckState>((set) => ({
       const timber = buildTimberCheckInputs({
         ...data,
         beams: data.beams.filter((b) => !isCltProfiel(b.profile)),
+        alleBeams: data.beams,
         supportedGrades: timberGrades,
       });
       const clt = buildCltCheckInputs({ ...data, supportedGrades: timberGrades });

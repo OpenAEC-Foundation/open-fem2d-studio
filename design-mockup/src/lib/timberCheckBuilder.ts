@@ -57,6 +57,7 @@ import {
   deflectionNotesFor,
   extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
+import { voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
 import {
   eigenNaamVan,
   isEigenProfiel,
@@ -274,6 +275,10 @@ export interface TimberBuildData {
   beams: Beam[];
   /** Opleggingen; zie `SteelBuildData.supports`. */
   supports?: Support[];
+  /** Alle staven van het model; zie `SteelBuildData.alleBeams`. */
+  alleBeams?: Beam[];
+  /** Platen; zie `SteelBuildData.plates`. */
+  plates?: { nodeIds: number[] }[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
   /** Runtime-lijst uit `list_timber_grades`; leeg → statische fallback. */
@@ -287,10 +292,13 @@ export interface TimberBuildResult {
 }
 
 export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildResult {
-  // Elke staaf in zijn referentierichting — zie `lib/referentierichting.ts`.
-  const data = toetsdataInReferentierichting(ruweData);
+  // Eerst de doorgaande lijnen (een door tussenknopen geknipte staaf als één
+  // staaf), dan elke staaf in zijn referentierichting — zie
+  // `lib/doorgaandeLijn.ts` en `lib/referentierichting.ts`.
+  const lijn = voegDoorgaandeLijnenSamen(ruweData);
+  const data = toetsdataInReferentierichting(lijn.data);
   const inputs: TimberBeamCheckInput[] = [];
-  const skipped: CheckSkip[] = [];
+  const skipped: CheckSkip[] = [...lijn.overgeslagen];
 
   const grades =
     data.supportedGrades && data.supportedGrades.length > 0
@@ -451,6 +459,7 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     // daarom niet aan.
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+    const staafNotities = lijn.notities.get(beam.id);
 
     inputs.push({
       beam_id: beam.id,
@@ -570,6 +579,9 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
         ...instNotes,
         ...wQuasi.notes,
       ],
+      // De toelichting bij een doorgaande lijn die als een staaf is getoetst;
+      // de kern zet hem bij de kolomtoets, de kiptoets en de eindzakking.
+      ...(staafNotities && staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}),
     });
   }
 

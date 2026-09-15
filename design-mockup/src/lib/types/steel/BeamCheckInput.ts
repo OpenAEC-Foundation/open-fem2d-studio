@@ -4,6 +4,7 @@ import type { CustomSection } from "./CustomSection";
 import type { DeflectionClass } from "./DeflectionClass";
 import type { ForcePoint } from "./ForcePoint";
 import type { LateralBracing } from "./LateralBracing";
+import type { Staafeinden } from "./Staafeinden";
 import type { Staafstand } from "./Staafstand";
 
 /**
@@ -150,4 +151,21 @@ staafstand?: Staafstand,
  * niet in de afleiding en niet in het rapport komen. `None` of een lege
  * lijst = geen kanttekening.
  */
-staafstand_notities?: Array<string>, };
+staafstand_notities?: Array<string>, 
+/**
+ * Wat er aan de twee staafeinden zit — zie [`Staafeinden`]. `None` of
+ * weglaten = beide een gaffel, het gedrag van vóór dit veld.
+ */
+staafeinden?: Staafeinden, 
+/**
+ * Toelichtingen bij de STAAF ALS GEHEEL, die de bouwer van de invoer
+ * opstelt en die de kern letterlijk bij de kniktoets (6.3.1), de kiptoets
+ * (6.3.2) en de eindzakking zet. Rekenen nergens mee.
+ *
+ * WAAROM. Een staaf die door tussenknopen in delen is geknipt, wordt door
+ * de invoerbouwer als één doorgaande lijn getoetst; welke delen dat zijn,
+ * hoe lang de lijn is en welke tussenknopen niet als steun tellen, weet
+ * alleen de bouwer. Zonder dit kanaal zou de lezer van het rapport een
+ * staaf van 12 m zien waar het model er twee van 6 m toont, zonder uitleg.
+ */
+staaf_notities?: Array<string>, };

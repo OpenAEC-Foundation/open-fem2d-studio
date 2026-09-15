@@ -188,6 +188,7 @@ fn invoer(
         deflection_limit_fin: 200.0,
         deflection_limit_add: 300.0,
         deflection_notes: vec![],
+        staaf_notities: None,
     }
 }
 

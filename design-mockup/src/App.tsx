@@ -1266,6 +1266,8 @@ function App() {
       // De doorbuigingstoets onderscheidt hiermee een echt tussensteunpunt van
       // een knoop waar een ligger alleen is doorgeknipt.
       supports: fem.supports,
+      // Een staafeind in een plaat is geen vrij eind (`lib/doorgaandeLijn.ts`).
+      plates: fem.plates,
       // De toetsbouwers zoeken hun combinaties in deze lijst (de karakteristieke
       // BGT voor de doorbuiging, de quasi-blijvende voor de kruip). Ze moet dus
       // gelijklopen met de sleutels van `combinationResults`; een combinatie

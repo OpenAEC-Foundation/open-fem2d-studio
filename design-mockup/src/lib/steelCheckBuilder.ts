@@ -43,6 +43,7 @@ import {
   zeegNotities,
   zeegVoorToets,
 } from "./referentierichting";
+import { bepaalStaafeinden, voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
 import { STEEL_SECTIONS } from "./steelSections.generated";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
@@ -221,6 +222,15 @@ export interface SteelBuildData {
    * onderscheid niet worden gemaakt en zegt de notitie in het rapport dat ook.
    */
   supports?: Support[];
+  /**
+   * Alle staven van het model, ook die niet in `beams` staan. Een doorgaande
+   * lijn en een vrij staafeind worden op het hele model herkend
+   * (`lib/doorgaandeLijn.ts`); ontbreekt de lijst, dan geldt `beams` als het
+   * hele model.
+   */
+  alleBeams?: Beam[];
+  /** Platen: een hoekknoop van een plaat is geen vrij staafeind. */
+  plates?: { nodeIds: number[] }[];
   combinations: LoadCombination[];
   /** Combinatieresultaten uit de laatste solver-run (per combinatie-id). */
   combinationResults: Map<number, SolverResult>;
@@ -931,12 +941,17 @@ function vloerDakEis(
  *    → 0, dus w_add = w_fin; dat staat als notitie in het rapport.
  */
 export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResult {
+  // EERST de doorgaande lijnen: staven die door een tussenknoop zonder
+  // oplegging in delen zijn geknipt, worden als één staaf getoetst — zie
+  // `lib/doorgaandeLijn.ts` (basisaudit nr 29, kipgedrag bij een tussenknoop).
+  const lijn = voegDoorgaandeLijnenSamen(ruweData);
   // DE GRENS tussen solver en toetsing: elke staaf in zijn referentierichting,
   // met gespiegelde krachten, zakkingen en kipsteunfracties — zie
   // `lib/referentierichting.ts`. Alles hieronder ziet alleen die staven.
-  const data = toetsdataInReferentierichting(ruweData);
+  const data = toetsdataInReferentierichting(lijn.data);
+  const alleBeams = ruweData.alleBeams ?? ruweData.beams;
   const inputs: BeamCheckInput[] = [];
-  const skipped: CheckSkip[] = [];
+  const skipped: CheckSkip[] = [...lijn.overgeslagen];
 
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
 
@@ -1039,6 +1054,12 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
     // Bij een staande staaf zonder zeeg: zie `zeegVoorToets`.
     const cfg = zeegVoorToets(beam, data.nodes);
     const doorbuiging = bepaalDoorbuigingsInvoer(beam, data);
+    // Wat er aan de staafeinden zit — een vrij eind (uitkraging) of een
+    // doorlopend eind is geen gaffel; de kern handelt daarnaar. Bepaald op de
+    // staaf in referentierichting, dus `begin` is x = 0 van de toetsinvoer.
+    const ledenVanLijn = new Set(lijn.lijnen.get(beam.id)?.delen.map((d) => d.beam.id) ?? []);
+    const staafeinden = bepaalStaafeinden(beam, data.nodes, alleBeams, data.supports, ledenVanLijn, ruweData.plates);
+    const staafNotities = lijn.notities.get(beam.id);
 
     inputs.push({
       beam_id: beam.id,
@@ -1064,6 +1085,11 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
         const notities = richtingssprongNotities(beam, data.nodes, "staal");
         return notities.length > 0 ? { staafstand_notities: notities } : {};
       })(),
+      // Alleen meegeven als een staafeind géén gaffel is: zo blijft de invoer
+      // van elke gewone staaf byte-gelijk aan vroeger, en zegt een aanwezig
+      // veld de lezer meteen dat hier iets bijzonders is.
+      ...(staafeinden.begin !== "Gaffel" || staafeinden.eind !== "Gaffel" ? { staafeinden } : {}),
+      ...(staafNotities && staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}),
       // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
       // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
       // tussen plaatsen met een kipsteun aan beide flenzen, anders de

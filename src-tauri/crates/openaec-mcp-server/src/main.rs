@@ -12,6 +12,11 @@
 //! Heavy work (PDF generation, steel checks) runs on
 //! `tokio::task::spawn_blocking` so the stdio reader never stalls.
 
+// De toolschema's zijn één grote `json!`-boom; met de velden `staafeinden` en
+// `staaf_notities` (september 2026) liep die tegen de standaardgrens van 128
+// macro-expansies aan.
+#![recursion_limit = "512"]
+
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -357,7 +362,19 @@ fn tool_definitions() -> Value {
                     "staafstand": { "type": "string", "enum": ["Liggend", "Staand"], "default": "Liggend",
                         "description": "Hoe de staaf in het model staat; rekent nergens mee. De krachtenomhullende hoort in de referentierichting te staan: 'Liggend' (minder dan 75 graden met de horizontaal) van links naar rechts, 'Staand' van voet naar kop. Bij 'Staand' zet de kiptoets erbij dat de BOVENflens de linkerflens en de ONDERflens de rechterflens is. Weglaten = 'Liggend'." },
                     "staafstand_notities": { "type": "array", "items": { "type": "string" }, "default": [],
-                        "description": "Kanttekeningen bij de staafstand; rekenen nergens mee en komen letterlijk in de 'notes' van de kiptoets. De bouwer van `check_fem_model` en van de app zet hier een waarschuwing bij een naar links hellende staaf dicht bij de grens van 75 graden: daar keert om aan welke fysieke zijde de BOVENflens ligt (tot 75 graden het bovenvlak, daarboven de linkerzijde = het ondervlak). Weglaten = geen kanttekening." }
+                        "description": "Kanttekeningen bij de staafstand; rekenen nergens mee en komen letterlijk in de 'notes' van de kiptoets. De bouwer van `check_fem_model` en van de app zet hier een waarschuwing bij een naar links hellende staaf dicht bij de grens van 75 graden: daar keert om aan welke fysieke zijde de BOVENflens ligt (tot 75 graden het bovenvlak, daarboven de linkerzijde = het ondervlak). Weglaten = geen kanttekening." },
+                    "staafeinden": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["begin", "eind"],
+                        "description": "Wat er aan de twee staafeinden zit, in de referentierichting (begin = x = 0). 'Gaffel' = oplegging of aansluiting: zijdelings gesteund en torsievast, de aanname van vóór dit veld. 'Vrij' = geen oplegging en geen aansluitende staaf (uitkraging, vrijstaande kolom): de kniklengte-terugval wordt 2*L en de kiptoets rekent met de vervangende ligger van tabel NB.NB.1 geval 5 (L_g = L_st = L_kip = 2*L, C1 = 1,0, C2 = 0). 'Doorlopend' = de staaf loopt zonder oplegging door in een staaf met een andere doorsnede: kip (en 6.3.3) wordt geweigerd met reden, en de kniktoets alleen uitgevoerd als beide kniklengtes zijn opgegeven. Weglaten = beide 'Gaffel'. `check_fem_model` en de app vullen dit uit het model.",
+                        "properties": {
+                            "begin": { "type": "string", "enum": ["Gaffel", "Vrij", "Doorlopend"] },
+                            "eind":  { "type": "string", "enum": ["Gaffel", "Vrij", "Doorlopend"] }
+                        }
+                    },
+                    "staaf_notities": { "type": "array", "items": { "type": "string" }, "default": [],
+                        "description": "Toelichtingen bij de staaf als geheel; rekenen nergens mee en komen letterlijk in de 'notes' van de kniktoets (6.3.1), de kiptoets (6.3.2) en de eindzakking. `check_fem_model` en de app zetten hier dat een door tussenknopen geknipte staaf als één doorgaande lijn is getoetst, over welke lengte, en welke tussenknopen niet als steun tellen. Weglaten = niets te melden." }
                 },
                 "required": [
                     "beam_id", "profile_name", "steel_grade", "length_m",

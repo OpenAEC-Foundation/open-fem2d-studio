@@ -700,6 +700,10 @@ function rekenDoor(payload: Record<string, unknown>) {
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
     beams: staafSelectie,
+    // Het hele model, ook buiten `beam_ids`: een doorgaande lijn en een vrij
+    // staafeind worden op alle staven herkend (`lib/doorgaandeLijn.ts`).
+    alleBeams: teToetsen,
+    plates: gelezen.model.plates,
     // Nodig om een tussensteunpunt te onderscheiden van een knoop waar een
     // ligger alleen is doorgeknipt; zonder deze lijst zou de doorbuigingstoets
     // dat verschil niet kunnen melden.

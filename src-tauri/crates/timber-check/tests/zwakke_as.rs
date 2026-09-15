@@ -72,6 +72,7 @@ fn houten_staaf(
         deflection_limit_fin: 250.0,
         deflection_limit_add: 333.0,
         deflection_notes: vec![],
+        staaf_notities: None,
     })
 }
 

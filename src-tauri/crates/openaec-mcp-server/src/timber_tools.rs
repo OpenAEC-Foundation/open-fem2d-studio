@@ -230,7 +230,9 @@ fn schema_houten_staaf() -> Value {
             "deflection_limit_add": { "type": "number", "exclusiveMinimum": 0, "default": 333,
                 "description": "Noemer n in de eis L/n voor de bijkomende zakking w_add. Default 333, de NB-waarde." },
             "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
-                "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken uit welke combinatie 'deflection_quasi_perm_mm' komt — of dat die combinatie niet gevonden is en er op de volle last is teruggevallen." }
+                "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken uit welke combinatie 'deflection_quasi_perm_mm' komt — of dat die combinatie niet gevonden is en er op de volle last is teruggevallen." },
+            "staaf_notities": { "type": "array", "items": { "type": "string" }, "default": [],
+                "description": "Toelichtingen bij de staaf als geheel; rekenen nergens mee en komen letterlijk in de 'notes' van de kolomtoets (6.3.2), de kiptoets (6.3.3) en de eindzakking. De app en `check_fem_model` zetten hier dat een door tussenknopen geknipte staaf als één doorgaande lijn is getoetst, over welke lengte, en welke tussenknopen niet als steun tellen. Weglaten = niets te melden." }
         },
         "required": [
             "beam_id", "width_mm", "height_mm", "strength_class",
@@ -460,6 +462,7 @@ mod tests {
             "deflection_limit_fin",
             "deflection_limit_add",
             "deflection_notes",
+            "staaf_notities",
         ];
         for v in verwacht {
             assert!(velden.contains_key(v), "het staafschema mist `{v}`");

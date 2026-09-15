@@ -42,6 +42,9 @@ pub const HERKOMST_OPGEGEVEN: &str = "opgegeven";
 pub const HERKOMST_STAAFLENGTE: &str = "staaflengte (terugval)";
 /// Het label van een kniklengte die uit de zijdelingse steunen is afgeleid.
 pub const HERKOMST_KIPSTEUNEN: &str = "uit de kipsteunen";
+/// Het label van de terugval bij een staaf met een VRIJ staafeind: tweemaal
+/// de staaflengte, de kniklengte van de ingeklemd-vrije staaf.
+pub const HERKOMST_VRIJ_EIND: &str = "2 × staaflengte (vrij staafeind, terugval)";
 
 /// Twee steunen, één aan elke flens (of rand), gelden als één steunpunt voor
 /// de hele doorsnede als ze hooguit zoveel uit elkaar liggen.
@@ -58,6 +61,10 @@ pub enum KniklengteHerkomst {
     Opgegeven,
     Staaflengte,
     Kipsteunen,
+    /// Terugval voor een staaf met één vrij staafeind (uitkraging, vrijstaande
+    /// kolom): L_cr = 2·L. De terugval op de staaflengte veronderstelt dat
+    /// beide staafeinden zijdelings gesteund zijn, en een vrij eind is dat niet.
+    VrijEind,
 }
 
 impl KniklengteHerkomst {
@@ -66,6 +73,7 @@ impl KniklengteHerkomst {
             Self::Opgegeven => HERKOMST_OPGEGEVEN,
             Self::Staaflengte => HERKOMST_STAAFLENGTE,
             Self::Kipsteunen => HERKOMST_KIPSTEUNEN,
+            Self::VrijEind => HERKOMST_VRIJ_EIND,
         }
     }
 }
@@ -145,6 +153,38 @@ impl Kniklengte {
             in_rekenvlak,
             velden_mm: Vec::new(),
             toelichting: Vec::new(),
+        }
+    }
+
+    /// De terugval voor een staaf met één VRIJ staafeind (geen oplegging en geen
+    /// aansluitende staaf): L_cr = 2·L, de kniklengte van de ingeklemd-vrije
+    /// staaf (het Euler-geval met een vrije top). `plaats` noemt welk eind vrij
+    /// is, voor de toelichting.
+    ///
+    /// Waarom niet de staaflengte: die terugval veronderstelt dat beide
+    /// staafeinden zijdelings gesteund zijn (zie [`bepaal_kniklengte`]). Een
+    /// vrij eind wordt door niets vastgehouden; met L_cr = L zou een
+    /// vrijstaande kolom een viermaal te hoge kritieke kracht krijgen.
+    pub fn vrij_eind(as_naam: &str, lengte_mm: f64, in_rekenvlak: bool, plaats: &str) -> Self {
+        let l_cr_mm = 2.0 * lengte_mm;
+        Self {
+            as_naam: as_naam.to_string(),
+            l_cr_mm,
+            staaflengte_mm: lengte_mm,
+            herkomst: KniklengteHerkomst::VrijEind,
+            in_rekenvlak,
+            velden_mm: Vec::new(),
+            toelichting: vec![format!(
+                "Er is geen kniklengte om de {as_naam}-as opgegeven, en {plaats} \
+                 is VRIJ: geen oplegging en geen aansluitende staaf. De gewone terugval op de \
+                 staaflengte veronderstelt dat beide staafeinden zijdelings gesteund zijn, en dat \
+                 is hier niet zo. Aangehouden is daarom L_cr,{as_naam} = 2·L = {} mm, de \
+                 kniklengte van de ingeklemd-vrije staaf (Euler-geval met vrije top), waarbij het \
+                 andere staafeind als volledig ingeklemd is aangenomen — bij een scharnierend \
+                 eind is zo'n staaf een mechanisme. Wie een andere kniklengte kan onderbouwen, \
+                 geeft haar op.",
+                nl(l_cr_mm, 0)
+            )],
         }
     }
 
@@ -479,6 +519,7 @@ pub fn kniklengte_deelstap(k: &Kniklengte, article: &str, norm_in_vlak: &str) ->
     let (formule, ingevuld) = match k.herkomst {
         KniklengteHerkomst::Opgegeven => (format!(r"{symbool} = \text{{opgegeven}}"), String::new()),
         KniklengteHerkomst::Staaflengte => (format!(r"{symbool} = L"), String::new()),
+        KniklengteHerkomst::VrijEind => (format!(r"{symbool} = 2 \cdot L"), String::new()),
         KniklengteHerkomst::Kipsteunen => (
             format!(r"{symbool} = \max_i \left( x_{{i+1}} - x_i \right)"),
             format!(

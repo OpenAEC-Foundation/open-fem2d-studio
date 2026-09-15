@@ -213,12 +213,21 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         // De waarschuwing bij een naar links hellende staaf dicht bij 75°, waar
         // de bovenflens van het bovenvlak naar het ondervlak springt.
         "staafstand_notities",
+        // De staafeinden (vrij, doorlopend) en de toelichting bij een
+        // doorgaande lijn; zonder deze velden in het schema neemt de kern een
+        // vrij eind stil als gaffel.
+        "staafeinden",
+        "staaf_notities",
     ] {
         assert!(
             props[veld].is_object(),
             "veld '{veld}' ontbreekt in het schema; een client laat het dan op de standaardwaarde vallen"
         );
     }
+    assert_eq!(
+        props["staafeinden"]["properties"]["begin"]["enum"],
+        json!(["Gaffel", "Vrij", "Doorlopend"])
+    );
 
     // Enums die de kern werkelijk kent. `FloorBrittlePartitions` hoort bij het
     // eerste gedachtestreepje van A1.4.3(3) (vloeren die scheurgevoelige
