@@ -2,11 +2,21 @@
  * Toast — lightweight top-right notification banners. Non-blocking (unlike
  * alert()). Rendered via a portal-like fixed container. Manage state through
  * the `notify.ts` helper so call-sites stay tiny.
+ *
+ * Een melding kan één actieknop dragen (`actie`). Aanleiding: bij het openen
+ * van een ouder projectbestand vervangt de app de combinaties, en de weg terug
+ * ("Ongedaan maken") hoort in dezelfde melding te staan als het bericht.
  */
 import { useEffect, useState } from "react";
 import "./Toast.css";
 
 export type ToastKind = "info" | "success" | "warning" | "soon";
+
+/** Een knop in de melding; na het klikken verdwijnt de melding. */
+export interface ToastActie {
+  label: string;
+  onClick: () => void;
+}
 
 export interface ToastData {
   id: number;
@@ -14,6 +24,7 @@ export interface ToastData {
   title: string;
   body?: string;
   duration?: number;   // ms, default 4500
+  actie?: ToastActie;
 }
 
 let nextId = 1;
@@ -52,6 +63,14 @@ export default function ToastHost() {
           <div className="toast-body">
             <div className="toast-title">{t.title}</div>
             {t.body && <div className="toast-text">{t.body}</div>}
+            {t.actie && (
+              <button
+                className="toast-actie"
+                onClick={() => { t.actie!.onClick(); dismiss(t.id); }}
+              >
+                {t.actie.label}
+              </button>
+            )}
           </div>
           <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Sluiten">×</button>
         </div>

@@ -53,9 +53,8 @@ import {
   type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
 import {
-  beoordeelCombinatiesBijOpenen,
   meldingenBelastinggevallen,
-  verwijderWeesFactoren,
+  openCombinatieStaat,
 } from "../lib/combinatieBeheer";
 import {
   GEVOLGKLASSEN,
@@ -232,11 +231,11 @@ interface GelezenModel {
   /** Gevolgklasse uit de projectgegevens van het bestand, of `null`. */
   gevolgklasseUitBestand: Gevolgklasse | null;
   /**
-   * Het bestand draagt id-tellers en is dus door een versie van september 2026
-   * of later geschreven: een combinatie zonder kenmerk is daar een bewuste
-   * eigen combinatie. Bij een los model: `false`.
+   * De id-tellers uit het projectbestand, of `undefined`. Alleen voor de
+   * tellers zelf: of een combinatie verouderd is, herkent `openCombinatieStaat`
+   * aan naam en factoren, niet aan het bestaan van tellers.
    */
-  bestandMetTellers: boolean;
+  idTellersUitBestand: { belastinggeval?: number; combinatie?: number } | undefined;
 }
 
 /** Een geldige gevolgklasse, of `null`. */
@@ -299,7 +298,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
         (bestand.projectInfo as { uitgangspunten?: { gevolgklasse?: unknown } } | undefined)
           ?.uitgangspunten?.gevolgklasse,
       ),
-      bestandMetTellers: bestand.idTellers !== undefined,
+      idTellersUitBestand: bestand.idTellers,
     };
   }
 
@@ -350,7 +349,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     nonlinearUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
-    bestandMetTellers: false,
+    idTellersUitBestand: undefined,
   };
 }
 
@@ -380,23 +379,51 @@ function leesGevolgklasse(
  * gebruikscategorie) en de gevolgklasse — zie normcombinaties.ts. Tot
  * september 2026 was die laatste een vaste lijst voor de case-id's 1 t/m 4,
  * ongeacht welke gevallen het model had.
+ *
+ * Een projectbestand gaat door `openCombinatieStaat` — PRECIES de functie
+ * waarmee de app een project opent: factoren voor gevallen die niet bestaan
+ * eruit, en de standaardset van versie 0.3.11 en ouder, standaardcombinaties
+ * van een andere gevolgklasse en verouderde windgeneratorcombinaties
+ * vervangen. Zo rekent `project_path` met dezelfde combinaties als de app na
+ * het openen van hetzelfde bestand. Tot deze correctie rekende de MCP-weg met
+ * de oude set en meldde hij alleen dat die afweek — en bij een bestand met
+ * id-tellers zelfs dat niet (CC3: 87,75 kNm waar 95,625 hoort). Wat er is
+ * vervangen of weggehaald staat in `openMeldingen`, en daarmee in `warnings`.
+ * Combinaties die de aanvrager zelf meestuurt blijven zoals ze zijn: dat is
+ * een uitdrukkelijke keuze, en `meldingenBelastinggevallen` controleert ze.
  */
 function leesCombinaties(
   payload: Record<string, unknown>,
-  uitBestand: LoadCombination[] | null,
-  loadCases: FemModelInvoer["loadCases"],
+  gelezen: GelezenModel,
   gevolgklasse: Gevolgklasse,
-): { lijst: LoadCombination[]; bron: "verzoek" | "bestand" | "standaard" } {
+): { lijst: LoadCombination[]; bron: "verzoek" | "bestand" | "standaard"; openMeldingen: string[] } {
   if (payload.combinations !== undefined) {
     const rauw = eisArray(payload.combinations, "combinations");
     const uit = combinationsFromFile(
       rauw as Parameters<typeof combinationsFromFile>[0],
     );
     if (!uit) throw new InvoerFout("Veld `combinations` is geen geldige lijst.");
-    return { lijst: uit, bron: "verzoek" };
+    return { lijst: uit, bron: "verzoek", openMeldingen: [] };
   }
-  if (uitBestand) return { lijst: uitBestand, bron: "bestand" };
-  return { lijst: defaultCombinations(loadCases, gevolgklasse), bron: "standaard" };
+  if (gelezen.combinatiesUitBestand) {
+    const { staat, afwijking, vervanging } = openCombinatieStaat({
+      loadCases: gelezen.model.loadCases,
+      combinations: gelezen.combinatiesUitBestand,
+      gevolgklasse,
+      idTellers: gelezen.idTellersUitBestand,
+    });
+    return {
+      lijst: staat.combinations,
+      bron: "bestand",
+      openMeldingen: [vervanging?.samenvatting, afwijking?.samenvatting]
+        .filter((x): x is string => typeof x === "string" && x !== ""),
+    };
+  }
+  return {
+    lijst: defaultCombinations(gelezen.model.loadCases, gevolgklasse),
+    bron: "standaard",
+    openMeldingen: [],
+  };
 }
 
 /**
@@ -544,21 +571,11 @@ function rekenDoor(payload: Record<string, unknown>) {
 
   const { klasse: gevolgklasse, aangenomen: klasseAangenomen } =
     leesGevolgklasse(payload, gelezen);
-  const gelezenCombinaties = leesCombinaties(
-    payload,
-    gelezen.combinatiesUitBestand,
-    gelezen.model.loadCases,
-    gevolgklasse,
-  );
+  // Een projectbestand gaat door dezelfde functie als het openen in de app:
+  // wees-factoren eruit, verouderde combinaties vervangen (zie leesCombinaties).
+  const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse);
   const combinatieBron = gelezenCombinaties.bron;
-  // Een projectbestand van vóór september 2026 kan factoren dragen voor een
-  // belastinggeval dat niet meer bestaat (basisaudit nr 14). Ze tellen nergens
-  // mee, maar gaan eruit en worden gemeld — dezelfde functie als bij het
-  // openen in de app.
-  const { combinaties: alleCombinaties, wees: weesFactoren } =
-    combinatieBron === "bestand"
-      ? verwijderWeesFactoren(gelezenCombinaties.lijst, gelezen.model.loadCases)
-      : { combinaties: gelezenCombinaties.lijst, wees: [] };
+  const alleCombinaties = gelezenCombinaties.lijst;
   // Dezelfde selectie als de app (lib/combinatieSelectie): bij een zuivere
   // staalconstructie vallen de ongewijzigde standaardcombinaties 6.15b en
   // 6.16b af, want geen enkele staaltoets leest ze. Dat gebeurt HIER en niet
@@ -663,7 +680,9 @@ function rekenDoor(payload: Record<string, unknown>) {
     // terugkrijgt, moet in het antwoord kunnen lezen waarom.
     waarschuwingen.push(`Combinatie ${weg.id} overgeslagen — ${weg.reden}`);
   }
-  if (klasseAangenomen && combinatieBron === "standaard") {
+  // Ook als de standaardcombinaties uit een bestand komen of bij het inlezen
+  // zijn vervangen: dan rekenen ze evengoed met de aangenomen klasse.
+  if (klasseAangenomen && (combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard))) {
     waarschuwingen.push(
       "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als " +
         "`gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de " +
@@ -676,6 +695,9 @@ function rekenDoor(payload: Record<string, unknown>) {
   // En — dezelfde functie als de app — een blijvend geval met factoren die
   // niet bij een blijvende belasting passen, en standaardcombinaties die
   // ontbreken: dan is de combinatieset stil een deel van de juiste set.
+  // Wat er bij het inlezen van het projectbestand is vervangen of weggehaald —
+  // dezelfde tekst als de melding bij het openen in de app.
+  waarschuwingen.push(...gelezenCombinaties.openMeldingen);
   for (const m of meldingenBelastinggevallen({
     loadCases: gelezen.model.loadCases,
     combinations: combinaties,
@@ -685,16 +707,6 @@ function rekenDoor(payload: Record<string, unknown>) {
     selfWeightEnabled: gelezen.model.selfWeightEnabled,
   })) {
     waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
-  }
-  if (combinatieBron === "bestand") {
-    const afwijking = beoordeelCombinatiesBijOpenen({
-      combinations: alleCombinaties,
-      loadCases: gelezen.model.loadCases,
-      gevolgklasse,
-      eigenCombinatiesBewust: gelezen.bestandMetTellers,
-      weesFactoren,
-    });
-    if (afwijking) waarschuwingen.push(afwijking.samenvatting);
   }
 
   return {
@@ -807,9 +819,7 @@ function opValidate(payload: Record<string, unknown>) {
   // Met de combinaties die een solve zou gebruiken, zodat de droogloop óók
   // meldt welk belastinggeval in geen enkele UGT-combinatie meetelt.
   const { klasse } = leesGevolgklasse(payload, gelezen);
-  const { lijst } = leesCombinaties(
-    payload, gelezen.combinatiesUitBestand, gelezen.model.loadCases, klasse,
-  );
+  const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse);
   const actief = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
     loadCases: gelezen.model.loadCases, gevolgklasse: klasse,
   }).actief;
@@ -819,7 +829,7 @@ function opValidate(payload: Record<string, unknown>) {
   return {
     ok: uitkomst.ok,
     errors: uitkomst.errors,
-    warnings: uitkomst.warnings,
+    warnings: [...openMeldingen, ...uitkomst.warnings],
     counts: {
       nodes: gelezen.model.nodes.length,
       beams: gelezen.model.beams.length,

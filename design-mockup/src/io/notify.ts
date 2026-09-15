@@ -3,7 +3,7 @@
  * mounts near the app root. Falls back to alert() if the ToastHost hasn't
  * mounted yet (edge case; first paint of an error).
  */
-import { pushToast } from "../components/feedback/Toast";
+import { pushToast, type ToastActie } from "../components/feedback/Toast";
 
 /** Toon "binnenkort beschikbaar" voor een feature die nog niet werkt. */
 export function comingSoon(label: string, note?: string): void {
@@ -37,10 +37,18 @@ export function notifySuccess(title: string, body?: string): void {
   }
 }
 
-/** Waarschuwing (amber). */
-export function notifyWarning(title: string, body?: string): void {
+/**
+ * Waarschuwing (amber). Met `actie` krijgt de melding een knop — zet dan ook
+ * een langere `duur` (ms), zodat de gebruiker tijd heeft om te lezen en te
+ * kiezen.
+ */
+export function notifyWarning(
+  title: string,
+  body?: string,
+  opties?: { actie?: ToastActie; duur?: number },
+): void {
   try {
-    pushToast({ kind: "warning", title, body });
+    pushToast({ kind: "warning", title, body, actie: opties?.actie, duration: opties?.duur });
   } catch {
     alert(body ? `${title}\n\n${body}` : title);
   }

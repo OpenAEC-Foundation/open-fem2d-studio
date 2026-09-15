@@ -10,7 +10,7 @@ import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
-import type { CombinatieAfwijking, GevalMelding } from "../../lib/combinatieBeheer";
+import type { CombinatieAfwijking, CombinatieVervanging, GevalMelding } from "../../lib/combinatieBeheer";
 import type { DisplayFlags } from "./FemResultsOverlay";
 import { PLAAT_COMPONENTEN } from "./FemCanvas";
 import { STEEL_GRADES } from "./BarPropertiesDialog";
@@ -432,8 +432,10 @@ interface FemProjectTreeProps {
    * zijn last telt dan in elke toets als nul.
    */
   belastingMeldingen?: GevalMelding[];
-  /** Combinaties die bij het openen afweken van de standaard; null = niets. */
+  /** Wat er bij het openen verder te melden was (wees-factoren e.d.); null = niets. */
   combinatieAfwijking?: CombinatieAfwijking | null;
+  /** Wat er bij het openen aan combinaties is vervangen; null = niets. */
+  combinatieVervanging?: CombinatieVervanging | null;
   /** Open het combinatievenster (voor de afwijkingsmelding). */
   onOpenCombinaties?: () => void;
   activeCombinationId: number | null;
@@ -457,7 +459,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     loadCases, activeLoadCaseId, selection,
     setSelection, setActiveLoadCaseId, addLoadCase,
     combinations, overgeslagenCombinaties = [],
-    belastingMeldingen = [], combinatieAfwijking = null, onOpenCombinaties,
+    belastingMeldingen = [], combinatieAfwijking = null, combinatieVervanging = null, onOpenCombinaties,
     activeCombinationId, setActiveCombinationId,
     envelopeView, setEnvelopeView, envelope,
     displayFlags, setDisplayFlags, hasResults,
@@ -668,6 +670,17 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
             </TreeNode>
 
             <TreeNode label="Combinaties" count={combinations.length} defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4h12M2 8h12M2 12h12" /></svg>}>
+              {combinatieVervanging && (
+                <div
+                  className="fem-tree-leaf clickable"
+                  title={combinatieVervanging.samenvatting}
+                  onClick={() => onOpenCombinaties?.()}
+                >
+                  <span className="fem-tree-leaf-label">
+                    ↻ Bij het openen vervangen — bekijken of ongedaan maken
+                  </span>
+                </div>
+              )}
               {combinatieAfwijking && (
                 <div
                   className="fem-tree-leaf clickable fem-tree-melding-fout"
@@ -675,7 +688,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   onClick={() => onOpenCombinaties?.()}
                 >
                   <span className="fem-tree-leaf-label">
-                    ⚠ Wijken af van de standaard — bekijken
+                    ⚠ Melding bij het openen — bekijken
                   </span>
                 </div>
               )}

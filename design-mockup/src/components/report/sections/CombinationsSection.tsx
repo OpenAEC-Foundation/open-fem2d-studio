@@ -13,6 +13,11 @@
  * meldt ze elk belastinggeval dat in de doorgerekende combinaties niet
  * meetelt. Voorheen was een geval zonder factor alleen te herkennen aan een
  * kolom met streepjes.
+ *
+ * Zijn de combinaties bij het openen van het project vervangen (een bestand
+ * van versie 0.3.11 of ouder), dan staat dat hier ook: wie het rapport naast
+ * een eerdere berekening legt, moet kunnen zien waarom de combinaties anders
+ * zijn dan in het bestand.
  */
 import { useTranslation } from "react-i18next";
 import { useReportData } from "../ReportDataContext";
@@ -22,8 +27,10 @@ import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
 
 export default function CombinationsSection() {
   const { t } = useTranslation("ribbon");
-  const { combinations, overgeslagenCombinaties, loadCases, loads, selfWeightEnabled, gevolgklasse } =
-    useReportData();
+  const {
+    combinations, overgeslagenCombinaties, loadCases, loads, selfWeightEnabled, gevolgklasse,
+    combinatieVervanging,
+  } = useReportData();
   const overgeslagen = new Map(overgeslagenCombinaties.map((o) => [o.id, o] as const));
   const actief = combinations.filter((c) => !overgeslagen.has(c.id));
   // Dezelfde regel als de projectboom en de MCP-antwoorden: één functie — ook
@@ -84,6 +91,12 @@ export default function CombinationsSection() {
             </tbody>
           </table>
 
+          {combinatieVervanging && (
+            <p className="rpt-note">
+              Combinaties vervangen bij het openen van het project: {combinatieVervanging}
+            </p>
+          )}
+
           <p className="rpt-note">
             {klassen.length > 0
               ? `Standaardcombinaties: afgeleid uit de belastinggevallen, met γ uit NEN-EN 1990 ` +
@@ -95,8 +108,8 @@ export default function CombinationsSection() {
               : "Geen van de combinaties is een standaardcombinatie."}
             {aantalEigen > 0
               ? ` ${aantalEigen} combinatie(s) gemarkeerd met "(eigen)" zijn door de gebruiker ` +
-                "opgesteld of komen uit een ouder projectbestand; hun factoren zijn niet door " +
-                "het programma afgeleid."
+                "opgesteld, hernoemd of aangepast; hun factoren zijn niet door het programma " +
+                "afgeleid, maar wel gecontroleerd (zie de meldingen hieronder)."
               : ""}
           </p>
 

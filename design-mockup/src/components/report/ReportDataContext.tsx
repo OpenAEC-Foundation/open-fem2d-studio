@@ -58,6 +58,14 @@ export interface ReportData {
    * standaardcombinaties.
    */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * Zijn de combinaties bij het openen vervangen (een projectbestand van versie
+   * 0.3.11 of ouder, een andere gevolgklasse, verouderde gegenereerde
+   * combinaties)? Dan de tekst van die melding: het rapport hoort te vermelden
+   * dat de gehanteerde combinaties niet die uit het bestand zijn. Leeg of null
+   * = niet vervangen.
+   */
+  combinatieVervanging?: string | null;
   structuralGrid: StructuralGrid;
   selfWeightEnabled: boolean;
   /**

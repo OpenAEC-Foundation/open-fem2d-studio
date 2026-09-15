@@ -36,10 +36,11 @@ import {
 // Belastinggevallen en combinaties samen bijhouden: de regels staan in
 // lib/combinatieBeheer (puur, zodat de tests precies deze code aanroepen).
 import {
-  meldingenBelastinggevallen, openCombinatieStaat, synchroniseerStandaard,
-  vervangDoorStandaard, verwijderBelastinggeval, verwijderCombinatie, voegBelastinggevalToe,
-  voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie, zetGevolgklasse,
-  type CombinatieAfwijking, type CombinatieStaat, type GevalMelding,
+  herstelCombinaties, meldingenBelastinggevallen, openCombinatieStaat, synchroniseerStandaard,
+  vervangDoorStandaard, vervangVerouderdeCombinaties, verwijderBelastinggeval, verwijderCombinatie,
+  voegBelastinggevalToe, voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie,
+  zetGevolgklasse,
+  type CombinatieAfwijking, type CombinatieStaat, type CombinatieVervanging, type GevalMelding,
 } from "../lib/combinatieBeheer";
 import {
   STANDAARD_GEVOLGKLASSE, type Gevolgklasse,
@@ -335,8 +336,17 @@ const DEFAULT_LOADS: Load[] = [
  * elkaar en moeten met één Ctrl+Z samen terug. Het veld is optioneel zodat
  * bestaande snapshot-constructies (en `Snapshot` zelf, dat het model-contract
  * voor de solver/IO beschrijft) ongewijzigd blijven werken.
+ *
+ * `combinatieStap`: deze stap VERVANGT verouderde combinaties (bij het openen
+ * van een ouder projectbestand, zie lib/combinatieBeheer). Belastinggevallen en
+ * combinaties zitten verder niet in de historie, dus draagt deze stap zelf wat
+ * er terug moet: Ctrl+Z zet de lijst van ervoor terug (`herstelCombinaties`),
+ * Ctrl+Y vervangt opnieuw (`vervangVerouderdeCombinaties`).
  */
-type HistorieSnapshot = Snapshot & { structuralGrid?: StructuralGrid };
+type HistorieSnapshot = Snapshot & {
+  structuralGrid?: StructuralGrid;
+  combinatieStap?: CombinatieVervanging;
+};
 
 /**
  * Het startmodel zoals de app het opent. Geëxporteerd zodat de testbatterij
@@ -1141,11 +1151,24 @@ export interface FemStore {
    */
   belastingMeldingen: GevalMelding[];
   /**
-   * Wat er bij het OPENEN van het project afweek van de standaardcombinaties,
-   * of null. Er is niets overschreven; `vervangDoorStandaardCombinaties` is de
-   * expliciete actie.
+   * Wat er bij het OPENEN van het project verder te melden was — weggehaalde
+   * wees-factoren, een blijvend geval met vreemde factoren in een eigen
+   * combinatie — of null.
    */
   combinatieAfwijking: CombinatieAfwijking | null;
+  /**
+   * Wat er bij het openen is VERVANGEN (de standaardset van versie 0.3.11 en
+   * ouder, standaardcombinaties van een andere klasse, verouderde
+   * windgeneratorcombinaties), met de lijst van ervoor; null als er niets is
+   * vervangen of als het ongedaan is gemaakt.
+   */
+  combinatieVervanging: CombinatieVervanging | null;
+  /**
+   * De tekst voor het rapport en het projectbestand: van de vervanging in deze
+   * sessie, of uit het bestand (een eerdere sessie vervangen en opgeslagen).
+   * null = bij dit project nooit vervangen.
+   */
+  combinatieVervangingTekst: string | null;
   /**
    * Tellers voor nieuwe id's; lopen nooit terug en reizen mee in het
    * projectbestand, zodat een verwijderd id nooit terugkomt.
@@ -1393,6 +1416,12 @@ export interface FemStore {
   vervangDoorStandaardCombinaties: () => void;
   /** Sluit de melding van `combinatieAfwijking` zonder iets te veranderen. */
   sluitCombinatieAfwijking: () => void;
+  /**
+   * Maak de vervanging bij het openen ongedaan: de combinaties uit het bestand
+   * terug, precies zoals ze waren. Werkt ook als er na het openen al andere
+   * bewerkingen zijn gedaan.
+   */
+  maakCombinatieVervangingOngedaan: () => void;
 
   /** Replace all model state from a deserialized project file. */
   loadProjectState: (p: {
@@ -1433,11 +1462,13 @@ export interface FemStore {
     gevolgklasse?: Gevolgklasse;
     /**
      * Id-tellers uit het bestand. Ontbreekt (bestand van vóór september 2026)
-     * → afgeleid uit de hoogste id's, én dan geldt elke combinatie zonder
-     * kenmerk als mogelijk verouderd in de melding bij het openen.
+     * → afgeleid uit de hoogste id's. Of een combinatie verouderd is, hangt er
+     * NIET van af: dat herkent `isOudeStandaardcombinatie` aan naam en factoren.
      */
     idTellers?: { belastinggeval?: number; combinatie?: number };
-  }) => CombinatieAfwijking | null;
+    /** De tekst van een eerdere vervanging bij het openen, uit het bestand. */
+    combinatiesVervangenBijOpenen?: string;
+  }) => { afwijking: CombinatieAfwijking | null; vervanging: CombinatieVervanging | null };
 }
 
 export function useFemStore(opties?: {
@@ -1466,6 +1497,16 @@ export function useFemStore(opties?: {
     combinatie: volgendVrijId(defaultCombinations(DEFAULT_LOAD_CASES, STANDAARD_GEVOLGKLASSE), 1),
   }));
   const [combinatieAfwijking, setCombinatieAfwijking] = useState<CombinatieAfwijking | null>(null);
+  const [combinatieVervanging, setCombinatieVervangingState] = useState<CombinatieVervanging | null>(null);
+  // Een ref naast de state: de knop "Ongedaan maken" in de melding bij het
+  // openen wordt gemaakt in hetzelfde event als het openen, vóór de volgende
+  // render. Met alleen de state zag die knop de vervanging nog niet.
+  const vervangingRef = useRef<CombinatieVervanging | null>(null);
+  const zetVervanging = useCallback((v: CombinatieVervanging | null) => {
+    vervangingRef.current = v;
+    setCombinatieVervangingState(v);
+  }, []);
+  const [vervangingUitBestand, setVervangingUitBestand] = useState<string | null>(null);
 
   // Gevallen, combinaties, klasse en tellers veranderen SAMEN (zie
   // lib/combinatieBeheer). De mutatoren rekenen daarom op één verse staat in
@@ -2241,23 +2282,41 @@ export function useFemStore(opties?: {
   // ── Undo / Redo ──────────────────────────────────────────────────────────
   const canUndo = historyIdx > 0;
   const canRedo = historyIdx < history.length - 1;
+  // Gevallen en combinaties zitten niet in de snapshots. De uitzondering is de
+  // vervanging van verouderde combinaties bij het openen: een eigen stap
+  // (`combinatieStap`) die zelf draagt wat er terug moet.
   const undo = useCallback(() => {
     if (!canUndo) return;
+    const stap = history[historyIdx].combinatieStap;
     const newIdx = historyIdx - 1;
     applySnapshot(history[newIdx]);
+    if (stap) {
+      pasCombiStaatToe(herstelCombinaties(combiRef.current, stap.voor));
+      zetVervanging(null);
+      setActiveCombinationId(null);
+    }
     setHistoryIdx(newIdx);
     historyIdxRef.current = newIdx;
     setSelection(null);
-  }, [canUndo, historyIdx, history, applySnapshot]);
+  }, [canUndo, historyIdx, history, applySnapshot, pasCombiStaatToe, zetVervanging]);
 
   const redo = useCallback(() => {
     if (!canRedo) return;
     const newIdx = historyIdx + 1;
+    const stap = history[newIdx].combinatieStap;
     applySnapshot(history[newIdx]);
+    if (stap) {
+      // Opnieuw afleiden in plaats van de lijst van toen terug te zetten:
+      // tussen ongedaan maken en opnieuw kan een belastinggeval zijn veranderd.
+      const r = vervangVerouderdeCombinaties(combiRef.current);
+      pasCombiStaatToe(r.staat);
+      zetVervanging(r.vervanging);
+      setActiveCombinationId(null);
+    }
     setHistoryIdx(newIdx);
     historyIdxRef.current = newIdx;
     setSelection(null);
-  }, [canRedo, historyIdx, history, applySnapshot]);
+  }, [canRedo, historyIdx, history, applySnapshot, pasCombiStaatToe, zetVervanging]);
 
   // Invalidate cached solver outputs whenever the model changes, so the UI
   // never shows a stale envelope/combination after the user edits the model.
@@ -2278,6 +2337,8 @@ export function useFemStore(opties?: {
     loadCases, activeLoadCaseId,
     combinations, actieveCombinaties, overgeslagenCombinaties,
     gevolgklasse, setGevolgklasse, belastingMeldingen, combinatieAfwijking, idTellers,
+    combinatieVervanging,
+    combinatieVervangingTekst: combinatieVervanging?.samenvatting ?? vervangingUitBestand,
     activeCombinationId, envelopeView,
     multiLcResult, combinationResults, envelope,
     selection,
@@ -2343,6 +2404,16 @@ export function useFemStore(opties?: {
       setActiveCombinationId(null);
     },
     sluitCombinatieAfwijking: () => setCombinatieAfwijking(null),
+    maakCombinatieVervangingOngedaan: () => {
+      const v = vervangingRef.current;
+      if (!v) return;
+      pasCombiStaatToe(herstelCombinaties(combiRef.current, v.voor));
+      zetVervanging(null);
+      setActiveCombinationId(null);
+      // De historiestap draagt dezelfde vervanging; bleef hij staan, dan zou
+      // Ctrl+Z of Ctrl+Y hem later nog eens terugdraaien of opnieuw uitvoeren.
+      setHistory((prev) => prev.map((s) => (s.combinatieStap ? { ...s, combinatieStap: undefined } : s)));
+    },
 
     /** Replace the entire model from a deserialized project file. */
     loadProjectState: (p: {
@@ -2368,6 +2439,7 @@ export function useFemStore(opties?: {
       scheefstandAantalElementen?: number | null;
       gevolgklasse?: Gevolgklasse;
       idTellers?: { belastinggeval?: number; combinatie?: number };
+      combinatiesVervangenBijOpenen?: string;
     }) => {
       // Oude bestanden zonder plaat-rekenvelden → defaults aanvullen
       // (dikte 20 mm, staal, meshSize 500 mm), zie withPlateDefaults.
@@ -2378,15 +2450,17 @@ export function useFemStore(opties?: {
       setPlates(plates);
       setLoads(p.loads);
       // Gevallen, combinaties, klasse en tellers in één keer, via
-      // `openCombinatieStaat` (lib/combinatieBeheer). Een bestand zonder
-      // combinaties (v1, of Nieuw) krijgt de standaardset van ZIJN gevallen.
-      // Een bestand MET combinaties rekent met die combinaties — ook als ze
-      // van de standaard afwijken. Dat wordt gemeld (`combinatieAfwijking`),
-      // niet stil overschreven. Alleen factoren voor gevallen die niet
-      // bestaan gaan eruit, en de teller komt boven elk id uit de
-      // factortabellen: anders erfde een nieuw geval ze (basisaudit nr 14).
+      // `openCombinatieStaat` (lib/combinatieBeheer) — dezelfde functie als de
+      // sidecar bij `project_path`. Een bestand zonder combinaties (v1, of
+      // Nieuw) krijgt de standaardset van ZIJN gevallen. Een bestand MET
+      // combinaties: factoren voor gevallen die niet bestaan gaan eruit (de
+      // teller komt boven elk id uit de factortabellen, basisaudit nr 14), en
+      // wat de app zelf ooit maakte maar nu anders zou maken — de standaardset
+      // van 0.3.11 en ouder, een andere gevolgklasse, de windgenerator — wordt
+      // VERVANGEN, als eigen historiestap zodat Ctrl+Z het terugdraait. Eigen
+      // combinaties blijven staan en worden gecontroleerd.
       const klasse = p.gevolgklasse ?? combiRef.current.gevolgklasse;
-      const { staat: geopend, afwijking } = openCombinatieStaat({
+      const { staat: geopend, afwijking, vervanging } = openCombinatieStaat({
         loadCases: p.loadCases,
         combinations: p.combinations,
         gevolgklasse: klasse,
@@ -2394,6 +2468,12 @@ export function useFemStore(opties?: {
       });
       pasCombiStaatToe(geopend);
       setCombinatieAfwijking(afwijking);
+      zetVervanging(vervanging);
+      setVervangingUitBestand(
+        typeof p.combinatiesVervangenBijOpenen === "string" && p.combinatiesVervangenBijOpenen.trim() !== ""
+          ? p.combinatiesVervangenBijOpenen
+          : null,
+      );
       setActiveLoadCaseId(p.activeLoadCaseId);
       setSelfWeightEnabled(!!p.selfWeightEnabled);
       // Terugleesbaarheid: een bestand zonder `analysetype` valt terug op de
@@ -2440,13 +2520,17 @@ export function useFemStore(opties?: {
       setActiveCombinationId(null);
       setSelection(null);
       // Reset history so undo can't time-travel back to the previous model.
-      setHistory([{
+      // Is er bij het openen vervangen, dan is dat de eerste en enige stap:
+      // Ctrl+Z zet de combinaties uit het bestand terug.
+      const basis: HistorieSnapshot = {
         nodes: p.nodes, beams: p.beams, supports: p.supports, plates,
         loads: p.loads, structuralGrid: nieuwGrid,
-      }]);
-      setHistoryIdx(0);
-      historyIdxRef.current = 0;
-      return afwijking;
+      };
+      const startIdx = vervanging ? 1 : 0;
+      setHistory(vervanging ? [basis, { ...basis, combinatieStap: vervanging }] : [basis]);
+      setHistoryIdx(startIdx);
+      historyIdxRef.current = startIdx;
+      return { afwijking, vervanging };
     },
   };
 }

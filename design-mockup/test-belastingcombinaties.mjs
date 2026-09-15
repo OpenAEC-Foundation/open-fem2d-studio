@@ -33,7 +33,7 @@ const {
   voegBelastinggevalToe, wijzigBelastinggeval, verwijderBelastinggeval, zetGevolgklasse,
   vervangDoorStandaard, wijzigCombinatie, voegCombinatieToe, meldingenBelastinggevallen,
   beoordeelCombinatiesBijOpenen, openCombinatieStaat, verwijderCombinatie,
-  ontbrekendeStandaardcombinaties, blijvendeFactorAfwijkingen,
+  ontbrekendeStandaardcombinaties, blijvendeFactorAfwijkingen, herstelCombinaties,
 } = await import("./src/lib/combinatieBeheer.ts");
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
 const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
@@ -397,28 +397,38 @@ log("\n[6] Bevinding nr 3 — de zijdelingse toets envelopt over de karakteristi
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[7] Een oud projectbestand opent met een melding — en er wordt niets overschreven");
+log("\n[7] Een oud projectbestand: de oude standaardcombinaties worden bij het openen vervangen");
 {
-  const afw = beoordeelCombinatiesBijOpenen({
-    combinations: OUDE_STANDAARD, loadCases: START, gevolgklasse: "CC2", eigenCombinatiesBewust: false,
-  });
-  checkWaar("er is een melding", afw !== null);
-  checkWaar("alle acht oude combinaties worden genoemd", afw?.afwijkend.length === 8);
-  checkWaar("de nieuwe standaard (24, zie [2]) staat erbij", afw?.standaard.length === 24 && afw?.ontbrekend.length === 24);
-  checkWaar("de melding zegt dat er niets is overschreven", /NIETS overschreven/.test(afw?.samenvatting ?? ""));
-  checkWaar("en noemt de expliciete actie", /Vervang door standaardcombinaties/.test(afw?.samenvatting ?? ""));
+  // Besluit van september 2026 (zie de kop van lib/combinatieBeheer): vervangen,
+  // met een melding en ongedaan maken. Tot dan gold "melden, niet overschrijven";
+  // dat liet langs steeds nieuwe routes stil te lage getallen door. De getallen
+  // zelf staan in test-oude-projecten.mjs.
+  const o = openCombinatieStaat({ loadCases: START, combinations: OUDE_STANDAARD, gevolgklasse: "CC2" });
+  checkWaar("alle acht oude combinaties worden herkend en vervangen", o.vervanging?.oudeStandaard.length === 8);
+  checkWaar("de nieuwe standaardset (24, zie [2]) staat ervoor in de plaats",
+    o.staat.combinations.length === 24 && o.staat.combinations.every((c) => c.standaard?.gevolgklasse === "CC2"));
+  checkWaar("de melding noemt de NB-ψ en de gevolgklasse",
+    /ψ uit tabel NB\.2–A1\.1/.test(o.vervanging?.samenvatting ?? "") && /gevolgklasse CC2/.test(o.vervanging?.samenvatting ?? ""),
+    o.vervanging?.samenvatting);
+  checkWaar("de lijst van ervoor is bewaard, voor ongedaan maken", o.vervanging?.voor.length === 8);
+  checkWaar("en er is verder niets te melden", o.afwijking === null);
 
   // Rondgang door het projectbestand: het kenmerk blijft staan.
   const terug = combinationsFromFile(JSON.parse(JSON.stringify(combinationsToFile(defaultCombinations()))));
   checkWaar("het kenmerk overleeft opslaan en openen", terug.every((c) => c.standaard?.sleutel));
-  checkWaar("een huidig bestand met standaardcombinaties: geen melding",
-    beoordeelCombinatiesBijOpenen({ combinations: terug, loadCases: START, gevolgklasse: "CC2", eigenCombinatiesBewust: true }) === null);
-  checkWaar("een CC2-bestand geopend als CC3: de UGT-combinaties worden gemeld, de BGT niet",
-    (() => {
-      const a = beoordeelCombinatiesBijOpenen({ combinations: terug, loadCases: START, gevolgklasse: "CC3", eigenCombinatiesBewust: true });
-      // De twaalf UGT-combinaties van [2] hebben onder CC3 andere γ; de twaalf BGT niet.
-      return a && a.afwijkend.length === 12 && a.afwijkend.every((x) => /^UGT/.test(x.naam));
-    })());
+  const inhoudVan = (lijst) => JSON.stringify(lijst.map((c) => [c.id, c.name, c.formula, [...c.factors], c.standaard]));
+  checkWaar("een huidig bestand met standaardcombinaties: niets vervangen, geen melding", (() => {
+    const r = openCombinatieStaat({ loadCases: START, combinations: terug, gevolgklasse: "CC2" });
+    return r.vervanging === null && r.afwijking === null && inhoudVan(r.staat.combinations) === inhoudVan(terug);
+  })());
+  checkWaar("een CC2-bestand geopend als CC3: de twaalf UGT-combinaties worden bijgewerkt, de BGT niet", (() => {
+    // De twaalf UGT-combinaties van [2] hebben onder CC3 andere γ (NB.5); de
+    // twaalf BGT-combinaties dezelfde factoren, en tellen dus niet als bijgewerkt.
+    const r = openCombinatieStaat({ loadCases: START, combinations: terug, gevolgklasse: "CC3" });
+    return r.vervanging !== null && r.vervanging.bijgewerkt.length === 12 &&
+      r.vervanging.bijgewerkt.every((x) => /^UGT/.test(x.naam)) &&
+      r.staat.combinations.every((c) => c.standaard?.gevolgklasse === "CC3");
+  })());
   const kapot = combinationsFromFile([{ id: 1, name: "x", type: "uls", formula: "", factors: { 1: 1 }, standaard: { sleutel: "6.10a", soort: "onzin", gevolgklasse: "CC2" } }]);
   checkWaar("een onleesbaar kenmerk maakt er een eigen combinatie van", kapot[0].standaard === undefined);
 
@@ -521,18 +531,20 @@ log("\n[10] Bevinding nr 14 via een OUD projectbestand — wees-factoren gaan er
   });
   const p = deserializeProject(tekst);
   const uitBestand = combinationsFromFile(p.combinations);
-  const { staat, afwijking } = openCombinatieStaat({
+  const { staat, afwijking, vervanging } = openCombinatieStaat({
     loadCases: p.loadCases, combinations: uitBestand, gevolgklasse: "CC2", idTellers: p.idTellers,
   });
   checkWaar("na openen draagt geen combinatie nog een factor voor id 4", staat.combinations.every((c) => !c.factors.has(4)));
   checkWaar("de melding noemt de zes combinaties met een wees-factor voor 4",
     afwijking?.weesFactoren.length === 6 && afwijking.weesFactoren.every((w) => JSON.stringify(w.caseIds) === "[4]"));
-  checkWaar("de samenvatting zegt dat ze zijn weggehaald en dat er verder niets is overschreven",
+  checkWaar("de samenvatting zegt dat ze zijn weggehaald",
     /belastinggeval 4, dat in dit project niet \(meer\) bestaat/.test(afwijking?.samenvatting ?? "") &&
-    /weggehaald/.test(afwijking?.samenvatting ?? "") && /NIETS overschreven/.test(afwijking?.samenvatting ?? ""),
+    /weggehaald/.test(afwijking?.samenvatting ?? ""),
     afwijking?.samenvatting);
-  checkWaar("de eigen combinaties uit het bestand blijven staan (acht, zelfde id's)",
-    JSON.stringify(staat.combinations.map((c) => c.id)) === "[1,2,3,4,5,6,7,8]");
+  checkWaar("de acht oude combinaties worden herkend — ook met de wees-factoren eruit — en vervangen",
+    vervanging?.oudeStandaard.length === 8 &&
+    JSON.stringify(vervanging.voor.map((c) => c.id)) === "[1,2,3,4,5,6,7,8]" &&
+    vervanging.voor.every((c) => !c.factors.has(4)));
 
   // Weghalen verandert geen uitkomst: een factor voor een geval zonder last
   // vermenigvuldigt niets. HEA200 6 m met G = 5, Q = 2, S = 1 kN/m:
@@ -548,24 +560,37 @@ log("\n[10] Bevinding nr 14 via een OUD projectbestand — wees-factoren gaan er
   }).perCase;
   const pcOud = hea200([{ beamId: 1, q: -5, caseId: 1 }, { beamId: 1, q: -2, caseId: 2 }, { beamId: 1, q: -1, caseId: 3 }], gevallen);
   check("met wees-factoren: M = 10,05·36/8 = 45,225 kNm", mMax(uitBestand, pcOud, "uls"), 45.225);
-  check("na weghalen: dezelfde 45,225 kNm", mMax(staat.combinations, pcOud, "uls"), 45.225);
+  check("na weghalen (de lijst van vóór de vervanging): dezelfde 45,225 kNm", mMax(vervanging.voor, pcOud, "uls"), 45.225);
+  // Na de vervanging rekent het project met de NB-set voor G, Q en S (CC2, NB.4
+  // en NB.2–A1.1; sneeuw begeleidt met ψ₀ = 0, Q cat. A met ψ₀ = 0,4):
+  //   6.10b Q leidend: 1,2·5 + 1,5·2         = 9,00 kN/m (maatgevend)
+  //   6.10b S leidend: 1,2·5 + 1,5·1 + 0,6·2 = 8,70
+  //   6.10a:           1,35·5 + 0,6·2        = 7,95
+  //   → M = 9,00·36/8 = 40,50 kNm. Lager dan 45,225: de oude set rekende sneeuw
+  //   begeleidend met de door EN 1990 aanbevolen ψ₀ = 0,7, de NB schrijft 0 voor.
+  check("na vervangen: de NB-set, 9,00·36/8 = 40,50 kNm", mMax(staat.combinations, pcOud, "uls"), 40.5);
 
   // De teller: boven het hoogste geval (3) én boven de hoogste factorsleutel (4).
   checkWaar("volgendGevalId = 5, niet 4", staat.volgendGevalId === 5, String(staat.volgendGevalId));
   const { staat: na, id } = voegBelastinggevalToe(staat, "Permanent afbouw", "dead");
   checkWaar("het nieuwe blijvende geval krijgt id 5", id === 5, `id ${id}`);
-  checkWaar("en erft nergens een factor", na.combinations.every((c) => !c.factors.has(5)));
-  // De acht oude combinaties zijn eigen combinaties: de app vult ze niet aan.
-  // Dan telt het nieuwe geval nergens mee — en dat is een FOUT, geen stille nul.
-  const meld = meldingenBelastinggevallen({
-    loadCases: na.loadCases, combinations: na.combinations, loads: [{ caseId: 1 }, { caseId: 5 }],
-  }).find((m) => m.caseId === 5);
-  checkWaar("…met een FOUT die naar de standaardcombinaties wijst",
-    meld?.niveau === "fout" && /telt in geen enkele UGT-combinatie mee/.test(meld.tekst) && /vervang/.test(meld.tekst), meld?.tekst);
-  const vervangen = vervangDoorStandaard(na);
+  checkWaar("en krijgt in elke combinatie dezelfde factor als blijvend geval 1 — nergens een geërfde windfactor",
+    na.combinations.every((c) => (c.factors.get(5) ?? 0) === (c.factors.get(1) ?? 0)));
   const pcNa = hea200([{ beamId: 1, q: -5, caseId: 1 }, { beamId: 1, q: -3, caseId: 5 }], na.loadCases);
   // Hand: blijvend 5 + 3 = 8 kN/m; 6.10a 1,35·8 = 10,8 → 10,8·36/8 = 48,60 kNm;
   // BGT 1,0·8 → 36,00 kNm. De auditwaarden 47,25 en 30,60 kwamen van de windfactoren.
+  check("na openen en toevoegen: UGT 1,35·8·36/8 = 48,60 kNm", mMax(na.combinations, pcNa, "uls"), 48.6);
+  check("en BGT 8·36/8 = 36,00 kNm", mMax(na.combinations, pcNa, "sls"), 36.0);
+  // Na ONGEDAAN MAKEN zijn de acht oude combinaties eigen combinaties: de app
+  // vult ze niet aan. Dan telt het nieuwe geval nergens mee — en dat is een
+  // FOUT, geen stille nul.
+  const oudNa = voegBelastinggevalToe(herstelCombinaties(staat, vervanging.voor), "Permanent afbouw", "dead").staat;
+  const meld = meldingenBelastinggevallen({
+    loadCases: oudNa.loadCases, combinations: oudNa.combinations, loads: [{ caseId: 1 }, { caseId: 5 }],
+  }).find((m) => m.caseId === 5);
+  checkWaar("na ongedaan maken: een FOUT die naar de standaardcombinaties wijst",
+    meld?.niveau === "fout" && /telt in geen enkele UGT-combinatie mee/.test(meld.tekst) && /vervang/.test(meld.tekst), meld?.tekst);
+  const vervangen = vervangDoorStandaard(oudNa);
   check("na Vervang door standaardcombinaties: UGT 1,35·8·36/8 = 48,60 kNm", mMax(vervangen.combinations, pcNa, "uls"), 48.6);
   check("en BGT 8·36/8 = 36,00 kNm", mMax(vervangen.combinations, pcNa, "sls"), 36.0);
 
@@ -757,33 +782,47 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
   //       (6.10a: 1,35·4 + 1,5·0,4·15 = 14,4 kN/m → 64,80 kNm)
   //   BGT 6.14b: 4 + 5 + 10 = 19 kN/m → 19·36/8 = 85,500 kNm
   // Gemeten vóór deze correctie: 89,100 en 63,000 kNm, zonder melding.
-  const r1 = nieuwVeranderlijk(openBestand(oudBestand(START, OUDE_STANDAARD)).staat, "Q vloer 2");
+  // Sinds september 2026 vervangt het openen de acht oude combinaties door de
+  // standaardset (besluit van de gebruiker); het nieuwe geval volgt dan vanzelf.
+  const geopend1 = openBestand(oudBestand(START, OUDE_STANDAARD));
+  const r1 = nieuwVeranderlijk(geopend1.staat, "Q vloer 2");
   const lasten1 = [{ caseId: 1, q: -4 }, { caseId: 2, q: -5 }, { caseId: r1.id, q: -10 }];
   {
     const u = app(r1.staat, lasten1);
-    juistOfFout("route 1, UGT", u.ugt, 122.85, heeftFout(u.meld));
-    juistOfFout("route 1, BGT", u.bgt, 85.5, heeftFout(u.meld));
-    checkWaar("route 1: er komt geen gedeeltelijke opstelling bij — nog steeds de acht oude combinaties",
-      r1.staat.combinations.length === 8 && r1.staat.combinations.every((c) => !c.standaard), String(r1.staat.combinations.length));
-    const f = u.meld.find((m) => m.caseId === r1.id);
-    checkWaar("route 1: FOUT op Q vloer 2, met de verwijzing naar de standaardcombinaties",
+    check("route 1, UGT: (1,2·4 + 1,5·15)·36/8 = 122,85 kNm", u.ugt, 122.85);
+    check("route 1, BGT: 19·36/8 = 85,50 kNm", u.bgt, 85.5);
+    checkWaar("route 1: bij het openen vervangen, dus een volledige standaardset en geen FOUT",
+      geopend1.vervanging?.oudeStandaard.length === 8 && r1.staat.combinations.every((c) => c.standaard) && !heeftFout(u.meld),
+      u.meld.map((m) => m.tekst).join(" | "));
+  }
+  // Dezelfde handeling na "Ongedaan maken": de acht oude combinaties zijn weer
+  // eigen combinaties, en het nieuwe geval telt nergens mee — een FOUT.
+  const r1oud = nieuwVeranderlijk(herstelCombinaties(geopend1.staat, geopend1.vervanging.voor), "Q vloer 2");
+  {
+    const u = app(r1oud.staat, lasten1);
+    juistOfFout("route 1 na ongedaan maken, UGT", u.ugt, 122.85, heeftFout(u.meld));
+    juistOfFout("route 1 na ongedaan maken, BGT", u.bgt, 85.5, heeftFout(u.meld));
+    checkWaar("route 1 na ongedaan maken: er komt geen gedeeltelijke opstelling bij — nog steeds de acht oude combinaties",
+      r1oud.staat.combinations.length === 8 && r1oud.staat.combinations.every((c) => !c.standaard), String(r1oud.staat.combinations.length));
+    const f = u.meld.find((m) => m.caseId === r1oud.id);
+    checkWaar("route 1 na ongedaan maken: FOUT op Q vloer 2, met de verwijzing naar de standaardcombinaties",
       f?.niveau === "fout" && f.vervangAdvies === true && /vervang/i.test(f.tekst), f?.tekst);
-    const v = app(vervangDoorStandaard(r1.staat), lasten1);
+    const v = app(vervangDoorStandaard(r1oud.staat), lasten1);
     check("route 1 na Vervang: UGT (1,2·4 + 1,5·15)·36/8 = 122,85 kNm", v.ugt, 122.85);
     check("route 1 na Vervang: BGT 19·36/8 = 85,50 kNm", v.bgt, 85.5);
     checkWaar("route 1 na Vervang: geen FOUT", !heeftFout(v.meld), v.meld.map((m) => m.tekst).join(" | "));
   }
 
-  // Dezelfde handeling voegde in de vorige versie alleen de NIEUWE
-  // "|zonder:"-opstellingen toe: 28 combinaties, zonder de volledige 6.10b met
-  // beide gevallen op γ_Q. Zo'n set — bijvoorbeeld zo opgeslagen — geeft nu een
-  // FOUT via de volledigheidscontrole.
+  // Dezelfde handeling voegde in een eerdere versie alleen de NIEUWE
+  // "|zonder:"-opstellingen toe aan de acht oude combinaties: 28 combinaties,
+  // zonder de volledige 6.10b met beide gevallen op γ_Q. Zo'n set geeft een FOUT
+  // via de volledigheidscontrole, en wordt bij het openen vervangen.
   const vorigeSleutels = new Set(genereerStandaardCombinaties([...START, { id: r1.id, name: "Q vloer 2", type: "other" }])
     .map((c) => c.standaard.sleutel));
   const deel = genereerStandaardCombinaties(r1.staat.loadCases)
     .filter((c) => c.standaard.sleutel.includes("|zonder:") && !vorigeSleutels.has(c.standaard.sleutel))
     .map((c, i) => ({ ...c, id: 9 + i }));
-  const hybride = { ...r1.staat, combinations: [...r1.staat.combinations, ...deel], volgendCombinatieId: 9 + deel.length };
+  const hybride = { ...r1.staat, combinations: [...OUDE_STANDAARD, ...deel], volgendCombinatieId: 9 + deel.length };
   {
     checkWaar("de vorige versie voegde 28 gedeeltelijke opstellingen toe", deel.length === 28, String(deel.length));
     const u = app(hybride, lasten1);
@@ -798,6 +837,8 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
     const f = u.meld.find((m) => m.caseId === null && m.niveau === "fout");
     checkWaar("hybride: een FOUT op modelniveau die zegt dat standaardcombinaties ontbreken en naar Vervang wijst",
       f?.vervangAdvies === true && /standaardcombinatie\(s\) ontbreken/.test(f.tekst) && /Vervang door standaardcombinaties/.test(f.tekst), f?.tekst);
+    const h = openCombinatieStaat({ loadCases: hybride.loadCases, combinations: hybride.combinations, gevolgklasse: "CC2" });
+    check("hybride geopend: de oude set en de deelopstellingen vervangen → 122,85 kNm", app(h.staat, lasten1).ugt, 122.85);
   }
 
   // Variant van dezelfde oorzaak: het nieuwe geval krijgt daarna categorie B
@@ -810,16 +851,25 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
   //   BGT 6.14b Q leidend: 4 + 10 + 0,5·5 = 16,5 kN/m → 74,250 kNm
   // Gemeten zonder volledigheidscontrole: 89,10 kNm, zonder melding.
   {
-    const r = nieuwVeranderlijk(openBestand(oudBestand(START, OUDE_STANDAARD)).staat, "Kantoor");
+    const lasten = [{ caseId: 1, q: -4 }, { caseId: 2, q: -10 }, { caseId: 5, q: -5 }];
+    const geopend = openBestand(oudBestand(START, OUDE_STANDAARD));
+    const r = nieuwVeranderlijk(geopend.staat, "Kantoor");
     const s = wijzigBelastinggeval(r.staat, r.id, { categorie: "B" });
-    const lasten = [{ caseId: 1, q: -4 }, { caseId: 2, q: -10 }, { caseId: r.id, q: -5 }];
     const u = app(s, lasten);
-    juistOfFout("cat. B, UGT", u.ugt, 105.975, heeftFout(u.meld));
-    juistOfFout("cat. B, BGT", u.bgt, 74.25, heeftFout(u.meld));
-    checkWaar("cat. B: het geval telt mee (geen FOUT op het geval), maar er is een FOUT op modelniveau",
-      !u.meld.some((m) => m.caseId === r.id && m.niveau === "fout") &&
-      u.meld.some((m) => m.caseId === null && m.niveau === "fout" && m.vervangAdvies));
-    const v = app(vervangDoorStandaard(s), lasten);
+    check("cat. B, UGT 105,975 kNm", u.ugt, 105.975);
+    check("cat. B, BGT 74,25 kNm", u.bgt, 74.25);
+    checkWaar("cat. B: geen FOUT — bij het openen vervangen, dus de set volgt het geval", !heeftFout(u.meld),
+      u.meld.map((m) => m.tekst).join(" | "));
+    // Na ongedaan maken: de oude set als eigen combinaties, en dan de FOUT op modelniveau.
+    const ro = nieuwVeranderlijk(herstelCombinaties(geopend.staat, geopend.vervanging.voor), "Kantoor");
+    const so = wijzigBelastinggeval(ro.staat, ro.id, { categorie: "B" });
+    const uo = app(so, lasten);
+    juistOfFout("cat. B na ongedaan maken, UGT", uo.ugt, 105.975, heeftFout(uo.meld));
+    juistOfFout("cat. B na ongedaan maken, BGT", uo.bgt, 74.25, heeftFout(uo.meld));
+    checkWaar("cat. B na ongedaan maken: het geval telt mee (geen FOUT op het geval), maar er is een FOUT op modelniveau",
+      !uo.meld.some((m) => m.caseId === ro.id && m.niveau === "fout") &&
+      uo.meld.some((m) => m.caseId === null && m.niveau === "fout" && m.vervangAdvies));
+    const v = app(vervangDoorStandaard(so), lasten);
     check("cat. B na Vervang: UGT 105,975 kNm", v.ugt, 105.975);
     check("cat. B na Vervang: BGT 74,25 kNm", v.bgt, 74.25);
   }
@@ -874,7 +924,7 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
   {
     const { staat } = openBestand(oudBestand(START, OUDE_STANDAARD));
     const m = app(staat, [{ caseId: 1, q: -4 }, { caseId: 2, q: -5 }]).meld;
-    checkWaar("een oud bestand zonder erfenis, niets gewijzigd: geen FOUT (de afwijking wordt bij het openen gemeld)",
+    checkWaar("een oud bestand zonder erfenis, niets gewijzigd: geen FOUT (bij het openen vervangen door de standaardset)",
       !heeftFout(m), m.map((x) => x.tekst).join(" | "));
     checkWaar("…en geen blijvend geval met factoren die niet passen",
       blijvendeFactorAfwijkingen({ loadCases: staat.loadCases, combinations: staat.combinations }).length === 0);
@@ -893,35 +943,46 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
   const bestand3 = oudBestand(gevallen3, OUDE_STANDAARD);
   const lasten3 = [{ caseId: 1, q: -5 }, { caseId: 4, q: -3 }];
   {
-    const { staat, afwijking } = openBestand(bestand3);
+    const { staat, afwijking, vervanging } = openBestand(bestand3);
     const u = app(staat, lasten3);
-    check("route 3: gemeten UGT met de geërfde factoren 47,25 kNm", u.ugt, 47.25);
-    juistOfFout("route 3, UGT", u.ugt, 48.6, heeftFout(u.meld));
-    juistOfFout("route 3, BGT", u.bgt, 36.0, heeftFout(u.meld));
-    const f = u.meld.find((m) => m.caseId === 4);
-    checkWaar("route 3: FOUT op geval 4 — type blijvend, factor 0,6 in de karakteristieke combinatie",
+    check("route 3 na openen: UGT 1,35·8·36/8 = 48,60 kNm", u.ugt, 48.6);
+    check("route 3 na openen: BGT 8·36/8 = 36,00 kNm", u.bgt, 36.0);
+    checkWaar("route 3: de oude set met de geërfde windkolom is herkend en vervangen — geen FOUT, niets verder te melden",
+      vervanging?.oudeStandaard.length === 8 && !heeftFout(u.meld) && afwijking === null,
+      u.meld.map((m) => m.tekst).join(" | "));
+    // Na ONGEDAAN MAKEN tellen de geërfde factoren weer, en dan is er een FOUT.
+    const oud = herstelCombinaties(staat, vervanging.voor);
+    const uo = app(oud, lasten3);
+    check("route 3 na ongedaan maken: gemeten UGT met de geërfde factoren 47,25 kNm", uo.ugt, 47.25);
+    juistOfFout("route 3 na ongedaan maken, UGT", uo.ugt, 48.6, heeftFout(uo.meld));
+    juistOfFout("route 3 na ongedaan maken, BGT", uo.bgt, 36.0, heeftFout(uo.meld));
+    const f = uo.meld.find((m) => m.caseId === 4);
+    checkWaar("route 3 na ongedaan maken: FOUT op geval 4 — type blijvend, factor 0,6 in de karakteristieke combinatie",
       f?.niveau === "fout" && f.vervangAdvies === true && /is van type blijvend/.test(f.tekst) &&
       /"SLS Karakteristiek" 0,6 \(in de BGT telt een blijvende belasting met 1,0/.test(f.tekst), f?.tekst);
-    checkWaar("route 3: de FOUT herkent de windkolom van de oude standaardset",
+    checkWaar("route 3 na ongedaan maken: de FOUT herkent de windkolom van de oude standaardset",
       /aan belastinggeval 4 gaven, het windgeval \(W\)/.test(f?.tekst ?? ""), f?.tekst);
-    checkWaar("route 3: blijvend geval 1 zelf wordt niet aangewezen", !u.meld.some((m) => m.caseId === 1));
-    const s = afwijking?.samenvatting ?? "";
-    checkWaar("route 3: de melding bij openen noemt geval, type en de factoren die niet passen",
+    checkWaar("route 3 na ongedaan maken: blijvend geval 1 zelf wordt niet aangewezen", !uo.meld.some((m) => m.caseId === 1));
+    const a = beoordeelCombinatiesBijOpenen({ combinations: oud.combinations, loadCases: oud.loadCases });
+    const s = a?.samenvatting ?? "";
+    checkWaar("route 3 na ongedaan maken: de melding noemt geval, type en de factoren die niet passen",
       /belastinggeval 4 \("Permanent afbouw"\) is van type blijvend/.test(s) &&
       /"ULS 6\.10b \(W leidend\)" 1,5 \(blijvend geval 1 heeft daar 1,2\)/.test(s) &&
       /"SLS Karakteristiek" 0,6/.test(s) && /het windgeval \(W\)/.test(s), s);
-    checkWaar("route 3: de afwijking draagt het geval ook als gegeven", afwijking?.blijvend.length === 1 && afwijking.blijvend[0].caseId === 4);
-    const v = app(vervangDoorStandaard(staat), lasten3);
+    checkWaar("route 3 na ongedaan maken: de melding draagt het geval ook als gegeven", a?.blijvend.length === 1 && a.blijvend[0].caseId === 4);
+    const v = app(vervangDoorStandaard(oud), lasten3);
     check("route 3 na Vervang: UGT 1,35·8·36/8 = 48,60 kNm", v.ugt, 48.6);
     check("route 3 na Vervang: BGT 8·36/8 = 36,00 kNm", v.bgt, 36.0);
     checkWaar("route 3 na Vervang: geen FOUT", !heeftFout(v.meld), v.meld.map((m) => m.tekst).join(" | "));
   }
 
   // ── De MCP-weg ─────────────────────────────────────────────────────────
-  // Dezelfde routes als projectbestand door de sidecar (`solve` met `project`),
-  // opgeslagen zoals de app opslaat: route 1 en 2 met tellers (deze versie),
-  // route 3 zonder (0.3.11). Verwacht: de juiste waarde, of "FOUT:" in
-  // `warnings`.
+  // Dezelfde routes als projectbestand door de sidecar (`solve` met `project`):
+  // route 1 en de hybride zoals een eerdere versie ze met tellers opsloeg (de
+  // acht oude combinaties), route 2 van deze versie, route 3 zonder tellers
+  // (0.3.11). De sidecar leest het bestand met `openCombinatieStaat`, net als
+  // de app. Verwacht: de juiste waarde met de melding dat er is vervangen, of
+  // "FOUT:" in `warnings`.
   const projectTekst = (staat, lasten, profiel, combinaties, metTellers) => serializeProject({
     nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
     beams: [{ id: 1, from: 1, to: 2, material: "S235", profile: profiel }],
@@ -934,7 +995,11 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
   const viaMcp = (tekst) => {
     const a = verwerkVerzoek({ v: 1, id: 13, op: "solve", payload: { project: { inhoud: tekst }, detail: "stations" } });
     if (!a.ok) return { ugt: NaN, bgt: NaN, warnings: [], fout: JSON.stringify(a.error) };
-    const combos = combinationsFromFile(deserializeProject(tekst).combinations);
+    // De id's na het inlezen: dezelfde functie als de sidecar, dus dezelfde id's.
+    const p = deserializeProject(tekst);
+    const combos = openCombinatieStaat({
+      loadCases: p.loadCases, combinations: combinationsFromFile(p.combinations), gevolgklasse: "CC2", idTellers: p.idTellers,
+    }).staat.combinations;
     const maxM = (t) => Math.max(...combos
       .filter((c) => c.type === t && a.result.combinations[c.id])
       .map((c) => Math.max(...a.result.combinations[c.id].elements["1"].M_x)));
@@ -942,24 +1007,27 @@ log("\n[13] Nooit stil een deelverzameling — de juiste waarde of een FOUT, noo
   };
   const mcpFout = (w) => w.some((x) => x.startsWith("FOUT:"));
   const r3 = openBestand(bestand3).staat;
+  const vervangen = /^Bij het openen zijn 8 belastingcombinatie\(s\) van de standaardset van versie 0\.3\.11 en ouder vervangen/;
   const mcpRoutes = [
-    ["route 1", projectTekst(r1.staat, lasten1, "IPE300", r1.staat.combinations, true), 122.85, 85.5, /^FOUT: Belastinggeval 5 \("Q vloer 2"\)/],
-    ["hybride van de vorige versie", projectTekst(hybride, lasten1, "IPE300", hybride.combinations, true), 122.85, 85.5, /^FOUT: \d+ standaardcombinatie\(s\) ontbreken/],
-    ["route 2", projectTekst(r2n.staat, lasten2, "IPE300", r2n.staat.combinations, true), 122.85, 85.5, /^FOUT: \d+ standaardcombinatie\(s\) ontbreken.*"UGT 6\.10b — Q cat\. A leidend"/],
-    ["route 3", projectTekst(r3, lasten3, "HEA200", OUDE_STANDAARD, false), 48.6, 36.0, /^FOUT: Belastinggeval 4 \("Permanent afbouw"\) is van type blijvend/],
+    ["route 1 (oud bestand met tellers, Q vloer 2 erbij)", projectTekst(r1oud.staat, lasten1, "IPE300", r1oud.staat.combinations, true), 122.85, 85.5, vervangen, false],
+    ["hybride van een eerdere versie", projectTekst(hybride, lasten1, "IPE300", hybride.combinations, true), 122.85, 85.5, vervangen, false],
+    ["route 2", projectTekst(r2n.staat, lasten2, "IPE300", r2n.staat.combinations, true), 122.85, 85.5, /^FOUT: \d+ standaardcombinatie\(s\) ontbreken.*"UGT 6\.10b — Q cat\. A leidend"/, true],
+    ["route 3 (0.3.11, geen tellers)", projectTekst(r3, lasten3, "HEA200", OUDE_STANDAARD, false), 48.6, 36.0, vervangen, false],
   ];
-  for (const [naam, tekst, handU, handB, verwachteFout] of mcpRoutes) {
+  for (const [naam, tekst, handU, handB, verwacht, foutVerwacht] of mcpRoutes) {
     const r = viaMcp(tekst);
     checkWaar(`MCP ${naam}: solve slaagt`, r.fout === undefined, r.fout);
     juistOfFout(`MCP ${naam}, UGT`, r.ugt, handU, mcpFout(r.warnings));
     juistOfFout(`MCP ${naam}, BGT`, r.bgt, handB, mcpFout(r.warnings));
-    checkWaar(`MCP ${naam}: de verwachte FOUT staat in warnings`, r.warnings.some((w) => verwachteFout.test(w)),
-      r.warnings.filter((w) => w.startsWith("FOUT")).map((w) => w.slice(0, 160)).join(" | "));
+    if (!foutVerwacht) {
+      check(`MCP ${naam}: UGT gelijk aan de hand`, r.ugt, handU);
+      check(`MCP ${naam}: BGT gelijk aan de hand`, r.bgt, handB);
+      checkWaar(`MCP ${naam}: geen FOUT`, !mcpFout(r.warnings), r.warnings.filter((w) => w.startsWith("FOUT")).join(" | "));
+    }
+    checkWaar(`MCP ${naam}: de verwachte melding staat in warnings`, r.warnings.some((w) => verwacht.test(w)),
+      r.warnings.map((w) => w.slice(0, 160)).join(" | "));
   }
   {
-    const r = viaMcp(projectTekst(r3, lasten3, "HEA200", OUDE_STANDAARD, false));
-    checkWaar("MCP route 3: de afwijkingsmelding noemt geval 4, type blijvend en de windkolom",
-      r.warnings.some((w) => /LET OP: belastinggeval 4 \("Permanent afbouw"\) is van type blijvend/.test(w) && /het windgeval \(W\)/.test(w)));
     const v = verwerkVerzoek({ v: 1, id: 14, op: "validate", payload: { project: { inhoud: projectTekst(r2n.staat, lasten2, "IPE300", r2n.staat.combinations, true) } } });
     checkWaar("MCP validate route 2: ok is false, met de ontbrekende standaardcombinaties als fout",
       v.ok === true && v.result.ok === false && v.result.errors.some((e) => /standaardcombinatie\(s\) ontbreken/.test(e)), JSON.stringify(v.result?.errors));

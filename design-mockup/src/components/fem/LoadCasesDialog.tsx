@@ -8,9 +8,13 @@
  * Sinds september 2026 houdt de app de STANDAARDcombinaties bij wanneer een
  * geval wordt toegevoegd, van type verandert of verdwijnt (zie
  * lib/combinatieBeheer). Dit venster laat daarom zien welke combinatie
- * standaard is en welke eigen, meldt in rood elk geval dat nergens meetelt, en
- * biedt bij een project met afwijkende combinaties de expliciete actie om ze
- * te vervangen.
+ * standaard is en welke eigen, en meldt in rood elk geval dat nergens meetelt
+ * en elke fout in de combinaties zelf, met de actie die het oplost.
+ *
+ * Bij het openen van een ouder projectbestand vervangt de app verouderde
+ * combinaties (besluit van september 2026; tot dan: melden, niet
+ * overschrijven). Dit venster zegt dan wat er is vervangen, en draagt de knop
+ * "Ongedaan maken" zolang dat kan.
  */
 import { Fragment, useState, useEffect } from "react";
 import type { LoadCase } from "./femTypes";
@@ -20,7 +24,9 @@ import {
   PARTIELE_FACTOREN, PSI_GEBRUIK, STANDAARD_CATEGORIE, type Gevolgklasse,
 } from "./solver/normcombinaties";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
-import type { CombinatieAfwijking, GevalMelding } from "../../lib/combinatieBeheer";
+import type {
+  CombinatieAfwijking, CombinatieVervanging, GevalMelding,
+} from "../../lib/combinatieBeheer";
 import "./LoadCasesDialog.css";
 
 interface Props {
@@ -39,12 +45,18 @@ interface Props {
   overgeslagenCombinaties?: OvergeslagenCombinatie[];
   /** Wat er aan de gevallen niet meetelt (lib/combinatieBeheer). */
   belastingMeldingen?: GevalMelding[];
-  /** Afwijking van de standaardcombinaties bij het openen; null = niets. */
+  /** Wat er bij het openen verder te melden was (wees-factoren e.d.); null = niets. */
   combinatieAfwijking?: CombinatieAfwijking | null;
+  /** Wat er bij het openen aan combinaties is vervangen; null = niets. */
+  combinatieVervanging?: CombinatieVervanging | null;
+  /** Zet de combinaties uit het bestand terug. */
+  onMaakVervangingOngedaan?: () => void;
   /** Vervang alle combinaties door de standaardset (de expliciete actie). */
   onVervangDoorStandaard?: () => void;
-  /** Sluit de afwijkingsmelding zonder iets te veranderen. */
+  /** Sluit de melding bij het openen zonder iets te veranderen. */
   onSluitAfwijking?: () => void;
+  /** Open de windbelastinggenerator om verouderde windcombinaties opnieuw te maken. */
+  onWindOpnieuw?: () => void;
   /** Gevolgklasse van het project, voor de uitleg bij de combinaties. */
   gevolgklasse?: Gevolgklasse;
   addLoadCase: (name: string) => void;
@@ -64,8 +76,9 @@ const TYPE_LABEL: Record<LoadCase["type"], string> = {
 export default function LoadCasesDialog({
   open, onClose, initialTab = "cases",
   loadCases, combinations, overgeslagenCombinaties = [],
-  belastingMeldingen = [], combinatieAfwijking = null,
-  onVervangDoorStandaard, onSluitAfwijking, gevolgklasse = "CC2",
+  belastingMeldingen = [], combinatieAfwijking = null, combinatieVervanging = null,
+  onMaakVervangingOngedaan, onVervangDoorStandaard, onSluitAfwijking, onWindOpnieuw,
+  gevolgklasse = "CC2",
   addLoadCase, updateLoadCase, removeLoadCase,
   addCombination, updateCombination, removeCombination,
 }: Props) {
@@ -85,6 +98,8 @@ export default function LoadCasesDialog({
   const meldingenVan = (id: number) => belastingMeldingen.filter((m) => m.caseId === id);
   const modelMeldingen = belastingMeldingen.filter((m) => m.caseId === null);
   const aantalFouten = belastingMeldingen.filter((m) => m.niveau === "fout").length;
+  // Meldingen over de combinaties zelf, met de actie die ze oplost.
+  const adviesMeldingen = belastingMeldingen.filter((m) => m.vervangAdvies || m.windOpnieuwAdvies);
 
   const handleAddCase = () => {
     const name = newCaseName.trim() || `Geval ${loadCases.length + 1}`;
@@ -118,7 +133,8 @@ export default function LoadCasesDialog({
             Gevallen ({loadCases.length}){aantalFouten > 0 ? ` — ${aantalFouten} fout` : ""}
           </button>
           <button className={`lcd-tab${tab === "combos" ? " active" : ""}`} onClick={() => setTab("combos")}>
-            Combinaties ({combinations.length}){combinatieAfwijking ? " — afwijkend" : ""}
+            Combinaties ({combinations.length})
+            {combinatieVervanging ? " — vervangen bij openen" : combinatieAfwijking ? " — melding" : ""}
           </button>
         </div>
 
@@ -239,26 +255,19 @@ export default function LoadCasesDialog({
 
           {tab === "combos" && (
             <>
-              {/* Een FOUT in de combinaties zelf (een ontbrekende standaard-
-                  combinatie, een blijvend geval met vreemde factoren) wijst naar
-                  "Vervang door standaardcombinaties". Die actie hoort er dan ook
-                  te staan als de melding bij het openen al gesloten is, of als
-                  het project nooit een ouder bestand was. */}
-              {!combinatieAfwijking && belastingMeldingen.some((m) => m.vervangAdvies) && (
+              {/* Bij het openen vervangen: wat, waarom, en de weg terug. Blijft
+                  staan tot het ongedaan is gemaakt of een ander project wordt
+                  geopend — de melding rechtsboven verdwijnt na een halve minuut. */}
+              {combinatieVervanging && (
                 <div className="lcd-afwijking">
-                  {belastingMeldingen.filter((m) => m.vervangAdvies).map((m, i) => (
-                    <p key={`v-${i}`} className={`lcd-melding lcd-melding-${m.niveau}`}>{m.tekst}</p>
-                  ))}
+                  <p><strong>Combinaties vervangen bij het openen.</strong> {combinatieVervanging.samenvatting}</p>
                   <div className="lcd-afwijking-knoppen">
                     <button
-                      className="lcd-btn-primary"
-                      onClick={() => {
-                        if (confirm("Alle combinaties (behalve die van de windgenerator) vervangen door de standaardset? Uw eigen combinaties gaan daarbij verloren.")) {
-                          onVervangDoorStandaard?.();
-                        }
-                      }}
+                      className="lcd-btn-secondary"
+                      title="Zet de combinaties terug zoals ze in het projectbestand stonden"
+                      onClick={() => onMaakVervangingOngedaan?.()}
                     >
-                      Vervang door standaardcombinaties
+                      Ongedaan maken
                     </button>
                   </div>
                 </div>
@@ -266,35 +275,42 @@ export default function LoadCasesDialog({
               {combinatieAfwijking && (
                 <div className="lcd-afwijking">
                   <p>{combinatieAfwijking.samenvatting}</p>
-                  {combinatieAfwijking.afwijkend.length > 0 && (
-                    <ul>
-                      {combinatieAfwijking.afwijkend.map((a) => (
-                        <li key={a.id}><strong>{a.naam}</strong> — {a.reden}</li>
-                      ))}
-                    </ul>
-                  )}
-                  <details>
-                    <summary>De standaardset voor {combinatieAfwijking.gevolgklasse} ({combinatieAfwijking.standaard.length} combinaties)</summary>
-                    <ul>
-                      {combinatieAfwijking.standaard.map((s) => (
-                        <li key={s.naam}><strong>{s.naam}</strong>: {s.formule}</li>
-                      ))}
-                    </ul>
-                  </details>
                   <div className="lcd-afwijking-knoppen">
-                    <button
-                      className="lcd-btn-primary"
-                      onClick={() => {
-                        if (confirm("Alle combinaties (behalve die van de windgenerator) vervangen door de standaardset? Uw eigen combinaties gaan daarbij verloren.")) {
-                          onVervangDoorStandaard?.();
-                        }
-                      }}
-                    >
-                      Vervang door standaardcombinaties
-                    </button>
                     <button className="lcd-btn-secondary" onClick={() => onSluitAfwijking?.()}>
-                      Houd de combinaties uit het bestand
+                      Sluiten
                     </button>
+                  </div>
+                </div>
+              )}
+              {/* Een FOUT in de combinaties zelf (een ontbrekende standaard-
+                  combinatie, delen van één veranderlijke belasting met
+                  verschillende factoren, een belasting die nergens overheerst,
+                  verouderde windcombinaties) staat hier met de actie die hem
+                  oplost — altijd, ook in een project dat nooit een ouder bestand
+                  was. */}
+              {adviesMeldingen.length > 0 && (
+                <div className="lcd-afwijking">
+                  {adviesMeldingen.map((m, i) => (
+                    <p key={`v-${i}`} className={`lcd-melding lcd-melding-${m.niveau}`}>{m.tekst}</p>
+                  ))}
+                  <div className="lcd-afwijking-knoppen">
+                    {adviesMeldingen.some((m) => m.vervangAdvies) && (
+                      <button
+                        className="lcd-btn-primary"
+                        onClick={() => {
+                          if (confirm("Alle combinaties (behalve die van de windgenerator) vervangen door de standaardset? Uw eigen combinaties gaan daarbij verloren.")) {
+                            onVervangDoorStandaard?.();
+                          }
+                        }}
+                      >
+                        Vervang door standaardcombinaties
+                      </button>
+                    )}
+                    {adviesMeldingen.some((m) => m.windOpnieuwAdvies) && onWindOpnieuw && (
+                      <button className="lcd-btn-primary" onClick={() => onWindOpnieuw()}>
+                        Windbelasting opnieuw genereren
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -399,9 +415,13 @@ export default function LoadCasesDialog({
               <p className="lcd-hint">
                 Standaardcombinaties worden afgeleid uit de belastinggevallen en gevolgklasse{" "}
                 {gevolgklasse} (γ uit NEN-EN 1990 {bron}, ψ uit tabel NB.2–A1.1) en lopen mee
-                als u gevallen toevoegt, van type verandert of verwijdert. Wijzigt u een factor,
-                naam of type, dan wordt het een eigen combinatie: die past de app daarna niet
-                meer aan. Factor 0 (of leeg) = dat belastinggeval doet niet mee in deze combinatie.
+                als u gevallen toevoegt, van type verandert of verwijdert; de combinaties van de
+                windgenerator lopen op dezelfde manier mee. Wijzigt u een factor, naam of type,
+                dan wordt het een eigen combinatie: die past de app daarna niet meer aan, maar
+                controleert haar wel na elke wijziging. Bij het openen van een project van versie
+                0.3.11 of ouder vervangt de app de oude standaardcombinaties door deze set, met een
+                melding en Ongedaan maken; eigen combinaties blijven staan.
+                Factor 0 (of leeg) = dat belastinggeval doet niet mee in deze combinatie.
                 Negatieve factor mag — bijvoorbeeld <code>0.9·G + 1.5·W</code> voor uplift.
               </p>
             </>
