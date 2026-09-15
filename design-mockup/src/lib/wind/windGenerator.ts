@@ -28,7 +28,7 @@ import type { Beam, Load, LoadCase, Node } from "../../components/fem/femTypes";
 import { rolVanStaaf, type BeamLoadRole } from "../../components/fem/femTypes";
 import {
   begeleidendeOpstellingen, PARTIELE_FACTOREN, PSI_BRON, PSI_WIND,
-  STANDAARD_GEVOLGKLASSE, type Gevolgklasse, type PsiWaarden,
+  STANDAARD_GEVOLGKLASSE, type GevalInvoer, type Gevolgklasse, type PsiWaarden,
 } from "../../components/fem/solver/normcombinaties";
 import {
   berekenE, berekenStuwdruk, handmatigeStuwdruk, cpeWand,
@@ -741,7 +741,6 @@ export function genereerWindbelasting(
     const eigen = model.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
     const klasse = model.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
     const f = PARTIELE_FACTOREN[klasse];
-    const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     const overig = eigen.filter((c) => c.type === "other");
     if (overig.length > 0) {
       meldingen.push({
@@ -751,11 +750,62 @@ export function genereerWindbelasting(
           "gegenereerde combinaties. Geef ze een type, of neem ze handmatig op.",
       });
     }
+    combinaties.push(...genereerWindCombinaties(model.loadCases, gevallen, klasse));
+    meldingen.push({
+      niveau: "info",
+      tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: γ uit NEN-EN 1990 ` +
+        `${f.bron}, ψ uit tabel NB.2–A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in ` +
+        "de partiële factoren zelf en wordt nergens nog eens toegepast.",
+    });
+  }
+
+  return {
+    ok: true,
+    meldingen,
+    gevallen,
+    lasten,
+    combinaties,
+    samenvatting: {
+      hoogte_m: h_m, spanwijdte_m: d_m, hOverD: h_m / d_m,
+      belastingbreedte_m: breedte_m, stuwdruk, perGeval,
+    },
+    geometrie,
+  };
+}
+
+/**
+ * De combinaties bij de gegenereerde windgevallen — zonder lasten, zonder
+ * geometrie en zonder generatorinstellingen. Ze hangen alleen af van:
+ *  - de NIET-gegenereerde belastinggevallen (type en gebruikscategorie), want
+ *    die bepalen G en de begeleidende veranderlijke belastingen;
+ *  - de gegenereerde windgevallen (sleutel en naam);
+ *  - de gevolgklasse (γ uit NB tabel NB.4/NB.5).
+ *
+ * WAAROM LOS VAN `genereerWindbelasting`: `lib/combinatieBeheer` houdt de
+ * gegenereerde combinaties hiermee bij zodra er een belastinggeval bijkomt,
+ * van type verandert of de gevolgklasse wijzigt — ook als de generator zelf
+ * niet actief is, en na het openen van een project staat hij uit. Gemeten in
+ * september 2026: portaal 12 × 6 m, wind gegenereerd, daarna een veranderlijk
+ * geval "Q dak 2" erbij. De windcombinaties bleven zonder 0,6·Q dak 2, en vier
+ * N–M-toestanden aan de kolomvoet werden door geen enkele combinatie gedekt,
+ * zonder melding. Eén functie voor de generator én voor het bijhouden, zodat
+ * die twee niet uit elkaar kunnen lopen.
+ */
+export function genereerWindCombinaties(
+  loadCases: readonly GevalInvoer[],
+  windGevallen: readonly { sleutel: string; naam: string }[],
+  gevolgklasse: Gevolgklasse = STANDAARD_GEVOLGKLASSE,
+): GegenereerdeCombinatie[] {
+  const combinaties: GegenereerdeCombinatie[] = [];
+  {
+    const eigen = loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
+    const f = PARTIELE_FACTOREN[gevolgklasse];
+    const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     /** Afronden op 1e-9: 1,5 · 0,4 is in drijvende komma 0,6000000000000001. */
     const r = (x: number) => Math.round(x * 1e9) / 1e9;
     const bron = `γ: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
 
-    for (const gv of gevallen) {
+    for (const gv of windGevallen) {
       // Wind leidt in elke combinatie van zijn eigen geval. Begeleidend telt
       // wind met ψ₀,W = 0 (NB.2) en dus niet; ook sneeuw begeleidt met
       // ψ₀,S = ψ₂,S = 0. Om dezelfde reden is er geen 6.10a per windgeval
@@ -818,26 +868,8 @@ export function genereerWindbelasting(
         }
       }
     }
-    meldingen.push({
-      niveau: "info",
-      tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: γ uit NEN-EN 1990 ` +
-        `${f.bron}, ψ uit tabel NB.2–A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in ` +
-        "de partiële factoren zelf en wordt nergens nog eens toegepast.",
-    });
   }
-
-  return {
-    ok: true,
-    meldingen,
-    gevallen,
-    lasten,
-    combinaties,
-    samenvatting: {
-      hoogte_m: h_m, spanwijdte_m: d_m, hOverD: h_m / d_m,
-      belastingbreedte_m: breedte_m, stuwdruk, perGeval,
-    },
-    geometrie,
-  };
+  return combinaties;
 }
 
 // ── Handtekening voor idempotentie ───────────────────────────────────────

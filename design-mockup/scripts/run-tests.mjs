@@ -118,6 +118,17 @@ const BUNDEL_TESTS = new Set([
   "leeg-geval",
   "n-teken",
   "omhullende",
+  // Oude projectbestanden en de windgenerator: herkennen en vervangen van de
+  // standaardset van 0.3.11 bij het openen, ongedaan maken, de controles op
+  // eigen combinaties en het meelopen van de gegenereerde windcombinaties —
+  // tegen de hand. Praat met `combinatieBeheer`, `normcombinaties`,
+  // `combinations`, `engine`, `bouwMultiInput`, de windgenerator, de
+  // projectbestand-functies en de sidecar: allemaal in de barrel. Hoort juist
+  // óók tegen de bundel: de MCP-weg leest `project_path` met dezelfde
+  // `openCombinatieStaat`, en een bundel die nog "melden, niet overschrijven"
+  // meedraagt, rekent een oud bestand stil met de oude factoren. Het slotblok
+  // start de MCP-server als apart proces en faalt luid als die ontbreekt.
+  "oude-projecten",
   "plaat-adapter",
   "plaat-combinatie",
   "plaat-polygoon",

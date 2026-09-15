@@ -18,43 +18,77 @@
  *    STANDAARDcombinaties bij (`synchroniseerStandaard`): een nieuw blijvend
  *    geval krijgt γ_G, een nieuw veranderlijk geval krijgt zijn beurt als
  *    leidende last en zijn ψ als begeleidende. Zie `normcombinaties.ts`.
+ *  - De combinaties van de WINDGENERATOR lopen op dezelfde momenten mee
+ *    (`synchroniseerWindCombinaties`), ook als de generator zelf niet actief
+ *    is — en na het openen van een project is hij dat nooit.
  *  - EIGEN combinaties (zonder kenmerk `standaard`) blijven van de gebruiker:
  *    de app past ze niet aan, behalve dat de factor van een verwijderd geval
- *    eruit verdwijnt — uit ALLE combinaties, standaard of eigen.
+ *    eruit verdwijnt — uit ALLE combinaties, standaard of eigen. Ze worden wel
+ *    GECONTROLEERD, na elke wijziging (`meldingenBelastinggevallen`).
  *  - Id's lopen via tellers die nooit teruglopen en in het projectbestand
  *    meereizen. Een verwijderd id komt nooit terug.
- *  - Een projectbestand van vóór september 2026 draagt geen tellers, en kan
- *    factoren dragen voor een geval dat toen al verwijderd was. Bij het openen
- *    (`openCombinatieStaat`) gaan die wees-factoren eruit — ze vermenigvuldigden
- *    geen last, dus geen uitkomst verandert — en komt de teller boven elk id
- *    dat in een factortabel stond. Dat wordt gemeld.
- *  - Wat dan nog niet meetelt, wordt gemeld (`meldingenBelastinggevallen`):
- *    een geval met last maar zonder UGT-factor is een FOUT, geen voetnoot.
+ *  - Een projectbestand OPENEN (`openCombinatieStaat`): factoren voor gevallen
+ *    die niet bestaan gaan eruit, en wat de app zelf ooit maakte maar nu anders
+ *    zou maken wordt VERVANGEN (`vervangVerouderdeCombinaties`): de
+ *    standaardset van versie 0.3.11 en ouder, standaardcombinaties met de
+ *    factoren van een andere gevolgklasse, en verouderde combinaties van de
+ *    windgenerator. In één stap, die ongedaan te maken is (`herstelCombinaties`).
+ *
+ * WAAROM VERVANGEN EN NIET ALLEEN MELDEN (besluit van de gebruiker, september 2026)
+ * Tot deze correctie gold "melden, niet overschrijven": een oud bestand hield
+ * zijn acht combinaties, met een melding bij het openen. Langs steeds nieuwe
+ * routes gaf dat stil te lage getallen. Gemeten op een vrij opgelegde ligger
+ * van 6 m, M = q·L²/8 = 4,5·q kNm:
+ *  - oud bestand, G = 4, Q = 5, geval 3 = 10 kN/m, geval 3 daarna
+ *    veranderlijk: UGT 112,725 waar (1,2·4 + 1,5·15)·4,5 = 122,850 kNm hoort,
+ *    BGT 72,00 waar (4 + 15)·4,5 = 85,50 hoort — zonder FOUT;
+ *  - hetzelfde oude bestand, één keer opgeslagen door de vorige versie (die
+ *    schreef id-tellers): bij heropenen golden de oude combinaties als "bewust
+ *    eigen" en verdween elke melding. CC3, G = 10, Q = 5: 87,75 waar
+ *    (1,3·10 + 1,65·5)·4,5 = 95,625 kNm hoort (NB tabel NB.5);
+ *  - in een project van die versie alle standaardcombinaties hernoemd en
+ *    daarna geval 3 veranderlijk: 102,60 / 72,00 waar 122,85 / 85,50 hoort,
+ *    zonder melding.
+ * De keuze: bij het openen worden de oude standaardcombinaties vervangen door
+ * de NB-set, met een duidelijke melding en ongedaan maken. Eigen, zelf
+ * toegevoegde of hernoemde combinaties blijven staan en worden gecontroleerd.
  *
  * EEN COMBINATIESET IS NOOIT STIL EEN DEELVERZAMELING VAN DE JUISTE SET
  * Gemeten in september 2026 (na de eerste correctie): een oud projectbestand
  * met de acht combinaties van vóór september 2026, plus een nieuw veranderlijk
  * geval "Q vloer 2" in dezelfde categorie. De synchronisatie voegde alleen de
  * nieuwe opstellingen "… zonder Variabel (Q)" toe — de volledige 6.10b met
- * beide gevallen op γ_Q ontstond nooit. IPE-ligger 6 m, G = 4, Q = 5 en
- * Q vloer 2 = 10 kN/m: UGT 89,10 kNm waar (1,2·4 + 1,5·15)·36/8 = 122,85
- * hoort, BGT 63,0 waar 85,5 hoort, en geen melding. Hetzelfde na het hernoemen
- * van "UGT 6.10b — Variabel (Q) leidend": 117,45 waar 122,85 hoort. Daarom:
+ * beide gevallen op γ_Q ontstond nooit: 89,10 kNm waar 122,85 hoort, en geen
+ * melding. Hetzelfde na het hernoemen van "UGT 6.10b — Variabel (Q) leidend":
+ * 117,45 waar 122,85 hoort. Daarom:
  *  - `synchroniseerStandaard` voegt nooit een opstelling met afwezige gevallen
  *    toe van een uitdrukking waarvan de VOLLEDIGE opstelling ontbreekt;
- *  - `ontbrekendeStandaardcombinaties` zoekt elke standaardcombinatie die in
- *    een project met standaardcombinaties ontbreekt en door geen andere
- *    combinatie met dezelfde factoren wordt vervangen; dat is een FOUT die naar
- *    "Vervang door standaardcombinaties" wijst — in de app, het rapport en de
- *    MCP-waarschuwingen, want alle drie lezen `meldingenBelastinggevallen`;
+ *  - `ontbrekendeStandaardcombinaties` zoekt elke standaardcombinatie die
+ *    ontbreekt en door geen andere combinatie met dezelfde factoren wordt
+ *    vervangen — in een project met standaardcombinaties, ook als die allemaal
+ *    hernoemd zijn (herkenbaar aan hun formule, zie `isAfgeleidVanStandaard`),
+ *    en in een project met de oude standaardset die er na "Ongedaan maken" of
+ *    via de MCP-weg weer in staat (`isOudeStandaardcombinatie`; gemeten zonder
+ *    die controle: 87,75 kNm waar 95,625 hoort, stil);
+ *  - `veranderlijkeFactorVerschillen` zoekt een combinatie waarin twee delen
+ *    van één veranderlijke belasting verschillende factoren hebben: het spoor
+ *    van een eigen set waarin een geval later van type veranderde;
+ *  - `veranderlijkeBelastingenZonderLeiding` zoekt een veranderlijke belasting
+ *    die in geen enkele UGT-combinatie overheerst — ook in een volledig eigen
+ *    set;
+ *  - `verouderdeWindCombinaties` zoekt gegenereerde windcombinaties die niet
+ *    (meer) bij de gevallen en de gevolgklasse passen;
  *  - `blijvendeFactorAfwijkingen` zoekt een blijvend geval met factoren die bij
- *    geen blijvende belasting passen: het spoor van nr 14 in een oud bestand
+ *    geen blijvende belasting passen: het spoor van nr 14 in een eigen set
  *    (UGT 47,25 en BGT 30,60 kNm waar 48,60 en 36,00 horen).
+ * Alle meldingen lopen via `meldingenBelastinggevallen`: de app, het rapport en
+ * de MCP-waarschuwingen lezen dezelfde functie.
  *
  * PUUR
  * Geen React: de store roept deze functies aan, en de tests roepen precies
  * dezelfde functies aan. Zo bewijst een test het gedrag van de app en niet dat
- * van een nagebouwde kopie.
+ * van een nagebouwde kopie. De sidecar leest een projectbestand met dezelfde
+ * `openCombinatieStaat`, zodat app en MCP niet uit elkaar kunnen lopen.
  */
 import type { Load, LoadCase } from "../components/fem/femTypes";
 import {
@@ -69,11 +103,14 @@ import {
   GEVOLGKLASSEN,
   MAX_VRIJE_GEVALLEN,
   PARTIELE_FACTOREN,
+  PSI_BRON,
+  STANDAARD_CATEGORIE,
+  STANDAARD_GEVOLGKLASSE,
   type GevalInvoer,
   type Gevolgklasse,
   type StandaardCombinatie,
 } from "../components/fem/solver/normcombinaties";
-import { WIND_COMBI_PREFIX } from "./wind/windGenerator";
+import { genereerWindCombinaties, WIND_COMBI_PREFIX } from "./wind/windGenerator";
 
 // ── Staat ─────────────────────────────────────────────────────────────────
 
@@ -105,7 +142,7 @@ export function isWindgeneratorCombinatie(c: Pick<LoadCombination, "name">): boo
 
 // ── Vergelijken ───────────────────────────────────────────────────────────
 
-function gelijkeFactoren(a: Map<number, number>, b: Map<number, number>): boolean {
+function gelijkeFactoren(a: ReadonlyMap<number, number>, b: ReadonlyMap<number, number>): boolean {
   if (a.size !== b.size) return false;
   for (const [id, f] of a) if (b.get(id) !== f) return false;
   return true;
@@ -155,6 +192,23 @@ function perSleutel(set: readonly StandaardCombinatie[]): Map<string, StandaardC
   return new Map(set.map((c) => [c.standaard.sleutel, c]));
 }
 
+/** Getal met decimale komma, zonder overbodige nullen. */
+function nl(x: number): string {
+  return String(Number(x.toFixed(3))).replace(".", ",");
+}
+
+function gelijk(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 1e-9;
+}
+
+/** Hoogstens `max` namen tussen aanhalingstekens, en hoeveel er nog zijn. */
+function namenLijst(lijst: readonly { naam: string }[], max = 8): string {
+  return (
+    lijst.slice(0, max).map((x) => `"${x.naam}"`).join(", ") +
+    (lijst.length > max ? ` en nog ${lijst.length - max}` : "")
+  );
+}
+
 /** Een combinatie met factoren voor belastinggevallen die er niet (meer) zijn. */
 export interface WeesFactor {
   combinatieId: number;
@@ -185,16 +239,398 @@ export function verwijderWeesFactoren(
   return { combinaties, wees };
 }
 
+// ── De standaardset van versie 0.3.11 en ouder ────────────────────────────
+
 /**
- * Een project openen: gevallen, combinaties, klasse en tellers in één keer, en
- * de melding over wat er afwijkt. De store (`loadProjectState`) roept precies
- * deze functie aan, zodat een test het gedrag van de app bewijst.
+ * De acht standaardcombinaties van versie 0.3.11 en ouder, letterlijk zoals
+ * `defaultCombinations()` ze maakte (combinations.ts op 47a4c37; die functie is
+ * van 1f12189 tot en met 0.3.11 niet veranderd). Vaste case-id's G = 1, Q = 2,
+ * S = 3, W = 4, vaste CC2-factoren en de door EN 1990 aanbevolen ψ uit tabel
+ * A1.1 (ψ₀ = 0,7 / 0,7 / 0,6), ongeacht de gevallen van het project.
+ */
+export const OUDE_STANDAARDSET: readonly {
+  naam: string;
+  type: "uls" | "sls";
+  factoren: Readonly<Record<number, number>>;
+}[] = [
+  { naam: "ULS 6.10a", type: "uls", factoren: { 1: 1.35, 2: 1.05, 3: 1.05, 4: 0.9 } },
+  { naam: "ULS 6.10b (Q leidend)", type: "uls", factoren: { 1: 1.2, 2: 1.5, 3: 1.05, 4: 0.9 } },
+  { naam: "ULS 6.10b (S leidend)", type: "uls", factoren: { 1: 1.2, 3: 1.5, 2: 1.05, 4: 0.9 } },
+  { naam: "ULS 6.10b (W leidend)", type: "uls", factoren: { 1: 1.2, 4: 1.5, 2: 1.05, 3: 1.05 } },
+  { naam: "ULS uplift", type: "uls", factoren: { 1: 0.9, 4: 1.5 } },
+  { naam: "SLS Karakteristiek", type: "sls", factoren: { 1: 1.0, 2: 1.0, 3: 0.7, 4: 0.6 } },
+  { naam: "SLS Frequent", type: "sls", factoren: { 1: 1.0, 2: 0.5, 3: 0.2 } },
+  { naam: "SLS Quasi-permanent", type: "sls", factoren: { 1: 1.0, 2: 0.3 } },
+];
+
+const OUDE_GEVALLEN: Readonly<Record<number, string>> = {
+  2: "het veranderlijke geval (Q)", 3: "het sneeuwgeval (S)", 4: "het windgeval (W)",
+};
+
+/**
+ * Is `c` een ongewijzigde combinatie van de standaardset van versie 0.3.11 en
+ * ouder? Herkend op NAAM én FACTORPATROON, per combinatie:
+ *  - geen kenmerk `standaard` en geen combinatie van de windgenerator;
+ *  - de naam is exact een van de acht namen van `OUDE_STANDAARDSET`, en het
+ *    type (UGT/BGT) hoort bij die naam;
+ *  - voor ELK belastinggeval dat in het project bestaat is de factor exact
+ *    (tot op 1e-9) die van het oude patroon, waarbij "niet in het patroon" 0
+ *    betekent. Een factor voor een geval dat niet bestaat telt niet: zo'n
+ *    wees-factor vermenigvuldigt niets, en een bestand dat de vorige versie
+ *    opsloeg had hem al weggehaald.
+ * Het bestaan van id-tellers of een kenmerk speelt GEEN rol: de vorige versie
+ * gebruikte `idTellers !== undefined` als teken van "bewust eigen", en juist
+ * daardoor verdween bij heropenen elke melding (95,625 kNm werd stil 87,75).
+ *
+ * WAAROM DIT NIET TE RUIM IS
+ *  - De namen zijn vaste teksten die de app zelf maakte, in een mengsel van
+ *    Engels en Nederlands ("ULS 6.10b (S leidend)"); geen referentieproject en
+ *    geen externe berekening in de repo draagt ze.
+ *  - Het patroon legt de factoren op alle vier de vaste id's vast, inclusief
+ *    de voorgebakken γ·ψ₀-waarden 1,05 en 0,9. Een combinatie uit een externe
+ *    referentie-berekening heeft die niet op precies die gevallen.
+ *  - Elke aanpassing — een andere naam, één andere factor, een factor voor een
+ *    extra bestaand geval — maakt het een eigen combinatie, en die blijft staan.
+ *  - Gecontroleerd op alle bestanden in design-mockup/referentie/,
+ *    design-mockup/referentie-projecten/ en de gouden fixture: geen enkele
+ *    combinatie wordt herkend (test-oude-projecten.mjs).
+ */
+export function isOudeStandaardcombinatie(
+  c: LoadCombination,
+  gevalIds: ReadonlySet<number>,
+): boolean {
+  if (c.standaard !== undefined || isWindgeneratorCombinatie(c)) return false;
+  const oud = OUDE_STANDAARDSET.find((o) => o.naam === c.name);
+  if (!oud || oud.type !== c.type) return false;
+  for (const [id, f] of c.factors) {
+    if (!gevalIds.has(id)) continue;
+    if (!gelijk(f, oud.factoren[id] ?? 0)) return false;
+  }
+  for (const [sleutel, f] of Object.entries(oud.factoren)) {
+    const id = Number(sleutel);
+    if (!gevalIds.has(id)) continue;
+    if (!gelijk(c.factors.get(id) ?? 0, f)) return false;
+  }
+  return true;
+}
+
+/**
+ * Uitleg bij oude standaardcombinaties die NA het openen nog in een project
+ * staan: na "Ongedaan maken", of doordat een aanvrager ze via de MCP-weg zelf
+ * meestuurt. Bij het openen zelf zijn ze al vervangen.
+ */
+function tekstOudeSetInProject(oud: readonly LoadCombination[], klasse: Gevolgklasse): string {
+  return (
+    `Dit project rekent met ${oud.length} ongewijzigde combinatie(s) van de standaardset van versie ` +
+    `0.3.11 en ouder: ${namenLijst(oud.map((c) => ({ naam: c.name })))}. Die set gaat uit van vaste ` +
+    "belastinggevallen 1 t/m 4, vaste CC2-factoren en de door EN 1990 aanbevolen ψ-waarden (tabel A1.1) " +
+    `in plaats van die van de Nederlandse bijlage, en volgt de belastinggevallen en gevolgklasse ${klasse} ` +
+    "van dit project niet. Bij het openen vervangt de app zo'n set; hij staat er weer na \"Ongedaan " +
+    'maken", of doordat hij zo is meegestuurd.'
+  );
+}
+
+// ── De gevolgklasse bij het openen ────────────────────────────────────────
+
+/**
+ * De klasse waarvoor de standaardcombinaties in een lijst zijn opgesteld: het
+ * kenmerk `standaard.gevolgklasse`, als ALLE standaardcombinaties dezelfde
+ * klasse dragen. Geen kenmerk, of een mengsel van klassen: null.
+ */
+export function klasseUitKenmerk(
+  combinations: readonly LoadCombination[] | null | undefined,
+): Gevolgklasse | null {
+  const klassen = new Set(
+    (combinations ?? []).flatMap((c) => (c.standaard ? [c.standaard.gevolgklasse] : [])),
+  );
+  return klassen.size === 1 ? [...klassen][0] : null;
+}
+
+/** Waar de gevolgklasse bij het openen vandaan kwam. */
+export type KlasseBron = "bestand" | "verzoek" | "kenmerk" | "terugval";
+
+/**
+ * De gevolgklasse waarmee een projectbestand wordt geopend — één regel voor de
+ * app (`loadProjectState`) en de MCP-weg (`leesGevolgklasse` in de sidecar):
+ *  1. de klasse uit de projectgegevens van het bestand: de keuze van de
+ *     constructeur;
+ *  2. een uitdrukkelijk gevraagde klasse (alleen de MCP-weg: `gevolgklasse`
+ *     in het verzoek);
+ *  3. de klasse uit het kenmerk van de standaardcombinaties in het bestand
+ *     (`klasseUitKenmerk`);
+ *  4. de terugval: in de app de klasse van het project dat open stond, in de
+ *     MCP-weg CC2 (NB tabel NB.4), met een waarschuwing.
+ *
+ * Waarom stap 3: het openen werkt standaardcombinaties met een ander
+ * klassekenmerk bij naar de klasse waarmee geopend wordt. Zonder deze stap was
+ * dat voor een bestand zonder klasse in de projectgegevens de TERUGVALklasse,
+ * en rekende een CC3-set ineens met CC2-factoren. Gemeten (ligger 6 m, G = 10
+ * en Q = 5 kN/m, M = 4,5·q): 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 kNm
+ * hoort (NB tabel NB.5) — terwijl de set uit het bestand zelf 95,625 gaf.
+ */
+export function gevolgklasseBijOpenen(p: {
+  bestand?: Gevolgklasse | null;
+  verzoek?: Gevolgklasse | null;
+  combinations?: readonly LoadCombination[] | null;
+  terugval: Gevolgklasse;
+}): { klasse: Gevolgklasse; bron: KlasseBron } {
+  if (p.bestand) return { klasse: p.bestand, bron: "bestand" };
+  if (p.verzoek) return { klasse: p.verzoek, bron: "verzoek" };
+  const kenmerk = klasseUitKenmerk(p.combinations);
+  if (kenmerk) return { klasse: kenmerk, bron: "kenmerk" };
+  return { klasse: p.terugval, bron: "terugval" };
+}
+
+// ── De combinaties van de windgenerator ───────────────────────────────────
+
+/**
+ * De combinaties die de windgenerator voor deze gevallen en deze klasse zou
+ * maken, met case-id's zoals `windStore.pasToe` ze zet. `null` als er geen
+ * gegenereerd windgeval is: dan valt er niets af te leiden.
+ */
+export function windCombinatiesVoor(
+  loadCases: readonly GevalInvoer[],
+  gevolgklasse: Gevolgklasse,
+): Omit<LoadCombination, "id">[] | null {
+  const wind = loadCases.filter((c) => c.gegenereerd?.bron === "wind");
+  if (wind.length === 0) return null;
+  const idVan = new Map(wind.map((c) => [c.gegenereerd!.sleutel, c.id] as const));
+  return genereerWindCombinaties(
+    loadCases,
+    wind.map((c) => ({ sleutel: c.gegenereerd!.sleutel, naam: c.name })),
+    gevolgklasse,
+  ).map((g) => ({
+    name: g.naam,
+    type: g.type,
+    formula: g.formule,
+    factors: new Map<number, number>([...g.factorenPerCaseId, [idVan.get(g.windSleutel)!, g.windFactor]]),
+  }));
+}
+
+/**
+ * Breng de combinaties van de windgenerator in lijn met de gevallen en de
+ * gevolgklasse. Zonder gegenereerde combinaties, of zonder gegenereerd
+ * windgeval om ze uit af te leiden, verandert er niets (het tweede meldt
+ * `verouderdeWindCombinaties` als FOUT). Een combinatie met dezelfde naam houdt
+ * haar id. De generatorinstellingen zijn hier niet nodig: de combinaties hangen
+ * alleen van de gevallen en de klasse af (zie `genereerWindCombinaties`).
+ *
+ * Gemeten vóór deze functie (portaal 12 × 6 m, HEA200/IPE300): wind
+ * gegenereerd, daarna "Q dak 2" (cat. A) erbij of de gevolgklasse naar CC3 —
+ * de windcombinaties bleven zoals ze waren zolang de generator niet actief was,
+ * en vier N–M-toestanden aan de kolomvoet werden door geen combinatie gedekt.
+ */
+export function synchroniseerWindCombinaties(staat: CombinatieStaat): CombinatieStaat {
+  const huidig = staat.combinations.filter(isWindgeneratorCombinatie);
+  if (huidig.length === 0) return staat;
+  const verwacht = windCombinatiesVoor(staat.loadCases, staat.gevolgklasse);
+  if (verwacht === null) return staat;
+  if (huidig.length === verwacht.length && huidig.every((c, i) => gelijkeInhoud(c, verwacht[i]))) {
+    return staat;
+  }
+  const idPerNaam = new Map<string, number>();
+  for (const c of huidig) if (!idPerNaam.has(c.name)) idPerNaam.set(c.name, c.id);
+  let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
+  const gebruikt = new Set<number>();
+  const nieuw = verwacht.map((c): LoadCombination => {
+    const id = idPerNaam.get(c.name);
+    if (id !== undefined && !gebruikt.has(id)) {
+      gebruikt.add(id);
+      return { ...c, id };
+    }
+    return { ...c, id: volgendId++ };
+  });
+  return {
+    ...staat,
+    combinations: [...staat.combinations.filter((c) => !isWindgeneratorCombinatie(c)), ...nieuw],
+    volgendCombinatieId: volgendId,
+  };
+}
+
+// ── Openen: verouderde combinaties vervangen ──────────────────────────────
+
+/** Wat er bij het openen is vervangen, en hoe het terug kan. */
+export interface CombinatieVervanging {
+  gevolgklasse: Gevolgklasse;
+  /** Herkende combinaties van de standaardset van versie 0.3.11 en ouder. */
+  oudeStandaard: { id: number; naam: string }[];
+  /** Standaardcombinaties uit het bestand met een andere rekeninhoud dan nu. */
+  bijgewerkt: { id: number; naam: string }[];
+  /** Combinaties van de windgenerator die opnieuw zijn afgeleid (de oude). */
+  wind: { id: number; naam: string }[];
+  /** Eigen combinaties die zijn blijven staan. */
+  eigen: { id: number; naam: string }[];
+  /** Aantal standaardcombinaties na de vervanging. */
+  aantalStandaard: number;
+  /** Aantal combinaties van de windgenerator na de vervanging. */
+  aantalWind: number;
+  /**
+   * De combinaties vóór de vervanging, voor "Ongedaan maken"
+   * (`herstelCombinaties`). Dit is de lijst zoals hij uit het bestand kwam,
+   * zonder wees-factoren (die vermenigvuldigen niets, zie `verwijderWeesFactoren`).
+   */
+  voor: LoadCombination[];
+  /** Eén alinea voor de melding, het rapport en de MCP-waarschuwingen. */
+  samenvatting: string;
+}
+
+function tekstVervanging(v: Omit<CombinatieVervanging, "samenvatting" | "voor">): string {
+  const bron = PARTIELE_FACTOREN[v.gevolgklasse].bron;
+  const delen: string[] = [];
+  if (v.oudeStandaard.length > 0) {
+    delen.push(
+      `Bij het openen zijn ${v.oudeStandaard.length} belastingcombinatie(s) van de standaardset van ` +
+        `versie 0.3.11 en ouder vervangen: ${namenLijst(v.oudeStandaard)}. Die set rekende met vaste ` +
+        "belastinggevallen 1 t/m 4, vaste CC2-factoren en de door EN 1990 aanbevolen ψ-waarden (tabel " +
+        "A1.1) in plaats van die van de Nederlandse bijlage, en volgde de belastinggevallen van het " +
+        "project niet: een geval dat erbij kwam of van type veranderde, telde met verkeerde of geen factoren.",
+    );
+  }
+  if (v.bijgewerkt.length > 0) {
+    delen.push(
+      `${v.bijgewerkt.length} standaardcombinatie(s) uit het bestand hoorden bij een andere gevolgklasse ` +
+        `of andere belastinggevallen en zijn bijgewerkt: ${namenLijst(v.bijgewerkt)}.`,
+    );
+  }
+  if (v.wind.length > 0) {
+    delen.push(
+      `De ${v.wind.length} combinatie(s) van de windgenerator zijn opnieuw afgeleid uit de ` +
+        `gegenereerde windgevallen, de overige belastinggevallen en gevolgklasse ${v.gevolgklasse}.`,
+    );
+  }
+  delen.push(
+    `Het project rekent nu met ${v.aantalStandaard} standaardcombinaties` +
+      (v.aantalWind > 0 ? ` en ${v.aantalWind} van de windgenerator` : "") +
+      `, afgeleid uit zijn belastinggevallen en gevolgklasse ${v.gevolgklasse}: γ uit NEN-EN 1990 ` +
+      `${bron}, ψ uit tabel NB.2–A1.1.`,
+  );
+  if (v.eigen.length > 0) {
+    delen.push(
+      `${v.eigen.length} eigen combinatie(s) zijn blijven staan: ${namenLijst(v.eigen)}. De app past ` +
+        "ze niet aan, maar controleert ze wel; zie de meldingen bij de belastinggevallen.",
+    );
+  }
+  delen.push(
+    "De uitkomsten kunnen daardoor afwijken van een berekening met de versie waarin het bestand is opgeslagen.",
+  );
+  return delen.join(" ");
+}
+
+/**
+ * Vervang wat de app zelf ooit maakte maar nu anders zou maken:
+ *  1. Staat er minstens één combinatie van de standaardset van versie 0.3.11
+ *     en ouder in (`isOudeStandaardcombinatie`), dan gaan die combinaties én
+ *     alle standaardcombinaties met kenmerk eruit, en komt de VOLLEDIGE
+ *     standaardset voor deze gevallen en deze klasse ervoor in de plaats. Een
+ *     standaardcombinatie met kenmerk houdt daarbij haar id als haar sleutel
+ *     terugkomt. Een volledige set, geen aanvulling: een oude set naast een
+ *     deel van de nieuwe gaf 89,10 kNm waar 122,85 hoort.
+ *  2. Anders: standaardcombinaties met kenmerk krijgen de factoren van de
+ *     huidige gevallen en klasse (`synchroniseerStandaard`). Een combinatie
+ *     die de gebruiker had weggehaald komt niet terug; ontbreekt er daardoor
+ *     een, dan meldt `meldingenBelastinggevallen` dat als FOUT.
+ *  3. Altijd: de combinaties van de windgenerator (`synchroniseerWindCombinaties`).
+ * Eigen combinaties blijven staan, in hun volgorde, na de standaardset.
+ *
+ * `vervanging` is null als er aan de rekeninhoud niets veranderde; de staat
+ * kan dan nog een bijgewerkt kenmerk dragen (een BGT-combinatie met gelijke
+ * factoren onder een andere klasse).
+ */
+export function vervangVerouderdeCombinaties(staat: CombinatieStaat): {
+  staat: CombinatieStaat;
+  vervanging: CombinatieVervanging | null;
+} {
+  const gevalIds = new Set(staat.loadCases.map((c) => c.id));
+  const oud = staat.combinations.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
+  const metKenmerk = staat.combinations.filter((c) => c.standaard !== undefined);
+
+  let volgend: CombinatieStaat;
+  if (oud.length > 0) {
+    const weg = new Set<LoadCombination>(oud);
+    let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
+    const idPerSleutel = new Map<string, number>();
+    for (const c of metKenmerk) {
+      const s = c.standaard!.sleutel;
+      if (!idPerSleutel.has(s)) idPerSleutel.set(s, c.id);
+    }
+    const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse)
+      .map((c): LoadCombination => ({ ...c, id: idPerSleutel.get(c.standaard.sleutel) ?? volgendId++ }));
+    const rest = staat.combinations.filter((c) => !weg.has(c) && c.standaard === undefined);
+    volgend = synchroniseerWindCombinaties({
+      ...staat,
+      combinations: [...standaard, ...rest],
+      volgendCombinatieId: volgendId,
+    });
+  } else if (metKenmerk.length > 0) {
+    volgend = synchroniseerStandaard(staat, { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse });
+  } else {
+    volgend = synchroniseerWindCombinaties(staat);
+  }
+
+  const naStandaard = new Map(
+    volgend.combinations.filter((c) => c.standaard !== undefined).map((c) => [c.id, c] as const),
+  );
+  const bijgewerkt = metKenmerk.filter((c) => {
+    const n = naStandaard.get(c.id);
+    return !n || !gelijkeInhoud(c, n);
+  });
+  const windVoor = staat.combinations.filter(isWindgeneratorCombinatie);
+  const windNa = volgend.combinations.filter(isWindgeneratorCombinatie);
+  const windAnders =
+    windVoor.length !== windNa.length || windVoor.some((c, i) => !gelijkeInhoud(c, windNa[i]));
+  const lijst = (l: readonly LoadCombination[]) => l.map((c) => ({ id: c.id, naam: c.name }));
+
+  if (oud.length === 0 && bijgewerkt.length === 0 && !windAnders) {
+    return { staat: volgend, vervanging: null };
+  }
+  const kern = {
+    gevolgklasse: staat.gevolgklasse,
+    oudeStandaard: lijst(oud),
+    bijgewerkt: lijst(bijgewerkt),
+    wind: windAnders ? lijst(windVoor) : [],
+    eigen: lijst(volgend.combinations.filter((c) => c.standaard === undefined && !isWindgeneratorCombinatie(c))),
+    aantalStandaard: naStandaard.size,
+    aantalWind: windNa.length,
+  };
+  return {
+    staat: volgend,
+    vervanging: { ...kern, voor: staat.combinations, samenvatting: tekstVervanging(kern) },
+  };
+}
+
+/**
+ * "Ongedaan maken" van een vervanging: de combinaties van vóór de vervanging
+ * terug, precies zoals ze waren. Is sindsdien een belastinggeval verwijderd,
+ * dan gaat de factor van dat geval eruit (anders zou een nieuw geval hem
+ * erven, basisaudit nr 14). De combinatieteller loopt niet terug.
+ */
+export function herstelCombinaties(
+  staat: CombinatieStaat,
+  voor: readonly LoadCombination[],
+): CombinatieStaat {
+  const ids = new Set(staat.loadCases.map((c) => c.id));
+  const combinations = voor.map((c) => zonderOnbekendeGevallen(c, ids));
+  return {
+    ...staat,
+    combinations,
+    volgendCombinatieId: Math.max(staat.volgendCombinatieId, volgendVrijId(combinations, 1)),
+  };
+}
+
+/**
+ * Een project openen: gevallen, combinaties, klasse en tellers in één keer. De
+ * store (`loadProjectState`) en de sidecar (projectbestand via `project_path`)
+ * roepen precies deze functie aan, zodat een test het gedrag van beide bewijst.
  *
  *  - Zonder combinaties in het bestand (v1, of Nieuw): de standaardset van
  *    zijn gevallen.
- *  - Met combinaties: die rekenen, ook als ze van de standaard afwijken —
- *    gemeld, niet overschreven. Alleen factoren voor gevallen die niet bestaan
- *    gaan eruit (zie `verwijderWeesFactoren`); ook dat staat in de melding.
+ *  - Met combinaties: eerst gaan factoren voor gevallen die niet bestaan eruit
+ *    (`verwijderWeesFactoren`), daarna wordt vervangen wat verouderd is
+ *    (`vervangVerouderdeCombinaties`). `vervanging` beschrijft dat, met de
+ *    lijst van ervoor om het ongedaan te maken.
+ *  - `afwijking`: wat er daarna nog te melden is — de weggehaalde
+ *    wees-factoren, en een blijvend geval met vreemde factoren in een eigen
+ *    combinatie.
  *  - De geval-teller komt boven het hoogste id van de gevallen, boven de teller
  *    uit het bestand, én boven elk id dat in een factortabel van het bestand
  *    stond. Het laatste is de tweede grendel tegen nr 14: een bestand zonder
@@ -207,7 +643,11 @@ export function openCombinatieStaat(p: {
   combinations?: LoadCombination[];
   gevolgklasse: Gevolgklasse;
   idTellers?: { belastinggeval?: number; combinatie?: number };
-}): { staat: CombinatieStaat; afwijking: CombinatieAfwijking | null } {
+}): {
+  staat: CombinatieStaat;
+  afwijking: CombinatieAfwijking | null;
+  vervanging: CombinatieVervanging | null;
+} {
   const gevalTeller = volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1);
   if (!p.combinations) {
     const combinations = defaultCombinations(p.loadCases, p.gevolgklasse);
@@ -220,6 +660,7 @@ export function openCombinatieStaat(p: {
         volgendCombinatieId: volgendVrijId(combinations, p.idTellers?.combinatie ?? 1),
       },
       afwijking: null,
+      vervanging: null,
     };
   }
   const { combinaties, wees } = verwijderWeesFactoren(p.combinations, p.loadCases);
@@ -227,19 +668,19 @@ export function openCombinatieStaat(p: {
     .flatMap((c) => [...c.factors.keys()])
     .filter((id) => Number.isFinite(id))
     .reduce((m, id) => Math.max(m, id), 0);
+  const { staat, vervanging } = vervangVerouderdeCombinaties({
+    loadCases: p.loadCases,
+    combinations: combinaties,
+    gevolgklasse: p.gevolgklasse,
+    volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
+    volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1),
+  });
   return {
-    staat: {
-      loadCases: p.loadCases,
-      combinations: combinaties,
-      gevolgklasse: p.gevolgklasse,
-      volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
-      volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1),
-    },
+    staat,
+    vervanging,
     afwijking: beoordeelCombinatiesBijOpenen({
-      combinations: combinaties,
+      combinations: staat.combinations,
       loadCases: p.loadCases,
-      gevolgklasse: p.gevolgklasse,
-      eigenCombinatiesBewust: p.idTellers !== undefined,
       weesFactoren: wees,
     }),
   };
@@ -249,7 +690,8 @@ export function openCombinatieStaat(p: {
 
 /**
  * Breng de standaardcombinaties in lijn met `staat.loadCases` en
- * `staat.gevolgklasse`, gegeven hoe gevallen en klasse `vorig` waren.
+ * `staat.gevolgklasse`, gegeven hoe gevallen en klasse `vorig` waren. De
+ * combinaties van de windgenerator lopen mee (`synchroniseerWindCombinaties`).
  *
  * Regels:
  *  - Een standaardcombinatie waarvan de sleutel nog geldt, krijgt de nieuwe
@@ -260,13 +702,12 @@ export function openCombinatieStaat(p: {
  *  - Een sleutel die nieuw is — hij bestond onder `vorig` niet — wordt
  *    toegevoegd met een nieuw id. Een sleutel die onder `vorig` WEL bestond
  *    maar niet in de lijst staat, heeft de gebruiker zelf weggehaald of tot een
- *    eigen combinatie gemaakt, of de lijst komt uit een ouder projectbestand;
- *    die komt niet ongevraagd terug.
+ *    eigen combinatie gemaakt; die komt niet ongevraagd terug.
  *  - NOOIT EEN DEEL ZONDER HET GEHEEL: een nieuwe opstelling met afwezige
  *    gevallen ("…|zonder:…") komt er alleen bij als de volledige opstelling van
  *    dezelfde uitdrukking en leidende last in de lijst staat of nu zelf wordt
- *    toegevoegd. Anders zou een oud bestand (acht eigen combinaties) na een
- *    nieuw veranderlijk geval alleen "… zonder Variabel (Q)"-combinaties
+ *    toegevoegd. Anders zou een set waarin de volledige opstelling ontbreekt
+ *    na een nieuw veranderlijk geval alleen "… zonder Variabel (Q)"-combinaties
  *    krijgen: het nieuwe geval telt dan wél ergens mee, de FOUT dat het nergens
  *    meetelt verdwijnt, en de combinatie met beide gevallen op γ_Q ontbreekt
  *    stil (gemeten 89,10 kNm waar 122,85 hoort). Wat er dan ontbreekt, meldt
@@ -320,7 +761,7 @@ export function synchroniseerStandaard(
       standaard.push(bestaand);
       continue;
     }
-    if (vorigeSleutels.has(s)) continue; // weggehaald, eigen gemaakt of uit een ouder bestand
+    if (vorigeSleutels.has(s)) continue; // weggehaald of eigen gemaakt
     const basis = basisSleutel(s);
     // Nooit een deel zonder het geheel. Staat de volledige opstelling niet in
     // de set (samengevallen met een andere combinatie, zie `ontdubbel`), dan
@@ -330,11 +771,11 @@ export function synchroniseerStandaard(
   }
 
   const combinations = [...standaard, ...eigen];
-  return {
+  return synchroniseerWindCombinaties({
     ...staat,
     combinations: gelijkeLijst(combinations, staat.combinations) ? staat.combinations : combinations,
     volgendCombinatieId: volgendId,
-  };
+  });
 }
 
 /**
@@ -402,7 +843,8 @@ export function zetGevolgklasse(staat: CombinatieStaat, gevolgklasse: Gevolgklas
 /**
  * De expliciete actie bij een project met afwijkende combinaties: vervang
  * alles door de standaardset. Alleen de combinaties van de windgenerator
- * blijven staan — die horen bij haar gevallen en maakt zij zelf opnieuw.
+ * blijven staan — die horen bij haar gevallen, en worden hier meteen opnieuw
+ * afgeleid.
  */
 export function vervangDoorStandaard(staat: CombinatieStaat): CombinatieStaat {
   const geldigeIds = new Set(staat.loadCases.map((c) => c.id));
@@ -412,7 +854,11 @@ export function vervangDoorStandaard(staat: CombinatieStaat): CombinatieStaat {
   const wind = staat.combinations
     .filter(isWindgeneratorCombinatie)
     .map((c) => zonderOnbekendeGevallen(c, geldigeIds));
-  return { ...staat, combinations: [...standaard, ...wind], volgendCombinatieId: volgendId };
+  return synchroniseerWindCombinaties({
+    ...staat,
+    combinations: [...standaard, ...wind],
+    volgendCombinatieId: volgendId,
+  });
 }
 
 export function voegCombinatieToe(
@@ -433,7 +879,8 @@ export function voegCombinatieToe(
  * Een combinatie wijzigen. Elke wijziging maakt er een EIGEN combinatie van:
  * het kenmerk `standaard` verdwijnt, en de app past haar daarna niet meer aan.
  * Anders zou de volgende wijziging aan een belastinggeval de aanpassing van
- * de gebruiker stil terugdraaien.
+ * de gebruiker stil terugdraaien. De formule blijft staan; daaraan herkent
+ * `isAfgeleidVanStandaard` dat de set uit de standaardset komt.
  */
 export function wijzigCombinatie(
   staat: CombinatieStaat,
@@ -473,26 +920,41 @@ export interface GevalMelding {
   tekst: string;
   /**
    * De combinaties zelf zijn het probleem, en "Vervang door
-   * standaardcombinaties" lost het op. De interface toont die actie dan ook
-   * zonder de melding bij het openen van een projectbestand.
+   * standaardcombinaties" lost het op. De interface toont die actie dan ook.
    */
   vervangAdvies?: true;
+  /**
+   * De combinaties van de windgenerator zijn verouderd en niet af te leiden;
+   * de interface toont de actie om de windbelasting opnieuw te genereren.
+   */
+  windOpnieuwAdvies?: true;
 }
 
 const TYPE_TEKST: Record<string, string> = {
   dead: "blijvend", live: "veranderlijk", snow: "sneeuw", wind: "wind", other: "overig",
 };
 
-/** Getal met decimale komma, zonder overbodige nullen. */
-function nl(x: number): string {
-  return String(Number(x.toFixed(3))).replace(".", ",");
-}
-
-function gelijk(a: number, b: number): boolean {
-  return Math.abs(a - b) <= 1e-9;
-}
-
 // ── Ontbrekende standaardcombinaties ──────────────────────────────────────
+
+/**
+ * Komt deze combinatie uit de standaardset van deze versie? Met kenmerk
+ * zeker; zonder kenmerk als haar formule nog de bronvermelding van
+ * `normcombinaties.ts` draagt ("ψ uit NB tabel NB.2–A1.1"). Dat laatste is een
+ * hernoemde of aangepaste standaardcombinatie: `wijzigCombinatie` haalt het
+ * kenmerk weg maar laat de formule staan, en in het venster is de formule niet
+ * te bewerken. De windgenerator zet dezelfde bron in zijn formules, maar zijn
+ * combinaties hebben een eigen controle (`verouderdeWindCombinaties`).
+ *
+ * Waarom dit nodig is: in een project waarin ALLE standaardcombinaties hernoemd
+ * waren en een geval daarna van type veranderde, zocht niemand naar
+ * ontbrekende combinaties — 102,60 kNm waar 122,85 hoort, zonder melding.
+ */
+export function isAfgeleidVanStandaard(
+  c: Pick<LoadCombination, "name" | "formula" | "standaard">,
+): boolean {
+  if (isWindgeneratorCombinatie(c)) return false;
+  return c.standaard !== undefined || c.formula.includes(PSI_BRON);
+}
 
 /**
  * De standaardcombinaties voor deze gevallen en deze klasse die in
@@ -547,11 +1009,230 @@ function tekstOntbrekend(ontbrekend: readonly StandaardCombinatie[], klasse: Gev
     `Ze horen bij deze belastinggevallen en ${klasse}, en geen andere combinatie in dit project ` +
     `heeft dezelfde factoren voor de gevallen met last: ${namen}. Een combinatieset die een deel ` +
     "van de standaardset mist, geeft een lagere omhullende zonder dat een getal dat verraadt. Dat " +
-    "gebeurt als een standaardcombinatie is verwijderd of aangepast (dan is ze een eigen combinatie " +
-    "en volgt ze de belastinggevallen niet meer), of als de combinaties uit een ouder projectbestand " +
-    "komen en er daarna een belastinggeval bij kwam of van type of categorie veranderde. Kies " +
-    '"Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of voeg de ontbrekende ' +
-    "combinaties als eigen combinatie toe."
+    "gebeurt als een standaardcombinatie is verwijderd, hernoemd of aangepast — dan is ze een eigen " +
+    "combinatie en volgt ze de belastinggevallen niet meer — en er daarna een belastinggeval bij kwam " +
+    'of van type of categorie veranderde. Kies "Vervang door standaardcombinaties" in ' +
+    "Belastinggevallen & combinaties, of voeg de ontbrekende combinaties als eigen combinatie toe."
+  );
+}
+
+// ── Veranderlijke belastingen in eigen combinaties ────────────────────────
+
+/** Twee delen van één veranderlijke belasting met verschillende factoren. */
+export interface VeranderlijkVerschil {
+  /** De gebruikscategorie (tabel NB.2–A1.1) die de gevallen delen. */
+  categorie: string;
+  /** De gevulde veranderlijke gevallen van die categorie. */
+  caseIds: number[];
+  /** Per combinatie de factoren die van elkaar verschillen. */
+  combinaties: { combinatieId: number; naam: string; factoren: [number, number][] }[];
+}
+
+/**
+ * Combinaties waarin twee gevulde veranderlijke gevallen van DEZELFDE
+ * gebruikscategorie elk een factor ≠ 0 hebben, maar niet dezelfde.
+ *
+ * Waarom dat een fout is: de app behandelt veranderlijke gevallen van één
+ * categorie als delen van één veranderlijke belasting (normcombinaties.ts,
+ * "WAT EEN VERANDERLIJKE BELASTING HIER IS"). In één combinatie is die
+ * belasting de overheersende of een samengaande (NEN-EN 1990 6.4.3.2(2)), dus
+ * draagt elk aanwezig deel dezelfde factor: γ_Q, of γ_Q·ψ₀. Een combinatie
+ * waarin het ene deel met 1,5 en het andere met 0,6 telt, is geen van beide.
+ *
+ * Het spoor dat hier gevonden wordt: een set eigen (hernoemde) combinaties,
+ * daarna een sneeuwgeval veranderlijk gemaakt. "UGT 6.10b — Sneeuw (S)
+ * leidend" hield 1,5 voor geval 3 en 0,6 voor geval 2, en de combinatie met
+ * beide op 1,5 ontstond nooit (102,60 kNm waar 122,85 hoort). Een afwezig deel
+ * (factor 0) mag: een veranderlijke belasting telt alleen waar ze ongunstig
+ * werkt (EN 1991-1-1 6.2.1(1)P). Een factor voor een leeg geval telt niet.
+ */
+export function veranderlijkeFactorVerschillen(p: {
+  loadCases: readonly GevalInvoer[];
+  combinations: readonly LoadCombination[];
+  gevuld?: (caseId: number) => boolean;
+}): VeranderlijkVerschil[] {
+  const gevuld = p.gevuld ?? (() => true);
+  const groepen = new Map<string, number[]>();
+  for (const c of p.loadCases) {
+    if (c.type !== "live" || c.gegenereerd?.bron === "wind" || !gevuld(c.id)) continue;
+    const cat = c.categorie ?? STANDAARD_CATEGORIE;
+    groepen.set(cat, [...(groepen.get(cat) ?? []), c.id]);
+  }
+  const uit: VeranderlijkVerschil[] = [];
+  for (const [categorie, ids] of groepen) {
+    if (ids.length < 2) continue;
+    const combinaties: VeranderlijkVerschil["combinaties"] = [];
+    for (const c of p.combinations) {
+      const factoren = ids
+        .map((id) => [id, c.factors.get(id) ?? 0] as [number, number])
+        .filter(([, f]) => f !== 0);
+      if (new Set(factoren.map(([, f]) => Math.round(f * 1e9) / 1e9)).size > 1) {
+        combinaties.push({ combinatieId: c.id, naam: c.name, factoren });
+      }
+    }
+    if (combinaties.length > 0) uit.push({ categorie, caseIds: ids, combinaties });
+  }
+  return uit;
+}
+
+function tekstVerschil(v: VeranderlijkVerschil, naamVan: (id: number) => string): string {
+  const MAX = 6;
+  const regels =
+    v.combinaties
+      .slice(0, MAX)
+      .map((c) => `"${c.naam}" ${c.factoren.map(([id, f]) => `${nl(f)} voor geval ${id}`).join(" en ")}`)
+      .join("; ") + (v.combinaties.length > MAX ? `; en nog ${v.combinaties.length - MAX}` : "");
+  return (
+    `De veranderlijke belastinggevallen ${v.caseIds.map(naamVan).join(", ")} (gebruikscategorie ` +
+    `${v.categorie}) hebben in ${v.combinaties.length} combinatie(s) verschillende factoren: ${regels}. ` +
+    "Gevallen van dezelfde gebruikscategorie zijn delen van één veranderlijke belasting — zo stelt de " +
+    "app de standaardcombinaties op — en in één combinatie is die belasting de overheersende (γ_Q) of " +
+    "een samengaande (γ_Q·ψ₀), NEN-EN 1990 6.4.3.2(2); elk aanwezig deel draagt dan dezelfde factor. " +
+    "Een combinatie waarin het ene deel overheerst en het andere samengaat, telt de belasting te laag, " +
+    "en de combinatie waarin alle delen samen overheersen ontbreekt dan mogelijk. Dit ontstaat als een " +
+    "geval van type of categorie verandert terwijl de combinaties eigen combinaties zijn (hernoemd of " +
+    'aangepast): die volgen de gevallen niet. Kies "Vervang door standaardcombinaties" in ' +
+    "Belastinggevallen & combinaties, of pas de factoren van deze combinaties aan."
+  );
+}
+
+/** Een veranderlijke belasting die in geen enkele UGT-combinatie overheerst. */
+export interface BelastingZonderLeiding {
+  /** Voor in de melding: de naam van het geval, of de categorie. */
+  label: string;
+  caseIds: number[];
+  /** De grootste |factor| waarmee de belasting in een UGT-combinatie voorkomt. */
+  hoogste: number;
+}
+
+/**
+ * De kleinste γ_Q voor een overheersende veranderlijke belasting in enige
+ * gevolgklasse: 1,35 (NB tabel NB.5, CC1). Een factor daaronder is in geen
+ * klasse een overheersende belasting zonder ψ₀; een eigen combinatie uit een
+ * CC1-berekening (1,35) telt dus ook in een CC2-project als overheersend.
+ */
+const GAMMA_Q_MIN = Math.min(...GEVOLGKLASSEN.map((k) => PARTIELE_FACTOREN[k].gQ));
+
+/**
+ * Veranderlijke belastingen met last die wel in een UGT-combinatie voorkomen,
+ * maar in geen enkele als overheersende: nergens staan hun aanwezige delen met
+ * één factor van minstens γ_Q = 1,35. Een veranderlijke belasting is hier
+ * dezelfde eenheid als in de standaardset: veranderlijke gevallen per
+ * gebruikscategorie samen, elk sneeuwgeval en elk windgeval apart. Een
+ * belasting die in geen UGT-combinatie voorkomt, meldt de controle per geval al.
+ *
+ * Waarom: NEN-EN 1990 6.4.3.1(2) — elke combinatie omvat een overheersende
+ * veranderlijke belasting — en 6.4.3.1(1)P: de rekenwaarden volgen uit elk
+ * kritiek belastingsgeval. Overheerst een belasting nergens, dan ontbreekt het
+ * kritieke geval waarin zij overheerst; in 6.10b (NB A1.3.1(1)) is dat γ_Q
+ * zonder ψ₀. Dit geldt ook in een set die de gebruiker volledig zelf opstelde.
+ */
+export function veranderlijkeBelastingenZonderLeiding(p: {
+  loadCases: readonly GevalInvoer[];
+  combinations: readonly LoadCombination[];
+  gevuld?: (caseId: number) => boolean;
+}): BelastingZonderLeiding[] {
+  const gevuld = p.gevuld ?? (() => true);
+  const acties: { label: string; caseIds: number[] }[] = [];
+  const live = p.loadCases.filter((c) => c.type === "live" && gevuld(c.id));
+  for (const cat of [...new Set(live.map((c) => c.categorie ?? STANDAARD_CATEGORIE))]) {
+    const leden = live.filter((c) => (c.categorie ?? STANDAARD_CATEGORIE) === cat);
+    acties.push({
+      label: leden.length === 1 ? `"${leden[0].name}"` : `veranderlijk, categorie ${cat}`,
+      caseIds: leden.map((c) => c.id),
+    });
+  }
+  for (const c of p.loadCases) {
+    if ((c.type === "snow" || c.type === "wind") && gevuld(c.id)) {
+      acties.push({ label: `"${c.name}"`, caseIds: [c.id] });
+    }
+  }
+  const ugt = p.combinations.filter((c) => c.type === "uls");
+  const uit: BelastingZonderLeiding[] = [];
+  for (const a of acties) {
+    let hoogste = 0;
+    let overheerst = false;
+    for (const c of ugt) {
+      const f = a.caseIds.map((id) => c.factors.get(id) ?? 0).filter((x) => x !== 0);
+      if (f.length === 0) continue;
+      hoogste = Math.max(hoogste, ...f.map(Math.abs));
+      const eenFactor = new Set(f.map((x) => Math.round(x * 1e9) / 1e9)).size === 1;
+      if (eenFactor && Math.abs(f[0]) >= GAMMA_Q_MIN - 1e-9) {
+        overheerst = true;
+        break;
+      }
+    }
+    if (!overheerst && hoogste > 0) uit.push({ ...a, hoogste });
+  }
+  return uit;
+}
+
+function tekstZonderLeiding(a: BelastingZonderLeiding): string {
+  const γ = (k: Gevolgklasse) => nl(PARTIELE_FACTOREN[k].gQ);
+  return (
+    `Veranderlijke belasting ${a.label} (belastinggeval ${a.caseIds.join(", ")}) is in geen enkele ` +
+    "UGT-combinatie de overheersende veranderlijke belasting: ze komt alleen voor met een factor van " +
+    `ten hoogste ${nl(a.hoogste)}. Elke combinatie omvat een overheersende veranderlijke belasting ` +
+    "(NEN-EN 1990 6.4.3.1(2)) en de rekenwaarden volgen uit elk kritiek belastingsgeval (6.4.3.1(1)P); " +
+    `in uitdrukking 6.10b (NB A1.3.1(1)) krijgt de overheersende belasting γ_Q zonder ψ₀: ${γ("CC1")} in ` +
+    `CC1 (NB tabel NB.5), ${γ("CC2")} in CC2 (NB.4), ${γ("CC3")} in CC3 (NB.5). Zonder zo'n combinatie ` +
+    'kan de omhullende te laag zijn. Kies "Vervang door standaardcombinaties", of voeg een combinatie ' +
+    "toe waarin deze belasting overheerst."
+  );
+}
+
+// ── Combinaties van de windgenerator ──────────────────────────────────────
+
+function gelijkeRekeninhoudSet(
+  a: readonly Omit<LoadCombination, "id">[],
+  b: readonly Omit<LoadCombination, "id">[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const vrij = [...b];
+  for (const c of a) {
+    const i = vrij.findIndex((x) =>
+      x.type === c.type &&
+      x.factors.size === c.factors.size &&
+      [...c.factors].every(([id, f]) => gelijk(x.factors.get(id) ?? Number.NaN, f)));
+    if (i < 0) return false;
+    vrij.splice(i, 1);
+  }
+  return true;
+}
+
+/**
+ * Combinaties van de windgenerator die niet passen bij wat de generator voor
+ * deze gevallen en deze klasse zou maken — vergeleken op type en factoren, in
+ * willekeurige volgorde. `null` = in orde of geen gegenereerde combinaties.
+ *
+ * In de app en bij het openen houdt `synchroniseerWindCombinaties` ze bij, dus
+ * daar treft dit alleen een set zonder gegenereerd windgeval om uit af te
+ * leiden. In de MCP-weg kan een aanvrager ook zelf verouderde
+ * windcombinaties meesturen.
+ */
+export function verouderdeWindCombinaties(p: {
+  loadCases: readonly GevalInvoer[];
+  combinations: readonly LoadCombination[];
+  gevolgklasse: Gevolgklasse;
+}): { aantal: number; verwacht: number | null } | null {
+  const huidig = p.combinations.filter(isWindgeneratorCombinatie);
+  if (huidig.length === 0) return null;
+  const verwacht = windCombinatiesVoor(p.loadCases, p.gevolgklasse);
+  if (verwacht !== null && gelijkeRekeninhoudSet(huidig, verwacht)) return null;
+  return { aantal: huidig.length, verwacht: verwacht?.length ?? null };
+}
+
+function tekstWindVerouderd(v: { aantal: number; verwacht: number | null }, klasse: Gevolgklasse): string {
+  return (
+    `${v.aantal} combinatie(s) van de windgenerator passen niet bij de belastinggevallen en gevolgklasse ` +
+    `${klasse} van dit project: ` +
+    (v.verwacht === null
+      ? "er staat geen gegenereerd windbelastinggeval meer in het model waar ze bij horen"
+      : `de generator zou nu ${v.verwacht} combinatie(s) met andere factoren maken`) +
+    ". De gegenereerde set is verouderd: een combinatie die de generator nu wel zou maken — met een " +
+    "later toegevoegd veranderlijk geval als samengaande belasting, of met de factoren van een andere " +
+    "gevolgklasse — ontbreekt in de omhullende. Open de windbelastinggenerator en genereer de " +
+    "windbelasting opnieuw."
   );
 }
 
@@ -573,26 +1254,6 @@ const UGT_FACTOREN_BLIJVEND: readonly number[] = [
     1.0,
   ]),
 ];
-
-/**
- * De acht standaardcombinaties van vóór september 2026, met hun vaste
- * case-id's G = 1, Q = 2, S = 3, W = 4 (combinations.ts in versie 0.3.11).
- * Alleen om een geërfd factorpatroon bij naam te kunnen noemen.
- */
-const OUDE_STANDAARDSET: readonly { naam: string; factoren: Readonly<Record<number, number>> }[] = [
-  { naam: "ULS 6.10a", factoren: { 1: 1.35, 2: 1.05, 3: 1.05, 4: 0.9 } },
-  { naam: "ULS 6.10b (Q leidend)", factoren: { 1: 1.2, 2: 1.5, 3: 1.05, 4: 0.9 } },
-  { naam: "ULS 6.10b (S leidend)", factoren: { 1: 1.2, 3: 1.5, 2: 1.05, 4: 0.9 } },
-  { naam: "ULS 6.10b (W leidend)", factoren: { 1: 1.2, 4: 1.5, 2: 1.05, 3: 1.05 } },
-  { naam: "ULS uplift", factoren: { 1: 0.9, 4: 1.5 } },
-  { naam: "SLS Karakteristiek", factoren: { 1: 1.0, 2: 1.0, 3: 0.7, 4: 0.6 } },
-  { naam: "SLS Frequent", factoren: { 1: 1.0, 2: 0.5, 3: 0.2 } },
-  { naam: "SLS Quasi-permanent", factoren: { 1: 1.0, 2: 0.3 } },
-];
-
-const OUDE_GEVALLEN: Readonly<Record<number, string>> = {
-  2: "het veranderlijke geval (Q)", 3: "het sneeuwgeval (S)", 4: "het windgeval (W)",
-};
 
 /** Een blijvend geval met factoren die bij geen blijvende belasting passen. */
 export interface BlijvendeAfwijking {
@@ -628,11 +1289,13 @@ function oudeKolomVan(caseId: number, combinations: readonly LoadCombination[]):
  * zakking laat het eigen gewicht bewust weg — maar het staat wel in de regels
  * als een ander blijvend geval er een factor heeft.
  *
- * Het spoor van basisaudit nr 14 in een projectbestand van vóór september
- * 2026: "Permanent afbouw" kreeg het id van het verwijderde windgeval en erfde
- * zijn factoren — 0,9 in 6.10a, 1,5 met wind leidend, 0,6 in de
- * karakteristieke BGT-combinatie. HEA200 6 m, G = 5 en afbouw 3 kN/m: UGT
- * 47,25 en BGT 30,60 kNm waar 1,35·8·36/8 = 48,60 en 8·36/8 = 36,00 horen.
+ * Het spoor van basisaudit nr 14: "Permanent afbouw" kreeg het id van het
+ * verwijderde windgeval en erfde zijn factoren — 0,9 in 6.10a, 1,5 met wind
+ * leidend, 0,6 in de karakteristieke BGT-combinatie. HEA200 6 m, G = 5 en
+ * afbouw 3 kN/m: UGT 47,25 en BGT 30,60 kNm waar 1,35·8·36/8 = 48,60 en
+ * 8·36/8 = 36,00 horen. Bij het openen vervangt `vervangVerouderdeCombinaties`
+ * zo'n ongewijzigde oude set; deze controle vangt het in een eigen set (en na
+ * "Ongedaan maken").
  * Alleen gevallen met minstens één factor die niet past komen in de lijst.
  */
 export function blijvendeFactorAfwijkingen(p: {
@@ -703,7 +1366,8 @@ function tekstBlijvendeAfwijking(a: BlijvendeAfwijking): string {
 
 /**
  * Welke belastinggevallen niet (volledig) in de doorgerekende combinaties
- * meetellen, en of het eigen gewicht een blijvend geval heeft.
+ * meetellen, of de combinaties een deel van de juiste set missen, en of het
+ * eigen gewicht een blijvend geval heeft.
  *
  * `combinations` hoort de ACTIEF doorgerekende lijst te zijn: wat daar niet in
  * staat, telt ook niet mee. `loads` bepaalt of een geval een last draagt: een
@@ -713,12 +1377,15 @@ function tekstBlijvendeAfwijking(a: BlijvendeAfwijking): string {
  *
  * `alleCombinaties` is de VOLLEDIGE lijst van het project (ook wat de selectie
  * overslaat) en `gevolgklasse` de klasse van het project. Samen bepalen ze of
- * er standaardcombinaties ontbreken (`ontbrekendeStandaardcombinaties`). Dat
- * gebeurt alleen in een project MET standaardcombinaties: een set die de
- * gebruiker helemaal zelf opstelt, of de acht combinaties van een ouder
- * bestand (die bij het openen al worden gemeld), is geen deel van de
- * standaardset maar een andere set. Zonder `gevolgklasse` geldt de klasse uit
- * het kenmerk van de standaardcombinaties.
+ * er standaardcombinaties ontbreken (`ontbrekendeStandaardcombinaties`) — in
+ * een project met standaardcombinaties, ook als die hernoemd zijn
+ * (`isAfgeleidVanStandaard`). Een set die de gebruiker helemaal zelf opstelde
+ * (een externe referentie-berekening) is geen deel van de standaardset maar
+ * een andere set; die wordt gecontroleerd op wat voor ELKE set geldt:
+ * `veranderlijkeFactorVerschillen` en `veranderlijkeBelastingenZonderLeiding`.
+ * Zonder `gevolgklasse` geldt de klasse uit het kenmerk van de
+ * standaardcombinaties, en blijft de controle op verouderde windcombinaties
+ * achterwege (die hangt van de klasse af).
  */
 export function meldingenBelastinggevallen(p: {
   loadCases: readonly (Pick<LoadCase, "id" | "name" | "type"> &
@@ -738,6 +1405,10 @@ export function meldingenBelastinggevallen(p: {
   const heeftFactor = (id: number, type: "uls" | "sls") =>
     p.combinations.some((c) => c.type === type && (c.factors.get(id) ?? 0) !== 0);
   const heeftBgt = p.combinations.some((c) => c.type === "sls");
+  const naamVan = (id: number): string => {
+    const c = p.loadCases.find((x) => x.id === id);
+    return c ? `${id} ("${c.name}")` : String(id);
+  };
 
   if (p.selfWeightEnabled && !blijvend) {
     meldingen.push({
@@ -752,17 +1423,48 @@ export function meldingenBelastinggevallen(p: {
     });
   }
 
-  // Nooit stil een deelverzameling van de standaardset.
+  // Nooit stil een deelverzameling van de standaardset — ook niet als die
+  // standaardcombinaties allemaal hernoemd zijn, en ook niet als het de
+  // standaardset van versie 0.3.11 en ouder is.
   const alle = p.alleCombinaties ?? p.combinations;
   const eenStandaard = alle.find((c) => c.standaard);
-  if (eenStandaard?.standaard) {
-    const klasse = p.gevolgklasse ?? eenStandaard.standaard.gevolgklasse;
+  const klasse = p.gevolgklasse ?? eenStandaard?.standaard?.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
+  // De oude standaardset hoort bij het openen vervangen te zijn. Staat hij er
+  // toch — na "Ongedaan maken" (knop of Ctrl+Z), of zelf meegestuurd via de
+  // MCP-weg — dan is hij een standaardset die de gevallen en de klasse niet
+  // volgt, en zoekt de controle wat er ontbreekt. Herkend op naam en factoren
+  // (`isOudeStandaardcombinatie`), NIET op de formule: een referentieproject
+  // draagt "G + ψ₂·Q" als formule van een eigen combinatie.
+  // Gemeten zonder deze regel: oud CC3-bestand, G = 10 en Q = 5 kN/m, ligger
+  // 6 m, na ongedaan maken 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 kNm
+  // hoort (NB tabel NB.5) — zonder één melding.
+  const gevalIds = new Set(p.loadCases.map((c) => c.id));
+  const oud = alle.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
+  if (oud.length > 0 || alle.some(isAfgeleidVanStandaard)) {
     const ontbrekend = ontbrekendeStandaardcombinaties({
       combinations: alle, loadCases: p.loadCases, gevolgklasse: klasse, gevuld,
     });
     if (ontbrekend.length > 0) {
       meldingen.push({
-        niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstOntbrekend(ontbrekend, klasse),
+        niveau: "fout", caseId: null, vervangAdvies: true,
+        tekst: (oud.length > 0 ? `${tekstOudeSetInProject(oud, klasse)} ` : "") + tekstOntbrekend(ontbrekend, klasse),
+      });
+    }
+  }
+  // Wat voor elke set geldt, ook een volledig eigen set.
+  for (const v of veranderlijkeFactorVerschillen({ loadCases: p.loadCases, combinations: p.combinations, gevuld })) {
+    meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstVerschil(v, naamVan) });
+  }
+  for (const a of veranderlijkeBelastingenZonderLeiding({
+    loadCases: p.loadCases, combinations: p.combinations, gevuld,
+  })) {
+    meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a) });
+  }
+  if (p.gevolgklasse !== undefined) {
+    const wind = verouderdeWindCombinaties({ loadCases: p.loadCases, combinations: alle, gevolgklasse: p.gevolgklasse });
+    if (wind) {
+      meldingen.push({
+        niveau: "fout", caseId: null, windOpnieuwAdvies: true, tekst: tekstWindVerouderd(wind, p.gevolgklasse),
       });
     }
   }
@@ -859,22 +1561,16 @@ export function meldingenBelastinggevallen(p: {
   return meldingen;
 }
 
-// ── Afwijkende combinaties bij het openen ─────────────────────────────────
+// ── Wat er bij het openen verder te melden is ─────────────────────────────
 
 export interface CombinatieAfwijking {
-  gevolgklasse: Gevolgklasse;
-  /** Combinaties uit het bestand die niet gelijk zijn aan de huidige standaard. */
-  afwijkend: { id: number; naam: string; formule: string; reden: string }[];
-  /** Standaardcombinaties die in het bestand ontbreken. */
-  ontbrekend: { naam: string; formule: string }[];
-  /** De standaardset voor deze gevallen en deze klasse — "wat het zou worden". */
-  standaard: { naam: string; formule: string }[];
   /** Factoren voor gevallen die niet bestaan; bij het openen weggehaald. */
   weesFactoren: WeesFactor[];
   /**
    * Blijvende gevallen met factoren die bij geen blijvende belasting passen —
-   * het spoor van een geërfd id (basisaudit nr 14). NIET weggehaald: die
-   * factoren vermenigvuldigen wél een last; alleen de gebruiker kan kiezen.
+   * in een EIGEN combinatie (een oude standaardset is bij het openen al
+   * vervangen). NIET weggehaald: die factoren vermenigvuldigen wél een last;
+   * alleen de gebruiker kan kiezen.
    */
   blijvend: BlijvendeAfwijking[];
   /** Eén alinea voor de melding bij het openen. */
@@ -882,86 +1578,23 @@ export interface CombinatieAfwijking {
 }
 
 /**
- * Vergelijk de combinaties van een geopend project met de standaardset die bij
- * zijn gevallen en gevolgklasse hoort. Er wordt NIETS overschreven: dit levert
- * alleen de melding — welke combinaties afwijken en wat de standaard zou zijn.
- * `null` = niets te melden.
- *
- * `eigenCombinatiesBewust`: het bestand is door deze versie geschreven (het
- * draagt id-tellers). Een combinatie zonder kenmerk is dan een bewuste eigen
- * combinatie, en een ontbrekende standaardcombinatie is bewust weggehaald —
- * geen van beide wordt dan gemeld. Bij een ouder bestand kan de app dat
- * onderscheid niet maken, en meldt ze alles.
- *
- * `weesFactoren`: wat `verwijderWeesFactoren` bij het openen weghaalde. Dat
- * komt in de melding, ook als de combinaties verder gelijk zijn aan de
- * standaard.
+ * Wat er na het openen nog te melden is, naast een eventuele vervanging: de
+ * wees-factoren die `verwijderWeesFactoren` weghaalde, en een blijvend geval
+ * met factoren die niet bij zijn type passen. `null` = niets te melden.
+ * Afwijkende EIGEN combinaties op zich worden hier niet gemeld: die zijn van
+ * de gebruiker, en `meldingenBelastinggevallen` controleert ze na elke
+ * wijziging.
  */
 export function beoordeelCombinatiesBijOpenen(p: {
   combinations: readonly LoadCombination[];
   loadCases: readonly LoadCase[];
-  gevolgklasse: Gevolgklasse;
-  eigenCombinatiesBewust: boolean;
   weesFactoren?: readonly WeesFactor[];
 }): CombinatieAfwijking | null {
-  const set = genereerStandaardCombinaties(p.loadCases, p.gevolgklasse);
-  const perS = perSleutel(set);
-  const gezien = new Set<string>();
-  const afwijkend: CombinatieAfwijking["afwijkend"] = [];
-
-  for (const c of p.combinations) {
-    const regel = (reden: string) =>
-      afwijkend.push({ id: c.id, naam: c.name, formule: c.formula, reden });
-    if (isWindgeneratorCombinatie(c)) {
-      if (!/NB\.2/.test(c.formula)) {
-        regel(
-          "gemaakt door de windgenerator van een eerdere versie, met de door EN 1990 " +
-            "aanbevolen ψ₀ (tabel A1.1) en vaste CC2-factoren; genereer de windbelasting " +
-            "opnieuw om de NB-waarden en de gevolgklasse te krijgen",
-        );
-      }
-      continue;
-    }
-    if (c.standaard) {
-      const n = perS.get(c.standaard.sleutel);
-      if (!n) {
-        regel("standaardcombinatie die bij de huidige belastinggevallen niet meer hoort");
-        continue;
-      }
-      gezien.add(c.standaard.sleutel);
-      if (!gelijkeInhoud(c, n)) {
-        regel(
-          `standaardcombinatie met andere factoren dan de standaard voor ${p.gevolgklasse} ` +
-            "(een andere gevolgklasse, of gemaakt door een eerdere versie)",
-        );
-      }
-      continue;
-    }
-    if (!p.eigenCombinatiesBewust) {
-      regel(
-        "geen standaardcombinatie: een eigen combinatie, of een combinatie van vóór " +
-          "september 2026 met de door EN 1990 aanbevolen ψ-waarden (tabel A1.1) en vaste " +
-          "CC2-factoren, ongeacht de gevolgklasse",
-      );
-    }
-  }
-
-  const ontbrekend = p.eigenCombinatiesBewust
-    ? []
-    : set.filter((c) => !gezien.has(c.standaard.sleutel)).map((c) => ({ naam: c.name, formule: c.formula }));
   const weesFactoren = [...(p.weesFactoren ?? [])];
-  // Een blijvend geval met factoren die niet bij zijn type passen. Een
-  // algemeen "8 afwijkend" zegt niet dat een BLIJVENDE last in de BGT met 0,6
-  // telt; deze regel noemt het geval, zijn type en de factoren.
   const blijvend = blijvendeFactorAfwijkingen({ loadCases: p.loadCases, combinations: p.combinations });
-  if (afwijkend.length === 0 && ontbrekend.length === 0 && weesFactoren.length === 0 && blijvend.length === 0) {
-    return null;
-  }
+  if (weesFactoren.length === 0 && blijvend.length === 0) return null;
 
-  const standaard = set.map((c) => ({ naam: c.name, formule: c.formula }));
-  const bron = PARTIELE_FACTOREN[p.gevolgklasse].bron;
   const weesIds = [...new Set(weesFactoren.flatMap((w) => w.caseIds))].sort((a, b) => a - b);
-  const teVervangen = afwijkend.length > 0 || ontbrekend.length > 0 || blijvend.length > 0;
   const samenvatting =
     blijvend.map((a) => {
       const { lijst, herkomst } = regelsEnHerkomst(a);
@@ -969,18 +1602,11 @@ export function beoordeelCombinatiesBijOpenen(p: {
         `LET OP: belastinggeval ${a.caseId} ("${a.naam}") is van type blijvend, maar draagt factoren ` +
         `die niet bij een blijvende belasting passen: ${lijst}. Een blijvende belasting telt in de ` +
         "BGT met 1,0 en heeft in elke combinatie dezelfde factor als de andere blijvende gevallen. " +
-        `${herkomst} Zolang dat zo is, telt de last van dit geval met de verkeerde factoren. `
+        `${herkomst} Zolang dat zo is, telt de last van dit geval met de verkeerde factoren. Het zijn ` +
+        'eigen combinaties, dus de app past ze niet aan: kies "Vervang door standaardcombinaties" in ' +
+        "Belastinggevallen & combinaties, of corrigeer de factoren. "
       );
     }).join("") +
-    (afwijkend.length > 0
-      ? `${afwijkend.length} belastingcombinatie(s) in dit project wijken af van de ` +
-        `standaardcombinaties voor ${p.gevolgklasse} (γ uit NEN-EN 1990 ${bron}, ψ uit tabel ` +
-        `NB.2–A1.1): ${afwijkend.map((a) => `"${a.naam}"`).join(", ")}. `
-      : "") +
-    (ontbrekend.length > 0
-      ? `De standaardset voor deze belastinggevallen zou bestaan uit ${standaard.length} ` +
-        `combinaties: ${standaard.map((s) => `"${s.naam}"`).join(", ")}. `
-      : "") +
     (weesFactoren.length > 0
       ? `In ${weesFactoren.length} belastingcombinatie(s) ` +
         `(${weesFactoren.map((w) => `"${w.naam}"`).join(", ")}) stonden factoren voor ` +
@@ -990,14 +1616,8 @@ export function beoordeelCombinatiesBijOpenen(p: {
         ": een rest van een verwijderd geval. Die factoren zijn bij het openen weggehaald. Ze " +
         "vermenigvuldigden geen enkele last, dus geen uitkomst van dit project verandert; een " +
         `nieuw belastinggeval krijgt een id boven ${weesIds[weesIds.length - 1]} en kan ze niet ` +
-        "meer erven. "
-      : "") +
-    (teVervangen
-      ? `${weesFactoren.length > 0 ? "Verder is er" : "Er is"} NIETS overschreven: het project ` +
-        "rekent met de combinaties uit het bestand. " +
-        'Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties om de ' +
-        "standaardset te gebruiken."
-      : "Verder is er niets veranderd.");
+        "meer erven."
+      : "");
 
-  return { gevolgklasse: p.gevolgklasse, afwijkend, ontbrekend, standaard, weesFactoren, blijvend, samenvatting };
+  return { weesFactoren, blijvend, samenvatting: samenvatting.trim() };
 }

@@ -10,7 +10,7 @@ import { useRecentFiles } from "./hooks/useRecentFiles";
 import SettingsDialog, { applyTheme } from "./components/settings/SettingsDialog";
 import FeedbackDialog from "./components/feedback/FeedbackDialog";
 import WelcomeScreen from "./components/welcome/WelcomeScreen";
-import ProjectSettingsDialog from "./components/project/ProjectSettingsDialog";
+import ProjectSettingsDialog, { DEFAULT_UITGANGSPUNTEN } from "./components/project/ProjectSettingsDialog";
 import IfcViewerPanel from "./components/panels/IfcViewerPanel";
 import type { IfcRekenmodelInput } from "./io/ifcExport";
 import { useProjectInfo } from "./components/report/useProjectInfo";
@@ -359,6 +359,8 @@ function App() {
     combinations: fem.combinations,
     overgeslagenCombinaties: fem.overgeslagenCombinaties,
     gevolgklasse: fem.gevolgklasse,
+    // Het rapport vermeldt dat de combinaties bij het openen zijn vervangen.
+    combinatieVervanging: fem.combinatieVervangingTekst,
     structuralGrid: fem.structuralGrid,
     selfWeightEnabled: fem.selfWeightEnabled,
     // R3 — resultaten voor de resultaatsecties. useFemStore zet deze op null
@@ -376,7 +378,7 @@ function App() {
     scheefstandToelichting: scheefstandTekst,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
-    fem.combinations, fem.overgeslagenCombinaties,
+    fem.combinations, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
     scheefstandTekst,
@@ -403,6 +405,9 @@ function App() {
     // De id-tellers reizen mee, zodat een verwijderd belastinggeval ook na
     // opslaan en openen zijn id nooit aan een nieuw geval doorgeeft.
     idTellers: fem.idTellers,
+    // Zijn de combinaties bij het openen vervangen, dan reist die melding mee:
+    // het rapport hoort het ook in een latere sessie te vermelden.
+    combinatiesVervangenBijOpenen: fem.combinatieVervangingTekst ?? undefined,
     structuralGrid: fem.structuralGrid,
     scheefstandEnabled: fem.scheefstandEnabled,
     scheefstandNoemer: fem.scheefstandNoemer,
@@ -548,13 +553,13 @@ function App() {
       baselineResetRef.current = true;
       // Vóór het model: de staven verwijzen naar deze doorsneden.
       const overschreven = voegBibliothekenSamen(parsed);
-      // De gevolgklasse van het BESTAND, vóór het laden: de vergelijking met
-      // de standaardcombinaties hoort tegen de klasse van dit project te gaan,
-      // niet tegen die van het vorige.
+      // De gevolgklasse van het BESTAND, vóór het laden: de standaardcombinaties
+      // die bij het openen ontstaan horen bij de klasse van dit project, niet
+      // bij die van het vorige.
       const uitgangspunten = (parsed.projectInfo as { uitgangspunten?: { gevolgklasse?: unknown } } | undefined)
         ?.uitgangspunten;
       const bestandsklasse = uitgangspunten?.gevolgklasse;
-      const afwijking = fem.loadProjectState({
+      const { afwijking, vervanging, gevolgklasse: geopendeKlasse, gevolgklasseBron } = fem.loadProjectState({
         nodes: parsed.nodes,
         beams: parsed.beams,
         supports: parsed.supports,
@@ -585,16 +590,40 @@ function App() {
             ? bestandsklasse
             : undefined,
         idTellers: parsed.idTellers,
+        combinatiesVervangenBijOpenen: parsed.combinatiesVervangenBijOpenen,
       });
-      // Afwijkende combinaties: MELDEN, niet stil overschrijven. De expliciete
-      // actie om ze te vervangen staat in Belastinggevallen & combinaties.
-      if (afwijking) {
-        void import("./io/notify").then(({ notifyWarning }) =>
-          notifyWarning("Combinaties wijken af van de standaard", afwijking.samenvatting));
+      // Verouderde combinaties zijn bij het openen VERVANGEN. Tot september
+      // 2026 gold "melden, niet overschrijven", en dat liet langs steeds nieuwe
+      // routes stil te lage getallen door (zie lib/combinatieBeheer). Daarom nu:
+      // vervangen, duidelijk melden, en "Ongedaan maken" direct in de melding.
+      // Dezelfde melding en knop staan in Belastinggevallen & combinaties.
+      if (vervanging || afwijking) {
+        void import("./io/notify").then(({ notifyWarning }) => {
+          if (vervanging) {
+            notifyWarning("Belastingcombinaties bij het openen vervangen", vervanging.samenvatting, {
+              actie: { label: "Ongedaan maken", onClick: fem.maakCombinatieVervangingOngedaan },
+              duur: 30000,
+            });
+          }
+          if (afwijking) notifyWarning("Melding bij het openen: combinaties", afwijking.samenvatting);
+        });
       }
       // Projectgegevens, wind- en rapportinstellingen uit het bestand — elk
       // optioneel; een ouder bestand laat de huidige stand staan.
-      if (parsed.projectInfo && typeof parsed.projectInfo === "object") {
+      // Stond de gevolgklasse niet in het bestand maar kwam hij uit het kenmerk
+      // van de standaardcombinaties (`gevolgklasseBijOpenen`), dan gaat die
+      // klasse ook in de projectgegevens. Anders tonen de projectgegevens de
+      // klasse van het vorige project, schrijft Opslaan die weg, en werkt het
+      // volgende openen de CC3-set stil bij naar die klasse.
+      if (gevolgklasseBron === "kenmerk") {
+        const basis = (parsed.projectInfo && typeof parsed.projectInfo === "object"
+          ? parsed.projectInfo
+          : projectInfo) as typeof projectInfo;
+        void zetInstelling("projectInfo", {
+          ...basis,
+          uitgangspunten: { ...(basis.uitgangspunten ?? DEFAULT_UITGANGSPUNTEN), gevolgklasse: geopendeKlasse },
+        });
+      } else if (parsed.projectInfo && typeof parsed.projectInfo === "object") {
         void zetInstelling("projectInfo", parsed.projectInfo);
       }
       if (parsed.windInstellingen && typeof parsed.windInstellingen === "object") {
@@ -607,7 +636,7 @@ function App() {
       }
       return overschreven;
     },
-    [fem, addRecentFile, windGenerator],
+    [fem, addRecentFile, windGenerator, projectInfo],
   );
 
   const handleOpenProject = useCallback(async () => {
@@ -1961,6 +1990,7 @@ function App() {
                     overgeslagenCombinaties={fem.overgeslagenCombinaties}
                     belastingMeldingen={fem.belastingMeldingen}
                     combinatieAfwijking={fem.combinatieAfwijking}
+                    combinatieVervanging={fem.combinatieVervanging}
                     onOpenCombinaties={() => { setLoadCasesTab("combos"); setLoadCasesOpen(true); }}
                     activeCombinationId={fem.activeCombinationId}
                     setActiveCombinationId={(id) => {
@@ -2184,8 +2214,11 @@ function App() {
         overgeslagenCombinaties={fem.overgeslagenCombinaties}
         belastingMeldingen={fem.belastingMeldingen}
         combinatieAfwijking={fem.combinatieAfwijking}
+        combinatieVervanging={fem.combinatieVervanging}
+        onMaakVervangingOngedaan={fem.maakCombinatieVervangingOngedaan}
         onVervangDoorStandaard={fem.vervangDoorStandaardCombinaties}
         onSluitAfwijking={fem.sluitCombinatieAfwijking}
+        onWindOpnieuw={() => { setLoadCasesOpen(false); setWindGeneratorOpen(true); }}
         gevolgklasse={fem.gevolgklasse}
         addLoadCase={fem.addLoadCase}
         updateLoadCase={fem.updateLoadCase}

@@ -65,11 +65,17 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      Eveneens optioneel binnen v2 (september 2026, geen versie-bump):
  *      `combinations[].standaard` — het kenmerk van een standaardcombinatie
  *      (sleutel, soort, gevolgklasse) — en `idTellers` voor belastinggevallen
- *      en combinaties. Een bestand ZONDER tellers is ouder: het laadt met zijn
- *      eigen combinaties, maar de app meldt bij het openen welke combinaties
- *      afwijken van de huidige standaardset (NB-ψ, factoren per gevolgklasse)
- *      — zonder iets te overschrijven. Een oudere versie van de app negeert
- *      beide velden; de factoren zelf staan er gewoon in.
+ *      en combinaties. Een oudere versie van de app negeert beide velden; de
+ *      factoren zelf staan er gewoon in.
+ *      Bij het OPENEN — in de app en via de MCP-weg — vervangt
+ *      `openCombinatieStaat` (lib/combinatieBeheer) de standaardcombinaties van
+ *      versie 0.3.11 en ouder door de huidige standaardset, herkend op naam en
+ *      factorpatroon en NIET op het ontbreken van tellers, met een melding en
+ *      ongedaan maken. Eigen combinaties blijven staan en worden gecontroleerd.
+ *      Eveneens optioneel (september 2026, geen versie-bump):
+ *      `combinatiesVervangenBijOpenen` — de tekst van die melding, zodat het
+ *      rapport ook in een latere sessie vermeldt dat de combinaties bij het
+ *      openen zijn vervangen. Puur bijschrift: er rekent niets mee.
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
@@ -186,6 +192,12 @@ export interface ProjectFile {
    * een ouder bestand nooit door een nieuw geval wordt geërfd.
    */
   idTellers?: { belastinggeval: number; combinatie: number };
+  /**
+   * De melding van een vervanging van combinaties bij het openen (v2,
+   * optioneel — september 2026). Bijschrift voor het rapport; zie de
+   * versiegeschiedenis hierboven.
+   */
+  combinatiesVervangenBijOpenen?: string;
   /** Stramien (v2). */
   structuralGrid?: StructuralGrid;
   /** Scheefstand meenemen in de berekening (v2, optioneel — ontbreekt = uit). */
