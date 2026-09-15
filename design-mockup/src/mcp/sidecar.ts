@@ -53,11 +53,14 @@ import {
   type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
 import {
+  gevolgklasseBijOpenen,
   meldingenBelastinggevallen,
   openCombinatieStaat,
+  type KlasseBron,
 } from "../lib/combinatieBeheer";
 import {
   GEVOLGKLASSEN,
+  PARTIELE_FACTOREN,
   STANDAARD_GEVOLGKLASSE,
   type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
@@ -354,22 +357,54 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
 }
 
 /**
- * De gevolgklasse: die uit het projectbestand wint — het is de keuze van de
- * constructeur, net als het analysetype — anders `gevolgklasse` uit het
- * verzoek, anders CC2 (NB tabel NB.4). `aangenomen` zegt of het die laatste
- * terugval was, zodat het antwoord dat kan melden.
+ * De gevolgklasse, via `gevolgklasseBijOpenen` — dezelfde regel als het openen
+ * in de app: die uit het projectbestand wint (de keuze van de constructeur, net
+ * als het analysetype), anders `gevolgklasse` uit het verzoek, anders de klasse
+ * uit het kenmerk van de standaardcombinaties in het bestand, anders CC2 (NB
+ * tabel NB.4). `aangenomen` zegt of het die laatste terugval was, zodat het
+ * antwoord dat kan melden.
  */
 function leesGevolgklasse(
   payload: Record<string, unknown>,
   gelezen: GelezenModel,
-): { klasse: Gevolgklasse; aangenomen: boolean } {
+): { klasse: Gevolgklasse; aangenomen: boolean; bron: KlasseBron } {
   if (payload.gevolgklasse !== undefined && alsGevolgklasse(payload.gevolgklasse) === null) {
     throw new InvoerFout('Veld `gevolgklasse` moet "CC1", "CC2" of "CC3" zijn.');
   }
-  const klasse = gelezen.gevolgklasseUitBestand ?? alsGevolgklasse(payload.gevolgklasse);
-  return klasse
-    ? { klasse, aangenomen: false }
-    : { klasse: STANDAARD_GEVOLGKLASSE, aangenomen: true };
+  const { klasse, bron } = gevolgklasseBijOpenen({
+    bestand: gelezen.gevolgklasseUitBestand,
+    verzoek: alsGevolgklasse(payload.gevolgklasse),
+    combinations: gelezen.combinatiesUitBestand,
+    terugval: STANDAARD_GEVOLGKLASSE,
+  });
+  return { klasse, aangenomen: bron === "terugval", bron };
+}
+
+/**
+ * De waarschuwing over de herkomst van de gevolgklasse, of null. Alleen als
+ * er standaardcombinaties meerekenen: meegegeven eigen combinaties hangen niet
+ * van de klasse af.
+ */
+function gevolgklasseWaarschuwing(
+  k: { klasse: Gevolgklasse; bron: KlasseBron },
+  metStandaard: boolean,
+): string | null {
+  if (!metStandaard) return null;
+  if (k.bron === "terugval") {
+    return (
+      "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als " +
+      "`gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de " +
+      "factoren van NEN-EN 1990 NB tabel NB.4."
+    );
+  }
+  if (k.bron === "kenmerk") {
+    return (
+      "Geen gevolgklasse in de projectgegevens of als `gevolgklasse`: de klasse " +
+      `${k.klasse} komt uit het kenmerk van de standaardcombinaties in het projectbestand, ` +
+      `met de factoren van NEN-EN 1990 ${PARTIELE_FACTOREN[k.klasse].bron}.`
+    );
+  }
+  return null;
 }
 
 /**
@@ -390,7 +425,10 @@ function leesGevolgklasse(
  * id-tellers zelfs dat niet (CC3: 87,75 kNm waar 95,625 hoort). Wat er is
  * vervangen of weggehaald staat in `openMeldingen`, en daarmee in `warnings`.
  * Combinaties die de aanvrager zelf meestuurt blijven zoals ze zijn: dat is
- * een uitdrukkelijke keuze, en `meldingenBelastinggevallen` controleert ze.
+ * een uitdrukkelijke keuze, en `meldingenBelastinggevallen` controleert ze —
+ * ook als het de acht combinaties van versie 0.3.11 en ouder zijn: die geven
+ * een FOUT als er voor deze gevallen en deze klasse combinaties ontbreken
+ * (gemeten zonder die controle: CC3, 87,75 kNm waar 95,625 hoort, stil).
  */
 function leesCombinaties(
   payload: Record<string, unknown>,
@@ -569,8 +607,8 @@ function rekenDoor(payload: Record<string, unknown>) {
     );
   }
 
-  const { klasse: gevolgklasse, aangenomen: klasseAangenomen } =
-    leesGevolgklasse(payload, gelezen);
+  const klasseGelezen = leesGevolgklasse(payload, gelezen);
+  const gevolgklasse = klasseGelezen.klasse;
   // Een projectbestand gaat door dezelfde functie als het openen in de app:
   // wees-factoren eruit, verouderde combinaties vervangen (zie leesCombinaties).
   const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse);
@@ -681,14 +719,13 @@ function rekenDoor(payload: Record<string, unknown>) {
     waarschuwingen.push(`Combinatie ${weg.id} overgeslagen — ${weg.reden}`);
   }
   // Ook als de standaardcombinaties uit een bestand komen of bij het inlezen
-  // zijn vervangen: dan rekenen ze evengoed met de aangenomen klasse.
-  if (klasseAangenomen && (combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard))) {
-    waarschuwingen.push(
-      "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als " +
-        "`gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de " +
-        "factoren van NEN-EN 1990 NB tabel NB.4.",
-    );
-  }
+  // zijn vervangen: dan rekenen ze evengoed met de aangenomen (of uit het
+  // kenmerk overgenomen) klasse.
+  const klasseMelding = gevolgklasseWaarschuwing(
+    klasseGelezen,
+    combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard),
+  );
+  if (klasseMelding) waarschuwingen.push(klasseMelding);
   // Een belastinggeval met last dat in geen enkele doorgerekende UGT-combinatie
   // meetelt, en eigen gewicht zonder blijvend geval. Tot september 2026 kwam
   // hier niets: een geval van type "overig" telde stil als nul (basisaudit nr 1).
@@ -845,24 +882,58 @@ function opValidate(payload: Record<string, unknown>) {
  * `load_project`: het gedeserialiseerde model plus tellingen. Alleen-lezen —
  * en de sidecar raakt de schijf niet eens aan: Rust levert de inhoud in
  * `payload.inhoud`, `payload.path` is er alleen om het antwoord te labelen.
+ *
+ * De combinaties gaan door `leesGevolgklasse` en `leesCombinaties`, en dus
+ * door `openCombinatieStaat`: PRECIES wat `solve` met hetzelfde bestand en de
+ * app na het openen gebruiken. Tot deze correctie gaf `load_project` de
+ * combinaties uit het bestand rauw terug. Gemeten met de echte MCP-server: een
+ * oud CC3-bestand (0.3.11, met id-tellers) gaf de acht oude combinaties, en
+ * `solve_fem_model` met dat model, die combinaties en gevolgklasse CC3 gaf
+ * 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 kNm hoort (NB tabel NB.5) —
+ * zonder waarschuwing, terwijl de app en `project_path` vervingen. Wat er is
+ * vervangen, de herkomst van de klasse en elke FOUT in de set staan nu in
+ * `warnings`. Het kenmerk `standaard` gaat niet mee: het schema van
+ * `combinations` bij `solve_fem_model` kent het niet, en een teruggegeven
+ * standaardcombinatie blijft aan haar formule herkenbaar.
  */
 function opLoadProject(payload: Record<string, unknown>) {
   const gelezen = leesModel({
     project: { inhoud: leesTekst(payload, "inhoud") },
   });
   const m = gelezen.model;
+  const klasse = leesGevolgklasse({}, gelezen);
+  const { lijst, bron, openMeldingen } = leesCombinaties({}, gelezen, klasse.klasse);
+  const warnings: string[] = [];
+  const klasseMelding = gevolgklasseWaarschuwing(
+    klasse,
+    bron === "standaard" || lijst.some((c) => c.standaard),
+  );
+  if (klasseMelding) warnings.push(klasseMelding);
+  warnings.push(...openMeldingen);
+  for (const mld of meldingenBelastinggevallen({
+    loadCases: m.loadCases,
+    combinations: lijst,
+    alleCombinaties: lijst,
+    gevolgklasse: klasse.klasse,
+    loads: m.loads,
+    selfWeightEnabled: m.selfWeightEnabled,
+  })) {
+    warnings.push(mld.niveau === "fout" ? `FOUT: ${mld.tekst}` : mld.tekst);
+  }
   return {
     path: typeof payload.path === "string" ? payload.path : null,
     format_version: gelezen.formatVersion,
     supported_format_version: PROJECT_FORMAT_VERSION,
     model: m,
-    combinations: (gelezen.combinatiesUitBestand ?? []).map((c) => ({
+    combinations: lijst.map((c) => ({
       id: c.id,
       name: c.name,
       type: c.type,
       formula: c.formula,
       factors: Object.fromEntries([...c.factors].map(([k, v]) => [String(k), v])),
     })),
+    combinations_source: bron,
+    gevolgklasse: klasse.klasse,
     nonlinear_enabled: gelezen.nonlinearUitBestand,
     counts: {
       nodes: m.nodes.length,
@@ -871,8 +942,9 @@ function opLoadProject(payload: Record<string, unknown>) {
       plates: m.plates.length,
       loads: m.loads.length,
       load_cases: m.loadCases.length,
-      combinations: (gelezen.combinatiesUitBestand ?? []).length,
+      combinations: lijst.length,
     },
+    warnings,
   };
 }
 

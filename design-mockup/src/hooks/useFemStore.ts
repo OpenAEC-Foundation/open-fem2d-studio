@@ -36,6 +36,7 @@ import {
 // Belastinggevallen en combinaties samen bijhouden: de regels staan in
 // lib/combinatieBeheer (puur, zodat de tests precies deze code aanroepen).
 import {
+  gevolgklasseBijOpenen, type KlasseBron,
   herstelCombinaties, meldingenBelastinggevallen, openCombinatieStaat, synchroniseerStandaard,
   vervangDoorStandaard, vervangVerouderdeCombinaties, verwijderBelastinggeval, verwijderCombinatie,
   voegBelastinggevalToe, voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie,
@@ -328,6 +329,26 @@ const DEFAULT_LOADS: Load[] = [
   { id: 7, type: "lineLoad", caseId: 2, beamId: 6, q: -10,
     omschrijving: "veranderlijke belasting vloer" },
 ];
+
+/**
+ * De melding na "Ongedaan maken" van een vervanging bij het openen (Ctrl+Z op
+ * die stap, of de knop). Ongedaan maken zet een set terug die de gevallen en de
+ * gevolgklasse niet volgt; zonder melding viel dat niet op. Gemeten: oud
+ * CC3-bestand, G = 10 en Q = 5 kN/m op een ligger van 6 m — na ongedaan maken
+ * 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 kNm hoort (NEN-EN 1990 NB tabel
+ * NB.5), stil. De controle zelf staat in `meldingenBelastinggevallen`; deze
+ * melding wijst ernaar.
+ */
+function meldVervangingOngedaan(aantal: number, opnieuw: string): void {
+  void import("../io/notify").then(({ notifyWarning }) =>
+    notifyWarning(
+      "Vervanging van de combinaties ongedaan gemaakt",
+      `De ${aantal} combinatie(s) uit het projectbestand staan terug, en het project rekent weer met ` +
+        "die set. De app past ze niet aan maar controleert ze: ontbreken er combinaties voor de " +
+        "belastinggevallen en de gevolgklasse van dit project, dan staat er een FOUT bij " +
+        `Belastinggevallen & combinaties en in het rapport. ${opnieuw}`,
+    ));
+}
 
 /**
  * Snapshot zoals de undo-historie hem bewaart: het model PLUS het stramien.
@@ -1455,9 +1476,10 @@ export interface FemStore {
     scheefstandAantalElementen?: number | null;
     /**
      * Gevolgklasse uit de projectgegevens van het bestand. Ontbreekt → de
-     * huidige klasse van de store. Nodig VÓÓR de vergelijking met de
-     * standaardcombinaties, anders zou die tegen de klasse van het vorige
-     * project vergelijken.
+     * klasse uit het kenmerk van de standaardcombinaties in het bestand, en
+     * anders de huidige klasse van de store (`gevolgklasseBijOpenen`). Nodig
+     * VÓÓR het vervangen van verouderde combinaties, anders zou dat naar de
+     * klasse van het vorige project gaan.
      */
     gevolgklasse?: Gevolgklasse;
     /**
@@ -1468,7 +1490,13 @@ export interface FemStore {
     idTellers?: { belastinggeval?: number; combinatie?: number };
     /** De tekst van een eerdere vervanging bij het openen, uit het bestand. */
     combinatiesVervangenBijOpenen?: string;
-  }) => { afwijking: CombinatieAfwijking | null; vervanging: CombinatieVervanging | null };
+  }) => {
+    afwijking: CombinatieAfwijking | null;
+    vervanging: CombinatieVervanging | null;
+    /** De klasse waarmee geopend is, en waar hij vandaan kwam (zie `gevolgklasseBijOpenen`). */
+    gevolgklasse: Gevolgklasse;
+    gevolgklasseBron: KlasseBron;
+  };
 }
 
 export function useFemStore(opties?: {
@@ -2294,6 +2322,7 @@ export function useFemStore(opties?: {
       pasCombiStaatToe(herstelCombinaties(combiRef.current, stap.voor));
       zetVervanging(null);
       setActiveCombinationId(null);
+      meldVervangingOngedaan(stap.voor.length, "Ctrl+Y vervangt ze opnieuw.");
     }
     setHistoryIdx(newIdx);
     historyIdxRef.current = newIdx;
@@ -2410,6 +2439,10 @@ export function useFemStore(opties?: {
       pasCombiStaatToe(herstelCombinaties(combiRef.current, v.voor));
       zetVervanging(null);
       setActiveCombinationId(null);
+      meldVervangingOngedaan(
+        v.voor.length,
+        '"Vervang door standaardcombinaties" bij die FOUT zet de standaardset terug.',
+      );
       // De historiestap draagt dezelfde vervanging; bleef hij staan, dan zou
       // Ctrl+Z of Ctrl+Y hem later nog eens terugdraaien of opnieuw uitvoeren.
       setHistory((prev) => prev.map((s) => (s.combinatieStap ? { ...s, combinatieStap: undefined } : s)));
@@ -2459,7 +2492,14 @@ export function useFemStore(opties?: {
       // van 0.3.11 en ouder, een andere gevolgklasse, de windgenerator — wordt
       // VERVANGEN, als eigen historiestap zodat Ctrl+Z het terugdraait. Eigen
       // combinaties blijven staan en worden gecontroleerd.
-      const klasse = p.gevolgklasse ?? combiRef.current.gevolgklasse;
+      // De klasse: uit het bestand, anders uit het kenmerk van de
+      // standaardcombinaties in het bestand, anders die van het project dat
+      // open stond — dezelfde regel als de sidecar (`gevolgklasseBijOpenen`).
+      const { klasse, bron: gevolgklasseBron } = gevolgklasseBijOpenen({
+        bestand: p.gevolgklasse,
+        combinations: p.combinations,
+        terugval: combiRef.current.gevolgklasse,
+      });
       const { staat: geopend, afwijking, vervanging } = openCombinatieStaat({
         loadCases: p.loadCases,
         combinations: p.combinations,
@@ -2530,7 +2570,7 @@ export function useFemStore(opties?: {
       setHistory(vervanging ? [basis, { ...basis, combinatieStap: vervanging }] : [basis]);
       setHistoryIdx(startIdx);
       historyIdxRef.current = startIdx;
-      return { afwijking, vervanging };
+      return { afwijking, vervanging, gevolgklasse: klasse, gevolgklasseBron };
     },
   };
 }

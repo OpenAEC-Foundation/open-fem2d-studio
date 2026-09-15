@@ -888,7 +888,7 @@ fn schema_gevolgklasse() -> Value {
     json!({
         "type": "string",
         "enum": ["CC1", "CC2", "CC3"],
-        "description": "Gevolgklasse volgens NEN-EN 1990 bijlage B. Bepaalt de partiële factoren van de STANDAARDcombinaties (NB tabel NB.4 voor CC2: 6.10b γ_G = 1,2 / γ_Q = 1,5; NB.5 voor CC1: 1,1 / 1,35 en CC3: 1,3 / 1,65) en gaat ter vermelding mee in `steel_check_inputs`. Geen invloed op meegegeven `combinations`. Uit een projectbestand telt de klasse uit de projectgegevens. Ontbreekt beide: CC2, met een waarschuwing. K_FI wordt nergens nog eens op een uitkomst toegepast."
+        "description": "Gevolgklasse volgens NEN-EN 1990 bijlage B. Bepaalt de partiële factoren van de STANDAARDcombinaties (NB tabel NB.4 voor CC2: 6.10b γ_G = 1,2 / γ_Q = 1,5; NB.5 voor CC1: 1,1 / 1,35 en CC3: 1,3 / 1,65) en gaat ter vermelding mee in `steel_check_inputs`. Geen invloed op meegegeven `combinations`. Uit een projectbestand telt de klasse uit de projectgegevens; staat die er niet in, dan deze `gevolgklasse`, en anders de klasse uit het kenmerk van de standaardcombinaties in het bestand. Ontbreekt alles: CC2, met een waarschuwing. K_FI wordt nergens nog eens op een uitkomst toegepast."
     })
 }
 
@@ -923,7 +923,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "load_fem_project",
-            "description": "Leest een opgeslagen .ifcfem2d-projectbestand en geeft het model, de combinaties en tellingen terug — zodat een constructeur op zijn eigen model kan laten rekenen in plaats van het over te typen. Alleen-lezen: er is geen tool die naar de schijf schrijft.",
+            "description": "Leest een opgeslagen .ifcfem2d-projectbestand en geeft het model, de combinaties en tellingen terug — zodat een constructeur op zijn eigen model kan laten rekenen in plaats van het over te typen. De combinaties zijn die waarmee `solve_fem_model` met `project_path` zou rekenen: ze gaan door dezelfde functie als het openen in de app, dus de standaardset van versie 0.3.11 en ouder, standaardcombinaties van een andere gevolgklasse en verouderde windgeneratorcombinaties komen vervangen terug, en een bestand zonder combinaties geeft de standaardset (`combinations_source` = \"bestand\" of \"standaard\"). `gevolgklasse` is de klasse waarvoor ze zijn opgesteld: uit de projectgegevens, anders uit het kenmerk van de standaardcombinaties in het bestand, anders CC2. Wat er vervangen is, een aangenomen klasse en elke FOUT in de combinatieset staan in `warnings`. Geef de combinaties ongewijzigd terug aan `solve_fem_model`, samen met die `gevolgklasse`. Alleen-lezen: er is geen tool die naar de schijf schrijft.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,

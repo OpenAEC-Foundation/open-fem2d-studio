@@ -66,7 +66,10 @@
  *  - `ontbrekendeStandaardcombinaties` zoekt elke standaardcombinatie die
  *    ontbreekt en door geen andere combinatie met dezelfde factoren wordt
  *    vervangen — in een project met standaardcombinaties, ook als die allemaal
- *    hernoemd zijn (herkenbaar aan hun formule, zie `isAfgeleidVanStandaard`);
+ *    hernoemd zijn (herkenbaar aan hun formule, zie `isAfgeleidVanStandaard`),
+ *    en in een project met de oude standaardset die er na "Ongedaan maken" of
+ *    via de MCP-weg weer in staat (`isOudeStandaardcombinatie`; gemeten zonder
+ *    die controle: 87,75 kNm waar 95,625 hoort, stil);
  *  - `veranderlijkeFactorVerschillen` zoekt een combinatie waarin twee delen
  *    van één veranderlijke belasting verschillende factoren hebben: het spoor
  *    van een eigen set waarin een geval later van type veranderde;
@@ -309,6 +312,73 @@ export function isOudeStandaardcombinatie(
     if (!gelijk(c.factors.get(id) ?? 0, f)) return false;
   }
   return true;
+}
+
+/**
+ * Uitleg bij oude standaardcombinaties die NA het openen nog in een project
+ * staan: na "Ongedaan maken", of doordat een aanvrager ze via de MCP-weg zelf
+ * meestuurt. Bij het openen zelf zijn ze al vervangen.
+ */
+function tekstOudeSetInProject(oud: readonly LoadCombination[], klasse: Gevolgklasse): string {
+  return (
+    `Dit project rekent met ${oud.length} ongewijzigde combinatie(s) van de standaardset van versie ` +
+    `0.3.11 en ouder: ${namenLijst(oud.map((c) => ({ naam: c.name })))}. Die set gaat uit van vaste ` +
+    "belastinggevallen 1 t/m 4, vaste CC2-factoren en de door EN 1990 aanbevolen ψ-waarden (tabel A1.1) " +
+    `in plaats van die van de Nederlandse bijlage, en volgt de belastinggevallen en gevolgklasse ${klasse} ` +
+    "van dit project niet. Bij het openen vervangt de app zo'n set; hij staat er weer na \"Ongedaan " +
+    'maken", of doordat hij zo is meegestuurd.'
+  );
+}
+
+// ── De gevolgklasse bij het openen ────────────────────────────────────────
+
+/**
+ * De klasse waarvoor de standaardcombinaties in een lijst zijn opgesteld: het
+ * kenmerk `standaard.gevolgklasse`, als ALLE standaardcombinaties dezelfde
+ * klasse dragen. Geen kenmerk, of een mengsel van klassen: null.
+ */
+export function klasseUitKenmerk(
+  combinations: readonly LoadCombination[] | null | undefined,
+): Gevolgklasse | null {
+  const klassen = new Set(
+    (combinations ?? []).flatMap((c) => (c.standaard ? [c.standaard.gevolgklasse] : [])),
+  );
+  return klassen.size === 1 ? [...klassen][0] : null;
+}
+
+/** Waar de gevolgklasse bij het openen vandaan kwam. */
+export type KlasseBron = "bestand" | "verzoek" | "kenmerk" | "terugval";
+
+/**
+ * De gevolgklasse waarmee een projectbestand wordt geopend — één regel voor de
+ * app (`loadProjectState`) en de MCP-weg (`leesGevolgklasse` in de sidecar):
+ *  1. de klasse uit de projectgegevens van het bestand: de keuze van de
+ *     constructeur;
+ *  2. een uitdrukkelijk gevraagde klasse (alleen de MCP-weg: `gevolgklasse`
+ *     in het verzoek);
+ *  3. de klasse uit het kenmerk van de standaardcombinaties in het bestand
+ *     (`klasseUitKenmerk`);
+ *  4. de terugval: in de app de klasse van het project dat open stond, in de
+ *     MCP-weg CC2 (NB tabel NB.4), met een waarschuwing.
+ *
+ * Waarom stap 3: het openen werkt standaardcombinaties met een ander
+ * klassekenmerk bij naar de klasse waarmee geopend wordt. Zonder deze stap was
+ * dat voor een bestand zonder klasse in de projectgegevens de TERUGVALklasse,
+ * en rekende een CC3-set ineens met CC2-factoren. Gemeten (ligger 6 m, G = 10
+ * en Q = 5 kN/m, M = 4,5·q): 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 kNm
+ * hoort (NB tabel NB.5) — terwijl de set uit het bestand zelf 95,625 gaf.
+ */
+export function gevolgklasseBijOpenen(p: {
+  bestand?: Gevolgklasse | null;
+  verzoek?: Gevolgklasse | null;
+  combinations?: readonly LoadCombination[] | null;
+  terugval: Gevolgklasse;
+}): { klasse: Gevolgklasse; bron: KlasseBron } {
+  if (p.bestand) return { klasse: p.bestand, bron: "bestand" };
+  if (p.verzoek) return { klasse: p.verzoek, bron: "verzoek" };
+  const kenmerk = klasseUitKenmerk(p.combinations);
+  if (kenmerk) return { klasse: kenmerk, bron: "kenmerk" };
+  return { klasse: p.terugval, bron: "terugval" };
 }
 
 // ── De combinaties van de windgenerator ───────────────────────────────────
@@ -1354,17 +1424,30 @@ export function meldingenBelastinggevallen(p: {
   }
 
   // Nooit stil een deelverzameling van de standaardset — ook niet als die
-  // standaardcombinaties allemaal hernoemd zijn.
+  // standaardcombinaties allemaal hernoemd zijn, en ook niet als het de
+  // standaardset van versie 0.3.11 en ouder is.
   const alle = p.alleCombinaties ?? p.combinations;
   const eenStandaard = alle.find((c) => c.standaard);
   const klasse = p.gevolgklasse ?? eenStandaard?.standaard?.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
-  if (alle.some(isAfgeleidVanStandaard)) {
+  // De oude standaardset hoort bij het openen vervangen te zijn. Staat hij er
+  // toch — na "Ongedaan maken" (knop of Ctrl+Z), of zelf meegestuurd via de
+  // MCP-weg — dan is hij een standaardset die de gevallen en de klasse niet
+  // volgt, en zoekt de controle wat er ontbreekt. Herkend op naam en factoren
+  // (`isOudeStandaardcombinatie`), NIET op de formule: een referentieproject
+  // draagt "G + ψ₂·Q" als formule van een eigen combinatie.
+  // Gemeten zonder deze regel: oud CC3-bestand, G = 10 en Q = 5 kN/m, ligger
+  // 6 m, na ongedaan maken 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 kNm
+  // hoort (NB tabel NB.5) — zonder één melding.
+  const gevalIds = new Set(p.loadCases.map((c) => c.id));
+  const oud = alle.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
+  if (oud.length > 0 || alle.some(isAfgeleidVanStandaard)) {
     const ontbrekend = ontbrekendeStandaardcombinaties({
       combinations: alle, loadCases: p.loadCases, gevolgklasse: klasse, gevuld,
     });
     if (ontbrekend.length > 0) {
       meldingen.push({
-        niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstOntbrekend(ontbrekend, klasse),
+        niveau: "fout", caseId: null, vervangAdvies: true,
+        tekst: (oud.length > 0 ? `${tekstOudeSetInProject(oud, klasse)} ` : "") + tekstOntbrekend(ontbrekend, klasse),
       });
     }
   }

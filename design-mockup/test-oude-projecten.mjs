@@ -16,14 +16,19 @@
 // NB.2–A1.1 — zie components/fem/solver/normcombinaties.ts.
 //
 // Onderdelen:
-//  [1] herkenning van een oude standaardcombinatie — en alle referentieprojecten
+//  [1] herkenning van een oude standaardcombinatie — en alle 67 projectbestanden
+//      in de repo, zonder klasse geopend in CC1, CC2 en CC3
 //  [2] B7    oud bestand, geval 3 veranderlijk: 122,850 / 85,50 kNm
-//  [3] B8    oud CC3-bestand, ook na opslaan en heropenen: 95,625 kNm
+//  [3] B8    oud CC3-bestand, ook na opslaan en heropenen: 95,625 kNm; N2: een
+//            CC3-set zonder klasse in de projectgegevens houdt CC3 (uit het kenmerk)
 //  [4] route 1: oud bestand + nieuw veranderlijk geval: 122,85 kNm
 //  [5] B9b   een volledig hernoemde set, geval 3 veranderlijk: FOUT
-//  [6] ongedaan maken herstelt de oude set exact; opnieuw vervangt weer
+//  [6] ongedaan maken herstelt de oude set exact, en geeft een FOUT (B8 na
+//      ongedaan maken: 87,75 kNm waar 95,625 hoort — nooit stil); opnieuw vervangt weer
 //  [7] windportaal: gegenereerde combinaties lopen mee; alle N–M-toestanden gedekt
-//  [8] de MCP-weg: de sidecar in dit proces, en de MCP-server met project_path
+//  [8] de MCP-weg: de sidecar in dit proces, en de MCP-server met project_path;
+//      load_project geeft de vervangen set, en een solve daarmee rekent 95,625;
+//      N8a: de oude set zelf meegestuurd geeft een FOUT
 //
 // Draaien met: npx tsx test-oude-projecten.mjs
 //         of: node scripts/run-tests.mjs --filter=oude-projecten   (ook --bundel)
@@ -140,13 +145,21 @@ const oudBestand = (loadCases, { combinaties = OUDE, tellers = null, klasse = nu
   ...(tellers ? { idTellers: tellers } : {}),
   ...(klasse ? { projectInfo: { uitgangspunten: { gevolgklasse: klasse } } } : {}),
 });
-/** Zoals App.pasProjectToe → useFemStore.loadProjectState: de klasse uit het bestand, anders CC2. */
-function openBestand(tekst) {
+/**
+ * Zoals App.pasProjectToe → useFemStore.loadProjectState: de klasse uit het
+ * bestand, anders uit het kenmerk van de standaardcombinaties, anders de klasse
+ * van het project dat open stond (`terugval`, hier standaard CC2).
+ */
+function openBestand(tekst, terugval = "CC2") {
   const p = deserializeProject(tekst);
-  const klasse = p.projectInfo?.uitgangspunten?.gevolgklasse ?? "CC2";
-  return B.openCombinatieStaat({
-    loadCases: p.loadCases, combinations: combinationsFromFile(p.combinations), gevolgklasse: klasse, idTellers: p.idTellers,
+  const combinations = combinationsFromFile(p.combinations);
+  const { klasse, bron } = B.gevolgklasseBijOpenen({
+    bestand: p.projectInfo?.uitgangspunten?.gevolgklasse, combinations, terugval,
   });
+  return {
+    ...B.openCombinatieStaat({ loadCases: p.loadCases, combinations, gevolgklasse: klasse, idTellers: p.idTellers }),
+    klasseBron: bron,
+  };
 }
 /** Zoals App.buildProjectSnapshot: combinaties, tellers, klasse en de melding van een vervanging. */
 const opslaan = (staat, model, vervangingTekst) => serializeProject({
@@ -190,24 +203,49 @@ log("\n[1] Herkenning van een oude standaardcombinatie — op naam én factorpat
 
   // De referentieprojecten dragen eigen combinaties die bij een externe
   // referentie-berekening horen. Geen enkele mag worden herkend of vervangen.
-  const bestanden = [
-    ...readdirSync(join(HIER, "referentie")).filter((f) => /\.(femp|ifcfem2d)$/.test(f)).map((f) => join(HIER, "referentie", f)),
-    ...readdirSync(join(HIER, "referentie-projecten")).filter((f) => /\.femp$/.test(f)).map((f) => join(HIER, "referentie-projecten", f)),
-    join(REPO, "src-tauri", "crates", "openaec-mcp-server", "tests", "golden", "portaal.ifcfem2d"),
-  ];
-  const vorm = (l) => JSON.stringify((l ?? []).map((c) => [c.id, c.name, c.type, [...c.factors].sort((x, y) => x[0] - y[0])]));
+  // Alle projectbestanden in de repo: referentie/ en referentie-projecten/ (elk
+  // .femp en .ifcfem2d, ook in submappen), voorbeelden/ en de gouden fixture.
+  // Staat de klasse niet in het bestand, dan geopend met CC1, CC2 én CC3: de
+  // app neemt dan de klasse van het project dat open stond.
+  const bestanden = [];
+  const zoek = (map) => {
+    if (!existsSync(map)) return;
+    for (const f of readdirSync(map, { withFileTypes: true })) {
+      const pad = join(map, f.name);
+      if (f.isDirectory()) zoek(pad);
+      else if (/\.(femp|ifcfem2d)$/i.test(f.name)) bestanden.push(pad);
+    }
+  };
+  zoek(join(HIER, "referentie"));
+  zoek(join(HIER, "referentie-projecten"));
+  zoek(join(REPO, "voorbeelden"));
+  bestanden.push(join(REPO, "src-tauri", "crates", "openaec-mcp-server", "tests", "golden", "portaal.ifcfem2d"));
+  const vorm = (l) => JSON.stringify((l ?? []).map((c) => [c.id, c.name, c.type, c.formula, [...c.factors].sort((x, y) => x[0] - y[0]), c.standaard ?? null]));
   const afwijkend = [];
+  let openingen = 0;
   for (const f of bestanden) {
-    const p = deserializeProject(readFileSync(f, "utf8"));
+    const tekst = readFileSync(f, "utf8");
+    const p = deserializeProject(tekst);
     const combos = combinationsFromFile(p.combinations);
     const gevalIds = new Set(p.loadCases.map((c) => c.id));
     const herkend = (combos ?? []).filter((c) => B.isOudeStandaardcombinatie(c, gevalIds)).length;
-    const o = openBestand(readFileSync(f, "utf8"));
-    const ongewijzigd = combos === undefined || vorm(o.staat.combinations) === vorm(combos);
-    if (herkend > 0 || o.vervanging !== null || !ongewijzigd) afwijkend.push(`${f}: herkend ${herkend}, vervangen ${o.vervanging !== null}`);
+    const klassen = p.projectInfo?.uitgangspunten?.gevolgklasse ? ["uit het bestand"] : ["CC1", "CC2", "CC3"];
+    for (const k of klassen) {
+      const o = openBestand(tekst, k === "uit het bestand" ? "CC2" : k);
+      openingen++;
+      const ongewijzigd = combos === undefined || vorm(o.staat.combinations) === vorm(combos);
+      // Ook de controle na het openen mag de set niet voor een oude standaardset aanzien.
+      const oudGemeld = B.meldingenBelastinggevallen({
+        loadCases: o.staat.loadCases, combinations: o.staat.combinations, alleCombinaties: o.staat.combinations,
+        gevolgklasse: o.staat.gevolgklasse, loads: p.loads,
+      }).some((m) => /standaardset van versie 0\.3\.11/.test(m.tekst));
+      if (herkend > 0 || o.vervanging !== null || !ongewijzigd || oudGemeld) {
+        afwijkend.push(`${f} (${k}): herkend ${herkend}, vervangen ${o.vervanging !== null}, ongewijzigd ${ongewijzigd}, oude set gemeld ${oudGemeld}`);
+      }
+    }
   }
-  checkWaar(`${bestanden.length} referentiebestanden en de gouden fixture: niets herkend, niets vervangen`,
-    bestanden.length >= 60 && afwijkend.length === 0, afwijkend.join(" | ") || String(bestanden.length));
+  checkWaar(`${bestanden.length} projectbestanden (${openingen} openingen): niets herkend, niets vervangen, lijst ongewijzigd, geen melding over een oude set`,
+    bestanden.length >= 67 && afwijkend.length === 0, afwijkend.join(" | ") || String(bestanden.length));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -262,6 +300,44 @@ for (const [naam, tellers] of [["zonder tellers", null], ["met tellers", { belas
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// N2 — een bestand met de CC3-standaardset (met kenmerk) maar ZONDER klasse in
+// de projectgegevens, geopend terwijl het vorige project CC2 was. Zonder
+// klasse uit het kenmerk werkte het openen de set bij naar CC2: 87,75 kNm waar
+// de set uit het bestand zelf 95,625 gaf (hand als hierboven, NB tabel NB.5).
+{
+  const combosCC3 = defaultCombinations(START, "CC3");
+  const tekstN2 = oudBestand(START, {
+    combinaties: combosCC3, tellers: { belastinggeval: 5, combinatie: B.volgendVrijId(combosCC3, 1) }, lasten: lastenB8,
+  });
+  const o = openBestand(tekstN2, "CC2");
+  checkWaar("N2: de klasse komt uit het kenmerk van de standaardcombinaties (CC3)",
+    o.klasseBron === "kenmerk" && o.staat.gevolgklasse === "CC3", `${o.klasseBron} ${o.staat.gevolgklasse}`);
+  checkWaar("N2: niets bijgewerkt of vervangen", o.vervanging === null, o.vervanging?.samenvatting);
+  const u = app(o.staat, lastenB8);
+  check("N2 in de app: UGT 95,625 kNm", u.ugt, 95.625);
+  check("N2 in de app: BGT 67,50 kNm", u.bgt, 67.5);
+  checkWaar("N2 in de app: geen FOUT", !heeftFout(u.meld), u.meld.map((m) => m.tekst.slice(0, 120)).join(" | "));
+  const a = verwerkVerzoek({ v: 1, id: 31, op: "solve", payload: { project: { inhoud: tekstN2 }, detail: "stations" } });
+  if (!a.ok) {
+    checkWaar("N2 sidecar: solve slaagt", false, JSON.stringify(a.error));
+  } else {
+    const typeVan = new Map(o.staat.combinations.map((c) => [String(c.id), c.type]));
+    const maxM = Math.max(...Object.entries(a.result.combinations).filter(([id]) => typeVan.get(id) === "uls")
+      .map(([, x]) => Math.max(...(x.elements["1"]?.M_x ?? [Number.NEGATIVE_INFINITY]))));
+    check("N2 sidecar (project.inhoud, geen klasse in bestand of verzoek): UGT 95,625 kNm", maxM, 95.625);
+    checkWaar("N2 sidecar: de waarschuwing zegt dat CC3 uit het kenmerk komt",
+      a.result.warnings.some((x) => /klasse CC3 komt uit het kenmerk/.test(x)) &&
+        !a.result.warnings.some((x) => /opgesteld voor CC2/.test(x)),
+      a.result.warnings.map((x) => x.slice(0, 120)).join(" | "));
+  }
+  const storeBron = readFileSync(join(HIER, "src", "hooks", "useFemStore.ts"), "utf8");
+  checkWaar("useFemStore: het openen bepaalt de klasse met gevolgklasseBijOpenen",
+    /gevolgklasseBijOpenen\(\{\s*bestand: p\.gevolgklasse,/.test(storeBron));
+  const appBron = readFileSync(join(HIER, "src", "App.tsx"), "utf8");
+  checkWaar("App: een klasse uit het kenmerk gaat ook in de projectgegevens",
+    /gevolgklasseBron === "kenmerk"/.test(appBron) && /gevolgklasse: geopendeKlasse/.test(appBron));
+}
+
 log("\n[4] Route 1 — een oud bestand en een nieuw veranderlijk geval");
 // "Q vloer 2" (cat. A) zoals de interface hem maakt: toevoegen, dan veranderlijk.
 // G = 4, Q = 5, Q vloer 2 = 10 kN/m; hand als [2]: 122,850 / 85,50 kNm.
@@ -345,6 +421,40 @@ log("\n[6] Ongedaan maken herstelt de oude set exact; opnieuw vervangt weer");
   juistOfFout("…tegen de hand", b7.ugt, 122.85, heeftFout(b7.meld));
   checkWaar("…met de FOUT dat geval 2 en 3 in één combinatie verschillende factoren hebben",
     b7.meld.some((m) => m.niveau === "fout" && /verschillende factoren/.test(m.tekst)));
+  // Direct na ongedaan maken (CC2, G = 4, Q = 5, S = 10): de oude set rekent
+  // "ULS 6.10b (S leidend)" met 1,05·Q (ψ₀ = 0,7) waar de NB-set 0,6·Q heeft
+  // (ψ₀ = 0,4, NB.2–A1.1), en de NB-combinatie ontbreekt. Een FOUT, die de oude
+  // set bij naam noemt.
+  const direct = app(terug, lastenB7);
+  checkWaar("ongedaan (CC2): direct een FOUT die de oude standaardset noemt en de ontbrekende combinaties",
+    direct.meld.some((m) => m.niveau === "fout" && m.vervangAdvies && /standaardset van versie 0\.3\.11 en ouder/.test(m.tekst) &&
+      /standaardcombinatie\(s\) ontbreken/.test(m.tekst)),
+    direct.meld.map((m) => m.tekst.slice(0, 120)).join(" | "));
+}
+
+// B8 via "Ongedaan maken" (knop of Ctrl+Z op historiestap 1): de oude set
+// staat terug in een CC3-project. Hand (NB tabel NB.5, CC3): 6.10b Q leidend
+// (1,3·10 + 1,65·5)·4,5 = 95,625 kNm; de oude set geeft (1,2·10 + 1,5·5)·4,5 =
+// 87,75 kNm. Eis: de juiste waarde of een FOUT. Gemeten door de verificatie:
+// 87,75 kNm, stil.
+for (const [naam, tellers] of [["zonder tellers", null], ["met tellers", { belastinggeval: 5, combinatie: 9 }]]) {
+  const o = openBestand(oudBestand(START, { klasse: "CC3", tellers }));
+  const terug = B.herstelCombinaties(o.staat, o.vervanging.voor);
+  const u = app(terug, lastenB8);
+  check(`B8 ongedaan gemaakt, ${naam}: de oude set rekent 87,75 kNm`, u.ugt, 87.75);
+  juistOfFout(`B8 ongedaan gemaakt, ${naam}, UGT`, u.ugt, 95.625, heeftFout(u.meld));
+  checkWaar(`B8 ongedaan gemaakt, ${naam}: de FOUT noemt de oude set, CC3 en "UGT 6.10b — Variabel (Q) leidend"`,
+    u.meld.some((m) => m.niveau === "fout" && /standaardset van versie 0\.3\.11 en ouder/.test(m.tekst) &&
+      /gevolgklasse CC3/.test(m.tekst) && /"UGT 6\.10b — Variabel \(Q\) leidend"/.test(m.tekst)),
+    u.meld.map((m) => m.tekst.slice(0, 160)).join(" | "));
+}
+{
+  // De store meldt het ongedaan maken, langs beide wegen.
+  const storeBron = readFileSync(join(HIER, "src", "hooks", "useFemStore.ts"), "utf8");
+  checkWaar("useFemStore: Ctrl+Z op de vervanging toont een melding",
+    /meldVervangingOngedaan\(stap\.voor\.length/.test(storeBron));
+  checkWaar("useFemStore: de knop Ongedaan maken toont een melding",
+    /meldVervangingOngedaan\(\s*v\.voor\.length/.test(storeBron));
 
   // De store en de app gebruiken precies deze functies (brontekst, want de
   // React-store draait hier niet): het openen is een eigen historiestap,
@@ -564,6 +674,69 @@ function beoordeel(bron, route, antwoord) {
     (antwoord.warnings ?? []).map((x) => x.slice(0, 140)).join(" | "));
 }
 
+/** Max M (kNm) van staaf 1 in een solve-antwoord, over de combinaties van `type` volgens `lijst`. */
+function maxUit(antwoord, lijst, type) {
+  const typeVan = new Map(lijst.map((c) => [String(c.id), c.type]));
+  return Math.max(...Object.entries(antwoord.combinations).filter(([id]) => typeVan.get(id) === type)
+    .map(([, x]) => Math.max(...(x.elements["1"]?.M_x ?? [Number.NEGATIVE_INFINITY]))));
+}
+// load_project op het oude CC3-bestand met tellers (route B8), en daarna een
+// solve met precies wat load_project teruggaf. Gemeten door de verificatie met
+// de echte server: load gaf de acht oude combinaties rauw terug, en de solve
+// daarmee in CC3 gaf 87,75 kNm waar (1,3·10 + 1,65·5)·4,5 = 95,625 hoort, stil.
+const B8_TEKST = routes[1].tekst;
+function beoordeelLoad(bron, L) {
+  const o = openBestand(B8_TEKST);
+  checkWaar(`${bron} load_project (B8): dezelfde combinaties als de app na het openen`,
+    L.counts?.combinations === o.staat.combinations.length &&
+      JSON.stringify(L.combinations.map((c) => [c.id, c.name])) === JSON.stringify(o.staat.combinations.map((c) => [c.id, c.name])),
+    `${L.counts?.combinations} tegen ${o.staat.combinations.length}`);
+  checkWaar(`${bron} load_project (B8): geen enkele combinatie van de oude set`,
+    !L.combinations.some((c) => B.OUDE_STANDAARDSET.some((x) => x.naam === c.name)));
+  checkWaar(`${bron} load_project (B8): gevolgklasse CC3 uit het bestand, combinaties uit het bestand`,
+    L.gevolgklasse === "CC3" && L.combinations_source === "bestand", `${L.gevolgklasse} ${L.combinations_source}`);
+  checkWaar(`${bron} load_project (B8): de vervanging staat in warnings`,
+    (L.warnings ?? []).some((x) => VERVANGEN.test(x)), JSON.stringify(L.warnings ?? null).slice(0, 300));
+}
+function beoordeelSolveNaLoad(bron, antwoord, L) {
+  check(`${bron} solve met model, combinaties en klasse uit load_project: UGT 95,625 kNm`, maxUit(antwoord, L.combinations, "uls"), 95.625);
+  check(`${bron} …BGT 67,50 kNm`, maxUit(antwoord, L.combinations, "sls"), 67.5);
+  const fouten = (antwoord.warnings ?? []).filter((x) => x.startsWith("FOUT:"));
+  checkWaar(`${bron} …geen FOUT`, fouten.length === 0, fouten.join(" | "));
+}
+{
+  const l = verwerkVerzoek({ v: 1, id: 83, op: "load_project", payload: { inhoud: B8_TEKST } });
+  if (!l.ok) {
+    checkWaar("sidecar load_project (B8) slaagt", false, JSON.stringify(l.error));
+  } else {
+    beoordeelLoad("sidecar", l.result);
+    const s = verwerkVerzoek({ v: 1, id: 84, op: "solve", payload: {
+      model: l.result.model, combinations: l.result.combinations, gevolgklasse: l.result.gevolgklasse, detail: "stations",
+    } });
+    if (!s.ok) checkWaar("sidecar solve na load_project slaagt", false, JSON.stringify(s.error));
+    else beoordeelSolveNaLoad("sidecar", s.result, l.result);
+  }
+  // N8a — de acht oude combinaties zelf meegestuurd, gevolgklasse CC3. Ze
+  // blijven staan (een uitdrukkelijke keuze van de aanvrager), maar niet stil:
+  // (1,2·10 + 1,5·5)·4,5 = 87,75 kNm waar 95,625 hoort.
+  const model = { ...LIGGER, plates: [], loadCases: START, selfWeightEnabled: false,
+    loads: lastenB8.map((x, i) => ({ id: i + 1, type: "lineLoad", beamId: 1, ...x })) };
+  const n8 = verwerkVerzoek({ v: 1, id: 85, op: "solve", payload: {
+    model, combinations: combinationsToFile(OUDE), gevolgklasse: "CC3", detail: "stations",
+  } });
+  if (!n8.ok) {
+    checkWaar("sidecar N8a solve slaagt", false, JSON.stringify(n8.error));
+  } else {
+    const u = maxUit(n8.result, OUDE, "uls");
+    const fouten = n8.result.warnings.filter((x) => x.startsWith("FOUT:"));
+    check("sidecar N8a (de acht oude combinaties meegestuurd, CC3): 87,75 kNm", u, 87.75);
+    juistOfFout("sidecar N8a, UGT", u, 95.625, fouten.length > 0);
+    checkWaar("sidecar N8a: de FOUT noemt de oude standaardset",
+      fouten.some((x) => /standaardset van versie 0\.3\.11 en ouder/.test(x) && /standaardcombinatie\(s\) ontbreken/.test(x)),
+      fouten.map((x) => x.slice(0, 140)).join(" | "));
+  }
+}
+
 // De sidecar in dit proces (bron of bundel, afhankelijk van de stand van de runner).
 for (const route of routes) {
   const a = verwerkVerzoek({ v: 1, id: 81, op: "solve", payload: { project: { inhoud: route.tekst }, detail: "stations" } });
@@ -620,6 +793,22 @@ if (!existsSync(MCP_SERVER)) {
       }
       beoordeel("MCP-server", route, a.result.structuredContent);
     });
+    // load_fem_project → solve_fem_model met wat load teruggaf (B8, route 2).
+    const [load] = await mcpServer([{ name: "load_fem_project", arguments: { path: paden[1] } }]);
+    const L = load?.result?.structuredContent;
+    if (!L || load.error || load.result?.isError) {
+      checkWaar("MCP-server load_fem_project (B8) slaagt", false, JSON.stringify(load?.error ?? load?.result?.content).slice(0, 400));
+    } else {
+      beoordeelLoad("MCP-server", L);
+      const [solve] = await mcpServer([{ name: "solve_fem_model", arguments: {
+        model: L.model, combinations: L.combinations, gevolgklasse: L.gevolgklasse, detail: "stations",
+      } }]);
+      if (!solve || solve.error || solve.result?.isError) {
+        checkWaar("MCP-server solve_fem_model na load_fem_project slaagt", false, JSON.stringify(solve?.error ?? solve?.result?.content).slice(0, 400));
+      } else {
+        beoordeelSolveNaLoad("MCP-server", solve.result.structuredContent, L);
+      }
+    }
   } finally {
     rmSync(map, { recursive: true, force: true });
   }
