@@ -100,9 +100,13 @@ export interface BeamCheckConfig {
    */
   bucklingLengthZ_m?: number;
   /**
-   * Kipsteunposities BOVENFLENS als fractie 0..1 van de staaflengte —
-   * zelfde conventie als LateralBracing.top_flange_positions in de
-   * Rust-kern (lambda_chi.rs vermenigvuldigt met de staaflengte).
+   * Kipsteunposities BOVENFLENS als fractie 0..1 van de staaflengte, gemeten
+   * VANAF DE BEGINKNOOP — zelfde conventie als
+   * LateralBracing.top_flange_positions in de Rust-kern (lambda_chi.rs
+   * vermenigvuldigt met de staaflengte). De toetsing ziet ze in de
+   * referentierichting van de staaf: bij een staaf die tegen die richting in
+   * is getekend als 1 − f, en bij een staande staaf is de bovenflens de
+   * LINKERflens. Zie `lib/referentierichting.ts`.
    *
    * Twee gebruikers: de KIP van staal (een steun aan de gedrukte flens telt),
    * en de kniklengte om z van staal én hout (alleen waar ook de onderflens —
@@ -140,8 +144,14 @@ export interface BeamCheckConfig {
    * er dan bij dat de noemer is opgegeven en niet uit de norm volgt.
    */
   deflectionAddLimitNumerator?: number;
-  /** Zeeg (pre-camber) in mm, zelfde tekenconventie als de zakking
-   *  (negatief = omlaag). Alleen door de staalkern geconsumeerd. */
+  /**
+   * Zeeg (pre-camber) in mm, POSITIEF = OMHOOG: een zeeg tegen een
+   * doorhangende ligger in is een positief getal. De staalkern rekent
+   * w_fin = w_z + w_zeeg met de zakking in de referentierichting (negatief
+   * omlaag), en laat de zeeg buiten w_add. Alleen bij een liggende staaf; bij
+   * een staande staaf (75° of meer) verrekent de toetsing geen zeeg. Zie
+   * `lib/referentierichting.ts`. Alleen door de staalkern geconsumeerd.
+   */
   preCamber_mm?: number;
   // Hout (EN 1995)
   /** Klimaatklasse §2.3.1.3; default 1. */
@@ -220,7 +230,8 @@ export interface BeamCheckConfig {
   /**
    * De wapening die LANGS de staaf verandert: welke staaflaag van waar tot
    * waar loopt (§9.2.1.3) en waar de beugels dichter staan (§9.2.2). Maten in
-   * mm vanaf de beginknoop.
+   * mm vanaf de beginknoop; de toetsing en het betonvenster zien ze in de
+   * referentierichting van de staaf (`lib/referentierichting.ts`).
    *
    * ONTBREEKT OF LEEG = het gedrag van vóór dit veld: `betonKorf` geldt dan
    * onveranderd over de hele staaf, de solver zet geen extra rekenknopen en de

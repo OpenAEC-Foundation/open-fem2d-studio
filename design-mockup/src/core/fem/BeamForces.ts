@@ -141,10 +141,17 @@ function makePartialParticular(
 /**
  * Calculate internal forces (N, V, M) for a beam element
  *
- * Sign conventions:
- * - N positive: tension
+ * Tekenafspraken, in LOKALE staafassen (x van n1 naar n2, +y 90° tegen de klok
+ * in):
+ * - N (N1, N2 en de stationsreeks): DRUK positief. N1 = (K·d − F_eq)[0] is de
+ *   kracht in lokale x op het begin, en die is bij een ingedrukte staaf
+ *   positief. `NonlinearSolver.ts` zegt hetzelfde ("DRUK-positief") en de
+ *   adapter in `components/fem/solver/engine.ts` draait het op de grens om
+ *   naar trek positief. Tot september 2026 stond hier "N positive: tension":
+ *   waar voor de uitvoer van die adapter, niet voor deze functie.
  * - V positive: causes clockwise rotation of element
- * - M positive: causes tension in bottom fiber (sagging)
+ * - M positive: trek in de lokale ondervezel (de −y-zijde). Welke WERELDzijde
+ *   dat is, hangt aan de tekenrichting; zie `lib/referentierichting.ts`.
  */
 export function calculateBeamInternalForces(
   element: IBeamElement,

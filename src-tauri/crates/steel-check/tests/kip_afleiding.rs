@@ -80,6 +80,7 @@ fn invoer(profiel: &str, l_m: f64, q: f64, steunen: Vec<f64>, z_a_mm: f64) -> Be
         q_equiv_n_per_mm: q,
         z_a_mm,
         custom_section: None,
+        staafstand: None,
     }
 }
 

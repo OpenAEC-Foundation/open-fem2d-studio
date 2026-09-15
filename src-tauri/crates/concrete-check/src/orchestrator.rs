@@ -145,7 +145,7 @@
 
 use std::collections::HashMap;
 
-use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
+use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces, Staafstand};
 use nen_en_1992_1_1::bending::stress_block;
 use nen_en_1992_1_1::checks::{check_bending_stress_block, check_mn_kappa};
 // De negen detailleringseisen worden hier STUK VOOR STUK aangeroepen en niet
@@ -1406,6 +1406,23 @@ fn bgt_toestand_op(
     input: &ConcreteBeamCheckInput,
     punt: ForcePoint,
 ) -> Result<BgtToestand, String> {
+    // REKENRUIS IS GEEN BELASTING. Aan een vrije oplegging levert de solver M
+    // als ±1e-15 kNm, en een liggende staaf die van rechts naar links is
+    // getekend ligt onder 180°: sin(π) ≈ 1,2e-16 geeft een axiale ruis van
+    // orde 1e-15 kN. Gemeten op een vrij opgelegde ligger 6 m: N = −3,7e-15 kN
+    // aan de oplegging telde als DRUK, de hele doorsnede kwam onder druk (x = h),
+    // A_c,eff werd nul, en "niet af te rekenen" gaat in de rangorde vóór elke
+    // snede met een uitkomst — §7.3.4 stond als "niet van toepassing" in het
+    // rapport in plaats van de scheurwijdte in het veld (UC 0,164). Welke kant
+    // de ruis op valt hangt aan de tekenrichting. Onder de grens telt de kracht
+    // als nul, en dan geldt dezelfde tak als bij een exacte nul.
+    let mut punt = punt;
+    if punt.forces.my_ed.abs() < MOMENT_REKENRUIS_KNM {
+        punt.forces.my_ed = 0.0;
+    }
+    if punt.forces.n_ed.abs() < NORMAALKRACHT_REKENRUIS_KN {
+        punt.forces.n_ed = 0.0;
+    }
     let m_knm = punt.forces.my_ed;
     let n_kn = punt.forces.n_ed;
 
@@ -1442,6 +1459,15 @@ fn bgt_toestand_op(
         trek_onder: m_knm >= 0.0,
     })
 }
+
+/// Een moment kleiner dan dit, in kNm, is rekenruis en telt in de
+/// scheurbeheersing als nul. Eén µNm: geen belasting in een betonconstructie
+/// komt daar in de buurt, en de ruis van de solver (orde 1e-15 kNm) ligt er
+/// ruim onder. Zie [`bgt_toestand_op`].
+const MOMENT_REKENRUIS_KNM: f64 = 1e-9;
+
+/// Idem voor de normaalkracht, in kN: één µN.
+const NORMAALKRACHT_REKENRUIS_KN: f64 = 1e-9;
 
 /// De reden waarom §7.3 niet kan als er geen frequente BGT-combinatie is
 /// meegestuurd.
@@ -2276,6 +2302,18 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     let interaction_positive = interaction_diagram(&section, &layers, &mat, 1.0, 21, &inter_opts);
     let interaction_negative = interaction_diagram(&section, &layers, &mat, -1.0, 21, &inter_opts);
 
+    // Zijden in wereldtermen. De toetsen in `KIEZEN_EEN_TREKZIJDE` kiezen de
+    // trekzijde uit het teken van M_Ed en noemen die "onder" of "boven". Bij
+    // een staande staaf is dat geen wereldbegrip; zie `mechanics::Staafstand`.
+    if let Some(tekst) = zijden_in_wereldtermen(input.staafstand.unwrap_or_default()) {
+        for c in checks.iter_mut().filter(|c| KIEZEN_EEN_TREKZIJDE.contains(&c.id.as_str())) {
+            match &mut c.kind {
+                CheckKind::Resistance(r) => r.notes.push(tekst.clone()),
+                CheckKind::Stability(s) => s.notes.push(tekst.clone()),
+            }
+        }
+    }
+
     // 8. Aggregatie. De maatgevende toets van een staaf kan de buiging, de
     //    dwarskracht, de scheurwijdte, de slankheid of een FALENDE
     //    detailleringseis zijn. Een detailleringseis waaraan wordt voldaan
@@ -2325,6 +2363,51 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
 
 pub fn check_all_concrete_beams(inputs: Vec<ConcreteBeamCheckInput>) -> Vec<ConcreteBeamCheckResult> {
     inputs.into_iter().map(check_concrete_beam).collect()
+}
+
+/// De toetsen die uit het teken van M_Ed een trekzijde kiezen en die in hun
+/// afleiding "onder" of "boven" noemen: de buiging met het spanningsblok en
+/// met M-N-κ (welke rij op trek staat), de dwarskracht (d en A_sl van de
+/// trekrij), de minimumwapening en de scheurwijdte van §7.3 (de getrokken
+/// rand), de slankheid van §7.4.2 (ρ van de trekwapening), de minimale
+/// trekwapening van §9.2.1.1, en de vrije staafafstand van §8.2, die per rij
+/// "onderwapening" en "bovenwapening" noemt.
+///
+/// De test `staafstand_zijden.rs` legt vast dat élke toets wiens tekst een
+/// zijde noemt in deze lijst staat; een nieuwe toets die een zijde kiest valt
+/// daar op.
+pub(crate) const KIEZEN_EEN_TREKZIJDE: [&str; 8] = [
+    "6.1_bending_stress_block",
+    "6.1_mn_kappa",
+    "6.2_shear",
+    "7.3.2_minimumwapening",
+    "7.3.4_scheurwijdte",
+    "7.4.2_slankheid",
+    "8.2_vrije_staafafstand",
+    "9.2.1.1_as_min",
+];
+
+/// De kanttekening die bij een STAANDE staaf zegt welke zijde in de afleiding
+/// "onder" en welke "boven" is. `None` bij een liggende staaf: daar is de
+/// benaming letterlijk.
+///
+/// De krachten komen bij een staande staaf van voet naar kop binnen, met
+/// lokaal +y 90° tegen de klok in vanaf de staafas — naar LINKS. "M_y positief
+/// = trek in de onderste vezel" betekent dan trek aan de rechterzijde: daar
+/// ligt wat de korf de onderwapening noemt. Zie `mechanics::Staafstand`.
+pub fn zijden_in_wereldtermen(stand: Staafstand) -> Option<String> {
+    match stand {
+        Staafstand::Liggend => None,
+        Staafstand::Staand => Some(
+            "Zijden in wereldtermen. Deze staaf staat overwegend verticaal (75° of meer met de \
+             horizontaal) en is getoetst van VOET naar KOP. De tekenafspraak \"M_y positief = \
+             trek in de onderste vezel\" geldt in die richting: wat in deze afleiding ONDER heet \
+             — de onderwapening, de onderrand — ligt aan de RECHTERzijde van de staaf zoals hij \
+             in het model staat, en BOVEN is de LINKERzijde. Een positief moment geeft trek \
+             rechts, een negatief moment trek links."
+                .to_string(),
+        ),
+    }
 }
 
 /// M-N-κ-diagram en interactiediagram voor een korf, los van een staaf.

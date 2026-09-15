@@ -34,7 +34,7 @@
           0.6666666666666666
         ],
         "deflectionClass": "roof",
-        "preCamber_mm": -30,
+        "preCamber_mm": 30,
         "bucklingLengthY_m": 15,
         "bucklingLengthZ_m": 15
       },

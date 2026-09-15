@@ -4,6 +4,7 @@ import type { CustomSection } from "./CustomSection";
 import type { DeflectionClass } from "./DeflectionClass";
 import type { ForcePoint } from "./ForcePoint";
 import type { LateralBracing } from "./LateralBracing";
+import type { Staafstand } from "./Staafstand";
 
 /**
  * Invoer van één staaltoetsing.
@@ -58,7 +59,11 @@ buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection
  */
 is_cantilever: boolean, consequence_class: ConsequenceClass, 
 /**
- * Zeeg (pre-camber) in mm, zelfde tekenconventie als de doorbuiging.
+ * Zeeg (pre-camber) in mm, POSITIEF = OMHOOG: een zeeg die tegen een
+ * doorhangende ligger in werkt is een positief getal. De zakking zelf
+ * ([`Self::deflection_actual_max_mm`]) is negatief omlaag, dus de
+ * eindzakking is w_fin = w_z + w_zeeg; zie
+ * [`crate::deflection::w_fin_mm`] voor de grond in NEN-EN 1990 figuur A1.1.
  */
 pre_camber_mm: number, 
 /**
@@ -111,4 +116,16 @@ z_a_mm: number,
  * `#[ts(optional)]`: in TypeScript is het veld weglaatbaar, zodat de
  * bestaande bouwers in de frontend ongewijzigd blijven compileren.
  */
-custom_section?: CustomSection, };
+custom_section?: CustomSection, 
+/**
+ * Hoe de staaf in het model staat — alleen voor de benaming van de
+ * flenzen in de afleiding van de kiptoets.
+ *
+ * De krachtenomhullende hoort in de referentierichting van de staaf te
+ * staan: liggend van links naar rechts, staand van voet naar kop. "Boven-
+ * flens" en "onderflens" zijn dan bij een liggende staaf letterlijk; bij
+ * een staande staaf is de bovenflens de LINKERflens en de onderflens de
+ * RECHTERflens, en dat zet de kern er dan bij. `None` of weglaten =
+ * [`Staafstand::Liggend`], het gedrag van vóór dit veld.
+ */
+staafstand?: Staafstand, };

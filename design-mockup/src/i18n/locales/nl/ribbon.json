@@ -435,7 +435,7 @@
     "colPosition": "x [m]",
     "nodalDispTitle": "Knoopverplaatsingen",
     "fieldDeflTitle": "Veldzakking per staaf (max |w|)",
-    "fieldDeflNote": "w = lokale zakking loodrecht op de staafas (negatief = doorhangen); x gemeten vanaf de beginknoop.",
+    "fieldDeflNote": "w = zakking loodrecht op de staafas, gerekend van links naar rechts (een staande staaf van voet naar kop): negatief = doorhangen, bij een staande staaf naar rechts; x gemeten vanaf het linker uiteinde of de voet.",
     "governingDispNote": "Omhullende gekozen — getoond is de maatgevende combinatie (grootste verplaatsing):",
     "sectionPlates": "Platen",
     "sectionPlateStresses": "Plaatspanningen",

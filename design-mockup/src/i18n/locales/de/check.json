@@ -44,7 +44,7 @@
     "deflAddNumerator": "n für w_add (leer = Norm)",
     "deflAddNumeratorHint": "Überschreibt den zur Klasse gehörenden Nenner und rechnet mit der Stablänge. Nur ausfüllen, um eine externe Referenzberechnung mit festem Nenner (z. B. L/150) nachzurechnen; der Bericht vermerkt dann, dass der Nenner vorgegeben wurde.",
     "preCamber": "Überhöhung (mm)",
-    "preCamberHint": "Überhöhung in mm, gleiche Vorzeichenkonvention wie die Durchbiegung (negativ = nach unten).",
+    "preCamberHint": "Überhöhung in mm, positiv = nach oben (gegen einen durchhängenden Träger). Nur bei überwiegend waagerechten Stäben; bei Stäben ab 75° wird keine Überhöhung angesetzt. Zählt nicht in w_add.",
     "timberTitle": "Nutzungsklasse + Lasteinwirkungsdauer",
     "serviceClass": "Nutzungsklasse",
     "sc1": "1 (innen, beheizt)",

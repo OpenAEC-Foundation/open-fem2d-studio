@@ -13,6 +13,11 @@
 import type { SolverResult } from "./solver/types";
 import type { Node, Beam, Support, Load } from "./femTypes";
 import { resolveSection } from "../../lib/sectionResolver";
+import {
+  referentieVanStaaf,
+  spiegelElementKrachten,
+  staafInReferentierichting,
+} from "../../lib/referentierichting";
 
 /** Per-result display toggles — multi-active diagram picker. */
 export interface DisplayFlags {
@@ -590,10 +595,18 @@ export default function FemResultsOverlay({
   const anyDiagram = showN || showV || showM || showRotation;
 
   if (anyDiagram) {
-    for (const beam of beams) {
+    for (const ruweStaaf of beams) {
+      // In de referentierichting van de staaf (liggend van links naar rechts,
+      // staand van voet naar kop), net als de toetsing. Het diagram ligt op
+      // dezelfde plek — de as en het teken klappen samen om — maar de labels
+      // tonen het teken dat ook in de toetsing staat. Zie
+      // `lib/referentierichting.ts`.
+      const gespiegeld = referentieVanStaaf(ruweStaaf, nodes).gespiegeld;
+      const beam = gespiegeld ? staafInReferentierichting(ruweStaaf, nodes) : ruweStaaf;
       const nA = nodes.find(n => n.id === beam.from);
       const nB = nodes.find(n => n.id === beam.to);
-      const ef = result.elements.get(beam.id);
+      const lokaal = result.elements.get(beam.id);
+      const ef = lokaal && gespiegeld ? spiegelElementKrachten(lokaal) : lokaal;
       if (!nA || !nB || !ef) continue;
       const dx = nB.x - nA.x, dz = nB.z - nA.z;
       const L = Math.hypot(dx, dz);

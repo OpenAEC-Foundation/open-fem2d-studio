@@ -42,6 +42,7 @@ import type { CltLayupResult } from "./types/timber/CltLayupResult";
 import type { CltPreset } from "./types/timber/CltPreset";
 import type { CheckSkip, MemberCheckResult } from "./checkTypes";
 import { beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
+import { toetsdataInReferentierichting } from "./referentierichting";
 import {
   mapLoadDuration,
   mapServiceClass,
@@ -525,7 +526,9 @@ export interface CltBuildResult {
  *  - k_cr = 1,0 (NB bij 6.1.7, prismatische doorsnede); geen lastverdelend
  *    systeem (k_sys = 1,0).
  */
-export function buildCltCheckInputs(data: CltBuildData): CltBuildResult {
+export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
+  // Elke staaf in zijn referentierichting — zie `lib/referentierichting.ts`.
+  const data = toetsdataInReferentierichting(ruweData);
   const inputs: CltBeamCheckInput[] = [];
   const skipped: CheckSkip[] = [];
   const grades =

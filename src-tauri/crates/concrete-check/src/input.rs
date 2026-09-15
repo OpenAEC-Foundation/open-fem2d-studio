@@ -1,6 +1,6 @@
 //! Invoertypen voor de beton-orchestrator.
 
-use mechanics::ForcePoint;
+use mechanics::{ForcePoint, Staafstand};
 use nen_en_1992_1_1::mnkappa::DEFAULT_N_STRIPS;
 use nen_en_1992_1_1::slankheid::StructuralSystem;
 use nen_en_1992_1_1::{
@@ -199,6 +199,18 @@ pub struct ConcreteBeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub column: Option<ConcreteColumnInput>,
+    /// Hoe de staaf in het model staat — alleen voor de benaming van de zijden
+    /// in de afleiding.
+    ///
+    /// De krachtenomhullende en de zones horen in de referentierichting van de
+    /// staaf te staan: liggend van links naar rechts, staand van voet naar
+    /// kop. "Onderwapening" en "bovenwapening" zijn dan bij een liggende staaf
+    /// letterlijk; bij een staande staaf ligt de onderwapening RECHTS en de
+    /// bovenwapening LINKS, en dat zet de kern er bij elke toets die een
+    /// trekzijde kiest bij. `None` of weglaten = [`Staafstand::Liggend`].
+    #[serde(default)]
+    #[ts(optional)]
+    pub staafstand: Option<Staafstand>,
 }
 
 impl ConcreteBeamCheckInput {

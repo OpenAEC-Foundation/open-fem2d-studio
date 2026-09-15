@@ -597,7 +597,7 @@ fn schema_checkconfig() -> Value {
             "deflectionLimitNumerator": { "type": "number", "exclusiveMinimum": 0,
                 "description": "De n in de eis L/n; telt alleen bij klasse \"custom\"." },
             "preCamber_mm": { "type": "number",
-                "description": "Zeeg in mm, zelfde tekenconventie als de zakking (negatief = omlaag)." },
+                "description": "Zeeg in mm, POSITIEF = OMHOOG (tegen een doorhangende ligger in). Alleen bij een liggende staaf (minder dan 75 graden met de horizontaal); bij een staande staaf wordt geen zeeg verrekend. Telt niet mee in w_add." },
             "serviceClass": { "type": "integer", "enum": [1, 2, 3],
                 "description": "Klimaatklasse EN 1995 §2.3.1.3; alleen voor hout." },
             "loadDuration": { "type": "string",

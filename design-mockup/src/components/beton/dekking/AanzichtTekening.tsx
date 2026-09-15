@@ -92,7 +92,10 @@ interface Props {
   lanenOnder: readonly Laan[];
   ucVakken: readonly UcVak[];
   lagen: LaagVlaggen;
-  /** De aangewezen snede, mm vanaf de beginknoop; `null` = geen aanwijzer. */
+  /**
+   * De aangewezen snede, mm vanaf het begin in de referentierichting van de
+   * staaf (links, of de voet); `null` = geen aanwijzer.
+   */
   cursorXMm: number | null;
   onCursorX?: (xMm: number) => void;
   /** Breedte van het tekenvlak in beeldpunten. */
@@ -814,7 +817,7 @@ function XAs({
         </g>
       ))}
       <text x={sx(lengteMm)} y={y + 22} textAnchor="end" fontSize="8" fill="var(--theme-text-faint, #888)">
-        x [m] vanaf de beginknoop
+        x [m] vanaf links (staande staaf: vanaf de voet)
       </text>
     </g>
   );

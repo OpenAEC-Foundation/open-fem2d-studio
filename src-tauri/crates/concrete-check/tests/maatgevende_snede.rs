@@ -89,6 +89,7 @@ fn invoer(cage: ReinforcementCage, envelop: Vec<ForcePoint>) -> ConcreteBeamChec
         // blijft deze test precies de test die hij was.
         column: None,
         sls_quasi_permanent_envelope: vec![],
+        staafstand: None,
     }
 }
 
