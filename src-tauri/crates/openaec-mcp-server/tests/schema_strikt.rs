@@ -1,5 +1,6 @@
-//! Strikt schema en strikte invoer voor `check_steel_beam` en voor de
-//! betontools (`check_concrete_beam`, `concrete_mn_kappa`).
+//! Strikt schema en strikte invoer voor `check_steel_beam`, voor de
+//! betontools (`check_concrete_beam`, `concrete_mn_kappa`) en voor de
+//! houttools (`check_timber_beams`, `check_clt_beams`).
 //!
 //! Waarom deze test bestaat: het oude schema zette `additionalProperties` op
 //! `true` en verzweeg vijf velden met `#[serde(default)]`. Een client die dat
@@ -717,6 +718,152 @@ async fn onbekende_sterkteklasse_geeft_een_leesbare_fout() {
         melding.contains("C24"),
         "de melding moet de afgewezen klasse noemen, kreeg: {melding}"
     );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+// ── 4. De houttools ─────────────────────────────────────────────────────────
+//
+// `TimberBeamCheckInput`, `CltBeamCheckInput`, `CltLayup` en `CltLayer` staan
+// sinds september 2026 op `#[serde(deny_unknown_fields)]`. Daarvóór werd een
+// tikfout in een optioneel veld stil genegeerd — gemeten: `kcr` in plaats van
+// `k_cr` gaf dwarskracht-UC 1,066 in plaats van 1,591, en
+// `deflection_quasi_perm_m` liet de kruipterm van §7.2 wegvallen.
+
+/// Een houten staaf 96 × 450 C24 met het krachtsverloop uit de audit — geen
+/// verzonnen getallen, en er wordt hier ook geen unity check vastgelegd.
+fn geldige_houtinvoer() -> Value {
+    let punt = |x: f64, n: f64, vz: f64, my: f64| {
+        json!({ "combination_id": 12, "position_mm": x,
+                "forces": { "n_ed": n, "vy_ed": 0.0, "vz_ed": vz, "mt_ed": 0.0, "my_ed": my, "mz_ed": 0.0 } })
+    };
+    json!({
+        "beam_id": 2, "width_mm": 96.0, "height_mm": 450.0, "strength_class": "C24",
+        "service_class": "Sc1", "load_duration": "MediumTerm", "length_m": 6.342,
+        "forces_envelope": [punt(0.0, -57.64, 75.568, -67.176), punt(3688.0, -57.64, 0.0, 72.170)],
+        "buckling_length_y_m": 6.342, "buckling_length_z_m": 1.268,
+        "deflection_inst_mm": -20.0
+    })
+}
+
+fn geldige_cltinvoer() -> Value {
+    json!({
+        "beam_id": 7,
+        "layup": { "width_mm": 1000.0, "layers": [
+            { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" },
+            { "thickness_mm": 20, "orientation": "Transverse",   "strength_class": "C24" },
+            { "thickness_mm": 40, "orientation": "Longitudinal", "strength_class": "C24" }
+        ] },
+        "service_class": "Sc1", "load_duration": "MediumTerm", "length_m": 5.0,
+        "forces_envelope": [
+            { "combination_id": 12, "position_mm": 0.0,
+              "forces": { "n_ed": 0.0, "vy_ed": 0.0, "vz_ed": 10.0, "mt_ed": 0.0, "my_ed": 0.0, "mz_ed": 0.0 } },
+            { "combination_id": 12, "position_mm": 2500.0,
+              "forces": { "n_ed": 0.0, "vy_ed": 0.0, "vz_ed": 0.0, "mt_ed": 0.0, "my_ed": 20.0, "mz_ed": 0.0 } }
+        ]
+    })
+}
+
+#[tokio::test]
+async fn schema_van_de_houttools_is_strikt_op_elk_niveau() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let hout = tooldefinitie(&mut stdin, &mut reader, 30, "check_timber_beams").await;
+    let staaf = &hout["inputSchema"]["properties"]["inputs"]["items"];
+    assert_eq!(
+        staaf["additionalProperties"], false,
+        "check_timber_beams moet een onbekend staafveld weigeren, net als de kern"
+    );
+    // Met `additionalProperties: false` is een veld dat het schema niet noemt
+    // voor een client niet meer op te geven — `custom_section` ontbrak.
+    assert!(staaf["properties"]["custom_section"].is_object(), "custom_section ontbreekt");
+    assert_eq!(
+        staaf["properties"].as_object().unwrap().len(),
+        25,
+        "het schema van de houten staaf hoort precies de 25 velden van TimberBeamCheckInput te kennen"
+    );
+
+    let clt = tooldefinitie(&mut stdin, &mut reader, 31, "check_clt_beams").await;
+    let cstaaf = &clt["inputSchema"]["properties"]["inputs"]["items"];
+    assert_eq!(cstaaf["additionalProperties"], false, "CLT-staaf");
+    assert_eq!(cstaaf["properties"]["layup"]["additionalProperties"], false, "opbouw");
+    assert_eq!(
+        cstaaf["properties"]["layup"]["properties"]["layers"]["items"]["additionalProperties"],
+        false,
+        "laag"
+    );
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+#[tokio::test]
+async fn geldige_hout_en_cltinvoer_wordt_gewoon_getoetst() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    for (id, tool, invoer) in [
+        (32, "check_timber_beams", geldige_houtinvoer()),
+        (33, "check_clt_beams", geldige_cltinvoer()),
+    ] {
+        let result =
+            roep_tool_aan(&mut stdin, &mut reader, id, tool, json!({ "inputs": [invoer] })).await;
+        assert_eq!(
+            result["isError"], false,
+            "{tool}: geldige invoer moet gewoon rekenen, kreeg: {}",
+            foutmelding(&result)
+        );
+        let checks = result["structuredContent"]["results"][0]["checks"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{tool}: geen checks-array in {result}"));
+        assert!(!checks.is_empty(), "{tool}: er is geen enkele toets uitgevoerd");
+    }
+
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+#[tokio::test]
+async fn tikfout_in_een_houtveld_wordt_geweigerd_in_plaats_van_stil_genegeerd() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    // Drie tikfouten uit de audit, elk in een veld met een standaardwaarde.
+    for (i, tikfout, waarde) in [
+        (0u32, "kcr", json!(0.67)),
+        (1, "deflection_quasi_perm_m", json!(-15.0)),
+        (2, "perform_ltb_chek", json!(false)),
+    ] {
+        let mut invoer = geldige_houtinvoer();
+        invoer.as_object_mut().unwrap().insert(tikfout.into(), waarde);
+        let result = roep_tool_aan(
+            &mut stdin, &mut reader, 40 + i, "check_timber_beams", json!({ "inputs": [invoer] }),
+        )
+        .await;
+        let melding = foutmelding(&result);
+        assert_eq!(result["isError"], true, "`{tikfout}` gaf een resultaat: {result}");
+        assert!(
+            melding.contains(tikfout) && melding.contains("unknown field"),
+            "de melding moet het onbekende veld `{tikfout}` noemen, kreeg: {melding}"
+        );
+    }
+
+    // CLT: op de staaf én diep in de opbouw.
+    let mut op_staaf = geldige_cltinvoer();
+    op_staaf.as_object_mut().unwrap().insert("kcr".into(), json!(0.67));
+    let mut in_laag = geldige_cltinvoer();
+    in_laag["layup"]["layers"][0].as_object_mut().unwrap().insert("orientatie".into(), json!("Longitudinal"));
+    for (i, (wat, invoer, veld)) in [("staaf", op_staaf, "kcr"), ("laag", in_laag, "orientatie")]
+        .into_iter()
+        .enumerate()
+    {
+        let result = roep_tool_aan(
+            &mut stdin, &mut reader, 50 + i as u32, "check_clt_beams", json!({ "inputs": [invoer] }),
+        )
+        .await;
+        let melding = foutmelding(&result);
+        assert_eq!(result["isError"], true, "CLT {wat}: kreeg een resultaat: {result}");
+        assert!(melding.contains(veld), "CLT {wat}: de melding moet `{veld}` noemen: {melding}");
+    }
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

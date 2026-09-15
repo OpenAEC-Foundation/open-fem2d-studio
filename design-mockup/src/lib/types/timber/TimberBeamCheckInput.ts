@@ -9,6 +9,14 @@ import type { ServiceClass } from "./ServiceClass";
 
 /**
  * Invoer voor één houten staaf (rechthoekige doorsnede b × h).
+ *
+ * `deny_unknown_fields`: een onbekend veld is een FOUT en geen ruis. Zeventien
+ * velden hieronder hebben een standaardwaarde, en zonder deze regel viel een
+ * tikfout in zo'n veldnaam stil terug op die standaard. Gemeten: `kcr` in
+ * plaats van `k_cr` gaf dwarskracht-UC 1,066 in plaats van 1,591, en
+ * `deflection_quasi_perm_m` liet de kruipterm k_def·w_qp van §7.2 wegvallen
+ * (w_fin-UC 0,788 in plaats van 1,143) — beide zonder melding. Staal
+ * (`BeamCheckInput`) en beton (`ConcreteBeamCheckInput`) weigerden al.
  */
 export type TimberBeamCheckInput = { beam_id: number, 
 /**
