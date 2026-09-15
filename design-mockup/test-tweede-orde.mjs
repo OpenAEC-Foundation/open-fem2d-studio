@@ -264,6 +264,171 @@ log("\n[5b] Combinatie 1.35×LC1(P) + 1.5×LC2(H) — gefactoreerde opbouw");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// TEST 7: geometrische stijfheid SAMEN met de scharnieren gecondenseerd
+//
+// Tot september 2026 werd eerst Ke gecondenseerd en daarna de ongecondenseerde
+// Kg opgeteld. Op het losgelaten DOF bleef dan een fictieve rotatiestijfheid
+// 2·N·L/15 staan. Gemeten gevolg: een pendelkolom met het scharnier op haar
+// top gaf P_cr = 934 kN waar hetzelfde scharnier op het regeleind 1317 kN gaf;
+// op de scharnierknoop stond een fictief moment van 56 kNm; het steunmoment
+// van een doorgaande ligger boven een gedrukte pendelkolom was 6 % te gunstig.
+//
+// De referenties hieronder zijn ANALYTISCH, niet uit de motor:
+//  (a) Een pendelkolom (scharnier-scharnier) onder P met een zijdelingse veer k
+//      op de top: de zwaaivorm is de rechte koorde en de pendel drukt met
+//      exact P·Δ/h opzij (EN 1993-1-1 5.2.1(3): de pendel draagt via zijn
+//      schuinstand). Dus u = H/(k − P/h) en P_cr = k·h, onafhankelijk van EI en
+//      van de plek van het scharnier.
+//  (b) Een scharnier op de pendeltop en hetzelfde scharnier op het regeleind
+//      zijn fysisch hetzelfde spant: de antwoorden horen gelijk te zijn.
+//  (c) Een scharnierende pendel brengt geen moment op de ligger over, en de
+//      ligger is horizontaal vastgehouden: het steunmoment van de doorgaande
+//      ligger is in tweede orde gelijk aan dat in eerste orde, ongeacht in
+//      hoeveel stukken de pendel is geknipt.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[7] Kg vóór de scharniercondensatie: pendelkolom, scharnierplaats, steunmoment");
+{
+  const { solveCombinationSecondOrder } = await import("./src/components/fem/solver/engine.ts");
+  const Ep = 210000, Ap = 3877, Ip = 1.673e7, h = 4000, b = 6000;
+  const c1 = (f, extra = []) => ({
+    id: 1, name: "C", type: "uls", formula: "", factors: new Map([[1, f], ...extra]),
+  });
+
+  // (a) pendel + veer. De veer is een horizontale dummystaaf met EA/L = 100 N/mm
+  // naar een ingeklemde knoop; haar buigstijfheid werkt verticaal en telt
+  // voor de zwaai niet mee: k = 100 N/mm exact. I van de dummy is klein
+  // (100 mm⁴): groter koppelt haar buiging de pendelverkorting (knoop 2 zakt
+  // ~1 mm) via de topknooprotatie aan een eerste-orde zwaai van de pendel
+  // (gemeten 0,4 % bij 1000 mm⁴); kleiner laat de topknooprotatie zo slap dat
+  // de stabiliteitscontrole die pivot afkeurt. De variant met het scharnier aan de voet heeft
+  // een ingeklemde voetknoop (op een scharnieroplegging zou de knooprotatie
+  // zelf vrij zijn en het stelsel terecht singulier).
+  {
+    const Ad = 100 * 1000 / Ep, Id = 100;
+    const k = 100;
+    const varianten = [
+      ["scharnier op de top, 1 element", [{ id: 1, from: 1, to: 2, E: Ep, A: Ap, I: Ip, releases: { endRy: true } }], [], "pinned"],
+      ["scharnier aan de voet, 1 element", [{ id: 1, from: 1, to: 2, E: Ep, A: Ap, I: Ip, releases: { startRy: true } }], [], "fixed"],
+      ["scharnier op de top, 4 elementen",
+        [1, 2, 3, 4].map((i) => ({ id: i, from: i === 1 ? 1 : 10 + i - 1, to: i === 4 ? 2 : 10 + i, E: Ep, A: Ap, I: Ip,
+          ...(i === 4 ? { releases: { endRy: true } } : {}) })),
+        [{ id: 11, x: 0, z: 1000 }, { id: 12, x: 0, z: 2000 }, { id: 13, x: 0, z: 3000 }], "pinned"],
+    ];
+    for (const [naam, beams, extraKnopen, voet] of varianten) {
+      const inp = {
+        nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: h }, { id: 5, x: 1000, z: h }, ...extraKnopen],
+        beams: [...beams, { id: 9, from: 2, to: 5, E: Ep, A: Ad, I: Id }],
+        supports: [{ nodeId: 1, type: voet }, { nodeId: 5, type: "fixed" }],
+        cases: [{ id: 1, name: "H" }, { id: 2, name: "P" }], loads: [],
+        pointLoads: [{ nodeId: 2, fx: 100, caseId: 1 }, { nodeId: 2, fz: -1e5, caseId: 2 }],
+      };
+      for (const deel of [0.5, 0.75]) {
+        const P = deel * k * h;
+        const r = solveCombinationSecondOrder(inp, c1(1, [[2, P / 1e5]]));
+        check(`(a) ${naam}: u(${deel}·P_cr) = H/(k − P/h)`, r.displacements.get(2).ux, 100 / (k - P / h), 0.1);
+      }
+    }
+  }
+
+  // (b) hallenspant: ingeklemde kolom, regel, pendelkolom; H = 50 N constant,
+  // P op de pendeltop. Referentie P_cr = k·h met k de zuivere zwaaistijfheid
+  // (alleen H, eerste orde) — gemeten 329,3 N/mm → 1317 kN. De bisectie zoekt
+  // de laagste P waarbij de motor het stelsel indefiniet meldt.
+  {
+    const spant = (scharnierOp, nPendel) => {
+      const nodes = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: h }, { id: 3, x: b, z: h }, { id: 4, x: b, z: 0 }];
+      const regel = { id: 2, from: 2, to: 3, E: Ep, A: Ap, I: Ip };
+      if (scharnierOp === "regel") regel.releases = { endRy: true };
+      const beams = [{ id: 1, from: 1, to: 2, E: Ep, A: Ap, I: Ip }, regel];
+      let vorige = 4, bid = 3, nid = 5;
+      for (let i = 1; i <= nPendel; i++) {
+        const naar = i === nPendel ? 3 : nid;
+        if (i < nPendel) nodes.push({ id: nid++, x: b, z: (h * i) / nPendel });
+        const st = { id: bid++, from: vorige, to: naar, E: Ep, A: Ap, I: Ip };
+        if (scharnierOp === "pendel" && i === nPendel) st.releases = { endRy: true };
+        beams.push(st);
+        vorige = naar;
+      }
+      return {
+        nodes, beams, supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 4, type: "pinned" }],
+        cases: [{ id: 1, name: "H" }, { id: 2, name: "P" }], loads: [],
+        pointLoads: [{ nodeId: 2, fx: 5000, caseId: 1 }, { nodeId: 3, fz: -1e5, caseId: 2 }],
+      };
+    };
+    const zwaai = spant("pendel", 1);
+    const r1 = combineResults(c1(1, [[2, 0]]), solveAllCases(zwaai).perCase);
+    const kZwaai = 5000 / r1.displacements.get(2).ux;
+    const PcrRef = kZwaai * h;
+    check("(b) zuivere zwaaistijfheid van het spant (N/mm)", kZwaai, 329.32, 0.1);
+
+    const pcr = (inp) => {
+      let lo = 1, hi = 30;
+      for (let i = 0; i < 30; i++) {
+        const m = (lo + hi) / 2;
+        let ok = true;
+        try { solveCombinationSecondOrder(inp, c1(0.01, [[2, m]])); } catch { ok = false; }
+        if (ok) lo = m; else hi = m;
+      }
+      return lo * 1e5;
+    };
+    const uit = {};
+    for (const [plek, n] of [["pendel", 1], ["regel", 1], ["pendel", 4]]) {
+      const inp = spant(plek, n);
+      const P = pcr(inp);
+      uit[`${plek}${n}`] = P;
+      check(`(b) P_cr met scharnier op ${plek}, pendel in ${n} stuk(ken) ≈ k·h`, P, PcrRef, 1);
+      // Bij 0,5·P_cr: het moment op de scharnierknoop 3 hoort ~0 (fictief
+      // moment weg), en de kolomvoet volgt uit evenwicht.
+      const r = solveCombinationSecondOrder(inp, c1(1, [[2, 0.5 * PcrRef / 1e5]]));
+      const regel = r.elements.get(2);
+      const maxM = Math.max(...regel.bendingMoment.map(Math.abs));
+      checkTrue(`(b) geen fictief moment op de scharnierknoop (${plek}, n=${n})`,
+        Math.abs(regel.M_end) < 0.005 * maxM, `M_eind = ${(regel.M_end / 1e6).toFixed(3)} kNm bij max|M| ${(maxM / 1e6).toFixed(2)} kNm`);
+      uit[`u${plek}${n}`] = r.displacements.get(2).ux;
+    }
+    check("(b) scharnier op pendeltop en op regeleind: zelfde P_cr", uit.pendel1, uit.regel1, 0.01);
+    check("(b) scharnier op pendeltop en op regeleind: zelfde u(0,5·P_cr)", uit.upendel1, uit.uregel1, 0.01);
+    check("(b) pendel in 1 of 4 stukken: zelfde u(0,5·P_cr)", uit.upendel4, uit.upendel1, 0.01);
+  }
+
+  // (c) doorgaande ligger (6 + 6 m) op een pendelkolom in het midden, alleen
+  // het linkerveld belast, P = 1000 kN op de pendel. Steunmoment 1e orde:
+  // q·L²/16 = 30·36/16 = 67,5 kNm bij starre steun; met de axiaal verende
+  // pendel gemeten 62,72 kNm. In tweede orde hoort exact hetzelfde.
+  {
+    const ligger = (nPendel) => {
+      const L6 = 6000;
+      const nodes = [{ id: 1, x: 0, z: h }, { id: 2, x: L6, z: h }, { id: 3, x: 2 * L6, z: h }, { id: 4, x: L6, z: 0 }];
+      const beams = [{ id: 1, from: 1, to: 2, E: Ep, A: Ap, I: 5e7 }, { id: 2, from: 2, to: 3, E: Ep, A: Ap, I: 5e7 }];
+      let vorige = 4, bid = 10, nid = 100;
+      for (let i = 1; i <= nPendel; i++) {
+        const naar = i === nPendel ? 2 : nid;
+        if (i < nPendel) nodes.push({ id: nid++, x: L6, z: (h * i) / nPendel });
+        const st = { id: bid++, from: vorige, to: naar, E: Ep, A: Ap, I: Ip };
+        if (i === nPendel) st.releases = { endRy: true };
+        beams.push(st);
+        vorige = naar;
+      }
+      return {
+        nodes, beams,
+        supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 3, type: "zRoller" }, { nodeId: 4, type: "pinned" }],
+        cases: [{ id: 1, name: "LC" }], loads: [{ beamId: 1, q: -30, caseId: 1 }],
+        pointLoads: [{ nodeId: 2, fz: -1000000, caseId: 1 }],
+      };
+    };
+    const eerste = combineResults(c1(1), solveAllCases(ligger(1)).perCase).elements.get(1).M_end;
+    check("(c) steunmoment 1e orde (kNm)", eerste / 1e6, -62.72, 0.1);
+    for (const n of [1, 16]) {
+      const r = combineResults(c1(1), solveAllCasesNonlinear(ligger(n)).perCase);
+      const links = r.elements.get(1).M_end, rechts = r.elements.get(2).M_start;
+      check(`(c) steunmoment 2e orde = 1e orde, pendel in ${n} stuk(ken)`, links, eerste, 0.05);
+      checkTrue(`(c) geen momentsprong op de pendelknoop (n=${n})`, Math.abs(links - rechts) < 1e3,
+        `sprong ${((links - rechts) / 1e6).toFixed(4)} kNm`);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // TEST 6: regressie — bestaande 1e-orde-tests blijven groen
 // ─────────────────────────────────────────────────────────────────────────
 log("\n[6] Regressie: bestaande testsuites");
