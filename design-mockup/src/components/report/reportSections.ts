@@ -42,6 +42,7 @@
  * betekenen dat de gebruiker iets veranderd heeft.
  */
 import type { ComponentType } from "react";
+import { useReportStore, type RapportType } from "../../stores/reportStore";
 import ProjectSection from "./sections/ProjectSection";
 import TocSection from "./sections/TocSection";
 import NodesSection from "./sections/NodesSection";
@@ -343,6 +344,27 @@ export function hiddenSectionsVoorType(beperkt: boolean): Record<string, boolean
     if (!s.inBeperkt) uit[s.id] = true;
   }
   return uit;
+}
+
+/**
+ * Rapporttype toepassen: zet de sectiekeuze op de voorinstelling van dat
+ * type, kiest er een passend toetsniveau bij en zet álle staven weer in de
+ * afleidingssectie. Dat blijft een VOORINSTELLING — daarna kan elke sectie
+ * en elke staaf los aan of uit, en dan meldt de zijbalk "aangepast".
+ *
+ * Eén functie voor de knoppen in de zijbalk (ReportPreview) én de export via
+ * het bedieningskanaal (bediening/rapportExport): alleen `setRapportType`
+ * aanroepen verandert niets aan de secties, dus twee eigen varianten zouden
+ * twee verschillende "beperkte" rapporten opleveren. Hij staat hier en niet in
+ * de store, omdat de store de registry niet mag kennen (importlus store →
+ * registry → secties → store).
+ */
+export function pasRapportTypeToe(type: RapportType): void {
+  const s = useReportStore.getState();
+  s.setRapportType(type);
+  s.setHiddenSections(hiddenSectionsVoorType(type === "beperkt"));
+  s.setToetsingDetail(type === "beperkt" ? "beknopt" : "gedetailleerd");
+  s.resetToetsStaven();
 }
 
 /** Wijkt de huidige sectiekeuze af van de voorinstelling van dit type? */

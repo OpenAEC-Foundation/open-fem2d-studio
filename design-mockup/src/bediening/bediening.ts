@@ -25,11 +25,43 @@
 import { useEffect, useRef, useState } from "react";
 import { useCheckStore } from "../stores/checkStore";
 import { useDekkingslijnStore } from "../stores/dekkingslijnStore";
+import { useReportStore } from "../stores/reportStore";
+import { leesRapportKopOverschrijving } from "../components/report/useProjectInfo";
+import { leesPagineerToestand } from "../components/report/rapportGereedheid";
+import { tocToestand } from "../components/report/toc";
 import type { Beam, Selection, SupportType, Load, Analysetype } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { ReinforcementCage } from "../lib/types/concrete/ReinforcementCage";
+import {
+  lopendeExportId,
+  rapportAfronden,
+  rapportVoorbereiden,
+  wachtOpRekenrust,
+} from "./rapportExport";
 
 const EVENT_OPDRACHT = "gui-control:opdracht";
+
+/** Wat één rekengang (App.tsx `rekenDoor`) opleverde. */
+export interface RekengangUitkomst {
+  gelukt: boolean;
+  /**
+   * Wat de fysisch niet-lineaire ronde deed: `nvt` (ander analysetype),
+   * `gedraaid`, `niets-te-doen` (geen betonstaaf met korf) of `mislukt`.
+   */
+  fysisch: "nvt" | "gedraaid" | "niets-te-doen" | "mislukt";
+}
+
+/** De rekentoestand die in refs van App.tsx leeft — niet in de render. */
+export interface RekenToestand {
+  /** Staat er na een modelwijziging een automatische herberekening gepland? */
+  herberekeningGepland: boolean;
+  /** Aantal rekengangen dat nog loopt (tot en met de toetsing). */
+  lopendeRekengangen: number;
+  /** Hoogt op bij elke modelwijziging en elke rekengang. */
+  generatie: number;
+  /** De combinatieresultaten van de laatste VOLTOOIDE rekengang, of null. */
+  volledigeRekengang: Map<number, SolverResult> | null;
+}
 
 /** Wat App.tsx aan de bediening geeft. Allemaal bestaande closures. */
 export interface BedieningActies {
@@ -56,7 +88,17 @@ export interface BedieningActies {
   setActiveView: (v: string) => void;
   setBottomPanelOpen: (v: boolean) => void;
   handleRunMemberChecks: (opts?: { openPanel?: boolean }) => Promise<void>;
-  computeAndStoreSolverOutputs: () => { combinationResults: Map<number, SolverResult> } | null | undefined;
+  /**
+   * De rekengang van de knop Berekenen — `rekenDoor` in App.tsx, met de
+   * fysisch niet-lineaire ronde en de toetsing erachteraan — als belofte die
+   * pas inlost als ALLES klaar is. Vroeger riep `rekenen` hier alleen
+   * `computeAndStoreSolverOutputs` aan: zonder die ronde en zonder toetsing,
+   * zodat een rapport via het kanaal bij tweedeOrdeFysisch op P-Δ-krachten
+   * stond waar de knop de gescheurde verdeling gaf.
+   */
+  rekenDoor: () => Promise<RekengangUitkomst>;
+  /** De rekentoestand uit de refs van App.tsx (gepland, lopend, generatie). */
+  rekenToestand: () => RekenToestand;
   /**
    * De reden dat de laatste rekengang mislukte, of null. Zonder dit veld gaf
    * "rekenen" altijd "controleer het model (opleggingen, belastingen)" terug,
@@ -116,6 +158,17 @@ export function useBediening(acties: BedieningActies): boolean {
   });
   const wachtOpRender = () =>
     new Promise<void>((los) => { wachtenden.current.push(los); });
+  // `verseRender`: forceer een commit en wacht erop. Nodig na een ASYNCHRONE
+  // actie (een rekengang met toetsing): de commits die daarbij hoorden kunnen
+  // al voorbij zijn, en dan zou `wachtOpRender` op een render wachten die
+  // nooit komt. Met een eigen tik komt er altijd één, en daarna staat de
+  // laatste modelstate gegarandeerd in `actiesRef`.
+  const [, setTik] = useState(0);
+  const verseRender = () => {
+    const p = wachtOpRender();
+    setTik((n) => n + 1);
+    return p;
+  };
 
   useEffect(() => {
     let af: (() => void) | null = null;
@@ -136,7 +189,7 @@ export function useBediening(acties: BedieningActies): boolean {
         const { id, naam, args } = e.payload;
         let antwoord: { ok: true; uitkomst: unknown } | { ok: false; fout: string };
         try {
-          const uitkomst = await voerUit(naam, args ?? {}, actiesRef, wachtOpRender);
+          const uitkomst = await voerUit(naam, args ?? {}, actiesRef, wachtOpRender, verseRender);
           antwoord = { ok: true, uitkomst };
         } catch (err) {
           antwoord = { ok: false, fout: err instanceof Error ? err.message : String(err) };
@@ -161,6 +214,7 @@ async function voerUit(
   args: Record<string, unknown>,
   ref: { current: BedieningActies },
   wachtOpRender: () => Promise<void>,
+  verseRender: () => Promise<void>,
 ): Promise<unknown> {
   const a = () => ref.current;
   const getal = (k: string): number => {
@@ -185,6 +239,30 @@ async function voerUit(
         aantalLasten: f.loads.length,
         analysetype: f.analysetype,
         toetsingLoopt: useCheckStore.getState().isRunning,
+        rekentoestand: (() => {
+          const r = a().rekenToestand();
+          return {
+            herberekeningGepland: r.herberekeningGepland,
+            lopendeRekengangen: r.lopendeRekengangen,
+            generatie: r.generatie,
+          };
+        })(),
+        // De rapportinstellingen zoals ze NU staan — zo is na een export te
+        // controleren dat type, papier en kop zijn teruggezet.
+        rapport: (() => {
+          const s = useReportStore.getState();
+          return {
+            type: s.rapportType,
+            formaat: s.pageSize,
+            orientatie: s.orientation,
+            kopOverschreven: leesRapportKopOverschrijving() !== null,
+            lopendeExport: lopendeExportId(),
+            // De toestand achter het klaar-signaal van de export: zo is van
+            // buiten te zien waarom een export (nog) wacht.
+            paginering: leesPagineerToestand(),
+            inhoudsopgave: tocToestand(),
+          };
+        })(),
         // Genoeg om een staaf te kiezen zonder het hele model op te vragen:
         // materiaal en profiel zeggen wat het is, `heeftKorf` of hij al
         // wapening draagt.
@@ -263,17 +341,37 @@ async function voerUit(
     }
 
     case "rekenen": {
-      const uit = a().computeAndStoreSolverOutputs();
-      await wachtOpRender();
+      // Dezelfde rekengang als de knop Berekenen, en pas terug als hij HELEMAAL
+      // klaar is: doorrekenen, bij tweedeOrdeFysisch de fysisch niet-lineaire
+      // ronde, en de toetsing. Stond er na een modelwijziging al een
+      // herberekening gepland, dan eerst die laten uitlopen — anders zou die
+      // na deze gang nog starten en de toetsing onder de client vandaan wissen.
+      const deadline = performance.now() + 590_000;
+      await wachtOpRekenrust(a, deadline);
+      const uitkomst = await a().rekenDoor();
+      await verseRender();
+      await wachtOpRekenrust(a, deadline);
       // Mislukt de rekengang, dan de ECHTE reden terug — en nooit de
-      // combinatieresultaten van een vorige gang (`?? fem.combinationResults`
-      // zou die hier stil teruggeven terwijl de verse gang faalde).
+      // combinatieresultaten van een vorige gang.
       const fout = a().laatsteRekenfout();
-      if (!uit || fout) {
+      const cr = a().fem.combinationResults;
+      if (!uitkomst.gelukt || fout || !cr) {
         throw new Error(`doorrekenen mislukt: ${fout ?? "de rekengang leverde geen combinatieresultaten"}`);
       }
-      const cr = uit.combinationResults;
-      return samenvatting(cr, a().fem.combinations);
+      const t = useCheckStore.getState();
+      return {
+        ...samenvatting(cr, a().fem.combinations),
+        analysetype: a().fem.analysetype,
+        fysischeRonde: uitkomst.fysisch,
+        // De toetsing liep mee; wat ze opleverde staat hier samengevat, de
+        // uitkomsten zelf via `toetsen_uitlezen`.
+        toetsing: {
+          fout: t.error,
+          getoetst: t.results.length,
+          overgeslagen: t.skipped.length,
+          uitgevoerdOp: t.lastRunAt,
+        },
+      };
     }
 
     case "toetsen": {
@@ -333,6 +431,14 @@ async function voerUit(
       const canvas = await html2canvas(document.body, { useCORS: true, logging: false });
       return { dataUrl: canvas.toDataURL("image/png") };
     }
+
+    // Het standaardrapport als PDF: Rust (`rapport_pdf`) roept deze twee aan,
+    // met het printen ertussen. Zie rapportExport.ts.
+    case "rapport_voorbereiden":
+      return rapportVoorbereiden(args, a, wachtOpRender, verseRender);
+
+    case "rapport_afronden":
+      return rapportAfronden(args, a);
 
     default:
       throw new Error(`onbekende bedieningsopdracht \`${naam}\``);

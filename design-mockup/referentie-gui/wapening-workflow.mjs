@@ -190,7 +190,7 @@ if (!vind) { app.kill(); process.exit(1); }
 const mcp = new Mcp();
 await mcp.init();
 const tools = await mcp.lijst();
-eis("tools/list bevat de gui_*-tools", tools.filter((t) => t.startsWith("gui_")).length === 14,
+eis("tools/list bevat de gui_*-tools", tools.filter((t) => t.startsWith("gui_")).length === 15,
   tools.filter((t) => t.startsWith("gui_")).join(", "));
 
 // De pagina moet geladen zijn: status tot er staven zijn.

@@ -258,6 +258,10 @@ const ALLEEN_BRON = new Map([
     "zet de stores om naar de invoer van de PDF-uitdraai (`lib/rapportPdfInvoer`) — rapportagelogica van de frontend die de solver niet raakt en dus niet in de barrel hoort",
   ],
   [
+    "rapport-gereedheid",
+    "toetst het klaar-signaal en de weigerregels van de PDF-export via het bedieningskanaal: de leesbare toestand van de inhoudsopgave (`components/report/toc`), de gereedheid van de paginering (`components/report/rapportGereedheid`), de kop van één export (`components/report/useProjectInfo`) en de oordelen van `bediening/rapportVoorwaarden`, plus een bronteksttoets op App.tsx en bediening.ts. Rapport- en bedieningslogica van de frontend — de solver komt er niet aan te pas en geen van die modules hoort in de barrel",
+  ],
+  [
     "sectierelevantie",
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],

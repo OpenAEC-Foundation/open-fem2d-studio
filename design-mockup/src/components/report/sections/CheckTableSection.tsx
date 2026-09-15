@@ -24,13 +24,15 @@
  */
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
-import { useCheckStore } from "../../../stores/checkStore";
+import { anyCheckableBeams, useCheckStore } from "../../../stores/checkStore";
 import {
   gradeLabel,
   normLabel,
   sectionLabel,
+  type CheckSkip,
   type MemberCheckResult,
 } from "../../../lib/checkTypes";
+import { useReportData } from "../ReportDataContext";
 import {
   CHECK_REPORT_CSS,
   alsBreuk,
@@ -93,11 +95,58 @@ function BeknopteRijen({ results }: { results: MemberCheckResult[] }) {
 }
 
 
+/** De staven die niet getoetst konden worden, met hun reden. */
+function OvergeslagenStaven({ skipped }: { skipped: CheckSkip[] }) {
+  const { t } = useTranslation("ribbon");
+  if (skipped.length === 0) return null;
+  return (
+    <div className="rpt-skipped">
+      <h3 className="rpt-h3">
+        {t("report.skippedTitle", "Niet-getoetste staven")} ({skipped.length})
+      </h3>
+      <ul>
+        {skipped.map((s) => (
+          <li key={s.beamId}>
+            <strong>
+              {t("report.colBeam", "Staaf")} {s.beamId}
+            </strong>{" "}
+            — {s.reason}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function CheckTableSection() {
   const { t } = useTranslation("ribbon");
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
+  const { beams } = useReportData();
+  // WAAROM DRIE LEEG-MELDINGEN. "Nog niet getoetst — voer de toetsing uit" stond
+  // hier ook bij een model zonder één toetsbare staaf (de toetsing keert dan
+  // terug zonder te draaien, `lastRunAt` blijft leeg) en bij een ronde waarin
+  // élke staaf is overgeslagen. Op papier las dat als een vergeten handeling,
+  // terwijl er niets te toetsen viel of alles met reden is overgeslagen. Het
+  // rapport — ook de PDF via het bedieningskanaal — hoort zelf te zeggen welk
+  // van de drie het is, en in het laatste geval ook waarom per staaf.
+  const geenToetsbareStaven = beams.length > 0 && !anyCheckableBeams([...beams]);
+  const leegMelding =
+    lastRunAt !== null
+      ? t(
+          "report.nietsGetoetstNaRun",
+          "Er is getoetst, maar geen enkele staaf kon worden getoetst — zie de niet-getoetste staven hieronder.",
+        )
+      : geenToetsbareStaven
+        ? t(
+            "report.geenToetsbareStaven",
+            "Niets getoetst: dit model bevat geen toetsbare staven (geen staalprofiel, houtklasse, kruislaaghout, betonklasse of vrij materiaal).",
+          )
+        : t(
+            "report.notChecked",
+            "Nog niet getoetst — voer de normtoetsing uit via het tabblad Toetsing.",
+          );
   // Het overzicht toont ALTIJD één regel per staaf: de maatgevende toets.
   // Dat is wat een overzicht hoort te zijn — wie alle toetsen wil zien, vindt
   // ze verderop bij "Toetsing per staaf", waar ze bovendien met hun afleiding
@@ -115,12 +164,10 @@ export default function CheckTableSection() {
       <h2 className="rpt-h2">{t("report.sectionCheckTable", "Toetsingsoverzicht")}</h2>
 
       {results.length === 0 ? (
-        <p className="rpt-empty-note">
-          {t(
-            "report.notChecked",
-            "Nog niet getoetst — voer de normtoetsing uit via het tabblad Toetsing.",
-          )}
-        </p>
+        <>
+          <p className="rpt-empty-note">{leegMelding}</p>
+          <OvergeslagenStaven skipped={skipped} />
+        </>
       ) : (
         <>
           {checkedTime && (
@@ -148,23 +195,7 @@ export default function CheckTableSection() {
 
           {basis && <p className="rpt-note rpt-check-basis">{basis}</p>}
 
-          {skipped.length > 0 && (
-            <div className="rpt-skipped">
-              <h3 className="rpt-h3">
-                {t("report.skippedTitle", "Niet-getoetste staven")} ({skipped.length})
-              </h3>
-              <ul>
-                {skipped.map((s) => (
-                  <li key={s.beamId}>
-                    <strong>
-                      {t("report.colBeam", "Staaf")} {s.beamId}
-                    </strong>{" "}
-                    — {s.reason}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <OvergeslagenStaven skipped={skipped} />
         </>
       )}
     </div>

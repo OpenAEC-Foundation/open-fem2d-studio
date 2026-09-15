@@ -237,6 +237,8 @@
     "fieldCompany": "Bedrijf",
     "fieldDate": "Datum",
     "notChecked": "Nog niet getoetst — voer de normtoetsing uit via het tabblad Toetsing.",
+    "nietsGetoetstNaRun": "Er is getoetst, maar geen enkele staaf kon worden getoetst — zie de niet-getoetste staven hieronder.",
+    "geenToetsbareStaven": "Niets getoetst: dit model bevat geen toetsbare staven (geen staalprofiel, houtklasse, kruislaaghout, betonklasse of vrij materiaal).",
     "checkedAt": "Toetsing uitgevoerd op",
     "colBeam": "Staaf",
     "colSection": "Profiel / doorsnede",

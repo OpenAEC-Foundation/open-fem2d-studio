@@ -237,6 +237,8 @@
     "fieldCompany": "Company",
     "fieldDate": "Date",
     "notChecked": "Not checked yet — run the code check via the Check tab.",
+    "nietsGetoetstNaRun": "The code check ran, but no member could be checked — see the unchecked members below.",
+    "geenToetsbareStaven": "Nothing checked: this model contains no checkable members (no steel profile, timber grade, cross-laminated timber, concrete class or free material).",
     "checkedAt": "Check performed on",
     "colBeam": "Member",
     "colSection": "Profile / section",

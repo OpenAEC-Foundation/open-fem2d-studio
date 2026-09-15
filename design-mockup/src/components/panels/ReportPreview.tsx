@@ -47,8 +47,8 @@ import {
 } from "../../stores/reportStore";
 import {
   REPORT_SECTIONS,
-  hiddenSectionsVoorType,
   isAangepast,
+  pasRapportTypeToe,
 } from "../report/reportSections";
 import ReportShell from "../report/ReportShell";
 import { scrollNaarSectie } from "../report/paginate";
@@ -142,8 +142,6 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const inhoudsopgaveDiepte = useReportStore((s) => s.inhoudsopgaveDiepte);
   const setInhoudsopgaveDiepte = useReportStore((s) => s.setInhoudsopgaveDiepte);
   const rapportType = useReportStore((s) => s.rapportType);
-  const setRapportType = useReportStore((s) => s.setRapportType);
-  const setHiddenSections = useReportStore((s) => s.setHiddenSections);
   const toetsingDetail = useReportStore((s) => s.toetsingDetail);
   const setToetsingDetail = useReportStore((s) => s.setToetsingDetail);
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
@@ -156,17 +154,10 @@ export default function ReportPreview({ data, onDetach }: ReportPreviewProps) {
   const zetOpmaak = (veld: keyof ReportOpmaak) => (v: number) => setOpmaak({ [veld]: v });
 
   /**
-   * Rapporttype toepassen: zet de sectiekeuze op de voorinstelling van dat
-   * type, kiest er een passend toetsniveau bij en zet álle staven weer in de
-   * afleidingssectie. Dat blijft een VOORINSTELLING — daarna kan elke sectie
-   * en elke staaf los aan of uit, en dan meldt de zijbalk "aangepast".
+   * Rapporttype toepassen — de gedeelde functie uit de registry, dezelfde die
+   * de export via het bedieningskanaal gebruikt (zie `pasRapportTypeToe`).
    */
-  const pasTypeToe = (type: RapportType) => {
-    setRapportType(type);
-    setHiddenSections(hiddenSectionsVoorType(type === "beperkt"));
-    setToetsingDetail(type === "beperkt" ? "beknopt" : "gedetailleerd");
-    resetToetsStaven();
-  };
+  const pasTypeToe = (type: RapportType) => pasRapportTypeToe(type);
 
   const aangepast = isAangepast(hiddenSections, rapportType === "beperkt");
   const checkDetailAan = isSectionEnabled(hiddenSections, "checkDetail");
