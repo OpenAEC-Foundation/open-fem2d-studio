@@ -175,6 +175,85 @@ log("\n[9] Onbestaande staaf-id retourneert null");
   check("null bij lege beams", computeBeamSplit(cur, 99, 0, 0) === null);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 10–13: toetsconfiguratie per deel (basisaudit nr 5). Tot september
+// 2026 ging checkConfig letterlijk mee: een regel van 12 m met kipsteunen op
+// ¼, ½ en ¾ (L_st = 3000 mm) kreeg na een splitsing op 6 m op elk deel drie
+// steunen op de halve afstand (L_st = 1500 mm), zonder melding.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[10] Kipsteunen [0.25, 0.5, 0.75] op 12 m, split op 6 m → per deel [0.5]; steun op de knoop = 1 en 0");
+{
+  const cur = {
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 12000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material: "S235", profile: "IPE330",
+      checkConfig: { lateralRestraints: [0.25, 0.5, 0.75], lateralRestraintsBottom: [0.5], bucklingLengthZ_m: 3 } }],
+    loads: [],
+  };
+  const r = computeBeamSplit(cur, 1, 6000, 0);
+  const [b1, b2] = r.beams;
+  check("deel 1 bovenflens: [0.5, 1] (¼ → ½, ½ → de knoop)", JSON.stringify(b1.checkConfig.lateralRestraints) === "[0.5,1]");
+  check("deel 2 bovenflens: [0, 0.5] (½ → de knoop, ¾ → ½)", JSON.stringify(b2.checkConfig.lateralRestraints) === "[0,0.5]");
+  check("onderflens op de knoop: deel 1 [1], deel 2 [0]",
+    JSON.stringify(b1.checkConfig.lateralRestraintsBottom) === "[1]" && JSON.stringify(b2.checkConfig.lateralRestraintsBottom) === "[0]");
+  check("opgegeven kniklengte blijft op beide delen (absolute maat)",
+    b1.checkConfig.bucklingLengthZ_m === 3 && b2.checkConfig.bucklingLengthZ_m === 3);
+  check("geen meldingen (niets gewist)", r.meldingen.length === 0);
+}
+
+log("\n[11] Split op 4,5 m (t = 0,375): deel 1 [0.6667], deel 2 [0.2, 0.6]");
+{
+  const cur = {
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 12000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, checkConfig: { lateralRestraints: [0.25, 0.5, 0.75] } }],
+    loads: [],
+  };
+  const r = computeBeamSplit(cur, 1, 4500, 0);
+  const [b1, b2] = r.beams;
+  const f1 = b1.checkConfig.lateralRestraints, f2 = b2.checkConfig.lateralRestraints;
+  check("deel 1: één steun op 3 m = 0,6667", f1.length === 1 && approx(f1[0], 2 / 3, 1e-9));
+  check("deel 2: steunen op 6 en 9 m = 0,2 en 0,6 (exact afgerond)", JSON.stringify(f2) === "[0.2,0.6]");
+}
+
+log("\n[12] Zeeg wordt gewist met melding; steunen buiten het deel vervallen");
+{
+  const cur = {
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, checkConfig: { preCamber_mm: 12, lateralRestraints: [0.8], deflectionClass: "roof" } }],
+    loads: [],
+  };
+  const r = computeBeamSplit(cur, 1, 3000, 0);
+  const [b1, b2] = r.beams;
+  check("zeeg weg op beide delen", b1.checkConfig.preCamber_mm === undefined && b2.checkConfig.preCamber_mm === undefined);
+  check("één melding over de zeeg van 12 mm", r.meldingen.length === 1 && /12 mm/.test(r.meldingen[0]) && /staaf 1/.test(r.meldingen[0]));
+  check("steun op 0,8 alleen op deel 2 als 0,6", b1.checkConfig.lateralRestraints === undefined && JSON.stringify(b2.checkConfig.lateralRestraints) === "[0.6]");
+  check("doorbuigingsklasse blijft", b1.checkConfig.deflectionClass === "roof" && b2.checkConfig.deflectionClass === "roof");
+}
+
+log("\n[13] Betonzones 0–2000 / 2000–4000 / 4000–6000 mm, split op 3000: geknipt en verschoven");
+{
+  const zones = {
+    longitudinal: [
+      { x_start_mm: 0, x_end_mm: 2000, side: "bottom", row: { count: 2, diameter_mm: 20 } },
+      { x_start_mm: 2000, x_end_mm: 4000, side: "bottom", row: { count: 4, diameter_mm: 20 } },
+      { x_start_mm: 4000, x_end_mm: 6000, side: "bottom", row: { count: 2, diameter_mm: 20 } },
+    ],
+    stirrups: [{ x_start_mm: 0, x_end_mm: 6000, spacing_mm: 150 }],
+  };
+  const cur = {
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material: "C30/37", profile: "300x500", checkConfig: { betonZones: zones } }],
+    loads: [],
+  };
+  const r = computeBeamSplit(cur, 1, 3000, 0);
+  const [b1, b2] = r.beams;
+  const z1 = b1.checkConfig.betonZones.longitudinal.map(z => [z.x_start_mm, z.x_end_mm, z.row.count]);
+  const z2 = b2.checkConfig.betonZones.longitudinal.map(z => [z.x_start_mm, z.x_end_mm, z.row.count]);
+  check("deel 1: [0,2000,2] en [2000,3000,4]", JSON.stringify(z1) === "[[0,2000,2],[2000,3000,4]]");
+  check("deel 2: [0,1000,4] en [1000,3000,2]", JSON.stringify(z2) === "[[0,1000,4],[1000,3000,2]]");
+  check("beugels: 0–3000 op beide delen", b1.checkConfig.betonZones.stirrups[0].x_end_mm === 3000 && b2.checkConfig.betonZones.stirrups[0].x_start_mm === 0 && b2.checkConfig.betonZones.stirrups[0].x_end_mm === 3000);
+  check("zones bedekken elk deel precies", z1[0][0] === 0 && z1[1][1] === 3000 && z2[0][0] === 0 && z2[1][1] === 3000);
+}
+
 log(`\n${"─".repeat(50)}`);
 log(`Resultaat: ${passed} geslaagd, ${failed} gefaald`);
 if (failed > 0) process.exit(1);

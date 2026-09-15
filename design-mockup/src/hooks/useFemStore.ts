@@ -10,7 +10,7 @@
  */
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type {
-  Node, Beam, BeamReleases, Plate, PlaatMeshCache, Support, Load, LoadCase,
+  Node, Beam, BeamCheckConfig, BeamReleases, Plate, PlaatMeshCache, Support, Load, LoadCase,
   Selection, Snapshot, SupportType, StructuralGrid, Analysetype,
 } from "../components/fem/femTypes";
 import {
@@ -457,6 +457,17 @@ export function berekenStramienVerplaatsing(
 }
 
 /**
+ * Wat het splitsen aan toetsconfiguratie heeft gewist (zie `splitsCheckConfig`),
+ * als melding op het scherm. Niets te melden = geen toast.
+ */
+function meldSplitsing(meldingen: string[]): void {
+  if (meldingen.length === 0) return;
+  void import("../io/notify").then(({ notifyWarning }) =>
+    notifyWarning("Toetsconfiguratie bij het splitsen aangepast", meldingen.join("\n")),
+  );
+}
+
+/**
  * Pure splitslogica voor `splitBeamAt` — losgetrokken uit de hook zodat hij
  * unit-testbaar is (zie design-mockup/test-splitsen.mjs).
  *
@@ -483,7 +494,7 @@ export function berekenStramienVerplaatsing(
 export function computeBeamSplit(
   cur: Pick<Snapshot, "nodes" | "beams" | "loads">,
   beamId: number, x: number, z: number,
-): { nodes: Node[]; beams: Beam[]; loads: Load[]; newNodeId: number } | null {
+): { nodes: Node[]; beams: Beam[]; loads: Load[]; newNodeId: number; meldingen: string[] } | null {
   const beam = cur.beams.find(b => b.id === beamId);
   if (!beam) return null;
   const nodeA = cur.nodes.find(n => n.id === beam.from);
@@ -495,7 +506,7 @@ export function computeBeamSplit(
   const deel = computeBeamSplitOpKnoop(
     { nodes, beams: cur.beams, loads: cur.loads }, beamId, newNodeId);
   if (!deel) return null;
-  return { nodes, beams: deel.beams, loads: deel.loads, newNodeId };
+  return { nodes, beams: deel.beams, loads: deel.loads, newNodeId, meldingen: deel.meldingen };
 }
 
 /**
@@ -517,7 +528,7 @@ export function computeBeamSplit(
 export function computeBeamSplitOpKnoop(
   cur: Pick<Snapshot, "nodes" | "beams" | "loads">,
   beamId: number, knoopId: number,
-): { beams: Beam[]; loads: Load[] } | null {
+): { beams: Beam[]; loads: Load[]; meldingen: string[] } | null {
   const beam = cur.beams.find(b => b.id === beamId);
   if (!beam) return null;
   const nodeA = cur.nodes.find(n => n.id === beam.from);
@@ -555,9 +566,17 @@ export function computeBeamSplitOpKnoop(
     ? { endTx: v.endTx, endTz: v.endTz, endRy: v.endRy }
     : undefined;
   // `...beam` neemt materiaal/profiel (en toekomstige velden) mee; id/from/to/
-  // releases/veren worden expliciet overschreven.
+  // releases/veren worden expliciet overschreven. De TOETSCONFIGURATIE gaat
+  // NIET letterlijk mee: kipsteunen staan als fractie van de staaflengte en
+  // betonzones in mm vanaf de beginknoop, en die horen per deel te worden
+  // hermapt — zie `splitsCheckConfig` (basisaudit nr 5).
+  const cfg1 = splitsCheckConfig(beam.checkConfig, t, len, 1, beamId);
+  const cfg2 = splitsCheckConfig(beam.checkConfig, t, len, 2, beamId);
   const beam1: Beam = { ...beam, id: maxBeamId + 1, from: beam.from, to: newNodeId, releases: startRel, veren: startVeren };
   const beam2: Beam = { ...beam, id: maxBeamId + 2, from: newNodeId, to: beam.to, releases: endRel, veren: endVeren };
+  if (cfg1.config) beam1.checkConfig = cfg1.config; else delete beam1.checkConfig;
+  if (cfg2.config) beam2.checkConfig = cfg2.config; else delete beam2.checkConfig;
+  const meldingen = [...cfg1.meldingen, ...cfg2.meldingen];
   const beams = cur.beams.filter(b => b.id !== beamId).concat([beam1, beam2]);
 
   let nextLoadId = cur.loads.length === 0 ? 1 : Math.max(...cur.loads.map(l => l.id)) + 1;
@@ -618,7 +637,111 @@ export function computeBeamSplitOpKnoop(
       loads.push(l);
     }
   }
-  return { beams, loads };
+  return { beams, loads, meldingen };
+}
+
+/**
+ * De toetsconfiguratie van één DEEL van een gesplitste staaf.
+ *
+ * Tot september 2026 ging `checkConfig` letterlijk naar beide delen. Voor de
+ * velden die een PLAATS op de staaf beschrijven is dat fout, en de kiptoets
+ * werd er stil gunstiger van (basisaudit nr 5: een regel van 12 m met
+ * kipsteunen op ¼, ½ en ¾ — L_st = 3000 mm, UC_kip 0,444 — kreeg na een
+ * splitsing op 6 m op élk deel drie steunen op de halve afstand: L_st =
+ * 1500 mm, UC_kip 0,371, zonder melding).
+ *
+ * Regels, met t = de splitsfractie op de oorspronkelijke staaf:
+ *  - Kipsteunen (boven- én onderflens, fracties 0..1 vanaf de beginknoop):
+ *    een steun op fractie f komt op deel 1 als f/t wanneer f ≤ t, en op deel 2
+ *    als (f − t)/(1 − t) wanneer f ≥ t. Een steun PRECIES op de splitsknoop
+ *    wordt fractie 1 van deel 1 én fractie 0 van deel 2: de toetsbouwer laat
+ *    de uiteinden weg (daar geldt de staafeind-aanname), maar de herkenning
+ *    van een doorgaande lijn leest eraan af dat de tussenknoop zijdelings
+ *    gesteund is.
+ *  - Betonzones (mm vanaf de beginknoop): geknipt op t·L en voor deel 2
+ *    verschoven; een zone die geheel buiten het deel valt vervalt. De kern
+ *    eist dat de zones de staaf precies bedekken, en dat blijft zo.
+ *  - Zeeg: GEWIST, met een melding. Een zeeg hoort bij een overspanning als
+ *    geheel; op twee losse delen zou de toetsing tweemaal de volle zeeg tegen
+ *    een deel van de zakking zetten.
+ *  - Kniklengtes, kipsteunafstand (hout), doorbuigingsklasse, klimaat- en
+ *    duurklasse, korf en de overige beton- en spanningsvelden: ongewijzigd.
+ *    Een OPGEGEVEN kniklengte is een absolute maat die de gebruiker voor de
+ *    hele staaf bedoelde; die blijft op beide delen staan. Een LEEG veld blijft
+ *    leeg — de toetsbouwer herkent de doorgaande lijn en toetst dan de hele
+ *    lijn als één staaf, niet het deel (basisaudit nr 29).
+ *
+ * Levert `config: undefined` wanneer er na het hermappen niets overblijft.
+ */
+export function splitsCheckConfig(
+  cfg: BeamCheckConfig | undefined,
+  t: number,
+  lengteMm: number,
+  deel: 1 | 2,
+  beamId: number,
+): { config: BeamCheckConfig | undefined; meldingen: string[] } {
+  if (!cfg) return { config: undefined, meldingen: [] };
+  const meldingen: string[] = [];
+  const uit: BeamCheckConfig = { ...cfg };
+  const eps = 1e-9;
+
+  const hermap = (fracties: number[] | undefined): number[] | undefined => {
+    if (!Array.isArray(fracties)) return undefined;
+    const res: number[] = [];
+    for (const f of fracties) {
+      if (!Number.isFinite(f)) continue;
+      if (deel === 1) {
+        if (f <= t + eps && t > eps) res.push(Math.min(1, Math.max(0, f / t)));
+      } else if (f >= t - eps && 1 - t > eps) {
+        res.push(Math.min(1, Math.max(0, (f - t) / (1 - t))));
+      }
+    }
+    // Afronden op 12 decimalen: (0,5 − 0,375)/(1 − 0,375) is in dubbele
+    // precisie niet exact 0,2, en de gebruiker hoort in het paneel 0,2 te zien.
+    return [...new Set(res.map((f) => Math.round(f * 1e12) / 1e12))].sort((a, b) => a - b);
+  };
+  if (cfg.lateralRestraints !== undefined) {
+    const r = hermap(cfg.lateralRestraints);
+    if (r && r.length > 0) uit.lateralRestraints = r; else delete uit.lateralRestraints;
+  }
+  if (cfg.lateralRestraintsBottom !== undefined) {
+    const r = hermap(cfg.lateralRestraintsBottom);
+    if (r && r.length > 0) uit.lateralRestraintsBottom = r; else delete uit.lateralRestraintsBottom;
+  }
+
+  if (cfg.betonZones) {
+    const xs = t * lengteMm;
+    const knip = <Z extends { x_start_mm: number; x_end_mm: number }>(zones: Z[] | undefined): Z[] => {
+      const res: Z[] = [];
+      for (const z of zones ?? []) {
+        if (deel === 1) {
+          if (z.x_start_mm < xs - eps) {
+            res.push({ ...z, x_end_mm: Math.min(z.x_end_mm, xs) });
+          }
+        } else if (z.x_end_mm > xs + eps) {
+          res.push({ ...z, x_start_mm: Math.max(z.x_start_mm, xs) - xs, x_end_mm: z.x_end_mm - xs });
+        }
+      }
+      return res;
+    };
+    uit.betonZones = {
+      longitudinal: knip(cfg.betonZones.longitudinal),
+      stirrups: knip(cfg.betonZones.stirrups),
+    };
+  }
+
+  if (cfg.preCamber_mm !== undefined) {
+    delete uit.preCamber_mm;
+    if (deel === 1 && cfg.preCamber_mm !== 0) {
+      meldingen.push(
+        `Zeeg van ${cfg.preCamber_mm} mm van staaf ${beamId} is bij het splitsen gewist: een ` +
+        "zeeg hoort bij de overspanning als geheel en niet bij een deel ervan. Geef hem " +
+        "opnieuw op bij het deel waaronder de toetsing de doorgaande lijn beschouwt.",
+      );
+    }
+  }
+
+  return { config: Object.keys(uit).length > 0 ? uit : undefined, meldingen };
 }
 
 /**
@@ -646,6 +769,8 @@ export function computeKnoopMetSplitsing(
 ): {
   nodes: Node[]; beams: Beam[]; loads: Load[];
   nodeId: number; gesplitsteStaven: number[]; gewijzigd: boolean;
+  /** Wat er bij het hermappen van de toetsconfiguratie is gewist (zie `splitsCheckConfig`). */
+  meldingen: string[];
 } {
   const bestaand = cur.nodes.find(n =>
     Math.abs(n.x - x) <= tolMm && Math.abs(n.z - z) <= tolMm);
@@ -664,6 +789,7 @@ export function computeKnoopMetSplitsing(
   // delen die tijdens het splitsen ontstaan hebben het punt als eindknoop en
   // komen dus per definitie niet opnieuw in aanmerking.
   const gesplitsteStaven: number[] = [];
+  const meldingen: string[] = [];
   for (const b of cur.beams) {
     if (b.from === nodeId || b.to === nodeId) continue;
     if (puntOpStaaf(nodes, b, px, pz, tolMm) === null) continue;
@@ -672,10 +798,12 @@ export function computeKnoopMetSplitsing(
     beams = deel.beams;
     loads = deel.loads;
     gesplitsteStaven.push(b.id);
+    meldingen.push(...deel.meldingen);
   }
   return {
     nodes, beams, loads, nodeId, gesplitsteStaven,
     gewijzigd: !bestaand || gesplitsteStaven.length > 0,
+    meldingen,
   };
 }
 
@@ -779,6 +907,7 @@ export function computeModelHerstel(
       if (!deel) break;
       staat = { ...staat, beams: deel.beams, loads: deel.loads };
       stappen.push(`Knoop ${h.nodeId} verbonden met staaf ${h.beamId}.`);
+      stappen.push(...deel.meldingen);
     } else {
       const r = computeKnopenSamenvoegen(staat, h.bewaarId, h.verwijderId);
       if (!r) break;
@@ -2116,6 +2245,7 @@ export function useFemStore(opties?: {
     setBeams(split.beams);
     setLoads(split.loads);
     pushHistory({ ...cur, nodes: split.nodes, beams: split.beams, loads: split.loads });
+    meldSplitsing(split.meldingen);
   }, [pushHistory]);
 
   /**
@@ -2131,6 +2261,7 @@ export function useFemStore(opties?: {
     setBeams(r.beams);
     setLoads(r.loads);
     pushHistory({ ...cur, nodes: r.nodes, beams: r.beams, loads: r.loads });
+    meldSplitsing(r.meldingen);
     return r.nodeId;
   }, [pushHistory]);
 
@@ -2142,6 +2273,7 @@ export function useFemStore(opties?: {
     setBeams(deel.beams);
     setLoads(deel.loads);
     pushHistory({ ...cur, beams: deel.beams, loads: deel.loads });
+    meldSplitsing(deel.meldingen);
     return true;
   }, [pushHistory]);
 
