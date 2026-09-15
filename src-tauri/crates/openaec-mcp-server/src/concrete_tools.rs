@@ -652,6 +652,8 @@ fn schema_betonstaaf() -> Value {
             "reinforcement_zones": schema_wapeningszones(),
             "staafstand": { "type": "string", "enum": ["Liggend", "Staand"], "default": "Liggend",
                 "description": "Hoe de staaf in het model staat; rekent nergens mee. De omhullende en de zones horen in de referentierichting te staan: 'Liggend' (minder dan 75 graden met de horizontaal) van links naar rechts, 'Staand' van voet naar kop. Bij 'Staand' zet elke toets die een trekzijde kiest erbij dat de ONDERwapening rechts en de BOVENwapening links ligt. Weglaten = 'Liggend'." },
+            "staafstand_notities": { "type": "array", "items": { "type": "string" }, "default": [],
+                "description": "Kanttekeningen bij de staafstand; rekenen nergens mee en komen letterlijk in de 'notes' van elke toets die een trekzijde kiest en van de dekkingslijn. De app zet hier een waarschuwing bij een naar links hellende staaf dicht bij de grens van 75 graden: daar keert om aan welke fysieke zijde de BOVENwapening ligt (tot 75 graden het bovenvlak, daarboven de linkerzijde = het ondervlak). Weglaten = geen kanttekening." },
             "length_m": { "type": "number",
                 "description": "Staaflengte in m. Alleen voor de rapportage; deze toets kent geen knik." },
             "forces_envelope": crate::schema_krachtenomhullende(),

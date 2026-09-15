@@ -102,6 +102,7 @@ fn invoer(
         z_a_mm: 155.0,
         custom_section: None,
         staafstand: None,
+        staafstand_notities: None,
     }
 }
 

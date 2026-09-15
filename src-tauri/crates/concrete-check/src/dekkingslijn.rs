@@ -787,6 +787,9 @@ pub fn dekkingslijn(verzoek: DekkingslijnVerzoek) -> Result<DekkingslijnAntwoord
             .iter()
             .cloned()
             .chain(crate::orchestrator::zijden_in_wereldtermen(b.staafstand.unwrap_or_default()))
+            // En de waarschuwing van de bouwer dat "boven" hier dicht bij zijn
+            // sprong ligt: de dekkingslijn noemt de onder- en de bovenwapening.
+            .chain(b.staafstand_notities.iter().flatten().cloned())
             .collect(),
     })
 }
@@ -997,6 +1000,7 @@ mod tests {
             column: None,
             sls_quasi_permanent_envelope: vec![],
             staafstand: None,
+            staafstand_notities: None,
         }
     }
 

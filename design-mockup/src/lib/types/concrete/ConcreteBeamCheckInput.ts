@@ -203,4 +203,18 @@ column?: ConcreteColumnInput,
  * bovenwapening LINKS, en dat zet de kern er bij elke toets die een
  * trekzijde kiest bij. `None` of weglaten = [`Staafstand::Liggend`].
  */
-staafstand?: Staafstand, };
+staafstand?: Staafstand, 
+/**
+ * Kanttekeningen bij de staafstand die de BOUWER van de invoer opstelt. De
+ * kern zet ze letterlijk bij elke toets die een trekzijde kiest en bij de
+ * dekkingslijn, achter de zijden in wereldtermen, en rekent er nergens mee.
+ *
+ * WAAROM. Aan welke fysieke zijde de "bovenwapening" ligt, springt bij een
+ * naar links hellende staaf op 75° van het bovenvlak naar het ondervlak
+ * (zie `design-mockup/src/lib/referentierichting.ts`, DE SPRONG BIJ 75°).
+ * Of een staaf dicht bij die sprong ligt, weet alleen wie de meetkunde
+ * kent; de kern krijgt alleen de omhullende. Zonder dit kanaal zou de
+ * waarschuwing niet in de afleiding en niet in het rapport komen. `None` of
+ * een lege lijst = geen kanttekening.
+ */
+staafstand_notities?: Array<string>, };

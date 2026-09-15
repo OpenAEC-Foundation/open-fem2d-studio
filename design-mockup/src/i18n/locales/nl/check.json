@@ -57,6 +57,10 @@
     "durShort": "Kort",
     "durInstantaneous": "Zeer kort",
     "timberHint": "Bepaalt k_mod en k_def in de EN 1995-toetsing.",
-    "staleResultHint": "Het getoonde resultaat is van een eerdere run met een ander materiaaltype — voer de toetsing opnieuw uit."
+    "staleResultHint": "Het getoonde resultaat is van een eerdere run met een ander materiaaltype — voer de toetsing opnieuw uit.",
+    "sprongLiggendFlens": "Let op: deze staaf helt naar links onder {{helling}}, {{afstand}} onder de grens van {{grens}} waar een staaf staand gaat heten. Boven is nu de fysieke bovenzijde (rechtsboven). Vanaf {{grens}} wordt boven de linkerzijde — bij deze helling de fysieke onderzijde (linksonder). Een kleine wijziging van de knopen keert dan zonder verdere melding om aan welke zijde deze steunen staan.",
+    "sprongStaandFlens": "Let op: deze staaf helt naar links onder {{helling}}, {{afstand}} boven de grens van {{grens}}. Boven is hier de linkerzijde, en dat is bij deze helling de fysieke ONDERzijde (linksonder) — niet het bovenvlak. Onder {{grens}} zou boven de fysieke bovenzijde zijn. Controleer na een wijziging van de knopen aan welke zijde deze steunen staan.",
+    "sprongLiggendKorf": "Let op: deze staaf helt naar links onder {{helling}}, {{afstand}} onder de grens van {{grens}} waar een staaf staand gaat heten. De bovenwapening ligt nu aan de fysieke bovenzijde (rechtsboven). Vanaf {{grens}} ligt zij aan de linkerzijde — bij deze helling de fysieke onderzijde (linksonder). Een kleine wijziging van de knopen keert dan zonder verdere melding om aan welke zijde de boven- en onderwapening liggen.",
+    "sprongStaandKorf": "Let op: deze staaf helt naar links onder {{helling}}, {{afstand}} boven de grens van {{grens}}. De bovenwapening ligt hier aan de linkerzijde, en dat is bij deze helling de fysieke ONDERzijde (linksonder) — niet het bovenvlak. Onder {{grens}} zou zij aan de fysieke bovenzijde liggen. Controleer na een wijziging van de knopen aan welke zijde de boven- en onderwapening liggen."
   }
 }

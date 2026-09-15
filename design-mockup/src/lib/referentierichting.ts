@@ -82,6 +82,48 @@
  * Een kolom die van links door de wind wordt belast, trekt aan de voet aan de
  * linkerkant: M < 0, de bovenwapening (links) op trek.
  *
+ * ── DE SPRONG BIJ 75° ──────────────────────────────────────────────────────
+ *
+ * Een richtingsregel MOET ergens springen. De stand van een staaf is een lijn
+ * zonder pijl: na een halve slag ligt dezelfde lijn er weer. Een pijl die over
+ * die halve slag doorlopend meedraait, wijst aan het eind de andere kant op, dus
+ * ergens klapt hij om — en met hem lokaal +y, "boven" en "onder".
+ *
+ * Met de afspraak hierboven zit die sprong bij een staaf die naar LINKS helt
+ * (de kop links van de voet), op 75°. Tot 75° is "boven" daar het fysieke
+ * bovenvlak (rechtsboven); vanaf 75° is "boven" de linkerzijde, en dat is bij
+ * zo'n staaf het fysieke ONDERvlak (linksonder). Een staaf die naar RECHTS helt
+ * springt niet: van links naar rechts en van voet naar kop is daar dezelfde
+ * richting. Gemeten (IPE 330, 9 m, scharnierend opgelegd, kipsteunen aan de
+ * bovenflens op ¼, ½ en ¾, zuiging): 74,9° 0 steunen aan de gedrukte flens,
+ * kip-UC 0,372; 75,1° 3 steunen, UC 0,141. Beton 300×500 onder q = −20 kN/m:
+ * 74,9° trekwapening de onderwapening 4Ø20, 75,1° de bovenwapening 2Ø12. Beide
+ * uitkomsten horen bij wat er staat — de afleiding noemt links en rechts — maar
+ * wie bij een steile staaf "bovenflens" als het bovenvlak leest, telt bij
+ * zuiging steunen aan de trekflens. En in een bestaand project keert een kleine
+ * knoopverschuiving stil om aan welke zijde één-zijdige kipsteunen of een
+ * ongelijke korf horen.
+ *
+ * WAAROM DE SPRONG OP 75° BLIJFT. Elke andere plaats is slechter of niet beter:
+ *  - op 90°, precies verticaal: een kolom die 0,1° uit het lood staat — na een
+ *    import of een verschoven knoop — zou omklappen, en kolommen zijn de meest
+ *    voorkomende steile staven;
+ *  - op 0°, horizontaal: hetzelfde voor liggers, en die komen nog vaker voor;
+ *  - op 75° bij een naar RECHTS hellende staaf (staand dan van kop naar voet):
+ *    dezelfde valkuil in spiegelbeeld;
+ *  - op een andere hoek: een tweede grens naast `isOverwegendVerticaal`, die
+ *    ook het staaftype, de doorbuigingseis en de zeeg kiest. Dan kan één staaf
+ *    "staand" heten voor de doorbuiging en "liggend" voor de flenzen.
+ * Op 75° zet de kern bovendien vanaf de grens al in de afleiding welke
+ * wereldzijde "boven" is (de staafstand, zie hierboven).
+ *
+ * WAT ER WEL GEBEURT is een WAARSCHUWING bij elke naar links hellende staaf
+ * binnen `SPRONGBAND_GRADEN` van de grens: in de afleiding van de toetsen die
+ * boven en onder benoemen — en daarmee in het rapport — en in het
+ * eigenschappenpaneel en het betonvenster bij de kipsteunen en de korf. Zie
+ * `richtingssprongNabij`. De band staat hier, de grens in
+ * `VERTICAAL_VANAF_GRADEN`; beide op één plek.
+ *
  * ── ZEEG ───────────────────────────────────────────────────────────────────
  *
  * Zeeg is een positieve grootte OMHOOG; de kern rekent w_fin = w_z + w_zeeg met
@@ -107,7 +149,12 @@ import type { Staafstand } from "./types/steel/Staafstand";
 // Wederzijdse import: de staalbouwer roept deze module aan, en deze module
 // gebruikt de 75°-regel en de staaflengte van de staalbouwer. Alleen functies,
 // die pas bij een aanroep worden gelezen — dan zijn beide modules geladen.
-import { beamLengthMm, isOverwegendVerticaal } from "./steelCheckBuilder";
+import {
+  beamLengthMm,
+  hellingGradenVanStaaf,
+  isOverwegendVerticaal,
+  VERTICAAL_VANAF_GRADEN,
+} from "./steelCheckBuilder";
 
 /** Hoe een staaf ten opzichte van zijn referentierichting getekend is. */
 export interface Referentie {
@@ -332,6 +379,123 @@ export function zijdenInWereldtermen(staafstand: Staafstand): { onder: string; b
 /** Getal met decimaalkomma voor een kanttekening. */
 function nl(v: number): string {
   return String(Math.round(v * 100) / 100).replace(".", ",");
+}
+
+// ── De sprong bij 75° ───────────────────────────────────────────────────────
+
+/**
+ * Hoe dicht bij de grens van 75° een naar links hellende staaf een
+ * waarschuwing krijgt, in graden aan weerszijden: 65° tot en met 85°.
+ *
+ * Een oordeel, geen normwaarde; geen norm zegt hier iets over. Binnen deze band
+ * is een staaf niet vanzelfsprekend een ligger of een kolom — de verhouding
+ * hoogte/breedte loopt van tan 65° ≈ 2,1 tot tan 85° ≈ 11,4 — en kan "boven"
+ * redelijkerwijs als bovenvlak én als linkerzijde worden gelezen. Een staaf van
+ * 5 m op de rand van de band gaat over de grens als één uiteinde ongeveer
+ * 0,87 m dwars verschuift (2 · 5000 · sin 5°): een gewone modelwijziging, geen
+ * ander ontwerp. Buiten de band leest niemand een staaf van 60° als kolom of
+ * een van 88° als ligger, en zou de waarschuwing ruis worden.
+ */
+export const SPRONGBAND_GRADEN = 10;
+
+/** Een naar links hellende staaf binnen de band rond de sprong. */
+export interface Richtingssprong {
+  /** Hoek met de horizontaal, 0°..90°. */
+  hellingGraden: number;
+  /** De stand waarin de toetsing de staaf nu ziet. */
+  staafstand: Staafstand;
+  /** |helling − 75°|, in graden. */
+  afstandTotGrensGraden: number;
+}
+
+/**
+ * Ligt deze staaf dicht bij de sprong? `null` als hij naar rechts helt, liggend
+ * of verticaal is, of buiten de band valt: daar keert "boven" niet om.
+ *
+ * Hangt alleen van de meetkunde af, niet van de tekenrichting: de voet is de
+ * laagste knoop, de kop de hoogste.
+ */
+export function richtingssprongNabij(beam: Beam, nodes: Node[]): Richtingssprong | null {
+  const a = nodes.find((n) => n.id === beam.from);
+  const b = nodes.find((n) => n.id === beam.to);
+  const helling = hellingGradenVanStaaf(beam, nodes);
+  if (!a || !b || helling === null) return null;
+  const voet = a.z <= b.z ? a : b;
+  const kop = voet === a ? b : a;
+  // Alleen een staaf waarvan de kop LINKS van de voet ligt springt; zie het
+  // blok DE SPRONG BIJ 75° bovenaan.
+  if (!(kop.z > voet.z && kop.x < voet.x)) return null;
+  const afstand = Math.abs(helling - VERTICAAL_VANAF_GRADEN);
+  // 1e-9°: 65° en 85° zelf horen bij de band, ook als de goniometrie er een
+  // haar naast uitkomt.
+  if (afstand > SPRONGBAND_GRADEN + 1e-9) return null;
+  return {
+    hellingGraden: helling,
+    staafstand: referentieVanStaaf(beam, nodes).staafstand,
+    afstandTotGrensGraden: afstand,
+  };
+}
+
+/**
+ * Hoek met één decimaal en decimaalkomma: "74,9°". Ook voor de hints in het
+ * eigenschappenpaneel en het betonvenster, zodat daar dezelfde getallen staan
+ * als in de afleiding.
+ */
+export function gradenTekst(v: number): string {
+  return `${String(Math.round(v * 10) / 10).replace(".", ",")}°`;
+}
+
+/**
+ * De waarschuwing voor de afleiding, voor `staafstand_notities` in de
+ * toetsinvoer. Leeg buiten de band. De kern zet haar letterlijk bij de toetsen
+ * die boven en onder benoemen: de kiptoets bij staal, de toetsen die een
+ * trekzijde kiezen en de dekkingslijn bij beton.
+ *
+ * "Rechtsboven" en "linksonder" zijn de richting waarin lokaal +y wijst: van
+ * links naar rechts (cos θ, −sin θ) → +y = (sin θ, cos θ), rechtsboven; van
+ * voet naar kop (−cos θ, sin θ) → +y = (−sin θ, −cos θ), linksonder.
+ */
+export function richtingssprongNotities(
+  beam: Beam,
+  nodes: Node[],
+  soort: "staal" | "beton",
+): string[] {
+  const s = richtingssprongNabij(beam, nodes);
+  if (!s) return [];
+  const boven = soort === "staal" ? "de BOVENflens" : "de BOVENwapening";
+  const wat =
+    soort === "staal"
+      ? "de kipsteunen die aan de boven- en aan de onderflens zijn opgegeven"
+      : "de boven- en de onderwapening van de korf";
+  const grens = `${VERTICAAL_VANAF_GRADEN}°`;
+  const kop =
+    `Richtingssprong nabij. Deze staaf helt naar LINKS onder ${gradenTekst(s.hellingGraden)} ` +
+    `met de horizontaal, ${gradenTekst(s.afstandTotGrensGraden)} ` +
+    `${s.staafstand === "Staand" ? "boven" : "onder"} de grens van ${grens} waar een ` +
+    "staaf staand gaat heten. ";
+  const slot =
+    ` Controleer na elke wijziging van de knopen aan welke fysieke zijde ${wat} horen. ` +
+    `(Deze waarschuwing staat bij elke naar links hellende staaf binnen ` +
+    `${SPRONGBAND_GRADEN}° van de grens.)`;
+  if (s.staafstand === "Liggend") {
+    return [
+      kop +
+        `Hij is getoetst van links naar rechts, en ${boven} is de fysieke BOVENzijde ` +
+        `(rechtsboven). Vanaf ${grens} wordt hij van voet naar kop getoetst en ligt ${boven} ` +
+        "aan de linkerzijde: bij deze helling de fysieke ONDERzijde (linksonder). Een kleine " +
+        "wijziging van de geometrie keert dan zonder verdere melding om welke zijde boven " +
+        "heet." +
+        slot,
+    ];
+  }
+  return [
+    kop +
+      `Hij is getoetst van voet naar kop, en ${boven} ligt aan de linkerzijde: bij deze ` +
+      "helling de fysieke ONDERzijde (linksonder), NIET het bovenvlak. Onder " +
+      `${grens} zou ${boven} de fysieke bovenzijde (rechtsboven) zijn. Lees "boven" bij deze ` +
+      "staaf dus niet als het bovenvlak." +
+      slot,
+  ];
 }
 
 /**

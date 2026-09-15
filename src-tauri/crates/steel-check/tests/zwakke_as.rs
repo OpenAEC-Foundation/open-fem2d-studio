@@ -86,6 +86,7 @@ fn staaf(
         z_a_mm: 100.0,
         custom_section: None,
         staafstand: None,
+        staafstand_notities: None,
     })
 }
 

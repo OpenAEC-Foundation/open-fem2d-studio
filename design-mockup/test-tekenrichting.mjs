@@ -36,8 +36,14 @@
 //                     van voet naar kop én van kop naar voet getekend: beton
 //                     (trekwapening links) en staal (gedrukte flens rechts), met
 //                     de wereldtermen in de afleiding.
+//  [f] SPRONG       — een naar links hellende staaf rond 75°, waar "boven" van
+//                     het bovenvlak naar het ondervlak springt: aan beide kanten
+//                     van de grens en op de randen van de band een waarschuwing
+//                     (of juist niet), met de fysieke zijde die de meetkunde
+//                     aanwijst; door de kern de getelde steunen, de trekwapening
+//                     en de waarschuwing letterlijk in de afleiding.
 //
-// [b], [c], [e] en een deel van [d] starten de toetsbrug als apart proces en
+// [b], [c], [e] en delen van [d] en [f] starten de toetsbrug als apart proces en
 // worden LUID overgeslagen als die binary ontbreekt.
 //
 // Uitvoeren: npx tsx test-tekenrichting.mjs   (vanuit design-mockup/)
@@ -580,6 +586,165 @@ else {
   }
   dicht("staal: kip-UC gelijk", ucVan(toetsVan(staal.terug.res, "6.3.2_ltb")), ucVan(toetsVan(staal.heen.res, "6.3.2_ltb")), 1e-9);
   dicht("staal: uc_max gelijk", staal.terug.res.uc_max, staal.heen.res.uc_max, 1e-9);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+log("\n[f] De sprong bij 75°: een naar links hellende staaf dicht bij de grens krijgt een waarschuwing");
+{
+  // Zie DE SPRONG BIJ 75° in lib/referentierichting.ts. De randen van de band
+  // worden uit de constante afgeleid; dat de band 10° is, staat hier apart, zodat
+  // een andere band een bewuste wijziging is.
+  const BAND = R.SPRONGBAND_GRADEN;
+  ok("de band is 10° aan weerszijden van 75°", BAND === 10, `${BAND}°`);
+  const WAARSCHUWING = "Richtingssprong nabij";
+  const rad = (g) => (g * Math.PI) / 180;
+  /** Voet in de oorsprong, kop op lengte L onder `graden`, naar links (−1) of rechts (+1). */
+  const knopen = (graden, helling, L = 9000) => [
+    { id: 1, x: 0, z: 0 },
+    { id: 2, x: helling * L * Math.cos(rad(graden)), z: L * Math.sin(rad(graden)) },
+  ];
+  /** De wereldrichting van lokaal +y in de referentierichting: waar "boven" fysiek ligt. */
+  const bovenNormaal = (beam, nodes) => {
+    const ref = R.staafInReferentierichting(beam, nodes);
+    const a = nodes.find((n) => n.id === ref.from), b = nodes.find((n) => n.id === ref.to);
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    return { nx: -(b.z - a.z) / L, nz: (b.x - a.x) / L };
+  };
+
+  // [helling, −1 naar links / +1 naar rechts, waarschuwing verwacht]
+  const gevallen = [
+    [75 - BAND - 0.1, -1, false],
+    [75 - BAND + 0.1, -1, true],
+    [74.9, -1, true],
+    [75.1, -1, true],
+    [75 + BAND - 0.1, -1, true],
+    [75 + BAND + 0.1, -1, false],
+    // Een staaf die naar rechts helt springt niet: van links naar rechts en van
+    // voet naar kop is daar dezelfde richting.
+    [74.9, 1, false],
+    [75.1, 1, false],
+    [90, 1, false],
+  ];
+  for (const [g, h, verwacht] of gevallen) {
+    for (const om of [false, true]) {
+      const nodes = knopen(g, h);
+      const beam = staaf(1, 1, 2, om);
+      const wat = `${g.toFixed(1)}° naar ${h < 0 ? "links" : "rechts"}, ${om ? "kop→voet" : "voet→kop"} getekend`;
+      ok(`${wat}: ${verwacht ? "waarschuwing" : "geen waarschuwing"}`, (R.richtingssprongNabij(beam, nodes) !== null) === verwacht);
+      const staal = R.richtingssprongNotities(beam, nodes, "staal");
+      const beton = R.richtingssprongNotities(beam, nodes, "beton");
+      ok(`${wat}: ${verwacht ? "één kanttekening" : "geen kanttekening"} voor staal en beton`,
+        staal.length === (verwacht ? 1 : 0) && beton.length === (verwacht ? 1 : 0));
+      if (!verwacht) continue;
+      // De tekst noemt de fysieke zijde die de MEETKUNDE aanwijst — niet een
+      // zijde die bij de hoek is opgeschreven.
+      const n = bovenNormaal(beam, nodes);
+      const bovenvlak = n.nz > 0 && n.nx > 0;
+      const ondervlak = n.nz < 0 && n.nx < 0;
+      ok(`${wat}: lokaal +y wijst ${g < 75 ? "rechtsboven" : "linksonder"}`, g < 75 ? bovenvlak : ondervlak,
+        `n = (${n.nx.toFixed(3)}, ${n.nz.toFixed(3)})`);
+      const zin = bovenvlak
+        ? "de BOVENflens is de fysieke BOVENzijde (rechtsboven)"
+        : "de BOVENflens ligt aan de linkerzijde: bij deze helling de fysieke ONDERzijde (linksonder), NIET het bovenvlak";
+      ok(`${wat}: de kanttekening zegt dat, met de helling en de afstand tot de grens`,
+        staal[0].startsWith(WAARSCHUWING) && staal[0].includes(zin) &&
+          staal[0].includes(`onder ${R.gradenTekst(g)} met de horizontaal, ${R.gradenTekst(Math.abs(g - 75))}`) &&
+          beton[0].includes(zin.replace("BOVENflens", "BOVENwapening")),
+        staal[0].slice(0, 200));
+    }
+  }
+
+  if (!heeftBrug) slaOver("[f] (kern)");
+  else {
+    const profileDb = new Map();
+    for (const pr of kern("list_steel_profiles")) {
+      const k = profileLookupKey(pr.name);
+      if (!profileDb.has(k)) profileDb.set(k, pr);
+    }
+    const scharnieren = [{ id: 1, nodeId: 1, type: "pinned" }, { id: 2, nodeId: 2, type: "pinned" }];
+
+    // ── Staal: de meting van de verificatie ────────────────────────────────
+    // IPE 330 S235, 9 m, scharnierend, zuiging q = +6 kN/m (globaal omhoog),
+    // kipsteunen aan de bovenflens op ¼, ½ en ¾.
+    const staalToets = (g, h, om) => {
+      const m = {
+        ...LEEG, nodes: knopen(g, h), supports: scharnieren,
+        beams: [staaf(1, 1, 2, om, { material: "S235", profile: "IPE330", checkConfig: { lateralRestraints: [0.25, 0.5, 0.75] } })],
+        loads: [{ id: 1, type: "lineLoad", caseId: 2, beamId: 1, q: 6 }],
+      };
+      const r = reken(m);
+      const inp = buildSteelCheckInputs({ nodes: m.nodes, beams: m.beams, supports: m.supports,
+        combinations: r.combinations, combinationResults: r.combinationResults, profileDb }).inputs[0];
+      const c = toetsVan(kern("check_steel_beams", [inp])[0], "6.3.2_ltb").kind.data;
+      const vars = (c.deelstappen ?? []).flatMap((d) => d.variables ?? []);
+      return { inp, n: vars.find((v) => /n_\{kipsteunen\}/.test(v.symbol))?.value, notes: c.notes ?? [], uc: c.uc.uc };
+    };
+    // Hand. Lokaal +y staat onder 75° naar links rechtsboven (sin θ, cos θ);
+    // de zuiging (0, +q) werkt dan naar +y, M < 0, en de ONDERflens is gedrukt:
+    // geen enkele bovenflenssteun telt. Vanaf 75° staat +y linksonder
+    // (−sin θ, −cos θ); dezelfde zuiging werkt naar −y, M > 0, de BOVENflens —
+    // fysiek het ondervlak — is gedrukt: alle drie tellen. Naar rechts hellend
+    // staat +y aan beide kanten van 75° linksboven (−sin θ, cos θ): M < 0, 0.
+    for (const [g, h, n, waarschuwing] of [[74.9, -1, 0, true], [75.1, -1, 3, true], [74.9, 1, 0, false], [75.1, 1, 0, false]]) {
+      const uit = [false, true].map((om) => staalToets(g, h, om));
+      const wat = `staal ${g}° naar ${h < 0 ? "links" : "rechts"}`;
+      uit.forEach((u, i) => {
+        const richting = i ? "kop→voet" : "voet→kop";
+        ok(`${wat}, ${richting}: ${n} steun(en) aan de gedrukte flens`, u.n === n, `n = ${u.n}`);
+        if (waarschuwing) {
+          const inv = u.inp.staafstand_notities ?? [];
+          ok(`${wat}, ${richting}: de waarschuwing staat in de toetsinvoer en letterlijk in de afleiding van de kiptoets`,
+            inv.length === 1 && inv[0].startsWith(WAARSCHUWING) && u.notes.filter((t) => t === inv[0]).length === 1);
+        } else {
+          ok(`${wat}, ${richting}: geen waarschuwing in invoer of afleiding`,
+            u.inp.staafstand_notities === undefined && !u.notes.some((t) => t.startsWith(WAARSCHUWING)));
+        }
+      });
+      dicht(`${wat}: kip-UC gelijk in beide tekenrichtingen`, uit[1].uc, uit[0].uc, 1e-9);
+    }
+    for (const g of [75 - BAND - 0.1, 75 + BAND + 0.1]) {
+      const u = staalToets(g, -1, false);
+      ok(`staal ${g.toFixed(1)}° naar links, buiten de band: geen waarschuwing in invoer of afleiding`,
+        u.inp.staafstand_notities === undefined && !u.notes.some((t) => t.startsWith(WAARSCHUWING)));
+    }
+
+    // ── Beton: 300×500 C30/37, 6 m, scharnierend, q = −20 kN/m ─────────────
+    const korf = {
+      cover_mm: 35, stirrup_diameter_mm: 8, stirrup_spacing_mm: 150, stirrup_legs: 2,
+      top: { count: 2, diameter_mm: 12 }, bottom: { count: 4, diameter_mm: 20 },
+    };
+    const betonToets = (g, h, om) => {
+      const m = {
+        ...LEEG, nodes: knopen(g, h, 6000), supports: scharnieren,
+        beams: [staaf(1, 1, 2, om, { material: "C30/37", profile: "300x500" })],
+        loads: [{ id: 1, type: "lineLoad", caseId: 2, beamId: 1, q: -20 }],
+      };
+      const r = reken(m);
+      const inp = buildBetonCheckInputs({ nodes: m.nodes, beams: m.beams, combinations: r.combinations,
+        combinationResults: r.combinationResults, korven: new Map([[1, { korf, milieuklasse: "XC1" }]]) }).inputs[0];
+      return { inp, blok: toetsVan(kern("check_concrete_beams", [inp])[0], "6.1_bending_stress_block") };
+    };
+    // Hand. De last (0, −q) werkt onder 75° naar links naar −y: M > 0, trek aan
+    // de onderwapening 4Ø20. Vanaf 75° werkt hij naar +y: M < 0, trek aan de
+    // bovenwapening 2Ø12 — die bij deze helling fysiek onder ligt.
+    for (const [g, trek] of [[74.9, "onderwapening"], [75.1, "bovenwapening"]]) {
+      for (const om of [false, true]) {
+        const { inp, blok } = betonToets(g, -1, om);
+        const wat = `beton ${g}° naar links, ${om ? "kop→voet" : "voet→kop"}`;
+        ok(`${wat}: de trekwapening is de ${trek}`, JSON.stringify(blok).includes(`De trekwapening is hier de ${trek}`));
+        const inv = inp.staafstand_notities ?? [];
+        ok(`${wat}: de waarschuwing noemt de bovenwapening en staat letterlijk bij 6.1`,
+          inv.length === 1 && inv[0].startsWith(WAARSCHUWING) && inv[0].includes("BOVENwapening") &&
+            notitiesVan(blok).filter((t) => t === inv[0]).length === 1);
+      }
+    }
+    {
+      const { inp, blok } = betonToets(75 + BAND + 0.1, -1, false);
+      ok("beton 85,1° naar links, buiten de band: geen waarschuwing",
+        inp.staafstand_notities === undefined && !notitiesVan(blok).some((t) => t.startsWith(WAARSCHUWING)));
+    }
+    log("  (verificatiemeting: zuiging 74,9° 0 steunen, 75,1° 3 steunen — ongewijzigd, maar nu met de waarschuwing erbij)");
+  }
 }
 
 log(`\n${failed === 0 ? "ALLES GOED" : "MISLUKT"} — ${passed} geslaagd, ${failed} mislukt${overgeslagen ? `, ${overgeslagen} blok(ken) overgeslagen` : ""}`);

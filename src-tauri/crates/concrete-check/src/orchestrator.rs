@@ -2305,12 +2305,20 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
     // Zijden in wereldtermen. De toetsen in `KIEZEN_EEN_TREKZIJDE` kiezen de
     // trekzijde uit het teken van M_Ed en noemen die "onder" of "boven". Bij
     // een staande staaf is dat geen wereldbegrip; zie `mechanics::Staafstand`.
-    if let Some(tekst) = zijden_in_wereldtermen(input.staafstand.unwrap_or_default()) {
+    // Daarachter de kanttekeningen van de bouwer bij de staafstand: de
+    // waarschuwing dat de staaf dicht bij de sprong van "boven" ligt, hoort bij
+    // precies de toetsen die boven en onder benoemen.
+    let zijdentekst: Vec<String> = zijden_in_wereldtermen(input.staafstand.unwrap_or_default())
+        .into_iter()
+        .chain(input.staafstand_notities.iter().flatten().cloned())
+        .collect();
+    if !zijdentekst.is_empty() {
         for c in checks.iter_mut().filter(|c| KIEZEN_EEN_TREKZIJDE.contains(&c.id.as_str())) {
-            match &mut c.kind {
-                CheckKind::Resistance(r) => r.notes.push(tekst.clone()),
-                CheckKind::Stability(s) => s.notes.push(tekst.clone()),
-            }
+            let notes = match &mut c.kind {
+                CheckKind::Resistance(r) => &mut r.notes,
+                CheckKind::Stability(s) => &mut s.notes,
+            };
+            notes.extend(zijdentekst.iter().cloned());
         }
     }
 

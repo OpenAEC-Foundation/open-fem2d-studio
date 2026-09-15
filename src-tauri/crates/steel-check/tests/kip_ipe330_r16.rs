@@ -134,6 +134,7 @@ fn run() -> &'static BeamCheckResult {
             z_a_mm: 165.0,
             custom_section: None,
             staafstand: None,
+            staafstand_notities: None,
         })
     })
 }
