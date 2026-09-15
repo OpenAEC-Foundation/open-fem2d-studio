@@ -237,6 +237,8 @@
     "fieldCompany": "Société",
     "fieldDate": "Date",
     "notChecked": "Pas encore vérifié — lancez la vérification normative via l'onglet Vérification.",
+    "nietsGetoetstNaRun": "La vérification a été lancée, mais aucune barre n'a pu être vérifiée — voir les barres non vérifiées ci-dessous.",
+    "geenToetsbareStaven": "Rien n'a été vérifié : ce modèle ne contient aucune barre vérifiable (ni profilé acier, ni classe de bois, ni bois lamellé-croisé, ni classe de béton, ni matériau libre).",
     "checkedAt": "Vérification effectuée le",
     "colBeam": "Barre",
     "colSection": "Profilé / section",

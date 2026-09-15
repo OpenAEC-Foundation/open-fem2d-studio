@@ -558,13 +558,14 @@ on exit (`gui_quit` exits through the app's own path so that happens).
 | `gui_select_member {id}` | selects a member as if clicked |
 | `gui_set_cage {beam_id, cage}` | sets `checkConfig.betonKorf` (same `ReinforcementCage` as `check_concrete_beam`) |
 | `gui_set_analysis {analysis_type}` | `eersteOrde` / `tweedeOrdeGeometrisch` / `tweedeOrdeFysisch` |
-| `gui_solve` | runs the solver; returns per-combination extremes |
+| `gui_solve` | the full Bereken run (solver, non-linear concrete round when asked, code checks); returns when all is done, with per-combination extremes |
 | `gui_run_checks` | runs the code checks and waits for the check store |
 | `gui_open_curtailment {beam_id}` | opens the dekkingslijn panel and returns `{verzoek, antwoord}` — replay `verzoek` through `concrete_dekkingslijn` to verify the GUI against the engine |
 | `gui_set_view {view}` | `default`, `check`, `report`, `insights`, `ifc` |
 | `gui_detach_report` | opens the live report in its own window; returns its label |
 | `gui_read_checks` | reads the current check results |
 | `gui_screenshot {window, path, dom?}` | real pixels via `PrintWindow` (or `dom: true` → html2canvas) |
+| `gui_export_report_pdf {path, report_type?, page_size?, orientation?, project?}` | the standard live report (volledig/beperkt) as PDF via WebView2 `PrintToPdf`; refuses with a reason without a current calculation and check; settings apply to this export only; returns `{path, bytes, pages, sheets, report_type, pdf_base64}` — Windows only |
 | `gui_quit` | closes the app gracefully |
 
 Every action returns only once the app *is* in the new state (store

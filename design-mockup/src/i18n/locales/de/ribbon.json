@@ -237,6 +237,8 @@
     "fieldCompany": "Firma",
     "fieldDate": "Datum",
     "notChecked": "Noch nicht nachgewiesen — führen Sie den Normnachweis über die Registerkarte Nachweis aus.",
+    "nietsGetoetstNaRun": "Der Nachweis wurde ausgeführt, aber kein Stab konnte nachgewiesen werden — siehe die nicht nachgewiesenen Stäbe unten.",
+    "geenToetsbareStaven": "Nichts nachgewiesen: dieses Modell enthält keine nachweisbaren Stäbe (kein Stahlprofil, keine Holzklasse, kein Brettsperrholz, keine Betonklasse und kein freies Material).",
     "checkedAt": "Nachweis ausgeführt am",
     "colBeam": "Stab",
     "colSection": "Profil / Querschnitt",

@@ -16,15 +16,16 @@
 //! Antwoorden gaan ongewijzigd door: `structuredContent` is precies wat de
 //! actie teruggaf, en een toolfout draagt de tekst van de app.
 
+use base64::Engine as _;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::Duration;
 
 use crate::RpcError;
 
-/// De veertien tools. Eén lijst, gebruikt door `is_gui_tool`, de schema's en de
+/// De vijftien tools. Eén lijst, gebruikt door `is_gui_tool`, de schema's en de
 /// dispatch — zodat een tool niet in de lijst kan staan zonder afhandeling.
-pub const GUI_TOOLS: [&str; 14] = [
+pub const GUI_TOOLS: [&str; 15] = [
     "gui_quit",
     "gui_status",
     "gui_load_model",
@@ -39,6 +40,7 @@ pub const GUI_TOOLS: [&str; 14] = [
     "gui_detach_report",
     "gui_read_checks",
     "gui_screenshot",
+    "gui_export_report_pdf",
 ];
 
 pub fn is_gui_tool(naam: &str) -> bool {
@@ -171,6 +173,142 @@ struct Schermafdruk {
 }
 fn hoofdvenster() -> String { "main".into() }
 
+/// `gui_export_report_pdf`. Strikt: een tikfout in een veldnaam (bijvoorbeeld
+/// `reporttype`) is een fout, geen stil genegeerd veld dat een ander rapport
+/// oplevert dan gevraagd.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RapportExport {
+    path: String,
+    #[serde(default)]
+    report_type: Option<String>,
+    #[serde(default)]
+    page_size: Option<String>,
+    #[serde(default)]
+    orientation: Option<String>,
+    #[serde(default)]
+    project: Option<ProjectKop>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectKop {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    number: Option<String>,
+    #[serde(default)]
+    engineer: Option<String>,
+    #[serde(default)]
+    company: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+}
+
+/// Eén keuze uit een vaste lijst, of een invalid_params met de toegestane waarden.
+fn keuze(veld: &str, waarde: Option<String>, toegestaan: &[&str]) -> Result<Option<String>, RpcError> {
+    match waarde {
+        None => Ok(None),
+        Some(v) if toegestaan.contains(&v.as_str()) => Ok(Some(v)),
+        Some(v) => Err(RpcError::invalid_params(format!(
+            "gui_export_report_pdf: `{veld}` must be one of {}, not {v:?}",
+            toegestaan.join(" | ")
+        ))),
+    }
+}
+
+/// Vertaal de MCP-argumenten naar de kanaalopdracht `rapport_pdf` (Nederlandse
+/// veldnamen, zoals alle opdrachten van `gui_control.rs`). Los van het aanroepen,
+/// zodat de vertaling zonder draaiende app te toetsen is.
+fn rapport_pdf_args(a: RapportExport) -> Result<Value, RpcError> {
+    let pad = std::path::Path::new(&a.path);
+    if !pad.is_absolute() {
+        return Err(RpcError::invalid_params(format!(
+            "gui_export_report_pdf: `path` must be absolute, not {:?}",
+            a.path
+        )));
+    }
+    let is_pdf = pad
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if !is_pdf {
+        return Err(RpcError::invalid_params(format!(
+            "gui_export_report_pdf: `path` must end in .pdf, not {:?}",
+            a.path
+        )));
+    }
+    let mut uit = serde_json::Map::new();
+    uit.insert("pad".into(), json!(a.path));
+    if let Some(t) = keuze("report_type", a.report_type, &["volledig", "beperkt"])? {
+        uit.insert("type".into(), json!(t));
+    }
+    if let Some(f) = keuze("page_size", a.page_size, &["A4", "A3"])? {
+        uit.insert("formaat".into(), json!(f));
+    }
+    if let Some(o) = keuze("orientation", a.orientation, &["portrait", "landscape"])? {
+        uit.insert("orientatie".into(), json!(o));
+    }
+    if let Some(p) = a.project {
+        let mut kop = serde_json::Map::new();
+        for (k, v) in [
+            ("naam", p.name),
+            ("nummer", p.number),
+            ("constructeur", p.engineer),
+            ("bedrijf", p.company),
+            ("datum", p.date),
+        ] {
+            if let Some(v) = v {
+                kop.insert(k.into(), json!(v));
+            }
+        }
+        uit.insert("project".into(), Value::Object(kop));
+    }
+    Ok(Value::Object(uit))
+}
+
+/// Het rapport exporteren en de PDF terugleveren. De bytes komen uit het
+/// GESCHREVEN BESTAND, niet uit een tweede afdruk: wat de client als base64
+/// krijgt, is precies wat op schijf staat en wat de app heeft gecontroleerd.
+fn export_report_pdf(args: Value) -> Result<Value, RpcError> {
+    let a: RapportExport = lees("gui_export_report_pdf", args)?;
+    let kanaal_args = rapport_pdf_args(a)?;
+    // Ruim: de app wacht op rekenen, toetsen en paginering vóór hij print.
+    let uit = roep("rapport_pdf", kanaal_args, 300)?;
+    let geschreven = uit
+        .get("pad")
+        .and_then(Value::as_str)
+        .ok_or_else(|| RpcError::tool_exec("de app gaf geen pad van de PDF terug"))?
+        .to_string();
+    let bytes = std::fs::read(&geschreven)
+        .map_err(|e| RpcError::tool_exec(format!("de PDF op {geschreven} is niet te lezen: {e}")))?;
+    if let Some(gemeld) = uit.get("bytes").and_then(Value::as_u64) {
+        if gemeld != bytes.len() as u64 {
+            return Err(RpcError::tool_exec(format!(
+                "de PDF op {geschreven} is veranderd tussen schrijven en lezen ({gemeld} → {} bytes)",
+                bytes.len()
+            )));
+        }
+    }
+    if !bytes.starts_with(b"%PDF-") {
+        return Err(RpcError::tool_exec(format!("{geschreven} is geen PDF")));
+    }
+    Ok(json!({
+        "path": geschreven,
+        "bytes": bytes.len(),
+        "pages": uit.get("paginas").cloned().unwrap_or(Value::Null),
+        "sheets": uit.get("vellen").cloned().unwrap_or(Value::Null),
+        "report_type": uit.get("rapportType").cloned().unwrap_or(Value::Null),
+        "page_size": uit.get("formaat").cloned().unwrap_or(Value::Null),
+        "orientation": uit.get("orientatie").cloned().unwrap_or(Value::Null),
+        "pdf_base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+        // Wat de app over dit document meldt (kop, toetsing, analysetype, wat er
+        // is teruggezet) — in de woorden van de app.
+        "details": uit,
+    }))
+}
+
 pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
     let naam = naam.to_string();
     // ureq is synchroon; buiten de stdio-lus houden.
@@ -238,6 +376,7 @@ fn dispatch_sync(naam: &str, args: Value) -> Result<Value, RpcError> {
             let _: Leeg = lees(naam, args)?;
             roep("afsluiten", json!({}), 10)
         }
+        "gui_export_report_pdf" => export_report_pdf(args),
         anders => Err(RpcError::method_not_found(anders)),
     }
 }
@@ -295,7 +434,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "gui_solve",
-            "description": format!("{vooraf}Runs the solver for all load cases and combinations, exactly as the Bereken button does. Returns per combination the extreme M, V, N and deflection."),
+            "description": format!("{vooraf}Runs the full calculation exactly as the Bereken button does: all load cases and combinations, the physically non-linear concrete round when the analysis type is tweedeOrdeFysisch, and the code checks. Returns only when all of that is done (a recalculation that was already scheduled after a model change runs first). Returns per combination the extreme M, V, N and deflection, which non-linear round ran, and a summary of the checks."),
             "inputSchema": leeg_schema()
         }),
         json!({
@@ -336,6 +475,26 @@ pub fn tool_definitions() -> Vec<Value> {
                 } }
         }),
         json!({
+            "name": "gui_export_report_pdf",
+            "description": format!("{vooraf}Exports the app's STANDARD REPORT — the live report, volledig or beperkt, the same document File → Print → Save as PDF gives — to a PDF file, and returns it as base64 as well. Requires a current calculation and check (call gui_solve first): the tool REFUSES with the reason when there are no results, when they are stale, when a calculation or check is still running or scheduled, or when the check failed. A model without checkable members is valid; the report then states that nothing was checked. report_type, page_size, orientation and project apply to THIS export only and are restored afterwards — the user's settings and what Save writes to the project file do not change. Waits for an explicit ready signal (pagination done, table of contents settled, fonts loaded) instead of a fixed delay. The main window switches to the report during the export and back afterwards; a minimized window is restored for the export and minimized again. Windows only (WebView2 PrintToPdf). The PDF is checked — %PDF header and page count equal to the report's sheet count — and on a mismatch no file is left at `path`. Returns {{path, bytes, pages, sheets, report_type, page_size, orientation, pdf_base64, details}}."),
+            "inputSchema": { "type": "object", "additionalProperties": false, "required": ["path"],
+                "properties": {
+                    "path": { "type": "string", "description": "Absolute path of the PDF to write; must end in .pdf. An existing file is replaced." },
+                    "report_type": { "type": "string", "enum": ["volledig", "beperkt"], "description": "Report preset: volledig (complete calculation, all chapters and derivations) or beperkt (the summary for the client). Omitted: the report settings currently in the app." },
+                    "page_size": { "type": "string", "enum": ["A4", "A3"] },
+                    "orientation": { "type": "string", "enum": ["portrait", "landscape"] },
+                    "project": { "type": "object", "additionalProperties": false,
+                        "description": "Project header for this export only. When given, ALL header text fields come from here (fields left out stay empty), so nothing of a previous project leaks into the header; the design basis (consequence class, design life) stays the one the calculation used. Omitted: the app's project settings.",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "number": { "type": "string" },
+                            "engineer": { "type": "string" },
+                            "company": { "type": "string" },
+                            "date": { "type": "string", "description": "Printed as given; an ISO date (2026-09-15) is written out in Dutch." }
+                        } }
+                } }
+        }),
+        json!({
             "name": "gui_quit",
             "description": format!("{vooraf}Closes the app gracefully (through the app's own exit path, so its control file is cleaned up). Unsaved work is discarded — the app does not ask."),
             "inputSchema": leeg_schema()
@@ -355,5 +514,65 @@ mod tests {
             let naam = d["name"].as_str().unwrap();
             assert!(is_gui_tool(naam), "{naam} ontbreekt in GUI_TOOLS");
         }
+    }
+
+    fn export(args: Value) -> Result<Value, RpcError> {
+        rapport_pdf_args(lees("gui_export_report_pdf", args)?)
+    }
+
+    fn absoluut(naam: &str) -> String {
+        std::env::temp_dir().join(naam).to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn export_vertaalt_naar_de_kanaalopdracht() {
+        let pad = absoluut("rapport.pdf");
+        let uit = export(json!({
+            "path": pad,
+            "report_type": "beperkt",
+            "page_size": "A3",
+            "orientation": "landscape",
+            "project": { "name": "Loods", "number": "P-12", "date": "2026-09-15" }
+        }))
+        .unwrap();
+        assert_eq!(
+            uit,
+            json!({
+                "pad": pad,
+                "type": "beperkt",
+                "formaat": "A3",
+                "orientatie": "landscape",
+                "project": { "naam": "Loods", "nummer": "P-12", "datum": "2026-09-15" }
+            })
+        );
+        // Alleen het pad: de app gebruikt dan haar eigen rapportinstellingen.
+        assert_eq!(export(json!({ "path": pad })).unwrap(), json!({ "pad": pad }));
+    }
+
+    #[test]
+    fn export_weigert_onbekende_velden_en_waarden() {
+        let pad = absoluut("rapport.pdf");
+        assert!(export(json!({ "path": pad, "reporttype": "beperkt" })).is_err());
+        assert!(export(json!({ "path": pad, "report_type": "kort" })).is_err());
+        assert!(export(json!({ "path": pad, "page_size": "A5" })).is_err());
+        assert!(export(json!({ "path": pad, "orientation": "staand" })).is_err());
+        assert!(export(json!({ "path": pad, "project": { "naam": "Loods" } })).is_err());
+        assert!(export(json!({ "path": "rapport.pdf" })).is_err(), "relatief pad");
+        assert!(export(json!({ "path": absoluut("rapport.png") })).is_err(), "geen .pdf");
+        assert!(export(json!({})).is_err(), "pad ontbreekt");
+    }
+
+    #[test]
+    fn het_schema_van_de_export_is_strikt() {
+        let defs = tool_definitions();
+        let d = defs
+            .iter()
+            .find(|d| d["name"] == "gui_export_report_pdf")
+            .expect("gui_export_report_pdf heeft een schema");
+        let s = &d["inputSchema"];
+        assert_eq!(s["additionalProperties"], json!(false));
+        assert_eq!(s["required"], json!(["path"]));
+        assert_eq!(s["properties"]["project"]["additionalProperties"], json!(false));
+        assert_eq!(s["properties"]["report_type"]["enum"], json!(["volledig", "beperkt"]));
     }
 }

@@ -22,7 +22,7 @@ import {
 } from "../../../lib/normenInRapport";
 import { usedNorms } from "../checkReportUtils";
 import { useReportData } from "../ReportDataContext";
-import { useProjectInfo } from "../useProjectInfo";
+import { useProjectInfo, useRapportProjectInfo } from "../useProjectInfo";
 import {
   DEFAULT_UITGANGSPUNTEN,
   K_FI,
@@ -72,7 +72,13 @@ function ScheefstandBlok({ tekst }: { tekst: string }) {
 
 export default function ProjectSection() {
   const { t } = useTranslation("ribbon");
-  const info = useProjectInfo();
+  // Twee lezingen, met opzet. `opgeslagen` is de instelling zelf: alleen die
+  // mag terug naar de instelling (de koptekst-regel hieronder). `info` is wat
+  // het rapport TOONT — tijdens een export via het bedieningskanaal met de kop
+  // die de export meegaf (zie useRapportProjectInfo). Schreef de koptekst-regel
+  // `info` terug, dan kwam de kop van één export blijvend in de instellingen.
+  const opgeslagen = useProjectInfo();
+  const info = useRapportProjectInfo();
   // De normenregel is een samenspel van drie bronnen: waarop getoetst is, wat
   // de gebruiker zelf heeft aangevinkt, en wat er aan materiaal in het model
   // zit. De regels en de reden staan in lib/normenInRapport; hier alleen de
@@ -103,7 +109,7 @@ export default function ProjectSection() {
     const value = headerDraft.trim();
     setHeaderDraft(null);
     setSessionHeader(value);
-    void setSetting("projectInfo", { ...info, reportHeader: value });
+    void setSetting("projectInfo", { ...opgeslagen, reportHeader: value });
   };
 
   const rows: Array<{ label: string; value: string }> = [

@@ -29,6 +29,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -42,9 +43,17 @@ import {
 } from "../../stores/reportStore";
 import { REPORT_SECTIONS } from "./reportSections";
 import { useSectieRelevantie } from "./useSectieRelevantie";
-import { useProjectInfo } from "./useProjectInfo";
+import { useRapportProjectInfo } from "./useProjectInfo";
 import { useReportData } from "./ReportDataContext";
 import { pagineer, koppelBedieningsDoorgifte } from "./paginate";
+import { tocToestand } from "./toc";
+import {
+  abonneerHerpagineerVerzoek,
+  leesHerpagineerVerzoek,
+  leesPagineerToestand,
+  meldPagineer,
+  resetPagineerToestand,
+} from "./rapportGereedheid";
 import "./report.css";
 
 /** Veilige CSS-string (dubbelquoted, met escapes) voor content:-waarden. */
@@ -54,6 +63,23 @@ function cssString(s: string): string {
 
 /** Wachttijd voor het herpagineren — houdt slepen aan een slider vloeiend. */
 const HERPAGINEER_MS = 150;
+
+/**
+ * Korte beschrijving van wat de MutationObserver zag — de aanleiding van een
+ * geplande slag, leesbaar in de melding van een export die niet klaar wordt.
+ */
+function beschrijfMutaties(records: MutationRecord[]): string {
+  const r = records[0];
+  if (!r) return "inhoud";
+  const el = r.target instanceof Element ? r.target : r.target.parentElement;
+  const klasse = el && typeof el.className === "string" ? el.className.split(/\s+/)[0] : "";
+  const naam = el ? `${el.tagName.toLowerCase()}${klasse ? `.${klasse}` : ""}` : "?";
+  const knopen = [...Array.from(r.addedNodes), ...Array.from(r.removedNodes)]
+    .slice(0, 2)
+    .map((n) => n.nodeName.toLowerCase())
+    .join(",");
+  return `inhoud (${records.length}× ${r.type} in ${naam}${knopen ? `: ${knopen}` : ""})`;
+}
 
 const printIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -89,7 +115,9 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
   const basisLettergrootte = useReportStore((s) => s.basisLettergrootte);
   const regelafstand = useReportStore((s) => s.regelafstand);
   const setActieveSectie = useReportStore((s) => s.setActieveSectie);
-  const info = useProjectInfo();
+  // De kop zoals het rapport hem toont: de projectgegevens, of tijdens een
+  // export via het bedieningskanaal de kop die die export meegaf.
+  const info = useRapportProjectInfo();
   const data = useReportData();
 
   // R5 — "verouderd"-signaal: er ís een model, maar (nog) geen resultaten.
@@ -188,7 +216,26 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
     [t],
   );
 
+  // `plan` en `draai` roepen elkaar aan (een slag kan een vervolgslag plannen,
+  // zie hieronder); de ref breekt die kringverwijzing tussen de twee callbacks.
+  const planRef = useRef<(vertraging: number, aanleiding?: string) => void>(() => {});
+
+  // Het herpagineerverzoek van de export (rapportGereedheid.ts). De GERENDERDE
+  // waarde gaat in een ref (na de commit, dus samen met de rapportinstellingen
+  // die vóór het verzoek gezet zijn); een slag meldt welk verzoek hij beantwoordt.
+  const herpagineerVerzoek = useSyncExternalStore(
+    abonneerHerpagineerVerzoek,
+    leesHerpagineerVerzoek,
+    leesHerpagineerVerzoek,
+  );
+  const verzoekRef = useRef(herpagineerVerzoek);
+  useLayoutEffect(() => {
+    verzoekRef.current = herpagineerVerzoek;
+  }, [herpagineerVerzoek]);
+
   const draai = useCallback(() => {
+    // De timer is afgegaan: er staat niets meer gepland (tot de volgende plan).
+    meldPagineer({ timerGepland: false });
     const meet = meetRef.current;
     const kop = kopRef.current;
     const inhoud = inhoudRef.current;
@@ -206,21 +253,57 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
       paginaLabel,
     });
     setAantalVellen(n);
+    // `slagen` is een oplopende teller: de export vergelijkt hem vóór en na het
+    // printen, zodat een slag tussen "klaar" en de afdruk niet onopgemerkt blijft.
+    meldPagineer({
+      aantalVellen: n,
+      laatsteSlagOp: performance.now(),
+      slagen: leesPagineerToestand().slagen + 1,
+      beantwoordVerzoek: verzoekRef.current,
+    });
+    // Heeft deze slag nieuwe paginanummers in de inhoudsopgave gezet, dan hoort
+    // er een vervolgslag te komen. Meestal plant de MutationObserver die al
+    // (TocSection rendert opnieuw), maar niet altijd: bij "alleen hoofdstukken"
+    // (inhoudsopgaveDiepte 1) verandert een verschoven SUBSECTIE niets aan de
+    // DOM. Dan kwam er nooit een vervolgslag, bleef toc.ts op "eigen slag
+    // verwacht" staan, en telde de eerstvolgende niet-verwante slag ten onrechte
+    // als intern. Hier expliciet plannen maakt de convergentie onafhankelijk van
+    // wat TocSection toont; plant de observer óók, dan blijft het één slag (de
+    // timer wordt vervangen, niet verdubbeld).
+    if (!tocToestand().stabiel) planRef.current(HERPAGINEER_MS, "inhoudsopgave bijgesteld");
   }, [dims.h, margeBoven, margeOnder, paginaLabel]);
 
   const plan = useCallback(
-    (vertraging: number) => {
+    (vertraging: number, aanleiding = "rapportinstellingen") => {
       window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(draai, vertraging);
+      meldPagineer({ timerGepland: true, aanleiding });
     },
     [draai],
   );
+  planRef.current = plan;
+
+  // Het klaar-signaal voor de export (rapportGereedheid.ts): bij monteren een
+  // schone toestand, bij demonteren "niet in beeld". Zonder `document.fonts`
+  // (oude runtime) valt er op geen lettertype te wachten.
+  useEffect(() => {
+    resetPagineerToestand(true, typeof document.fonts === "undefined");
+    return () => resetPagineerToestand(false, false);
+  }, []);
+
+  // Een herpagineerverzoek beantwoorden: direct een slag plannen. Via de ref en
+  // niet via `plan` als afhankelijkheid — anders zou elke instellingswijziging
+  // (die `plan` een nieuwe identiteit geeft) hier een slag zonder debounce
+  // uitlokken, en slepen aan een slider zou schokken.
+  useEffect(() => {
+    planRef.current(0, "herpagineerverzoek");
+  }, [herpagineerVerzoek]);
 
   // Herpagineer bij elke wijziging die de opmaak raakt: marges, papier-
   // formaat/oriëntatie, sectie aan/uit, lettergrootte, interlinie en taal.
   // Modeldata loopt via de observers hieronder.
   useEffect(() => {
-    plan(eersteRef.current ? 0 : HERPAGINEER_MS);
+    plan(eersteRef.current ? 0 : HERPAGINEER_MS, "rapportinstellingen");
     eersteRef.current = false;
   }, [
     plan,
@@ -243,9 +326,9 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
   useEffect(() => {
     const meet = meetRef.current;
     if (!meet) return;
-    const mo = new MutationObserver(() => plan(HERPAGINEER_MS));
+    const mo = new MutationObserver((records) => plan(HERPAGINEER_MS, beschrijfMutaties(records)));
     mo.observe(meet, { childList: true, subtree: true, characterData: true });
-    const ro = new ResizeObserver(() => plan(HERPAGINEER_MS));
+    const ro = new ResizeObserver(() => plan(HERPAGINEER_MS, "maat van de meetcontainer"));
     ro.observe(meet);
     // Webfonts kunnen ná de eerste meting binnenkomen — dan één keer
     // hermeten. Bewust eenmalig: dit effect wordt bij elke instellings-
@@ -255,7 +338,8 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
       document.fonts?.ready.then(() => {
         if (!levend) return;
         fontsGemetenRef.current = true;
-        plan(0);
+        meldPagineer({ fontsBinnen: true });
+        plan(0, "lettertypen geladen");
       });
     }
     return () => {
@@ -263,6 +347,7 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
       mo.disconnect();
       ro.disconnect();
       window.clearTimeout(timerRef.current);
+      meldPagineer({ timerGepland: false });
     };
   }, [plan]);
 

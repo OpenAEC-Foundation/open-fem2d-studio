@@ -373,7 +373,14 @@ function herstelWaarden(doel: HTMLElement, meet: HTMLElement): void {
  */
 export function pagineer(o: PagineerOpties): number {
   startPagineerslag();
-  const mm = pxPerMm(o.meet);
+  // De proefmeting NIET in de meetcontainer zelf: ReportShell observeert die
+  // met een MutationObserver (childList, subtree), en een proef-div die erin
+  // wordt gehangen en weer weggehaald is voor die observer een inhoudswijziging.
+  // Dan plande elke slag de volgende — het rapport herpagineerde eeuwig, elke
+  // HERPAGINEER_MS, en er kwam nooit een moment zonder geplande slag. De ouder
+  // (de rapportschil) staat, net als de meetcontainer, buiten de schermzoom,
+  // dus de verhouding px/mm is daar dezelfde.
+  const mm = pxPerMm(o.meet.parentElement ?? document.body);
   // Het kopblok staat bovenaan élk vel en eet dus van de teksthoogte —
   // inclusief zijn ondermarge (de scheidingslijn naar de inhoud).
   const kopHoogte =

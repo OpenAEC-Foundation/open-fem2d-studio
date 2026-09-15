@@ -150,6 +150,7 @@ const UITZONDERINGEN: &[Rij] = &[
     Rij { tauri: None, toetsbrug: None, mcp: Some("gui_detach_report"), reden: BEDIENING_REDEN },
     Rij { tauri: None, toetsbrug: None, mcp: Some("gui_read_checks"), reden: BEDIENING_REDEN },
     Rij { tauri: None, toetsbrug: None, mcp: Some("gui_screenshot"), reden: BEDIENING_REDEN },
+    Rij { tauri: None, toetsbrug: None, mcp: Some("gui_export_report_pdf"), reden: BEDIENING_REDEN },
     Rij { tauri: None, toetsbrug: None, mcp: Some("gui_quit"), reden: BEDIENING_REDEN },
     Rij {
         tauri: Some("check_stress_beams"),

@@ -100,9 +100,9 @@ async fn stdio_roundtrip_initialize_list_call() {
     // iemand hem hier noemt, hoort op te vallen. De namenlijst hieronder is
     // niet uitputtend, dus zonder deze telling zou zo'n tool ongemerkt
     // meeliften.
-    // 24 rekenkern-/FEM-tools + 14 gui_*-tools (het bedieningskanaal van de
-    // desktop-app, zie gui_tools.rs) = 38.
-    assert_eq!(tools.len(), 38, "expected 38 tools, got {}", tools.len());
+    // 24 rekenkern-/FEM-tools + 15 gui_*-tools (het bedieningskanaal van de
+    // desktop-app, zie gui_tools.rs) = 39.
+    assert_eq!(tools.len(), 39, "expected 39 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())

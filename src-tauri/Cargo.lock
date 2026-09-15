@@ -2744,6 +2744,7 @@ dependencies = [
  "tauri-plugin-store",
  "timber-check",
  "tiny_http",
+ "webview2-com",
  "windows",
 ]
 

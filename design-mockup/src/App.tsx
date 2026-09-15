@@ -35,7 +35,7 @@ import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
 // Het bedieningskanaal (OPENAEC_GUI_CONTROL=1): dezelfde closures als de knoppen,
 // aangesproken van buiten. Doet niets zolang Rust zegt dat het kanaal uit staat.
-import { useBediening } from "./bediening/bediening";
+import { useBediening, type RekengangUitkomst } from "./bediening/bediening";
 import { useFemStore } from "./hooks/useFemStore";
 import type { GridSettings, Tool } from "./components/fem/femTypes";
 import { DEFAULT_GRID, nonlinearVoorBestand } from "./components/fem/femTypes";
@@ -911,14 +911,27 @@ function App() {
     // Idem het segmentspoor van de fysisch niet-lineaire berekening: die
     // stijfheden horen bij de krachtsverdeling van het oude model.
     stijfheidClear();
+    // Elke modelwijziging hoogt de generatie op: een export naar PDF die vóór
+    // deze wijziging "klaar" was, ziet zo na het printen dat hij een ander
+    // model kan hebben gevangen (bediening/rapportExport).
+    rekenGeneratieRef.current += 1;
     if (!liveRekenenRef.current) {
       // Nog niet gerekend: status terug naar Gereed en verder niets doen.
       setSolverStatus({ kind: "ready" });
       return;
     }
     setSolverStatus({ kind: "rekenen" });
-    const id = window.setTimeout(() => { rekenDoorRef.current(); }, HERBEREKEN_VERTRAGING_MS);
-    return () => window.clearTimeout(id);
+    // Leesbaar voor het bedieningskanaal: zolang deze timer staat, is wat er in
+    // het rapport staat gewist en nog niet opnieuw berekend.
+    herberekeningGeplandRef.current = true;
+    const id = window.setTimeout(() => {
+      herberekeningGeplandRef.current = false;
+      void rekenDoorRef.current();
+    }, HERBEREKEN_VERTRAGING_MS);
+    return () => {
+      window.clearTimeout(id);
+      herberekeningGeplandRef.current = false;
+    };
     // `fem.plates` doet mee sinds platen meerekenen (P2): een dikte- of
     // meshSize-wijziging maakt ook de single-LC-resultaten ongeldig.
     // `fem.rekenInstellingenVersie` is alles BUITEN het model dat de uitkomst
@@ -987,6 +1000,21 @@ function App() {
   // model is meestal nog een mechanisme, en dan zou elke muisklik een
   // foutmelding opleveren.
   const liveRekenenRef = useRef(false);
+  // ── De rekentoestand, leesbaar voor het bedieningskanaal ──
+  // In refs en niet in state: ze veranderen midden in een rekengang, en een
+  // export naar PDF moet ze lezen zonder op een render te wachten.
+  //  - herberekeningGepland: de live-herberekening na een modelwijziging staat
+  //    op zijn timer (dan is het rapport gewist en nog niet opnieuw gevuld);
+  //  - lopendeRekengangen: `rekenDoor` loopt nog, tot en met de toetsing;
+  //  - rekenGeneratie: hoogt op bij elke modelwijziging en elke rekengang;
+  //  - volledigeRekengang: de combinatieresultaten van de laatste VOLTOOIDE
+  //    `rekenDoor`. Bij tweedeOrdeFysisch zegt alleen dit dat de resultaten in
+  //    de app de fysisch niet-lineaire ronde hebben gehad — de toets-knop
+  //    rekent zo nodig ook door, maar zonder die ronde.
+  const herberekeningGeplandRef = useRef(false);
+  const lopendeRekengangenRef = useRef(0);
+  const rekenGeneratieRef = useRef(0);
+  const volledigeRekengangRef = useRef<Map<number, SolverResult> | null>(null);
   // Insights view mode (element-K / system-K / dof / logs / errors), controlled from Ribbon.
   const [insightsMode, setInsightsMode] = useState<"element" | "system" | "dof" | "logs" | "errors">("element");
   // De laatste rekenfout — getoond in Inzichten → Fouten. Had geen setter:
@@ -1284,34 +1312,73 @@ function App() {
    * weergave-omschakeling die bij een handmatige actie hoort, want tijdens
    * het bewerken mag de app niet onder de handen van de gebruiker van tab
    * wisselen of de selectie wissen.
+   *
+   * ALS BELOFTE. De fysisch niet-lineaire ronde en de toetsing zijn asynchroon
+   * (de rekenkern is een apart proces). De knop wacht er niet op, maar het
+   * bedieningskanaal wel: `rekenen` via de API hoort pas terug te komen als
+   * ALLES klaar is, en een export naar PDF mag niet printen terwijl de
+   * toetsing nog loopt. Vroeger startte deze functie beide met `void …then` en
+   * gaf ze direct terug; nu lost de belofte pas in na de toetsing, en telt
+   * `lopendeRekengangenRef` zolang hij loopt. Het begin (doorrekenen, status)
+   * blijft synchroon: een async functie loopt tot haar eerste `await` meteen.
    */
-  const rekenDoor = useCallback(() => {
-    setSolveTrigger((n) => n + 1);
-    const outputs = computeAndStoreSolverOutputs();
-    setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
-    if (outputs) {
+  const rekenDoor = useCallback((): Promise<RekengangUitkomst> => {
+    rekenGeneratieRef.current += 1;
+    lopendeRekengangenRef.current += 1;
+    const gang = (async (): Promise<RekengangUitkomst> => {
+      setSolveTrigger((n) => n + 1);
+      const outputs = computeAndStoreSolverOutputs();
+      setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
+      if (!outputs) return { gelukt: false, fysisch: "nvt" };
       liveRekenenRef.current = true;
       if (fem.analysetype === "tweedeOrdeFysisch") {
-        // De fysisch niet-lineaire ronde is asynchroon (de rekenkern is een
-        // apart proces). De toetsing wacht erop: hij hoort op de gescheurde
-        // krachtsverdeling te draaien, niet op de ongescheurde ertussenin.
-        void rekenFysischNietlineair(outputs).then((verse) => {
-          void handleRunMemberChecks({ openPanel: false, outputs: verse ?? outputs });
-        });
-      } else {
-        // Er is NIET fysisch gerekend: een segmentspoor van een vorige
-        // rekengang zou dan bij een andere krachtsverdeling horen dan die nu
-        // op het scherm staat. Het invalidatie-effect kijkt alleen naar het
-        // model, en het analysetype staat daar niet in.
-        stijfheidClear();
-        // De normtoetsing hoort bij het resultaat en loopt altijd mee.
-        void handleRunMemberChecks({ openPanel: false, outputs });
+        // De toetsing wacht op de fysisch niet-lineaire ronde: hij hoort op de
+        // gescheurde krachtsverdeling te draaien, niet op de ongescheurde
+        // ertussenin.
+        const verse = await rekenFysischNietlineair(outputs);
+        if (verse === null && rekenFoutRef.current !== null) {
+          // De ronde MISLUKTE: de resultaten zijn gewist en de fout staat er.
+          // Hier werd vroeger alsnog getoetst, op de P-Δ-krachten van ronde 0 —
+          // een toetsingsoverzicht naast een rapport zonder resultaten, over
+          // een krachtsverdeling die niet meer bestaat. Verse gegevens of niets.
+          checkClear();
+          return { gelukt: false, fysisch: "mislukt" };
+        }
+        const eind = verse ?? outputs;
+        await handleRunMemberChecks({ openPanel: false, outputs: eind });
+        volledigeRekengangRef.current = eind.combinationResults;
+        return { gelukt: true, fysisch: verse ? "gedraaid" : "niets-te-doen" };
       }
-    }
-    return outputs;
+      // Er is NIET fysisch gerekend: een segmentspoor van een vorige
+      // rekengang zou dan bij een andere krachtsverdeling horen dan die nu
+      // op het scherm staat. Het invalidatie-effect kijkt alleen naar het
+      // model, en het analysetype staat daar niet in.
+      stijfheidClear();
+      // De normtoetsing hoort bij het resultaat en loopt altijd mee.
+      await handleRunMemberChecks({ openPanel: false, outputs });
+      volledigeRekengangRef.current = outputs.combinationResults;
+      return { gelukt: true, fysisch: "nvt" };
+    })();
+    return gang
+      .catch((e: unknown): RekengangUitkomst => {
+        // Een onverwachte fout (bijvoorbeeld een onbereikbare rekenkern bij het
+        // bepalen van b_eff, vóór de eigen foutafhandeling van de fysische
+        // ronde) werd vroeger een onafgehandelde belofte zonder melding. Nu
+        // staat de reden waar elke andere rekenfout staat, en weigert een
+        // export tot er weer met succes is gerekend.
+        console.warn("[rekengang]", e);
+        const tekst = leesbareRekenfout(e);
+        rekenFoutRef.current = tekst;
+        setSolverErrorText(tekst);
+        setSolverStatus({ kind: "error" });
+        return { gelukt: false, fysisch: "mislukt" };
+      })
+      .finally(() => {
+        lopendeRekengangenRef.current -= 1;
+      });
   }, [
     fem.analysetype, computeAndStoreSolverOutputs, handleRunMemberChecks,
-    rekenFysischNietlineair, stijfheidClear,
+    rekenFysischNietlineair, stijfheidClear, checkClear,
   ]);
 
   // Het invalidatie-effect leest deze functie uit een ref: zou het effect op
@@ -1329,7 +1396,7 @@ function App() {
   useEffect(() => {
     if (activeView !== "report") return;
     if (fem.combinationResults) return;
-    rekenDoorRef.current();
+    void rekenDoorRef.current();
   }, [activeView, fem.combinationResults]);
 
   const handleSolve = useCallback(() => {
@@ -1350,7 +1417,7 @@ function App() {
     // selection-halos. User wants a clean view after computing.
     fem.setSelection(null);
     // Rekenen + toetsen; vanaf nu blijft het model live.
-    rekenDoor();
+    void rekenDoor();
   }, [fem, rekenDoor]);
 
   // Keyboard: Ctrl+Z / Ctrl+Y for undo/redo
@@ -1835,7 +1902,13 @@ function App() {
     setActiveView,
     setBottomPanelOpen,
     handleRunMemberChecks,
-    computeAndStoreSolverOutputs,
+    rekenDoor,
+    rekenToestand: () => ({
+      herberekeningGepland: herberekeningGeplandRef.current,
+      lopendeRekengangen: lopendeRekengangenRef.current,
+      generatie: rekenGeneratieRef.current,
+      volledigeRekengang: volledigeRekengangRef.current,
+    }),
     laatsteRekenfout: () => rekenFoutRef.current,
     createDetachedWindow,
     laadProjectTekst,

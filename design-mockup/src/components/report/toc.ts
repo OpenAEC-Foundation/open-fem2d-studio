@@ -116,6 +116,43 @@ export function verwerkKoppen(nieuw: TocRegel[]): number {
   return slag;
 }
 
+/**
+ * De toestand van de terugkoppeling, LEESBAAR van buiten.
+ *
+ * WAAROM. Een export naar PDF mag pas printen als de inhoudsopgave klaar is:
+ * geconvergeerd (de laatste slag veranderde niets) óf bevroren (de bovengrens
+ * is gekozen). `data-toc-slag` op de vellen zegt dat niet — bij een bevroren
+ * reeks blijft daar het slagnummer staan en geen 0 (zie `verwerkKoppen`). Wat
+ * wél het criterium is: staat er nog een pagineerslag op stapel die door ONZE
+ * publicatie komt? Zolang `eigenSlagVerwacht` waar is, gaan de paginanummers in
+ * de inhoudsopgave nog veranderen.
+ */
+export interface TocToestand {
+  /** Slagnummer van de lopende reeks (0 = nog geen bijstelling). */
+  slag: number;
+  /** Is de bovengrens gekozen (MAX_SLAGEN bereikt)? */
+  bevroren: boolean;
+  /** Komt er nog een pagineerslag die door onze eigen publicatie is uitgelokt? */
+  eigenSlagVerwacht: boolean;
+  /** Stabiel = er komt geen eigen slag meer: geconvergeerd of bevroren. */
+  stabiel: boolean;
+}
+
+export function tocToestand(): TocToestand {
+  return { slag, bevroren, eigenSlagVerwacht, stabiel: !eigenSlagVerwacht };
+}
+
+/**
+ * Alleen voor tests: de modulestaat terug naar het begin, zodat een reeks
+ * gevallen elk bij een lege inhoudsopgave begint.
+ */
+export function resetTocVoorTest(): void {
+  regels = [];
+  slag = 0;
+  bevroren = false;
+  eigenSlagVerwacht = false;
+}
+
 function huidig(): TocRegel[] {
   return regels;
 }

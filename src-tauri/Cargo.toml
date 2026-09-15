@@ -50,6 +50,14 @@ png = "0.17"
 raw-window-handle = "0.6"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps"] }
+# Het standaardrapport als PDF (`gui_control::afdruk`): ICoreWebView2_7::PrintToPdf op
+# de webview die Tauri via `with_webview` geeft. Tauri exporteert webview2_com niet
+# opnieuw, dus om die interface te kunnen noemen is een directe afhankelijkheid
+# nodig. EXACT de versie die tauri/wry al gebruiken (Cargo.lock): een tweede kopie
+# gaf onverenigbare COM-types voor `controller()`. Werkt een Tauri-update
+# webview2-com bij, dan faalt het oplossen van afhankelijkheden hier luid — en dat
+# is de bedoeling: dan hoort deze regel mee te gaan.
+webview2-com = "=0.38.2"
 
 # Workaround for GNU linker "export ordinal too large" on Windows.
 # Tauri pulls in 366+ crates and the GNU ld.exe symbol table overflows.
