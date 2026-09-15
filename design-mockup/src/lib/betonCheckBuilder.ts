@@ -81,6 +81,7 @@ import type { StructuralSystem } from "./types/concrete/StructuralSystem";
 import type { SteelBranch } from "./types/concrete/SteelBranch";
 import type { CheckSkip } from "./checkTypes";
 import { isSteelProfile, beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
+import { referentieVanStaaf, toetsdataInReferentierichting } from "./referentierichting";
 
 /**
  * Betonsterkteklassen die de Rust EN 1992-kern kent (nen-en-1992-1-1/data.rs,
@@ -488,7 +489,12 @@ export function metBeff(
   return { ...doorsnede, b_mm: bEffMm };
 }
 
-export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
+export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResult {
+  // DE GRENS tussen solver en toetsing: elke staaf in zijn referentierichting,
+  // met gespiegelde momenten en zones. Zonder deze stap toetste de kern bij een
+  // rechts→links getekende uitkraging de onderwapening als trekwapening. Zie
+  // `lib/referentierichting.ts`.
+  const data = toetsdataInReferentierichting(ruweData);
   const inputs: ConcreteBeamCheckInput[] = [];
   const skipped: CheckSkip[] = [];
 
@@ -600,6 +606,11 @@ export function buildBetonCheckInputs(data: BetonBuildData): BetonBuildResult {
       // dekkingslijn elk hun eigen zonelijst lezen, dan kunnen zij over
       // dezelfde staaf iets anders zeggen.
       reinforcement_zones: beam.checkConfig?.betonZones ?? { longitudinal: [], stirrups: [] },
+      // Bij een staande staaf noemt de kern de onder- en bovenwapening in
+      // wereldtermen (rechts en links); weglaten betekent liggend.
+      ...(referentieVanStaaf(beam, data.nodes).staafstand === "Staand"
+        ? { staafstand: "Staand" as const }
+        : {}),
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
       // LEEG ALS ER GEEN ECHT RESULTAAT IS. `buildForcesEnvelope` levert bij

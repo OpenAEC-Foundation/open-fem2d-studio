@@ -43,19 +43,19 @@
 //! byte-voor-byte wat de andere twee wegen kaal teruggeven. Om dezelfde reden
 //! komen de toetsresultaten terug als `{ "results": [...] }`.
 //!
-//! DE SCHEMA'S ZIJN NIET STRIKT — EN DAT IS MET REDEN ZICHTBAAR
-//! `TimberBeamCheckInput` en `CltBeamCheckInput` staan NIET op
-//! `#[serde(deny_unknown_fields)]`, anders dan `BeamCheckInput` en
-//! `ConcreteBeamCheckInput`. Een tikfout in een veldnaam wordt door de kern dus
-//! stil genegeerd en het veld valt op zijn standaardwaarde terug. De schema's
-//! van de staven hieronder zetten `additionalProperties` daarom op `true`: een
-//! schema dat strenger belooft dan de server werkelijk is, verplaatst de fout
-//! naar de client en maakt hem daar onzichtbaar. Wat er op het spel staat is
-//! niet theoretisch — `k_cr` valt bij een tikfout terug op 1,0 en dat is
-//! GUNSTIGER dan de door A1 aanbevolen 0,67. Elk veld met een standaardwaarde
-//! is hieronder benoemd, met de kant waarop die standaard uitwerkt. Het
-//! omhulsel (`{ "inputs": [...] }`) is wél strikt: dat type staat in dit
-//! bestand en kent `deny_unknown_fields`.
+//! DE SCHEMA'S ZIJN STRIKT — EN DAT IS WAAR TE MAKEN
+//! `TimberBeamCheckInput`, `CltBeamCheckInput`, `CltLayup` en `CltLayer` staan
+//! op `#[serde(deny_unknown_fields)]`, net als `BeamCheckInput` en
+//! `ConcreteBeamCheckInput`. Tot september 2026 was dat niet zo: een tikfout in
+//! een veldnaam werd door de kern stil genegeerd en het veld viel op zijn
+//! standaardwaarde terug (gemeten: `kcr` in plaats van `k_cr` gaf een
+//! dwarskracht-UC van 1,066 in plaats van 1,591). Nu weigert de kern zo'n veld,
+//! en daarom zetten de schema's hieronder `additionalProperties` op `false` —
+//! het schema belooft precies wat de server doet. Omdat `false` elk veld dat
+//! het schema NIET noemt uitsluit, moet elk veld van het invoertype erin staan;
+//! `custom_section` ontbrak en staat er nu bij. Elk veld met een
+//! standaardwaarde is benoemd, met de kant waarop die standaard uitwerkt. Het
+//! omhulsel (`{ "inputs": [...] }`) was al strikt.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -163,18 +163,18 @@ fn schema_belastingduur() -> Value {
 fn schema_houten_staaf() -> Value {
     json!({
         "type": "object",
-        // Zie de moduletoelichting: `TimberBeamCheckInput` kent geen
-        // `deny_unknown_fields`, dus strenger beloven dan de kern is zou de
-        // fout naar de client verplaatsen en daar onzichtbaar maken.
-        "additionalProperties": true,
-        "description": "Eén houten staaf met een rechthoekige doorsnede b x h. LET OP: de kern negeert een onbekende veldnaam stilzwijgend en gebruikt dan de standaardwaarde van dat veld; controleer de spelling van de optionele velden hieronder.",
+        // Zie de moduletoelichting: `TimberBeamCheckInput` staat op
+        // `deny_unknown_fields`, dus het schema mag (en moet) even streng zijn.
+        "additionalProperties": false,
+        "description": "Eén houten staaf met een rechthoekige doorsnede b x h, of een samengestelde doorsnede via 'custom_section'. Een onbekende veldnaam wordt geweigerd (ook een tikfout in een optioneel veld): de toetsing loopt dan niet stil door met een standaardwaarde.",
         "properties": {
             "beam_id": { "type": "integer", "minimum": 0,
                 "description": "Staafnummer; komt onveranderd terug in het resultaat." },
             "width_mm": { "type": "number", "exclusiveMinimum": 0,
-                "description": "Doorsnedebreedte b in mm." },
+                "description": "Doorsnedebreedte b in mm. Bij 'custom_section' de omhullende breedte; de toetsing rekent dan met de grootheden uit die doorsnede." },
             "height_mm": { "type": "number", "exclusiveMinimum": 0,
                 "description": "Doorsnedehoogte h in mm; de buiging gaat om de sterke as." },
+            "custom_section": crate::schema_custom_section(),
             "strength_class": { "type": "string",
                 "description": "Sterkteklasse, bijvoorbeeld \"C24\" (EN 338) of \"GL28h\" (EN 14080). Zie `list_timber_grades`. Een onbekende naam levert een resultaat met 'governing_check_id' = \"ERROR: …\" en géén toetsen." },
             "service_class": schema_klimaatklasse(),
@@ -244,7 +244,8 @@ fn schema_houten_staaf() -> Value {
 fn schema_opbouw() -> Value {
     json!({
         "type": "object",
-        "additionalProperties": true,
+        // `CltLayup` staat op `deny_unknown_fields`.
+        "additionalProperties": false,
         "description": "De opbouw: een plaatstrook van 'width_mm' breed met haar lagen van BOVEN (index 0) naar beneden.",
         "properties": {
             "width_mm": { "type": "number", "exclusiveMinimum": 0,
@@ -255,7 +256,8 @@ fn schema_opbouw() -> Value {
                 "description": "De lagen van boven naar beneden. Een gebruikelijke opbouw wisselt lengte- en dwarslagen af en begint en eindigt met een lengtelaag; een dwarslaag als buitenlaag levert een melding op.",
                 "items": {
                     "type": "object",
-                    "additionalProperties": true,
+                    // `CltLayer` staat op `deny_unknown_fields`.
+                    "additionalProperties": false,
                     "required": ["thickness_mm", "orientation", "strength_class"],
                     "properties": {
                         "thickness_mm": { "type": "number", "exclusiveMinimum": 0,
@@ -279,10 +281,10 @@ fn schema_opbouw() -> Value {
 fn schema_clt_staaf() -> Value {
     json!({
         "type": "object",
-        // Zelfde reden als bij `schema_houten_staaf`: de kern kent hier geen
-        // `deny_unknown_fields`.
-        "additionalProperties": true,
-        "description": "Eén CLT-staaf (plaatstrook). LET OP: de kern negeert een onbekende veldnaam stilzwijgend en gebruikt dan de standaardwaarde van dat veld.",
+        // Zelfde reden als bij `schema_houten_staaf`: `CltBeamCheckInput`
+        // staat op `deny_unknown_fields`.
+        "additionalProperties": false,
+        "description": "Eén CLT-staaf (plaatstrook). Een onbekende veldnaam wordt geweigerd, ook in de opbouw en in een laag.",
         "properties": {
             "beam_id": { "type": "integer", "minimum": 0,
                 "description": "Staafnummer; komt onveranderd terug in het resultaat." },
@@ -424,10 +426,19 @@ mod tests {
         let velden = def["inputSchema"]["properties"]["inputs"]["items"]["properties"]
             .as_object()
             .expect("properties");
+        // `additionalProperties: false` spiegelt `deny_unknown_fields`; daardoor
+        // is een veld dat hier ontbreekt voor een client niet eens meer op te
+        // geven.
+        assert_eq!(
+            def["inputSchema"]["properties"]["inputs"]["items"]["additionalProperties"],
+            json!(false),
+            "het houten staafschema moet onbekende velden weigeren, net als de kern"
+        );
         let verwacht = [
             "beam_id",
             "width_mm",
             "height_mm",
+            "custom_section",
             "strength_class",
             "service_class",
             "load_duration",
@@ -488,6 +499,14 @@ mod tests {
             .find(|d| d["name"] == "check_clt_beams")
             .expect("de tool staat in de lijst");
         let staaf = &def["inputSchema"]["properties"]["inputs"]["items"];
+        // Alle drie de niveaus staan op `deny_unknown_fields` in de kern.
+        assert_eq!(staaf["additionalProperties"], json!(false), "CLT-staaf");
+        assert_eq!(staaf["properties"]["layup"]["additionalProperties"], json!(false), "opbouw");
+        assert_eq!(
+            staaf["properties"]["layup"]["properties"]["layers"]["items"]["additionalProperties"],
+            json!(false),
+            "laag"
+        );
         let velden = staaf["properties"].as_object().expect("properties");
         let verwacht = [
             "beam_id",

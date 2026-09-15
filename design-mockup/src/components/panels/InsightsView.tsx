@@ -16,6 +16,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildMatricesOnly, type ExposedBeamCache } from "../fem/solver/solver";
+import { resolveSection } from "../../lib/sectionResolver";
+import { controleerDoorsneden } from "../../lib/modelNaarSolverInput";
 import type { Node, Beam, Support } from "../fem/femTypes";
 import { useSolverLogStore } from "../../stores/solverLogStore";
 import type { SolverLogRegel } from "../../core/solver/NonlinearSolver";
@@ -134,9 +136,29 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
   const solverLog = useSolverLogStore((s) => s.regels);
   const verlorenRegels = useSolverLogStore((s) => s.verlorenRegels);
 
+  // De matrices met de STIJFHEID VAN HET MODEL. Hier gingen de staven zonder
+  // E, A en I naar de engine, die dan terugviel op HEA 160 / S235 — de getoonde
+  // K hoorde bij geen enkele staaf (gemeten: GL24h 160×400, L = 4 m gaf
+  // EA/L = 2,035e8 N/m in plaats van 1,840e8). Nu dezelfde doorsnedebepaling
+  // en dezelfde scharnieren als het rekenpad; een doorsnede die niet te bepalen
+  // is, levert de melding van dat pad en geen matrix.
   const asm = useMemo(() => {
     try {
-      return buildMatricesOnly({ nodes, beams, supports });
+      controleerDoorsneden(beams);
+      return buildMatricesOnly({
+        nodes,
+        beams: beams.map((b) => {
+          const sec = resolveSection(b.material, b.profile);
+          return {
+            ...b,
+            E: sec.E, A: sec.A, I: sec.I,
+            startConnection: b.releases?.startRy ? "hinge" : "fixed",
+            endConnection: b.releases?.endRy ? "hinge" : "fixed",
+            releases: b.releases,
+          };
+        }),
+        supports,
+      });
     } catch (e) {
       return { error: (e as Error).message } as { error: string };
     }

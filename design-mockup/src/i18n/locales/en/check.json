@@ -44,7 +44,7 @@
     "deflAddNumerator": "n for w_add (empty = code value)",
     "deflAddNumeratorHint": "Overrides the numerator that belongs to the class and applies to the member length. Only fill this in to reproduce an external reference calculation with a fixed numerator (e.g. L/150); the report then states that the numerator was supplied.",
     "preCamber": "Pre-camber (mm)",
-    "preCamberHint": "Pre-camber in mm, same sign convention as the deflection (negative = down).",
+    "preCamberHint": "Pre-camber in mm, positive = upward (against a sagging beam). Only for a mainly horizontal member; for a member at 75° or more no pre-camber is taken into account. Not included in w_add.",
     "timberTitle": "Service class + load duration",
     "serviceClass": "Service class",
     "sc1": "1 (indoors, heated)",

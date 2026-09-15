@@ -50,6 +50,11 @@ import {
 } from "../../../lib/betonDekkingslijnBuilder";
 import { parseConcreteSection } from "../../../lib/betonCheckBuilder";
 import { zoneGrenzenMm } from "../../../lib/betonZoneSneden";
+import {
+  referentieVanStaaf,
+  spiegelZones,
+  staafInReferentierichting,
+} from "../../../lib/referentierichting";
 // Alleen om te kúnnen zeggen WAAR de gebruiker is als de kern niet antwoordt:
 // in de desktop-app is de rekenkern er altijd, in de browser hangt zij aan de
 // dev-brug. De melding hieronder maakt dat onderscheid.
@@ -159,11 +164,17 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   // De betonsterkteklassen van de kern; zonder deze lijst valt de bouwer op
   // zijn statische lijst terug en herkent hij een klasse die de kern wél kent
   // mogelijk niet.
+  // Mislukt het ophalen, dan niet stil: de reden staat bij de meldingen, want
+  // met de statische lijst kan een klasse die alleen de kern kent onherkend
+  // blijven.
+  const [klassenFout, setKlassenFout] = useState<string | null>(null);
   useEffect(() => {
     let actief = true;
     getConcreteClasses()
       .then((k) => actief && setKlassen(k))
-      .catch(() => undefined);
+      .catch((e: unknown) => {
+        if (actief) setKlassenFout(e instanceof Error ? e.message : String(e));
+      });
     return () => {
       actief = false;
     };
@@ -182,6 +193,26 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   const b = knoopVan.get(beam.to);
   // UI-knopen zijn al in mm — géén ×1000 (zie `staafLengteMm`).
   const lengteMm = a && b ? staafLengteMm(a, b) : 0;
+
+  // ── De referentierichting ────────────────────────────────────────────────
+  //
+  // Dit venster toont de staaf zoals de TOETSING hem ziet: in zijn
+  // referentierichting, van links naar rechts en bij een staande staaf van voet
+  // naar kop (`lib/referentierichting.ts`). De dekkingslijn, de scheurwijdte en
+  // de maatgevende plaats komen uit de kern en staan al in die richting. Wat
+  // uit het MODEL komt — de zones en de opleggingen, vanaf de beginknoop — gaat
+  // hier naar die richting, en de zone-editor schrijft zijn invoer weer vanaf de
+  // beginknoop terug. Spiegelen is zijn eigen omgekeerde, dus dezelfde functie
+  // doet beide.
+  const referentie = referentieVanStaaf(beam, nodes);
+  const naarOfVanReferentie = (z: ReinforcementZones | undefined): ReinforcementZones | undefined =>
+    z && referentie.gespiegeld ? spiegelZones(z, lengteMm) : z;
+  const liveZonesRef = useMemo(
+    () => (liveZones && referentie.gespiegeld ? spiegelZones(liveZones, lengteMm) : liveZones),
+    [liveZones, referentie.gespiegeld, lengteMm],
+  );
+  const beginknoop = referentie.gespiegeld ? beam.to : beam.from;
+  const eindknoop = referentie.gespiegeld ? beam.from : beam.to;
 
   const doorsnede = parseConcreteSection(beam.profile);
   const korf: ReinforcementCage = beam.checkConfig?.betonKorf ?? STANDAARD_KORF.korf;
@@ -412,7 +443,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     // Zonder lijn tekenen we wat er in het MODEL staat. Niet niets: de aanzicht
     // met de wapening is ook zonder dekkingslijn het halve venster.
     const uit: BundelTekening[] = [];
-    const zones = liveZones;
+    const zones = liveZonesRef;
     if (zones && zones.longitudinal.length > 0) {
       for (const z of zones.longitudinal) {
         if (z.row.count <= 0 || z.row.diameter_mm <= 0) continue;
@@ -440,10 +471,10 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       });
     }
     return uit;
-  }, [antwoord, liveZones, korf, lengteMm]);
+  }, [antwoord, liveZonesRef, korf, lengteMm]);
 
   const beugels: BeugelTekening[] = useMemo(() => {
-    const zones = liveZones;
+    const zones = liveZonesRef;
     if (zones && zones.stirrups.length > 0) {
       return zones.stirrups.map((z) => ({
         xStartMm: z.x_start_mm,
@@ -464,22 +495,22 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
         diameterMm: korf.stirrup_diameter_mm,
       },
     ];
-  }, [liveZones, korf, lengteMm]);
+  }, [liveZonesRef, korf, lengteMm]);
 
   const opleggingen: OplegTekening[] = useMemo(() => {
     const uit: OplegTekening[] = [];
     for (const [nodeId, x] of [
-      [beam.from, 0],
-      [beam.to, lengteMm],
+      [beginknoop, 0],
+      [eindknoop, lengteMm],
     ] as const) {
       const s = supports.find((k) => k.nodeId === nodeId);
       if (s) uit.push({ xMm: x, type: s.type });
     }
     return uit;
-  }, [beam.from, beam.to, lengteMm, supports]);
+  }, [beginknoop, eindknoop, lengteMm, supports]);
 
   // ── De doorsnede bij de aanwijzer ────────────────────────────────────────
-  const korfBijCursor = korfOpX(korf, liveZones, cursorXMm ?? 0);
+  const korfBijCursor = korfOpX(korf, liveZonesRef, cursorXMm ?? 0);
   const tekenKorf: Wapeningskorf | null = doorsnede.ok
     ? { ...restKorf, doorsnede: doorsnede.doorsnede, korf: korfBijCursor }
     : null;
@@ -524,8 +555,14 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
 
   const gemisteGrenzen = useMemo(() => {
     if (!verzoek?.verzoek) return [];
-    return ontbrekendeZoneStations(gerekendeZones, verzoek.verzoek);
-  }, [verzoek, gerekendeZones]);
+    // Het verzoek staat in de referentierichting, dus de zones van de
+    // gerekende staaf ook.
+    const gerekendRef =
+      gerekendeStaaf && lastRunData
+        ? staafInReferentierichting(gerekendeStaaf, lastRunData.nodes)
+        : null;
+    return ontbrekendeZoneStations(gerekendRef?.checkConfig?.betonZones, verzoek.verzoek);
+  }, [verzoek, gerekendeStaaf, lastRunData]);
 
   const zetZones = (zones: ReinforcementZones | undefined) => {
     const cfg = { ...(beam.checkConfig ?? {}) };
@@ -559,7 +596,10 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       {/* ── Werkbalk: de vier lagen, elk los aan en uit ─────────────────── */}
       <div className="dek-werkbalk">
         <span className="dek-staafnaam">
-          {`Staaf ${beam.id} · ${beam.profile ?? "—"} · ${beam.material ?? "—"} · L = ${nl(lengteMm / 1000, 2)} m`}
+          {`Staaf ${beam.id} · ${beam.profile ?? "—"} · ${beam.material ?? "—"} · L = ${nl(lengteMm / 1000, 2)} m · ` +
+            (referentie.staafstand === "Staand"
+              ? "staand, getoetst van voet naar kop: in de tekening links = voet; onder = rechterzijde, boven = linkerzijde"
+              : "getoetst van links naar rechts")}
         </span>
         <div className="dek-lagen">
           {LAGEN.map((laag) => {
@@ -617,7 +657,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                 opleggingen={opleggingen}
                 bundels={bundels}
                 beugels={beugels}
-                zoneGrenzenMm={zoneGrenzenMm(liveZones)}
+                zoneGrenzenMm={zoneGrenzenMm(liveZonesRef)}
                 lanenBoven={lanenBoven}
                 lanenOnder={lanenOnder}
                 ucVakken={ucVakken}
@@ -631,6 +671,11 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
             )}
           </div>
 
+          {klassenFout && (
+            <div className="beton-fout">
+              Betonklassen niet geladen uit de rekenkern (de statische lijst wordt gebruikt): {klassenFout}
+            </div>
+          )}
           <Meldingen
             fout={fout}
             scheurFout={scheurFout}
@@ -645,13 +690,13 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
           />
 
           <ZoneEditor
-            zones={liveZones}
+            zones={liveZonesRef}
             korf={korf}
             doorsnede={doorsnede.ok ? doorsnede.doorsnede : STANDAARD_KORF.doorsnede}
             restKorf={restKorf}
             lengteMm={lengteMm}
             cursorXMm={cursorXMm}
-            onChange={zetZones}
+            onChange={(z) => zetZones(naarOfVanReferentie(z))}
           />
         </div>
 

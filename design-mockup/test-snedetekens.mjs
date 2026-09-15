@@ -327,5 +327,59 @@ log("\n[f] Terughoudend: alleen bij V en M, alleen als de gebruiker ze wil, alle
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+log("\n[g] Omgekeerde knoopvolgorde: dezelfde getallen op het canvas en in de toetsinvoer");
+{
+  // [e] bewaakt het BEELD. Sinds de tekenafspraak van september 2026
+  // (lib/referentierichting.ts) horen ook de GETALLEN gelijk te zijn: het
+  // canvas en de toetsing zien elke staaf van links naar rechts. Vóór die
+  // afspraak stond bij de rechts→links getekende ligger "+25,3 kNm" boven het
+  // steunpunt waar links→rechts "−25,3 kNm" stond, en kreeg de toetskern het
+  // steunpuntsmoment met het verkeerde teken.
+  const { buildTimberCheckInputs } = await import("./src/lib/timberCheckBuilder.ts");
+  const sec = resolveSection(houtStaven[0].material, houtStaven[0].profile);
+  const doorrekenen = (omgekeerd) => {
+    const beams = houtStaven.map((b) => (omgekeerd ? { ...b, from: b.to, to: b.from } : b));
+    const result = solve({
+      nodes: houtKnopen,
+      beams: beams.map((b) => ({ id: b.id, from: b.from, to: b.to, E: sec.E, A: sec.A, I: sec.I })),
+      supports: houtSteunen,
+      loads: houtLasten.map((l) => ({ beamId: l.beamId, q: l.q })),
+    });
+    return { beams, result };
+  };
+  const labels = ({ beams, result }) =>
+    [...rendereer({ nodes: houtKnopen, beams, supports: houtSteunen, result, vlaggen: { M: true, showExtremes: true } })
+      .matchAll(/>([^<>]*kNm)</g)].map((m) => m[1]).sort();
+  const heen = doorrekenen(false);
+  const terug = doorrekenen(true);
+  const lHeen = labels(heen), lTerug = labels(terug);
+  ok("er staan momentlabels op het canvas", lHeen.length > 0, lHeen.join(" | "));
+  ok("dezelfde momentlabels, met hetzelfde teken", JSON.stringify(lHeen) === JSON.stringify(lTerug), lTerug.join(" | "));
+  ok("boven het tussensteunpunt staat een negatief label", lHeen.some((t) => t.startsWith("−")));
+
+  // Dezelfde twee resultaten door de houtbouwer: één UGT-combinatie met factor 1.
+  const combinaties = [{ id: 1, name: "UGT", type: "uls", formula: "G", factors: new Map([[1, 1]]) }];
+  const invoer = ({ beams, result }) =>
+    buildTimberCheckInputs({ nodes: houtKnopen, beams, supports: houtSteunen, combinations: combinaties,
+      combinationResults: new Map([[1, result]]) }).inputs;
+  const iHeen = invoer(heen), iTerug = invoer(terug);
+  check("beide staven in de toetsinvoer", iTerug.length, iHeen.length);
+  for (const a of iHeen) {
+    const b = iTerug.find((x) => x.beam_id === a.beam_id);
+    const rij = (inp) => [...inp.forces_envelope].sort((p, q) => p.position_mm - q.position_mm)
+      .map((p) => [p.position_mm, p.forces.my_ed, p.forces.vz_ed]);
+    const A = rij(a), B = rij(b);
+    const max = Math.max(...A.flatMap((r, i) => r.map((v, k) => Math.abs(v - B[i][k]))));
+    ok(`staaf ${a.beam_id}: dezelfde omhullende in de toetsinvoer`, A.length === B.length && max < 1e-6,
+      `grootste verschil ${max.toExponential(2)}`);
+    // Het steunpunt (knoop 6) ligt voor staaf links op x = L en voor staaf
+    // rechts op x = 0 — in de referentierichting, dus in beide tekenrichtingen.
+    const steunpuntX = a.beam_id === houtStaven[0].id ? A[A.length - 1] : A[0];
+    ok(`staaf ${a.beam_id}: moment boven het tussensteunpunt negatief in de toetsinvoer`, steunpuntX[1] < 0,
+      `${steunpuntX[1].toFixed(2)} kNm`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 log(`\n${failed === 0 ? "ALLES GOED" : "MISLUKT"} — ${passed} geslaagd, ${failed} mislukt`);
 process.exit(failed === 0 ? 0 : 1);

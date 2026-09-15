@@ -157,6 +157,7 @@ fn staaf(kolom: Option<ConcreteColumnInput>, envelop: Vec<ForcePoint>) -> Concre
         bar_spacing_mm: None,
         sls_quasi_permanent_envelope: vec![],
         column: kolom,
+        staafstand: None,
     }
 }
 

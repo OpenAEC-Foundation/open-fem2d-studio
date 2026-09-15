@@ -2715,6 +2715,15 @@ onnauwkeurigheid, te klein om iets te betekenen: de zakking door sneeuw alleen s
 worden ingevoerd. Consistent gedocumenteerd, maar verwarrend: wie het natuurlijke "30" invult
 krijgt w_fin = −112 mm in plaats van −52 mm. Wel veilig-zijdig.
 
+> **Bijgewerkt, september 2026.** De afspraak volgt nu de invoerhint: de zeeg is POSITIEF
+> OMHOOG en de kern rekent w_fin = w_z + w_zeeg (NEN-EN 1990 A1.4.3(2), figuur A1.1). R17
+> draagt daarom +30, en w_fin blijft 52,11 mm. De opmerking "veilig-zijdig" hierboven gold
+> alleen voor een neerwaartse zakking: bij een opwaartse zakking maakte het oude teken de
+> toets te gunstig. Tegelijk telt de zeeg niet meer mee in w_add, want A1.4.3(3) begrenst
+> w_2 + w_3 en daar hoort de zeeg niet in; met w_BGT,perm = 0 is w_add voor R17 daardoor
+> 82,11 mm in plaats van 52,11 mm (grens L/250 = 60 mm). De bron vergelijkt w_add niet.
+> Zie `design-mockup/src/lib/referentierichting.ts`.
+
 Bestanden: `design-mockup/referentie/R17.femp` · `toets-R17.mjs` (exitcode 0).
 `npx tsc --noEmit`: schoon.
 

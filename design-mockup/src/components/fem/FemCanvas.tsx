@@ -38,6 +38,7 @@ import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 import { resolveSection } from "../../lib/sectionResolver";
+import { controleerDoorsneden } from "../../lib/modelNaarSolverInput";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 // Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
 // Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
@@ -645,11 +646,14 @@ export default function FemCanvas(props: FemCanvasProps) {
   // Invalidate results whenever the model changes. `plates` doet mee sinds
   // de canvas-solve platen meerekent (P3): een dikte- of meshSize-wijziging
   // maakt ook het single-LC-resultaat (en de contourlaag) ongeldig.
+  // `scheefstand` doet mee omdat de canvasberekening hem gebruikt: na een
+  // wijziging van φ of de richting hoort het oude single-LC-resultaat bij een
+  // andere belasting.
   useEffect(() => {
     setResults(null);
     setSolveError(null);
     onSolveResultRef.current?.(null);
-  }, [nodes, beams, supports, plates, loads, activeLoadCaseId]);
+  }, [nodes, beams, supports, plates, loads, activeLoadCaseId, scheefstand]);
 
   // Run solver whenever parent bumps solveTrigger.
   // This single-case run still feeds the right-rail Properties panel which
@@ -747,11 +751,17 @@ export default function FemCanvas(props: FemCanvasProps) {
           });
         }
       }
+      // DOORSNEDECONTROLE, dezelfde als het multi-LC-pad. Een doorsnede die
+      // `resolveSection` niet kan bepalen gaf hier stil HEA 160 / S235
+      // (E = 210 000, A = 3877, I = 1,673e7) en een geslaagde berekening; nu
+      // gooit `controleerDoorsneden` met staafnummer en reden, en de catch
+      // hieronder zet die tekst in de banner in plaats van resultaten.
+      controleerDoorsneden(beams);
       const input: SolverInput = {
         nodes: nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
         beams: beams.map(b => {
-          // Stijfheid uit materiaal + profiel; zonder dit rekende elke staaf
-          // met de solver-default (HEA 160 / S235).
+          // Stijfheid uit materiaal + profiel; na de controle hierboven is
+          // dit nooit de terugval.
           const sec = resolveSection(b.material, b.profile);
           return {
             id: b.id, from: b.from, to: b.to,

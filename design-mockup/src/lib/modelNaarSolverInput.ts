@@ -91,6 +91,38 @@ export function liftSpringK(s: { type: string; k?: number }): number | undefined
 }
 
 /**
+ * DE doorsnedecontrole vóór het rekenen, voor ELK rekenpad.
+ *
+ * Gooit [`DoorsnedeOnbekendFout`] met de staafnummers en de reden als van één
+ * of meer staven de doorsnede niet te bepalen is. Stond eerst alleen in
+ * `bouwMultiInput`; het canvaspad (`FemCanvas`) nam E, A en I over van
+ * `resolveSection` zonder te kijken of die de doorsnede kón bepalen, en rekende
+ * een onbekende doorsnede daardoor stil als HEA 160 / S235 — met "Berekend om"
+ * in de statusbalk. Gemeten: een ligger 6 m met q = 10 kN/m in GL30h 300×500
+ * zakte −48,03 mm (de HEA 160-waarde) in plaats van te stoppen. Twee paden,
+ * één controle: daarom deze functie.
+ */
+export function controleerDoorsneden(
+  beams: Iterable<{ id: number; material?: string; profile?: string }>,
+): void {
+  const onbekend = onbekendeDoorsneden(beams);
+  if (onbekend.length === 0) return;
+  // Hoogstens vijf staven in de melding; bij een groot model zou de
+  // volledige lijst onleesbaar worden en zegt het aantal genoeg.
+  const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
+  const rest = onbekend.length - eerste.length;
+  throw new DoorsnedeOnbekendFout(
+    `De berekening is gestopt: van ${onbekend.length} ` +
+      `${onbekend.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te ` +
+      `bepalen. ${eerste.join("; ")}` +
+      (rest > 0 ? `; en nog ${rest} andere` : "") +
+      ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij " +
+      "een ander model dan is ingevoerd.",
+    onbekend,
+  );
+}
+
+/**
  * Bouw de solver-invoer voor ALLE belastinggevallen uit één modelbestand.
  * Puur: leest alleen `model`, muteert niets aan de invoer en raakt geen
  * globale toestand aan.
@@ -119,22 +151,7 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
   // betontoetsing. `resolveSection` zelf blijft wél een waarde geven: het
   // rapport en de profielkiezer moeten "doorsnede onbekend" kunnen TÓNEN, en
   // een halfgetikte profielnaam mag geen scherm laten omvallen.
-  const onbekend = onbekendeDoorsneden(model.beams);
-  if (onbekend.length > 0) {
-    // Hoogstens vijf staven in de melding; bij een groot model zou de
-    // volledige lijst onleesbaar worden en zegt het aantal genoeg.
-    const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
-    const rest = onbekend.length - eerste.length;
-    throw new DoorsnedeOnbekendFout(
-      `De berekening is gestopt: van ${onbekend.length} ` +
-        `${onbekend.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te ` +
-        `bepalen. ${eerste.join("; ")}` +
-        (rest > 0 ? `; en nog ${rest} andere` : "") +
-        ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij " +
-        "een ander model dan is ingevoerd.",
-      onbekend,
-    );
-  }
+  controleerDoorsneden(model.beams);
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput: MultiInput = {
     nodes: model.nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),

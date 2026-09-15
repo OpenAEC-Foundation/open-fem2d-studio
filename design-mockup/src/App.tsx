@@ -52,6 +52,7 @@ import {
 } from "./lib/betonStijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
+import { controleerVoorRekenen, leesbareRekenfout, statusNaCanvasSolve } from "./lib/rekenPoort";
 // Scheefstand: φ komt óf uit de vaste noemer (het oude gedrag, en de stand van
 // elk bestaand projectbestand) óf uit de normformule van EN 1993-1-1 (5.5),
 // EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1) — zie lib/scheefstandNorm.ts.
@@ -220,23 +221,18 @@ function App() {
   const [activeView, setActiveView] = useState("default");
   // FEM tool state — shared between Ribbon (active highlight) + FemCanvas (action)
   const [femTool, setFemTool] = useState<Tool>("select");
-  // FEM model state lifted to App.tsx via useFemStore.
-  const fem = useFemStore();
   // Projectgegevens uit de projectinstellingen — voeden onder meer de
   // IFC-export (projectnaam, nummer, ingenieur, bedrijf, locatie) en reizen
-  // mee in het projectbestand.
+  // mee in het projectbestand. Vóór de raamwerkstore, omdat de gevolgklasse
+  // uit de uitgangspunten bij de rekeninstellingen hoort.
   const projectInfo = useProjectInfo();
+  // FEM model state lifted to App.tsx via useFemStore.
   // De gevolgklasse uit de projectgegevens bepaalt de partiële factoren van de
-  // standaardcombinaties (NB tabel NB.4/NB.5). Tot september 2026 stond die
-  // keuze alleen in de dialoog en het rapport; de combinaties rekenden altijd
-  // met CC2. Een onbekende of ontbrekende waarde laat de store ongemoeid.
-  const projectGevolgklasse = projectInfo.uitgangspunten?.gevolgklasse;
-  const setFemGevolgklasse = fem.setGevolgklasse;
-  useEffect(() => {
-    if (projectGevolgklasse === "CC1" || projectGevolgklasse === "CC2" || projectGevolgklasse === "CC3") {
-      setFemGevolgklasse(projectGevolgklasse);
-    }
-  }, [projectGevolgklasse, setFemGevolgklasse]);
+  // standaardcombinaties (NB tabel NB.4/NB.5). De store past haar toe op de
+  // combinaties (een onbekende of ontbrekende waarde laat hem ongemoeid) en
+  // neemt de klasse waarmee hij werkelijk rekent op in de rekeninstellingen,
+  // zodat een andere klasse de oude resultaten wist.
+  const fem = useFemStore({ gevolgklasse: projectInfo.uitgangspunten?.gevolgklasse ?? null });
   // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
   // in de constructie (idempotent, zie windStore.ts). Staat hier boven de
   // snapshot-opbouw omdat zijn instellingen in het projectbestand gaan.
@@ -719,13 +715,24 @@ function App() {
   // (mede) wanneer deze callback wisselt. Een inline arrow kreeg bij élke
   // App-render een nieuwe identiteit, waardoor resultaten direct na Berekenen
   // weer verdwenen (de setSolverOutputs-render wiste ze meteen).
+  /**
+   * De reden dat de laatste rekengang (multi-LC-pad) mislukte, of null. Een
+   * ref en geen state: `handleSolveResult` en de bediening moeten de waarde van
+   * DEZE rekengang lezen, niet die van de vorige render.
+   */
+  const rekenFoutRef = useRef<string | null>(null);
+  /** De laatst getoonde foutmelding — dezelfde fout niet bij elke live herberekening opnieuw melden. */
+  const gemeldeRekenfoutRef = useRef<string | null>(null);
   const handleSolveResult = useCallback((r: SolverResult | null) => {
     setSolverResult(r);
-    // Single-LC solve geslaagd → de canvas toont resultaten, dus de StatusBar
-    // meldt "Berekend om ..." — ook als de multi-LC-pipeline faalde. r === null
-    // laat de status met rust: invalidatie zet hem al op "Gereed", een
-    // solve-fout op "Fout" (via handleSolve).
-    if (r) setSolverStatus({ kind: "solved", at: Date.now() });
+    // Single-LC solve geslaagd → "Berekend om …", MAAR ALLEEN als de
+    // rekengang zelf ook slaagde. Dat stond er andersom ("ook als de
+    // multi-LC-pipeline faalde"): het canvas rekent altijd eerste orde en
+    // slaagt dus ook waar de tweede orde knikt of een doorsnede onbekend is,
+    // en zette de statusbalk dan terug op succes. r === null laat de status
+    // met rust: invalidatie zet hem al op "Gereed", een fout op "Fout".
+    const status = statusNaCanvasSolve(r !== null, rekenFoutRef.current, Date.now());
+    if (status) setSolverStatus(status);
   }, []);
   // Actuele canvas-zoom in % (gemeld door FemCanvas) — getoond in de StatusBar.
   const [zoomPct, setZoomPct] = useState(100);
@@ -884,8 +891,13 @@ function App() {
     return () => window.clearTimeout(id);
     // `fem.plates` doet mee sinds platen meerekenen (P2): een dikte- of
     // meshSize-wijziging maakt ook de single-LC-resultaten ongeldig.
+    // `fem.rekenInstellingenVersie` is alles BUITEN het model dat de uitkomst
+    // bepaalt: combinatiefactoren, belastinggevaltype, eigen gewicht,
+    // analysetype, segmentlengte, scheefstand en gevolgklasse. Zonder die
+    // regel bleven UC-badges en "Berekend om" staan na zo'n wijziging — zie
+    // lib/rekenInstellingen.ts. Dezelfde waarde stuurt het store-effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fem.nodes, fem.beams, fem.supports, fem.loads, fem.plates]);
+  }, [fem.nodes, fem.beams, fem.supports, fem.loads, fem.plates, fem.rekenInstellingenVersie]);
 
   // Result display toggles — lifted so both the FemCanvas HUD and the
   // FemProjectTree "Resultaten" tab can mutate the same flags.
@@ -947,8 +959,10 @@ function App() {
   const liveRekenenRef = useRef(false);
   // Insights view mode (element-K / system-K / dof / logs / errors), controlled from Ribbon.
   const [insightsMode, setInsightsMode] = useState<"element" | "system" | "dof" | "logs" | "errors">("element");
-  // Last solver error text — shown in InsightsView Errors-tab.
-  const [solverErrorText] = useState<string | null>(null);
+  // De laatste rekenfout — getoond in Inzichten → Fouten. Had geen setter:
+  // dat tabblad meldde daardoor altijd "Geen actieve solver-fouten", ook bij
+  // een kolom die in tweede orde knikte.
+  const [solverErrorText, setSolverErrorText] = useState<string | null>(null);
   const [loadCasesTab, setLoadCasesTab] = useState<"cases" | "combos">("cases");
   // FEM solve trigger — increments on each "Berekenen" click. FemCanvas
   // watches this and re-runs the solver against the current model.
@@ -961,6 +975,13 @@ function App() {
    */
   const computeAndStoreSolverOutputs = useCallback(() => {
     try {
+      // DE MODELCONTROLE OOK OP DIT PAD. Alleen het canvas deed hem; een staaf
+      // van lengte nul of een kolomvoet die op een ligger ligt gaf daar "Model
+      // niet doorgerekend", terwijl dit pad doorrekende en de toetsing op die
+      // krachten draaide, met "Berekend om" in de statusbalk.
+      controleerVoorRekenen({
+        nodes: fem.nodes, beams: fem.beams, supports: fem.supports, plates: fem.plates,
+      });
       // Modelmapping (doorsneden, eenheden, eigen gewicht, scheefstand) staat
       // in een pure module, zodat de app en elke tweede consument van de
       // solver exact dezelfde vertaling gebruiken — zie modelNaarSolverInput.ts.
@@ -1003,10 +1024,30 @@ function App() {
       const envelope = computeEnvelope(fem.actieveCombinaties, perCase);
       const outputs = { perCase, combinationResults, envelope };
       fem.setSolverOutputs(outputs);
+      rekenFoutRef.current = null;
+      gemeldeRekenfoutRef.current = null;
+      setSolverErrorText(null);
       return outputs;
     } catch (e) {
+      // NIET STIL. Hier ging elke fout alleen naar de console — ook "2e-orde-
+      // berekening niet convergent … belasting op of boven de kritieke
+      // (knik)waarde". Het canvas (altijd eerste orde) toonde intussen eindige
+      // krachten met een succesbanner. Nu: de reden in Inzichten → Fouten,
+      // een melding op het scherm, en een foutstatus die de canvasberekening
+      // niet meer terugzet (zie `handleSolveResult`).
       console.warn("[FEM multi-LC]", e);
+      const tekst = leesbareRekenfout(e);
+      rekenFoutRef.current = tekst;
+      setSolverErrorText(tekst);
       fem.setSolverOutputs(null);
+      // Live herberekenen na elke modelwijziging zou dezelfde fout telkens
+      // opnieuw melden; een andere fout wél.
+      if (gemeldeRekenfoutRef.current !== tekst) {
+        gemeldeRekenfoutRef.current = tekst;
+        void import("./io/notify").then(({ notifyWarning }) =>
+          notifyWarning("Berekening mislukt", tekst),
+        );
+      }
       return null;
     }
   }, [fem, scheefstandUitkomst.noemer]);
@@ -1114,6 +1155,13 @@ function App() {
     } catch (e) {
       console.warn("[FEM fysisch niet-lineair]", e);
       fem.setSolverOutputs(null);
+      // De statusbalk stond al op "Berekend om" (de synchrone gang slaagde);
+      // met de resultaten weg hoort daar nu een fout te staan, met de reden
+      // in Inzichten → Fouten.
+      const tekst = leesbareRekenfout(e);
+      rekenFoutRef.current = tekst;
+      setSolverErrorText(tekst);
+      setSolverStatus({ kind: "error" });
       notifyWarning(
         "Fysisch niet-lineaire berekening mislukt",
         e instanceof Error ? e.message : String(e),
@@ -1172,9 +1220,12 @@ function App() {
       combinationResults = computeAndStoreSolverOutputs()?.combinationResults ?? null;
     }
     if (!combinationResults) {
+      // De ECHTE reden. "Controleer het model (opleggingen, belastingen)" stond
+      // hier ook bij een onbekende doorsnede of een kolom die knikt, en stuurde
+      // de gebruiker naar de verkeerde plek.
       notifyWarning(
         "Toetsing",
-        "Doorrekenen mislukt — controleer het model (opleggingen, belastingen).",
+        `Niet getoetst: het doorrekenen mislukte. ${rekenFoutRef.current ?? "Zie Inzichten → Fouten."}`,
       );
       return;
     }
@@ -1755,6 +1806,7 @@ function App() {
     setBottomPanelOpen,
     handleRunMemberChecks,
     computeAndStoreSolverOutputs,
+    laatsteRekenfout: () => rekenFoutRef.current,
     createDetachedWindow,
     laadProjectTekst,
   });

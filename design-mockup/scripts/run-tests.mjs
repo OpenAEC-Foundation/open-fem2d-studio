@@ -138,6 +138,13 @@ const BUNDEL_TESTS = new Set([
   // buiten geeft, dus als de bundel daar afwijkt van de bron, moet dat hier
   // opvallen.
   "sneden",
+  // Staal herkennen aan de profieldatabase: elke sleutel van profiles.json
+  // moet door `isSteelProfile` en `buildSteelCheckInputs`. Praat met de
+  // staalbouwer, `engine` en `combinations` — alle drie in de barrel. Hoort
+  // juist óók tegen de bundel: in de MCP-weg verdwenen de 160 profielen die de
+  // oude voorvoegsellijst miste zonder spoor, dus als de bundel een oude
+  // herkenning meedraagt moet dat hier opvallen.
+  "staalherkenning",
   "staafsegmenten",
   "thermiek",
   "tweede-orde",
@@ -337,8 +344,16 @@ const ALLEEN_BRON = new Map([
     "rekent φ uit volgens EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1) en leidt h en m uit het model af (`lib/scheefstandNorm`). Dat is een PROJECTINSTELLING van de frontend: de gebruiker kiest de norm, en de sidecar krijgt het resultaat gewoon als getal (`scheefstandNoemer`) binnen. De module zit daarom niet in de barrel — de motorkant van dezelfde zaak (H = φ·V) staat in `test-scheefstand`, en die draait wél tegen de bundel",
   ],
   [
+    "verouderd",
+    "bewaakt dat resultaten en toetsuitslagen vervallen na een wijziging van de rekeninstellingen en na een mislukte toetsronde: `lib/rekenInstellingen`, de toetsstore `stores/checkStore` (zustand) en een bronteksttoets op de afhankelijkheden van de invalidatie-effecten in App.tsx en `hooks/useFemStore`. Geen van die modules staat in de barrel, en React-effecten bestaan in de sidecar niet; het slotblok start de toetsbrug als apart proces",
+  ],
+  [
     "zwakke-as",
     "knik om de zwakke as over de hele keten: de invoerbouwers (een leeg kniklengteveld gaat als 0 door), de spiegel `lib/kniklengte.ts` die de placeholder in het eigenschappenpaneel voedt — die staat buiten de barrel — en de toetsbrug als apart proces voor de echte EN 1993- en EN 1995-kern, die zelf de kniklengte kiest en haar herkomst noemt. Tegen de sidecarbundel zou de test juist de spiegel en de Rust-kern overslaan die hij tegen elkaar moet houden",
+  ],
+  [
+    "tekenrichting",
+    "stuurt dezelfde constructie in beide tekenrichtingen door de hele toetsketen en eist gelijke uitkomsten plus de handberekening: de grens `lib/referentierichting.ts`, de invoerbouwers voor staal en beton, de dekkingslijnbouwer, en de toetsbrug als apart proces voor de echte EN 1992- en EN 1993-kern. De toetsbrug hoort niet in de sidecarbundel, en de betonbouwer met zijn korven staat buiten de barrel; tegen de bundel zou de test juist de kernen overslaan die de wereldtermen in de afleiding zetten",
   ],
 ]);
 

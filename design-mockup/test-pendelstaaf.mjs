@@ -91,5 +91,70 @@ log("\n[2] Twee kolommen + pendelstaaf-koppeling, Fx=10 kN op top kolom 1");
   check("evenwicht ΣFx (kN)", (r.reactions.get(1).fx + r.reactions.get(3).fx + F) / 1e3, 0, 0.001);
 }
 
+// [3] Een vrij draaiende knoop of een losse knoop: de melding noemt de KNOOP
+//     en de RICHTING. De stelseloplosser zei alleen "Matrix is singular or
+//     nearly singular at column N" — een positie in de matrix, geen knoop.
+//     Gemeten: pendelstaaf met een scharnier op een scharnieroplegging
+//     (column 2), portaal met pendelkolom (column 11), losse knoop (column 6).
+log("\n[3] Singulier stelsel → knoopnummer en richting in de melding");
+{
+  const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
+  const { beeldKernfoutAf } = await import("./src/mcp/fouten.ts");
+  const waar = (name, cond, detail = "") => {
+    if (cond) { passed++; log(`  ✓ ${name}`); }
+    else      { failed++; log(`  ✗ ${name}${detail ? ` — ${detail}` : ""}`); }
+  };
+  const melding = (m) => {
+    try { solveAllCases(bouwMultiInput(m)); return null; }
+    catch (e) { return e instanceof Error ? e.message : String(e); }
+  };
+  const st = (id, from, to, extra = {}) => ({ id, from, to, material: "S235", profile: "IPE300", ...extra });
+  const basis = {
+    plates: [], loadCases: [{ id: 1, name: "G", type: "dead" }],
+    selfWeightEnabled: false, scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+  };
+
+  // 3a — vrij opgelegde ligger met een scharnier (Ry) op de scharnieroplegging.
+  const m1 = melding({
+    ...basis,
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [st(1, 1, 2, { releases: { startRy: true } })],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -10 }],
+  });
+  waar("scharnier op scharnieroplegging: knoop 1 kan vrij draaien",
+    /^Het stelsel is singulier: knoop 1 op \(0, 0\) mm kan vrij draaien\./.test(m1 ?? ""), m1);
+  waar("…met de aanwijzing naar het scharnier", /release Ry/.test(m1 ?? ""));
+
+  // 3b — portaal, pendelkolom met scharnier aan beide einden op een scharniervoet.
+  const m2 = melding({
+    ...basis,
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 4000 }, { id: 3, x: 6000, z: 4000 }, { id: 4, x: 6000, z: 0 }],
+    beams: [st(1, 1, 2, { profile: "HEA200" }), st(2, 2, 3), st(3, 4, 3, { profile: "HEA160", releases: { startRy: true, endRy: true } })],
+    supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 4, type: "pinned" }],
+    loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 2, q: -10 }],
+  });
+  waar("pendelkolom op scharniervoet: knoop 4 kan vrij draaien",
+    /^Het stelsel is singulier: knoop 4 op \(6000, 0\) mm kan vrij draaien/.test(m2 ?? ""), m2);
+
+  // 3c — een losse knoop (een kolom verwijderd, knoop 3 blijft staan).
+  const m3 = melding({
+    ...basis,
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }, { id: 3, x: 6000, z: 3000 }],
+    beams: [st(1, 1, 2)],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -10 }],
+  });
+  waar("losse knoop 3: genoemd als losse knoop",
+    /^Het stelsel is singulier: knoop 3 op \(6000, 3000\) mm kan vrij .*losse knoop/.test(m3 ?? ""), m3);
+  waar("de oorspronkelijke kolommelding blijft erachter staan (voor diagnose)",
+    /Oorspronkelijke melding: Matrix is singular or nearly singular at column \d+/.test(m3 ?? ""));
+
+  // 3d — de MCP-weg geeft de melding ongewijzigd door, niet als "mechanisme".
+  const mcp = beeldKernfoutAf(m3 ?? "");
+  waar("MCP: herkend, MODEL_ONOPLOSBAAR, tekst ongewijzigd",
+    mcp.herkend && mcp.code === "MODEL_ONOPLOSBAAR" && mcp.melding === m3, JSON.stringify(mcp));
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

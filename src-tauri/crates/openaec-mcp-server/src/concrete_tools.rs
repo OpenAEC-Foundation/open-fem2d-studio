@@ -650,6 +650,8 @@ fn schema_betonstaaf() -> Value {
                 "description": "Wapeningsstaal uit bijlage C, bijvoorbeeld \"B500B\". Zie `list_reinforcement_grades`." },
             "cage": schema_korf(),
             "reinforcement_zones": schema_wapeningszones(),
+            "staafstand": { "type": "string", "enum": ["Liggend", "Staand"], "default": "Liggend",
+                "description": "Hoe de staaf in het model staat; rekent nergens mee. De omhullende en de zones horen in de referentierichting te staan: 'Liggend' (minder dan 75 graden met de horizontaal) van links naar rechts, 'Staand' van voet naar kop. Bij 'Staand' zet elke toets die een trekzijde kiest erbij dat de ONDERwapening rechts en de BOVENwapening links ligt. Weglaten = 'Liggend'." },
             "length_m": { "type": "number",
                 "description": "Staaflengte in m. Alleen voor de rapportage; deze toets kent geen knik." },
             "forces_envelope": crate::schema_krachtenomhullende(),

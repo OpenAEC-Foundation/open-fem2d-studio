@@ -435,6 +435,19 @@ export interface BeamSegmentForces {
   N_bij_M_max: number;
 }
 
+/**
+ * Krachtsverloop van één staaf in LOKALE staafassen: x van de beginknoop
+ * ("from") naar de eindknoop, +y 90° tegen de klok in vanaf die as. De tekens
+ * van M, w en u — en de volgorde van de stations — hangen dus aan de
+ * tekenrichting: dezelfde doorhangende ligger geeft een positief veldmoment
+ * als hij van links naar rechts is getekend en een negatief andersom.
+ *
+ * Alles wat hieruit een uitspraak over "boven" of "onder" doet — de
+ * toetsbouwers, het betonvenster, de figuren in het rapport, de labels op het
+ * canvas — leest dit via `lib/referentierichting.ts`, dat de staaf in zijn
+ * referentierichting zet (liggend van links naar rechts, staand van voet naar
+ * kop). Lees hier nooit rechtstreeks een wereldzijde af.
+ */
 export interface ElementForces {
   N: number;        // N   (axial, tension +ve at end A)
   V: number;        // N   (shear, end-A local convention)

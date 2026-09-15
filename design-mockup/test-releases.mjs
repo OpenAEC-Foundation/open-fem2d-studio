@@ -121,5 +121,36 @@ log("\n[4b] Knoop alléén axiaal gedragen via een dubbelzijdige huls → eerlij
   }
 }
 
+// [5] ΔT op een staaf met een normaalkrachthuls als ENIGE last. De
+//     equivalente knoopkrachten van de ΔT [−N_th, 0, 0, +N_th, 0, 0] vallen door
+//     de condensatie exact weg, en de solver meldde daarop "No loads applied" —
+//     waardoor de berekening van ALLE belastinggevallen faalde. Het juiste
+//     antwoord is analytisch: de huls laat vrij uitzetten, dus N = 0 en de
+//     elementverplaatsing aan de huls is u = −α·ΔT·L = −1,2e-5 · 30 · 6000
+//     = −2,16 mm.
+log("\n[5] ΔT + normaalkrachthuls als enige last → N = 0, vrije uitzetting");
+{
+  const L6 = 6000, alpha = 1.2e-5, dT = 30;
+  let r = null;
+  try {
+    r = solveAllCases({
+      nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: L6, z: 0 }],
+      beams: [beam(1, 1, 2, { startTx: true })],
+      supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 2, type: "fixed" }],
+      cases: [{ id: 1, name: "G" }],
+      loads: [],
+      thermalLoads: [{ beamId: 1, deltaT: dT, alpha, caseId: 1 }],
+    }).perCase.get(1);
+  } catch (e) {
+    log(`  (gooide: ${e.message})`);
+  }
+  if (!r) { failed++; log("  ✗ de berekening weigerde een geldige thermische last"); }
+  else {
+    passed++; log("  ✓ de berekening loopt door");
+    check("N = 0 (huls laat uitzetten, N)", r.elements.get(1).N, 0);
+    check("u aan de huls = −α·ΔT·L (mm)", r.elements.get(1).axialDisp[0], -alpha * dT * L6, 1e-6);
+  }
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

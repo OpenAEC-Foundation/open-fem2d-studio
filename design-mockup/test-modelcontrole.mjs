@@ -400,6 +400,10 @@ function reken(model) {
   check("het model rekent NIET door", voor?.fout !== undefined, JSON.stringify(voor)?.slice(0, 120));
   check("de solverfout is een singuliere matrix",
     /singular/i.test(voor?.fout ?? ""), voor?.fout);
+  // En hij noemt de knoop en de richting, niet alleen een kolomnummer.
+  check("de solverfout noemt een knoop en een richting",
+    /^Het stelsel is singulier: (knoop \d+|een rekenknoop) op \(.*\) mm kan vrij (horizontaal|verticaal|draaien)/
+      .test(voor?.fout ?? ""), voor?.fout);
 
   // 9c — herstel alles.
   const lastVoor = totaleLijnlast(kapot);
@@ -437,6 +441,125 @@ function reken(model) {
 
   // 9f — het herstel is idempotent: nog eens draaien doet niets.
   check("nogmaals herstellen doet niets", computeModelHerstel(hersteld) === null);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 10: de poorten van het rekenpad — falen wordt zichtbaar, op ELK pad.
+//
+// De audit van september 2026 vond vier plaatsen waar het rekenpad stil bleef:
+// het canvas rekende een onbekende doorsnede als HEA 160, het multi-LC-pad
+// slikte elke fout in (ook de knikmelding), een staaf van lengte nul viel stil
+// uit het stelsel, en de canvasberekening zette de status daarna op "Berekend
+// om". De app-kant daarvan staat in `lib/rekenPoort.ts`; hier de regels.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[10] Rekenpad: onbekende doorsnede, lengte nul, knikmelding, status");
+{
+  const { solve, solveAllCasesNonlinear } = await import("./src/components/fem/solver/engine.ts");
+  const { combineResults } = await import("./src/components/fem/solver/combinations.ts");
+  const { controleerDoorsneden } = await import("./src/lib/modelNaarSolverInput.ts");
+  const { resolveSection } = await import("./src/lib/sectionResolver.ts");
+  const { controleerVoorRekenen, leesbareRekenfout, statusNaCanvasSolve } =
+    await import("./src/lib/rekenPoort.ts");
+  const fout = (f) => { try { f(); return null; } catch (e) { return e instanceof Error ? e.message : String(e); } };
+
+  // 10a — ONBEKENDE DOORSNEDE. Het canvas gebruikt nu dezelfde controle als het
+  // multi-LC-pad; allebei stoppen met staafnummer en reden.
+  const ligger = (profile, material = "S235") => ({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material, profile }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    plates: [],
+    loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -10 }],
+  });
+  const canvasFout = fout(() => controleerDoorsneden(ligger("HEA 999").beams));
+  check("canvaspad: onbekende doorsnede stopt de berekening", canvasFout !== null);
+  check("…met staafnummer en reden", /staaf 1: profiel "HEA 999"/.test(canvasFout ?? ""), canvasFout);
+  const multiFout = reken(ligger("HEA 999"))?.fout;
+  check("multi-LC-pad: dezelfde melding", multiFout === canvasFout, multiFout);
+  check("een bekende doorsnede gaat door", fout(() => controleerDoorsneden(ligger("HEA 160").beams)) === null);
+  check("zonder materiaal: ook gestopt, geen S235",
+    /geen materiaal/.test(fout(() => controleerDoorsneden([{ id: 1, from: 1, to: 2, profile: "HEA 160" }])) ?? ""));
+
+  // 10b — DE STATUS. Een geslaagde canvasberekening zet "Berekend om" alleen
+  // als de rekengang óók slaagde.
+  check("canvas ok + rekengang ok → berekend",
+    statusNaCanvasSolve(true, null, 42)?.kind === "solved");
+  check("canvas ok + rekengang mislukt → fout, NIET berekend",
+    statusNaCanvasSolve(true, "iets", 42)?.kind === "error");
+  check("geen canvasresultaat → status ongemoeid", statusNaCanvasSolve(false, null, 42) === null);
+
+  // 10c — LENGTE NUL, op beide paden. Twee ingeklemde uitkragingen van 3 m,
+  // gekoppeld door staaf 3 tussen twee knopen op dezelfde plek. Juist zou zijn
+  // 15 kNm en 5 kN per inklemming; stil overslaan gaf 30 kNm en 10 kN bij de
+  // ene en 0 bij de andere.
+  const HEA200 = resolveSection("S235", "HEA 200");
+  const knopen = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 3000, z: 0 }, { id: 3, x: 6000, z: 0 }, { id: 4, x: 3000, z: 0 }];
+  const staven = [
+    { id: 1, from: 1, to: 2 }, { id: 2, from: 4, to: 3 }, { id: 3, from: 2, to: 4 },
+  ];
+  const nul = /^Staaf 3 heeft lengte nul: knoop 2 en knoop 4 liggen op dezelfde plek/;
+  const canvasNul = fout(() => solve({
+    nodes: knopen, beams: staven.map((b) => ({ ...b, E: HEA200.E, A: HEA200.A, I: HEA200.I })),
+    supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 3, type: "fixed" }],
+    loads: [], pointLoads: [{ nodeId: 2, fz: -10000 }], beamPointLoads: [], thermalLoads: [], edgeLoads: [], plates: [],
+  }));
+  check("canvaspad (solve): staaf van lengte nul geweigerd", nul.test(canvasNul ?? ""), canvasNul);
+  const multiNul = reken({
+    nodes: knopen, beams: staven.map((b) => ({ ...b, material: "S235", profile: "HEA 200" })),
+    supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 3, type: "fixed" }], plates: [],
+    loads: [{ id: 1, type: "pointForce", caseId: 1, nodeId: 2, fz: -10 }],
+  })?.fout;
+  check("multi-LC-pad (bouwMultiInput → solveAllCases): geweigerd", nul.test(multiNul ?? ""), multiNul);
+  // De app-poort vóór het multi-LC-pad (en de bediening, die hetzelfde pad
+  // neemt) meldt het al eerder, via de modelcontrole.
+  const poortNul = fout(() => controleerVoorRekenen({
+    nodes: knopen, beams: staven, supports: [{ nodeId: 1 }, { nodeId: 3 }], plates: [],
+  }));
+  check("app-poort vóór het multi-LC-pad: model niet doorgerekend",
+    /^Model niet doorgerekend/.test(poortNul ?? "") && /lengte nul/.test(poortNul ?? ""), poortNul);
+  check("app-poort laat een correct model door", fout(() => controleerVoorRekenen(ligger("HEA 160"))) === null);
+
+  // 10d — DE KNIKMELDING KOMT AAN. Ingeklemde kolom HEA 200 S235, L = 3 m,
+  // I_y = 3,69e7 mm⁴ (profieldatabase). P_cr = π²·E·I/(2L)²
+  // = π²·210 000·3,69e7 / 6000² = 2124,4 kN (Euler, ingeklemd-vrij,
+  // kniklengte 2L). N = 3000 kN = 1,41·P_cr moet in tweede orde falen;
+  // N = 500 kN = 0,24·P_cr moet convergeren.
+  const L = 3000;
+  const Pcr_kN = Math.PI ** 2 * HEA200.E * HEA200.I / (2 * L) ** 2 / 1e3;
+  check("P_cr uit de handformule ≈ 2124,4 kN", Math.abs(Pcr_kN - 2124.4) < 0.5, Pcr_kN.toFixed(1));
+  const kolom = (P_kN) => bouwMultiInput({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: L }],
+    beams: [{ id: 1, from: 1, to: 2, material: "S235", profile: "HEA 200" }],
+    supports: [{ nodeId: 1, type: "fixed" }], plates: [],
+    loadCases: [{ id: 1, name: "Permanent", type: "dead" }],
+    loads: [{ id: 1, type: "pointForce", caseId: 1, nodeId: 2, fx: 10, fz: -P_kN }],
+    selfWeightEnabled: false, scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+  });
+  const combo = { id: 1, name: "UGT", type: "uls", formula: "1,0G", factors: new Map([[1, 1.0]]) };
+  const knik = fout(() => combineResults(combo, solveAllCasesNonlinear(kolom(3000)).perCase));
+  check("N = 1,41·P_cr: de tweede orde weigert", knik !== null);
+  const getoond = leesbareRekenfout(new Error(knik ?? ""));
+  check("de melding die de gebruiker ziet noemt de knik",
+    /niet convergent/.test(getoond) && /knik/.test(getoond), getoond);
+  check("N = 0,24·P_cr: de tweede orde convergeert",
+    fout(() => combineResults(combo, solveAllCasesNonlinear(kolom(500)).perCase)) === null);
+  check("een onbekende kernmelding komt ongewijzigd door",
+    leesbareRekenfout(new Error("iets onverwachts")) === "iets onverwachts");
+
+  // 10e — DE LOSSE KNOOP wordt gemeld, als waarschuwing (met een volledige
+  // inklemming of in een model met platen rekent zo'n model gewoon door).
+  const los = controleerModel({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }, { id: 3, x: 6000, z: 3000 }],
+    beams: [{ id: 1, from: 1, to: 2 }],
+    supports: [{ nodeId: 1 }, { nodeId: 2 }],
+  });
+  const losBev = los.filter((b) => b.soort === "losseKnoop");
+  check("losse knoop 3 gemeld", losBev.length === 1 && losBev[0].nodeIds[0] === 3, JSON.stringify(los));
+  check("…als waarschuwing, niet blokkerend", losBev[0]?.ernst === "waarschuwing" && !heeftFouten(los));
+  check("een plaathoek is geen losse knoop", controleerModel({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 1000, z: 0 }, { id: 3, x: 1000, z: 1000 }, { id: 4, x: 0, z: 1000 }],
+    beams: [], supports: [], plates: [{ id: 1, nodeIds: [1, 2, 3, 4] }],
+  }).every((b) => b.soort !== "losseKnoop"));
 }
 
 // ─────────────────────────────────────────────────────────────────────────

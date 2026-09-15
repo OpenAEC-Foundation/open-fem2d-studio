@@ -436,7 +436,7 @@
     "colPosition": "x [m]",
     "nodalDispTitle": "Déplacements nodaux",
     "fieldDeflTitle": "Flèche en travée par barre (max |w|)",
-    "fieldDeflNote": "w = flèche locale perpendiculaire à l'axe de la barre (négatif = vers le bas) ; x mesuré depuis le nœud de départ.",
+    "fieldDeflNote": "w = flèche perpendiculaire à l'axe de la barre, prise de gauche à droite (une barre verticale de la base vers la tête) : négatif = vers le bas, pour une barre verticale vers la droite ; x mesuré depuis l'extrémité gauche ou la base.",
     "governingDispNote": "Enveloppe choisie — la combinaison déterminante (plus grand déplacement) est affichée :",
     "sectionPlates": "Plaques",
     "sectionPlateStresses": "Contraintes dans les plaques",

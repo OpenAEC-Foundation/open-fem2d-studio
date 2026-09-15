@@ -342,7 +342,7 @@ fn tool_definitions() -> Value {
                     "consequence_class": { "type": "string", "enum": ["CC1", "CC2", "CC3"],
                         "description": "Gevolgklasse, ALLEEN TER VERMELDING: deze toetsing past K_FI niet toe en verandert geen enkele UC. Volgens NEN-EN 1990:2002/NB:2019 zit de gevolgklasse in de partiële belastingsfactoren (tabel NB.4 voor CC2, NB.5 voor CC1 en CC3); lever dus krachten in `forces_envelope` die met die factoren zijn bepaald. `solve_fem_model` en `check_fem_model` doen dat al met hun veld `gevolgklasse`." },
                     "pre_camber_mm": { "type": "number", "default": 0,
-                        "description": "Zeeg in mm, zelfde tekenconventie als de doorbuiging." },
+                        "description": "Zeeg in mm, POSITIEF = OMHOOG (een zeeg tegen een doorhangende ligger in is positief). De kern rekent w_fin = w_z + w_zeeg met w_z negatief omlaag (NEN-EN 1990 A1.4.3(2), figuur A1.1). De zeeg telt niet mee in w_add." },
                     "deflection_permanent_mm": { "type": "number", "default": 0,
                         "description": "Doorbuiging onder de permanente BGT-combinatie (mm), voor w_add. 0 betekent w_add = w_fin (veilig-zijdig)." },
                     "deflection_add_limit_numerator": { "type": "number", "default": 0, "minimum": 0,
@@ -353,7 +353,9 @@ fn tool_definitions() -> Value {
                         "description": "Afstand zwaartepunt tot aangrijpingspunt van de belasting (mm). Positief = boven het zwaartepunt, destabiliserend (last op de bovenflens: z_a = h/2). 0 is GUNSTIGER dan een last op de bovenflens." },
                     "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
                         "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken vanaf welke referentielijn en over welke lengte 'deflection_actual_max_mm' is gemeten, en welke aannames daarbij zijn gedaan." },
-                    "custom_section": schema_custom_section()
+                    "custom_section": schema_custom_section(),
+                    "staafstand": { "type": "string", "enum": ["Liggend", "Staand"], "default": "Liggend",
+                        "description": "Hoe de staaf in het model staat; rekent nergens mee. De krachtenomhullende hoort in de referentierichting te staan: 'Liggend' (minder dan 75 graden met de horizontaal) van links naar rechts, 'Staand' van voet naar kop. Bij 'Staand' zet de kiptoets erbij dat de BOVENflens de linkerflens en de ONDERflens de rechterflens is. Weglaten = 'Liggend'." }
                 },
                 "required": [
                     "beam_id", "profile_name", "steel_grade", "length_m",

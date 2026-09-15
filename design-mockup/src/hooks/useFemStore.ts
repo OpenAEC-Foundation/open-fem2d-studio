@@ -48,6 +48,7 @@ import {
 // waarden hoort hier omdat het INLEZEN van een projectbestand een onbekende
 // waarde moet kunnen terugzetten op "vast".
 import { SCHEEFSTAND_BRONNEN, type ScheefstandBron } from "../lib/scheefstandNorm";
+import { rekenInstellingenVersie as bepaalRekenInstellingenVersie } from "../lib/rekenInstellingen";
 
 // ── Defaults ───────────────────────────────────────────────────────────────
 //
@@ -1314,6 +1315,14 @@ export interface FemStore {
   betonSegmentLengteMm: number;
   setBetonSegmentLengteMm: (v: number) => void;
   /**
+   * De versie van de rekeninstellingen (combinaties, belastinggevaltypen,
+   * eigen gewicht, analysetype, segmentlengte, alle scheefstandvelden en de
+   * gevolgklasse) — zie `lib/rekenInstellingen.ts`. Beide invalidatie-effecten
+   * (hier en in App.tsx) lezen DEZE waarde, zodat een nieuw veld niet in één
+   * van de twee vergeten kan worden.
+   */
+  rekenInstellingenVersie: string;
+  /**
    * Scheefstand (initiële imperfectie, EN 1993-1-1 §5.3.2-aanpak): elke
    * verticale last krijgt een horizontale metgezel H = φ·V. φ = 1/noemer
    * (default 1/200); richting +1 = +x, −1 = −x. De motor past alleen toe —
@@ -1431,7 +1440,13 @@ export interface FemStore {
   }) => CombinatieAfwijking | null;
 }
 
-export function useFemStore(): FemStore {
+export function useFemStore(opties?: {
+  /**
+   * De gevolgklasse uit de projectinstellingen. Staat niet in deze store (hij
+   * reist mee in de projectgegevens), maar hoort wél bij de rekeninstellingen.
+   */
+  gevolgklasse?: string | null;
+}): FemStore {
   // Active snapshot (current model)
   const [nodes, setNodes]       = useState<Node[]>(DEFAULT_NODES);
   const [beams, setBeams]       = useState<Beam[]>(DEFAULT_BEAMS);
@@ -1520,6 +1535,34 @@ export function useFemStore(): FemStore {
   const [scheefstandHoogteM, setScheefstandHoogteM] = useState<number | null>(null);
   const [scheefstandAantalElementen, setScheefstandAantalElementen] =
     useState<number | null>(null);
+  // Eén versie van alles buiten het model dat de uitkomst bepaalt. Elk veld
+  // van `RekenInstellingen` is verplicht, dus een nieuwe instelling kan hier
+  // niet ontbreken zonder dat het niet compileert.
+  // De gevolgklasse uit de projectgegevens gaat de combinaties in. Tot
+  // september 2026 stond die keuze alleen in de dialoog en het rapport; de
+  // combinaties rekenden altijd met CC2. Een onbekende of ontbrekende waarde
+  // laat de store ongemoeid. In de versie hieronder staat de klasse waarmee de
+  // standaardcombinaties WERKELIJK rekenen (`gevolgklasse`, de state), niet de
+  // doorgegeven tekst: die twee lopen één render uiteen, en een bestand kan een
+  // klasse meebrengen vóórdat de projectgegevens zijn bijgewerkt.
+  const projectKlasse = opties?.gevolgklasse ?? null;
+  useEffect(() => {
+    if (projectKlasse === "CC1" || projectKlasse === "CC2" || projectKlasse === "CC3") {
+      setGevolgklasse(projectKlasse);
+    }
+  }, [projectKlasse, setGevolgklasse]);
+  const rekenInstellingenVersie = useMemo(
+    () => bepaalRekenInstellingenVersie({
+      loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
+      scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
+      scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse,
+    }),
+    [
+      loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
+      scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
+      scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse,
+    ],
+  );
   // Canvas view mode: false = "Model" tab (no loads drawn), true = LC active.
   const [showLoads, setShowLoads] = useState<boolean>(true);
   // Cross-panel focus hint: when the user clicks a value on the canvas (e.g.
@@ -2223,7 +2266,10 @@ export function useFemStore(): FemStore {
     // We deliberately depend on the model-bearing state, not on the setters.
     // `plates` doet mee sinds platen meerekenen (P2): zonder die dependency
     // zou een dikte- of meshSize-wijziging verouderde resultaten laten staan.
-  }, [nodes, beams, supports, plates, loads]);
+    // `rekenInstellingenVersie` om dezelfde reden voor alles BUITEN het model:
+    // een factor, het eigen gewicht, de scheefstand of het analysetype
+    // veranderen de uitkomst net zo goed — zie lib/rekenInstellingen.ts.
+  }, [nodes, beams, supports, plates, loads, rekenInstellingenVersie]);
 
   return {
     nodes, beams, supports, plates, loads,
@@ -2251,6 +2297,7 @@ export function useFemStore(): FemStore {
     selfWeightEnabled, setSelfWeightEnabled,
     analysetype, setAnalysetype,
     betonSegmentLengteMm, setBetonSegmentLengteMm,
+    rekenInstellingenVersie,
     scheefstandEnabled, setScheefstandEnabled,
     scheefstandNoemer, setScheefstandNoemer,
     scheefstandRichting, setScheefstandRichting,

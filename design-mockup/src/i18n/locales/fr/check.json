@@ -44,7 +44,7 @@
     "deflAddNumerator": "n pour w_add (vide = norme)",
     "deflAddNumeratorHint": "Remplace le dénominateur associé à la classe et calcule sur la longueur de la barre. À renseigner uniquement pour reproduire un calcul de référence externe à dénominateur fixe (p. ex. L/150) ; le rapport mentionne alors que le dénominateur a été imposé.",
     "preCamber": "Contreflèche (mm)",
-    "preCamberHint": "Contreflèche en mm, même convention de signe que la flèche (négatif = vers le bas).",
+    "preCamberHint": "Contreflèche en mm, positive = vers le haut (à l'opposé d'une poutre qui fléchit). Uniquement pour une barre principalement horizontale ; pour une barre inclinée de 75° ou plus, aucune contreflèche n'est prise en compte. Non comprise dans w_add.",
     "timberTitle": "Classe de service + durée de charge",
     "serviceClass": "Classe de service",
     "sc1": "1 (intérieur, chauffé)",

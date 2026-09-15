@@ -108,11 +108,12 @@ const beams = [
       lateralRestraints: STEUNEN_BOVEN,
       lateralRestraintsBottom: STEUNEN_ONDER,
       deflectionClass: "roof",           // dak → L/250
-      // Zeeg in de tekenconventie van de kern: w_fin = w − w_zeeg, en w is
-      // negatief (omlaag). Een zeeg die 30 mm van de zakking afhaalt moet
-      // dus als −30 worden ingevoerd (zie deflection.rs::w_fin_mm en de
-      // veldbeschrijving in femTypes.BeamCheckConfig).
-      preCamber_mm: -ZEEG_MM,
+      // Zeeg POSITIEF = OMHOOG (sinds september 2026, zie
+      // src/lib/referentierichting.ts): de kern rekent w_fin = w_z + w_zeeg met
+      // w_z negatief omlaag, NEN-EN 1990 A1.4.3(2) figuur A1.1. De bron heeft een
+      // zeeg van 30 mm omhoog; die stond hier tot dan als -30, omdat de kern toen
+      // w_z - w_zeeg rekende.
+      preCamber_mm: ZEEG_MM,
       bucklingLengthY_m: L_MM / 1000,
       bucklingLengthZ_m: L_MM / 1000,
     },

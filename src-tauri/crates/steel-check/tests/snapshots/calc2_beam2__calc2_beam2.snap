@@ -1813,7 +1813,7 @@ expression: run()
               "mz_ed": 0.0
             }
           },
-          "formula_latex": "w_{fin,z} = w_z - w_{zeeg,z}",
+          "formula_latex": "w_{fin,z} = w_z + w_{zeeg,z}",
           "variables": [
             {
               "symbol": "L",
@@ -1865,7 +1865,7 @@ expression: run()
               "mz_ed": 0.0
             }
           },
-          "formula_latex": "w_{add,z} = w_{fin,z} - w_{BGT,perm,z}",
+          "formula_latex": "w_{add,z} = w_z - w_{BGT,perm,z}",
           "variables": [
             {
               "symbol": "L",

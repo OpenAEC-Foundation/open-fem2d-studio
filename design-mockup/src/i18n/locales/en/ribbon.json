@@ -436,7 +436,7 @@
     "colPosition": "x [m]",
     "nodalDispTitle": "Nodal displacements",
     "fieldDeflTitle": "Field deflection per member (max |w|)",
-    "fieldDeflNote": "w = local deflection perpendicular to the member axis (negative = sagging); x measured from the start node.",
+    "fieldDeflNote": "w = deflection perpendicular to the member axis, taken from left to right (a vertical member from base to top): negative = sagging, for a vertical member towards the right; x measured from the left end or the base.",
     "governingDispNote": "Envelope selected — showing the governing combination (largest displacement):",
     "sectionPlates": "Plates",
     "sectionPlateStresses": "Plate stresses",

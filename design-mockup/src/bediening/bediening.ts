@@ -57,6 +57,12 @@ export interface BedieningActies {
   setBottomPanelOpen: (v: boolean) => void;
   handleRunMemberChecks: (opts?: { openPanel?: boolean }) => Promise<void>;
   computeAndStoreSolverOutputs: () => { combinationResults: Map<number, SolverResult> } | null | undefined;
+  /**
+   * De reden dat de laatste rekengang mislukte, of null. Zonder dit veld gaf
+   * "rekenen" altijd "controleer het model (opleggingen, belastingen)" terug,
+   * ook bij een onbekende doorsnede of een kolom die knikt.
+   */
+  laatsteRekenfout: () => string | null;
   createDetachedWindow: (opts: { view: string; title: string; width?: number; height?: number }) => Promise<string>;
   /** Het pad van "Openen…": tekst → project in de store, mét bibliotheken. */
   laadProjectTekst: (tekst: string, pad?: string) => Promise<void>;
@@ -259,8 +265,14 @@ async function voerUit(
     case "rekenen": {
       const uit = a().computeAndStoreSolverOutputs();
       await wachtOpRender();
-      const cr = uit?.combinationResults ?? a().fem.combinationResults;
-      if (!cr) throw new Error("doorrekenen leverde geen combinatieresultaten — controleer het model (opleggingen, belastingen)");
+      // Mislukt de rekengang, dan de ECHTE reden terug — en nooit de
+      // combinatieresultaten van een vorige gang (`?? fem.combinationResults`
+      // zou die hier stil teruggeven terwijl de verse gang faalde).
+      const fout = a().laatsteRekenfout();
+      if (!uit || fout) {
+        throw new Error(`doorrekenen mislukt: ${fout ?? "de rekengang leverde geen combinatieresultaten"}`);
+      }
+      const cr = uit.combinationResults;
       return samenvatting(cr, a().fem.combinations);
     }
 

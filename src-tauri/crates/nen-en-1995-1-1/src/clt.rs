@@ -84,7 +84,12 @@ impl CltLayerOrientation {
 }
 
 /// Eén lamel (laag) van de opbouw.
+///
+/// `deny_unknown_fields`: de opbouw is invoer van `CltBeamCheckInput`, en die
+/// weigert onbekende velden. Zonder deze regel zou een tikfout ÍN de opbouw
+/// (bijvoorbeeld `orientatie`) alsnog stil worden genegeerd.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub struct CltLayer {
     /// Laagdikte in mm.
@@ -96,7 +101,10 @@ pub struct CltLayer {
 
 /// De opbouw van een CLT-doorsnede: een plaatstrook van breedte `width_mm`
 /// met lagen van boven (index 0) naar beneden.
+///
+/// `deny_unknown_fields`, zie [`CltLayer`].
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub struct CltLayup {
     /// Breedte van de beschouwde plaatstrook in mm (gebruikelijk 1000).

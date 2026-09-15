@@ -79,6 +79,7 @@ fn ligger(teken: f64, aan_de_bovenflens: bool) -> BeamCheckResult {
         q_equiv_n_per_mm: 12.0,
         z_a_mm: 200.0,
         custom_section: None,
+        staafstand: None,
     })
 }
 
@@ -223,6 +224,7 @@ fn doorgaande_ligger_met(m_eind_knm: f64, top: Vec<f64>, bot: Vec<f64>) -> BeamC
         q_equiv_n_per_mm: Q,
         z_a_mm: 165.0,
         custom_section: None,
+        staafstand: None,
     })
 }
 
@@ -308,4 +310,83 @@ fn een_kipsteun_vlak_naast_een_gaffel_wordt_gemeld_en_niet_stilzwijgend_verwerkt
         "verwachtte een melding dat L_kip > L_g; genoteerd: {:?}",
         s.notes
     );
+}
+
+// ── De flenzen in wereldtermen bij een staande staaf ───────────────────────
+
+/// Dezelfde IPE 400 als [`ligger`], maar met een opgegeven staafstand.
+fn ligger_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamCheckResult {
+    let envelop: Vec<ForcePoint> = (0..21)
+        .map(|i| {
+            let x = L_MM * i as f64 / 20.0;
+            let my = teken * M_MAX_KNM * 4.0 * (x / L_MM) * (1.0 - x / L_MM);
+            ForcePoint {
+                combination_id: 1,
+                position_mm: x,
+                forces: InternalForces { my_ed: my, ..Default::default() },
+            }
+        })
+        .collect();
+    check_beam(BeamCheckInput {
+        beam_id: 1,
+        profile_name: "IPE 400".to_string(),
+        steel_grade: "S235".to_string(),
+        length_m: L_MM / 1000.0,
+        forces_envelope: envelop,
+        lateral_bracing: LateralBracing { top_flange_positions: vec![], bottom_flange_positions: vec![0.5] },
+        buckling_length_y_m: 10.0,
+        buckling_length_z_m: 10.0,
+        deflection_limit_class: DeflectionClass::Floor,
+        deflection_limit_numerator: 333,
+        deflection_actual_max_mm: 0.0,
+        is_cantilever: false,
+        consequence_class: ConsequenceClass::CC1,
+        pre_camber_mm: 0.0,
+        deflection_permanent_mm: 0.0,
+        deflection_add_limit_numerator: 0.0,
+        deflection_notes: vec![],
+        q_equiv_n_per_mm: 12.0,
+        z_a_mm: 200.0,
+        custom_section: None,
+        staafstand: stand,
+    })
+}
+
+fn kipnotities(r: &BeamCheckResult) -> Vec<String> {
+    let c = r.checks.iter().find(|c| c.id == "6.3.2_ltb").expect("kiptoets");
+    let CheckKind::Stability(s) = &c.kind else { unreachable!() };
+    s.notes.clone()
+}
+
+#[test]
+fn staande_staaf_noemt_de_gedrukte_flens_in_wereldtermen() {
+    // Een kolom van voet naar kop met een negatief moment: in de afleiding is
+    // de ONDERflens gedrukt. Lokaal +y staat 90° tegen de klok in vanaf de as,
+    // en die as wijst omhoog — dus +y wijst naar LINKS en de onderflens is de
+    // RECHTERflens. De kanttekening hoort dat met zoveel woorden te zeggen.
+    let staand = ligger_met_stand(-1.0, Some(mechanics::Staafstand::Staand));
+    let notities = kipnotities(&staand);
+    let zijden = notities
+        .iter()
+        .find(|n| n.starts_with("Flenzen in wereldtermen"))
+        .expect("bij een staande staaf hoort de kiptoets de flenzen in wereldtermen te noemen");
+    assert!(zijden.contains("BOVENflens in deze afleiding is de LINKERflens"));
+    assert!(zijden.contains("ONDERflens is de RECHTERflens"));
+
+    // Rekenen doet de staafstand niet: dezelfde steun, dezelfde L_st, dezelfde UC.
+    let liggend = ligger_met_stand(-1.0, None);
+    assert_relative_eq!(tussenwaarde(&staand, "L_{st}"), 5000.0, max_relative = 1e-9);
+    assert_relative_eq!(tussenwaarde(&liggend, "L_{st}"), 5000.0, max_relative = 1e-9);
+    assert_relative_eq!(kip_uc(&staand), kip_uc(&liggend), max_relative = 1e-12);
+    assert_relative_eq!(staand.uc_max, liggend.uc_max, max_relative = 1e-12);
+}
+
+#[test]
+fn liggende_staaf_krijgt_geen_zijdenkanttekening() {
+    // Bij een liggende staaf zijn boven- en onderflens letterlijk; een extra
+    // regel zou daar alleen ruis zijn. Weglaten en Liggend opgeven zijn gelijk.
+    for stand in [None, Some(mechanics::Staafstand::Liggend)] {
+        let r = ligger_met_stand(1.0, stand);
+        assert!(kipnotities(&r).iter().all(|n| !n.starts_with("Flenzen in wereldtermen")));
+    }
 }

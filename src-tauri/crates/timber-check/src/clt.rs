@@ -33,7 +33,13 @@ fn default_one() -> f64 {
 }
 
 /// Invoer voor één CLT-staaf (plaatstrook).
+///
+/// `deny_unknown_fields`, om dezelfde reden als bij
+/// [`crate::TimberBeamCheckInput`]: `k_cr` en `load_sharing` hebben een
+/// standaardwaarde, en een tikfout in die namen viel stil op die standaard
+/// terug (gemeten: `kcr` werd genegeerd).
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub struct CltBeamCheckInput {
     pub beam_id: u32,
