@@ -34,6 +34,155 @@ import {
   updateSectionState,
 } from './NonlinearMaterial';
 
+// ── Meldingen in plaats van stilte ──────────────────────────────────────────
+
+/** Getal in mm met hooguit één decimaal, decimaalkomma. */
+function mmTekst(v: number): string {
+  return (Math.round(v * 10) / 10).toString().replace('.', ',');
+}
+
+/**
+ * Het stelsel is singulier: een vrijheidsgraad heeft geen stijfheid.
+ *
+ * WAAROM DEZE KLASSE BESTAAT. De stelseloplosser meldt alleen "Matrix is
+ * singular or nearly singular at column N". Dat kolomnummer zegt de gebruiker
+ * niets: het is de positie in de stijfheidsmatrix, niet een knoopnummer.
+ * Gemeten bij een vakwerkknoop (column 5), een pendelstaaf met een scharnier
+ * op een scharnieroplegging (column 2) en een losse knoop (column 6) — drie
+ * geldige modelfouten met dezelfde onbruikbare melding. Hier wordt de kolom
+ * terugvertaald naar de knoop, de richting en, als die knoop aan niets vastzit,
+ * de mededeling dat het een losse knoop is.
+ *
+ * De kern kent alleen rekenknopen; de adapter (`engine.ts`) vervangt het label
+ * door het knoopnummer uit het model via `tekstVoor`.
+ */
+export class SingulierStelselFout extends Error {
+  readonly meshKnoopId: number;
+  readonly xMm: number;
+  readonly zMm: number;
+  readonly richting: 'x' | 'z' | 'rotatie';
+  readonly losseKnoop: boolean;
+  readonly origineel: string;
+  constructor(v: {
+    meshKnoopId: number; xMm: number; zMm: number;
+    richting: 'x' | 'z' | 'rotatie'; losseKnoop: boolean; origineel: string;
+  }) {
+    super('');
+    this.name = 'SingulierStelselFout';
+    this.meshKnoopId = v.meshKnoopId;
+    this.xMm = v.xMm;
+    this.zMm = v.zMm;
+    this.richting = v.richting;
+    this.losseKnoop = v.losseKnoop;
+    this.origineel = v.origineel;
+    this.message = this.tekstVoor('een rekenknoop');
+  }
+
+  /** De melding met `knoop` als onderwerp, bijvoorbeeld "knoop 7". */
+  tekstVoor(knoop: string): string {
+    const beweging =
+      this.richting === 'x' ? 'horizontaal verschuiven (x)'
+        : this.richting === 'z' ? 'verticaal verschuiven (z)'
+          : 'draaien';
+    const oorzaak = this.losseKnoop
+      ? 'Deze knoop is met geen enkele staaf verbonden (een losse knoop): ' +
+        'verwijder hem, of verbind hem met de constructie.'
+      : this.richting === 'rotatie'
+        ? 'Niets houdt die rotatie tegen: waarschijnlijk hebben alle staafeinden op ' +
+          'deze knoop een scharnier (release Ry) terwijl de knoop zelf geen ' +
+          'rotatiesteun heeft. Laat één staaf star aansluiten, of haal het ' +
+          'scharnier weg op een scharnieroplegging.'
+        : 'Niets houdt die verplaatsing tegen: controleer de opleggingen, of de ' +
+          'staven daar werkelijk aan elkaar vastzitten, en of een normaalkracht- ' +
+          'of dwarskrachthuls (release Tx/Tz) niet de enige verbinding is.';
+    return (
+      `Het stelsel is singulier: ${knoop} op (${mmTekst(this.xMm)}, ${mmTekst(this.zMm)}) mm ` +
+      `kan vrij ${beweging}. ${oorzaak} (Oorspronkelijke melding: ${this.origineel})`
+    );
+  }
+}
+
+/**
+ * Vertaal een "column N"-melding van de stelseloplosser naar een
+ * [`SingulierStelselFout`]. Frame-pad: drie vrijheidsgraden per knoop
+ * (u, w, θ), in de invoegvolgorde van `mesh.nodes` — dezelfde nummering als
+ * `applyBoundaryConditions`. Elke andere fout gaat ongewijzigd door.
+ */
+function vertaalSingulier(e: unknown, mesh: Mesh): unknown {
+  const origineel = e instanceof Error ? e.message : String(e);
+  const treffer = /column (\d+)/.exec(origineel);
+  if (!treffer) return e;
+  const kolom = Number(treffer[1]);
+  const knoop = [...mesh.nodes.values()][Math.floor(kolom / 3)];
+  if (!knoop) return e;
+  let losseKnoop = true;
+  for (const beam of mesh.beamElements.values()) {
+    const eind = mesh.getBeamElementNodes(beam);
+    if (eind && (eind[0].id === knoop.id || eind[1].id === knoop.id)) {
+      losseKnoop = false;
+      break;
+    }
+  }
+  const richtingen = ['x', 'z', 'rotatie'] as const;
+  return new SingulierStelselFout({
+    meshKnoopId: knoop.id,
+    xMm: knoop.x * 1000,
+    zMm: knoop.y * 1000,
+    richting: richtingen[kolom % 3],
+    losseKnoop,
+    origineel,
+  });
+}
+
+/** `solveLinearSystem` voor het frame-pad, met de knoopvertaling van een singulier stelsel. */
+function losFrameStelselOp(K: Matrix, F: number[], mesh: Mesh): number[] {
+  try {
+    return solveLinearSystem(K, F);
+  } catch (e) {
+    throw vertaalSingulier(e, mesh);
+  }
+}
+
+/**
+ * Een rekenelement van lengte nul wordt GEWEIGERD. Het werd stil overgeslagen
+ * (`if (L < 1e-10) continue;`): de rest rekende door en de krachtsverdeling
+ * hoorde bij een ander model. Gemeten: twee ingeklemde uitkragingen, gekoppeld
+ * door een staaf van lengte nul, puntlast 10 kN — juist is 15 kNm en 5 kN per
+ * inklemming, gerekend werd 30 kNm en 10 kN bij de ene en 0 bij de andere,
+ * zonder uitzondering. `Assembler.ts` weigert zo'n element al op het gemengde
+ * pad; hier nu ook op het frame-pad.
+ */
+function nulElementFout(elementId: number, knoop: { x: number; y: number }): Error {
+  return new Error(
+    `Rekenelement ${elementId} heeft lengte nul: begin- en eindknoop liggen allebei op ` +
+    `(${mmTekst(knoop.x * 1000)}, ${mmTekst(knoop.y * 1000)}) mm. Zo'n element kan geen ` +
+    'kracht overbrengen, en overslaan zou een krachtsverdeling geven bij een ander model ' +
+    'dan is ingevoerd. Voeg de twee knopen samen of verwijder de staaf.'
+  );
+}
+
+/**
+ * Draagt de mesh werkzame ELEMENTlasten (verdeeld of thermisch), los van wat
+ * er na de scharniercondensatie van overblijft?
+ *
+ * Nodig omdat de lastvector na condensatie exact nul kan zijn terwijl er wél
+ * een last is: een uniforme ΔT op een staaf met een normaalkrachthuls levert
+ * lokaal [−N_th, 0, 0, +N_th, 0, 0], en dat valt door de condensatie weg. Het
+ * juiste antwoord is dan N = 0 met vrije uitzetting, niet de melding dat er
+ * geen last is — die liet de berekening van ALLE belastinggevallen falen.
+ */
+function heeftElementlasten(mesh: Mesh): boolean {
+  for (const beam of mesh.beamElements.values()) {
+    const verdeeld = getBeamDistributedLoads(beam);
+    if (verdeeld.some(dl => dl.qx !== 0 || dl.qy !== 0 || (dl.qxEnd ?? 0) !== 0 || (dl.qyEnd ?? 0) !== 0)) {
+      return true;
+    }
+    const material = mesh.getMaterial(beam.materialId);
+    if (material && calculateBeamThermalLocalForces(beam, material).some(v => v !== 0)) return true;
+  }
+  return false;
+}
+
 /**
  * Eén regel solverlogboek.
  *
@@ -177,7 +326,8 @@ function assembleGlobalStiffnessWithGeometric(
     const L = calculateBeamLength(n1, n2);
     const angle = calculateBeamAngle(n1, n2);
 
-    if (L < 1e-10) continue;
+    // Lengte nul: weigeren, niet overslaan — zie `nulElementFout`.
+    if (L < 1e-10) throw nulElementFout(beam.id, n1);
 
     // Linear elastic stiffness
     const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
@@ -371,7 +521,8 @@ function assembleGlobalStiffnessFNL(
     const L = calculateBeamLength(n1, n2);
     const angle = calculateBeamAngle(n1, n2);
 
-    if (L < 1e-10) continue;
+    // Lengte nul: weigeren, niet overslaan — zie `nulElementFout`.
+    if (L < 1e-10) throw nulElementFout(beam.id, n1);
 
     // Steel: use tangent stiffness from M-κ relationship
     const sectionState = sectionStates.get(beam.id);
@@ -803,7 +954,11 @@ export function solveNonlinear(
 
   // Check for loads
   const F = assembleForceVector(mesh);
-  const hasLoads = F.some(f => f !== 0);
+  // Een lastvector die na de scharniercondensatie nul is, is geen ontbrekende
+  // last zolang er elementlasten zijn — zie `heeftElementlasten`. Dan lost het
+  // stelsel K·u = 0 gewoon op (u = 0) en levert de krachtenrecovery de
+  // thermische en verdeelde lasten binnen de elementen.
+  const hasLoads = F.some(f => f !== 0) || heeftElementlasten(mesh);
   if (!hasLoads) {
     throw new Error('No loads applied - add forces to nodes');
   }
@@ -881,7 +1036,7 @@ export function solveNonlinear(
     log({ soort: 'info', tekst: `Stijfheidsmatrix geassembleerd (${K.rows}×${K.cols})` });
     const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
     log({ soort: 'info', tekst: 'Randvoorwaarden toegepast' });
-    displacements = solveLinearSystem(Kbc, Fbc);
+    displacements = losFrameStelselOp(Kbc, Fbc, mesh);
     log({ soort: 'info', tekst: 'Stelsel opgelost — één keer, want lineair' });
 
     const { beamForces, axialForces: newAxial } = calculateAllInternalForces(mesh, displacements);
@@ -967,8 +1122,12 @@ export function solveNonlinear(
       try {
         deltaU = solveLinearSystem(Kbc, residual);
       } catch (e) {
-        if (opts.geometricNonlinear) throw new Error(DIVERGENCE_MSG);
-        throw e;
+        // In de EERSTE iteratie van de eerste laststap is Kg nog nul (er zijn
+        // nog geen normaalkrachten): een singuliere K is dan een mechanisme
+        // (losse knoop, vrij draaiende knoop) en geen knik. Die melding
+        // "belasting boven de kniklast" zou naar de verkeerde oorzaak wijzen.
+        if (opts.geometricNonlinear && !(step === 1 && iter === 0)) throw new Error(DIVERGENCE_MSG);
+        throw vertaalSingulier(e, mesh);
       }
 
       // Update displacements
@@ -1958,7 +2117,7 @@ function solveWithAxialConstraints(
     // Assemble with current axial releases using the Assembler
     const K = assembleGlobalStiffnessMatrix(mesh, 'frame', axialReleasedBeamIds);
     const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
-    const displacements = solveLinearSystem(Kbc, Fbc);
+    const displacements = losFrameStelselOp(Kbc, Fbc, mesh);
 
     const { beamForces, axialForces } = calculateAllInternalForces(mesh, displacements);
 
@@ -2013,7 +2172,7 @@ function solveWithAxialConstraints(
   // If not converged, solve one final time with current releases
   const K = assembleGlobalStiffnessMatrix(mesh, 'frame', axialReleasedBeamIds);
   const { K: Kbc, F: Fbc } = applyBoundaryConditions(K, F, mesh);
-  const displacements = solveLinearSystem(Kbc, Fbc);
+  const displacements = losFrameStelselOp(Kbc, Fbc, mesh);
   const { beamForces } = calculateAllInternalForces(mesh, displacements);
 
   const reactions = K.multiplyVector(displacements);

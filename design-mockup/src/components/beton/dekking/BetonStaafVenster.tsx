@@ -159,11 +159,17 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   // De betonsterkteklassen van de kern; zonder deze lijst valt de bouwer op
   // zijn statische lijst terug en herkent hij een klasse die de kern wél kent
   // mogelijk niet.
+  // Mislukt het ophalen, dan niet stil: de reden staat bij de meldingen, want
+  // met de statische lijst kan een klasse die alleen de kern kent onherkend
+  // blijven.
+  const [klassenFout, setKlassenFout] = useState<string | null>(null);
   useEffect(() => {
     let actief = true;
     getConcreteClasses()
       .then((k) => actief && setKlassen(k))
-      .catch(() => undefined);
+      .catch((e: unknown) => {
+        if (actief) setKlassenFout(e instanceof Error ? e.message : String(e));
+      });
     return () => {
       actief = false;
     };
@@ -631,6 +637,11 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
             )}
           </div>
 
+          {klassenFout && (
+            <div className="beton-fout">
+              Betonklassen niet geladen uit de rekenkern (de statische lijst wordt gebruikt): {klassenFout}
+            </div>
+          )}
           <Meldingen
             fout={fout}
             scheurFout={scheurFout}

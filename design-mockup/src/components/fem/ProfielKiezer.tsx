@@ -379,11 +379,16 @@ export default function ProfielKiezer({
   const [milieuklassen, setMilieuklassen] = useState<ExposureClassInfo[] | undefined>(
     undefined,
   );
+  // Mislukt het ophalen, dan staat de reden onder de korfvelden in plaats van
+  // een lege keuzelijst zonder uitleg.
+  const [milieuklassenFout, setMilieuklassenFout] = useState<string | null>(null);
   useEffect(() => {
     let actief = true;
     haalMilieuklassen()
       .then((m) => actief && setMilieuklassen(m))
-      .catch(() => undefined);
+      .catch((e: unknown) => {
+        if (actief) setMilieuklassenFout(e instanceof Error ? e.message : String(e));
+      });
     return () => {
       actief = false;
     };
@@ -1351,6 +1356,11 @@ export default function ProfielKiezer({
                 milieuklassen={milieuklassen}
                 doorsnede={betonDoorsnede}
               />
+              {milieuklassenFout && (
+                <div className="beton-fout" role="alert">
+                  Milieuklassen niet geladen uit de rekenkern: {milieuklassenFout}
+                </div>
+              )}
               {betonKorfFout && (
                 <div className="beton-fout" role="alert">{betonKorfFout}</div>
               )}

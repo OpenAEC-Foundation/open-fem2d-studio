@@ -156,5 +156,40 @@ log("\n[4] Statisch bepaald raamwerk (houten-raamwerk-geometrie): krachten gelij
   check("w(2E) = w(E)/2", w2E, wC / 2, 0.1);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Een staaf ZONDER materiaal is niet van S235. `resolveSection` las
+// `material ?? "S235"`, dus een MCP-model of een met de hand bewerkt
+// projectbestand zonder materiaal rekende stil met staal — en de toetsing met
+// f_y = 235 alsof dat was ingevoerd. Nu: onbekend, met reden, en het rekenpad
+// stopt.
+log("\n[9] Staaf zonder materiaal → geweigerd, niet S235");
+{
+  const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
+  const waar = (name, cond, detail = "") => {
+    if (cond) { passed++; log(`  ✓ ${name}`); }
+    else      { failed++; log(`  ✗ ${name}${detail ? ` — ${detail}` : ""}`); }
+  };
+  for (const materiaal of [undefined, "", "  "]) {
+    const s = resolveSection(materiaal, "HEA 200");
+    waar(`materiaal ${JSON.stringify(materiaal)}: doorsnede onbekend, met reden`,
+      s.bron === "default" && /geen materiaal/.test(s.reden ?? ""), JSON.stringify(s));
+  }
+  let fout = null;
+  try {
+    bouwMultiInput({
+      nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 5000, z: 0 }],
+      beams: [{ id: 7, from: 1, to: 2, profile: "HEA 200" }],
+      supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+      plates: [], loadCases: [{ id: 1, name: "G", type: "dead" }],
+      loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 7, q: -5 }],
+      selfWeightEnabled: false, scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+    });
+  } catch (e) { fout = e.message; }
+  waar("het rekenpad stopt, met staaf 7 in de melding", /staaf 7: er is geen materiaal/.test(fout ?? ""), fout);
+  // En een staaf MET materiaal rekent zoals altijd: staal-db, E = 210 000.
+  const met = resolveSection("S235", "HEA 200");
+  waar("met materiaal: ongewijzigd uit de staaldatabase", met.bron === "staal-db" && met.E === 210000);
+}
+
 log(`\n═══ TOTAAL: ${passed} pass, ${failed} fail ═══`);
 process.exit(failed > 0 ? 1 : 0);

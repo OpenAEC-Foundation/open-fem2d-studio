@@ -938,8 +938,12 @@ export function valideerModel(rauw: unknown): ValidatieUitkomst {
   for (const n of nodes) {
     if (!actief.has(n.id)) {
       warnings.push(
-        `Knoop ${n.id} hangt aan geen enkele staaf of plaat en telt niet mee ` +
-          "in de berekening.",
+        // "Telt niet mee" klopte niet: in het raamwerkpad krijgt elke knoop
+        // drie vrijheidsgraden, en een losse knoop maakt het stelsel dan
+        // singulier (gemeten: de berekening faalt op die knoop).
+        `Knoop ${n.id} hangt aan geen enkele staaf of plaat. Zo'n losse knoop ` +
+          "draagt niets en maakt het stelsel singulier zodra hij kan bewegen of " +
+          "draaien — verwijder hem, of verbind hem met de constructie.",
       );
     }
   }

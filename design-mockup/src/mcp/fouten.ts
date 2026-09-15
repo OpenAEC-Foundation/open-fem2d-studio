@@ -283,6 +283,34 @@ const AFBEELDINGEN: Afbeelding[] = [
     code: "MODEL_ONOPLOSBAAR",
     nl: (m) => m.input,
   },
+  {
+    // engine.ts (buildMesh): een staaf van lengte nul wordt geweigerd in
+    // plaats van stil overgeslagen.
+    patroon: /^Staaf \d+ heeft lengte nul:/,
+    code: "MODEL_ONOPLOSBAAR",
+    nl: (m) => m.input,
+  },
+  {
+    // NonlinearSolver.ts (nulElementFout): hetzelfde, voor een rekenelement.
+    patroon: /^Rekenelement \d+ heeft lengte nul:/,
+    code: "MODEL_ONOPLOSBAAR",
+    nl: (m) => m.input,
+  },
+  {
+    // NonlinearSolver.ts (SingulierStelselFout) via engine.ts: het singuliere
+    // stelsel met knoop en richting in plaats van een kolomnummer. Het is
+    // géén "mechanisme"-melding meer: een vrij draaiende knoop is een
+    // modelfout met een aanwijsbare plek.
+    patroon: /^Het stelsel is singulier: /,
+    code: "MODEL_ONOPLOSBAAR",
+    nl: (m) => m.input,
+  },
+  {
+    // engine.ts (eisEindigeUitkomst): NaN of oneindig in het resultaat.
+    patroon: /^De berekening leverde een ongeldig getal/,
+    code: "MODEL_ONOPLOSBAAR",
+    nl: (m) => m.input,
+  },
 ];
 
 /**

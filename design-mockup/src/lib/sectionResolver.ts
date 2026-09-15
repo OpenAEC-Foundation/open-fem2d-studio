@@ -226,10 +226,12 @@ type Materiaalsoort = "vrij" | "hout" | "beton" | "staal";
  * doorsnede alleen bij staal werd herkend. Materiaal en doorsnede staan nu
  * los van elkaar, en dus kan elke doorsnedevorm met elk materiaal.
  */
-function eVanMateriaal(material: string | undefined): { E: number; soort: Materiaalsoort } {
+function eVanMateriaal(material: string): { E: number; soort: Materiaalsoort } {
   const vrij = parseVrijMateriaal(material);
   if (vrij) return { E: vrij.eMod, soort: "vrij" };
-  const mat = material ?? "S235";
+  // Een ontbrekend materiaal komt hier niet meer: `resolveSection` houdt het
+  // vooraf tegen met een reden, in plaats van het als S235 te lezen.
+  const mat = material;
   if (mat in CONCRETE_E_CM) return { E: CONCRETE_E_CM[mat], soort: "beton" };
   const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(mat) || mat in TIMBER_E_MEAN;
   // De terugval 11000 (C24) staat er alleen voor een sterkteklasse die de
@@ -250,7 +252,23 @@ function voorbeeldProfiel(soort: Materiaalsoort): string {
 }
 
 export function resolveSection(material: string | undefined, profile: string | undefined): ResolvedSection {
-  const mat = material ?? "S235";
+  // ── 0. Geen materiaal ─────────────────────────────────────────────────
+  //
+  // Een staaf ZONDER materiaal is niet van S235: het materiaal is onbekend.
+  // Hier stond `material ?? "S235"`, waardoor een MCP-model of een met de hand
+  // bewerkt projectbestand zonder `material` stil met staal rekende — voor de
+  // stijfheid én, verderop, met f_y = 235 in de toetsing, alsof dat was
+  // ingevoerd. Dezelfde regel als bij een onbekende doorsnede: lezers tonen de
+  // reden, rekenpaden (`doorsnedeVoorSolver`, `onbekendeDoorsneden`) stoppen.
+  if (material === undefined || material.trim() === "") {
+    return {
+      ...DEFAULT_DOORSNEDE,
+      reden:
+        "er is geen materiaal toegewezen — kies een staalsoort, houtklasse, " +
+        "betonklasse of vrij materiaal; een staaf zonder materiaal wordt niet als S235 aangenomen",
+    };
+  }
+  const mat = material;
   const { E, soort } = eVanMateriaal(material);
 
   // ── 1. Eigen doorsnede uit de profieleditor ────────────────────────────
