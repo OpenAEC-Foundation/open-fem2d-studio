@@ -30,6 +30,7 @@
  * kanttekening in `mcp/valideerModel.ts`.
  */
 import type { Beam, Node, Plate, Support } from "../components/fem/femTypes";
+import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "./materiaalDubbelzinnig";
 
 /**
  * Tekentolerantie in mm. Het model rekent in mm en de gebruiker tekent met
@@ -48,7 +49,9 @@ export type BevindingSoort =
   /** Staafuiteinde met maar één staaf en geen oplegging. */
   | "vrijUiteinde"
   /** Knoop die aan geen enkele staaf of plaat vastzit. */
-  | "losseKnoop";
+  | "losseKnoop"
+  /** Materiaalnaam die hout én de korte naam van een betonklasse is ("C30"). */
+  | "dubbelzinnigMateriaal";
 
 /**
  * Bewerking die de bevinding opheft. De store voert hem uit; de controle
@@ -81,7 +84,14 @@ export interface Bevinding {
 /** Het deel van het model dat deze controle leest. */
 export interface ControleModel {
   nodes: Pick<Node, "id" | "x" | "z">[];
-  beams: Pick<Beam, "id" | "from" | "to">[];
+  /**
+   * Materiaal en korf zijn optioneel: alleen de materiaalcontrole leest ze.
+   * De korf is bewust `unknown`: de MCP-poort geeft een rauw model door.
+   */
+  beams: (Pick<Beam, "id" | "from" | "to"> & {
+    material?: string;
+    checkConfig?: { betonKorf?: unknown } | null;
+  })[];
   supports?: Pick<Support, "nodeId">[];
   plates?: Pick<Plate, "id" | "nodeIds">[];
 }
@@ -277,6 +287,32 @@ export function zoekLosseKnopen(model: ControleModel): Bevinding[] {
 }
 
 /**
+ * Een materiaalnaam die hout én de korte naam van een betonklasse is
+ * ("C16", "C20", "C30", "C35"). De solver en de houttoets rekenen hout; de
+ * betontoets slaat de staaf over. Tot september 2026 zei niemand dat, en de
+ * betonbouwer nam de staaf óók nog als beton — een spooktoets op de
+ * houtstijfheid (basisaudit nr 16). Waarschuwing zonder korf; met een
+ * wapeningskorf op de staaf botsen de twee lezingen en is het een fout.
+ */
+export function zoekDubbelzinnigMateriaal(model: ControleModel): Bevinding[] {
+  const uit: Bevinding[] = [];
+  for (const b of model.beams) {
+    const d = dubbelzinnigMateriaal(b.material);
+    if (!d) continue;
+    const metKorf = b.checkConfig?.betonKorf !== undefined && b.checkConfig?.betonKorf !== null;
+    uit.push({
+      soort: "dubbelzinnigMateriaal",
+      ernst: metKorf ? "fout" : "waarschuwing",
+      // Geen knopen: het canvas hoeft niets op te lichten; de staaf staat erbij.
+      nodeIds: [],
+      beamId: b.id,
+      tekst: dubbelzinnigMateriaalTekst(b.id, d, metKorf),
+    });
+  }
+  return uit;
+}
+
+/**
  * De volledige controle: fouten eerst, dan waarschuwingen, binnen elke groep
  * op knoopnummer. Een vrij uiteinde dat óók al als fout is gemeld (de
  * kolomvoet die op een ligger ligt) wordt weggelaten — één oorzaak, één regel.
@@ -285,15 +321,19 @@ export function controleerModel(
   model: ControleModel,
   tolMm: number = CONTROLE_TOL_MM,
 ): Bevinding[] {
+  const materiaal = zoekDubbelzinnigMateriaal(model);
   const fouten = [
     ...zoekKnopenOpStaaf(model, tolMm),
     ...zoekDubbeleKnopen(model, tolMm),
+    ...materiaal.filter((m) => m.ernst === "fout"),
   ];
   const alGemeld = new Set<number>();
   for (const f of fouten) for (const id of f.nodeIds) alGemeld.add(id);
-  const waarschuwingen = [...zoekVrijeUiteinden(model), ...zoekLosseKnopen(model)].filter(
-    (w) => !w.nodeIds.some((id) => alGemeld.has(id)),
-  );
+  const waarschuwingen = [
+    ...zoekVrijeUiteinden(model),
+    ...zoekLosseKnopen(model),
+    ...materiaal.filter((m) => m.ernst === "waarschuwing"),
+  ].filter((w) => !w.nodeIds.some((id) => alGemeld.has(id)));
   const opNummer = (a: Bevinding, b: Bevinding) =>
     (a.nodeIds[0] ?? 0) - (b.nodeIds[0] ?? 0) || (a.beamId ?? 0) - (b.beamId ?? 0);
   return [...fouten.sort(opNummer), ...waarschuwingen.sort(opNummer)];

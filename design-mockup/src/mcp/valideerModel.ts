@@ -70,6 +70,9 @@ import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
 // Eén regel voor "telt dit geval mee": dezelfde functie voedt de projectboom,
 // het rapport en de solve-waarschuwingen van de sidecar.
 import { meldingenBelastinggevallen } from "../lib/combinatieBeheer";
+// "C30" is hout én de korte naam van C30/37 — dezelfde melding als de
+// modelcontrole in de app (basisaudit nr 16).
+import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "../lib/materiaalDubbelzinnig";
 
 /** Uitkomst van de volledige droogloop; alle teksten zijn Nederlands. */
 export interface ValidatieUitkomst {
@@ -909,6 +912,7 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
   const nodes = (m.nodes ?? []) as { id: number; x: number; z: number }[];
   const beams = (m.beams ?? []) as {
     id: number; from: number; to: number; material?: string; profile?: string;
+    checkConfig?: { betonKorf?: unknown };
   }[];
   const supports = (m.supports ?? []) as { nodeId: number; type: string; k?: number }[];
   const plates = (m.plates ?? []) as {
@@ -977,6 +981,14 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
           `+ profiel "${b.profile ?? "(leeg)"}". De solver zou terugvallen op ` +
           "HEA 160 / S235 en met een andere doorsnede rekenen dan opgegeven.",
       );
+    }
+    // Een naam die hout én (kort) beton is: er wordt hout gerekend, en dat
+    // hoort de gebruiker te weten. Met een wapeningskorf erbij botsen de twee
+    // lezingen en is het een fout — anders zou de korf stil niets doen.
+    const dubbel = dubbelzinnigMateriaal(b.material);
+    if (dubbel) {
+      const metKorf = b.checkConfig?.betonKorf !== undefined && b.checkConfig?.betonKorf !== null;
+      (metKorf ? errors : warnings).push(dubbelzinnigMateriaalTekst(b.id, dubbel, metKorf));
     }
   }
 

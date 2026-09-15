@@ -257,6 +257,10 @@ const ALLEEN_BRON = new Map([
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
+  [
+    "materiaal-dubbelzinnig",
+    "bewaakt dat een korte naam als \"C30\" overal hout is en nooit stil beton (basisaudit nr 16); leest daarvoor de modelcontrole (lib/modelControle) en de betonstijfheidslus (lib/betonStijfheid), die allebei buiten de barrel staan",
+  ],
   ["modelmapping", "vergelijkt de bronmapping met een gouden JSON"],
   [
     "fysisch-nietlineair",

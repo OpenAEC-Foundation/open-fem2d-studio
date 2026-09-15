@@ -5,7 +5,9 @@
  *
  * Herkenning in dit datamodel:
  *  - Een staaf is beton wanneer `beam.material` een betonsterkteklasse uit
- *    tabel 3.1 is ("C30/37", of kort "C30"). De lijst komt runtime uit de
+ *    tabel 3.1 is, met de VOLLEDIGE naam ("C30/37"). De korte naam "C30" is
+ *    geen beton: dat is in EN 338 een houtsterkteklasse — zie
+ *    `matchSupportedConcreteClass`. De lijst komt runtime uit de
  *    kern-opdracht `list_concrete_classes`; de statische lijst hieronder is
  *    de browser-fallback en moet daarmee overeenkomen.
  *  - De doorsnede komt uit de profielnaam: "300x500" voor een rechthoek,
@@ -109,8 +111,18 @@ export const DEFAULT_N_STRIPS = 50;
 const GENERIC_CONCRETE_NAMES = ["concrete", "beton", "reinforced concrete", "gewapend beton"];
 
 /**
- * Match een materiaalnaam op een ondersteunde betonsterkteklasse. "C30" en
- * "C30/37" leveren allebei "C30/37"; spaties en hoofdletters doen niet mee.
+ * Match een materiaalnaam op een ondersteunde betonsterkteklasse — alleen op
+ * de VOLLEDIGE naam ("C30/37"); spaties en hoofdletters doen niet mee.
+ *
+ * Tot september 2026 telde de korte naam ook: "C30" gaf "C30/37". Maar "C16",
+ * "C20", "C30" en "C35" zijn houtsterkteklassen (EN 338), en `resolveSection`
+ * rekende zo'n staaf al als hout (E = 12 000 N/mm², eigen gewicht van hout)
+ * terwijl deze bouwer hem als beton toetste — een spooktoets op de verkeerde
+ * stijfheid, zonder melding (basisaudit nr 16). De Rust-kant
+ * (`is_betonklasse` in fem_tools.rs) hanteerde al de volledige naam; nu doet
+ * de bouwer dat ook. Wie beton bedoelt, schrijft "C30/37"; de kiezers in de
+ * app doen dat al. De dubbelzinnige naam zelf wordt gemeld door
+ * `lib/materiaalDubbelzinnig.ts` (modelcontrole en MCP-poort).
  */
 export function matchSupportedConcreteClass(
   materialName: string | undefined,
@@ -119,11 +131,7 @@ export function matchSupportedConcreteClass(
   if (!materialName) return null;
   const gezocht = materialName.replace(/\s/g, "").toLowerCase();
   if (!gezocht) return null;
-  const hit = supportedClasses.find((c) => {
-    const lang = c.toLowerCase();
-    const kort = lang.split("/")[0];
-    return lang === gezocht || kort === gezocht;
-  });
+  const hit = supportedClasses.find((c) => c.toLowerCase() === gezocht);
   return hit ?? null;
 }
 
