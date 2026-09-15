@@ -22,13 +22,15 @@ import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
 
 export default function CombinationsSection() {
   const { t } = useTranslation("ribbon");
-  const { combinations, overgeslagenCombinaties, loadCases, loads, selfWeightEnabled } =
+  const { combinations, overgeslagenCombinaties, loadCases, loads, selfWeightEnabled, gevolgklasse } =
     useReportData();
   const overgeslagen = new Map(overgeslagenCombinaties.map((o) => [o.id, o] as const));
   const actief = combinations.filter((c) => !overgeslagen.has(c.id));
-  // Dezelfde regel als de projectboom en de MCP-antwoorden: één functie.
+  // Dezelfde regel als de projectboom en de MCP-antwoorden: één functie — ook
+  // voor een ontbrekende standaardcombinatie en een blijvend geval met
+  // factoren die niet bij zijn type passen.
   const meldingen = meldingenBelastinggevallen({
-    loadCases, combinations: actief, loads, selfWeightEnabled,
+    loadCases, combinations: actief, alleCombinaties: combinations, gevolgklasse, loads, selfWeightEnabled,
   });
   const klassen = [...new Set(combinations.flatMap((c) => (c.standaard ? [c.standaard.gevolgklasse] : [])))];
   const aantalEigen = combinations.filter((c) => !c.standaard).length;

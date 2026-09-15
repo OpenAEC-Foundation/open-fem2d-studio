@@ -358,6 +358,7 @@ function App() {
     // kunnen nazien.
     combinations: fem.combinations,
     overgeslagenCombinaties: fem.overgeslagenCombinaties,
+    gevolgklasse: fem.gevolgklasse,
     structuralGrid: fem.structuralGrid,
     selfWeightEnabled: fem.selfWeightEnabled,
     // R3 — resultaten voor de resultaatsecties. useFemStore zet deze op null

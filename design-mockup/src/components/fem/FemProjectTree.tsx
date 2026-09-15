@@ -622,7 +622,12 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
 
             <TreeNode label="Belastingen" defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l-3 3h2v8h2V4h2z"/></svg>}>
               {belastingMeldingen.filter((m) => m.caseId === null).map((m, i) => (
-                <div key={`lcm${i}`} className="fem-tree-leaf fem-tree-melding-fout" title={m.tekst}>
+                <div
+                  key={`lcm${i}`}
+                  className={`fem-tree-leaf fem-tree-melding-fout${m.vervangAdvies ? " clickable" : ""}`}
+                  title={m.tekst}
+                  onClick={m.vervangAdvies ? () => onOpenCombinaties?.() : undefined}
+                >
                   <span className="fem-tree-leaf-label">⚠ {m.tekst.split(". ")[0]}.</span>
                 </div>
               ))}
@@ -646,7 +651,8 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                       {(fout || waarschuwing) && <span style={{ marginRight: 4 }}>⚠</span>}
                       {lc.name}
                       {fout && lc.type === "other" && " — kies een type"}
-                      {fout && lc.type !== "other" && " — telt niet mee"}
+                      {fout && lc.type !== "other" &&
+                        (/draagt factoren die niet/.test(fout.tekst) ? " — verkeerde factoren" : " — telt niet mee")}
                     </span>
                     <span className="fem-tree-leaf-value">{count}</span>
                   </div>

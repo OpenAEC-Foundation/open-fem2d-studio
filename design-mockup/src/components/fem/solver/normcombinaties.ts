@@ -210,6 +210,18 @@ export type StandaardCombinatie = Omit<LoadCombination, "id"> & {
   standaard: StandaardHerkomst;
 };
 
+/**
+ * De sleutel van de VOLLEDIGE opstelling waar deze sleutel bij hoort: zonder
+ * het deel "|zonder:<ids>". "6.10b|Q:A|zonder:2+5" → "6.10b|Q:A", "6.10a" →
+ * "6.10a". Een opstelling met afwezige gevallen is alleen zinvol naast de
+ * volledige opstelling van dezelfde uitdrukking en leidende last; zie
+ * `synchroniseerStandaard` in lib/combinatieBeheer.ts.
+ */
+export function basisSleutel(sleutel: string): string {
+  const i = sleutel.indexOf("|zonder:");
+  return i < 0 ? sleutel : sleutel.slice(0, i);
+}
+
 /** Het deel van een belastinggeval dat de generator leest. */
 export type GevalInvoer = Pick<LoadCase, "id" | "name" | "type" | "categorie" | "gegenereerd">;
 

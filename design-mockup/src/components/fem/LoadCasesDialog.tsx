@@ -239,6 +239,30 @@ export default function LoadCasesDialog({
 
           {tab === "combos" && (
             <>
+              {/* Een FOUT in de combinaties zelf (een ontbrekende standaard-
+                  combinatie, een blijvend geval met vreemde factoren) wijst naar
+                  "Vervang door standaardcombinaties". Die actie hoort er dan ook
+                  te staan als de melding bij het openen al gesloten is, of als
+                  het project nooit een ouder bestand was. */}
+              {!combinatieAfwijking && belastingMeldingen.some((m) => m.vervangAdvies) && (
+                <div className="lcd-afwijking">
+                  {belastingMeldingen.filter((m) => m.vervangAdvies).map((m, i) => (
+                    <p key={`v-${i}`} className={`lcd-melding lcd-melding-${m.niveau}`}>{m.tekst}</p>
+                  ))}
+                  <div className="lcd-afwijking-knoppen">
+                    <button
+                      className="lcd-btn-primary"
+                      onClick={() => {
+                        if (confirm("Alle combinaties (behalve die van de windgenerator) vervangen door de standaardset? Uw eigen combinaties gaan daarbij verloren.")) {
+                          onVervangDoorStandaard?.();
+                        }
+                      }}
+                    >
+                      Vervang door standaardcombinaties
+                    </button>
+                  </div>
+                </div>
+              )}
               {combinatieAfwijking && (
                 <div className="lcd-afwijking">
                   <p>{combinatieAfwijking.samenvatting}</p>

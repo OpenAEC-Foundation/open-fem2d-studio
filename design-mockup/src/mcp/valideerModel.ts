@@ -64,6 +64,7 @@ import { resolveSection } from "../lib/sectionResolver";
 import { SUPPORTED_REINFORCEMENT_GRADES } from "../lib/betonCheckBuilder";
 import type { LoadCase } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
 // Eén regel voor "telt dit geval mee": dezelfde functie voedt de projectboom,
 // het rapport en de solve-waarschuwingen van de sidecar.
 import { meldingenBelastinggevallen } from "../lib/combinatieBeheer";
@@ -858,6 +859,12 @@ export interface ValidatieOpties {
    * controle achterwege.
    */
   combinaties?: LoadCombination[];
+  /**
+   * De volledige lijst (ook wat de selectie overslaat) en de gevolgklasse:
+   * daarmee meldt de droogloop ook een ontbrekende standaardcombinatie.
+   */
+  alleCombinaties?: LoadCombination[];
+  gevolgklasse?: Gevolgklasse;
 }
 
 export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): ValidatieUitkomst {
@@ -1154,6 +1161,8 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
   const gevalMeldingen = meldingenBelastinggevallen({
     loadCases: loadCases as unknown as Pick<LoadCase, "id" | "name" | "type">[],
     combinations: opties.combinaties ?? [],
+    alleCombinaties: opties.alleCombinaties,
+    gevolgklasse: opties.gevolgklasse,
     loads: loads as unknown as { caseId: number }[],
     selfWeightEnabled: m.selfWeightEnabled === true,
   }).filter((mld) => opties.combinaties !== undefined || mld.caseId === null);

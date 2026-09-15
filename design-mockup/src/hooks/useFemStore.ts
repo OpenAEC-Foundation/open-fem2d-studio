@@ -1587,12 +1587,14 @@ export function useFemStore(opties?: {
   }, []);
 
   // Wat er aan de gevallen niet meetelt — tegen de ACTIEF doorgerekende
-  // combinaties, want alleen die bepalen de toetsing.
+  // combinaties, want alleen die bepalen de toetsing. De volledige lijst en de
+  // klasse erbij: een ontbrekende standaardcombinatie is ook een fout.
   const belastingMeldingen = useMemo(
     () => meldingenBelastinggevallen({
-      loadCases, combinations: actieveCombinaties, loads, selfWeightEnabled,
+      loadCases, combinations: actieveCombinaties, alleCombinaties: combinations, gevolgklasse,
+      loads, selfWeightEnabled,
     }),
-    [loadCases, actieveCombinaties, loads, selfWeightEnabled],
+    [loadCases, actieveCombinaties, combinations, gevolgklasse, loads, selfWeightEnabled],
   );
 
   const [selection, setSelection] = useState<Selection>(null);

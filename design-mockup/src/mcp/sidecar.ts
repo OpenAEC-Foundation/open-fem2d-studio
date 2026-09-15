@@ -673,9 +673,14 @@ function rekenDoor(payload: Record<string, unknown>) {
   // Een belastinggeval met last dat in geen enkele doorgerekende UGT-combinatie
   // meetelt, en eigen gewicht zonder blijvend geval. Tot september 2026 kwam
   // hier niets: een geval van type "overig" telde stil als nul (basisaudit nr 1).
+  // En — dezelfde functie als de app — een blijvend geval met factoren die
+  // niet bij een blijvende belasting passen, en standaardcombinaties die
+  // ontbreken: dan is de combinatieset stil een deel van de juiste set.
   for (const m of meldingenBelastinggevallen({
     loadCases: gelezen.model.loadCases,
     combinations: combinaties,
+    alleCombinaties,
+    gevolgklasse,
     loads: gelezen.model.loads,
     selfWeightEnabled: gelezen.model.selfWeightEnabled,
   })) {
@@ -808,7 +813,9 @@ function opValidate(payload: Record<string, unknown>) {
   const actief = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
     loadCases: gelezen.model.loadCases, gevolgklasse: klasse,
   }).actief;
-  const uitkomst = valideerModel(gelezen.rauw, { combinaties: actief });
+  const uitkomst = valideerModel(gelezen.rauw, {
+    combinaties: actief, alleCombinaties: lijst, gevolgklasse: klasse,
+  });
   return {
     ok: uitkomst.ok,
     errors: uitkomst.errors,
