@@ -29,6 +29,18 @@
 //! herkomst van de kniklengte. Waarde, unity check, status en alle bestaande
 //! variabelen en tussenwaarden zijn gelijk gebleven — bij het bijwerken per veld
 //! nagelopen.
+//!
+//! WAAROM DE SNAPSHOT OP 15 SEPTEMBER 2026 NOGMAALS IS VERSCHOVEN (kipvelden)
+//! Eén regel erbij, geen getal veranderd: de deelstap `uitgangspunten` van de
+//! kiptoets krijgt de notitie "Overzicht per kipveld" met per veld L_st, β,
+//! L_kip en M_cr. Die getallen rekende de kern al uit om het maatgevende veld
+//! te kiezen, maar ze stonden nergens. Per veld nagelopen tegen NB.NB.4.3,
+//! L_kip = (1,4 − 0,8·β)·L_st met 1,0 ≤ L_kip/L_st ≤ 1,4:
+//! veld 1 β = 1,000 → 0,6 → ondergrens 1,0 → 1667 mm;
+//! veld 2 β = 0,639 → 0,889 → ondergrens 1,0 → 1666 mm;
+//! veld 3 β = −0,118 → 1,494 → bovengrens 1,4 → 1,4·1667 = 2334 mm.
+//! Veld 1 heeft de laagste M_cr (10 062,4 kNm) en blijft maatgevend; L_kip,
+//! M_cr, χ_LT, de unity check en alle overige velden zijn ongewijzigd.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};

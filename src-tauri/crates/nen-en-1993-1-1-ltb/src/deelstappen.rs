@@ -38,7 +38,7 @@ use section_properties::SectionProperties;
 
 use crate::en_general::GedrukteFlens;
 
-use crate::{lambda_chi, nb_annex, nl, Veldresultaat};
+use crate::{l_kip_toelichting, lambda_chi, nb_annex, nl, nl_zonder_min_nul, Veldresultaat};
 
 // ── Opmaakhulpjes ─────────────────────────────────────────────────────────────
 
@@ -179,6 +179,10 @@ pub(crate) struct Kipgegevens<'a> {
     pub grade: &'a SteelGrade,
     pub l_g_mm: f64,
     pub v: &'a Veldresultaat,
+    /// Alle doorgerekende kipvelden vanaf het staafbegin, het maatgevende
+    /// incluis. Alleen voor het overzicht in de uitgangspunten; zie
+    /// `maatgevend_kipveld`.
+    pub alle_velden: &'a [Veldresultaat],
     pub q_equiv_n_per_mm: f64,
     pub z_a_mm: f64,
     pub s_mm: f64,
@@ -245,6 +249,33 @@ fn uitgangspunten(g: &Kipgegevens) -> Deelstap {
              is daarmee maatgevend; alle waarden hieronder horen bij dát veld.",
             v.aantal_velden,
             v.index + 1
+        ));
+        // Het overzicht per veld. Zonder dit is de keuze niet na te rekenen: bij
+        // steunen op de derdepunten heeft het middenveld L_kip = L_st en het
+        // eindveld L_kip = 1,4·L_st (NB.NB.4.3 met β = 0), en alleen de M_cr van
+        // beide naast elkaar laat zien waarom het eindveld wint.
+        let overzicht = g
+            .alle_velden
+            .iter()
+            .map(|w| {
+                format!(
+                    "veld {}: L_st = {} mm, β = {}, L_kip = {} mm, M_cr = {} kNm",
+                    w.index + 1,
+                    nl(w.l_st_mm, 0),
+                    nl_zonder_min_nul(w.beta, 3),
+                    nl(w.l_kip_mm, 0),
+                    nl(w.m_cr_knm, 1)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        notes.push(format!(
+            "Overzicht per kipveld: {overzicht}. Maatgevend is het veld met de laagste M_cr, \
+             niet vanzelf het langste veld of het veld met de grootste steunafstand: β, B* en \
+             C₁ verschillen per veld, en een veld tussen een gaffel en een kipsteun krijgt \
+             volgens NB.NB.4.3 bij β ≤ 0 een L_kip van 1,4·L_st. De laagste M_cr geeft de \
+             grootste λ̄_LT en daarmee de kleinste χ_LT, in lijn met NB.NB.2(1), dat bij 6.3.3 \
+             de kleinste χ_LT van de afzonderlijke velden voorschrijft."
         ));
     } else {
         notes.push(
@@ -578,6 +609,9 @@ fn l_kip_stap(g: &Kipgegevens) -> Deelstap {
             nl(factor_ruw.clamp(1.0, 1.4), 1)
         ));
     }
+    // Waarom L_kip hier langer is dan de steunafstand — dezelfde tekst die de
+    // kiptoets zelf in zijn notities zet.
+    notes.extend(l_kip_toelichting(v));
     if v.l_kip_mm > g.l_g_mm * (1.0 + 1e-9) {
         notes.push(format!(
             "L_kip = {} mm is groter dan de afstand tussen de gaffels L_g = {} mm. \
