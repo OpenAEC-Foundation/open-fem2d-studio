@@ -149,6 +149,12 @@ const BUNDEL_TESTS = new Set([
   // buiten geeft, dus als de bundel daar afwijkt van de bron, moet dat hier
   // opvallen.
   "sneden",
+  // Singulier stelsel: dezelfde Nederlandse melding (knoop, richting, oorzaak)
+  // op het raamwerkpad en op het gemengde pad. Praat alleen met `engine` en
+  // `bouwMultiInput` — allebei in de barrel. Hoort juist óók tegen de bundel:
+  // de MCP-weg geeft deze melding door aan de client, en een bundel die het
+  // gemengde pad nog als "column 5" meldt, laat de gebruiker raden.
+  "singulier-melding",
   // Staal herkennen aan de profieldatabase: elke sleutel van profiles.json
   // moet door `isSteelProfile` en `buildSteelCheckInputs`. Praat met de
   // staalbouwer, `engine` en `combinations` — alle drie in de barrel. Hoort

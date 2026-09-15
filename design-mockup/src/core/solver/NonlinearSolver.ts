@@ -104,16 +104,29 @@ export class SingulierStelselFout extends Error {
 
 /**
  * Vertaal een "column N"-melding van de stelseloplosser naar een
- * [`SingulierStelselFout`]. Frame-pad: drie vrijheidsgraden per knoop
- * (u, w, θ), in de invoegvolgorde van `mesh.nodes` — dezelfde nummering als
- * `applyBoundaryConditions`. Elke andere fout gaat ongewijzigd door.
+ * [`SingulierStelselFout`]. Drie vrijheidsgraden per knoop (u, w, θ).
+ *
+ * Welke knoop bij kolom N hoort, verschilt per pad:
+ *  - frame-pad: álle knopen in de invoegvolgorde van `mesh.nodes` — dezelfde
+ *    nummering als `applyBoundaryConditions`;
+ *  - gemengd pad (staven + schijven): alleen de ACTIEVE knopen, in de
+ *    volgorde van `buildNodeIdToIndex`; die tabel geeft de aanroeper mee.
+ * Tot september 2026 vertaalde alleen het frame-pad; het gemengde pad gaf
+ * dezelfde vakwerkknoop nog als "column 5" door (gemeten: vakwerk met een
+ * losse wandschijf ernaast). Elke andere fout gaat ongewijzigd door.
  */
-function vertaalSingulier(e: unknown, mesh: Mesh): unknown {
+function vertaalSingulier(
+  e: unknown,
+  mesh: Mesh,
+  knoopVanIndex?: (index: number) => { id: number } | undefined,
+): unknown {
   const origineel = e instanceof Error ? e.message : String(e);
   const treffer = /column (\d+)/.exec(origineel);
   if (!treffer) return e;
   const kolom = Number(treffer[1]);
-  const knoop = [...mesh.nodes.values()][Math.floor(kolom / 3)];
+  const index = Math.floor(kolom / 3);
+  const knoopId = knoopVanIndex ? knoopVanIndex(index)?.id : [...mesh.nodes.values()][index]?.id;
+  const knoop = knoopId === undefined ? undefined : mesh.nodes.get(knoopId);
   if (!knoop) return e;
   let losseKnoop = true;
   for (const beam of mesh.beamElements.values()) {
@@ -121,6 +134,11 @@ function vertaalSingulier(e: unknown, mesh: Mesh): unknown {
     if (eind && (eind[0].id === knoop.id || eind[1].id === knoop.id)) {
       losseKnoop = false;
       break;
+    }
+  }
+  if (losseKnoop) {
+    for (const element of mesh.elements.values()) {
+      if (element.nodeIds.includes(knoop.id)) { losseKnoop = false; break; }
     }
   }
   const richtingen = ['x', 'z', 'rotatie'] as const;
@@ -1867,6 +1885,11 @@ function solveMixed(
     return solveLinearSystem(Kmod, Fmod);
   };
 
+  // Kolomnummer → knoop, voor de vertaling van een singulier stelsel. Het
+  // gemengde pad nummert alleen de actieve knopen (`nodeIdToIndex`).
+  const knoopVanIndex = new Map<number, { id: number }>();
+  for (const [id, index] of nodeIdToIndex) knoopVanIndex.set(index, { id });
+
   const numDofsMixed = K.rows;
   log({
     soort: 'info',
@@ -1876,7 +1899,14 @@ function solveMixed(
       (opts.geometricNonlinear ? ' — geometrisch niet-lineair (P-Δ)' : ' — lineair'),
   });
 
-  let displacements = losOp(K);
+  let displacements: number[];
+  try {
+    displacements = losOp(K);
+  } catch (e) {
+    // Dezelfde Nederlandse melding (knoop, richting, oorzaak) als het
+    // frame-pad; de adapter zet het rekenknoopnummer om naar het modelnummer.
+    throw vertaalSingulier(e, mesh, (i) => knoopVanIndex.get(i));
+  }
 
   /**
    * De matrix waaruit de oplegreacties volgen. Lineair is dat de elastische K;
