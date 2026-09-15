@@ -29,7 +29,8 @@
  * ontbinding zelf; die hoort in de solver. Zie ook de gelijkluidende
  * kanttekening in `mcp/valideerModel.ts`.
  */
-import type { Beam, Node, Plate, Support } from "../components/fem/femTypes";
+import type { Beam, Load, Node, Plate, Support } from "../components/fem/femTypes";
+import { bepaalPlaatRand } from "../components/fem/femTypes";
 
 /**
  * Tekentolerantie in mm. Het model rekent in mm en de gebruiker tekent met
@@ -48,7 +49,9 @@ export type BevindingSoort =
   /** Staafuiteinde met maar één staaf en geen oplegging. */
   | "vrijUiteinde"
   /** Knoop die aan geen enkele staaf of plaat vastzit. */
-  | "losseKnoop";
+  | "losseKnoop"
+  /** Plaatlast waarvan de rand of de positie niet te bepalen is. */
+  | "plaatlast";
 
 /**
  * Bewerking die de bevinding opheft. De store voert hem uit; de controle
@@ -84,6 +87,11 @@ export interface ControleModel {
   beams: Pick<Beam, "id" | "from" | "to">[];
   supports?: Pick<Support, "nodeId">[];
   plates?: Pick<Plate, "id" | "nodeIds">[];
+  /**
+   * Optioneel: de lasten, voor de controle op plaatlasten. Ontbreekt het veld,
+   * dan blijft die controle achterwege en is de uitkomst gelijk aan vroeger.
+   */
+  loads?: Pick<Load, "id" | "type" | "plateId" | "edge" | "edgeIndex" | "posFrac">[];
 }
 
 /**
@@ -116,6 +124,69 @@ export function puntOpStaaf(
   const afstand = Math.abs((x - a.x) * vz - (z - a.z) * vx) / len;
   if (afstand > tolMm) return null;
   return t;
+}
+
+/** Ligt (x, z) binnen `tolMm` van het lijnstuk a–b (eindpunten meegeteld)? */
+function puntOpLijnstuk(
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+  x: number,
+  z: number,
+  tolMm: number,
+): boolean {
+  const vx = b.x - a.x, vz = b.z - a.z;
+  const len = Math.hypot(vx, vz);
+  if (len <= tolMm) return Math.hypot(x - a.x, z - a.z) <= tolMm;
+  const t = ((x - a.x) * vx + (z - a.z) * vz) / (len * len);
+  if (t * len < -tolMm || (1 - t) * len < -tolMm) return false;
+  return Math.abs((x - a.x) * vz - (z - a.z) * vx) / len <= tolMm;
+}
+
+/**
+ * Plaatlasten waarvan de rand of de positie niet te bepalen is: een benoemde
+ * rand op een polygoon, een rand-index die geen zijde is, beide of geen adres,
+ * een plaat die niet bestaat, of een puntlast op een plaatrand zonder positie.
+ *
+ * DEZELFDE regel als de engine en de MCP-droogloop (`bepaalPlaatRand`), maar
+ * al terwijl je tekent: sleept de gebruiker een rechthoek scheef, dan wordt
+ * een benoemde randlast ongeldig, en dat hoort hier te staan en niet pas als
+ * melding na "Berekenen". Geen herstelactie: welke rand bedoeld was, weet
+ * alleen de gebruiker.
+ */
+export function zoekPlaatlastFouten(model: ControleModel): Bevinding[] {
+  const uit: Bevinding[] = [];
+  for (const l of model.loads ?? []) {
+    if (l.plateId === undefined) continue;
+    if (l.type !== "edgeLoad" && l.type !== "pointForce") continue;
+    const soortTekst = l.type === "edgeLoad" ? "Randlast" : "Puntlast";
+    const plaat = (model.plates ?? []).find((p) => p.id === l.plateId);
+    if (!plaat) {
+      uit.push({
+        soort: "plaatlast", ernst: "fout", nodeIds: [],
+        tekst: `${soortTekst} ${l.id} staat op plaat ${l.plateId}, maar die plaat bestaat niet.`,
+      });
+      continue;
+    }
+    const hoeken = plaat.nodeIds.map((id) => model.nodes.find((n) => n.id === id));
+    if (hoeken.some((h) => !h)) continue;       // een ontbrekende hoek meldt de plaat zelf
+    const rand = bepaalPlaatRand(hoeken.map((h) => ({ x: h!.x, z: h!.z })), l, CONTROLE_TOL_MM);
+    if (!rand.ok) {
+      uit.push({
+        soort: "plaatlast", ernst: "fout", nodeIds: [...plaat.nodeIds],
+        tekst: `${soortTekst} ${l.id} op plaat ${plaat.id}: ${rand.reden}`,
+      });
+      continue;
+    }
+    if (l.type === "pointForce" && l.posFrac === undefined) {
+      uit.push({
+        soort: "plaatlast", ernst: "fout", nodeIds: [...plaat.nodeIds],
+        tekst:
+          `Puntlast ${l.id} op plaat ${plaat.id} heeft geen positie langs de rand. ` +
+          "Geef de afstand vanaf de beginhoek op.",
+      });
+    }
+  }
+  return uit;
 }
 
 /** Knoopgraad: het aantal staven waar een knoop een uiteinde van is. */
@@ -226,10 +297,26 @@ export function zoekVrijeUiteinden(model: ControleModel): Bevinding[] {
   const plaathoek = new Set<number>();
   for (const p of model.plates ?? []) for (const id of p.nodeIds ?? []) plaathoek.add(id);
 
+  // Een staafeinde OP een plaatrand hangt aan de plaat: valt het op een
+  // rekenknoop van de rand, dan deelt het die knoop; ligt het ertussen, dan
+  // koppelt de engine het kinematisch aan de rand (lineaire interpolatie).
+  // Zo'n knoop is dus geen vrij uiteinde, en de waarschuwing zou de
+  // gebruiker naar een gebrek sturen dat er niet is.
+  const opPlaatrand = (x: number, z: number): boolean =>
+    (model.plates ?? []).some((p) => {
+      const hoeken = (p.nodeIds ?? []).map((id) => model.nodes.find((k) => k.id === id));
+      if (hoeken.length < 3 || hoeken.some((h) => !h)) return false;
+      return hoeken.some((a, i) => {
+        const b = hoeken[(i + 1) % hoeken.length]!;
+        return puntOpLijnstuk(a!, b, x, z, CONTROLE_TOL_MM);
+      });
+    });
+
   const uit: Bevinding[] = [];
   for (const n of model.nodes) {
     if ((graad.get(n.id) ?? 0) !== 1) continue;
     if (gesteund.has(n.id) || plaathoek.has(n.id)) continue;
+    if (opPlaatrand(n.x, n.z)) continue;
     const staaf = model.beams.find((b) => b.from === n.id || b.to === n.id);
     uit.push({
       soort: "vrijUiteinde",
@@ -288,6 +375,7 @@ export function controleerModel(
   const fouten = [
     ...zoekKnopenOpStaaf(model, tolMm),
     ...zoekDubbeleKnopen(model, tolMm),
+    ...zoekPlaatlastFouten(model),
   ];
   const alGemeld = new Set<number>();
   for (const f of fouten) for (const id of f.nodeIds) alGemeld.add(id);

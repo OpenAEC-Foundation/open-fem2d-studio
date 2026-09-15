@@ -641,12 +641,29 @@ log("\n[9] Platen als IfcStructuralSurfaceMember, met randlasten");
       { id: 1, type: "edgeLoad", caseId: 1, plateId: 1, edge: "top", q: -12, qDir: "z" },
       { id: 2, type: "edgeLoad", caseId: 1, plateId: 1, edgeIndex: 1, q: 5, qDir: "x" },
       { id: 3, type: "edgeLoad", caseId: 1, plateId: 2, edge: "top", q: -3, qDir: "z" },
+      // Deel- en trapeziumrandlast op de bovenrand: 0,25–0,75 van 4 m,
+      // −4 → −8 kN/m; en een puntlast op rand 2 (knoop 2→3, van (4000,0)
+      // omhoog) op 0,5: het punt (4, 1,5) m.
+      { id: 4, type: "edgeLoad", caseId: 1, plateId: 1, edge: "top", q: -6, qStart: -4, qEnd: -8, startFrac: 0.25, endFrac: 0.75, qDir: "z" },
+      { id: 5, type: "pointForce", caseId: 1, plateId: 1, edgeIndex: 1, posFrac: 0.5, fx: 3, fz: -9 },
     ],
     loadCases: [{ id: 1, name: "Permanent", type: "dead" }],
   };
   const ifc = bouwIfcRekenmodel(model);
   checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
   checkEq("validatie: geen fouten", valideerIfc(ifc).fouten.length, 0);
+  // Randpuntlast: puntactie met een eigen vertex op (4, 0, 1,5) m, aan het vlaklid.
+  checkEq("één puntactie (de puntlast op de plaatrand)", tel(ifc, "IFCSTRUCTURALPOINTACTION"), 1);
+  checkTrue("de randpuntlast staat op (4, 0, 1,5) m", /IFCCARTESIANPOINT\(\(4\.,0\.,1\.5\)\)/.test(ifc));
+  checkTrue("randpuntlast: Fx = 3000 N, Fz = −9000 N",
+    /IFCSTRUCTURALLOADSINGLEFORCE\('Last 5',IFCFORCEMEASURE\(3000\.?\d*\),\$,IFCFORCEMEASURE\(-9000\.?\d*\)/.test(ifc));
+  // Deel-/trapeziumrandlast: curve-actie (POLYGONAL) met knikpunten 0, 1, 3, 4 m.
+  checkEq("één curve-actie (de deel-/trapeziumrandlast)", tel(ifc, "IFCSTRUCTURALCURVEACTION"), 1);
+  checkTrue("lastconfiguratie op 0, 1, 3 en 4 m langs de bovenrand",
+    /IFCSTRUCTURALLOADCONFIGURATION\('q 4',\(#\d+,#\d+,#\d+,#\d+\),\(\(0\.\),\(1\.\),\(3\.\),\(4\.\)\)\)/.test(ifc));
+  checkTrue("trapezium: −4000 N/m op 1 m en −8000 N/m op 3 m",
+    /IFCSTRUCTURALLOADLINEARFORCE\('q 4 begin',\$,\$,IFCLINEARFORCEMEASURE\(-4000\.?\d*\)/.test(ifc)
+    && /IFCSTRUCTURALLOADLINEARFORCE\('q 4 eind',\$,\$,IFCLINEARFORCEMEASURE\(-8000\.?\d*\)/.test(ifc));
   checkEq("één vlaklid (de plaat zonder hoekknopen blijft weg)", tel(ifc, "IFCSTRUCTURALSURFACEMEMBER"), 1);
   checkTrue("SHELL met dikte 0,2 m", /IFCSTRUCTURALSURFACEMEMBER\(.*\.SHELL\.,IFCPOSITIVELENGTHMEASURE\(0\.2\)\)/m.test(ifc));
   checkEq("één vlak met vier hoekpunten in de polyloop", tel(ifc, "IFCFACESURFACE"), 1);
@@ -664,7 +681,8 @@ log("\n[9] Platen als IfcStructuralSurfaceMember, met randlasten");
   checkEq("twee randlasten als lineaire acties", tel(ifc, "IFCSTRUCTURALLINEARACTION"), 2);
   checkTrue("randlast boven: −12 kN/m = −12000 N/m in z", /IFCSTRUCTURALLOADLINEARFORCE\('q 1',\$,\$,IFCLINEARFORCEMEASURE\(-12000\.?\d*\)/.test(ifc));
   checkTrue("randlast op rand 1 (knoop 2→3): 5000 N/m in x", /IFCSTRUCTURALLOADLINEARFORCE\('q 2',IFCLINEARFORCEMEASURE\(5000\.?\d*\),\$,\$/.test(ifc));
-  checkEq("elke randlast hangt aan het vlaklid (plus geen staaflast)", tel(ifc, "IFCRELCONNECTSSTRUCTURALACTIVITY"), 2);
+  // Vier plaatlasten op plaat 1 (twee lineair, één curve, één punt), elk aan het vlaklid.
+  checkEq("elke plaatlast hangt aan het vlaklid (plus geen staaflast)", tel(ifc, "IFCRELCONNECTSSTRUCTURALACTIVITY"), 4);
   const beperkingen = verzamelIfcBeperkingen(model).join("\n");
   checkTrue("beperkingen: alleen de plaat zonder hoekknopen en haar randlast", /1 plaat zonder hoekknopen/.test(beperkingen) && /1 randbelasting/.test(beperkingen));
   checkTrue("een model met alleen getekende platen meldt niets over platen",

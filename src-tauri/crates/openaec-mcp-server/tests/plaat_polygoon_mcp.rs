@@ -239,6 +239,47 @@ async fn benoemde_rand_op_een_polygoon_wordt_geweigerd_met_reden() {
     assert_eq!(val["structuredContent"]["ok"], json!(false), "de droogloop hoort het ook te melden: {val}");
 }
 
+/// Deel-/trapeziumrandlast en een puntlast op de plaatrand over de echte
+/// binary. Evenwicht: het trapezium −12 → −4 kN/m over 0,25–0,75 van rand 5
+/// (1 m lang) is (−12 − 4)/2 · 0,5 m = −4 kN; de puntlast −7 kN op rand 3
+/// (van (2000,1000) naar (1000,1000), posFrac 0,2 → x = 1800 mm) erbij geeft
+/// ΣRz = +11 kN. Vóór deze stap bestonden beide lastvormen niet.
+#[tokio::test]
+async fn deellast_trapezium_en_randpuntlast_rekenen_mee() {
+    eis_node().await;
+    let mut model = l_schijf(
+        json!({ "edgeIndex": 4, "q": -8, "qStart": -12, "qEnd": -4, "startFrac": 0.25, "endFrac": 0.75 }),
+        true,
+    );
+    model["loads"].as_array_mut().unwrap().push(json!({
+        "id": 2, "type": "pointForce", "caseId": 1, "plateId": 1, "edgeIndex": 2, "posFrac": 0.2, "fz": -7
+    }));
+
+    let val = tool("validate_fem_model", json!({ "model": model.clone() })).await;
+    assert_eq!(val["structuredContent"]["ok"], json!(true), "{val}");
+
+    let uit = tool("solve_fem_model", json!({ "model": model.clone() })).await;
+    assert_eq!(uit["isError"], json!(false), "de berekening hoort te slagen: {uit}");
+    let reacties = uit["structuredContent"]["per_case"]["1"]["reactions"]
+        .as_object()
+        .unwrap_or_else(|| panic!("geen reacties: {uit}"));
+    let som: f64 = reacties.values().map(|r| r["fz"].as_f64().unwrap()).sum();
+    assert!(
+        (som - 11.0).abs() < 1e-6,
+        "ΣRz hoort +11 kN te zijn (4 kN trapezium + 7 kN puntlast), niet {som}"
+    );
+
+    // Een puntlast op de plaatrand ZONDER positie is een invoerfout, geen
+    // last op de beginhoek.
+    let mut zonder_pos = model.clone();
+    zonder_pos["loads"][1].as_object_mut().unwrap().remove("posFrac");
+    let val = tool("validate_fem_model", json!({ "model": zonder_pos.clone() })).await;
+    assert_eq!(val["structuredContent"]["ok"], json!(false), "{val}");
+    assert!(val.to_string().contains("posFrac"), "de melding hoort het veld te noemen: {val}");
+    let uit = tool("solve_fem_model", json!({ "model": zonder_pos })).await;
+    assert_eq!(uit["isError"], json!(true), "hoort geweigerd te worden: {uit}");
+}
+
 /// Een meshcache zonder randknopen: invoerfout vóór het rekenen, geen crash.
 #[tokio::test]
 async fn meshcache_zonder_randknopen_is_een_invoerfout() {

@@ -23,7 +23,10 @@ import { solveNonlinear, SingulierStelselFout, type NonlinearSolverOptions } fro
 import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode, PlaatElementFout } from "../../../core/solver/Assembler";
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
 import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
-import { computeSelfWeightNodalForces, computeEdgeLoadNodalForces, applyNodalForces } from "../../../core/fem/PlateLoads";
+import {
+  computeSelfWeightNodalForces, computeEdgeLoadNodalForces, applyNodalForces,
+  verdeelRandlastConsistent, verdeelRandpuntlastConsistent,
+} from "../../../core/fem/PlateLoads";
 import {
   isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur, bepaalPlaatRand,
 } from "../femTypes";
@@ -63,6 +66,9 @@ type PlateRegionInfo = {
    */
   hoeken: PlaatPunt[];
 };
+
+/** Eén kinematische randkoppeling, zie `NonlinearSolverOptions.randKoppelingen`. */
+type RandKoppeling = NonNullable<NonlinearSolverOptions["randKoppelingen"]>[number];
 
 /**
  * Schaalbewaking mixed-analyse: de dense Gauss-eliminatie is O(n³) in tijd en
@@ -319,6 +325,12 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
    * bestaande pad. Eén item per mesh-element, op volgorde langs de staaf.
    */
   segmentUitvoer: Map<number, { meshId: number; I_mm4: number; segmentIndex: number }[]>;
+  /**
+   * Staafknopen die op een plaatrand tussen twee randknopen liggen en daaraan
+   * kinematisch gekoppeld worden (leeg zonder zulke knopen, en altijd leeg
+   * zonder platen). Gaat mee naar `solveNonlinear`.
+   */
+  randKoppelingen: RandKoppeling[];
 } {
   const mesh = new Mesh();
   const nodeIdMap = new Map<number, number>();
@@ -1025,6 +1037,166 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
   }
 
+  // ── Randknopen van een plaatrand ──────────────────────────────────────────
+  // ADRESSERING: één regel, `bepaalPlaatRand` (femTypes). Hij zet `edge` of
+  // `edgeIndex` om naar het hoekpaar van de rand; de randknopen komen daarna
+  // uit het gridmesh (rechthoek: de zijde met die naam) of uit de CDT-cache
+  // (polygoon: de lijst van die rand-index). Een adres dat daar niet doorheen
+  // komt, en een last op een plaat die niet in het model staat, WEIGEREN de
+  // hele berekening met een reden. Tot september 2026 vielen zulke lasten stil
+  // weg of kwamen ze op een andere rand terecht; een ontbrekende last leest in
+  // een resultaat als "geen last".
+  const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
+
+  /**
+   * De rekenknopen op één plaatrand, geordend van fractie 0 (`hoekVan`) naar
+   * fractie 1 (`hoekNaar`), met hun afstand `s` (m) vanaf `hoekVan` en de
+   * randlengte `L` (m). `wat` noemt de last in een eventuele melding.
+   */
+  const randKnopenVan = (
+    plateId: number, adres: { edge?: string; edgeIndex?: number }, wat: string,
+  ): { nodeIds: number[]; s: number[]; L: number } => {
+    // Elke melding begint met "Plaat N": zo herkent de MCP-foutafbeelding
+    // (mcp/fouten.ts) hem als Nederlandse modelmelding en geeft hem
+    // ongewijzigd door, in plaats van er een INTERN-storing van te maken.
+    const info = infoByPlateId.get(plateId);
+    if (!info) {
+      throw new Error(
+        `Plaat ${plateId} staat niet in het model, maar ${wat} verwijst ernaar. ` +
+        "Een last zonder plaat overslaan zou een berekening geven zonder die last.");
+    }
+    const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
+    if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} — ${rand.reden}`);
+    const kandidaten = rand.soort === "rechthoek"
+      ? info.region.edges[rand.naam!].nodeIds
+      : info.edgeNodeIds![rand.edgeIndex!];
+    // Ordenen op de projectie langs van → naar (m). De randlijsten van het
+    // grid en van de cache liggen al op de rand (gecontroleerd bij het
+    // inlezen van de cache); ordenen maakt de richting van de fracties
+    // onafhankelijk van de volgorde waarin een mesher ze opsomde.
+    const ax = rand.van.x / 1000, az = rand.van.z / 1000;
+    const L = rand.lengte / 1000;
+    const ex = (rand.naar.x - rand.van.x) / rand.lengte;
+    const ez = (rand.naar.z - rand.van.z) / rand.lengte;
+    const rij = [...new Set(kandidaten)].map((nid) => {
+      const nd = mesh.getNode(nid);
+      return { nid, s: nd ? (nd.x - ax) * ex + (nd.y - az) * ez : NaN };
+    });
+    if (rij.length < 2 || rij.some((r) => !Number.isFinite(r.s))) {
+      throw new Error(
+        `Plaat ${plateId}: ${wat} — de rand heeft geen bruikbare rekenknopen ` +
+        "(het rekenmesh is onvolledig). Wijzig de plaat zodat het mesh opnieuw wordt gemaakt.");
+    }
+    rij.sort((a, b) => a.s - b.s);
+    return { nodeIds: rij.map((r) => r.nid), s: rij.map((r) => r.s), L };
+  };
+
+  // ── Staafeinde op een plaatrand TUSSEN twee randknopen: koppelen ──────────
+  // WAT ER MISGING. Een staaf die op een plaatrand eindigt, deelt alleen een
+  // knoop met de plaat als dat eindpunt toevallig op een rekenknoop van de rand
+  // valt (binnen 1 mm, `findNodeAt`). Ligt het ertussen, dan hing de staaf los
+  // naast de plaat: gemeten bij een wand van 4 × 3 m met meshSize 1000 en een
+  // kolomvoet op x = 1500 gaf dat een kale "Matrix is singular", en op
+  // x = 2000 rekende hetzelfde model gewoon. Of een aansluiting bestaat, mag
+  // niet van de elementgrootte afhangen.
+  //
+  // DE KEUZE: KINEMATISCH KOPPELEN, NIET WEIGEREN. De verplaatsing van het
+  // membraan langs een elementrand is lineair tussen de twee randknopen
+  // (CST en Quad4). Een knoop op fractie t van die rand verplaatst dus exact
+  //     u = (1 − t)·u_a + t·u_b,    v = (1 − t)·v_a + t·v_b.
+  // Die voorwaarde legt de kern op door eliminatie (NonlinearSolverOptions.
+  // randKoppelingen): de staafknoop wordt een slaaf van de twee randknopen.
+  // Dat is precies de verbinding die de staaf ook had gehad als hij op een
+  // randknoop eindigde — de rotatie blijft vrij, want een membraan draagt in
+  // zijn knopen geen moment — en een kracht op de staafknoop komt met
+  // dezelfde gewichten op de rand als een randpuntlast op die plek. Een
+  // weigering zou de gebruiker dwingen de meshSize op zijn staven af te
+  // stemmen; de koppeling is exact binnen dezelfde elementaanname die de
+  // plaat al maakt.
+  //
+  // GEWEIGERD wordt wat niet eenduidig is: een starre oplegging op zo'n
+  // gekoppelde knoop, en een knoop op de rand van twee platen die daar
+  // verschillende randknopen hebben.
+  const randKoppelingen: RandKoppeling[] = [];
+  if (plateInfo.length > 0) {
+    const uiIdVan = new Map<number, number>();
+    for (const [uiId, meshId] of nodeIdMap) uiIdVan.set(meshId, uiId);
+    const knoopNaam = (meshId: number): string => {
+      const ui = uiIdVan.get(meshId);
+      if (ui !== undefined) return `knoop ${ui}`;
+      const nd = mesh.getNode(meshId);
+      return nd
+        ? `de rekenknoop op (${Math.round(nd.x * 1e4) / 10}, ${Math.round(nd.y * 1e4) / 10}) mm`
+        : `rekenknoop ${meshId}`;
+    };
+    const plaatKnopen = new Set<number>();
+    for (const el of mesh.elements.values()) for (const nid of el.nodeIds) plaatKnopen.add(nid);
+    // Alle randrijen van alle platen, langs dezelfde ordening als de lasten.
+    const rijen: { plateId: number; nodeIds: number[] }[] = [];
+    for (const info of plateInfo) {
+      const adressen = info.edgeNodeIds
+        ? info.hoeken.map((_, i) => ({ edgeIndex: i }))
+        : (["bottom", "top", "left", "right"] as const).map((edge) => ({ edge }));
+      for (const adres of adressen) {
+        rijen.push({ plateId: info.plateId, nodeIds: randKnopenVan(info.plateId, adres, "een plaatrand").nodeIds });
+      }
+    }
+    const staafKnopen = new Set<number>();
+    for (const be of mesh.beamElements.values()) for (const nid of be.nodeIds) staafKnopen.add(nid);
+    const TOL_M = TOL_MM / 1000;
+    for (const nid of staafKnopen) {
+      if (plaatKnopen.has(nid)) continue;           // al een randknoop: gedeeld
+      const nd = mesh.getNode(nid);
+      if (!nd) continue;
+      // Per plaat de dichtstbijzijnde elementrand waar de knoop op ligt.
+      const perPlaat = new Map<number, { a: number; b: number; t: number; d: number }>();
+      for (const rij of rijen) {
+        for (let j = 0; j + 1 < rij.nodeIds.length; j++) {
+          const na = mesh.getNode(rij.nodeIds[j]);
+          const nb = mesh.getNode(rij.nodeIds[j + 1]);
+          if (!na || !nb) continue;
+          const dx = nb.x - na.x, dy = nb.y - na.y;
+          const l2 = dx * dx + dy * dy;
+          if (!(l2 > 0)) continue;
+          const t = ((nd.x - na.x) * dx + (nd.y - na.y) * dy) / l2;
+          if (t < 0 || t > 1) continue;
+          const d = Math.abs((nd.x - na.x) * dy - (nd.y - na.y) * dx) / Math.sqrt(l2);
+          if (d > TOL_M) continue;
+          const oud = perPlaat.get(rij.plateId);
+          if (!oud || d < oud.d) perPlaat.set(rij.plateId, { a: na.id, b: nb.id, t, d });
+        }
+      }
+      if (perPlaat.size === 0) continue;
+      const [[eerstePlaat, k0], ...rest] = [...perPlaat.entries()];
+      for (const [pid, k] of rest) {
+        const zelfde =
+          (k.a === k0.a && k.b === k0.b && Math.abs(k.t - k0.t) < 1e-9)
+          || (k.a === k0.b && k.b === k0.a && Math.abs(k.t - (1 - k0.t)) < 1e-9);
+        if (!zelfde) {
+          throw new Error(
+            `Plaat ${eerstePlaat} en plaat ${pid}: ${knoopNaam(nid)} ligt op de rand van ` +
+            "beide platen, maar tussen verschillende rekenknopen van die randen. Aan welke " +
+            "rand de staaf dan hangt, is niet eenduidig. Geef beide platen langs die rand " +
+            "dezelfde rekenknopen (gelijke meshSize en ligging), of laat de staaf op een hoek " +
+            "of rekenknoop aansluiten.");
+        }
+      }
+      const c = nd.constraints;
+      if ((c.x && c.springX == null) || (c.y && c.springY == null)) {
+        throw new Error(
+          `Plaat ${eerstePlaat}: de oplegging op ${knoopNaam(nid)} staat op een staafknoop die ` +
+          "tussen twee rekenknopen op de plaatrand ligt. Zo'n knoop wordt kinematisch aan die " +
+          "rand gekoppeld (lineaire interpolatie tussen de twee randknopen); een starre " +
+          "oplegging in x of z erop is dan niet eenduidig te verwerken. Zet de oplegging op een " +
+          "hoek of rekenknoop van de plaat, of kies de meshSize zodat deze knoop een rekenknoop wordt.");
+      }
+      randKoppelingen.push({
+        slaafKnoopId: nid,
+        meesters: [{ knoopId: k0.a, gewicht: 1 - k0.t }, { knoopId: k0.b, gewicht: k0.t }],
+      });
+    }
+  }
+
   if (plateInfo.length > 0) {
     // Schaalbewaking + validatie op rekenknopen — één actieve-knopen-index
     // voor beide checks.
@@ -1203,78 +1375,18 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   }
 
   // ── Randlasten op plaatranden (P3.3/P4.3) ─────────────────────────────────
-  // p (kN/m = N/mm) → N/m, en via de PlateLoads-wrapper (cumulatieve
-  // booglengte + tributary lengths, convertEdgeNodeIdsToNodalForces) naar
-  // exacte knooplasten op de mesh-randknopen: ΣF = p·L exact. De
-  // scheefstand-companion werkt — net als bij knoop-, staaf- en
-  // gewichtslasten — op de VERTICALE component ná omzetting.
+  // p (kN/m = N/mm) → N/m, naar knooplasten op de mesh-randknopen: ΣF exact.
+  // De scheefstand-companion werkt — net als bij knoop-, staaf- en
+  // gewichtslasten — op de VERTICALE component ná omzetting. De rand komt uit
+  // `randKnopenVan` hierboven (één adresregel, harde weigering).
   //
-  // ADRESSERING: één regel, `bepaalPlaatRand` (femTypes). Hij zet `edge` of
-  // `edgeIndex` om naar het hoekpaar van de rand; de randknopen komen daarna
-  // uit het gridmesh (rechthoek: de zijde met die naam) of uit de CDT-cache
-  // (polygoon: de lijst van die rand-index). Een adres dat daar niet doorheen
-  // komt, en een last op een plaat die niet in het model staat, WEIGEREN de
-  // hele berekening met een reden. Tot september 2026 vielen zulke lasten stil
-  // weg of kwamen ze op een andere rand terecht; een ontbrekende last leest in
-  // een resultaat als "geen last".
-  //
-  // De adressen worden opgelost VOOR de factorcontrole: een ongeldig adres
-  // hoort in elk belastinggeval dezelfde fout te geven, niet alleen in het
-  // geval waar de last toevallig in zit.
+  // De adressen en het belaste deel worden gecontroleerd VOOR de
+  // factorcontrole: een ongeldige last hoort in elk belastinggeval dezelfde
+  // fout te geven, niet alleen in het geval waar hij toevallig in zit.
   const edgeLds = ((input as any).edgeLoads as Array<any> | undefined) ?? [];
-  const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
 
-  /**
-   * De rekenknopen op één plaatrand, geordend van fractie 0 (`hoekVan`) naar
-   * fractie 1 (`hoekNaar`), met hun afstand `s` (m) vanaf `hoekVan` en de
-   * randlengte `L` (m). `wat` noemt de last in een eventuele melding.
-   */
-  const randKnopenVan = (
-    plateId: number, adres: { edge?: string; edgeIndex?: number }, wat: string,
-  ): { nodeIds: number[]; s: number[]; L: number } => {
-    // Elke melding begint met "Plaat N": zo herkent de MCP-foutafbeelding
-    // (mcp/fouten.ts) hem als Nederlandse modelmelding en geeft hem
-    // ongewijzigd door, in plaats van er een INTERN-storing van te maken.
-    const info = infoByPlateId.get(plateId);
-    if (!info) {
-      throw new Error(
-        `Plaat ${plateId} staat niet in het model, maar ${wat} verwijst ernaar. ` +
-        "Een last zonder plaat overslaan zou een berekening geven zonder die last.");
-    }
-    const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
-    if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} — ${rand.reden}`);
-    const kandidaten = rand.soort === "rechthoek"
-      ? info.region.edges[rand.naam!].nodeIds
-      : info.edgeNodeIds![rand.edgeIndex!];
-    // Ordenen op de projectie langs van → naar (m). De randlijsten van het
-    // grid en van de cache liggen al op de rand (gecontroleerd bij het
-    // inlezen van de cache); ordenen maakt de richting van de fracties
-    // onafhankelijk van de volgorde waarin een mesher ze opsomde.
-    const ax = rand.van.x / 1000, az = rand.van.z / 1000;
-    const L = rand.lengte / 1000;
-    const ex = (rand.naar.x - rand.van.x) / rand.lengte;
-    const ez = (rand.naar.z - rand.van.z) / rand.lengte;
-    const rij = [...new Set(kandidaten)].map((nid) => {
-      const nd = mesh.getNode(nid);
-      return { nid, s: nd ? (nd.x - ax) * ex + (nd.y - az) * ez : NaN };
-    });
-    if (rij.length < 2 || rij.some((r) => !Number.isFinite(r.s))) {
-      throw new Error(
-        `Plaat ${plateId}: ${wat} — de rand heeft geen bruikbare rekenknopen ` +
-        "(het rekenmesh is onvolledig). Wijzig de plaat zodat het mesh opnieuw wordt gemaakt.");
-    }
-    rij.sort((a, b) => a.s - b.s);
-    return { nodeIds: rij.map((r) => r.nid), s: rij.map((r) => r.s), L };
-  };
-
-  /** Eén gelijkmatige randlast over de volle rand (p in kN/m, factor f). */
-  const pasRandlastToe = (
-    randNodeIds: number[], p_kNm: number, dir: "x" | "z", f: number,
-  ): void => {
-    const p_Nm = p_kNm * 1000 * f;              // kN/m (= N/mm) → N/m, gefactoreerd
-    const px = dir === "x" ? p_Nm : 0;
-    const py = dir === "z" ? p_Nm : 0;
-    const krachten = computeEdgeLoadNodalForces(mesh, randNodeIds, px, py);
+  /** Knoopkrachten (N, globale assen) op de mesh, met de scheefstand-metgezel. */
+  const zetRandkrachten = (krachten: { nodeId: number; fx: number; fy: number }[]): void => {
     applyNodalForces(mesh, krachten.map((kr) => ({
       nodeId: kr.nodeId,
       fx: kr.fx + schFactor * -kr.fy,
@@ -1284,9 +1396,64 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
 
   for (const el of edgeLds) {
     const rand = randKnopenVan(el.plateId, el, "een randlast");
+    // DEELLAST EN TRAPEZIUM, met de betekenis van een staaf: het belaste deel
+    // loopt van startFrac tot endFrac langs de rand vanaf de beginhoek, en de
+    // waarde lineair van pStart naar pEnd over dat deel. Een leeg of omgekeerd
+    // deel is geen last; overslaan zou een berekening zonder die last geven.
+    const a = el.startFrac ?? 0;
+    const b = el.endFrac ?? 1;
+    if (!(Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b <= 1 && a < b)) {
+      throw new Error(
+        `Plaat ${el.plateId}: een randlast heeft een belast deel dat niet binnen de rand ` +
+        `ligt of niet vóór zijn einde begint (startFrac ${a}, endFrac ${b}). Geef ` +
+        "0 ≤ startFrac < endFrac ≤ 1, gemeten vanaf de beginhoek van de rand.");
+    }
     const f = loadFactor ? loadFactor(el.caseId) : 1;
-    if (f === 0 || !el.p) continue;
-    pasRandlastToe(rand.nodeIds, el.p, (el.dir ?? "z") as "x" | "z", f);
+    if (f === 0) continue;
+    const pA = el.pStart ?? el.p ?? 0;
+    const pB = el.pEnd ?? el.p ?? 0;
+    if (pA === 0 && pB === 0) continue;
+    const dir = (el.dir ?? "z") as "x" | "z";
+    if (a === 0 && b === 1 && pA === pB) {
+      // Volle gelijkmatige randlast: het bestaande pad (tributaire lengten),
+      // bit-identiek aan voorheen. Wiskundig is het dezelfde verdeling als de
+      // consistente hieronder: ½·p·ℓ per knoop per elementrand.
+      const p_Nm = pA * 1000 * f;                  // kN/m (= N/mm) → N/m, gefactoreerd
+      zetRandkrachten(computeEdgeLoadNodalForces(
+        mesh, rand.nodeIds, dir === "x" ? p_Nm : 0, dir === "z" ? p_Nm : 0));
+      continue;
+    }
+    // Deellast of trapezium: consistente knoopkrachten volgens de lineaire
+    // vormfuncties van de randelementen, ook als het belaste deel binnen een
+    // elementrand begint of eindigt (PlateLoads.verdeelRandlastConsistent).
+    const qa = pA * 1000 * f, qb = pB * 1000 * f;  // N/m
+    zetRandkrachten(verdeelRandlastConsistent(
+      rand.nodeIds, rand.s, a * rand.L, b * rand.L,
+      dir === "x" ? qa : 0, dir === "z" ? qa : 0,
+      dir === "x" ? qb : 0, dir === "z" ? qb : 0));
+  }
+
+  // ── Puntlasten op een plaatrand ───────────────────────────────────────────
+  // De kracht gaat naar de twee randknopen van de elementrand waarop hij staat,
+  // gewogen met de lineaire vormfuncties (PlateLoads.verdeelRandpuntlastConsistent):
+  // exact voor lineaire randen, geen nieuwe rekenknoop en dus hetzelfde mesh in
+  // elk belastinggeval. Een ontbrekende of onmogelijke positie wordt geweigerd;
+  // "op 0 zetten" zou een last op een andere plek zijn dan is ingevoerd.
+  const randPls = ((input as any).edgePointLoads as Array<any> | undefined) ?? [];
+  for (const pl of randPls) {
+    const rand = randKnopenVan(pl.plateId, pl, "een puntlast op de plaatrand");
+    const t = pl.posFrac;
+    if (typeof t !== "number" || !Number.isFinite(t) || t < 0 || t > 1) {
+      throw new Error(
+        `Plaat ${pl.plateId}: een puntlast op de plaatrand heeft ` +
+        (t === undefined ? "geen positie" : `een positie buiten de rand (posFrac ${t})`) +
+        ". Geef posFrac als fractie 0 … 1 langs de rand, gemeten vanaf de beginhoek.");
+    }
+    const f = loadFactor ? loadFactor(pl.caseId) : 1;
+    if (f === 0) continue;
+    const fx = (pl.fx ?? 0) * f, fz = (pl.fz ?? 0) * f;   // N
+    if (fx === 0 && fz === 0) continue;
+    zetRandkrachten(verdeelRandpuntlastConsistent(rand.nodeIds, rand.s, t * rand.L, fx, fz));
   }
 
   // Point loads on nodes
@@ -1381,7 +1548,7 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
   }
 
-  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer };
+  return { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen };
 }
 
 /**
@@ -1809,7 +1976,7 @@ function eisEindigeUitkomst(r: SolverResult, wat: string): SolverResult {
 // ── Public engine functions ─────────────────────────────────────────────────
 
 export function solve(input: SolverInput): SolverResult {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input);
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(input);
   // Platen aanwezig ⇒ mixed_beam_plate (staven 6×6 + membranen 3 DOF/knoop);
   // zonder platen blijft het pad bit-identiek "frame".
   const heeftPlaten = plateInfo.length > 0;
@@ -1818,6 +1985,7 @@ export function solve(input: SolverInput): SolverResult {
     engineResult = solveNonlinear(mesh, {
       analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
       geometricNonlinear: false,
+      randKoppelingen,
     });
   } catch (e) {
     throw metKnoopnummer(e, nodeIdMap, plateInfo);
@@ -1832,7 +2000,7 @@ export function solve(input: SolverInput): SolverResult {
 export function solveAllCases(input: MultiInput): MultiLcResult {
   const perCase = new Map<number, SolverResult>();
   for (const c of input.cases) {
-    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
+    const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
     // Een leeg belastinggeval (bijv. Q/S/W zonder ingevoerde lasten — de
     // standaardset heeft er vier) is geen fout: overslaan. De solver gooit er
     // anders "No loads applied" op en dat liet de hele combinatie-/toetsings-
@@ -1846,6 +2014,7 @@ export function solveAllCases(input: MultiInput): MultiLcResult {
         analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
         geometricNonlinear: false,
         onLog: logMet(c.name),
+        randKoppelingen,
       });
     } catch (e) {
       throw metKnoopnummer(e, nodeIdMap, plateInfo);
@@ -1986,7 +2155,7 @@ export function solveCombinationSecondOrder(
   input: MultiInput,
   combo: SecondOrderCombo,
 ): SolverResult | null {
-  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer } = buildMesh(
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(
     input,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
   );
@@ -2009,6 +2178,7 @@ export function solveCombinationSecondOrder(
     const engineResult = solveNonlinear(mesh, {
       analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
       geometricNonlinear: true,
+      randKoppelingen,
       // Geïtereerde P-Δ convergeert met ratio ≈ P/P_kr per iteratie; 100
       // iteraties dekt tot P ≈ 0.87·P_kr bij tol 1e-6. Daarboven → nette fout.
       maxIterations: 100,

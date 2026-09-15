@@ -1011,6 +1011,7 @@ function App() {
       // krachten draaide, met "Berekend om" in de statusbalk.
       controleerVoorRekenen({
         nodes: fem.nodes, beams: fem.beams, supports: fem.supports, plates: fem.plates,
+        loads: fem.loads,
       });
       // Modelmapping (doorsneden, eenheden, eigen gewicht, scheefstand) staat
       // in een pure module, zodat de app en elke tweede consument van de

@@ -794,7 +794,8 @@ function teltLastMee(last: unknown, loadCases: unknown[]): boolean {
       (mi.pointLoads?.length ?? 0) +
       (mi.beamPointLoads?.length ?? 0) +
       (mi.thermalLoads?.length ?? 0) +
-      (mi.edgeLoads?.length ?? 0) >
+      (mi.edgeLoads?.length ?? 0) +
+      (mi.edgePointLoads?.length ?? 0) >
     0
   );
 }
@@ -834,6 +835,7 @@ function gevallenMetLast(model: FemModelInvoer): Set<number> {
   for (const l of mi.beamPointLoads ?? []) noteer(l.caseId);
   for (const l of mi.thermalLoads ?? []) noteer(l.caseId);
   for (const l of mi.edgeLoads ?? []) noteer(l.caseId);
+  for (const l of mi.edgePointLoads ?? []) noteer(l.caseId);
   for (const p of mi.plates ?? []) noteer(p.selfWeightCaseId);
   return ids;
 }
@@ -1162,13 +1164,60 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
         );
       }
     }
+    // PLAATLASTEN: welke velden bij elkaar horen. De mapping kiest bij een
+    // puntlast eerst de plaat, dan de knoop, dan de staaf; een last die er
+    // twee noemt, zou dus stil op één van beide plekken landen. Een randadres
+    // zonder plaat hoort bij niets. Een puntlast op een plaatrand zonder
+    // positie wordt niet als "beginhoek" gelezen maar geweigerd, net als in de
+    // engine, en een randlast met een leeg of omgekeerd belast deel ook.
+    const heeftRandadres = l.edge !== undefined || l.edgeIndex !== undefined;
+    if (l.plateId !== undefined && l.type !== "edgeLoad" && l.type !== "pointForce") {
+      errors.push(
+        `Last ${id} (type "${String(l.type)}") noemt een plaat (\`plateId\`), maar op een ` +
+          "plaat kan alleen een randlast (edgeLoad) of een puntlast op een plaatrand " +
+          "(pointForce) staan. Deze last wordt daar niet meegerekend.",
+      );
+    }
+    if (heeftRandadres && l.plateId === undefined) {
+      errors.push(
+        `Last ${id} noemt een plaatrand (\`edge\`/\`edgeIndex\`) maar geen plaat ` +
+          "(`plateId`); die rand hoort bij niets en wordt niet meegerekend.",
+      );
+    }
+    if (l.type === "pointForce" && l.plateId !== undefined) {
+      if (l.nodeId !== undefined || l.beamId !== undefined) {
+        errors.push(
+          `Last ${id} is een puntlast op plaat ${l.plateId} én noemt een ` +
+            `${l.nodeId !== undefined ? "knoop" : "staaf"}. Eén last hoort op één plek te ` +
+            "staan: geef óf `plateId` met een rand en `posFrac`, óf een knoop of staaf.",
+        );
+      }
+      if (l.posFrac === undefined) {
+        errors.push(
+          `Last ${id} is een puntlast op plaat ${l.plateId} zonder positie (\`posFrac\`: ` +
+            "fractie 0..1 langs de rand vanaf de beginhoek). Een ontbrekende positie wordt " +
+            "niet als 0 gelezen; de berekening weigert hem.",
+        );
+      }
+    }
+    if (l.type === "edgeLoad" && (l.startFrac !== undefined || l.endFrac !== undefined)) {
+      const a = (l.startFrac as number | undefined) ?? 0;
+      const b = (l.endFrac as number | undefined) ?? 1;
+      if (!(a < b)) {
+        errors.push(
+          `Last ${id} (randlast): het belaste deel begint niet vóór zijn einde ` +
+            `(startFrac ${a}, endFrac ${b}). Een leeg of omgekeerd deel is geen last.`,
+        );
+      }
+    }
     if (!teltLastMee(l, loadCases)) {
       errors.push(
         `Last ${id} (type "${String(l.type)}") levert geen invoer voor de ` +
           "solver op en telt dus niet mee. Controleer of alle velden voor dit " +
           "lasttype ingevuld zijn (een lijnlast heeft `beamId` en `q` nodig, " +
-          "een puntlast `nodeId` of `beamId`, een thermische last `beamId` en " +
-          "`deltaT`, een randlast `plateId` en `q`).",
+          "een puntlast `nodeId` of `beamId` — of op een plaatrand `plateId`, een " +
+          "rand en `posFrac` —, een thermische last `beamId` en `deltaT`, een " +
+          "randlast `plateId`, een rand en `q`).",
       );
     }
   }

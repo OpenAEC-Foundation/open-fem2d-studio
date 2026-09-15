@@ -87,6 +87,12 @@ export default function PlatesSection() {
               "Platen rekenen mee als wandschijf (membraan, in het vlak); het rekenmesh wordt bij elke berekening opnieuw uit de meshgrootte gegenereerd.",
             )}
           </p>
+          <p className="rpt-note" style={{ marginTop: "1mm" }}>
+            {t(
+              "report.plateLoadNote",
+              "Randlasten (ook deel- en trapeziumlasten) en puntlasten op een plaatrand worden volgens de lineaire vormfuncties van de randelementen omgezet in knoopkrachten op de randknopen; een staafeinde dat tussen twee randknopen op een plaatrand ligt, wordt kinematisch aan die rand gekoppeld (lineaire interpolatie).",
+            )}
+          </p>
         </>
       )}
     </div>

@@ -228,6 +228,22 @@ export interface NonlinearSolverOptions {
    * De ontvanger mag NIET gooien — hij draait midden in de iteratielus.
    */
   onLog?: (regel: SolverLogRegel) => void;
+  /**
+   * Kinematische randkoppelingen (alleen het gemengde pad): de verplaatsing u
+   * en v van een SLAAFknoop is de gewogen som van die van zijn MEESTERS,
+   *     u_slaaf = Σ w_m · u_m,   Σ w_m = 1.
+   * Gebruikt voor een staafeinde dat op een plaatrand tussen twee randknopen
+   * ligt: de lineaire interpolatie langs die elementrand (w = 1 − t en t) is
+   * precies de verplaatsing die het membraan daar heeft. De rotatie van de
+   * slaaf blijft vrij — het membraan draagt in zijn knopen geen moment, net
+   * als bij een staafeinde dat op een randknoop zelf ligt.
+   *
+   * Uitgewerkt door EXACTE eliminatie (K̂ = TᵀKT, F̂ = TᵀF), niet met een
+   * straffactor: een straf van de orde 1e20 op buitendiagonaaltermen kost
+   * cijfers in de ontbinding, eliminatie niet. Ontbreekt het veld (of is het
+   * leeg), dan is het pad bit-identiek aan voorheen.
+   */
+  randKoppelingen?: { slaafKnoopId: number; meesters: { knoopId: number; gewicht: number }[] }[];
 }
 
 const DEFAULT_OPTIONS: NonlinearSolverOptions = {
@@ -1805,20 +1821,115 @@ function solveMixed(
     throw new Error('No loads applied - add forces to nodes or elements');
   }
 
+  // ── Kinematische randkoppelingen (zie NonlinearSolverOptions) ─────────────
+  // Per slaaf-vrijheidsgraad (u en v) de meester-vrijheidsgraden met gewicht.
+  // Een slaaf mag geen meester zijn en geen starre oplegging dragen: dan is de
+  // eliminatie niet eenduidig. De adapter weigert dat al met knoopnummers;
+  // dit is de bewaking in de kern zelf.
+  const slaafDofs: { dof: number; meesters: { dof: number; w: number }[] }[] = [];
+  for (const k of opts.randKoppelingen ?? []) {
+    const si = nodeIdToIndex.get(k.slaafKnoopId);
+    if (si === undefined) {
+      throw new Error(`Randkoppeling: knoop ${k.slaafKnoopId} is geen actieve rekenknoop.`);
+    }
+    const som = k.meesters.reduce((s, m) => s + m.gewicht, 0);
+    if (!(Math.abs(som - 1) <= 1e-9)) {
+      throw new Error(`Randkoppeling van knoop ${k.slaafKnoopId}: de gewichten tellen op tot ${som}, niet 1.`);
+    }
+    for (const d of [0, 1]) {
+      slaafDofs.push({
+        dof: si * dofsPerNode + d,
+        meesters: k.meesters.map((m) => {
+          const mi = nodeIdToIndex.get(m.knoopId);
+          if (mi === undefined) {
+            throw new Error(`Randkoppeling van knoop ${k.slaafKnoopId}: meester ${m.knoopId} is geen actieve rekenknoop.`);
+          }
+          return { dof: mi * dofsPerNode + d, w: m.gewicht };
+        }),
+      });
+    }
+  }
+  const slaafSet = new Set(slaafDofs.map((s) => s.dof));
+  for (const s of slaafDofs) {
+    if (s.meesters.some((m) => slaafSet.has(m.dof))) {
+      throw new Error('Randkoppeling: een meesterknoop is zelf aan een rand gekoppeld.');
+    }
+  }
+  if (constrainedDofs.some((d) => slaafSet.has(d))) {
+    throw new Error('Randkoppeling: een aan een plaatrand gekoppelde knoop draagt een starre oplegging.');
+  }
+  if (slaafDofs.length > 0) {
+    log({
+      soort: 'info',
+      tekst: `${slaafDofs.length / 2} staafknopen kinematisch aan een plaatrand gekoppeld (lineaire interpolatie)`,
+    });
+  }
+
+  /**
+   * K̂ = TᵀKT als verse matrix. T is de eenheidsmatrix, behalve in de rijen van
+   * de slaven: daar staan de gewichten in de meesterkolommen en een nul op de
+   * diagonaal. Uitgevoerd als kolom- en rijbewerkingen (O(n) per koppeling)
+   * in plaats van twee volle matrixproducten. Daarna krijgt elke slaaf een 1
+   * op de diagonaal, zodat zijn (nul-)rij het stelsel niet singulier maakt.
+   */
+  const gecondenseerdeKloon = (M: Matrix): Matrix => {
+    const C = M.clone();
+    if (slaafDofs.length === 0) return C;
+    const a = C.data;
+    const n = C.rows;
+    for (const sl of slaafDofs) {                  // K·T: kolommen
+      for (const m of sl.meesters) {
+        if (m.w === 0) continue;
+        for (let i = 0; i < n; i++) a[i][m.dof] += m.w * a[i][sl.dof];
+      }
+      for (let i = 0; i < n; i++) a[i][sl.dof] = 0;
+    }
+    for (const sl of slaafDofs) {                  // Tᵀ·(K·T): rijen
+      const rij = a[sl.dof];
+      for (const m of sl.meesters) {
+        if (m.w === 0) continue;
+        const doel = a[m.dof];
+        for (let j = 0; j < n; j++) doel[j] += m.w * rij[j];
+      }
+      for (let j = 0; j < n; j++) rij[j] = 0;
+      rij[sl.dof] = 1;
+    }
+    return C;
+  };
+  /** F̂ = TᵀF: de kracht op een slaaf gaat met dezelfde gewichten naar de meesters. */
+  const Fc = slaafDofs.length === 0 ? F : (() => {
+    const g = [...F];
+    for (const sl of slaafDofs) {
+      for (const m of sl.meesters) g[m.dof] += m.w * F[sl.dof];
+      g[sl.dof] = 0;
+    }
+    return g;
+  })();
+  /** u = T·û: de slaven terugrekenen uit hun meesters. */
+  const herstel = (u: number[]): number[] => {
+    for (const sl of slaafDofs) {
+      let v = 0;
+      for (const m of sl.meesters) v += m.w * u[m.dof];
+      u[sl.dof] = v;
+    }
+    return u;
+  };
+
   /**
    * Los K·u = F op met de opgelegde vrijheidsgraden erin. Penaltymethode,
    * net als voorheen — apart gezet omdat de niet-lineaire lus hem per
-   * iteratie opnieuw nodig heeft, met een andere K.
+   * iteratie opnieuw nodig heeft, met een andere K. Met randkoppelingen wordt
+   * eerst gecondenseerd en daarna de slaven teruggerekend.
    */
   const losOp = (Kt: Matrix): number[] => {
-    const Kmod = Kt.clone();
-    const Fmod = [...F];
+    const Kmod = gecondenseerdeKloon(Kt);
+    const Fmod = [...Fc];
     const penalty = 1e20;
     for (const dof of constrainedDofs) {
       Kmod.set(dof, dof, Kmod.get(dof, dof) + penalty);
       Fmod[dof] = 0;
     }
-    return solveLinearSystem(Kmod, Fmod);
+    return herstel(solveLinearSystem(Kmod, Fmod));
   };
 
   const numDofsMixed = K.rows;
@@ -1945,7 +2056,7 @@ function solveMixed(
     // punt vinden terwijl K = Ke + Kg indefiniet is. Dan is er wel een
     // getal, maar het betekent niets. De penalty gaat op een KLOON — anders
     // zou 1e20 op de diagonaal in de reactieberekening meeliften.
-    const Kstab = Kt.clone();
+    const Kstab = gecondenseerdeKloon(Kt);
     for (const dof of constrainedDofs) Kstab.set(dof, dof, Kstab.get(dof, dof) + 1e20);
     const nietPositief = countNonPositivePivots(Kstab);
     if (nietPositief > 0) {
@@ -1963,9 +2074,16 @@ function solveMixed(
   }
 
   // Calculate reactions: R = K·u - F
-  const reactions = Kreactie.multiplyVector(displacements);
+  // Met randkoppelingen uit het GECONDENSEERDE stelsel, R̂ = TᵀKTû − TᵀF. De
+  // koppeling is een inwendige verbinding: de kracht die hij overbrengt hoort
+  // niet als "reactie" op een meesterknoop te verschijnen. In R̂ valt die weg,
+  // en Σ R̂ = −Σ F blijft gelden omdat de gewichten per slaaf optellen tot 1.
+  const reactions = slaafDofs.length === 0
+    ? Kreactie.multiplyVector(displacements)
+    : gecondenseerdeKloon(Kreactie).multiplyVector(
+        displacements.map((v, i) => (slaafSet.has(i) ? 0 : v)));
   for (let i = 0; i < reactions.length; i++) {
-    reactions[i] = reactions[i] - F[i];
+    reactions[i] = reactions[i] - Fc[i];
   }
 
   // =====================

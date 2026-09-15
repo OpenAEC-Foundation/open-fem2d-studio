@@ -17,7 +17,7 @@
 import { useState, useRef, useEffect, type ReactNode, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
+  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL, plaatRandLabel,
   type Node, type Beam, type Plate, type Support, type Load, type LoadCase,
   type Selection, type SupportType, type BeamLoadRole,
 } from "../fem/femTypes";
@@ -569,10 +569,20 @@ export default function TableView(props: TableViewProps) {
                 />
               </td>
               <td>
-                <SelectCell
-                  value={String(l.nodeId ?? "")} options={nodeOptions}
-                  onCommit={(v) => updateLoad(l.id, { nodeId: Number(v) })}
-                />
+                {l.plateId !== undefined ? (
+                  // Puntlast op een plaatrand: geen knoop te kiezen — de
+                  // plek is plaat + rand + positie (eigenschappenpaneel).
+                  <span className="ftable-muted">
+                    plaat {l.plateId}, {plaatRandLabel(l)}
+                  </span>
+                ) : l.beamId !== undefined ? (
+                  <span className="ftable-muted">staaf {l.beamId}</span>
+                ) : (
+                  <SelectCell
+                    value={String(l.nodeId ?? "")} options={nodeOptions}
+                    onCommit={(v) => updateLoad(l.id, { nodeId: Number(v) })}
+                  />
+                )}
               </td>
               <td>
                 {isMoment ? <span className="ftable-muted">—</span> : (

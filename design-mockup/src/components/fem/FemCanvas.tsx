@@ -40,6 +40,7 @@ import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 import { resolveSection } from "../../lib/sectionResolver";
 import {
   controleerDoorsneden, plaatNaarSolverInput, randlastNaarSolverInput,
+  randpuntlastNaarSolverInput,
 } from "../../lib/modelNaarSolverInput";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 // Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
@@ -55,7 +56,7 @@ import type {
 import {
   withPlateDefaults, PLATE_DEFAULTS,
   isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur,
-  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD,
+  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD, bepaalPlaatRand, plaatRandLabel,
 } from "./femTypes";
 // Onthoudt per lastsoort de laatst ingevulde waarde en biedt die aan als
 // startwaarde bij de volgende plaatsing (sessiegeheugen, geen projectgegeven).
@@ -235,6 +236,24 @@ function plaatHoekPunten(pl: Plate, nodes: Node[]): PlaatPunt[] | null {
  */
 function isPolygoonPlaat(punten: PlaatPunt[]): boolean {
   return !(punten.length === 4 && isAsgelijndeRechthoek(punten));
+}
+
+/**
+ * De rand van een plaatlast zoals de REKENKERN hem leest: van de beginhoek
+ * (fractie 0) naar de eindhoek (fractie 1), met de lengte in mm. Langs
+ * `bepaalPlaatRand`, dezelfde regel als engine, droogloop en IFC-export —
+ * zo tekent het canvas een deellast of een randpuntlast op precies de plek
+ * waar er ook mee gerekend wordt. `null` bij een ongeldig adres (de
+ * modelcontrole meldt dat apart).
+ */
+function plaatRandGeometrie(
+  pl: Plate, nodes: Node[], adres: { edge?: string; edgeIndex?: number },
+): { a: PlaatPunt; b: PlaatPunt; lengteMm: number } | null {
+  const punten = plaatHoekPunten(pl, nodes);
+  if (!punten) return null;
+  const rand = bepaalPlaatRand(punten, adres);
+  if (!rand.ok) return null;
+  return { a: rand.van, b: rand.naar, lengteMm: rand.lengte };
 }
 
 /** Eindpunten (mm) van polygonrand `edgeIndex` (hoek i → hoek i+1, cyclisch). */
@@ -669,7 +688,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     // paneel rechtsonder. De berekening wordt dan overgeslagen: doorrekenen
     // zou óf falen, óf een antwoord geven bij een model dat de gebruiker niet
     // bedoeld heeft.
-    const vooraf = controleerModel({ nodes, beams, supports, plates });
+    const vooraf = controleerModel({ nodes, beams, supports, plates, loads });
     const blokkerend = vooraf.filter(b => b.ernst === "fout");
     if (blokkerend.length > 0) {
       setControleOpen(true);
@@ -696,6 +715,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       const beamPointLoads: { beamId: number; posFrac: number; fx?: number; fz?: number; my?: number }[] = [];
       const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
       const edgeLoads: NonNullable<SolverInput["edgeLoads"]> = [];
+      const edgePointLoads: NonNullable<SolverInput["edgePointLoads"]> = [];
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
           // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
@@ -707,6 +727,13 @@ export default function FemCanvas(props: FemCanvasProps) {
             qStart: l.qStart, qEnd: l.qEnd, qDir: l.qDir, qCoord: l.qCoord,
             startFrac: l.startFrac, endFrac: l.endFrac,
           });
+        } else if (l.type === "pointForce" && l.plateId !== undefined) {
+          // Puntlast op een PLAATRAND: vóór de knoop- en staaftak, zodat
+          // `plateId` de last aan de plaat bindt — dezelfde volgorde en
+          // dezelfde vertaling als het multi-LC-pad en de MCP
+          // (`randpuntlastNaarSolverInput`).
+          const rp = randpuntlastNaarSolverInput(l);
+          if (rp) edgePointLoads.push(rp);
         } else if (l.type === "pointForce" && l.nodeId !== undefined) {
           // Fx, Fz in kN → N (×1000)
           pointLoads.push({
@@ -776,6 +803,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         beamPointLoads,
         thermalLoads,
         edgeLoads,
+        edgePointLoads,
         // Platen (wandschijven): DEZELFDE vertaling als het multi-LC-pad en de
         // MCP (`plaatNaarSolverInput`, met de CDT-meshcache van een
         // polygoonplaat) — hiermee rekent óók de canvas-solve de platen mee
@@ -1678,7 +1706,29 @@ export default function FemCanvas(props: FemCanvasProps) {
       //    POSITIE op een staaf. (Het moment blijft knoopgebonden.)
       if (tool === "addMoment") return;
       const sb = findSnapBeam(sx, sy);
-      if (!sb) return;
+      if (!sb) {
+        // 3) Geen staaf, wél een PLAATRAND: puntlast op de plaatrand. De
+        //    positie is de fractie langs de rand vanaf de beginhoek — dezelfde
+        //    telrichting als `bepaalPlaatRand`, waar de engine mee rekent. Het
+        //    membraan verdeelt de kracht consistent over de twee randknopen
+        //    van de elementrand waarop hij staat; een moment kan een membraan
+        //    niet dragen, vandaar dat het moment hierboven al afvalt.
+        const pe = findSnapPlateEdge(sx, sy);
+        if (!pe) return;
+        const pl = plates.find(pp => pp.id === pe.plateId);
+        const geo = pl ? plaatRandGeometrie(pl, nodes, pe) : null;
+        if (!geo || geo.lengteMm <= 0) return;
+        const wereld = screenToWorld(sx, sy);
+        const vx = geo.b.x - geo.a.x, vz = geo.b.z - geo.a.z;
+        const frac = Math.min(1, Math.max(0,
+          ((wereld.x - geo.a.x) * vx + (wereld.z - geo.a.z) * vz) / (geo.lengteMm * geo.lengteMm)));
+        const p = worldToScreen(geo.a.x + vx * frac, geo.a.z + vz * frac);
+        setPopover({
+          kind, plateId: pe.plateId, edge: pe.edge, edgeIndex: pe.edgeIndex,
+          posFrac: frac, sx: p.x, sy: p.y,
+        });
+        return;
+      }
       const frac = beamPosFractie(sb.beamId, sb.x, sb.z);
       if (frac === null) return;
       const b = beams.find(bb => bb.id === sb.beamId);
@@ -2761,39 +2811,91 @@ export default function FemCanvas(props: FemCanvasProps) {
         </g>
       );
     }
+    // PUNTLAST op een PLAATRAND: pijl op de positie langs de rand, dezelfde
+    // pijl als een knoop- of staafpuntlast (zonder q-band: een randlast ligt
+    // op dezelfde rand, maar de pijl steekt daar eenvoudig doorheen). De
+    // positie volgt `plaatRandGeometrie` — de rand zoals de kern hem leest,
+    // vanaf de beginhoek — zodat pijl en rekenpositie nooit uit elkaar lopen.
+    if (l.type === "pointForce" && l.plateId !== undefined) {
+      const pl = plates.find(pp => pp.id === l.plateId); if (!pl) return null;
+      const geo = plaatRandGeometrie(pl, nodes, l); if (!geo) return null;
+      const fx = l.fx ?? 0, fz = l.fz ?? 0;
+      const mag = Math.hypot(fx, fz);
+      if (mag < 1e-9) return null;
+      const t = Math.min(1, Math.max(0, l.posFrac ?? 0));
+      const p = worldToScreen(geo.a.x + (geo.b.x - geo.a.x) * t, geo.a.z + (geo.b.z - geo.a.z) * t);
+      const scale = 40 / mag;
+      const ax = fx * scale, ay = -fz * scale;
+      const ux = -ax / 40, uy = -ay / 40;
+      const tail = { x: p.x + ux * 40, y: p.y + uy * 40 };
+      const isSel = isLastGeselecteerd(l.id);
+      return (
+        <g
+          key={`load${l.id}`}
+          className={`fem-pointload-group${isSel ? " selected" : ""}`}
+          onClick={(e) => {
+            if (tool === "select" && !dragState) {
+              e.stopPropagation();
+              setSelection({ type: "load", id: l.id });
+            }
+          }}
+        >
+          {omschrijvingTitel}
+          {/* Markeerpunt op de rand: hier grijpt de last aan. */}
+          <circle cx={p.x} cy={p.y} r={2.5} className="fem-pointload-dot" />
+          <line x1={tail.x} y1={tail.y} x2={p.x} y2={p.y} className="fem-pointload-hit" />
+          <line x1={tail.x} y1={tail.y} x2={p.x} y2={p.y} className="fem-load-vec" markerEnd="url(#fem-load-head)" />
+          <text x={tail.x} y={tail.y - 4} className="fem-load-text">{mag.toFixed(1)} kN</text>
+        </g>
+      );
+    }
     // RANDLAST op een plaatrand (P3.3/P4.3) — pijltjesrij langs de rand,
     // zelfde pijl- en tekenconventie als de lijnlast (q < 0 = omlaag/links).
-    // Polygonranden (edgeIndex) tekenen langs het echte randsegment
-    // hoek i → hoek i+1; benoemde randen langs de bbox-rand (rechthoek).
+    // De rand komt uit `plaatRandGeometrie` (van de beginhoek naar de
+    // eindhoek, zoals de kern hem leest): een DEELLAST (startFrac/endFrac)
+    // en een TRAPEZIUM (qStart/qEnd) tekenen dan over precies het deel en in
+    // precies de richting waarmee gerekend wordt. Een ongeldig randadres
+    // tekent niets; de modelcontrole meldt het.
     if (l.type === "edgeLoad" && l.plateId !== undefined) {
       const pl = plates.find(pp => pp.id === l.plateId); if (!pl) return null;
-      const seg = l.edgeIndex !== undefined
-        ? plaatPolygoonRandSegment(pl, nodes, l.edgeIndex)
-        : plaatRandSegment(pl, nodes, l.edge ?? "top");
-      if (!seg) return null;
-      const q = l.q ?? 0;
-      if (Math.abs(q) < 1e-9) return null;
-      const pA = worldToScreen(seg.a.x, seg.a.z);
-      const pB = worldToScreen(seg.b.x, seg.b.z);
+      const geo = plaatRandGeometrie(pl, nodes, l); if (!geo) return null;
+      const qa = l.qStart ?? l.q ?? 0;
+      const qb = l.qEnd ?? l.q ?? 0;
+      const isTrap = l.qStart !== undefined || l.qEnd !== undefined;
+      if (Math.abs(qa) < 1e-9 && Math.abs(qb) < 1e-9) return null;
+      const pA = worldToScreen(geo.a.x, geo.a.z);
+      const pB = worldToScreen(geo.b.x, geo.b.z);
       const dxs = pB.x - pA.x, dys = pB.y - pA.y;
       const L = Math.hypot(dxs, dys);
       if (L < 1) return null;
+      // Belaste deel [aF, bF] van de rand, vanaf de beginhoek.
+      const aF = Math.min(1, Math.max(0, l.startFrac ?? 0));
+      const bF = Math.min(1, Math.max(aF, l.endFrac ?? 1));
+      const pS = { x: pA.x + dxs * aF, y: pA.y + dys * aF };
+      const pE = { x: pA.x + dxs * bF, y: pA.y + dys * bF };
+      const sdx = pE.x - pS.x, sdy = pE.y - pS.y;
       // Richting van de pijlen (globale assen, zoals de rekensemantiek):
       // (nx, ny) = scherm-eenheidsvector waarlangs de last werkt bij q < 0.
       const dirL = l.qDir ?? "z";
       const nx = dirL === "z" ? 0 : -1;
       const ny = dirL === "z" ? 1 : 0;
-      const len = Math.min(LINE_LOAD_MAX_PX,
+      const lenVan = (q: number) => Math.min(LINE_LOAD_MAX_PX,
         Math.max(LINE_LOAD_MIN_PX, Math.abs(q) * lineLoadPxPerKnm || LINE_LOAD_MIN_PX));
-      const dirQ = q < 0 ? 1 : -1;    // zelfde flip-conventie als de lijnlast
-      const N = 8;
+      const lenA = lenVan(qa), lenB = lenVan(qb);
+      const dirA = qa < 0 ? 1 : -1;   // zelfde flip-conventie als de lijnlast
+      const dirB = qb < 0 ? 1 : -1;
+      // Pijldichtheid gelijk houden: volle rand → 8 tussenstappen, deel naar rato.
+      const N = Math.max(2, Math.round(8 * (bF - aF)));
       const arrows: React.ReactNode[] = [];
       const tailPts: { x: number; y: number }[] = [];
       for (let i = 0; i <= N; i++) {
         const t = i / N;
-        const cx = pA.x + dxs * t, cy = pA.y + dys * t;
-        const sxT = cx + nx * len * -dirQ;
-        const syT = cy + ny * len * -dirQ;
+        const cx = pS.x + sdx * t, cy = pS.y + sdy * t;
+        const lenT = lenA + (lenB - lenA) * t;
+        const dirT = dirA + (dirB - dirA) * t;
+        const dirSign = dirT < 0 ? -1 : 1;
+        const sxT = cx + nx * lenT * -dirSign;
+        const syT = cy + ny * lenT * -dirSign;
         tailPts.push({ x: sxT, y: syT });
         arrows.push(
           <line key={`ea${l.id}-${i}`}
@@ -2801,15 +2903,24 @@ export default function FemCanvas(props: FemCanvasProps) {
             className="fem-load-vec" markerEnd="url(#fem-load-head)" />
         );
       }
-      const midX = (pA.x + pB.x) / 2, midY = (pA.y + pB.y) / 2;
-      const labelX = midX + nx * (len + 14) * -dirQ;
-      const labelY = midY + ny * (len + 14) * -dirQ;
+      const midX = (pS.x + pE.x) / 2, midY = (pS.y + pE.y) / 2;
+      const avgLen = (lenA + lenB) / 2;
+      const avgDir = ((qa + qb) / 2) < 0 ? 1 : -1;
+      const labelX = midX + nx * (avgLen + 14) * -avgDir;
+      const labelY = midY + ny * (avgLen + 14) * -avgDir;
       const polyPoints = [
-        `${pA.x},${pA.y}`,
+        `${pS.x},${pS.y}`,
         ...tailPts.map(p => `${p.x},${p.y}`),
-        `${pB.x},${pB.y}`,
+        `${pE.x},${pE.y}`,
       ].join(" ");
       const isSel = isLastGeselecteerd(l.id);
+      const focus = (field: keyof Load) => (e: React.MouseEvent) => {
+        if (tool === "select" && !dragState) {
+          e.stopPropagation();
+          setSelection({ type: "load", id: l.id });
+          setPendingLoadFocus?.({ loadId: l.id, field });
+        }
+      };
       return (
         <g
           key={`load${l.id}`}
@@ -2825,19 +2936,22 @@ export default function FemCanvas(props: FemCanvasProps) {
           <polygon className="fem-lineload-hit" points={polyPoints} />
           <polyline className="fem-lineload-tip" points={tailPts.map(p => `${p.x},${p.y}`).join(" ")} />
           {arrows}
-          <text
-            x={labelX} y={labelY}
-            className="fem-load-text fem-load-text-clickable"
-            onClick={(e) => {
-              if (tool === "select" && !dragState) {
-                e.stopPropagation();
-                setSelection({ type: "load", id: l.id });
-                setPendingLoadFocus?.({ loadId: l.id, field: "q" });
-              }
-            }}
-          >
-            p={q.toFixed(1)} kN/m
-          </text>
+          {isTrap ? (
+            <>
+              <text x={labelX} y={labelY} className="fem-load-text-static">p=</text>
+              <text x={labelX} y={labelY} dx="14" className="fem-load-text fem-load-text-clickable"
+                onClick={focus("qStart")}>{qa.toFixed(1)}</text>
+              <text x={labelX} y={labelY} dx="34" className="fem-load-text-static">→</text>
+              <text x={labelX} y={labelY} dx="44" className="fem-load-text fem-load-text-clickable"
+                onClick={focus("qEnd")}>{qb.toFixed(1)}</text>
+              <text x={labelX} y={labelY} dx="64" className="fem-load-text-static">kN/m</text>
+            </>
+          ) : (
+            <text x={labelX} y={labelY} className="fem-load-text fem-load-text-clickable"
+              onClick={focus("q")}>
+              p={qa.toFixed(1)} kN/m
+            </text>
+          )}
         </g>
       );
     }
@@ -3088,8 +3202,8 @@ export default function FemCanvas(props: FemCanvasProps) {
   // De controle is O(knopen × staven) op puur rekenwerk — voor modellen van
   // deze orde verwaarloosbaar naast het tekenen zelf.
   const bevindingen = useMemo(
-    () => controleerModel({ nodes, beams, supports, plates }),
-    [nodes, beams, supports, plates],
+    () => controleerModel({ nodes, beams, supports, plates, loads }),
+    [nodes, beams, supports, plates, loads],
   );
   const aantalFouten = useMemo(
     () => bevindingen.filter(b => b.ernst === "fout").length,
@@ -4494,11 +4608,18 @@ export default function FemCanvas(props: FemCanvasProps) {
       // toont het formulier ook een positieveld in m vanaf de startknoop.
       // Fx/Fz komen uit het waardegeheugen; de eerste keer per sessie zijn
       // dat de vertrouwde beginwaarden (verticaal −10 kN, horizontaal +10 kN).
+      // Derde vorm: op een PLAATRAND (p.plateId + rand + p.posFrac), positie
+      // in m vanaf de beginhoek van die rand.
       const opStaaf = p.nodeId === undefined && p.beamId !== undefined;
+      const opPlaat = p.nodeId === undefined && p.beamId === undefined && p.plateId !== undefined;
       const beam = opStaaf ? beams.find(b => b.id === p.beamId) : undefined;
       const nA = beam ? nodes.find(n => n.id === beam.from) : undefined;
       const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
-      const lenM = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
+      const plaat = opPlaat ? plates.find(pp => pp.id === p.plateId) : undefined;
+      const randGeo = plaat ? plaatRandGeometrie(plaat, nodes, p) : null;
+      const lenM = opPlaat
+        ? (randGeo?.lengteMm ?? 0) / 1000
+        : nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
       const soort: LastSoort = p.kind === "pointLoadH" ? "puntlastH" : "puntlastV";
       const w = lastwaarden(soort);
       return <PopoverPointLoadForm
@@ -4506,12 +4627,21 @@ export default function FemCanvas(props: FemCanvasProps) {
         startFx={w.fx ?? 0}
         startFz={w.fz ?? 0}
         onthouden={isOnthouden(soort)}
-        beamLenM={opStaaf ? lenM : undefined}
-        defaultPosM={opStaaf ? (p.posFrac ?? 0) * lenM : undefined}
+        beamLenM={opStaaf || opPlaat ? lenM : undefined}
+        defaultPosM={opStaaf || opPlaat ? (p.posFrac ?? 0) * lenM : undefined}
+        positieLabel={opPlaat
+          ? `Afstand langs ${plaatRandLabel(p)} van plaat ${p.plateId}, vanaf de beginhoek (0 – ${lenM.toFixed(2)} m).`
+          : undefined}
         onSubmit={(fx, fz, posFrac) => cbs.onAddLoad(
-          opStaaf
-            ? { type: "pointForce", beamId: p.beamId, posFrac: posFrac ?? p.posFrac ?? 0, fx, fz }
-            : { type: "pointForce", nodeId: p.nodeId, fx, fz },
+          opPlaat
+            ? {
+              type: "pointForce", plateId: p.plateId,
+              ...(p.edgeIndex !== undefined ? { edgeIndex: p.edgeIndex } : { edge: p.edge }),
+              posFrac: posFrac ?? p.posFrac ?? 0, fx, fz,
+            }
+            : opStaaf
+              ? { type: "pointForce", beamId: p.beamId, posFrac: posFrac ?? p.posFrac ?? 0, fx, fz }
+              : { type: "pointForce", nodeId: p.nodeId, fx, fz },
         )}
       />;
     }
@@ -4554,19 +4684,27 @@ export default function FemCanvas(props: FemCanvasProps) {
       // richting in globale assen — zelfde tekenconventie als lijnlasten.
       // Polygonranden gaan via de rand-index (`edgeIndex`), benoemde randen
       // blijven het rechthoekpad.
+      // Begin/einde van een deellast in m vanaf de beginhoek van de rand —
+      // dezelfde telrichting als de rekenkern (`bepaalPlaatRand`).
       const w = lastwaarden("randlast");
+      const plaat = plates.find(pp => pp.id === p.plateId);
+      const randGeo = plaat ? plaatRandGeometrie(plaat, nodes, p) : null;
+      const randLenM = (randGeo?.lengteMm ?? 0) / 1000;
       return <PopoverEdgeLoadForm
         randLabel={p.edgeIndex !== undefined
           ? `rand ${p.edgeIndex + 1}`
           : RAND_LABEL[p.edge ?? "top"]}
+        randLenM={randLenM}
         startP={w.q ?? -5}
         startDir={w.qDir ?? "z"}
         onthouden={isOnthouden("randlast")}
-        onSubmit={(pWaarde, dir) => cbs.onAddLoad(
-          p.edgeIndex !== undefined
-            ? { type: "edgeLoad", plateId: p.plateId, edgeIndex: p.edgeIndex, q: pWaarde, qDir: dir }
-            : { type: "edgeLoad", plateId: p.plateId, edge: p.edge ?? "top", q: pWaarde, qDir: dir },
-        )}
+        onSubmit={(pWaarde, dir, startFrac, endFrac) => cbs.onAddLoad({
+          type: "edgeLoad", plateId: p.plateId,
+          ...(p.edgeIndex !== undefined ? { edgeIndex: p.edgeIndex } : { edge: p.edge ?? "top" }),
+          q: pWaarde, qDir: dir,
+          ...(startFrac !== undefined ? { startFrac } : {}),
+          ...(endFrac !== undefined ? { endFrac } : {}),
+        })}
       />;
     }
     return null;
@@ -4792,19 +4930,39 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
  * Z, naar links voor X) — dezelfde tekenconventie als lijnlasten op staven.
  * `randLabel` is de NL-naam van de rand ("bovenrand" of "rand 3").
  */
-function PopoverEdgeLoadForm({ randLabel, startP, startDir, onthouden, onSubmit }: {
+function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden, onSubmit }: {
   randLabel: string;
+  /** Randlengte in m — begrenst de begin/eind-invoer van een deellast. */
+  randLenM: number;
   /** Voorgevulde p (kN/m) — beginwaarde of de laatst gebruikte waarde. */
   startP: number;
   /** Voorgevulde richting — beginwaarde of de laatst gebruikte richting. */
   startDir: "x" | "z";
   /** Komen startP/startDir uit de vorige plaatsing? Dan komt dat erbij te staan. */
   onthouden: boolean;
-  onSubmit: (p: number, dir: "x" | "z") => void;
+  /** startFrac/endFrac zijn undefined bij de volle rand (default-gedrag). */
+  onSubmit: (p: number, dir: "x" | "z", startFrac?: number, endFrac?: number) => void;
 }) {
   const [p, setP] = useState(String(startP));
   const [dir, setDir] = useState<"x" | "z">(startDir);
-  const commit = () => onSubmit(Number(p) || 0, dir);
+  // Deellast-invoer in m VANAF DE BEGINHOEK van de rand (hoek i bij een
+  // rand-index, de kleinste x of z bij een benoemde rand) — dezelfde
+  // telrichting als de rekenkern; intern fracties 0..1, net als bij een staaf.
+  // Een trapezium (p_start/p_end) stel je daarna in het eigenschappenpaneel
+  // in, zoals bij een lijnlast.
+  const [beginM, setBeginM] = useState("0");
+  const [endM, setEndM] = useState(randLenM > 0 ? randLenM.toFixed(2) : "0");
+  const b0 = Number(beginM), b1 = Number(endM);
+  const rangeValid = randLenM > 0
+    && Number.isFinite(b0) && Number.isFinite(b1)
+    && b0 >= 0 && b0 < b1 && b1 <= randLenM + 1e-9;
+  const commit = () => {
+    if (!rangeValid) return;
+    const aF = b0 / randLenM;
+    const bF = Math.min(1, b1 / randLenM);
+    const isFull = aF <= 0 && bF >= 1;
+    onSubmit(Number(p) || 0, dir, isFull ? undefined : aF, isFull ? undefined : bF);
+  };
   return (
     <div className="fem-popover-form">
       <div className="fem-popover-title">Randlast op {randLabel}</div>
@@ -4824,22 +4982,44 @@ function PopoverEdgeLoadForm({ randLabel, startP, startDir, onthouden, onSubmit 
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
+      {onthouden && <div className="fem-popover-hint">{ONTHOUDEN_HINT}</div>}
+      <label className="fem-popover-row">
+        <span>Begin (m)</span>
+        <input
+          type="number" step="0.1" min="0" max={randLenM} value={beginM}
+          onChange={e => setBeginM(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") commit(); }}
+        />
+      </label>
+      <label className="fem-popover-row">
+        <span>Einde (m)</span>
+        <input
+          type="number" step="0.1" min="0" max={randLenM} value={endM}
+          onChange={e => setEndM(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") commit(); }}
+        />
+      </label>
       <div className="fem-popover-hint">
         p werkt per meter randlengte. Negatief = tegen de +richting in
-        (omlaag voor Z, links voor X).
-        {onthouden && ` ${ONTHOUDEN_HINT}`}
+        (omlaag voor Z, links voor X). Begin/einde vanaf de beginhoek van de
+        rand; 0 t/m {randLenM.toFixed(2)} m = de volle rand.
       </div>
+      {!rangeValid && (
+        <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
+          Ongeldig bereik: 0 ≤ begin &lt; einde ≤ {randLenM.toFixed(2)} m
+        </div>
+      )}
       <div className="fem-popover-actions">
-        <button onClick={commit} className="fem-popover-primary">OK</button>
+        <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>OK</button>
       </div>
     </div>
   );
 }
 
 function PopoverPointLoadForm({
-  onSubmit, horizontal, startFx, startFz, onthouden, beamLenM, defaultPosM,
+  onSubmit, horizontal, startFx, startFz, onthouden, beamLenM, defaultPosM, positieLabel,
 }: {
-  /** `posFrac` is alleen gevuld bij een puntlast op een vrije staafpositie. */
+  /** `posFrac` is alleen gevuld bij een puntlast op een vrije staaf- of randpositie. */
   onSubmit: (fx: number, fz: number, posFrac?: number) => void;
   horizontal?: boolean;
   /** Voorgevulde Fx (kN) — beginwaarde of de laatst gebruikte waarde. */
@@ -4848,11 +5028,13 @@ function PopoverPointLoadForm({
   startFz: number;
   /** Komen startFx/startFz uit de vorige plaatsing? Dan komt dat erbij te staan. */
   onthouden: boolean;
-  /** Staaflengte in m — gezet ⇒ de last grijpt op een STAAF aan, niet op een
-   *  knoop, en het positieveld verschijnt. */
+  /** Lengte in m van de staaf of de plaatrand — gezet ⇒ de last grijpt op
+   *  een vrije positie aan, niet op een knoop, en het positieveld verschijnt. */
   beamLenM?: number;
-  /** Voorgestelde positie in m vanaf de startknoop (uit de klikpositie). */
+  /** Voorgestelde positie in m vanaf de startknoop of beginhoek (uit de klikpositie). */
   defaultPosM?: number;
+  /** Uitleg bij het positieveld; zonder: de staafvariant. */
+  positieLabel?: string;
 }) {
   // De horizontale variant focust Fx, de verticale Fz. De waarden zelf komen
   // van de aanroeper (waardegeheugen, of de beginwaarden +10 / −10 kN).
@@ -4882,7 +5064,7 @@ function PopoverPointLoadForm({
           <input
             type="number" step="0.05" min="0" max={beamLenM}
             value={posM} onChange={e => setPosM(e.target.value)}
-            title={`Afstand vanaf de startknoop van de staaf (0 – ${beamLenM!.toFixed(2)} m).`}
+            title={positieLabel ?? `Afstand vanaf de startknoop van de staaf (0 – ${beamLenM!.toFixed(2)} m).`}
             onKeyDown={e => { if (e.key === "Enter") commit(); }}
           />
         </label>

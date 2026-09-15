@@ -979,7 +979,8 @@ export function computeSelectionCopy(
     } else if (l.nodeId !== undefined && nodeIdMap.has(l.nodeId)) {
       newLoads.push({ ...l, id: nextLoadId++, nodeId: nodeIdMap.get(l.nodeId)! });
     } else if (l.plateId !== undefined && plateIdMap.has(l.plateId)) {
-      // Randlast (edgeLoad, P3.3) volgt zijn gekopieerde plaat.
+      // Plaatlast (randlast, of puntlast op een plaatrand) volgt zijn
+      // gekopieerde plaat; het randadres en de fracties blijven gelijk.
       newLoads.push({ ...l, id: nextLoadId++, plateId: plateIdMap.get(l.plateId)! });
     }
   }

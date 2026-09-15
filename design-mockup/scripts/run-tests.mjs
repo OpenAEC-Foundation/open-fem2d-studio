@@ -140,6 +140,13 @@ const BUNDEL_TESTS = new Set([
   // zijn als in de bron, anders valt een last daar stil weg.
   "plaat-randadres",
   "plaat-randlast",
+  // Deel- en trapeziumrandlasten, puntlasten op een plaatrand en staafeinden
+  // die tussen twee randknopen op een plaatrand liggen (kinematische
+  // koppeling): praat met `engine`, `combinations`, `bouwMultiInput`,
+  // `valideerModel` en de in-proces sidecar — allemaal in de barrel. Hoort
+  // óók tegen de bundel: het is de proef dat de MCP dezelfde knoopkrachten en
+  // dezelfde koppeling rekent als de app.
+  "plaat-randlasten",
   "plaat-randstaaf",
   "plaat-validatie",
   "qrichting",

@@ -260,8 +260,50 @@ export interface SolverEdgeLoadInput {
   edgeIndex?: number;
   /** Lastgrootte per meter randlengte (N/mm = kN/m); negatief = tegen de +richting in. */
   p: number;
+  /**
+   * Trapezium: lastgrootte aan het BEGIN van het belaste deel (N/mm = kN/m).
+   * Ontbreekt → `p`. Dezelfde betekenis als `qStart` bij een staaf.
+   */
+  pStart?: number;
+  /** Trapezium: lastgrootte aan het EINDE van het belaste deel. Ontbreekt → `p`. */
+  pEnd?: number;
+  /**
+   * Deellast: begin van het belaste deel als fractie 0..1 langs de rand, gemeten
+   * vanaf de beginhoek (`edgeIndex` i: hoek i; `edge`: de kleinste coördinaat).
+   * Ontbreekt → 0. De engine weigert een deel dat niet binnen de rand ligt of
+   * waarvan het begin niet vóór het einde ligt.
+   */
+  startFrac?: number;
+  /** Deellast: einde van het belaste deel als fractie 0..1. Ontbreekt → 1. */
+  endFrac?: number;
   /** Richting in GLOBALE assen: "z" = verticaal (default), "x" = horizontaal. */
   dir?: "x" | "z";
+}
+
+/**
+ * Puntlast op een plaatrand: een kracht op een positie langs één rand van een
+ * wandschijf, adres zoals bij een randlast (precies één van `edge` en
+ * `edgeIndex`, via `femTypes.bepaalPlaatRand`).
+ *
+ * REKENAANPAK — consistente verdeling, geen nieuwe knoop. De kracht gaat naar
+ * de twee randknopen van de elementrand waarop hij staat, gewogen met de
+ * lineaire vormfuncties van die rand (PlateLoads.verdeelRandpuntlastConsistent).
+ * Exact voor lineaire randen (CST en Quad4), en het rekenmesh blijft in elk
+ * belastinggeval gelijk — de combinaties tellen plaatspanningen per
+ * elementindex op en zijn daar op aangewezen.
+ */
+export interface SolverEdgePointLoadInput {
+  /** UI-plaat-id (SolverPlateInput.id). */
+  plateId: number;
+  edge?: "bottom" | "top" | "left" | "right";
+  edgeIndex?: number;
+  /**
+   * Positie als fractie 0..1 langs de rand vanaf de beginhoek. Verplicht: een
+   * ontbrekende of onmogelijke positie wordt geweigerd, niet op 0 gezet.
+   */
+  posFrac?: number;
+  fx?: number;   // N
+  fz?: number;   // N
 }
 
 /** Uniform temperature change on a beam — added in step 2b. */
@@ -344,6 +386,8 @@ export interface SolverInput {
   thermalLoads?: SolverThermalLoadInput[];
   /** Optionele randlasten op plaatranden (P3.3). */
   edgeLoads?: SolverEdgeLoadInput[];
+  /** Optionele puntlasten op een plaatrand. */
+  edgePointLoads?: SolverEdgePointLoadInput[];
   /** Optionele wandschijven — aanwezig ⇒ analyse in `mixed_beam_plate`. */
   plates?: SolverPlateInput[];
   /** Optional load-case tag for traceability (used by multi-LC variant). */
@@ -365,6 +409,11 @@ export interface MultiInput {
   thermalLoads?: (SolverThermalLoadInput & { caseId: number })[];
   /** Randlasten op plaatranden, per belastinggeval (P3.3). */
   edgeLoads?: (SolverEdgeLoadInput & { caseId: number })[];
+  /**
+   * Puntlasten op een plaatrand, per belastinggeval. Alleen aanwezig als het
+   * model er één heeft: een model zonder blijft byte-gelijk aan voorheen.
+   */
+  edgePointLoads?: (SolverEdgePointLoadInput & { caseId: number })[];
   /** Optionele wandschijven — lastonafhankelijk model, net als beams. */
   plates?: SolverPlateInput[];
   /** All load cases referenced by the loads above. */

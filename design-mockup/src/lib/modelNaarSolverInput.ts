@@ -163,7 +163,34 @@ export function randlastNaarSolverInput(
     ...(l.edge !== undefined ? { edge: l.edge } : {}),
     ...(l.edgeIndex !== undefined ? { edgeIndex: l.edgeIndex } : {}),
     p: l.q,
+    // Deellast en trapezium: dezelfde velden en dezelfde betekenis als bij een
+    // staaf, maar langs de rand vanaf de beginhoek. Alleen aanwezig als ze
+    // ingevoerd zijn, zodat een volle gelijkmatige randlast byte-gelijk blijft.
+    ...(l.qStart !== undefined ? { pStart: l.qStart } : {}),
+    ...(l.qEnd !== undefined ? { pEnd: l.qEnd } : {}),
+    ...(l.startFrac !== undefined ? { startFrac: l.startFrac } : {}),
+    ...(l.endFrac !== undefined ? { endFrac: l.endFrac } : {}),
     dir: l.qDir,
+  };
+}
+
+/**
+ * Een puntlast op een plaatrand (`pointForce` met `plateId`) naar de solver, of
+ * `null` als het geen plaatgebonden puntlast is. Eenheden als bij elke puntlast
+ * (kN → N). Het randadres en `posFrac` gaan ONGEWIJZIGD mee — ook een
+ * ontbrekende positie: die zet de engine niet stil op 0 maar weigert hem.
+ */
+export function randpuntlastNaarSolverInput(
+  l: Load,
+): Omit<NonNullable<MultiInput["edgePointLoads"]>[number], "caseId"> | null {
+  if (l.type !== "pointForce" || l.plateId === undefined) return null;
+  return {
+    plateId: l.plateId,
+    ...(l.edge !== undefined ? { edge: l.edge } : {}),
+    ...(l.edgeIndex !== undefined ? { edgeIndex: l.edgeIndex } : {}),
+    posFrac: l.posFrac,
+    fx: (l.fx ?? 0) * 1000,
+    fz: (l.fz ?? 0) * 1000,
   };
 }
 
@@ -289,6 +316,13 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
         endFrac: l.endFrac,
         caseId: l.caseId,
       });
+    } else if (l.type === "pointForce" && l.plateId !== undefined) {
+      // Puntlast op een plaatrand: VÓÓR de knoop- en staaftak, zodat `plateId`
+      // de last aan de plaat bindt (de droogloop weigert een puntlast die
+      // tegelijk een knoop of staaf noemt). Het veld komt er pas bij de eerste
+      // zo'n last: een model zonder blijft byte-gelijk aan voorheen.
+      const rp = randpuntlastNaarSolverInput(l)!;
+      (multiInput.edgePointLoads ??= []).push({ ...rp, caseId: l.caseId });
     } else if (l.type === "pointForce" && l.nodeId !== undefined) {
       multiInput.pointLoads!.push({
         nodeId: l.nodeId,

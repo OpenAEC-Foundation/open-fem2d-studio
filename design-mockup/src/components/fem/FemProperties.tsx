@@ -24,7 +24,7 @@ import type {
 } from "./femTypes";
 import {
   withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
-  plaatRandLabel,
+  plaatRandLabel, bepaalPlaatRand,
 } from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -155,7 +155,7 @@ export default function FemProperties(props: FemPropertiesProps) {
       return <div className="fem-properties"><div className="fem-prop-empty">Belasting niet gevonden.</div></div>;
     }
     return <LoadProperties
-      load={ld} beams={beams} nodes={nodes} updateLoad={updateLoad}
+      load={ld} beams={beams} nodes={nodes} plates={plates} updateLoad={updateLoad}
       pendingFocus={pendingLoadFocus} clearPendingFocus={clearPendingLoadFocus}
     />;
   }
@@ -1046,12 +1046,14 @@ const LOAD_TYPE_LABEL: Record<Load["type"], string> = {
 const randLabel = (load: Load): string => plaatRandLabel(load);
 
 function LoadProperties({
-  load, beams, nodes, updateLoad,
+  load, beams, nodes, plates, updateLoad,
   pendingFocus, clearPendingFocus,
 }: {
   load: Load;
   beams: Beam[];
   nodes: Node[];
+  /** Voor de randlengte van een plaatlast (deellast, randpuntlast). */
+  plates?: Plate[];
   updateLoad?: (id: number, updates: Partial<Load>) => void;
   pendingFocus?: { loadId: number; field: keyof Load } | null;
   clearPendingFocus?: () => void;
@@ -1147,10 +1149,26 @@ function LoadProperties({
     const nB = nodes.find(n => n.id === beam.to);
     if (nA && nB) beamLen = Math.hypot(nB.x - nA.x, nB.z - nA.z);
   }
+  // Plaatlast (randlast of puntlast op een plaatrand): de rand zoals de
+  // rekenkern hem leest (`bepaalPlaatRand`, van de beginhoek af), zodat de
+  // begin-/eind-/positie-invoer in m langs dezelfde as telt als de berekening.
+  // Een ongeldig adres geeft randLen 0; de modelcontrole meldt dat apart.
+  const plaat = load.plateId !== undefined ? (plates ?? []).find(p => p.id === load.plateId) : undefined;
+  let randLen = 0;
+  if (plaat) {
+    const hoeken = plaat.nodeIds.map(id => nodes.find(n => n.id === id));
+    if (hoeken.every(h => h !== undefined)) {
+      const rand = bepaalPlaatRand(hoeken.map(h => ({ x: h!.x, z: h!.z })), load);
+      if (rand.ok) randLen = rand.lengte;
+    }
+  }
+  /** Lengte (mm) van de as waarlangs fracties tellen: de staaf, of de plaatrand. */
+  const asLen = beam ? beamLen : randLen;
 
-  // ── Deellast (begin/eind) — invoer in m vanaf de startknoop, intern
-  //    opgeslagen als fracties 0..1 (Load.startFrac/endFrac). ──────────────
-  const lenM = beamLen / 1000;
+  // ── Deellast (begin/eind) — invoer in m vanaf de startknoop (staaf) of de
+  //    beginhoek (plaatrand), intern opgeslagen als fracties 0..1
+  //    (Load.startFrac/endFrac). ──────────────────────────────────────────
+  const lenM = asLen / 1000;
   const fracA = Math.min(1, Math.max(0, load.startFrac ?? 0));
   const fracB = Math.min(1, Math.max(0, load.endFrac ?? 1));
   const [beginStr, setBeginStr] = useState((fracA * lenM).toFixed(2));
@@ -1235,8 +1253,32 @@ function LoadProperties({
               />
             </Row>
           )}
-          {load.type === "edgeLoad" && load.plateId !== undefined && (
+          {load.plateId !== undefined && (
             <Row label="Op plaat"><code>{load.plateId} ({randLabel(load)})</code></Row>
+          )}
+          {/* Puntlast op een plaatrand: positie langs de rand vanaf de
+              beginhoek, bij te stellen in meters — dezelfde as als de kern. */}
+          {plaat && load.type === "pointForce" && randLen > 0 && (
+            <Row label="Positie [m]">
+              <input
+                type="number"
+                className="fem-prop-input"
+                step="0.05"
+                min="0"
+                max={(randLen / 1000).toFixed(3)}
+                value={(((load.posFrac ?? 0) * randLen) / 1000).toFixed(3)}
+                title="Afstand langs de rand vanaf de beginhoek (hoek i bij een rand-index; de kleinste x of z bij een benoemde rand)."
+                onChange={(e) => {
+                  const meters = Number(e.target.value);
+                  if (!Number.isFinite(meters)) return;
+                  const frac = Math.min(1, Math.max(0, (meters * 1000) / randLen));
+                  updateLoad?.(load.id, { posFrac: frac });
+                }}
+              />
+            </Row>
+          )}
+          {plaat && randLen > 0 && (
+            <Row label="Randlengte"><code>{(randLen / 1000).toFixed(2)} m</code></Row>
           )}
           {beamLen > 0 && load.type === "lineLoad" && (
             <Row label="Balklengte"><code>{(beamLen / 1000).toFixed(2)} m</code></Row>
@@ -1385,16 +1427,93 @@ function LoadProperties({
                 <option value="x">Horizontaal (+X, wind)</option>
               </select>
             </Row>
-            <Row label="p (kN/m)">
+            {/* Trapezium en deellast langs de rand: dezelfde velden en
+                dezelfde betekenis als bij een lijnlast op een staaf, met de
+                fracties gemeten vanaf de beginhoek van de rand. De kern zet
+                ze om in consistente knoopkrachten (PlateLoads). */}
+            <Row label="Trapezium">
               <input
-                ref={qRef}
-                type="number" step="0.1" className="fem-prop-input fem-prop-input-mono"
-                value={qStr}
-                onChange={e => setQStr(e.target.value)}
-                onBlur={() => commitNumber(qStr, "q")}
-                onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                type="checkbox" className="fem-prop-checkbox"
+                checked={isTrap}
+                onChange={e => toggleTrap(e.target.checked)}
               />
             </Row>
+            {!isTrap ? (
+              <Row label="p (kN/m)">
+                <input
+                  ref={qRef}
+                  type="number" step="0.1" className="fem-prop-input fem-prop-input-mono"
+                  value={qStr}
+                  onChange={e => setQStr(e.target.value)}
+                  onBlur={() => commitNumber(qStr, "q")}
+                  onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                />
+              </Row>
+            ) : (
+              <>
+                <Row label="p_start (kN/m)">
+                  <input
+                    ref={qStartRef}
+                    type="number" step="0.1" className="fem-prop-input fem-prop-input-mono"
+                    value={qStartStr}
+                    onChange={e => setQStartStr(e.target.value)}
+                    onBlur={() => commitNumber(qStartStr, "qStart")}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  />
+                </Row>
+                <Row label="p_end (kN/m)">
+                  <input
+                    ref={qEndRef}
+                    type="number" step="0.1" className="fem-prop-input fem-prop-input-mono"
+                    value={qEndStr}
+                    onChange={e => setQEndStr(e.target.value)}
+                    onBlur={() => commitNumber(qEndStr, "qEnd")}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  />
+                </Row>
+              </>
+            )}
+            {randLen > 0 && (
+              <>
+                <Row label="Begin (m)">
+                  <input
+                    type="number" step="0.1" min="0" max={lenM}
+                    className="fem-prop-input fem-prop-input-mono"
+                    value={beginStr}
+                    onChange={e => setBeginStr(e.target.value)}
+                    onBlur={() => commitRange(beginStr, endStr)}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    title={`Afstand vanaf de beginhoek van de rand (0 – ${lenM.toFixed(2)} m); 0 t/m ${lenM.toFixed(2)} = de volle rand`}
+                  />
+                </Row>
+                <Row label="Einde (m)">
+                  <input
+                    type="number" step="0.1" min="0" max={lenM}
+                    className="fem-prop-input fem-prop-input-mono"
+                    value={endStr}
+                    onChange={e => setEndStr(e.target.value)}
+                    onBlur={() => commitRange(beginStr, endStr)}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    title={`Afstand vanaf de beginhoek van de rand (0 – ${lenM.toFixed(2)} m)`}
+                  />
+                </Row>
+                {isPartial && (
+                  <Row label="Belast deel">
+                    <code>{((fracB - fracA) * lenM).toFixed(2)} m</code>
+                  </Row>
+                )}
+                <Row label="Totaal">
+                  <code>
+                    {(() => {
+                      // Uniform: p·L_belast. Trapezium: (pa+pb)/2 · L_belast.
+                      const pa = load.qStart ?? load.q ?? 0;
+                      const pb = load.qEnd   ?? load.q ?? 0;
+                      return ((pa + pb) / 2 * (fracB - fracA) * lenM).toFixed(2);
+                    })()} kN
+                  </code>
+                </Row>
+              </>
+            )}
             <Row label="Werkt in">
               <code>
                 {(load.qDir ?? "z") === "z"

@@ -8,7 +8,7 @@
  */
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
-import { plaatRandLabel } from "../../fem/femTypes";
+import { plaatRandLabel, bepaalPlaatRand } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
@@ -23,7 +23,22 @@ const CASE_TYPE_LABELS: Record<LoadCase["type"], string> = {
 
 export default function LoadsSection() {
   const { t } = useTranslation("ribbon");
-  const { beams, nodes, loads, loadCases, selfWeightEnabled } = useReportData();
+  const { beams, nodes, plates, loads, loadCases, selfWeightEnabled } = useReportData();
+
+  /**
+   * Randlengte (m) van een plaatlast, langs `bepaalPlaatRand` — dezelfde regel
+   * als de rekenkern, zodat "1,25 – 2,50 m" in het rapport dezelfde meters
+   * zijn als waarmee gerekend is. `null` bij een ongeldig adres; de tabel
+   * valt dan terug op fracties.
+   */
+  const randLengteM = (l: Load): number | null => {
+    const plaat = l.plateId !== undefined ? plates.find((p) => p.id === l.plateId) : undefined;
+    if (!plaat) return null;
+    const hoeken = plaat.nodeIds.map((id) => nodes.find((n) => n.id === id));
+    if (hoeken.some((h) => h === undefined)) return null;
+    const rand = bepaalPlaatRand(hoeken.map((h) => ({ x: h!.x, z: h!.z })), l);
+    return rand.ok ? rand.lengte / 1000 : null;
+  };
 
   // Zelfde regel als de solver (bouwMultiInput in lib/modelNaarSolverInput):
   // eigen gewicht landt in het eerste "dead"-geval. Zonder blijvend geval
@@ -70,8 +85,16 @@ export default function LoadsSection() {
       : plaatRandLabel(l);
 
   const targetText = (l: Load): string => {
-    if (l.type === "edgeLoad" && l.plateId !== undefined) {
-      return `${t("report.plateWord", "plaat")} ${l.plateId}, ${randTekst(l)}`;
+    if (l.plateId !== undefined && (l.type === "edgeLoad" || l.type === "pointForce")) {
+      const basis = `${t("report.plateWord", "plaat")} ${l.plateId}, ${randTekst(l)}`;
+      if (l.type !== "pointForce") return basis;
+      // Puntlast op een plaatrand: de positie in m vanaf de beginhoek van de
+      // rand (of als fractie, als de rand niet te bepalen is).
+      const L = randLengteM(l);
+      const frac = l.posFrac ?? 0;
+      return L !== null
+        ? `${basis}, ${t("report.atPosition", "op")} ${fmtNum(frac * L, 2)} m`
+        : `${basis}, ${t("report.atPosition", "op")} ${fmtNum(frac, 2)}·L`;
     }
     if (l.beamId !== undefined) return `${t("report.beamWord", "staaf")} ${l.beamId}`;
     if (l.nodeId !== undefined) return `${t("report.nodeWord", "knoop")} ${l.nodeId}`;
@@ -99,8 +122,15 @@ export default function LoadsSection() {
         return `My = ${fmtNum(l.my ?? 0, 2)} kNm`;
       case "thermal":
         return `ΔT = ${fmtNum(l.deltaT ?? 0, 1)} K`;
-      case "edgeLoad":
+      case "edgeLoad": {
+        // Trapezium langs de rand: dezelfde velden als bij een staaf.
+        if (l.qStart !== undefined || l.qEnd !== undefined) {
+          const p1 = l.qStart ?? l.q ?? 0;
+          const p2 = l.qEnd ?? l.q ?? 0;
+          return `p = ${fmtNum(p1, 2)} → ${fmtNum(p2, 2)} kN/m`;
+        }
         return `p = ${fmtNum(l.q ?? 0, 2)} kN/m`;
+      }
     }
   };
 
@@ -111,15 +141,29 @@ export default function LoadsSection() {
       : t("report.dirHorizontal", "x (horizontaal)");
   };
 
-  /** Deellast-bereik in m vanaf de startknoop; volle lengte → "—". */
+  /**
+   * Deellast-bereik in m vanaf de startknoop (staaf) of de beginhoek
+   * (plaatrand); volle lengte → "volledige lengte".
+   */
   const rangeText = (l: Load): string => {
-    if (l.type !== "lineLoad" || l.beamId === undefined) return "—";
+    const opStaaf = l.type === "lineLoad" && l.beamId !== undefined;
+    const opRand = l.type === "edgeLoad" && l.plateId !== undefined;
+    if (!opStaaf && !opRand) return "—";
     const start = l.startFrac ?? 0;
     const end = l.endFrac ?? 1;
-    if (start <= 0 && end >= 1) return t("report.fullLength", "volledige lengte");
-    const beam = beams.find((b) => b.id === l.beamId);
-    if (!beam) return `${fmtNum(start, 2)}·L – ${fmtNum(end, 2)}·L`;
-    const lenM = beamLengthMm(beam, nodes) / 1000;
+    if (start <= 0 && end >= 1) {
+      return opRand
+        ? t("report.fullEdge", "volledige rand")
+        : t("report.fullLength", "volledige lengte");
+    }
+    let lenM: number | null = null;
+    if (opStaaf) {
+      const beam = beams.find((b) => b.id === l.beamId);
+      lenM = beam ? beamLengthMm(beam, nodes) / 1000 : null;
+    } else {
+      lenM = randLengteM(l);
+    }
+    if (lenM === null) return `${fmtNum(start, 2)}·L – ${fmtNum(end, 2)}·L`;
     return `${fmtNum(start * lenM, 2)} – ${fmtNum(end * lenM, 2)} m`;
   };
 

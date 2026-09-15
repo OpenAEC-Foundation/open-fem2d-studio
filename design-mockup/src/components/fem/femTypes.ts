@@ -871,6 +871,13 @@ export interface Load {
    * mechaniek als het splitsen op plaatrandknopen, P2.4) en zet de kracht op
    * de tussenknoop — exact, inclusief de sprong in V en de knik in M op de
    * lastpositie. Zie solver/engine.ts.
+   *
+   * PUNTLAST OP EEN PLAATRAND: `pointForce` met `plateId`, een randadres
+   * (`edge` of `edgeIndex`) en `posFrac` = fractie 0..1 langs die rand vanaf de
+   * beginhoek (zie `bepaalPlaatRand`); `nodeId` en `beamId` blijven dan leeg.
+   * Hier is `posFrac` VERPLICHT. De engine verdeelt de kracht consistent over
+   * de twee randknopen van de elementrand waarop hij staat — geen nieuwe
+   * rekenknoop, dus hetzelfde mesh in elk belastinggeval.
    */
   posFrac?: number;
   q?: number; // kN/m (uniform)
@@ -903,12 +910,21 @@ export interface Load {
    * De UI voert dit in als afstand in m vanaf de startknoop en rekent om.
    * Bij een trapezium (qStart/qEnd) lopen de waarden lineair over het
    * BELASTE interval.
+   *
+   * Bij een RANDLAST (`edgeLoad`) hebben startFrac/endFrac/qStart/qEnd
+   * dezelfde betekenis, langs de rand vanaf de beginhoek (zie
+   * `bepaalPlaatRand`). De engine zet zo'n deel- of trapeziumlast om in
+   * consistente knoopkrachten, ook als het belaste deel binnen een elementrand
+   * begint of eindigt.
    */
   startFrac?: number;
   /** Deellast: einde van het belaste deel als fractie 0..1. Default 1. */
   endFrac?: number;
   deltaT?: number; // K
-  /** edgeLoad (P3.3): de plaat waarvan een rand belast wordt. */
+  /**
+   * De plaat van een plaatlast: de randlast (`edgeLoad`) of de puntlast op een
+   * plaatrand (`pointForce` met `plateId`). Aanwezig ⇒ ook een randadres.
+   */
   plateId?: number;
   /**
    * Plaatrand, benoemd (alleen bij een ASGELIJNDE RECHTHOEK): "bottom" =

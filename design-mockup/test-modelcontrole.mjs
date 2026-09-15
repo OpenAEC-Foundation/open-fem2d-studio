@@ -563,6 +563,62 @@ log("\n[10] Rekenpad: onbekende doorsnede, lengte nul, knikmelding, status");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// TEST 11: plaatlasten en staafeinden op een plaatrand
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[11] Plaatlasten: randadres en positie; staafeinde op een plaatrand");
+{
+  // Wand 4 × 3 m; kolom 5→6 met de voet op (1500, 3000): op de bovenrand,
+  // tussen de hoeken. Zo'n voet hangt aan de plaat (kinematische koppeling)
+  // en is dus GEEN vrij uiteinde; vóór deze stap was hij dat wel en gaf de
+  // berekening een kale singulariteit.
+  const wand = {
+    nodes: [
+      { id: 1, x: 0, z: 0 }, { id: 2, x: 4000, z: 0 }, { id: 3, x: 4000, z: 3000 }, { id: 4, x: 0, z: 3000 },
+      { id: 5, x: 1500, z: 3000 }, { id: 6, x: 1500, z: 5000 },
+    ],
+    beams: [{ id: 1, from: 5, to: 6 }],
+    supports: [{ nodeId: 1 }, { nodeId: 2 }],
+    plates: [{ id: 1, nodeIds: [1, 2, 3, 4] }],
+  };
+  const zonder = controleerModel({ ...wand, loads: [] });
+  check("kolomvoet op de plaatrand is geen vrij uiteinde",
+    !zonder.some((b) => b.soort === "vrijUiteinde" && b.nodeIds.includes(5)), JSON.stringify(zonder));
+  check("de vrije kolomkop (knoop 6) blijft wél een vrij uiteinde",
+    zonder.some((b) => b.soort === "vrijUiteinde" && b.nodeIds.includes(6)));
+  check("een kolomvoet NAAST de plaat is nog steeds een vrij uiteinde", controleerModel({
+    ...wand, nodes: wand.nodes.map((n) => (n.id === 5 ? { ...n, z: 3100 } : n)), loads: [],
+  }).some((b) => b.soort === "vrijUiteinde" && b.nodeIds.includes(5)));
+
+  const met = (last) => controleerModel({ ...wand, loads: [last] }).filter((b) => b.soort === "plaatlast");
+  check("geldige randlast met benoemde rand: geen bevinding",
+    met({ id: 1, type: "edgeLoad", plateId: 1, edge: "top" }).length === 0);
+  check("geldige randpuntlast met rand-index en positie: geen bevinding",
+    met({ id: 1, type: "pointForce", plateId: 1, edgeIndex: 2, posFrac: 0.4 }).length === 0);
+  const zonderPos = met({ id: 7, type: "pointForce", plateId: 1, edgeIndex: 2 });
+  check("randpuntlast zonder positie: fout, met lastnummer",
+    zonderPos.length === 1 && zonderPos[0].ernst === "fout" && /Puntlast 7 op plaat 1 heeft geen positie/.test(zonderPos[0].tekst),
+    JSON.stringify(zonderPos));
+  const beide = met({ id: 8, type: "edgeLoad", plateId: 1, edge: "top", edgeIndex: 2 });
+  check("randlast met twee adressen: fout langs bepaalPlaatRand",
+    beide.length === 1 && /zowel een benoemde rand/.test(beide[0].tekst), JSON.stringify(beide));
+  const weg = met({ id: 9, type: "edgeLoad", plateId: 4, edge: "top" });
+  check("last op een plaat die niet bestaat: fout",
+    weg.length === 1 && /plaat 4, maar die plaat bestaat niet/.test(weg[0].tekst), JSON.stringify(weg));
+  // Een rechthoek die door slepen een polygoon wordt: de benoemde rand
+  // verliest zijn betekenis, en dat hoort al tijdens het tekenen te blijken.
+  const scheef = controleerModel({
+    ...wand, nodes: wand.nodes.map((n) => (n.id === 3 ? { ...n, x: 4500 } : n)),
+    loads: [{ id: 1, type: "edgeLoad", plateId: 1, edge: "top" }],
+  }).filter((b) => b.soort === "plaatlast");
+  check("benoemde rand op een scheefgetrokken plaat: fout met remedie (edgeIndex)",
+    scheef.length === 1 && /edgeIndex/.test(scheef[0].tekst), JSON.stringify(scheef));
+  check("zonder `loads` in het model blijft de controle achterwege (oude aanroepers)",
+    controleerModel(wand).every((b) => b.soort !== "plaatlast"));
+  check("een plaatlastfout is blokkerend",
+    heeftFouten(controleerModel({ ...wand, loads: [{ id: 7, type: "pointForce", plateId: 1, edgeIndex: 2 }] })));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 log("");
 log(`${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

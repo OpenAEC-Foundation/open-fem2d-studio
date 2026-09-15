@@ -61,7 +61,12 @@
  *    IfcPolyLoop, IfcRelConnectsStructuralMember naar elke hoekknoop, en de
  *    set OpenFEM2D_Plaat (dikte, E, ν, ρ, meshgrootte). Randlasten op een
  *    plaat: IfcStructuralLinearAction met de rand (IfcEdge van de twee
- *    hoekknopen) als eigen topologie, gekoppeld aan het vlaklid.
+ *    hoekknopen) als eigen topologie, gekoppeld aan het vlaklid; een
+ *    deel- of trapeziumrandlast als IfcStructuralCurveAction met een
+ *    lastconfiguratie langs de rand (posities in m vanaf de beginhoek),
+ *    zoals bij een staaf. Een puntlast op een plaatrand (plateId + rand +
+ *    posFrac): IfcStructuralPointAction met een IfcVertexPoint op de
+ *    positie langs de rand, gekoppeld aan het vlaklid.
  *  - Stramien: IfcGrid (RECTANGULAR) in het gebouw, de x-assen als UAxes en
  *    de z-assen als VAxes, elk een IfcGridAxis met het aslabel en een lijn
  *    over de omhullende van het model. Rekeninstellingen (analysetype,
@@ -1682,7 +1687,32 @@ function schrijfLast(
       return actie;
     }
 
-    console.warn(`[ifcExport] Last ${last.id} verwijst naar ontbrekende knoop of staaf — overgeslagen.`);
+    // Puntlast op een PLAATRAND (plateId + rand + posFrac): een eigen
+    // IfcVertexPoint op de positie langs de rand — van de beginhoek naar de
+    // eindhoek zoals `randKnopen` (en de rekenkern) die telt — gekoppeld aan
+    // het vlaklid. Dezelfde vorm als de staafgebonden puntlast hierboven.
+    const plaat = last.plateId !== undefined ? plaatInfo.get(last.plateId) : undefined;
+    const randPaar = plaat ? randKnopen(plaat, last) : undefined;
+    if (plaat !== undefined && randPaar !== undefined && last.type === "pointForce") {
+      const kA = plaat.knopen.get(randPaar[0])!;
+      const kB = plaat.knopen.get(randPaar[1])!;
+      const f = Math.min(1, Math.max(0, last.posFrac ?? 0));
+      const xMm = kA.x + f * (kB.x - kA.x);
+      const zMm = kA.z + f * (kB.z - kA.z);
+      const punt = w.ent("IFCCARTESIANPOINT", `(${meter(xMm)},0.,${meter(zMm)})`);
+      const vertex = w.ent("IFCVERTEXPOINT", ref(punt));
+      const topo = w.ent("IFCTOPOLOGYREPRESENTATION",
+        ref(context), "'Reference'", "'Vertex'", lijst([vertex]));
+      const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
+      const actie = w.ent("IFCSTRUCTURALPOINTACTION",
+        w.guid(`last:${last.id}`), "$", stepString(`F ${last.id} (plaatrand)`),
+        toelichting, "$", "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$");
+      w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
+        w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(plaat.member), ref(actie));
+      return actie;
+    }
+
+    console.warn(`[ifcExport] Last ${last.id} verwijst naar ontbrekende knoop, staaf of plaatrand — overgeslagen.`);
     return undefined;
   }
 
@@ -1697,18 +1727,52 @@ function schrijfLast(
       console.warn(`[ifcExport] Randlast ${last.id} verwijst naar een plaat of rand die niet in het bestand staat — overgeslagen.`);
       return undefined;
     }
-    const q = (last.q ?? 0) * 1e3;
-    const kracht = w.ent("IFCSTRUCTURALLOADLINEARFORCE",
-      stepString(`q ${last.id}`),
-      last.qDir === "x" ? `IFCLINEARFORCEMEASURE(${reeel(q)})` : "$", "$",
-      last.qDir === "x" ? "$" : `IFCLINEARFORCEMEASURE(${reeel(q)})`,
-      "$", "$", "$");
+    // kN/m → N/m in de aangewezen wereldrichting.
+    const lijnkracht = (q_kNm: number, naam: string): number =>
+      w.ent("IFCSTRUCTURALLOADLINEARFORCE",
+        stepString(naam),
+        last.qDir === "x" ? `IFCLINEARFORCEMEASURE(${reeel(q_kNm * 1e3)})` : "$", "$",
+        last.qDir === "x" ? "$" : `IFCLINEARFORCEMEASURE(${reeel(q_kNm * 1e3)})`,
+        "$", "$", "$");
     const rand = w.ent("IFCEDGE", ref(info.vertexPerKnoop.get(paar[0])!), ref(info.vertexPerKnoop.get(paar[1])!));
     const topo = w.ent("IFCTOPOLOGYREPRESENTATION", ref(context), "'Reference'", "'Edge'", lijst([rand]));
     const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
-    const actie = w.ent("IFCSTRUCTURALLINEARACTION",
-      w.guid(`last:${last.id}`), "$", stepString(`q ${last.id} (plaatrand)`), toelichting, "$",
-      "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".CONST.");
+    const qA = last.qStart ?? last.q ?? 0;
+    const qB = last.qEnd ?? last.q ?? 0;
+    const fA = Math.min(1, Math.max(0, last.startFrac ?? 0));
+    const fB = Math.min(1, Math.max(fA, last.endFrac ?? 1));
+    const deellast = fA > 0 || fB < 1;
+    let actie: number;
+    if (!deellast && qA === qB) {
+      // Gelijkmatig over de volle rand: IfcStructuralLinearAction, CONST —
+      // byte-gelijk aan voorheen.
+      const kracht = lijnkracht(qA, `q ${last.id}`);
+      actie = w.ent("IFCSTRUCTURALLINEARACTION",
+        w.guid(`last:${last.id}`), "$", stepString(`q ${last.id} (plaatrand)`), toelichting, "$",
+        "$", ref(vorm), ref(kracht), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.", ".CONST.");
+    } else {
+      // Deellast of trapezium langs de rand: dezelfde vorm als bij een staaf
+      // (IfcStructuralCurveAction met een lastconfiguratie op posities langs
+      // de rand, in m vanaf de beginhoek). Knikpunten op 0 (nul), a (qA),
+      // b (qB) en L (nul); de punten buiten het belaste deel vallen weg als
+      // a = 0 of b = L. De lezer interpoleert lineair tussen de posities.
+      const kA = info.knopen.get(paar[0])!, kB = info.knopen.get(paar[1])!;
+      const L = Math.hypot(kB.x - kA.x, kB.z - kA.z) / 1000;
+      const waarden: number[] = [];
+      const posities: string[] = [];
+      const a = fA * L, b = fB * L;
+      if (fA > 0) { waarden.push(lijnkracht(0, `q ${last.id} nul`)); posities.push(reeel(0)); }
+      waarden.push(lijnkracht(qA, `q ${last.id} begin`)); posities.push(reeel(a));
+      waarden.push(lijnkracht(qB, `q ${last.id} eind`)); posities.push(reeel(b));
+      if (fB < 1) { waarden.push(lijnkracht(0, `q ${last.id} nul`)); posities.push(reeel(L)); }
+      const config = w.ent("IFCSTRUCTURALLOADCONFIGURATION",
+        stepString(`q ${last.id}`), lijst(waarden),
+        `(${posities.map(p => `(${p})`).join(",")})`);
+      actie = w.ent("IFCSTRUCTURALCURVEACTION",
+        w.guid(`last:${last.id}`), "$", stepString(`q ${last.id} (plaatrand)`), toelichting, "$",
+        "$", ref(vorm), ref(config), ".GLOBAL_COORDS.", "$", ".TRUE_LENGTH.",
+        deellast ? ".POLYGONAL." : ".LINEAR.");
+    }
     w.ent("IFCRELCONNECTSSTRUCTURALACTIVITY",
       w.guid(`lastrel:${last.id}`), "$", "$", "$", ref(info.member), ref(actie));
     return actie;
@@ -1833,13 +1897,16 @@ export function verzamelIfcBeperkingen(
     );
   }
 
+  // Plaatlasten: randlasten én puntlasten op een plaatrand.
   const randlasten = model.loads.filter(
-    (l) => l.type === "edgeLoad" && !(l.plateId !== undefined && geexporteerdePlaten.has(l.plateId)),
+    (l) => (l.type === "edgeLoad" || (l.type === "pointForce" && l.plateId !== undefined))
+      && !(l.plateId !== undefined && geexporteerdePlaten.has(l.plateId)),
   ).length;
   if (randlasten > 0) {
     regels.push(
-      `${randlasten} ${randlasten === 1 ? "randbelasting" : "randbelastingen"} op een plaat: ` +
-      "hoort bij een plaat die niet in het bestand staat en valt dus mee weg.",
+      `${randlasten} ${randlasten === 1 ? "randbelasting" : "randbelastingen"} op een plaat ` +
+      "(randlast of puntlast op een plaatrand): hoort bij een plaat die niet in het " +
+      "bestand staat en valt dus mee weg.",
     );
   }
 
@@ -1901,7 +1968,8 @@ export function verzamelIfcBeperkingen(
   }
   if (opties.zonderLasten !== true) {
     const losseLasten = model.loads.filter(l => {
-      if (l.type === "edgeLoad") return false;
+      // Plaatlasten zijn hierboven al geteld.
+      if (l.type === "edgeLoad" || l.plateId !== undefined) return false;
       if (l.nodeId !== undefined) return !knoopIds.has(l.nodeId);
       if (l.beamId !== undefined) return !staafIds.has(l.beamId);
       return true;
@@ -2186,7 +2254,10 @@ export function bouwIfcBoom(
 function omschrijfLast(l: Load): string {
   const doel = l.nodeId !== undefined
     ? `knoop ${l.nodeId}`
-    : l.beamId !== undefined ? `staaf ${l.beamId}` : "?";
+    : l.beamId !== undefined ? `staaf ${l.beamId}`
+    : l.plateId !== undefined
+      ? `plaat ${l.plateId}, ${l.edgeIndex !== undefined ? `rand ${l.edgeIndex + 1}` : (l.edge ?? "rand ?")}`
+      : "?";
   switch (l.type) {
     case "pointForce": {
       const delen: string[] = [];
