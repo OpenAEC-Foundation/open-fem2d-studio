@@ -213,12 +213,12 @@ export function spiegelFracties(fracties: readonly number[]): number[] {
  */
 export function spiegelZones(zones: ReinforcementZones, lengteMm: number): ReinforcementZones {
   return {
-    longitudinal: omgekeerd(zones.longitudinal).map((z) => ({
+    longitudinal: omgekeerd(zones.longitudinal ?? []).map((z) => ({
       ...z,
       x_start_mm: lengteMm - z.x_end_mm,
       x_end_mm: lengteMm - z.x_start_mm,
     })),
-    stirrups: omgekeerd(zones.stirrups).map((z) => ({
+    stirrups: omgekeerd(zones.stirrups ?? []).map((z) => ({
       ...z,
       x_start_mm: lengteMm - z.x_end_mm,
       x_end_mm: lengteMm - z.x_start_mm,
@@ -243,7 +243,7 @@ function spiegelEinden<T extends BeamReleases | BeamEindVeren>(einden: T): T {
 function spiegelToetsconfig(cfg: BeamCheckConfig, lengteMm: number): BeamCheckConfig {
   const uit: Record<string, unknown> = { ...cfg };
   for (const [sleutel, waarde] of Object.entries(cfg)) {
-    if (waarde === undefined) continue;
+    if (waarde == null) continue; // null uit een handgemaakt of extern bestand: niets te spiegelen
     // Een veld dat de tabel niet kent (een ouder projectbestand) kan geen
     // positieveld van nu zijn en gaat ongewijzigd mee.
     const regel = (SPIEGELREGELS_TOETSCONFIG as Record<string, ConfigRegel | undefined>)[sleutel];

@@ -32,9 +32,11 @@
  *    via eigenGewichtPerMeter −0,41797 kN/m geeft (ρ = 7850, A = 5427,5 mm²).
  *    Verschil 0,007 % — verwaarloosbaar, maar wél de app-route.
  *  - Zeeg: de bron rekent de eindzakking met een zeeg van 10 mm
- *    (w_eind = w_z − w_zeeg = −13,6 + 10 = −3,6 mm). In de app is dat
- *    `checkConfig.preCamber_mm = −10` — dezelfde tekenconventie als de zakking,
- *    en dezelfde formule w_fin = w_z − w_zeeg in de kern (deflection.rs).
+ *    (w_eind = −13,6 + 10 = −3,6 mm). In de app is dat
+ *    `checkConfig.preCamber_mm = +10`: sinds de tekenafspraak van golf 1 is een
+ *    zeeg een positieve grootte OMHOOG en rekent de kern w_fin = w_z + w_zeeg
+ *    (NEN-EN 1990 A1.4.3(2), fig. A1.1; deflection.rs). De zeeg telt niet mee in
+ *    w_add (A1.4.3(3) begrenst w2 + w3), dus die uitkomst ligt hoger dan in de bron.
  *  - Doorbuigingsklasse: de bron toetst w_eind tegen L/250 → klasse "roof".
  *  - Scheefstand: de bron noemt imperfecties (art. 5.3.2), maar toont overal
  *    Nx = 0 en geen Fx-reacties; op een vrij opgelegde ligger zonder kolommen
@@ -141,7 +143,7 @@ const model = {
     id: 1, from: 1, to: 2, material: MATERIAAL, profile: PROFIEL,
     checkConfig: {
       deflectionClass: "roof",     // bron: w_eind tegen L/250
-      preCamber_mm: -ZEEG_MM,      // bron: zeeg 10 mm; kern: w_fin = w_z − w_zeeg
+      preCamber_mm: ZEEG_MM,       // bron: zeeg 10 mm omhoog; kern: w_fin = w_z + w_zeeg
       lateralRestraints: [],       // bron: 0 kipsteunen
     },
   } ],

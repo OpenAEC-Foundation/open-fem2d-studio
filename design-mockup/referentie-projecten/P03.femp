@@ -23,7 +23,7 @@
       "profile": "HEB160",
       "checkConfig": {
         "deflectionClass": "roof",
-        "preCamber_mm": -10,
+        "preCamber_mm": 10,
         "lateralRestraints": []
       }
     }
