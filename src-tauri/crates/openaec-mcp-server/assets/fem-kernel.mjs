@@ -6979,6 +6979,43 @@ function toetsdataInReferentierichting(data) {
 function nl(v) {
   return String(Math.round(v * 100) / 100).replace(".", ",");
 }
+var SPRONGBAND_GRADEN = 10;
+function richtingssprongNabij(beam, nodes) {
+  const a = nodes.find((n) => n.id === beam.from);
+  const b = nodes.find((n) => n.id === beam.to);
+  const helling = hellingGradenVanStaaf(beam, nodes);
+  if (!a || !b || helling === null) return null;
+  const voet = a.z <= b.z ? a : b;
+  const kop = voet === a ? b : a;
+  if (!(kop.z > voet.z && kop.x < voet.x)) return null;
+  const afstand2 = Math.abs(helling - VERTICAAL_VANAF_GRADEN);
+  if (afstand2 > SPRONGBAND_GRADEN + 1e-9) return null;
+  return {
+    hellingGraden: helling,
+    staafstand: referentieVanStaaf(beam, nodes).staafstand,
+    afstandTotGrensGraden: afstand2
+  };
+}
+function gradenTekst(v) {
+  return `${String(Math.round(v * 10) / 10).replace(".", ",")}\xB0`;
+}
+function richtingssprongNotities(beam, nodes, soort) {
+  const s = richtingssprongNabij(beam, nodes);
+  if (!s) return [];
+  const boven = soort === "staal" ? "de BOVENflens" : "de BOVENwapening";
+  const wat = soort === "staal" ? "de kipsteunen die aan de boven- en aan de onderflens zijn opgegeven" : "de boven- en de onderwapening van de korf";
+  const grens = `${VERTICAAL_VANAF_GRADEN}\xB0`;
+  const kop = `Richtingssprong nabij. Deze staaf helt naar LINKS onder ${gradenTekst(s.hellingGraden)} met de horizontaal, ${gradenTekst(s.afstandTotGrensGraden)} ${s.staafstand === "Staand" ? "boven" : "onder"} de grens van ${grens} waar een staaf staand gaat heten. `;
+  const slot = ` Controleer na elke wijziging van de knopen aan welke fysieke zijde ${wat} horen. (Deze waarschuwing staat bij elke naar links hellende staaf binnen ${SPRONGBAND_GRADEN}\xB0 van de grens.)`;
+  if (s.staafstand === "Liggend") {
+    return [
+      kop + `Hij is getoetst van links naar rechts, en ${boven} is de fysieke BOVENzijde (rechtsboven). Vanaf ${grens} wordt hij van voet naar kop getoetst en ligt ${boven} aan de linkerzijde: bij deze helling de fysieke ONDERzijde (linksonder). Een kleine wijziging van de geometrie keert dan zonder verdere melding om welke zijde boven heet.` + slot
+    ];
+  }
+  return [
+    kop + `Hij is getoetst van voet naar kop, en ${boven} ligt aan de linkerzijde: bij deze helling de fysieke ONDERzijde (linksonder), NIET het bovenvlak. Onder ${grens} zou ${boven} de fysieke bovenzijde (rechtsboven) zijn. Lees "boven" bij deze staaf dus niet als het bovenvlak.` + slot
+  ];
+}
 function zeegVoorToets(beam, nodes) {
   const cfg = beam.checkConfig ?? {};
   if (cfg.preCamber_mm === void 0) return cfg;
@@ -8056,6 +8093,14 @@ function buildSteelCheckInputs(ruweData) {
       // Bij een staande staaf noemt de kern de boven- en onderflens in
       // wereldtermen (links en rechts); weglaten betekent liggend.
       ...referentieVanStaaf(beam, data.nodes).staafstand === "Staand" ? { staafstand: "Staand" } : {},
+      // Dicht bij de sprong van "boven" — een naar links hellende staaf rond
+      // 75°, zie `richtingssprongNotities` — zet de kern een waarschuwing bij
+      // de kiptoets. Weglaten = geen waarschuwing, en zo blijft de invoer van
+      // elke andere staaf byte-gelijk aan vroeger.
+      ...(() => {
+        const notities = richtingssprongNotities(beam, data.nodes, "staal");
+        return notities.length > 0 ? { staafstand_notities: notities } : {};
+      })(),
       // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
       // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
       // tussen plaatsen met een kipsteun aan beide flenzen, anders de
@@ -9311,7 +9356,6 @@ function genereerWindbelasting(model, inst) {
     const eigen = model.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
     const klasse = model.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
     const f = PARTIELE_FACTOREN[klasse];
-    const G2 = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     const overig = eigen.filter((c) => c.type === "other");
     if (overig.length > 0) {
       meldingen.push({
@@ -9319,9 +9363,38 @@ function genereerWindbelasting(model, inst) {
         tekst: `De belastinggevallen ${overig.map((c) => `\u201C${c.name}\u201D`).join(", ")} hebben type \u201Coverig\u201D. De generator kent daar geen \u03C8\u2080 bij en laat ze uit de gegenereerde combinaties. Geef ze een type, of neem ze handmatig op.`
       });
     }
+    combinaties.push(...genereerWindCombinaties(model.loadCases, gevallen, klasse));
+    meldingen.push({
+      niveau: "info",
+      tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: \u03B3 uit NEN-EN 1990 ${f.bron}, \u03C8 uit tabel NB.2\u2013A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in de parti\xEBle factoren zelf en wordt nergens nog eens toegepast.`
+    });
+  }
+  return {
+    ok: true,
+    meldingen,
+    gevallen,
+    lasten,
+    combinaties,
+    samenvatting: {
+      hoogte_m: h_m,
+      spanwijdte_m: d_m,
+      hOverD: h_m / d_m,
+      belastingbreedte_m: breedte_m,
+      stuwdruk,
+      perGeval
+    },
+    geometrie
+  };
+}
+function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAARD_GEVOLGKLASSE) {
+  const combinaties = [];
+  {
+    const eigen = loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
+    const f = PARTIELE_FACTOREN[gevolgklasse];
+    const G2 = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     const r = (x) => Math.round(x * 1e9) / 1e9;
     const bron = `\u03B3: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
-    for (const gv of gevallen) {
+    for (const gv of windGevallen) {
       const sets = [
         {
           naam: `UGT 6.10b \u2014 ${gv.naam} leidend`,
@@ -9382,27 +9455,8 @@ function genereerWindbelasting(model, inst) {
         }
       }
     }
-    meldingen.push({
-      niveau: "info",
-      tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: \u03B3 uit NEN-EN 1990 ${f.bron}, \u03C8 uit tabel NB.2\u2013A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in de parti\xEBle factoren zelf en wordt nergens nog eens toegepast.`
-    });
   }
-  return {
-    ok: true,
-    meldingen,
-    gevallen,
-    lasten,
-    combinaties,
-    samenvatting: {
-      hoogte_m: h_m,
-      spanwijdte_m: d_m,
-      hOverD: h_m / d_m,
-      belastingbreedte_m: breedte_m,
-      stuwdruk,
-      perGeval
-    },
-    geometrie
-  };
+  return combinaties;
 }
 function handtekeningVanGeneratie(gevallen, lasten, combinaties) {
   const r = (v) => Number(v.toPrecision(12)).toString();
@@ -9465,6 +9519,15 @@ function zonderOnbekendeGevallen(c, ids) {
 function perSleutel(set) {
   return new Map(set.map((c) => [c.standaard.sleutel, c]));
 }
+function nl5(x) {
+  return String(Number(x.toFixed(3))).replace(".", ",");
+}
+function gelijk(a, b) {
+  return Math.abs(a - b) <= 1e-9;
+}
+function namenLijst(lijst, max = 8) {
+  return lijst.slice(0, max).map((x) => `"${x.naam}"`).join(", ") + (lijst.length > max ? ` en nog ${lijst.length - max}` : "");
+}
 function verwijderWeesFactoren(combinations, loadCases) {
   const ids = new Set(loadCases.map((c) => c.id));
   const wees = [];
@@ -9475,6 +9538,186 @@ function verwijderWeesFactoren(combinations, loadCases) {
     return zonderOnbekendeGevallen(c, ids);
   });
   return { combinaties, wees };
+}
+var OUDE_STANDAARDSET = [
+  { naam: "ULS 6.10a", type: "uls", factoren: { 1: 1.35, 2: 1.05, 3: 1.05, 4: 0.9 } },
+  { naam: "ULS 6.10b (Q leidend)", type: "uls", factoren: { 1: 1.2, 2: 1.5, 3: 1.05, 4: 0.9 } },
+  { naam: "ULS 6.10b (S leidend)", type: "uls", factoren: { 1: 1.2, 3: 1.5, 2: 1.05, 4: 0.9 } },
+  { naam: "ULS 6.10b (W leidend)", type: "uls", factoren: { 1: 1.2, 4: 1.5, 2: 1.05, 3: 1.05 } },
+  { naam: "ULS uplift", type: "uls", factoren: { 1: 0.9, 4: 1.5 } },
+  { naam: "SLS Karakteristiek", type: "sls", factoren: { 1: 1, 2: 1, 3: 0.7, 4: 0.6 } },
+  { naam: "SLS Frequent", type: "sls", factoren: { 1: 1, 2: 0.5, 3: 0.2 } },
+  { naam: "SLS Quasi-permanent", type: "sls", factoren: { 1: 1, 2: 0.3 } }
+];
+var OUDE_GEVALLEN = {
+  2: "het veranderlijke geval (Q)",
+  3: "het sneeuwgeval (S)",
+  4: "het windgeval (W)"
+};
+function isOudeStandaardcombinatie(c, gevalIds) {
+  if (c.standaard !== void 0 || isWindgeneratorCombinatie(c)) return false;
+  const oud = OUDE_STANDAARDSET.find((o) => o.naam === c.name);
+  if (!oud || oud.type !== c.type) return false;
+  for (const [id, f] of c.factors) {
+    if (!gevalIds.has(id)) continue;
+    if (!gelijk(f, oud.factoren[id] ?? 0)) return false;
+  }
+  for (const [sleutel, f] of Object.entries(oud.factoren)) {
+    const id = Number(sleutel);
+    if (!gevalIds.has(id)) continue;
+    if (!gelijk(c.factors.get(id) ?? 0, f)) return false;
+  }
+  return true;
+}
+function tekstOudeSetInProject(oud, klasse) {
+  return `Dit project rekent met ${oud.length} ongewijzigde combinatie(s) van de standaardset van versie 0.3.11 en ouder: ${namenLijst(oud.map((c) => ({ naam: c.name })))}. Die set gaat uit van vaste belastinggevallen 1 t/m 4, vaste CC2-factoren en de door EN 1990 aanbevolen \u03C8-waarden (tabel A1.1) in plaats van die van de Nederlandse bijlage, en volgt de belastinggevallen en gevolgklasse ${klasse} van dit project niet. Bij het openen vervangt de app zo'n set; hij staat er weer na "Ongedaan maken", of doordat hij zo is meegestuurd.`;
+}
+function klasseUitKenmerk(combinations) {
+  const klassen = new Set(
+    (combinations ?? []).flatMap((c) => c.standaard ? [c.standaard.gevolgklasse] : [])
+  );
+  return klassen.size === 1 ? [...klassen][0] : null;
+}
+function gevolgklasseBijOpenen(p) {
+  if (p.bestand) return { klasse: p.bestand, bron: "bestand" };
+  if (p.verzoek) return { klasse: p.verzoek, bron: "verzoek" };
+  const kenmerk = klasseUitKenmerk(p.combinations);
+  if (kenmerk) return { klasse: kenmerk, bron: "kenmerk" };
+  return { klasse: p.terugval, bron: "terugval" };
+}
+function windCombinatiesVoor(loadCases, gevolgklasse) {
+  const wind = loadCases.filter((c) => c.gegenereerd?.bron === "wind");
+  if (wind.length === 0) return null;
+  const idVan = new Map(wind.map((c) => [c.gegenereerd.sleutel, c.id]));
+  return genereerWindCombinaties(
+    loadCases,
+    wind.map((c) => ({ sleutel: c.gegenereerd.sleutel, naam: c.name })),
+    gevolgklasse
+  ).map((g) => ({
+    name: g.naam,
+    type: g.type,
+    formula: g.formule,
+    factors: new Map([...g.factorenPerCaseId, [idVan.get(g.windSleutel), g.windFactor]])
+  }));
+}
+function synchroniseerWindCombinaties(staat) {
+  const huidig = staat.combinations.filter(isWindgeneratorCombinatie);
+  if (huidig.length === 0) return staat;
+  const verwacht = windCombinatiesVoor(staat.loadCases, staat.gevolgklasse);
+  if (verwacht === null) return staat;
+  if (huidig.length === verwacht.length && huidig.every((c, i) => gelijkeInhoud(c, verwacht[i]))) {
+    return staat;
+  }
+  const idPerNaam = /* @__PURE__ */ new Map();
+  for (const c of huidig) if (!idPerNaam.has(c.name)) idPerNaam.set(c.name, c.id);
+  let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
+  const gebruikt = /* @__PURE__ */ new Set();
+  const nieuw = verwacht.map((c) => {
+    const id = idPerNaam.get(c.name);
+    if (id !== void 0 && !gebruikt.has(id)) {
+      gebruikt.add(id);
+      return { ...c, id };
+    }
+    return { ...c, id: volgendId++ };
+  });
+  return {
+    ...staat,
+    combinations: [...staat.combinations.filter((c) => !isWindgeneratorCombinatie(c)), ...nieuw],
+    volgendCombinatieId: volgendId
+  };
+}
+function tekstVervanging(v) {
+  const bron = PARTIELE_FACTOREN[v.gevolgklasse].bron;
+  const delen = [];
+  if (v.oudeStandaard.length > 0) {
+    delen.push(
+      `Bij het openen zijn ${v.oudeStandaard.length} belastingcombinatie(s) van de standaardset van versie 0.3.11 en ouder vervangen: ${namenLijst(v.oudeStandaard)}. Die set rekende met vaste belastinggevallen 1 t/m 4, vaste CC2-factoren en de door EN 1990 aanbevolen \u03C8-waarden (tabel A1.1) in plaats van die van de Nederlandse bijlage, en volgde de belastinggevallen van het project niet: een geval dat erbij kwam of van type veranderde, telde met verkeerde of geen factoren.`
+    );
+  }
+  if (v.bijgewerkt.length > 0) {
+    delen.push(
+      `${v.bijgewerkt.length} standaardcombinatie(s) uit het bestand hoorden bij een andere gevolgklasse of andere belastinggevallen en zijn bijgewerkt: ${namenLijst(v.bijgewerkt)}.`
+    );
+  }
+  if (v.wind.length > 0) {
+    delen.push(
+      `De ${v.wind.length} combinatie(s) van de windgenerator zijn opnieuw afgeleid uit de gegenereerde windgevallen, de overige belastinggevallen en gevolgklasse ${v.gevolgklasse}.`
+    );
+  }
+  delen.push(
+    `Het project rekent nu met ${v.aantalStandaard} standaardcombinaties` + (v.aantalWind > 0 ? ` en ${v.aantalWind} van de windgenerator` : "") + `, afgeleid uit zijn belastinggevallen en gevolgklasse ${v.gevolgklasse}: \u03B3 uit NEN-EN 1990 ${bron}, \u03C8 uit tabel NB.2\u2013A1.1.`
+  );
+  if (v.eigen.length > 0) {
+    delen.push(
+      `${v.eigen.length} eigen combinatie(s) zijn blijven staan: ${namenLijst(v.eigen)}. De app past ze niet aan, maar controleert ze wel; zie de meldingen bij de belastinggevallen.`
+    );
+  }
+  delen.push(
+    "De uitkomsten kunnen daardoor afwijken van een berekening met de versie waarin het bestand is opgeslagen."
+  );
+  return delen.join(" ");
+}
+function vervangVerouderdeCombinaties(staat) {
+  const gevalIds = new Set(staat.loadCases.map((c) => c.id));
+  const oud = staat.combinations.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
+  const metKenmerk = staat.combinations.filter((c) => c.standaard !== void 0);
+  let volgend;
+  if (oud.length > 0) {
+    const weg = new Set(oud);
+    let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
+    const idPerSleutel = /* @__PURE__ */ new Map();
+    for (const c of metKenmerk) {
+      const s = c.standaard.sleutel;
+      if (!idPerSleutel.has(s)) idPerSleutel.set(s, c.id);
+    }
+    const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse).map((c) => ({ ...c, id: idPerSleutel.get(c.standaard.sleutel) ?? volgendId++ }));
+    const rest = staat.combinations.filter((c) => !weg.has(c) && c.standaard === void 0);
+    volgend = synchroniseerWindCombinaties({
+      ...staat,
+      combinations: [...standaard, ...rest],
+      volgendCombinatieId: volgendId
+    });
+  } else if (metKenmerk.length > 0) {
+    volgend = synchroniseerStandaard(staat, { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse });
+  } else {
+    volgend = synchroniseerWindCombinaties(staat);
+  }
+  const naStandaard = new Map(
+    volgend.combinations.filter((c) => c.standaard !== void 0).map((c) => [c.id, c])
+  );
+  const bijgewerkt = metKenmerk.filter((c) => {
+    const n = naStandaard.get(c.id);
+    return !n || !gelijkeInhoud(c, n);
+  });
+  const windVoor = staat.combinations.filter(isWindgeneratorCombinatie);
+  const windNa = volgend.combinations.filter(isWindgeneratorCombinatie);
+  const windAnders = windVoor.length !== windNa.length || windVoor.some((c, i) => !gelijkeInhoud(c, windNa[i]));
+  const lijst = (l) => l.map((c) => ({ id: c.id, naam: c.name }));
+  if (oud.length === 0 && bijgewerkt.length === 0 && !windAnders) {
+    return { staat: volgend, vervanging: null };
+  }
+  const kern = {
+    gevolgklasse: staat.gevolgklasse,
+    oudeStandaard: lijst(oud),
+    bijgewerkt: lijst(bijgewerkt),
+    wind: windAnders ? lijst(windVoor) : [],
+    eigen: lijst(volgend.combinations.filter((c) => c.standaard === void 0 && !isWindgeneratorCombinatie(c))),
+    aantalStandaard: naStandaard.size,
+    aantalWind: windNa.length
+  };
+  return {
+    staat: volgend,
+    vervanging: { ...kern, voor: staat.combinations, samenvatting: tekstVervanging(kern) }
+  };
+}
+function herstelCombinaties(staat, voor) {
+  const ids = new Set(staat.loadCases.map((c) => c.id));
+  const combinations = voor.map((c) => zonderOnbekendeGevallen(c, ids));
+  return {
+    ...staat,
+    combinations,
+    volgendCombinatieId: Math.max(staat.volgendCombinatieId, volgendVrijId(combinations, 1))
+  };
 }
 function openCombinatieStaat(p) {
   const gevalTeller = volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1);
@@ -9488,24 +9731,25 @@ function openCombinatieStaat(p) {
         volgendGevalId: gevalTeller,
         volgendCombinatieId: volgendVrijId(combinations, p.idTellers?.combinatie ?? 1)
       },
-      afwijking: null
+      afwijking: null,
+      vervanging: null
     };
   }
   const { combinaties, wees } = verwijderWeesFactoren(p.combinations, p.loadCases);
   const hoogsteFactorSleutel = p.combinations.flatMap((c) => [...c.factors.keys()]).filter((id) => Number.isFinite(id)).reduce((m, id) => Math.max(m, id), 0);
+  const { staat, vervanging } = vervangVerouderdeCombinaties({
+    loadCases: p.loadCases,
+    combinations: combinaties,
+    gevolgklasse: p.gevolgklasse,
+    volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
+    volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1)
+  });
   return {
-    staat: {
-      loadCases: p.loadCases,
-      combinations: combinaties,
-      gevolgklasse: p.gevolgklasse,
-      volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
-      volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1)
-    },
+    staat,
+    vervanging,
     afwijking: beoordeelCombinatiesBijOpenen({
-      combinations: combinaties,
+      combinations: staat.combinations,
       loadCases: p.loadCases,
-      gevolgklasse: p.gevolgklasse,
-      eigenCombinatiesBewust: p.idTellers !== void 0,
       weesFactoren: wees
     })
   };
@@ -9550,11 +9794,11 @@ function synchroniseerStandaard(staat, vorig) {
     standaard.push({ ...n, id: volgendId++ });
   }
   const combinations = [...standaard, ...eigen];
-  return {
+  return synchroniseerWindCombinaties({
     ...staat,
     combinations: gelijkeLijst(combinations, staat.combinations) ? staat.combinations : combinations,
     volgendCombinatieId: volgendId
-  };
+  });
 }
 function voegBelastinggevalToe(staat, naam, type = "other") {
   const id = volgendVrijId(staat.loadCases, staat.volgendGevalId);
@@ -9597,7 +9841,11 @@ function vervangDoorStandaard(staat) {
   let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
   const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse).map((c) => ({ ...c, id: volgendId++ }));
   const wind = staat.combinations.filter(isWindgeneratorCombinatie).map((c) => zonderOnbekendeGevallen(c, geldigeIds));
-  return { ...staat, combinations: [...standaard, ...wind], volgendCombinatieId: volgendId };
+  return synchroniseerWindCombinaties({
+    ...staat,
+    combinations: [...standaard, ...wind],
+    volgendCombinatieId: volgendId
+  });
 }
 function voegCombinatieToe(staat, combo) {
   const id = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
@@ -9634,11 +9882,9 @@ var TYPE_TEKST = {
   wind: "wind",
   other: "overig"
 };
-function nl5(x) {
-  return String(Number(x.toFixed(3))).replace(".", ",");
-}
-function gelijk(a, b) {
-  return Math.abs(a - b) <= 1e-9;
+function isAfgeleidVanStandaard(c) {
+  if (isWindgeneratorCombinatie(c)) return false;
+  return c.standaard !== void 0 || c.formula.includes(PSI_BRON);
 }
 function ontbrekendeStandaardcombinaties(p) {
   const gevuld = p.gevuld ?? (() => true);
@@ -9656,7 +9902,94 @@ function ontbrekendeStandaardcombinaties(p) {
 function tekstOntbrekend(ontbrekend, klasse) {
   const MAX = 6;
   const namen = ontbrekend.slice(0, MAX).map((c) => `"${c.name}" (${c.formula.split("   [")[0]})`).join(", ") + (ontbrekend.length > MAX ? ` en nog ${ontbrekend.length - MAX}` : "");
-  return `${ontbrekend.length} standaardcombinatie(s) ontbreken, dus de omhullende kan te laag zijn. Ze horen bij deze belastinggevallen en ${klasse}, en geen andere combinatie in dit project heeft dezelfde factoren voor de gevallen met last: ${namen}. Een combinatieset die een deel van de standaardset mist, geeft een lagere omhullende zonder dat een getal dat verraadt. Dat gebeurt als een standaardcombinatie is verwijderd of aangepast (dan is ze een eigen combinatie en volgt ze de belastinggevallen niet meer), of als de combinaties uit een ouder projectbestand komen en er daarna een belastinggeval bij kwam of van type of categorie veranderde. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of voeg de ontbrekende combinaties als eigen combinatie toe.`;
+  return `${ontbrekend.length} standaardcombinatie(s) ontbreken, dus de omhullende kan te laag zijn. Ze horen bij deze belastinggevallen en ${klasse}, en geen andere combinatie in dit project heeft dezelfde factoren voor de gevallen met last: ${namen}. Een combinatieset die een deel van de standaardset mist, geeft een lagere omhullende zonder dat een getal dat verraadt. Dat gebeurt als een standaardcombinatie is verwijderd, hernoemd of aangepast \u2014 dan is ze een eigen combinatie en volgt ze de belastinggevallen niet meer \u2014 en er daarna een belastinggeval bij kwam of van type of categorie veranderde. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of voeg de ontbrekende combinaties als eigen combinatie toe.`;
+}
+function veranderlijkeFactorVerschillen(p) {
+  const gevuld = p.gevuld ?? (() => true);
+  const groepen = /* @__PURE__ */ new Map();
+  for (const c of p.loadCases) {
+    if (c.type !== "live" || c.gegenereerd?.bron === "wind" || !gevuld(c.id)) continue;
+    const cat = c.categorie ?? STANDAARD_CATEGORIE;
+    groepen.set(cat, [...groepen.get(cat) ?? [], c.id]);
+  }
+  const uit = [];
+  for (const [categorie, ids] of groepen) {
+    if (ids.length < 2) continue;
+    const combinaties = [];
+    for (const c of p.combinations) {
+      const factoren = ids.map((id) => [id, c.factors.get(id) ?? 0]).filter(([, f]) => f !== 0);
+      if (new Set(factoren.map(([, f]) => Math.round(f * 1e9) / 1e9)).size > 1) {
+        combinaties.push({ combinatieId: c.id, naam: c.name, factoren });
+      }
+    }
+    if (combinaties.length > 0) uit.push({ categorie, caseIds: ids, combinaties });
+  }
+  return uit;
+}
+function tekstVerschil(v, naamVan) {
+  const MAX = 6;
+  const regels = v.combinaties.slice(0, MAX).map((c) => `"${c.naam}" ${c.factoren.map(([id, f]) => `${nl5(f)} voor geval ${id}`).join(" en ")}`).join("; ") + (v.combinaties.length > MAX ? `; en nog ${v.combinaties.length - MAX}` : "");
+  return `De veranderlijke belastinggevallen ${v.caseIds.map(naamVan).join(", ")} (gebruikscategorie ${v.categorie}) hebben in ${v.combinaties.length} combinatie(s) verschillende factoren: ${regels}. Gevallen van dezelfde gebruikscategorie zijn delen van \xE9\xE9n veranderlijke belasting \u2014 zo stelt de app de standaardcombinaties op \u2014 en in \xE9\xE9n combinatie is die belasting de overheersende (\u03B3_Q) of een samengaande (\u03B3_Q\xB7\u03C8\u2080), NEN-EN 1990 6.4.3.2(2); elk aanwezig deel draagt dan dezelfde factor. Een combinatie waarin het ene deel overheerst en het andere samengaat, telt de belasting te laag, en de combinatie waarin alle delen samen overheersen ontbreekt dan mogelijk. Dit ontstaat als een geval van type of categorie verandert terwijl de combinaties eigen combinaties zijn (hernoemd of aangepast): die volgen de gevallen niet. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of pas de factoren van deze combinaties aan.`;
+}
+var GAMMA_Q_MIN = Math.min(...GEVOLGKLASSEN.map((k) => PARTIELE_FACTOREN[k].gQ));
+function veranderlijkeBelastingenZonderLeiding(p) {
+  const gevuld = p.gevuld ?? (() => true);
+  const acties = [];
+  const live = p.loadCases.filter((c) => c.type === "live" && gevuld(c.id));
+  for (const cat of [...new Set(live.map((c) => c.categorie ?? STANDAARD_CATEGORIE))]) {
+    const leden = live.filter((c) => (c.categorie ?? STANDAARD_CATEGORIE) === cat);
+    acties.push({
+      label: leden.length === 1 ? `"${leden[0].name}"` : `veranderlijk, categorie ${cat}`,
+      caseIds: leden.map((c) => c.id)
+    });
+  }
+  for (const c of p.loadCases) {
+    if ((c.type === "snow" || c.type === "wind") && gevuld(c.id)) {
+      acties.push({ label: `"${c.name}"`, caseIds: [c.id] });
+    }
+  }
+  const ugt = p.combinations.filter((c) => c.type === "uls");
+  const uit = [];
+  for (const a of acties) {
+    let hoogste = 0;
+    let overheerst = false;
+    for (const c of ugt) {
+      const f = a.caseIds.map((id) => c.factors.get(id) ?? 0).filter((x) => x !== 0);
+      if (f.length === 0) continue;
+      hoogste = Math.max(hoogste, ...f.map(Math.abs));
+      const eenFactor = new Set(f.map((x) => Math.round(x * 1e9) / 1e9)).size === 1;
+      if (eenFactor && Math.abs(f[0]) >= GAMMA_Q_MIN - 1e-9) {
+        overheerst = true;
+        break;
+      }
+    }
+    if (!overheerst && hoogste > 0) uit.push({ ...a, hoogste });
+  }
+  return uit;
+}
+function tekstZonderLeiding(a) {
+  const \u03B3 = (k) => nl5(PARTIELE_FACTOREN[k].gQ);
+  return `Veranderlijke belasting ${a.label} (belastinggeval ${a.caseIds.join(", ")}) is in geen enkele UGT-combinatie de overheersende veranderlijke belasting: ze komt alleen voor met een factor van ten hoogste ${nl5(a.hoogste)}. Elke combinatie omvat een overheersende veranderlijke belasting (NEN-EN 1990 6.4.3.1(2)) en de rekenwaarden volgen uit elk kritiek belastingsgeval (6.4.3.1(1)P); in uitdrukking 6.10b (NB A1.3.1(1)) krijgt de overheersende belasting \u03B3_Q zonder \u03C8\u2080: ${\u03B3("CC1")} in CC1 (NB tabel NB.5), ${\u03B3("CC2")} in CC2 (NB.4), ${\u03B3("CC3")} in CC3 (NB.5). Zonder zo'n combinatie kan de omhullende te laag zijn. Kies "Vervang door standaardcombinaties", of voeg een combinatie toe waarin deze belasting overheerst.`;
+}
+function gelijkeRekeninhoudSet(a, b) {
+  if (a.length !== b.length) return false;
+  const vrij = [...b];
+  for (const c of a) {
+    const i = vrij.findIndex((x) => x.type === c.type && x.factors.size === c.factors.size && [...c.factors].every(([id, f]) => gelijk(x.factors.get(id) ?? Number.NaN, f)));
+    if (i < 0) return false;
+    vrij.splice(i, 1);
+  }
+  return true;
+}
+function verouderdeWindCombinaties(p) {
+  const huidig = p.combinations.filter(isWindgeneratorCombinatie);
+  if (huidig.length === 0) return null;
+  const verwacht = windCombinatiesVoor(p.loadCases, p.gevolgklasse);
+  if (verwacht !== null && gelijkeRekeninhoudSet(huidig, verwacht)) return null;
+  return { aantal: huidig.length, verwacht: verwacht?.length ?? null };
+}
+function tekstWindVerouderd(v, klasse) {
+  return `${v.aantal} combinatie(s) van de windgenerator passen niet bij de belastinggevallen en gevolgklasse ${klasse} van dit project: ` + (v.verwacht === null ? "er staat geen gegenereerd windbelastinggeval meer in het model waar ze bij horen" : `de generator zou nu ${v.verwacht} combinatie(s) met andere factoren maken`) + ". De gegenereerde set is verouderd: een combinatie die de generator nu wel zou maken \u2014 met een later toegevoegd veranderlijk geval als samengaande belasting, of met de factoren van een andere gevolgklasse \u2014 ontbreekt in de omhullende. Open de windbelastinggenerator en genereer de windbelasting opnieuw.";
 }
 var UGT_FACTOREN_BLIJVEND = [
   .../* @__PURE__ */ new Set([
@@ -9668,21 +10001,6 @@ var UGT_FACTOREN_BLIJVEND = [
     1
   ])
 ];
-var OUDE_STANDAARDSET = [
-  { naam: "ULS 6.10a", factoren: { 1: 1.35, 2: 1.05, 3: 1.05, 4: 0.9 } },
-  { naam: "ULS 6.10b (Q leidend)", factoren: { 1: 1.2, 2: 1.5, 3: 1.05, 4: 0.9 } },
-  { naam: "ULS 6.10b (S leidend)", factoren: { 1: 1.2, 3: 1.5, 2: 1.05, 4: 0.9 } },
-  { naam: "ULS 6.10b (W leidend)", factoren: { 1: 1.2, 4: 1.5, 2: 1.05, 3: 1.05 } },
-  { naam: "ULS uplift", factoren: { 1: 0.9, 4: 1.5 } },
-  { naam: "SLS Karakteristiek", factoren: { 1: 1, 2: 1, 3: 0.7, 4: 0.6 } },
-  { naam: "SLS Frequent", factoren: { 1: 1, 2: 0.5, 3: 0.2 } },
-  { naam: "SLS Quasi-permanent", factoren: { 1: 1, 2: 0.3 } }
-];
-var OUDE_GEVALLEN = {
-  2: "het veranderlijke geval (Q)",
-  3: "het sneeuwgeval (S)",
-  4: "het windgeval (W)"
-};
 function oudeKolomVan(caseId, combinations) {
   if (OUDE_GEVALLEN[caseId] === void 0) return null;
   const oud = combinations.map((c) => ({ c, o: OUDE_STANDAARDSET.find((x) => x.naam === c.name) })).filter((x) => x.o !== void 0);
@@ -9737,6 +10055,10 @@ function meldingenBelastinggevallen(p) {
   const gevuld = (id) => p.loads === void 0 || p.loads.some((l) => l.caseId === id) || p.selfWeightEnabled === true && blijvend?.id === id;
   const heeftFactor = (id, type) => p.combinations.some((c) => c.type === type && (c.factors.get(id) ?? 0) !== 0);
   const heeftBgt = p.combinations.some((c) => c.type === "sls");
+  const naamVan = (id) => {
+    const c = p.loadCases.find((x) => x.id === id);
+    return c ? `${id} ("${c.name}")` : String(id);
+  };
   if (p.selfWeightEnabled && !blijvend) {
     meldingen.push({
       niveau: "fout",
@@ -9746,8 +10068,10 @@ function meldingenBelastinggevallen(p) {
   }
   const alle = p.alleCombinaties ?? p.combinations;
   const eenStandaard = alle.find((c) => c.standaard);
-  if (eenStandaard?.standaard) {
-    const klasse = p.gevolgklasse ?? eenStandaard.standaard.gevolgklasse;
+  const klasse = p.gevolgklasse ?? eenStandaard?.standaard?.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
+  const gevalIds = new Set(p.loadCases.map((c) => c.id));
+  const oud = alle.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
+  if (oud.length > 0 || alle.some(isAfgeleidVanStandaard)) {
     const ontbrekend = ontbrekendeStandaardcombinaties({
       combinations: alle,
       loadCases: p.loadCases,
@@ -9759,7 +10083,28 @@ function meldingenBelastinggevallen(p) {
         niveau: "fout",
         caseId: null,
         vervangAdvies: true,
-        tekst: tekstOntbrekend(ontbrekend, klasse)
+        tekst: (oud.length > 0 ? `${tekstOudeSetInProject(oud, klasse)} ` : "") + tekstOntbrekend(ontbrekend, klasse)
+      });
+    }
+  }
+  for (const v of veranderlijkeFactorVerschillen({ loadCases: p.loadCases, combinations: p.combinations, gevuld })) {
+    meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstVerschil(v, naamVan) });
+  }
+  for (const a of veranderlijkeBelastingenZonderLeiding({
+    loadCases: p.loadCases,
+    combinations: p.combinations,
+    gevuld
+  })) {
+    meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a) });
+  }
+  if (p.gevolgklasse !== void 0) {
+    const wind = verouderdeWindCombinaties({ loadCases: p.loadCases, combinations: alle, gevolgklasse: p.gevolgklasse });
+    if (wind) {
+      meldingen.push({
+        niveau: "fout",
+        caseId: null,
+        windOpnieuwAdvies: true,
+        tekst: tekstWindVerouderd(wind, p.gevolgklasse)
       });
     }
   }
@@ -9824,55 +10169,15 @@ function meldingenBelastinggevallen(p) {
   return meldingen;
 }
 function beoordeelCombinatiesBijOpenen(p) {
-  const set = genereerStandaardCombinaties(p.loadCases, p.gevolgklasse);
-  const perS = perSleutel(set);
-  const gezien = /* @__PURE__ */ new Set();
-  const afwijkend = [];
-  for (const c of p.combinations) {
-    const regel = (reden) => afwijkend.push({ id: c.id, naam: c.name, formule: c.formula, reden });
-    if (isWindgeneratorCombinatie(c)) {
-      if (!/NB\.2/.test(c.formula)) {
-        regel(
-          "gemaakt door de windgenerator van een eerdere versie, met de door EN 1990 aanbevolen \u03C8\u2080 (tabel A1.1) en vaste CC2-factoren; genereer de windbelasting opnieuw om de NB-waarden en de gevolgklasse te krijgen"
-        );
-      }
-      continue;
-    }
-    if (c.standaard) {
-      const n = perS.get(c.standaard.sleutel);
-      if (!n) {
-        regel("standaardcombinatie die bij de huidige belastinggevallen niet meer hoort");
-        continue;
-      }
-      gezien.add(c.standaard.sleutel);
-      if (!gelijkeInhoud(c, n)) {
-        regel(
-          `standaardcombinatie met andere factoren dan de standaard voor ${p.gevolgklasse} (een andere gevolgklasse, of gemaakt door een eerdere versie)`
-        );
-      }
-      continue;
-    }
-    if (!p.eigenCombinatiesBewust) {
-      regel(
-        "geen standaardcombinatie: een eigen combinatie, of een combinatie van v\xF3\xF3r september 2026 met de door EN 1990 aanbevolen \u03C8-waarden (tabel A1.1) en vaste CC2-factoren, ongeacht de gevolgklasse"
-      );
-    }
-  }
-  const ontbrekend = p.eigenCombinatiesBewust ? [] : set.filter((c) => !gezien.has(c.standaard.sleutel)).map((c) => ({ naam: c.name, formule: c.formula }));
   const weesFactoren = [...p.weesFactoren ?? []];
   const blijvend = blijvendeFactorAfwijkingen({ loadCases: p.loadCases, combinations: p.combinations });
-  if (afwijkend.length === 0 && ontbrekend.length === 0 && weesFactoren.length === 0 && blijvend.length === 0) {
-    return null;
-  }
-  const standaard = set.map((c) => ({ naam: c.name, formule: c.formula }));
-  const bron = PARTIELE_FACTOREN[p.gevolgklasse].bron;
+  if (weesFactoren.length === 0 && blijvend.length === 0) return null;
   const weesIds = [...new Set(weesFactoren.flatMap((w) => w.caseIds))].sort((a, b) => a - b);
-  const teVervangen = afwijkend.length > 0 || ontbrekend.length > 0 || blijvend.length > 0;
   const samenvatting = blijvend.map((a) => {
     const { lijst, herkomst } = regelsEnHerkomst(a);
-    return `LET OP: belastinggeval ${a.caseId} ("${a.naam}") is van type blijvend, maar draagt factoren die niet bij een blijvende belasting passen: ${lijst}. Een blijvende belasting telt in de BGT met 1,0 en heeft in elke combinatie dezelfde factor als de andere blijvende gevallen. ${herkomst} Zolang dat zo is, telt de last van dit geval met de verkeerde factoren. `;
-  }).join("") + (afwijkend.length > 0 ? `${afwijkend.length} belastingcombinatie(s) in dit project wijken af van de standaardcombinaties voor ${p.gevolgklasse} (\u03B3 uit NEN-EN 1990 ${bron}, \u03C8 uit tabel NB.2\u2013A1.1): ${afwijkend.map((a) => `"${a.naam}"`).join(", ")}. ` : "") + (ontbrekend.length > 0 ? `De standaardset voor deze belastinggevallen zou bestaan uit ${standaard.length} combinaties: ${standaard.map((s) => `"${s.naam}"`).join(", ")}. ` : "") + (weesFactoren.length > 0 ? `In ${weesFactoren.length} belastingcombinatie(s) (${weesFactoren.map((w) => `"${w.naam}"`).join(", ")}) stonden factoren voor ` + (weesIds.length === 1 ? `belastinggeval ${weesIds[0]}, dat in dit project niet (meer) bestaat` : `belastinggevallen ${weesIds.join(", ")}, die in dit project niet (meer) bestaan`) + `: een rest van een verwijderd geval. Die factoren zijn bij het openen weggehaald. Ze vermenigvuldigden geen enkele last, dus geen uitkomst van dit project verandert; een nieuw belastinggeval krijgt een id boven ${weesIds[weesIds.length - 1]} en kan ze niet meer erven. ` : "") + (teVervangen ? `${weesFactoren.length > 0 ? "Verder is er" : "Er is"} NIETS overschreven: het project rekent met de combinaties uit het bestand. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties om de standaardset te gebruiken.` : "Verder is er niets veranderd.");
-  return { gevolgklasse: p.gevolgklasse, afwijkend, ontbrekend, standaard, weesFactoren, blijvend, samenvatting };
+    return `LET OP: belastinggeval ${a.caseId} ("${a.naam}") is van type blijvend, maar draagt factoren die niet bij een blijvende belasting passen: ${lijst}. Een blijvende belasting telt in de BGT met 1,0 en heeft in elke combinatie dezelfde factor als de andere blijvende gevallen. ${herkomst} Zolang dat zo is, telt de last van dit geval met de verkeerde factoren. Het zijn eigen combinaties, dus de app past ze niet aan: kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of corrigeer de factoren. `;
+  }).join("") + (weesFactoren.length > 0 ? `In ${weesFactoren.length} belastingcombinatie(s) (${weesFactoren.map((w) => `"${w.naam}"`).join(", ")}) stonden factoren voor ` + (weesIds.length === 1 ? `belastinggeval ${weesIds[0]}, dat in dit project niet (meer) bestaat` : `belastinggevallen ${weesIds.join(", ")}, die in dit project niet (meer) bestaan`) + `: een rest van een verwijderd geval. Die factoren zijn bij het openen weggehaald. Ze vermenigvuldigden geen enkele last, dus geen uitkomst van dit project verandert; een nieuw belastinggeval krijgt een id boven ${weesIds[weesIds.length - 1]} en kan ze niet meer erven.` : "");
+  return { weesFactoren, blijvend, samenvatting: samenvatting.trim() };
 }
 
 // src/lib/sectionResolver.ts
@@ -11673,7 +11978,7 @@ function leesModel(payload) {
       gevolgklasseUitBestand: alsGevolgklasse(
         bestand.projectInfo?.uitgangspunten?.gevolgklasse
       ),
-      bestandMetTellers: bestand.idTellers !== void 0
+      idTellersUitBestand: bestand.idTellers
     };
   }
   const rauw = eisObject(payload.model, "model");
@@ -11713,27 +12018,58 @@ function leesModel(payload) {
     nonlinearUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
-    bestandMetTellers: false
+    idTellersUitBestand: void 0
   };
 }
 function leesGevolgklasse(payload, gelezen) {
   if (payload.gevolgklasse !== void 0 && alsGevolgklasse(payload.gevolgklasse) === null) {
     throw new InvoerFout('Veld `gevolgklasse` moet "CC1", "CC2" of "CC3" zijn.');
   }
-  const klasse = gelezen.gevolgklasseUitBestand ?? alsGevolgklasse(payload.gevolgklasse);
-  return klasse ? { klasse, aangenomen: false } : { klasse: STANDAARD_GEVOLGKLASSE, aangenomen: true };
+  const { klasse, bron } = gevolgklasseBijOpenen({
+    bestand: gelezen.gevolgklasseUitBestand,
+    verzoek: alsGevolgklasse(payload.gevolgklasse),
+    combinations: gelezen.combinatiesUitBestand,
+    terugval: STANDAARD_GEVOLGKLASSE
+  });
+  return { klasse, aangenomen: bron === "terugval", bron };
 }
-function leesCombinaties(payload, uitBestand, loadCases, gevolgklasse) {
+function gevolgklasseWaarschuwing(k, metStandaard) {
+  if (!metStandaard) return null;
+  if (k.bron === "terugval") {
+    return "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als `gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de factoren van NEN-EN 1990 NB tabel NB.4.";
+  }
+  if (k.bron === "kenmerk") {
+    return `Geen gevolgklasse in de projectgegevens of als \`gevolgklasse\`: de klasse ${k.klasse} komt uit het kenmerk van de standaardcombinaties in het projectbestand, met de factoren van NEN-EN 1990 ${PARTIELE_FACTOREN[k.klasse].bron}.`;
+  }
+  return null;
+}
+function leesCombinaties(payload, gelezen, gevolgklasse) {
   if (payload.combinations !== void 0) {
     const rauw = eisArray(payload.combinations, "combinations");
     const uit = combinationsFromFile(
       rauw
     );
     if (!uit) throw new InvoerFout("Veld `combinations` is geen geldige lijst.");
-    return { lijst: uit, bron: "verzoek" };
+    return { lijst: uit, bron: "verzoek", openMeldingen: [] };
   }
-  if (uitBestand) return { lijst: uitBestand, bron: "bestand" };
-  return { lijst: defaultCombinations(loadCases, gevolgklasse), bron: "standaard" };
+  if (gelezen.combinatiesUitBestand) {
+    const { staat, afwijking, vervanging } = openCombinatieStaat({
+      loadCases: gelezen.model.loadCases,
+      combinations: gelezen.combinatiesUitBestand,
+      gevolgklasse,
+      idTellers: gelezen.idTellersUitBestand
+    });
+    return {
+      lijst: staat.combinations,
+      bron: "bestand",
+      openMeldingen: [vervanging?.samenvatting, afwijking?.samenvatting].filter((x) => typeof x === "string" && x !== "")
+    };
+  }
+  return {
+    lijst: defaultCombinations(gelezen.model.loadCases, gevolgklasse),
+    bron: "standaard",
+    openMeldingen: []
+  };
 }
 function leesProfielen(payload) {
   const db = /* @__PURE__ */ new Map();
@@ -11849,15 +12185,11 @@ function rekenDoor(payload) {
       { fouten: veldFouten }
     );
   }
-  const { klasse: gevolgklasse, aangenomen: klasseAangenomen } = leesGevolgklasse(payload, gelezen);
-  const gelezenCombinaties = leesCombinaties(
-    payload,
-    gelezen.combinatiesUitBestand,
-    gelezen.model.loadCases,
-    gevolgklasse
-  );
+  const klasseGelezen = leesGevolgklasse(payload, gelezen);
+  const gevolgklasse = klasseGelezen.klasse;
+  const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse);
   const combinatieBron = gelezenCombinaties.bron;
-  const { combinaties: alleCombinaties, wees: weesFactoren } = combinatieBron === "bestand" ? verwijderWeesFactoren(gelezenCombinaties.lijst, gelezen.model.loadCases) : { combinaties: gelezenCombinaties.lijst, wees: [] };
+  const alleCombinaties = gelezenCombinaties.lijst;
   const selectie = selecteerCombinaties(
     alleCombinaties,
     gelezen.beams,
@@ -11898,10 +12230,11 @@ function rekenDoor(payload) {
   const opgelost = [...perCase.keys()];
   const legeGevallen = gevraagd.filter((id) => !perCase.has(id));
   const teToetsen = pasCheckConfigToe(gelezen.beams, payload);
-  const beamIds = payload.beam_ids === void 0 ? null : new Set(
-    eisArray(payload.beam_ids, "beam_ids").map(Number)
-  );
+  const gevraagdeIds = payload.beam_ids === void 0 ? [] : eisArray(payload.beam_ids, "beam_ids").map(Number);
+  const beamIds = gevraagdeIds.length === 0 ? null : new Set(gevraagdeIds);
   const staafSelectie = beamIds === null ? teToetsen : teToetsen.filter((b) => beamIds.has(b.id));
+  const inModel = new Set(gelezen.beams.map((b) => b.id));
+  const onbekendeIds = [...new Set(gevraagdeIds)].filter((id) => !inModel.has(id));
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
     beams: staafSelectie,
@@ -11928,11 +12261,12 @@ function rekenDoor(payload) {
   for (const weg of selectie.overgeslagen) {
     waarschuwingen.push(`Combinatie ${weg.id} overgeslagen \u2014 ${weg.reden}`);
   }
-  if (klasseAangenomen && combinatieBron === "standaard") {
-    waarschuwingen.push(
-      "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als `gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de factoren van NEN-EN 1990 NB tabel NB.4."
-    );
-  }
+  const klasseMelding = gevolgklasseWaarschuwing(
+    klasseGelezen,
+    combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard)
+  );
+  if (klasseMelding) waarschuwingen.push(klasseMelding);
+  waarschuwingen.push(...gelezenCombinaties.openMeldingen);
   for (const m of meldingenBelastinggevallen({
     loadCases: gelezen.model.loadCases,
     combinations: combinaties,
@@ -11942,16 +12276,6 @@ function rekenDoor(payload) {
     selfWeightEnabled: gelezen.model.selfWeightEnabled
   })) {
     waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
-  }
-  if (combinatieBron === "bestand") {
-    const afwijking = beoordeelCombinatiesBijOpenen({
-      combinations: alleCombinaties,
-      loadCases: gelezen.model.loadCases,
-      gevolgklasse,
-      eigenCombinatiesBewust: gelezen.bestandMetTellers,
-      weesFactoren
-    });
-    if (afwijking) waarschuwingen.push(afwijking.samenvatting);
   }
   return {
     combinaties,
@@ -11966,9 +12290,13 @@ function rekenDoor(payload) {
     opgelost,
     legeGevallen,
     staal,
+    onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion
   };
+}
+function redenBestaatNiet(id) {
+  return `bestaat niet in het model \u2014 staaf ${id} is gevraagd in \`beam_ids\`, maar het model heeft geen staaf met dit nummer; er is niets getoetst`;
 }
 function opSolve(payload) {
   const d = rekenDoor(payload);
@@ -12031,22 +12359,19 @@ function opCheck(payload) {
     },
     units: EENHEDEN,
     steel_check_inputs: d.staal.inputs,
-    skipped_beams: d.staal.skipped.map((s) => ({
-      beam_id: s.beamId,
-      reason: s.reason
-    })),
+    // Elk gevraagd nummer staat in de toetsinvoer of hier — ook een nummer dat
+    // geen staaf is.
+    skipped_beams: [
+      ...d.staal.skipped.map((s) => ({ beam_id: s.beamId, reason: s.reason })),
+      ...d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) }))
+    ],
     warnings: d.waarschuwingen
   };
 }
 function opValidate(payload) {
   const gelezen = leesModel(payload);
   const { klasse } = leesGevolgklasse(payload, gelezen);
-  const { lijst } = leesCombinaties(
-    payload,
-    gelezen.combinatiesUitBestand,
-    gelezen.model.loadCases,
-    klasse
-  );
+  const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse);
   const actief2 = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
     loadCases: gelezen.model.loadCases,
     gevolgklasse: klasse
@@ -12059,7 +12384,7 @@ function opValidate(payload) {
   return {
     ok: uitkomst.ok,
     errors: uitkomst.errors,
-    warnings: uitkomst.warnings,
+    warnings: [...openMeldingen, ...uitkomst.warnings],
     counts: {
       nodes: gelezen.model.nodes.length,
       beams: gelezen.model.beams.length,
@@ -12075,18 +12400,39 @@ function opLoadProject(payload) {
     project: { inhoud: leesTekst(payload, "inhoud") }
   });
   const m = gelezen.model;
+  const klasse = leesGevolgklasse({}, gelezen);
+  const { lijst, bron, openMeldingen } = leesCombinaties({}, gelezen, klasse.klasse);
+  const warnings = [];
+  const klasseMelding = gevolgklasseWaarschuwing(
+    klasse,
+    bron === "standaard" || lijst.some((c) => c.standaard)
+  );
+  if (klasseMelding) warnings.push(klasseMelding);
+  warnings.push(...openMeldingen);
+  for (const mld of meldingenBelastinggevallen({
+    loadCases: m.loadCases,
+    combinations: lijst,
+    alleCombinaties: lijst,
+    gevolgklasse: klasse.klasse,
+    loads: m.loads,
+    selfWeightEnabled: m.selfWeightEnabled
+  })) {
+    warnings.push(mld.niveau === "fout" ? `FOUT: ${mld.tekst}` : mld.tekst);
+  }
   return {
     path: typeof payload.path === "string" ? payload.path : null,
     format_version: gelezen.formatVersion,
     supported_format_version: PROJECT_FORMAT_VERSION,
     model: m,
-    combinations: (gelezen.combinatiesUitBestand ?? []).map((c) => ({
+    combinations: lijst.map((c) => ({
       id: c.id,
       name: c.name,
       type: c.type,
       formula: c.formula,
       factors: Object.fromEntries([...c.factors].map(([k, v]) => [String(k), v]))
     })),
+    combinations_source: bron,
+    gevolgklasse: klasse.klasse,
     nonlinear_enabled: gelezen.nonlinearUitBestand,
     counts: {
       nodes: m.nodes.length,
@@ -12095,8 +12441,9 @@ function opLoadProject(payload) {
       plates: m.plates.length,
       loads: m.loads.length,
       load_cases: m.loadCases.length,
-      combinations: (gelezen.combinatiesUitBestand ?? []).length
-    }
+      combinations: lijst.length
+    },
+    warnings
   };
 }
 function verwerkVerzoek(verzoek) {
@@ -12119,6 +12466,11 @@ function verwerkVerzoek(verzoek) {
     }
     if (err instanceof BestandFout) {
       return maakFout(verzoek.id, "BESTAND_ONLEESBAAR", err.message, err.detail);
+    }
+    if (err instanceof DoorsnedeOnbekendFout) {
+      return maakFout(verzoek.id, "DOORSNEDE_ONBEKEND", err.message, {
+        staven: err.staven.map((s) => ({ beam_id: s.beamId, reason: s.reden }))
+      });
     }
     if (err instanceof ModelFout) {
       const afgebeeld = beeldKernfoutAf(err.message);
@@ -12225,6 +12577,7 @@ export {
   LOAD_SOORT_MEERVOUD,
   MAX_VRIJE_GEVALLEN,
   MELDING_ZONE_I,
+  OUDE_STANDAARDSET,
   PARTIELE_FACTOREN,
   PLATE_DEFAULTS,
   PROJECT_FILE_EXT,
@@ -12292,18 +12645,24 @@ export {
   gelijkeCombinatie,
   gelijkeInhoud,
   genereerStandaardCombinaties,
+  genereerWindCombinaties,
   genereerWindbelasting,
   getSecondOrderInput,
   getSecondOrderState,
+  gevolgklasseBijOpenen,
   handmatigeStuwdruk,
   handtekeningVanGeneratie,
   handtekeningVanModel,
   hellingGradenVanStaaf,
+  herstelCombinaties,
+  isAfgeleidVanStandaard,
   isAsgelijndeRechthoek,
+  isOudeStandaardcombinatie,
   isOverwegendVerticaal,
   isSteelProfile,
   isWindgeneratorCombinatie,
   isZuivereStaalconstructie,
+  klasseUitKenmerk,
   leesPlaatMeshCache,
   leesPolygoonRandlasten,
   liftSpringK,
@@ -12336,11 +12695,16 @@ export {
   soortVanCombinatie,
   startSidecar,
   synchroniseerStandaard,
+  synchroniseerWindCombinaties,
   timberDeflectionNumerators,
   valideerModel,
   valideerPlaatPolygoon,
+  veranderlijkeBelastingenZonderLeiding,
+  veranderlijkeFactorVerschillen,
   verenNaarCanoniek,
+  verouderdeWindCombinaties,
   vervangDoorStandaard,
+  vervangVerouderdeCombinaties,
   verwerkRegel,
   verwerkVerzoek,
   verwijderBelastinggeval,
@@ -12351,6 +12715,7 @@ export {
   volgendVrijId,
   wijzigBelastinggeval,
   wijzigCombinatie,
+  windCombinatiesVoor,
   withPlateDefaults,
   zetCombinatieResultaat,
   zetGevolgklasse,
