@@ -385,10 +385,28 @@ export const useCheckStore = create<CheckState>((set) => ({
         },
       });
     } catch (e) {
+      // EEN MISLUKTE RONDE LAAT GEEN OUDE UITSLAG ACHTER. Hier werd alleen de
+      // fout gezet; resultaten, overgeslagen staven en rapportinvoer van de
+      // VORIGE ronde bleven staan. Het toetsingspaneel toonde de foutbanner,
+      // maar de UC-badges op het canvas, de projectboom, de PDF-controle en
+      // het losse rapportvenster zagen de fout niet en toonden de oude UC.
+      // Gemeten (IPE300, q = −18 kN/m): na "eigen gewicht aan" en een
+      // mislukte ronde bleef 1,6766 staan waar 1,7074 hoorde. Daarom wist de
+      // catch dezelfde velden als `clear()`, en zet hij daarnaast de fout.
+      //
       // `String(e)` plakt er "Error: " voor, en die tekst komt woordelijk in
       // het toetsingspaneel én in het betonvenster terecht. De boodschap van de
       // kern is al een volzin; het voorvoegsel maakt haar alleen lelijker.
-      set({ error: e instanceof Error ? e.message : String(e), isRunning: false });
+      set({
+        results: [],
+        skipped: [],
+        beff: [],
+        lastRunAt: null,
+        lastRunData: null,
+        lastRunInputs: null,
+        error: e instanceof Error ? e.message : String(e),
+        isRunning: false,
+      });
     }
   },
 

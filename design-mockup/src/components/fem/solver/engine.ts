@@ -19,7 +19,7 @@
  * NO FEM math itself — that all sits in `src/core/`.
  */
 import { Mesh } from "../../../core/fem/Mesh";
-import { solveNonlinear, type NonlinearSolverOptions } from "../../../core/solver/NonlinearSolver";
+import { solveNonlinear, SingulierStelselFout, type NonlinearSolverOptions } from "../../../core/solver/NonlinearSolver";
 import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode } from "../../../core/solver/Assembler";
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
 import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
@@ -519,7 +519,9 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   // belastinggeval hetzelfde stationsraster en blijft superpositie van de
   // per-geval-resultaten (combinaties, envelope) geldig.
   // Fracties op/naast een eindknoop (≤ EPS of ≥ 1−EPS) splitsen NIET: die
-  // last landt gewoon op de bestaande eindknoop.
+  // last landt gewoon op de bestaande eindknoop. Een fractie die verder weg
+  // ligt maar nog binnen de knooptolerantie van 1 mm, vervalt bij het
+  // splitsen zelf — zie "NOOIT EEN REKENELEMENT VAN LENGTE NUL" verderop.
   const BPL_EPS = 1e-6;
   const staafPuntlasten = (input as any).beamPointLoads as Array<any> | undefined;
   const puntlastFracties = new Map<number, number[]>();
@@ -648,6 +650,22 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     const matId = materialIdForE(b.E ?? 210000);
     const nA = nodeById.get(b.from)!;
     const nB = nodeById.get(b.to)!;
+    // STAAF VAN LENGTE NUL: WEIGEREN. De kern sloeg zo'n element stil over
+    // (`NonlinearSolver.ts`, `if (L < 1e-10) continue`) en rekende de rest
+    // door, met een krachtsverdeling die bij een ander model hoort. Hier, op de
+    // grens van het model, kan de melding de staaf en de knopen bij hun
+    // nummer noemen. Dezelfde drempel als de kern (1e-10 m): alleen wat daar
+    // stil wegviel, wordt hier geweigerd — een korte maar echte staaf rekent
+    // gewoon door. Geldt voor elk pad dat door deze adapter gaat: canvas,
+    // combinaties en toetsing, de bediening en de MCP-sidecar.
+    if (!(Math.hypot(nB.x - nA.x, nB.z - nA.z) >= 1e-7)) {
+      throw new Error(
+        `Staaf ${b.id} heeft lengte nul: knoop ${b.from} en knoop ${b.to} liggen op dezelfde ` +
+        `plek (${nA.x}, ${nA.z}) mm. Zo'n staaf kan geen kracht overbrengen, en overslaan zou ` +
+        "een krachtsverdeling geven bij een ander model dan is ingevoerd. Voeg de twee knopen " +
+        "samen of verwijder de staaf.",
+      );
+    }
     // Plaatrandknopen (P2.4) + staafpuntlastposities, samengevoegd, gesorteerd
     // en ontdubbeld — een puntlast exact óp een plaatrandknoop splitst dus
     // maar één keer.
@@ -787,15 +805,36 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       // hergebruikt een eventueel al bestaande (UI-)knoop binnen 1 mm; het
       // plaatgrid pikt straks dezelfde knopen op — staaf en plaat delen dus
       // álle randknopen.
+      // NOOIT EEN REKENELEMENT VAN LENGTE NUL. `findNodeAt` hergebruikt een
+      // knoop binnen 1 mm. Ligt een splitsfractie binnen die millimeter van de
+      // VORIGE knoop in de keten — een puntlast op 0,6 mm van een eindknoop,
+      // twee puntlasten 0,3 mm uit elkaar, een puntlast naast een
+      // plaatrandknoop — dan kreeg die splitsing dezelfde knoop als zijn
+      // voorganger, en ontstond er een element van lengte nul: NaN in de
+      // momentenlijn (frame-pad) of een weigering (gemengd pad). Gemeten: bij
+      // 0,999 mm NaN, bij 1 mm niet. Zo'n splitsing vervalt nu; de last landt
+      // hieronder via de dichtstbijzijnde geregistreerde fractie op diezelfde
+      // knoop, binnen de millimeter die de knooptolerantie al als "dezelfde
+      // plek" behandelt. Het criterium is letterlijk dat van `findNodeAt`, dus
+      // een splitsing op 1 mm of meer blijft precies wat hij was.
       const knoopIds = [fromId];
+      const grens = [0];
       for (const t of splitsT) {
         const mx = (nA.x + t * (nB.x - nA.x)) / 1000;
         const my = (nA.z + t * (nB.z - nA.z)) / 1000;
         const bestaand = mesh.findNodeAt(mx, my, 0.001);
-        knoopIds.push(bestaand ? bestaand.id : mesh.addNode(mx, my).id);
+        const knoopId = bestaand ? bestaand.id : mesh.addNode(mx, my).id;
+        if (knoopId === knoopIds[knoopIds.length - 1]) continue;
+        knoopIds.push(knoopId);
+        grens.push(t);
+      }
+      // Viel de laatste splitsing op de eindknoop zelf, dan is dat geen stuk.
+      if (knoopIds.length > 1 && knoopIds[knoopIds.length - 1] === toId) {
+        knoopIds.pop();
+        grens.pop();
       }
       knoopIds.push(toId);
-      const grens = [0, ...splitsT, 1];
+      grens.push(1);
       beamKnoopPerFractie.set(b.id,
         grens.map((t, i) => ({ t, meshNodeId: knoopIds[i] })));
       const segs: { meshId: number; t0: number; t1: number }[] = [];
@@ -1648,6 +1687,66 @@ function logMet(voorvoegsel: string): NonlinearSolverOptions["onLog"] {
   return (r) => opvanger({ ...r, tekst: `[${voorvoegsel}] ${r.tekst}` });
 }
 
+// ── Meldingen op de modelgrens ──────────────────────────────────────────────
+
+/**
+ * Een singulier stelsel met het KNOOPNUMMER uit het model in plaats van de
+ * rekenknoop. De kern kent alleen zijn eigen knopen; deze adapter heeft de
+ * vertaling. Een tussenknoop die de adapter zelf aanlegde (een splitsing)
+ * heeft geen modelnummer en houdt het label "een rekenknoop", met de plek.
+ */
+function metKnoopnummer(e: unknown, nodeIdMap: Map<number, number>): unknown {
+  if (!(e instanceof SingulierStelselFout)) return e;
+  for (const [uiId, meshId] of nodeIdMap) {
+    if (meshId === e.meshKnoopId) return new Error(e.tekstVoor(`knoop ${uiId}`));
+  }
+  return new Error(e.message);
+}
+
+/**
+ * EINDIGHEIDSCONTROLE. Een resultaat met NaN of oneindig mag niet verder: in
+ * de tabel werd het een lege cel, in het rapport een "—", in het
+ * eigenschappenvenster "NaN kNm", en de toetskern weigerde met "invalid type:
+ * null, expected f64" — een melding die de oorzaak niet noemt. JSON schrijft
+ * NaN bovendien als null weg, en dat kan als nul worden gelezen. Hier stopt
+ * het met een Nederlandse melding die de staaf of knoop noemt.
+ *
+ * Een correct model levert per definitie eindige getallen, dus deze controle
+ * verandert daar niets aan.
+ */
+function eisEindigeUitkomst(r: SolverResult, wat: string): SolverResult {
+  const stop = (waar: string): never => {
+    throw new Error(
+      `De berekening leverde een ongeldig getal (NaN of oneindig) op${wat} bij ${waar}. ` +
+      "Dat resultaat wordt niet getoond of getoetst. Meestal zit er een rekenelement van " +
+      "(bijna) lengte nul in het model — twee knopen of een puntlast vlak naast elkaar — of " +
+      "een staaf zonder stijfheid.",
+    );
+  };
+  const eindig = (v: number | undefined) => v === undefined || Number.isFinite(v);
+  for (const [id, d] of r.displacements) {
+    if (!eindig(d.ux) || !eindig(d.uz) || !eindig(d.ry)) stop(`de verplaatsing van knoop ${id}`);
+  }
+  for (const [id, re] of r.reactions) {
+    if (!eindig(re.fx) || !eindig(re.fz) || !eindig(re.my)) stop(`de oplegreactie van knoop ${id}`);
+  }
+  for (const [id, ef] of r.elements) {
+    if (!eindig(ef.N) || !eindig(ef.V) || !eindig(ef.M_start) || !eindig(ef.M_end)) {
+      stop(`de staafkrachten van staaf ${id}`);
+    }
+    const lijnen: [string, number[] | undefined][] = [
+      ["de momentenlijn", ef.bendingMoment],
+      ["de dwarskrachtenlijn", ef.shearForce],
+      ["de normaalkrachtenlijn", ef.normalForce],
+      ["de doorbuigingslijn", ef.deflection],
+    ];
+    for (const [naam, lijn] of lijnen) {
+      if (lijn?.some((v) => !Number.isFinite(v))) stop(`${naam} van staaf ${id}`);
+    }
+  }
+  return r;
+}
+
 // ── Public engine functions ─────────────────────────────────────────────────
 
 export function solve(input: SolverInput): SolverResult {
@@ -1655,12 +1754,20 @@ export function solve(input: SolverInput): SolverResult {
   // Platen aanwezig ⇒ mixed_beam_plate (staven 6×6 + membranen 3 DOF/knoop);
   // zonder platen blijft het pad bit-identiek "frame".
   const heeftPlaten = plateInfo.length > 0;
-  const engineResult = solveNonlinear(mesh, {
-    analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
-    geometricNonlinear: false,
-  });
+  let engineResult;
+  try {
+    engineResult = solveNonlinear(mesh, {
+      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
+      geometricNonlinear: false,
+    });
+  } catch (e) {
+    throw metKnoopnummer(e, nodeIdMap);
+  }
   const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
-  return convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer);
+  return eisEindigeUitkomst(
+    convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer),
+    "",
+  );
 }
 
 export function solveAllCases(input: MultiInput): MultiLcResult {
@@ -1674,13 +1781,21 @@ export function solveAllCases(input: MultiInput): MultiLcResult {
     // nulbijdrage, wat mechanisch exact klopt.
     if (!meshHeeftLasten(mesh)) continue;
     const heeftPlaten = plateInfo.length > 0;
-    const engineResult = solveNonlinear(mesh, {
-      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
-      geometricNonlinear: false,
-      onLog: logMet(c.name),
-    });
+    let engineResult;
+    try {
+      engineResult = solveNonlinear(mesh, {
+        analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
+        geometricNonlinear: false,
+        onLog: logMet(c.name),
+      });
+    } catch (e) {
+      throw metKnoopnummer(e, nodeIdMap);
+    }
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
-    perCase.set(c.id, convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer));
+    perCase.set(c.id, eisEindigeUitkomst(
+      convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer),
+      ` in belastinggeval "${c.name}"`,
+    ));
   }
   return { perCase };
 }
@@ -1854,11 +1969,18 @@ export function solveCombinationSecondOrder(
     // toont het canvas na een 2e-orde-som een leeg schijfbeeld. Zonder schijven
     // blijven beide `undefined` en is dit bit-identiek aan voorheen.
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
-    return convertResult(
-      mesh, engineResult, nodeIdMap, beamIdMap, input.supports,
-      heeftPlaten ? plateInfo : undefined, nodeIndex, beamSegments, segmentUitvoer,
+    return eisEindigeUitkomst(
+      convertResult(
+        mesh, engineResult, nodeIdMap, beamIdMap, input.supports,
+        heeftPlaten ? plateInfo : undefined, nodeIndex, beamSegments, segmentUitvoer,
+      ),
+      ` in combinatie "${combo.name}"`,
     );
   } catch (e) {
+    // Een singulier stelsel in de eerste iteratie is een mechanisme en geen
+    // knik (zie NonlinearSolver): met het knoopnummer doorgeven.
+    const vertaald = metKnoopnummer(e, nodeIdMap);
+    if (vertaald !== e) throw vertaald;
     const msg = e instanceof Error ? e.message : String(e);
     if (/P-Delta/.test(msg)) {
       throw new Error(

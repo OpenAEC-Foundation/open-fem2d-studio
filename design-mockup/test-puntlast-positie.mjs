@@ -334,5 +334,68 @@ log("\n[8] Projectbestand-roundtrip met posFrac");
     backOud.loads[0].posFrac === undefined && backOud.loads[0].nodeId === 1);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// TEST 9: een puntlast BINNEN 1 mm van een knoop geeft geen NaN meer.
+//
+// De splitsing op de lastpositie hergebruikt via `findNodeAt` een knoop binnen
+// 1 mm. Lag de last dichter bij een knoop, dan kreeg de splitsknoop dezelfde
+// knoop als zijn buur en ontstond een element van lengte nul: NaN in de
+// momentenlijn (gemeten: bij 0,999 mm NaN, bij 1 mm niet). Nu vervalt zo'n
+// splitsing en landt de last op die knoop — binnen de millimeter die de
+// knooptolerantie al als "dezelfde plek" behandelt. Referenties met de hand:
+// vrij opgelegde ligger, P op afstand a: R_A = P·(L−a)/L, M(a) = P·a·(L−a)/L.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[9] Puntlast binnen 1 mm van een knoop: eindig, en ≥ 1 mm ongewijzigd");
+{
+  const { solveAllCasesNonlinear } = await import("./src/components/fem/solver/engine.ts");
+  const { combineResults } = await import("./src/components/fem/solver/combinations.ts");
+  const P = 20000; // N, omlaag
+  const invoer = (lasten) => ({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: L, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, E, A, I }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    cases: [{ id: 1, name: "G" }],
+    loads: [],
+    beamPointLoads: lasten.map((posFrac) => ({ beamId: 1, posFrac, fz: -P, caseId: 1 })),
+  });
+  const eindig = (el) =>
+    [el.bendingMoment, el.shearForce, el.normalForce, el.deflection].every((a) => a.every(Number.isFinite)) &&
+    [el.N, el.V, el.M_start, el.M_end].every(Number.isFinite);
+
+  // 9a — 0,6 mm van knoop 1 (posFrac 1e-4, het auditscenario).
+  const a = 0.6;
+  const r = solveAllCases(invoer([a / L])).perCase.get(1);
+  const el = r.elements.get(1);
+  checkTrue("0,6 mm: alle staafgrootheden eindig", eindig(el));
+  // De last landt op knoop 1: R_A = P in plaats van P·(L−a)/L. Het verschil is
+  // P·a/L = 2 N (0,01 %), binnen de knooptolerantie.
+  check("0,6 mm: ΣR = P (N)", r.reactions.get(1).fz + r.reactions.get(2).fz, P, 1e-9);
+  check("0,6 mm: R_A ≈ P·(L−a)/L (N)", r.reactions.get(1).fz, P * (L - a) / L, 0.02);
+  checkTrue("0,6 mm: max|M| ≤ P·a", Math.max(...el.bendingMoment.map(Math.abs)) <= P * a + 1e-6);
+
+  // 9b — twee puntlasten 0,3 mm uit elkaar op het midden. Exact onder de
+  // eerste last: M = P·(L/2)·(L/2)/L + P·(L/2)·(L/2 − 0,3)/L = 59,997 kNm; na
+  // samenvallen P·L/4 · 2 = 60 kNm (verschil 5e-5).
+  const r2 = solveAllCases(invoer([0.5, 0.5 + 0.3 / L])).perCase.get(1);
+  const el2 = r2.elements.get(1);
+  checkTrue("twee lasten 0,3 mm uit elkaar: eindig", eindig(el2));
+  check("twee lasten 0,3 mm uit elkaar: M_max (kNm)",
+    Math.max(...el2.bendingMoment.map(Math.abs)) / 1e6, (P * 3000 * 3000 / L + P * 3000 * 2999.7 / L) / 1e6, 0.01);
+
+  // 9c — op PRECIES 1 mm verandert er niets: de splitsing blijft en het moment
+  // onder de last is de handwaarde P·a·(L−a)/L = 19 996,67 N·mm.
+  const r3 = solveAllCases(invoer([1 / L])).perCase.get(1).elements.get(1);
+  const i3 = r3.stations_mm.findIndex((x, i) => i > 0 && Math.abs(x - 1) < 1e-6);
+  checkTrue("1 mm: er ligt een station onder de last (de splitsing blijft)", i3 > 0);
+  check("1 mm: M(a) = P·a·(L−a)/L (N·mm)", r3.bendingMoment[i3], P * 1 * (L - 1) / L, 1e-5);
+
+  // 9d — hetzelfde in tweede orde (P-Δ-pad).
+  const combo = { id: 1, name: "UGT", type: "uls", formula: "1,0G", factors: new Map([[1, 1.0]]) };
+  let tweede = null;
+  try { tweede = combineResults(combo, solveAllCasesNonlinear(invoer([a / L])).perCase); }
+  catch (e) { log(`  (tweede orde gooide: ${e.message})`); }
+  checkTrue("0,6 mm in tweede orde: eindig", tweede !== null && eindig(tweede.elements.get(1)));
+}
+
 log(`\n═══ TOTAAL: ${passed} pass, ${failed} fail ═══`);
 process.exit(failed > 0 ? 1 : 0);

@@ -6,6 +6,11 @@ import type { ServiceClass } from "./ServiceClass";
 
 /**
  * Invoer voor één CLT-staaf (plaatstrook).
+ *
+ * `deny_unknown_fields`, om dezelfde reden als bij
+ * [`crate::TimberBeamCheckInput`]: `k_cr` en `load_sharing` hebben een
+ * standaardwaarde, en een tikfout in die namen viel stil op die standaard
+ * terug (gemeten: `kcr` werd genegeerd).
  */
 export type CltBeamCheckInput = { beam_id: number, 
 /**

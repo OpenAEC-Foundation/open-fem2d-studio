@@ -474,6 +474,7 @@ cargo test -p openaec-mcp-server
 | `drie_wegen_beton.rs` | **the three ways give the same answer**: the same JSON through the Tauri command's engine call, through `toetsbrug::behandel` and through the real MCP binary, compared field by field, plus anchor values so all three cannot drift together |
 | `drie_wegen_dekkingslijn.rs` | the same for `concrete_dekkingslijn` (§9.2.1.3 / figure 9.2 and §6.2): one member through all three ways, plus anchor values that follow from the norm — two bar bundles for a 3/5/3 curtailment, two points on every zone boundary (left and right of the jump), and the full tensile force jumping by 5/3 there. Also pins that an axial force without a supplied `z_mm` fails on ALL three ways with 6.2.3(1) in the reason, and that a typo in a field name is refused |
 | `beton_in_check_fem_model.rs` | a concrete beam in a mixed model is reported in `skipped_beams` instead of vanishing; `beam_ids` is respected; a model carrying a reinforcement cage is refused by the field gate |
+| `hout_in_check_fem_model.rs` | the same for a timber beam, including `beam_ids: [timber beam]`; and catalogue profiles outside the old prefix list (INP, DIN, L) are checked, not dropped |
 | `fem_golden.rs`, `sidecar.rs`, `fout_paden.rs` | the FEM chain: golden values, the Node sidecar, and the error paths |
 
 `beton_in_check_fem_model.rs` and the FEM tests need Node ≥ 20, because the
@@ -487,12 +488,12 @@ silently. The steel and concrete check tools run entirely in Rust, so
   `resolveSection` knows concrete (E_cm on an uncracked rectangular section) and
   timber, so those beams do carry their share of the force distribution. The
   *check* afterwards is `steel_check::check_all_beams` and nothing else.
-  Concrete beams are therefore listed in `skipped_beams` with a pointer to
-  `check_concrete_beam`. **Timber beams are not**: a timber beam is only
-  reported when it carries a steel profile; with a timber cross-section it drops
-  out of `buildSteelCheckInputs` without a word. Fixing that needs a change in
-  the solver bundle, not in this crate. Always read `skipped_beams`, and never
-  read `governing` as a verdict on a mixed model.
+  Every requested beam therefore ends up in `results` or in `skipped_beams`
+  with a reason, never in neither: concrete beams point to
+  `check_concrete_beam`, timber beams to `check_timber_beams` /
+  `check_clt_beams`, and anything else that was not recognised as steel says
+  so. Always read `skipped_beams`, and never read `governing` as a verdict on a
+  mixed model.
 - **Concrete cages are not part of the model.** The `.ifcfem2d` model shape this
   server accepts has no cage fields in `checkConfig` (the sidecar's field gate
   rejects unknown ones), so a project saved with reinforcement cages is refused

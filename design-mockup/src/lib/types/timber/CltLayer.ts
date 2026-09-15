@@ -3,6 +3,10 @@ import type { CltLayerOrientation } from "./CltLayerOrientation";
 
 /**
  * Eén lamel (laag) van de opbouw.
+ *
+ * `deny_unknown_fields`: de opbouw is invoer van `CltBeamCheckInput`, en die
+ * weigert onbekende velden. Zonder deze regel zou een tikfout ÍN de opbouw
+ * (bijvoorbeeld `orientatie`) alsnog stil worden genegeerd.
  */
 export type CltLayer = { 
 /**

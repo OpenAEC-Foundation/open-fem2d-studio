@@ -46,7 +46,9 @@ export type BevindingSoort =
   /** Twee knopen op (vrijwel) dezelfde plek. */
   | "dubbeleKnoop"
   /** Staafuiteinde met maar één staaf en geen oplegging. */
-  | "vrijUiteinde";
+  | "vrijUiteinde"
+  /** Knoop die aan geen enkele staaf of plaat vastzit. */
+  | "losseKnoop";
 
 /**
  * Bewerking die de bevinding opheft. De store voert hem uit; de controle
@@ -244,6 +246,37 @@ export function zoekVrijeUiteinden(model: ControleModel): Bevinding[] {
 }
 
 /**
+ * Losse knopen: een knoop waar geen staaf begint of eindigt en die geen
+ * plaathoek is. Zo'n knoop blijft staan als je alleen een staaf verwijdert.
+ *
+ * WAARSCHUWING, GEEN FOUT — met een volledig inklemmende oplegging, of in een
+ * model met platen (het gemengde pad zet een knoop zonder stijfheid vast),
+ * rekent het model gewoon door. Maar in het raamwerkpad krijgt elke knoop drie
+ * vrijheidsgraden, en een losse knoop maakt het stelsel dan singulier. Die
+ * fout noemde vroeger alleen een kolomnummer ("column 6"); met deze
+ * waarschuwing staat de knoop al vóór het rekenen in beeld.
+ */
+export function zoekLosseKnopen(model: ControleModel): Bevinding[] {
+  const graad = knoopGraden(model);
+  const plaathoek = new Set<number>();
+  for (const p of model.plates ?? []) for (const id of p.nodeIds ?? []) plaathoek.add(id);
+  const uit: Bevinding[] = [];
+  for (const n of model.nodes) {
+    if ((graad.get(n.id) ?? 0) !== 0 || plaathoek.has(n.id)) continue;
+    uit.push({
+      soort: "losseKnoop",
+      ernst: "waarschuwing",
+      nodeIds: [n.id],
+      tekst:
+        `Knoop ${n.id} zit aan geen enkele staaf of plaat vast. Een losse knoop ` +
+        "draagt niets en maakt het stelsel singulier zodra hij kan bewegen of " +
+        "draaien — verwijder hem, of verbind hem met de constructie.",
+    });
+  }
+  return uit;
+}
+
+/**
  * De volledige controle: fouten eerst, dan waarschuwingen, binnen elke groep
  * op knoopnummer. Een vrij uiteinde dat óók al als fout is gemeld (de
  * kolomvoet die op een ligger ligt) wordt weggelaten — één oorzaak, één regel.
@@ -258,7 +291,7 @@ export function controleerModel(
   ];
   const alGemeld = new Set<number>();
   for (const f of fouten) for (const id of f.nodeIds) alGemeld.add(id);
-  const waarschuwingen = zoekVrijeUiteinden(model).filter(
+  const waarschuwingen = [...zoekVrijeUiteinden(model), ...zoekLosseKnopen(model)].filter(
     (w) => !w.nodeIds.some((id) => alGemeld.has(id)),
   );
   const opNummer = (a: Bevinding, b: Bevinding) =>

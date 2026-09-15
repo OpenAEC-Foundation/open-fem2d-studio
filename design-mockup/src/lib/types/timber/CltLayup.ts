@@ -4,6 +4,8 @@ import type { CltLayer } from "./CltLayer";
 /**
  * De opbouw van een CLT-doorsnede: een plaatstrook van breedte `width_mm`
  * met lagen van boven (index 0) naar beneden.
+ *
+ * `deny_unknown_fields`, zie [`CltLayer`].
  */
 export type CltLayup = { 
 /**

@@ -3,7 +3,7 @@
 
 use mechanics::{ForceStateSnapshot, ForcePoint, InternalForces, Staafstand};
 use nen_en_1993_1_1_section::{
-    grade_by_name, S235, SteelGrade,
+    grade_by_name, SteelGrade,
     ResistanceCalc, CheckStatus,
     classification::{classify_composite, classify_section, epsilon, CrossSectionClass, SectionShape},
     compression::n_c_rd,
@@ -501,8 +501,34 @@ fn uc_of(c: &NamedCheck) -> f64 {
 }
 
 pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
-    // 2. Look up grade (default to S235 if unknown)
-    let grade: SteelGrade = grade_by_name(&input.steel_grade).unwrap_or(S235);
+    // 2. De staalsoort. Een naam die de kern niet kent is een FOUT en geen
+    //    S235. Eerder viel "S355J2", "s355", "S 355", "" of een tikfout stil
+    //    terug op S235, terwijl het resultaat de opgegeven naam herhaalde —
+    //    en het rapport die naam dus in de PDF zette bij een toetsing met
+    //    f_y = 235. De houtkern weigert een onbekende sterkteklasse al op
+    //    dezelfde manier (`timber_check::check_timber_beam`): geen toetsen,
+    //    status NotApplicable en de reden in `governing_check_id`. De vijf
+    //    namen zijn de staalsoorten van NEN-EN 1993-1-1 tabel 3.1 die
+    //    `grade_by_name` kent; er wordt hier niets geraden of genormaliseerd.
+    let grade: SteelGrade = match grade_by_name(&input.steel_grade) {
+        Some(g) => g,
+        None => {
+            return BeamCheckResult {
+                beam_id: input.beam_id,
+                profile_name: input.profile_name.clone(),
+                steel_grade: input.steel_grade.clone(),
+                classification: CrossSectionClass::Class1,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!(
+                    "ERROR: staalsoort \"{}\" onbekend — de kern kent S235, S275, S355, S420 \
+                     en S460 (NEN-EN 1993-1-1 tabel 3.1); er is niet getoetst",
+                    input.steel_grade
+                ),
+            }
+        }
+    };
 
     // 3. Find per-check governing force points.
     //    - Compression: max |N|

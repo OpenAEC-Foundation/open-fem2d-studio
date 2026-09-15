@@ -142,6 +142,13 @@ interface WireCheckState {
    */
   beff?: BeffStaafUitkomst[];
   lastRunAt: number | null;
+  /**
+   * De fout van de laatste toetsronde, of null. Reist mee zodat het losse
+   * rapportvenster "de rekenkern weigerde" kan onderscheiden van "nog niet
+   * getoetst" — anders zette het ontvangende venster hier altijd null neer.
+   * Ontbreekt in snapshots van een ouder hoofdvenster.
+   */
+  error?: string | null;
 }
 
 /**
@@ -456,6 +463,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
         skipped: check.skipped,
         beff: check.beff,
         lastRunAt: check.lastRunAt,
+        error: check.error,
       },
       stijfheid: {
         segmentLengteMm: stijf.segmentLengteMm,
@@ -593,7 +601,10 @@ export function useDetachedReportSync(): ReportData | null {
           beff: msg.check.beff ?? [],
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
-          error: null,
+          // De fout van het hoofdvenster, niet stil `null`: een mislukte ronde
+          // hoort hier ook als mislukt te lezen. De resultaten zijn dan al leeg
+          // (checkStore wist ze bij een fout), dus er staat geen oude UC.
+          error: msg.check.error ?? null,
           // Het snapshot draagt de toetsRESULTATEN, niet het model waarmee ze
           // gemaakt zijn. De profielvarianten hebben dat model wél nodig (ze
           // toetsen dezelfde staaf nog eens met een andere doorsnede), dus hier

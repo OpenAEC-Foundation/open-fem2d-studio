@@ -38,6 +38,7 @@ import {
   zeegNotities,
   zeegVoorToets,
 } from "./referentierichting";
+import { STEEL_SECTIONS } from "./steelSections.generated";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -68,22 +69,32 @@ export function sanitizeRestraintFractions(fractions: number[] | undefined): num
     .sort((a, b) => a - b);
 }
 
-/** Profielprefixen die de Rust steel-profiles DB kent. */
-const STEEL_PROFILE_PREFIXES = [
-  "HEA", "HEB", "HEM", "IPE", "UPE", "UNP",
-  "RHS", "SHS", "HFRHS", "KKR", "CHS",
-];
-
 /** Staalsoorten die de Rust-kern kent (list_steel_grades). */
 const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
 
+/**
+ * Is dit een staalprofiel dat de EN 1993-kern kan toetsen?
+ *
+ * HERKEND AAN DE PROFIELDATABASE, NIET AAN EEN VOORVOEGSEL. Hier stond een
+ * lijst voorvoegsels (HEA, HEB, HEM, IPE, UPE, UNP, RHS, SHS, HFRHS, KKR, CHS).
+ * De profieldatabase kent er meer: INP (21 profielen), DIE (30), DIL (22),
+ * DIN (30) en L (57). Die 160 profielen bood de profielkiezer wél aan en
+ * rekende de solver wél mee, maar de toetsing sloeg ze over — in de app met de
+ * misleidende reden "niet herkend als staal", en in de MCP-weg zonder enig
+ * spoor. Een lijst naast de database loopt vroeg of laat achter; de database
+ * zelf niet.
+ *
+ * `STEEL_SECTIONS` is uit `steel-profiles/data/profiles.json` gegenereerd, met
+ * dezelfde sleutelnormalisatie als `lookup_key` in de Rust-crate (hoofdletters,
+ * zonder spaties, koppeltekens en punten) — dus precies de set die de kern bij
+ * een toetsing terugvindt, ook zonder dat de database al is opgehaald.
+ */
 export function isSteelProfile(profileName: string | undefined): boolean {
   if (!profileName) return false;
   // Een eigen doorsnede uit de profieleditor is staal en gaat als
   // `custom_section` naar dezelfde kern.
   if (isEigenProfiel(profileName)) return true;
-  const upper = profileName.toUpperCase();
-  return STEEL_PROFILE_PREFIXES.some((p) => upper.startsWith(p));
+  return profileLookupKey(profileName) in STEEL_SECTIONS;
 }
 
 /**
@@ -855,7 +866,20 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
     // die staaf te maken had. Zo'n staaf valt nu door naar de eindcontrole in
     // de check-store en komt met reden bij de overgeslagen staven te staan.
     const profileName = beam.profile ?? "";
-    if (!isSteelProfile(profileName)) continue; // geen staal — niet onze zaak
+    if (!isSteelProfile(profileName)) {
+      // Een STAALSOORT met een profielnaam die de database niet kent ("HEA 999",
+      // een tikfout) is wél onze zaak: die staaf is bedoeld als staal. Hij kreeg
+      // vroeger via het voorvoegsel de reden hieronder; zonder deze regel viel
+      // hij door naar de algemene melding "niet herkend als staal, hout, …",
+      // die de oorzaak niet noemt.
+      if (profileName.trim() !== "" && STEEL_GRADES.includes((beam.material ?? "").toUpperCase())) {
+        skipped.push({
+          beamId: beam.id,
+          reason: `profiel "${profileName}" is niet bekend in de EN 1993-profieldatabase`,
+        });
+      }
+      continue; // geen staal — niet onze zaak
+    }
 
     // Eigen doorsnede uit de profieleditor: de motor heeft de eigenschappen
     // al bepaald en die gaan als `custom_section` mee — de kern slaat de
@@ -881,7 +905,18 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
     // Eén van beide bestaat na de controles hierboven.
     const hMm = eigen ? eigen.motor.z_max_mm - eigen.motor.z_min_mm : profile!.geometry.h;
 
-    const grade = beam.material ?? "S235";
+    // GEEN terugval op "S235". Een staaf zonder materiaal (een MCP-model of een
+    // met de hand bewerkt projectbestand) is niet van S235 — het materiaal is
+    // onbekend, en de toetsing zou f_y = 235 rapporteren alsof dat was
+    // ingevoerd. Hij wordt met reden overgeslagen.
+    const grade = beam.material ?? "";
+    if (grade.trim() === "") {
+      skipped.push({
+        beamId: beam.id,
+        reason: `staaf heeft een staalprofiel ("${profileName}") maar geen materiaal — kies een staalsoort (S235–S460); er wordt geen S235 aangenomen`,
+      });
+      continue;
+    }
     if (!STEEL_GRADES.includes(grade.toUpperCase())) {
       skipped.push({
         beamId: beam.id,

@@ -83,11 +83,18 @@ export default function BetonKorfPaneel({
   const volgnummer = useRef(0);
 
   // Materiaaltabellen één keer ophalen; zonder kern blijven de namen over.
+  // NIET STIL: een kern die niet bereikbaar is (webversie zonder dev-brug)
+  // liet de keuzelijsten leeg zonder te zeggen waarom. De reden komt nu in
+  // het paneel te staan, naast de rekenfout.
+  const [lijstFout, setLijstFout] = useState<string | null>(null);
   useEffect(() => {
     let actief = true;
-    haalBetonklassen().then((k) => actief && setBetonklassen(k)).catch(() => undefined);
-    haalWapeningsstaal().then((g) => actief && setStaalsoorten(g)).catch(() => undefined);
-    haalMilieuklassen().then((m) => actief && setMilieuklassen(m)).catch(() => undefined);
+    const meld = (e: unknown) => {
+      if (actief) setLijstFout(e instanceof Error ? e.message : String(e));
+    };
+    haalBetonklassen().then((k) => actief && setBetonklassen(k)).catch(meld);
+    haalWapeningsstaal().then((g) => actief && setStaalsoorten(g)).catch(meld);
+    haalMilieuklassen().then((m) => actief && setMilieuklassen(m)).catch(meld);
     return () => {
       actief = false;
     };
@@ -244,6 +251,11 @@ export default function BetonKorfPaneel({
             </div>
           )}
           {fout && <div className="beton-fout" role="alert">Rekenkern: {fout}</div>}
+          {lijstFout && (
+            <div className="beton-fout" role="alert">
+              Klassenlijsten niet geladen uit de rekenkern: {lijstFout}
+            </div>
+          )}
           {diagram && diagram.points.length > 1 && (
             <details className="beton-tabel">
               <summary>Waarden van het diagram</summary>
