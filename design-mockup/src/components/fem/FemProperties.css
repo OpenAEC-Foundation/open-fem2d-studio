@@ -95,6 +95,18 @@
   background: var(--theme-bg);
 }
 
+/* Een waarschuwing die niet tussen de gewone hints mag verdwijnen: bij een naar
+   links hellende staaf dicht bij 75° keert "boven" om (zie DE SPRONG BIJ 75° in
+   lib/referentierichting.ts). Zelfde vorm als .dek-let-op in het betonvenster. */
+.fem-prop-let-op {
+  margin: 4px 10px;
+  padding: 4px 8px;
+  border-left: 3px solid var(--theme-accent);
+  background: var(--theme-accent-soft, var(--theme-hover));
+  font: 400 11px/1.45 "Inter", system-ui, sans-serif;
+  color: var(--theme-text);
+}
+
 /* Field rows: 90px label | flex value */
 .fem-prop-row {
   display: grid;

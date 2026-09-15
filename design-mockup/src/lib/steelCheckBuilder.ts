@@ -38,6 +38,7 @@ import {
 } from "./profieleditor/eigenDoorsnedenStore";
 import {
   referentieVanStaaf,
+  richtingssprongNotities,
   toetsdataInReferentierichting,
   zeegNotities,
   zeegVoorToets,
@@ -1055,6 +1056,14 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       ...(referentieVanStaaf(beam, data.nodes).staafstand === "Staand"
         ? { staafstand: "Staand" as const }
         : {}),
+      // Dicht bij de sprong van "boven" — een naar links hellende staaf rond
+      // 75°, zie `richtingssprongNotities` — zet de kern een waarschuwing bij
+      // de kiptoets. Weglaten = geen waarschuwing, en zo blijft de invoer van
+      // elke andere staaf byte-gelijk aan vroeger.
+      ...(() => {
+        const notities = richtingssprongNotities(beam, data.nodes, "staal");
+        return notities.length > 0 ? { staafstand_notities: notities } : {};
+      })(),
       // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
       // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
       // tussen plaatsen met een kipsteun aan beide flenzen, anders de

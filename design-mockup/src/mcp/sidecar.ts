@@ -63,6 +63,7 @@ import {
   type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
+import { DoorsnedeOnbekendFout } from "../lib/sectionResolver";
 import {
   PROJECT_FORMAT_VERSION,
   combinationsFromFile,
@@ -623,14 +624,23 @@ function rekenDoor(payload: Record<string, unknown>) {
   const legeGevallen = gevraagd.filter((id) => !perCase.has(id));
 
   const teToetsen = pasCheckConfigToe(gelezen.beams, payload);
-  const beamIds =
+  const gevraagdeIds =
     payload.beam_ids === undefined
-      ? null
-      : new Set(
-          (eisArray(payload.beam_ids, "beam_ids") as unknown[]).map(Number),
-        );
+      ? []
+      : (eisArray(payload.beam_ids, "beam_ids") as unknown[]).map(Number);
+  // LEEG = ALLE STAVEN, zoals het toolschema van `check_fem_model` belooft
+  // ("Leeg of afwezig = alle staalstaven"). Tot september 2026 las een lege
+  // lijst hier als "geen enkele staaf": er werd niets getoetst, en de Rust-kant
+  // meldde daarna elke staalstaaf als "niet herkend als staal" (gemeten met een
+  // S235-ligger op IPE 200).
+  const beamIds = gevraagdeIds.length === 0 ? null : new Set(gevraagdeIds);
   const staafSelectie =
     beamIds === null ? teToetsen : teToetsen.filter((b) => beamIds.has(b.id));
+  // Een gevraagd nummer zonder staaf in het model. Tot september 2026 stond het
+  // nergens in het antwoord: `beam_ids` [1, 99] gaf staaf 1 en zweeg over 99 —
+  // en een staaf die nergens staat, leest als een staaf die in orde is.
+  const inModel = new Set(gelezen.beams.map((b) => b.id));
+  const onbekendeIds = [...new Set(gevraagdeIds)].filter((id) => !inModel.has(id));
 
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
@@ -710,9 +720,22 @@ function rekenDoor(payload: Record<string, unknown>) {
     opgelost,
     legeGevallen,
     staal,
+    onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion,
   };
+}
+
+/**
+ * De reden bij een nummer uit `beam_ids` dat geen staaf in het model is.
+ * Dezelfde woorden als `reden_bestaat_niet` in `fem_tools.rs`, dat hetzelfde gat
+ * aan de Rust-kant dicht voor een bundel van vóór deze regel.
+ */
+function redenBestaatNiet(id: number): string {
+  return (
+    `bestaat niet in het model — staaf ${id} is gevraagd in \`beam_ids\`, maar het ` +
+    "model heeft geen staaf met dit nummer; er is niets getoetst"
+  );
 }
 
 function opSolve(payload: Record<string, unknown>) {
@@ -788,10 +811,12 @@ function opCheck(payload: Record<string, unknown>) {
     },
     units: EENHEDEN,
     steel_check_inputs: d.staal.inputs,
-    skipped_beams: d.staal.skipped.map((s) => ({
-      beam_id: s.beamId,
-      reason: s.reason,
-    })),
+    // Elk gevraagd nummer staat in de toetsinvoer of hier — ook een nummer dat
+    // geen staaf is.
+    skipped_beams: [
+      ...d.staal.skipped.map((s) => ({ beam_id: s.beamId, reason: s.reason })),
+      ...d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) })),
+    ],
     warnings: d.waarschuwingen,
   };
 }
@@ -895,6 +920,17 @@ export function verwerkVerzoek(verzoek: SidecarVerzoek): SidecarAntwoord {
     }
     if (err instanceof BestandFout) {
       return maakFout(verzoek.id, "BESTAND_ONLEESBAAR", err.message, err.detail);
+    }
+    if (err instanceof DoorsnedeOnbekendFout) {
+      // Een staaf zonder materiaal, met een profiel dat niet bestaat of met een
+      // profiel dat niet bij het materiaal hoort: dat is INVOER, en de melding
+      // zegt al per staaf wat er moet veranderen. Tot september 2026 viel deze
+      // fout door naar het vangnet onderaan en kwam hij als `INTERN` naar
+      // buiten ("Onverwachte fout in de sidecar — Meld deze fout"): een
+      // storingsmelding voor iets wat de gebruiker zelf herstelt.
+      return maakFout(verzoek.id, "DOORSNEDE_ONBEKEND", err.message, {
+        staven: err.staven.map((s) => ({ beam_id: s.beamId, reason: s.reden })),
+      });
     }
     if (err instanceof ModelFout) {
       // De kern meldt in het Engels; `fouten.ts` beeldt bekende meldingen af op

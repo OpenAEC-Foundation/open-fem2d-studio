@@ -101,6 +101,7 @@ fn invoer(stand: Option<Staafstand>, m: f64) -> ConcreteBeamCheckInput {
         column: None,
         sls_quasi_permanent_envelope: vec![],
         staafstand: stand,
+        staafstand_notities: None,
     }
 }
 
@@ -179,6 +180,65 @@ fn de_dekkingslijn_noemt_de_zijden_bij_een_staande_staaf() {
     let liggend = dekkingslijn(verzoek(None)).expect("dekkingslijn liggend");
     assert!(liggend.notes.iter().all(|n| !n.starts_with(KANTTEKENING)));
     assert_eq!(staand.uc_moment_max, liggend.uc_moment_max);
+}
+
+/// De kanttekeningen van de bouwer bij de staafstand — bij een naar links
+/// hellende staaf dicht bij 75° de waarschuwing dat de bovenwapening daar van
+/// bovenvlak naar ondervlak springt — staan letterlijk bij precies de toetsen
+/// die ook de zijdenkanttekening krijgen, en bij de dekkingslijn. Ook bij een
+/// liggende staaf: daar ligt de helft van de sprongband. Rekenen doen ze niet.
+#[test]
+fn staafstandnotities_staan_bij_de_toetsen_die_een_zijde_kiezen_en_rekenen_niet_mee() {
+    const PROEF: &str = "Richtingssprong nabij. Proeftekst.";
+    for m in [80.0, -80.0] {
+        // Welke toetsen een zijde kiezen, leest de staande staaf zonder
+        // kanttekeningen voor: die krijgen de zijdenkanttekening.
+        let kiezers = check_concrete_beam(invoer(Some(Staafstand::Staand), m));
+        for stand in [None, Some(Staafstand::Staand)] {
+            let zonder = check_concrete_beam(invoer(stand, m));
+            let mut inv = invoer(stand, m);
+            inv.staafstand_notities = Some(vec![PROEF.to_string()]);
+            let met = check_concrete_beam(inv);
+            assert_eq!(met.checks.len(), zonder.checks.len());
+
+            let mut geraakt = 0;
+            for c in &kiezers.checks {
+                let kiest = notities(&kiezers, &c.id).iter().any(|n| n.starts_with(KANTTEKENING));
+                let aantal = notities(&met, &c.id).iter().filter(|n| *n == PROEF).count();
+                assert_eq!(
+                    aantal,
+                    usize::from(kiest),
+                    "toets {} (M = {m}, {stand:?}): kanttekening {aantal} keer",
+                    c.id
+                );
+                geraakt += aantal;
+                assert_eq!(uc(&met, &c.id), uc(&zonder, &c.id), "UC van {} veranderde", c.id);
+            }
+            assert!(geraakt >= 3, "de proef moet toetsen raken die een zijde kiezen");
+            assert_eq!(met.uc_max, zonder.uc_max);
+            assert_eq!(met.governing_check_id, zonder.governing_check_id);
+        }
+    }
+
+    let mut beam = invoer(None, 80.0);
+    beam.staafstand_notities = Some(vec![PROEF.to_string()]);
+    let lijn = dekkingslijn(DekkingslijnVerzoek {
+        beam,
+        z_mm: None,
+        c_d_mm: None,
+        a_sl_mm2: None,
+        cot_theta: None,
+    })
+    .expect("dekkingslijn");
+    assert_eq!(lijn.notes.iter().filter(|n| *n == PROEF).count(), 1);
+
+    // Een lege lijst is geen kanttekening.
+    let mut leeg = invoer(None, 80.0);
+    leeg.staafstand_notities = Some(vec![]);
+    assert_eq!(
+        serde_json::to_string(&check_concrete_beam(leeg).checks).unwrap(),
+        serde_json::to_string(&check_concrete_beam(invoer(None, 80.0)).checks).unwrap()
+    );
 }
 
 #[test]

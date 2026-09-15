@@ -81,7 +81,11 @@ import type { StructuralSystem } from "./types/concrete/StructuralSystem";
 import type { SteelBranch } from "./types/concrete/SteelBranch";
 import type { CheckSkip } from "./checkTypes";
 import { isSteelProfile, beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
-import { referentieVanStaaf, toetsdataInReferentierichting } from "./referentierichting";
+import {
+  referentieVanStaaf,
+  richtingssprongNotities,
+  toetsdataInReferentierichting,
+} from "./referentierichting";
 
 /**
  * Betonsterkteklassen die de Rust EN 1992-kern kent (nen-en-1992-1-1/data.rs,
@@ -611,6 +615,13 @@ export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResul
       ...(referentieVanStaaf(beam, data.nodes).staafstand === "Staand"
         ? { staafstand: "Staand" as const }
         : {}),
+      // Dicht bij de sprong van "boven" — een naar links hellende staaf rond
+      // 75°, zie `richtingssprongNotities` — zet de kern een waarschuwing bij
+      // de toetsen die een trekzijde kiezen. Weglaten = geen waarschuwing.
+      ...(() => {
+        const notities = richtingssprongNotities(beam, data.nodes, "beton");
+        return notities.length > 0 ? { staafstand_notities: notities } : {};
+      })(),
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
       // LEEG ALS ER GEEN ECHT RESULTAAT IS. `buildForcesEnvelope` levert bij

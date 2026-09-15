@@ -355,7 +355,9 @@ fn tool_definitions() -> Value {
                         "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken vanaf welke referentielijn en over welke lengte 'deflection_actual_max_mm' is gemeten, en welke aannames daarbij zijn gedaan." },
                     "custom_section": schema_custom_section(),
                     "staafstand": { "type": "string", "enum": ["Liggend", "Staand"], "default": "Liggend",
-                        "description": "Hoe de staaf in het model staat; rekent nergens mee. De krachtenomhullende hoort in de referentierichting te staan: 'Liggend' (minder dan 75 graden met de horizontaal) van links naar rechts, 'Staand' van voet naar kop. Bij 'Staand' zet de kiptoets erbij dat de BOVENflens de linkerflens en de ONDERflens de rechterflens is. Weglaten = 'Liggend'." }
+                        "description": "Hoe de staaf in het model staat; rekent nergens mee. De krachtenomhullende hoort in de referentierichting te staan: 'Liggend' (minder dan 75 graden met de horizontaal) van links naar rechts, 'Staand' van voet naar kop. Bij 'Staand' zet de kiptoets erbij dat de BOVENflens de linkerflens en de ONDERflens de rechterflens is. Weglaten = 'Liggend'." },
+                    "staafstand_notities": { "type": "array", "items": { "type": "string" }, "default": [],
+                        "description": "Kanttekeningen bij de staafstand; rekenen nergens mee en komen letterlijk in de 'notes' van de kiptoets. De bouwer van `check_fem_model` en van de app zet hier een waarschuwing bij een naar links hellende staaf dicht bij de grens van 75 graden: daar keert om aan welke fysieke zijde de BOVENflens ligt (tot 75 graden het bovenvlak, daarboven de linkerzijde = het ondervlak). Weglaten = geen kanttekening." }
                 },
                 "required": [
                     "beam_id", "profile_name", "steel_grade", "length_m",

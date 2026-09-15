@@ -37,7 +37,11 @@ import { BetonKorfPaneel, KolomVelden, type Wapeningskorf } from "../beton";
 // drempel van 75° als `bepaalStandaardRol` hierboven; twee drempels in één app
 // zou betekenen dat dezelfde staaf in de staaftypentabel een kolom is en in dit
 // paneel niet.
-import { isOverwegendVerticaal } from "../../lib/steelCheckBuilder";
+import { isOverwegendVerticaal, VERTICAAL_VANAF_GRADEN } from "../../lib/steelCheckBuilder";
+// Dicht bij de sprong van "boven" (een naar links hellende staaf rond 75°) een
+// waarschuwing bij de kipsteunen en de korf; zie DE SPRONG BIJ 75° in
+// lib/referentierichting.ts.
+import { gradenTekst, richtingssprongNabij } from "../../lib/referentierichting";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
 import AansluitingKeuze from "./AansluitingKeuze";
 
@@ -515,6 +519,24 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   }, [beam.id, beam.checkConfig]);
   const { t } = useTranslation("check");
 
+  // Een naar links hellende staaf dicht bij 75°: daar springt "boven" van het
+  // bovenvlak naar het ondervlak. De hint staat bij de kipsteunen en de korf,
+  // want juist die zijn per zijde opgegeven. Zie DE SPRONG BIJ 75° in
+  // lib/referentierichting.ts; dezelfde getallen staan in de afleiding.
+  const sprong = richtingssprongNabij(beam, nodes);
+  const SPRONG_SLEUTELS = {
+    Liggend: { flens: "cfg.sprongLiggendFlens", korf: "cfg.sprongLiggendKorf" },
+    Staand: { flens: "cfg.sprongStaandFlens", korf: "cfg.sprongStaandKorf" },
+  } as const;
+  const sprongTekst = (wat: "flens" | "korf"): string | null =>
+    sprong
+      ? t(SPRONG_SLEUTELS[sprong.staafstand][wat], {
+          helling: gradenTekst(sprong.hellingGraden),
+          afstand: gradenTekst(sprong.afstandTotGrensGraden),
+          grens: gradenTekst(VERTICAAL_VANAF_GRADEN),
+        })
+      : null;
+
   // Uit de geometrie afgeleide rol — de "Automatisch"-optie toont hem, zodat
   // de gebruiker ziet wat er gebeurt als hij niets kiest.
   const afgeleideRol = bepaalStandaardRol(beam, nodes);
@@ -689,6 +711,11 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                           : "onder is hier de RECHTERzijde"} zoals de staaf in het model staat.
                       </div>
                     )}
+                    {sprong && (
+                      <div className="fem-prop-hint fem-prop-let-op" role="note">
+                        {sprongTekst("flens")}
+                      </div>
+                    )}
                     {huidig.length === 0 && (
                       <div className="fem-prop-hint">
                         Vul een aantal in voor gelijke verdeling, of typ zelf fracties (0–1).
@@ -764,6 +791,11 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   Staande staaf, getoetst van voet naar kop: de ONDERwapening ligt RECHTS en de
                   BOVENwapening LINKS, zoals de staaf in het model staat. Een positief moment geeft
                   trek rechts.
+                </div>
+              )}
+              {sprong && (
+                <div className="fem-prop-hint fem-prop-let-op" role="note">
+                  {sprongTekst("korf")}
                 </div>
               )}
             </Section>

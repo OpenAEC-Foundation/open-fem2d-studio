@@ -57,6 +57,10 @@
     "durShort": "Courte durée",
     "durInstantaneous": "Instantanée",
     "timberHint": "Détermine k_mod et k_def dans la vérification EN 1995.",
-    "staleResultHint": "Le résultat affiché provient d'une passe antérieure avec un autre type de matériau — relancez la vérification."
+    "staleResultHint": "Le résultat affiché provient d'une passe antérieure avec un autre type de matériau — relancez la vérification.",
+    "sprongLiggendFlens": "Attention : cette barre penche vers la gauche à {{helling}}, {{afstand}} sous la limite de {{grens}} au-delà de laquelle une barre est considérée comme verticale. Le haut est actuellement la face physique supérieure (en haut à droite). À partir de {{grens}}, le haut devient le côté gauche — à cette inclinaison la face physique inférieure (en bas à gauche). Une petite modification des nœuds inverse alors, sans autre avertissement, le côté où se trouvent ces maintiens.",
+    "sprongStaandFlens": "Attention : cette barre penche vers la gauche à {{helling}}, {{afstand}} au-dessus de la limite de {{grens}}. Le haut est ici le côté gauche, c'est-à-dire à cette inclinaison la face physique INFÉRIEURE (en bas à gauche) — pas la face supérieure. Sous {{grens}}, le haut serait la face physique supérieure. Après une modification des nœuds, vérifiez de quel côté se trouvent ces maintiens.",
+    "sprongLiggendKorf": "Attention : cette barre penche vers la gauche à {{helling}}, {{afstand}} sous la limite de {{grens}} au-delà de laquelle une barre est considérée comme verticale. Les armatures supérieures sont actuellement sur la face physique supérieure (en haut à droite). À partir de {{grens}}, elles sont sur le côté gauche — à cette inclinaison la face physique inférieure (en bas à gauche). Une petite modification des nœuds inverse alors, sans autre avertissement, le côté des armatures supérieures et inférieures.",
+    "sprongStaandKorf": "Attention : cette barre penche vers la gauche à {{helling}}, {{afstand}} au-dessus de la limite de {{grens}}. Les armatures supérieures sont ici sur le côté gauche, c'est-à-dire à cette inclinaison la face physique INFÉRIEURE (en bas à gauche) — pas la face supérieure. Sous {{grens}}, elles seraient sur la face physique supérieure. Après une modification des nœuds, vérifiez de quel côté se trouvent les armatures supérieures et inférieures."
   }
 }

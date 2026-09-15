@@ -57,6 +57,10 @@
     "durShort": "Short-term",
     "durInstantaneous": "Instantaneous",
     "timberHint": "Determines k_mod and k_def in the EN 1995 checks.",
-    "staleResultHint": "The shown result is from an earlier run with a different material type — run the checks again."
+    "staleResultHint": "The shown result is from an earlier run with a different material type — run the checks again.",
+    "sprongLiggendFlens": "Note: this member leans to the left at {{helling}}, {{afstand}} below the {{grens}} limit above which a member counts as upright. Top is currently the physical upper side (upper right). From {{grens}} on, top becomes the left side — at this inclination the physical underside (lower left). A small change to the nodes then silently flips which side these restraints are on.",
+    "sprongStaandFlens": "Note: this member leans to the left at {{helling}}, {{afstand}} above the {{grens}} limit. Top is the left side here, which at this inclination is the physical UNDERSIDE (lower left) — not the upper face. Below {{grens}}, top would be the physical upper side. After changing the nodes, check which side these restraints are on.",
+    "sprongLiggendKorf": "Note: this member leans to the left at {{helling}}, {{afstand}} below the {{grens}} limit above which a member counts as upright. The top reinforcement is currently on the physical upper side (upper right). From {{grens}} on, it is on the left side — at this inclination the physical underside (lower left). A small change to the nodes then silently flips which side the top and bottom reinforcement are on.",
+    "sprongStaandKorf": "Note: this member leans to the left at {{helling}}, {{afstand}} above the {{grens}} limit. The top reinforcement is on the left side here, which at this inclination is the physical UNDERSIDE (lower left) — not the upper face. Below {{grens}}, it would be on the physical upper side. After changing the nodes, check which side the top and bottom reinforcement are on."
   }
 }

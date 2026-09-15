@@ -36,6 +36,7 @@
  * al klopt.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Beam, BeamCheckConfig, Node, Support } from "../../fem/femTypes";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "../../fem/ProfielKiezer";
 import type { ConcreteBeamCheckInput } from "../../../lib/types/concrete/ConcreteBeamCheckInput";
@@ -51,10 +52,13 @@ import {
 import { parseConcreteSection } from "../../../lib/betonCheckBuilder";
 import { zoneGrenzenMm } from "../../../lib/betonZoneSneden";
 import {
+  gradenTekst,
   referentieVanStaaf,
+  richtingssprongNabij,
   spiegelZones,
   staafInReferentierichting,
 } from "../../../lib/referentierichting";
+import { VERTICAAL_VANAF_GRADEN } from "../../../lib/steelCheckBuilder";
 // Alleen om te kúnnen zeggen WAAR de gebruiker is als de kern niet antwoordt:
 // in de desktop-app is de rekenkern er altijd, in de browser hangt zij aan de
 // dev-brug. De melding hieronder maakt dat onderscheid.
@@ -152,6 +156,12 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   const [klassen, setKlassen] = useState<string[] | undefined>(undefined);
   const volgnummer = useRef(0);
   const scheurVolgnummer = useRef(0);
+  // Een naar links hellende staaf dicht bij 75°: daar springt de bovenwapening
+  // van het bovenvlak naar het ondervlak (DE SPRONG BIJ 75° in
+  // lib/referentierichting.ts). De hint staat onder de tekening; dezelfde
+  // getallen staan in de afleiding.
+  const { t } = useTranslation("check");
+  const sprong = richtingssprongNabij(beam, nodes);
 
   const lastRunData = useCheckStore((s) => s.lastRunData);
   const beff = useCheckStore((s) => s.beff);
@@ -670,6 +680,16 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
               <p className="beton-hint">Deze staaf heeft geen lengte; er valt niets te tekenen.</p>
             )}
           </div>
+
+          {sprong && (
+            <p className="dek-let-op" role="note">
+              {t(sprong.staafstand === "Staand" ? "cfg.sprongStaandKorf" : "cfg.sprongLiggendKorf", {
+                helling: gradenTekst(sprong.hellingGraden),
+                afstand: gradenTekst(sprong.afstandTotGrensGraden),
+                grens: gradenTekst(VERTICAAL_VANAF_GRADEN),
+              })}
+            </p>
+          )}
 
           {klassenFout && (
             <div className="beton-fout">

@@ -210,6 +210,9 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         // staaf; zonder dit veld in het schema weigert `additionalProperties:
         // false` een client die hem meestuurt.
         "staafstand",
+        // De waarschuwing bij een naar links hellende staaf dicht bij 75°, waar
+        // de bovenflens van het bovenvlak naar het ondervlak springt.
+        "staafstand_notities",
     ] {
         assert!(
             props[veld].is_object(),
@@ -411,6 +414,9 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         // Noemt bij een staande staaf de zijden in wereldtermen; zonder dit
         // veld in het schema weigert `additionalProperties: false` het.
         "staafstand",
+        // De waarschuwing bij een naar links hellende staaf dicht bij 75°, waar
+        // de bovenwapening van het bovenvlak naar het ondervlak springt.
+        "staafstand_notities",
     ] {
         assert!(
             props[veld].is_object(),
@@ -419,7 +425,7 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        21,
+        22,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
     );
 

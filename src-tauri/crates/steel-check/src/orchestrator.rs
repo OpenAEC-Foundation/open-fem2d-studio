@@ -921,6 +921,15 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             plak_notitie(kip, &tekst);
         }
     }
+    // De kanttekeningen van de bouwer bij de staafstand — de waarschuwing dat
+    // de staaf dicht bij de sprong van "boven" ligt — horen bij dezelfde toets:
+    // de kiptoets is de toets die per steun de gedrukte flens BOVEN of ONDER
+    // noemt en de kipsteunen per flens telt.
+    if let Some(kip) = checks.last_mut() {
+        for tekst in input.staafstand_notities.iter().flatten() {
+            plak_notitie(kip, tekst);
+        }
+    }
 
     // 8. Combined N+M 6.3.3 (bending-governing location)
     let cm_y = cm_uniform_or_psi(0.0);

@@ -82,6 +82,7 @@ fn run() -> &'static BeamCheckResult {
             z_a_mm: 0.0,
             custom_section: None,
             staafstand: None,
+            staafstand_notities: None,
         };
         check_beam(input)
     })

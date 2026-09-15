@@ -766,6 +766,14 @@ fn remedie_bij(code: &str) -> String {
         "BESTAND_ONLEESBAAR" => "Controleer of het pad naar een .ifcfem2d-bestand wijst dat met \
              deze versie is opgeslagen."
             .to_owned(),
+        // Een INVOERfout, geen storing: de melding noemt per staaf wat er
+        // ontbreekt. Zonder deze regel viel de code op de tak "Meld deze fout".
+        "DOORSNEDE_ONBEKEND" => "Er is niet gerekend. Geef elke staaf uit `detail.staven` een \
+             materiaal en een profiel dat bij dat materiaal hoort; de melding noemt per \
+             staaf wat er ontbreekt en wat er verwacht wordt. `validate_fem_model` vindt \
+             dezelfde staven zonder te rekenen. Er wordt nooit een vervangende doorsnede \
+             aangenomen: dan hoort de uitkomst bij een ander model dan is ingevoerd."
+            .to_owned(),
         "MODEL_ONOPLOSBAAR" => "Het model is niet doorgerekend. Controleer de opleggingen en de \
              samenhang van het raamwerk; `validate_fem_model` benoemt losse knopen, \
              mechanismen en staven met lengte nul."

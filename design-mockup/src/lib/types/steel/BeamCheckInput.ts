@@ -136,4 +136,18 @@ custom_section?: CustomSection,
  * RECHTERflens, en dat zet de kern er dan bij. `None` of weglaten =
  * [`Staafstand::Liggend`], het gedrag van vóór dit veld.
  */
-staafstand?: Staafstand, };
+staafstand?: Staafstand, 
+/**
+ * Kanttekeningen bij de staafstand die de BOUWER van de invoer opstelt. De
+ * kern zet ze letterlijk bij de kiptoets, achter de flenzen in
+ * wereldtermen, en rekent er nergens mee.
+ *
+ * WAAROM. Aan welke fysieke zijde "bovenflens" ligt, springt bij een naar
+ * links hellende staaf op 75° van het bovenvlak naar het ondervlak (zie
+ * `design-mockup/src/lib/referentierichting.ts`, DE SPRONG BIJ 75°). Of een
+ * staaf dicht bij die sprong ligt, weet alleen wie de meetkunde kent; de
+ * kern krijgt alleen de omhullende. Zonder dit kanaal zou de waarschuwing
+ * niet in de afleiding en niet in het rapport komen. `None` of een lege
+ * lijst = geen kanttekening.
+ */
+staafstand_notities?: Array<string>, };

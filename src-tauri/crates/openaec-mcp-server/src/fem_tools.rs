@@ -96,7 +96,14 @@ fn fout(code: &str, melding: impl Into<String>, remedie: impl Into<String>) -> R
 fn van_sidecar(f: SidecarFout) -> RpcError {
     let remedie = f.remedie.clone().unwrap_or_default();
     RpcError {
-        code: if f.code == "INVOER_ONGELDIG" { -32602 } else { -32000 },
+        // Een fout in wat de aanroeper aanleverde — de payload zelf of een staaf
+        // waarvan de doorsnede niet te bepalen is — is -32602; de rest is
+        // uitvoering.
+        code: if matches!(f.code.as_str(), "INVOER_ONGELDIG" | "DOORSNEDE_ONBEKEND") {
+            -32602
+        } else {
+            -32000
+        },
         message: if remedie.is_empty() {
             format!("[{}] {}", f.code, f.melding)
         } else {
@@ -517,8 +524,18 @@ fn reden_niet_getoetst(materiaal: &str, profiel: &str) -> String {
     )
 }
 
+/// De reden bij een nummer uit `beam_ids` dat geen staaf in het model is.
+/// Dezelfde woorden als `redenBestaatNiet` in `design-mockup/src/mcp/sidecar.ts`.
+fn reden_bestaat_niet(id: i64) -> String {
+    format!(
+        "bestaat niet in het model — staaf {id} is gevraagd in `beam_ids`, maar het model \
+         heeft geen staaf met dit nummer; er is niets getoetst"
+    )
+}
+
 /// Zorgt dat ELKE gevraagde staaf in het antwoord verantwoord is: in
-/// `results` (via `steel_check_inputs`) of in `skipped_beams` met een reden.
+/// `results` (via `steel_check_inputs`) of in `skipped_beams` met een reden —
+/// ook een gevraagd nummer dat geen staaf in het model is.
 ///
 /// WAAROM DIT BESTAAT
 /// `check_fem_model` toetst uitsluitend via `steel_check::check_all_beams`. De
@@ -579,6 +596,21 @@ fn meld_niet_getoetste_staven(uit: &mut Value, model: Option<&Value>, beam_ids: 
             "beam_id": id,
             "reason": reden_niet_getoetst(materiaal, profiel),
         }));
+    }
+    // Een gevraagd NUMMER dat geen staaf in het model is. Tot september 2026
+    // kwam het nergens terug: `beam_ids` [1, 99] gaf staaf 1 en zweeg over 99.
+    // De bundel meldt het sindsdien zelf; dit vangt een oudere bundel op.
+    if let Some(selectie) = beam_ids {
+        let in_model: Vec<i64> =
+            staven.iter().filter_map(|s| s.get("id").and_then(Value::as_i64)).collect();
+        for &id in selectie {
+            let al_gemeld = bekend.contains(&id)
+                || nieuw.iter().any(|n| n.get("beam_id").and_then(Value::as_i64) == Some(id));
+            if in_model.contains(&id) || al_gemeld {
+                continue;
+            }
+            nieuw.push(json!({ "beam_id": id, "reason": reden_bestaat_niet(id) }));
+        }
     }
     if nieuw.is_empty() {
         return;
@@ -976,7 +1008,7 @@ pub fn tool_definitions() -> Vec<Value> {
                         "patternProperties": { "^[0-9]+$": schema_checkconfig() }
                     },
                     "beam_ids": { "type": "array", "items": { "type": "integer" },
-                        "description": "Beperk de toetsing tot deze staven. Leeg of afwezig = alle staalstaven." }
+                        "description": "Beperk de toetsing tot deze staven. Leeg of afwezig = alle staalstaven. Een nummer dat geen staaf in het model is, staat in `skipped_beams` met de reden \"bestaat niet in het model\"." }
                 },
                 "oneOf": [ { "required": ["model"] }, { "required": ["project_path"] } ]
             }
@@ -1141,6 +1173,36 @@ mod tests {
             );
             assert!(reden_van(&uit, 5).contains("NIET getoetst") || reden_van(&uit, 5).contains("niet getoetst"));
         }
+    }
+
+    /// Een gevraagd nummer dat geen staaf in het model is, staat met reden in
+    /// `skipped_beams` — één keer, ook als het dubbel gevraagd is of als de
+    /// bundel het al meldde. Gemeten vóór deze regel: `beam_ids` [1, 99] gaf
+    /// staaf 1 en zweeg over 99.
+    #[test]
+    fn een_gevraagd_nummer_dat_niet_bestaat_staat_in_skipped_beams() {
+        let model = model_met("S235");
+
+        let mut uit = json!({ "steel_check_inputs": [ { "beam_id": 5 } ] });
+        meld_niet_getoetste_staven(&mut uit, Some(&model), Some(&[5, 99, 99]));
+        assert_eq!(gemelde_ids(&uit), vec![99], "{uit}");
+        assert!(
+            reden_van(&uit, 99).starts_with("bestaat niet in het model"),
+            "{}",
+            reden_van(&uit, 99)
+        );
+
+        let mut al_gemeld = json!({
+            "steel_check_inputs": [],
+            "skipped_beams": [ { "beam_id": 99, "reason": "bestaat niet in het model (bundel)" } ]
+        });
+        meld_niet_getoetste_staven(&mut al_gemeld, Some(&model), Some(&[99]));
+        assert_eq!(gemelde_ids(&al_gemeld), vec![99], "niet dubbel: {al_gemeld}");
+
+        // Zonder selectie is er niets gevraagd, dus ook niets dat niet bestaat.
+        let mut alles = json!({ "steel_check_inputs": [ { "beam_id": 5 } ] });
+        meld_niet_getoetste_staven(&mut alles, Some(&model), None);
+        assert!(gemelde_ids(&alles).is_empty(), "{alles}");
     }
 
     /// Zonder model gebeurt er niets. Dat pad ontstaat als `check_fem_model`

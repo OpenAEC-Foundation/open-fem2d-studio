@@ -80,6 +80,7 @@ fn ligger(teken: f64, aan_de_bovenflens: bool) -> BeamCheckResult {
         z_a_mm: 200.0,
         custom_section: None,
         staafstand: None,
+        staafstand_notities: None,
     })
 }
 
@@ -225,6 +226,7 @@ fn doorgaande_ligger_met(m_eind_knm: f64, top: Vec<f64>, bot: Vec<f64>) -> BeamC
         z_a_mm: 165.0,
         custom_section: None,
         staafstand: None,
+        staafstand_notities: None,
     })
 }
 
@@ -316,6 +318,47 @@ fn een_kipsteun_vlak_naast_een_gaffel_wordt_gemeld_en_niet_stilzwijgend_verwerkt
 
 /// Dezelfde IPE 400 als [`ligger`], maar met een opgegeven staafstand.
 fn ligger_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamCheckResult {
+    check_beam(invoer_met_stand(teken, stand))
+}
+
+/// De kanttekeningen van de bouwer bij de staafstand — bij een naar links
+/// hellende staaf dicht bij 75° de waarschuwing dat "boven" daar van bovenvlak
+/// naar ondervlak springt — staan letterlijk bij de kiptoets, en alleen daar.
+/// Rekenen doen ze niet: dezelfde steun, dezelfde L_st, dezelfde UC.
+#[test]
+fn staafstandnotities_staan_letterlijk_bij_de_kiptoets_en_rekenen_niet_mee() {
+    const PROEF: &str = "Richtingssprong nabij. Proeftekst.";
+    for stand in [None, Some(mechanics::Staafstand::Staand)] {
+        let zonder = ligger_met_stand(-1.0, stand);
+        let mut invoer = invoer_met_stand(-1.0, stand);
+        invoer.staafstand_notities = Some(vec![PROEF.to_string()]);
+        let met = check_beam(invoer);
+
+        assert_eq!(
+            kipnotities(&met).iter().filter(|n| n.as_str() == PROEF).count(),
+            1,
+            "de kanttekening hoort één keer bij de kiptoets ({stand:?})"
+        );
+        for c in met.checks.iter().filter(|c| c.id != "6.3.2_ltb") {
+            let notes = match &c.kind {
+                CheckKind::Resistance(r) => &r.notes,
+                CheckKind::Stability(s) => &s.notes,
+            };
+            assert!(notes.iter().all(|n| n.as_str() != PROEF), "toets {} kreeg de kanttekening ook", c.id);
+        }
+        assert_relative_eq!(tussenwaarde(&met, "L_{st}"), tussenwaarde(&zonder, "L_{st}"), max_relative = 1e-12);
+        assert_relative_eq!(kip_uc(&met), kip_uc(&zonder), max_relative = 1e-12);
+        assert_relative_eq!(met.uc_max, zonder.uc_max, max_relative = 1e-12);
+    }
+
+    // Een lege lijst is geen kanttekening: hetzelfde resultaat als weglaten.
+    let mut leeg = invoer_met_stand(-1.0, None);
+    leeg.staafstand_notities = Some(vec![]);
+    assert_eq!(kipnotities(&check_beam(leeg)), kipnotities(&ligger_met_stand(-1.0, None)));
+}
+
+/// De invoer van [`ligger_met_stand`].
+fn invoer_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamCheckInput {
     let envelop: Vec<ForcePoint> = (0..21)
         .map(|i| {
             let x = L_MM * i as f64 / 20.0;
@@ -327,7 +370,7 @@ fn ligger_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamChe
             }
         })
         .collect();
-    check_beam(BeamCheckInput {
+    BeamCheckInput {
         beam_id: 1,
         profile_name: "IPE 400".to_string(),
         steel_grade: "S235".to_string(),
@@ -349,7 +392,8 @@ fn ligger_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamChe
         z_a_mm: 200.0,
         custom_section: None,
         staafstand: stand,
-    })
+        staafstand_notities: None,
+    }
 }
 
 fn kipnotities(r: &BeamCheckResult) -> Vec<String> {

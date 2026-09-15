@@ -57,6 +57,10 @@
     "durShort": "Kurz",
     "durInstantaneous": "Sehr kurz",
     "timberHint": "Bestimmt k_mod und k_def im EN-1995-Nachweis.",
-    "staleResultHint": "Das angezeigte Ergebnis stammt aus einem früheren Durchlauf mit einem anderen Werkstofftyp — führen Sie den Nachweis erneut aus."
+    "staleResultHint": "Das angezeigte Ergebnis stammt aus einem früheren Durchlauf mit einem anderen Werkstofftyp — führen Sie den Nachweis erneut aus.",
+    "sprongLiggendFlens": "Achtung: Dieser Stab neigt sich unter {{helling}} nach links, {{afstand}} unter der Grenze von {{grens}}, ab der ein Stab als stehend gilt. Oben ist jetzt die physische Oberseite (rechts oben). Ab {{grens}} wird oben zur linken Seite — bei dieser Neigung die physische Unterseite (links unten). Eine kleine Änderung der Knoten kehrt dann ohne weitere Meldung um, auf welcher Seite diese Halterungen liegen.",
+    "sprongStaandFlens": "Achtung: Dieser Stab neigt sich unter {{helling}} nach links, {{afstand}} über der Grenze von {{grens}}. Oben ist hier die linke Seite, und das ist bei dieser Neigung die physische UNTERSEITE (links unten) — nicht die Oberfläche. Unter {{grens}} wäre oben die physische Oberseite. Prüfen Sie nach einer Änderung der Knoten, auf welcher Seite diese Halterungen liegen.",
+    "sprongLiggendKorf": "Achtung: Dieser Stab neigt sich unter {{helling}} nach links, {{afstand}} unter der Grenze von {{grens}}, ab der ein Stab als stehend gilt. Die obere Bewehrung liegt jetzt an der physischen Oberseite (rechts oben). Ab {{grens}} liegt sie an der linken Seite — bei dieser Neigung die physische Unterseite (links unten). Eine kleine Änderung der Knoten kehrt dann ohne weitere Meldung um, auf welcher Seite obere und untere Bewehrung liegen.",
+    "sprongStaandKorf": "Achtung: Dieser Stab neigt sich unter {{helling}} nach links, {{afstand}} über der Grenze von {{grens}}. Die obere Bewehrung liegt hier an der linken Seite, und das ist bei dieser Neigung die physische UNTERSEITE (links unten) — nicht die Oberfläche. Unter {{grens}} läge sie an der physischen Oberseite. Prüfen Sie nach einer Änderung der Knoten, auf welcher Seite obere und untere Bewehrung liegen."
   }
 }

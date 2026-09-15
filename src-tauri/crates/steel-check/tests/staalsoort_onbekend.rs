@@ -65,6 +65,7 @@ fn invoer(staalsoort: &str) -> BeamCheckInput {
         z_a_mm: 0.0,
         custom_section: None,
         staafstand: None,
+        staafstand_notities: None,
     }
 }
 
