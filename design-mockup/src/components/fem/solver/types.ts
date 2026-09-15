@@ -235,29 +235,27 @@ export interface SolverBeamPointLoadInput {
 }
 
 /**
- * Randlast op een plaatrand (P3.3): een lijnlast p langs één van de vier
- * benoemde randen van het gridmesh van een wandschijf. De engine zet de last
- * via de PlateLoads-wrapper (cumulatieve booglengte + tributary lengths) om
- * in exacte knooplasten op de mesh-randknopen — ΣF = p·L exact.
+ * Randlast op een plaatrand (P3.3): een lijnlast p langs één rand van een
+ * wandschijf. De engine zet de last om in consistente knooplasten op de
+ * mesh-randknopen — ΣF = p·L exact.
+ *
+ * ADRESSERING: precies één van `edge` en `edgeIndex`, omgezet door
+ * `femTypes.bepaalPlaatRand` (de enige regel daarvoor). Elk ander geval wordt
+ * door de engine GEWEIGERD met een reden — nooit stil een andere of geen rand.
  */
 export interface SolverEdgeLoadInput {
   /** UI-plaat-id (SolverPlateInput.id). */
   plateId: number;
   /**
-   * Benoemde rand van het gridmesh in modelassen: "bottom" = kleinste z,
-   * "top" = grootste z, "left"/"right" = kleinste/grootste x.
-   * Voor een POLYGONplaat (P4.3) is een benoemde rand niet adresseerbaar:
-   * gebruik dan `edgeIndex` — een benoemde-rand-last op een polygonplaat
-   * vervalt stil (het polygonmesh heeft geen benoemde randen).
+   * Benoemde rand, alleen bij een asgelijnde rechthoek: "bottom" = kleinste z,
+   * "top" = grootste z, "left"/"right" = kleinste/grootste x. Fracties tellen
+   * vanaf de kleinste coördinaat van die zijde. Op een polygoonplaat: weigering.
    */
-  edge: "bottom" | "top" | "left" | "right";
+  edge?: "bottom" | "top" | "left" | "right";
   /**
-   * Polygonrand-index (P4.3): rand van hoek i naar hoek i+1 (cyclisch,
-   * 0-based in SolverPlateInput.nodeIds-volgorde). Wanneer gezet wint dit
-   * veld van `edge` en worden de mesh-randknopen uit de CDT-cache van de
-   * plaat gehaald. Draagt de invoer voor een polygonplaat GÉÉN
-   * edgeIndex-lasten, dan valt de engine terug op het doorgeefluik in
-   * femTypes (registreerPolygoonRandlasten) — zie buildMesh.
+   * Rand-index: rand van hoek i naar hoek i+1 (cyclisch, 0-based in
+   * SolverPlateInput.nodeIds-volgorde). Werkt bij elke plaatvorm; fracties
+   * tellen vanaf hoek i.
    */
   edgeIndex?: number;
   /** Lastgrootte per meter randlengte (N/mm = kN/m); negatief = tegen de +richting in. */
@@ -308,11 +306,11 @@ export interface SolverPlateInput {
   nodeIds: number[];
   /**
    * CDT-meshcache voor het polygonpad (P4.2) — platte data in mm, zie
-   * femTypes.PlaatMeshCache. Optioneel: ontbreekt het veld, dan leest de
-   * engine de cache uit het femTypes-doorgeefluik (de store registreert de
-   * caches daar; de App-multi-LC-mapping geeft dit veld niet door). In beide
-   * gevallen wordt de signature tegen de actuele hoekcoördinaten + meshSize
-   * gevalideerd; mismatch → nette NL-fout.
+   * femTypes.PlaatMeshCache. Verplicht voor een polygoonplaat en de ENIGE bron:
+   * `bouwMultiInput` en het canvas geven hem allebei door, zodat canvas, app en
+   * MCP met hetzelfde mesh rekenen. De signature wordt tegen de actuele
+   * hoekcoördinaten + meshSize gevalideerd; ontbreken, mismatch of een
+   * beschadigde cache → nette NL-fout.
    */
   meshCache?: import("../femTypes").PlaatMeshCache;
   /** Plaatdikte (mm). */

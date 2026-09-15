@@ -50,8 +50,8 @@
 import {
   GEBRUIKSCATEGORIEEN,
   berekenPlaatMeshSignatuur,
+  bepaalPlaatRand,
   isAsgelijndeRechthoek,
-  leesPlaatMeshCache,
   valideerPlaatPolygoon,
   type PlaatPunt,
 } from "../components/fem/femTypes";
@@ -649,6 +649,37 @@ export function controleerVelden(rauw: unknown): string[] {
         if (!Array.isArray(p.meshCache.points) || !Array.isArray(p.meshCache.triangles)) {
           fouten.push(`${pad}.meshCache: \`points\` en \`triangles\` zijn verplichte arrays.`);
         }
+        // `edgeNodeIndices` is VERPLICHT, met precies één lijst per hoek. Dit
+        // veld was optioneel in schema en validatie, terwijl de engine er
+        // blind op leunde: een cache zonder randknopen kwam door de poort en
+        // liet de berekening crashen op `undefined.every` (gemeten). En een
+        // lijst te weinig laat een randlast op de ontbrekende rand zijn
+        // knopen niet vinden.
+        const randen = p.meshCache.edgeNodeIndices;
+        if (!Array.isArray(randen)) {
+          fouten.push(
+            `${pad}.meshCache.edgeNodeIndices: verplichte array met per plaatrand ` +
+              "(rand i loopt van hoek i naar hoek i+1) de indices van de meshknopen " +
+              "op die rand. Zonder die lijsten vindt geen randlast, randpuntlast of " +
+              "staafaansluiting zijn rand.",
+          );
+        } else {
+          if (Array.isArray(p.nodeIds) && randen.length !== p.nodeIds.length) {
+            fouten.push(
+              `${pad}.meshCache.edgeNodeIndices: beschrijft ${randen.length} ` +
+                `${randen.length === 1 ? "rand" : "randen"}, maar de plaat heeft ` +
+                `${p.nodeIds.length} hoeken en dus ${p.nodeIds.length} randen.`,
+            );
+          }
+          randen.forEach((rand, r) => {
+            if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => isGeheel(k) && k >= 0)) {
+              fouten.push(
+                `${pad}.meshCache.edgeNodeIndices[${r}]: moet een lijst van minstens twee ` +
+                  "puntindices (gehele getallen ≥ 0) zijn — de twee hoeken en de knopen ertussen.",
+              );
+            }
+          });
+        }
       }
     }
   });
@@ -1079,9 +1110,9 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     }
     const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize! : 500;
     const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
-    const cache = [p.meshCache, leesPlaatMeshCache(p.id)].find(
-      (c) => c && c.signature === handtekening,
-    );
+    // Alleen de cache uit het model telt — precies wat de engine leest. Het
+    // doorgeefluik in de GUI waar deze regel vroeger ook keek, is weg.
+    const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : undefined;
     if (!cache) {
       errors.push(
         `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als ` +
@@ -1105,6 +1136,21 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     }
     if (l.plateId !== undefined && !plateIds.has(l.plateId as number)) {
       errors.push(`Last ${id} verwijst naar plaat ${l.plateId}, die niet bestaat.`);
+    } else if (l.plateId !== undefined) {
+      // Het randadres langs DEZELFDE regel als de engine (`bepaalPlaatRand`):
+      // een benoemde rand op een polygoon, een rand-index die geen zijde is,
+      // beide of geen adres. De engine weigert die gevallen; de droogloop
+      // hoort ze dus ook te melden, en met dezelfde reden.
+      const plaat = plates.find((p) => p.id === l.plateId);
+      const hoeken = (plaat?.nodeIds ?? []).map((nid) => knoopById.get(nid));
+      if (plaat && hoeken.every((h) => h !== undefined)) {
+        const rand = bepaalPlaatRand(
+          hoeken as PlaatPunt[],
+          { edge: l.edge as string | undefined, edgeIndex: l.edgeIndex as number | undefined },
+          1,
+        );
+        if (!rand.ok) errors.push(`Last ${id} op plaat ${l.plateId}: ${rand.reden}`);
+      }
     }
     if (l.nodeId !== undefined) {
       if (!knoopById.has(l.nodeId as number)) {

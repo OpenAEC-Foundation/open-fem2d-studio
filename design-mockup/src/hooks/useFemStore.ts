@@ -15,7 +15,6 @@ import type {
 } from "../components/fem/femTypes";
 import {
   DEFAULT_STRUCTURAL_GRID, PLATE_DEFAULTS, withPlateDefaults,
-  registreerPlaatMeshCaches, registreerPolygoonRandlasten,
   registreerPlaatMeshCacheCommitter, analysetypeUitBestand,
 } from "../components/fem/femTypes";
 import { STANDAARD_SEGMENTLENGTE_MM } from "../lib/betonStijfheid";
@@ -1688,27 +1687,9 @@ export function useFemStore(opties?: {
   const historyIdxRef = useRef(0);
   useEffect(() => { historyIdxRef.current = historyIdx; }, [historyIdx]);
 
-  // ── Doorgeefluik-sync (P4.2/P4.3) ────────────────────────────────────────
-  // De multi-LC-invoer wordt in App.tsx veld-voor-veld opgebouwd en draagt
-  // de CDT-meshcache en de rand-index van polygonrandlasten niet; de engine
-  // leest die daarom uit het femTypes-doorgeefluik. Hier wordt dat register
-  // bij ELKE model-wijziging (incl. undo/redo en projectladen) volledig
-  // vervangen, zodat het altijd de actuele store-inhoud spiegelt. De engine
-  // valideert de cache bovendien op geometrie-signatuur — een verouderde
-  // registratie kan dus nooit stil een verkeerd mesh opleveren.
-  useEffect(() => {
-    registreerPlaatMeshCaches(
-      plates.flatMap((p): [number, PlaatMeshCache][] =>
-        p.meshCache ? [[p.id, p.meshCache]] : []));
-    registreerPolygoonRandlasten(
-      loads
-        .filter(l => l.type === "edgeLoad" && l.plateId !== undefined
-          && l.edgeIndex !== undefined && l.q !== undefined)
-        .map(l => ({
-          plateId: l.plateId!, edgeIndex: l.edgeIndex!,
-          p: l.q!, dir: l.qDir ?? "z", caseId: l.caseId,
-        })));
-  }, [plates, loads]);
+  // (Het doorgeefluik voor meshcaches en polygoonrandlasten dat hier stond is
+  // weg: `bouwMultiInput` geeft beide nu zelf door, zodat de app en de
+  // MCP-sidecar met dezelfde invoer rekenen. Zie lib/modelNaarSolverInput.)
 
   /** Push a new history snapshot AFTER a mutation completes. */
   const pushHistory = useCallback((next: HistorieSnapshot) => {

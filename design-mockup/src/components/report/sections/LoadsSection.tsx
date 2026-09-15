@@ -8,6 +8,7 @@
  */
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
+import { plaatRandLabel } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
@@ -57,9 +58,20 @@ export default function LoadsSection() {
     right: t("report.edgeRight", "rechterrand"),
   };
 
+  /**
+   * De rand zoals ingevoerd. Een rand-index heet "rand i+1"; alleen een
+   * benoemde rand krijgt zijn naam. Hier stond `EDGE_LABELS[l.edge ?? "top"]`,
+   * waardoor een randlast op een polygoonrand in het rapport als "bovenrand"
+   * verscheen.
+   */
+  const randTekst = (l: Load): string =>
+    l.edge !== undefined && l.edgeIndex === undefined
+      ? EDGE_LABELS[l.edge]
+      : plaatRandLabel(l);
+
   const targetText = (l: Load): string => {
     if (l.type === "edgeLoad" && l.plateId !== undefined) {
-      return `${t("report.plateWord", "plaat")} ${l.plateId}, ${EDGE_LABELS[l.edge ?? "top"]}`;
+      return `${t("report.plateWord", "plaat")} ${l.plateId}, ${randTekst(l)}`;
     }
     if (l.beamId !== undefined) return `${t("report.beamWord", "staaf")} ${l.beamId}`;
     if (l.nodeId !== undefined) return `${t("report.nodeWord", "knoop")} ${l.nodeId}`;

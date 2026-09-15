@@ -9,14 +9,15 @@
  *  2. de omhullende: min/max per component over ALLE combinaties, met het
  *     maatgevende element én de maatgevende combinatie (grootste von Mises).
  *
- * DATAROUTE: de combinatiepijplijn (combineResults) combineert (nog) geen
- * `plateElements` — die zitten alleen op de per-belastinggeval-resultaten
- * (caseResults in de ReportDataContext). Deze sectie superponeert daarom
- * zelf lineair per element: σ-componenten zijn 1e-orde lineair in de lasten
- * (zelfde mesh per geval — deterministisch grid), en von Mises wordt ná
- * combinatie uit de gecombineerde componenten herberekend (von Mises zelf
- * mag niet gesuperponeerd worden). Draagt een combinatieresultaat het veld
- * `plateElements` wél (toekomstige pijplijn-uitbreiding), dan gaat dat vóór.
+ * DATAROUTE: de combinatiepijplijn (`combineResults` in combinations.ts)
+ * combineert `plateElements` zelf: de componenten σx, σy, τxy en nx/ny/nxy per
+ * elementINDEX lineair, von Mises en hoofdspanningen daarna opnieuw uit de
+ * gecombineerde componenten (von Mises zelf mag niet gesuperponeerd worden).
+ * Dat vraagt hetzelfde rekenmesh in elk belastinggeval; de engine meshet
+ * lastonafhankelijk, en randlasten en randpuntlasten veranderen het mesh niet.
+ * Deze sectie leest dus in de eerste plaats `comboResult.plateElements`, en
+ * superponeert alleen zelf over de per-belastinggeval-resultaten (caseResults)
+ * als een combinatieresultaat dat veld niet draagt.
  * Voor het enkelgeval-equivalent (bijv. een combinatie met alleen factor 1,0
  * op één geval) zijn de waarden identiek aan de canvas-contourlegenda.
  *

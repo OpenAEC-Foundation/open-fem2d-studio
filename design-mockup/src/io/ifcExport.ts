@@ -154,7 +154,7 @@
 import type {
   Node, Beam, Support, Load, LoadCase,
 } from "../components/fem/femTypes";
-import { rolVanStaaf, BEAM_LOAD_ROLE_LABEL } from "../components/fem/femTypes";
+import { rolVanStaaf, BEAM_LOAD_ROLE_LABEL, bepaalPlaatRand } from "../components/fem/femTypes";
 import {
   parseRechthoek, resolveSection, CONCRETE_E_CM,
 } from "../lib/sectionResolver";
@@ -1599,28 +1599,25 @@ interface PlaatInfo {
 }
 
 /**
- * De twee hoekknopen van een plaatrand. Een polygoonplaat noemt de rand met
- * een index (rand i loopt van hoek i naar hoek i+1); een rechthoek met een
- * naam, en die wordt uit de coördinaten gelezen: onder = de twee laagste
- * knopen, boven = de twee hoogste, links/rechts idem in x.
+ * De twee hoekknopen van een plaatrand, in de richting waarin de fracties
+ * langs de rand tellen (knoop bij fractie 0, knoop bij fractie 1).
+ *
+ * Langs `bepaalPlaatRand`, dezelfde regel als de rekenkern: een rand-index i
+ * loopt van hoek i naar hoek i+1, een benoemde rand bestaat alleen bij een
+ * asgelijnde rechthoek. Een eigen afleiding stond hier eerder ("onder = de
+ * twee laagste knopen") en gaf bij een polygoon met een benoemde rand stil
+ * twee willekeurige hoeken; nu levert zo'n adres `undefined`, en de aanroeper
+ * meldt dat de last niet geëxporteerd is.
  */
 function randKnopen(info: PlaatInfo, last: Load): [number, number] | undefined {
-  const n = info.nodeIds.length;
-  if (last.edgeIndex !== undefined) {
-    if (last.edgeIndex < 0 || last.edgeIndex >= n) return undefined;
-    return [info.nodeIds[last.edgeIndex], info.nodeIds[(last.edgeIndex + 1) % n]];
-  }
-  if (!last.edge) return undefined;
-  const punten = info.nodeIds
-    .map((id) => { const k = info.knopen.get(id); return k ? { id, x: k.x, z: k.z } : undefined; })
-    .filter((p): p is { id: number; x: number; z: number } => p !== undefined);
-  const sorteer = (kies: (p: { x: number; z: number }) => number, hoogste: boolean) =>
-    [...punten].sort((a, b) => (hoogste ? kies(b) - kies(a) : kies(a) - kies(b))).slice(0, 2).map((p) => p.id);
-  const paar = last.edge === "bottom" ? sorteer((p) => p.z, false)
-    : last.edge === "top" ? sorteer((p) => p.z, true)
-      : last.edge === "left" ? sorteer((p) => p.x, false)
-        : sorteer((p) => p.x, true);
-  return paar.length === 2 ? [paar[0], paar[1]] : undefined;
+  const punten = info.nodeIds.map((id) => info.knopen.get(id));
+  if (punten.some((k) => k === undefined)) return undefined;
+  const rand = bepaalPlaatRand(
+    punten.map((k) => ({ x: k!.x, z: k!.z })),
+    { edge: last.edge, edgeIndex: last.edgeIndex },
+  );
+  if (!rand.ok) return undefined;
+  return [info.nodeIds[rand.hoekVan], info.nodeIds[rand.hoekNaar]];
 }
 
 function schrijfLast(

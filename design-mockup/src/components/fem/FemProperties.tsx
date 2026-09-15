@@ -24,6 +24,7 @@ import type {
 } from "./femTypes";
 import {
   withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
+  plaatRandLabel,
 } from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -1037,10 +1038,12 @@ const LOAD_TYPE_LABEL: Record<Load["type"], string> = {
   edgeLoad:    "Randlast (plaatrand)",
 };
 
-/** NL-labels voor de benoemde plaatranden (edgeLoad, P3.3). */
-const EDGE_LABEL: Record<NonNullable<Load["edge"]>, string> = {
-  bottom: "onderrand", top: "bovenrand", left: "linkerrand", right: "rechterrand",
-};
+/**
+ * De rand van een plaatlast zoals ingevoerd: "rand i+1" bij een rand-index,
+ * de naam bij een benoemde rand. Hier stond `EDGE_LABEL[load.edge ?? "top"]`,
+ * waardoor een randlast op een polygoonrand als "bovenrand" verscheen.
+ */
+const randLabel = (load: Load): string => plaatRandLabel(load);
 
 function LoadProperties({
   load, beams, nodes, updateLoad,
@@ -1233,7 +1236,7 @@ function LoadProperties({
             </Row>
           )}
           {load.type === "edgeLoad" && load.plateId !== undefined && (
-            <Row label="Op plaat"><code>{load.plateId} ({EDGE_LABEL[load.edge ?? "top"]})</code></Row>
+            <Row label="Op plaat"><code>{load.plateId} ({randLabel(load)})</code></Row>
           )}
           {beamLen > 0 && load.type === "lineLoad" && (
             <Row label="Balklengte"><code>{(beamLen / 1000).toFixed(2)} m</code></Row>
@@ -1370,7 +1373,7 @@ function LoadProperties({
 
         {load.type === "edgeLoad" && (
           <Section title="Randlast">
-            <Row label="Rand"><code>{EDGE_LABEL[load.edge ?? "top"]}</code></Row>
+            <Row label="Rand"><code>{randLabel(load)}</code></Row>
             <Row label="Richting">
               <select
                 className="fem-prop-select"

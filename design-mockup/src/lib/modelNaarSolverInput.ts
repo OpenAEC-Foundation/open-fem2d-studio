@@ -123,6 +123,51 @@ export function controleerDoorsneden(
 }
 
 /**
+ * Eén plaat naar de solver: rekenvelden met defaults aangevuld, en de
+ * CDT-meshcache van een polygoonplaat erbij.
+ *
+ * DE ENIGE vertaling van een plaat, voor het canvaspad én `bouwMultiInput`.
+ * Tot september 2026 gaf `bouwMultiInput` de meshcache NIET door; de engine
+ * las hem dan uit een module-globaal doorgeefluik dat alleen de GUI-store
+ * vulde. In de MCP-sidecar was dat luik leeg, dus daar faalde elke
+ * polygoonplaat — terwijl de droogloop hem goedkeurde (gemeten). Nu draagt de
+ * invoer zelf de cache en rekenen canvas, app en MCP hetzelfde mesh.
+ */
+export function plaatNaarSolverInput(p: Plate): NonNullable<MultiInput["plates"]>[number] {
+  const d = withPlateDefaults(p);
+  return {
+    id: d.id, nodeIds: d.nodeIds,
+    thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
+    meshSize: d.meshSize!,
+    // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
+    // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
+    ...(d.meshCache ? { meshCache: d.meshCache } : {}),
+  };
+}
+
+/**
+ * Een randlast (`edgeLoad`) naar de solver, of `null` als de last geen plaat
+ * of geen waarde heeft. Het randadres gaat ONGEWIJZIGD mee: `edge` en
+ * `edgeIndex` zoals ingevoerd. Hier werd tot september 2026 een ontbrekende
+ * `edge` stil "top" en ging `edgeIndex` niet mee — een polygoonrandlast viel
+ * via de app en de MCP daardoor weg of kwam op de bovenrand van een rechthoek
+ * (gemeten). Welke rand bedoeld is en of het adres geldig is, beslist nu
+ * alleen `femTypes.bepaalPlaatRand` in de engine, die bij twijfel weigert.
+ */
+export function randlastNaarSolverInput(
+  l: Load,
+): Omit<NonNullable<MultiInput["edgeLoads"]>[number], "caseId"> | null {
+  if (l.type !== "edgeLoad" || l.plateId === undefined || l.q === undefined) return null;
+  return {
+    plateId: l.plateId,
+    ...(l.edge !== undefined ? { edge: l.edge } : {}),
+    ...(l.edgeIndex !== undefined ? { edgeIndex: l.edgeIndex } : {}),
+    p: l.q,
+    dir: l.qDir,
+  };
+}
+
+/**
  * Bouw de solver-invoer voor ALLE belastinggevallen uit één modelbestand.
  * Puur: leest alleen `model`, muteert niets aan de invoer en raakt geen
  * globale toestand aan.
@@ -190,16 +235,9 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
       };
     }),
     supports: model.supports.map(s => ({ nodeId: s.nodeId, type: s.type, k: liftSpringK(s) })),
-    // Platen (wandschijven, P2.3): rekenvelden met defaults aangevuld —
-    // de engine meshet en schakelt zelf naar mixed_beam_plate.
-    plates: model.plates.map(p => {
-      const d = withPlateDefaults(p);
-      return {
-        id: d.id, nodeIds: d.nodeIds,
-        thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
-        meshSize: d.meshSize!,
-      };
-    }),
+    // Platen (wandschijven, P2.3): rekenvelden met defaults aangevuld plus de
+    // meshcache — de engine meshet en schakelt zelf naar mixed_beam_plate.
+    plates: model.plates.map(plaatNaarSolverInput),
     cases: model.loadCases.map(lc => ({ id: lc.id, name: lc.name })),
     loads: [], pointLoads: [], beamPointLoads: [], thermalLoads: [], edgeLoads: [],
     // Scheefstand: φ = 1/noemer, richting ±x — de engine geeft elke
@@ -286,17 +324,11 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
         alpha: thermalAlphaForMaterial(beam?.material),
         caseId: l.caseId,
       });
-    } else if (l.type === "edgeLoad" && l.plateId !== undefined && l.q !== undefined) {
-      // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting
-      // in globale assen — de engine zet dit via de PlateLoads-wrapper
-      // om in exacte knooplasten op de mesh-randknopen.
-      multiInput.edgeLoads!.push({
-        plateId: l.plateId,
-        edge: l.edge ?? "top",
-        p: l.q,
-        dir: l.qDir,
-        caseId: l.caseId,
-      });
+    } else if (l.type === "edgeLoad") {
+      // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting in
+      // globale assen, randadres ongewijzigd — zie randlastNaarSolverInput.
+      const rl = randlastNaarSolverInput(l);
+      if (rl) multiInput.edgeLoads!.push({ ...rl, caseId: l.caseId });
     }
   }
   return multiInput;

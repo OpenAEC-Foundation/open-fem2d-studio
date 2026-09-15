@@ -38,7 +38,9 @@ import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 import { resolveSection } from "../../lib/sectionResolver";
-import { controleerDoorsneden } from "../../lib/modelNaarSolverInput";
+import {
+  controleerDoorsneden, plaatNaarSolverInput, randlastNaarSolverInput,
+} from "../../lib/modelNaarSolverInput";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 // Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
 // Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
@@ -693,9 +695,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       // engine splitst de staaf daar en zet de kracht op de tussenknoop.
       const beamPointLoads: { beamId: number; posFrac: number; fx?: number; fz?: number; my?: number }[] = [];
       const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
-      const edgeLoads: {
-        plateId: number; edge: PlaatRand; edgeIndex?: number; p: number; dir?: "x" | "z";
-      }[] = [];
+      const edgeLoads: NonNullable<SolverInput["edgeLoads"]> = [];
       for (const l of activeLoads) {
         if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
           // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
@@ -737,18 +737,12 @@ export default function FemCanvas(props: FemCanvasProps) {
             beamId: l.beamId, deltaT: l.deltaT,
             alpha: thermalAlphaForMaterial(beam?.material),
           });
-        } else if (l.type === "edgeLoad" && l.plateId !== undefined && l.q !== undefined) {
-          // Randlast op een plaatrand (P3.3): p in kN/m (= N/mm), richting
-          // in globale assen — zelfde velden als het multi-LC-pad in App.tsx.
-          // Op een POLYGONplaat (P4.3) adresseert `edgeIndex` de rand; de
-          // engine laat `edge` dan links liggen.
-          edgeLoads.push({
-            plateId: l.plateId,
-            edge: l.edge ?? "top",
-            edgeIndex: l.edgeIndex,
-            p: l.q,
-            dir: l.qDir,
-          });
+        } else if (l.type === "edgeLoad") {
+          // Randlast op een plaatrand (P3.3): DEZELFDE vertaling als het
+          // multi-LC-pad en de MCP (`randlastNaarSolverInput`). Hier stond een
+          // eigen kopie die een ontbrekende `edge` stil "top" maakte.
+          const rl = randlastNaarSolverInput(l);
+          if (rl) edgeLoads.push(rl);
         }
       }
       // DOORSNEDECONTROLE, dezelfde als het multi-LC-pad. Een doorsnede die
@@ -782,23 +776,13 @@ export default function FemCanvas(props: FemCanvasProps) {
         beamPointLoads,
         thermalLoads,
         edgeLoads,
-        // Platen (wandschijven): zelfde defaults-aanvulling als het
-        // multi-LC-pad in App.tsx — hiermee rekent óók de canvas-solve de
-        // platen mee (mixed_beam_plate) en levert het resultaat
-        // `plateElements` voor de contourlaag (P3.2). Polygonplaten (P4.2)
-        // dragen hun CDT-meshcache direct mee.
-        plates: plates.map(p => {
-          const d = withPlateDefaults(p);
-          return {
-            id: d.id, nodeIds: d.nodeIds,
-            thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
-            meshSize: d.meshSize!,
-            meshCache: d.meshCache,
-          };
-        }),
-        // Actief belastinggeval meegeven (P4.3): de doorgeefluik-fallback
-        // voor polygonrandlasten in de engine filtert hierop wanneer er
-        // geen loadFactor is (één-geval-solve).
+        // Platen (wandschijven): DEZELFDE vertaling als het multi-LC-pad en de
+        // MCP (`plaatNaarSolverInput`, met de CDT-meshcache van een
+        // polygoonplaat) — hiermee rekent óók de canvas-solve de platen mee
+        // (mixed_beam_plate) en levert het resultaat `plateElements` voor de
+        // contourlaag (P3.2).
+        plates: plates.map(plaatNaarSolverInput),
+        // Actief belastinggeval, ter herkenning van het resultaat.
         caseId: activeLoadCaseId,
         // Scheefstand — zelfde instelling als het multi-LC-pad in App.tsx.
         scheefstand,
@@ -3081,9 +3065,9 @@ export default function FemCanvas(props: FemCanvasProps) {
   // ── Plaatspanningscontouren (P3.2) ──────────────────────────────────────
   // Elementvlakken gevuld op de gekozen component; het kleurbereik is de
   // min/max over ALLE platen samen zodat één legenda het hele model dekt.
-  // `plateElements` komt uit de single-LC-canvas-solve (en elk ander
-  // SolverResult dat plaatspanningen draagt); combinatie-superpositie van
-  // plaatspanningen staat op de backlog en toont dan geen contouren.
+  // `plateElements` komt uit de single-LC-canvas-solve of uit een
+  // combinatieresultaat: `combineResults` superponeert de plaatspanningen per
+  // elementindex, dus ook een gekozen combinatie toont contouren.
   const plaatComponent = (displayFlags.plaatComponent ?? "vonMises") as PlaatComponent;
   const plaatContourData = useMemo(() => {
     if (!showLoads || displayFlags.plaatContour === false) return null;

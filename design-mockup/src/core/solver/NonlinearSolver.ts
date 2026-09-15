@@ -20,7 +20,7 @@ import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
 import { calculateElementStress, calculatePrincipalStresses, calculateTriangleGeometricStiffness, expandTriangleGeometricStiffness } from '../fem/Triangle';
 import { calculateQuadStress, calculateQuadGeometricStiffness, expandQuadGeometricStiffness } from '../fem/Quad4';
 import { calculateElementMoments, calculateElementShearForces } from '../fem/DKT';
-import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, applyEndConnections, buildNodeIdToIndex } from './Assembler';
+import { assembleGlobalStiffnessMatrix, assembleForceVector as assembleForceVectorNew, getConstrainedDofs, getDofsPerNode, applyEndReleases, applyEndConnections, buildNodeIdToIndex, PlaatElementFout } from './Assembler';
 // De keuze welke stelseloplosser draait loopt via één plek: `LinearSolver`.
 // De zeven aanroepen hieronder houden hun bestaande handtekening en weten niet
 // welke oplosser eronder zit. Standaard is dat nog steeds de dichte
@@ -1719,10 +1719,14 @@ function assembleGeometricStiffnessMixed(
           for (let j = 0; j < 9; j++) Kg.addAt(dofIndices[i], dofIndices[j], Kg9.get(i, j));
         }
       }
-    } catch {
-      // Een ontaard element levert geen geometrische bijdrage. De elastische
-      // assemblage slaat hem op dezelfde grond over (met een console.warn);
-      // hier stil, anders staat dezelfde melding tweemaal per iteratie.
+    } catch (e) {
+      // HARD, niet overslaan. Een ontaard element leverde hier stil géén
+      // geometrische bijdrage, terwijl de rest van de tweede orde doorrekende:
+      // een tweede gat naast dat in de elastische assemblage. Die weigert zo'n
+      // element nu al (PlaatElementFout); hier dezelfde weigering, voor het
+      // geval een element pas onder de heersende spanning ontaardt.
+      throw new PlaatElementFout(
+        element.id, e instanceof Error ? e.message : String(e), nodes);
     }
   }
 

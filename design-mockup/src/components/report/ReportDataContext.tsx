@@ -79,9 +79,11 @@ export interface ReportData {
   combinationResults: Map<number, SolverResult> | null;
   /**
    * P5.2 — per-belastinggeval-resultaten (zelfde run als combinationResults,
-   * zelfde invalidatie in useFemStore). De combinatiepijplijn combineert
-   * `plateElements` (nog) niet; de plaatspanningssectie superponeert daarom
-   * zelf lineair over deze per-case-resultaten.
+   * zelfde invalidatie in useFemStore). De combinatiepijplijn
+   * (`combineResults`) combineert `plateElements` zelf, per elementindex; de
+   * plaatspanningssectie leest die gecombineerde spanningen en gebruikt deze
+   * per-case-resultaten alleen als terugval voor een combinatieresultaat
+   * zonder `plateElements`.
    */
   caseResults: Map<number, SolverResult> | null;
   envelope: Envelope | null;

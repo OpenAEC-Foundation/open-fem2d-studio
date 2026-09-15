@@ -751,8 +751,8 @@ fn schema_meshcache() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "description": "Voorgebouwd CDT-mesh van een polygoonplaat, zoals het projectbestand hem bewaart. Klopt de `signature` niet met de geometrie, dan weigert de engine met een Nederlandse melding in plaats van te benaderen.",
-        "required": ["signature", "points", "triangles"],
+        "description": "Voorgebouwd CDT-mesh van een polygoonplaat, zoals het projectbestand hem bewaart. Klopt de `signature` niet met de geometrie, of ontbreken of kloppen de randknopen niet, dan weigert de engine met een Nederlandse melding in plaats van te benaderen.",
+        "required": ["signature", "points", "triangles", "edgeNodeIndices"],
         "properties": {
             "signature": { "type": "string" },
             "points": { "type": "array", "items": {
@@ -763,8 +763,10 @@ fn schema_meshcache() -> Value {
             "triangles": { "type": "array", "items": {
                 "type": "array", "minItems": 3, "maxItems": 3,
                 "items": { "type": "integer", "minimum": 0 } } },
-            "edgeNodeIndices": { "type": "array", "items": {
-                "type": "array", "items": { "type": "integer", "minimum": 0 } } }
+            "edgeNodeIndices": { "type": "array",
+                "description": "Per plaatrand (rand i loopt van hoek i naar hoek i+1) de indices in `points` van de meshknopen op die rand, van hoek tot hoek. Precies één lijst per hoek van de plaat; zonder deze lijsten kan geen randlast, randpuntlast of staafaansluiting zijn rand vinden.",
+                "items": {
+                "type": "array", "minItems": 2, "items": { "type": "integer", "minimum": 0 } } }
         }
     })
 }
@@ -1066,6 +1068,24 @@ mod tests {
         }
         assert_eq!(velden.len(), 10, "modelschema kent een veld dat de sidecar weigert");
         assert_eq!(model["additionalProperties"], json!(false));
+    }
+
+    /// De randknopen van een meshcache zijn verplicht: zonder `edgeNodeIndices`
+    /// vindt geen randlast, randpuntlast of staafaansluiting zijn rand, en de
+    /// sidecar weigert zo'n cache daarom. Het schema mag hem dus niet als
+    /// optioneel aanbieden (dat deed het tot september 2026).
+    #[test]
+    fn meshcache_eist_randknopen() {
+        let cache = schema_meshcache();
+        let verplicht: Vec<&str> = cache["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        for veld in ["signature", "points", "triangles", "edgeNodeIndices"] {
+            assert!(verplicht.contains(&veld), "meshCache.required mist `{veld}`: {verplicht:?}");
+        }
     }
 
     /// E, A en I mogen niet los op een staaf: de doorsnede volgt uit

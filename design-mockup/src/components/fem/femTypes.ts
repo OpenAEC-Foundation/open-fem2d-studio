@@ -605,49 +605,192 @@ export function berekenPlaatMeshSignatuur(punten: PlaatPunt[], meshSizeMm: numbe
   return `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
 }
 
-// ── Doorgeefluik plaat-solvegegevens (P4.2/P4.3) ───────────────────────────
-// De multi-LC-invoer wordt in App.tsx veld-voor-veld opgebouwd en kent de
-// CDT-cache en de rand-index van polygonrandlasten (nog) niet; App.tsx valt
-// buiten deze fase. De store registreert daarom beide hier (module-globaal),
-// en de engine-adapter leest ze als fallback wanneer de invoer ze niet
-// draagt. De cache wordt bij het lezen ALTIJD tegen de actuele
-// geometrie-signatuur gevalideerd, dus een verouderde registratie kan nooit
-// stil verkeerde resultaten geven.
+// ── Plaatrand-adressering: één regel voor engine, validatie, canvas en rapport ──
+//
+// WAAROM DIT HIER STAAT
+// Een plaatrand had twee adressen die elk maar bij één plaatvorm werkten: een
+// benoemde rand (`edge`: "bottom" … "right") bij een asgelijnde rechthoek en een
+// rand-index (`edgeIndex`) bij een polygoon. Elke lezer vertaalde ze zelf, en
+// dat ging in twee richtingen stil mis (gemeten, september 2026): een benoemde
+// rand op een plaat die door slepen een polygoon werd verdween in elke
+// rekenroute, en een rand-index op een plaat die een rechthoek werd, belastte
+// via de app en de MCP de BOVENrand. Een last op de verkeerde rand ziet er in
+// een resultaat volkomen normaal uit.
+//
+// DE OMZETTING, EXPLICIET
+// Beide adressen worden hier omgezet naar één canonieke vorm: een HOEKPAAR
+// (`hoekVan` → `hoekNaar`, indices in `Plate.nodeIds`). Fractie 0 langs de rand
+// ligt op `hoekVan`, fractie 1 op `hoekNaar` — de betekenis van `startFrac`,
+// `endFrac` en `posFrac` op een plaatrand, precies zoals bij een staaf vanaf
+// zijn startknoop.
+//   - `edgeIndex` i (de bron; werkt bij ELKE plaatvorm): hoek i → hoek i+1
+//     (cyclisch). Bij een rechthoek moet dat paar een zijde van de omtrek zijn.
+//   - `edge` (alias, alleen bij een asgelijnde rechthoek): de twee hoeken van
+//     die zijde, geteld vanaf de kleinste coördinaat — onder- en bovenrand van
+//     links naar rechts (kleinste x eerst), linker- en rechterrand van onder
+//     naar boven (kleinste z eerst).
+// Alles wat daarbuiten valt, wordt GEWEIGERD met een reden in plaats van
+// benaderd: beide adressen tegelijk, geen adres, een index buiten bereik, een
+// benoemde rand op een polygoon, en een rand-index die bij een rechthoek met
+// hoeken buiten omtrekvolgorde een diagonaal zou zijn.
 
-/** Randlast op een polygonrand zoals de store hem registreert. */
-export interface PolygoonRandlast {
-  plateId: number;
-  /** Rand-index: rand van hoek i naar hoek i+1 (cyclisch, 0-based). */
-  edgeIndex: number;
-  /** Lastgrootte in kN/m (= N/mm), zelfde tekenconventie als Load.q. */
-  p: number;
-  /** Richting in globale assen: "z" verticaal, "x" horizontaal. */
-  dir: "x" | "z";
-  caseId: number;
+/** Benoemde rand van een asgelijnde rechthoekplaat, in modelassen. */
+export type PlaatRandNaam = "bottom" | "top" | "left" | "right";
+
+/** Nederlandse namen van de benoemde randen. */
+export const PLAAT_RAND_NAAM_NL: Record<PlaatRandNaam, string> = {
+  bottom: "onderrand", top: "bovenrand", left: "linkerrand", right: "rechterrand",
+};
+
+const PLAAT_RAND_NAMEN: readonly PlaatRandNaam[] = ["bottom", "top", "left", "right"];
+
+/** Uitkomst van `bepaalPlaatRand`: de canonieke rand, of de reden van weigeren. */
+export type PlaatRandUitkomst =
+  | {
+      ok: true;
+      /** Rekenpad van de plaat: grid (rechthoek) of CDT-cache (polygoon). */
+      soort: "rechthoek" | "polygoon";
+      /** Hoekindex (in `Plate.nodeIds`) waar fractie 0 langs de rand ligt. */
+      hoekVan: number;
+      /** Hoekindex waar fractie 1 ligt. */
+      hoekNaar: number;
+      /** Coördinaten (mm) van `hoekVan` en `hoekNaar`. */
+      van: PlaatPunt;
+      naar: PlaatPunt;
+      /** Randlengte in mm. */
+      lengte: number;
+      /** De zijde van het gridmesh — alleen bij een rechthoek. */
+      naam?: PlaatRandNaam;
+      /** De rand-index — alleen als de last hem zelf opgaf. */
+      edgeIndex?: number;
+    }
+  | { ok: false; reden: string };
+
+/**
+ * Zet het randadres van een plaatlast om naar de canonieke rand (zie het
+ * blokcommentaar hierboven). `punten` zijn de hoekcoördinaten in de volgorde
+ * van `Plate.nodeIds`. Pure functie: dezelfde uitkomst voor engine, MCP-
+ * validatie, canvas, eigenschappenpaneel, rapport en IFC-export.
+ */
+export function bepaalPlaatRand(
+  punten: PlaatPunt[],
+  adres: { edge?: string; edgeIndex?: number },
+  tolMm = 1,
+): PlaatRandUitkomst {
+  const n = punten.length;
+  const rechthoek = n === 4 && isAsgelijndeRechthoek(punten, tolMm);
+  const soort = rechthoek ? "rechthoek" as const : "polygoon" as const;
+  const heeftNaam = adres.edge !== undefined;
+  const heeftIndex = adres.edgeIndex !== undefined;
+  if (heeftNaam && heeftIndex) {
+    return {
+      ok: false,
+      reden:
+        "de last noemt zowel een benoemde rand (`edge`) als een rand-index " +
+        "(`edgeIndex`). Geef er één: met twee adressen is niet te zeggen welke " +
+        "rand bedoeld is en vanaf welke hoek de posities tellen.",
+    };
+  }
+  if (!heeftNaam && !heeftIndex) {
+    return {
+      ok: false,
+      reden:
+        "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar " +
+        "hoek i+1) of, bij een asgelijnde rechthoek, `edge`.",
+    };
+  }
+  if (n < 3) {
+    return { ok: false, reden: `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.` };
+  }
+
+  if (heeftIndex) {
+    const i = adres.edgeIndex!;
+    if (!Number.isInteger(i) || i < 0 || i >= n) {
+      return {
+        ok: false,
+        reden:
+          `rand-index ${i} bestaat niet: de plaat heeft ${n} randen ` +
+          `(edgeIndex 0 t/m ${n - 1}).`,
+      };
+    }
+    const j = (i + 1) % n;
+    const van = punten[i], naar = punten[j];
+    const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
+    if (!rechthoek) {
+      return { ok: true, soort, hoekVan: i, hoekNaar: j, van, naar, lengte, edgeIndex: i };
+    }
+    // Rechthoek: het rekenmesh kent alleen de vier zijden. Een hoekpaar dat
+    // geen zijde is (hoeken buiten omtrekvolgorde getekend) is een diagonaal
+    // door de plaat en heeft dus geen randknopen.
+    const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const op = (a: number, b: number) => Math.abs(a - b) <= tolMm;
+    let naam: PlaatRandNaam | undefined;
+    if (op(van.z, minZ) && op(naar.z, minZ)) naam = "bottom";
+    else if (op(van.z, maxZ) && op(naar.z, maxZ)) naam = "top";
+    else if (op(van.x, minX) && op(naar.x, minX)) naam = "left";
+    else if (op(van.x, maxX) && op(naar.x, maxX)) naam = "right";
+    if (!naam) {
+      return {
+        ok: false,
+        reden:
+          `rand ${i + 1} (edgeIndex ${i}, hoek ${i + 1} → hoek ${j + 1}) loopt niet ` +
+          "langs de omtrek: de hoeken van deze rechthoek staan niet in " +
+          "omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met " +
+          "een benoemde rand (`edge`) of teken de plaat opnieuw in omtrekvolgorde.",
+      };
+    }
+    return { ok: true, soort, hoekVan: i, hoekNaar: j, van, naar, lengte, naam, edgeIndex: i };
+  }
+
+  const naam = adres.edge as PlaatRandNaam;
+  if (!PLAAT_RAND_NAMEN.includes(naam)) {
+    return {
+      ok: false,
+      reden: `"${adres.edge}" is geen benoemde rand. Toegestaan: ${PLAAT_RAND_NAMEN.join(", ")}.`,
+    };
+  }
+  if (!rechthoek) {
+    return {
+      ok: false,
+      reden:
+        `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een ` +
+        `asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde ` +
+        "rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een " +
+        "rand-index (`edgeIndex`: rand i loopt van hoek i naar hoek i+1).",
+    };
+  }
+  const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const [doelVan, doelNaar]: [PlaatPunt, PlaatPunt] =
+    naam === "bottom" ? [{ x: minX, z: minZ }, { x: maxX, z: minZ }]
+    : naam === "top" ? [{ x: minX, z: maxZ }, { x: maxX, z: maxZ }]
+    : naam === "left" ? [{ x: minX, z: minZ }, { x: minX, z: maxZ }]
+    : [{ x: maxX, z: minZ }, { x: maxX, z: maxZ }];
+  const zoek = (d: PlaatPunt) =>
+    punten.findIndex((p) => Math.abs(p.x - d.x) <= tolMm && Math.abs(p.z - d.z) <= tolMm);
+  const hoekVan = zoek(doelVan), hoekNaar = zoek(doelNaar);
+  // isAsgelijndeRechthoek garandeert dat elke bbox-hoek bezet is.
+  const van = punten[hoekVan], naar = punten[hoekNaar];
+  return {
+    ok: true, soort, hoekVan, hoekNaar, van, naar,
+    lengte: Math.hypot(naar.x - van.x, naar.z - van.z), naam,
+  };
 }
 
-const meshCacheRegister = new Map<number, PlaatMeshCache>();
-let polygoonRandlastRegister: PolygoonRandlast[] = [];
-
-/** Vervang de volledige meshcache-registratie (store-sync op `plates`). */
-export function registreerPlaatMeshCaches(perPlaat: Iterable<[number, PlaatMeshCache]>): void {
-  meshCacheRegister.clear();
-  for (const [plateId, cache] of perPlaat) meshCacheRegister.set(plateId, cache);
-}
-
-/** Cache van één plaat (engine-fallback; signatuurvalidatie doet de lezer). */
-export function leesPlaatMeshCache(plateId: number): PlaatMeshCache | undefined {
-  return meshCacheRegister.get(plateId);
-}
-
-/** Vervang de volledige polygonrandlast-registratie (store-sync op `loads`). */
-export function registreerPolygoonRandlasten(lasten: PolygoonRandlast[]): void {
-  polygoonRandlastRegister = [...lasten];
-}
-
-/** Alle geregistreerde polygonrandlasten van één plaat. */
-export function leesPolygoonRandlasten(plateId: number): PolygoonRandlast[] {
-  return polygoonRandlastRegister.filter((l) => l.plateId === plateId);
+/**
+ * Korte Nederlandse naam van een randadres, zoals de gebruiker hem invoerde:
+ * "rand 3" bij een rand-index (1-based, zoals het canvas hem toont), anders de
+ * benoemde rand. Zegt niets over geldigheid — daarvoor is `bepaalPlaatRand`.
+ */
+export function plaatRandLabel(adres: { edge?: string; edgeIndex?: number }): string {
+  if (adres.edgeIndex !== undefined) return `rand ${adres.edgeIndex + 1}`;
+  if (adres.edge !== undefined && (PLAAT_RAND_NAMEN as readonly string[]).includes(adres.edge)) {
+    return PLAAT_RAND_NAAM_NL[adres.edge as PlaatRandNaam];
+  }
+  return "rand onbekend";
 }
 
 // Terugkanaal voor mesh-REGENERATIE (P4.2): het canvas regenereert de CDT-
@@ -768,22 +911,24 @@ export interface Load {
   /** edgeLoad (P3.3): de plaat waarvan een rand belast wordt. */
   plateId?: number;
   /**
-   * edgeLoad (P3.3): de belaste rand van de asgelijnde plaat, benoemd in
-   * modelassen — "bottom" = onderrand (kleinste z), "top" = bovenrand
-   * (grootste z), "left"/"right" = kleinste/grootste x. Dezelfde namen als
-   * de randen van het rekenmesh (PlateRegion.edges), zodat de engine 1-op-1
-   * doorverwijst. De lastgrootte p staat in `q` (kN/m langs de randlengte)
-   * en de richting in `qDir` (GLOBALE assen, negatief = tegen de +richting
-   * in — dezelfde tekenconventie als lijnlasten).
+   * Plaatrand, benoemd (alleen bij een ASGELIJNDE RECHTHOEK): "bottom" =
+   * onderrand (kleinste z), "top" = bovenrand (grootste z), "left"/"right" =
+   * kleinste/grootste x. Een alias: `bepaalPlaatRand` zet hem om naar het
+   * hoekpaar van die zijde, geteld vanaf de kleinste coördinaat. Op een
+   * polygoonplaat wordt hij GEWEIGERD (daar bestaat geen onder- of bovenrand),
+   * en samen met `edgeIndex` ook — zie `bepaalPlaatRand`.
+   *
+   * Voor een randlast (`edgeLoad`) staat de lastgrootte p in `q` (kN/m langs de
+   * randlengte) en de richting in `qDir` (GLOBALE assen, negatief = tegen de
+   * +richting in — dezelfde tekenconventie als lijnlasten).
    */
-  edge?: "bottom" | "top" | "left" | "right";
+  edge?: PlaatRandNaam;
   /**
-   * edgeLoad op een POLYGONplaat (P4.3): rand-index in plaats van benoemde
-   * rand — rand i loopt van hoek i naar hoek i+1 (cyclisch, 0-based, in de
-   * klikvolgorde van Plate.nodeIds). `edge` blijft dan leeg: de vier namen
-   * kunnen de n randen van een polygoon niet adresseren. Bewust een APART
-   * veld (geen verbreding van `edge`): het EDGE_LABEL-Record in
-   * FemProperties typografeert op de vier namen.
+   * Plaatrand als RAND-INDEX (de bron; werkt bij elke plaatvorm): rand i loopt
+   * van hoek i naar hoek i+1 (cyclisch, 0-based, in de volgorde van
+   * `Plate.nodeIds`). Fracties langs de rand tellen vanaf hoek i. Bij een
+   * rechthoek moet dat hoekpaar een zijde zijn (hoeken in omtrekvolgorde),
+   * anders volgt een weigering.
    */
   edgeIndex?: number;
   /**

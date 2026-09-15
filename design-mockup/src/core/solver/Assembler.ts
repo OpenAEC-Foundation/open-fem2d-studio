@@ -8,6 +8,35 @@ import { calculateBeamGlobalStiffness, calculateBeamLocalStiffness, calculateDis
 import { calculateBeamThermalLocalForces } from '../fem/ThermalLoad';
 
 /**
+ * Een schijfelement (CST of Quad4) dat niet op te bouwen is — een driehoek met
+ * oppervlakte nul, een vierhoek met detJ ≤ 0.
+ *
+ * WAAROM EEN FOUT EN GEEN OVERSLAAN. De gemengde assemblage ving dit af met een
+ * `console.warn` en rekende door zonder dat element. Dat is een gat in de
+ * stijfheid: de berekening slaagt, de krachtsverdeling hoort bij een ander
+ * model, en niets op het scherm zegt het. Hetzelfde gebeurde stil in de
+ * geometrische stijfheid van de tweede orde. Nu stopt de berekening, met het
+ * elementnummer en de hoeken erbij; de adapter (`engine.ts`) zet het
+ * plaatnummer ervoor.
+ */
+export class PlaatElementFout extends Error {
+  readonly meshElementId: number;
+  constructor(meshElementId: number, oorzaak: string, hoekenM: { x: number; y: number }[]) {
+    const hoeken = hoekenM
+      .map((h) => `(${Math.round(h.x * 1e4) / 10}, ${Math.round(h.y * 1e4) / 10})`)
+      .join(", ");
+    super(
+      `schijfelement ${meshElementId} met hoeken ${hoeken} mm is niet op te bouwen ` +
+      `(${oorzaak}). Overslaan zou een gat in de stijfheid geven en een ` +
+      'krachtsverdeling bij een ander model; de berekening stopt. Wijzig de plaat ' +
+      '(bijvoorbeeld de meshSize) zodat het rekenmesh opnieuw wordt gemaakt.',
+    );
+    this.name = 'PlaatElementFout';
+    this.meshElementId = meshElementId;
+  }
+}
+
+/**
  * Collect only the nodes that participate in the current analysis type.
  * For frame: nodes used by beam elements.
  * For plane_stress/plane_strain: nodes used by triangle/quad elements.
@@ -306,7 +335,9 @@ export function assembleGlobalStiffnessMatrix(
           }
         }
       } catch (e) {
-        console.warn(`Skipping element ${element.id} in mixed analysis: ${e}`);
+        // HARD, niet overslaan — zie PlaatElementFout.
+        throw new PlaatElementFout(
+          element.id, e instanceof Error ? e.message : String(e), nodes);
       }
     }
     // 3. Stabilize rotational DOFs for plate-only nodes (no beam connected)

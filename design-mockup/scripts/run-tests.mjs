@@ -133,6 +133,12 @@ const BUNDEL_TESTS = new Set([
   "plaat-combinatie",
   "plaat-polygoon",
   "plaat-project",
+  // Randadressering, meshcache-randknopen en harde elementfouten van platen:
+  // praat met `engine`, `femTypes`, `bouwMultiInput`, `valideerModel` en de
+  // in-proces sidecar (`verwerkVerzoek`) — allemaal in de barrel. Hoort juist
+  // óók tegen de bundel: de weigeringen moeten in het MCP-artefact net zo hard
+  // zijn als in de bron, anders valt een last daar stil weg.
+  "plaat-randadres",
   "plaat-randlast",
   "plaat-randstaaf",
   "plaat-validatie",

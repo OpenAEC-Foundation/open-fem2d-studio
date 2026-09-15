@@ -21,10 +21,12 @@
 // (b) EVENWICHT (0,1%) — geval 2: p = −10 kN/m verticaal op de bovenrand
 //     van de L-poot (rand 5, lengte 1 m) → ΣF = −10 kN, dus ΣRz = +10 kN.
 //     Geval 1 blijft exact (per belastinggeval gescheiden).
-// (c) DOORGEEFLUIK-PAD (App-emulatie): zelfde model, maar de cache en de
-//     polygonrandlasten via femTypes-registratie i.p.v. de invoer →
-//     identieke verplaatsingen (< 1e-12), want de engine leest dan het
-//     register (de App-multi-LC-mapping geeft meshCache/edgeIndex niet door).
+// (c) APP-ROUTE: hetzelfde model als UI-model door `bouwMultiInput` (de
+//     mapping van de app en de MCP-sidecar) → identieke verplaatsingen
+//     (< 1e-12). Tot september 2026 gaf die mapping meshCache en edgeIndex niet
+//     door en leunde de engine op een module-globaal doorgeefluik dat alleen de
+//     GUI vulde; dat luik bestaat niet meer, en dit blok legt vast dat het ook
+//     niet meer nodig is.
 // (d) VEROUDERDE CACHE: hoekknoop verplaatst zonder nieuwe cache →
 //     nette NL-fout (géén stil verkeerd mesh).
 // (e) ROUND-TRIP: serializeProject → deserializeProject behoudt het
@@ -33,9 +35,9 @@
 // Uitvoeren: npx tsx test-plaat-polygoon.mjs   (vanuit design-mockup/)
 
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
-const {
-  berekenPlaatMeshSignatuur, registreerPlaatMeshCaches, registreerPolygoonRandlasten,
-} = await import("./src/components/fem/femTypes.ts");
+const femTypes = await import("./src/components/fem/femTypes.ts");
+const { berekenPlaatMeshSignatuur } = femTypes;
+const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
 const { serializeProject, deserializeProject } = await import("./src/io/projectFile.ts");
 
 let passed = 0, failed = 0;
@@ -118,13 +120,17 @@ checkTrue("voorgebouwde cache: 24 driehoeken", cache.triangles.length === 24, `$
 function maakInput({ metCacheInInvoer = true, metRandlastenInInvoer = true } = {}) {
   const nodes = HOEKEN.map((h, i) => ({ id: i + 1, x: h.x, z: h.z }));
   const P_X = SIGMA * T; // 100 kN/m — tractie σ·t per mm randlengte
+  // Alleen `edgeIndex`: tot september 2026 eiste het solvertype ook een
+  // `edge`, en stond hier `edge: "top"` als opvulling. Twee adressen voor één
+  // rand worden nu geweigerd (zie femTypes.bepaalPlaatRand en
+  // test-plaat-randadres.mjs), dus de opvulling is weg.
   const edgeLoads = metRandlastenInInvoer ? [
     // Geval 1 — patchtractie op de drie verticale randen (rand-index 0-based).
-    { plateId: 1, edge: "top", edgeIndex: 5, p: -P_X, dir: "x", caseId: 1 }, // links (x=0, normaal −x)
-    { plateId: 1, edge: "top", edgeIndex: 1, p: +P_X, dir: "x", caseId: 1 }, // rechts-onder
-    { plateId: 1, edge: "top", edgeIndex: 3, p: +P_X, dir: "x", caseId: 1 }, // rechts-boven (x=1000, z>1000)
+    { plateId: 1, edgeIndex: 5, p: -P_X, dir: "x", caseId: 1 }, // links (x=0, normaal −x)
+    { plateId: 1, edgeIndex: 1, p: +P_X, dir: "x", caseId: 1 }, // rechts-onder
+    { plateId: 1, edgeIndex: 3, p: +P_X, dir: "x", caseId: 1 }, // rechts-boven (x=1000, z>1000)
     // Geval 2 — verticale randlast op de bovenrand van de L-poot.
-    { plateId: 1, edge: "top", edgeIndex: 4, p: -10, dir: "z", caseId: 2 },
+    { plateId: 1, edgeIndex: 4, p: -10, dir: "z", caseId: 2 },
   ] : [];
   return {
     nodes,
@@ -197,30 +203,44 @@ log("\n[evenwicht] p = −10 kN/m op rand 5 (bovenrand L-poot, 1 m)");
 // ─────────────────────────────────────────────────────────────────────────
 // (c) Doorgeefluik-pad (App-emulatie): cache + randlasten via registratie
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[doorgeefluik] cache + polygonrandlasten via femTypes-register");
+log("\n[app-route] UI-model door bouwMultiInput (app en MCP), zonder doorgeefluik");
 {
-  registreerPlaatMeshCaches([[1, cache]]);
-  registreerPolygoonRandlasten([
-    { plateId: 1, edgeIndex: 5, p: -SIGMA * T, dir: "x", caseId: 1 },
-    { plateId: 1, edgeIndex: 1, p: +SIGMA * T, dir: "x", caseId: 1 },
-    { plateId: 1, edgeIndex: 3, p: +SIGMA * T, dir: "x", caseId: 1 },
-    { plateId: 1, edgeIndex: 4, p: -10, dir: "z", caseId: 2 },
-  ]);
-  const via = solveAllCases(maakInput({ metCacheInInvoer: false, metRandlastenInInvoer: false }));
+  checkTrue("het doorgeefluik bestaat niet meer",
+    femTypes.registreerPlaatMeshCaches === undefined
+    && femTypes.leesPlaatMeshCache === undefined
+    && femTypes.registreerPolygoonRandlasten === undefined
+    && femTypes.leesPolygoonRandlasten === undefined);
+  const uiModel = {
+    nodes: HOEKEN.map((h, i) => ({ id: i + 1, x: h.x, z: h.z })),
+    beams: [],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 6, type: "xRoller" }],
+    plates: [{ id: 1, nodeIds: [1, 2, 3, 4, 5, 6], thickness: T, E: E_PLAAT, nu: NU, rho: 7850, meshSize: S, meshCache: cache }],
+    loadCases: [{ id: 1, name: "Patch (G)", type: "dead" }, { id: 2, name: "Randlast (Q)", type: "live" }],
+    loads: [
+      { id: 1, type: "edgeLoad", caseId: 1, plateId: 1, edgeIndex: 5, q: -SIGMA * T, qDir: "x" },
+      { id: 2, type: "edgeLoad", caseId: 1, plateId: 1, edgeIndex: 1, q: +SIGMA * T, qDir: "x" },
+      { id: 3, type: "edgeLoad", caseId: 1, plateId: 1, edgeIndex: 3, q: +SIGMA * T, qDir: "x" },
+      { id: 4, type: "edgeLoad", caseId: 2, plateId: 1, edgeIndex: 4, q: -10, qDir: "z" },
+    ],
+    selfWeightEnabled: false, scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+  };
+  const mi = bouwMultiInput(uiModel);
+  checkTrue("mapping geeft de meshcache door", mi.plates[0].meshCache === cache);
+  checkTrue("mapping geeft edgeIndex door en verzint geen `edge`",
+    mi.edgeLoads.length === 4 && mi.edgeLoads.every((e) => e.edgeIndex !== undefined && e.edge === undefined),
+    JSON.stringify(mi.edgeLoads.map((e) => [e.edge, e.edgeIndex])));
+  const via = solveAllCases(mi);
   const r1 = via.perCase.get(1);
-  checkTrue("resultaat geval 1 (register) aanwezig", !!r1);
+  checkTrue("resultaat geval 1 (app-route) aanwezig", !!r1);
   for (let i = 0; i < HOEKEN.length; i++) {
     const a = perCase.get(1).displacements.get(i + 1);
     const b = r1.displacements.get(i + 1);
-    checkRel(`register ≡ invoer: u_x knoop ${i + 1}`, b?.ux ?? NaN, a?.ux ?? NaN, 1e-12, SCHAAL);
+    checkRel(`app-route ≡ invoer: u_x knoop ${i + 1}`, b?.ux ?? NaN, a?.ux ?? NaN, 1e-12, SCHAAL);
   }
   const r2 = via.perCase.get(2);
   let sRz = 0;
   for (const [, re] of r2.reactions) sRz += re.fz;
-  checkRel("register: ΣRz geval 2 = +10 kN", sRz, 10e3, 0.001);
-  // Register weer leegmaken zodat vervolgchecks er niet op leunen.
-  registreerPlaatMeshCaches([]);
-  registreerPolygoonRandlasten([]);
+  checkRel("app-route: ΣRz geval 2 = +10 kN", sRz, 10e3, 0.001);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
