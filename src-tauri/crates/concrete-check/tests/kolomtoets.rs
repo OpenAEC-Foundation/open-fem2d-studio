@@ -947,6 +947,28 @@ fn de_tweede_as_heeft_een_eigen_schoring_en_kniklengte() {
     assert!(poort_z.notes.iter().any(|n| n.contains("apart opgegeven voor deze as")));
     assert!(poort_z.notes.iter().any(|n| n.contains("C = 0,7")));
 
+    // DE AFLEIDING OM Z DRAAGT DE ASNAAM. Dezelfde keten als om y, maar met
+    // l₀,z, λ_z en λ_lim,z in de symbolen: een losse stap "λ = 138,6" zei in
+    // het rapport niet om welke as het ging. En de uitkomsten in die stappen
+    // zijn de getallen om z, niet die van het vlak.
+    let stap = |id: &str| {
+        poort_z
+            .deelstappen
+            .iter()
+            .find(|d| d.id == id)
+            .unwrap_or_else(|| panic!("stap {id} ontbreekt in de afleiding om z"))
+    };
+    assert_eq!(stap("l0").symbol, "l_{0,z}");
+    assert_relative_eq!(stap("l0").value.unwrap(), eigen.l0_z_mm.unwrap(), max_relative = 1e-12);
+    assert!(stap("l0").formula_latex.contains("l_{0,z}"), "{}", stap("l0").formula_latex);
+    assert_eq!(stap("lambda").symbol, r"\lambda_{z}");
+    assert_relative_eq!(stap("lambda").value.unwrap(), eigen.lambda_z.unwrap(), max_relative = 1e-12);
+    assert!(stap("lambda").formula_latex.contains(r"\frac{l_{0,z}}{i_z}"), "{}", stap("lambda").formula_latex);
+    assert_eq!(stap("lambda_lim").symbol, r"\lambda_{lim,z}");
+    assert!(poort_z.deelstappen.iter().all(|d| d.titel.ends_with("om de z-as")));
+    // En het model ziet deze richting niet — dat staat bij de toets.
+    assert!(poort_z.notes.iter().any(|n| n.contains("UIT het vlak")));
+
     let overgenomen = column_check(verzoek(
         kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend),
         ugt_geschoord(),

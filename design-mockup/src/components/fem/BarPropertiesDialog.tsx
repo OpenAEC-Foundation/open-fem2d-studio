@@ -17,6 +17,7 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { HERKOMST_KIPSTEUNEN, voorspelKniklengte } from "../../lib/kniklengte";
 import type { Beam, BeamCheckConfig, BeamEindVeren, BeamReleases, Node } from "./femTypes";
 import AansluitingKeuze from "./AansluitingKeuze";
 import { useCheckStore } from "../../stores/checkStore";
@@ -262,6 +263,13 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   const length = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
   const angle  = nA && nB ? (Math.atan2(nB.z - nA.z, nB.x - nA.x) * 180 / Math.PI) : 0;
   const systemLengthM = (length / 1000).toFixed(2);
+  // L_cr,z die de kern gebruikt als het veld leeg blijft. Deze dialoog kent
+  // alleen de bovenflenssteunen als tekstveld; de onderflenssteunen komen uit
+  // de bestaande configuratie (het eigenschappenpaneel bewerkt ze).
+  const voorspeldZ = voorspelKniklengte(undefined, length, {
+    boven: sanitizeRestraintFractions(parseRestraintInput(restraintsStr)),
+    onder: cfg0.lateralRestraintsBottom,
+  });
 
   const deflClassOptions: Array<{ value: NonNullable<BeamCheckConfig["deflectionClass"]>; label: string }> = [
     { value: "floor",        label: t("cfg.deflFloor") },
@@ -554,8 +562,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   uit de flensfracties zou l_ef stilzwijgend verkleinen. */}
               <div className="bar-props-section">
                 <div className="bar-props-section-title">{t("cfg.bucklingTitle")}</div>
+                {/* In het vlak / uit het vlak in het label, zodat y en z niet
+                    te verwisselen zijn; de placeholder is wat de kern gaat
+                    gebruiken als het veld leeg blijft (lib/kniklengte.ts). */}
                 <div className="bar-props-row">
-                  <span>L_cr,y (m)</span>
+                  <span>{t("cfg.bucklingInPlane")}</span>
                   <input
                     type="number" className="bar-props-input" step="0.1" min="0"
                     placeholder={systemLengthM}
@@ -564,15 +575,23 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   />
                 </div>
                 <div className="bar-props-row">
-                  <span>L_cr,z (m)</span>
+                  <span>{t("cfg.bucklingOutOfPlane")}</span>
                   <input
                     type="number" className="bar-props-input" step="0.1" min="0"
-                    placeholder={systemLengthM}
+                    placeholder={(voorspeldZ.lCrMm / 1000).toFixed(2)}
                     value={lczStr}
                     onChange={(e) => setLczStr(e.target.value)}
                   />
                 </div>
                 <div className="bar-props-hint">
+                  {t("cfg.bucklingEmptyIs", {
+                    waarde: (voorspeldZ.lCrMm / 1000).toFixed(2).replace(".", ","),
+                    herkomst:
+                      voorspeldZ.herkomst === HERKOMST_KIPSTEUNEN
+                        ? t("cfg.herkomstKipsteunen")
+                        : t("cfg.herkomstStaaflengte"),
+                  })}{" "}
+                  {t("cfg.bucklingOutOfPlaneHint")}{" "}
                   {t("cfg.bucklingHint")}
                   {/* Inline terugval-tekst: de sleutel staat (nog) niet in de
                       check.json-bestanden onder i18n/locales, en die vallen

@@ -33,11 +33,30 @@ impl BucklingCurve {
             _ => None,
         }
     }
+
+    /// De naam van de kromme zoals tabel 6.1 en 6.2 haar schrijven.
+    pub fn letter(self) -> &'static str {
+        match self {
+            Self::A0 => "a0",
+            Self::A => "a",
+            Self::B => "b",
+            Self::C => "c",
+            Self::D => "d",
+        }
+    }
+}
+
+/// Phi = 0,5 · (1 + alpha · (lambda − 0,2) + lambda²) (eq. 6.49)
+///
+/// Afgesplitst van [`chi`] zodat de uitgeschreven afleiding (`column_buckling`)
+/// Φ laat zien zonder een tweede som te maken die van deze kan afdrijven.
+pub fn phi(lambda_bar: f64, alpha: f64) -> f64 {
+    0.5 * (1.0 + alpha * (lambda_bar - 0.2) + lambda_bar.powi(2))
 }
 
 /// chi = 1 / (Phi + sqrt(Phi^2 - lambda^2)), with chi <= 1.0 (eq. 6.49)
 pub fn chi(lambda_bar: f64, alpha: f64) -> f64 {
-    let phi = 0.5 * (1.0 + alpha * (lambda_bar - 0.2) + lambda_bar.powi(2));
+    let phi = phi(lambda_bar, alpha);
     let denom = phi + (phi.powi(2) - lambda_bar.powi(2)).sqrt();
     if denom > 0.0 { (1.0 / denom).min(1.0) } else { 1.0 }
 }

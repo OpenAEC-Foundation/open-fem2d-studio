@@ -92,8 +92,11 @@ log("\n[1] Staal ZONDER checkConfig → gedocumenteerde defaults");
   });
   checkTrue("1 staal-input, 0 skipped", inputs.length === 1 && skipped.length === 0);
   const i = inputs[0];
-  check("buckling_length_y_m = systeemlengte", i.buckling_length_y_m, 6);
-  check("buckling_length_z_m = systeemlengte", i.buckling_length_z_m, 6);
+  // 0 = niet opgegeven: de REKENKERN kiest de terugval en zet de herkomst in de
+  // toets (test-zwakke-as.mjs). Tot september 2026 vulde de bouwer hier zelf de
+  // systeemlengte in, en kon de toets een terugval niet van een opgave onderscheiden.
+  check("buckling_length_y_m = 0 (kern kiest)", i.buckling_length_y_m, 0);
+  check("buckling_length_z_m = 0 (kern kiest)", i.buckling_length_z_m, 0);
   checkDeep("geen kipsteunen", i.lateral_bracing.top_flange_positions, []);
   check("deflection_limit_class Floor", i.deflection_limit_class, "Floor");
   check("deflection_limit_numerator 333", i.deflection_limit_numerator, 333);
@@ -180,7 +183,7 @@ log("\n[3] Hout ZONDER checkConfig → gedocumenteerde defaults");
   check("load_duration MediumTerm", i.load_duration, "MediumTerm");
   check("deflection_limit_fin 250", i.deflection_limit_fin, 250);
   check("deflection_limit_add 333", i.deflection_limit_add, 333);
-  check("buckling_length_y_m = systeemlengte", i.buckling_length_y_m, 6);
+  check("buckling_length_y_m = 0 (kern kiest)", i.buckling_length_y_m, 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

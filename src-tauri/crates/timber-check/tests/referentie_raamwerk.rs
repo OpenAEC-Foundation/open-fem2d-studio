@@ -50,6 +50,7 @@ fn basis(beam_id: u32) -> TimberBeamCheckInput {
         forces_envelope: vec![],
         buckling_length_y_m: 0.0,
         buckling_length_z_m: 0.0,
+        lateral_bracing: None,
         ltb_segment_length_m: 0.0,
         ltb_load_case: nen_en_1995_1_1::stability::LtbLoadCase::UniformLoad,
         ltb_load_position: nen_en_1995_1_1::stability::LtbLoadPosition::CentreOfGravity,
@@ -82,6 +83,7 @@ fn ligger() -> TimberBeamCheckResult {
         ],
         buckling_length_y_m: 6.342, // systeemlengte
         buckling_length_z_m: 1.268, // kipsteunafstand (4 steunen, 5 velden)
+        lateral_bracing: None,
         ltb_segment_length_m: 1.268,
         // De referentie rekent feitelijk met l_ef = 1268 mm (= de
         // kipsteunafstand; haar afgedrukte tabel 6.1-bewerking is
@@ -105,6 +107,7 @@ fn kolom() -> TimberBeamCheckResult {
         ],
         buckling_length_y_m: 3.313,
         buckling_length_z_m: 3.313, // geen zijdelingse steunen
+        lateral_bracing: None,
         // De referentie voert §6.3.3 alleen voor de ligger uit; voor de
         // kolom rapporteert zij uitsluitend §6.3.2.
         perform_ltb_check: false,

@@ -16,9 +16,10 @@
 // Het veld tonen is dus geen schijninvoer meer.
 //
 // Wat hier wordt vastgelegd:
-//  (a) zonder checkConfig blijft alles zoals het was: beide kniklengtes de
-//      systeemlengte (regressie-anker — deze wijziging mag geen bestaande
-//      berekening verschuiven);
+//  (a) zonder checkConfig gaat 0 (= niet opgegeven) door. Sinds september 2026
+//      kiest de REKENKERN dan de terugval en zet hij de herkomst in de toets:
+//      dezelfde getallen als vroeger, maar niet meer stil (zie
+//      test-zwakke-as.mjs);
 //  (b) een ingevulde kniklengte komt 1-op-1 in TimberBeamCheckInput, in
 //      METER, per as afzonderlijk, met de systeemlengte als terugval voor de
 //      as die leeg blijft;
@@ -102,12 +103,12 @@ const hout = (checkConfig) =>
   }).inputs[0];
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[1] Hout ZONDER kniklengte → systeemlengte om beide assen (regressie)");
+log("\n[1] Hout ZONDER kniklengte → 0 om beide assen, de kern kiest (regressie)");
 {
   const i = hout(undefined);
   checkTrue("er is een hout-invoer", i !== undefined);
-  check("buckling_length_y_m = 6 m", i.buckling_length_y_m, 6);
-  check("buckling_length_z_m = 6 m", i.buckling_length_z_m, 6);
+  check("buckling_length_y_m = 0 (kern kiest)", i.buckling_length_y_m, 0);
+  check("buckling_length_z_m = 0 (kern kiest)", i.buckling_length_z_m, 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -132,14 +133,14 @@ log("\n[2] Hout MET kniklengte → 1-op-1 door, in meter, per as");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[3] Eén as ingevuld → de andere valt terug op de systeemlengte");
+log("\n[3] Eén as ingevuld → de andere gaat als 0 door (de kern kiest)");
 {
   const alleenY = hout({ bucklingLengthY_m: 4.5 });
   check("y = 4,5", alleenY.buckling_length_y_m, 4.5);
-  check("z terugval = 6", alleenY.buckling_length_z_m, 6);
+  check("z niet opgegeven = 0", alleenY.buckling_length_z_m, 0);
 
   const alleenZ = hout({ bucklingLengthZ_m: 1.5 });
-  check("y terugval = 6", alleenZ.buckling_length_y_m, 6);
+  check("y niet opgegeven = 0", alleenZ.buckling_length_y_m, 0);
   check("z = 1,5", alleenZ.buckling_length_z_m, 1.5);
 }
 

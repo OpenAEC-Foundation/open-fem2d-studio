@@ -67,7 +67,7 @@ use mechanics::{ForcePoint, ForceStateSnapshot};
 use nen_en_1992_1_1::checks::minimum_eccentricity_mm;
 use nen_en_1992_1_1::kolom::{
     as_max_9_5_2, as_min_9_5_2, dubbele_buiging_deelstappen, e_i_5_2_mm, exponent_a_5_39,
-    hoekstaven_9_5_2, interactie_5_39, kolom_deelstappen, kolomslankheid,
+    hoekstaven_9_5_2, interactie_5_39, kolom_deelstappen, kolom_deelstappen_om_as, kolomslankheid,
     min_diameter_dwarswapening_9_5_3, min_diameter_langsstaaf_9_5_2, min_dwarsafmeting_9_5_1,
     moment_tweede_as_deelstappen, n_rd_5_39_n, opgesloten_staven_9_5_3, s_cl_tmax_9_5_3,
     scheefstand_5_1, toepassingsgebied_9_5_1, traagheidsstraal_mm, voorwaarde_5_38a,
@@ -1674,7 +1674,17 @@ fn tweede_as_toetsen(
             unit: "-".to_string(),
         },
     ];
-    poort_z.deelstappen = kolom_deelstappen(&slank_z);
+    // De keten om z draagt de asnaam in elk symbool (l₀,z, i_z, λ_z,
+    // λ_lim,z), zodat hij in het rapport niet met de poort om y te verwarren
+    // is.
+    poort_z.deelstappen = kolom_deelstappen_om_as(&slank_z, "z");
+    poort_z.notes.push(
+        "Om de z-as buigt de kolom UIT het vlak van het model. De raamwerkberekening ziet die \
+         richting niet — ook niet als zij tweede orde rekent — en levert daar M_z = 0. Daarom \
+         bepaalt deze toets de imperfectie en e₂ om z zelf, in plaats van op de krachten uit het \
+         model te vertrouwen."
+            .to_string(),
+    );
     poort_z.value = slank_z.lambda_lim;
     poort_z.unit = "-".to_string();
     poort_z.notes.push(herkomst_z.clone());

@@ -2,6 +2,7 @@
 //! referentie-uitwerking (C24 96x450, klimaatklasse 1, middellang),
 //! opgebouwd uit de losse normfuncties.
 
+use nen_en_1993_1_1_stability::kniklengte::Kniklengte;
 use approx::assert_relative_eq;
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nen_en_1995_1_1::stability::{
@@ -75,8 +76,8 @@ fn staaf2_volledige_afleiding() {
     let kolom = check_column_stability(
         &sectie,
         &ColumnStabilityInput {
-            l_cr_y_mm: 6342.0,
-            l_cr_z_mm: 1268.0,
+            kniklengte_y: Kniklengte::opgegeven("y", 6342.0, true),
+            kniklengte_z: Kniklengte::opgegeven("z", 1268.0, false),
             f_c0k_mpa: mat.f_c0k,
             e0_05_mpa: mat.e0_05,
             beta_c: beta_c(mat.timber_type),

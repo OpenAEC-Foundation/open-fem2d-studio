@@ -327,8 +327,10 @@ fn tool_definitions() -> Value {
                             "bottom_flange_positions": { "type": "array", "items": { "type": "number" } }
                         }
                     },
-                    "buckling_length_y_m": { "type": "number", "description": "Kniklengte om de sterke as, m." },
-                    "buckling_length_z_m": { "type": "number", "description": "Kniklengte om de zwakke as, m." },
+                    "buckling_length_y_m": { "type": "number", "default": 0,
+                        "description": "Kniklengte om de sterke y-as in m: knik IN het vlak van het model. 0 (of weglaten) = niet opgegeven; de kern houdt dan de staaflengte aan en zet in de toets 6.3.1_buckling dat die lengte een terugval is. Een negatieve of niet-eindige waarde wordt genegeerd met een kanttekening." },
+                    "buckling_length_z_m": { "type": "number", "default": 0,
+                        "description": "Kniklengte om de zwakke z-as in m: knik UIT het vlak van het model, een richting die de raamwerkberekening nooit ziet. 0 (of weglaten) = niet opgegeven; de kern leidt L_cr,z dan af uit 'lateral_bracing', maar ALLEEN op plaatsen waar een kipsteun aan de boven- EN aan de onderflens zit (binnen 1 mm): de grootste afstand tussen zulke plaatsen, de staafeinden meegeteld. Een steun aan een flens verkort L_cr,z NIET (NEN-EN 1993-1-1 6.3.5.2(2) en 6.3.1.4(5)). Zonder zulke paren geldt de staaflengte. De gebruikte waarde en haar herkomst ('opgegeven', 'uit de kipsteunen', 'staaflengte (terugval)') staan in de toets." },
                     "deflection_limit_class": { "type": "string",
                         "enum": ["Floor", "FloorBrittlePartitions", "Roof", "Cantilever", "Custom"],
                         "description": "Doorbuigingsklasse. Bepaalt de noemer voor w_fin, en de NB-categorie uit NEN-EN 1990:2002/NB:2019 A1.4.3(3) voor w_add: 'Floor' = 3/1000 van l_rep (overige vloeren en daken die intensief door personen worden gebruikt), 'FloorBrittlePartitions' = l_rep/500 (vloeren die scheurgevoelige scheidingswanden dragen), 'Roof' = l_rep/250 (overige daken), 'Cantilever' = dezelfde categorie als 'Floor' maar met l_rep = tweemaal de uitkraaglengte. De noemer uit 'deflection_limit_numerator' telt alleen bij 'Custom'." },
@@ -355,7 +357,6 @@ fn tool_definitions() -> Value {
                 "required": [
                     "beam_id", "profile_name", "steel_grade", "length_m",
                     "forces_envelope", "lateral_bracing",
-                    "buckling_length_y_m", "buckling_length_z_m",
                     "deflection_limit_class", "deflection_limit_numerator",
                     "deflection_actual_max_mm", "is_cantilever", "consequence_class"
                 ]

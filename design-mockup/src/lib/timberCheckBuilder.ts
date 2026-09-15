@@ -28,9 +28,10 @@
  * doorbuigingsklasse. Gedocumenteerde defaults voor ontbrekende velden:
  *  - klimaatklasse 1, belastingduur "middellang" (maatgevend voor de
  *    gebruikelijke UGT-combinatie met veranderlijke vloerbelasting);
- *  - kniklengte om beide assen: cfg.bucklingLengthY_m / _Z_m, leeg =
- *    systeemlengte (sinds september 2026 ook voor hout invoerbaar; zie de
- *    toelichting bij het `inputs.push`); kipsteunafstand = staaflengte;
+ *  - kniklengte om beide assen: cfg.bucklingLengthY_m / _Z_m; leeg → 0 en
+ *    de kern kiest (staaflengte, of om z uit steunen aan beide randen) en
+ *    meldt de herkomst (zie de toelichting bij het `inputs.push`);
+ *    kipsteunafstand = staaflengte;
  *    belastinggeval "gelijkmatig verdeeld" aangrijpend in het
  *    zwaartepunt; k_cr = 1,0; geen lastverdelend systeem;
  *  - doorbuiging: klasse "vloer" → w_fin ≤ L/250 en w_add ≤ L/333
@@ -49,6 +50,7 @@ import type { ServiceClass } from "./types/timber/ServiceClass";
 import type { CheckSkip } from "./checkTypes";
 import {
   isSteelProfile,
+  sanitizeRestraintFractions,
   beamLengthMm,
   buildForcesEnvelope,
   deflectionNotesFor,
@@ -431,8 +433,21 @@ export function buildTimberCheckInputs(data: TimberBuildData): TimberBuildResult
       // Geen extra validatie hier: beide invoerpaden schrijven alleen een
       // eindige waarde > 0 weg (BarPropertiesDialog.buildCheckConfig, en
       // valideerModel keurt het veld met `positief: true`).
-      buckling_length_y_m: cfg.bucklingLengthY_m ?? lengthMm / 1000,
-      buckling_length_z_m: cfg.bucklingLengthZ_m ?? lengthMm / 1000,
+      //
+      // Sinds september 2026 gaat een leeg veld als 0 = "niet opgegeven" door.
+      // De kern kiest dan zelf en zet de herkomst in de kolomtoets en in de
+      // drukterm van de kiptoets: om y de staaflengte, om z de grootste
+      // afstand tussen plaatsen met een steun aan de boven- ÉN onderrand
+      // (`lateral_bracing` hieronder), anders de staaflengte.
+      buckling_length_y_m: cfg.bucklingLengthY_m ?? 0,
+      buckling_length_z_m: cfg.bucklingLengthZ_m ?? 0,
+      // Zijdelingse steunen per rand — ALLEEN voor de kniklengte om z. Dezelfde
+      // twee lijsten als bij staal (boven = bovenrand, onder = onderrand). De
+      // kipsteunafstand hieronder blijft er uitdrukkelijk los van.
+      lateral_bracing: {
+        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
+        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom),
+      },
       // Kipsteunafstand voor tabel 6.1; 0 → staaflengte.
       //
       // Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt

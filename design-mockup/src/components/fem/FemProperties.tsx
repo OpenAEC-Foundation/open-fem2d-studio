@@ -10,6 +10,13 @@
  * Mutations dispatch through the store callbacks passed in by App.tsx.
  */
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  HERKOMST_KIPSTEUNEN,
+  HERKOMST_OPGEGEVEN,
+  voorspelKniklengte,
+  type VoorspeldeKniklengte,
+} from "../../lib/kniklengte";
 import "./FemProperties.css";
 import type {
   Node, Beam, Plate, Support, Load, Selection, SupportType, BeamCheckConfig,
@@ -506,6 +513,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       setKipsteunenOnderTekst(beam.checkConfig?.lateralRestraintsBottom?.join(", ") ?? "");
     }
   }, [beam.id, beam.checkConfig]);
+  const { t } = useTranslation("check");
 
   // Uit de geometrie afgeleide rol — de "Automatisch"-optie toont hem, zodat
   // de gebruiker ziet wat er gebeurt als hij niets kiest.
@@ -518,6 +526,18 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       .filter((v) => Number.isFinite(v) && v > 0 && v < 1)
       .sort((a, b) => a - b);
   const systeemlengteM = (L / 1000).toFixed(2);
+  // Wat de kern gaat gebruiken als het veld leeg blijft (zie lib/kniklengte.ts).
+  const voorspeldY = voorspelKniklengte(undefined, L);
+  const voorspeldZ = voorspelKniklengte(undefined, L, {
+    boven: beam.checkConfig?.lateralRestraints,
+    onder: beam.checkConfig?.lateralRestraintsBottom,
+  });
+  const herkomstTekst = (v: VoorspeldeKniklengte): string =>
+    v.herkomst === HERKOMST_OPGEGEVEN
+      ? t("cfg.herkomstOpgegeven")
+      : v.herkomst === HERKOMST_KIPSTEUNEN
+        ? t("cfg.herkomstKipsteunen")
+        : t("cfg.herkomstStaaflengte");
 
   return (
     <div className="fem-properties">
@@ -558,21 +578,36 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               veld, hieronder bij "Kip (art. 6.3.3)" — afleiden uit de
               flensfracties zou l_ef stilzwijgend verkleinen en de kiptoets
               gunstiger maken dan de invoer rechtvaardigt. */}
-          <Section title="Kniklengtes">
-            <Row label="L_cr,y [m]">
+          {/* IN HET VLAK / UIT HET VLAK. De velden heten naar de as (y, z) én
+              naar het vlak, zodat een constructeur ze niet kan verwisselen: in
+              deze app is y altijd de sterke as in het vlak (geen
+              doorsnederotatie, de oplosser rekent met I_y).
+              De placeholder is wat de REKENKERN gaat gebruiken als het veld
+              leeg blijft — voorspeld door lib/kniklengte.ts, dat
+              test-zwakke-as.mjs tegen de kern houdt. Om z kan dat de afstand
+              tussen kipsteunen aan boven- én onderflens zijn; een lege doos
+              zou die afleiding verzwijgen. */}
+          <Section title={t("cfg.bucklingTitle")}>
+            <Row label={t("cfg.bucklingInPlane")}>
               <input
                 type="number" className="fem-prop-input" step="0.1" min="0"
-                placeholder={systeemlengteM}
+                placeholder={(voorspeldY.lCrMm / 1000).toFixed(2)}
                 value={cfg.bucklingLengthY_m ?? ""}
                 onChange={(e) => setCfg({
                   bucklingLengthY_m: e.target.value === "" ? undefined : Number(e.target.value),
                 })}
               />
             </Row>
-            <Row label="L_cr,z [m]">
+            <div className="fem-prop-hint">
+              {t("cfg.bucklingEmptyIs", {
+                waarde: (voorspeldY.lCrMm / 1000).toFixed(2).replace(".", ","),
+                herkomst: herkomstTekst(voorspeldY),
+              })}
+            </div>
+            <Row label={t("cfg.bucklingOutOfPlane")}>
               <input
                 type="number" className="fem-prop-input" step="0.1" min="0"
-                placeholder={systeemlengteM}
+                placeholder={(voorspeldZ.lCrMm / 1000).toFixed(2)}
                 value={cfg.bucklingLengthZ_m ?? ""}
                 onChange={(e) => setCfg({
                   bucklingLengthZ_m: e.target.value === "" ? undefined : Number(e.target.value),
@@ -580,20 +615,28 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               />
             </Row>
             <div className="fem-prop-hint">
-              Leeg = systeemlengte ({systeemlengteM} m).
+              {t("cfg.bucklingEmptyIs", {
+                waarde: (voorspeldZ.lCrMm / 1000).toFixed(2).replace(".", ","),
+                herkomst: herkomstTekst(voorspeldZ),
+              })}{" "}
+              {t("cfg.bucklingOutOfPlaneHint")}
               {isHout && " Bij hout telt L_cr,z ook mee in de drukterm van de kiptoets (6.35)."}
             </div>
           </Section>
 
-          {!isHout && (
+          {(
             <>
-              {/* Kipsteunen per flens. Meestal wil je er gewoon n gelijk
+              {/* Sinds september 2026 ook voor hout: de kern leidt L_cr,z af
+                  uit plaatsen waar boven- én onderrand gesteund zijn. Voor de
+                  kiptoets van hout tellen deze posities NIET — die heeft zijn
+                  eigen kipsteunafstand hieronder, en dat besluit blijft staan.
+                  Kipsteunen per flens. Meestal wil je er gewoon n gelijk
                   verdeeld: vul het aantal in en de posities volgen. Wie een
                   onregelmatige verdeling nodig heeft, past het positieveld
                   daarna aan (het aantal volgt dan mee). */}
               {([
-                ["boven", "Kipsteunen bovenflens", "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
-                ["onder", "Kipsteunen onderflens", "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
+                ["boven", isHout ? t("cfg.bracingTopTimber") : "Kipsteunen bovenflens", "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
+                ["onder", isHout ? t("cfg.bracingBottomTimber") : "Kipsteunen onderflens", "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
               ] as const).map(([sleutel, titel, veld, tekst, setTekst]) => {
                 const huidig = (cfg[veld] ?? []) as number[];
                 return (
@@ -627,6 +670,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         spellCheck={false}
                       />
                     </Row>
+                    {isHout && (
+                      <div className="fem-prop-hint">{t("cfg.bracingTimberHint")}</div>
+                    )}
                     {huidig.length > 0 && L > 0 && (
                       <div className="fem-prop-hint">
                         Op {huidig.map((f) => ((f * L) / 1000).toFixed(2).replace(".", ",")).join(" · ")} m

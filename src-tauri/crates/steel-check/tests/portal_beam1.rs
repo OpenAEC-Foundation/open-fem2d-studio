@@ -16,6 +16,16 @@
 //! van de oude 33.33 mm bij L = 5000 mm.
 //! De unity check blijft 0,00 omdat `deflection_actual_max_mm` in deze test 0 is;
 //! de referentie-uitwerking rekent de doorbuiging niet mee in deze staaf.
+//!
+//! WAAROM DE SNAPSHOT OP 15 SEPTEMBER 2026 IS VERSCHOVEN (knik om de zwakke as)
+//! Alleen de toets `6.3.1_buckling` verandert, en daarin geen enkel getal dat
+//! al bestond. De titel noemt beide assen met hun vlak; `variables` krijgt
+//! L_cr,y en L_cr,z, `intermediate_values` N_b,Rd per as; de afleiding
+//! (`deelstappen`) schrijft per as een volledige tak uit; en de Engelse notitie
+//! "Governing axis" is vervangen door Nederlandse kanttekeningen met de
+//! herkomst van de kniklengte. Waarde, unity check, status en alle bestaande
+//! variabelen en tussenwaarden zijn gelijk gebleven — bij het bijwerken per veld
+//! nagelopen.
 
 use steel_check::*;
 use mechanics::{InternalForces, ForcePoint};
