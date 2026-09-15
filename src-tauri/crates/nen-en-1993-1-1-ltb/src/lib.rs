@@ -327,6 +327,13 @@ pub(crate) struct McrInvoer {
 ///
 /// `s_mm`, `k_red` en `m_cr` hangen niet van het veld af (zij gaan over de
 /// doorsnede en over L_g) en komen daarom van buiten.
+///
+/// Levert naast het maatgevende veld ook ALLE doorgerekende velden, in de
+/// volgorde vanaf het staafbegin. Die rekenen nergens meer in mee; ze gaan naar
+/// het overzicht per kipveld in de afleiding. Zonder dat overzicht ziet een
+/// lezer bij steunen op de derdepunten alleen "L_st = 2000 mm, L_kip = 2800 mm"
+/// en kan hij niet nagaan waarom niet het middenveld, met L_kip = L_st, de
+/// uitkomst bepaalt.
 fn maatgevend_kipveld(
     velden: &[Kipveld],
     l_g_mm: f64,
@@ -336,7 +343,7 @@ fn maatgevend_kipveld(
     tf_mm: f64,
     s_mm: f64,
     m_cr: impl Fn(&McrInvoer) -> f64,
-) -> Veldresultaat {
+) -> (Veldresultaat, Vec<Veldresultaat>) {
     let aantal_velden = velden.len().max(1);
     let bereken = |index: usize, veld: &Kipveld| {
         let (beta, m_groot_knm) = veld.beta_en_grootste_eindmoment();
@@ -382,14 +389,108 @@ fn maatgevend_kipveld(
         m_midden_knm: 0.0,
         tussen_gaffels: true,
     };
-    let mut maatgevend = bereken(0, velden.first().unwrap_or(&leeg));
-    for (i, veld) in velden.iter().enumerate().skip(1) {
-        let kandidaat = bereken(i, veld);
+    let alle: Vec<Veldresultaat> = if velden.is_empty() {
+        vec![bereken(0, &leeg)]
+    } else {
+        velden.iter().enumerate().map(|(i, veld)| bereken(i, veld)).collect()
+    };
+    // Zelfde keuze als voorheen: strikt lager wint, bij gelijke M_cr blijft
+    // het eerste veld staan.
+    let mut maatgevend = alle[0];
+    for kandidaat in alle.iter().skip(1) {
         if kandidaat.m_cr_knm < maatgevend.m_cr_knm {
-            maatgevend = kandidaat;
+            maatgevend = *kandidaat;
         }
     }
-    maatgevend
+    (maatgevend, alle)
+}
+
+/// Een getal in de Nederlandse schrijfwijze zonder "−0": een eindmoment dat
+/// numeriek −10⁻¹² kNm is, hoort in een rapporttekst als 0,000 te staan en
+/// niet als -0,000.
+pub(crate) fn nl_zonder_min_nul(x: f64, decimalen: usize) -> String {
+    let s = nl(x, decimalen);
+    let kaal = s.trim_start_matches('-');
+    if kaal.chars().all(|c| c == '0' || c == ',') {
+        kaal.to_string()
+    } else {
+        s
+    }
+}
+
+/// NB.NB.4.3 — waarom de vervangende kiplengte van het maatgevende veld
+/// GROTER is dan de steunafstand. `None` als L_kip = L_st.
+///
+/// ## Waarom deze tekst bestaat
+///
+/// Bij kipsteunen op de derdepunten van een vrij opgelegde ligger meldt de
+/// toets bij elke overspanning L_kip = 1,4·L/3 = 0,467·L; bij L = 6 m 2800 mm
+/// tegen een steunafstand van 2000 mm. Dat oogt als een fout in de veldkeuze,
+/// maar het is de regel van de bijlage zelf. NB.NB.4.3 geeft voor een kipveld
+/// tussen één gaffel en één kipsteun, of tussen twee kipsteunen,
+/// L_kip = (1,4 − 0,8·β)·L_st met 1,0 ≤ L_kip/L_st ≤ 1,4, en
+/// β = M_y,1,Ed/M_y,2,Ed. In een eindveld van een vrij opgelegde ligger is het
+/// moment op de gaffel nul, dus β = 0 en L_kip = 1,4·L_st — een vaste factor,
+/// los van profiel en overspanning. Dat eindveld heeft ook de laagste M_cr
+/// (het middenveld heeft β = +1 en L_kip = L_st, maar een veel lagere C₁).
+///
+/// Zonder uitleg moet een constructeur dat zelf uit de norm reconstrueren.
+///
+/// Eén tekst, twee bestemmingen: de notities van de kiptoets — die het rapport
+/// ook toont als de kiptoets niet maatgevend is en de afleiding dus niet wordt
+/// uitgeschreven — en de deelstap L_kip.
+pub(crate) fn l_kip_toelichting(v: &Veldresultaat) -> Option<String> {
+    if v.tussen_gaffels || v.l_st_mm <= 0.0 || v.l_kip_mm <= v.l_st_mm * (1.0 + 1e-9) {
+        return None;
+    }
+    let meer_velden = v.aantal_velden > 1;
+    let eerste = meer_velden && v.index == 0;
+    let laatste = meer_velden && v.index + 1 == v.aantal_velden;
+    let plaats = if eerste {
+        "tussen de gaffel bij het staafbegin en de eerste kipsteun"
+    } else if laatste {
+        "tussen de laatste kipsteun en de gaffel bij het staafeind"
+    } else if meer_velden {
+        "tussen twee kipsteunen"
+    } else {
+        "tussen een gaffel en een kipsteun of tussen twee kipsteunen"
+    };
+    let mut t = format!(
+        "Waarom L_kip groter is dan de steunafstand: L_kip = {} mm tegen L_st = {} mm, \
+         L_kip/L_st = {}. Dat is de regel van NB.NB.4.3 zelf, geen afronding of opslag: voor \
+         een kipveld tussen een gaffel en een kipsteun, of tussen twee kipsteunen, geldt \
+         L_kip = (1,4 − 0,8·β)·L_st met 1,0 ≤ L_kip/L_st ≤ 1,4. L_kip is dus pas gelijk aan \
+         L_st bij β ≥ 0,5; bij β ≤ 0 geldt de bovengrens 1,4·L_st. Het maatgevende kipveld \
+         (veld {} van {}) ligt {plaats}, met β = M_y,1,Ed/M_y,2,Ed = {}/{} = {}.",
+        nl(v.l_kip_mm, 0),
+        nl(v.l_st_mm, 0),
+        nl(v.l_kip_mm / v.l_st_mm, 3),
+        v.index + 1,
+        v.aantal_velden,
+        nl_zonder_min_nul(v.m_klein_knm, 3),
+        nl_zonder_min_nul(v.m_groot_knm, 3),
+        nl_zonder_min_nul(v.beta, 3),
+    );
+    // Het moment OP DE GAFFEL van dit eindveld: het begin van het eerste veld,
+    // het eind van het laatste. Alleen als juist dát moment nul is, is β = 0
+    // een gevolg van de oplegging; een nulpunt bij de kipsteun geeft dezelfde
+    // β maar een andere reden.
+    let m_gaffel = if eerste {
+        Some(v.momenten_knm[0])
+    } else if laatste {
+        Some(v.momenten_knm[2])
+    } else {
+        None
+    };
+    if let Some(m) = m_gaffel {
+        if m.abs() <= 5e-4 * v.m_groot_knm.abs() {
+            t.push_str(
+                " Het moment op die gaffel is nul, dus β = 0 en L_kip = 1,4·L_st: een vaste \
+                 factor, onafhankelijk van profiel en overspanning.",
+            );
+        }
+    }
+    Some(t)
 }
 
 /// De tussenwaarden die beide kippaden in het resultaat zetten, in de volgorde
@@ -476,7 +577,7 @@ pub fn m_b_rd_channel(
 ) -> StabilityCalc {
     let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
-    let v = maatgevend_kipveld(
+    let (v, alle_velden) = maatgevend_kipveld(
         velden, l_g_mm, q_equiv_n_per_mm, z_a_mm, p.h_mm, p.tf_mm, s_mm,
         |i| nb_annex::m_cr_channel_section(i.c, l_g_mm, p.iz_mm4, p.it_mm4, k_red),
     );
@@ -530,7 +631,7 @@ pub fn m_b_rd_channel(
         ],
         intermediate_values,
         deelstappen: kip_deelstappen(&Kipgegevens {
-            p, grade, l_g_mm, v: &v,
+            p, grade, l_g_mm, v: &v, alle_velden: &alle_velden,
             q_equiv_n_per_mm, z_a_mm, s_mm, k_red,
             lambda_lt, alpha_lt, chi_lt,
             vorm: McrVorm::Kanaal,
@@ -565,6 +666,7 @@ pub fn m_b_rd_channel(
                  expliciete keuze buiten de tabel om, geen normwaarde."
                     .to_string(),
             ];
+            n.extend(l_kip_toelichting(&v));
             n.extend(nb_waarschuwingen(l_g_mm, &v, z_a_mm, p.h_mm, p.tf_mm));
             n
         },
@@ -744,7 +846,7 @@ pub fn m_b_rd_monosymmetrisch(
                 z_g_mm, z_j_reken,
             )
     };
-    let v = maatgevend_kipveld(
+    let (v, alle_velden) = maatgevend_kipveld(
         velden, l_g_mm, q_equiv_n_per_mm, z_a_mm, p.h_mm, p.tf_mm, s_mm, m_cr_van,
     );
 
@@ -837,7 +939,7 @@ pub fn m_b_rd_monosymmetrisch(
         ],
         intermediate_values,
         deelstappen: kip_deelstappen(&Kipgegevens {
-            p, grade, l_g_mm, v: &v,
+            p, grade, l_g_mm, v: &v, alle_velden: &alle_velden,
             q_equiv_n_per_mm, z_a_mm, s_mm, k_red,
             lambda_lt, alpha_lt, chi_lt,
             vorm: McrVorm::AlgemeenMonosymmetrisch,
@@ -896,6 +998,7 @@ pub fn m_b_rd_monosymmetrisch(
                         .to_string(),
                 );
             }
+            n.extend(l_kip_toelichting(&v));
             n.extend(nb_waarschuwingen(l_g_mm, &v, z_a_mm, p.h_mm, p.tf_mm));
             n
         },
@@ -926,7 +1029,7 @@ pub fn m_b_rd(
 ) -> StabilityCalc {
     let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
-    let v = maatgevend_kipveld(
+    let (v, alle_velden) = maatgevend_kipveld(
         velden, l_g_mm, q_equiv_n_per_mm, z_a_mm, p.h_mm, p.tf_mm, s_mm,
         |i| nb_annex::m_cr_i_section(i.c, l_g_mm, p.iz_mm4, p.it_mm4, k_red),
     );
@@ -997,7 +1100,7 @@ pub fn m_b_rd(
         ],
         intermediate_values,
         deelstappen: kip_deelstappen(&Kipgegevens {
-            p, grade, l_g_mm, v: &v,
+            p, grade, l_g_mm, v: &v, alle_velden: &alle_velden,
             q_equiv_n_per_mm, z_a_mm, s_mm, k_red,
             lambda_lt, alpha_lt, chi_lt,
             vorm: McrVorm::DubbelsymmetrischeI,
@@ -1058,6 +1161,7 @@ pub fn m_b_rd(
                         .to_string(),
                 );
             }
+            n.extend(l_kip_toelichting(&v));
             n.extend(nb_waarschuwingen(l_g_mm, &v, z_a_mm, p.h_mm, p.tf_mm));
             n
         },
