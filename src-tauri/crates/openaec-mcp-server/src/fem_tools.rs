@@ -889,7 +889,13 @@ fn schema_fem_model() -> Value {
             "scheefstandNoemer": { "type": "number", "exclusiveMinimum": 0, "default": 200,
                 "description": "Noemer van de scheefstand: phi = 1/noemer." },
             "scheefstandRichting": { "type": "integer", "enum": [-1, 1], "default": 1,
-                "description": "Richting van de equivalente horizontale krachten: 1 = +x, -1 = -x." }
+                "description": "Richting van de equivalente horizontale krachten: 1 = +x, -1 = -x." },
+            "scheefstandBron": { "type": "string", "enum": ["vast", "en1993", "en1992", "en1995", "ongunstigste"], "default": "vast",
+                "description": "Waar phi vandaan komt: \"vast\" = 1/scheefstandNoemer; \"en1993\" = EN 1993-1-1 (5.5), \"en1992\" = EN 1992-1-1 (5.1), \"en1995\" = EN 1995-1-1 (5.1), met alpha_h en alpha_m uit h en m; \"ongunstigste\" = de grootste phi van de normen die op het model van toepassing zijn. Bij een norm telt scheefstandNoemer niet; de sidecar rekent dezelfde phi als de app en meldt hem in warnings." },
+            "scheefstandHoogteM": { "type": ["number", "null"], "exclusiveMinimum": 0, "default": null,
+                "description": "Hoogte h in m voor alpha_h; null = uit het model afleiden." },
+            "scheefstandAantalElementen": { "type": ["integer", "null"], "minimum": 1, "default": null,
+                "description": "Aantal dragende verticale elementen m voor alpha_m; null = uit het model afleiden." }
         }
     })
 }
@@ -1061,10 +1067,11 @@ mod tests {
             "nodes", "beams", "supports", "plates", "loadCases", "loads",
             "selfWeightEnabled", "scheefstandEnabled", "scheefstandNoemer",
             "scheefstandRichting",
+            "scheefstandBron", "scheefstandHoogteM", "scheefstandAantalElementen",
         ] {
             assert!(velden.contains_key(veld), "modelschema mist `{veld}`");
         }
-        assert_eq!(velden.len(), 10, "modelschema kent een veld dat de sidecar weigert");
+        assert_eq!(velden.len(), 13, "modelschema kent een veld dat de sidecar weigert");
         assert_eq!(model["additionalProperties"], json!(false));
     }
 

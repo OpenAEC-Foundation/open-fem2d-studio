@@ -66,6 +66,15 @@ import {
 } from "../components/fem/solver/normcombinaties";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { DoorsnedeOnbekendFout } from "../lib/sectionResolver";
+// De scheefstand φ: dezelfde afleiding als de app (App.tsx → bepaalScheefstand).
+import {
+  SCHEEFSTAND_BRONNEN,
+  SCHEEFSTAND_BRON_LABEL,
+  bepaalScheefstand,
+  leidScheefstandGeometrieAf,
+  toepasselijkeScheefstandNormen,
+  type ScheefstandBron,
+} from "../lib/scheefstandNorm";
 import {
   PROJECT_FORMAT_VERSION,
   combinationsFromFile,
@@ -240,6 +249,100 @@ interface GelezenModel {
    * aan naam en factoren, niet aan het bestaan van tellers.
    */
   idTellersUitBestand: { belastinggeval?: number; combinatie?: number } | undefined;
+  /**
+   * Wat er over de scheefstand te melden is: de afgeleide φ als een norm is
+   * gekozen, en de waarschuwingen van die afleiding. Leeg bij de vaste noemer.
+   */
+  scheefstandMeldingen: string[];
+  /** De normkeuze en de handmatige h en m, zoals gelezen — voor `load_project`. */
+  scheefstandKeuze: {
+    scheefstandBron: ScheefstandBron;
+    scheefstandHoogteM: number | null;
+    scheefstandAantalElementen: number | null;
+  };
+}
+
+/**
+ * De scheefstand φ zoals de app hem bepaalt.
+ *
+ * Tot september 2026 las deze weg alleen aan/uit, de ingetikte noemer en de
+ * richting. De normkeuze (`scheefstandBron`), de hoogte en het aantal
+ * kolommen bleven liggen, terwijl de app met de normnoemer rekende. Gemeten
+ * met de echte MCP-server: h = 5 m met EN 1993-1-1 (5.5) gaf via de app
+ * 1/258,2 en via MCP 1/200 (H 29 % te hoog); een eerder ingetikte 1/500 met
+ * daarna een normkeuze gaf MCP 1/500 waar de app 1/258,2 rekende (H 48 % te
+ * laag). In alle zeven gemeten gevallen zonder waarschuwing.
+ *
+ * Nu loopt de bepaling door `bepaalScheefstand`, dezelfde functie als de app,
+ * met h en m uit dezelfde afleiding (`leidScheefstandGeometrieAf`). Een bron
+ * die de app niet kent wordt GEWEIGERD, niet stil als vaste noemer gerekend.
+ * Zonder `scheefstandBron` (elk bestand van vóór de normkeuze) blijft het
+ * precies de vaste noemer, tot op de bit.
+ */
+function leesScheefstand(
+  rauw: Record<string, unknown>,
+  model: Pick<FemModelInvoer, "nodes" | "beams" | "supports">,
+  opgegevenNoemer: number,
+): { noemer: number; meldingen: string[]; keuze: GelezenModel["scheefstandKeuze"] } {
+  const bronRauw = rauw.scheefstandBron;
+  if (bronRauw !== undefined && bronRauw !== null &&
+      !(SCHEEFSTAND_BRONNEN as readonly unknown[]).includes(bronRauw)) {
+    throw new InvoerFout(
+      `\`scheefstandBron\` is "${String(bronRauw)}"; bekend zijn ` +
+        SCHEEFSTAND_BRONNEN.map((b) => `"${b}"`).join(", ") +
+        ". Een onbekende bron wordt geweigerd, niet stil als vaste noemer gerekend.",
+    );
+  }
+  const bron = (bronRauw ?? "vast") as ScheefstandBron;
+  const hoogte = rauw.scheefstandHoogteM;
+  if (hoogte !== undefined && hoogte !== null &&
+      !(typeof hoogte === "number" && Number.isFinite(hoogte) && hoogte > 0)) {
+    throw new InvoerFout(
+      "`scheefstandHoogteM` moet een getal groter dan 0 zijn (hoogte h in m), " +
+        "of null om h uit het model af te leiden.",
+    );
+  }
+  const aantal = rauw.scheefstandAantalElementen;
+  if (aantal !== undefined && aantal !== null &&
+      !(typeof aantal === "number" && Number.isInteger(aantal) && aantal >= 1)) {
+    throw new InvoerFout(
+      "`scheefstandAantalElementen` moet een geheel getal van minstens 1 zijn " +
+        "(aantal dragende verticale elementen m), of null om m uit het model af te leiden.",
+    );
+  }
+  const keuze = {
+    scheefstandBron: bron,
+    scheefstandHoogteM: typeof hoogte === "number" ? hoogte : null,
+    scheefstandAantalElementen: typeof aantal === "number" ? aantal : null,
+  };
+  if (rauw.scheefstandEnabled !== true || bron === "vast") {
+    return { noemer: opgegevenNoemer, meldingen: [], keuze };
+  }
+  const geometrie = leidScheefstandGeometrieAf({
+    nodes: model.nodes, beams: model.beams, supports: model.supports,
+  });
+  const uit = bepaalScheefstand(
+    {
+      bron,
+      noemer: opgegevenNoemer,
+      hoogteM: keuze.scheefstandHoogteM,
+      aantalElementen: keuze.scheefstandAantalElementen,
+    },
+    geometrie,
+    toepasselijkeScheefstandNormen(model.beams),
+  );
+  const herkomst = uit.norm
+    ? `${SCHEEFSTAND_BRON_LABEL[uit.bron]}` +
+      (uit.bron === "ongunstigste" ? ` (${SCHEEFSTAND_BRON_LABEL[uit.norm]})` : "") +
+      `, h = ${uit.hoogteM} m, m = ${uit.aantalElementen}`
+    : SCHEEFSTAND_BRON_LABEL[uit.bron];
+  const meldingen = [
+    `Scheefstand: φ = 1/${uit.noemer.toFixed(1)} volgens ${herkomst} — dezelfde ` +
+      `afleiding als de app; de noemer ${opgegevenNoemer} uit het bestand telt bij ` +
+      "deze normkeuze niet.",
+    ...uit.waarschuwingen.map((w) => `Scheefstand: ${w}`),
+  ];
+  return { noemer: uit.noemer, meldingen, keuze };
 }
 
 /** Een geldige gevolgklasse, of `null`. */
@@ -289,11 +392,21 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
       scheefstandNoemer: bestand.scheefstandNoemer ?? 200,
       scheefstandRichting: bestand.scheefstandRichting ?? 1,
     };
+    // De normkeuze van de scheefstand uit het bestand: φ zoals de app hem
+    // bepaalt, of de vaste noemer als er geen (of "vast") gekozen is.
+    const scheef = leesScheefstand(
+      bestand as unknown as Record<string, unknown>,
+      uitBestand,
+      uitBestand.scheefstandNoemer,
+    );
+    uitBestand.scheefstandNoemer = scheef.noemer;
     return {
       model: uitBestand,
       // De arrays zijn dezelfde objecten als in het bestand, dus een onbekend
       // veld BINNEN een knoop, staaf of last blijft zichtbaar voor de validatie.
       rauw: uitBestand as unknown as Record<string, unknown>,
+      scheefstandMeldingen: scheef.meldingen,
+      scheefstandKeuze: scheef.keuze,
       beams: bestand.beams ?? [],
       combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
       nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
@@ -327,26 +440,31 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     }
   }
 
+  const model: FemModelInvoer = {
+    nodes: eisArray(rauw.nodes ?? [], "model.nodes") as FemModelInvoer["nodes"],
+    beams,
+    supports: eisArray(
+      rauw.supports ?? [],
+      "model.supports",
+    ) as FemModelInvoer["supports"],
+    plates: eisArray(rauw.plates ?? [], "model.plates") as FemModelInvoer["plates"],
+    loadCases: eisArray(
+      rauw.loadCases ?? [],
+      "model.loadCases",
+    ) as FemModelInvoer["loadCases"],
+    loads: eisArray(rauw.loads ?? [], "model.loads") as FemModelInvoer["loads"],
+    selfWeightEnabled: rauw.selfWeightEnabled === true,
+    scheefstandEnabled: rauw.scheefstandEnabled === true,
+    scheefstandNoemer:
+      typeof rauw.scheefstandNoemer === "number" ? rauw.scheefstandNoemer : 200,
+    scheefstandRichting: rauw.scheefstandRichting === -1 ? -1 : 1,
+  };
+  // Ook een los model mag de normkeuze dragen — het is "exact de vorm van een
+  // projectbestand", zegt het toolschema.
+  const scheef = leesScheefstand(rauw, model, model.scheefstandNoemer);
+  model.scheefstandNoemer = scheef.noemer;
   return {
-    model: {
-      nodes: eisArray(rauw.nodes ?? [], "model.nodes") as FemModelInvoer["nodes"],
-      beams,
-      supports: eisArray(
-        rauw.supports ?? [],
-        "model.supports",
-      ) as FemModelInvoer["supports"],
-      plates: eisArray(rauw.plates ?? [], "model.plates") as FemModelInvoer["plates"],
-      loadCases: eisArray(
-        rauw.loadCases ?? [],
-        "model.loadCases",
-      ) as FemModelInvoer["loadCases"],
-      loads: eisArray(rauw.loads ?? [], "model.loads") as FemModelInvoer["loads"],
-      selfWeightEnabled: rauw.selfWeightEnabled === true,
-      scheefstandEnabled: rauw.scheefstandEnabled === true,
-      scheefstandNoemer:
-        typeof rauw.scheefstandNoemer === "number" ? rauw.scheefstandNoemer : 200,
-      scheefstandRichting: rauw.scheefstandRichting === -1 ? -1 : 1,
-    },
+    model,
     rauw,
     beams,
     combinatiesUitBestand: null,
@@ -354,6 +472,8 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     formatVersion: null,
     gevolgklasseUitBestand: null,
     idTellersUitBestand: undefined,
+    scheefstandMeldingen: scheef.meldingen,
+    scheefstandKeuze: scheef.keuze,
   };
 }
 
@@ -717,6 +837,10 @@ function rekenDoor(payload: Record<string, unknown>) {
         "blijft daardoor leeg. Lever de lijst uit de staalprofielendatabase mee.",
     );
   }
+  // De scheefstand: welke φ er is gerekend als een norm is gekozen, en wat
+  // die afleiding te melden had. Zo is in het antwoord te lezen waarom de
+  // horizontale krachten niet bij de noemer uit het bestand horen.
+  waarschuwingen.push(...gelezen.scheefstandMeldingen);
   if (legeGevallen.length > 0) {
     waarschuwingen.push(
       `Belastinggeval(len) ${legeGevallen.join(", ")} zonder werkzame last ` +
@@ -935,6 +1059,7 @@ function opLoadProject(payload: Record<string, unknown>) {
   );
   if (klasseMelding) warnings.push(klasseMelding);
   warnings.push(...openMeldingen);
+  warnings.push(...gelezen.scheefstandMeldingen);
   for (const mld of meldingenBelastinggevallen({
     loadCases: m.loadCases,
     combinations: lijst,
@@ -949,7 +1074,10 @@ function opLoadProject(payload: Record<string, unknown>) {
     path: typeof payload.path === "string" ? payload.path : null,
     format_version: gelezen.formatVersion,
     supported_format_version: PROJECT_FORMAT_VERSION,
-    model: m,
+    // `scheefstandNoemer` is hier de GEREKENDE noemer (na de normkeuze); de
+    // keuze zelf gaat mee, zodat het model heen en weer kan zonder dat de
+    // norm onderweg verdwijnt.
+    model: { ...m, ...gelezen.scheefstandKeuze },
     combinations: lijst.map((c) => ({
       id: c.id,
       name: c.name,

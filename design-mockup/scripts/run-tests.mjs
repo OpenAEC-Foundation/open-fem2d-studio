@@ -141,6 +141,12 @@ const BUNDEL_TESTS = new Set([
   // Verende staafaansluitingen: engine + bouwMultiInput, allebei in de barrel.
   "staafveren",
   "scheefstand",
+  // De MCP-weg rekent φ met de normkeuze uit het bestand of het model, via
+  // dezelfde afleiding als de app. Praat met `sidecar`, `projectFile` en
+  // `valideerModel` — alle drie in de barrel. Hoort juist óók tegen de bundel:
+  // een bundel die de normkeuze nog laat liggen, rekent hetzelfde bestand
+  // met een andere horizontale kracht dan de app (gemeten: tot factor 1,94).
+  "scheefstand-mcp",
   "sectie-doorvoer",
   // Toetst waar de adapter zijn rekenknopen legt (deellastgrenzen,
   // `extraSneden`, de samenvoegregel) en praat daarvoor uitsluitend met
