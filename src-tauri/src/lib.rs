@@ -23,7 +23,10 @@ use timber_check::{TimberBeamCheckInput, TimberBeamCheckResult};
 
 /// Het bedieningskanaal van de app — alleen actief met `OPENAEC_GUI_CONTROL=1`.
 /// Geen rekenkern en dus geen drie-wegen-regel; zie de moduletekst.
-mod gui_control;
+///
+/// `pub` omdat de unit-tests van `gui_control::rapport` in tests/ staan: de
+/// unit-testharnas van deze lib laadt op Windows niet (zie build.rs).
+pub mod gui_control;
 use gui_control::GuiControl;
 use std::sync::Arc;
 use tauri::Manager;

@@ -562,7 +562,7 @@ mod capture {
 /// tijdslimiet op dat kanaal gewacht. Op de UI-draad wacht niets: de
 /// antwoorden van de pagina (`gui_control_antwoord`) lopen over dezelfde
 /// eventloop en blijven dus gewoon binnenkomen.
-mod rapport {
+pub mod rapport {
     use super::*;
     use std::path::{Path, PathBuf};
 

@@ -14,9 +14,18 @@ name = "open_fem2d_studio_lib"
 # overflows the PE/COFF DLL 64K export limit. Add cdylib back when we add
 # mobile targets. See README "Windows toolchain note".
 crate-type = ["lib"]
+# De unit-testharnas van de lib laadt op Windows niet: hij linkt via de
+# dialoog-plugin tegen comctl32 v6 (TaskDialogIndirect) en cargo geeft alleen
+# bins en integratietest-doelen het manifest mee (build.rs). Unit-tests van
+# deze crate staan daarom in tests/ (zie tests/testbinary_laadt.rs).
+test = false
+doctest = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Het resourcebestand van tauri-build ook in de TESTbinary (zie build.rs):
+# dezelfde crate en versie die tauri-build zelf gebruikt (Cargo.lock).
+embed-resource = "3"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -49,7 +58,7 @@ rand = "0.9"
 png = "0.17"
 raw-window-handle = "0.6"
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps", "Win32_System_LibraryLoader"] }
 # Het standaardrapport als PDF (`gui_control::afdruk`): ICoreWebView2_7::PrintToPdf op
 # de webview die Tauri via `with_webview` geeft. Tauri exporteert webview2_com niet
 # opnieuw, dus om die interface te kunnen noemen is een directe afhankelijkheid
