@@ -2044,11 +2044,11 @@
           "AANNAMES bij die grens. (1) Het gebouw is niet als industriegebouw aangemerkt; daarvoor geeft de NB h/150, en h/300 is de strengere van de twee. (2) h is gelijkgesteld aan de hoogte van deze staaf, terwijl de NB \"de kleinste gevelhoogte of de kleinste bouwlaaghoogte\" bedoelt; overspant deze staaf meer dan één bouwlaag, dan is de grens hier te ruim. (3) De eis h/500 voor de TOTALE hoogte van een gebouw met meer dan één bouwlaag is een eigenschap van het gebouw en niet van deze staaf, en is hier dus niet getoetst.",
           "Voor de doorbuiging van de staaf tussen zijn eigen einden — de kromming vanaf de koorde — geeft A1.4.3 bij een verticale staaf geen grenswaarde; er is er dan ook geen verzonnen. Wie hier tóch een vloer- of dakeis wil toetsen, kiest bij de staaf expliciet een doorbuigingsklasse: die keuze gaat vóór en laat deze zijdelingse toets vervallen.",
           "Beide doorbuigingsregels in dit rapport (w_fin en w_add) tonen dezelfde verplaatsing tegen dezelfde grens: de norm splitst de horizontale verplaatsing niet in een blijvend en een bijkomend deel, en de rekenkern levert de twee regels altijd als paar.",
-          "GEEN UITKOMST: het model kent geen BGT-combinatie (verwacht: een combinatie met \"karakteristiek\" in de naam). De zijdelingse verplaatsing is daarom op 0 gezet; die 0 is een ontbrekende uitkomst en geen getoetste verplaatsing."
+          "GEEN UITKOMST: het model kent geen BGT-combinatie. De zijdelingse verplaatsing is daarom op 0 gezet; die 0 is een ontbrekende uitkomst en geen getoetste verplaatsing."
         ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,
-        "consequence_class": "CC1",
+        "consequence_class": "CC2",
         "pre_camber_mm": 0,
         "deflection_permanent_mm": 0,
         "q_equiv_n_per_mm": 4.440892098500626e-16,
@@ -2322,11 +2322,11 @@
         "deflection_notes": [
           "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming ertussen.",
           "GEEN UITKOMST: geen enkele BGT-combinatie levert een zakking voor deze staaf — reken het model opnieuw door. De zakking is op 0 gezet; die 0 is een ontbrekende uitkomst en geen getoetste zakking.",
-          "w_add is hier GELIJK aan w_fin. De norm meet w2 + w3 vanaf w1, de zakking onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die is uit de doorgerekende combinaties niet af te leiden, want het model kent geen BGT-combinatie met uitsluitend de blijvende belasting. w_BGT,permanent is daarom 0: w_add krijgt de VOLLEDIGE zakking in plaats van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar de w_add-regel is daarmee geen w2 + w3, en de twee doorbuigingsregels tonen hetzelfde getal."
+          "w_add is hier GELIJK aan w_fin. De norm meet w2 + w3 vanaf w1, de zakking onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die leidt deze toets niet uit de doorgerekende combinaties af. w_BGT,permanent is daarom 0: w_add krijgt de VOLLEDIGE zakking in plaats van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar de w_add-regel is daarmee geen w2 + w3, en de twee doorbuigingsregels tonen hetzelfde getal."
         ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,
-        "consequence_class": "CC1",
+        "consequence_class": "CC2",
         "pre_camber_mm": 0,
         "deflection_permanent_mm": 0,
         "q_equiv_n_per_mm": 21,
@@ -2604,11 +2604,11 @@
           "AANNAMES bij die grens. (1) Het gebouw is niet als industriegebouw aangemerkt; daarvoor geeft de NB h/150, en h/300 is de strengere van de twee. (2) h is gelijkgesteld aan de hoogte van deze staaf, terwijl de NB \"de kleinste gevelhoogte of de kleinste bouwlaaghoogte\" bedoelt; overspant deze staaf meer dan één bouwlaag, dan is de grens hier te ruim. (3) De eis h/500 voor de TOTALE hoogte van een gebouw met meer dan één bouwlaag is een eigenschap van het gebouw en niet van deze staaf, en is hier dus niet getoetst.",
           "Voor de doorbuiging van de staaf tussen zijn eigen einden — de kromming vanaf de koorde — geeft A1.4.3 bij een verticale staaf geen grenswaarde; er is er dan ook geen verzonnen. Wie hier tóch een vloer- of dakeis wil toetsen, kiest bij de staaf expliciet een doorbuigingsklasse: die keuze gaat vóór en laat deze zijdelingse toets vervallen.",
           "Beide doorbuigingsregels in dit rapport (w_fin en w_add) tonen dezelfde verplaatsing tegen dezelfde grens: de norm splitst de horizontale verplaatsing niet in een blijvend en een bijkomend deel, en de rekenkern levert de twee regels altijd als paar.",
-          "GEEN UITKOMST: het model kent geen BGT-combinatie (verwacht: een combinatie met \"karakteristiek\" in de naam). De zijdelingse verplaatsing is daarom op 0 gezet; die 0 is een ontbrekende uitkomst en geen getoetste verplaatsing."
+          "GEEN UITKOMST: het model kent geen BGT-combinatie. De zijdelingse verplaatsing is daarom op 0 gezet; die 0 is een ontbrekende uitkomst en geen getoetste verplaatsing."
         ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,
-        "consequence_class": "CC1",
+        "consequence_class": "CC2",
         "pre_camber_mm": 0,
         "deflection_permanent_mm": 0,
         "q_equiv_n_per_mm": 0,

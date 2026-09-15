@@ -52,6 +52,16 @@ import {
   selecteerCombinaties,
   type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
+import {
+  beoordeelCombinatiesBijOpenen,
+  meldingenBelastinggevallen,
+  verwijderWeesFactoren,
+} from "../lib/combinatieBeheer";
+import {
+  GEVOLGKLASSEN,
+  STANDAARD_GEVOLGKLASSE,
+  type Gevolgklasse,
+} from "../components/fem/solver/normcombinaties";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import {
   PROJECT_FORMAT_VERSION,
@@ -219,6 +229,19 @@ interface GelezenModel {
   /** Tweede-orde-vlag uit het projectbestand, of `null` bij een los model. */
   nonlinearUitBestand: boolean | null;
   formatVersion: number | null;
+  /** Gevolgklasse uit de projectgegevens van het bestand, of `null`. */
+  gevolgklasseUitBestand: Gevolgklasse | null;
+  /**
+   * Het bestand draagt id-tellers en is dus door een versie van september 2026
+   * of later geschreven: een combinatie zonder kenmerk is daar een bewuste
+   * eigen combinatie. Bij een los model: `false`.
+   */
+  bestandMetTellers: boolean;
+}
+
+/** Een geldige gevolgklasse, of `null`. */
+function alsGevolgklasse(x: unknown): Gevolgklasse | null {
+  return GEVOLGKLASSEN.includes(x as Gevolgklasse) ? (x as Gevolgklasse) : null;
 }
 
 /**
@@ -272,6 +295,11 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
       combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
       nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
       formatVersion: bestand.version,
+      gevolgklasseUitBestand: alsGevolgklasse(
+        (bestand.projectInfo as { uitgangspunten?: { gevolgklasse?: unknown } } | undefined)
+          ?.uitgangspunten?.gevolgklasse,
+      ),
+      bestandMetTellers: bestand.idTellers !== undefined,
     };
   }
 
@@ -321,27 +349,54 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     combinatiesUitBestand: null,
     nonlinearUitBestand: null,
     formatVersion: null,
+    gevolgklasseUitBestand: null,
+    bestandMetTellers: false,
   };
+}
+
+/**
+ * De gevolgklasse: die uit het projectbestand wint — het is de keuze van de
+ * constructeur, net als het analysetype — anders `gevolgklasse` uit het
+ * verzoek, anders CC2 (NB tabel NB.4). `aangenomen` zegt of het die laatste
+ * terugval was, zodat het antwoord dat kan melden.
+ */
+function leesGevolgklasse(
+  payload: Record<string, unknown>,
+  gelezen: GelezenModel,
+): { klasse: Gevolgklasse; aangenomen: boolean } {
+  if (payload.gevolgklasse !== undefined && alsGevolgklasse(payload.gevolgklasse) === null) {
+    throw new InvoerFout('Veld `gevolgklasse` moet "CC1", "CC2" of "CC3" zijn.');
+  }
+  const klasse = gelezen.gevolgklasseUitBestand ?? alsGevolgklasse(payload.gevolgklasse);
+  return klasse
+    ? { klasse, aangenomen: false }
+    : { klasse: STANDAARD_GEVOLGKLASSE, aangenomen: true };
 }
 
 /**
  * Combinaties uit de payload (`{ id, name, type, formula, factors }` met
  * `factors` als `{ "<caseId>": factor }`), anders die uit het projectbestand,
- * anders de EN 1990-standaardset van de app.
+ * anders de standaardset die de app afleidt uit de belastinggevallen (type en
+ * gebruikscategorie) en de gevolgklasse — zie normcombinaties.ts. Tot
+ * september 2026 was die laatste een vaste lijst voor de case-id's 1 t/m 4,
+ * ongeacht welke gevallen het model had.
  */
 function leesCombinaties(
   payload: Record<string, unknown>,
   uitBestand: LoadCombination[] | null,
-): LoadCombination[] {
+  loadCases: FemModelInvoer["loadCases"],
+  gevolgklasse: Gevolgklasse,
+): { lijst: LoadCombination[]; bron: "verzoek" | "bestand" | "standaard" } {
   if (payload.combinations !== undefined) {
     const rauw = eisArray(payload.combinations, "combinations");
     const uit = combinationsFromFile(
       rauw as Parameters<typeof combinationsFromFile>[0],
     );
     if (!uit) throw new InvoerFout("Veld `combinations` is geen geldige lijst.");
-    return uit;
+    return { lijst: uit, bron: "verzoek" };
   }
-  return uitBestand ?? defaultCombinations();
+  if (uitBestand) return { lijst: uitBestand, bron: "bestand" };
+  return { lijst: defaultCombinations(loadCases, gevolgklasse), bron: "standaard" };
 }
 
 /**
@@ -487,17 +542,34 @@ function rekenDoor(payload: Record<string, unknown>) {
     );
   }
 
-  const alleCombinaties = leesCombinaties(payload, gelezen.combinatiesUitBestand);
+  const { klasse: gevolgklasse, aangenomen: klasseAangenomen } =
+    leesGevolgklasse(payload, gelezen);
+  const gelezenCombinaties = leesCombinaties(
+    payload,
+    gelezen.combinatiesUitBestand,
+    gelezen.model.loadCases,
+    gevolgklasse,
+  );
+  const combinatieBron = gelezenCombinaties.bron;
+  // Een projectbestand van vóór september 2026 kan factoren dragen voor een
+  // belastinggeval dat niet meer bestaat (basisaudit nr 14). Ze tellen nergens
+  // mee, maar gaan eruit en worden gemeld — dezelfde functie als bij het
+  // openen in de app.
+  const { combinaties: alleCombinaties, wees: weesFactoren } =
+    combinatieBron === "bestand"
+      ? verwijderWeesFactoren(gelezenCombinaties.lijst, gelezen.model.loadCases)
+      : { combinaties: gelezenCombinaties.lijst, wees: [] };
   // Dezelfde selectie als de app (lib/combinatieSelectie): bij een zuivere
-  // staalconstructie vallen de ongewijzigde standaardcombinaties 6.15 en 6.16
-  // af, want geen enkele staaltoets leest ze. Dat gebeurt HIER en niet in de
-  // app-laag, zodat een MCP-solve niet acht combinaties oplevert waar de app
-  // er zes toont — hetzelfde model hoort langs elke weg hetzelfde antwoord te
+  // staalconstructie vallen de ongewijzigde standaardcombinaties 6.15b en
+  // 6.16b af, want geen enkele staaltoets leest ze. Dat gebeurt HIER en niet
+  // in de app-laag, zodat een MCP-solve niet meer combinaties oplevert dan de
+  // app toont — hetzelfde model hoort langs elke weg hetzelfde antwoord te
   // geven. Wat er wegvalt staat in `combinations_skipped` en in `warnings`.
   const selectie = selecteerCombinaties(
     alleCombinaties,
     gelezen.beams,
     gelezen.model.plates,
+    { loadCases: gelezen.model.loadCases, gevolgklasse },
   );
   const combinaties = selectie.actief;
   const profileDb = leesProfielen(payload);
@@ -570,6 +642,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     combinations: combinaties,
     combinationResults,
     profileDb,
+    gevolgklasse,
   });
 
   const waarschuwingen: string[] = [];
@@ -589,6 +662,39 @@ function rekenDoor(payload: Record<string, unknown>) {
     // Luid, niet stil: wie acht combinaties in het bestand zette en er zes
     // terugkrijgt, moet in het antwoord kunnen lezen waarom.
     waarschuwingen.push(`Combinatie ${weg.id} overgeslagen — ${weg.reden}`);
+  }
+  if (klasseAangenomen && combinatieBron === "standaard") {
+    waarschuwingen.push(
+      "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als " +
+        "`gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de " +
+        "factoren van NEN-EN 1990 NB tabel NB.4.",
+    );
+  }
+  // Een belastinggeval met last dat in geen enkele doorgerekende UGT-combinatie
+  // meetelt, en eigen gewicht zonder blijvend geval. Tot september 2026 kwam
+  // hier niets: een geval van type "overig" telde stil als nul (basisaudit nr 1).
+  // En — dezelfde functie als de app — een blijvend geval met factoren die
+  // niet bij een blijvende belasting passen, en standaardcombinaties die
+  // ontbreken: dan is de combinatieset stil een deel van de juiste set.
+  for (const m of meldingenBelastinggevallen({
+    loadCases: gelezen.model.loadCases,
+    combinations: combinaties,
+    alleCombinaties,
+    gevolgklasse,
+    loads: gelezen.model.loads,
+    selfWeightEnabled: gelezen.model.selfWeightEnabled,
+  })) {
+    waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
+  }
+  if (combinatieBron === "bestand") {
+    const afwijking = beoordeelCombinatiesBijOpenen({
+      combinations: alleCombinaties,
+      loadCases: gelezen.model.loadCases,
+      gevolgklasse,
+      eigenCombinatiesBewust: gelezen.bestandMetTellers,
+      weesFactoren,
+    });
+    if (afwijking) waarschuwingen.push(afwijking.samenvatting);
   }
 
   return {
@@ -698,7 +804,18 @@ function opCheck(payload: Record<string, unknown>) {
  */
 function opValidate(payload: Record<string, unknown>) {
   const gelezen = leesModel(payload);
-  const uitkomst = valideerModel(gelezen.rauw);
+  // Met de combinaties die een solve zou gebruiken, zodat de droogloop óók
+  // meldt welk belastinggeval in geen enkele UGT-combinatie meetelt.
+  const { klasse } = leesGevolgklasse(payload, gelezen);
+  const { lijst } = leesCombinaties(
+    payload, gelezen.combinatiesUitBestand, gelezen.model.loadCases, klasse,
+  );
+  const actief = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
+    loadCases: gelezen.model.loadCases, gevolgklasse: klasse,
+  }).actief;
+  const uitkomst = valideerModel(gelezen.rauw, {
+    combinaties: actief, alleCombinaties: lijst, gevolgklasse: klasse,
+  });
   return {
     ok: uitkomst.ok,
     errors: uitkomst.errors,

@@ -171,3 +171,43 @@
   color: var(--theme-text-faint);
   border-bottom: 1px solid var(--theme-border);
 }
+
+/*
+ * Een belastinggeval dat in de doorgerekende combinaties niet meetelt (zie
+ * lib/combinatieBeheer). Rood bij een fout — de last telt dan als nul — en
+ * gedempt bij een waarschuwing. Tot september 2026 was dit alleen te zien
+ * aan een kolom nullen in de combinatietabel.
+ */
+.lcd-melding {
+  margin: 0;
+  padding: 4px 8px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--theme-border);
+}
+.lcd-melding-fout {
+  color: var(--theme-danger-color);
+  font-weight: 500;
+}
+.lcd-melding-waarschuwing {
+  color: var(--theme-text-secondary);
+}
+.lcd-td-leeg {
+  color: var(--theme-text-faint);
+}
+
+/* Melding bij het openen: combinaties die afwijken van de standaard. */
+.lcd-afwijking {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  border: 1px solid var(--theme-danger-color);
+  border-radius: 4px;
+  background: var(--theme-bg-lighter);
+}
+.lcd-afwijking p { margin: 0 0 6px; }
+.lcd-afwijking ul { margin: 4px 0 6px 18px; padding: 0; }
+.lcd-afwijking-knoppen {
+  display: flex; gap: 8px; margin-top: 8px;
+}

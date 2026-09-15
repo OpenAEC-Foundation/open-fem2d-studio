@@ -27,6 +27,10 @@
 import type { Beam, Load, LoadCase, Node } from "../../components/fem/femTypes";
 import { rolVanStaaf, type BeamLoadRole } from "../../components/fem/femTypes";
 import {
+  begeleidendeOpstellingen, PARTIELE_FACTOREN, PSI_BRON, PSI_WIND,
+  STANDAARD_GEVOLGKLASSE, type Gevolgklasse, type PsiWaarden,
+} from "../../components/fem/solver/normcombinaties";
+import {
   berekenE, berekenStuwdruk, handmatigeStuwdruk, cpeWand,
   CPE_PLAT_DAK, CPE_PLAT_DAK_BRON, CPI_BRON, CPI_ONBEKEND, CPE10_BRON,
   CPE10_MIN_OPPERVLAK_M2, CSCD_BRON, CSCD_GRENSHOOGTE_M, MELDING_ZONE_I,
@@ -305,21 +309,25 @@ export interface WindModelInvoer {
   beams: Beam[];
   /** Bestaande belastinggevallen — nodig voor de combinatiefactoren. */
   loadCases: LoadCase[];
+  /**
+   * Gevolgklasse van het project; bepaalt γ_G en γ_Q volgens NB tabel NB.4
+   * (CC2) en NB.5 (CC1, CC3). Ontbreekt → CC2.
+   */
+  gevolgklasse?: Gevolgklasse;
 }
 
 /**
- * ψ₀-factoren voor de gegenereerde combinaties.
- * Bron: NEN-EN 1990 tabel A1.1.
- *   • wind op gebouwen                              ψ₀ = 0,6
- *   • opgelegde belasting gebouwen, categorie A–D   ψ₀ = 0,7
- *   • sneeuw, plaatsen op hoogte H ≤ 1000 m         ψ₀ = 0,5
- * Belastingfactoren: γ_G,sup = 1,35 (6.10a) resp. 1,20 (6.10b) en γ_Q = 1,50
- * volgens NEN-EN 1990 tabel A1.2(B); γ_G,inf = 0,90 volgens tabel A1.2(A)
- * (EQU) voor het gunstig werkende eigen gewicht bij opwaartse wind.
+ * De factoren van de gegenereerde combinaties komen uit DEZELFDE tabellen als
+ * de standaardcombinaties (`components/fem/solver/normcombinaties.ts`):
+ *   γ  — NEN-EN 1990:2002/NB:2019 tabel NB.4 (CC2) of NB.5 (CC1/CC3),
+ *        met γ_G,inf = 0,9 uit de kolom "Gunstig" van diezelfde tabellen;
+ *   ψ  — tabel NB.2–A1.1: wind 0 / 0,2 / 0, sneeuw 0 / 0,2 / 0, en voor
+ *        veranderlijke belasting de waarden van de gebruikscategorie van het
+ *        geval (zonder categorie: A, 0,4 / 0,5 / 0,3).
+ * Tot september 2026 stonden hier de door EN 1990 AANBEVOLEN waarden uit
+ * tabel A1.1 (ψ₀ = 0,6 / 0,7 / 0,5) met vaste CC2-factoren, terwijl het rapport
+ * de Nederlandse bijlage noemt.
  */
-const PSI0 = { wind: 0.6, veranderlijk: 0.7, sneeuw: 0.5 } as const;
-const PSI0_BRON = "NEN-EN 1990 tabel A1.1";
-const GAMMA_BRON = "NEN-EN 1990 tabel A1.2(B) (6.10a/6.10b) en tabel A1.2(A) (EQU)";
 
 /** Naamvoorvoegsel waaraan gegenereerde combinaties herkenbaar zijn. */
 export const WIND_COMBI_PREFIX = "Wind-gen · ";
@@ -731,9 +739,9 @@ export function genereerWindbelasting(
   const combinaties: GegenereerdeCombinatie[] = [];
   if (inst.combinatiesGenereren) {
     const eigen = model.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
+    const klasse = model.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
+    const f = PARTIELE_FACTOREN[klasse];
     const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
-    const Q = eigen.filter((c) => c.type === "live").map((c) => c.id);
-    const S = eigen.filter((c) => c.type === "snow").map((c) => c.id);
     const overig = eigen.filter((c) => c.type === "other");
     if (overig.length > 0) {
       meldingen.push({
@@ -743,51 +751,78 @@ export function genereerWindbelasting(
           "gegenereerde combinaties. Geef ze een type, of neem ze handmatig op.",
       });
     }
-    const mix = (paren: [number[], number][]): [number, number][] =>
-      paren.flatMap(([ids, f]) => ids.map((id) => [id, f] as [number, number]));
+    /** Afronden op 1e-9: 1,5 · 0,4 is in drijvende komma 0,6000000000000001. */
+    const r = (x: number) => Math.round(x * 1e9) / 1e9;
+    const bron = `γ: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
 
     for (const gv of gevallen) {
+      // Wind leidt in elke combinatie van zijn eigen geval. Begeleidend telt
+      // wind met ψ₀,W = 0 (NB.2) en dus niet; ook sneeuw begeleidt met
+      // ψ₀,S = ψ₂,S = 0. Om dezelfde reden is er geen 6.10a per windgeval
+      // meer: in 6.10a krijgt ook de belangrijkste veranderlijke belasting ψ₀
+      // (NB.4, "1,5 ψ₀,1 Q_k,1"), dus wind telt daar voor 0 en de combinatie
+      // valt samen met de 6.10a van de standaardset. Tot september 2026, met
+      // ψ₀,W = 0,6, maakte de generator er per windgeval een.
+      // De begeleidende veranderlijke gevallen komen in elke opstelling: elk
+      // aan- of afwezig, net als in de standaardset (normcombinaties.ts,
+      // EN 1991-1-1 6.2.1(1)P). Een veranderlijke last die gunstig werkt telt
+      // zo voor 0, en een per veld verdeelde vloerlast kan op één veld staan.
       const sets: {
         naam: string; type: "uls" | "sls"; formule: string;
-        wind: number; g: number; q: number; s: number;
+        wind: number; g: number; begeleidend: (psi: PsiWaarden) => number;
       }[] = [
         {
-          naam: `UGT 6.10a — ${gv.naam}`, type: "uls",
-          formule: "1,35·G + 1,5·ψ₀,W·W + 1,5·ψ₀,Q·Q + 1,5·ψ₀,S·S",
-          g: 1.35, wind: 1.5 * PSI0.wind, q: 1.5 * PSI0.veranderlijk, s: 1.5 * PSI0.sneeuw,
-        },
-        {
           naam: `UGT 6.10b — ${gv.naam} leidend`, type: "uls",
-          formule: "1,2·G + 1,5·W + 1,5·ψ₀,Q·Q + 1,5·ψ₀,S·S",
-          g: 1.2, wind: 1.5, q: 1.5 * PSI0.veranderlijk, s: 1.5 * PSI0.sneeuw,
+          formule: `${nl(f.gGsup610b, 2)}·G + ${nl(f.gQ, 2)}·W + ${nl(f.gQ, 2)}·ψ₀,Q·Q + ${nl(f.gQ, 2)}·ψ₀,S·S`,
+          g: f.gGsup610b, wind: f.gQ, begeleidend: (psi) => r(f.gQ * psi.psi0),
         },
         {
-          naam: `UGT EQU — ${gv.naam}, gunstig eigen gewicht`, type: "uls",
-          formule: "0,9·G + 1,5·W",
-          g: 0.9, wind: 1.5, q: 0, s: 0,
+          // STR/GEO met gunstig werkende blijvende belasting: de kolom
+          // "Gunstig 0,9 G_k,j,inf" van NB.4/NB.5. Dit is GEEN EQU (NB.3
+          // hanteert daar 1,1/0,9 voor het statisch evenwicht); tot september
+          // 2026 heette deze combinatie ten onrechte zo. Tot dezelfde maand
+          // stond er geen begeleidende last in; de opstelling zonder
+          // begeleidende gevallen is precies die oude combinatie.
+          naam: `UGT 6.10b — ${gv.naam} leidend, blijvend gunstig`, type: "uls",
+          formule: `${nl(f.gGinf, 2)}·G + ${nl(f.gQ, 2)}·W + ${nl(f.gQ, 2)}·ψ₀,Q·Q + ${nl(f.gQ, 2)}·ψ₀,S·S`,
+          g: f.gGinf, wind: f.gQ, begeleidend: (psi) => r(f.gQ * psi.psi0),
         },
         {
-          naam: `BGT karakteristiek — ${gv.naam} leidend`, type: "sls",
+          naam: `BGT karakteristiek 6.14b — ${gv.naam} leidend`, type: "sls",
           formule: "G + W + ψ₀,Q·Q + ψ₀,S·S",
-          g: 1.0, wind: 1.0, q: PSI0.veranderlijk, s: PSI0.sneeuw,
+          g: 1.0, wind: 1.0, begeleidend: (psi) => psi.psi0,
+        },
+        {
+          // 6.15b met wind leidend (ψ₁,W = 0,2): de scheurwijdte van beton
+          // leest de frequente combinatie, en zonder deze regel zou een
+          // gegenereerde windlast daar nooit in voorkomen.
+          naam: `BGT frequent 6.15b — ${gv.naam} leidend`, type: "sls",
+          formule: "G + ψ₁,W·W + ψ₂,Q·Q + ψ₂,S·S",
+          g: 1.0, wind: PSI_WIND.psi1, begeleidend: (psi) => psi.psi2,
         },
       ];
       for (const s of sets) {
-        combinaties.push({
-          naam: WIND_COMBI_PREFIX + s.naam,
-          type: s.type,
-          formule: `${s.formule}   [${GAMMA_BRON}; ψ₀ uit ${PSI0_BRON}]`,
-          factorenPerCaseId: mix([[G, s.g], [Q, s.q], [S, s.s]]).filter(([, f]) => f !== 0),
-          windSleutel: gv.sleutel,
-          windFactor: s.wind,
-        });
+        for (const o of begeleidendeOpstellingen(eigen, "W", s.begeleidend)) {
+          const zonder = o.zonder.map((d) => d.naam).join(", ");
+          combinaties.push({
+            naam: WIND_COMBI_PREFIX + s.naam + (zonder ? `, zonder ${zonder}` : ""),
+            type: s.type,
+            formule: `${s.formule}${zonder ? ` (zonder ${zonder})` : ""}   [${bron}]`,
+            factorenPerCaseId: [
+              ...G.map((id) => [id, s.g] as [number, number]),
+              ...o.factoren,
+            ],
+            windSleutel: gv.sleutel,
+            windFactor: s.wind,
+          });
+        }
       }
     }
     meldingen.push({
-      niveau: "waarschuwing",
-      tekst: "De gegenereerde combinaties passen de betrouwbaarheidsfactor K_FI van de " +
-        "gevolgklasse NIET toe — net als de standaardcombinaties van dit programma. " +
-        "Bij gevolgklasse CC3 moet u de factoren zelf verhogen.",
+      niveau: "info",
+      tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: γ uit NEN-EN 1990 ` +
+        `${f.bron}, ψ uit tabel NB.2–A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in ` +
+        "de partiële factoren zelf en wordt nergens nog eens toegepast.",
     });
   }
 

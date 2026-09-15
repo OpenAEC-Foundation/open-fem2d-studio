@@ -118,6 +118,8 @@ interface WireReportData {
    * te doen alsof alles is doorgerekend.
    */
   overgeslagenCombinaties?: OvergeslagenCombinatie[];
+  /** Gevolgklasse — platte tekst. Optioneel: een ouder hoofdvenster stuurt hem niet. */
+  gevolgklasse?: ReportData["gevolgklasse"];
   combinationResults: [number, WireSolverResult][] | null;
   /** Per-belastinggeval-resultaten (P5.2) — zelfde wire-vorm. */
   caseResults: [number, WireSolverResult][] | null;
@@ -229,6 +231,7 @@ function serializeReportData(d: ReportData): WireReportData {
     selfWeightEnabled: d.selfWeightEnabled,
     combinations: d.combinations.map((c) => ({ ...c, factors: [...c.factors] })),
     overgeslagenCombinaties: d.overgeslagenCombinaties,
+    gevolgklasse: d.gevolgklasse,
     combinationResults: d.combinationResults
       ? [...d.combinationResults].map(
           ([id, r]) => [id, wireSolverResult(r)] as [number, WireSolverResult],
@@ -273,6 +276,8 @@ function deserializeReportData(w: WireReportData): ReportData {
     combinations: w.combinations.map((c) => ({ ...c, factors: new Map(c.factors) })),
     // ?? — oudere hoofdvensters sturen dit veld nog niet mee.
     overgeslagenCombinaties: w.overgeslagenCombinaties ?? [],
+    // Ontbreekt bij een ouder hoofdvenster: dan geldt het kenmerk van de combinaties.
+    gevolgklasse: w.gevolgklasse,
     combinationResults: w.combinationResults
       ? new Map(w.combinationResults.map(([id, r]) => [id, unwireSolverResult(r)]))
       : null,

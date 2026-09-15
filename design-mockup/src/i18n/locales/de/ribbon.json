@@ -297,6 +297,7 @@
     "noLoadsInCase": "Keine Lasten in diesem Fall.",
     "selfWeightIncluded": "Das Eigengewicht aller Stäbe wird in diesem Fall automatisch berücksichtigt (q = ρ·A·g je Stab).",
     "selfWeightOff": "Eigengewicht ist ausgeschaltet — nicht in der Berechnung berücksichtigt.",
+    "selfWeightNoDeadCase": "Eigengewicht ist eingeschaltet, aber es gibt keinen Lastfall vom Typ „Ständig“: das Eigengewicht ist NICHT in der Berechnung berücksichtigt.",
     "caseType_dead": "Ständig",
     "caseType_live": "Veränderlich",
     "caseType_snow": "Schnee",

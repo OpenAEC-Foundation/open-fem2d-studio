@@ -813,10 +813,37 @@ export interface Load {
   omschrijving?: string;
 }
 
+/**
+ * Gebruikscategorie van een veranderlijke belasting, zoals de rijen van
+ * NEN-EN 1990:2002/NB:2019 tabel NB.2–A1.1. De categorie bepaalt ψ₀, ψ₁ en ψ₂
+ * (zie `PSI_GEBRUIK` in components/fem/solver/normcombinaties.ts).
+ *
+ * Categorie C staat er twee keer in omdat voetnoot a bij de tabel twee waarden
+ * voor ψ₀ geeft: 0,6 voor delen die bij een calamiteit zwaar door een
+ * mensenmenigte belast kunnen worden (vluchtroutes, trappen), en 0,4 voor de
+ * overige delen. Die keuze hoort bij de gebruiker, niet bij de app.
+ */
+export type GebruiksCategorie =
+  | "A" | "B" | "C" | "C-menigte" | "D" | "E" | "F" | "G" | "H"
+  | "industrie-kort" | "industrie-lang";
+
+/** Alle gebruikscategorieën, in de volgorde van tabel NB.2–A1.1. */
+export const GEBRUIKSCATEGORIEEN: readonly GebruiksCategorie[] = [
+  "A", "B", "C", "C-menigte", "D", "E", "F", "G", "H",
+  "industrie-kort", "industrie-lang",
+];
+
 export interface LoadCase {
   id: number;
   name: string;
   type: "dead" | "live" | "snow" | "wind" | "other";
+  /**
+   * Gebruikscategorie volgens NB tabel NB.2–A1.1 — alleen betekenisvol bij
+   * type "live". Ontbreekt het veld, dan geldt categorie A (woon- en
+   * verblijfsruimtes); de formule van elke standaardcombinatie noemt de ψ die
+   * daarbij hoort, zodat die aanname in het rapport zichtbaar is.
+   */
+  categorie?: GebruiksCategorie;
   /**
    * Herkomst van dit belastinggeval, met een STABIELE sleutel per geval
    * (bijvoorbeeld "wind:links:cpi+0.2"). De generator hergebruikt bij een

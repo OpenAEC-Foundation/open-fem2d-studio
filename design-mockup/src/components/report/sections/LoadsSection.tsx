@@ -2,8 +2,9 @@
  * LoadsSection — belastinggevallen met per geval een tabel van de lasten:
  * type, staaf/knoop, waarde (q, F, M of ΔT), richting en bij deellasten het
  * belaste bereik in m vanaf de startknoop. Plus de eigen-gewicht-vermelding
- * (zelfde toewijzingsregel als de solver: eerste geval van type "dead",
- * anders het eerste geval).
+ * (zelfde toewijzingsregel als de solver: het eerste geval van type "dead";
+ * zonder zo'n geval rekent de solver het eigen gewicht niet mee, en zegt dit
+ * rapport dat).
  */
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
@@ -23,10 +24,13 @@ export default function LoadsSection() {
   const { t } = useTranslation("ribbon");
   const { beams, nodes, loads, loadCases, selfWeightEnabled } = useReportData();
 
-  // Zelfde regel als de solver (App.computeAndStoreSolverOutputs): eigen
-  // gewicht landt in het eerste "dead"-geval, anders het eerste geval.
+  // Zelfde regel als de solver (bouwMultiInput in lib/modelNaarSolverInput):
+  // eigen gewicht landt in het eerste "dead"-geval. Zonder blijvend geval
+  // rekent de solver het NIET mee. Tot september 2026 viel het dan stil in het
+  // eerste geval, met de factoren van dát type, en noemde dit rapport dat
+  // geval; nu staat er dat het eigen gewicht ontbreekt (ruw 7 van de basisaudit).
   const selfWeightCase = selfWeightEnabled
-    ? loadCases.find((c) => c.type === "dead") ?? loadCases[0]
+    ? loadCases.find((c) => c.type === "dead")
     : undefined;
 
   // De omschrijvingskolom verschijnt alleen als er érgens in het model een
@@ -178,6 +182,15 @@ export default function LoadsSection() {
             </div>
           );
         })
+      )}
+
+      {loadCases.length > 0 && selfWeightEnabled && !selfWeightCase && (
+        <p className="rpt-note rpt-melding-fout" style={{ marginTop: "3mm" }}>
+          {t(
+            "report.selfWeightNoDeadCase",
+            "Eigen gewicht staat aan, maar er is geen belastinggeval van type “Permanent”: het eigen gewicht is NIET in de berekening meegenomen.",
+          )}
+        </p>
       )}
 
       {loadCases.length > 0 && !selfWeightEnabled && (

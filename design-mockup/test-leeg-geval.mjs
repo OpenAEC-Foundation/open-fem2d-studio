@@ -86,5 +86,30 @@ try {
   failed++; log(`  ✗ exceptie: ${e.message}`);
 }
 
+log("\n[5] Een geval dat in geen enkele UGT-combinatie meetelt: leeg = waarschuwing, gevuld = FOUT");
+{
+  // Bevinding nr 1 van de basisaudit: een nieuw geval van type "overig" telde
+  // stil als nul. Een LEEG geval zonder factor is onschuldig (er valt niets te
+  // missen) en blijft een waarschuwing; een GEVULD geval zonder factor is een
+  // fout — zijn last telt in elke toets als nul. Hier geen solver nodig: de
+  // vraag is alleen of de melding er komt.
+  const { meldingenBelastinggevallen } = await import("./src/lib/combinatieBeheer.ts");
+  const { defaultCombinations } = await import("./src/components/fem/solver/combinations.ts");
+  const gevallen = [
+    { id: 1, name: "Permanent", type: "dead" },
+    { id: 2, name: "Variabel", type: "live" }, // leeg, maar mét factoren: geen melding
+    { id: 3, name: "Nieuw", type: "other" },
+  ];
+  const combos = defaultCombinations(gevallen);
+  const leeg = meldingenBelastinggevallen({ loadCases: gevallen, combinations: combos, loads: [{ caseId: 1 }] });
+  check("leeg geval van type overig: één waarschuwing",
+    leeg.filter((m) => m.caseId === 3 && m.niveau === "waarschuwing").length, 1, 0);
+  check("leeg veranderlijk geval met factoren: geen melding",
+    leeg.filter((m) => m.caseId === 2).length, 0, 0);
+  const gevuld = meldingenBelastinggevallen({ loadCases: gevallen, combinations: combos, loads: [{ caseId: 1 }, { caseId: 3 }] });
+  check("gevuld geval van type overig: één FOUT",
+    gevuld.filter((m) => m.caseId === 3 && m.niveau === "fout").length, 1, 0);
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

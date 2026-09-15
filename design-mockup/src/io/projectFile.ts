@@ -7,6 +7,9 @@ import type {
   Node, Beam, Support, Plate, Load, LoadCase, StructuralGrid,
 } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import {
+  GEVOLGKLASSEN, type CombinatieSoort, type Gevolgklasse,
+} from "../components/fem/solver/normcombinaties";
 import type { EigenDoorsnede } from "../lib/profieleditor/types";
 import type { EigenCltOpbouw } from "../lib/profieleditor/cltOpbouwenStore";
 
@@ -59,6 +62,14 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      de namen die de gebruiker aan zijn CLT-vloeropbouwen gaf. Puur
  *      bijschrift: de opbouw zelf staat in de profielnaam van de staaf, dus
  *      een bestand zonder dit veld rekent identiek door.
+ *      Eveneens optioneel binnen v2 (september 2026, geen versie-bump):
+ *      `combinations[].standaard` — het kenmerk van een standaardcombinatie
+ *      (sleutel, soort, gevolgklasse) — en `idTellers` voor belastinggevallen
+ *      en combinaties. Een bestand ZONDER tellers is ouder: het laadt met zijn
+ *      eigen combinaties, maar de app meldt bij het openen welke combinaties
+ *      afwijken van de huidige standaardset (NB-ψ, factoren per gevolgklasse)
+ *      — zonder iets te overschrijven. Een oudere versie van de app negeert
+ *      beide velden; de factoren zelf staan er gewoon in.
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).
@@ -72,7 +83,11 @@ export interface ProjectFileCombination {
   type: "uls" | "sls";
   formula: string;
   factors: Record<string, number>;
+  /** Kenmerk van een standaardcombinatie; ontbreekt bij een eigen combinatie. */
+  standaard?: { sleutel: string; soort: string; gevolgklasse: string };
 }
+
+const SOORTEN: readonly CombinatieSoort[] = ["6.10a", "6.10b", "6.14b", "6.15b", "6.16b"];
 
 /** LoadCombination[] (Map-factoren) → JSON-serialiseerbare vorm. */
 export function combinationsToFile(combos: LoadCombination[]): ProjectFileCombination[] {
@@ -82,7 +97,26 @@ export function combinationsToFile(combos: LoadCombination[]): ProjectFileCombin
     type: c.type,
     formula: c.formula,
     factors: Object.fromEntries([...c.factors].map(([caseId, f]) => [String(caseId), f])),
+    ...(c.standaard ? { standaard: { ...c.standaard } } : {}),
   }));
+}
+
+/**
+ * Het kenmerk uit het bestand, of `undefined` als het ontbreekt of niet klopt.
+ * Een onleesbaar kenmerk maakt de combinatie een EIGEN combinatie: dan past de
+ * app haar niet aan, en dat is de veilige kant van de vergissing.
+ */
+function kenmerkUitBestand(raw: unknown): LoadCombination["standaard"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const k = raw as Record<string, unknown>;
+  if (typeof k.sleutel !== "string") return undefined;
+  if (!SOORTEN.includes(k.soort as CombinatieSoort)) return undefined;
+  if (!GEVOLGKLASSEN.includes(k.gevolgklasse as Gevolgklasse)) return undefined;
+  return {
+    sleutel: k.sleutel,
+    soort: k.soort as CombinatieSoort,
+    gevolgklasse: k.gevolgklasse as Gevolgklasse,
+  };
 }
 
 /**
@@ -94,15 +128,19 @@ export function combinationsFromFile(
   raw: ProjectFileCombination[] | undefined,
 ): LoadCombination[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  return raw.map((c) => ({
-    id: c.id,
-    name: c.name,
-    type: c.type === "sls" ? "sls" : "uls",
-    formula: c.formula ?? "",
-    factors: new Map(
-      Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)]),
-    ),
-  }));
+  return raw.map((c) => {
+    const standaard = kenmerkUitBestand(c.standaard);
+    return {
+      id: c.id,
+      name: c.name,
+      type: c.type === "sls" ? "sls" : "uls",
+      formula: c.formula ?? "",
+      factors: new Map(
+        Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)]),
+      ),
+      ...(standaard ? { standaard } : {}),
+    };
+  });
 }
 
 export interface ProjectFile {
@@ -139,6 +177,15 @@ export interface ProjectFile {
   betonSegmentLengteMm?: number;
   /** Belastingcombinatie-definities (v2). */
   combinations?: ProjectFileCombination[];
+  /**
+   * Tellers voor nieuwe id's (v2, optioneel — september 2026). Ze lopen nooit
+   * terug, zodat een verwijderd belastinggeval of een verwijderde combinatie
+   * zijn id nooit aan een nieuwe doorgeeft. Ontbreekt het veld, dan leidt
+   * `openCombinatieStaat` (lib/combinatieBeheer) de tellers af uit de hoogste
+   * id's — van de gevallen én van de factortabellen, zodat een wees-factor uit
+   * een ouder bestand nooit door een nieuw geval wordt geërfd.
+   */
+  idTellers?: { belastinggeval: number; combinatie: number };
   /** Stramien (v2). */
   structuralGrid?: StructuralGrid;
   /** Scheefstand meenemen in de berekening (v2, optioneel — ontbreekt = uit). */

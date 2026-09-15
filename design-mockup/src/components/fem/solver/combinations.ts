@@ -25,15 +25,25 @@
  * staaf) is captured so the UI can label the bar, mét de positie van dat
  * maximum (governingMPos_mm).
  *
- * Default combos are EN 1990 Eq. 6.10a/b (ULS) + 6.14a/6.15a/6.16a (SLS) for
- * a residential building — ψ-factors are simplified housing values used as
- * sensible v2 defaults (NOT a substitute for project-specific NA picks).
+ * De standaardcombinaties zijn NIET langer een vaste lijst: ze worden afgeleid
+ * uit de belastinggevallen en de gevolgklasse volgens NEN-EN 1990 met de
+ * Nederlandse nationale bijlage — zie `normcombinaties.ts` voor de tabellen,
+ * de keuzes en de reden.
  */
 import type {
   SolverResult, NodalDisp, NodalReaction, ElementForces,
   PlateResult, PlateElementStress,
 } from "./types";
 import { getSecondOrderState, solveCombinationSecondOrder } from "./engine";
+import {
+  genereerStandaardCombinaties,
+  STANDAARD_BELASTINGGEVALLEN,
+  STANDAARD_GEVOLGKLASSE,
+  type CombinatieSoort,
+  type GevalInvoer,
+  type Gevolgklasse,
+  type StandaardHerkomst,
+} from "./normcombinaties";
 
 // ── Public types ──────────────────────────────────────────────────────────
 
@@ -45,6 +55,14 @@ export interface LoadCombination {
   formula: string;
   /** caseId → multiplicative factor. Cases not in the map contribute 0. */
   factors: Map<number, number>;
+  /**
+   * Aanwezig = een standaardcombinatie, gemaakt door `normcombinaties.ts` en
+   * door de store bijgehouden wanneer belastinggevallen of gevolgklasse
+   * veranderen. Afwezig = een eigen combinatie (of een combinatie uit een
+   * projectbestand van vóór september 2026); die raakt de app niet aan,
+   * behalve dat de factor van een verwijderd belastinggeval eruit verdwijnt.
+   */
+  standaard?: StandaardHerkomst;
 }
 
 export interface EnvelopeElementSpan {
@@ -81,14 +99,8 @@ export interface Envelope {
 
 // ── Defaults ──────────────────────────────────────────────────────────────
 
-// Conventional case-ID assignment used by the default model (see useFemStore).
-const G = 1; // Permanent (dead)
-const Q = 2; // Variabel (live)
-const S = 3; // Sneeuw (snow)
-const W = 4; // Wind
-
 /**
- * De standaardcombinaties die GEEN ENKELE toets van een stalen staaf leest:
+ * De soorten standaardcombinatie die GEEN ENKELE toets van een stalen staaf leest:
  * de frequente (6.15) en de quasi-blijvende (6.16) BGT-combinatie.
  *
  * NEN-EN 1990 6.5.3(1): de te beschouwen belastingscombinaties horen te passen
@@ -116,74 +128,59 @@ const W = 4; // Wind
  * `selecteerCombinaties` (lib/combinatieSelectie.ts) laat ze dan weg — met
  * zichtbare reden, en uitsluitend zolang ze ONGEWIJZIGD zijn.
  *
- * De ids verwijzen naar `defaultCombinations()` hieronder.
+ * Herkend op SOORT en niet meer op id: sinds de set uit de belastinggevallen
+ * wordt afgeleid, heeft een frequente combinatie geen vast nummer meer.
  */
-export const STANDAARD_SLS_BUITEN_STAAL: readonly number[] = [7, 8];
+export const SOORTEN_BUITEN_STAAL: readonly CombinatieSoort[] = ["6.15b", "6.16b"];
 
 /**
- * EN 1990 default combinations for a residential building (Annex A1.1).
- * Simplified ψ values: ψ₀(Q)=0.7, ψ₀(S)=0.7, ψ₀(W)=0.6; ψ₁(Q)=0.5; ψ₂(Q)=0.3,
- * ψ₂(S)=0.2.  Combined γ·ψ values are baked into the factors below.
+ * De standaardcombinaties voor `loadCases` in `gevolgklasse`, met id's 1…n.
+ * Zonder argumenten: de vier gevallen van een nieuw model (G = 1, Q = 2,
+ * S = 3, W = 4) in CC2 — de lijst waarmee de store en de sidecar beginnen.
+ * De afleiding zelf staat in `normcombinaties.ts`.
  */
-export function defaultCombinations(): LoadCombination[] {
-  return [
-    {
-      id: 1,
-      name: "ULS 6.10a",
-      type: "uls",
-      formula: "1.35G + 1.5·ψ₀·Q + 1.5·ψ₀·S + 1.5·ψ₀·W",
-      factors: new Map([[G, 1.35], [Q, 1.05], [S, 1.05], [W, 0.9]]),
-    },
-    {
-      id: 2,
-      name: "ULS 6.10b (Q leidend)",
-      type: "uls",
-      formula: "1.2G + 1.5Q + 1.5·ψ₀·S + 1.5·ψ₀·W",
-      factors: new Map([[G, 1.2], [Q, 1.5], [S, 1.05], [W, 0.9]]),
-    },
-    {
-      id: 3,
-      name: "ULS 6.10b (S leidend)",
-      type: "uls",
-      formula: "1.2G + 1.5S + 1.5·ψ₀·Q + 1.5·ψ₀·W",
-      factors: new Map([[G, 1.2], [S, 1.5], [Q, 1.05], [W, 0.9]]),
-    },
-    {
-      id: 4,
-      name: "ULS 6.10b (W leidend)",
-      type: "uls",
-      formula: "1.2G + 1.5W + 1.5·ψ₀·Q + 1.5·ψ₀·S",
-      factors: new Map([[G, 1.2], [W, 1.5], [Q, 1.05], [S, 1.05]]),
-    },
-    {
-      id: 5,
-      name: "ULS uplift",
-      type: "uls",
-      formula: "0.9G + 1.5W",
-      factors: new Map([[G, 0.9], [W, 1.5]]),
-    },
-    {
-      id: 6,
-      name: "SLS Karakteristiek",
-      type: "sls",
-      formula: "G + Q + ψ₀·S + ψ₀·W",
-      factors: new Map([[G, 1.0], [Q, 1.0], [S, 0.7], [W, 0.6]]),
-    },
-    {
-      id: 7,
-      name: "SLS Frequent",
-      type: "sls",
-      formula: "G + ψ₁·Q + ψ₂·S",
-      factors: new Map([[G, 1.0], [Q, 0.5], [S, 0.2]]),
-    },
-    {
-      id: 8,
-      name: "SLS Quasi-permanent",
-      type: "sls",
-      formula: "G + ψ₂·Q",
-      factors: new Map([[G, 1.0], [Q, 0.3]]),
-    },
-  ];
+export function defaultCombinations(
+  loadCases: readonly GevalInvoer[] = STANDAARD_BELASTINGGEVALLEN,
+  gevolgklasse: Gevolgklasse = STANDAARD_GEVOLGKLASSE,
+): LoadCombination[] {
+  return genereerStandaardCombinaties(loadCases, gevolgklasse).map((c, i) => ({
+    ...c,
+    id: i + 1,
+  }));
+}
+
+/**
+ * Welke norm-uitdrukking deze combinatie is. Een standaardcombinatie draagt dat
+ * in haar kenmerk. Voor een eigen combinatie, of een combinatie uit een ouder
+ * projectbestand, is de NAAM het enige spoor — dezelfde herkenning die de
+ * toetsbouwers tot september 2026 gebruikten. `null` = niet te herkennen.
+ */
+export function soortVanCombinatie(c: LoadCombination): CombinatieSoort | null {
+  if (c.standaard) return c.standaard.soort;
+  if (c.type === "sls") {
+    if (/karakter/i.test(c.name)) return "6.14b";
+    if (/frequent/i.test(c.name)) return "6.15b";
+    if (/quasi/i.test(c.name)) return "6.16b";
+    return null;
+  }
+  if (/6\.10a/.test(c.name)) return "6.10a";
+  if (/6\.10b/.test(c.name)) return "6.10b";
+  return null;
+}
+
+/**
+ * ALLE combinaties van één soort, in lijstvolgorde. Een toets die een
+ * bruikbaarheidseis bij "de karakteristieke combinatie" moet leggen, hoort over
+ * deze hele lijst te envelopperen: er is een karakteristieke combinatie PER
+ * leidende veranderlijke last (A1.4.3(3) en (7)), en de eerste treffer nemen
+ * maakt de uitkomst afhankelijk van de volgorde waarin combinaties toevallig
+ * staan.
+ */
+export function combinatiesVanSoort(
+  combinations: readonly LoadCombination[],
+  soort: CombinatieSoort,
+): LoadCombination[] {
+  return combinations.filter((c) => soortVanCombinatie(c) === soort);
 }
 
 // ── Combination helper ────────────────────────────────────────────────────

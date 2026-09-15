@@ -441,6 +441,15 @@
 }
 
 /*
+ * Een belastinggeval dat in de doorgerekende combinaties niet meetelt, of
+ * eigen gewicht zonder blijvend geval (lib/combinatieBeheer). Rood, ook op
+ * papier: de last van zo'n geval telt in elke toets als nul.
+ */
+.rpt-melding-fout {
+  color: #b91c1c;
+}
+
+/*
  * Een rij die wel in de tabel hoort maar niet is doorgerekend — een
  * belastingcombinatie die dit model niet nodig heeft (zie
  * lib/combinatieSelectie). Gedempt, met "niet gebruikt" achter de naam en de

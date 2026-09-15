@@ -107,6 +107,11 @@ pub struct BeamCheckInput {
     /// andere manier om hetzelfde uit te drukken, en dat staat als notitie in
     /// het rapport.
     pub is_cantilever: bool,
+    /// Gevolgklasse van het project — in deze kern ALLEEN ter vermelding.
+    /// NEN-EN 1990:2002/NB:2019 verwerkt K_FI in de partiële belastingsfactoren
+    /// zelf (tabel NB.4 voor CC2, NB.5 voor CC1 en CC3); de krachten in
+    /// `forces_envelope` dragen die factoren al. De kern vermenigvuldigt dus
+    /// niets met K_FI, want dan telde de klasse dubbel.
     pub consequence_class: ConsequenceClass,
     /// Zeeg (pre-camber) in mm, POSITIEF = OMHOOG: een zeeg die tegen een
     /// doorhangende ligger in werkt is een positief getal. De zakking zelf

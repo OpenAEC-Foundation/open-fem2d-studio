@@ -297,6 +297,7 @@
     "noLoadsInCase": "No loads in this case.",
     "selfWeightIncluded": "Self-weight of all members is automatically included in this case (q = ρ·A·g per member).",
     "selfWeightOff": "Self-weight is disabled — not included in the analysis.",
+    "selfWeightNoDeadCase": "Self-weight is enabled, but there is no load case of type “Permanent”: self-weight is NOT included in the analysis.",
     "caseType_dead": "Permanent",
     "caseType_live": "Imposed",
     "caseType_snow": "Snow",

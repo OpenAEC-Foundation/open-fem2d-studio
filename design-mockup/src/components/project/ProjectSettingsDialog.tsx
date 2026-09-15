@@ -11,6 +11,9 @@ import {
 } from "../../lib/normenInRapport";
 import { useCheckStore } from "../../stores/checkStore";
 import { usedNorms } from "../report/checkReportUtils";
+import {
+  K_FI as K_FI_NB, PARTIELE_FACTOREN, type Gevolgklasse as NbGevolgklasse,
+} from "../fem/solver/normcombinaties";
 import "./ProjectSettingsDialog.css";
 
 interface ProjectSettingsDialogProps {
@@ -19,14 +22,15 @@ interface ProjectSettingsDialogProps {
 }
 
 /**
- * Gevolgklasse volgens EN 1990 bijlage B: bepaalt de betrouwbaarheidsfactor
- * K_FI waarmee de ongunstige belastingen in de UGT worden vermenigvuldigd.
- * CC1 = 0,9 (geringe gevolgen), CC2 = 1,0 (normaal, standaard),
- * CC3 = 1,1 (grote gevolgen).
+ * Gevolgklasse volgens EN 1990 bijlage B. Hij bepaalt de PARTIËLE FACTOREN
+ * van de standaardbelastingcombinaties: NEN-EN 1990 NB tabel NB.4 voor CC2,
+ * tabel NB.5 voor CC1 en CC3. K_FI (0,9 / 1,0 / 1,1) is de verhouding die in
+ * die tabellen verwerkt is; hij wordt niet nog eens op een uitkomst gezet.
+ * De tabellen en de afleiding staan in components/fem/solver/normcombinaties.ts.
  */
-export type Gevolgklasse = "CC1" | "CC2" | "CC3";
+export type Gevolgklasse = NbGevolgklasse;
 
-export const K_FI: Record<Gevolgklasse, number> = { CC1: 0.9, CC2: 1.0, CC3: 1.1 };
+export const K_FI: Record<Gevolgklasse, number> = K_FI_NB;
 
 export const GEVOLGKLASSE_OMSCHRIJVING: Record<Gevolgklasse, string> = {
   CC1: "Geringe gevolgen — K_FI = 0,90",
@@ -501,9 +505,28 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                 </select>
               </div>
               <p className="proj-uitleg">
-                De gevolgklasse bepaalt de betrouwbaarheidsfactor K<sub>FI</sub> ={" "}
-                {K_FI[uitgangspunten.gevolgklasse].toFixed(2).replace(".", ",")} waarmee de
-                ongunstige belastingen in de uiterste grenstoestand worden vermenigvuldigd.
+                {(() => {
+                  // Wat er werkelijk gebeurt: de klasse kiest de partiële
+                  // factoren van de standaardcombinaties. Tot september 2026
+                  // stond hier dat K_FI de ongunstige belastingen
+                  // vermenigvuldigt, terwijl geen enkele combinatie of toets
+                  // er iets mee deed.
+                  const cc = uitgangspunten.gevolgklasse;
+                  const f = PARTIELE_FACTOREN[cc];
+                  const n = (x: number) => String(x).replace(".", ",");
+                  return (
+                    <>
+                      De gevolgklasse bepaalt de partiële factoren van de
+                      standaardbelastingcombinaties volgens NEN-EN 1990 {f.bron}:
+                      6.10a γ<sub>G</sub> = {n(f.gGsup610a)}, 6.10b γ<sub>G</sub> ={" "}
+                      {n(f.gGsup610b)}, γ<sub>Q</sub> = {n(f.gQ)} (gunstig werkende
+                      blijvende belasting 0,9). Daarin zit K<sub>FI</sub> ={" "}
+                      {K_FI[cc].toFixed(2).replace(".", ",")}; die factor wordt niet nog
+                      eens op een uitkomst toegepast. Een combinatie die u zelf hebt
+                      aangepast of toegevoegd, volgt de gevolgklasse niet.
+                    </>
+                  );
+                })()}
               </p>
 
               {/* Wind — windgebied en terreincategorie horen bij de

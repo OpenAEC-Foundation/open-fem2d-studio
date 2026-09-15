@@ -44,6 +44,7 @@
 import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort } from "../components/fem/solver/combinations";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
 import type { LoadDurationClass } from "./types/timber/LoadDurationClass";
 import type { ServiceClass } from "./types/timber/ServiceClass";
@@ -176,10 +177,10 @@ export function parseTimberRectMm(
 // w_fin = w_inst + k_def · w_qp (EN 1995-1-1 §7.2). w_qp is de zakking onder de
 // QUASI-BLIJVENDE belastingscombinatie: G + Σ ψ₂,i · Q_k,i (NEN-EN 1990,
 // uitdrukking 6.16b). Die ψ₂-factoren zitten in dit project al in de
-// combinatiedefinities — `defaultCombinations()` in
-// components/fem/solver/combinations.ts levert "SLS Quasi-permanent" met
-// formule "G + ψ₂·Q" — dus w_qp hoeft niet geschat te worden; hij is gewoon
-// het veldmaximum van diezelfde combinatie.
+// combinatiedefinities — de standaardset (components/fem/solver/
+// normcombinaties.ts) levert "BGT quasi-blijvend 6.16b" met ψ₂ uit NB tabel
+// NB.2–A1.1 — dus w_qp hoeft niet geschat te worden; hij is gewoon het
+// veldmaximum van diezelfde combinatie.
 //
 // Tot september 2026 stond hier `deflection_quasi_perm_mm: wInstMm`: de VOLLE
 // karakteristieke last als quasi-blijvend. Dat is veilig-zijdig maar niet
@@ -246,6 +247,28 @@ export function quasiPermanentDeflection(
   };
 }
 
+/**
+ * De combinatie met de grootste |zakking| voor deze staaf, plus alle gemeten
+ * zakkingen (voor de notitie). `null` als geen enkele combinatie een
+ * krachtsverloop voor de staaf heeft.
+ */
+function grootsteZakking(
+  beam: Beam,
+  combos: readonly LoadCombination[],
+  results: Map<number, SolverResult>,
+): { combo: LoadCombination; w: number; alle: { combo: LoadCombination; w: number }[] } | null {
+  const alle: { combo: LoadCombination; w: number }[] = [];
+  for (const combo of combos) {
+    const r = results.get(combo.id);
+    if (!r || !r.elements.has(beam.id)) continue;
+    alle.push({ combo, w: extractFieldDeflectionMm(beam, r) });
+  }
+  if (alle.length === 0) return null;
+  let max = alle[0];
+  for (const a of alle) if (Math.abs(a.w) > Math.abs(max.w)) max = a;
+  return { ...max, alle };
+}
+
 export interface TimberBuildData {
   nodes: Node[];
   beams: Beam[];
@@ -276,18 +299,19 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
 
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
   const slsCombos = data.combinations.filter((c) => c.type === "sls");
-  const slsChar =
-    slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
-  const slsResult = slsChar ? data.combinationResults.get(slsChar.id) ?? null : null;
-  // Quasi-blijvende BGT-combinatie voor w_qp. Herkend op de naam — de
-  // ψ₂-factoren zelf zitten in `combo.factors` en zijn daaruit niet terug te
-  // lezen als "dit is de quasi-blijvende". GEEN terugval op slsCombos[0]: dat
-  // zou de karakteristieke combinatie stilzwijgend als quasi-blijvend
+  // w_inst: de GROOTSTE zakking over alle karakteristieke combinaties (6.14b),
+  // per staaf bepaald — er is er een per leidende veranderlijke last, en welke
+  // maatgevend is hangt van de staaf af. Tot september 2026 was dit de eerste
+  // combinatie met "karakter" in de naam, en daarmee afhankelijk van de
+  // volgorde van de lijst. Geen karakteristieke combinatie → de grootste over
+  // alle BGT-combinaties, met een notitie (zie `grootsteZakking`).
+  const slsKarakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
+  // Quasi-blijvende BGT-combinatie(s) voor w_qp. Herkend via het kenmerk of de
+  // naam — de ψ₂-factoren zelf zijn uit `combo.factors` niet terug te lezen als
+  // "dit is de quasi-blijvende". GEEN terugval op een andere BGT-combinatie:
+  // dat zou de karakteristieke combinatie stilzwijgend als quasi-blijvend
   // doorgeven, precies de aanname die hier wordt weggehaald.
-  const slsQuasi = slsCombos.find((c) => /quasi/i.test(c.name)) ?? null;
-  const quasiResult = slsQuasi
-    ? data.combinationResults.get(slsQuasi.id) ?? null
-    : null;
+  const slsQuasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
 
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
@@ -394,8 +418,32 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     // omlaag conform de tekenconventie van de kern — de lokale
     // stationsconventie van de solver valt daar voor horizontale staven
     // mee samen; zie extractFieldDeflectionMm).
-    const wInstMm = extractFieldDeflectionMm(beam, slsResult);
-    const wQuasi = quasiPermanentDeflection(beam, slsQuasi, quasiResult, wInstMm);
+    const inst = grootsteZakking(
+      beam,
+      slsKarakteristiek.length > 0 ? slsKarakteristiek : slsCombos,
+      data.combinationResults,
+    );
+    const wInstMm = inst ? inst.w : 0;
+    const instNotes: string[] = inst
+      ? [
+          (slsKarakteristiek.length > 0
+            ? "w_inst is de grootste zakking over de karakteristieke BGT-combinaties (6.14b): "
+            : "LET OP: het model kent GEEN karakteristieke BGT-combinatie (6.14b); w_inst is " +
+              "daarom de grootste zakking over alle BGT-combinaties: ") +
+            inst.alle.map((a) => `"${a.combo.name}" ${a.w.toFixed(2).replace(".", ",")} mm`).join("; ") +
+            `. Maatgevend is "${inst.combo.name}".`,
+        ]
+      : [
+          "GEEN UITKOMST voor w_inst: geen enkele BGT-combinatie levert een zakking voor " +
+            "deze staaf — reken het model opnieuw door. De 0 is een ontbrekende uitkomst.",
+        ];
+    const quasi = grootsteZakking(beam, slsQuasiLijst, data.combinationResults);
+    const wQuasi = quasiPermanentDeflection(
+      beam,
+      quasi?.combo ?? slsQuasiLijst[0] ?? null,
+      quasi ? data.combinationResults.get(quasi.combo.id) ?? null : null,
+      wInstMm,
+    );
 
     // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
     // preCamber_mm wordt voor hout bewust niet geconsumeerd: de houtkern
@@ -519,6 +567,7 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       // (gedeeld met de staalbouwer), gevolgd door de herkomst van w_qp.
       deflection_notes: [
         ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
+        ...instNotes,
         ...wQuasi.notes,
       ],
     });

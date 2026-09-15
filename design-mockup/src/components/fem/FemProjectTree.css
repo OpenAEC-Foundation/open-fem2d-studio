@@ -127,6 +127,14 @@
   margin-left: 8px;
 }
 
+/*
+ * Een belastinggeval dat nergens meetelt (lib/combinatieBeheer), en de
+ * melding dat combinaties afwijken van de standaard. Rood: bij een fout telt
+ * de last van het geval in elke toets als nul.
+ */
+.fem-tree-melding-fout { color: var(--theme-danger-color); font-weight: 600; }
+.fem-tree-leaf.fem-tree-melding-fout .fem-tree-leaf-label { white-space: normal; }
+
 /* ── Resultaten-tab toggles (M/V/N/Δu/R) ─────────────────────────────── */
 .fem-results-tab {
   display: flex;

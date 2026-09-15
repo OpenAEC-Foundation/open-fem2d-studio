@@ -297,6 +297,7 @@
     "noLoadsInCase": "Aucune charge dans ce cas.",
     "selfWeightIncluded": "Le poids propre de toutes les barres est automatiquement pris en compte dans ce cas (q = ρ·A·g par barre).",
     "selfWeightOff": "Le poids propre est désactivé — non pris en compte dans le calcul.",
+    "selfWeightNoDeadCase": "Le poids propre est activé, mais aucun cas de charge n'est de type « Permanent » : le poids propre n'est PAS pris en compte dans le calcul.",
     "caseType_dead": "Permanent",
     "caseType_live": "Variable",
     "caseType_snow": "Neige",

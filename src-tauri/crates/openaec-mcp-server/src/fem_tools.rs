@@ -146,6 +146,8 @@ struct SolveArgumenten {
     #[serde(default)]
     combinations: Option<Value>,
     #[serde(default)]
+    gevolgklasse: Option<String>,
+    #[serde(default)]
     nonlinear: Option<bool>,
     #[serde(default)]
     detail: Option<String>,
@@ -162,6 +164,8 @@ struct CheckArgumenten {
     project_path: Option<String>,
     #[serde(default)]
     combinations: Option<Value>,
+    #[serde(default)]
+    gevolgklasse: Option<String>,
     #[serde(default)]
     nonlinear: Option<bool>,
     #[serde(default)]
@@ -305,6 +309,9 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
             if let Some(c) = a.combinations {
                 payload.insert("combinations".to_owned(), c);
             }
+            if let Some(g) = a.gevolgklasse {
+                payload.insert("gevolgklasse".to_owned(), json!(g));
+            }
             payload.insert("nonlinear".to_owned(), json!(a.nonlinear.unwrap_or(false)));
             payload.insert(
                 "detail".to_owned(),
@@ -357,6 +364,9 @@ async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
     payload.insert("profiles".to_owned(), profielen().clone());
     if let Some(c) = a.combinations {
         payload.insert("combinations".to_owned(), c);
+    }
+    if let Some(g) = a.gevolgklasse {
+        payload.insert("gevolgklasse".to_owned(), json!(g));
     }
     if let Some(c) = a.check_config {
         payload.insert("check_config".to_owned(), c);
@@ -762,7 +772,10 @@ fn schema_loadcases() -> Value {
                 "id": { "type": "integer" },
                 "name": { "type": "string" },
                 "type": { "type": "string", "enum": ["dead", "live", "snow", "wind", "other"],
-                    "description": "Aard van het geval. Het eigen gewicht komt in het eerste \"dead\"-geval terecht." },
+                    "description": "Aard van het geval. Bepaalt de factoren in de standaardcombinaties (NEN-EN 1990 NB tabel NB.4/NB.5 en NB.2–A1.1). \"other\" of geen type = GEEN factor: zo'n geval met een last komt als FOUT in `warnings` en telt als nul. Het eigen gewicht komt in het eerste \"dead\"-geval; zonder \"dead\"-geval wordt het NIET meegerekend (ook dat staat in `warnings`)." },
+                "categorie": { "type": "string",
+                    "enum": ["A", "B", "C", "C-menigte", "D", "E", "F", "G", "H", "industrie-kort", "industrie-lang"],
+                    "description": "Gebruikscategorie van een \"live\"-geval volgens NB tabel NB.2–A1.1; bepaalt ψ₀/ψ₁/ψ₂. Ontbreekt = A (woon- en verblijfsruimtes: 0,4/0,5/0,3). \"C\" = bijeenkomstruimte, overige delen (ψ₀ = 0,4); \"C-menigte\" = delen die bij een calamiteit zwaar door een mensenmenigte belast kunnen worden (ψ₀ = 0,6)." },
                 "gegenereerd": {
                     "type": "object",
                     "additionalProperties": false,
@@ -853,7 +866,7 @@ fn schema_fem_model() -> Value {
 fn schema_combinations() -> Value {
     json!({
         "type": "array",
-        "description": "Belastingcombinaties. Ontbreekt dit veld, dan gelden de combinaties uit het projectbestand, en anders de EN 1990-standaardset van de app.",
+        "description": "Belastingcombinaties. Ontbreekt dit veld, dan gelden de combinaties uit het projectbestand, en anders de standaardset die de app afleidt uit `loadCases` (type en categorie) en de gevolgklasse: 6.10a, 6.10b per leidende veranderlijke last (ook met gunstig werkende blijvende last), 6.14b en 6.15b per leidende last, en 6.16b — met γ uit NEN-EN 1990 NB tabel NB.4/NB.5 en ψ uit tabel NB.2–A1.1. Elke uitdrukking komt in elke opstelling van de veranderlijke gevallen: ieder veranderlijk geval aan- of afwezig (naam \"… zonder <geval>\"), want een veranderlijke belasting telt alleen waar ze ongunstig werkt (NEN-EN 1991-1-1 6.2.1(1)P). Boven 4 gebruiksbelastinggevallen gaan de gevallen van één categorie samen aan of uit, en dat staat in `warnings`. Wind- en sneeuwgevallen zijn alternatieven en staan nooit samen in één combinatie. Een set is nooit stil een deel van de standaardset: bevat een projectbestand standaardcombinaties en ontbreekt er een die geen andere combinatie met dezelfde factoren vervangt, dan staat er `FOUT: … standaardcombinatie(s) ontbreken` in `warnings`; een blijvend belastinggeval met factoren die niet bij een blijvende belasting passen (in de BGT anders dan 1,0) geeft ook een FOUT.",
         "items": {
             "type": "object",
             "additionalProperties": false,
@@ -868,6 +881,14 @@ fn schema_combinations() -> Value {
                     "description": "Sleutel = belastinggeval-id als tekst, waarde = factor." }
             }
         }
+    })
+}
+
+fn schema_gevolgklasse() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["CC1", "CC2", "CC3"],
+        "description": "Gevolgklasse volgens NEN-EN 1990 bijlage B. Bepaalt de partiële factoren van de STANDAARDcombinaties (NB tabel NB.4 voor CC2: 6.10b γ_G = 1,2 / γ_Q = 1,5; NB.5 voor CC1: 1,1 / 1,35 en CC3: 1,3 / 1,65) en gaat ter vermelding mee in `steel_check_inputs`. Geen invloed op meegegeven `combinations`. Uit een projectbestand telt de klasse uit de projectgegevens. Ontbreekt beide: CC2, met een waarschuwing. K_FI wordt nergens nog eens op een uitkomst toegepast."
     })
 }
 
@@ -921,6 +942,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "model": schema_fem_model(),
                     "project_path": schema_project_path(),
                     "combinations": schema_combinations(),
+                    "gevolgklasse": schema_gevolgklasse(),
                     "nonlinear": { "type": "boolean", "default": false,
                         "description": "Tweede orde (P-Delta). Komt het model uit een projectbestand, dan telt de keuze uit dat bestand en overschrijft deze vlag hem NIET." },
                     "detail": { "type": "string", "enum": ["samenvatting", "stations"], "default": "samenvatting",
@@ -942,6 +964,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "model": schema_fem_model(),
                     "project_path": schema_project_path(),
                     "combinations": schema_combinations(),
+                    "gevolgklasse": schema_gevolgklasse(),
                     "nonlinear": { "type": "boolean", "default": false,
                         "description": "Tweede orde (P-Delta). Uit een projectbestand telt de keuze uit dat bestand." },
                     "timeout_s": { "type": "integer", "minimum": 1, "maximum": 600, "default": 60,

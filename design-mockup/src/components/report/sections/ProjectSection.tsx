@@ -28,6 +28,7 @@ import {
   K_FI,
   LEVENSDUUR_OMSCHRIJVING,
 } from "../../project/ProjectSettingsDialog";
+import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
 
 /** yyyy-mm-dd → nl-notatie; alles wat niet parsebaar is blijft zoals het is. */
 function formatDate(raw: string): string {
@@ -83,7 +84,7 @@ export default function ProjectSection() {
   // bepaald — dezelfde tekst die de PDF-uitdraai in haar hoofdstuk
   // Uitgangspunten zet. Hier wordt niets herrekend: stond er geen scheefstand
   // op de lasten, dan is de tekst leeg en zwijgt ook dit blok erover.
-  const { beams, scheefstandToelichting } = useReportData();
+  const { beams, scheefstandToelichting, combinations } = useReportData();
 
   // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
   // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
@@ -164,12 +165,27 @@ export default function ProjectSection() {
           toon.en1992 && "Eurocode 2 — Beton (EN 1992-1-1)",
         ].filter(Boolean) as string[];
         const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
+        // Wat er met de klasse GEBEURT, niet alleen welke het is. Tot
+        // september 2026 stond hier "CCx (K_FI = …)" terwijl de combinaties
+        // altijd met de CC2-factoren rekenden. Nu kiest de klasse de factoren
+        // van de standaardcombinaties; een eigen UGT-combinatie volgt hem niet,
+        // en dat hoort de lezer ook te weten.
+        const pf = PARTIELE_FACTOREN[u.gevolgklasse];
+        const n = (x: number) => String(x).replace(".", ",");
+        const eigenUgt = combinations.filter((c) => c.type === "uls" && !c.standaard).length;
+        const gevolgklasseTekst =
+          `${u.gevolgklasse} (K_FI = ${kfi}), verwerkt in de partiële factoren van de ` +
+          `standaardcombinaties volgens NEN-EN 1990 ${pf.bron}: 6.10a γ_G = ${n(pf.gGsup610a)}, ` +
+          `6.10b γ_G = ${n(pf.gGsup610b)}, γ_Q = ${n(pf.gQ)}; K_FI is niet nog eens toegepast` +
+          (eigenUgt > 0
+            ? `. ${eigenUgt} UGT-combinatie(s) zijn eigen combinaties en volgen de gevolgklasse niet`
+            : "");
         const levensduur = LEVENSDUUR_OMSCHRIJVING[u.levensduurklasse]
           .replace(/^Klasse \d+ — /, "");
         const rijen: Array<[string, ReactNode]> = [
           [t("report.fieldNormen", "Toegepaste normen"), normen.length > 0 ? normen.join("; ") : "—"],
           [t("report.fieldNationaleBijlage", "Nationale bijlage"), "Nederland"],
-          [t("report.fieldGevolgklasse", "Gevolgklasse"), `${u.gevolgklasse} (K_FI = ${kfi})`],
+          [t("report.fieldGevolgklasse", "Gevolgklasse"), gevolgklasseTekst],
           [t("report.fieldLevensduur", "Ontwerplevensduur"), levensduur],
         ];
         // De vierde rij: de initiële scheefstand, woordelijk zoals zij is

@@ -47,10 +47,11 @@ export interface RekenInstellingen {
   scheefstandHoogteM: number | null;
   scheefstandAantalElementen: number | null;
   /**
-   * Gevolgklasse uit de projectinstellingen (uitgangspunten), CC1/CC2/CC3.
-   * Volgens NEN-EN 1990 NB tabel NB.4/NB.5 bepaalt zij de partiële factoren;
-   * zodra de combinaties haar volgen hoort een wijziging de resultaten te
-   * laten vervallen. `null` = niet ingesteld.
+   * Gevolgklasse, CC1/CC2/CC3: de klasse waarmee de standaardcombinaties
+   * rekenen (in de app die uit de projectinstellingen). Volgens NEN-EN 1990 NB
+   * tabel NB.4/NB.5 bepaalt zij de partiële factoren, en de staalkern krijgt
+   * haar als `consequence_class`; een wijziging laat de resultaten vervallen.
+   * `null` = niet ingesteld.
    */
   gevolgklasse: string | null;
 }

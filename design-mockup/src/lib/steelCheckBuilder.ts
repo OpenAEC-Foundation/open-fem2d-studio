@@ -21,6 +21,10 @@
 import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort } from "../components/fem/solver/combinations";
+import {
+  STANDAARD_GEVOLGKLASSE, type CombinatieSoort, type Gevolgklasse,
+} from "../components/fem/solver/normcombinaties";
 import type { BeamCheckInput } from "./types/steel/BeamCheckInput";
 import type { DeflectionClass } from "./types/steel/DeflectionClass";
 import type { ForcePoint } from "./types/steel/ForcePoint";
@@ -225,6 +229,13 @@ export interface SteelBuildData {
    * de kern niet kent eerlijk over te slaan.
    */
   profileDb: Map<string, SteelProfile>;
+  /**
+   * Gevolgklasse van het project; gaat als `consequence_class` naar de kern.
+   * Daar is hij alleen ter VERMELDING: K_FI zit al in de partiële factoren van
+   * de combinaties (NB tabel NB.4/NB.5, zie normcombinaties.ts) en mag dus niet
+   * nog eens op de uitkomst. Ontbreekt → CC2.
+   */
+  gevolgklasse?: Gevolgklasse;
 }
 
 export interface SteelBuildResult {
@@ -546,15 +557,37 @@ export function zijdelingseVerplaatsingMm(
 }
 
 /**
- * De drie BGT-combinaties die A1.4.3 aanwijst, herkend aan hun naam — zelfde
- * werkwijze als de houtbouwer voor de quasi-blijvende combinatie hanteert.
- * De volgorde is die van de uitdrukkingen zelf.
+ * De drie BGT-uitdrukkingen die A1.4.3 aanwijst. Herkend via
+ * `combinatiesVanSoort`: het kenmerk van een standaardcombinatie, en voor een
+ * eigen combinatie de naam. De volgorde is die van de uitdrukkingen zelf.
  */
-const BGT_NORMCOMBINATIES: { sleutel: RegExp; uitdrukking: string }[] = [
-  { sleutel: /karakter/i, uitdrukking: "6.14b" },
-  { sleutel: /frequent/i, uitdrukking: "6.15b" },
-  { sleutel: /quasi/i, uitdrukking: "6.16b" },
+const BGT_NORMCOMBINATIES: { soort: CombinatieSoort; uitdrukking: string }[] = [
+  { soort: "6.14b", uitdrukking: "6.14b" },
+  { soort: "6.15b", uitdrukking: "6.15b" },
+  { soort: "6.16b", uitdrukking: "6.16b" },
 ];
+
+/**
+ * Belastinggevallen die in een karakteristieke combinatie met een factor
+ * tussen 0 en 1 staan (begeleidend, met ψ₀), maar in GEEN ENKELE
+ * karakteristieke combinatie met factor ≥ 1 (leidend). Uitdrukking 6.14b vraagt
+ * een combinatie per leidende veranderlijke belasting; ontbreekt die, dan is
+ * de omhullende te laag voor precies die last. Zo werd de horizontale
+ * verplaatsing tot september 2026 met wind × 0,6 getoetst (basisaudit nr 3).
+ * Werkt zonder de belastinggevallen te kennen: een blijvende last staat in
+ * elke karakteristieke combinatie met 1,0 en valt er dus nooit onder.
+ */
+function nooitLeidend(karakteristiek: readonly LoadCombination[]): number[] {
+  const begeleidend = new Set<number>();
+  const leidend = new Set<number>();
+  for (const c of karakteristiek) {
+    for (const [id, f] of c.factors) {
+      if (Math.abs(f) >= 1 - 1e-9) leidend.add(id);
+      else if (f !== 0) begeleidend.add(id);
+    }
+  }
+  return [...begeleidend].filter((id) => !leidend.has(id)).sort((a, b) => a - b);
+}
 
 /** Getal met een decimale komma, zoals de rest van het rapport het toont. */
 function nl(x: number, cijfers = 1): string {
@@ -605,13 +638,11 @@ export function bepaalDoorbuigingsInvoer(
 ): DoorbuigingsInvoer {
   const cfg = beam.checkConfig ?? {};
   const slsCombos = data.combinations.filter((c) => c.type === "sls");
-  const karakteristiek =
-    slsCombos.find((c) => /karakter/i.test(c.name)) ?? slsCombos[0] ?? null;
 
   // Een expliciete klassekeuze van de gebruiker gaat vóór: wie bij een
   // verticale staaf tóch een vloer- of dakeis wil toetsen kan dat afdwingen.
   if (cfg.deflectionClass === undefined && isOverwegendVerticaal(beam, data.nodes)) {
-    return zijdelingseEis(beam, data, karakteristiek);
+    return zijdelingseEis(beam, data, slsCombos);
   }
   return vloerDakEis(beam, data, slsCombos);
 }
@@ -620,7 +651,7 @@ export function bepaalDoorbuigingsInvoer(
 function zijdelingseEis(
   beam: Beam,
   data: Pick<SteelBuildData, "nodes" | "combinationResults">,
-  karakteristiek: LoadCombination | null,
+  slsCombos: LoadCombination[],
 ): DoorbuigingsInvoer {
   const a = data.nodes.find((n) => n.id === beam.from);
   const b = data.nodes.find((n) => n.id === beam.to);
@@ -635,10 +666,29 @@ function zijdelingseEis(
   const noemer = hoogteMm > 0 ? Math.ceil((300 * lengteMm) / hoogteMm) : 300;
   const grensMm = noemer > 0 ? lengteMm / noemer : 0;
 
-  const result = karakteristiek
-    ? data.combinationResults.get(karakteristiek.id) ?? null
-    : null;
-  const u = zijdelingseVerplaatsingMm(beam, data.nodes, result);
+  // OMHULLENDE over ALLE karakteristieke combinaties (6.14b), niet de eerste
+  // treffer. Er is er een per leidende veranderlijke belasting; bij een
+  // portaal is die met wind leidend (factor 1,0) doorgaans maatgevend, en de
+  // eerste in de lijst is dat zelden. Tot september 2026 pakte deze toets de
+  // eerste combinatie met "karakter" in de naam — G + Q + 0,7·S + 0,6·W — en
+  // bleef de verplaatsing daardoor tot 40 % te laag (basisaudit nr 3).
+  //
+  // Kent het model geen karakteristieke combinatie, dan de grootste over alle
+  // BGT-combinaties — maar met een notitie dat dit GEEN toetsing volgens
+  // A1.4.3(7) is, in plaats van 6.14b te claimen.
+  const karakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
+  const kandidaten = karakteristiek.length > 0 ? karakteristiek : slsCombos;
+  const gemeten: { combo: LoadCombination; u: number }[] = [];
+  for (const combo of kandidaten) {
+    const r = data.combinationResults.get(combo.id) ?? null;
+    const uc = zijdelingseVerplaatsingMm(beam, data.nodes, r);
+    if (uc !== null) gemeten.push({ combo, u: uc });
+  }
+  let maatgevend = gemeten.length > 0 ? gemeten[0] : null;
+  for (const g of gemeten) {
+    if (maatgevend && Math.abs(g.u) > Math.abs(maatgevend.u)) maatgevend = g;
+  }
+  const u = maatgevend ? maatgevend.u : null;
 
   const notes: string[] = [
     `Deze staaf staat overwegend verticaal (${nl(helling)}° met de horizontaal; ` +
@@ -674,22 +724,41 @@ function zijdelingseEis(
       "levert de twee regels altijd als paar.",
   ];
 
-  if (u === null) {
+  if (u === null || !maatgevend) {
     notes.push(
       "GEEN UITKOMST: " +
-        (karakteristiek
-          ? `de karakteristieke BGT-combinatie "${karakteristiek.name}" levert geen ` +
-            "knoopverplaatsingen voor deze staaf — reken het model opnieuw door"
-          : "het model kent geen BGT-combinatie (verwacht: een combinatie met " +
-            '"karakteristiek" in de naam)') +
+        (kandidaten.length > 0
+          ? `geen van de BGT-combinaties (${kandidaten.map((c) => `"${c.name}"`).join(", ")}) ` +
+            "levert knoopverplaatsingen voor deze staaf — reken het model opnieuw door"
+          : "het model kent geen BGT-combinatie") +
         ". De zijdelingse verplaatsing is daarom op 0 gezet; die 0 is een " +
         "ontbrekende uitkomst en geen getoetste verplaatsing.",
     );
+  } else if (karakteristiek.length === 0) {
+    notes.push(
+      `u = ${nl(u, 2)} mm, de grootste over alle BGT-combinaties; maatgevend is ` +
+        `"${maatgevend.combo.name}". LET OP: het model kent GEEN karakteristieke ` +
+        "combinatie (uitdrukking 6.14b). Dit is dus geen toetsing volgens A1.4.3(7), " +
+        "maar een vervanger — voeg de karakteristieke combinaties toe (of kies de " +
+        "standaardcombinaties) om de eis letterlijk uit te voeren.",
+    );
   } else {
     notes.push(
-      `u = ${nl(u, 2)} mm, uit de karakteristieke BGT-combinatie ` +
-        `"${karakteristiek?.name ?? "—"}".`,
+      `u = ${nl(u, 2)} mm: de grootste horizontale verplaatsing over de ` +
+        `${gemeten.length} karakteristieke BGT-combinaties (6.14b) — ` +
+        gemeten.map((g) => `"${g.combo.name}" ${nl(g.u, 2)} mm`).join("; ") +
+        `. Maatgevend is "${maatgevend.combo.name}".`,
     );
+    const zonderLeiding = nooitLeidend(karakteristiek);
+    if (zonderLeiding.length > 0) {
+      notes.push(
+        `LET OP: belastinggeval ${zonderLeiding.join(", ")} staat in de karakteristieke ` +
+          "combinaties alleen als begeleidende last (factor < 1), nooit als leidende. " +
+          "Uitdrukking 6.14b vraagt een combinatie met elke veranderlijke belasting als " +
+          "leidende; voor deze last ontbreekt die, en de getoetste verplaatsing kan daardoor " +
+          "te laag zijn.",
+      );
+    }
   }
 
   return {
@@ -730,20 +799,27 @@ function vloerDakEis(
   // Tot september 2026 werd hier onvoorwaardelijk de karakteristieke
   // combinatie gevoerd, terwijl de notitie die de kern bij w_add meestuurt de
   // FREQUENTE combinatie noemt. Het rapport zei dus niet wat er gerekend was.
+  // Per uitdrukking over ALLE combinaties van die soort: er is een
+  // karakteristieke en een frequente combinatie per leidende veranderlijke
+  // last, en bij een dak vraagt A1.4.3(3) uitdrukkelijk "afzonderlijk de
+  // gebruiksbelasting, de windbelasting en de sneeuwbelasting als extreme
+  // veranderlijke belasting". De eerste treffer nemen, zoals tot september
+  // 2026, maakte de zakking afhankelijk van de volgorde van de combinaties.
   const gewogen: { naam: string; uitdrukking: string; w: number }[] = [];
   const ontbreekt: string[] = [];
   for (const norm of BGT_NORMCOMBINATIES) {
-    const combo = slsCombos.find((c) => norm.sleutel.test(c.name)) ?? null;
-    const result = combo ? data.combinationResults.get(combo.id) ?? null : null;
-    if (!combo || !result || !result.elements.has(beam.id)) {
-      ontbreekt.push(norm.uitdrukking);
-      continue;
+    let gevonden = false;
+    for (const combo of combinatiesVanSoort(slsCombos, norm.soort)) {
+      const result = data.combinationResults.get(combo.id) ?? null;
+      if (!result || !result.elements.has(beam.id)) continue;
+      gevonden = true;
+      gewogen.push({
+        naam: combo.name,
+        uitdrukking: norm.uitdrukking,
+        w: extractFieldDeflectionMm(beam, result),
+      });
     }
-    gewogen.push({
-      naam: combo.name,
-      uitdrukking: norm.uitdrukking,
-      w: extractFieldDeflectionMm(beam, result),
-    });
+    if (!gevonden) ontbreekt.push(norm.uitdrukking);
   }
   // Terugval: geen enkele herkende normcombinatie → de eerste BGT-combinatie
   // die er wél is. Beter dan 0, en de notitie zegt dat het een terugval is.
@@ -797,18 +873,19 @@ function vloerDakEis(
     }
   }
 
-  // w_perm — het blijvende deel w1 uit figuur NB.1 — is uit de meegegeven
-  // combinatieresultaten niet af te leiden: de bouwer krijgt alleen
-  // COMBINATIES, en de standaardset kent geen BGT-combinatie met uitsluitend
-  // de blijvende belasting. Er gaat daarom 0 naar de kern, en dat betekent
+  // w_perm — het blijvende deel w1 uit figuur NB.1 — wordt hier niet uit de
+  // combinatieresultaten afgeleid: de bouwer krijgt alleen COMBINATIES, en
+  // welke daarvan "alleen de blijvende belasting" is, ligt niet vast. Sinds
+  // september 2026 bevat de standaardset er meestal een (de quasi-blijvende
+  // zonder veranderlijke gevallen), een eigen of oude set vaak niet; tot dan
+  // stond hier dat de standaardset er geen kende. Er gaat daarom 0 naar de kern, en dat betekent
   // w_add = w_fin. Veilig-zijdig (w2 + w3 ≤ w_tot), maar het is niet de
   // grootheid die A1.4.3(3) bedoelt — en tot september 2026 stond dat nergens
   // in het rapport: twee regels met hetzelfde getal, zonder uitleg.
   notes.push(
     "w_add is hier GELIJK aan w_fin. De norm meet w2 + w3 vanaf w1, de zakking " +
-      "onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die is " +
-      "uit de doorgerekende combinaties niet af te leiden, want het model kent " +
-      "geen BGT-combinatie met uitsluitend de blijvende belasting. " +
+      "onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die leidt " +
+      "deze toets niet uit de doorgerekende combinaties af. " +
       "w_BGT,permanent is daarom 0: w_add krijgt de VOLLEDIGE zakking in plaats " +
       "van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar " +
       "de w_add-regel is daarmee geen w2 + w3, en de twee doorbuigingsregels " +
@@ -845,7 +922,9 @@ function vloerDakEis(
  *    NEN-EN 1990:2002/NB:2019 A1.4.3(3), tweede gedachtestreepje), een
  *    overwegend verticale staaf de zijdelingse eis h/300 uit A1.4.3(7);
  *    geen zeeg;
- *  - gevolgklasse CC1; last grijpt aan op de bovenflens (z_a = h/2,
+ *  - gevolgklasse: die van het project (`data.gevolgklasse`, anders CC2),
+ *    alleen ter vermelding — K_FI zit in de factoren van de combinaties;
+ *  - last grijpt aan op de bovenflens (z_a = h/2,
  *    destabiliserend = veilig-zijdig);
  *  - blijvende BGT-zakking (w1) niet af te leiden uit de combinatieresultaten
  *    → 0, dus w_add = w_fin; dat staat als notitie in het rapport.
@@ -997,7 +1076,11 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       // (negatief = omlaag), bij een kolom de zijdelingse verplaatsing.
       deflection_actual_max_mm: doorbuiging.wMm,
       is_cantilever: doorbuiging.isUitkraging,
-      consequence_class: "CC1",
+      // De gevolgklasse van het PROJECT. Tot september 2026 stond hier hard
+      // "CC1", los van de projectinstelling. De kern past K_FI niet toe
+      // (orchestrator.rs): de klasse zit al in γ_G en γ_Q van de combinaties
+      // volgens NB tabel NB.4/NB.5; dit veld is vermelding.
+      consequence_class: data.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
       pre_camber_mm: cfg.preCamber_mm ?? 0,
       // Het blijvende deel w1 is uit de combinatieresultaten niet af te leiden
       // → 0, dus w_add = w_fin. Veilig-zijdig, en `bepaalDoorbuigingsInvoer`

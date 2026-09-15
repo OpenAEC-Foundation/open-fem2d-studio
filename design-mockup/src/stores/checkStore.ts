@@ -28,6 +28,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Beam, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
 import type { BeamCheckResult } from "../lib/types/steel/BeamCheckResult";
 import type { TimberBeamCheckResult } from "../lib/types/timber/TimberBeamCheckResult";
 import type { CltBeamCheckResult } from "../lib/types/timber/CltBeamCheckResult";
@@ -130,6 +131,11 @@ export interface CheckRunData {
   supports?: Support[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
+  /**
+   * Gevolgklasse van het project — voor de staalkern alleen ter vermelding
+   * (`consequence_class`); de factoren zitten al in de combinaties. Ontbreekt → CC2.
+   */
+  gevolgklasse?: Gevolgklasse;
 }
 
 interface CheckState {

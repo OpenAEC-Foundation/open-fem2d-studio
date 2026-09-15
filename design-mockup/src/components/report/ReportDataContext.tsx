@@ -29,6 +29,7 @@ import type {
   StructuralGrid,
 } from "../fem/femTypes";
 import type { LoadCombination, Envelope } from "../fem/solver/combinations";
+import type { Gevolgklasse } from "../fem/solver/normcombinaties";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 import type { SolverResult } from "../fem/solver/types";
 
@@ -49,6 +50,14 @@ export interface ReportData {
    * welke combinaties gehanteerd zijn én welke niet.
    */
   overgeslagenCombinaties: OvergeslagenCombinatie[];
+  /**
+   * De gevolgklasse waarmee de standaardcombinaties rekenen. De
+   * combinatiesectie meldt daarmee, net als de projectboom, welke
+   * standaardcombinaties ontbreken. Ontbreekt het veld (een snapshot uit een
+   * ouder hoofdvenster), dan geldt de klasse uit het kenmerk van de
+   * standaardcombinaties.
+   */
+  gevolgklasse?: Gevolgklasse;
   structuralGrid: StructuralGrid;
   selfWeightEnabled: boolean;
   /**
