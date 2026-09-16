@@ -44,6 +44,11 @@ import {
   type CombinatieAfwijking, type CombinatieStaat, type CombinatieVervanging, type GevalMelding,
 } from "../lib/combinatieBeheer";
 import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
+import {
+  bepaalEindstijfheidHout,
+  metEindtoestandVarianten,
+  type EindstijfheidUitkomst,
+} from "../lib/houtEindstijfheid";
 import { splitsVerlopendProfiel } from "../lib/verloopSplitsen";
 import {
   STANDAARD_GEVOLGKLASSE, type Gevolgklasse,
@@ -1453,6 +1458,13 @@ export interface FemStore {
    */
   belastingMeldingen: GevalMelding[];
   /**
+   * De eindstijfheid van hout (NEN-EN 1995-1-1 2.3.2.2): of er
+   * eindtoestandvarianten zijn, en met welke k_def per houtstaaf. De rekengang
+   * lost daarmee de eindtoestand op; de meldingen staan ook in
+   * `belastingMeldingen`.
+   */
+  eindstijfheid: EindstijfheidUitkomst;
+  /**
    * Wat er bij het OPENEN van het project verder te melden was — weggehaalde
    * wees-factoren, een blijvend geval met vreemde factoren in een eigen
    * combinatie — of null.
@@ -1921,22 +1933,49 @@ export function useFemStore(opties?: {
   // varianten, één per richting (EN 1993-1-1 5.3.2(2), basisaudit nr 28).
   // De ontvouwde lijst is de lijst waarmee gerekend en getoetst wordt; de
   // opgeslagen `combinations` blijft de ononvouwen lijst van de editor.
+  //
+  // Geldt de vereenvoudiging van NEN-EN 1995-1-1 2.2.3(5) niet — hout in een
+  // statisch onbepaalde constructie met verschillend kruipgedrag — dan krijgt
+  // elke UGT-combinatie er eindtoestandvarianten met E_mean,fin bij (zie
+  // lib/houtEindstijfheid.ts). Geldt hij wél, dan is de lijst ongewijzigd.
+  //
+  // STABIELE IDENTITEIT. De bepaling hangt van de knopen af (de telling van
+  // de onbepaaldheid), en een knoop verslepen zou anders bij elke stap een
+  // nieuwe uitkomst en dus een nieuwe `actieveCombinaties` geven — ook als er
+  // niets verandert. Een gelijke uitkomst houdt daarom het vorige object.
+  const eindstijfheidRef = useRef<{ sleutel: string; uitkomst: EindstijfheidUitkomst } | null>(null);
+  const eindstijfheid = useMemo(() => {
+    const uitkomst = bepaalEindstijfheidHout({ nodes, beams, supports, plates, analysetype });
+    const sleutel = JSON.stringify([
+      uitkomst.status, [...uitkomst.kDefPerStaaf.entries()], uitkomst.meldingen,
+    ]);
+    const vorige = eindstijfheidRef.current;
+    if (vorige && vorige.sleutel === sleutel) return vorige.uitkomst;
+    eindstijfheidRef.current = { sleutel, uitkomst };
+    return uitkomst;
+  }, [nodes, beams, supports, plates, analysetype]);
   const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
     useMemo(() => {
       const selectie = selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse });
       return {
-        actief: metScheefstandRichtingen(selectie.actief, scheefstandEnabled, scheefstandRichting),
+        actief: metEindtoestandVarianten(
+          metScheefstandRichtingen(selectie.actief, scheefstandEnabled, scheefstandRichting),
+          loadCases, eindstijfheid,
+        ),
         overgeslagen: selectie.overgeslagen,
       };
-    }, [combinations, beams, plates, loadCases, gevolgklasse, scheefstandEnabled, scheefstandRichting]);
+    }, [combinations, beams, plates, loadCases, gevolgklasse, scheefstandEnabled, scheefstandRichting, eindstijfheid]);
   /**
    * De VOLLEDIGE lijst in dezelfde ontvouwing als `actieveCombinaties` — voor
    * het rapport, dat ook opsomt wat niet is doorgerekend en de resultaten op
    * combinatie-id opzoekt.
    */
   const combinatiesVoorRapport = useMemo(
-    () => metScheefstandRichtingen(combinations, scheefstandEnabled, scheefstandRichting),
-    [combinations, scheefstandEnabled, scheefstandRichting],
+    () => metEindtoestandVarianten(
+      metScheefstandRichtingen(combinations, scheefstandEnabled, scheefstandRichting),
+      loadCases, eindstijfheid,
+    ),
+    [combinations, scheefstandEnabled, scheefstandRichting, loadCases, eindstijfheid],
   );
   // Normberekening van φ — beginstand "vast" (= het oude gedrag), zie de
   // toelichting bij `scheefstandBron` hierboven. h en m op null = afleiden.
@@ -2013,8 +2052,12 @@ export function useFemStore(opties?: {
       loads, selfWeightEnabled,
       // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod).
       metHout: beams.some((b) => matchSupportedTimberGrade(b.material) !== null),
-    }),
-    [loadCases, actieveCombinaties, combinations, gevolgklasse, loads, selfWeightEnabled, beams],
+    }).concat(
+      // De eindstijfheid van hout (EN 1995-1-1 2.2.3(5), 2.3.2.2): wat er in
+      // een gemengd onbepaald model is doorgerekend en wat niet.
+      eindstijfheid.meldingen,
+    ),
+    [loadCases, actieveCombinaties, combinations, gevolgklasse, loads, selfWeightEnabled, beams, eindstijfheid],
   );
 
   const [selection, setSelection] = useState<Selection>(null);
@@ -2708,7 +2751,7 @@ export function useFemStore(opties?: {
     nodes, beams, supports, plates, loads,
     loadCases, activeLoadCaseId,
     combinations, actieveCombinaties, overgeslagenCombinaties, combinatiesVoorRapport,
-    gevolgklasse, setGevolgklasse, belastingMeldingen, combinatieAfwijking, idTellers,
+    gevolgklasse, setGevolgklasse, belastingMeldingen, eindstijfheid, combinatieAfwijking, idTellers,
     combinatieVervanging,
     combinatieVervangingTekst: combinatieVervanging?.samenvatting ?? vervangingUitBestand,
     activeCombinationId, envelopeView,

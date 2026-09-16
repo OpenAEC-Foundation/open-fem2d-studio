@@ -293,9 +293,17 @@ log("\n[8] Dezelfde beslissing langs de sidecar (de MCP-weg)");
     { id: 4, from: 2, to: 3, material: "C24", profile: "100x200" },
   ]);
   const rg = gemengd.result ?? {};
+  // Sinds september 2026 (EN 1995-1-1 2.3.2.2) staan er in dit ingeklemde,
+  // dus statisch onbepaalde portaal met hout naast staal ook de
+  // eindtoestandvarianten van de UGT-combinaties bij, onder id + 10 000 000 ·
+  // round(100·ψ₂). Die tellen hier niet mee: het gaat om de selectie.
+  const gewoon = Object.keys(rg.combinations ?? {}).map(Number).filter((id) => id < 10_000_000);
   checkWaar("één houten staaf erbij → alle acht combinaties, niets overgeslagen",
-    Object.keys(rg.combinations ?? {}).length === 8 &&
+    gewoon.length === 8 &&
     (rg.combinations_skipped ?? []).length === 0);
+  checkWaar("… plus eindtoestandvarianten, met de melding in `warnings` (EN 1995-1-1 2.3.2.2)",
+    Object.keys(rg.combinations ?? {}).length > 8 &&
+    (rg.warnings ?? []).some((w) => w.startsWith("Eindstijfheid hout doorgerekend (UGT).")));
 }
 
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);

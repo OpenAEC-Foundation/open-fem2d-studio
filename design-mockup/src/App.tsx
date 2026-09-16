@@ -62,6 +62,7 @@ import {
 } from "./lib/betonStijfheid";
 import { modelHeeftBetonstaaf } from "./lib/kruipcoefficient";
 import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
+import { losEindtoestandOp } from "./lib/houtEindstijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { controleerVoorRekenen, leesbareRekenfout, statusNaCanvasSolve } from "./lib/rekenPoort";
@@ -390,9 +391,16 @@ function App() {
           ANALYSETYPE_OMSCHRIJVING[fem.analysetype],
           fem.stabiliteit,
           fem.scheefstandEnabled,
-        )
+        ) +
+        // De eindstijfheid van hout (NEN-EN 1995-1-1 2.2.3(5), 2.3.2.2): welke
+        // eindtoestand er naast de gewone berekening is gedaan, en wat niet.
+        // In dit blok omdat het net als het analysetype zegt WELKE berekening
+        // er is gedaan; zo staat het in het rapport én in de PDF.
+        (fem.eindstijfheid.meldingen.length > 0
+          ? "\n\n" + fem.eindstijfheid.meldingen.map((m) => `! ${m.tekst}`).join("\n")
+          : "")
       : ""),
-    [fem.stabiliteit, fem.analysetype, fem.scheefstandEnabled]);
+    [fem.stabiliteit, fem.analysetype, fem.scheefstandEnabled, fem.eindstijfheid]);
 
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
@@ -1201,6 +1209,10 @@ function App() {
       const { perCase } = fem.analysetype !== "eersteOrde"
         ? solveAllCasesNonlinear(multiInput)
         : solveAllCases(multiInput);
+      // De eindtoestand met E_mean,fin (NEN-EN 1995-1-1 2.3.2.2(2)) voor elke
+      // eindtoestandvariant in de combinaties. Zonder varianten — het gewone
+      // geval, waarin 2.2.3(5) geldt — lost dit niets op en verandert er niets.
+      losEindtoestandOp(multiInput, perCase, fem.actieveCombinaties, fem.eindstijfheid);
       // `actieveCombinaties`, niet `combinations`: een combinatie die dit model
       // niet nodig heeft (zuiver staal → 6.15/6.16, zie lib/combinatieSelectie)
       // wordt niet doorgerekend. Alles wat resultaten toont filtert op de
