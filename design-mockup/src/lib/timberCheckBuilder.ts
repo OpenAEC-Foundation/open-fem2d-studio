@@ -46,7 +46,10 @@
  *  - doorbuiging: klasse "vloer" → w_fin ≤ L/250 en w_add ≤ L/333
  *    (NB-standaard); w_qp komt uit de quasi-blijvende BGT-combinatie
  *    (G + Σ ψ₂,i · Q_k,i), en valt alleen mét een notitie in het rapport terug
- *    op de volle last; blijvend deel 0 → w_add = w_fin. Zeeg kent de houtkern
+ *    op de volle last; w_perm (w₁) komt uit de BGT-combinatie die alleen de
+ *    blijvende belastinggevallen draagt (zie `lib/blijvendeZakking.ts`), zodat
+ *    w_add werkelijk w₂ + w₃ is; ontbreekt die combinatie, dan 0 mét notitie.
+ *    Zeeg kent de houtkern
  *    (nog) niet — preCamber_mm wordt hier bewust NIET geconsumeerd en de UI
  *    toont het veld niet voor hout.
  */
@@ -55,6 +58,7 @@ import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import { combinatiesVanSoort, soortVanCombinatie } from "../components/fem/solver/combinations";
 import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
+import { blijvendeZakking } from "./blijvendeZakking";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
 import type { LoadDurationClass } from "./types/timber/LoadDurationClass";
 import type { ServiceClass } from "./types/timber/ServiceClass";
@@ -330,6 +334,135 @@ function grootsteZakking(
   return { ...max, alle };
 }
 
+/** Alle zakkingen van één houten of kruislaaghouten staaf, met hun herkomst. */
+export interface HoutDoorbuiging {
+  /** w_inst onder de karakteristieke BGT-combinatie (mm, teken behouden). */
+  instMm: number;
+  /** w_qp onder de quasi-blijvende BGT-combinatie (mm). */
+  quasiMm: number;
+  /** w₁ onder de BGT-combinatie met alleen de blijvende belasting (mm). */
+  permMm: number;
+  /** `deflection_notes` voor de kern: referentielijn, w_inst, w_qp en w₁. */
+  notes: string[];
+}
+
+/**
+ * De drie zakkingen die de houtkern nodig heeft, met de verantwoording erbij.
+ *
+ * Losse functie omdat massief hout én kruislaaghout haar gebruiken: sinds
+ * september 2026 toetst ook de CLT-kern §7.2 (met een OPGEGEVEN k_def), en de
+ * hele keten ervoor — welke BGT-combinatie welke zakking levert, en wat er in
+ * het rapport over wordt gezegd — hoort maar op één plaats te staan.
+ */
+export function houtDoorbuigingsInvoer(
+  beam: Beam,
+  data: Pick<
+    TimberBuildData,
+    "nodes" | "beams" | "supports" | "combinations" | "combinationResults" | "loadCases"
+  >,
+): HoutDoorbuiging {
+  const slsCombos = data.combinations.filter((c) => c.type === "sls");
+  // w_inst: de GROOTSTE zakking over alle karakteristieke combinaties (6.14b),
+  // per staaf bepaald — er is er een per leidende veranderlijke last, en welke
+  // maatgevend is hangt van de staaf af. Tot september 2026 was dit de eerste
+  // combinatie met "karakter" in de naam, en daarmee afhankelijk van de
+  // volgorde van de lijst. Geen karakteristieke combinatie → de grootste over
+  // alle BGT-combinaties, met een notitie (zie `grootsteZakking`).
+  const slsKarakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
+  // Quasi-blijvende BGT-combinatie(s) voor w_qp. Herkend via het kenmerk of de
+  // naam — de ψ₂-factoren zelf zijn uit `combo.factors` niet terug te lezen als
+  // "dit is de quasi-blijvende". GEEN terugval op een andere BGT-combinatie:
+  // dat zou de karakteristieke combinatie stilzwijgend als quasi-blijvend
+  // doorgeven, precies de aanname die hier wordt weggehaald.
+  const slsQuasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
+  // BGT-combinaties die niet als 6.14b, 6.15b of 6.16b te herkennen zijn (geen
+  // kenmerk, en een naam zonder "karakter", "frequent" of "quasi"). Ze tellen
+  // VEILIG-ZIJDIG mee in w_inst: welke uitdrukking ze zijn is niet af te lezen,
+  // en weglaten liet tot september 2026 een zwaardere zakking stil vallen zodra
+  // er één herkende karakteristieke combinatie was. Voor w_qp tellen ze niet:
+  // daar zou een karakteristieke combinatie als quasi-blijvend doorgaan.
+  const slsNietHerkend = slsCombos.filter((c) => soortVanCombinatie(c) === null);
+  // Zakking onder de karakteristieke BGT-combinatie: veldmaximum
+  // max |w(x)| over de 21 stations, teken behouden (mm, negatief =
+  // omlaag conform de tekenconventie van de kern — de lokale
+  // stationsconventie van de solver valt daar voor horizontale staven
+  // mee samen; zie extractFieldDeflectionMm).
+  const inst = grootsteZakking(
+    beam,
+    slsKarakteristiek.length > 0 ? [...slsKarakteristiek, ...slsNietHerkend] : slsCombos,
+    data.combinationResults,
+  );
+  const wInstMm = inst ? inst.w : 0;
+  const nietHerkendGemeten = inst
+    ? inst.alle.filter((a) => slsNietHerkend.includes(a.combo))
+    : [];
+  const instNotes: string[] = inst
+    ? [
+        (slsKarakteristiek.length > 0
+          ? "w_inst is de grootste zakking over de karakteristieke BGT-combinaties (6.14b): "
+          : "LET OP: het model kent GEEN karakteristieke BGT-combinatie (6.14b); w_inst is " +
+            "daarom de grootste zakking over alle BGT-combinaties: ") +
+          inst.alle.map((a) => `"${a.combo.name}" ${a.w.toFixed(2).replace(".", ",")} mm`).join("; ") +
+          `. Maatgevend is "${inst.combo.name}".`,
+        ...(slsKarakteristiek.length > 0 && nietHerkendGemeten.length > 0
+          ? [
+              "Ook meegewogen, veilig-zijdig: BGT-combinatie(s) die niet als 6.14b, 6.15b of " +
+                "6.16b herkend worden (geen kenmerk, en de naam bevat geen \"karakter\", " +
+                "\"frequent\" of \"quasi\"): " +
+                nietHerkendGemeten.map((a) => `"${a.combo.name}"`).join(", ") +
+                ". Welke uitdrukking ze zijn is niet af te lezen; ze weglaten zou een grotere " +
+                "zakking stil laten vallen.",
+            ]
+          : []),
+      ]
+    : [
+        "GEEN UITKOMST voor w_inst: geen enkele BGT-combinatie levert een zakking voor " +
+          "deze staaf — reken het model opnieuw door. De 0 is een ontbrekende uitkomst.",
+      ];
+  const quasi = grootsteZakking(beam, slsQuasiLijst, data.combinationResults);
+  const wQuasi = quasiPermanentDeflection(
+    beam,
+    quasi?.combo ?? slsQuasiLijst[0] ?? null,
+    quasi ? data.combinationResults.get(quasi.combo.id) ?? null : null,
+    wInstMm,
+  );
+  // w₁: de zakking onder ALLEEN de blijvende belasting, uit de BGT-combinatie
+  // die uitsluitend de blijvende gevallen draagt. Zonder die combinatie 0 —
+  // mét notitie, want dan is w_add de volledige zakking. Zie
+  // `lib/blijvendeZakking.ts` voor de NB-tekst achter w₁ en w₂ + w₃.
+  const wPerm = blijvendeZakking({
+    combinations: data.combinations,
+    loadCases: data.loadCases,
+    meet: (combo) => {
+      const r = data.combinationResults.get(combo.id);
+      if (!r || !r.elements.has(beam.id)) return null;
+      return extractFieldDeflectionMm(beam, r);
+    },
+  });
+
+
+  return {
+    instMm: wInstMm,
+    quasiMm: wQuasi.mm,
+    permMm: wPerm.mm,
+    notes: [
+      ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
+      ...instNotes,
+      // Een BEWUSTE, strengere keuze die in het rapport hoort te staan: EC5
+      // 2.2.3(2) rekent de momentane zakking met de karakteristieke
+      // combinatie, terwijl de NB bij NEN-EN 1990 A1.4.3(3) w₂ + w₃ van een
+      // vloer bij de frequente combinatie begrenst. Niet "gerepareerd".
+      "De momentane zakking komt uit de KARAKTERISTIEKE BGT-combinatie, zoals " +
+        "EN 1995-1-1 2.2.3(2) voorschrijft. NEN-EN 1990:2002/NB:2019 A1.4.3(3) " +
+        "legt de grens voor w₂ + w₃ bij vloeren op de FREQUENTE combinatie " +
+        "(uitdrukking 6.15b); deze toets volgt EC5 en valt daarmee strenger uit " +
+        "dan die NB-lezing.",
+      ...wQuasi.notes,
+      ...wPerm.notes,
+    ],
+  };
+}
+
 export interface TimberBuildData {
   /**
    * De nationale bijlage van het project (normnaad). Zij gaat als `bijlage`
@@ -388,27 +521,6 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       : SUPPORTED_TIMBER_GRADES;
 
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
-  const slsCombos = data.combinations.filter((c) => c.type === "sls");
-  // w_inst: de GROOTSTE zakking over alle karakteristieke combinaties (6.14b),
-  // per staaf bepaald — er is er een per leidende veranderlijke last, en welke
-  // maatgevend is hangt van de staaf af. Tot september 2026 was dit de eerste
-  // combinatie met "karakter" in de naam, en daarmee afhankelijk van de
-  // volgorde van de lijst. Geen karakteristieke combinatie → de grootste over
-  // alle BGT-combinaties, met een notitie (zie `grootsteZakking`).
-  const slsKarakteristiek = combinatiesVanSoort(slsCombos, "6.14b");
-  // Quasi-blijvende BGT-combinatie(s) voor w_qp. Herkend via het kenmerk of de
-  // naam — de ψ₂-factoren zelf zijn uit `combo.factors` niet terug te lezen als
-  // "dit is de quasi-blijvende". GEEN terugval op een andere BGT-combinatie:
-  // dat zou de karakteristieke combinatie stilzwijgend als quasi-blijvend
-  // doorgeven, precies de aanname die hier wordt weggehaald.
-  const slsQuasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
-  // BGT-combinaties die niet als 6.14b, 6.15b of 6.16b te herkennen zijn (geen
-  // kenmerk, en een naam zonder "karakter", "frequent" of "quasi"). Ze tellen
-  // VEILIG-ZIJDIG mee in w_inst: welke uitdrukking ze zijn is niet af te lezen,
-  // en weglaten liet tot september 2026 een zwaardere zakking stil vallen zodra
-  // er één herkende karakteristieke combinatie was. Voor w_qp tellen ze niet:
-  // daar zou een karakteristieke combinatie als quasi-blijvend doorgaan.
-  const slsNietHerkend = slsCombos.filter((c) => soortVanCombinatie(c) === null);
   const metLast = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
   const gevuld = metLast ? (id: number) => metLast.has(id) : undefined;
 
@@ -532,50 +644,10 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
 
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
 
-    // Zakking onder de karakteristieke BGT-combinatie: veldmaximum
-    // max |w(x)| over de 21 stations, teken behouden (mm, negatief =
-    // omlaag conform de tekenconventie van de kern — de lokale
-    // stationsconventie van de solver valt daar voor horizontale staven
-    // mee samen; zie extractFieldDeflectionMm).
-    const inst = grootsteZakking(
-      beam,
-      slsKarakteristiek.length > 0 ? [...slsKarakteristiek, ...slsNietHerkend] : slsCombos,
-      data.combinationResults,
-    );
-    const wInstMm = inst ? inst.w : 0;
-    const nietHerkendGemeten = inst
-      ? inst.alle.filter((a) => slsNietHerkend.includes(a.combo))
-      : [];
-    const instNotes: string[] = inst
-      ? [
-          (slsKarakteristiek.length > 0
-            ? "w_inst is de grootste zakking over de karakteristieke BGT-combinaties (6.14b): "
-            : "LET OP: het model kent GEEN karakteristieke BGT-combinatie (6.14b); w_inst is " +
-              "daarom de grootste zakking over alle BGT-combinaties: ") +
-            inst.alle.map((a) => `"${a.combo.name}" ${a.w.toFixed(2).replace(".", ",")} mm`).join("; ") +
-            `. Maatgevend is "${inst.combo.name}".`,
-          ...(slsKarakteristiek.length > 0 && nietHerkendGemeten.length > 0
-            ? [
-                "Ook meegewogen, veilig-zijdig: BGT-combinatie(s) die niet als 6.14b, 6.15b of " +
-                  "6.16b herkend worden (geen kenmerk, en de naam bevat geen \"karakter\", " +
-                  "\"frequent\" of \"quasi\"): " +
-                  nietHerkendGemeten.map((a) => `"${a.combo.name}"`).join(", ") +
-                  ". Welke uitdrukking ze zijn is niet af te lezen; ze weglaten zou een grotere " +
-                  "zakking stil laten vallen.",
-              ]
-            : []),
-        ]
-      : [
-          "GEEN UITKOMST voor w_inst: geen enkele BGT-combinatie levert een zakking voor " +
-            "deze staaf — reken het model opnieuw door. De 0 is een ontbrekende uitkomst.",
-        ];
-    const quasi = grootsteZakking(beam, slsQuasiLijst, data.combinationResults);
-    const wQuasi = quasiPermanentDeflection(
-      beam,
-      quasi?.combo ?? slsQuasiLijst[0] ?? null,
-      quasi ? data.combinationResults.get(quasi.combo.id) ?? null : null,
-      wInstMm,
-    );
+    // Alle zakkingen van deze staaf in één keer, met hun verantwoording:
+    // w_inst (6.14b), w_qp (6.16b) en w₁ (alleen blijvend). Gedeeld met de
+    // CLT-bouwer — zie `houtDoorbuigingsInvoer`.
+    const doorbuiging = houtDoorbuigingsInvoer(beam, data);
 
     // Per-staaf toetsconfiguratie; ontbrekende velden → defaults hierboven.
     // preCamber_mm wordt voor hout bewust niet geconsumeerd: de houtkern
@@ -733,22 +805,22 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       // zelf; zie `shear::k_cr_nb` en de toelichting bij `check_timber_beam`.
       k_cr: kCr.kCr,
       load_sharing: false,
-      deflection_inst_mm: wInstMm,
+      deflection_inst_mm: doorbuiging.instMm,
       // Zakking onder de quasi-blijvende BGT-combinatie (G + Σ ψ₂,i · Q_k,i),
       // of de volle last mét notitie als die combinatie ontbreekt — zie
       // `quasiPermanentDeflection`.
-      deflection_quasi_perm_mm: wQuasi.mm,
-      // Blijvend deel onbekend → 0, dus w_add = w_fin (veilig-zijdig).
-      deflection_permanent_mm: 0,
+      deflection_quasi_perm_mm: doorbuiging.quasiMm,
+      // w₁ uit de BGT-combinatie met alleen de blijvende belasting, zodat
+      // w_add = w_fin − w₁ werkelijk w₂ + w₃ is (NEN-EN 1990:2002/NB:2019
+      // A1.4.3(2), figuur NB.1). Ontbreekt die combinatie, dan 0 — en dan
+      // staat in de notities dat w_add daardoor de volledige zakking is.
+      deflection_permanent_mm: doorbuiging.permMm,
       deflection_limit_fin: defl.fin,
       deflection_limit_add: defl.add,
       // Referentielijn + eventuele waarschuwing over een doorgeknipte staaf
-      // (gedeeld met de staalbouwer), gevolgd door de herkomst van w_qp.
-      deflection_notes: [
-        ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
-        ...instNotes,
-        ...wQuasi.notes,
-      ],
+      // (gedeeld met de staalbouwer), gevolgd door de herkomst van w_inst,
+      // w_qp en w₁.
+      deflection_notes: doorbuiging.notes,
       // De toelichting bij een doorgaande lijn die als een staaf is getoetst;
       // de kern zet hem bij de kolomtoets, de kiptoets en de eindzakking.
       ...(staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}),

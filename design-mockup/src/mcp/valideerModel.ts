@@ -168,6 +168,11 @@ const CHECKCONFIG_VELDEN = [
   // kiptoets aan/uit (6.3.3(5)) en het aangrijpingspunt van de belasting
   // (tabel 6.1). Tot dan zaten ze vast in de houtbouwer.
   "kCr", "performLtbCheck", "ltbLoadPosition",
+  // Kruislaaghout: de vervormingsfactor k_def van §7.2 met zijn bron. Tabel 3.2
+  // kent geen rij voor kruislaaghout, dus is er niets om op terug te vallen;
+  // zonder deze twee blijft de doorbuigingstoets van een CLT-staaf uit, met
+  // reden in het resultaat.
+  "cltKdef", "cltKdefBron",
 ] as const;
 
 /** De drie aangrijpingspunten van tabel 6.1, in de spelling van `checkConfig`. */
@@ -380,7 +385,7 @@ function keurGetal(
   waarde: unknown,
   pad: string,
   fouten: string[],
-  { positief = false } = {},
+  { positief = false, nietNegatief = false } = {},
 ): void {
   if (waarde === undefined) return;
   if (!isGetal(waarde)) {
@@ -389,6 +394,11 @@ function keurGetal(
   }
   if (positief && waarde <= 0) {
     fouten.push(`${pad}: moet groter dan nul zijn, maar is ${waarde}.`);
+  }
+  // Nul toegestaan, negatief niet — voor grootheden waarvan 0 een betekenis
+  // heeft ("geen kruip") maar een negatieve waarde niet bestaat.
+  if (nietNegatief && waarde < 0) {
+    fouten.push(`${pad}: mag niet negatief zijn, maar is ${waarde}.`);
   }
 }
 
@@ -739,6 +749,21 @@ export function keurCheckConfig(waarde: unknown, cpad: string): string[] {
     fouten.push(`${cpad}.performLtbCheck: moet true of false zijn, maar is ${JSON.stringify(cc.performLtbCheck)}.`);
   }
   keurEnum(cc.ltbLoadPosition, LTB_LASTPOSITIES, `${cpad}.ltbLoadPosition`, fouten);
+  // k_def is een KRUIPFACTOR: w_fin = w_inst + k_def · w_qp. Negatief zou de
+  // eindzakking kleiner maken dan de momentane, wat geen kruip is; 0 betekent
+  // "geen kruip" en mag. Er is geen bovengrens in de norm — tabel 3.2 gaat voor
+  // andere houtachtigen tot 4,00 — dus die wordt hier ook niet verzonnen.
+  keurGetal(cc.cltKdef, `${cpad}.cltKdef`, fouten, { nietNegatief: true });
+  if (cc.cltKdefBron !== undefined && typeof cc.cltKdefBron !== "string") {
+    fouten.push(`${cpad}.cltKdefBron: moet een tekst zijn (de productverklaring of ETA), maar is ${JSON.stringify(cc.cltKdefBron)}.`);
+  }
+  if (isGetal(cc.cltKdef) && (cc.cltKdefBron === undefined || String(cc.cltKdefBron).trim() === "")) {
+    fouten.push(
+      `${cpad}.cltKdefBron: verplicht zodra cltKdef is opgegeven. Tabel 3.2 van EN 1995-1-1 ` +
+        `kent geen k_def voor kruislaaghout, dus moet het rapport kunnen zeggen waar de waarde ` +
+        `vandaan komt (productverklaring of ETA van de plaat, per klimaatklasse).`,
+    );
+  }
   keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
   keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
   if (cc.serviceClass !== undefined && ![1, 2, 3].includes(cc.serviceClass as number)) {

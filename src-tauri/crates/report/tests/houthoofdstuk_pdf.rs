@@ -147,6 +147,16 @@ fn cltstaaf() -> CltBeamCheckResult {
         ],
         k_cr: 1.0,
         load_sharing: false,
+        // Geen k_def: tabel 3.2 kent er geen voor kruislaaghout. De kern zet
+        // w_fin en w_add dan als "niet van toepassing" met reden in het resultaat.
+        k_def: None,
+        k_def_bron: None,
+        deflection_inst_mm: 0.0,
+        deflection_quasi_perm_mm: 0.0,
+        deflection_permanent_mm: 0.0,
+        deflection_limit_fin: 250.0,
+        deflection_limit_add: 333.0,
+        deflection_notes: vec![],
     })
 }
 
@@ -181,6 +191,16 @@ fn geweigerde_cltstaaf() -> CltBeamCheckResult {
         forces_envelope: vec![punt(0.0, 5.0, 0.0, 0.0)],
         k_cr: 1.0,
         load_sharing: false,
+        // Geen k_def: tabel 3.2 kent er geen voor kruislaaghout. De kern zet
+        // w_fin en w_add dan als "niet van toepassing" met reden in het resultaat.
+        k_def: None,
+        k_def_bron: None,
+        deflection_inst_mm: 0.0,
+        deflection_quasi_perm_mm: 0.0,
+        deflection_permanent_mm: 0.0,
+        deflection_limit_fin: 250.0,
+        deflection_limit_add: 333.0,
+        deflection_notes: vec![],
     });
     assert!(r.checks.is_empty(), "deze proefstaaf hoort geweigerd te worden");
     r

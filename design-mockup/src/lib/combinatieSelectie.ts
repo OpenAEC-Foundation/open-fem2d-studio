@@ -48,6 +48,14 @@
  * dat de windgenerator (die eigen combinaties met eigen namen schrijft) hier
  * nooit iets van merkt.
  *
+ * ÉÉN OPSTELLING VAN 6.16b BLIJFT ALTIJD
+ * De opstelling van uitdrukking 6.16b zonder veranderlijke gevallen is
+ * "alleen de blijvende belasting". Sinds september 2026 leest de STAALtoetsing
+ * haar: zij levert w₁, en zonder w₁ wordt de bijkomende doorbuiging w₂ + w₃
+ * gelijk aan de volledige zakking (NEN-EN 1990:2002/NB:2019 A1.4.3(2), figuur
+ * NB.1). Die ene opstelling wordt hier daarom nooit overgeslagen; de volledige
+ * 6.16b en de frequente 6.15b nog wel.
+ *
  * ALLES WAT NIET AANTOONBAAR STAAL IS, HOUDT ZE
  * De vraag is niet "zit er hout in" maar "is ALLES staal". Een model zonder
  * staven, een staaf met een onbekend materiaal, een vrij materiaal voor de
@@ -72,6 +80,7 @@ import {
 } from "../components/fem/solver/normcombinaties";
 import { materiaalVanStaaf } from "./variantInvoer";
 import { bepaalPlaatStijfheid } from "./plaatMateriaal";
+import { blijvendeBgtCombinaties } from "./blijvendeZakking";
 
 /** Eén combinatie die niet is doorgerekend, met de reden erbij. */
 export interface OvergeslagenCombinatie {
@@ -209,14 +218,34 @@ export function selecteerCombinaties(
     return { actief: combinations, overgeslagen: [], redenPerId };
   }
 
+  const gevallen = opties.loadCases ?? STANDAARD_BELASTINGGEVALLEN;
+  const standaardSet = genereerStandaardCombinaties(
+    gevallen,
+    opties.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
+  );
+
+  // DE BLIJVENDE BGT-COMBINATIE BLIJFT ALTIJD STAAN, ook in een zuivere
+  // staalconstructie. Zij is een opstelling van uitdrukking 6.16b — die zonder
+  // veranderlijke gevallen — en viel dus onder `SOORTEN_BUITEN_STAAL`. Sinds
+  // september 2026 heeft juist die opstelling een afnemer in de STAALtoetsing:
+  // zij levert w₁, de zakking onder alleen de blijvende belasting, die
+  // NEN-EN 1990:2002/NB:2019 A1.4.3(2) van w_tot aftrekt om w₂ + w₃ te krijgen
+  // (figuur NB.1). Zou zij hier wegvallen, dan kreeg de w_add-toets de volle
+  // zakking terug — de fout die in september 2026 juist is gerepareerd. De
+  // volledige 6.16b (mét ψ₂·Q) en de frequente 6.15b blijven wél weg.
+  const blijvendeSleutels = new Set(
+    blijvendeBgtCombinaties(
+      standaardSet.map((c, i) => ({ ...c, id: i + 1 })),
+      gevallen,
+    ).map((c) => c.standaard?.sleutel),
+  );
+
   // De kandidaten uit de standaardset, per sleutel opzoekbaar. Alleen
   // combinaties met dat kenmerk die er exact op passen komen in aanmerking.
   const kandidaten = new Map(
-    genereerStandaardCombinaties(
-      opties.loadCases ?? STANDAARD_BELASTINGGEVALLEN,
-      opties.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
-    )
+    standaardSet
       .filter((c) => SOORTEN_BUITEN_STAAL.includes(c.standaard.soort))
+      .filter((c) => !blijvendeSleutels.has(c.standaard.sleutel))
       .map((c) => [c.standaard.sleutel, c] as const),
   );
 

@@ -2336,7 +2336,7 @@
         "deflection_notes": [
           "w is gemeten vanaf de koorde tussen de verplaatste staafeinden: de starre zakking en rotatie van de staaf zelf tellen niet mee, alleen de kromming ertussen.",
           "GEEN UITKOMST: geen enkele BGT-combinatie levert een zakking voor deze staaf — reken het model opnieuw door. De zakking is op 0 gezet; die 0 is een ontbrekende uitkomst en geen getoetste zakking.",
-          "w_add is hier GELIJK aan w_fin. De norm meet w2 + w3 vanaf w1, de zakking onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die leidt deze toets niet uit de doorgerekende combinaties af. w_BGT,permanent is daarom 0: w_add krijgt de VOLLEDIGE zakking in plaats van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar de w_add-regel is daarmee geen w2 + w3, en de twee doorbuigingsregels tonen hetzelfde getal."
+          "w₁ — de zakking onder alleen de blijvende belasting — is op 0 gezet omdat dit model geen BGT-combinatie kent die uitsluitend de blijvende belastinggevallen met factor 1,0 draagt. NEN-EN 1990:2002/NB:2019 A1.4.3(2) meet de bijkomende doorbuiging w₂ + w₃ vanaf w₁ (figuur NB.1: w_tot = w₁ + w₂ + w₃), dus krijgt de w_add-toets nu de VOLLEDIGE zakking in plaats van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar strenger dan de norm vraagt, en de twee doorbuigingsregels tonen daardoor dicht bij elkaar liggende getallen. Terug te krijgen met een BGT-combinatie die alleen de blijvende belastinggevallen draagt, elk met factor 1,0 — de standaardset heeft er een: uitdrukking 6.16b in de opstelling zonder veranderlijke gevallen."
         ],
         "deflection_actual_max_mm": 0,
         "is_cantilever": false,

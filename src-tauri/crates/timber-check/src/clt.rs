@@ -15,9 +15,16 @@
 //!   dwarskracht getoetst; een N_Ed ≠ 0 wordt gemeld, niet verwerkt;
 //! - buiging om de zwakke as (M_z), knik en kip: niet van toepassing op een
 //!   plaatstrook in deze modellering;
-//! - doorbuiging §7.2: k_def (tabel 3.2) kent geen rij voor kruislaaghout;
-//!   in plaats van een geleende waarde blijft de toets weg. De stijfheid
-//!   (EI)_ef is wel beschikbaar voor de solver.
+//!
+//! DOORBUIGING §7.2 WORDT WÉL GETOETST, maar alleen met een OPGEGEVEN k_def.
+//! Tabel 3.2 van EN 1995-1-1 — ook in de uitgave met NB:2013 — kent rijen voor
+//! gezaagd hout, gelijmd gelamineerd hout, LVL, multiplex, OSB, spaanplaat,
+//! vezelplaat en MDF, en géén rij voor kruislaaghout. De nationale bijlage
+//! voegt er geen toe. Er is dus geen normwaarde om aan te nemen, en er wordt er
+//! ook geen geleend: `k_def` en `k_def_bron` zijn invoer per staaf (uit de
+//! productverklaring of de ETA van de fabrikant). Ontbreken ze, dan komen
+//! w_fin en w_add als "niet van toepassing" MET die reden in het resultaat —
+//! niet als een stil weggelaten toets, en niet met een verzonnen getal.
 //!
 //! BELASTINGDUUR PER COMBINATIE. Net als bij massief hout (zie
 //! `crate::belastingduur`): met `load_duration_per_combination` wordt de
@@ -25,10 +32,10 @@
 //! k_mod (EN 1995-1-1 3.1.3(2)), en telt per toets de zwaarste uitkomst.
 
 use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
-use nen_en_1993_1_1_section::CheckStatus;
+use nen_en_1993_1_1_section::{CheckStatus, ResistanceCalc};
 use nen_en_1995_1_1::clt::{CltLayerOrientation, CltLayup, CltMechanics};
 use nen_en_1995_1_1::clt_toets::{check_layer_bending, check_layer_shear, rolling_shear_info};
-use nen_en_1995_1_1::{design_strength, k_mod, k_sys, LoadDurationClass, ServiceClass};
+use nen_en_1995_1_1::{deflection, design_strength, k_mod, k_sys, LoadDurationClass, ServiceClass};
 use serde::{Deserialize, Serialize};
 use steel_check::{CheckKind, NamedCheck};
 use ts_rs::TS;
@@ -40,6 +47,14 @@ use crate::belastingduur::{
 
 fn default_one() -> f64 {
     1.0
+}
+
+fn default_noemer_fin() -> f64 {
+    deflection::NOEMER_W_FIN
+}
+
+fn default_noemer_add() -> f64 {
+    deflection::NOEMER_W_ADD
 }
 
 /// Invoer voor één CLT-staaf (plaatstrook).
@@ -93,6 +108,50 @@ pub struct CltBeamCheckInput {
     /// Lastverdelend systeem aanwezig → k_sys = 1,1 (§6.6).
     #[serde(default)]
     pub load_sharing: bool,
+    /// Vervormingsfactor k_def voor de kruip van §7.2 — VERPLICHT om te
+    /// kunnen toetsen, en met opzet zonder standaardwaarde.
+    ///
+    /// Tabel 3.2 kent geen rij voor kruislaaghout (zie de kop van deze
+    /// module). Een waarde lenen van gezaagd of gelijmd gelamineerd hout zou
+    /// een normwaarde suggereren die er niet is; een waarde aannemen zou de
+    /// eindzakking van elke CLT-vloer op een verzonnen getal baseren. `None`
+    /// betekent daarom: geen doorbuigingstoets, met die reden in het
+    /// resultaat. De waarde hoort uit de productverklaring of de ETA van de
+    /// gekozen plaat te komen, per klimaatklasse.
+    #[serde(default)]
+    #[ts(optional)]
+    pub k_def: Option<f64>,
+    /// Waar de opgegeven `k_def` vandaan komt — ook verplicht zodra `k_def`
+    /// is ingevuld, en letterlijk in de notitie bij de toets.
+    ///
+    /// Waarom niet optioneel: een kruipfactor zonder herkomst is in het
+    /// rapport niet te onderscheiden van een aangenomen getal, en juist die
+    /// ononderscheidbaarheid is de reden dat deze toets er tot september 2026
+    /// niet was. Bijvoorbeeld: "ETA-14/0349, tabel 8, klimaatklasse 1".
+    #[serde(default)]
+    #[ts(optional)]
+    pub k_def_bron: Option<String>,
+    /// Zakking onder de karakteristieke BGT-combinatie (mm, negatief = omlaag).
+    #[serde(default)]
+    pub deflection_inst_mm: f64,
+    /// Zakking onder de quasi-blijvende BGT-combinatie (mm).
+    #[serde(default)]
+    pub deflection_quasi_perm_mm: f64,
+    /// Zakking onder de BGT-combinatie met alleen de blijvende belasting
+    /// (mm) — w₁ uit figuur NB.1 bij NEN-EN 1990:2002/NB:2019 A1.4.3(2).
+    #[serde(default)]
+    pub deflection_permanent_mm: f64,
+    /// Noemer voor w_fin (L/n), NB-standaard 250.
+    #[serde(default = "default_noemer_fin")]
+    pub deflection_limit_fin: f64,
+    /// Noemer voor w_add (L/n), NB-standaard 333.
+    #[serde(default = "default_noemer_add")]
+    pub deflection_limit_add: f64,
+    /// Vrije toelichtingen bij de doorbuigingstoets; zelfde rol als bij
+    /// [`crate::TimberBeamCheckInput`]: uit welke combinatie elke zakking komt
+    /// en welke terugval er eventueel is toegepast.
+    #[serde(default)]
+    pub deflection_notes: Vec<String>,
 }
 
 /// Uitkomst per laag — de regel in de tabel "toetsing per lamel".
@@ -219,6 +278,87 @@ fn notes_van(c: &mut NamedCheck) -> &mut Vec<String> {
     match &mut c.kind {
         CheckKind::Resistance(r) => &mut r.notes,
         CheckKind::Stability(s) => &mut s.notes,
+    }
+}
+
+/// De opgegeven k_def met zijn bron, of de reden waarom er niet getoetst kan
+/// worden. Geen terugval: tabel 3.2 kent geen rij voor kruislaaghout.
+fn kdef_uit_invoer(input: &CltBeamCheckInput) -> Result<(f64, String), String> {
+    let bron = input.k_def_bron.as_deref().map(str::trim).unwrap_or("");
+    match input.k_def {
+        None => Err(
+            "k_def is niet opgegeven. Tabel 3.2 van EN 1995-1-1 (met NB:2013) kent rijen voor              gezaagd hout, gelijmd gelamineerd hout, LVL, multiplex, OSB, spaanplaat, vezelplaat              en MDF, maar GEEN rij voor kruislaaghout, en de nationale bijlage voegt er geen toe.              Er is dus geen normwaarde om aan te nemen en er wordt er ook geen geleend. Vul k_def              en de bron ervan in (productverklaring of ETA van de gekozen plaat, per              klimaatklasse) om w_fin en w_add te laten toetsen."
+                .to_string(),
+        ),
+        Some(k) if !k.is_finite() || k < 0.0 => Err(format!(
+            "k_def = {k} is geen bruikbare vervormingsfactor; verwacht is een eindig getal ≥ 0              uit de productverklaring of de ETA van de plaat."
+        )),
+        Some(_) if bron.is_empty() => Err(
+            "k_def is opgegeven maar de bron ervan niet. Omdat tabel 3.2 geen k_def voor              kruislaaghout kent, is een waarde zonder herkomst in het rapport niet te              onderscheiden van een aangenomen getal — en dat is precies wat deze toets moet              uitsluiten. Noem de productverklaring of de ETA, bijvoorbeeld \"ETA-00/0000, tabel 8,              klimaatklasse 1\"."
+                .to_string(),
+        ),
+        Some(k) => Ok((k, bron.to_string())),
+    }
+}
+
+/// Een doorbuigingstoets die NIET is uitgevoerd, met de reden erin. Zo staat
+/// de regel in het rapport en is de afwezigheid zichtbaar; stil weglaten leest
+/// als "in orde bevonden".
+fn doorbuiging_niet_getoetst(id: &str, titel: &str, reden: &str) -> NamedCheck {
+    let calc = ResistanceCalc {
+        deelstappen: Vec::new(),
+        id: id.to_string(),
+        title: titel.to_string(),
+        article: "art. 7.2 + NB".to_string(),
+        force_state: ForceStateSnapshot {
+            combination_id: 0,
+            position_mm: 0.0,
+            forces: InternalForces::default(),
+        },
+        formula_latex: String::new(),
+        variables: Vec::new(),
+        value: 0.0,
+        unit: "mm".to_string(),
+        uc: None,
+        status: CheckStatus::NotApplicable,
+        notes: vec![format!("Niet getoetst: {reden}")],
+    };
+    NamedCheck { id: calc.id.clone(), kind: CheckKind::Resistance(calc) }
+}
+
+/// w_fin en w_add van een CLT-plaatstrook (§7.2 + NB), of twee weigeringen
+/// met reden wanneer k_def ontbreekt.
+///
+/// De rekengang zelf is die van massief hout: dezelfde
+/// [`deflection::check_deflection_pair`], zodat er maar één plaats is waar
+/// w_fin = w_inst + k_def · w_qp en w_add = w_fin − w₁ staan. Alleen de
+/// HERKOMST van k_def verschilt, en die staat als notitie bij w_fin.
+fn doorbuiging_toetsen(input: &CltBeamCheckInput) -> Vec<NamedCheck> {
+    match kdef_uit_invoer(input) {
+        Err(reden) => vec![
+            doorbuiging_niet_getoetst("deflection_w_fin", "Doorbuiging w_fin (BGT)", &reden),
+            doorbuiging_niet_getoetst("deflection_w_add", "Doorbuiging w_add (BGT)", &reden),
+        ],
+        Ok((kdef, bron)) => {
+            let (mut fin, add) = deflection::check_deflection_pair(
+                input.deflection_inst_mm,
+                input.deflection_quasi_perm_mm,
+                input.deflection_permanent_mm,
+                kdef,
+                input.length_m * 1e3,
+                input.deflection_limit_fin,
+                input.deflection_limit_add,
+            );
+            fin.notes.push(format!(
+                "k_def = {} is OPGEGEVEN en komt niet uit tabel 3.2: die tabel kent geen rij voor                  kruislaaghout, en de nationale bijlage voegt er geen toe. Opgegeven bron: {bron}.                  De kruip is daarmee alleen zo betrouwbaar als die opgave; controleer dat zij bij                  de klimaatklasse van deze staaf hoort.",
+                nl(kdef, 2)
+            ));
+            fin.notes.extend(input.deflection_notes.iter().cloned());
+            vec![
+                NamedCheck { id: fin.id.clone(), kind: CheckKind::Resistance(fin) },
+                NamedCheck { id: add.id.clone(), kind: CheckKind::Resistance(add) },
+            ]
+        }
     }
 }
 
@@ -470,7 +610,7 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
         &input.load_duration_per_combination,
         input.load_duration,
     );
-    let (checks, mut layers, k_mod_per_load_duration, governing_combination_id, load_duration) =
+    let (mut checks, mut layers, k_mod_per_load_duration, governing_combination_id, load_duration) =
         match &groepen {
             None => {
                 let (c, l) = lagen_toetsen(&input, &mech, &input.forces_envelope, input.load_duration);
@@ -481,6 +621,11 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
                 (pk.checks, pk.layers, pk.k_mod_per_load_duration, pk.governing_combination_id, pk.maatgevende_duur)
             }
         };
+
+    // Doorbuiging §7.2 met kruip. Hangt niet van k_mod af (wel van k_def), en
+    // wordt dus één keer getoetst — net als bij massief hout. Zonder opgegeven
+    // k_def komen hier twee regels "niet van toepassing" met de reden erin.
+    checks.extend(doorbuiging_toetsen(&input));
 
     // Aggregatie: hoogste UC over de toetsen die meetellen; de laag waarin
     // die toets zit wordt gemarkeerd.
@@ -523,7 +668,14 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
         ),
         "Rekenwaarden per laag: f_d = k_mod·k_sys·f_k/γ_M (2.14) met k_mod uit tabel 3.1 en γ_M uit de NB voor het materiaaltype van de sterkteklasse van die laag; k_h = 1,0 (§3.2(3) geldt voor een rechthoekig gezaagd element, niet voor een lamel in een verlijmde opbouw).".to_string(),
         "Rolschuiving in de dwarslagen: spanning ter informatie, geen toets — f_v,rol staat niet in NEN-EN 1995-1-1/NB:2013 en niet in EN 338.".to_string(),
-        "Niet getoetst: normaalkracht, buiging om de zwakke as, knik/kip en doorbuiging §7.2 (tabel 3.2 kent geen k_def voor kruislaaghout).".to_string(),
+        "Niet getoetst: normaalkracht, buiging om de zwakke as, en knik/kip.".to_string(),
+        match kdef_uit_invoer(&input) {
+            Ok((k, bron)) => format!(
+                "Doorbuiging §7.2 is getoetst met de OPGEGEVEN k_def = {} (bron: {bron}). Tabel 3.2                  kent geen rij voor kruislaaghout; de kern neemt daar geen waarde voor aan.",
+                nl(k, 2)
+            ),
+            Err(reden) => format!("Doorbuiging §7.2 is niet getoetst: {reden}"),
+        },
     ];
     if !k_mod_per_load_duration.is_empty() {
         let delen: Vec<String> = k_mod_per_load_duration
@@ -647,14 +799,37 @@ mod tests {
             forces_envelope: vec![punt(0.0, 10.0, 0.0), punt(2500.0, 0.0, 20.0), punt(5000.0, -10.0, 0.0)],
             k_cr: 1.0,
             load_sharing: false,
+            // Zonder k_def geen doorbuigingstoets: de twee regels komen als
+            // "niet van toepassing" met reden mee. Zie `kdef_uit_invoer`.
+            k_def: None,
+            k_def_bron: None,
+            deflection_inst_mm: 0.0,
+            deflection_quasi_perm_mm: 0.0,
+            deflection_permanent_mm: 0.0,
+            deflection_limit_fin: default_noemer_fin(),
+            deflection_limit_add: default_noemer_add(),
+            deflection_notes: vec![],
         }
     }
 
     #[test]
     fn vijflaags_volledige_toets() {
         let r = check_clt_beam(invoer());
-        // 3 lengtelagen × 2 toetsen + 2 dwarslagen × 1 informatieve regel.
-        assert_eq!(r.checks.len(), 8);
+        // 3 lengtelagen × 2 toetsen + 2 dwarslagen × 1 informatieve regel,
+        // plus w_fin en w_add. Die twee staan er sinds de doorbuigingstoets
+        // van september 2026 ALTIJD, ook zonder k_def: dan als "niet van
+        // toepassing" met de reden erin, zodat een ontbrekende toets zichtbaar
+        // is in plaats van stil weg te vallen. Vandaar 8 → 10.
+        assert_eq!(r.checks.len(), 10);
+        let doorbuiging: Vec<&NamedCheck> = r
+            .checks
+            .iter()
+            .filter(|c| c.id.starts_with("deflection_"))
+            .collect();
+        assert_eq!(doorbuiging.len(), 2);
+        for c in &doorbuiging {
+            assert!(uc_of(c).is_none(), "zonder k_def telt de doorbuiging niet mee in uc_max");
+        }
         assert_eq!(r.layup.layers.len(), 5);
         assert_relative_eq!(r.layup.ei_ef_knm2, 3344.0, max_relative = 1e-9);
         assert_relative_eq!(r.layup.z0_mm, 80.0);

@@ -250,7 +250,7 @@ fn schema_houten_staaf() -> Value {
             "deflection_quasi_perm_mm": { "type": "number", "default": 0,
                 "description": "Zakking onder de quasi-blijvende BGT-combinatie in mm; het kruipdeel k_def * w_qp van w_fin (§7.2). 0 laat de kruipterm vervallen en dat is GUNSTIGER." },
             "deflection_permanent_mm": { "type": "number", "default": 0,
-                "description": "Zakking onder de blijvende BGT-combinatie in mm, voor w_add = w_fin - w_perm. 0 betekent w_add = w_fin, veilig-zijdig." },
+                "description": "w1: zakking onder de BGT-combinatie met ALLEEN de blijvende belasting in mm (factor 1,0 op elk blijvend geval, geen veranderlijke), voor w_add = w_fin - w_perm = w2 + w3 (NEN-EN 1990:2002/NB:2019 A1.4.3(2), figuur NB.1). 0 betekent w_add = w_fin: veilig-zijdig maar STRENGER dan de norm vraagt. `check_fem_model` vult dit uit de standaardcombinatie 'BGT quasi-blijvend 6.16b' zonder veranderlijke gevallen." },
             "deflection_limit_fin": { "type": "number", "exclusiveMinimum": 0, "default": 250,
                 "description": "Noemer n in de eis L/n voor de eindzakking w_fin. Default 250, de NB-waarde." },
             "deflection_limit_add": { "type": "number", "exclusiveMinimum": 0, "default": 333,
@@ -331,7 +331,23 @@ fn schema_clt_staaf() -> Value {
             "k_cr": { "type": "number", "default": 1,
                 "description": "Scheurfactor voor dwarskracht, (6.13a). Default 1,0, de NB-waarde voor prismatische doorsneden; een lagere waarde geeft een KLEINERE dwarskrachtweerstand." },
             "load_sharing": { "type": "boolean", "default": false,
-                "description": "Lastverdelend systeem aanwezig (§6.6): true geeft k_sys = 1,1 en dus hogere rekenwaarden. Default false." }
+                "description": "Lastverdelend systeem aanwezig (§6.6): true geeft k_sys = 1,1 en dus hogere rekenwaarden. Default false." },
+            "k_def": { "type": "number", "minimum": 0,
+                "description": "Vervormingsfactor k_def voor de kruip van §7.2 (w_fin = w_inst + k_def * w_qp). GEEN default, met opzet: tabel 3.2 kent rijen voor gezaagd hout, gelijmd gelamineerd hout, LVL, multiplex, OSB, spaanplaat, vezelplaat en MDF, maar geen rij voor kruislaaghout, en de nationale bijlage voegt er geen toe. Weglaten = w_fin en w_add komen als NotApplicable met die reden in het resultaat. Neem de waarde uit de productverklaring of de ETA van de plaat, per klimaatklasse." },
+            "k_def_bron": { "type": "string",
+                "description": "Herkomst van 'k_def', bijvoorbeeld \"ETA-00/0000, tabel 8, klimaatklasse 1\"; komt letterlijk in de notitie bij w_fin. VERPLICHT zodra 'k_def' is opgegeven — zonder bron weigert de kern de doorbuigingstoets met reden." },
+            "deflection_inst_mm": { "type": "number", "default": 0,
+                "description": "Zakking onder de karakteristieke BGT-combinatie in mm, met teken (negatief = omlaag)." },
+            "deflection_quasi_perm_mm": { "type": "number", "default": 0,
+                "description": "Zakking onder de quasi-blijvende BGT-combinatie in mm; het kruipdeel k_def * w_qp van w_fin (§7.2). 0 laat de kruipterm vervallen en dat is GUNSTIGER." },
+            "deflection_permanent_mm": { "type": "number", "default": 0,
+                "description": "w1: zakking onder de BGT-combinatie met ALLEEN de blijvende belasting in mm, voor w_add = w_fin - w_perm = w2 + w3 (NEN-EN 1990:2002/NB:2019 A1.4.3(2), figuur NB.1). 0 betekent w_add = w_fin: veilig-zijdig maar strenger dan de norm vraagt." },
+            "deflection_limit_fin": { "type": "number", "exclusiveMinimum": 0, "default": 250,
+                "description": "Noemer n in de eis L/n voor de eindzakking w_fin. Default 250, de NB-waarde." },
+            "deflection_limit_add": { "type": "number", "exclusiveMinimum": 0, "default": 333,
+                "description": "Noemer n in de eis L/n voor de bijkomende zakking w_add. Default 333, de NB-waarde." },
+            "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
+                "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel. Bedoeld om zichtbaar te maken uit welke combinatie elke zakking komt, en welke terugval er eventueel is toegepast." }
         },
         "required": [
             "beam_id", "layup", "service_class", "load_duration",
@@ -381,7 +397,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "check_clt_beams",
-            "description": "Check a list of cross-laminated-timber plate strips per lamella. EN 1995-1-1 has no CLT product, so the model is annex B with gamma_i = 1 (composite section, rigid bond): only the longitudinal layers carry in the span direction (E = E_0,mean), the transverse layers act as the shear connection (E = 0). Per layer it returns the edge stresses, the maximum shear stress, the design strengths and the unity checks for bending (§6.1.6) and shear (§6.1.7); transverse layers get their rolling-shear stress for information only, because f_v,rol is in neither the National Annex nor EN 338. The response also carries (EI)_ef, (EA)_ef, the neutral axis, the slenderness L/h and the assumptions as notes. Same input and output types as the Tauri command `check_clt_beams` and the toetsbrug opdracht of that name; all three run through `timber_check::clt::check_all_clt_beams`. NOT included: axial force, bending about the weak axis, buckling, lateral-torsional buckling and deflection §7.2 (table 3.2 has no k_def row for cross-laminated timber).",
+            "description": "Check a list of cross-laminated-timber plate strips per lamella. EN 1995-1-1 has no CLT product, so the model is annex B with gamma_i = 1 (composite section, rigid bond): only the longitudinal layers carry in the span direction (E = E_0,mean), the transverse layers act as the shear connection (E = 0). Per layer it returns the edge stresses, the maximum shear stress, the design strengths and the unity checks for bending (§6.1.6) and shear (§6.1.7); transverse layers get their rolling-shear stress for information only, because f_v,rol is in neither the National Annex nor EN 338. The response also carries (EI)_ef, (EA)_ef, the neutral axis, the slenderness L/h and the assumptions as notes. Same input and output types as the Tauri command `check_clt_beams` and the toetsbrug opdracht of that name; all three run through `timber_check::clt::check_all_clt_beams`. The deflection pair w_fin/w_add (§7.2) is checked ONLY when `k_def` and `k_def_bron` are given: table 3.2 has no k_def row for cross-laminated timber and none is assumed, so without them both deflection rows come back as NotApplicable with that reason. NOT included: axial force, bending about the weak axis, buckling and lateral-torsional buckling.",
             "inputSchema": schema_invoerlijst(
                 schema_clt_staaf(),
                 "De CLT-staven die getoetst moeten worden.",
@@ -563,6 +579,17 @@ mod tests {
             "forces_envelope",
             "k_cr",
             "load_sharing",
+            // De doorbuigingstoets van september 2026: k_def met zijn bron
+            // (geen default, tabel 3.2 kent geen kruislaaghout) en dezelfde
+            // zes doorbuigingsvelden als de houten staaf.
+            "k_def",
+            "k_def_bron",
+            "deflection_inst_mm",
+            "deflection_quasi_perm_mm",
+            "deflection_permanent_mm",
+            "deflection_limit_fin",
+            "deflection_limit_add",
+            "deflection_notes",
         ];
         for v in verwacht {
             assert!(velden.contains_key(v), "het CLT-schema mist `{v}`");

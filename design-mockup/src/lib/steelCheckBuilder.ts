@@ -18,7 +18,7 @@
  * een expliciete reden (zichtbaar in het toetsingspaneel) — geen stille
  * aannames.
  */
-import type { Beam, BeamCheckConfig, Node, Support } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, LoadCase, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import { combinatiesVanSoort, soortVanCombinatie } from "../components/fem/solver/combinations";
@@ -48,6 +48,7 @@ import { alphaCrStaafNotitie, type StabiliteitVoorToets } from "../components/fe
 import { STEEL_SECTIONS } from "./steelSections.generated";
 import { bepaalVerloop } from "./sectionResolver";
 import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
+import { blijvendeZakking } from "./blijvendeZakking";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -276,6 +277,15 @@ export interface SteelBuildData {
    * nog eens op de uitkomst. Ontbreekt → CC2.
    */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * De belastinggevallen van het model. Nodig om w₁ te vinden — de zakking
+   * onder ALLEEN de blijvende belasting, die NEN-EN 1990:2002/NB:2019
+   * A1.4.3(2) van w_tot aftrekt om w₂ + w₃ te krijgen. Zonder deze lijst is
+   * niet te zien welk belastinggeval blijvend is, valt w₁ op 0 terug en krijgt
+   * de w_add-toets de volledige zakking; dat staat dan als notitie in het
+   * rapport (zie `lib/blijvendeZakking.ts`).
+   */
+  loadCases?: readonly Pick<LoadCase, "id" | "type">[];
 }
 
 export interface SteelBuildResult {
@@ -657,6 +667,13 @@ export interface DoorbuigingsInvoer {
   noemerAdd: number;
   /** De getoetste verplaatsing in mm, teken behouden. */
   wMm: number;
+  /**
+   * w₁ in mm (teken behouden): de zakking onder ALLEEN de blijvende
+   * belasting, die de kern van w_fin aftrekt om w₂ + w₃ te krijgen
+   * (NEN-EN 1990:2002/NB:2019 A1.4.3(2), figuur NB.1). 0 = niet af te leiden;
+   * de reden staat dan in `notes`.
+   */
+  wPermMm: number;
   isUitkraging: boolean;
   /** Welke eis is toegepast: A1.4.3(3)/(4) of A1.4.3(7). */
   eis: "vloerdak" | "zijdelings";
@@ -673,7 +690,7 @@ export function bepaalDoorbuigingsInvoer(
   beam: Beam,
   data: Pick<
     SteelBuildData,
-    "nodes" | "beams" | "supports" | "combinations" | "combinationResults"
+    "nodes" | "beams" | "supports" | "combinations" | "combinationResults" | "loadCases"
   >,
 ): DoorbuigingsInvoer {
   const cfg = beam.checkConfig ?? {};
@@ -827,6 +844,10 @@ function zijdelingseEis(
     noemerFin: noemer,
     noemerAdd: noemer,
     wMm: u ?? 0,
+    // A1.4.3(7) splitst de horizontale verplaatsing niet in een blijvend en
+    // een bijkomend deel — er is hier dus geen w₁ om af te trekken, en de
+    // notitie hierboven zegt al dat beide regels dezelfde verplaatsing tonen.
+    wPermMm: 0,
     // ℓ_rep = 2 × L hoort bij een uitkragende vloer of dakrand, niet bij een
     // horizontale verplaatsing; die verdubbeling mag hier niet gebeuren.
     isUitkraging: false,
@@ -838,7 +859,10 @@ function zijdelingseEis(
 /** A1.4.3(3)/(4): de vloer- en dakeisen, met de zakking uit de BGT-combinaties. */
 function vloerDakEis(
   beam: Beam,
-  data: Pick<SteelBuildData, "nodes" | "beams" | "supports" | "combinationResults">,
+  data: Pick<
+    SteelBuildData,
+    "nodes" | "beams" | "supports" | "combinations" | "combinationResults" | "loadCases"
+  >,
   slsCombos: LoadCombination[],
 ): DoorbuigingsInvoer {
   const cfg = beam.checkConfig ?? {};
@@ -953,24 +977,27 @@ function vloerDakEis(
     }
   }
 
-  // w_perm — het blijvende deel w1 uit figuur NB.1 — wordt hier niet uit de
-  // combinatieresultaten afgeleid: de bouwer krijgt alleen COMBINATIES, en
-  // welke daarvan "alleen de blijvende belasting" is, ligt niet vast. Sinds
-  // september 2026 bevat de standaardset er meestal een (de quasi-blijvende
-  // zonder veranderlijke gevallen), een eigen of oude set vaak niet; tot dan
-  // stond hier dat de standaardset er geen kende. Er gaat daarom 0 naar de kern, en dat betekent
-  // w_add = w_fin. Veilig-zijdig (w2 + w3 ≤ w_tot), maar het is niet de
-  // grootheid die A1.4.3(3) bedoelt — en tot september 2026 stond dat nergens
-  // in het rapport: twee regels met hetzelfde getal, zonder uitleg.
-  notes.push(
-    "w_add is hier GELIJK aan w_fin. De norm meet w2 + w3 vanaf w1, de zakking " +
-      "onder alleen de blijvende belasting (figuur NB.1 bij A1.4.3(2)); die leidt " +
-      "deze toets niet uit de doorgerekende combinaties af. " +
-      "w_BGT,permanent is daarom 0: w_add krijgt de VOLLEDIGE zakking in plaats " +
-      "van alleen het deel bovenop de blijvende belasting. Veilig-zijdig, maar " +
-      "de w_add-regel is daarmee geen w2 + w3, en de twee doorbuigingsregels " +
-      "tonen hetzelfde getal.",
-  );
+  // w_perm — het blijvende deel w1 uit figuur NB.1 — komt uit de BGT-combinatie
+  // die uitsluitend de blijvende belastinggevallen draagt, elk met factor 1,0.
+  // De standaardset heeft er een: uitdrukking 6.16b in de opstelling zonder
+  // veranderlijke gevallen. Zie `lib/blijvendeZakking.ts` voor de NB-tekst en
+  // voor de eisen aan de kandidaat.
+  //
+  // Tot september 2026 ging hier onvoorwaardelijk 0 naar de kern, en was
+  // w_add dus gelijk aan w_fin: veilig-zijdig (w2 + w3 ≤ w_tot), maar niet de
+  // grootheid die A1.4.3(3) bedoelt, en beide doorbuigingsregels toonden
+  // hetzelfde getal. Gemeten voor IPE 200 S235, L = 5000 mm, G = 2 kN/m naast
+  // Q = 3 kN/m: w_fin 9,99 mm, w1 4,00 mm, dus w_add 5,99 mm in plaats van 9,99.
+  const wPerm = blijvendeZakking({
+    combinations: data.combinations,
+    loadCases: data.loadCases,
+    meet: (combo) => {
+      const r = data.combinationResults.get(combo.id) ?? null;
+      if (!r || !r.elements.has(beam.id)) return null;
+      return extractFieldDeflectionMm(beam, r);
+    },
+  });
+  notes.push(...wPerm.notes);
 
   return {
     klasse,
@@ -983,6 +1010,9 @@ function vloerDakEis(
     // externe referentie-uitwerking met een vaste noemer na te rekenen.
     noemerAdd: cfg.deflectionAddLimitNumerator ?? 0,
     wMm: maatgevend ? maatgevend.w : 0,
+    // 0 wanneer er geen blijvende BGT-combinatie is; `wPerm.notes` zegt dan
+    // waarom, en dat w_add daardoor de volledige zakking krijgt.
+    wPermMm: wPerm.mm,
     isUitkraging: cfg.deflectionClass === "cantilever",
     eis: "vloerdak",
     notes,
@@ -1006,8 +1036,10 @@ function vloerDakEis(
  *    alleen ter vermelding — K_FI zit in de factoren van de combinaties;
  *  - last grijpt aan op de bovenflens (z_a = h/2,
  *    destabiliserend = veilig-zijdig);
- *  - blijvende BGT-zakking (w1) niet af te leiden uit de combinatieresultaten
- *    → 0, dus w_add = w_fin; dat staat als notitie in het rapport.
+ *  - blijvende BGT-zakking (w1) uit de BGT-combinatie die alleen de blijvende
+ *    belastinggevallen draagt (zie `lib/blijvendeZakking.ts`); ontbreekt die
+ *    combinatie — of ontbreken de belastinggevallen — dan 0, dus w_add = w_fin,
+ *    met die reden als notitie in het rapport.
  */
 export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResult {
   // EERST de doorgaande lijnen: staven die door een tussenknoop zonder
@@ -1235,10 +1267,13 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       // volgens NB tabel NB.4/NB.5; dit veld is vermelding.
       consequence_class: data.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
       pre_camber_mm: cfg.preCamber_mm ?? 0,
-      // Het blijvende deel w1 is uit de combinatieresultaten niet af te leiden
-      // → 0, dus w_add = w_fin. Veilig-zijdig, en `bepaalDoorbuigingsInvoer`
-      // zet die gelijkstelling met reden in het rapport.
-      deflection_permanent_mm: 0,
+      // w₁ uit de BGT-combinatie met alleen de blijvende belasting, zodat
+      // w_add = w − w₁ werkelijk w₂ + w₃ is (NEN-EN 1990:2002/NB:2019
+      // A1.4.3(2), figuur NB.1). De ZEEG hoort daar niet in: die trekt de norm
+      // pas van w_tot af in w_max, en de kern telt hem dan ook alleen bij
+      // w_fin op. Is er geen blijvende BGT-combinatie, dan 0 — met de reden in
+      // `deflection_notes`, nooit stil.
+      deflection_permanent_mm: doorbuiging.wPermMm,
       q_equiv_n_per_mm: equivalentUdlFromMoments(govPoints, lengthMm),
       // AANNAME, bewust niet meegenomen in de kipreparatie van sept 2026:
       // de last grijpt aan op de bovenflens, z_a = +h/2. `c2_gecorrigeerd`
