@@ -80,7 +80,7 @@ import {
   useBetonStijfheidStore,
   type StijfheidCombinatie,
 } from "./stores/betonStijfheidStore";
-import { combinationsToFile, combinationsFromFile } from "./io/projectFile";
+import { combinationsToFile, combinationsFromFile, onbekendeTopVelden } from "./io/projectFile";
 import {
   exporteer as exporteerEigenDoorsneden,
   importeer as importeerEigenDoorsneden,
@@ -658,6 +658,23 @@ function App() {
         windGenerator.setInstellingen(parsed.windInstellingen as Partial<typeof windGenerator.instellingen>);
       }
       pasRapportSnapshotToe(parsed.rapport as Parameters<typeof pasRapportSnapshotToe>[0]);
+      // Velden die deze versie NIET kent (basisaudit ruw 27). Ze laden niet en
+      // ze overleven het volgende Opslaan niet — de opslaroute hierboven bouwt
+      // een vaste veldlijst op. Gemeten voorbeeld: de `toelichting` waarmee de
+      // referentiebestanden zichzelf documenteren, is na openen-en-opslaan weg.
+      // Niet blokkerend (het bestand rekent gewoon), wel zichtbaar, want stil
+      // verlies van gegevens van de gebruiker hoort niemand te overkomen.
+      const onbekend = onbekendeTopVelden(parsed);
+      if (onbekend.length > 0) {
+        void import("./io/notify").then(({ notifyWarning }) => {
+          notifyWarning(
+            "Dit bestand bevat velden die deze versie niet kent",
+            `${onbekend.join(", ")} — ze worden niet geladen en verdwijnen bij het ` +
+              "volgende Opslaan. Bewaar een kopie van het bestand als je ze nodig hebt.",
+            { duur: 30000 },
+          );
+        });
+      }
       if (path) {
         setProjectPath(path);
         addRecentFile(path);
@@ -852,7 +869,13 @@ function App() {
     analysetype: fem.analysetype,
     scheefstand: {
       enabled: fem.scheefstandEnabled,
-      noemer: fem.scheefstandNoemer,
+      // De GEREKENDE noemer, niet de ingetikte: `scheefstandUitkomst` is de
+      // enige plek waar φ voor deze berekening wordt bepaald (zie boven), en
+      // bij een normbron wijkt hij af van wat er in het venster staat. Hier
+      // stond `fem.scheefstandNoemer`, waardoor het IFC "noemer 200, bron
+      // en1992" meldde terwijl er met 1/387,3 gerekend was — basisaudit ruw 26.
+      noemer: scheefstandUitkomst.noemer,
+      noemerInvoer: fem.scheefstandNoemer,
       richting: fem.scheefstandRichting,
       bron: fem.scheefstandBron,
     },
@@ -865,6 +888,15 @@ function App() {
     projectPath, projectInfo,
     fem.nodes, fem.beams, fem.supports, fem.loads, fem.loadCases,
     fem.plates, fem.selfWeightEnabled, fem.combinations, checkResults,
+    // De rekeninstellingen stonden hier niet, terwijl ze wel in de set
+    // OpenFEM2D_Analyse belanden: een gewijzigde scheefstand of een ander
+    // analysetype kwam pas in het IFC zodra er toevallig iets aan het model
+    // veranderde. Met de GEREKENDE noemer erbij (basisaudit ruw 26) is dat
+    // geen schoonheidsfout meer: φ verandert ook zonder dat de gebruiker de
+    // noemer aanraakt, namelijk zodra de hoogte of het aantal kolommen wijzigt.
+    fem.structuralGrid, fem.analysetype, fem.scheefstandEnabled,
+    fem.scheefstandNoemer, fem.scheefstandRichting, fem.scheefstandBron,
+    scheefstandUitkomst,
   ]);
 
   /**
@@ -1099,7 +1131,9 @@ function App() {
       // krachten draaide, met "Berekend om" in de statusbalk.
       controleerVoorRekenen({
         nodes: fem.nodes, beams: fem.beams, supports: fem.supports, plates: fem.plates,
-        loads: fem.loads,
+        // De belastinggevallen erbij: zonder die lijst kan `zoekStilleLasten`
+        // niet zien dat een last naar een geval verwijst dat niet bestaat.
+        loads: fem.loads, loadCases: fem.loadCases,
       });
       // Modelmapping (doorsneden, eenheden, eigen gewicht, scheefstand) staat
       // in een pure module, zodat de app en elke tweede consument van de

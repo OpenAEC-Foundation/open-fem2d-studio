@@ -37,8 +37,8 @@ export function controleerVoorRekenen(model: ControleModel): void {
   const rest = blokkerend.length - eerste.length;
   throw new Error(
     `Model niet doorgerekend — ${blokkerend.length} ` +
-      `${blokkerend.length === 1 ? "onderdeel is" : "onderdelen zijn"} niet goed ` +
-      `aangesloten. ${eerste.join(" ")}` +
+      `${blokkerend.length === 1 ? "bevinding" : "bevindingen"} in de ` +
+      `modelcontrole. ${eerste.join(" ")}` +
       (rest > 0 ? ` En nog ${rest} andere; zie de modelcontrole.` : ""),
   );
 }

@@ -162,8 +162,14 @@ function openBestand(tekst, terugval = "CC2") {
   };
 }
 /** Zoals App.buildProjectSnapshot: combinaties, tellers, klasse en de melding van een vervanging. */
+// `loads` hoort erbij: de opslaroute van de app schrijft alle zes de lijsten,
+// en sinds `deserializeProject` een ontbrekende lijst weigert (basisaudit
+// ruw 27) zou dit hulpje een bestand maken dat de app zelf nooit opslaat.
+// Draagt `model` zelf lasten (de MCP-routes onderaan doen dat), dan blijven
+// die staan; anders een lege lijst, want die routes leveren hun lasten in
+// `app()` apart aan.
 const opslaan = (staat, model, vervangingTekst) => serializeProject({
-  ...model, plates: [], activeLoadCaseId: 1, selfWeightEnabled: false,
+  ...model, plates: [], loads: model.loads ?? [], activeLoadCaseId: 1, selfWeightEnabled: false,
   loadCases: staat.loadCases, combinations: combinationsToFile(staat.combinations),
   idTellers: { belastinggeval: staat.volgendGevalId, combinatie: staat.volgendCombinatieId },
   projectInfo: { uitgangspunten: { gevolgklasse: staat.gevolgklasse } },

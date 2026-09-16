@@ -435,8 +435,21 @@ log("\n[7] Het analysetype blijft terugleesbaar uit het projectbestand");
     analysetypeUitBestand(undefined, undefined) === "eersteOrde");
   checkWaar("nieuw bestand: het veld wint",
     analysetypeUitBestand("tweedeOrdeFysisch", false) === "tweedeOrdeFysisch");
-  checkWaar("onbekende waarde valt terug op de booleaan",
-    analysetypeUitBestand("derdeOrde", true) === "tweedeOrdeGeometrisch");
+  // BASISAUDIT ruw 28: deze regel legde de STILLE terugval vast. Een bestand
+  // met een analysetype dat deze versie niet kent — een bestand uit een latere
+  // versie, of een tikfout — werd zonder melding als "2e orde (P-Delta)"
+  // gerekend, terwijl het rapport en de IFC dat type als keuze van de
+  // gebruiker vermeldden. De verwachting is daarom omgedraaid: weigeren, met
+  // de gelezen waarde en de drie bekende typen in de melding.
+  checkWaar("onbekende waarde wordt geweigerd, niet geraden", (() => {
+    try {
+      analysetypeUitBestand("derdeOrde", true);
+      return false;
+    } catch (e) {
+      return e?.name === "AnalysetypeOnbekendFout" && e.gelezen === "derdeOrde"
+        && /derdeOrde/.test(e.message) && /eersteOrde/.test(e.message);
+    }
+  })());
   checkWaar("terugschrijven: 1e orde → false", nonlinearVoorBestand("eersteOrde") === false);
   checkWaar("terugschrijven: 2e orde → true", nonlinearVoorBestand("tweedeOrdeGeometrisch") === true);
   checkWaar("terugschrijven: fysisch → true", nonlinearVoorBestand("tweedeOrdeFysisch") === true);

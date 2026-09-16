@@ -6,8 +6,10 @@
 //
 // Uitvoeren: npx tsx test-projectbestand.mjs
 
-const { serializeProject, deserializeProject, PROJECT_FORMAT_VERSION } =
-  await import("./src/io/projectFile.ts");
+const {
+  serializeProject, deserializeProject, PROJECT_FORMAT_VERSION,
+  combinationsFromFile, onbekendeTopVelden,
+} = await import("./src/io/projectFile.ts");
 const { rapportSnapshot, pasRapportSnapshotToe, useReportStore } =
   await import("./src/stores/reportStore.ts");
 
@@ -42,7 +44,11 @@ const model = {
   activeLoadCaseId: 1,
   selfWeightEnabled: true,
   nonlinearEnabled: false,
-  analysetype: "eerste-orde",
+  // "eerste-orde" (met streepje) stond hier en is GEEN geldig analysetype; de
+  // fixture kwam er alleen mee weg omdat `analysetypeUitBestand` een onbekende
+  // waarde stil op de booleaan liet terugvallen (basisaudit ruw 28). Sinds die
+  // terugval geweigerd wordt, hoort hier de echte spelling te staan.
+  analysetype: "eersteOrde",
   combinations: [{ id: 1, name: "UGT", type: "uls", formula: "1,35G", factors: { 1: 1.35 } }],
   projectInfo: {
     name: "Loods Zuid", projectNumber: "2026-041", engineer: "M. de Vries", company: "Bureau X",
@@ -109,6 +115,98 @@ log("\n3. De rapportinstellingen: snapshot en terugzetten");
   ok(t.pageSize === "A3" && t.rapportType === "volledig" && t.margeBoven === 22, "ongeldige waarden worden genegeerd, geldige toegepast");
   pasRapportSnapshotToe(undefined);
   ok(useReportStore.getState().rapportType === "volledig", "zonder rapportveld verandert er niets");
+}
+
+log("\n4. De poort bij het OPENEN: wat ontbreekt of niet te lezen is (basisaudit ruw 27, 28, 29)");
+// Tot september 2026 keek `deserializeProject` alleen naar de kaft van het
+// bestand: format-tag, version numeriek, version <= 2. Daarna volgde
+// `return parsed as ProjectFile` en verder niets. Gemeten gevolgen:
+//   - een bestand zonder `supports`, `loads`, `loadCases` of `nodes` opende
+//     ZONDER melding en zette undefined in de store; de app viel pas veel
+//     later om, met "Cannot read properties of undefined";
+//   - een onbekend top-level veld (de `toelichting` waarmee de
+//     referentiebestanden zichzelf documenteren) verdween stil bij het
+//     volgende opslaan;
+//   - een tikfout in het combinatietype maakte er stil een UGT-combinatie van;
+//   - een factor met een decimale KOMMA ("1,5") werd stil NaN.
+{
+  const kaal = {
+    format: "open-fem2d-studio-v2", version: 2, savedAt: "2026-09-16T00:00:00Z",
+    nodes: [], beams: [], supports: [], plates: [], loads: [], loadCases: [],
+    activeLoadCaseId: 1, selfWeightEnabled: false, nonlinearEnabled: false,
+  };
+  const weigert = (naam, mutatie, fragment) => {
+    const o = JSON.parse(JSON.stringify(kaal));
+    mutatie(o);
+    let fout = null;
+    try { deserializeProject(JSON.stringify(o)); } catch (e) { fout = e; }
+    ok(fout !== null && fout.message.includes(fragment), naam,
+      fout === null ? "GEEN MELDING - het bestand opende gewoon" : fout.message.slice(0, 120));
+  };
+
+  for (const veld of ["nodes", "beams", "supports", "plates", "loads", "loadCases"]) {
+    weigert(`zonder \`${veld}\` weigert het openen met een Nederlandse melding`,
+      (o) => { delete o[veld]; }, `mist de lijst \`${veld}\``);
+  }
+  weigert("een lijst die geen array is telt ook niet",
+    (o) => { o.loads = {}; }, "mist de lijst `loads`");
+
+  // Het volledige bestand opent gewoon; de poort houdt niets tegen wat de app
+  // zelf opslaat. Alle 32 bestanden in de repo dragen deze zes lijsten.
+  ok(deserializeProject(JSON.stringify(kaal)).format === "open-fem2d-studio-v2",
+    "een compleet bestand opent ongewijzigd");
+
+  // ruw 28 - het analysetype
+  weigert("een analysetype dat deze versie niet kent wordt geweigerd",
+    (o) => { o.analysetype = "tweedeOrdeToekomst"; o.nonlinearEnabled = true; },
+    "tweedeOrdeToekomst");
+  for (const t of ["eersteOrde", "tweedeOrdeGeometrisch", "tweedeOrdeFysisch"]) {
+    const o = { ...kaal, analysetype: t };
+    ok(deserializeProject(JSON.stringify(o)).analysetype === t,
+      `analysetype "${t}" gaat gewoon door de poort`);
+  }
+  ok(deserializeProject(JSON.stringify({ ...kaal, nonlinearEnabled: true })).analysetype === undefined,
+    "een bestand van vóór het veld blijft leesbaar (de booleaan telt dan)");
+
+  // ruw 29 - combinatietype en factoren
+  weigert("een onbekend combinatietype wordt geweigerd, niet stil UGT",
+    (o) => { o.combinations = [{ id: 1, name: "tikfout", type: "als", factors: { 1: 1.35 } }]; },
+    'type "als"');
+  weigert("een hoofdletterverschil in het type wordt óók geweigerd",
+    (o) => { o.combinations = [{ id: 1, name: "SLS", type: "SLS", factors: { 1: 1 } }]; },
+    'type "SLS"');
+  weigert("een factor met een decimale komma wordt geweigerd, niet stil NaN",
+    (o) => { o.combinations = [{ id: 2, name: "UGT", type: "uls", factors: { 1: "1,5" } }]; },
+    "decimale KOMMA");
+  weigert("een factor die helemaal geen getal is, ook",
+    (o) => { o.combinations = [{ id: 2, name: "UGT", type: "uls", factors: { 1: "abc" } }]; },
+    "dat is geen getal");
+  {
+    const goed = combinationsFromFile([
+      { id: 1, name: "UGT", type: "uls", factors: { 1: 1.35, 2: "1.5" } },
+      { id: 2, name: "BGT", type: "sls", factors: { 1: 1 } },
+    ]);
+    ok(goed[0].type === "uls" && goed[1].type === "sls", "geldige typen blijven wat ze zijn");
+    ok(goed[0].factors.get(1) === 1.35 && goed[0].factors.get(2) === 1.5,
+      "een factor met een PUNT blijft gewoon werken (ook als tekst)");
+  }
+
+  // ruw 27, tweede helft - onbekende top-level velden
+  ok(onbekendeTopVelden({ ...kaal, toelichting: "documentatie van de referentie" })
+      .join(",") === "toelichting",
+    "een onbekend top-level veld wordt herkend en genoemd");
+  ok(onbekendeTopVelden(kaal).length === 0, "een gewoon bestand meldt niets");
+  ok(onbekendeTopVelden({ ...kaal, projectInfo: {}, rapport: {}, windInstellingen: {},
+      eigenDoorsneden: [], eigenCltOpbouwen: [], idTellers: { belastinggeval: 1, combinatie: 1 },
+      structuralGrid: {}, combinatiesVervangenBijOpenen: "x", betonSegmentLengteMm: 400,
+      scheefstandBron: "vast", scheefstandHoogteM: null, scheefstandAantalElementen: null,
+      scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+      analysetype: "eersteOrde", combinations: [] }).length === 0,
+    "alle velden die de app zelf schrijft staan in de bekende lijst");
+  // Het bestand met de toelichting opent gewoon: melden, niet blokkeren.
+  ok(deserializeProject(JSON.stringify({ ...kaal, toelichting: "x" })).format
+      === "open-fem2d-studio-v2",
+    "een onbekend veld blokkeert het openen niet");
 }
 
 log("");
