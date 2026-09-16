@@ -8,12 +8,21 @@
 // van test-belastingcombinaties.mjs). Zeven daarvan — de frequente (6.15b,
 // id 18–22: Q leidend, S en W leidend met en zonder Q) en de quasi-blijvende
 // (6.16b, id 23–24: met en zonder Q) BGT-combinatie — worden bij een zuivere
-// staalconstructie door geen enkele toets gelezen: de
-// doorbuigingstoets van staal gebruikt de karakteristieke (6.14). 6.15 voedt
-// de SCHEURBEHEERSING van beton (EN 1992-1-1 §7.3; de nationale bijlage bij
-// 7.3.1(5) schrijft juist die combinatie voor) en 6.16 de kruipvervorming van
-// hout en de BGT-tak van de betonstijfheid. `selecteerCombinaties` laat ze bij
-// zuiver staal weg, mét reden.
+// staalconstructie ZONDER vloer- of dakeis (alleen overwegend verticale staven
+// zonder gekozen doorbuigingsklasse) door geen enkele toets gelezen: de
+// zijdelingse eis van NEN-EN 1990 A1.4.3(7) gebruikt de karakteristieke
+// (6.14b). 6.15 voedt de SCHEURBEHEERSING van beton (EN 1992-1-1 §7.3; de
+// nationale bijlage bij 7.3.1(5) schrijft juist die combinatie voor) en 6.16
+// de kruipvervorming van hout en de BGT-tak van de betonstijfheid.
+// `selecteerCombinaties` laat ze in dat geval weg, mét reden.
+//
+// ZODRA ÉÉN STAAF DE VLOER- OF DAKEIS KRIJGT, BLIJVEN ZE (issue #10). Tot
+// september 2026 vielen ze in élke zuivere staalconstructie weg, omdat staal
+// geen kruip kent. Maar A1.4.3(4) schrijft voor w_max de quasi-blijvende
+// combinatie voor "bij zowel vloeren als daken", en A1.4.3(3) voor w₂ + w₃ van
+// een vloer de frequente — los van kruip. Een stalen ligger zag daardoor alleen
+// G (3,995 mm) waar G + ψ₂·Q (5,793 mm) hoort; blok [1b] pint dat vast, en
+// test-blijvende-zakking.mjs blok [6] rekent het na tot in de kern.
 //
 // OP ÉÉN NA, SINDS SEPTEMBER 2026. Id 24 — 6.16b zonder Q — is "alleen de
 // blijvende belasting", en daar leest de STAALtoetsing w₁ uit: de zakking die
@@ -78,11 +87,17 @@ const eigenStaal = (id) => ({ id, from: 1, to: 2, material: "S355", profile: "EI
 const vrij = (id) => ({ id, from: 1, to: 2, material: "E=15000", profile: "200x200" });
 const ids = (lijst) => lijst.map((c) => c.id);
 
+// Knopen: staaf 1 → 2 staat bij KOLOM verticaal (90°), bij LIGGER horizontaal.
+// De vraag "krijgt een staaf een vloer- of dakeis" hangt aan die stand.
+const KOLOM = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 4000 }];
+const LIGGER = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }];
+const metKnopen = (nodes) => ({ nodes });
+
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[1] Zuiver staal: 6.15b en 6.16b vallen weg, op 6.16b zonder Q na; de rest blijft");
+log("\n[1] Zuiver staal, alleen kolommen: 6.15b en 6.16b vallen weg, op 6.16b zonder Q na; de rest blijft");
 {
   const alles = defaultCombinations();
-  const s = selecteerCombinaties(alles, [staal(1), staal(2), staal(3)]);
+  const s = selecteerCombinaties(alles, [staal(1), staal(2), staal(3)], [], metKnopen(KOLOM));
   checkGelijk("actieve combinaties", ids(s.actief), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, BLIJVEND]);
   checkGelijk("overgeslagen", s.overgeslagen.map((o) => o.id), BUITEN_STAAL);
   checkWaar("de karakteristieke BGT (6.14b, id 13–17) blijft — die voedt de doorbuigingstoets",
@@ -97,7 +112,9 @@ log("\n[1] Zuiver staal: 6.15b en 6.16b vallen weg, op 6.16b zonder Q na; de res
     s.overgeslagen.some((o) => o.reden.includes("6.15")) &&
     s.overgeslagen.some((o) => o.reden.includes("6.16")));
   checkWaar("de reden zegt hoe je hem terugkrijgt",
-    s.overgeslagen.every((o) => /houten of betonnen staaf/.test(o.reden)));
+    s.overgeslagen.every((o) => /houten of betonnen staaf/.test(o.reden) && /doorbuigingsklasse/.test(o.reden)));
+  checkWaar("de reden noemt waarom: alleen de zijdelingse eis A1.4.3(7)",
+    s.overgeslagen.every((o) => /A1\.4\.3\(7\)/.test(o.reden)));
   // De reden bij 6.15 hoort te noemen WAT er verloren gaat. "Door geen enkele
   // toets gelezen" was waar tot §7.3 er was; blijft die tekst staan, dan leest
   // een gebruiker dat een combinatie overbodig is terwijl zijn scheurwijdte
@@ -111,11 +128,49 @@ log("\n[1] Zuiver staal: 6.15b en 6.16b vallen weg, op 6.16b zonder Q na; de res
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+log("\n[1b] Zuiver staal met een vloer- of dakeis: niets valt weg (issue #10)");
+{
+  // NEN-EN 1990 A1.4.3(4): w_max bij de quasi-blijvende combinatie (6.16b),
+  // "bij zowel vloeren als daken"; A1.4.3(3): w₂ + w₃ van een vloer bij de
+  // frequente (6.15b). De staalbouwer weegt ze allebei.
+  const alles = defaultCombinations();
+  const ligger = selecteerCombinaties(alles, [staal(1)], [], metKnopen(LIGGER));
+  checkWaar("stalen ligger → alle vierentwintig combinaties, niets overgeslagen",
+    ligger.actief.length === 24 && ligger.overgeslagen.length === 0, ids(ligger.overgeslagen).join(","));
+  checkWaar("de quasi-blijvende MET ψ₂·Q (6.16b, id 23) is actief",
+    ligger.actief.some((c) => c.id === 23 && c.factors.get(2) > 0 && c.factors.get(2) < 1), JSON.stringify([...alles[22].factors]));
+  checkWaar("de frequente (6.15b, id 18–22) is actief",
+    [18, 19, 20, 21, 22].every((id) => ligger.actief.some((c) => c.id === id)));
+
+  const kolomMetKlasse = { ...staal(1), checkConfig: { deflectionClass: "floor" } };
+  const k = selecteerCombinaties(alles, [kolomMetKlasse], [], metKnopen(KOLOM));
+  checkWaar("verticale staaf MET gekozen doorbuigingsklasse → vloer-/dakeis, niets overgeslagen",
+    k.actief.length === 24 && k.overgeslagen.length === 0);
+
+  const portaal = [
+    { id: 1, x: 0, z: 0 }, { id: 2, x: 0, z: 4000 }, { id: 3, x: 6000, z: 4000 },
+  ];
+  const p = selecteerCombinaties(alles,
+    [{ ...staal(1), from: 1, to: 2 }, { ...staal(2), from: 2, to: 3 }], [], metKnopen(portaal));
+  checkWaar("kolom + ligger → de ligger vraagt ze, niets overgeslagen",
+    p.actief.length === 24 && p.overgeslagen.length === 0);
+
+  const schuin = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 4000, z: 4000 }];
+  const sch = selecteerCombinaties(alles, [staal(1)], [], metKnopen(schuin));
+  checkWaar("schoor van 45° (onder de 75°-grens) → vloer-/dakeis, niets overgeslagen",
+    sch.actief.length === 24 && sch.overgeslagen.length === 0);
+
+  const zonder = selecteerCombinaties(alles, [staal(1)]);
+  checkWaar("zonder knopen is de stand niet te zien → niets overgeslagen",
+    zonder.actief.length === 24 && zonder.overgeslagen.length === 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 log("\n[2] De lijst zelf wordt niet aangeraakt (afleiding, geen mutatie)");
 {
   const alles = defaultCombinations();
   const voor = alles.map((c) => c.id);
-  const s = selecteerCombinaties(alles, [staal(1)]);
+  const s = selecteerCombinaties(alles, [staal(1)], [], metKnopen(KOLOM));
   checkGelijk("de meegegeven lijst is ongewijzigd", alles.map((c) => c.id), voor);
   checkWaar("het projectbestand houdt dus alle vierentwintig combinaties", alles.length === 24);
   checkWaar("en de selectie is een NIEUWE array", s.actief !== alles);
@@ -142,8 +197,8 @@ log("\n[4] Terugkomen: een houten staaf toevoegen brengt ze terug");
 {
   const alles = defaultCombinations();
   const staalModel = [staal(1), staal(2)];
-  const eerst = selecteerCombinaties(alles, staalModel);
-  const daarna = selecteerCombinaties(alles, [...staalModel, hout(3)]);
+  const eerst = selecteerCombinaties(alles, staalModel, [], metKnopen(KOLOM));
+  const daarna = selecteerCombinaties(alles, [...staalModel, hout(3)], [], metKnopen(KOLOM));
   checkWaar("eerst achttien (zeventien plus de blijvende 6.16b)", eerst.actief.length === 18);
   checkWaar("na het toevoegen van hout weer vierentwintig", daarna.actief.length === 24);
   checkWaar("de quasi-blijvende (6.16, id 23 en 24) is er weer — anders zou de kruip stil terugvallen",
@@ -152,7 +207,7 @@ log("\n[4] Terugkomen: een houten staaf toevoegen brengt ze terug");
   // EN MET BETON DE FREQUENTE (6.15). Die combinatie voedt sinds §7.3 de
   // scheurwijdtetoets; valt zij weg, dan komt die toets als "niet uitgevoerd"
   // in het rapport terwijl er niets aan de hand is.
-  const metBeton = selecteerCombinaties(alles, [...staalModel, beton(4)]);
+  const metBeton = selecteerCombinaties(alles, [...staalModel, beton(4)], [], metKnopen(KOLOM));
   checkWaar("na het toevoegen van beton weer vierentwintig", metBeton.actief.length === 24);
   checkWaar("de frequente (6.15b, alle vijf) zijn er weer — anders vervalt de scheurwijdtetoets",
     [18, 19, 20, 21, 22].every((id) => metBeton.actief.some((c) => c.id === id)));
@@ -168,27 +223,27 @@ log("\n[5] Aangepaste combinaties blijven met rust");
   // Index 17 = id 18 (6.15b, Q leidend), index 22 = id 23 (6.16b met Q).
   const hernoemd = defaultCombinations();
   hernoemd[17] = { ...hernoemd[17], name: "BGT frequent (eigen keuze)" };
-  const a = selecteerCombinaties(hernoemd, [staal(1)]);
+  const a = selecteerCombinaties(hernoemd, [staal(1)], [], metKnopen(KOLOM));
   checkGelijk("hernoemde 6.15b blijft, de andere 6.15b en de 6.16b vallen weg",
     a.overgeslagen.map((o) => o.id), [19, 20, 21, 22, 23]);
 
   // Factor bijgesteld
   const bijgesteld = defaultCombinations();
   bijgesteld[22] = { ...bijgesteld[22], factors: new Map([[1, 1.0], [2, 0.5]]) };
-  const b = selecteerCombinaties(bijgesteld, [staal(1)]);
+  const b = selecteerCombinaties(bijgesteld, [staal(1)], [], metKnopen(KOLOM));
   checkGelijk("bijgestelde 6.16b blijft, de ongewijzigde 6.15b en 6.16b vallen weg",
     b.overgeslagen.map((o) => o.id), [18, 19, 20, 21, 22]);
 
   // Een geval eruit gehaald (kleinere factorenkaart)
   const uitgedund = defaultCombinations();
   uitgedund[17] = { ...uitgedund[17], factors: new Map([[1, 1.0]]) };
-  const c = selecteerCombinaties(uitgedund, [staal(1)]);
+  const c = selecteerCombinaties(uitgedund, [staal(1)], [], metKnopen(KOLOM));
   checkGelijk("uitgedunde 6.15b blijft", c.overgeslagen.map((o) => o.id), [19, 20, 21, 22, 23]);
 
   // Formule aangepast (wat de gebruiker leest, telt ook mee)
   const anderFormule = defaultCombinations();
   anderFormule[22] = { ...anderFormule[22], formula: "G + 0,3·Q (projectkeuze)" };
-  const d = selecteerCombinaties(anderFormule, [staal(1)]);
+  const d = selecteerCombinaties(anderFormule, [staal(1)], [], metKnopen(KOLOM));
   checkGelijk("aangepaste formule blijft", d.overgeslagen.map((o) => o.id), [18, 19, 20, 21, 22]);
 
   // Zelf toegevoegde combinatie met hetzelfde id-bereik
@@ -196,7 +251,7 @@ log("\n[5] Aangepaste combinaties blijven met rust");
     ...defaultCombinations(),
     { id: 99, name: "BGT eigen", type: "sls", formula: "G + Q", factors: new Map([[1, 1], [2, 1]]) },
   ];
-  const e = selecteerCombinaties(eigen, [staal(1)]);
+  const e = selecteerCombinaties(eigen, [staal(1)], [], metKnopen(KOLOM));
   checkWaar("een eigen combinatie erbij verandert niets aan het oordeel over de standaardzes",
     e.actief.length === 19 && e.actief.some((c2) => c2.id === 99) && e.overgeslagen.length === 6);
 
@@ -206,7 +261,7 @@ log("\n[5] Aangepaste combinaties blijven met rust");
     { id: 7, name: "BGT karakteristiek — wind leidend", type: "sls", formula: "G + W", factors: new Map([[1, 1], [4, 1]]) },
     { id: 8, name: "BGT karakteristiek — sneeuw leidend", type: "sls", formula: "G + S", factors: new Map([[1, 1], [3, 1]]) },
   ];
-  const f = selecteerCombinaties(windAchtig, [staal(1)]);
+  const f = selecteerCombinaties(windAchtig, [staal(1)], [], metKnopen(KOLOM));
   checkWaar("een eigen lijst wordt nooit opgeruimd, ook niet op id 7 en 8",
     f.actief.length === 3 && f.overgeslagen.length === 0);
 }
@@ -234,7 +289,7 @@ log("\n[7] Leeg model en lege lijst leveren geen verrassingen");
   const leeg = selecteerCombinaties(defaultCombinations(), []);
   checkWaar("geen staven → niets wordt weggelaten",
     leeg.actief.length === 24 && leeg.overgeslagen.length === 0);
-  const geen = selecteerCombinaties([], [staal(1)]);
+  const geen = selecteerCombinaties([], [staal(1)], [], metKnopen(KOLOM));
   checkWaar("lege combinatielijst blijft leeg zonder te klagen",
     geen.actief.length === 0 && geen.overgeslagen.length === 0);
 }
@@ -275,18 +330,40 @@ log("\n[8] Dezelfde beslissing langs de sidecar (de MCP-weg)");
   const solve = (staven) =>
     verwerkVerzoek({ v: 1, id: 1, op: "solve", payload: { model: portaal(staven) } });
 
+  // Het stalen portaal heeft een LIGGER (staaf 2): die krijgt de vloer-/dakeis
+  // en leest 6.15b en 6.16b. Er valt dus niets weg (issue #10).
   const staalUit = solve(stalenStaven);
   checkWaar("de solve slaagt", staalUit.ok === true, JSON.stringify(staalUit.error ?? {}));
   const r = staalUit.result ?? {};
-  checkGelijk("zes doorgerekende combinaties (vijf plus de blijvende 6.16b)",
-    Object.keys(r.combinations ?? {}).map(Number), [1, 2, 3, 4, 5, 8]);
+  checkGelijk("stalen portaal met ligger: alle acht combinaties doorgerekend",
+    Object.keys(r.combinations ?? {}).map(Number), [1, 2, 3, 4, 5, 6, 7, 8]);
+  checkGelijk("combinations_skipped is leeg", (r.combinations_skipped ?? []).map((c) => c.id), []);
+
+  // Alleen de twee kolommen, zonder ligger: dan leest geen toets 6.15b of de
+  // volledige 6.16b, en die vallen weg — zichtbaar.
+  const kolommen = {
+    ...portaal([
+      { id: 1, from: 1, to: 2, material: "S235", profile: "HEA160" },
+      { id: 3, from: 4, to: 3, material: "S235", profile: "HEA160" },
+    ]),
+    loads: [
+      { id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -1 },
+      { id: 2, type: "lineLoad", caseId: 2, beamId: 1, q: -2 },
+    ],
+  };
+  kolommen.supports = [{ nodeId: 1, type: "fixed" }, { nodeId: 4, type: "fixed" }];
+  const kolomUit = verwerkVerzoek({ v: 1, id: 2, op: "solve", payload: { model: kolommen } });
+  checkWaar("de solve met alleen kolommen slaagt", kolomUit.ok === true, JSON.stringify(kolomUit.error ?? {}));
+  const rk = kolomUit.result ?? {};
+  checkGelijk("alleen kolommen: zes doorgerekende combinaties (vijf plus de blijvende 6.16b)",
+    Object.keys(rk.combinations ?? {}).map(Number), [1, 2, 3, 4, 5, 8]);
   checkGelijk("combinations_skipped noemt 6.15b en de volledige 6.16b",
-    (r.combinations_skipped ?? []).map((c) => c.id), [6, 7]);
+    (rk.combinations_skipped ?? []).map((c) => c.id), [6, 7]);
   checkWaar("elke overgeslagen combinatie draagt naam én reden",
-    (r.combinations_skipped ?? []).every((c) => c.name && c.reason?.length > 40));
+    (rk.combinations_skipped ?? []).every((c) => c.name && c.reason?.length > 40));
   checkWaar("en het staat ook in de waarschuwingen — nooit stil",
-    (r.warnings ?? []).filter((w) => w.includes("niet doorgerekend")).length === 2,
-    JSON.stringify(r.warnings));
+    (rk.warnings ?? []).filter((w) => w.includes("niet doorgerekend")).length === 2,
+    JSON.stringify(rk.warnings));
 
   const gemengd = solve([
     ...stalenStaven,

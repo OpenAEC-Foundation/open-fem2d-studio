@@ -1214,7 +1214,8 @@ function App() {
       // geval, waarin 2.2.3(5) geldt — lost dit niets op en verandert er niets.
       losEindtoestandOp(multiInput, perCase, fem.actieveCombinaties, fem.eindstijfheid);
       // `actieveCombinaties`, niet `combinations`: een combinatie die dit model
-      // niet nodig heeft (zuiver staal → 6.15/6.16, zie lib/combinatieSelectie)
+      // niet nodig heeft (zuiver staal zonder vloer-/dakeis → 6.15/6.16, zie
+      // lib/combinatieSelectie)
       // wordt niet doorgerekend. Alles wat resultaten toont filtert op de
       // sleutels van deze Map, dus die volgen vanzelf.
       const combinationResults = new Map(
