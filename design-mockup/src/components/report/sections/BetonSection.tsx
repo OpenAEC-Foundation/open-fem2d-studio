@@ -182,7 +182,10 @@ function BetonStaafBlok({
                   className="rpt-figuur-svg rpt-bet-svg-doorsnede"
                   korf={korf}
                   kleuren={RAPPORT_KLEUREN}
-                  titel={`Doorsnede ${r.section_name} met wapeningskorf: ${r.reinforcement_summary}`}
+                  titel={t("report.betonDoorsnedeTitel", {
+                    naam: r.section_name,
+                    korf: r.reinforcement_summary,
+                  })}
                 />
                 <div className="rpt-figuur-bijschrift">
                   {t("report.betonDoorsnedeBijschrift", {
@@ -533,6 +536,11 @@ interface Beperking {
    * een tweede waarheid.
    */
   letterlijk?: boolean;
+  /**
+   * Vertaalsleutel van een vaste frontendkop vóór een letterlijke kerntekst
+   * (bv. "Kruip en krimp."). Alleen de kop wordt vertaald, de kerntekst niet.
+   */
+  kopKey?: string;
 }
 
 /** De punten vóór het tweede-orde-punt. */
@@ -645,8 +653,9 @@ function nietGetoetst(fysisch: boolean, creepNote: string | null): Beperking[] {
       ? {
           artikel: "3.1.4 / 5.8.4",
           key: "report.betonKruipVermelding",
-          nl: `Kruip en krimp. ${creepNote}`,
+          nl: creepNote,
           letterlijk: true,
+          kopKey: "report.betonKruipKrimp",
         }
       : {
           artikel: "3.1.4",
@@ -798,7 +807,10 @@ export default function BetonSection() {
             <ul className="rpt-bet-beperking-lijst">
               {nietGetoetst(fysischGerekend, creepNote).map((b) => (
                 <li key={b.artikel}>
-                  <strong>{b.artikel}</strong> — {b.letterlijk ? b.nl : t(b.key, b.nl)}
+                  <strong>{b.artikel}</strong> —{" "}
+                  {b.letterlijk
+                    ? `${b.kopKey ? `${t(b.kopKey)} ` : ""}${b.nl}`
+                    : t(b.key, b.nl)}
                 </li>
               ))}
               {/* De twee punten die alleen bij een flens spelen. In een rapport

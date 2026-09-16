@@ -92,10 +92,10 @@ export default function HomeTab({
     <div className="ribbon-content">
       <div className="ribbon-groups">
         {/* Berekening — Berekenen (large primary action) */}
-        <RibbonGroup label="Berekening">
+        <RibbonGroup label={t("home.calculation")}>
           <RibbonButton
             icon={solveIcon}
-            label="Berekenen"
+            label={t("home.solve")}
             size="large"
             active={hasResults}
             onClick={() => onSolve?.()}
@@ -174,7 +174,7 @@ export default function HomeTab({
             />
             <RibbonButton
               icon={subnodeIcon}
-              label="Sub-knoop"
+              label={t("home.subNode")}
               size="small"
               active={femTool === "addSubNode"}
               onClick={() => setTool("addSubNode")}
@@ -282,7 +282,7 @@ export default function HomeTab({
           <RibbonButtonStack>
             <RibbonButton
               icon={loadPointHIcon}
-              label="Puntlast H"
+              label={t("home.pointLoadH")}
               size="small"
               active={femTool === "addPointLoadH"}
               onClick={() => setTool("addPointLoadH")}
@@ -311,14 +311,14 @@ export default function HomeTab({
             />
             <RibbonButton
               icon={loadCombinationsIcon}
-              label="Combinaties"
+              label={t("home.combinations")}
               size="small"
               onClick={onOpenLoadCombinations ?? stub("Load combinations dialog (no handler)")}
             />
             {/* Windbelastinggenerator — EN 1991-1-4 + Nederlandse NB. */}
             <RibbonButton
               icon={windGeneratorIcon}
-              label="Windgenerator"
+              label={t("home.windGenerator")}
               size="small"
               onClick={onOpenWindGenerator ?? stub("Wind generator dialog (no handler)")}
             />
@@ -351,7 +351,7 @@ export default function HomeTab({
             />
             <RibbonButton
               icon={mirrorIcon}
-              label="Spiegelen"
+              label={t("home.mirror")}
               size="small"
               active={femTool === "mirror"}
               onClick={() => setTool("mirror")}
@@ -374,7 +374,7 @@ export default function HomeTab({
             />
             <RibbonButton
               icon={deleteIcon}
-              label="Verwijderen"
+              label={t("common:delete")}
               size="small"
               onClick={() => onDelete?.()}
             />

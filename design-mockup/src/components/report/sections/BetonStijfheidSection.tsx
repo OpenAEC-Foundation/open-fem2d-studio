@@ -35,10 +35,10 @@
  * geherformuleerd. Een geklemde waarde die stilzwijgend in de tabel staat is
  * een verzonnen antwoord.
  */
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useBetonStijfheidStore, type StijfheidCombinatie } from "../../../stores/betonStijfheidStore";
 import { useReportStore } from "../../../stores/reportStore";
-import { ANALYSETYPE_OMSCHRIJVING } from "../../fem/femTypes";
 import type { SegmentStiffness } from "../../../lib/types/concrete/SegmentStiffness";
 import type { SegmentStiffnessResponse } from "../../../lib/types/concrete/SegmentStiffnessResponse";
 import EiVerloopGrafiek from "../../beton/EiVerloopGrafiek";
@@ -54,21 +54,21 @@ import { CHECK_REPORT_CSS, fmtCheckedAt, fmtValue } from "../checkReportUtils";
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Korte aanduiding van de variant per segment (besluit B2). */
-function variantKort(basis: SegmentStiffness["basis"]): string {
-  return basis === "DesignValues" ? "UGT" : "BGT";
+function variantKort(t: TFunction, basis: SegmentStiffness["basis"]): string {
+  return basis === "DesignValues" ? t("report.comboUls") : t("report.comboSls");
 }
 
 /**
  * De ingrepen van de kern op één segment, als korte merktekens. Leeg wanneer
  * er niets bijzonders is; de volledige melding staat onder de tabel.
  */
-function merktekens(s: SegmentStiffness): string[] {
+function merktekens(t: TFunction, s: SegmentStiffness): string[] {
   const uit: string[] = [];
-  if (s.clamped) uit.push("geklemd");
-  if (s.relaxed) uit.push("gerelaxeerd");
-  if (s.beyond_eps_cu1) uit.push("ε_cu1 overschreden");
-  if (s.method === "Bisection") uit.push("insluiting");
-  if (s.status === "Failed") uit.push("geen stijfheid");
+  if (s.clamped) uit.push(t("report.eisMerkGeklemd"));
+  if (s.relaxed) uit.push(t("report.eisMerkGerelaxeerd"));
+  if (s.beyond_eps_cu1) uit.push(t("report.eisMerkEpsCu1"));
+  if (s.method === "Bisection") uit.push(t("report.eisMerkInsluiting"));
+  if (s.status === "Failed") uit.push(t("report.eisMerkGeenStijfheid"));
   return uit;
 }
 
@@ -117,8 +117,12 @@ function StaafBlok({ r }: { r: SegmentStiffnessResponse }) {
         {r.reinforcement_grade}) · {r.reinforcement_summary}
       </p>
       <p className="rpt-eis-staafmeta">
-        L = {fmtValue(r.length_m, 3)} m · {r.segment_count}{" "}
-        {t("report.eisSegmenten", "segmenten")} van {nl(r.segment_length_mm, 1)} mm ·{" "}
+        L = {fmtValue(r.length_m, 3)} m ·{" "}
+        {t("report.eisSegmentenVan", {
+          aantal: r.segment_count,
+          lengte: nl(r.segment_length_mm, 1),
+        })}{" "}
+        ·{" "}
         f<sub>c</sub> = {nl(r.f_c_mpa, 2)} N/mm² · E<sub>c</sub> = {nl(r.e_c_mpa, 0)} N/mm² ·
         f<sub>ctm</sub> = {nl(r.f_ctm_mpa, 2)} N/mm² · E<sub>c</sub>·I<sub>c</sub> ={" "}
         {nl(eiRef, 0)} kNm² · {r.limit_state_label}
@@ -137,7 +141,7 @@ function StaafBlok({ r }: { r: SegmentStiffnessResponse }) {
           eiOngescheurdKnm2={eiRef}
           lengteMm={r.length_m * 1000}
           kleuren={RAPPORT_KLEUREN}
-          titel={`Buigstijfheid EI langs staaf ${r.beam_id}, met de ongescheurde E_c·I_c als referentielijn`}
+          titel={t("report.eisFiguurTitel", { staaf: r.beam_id })}
         />
         <div className="rpt-figuur-bijschrift">
           {t("report.eisFiguurBijschrift", {
@@ -180,7 +184,7 @@ function StaafBlok({ r }: { r: SegmentStiffnessResponse }) {
         </thead>
         <tbody>
           {r.segments.map((s) => {
-            const marks = merktekens(s);
+            const marks = merktekens(t, s);
             return (
               <tr
                 key={s.index}
@@ -215,7 +219,7 @@ function StaafBlok({ r }: { r: SegmentStiffnessResponse }) {
                   {s.zeta !== null && <> · ζ = {nl(s.zeta, 2)}</>}
                   {marks.length > 0 && <span className="rpt-eis-mark"> · {marks.join(", ")}</span>}
                 </td>
-                <td>{variantKort(s.basis)}</td>
+                <td>{variantKort(t, s.basis)}</td>
               </tr>
             );
           })}
@@ -278,14 +282,14 @@ function CombinatieBlok({ c, segmentLengteMm }: { c: StijfheidCombinatie; segmen
     <div className="rpt-eis-combi">
       <h3 className="rpt-h3">
         {t("report.eisCombinatieKop", "Combinatie")} {c.combinatieNaam} —{" "}
-        {eerste ? eerste.limit_state_label : variantKort(c.grenstoestand)}
+        {eerste ? eerste.limit_state_label : variantKort(t, c.grenstoestand)}
       </h3>
 
       <table className="rpt-table rpt-eis-uitgangspunten">
         <tbody>
           <tr>
             <th>{t("report.eisAnalysetype", "Analysetype")}</th>
-            <td>{ANALYSETYPE_OMSCHRIJVING.tweedeOrdeFysisch}</td>
+            <td>{t("report.eisAnalysetypeFysisch")}</td>
           </tr>
           <tr>
             <th>{t("report.eisGrenstoestand", "Grenstoestand en diagram")}</th>
@@ -317,7 +321,7 @@ function CombinatieBlok({ c, segmentLengteMm }: { c: StijfheidCombinatie; segmen
           <tr>
             <th>{t("report.eisCriterium", "Convergentiecriterium")}</th>
             <td>
-              max |ΔEI| / max(|EI|, |EI<sub>vorig</sub>|) ≤{" "}
+              max |ΔEI| / max(|EI|, |EI<sub>{t("report.eisVorig")}</sub>|) ≤{" "}
               {tolerantie === null ? "—" : `${nl(100 * tolerantie, 2)} %`}
               {" — "}
               <span className={conv ? "rpt-eis-ok" : "rpt-eis-nok"}>
@@ -357,7 +361,13 @@ function CombinatieBlok({ c, segmentLengteMm }: { c: StijfheidCombinatie; segmen
               {t("report.eisOndergrens", "ondergrens")} EI ={" "}
               {eerste ? nl(eerste.min_ei_knm2, 0) : "—"} kNm²
               {eerste && eerste.ei_uncracked_knm2 > 0 && (
-                <> ({nl((100 * eerste.min_ei_knm2) / eerste.ei_uncracked_knm2, 1)} % van E<sub>c</sub>·I<sub>c</sub>)</>
+                <>
+                  {" "}
+                  ({t("report.eisProcentVan", {
+                    pct: nl((100 * eerste.min_ei_knm2) / eerste.ei_uncracked_knm2, 1),
+                  })}{" "}
+                  E<sub>c</sub>·I<sub>c</sub>)
+                </>
               )}
               {geklemd > 0 && (
                 <span className="rpt-eis-nok">

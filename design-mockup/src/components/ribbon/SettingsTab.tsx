@@ -35,7 +35,7 @@ export default function SettingsTab({
 
   // Taalwissel: zelfde route als SettingsDialog (changeLanguage + persist),
   // maar direct — de ribbon-knop is een sneltoets, geen draft-dialoog.
-  const selectLanguage = (lang: "nl" | "en") => {
+  const selectLanguage = (lang: "nl" | "en" | "de" | "fr") => {
     void changeLanguage(lang);
     void setSetting("language", lang);
   };
@@ -97,7 +97,9 @@ export default function SettingsTab({
           />
         </RibbonGroup>
 
-        {/* Taal — alleen talen met een echte locale (nl/en). */}
+        {/* Taal — de vier talen met een eigen locale (nl/en/de/fr, zie LANGUAGES
+            in i18n/config.ts). De naam staat in de taal zelf, zodat iemand die
+            de huidige taal niet leest zijn eigen taal herkent. */}
         <RibbonGroup label={t("settings.language")}>
           <RibbonButton
             icon={languageIcon}
@@ -114,6 +116,22 @@ export default function SettingsTab({
             title="English"
             active={activeLang === "en"}
             onClick={() => selectLanguage("en")}
+          />
+          <RibbonButton
+            icon={languageIcon}
+            label="DE"
+            size="large"
+            title="Deutsch"
+            active={activeLang === "de"}
+            onClick={() => selectLanguage("de")}
+          />
+          <RibbonButton
+            icon={languageIcon}
+            label="FR"
+            size="large"
+            title="Français"
+            active={activeLang === "fr"}
+            onClick={() => selectLanguage("fr")}
           />
         </RibbonGroup>
       </div>

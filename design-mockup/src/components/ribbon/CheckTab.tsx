@@ -83,7 +83,7 @@ export default function CheckTab({
           />
           <RibbonButton
             icon={checkRunIcon}
-            label="Maatgevend (envelope)"
+            label={t("check.envelope")}
             size="large"
             active={hasEnvelope}
             disabled={!hasEnvelope}

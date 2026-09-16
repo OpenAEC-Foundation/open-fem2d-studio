@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import RibbonGroup from "./RibbonGroup";
 import RibbonButton from "./RibbonButton";
 import RibbonButtonStack from "./RibbonButtonStack";
@@ -28,8 +29,8 @@ async function pickIfcFile(): Promise<void> {
       const head = await file.slice(0, 200).text();
       const sizeKb = (file.size / 1024).toFixed(1);
       comingSoon(
-        "IFC import",
-        `Bestand "${file.name}" (${sizeKb} kB) is herkend.\n\nVolledige IFC-parse + structuralisatie naar FEM-mesh komt in een vervolg-update — daarvoor wordt @thatopen IFC viewer geïntegreerd.\n\nEerste bytes:\n${head.slice(0, 100)}...`,
+        i18next.t("ribbon:ifc.importTitle"),
+        i18next.t("ribbon:ifc.importRecognized", { naam: file.name, grootte: sizeKb, kop: head.slice(0, 100) }),
       );
       resolve();
     };
@@ -73,15 +74,15 @@ export default function IfcTab({
               icon={ifcExportIcon}
               label={t("ifc.export")}
               size="small"
-              onClick={onExportIfc ?? soon("IFC-export", "Genereert een geldig IFC4 bestand uit het huidige model.")}
+              onClick={onExportIfc ?? soon(t("ifc.soonExportTitle"), t("ifc.soonExportHint"))}
             />
             <RibbonButton
               icon={ifcExportIcon}
               label={t("ifc.exportStructural")}
               size="small"
               onClick={onExportIfcStructural ?? soon(
-                "IFC structurele export",
-                "Alleen het draagsysteem: knopen, staven, profielen, materialen en opleggingen — zonder belastinggevallen.",
+                t("ifc.soonExportStructuralTitle"),
+                t("ifc.soonExportStructuralHint"),
               )}
             />
           </RibbonButtonStack>
@@ -93,20 +94,20 @@ export default function IfcTab({
             icon={ifcStructuralIcon}
             label={t("ifc.structuralModel")}
             size="large"
-            onClick={soon("IFC → structureel model", "Extraheert IfcColumn / IfcBeam / IfcSlab → FEM nodes + beams + plates.")}
+            onClick={soon(t("ifc.soonStructuralModelTitle"), t("ifc.soonStructuralModelHint"))}
           />
           <RibbonButtonStack>
             <RibbonButton
               icon={ifcTreeIcon}
               label={t("ifc.structure")}
               size="small"
-              onClick={onOpenIfcView ?? soon("IFC-boomstructuur", "Toont de hiërarchie van het geëxporteerde rekenmodel.")}
+              onClick={onOpenIfcView ?? soon(t("ifc.soonTreeTitle"), t("ifc.soonTreeHint"))}
             />
             <RibbonButton
               icon={ifcStatsIcon}
               label={t("ifc.statistics")}
               size="small"
-              onClick={onOpenIfcView ?? soon("IFC-statistieken", "Telt de entiteiten per type in de export.")}
+              onClick={onOpenIfcView ?? soon(t("ifc.soonStatsTitle"), t("ifc.soonStatsHint"))}
             />
           </RibbonButtonStack>
         </RibbonGroup>
@@ -117,7 +118,7 @@ export default function IfcTab({
             icon={ifcMaterialMapIcon}
             label={t("ifc.materialMap")}
             size="large"
-            onClick={soon("Material-mapping editor", "Mapping van IFC-materialen → FEM grade (S235/S355/C30/37 etc.) + profielcatalogus-lookup.")}
+            onClick={soon(t("ifc.soonMaterialMapTitle"), t("ifc.soonMaterialMapHint"))}
           />
         </RibbonGroup>
 
@@ -128,8 +129,8 @@ export default function IfcTab({
             label={t("ifc.validate")}
             size="large"
             onClick={onValidateIfc ?? soon(
-              "IFC-validator",
-              "Controleert de STEP-omlijsting, referentie-integriteit, GlobalId's en de verplichte entiteiten van de export.",
+              t("ifc.soonValidatorTitle"),
+              t("ifc.soonValidatorHint"),
             )}
           />
         </RibbonGroup>

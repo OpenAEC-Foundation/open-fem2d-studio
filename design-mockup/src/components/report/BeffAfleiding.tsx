@@ -34,26 +34,27 @@ import Deelstappen from "./Deelstappen";
 import { fmtValue } from "./checkReportUtils";
 
 /**
- * Korte aanduiding van een geval uit figuur 5.2 voor de gebiedstabel.
+ * Korte aanduiding van een geval uit figuur 5.2 voor de gebiedstabel
+ * (vertaalsleutel in de ribbon-naamruimte).
  *
  * De lange omschrijving staat in de keten die de kern levert; deze is alleen
  * een tabelkopje. Beide gaan over dezelfde `L0Case`, dus ze kunnen niet uit
  * elkaar lopen zonder dat de enum verandert.
  */
 const GEVAL_KORT: Record<L0Case, string> = {
-  EndSpan: "eindveld",
-  InteriorSpan: "binnenveld",
-  SingleSpan: "enkele overspanning",
-  InteriorSupport: "tussensteunpunt",
-  RestrainedEnd: "momentvast uiteinde",
-  Cantilever: "uitkraging",
+  EndSpan: "report.beffGeval_EndSpan",
+  InteriorSpan: "report.beffGeval_InteriorSpan",
+  SingleSpan: "report.beffGeval_SingleSpan",
+  InteriorSupport: "report.beffGeval_InteriorSupport",
+  RestrainedEnd: "report.beffGeval_RestrainedEnd",
+  Cantilever: "report.beffGeval_Cantilever",
 };
 
-/** Het uiteinde van de liggerlijn, kort — voor de samenvattingsregel. */
+/** Het uiteinde van de liggerlijn, kort — voor de samenvattingsregel (vertaalsleutel). */
 const UITEINDE_KORT: Record<LineEnd, string> = {
-  Support: "vrij opgelegd",
-  Restrained: "momentvast",
-  Free: "vrij (uitkraging)",
+  Support: "report.beffEinde_Support",
+  Restrained: "report.beffEinde_Restrained",
+  Free: "report.beffEinde_Free",
 };
 
 function mm(v: number): string {
@@ -98,7 +99,7 @@ function GebiedTabel({
                 </span>
               )}
             </td>
-            <td>{GEVAL_KORT[z.zone.case]}</td>
+            <td>{t(GEVAL_KORT[z.zone.case])}</td>
             <td className="rpt-num">{mm(z.zone.l0_mm)}</td>
             <td className="rpt-num">{mm(z.b_eff_mm)}</td>
             <td className="rpt-num">
@@ -158,8 +159,8 @@ export default function BeffAfleiding({ uitkomst }: { uitkomst: BeffStaafUitkoms
           beff: mm(u.bEffMm),
           aantal: u.line.spans_mm.length,
           spans: overspanningen,
-          start: UITEINDE_KORT[u.line.start],
-          eind: UITEINDE_KORT[u.line.end],
+          start: t(UITEINDE_KORT[u.line.start]),
+          eind: t(UITEINDE_KORT[u.line.end]),
           x: mm(u.xLijnMm),
         })}
       </p>
