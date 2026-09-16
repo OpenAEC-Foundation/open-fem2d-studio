@@ -175,6 +175,109 @@ fn model_zonder_opleggingen() -> Value {
     })
 }
 
+/// Een projectbestand op schijf met een opgegeven analysetype.
+///
+/// Het pad ligt in de tijdelijke map van het systeem en draagt het analysetype
+/// in zijn naam, zodat twee tests elkaars bestand nooit overschrijven.
+fn projectbestand_met_analysetype(analysetype: &str, nonlinear: bool) -> std::path::PathBuf {
+    let model = model_zonder_opleggingen();
+    let bestand = json!({
+        "format": "open-fem2d-studio-v2",
+        "version": 2,
+        "savedAt": "2026-09-16T00:00:00Z",
+        "nodes": model["nodes"],
+        // Mét opleggingen: deze tests gaan over het analysetype en niet over
+        // een onoplosbaar model; die twee fouten door elkaar halen zou de
+        // weigering hieronder niets bewijzen.
+        "beams": model["beams"],
+        "supports": [
+            { "nodeId": 1, "type": "pinned" },
+            { "nodeId": 2, "type": "zRoller" }
+        ],
+        "plates": [],
+        "loads": model["loads"],
+        "loadCases": model["loadCases"],
+        "activeLoadCaseId": 1,
+        "selfWeightEnabled": false,
+        "nonlinearEnabled": nonlinear,
+        "analysetype": analysetype,
+    });
+    let pad = std::env::temp_dir().join(format!("openaec-analysetype-{analysetype}.ifcfem2d"));
+    std::fs::write(&pad, serde_json::to_string(&bestand).unwrap()).expect("proefbestand schrijven");
+    pad
+}
+
+// ── 0. Het analysetype uit het projectbestand (basisaudit §3.2 punt 2) ──────
+//
+// De MCP-weg las alleen de oude booleaan `nonlinearEnabled`. Een bestand met
+// "2e orde + fysisch" — de keuze van de constructeur — werd langs deze weg dus
+// stil als GEOMETRISCHE tweede orde gerekend: zonder de betonstijfheidslus van
+// EN 1992-1-1 5.8.6, en met "tweedeOrdeGeometrisch" als etiket in het antwoord.
+// Deze test draait tegen de ECHTE binary met de ingebakken sidecarbundel, en
+// bewijst dus dat de weg als geheel het analysetype kent.
+
+#[tokio::test]
+async fn het_analysetype_uit_het_projectbestand_wordt_gevolgd() {
+    let pad = projectbestand_met_analysetype("tweedeOrdeGeometrisch", true);
+    let mut s = Server::start(None).await;
+    let r = s
+        .tool(
+            "solve_fem_model",
+            json!({ "project_path": pad.to_string_lossy() }),
+        )
+        .await;
+    assert_ne!(r["isError"], json!(true), "dit model hoort gewoon te rekenen: {r}");
+    assert_eq!(
+        r["structuredContent"]["stability"]["analysis_type"],
+        json!("tweedeOrdeGeometrisch"),
+        "het antwoord noemt een ander analysetype dan het bestand: {}",
+        r["structuredContent"]["stability"]
+    );
+    s.stop().await;
+}
+
+#[tokio::test]
+async fn een_fysisch_nietlineair_bestand_wordt_geweigerd_en_niet_stil_geometrisch_gerekend() {
+    let pad = projectbestand_met_analysetype("tweedeOrdeFysisch", true);
+    let mut s = Server::start(None).await;
+    let r = s
+        .tool(
+            "solve_fem_model",
+            json!({ "project_path": pad.to_string_lossy() }),
+        )
+        .await;
+    let inhoud = foutinhoud(&r);
+    let melding = inhoud["melding"].as_str().unwrap_or_default();
+    assert!(
+        melding.contains("tweedeOrdeFysisch"),
+        "de weigering noemt het analysetype niet: {melding}"
+    );
+    assert!(
+        melding.contains("5.8.6"),
+        "de weigering noemt de reden (de betonstijfheidslus) niet: {melding}"
+    );
+    s.stop().await;
+}
+
+#[tokio::test]
+async fn een_onbekend_analysetype_wordt_geweigerd_en_niet_geraden() {
+    let pad = projectbestand_met_analysetype("derdeOrde", true);
+    let mut s = Server::start(None).await;
+    let r = s
+        .tool(
+            "solve_fem_model",
+            json!({ "project_path": pad.to_string_lossy() }),
+        )
+        .await;
+    let inhoud = foutinhoud(&r);
+    let alles = inhoud.to_string();
+    assert!(
+        alles.contains("derdeOrde"),
+        "de weigering noemt de gelezen waarde niet: {alles}"
+    );
+    s.stop().await;
+}
+
 // ── 1. Ontbrekende runtime houdt zijn eigen code ────────────────────────────
 
 #[tokio::test]
