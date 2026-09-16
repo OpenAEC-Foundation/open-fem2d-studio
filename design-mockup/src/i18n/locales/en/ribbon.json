@@ -656,6 +656,8 @@
     "spanningWelBovenOnder": "W_el (top / bottom)",
     "spanningZMaatgevend": "z (governing)",
     "ketenKopAlgemeen": "Derivation, step by step:",
+    "ketenKopNbBenadering": "Derivation according to the National Annex, with an M_cr approximation for channel sections outside the standard, step by step:",
+    "ketenKopElastisch": "Derivation using the general elastic formula for M_cr (not according to annex NB.NB), step by step:",
     "cltIyKop": "Build-up of I_y and the effective bending stiffness (Annex B, rigid connection: γ = 1)",
     "cltSomIefNet": "Σ over the longitudinal layers = I_ef,net",
     "cltSomMeetkundig": "Σ over the longitudinal layers (geometric)",

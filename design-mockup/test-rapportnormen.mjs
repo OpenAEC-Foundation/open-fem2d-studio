@@ -547,5 +547,44 @@ log("\n[13] Scherm, CSV en PDF noemen dezelfde norm, of géén");
     kolomNorm(regels[3]), GEEN_NORM);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Issue #17: "Afleiding volgens de nationale bijlage" stond boven ELKE
+// stabiliteitstoets, ook waar de afleiding niet uit de bijlage komt.
+log("\n[14] De kop boven een keten noemt de bijlage alleen waar de afleiding eruit komt");
+{
+  const { ketenHerkomst } = await import("./src/components/report/checkReportUtils.ts");
+  const stab = (id) => ({ id, title: "", article: "", intermediate_values: [], deelstappen: [] });
+  const weerstand = (id) => ({ id, title: "", article: "", deelstappen: [] });
+  checkGelijk("kip volgens NB.NB", ketenHerkomst(stab("6.3.2_ltb")), "nb");
+  checkGelijk("kip U-profiel: NB.NB met een benadering buiten de norm", ketenHerkomst(stab("6.3.2_ltb_channel")), "nb-benadering");
+  checkGelijk("kip monosymmetrisch: algemene elastische formule, niet NB.NB",
+    ketenHerkomst(stab("6.3.2_ltb_monosymmetrisch")), "elastisch");
+  checkGelijk("houtstabiliteit: geen bijlage in de kop", ketenHerkomst(stab("6.3.3_kip")), "algemeen");
+  checkGelijk("knik staal: geen bijlage in de kop", ketenHerkomst(stab("6.3.1_buckling_y")), "algemeen");
+  checkGelijk("beton (weerstand): geen bijlage in de kop", ketenHerkomst(weerstand("6.1_mnkappa")), "algemeen");
+
+  // De ids komen uit de kipkern; loopt een naam daar uiteen, dan valt een
+  // NB-keten stil terug op "algemeen" (of andersom). En de artikelregels
+  // zeggen zelf waar M_cr vandaan komt.
+  const ltb = readFileSync(join(hier, "../src-tauri/crates/nen-en-1993-1-1-ltb/src/lib.rs"), "utf8");
+  const artikel = (id) => {
+    const m = ltb.match(new RegExp(`id: "${id}"\\.to_string\\(\\),\\s*title: "[^"]*"\\.to_string\\(\\),\\s*article: "([^"]*)"`));
+    return m === null ? null : m[1].replace(/\\\s+/g, " ");
+  };
+  checkWaar("6.3.2_ltb staat in de kipkern en noemt NB.NB", /NB\.NB/.test(artikel("6.3.2_ltb") ?? ""), artikel("6.3.2_ltb"));
+  checkWaar("6.3.2_ltb_channel noemt NB.NB én een M_cr buiten de norm",
+    /NB\.NB/.test(artikel("6.3.2_ltb_channel") ?? "") && /buiten de norm/.test(artikel("6.3.2_ltb_channel") ?? ""),
+    artikel("6.3.2_ltb_channel"));
+  checkWaar("6.3.2_ltb_monosymmetrisch zegt: niet volgens bijlage NB.NB",
+    /niet volgens bijlage NB\.NB/.test(ltb), "artikelregel van de monosymmetrische route");
+
+  // Elke kop bestaat in alle vier de talen.
+  for (const taal of ["nl", "en", "de", "fr"]) {
+    const r = JSON.parse(readFileSync(join(hier, `src/i18n/locales/${taal}/ribbon.json`), "utf8")).report;
+    checkWaar(`${taal}: de vier ketenkoppen bestaan`,
+      ["ketenKop", "ketenKopNbBenadering", "ketenKopElastisch", "ketenKopAlgemeen"].every((k) => typeof r?.[k] === "string"));
+  }
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

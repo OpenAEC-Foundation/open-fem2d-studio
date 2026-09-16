@@ -295,13 +295,37 @@ export function deelstappenVan(check: CheckCalc): Deelstap[] {
 /**
  * Waar de keten van deze toets vandaan komt, voor de kop erboven.
  *
- * De kipketen komt uit de nationale bijlage bij EN 1993 en zei dat ook in haar
- * kop. De betonketen komt uit EN 1992 zelf — hoofdstuk 6 en 3.1.7 — en niet uit
- * een nationale bijlage; die kop letterlijk overnemen zou een verkeerde bron
- * noemen. Vandaar twee koppen en niet één.
+ * "Afleiding volgens de nationale bijlage" hoort alleen boven een keten die
+ * WERKELIJK uit de bijlage komt. Tot issue #17 stond die kop boven elke
+ * stabiliteitstoets — ook boven de monosymmetrische kiproute, waar M_cr uit de
+ * algemene elastische formule komt en uitdrukkelijk NIET uit bijlage NB.NB, en
+ * boven toetsen (houtstabiliteit) waar geen bijlage in de afleiding zit. Een
+ * rapport dat een verkeerde bron noemt, is niet na te rekenen.
+ *
+ * Herkend op het toets-id van de kipkern (`nen-en-1993-1-1-ltb`), dat
+ * `test-rapportnormen.mjs` naast die bron legt:
+ *  - `6.3.2_ltb` — M_cr, C₁, C₂ en L_kip volgens bijlage NB.NB: "nb";
+ *  - `6.3.2_ltb_channel` — dezelfde NB.NB-route, maar M_cr maal een
+ *    benaderingsfactor die NIET uit de norm komt: "nb-benadering";
+ *  - `6.3.2_ltb_monosymmetrisch` — M_cr volgens de algemene elastische formule
+ *    met z_g en z_j, buiten NB.NB om: "elastisch";
+ *  - elke andere keten (beton volgens EN 1992 zelf, en wat er verder komt):
+ *    "algemeen", zonder bron in de kop.
  */
-export function ketenHerkomst(check: CheckCalc): "nb" | "algemeen" {
-  return isStabilityCalc(check) ? "nb" : "algemeen";
+export type KetenHerkomst = "nb" | "nb-benadering" | "elastisch" | "algemeen";
+
+export function ketenHerkomst(check: CheckCalc): KetenHerkomst {
+  if (!isStabilityCalc(check)) return "algemeen";
+  switch (check.id) {
+    case "6.3.2_ltb":
+      return "nb";
+    case "6.3.2_ltb_channel":
+      return "nb-benadering";
+    case "6.3.2_ltb_monosymmetrisch":
+      return "elastisch";
+    default:
+      return "algemeen";
+  }
 }
 
 /**

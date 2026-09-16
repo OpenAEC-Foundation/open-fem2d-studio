@@ -656,6 +656,8 @@
     "spanningWelBovenOnder": "W_el (haut / bas)",
     "spanningZMaatgevend": "z (déterminant)",
     "ketenKopAlgemeen": "Dérivation, étape par étape :",
+    "ketenKopNbBenadering": "Dérivation selon l'annexe nationale, avec une approximation de M_cr pour profilés en U hors norme, pas à pas :",
+    "ketenKopElastisch": "Dérivation avec la formule élastique générale de M_cr (non selon l'annexe NB.NB), pas à pas :",
     "cltIyKop": "Composition de I_y et de la rigidité effective en flexion (annexe B, liaison rigide : γ = 1)",
     "cltSomIefNet": "Σ sur les couches longitudinales = I_ef,net",
     "cltSomMeetkundig": "Σ sur les couches longitudinales (géométrique)",
