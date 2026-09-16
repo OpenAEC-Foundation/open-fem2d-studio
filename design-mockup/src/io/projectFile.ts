@@ -260,6 +260,12 @@ export interface ProjectFile {
   analysetype?: string;
   /** Gewenste segmentlengte in mm (v2, optioneel — ontbreekt = 400, besluit B3). */
   betonSegmentLengteMm?: number;
+  /**
+   * φ(∞,t₀) van het project, art. 3.1.4 (september 2026, optioneel). Ontbreekt
+   * het veld of staat er `null`, dan is de kruipcoëfficiënt NIET opgegeven —
+   * uitdrukkelijk iets anders dan 0.
+   */
+  betonKruipcoefficient?: number | null;
   /** Belastingcombinatie-definities (v2). */
   combinations?: ProjectFileCombination[];
   /**
@@ -381,7 +387,7 @@ const BEKENDE_TOPVELDEN: readonly string[] = [
   "format", "version", "savedAt",
   ...VERPLICHTE_LIJSTEN,
   "activeLoadCaseId", "selfWeightEnabled", "nonlinearEnabled", "analysetype",
-  "betonSegmentLengteMm", "combinations", "idTellers",
+  "betonSegmentLengteMm", "betonKruipcoefficient", "combinations", "idTellers",
   "combinatiesVervangenBijOpenen", "structuralGrid",
   "scheefstandEnabled", "scheefstandNoemer", "scheefstandRichting",
   "scheefstandBron", "scheefstandHoogteM", "scheefstandAantalElementen",

@@ -57,6 +57,14 @@ export interface StijfheidCombinatie {
    * segment in het antwoord, want de norm laat dat nooit impliciet.
    */
   grenstoestand: NonlinearBasis;
+  /**
+   * Waarom deze combinatie de β van (7.19) kreeg die zij kreeg — art. 7.4.3(3)
+   * kent maar twee waarden (1,0 bij één enkele kortdurende belasting, 0,5 bij
+   * aanhoudende belastingen of herhaalde cycli), en welke van de twee geldt,
+   * volgt uit het SOORT combinatie. De gebruikte β staat als getal in elk
+   * kernantwoord (`beta`); deze zin zegt waarom.
+   */
+  belastingduurReden: string;
   /** Aantal opgeloste raamwerkstelsels (ronde 0, de indeling, telt niet mee). */
   ronden: number;
   /** Het convergentieverloop, op volgorde. */
@@ -100,6 +108,13 @@ export interface BetonStijfheidState {
    * (de doorsnedefiguur in de PDF-uitdraai). Geen rekengegeven.
    */
   staafdoorsneden: BetonStaafDoorsnedeInvoer[];
+  /**
+   * De staaf-ids die ZONDER kruipcoëfficiënt zijn gerekend (art. 3.1.4 niet
+   * opgegeven, dus φ_ef = 0). Leeg is het goede geval; is de lijst gevuld, dan
+   * staat de uitkomst aan de onveilige kant en hoort het rapport dat te zeggen
+   * — niet alleen in de zin van de kern, maar met de staven erbij.
+   */
+  zonderKruipcoefficient: number[];
   /** Tijdstip van de rekengang, of null wanneer er niets staat. */
   berekendOp: number | null;
 
@@ -108,6 +123,7 @@ export interface BetonStijfheidState {
     combinaties: StijfheidCombinatie[];
     overgeslagen: CheckSkip[];
     staafdoorsneden: BetonStaafDoorsnedeInvoer[];
+    zonderKruipcoefficient: number[];
   }) => void;
   /** Wis het spoor (modelwijziging, ander analysetype, mislukte rekengang). */
   clear: () => void;
@@ -118,17 +134,19 @@ const LEEG = {
   combinaties: [] as StijfheidCombinatie[],
   overgeslagen: [] as CheckSkip[],
   staafdoorsneden: [] as BetonStaafDoorsnedeInvoer[],
+  zonderKruipcoefficient: [] as number[],
   berekendOp: null as number | null,
 };
 
 export const useBetonStijfheidStore = create<BetonStijfheidState>((set) => ({
   ...LEEG,
-  zet: ({ segmentLengteMm, combinaties, overgeslagen, staafdoorsneden }) =>
+  zet: ({ segmentLengteMm, combinaties, overgeslagen, staafdoorsneden, zonderKruipcoefficient }) =>
     set({
       segmentLengteMm,
       combinaties,
       overgeslagen,
       staafdoorsneden,
+      zonderKruipcoefficient,
       berekendOp: Date.now(),
     }),
   clear: () =>

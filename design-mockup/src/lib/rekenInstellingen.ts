@@ -40,6 +40,13 @@ export interface RekenInstellingen {
   analysetype: Analysetype;
   /** Segmentlengte van de fysisch niet-lineaire betonberekening. */
   betonSegmentLengteMm: number;
+  /**
+   * φ(∞,t₀) van het project (art. 3.1.4), of `null` als hij niet is opgegeven.
+   * Hij bepaalt via 5.8.6(4)/(7.20) de effectieve elasticiteitsmodulus en
+   * daarmee ELKE betonstijfheid; een wijziging moet de resultaten dus laten
+   * vervallen, net als de segmentlengte.
+   */
+  betonKruipcoefficient: number | null;
   scheefstandEnabled: boolean;
   scheefstandNoemer: number;
   scheefstandRichting: 1 | -1;
@@ -72,6 +79,7 @@ const VELDEN: Record<keyof RekenInstellingen, true> = {
   selfWeightEnabled: true,
   analysetype: true,
   betonSegmentLengteMm: true,
+  betonKruipcoefficient: true,
   scheefstandEnabled: true,
   scheefstandNoemer: true,
   scheefstandRichting: true,

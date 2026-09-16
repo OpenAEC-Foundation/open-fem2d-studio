@@ -55,6 +55,10 @@ import {
   solveCombinationSecondOrder,
   type SecondOrderCombo,
 } from "../components/fem/solver/engine";
+import {
+  soortVanCombinatie,
+  type LoadCombination,
+} from "../components/fem/solver/combinations";
 import type { Beam, Node } from "../components/fem/femTypes";
 import type { CheckSkip } from "./checkTypes";
 import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
@@ -154,6 +158,16 @@ export interface BetonSegmentStaaf {
    * `lib/referentierichting.ts`.
    */
   momentTeken?: 1 | -1;
+  /**
+   * De EINDWAARDE van de kruipcoëfficiënt φ(∞,t₀) van deze staaf (art. 3.1.4),
+   * of `undefined` wanneer zij niet is opgegeven.
+   *
+   * `undefined` en 0 zijn NIET hetzelfde. 0 betekent "geen kruip" — een
+   * uitspraak over het beton; `undefined` betekent "niet opgegeven", en dan
+   * rekent de lus met φ_ef = 0 maar meldt de kern dat luid (`creep_note`,
+   * `zonderKruipcoefficient`). Zie `bouwVerzoek` voor de vertaling naar φ_ef.
+   */
+  phiInfT0?: number;
 }
 
 export interface BetonStavenInvoer {
@@ -168,6 +182,13 @@ export interface BetonStavenInvoer {
    * waarde af als de veronderstelde b_eff.
    */
   bEffPerStaaf?: Map<number, number>;
+  /**
+   * De kruipcoëfficiënt φ(∞,t₀) van het PROJECT (art. 3.1.4), voor elke
+   * betonstaaf die er zelf geen heeft. Een staaf met een eigen waarde in het
+   * §5.8-blok (`betonKolom.phi_inf_t0`) gaat vóór: die is specifieker, en
+   * §5.8.4 hangt φ_ef uitdrukkelijk aan het ELEMENT.
+   */
+  standaardPhiInfT0?: number;
 }
 
 /**
@@ -227,6 +248,9 @@ export function betonStavenUitModel(
           : DEFAULT_N_STRIPS,
       staaltak: cfg.betonStaaltak ?? "Horizontal",
       momentTeken: referentieVanStaaf(beam, data.nodes).gespiegeld ? -1 : 1,
+      // Per staaf gaat vóór per project; allebei afwezig = niet opgegeven, en
+      // dat is een andere toestand dan nul (zie `phiInfT0`).
+      phiInfT0: cfg.betonKolom?.phi_inf_t0 ?? data.standaardPhiInfT0,
     });
   }
   return { staven, overgeslagen };
@@ -303,6 +327,97 @@ export function segmentWaarschuwing(
   return kop + tijd + knop;
 }
 
+// ── β van (7.19): de belastingduur per combinatie ──────────────────────────
+
+/**
+ * Welke β hoort bij deze belastingcombinatie — art. 7.4.3(3), vergelijking
+ * (7.19).
+ *
+ * De norm geeft er twee, en geen derde:
+ *
+ *   "β is een coëfficiënt die rekening houdt met de invloed van de
+ *    belastingsduur of herhaalde belasting op de gemiddelde rek;
+ *    β = 1,0 voor een enkele kortdurende belasting;
+ *    β = 0,5 voor aanhoudende belastingen of meervoudige cycli van zich
+ *    herhalende belastingen."
+ *
+ * β zit in ζ = 1 − β·(σ_sr/σ_s)² (7.19). Een LAGERE β geeft een HOGERE ζ, dus
+ * meer gewicht op de volledig gescheurde toestand in (7.18), dus een lagere
+ * stijfheid en een grotere zakking. β = 1,0 is daarmee de gunstige kant, en
+ * die hoort alleen bij een belasting die werkelijk eenmalig en kortdurend is.
+ *
+ * DE KEUZE PER COMBINATIETYPE. De grondslag is A1.4.3 van EN 1990 met de drie
+ * BGT-combinaties:
+ *
+ *  - quasi-blijvend (6.16b) — per definitie de aanhoudende belasting.
+ *    β = 0,5. Dit is het geval waarvoor 7.4.3 bestaat.
+ *  - frequent (6.15b) — G plus ψ₁·Q: het blijvende deel staat er onafgebroken
+ *    op, en de frequente waarde van de veranderlijke belasting is juist de
+ *    waarde die een groot deel van de referentieperiode wordt overschreden.
+ *    Dat is geen "enkele kortdurende belasting". β = 0,5.
+ *  - karakteristiek (6.14b) — G plus Q_k1 plus ψ₀·Q_ki. Ook hier draagt de
+ *    combinatie het volledige blijvende deel, dat de doorsnede al vóór deze
+ *    toestand heeft laten scheuren en de tension stiffening al heeft laten
+ *    afnemen. De karakteristieke combinatie is een ZELDZAME toestand van een
+ *    element dat de aanhoudende belasting al achter de rug heeft, en niet een
+ *    maagdelijk element onder één kortdurende last. β = 0,5. Het is bovendien
+ *    de ongunstige kant, en 7.4.3(2) vraagt om een methode die "overeenkomt
+ *    met het werkelijke gedrag".
+ *  - een BGT-combinatie die niet als een van de drie te herkennen is —
+ *    `soortVanCombinatie` geeft dan `null`, bijvoorbeeld bij een eigen
+ *    combinatie met een eigen naam. Dan is de duur ONBEKEND, en de veilige
+ *    kant is β = 0,5. Nooit stil 1,0 aannemen: dat is precies de gunstige
+ *    kant zonder dat een getal het verraadt.
+ *
+ * β = 1,0 blijft dus over voor de UGT, waar (7.19) niet wordt gebruikt: in de
+ * UGT rekent de kern volgens 5.8.6(5) zonder betontrek en dus zonder tension
+ * stiffening, en β heeft er geen invloed. De waarde reist mee zodat het
+ * rapport kan laten zien wat er is meegegeven.
+ */
+export function belastingduurVanCombinatie(
+  combo: Pick<LoadCombination, "type" | "name" | "standaard">,
+): { duur: LoadDuration; reden: string } {
+  if (combo.type !== "sls") {
+    return {
+      duur: "ShortTerm",
+      reden:
+        "UGT-combinatie: 5.8.6(5) rekent zonder betontrek, dus (7.18)/(7.19) " +
+        "en daarmee β spelen hier geen rol.",
+    };
+  }
+  const soort = soortVanCombinatie(combo as LoadCombination);
+  switch (soort) {
+    case "6.16b":
+      return {
+        duur: "Sustained",
+        reden:
+          "quasi-blijvende combinatie (6.16b) — 7.4.3(3): β = 0,5 voor aanhoudende belastingen.",
+      };
+    case "6.15b":
+      return {
+        duur: "Sustained",
+        reden:
+          "frequente combinatie (6.15b) — het blijvende deel staat onafgebroken op de " +
+          "constructie, dus 7.4.3(3): β = 0,5 voor aanhoudende belastingen.",
+      };
+    case "6.14b":
+      return {
+        duur: "Sustained",
+        reden:
+          "karakteristieke combinatie (6.14b) — een zeldzame toestand van een element dat de " +
+          "aanhoudende belasting al draagt; de tension stiffening is dan al afgenomen. " +
+          "7.4.3(3): β = 0,5. β = 1,0 geldt alleen voor één enkele kortdurende belasting.",
+      };
+    default:
+      return {
+        duur: "Sustained",
+        reden:
+          "BGT-combinatie zonder herkenbare soort (niet 6.14b, 6.15b of 6.16b) — de " +
+          "belastingduur is onbekend en 7.4.3(3) β = 0,5 is de ongunstige en dus veilige kant.",
+      };
+  }
+}
+
 // ── De aanroep van de kern ─────────────────────────────────────────────────
 
 /** De vorm van `roepKern` uit `stores/checkStore`. */
@@ -328,7 +443,12 @@ export interface FysischOpties {
   maxRonden?: number;
   /** UGT (`DesignValues`, standaard) of BGT (`MeanValues`) — besluit B2. */
   grenstoestand?: NonlinearBasis;
-  /** Effectieve kruipcoëfficiënt; standaard 0 (besluit B1). */
+  /**
+   * φ_ef voor staven ZONDER eigen φ(∞,t₀) (`BetonSegmentStaaf.phiInfT0`);
+   * standaard 0 (besluit B1). 0 betekent rekenen zonder kruip, en de kern
+   * zet daar zijn verplichte vermelding bij (`creep_note`, "ONVEILIGE KANT").
+   * De staven die het betreft staan in `zonderKruipcoefficient`.
+   */
   phiEf?: number;
   /** Onderrelaxatie ω ∈ (0, 1]; standaard 1,0 = geen relaxatie. */
   relaxatie?: number;
@@ -336,7 +456,12 @@ export interface FysischOpties {
   tolerantie?: number;
   /** Ondergrens voor EI als fractie van E_c·I_c; standaard 0,01. */
   minEiRatio?: number;
-  /** β van (7.19); alleen in de BGT van invloed. */
+  /**
+   * β van (7.19); alleen in de BGT van invloed. Standaard `"ShortTerm"`
+   * (β = 1,0) — de aanroeper hoort de duur uit de COMBINATIE af te leiden met
+   * `belastingduurVanCombinatie`, want 7.4.3(3) hangt β aan de belasting en
+   * niet aan de doorsnede.
+   */
   belastingduur?: LoadDuration;
   /** Vangnet op het aantal segmenten per staaf; standaard 2000. */
   maxSegmenten?: number;
@@ -401,6 +526,18 @@ export interface FysischUitkomst {
   segmenten: Map<number, SolverBeamSegmentInput[]>;
   /** Staaf-ids die geen segmenten kregen omdat de combinatie geen lasten activeert. */
   zonderLasten: boolean;
+  /**
+   * De staaf-ids waarvoor GEEN kruipcoëfficiënt φ(∞,t₀) was opgegeven en die
+   * dus met φ_ef = 0 zijn gerekend.
+   *
+   * Leeg is het goede geval. Is de lijst gevuld, dan is er zonder kruip
+   * gerekend en staat de uitkomst aan de ONVEILIGE kant: de zakking is te
+   * klein, en in een statisch onbepaald model klopt ook de krachtsverdeling
+   * niet, want de betonstaven zijn dan te stijf ten opzichte van de rest. De
+   * aanroeper hoort dit te MELDEN en niet stil door te rekenen; de kern zet
+   * dezelfde boodschap in `creep_note` van elk antwoord.
+   */
+  zonderKruipcoefficient: number[];
 }
 
 // ── Hulp: verzoek bouwen ───────────────────────────────────────────────────
@@ -421,7 +558,27 @@ function bouwVerzoek(
     target_segment_length_mm: opties.segmentLengteMm,
     max_segments: opties.maxSegmenten,
     limit_state: opties.grenstoestand,
-    phi_ef: opties.phiEf,
+    // φ_ef VAN DEZE STAAF.
+    //
+    // De kern verwerkt kruip volgens 5.8.6(4): alle rekwaarden in het
+    // spanning-rekdiagram maal (1 + φ_ef). Voor de beginhelling komt dat neer
+    // op E_c,eff = E_cm/(1 + φ_ef) — precies de effectieve elasticiteitsmodulus
+    // die 7.4.3(5) met (7.20) voor de BGT voorschrijft.
+    //
+    // WAT HIER WORDT INGEVULD is φ(∞,t₀) zelf, dus (5.19) met M₀Eqp/M₀Ed = 1.
+    // In de quasi-blijvende combinatie IS dat de verhouding: de belasting van
+    // die combinatie is de quasi-blijvende belasting, dus M₀Eqp = M₀Ed en
+    // φ_ef = φ(∞,t₀) — zo staat het ook in 7.4.3(5), dat de volle
+    // kruipcoëfficiënt vraagt en geen verhouding kent.
+    //
+    // In een andere combinatie is M₀Eqp/M₀Ed kleiner dan 1 en is φ(∞,t₀) de
+    // BOVENGRENS van (5.19). Die bovengrens geeft de laagste EI en dus de
+    // grootste zakking en het grootste tweede-orde-moment: de ongunstige kant.
+    // De werkelijke verhouding invullen vraagt per staaf het eerste-orde-moment
+    // van twee combinaties naast elkaar; dat doet de KOLOMTOETS al, met
+    // `phi_ef_5_19` in de kern (nen-en-1992-1-1/src/kolom.rs), en die weg wordt
+    // hier niet nagebouwd.
+    phi_ef: staaf.phiInfT0 ?? opties.phiEf,
     segment_forces: krachten,
     previous_ei_knm2: vorigeEi,
     relaxation: opties.relaxatie,
@@ -580,6 +737,12 @@ export async function losCombinatieFysischOp(
 ): Promise<FysischUitkomst> {
   const o = vulAan(opties);
   const geschiedenis: RondeVerslag[] = [];
+  // Wie mist er een kruipcoëfficiënt? Eén keer bepaald en in elke uitkomst
+  // meegegeven — ook in de uitkomst zonder lasten, zodat het antwoord nooit
+  // van de weg door de lus afhangt.
+  const zonderKruipcoefficient = staven
+    .filter((s) => s.phiInfT0 === undefined && !(o.phiEf > 0))
+    .map((s) => s.beamId);
 
   // ── Ronde 0: de indeling ────────────────────────────────────────────────
   // Een verzoek zonder krachten levert alleen de segmentindeling. Elke staaf
@@ -618,6 +781,7 @@ export async function losCombinatieFysischOp(
         geschiedenis,
         segmenten,
         zonderLasten: true,
+        zonderKruipcoefficient,
       };
     }
 
@@ -679,6 +843,7 @@ export async function losCombinatieFysischOp(
         geschiedenis,
         segmenten,
         zonderLasten: false,
+        zonderKruipcoefficient,
       };
     }
 

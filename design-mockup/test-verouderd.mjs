@@ -63,6 +63,7 @@ log("\n[1] Elke rekeninstelling verandert de versie");
     selfWeightEnabled: false,
     analysetype: "eersteOrde",
     betonSegmentLengteMm: 400,
+    betonKruipcoefficient: null,
     scheefstandEnabled: false,
     scheefstandNoemer: 200,
     scheefstandRichting: 1,
@@ -97,6 +98,10 @@ log("\n[1] Elke rekeninstelling verandert de versie");
     selfWeightEnabled: (m) => { m.selfWeightEnabled = true; },
     analysetype: (m) => { m.analysetype = "tweedeOrdeGeometrisch"; },
     betonSegmentLengteMm: (m) => { m.betonSegmentLengteMm = 200; },
+    // φ(∞,t₀) bepaalt via (7.20) de effectieve elasticiteitsmodulus en dus
+    // elke betonstijfheid: van "niet opgegeven" naar 2,0 moet een nieuwe
+    // versie geven, anders blijft de zakking zonder kruip op het scherm staan.
+    betonKruipcoefficient: (m) => { m.betonKruipcoefficient = 2.0; },
     scheefstandEnabled: (m) => { m.scheefstandEnabled = true; },
     scheefstandNoemer: (m) => { m.scheefstandNoemer = 300; },
     scheefstandRichting: (m) => { m.scheefstandRichting = -1; },
