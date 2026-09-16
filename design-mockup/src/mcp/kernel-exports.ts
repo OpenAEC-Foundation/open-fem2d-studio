@@ -74,6 +74,7 @@ export * from "../lib/sectionResolver";
 // regressierunner niet aanroepbaar — en juist de weigering van een onbekend
 // materiaal hoort in het MCP-artefact net zo hard te zijn als in de bron.
 export * from "../lib/plaatMateriaal";
+export * from "../lib/plaatCheckBuilder";
 export * from "../lib/modelNaarSolverInput";
 export * from "../components/fem/femTypes";
 // De plaatmesher (raster met openingen, koppeling tot vierhoeken, keuring van

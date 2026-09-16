@@ -52,6 +52,7 @@ import {
 import { buildSteelCheckInputs, profileLookupKey } from "../lib/steelCheckBuilder";
 import { buildTimberCheckInputs, matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
 import { buildCltCheckInputs, isCltProfiel } from "../lib/cltCheckBuilder";
+import { buildPlaatCheckInputs } from "../lib/plaatCheckBuilder";
 import { alphaCrLabel, bepaalAlphaCr, stabiliteitsMeldingen } from "../components/fem/solver/alphaCr";
 import {
   selecteerCombinaties,
@@ -1049,6 +1050,15 @@ function rekenDoor(payload: Record<string, unknown>) {
   });
   const clt = buildCltCheckInputs({ ...houtData, beams: staafSelectie });
   const metHout = gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null);
+  // Platen (wandschijven): DEZELFDE bouwer als de app (stores/checkStore.ts).
+  // Altijd alle platen — `beam_ids` gaat over staven. De toetsing zelf gebeurt
+  // in Rust (`plaat_check::check_all_plates`).
+  const plaat = buildPlaatCheckInputs({
+    plates: gelezen.model.plates ?? [],
+    combinations: combinaties,
+    combinationResults,
+    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+  });
 
   const waarschuwingen: string[] = [];
   if (houtklassen === null && metHout) {
@@ -1127,6 +1137,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     staal,
     hout,
     clt,
+    plaat,
     onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion,
@@ -1268,6 +1279,11 @@ function opCheck(payload: Record<string, unknown>) {
         .concat(d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) }))),
       new Set([...d.staal.inputs, ...d.hout.inputs, ...d.clt.inputs].map((i) => i.beam_id)),
     ),
+    // Platen: elke plaat staat in de toetsinvoer of hier, met reden. Het
+    // bestaan van `plate_check_inputs` zegt de server dat deze bundel platen
+    // toetsbaar maakt.
+    plate_check_inputs: d.plaat.inputs,
+    skipped_plates: d.plaat.skipped.map((s) => ({ plate_id: s.plateId, reason: s.reason })),
     warnings: d.waarschuwingen,
   };
 }

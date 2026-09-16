@@ -15,6 +15,7 @@ use nen_en_1992_1_1::{CreepCoefficientRequest, CreepCoefficientResponse};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1993_1_8_las::{LasInput, LasResultaat};
 use nen_en_1995_1_1::clt::CltPreset;
+use plaat_check::{PlateCheckInput, PlateCheckResult};
 use report::{ReportInput, generate_report_pdf};
 use section_properties::opdracht::{Invoer as DoorsnedeInvoer, Uitvoer as DoorsnedeUitvoer};
 use spanning_check::{SpanningBeamCheckInput, SpanningBeamCheckResult};
@@ -273,6 +274,15 @@ async fn check_stress_beams(
     Ok(spanning_check::check_all_spanning_beams(inputs))
 }
 
+/// Platen (wandschijven, belast in het vlak): de elementspanningen per
+/// UGT-combinatie getoetst aan de norm van het plaatmateriaal — staal volgens
+/// NEN-EN 1993-1-1 6.2.1(5). Zelfde functie als de toetsbrug-opdracht en het
+/// MCP-gereedschap `check_plates` en als de plaattoets in `check_fem_model`.
+#[tauri::command]
+async fn check_plates(inputs: Vec<PlateCheckInput>) -> Result<Vec<PlateCheckResult>, String> {
+    Ok(plaat_check::check_all_plates(inputs))
+}
+
 /// Doorlopende langslassen in een samengestelde doorsnede, getoetst volgens
 /// NEN-EN 1993-1-8 4.5.3.3 (vereenvoudigde methode).
 ///
@@ -372,6 +382,7 @@ pub fn run() {
             concrete_cover_check,
             concrete_creep_coefficient,
             check_stress_beams,
+            check_plates,
             check_fillet_welds,
             bereken_doorsneden,
             generate_steel_report_pdf,

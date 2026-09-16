@@ -111,6 +111,9 @@ const KRUISTABEL: &[Rij] = &[
     Rij { tauri: Some("concrete_cover_check"), toetsbrug: Some("concrete_cover_check"), mcp: Some("concrete_cover_check"), reden: "" },
     // De kruipcoëfficiënt volgens bijlage B; zie `tests/drie_wegen_kruip.rs`.
     Rij { tauri: Some("concrete_creep_coefficient"), toetsbrug: Some("concrete_creep_coefficient"), mcp: Some("concrete_creep_coefficient"), reden: "" },
+    // De plaattoets (wandschijven); zie `tests/drie_wegen_plaat.rs`. Eén naam
+    // en een lijst platen langs alle drie de wegen.
+    Rij { tauri: Some("check_plates"), toetsbrug: Some("check_plates"), mcp: Some("check_plates"), reden: "" },
 ];
 
 /// Wat geen drie wegen heeft — met de reden erbij.

@@ -45,6 +45,11 @@ mod gui_tools;
 /// langs deze weg niet te maken was. Zie `timber_tools.rs`.
 mod timber_tools;
 
+/// De plaattoets (wandschijven, belast in het vlak): `check_plates`. Roept
+/// dezelfde `plaat_check::check_all_plates` aan als het Tauri-command en de
+/// toetsbrug. Zie `plate_tools.rs`.
+mod plate_tools;
+
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "openaec-fem";
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -449,6 +454,7 @@ fn tool_definitions() -> Value {
     lijst.extend(fem_tools::tool_definitions());
     lijst.extend(concrete_tools::tool_definitions());
     lijst.extend(timber_tools::tool_definitions());
+    lijst.extend(plate_tools::tool_definitions());
     lijst.extend(gui_tools::tool_definitions());
     tools
 }
@@ -523,6 +529,9 @@ async fn dispatch_tool(name: &str, args: Value) -> Result<Value, RpcError> {
         // staven houdt. Zie `timber_tools.rs` en
         // `tests/drie_wegen_kruistabel.rs`.
         hout if timber_tools::is_timber_tool(hout) => timber_tools::dispatch(hout, args).await,
+        // De plaattoets: `plaat_check::check_all_plates`, dezelfde functie als
+        // het Tauri-command en de toetsbrug. Zie `plate_tools.rs`.
+        plaat if plate_tools::is_plate_tool(plaat) => plate_tools::dispatch(plaat, args).await,
         // De GUI-tools: geen rekenwerk, maar opdrachten aan de draaiende app
         // over haar bedieningskanaal. Zie `gui_tools.rs`.
         gui if gui_tools::is_gui_tool(gui) => gui_tools::dispatch(gui, args).await,

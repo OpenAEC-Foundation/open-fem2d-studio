@@ -420,12 +420,18 @@ async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
     let clt: Option<Vec<timber_check::clt::CltBeamCheckInput>> =
         lees_toetsinvoer(&uit, "clt_check_inputs", "CltBeamCheckInput")?;
     let hout_ondersteund = hout.is_some() && clt.is_some();
+    // Platen (wandschijven): `None` = een bundel van vóór de plaattoets. Dan is
+    // er geen plaat getoetst, en `meld_niet_getoetste_platen` zegt dat per plaat.
+    let platen: Option<Vec<plaat_check::PlateCheckInput>> =
+        lees_toetsinvoer(&uit, "plate_check_inputs", "PlateCheckInput")?;
+    let platen_ondersteund = platen.is_some();
 
-    let (staal_res, hout_res, clt_res) = tokio::task::spawn_blocking(move || {
+    let (staal_res, hout_res, clt_res, plaat_res) = tokio::task::spawn_blocking(move || {
         (
             steel_check::check_all_beams(staal),
             timber_check::check_all_timber_beams(hout.unwrap_or_default()),
             timber_check::clt::check_all_clt_beams(clt.unwrap_or_default()),
+            plaat_check::check_all_plates(platen.unwrap_or_default()),
         )
     })
     .await
@@ -469,12 +475,34 @@ async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
     let resultaten = serialiseer(serde_json::to_value(&staal_res))?;
     let hout_resultaten = serialiseer(serde_json::to_value(&hout_res))?;
     let clt_resultaten = serialiseer(serde_json::to_value(&clt_res))?;
+    // Maatgevende plaat: apart van `governing`, dat over staven gaat en een
+    // `beam_id` draagt. Een geweigerde plaat telt niet mee — haar UC 0 is geen
+    // oordeel. `null` als er geen plaat getoetst is.
+    let maatgevende_plaat = plaat_res
+        .iter()
+        .filter(|r| r.geweigerd.is_none() && r.uc_max.is_finite())
+        .max_by(|a, b| a.uc_max.total_cmp(&b.uc_max))
+        .map(|r| {
+            json!({
+                "plate_id": r.plate_id,
+                "uc_max": r.uc_max,
+                "check": r.governing_check_id,
+                "element_id": r.governing_element_id,
+                "combination_id": r.governing_combination_id,
+                "material": r.materiaal,
+                "status": r.status,
+            })
+        })
+        .unwrap_or(Value::Null);
+    let plaat_resultaten = serialiseer(serde_json::to_value(&plaat_res))?;
 
     if let Some(map) = uit.as_object_mut() {
         map.insert("results".to_owned(), resultaten);
         map.insert("timber_results".to_owned(), hout_resultaten);
         map.insert("clt_results".to_owned(), clt_resultaten);
         map.insert("governing".to_owned(), maatgevend);
+        map.insert("plate_results".to_owned(), plaat_resultaten);
+        map.insert("governing_plate".to_owned(), maatgevende_plaat);
     }
     meld_niet_getoetste_staven(
         &mut uit,
@@ -482,7 +510,51 @@ async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
         beam_ids_filter.as_deref(),
         hout_ondersteund,
     );
+    meld_niet_getoetste_platen(&mut uit, model_voor_beton.as_ref(), platen_ondersteund);
     Ok(uit)
+}
+
+/// Zorgt dat ELKE plaat van het model in het antwoord verantwoord is: in
+/// `plate_check_inputs` (en dus `plate_results`) of in `skipped_plates` met een
+/// reden. Hetzelfde vangnet als [`meld_niet_getoetste_staven`], om dezelfde
+/// reden: een plaat die nergens in het antwoord staat, leest als een plaat die
+/// in orde is.
+///
+/// `platen_ondersteund` = de bundel leverde `plate_check_inputs`. Zonder die
+/// sleutel is de bundel ouder dan deze server en is geen enkele plaat getoetst.
+fn meld_niet_getoetste_platen(uit: &mut Value, model: Option<&Value>, platen_ondersteund: bool) {
+    let Some(model) = model else { return };
+    let Some(platen) = model.get("plates").and_then(Value::as_array) else { return };
+    let mut bekend: Vec<i64> = Vec::new();
+    if let Some(lijst) = uit.get("plate_check_inputs").and_then(Value::as_array) {
+        bekend.extend(lijst.iter().filter_map(|e| e.get("plate_id")?.as_i64()));
+    }
+    if let Some(lijst) = uit.get("skipped_plates").and_then(Value::as_array) {
+        bekend.extend(lijst.iter().filter_map(|e| e.get("plate_id")?.as_i64()));
+    }
+    let nieuw: Vec<Value> = platen
+        .iter()
+        .filter_map(|p| p.get("id").and_then(Value::as_i64))
+        .filter(|id| !bekend.contains(id))
+        .map(|id| {
+            let reden = if platen_ondersteund {
+                "de plaatbouwer leverde voor deze plaat geen toetsinvoer en geen reden. Deze plaat                  is NIET getoetst; meld dit met het model."
+            } else {
+                "de ingebakken solverbundel levert geen plaattoetsinvoer (`plate_check_inputs`                  ontbreekt): de bundel is ouder dan de plaattoets. Deze plaat is NIET getoetst.                  Herbouw de MCP-server (`npm run build:sidecar` en daarna `cargo build`)."
+            };
+            json!({ "plate_id": id, "reason": reden })
+        })
+        .collect();
+    if nieuw.is_empty() {
+        return;
+    }
+    let Some(map) = uit.as_object_mut() else { return };
+    match map.get_mut("skipped_plates").and_then(Value::as_array_mut) {
+        Some(lijst) => lijst.extend(nieuw),
+        None => {
+            map.insert("skipped_plates".to_owned(), Value::Array(nieuw));
+        }
+    }
 }
 
 /// Eén toetsinvoerlijst uit het bundelantwoord. `Ok(None)` als de sleutel
@@ -1222,7 +1294,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "check_fem_model",
-            "description": "Doorrekenen EN toetsen in één aanroep: de solve loopt in dezelfde solver als de app, de toetsing in dezelfde Rust-kernen als de app. STAAL (EN 1993) staat in `results`, HOUT (EN 1995, EN 338 / EN 14080 zoals \"C24\" of \"GL28h\") in `timber_results` en KRUISLAAGHOUT (profiel \"CLT …\") in `clt_results`. Gebruik deze tool in plaats van solve_fem_model gevolgd door check_steel_beam / check_timber_beams — zo kan er geen veld tussenuit vallen. De toetsinvoer komt zichtbaar mee terug (`steel_check_inputs`, `timber_check_inputs`, `clt_check_inputs`) en kan ongewijzigd aan de losse toetstools worden gevoerd. Hout: k_mod volgt PER UGT-COMBINATIE uit de kortstdurende belasting erin (EN 1995-1-1 3.1.3(2), NB tabel 2.2: eigen gewicht blijvend, opslag lang, vloerbelasting middellang, sneeuw, wind en daken (categorie H) kort); `timber_check_inputs[].load_duration_per_combination` noemt per combinatie de klasse en de basis, en elk houtresultaat draagt `k_mod_per_load_duration` en `governing_combination_id`. Een opgegeven `checkConfig.loadDuration` werkt als ondergrens. BGT-combinaties die niet als 6.14b/6.15b/6.16b herkend worden, tellen bij staal en hout veilig-zijdig mee in de doorbuiging (melding in `warnings`). Beton wordt hier NIET getoetst en krijgt een verwijzing naar `check_concrete_beam`. Elke (gevraagde) staaf staat in precies één van `results`, `timber_results`, `clt_results` of `skipped_beams` (met reden) — nooit geen van beide en nooit dubbel. `governing` is de hoogste unity check over alle getoetste staven, met `material`; lees `skipped_beams` en de FOUT-regels in `warnings` altijd.",
+            "description": "Doorrekenen EN toetsen in één aanroep: de solve loopt in dezelfde solver als de app, de toetsing in dezelfde Rust-kernen als de app. STAAL (EN 1993) staat in `results`, HOUT (EN 1995, EN 338 / EN 14080 zoals \"C24\" of \"GL28h\") in `timber_results` en KRUISLAAGHOUT (profiel \"CLT …\") in `clt_results`. Gebruik deze tool in plaats van solve_fem_model gevolgd door check_steel_beam / check_timber_beams — zo kan er geen veld tussenuit vallen. De toetsinvoer komt zichtbaar mee terug (`steel_check_inputs`, `timber_check_inputs`, `clt_check_inputs`) en kan ongewijzigd aan de losse toetstools worden gevoerd. Hout: k_mod volgt PER UGT-COMBINATIE uit de kortstdurende belasting erin (EN 1995-1-1 3.1.3(2), NB tabel 2.2: eigen gewicht blijvend, opslag lang, vloerbelasting middellang, sneeuw, wind en daken (categorie H) kort); `timber_check_inputs[].load_duration_per_combination` noemt per combinatie de klasse en de basis, en elk houtresultaat draagt `k_mod_per_load_duration` en `governing_combination_id`. Een opgegeven `checkConfig.loadDuration` werkt als ondergrens. BGT-combinaties die niet als 6.14b/6.15b/6.16b herkend worden, tellen bij staal en hout veilig-zijdig mee in de doorbuiging (melding in `warnings`). Beton wordt hier NIET getoetst en krijgt een verwijzing naar `check_concrete_beam`. Elke (gevraagde) staaf staat in precies één van `results`, `timber_results`, `clt_results` of `skipped_beams` (met reden) — nooit geen van beide en nooit dubbel. `governing` is de hoogste unity check over alle getoetste staven, met `material`; lees `skipped_beams` en de FOUT-regels in `warnings` altijd. PLATEN (wandschijven, altijd alle platen, `beam_ids` beperkt ze niet): de toetsinvoer staat in `plate_check_inputs` (zelfde vorm als `check_plates`), het resultaat per plaat in `plate_results` en de hoogste UC over de getoetste platen in `governing_plate`. Staal wordt getoetst met het vloeicriterium van NEN-EN 1993-1-1 6.2.1(5) per element (plooi volgens NEN-EN 1993-1-5 NIET); een ander materiaal komt terug met `geweigerd` en een reden, een plaat zonder (bruikbaar) materiaal staat met reden in `skipped_plates`. Elke plaat staat in `plate_check_inputs` of in `skipped_plates`.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,

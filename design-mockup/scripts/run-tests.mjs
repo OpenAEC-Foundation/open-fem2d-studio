@@ -251,6 +251,13 @@ const BUNDEL_TESTS = new Set([
   // zulke platen zonder canvas; een staaf die in de bundel stil los zou
   // blijven, moet ook daar gekoppeld of geweigerd worden.
   "plaat-opening-staafeinde",
+  // Plaattoets staal (issue #15): de bouwer `plaatCheckBuilder`, de in-proces
+  // sidecar (`check` levert `plate_check_inputs`) — beide in de barrel — en de
+  // echte kern via de toetsbrug als apart proces. Hoort óók tegen de bundel:
+  // `check_fem_model` bouwt de plaatinvoer uit de bundel, en een bundel die
+  // spanningen, dikte of materiaal verkeerd doorgeeft, toetst daar stil een
+  // andere plaat dan de app.
+  "plaat-toets-staal",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",

@@ -100,9 +100,9 @@ async fn stdio_roundtrip_initialize_list_call() {
     // iemand hem hier noemt, hoort op te vallen. De namenlijst hieronder is
     // niet uitputtend, dus zonder deze telling zou zo'n tool ongemerkt
     // meeliften.
-    // 25 rekenkern-/FEM-tools + 15 gui_*-tools (het bedieningskanaal van de
-    // desktop-app, zie gui_tools.rs) = 40.
-    assert_eq!(tools.len(), 40, "expected 40 tools, got {}", tools.len());
+    // 26 rekenkern-/FEM-tools + 15 gui_*-tools (het bedieningskanaal van de
+    // desktop-app, zie gui_tools.rs) = 41.
+    assert_eq!(tools.len(), 41, "expected 41 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -158,6 +158,8 @@ async fn stdio_roundtrip_initialize_list_call() {
         "check_timber_beams",
         "list_clt_presets",
         "check_clt_beams",
+        // De plaattoets (wandschijven); zie `tests/drie_wegen_plaat.rs`.
+        "check_plates",
     ] {
         assert!(names.contains(&expected), "missing tool: {expected} (have {names:?})");
     }

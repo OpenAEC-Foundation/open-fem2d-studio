@@ -69,6 +69,9 @@ nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
 # CLT-voorinstellingen (`clt::clt_presets`).
 timber-check = { path = "../timber-check" }
 nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
+# Platen (wandschijven): `check_plates` en de plaattoets binnen
+# `check_fem_model`. Dezelfde functie als het Tauri-command en de toetsbrug.
+plaat-check = { path = "../plaat-check" }
 
 [dev-dependencies]
 # De toetsbrug als bibliotheek: de drie-wegen-verificatie roept zijn werkelijke
