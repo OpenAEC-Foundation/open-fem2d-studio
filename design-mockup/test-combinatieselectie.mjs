@@ -15,6 +15,13 @@
 // hout en de BGT-tak van de betonstijfheid. `selecteerCombinaties` laat ze bij
 // zuiver staal weg, mét reden.
 //
+// OP ÉÉN NA, SINDS SEPTEMBER 2026. Id 24 — 6.16b zonder Q — is "alleen de
+// blijvende belasting", en daar leest de STAALtoetsing w₁ uit: de zakking die
+// NEN-EN 1990:2002/NB:2019 A1.4.3(2) van w_tot aftrekt om w₂ + w₃ te krijgen
+// (figuur NB.1). Viel zij weg, dan kreeg w_add in zuiver staal weer de volledige
+// zakking. Zij blijft dus altijd staan; de andere zes vallen nog wel weg. Daarom
+// staan hieronder zes overgeslagen combinaties waar er tot dan zeven stonden.
+//
 // SINDS SEPTEMBER 2026 IS 6.15 GEEN LOZE COMBINATIE MEER. Tot dan las geen
 // enkele toets haar; nu hangt de scheurwijdte van elke betonstaaf eraan.
 // Wegvallen bij een model MET beton kost dus een toets — vandaar dat blok [4]
@@ -54,11 +61,14 @@ function checkGelijk(naam, actueel, verwacht) {
   else { failed++; log(`  ✗ ${naam}: ${JSON.stringify(actueel)} vs ${JSON.stringify(verwacht)}`); }
 }
 
-/** De twee combinaties die bij zuiver staal mogen wegvallen. */
+/** De combinaties die bij zuiver staal mogen wegvallen. */
 // Id's in de standaardset van de vier startgevallen (G, Q, S, W): 18 is de
 // frequente met Q leidend, 19–20 met S leidend (met en zonder Q), 21–22 met W
-// leidend (met en zonder Q); 23–24 de quasi-blijvende met en zonder Q.
-const BUITEN_STAAL = [18, 19, 20, 21, 22, 23, 24];
+// leidend (met en zonder Q); 23 de quasi-blijvende met Q. Id 24 — de
+// quasi-blijvende ZONDER Q, dus alleen G — valt niet weg: zij levert w₁ aan de
+// staaldoorbuiging (zie de kop).
+const BUITEN_STAAL = [18, 19, 20, 21, 22, 23];
+const BLIJVEND = 24;
 
 const staal = (id) => ({ id, from: 1, to: 2, material: "S235", profile: "IPE300" });
 const hout = (id) => ({ id, from: 1, to: 2, material: "C24", profile: "100x200" });
@@ -69,14 +79,18 @@ const vrij = (id) => ({ id, from: 1, to: 2, material: "E=15000", profile: "200x2
 const ids = (lijst) => lijst.map((c) => c.id);
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[1] Zuiver staal: 6.15b en 6.16b vallen weg, de rest blijft");
+log("\n[1] Zuiver staal: 6.15b en 6.16b vallen weg, op 6.16b zonder Q na; de rest blijft");
 {
   const alles = defaultCombinations();
   const s = selecteerCombinaties(alles, [staal(1), staal(2), staal(3)]);
-  checkGelijk("actieve combinaties", ids(s.actief), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+  checkGelijk("actieve combinaties", ids(s.actief), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, BLIJVEND]);
   checkGelijk("overgeslagen", s.overgeslagen.map((o) => o.id), BUITEN_STAAL);
   checkWaar("de karakteristieke BGT (6.14b, id 13–17) blijft — die voedt de doorbuigingstoets",
     [13, 14, 15, 16, 17].every((id) => s.actief.some((c) => c.id === id)));
+  const blijvend = s.actief.find((c) => c.id === BLIJVEND);
+  checkWaar("6.16b zonder Q (id 24, alleen G) blijft — die levert w₁ voor w_add = w_tot − w₁",
+    blijvend !== undefined && blijvend.factors.size === 1 && blijvend.factors.get(1) === 1,
+    blijvend?.name);
   checkWaar("elke overgeslagen combinatie draagt een reden",
     s.overgeslagen.every((o) => typeof o.reden === "string" && o.reden.length > 40));
   checkWaar("de reden noemt de norm-uitdrukking",
@@ -93,7 +107,7 @@ log("\n[1] Zuiver staal: 6.15b en 6.16b vallen weg, de rest blijft");
   checkWaar("de reden bij 6.15 noemt het artikel",
     /7\.3/.test(s.redenPerId.get(18) ?? ""));
   checkWaar("redenPerId is opzoekbaar voor de lijstweergave",
-    s.redenPerId.get(18) === s.overgeslagen[0].reden && s.redenPerId.size === 7);
+    s.redenPerId.get(18) === s.overgeslagen[0].reden && s.redenPerId.size === 6);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -130,7 +144,7 @@ log("\n[4] Terugkomen: een houten staaf toevoegen brengt ze terug");
   const staalModel = [staal(1), staal(2)];
   const eerst = selecteerCombinaties(alles, staalModel);
   const daarna = selecteerCombinaties(alles, [...staalModel, hout(3)]);
-  checkWaar("eerst zeventien", eerst.actief.length === 17);
+  checkWaar("eerst achttien (zeventien plus de blijvende 6.16b)", eerst.actief.length === 18);
   checkWaar("na het toevoegen van hout weer vierentwintig", daarna.actief.length === 24);
   checkWaar("de quasi-blijvende (6.16, id 23 en 24) is er weer — anders zou de kruip stil terugvallen",
     [23, 24].every((id) => daarna.actief.some((c) => c.id === id)));
@@ -156,26 +170,26 @@ log("\n[5] Aangepaste combinaties blijven met rust");
   hernoemd[17] = { ...hernoemd[17], name: "BGT frequent (eigen keuze)" };
   const a = selecteerCombinaties(hernoemd, [staal(1)]);
   checkGelijk("hernoemde 6.15b blijft, de andere 6.15b en de 6.16b vallen weg",
-    a.overgeslagen.map((o) => o.id), [19, 20, 21, 22, 23, 24]);
+    a.overgeslagen.map((o) => o.id), [19, 20, 21, 22, 23]);
 
   // Factor bijgesteld
   const bijgesteld = defaultCombinations();
   bijgesteld[22] = { ...bijgesteld[22], factors: new Map([[1, 1.0], [2, 0.5]]) };
   const b = selecteerCombinaties(bijgesteld, [staal(1)]);
   checkGelijk("bijgestelde 6.16b blijft, de ongewijzigde 6.15b en 6.16b vallen weg",
-    b.overgeslagen.map((o) => o.id), [18, 19, 20, 21, 22, 24]);
+    b.overgeslagen.map((o) => o.id), [18, 19, 20, 21, 22]);
 
   // Een geval eruit gehaald (kleinere factorenkaart)
   const uitgedund = defaultCombinations();
   uitgedund[17] = { ...uitgedund[17], factors: new Map([[1, 1.0]]) };
   const c = selecteerCombinaties(uitgedund, [staal(1)]);
-  checkGelijk("uitgedunde 6.15b blijft", c.overgeslagen.map((o) => o.id), [19, 20, 21, 22, 23, 24]);
+  checkGelijk("uitgedunde 6.15b blijft", c.overgeslagen.map((o) => o.id), [19, 20, 21, 22, 23]);
 
   // Formule aangepast (wat de gebruiker leest, telt ook mee)
   const anderFormule = defaultCombinations();
   anderFormule[22] = { ...anderFormule[22], formula: "G + 0,3·Q (projectkeuze)" };
   const d = selecteerCombinaties(anderFormule, [staal(1)]);
-  checkGelijk("aangepaste formule blijft", d.overgeslagen.map((o) => o.id), [18, 19, 20, 21, 22, 24]);
+  checkGelijk("aangepaste formule blijft", d.overgeslagen.map((o) => o.id), [18, 19, 20, 21, 22]);
 
   // Zelf toegevoegde combinatie met hetzelfde id-bereik
   const eigen = [
@@ -183,8 +197,8 @@ log("\n[5] Aangepaste combinaties blijven met rust");
     { id: 99, name: "BGT eigen", type: "sls", formula: "G + Q", factors: new Map([[1, 1], [2, 1]]) },
   ];
   const e = selecteerCombinaties(eigen, [staal(1)]);
-  checkWaar("een eigen combinatie erbij verandert niets aan het oordeel over de standaardzeven",
-    e.actief.length === 18 && e.actief.some((c2) => c2.id === 99) && e.overgeslagen.length === 7);
+  checkWaar("een eigen combinatie erbij verandert niets aan het oordeel over de standaardzes",
+    e.actief.length === 19 && e.actief.some((c2) => c2.id === 99) && e.overgeslagen.length === 6);
 
   // Volledig eigen lijst (zoals de windgenerator die schrijft)
   const windAchtig = [
@@ -256,21 +270,22 @@ log("\n[8] Dezelfde beslissing langs de sidecar (de MCP-weg)");
   // de standaardset af uit de gevallen van het MODEL (G = 1 blijvend, Q = 2
   // veranderlijk), precies zoals de store: UGT 6.10a met en zonder Q, 6.10b,
   // 6.10b gunstig (id 1–4), BGT 6.14b (id 5), 6.15b (id 6), 6.16b met en
-  // zonder Q (id 7–8).
+  // zonder Q (id 7–8). Id 8 is alleen G en blijft staan: de staaltoets leest
+  // er w₁ uit (zie de kop).
   const solve = (staven) =>
     verwerkVerzoek({ v: 1, id: 1, op: "solve", payload: { model: portaal(staven) } });
 
   const staalUit = solve(stalenStaven);
   checkWaar("de solve slaagt", staalUit.ok === true, JSON.stringify(staalUit.error ?? {}));
   const r = staalUit.result ?? {};
-  checkGelijk("vijf doorgerekende combinaties",
-    Object.keys(r.combinations ?? {}).map(Number), [1, 2, 3, 4, 5]);
-  checkGelijk("combinations_skipped noemt 6.15b en beide 6.16b",
-    (r.combinations_skipped ?? []).map((c) => c.id), [6, 7, 8]);
+  checkGelijk("zes doorgerekende combinaties (vijf plus de blijvende 6.16b)",
+    Object.keys(r.combinations ?? {}).map(Number), [1, 2, 3, 4, 5, 8]);
+  checkGelijk("combinations_skipped noemt 6.15b en de volledige 6.16b",
+    (r.combinations_skipped ?? []).map((c) => c.id), [6, 7]);
   checkWaar("elke overgeslagen combinatie draagt naam én reden",
     (r.combinations_skipped ?? []).every((c) => c.name && c.reason?.length > 40));
   checkWaar("en het staat ook in de waarschuwingen — nooit stil",
-    (r.warnings ?? []).filter((w) => w.includes("niet doorgerekend")).length === 3,
+    (r.warnings ?? []).filter((w) => w.includes("niet doorgerekend")).length === 2,
     JSON.stringify(r.warnings));
 
   const gemengd = solve([

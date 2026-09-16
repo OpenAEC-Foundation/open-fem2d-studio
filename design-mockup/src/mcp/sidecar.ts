@@ -985,6 +985,10 @@ function rekenDoor(payload: Record<string, unknown>) {
     combinationResults,
     profileDb,
     gevolgklasse,
+    // Nodig om w₁ te vinden: de BGT-combinatie met alleen de blijvende
+    // belastinggevallen (NEN-EN 1990:2002/NB:2019 A1.4.3(2)). Zonder deze
+    // lijst valt w_add terug op de volledige zakking, mét notitie.
+    loadCases: gelezen.model.loadCases,
     // De nationale bijlage gaat als `bijlage` mee naar de rekenkern.
     nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
     stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled },

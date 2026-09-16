@@ -499,9 +499,12 @@ log("\n[9] De MCP-weg: dezelfde standaardset, dezelfde meldingen, de gevolgklass
   checkWaar("solve met gevolgklasse CC3 slaagt", cc3.ok === true, JSON.stringify(cc3.error ?? {}));
   // G + Q: UGT 6.10a met en zonder Q, 6.10b Q leidend, gunstig Q leidend (4);
   // BGT 6.14b Q, 6.15b Q, 6.16b met en zonder Q (4). Zuiver staal laat 6.15b en
-  // beide 6.16b weg → vijf doorgerekend, drie overgeslagen.
-  checkWaar("de standaardset komt uit de gevallen van het model: 5 doorgerekend, 3 overgeslagen",
-    Object.keys(cc3.result?.combinations ?? {}).length === 5 && (cc3.result?.combinations_skipped ?? []).length === 3);
+  // de volledige 6.16b weg → zes doorgerekend, twee overgeslagen. De 6.16b
+  // zonder Q (alleen G) blijft sinds september 2026 staan: de staaltoets leest
+  // er w₁ uit, het deel dat NEN-EN 1990:2002/NB:2019 A1.4.3(2) van w_tot aftrekt
+  // om w₂ + w₃ te krijgen (zie lib/combinatieSelectie.ts).
+  checkWaar("de standaardset komt uit de gevallen van het model: 6 doorgerekend, 2 overgeslagen",
+    Object.keys(cc3.result?.combinations ?? {}).length === 6 && (cc3.result?.combinations_skipped ?? []).length === 2);
   checkWaar("geen waarschuwing over een aangenomen klasse", !(cc3.result?.warnings ?? []).some((w) => /Geen gevolgklasse/.test(w)));
 
   const zonder = solve({ model: model() });

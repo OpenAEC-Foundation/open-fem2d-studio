@@ -189,6 +189,12 @@ export interface Envelope {
  * `selecteerCombinaties` (lib/combinatieSelectie.ts) laat ze dan weg — met
  * zichtbare reden, en uitsluitend zolang ze ONGEWIJZIGD zijn.
  *
+ * MET ÉÉN UITZONDERING, sinds september 2026: de opstelling van 6.16b zonder
+ * veranderlijke gevallen is "alleen de blijvende belasting", en daar leest de
+ * STAALtoetsing w₁ uit — het deel dat NEN-EN 1990:2002/NB:2019 A1.4.3(2) van
+ * w_tot aftrekt om w₂ + w₃ te krijgen. Die opstelling wordt dus nooit
+ * weggelaten; zie `selecteerCombinaties`.
+ *
  * Herkend op SOORT en niet meer op id: sinds de set uit de belastinggevallen
  * wordt afgeleid, heeft een frequente combinatie geen vast nummer meer.
  */

@@ -86,6 +86,16 @@ const BUNDEL_TESTS = new Set([
   // en juist de sidecar gebruikt deze afleiding voor zijn standaardset — dus
   // hoort hij ook tegen de bundel te bewijzen dat die dezelfde factoren geeft.
   "belastingcombinaties",
+  // w₁, de zakking onder alleen de blijvende belasting (NEN-EN 1990:2002/NB:2019
+  // A1.4.3(2), figuur NB.1), voor hout en staal: de bouwers vullen
+  // `deflection_permanent_mm` uit de BGT-combinatie met alleen G, melden het
+  // als die ontbreekt, en de selectie laat die combinatie ook in een zuivere
+  // staalconstructie staan. Praat met `engine`, `combinations`,
+  // `combinatieSelectie`, `bouwMultiInput` en de twee bouwers — alles in de
+  // barrel — en start toetsbrug en de MCP-server als apart proces. Hoort juist
+  // óók tegen de bundel: laat de bundel w₁ of de combinatie vallen, dan krijgt
+  // de w_add-toets via `check_fem_model` stil weer de volledige zakking.
+  "blijvende-zakking",
   "checkconfig",
   "combinatieselectie",
   // Rekent een externe referentie-berekening na (twee houten liggerlijnen) en

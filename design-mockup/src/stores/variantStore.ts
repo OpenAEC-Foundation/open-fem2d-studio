@@ -261,7 +261,10 @@ export const useVariantStore = create<VariantState>((set, get) => ({
           inputs.push(
             schaalDoorbuiging(
               { ...bouw.inputs[0] },
-              ["deflection_actual_max_mm"],
+              // Ook w₁ schaalt mee: hij komt uit dezelfde elastische berekening
+              // en zou anders bij een stijvere variant een te groot deel van de
+              // (kleiner geworden) zakking afsnoepen, en w_add dus te laag maken.
+              ["deflection_actual_max_mm", "deflection_permanent_mm"],
               keuze.huidig.iMm4,
               voorstel.iMm4,
             ),
@@ -279,7 +282,8 @@ export const useVariantStore = create<VariantState>((set, get) => ({
           inputs.push(
             schaalDoorbuiging(
               { ...bouw.inputs[0] },
-              ["deflection_inst_mm", "deflection_quasi_perm_mm"],
+              // w₁ mee, om dezelfde reden als bij staal.
+              ["deflection_inst_mm", "deflection_quasi_perm_mm", "deflection_permanent_mm"],
               keuze.huidig.iMm4,
               voorstel.iMm4,
             ),

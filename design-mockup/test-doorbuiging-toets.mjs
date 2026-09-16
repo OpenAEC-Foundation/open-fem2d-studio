@@ -429,8 +429,14 @@ log("\n[8] Kolom: A1.4.3(7) h/300 op de zijdelingse verplaatsing, geen vloereis"
 // Tweede bevinding: de bouwer voerde onvoorwaardelijk de KARAKTERISTIEKE
 // combinatie, terwijl de notitie die de kern bij w_add meestuurt de FREQUENTE
 // (6.15b) noemt — het rapport zei dus niet wat er gerekend was. En
-// `deflection_permanent_mm: 0` maakt w_add gelijk aan w_fin, twee rapportregels
+// `deflection_permanent_mm: 0` maakte w_add gelijk aan w_fin, twee rapportregels
 // met hetzelfde getal, zonder dat ergens stond waarom.
+//
+// Sinds september 2026 komt w₁ uit de BGT-combinatie met alleen de blijvende
+// belasting (lib/blijvendeZakking.ts; NEN-EN 1990:2002/NB:2019 A1.4.3(2),
+// figuur NB.1). Daarvoor moet de bouwer de BELASTINGGEVALLEN kennen, anders is
+// niet te zien welk geval blijvend is. Dit blok toetst beide kanten: zonder
+// gevallen w₁ = 0 mét de reden, met gevallen w₁ = w_G.
 //
 // Model: vrij opgelegde ligger met een blijvende neerwaartse last (G) en
 // WINDZUIGING (W) omhoog. De standaardcombinaties (NB-ψ, sinds september 2026
@@ -477,16 +483,25 @@ log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
     /6\.14b/.test(n) && /6\.15b/.test(n) && /6\.16b/.test(n));
   checkTrue("notitie legt uit dat één zakking twee toetsen voedt",
     /w_fin én w_add uit één zakking/.test(n));
-  checkTrue("notitie meldt dat w_add gelijk is aan w_fin",
-    /w_add is hier GELIJK aan w_fin/.test(n));
-  // Sinds september 2026 kent de standaardset meestal wél een BGT-combinatie
-  // met alleen de blijvende belasting (6.16b zonder veranderlijke gevallen);
-  // de notitie zegt daarom niet meer dat die ontbreekt, maar dat deze toets w1
-  // niet uit de combinaties afleidt.
-  checkTrue("notitie zegt waarom: w1 wordt niet uit de combinaties afgeleid",
-    /die leidt deze toets niet uit de doorgerekende combinaties af/.test(n));
-  checkTrue("notitie zegt dat de w_add-regel daarmee geen w2 + w3 is",
-    /geen w2 \+ w3/.test(n));
+  // zData draagt geen belastinggevallen: w₁ is dan niet af te leiden.
+  check("zonder belastinggevallen: w₁ = 0", invoer.wPermMm, 0, 0);
+  checkTrue("notitie meldt dat w₁ op 0 is gezet, met de reden",
+    /is op 0 gezet omdat de belastinggevallen niet zijn meegegeven/.test(n));
+  checkTrue("notitie zegt dat w_add daardoor de VOLLEDIGE zakking krijgt",
+    /VOLLEDIGE zakking/.test(n));
+  checkTrue("notitie noemt w₂ + w₃ en figuur NB.1",
+    /w₂ \+ w₃/.test(n) && /figuur NB\.1/.test(n));
+
+  // Met de belastinggevallen erbij (de vier startgevallen, waarop
+  // defaultCombinations() is gebouwd): w₁ komt uit 6.16b zonder Q = G alleen,
+  // en dat is hier precies w_G.
+  const gevallen = [
+    { id: 1, type: "dead" }, { id: 2, type: "live" }, { id: 3, type: "snow" }, { id: 4, type: "wind" },
+  ];
+  const metGevallen = bepaalDoorbuigingsInvoer(ligger, { ...zData, loadCases: gevallen });
+  check("met belastinggevallen: w₁ = w_G (6.16b zonder Q)", metGevallen.wPermMm, wFreq, 0.01);
+  checkTrue("met belastinggevallen: notitie noemt w₁ en de combinatie",
+    metGevallen.notes.some((x) => x.startsWith("w₁ =") && /6\.16b/.test(x)));
 
   // Diezelfde notities moeten ook langs de volledige bouwer in de invoer voor
   // de kern belanden — daar leest het rapport ze uit.
@@ -496,7 +511,7 @@ log("\n[9] BGT-combinatie en w_perm: gerekend én verantwoord in het rapport");
   const bn = (inputs[0]?.deflection_notes ?? []).join(" ");
   checkTrue("bouwer: de verantwoording zit in deflection_notes",
     /Maatgevend is "BGT karakteristiek 6\.14b — Variabel \(Q\) leidend"/.test(bn) &&
-    /w_add is hier GELIJK aan w_fin/.test(bn));
+    /is op 0 gezet/.test(bn));
   checkTrue("bouwer: de koorde-referentielijn staat er nog steeds bij",
     /vanaf de koorde/.test(bn));
 
