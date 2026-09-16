@@ -183,6 +183,32 @@ fn hang_toets_notities(checks: &mut [NamedCheck], notities: &[(&'static str, Str
     }
 }
 
+/// De toetsen waarin f_y (of f_u) rechtstreeks in de formule staat; daar
+/// hoort de dikteklasse van tabel 3.1 bij vermeld te worden.
+const TOETSEN_MET_F_Y: [&str; 7] = [
+    "6.2.4_compression",
+    "6.2.5_bending_y",
+    "6.2.5_bending_z",
+    "6.2.6_shear_z",
+    "6.2.6_shear_y",
+    "6.3.1_buckling",
+    "6.3.2_ltb",
+];
+
+/// Plakt de dikteklasse-notitie van tabel 3.1 achter elke GEREKENDE toets uit
+/// [`TOETSEN_MET_F_Y`]; een geweigerde toets (`NotApplicable`) blijft ongemoeid.
+fn hang_dikte_notitie(checks: &mut [NamedCheck], tekst: &str) {
+    for c in checks.iter_mut().filter(|c| TOETSEN_MET_F_Y.contains(&c.id.as_str())) {
+        let gerekend = match &c.kind {
+            CheckKind::Resistance(r) => !matches!(r.status, CheckStatus::NotApplicable),
+            CheckKind::Stability(s) => !matches!(s.status, CheckStatus::NotApplicable),
+        };
+        if gerekend {
+            plak_notitie(c, tekst);
+        }
+    }
+}
+
 /// De twaalf toetsen die bij een weigering met naam en artikel in de lijst
 /// blijven staan, zodat het rapport toont wát er niet gerekend is en waarom.
 /// De laatste kolom zegt of het een stabiliteitstoets is.
@@ -555,6 +581,38 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         forces: gov_shear.forces,
     };
 
+    // 3b. De vloeigrens hangt aan de elementdikte (NEN-EN 1993-1-1 tabel 3.1:
+    //     t ≤ 40 mm, 40 mm < t ≤ 80 mm, daarboven niets). De dikste plaat
+    //     beslist: bij een catalogusprofiel de flens (of de wand van een
+    //     koker, buis of hoeklijn), bij een samengestelde doorsnede de dikste
+    //     lamel. Dat moet VÓÓR de doorsnede wordt opgelost, want de
+    //     classificatie volgens tabel 5.2 rekent al met ε = √(235/f_y).
+    //     Tot september 2026 kreeg een plaat van 50 mm dezelfde f_y als een
+    //     van 10 mm (basisaudit nr 17); een plaat boven 80 mm wordt nu
+    //     geweigerd in plaats van stilzwijgend met de volle f_y getoetst.
+    let dikte_mm = match input.custom_section.as_ref() {
+        Some(c) => c.flensdikte_mm(),
+        None => db()
+            .find(&input.profile_name)
+            .map(|p| if p.geometry.tf > 0.0 { p.geometry.tf } else { p.geometry.t })
+            .unwrap_or(0.0),
+    };
+    let (grade, _dikteklasse, dikte_notitie) = match grade.voor_dikte(dikte_mm) {
+        Ok(x) => x,
+        Err(reden) => {
+            return BeamCheckResult {
+                beam_id: input.beam_id,
+                profile_name: input.profile_name.clone(),
+                steel_grade: input.steel_grade.clone(),
+                classification: CrossSectionClass::Class1,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!("ERROR: {reden}"),
+            }
+        }
+    };
+
     // 4. Resolveer de doorsnede: inline (D4.3) of uit de database, inclusief
     //    de classificatie (buiging drijft de classificatie) en de expliciete
     //    weigeringen die bij die doorsnede horen.
@@ -622,7 +680,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 
         // Ook op het klasse-4-pad hoort een doorsnedegebonden beperking bij de
         // toets te staan waarop zij slaat; de toets is er, hij is alleen
-        // geweigerd.
+        // geweigerd. De dikteklasse (tabel 3.1) staat alleen bij gerekende
+        // toetsen, en hier is er geen; ε voor de klasse-indeling kwam wel uit
+        // de dikte-afhankelijke f_y.
         hang_toets_notities(&mut checks, &doorsnede.toets_notities);
 
         let mut uc_max = 0.0_f64;
@@ -998,6 +1058,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     //     knikweerstand van een hoeklijn leest, hoort dáár te zien dat de
     //     slankheid om u-u en v-v is bepaald.
     hang_toets_notities(&mut checks, &doorsnede.toets_notities);
+    // 9c. De dikteklasse van tabel 3.1 bij elke GEREKENDE toets die f_y in
+    //     haar formule heeft. Een geweigerde toets heeft geen f_y gebruikt en
+    //     krijgt de regel niet; haar notities zijn de reden van de weigering.
+    hang_dikte_notitie(&mut checks, &dikte_notitie);
 
     // 10. Aggregate
     let mut uc_max = 0.0_f64;
