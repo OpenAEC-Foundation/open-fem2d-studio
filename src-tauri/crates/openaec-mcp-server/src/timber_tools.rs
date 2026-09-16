@@ -257,7 +257,11 @@ fn schema_houten_staaf() -> Value {
             "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
                 "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken uit welke combinatie 'deflection_quasi_perm_mm' komt — of dat die combinatie niet gevonden is en er op de volle last is teruggevallen." },
             "staaf_notities": { "type": "array", "items": { "type": "string" }, "default": [],
-                "description": "Toelichtingen bij de staaf als geheel; rekenen nergens mee en komen letterlijk in de 'notes' van de kolomtoets (6.3.2), de kiptoets (6.3.3) en de eindzakking. De app en `check_fem_model` zetten hier dat een door tussenknopen geknipte staaf als één doorgaande lijn is getoetst, over welke lengte, en welke tussenknopen niet als steun tellen. Weglaten = niets te melden." }
+                "description": "Toelichtingen bij de staaf als geheel; rekenen nergens mee en komen letterlijk in de 'notes' van de kolomtoets (6.3.2), de kiptoets (6.3.3) en de eindzakking. De app en `check_fem_model` zetten hier dat een door tussenknopen geknipte staaf als één doorgaande lijn is getoetst, over welke lengte, en welke tussenknopen niet als steun tellen. Weglaten = niets te melden." },
+            "width_end_mm": { "type": "number", "exclusiveMinimum": 0,
+                "description": "Breedte b aan het EIND van de staaf (x = L) van een VERLOPENDE staaf; 'width_mm' is dan de breedte aan het begin (x = 0). Weglaten = b verloopt niet." },
+            "height_end_mm": { "type": "number", "exclusiveMinimum": 0,
+                "description": "Hoogte h aan het EIND van de staaf (x = L) van een VERLOPENDE staaf; 'height_mm' is dan de hoogte aan het begin (x = 0). Dit is de maat van een voor afschot schuin afgezaagde balk. De kern toetst elke doorsnedetoets (6.1.x) op elk rekenpunt met de plaatselijke rechthoek b(x) x h(x), met k_h van art. 3.2(3)/3.3(3) uit de hoogte ter plaatse, en rekent de stabiliteitstoetsen (6.3.2, 6.3.3) met de kleinste doorsnede in het veld; het resultaat krijgt dan een veld 'verloop' met de zes toetsdoorsneden en het maatgevende punt. Niet te combineren met 'custom_section'. Weglaten = h verloopt niet; zijn beide eindmaten weg of gelijk aan het begin, dan is de staaf prismatisch." }
         },
         "required": [
             "beam_id", "width_mm", "height_mm", "strength_class",
@@ -490,6 +494,10 @@ mod tests {
             "deflection_limit_add",
             "deflection_notes",
             "staaf_notities",
+            // Verlopende staaf (ontwerp 15-09-2026, §5): de rechthoek aan het
+            // eind van de staaf.
+            "width_end_mm",
+            "height_end_mm",
         ];
         for v in verwacht {
             assert!(velden.contains_key(v), "het staafschema mist `{v}`");

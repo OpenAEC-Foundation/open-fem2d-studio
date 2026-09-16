@@ -242,6 +242,14 @@ const BUNDEL_TESTS = new Set([
   // bundel: de MCP-weg moet een verlopende staaf precies zo opdelen als de
   // app, anders rekent de sidecar stil prismatisch met het beginprofiel.
   "verlopend-profiel",
+  // Verlopende profielen (deel 2): de TOETSING. Praat met `engine`,
+  // `combinations`, `bouwMultiInput` en de twee toetsbouwers — alles in de
+  // barrel — en start daarnaast toetsbrug en de MCP-server als apart proces.
+  // Hoort juist óók tegen de bundel: `check_fem_model` bouwt de toetsinvoer
+  // uit de bundel, en een bundel die `profile_end` of de eindmaten van een
+  // houten staaf nog niet doorgeeft, toetst daar stil de BEGINdoorsnede over
+  // de hele staaf.
+  "verlopend-toetsing",
   "veren",
   "wind-generator",
   "wind-eurocode",

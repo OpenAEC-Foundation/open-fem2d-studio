@@ -90,6 +90,7 @@ fn run() -> &'static BeamCheckResult {
             staafstand_notities: None,
             staafeinden: None,
             staaf_notities: None,
+            profile_end: None,
         };
         check_beam(input)
     })

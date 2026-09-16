@@ -25,7 +25,7 @@ use nen_en_1993_1_1_ltb::{m_b_rd_channel_met_veld, m_b_rd_met_veld, Kipprofiel, 
 use section_properties::SectionProperties;
 use steel_profiles::{db, ProfileKind};
 use crate::input::{
-    BeamCheckInput, CustomDoorsnedevorm, Staafeind, Staafeinden, MELDING_AANSLUITING_HOEKPROFIEL,
+    BeamCheckInput, CustomDoorsnedevorm, CustomSection, Staafeind, Staafeinden, MELDING_AANSLUITING_HOEKPROFIEL,
     MELDING_AFSCHUIVING_HOEKPROFIEL, MELDING_BUIGING_HOEKPROFIEL, MELDING_KNIK_HOOFDASSEN,
     MELDING_VORM_NIET_CONTROLEERBAAR, REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD,
     REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_HOEKPROFIEL, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
@@ -170,7 +170,7 @@ struct Doorsnede {
 }
 
 /// Plakt een notitie achter de notities van één toets.
-fn plak_notitie(c: &mut NamedCheck, tekst: &str) {
+pub(crate) fn plak_notitie(c: &mut NamedCheck, tekst: &str) {
     match &mut c.kind {
         CheckKind::Resistance(r) => r.notes.push(tekst.to_string()),
         CheckKind::Stability(s) => s.notes.push(tekst.to_string()),
@@ -397,7 +397,25 @@ fn resolveer_doorsnede(
             toets_notities,
         });
     };
+    doorsnede_uit_custom(custom, &input.profile_name, grade, bend_forces)
+}
 
+/// Het inline pad van [`resolveer_doorsnede`]: een uit platen samengestelde
+/// doorsnede met haar weigeringen — één keuring van dubbelsymmetrie,
+/// lijfplooi, klasse en knikkrommen. Losgetrokken van het catalogusdeel omdat
+/// de twee paden niets delen behalve hun uitkomst; zo is per pad in één
+/// oogopslag te zien wat er wél en niet gerekend wordt. `naam_terugval` is de
+/// naam die geldt als `custom.naam` leeg is.
+///
+/// Een VERLOPENDE staaf loopt hier ook langs: `crate::verlopend` zet per
+/// rekenpunt de plaatselijke gelaste I als `custom_section` in een
+/// deelvraag, en die komt dan via [`resolveer_doorsnede`] hier uit.
+fn doorsnede_uit_custom(
+    custom: &CustomSection,
+    naam_terugval: &str,
+    grade: &SteelGrade,
+    bend_forces: &InternalForces,
+) -> Result<Doorsnede, String> {
     // ── Inline doorsnede ────────────────────────────────────────────────────
     let mut meldingen: Vec<(&'static str, &'static str, String)> = Vec::new();
     let mut kip_notities: Vec<String> = Vec::new();
@@ -509,7 +527,7 @@ fn resolveer_doorsnede(
     };
 
     Ok(Doorsnede {
-        naam: if custom.naam.is_empty() { input.profile_name.clone() } else { custom.naam.clone() },
+        naam: if custom.naam.is_empty() { naam_terugval.to_string() } else { custom.naam.clone() },
         props,
         klasse,
         curve_y,
@@ -545,7 +563,7 @@ fn resolveer_doorsnede(
     })
 }
 
-fn uc_of(c: &NamedCheck) -> f64 {
+pub(crate) fn uc_of(c: &NamedCheck) -> f64 {
     let (uc_opt, status_skip) = match &c.kind {
         CheckKind::Resistance(r) => (r.uc.as_ref().map(|u| u.uc), matches!(r.status, CheckStatus::NotApplicable)),
         CheckKind::Stability(s) => (s.uc.as_ref().map(|u| u.uc), matches!(s.status, CheckStatus::NotApplicable)),
@@ -554,6 +572,29 @@ fn uc_of(c: &NamedCheck) -> f64 {
 }
 
 pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
+    // 1. VERLOPEND PROFIEL? Dan gaat de staaf langs een eigen weg
+    //    (`crate::verlopend`), die deze functie per rekenpunt opnieuw aanroept
+    //    met de PLAATSELIJKE doorsnede. Zonder eindprofiel — en dat is elke
+    //    bestaande staaf — valt deze afslag weg en loopt alles hieronder
+    //    ongewijzigd door: een prismatische staaf verandert geen enkel getal.
+    match crate::verlopend::bepaal_verloop(&input) {
+        Ok(None) => {}
+        Ok(Some(v)) => return crate::verlopend::check_beam_verlopend(input, v),
+        Err(reden) => {
+            return BeamCheckResult {
+                beam_id: input.beam_id,
+                profile_name: input.profile_name.clone(),
+                steel_grade: input.steel_grade.clone(),
+                classification: CrossSectionClass::Class1,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!("ERROR: {reden}"),
+                verloop: None,
+            }
+        }
+    }
+
     // 2. De staalsoort. Een naam die de kern niet kent is een FOUT en geen
     //    S235. Eerder viel "S355J2", "s355", "S 355", "" of een tikfout stil
     //    terug op S235, terwijl het resultaat de opgegeven naam herhaalde —
@@ -579,6 +620,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
                      en S460 (NEN-EN 1993-1-1 tabel 3.1); er is niet getoetst",
                     input.steel_grade
                 ),
+                // Prismatische staaf: geen verloopgegevens, en dan ook niet
+                // geserialiseerd (zie BeamCheckResult::verloop).
+                verloop: None,
             }
         }
     };
@@ -636,6 +680,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
                 uc_max: 0.0,
                 status: CheckStatus::NotApplicable,
                 governing_check_id: format!("ERROR: {reden}"),
+                // Prismatische staaf: geen verloopgegevens, en dan ook niet
+                // geserialiseerd (zie BeamCheckResult::verloop).
+                verloop: None,
             }
         }
     };
@@ -654,6 +701,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             uc_max: 0.0,
             status: CheckStatus::NotApplicable,
             governing_check_id: reden,
+            // Prismatische staaf: geen verloopgegevens, en dan ook niet
+            // geserialiseerd (zie BeamCheckResult::verloop).
+            verloop: None,
         },
     };
     let p = &doorsnede.props;
@@ -725,6 +775,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             uc_max,
             status: CheckStatus::NotApplicable,
             governing_check_id: format!("NIET TOETSBAAR: {reden4}"),
+            // Prismatische staaf: geen verloopgegevens, en dan ook niet
+            // geserialiseerd (zie BeamCheckResult::verloop).
+            verloop: None,
         };
     }
 
@@ -1359,6 +1412,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         uc_max,
         status,
         governing_check_id,
+        // Prismatische staaf: geen verloopgegevens, en dan ook niet
+        // geserialiseerd (zie BeamCheckResult::verloop).
+        verloop: None,
     }
 }
 

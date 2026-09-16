@@ -7,7 +7,7 @@
 use nen_en_1993_1_1_section::CheckStatus;
 use nen_en_1995_1_1::{LoadDurationClass, ServiceClass};
 use serde::{Deserialize, Serialize};
-use steel_check::NamedCheck;
+use steel_check::{NamedCheck, VerloopRapport};
 use ts_rs::TS;
 
 use crate::belastingduur::KmodPerLoadDuration;
@@ -41,4 +41,13 @@ pub struct TimberBeamCheckResult {
     #[serde(default)]
     #[ts(optional)]
     pub governing_combination_id: Option<u32>,
+    /// Alleen bij een VERLOPENDE staaf (`width_end_mm`/`height_end_mm` in de
+    /// invoer): de zes toetsdoorsneden, het maatgevende punt en de doorsneden
+    /// waarmee de stabiliteitstoetsen zijn gerekend. Zelfde vorm als bij staal
+    /// — het rapport kent voor het verloop maar één weergave. Bij hout blijven
+    /// `tw_mm`/`tf_mm` en `klasse` leeg. Afwezig bij een prismatische staaf,
+    /// en dan ook niet geserialiseerd.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub verloop: Option<VerloopRapport>,
 }

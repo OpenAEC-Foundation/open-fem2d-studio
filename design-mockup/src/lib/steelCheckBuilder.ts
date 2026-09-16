@@ -46,6 +46,7 @@ import {
 import { bepaalStaafeinden, voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
 import { alphaCrStaafNotitie, type StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
 import { STEEL_SECTIONS } from "./steelSections.generated";
+import { bepaalVerloop } from "./sectionResolver";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -178,6 +179,14 @@ export function collinearContinuations(
     if (opgelegd.has(gedeeld[0])) continue;
     if ((other.profile ?? "") !== (beam.profile ?? "")) continue;
     if ((other.material ?? "") !== (beam.material ?? "")) continue;
+    // Een VERLOPENDE staaf wordt nooit met een buur samengevoegd. De virtuele
+    // staaf van een doorgaande lijn erft `profile` en `profileEnd` van het
+    // eerste deel; het verloop zou dan over de hele lijn worden uitgesmeerd en
+    // elk deel een andere doorsnede krijgen dan het model laat zien. Delen
+    // blijven dus apart getoetst — hun staafeinden gelden dan als
+    // `Doorlopend`, waarop de kern de kiptoets met reden weigert in plaats van
+    // een verkeerd getal te geven.
+    if ((other.profileEnd ?? "") !== "" || (beam.profileEnd ?? "") !== "") continue;
     const d2 = beamDirection(other, nodes);
     if (!d2) continue;
     if (Math.abs(dir.x * d2.z - dir.z * d2.x) > 1e-6) continue;
@@ -1090,6 +1099,17 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       continue;
     }
 
+    // VERLOPEND PROFIEL: is er een eindprofiel, dan moet het bij het
+    // beginprofiel passen. `bepaalVerloop` keurt dat — dezelfde keuring als de
+    // solver doet — en meldt de reden, zodat de gebruiker haar bij zijn staaf
+    // ziet en niet als toetsfout. Een eigen doorsnede (`custom_section`) met
+    // een eindprofiel valt hier ook af.
+    const verloop = bepaalVerloop(beam.material, profileName, beam.profileEnd);
+    if (verloop.status === "fout") {
+      skipped.push({ beamId: beam.id, reason: verloop.reden });
+      continue;
+    }
+
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
 
     // Maatgevende combinatie voor het kipveld: die met de grootste |My|.
@@ -1124,6 +1144,17 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       beam_id: beam.id,
       profile_name: eigen ? eigen.naam : profileName,
       ...(eigen ? { custom_section: naarCustomSection(eigen) } : {}),
+      // VERLOPEND PROFIEL (ontwerp 15-09-2026, §5). Alleen meegeven als
+      // `bepaalVerloop` een werkelijk verloop ziet — dus niet bij een leeg
+      // eindprofiel, niet bij hetzelfde profiel en ook niet bij dezelfde
+      // doorsnede in een andere schrijfwijze ("IPE 300" naast "IPE300"). Zo
+      // blijft de invoer van elke prismatische staaf byte-gelijk aan die van
+      // vóór dit veld en verandert er aan haar toetsing geen enkel getal. De
+      // staaf staat hier al in zijn referentierichting, dus `profile` is het
+      // begin (x = 0) en `profileEnd` het eind (x = L) —
+      // `toetsdataInReferentierichting` heeft ze bij een gespiegelde staaf al
+      // verwisseld.
+      ...(verloop.status === "verlopend" ? { profile_end: (beam.profileEnd ?? "").trim() } : {}),
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,

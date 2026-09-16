@@ -84,6 +84,7 @@ fn invoer(profiel: &str, l_m: f64, q: f64, steunen: Vec<f64>, z_a_mm: f64) -> Be
         staafstand_notities: None,
         staafeinden: None,
         staaf_notities: None,
+        profile_end: None,
     }
 }
 

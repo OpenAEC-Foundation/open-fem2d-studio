@@ -2,5 +2,19 @@
 import type { CheckStatus } from "./CheckStatus";
 import type { CrossSectionClass } from "./CrossSectionClass";
 import type { NamedCheck } from "./NamedCheck";
+import type { VerloopRapport } from "./VerloopRapport";
 
-export type BeamCheckResult = { beam_id: number, profile_name: string, steel_grade: string, classification: CrossSectionClass, checks: Array<NamedCheck>, uc_max: number, status: CheckStatus, governing_check_id: string, };
+export type BeamCheckResult = { beam_id: number, profile_name: string, steel_grade: string, 
+/**
+ * Doorsnedeklasse. Bij een verlopende staaf de ONGUNSTIGSTE klasse over
+ * alle rekenpunten; de klasse per toetsdoorsnede staat in [`Self::verloop`].
+ */
+classification: CrossSectionClass, checks: Array<NamedCheck>, uc_max: number, status: CheckStatus, governing_check_id: string, 
+/**
+ * Alleen bij een VERLOPENDE staaf (`profile_end` in de invoer): de zes
+ * toetsdoorsneden, het maatgevende punt en de doorsneden waarmee de
+ * stabiliteitstoetsen zijn gerekend. Afwezig bij een prismatische staaf,
+ * en dan ook niet geserialiseerd — zo blijven de bestaande snapshots en
+ * antwoorden byte-gelijk.
+ */
+verloop?: VerloopRapport, };

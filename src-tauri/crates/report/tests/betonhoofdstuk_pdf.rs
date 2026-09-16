@@ -329,6 +329,8 @@ fn staalstaaf() -> BeamCheckResult {
         uc_max: 0.12,
         status: CheckStatus::Ok,
         governing_check_id: "comp".into(),
+        // Prismatische proefstaaf: geen verlopend profiel.
+        verloop: None,
     }
 }
 

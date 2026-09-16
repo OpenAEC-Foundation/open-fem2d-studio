@@ -91,6 +91,8 @@ fn invoer(custom: Option<CustomSection>, vz_kn: f64, my_knm: f64) -> TimberBeamC
         deflection_limit_add: 333.0,
         deflection_notes: vec![],
         staaf_notities: None,
+        width_end_mm: None,
+        height_end_mm: None,
     }
 }
 

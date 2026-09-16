@@ -20,6 +20,9 @@ nen-en-1993-1-1-ltb = { path = "../nen-en-1993-1-1-ltb" }
 [dev-dependencies]
 approx = { workspace = true }
 insta = { workspace = true }
+# Voor de proef dat een PRISMATISCHE staaf met en zonder `profile_end` een
+# byte-gelijk antwoord geeft: dat is alleen op de geserialiseerde vorm te zien.
+serde_json = { workspace = true }
 
 [[test]]
 name = "calc2_beam1"

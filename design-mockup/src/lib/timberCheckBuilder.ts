@@ -77,6 +77,7 @@ import {
   zoekEigenDoorsnede,
 } from "./profieleditor/eigenDoorsnedenStore";
 import { toetsdataInReferentierichting } from "./referentierichting";
+import { bepaalVerloop } from "./sectionResolver";
 import type { CustomSection } from "./types/steel/CustomSection";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
@@ -434,6 +435,10 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     let custom: CustomSection | undefined;
     let bMm: number;
     let hMm: number;
+    // De rechthoek aan het EIND van een verlopende staaf; `undefined` = de
+    // staaf is prismatisch (verreweg het gewone geval).
+    let bEindMm: number | undefined;
+    let hEindMm: number | undefined;
     if (isEigenProfiel(beam.profile)) {
       const eigen = zoekEigenDoorsnede(beam.profile);
       if (!eigen) {
@@ -483,6 +488,22 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       }
       bMm = rect.bMm;
       hMm = rect.hMm;
+      // VERLOPEND PROFIEL (ontwerp 15-09-2026, §5). Het eindprofiel moet een
+      // rechthoek zijn van dezelfde soort; `bepaalVerloop` keurt dat al en
+      // meldt de reden. Hier wordt die keuring herhaald in plaats van het
+      // veld blind door te geven, zodat de gebruiker de reden bij zijn staaf
+      // ziet en niet als toetsfout. Alleen invullen als er werkelijk een
+      // verloop is: zo blijft de invoer van elke prismatische staaf
+      // byte-gelijk aan die van vóór dit veld.
+      const verloop = bepaalVerloop(beam.material, beam.profile, beam.profileEnd);
+      if (verloop.status === "fout") {
+        skipped.push({ beamId: beam.id, reason: verloop.reden });
+        continue;
+      }
+      if (verloop.status === "verlopend") {
+        bEindMm = verloop.verloop.eind.b;
+        hEindMm = verloop.verloop.eind.h;
+      }
     }
 
     const lengthMm = beamLengthMm(beam, data.nodes);
@@ -584,6 +605,11 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       beam_id: beam.id,
       width_mm: bMm,
       height_mm: hMm,
+      // VERLOPENDE STAAF: de rechthoek aan het eind (x = L). Alleen aanwezig
+      // als er werkelijk een verloop is; de kern toetst dan elk rekenpunt met
+      // de plaatselijke b(x) × h(x) en met k_h uit de hoogte ter plaatse.
+      ...(bEindMm !== undefined ? { width_end_mm: bEindMm } : {}),
+      ...(hEindMm !== undefined ? { height_end_mm: hEindMm } : {}),
       // Aanwezig = samengestelde doorsnede uit de profieleditor; de kern
       // rekent dan met de lamellen in plaats van met b × h. Afwezig = de
       // rechthoek hierboven, precies zoals voorheen.

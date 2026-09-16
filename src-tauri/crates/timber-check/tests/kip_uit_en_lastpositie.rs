@@ -108,6 +108,8 @@ fn ligger(kip: bool, positie: LtbLoadPosition, k_cr: f64) -> TimberBeamCheckResu
         deflection_limit_add: 333.0,
         deflection_notes: vec![],
         staaf_notities: None,
+        width_end_mm: None,
+        height_end_mm: None,
     })
 }
 
