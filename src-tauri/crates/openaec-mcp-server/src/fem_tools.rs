@@ -1353,8 +1353,13 @@ mod tests {
                 .unwrap_or_else(|| panic!("{naam} staat niet (meer) in valideerModel.ts"));
             let rest = &bron[start..];
             let blok = &rest[..rest.find("] as const;").unwrap_or_else(|| panic!("{naam} is niet gesloten"))];
+            // GEEN `.skip(1)` hier: `OPENING_VELDEN` staat op ÉÉN regel
+            // (`const OPENING_VELDEN = ["id", "punten"] as const;`), en de eerste
+            // regel overslaan gaf daar een LEGE verzameling — de spiegeltest
+            // zou dan een lijst vergelijken met niets. Bij een lijst over
+            // meerdere regels bevat de openingsregel geen aanhalingstekens en
+            // levert hij vanzelf niets op, dus dit werkt voor beide vormen.
             blok.lines()
-                .skip(1)
                 .filter(|l| !l.trim_start().starts_with("//"))
                 .flat_map(|l| l.split('"').skip(1).step_by(2).map(str::to_owned).collect::<Vec<_>>())
                 .collect()
