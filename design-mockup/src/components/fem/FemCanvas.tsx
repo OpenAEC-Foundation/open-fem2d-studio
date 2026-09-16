@@ -75,6 +75,7 @@ import { notifyInfo, notifyWarning } from "../../io/notify";
 // regels naspeelt als het canvas.
 import {
   knopenOpStramienAs, selecteerLastenVanZelfdeSoort, kopieerLastenNaarKlembord,
+  type KlembordLast,
 } from "../../hooks/useFemStore";
 // Modelcontrole: knopen die op een staaf liggen zonder eraan vast te zitten,
 // samenvallende knopen en vrije uiteinden — mét knoopnummers en herstelactie,
@@ -372,8 +373,11 @@ interface FemCanvasProps {
    * wat er is geplakt, wat er al stond en wat er geen aangrijpingspunt meer
    * had. Ontbreekt de prop (standalone gebruik), dan doet Ctrl+V niets.
    */
-  plakLasten?: (klembord: Omit<Load, "id">[], doelCaseId: number) => {
-    geplakt: number; overgeslagen: number; verweesd: number; gevalNaam: string;
+  plakLasten?: (klembord: KlembordLast[], doelCaseId: number) => {
+    geplakt: number; overgeslagen: number; verweesd: number;
+    /** Daarvan: het nummer bestaat nog, maar het onderdeel ligt elders. */
+    verplaatst: number;
+    gevalNaam: string;
   };
 
   // View settings
@@ -568,7 +572,7 @@ export default function FemCanvas(props: FemCanvasProps) {
    * dus een hertekening is niet nodig. Leeft zolang het canvas leeft; het
    * gaat niet mee in het projectbestand en niet naar het systeemklembord.
    */
-  const lastenKlembordRef = useRef<Omit<Load, "id">[]>([]);
+  const lastenKlembordRef = useRef<KlembordLast[]>([]);
 
   // ── Drag-to-move state (mouse-driven, Select tool only) ────────────────
   // While dragging a node or beam we keep the original positions of all the
@@ -1957,7 +1961,11 @@ export default function FemCanvas(props: FemCanvasProps) {
             : [];
           if (ids.length === 0) return;
           e.preventDefault();
-          lastenKlembordRef.current = kopieerLastenNaarKlembord(loads, ids);
+          // Het model gaat mee: elke klembordlast krijgt de PLAATS van zijn
+          // aangrijpingspunt. Zonder dat landde een last bij het plakken op een
+          // nieuwe staaf die toevallig hetzelfde nummer had gekregen — zie
+          // `lastHerkomst` (basisaudit ruw 31).
+          lastenKlembordRef.current = kopieerLastenNaarKlembord(loads, ids, { nodes, beams, plates });
           const n = lastenKlembordRef.current.length;
           notifyInfo(
             n === 1 ? "1 belasting gekopieerd" : `${n} belastingen gekopieerd`,
@@ -1975,10 +1983,16 @@ export default function FemCanvas(props: FemCanvasProps) {
               ? "1 belasting stond er al en is overgeslagen."
               : `${r.overgeslagen} belastingen stonden er al en zijn overgeslagen.`);
           }
-          if (r.verweesd > 0) {
-            extra.push(r.verweesd === 1
+          const weg = r.verweesd - r.verplaatst;
+          if (weg > 0) {
+            extra.push(weg === 1
               ? "1 belasting is vervallen: de staaf, knoop of plaat bestaat niet meer."
-              : `${r.verweesd} belastingen zijn vervallen: hun staaf, knoop of plaat bestaat niet meer.`);
+              : `${weg} belastingen zijn vervallen: hun staaf, knoop of plaat bestaat niet meer.`);
+          }
+          if (r.verplaatst > 0) {
+            extra.push(r.verplaatst === 1
+              ? "1 belasting is vervallen: het onderdeel met dat nummer ligt niet meer op dezelfde plek."
+              : `${r.verplaatst} belastingen zijn vervallen: de onderdelen met die nummers liggen niet meer op dezelfde plek.`);
           }
           if (r.geplakt > 0) {
             notifyInfo(
