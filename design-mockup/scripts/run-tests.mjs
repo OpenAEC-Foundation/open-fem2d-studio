@@ -154,6 +154,12 @@ const BUNDEL_TESTS = new Set([
   // Verende staafaansluitingen: engine + bouwMultiInput, allebei in de barrel.
   "staafveren",
   "scheefstand",
+  // De MCP-weg rekent φ met de normkeuze uit het bestand of het model, via
+  // dezelfde afleiding als de app. Praat met `sidecar`, `projectFile` en
+  // `valideerModel` — alle drie in de barrel. Hoort juist óók tegen de bundel:
+  // een bundel die de normkeuze nog laat liggen, rekent hetzelfde bestand
+  // met een andere horizontale kracht dan de app (gemeten: tot factor 1,94).
+  "scheefstand-mcp",
   "sectie-doorvoer",
   // Toetst waar de adapter zijn rekenknopen legt (deellastgrenzen,
   // `extraSneden`, de samenvoegregel) en praat daarvoor uitsluitend met
@@ -162,6 +168,12 @@ const BUNDEL_TESTS = new Set([
   // buiten geeft, dus als de bundel daar afwijkt van de bron, moet dat hier
   // opvallen.
   "sneden",
+  // Singulier stelsel: dezelfde Nederlandse melding (knoop, richting, oorzaak)
+  // op het raamwerkpad en op het gemengde pad. Praat alleen met `engine` en
+  // `bouwMultiInput` — allebei in de barrel. Hoort juist óók tegen de bundel:
+  // de MCP-weg geeft deze melding door aan de client, en een bundel die het
+  // gemengde pad nog als "column 5" meldt, laat de gebruiker raden.
+  "singulier-melding",
   // Staal herkennen aan de profieldatabase: elke sleutel van profiles.json
   // moet door `isSteelProfile` en `buildSteelCheckInputs`. Praat met de
   // staalbouwer, `engine` en `combinations` — alle drie in de barrel. Hoort
@@ -266,6 +278,10 @@ const ALLEEN_BRON = new Map([
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
+  [
+    "materiaal-dubbelzinnig",
+    "bewaakt dat een korte naam als \"C30\" overal hout is en nooit stil beton (basisaudit nr 16); leest daarvoor de modelcontrole (lib/modelControle) en de betonstijfheidslus (lib/betonStijfheid), die allebei buiten de barrel staan",
+  ],
   ["modelmapping", "vergelijkt de bronmapping met een gouden JSON"],
   [
     "fysisch-nietlineair",

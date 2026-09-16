@@ -104,16 +104,29 @@ export class SingulierStelselFout extends Error {
 
 /**
  * Vertaal een "column N"-melding van de stelseloplosser naar een
- * [`SingulierStelselFout`]. Frame-pad: drie vrijheidsgraden per knoop
- * (u, w, θ), in de invoegvolgorde van `mesh.nodes` — dezelfde nummering als
- * `applyBoundaryConditions`. Elke andere fout gaat ongewijzigd door.
+ * [`SingulierStelselFout`]. Drie vrijheidsgraden per knoop (u, w, θ).
+ *
+ * Welke knoop bij kolom N hoort, verschilt per pad:
+ *  - frame-pad: álle knopen in de invoegvolgorde van `mesh.nodes` — dezelfde
+ *    nummering als `applyBoundaryConditions`;
+ *  - gemengd pad (staven + schijven): alleen de ACTIEVE knopen, in de
+ *    volgorde van `buildNodeIdToIndex`; die tabel geeft de aanroeper mee.
+ * Tot september 2026 vertaalde alleen het frame-pad; het gemengde pad gaf
+ * dezelfde vakwerkknoop nog als "column 5" door (gemeten: vakwerk met een
+ * losse wandschijf ernaast). Elke andere fout gaat ongewijzigd door.
  */
-function vertaalSingulier(e: unknown, mesh: Mesh): unknown {
+function vertaalSingulier(
+  e: unknown,
+  mesh: Mesh,
+  knoopVanIndex?: (index: number) => { id: number } | undefined,
+): unknown {
   const origineel = e instanceof Error ? e.message : String(e);
   const treffer = /column (\d+)/.exec(origineel);
   if (!treffer) return e;
   const kolom = Number(treffer[1]);
-  const knoop = [...mesh.nodes.values()][Math.floor(kolom / 3)];
+  const index = Math.floor(kolom / 3);
+  const knoopId = knoopVanIndex ? knoopVanIndex(index)?.id : [...mesh.nodes.values()][index]?.id;
+  const knoop = knoopId === undefined ? undefined : mesh.nodes.get(knoopId);
   if (!knoop) return e;
   let losseKnoop = true;
   for (const beam of mesh.beamElements.values()) {
@@ -121,6 +134,11 @@ function vertaalSingulier(e: unknown, mesh: Mesh): unknown {
     if (eind && (eind[0].id === knoop.id || eind[1].id === knoop.id)) {
       losseKnoop = false;
       break;
+    }
+  }
+  if (losseKnoop) {
+    for (const element of mesh.elements.values()) {
+      if (element.nodeIds.includes(knoop.id)) { losseKnoop = false; break; }
     }
   }
   const richtingen = ['x', 'z', 'rotatie'] as const;
@@ -312,6 +330,37 @@ function calculateGeometricStiffness(
 }
 
 /**
+ * Tel de geometrische stijfheid Kg(N) op bij de LOKALE elastische matrix,
+ * vóórdat de scharnieren worden gecondenseerd.
+ *
+ * WAAROM VÓÓR DE CONDENSATIE. Statische condensatie van een scharnier
+ * elimineert de rotatie θ_c uit de raakstijfheid van het element: uit
+ * (Ke + Kg)·u = f volgt θ_c uit de rij van θ_c, en die rij bevat óók de
+ * Kg-termen (N·L/10 en 2·N·L/15). Tot september 2026 werd eerst Ke
+ * gecondenseerd en daarna de ongecondenseerde Kg opgeteld. Dan blijft op het
+ * losgelaten DOF een fictieve rotatiestijfheid 2·N·L/15 staan, en de
+ * koppeltermen N·L/10 tussen die rotatie en de dwarsverplaatsingen worden
+ * nooit weggewerkt. Gemeten (hallenspant met ingeklemde kolom en pendelkolom,
+ * referentie P_cr = k·h = 1307,9 kN): scharnier op de pendeltop gaf
+ * P_cr = 934,1 kN (−28,6 %), hetzelfde scharnier op het regeleind 1317 kN
+ * (+0,7 %) — de uitkomst hing af van de staaf die het scharnier droeg. Op de
+ * scharnierknoop van een spant stond een fictief moment van 56 kNm
+ * (referentie 0,6), en het steunmoment van een doorgaande ligger boven een
+ * gedrukte pendelkolom was 6 % te gunstig. Met Kg vóór de condensatie is de
+ * eliminatie exact en maakt de plek van het scharnier niet meer uit.
+ *
+ * N is trek-positief (de conventie van `calculateGeometricStiffness`).
+ */
+function telGeometrischeStijfheidOp(Kl: Matrix, L: number, N: number): void {
+  const Kg = calculateGeometricStiffness(L, N);
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      Kl.addAt(i, j, Kg.get(i, j));
+    }
+  }
+}
+
+/**
  * Assemble global stiffness matrix including geometric stiffness
  */
 function assembleGlobalStiffnessWithGeometric(
@@ -348,18 +397,8 @@ function assembleGlobalStiffnessWithGeometric(
     // Linear elastic stiffness
     const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
 
-    // Statische condensatie voor releases: buigscharnieren (Rz) én
-    // translatie-releases (Tx = axiaal / normaalkrachthuls, Tz = dwars),
-    // in LOKALE assen — vandaar vóór de transformatie naar globaal.
-    const releasedLocalDofs = getReleasedLocalDofs(beam);
-    const veren = getSprungLocalDofs(beam);
-    if (veren.length > 0) {
-      applyEndConnections(Kl, releasedLocalDofs, veren);
-    } else if (releasedLocalDofs.length > 0) {
-      applyEndReleases(Kl, releasedLocalDofs);
-    }
-
-    // Add geometric stiffness if requested
+    // Geometrische stijfheid: VÓÓR de scharniercondensatie optellen, zodat
+    // elastische en geometrische stijfheid samen worden gecondenseerd.
     if (includeGeometric) {
       // TEKENCONVENTIE: calculateAllInternalForces vult axialForces met
       // (N1+N2)/2 uit de krachtenrecovery, en die levert N1 = f_lokaal[0]
@@ -367,16 +406,20 @@ function assembleGlobalStiffnessWithGeometric(
       // calculateGeometricStiffness verwacht N trek-positief, dus flippen.
       // Zonder deze flip verstijft druk i.p.v. verslapt (P-Δ verkeerd om).
       const N = -(axialForces.get(beam.id) || 0);
-      const Kg = calculateGeometricStiffness(L, N);
+      telGeometrischeStijfheidOp(Kl, L, N);
+    }
 
-      // Add geometric stiffness to local stiffness.
-      // Beperking: Kg wordt NIET mee-gecondenseerd met scharnier-releases
-      // (kleine benadering; de Kg-termen ~N/L zijn klein t.o.v. EI/L³).
-      for (let i = 0; i < 6; i++) {
-        for (let j = 0; j < 6; j++) {
-          Kl.addAt(i, j, Kg.get(i, j));
-        }
-      }
+    // Statische condensatie voor releases: buigscharnieren (Rz) én
+    // translatie-releases (Tx = axiaal / normaalkrachthuls, Tz = dwars),
+    // in LOKALE assen — vandaar vóór de transformatie naar globaal. Met Kg
+    // er al in: de condensatie werkt op de raakstijfheid Ke + Kg, zie
+    // `telGeometrischeStijfheidOp`.
+    const releasedLocalDofs = getReleasedLocalDofs(beam);
+    const veren = getSprungLocalDofs(beam);
+    if (veren.length > 0) {
+      applyEndConnections(Kl, releasedLocalDofs, veren);
+    } else if (releasedLocalDofs.length > 0) {
+      applyEndReleases(Kl, releasedLocalDofs);
     }
 
     // Transform to global
@@ -547,26 +590,23 @@ function assembleGlobalStiffnessFNL(
     // Local stiffness with effective EI
     const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
 
-    // Releases condenseren (Rz-scharnieren + Tx/Tz-hulzen, lokale assen)
+    // Geometrische stijfheid vóór de condensatie, net als op het
+    // geometrische pad — zie `telGeometrischeStijfheidOp`.
+    if (includeGeometric) {
+      // Zelfde tekenflip als in assembleGlobalStiffnessWithGeometric:
+      // recovery-N is druk-positief, Kg verwacht trek-positief.
+      const N = -(axialForces.get(beam.id) || 0);
+      telGeometrischeStijfheidOp(Kl, L, N);
+    }
+
+    // Releases condenseren (Rz-scharnieren + Tx/Tz-hulzen, lokale assen),
+    // op Ke + Kg samen.
     const releasedLocalDofs = getReleasedLocalDofs(beam);
     const veren = getSprungLocalDofs(beam);
     if (veren.length > 0) {
       applyEndConnections(Kl, releasedLocalDofs, veren);
     } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
-    }
-
-    // Add geometric stiffness
-    if (includeGeometric) {
-      // Zelfde tekenflip als in assembleGlobalStiffnessWithGeometric:
-      // recovery-N is druk-positief, Kg verwacht trek-positief.
-      const N = -(axialForces.get(beam.id) || 0);
-      const Kg = calculateGeometricStiffness(L, N);
-      for (let i = 0; i < 6; i++) {
-        for (let j = 0; j < 6; j++) {
-          Kl.addAt(i, j, Kg.get(i, j));
-        }
-      }
     }
 
     // Transform to global
@@ -1687,7 +1727,35 @@ function assembleGeometricStiffnessMixed(
     const ul = T.multiplyVector(ug);
     const N = (material.E * beam.section.A / L) * (ul[3] - ul[0]);
 
-    const KgLokaal = calculateGeometricStiffness(L, N);
+    // Scharnieren en veren: de elastische matrix in het stelsel is al
+    // gecondenseerd (Assembler.ts). Kg hoort daar niet ongecondenseerd bij —
+    // zie `telGeometrischeStijfheidOp` voor de gemeten gevolgen. Omdat Ke hier
+    // al in K zit, gaat alleen het VERSCHIL mee:
+    //   Kg_eff = cond(Ke + Kg) − cond(Ke)
+    // Zonder release of veer is dat exact Kg zelf.
+    const releasedLocalDofs = getReleasedLocalDofs(beam);
+    const veren = getSprungLocalDofs(beam);
+    let KgLokaal: Matrix;
+    if (releasedLocalDofs.length === 0 && veren.length === 0) {
+      KgLokaal = calculateGeometricStiffness(L, N);
+    } else {
+      const condenseer = (M: Matrix): Matrix => {
+        if (veren.length > 0) applyEndConnections(M, releasedLocalDofs, veren);
+        else applyEndReleases(M, releasedLocalDofs);
+        return M;
+      };
+      const KeAlleen = condenseer(
+        calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I));
+      const KeMetKg = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+      telGeometrischeStijfheidOp(KeMetKg, L, N);
+      condenseer(KeMetKg);
+      KgLokaal = new Matrix(6, 6);
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 6; j++) {
+          KgLokaal.set(i, j, KeMetKg.get(i, j) - KeAlleen.get(i, j));
+        }
+      }
+    }
     const KgGlobaal = T.transpose().multiply(KgLokaal.multiply(T));
 
     for (let i = 0; i < 6; i++) {
@@ -1932,6 +2000,11 @@ function solveMixed(
     return herstel(solveLinearSystem(Kmod, Fmod));
   };
 
+  // Kolomnummer → knoop, voor de vertaling van een singulier stelsel. Het
+  // gemengde pad nummert alleen de actieve knopen (`nodeIdToIndex`).
+  const knoopVanIndex = new Map<number, { id: number }>();
+  for (const [id, index] of nodeIdToIndex) knoopVanIndex.set(index, { id });
+
   const numDofsMixed = K.rows;
   log({
     soort: 'info',
@@ -1941,7 +2014,14 @@ function solveMixed(
       (opts.geometricNonlinear ? ' — geometrisch niet-lineair (P-Δ)' : ' — lineair'),
   });
 
-  let displacements = losOp(K);
+  let displacements: number[];
+  try {
+    displacements = losOp(K);
+  } catch (e) {
+    // Dezelfde Nederlandse melding (knoop, richting, oorzaak) als het
+    // frame-pad; de adapter zet het rekenknoopnummer om naar het modelnummer.
+    throw vertaalSingulier(e, mesh, (i) => knoopVanIndex.get(i));
+  }
 
   /**
    * De matrix waaruit de oplegreacties volgen. Lineair is dat de elastische K;

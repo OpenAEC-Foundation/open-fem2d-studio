@@ -359,6 +359,16 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
 
   // Nodes: mm → m
   for (const n of input.nodes) {
+    // Een dubbel knoopnummer zou hier de eerdere afbeelding stil overschrijven:
+    // staven die naar dat nummer wijzen, landen dan op de laatste knoop met
+    // dat nummer. De MCP-poort (`valideerModel`) weigert dit al; het app-pad
+    // en de engine zelf horen het ook niet door te laten.
+    if (nodeIdMap.has(n.id)) {
+      throw new Error(
+        `Knoop ${n.id} komt tweemaal voor in het model. Elke knoop hoort een ` +
+        "eigen nummer te hebben; anders is niet te zeggen op welke van de twee " +
+        "een staaf, oplegging of last aangrijpt.");
+    }
     const meshNode = mesh.addNode(n.x / 1000, n.z / 1000);
     nodeIdMap.set(n.id, meshNode.id);
   }

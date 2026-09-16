@@ -55,6 +55,10 @@ export class Mesh implements IMesh {
   }
 
   addNode(x: number, y: number): INode {
+    // Een bestaand id (bijvoorbeeld een plaatknoop uit een eerder geladen
+    // reeks) wordt NOOIT overschreven: doorschuiven naar het eerstvolgende
+    // vrije nummer. Zie `addPlateNode` voor de gemeten botsing.
+    while (this.nodes.has(this.nextNodeId)) this.nextNodeId++;
     const node: INode = {
       id: this.nextNodeId++,
       x,
@@ -66,8 +70,22 @@ export class Mesh implements IMesh {
     return node;
   }
 
-  /** Add a plate mesh node with ID starting from 1000 */
+  /**
+   * Plaatknoop toevoegen. De nummering begint op 1000 óf, als er al meer
+   * reguliere knopen zijn, boven het hoogste reguliere id; een bestaand id
+   * wordt overgeslagen.
+   *
+   * Tot september 2026 begon de plaatteller altijd op 1000 en overschreef hij
+   * stil een reguliere knoop zodra het model er 1000 of meer had (reguliere
+   * knopen: staafknopen, splitsknopen van staafpuntlasten en plaatranden).
+   * Gemeten: raamwerk 32 traveeën × 30 lagen (1023 knopen) met een losse
+   * wandschijf — vijf botsingen, ΣRx −300 → −154,2 kN, ux 58,33 → 4,33 mm,
+   * zonder melding. De `Map` gaf de knoop gewoon een nieuwe plek; de staven
+   * wezen naar een punt elders.
+   */
   addPlateNode(x: number, y: number): INode {
+    if (this.nextPlateNodeId < this.nextNodeId) this.nextPlateNodeId = this.nextNodeId;
+    while (this.nodes.has(this.nextPlateNodeId)) this.nextPlateNodeId++;
     const node: INode = {
       id: this.nextPlateNodeId++,
       x,

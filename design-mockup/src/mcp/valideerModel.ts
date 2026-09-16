@@ -58,6 +58,8 @@ import {
 import { zoekDubbeleKnopen } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { resolveSection } from "../lib/sectionResolver";
+// De geldige bronnen van de scheefstand — één lijst met de app en de sidecar.
+import { SCHEEFSTAND_BRONNEN } from "../lib/scheefstandNorm";
 // De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
 // nageschreven: één lijst, anders keurt deze poort straks een staalsoort af
 // die de kern wél kent.
@@ -69,6 +71,9 @@ import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
 // het rapport en de solve-waarschuwingen van de sidecar.
 import { meldingenBelastinggevallen } from "../lib/combinatieBeheer";
 import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
+// "C30" is hout én de korte naam van C30/37 — dezelfde melding als de
+// modelcontrole in de app (basisaudit nr 16).
+import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "../lib/materiaalDubbelzinnig";
 
 /** Uitkomst van de volledige droogloop; alle teksten zijn Nederlands. */
 export interface ValidatieUitkomst {
@@ -88,6 +93,9 @@ const MODEL_VELDEN = [
   "nodes", "beams", "supports", "plates", "loadCases", "loads",
   "selfWeightEnabled", "scheefstandEnabled", "scheefstandNoemer",
   "scheefstandRichting",
+  // De normkeuze van de scheefstand (basisaudit nr 19): de sidecar rekent φ
+  // hiermee zoals de app; het MCP-schema kent dezelfde drie velden.
+  "scheefstandBron", "scheefstandHoogteM", "scheefstandAantalElementen",
 ] as const;
 
 const NODE_VELDEN = ["id", "x", "z"] as const;
@@ -582,6 +590,30 @@ export function controleerVelden(rauw: unknown): string[] {
   ) {
     fouten.push("model.scheefstandRichting: moet 1 (+x) of −1 (−x) zijn.");
   }
+  if (
+    rauw.scheefstandBron !== undefined &&
+    rauw.scheefstandBron !== null &&
+    !(SCHEEFSTAND_BRONNEN as readonly unknown[]).includes(rauw.scheefstandBron)
+  ) {
+    fouten.push(
+      `model.scheefstandBron: "${String(rauw.scheefstandBron)}" is onbekend; bekend zijn ` +
+        SCHEEFSTAND_BRONNEN.map((b) => `"${b}"`).join(", ") + ".",
+    );
+  }
+  const hoogte = rauw.scheefstandHoogteM;
+  if (
+    hoogte !== undefined && hoogte !== null &&
+    !(typeof hoogte === "number" && Number.isFinite(hoogte) && hoogte > 0)
+  ) {
+    fouten.push("model.scheefstandHoogteM: moet een getal groter dan 0 zijn (m), of null.");
+  }
+  const aantal = rauw.scheefstandAantalElementen;
+  if (
+    aantal !== undefined && aantal !== null &&
+    !(typeof aantal === "number" && Number.isInteger(aantal) && aantal >= 1)
+  ) {
+    fouten.push("model.scheefstandAantalElementen: moet een geheel getal van minstens 1 zijn, of null.");
+  }
 
   // Knopen.
   const nodes = leesArray(rauw, "nodes", fouten);
@@ -933,6 +965,7 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
   const nodes = (m.nodes ?? []) as { id: number; x: number; z: number }[];
   const beams = (m.beams ?? []) as {
     id: number; from: number; to: number; material?: string; profile?: string;
+    checkConfig?: { betonKorf?: unknown };
   }[];
   const supports = (m.supports ?? []) as { nodeId: number; type: string; k?: number }[];
   const plates = (m.plates ?? []) as {
@@ -1001,6 +1034,14 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
           `+ profiel "${b.profile ?? "(leeg)"}". De solver zou terugvallen op ` +
           "HEA 160 / S235 en met een andere doorsnede rekenen dan opgegeven.",
       );
+    }
+    // Een naam die hout én (kort) beton is: er wordt hout gerekend, en dat
+    // hoort de gebruiker te weten. Met een wapeningskorf erbij botsen de twee
+    // lezingen en is het een fout — anders zou de korf stil niets doen.
+    const dubbel = dubbelzinnigMateriaal(b.material);
+    if (dubbel) {
+      const metKorf = b.checkConfig?.betonKorf !== undefined && b.checkConfig?.betonKorf !== null;
+      (metKorf ? errors : warnings).push(dubbelzinnigMateriaalTekst(b.id, dubbel, metKorf));
     }
   }
 
