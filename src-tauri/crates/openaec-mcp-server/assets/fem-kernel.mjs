@@ -19281,6 +19281,7 @@ var BEKENDE_TOPVELDEN = [
   "nonlinearEnabled",
   "analysetype",
   "betonSegmentLengteMm",
+  "betonKruipcoefficient",
   "combinations",
   "idTellers",
   "combinatiesVervangenBijOpenen",
