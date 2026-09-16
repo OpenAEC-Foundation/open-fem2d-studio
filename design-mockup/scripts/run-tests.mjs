@@ -114,6 +114,16 @@ const BUNDEL_TESTS = new Set([
   // kiptoets op de volle staaflengte terwijl de bron met de steunafstand
   // rekent, en dat scheelt in l_ef een factor die je in de UC terugziet.
   "hout-kipsteunafstand",
+  // Bewaakt dat de drie houtkeuzen van de toetsconfiguratie — scheurfactor
+  // k_cr (6.1.7), kiptoets aan/uit (6.3.3(5)) en het aangrijpingspunt van de
+  // belasting (tabel 6.1) — tot in de toetsinvoer komen, en dat de veldpoort
+  // (`keurCheckConfig`, ook die van `check_config` in `check_fem_model`)
+  // onzin weigert. Praat met `engine`, `combinations`, de houtbouwer en
+  // `valideerModel` — alle vier in de barrel. Hoort juist óók tegen de
+  // bundel: laat de bundel een veld vallen, dan toetst de MCP-weg met de
+  // standaard (k_cr 1,0, kiptoets aan) terwijl de bron de keuze van de
+  // gebruiker volgt, en dat verschil hoort luid op te vallen.
+  "hout-checkconfig",
   "lastomschrijving",
   "leeg-geval",
   "n-teken",

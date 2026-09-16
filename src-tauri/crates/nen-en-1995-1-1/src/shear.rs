@@ -93,9 +93,36 @@ pub fn check_shear(
         CheckStatus::NotOk
     };
 
+    // De scheurfactor staat ALTIJD in de notities, met zijn bron. Sinds
+    // september 2026 is k_cr voor een rechthoek een keuze van de gebruiker
+    // (`k_cr` in de invoer); een lezer van het rapport moet kunnen zien of er
+    // met de NB-waarde 1,0 of met de Europese aanbeveling 0,67 is gerekend,
+    // en dat kan niet als 1,0 zwijgt.
     let mut notes = vec![];
-    if (k_cr - 1.0).abs() > 1e-9 {
-        notes.push(format!("b_ef = k_cr · b met k_cr = {k_cr:.2} (6.13a)"));
+    // Nederlandse komma, zoals de vaste tekst hieronder (1,00 en 0,67).
+    let k_cr_txt = format!("{k_cr:.2}").replace('.', ",");
+    if !section.rechthoekig {
+        notes.push(format!(
+            "b_ef = k_cr · b met k_cr = {k_cr_txt} (6.13a), door de kern bepaald uit de verhouding \
+             lijfdikte / flensbreedte volgens NEN-EN 1995-1-1/NB bij 6.1.7 (1,0 bij een lijf ten \
+             minste zo breed als de flens, 0,8 bij een lijf dunner dan de halve flens, daartussen \
+             lineair)."
+        ));
+    } else if (k_cr - 1.0).abs() > 1e-9 {
+        notes.push(format!(
+            "b_ef = k_cr · b met k_cr = {k_cr_txt} (6.13a), opgegeven in de toetsinstellingen. \
+             EN 1995-1-1 6.1.7(2) beveelt 0,67 aan voor gezaagd en gelijmd gelamineerd hout; \
+             NEN-EN 1995-1-1/NB bij 6.1.7 schrijft voor een prismatische doorsnede 1,0 voor. \
+             De opgegeven waarde is dus {kant} dan de Nederlandse normwaarde.",
+            kant = if k_cr < 1.0 { "strenger" } else { "gunstiger" }
+        ));
+    } else {
+        notes.push(
+            "b_ef = k_cr · b met k_cr = 1,00 (6.13a): de waarde die NEN-EN 1995-1-1/NB bij 6.1.7 \
+             voorschrijft voor een prismatische doorsnede (de Europese aanbeveling van 6.1.7(2) is \
+             0,67; de nationale bijlage maakt die keuze)."
+                .to_string(),
+        );
     }
     if !section.rechthoekig {
         notes.push(format!(

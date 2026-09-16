@@ -106,6 +106,17 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   // staaflengte. Eigen veld, geen afgeleide van de kipsteunfracties: die zijn
   // per FLENS en horen bij het staalmodel.
   const [ltbStr, setLtbStr] = useState(cfg0.ltbSupportSpacing_m?.toString() ?? "");
+  // Scheurfactor k_cr (6.13a). Leeg = 1,0, de NB-waarde bij 6.1.7 voor een
+  // prismatische doorsnede; alleen een waarde in (0, 1] gaat het bestand in.
+  const [kCrStr, setKCrStr] = useState(cfg0.kCr?.toString() ?? "");
+  // Kiptoets art. 6.3.3 aan/uit. Uit = gedrukte rand doorgaand zijdelings
+  // gesteund, k_crit = 1,0 (art. 6.3.3(5)); alleen `false` wordt bewaard.
+  const [kiptoets, setKiptoets] = useState<boolean>(cfg0.performLtbCheck ?? true);
+  // Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a); zwaartepunt =
+  // geen correctie en wordt niet bewaard.
+  const [ltbPositie, setLtbPositie] = useState<NonNullable<BeamCheckConfig["ltbLoadPosition"]>>(
+    cfg0.ltbLoadPosition ?? "centreOfGravity",
+  );
   const [restraintsStr, setRestraintsStr] = useState(
     cfg0.lateralRestraints?.join(", ") ?? "",
   );
@@ -214,6 +225,15 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     if (ltbStr.trim() !== "" && Number.isFinite(ltb) && ltb > 0) {
       cfg.ltbSupportSpacing_m = ltb;
     }
+    // Ook onvoorwaardelijk (zie hierboven): de houtkeuzen blijven bewaard bij
+    // een tijdelijke materiaalwissel. k_cr alleen binnen (0, 1] — daarbuiten
+    // is het geen factor en schrijft de dialoog niets weg.
+    const kCr = parseFloat(kCrStr.replace(",", "."));
+    if (kCrStr.trim() !== "" && Number.isFinite(kCr) && kCr > 0 && kCr <= 1) {
+      cfg.kCr = kCr;
+    }
+    if (!kiptoets) cfg.performLtbCheck = false;
+    if (ltbPositie !== "centreOfGravity") cfg.ltbLoadPosition = ltbPositie;
     if (serviceClass !== 1) cfg.serviceClass = serviceClass;
     // Alleen een uitdrukkelijke keuze gaat het bestand in. Tot september 2026
     // werd "middellang" als standaard niet weggeschreven; zo'n bestand leest nu
@@ -679,6 +699,50 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     {t(
                       "cfg.ltbSupportSpacingHint",
                       "Kipsteunafstand leeg = staaflengte. Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt; l_ef bepaalt σ_m,crit en daarmee k_crit (6.33)/(6.35).",
+                    )}
+                  </div>
+                  {/* Aangrijpingspunt (tabel 6.1, voetnoot a), kiptoets aan/uit
+                      (art. 6.3.3(5)) en scheurfactor k_cr (6.13a). Inline
+                      terugval-teksten, net als hierboven: de sleutels staan nog
+                      niet in de check.json-bestanden onder i18n/locales. */}
+                  <div className="bar-props-row">
+                    <span>{t("cfg.ltbLoadPosition", "Aangrijpingspunt belasting")}</span>
+                    <select
+                      className="bar-props-select"
+                      value={ltbPositie}
+                      onChange={(e) => setLtbPositie(e.target.value as typeof ltbPositie)}
+                    >
+                      <option value="centreOfGravity">{t("cfg.ltbPosCentroid", "Zwaartepunt (geen correctie)")}</option>
+                      <option value="compressionEdge">{t("cfg.ltbPosCompression", "Drukzijde (l_ef + 2h)")}</option>
+                      <option value="tensionEdge">{t("cfg.ltbPosTension", "Trekzijde (l_ef − 0,5h)")}</option>
+                    </select>
+                  </div>
+                  <label className="bar-props-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input type="checkbox" checked={kiptoets}
+                      onChange={(e) => setKiptoets(e.target.checked)} />
+                    {t("cfg.performLtbCheck", "Kiptoets (art. 6.3.3) uitvoeren")}
+                  </label>
+                  {!kiptoets && (
+                    <div className="bar-props-hint" role="note">
+                      {t(
+                        "cfg.performLtbCheckOffHint",
+                        "Kiptoets uit: u verklaart dat de gedrukte rand over de volle lengte zijdelings gesteund is (dakbeschot, vloerplaat) en de opleggingen torsievast zijn, zodat k_crit = 1,0 (art. 6.3.3(5)). Die aanname komt zo in het rapport te staan.",
+                      )}
+                    </div>
+                  )}
+                  <div className="bar-props-row">
+                    <span>{t("cfg.kCr", "Scheurfactor k_cr (6.1.7)")}</span>
+                    <input
+                      type="number" className="bar-props-input" step="0.01" min="0.01" max="1"
+                      placeholder="1,00"
+                      value={kCrStr}
+                      onChange={(e) => setKCrStr(e.target.value)}
+                    />
+                  </div>
+                  <div className="bar-props-hint">
+                    {t(
+                      "cfg.kCrHint",
+                      "b_ef = k_cr · b (6.13a). Leeg = 1,0: NEN-EN 1995-1-1/NB bij 6.1.7 voor een prismatische doorsnede. De Europese aanbeveling van 6.1.7(2) is 0,67 voor gezaagd en gelijmd gelamineerd hout; alleen waarden in (0, 1] worden bewaard.",
                     )}
                   </div>
                 </div>

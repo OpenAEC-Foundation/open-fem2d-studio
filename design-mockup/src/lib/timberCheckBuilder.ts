@@ -39,8 +39,10 @@
  *    de kern kiest (staaflengte, of om z uit steunen aan beide randen) en
  *    meldt de herkomst (zie de toelichting bij het `inputs.push`);
  *    kipsteunafstand = staaflengte;
- *    belastinggeval "gelijkmatig verdeeld" aangrijpend in het
- *    zwaartepunt; k_cr = 1,0; geen lastverdelend systeem;
+ *    belastinggeval "gelijkmatig verdeeld"; aangrijpingspunt uit
+ *    cfg.ltbLoadPosition, leeg → zwaartepunt; kiptoets uit
+ *    cfg.performLtbCheck, leeg → aan; k_cr uit cfg.kCr, leeg → 1,0 (NB bij
+ *    6.1.7); geen lastverdelend systeem;
  *  - doorbuiging: klasse "vloer" → w_fin ≤ L/250 en w_add ≤ L/333
  *    (NB-standaard); w_qp komt uit de quasi-blijvende BGT-combinatie
  *    (G + Σ ψ₂,i · Q_k,i), en valt alleen mét een notitie in het rapport terug
@@ -56,6 +58,7 @@ import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
 import type { LoadDurationClass } from "./types/timber/LoadDurationClass";
 import type { ServiceClass } from "./types/timber/ServiceClass";
+import type { LtbLoadPosition } from "./types/timber/LtbLoadPosition";
 import type { CheckSkip } from "./checkTypes";
 import {
   isSteelProfile,
@@ -100,6 +103,47 @@ export function mapLoadDuration(d: BeamCheckConfig["loadDuration"]): LoadDuratio
     case "medium":
     default:              return "MediumTerm";
   }
+}
+
+/**
+ * UI-aangrijpingspunt (tabel 6.1, voetnoot a) → ts-rs/Rust-enum. Ontbreekt →
+ * CentreOfGravity, het gedrag van vóór het veld.
+ */
+export function mapLtbLoadPosition(p: BeamCheckConfig["ltbLoadPosition"]): LtbLoadPosition {
+  switch (p) {
+    case "compressionEdge": return "CompressionEdge";
+    case "tensionEdge":     return "TensionEdge";
+    case "centreOfGravity":
+    default:                return "CentreOfGravity";
+  }
+}
+
+/**
+ * Standaardwaarde van de scheurfactor k_cr (6.13a): 1,0, de waarde die
+ * NEN-EN 1995-1-1/NB:2013 bij 6.1.7 voorschrijft voor een prismatische
+ * doorsnede. Zie de toelichting bij `BeamCheckConfig.kCr`.
+ */
+export const K_CR_STANDAARD = 1.0;
+
+/**
+ * De scheurfactor uit de toetsconfiguratie, of de reden waarom hij niet
+ * deugt. Leeg = de NB-waarde 1,0. Buiten (0, 1] is geen factor: b_ef = k_cr · b
+ * kan niet meer breedte geven dan er is, en niet nul of minder. De bouwer
+ * zet zo'n waarde NIET stil op 1,0 — de staaf wordt overgeslagen met deze
+ * reden, zodat het paneel en `skipped_beams` hem tonen. De UI en
+ * `valideerModel` laten zo'n waarde niet door; hier komt hij alleen uit een
+ * met de hand bewerkt projectbestand.
+ */
+export function kCrUitConfig(cfg: BeamCheckConfig): { kCr: number } | { fout: string } {
+  const k = cfg.kCr;
+  if (k === undefined) return { kCr: K_CR_STANDAARD };
+  if (typeof k !== "number" || !Number.isFinite(k) || k <= 0 || k > 1) {
+    return {
+      fout: `k_cr = ${String(k)} ligt buiten (0, 1] — b_ef = k_cr · b (EN 1995-1-1 6.1.7, 6.13a) ` +
+        "kan niet nul, negatief of groter dan de breedte zijn; leeg = 1,0 (NB bij 6.1.7)",
+    };
+  }
+  return { kCr: k };
 }
 
 /**
@@ -500,6 +544,13 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     // daarom niet aan.
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+    // Een scheurfactor buiten (0, 1] is geen keuze maar een fout; die gaat
+    // niet stil op 1,0 maar houdt de staaf buiten de toetsing, met reden.
+    const kCr = kCrUitConfig(cfg);
+    if ("fout" in kCr) {
+      skipped.push({ beamId: beam.id, reason: kCr.fout });
+      continue;
+    }
     // Belastingduur per UGT-combinatie (3.1.3(2)). Een opgegeven klasse is een
     // ondergrens: zie `lib/belastingduur.ts`.
     const duurPerCombinatie = data.loadCases
@@ -594,30 +645,39 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
           ? (cfg.ltbSupportSpacing_m as number)
           : 0,
       ltb_load_case: "UniformLoad",
-      ltb_load_position: "CentreOfGravity",
+      // Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a): aan de
+      // drukzijde l_ef + 2h, aan de trekzijde l_ef − 0,5h. Leeg = zwaartepunt,
+      // het gedrag van vóór dit veld. Een dak of vloer op de bovenrand van een
+      // vrij opgelegde ligger is een last aan de drukzijde — de ongunstige
+      // kant, en dus een keuze die de constructeur zelf maakt.
+      ltb_load_position: mapLtbLoadPosition(cfg.ltbLoadPosition),
       ltb_effective_length_override_m: 0,
-      perform_ltb_check: true,
+      // Kiptoets art. 6.3.3 aan/uit. `false` = de gedrukte rand is over de
+      // volle lengte zijdelings gesteund en de opleggingen laten geen torsie
+      // toe, zodat k_crit = 1,0 (art. 6.3.3(5)); buiging is dan al getoetst
+      // in 6.1.6 en druk in 6.3.2. De kern laat de toets dan niet stil weg
+      // maar zet hem als "niet van toepassing" met deze reden in het
+      // resultaat. Leeg = aan, het gedrag van vóór dit veld.
+      perform_ltb_check: cfg.performLtbCheck ?? true,
       // Scheurfactor voor dwarskracht, b_ef = k_cr · b uit EN 1995-1-1+A2
       // (6.13a). De Eurocode beveelt 0,67 aan voor gezaagd en gelijmd
       // gelamineerd hout, maar laat de keuze uitdrukkelijk aan de nationale
       // bijlage. NEN-EN 1995-1-1/NB:2013 bij 6.1.7 schrijft voor liggers met
       // een prismatische doorsnede k_cr = 1,0 voor; de 0,8 daar geldt alleen
-      // voor I- en T-profielen met een dun lijf, en deze toetsing rekent
-      // uitsluitend met rechthoekige doorsneden.
+      // voor I- en T-profielen met een dun lijf.
       //
-      // Dus: 1,0 is hier de normwaarde. Naar 0,67 gaan zou de
-      // dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
+      // Dus: 1,0 is de normwaarde en de standaard (`K_CR_STANDAARD`). Wie
+      // met de aanbevolen 0,67 wil rekenen, zet dat in `cfg.kCr`; de kern
+      // vermeldt de gebruikte waarde met bron in de dwarskrachttoets. Een
+      // waarde buiten (0, 1] is hierboven al geweigerd (`kCrUitConfig`).
       //
-      // LET OP — dit geldt alleen voor de RECHTHOEK. Sinds een eigen
-      // doorsnede hier ook binnenkomt, is de zin "deze toetsing rekent
-      // uitsluitend met rechthoekige doorsneden" niet meer waar. Voor een
-      // samengestelde doorsnede leest de NB k_cr af uit de verhouding
-      // lijfdikte / flensbreedte (0,8 zodra het lijf dunner is dan de halve
-      // flens), en die verhouding kent deze bouwer niet — de kern wél. De
-      // kern negeert dit veld daarom bij een niet-rechthoekige doorsnede en
-      // bepaalt k_cr zelf; zie `shear::k_cr_nb` en de toelichting bij
-      // `check_timber_beam`.
-      k_cr: 1.0,
+      // LET OP — dit geldt alleen voor de RECHTHOEK. Voor een samengestelde
+      // doorsnede leest de NB k_cr af uit de verhouding lijfdikte /
+      // flensbreedte (0,8 zodra het lijf dunner is dan de halve flens), en
+      // die verhouding kent deze bouwer niet — de kern wél. De kern negeert
+      // dit veld daarom bij een niet-rechthoekige doorsnede en bepaalt k_cr
+      // zelf; zie `shear::k_cr_nb` en de toelichting bij `check_timber_beam`.
+      k_cr: kCr.kCr,
       load_sharing: false,
       deflection_inst_mm: wInstMm,
       // Zakking onder de quasi-blijvende BGT-combinatie (G + Σ ψ₂,i · Q_k,i),

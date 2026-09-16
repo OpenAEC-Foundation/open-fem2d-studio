@@ -583,6 +583,11 @@ export const SPIEGELREGELS_TOETSCONFIG: { [K in keyof Required<BeamCheckConfig>]
   loadDuration: "gelijk",
   // Een afstand, geen positie.
   ltbSupportSpacing_m: "gelijk",
+  // Een factor, een schakelaar en een ZIJDE (druk/trek) in de
+  // referentierichting: geen van drie hangt aan de tekenrichting.
+  kCr: "gelijk",
+  performLtbCheck: "gelijk",
+  ltbLoadPosition: "gelijk",
   // Boven en onder zijn ZIJDEN in de referentierichting, geen posities.
   betonKorf: "gelijk",
   betonMilieuklasse: "gelijk",

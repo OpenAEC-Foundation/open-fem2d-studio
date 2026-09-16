@@ -44,6 +44,7 @@ import type { CheckSkip, MemberCheckResult } from "./checkTypes";
 import { beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
 import { toetsdataInReferentierichting } from "./referentierichting";
 import {
+  kCrUitConfig,
   mapLoadDuration,
   mapServiceClass,
   matchSupportedTimberGrade,
@@ -597,6 +598,13 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
     }
 
     const cfg = beam.checkConfig ?? {};
+    // Dezelfde regel als in de houtbouwer: een k_cr buiten (0, 1] is een fout
+    // en houdt de staaf met reden buiten de toetsing.
+    const kCr = kCrUitConfig(cfg);
+    if ("fout" in kCr) {
+      skipped.push({ beamId: beam.id, reason: kCr.fout });
+      continue;
+    }
     const duurPerCombinatie = data.loadCases
       ? belastingduurPerCombinatie({
           combinaties: ulsCombos,
@@ -616,8 +624,10 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
       load_duration_per_combination: duurPerCombinatie,
       length_m: lengthMm / 1000,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
-      // NB bij 6.1.7: k_cr = 1,0 voor liggers met een prismatische doorsnede.
-      k_cr: 1.0,
+      // NB bij 6.1.7: k_cr = 1,0 voor liggers met een prismatische doorsnede;
+      // een opgegeven `cfg.kCr` gaat door, buiten (0, 1] is hierboven al
+      // geweigerd. Dezelfde regel als in de houtbouwer (`kCrUitConfig`).
+      k_cr: kCr.kCr,
       load_sharing: false,
     });
   }
