@@ -2280,6 +2280,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nationale-bijlage"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ts-rs",
+]
+
+[[package]]
 name = "ndk"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2309,6 +2318,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "insta",
+ "nationale-bijlage",
  "serde",
  "ts-rs",
 ]
@@ -2319,6 +2329,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1993-1-1-section",
  "serde",
  "serde_json",
@@ -2332,6 +2343,7 @@ dependencies = [
  "approx",
  "insta",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-1-stability",
  "section-properties",
@@ -2346,6 +2358,7 @@ dependencies = [
  "approx",
  "insta",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1990",
  "section-properties",
  "serde",
@@ -2372,6 +2385,7 @@ name = "nen-en-1993-1-8-las"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "nationale-bijlage",
  "nen-en-1993-1-1-section",
  "serde",
  "ts-rs",
@@ -2383,6 +2397,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-1-stability",
  "serde",
@@ -3344,6 +3359,7 @@ dependencies = [
  "concrete-check",
  "lopdf",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-1-stability",
@@ -3930,6 +3946,7 @@ dependencies = [
  "approx",
  "insta",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1990",
  "nen-en-1993-1-1-ltb",
  "nen-en-1993-1-1-section",
@@ -4582,10 +4599,14 @@ name = "toetsbrug"
 version = "0.1.0"
 dependencies = [
  "concrete-check",
+ "nationale-bijlage",
+ "nen-en-1990",
  "nen-en-1992-1-1",
+ "nen-en-1993-1-1-ltb",
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-8-las",
  "nen-en-1995-1-1",
+ "report",
  "serde",
  "serde_json",
  "spanning-check",

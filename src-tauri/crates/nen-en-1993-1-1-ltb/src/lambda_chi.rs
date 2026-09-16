@@ -1,5 +1,9 @@
 //! Lambda_LT + chi_LT helpers + de indeling van de ligger in kipvelden.
 
+// λ̄_LT,0 en β zijn nationaal bepaalde parameters (NB bij 6.3.2.3(1)) en komen
+// daarom uit de normnaad. Zie `crate::NDP`.
+use crate::NDP;
+
 /// De grenzen van de kipvelden, in mm vanaf het staafbegin.
 ///
 /// NB.NB.4.3 noemt L_st "de ongesteunde lengte tussen twee gaffels, tussen één
@@ -59,7 +63,7 @@ pub const MIN_VELDFRACTIE: f64 = 1e-3;
 /// Eén constante, bewust: dit getal stond op drie plaatsen los in de code
 /// (`m_b_rd`, `m_b_rd_channel` en `chi_lt`) en de afleiding in het rapport had
 /// er een vierde van gemaakt.
-pub const LAMBDA_LT_0: f64 = 0.4;
+pub const LAMBDA_LT_0: f64 = NDP.lambda_lt_0;
 
 /// De factor β uit vgl. (6.57). Ook deze schrapt de NB bij 6.3.2.3(1) uit de
 /// aanbeveling: *"de waarde van β moet gelijk zijn genomen aan 0,75"*.
@@ -67,7 +71,7 @@ pub const LAMBDA_LT_0: f64 = 0.4;
 /// Heet hier `BETA_LT` en niet `BETA` om hem te onderscheiden van de β van
 /// NB.NB.4.3 — de verhouding van de eindmomenten — die in dezelfde keten zit
 /// en een heel andere grootheid is.
-pub const BETA_LT: f64 = 0.75;
+pub const BETA_LT: f64 = NDP.beta_lt;
 
 /// EN 1993-1-1 vgl. (6.57), eerste regel:
 /// Φ_LT = 0,5·[1 + α_LT·(λ̄_LT − λ̄_LT,0) + β·λ̄_LT²].

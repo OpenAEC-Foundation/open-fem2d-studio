@@ -7,6 +7,16 @@ use nen_en_1993_1_1_section::{SteelGrade, NamedValue, UnityCheck, CheckStatus};
 use nen_en_1993_1_1_stability::{StabilityCalc, buckling_curve::BucklingCurve};
 use section_properties::SectionProperties;
 
+/// De nationaal bepaalde parameters bij NEN-EN 1993-1-1, uit de normnaad.
+///
+/// Voor deze crate gaat het om λ̄_LT,0 en β van (6.57) — beide door de NB bij
+/// 6.3.2.3(1) als voorschrift gesteld — en om [`nationale_bijlage::Kipmethode`],
+/// die zegt WELKE weg naar M_cr geldt. Dat laatste is geen getal: NEN-EN
+/// 1993-1-1 geeft zelf geen uitdrukking voor M_cr (zie [`en_general`]), dus een
+/// andere bijlage kan daar een andere werkwijze voorschrijven.
+pub(crate) const NDP: nationale_bijlage::Ndp1993 =
+    nationale_bijlage::Ndp1993::voor(nationale_bijlage::NationaleBijlage::NL);
+
 pub mod nb_annex;
 pub mod lambda_chi;
 pub mod en_general;
@@ -615,6 +625,17 @@ pub fn m_b_rd_channel_met_veld(
     z_a_mm: f64,
     force_state: ForceStateSnapshot,
 ) -> (StabilityCalc, usize) {
+    // WELKE WEG NAAR M_cr — de normnaad beslist, niet dit bestand.
+    //
+    // NEN-EN 1993-1-1 geeft zelf geen uitdrukking voor M_cr (zie
+    // `en_general`); de rekenregels komen uit de nationale bijlage. Deze
+    // uitputtende `match` bestaat opdat een tweede bijlage hier een keuze MOET
+    // maken in plaats van stilzwijgend de Nederlandse figuren van bijlage
+    // NB.NB te gebruiken. Voor `NbNbFiguren` verandert er niets aan de
+    // rekengang hieronder.
+    match NDP.kipmethode {
+        nationale_bijlage::Kipmethode::NbNbFiguren => {}
+    }
     let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
     let (v, alle_velden) = maatgevend_kipveld(
@@ -1083,6 +1104,17 @@ pub fn m_b_rd_met_veld(
     profielsoort: Kipprofiel,
     force_state: ForceStateSnapshot,
 ) -> (StabilityCalc, usize) {
+    // WELKE WEG NAAR M_cr — de normnaad beslist, niet dit bestand.
+    //
+    // NEN-EN 1993-1-1 geeft zelf geen uitdrukking voor M_cr (zie
+    // `en_general`); de rekenregels komen uit de nationale bijlage. Deze
+    // uitputtende `match` bestaat opdat een tweede bijlage hier een keuze MOET
+    // maken in plaats van stilzwijgend de Nederlandse figuren van bijlage
+    // NB.NB te gebruiken. Voor `NbNbFiguren` verandert er niets aan de
+    // rekengang hieronder.
+    match NDP.kipmethode {
+        nationale_bijlage::Kipmethode::NbNbFiguren => {}
+    }
     let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
     let (v, alle_velden) = maatgevend_kipveld(

@@ -68,9 +68,11 @@ pub fn k_mod(_timber: TimberType, service: ServiceClass, duration: LoadDurationC
 /// massief hout 1,30 — bevestigd door de referentie-uitwerking
 /// ("Solid timber; gammaM = 1,30"); gelamineerd hout 1,25.
 pub fn gamma_m(timber: TimberType) -> f64 {
+    // Nationaal bepaalde parameter (2.4.1(1)P staat in de NDP-lijst van het
+    // voorwoord): de getallen komen uit de normnaad en niet uit deze regels.
     match timber {
-        TimberType::Solid => 1.30,
-        TimberType::Glulam => 1.25,
+        TimberType::Solid => crate::NDP.gamma_m_massief,
+        TimberType::Glulam => crate::NDP.gamma_m_gelamineerd,
     }
 }
 
@@ -183,6 +185,14 @@ mod tests {
     fn gamma_m_volgens_nb() {
         assert_relative_eq!(gamma_m(TimberType::Solid), 1.30);
         assert_relative_eq!(gamma_m(TimberType::Glulam), 1.25);
+    }
+
+    /// γ_M komt uit de normnaad en niet uit een los getal in dit bestand.
+    #[test]
+    fn gamma_m_komt_uit_de_normnaad() {
+        let bron = nationale_bijlage::Ndp1995::voor(nationale_bijlage::NationaleBijlage::NL);
+        assert_relative_eq!(gamma_m(TimberType::Solid), bron.gamma_m_massief);
+        assert_relative_eq!(gamma_m(TimberType::Glulam), bron.gamma_m_gelamineerd);
     }
 
     #[test]

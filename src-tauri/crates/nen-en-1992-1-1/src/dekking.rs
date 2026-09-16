@@ -80,6 +80,10 @@
 //! MCP-server — net als `beff`, en heeft daarom één rekengang
 //! ([`concrete_cover_request`]) die alle drie aanroepen.
 
+// Tabel 4.4N, de drie Δc_dur-toeslagen, Δc_dev en de constructieklasse bij 50
+// jaar zijn nationaal bepaalde parameters: ze komen uit de normnaad.
+use crate::NDP;
+
 use nen_en_1993_1_1_section::CheckStatus;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -481,6 +485,23 @@ pub enum StructuralClass {
 }
 
 impl StructuralClass {
+    /// De klasse bij haar nummer (4 → S4).
+    ///
+    /// Bestaat zodat de normnaad het nummer kan dragen zonder deze crate te
+    /// hoeven kennen. `None` bij een nummer buiten S1…S6 — dat is een fout in
+    /// de NDP-rij en geen keuze, dus hij mag niet stil op S4 uitkomen.
+    pub const fn van_nummer(nummer: u8) -> Option<StructuralClass> {
+        match nummer {
+            1 => Some(StructuralClass::S1),
+            2 => Some(StructuralClass::S2),
+            3 => Some(StructuralClass::S3),
+            4 => Some(StructuralClass::S4),
+            5 => Some(StructuralClass::S5),
+            6 => Some(StructuralClass::S6),
+            _ => None,
+        }
+    }
+
     fn index(self) -> usize {
         match self {
             StructuralClass::S1 => 0,
@@ -509,7 +530,13 @@ impl StructuralClass {
 ///
 /// NB bij 4.4.1.2(5): "Als constructieklasse voor een ontwerplevensduur van 50
 /// jaar moet S4 zijn aangehouden."
-pub const DEFAULT_STRUCTURAL_CLASS: StructuralClass = StructuralClass::S4;
+pub const DEFAULT_STRUCTURAL_CLASS: StructuralClass =
+    match StructuralClass::van_nummer(NDP.constructieklasse_50_jaar) {
+        Some(klasse) => klasse,
+        // Een nummer buiten S1…S6 in de NDP-rij is een fout in de naad zelf;
+        // dan hoort de build te falen en niet S4 te worden.
+        None => panic!("de nationale bijlage geeft een constructieklasse die niet bestaat"),
+    };
 
 /// Tabel 4.4N — c_min,dur voor betonstaal volgens NEN-EN 10080, in mm, ZOALS
 /// DE NATIONALE BIJLAGE HEM VOORSCHRIJFT.
@@ -521,33 +548,26 @@ pub const DEFAULT_STRUCTURAL_CLASS: StructuralClass = StructuralClass::S4;
 /// de EN gaf daar 30/35/40/45/50/55, de NB geeft dezelfde waarden als de kolom
 /// XD2/XS2. Wie hier uit het geheugen de EN-waarden invult, rekent een balk in
 /// een getijdezone 5 mm te dun.
-const C_MIN_DUR_REINFORCING: [[f64; 7]; 6] = [
-    [10.0, 10.0, 10.0, 15.0, 20.0, 25.0, 25.0], // S1
-    [10.0, 10.0, 15.0, 20.0, 25.0, 30.0, 30.0], // S2
-    [10.0, 10.0, 20.0, 25.0, 30.0, 35.0, 35.0], // S3
-    [10.0, 15.0, 25.0, 30.0, 35.0, 40.0, 40.0], // S4
-    [15.0, 20.0, 30.0, 35.0, 40.0, 45.0, 45.0], // S5
-    [20.0, 25.0, 35.0, 40.0, 45.0, 50.0, 50.0], // S6
-];
+const C_MIN_DUR_REINFORCING: [[f64; 7]; 6] = NDP.c_min_dur_betonstaal;
 
 /// Δc_dur,γ — aanvullende veiligheidsmarge, 4.4.1.2(6).
 /// NB: "De waarde van Δc dur,γ moet gelijk aan 0 mm zijn genomen."
-pub const DELTA_C_DUR_GAMMA_MM: f64 = 0.0;
+pub const DELTA_C_DUR_GAMMA_MM: f64 = NDP.delta_c_dur_gamma_mm;
 
 /// Δc_dur,st — reductie bij roestvast staal, 4.4.1.2(7).
 /// NB: "De waarde van Δc dur,st moet gelijk aan 0 mm zijn genomen."
-pub const DELTA_C_DUR_ST_MM: f64 = 0.0;
+pub const DELTA_C_DUR_ST_MM: f64 = NDP.delta_c_dur_st_mm;
 
 /// Δc_dur,add — reductie bij aanvullende bescherming, 4.4.1.2(8).
 /// NB: "De waarde van Δc dur,add moet gelijk aan 0 mm zijn genomen."
-pub const DELTA_C_DUR_ADD_MM: f64 = 0.0;
+pub const DELTA_C_DUR_ADD_MM: f64 = NDP.delta_c_dur_add_mm;
 
 /// Δc_dev — toeslag voor uitvoeringstoleranties, 4.4.1.3(1)P.
 ///
 /// De EN beveelt 10 mm aan; de NB schrijft voor: "De waarde van Δc dev moet
 /// gelijk aan 5 mm zijn genomen." De reducties van 4.4.1.3(3) zijn in de NL
 /// bijlage aan voorwaarden gebonden en worden hier niet toegepast.
-pub const DELTA_C_DEV_MM: f64 = 5.0;
+pub const DELTA_C_DEV_MM: f64 = NDP.delta_c_dev_mm;
 
 /// De ondergrens uit vergelijking (4.2): c_min is nooit kleiner dan 10 mm.
 pub const C_MIN_FLOOR_MM: f64 = 10.0;

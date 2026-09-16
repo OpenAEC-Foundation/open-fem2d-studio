@@ -52,15 +52,21 @@ pub fn tau_d_mpa(v_ed_kn: f64, section: &TimberSection, k_cr: f64) -> f64 {
 /// `b_lijf >= b_flens` (een rechthoek is het grensgeval) komt er 1,0 uit, bij
 /// `b_lijf <= b_flens/2` komt er 0,8 uit, en daartussen de rechte lijn.
 pub fn k_cr_nb(b_lijf_mm: f64, b_flens_mm: f64) -> f64 {
+    // De twee grenswaarden zijn nationaal bepaald (6.1.7 staat als
+    // 6.4.3(8)-buur niet in de NDP-lijst, maar de NB SCHRAPT hier de
+    // aanbeveling 0,67 en schrijft eigen waarden voor). Ze komen daarom uit de
+    // normnaad; alleen de interpolatie ertussen staat hier.
+    let prismatisch = crate::NDP.k_cr_prismatisch;
+    let dun_lijf = crate::NDP.k_cr_dun_lijf;
     if b_lijf_mm <= 0.0 || b_flens_mm <= 0.0 || b_lijf_mm >= b_flens_mm {
-        return 1.0;
+        return prismatisch;
     }
     let half = b_flens_mm / 2.0;
     if b_lijf_mm <= half {
-        return 0.8;
+        return dun_lijf;
     }
-    // Lineair tussen (half -> 0,8) en (b_flens -> 1,0).
-    0.8 + 0.2 * (b_lijf_mm - half) / (b_flens_mm - half)
+    // Lineair tussen (half -> k_cr,dun lijf) en (b_flens -> k_cr,prismatisch).
+    dun_lijf + (prismatisch - dun_lijf) * (b_lijf_mm - half) / (b_flens_mm - half)
 }
 
 /// §6.1.7, vergelijking (6.13): `tau_d <= f_v,d`.

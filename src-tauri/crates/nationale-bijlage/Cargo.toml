@@ -1,0 +1,16 @@
+[package]
+name = "nationale-bijlage"
+version = "0.1.0"
+edition = "2021"
+description = "De normnaad: welke nationale bijlage geldt, en welke nationaal bepaalde parameters daarbij horen"
+license = "CC-BY-SA-4.0"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

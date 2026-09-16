@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["lib"]
 
 [dependencies]
+nationale-bijlage = { path = "../nationale-bijlage" }
 serde = { workspace = true }
 ts-rs = { workspace = true }
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }

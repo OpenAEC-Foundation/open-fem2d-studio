@@ -5,6 +5,16 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use mechanics::ForceStateSnapshot;
 
+/// De nationaal bepaalde parameters bij NEN-EN 1993-1-1, uit de normnaad.
+///
+/// γ_M0, γ_M1 en γ_M2 zijn nationaal bepaald (NB bij §6.1(1), OPMERKING 2B).
+/// Ze staan per staalsoort in [`SteelGrade`] omdat dat type ook langs de drie
+/// wegen naar buiten gaat, maar het GETAL hoort niet bij de staalsoort: het
+/// hoort bij de bijlage. Daarom komt het hier uit de naad en staat het niet
+/// meer vijf keer als los cijfer in de regels hieronder.
+pub(crate) const NDP: nationale_bijlage::Ndp1993 =
+    nationale_bijlage::Ndp1993::voor(nationale_bijlage::NationaleBijlage::NL);
+
 pub mod classification;
 pub mod compression;
 pub mod bending;
@@ -35,11 +45,11 @@ pub struct SteelGrade {
 // van EN 10025-2 geeft tabel 3.1 490 N/mm². De lastoets (NEN-EN 1993-1-8,
 // f_vw,d = f_u/√3/(β_w·γ_M2)) was daarmee 4 % te gunstig. Zie basisaudit
 // §3.2 punt 1.
-pub const S235: SteelGrade = SteelGrade { name: "S235", fy_mpa: 235.0, fu_mpa: 360.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
-pub const S275: SteelGrade = SteelGrade { name: "S275", fy_mpa: 275.0, fu_mpa: 430.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
-pub const S355: SteelGrade = SteelGrade { name: "S355", fy_mpa: 355.0, fu_mpa: 490.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
-pub const S420: SteelGrade = SteelGrade { name: "S420", fy_mpa: 420.0, fu_mpa: 520.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
-pub const S460: SteelGrade = SteelGrade { name: "S460", fy_mpa: 460.0, fu_mpa: 540.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
+pub const S235: SteelGrade = SteelGrade { name: "S235", fy_mpa: 235.0, fu_mpa: 360.0, gamma_m0: NDP.gamma_m0, gamma_m1: NDP.gamma_m1, gamma_m2: NDP.gamma_m2 };
+pub const S275: SteelGrade = SteelGrade { name: "S275", fy_mpa: 275.0, fu_mpa: 430.0, gamma_m0: NDP.gamma_m0, gamma_m1: NDP.gamma_m1, gamma_m2: NDP.gamma_m2 };
+pub const S355: SteelGrade = SteelGrade { name: "S355", fy_mpa: 355.0, fu_mpa: 490.0, gamma_m0: NDP.gamma_m0, gamma_m1: NDP.gamma_m1, gamma_m2: NDP.gamma_m2 };
+pub const S420: SteelGrade = SteelGrade { name: "S420", fy_mpa: 420.0, fu_mpa: 520.0, gamma_m0: NDP.gamma_m0, gamma_m1: NDP.gamma_m1, gamma_m2: NDP.gamma_m2 };
+pub const S460: SteelGrade = SteelGrade { name: "S460", fy_mpa: 460.0, fu_mpa: 540.0, gamma_m0: NDP.gamma_m0, gamma_m1: NDP.gamma_m1, gamma_m2: NDP.gamma_m2 };
 
 /// Bovengrens van de dikteklasse t ≤ 40 mm in tabel 3.1.
 pub const DIKTE_GRENS_40_MM: f64 = 40.0;
@@ -154,6 +164,22 @@ pub fn grade_by_name(name: &str) -> Option<SteelGrade> {
 #[cfg(test)]
 mod dikte_tests {
     use super::*;
+
+    /// γ_M0, γ_M1 en γ_M2 komen uit de normnaad en niet uit een los getal bij
+    /// de staalsoort. De bron wordt naast de gebruikte waarde gelegd, ook voor
+    /// de dikteklasse 40–80 mm: die bouwt een nieuwe `SteelGrade` en zou de
+    /// factoren kunnen verliezen.
+    #[test]
+    fn gamma_m_komt_uit_de_normnaad() {
+        let bron = nationale_bijlage::Ndp1993::voor(nationale_bijlage::NationaleBijlage::NL);
+        for g in [S235, S275, S355, S420, S460] {
+            assert_eq!((g.gamma_m0, g.gamma_m1, g.gamma_m2),
+                       (bron.gamma_m0, bron.gamma_m1, bron.gamma_m2), "{}", g.name);
+            let (dik, _, _) = g.voor_dikte(50.0).unwrap();
+            assert_eq!((dik.gamma_m0, dik.gamma_m1, dik.gamma_m2),
+                       (bron.gamma_m0, bron.gamma_m1, bron.gamma_m2), "{} dik", g.name);
+        }
+    }
 
     #[test]
     fn tabel_3_1_per_dikteklasse() {

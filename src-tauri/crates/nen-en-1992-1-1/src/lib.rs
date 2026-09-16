@@ -90,6 +90,16 @@
 //! `UnityCheck` en `CheckStatus` wonen nu in `nen-en-1993-1-1-section`; ze
 //! zijn materiaal-neutraal en horen in een gedeelde `check-core` crate.
 
+/// De nationaal bepaalde parameters bij NEN-EN 1992-1-1, uit de normnaad.
+///
+/// Eén plek voor de hele crate: γ_C, γ_S, α_cc, γ_cE, de factor in ε_ud, tabel
+/// 4.4N met de Δc-toeslagen, de constructieklasse bij 50 jaar, de coëfficiënt
+/// van λ_lim en α₆ voor druk. Elk van die waarden stond hier tot september 2026
+/// als losse `const` of `match`-arm; nu staan ze bij elkaar in de crate
+/// `nationale-bijlage`, met het NB-artikel erbij, en leest deze crate ze daar.
+pub(crate) const NDP: nationale_bijlage::Ndp1992 =
+    nationale_bijlage::Ndp1992::voor(nationale_bijlage::NationaleBijlage::NL);
+
 pub mod beff;
 pub mod beff_deelstappen;
 pub mod bending;

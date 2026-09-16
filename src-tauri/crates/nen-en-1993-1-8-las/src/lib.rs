@@ -71,9 +71,17 @@ use nen_en_1993_1_1_section::grade_by_name;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// De nationaal bepaalde parameters bij NEN-EN 1993-1-8, uit de normnaad.
+///
+/// Apart van die bij NEN-EN 1993-1-1: het is een ander normdeel met een eigen
+/// nationale bijlage (NB:2011 tegen NB:2016). Dat beide γ_M2's vandaag 1,25
+/// zijn, is een uitkomst en geen afspraak.
+const NDP: nationale_bijlage::Ndp1993Las =
+    nationale_bijlage::Ndp1993Las::voor(nationale_bijlage::NationaleBijlage::NL);
+
 /// Partiële factor voor de weerstand van lassen — NEN-EN 1993-1-8 tabel 2.1
 /// met de waarde uit de Nederlandse nationale bijlage.
-pub const GAMMA_M2: f64 = 1.25;
+pub const GAMMA_M2: f64 = NDP.gamma_m2;
 
 /// Kleinste keeldikte die de norm toelaat: NEN-EN 1993-1-8 4.5.2(2) — een
 /// hoeklas met een keeldikte kleiner dan 3 mm behoort niet te worden gebruikt.
