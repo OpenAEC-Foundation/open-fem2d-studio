@@ -77,6 +77,14 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      materiaalveld en leest de plaat dan met haar eigen E/ν/ρ of, als die
  *      ontbreken, met de staaldefaults — dat verschil is zichtbaar in het
  *      rapport (materiaal en E-bron staan erin) en niet stil.
+ *      Issue #14 (september 2026, optioneel — geen versie-bump):
+ *      `Plate.cltG12` met `Plate.cltG12Bron`, of `Plate.cltG12Bovengrens`, de
+ *      G₁₂-keuze van een kruislaaghouten plaat. Ontbreken ze bij elke andere
+ *      plaat, dan verandert er niets. Een kruislaaghouten plaat uit een ouder
+ *      bestand draagt geen van beide en wordt bij het rekenen GEWEIGERD met
+ *      de reden en de twee uitwegen — er wordt geen G₁₂ aangenomen.
+ *      Bewust geen automatische aanvulling bij het laden: dat zou de
+ *      niet-gereduceerde bovengrens stil tot keuze van de gebruiker maken.
  *      Eveneens optioneel binnen v2: `analysetype` (drie standen) en
  *      `betonSegmentLengteMm`. `nonlinearEnabled` BLIJFT geschreven worden en
  *      blijft leidend zolang `analysetype` ontbreekt — zie

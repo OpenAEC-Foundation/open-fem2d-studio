@@ -219,6 +219,26 @@ const BUNDEL_TESTS = new Set([
   // de herschreven bundelkopie staat naast het origineel, dus dat pad blijft
   // kloppen.
   "plaat-materiaal",
+  // Plaatspanningen in de MATERIAALASSEN (issue #14): σ₁/σ₂/τ₁₂ per element
+  // en per combinatie uit `engine`, `combinations` en `plaatMateriaal` — alle
+  // drie in de barrel. Hoort óók tegen de bundel: de sidecar rekent met
+  // dezelfde engine, en een bundel die de omrekening laat vallen, levert
+  // straks een houttoets met spanningen in de verkeerde assen.
+  "plaat-materiaalassen",
+  // G₁₂ van kruislaaghout als verplichte invoer met bron, of bewust de
+  // bovengrens (issue #14): `plaatMateriaal`, `engine`, `valideerModel`,
+  // `bouwMultiInput`, `houtEindstijfheid` en het projectbestand — alles in de
+  // barrel. Hoort óók tegen de bundel: laat het MCP-artefact de G₁₂-plicht
+  // vallen, dan rekent de sidecar een kruislaaghouten schijf stil met de
+  // niet-gereduceerde bovengrens.
+  "plaat-clt-g12",
+  // ν₁₂ van hout en kruislaaghout (issue #14): de aanname ν₁₂ = 0 zichtbaar,
+  // overschrijfbaar per plaat, en weigering bij ν₁₂·ν₂₁ ≥ 1. Praat met
+  // `plaatMateriaal`, `engine`, `valideerModel`, `bouwMultiInput` en het
+  // projectbestand — alles in de barrel — en leest fem_tools.rs van schijf
+  // (de bundelkopie staat naast het origineel, dus dat pad klopt). Hoort óók
+  // tegen de bundel: de sidecar moet dezelfde grens trekken als de app.
+  "plaat-nu12",
   // Randlast en randpuntlast op een OPENINGSRAND: engine, mapping, poort,
   // sidecar (verwerkVerzoek), projectbestand en IFC-export — allemaal in de
   // barrel, en juist in de bundel van belang: de sidecar rekent de plaat met

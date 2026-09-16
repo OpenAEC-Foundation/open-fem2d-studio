@@ -249,6 +249,7 @@ const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 const PLATE_VELDEN = [
   "id", "nodeIds", "thickness", "E", "nu", "rho", "meshSize", "meshCache",
   "meshType", "openingen", "materiaal", "hoofdrichting",
+  "cltG12", "cltG12Bron", "cltG12Bovengrens",
 ] as const;
 
 /** Velden van één opening in een plaat (`PlaatOpening`). */
@@ -918,13 +919,28 @@ export function controleerVelden(rauw: unknown): string[] {
     // regel — een naam die niet herkend wordt is een fout en geen stille
     // terugval op staal. `keurPlaatMateriaal` is de enige bron van dat
     // oordeel; de engine en het eigenschappenpaneel gebruiken hem ook.
-    if (p.materiaal !== undefined) {
-      if (typeof p.materiaal !== "string") {
-        fouten.push(`${pad}.materiaal: tekst verwacht (een materiaalnaam).`);
-      } else {
-        const reden = keurPlaatMateriaal(p.materiaal);
-        if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
-      }
+    // Sinds issue #14 keurt hij de HELE plaat: de G₁₂-plicht van
+    // kruislaaghout (cltG12 met bron, of bewust de bovengrens) en de grens op
+    // ν₁₂ hangen van meer af dan de naam.
+    keurGetal(p.cltG12, `${pad}.cltG12`, fouten, { positief: true });
+    if (p.cltG12Bron !== undefined && typeof p.cltG12Bron !== "string") {
+      fouten.push(`${pad}.cltG12Bron: tekst verwacht (de herkomst van cltG12).`);
+    }
+    if (p.cltG12Bovengrens !== undefined && typeof p.cltG12Bovengrens !== "boolean") {
+      fouten.push(`${pad}.cltG12Bovengrens: true of false verwacht.`);
+    }
+    if (p.materiaal !== undefined && typeof p.materiaal !== "string") {
+      fouten.push(`${pad}.materiaal: tekst verwacht (een materiaalnaam).`);
+    } else {
+      const reden = keurPlaatMateriaal({
+        materiaal: p.materiaal as string | undefined,
+        E: typeof p.E === "number" ? p.E : undefined,
+        nu: typeof p.nu === "number" ? p.nu : undefined,
+        cltG12: typeof p.cltG12 === "number" ? p.cltG12 : undefined,
+        cltG12Bron: typeof p.cltG12Bron === "string" ? p.cltG12Bron : undefined,
+        cltG12Bovengrens: typeof p.cltG12Bovengrens === "boolean" ? p.cltG12Bovengrens : undefined,
+      });
+      if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
     }
     // Hoofdrichting in graden; elke eindige hoek mag, ook negatief of > 360.
     keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);

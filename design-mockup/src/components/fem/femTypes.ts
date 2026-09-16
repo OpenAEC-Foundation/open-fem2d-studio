@@ -628,6 +628,22 @@ export interface Plate {
    * richtingsafhankelijk materiaal heeft het veld geen invloed.
    */
   hoofdrichting?: number;
+  /**
+   * G₁₂ in het vlak van een KRUISLAAGHOUTEN plaat (N/mm²), uit de
+   * productverklaring of de ETA — alleen samen met `cltG12Bron`. NEN-EN
+   * 1995-1-1 en EN 338 geven geen glijdingsmodulus in het vlak voor een
+   * gekruiste opbouw; zie `lib/plaatMateriaal.ts`. Bij elk ander materiaal
+   * wordt het veld geweigerd, niet genegeerd.
+   */
+  cltG12?: number;
+  /** Herkomst van `cltG12`, bijvoorbeeld "ETA-00/0000, tabel 3". Verplicht bij `cltG12`. */
+  cltG12Bron?: string;
+  /**
+   * Kruislaaghout: bewust rekenen met de uitgesmeerde G_mean, NIET gereduceerd
+   * voor de kruisingsvlakken — een bovengrens, met waarschuwing. De G₁₂ van
+   * vóór issue #14. Niet samen met `cltG12`.
+   */
+  cltG12Bovengrens?: boolean;
 }
 
 /** De elementkeuzes die een plaat kan dragen — ook de poort en het MCP-schema lezen deze lijst. */

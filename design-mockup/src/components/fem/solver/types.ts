@@ -409,6 +409,12 @@ export interface SolverPlateInput {
    * klok in vanaf de globale x-as. Ontbreekt → 0°.
    */
   hoofdrichting?: number;
+  /** Kruislaaghout: G₁₂ in het vlak (N/mm²), alleen met `cltG12Bron`. Zie `Plate.cltG12`. */
+  cltG12?: number;
+  /** Herkomst van `cltG12`. */
+  cltG12Bron?: string;
+  /** Kruislaaghout: bewust de niet-gereduceerde G_mean als bovengrens. */
+  cltG12Bovengrens?: boolean;
   /**
    * Elasticiteitsmodulus (N/mm²). Verplicht zolang er geen `materiaal` is;
    * mét materiaal is het de expliciete overschrijving van E₁ én E₂ (en
@@ -667,6 +673,24 @@ export interface PlateElementStress {
   nx: number;        // kN/m — membraankracht = σx·t
   ny: number;        // kN/m
   nxy: number;       // kN/m
+  /**
+   * Dezelfde spanning in de MATERIAALASSEN (N/mm²): σ₁ langs hoofdrichting 1
+   * (de vezel, bij kruislaaghout de lengtelagen), σ₂ loodrecht daarop en τ₁₂.
+   * Een houttoets vraagt de spanning langs en dwars op de vezel, niet in de
+   * globale assen. ALLEEN aanwezig bij een richtingsafhankelijke plaat (hout,
+   * kruislaaghout); bij een isotrope plaat heeft een hoofdrichting geen
+   * betekenis en ontbreekt het veld, zodat dat resultaat ongewijzigd blijft.
+   * Niet te verwarren met `sigma1`/`sigma2` hierboven: dat zijn de
+   * HOOFDSPANNINGEN, waarvan de richting per element verschilt.
+   */
+  materiaalassen?: PlateMaterialAxisStress;
+}
+
+/** Spanning in de materiaalassen van een plaat — zie `PlateElementStress.materiaalassen`. */
+export interface PlateMaterialAxisStress {
+  sigma1: number;    // N/mm² — langs hoofdrichting 1
+  sigma2: number;    // N/mm² — loodrecht op hoofdrichting 1, in het vlak
+  tau12: number;     // N/mm²
 }
 
 /** Resultaat per plaat: elementspanningen + min/max-ranges voor de legenda. */
@@ -681,6 +705,20 @@ export interface PlateResult {
     nx: PlateStressRange;
     ny: PlateStressRange;
     nxy: PlateStressRange;
+  };
+  /**
+   * Alleen bij een richtingsafhankelijke plaat: de hoofdrichting waarin
+   * `elements[].materiaalassen` is uitgedrukt (graden tegen de klok in vanaf
+   * de globale x-as, dezelfde hoek als `Plate.hoofdrichting`) en de min/max
+   * van σ₁, σ₂ en τ₁₂ over de elementen.
+   */
+  materiaalassen?: {
+    hoekGraden: number;
+    ranges: {
+      sigma1: PlateStressRange;
+      sigma2: PlateStressRange;
+      tau12: PlateStressRange;
+    };
   };
 }
 

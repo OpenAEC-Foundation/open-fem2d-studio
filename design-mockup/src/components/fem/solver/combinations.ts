@@ -48,6 +48,7 @@ import {
   type Gevolgklasse,
   type StandaardHerkomst,
 } from "./normcombinaties";
+import { materiaalasRanges, spanningInMateriaalassen } from "../../../lib/plaatMateriaal";
 
 // ── Public types ──────────────────────────────────────────────────────────
 
@@ -545,6 +546,13 @@ export function combineResults(
         d.sigma1 = midden + straal;
         d.sigma2 = midden - straal;
         d.angle = 0.5 * Math.atan2(2 * t, sx - sy);
+        // Materiaalassen: opnieuw uit de GECOMBINEERDE globale componenten,
+        // met dezelfde hoek als de engine (de hoofdrichting hoort bij de
+        // plaat, niet bij het belastinggeval). Lineair, dus gelijk aan het
+        // combineren van σ₁/σ₂/τ₁₂ per geval — maar zo staat de regel één keer.
+        if (referentie.materiaalassen) {
+          d.materiaalassen = spanningInMateriaalassen(sx, sy, t, referentie.materiaalassen.hoekGraden);
+        }
         for (const [sleutel, waarde] of [
           ["sigmaX", d.sigmaX], ["sigmaY", d.sigmaY], ["tauXY", d.tauXY],
           ["vonMises", d.vonMises], ["nx", d.nx], ["ny", d.ny], ["nxy", d.nxy],
@@ -554,7 +562,12 @@ export function combineResults(
           if (waarde > r.max) r.max = waarde;
         }
       }
-      plateElements.push({ plateId: pid, elements: gecombineerd, ranges });
+      plateElements.push({
+        plateId: pid, elements: gecombineerd, ranges,
+        ...(referentie.materiaalassen
+          ? { materiaalassen: materiaalasRanges(gecombineerd, referentie.materiaalassen.hoekGraden) }
+          : {}),
+      });
     }
     if (plateElements.length === 0) plateElements = undefined;
   }

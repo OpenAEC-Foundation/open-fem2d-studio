@@ -113,7 +113,7 @@ export interface ControleModel {
     checkConfig?: { betonKorf?: unknown } | null;
   })[];
   supports?: Pick<Support, "nodeId">[];
-  plates?: Pick<Plate, "id" | "nodeIds" | "openingen" | "materiaal">[];
+  plates?: Pick<Plate, "id" | "nodeIds" | "openingen" | "materiaal" | "E" | "nu" | "cltG12" | "cltG12Bron" | "cltG12Bovengrens">[];
   /**
    * Optioneel: de lasten, voor de controle op plaatlasten en op lasten die
    * stil wegvallen. Ontbreekt het veld, dan blijven die controles achterwege
@@ -265,7 +265,9 @@ export function zoekOpeningFouten(model: ControleModel): Bevinding[] {
 export function zoekPlaatMateriaalFouten(model: ControleModel): Bevinding[] {
   const uit: Bevinding[] = [];
   for (const p of model.plates ?? []) {
-    const reden = keurPlaatMateriaal(p.materiaal);
+    // De hele plaat: sinds issue #14 hoort de G₁₂-keuze van kruislaaghout
+    // en de grens op ν₁₂ bij het oordeel.
+    const reden = keurPlaatMateriaal(p);
     if (reden) {
       uit.push({
         soort: "plaatmateriaal", ernst: "fout", nodeIds: [...(p.nodeIds ?? [])],

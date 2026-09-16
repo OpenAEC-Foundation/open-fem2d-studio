@@ -48,6 +48,7 @@ const BRON_KORT: Record<string, string> = {
   materiaal: "report.plateBron_materiaal",
   handmatig: "report.plateBron_handmatig",
   standaard: "report.plateBron_standaard",
+  aanname: "report.plateBron_aanname",
 };
 
 /** Maten van een opening voor de tabel: "b × h mm" bij een rechthoek, anders het aantal hoeken. */
@@ -74,11 +75,18 @@ export default function PlatesSection() {
   // komen, met het normartikel erbij, en welke velden met de hand zijn
   // overschreven. Platen zonder materiaal krijgen geen regel — daar staat
   // alles al in de tabel.
-  const herkomstRegels: [number, string][] = [];
+  // Waarschuwingen (bijvoorbeeld de niet-gereduceerde G₁₂ van kruislaaghout,
+  // issue #14) krijgen een eigen regel, zodat ze niet in de herkomst
+  // verdwijnen.
+  const herkomstRegels: [string, number, string][] = [];
   for (const p of sorted) {
     const uit = bepaalPlaatStijfheid(withPlateDefaults(p));
-    if (uit.ok && uit.stijfheid.soort !== null) herkomstRegels.push([p.id, uit.stijfheid.herkomst]);
-    if (!uit.ok) herkomstRegels.push([p.id, t("report.plateMateriaalGeweigerd", { reden: uit.reden })]);
+    if (uit.ok && uit.stijfheid.soort !== null) {
+      herkomstRegels.push([`h${p.id}`, p.id, uit.stijfheid.herkomst]);
+      uit.stijfheid.waarschuwingen.forEach((w, i) =>
+        herkomstRegels.push([`w${p.id}-${i}`, p.id, t("report.plateWaarschuwing", { tekst: w })]));
+    }
+    if (!uit.ok) herkomstRegels.push([`g${p.id}`, p.id, t("report.plateMateriaalGeweigerd", { reden: uit.reden })]);
   }
 
   return (
@@ -132,7 +140,10 @@ export default function PlatesSection() {
                     </td>
                     <td className="rpt-num">{st ? fmtNum(st.E1, 0) : "—"}</td>
                     <td className="rpt-num">{st ? fmtNum(st.E2, 0) : "—"}</td>
-                    <td className="rpt-num">{st ? fmtNum(st.G12, 0) : "—"}</td>
+                    <td className="rpt-num">
+                      {st ? fmtNum(st.G12, 0) : "—"}
+                      {st?.bronG12 === "bovengrens" ? ` ${t("report.plateG12Bovengrens")}` : ""}
+                    </td>
                     <td className="rpt-num">{st ? fmtNum(st.nu12, 2) : "—"}</td>
                     <td className="rpt-num">{st ? fmtNum(st.rho, 0) : "—"}</td>
                     <td>
@@ -156,8 +167,8 @@ export default function PlatesSection() {
           </table>
           {herkomstRegels.length > 0 && (
             <ul className="rpt-note" style={{ marginTop: "1.5mm" }}>
-              {herkomstRegels.map(([id, tekst]) => (
-                <li key={`ph${id}`}>
+              {herkomstRegels.map(([sleutel, id, tekst]) => (
+                <li key={sleutel}>
                   {t("report.colPlate", "Plaat")} {id}: {tekst}
                 </li>
               ))}
