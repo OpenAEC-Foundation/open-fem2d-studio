@@ -549,7 +549,7 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
     // hij in voorkomt (w_fin = w_inst + k_def · w_qp). w_add volgt uit w_fin en
     // erft de aanname dus, wat in de toelichting zelf hoort te staan.
     fin.notes.extend(input.deflection_notes.iter().cloned());
-    fin.notes.extend(staaf_notities.iter().cloned());
+    fin.notes.extend(input.staaf_notities.iter().flatten().cloned());
     checks.push(make_resistance(fin));
     checks.push(make_resistance(add));
 

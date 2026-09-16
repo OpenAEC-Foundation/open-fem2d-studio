@@ -157,6 +157,7 @@ export interface CheckRunData {
    * profielvarianten precies dezelfde afleiding krijgen als de toetsing.
    */
   gevallenMetLast?: readonly number[];
+  /**
    * Het analysetype en α_cr per combinatie van de rekengang waarop getoetst
    * wordt (`solver/alphaCr.ts`). De staal- en houtbouwer zetten er bij eerste
    * orde onder de grens een kanttekening mee bij elke op druk belaste staaf.
