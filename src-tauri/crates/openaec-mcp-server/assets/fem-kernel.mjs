@@ -12391,6 +12391,16 @@ function begeleidendeOpstellingen(gevallen, leidendeSoort, factor) {
 }
 
 // src/components/fem/solver/combinations.ts
+var EINDTOESTAND_COMBO_OFFSET = 1e7;
+var EINDTOESTAND_KEY = "__femEindtoestand";
+function zetEindtoestandGevallen(perCase, psi2, gevallen) {
+  const p = perCase;
+  (p[EINDTOESTAND_KEY] ??= /* @__PURE__ */ new Map()).set(psi2, gevallen);
+}
+function getEindtoestandGevallen(perCase, psi2) {
+  const p = perCase;
+  return p[EINDTOESTAND_KEY]?.get(psi2);
+}
 var SCHEEFSTAND_COMBO_OFFSET = 1e6;
 function scheefstandRichtingLabel(richting2) {
   return richting2 === 1 ? "+x" : "\u2212x";
@@ -12441,6 +12451,22 @@ function combinatiesVanSoort(combinations, soort) {
   return combinations.filter((c) => soortVanCombinatie(c) === soort);
 }
 function combineResults(combo, perCase) {
+  if (combo.eindtoestand !== void 0) {
+    const fin = getEindtoestandGevallen(perCase, combo.eindtoestand.psi2);
+    if (fin === void 0) {
+      throw new Error(
+        `Combinatie "${combo.name}" is een eindtoestandvariant (E_mean,fin, NEN-EN 1995-1-1 2.3.2.2(2)), maar de eindtoestand is niet doorgerekend. Er wordt niet stil met E_mean gerekend.`
+      );
+    }
+    if (getSecondOrderState(perCase)) {
+      throw new Error(
+        `Combinatie "${combo.name}": een eindtoestandvariant hoort bij een eerste-orde-berekening (NEN-EN 1995-1-1 2.2.2(1)P); bij tweede orde wordt hij niet gerekend.`
+      );
+    }
+    const basis = { ...combo };
+    delete basis.eindtoestand;
+    return combineResults(basis, fin);
+  }
   const so = getSecondOrderState(perCase);
   if (so) {
     const key = `${combo.id}|` + [...combo.factors.entries()].sort((a, b) => a[0] - b[0]).map(([cid, f]) => `${cid}=${f}`).join(",");
@@ -19575,6 +19601,388 @@ function bouwMultiInput(model) {
   return multiInput;
 }
 
+// src/lib/statischeOnbepaaldheid.ts
+var REACTIECOMPONENTEN = {
+  fixed: 3,
+  pinned: 2,
+  xRoller: 1,
+  zRoller: 1,
+  zSpring: 1,
+  xSpring: 1,
+  rotSpring: 1
+};
+function releaseAantal(beam) {
+  const r = beam.releases;
+  if (!r) return 0;
+  let n = 0;
+  for (const v of [r.startTx, r.startTz, r.startRy, r.endTx, r.endTz, r.endRy]) {
+    if (v) n++;
+  }
+  return n;
+}
+function bepaalOnbepaaldheidVanModel(knopen, staven, opleggingen, metPlaten) {
+  const m = staven.length;
+  const gebruikt = /* @__PURE__ */ new Set();
+  for (const b of staven) {
+    gebruikt.add(b.from);
+    gebruikt.add(b.to);
+  }
+  const bestaande = new Set(knopen.map((n) => n.id));
+  for (const s of opleggingen ?? []) {
+    if (bestaande.has(s.nodeId)) gebruikt.add(s.nodeId);
+  }
+  const j = gebruikt.size;
+  let r = 0;
+  for (const s of opleggingen ?? []) {
+    r += REACTIECOMPONENTEN[s.type] ?? 0;
+  }
+  let c = 0;
+  for (const b of staven) c += releaseAantal(b);
+  if (m === 0) {
+    return {
+      graad: null,
+      statischBepaald: false,
+      toelichting: "Het model bevat geen staven; de graad van statische onbepaaldheid is niet bepaald.",
+      m,
+      r,
+      j,
+      c,
+      metPlaten
+    };
+  }
+  if (opleggingen === void 0) {
+    return {
+      graad: null,
+      statischBepaald: false,
+      toelichting: "De opleggingen zijn niet aan de toetsing meegegeven, dus de graad van statische onbepaaldheid kon niet worden bepaald. De varianten worden daarom behandeld alsof de constructie statisch onbepaald is.",
+      m,
+      r,
+      j,
+      c,
+      metPlaten
+    };
+  }
+  const graad = 3 * m + r - 3 * j - c;
+  const telling = `n = 3\xB7m + r \u2212 3\xB7j \u2212 c = 3\xB7${m} + ${r} \u2212 3\xB7${j} \u2212 ${c} = ${graad} (m = staven, r = oplegreactiecomponenten, j = knopen, c = ontkoppelde vrijheidsgraden).`;
+  if (metPlaten) {
+    return {
+      graad,
+      statischBepaald: false,
+      toelichting: `${telling} Het model bevat wandschijven; die tellen niet mee in deze staventelling en voegen altijd redundantie toe. De constructie wordt daarom als statisch onbepaald behandeld.`,
+      m,
+      r,
+      j,
+      c,
+      metPlaten
+    };
+  }
+  if (graad < 0) {
+    return {
+      graad,
+      statischBepaald: false,
+      toelichting: `${telling} Een negatieve uitkomst wijst op een mechanisme, terwijl het model w\xE9l is doorgerekend. De telling klopt dan niet met het model (bijvoorbeeld door een lokaal mechanisme naast een elders overbepaald deel), en de varianten worden behandeld alsof de constructie statisch onbepaald is.`,
+      m,
+      r,
+      j,
+      c,
+      metPlaten
+    };
+  }
+  if (graad === 0) {
+    return {
+      graad,
+      statischBepaald: true,
+      toelichting: `${telling} De constructie is statisch bepaald: de krachtsverdeling volgt uit evenwicht alleen en verandert niet met de doorsnede.`,
+      m,
+      r,
+      j,
+      c,
+      metPlaten
+    };
+  }
+  return {
+    graad,
+    statischBepaald: false,
+    toelichting: `${telling} De constructie is ${graad}-voudig statisch onbepaald: de krachtsverdeling hangt af van de stijfheidsverhoudingen en verandert dus mee met de doorsnede.`,
+    m,
+    r,
+    j,
+    c,
+    metPlaten
+  };
+}
+
+// src/lib/houtEindstijfheid.ts
+var K_DEF_TABEL_3_2 = { 1: 0.6, 2: 0.8, 3: 2 };
+function nl9(x) {
+  return String(Number(x.toFixed(3))).replace(".", ",");
+}
+function kruipgedragVanStaaf(b) {
+  switch (materiaalVanStaaf(b)) {
+    case "staal":
+      return { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" };
+    case "hout": {
+      const sc = b.checkConfig?.serviceClass ?? 1;
+      const kDef = K_DEF_TABEL_3_2[sc];
+      return {
+        soort: "hout",
+        kDef,
+        sleutel: `hout:${kDef}`,
+        omschrijving: `hout met k_def = ${nl9(kDef)}`
+      };
+    }
+    case "clt": {
+      const k = b.checkConfig?.cltKdef;
+      if (typeof k === "number" && Number.isFinite(k) && k >= 0) {
+        return { soort: "hout", kDef: k, sleutel: `hout:${k}`, omschrijving: `hout met k_def = ${nl9(k)}` };
+      }
+      return {
+        soort: "hout",
+        kDef: null,
+        sleutel: "hout:onbekend",
+        omschrijving: "kruislaaghout zonder opgegeven k_def"
+      };
+    }
+    case "beton":
+      return { soort: "beton", kDef: null, sleutel: "beton", omschrijving: "beton (kruip volgens EN 1992-1-1 3.1.4)" };
+    case "vrij":
+      return {
+        soort: "onbekend",
+        kDef: null,
+        sleutel: `vrij:${b.material ?? ""}`,
+        omschrijving: "vrij materiaal (kruipgedrag onbekend)"
+      };
+    default:
+      return { soort: "onbekend", kDef: null, sleutel: "onbekend", omschrijving: "niet herkend materiaal (kruipgedrag onbekend)" };
+  }
+}
+function heeftVeren(b) {
+  const v = b.veren;
+  if (!v) return false;
+  return [v.startTx, v.startTz, v.startRy, v.endTx, v.endTz, v.endRy].some((x) => typeof x === "number" && x > 0);
+}
+function kruipgedragVanPlaat(p) {
+  if ((p.materiaal ?? "").trim() === "") {
+    return (p.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E ? { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" } : { soort: "onbekend", kDef: null, sleutel: `plaat-E:${p.E}`, omschrijving: "wandschijf met een eigen E zonder materiaal (kruipgedrag onbekend)" };
+  }
+  const uit = bepaalPlaatStijfheid(p);
+  if (!uit.ok) {
+    return { soort: "onbekend", kDef: null, sleutel: "onbekend", omschrijving: "wandschijf met een niet herkend materiaal" };
+  }
+  switch (uit.stijfheid.soort) {
+    case "staal":
+      return { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" };
+    case "beton":
+      return { soort: "beton", kDef: null, sleutel: "beton", omschrijving: "beton (kruip volgens EN 1992-1-1 3.1.4)" };
+    case "hout":
+    case "clt":
+      return {
+        soort: "hout",
+        kDef: null,
+        sleutel: "hout:onbekend",
+        omschrijving: "houten wandschijf (zonder klimaatklasse, dus zonder bekende k_def)"
+      };
+    default:
+      return { soort: "onbekend", kDef: null, sleutel: `vrij:${p.materiaal}`, omschrijving: "vrij materiaal (kruipgedrag onbekend)" };
+  }
+}
+var NVT_LEEG = {
+  status: "nvt",
+  groepen: [],
+  onbepaaldheid: null,
+  kDefPerStaaf: /* @__PURE__ */ new Map(),
+  meldingen: []
+};
+function groepTekst(g) {
+  const delen = [];
+  if (g.staven.length > 0) delen.push(`staaf ${g.staven.join(", ")}`);
+  if (g.verbindingen.length > 0) delen.push(`verende aansluiting van staaf ${g.verbindingen.join(", ")}`);
+  if (g.platen.length > 0) delen.push(`wandschijf ${g.platen.map((i) => i + 1).join(", ")}`);
+  return `${g.omschrijving}: ${delen.join("; ")}`;
+}
+function bepaalEindstijfheidHout(model) {
+  const plates = model.plates ?? [];
+  const groepen = /* @__PURE__ */ new Map();
+  const groep = (k) => {
+    let g = groepen.get(k.sleutel);
+    if (!g) {
+      g = { sleutel: k.sleutel, omschrijving: k.omschrijving, staven: [], verbindingen: [], platen: [] };
+      groepen.set(k.sleutel, g);
+    }
+    return g;
+  };
+  let metHout = false;
+  const kDefPerStaaf = /* @__PURE__ */ new Map();
+  for (const b of model.beams) {
+    const k = kruipgedragVanStaaf(b);
+    groep(k).staven.push(b.id);
+    if (k.soort !== "hout") continue;
+    metHout = true;
+    if (k.kDef !== null) kDefPerStaaf.set(b.id, k.kDef);
+    if (heeftVeren(b)) {
+      const kv = k.kDef === null ? null : 2 * k.kDef;
+      groep({
+        soort: "hout",
+        kDef: kv,
+        sleutel: kv === null ? "verbinding:onbekend" : `hout:${kv}`,
+        omschrijving: kv === null ? "verende aansluiting aan hout zonder bekende k_def" : `verbinding met k_def = 2\xB7${nl9(k.kDef)} = ${nl9(kv)} (2.3.2.2(3))`
+      }).verbindingen.push(b.id);
+    }
+  }
+  plates.forEach((p, i) => {
+    const k = kruipgedragVanPlaat(p);
+    if (k.soort === "hout") metHout = true;
+    groep(k).platen.push(i);
+  });
+  const lijst = [...groepen.values()];
+  if (!metHout) return { ...NVT_LEEG, groepen: lijst, reden: "Het model bevat geen hout." };
+  if (lijst.length <= 1) {
+    return {
+      ...NVT_LEEG,
+      groepen: lijst,
+      reden: "Alle delen hebben hetzelfde kruipgedrag; E_mean volstaat (EN 1995-1-1 2.2.2(1)P, 2.2.3(5))."
+    };
+  }
+  const onb = bepaalOnbepaaldheidVanModel(model.nodes, model.beams, model.supports, plates.length > 0);
+  if (onb.statischBepaald) {
+    return {
+      ...NVT_LEEG,
+      groepen: lijst,
+      onbepaaldheid: onb,
+      reden: "De constructie is statisch bepaald: de krachtsverdeling hangt niet van de stijfheid af (EN 1995-1-1 2.2.2(1)P)."
+    };
+  }
+  const opsomming = lijst.map(groepTekst).join(" \u2014 ");
+  const kop = `Hout in een statisch onbepaalde constructie met verschillend kruipgedrag (${opsomming}). ${onb.toelichting} De vereenvoudiging van EN 1995-1-1 2.2.3(5) geldt daarom niet: in de eindtoestand kruipt het hout weg en verschuift de krachtsverdeling naar de stijvere delen (2.2.2(1)P, tweede streepje).`;
+  if (model.analysetype !== "eersteOrde") {
+    return {
+      status: "alleenMelding",
+      groepen: lijst,
+      onbepaaldheid: onb,
+      kDefPerStaaf: /* @__PURE__ */ new Map(),
+      reden: "tweede orde",
+      meldingen: [{
+        niveau: "waarschuwing",
+        caseId: null,
+        tekst: `Eindstijfheid hout niet doorgerekend. ${kop} Bij een tweede-orde-berekening schrijft 2.2.2(1)P (derde streepje) rekenwaarden voor die niet zijn aangepast aan de belastingsduur, en niet E_mean,fin; er is geen eindtoestandvariant berekend. Beoordeel de krachtsverdeling in de eindtoestand apart, bijvoorbeeld met een eerste-orde-berekening.`
+      }]
+    };
+  }
+  const zonderKdef = lijst.filter((g) => g.sleutel === "hout:onbekend" || g.sleutel === "verbinding:onbekend");
+  if (zonderKdef.length > 0) {
+    return {
+      status: "alleenMelding",
+      groepen: lijst,
+      onbepaaldheid: onb,
+      kDefPerStaaf: /* @__PURE__ */ new Map(),
+      reden: "k_def onbekend",
+      meldingen: [{
+        niveau: "waarschuwing",
+        caseId: null,
+        tekst: `Eindstijfheid hout niet doorgerekend. ${kop} Voor ${zonderKdef.map(groepTekst).join("; ")} is k_def niet bekend, en zonder k_def valt E_mean,fin = E_mean/(1 + \u03C8\u2082\xB7k_def) (2.3.2.2(2)) niet te bepalen; er wordt geen k_def aangenomen. De krachtsverdeling is alleen met E_mean berekend, en welke kant de fout op gaat is niet te zeggen. Vul k_def in (kruislaaghout: ETA of productverklaring) of beoordeel de eindtoestand apart.`
+      }]
+    };
+  }
+  const bijzonder = [];
+  if (lijst.some((g) => g.sleutel === "beton")) {
+    bijzonder.push(
+      "Beton houdt in de eindtoestand E_cm: zijn eigen kruip (EN 1992-1-1 3.1.4) zit niet in deze variant."
+    );
+  }
+  if (lijst.some((g) => g.sleutel.startsWith("vrij:") || g.sleutel === "onbekend" || g.sleutel.startsWith("plaat-E:"))) {
+    bijzonder.push("Vrij of niet herkend materiaal houdt zijn opgegeven E; zijn kruip is onbekend.");
+  }
+  if (model.supports.some((s) => s.type === "zSpring" || s.type === "xSpring" || s.type === "rotSpring") || model.beams.some((b) => b.bedding && b.bedding.k > 0)) {
+    bijzonder.push("Verende opleggingen en bedding houden hun stijfheid.");
+  }
+  return {
+    status: "doorrekenen",
+    groepen: lijst,
+    onbepaaldheid: onb,
+    kDefPerStaaf,
+    reden: "doorrekenen",
+    meldingen: [
+      {
+        niveau: "waarschuwing",
+        caseId: null,
+        tekst: `Eindstijfheid hout doorgerekend (UGT). ${kop} Elke UGT-combinatie is daarom ook doorgerekend in de eindtoestand, met per houtstaaf E_mean,fin = E_mean/(1 + \u03C8\u2082\xB7k_def) (2.3.2.2(2), uitdrukking 2.10) en per verende aansluiting aan hout K_fin = K/(1 + \u03C8\u2082\xB72\xB7k_def) (2.3.2.2(3)). Omdat vooraf niet vaststaat welke belasting de grootste spanning geeft, is elke \u03C8\u2082 van de combinatie doorgerekend (1 voor blijvend en overig, \u03C8\u2082 van de categorie voor veranderlijk; sneeuw en wind hebben \u03C8\u2082 = 0 en veranderen niets). De varianten heten "\u2026 (eindtoestand \u03C8\u2082 = \u2026)"; de toetsing en de omhullende nemen de ongunstigste, ook de combinatie met E_mean zelf.` + (bijzonder.length > 0 ? ` ${bijzonder.join(" ")}` : "")
+      },
+      {
+        niveau: "waarschuwing",
+        caseId: null,
+        tekst: "Eindstijfheid hout niet doorgerekend (BGT). De doorbuigingstoets rekent per staaf w_fin = w_inst + k_def\xB7w_qp, de vereenvoudiging van EN 1995-1-1 2.2.3(5). In deze constructie met verschillend kruipgedrag schrijft 2.2.3(4) de langeduurvervorming onder de quasi-blijvende combinatie voor met E_mean,fin = E_mean/(1 + k_def) (2.3.2.2(1), uitdrukking 2.7); die is niet berekend. De getoonde w_fin en w_add van de houtstaven \xE9n de zakkingen van de delen die de kracht overnemen kunnen daardoor te klein zijn. Beoordeel de doorbuiging in de eindtoestand apart."
+      }
+    ]
+  };
+}
+function psi2VoorEindstijfheid(lc) {
+  if (lc.gegenereerd?.bron === "wind") return PSI_WIND.psi2;
+  switch (lc.type) {
+    case "dead":
+      return 1;
+    case "live":
+      return PSI_GEBRUIK[lc.categorie ?? STANDAARD_CATEGORIE].psi2;
+    case "snow":
+      return PSI_SNEEUW.psi2;
+    case "wind":
+      return PSI_WIND.psi2;
+    default:
+      return 1;
+  }
+}
+function eindtoestandKandidaten(combo, loadCases) {
+  const uit = /* @__PURE__ */ new Set();
+  for (const [id, f] of combo.factors) {
+    if (f === 0) continue;
+    const lc = loadCases.find((c) => c.id === id);
+    const psi = lc ? psi2VoorEindstijfheid(lc) : 1;
+    if (psi > 0) uit.add(psi);
+  }
+  return [...uit].sort((a, b) => a - b);
+}
+function metEindtoestandVarianten(combinaties, loadCases, uitkomst) {
+  if (uitkomst.status !== "doorrekenen") return combinaties;
+  const uit = [];
+  for (const c of combinaties) {
+    uit.push(c);
+    if (c.type !== "uls" || c.eindtoestand !== void 0) continue;
+    for (const psi2 of eindtoestandKandidaten(c, loadCases)) {
+      uit.push({
+        ...c,
+        id: c.id + EINDTOESTAND_COMBO_OFFSET * Math.round(psi2 * 100),
+        name: `${c.name} (eindtoestand \u03C8\u2082 = ${nl9(psi2)})`,
+        eindtoestand: { psi2 }
+      });
+    }
+  }
+  return uit;
+}
+function eindstijfheidInvoer(input, uitkomst, psi2) {
+  return {
+    ...input,
+    beams: input.beams.map((b) => {
+      const kDef = uitkomst.kDefPerStaaf.get(b.id);
+      if (kDef === void 0) return b;
+      if (b.E === void 0) {
+        throw new Error(`Staaf ${b.id}: geen E in de solverinvoer; E_mean,fin (EN 1995-1-1 2.3.2.2(2)) is niet te bepalen.`);
+      }
+      const fStaaf = 1 / (1 + psi2 * kDef);
+      const fVerbinding = 1 / (1 + psi2 * 2 * kDef);
+      const veren = b.veren ? Object.fromEntries(
+        Object.entries(b.veren).map(([k, v]) => [k, typeof v === "number" ? v * fVerbinding : v])
+      ) : void 0;
+      return { ...b, E: b.E * fStaaf, ...veren ? { veren } : {} };
+    })
+  };
+}
+function losEindtoestandOp(input, perCase, combinaties, uitkomst) {
+  const psis = [...new Set(combinaties.flatMap((c) => c.eindtoestand ? [c.eindtoestand.psi2] : []))];
+  for (const psi2 of psis) {
+    const { perCase: fin } = solveAllCases(eindstijfheidInvoer(input, uitkomst, psi2));
+    zetEindtoestandGevallen(perCase, psi2, fin);
+  }
+}
+
 // src/lib/normenInRapport.ts
 function leeg() {
   return { en1993: false, en1995: false, en1992: false };
@@ -22079,7 +22487,7 @@ function rekenDoor(payload) {
     gelezen.model.plates,
     { loadCases: gelezen.model.loadCases, gevolgklasse }
   );
-  const combinaties = metScheefstandRichtingen(
+  const combinatiesZonderEindtoestand = metScheefstandRichtingen(
     selectie.actief,
     gelezen.model.scheefstandEnabled,
     gelezen.model.scheefstandRichting
@@ -22092,6 +22500,18 @@ function rekenDoor(payload) {
     );
   }
   const nonlinear = analysetype !== "eersteOrde";
+  const eindstijfheid = bepaalEindstijfheidHout({
+    nodes: gelezen.model.nodes,
+    beams: pasCheckConfigToe(gelezen.beams, payload),
+    supports: gelezen.model.supports,
+    plates: gelezen.model.plates,
+    analysetype
+  });
+  const combinaties = metEindtoestandVarianten(
+    combinatiesZonderEindtoestand,
+    gelezen.model.loadCases,
+    eindstijfheid
+  );
   const detail = payload.detail ?? "samenvatting";
   if (detail !== "samenvatting" && detail !== "stations") {
     throw new InvoerFout(
@@ -22108,6 +22528,11 @@ function rekenDoor(payload) {
     throw new ModelFout(String(err?.message ?? err));
   }
   const { perCase } = perCaseResultaat;
+  try {
+    losEindtoestandOp(multiInput, perCase, combinaties, eindstijfheid);
+  } catch (err) {
+    throw new ModelFout(String(err?.message ?? err));
+  }
   let combinationResults;
   let envelope;
   try {
@@ -22186,6 +22611,7 @@ function rekenDoor(payload) {
     );
   }
   waarschuwingen.push(...gelezen.scheefstandMeldingen);
+  waarschuwingen.push(...eindstijfheid.meldingen.map((m) => m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst));
   if (legeGevallen.length > 0) {
     waarschuwingen.push(
       `Belastinggeval(len) ${legeGevallen.join(", ")} zonder werkzame last overgeslagen; ze tellen als nulbijdrage in de combinaties.`
@@ -22550,11 +22976,13 @@ export {
   DEFAULT_STRUCTURAL_GRID,
   DEFAULT_VIEW,
   DoorsnedeOnbekendFout,
+  EINDTOESTAND_COMBO_OFFSET,
   E_STAAL,
   G,
   GEBRUIKSCATEGORIEEN,
   GEVOLGKLASSEN,
   K_CR_STANDAARD,
+  K_DEF_TABEL_3_2,
   K_FI,
   K_I,
   LABEL_ZUIVER_STAAL,
@@ -22627,6 +23055,7 @@ export {
   beoordeelCombinatiesBijOpenen,
   bepaalAlphaCr,
   bepaalDoorbuigingsInvoer,
+  bepaalEindstijfheidHout,
   bepaalPlaatRand,
   bepaalPlaatStijfheid,
   bepaalPlaatlastRand,
@@ -22667,6 +23096,8 @@ export {
   eigenGewichtLasten,
   eigenGewichtPerMeter,
   eigenGewichtVanDoorsnede,
+  eindstijfheidInvoer,
+  eindtoestandKandidaten,
   equivalentUdlFromMoments,
   extractFieldDeflectionMm,
   gIsotroop,
@@ -22677,6 +23108,7 @@ export {
   genereerStandaardCombinaties,
   genereerWindCombinaties,
   genereerWindbelasting,
+  getEindtoestandGevallen,
   getScheefstandRichtingen,
   getSecondOrderInput,
   getSecondOrderState,
@@ -22704,7 +23136,10 @@ export {
   keurRandKnopen,
   klasseUitKenmerk,
   koppelTotVierhoeken,
+  kruipgedragVanPlaat,
+  kruipgedragVanStaaf,
   liftSpringK,
+  losEindtoestandOp,
   mapDeflectionClass,
   mapLoadDuration,
   mapLtbLoadPosition,
@@ -22712,6 +23147,7 @@ export {
   matchSupportedTimberGrade,
   matenOpPositie,
   meldingenBelastinggevallen,
+  metEindtoestandVarianten,
   metScheefstandRichtingen,
   nonlinearVoorBestand,
   onbekendeDoorsneden,
@@ -22728,6 +23164,7 @@ export {
   plaatRandLabel,
   plaatRekentAlsRaster,
   profileLookupKey,
+  psi2VoorEindstijfheid,
   puntInPolygoon,
   quasiPermanentDeflection,
   randlastNaarSolverInput,
@@ -22788,6 +23225,7 @@ export {
   zeegNotities,
   zeegVoorToets,
   zetCombinatieResultaat,
+  zetEindtoestandGevallen,
   zetGevolgklasse,
   zetSolverLogOpvanger,
   zijdelingseVerplaatsingMm,
