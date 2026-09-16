@@ -10,6 +10,9 @@ import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
+// De doorsnedenaam van een staaf — één bron, dezelfde keuring als de
+// solver en de rekenkern; zie lib/verloopKeuze.
+import { doorsnedeNaam } from "../../lib/verloopKeuze";
 import type { CombinatieAfwijking, CombinatieVervanging, GevalMelding } from "../../lib/combinatieBeheer";
 import type { DisplayFlags } from "./FemResultsOverlay";
 import { PLAAT_COMPONENTEN } from "./FemCanvas";
@@ -496,7 +499,12 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     const mat = b.material ?? "S235";
     if (!materialUse.has(mat)) materialUse.set(mat, []);
     materialUse.get(mat)!.push(b.id);
-    const prof = b.profile ?? "HEA160";
+    // De DOORSNEDE van een staaf, niet alleen haar beginprofiel: een
+    // verlopende staaf heet hier "IPE 300 → IPE 200 (verlopend)" en staat dus
+    // op een eigen regel. Zou hij onder "IPE 300" mee geteld worden, dan zou
+    // deze lijst — de doorsnedelegenda van het model — twee wezenlijk
+    // verschillende doorsneden als één tonen.
+    const prof = doorsnedeNaam(b) || "HEA160";
     if (!profileUse.has(prof)) profileUse.set(prof, []);
     profileUse.get(prof)!.push(b.id);
   }

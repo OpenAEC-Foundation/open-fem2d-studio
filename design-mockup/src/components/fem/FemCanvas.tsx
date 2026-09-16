@@ -42,6 +42,9 @@ import {
   staafLengteMm,
   randpuntlastNaarSolverInput,
 } from "../../lib/modelNaarSolverInput";
+// Doorsnedenaam en begin-/eindmaten van een verlopende staaf: dezelfde
+// keuring als de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
+import { doorsnedeNaam, verloopMaten } from "../../lib/verloopKeuze";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 // Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
 // Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
@@ -3199,10 +3202,15 @@ export default function FemCanvas(props: FemCanvasProps) {
   ) => {
     if (displayFlags.profielLabels === false) return null;
     if (!b.profile) return null;
+    // VERLOPEND PROFIEL: het label draagt begin én eind ("IPE 300 → IPE 200
+    // (verlopend)"), dezelfde schrijfwijze als het eigenschappenpaneel en het
+    // rapport. Alleen het beginprofiel tonen zou de staaf op de tekening
+    // prismatisch laten lijken.
+    const naam = doorsnedeNaam(b);
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
     const len = Math.hypot(dx, dy);
     // Ruwe schatting van de labelbreedte bij 9 px letterhoogte.
-    if (len < b.profile.length * 5.5 + 10) return null;
+    if (len < naam.length * 5.5 + 10) return null;
     let hoek = (Math.atan2(dy, dx) * 180) / Math.PI;
     if (hoek > 90) hoek -= 180;
     if (hoek < -90) hoek += 180;
@@ -3219,7 +3227,54 @@ export default function FemCanvas(props: FemCanvasProps) {
         textAnchor="middle"
         transform={`rotate(${hoek.toFixed(2)} ${tx.toFixed(2)} ${ty.toFixed(2)})`}
         pointerEvents="none"
-      >{b.profile}</text>
+      >{naam}</text>
+    );
+  };
+
+  /**
+   * De VORM van een verlopende staaf op de tekening (ontwerp 15-09-2026, §6).
+   *
+   * Een verlopende staaf en een prismatische staaf zien er als lijn precies
+   * hetzelfde uit — en dat is het gevaar: het verloop is dan alleen te zien
+   * door de staaf aan te klikken. Daarom krijgt een verlopende staaf er een
+   * omtrek bij: de doorsnedehöogte op ware schaal, symmetrisch om de
+   * systeemlijn, van h(begin) naar h(eind). Een prismatische staaf krijgt hem
+   * NIET, zodat elk bestaand model er precies zo uitziet als vroeger en het
+   * silhouet meteen zegt welke staaf verloopt.
+   *
+   * Op ware schaal: bij ver uitzoomen wordt de wig vanzelf een lijn, en dat is
+   * eerlijker dan een vaste dikte die bij elke zoomstand hetzelfde verloop
+   * suggereert. Onder 2 px blijft hij weg — dan is er niets te zien en zou het
+   * alleen een dikkere lijn worden.
+   */
+  const renderVerloopVorm = (
+    b: Beam,
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+  ) => {
+    const maten = verloopMaten(b);
+    if (!maten) return null;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    if (!(len > 1)) return null;
+    // Loodrecht op de systeemlijn; de hoogte staat in mm en gaat met dezelfde
+    // schaal naar het scherm als de knoopcoördinaten.
+    const nx = -dy / len, ny = dx / len;
+    const h1 = (maten.begin.h / 2) * view.scale;
+    const h2 = (maten.eind.h / 2) * view.scale;
+    if (Math.max(h1, h2) < 1) return null;
+    const punt = (px: number, py: number, h: number, teken: number) =>
+      `${(px + nx * h * teken).toFixed(2)},${(py + ny * h * teken).toFixed(2)}`;
+    const pts = [
+      punt(p1.x, p1.y, h1, 1),
+      punt(p2.x, p2.y, h2, 1),
+      punt(p2.x, p2.y, h2, -1),
+      punt(p1.x, p1.y, h1, -1),
+    ].join(" ");
+    return (
+      <polygon points={pts} className="fem-member-verloop" pointerEvents="none">
+        <title>{doorsnedeNaam(b)}</title>
+      </polygon>
     );
   };
 
@@ -3909,6 +3964,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                 onClick={selectBeam}
                 onDoubleClick={openBeamProps}
               />
+              {renderVerloopVorm(b, p1, p2)}
               {renderScharnieren(b, p1, p2)}
               {renderProfielLabel(b, p1, p2)}
             </g>

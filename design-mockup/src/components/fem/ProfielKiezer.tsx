@@ -51,6 +51,7 @@ import {
   parseRechthoek,
   resolveSection,
 } from "../../lib/sectionResolver";
+import { keurEindProfiel } from "../../lib/verloopKeuze";
 import { formatConcreteSection, parseConcreteSection } from "../../lib/betonCheckBuilder";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
@@ -140,6 +141,15 @@ export interface BetonKorfKeuze {
 export interface ProfielKeuze {
   material: string;
   profile: string;
+  /**
+   * Het profiel aan het EINDE van de staaf — een VERLOPEND profiel (ontwerp
+   * 15-09-2026). `undefined` betekent prismatisch, en dat wordt bewust ook zo
+   * meegestuurd: wie een prismatisch profiel kiest op een staaf die eerder
+   * verlopend was, moet dat oude eindprofiel kwijtraken. Zou het veld dan
+   * wegblijven, dan zou de staaf blijven verlopen naar een profiel dat de
+   * gebruiker niet meer ziet staan.
+   */
+  profileEnd?: string;
   /** Alleen gevuld wanneer de gekozen soort beton is. */
   beton?: BetonKorfKeuze;
 }
@@ -321,7 +331,9 @@ export default function ProfielKiezer({
   // Escape sluit alleen het bovenste venster; dat regelt Modal zelf.
   const [editorOpen, setEditorOpen] = useState(false);
   const kiesEigen = (d: EigenDoorsnede) => {
-    onApply({ material: staalKlasse, profile: profielnaamVan(d) });
+    // Een eigen doorsnede is altijd prismatisch: `profileEnd` gaat als
+    // `undefined` mee zodat een verloop dat er stond, verdwijnt.
+    onApply({ material: staalKlasse, profile: profielnaamVan(d), profileEnd: undefined });
     onClose();
   };
 
@@ -333,12 +345,38 @@ export default function ProfielKiezer({
     huidig?.material && !huidigIsHout && !huidigIsBeton ? huidig.material : "S235",
   );
 
+  // ── Verlopend profiel (ontwerp 15-09-2026, §6) ───────────────────────────
+  //
+  // Eén schakelaar met één tweede keuze. De schakelaar staat aan zodra de
+  // staaf al een eindprofiel draagt; hij uitzetten en Toepassen maakt de staaf
+  // weer prismatisch, want `profileEnd` gaat dan als `undefined` mee.
+  //
+  // De tweede keuze is BEPERKT TOT DEZELFDE DOORSNEDESOORT — bij staal de
+  // I- en H-profielen zonder toelopende flenzen, bij hout een tweede b × h.
+  // Wat er buiten die grens valt, wordt niet stil weggelaten maar afgekeurd
+  // door `keurEindProfiel`, met de reden van `bepaalVerloop` zelf.
+  const huidigEind = huidig?.profileEnd?.trim() ?? "";
+  const [verlopend, setVerlopend] = useState(huidigEind !== "");
+  const huidigEindRect = parseRechthoek(huidig?.profileEnd);
+  const [staalProfielEind, setStaalProfielEind] = useState(
+    huidigEind !== "" && !huidigEindRect ? huidigEind : "",
+  );
+
   // Hout-stap: massief b×h of een CLT-opbouw
   const huidigRect = huidigIsHout && !huidigIsClt ? parseRechthoek(huidig?.profile) : null;
   const [houtKlasse, setHoutKlasse] = useState(huidigIsHout ? huidig!.material! : "C24");
   const [houtType, setHoutType] = useState<"massief" | "clt">(huidigIsClt ? "clt" : "massief");
   const [houtB, setHoutB] = useState(huidigRect?.b ?? HOUT_DOORSNEDE_DEFAULT.b);
   const [houtH, setHoutH] = useState(huidigRect?.h ?? HOUT_DOORSNEDE_DEFAULT.h);
+  // Eindmaten van een verlopende houten balk. Ze beginnen op de BEGINmaat en
+  // niet op een verzonnen afschot: de constructeur bepaalt het verloop, niet
+  // de dialoog.
+  const [houtBEind, setHoutBEind] = useState(
+    huidigEindRect?.b ?? huidigRect?.b ?? HOUT_DOORSNEDE_DEFAULT.b,
+  );
+  const [houtHEind, setHoutHEind] = useState(
+    huidigEindRect?.h ?? huidigRect?.h ?? HOUT_DOORSNEDE_DEFAULT.h,
+  );
   // De opbouw als tekst, zodat hij ook vrij te bewerken is; een voorinstelling
   // schrijft de tekst, en de tekst is wat er op de staaf landt.
   const [cltTekst, setCltTekst] = useState(() =>
@@ -644,6 +682,53 @@ export default function ProfielKiezer({
 
   const houtGeldig = houtType === "clt" ? cltGeldig : houtB > 0 && houtH > 0;
   const staalGeldig = !!staalProfiel && !!STEEL_SECTION_DIMS[staalProfiel];
+
+  // ── Verlopend profiel: de keuzelijst, het gekozen eind en de keuring ─────
+  /**
+   * De I- en H-profielen uit de catalogus zonder toelopende flenzen, per
+   * reeks — de enige stalen vorm waarvan een verloop bestaat (ontwerp §2: een
+   * verlopende ligger wordt gelast, met evenwijdige flenzen). Kokers, buizen,
+   * hoeklijnen, U-profielen en de INP-reeks staan er dus niet in; ze kúnnen
+   * hier niet gekozen worden en hoeven daarom niet achteraf geweigerd te
+   * worden.
+   */
+  const eindProfielGroepen = useMemo(() => {
+    return STAAL_REEKSEN.map((r) => ({
+      label: r.label,
+      profielen: profielenVanReeks(r.id).filter((naam) => {
+        const d = STEEL_SECTION_DIMS[naam];
+        return d?.kind === "ISection" && !((d.flensHelling ?? 0) > 0);
+      }),
+    })).filter((g) => g.profielen.length > 0);
+  }, []);
+
+  /** Het beginprofiel en het materiaal zoals ze nu in de dialoog staan. */
+  const beginProfielNu = soort === "staal" ? staalProfiel : `${houtB}x${houtH}`;
+  const materiaalNu = soort === "staal" ? staalKlasse : houtKlasse;
+  /** Het gekozen eindprofiel, leeg zodra de schakelaar uit staat. */
+  const eindProfielNu = !verlopend
+    ? ""
+    : soort === "staal"
+      ? staalProfielEind
+      : `${houtBEind}x${houtHEind}`;
+  /**
+   * De keuring — letterlijk `bepaalVerloop`, dezelfde die de solver en de
+   * rekenkern gebruiken. `null` zolang er nog niets te keuren valt.
+   */
+  const verloopKeuring =
+    verlopend && eindProfielNu !== "" && beginProfielNu !== ""
+      ? keurEindProfiel(materiaalNu, beginProfielNu, eindProfielNu)
+      : null;
+  const verloopFout = verloopKeuring?.status === "fout" ? verloopKeuring.reden : null;
+  /**
+   * Toepassen mag niet zolang het verloop niet deugt. Een staaf met een
+   * eindprofiel dat niet bij het begin past, is niet te rekenen; hem toch
+   * toelaten zou de melding verplaatsen van hier — waar hij te verhelpen is —
+   * naar het moment van rekenen.
+   */
+  const verloopGeldig = !verlopend || (eindProfielNu !== "" && verloopFout === null);
+  /** Wat er op de staaf komt te staan; `undefined` = prismatisch. */
+  const profileEndUit = verlopend && verloopGeldig && eindProfielNu !== "" ? eindProfielNu : undefined;
   const betonDoorsnedeGeldig =
     betonB > 0 &&
     betonH > 0 &&
@@ -694,22 +779,27 @@ export default function ProfielKiezer({
   const betonDekkingRondomGelijk = dekkingIsRondomGelijk(betonKorf);
 
   const pasToe = () => {
-    if (soort === "staal" && staalGeldig) {
-      onApply({ material: staalKlasse, profile: staalProfiel });
+    if (soort === "staal" && staalGeldig && verloopGeldig) {
+      onApply({ material: staalKlasse, profile: staalProfiel, profileEnd: profileEndUit });
       onClose();
-    } else if (soort === "hout" && houtGeldig) {
+    } else if (soort === "hout" && houtGeldig && verloopGeldig) {
       onApply({
         material: houtKlasse,
         profile:
           houtType === "clt" && cltLayup
             ? formatCltProfiel(cltLayup, houtKlasse)
             : `${houtB}x${houtH}`,
+        // Kruislaaghout kan niet verlopen (ontwerp §9); de schakelaar staat
+        // daar niet, en het veld gaat dan als `undefined` mee zodat een oud
+        // eindprofiel van de staaf verdwijnt.
+        profileEnd: houtType === "clt" ? undefined : profileEndUit,
       });
       onClose();
     } else if (soort === "beton" && betonGeldig) {
       onApply({
         material: betonKlasse,
         profile: betonNaam,
+        profileEnd: undefined,
         beton: {
           korf: betonKorf,
           milieuklasse: betonMilieuklasse,
@@ -721,14 +811,18 @@ export default function ProfielKiezer({
       // Het vrije materiaal reist als NAAM mee (zie vrijMateriaal.ts): zo
       // staat het in het projectbestand, de undo-historie en het rapport
       // zonder een tweede opslagplaats die uit de pas kan lopen.
-      onApply({ material: formatVrijMateriaal(vrijMat), profile: overigProfielnaam });
+      onApply({
+        material: formatVrijMateriaal(vrijMat),
+        profile: overigProfielnaam,
+        profileEnd: undefined,
+      });
       onClose();
     }
   };
 
   const toepassenUit =
-    soort === "staal" ? !staalGeldig
-    : soort === "hout" ? !houtGeldig
+    soort === "staal" ? !staalGeldig || !verloopGeldig
+    : soort === "hout" ? !houtGeldig || !verloopGeldig
     : soort === "beton" ? !betonGeldig
     : soort === "overig" ? !overigGeldig
     : true;
@@ -759,7 +853,11 @@ export default function ProfielKiezer({
                 className="pk-gebruikt-knop"
                 title={`${g.profile} in ${g.material}, nu op ${g.aantal} ${g.aantal === 1 ? "staaf" : "staven"}`}
                 onClick={() => {
-                  onApply({ material: g.material, profile: g.profile });
+                  // Een snelkeuze is een PRISMATISCH profiel: `profileEnd`
+                  // gaat als `undefined` mee, anders zou een staaf die al
+                  // verliep blijven verlopen naar een profiel dat hier niet
+                  // eens meer op het scherm staat.
+                  onApply({ material: g.material, profile: g.profile, profileEnd: undefined });
                   onClose();
                 }}
               >
@@ -842,11 +940,61 @@ export default function ProfielKiezer({
                 {sectie && <div className="pk-eig-rij"><span>I_y</span><code>{nlGetal(sectie.Iy / 1e4)} cm⁴</code></div>}
               </div>
             )}
+
+            {/* VERLOPEND PROFIEL. De lijst bevat uitsluitend I- en H-profielen
+                zonder toelopende flenzen: de enige stalen vorm waarvan een
+                verloop bestaat. Wat er niet in staat, kan hier dus niet gekozen
+                worden — dat is beter dan het achteraf afkeuren. */}
+            <div className="pk-verloop">
+              <label className="pk-verloop-schakelaar">
+                <input
+                  type="checkbox"
+                  checked={verlopend}
+                  onChange={(e) => setVerlopend(e.target.checked)}
+                />
+                <span>Verlopend profiel</span>
+              </label>
+              {verlopend && (
+                <>
+                  <label className="pk-veld">
+                    <span>Profiel eind (bij knoop 2)</span>
+                    <select
+                      value={staalProfielEind}
+                      onChange={(e) => setStaalProfielEind(e.target.value)}
+                    >
+                      <option value="">— kies een eindprofiel —</option>
+                      {eindProfielGroepen.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.profielen.map((naam) => (
+                            <option key={naam} value={naam}>{profielLabel(naam)}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="pk-hint">
+                    De maten h, b, t_w en t_f verlopen lineair van het
+                    beginprofiel naar dit eindprofiel. De doorsnede telt over de
+                    hele staaf als <strong>gelast</strong> I-profiel: geen
+                    afrondingsstraal, en de knik- en kipkrommen voor gelaste
+                    profielen (EN 1993-1-1 tabel 6.2 en 6.5).
+                  </div>
+                  {verloopFout && <div className="pk-verloop-fout">{verloopFout}</div>}
+                  {eindProfielNu === "" && (
+                    <div className="pk-hint">Kies een eindprofiel, of zet de schakelaar uit.</div>
+                  )}
+                </>
+              )}
+            </div>
             </div>
             <div className="pk-samenvatting">
-              {staalGeldig
-                ? <>Keuze: <strong>{staalProfiel} — {staalKlasse}</strong></>
-                : "Kies een profiel uit de lijst."}
+              {!staalGeldig
+                ? "Kies een profiel uit de lijst."
+                : verlopend && verloopGeldig
+                  ? <>Keuze: <strong>{staalProfiel} → {staalProfielEind} (verlopend) — {staalKlasse}</strong></>
+                  : verlopend
+                    ? "Het eindprofiel past niet bij het beginprofiel."
+                    : <>Keuze: <strong>{staalProfiel} — {staalKlasse}</strong></>}
             </div>
           </div>
         </div>
@@ -912,11 +1060,51 @@ export default function ProfielKiezer({
                   <div className="pk-eig-rij"><span>E₀,mean</span><code>{TIMBER_E_MEAN[houtKlasse] ?? "—"} N/mm²</code></div>
                 </div>
               )}
+
+              {/* VERLOPEND PROFIEL — de aanleiding van dit spoor: een balklaag
+                  die voor afschot schuin is afgezaagd, zodat de rekenhoogte over
+                  de overspanning verloopt. Alleen b en h verlopen; de vorm
+                  blijft een rechthoek. */}
+              <div className="pk-verloop">
+                <label className="pk-verloop-schakelaar">
+                  <input
+                    type="checkbox"
+                    checked={verlopend}
+                    onChange={(e) => setVerlopend(e.target.checked)}
+                  />
+                  <span>Verlopend profiel</span>
+                </label>
+                {verlopend && (
+                  <>
+                    <label className="pk-veld">
+                      <span>Breedte b eind [mm]</span>
+                      <input type="number" min={10} step={1} value={houtBEind}
+                        onChange={(e) => setHoutBEind(Number(e.target.value))} />
+                    </label>
+                    <label className="pk-veld">
+                      <span>Hoogte h eind [mm]</span>
+                      <input type="number" min={10} step={1} value={houtHEind}
+                        onChange={(e) => setHoutHEind(Number(e.target.value))} />
+                    </label>
+                    <div className="pk-hint">
+                      b en h verlopen lineair van de maat bij knoop 1 naar deze
+                      maat bij knoop 2. De hoogtefactor k_h van EN 1995-1-1
+                      art. 3.2(3) wordt per rekenpunt met de plaatselijke hoogte
+                      bepaald.
+                    </div>
+                    {verloopFout && <div className="pk-verloop-fout">{verloopFout}</div>}
+                  </>
+                )}
+              </div>
               </div>
               <div className="pk-samenvatting">
-                {houtGeldig
-                  ? <>Keuze: <strong>{houtB}×{houtH} — {houtKlasse}</strong></>
-                  : "Vul een geldige doorsnede in."}
+                {!houtGeldig
+                  ? "Vul een geldige doorsnede in."
+                  : verlopend && verloopGeldig
+                    ? <>Keuze: <strong>{houtB}×{houtH} → {houtBEind}×{houtHEind} (verlopend) — {houtKlasse}</strong></>
+                    : verlopend
+                      ? "De eindmaten passen niet bij de beginmaten."
+                      : <>Keuze: <strong>{houtB}×{houtH} — {houtKlasse}</strong></>}
               </div>
             </div>
           )}

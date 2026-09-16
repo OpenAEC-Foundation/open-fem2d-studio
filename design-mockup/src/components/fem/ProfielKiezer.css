@@ -521,3 +521,34 @@
   font-size: 12px;
   font-weight: 600;
 }
+
+/* ── Verlopend profiel (ontwerp 15-09-2026, §6) ───────────────────────────
+   Eén schakelaar met de tweede keuze eronder, visueel als één blok: de vraag
+   "verloopt deze staaf?" en het antwoord "waarheen?" horen bij elkaar. Het
+   blok staat onder de doorsnedegegevens van de detailkolom, zodat het begin
+   eerst gekozen wordt en het eind daarna. */
+.pk-verloop {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--theme-border-subtle);
+}
+.pk-verloop-schakelaar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pk-verloop-schakelaar input { cursor: pointer; }
+/* De reden waarom een gekozen eindprofiel niet kan. Nadrukkelijk zichtbaar:
+   een afgekeurde keuze die er net zo uitziet als een toelichting, wordt
+   gelezen als een toelichting. */
+.pk-verloop-fout {
+  margin: 6px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--theme-danger, #c0392b);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--theme-danger, #c0392b);
+}
