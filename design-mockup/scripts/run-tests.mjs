@@ -342,6 +342,10 @@ const ALLEEN_BRON = new Map([
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
   [
+    "clt-doorbuiging",
+    "de doorbuigingstoets van kruislaaghout met een opgegeven k_def (tabel 3.2 kent er geen): de CLT-bouwer staat niet in de barrel, dus de bouwerkant kan alleen tegen de bron. De bundelweg is er wél in afgedekt: het slotblok stuurt hetzelfde model door `check_fem_model` van de gebouwde MCP-server, en die bouwt de CLT-invoer uit de sidecarbundel",
+  ],
+  [
     "hout-kmod-combinatie",
     "leidt de belastingduur per UGT-combinatie af (lib/belastingduur) en bouwt daarmee de hout- en CLT-invoer; de afleiding en de CLT-bouwer staan niet in de barrel, en het slotblok start de toetsbrug als apart proces voor de echte EN 1995-kern (k_mod 0,60 bij alleen G, UC 1,068). De sidecarweg van dezelfde afleiding bewaakt hout_in_check_fem_model.rs tegen de gebouwde MCP-server",
   ],

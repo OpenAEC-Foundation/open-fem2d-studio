@@ -417,8 +417,16 @@ async fn de_drie_wegen_toetsen_dezelfde_clt_plaat_gelijk() {
         mcp["section_name"],
         json!("CLT 40/20/40/20/40 (h = 160 mm, b = 1000 mm)")
     );
-    // Acht toetsen: 3 lengtelagen x 2 + 2 dwarslagen x 1 informatieve regel.
-    assert_eq!(mcp["checks"].as_array().expect("checks").len(), 8);
+    // Tien regels: 3 lengtelagen x 2 + 2 dwarslagen x 1 informatieve regel,
+    // plus w_fin en w_add. Die twee staan er sinds september 2026 altijd; zonder
+    // opgegeven k_def (tabel 3.2 kent er geen voor kruislaaghout) als "niet van
+    // toepassing" met de reden, zodat de ontbrekende toets zichtbaar is.
+    let checks = mcp["checks"].as_array().expect("checks");
+    assert_eq!(checks.len(), 10);
+    for id in ["deflection_w_fin", "deflection_w_add"] {
+        let c = checks.iter().find(|c| c["id"] == json!(id)).expect(id);
+        assert_eq!(c["kind"]["data"]["status"], json!("NotApplicable"), "{id}");
+    }
 
     let _ = child.kill().await;
 }

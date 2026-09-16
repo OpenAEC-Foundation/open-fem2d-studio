@@ -23,6 +23,7 @@ import AansluitingKeuze from "./AansluitingKeuze";
 import { useCheckStore } from "../../stores/checkStore";
 import { isSteelCheckResult } from "../../lib/checkTypes";
 import { matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
+import { isCltProfiel } from "../../lib/cltCheckBuilder";
 import { sanitizeRestraintFractions } from "../../lib/steelCheckBuilder";
 import { parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
@@ -127,6 +128,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   // Kiptoets art. 6.3.3 aan/uit. Uit = gedrukte rand doorgaand zijdelings
   // gesteund, k_crit = 1,0 (art. 6.3.3(5)); alleen `false` wordt bewaard.
   const [kiptoets, setKiptoets] = useState<boolean>(cfg0.performLtbCheck ?? true);
+  // Kruislaaghout: k_def voor §7.2 met zijn bron. GEEN standaardwaarde — tabel
+  // 3.2 kent geen rij voor kruislaaghout. Leeg = geen doorbuigingstoets, met
+  // die reden in het rapport.
+  const [cltKdefStr, setCltKdefStr] = useState(cfg0.cltKdef?.toString() ?? "");
+  const [cltKdefBron, setCltKdefBron] = useState(cfg0.cltKdefBron ?? "");
   // Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a); zwaartepunt =
   // geen correctie en wordt niet bewaard.
   const [ltbPositie, setLtbPositie] = useState<NonNullable<BeamCheckConfig["ltbLoadPosition"]>>(
@@ -247,6 +253,15 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     if (kCrStr.trim() !== "" && Number.isFinite(kCr) && kCr > 0 && kCr <= 1) {
       cfg.kCr = kCr;
     }
+    // k_def voor kruislaaghout: een getal ≥ 0 en de bron gaan ONAFHANKELIJK
+    // van elkaar het bestand in. Zo raakt niemand een half ingevulde opgave
+    // kwijt; de kern weigert de toets zolang een van beide ontbreekt, en zegt
+    // dan welke.
+    const cltKdef = parseFloat(cltKdefStr.replace(",", "."));
+    if (cltKdefStr.trim() !== "" && Number.isFinite(cltKdef) && cltKdef >= 0) {
+      cfg.cltKdef = cltKdef;
+    }
+    if (cltKdefBron.trim() !== "") cfg.cltKdefBron = cltKdefBron.trim();
     if (!kiptoets) cfg.performLtbCheck = false;
     if (ltbPositie !== "centreOfGravity") cfg.ltbLoadPosition = ltbPositie;
     if (serviceClass !== 1) cfg.serviceClass = serviceClass;
@@ -786,6 +801,34 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       "b_ef = k_cr · b (6.13a). Leeg = 1,0: NEN-EN 1995-1-1/NB bij 6.1.7 voor een prismatische doorsnede. De Europese aanbeveling van 6.1.7(2) is 0,67 voor gezaagd en gelijmd gelamineerd hout; alleen waarden in (0, 1] worden bewaard.",
                     )}
                   </div>
+                  {isCltProfiel(profile) && (
+                    <>
+                      <div className="bar-props-row">
+                        <span>{t("cfg.cltKdef", "k_def kruislaaghout (§7.2)")}</span>
+                        <input
+                          type="number" className="bar-props-input" step="0.05" min="0"
+                          placeholder={t("cfg.cltKdefLeeg", "verplicht")}
+                          value={cltKdefStr}
+                          onChange={(e) => setCltKdefStr(e.target.value)}
+                        />
+                      </div>
+                      <div className="bar-props-row">
+                        <span>{t("cfg.cltKdefBron", "Bron k_def")}</span>
+                        <input
+                          type="text" className="bar-props-input"
+                          placeholder={t("cfg.cltKdefBronLeeg", "ETA / productverklaring")}
+                          value={cltKdefBron}
+                          onChange={(e) => setCltKdefBron(e.target.value)}
+                        />
+                      </div>
+                      <div className="bar-props-hint">
+                        {t(
+                          "cfg.cltKdefHint",
+                          "Tabel 3.2 van EN 1995-1-1 kent geen k_def voor kruislaaghout, en de nationale bijlage voegt er geen toe. Er wordt daarom geen waarde aangenomen: vul k_def én de bron in (ETA of productverklaring van de plaat, bij deze klimaatklasse). Ontbreekt een van beide, dan worden w_fin en w_add niet getoetst en staat die reden in het rapport.",
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

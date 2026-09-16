@@ -30,7 +30,7 @@
  * hetzelfde uit als de kern en is daar tegen getest (zie
  * `test-clt-builder.mjs`); de TOETSING komt altijd uit de kern.
  */
-import type { Beam, Node } from "../components/fem/femTypes";
+import type { Beam, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { CltBeamCheckInput } from "./types/timber/CltBeamCheckInput";
@@ -44,11 +44,13 @@ import type { CheckSkip, MemberCheckResult } from "./checkTypes";
 import { beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
 import { toetsdataInReferentierichting } from "./referentierichting";
 import {
+  houtDoorbuigingsInvoer,
   kCrUitConfig,
   mapLoadDuration,
   mapServiceClass,
   matchSupportedTimberGrade,
   SUPPORTED_TIMBER_GRADES,
+  timberDeflectionNumerators,
   type TimberBuildData,
 } from "./timberCheckBuilder";
 import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
@@ -515,6 +517,11 @@ export interface CltBuildData {
   nationaleBijlage?: NationaleBijlageCode;
   nodes: Node[];
   beams: Beam[];
+  /**
+   * Opleggingen, om in de doorbuigingsnotitie een echt tussensteunpunt van een
+   * doorgeknipte staaf te kunnen onderscheiden; zie `SteelBuildData.supports`.
+   */
+  supports?: Support[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
   /** Runtime-lijst uit `list_timber_grades`; leeg → statische fallback. */
@@ -620,6 +627,9 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
           ondergrens: cfg.loadDuration !== undefined ? mapLoadDuration(cfg.loadDuration) : undefined,
         })
       : [];
+    // Dezelfde zakkingen en dezelfde verantwoording als bij massief hout.
+    const doorbuiging = houtDoorbuigingsInvoer(beam, data);
+    const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
     inputs.push({
       // De nationale bijlage van het project reist mee naar de kern; daar
       // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
@@ -639,6 +649,23 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
       // geweigerd. Dezelfde regel als in de houtbouwer (`kCrUitConfig`).
       k_cr: kCr.kCr,
       load_sharing: false,
+      // Doorbuiging §7.2. De zakkingen komen uit dezelfde keten als bij massief
+      // hout (`houtDoorbuigingsInvoer`): w_inst uit de karakteristieke
+      // BGT-combinatie, w_qp uit de quasi-blijvende, w₁ uit de combinatie met
+      // alleen de blijvende belasting.
+      //
+      // k_def NIET: tabel 3.2 kent geen rij voor kruislaaghout en de nationale
+      // bijlage voegt er geen toe. Hij komt per staaf uit de toetsconfiguratie,
+      // met zijn bron; ontbreekt een van beide, dan WEIGERT de kern de toets
+      // met die reden in plaats van een waarde aan te nemen.
+      ...(cfg.cltKdef !== undefined ? { k_def: cfg.cltKdef } : {}),
+      ...(cfg.cltKdefBron !== undefined ? { k_def_bron: cfg.cltKdefBron } : {}),
+      deflection_inst_mm: doorbuiging.instMm,
+      deflection_quasi_perm_mm: doorbuiging.quasiMm,
+      deflection_permanent_mm: doorbuiging.permMm,
+      deflection_limit_fin: defl.fin,
+      deflection_limit_add: defl.add,
+      deflection_notes: doorbuiging.notes,
     });
   }
 

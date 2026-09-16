@@ -67,4 +67,54 @@ k_cr: number,
 /**
  * Lastverdelend systeem aanwezig → k_sys = 1,1 (§6.6).
  */
-load_sharing: boolean, };
+load_sharing: boolean, 
+/**
+ * Vervormingsfactor k_def voor de kruip van §7.2 — VERPLICHT om te
+ * kunnen toetsen, en met opzet zonder standaardwaarde.
+ *
+ * Tabel 3.2 kent geen rij voor kruislaaghout (zie de kop van deze
+ * module). Een waarde lenen van gezaagd of gelijmd gelamineerd hout zou
+ * een normwaarde suggereren die er niet is; een waarde aannemen zou de
+ * eindzakking van elke CLT-vloer op een verzonnen getal baseren. `None`
+ * betekent daarom: geen doorbuigingstoets, met die reden in het
+ * resultaat. De waarde hoort uit de productverklaring of de ETA van de
+ * gekozen plaat te komen, per klimaatklasse.
+ */
+k_def?: number, 
+/**
+ * Waar de opgegeven `k_def` vandaan komt — ook verplicht zodra `k_def`
+ * is ingevuld, en letterlijk in de notitie bij de toets.
+ *
+ * Waarom niet optioneel: een kruipfactor zonder herkomst is in het
+ * rapport niet te onderscheiden van een aangenomen getal, en juist die
+ * ononderscheidbaarheid is de reden dat deze toets er tot september 2026
+ * niet was. Bijvoorbeeld: "ETA-14/0349, tabel 8, klimaatklasse 1".
+ */
+k_def_bron?: string, 
+/**
+ * Zakking onder de karakteristieke BGT-combinatie (mm, negatief = omlaag).
+ */
+deflection_inst_mm: number, 
+/**
+ * Zakking onder de quasi-blijvende BGT-combinatie (mm).
+ */
+deflection_quasi_perm_mm: number, 
+/**
+ * Zakking onder de BGT-combinatie met alleen de blijvende belasting
+ * (mm) — w₁ uit figuur NB.1 bij NEN-EN 1990:2002/NB:2019 A1.4.3(2).
+ */
+deflection_permanent_mm: number, 
+/**
+ * Noemer voor w_fin (L/n), NB-standaard 250.
+ */
+deflection_limit_fin: number, 
+/**
+ * Noemer voor w_add (L/n), NB-standaard 333.
+ */
+deflection_limit_add: number, 
+/**
+ * Vrije toelichtingen bij de doorbuigingstoets; zelfde rol als bij
+ * [`crate::TimberBeamCheckInput`]: uit welke combinatie elke zakking komt
+ * en welke terugval er eventueel is toegepast.
+ */
+deflection_notes: Array<string>, };

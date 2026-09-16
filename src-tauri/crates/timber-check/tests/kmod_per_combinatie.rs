@@ -336,6 +336,17 @@ fn clt_per_klasse_met_de_laagregel_uit_de_klasse_van_elke_toets() {
         forces_envelope: env.clone(),
         k_cr: 1.0,
         load_sharing: false,
+        // Deze test gaat over k_mod per combinatie, niet over doorbuiging:
+        // zonder k_def blijven w_fin en w_add "niet van toepassing" en tellen
+        // ze niet mee in uc_max.
+        k_def: None,
+        k_def_bron: None,
+        deflection_inst_mm: 0.0,
+        deflection_quasi_perm_mm: 0.0,
+        deflection_permanent_mm: 0.0,
+        deflection_limit_fin: 250.0,
+        deflection_limit_add: 333.0,
+        deflection_notes: vec![],
     };
     let oud = check_clt_beam(invoer(vec![]));
     // Oud: middellang, M = 14 → 3,6842 / 14,769 = 0,2495.

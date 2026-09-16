@@ -237,6 +237,33 @@ export interface BeamCheckConfig {
    * Rust-enum `LtbLoadPosition`, in de spelling van dit object.
    */
   ltbLoadPosition?: "centreOfGravity" | "compressionEdge" | "tensionEdge";
+  // Kruislaaghout (CLT)
+  /**
+   * Vervormingsfactor k_def voor de kruip van EN 1995-1-1 §7.2 bij
+   * KRUISLAAGHOUT. Leeg = de doorbuigingstoets van die staaf wordt NIET
+   * uitgevoerd, en staat als "niet van toepassing" met die reden in het
+   * rapport.
+   *
+   * Waarom er geen standaardwaarde is. Tabel 3.2 van EN 1995-1-1 — ook in de
+   * uitgave met NB:2013 — geeft k_def voor gezaagd hout, gelijmd gelamineerd
+   * hout, LVL, multiplex, OSB, spaanplaat, vezelplaat en MDF, en heeft géén
+   * rij voor kruislaaghout; de nationale bijlage voegt er geen toe. Een
+   * waarde lenen van massief of gelamineerd hout zou een normwaarde
+   * suggereren die niet bestaat, en de eindzakking van elke CLT-vloer op een
+   * verzonnen getal zetten. De waarde hoort daarom uit de productverklaring
+   * of de ETA van de gekozen plaat te komen, per klimaatklasse.
+   *
+   * Alleen gelezen bij een CLT-profiel; massief hout haalt k_def uit tabel 3.2.
+   */
+  cltKdef?: number;
+  /**
+   * Waar `cltKdef` vandaan komt — verplicht zodra die is ingevuld, en
+   * letterlijk in de notitie bij de doorbuigingstoets. Bijvoorbeeld:
+   * "ETA-14/0349, tabel 8, klimaatklasse 1". Zonder bron voert de kern de
+   * toets niet uit: een kruipfactor zonder herkomst is in het rapport niet te
+   * onderscheiden van een aangenomen getal.
+   */
+  cltKdefBron?: string;
   // Beton (EN 1992)
   /**
    * Wapeningskorf: dekking, beugel, boven- en onderwapening. Zonder korf
