@@ -28,6 +28,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Beam, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
+import type { StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
 import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
 import type { BeamCheckResult } from "../lib/types/steel/BeamCheckResult";
 import type { TimberBeamCheckResult } from "../lib/types/timber/TimberBeamCheckResult";
@@ -143,6 +144,12 @@ export interface CheckRunData {
    * (`consequence_class`); de factoren zitten al in de combinaties. Ontbreekt → CC2.
    */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * Het analysetype en α_cr per combinatie van de rekengang waarop getoetst
+   * wordt (`solver/alphaCr.ts`). De staal- en houtbouwer zetten er bij eerste
+   * orde onder de grens een kanttekening mee bij elke op druk belaste staaf.
+   */
+  stabiliteit?: StabiliteitVoorToets;
 }
 
 interface CheckState {

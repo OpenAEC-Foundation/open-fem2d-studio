@@ -44,6 +44,7 @@ import {
   zeegVoorToets,
 } from "./referentierichting";
 import { bepaalStaafeinden, voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
+import { alphaCrStaafNotitie, type StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
 import { STEEL_SECTIONS } from "./steelSections.generated";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
@@ -231,6 +232,12 @@ export interface SteelBuildData {
   alleBeams?: Beam[];
   /** Platen: een hoekknoop van een plaat is geen vrij staafeind. */
   plates?: { nodeIds: number[] }[];
+  /**
+   * Het analysetype en α_cr per combinatie (basisaudit nr 27). Bij eerste
+   * orde onder de grens van 5.2.1(3) krijgt elke op druk belaste staaf met een
+   * teruggevallen kniklengte een kanttekening in `staaf_notities`.
+   */
+  stabiliteit?: StabiliteitVoorToets;
   combinations: LoadCombination[];
   /** Combinatieresultaten uit de laatste solver-run (per combinatie-id). */
   combinationResults: Map<number, SolverResult>;
@@ -1059,7 +1066,13 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
     // staaf in referentierichting, dus `begin` is x = 0 van de toetsinvoer.
     const ledenVanLijn = new Set(lijn.lijnen.get(beam.id)?.delen.map((d) => d.beam.id) ?? []);
     const staafeinden = bepaalStaafeinden(beam, data.nodes, alleBeams, data.supports, ledenVanLijn, ruweData.plates);
-    const staafNotities = lijn.notities.get(beam.id);
+    const staafNotities = [...(lijn.notities.get(beam.id) ?? [])];
+    const alphaNotitie = alphaCrStaafNotitie(
+      ruweData.stabiliteit,
+      Math.min(...forcesEnvelope.map((p) => p.forces.n_ed)),
+      Number.isFinite(cfg.bucklingLengthY_m) && (cfg.bucklingLengthY_m as number) > 0,
+    );
+    if (alphaNotitie) staafNotities.push(alphaNotitie);
 
     inputs.push({
       beam_id: beam.id,
@@ -1089,7 +1102,7 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       // van elke gewone staaf byte-gelijk aan vroeger, en zegt een aanwezig
       // veld de lezer meteen dat hier iets bijzonders is.
       ...(staafeinden.begin !== "Gaffel" || staafeinden.eind !== "Gaffel" ? { staafeinden } : {}),
-      ...(staafNotities && staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}),
+      ...(staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}),
       // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
       // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
       // tussen plaatsen met een kipsteun aan beide flenzen, anders de

@@ -34,6 +34,9 @@ export * from "./valideerModel";
 
 export * from "../components/fem/solver/engine";
 export * from "../components/fem/solver/combinations";
+// De kritieke lastfactor α_cr en de meldingen erbij (basisaudit nr 27): de
+// sidecar zet ze in `warnings`, dus horen ze in de bundel en in de bundeltest.
+export * from "../components/fem/solver/alphaCr";
 // De afleiding van de standaardcombinaties (NB-tabellen, gevolgklasse) en het
 // bijhouden van gevallen en combinaties: de sidecar gebruikt ze voor zijn
 // standaardset en zijn meldingen, en hun tests horen óók tegen de bundel te

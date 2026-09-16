@@ -298,7 +298,7 @@ function calculateGeometricStiffness(
 /**
  * Assemble global stiffness matrix including geometric stiffness
  */
-function assembleGlobalStiffnessWithGeometric(
+export function assembleGlobalStiffnessWithGeometric(
   mesh: Mesh,
   axialForces: Map<number, number>,  // elementId -> N
   includeGeometric: boolean
@@ -767,7 +767,7 @@ function assembleForceVector(mesh: Mesh): number[] {
 /**
  * Apply boundary conditions using penalty method
  */
-function applyBoundaryConditions(
+export function applyBoundaryConditions(
   K: Matrix,
   F: number[],
   mesh: Mesh
@@ -873,7 +873,7 @@ function calculateAllInternalForces(
  * mee: dan zit de belasting op (of numeriek onhoudbaar dicht bij) de
  * kritieke waarde.
  */
-function countNonPositivePivots(K: Matrix): number {
+export function countNonPositivePivots(K: Matrix): number {
   const n = K.rows;
   // Dense kopie voor in-place eliminatie
   const a: number[][] = [];

@@ -399,6 +399,7 @@ fn invoer(
         concrete_dekkingslijnen: lijnen,
         concrete_reinforcement_zones: zones,
         scheefstand_toelichting: scheefstand,
+        analyse_toelichting: None,
     }
 }
 

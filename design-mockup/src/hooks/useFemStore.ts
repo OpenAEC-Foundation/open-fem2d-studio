@@ -30,6 +30,7 @@ import type {
   LoadCombination, Envelope,
 } from "../components/fem/solver/combinations";
 import { defaultCombinations, metScheefstandRichtingen } from "../components/fem/solver/combinations";
+import type { AlphaCrUitkomst } from "../components/fem/solver/alphaCr";
 import {
   selecteerCombinaties, type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
@@ -1336,6 +1337,12 @@ export interface FemStore {
   combinationResults: Map<number, SolverResult> | null;
   /** Envelope across all combinations. */
   envelope: Envelope | null;
+  /**
+   * De kritieke lastfactor α_cr per UGT-combinatie van de laatste rekengang
+   * (`solver/alphaCr.ts`, basisaudit nr 27); null = niet gerekend. Gaat met
+   * de andere uitkomsten mee en wordt met hen gewist.
+   */
+  stabiliteit: AlphaCrUitkomst[] | null;
 
   // UI
   selection: Selection;
@@ -1346,6 +1353,7 @@ export interface FemStore {
   setActiveCombinationId: (id: number | null) => void;
   setEnvelopeView: (v: boolean) => void;
   setSolverOutputs: (m: {
+    stabiliteit?: AlphaCrUitkomst[];
     perCase: Map<number, SolverResult>;
     combinationResults: Map<number, SolverResult>;
     envelope: Envelope;
@@ -1703,6 +1711,7 @@ export function useFemStore(opties?: {
   const [multiLcResult, setMultiLcResult] = useState<Map<number, SolverResult> | null>(null);
   const [combinationResults, setCombinationResults] = useState<Map<number, SolverResult> | null>(null);
   const [envelope, setEnvelope] = useState<Envelope | null>(null);
+  const [stabiliteit, setStabiliteit] = useState<AlphaCrUitkomst[] | null>(null);
 
   // Welke combinaties dit model werkelijk nodig heeft. AFGELEID, nooit
   // opgeslagen: `combinations` blijft de volledige lijst die in het
@@ -1790,16 +1799,19 @@ export function useFemStore(opties?: {
     perCase: Map<number, SolverResult>;
     combinationResults: Map<number, SolverResult>;
     envelope: Envelope;
+    stabiliteit?: AlphaCrUitkomst[];
   } | null) => {
     if (m === null) {
       setMultiLcResult(null);
       setCombinationResults(null);
       setEnvelope(null);
+      setStabiliteit(null);
       return;
     }
     setMultiLcResult(m.perCase);
     setCombinationResults(m.combinationResults);
     setEnvelope(m.envelope);
+    setStabiliteit(m.stabiliteit ?? null);
   }, []);
 
   // Wat er aan de gevallen niet meetelt — tegen de ACTIEF doorgerekende
@@ -2519,7 +2531,7 @@ export function useFemStore(opties?: {
     combinatieVervanging,
     combinatieVervangingTekst: combinatieVervanging?.samenvatting ?? vervangingUitBestand,
     activeCombinationId, envelopeView,
-    multiLcResult, combinationResults, envelope,
+    multiLcResult, combinationResults, envelope, stabiliteit,
     selection,
     setSelection,
     setActiveLoadCaseId,

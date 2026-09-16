@@ -101,6 +101,7 @@ fn de_pdf_noemt_de_kniklengte_uit_het_vlak_met_haar_herkomst() {
         concrete_dekkingslijnen: Vec::new(),
         concrete_reinforcement_zones: Vec::new(),
         scheefstand_toelichting: None,
+        analyse_toelichting: None,
     });
     let pad = std::env::temp_dir().join("zwakke_as_proef.pdf");
     std::fs::write(&pad, &pdf).expect("de PDF moet weg te schrijven zijn");

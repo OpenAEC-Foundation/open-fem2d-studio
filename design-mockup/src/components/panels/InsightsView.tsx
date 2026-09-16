@@ -39,6 +39,11 @@ interface Props {
   initialMode?: "element" | "system" | "dof" | "logs" | "errors";
   /** Solver-fouttekst uit App (getoond in de fouten-strip). */
   solverError?: string | null;
+  /**
+   * De blokkerende stabiliteitsmelding (eerste orde met α_cr < 10, basisaudit
+   * nr 27): de rekengang slaagde, maar de norm staat haar niet toe.
+   */
+  stabiliteitsMelding?: string | null;
 }
 
 /** Verkorte notatie met NL-decimaalkomma, bv. 2,1e8 · 12,50 · 0. */
@@ -121,10 +126,10 @@ function MatrixTable({ M, rowLabels, colLabels, max = 72, hl, wrapRef }: {
 
 type PaneFocus = "element" | "system" | "dof";
 
-export default function InsightsView({ nodes, beams, supports, initialMode, solverError }: Props) {
+export default function InsightsView({ nodes, beams, supports, initialMode, solverError, stabiliteitsMelding }: Props) {
   const [selectedBeamId, setSelectedBeamId] = useState<number | null>(beams[0]?.id ?? null);
   const [bottomOpen, setBottomOpen] = useState<"logs" | "errors" | null>(
-    solverError ? "errors" : null
+    solverError || stabiliteitsMelding ? "errors" : null
   );
   const [focusPane, setFocusPane] = useState<PaneFocus | null>(null);
   const firstModeRun = useRef(true);
@@ -398,7 +403,7 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
             onClick={() => toggleBottom("errors")}
             aria-expanded={bottomOpen === "errors"}
           >
-            Fouten{solverError && <span className="insights-err-dot" aria-label="actieve fout" />}
+            Fouten{(solverError || stabiliteitsMelding) && <span className="insights-err-dot" aria-label="actieve fout" />}
           </button>
           <span className="insights-bottom-hint">
             {bottomOpen === null ? "klik om open te klappen" : ""}
@@ -434,16 +439,22 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
         )}
         {bottomOpen === "errors" && (
           <div className="insights-bottom-body">
+            {stabiliteitsMelding && (
+              <div className="insights-error-box">
+                <strong>Stabiliteit (NEN-EN 1993-1-1 5.2.1(3)):</strong>
+                <pre>{stabiliteitsMelding}</pre>
+              </div>
+            )}
             {solverError ? (
               <div className="insights-error-box">
                 <strong>Laatste fout:</strong>
                 <pre>{solverError}</pre>
               </div>
-            ) : (
+            ) : !stabiliteitsMelding ? (
               <div className="insights-noerror">
                 ✓ Geen actieve solver-fouten. De laatste succesvolle assembly staat in het logboek.
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>

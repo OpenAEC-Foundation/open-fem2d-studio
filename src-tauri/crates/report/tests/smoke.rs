@@ -100,6 +100,7 @@ fn produces_valid_pdf_header() {
         concrete_dekkingslijnen: Vec::new(),
         concrete_reinforcement_zones: Vec::new(),
         scheefstand_toelichting: None,
+        analyse_toelichting: None,
     };
 
     let bytes = generate_report_pdf(input);

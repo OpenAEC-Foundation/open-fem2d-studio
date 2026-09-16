@@ -295,7 +295,7 @@ function applySupportToMesh(mesh: AnyMesh, meshNodeId: number, support: SolverIn
  * hetzelfde pad zowel één-geval-meshes (factor 1/0) als GEFACTOREERDE
  * combinatie-meshes voor de 2e-orde-berekening.
  */
-function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: number) => number): {
+export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: number) => number): {
   mesh: AnyMesh;
   nodeIdMap: Map<number, number>;
   beamIdMap: Map<number, number>;

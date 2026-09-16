@@ -107,6 +107,10 @@ const BUNDEL_TESTS = new Set([
   // de ongunstigste richting. Raakt alleen engine en combinations; de
   // MCP-weg gebruikt dezelfde ontvouwing, dus hoort dit ook tegen de bundel.
   "scheefstand-richting",
+  // De kritieke lastfactor α_cr en de meldingen (basisaudit nr 27). Raakt
+  // engine, combinations en alphaCr; de sidecar zet de FOUT in `warnings`,
+  // dus hoort dit ook tegen de bundel.
+  "alpha-cr",
   "hoekverdraaiing",
   // Bewaakt dat de kniklengte van een HOUTEN staaf tot in de toetsinvoer
   // komt (buckling_length_y_m/_z_m in TimberBeamCheckInput). Praat alleen met

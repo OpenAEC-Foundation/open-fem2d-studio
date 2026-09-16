@@ -802,8 +802,8 @@ async fn schema_van_de_houttools_is_strikt_op_elk_niveau() {
     assert!(staaf["properties"]["custom_section"].is_object(), "custom_section ontbreekt");
     assert_eq!(
         staaf["properties"].as_object().unwrap().len(),
-        25,
-        "het schema van de houten staaf hoort precies de 25 velden van TimberBeamCheckInput te kennen"
+        26,
+        "het schema van de houten staaf hoort precies de 26 velden van TimberBeamCheckInput te kennen"
     );
 
     let clt = tooldefinitie(&mut stdin, &mut reader, 31, "check_clt_beams").await;

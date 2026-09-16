@@ -1771,6 +1771,18 @@
       "maxDisplacement": 0.309278350516094,
       "maxDisplacementCombinationId": 1
     },
+    "stability": {
+      "analysis_type": "eersteOrde",
+      "alpha_cr": [
+        {
+          "combination_id": 1,
+          "name": "1,2·G + 1,5·Q",
+          "alpha_cr": 31.286697387695312,
+          "status": "bepaald",
+          "label": "α_cr = 31,29"
+        }
+      ]
+    },
     "steel_check_inputs": [
       {
         "beam_id": 1,
