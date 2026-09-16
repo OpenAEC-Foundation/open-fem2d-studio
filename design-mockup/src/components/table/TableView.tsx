@@ -18,9 +18,13 @@ import { useState, useRef, useEffect, type ReactNode, type MutableRefObject } fr
 import { useTranslation } from "react-i18next";
 import {
   withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL, plaatRandLabel,
+  PLATE_DEFAULTS,
   type Node, type Beam, type Plate, type Support, type Load, type LoadCase,
   type Selection, type SupportType, type BeamLoadRole,
 } from "../fem/femTypes";
+import { bepaalPlaatStijfheid } from "../../lib/plaatMateriaal";
+import { SUPPORTED_CONCRETE_CLASSES } from "../../lib/betonCheckBuilder";
+import { CLT_VOORINSTELLINGEN } from "../../lib/cltVoorinstellingen.generated";
 import type { SolverResult } from "../fem/solver/types";
 import type { LoadCombination, Envelope } from "../fem/solver/combinations";
 import { STEEL_GRADES, PROFILE_SUGGESTIONS } from "../fem/BarPropertiesDialog";
@@ -417,7 +421,7 @@ export default function TableView(props: TableViewProps) {
   const buildPlatesSpec = (): TableSpec => ({
     columns: [
       t("table.colId"), t("table.colCorners"),
-      "t [mm]", "E [N/mm²]", "ν [—]", "ρ [kg/m³]",
+      "t [mm]", t("table.colMaterial"), "E [N/mm²]", "ν [—]", "ρ [kg/m³]",
       t("table.colMeshSize"), t("table.colMeshNodes"), t("table.colMeshElems"),
     ],
     editable: true,
@@ -427,6 +431,15 @@ export default function TableView(props: TableViewProps) {
     // geldige geometrie opleveren.
     rows: plates.map((p) => {
       const d = withPlateDefaults(p);
+      // Dezelfde materiaalbepaling als solver, paneel en rapport. Een plaat
+      // MET materiaal laat E, ν en ρ leeg (ze volgen het materiaal); de
+      // ingevulde waarde staat dan als grijze hint in het veld, zodat de
+      // tabel niet suggereert dat er niets bekend is. De uitvoerkolommen
+      // krijgen wél het werkelijke getal.
+      const stUit = bepaalPlaatStijfheid(d);
+      const st = stUit.ok ? stUit.stijfheid : null;
+      const hint = (v: number | undefined) =>
+        d.materiaal && v !== undefined ? `${fmtNum(v)} (materiaal)` : undefined;
       const stats = plateMeshStats(p);
       const statCell = (v: number | undefined) =>
         v !== undefined ? v : <span className="ftable-muted">—</span>;
@@ -437,7 +450,8 @@ export default function TableView(props: TableViewProps) {
         onDelete: () => removePlate(p.id),
         exportCells: [
           String(p.id), p.nodeIds.join(", "),
-          fmtNum(d.thickness), fmtNum(d.E), fmtNum(d.nu), fmtNum(d.rho),
+          fmtNum(d.thickness), d.materiaal ?? "",
+          fmtNum(d.E ?? st?.E1), fmtNum(d.nu ?? st?.nu12), fmtNum(d.rho ?? st?.rho),
           fmtNum(d.meshSize),
           stats.nodes !== undefined ? String(stats.nodes) : "",
           stats.elems !== undefined ? String(stats.elems) : "",
@@ -457,33 +471,78 @@ export default function TableView(props: TableViewProps) {
               />
             </td>
             <td>
+              <TextCell
+                value={d.materiaal ?? ""}
+                allowEmpty
+                listId="plaatmaterialen"
+                title={
+                  stUit.ok
+                    ? "Materiaal van de plaat: staalsoort, betonklasse, houtsterkteklasse, "
+                      + "\"CLT C24 40/20/40\" of \"VRIJ:… E=… rho=… f=…\". Leeg = rekenen met de "
+                      + "E, ν en ρ hiernaast."
+                    : `Materiaal geweigerd: ${stUit.ok ? "" : stUit.reden}`
+                }
+                onCommit={(v) => {
+                  // Een materiaal kiezen wist de losse E, ν en ρ (die anders
+                  // als handmatige overschrijving zouden gelden); het
+                  // materiaal weghalen zet ze terug op de defaults, want
+                  // zonder materiaal moet de plaat eigen getallen hebben.
+                  if (v === "") {
+                    updatePlate(p.id, {
+                      materiaal: undefined,
+                      E: p.E ?? PLATE_DEFAULTS.E,
+                      nu: p.nu ?? PLATE_DEFAULTS.nu,
+                      rho: p.rho ?? PLATE_DEFAULTS.rho,
+                    });
+                  } else {
+                    updatePlate(p.id, {
+                      materiaal: v,
+                      ...(p.materiaal ? {} : { E: undefined, nu: undefined, rho: undefined }),
+                    });
+                  }
+                }}
+              />
+            </td>
+            <td>
               <NumCell
                 value={d.E}
-                title="Elasticiteitsmodulus in N/mm² (staal 210000, beton ~30000)"
+                placeholder={hint(st?.E1)}
+                title={d.materiaal
+                  ? "Overschrijft de E van het materiaal, in BEIDE richtingen — de plaat rekent dan isotroop. Leeg = de waarde van het materiaal volgen."
+                  : "Elasticiteitsmodulus in N/mm² (staal 210000, beton ~30000)"}
                 onCommit={(v) => {
                   if (v <= 0) return false;
                   updatePlate(p.id, { E: v });
                 }}
+                onClear={d.materiaal ? () => updatePlate(p.id, { E: undefined }) : undefined}
               />
             </td>
             <td>
               <NumCell
                 value={d.nu}
-                title="Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"
+                placeholder={hint(st?.nu12)}
+                title={d.materiaal
+                  ? "Overschrijft ν₁₂ van het materiaal. Leeg = de waarde van het materiaal volgen."
+                  : "Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"}
                 onCommit={(v) => {
                   if (v < 0 || v >= 0.5) return false;
                   updatePlate(p.id, { nu: v });
                 }}
+                onClear={d.materiaal ? () => updatePlate(p.id, { nu: undefined }) : undefined}
               />
             </td>
             <td>
               <NumCell
                 value={d.rho}
-                title="Volumieke massa in kg/m³ — gebruikt voor het eigengewicht (staal 7850, beton 2500)"
+                placeholder={hint(st?.rho)}
+                title={d.materiaal
+                  ? "Overschrijft ρ van het materiaal, en daarmee het eigen gewicht. Leeg = de waarde van het materiaal volgen."
+                  : "Volumieke massa in kg/m³ — gebruikt voor het eigengewicht (staal 7850, beton 2500)"}
                 onCommit={(v) => {
                   if (v < 0) return false;
                   updatePlate(p.id, { rho: v });
                 }}
+                onClear={d.materiaal ? () => updatePlate(p.id, { rho: undefined }) : undefined}
               />
             </td>
             <td>
@@ -1135,6 +1194,16 @@ export default function TableView(props: TableViewProps) {
       {/* Profiel-suggesties voor de profiel-cellen (Elementen-tabel). */}
       <datalist id="ftable-profile-list">
         {PROFILE_SUGGESTIONS.map((p) => <option key={p} value={p} />)}
+      </datalist>
+      {/* Materiaal-suggesties voor de platen-tabel; vrije invoer blijft
+          mogelijk ("VRIJ:…" en een eigen kruislaaghoutopbouw). */}
+      <datalist id="plaatmaterialen">
+        {[
+          ...STEEL_GRADES,
+          ...SUPPORTED_CONCRETE_CLASSES,
+          ...SUPPORTED_TIMBER_GRADES,
+          ...CLT_VOORINSTELLINGEN.map((v) => `CLT C24 ${v.thicknesses_mm.join("/")}`),
+        ].map((m) => <option key={`pm${m}`} value={m} />)}
       </datalist>
     </div>
   );

@@ -1,8 +1,16 @@
 /**
  * PlatesSection — invoertabel platen (wandschijven): id, hoekknopen, dikte,
- * materiaal (E/ν/ρ) en meshgrootte, plus het aantal elementen van het
- * rekenmesh uit de laatste berekening (elk combinatieresultaat draagt
+ * materiaal (naam, E/ν/ρ met de BRON erbij, en de hoofdrichting bij een
+ * richtingsafhankelijk materiaal) en meshgrootte, plus het aantal elementen
+ * van het rekenmesh uit de laatste berekening (elk combinatieresultaat draagt
  * hetzelfde mesh; zonder actueel resultaat blijft de kolom "—").
+ *
+ * WAAROM DE BRON IN HET RAPPORT STAAT. E, ν en ρ kunnen uit het gekozen
+ * materiaal komen of met de hand zijn ingevuld, en die twee zijn aan het
+ * getal alleen niet te onderscheiden. Wie het rapport naleest moet kunnen
+ * zien welke van de twee gold: een handmatige E maakt een houten of
+ * kruislaaghouten plaat bovendien isotroop, en dat is een rekenkundig
+ * verschil dat niet stil mag blijven.
  *
  * Leest live uit de ReportDataContext; zonder platen een eerlijke
  * lege-modelmelding. Eenheden zoals het eigenschappenpaneel: mm, N/mm²,
@@ -10,6 +18,7 @@
  */
 import { useTranslation } from "react-i18next";
 import { withPlateDefaults, effectiefPlaatMeshType, type Plate, type Node } from "../../fem/femTypes";
+import { bepaalPlaatStijfheid, plaatMateriaalLabel } from "../../../lib/plaatMateriaal";
 import type { SolverResult } from "../../fem/solver/types";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
@@ -33,6 +42,11 @@ function plateElemCount(
   return null;
 }
 
+/** Korte bronaanduiding in de tabel; de volle uitleg staat in de regels eronder. */
+const BRON_KORT: Record<string, string> = {
+  materiaal: "materiaal", handmatig: "handmatig", standaard: "standaard",
+};
+
 /** Maten van een opening voor de tabel: "b × h mm" bij een rechthoek, anders het aantal hoeken. */
 function openingOmschrijving(punten: { x: number; z: number }[]): string {
   const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
@@ -53,6 +67,16 @@ export default function PlatesSection() {
   const { plates, nodes, combinationResults, caseResults } = useReportData();
 
   const sorted = [...plates].sort((a, b) => a.id - b.id);
+  // Eén regel per plaat MET materiaal: waar E₁, E₂, G₁₂, ν en ρ vandaan
+  // komen, met het normartikel erbij, en welke velden met de hand zijn
+  // overschreven. Platen zonder materiaal krijgen geen regel — daar staat
+  // alles al in de tabel.
+  const herkomstRegels: [number, string][] = [];
+  for (const p of sorted) {
+    const uit = bepaalPlaatStijfheid(withPlateDefaults(p));
+    if (uit.ok && uit.stijfheid.soort !== null) herkomstRegels.push([p.id, uit.stijfheid.herkomst]);
+    if (!uit.ok) herkomstRegels.push([p.id, `materiaal geweigerd — ${uit.reden}`]);
+  }
 
   return (
     <div className="rpt-block">
@@ -70,9 +94,14 @@ export default function PlatesSection() {
                 <th>{t("report.colId", "Id")}</th>
                 <th>{t("report.colCorners", "Hoekknopen")}</th>
                 <th className="rpt-num">t [mm]</th>
-                <th className="rpt-num">E [N/mm²]</th>
+                <th>{t("report.colPlateMaterial", "Materiaal")}</th>
+                <th className="rpt-num">E₁ [N/mm²]</th>
+                <th className="rpt-num">E₂ [N/mm²]</th>
+                <th className="rpt-num">G₁₂ [N/mm²]</th>
                 <th className="rpt-num">ν [—]</th>
                 <th className="rpt-num">ρ [kg/m³]</th>
+                <th>{t("report.colPlateSource", "Bron E / ν / ρ")}</th>
+                <th className="rpt-num">{t("report.colPlateAngle", "Hoofdrichting [°]")}</th>
                 <th className="rpt-num">{t("report.colMeshSize", "Meshgrootte [mm]")}</th>
                 <th>{t("report.colMeshType", "Elementen (type)")}</th>
                 <th className="rpt-num">{t("report.colElemCount", "Elementen")}</th>
@@ -83,14 +112,24 @@ export default function PlatesSection() {
               {sorted.map((p) => {
                 const d = withPlateDefaults(p);
                 const nElems = plateElemCount(p, [caseResults, combinationResults]);
+                // Dezelfde bepaling als de solver. Wordt het materiaal niet
+                // herkend, dan weigert de berekening ook; het rapport zet dan
+                // de reden in de kolom in plaats van getallen te verzinnen.
+                const uit = bepaalPlaatStijfheid(d);
+                const st = uit.ok ? uit.stijfheid : null;
                 return (
                   <tr key={p.id}>
                     <td>{p.id}</td>
                     <td>{p.nodeIds.join(", ")}</td>
                     <td className="rpt-num">{fmtNum(d.thickness!, 1)}</td>
-                    <td className="rpt-num">{fmtNum(d.E!, 0)}</td>
-                    <td className="rpt-num">{fmtNum(d.nu!, 2)}</td>
-                    <td className="rpt-num">{fmtNum(d.rho!, 0)}</td>
+                    <td>{st ? plaatMateriaalLabel(st) : `geweigerd: ${uit.ok ? "" : uit.reden}`}</td>
+                    <td className="rpt-num">{st ? fmtNum(st.E1, 0) : "—"}</td>
+                    <td className="rpt-num">{st ? fmtNum(st.E2, 0) : "—"}</td>
+                    <td className="rpt-num">{st ? fmtNum(st.G12, 0) : "—"}</td>
+                    <td className="rpt-num">{st ? fmtNum(st.nu12, 2) : "—"}</td>
+                    <td className="rpt-num">{st ? fmtNum(st.rho, 0) : "—"}</td>
+                    <td>{st ? `${BRON_KORT[st.bronE]} / ${BRON_KORT[st.bronNu]} / ${BRON_KORT[st.bronRho]}` : "—"}</td>
+                    <td className="rpt-num">{st?.orthotroop ? fmtNum(st.hoekGraden, 1) : "—"}</td>
                     <td className="rpt-num">{fmtNum(d.meshSize!, 0)}</td>
                     <td>{meshTypeTekst(p, nodes)}</td>
                     <td className="rpt-num">{nElems !== null ? nElems : "—"}</td>
@@ -104,6 +143,13 @@ export default function PlatesSection() {
               })}
             </tbody>
           </table>
+          {herkomstRegels.length > 0 && (
+            <ul className="rpt-note" style={{ marginTop: "1.5mm" }}>
+              {herkomstRegels.map(([id, tekst]) => (
+                <li key={`ph${id}`}>Plaat {id}: {tekst}</li>
+              ))}
+            </ul>
+          )}
           <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
             {t(
               "report.plateKindNote",
