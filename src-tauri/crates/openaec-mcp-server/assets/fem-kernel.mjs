@@ -4890,6 +4890,17 @@ function rasterLijnen(lo, hi, dwingend, meshSize) {
   uit.push(hi);
   return uit;
 }
+function knoopLijnenBuitenTol(lo, hi, openingLijnen, knoopLijnen) {
+  const TOL = 1;
+  const genomen = [lo, hi, ...openingLijnen];
+  const uit = [];
+  for (const v of [...knoopLijnen ?? []].sort((a, b) => a - b)) {
+    if (genomen.some((w) => Math.abs(w - v) <= TOL && w !== v)) continue;
+    genomen.push(v);
+    uit.push(v);
+  }
+  return uit;
+}
 function bbox(p) {
   const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
@@ -4897,8 +4908,10 @@ function bbox(p) {
 function genereerRasterMesh(inv) {
   const { minX, maxX, minZ, maxZ, meshSize, meshType } = inv;
   const openingRects = inv.openingen.map(bbox);
-  const xs = rasterLijnen(minX, maxX, [...openingRects.flatMap((r) => [r.minX, r.maxX]), ...inv.dwingendX ?? []], meshSize);
-  const zs = rasterLijnen(minZ, maxZ, [...openingRects.flatMap((r) => [r.minZ, r.maxZ]), ...inv.dwingendZ ?? []], meshSize);
+  const openingX = openingRects.flatMap((r) => [r.minX, r.maxX]);
+  const openingZ = openingRects.flatMap((r) => [r.minZ, r.maxZ]);
+  const xs = rasterLijnen(minX, maxX, [...openingX, ...knoopLijnenBuitenTol(minX, maxX, openingX, inv.dwingendX)], meshSize);
+  const zs = rasterLijnen(minZ, maxZ, [...openingZ, ...knoopLijnenBuitenTol(minZ, maxZ, openingZ, inv.dwingendZ)], meshSize);
   const nx = xs.length - 1, nz = zs.length - 1;
   const vakBestaat = (i, j) => {
     const xc = (xs[i] + xs[i + 1]) / 2, zc = (zs[j] + zs[j + 1]) / 2;
@@ -5585,6 +5598,32 @@ function plaatRandLabel(adres) {
     return PLAAT_RAND_NAAM_NL[adres.edge];
   }
   return "rand onbekend";
+}
+var STAAFEINDE_BIJ_RAND_MM = 50;
+function dichtstbijzijndePlaatrand(punt, hoeken, openingen = []) {
+  if (hoeken.length < 3) return null;
+  let beste = null;
+  const bekijk = (lus, maak) => {
+    for (let i = 0; i < lus.length; i++) {
+      const d = afstandTotLijnstuk(punt, lus[i], lus[(i + 1) % lus.length]);
+      if (!beste || d < beste.afstand) beste = maak(i, d);
+    }
+  };
+  bekijk(hoeken, (i, d) => ({ afstand: d, edgeIndex: i, naam: `rand ${i + 1} van de omtrek` }));
+  for (const o of openingen) {
+    if (!o || !Array.isArray(o.punten) || o.punten.length < 3) continue;
+    bekijk(o.punten, (i, d) => ({
+      afstand: d,
+      edgeIndex: i,
+      openingId: o.id,
+      naam: plaatRandLabel({ openingId: o.id, edgeIndex: i })
+    }));
+  }
+  return beste;
+}
+function staafeindeBijPlaatrandTekst(plateId, knoop, rand) {
+  const mm = Math.round(rand.afstand * 10) / 10;
+  return `Plaat ${plateId}: het vrije staafeinde op ${knoop} ligt ${String(mm).replace(".", ",")} mm van ${rand.naam}. Een staafeinde wordt alleen binnen 1 mm aan een plaatrand gekoppeld; zo dichtbij is een aansluiting vrijwel zeker bedoeld, maar zonder koppeling hangt de staaf los. Leg de knoop op de rand, of zet hem minstens ${STAAFEINDE_BIJ_RAND_MM} mm van de plaat af als hij los hoort te staan.`;
 }
 var meshCacheCommitter = null;
 function registreerPlaatMeshCacheCommitter(fn) {
@@ -16542,10 +16581,13 @@ function buildMesh(input, loadFactor) {
     } else {
       kandidaten = info.region.edges[rand.naam].nodeIds;
     }
-    const ax = rand.van.x / 1e3, az = rand.van.z / 1e3;
-    const L = rand.lengte / 1e3;
-    const ex = (rand.naar.x - rand.van.x) / rand.lengte;
-    const ez = (rand.naar.z - rand.van.z) / rand.lengte;
+    return ordenOpRand(plateId, kandidaten, rand.van, rand.naar, rand.lengte, wat);
+  };
+  const ordenOpRand = (plateId, kandidaten, van, naar, lengte, wat) => {
+    const ax = van.x / 1e3, az = van.z / 1e3;
+    const L = lengte / 1e3;
+    const ex = (naar.x - van.x) / lengte;
+    const ez = (naar.z - van.z) / lengte;
     const rij = [...new Set(kandidaten)].map((nid) => {
       const nd = mesh.getNode(nid);
       return { nid, s: nd ? (nd.x - ax) * ex + (nd.y - az) * ez : NaN };
@@ -16576,9 +16618,30 @@ function buildMesh(input, loadFactor) {
       for (const adres of adressen) {
         rijen.push({ plateId: info.plateId, nodeIds: randKnopenVan(info.plateId, adres, "een plaatrand").nodeIds });
       }
+      info.openingen.forEach((o, oi) => {
+        const n = o.punten.length;
+        for (let j = 0; j < n; j++) {
+          const wat = `rand ${j + 1} van opening ${o.id}`;
+          const lijst = info.openingEdgeNodeIds[oi]?.[j];
+          if (!lijst) {
+            throw new Error(
+              `Plaat ${info.plateId}: ${wat} heeft geen rekenknopen in het rekenmesh. Wijzig de plaat zodat het mesh opnieuw wordt gemaakt.`
+            );
+          }
+          const van = o.punten[j], naar = o.punten[(j + 1) % n];
+          const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
+          rijen.push({ plateId: info.plateId, nodeIds: ordenOpRand(info.plateId, lijst, van, naar, lengte, wat).nodeIds });
+        }
+      });
     }
     const staafKnopen = /* @__PURE__ */ new Set();
-    for (const be of mesh.beamElements.values()) for (const nid of be.nodeIds) staafKnopen.add(nid);
+    const staafGraad = /* @__PURE__ */ new Map();
+    for (const be of mesh.beamElements.values()) {
+      for (const nid of be.nodeIds) {
+        staafKnopen.add(nid);
+        staafGraad.set(nid, (staafGraad.get(nid) ?? 0) + 1);
+      }
+    }
     const TOL_M = TOL_MM / 1e3;
     for (const nid of staafKnopen) {
       if (plaatKnopen.has(nid)) continue;
@@ -16601,7 +16664,21 @@ function buildMesh(input, loadFactor) {
           if (!oud || d < oud.d) perPlaat.set(rij.plateId, { a: na.id, b: nb.id, t, d });
         }
       }
-      if (perPlaat.size === 0) continue;
+      if (perPlaat.size === 0) {
+        const c2 = nd.constraints;
+        const vrij = staafGraad.get(nid) === 1 && !c2.x && !c2.y && !c2.rotation;
+        if (vrij) {
+          let dichtst = null;
+          for (const info of plateInfo) {
+            const rand = dichtstbijzijndePlaatrand({ x: nd.x * 1e3, z: nd.y * 1e3 }, info.hoeken, info.openingen);
+            if (rand && (!dichtst || rand.afstand < dichtst.rand.afstand)) dichtst = { plateId: info.plateId, rand };
+          }
+          if (dichtst && dichtst.rand.afstand > TOL_MM && dichtst.rand.afstand < STAAFEINDE_BIJ_RAND_MM) {
+            throw new Error(staafeindeBijPlaatrandTekst(dichtst.plateId, knoopNaam(nid), dichtst.rand));
+          }
+        }
+        continue;
+      }
       const [[eerstePlaat, k0], ...rest] = [...perPlaat.entries()];
       for (const [pid, k] of rest) {
         const zelfde = k.a === k0.a && k.b === k0.b && Math.abs(k.t - k0.t) < 1e-9 || k.a === k0.b && k.b === k0.a && Math.abs(k.t - (1 - k0.t)) < 1e-9;
@@ -20691,6 +20768,15 @@ function dubbelzinnigMateriaalTekst(beamId, d, metKorf) {
 
 // src/lib/modelControle.ts
 var CONTROLE_TOL_MM = 1;
+function knoopGraden(model) {
+  const graad = /* @__PURE__ */ new Map();
+  for (const n of model.nodes) graad.set(n.id, 0);
+  for (const b of model.beams) {
+    graad.set(b.from, (graad.get(b.from) ?? 0) + 1);
+    graad.set(b.to, (graad.get(b.to) ?? 0) + 1);
+  }
+  return graad;
+}
 function zoekDubbeleKnopen(model, tolMm = CONTROLE_TOL_MM) {
   const verbonden = /* @__PURE__ */ new Set();
   for (const b of model.beams) {
@@ -20719,6 +20805,41 @@ function zoekDubbeleKnopen(model, tolMm = CONTROLE_TOL_MM) {
         }
       });
     }
+  }
+  return uit;
+}
+function zoekStaafeindenBijPlaatrand(model, tolMm = CONTROLE_TOL_MM) {
+  const platen = (model.plates ?? []).flatMap((p) => {
+    const hoeken = (p.nodeIds ?? []).map((id) => model.nodes.find((k) => k.id === id));
+    if (hoeken.length < 3 || hoeken.some((h) => !h)) return [];
+    const openingen = (Array.isArray(p.openingen) ? p.openingen : []).filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten) && o.punten.length >= 3);
+    return [{ id: p.id, hoeken: hoeken.map((h) => ({ x: h.x, z: h.z })), openingen }];
+  });
+  if (platen.length === 0) return [];
+  const graad = knoopGraden(model);
+  const gesteund = new Set((model.supports ?? []).map((s) => s.nodeId));
+  const uit = [];
+  for (const n of model.nodes) {
+    const g = graad.get(n.id) ?? 0;
+    if (g === 0) continue;
+    let dichtst = null;
+    for (const plaat2 of platen) {
+      const rand2 = dichtstbijzijndePlaatrand({ x: n.x, z: n.z }, plaat2.hoeken, plaat2.openingen);
+      if (rand2 && (!dichtst || rand2.afstand < dichtst.rand.afstand)) dichtst = { plaat: plaat2, rand: rand2 };
+    }
+    if (!dichtst || !(dichtst.rand.afstand > tolMm && dichtst.rand.afstand < STAAFEINDE_BIJ_RAND_MM)) continue;
+    const { plaat, rand } = dichtst;
+    const inMateriaal = puntInPolygoon(n.x, n.z, plaat.hoeken) && !plaat.openingen.some((o) => puntInPolygoon(n.x, n.z, o.punten));
+    const vrij = g === 1 && !gesteund.has(n.id);
+    const staaf = model.beams.find((b) => b.from === n.id || b.to === n.id);
+    const mm = String(Math.round(rand.afstand * 10) / 10).replace(".", ",");
+    uit.push({
+      soort: "staafeindeBijPlaatrand",
+      ernst: vrij && !inMateriaal ? "fout" : "waarschuwing",
+      nodeIds: [n.id],
+      beamId: staaf?.id,
+      tekst: vrij ? staafeindeBijPlaatrandTekst(plaat.id, `knoop ${n.id}`, rand) : `Plaat ${plaat.id}: knoop ${n.id} ligt ${mm} mm van ${rand.naam} en wordt niet aan die rand gekoppeld (dat gebeurt alleen binnen 1 mm). Bedoeld als aansluiting? Leg de knoop op de rand. Zo niet, dan is ${STAAFEINDE_BIJ_RAND_MM} mm of meer afstand duidelijker.`
+    });
   }
   return uit;
 }
@@ -21656,6 +21777,9 @@ function valideerModel(rauw, opties = {}) {
   for (const bevinding of zoekDubbeleKnopen({ nodes, beams }, 1e-6)) {
     errors.push(bevinding.tekst);
   }
+  for (const bevinding of zoekStaafeindenBijPlaatrand({ nodes, beams, supports, plates })) {
+    (bevinding.ernst === "fout" ? errors : warnings).push(bevinding.tekst);
+  }
   for (const b of beams) {
     const van = knoopById.get(b.from);
     const naar = knoopById.get(b.to);
@@ -21701,7 +21825,16 @@ function valideerModel(rauw, opties = {}) {
     const h = (p.nodeIds ?? []).map((id) => knoopById.get(id));
     return h.every((q) => q !== void 0) && h.length >= 3 ? h : void 0;
   });
-  const inOfOpPlaat = (n) => plaatOmtrekken.some((omtrek) => !!omtrek && (puntInPolygoon(n.x, n.z, omtrek) || omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1)));
+  const opLus = (n, lus) => lus.some((a, i) => afstandTotLijnstuk(n, a, lus[(i + 1) % lus.length]) <= 1);
+  const inOfOpPlaatK = (n, k) => {
+    const omtrek = plaatOmtrekken[k];
+    if (!omtrek) return false;
+    if (opLus(n, omtrek)) return true;
+    if (!puntInPolygoon(n.x, n.z, omtrek)) return false;
+    const openingen = (Array.isArray(plates[k].openingen) ? plates[k].openingen : []).filter((o) => o && Array.isArray(o.punten) && o.punten.length >= 3);
+    return openingen.every((o) => opLus(n, o.punten) || !puntInPolygoon(n.x, n.z, o.punten));
+  };
+  const inOfOpPlaat = (n) => plates.some((_, k) => inOfOpPlaatK(n, k));
   for (const n of nodes) if (!actief2.has(n.id) && inOfOpPlaat(n)) actief2.add(n.id);
   for (const n of nodes) {
     if (!actief2.has(n.id)) {
@@ -21769,8 +21902,7 @@ function valideerModel(rauw, opties = {}) {
     const verbindingen = [
       ...beams.map((b) => [b.from, b.to]),
       ...plates.map((p, k) => {
-        const omtrek = plaatOmtrekken[k];
-        const erbij = omtrek ? nodes.filter((n) => puntInPolygoon(n.x, n.z, omtrek) || omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1)).map((n) => n.id) : [];
+        const erbij = nodes.filter((n) => inOfOpPlaatK(n, k)).map((n) => n.id);
         return [...p.nodeIds ?? [], ...erbij];
       })
     ];
@@ -23030,6 +23162,7 @@ export {
   SPIEGELREGELS_STAAF,
   SPIEGELREGELS_TOETSCONFIG,
   SPRONGBAND_GRADEN,
+  STAAFEINDE_BIJ_RAND_MM,
   STANDAARD_BELASTINGGEVALLEN,
   STANDAARD_BIJLAGE,
   STANDAARD_CATEGORIE,
@@ -23103,6 +23236,7 @@ export {
   deflectionNotesFor,
   deserializeProject,
   dichtheidVanMateriaal,
+  dichtstbijzijndePlaatrand,
   doorsnedeOpPositie,
   doorsnedeVeldenVoorSolver,
   doorsnedeVoorSolver,
@@ -23209,6 +23343,7 @@ export {
   splitsVierhoekenInDriehoeken,
   staafInReferentierichting,
   staafLengteMm,
+  staafeindeBijPlaatrandTekst,
   stabiliteitsMeldingen,
   startSidecar,
   synchroniseerStandaard,
