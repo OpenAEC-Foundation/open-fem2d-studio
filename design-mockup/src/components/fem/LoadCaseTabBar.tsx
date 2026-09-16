@@ -31,6 +31,13 @@ interface Props {
   betonSegmentLengteMm?: number;
   setBetonSegmentLengteMm?: (v: number) => void;
   /**
+   * φ(∞,t₀) van het project, art. 3.1.4; `null` = niet opgegeven. Alleen
+   * zichtbaar bij de fysisch niet-lineaire stand, want alleen daar rekent de
+   * kern met de effectieve elasticiteitsmodulus E_cm/(1 + φ_ef).
+   */
+  betonKruipcoefficient?: number | null;
+  setBetonKruipcoefficient?: (v: number | null) => void;
+  /**
    * Aantal betonstaven mét wapeningskorf. Nul betekent dat de fysisch
    * niet-lineaire stand niets te doen heeft; dat hoort de balk te zeggen in
    * plaats van stilzwijgend hetzelfde antwoord te geven als P-Δ.
@@ -99,6 +106,7 @@ export default function LoadCaseTabBar({
   selfWeightEnabled, setSelfWeightEnabled,
   analysetype = "eersteOrde", setAnalysetype,
   betonSegmentLengteMm = 400, setBetonSegmentLengteMm,
+  betonKruipcoefficient = null, setBetonKruipcoefficient,
   aantalBetonstaven = 0, segmentWaarschuwing = null,
   scheefstandEnabled, setScheefstandEnabled,
   scheefstandNoemer, setScheefstandNoemer,
@@ -262,6 +270,48 @@ export default function LoadCaseTabBar({
             }}
           />
           <span className="lc-tab-phi-label">mm</span>
+        </span>
+      )}
+
+      {/* DE KRUIPCOËFFICIËNT van het project, art. 3.1.4. Leeg = niet
+          opgegeven, en dat is iets anders dan 0 ("geen kruip"): zonder waarde
+          rekent de kern met φ_ef = 0, en dan is de buigstijfheid te hoog en de
+          zakking te klein — de onveilige kant. Art. 3.1.4 wordt niet gerekend
+          (dat vraagt RV, h₀, de cementklasse en t₀ uit bijlage B), dus het
+          blijft invoer. Een staaf met een eigen waarde in het §5.8-blok gaat
+          vóór deze projectwaarde. */}
+      {setAnalysetype && analysetype === "tweedeOrdeFysisch" && (
+        <span
+          className={betonKruipcoefficient === null ? "lc-tab-phi lc-tab-phi-waarschuwing" : "lc-tab-phi"}
+          title={
+            "Eindwaarde van de kruipcoëfficiënt φ(∞,t₀) volgens art. 3.1.4, voor " +
+            "elke betonstaaf zonder eigen waarde bij de §5.8-gegevens. De kern " +
+            "verwerkt hem volgens 5.8.6(4) — alle rekwaarden maal (1 + φ_ef) — " +
+            "wat voor de beginhelling neerkomt op E_c,eff = E_cm/(1 + φ) van " +
+            "(7.20). LEEG = niet opgegeven: er wordt dan ZONDER kruip gerekend, " +
+            "de zakking komt te klein uit en dat is de onveilige kant. Art. 3.1.4 " +
+            "wordt hier niet uitgerekend: dat vraagt de relatieve luchtvochtigheid, " +
+            "de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten."
+          }
+        >
+          <span className="lc-tab-phi-label">φ(∞,t₀)</span>
+          <input
+            type="number"
+            className="lc-tab-phi-input"
+            min={0}
+            step={0.1}
+            placeholder="leeg"
+            value={betonKruipcoefficient ?? ""}
+            onChange={(e) => {
+              const tekst = e.target.value.trim();
+              if (tekst === "") {
+                setBetonKruipcoefficient?.(null);
+                return;
+              }
+              const v = Number(tekst);
+              if (Number.isFinite(v) && v >= 0) setBetonKruipcoefficient?.(v);
+            }}
+          />
         </span>
       )}
 

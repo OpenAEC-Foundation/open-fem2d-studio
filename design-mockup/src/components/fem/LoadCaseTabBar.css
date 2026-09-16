@@ -183,6 +183,11 @@
   flex-shrink: 0;
 }
 .lc-tab-phi-label { white-space: nowrap; }
+/* Een ONTBREKENDE kruipcoëfficiënt is geen neutrale toestand: er wordt dan
+   zonder kruip gerekend en de zakking komt te klein uit. Daarom valt het vakje
+   op zolang het leeg is, in dezelfde kleur als de andere waarschuwingen. */
+.lc-tab-phi-waarschuwing { color: var(--theme-warning, #c77700); }
+.lc-tab-phi-waarschuwing .lc-tab-phi-input { border-color: var(--theme-warning, #c77700); }
 .lc-tab-phi-input {
   width: 52px;
   height: 20px;

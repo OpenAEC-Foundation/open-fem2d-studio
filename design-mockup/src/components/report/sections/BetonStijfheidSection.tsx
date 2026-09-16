@@ -371,11 +371,28 @@ function CombinatieBlok({ c, segmentLengteMm }: { c: StijfheidCombinatie; segmen
               )}
             </td>
           </tr>
+          {/* β VAN (7.19). Hij hangt aan de DUUR van de belasting, dus aan de
+              combinatie, en niet aan de doorsnede — 7.4.3(3) kent alleen 1,0
+              (één enkele kortdurende belasting) en 0,5 (aanhoudend of
+              herhaalde cycli). Het getal komt uit het kernantwoord, de reden
+              uit de combinatiekeuze. */}
+          <tr>
+            <th>{t("report.eisBeta", "Belastingduur β (7.19)")}</th>
+            <td>
+              β = {eerste ? nl(eerste.beta, 2) : "—"}
+              {c.belastingduurReden ? ` — ${c.belastingduurReden}` : null}
+            </td>
+          </tr>
           <tr>
             <th>{t("report.eisKruip", "Kruip")}</th>
             <td>
               φ<sub>ef</sub> = {eerste ? nl(eerste.phi_ef, 2) : "—"}
-              {eerste && <span className="rpt-eis-kruip"> — {eerste.creep_note}</span>}
+              {eerste && (
+                <span className={eerste.creep_neglected ? "rpt-eis-nok" : "rpt-eis-kruip"}>
+                  {" "}
+                  — {eerste.creep_note}
+                </span>
+              )}
             </td>
           </tr>
         </tbody>
@@ -397,6 +414,7 @@ export default function BetonStijfheidSection() {
   const combinaties = useBetonStijfheidStore((s) => s.combinaties);
   const overgeslagen = useBetonStijfheidStore((s) => s.overgeslagen);
   const segmentLengteMm = useBetonStijfheidStore((s) => s.segmentLengteMm);
+  const zonderKruip = useBetonStijfheidStore((s) => s.zonderKruipcoefficient);
   const berekendOp = useBetonStijfheidStore((s) => s.berekendOp);
   const resultCombo = useReportStore((s) => s.resultCombo);
 
@@ -445,6 +463,28 @@ export default function BetonStijfheidSection() {
                 n: combinaties.length,
               })}
           </p>
+
+          {/* ZONDER KRUIP GEREKEND. Staat bovenaan het hoofdstuk en niet
+              alleen in de regel per combinatie: het raakt élke uitkomst
+              eronder. De uitwerking staat erbij, want "φ_ef = 0" zegt op
+              zichzelf niet welke kant de fout op staat. */}
+          {zonderKruip.length > 0 && (
+            <div className="rpt-eis-overgeslagen">
+              <p>
+                <span className="rpt-eis-nok">
+                  {t("report.eisZonderKruipKop", {
+                    defaultValue:
+                      "ZONDER KRUIP GEREKEND — staaf/staven {{ids}}: er is geen kruipcoëfficiënt φ(∞,t₀) opgegeven (art. 3.1.4), dus φ_ef = 0.",
+                    ids: zonderKruip.join(", "),
+                  })}
+                </span>{" "}
+                {t(
+                  "report.eisZonderKruipUitleg",
+                  "Art. 5.8.6(4) laat kruip in rekening brengen door alle rekwaarden van het spanning-rekdiagram met (1 + φ_ef) te vermenigvuldigen, wat voor de beginhelling neerkomt op de effectieve elasticiteitsmodulus E_c,eff = E_cm/(1 + φ) van (7.20). Zonder die verlaging is de buigstijfheid te hoog: de berekende zakking is TE KLEIN, en in een statisch onbepaalde constructie trekken de te stijve betonstaven bovendien te veel moment naar zich toe. Beide staan aan de onveilige kant. Art. 3.1.4 wordt niet uitgerekend — dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten (bijlage B) — en blijft daarom invoer.",
+                )}
+              </p>
+            </div>
+          )}
 
           {overgeslagen.length > 0 && (
             <div className="rpt-eis-overgeslagen">

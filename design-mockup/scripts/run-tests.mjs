@@ -371,6 +371,10 @@ const ALLEEN_BRON = new Map([
     "drijft de lus uit lib/betonStijfheid, die de Rust-rekenkern nodig heeft en dus niet in de barrel hoort; het echte-kernblok start de toetsbrug als apart proces en wordt luid overgeslagen als die binary ontbreekt",
   ],
   [
+    "beton-kruip",
+    "bewaakt β van (7.19) per combinatiesoort en de kruipcoëfficiënt in de fysisch niet-lineaire betonstijfheid: drijft de lus uit lib/betonStijfheid (buiten de barrel), leest App.tsx als bronbestand voor de doorvoer, en start de toetsbrug als apart proces voor de vergelijking met de handberekening — dat blok wordt luid overgeslagen als de binary ontbreekt",
+  ],
+  [
     "kolomtoets",
     "de §5.8-invoer van een betonnen kolom: de gevallen van figuur 5.7 uit components/beton/kolomgegevens, de doorvoer via korvenUitStaven (een zustand-store) en betonCheckBuilder, en een blok dat de toetsbrug als apart proces aanroept. Twee van die drie modules staan buiten de barrel — het korfmodel en de store — en de Rust-kern hoort er sowieso niet in, dus tegen de sidecarbundel zou de test juist de laag overslaan die hij moet bewaken",
   ],

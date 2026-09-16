@@ -53,11 +53,13 @@ import {
 import { ANALYSETYPE_LABEL, ANALYSETYPE_OMSCHRIJVING } from "./components/fem/femTypes";
 import type { MultiInput } from "./components/fem/solver/types";
 import {
+  belastingduurVanCombinatie,
   betonStavenUitModel,
   losCombinatieFysischOp,
   schatVrijheidsgraden,
   segmentWaarschuwing,
 } from "./lib/betonStijfheid";
+import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import { controleerVoorRekenen, leesbareRekenfout, statusNaCanvasSolve } from "./lib/rekenPoort";
@@ -452,6 +454,7 @@ function App() {
     nonlinearEnabled: nonlinearVoorBestand(fem.analysetype),
     analysetype: fem.analysetype,
     betonSegmentLengteMm: fem.betonSegmentLengteMm,
+    betonKruipcoefficient: fem.betonKruipcoefficient,
     // v2: combinaties (Map-factoren → JSON-object) + stramien + scheefstand.
     combinations: combinationsToFile(fem.combinations),
     // De id-tellers reizen mee, zodat een verwijderd belastinggeval ook na
@@ -625,6 +628,7 @@ function App() {
         nonlinearEnabled: parsed.nonlinearEnabled,
         analysetype: parsed.analysetype,
         betonSegmentLengteMm: parsed.betonSegmentLengteMm,
+        betonKruipcoefficient: parsed.betonKruipcoefficient,
         // v2-velden; undefined bij v1-bestanden → store-defaults.
         combinations: combinationsFromFile(parsed.combinations),
         structuralGrid: parsed.structuralGrid,
@@ -1266,6 +1270,10 @@ function App() {
     const { staven, overgeslagen } = betonStavenUitModel({
       nodes: fem.nodes,
       beams: fem.beams,
+      // φ(∞,t₀) van het project (art. 3.1.4) als terugval voor elke staaf
+      // zonder eigen waarde in het §5.8-blok. `null` = niet opgegeven; dan
+      // gaat er niets mee en meldt de lus dat luid (`zonderKruipcoefficient`).
+      standaardPhiInfT0: fem.betonKruipcoefficient ?? undefined,
       bEffPerStaaf: bEffWaardenPerStaaf(
         await bepaalBeffPerStaaf(
           { nodes: fem.nodes, beams: fem.beams, supports: fem.supports },
@@ -1305,6 +1313,10 @@ function App() {
     // als ALLE combinaties gelukt zijn — een half spoor hoort bij een
     // krachtsverdeling die er niet is.
     const spoor: StijfheidCombinatie[] = [];
+    // De staven die zonder kruipcoëfficiënt zijn gerekend (art. 3.1.4 niet
+    // opgegeven). Verzameld over ALLE combinaties, want de melding erna moet
+    // de staaf noemen en niet de combinatie.
+    const zonderKruip = new Set<number>();
     try {
       // Dezelfde lijst als het lineaire pad: een niet-doorgerekende combinatie
       // hoort ook geen fysisch niet-lineaire ronde te krijgen. In een model
@@ -1317,16 +1329,25 @@ function App() {
         // gebruikt; nooit impliciet, en de gebruikte variant staat per
         // segment in het antwoord.
         const grenstoestand = combo.type === "sls" ? "MeanValues" : "DesignValues";
+        // β van (7.19) volgt uit de COMBINATIE en niet uit de doorsnede —
+        // 7.4.3(3) hangt hem aan de duur van de belasting. Zonder deze regel
+        // ging elke BGT-combinatie met β = 1,0 de kern in, de waarde voor
+        // "één enkele kortdurende belasting", ook in de quasi-blijvende
+        // combinatie; dat gaf een te hoge stijfheid en een te kleine zakking.
+        const duur = belastingduurVanCombinatie(combo);
         const uit = await losCombinatieFysischOp(input, combo, staven, {
           segmentLengteMm: fem.betonSegmentLengteMm,
           grenstoestand,
+          belastingduur: duur.duur,
         });
         if (uit.zonderLasten) continue;
+        for (const id of uit.zonderKruipcoefficient) zonderKruip.add(id);
         zetCombinatieResultaat(outputs.perCase, combo, uit.resultaat);
         spoor.push({
           combinatieId: combo.id,
           combinatieNaam: combo.name,
           grenstoestand,
+          belastingduurReden: duur.reden,
           ronden: uit.ronden,
           verloop: uit.geschiedenis.map((g) => ({
             ronde: g.ronde,
@@ -1352,10 +1373,45 @@ function App() {
       );
       return null;
     }
+    // ── DE KRUIPMELDING ────────────────────────────────────────────────────
+    // Zonder φ(∞,t₀) heeft de kern met φ_ef = 0 gerekend. Dat is geen neutrale
+    // keuze: 5.8.6(4) en 7.4.3(5) laten kruip de effectieve elasticiteits-
+    // modulus verlagen tot E_cm/(1 + φ), en zonder die verlaging is de
+    // buigstijfheid te hoog. De zakking komt dan te klein uit, en in een
+    // statisch onbepaald model trekken de te stijve betonstaven bovendien te
+    // veel moment naar zich toe. Allebei de onveilige kant, en allebei
+    // onzichtbaar in een getal — daarom deze melding, met de tekst die de kern
+    // zelf meegeeft.
+    if (zonderKruip.size > 0) {
+      const eersteAntwoord = spoor[0]?.staven[0];
+      const onb = bepaalOnbepaaldheid(
+        fem.nodes, fem.beams, fem.supports, outputs.perCase.values(),
+      );
+      const bgt = spoor.filter((c) => c.grenstoestand === "MeanValues").length;
+      const ids = [...zonderKruip].sort((a, b) => a - b);
+      notifyWarning(
+        "Zonder kruip gerekend",
+        `Voor ${ids.length === 1 ? "staaf" : "de staven"} ${ids.join(", ")} is geen ` +
+          `kruipcoëfficiënt φ(∞,t₀) opgegeven (art. 3.1.4), dus er is met φ_ef = 0 ` +
+          `gerekend. ` +
+          (eersteAntwoord ? `${eersteAntwoord.creep_note} ` : "") +
+          (bgt > 0
+            ? `De ${bgt} BGT-combinatie(s) geven daardoor een TE KLEINE zakking. `
+            : "") +
+          (onb.statischBepaald
+            ? "De constructie is statisch bepaald, dus de krachtsverdeling zelf " +
+              "verandert er niet van."
+            : `De constructie is niet aantoonbaar statisch bepaald (${onb.toelichting}), ` +
+              "dus ook de KRACHTSVERDELING is onjuist: te stijve betonstaven trekken " +
+              "te veel moment naar zich toe.") +
+          " Vul φ(∞,t₀) in bij de projectinstellingen of per staaf bij de §5.8-gegevens.",
+      );
+    }
     stijfheidZet({
       segmentLengteMm: fem.betonSegmentLengteMm,
       combinaties: spoor,
       overgeslagen,
+      zonderKruipcoefficient: [...zonderKruip].sort((a, b) => a - b),
       // De doorsnede en de korf waarmee gerekend is. Alleen om te TEKENEN in de
       // PDF-uitdraai; het kernantwoord draagt ze niet, en ze uit `section_name`
       // en `reinforcement_summary` terugparsen zou een tweede waarheid zijn.
@@ -2367,6 +2423,8 @@ function App() {
           analysetype={fem.analysetype}
           setAnalysetype={fem.setAnalysetype}
           betonSegmentLengteMm={fem.betonSegmentLengteMm}
+          betonKruipcoefficient={fem.betonKruipcoefficient}
+          setBetonKruipcoefficient={fem.setBetonKruipcoefficient}
           setBetonSegmentLengteMm={fem.setBetonSegmentLengteMm}
           aantalBetonstaven={betonSegmentInfo.aantalBetonstaven}
           segmentWaarschuwing={betonSegmentInfo.waarschuwing}

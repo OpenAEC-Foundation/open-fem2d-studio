@@ -165,6 +165,8 @@ interface WireStijfheidState {
   segmentLengteMm: number;
   combinaties: StijfheidCombinatie[];
   overgeslagen: CheckSkip[];
+  /** De staven die zonder kruipcoëfficiënt zijn gerekend (art. 3.1.4). */
+  zonderKruipcoefficient?: number[];
   berekendOp: number | null;
 }
 
@@ -478,6 +480,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
         segmentLengteMm: stijf.segmentLengteMm,
         combinaties: stijf.combinaties,
         overgeslagen: stijf.overgeslagen,
+        zonderKruipcoefficient: stijf.zonderKruipcoefficient,
         berekendOp: stijf.berekendOp,
       },
     });
@@ -628,6 +631,7 @@ export function useDetachedReportSync(): ReportData | null {
           segmentLengteMm: msg.stijfheid?.segmentLengteMm ?? 0,
           combinaties: msg.stijfheid?.combinaties ?? [],
           overgeslagen: msg.stijfheid?.overgeslagen ?? [],
+          zonderKruipcoefficient: msg.stijfheid?.zonderKruipcoefficient ?? [],
           berekendOp: msg.stijfheid?.berekendOp ?? null,
         });
       } finally {

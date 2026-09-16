@@ -1650,6 +1650,20 @@ export interface FemStore {
   betonSegmentLengteMm: number;
   setBetonSegmentLengteMm: (v: number) => void;
   /**
+   * De eindwaarde van de kruipcoëfficiënt φ(∞,t₀) van het PROJECT, art. 3.1.4.
+   * `null` = niet opgegeven, en dat is iets anders dan 0 ("geen kruip").
+   *
+   * Art. 3.1.4 wordt NIET gerekend: dat vraagt de relatieve luchtvochtigheid,
+   * de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij eerste
+   * belasten (bijlage B). De waarde is dus invoer, precies zoals in het
+   * §5.8-blok van een kolom — dat blok gaat per staaf vóór deze projectwaarde.
+   *
+   * Zonder waarde rekent de fysisch niet-lineaire lus met φ_ef = 0 en meldt de
+   * kern dat luid; de zakking is dan te klein (de onveilige kant).
+   */
+  betonKruipcoefficient: number | null;
+  setBetonKruipcoefficient: (v: number | null) => void;
+  /**
    * De versie van de rekeninstellingen (combinaties, belastinggevaltypen,
    * eigen gewicht, analysetype, segmentlengte, alle scheefstandvelden en de
    * gevolgklasse) — zie `lib/rekenInstellingen.ts`. Beide invalidatie-effecten
@@ -1755,6 +1769,8 @@ export interface FemStore {
     analysetype?: string;
     /** v2: gewenste segmentlengte in mm; ontbreekt → 400 (besluit B3). */
     betonSegmentLengteMm?: number;
+    /** φ(∞,t₀) van het project (art. 3.1.4); ontbreekt → niet opgegeven. */
+    betonKruipcoefficient?: number | null;
     /** v2: combinatie-definities; ontbreekt (v1) → defaultCombinations(). */
     combinations?: LoadCombination[];
     /** v2: stramien; ontbreekt (v1) → DEFAULT_STRUCTURAL_GRID. */
@@ -1893,6 +1909,9 @@ export function useFemStore(opties?: {
   const [analysetype, setAnalysetype]             = useState<Analysetype>("eersteOrde");
   const [betonSegmentLengteMm, setBetonSegmentLengteMm] =
     useState<number>(STANDAARD_SEGMENTLENGTE_MM);
+  // Geen beginwaarde: de norm kent voor φ(∞,t₀) geen aanbevolen getal, en een
+  // stille 0 zou "geen kruip" beweren waar "niet opgegeven" bedoeld is.
+  const [betonKruipcoefficient, setBetonKruipcoefficient] = useState<number | null>(null);
   // Scheefstand (initiële imperfectie) — zelfde patroon als selfWeightEnabled.
   const [scheefstandEnabled, setScheefstandEnabled] = useState<boolean>(false);
   const [scheefstandNoemer, setScheefstandNoemer]   = useState<number>(200);
@@ -1947,12 +1966,14 @@ export function useFemStore(opties?: {
   const rekenInstellingenVersie = useMemo(
     () => bepaalRekenInstellingenVersie({
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
+      betonKruipcoefficient,
       scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
       scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse,
       nationaleBijlage: projectBijlage,
     }),
     [
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
+      betonKruipcoefficient,
       scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
       scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse, projectBijlage,
     ],
@@ -2711,6 +2732,7 @@ export function useFemStore(opties?: {
     selfWeightEnabled, setSelfWeightEnabled,
     analysetype, setAnalysetype,
     betonSegmentLengteMm, setBetonSegmentLengteMm,
+    betonKruipcoefficient, setBetonKruipcoefficient,
     rekenInstellingenVersie,
     nationaleBijlage: projectBijlage,
     scheefstandEnabled, setScheefstandEnabled,
@@ -2785,6 +2807,8 @@ export function useFemStore(opties?: {
     analysetype?: string;
     /** v2: gewenste segmentlengte in mm; ontbreekt → 400 (besluit B3). */
     betonSegmentLengteMm?: number;
+    /** φ(∞,t₀) van het project (art. 3.1.4); ontbreekt → niet opgegeven. */
+    betonKruipcoefficient?: number | null;
       combinations?: LoadCombination[];
       structuralGrid?: StructuralGrid;
       scheefstandEnabled?: boolean;
@@ -2847,6 +2871,14 @@ export function useFemStore(opties?: {
         typeof p.betonSegmentLengteMm === "number" && p.betonSegmentLengteMm > 0
           ? p.betonSegmentLengteMm
           : STANDAARD_SEGMENTLENGTE_MM,
+      );
+      // Ontbreekt het veld (elk bestand van vóór september 2026), dan is de
+      // kruipcoëfficiënt NIET opgegeven — niet 0. Een 0 aannemen zou een oud
+      // project stil zonder kruip laten rekenen, en dat is de onveilige kant.
+      setBetonKruipcoefficient(
+        typeof p.betonKruipcoefficient === "number" && p.betonKruipcoefficient >= 0
+          ? p.betonKruipcoefficient
+          : null,
       );
       // Scheefstand — ontbrekende velden (v1/oudere v2-bestanden) → uit,
       // noemer 200 (φ = 1/200), richting +x.
