@@ -76,8 +76,14 @@ export function sanitizeRestraintFractions(fractions: number[] | undefined): num
     .sort((a, b) => a - b);
 }
 
-/** Staalsoorten die de Rust-kern kent (list_steel_grades). */
-const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
+/**
+ * Staalsoorten die de Rust-kern kent (list_steel_grades).
+ *
+ * Geëxporteerd omdat ook de PLAATmateriaalkeuze (`lib/plaatMateriaal.ts`) en
+ * de staafdialoog deze lijst nodig hebben; er stond een tweede exemplaar in
+ * `BarPropertiesDialog.tsx`, en twee lijsten lopen vroeg of laat uiteen.
+ */
+export const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
 
 /**
  * Is dit een staalprofiel dat de EN 1993-kern kan toetsen?

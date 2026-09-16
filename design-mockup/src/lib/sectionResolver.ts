@@ -66,7 +66,56 @@ export const TIMBER_E_MEAN: Record<string, number> = {
   GL24h: 11500, GL28h: 12600, GL32h: 14200, GL36h: 14700,
 };
 
+/**
+ * E_90,mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL),
+ * dezelfde getallen als de kern (`nen-en-1995-1-1/src/data.rs`, kolom
+ * `e90_mean`); `test-plaat-materiaal.mjs` legt de twee naast elkaar.
+ *
+ * WAARVOOR. Hout is in het vlak van een wandschijf richtingsafhankelijk: de
+ * stijfheid evenwijdig aan de vezel (E_0,mean) is ruwweg dertig keer die
+ * loodrecht erop (E_90,mean). Een staaf heeft daar niets aan — die spant per
+ * definitie in de vezelrichting — maar een schijf draagt in twee richtingen
+ * tegelijk, en dan is de isotrope aanname E_x = E_y = E_0 een factor dertig
+ * mis in de dwarsrichting. Deze kolom is daarom pas met het plaatmateriaal
+ * nodig geworden; hij hoort bij de andere houtgetallen en niet in een tweede
+ * tabel ernaast.
+ */
+export const TIMBER_E90_MEAN: Record<string, number> = {
+  C14: 230, C16: 270, C18: 300, C20: 320, C22: 330,
+  C24: 370, C27: 380, C30: 400, C35: 430,
+  GL24h: 300, GL28h: 300, GL32h: 300, GL36h: 300,
+};
+
+/**
+ * G_mean in N/mm² per sterkteklasse — EN 338 (C) en EN 14080 (GL), dezelfde
+ * getallen als de kern (`nen-en-1995-1-1/src/data.rs`, kolom `g_mean`).
+ * Stuurt de schuifstijfheid G_12 van een houten of kruislaaghouten
+ * wandschijf; bij een isotroop materiaal volgt G uit E en ν en staat hij
+ * dus nergens apart.
+ */
+export const TIMBER_G_MEAN: Record<string, number> = {
+  C14: 440, C16: 500, C18: 560, C20: 590, C22: 630,
+  C24: 690, C27: 720, C30: 750, C35: 810,
+  GL24h: 650, GL28h: 650, GL32h: 650, GL36h: 650,
+};
+
 export const E_STAAL = 210000;
+
+/**
+ * Dwarscontractiecoëfficiënt van constructiestaal — NEN-EN 1993-1-1
+ * 3.2.6(1): "poissoncoëfficiënt (in het elastische gebied) ν = 0,3".
+ * Dezelfde regel geeft E = 210 000 N/mm² (`E_STAAL`).
+ */
+export const NU_STAAL = 0.3;
+
+/**
+ * Dwarscontractiecoëfficiënt van beton — NEN-EN 1992-1-1 3.1.3(4): "De
+ * Poissonverhouding mag zijn gelijk genomen aan 0,2 voor ongescheurd beton
+ * en aan 0 voor gescheurd beton." De plaatstijfheid rekent ongescheurd
+ * (net als `CONCRETE_E_CM`, dat E_cm van de ongescheurde doorsnede geeft),
+ * dus 0,2.
+ */
+export const NU_BETON = 0.2;
 
 /** ρ_mean in kg/m³ per sterkteklasse — EN 338 tabel 1 (C) en EN 14080 (GL). */
 export const TIMBER_RHO_MEAN: Record<string, number> = {

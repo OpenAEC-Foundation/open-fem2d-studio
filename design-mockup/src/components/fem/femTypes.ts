@@ -574,6 +574,33 @@ export interface Plate {
   meshType?: PlaatMeshType;
   /** Openingen in de plaat (stap 2). Ontbreekt of leeg = geen openingen. */
   openingen?: PlaatOpening[];
+  /**
+   * Materiaal van de plaat (stap 3), met DEZELFDE grammatica als het
+   * materiaal van een staaf: een staalsoort ("S355"), een betonklasse
+   * ("C30/37"), een houtsterkteklasse ("C24", "GL28h"), een
+   * kruislaaghoutopbouw ("CLT C24 40/20/40/20/40") of een vrij materiaal
+   * ("VRIJ:… E=… rho=… f=…"). Zie `lib/plaatMateriaal.ts`.
+   *
+   * ONTBREEKT het veld — elk bestaand projectbestand — dan rekent de plaat
+   * precies zoals voorheen: isotroop met de losse E, ν en ρ hierboven. Een
+   * naam die niet herkend wordt levert een WEIGERING met reden op; er wordt
+   * nooit stil op staal teruggevallen.
+   *
+   * Uit het materiaal volgen E, ν en ρ. De losse velden blijven bestaan als
+   * expliciete overschrijving: `withPlateDefaults` vult ze daarom NIET aan
+   * zolang er een materiaal staat — een aangevulde standaard zou niet van
+   * een bewuste invoer te onderscheiden zijn en het materiaal stil
+   * overrulen.
+   */
+  materiaal?: string;
+  /**
+   * Hoofdrichting van een richtingsafhankelijk materiaal (hout,
+   * kruislaaghout): de hoek in GRADEN, tegen de klok in, van de globale
+   * x-as naar richting 1 — de vezelrichting, respectievelijk de richting van
+   * de lengtelagen. Ontbreekt = 0° (vezel horizontaal). Zonder
+   * richtingsafhankelijk materiaal heeft het veld geen invloed.
+   */
+  hoofdrichting?: number;
 }
 
 /** De elementkeuzes die een plaat kan dragen — ook de poort en het MCP-schema lezen deze lijst. */
@@ -592,14 +619,24 @@ export const PLATE_DEFAULTS = {
  * Vul ontbrekende plaat-rekenvelden aan met de defaults. Gebruikt bij het
  * laden van (oude) projectbestanden; `addPlate` in de store zet de defaults
  * al bij aanmaken.
+ *
+ * E, ν en ρ worden ALLEEN aangevuld wanneer de plaat geen `materiaal`
+ * draagt. Met een materiaal komen die drie daaruit, en een leeg veld
+ * betekent dan "volg het materiaal". Zouden ze hier toch met de
+ * staaldefaults gevuld worden, dan was een bewuste overschrijving niet meer
+ * van een aangevulde standaard te onderscheiden: elke houten of betonnen
+ * plaat zou stil met E = 210 000 N/mm² rekenen.
  */
 export function withPlateDefaults(p: Plate): Plate {
+  const heeftMateriaal = (p.materiaal ?? "").trim() !== "";
   return {
     ...p,
     thickness: p.thickness ?? PLATE_DEFAULTS.thickness,
-    E: p.E ?? PLATE_DEFAULTS.E,
-    nu: p.nu ?? PLATE_DEFAULTS.nu,
-    rho: p.rho ?? PLATE_DEFAULTS.rho,
+    ...(heeftMateriaal ? {} : {
+      E: p.E ?? PLATE_DEFAULTS.E,
+      nu: p.nu ?? PLATE_DEFAULTS.nu,
+      rho: p.rho ?? PLATE_DEFAULTS.rho,
+    }),
     meshSize: p.meshSize ?? PLATE_DEFAULTS.meshSize,
   };
 }

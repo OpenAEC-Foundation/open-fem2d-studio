@@ -380,12 +380,29 @@ export interface SolverPlateInput {
   openingen?: import("../femTypes").PlaatOpening[];
   /** Plaatdikte (mm). */
   thickness: number;
-  /** Elasticiteitsmodulus (N/mm²). */
-  E: number;
-  /** Dwarscontractiecoëfficiënt ν. */
-  nu: number;
-  /** Volumieke massa (kg/m³) — voor eigengewicht. */
-  rho: number;
+  /**
+   * Materiaal van de plaat (stap 3), zelfde grammatica als bij een staaf:
+   * staalsoort, betonklasse, houtsterkteklasse, "CLT <klasse> <opbouw>" of
+   * "VRIJ:… E=… rho=… f=…". Ontbreekt → de plaat rekent isotroop met `E`,
+   * `nu` en `rho` hieronder, precies zoals vóór stap 3. Een naam die niet
+   * herkend wordt levert een weigering met reden op.
+   */
+  materiaal?: string;
+  /**
+   * Hoofdrichting van een richtingsafhankelijk materiaal in GRADEN, tegen de
+   * klok in vanaf de globale x-as. Ontbreekt → 0°.
+   */
+  hoofdrichting?: number;
+  /**
+   * Elasticiteitsmodulus (N/mm²). Verplicht zolang er geen `materiaal` is;
+   * mét materiaal is het de expliciete overschrijving van E₁ én E₂ (en
+   * daarmee rekent de plaat isotroop).
+   */
+  E?: number;
+  /** Dwarscontractiecoëfficiënt ν — met materiaal: de overschrijving van ν₁₂. */
+  nu?: number;
+  /** Volumieke massa (kg/m³) — voor eigengewicht; met materiaal: de overschrijving van ρ. */
+  rho?: number;
   /** Gewenste elementgrootte van het quad-grid (mm). */
   meshSize: number;
   /**

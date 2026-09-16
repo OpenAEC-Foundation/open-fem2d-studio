@@ -308,8 +308,19 @@ export function plaatNaarSolverInput(p: Plate): NonNullable<MultiInput["plates"]
   const d = withPlateDefaults(p);
   return {
     id: d.id, nodeIds: d.nodeIds,
-    thickness: d.thickness!, E: d.E!, nu: d.nu!, rho: d.rho!,
+    thickness: d.thickness!,
+    // E, ν en ρ gaan alleen mee als de plaat ze DRAAGT. Zonder materiaal vult
+    // `withPlateDefaults` ze met de staaldefaults, dus dan staan ze er alle
+    // drie en is de invoer byte-gelijk aan die van vóór stap 3 (ook de
+    // volgorde van de sleutels). Mét materiaal blijven ze leeg tenzij de
+    // gebruiker ze zelf heeft ingevuld, en dan zijn ze de overschrijving.
+    ...(d.E !== undefined ? { E: d.E } : {}),
+    ...(d.nu !== undefined ? { nu: d.nu } : {}),
+    ...(d.rho !== undefined ? { rho: d.rho } : {}),
     meshSize: d.meshSize!,
+    // Materiaal en hoofdrichting (stap 3): alleen mee als ze gezet zijn.
+    ...(d.materiaal && d.materiaal.trim() !== "" ? { materiaal: d.materiaal } : {}),
+    ...(d.hoofdrichting !== undefined ? { hoofdrichting: d.hoofdrichting } : {}),
     // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
     // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
     ...(d.meshCache ? { meshCache: d.meshCache } : {}),

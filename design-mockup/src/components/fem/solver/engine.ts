@@ -36,6 +36,7 @@ import {
   plaatRekentAlsRaster, effectiefPlaatMeshType, valideerPlaatOpeningen, PLAAT_MESH_TYPEN,
 } from "../femTypes";
 import type { PlaatMeshCache, PlaatPunt } from "../femTypes";
+import { bepaalPlaatStijfheid, type PlaatStijfheid } from "../../../lib/plaatMateriaal";
 import type {
   SolverInput,
   SolverResult,
@@ -429,6 +430,21 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
   // een plaat MET openingen worden hun coördinaten dwingende gridlijnen (zie
   // RasterMeshInvoer.dwingendX); zonder openingen blijft het raster bit-gelijk
   // aan vroeger en geldt de bestaande weigering voor een knoop naast het grid.
+  /**
+   * De stijfheid per plaat, ÉÉN keer bepaald en hier bewaard. Het materiaal
+   * wordt meteen bij de plaatvalidatie gekeurd — vóór er gemesht of gerekend
+   * wordt — zodat een onbekende materiaalnaam een nette weigering geeft en
+   * niet pas ergens in de assemblage als NaN opduikt.
+   */
+  const plaatStijfheden = new Map<number, PlaatStijfheid>();
+  const plaatStijfheid = (p: SolverPlateInput): PlaatStijfheid => {
+    const bewaard = plaatStijfheden.get(p.id);
+    if (bewaard) return bewaard;
+    const uit = bepaalPlaatStijfheid(p);
+    if (!uit.ok) throw new Error(`Plaat ${p.id}: ${uit.reden}`);
+    plaatStijfheden.set(p.id, uit.stijfheid);
+    return uit.stijfheid;
+  };
   const verwezenKnopen = new Set<number>();
   for (const b of input.beams) { verwezenKnopen.add(b.from); verwezenKnopen.add(b.to); }
   for (const s of input.supports) verwezenKnopen.add(s.nodeId);
@@ -444,6 +460,9 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
         throw new Error(`Plaat ${p.id}: één of meer hoekknopen bestaan niet meer.`);
       }
       const punten = corners.map((c) => ({ x: c!.x, z: c!.z }));
+      // Materiaal keuren vóór het meshen: een onbekende naam hoort hier te
+      // stoppen, niet stil op staal terug te vallen.
+      plaatStijfheid(p);
       const meshSize = p.meshSize > 0 ? p.meshSize : 500;
       if (p.meshType !== undefined && !PLAAT_MESH_TYPEN.includes(p.meshType)) {
         throw new Error(
@@ -1040,14 +1059,28 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
   const zetPlatMeshInKern = (
     p: SolverPlateInput, plat: Pick<PlatMesh, "points" | "triangles" | "quads">,
   ): { knoopIdPerPunt: number[]; nodeIds: number[]; elementIds: number[]; materialId: number } => {
-    // Eigen mesh-materiaal per plaat: E (N/mm² → Pa), ν en ρ uit de invoer.
+    // Eigen mesh-materiaal per plaat. De stijfheid komt uit ÉÉN bepaling
+    // (`bepaalPlaatStijfheid`): zonder `materiaal` zijn dat de losse E, ν en
+    // ρ van de plaat — dan staat hier letterlijk hetzelfde als voorheen — en
+    // mét materiaal de getallen uit de normtabellen, met de losse velden als
+    // expliciete overschrijving. Een richtingsafhankelijk materiaal (hout,
+    // kruislaaghout) krijgt daarbovenop het `orthotroop`-blok; een isotroop
+    // materiaal krijgt het NIET, zodat het door exact dezelfde formules van
+    // `getConstitutiveMatrix` loopt als vóór stap 3.
+    const st = plaatStijfheid(p);
     const mat = mesh.addMaterial({
       name: `Plaat ${p.id}`,
-      E: p.E * 1e6,
-      nu: p.nu,
-      rho: p.rho,
+      E: st.E1 * 1e6,
+      nu: st.nu12,
+      rho: st.rho,
       color: matTemplate?.color ?? "#3b82f6",
       alpha: matTemplate?.alpha ?? 12e-6,
+      ...(st.orthotroop ? {
+        orthotroop: {
+          E1: st.E1 * 1e6, E2: st.E2 * 1e6, nu12: st.nu12, G12: st.G12 * 1e6,
+          hoek: (st.hoekGraden * Math.PI) / 180,
+        },
+      } : {}),
     });
     const dikte_m = p.thickness / 1000;
     const knoopIdPerPunt = plat.points.map((pt) => {
