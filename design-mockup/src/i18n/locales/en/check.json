@@ -1184,5 +1184,13 @@
     "governingLine": "Governing: {{toets}} — UC {{uc}}. Full derivation: Check tab → check panel.",
     "notChecked": "Not checked yet — run the code check via the ribbon tab \"Check\" (button \"Check steel + timber\").",
     "cancel": "Cancel"
+  },
+  "plaat": {
+    "plaat": "Plate",
+    "titel": "Plates",
+    "elementInCombinatie": "element {{element}} in combination {{combinatie}}",
+    "nietGetoetst": "Not checked",
+    "krachtregel": "Combination {{combinatie}} — element-averaged in-plane stresses; the element is named in the notes",
+    "overgeslagenTitel": "Skipped plates"
   }
 }

@@ -44,6 +44,8 @@ import {
   type ToetsingDetail,
   type ToetsStaafKeuze,
 } from "../../stores/reportStore";
+import type { PlateCheckResult } from "../../lib/types/plaat/PlateCheckResult";
+import type { PlaatSkip } from "../../lib/plaatCheckBuilder";
 import { useCheckStore } from "../../stores/checkStore";
 import {
   useBetonStijfheidStore,
@@ -151,6 +153,13 @@ interface WireCheckState {
    * ouder hoofdvenster; dan is hij hier leeg, om dezelfde reden als `beff`.
    */
   kruip?: CreepCoefficientResponse[];
+  /**
+   * De plaattoets per plaat en de platen die niet naar de kern gingen.
+   * Ontbreken in snapshots van een ouder hoofdvenster; dan hier leeg, om
+   * dezelfde reden als `beff`.
+   */
+  plateResults?: PlateCheckResult[];
+  plateSkipped?: PlaatSkip[];
   lastRunAt: number | null;
   /**
    * De fout van de laatste toetsronde, of null. Reist mee zodat het losse
@@ -452,6 +461,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const checkResults = useCheckStore((s) => s.results);
   const checkSkipped = useCheckStore((s) => s.skipped);
   const checkLastRunAt = useCheckStore((s) => s.lastRunAt);
+  const checkPlateResults = useCheckStore((s) => s.plateResults);
   // Het segmentspoor van de fysisch niet-lineaire berekening. `berekendOp`
   // volstaat als aanleiding: hij wisselt bij elke verse run én bij het wissen.
   const stijfheidBerekendOp = useBetonStijfheidStore((s) => s.berekendOp);
@@ -480,6 +490,8 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
         skipped: check.skipped,
         beff: check.beff,
         kruip: check.kruip,
+        plateResults: check.plateResults,
+        plateSkipped: check.plateSkipped,
         lastRunAt: check.lastRunAt,
         error: check.error,
       },
@@ -532,6 +544,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     checkResults,
     checkSkipped,
     checkLastRunAt,
+    checkPlateResults,
     stijfheidBerekendOp,
     stijfheidCombinaties,
   ]);
@@ -620,6 +633,8 @@ export function useDetachedReportSync(): ReportData | null {
           // LEEG te staan en niet de afleiding van een vorig snapshot.
           beff: msg.check.beff ?? [],
           kruip: msg.check.kruip ?? [],
+          plateResults: msg.check.plateResults ?? [],
+          plateSkipped: msg.check.plateSkipped ?? [],
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
           // De fout van het hoofdvenster, niet stil `null`: een mislukte ronde

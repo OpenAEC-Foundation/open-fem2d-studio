@@ -428,6 +428,10 @@ const ALLEEN_BRON = new Map([
   ],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
   [
+    "plaat-toets-weergave",
+    "rendert de plaatkaart van het toetsingspaneel en de rapportsectie \"Toetsing platen\" met react-dom/server, gevoed met een kernantwoord van de toetsbrug (apart proces). React en de stylesheets bestaan in de sidecarbundel niet, en paneel en rapport horen niet in de barrel; de bundelkant van de plaattoets staat in `plaat-toets-staal`",
+  ],
+  [
     "plaat-openingen-store",
     "test de modelcontrole (lib/modelControle) en het meereizen van openingen bij verplaatsen, roteren, spiegelen en kopiëren in de zustand-store; geen van beide hoort in de barrel",
   ],

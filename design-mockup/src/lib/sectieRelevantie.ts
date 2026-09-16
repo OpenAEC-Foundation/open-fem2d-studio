@@ -206,6 +206,22 @@ export function nvtPlaatspanningen(g: RapportGegevens): SectieOordeel {
   );
 }
 
+/**
+ * De plaattoets. Zelfde grond als de plaatspanningen: zonder platen valt er
+ * geen plaat te toetsen. Met platen blijft het hoofdstuk staan, ook vóór de
+ * toetsing — dan is "nog niet getoetst" de eerlijke stand, en een plaat die
+ * niet getoetst kon worden hoort er met haar reden in.
+ */
+export function nvtPlaattoetsing(g: RapportGegevens): SectieOordeel {
+  if (g.plates.length > 0) return null;
+  return (
+    "Dit hoofdstuk toont de normtoets van de platen per element — de " +
+    "maatgevende unity check, de afleiding en wat niet getoetst is — en er " +
+    "staat geen enkele plaat in dit model. Het is daarom weggelaten uit het " +
+    "rapport en uit de inhoudsopgave. Teken een plaat en het hoofdstuk komt terug."
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Het oordeel over een hele registry
 // ═══════════════════════════════════════════════════════════════════════

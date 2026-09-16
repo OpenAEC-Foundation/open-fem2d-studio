@@ -1184,5 +1184,13 @@
     "governingLine": "Maßgebend: {{toets}} — UC {{uc}}. Vollständige Herleitung: Registerkarte Nachweis → Nachweisbereich.",
     "notChecked": "Noch nicht nachgewiesen — führen Sie den Normnachweis über die Ribbon-Registerkarte \"Nachweis\" aus (Schaltfläche \"Stahl + Holz nachweisen\").",
     "cancel": "Abbrechen"
+  },
+  "plaat": {
+    "plaat": "Platte",
+    "titel": "Platten",
+    "elementInCombinatie": "Element {{element}} in Kombination {{combinatie}}",
+    "nietGetoetst": "Nicht nachgewiesen",
+    "krachtregel": "Kombination {{combinatie}} — elementgemittelte Spannungen in der Ebene; das Element steht in den Anmerkungen",
+    "overgeslagenTitel": "Übersprungene Platten"
   }
 }

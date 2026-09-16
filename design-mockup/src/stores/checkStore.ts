@@ -25,7 +25,7 @@
  */
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { Beam, Node, Support } from "../components/fem/femTypes";
+import type { Beam, Node, Plate, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
@@ -61,6 +61,8 @@ import {
   type BeffStaafUitkomst,
 } from "../lib/beffLiggerlijn";
 import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
+import { buildPlaatCheckInputs, type PlaatSkip } from "../lib/plaatCheckBuilder";
+import type { PlateCheckResult } from "../lib/types/plaat/PlateCheckResult";
 import { isVrijMateriaal } from "../lib/vrijMateriaal";
 import type { NationaleBijlageCode } from "../lib/normAanduidingen";
 import {
@@ -144,8 +146,12 @@ export interface CheckRunData {
    * om een staafeind in een plaat niet als vrij eind aan te zien
    * (`lib/doorgaandeLijn.ts`). Optioneel: zonder lijst geldt een knoop zonder
    * oplegging en zonder andere staaf als vrij.
+   *
+   * Een VOLLEDIGE plaat (met `id`) wordt daarnaast zelf getoetst
+   * (`lib/plaatCheckBuilder.ts`, kern `check_plates`). Een aanroeper die alleen
+   * hoekknopen meegeeft, toetst geen platen.
    */
-  plates?: { nodeIds: number[] }[];
+  plates?: (Pick<Plate, "nodeIds"> & Partial<Plate>)[];
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
   /**
@@ -223,6 +229,14 @@ interface CheckState {
   kruip: CreepCoefficientResponse[];
   /** Staven waarvoor de kern φ volgens bijlage B weigerde, met zijn reden. */
   kruipMislukt: { beamId: number; reden: string }[];
+  /**
+   * De plaattoets (wandschijven), per plaat — APART van `results`, want dat
+   * contract is per staaf-id en een plaatnummer kan gelijk zijn aan een
+   * staafnummer. Een plaat die de kern weigert staat hier met `geweigerd`.
+   */
+  plateResults: PlateCheckResult[];
+  /** Platen die niet naar de kern gingen (geen of onbruikbaar materiaal), met reden. */
+  plateSkipped: PlaatSkip[];
   isRunning: boolean;
   error: string | null;
   lastRunAt: number | null;
@@ -259,6 +273,7 @@ interface CheckState {
     clt: ReturnType<typeof buildCltCheckInputs>["inputs"];
     beton: ReturnType<typeof buildBetonCheckInputs>["inputs"];
     spanning: ReturnType<typeof buildSpanningCheckInputs>["inputs"];
+    plaat: ReturnType<typeof buildPlaatCheckInputs>["inputs"];
   } | null;
 
   /** Draai alle kernen in één run. Resolves wanneer de state gevuld is. */
@@ -356,6 +371,8 @@ export const useCheckStore = create<CheckState>((set) => ({
   beff: [],
   kruip: [],
   kruipMislukt: [],
+  plateResults: [],
+  plateSkipped: [],
   isRunning: false,
   error: null,
   lastRunAt: null,
@@ -424,6 +441,16 @@ export const useCheckStore = create<CheckState>((set) => ({
         bEffPerStaaf: bEffWaardenPerStaaf(beffUitkomsten),
       });
       const spanning = buildSpanningCheckInputs(data);
+      // Platen: alleen volledige platen (met id) — zie `CheckRunData.plates`.
+      const plaat = buildPlaatCheckInputs({
+        plates: (data.plates ?? []).filter((p): p is Plate => typeof p.id === "number"),
+        combinations: data.combinations,
+        combinationResults: data.combinationResults,
+        nationaleBijlage: data.nationaleBijlage,
+      });
+      for (const s of plaat.skipped) {
+        console.info(`[Toetsing] plaat ${s.plateId} overgeslagen — ${s.reason}`);
+      }
 
       // Eerlijkheid: elke staaf die nergens terechtkwam expliciet melden.
       const bouwers: { inputs: { beam_id: number }[]; skipped: CheckSkip[] }[] = [
@@ -449,7 +476,7 @@ export const useCheckStore = create<CheckState>((set) => ({
         console.info(`[Toetsing] staaf ${s.beamId} overgeslagen — ${s.reason}`);
       }
 
-      const [steelResults, timberResults, cltResults, betonResults, spanningResults] =
+      const [steelResults, timberResults, cltResults, betonResults, spanningResults, plaatResults] =
         await Promise.all([
           steel.inputs.length > 0
             ? roepKern<BeamCheckResult[]>("check_steel_beams", steel.inputs)
@@ -466,6 +493,9 @@ export const useCheckStore = create<CheckState>((set) => ({
           spanning.inputs.length > 0
             ? roepKern<SpanningBeamCheckResult[]>("check_stress_beams", spanning.inputs)
             : Promise.resolve<SpanningBeamCheckResult[]>([]),
+          plaat.inputs.length > 0
+            ? roepKern<PlateCheckResult[]>("check_plates", plaat.inputs)
+            : Promise.resolve<PlateCheckResult[]>([]),
         ]);
 
       const merged: MemberCheckResult[] = [
@@ -482,6 +512,8 @@ export const useCheckStore = create<CheckState>((set) => ({
         beff: beffUitkomsten,
         kruip: [...kruip.perStaaf.values()],
         kruipMislukt: kruip.mislukt,
+        plateResults: [...plaatResults].sort((a, b) => a.plate_id - b.plate_id),
+        plateSkipped: [...plaat.skipped].sort((a, b) => a.plateId - b.plateId),
         isRunning: false,
         error: null,
         lastRunAt: Date.now(),
@@ -492,6 +524,7 @@ export const useCheckStore = create<CheckState>((set) => ({
           clt: clt.inputs,
           beton: beton.inputs,
           spanning: spanning.inputs,
+          plaat: plaat.inputs,
         },
       });
     } catch (e) {
@@ -513,6 +546,8 @@ export const useCheckStore = create<CheckState>((set) => ({
         beff: [],
         kruip: [],
         kruipMislukt: [],
+        plateResults: [],
+        plateSkipped: [],
         lastRunAt: null,
         lastRunData: null,
         lastRunInputs: null,
@@ -529,6 +564,8 @@ export const useCheckStore = create<CheckState>((set) => ({
       beff: [],
       kruip: [],
       kruipMislukt: [],
+      plateResults: [],
+      plateSkipped: [],
       error: null,
       lastRunAt: null,
       lastRunData: null,
@@ -549,4 +586,14 @@ export function anyCheckableBeams(beams: Beam[]): boolean {
       matchSupportedTimberGrade(b.material) !== null ||
       matchSupportedConcreteClass(b.material) !== null,
   );
+}
+
+/**
+ * Heeft het model een plaat die de toetsing kan oppakken? Een plaat met een
+ * materiaal gaat naar de kern (die hem toetst of met reden weigert); een plaat
+ * zonder materiaal wordt met reden overgeslagen. Beide horen in het
+ * toetsingspaneel, dus elke plaat telt.
+ */
+export function anyCheckablePlates(plates: readonly { materiaal?: string }[] | undefined): boolean {
+  return (plates ?? []).length > 0;
 }

@@ -1184,5 +1184,13 @@
     "governingLine": "Maatgevend: {{toets}} — UC {{uc}}. Volledige afleiding: tabblad Toetsing → Toetsingspaneel.",
     "notChecked": "Nog niet getoetst — draai de normtoetsing via het ribbon-tabblad \"Toetsing\" (knop \"Staal + hout toetsen\").",
     "cancel": "Annuleer"
+  },
+  "plaat": {
+    "plaat": "Plaat",
+    "titel": "Platen",
+    "elementInCombinatie": "element {{element}} in combinatie {{combinatie}}",
+    "nietGetoetst": "Niet getoetst",
+    "krachtregel": "Combinatie {{combinatie}} — elementgemiddelde spanningen in het vlak; het element staat in de toelichting",
+    "overgeslagenTitel": "Overgeslagen platen"
   }
 }

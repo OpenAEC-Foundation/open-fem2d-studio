@@ -1184,5 +1184,13 @@
     "governingLine": "Déterminant : {{toets}} — UC {{uc}}. Justification complète : onglet Vérification → panneau de vérification.",
     "notChecked": "Pas encore vérifié — lancez la vérification normative via l'onglet du ruban \"Vérification\" (bouton \"Vérifier acier + bois\").",
     "cancel": "Annuler"
+  },
+  "plaat": {
+    "plaat": "Plaque",
+    "titel": "Plaques",
+    "elementInCombinatie": "élément {{element}} dans la combinaison {{combinatie}}",
+    "nietGetoetst": "Non vérifié",
+    "krachtregel": "Combinaison {{combinatie}} — contraintes moyennes par élément dans le plan ; l'élément figure dans les remarques",
+    "overgeslagenTitel": "Plaques ignorées"
   }
 }

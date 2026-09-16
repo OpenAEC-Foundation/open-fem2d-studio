@@ -740,7 +740,16 @@
     "levensduur_5": "100 jaar: monumentale gebouwen, bruggen en infrastructuur",
     "kruipKop": "Kruipcoëfficiënt φ(∞,t₀) volgens bijlage B",
     "kruipInleiding": "Berekend uit RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} dagen en cementklasse {{cement}}: φ(∞,t₀) = {{phi}}. Met deze waarde rekenen de BGT-stijfheid en de kolomtoets van deze staaf, omdat er geen φ(∞,t₀) is opgegeven.",
-    "kruipKetenKop": "Afleiding volgens bijlage B, stap voor stap:"
+    "kruipKetenKop": "Afleiding volgens bijlage B, stap voor stap:",
+    "sectionPlateCheck": "Toetsing platen",
+    "plaatToetsNoot": "Per element van het rekenmesh getoetst met de elementgemiddelde spanningen in het vlak; per plaat de hoogste unity check over alle UGT-combinaties. Wat niet getoetst is, staat per plaat met de reden.",
+    "plaatMateriaal": "Materiaal",
+    "plaatNorm": "Norm",
+    "plaatStatus": "Status",
+    "plaatGeweigerd": "Niet getoetst",
+    "plaatOvergeslagen": "Niet getoetst",
+    "plaatNietGetoetst": "Niet getoetst:",
+    "plaatElementgemiddeld": "elementgemiddelde spanningen; het element staat in de toelichting"
   },
   "viewer": {
     "file": "Bestand",
