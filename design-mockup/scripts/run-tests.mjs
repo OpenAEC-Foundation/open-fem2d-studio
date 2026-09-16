@@ -298,6 +298,10 @@ const ALLEEN_BRON = new Map([
   ["deellast", "test de zustand-store, niet de solver"],
   ["puntlast-positie", "test de zustand-store, niet de solver"],
   ["splitsen", "test de zustand-store, niet de solver"],
+  [
+    "verlopend-splitsen",
+    "splitst een verlopende staaf met `computeBeamSplitOpKnoop` uit de zustand-store en met de bibliotheek van eigen doorsneden; geen van beide staat in de barrel, en de sidecar splitst ook niets — tegen de bundel zou deze test dus niets bewaken. De solver dient er alleen als bewijs dat het splitsen geen enkel getal verandert",
+  ],
   ["stramien-verplaatsen", "test de zustand-store, niet de solver"],
   ["transform", "test de zustand-store, niet de solver"],
   [

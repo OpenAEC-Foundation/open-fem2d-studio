@@ -613,6 +613,83 @@ export function doorsnedeOpPositie(
   return { ...g, maten };
 }
 
+/**
+ * De vier hoofdmaten van een eigen doorsnede die een GELAST, dubbelsymmetrisch
+ * I-profiel uit drie platen is — `null` zodra hij dat niet is.
+ *
+ * # WAAROM DIT BESTAAT
+ *
+ * Het SPLITSEN van een verlopende stalen staaf levert op de splitsplaats een
+ * doorsnede die niet in de catalogus staat: h, b, t_w en t_f liggen ergens
+ * tussen begin- en eindprofiel in. Die tussendoorsnede wordt bewaard als eigen
+ * doorsnede (`EIGEN:…`, zie `verloopSplitsen.ts`), en dan moet `bepaalVerloop`
+ * hem als uiteinde van een verloop kunnen lezen — anders zou splitsen de staaf
+ * onrekenbaar maken, precies wat het niet mag.
+ *
+ * STRIKT, NIET BEHULPZAAM. Alleen de vorm die `verloopSplitsen.ts` zelf maakt
+ * wordt herkend: precies drie lamellen, één staand lijf op de as en twee
+ * liggende flenzen van gelijke maat op ±(h − t_f)/2. Elke andere eigen
+ * doorsnede — een samenstelling met catalogusdelen, een profiel met een gat,
+ * een monosymmetrische I — geeft `null`, en `bepaalVerloop` weigert hem dan
+ * met reden. Een doorsnede half herkennen en de rest schatten zou een verloop
+ * opleveren dat niet is wat er getekend staat.
+ */
+export function gelasteIMatenVanEigen(profile: string | undefined): VerloopMaten | null {
+  const d = zoekEigenDoorsnede(profile);
+  if (!d) return null;
+  const o = d.ontwerp;
+  if (o.soort !== "samenstelling") return null;
+  if (o.catalogusdelen.length !== 0 || o.lamellen.length !== 3) return null;
+  const staand = o.lamellen.filter((l) => Math.abs(Math.abs(l.alphaGraden) - 90) < 1e-6);
+  const liggend = o.lamellen.filter((l) => Math.abs(l.alphaGraden) < 1e-6);
+  if (staand.length !== 1 || liggend.length !== 2) return null;
+  const lijf = staand[0];
+  const [f1, f2] = liggend;
+  if (Math.abs(f1.b_mm - f2.b_mm) > 1e-9 || Math.abs(f1.t_mm - f2.t_mm) > 1e-9) return null;
+  if (Math.abs(f1.y_mm) > 1e-9 || Math.abs(f2.y_mm) > 1e-9) return null;
+  if (Math.abs(lijf.y_mm) > 1e-9 || Math.abs(lijf.z_mm) > 1e-9) return null;
+  // De flenzen liggen symmetrisch om de lijfas: z = ±(h − t_f)/2.
+  if (Math.abs(f1.z_mm + f2.z_mm) > 1e-9) return null;
+  const tf = f1.t_mm;
+  const tw = lijf.t_mm;
+  const b = f1.b_mm;
+  const h = lijf.b_mm + 2 * tf;
+  if (!(h > 0 && b > 0 && tw > 0 && tf > 0)) return null;
+  if (Math.abs(Math.abs(f1.z_mm) - (h - tf) / 2) > 1e-6) return null;
+  return { b, h, tw, tf };
+}
+
+/**
+ * De vier maten van een I/H-profiel uit de staalcatalogus, of de REDEN waarom
+ * dat profiel geen uiteinde van een verloop kan zijn (als tekst).
+ *
+ * Alleen gebruikt op het pad waar de andere zijde een eigen gelaste I is; het
+ * catalogus-↔-catalogus-pad houdt zijn eigen, uitvoeriger meldingen, zodat de
+ * bestaande teksten niet veranderen.
+ */
+function matenVanCatalogusI(naam: string | undefined): VerloopMaten | string {
+  const d = STEEL_SECTION_DIMS[normaliseer(naam ?? "")];
+  if (!d) {
+    return (
+      `profiel "${naam}" is niet bekend in de staalcatalogus — een verlopende stalen staaf ` +
+      "loopt van I/H-profiel naar I/H-profiel"
+    );
+  }
+  if (d.kind !== "ISection") {
+    return (
+      `verlopend profiel wordt voor deze doorsnede niet ondersteund (${soortNaam(d.kind)} ` +
+      `"${d.naam}") — alleen een I/H-profiel kan verlopen`
+    );
+  }
+  if ((d.flensHelling ?? 0) > 0) {
+    return (
+      `verlopend profiel wordt voor deze doorsnede niet ondersteund (I-profiel met toelopende ` +
+      `flenzen "${d.naam}") — het gelaste rekenmodel heeft evenwijdige flenzen`
+    );
+  }
+  return { b: d.b, h: d.h, tw: d.tw, tf: d.tf };
+}
+
 /** Naam van de doorsnedesoort van een catalogusprofiel, voor meldingen. */
 function soortNaam(kind: string): string {
   switch (kind) {
@@ -661,8 +738,27 @@ export function bepaalVerloop(
       "alleen een rechthoek b×h of een I/H-profiel uit de staalcatalogus kan verlopen",
   });
   if (soort === "beton") return nietOndersteund("beton");
-  if (isEigenProfiel(profile) || isEigenProfiel(eind)) return nietOndersteund("eigen doorsnede");
   if (isCltProfiel(profile) || isCltProfiel(eind)) return nietOndersteund("kruislaaghout");
+
+  // Een eigen doorsnede is alleen bruikbaar als hij een gelast,
+  // dubbelsymmetrisch I-profiel uit drie platen is — de vorm die het splitsen
+  // van een verlopende stalen staaf op de splitsplaats achterlaat. Alles
+  // anders wordt hier geweigerd met reden; zie `gelasteIMatenVanEigen`.
+  const eigenMaten = (naam: string | undefined): VerloopMaten | "geen" | null =>
+    isEigenProfiel(naam) ? (gelasteIMatenVanEigen(naam) ?? null) : "geen";
+  const mEigenB = eigenMaten(profile);
+  const mEigenE = eigenMaten(eind);
+  if (mEigenB === null || mEigenE === null) {
+    const welke = mEigenB === null ? profile : eind;
+    return nietOndersteund(
+      `eigen doorsnede "${eigenNaamVan(welke) ?? welke}" — alleen een eigen doorsnede die een ` +
+        "gelast, dubbelsymmetrisch I-profiel uit drie platen is (lijf plus twee gelijke " +
+        "flenzen), kan een uiteinde van een verloop zijn",
+    );
+  }
+  if (soort === "hout" && (mEigenB !== "geen" || mEigenE !== "geen")) {
+    return nietOndersteund("eigen doorsnede bij hout");
+  }
 
   // ── Rechthoek ↔ rechthoek ──────────────────────────────────────────────
   const rB = parseRechthoek(profile);
@@ -698,6 +794,23 @@ export function bepaalVerloop(
         "doorsnedesoort — een verlopende staaf gaat van rechthoek naar rechthoek of van " +
         "I/H-profiel naar I/H-profiel",
     };
+  }
+  // Een eigen gelaste I telt hier als volwaardig uiteinde: zijn maten zijn
+  // bekend en het rekenmodel (gelast, evenwijdige flenzen, geen
+  // afrondingsstraal) is precies hetzelfde als dat van het verloop zelf.
+  if (mEigenB !== "geen" || mEigenE !== "geen") {
+    const beginM =
+      mEigenB !== "geen" ? mEigenB : matenVanCatalogusI(profile);
+    const eindM = mEigenE !== "geen" ? mEigenE : matenVanCatalogusI(eind);
+    if (typeof beginM === "string") return { status: "fout", reden: beginM };
+    if (typeof eindM === "string") return { status: "fout", reden: eindM };
+    if (
+      beginM.b === eindM.b && beginM.h === eindM.h &&
+      beginM.tw === eindM.tw && beginM.tf === eindM.tf
+    ) {
+      return { status: "prismatisch" };
+    }
+    return { status: "verlopend", verloop: { soort: "gelastI", E, begin: beginM, eind: eindM } };
   }
   const dB = STEEL_SECTION_DIMS[normaliseer(profile ?? "")];
   const dE = STEEL_SECTION_DIMS[normaliseer(eind)];

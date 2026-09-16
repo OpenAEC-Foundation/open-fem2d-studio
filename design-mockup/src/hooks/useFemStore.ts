@@ -44,6 +44,7 @@ import {
   type CombinatieAfwijking, type CombinatieStaat, type CombinatieVervanging, type GevalMelding,
 } from "../lib/combinatieBeheer";
 import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
+import { splitsVerlopendProfiel } from "../lib/verloopSplitsen";
 import {
   STANDAARD_GEVOLGKLASSE, type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
@@ -575,6 +576,20 @@ export function computeBeamSplitOpKnoop(
   const cfg2 = splitsCheckConfig(beam.checkConfig, t, len, 2, beamId);
   const beam1: Beam = { ...beam, id: maxBeamId + 1, from: beam.from, to: newNodeId, releases: startRel, veren: startVeren };
   const beam2: Beam = { ...beam, id: maxBeamId + 2, from: newNodeId, to: beam.to, releases: endRel, veren: endVeren };
+  // VERLOPEND PROFIEL. `...beam` heeft `profile` én `profileEnd` letterlijk
+  // naar beide delen gekopieerd; dat is voor élk ander veld goed maar hier
+  // fout: dan droegen beide helften het VOLLE verloop en zat er op de
+  // splitsplaats een sprong in de doorsnede die er niet is. Beide delen worden
+  // daarom zelf verlopend, met de geïnterpoleerde doorsnede op de splitsplaats
+  // als eind resp. begin (ontwerp 15-09-2026, §6). Omdat het verloop lineair
+  // is, is A(x) en I(x) van de twee delen samen exact die van de hele staaf —
+  // splitsen verandert geen enkel getal; zie test-verlopend-splitsen.mjs.
+  const tussen = splitsVerlopendProfiel(beam.material, beam.profile, beam.profileEnd, t);
+  if (tussen !== null) {
+    beam1.profileEnd = tussen;
+    beam2.profile = tussen;
+    beam2.profileEnd = beam.profileEnd;
+  }
   if (cfg1.config) beam1.checkConfig = cfg1.config; else delete beam1.checkConfig;
   if (cfg2.config) beam2.checkConfig = cfg2.config; else delete beam2.checkConfig;
   const meldingen = [...cfg1.meldingen, ...cfg2.meldingen];
