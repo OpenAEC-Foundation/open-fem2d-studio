@@ -717,6 +717,7 @@
     "plateBron_materiaal": "matériau",
     "plateBron_handmatig": "manuel",
     "plateBron_standaard": "par défaut",
+    "plateBron_aanname": "hypothèse",
     "plateNHoek": "polygone à {{n}} côtés",
     "plateMeshStandaard": "{{soort}} (par défaut)",
     "fieldNormen": "Normes appliquées",

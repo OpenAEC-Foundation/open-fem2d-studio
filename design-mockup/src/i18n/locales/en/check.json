@@ -1115,6 +1115,7 @@
       "sourceMaterial": "from the material",
       "sourceManual": "entered manually",
       "sourceDefault": "default value",
+      "sourceAssumption": "assumption (the standard gives no value)",
       "meshTitle": "Calculation mesh",
       "meshSize": "Mesh size (mm)",
       "meshSizeTitle": "Desired element size of the calculation mesh; smaller = more accurate but heavier (limit ±4000 degrees of freedom)",

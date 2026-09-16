@@ -106,7 +106,16 @@
  * ν₁₂ = 0 voor hout en kruislaaghout: de normaalspanningen in de twee
  * hoofdrichtingen zijn dan ontkoppeld. Dat is een AANNAME van deze
  * implementatie, geen normwaarde, en ze staat als zodanig in het rapport.
- * De gebruiker kan hem overschrijven met het losse ν-veld van de plaat.
+ * In paneel en rapport staat de bron van ν dan ook als "aanname", niet als
+ * "materiaal".
+ *
+ * De gebruiker kan hem PER PLAAT overschrijven met het losse ν-veld (`nu`),
+ * dat al door projectbestand, solverinvoer, MCP-veldpoort en -schema loopt.
+ * De plaat blijft dan richtingsafhankelijk. Een waarde waarbij de
+ * materiaalmatrix niet positief-definiet is (ν₁₂·ν₂₁ ≥ 1, met
+ * ν₂₁ = ν₁₂·E₂/E₁) wordt hier al geweigerd — dezelfde grens als in
+ * `core/fem/Triangle.ts`, maar dan vóór het rekenen, zodat paneel,
+ * modelcontrole en MCP-poort hem ook zien.
  *
  * # OVERSCHRIJVEN
  *
@@ -154,7 +163,12 @@ export type PlaatBron =
   /** Uit het losse veld op de plaat — de gebruiker heeft het zelf ingevuld. */
   | "handmatig"
   /** Uit de standaardwaarde van de app, omdat noch materiaal noch gebruiker hem geeft. */
-  | "standaard";
+  | "standaard"
+  /**
+   * Een AANNAME van deze implementatie, geen normwaarde: ν₁₂ = 0 voor hout en
+   * kruislaaghout, omdat NEN-EN 1995-1-1 en EN 338 geen dwarscontractie geven.
+   */
+  | "aanname";
 
 /**
  * De stijfheid van een plaat zoals de solver hem gebruikt. Eenheden als in de
@@ -640,6 +654,23 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
     bronG12 = "materiaal";
   }
 
+  // ── Dwarscontractie: positief-definiet? ────────────────────────────────
+  // Dezelfde grens als `orthotropeVlakspanning` in core/fem/Triangle.ts, maar
+  // hier al, zodat paneel, modelcontrole en MCP-poort hem zien vóór er
+  // gerekend wordt.
+  if (orthotroop) {
+    const nu21 = (nu12 * E2) / E1;
+    if (!(1 - nu12 * nu21 > 0)) {
+      return {
+        ok: false,
+        reden:
+          `ν₁₂ = ${nu12} is onmogelijk bij E₁ = ${Math.round(E1)} en E₂ = ${Math.round(E2)} N/mm²: ` +
+          `ν₁₂·ν₂₁ ≥ 1, de materiaalmatrix is dan niet positief-definiet. ` +
+          `Er moet gelden ν₁₂ < √(E₁/E₂) = ${Math.sqrt(E1 / E2).toFixed(3)}.`,
+      };
+    }
+  }
+
   const aanvullingen: string[] = [...g12Aanvulling];
   if (eOverschreven) {
     aanvullingen.push(
@@ -647,7 +678,14 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
       `dus de plaat rekent isotroop en de richtingsafhankelijkheid van het materiaal vervalt.`,
     );
   }
-  if (nuOverschreven && basis.nuUitMateriaal) {
+  // Hout en kruislaaghout: ν₁₂ = 0 is een aanname, geen tabelwaarde.
+  const nuAanname = basis.soort === "hout" || basis.soort === "clt";
+  if (nuOverschreven && nuAanname) {
+    aanvullingen.push(
+      `ν₁₂ is handmatig op ${p.nu} gezet in plaats van de aanname ν₁₂ = 0; de plaat blijft ` +
+      `richtingsafhankelijk (ν₂₁ = ν₁₂·E₂/E₁).`,
+    );
+  } else if (nuOverschreven && basis.nuUitMateriaal) {
     aanvullingen.push(`ν is handmatig op ${p.nu} gezet in plaats van de materiaalwaarde.`);
   }
   if (rhoOverschreven) {
@@ -663,7 +701,9 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
       E1, E2, nu12, G12, rho,
       hoekGraden,
       bronE: eOverschreven ? "handmatig" : "materiaal",
-      bronNu: nuOverschreven ? "handmatig" : basis.nuUitMateriaal ? "materiaal" : "standaard",
+      bronNu: nuOverschreven ? "handmatig"
+        : nuAanname ? "aanname"
+        : basis.nuUitMateriaal ? "materiaal" : "standaard",
       bronRho: rhoOverschreven ? "handmatig" : "materiaal",
       bronG12,
       herkomst: [basis.herkomst, ...aanvullingen].join(" "),

@@ -1007,7 +1007,7 @@ fn schema_plates() -> Value {
                 "cltG12Bovengrens": { "type": "boolean",
                     "description": "Alleen bij KRUISLAAGHOUT: `true` = bewust rekenen met de uitgesmeerde G_mean (Sum t*G_mean/Sum t) ZONDER reductie - een bovengrens, de schijf is in afschuiving te stijf; het rapport draagt een waarschuwing. Dit is de G12 van voor deze keuze, dus een model met `true` rekent bit-gelijk aan toen. Niet samen met `cltG12`." },
                 "E":  { "type": "number", "exclusiveMinimum": 0, "description": "N/mm2, default 210000. MET `materiaal` is dit de expliciete overschrijving van E, en die geldt in BEIDE richtingen: de plaat rekent dan isotroop en de richtingsafhankelijkheid vervalt." },
-                "nu": { "type": "number", "description": "Dwarscontractie, default 0,3. Met `materiaal` de overschrijving van nu_12." },
+                "nu": { "type": "number", "description": "Dwarscontractie, default 0,3. Met `materiaal` de overschrijving van nu_12 (staal 0,3, beton 0,2). Bij hout en kruislaaghout is nu_12 zonder dit veld 0: een AANNAME, want NEN-EN 1995-1-1 en EN 338 geven geen dwarscontractie; het rapport vermeldt dat. Een nu_12 waarbij nu_12*nu_21 >= 1 (nu_21 = nu_12*E2/E1) wordt geweigerd." },
                 "rho": { "type": "number", "exclusiveMinimum": 0, "description": "kg/m3, default 7850. Met `materiaal` de overschrijving van rho, en daarmee van het eigen gewicht rho*t*A." },
                 "meshSize": { "type": "number", "exclusiveMinimum": 0, "description": "mm, default 500." },
                 "meshCache": schema_meshcache(),

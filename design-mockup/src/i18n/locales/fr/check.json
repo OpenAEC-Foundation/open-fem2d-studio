@@ -1115,6 +1115,7 @@
       "sourceMaterial": "issu du matériau",
       "sourceManual": "saisi manuellement",
       "sourceDefault": "valeur par défaut",
+      "sourceAssumption": "hypothèse (la norme ne donne pas de valeur)",
       "meshTitle": "Maillage de calcul",
       "meshSize": "Taille de maille (mm)",
       "meshSizeTitle": "Taille d'élément souhaitée du maillage de calcul ; plus petite = plus précis mais plus lourd (limite ±4000 degrés de liberté)",

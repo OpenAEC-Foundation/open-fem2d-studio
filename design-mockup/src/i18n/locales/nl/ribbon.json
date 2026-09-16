@@ -717,6 +717,7 @@
     "plateBron_materiaal": "materiaal",
     "plateBron_handmatig": "handmatig",
     "plateBron_standaard": "standaard",
+    "plateBron_aanname": "aanname",
     "plateNHoek": "{{n}}-hoek",
     "plateMeshStandaard": "{{soort}} (standaard)",
     "fieldNormen": "Toegepaste normen",

@@ -232,6 +232,13 @@ const BUNDEL_TESTS = new Set([
   // vallen, dan rekent de sidecar een kruislaaghouten schijf stil met de
   // niet-gereduceerde bovengrens.
   "plaat-clt-g12",
+  // ν₁₂ van hout en kruislaaghout (issue #14): de aanname ν₁₂ = 0 zichtbaar,
+  // overschrijfbaar per plaat, en weigering bij ν₁₂·ν₂₁ ≥ 1. Praat met
+  // `plaatMateriaal`, `engine`, `valideerModel`, `bouwMultiInput` en het
+  // projectbestand — alles in de barrel — en leest fem_tools.rs van schijf
+  // (de bundelkopie staat naast het origineel, dus dat pad klopt). Hoort óók
+  // tegen de bundel: de sidecar moet dezelfde grens trekken als de app.
+  "plaat-nu12",
   // Randlast en randpuntlast op een OPENINGSRAND: engine, mapping, poort,
   // sidecar (verwerkVerzoek), projectbestand en IFC-export — allemaal in de
   // barrel, en juist in de bundel van belang: de sidecar rekent de plaat met

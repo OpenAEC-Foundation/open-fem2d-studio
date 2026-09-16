@@ -717,6 +717,7 @@
     "plateBron_materiaal": "material",
     "plateBron_handmatig": "manual",
     "plateBron_standaard": "default",
+    "plateBron_aanname": "assumption",
     "plateNHoek": "{{n}}-gon",
     "plateMeshStandaard": "{{soort}} (default)",
     "fieldNormen": "Applied standards",

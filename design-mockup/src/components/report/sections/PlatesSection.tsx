@@ -48,6 +48,7 @@ const BRON_KORT: Record<string, string> = {
   materiaal: "report.plateBron_materiaal",
   handmatig: "report.plateBron_handmatig",
   standaard: "report.plateBron_standaard",
+  aanname: "report.plateBron_aanname",
 };
 
 /** Maten van een opening voor de tabel: "b × h mm" bij een rechthoek, anders het aantal hoeken. */

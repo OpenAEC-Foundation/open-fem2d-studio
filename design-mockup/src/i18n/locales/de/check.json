@@ -1115,6 +1115,7 @@
       "sourceMaterial": "aus dem Werkstoff",
       "sourceManual": "manuell eingegeben",
       "sourceDefault": "Standardwert",
+      "sourceAssumption": "Annahme (die Norm gibt keinen Wert)",
       "meshTitle": "Rechennetz",
       "meshSize": "Netzweite (mm)",
       "meshSizeTitle": "Gewünschte Elementgröße des Rechennetzes; kleiner = genauer, aber aufwendiger (Grenze ±4000 Freiheitsgrade)",

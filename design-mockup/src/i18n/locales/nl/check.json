@@ -1115,6 +1115,7 @@
       "sourceMaterial": "uit het materiaal",
       "sourceManual": "handmatig ingevuld",
       "sourceDefault": "standaardwaarde",
+      "sourceAssumption": "aanname (norm geeft geen waarde)",
       "meshTitle": "Rekenmesh",
       "meshSize": "Meshgrootte (mm)",
       "meshSizeTitle": "Gewenste elementgrootte van het rekenmesh; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)",

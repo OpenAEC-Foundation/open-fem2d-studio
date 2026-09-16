@@ -330,11 +330,13 @@ log("\n[7] Overschrijven met de losse velden, met de bron erbij");
 // ─────────────────────────────────────────────────────────────────────────
 {
   const puur = bepaalPlaatStijfheid({ materiaal: "C24" });
-  checkTrue("C24 zonder overschrijving: orthotroop, alles uit het materiaal",
+  // Sinds issue #14 heet de bron van ν₁₂ = 0 bij hout "aanname": de norm
+  // geeft geen dwarscontractie, dus het is geen materiaalwaarde.
+  checkTrue("C24 zonder overschrijving: orthotroop, E/G/ρ uit het materiaal, ν₁₂ = 0 als aanname",
     puur.ok && puur.stijfheid.orthotroop
     && puur.stijfheid.E1 === 11000 && puur.stijfheid.E2 === 370
     && puur.stijfheid.G12 === 690 && puur.stijfheid.nu12 === 0 && puur.stijfheid.rho === 420
-    && puur.stijfheid.bronE === "materiaal" && puur.stijfheid.bronNu === "materiaal"
+    && puur.stijfheid.bronE === "materiaal" && puur.stijfheid.bronNu === "aanname"
     && puur.stijfheid.bronRho === "materiaal");
   const metE = bepaalPlaatStijfheid({ materiaal: "C24", E: 9000 });
   checkTrue("handmatige E geldt in BEIDE richtingen en maakt de plaat isotroop",

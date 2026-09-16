@@ -1868,6 +1868,7 @@ function PlateProperties({ plate, nodes, updatePlate }: {
   };
   const bronTekst: Record<string, string> = {
     materiaal: t("props.plate.sourceMaterial"), handmatig: t("props.plate.sourceManual"), standaard: t("props.plate.sourceDefault"),
+    aanname: t("props.plate.sourceAssumption"),
   };
 
   const openingMaat = (p: { x: number; z: number }[]) => {
