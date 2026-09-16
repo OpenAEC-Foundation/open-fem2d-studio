@@ -520,6 +520,35 @@ fn extend_met_combinatie(
             },
         ),
     ]);
+    // β VAN (7.19). Hij hoort in het rapport omdat hij per COMBINATIE
+    // verschilt: 7.4.3(3) geeft β = 1,0 voor één enkele kortdurende belasting
+    // en β = 0,5 voor aanhoudende belastingen of herhaalde cycli, en een lagere
+    // β geeft via ζ = 1 − β·(σ_sr/σ_s)² een lagere stijfheid. In de UGT speelt
+    // hij niet mee: 5.8.6(5) rekent zonder betontrek en dus zonder tension
+    // stiffening.
+    rijen.push(vec![
+        "Belastingduur β (7.19)".into(),
+        match eerste {
+            None => "—".to_string(),
+            Some(r) => format!(
+                "β = {} — {}",
+                nl(r.beta, 2),
+                match r.limit_state {
+                    NonlinearBasis::DesignValues =>
+                        "UGT: 5.8.6(5) rekent zonder betontrek, dus (7.18)/(7.19) en daarmee β                          spelen hier geen rol."
+                            .to_string(),
+                    NonlinearBasis::MeanValues => format!(
+                        "BGT: {}",
+                        if r.beta < 1.0 {
+                            "7.4.3(3) β = 0,5 voor aanhoudende belastingen of meervoudige cycli                              van zich herhalende belastingen."
+                        } else {
+                            "7.4.3(3) β = 1,0 voor één enkele kortdurende belasting."
+                        }
+                    ),
+                },
+            ),
+        },
+    ]);
     rijen.push(vec![
         "Kruip".into(),
         format!(
