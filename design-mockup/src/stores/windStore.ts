@@ -190,6 +190,9 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
       qDir: "z" as const,
       qCoord: "local" as const,
       ...(l.startFrac !== undefined ? { startFrac: l.startFrac, endFrac: l.endFrac } : {}),
+      // Vrijstaand dak: paragraaf, tabel, α, φ en coëfficiënt voor de
+      // lastentabel van het rapport. De gebouwgevallen hebben er geen.
+      ...(l.omschrijving !== undefined ? { omschrijving: l.omschrijving } : {}),
       gegenereerdDoor: "wind" as const,
     }));
     const combinaties: Omit<LoadCombination, "id">[] = res.combinaties.map((c) => ({

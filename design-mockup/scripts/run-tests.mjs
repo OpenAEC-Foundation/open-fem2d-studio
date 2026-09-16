@@ -267,6 +267,11 @@ const BUNDEL_TESTS = new Set([
   "veren",
   "wind-generator",
   "wind-eurocode",
+  // Vrijstaand dak (§7.3, tabel 7.6/7.7): praat alleen met de windmodules en
+  // `engine` — alles in de barrel. Hoort óók tegen de bundel: de sidecar moet
+  // dezelfde tabelcellen, zones en c_f-gevallen leveren, en de gebouwgevallen
+  // moeten daar net zo bit-identiek blijven als in de bron.
+  "wind-vrijstaand-dak",
 ]);
 
 /**
