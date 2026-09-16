@@ -12679,6 +12679,9 @@ function combineResults(combo, perCase) {
         d.sigma1 = midden + straal;
         d.sigma2 = midden - straal;
         d.angle = 0.5 * Math.atan2(2 * t, sx - sy);
+        if (referentie.materiaalassen) {
+          d.materiaalassen = spanningInMateriaalassen(sx, sy, t, referentie.materiaalassen.hoekGraden);
+        }
         for (const [sleutel, waarde] of [
           ["sigmaX", d.sigmaX],
           ["sigmaY", d.sigmaY],
@@ -12693,7 +12696,12 @@ function combineResults(combo, perCase) {
           if (waarde > r.max) r.max = waarde;
         }
       }
-      plateElements.push({ plateId: pid, elements: gecombineerd, ranges });
+      plateElements.push({
+        plateId: pid,
+        elements: gecombineerd,
+        ranges,
+        ...referentie.materiaalassen ? { materiaalassen: materiaalasRanges(gecombineerd, referentie.materiaalassen.hoekGraden) } : {}
+      });
     }
     if (plateElements.length === 0) plateElements = void 0;
   }
@@ -15725,10 +15733,125 @@ function cltVlakStijfheid(layup) {
   }
   return { E1: tE1 / tTotaal, E2: tE2 / tTotaal, G12: tG / tTotaal, rho: tRho / tTotaal };
 }
+function herkenPlaatBasis(naam, nu) {
+  if (isVrijMateriaal(naam)) {
+    const vrij = parseVrijMateriaal(naam);
+    if (!vrij) {
+      return {
+        fout: `vrij materiaal "${naam}" is niet volledig. Vorm: "VRIJ:<naam> E=<N/mm\xB2> rho=<kg/m\xB3> f=<N/mm\xB2>[ gM=<\u03B3_M>]", bijvoorbeeld "VRIJ:Natuursteen E=60000 rho=2700 f=8".`
+      };
+    }
+    const nuVrij = gegeven(nu) ? nu : nuStandaard();
+    return {
+      soort: "vrij",
+      naam: vrij.naam,
+      E1: vrij.eMod,
+      E2: vrij.eMod,
+      nu12: nuVrij,
+      G12: gIsotroop(vrij.eMod, nuVrij),
+      rho: vrij.dichtheid,
+      orthotroop: false,
+      nuUitMateriaal: false,
+      herkomst: `Vrij materiaal "${vrij.naam}": E = ${vrij.eMod} N/mm\xB2 en \u03C1 = ${vrij.dichtheid} kg/m\xB3 uit de materiaalnaam zelf (geen norm, geen tabel). Isotroop; \u03BD is niet in de naam opgenomen en komt daarom uit het \u03BD-veld van de plaat.`
+    };
+  }
+  if (isCltProfiel(naam)) {
+    const uit = ontleedPlaatClt(naam);
+    if ("fout" in uit) return { fout: uit.fout };
+    const v = cltVlakStijfheid(uit.layup);
+    const diktes = uit.layup.layers.map((l) => l.thickness_mm).join("/");
+    return {
+      soort: "clt",
+      naam,
+      // G12 is hier de uitgesmeerde G_mean — de BOVENGRENS. Of hij zo
+      // gebruikt mag worden, beslist de G₁₂-plicht in `bepaalPlaatStijfheid`.
+      E1: v.E1,
+      E2: v.E2,
+      nu12: 0,
+      G12: v.G12,
+      rho: v.rho,
+      orthotroop: true,
+      nuUitMateriaal: true,
+      herkomst: `Kruislaaghout, opbouw ${diktes} mm: E\u2081 en E\u2082 zijn per laag over de dikte uitgesmeerd (E_0,mean langs de vezel, E_90,mean dwars \u2014 EN 338 / EN 14080); \u03C1 eveneens. AANNAME \u03BD\u2081\u2082 = 0: NEN-EN 1995-1-1 en EN 338 geven geen dwarscontractie voor hout.`
+    };
+  }
+  const beton = matchSupportedConcreteClass(naam);
+  if (beton !== null) {
+    const E = CONCRETE_E_CM[beton];
+    if (!(E > 0)) {
+      return { fout: `betonklasse "${beton}" staat niet in de E_cm-tabel (NEN-EN 1992-1-1 tabel 3.1).` };
+    }
+    return {
+      soort: "beton",
+      naam: beton,
+      E1: E,
+      E2: E,
+      nu12: NU_BETON,
+      G12: gIsotroop(E, NU_BETON),
+      rho: RHO_BETON,
+      orthotroop: false,
+      nuUitMateriaal: true,
+      herkomst: `Beton ${beton}: E = E_cm = ${E} N/mm\xB2 (NEN-EN 1992-1-1 tabel 3.1, ongescheurd), \u03BD = ${NU_BETON} (3.1.3(4), ongescheurd beton) en \u03C1 = ${RHO_BETON} kg/m\xB3 voor gewapend beton (NEN-EN 1991-1-1 tabel A.1). Isotroop.`
+    };
+  }
+  const klasse = matchSupportedTimberGrade(naam);
+  if (klasse !== null) {
+    const e0 = TIMBER_E_MEAN[klasse];
+    const e90 = TIMBER_E90_MEAN[klasse];
+    const g = TIMBER_G_MEAN[klasse];
+    if (!(e0 > 0) || !(e90 > 0) || !(g > 0) || !(TIMBER_RHO_MEAN[klasse] > 0)) {
+      return { fout: `sterkteklasse "${klasse}" mist E_0,mean, E_90,mean, G_mean of \u03C1_mean in de houttabellen (EN 338 / EN 14080).` };
+    }
+    return {
+      soort: "hout",
+      naam: klasse,
+      E1: e0,
+      E2: e90,
+      nu12: 0,
+      G12: g,
+      rho: TIMBER_RHO_MEAN[klasse],
+      orthotroop: true,
+      nuUitMateriaal: true,
+      herkomst: `Massief hout ${klasse}: E\u2081 = E_0,mean = ${e0} N/mm\xB2 langs de vezel, E\u2082 = E_90,mean = ${e90} N/mm\xB2 dwars en G\u2081\u2082 = G_mean = ${g} N/mm\xB2 (EN 338 / EN 14080, dezelfde getallen als de toetsingskern); \u03C1 = \u03C1_mean = ${TIMBER_RHO_MEAN[klasse]} kg/m\xB3. AANNAME \u03BD\u2081\u2082 = 0: NEN-EN 1995-1-1 en EN 338 geven geen dwarscontractie voor hout.`
+    };
+  }
+  if (STEEL_GRADES.includes(naam.toUpperCase())) {
+    return {
+      soort: "staal",
+      naam: naam.toUpperCase(),
+      E1: E_STAAL,
+      E2: E_STAAL,
+      nu12: NU_STAAL,
+      G12: gIsotroop(E_STAAL, NU_STAAL),
+      rho: RHO_STAAL,
+      orthotroop: false,
+      nuUitMateriaal: true,
+      herkomst: `Staal ${naam.toUpperCase()}: E = ${E_STAAL} N/mm\xB2 en \u03BD = ${NU_STAAL} (NEN-EN 1993-1-1 3.2.6(1)), \u03C1 = ${RHO_STAAL} kg/m\xB3 (NEN-EN 1991-1-1 tabel A.4). Isotroop; de staalsoort bepaalt de sterkte, niet de stijfheid.`
+    };
+  }
+  return {
+    fout: `materiaal "${naam}" wordt niet herkend. Bekend zijn: ${plaatMateriaalVoorbeelden()}. Laat het veld leeg om met de losse E, \u03BD en \u03C1 te rekenen; er wordt geen materiaal aangenomen.`
+  };
+}
+function heeftCltG12Invoer(p) {
+  return p.cltG12 !== void 0 || p.cltG12Bron !== void 0 && p.cltG12Bron.trim() !== "" || p.cltG12Bovengrens === true;
+}
+function plaatMateriaalSoort(materiaal) {
+  const naam = (materiaal ?? "").trim();
+  if (naam === "") return null;
+  const basis = herkenPlaatBasis(naam, void 0);
+  return "fout" in basis ? "onbekend" : basis.soort;
+}
 function bepaalPlaatStijfheid(p) {
   const hoekGraden = gegeven(p.hoofdrichting) ? p.hoofdrichting : 0;
   const naam = (p.materiaal ?? "").trim();
   if (naam === "") {
+    if (heeftCltG12Invoer(p)) {
+      return {
+        ok: false,
+        reden: `cltG12, cltG12Bron en cltG12Bovengrens horen alleen bij kruislaaghout, maar deze plaat heeft geen materiaal. Kies een kruislaaghoutopbouw ("CLT C24 40/20/40") of laat de G\u2081\u2082-velden leeg; ze worden niet stil genegeerd.`
+      };
+    }
     const E = gegeven(p.E) ? p.E : eStandaard();
     const nu = gegeven(p.nu) ? p.nu : nuStandaard();
     const rho2 = gegeven(p.rho) ? p.rho : rhoStandaard();
@@ -15747,107 +15870,15 @@ function bepaalPlaatStijfheid(p) {
         bronE: gegeven(p.E) ? "handmatig" : "standaard",
         bronNu: gegeven(p.nu) ? "handmatig" : "standaard",
         bronRho: gegeven(p.rho) ? "handmatig" : "standaard",
-        herkomst: "Geen materiaal gekozen: de plaat rekent isotroop met de ingevoerde E, \u03BD en \u03C1 (standaard staal 210 000 N/mm\xB2, 0,3 en 7850 kg/m\xB3)."
+        // Isotroop: G = E/(2(1+ν)) volgt uit E, dus ook de herkomst.
+        bronG12: gegeven(p.E) ? "handmatig" : "standaard",
+        herkomst: "Geen materiaal gekozen: de plaat rekent isotroop met de ingevoerde E, \u03BD en \u03C1 (standaard staal 210 000 N/mm\xB2, 0,3 en 7850 kg/m\xB3).",
+        waarschuwingen: []
       }
     };
   }
-  let basis;
-  if (isVrijMateriaal(naam)) {
-    const vrij = parseVrijMateriaal(naam);
-    if (!vrij) {
-      return {
-        ok: false,
-        reden: `vrij materiaal "${naam}" is niet volledig. Vorm: "VRIJ:<naam> E=<N/mm\xB2> rho=<kg/m\xB3> f=<N/mm\xB2>[ gM=<\u03B3_M>]", bijvoorbeeld "VRIJ:Natuursteen E=60000 rho=2700 f=8".`
-      };
-    }
-    const nu = gegeven(p.nu) ? p.nu : nuStandaard();
-    basis = {
-      soort: "vrij",
-      naam: vrij.naam,
-      E1: vrij.eMod,
-      E2: vrij.eMod,
-      nu12: nu,
-      G12: gIsotroop(vrij.eMod, nu),
-      rho: vrij.dichtheid,
-      orthotroop: false,
-      nuUitMateriaal: false,
-      herkomst: `Vrij materiaal "${vrij.naam}": E = ${vrij.eMod} N/mm\xB2 en \u03C1 = ${vrij.dichtheid} kg/m\xB3 uit de materiaalnaam zelf (geen norm, geen tabel). Isotroop; \u03BD is niet in de naam opgenomen en komt daarom uit het \u03BD-veld van de plaat.`
-    };
-  } else if (isCltProfiel(naam)) {
-    const uit = ontleedPlaatClt(naam);
-    if ("fout" in uit) return { ok: false, reden: uit.fout };
-    const v = cltVlakStijfheid(uit.layup);
-    const diktes = uit.layup.layers.map((l) => l.thickness_mm).join("/");
-    basis = {
-      soort: "clt",
-      naam,
-      E1: v.E1,
-      E2: v.E2,
-      nu12: 0,
-      G12: v.G12,
-      rho: v.rho,
-      orthotroop: true,
-      nuUitMateriaal: true,
-      herkomst: `Kruislaaghout, opbouw ${diktes} mm: E\u2081 en E\u2082 zijn per laag over de dikte uitgesmeerd (E_0,mean langs de vezel, E_90,mean dwars \u2014 EN 338 / EN 14080), G\u2081\u2082 eveneens (\u03A3t\xB7G_mean/\u03A3t, ZONDER reductie voor de wringing in de kruisingsvlakken: NEN-EN 1995-1-1 kent kruislaaghout niet als product en geeft die reductie niet \u2014 G\u2081\u2082 is dus een bovengrens). \u03BD\u2081\u2082 = 0, want de norm geeft geen dwarscontractie voor hout.`
-    };
-  } else if (matchSupportedConcreteClass(naam) !== null) {
-    const klasse = matchSupportedConcreteClass(naam);
-    const E = CONCRETE_E_CM[klasse];
-    if (!(E > 0)) {
-      return { ok: false, reden: `betonklasse "${klasse}" staat niet in de E_cm-tabel (NEN-EN 1992-1-1 tabel 3.1).` };
-    }
-    const nu = NU_BETON;
-    basis = {
-      soort: "beton",
-      naam: klasse,
-      E1: E,
-      E2: E,
-      nu12: nu,
-      G12: gIsotroop(E, nu),
-      rho: RHO_BETON,
-      orthotroop: false,
-      nuUitMateriaal: true,
-      herkomst: `Beton ${klasse}: E = E_cm = ${E} N/mm\xB2 (NEN-EN 1992-1-1 tabel 3.1, ongescheurd), \u03BD = ${NU_BETON} (3.1.3(4), ongescheurd beton) en \u03C1 = ${RHO_BETON} kg/m\xB3 voor gewapend beton (NEN-EN 1991-1-1 tabel A.1). Isotroop.`
-    };
-  } else if (matchSupportedTimberGrade(naam) !== null) {
-    const klasse = matchSupportedTimberGrade(naam);
-    const e0 = TIMBER_E_MEAN[klasse];
-    const e90 = TIMBER_E90_MEAN[klasse];
-    const g = TIMBER_G_MEAN[klasse];
-    if (!(e0 > 0) || !(e90 > 0) || !(g > 0) || !(TIMBER_RHO_MEAN[klasse] > 0)) {
-      return { ok: false, reden: `sterkteklasse "${klasse}" mist E_0,mean, E_90,mean, G_mean of \u03C1_mean in de houttabellen (EN 338 / EN 14080).` };
-    }
-    basis = {
-      soort: "hout",
-      naam: klasse,
-      E1: e0,
-      E2: e90,
-      nu12: 0,
-      G12: g,
-      rho: TIMBER_RHO_MEAN[klasse],
-      orthotroop: true,
-      nuUitMateriaal: true,
-      herkomst: `Massief hout ${klasse}: E\u2081 = E_0,mean = ${e0} N/mm\xB2 langs de vezel, E\u2082 = E_90,mean = ${e90} N/mm\xB2 dwars en G\u2081\u2082 = G_mean = ${g} N/mm\xB2 (EN 338 / EN 14080, dezelfde getallen als de toetsingskern); \u03C1 = \u03C1_mean = ${TIMBER_RHO_MEAN[klasse]} kg/m\xB3. \u03BD\u2081\u2082 = 0, want de norm geeft geen dwarscontractie voor hout.`
-    };
-  } else if (STEEL_GRADES.includes(naam.toUpperCase())) {
-    basis = {
-      soort: "staal",
-      naam: naam.toUpperCase(),
-      E1: E_STAAL,
-      E2: E_STAAL,
-      nu12: NU_STAAL,
-      G12: gIsotroop(E_STAAL, NU_STAAL),
-      rho: RHO_STAAL,
-      orthotroop: false,
-      nuUitMateriaal: true,
-      herkomst: `Staal ${naam.toUpperCase()}: E = ${E_STAAL} N/mm\xB2 en \u03BD = ${NU_STAAL} (NEN-EN 1993-1-1 3.2.6(1)), \u03C1 = ${RHO_STAAL} kg/m\xB3 (NEN-EN 1991-1-1 tabel A.4). Isotroop; de staalsoort bepaalt de sterkte, niet de stijfheid.`
-    };
-  } else {
-    return {
-      ok: false,
-      reden: `materiaal "${naam}" wordt niet herkend. Bekend zijn: ${plaatMateriaalVoorbeelden()}. Laat het veld leeg om met de losse E, \u03BD en \u03C1 te rekenen; er wordt geen materiaal aangenomen.`
-    };
-  }
+  const basis = herkenPlaatBasis(naam, p.nu);
+  if ("fout" in basis) return { ok: false, reden: basis.fout };
   const nuOverschreven = gegeven(p.nu);
   const eOverschreven = gegeven(p.E);
   const rhoOverschreven = gegeven(p.rho);
@@ -15855,15 +15886,105 @@ function bepaalPlaatStijfheid(p) {
   const E1 = eOverschreven ? p.E : basis.E1;
   const E2 = eOverschreven ? p.E : basis.E2;
   const orthotroop = eOverschreven ? false : basis.orthotroop;
-  const G12 = eOverschreven || !basis.orthotroop ? gIsotroop(E1, nu12) : basis.G12;
   const rho = rhoOverschreven ? p.rho : basis.rho;
-  const aanvullingen = [];
+  const waarschuwingen = [];
+  const g12Aanvulling = [];
+  let G12;
+  let bronG12;
+  if (heeftCltG12Invoer(p) && basis.soort !== "clt") {
+    return {
+      ok: false,
+      reden: `cltG12, cltG12Bron en cltG12Bovengrens horen alleen bij kruislaaghout; materiaal "${naam}" is dat niet. Laat de G\u2081\u2082-velden leeg; ze worden niet stil genegeerd.`
+    };
+  }
+  if (eOverschreven || !basis.orthotroop) {
+    if (heeftCltG12Invoer(p)) {
+      return {
+        ok: false,
+        reden: `E is handmatig gezet, dus de plaat rekent isotroop met G = E/(2(1+\u03BD)); de G\u2081\u2082-invoer van kruislaaghout zou dan niets doen. Laat \xF3f E \xF3f de G\u2081\u2082-velden leeg.`
+      };
+    }
+    G12 = gIsotroop(E1, nu12);
+    bronG12 = eOverschreven ? "handmatig" : "materiaal";
+  } else if (basis.soort === "clt") {
+    const heeftWaarde = p.cltG12 !== void 0;
+    const bron = (p.cltG12Bron ?? "").trim();
+    const bovengrens = p.cltG12Bovengrens === true;
+    const bovengrensTekst = Math.round(basis.G12 * 10) / 10;
+    if (heeftWaarde && bovengrens) {
+      return {
+        ok: false,
+        reden: `kruislaaghout "${naam}": cltG12 en cltG12Bovengrens zijn allebei gezet. Kies \xE9\xE9n: de G\u2081\u2082 uit de productverklaring met bron, \xF3f bewust de niet-gereduceerde bovengrens.`
+      };
+    }
+    if (heeftWaarde) {
+      if (!gegeven(p.cltG12) || !(p.cltG12 > 0)) {
+        return {
+          ok: false,
+          reden: `kruislaaghout "${naam}": cltG12 moet een positief getal in N/mm\xB2 zijn (kreeg ${String(p.cltG12)}).`
+        };
+      }
+      if (bron === "") {
+        return {
+          ok: false,
+          reden: `kruislaaghout "${naam}": cltG12 = ${p.cltG12} N/mm\xB2 is opgegeven zonder cltG12Bron. Een waarde zonder herkomst is in het rapport niet van een aanname te onderscheiden; noem de productverklaring of de ETA met tabel, bijvoorbeeld "ETA-00/0000, tabel 3".`
+        };
+      }
+      G12 = p.cltG12;
+      bronG12 = "handmatig";
+      g12Aanvulling.push(
+        `G\u2081\u2082 = ${p.cltG12} N/mm\xB2 in het vlak, volgens ${bron}.`
+      );
+      if (p.cltG12 > basis.G12) {
+        waarschuwingen.push(
+          `G\u2081\u2082 = ${p.cltG12} N/mm\xB2 is groter dan de uitgesmeerde G_mean van de lamellen (${bovengrensTekst} N/mm\xB2), terwijl de afschuiving in het vlak van kruislaaghout daaronder hoort te liggen. Controleer de waarde in ${bron}.`
+        );
+      }
+    } else if (bron !== "") {
+      return {
+        ok: false,
+        reden: `kruislaaghout "${naam}": cltG12Bron "${bron}" is opgegeven zonder cltG12.`
+      };
+    } else if (bovengrens) {
+      G12 = basis.G12;
+      bronG12 = "bovengrens";
+      g12Aanvulling.push(
+        `G\u2081\u2082 = \u03A3t\xB7G_mean/\u03A3t = ${bovengrensTekst} N/mm\xB2, op verzoek als BOVENGRENS gebruikt (niet gereduceerd).`
+      );
+      waarschuwingen.push(
+        `G\u2081\u2082 van kruislaaghout is de uitgesmeerde G_mean (${bovengrensTekst} N/mm\xB2) ZONDER reductie voor de niet-verlijmde smalle zijden en de wringing in de kruisingsvlakken: een bovengrens, de schijf is in afschuiving te stijf. NEN-EN 1995-1-1 geeft die reductie niet; vul voor een onderbouwde waarde cltG12 met bron in.`
+      );
+    } else {
+      return {
+        ok: false,
+        reden: `kruislaaghout "${naam}": G\u2081\u2082 in het vlak ontbreekt. NEN-EN 1995-1-1 en EN 338 geven geen glijdingsmodulus in het vlak voor een gekruiste opbouw \u2014 de uitgesmeerde G_mean (${bovengrensTekst} N/mm\xB2) is zonder reductie voor de kruisingsvlakken een bovengrens \u2014 en er wordt geen reductie aangenomen. Vul cltG12 (N/mm\xB2) met cltG12Bron in uit de productverklaring of de ETA, of kies bewust cltG12Bovengrens.`
+      };
+    }
+  } else {
+    G12 = basis.G12;
+    bronG12 = "materiaal";
+  }
+  if (orthotroop) {
+    const nu21 = nu12 * E2 / E1;
+    if (!(1 - nu12 * nu21 > 0)) {
+      return {
+        ok: false,
+        reden: `\u03BD\u2081\u2082 = ${nu12} is onmogelijk bij E\u2081 = ${Math.round(E1)} en E\u2082 = ${Math.round(E2)} N/mm\xB2: \u03BD\u2081\u2082\xB7\u03BD\u2082\u2081 \u2265 1, de materiaalmatrix is dan niet positief-definiet. Er moet gelden \u03BD\u2081\u2082 < \u221A(E\u2081/E\u2082) = ${Math.sqrt(E1 / E2).toFixed(3)}.`
+      };
+    }
+  }
+  const aanvullingen = [...g12Aanvulling];
   if (eOverschreven) {
     aanvullingen.push(
       `E is handmatig op ${p.E} N/mm\xB2 gezet: die waarde geldt in BEIDE richtingen, dus de plaat rekent isotroop en de richtingsafhankelijkheid van het materiaal vervalt.`
     );
   }
-  if (nuOverschreven && basis.nuUitMateriaal) {
+  const nuAanname = basis.soort === "hout" || basis.soort === "clt";
+  if (nuOverschreven && nuAanname) {
+    aanvullingen.push(
+      `\u03BD\u2081\u2082 is handmatig op ${p.nu} gezet in plaats van de aanname \u03BD\u2081\u2082 = 0; de plaat blijft richtingsafhankelijk (\u03BD\u2082\u2081 = \u03BD\u2081\u2082\xB7E\u2082/E\u2081).`
+    );
+  } else if (nuOverschreven && basis.nuUitMateriaal) {
     aanvullingen.push(`\u03BD is handmatig op ${p.nu} gezet in plaats van de materiaalwaarde.`);
   }
   if (rhoOverschreven) {
@@ -15882,14 +16003,17 @@ function bepaalPlaatStijfheid(p) {
       rho,
       hoekGraden,
       bronE: eOverschreven ? "handmatig" : "materiaal",
-      bronNu: nuOverschreven ? "handmatig" : basis.nuUitMateriaal ? "materiaal" : "standaard",
+      bronNu: nuOverschreven ? "handmatig" : nuAanname ? "aanname" : basis.nuUitMateriaal ? "materiaal" : "standaard",
       bronRho: rhoOverschreven ? "handmatig" : "materiaal",
-      herkomst: [basis.herkomst, ...aanvullingen].join(" ")
+      bronG12,
+      herkomst: [basis.herkomst, ...aanvullingen].join(" "),
+      waarschuwingen
     }
   };
 }
-function keurPlaatMateriaal(materiaal) {
-  const uit = bepaalPlaatStijfheid({ materiaal });
+function keurPlaatMateriaal(invoer) {
+  const p = typeof invoer === "object" && invoer !== null ? invoer : { materiaal: invoer };
+  const uit = bepaalPlaatStijfheid(p);
   return uit.ok ? null : uit.reden;
 }
 function plaatMateriaalLabel(s) {
@@ -15902,6 +16026,34 @@ function plaatMateriaalLabel(s) {
     vrij: "vrij materiaal"
   };
   return `${s.naam} (${soortNaam2[s.soort]})`;
+}
+function spanningInMateriaalassen(sigmaX, sigmaY, tauXY, hoekGraden) {
+  const theta = hoekGraden * Math.PI / 180;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  return {
+    sigma1: sigmaX * c * c + sigmaY * s * s + 2 * tauXY * s * c,
+    sigma2: sigmaX * s * s + sigmaY * c * c - 2 * tauXY * s * c,
+    tau12: (sigmaY - sigmaX) * s * c + tauXY * (c * c - s * s)
+  };
+}
+function materiaalasRanges(elementen, hoekGraden) {
+  const mk = () => ({ min: Infinity, max: -Infinity });
+  const ranges = { sigma1: mk(), sigma2: mk(), tau12: mk() };
+  for (const el of elementen) {
+    const m = el.materiaalassen;
+    if (!m) continue;
+    for (const k of ["sigma1", "sigma2", "tau12"]) {
+      if (m[k] < ranges[k].min) ranges[k].min = m[k];
+      if (m[k] > ranges[k].max) ranges[k].max = m[k];
+    }
+  }
+  for (const r of Object.values(ranges)) {
+    if (!Number.isFinite(r.min)) {
+      r.min = 0;
+      r.max = 0;
+    }
+  }
+  return { hoekGraden, ranges };
 }
 
 // src/components/fem/solver/engine.ts
@@ -16071,6 +16223,10 @@ function buildMesh(input, loadFactor) {
     if (!uit.ok) throw new Error(`Plaat ${p.id}: ${uit.reden}`);
     plaatStijfheden.set(p.id, uit.stijfheid);
     return uit.stijfheid;
+  };
+  const materiaalHoek = (p) => {
+    const st = plaatStijfheid(p);
+    return st.orthotroop ? { materiaalHoekGraden: st.hoekGraden } : {};
   };
   const verwezenKnopen = /* @__PURE__ */ new Set();
   for (const b of input.beams) {
@@ -16513,6 +16669,7 @@ function buildMesh(input, loadFactor) {
         plateId: p.id,
         region,
         hoeken: punten,
+        ...materiaalHoek(p),
         openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
         // Het raster levert de knopen per openingsrand zelf (gridlijnen lopen
         // door elke openingsrand); omzetten naar mesh-knoop-ids.
@@ -16538,6 +16695,7 @@ function buildMesh(input, loadFactor) {
         region,
         edgeNodeIds,
         hoeken: punten,
+        ...materiaalHoek(p),
         openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
         // De cache is hierboven al gekeurd (één lijst per openingsrand, van
         // hoek tot hoek); zonder openingen blijft de lijst leeg.
@@ -17135,6 +17293,14 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
           ny: (st.ny ?? 0) / 1e3,
           nxy: (st.nxy ?? 0) / 1e3
         };
+        if (info.materiaalHoekGraden !== void 0) {
+          item.materiaalassen = spanningInMateriaalassen(
+            item.sigmaX,
+            item.sigmaY,
+            item.tauXY,
+            info.materiaalHoekGraden
+          );
+        }
         plaatElementen.push(item);
         bijwerken(ranges.sigmaX, item.sigmaX);
         bijwerken(ranges.sigmaY, item.sigmaY);
@@ -17150,7 +17316,12 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
           r.max = 0;
         }
       }
-      plateResults.push({ plateId: info.plateId, elements: plaatElementen, ranges });
+      plateResults.push({
+        plateId: info.plateId,
+        elements: plaatElementen,
+        ranges,
+        ...info.materiaalHoekGraden !== void 0 ? { materiaalassen: materiaalasRanges(plaatElementen, info.materiaalHoekGraden) } : {}
+      });
     }
   }
   return {
@@ -19543,6 +19714,12 @@ function plaatNaarSolverInput(p) {
     // Materiaal en hoofdrichting (stap 3): alleen mee als ze gezet zijn.
     ...d.materiaal && d.materiaal.trim() !== "" ? { materiaal: d.materiaal } : {},
     ...d.hoofdrichting !== void 0 ? { hoofdrichting: d.hoofdrichting } : {},
+    // G₁₂ van kruislaaghout (issue #14): alleen mee als ze gezet zijn, zodat
+    // elke andere plaat een byte-gelijke solverinvoer houdt. De keuring (bron
+    // verplicht, alleen bij kruislaaghout) zit in `bepaalPlaatStijfheid`.
+    ...d.cltG12 !== void 0 ? { cltG12: d.cltG12 } : {},
+    ...d.cltG12Bron !== void 0 ? { cltG12Bron: d.cltG12Bron } : {},
+    ...d.cltG12Bovengrens !== void 0 ? { cltG12Bovengrens: d.cltG12Bovengrens } : {},
     // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
     // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
     ...d.meshCache ? { meshCache: d.meshCache } : {},
@@ -19855,11 +20032,11 @@ function kruipgedragVanPlaat(p) {
   if ((p.materiaal ?? "").trim() === "") {
     return (p.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E ? { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" } : { soort: "onbekend", kDef: null, sleutel: `plaat-E:${p.E}`, omschrijving: "wandschijf met een eigen E zonder materiaal (kruipgedrag onbekend)" };
   }
-  const uit = bepaalPlaatStijfheid(p);
-  if (!uit.ok) {
+  const soort = plaatMateriaalSoort(p.materiaal);
+  if (soort === "onbekend" || soort === null) {
     return { soort: "onbekend", kDef: null, sleutel: "onbekend", omschrijving: "wandschijf met een niet herkend materiaal" };
   }
-  switch (uit.stijfheid.soort) {
+  switch (soort) {
     case "staal":
       return { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" };
     case "beton":
@@ -21027,7 +21204,10 @@ var PLATE_VELDEN = [
   "meshType",
   "openingen",
   "materiaal",
-  "hoofdrichting"
+  "hoofdrichting",
+  "cltG12",
+  "cltG12Bron",
+  "cltG12Bovengrens"
 ];
 var OPENING_VELDEN = ["id", "punten"];
 var MESHCACHE_VELDEN = [
@@ -21531,13 +21711,25 @@ function controleerVelden(rauw) {
     keurGetal(p.nu, `${pad}.nu`, fouten);
     keurGetal(p.rho, `${pad}.rho`, fouten, { positief: true });
     keurGetal(p.meshSize, `${pad}.meshSize`, fouten, { positief: true });
-    if (p.materiaal !== void 0) {
-      if (typeof p.materiaal !== "string") {
-        fouten.push(`${pad}.materiaal: tekst verwacht (een materiaalnaam).`);
-      } else {
-        const reden = keurPlaatMateriaal(p.materiaal);
-        if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
-      }
+    keurGetal(p.cltG12, `${pad}.cltG12`, fouten, { positief: true });
+    if (p.cltG12Bron !== void 0 && typeof p.cltG12Bron !== "string") {
+      fouten.push(`${pad}.cltG12Bron: tekst verwacht (de herkomst van cltG12).`);
+    }
+    if (p.cltG12Bovengrens !== void 0 && typeof p.cltG12Bovengrens !== "boolean") {
+      fouten.push(`${pad}.cltG12Bovengrens: true of false verwacht.`);
+    }
+    if (p.materiaal !== void 0 && typeof p.materiaal !== "string") {
+      fouten.push(`${pad}.materiaal: tekst verwacht (een materiaalnaam).`);
+    } else {
+      const reden = keurPlaatMateriaal({
+        materiaal: p.materiaal,
+        E: typeof p.E === "number" ? p.E : void 0,
+        nu: typeof p.nu === "number" ? p.nu : void 0,
+        cltG12: typeof p.cltG12 === "number" ? p.cltG12 : void 0,
+        cltG12Bron: typeof p.cltG12Bron === "string" ? p.cltG12Bron : void 0,
+        cltG12Bovengrens: typeof p.cltG12Bovengrens === "boolean" ? p.cltG12Bovengrens : void 0
+      });
+      if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
     }
     keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);
     keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
@@ -23295,6 +23487,7 @@ export {
   mapServiceClass,
   matchSupportedTimberGrade,
   matenOpPositie,
+  materiaalasRanges,
   meldingenBelastinggevallen,
   metEindtoestandVarianten,
   metScheefstandRichtingen,
@@ -23307,6 +23500,7 @@ export {
   parseRechthoek,
   parseTimberRectMm,
   plaatMateriaalLabel,
+  plaatMateriaalSoort,
   plaatMateriaalVoorbeelden,
   plaatMeshSignatuurVan,
   plaatNaarSolverInput,
@@ -23337,6 +23531,7 @@ export {
   solveAllCasesNonlinear,
   solveCombinationSecondOrder,
   soortVanCombinatie,
+  spanningInMateriaalassen,
   spiegelElementKrachten,
   spiegelFracties,
   spiegelZones,
