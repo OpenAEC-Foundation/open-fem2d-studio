@@ -17610,6 +17610,110 @@ function buildMatrices(input) {
   return { K, nDof, nodeIndex: uiNodeIndex, beams: beamCache, rigidConstraints, springs };
 }
 
+// src/lib/plaatCheckBuilder.ts
+var KERN_SOORT = {
+  staal: "Staal",
+  hout: "Hout",
+  clt: "Kruislaaghout",
+  beton: "Beton",
+  vrij: "Vrij"
+};
+var SOORT_MET_SPANNINGEN = /* @__PURE__ */ new Set(["Staal", "Hout", "Beton"]);
+function klimaatklasse(k) {
+  return k === 2 ? "Sc2" : k === 3 ? "Sc3" : "Sc1";
+}
+function plaatHeeftMateriaal(p) {
+  return (p.materiaal ?? "").trim() !== "";
+}
+function buildPlaatCheckInputs(data) {
+  const inputs = [];
+  const skipped = [];
+  const selectie = data.plateIds && data.plateIds.length > 0 ? new Set(data.plateIds) : null;
+  const ugt = data.combinations.filter((c) => c.type === "uls");
+  for (const plaat of data.plates) {
+    if (selectie && !selectie.has(plaat.id)) continue;
+    if (!plaatHeeftMateriaal(plaat)) {
+      skipped.push({
+        plateId: plaat.id,
+        reason: "geen materiaal \u2014 de plaat rekent met losse E, \u03BD en \u03C1 en heeft daardoor geen sterkte; kies een materiaal (bijvoorbeeld S355) om haar te toetsen"
+      });
+      continue;
+    }
+    const uitkomst = bepaalPlaatStijfheid(plaat);
+    if (!uitkomst.ok) {
+      skipped.push({ plateId: plaat.id, reason: `materiaal niet bruikbaar \u2014 ${uitkomst.reden}` });
+      continue;
+    }
+    const s = uitkomst.stijfheid;
+    if (s.soort === null) {
+      skipped.push({ plateId: plaat.id, reason: "materiaalsoort onbekend \u2014 niet getoetst" });
+      continue;
+    }
+    const soort = KERN_SOORT[s.soort];
+    const combinaties = [];
+    const notities = [];
+    if (SOORT_MET_SPANNINGEN.has(soort)) {
+      const zonder = [];
+      for (const c of ugt) {
+        const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+        if (!pr || pr.elements.length === 0) {
+          if (data.combinationResults.has(c.id)) zonder.push(c.name);
+          continue;
+        }
+        combinaties.push({
+          combination_id: c.id,
+          elements: pr.elements.map((el) => ({
+            element_id: el.elementId,
+            sigma_x_mpa: el.sigmaX,
+            sigma_y_mpa: el.sigmaY,
+            tau_xy_mpa: el.tauXY
+          }))
+        });
+      }
+      if (zonder.length > 0) {
+        notities.push(
+          `Zonder plaatspanningen in de doorgerekende combinatie(s) ${zonder.join(", ")}; die zijn niet getoetst.`
+        );
+      }
+    }
+    const hout = soort === "Hout" ? (() => {
+      if (plaat.klimaatklasse === void 0) {
+        notities.push(
+          "Klimaatklasse niet opgegeven bij de plaat: klimaatklasse 1 aangehouden (2.3.1.3), net als bij een houten staaf zonder opgave."
+        );
+      }
+      if (!s.orthotroop) {
+        notities.push(
+          "De E-modulus van deze houten plaat is handmatig overschreven: de spanningen zijn isotroop berekend en daarna in de materiaalassen getoetst."
+        );
+      }
+      const gevuld = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
+      return {
+        hoofdrichting_graden: s.hoekGraden,
+        service_class: klimaatklasse(plaat.klimaatklasse),
+        load_duration_per_combination: data.loadCases ? belastingduurPerCombinatie({
+          combinaties: ugt,
+          loadCases: data.loadCases,
+          gevuld: gevuld ? (id) => gevuld.has(id) : void 0
+        }) : []
+      };
+    })() : {};
+    inputs.push({
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
+      plate_id: plaat.id,
+      soort,
+      materiaal: s.naam,
+      ...hout,
+      // Dezelfde aanvulling als de solverinvoer (`plaatNaarSolverInput`): de
+      // spanningen zijn met deze dikte berekend.
+      thickness_mm: withPlateDefaults(plaat).thickness,
+      ...notities.length > 0 ? { notities } : {},
+      combinations: combinaties
+    });
+  }
+  return { inputs, skipped };
+}
+
 // src/lib/variantInvoer.ts
 function materiaalVanStaaf(beam) {
   if (isVrijMateriaal(beam.material)) return "vrij";
@@ -21207,7 +21311,8 @@ var PLATE_VELDEN = [
   "hoofdrichting",
   "cltG12",
   "cltG12Bron",
-  "cltG12Bovengrens"
+  "cltG12Bovengrens",
+  "klimaatklasse"
 ];
 var OPENING_VELDEN = ["id", "punten"];
 var MESHCACHE_VELDEN = [
@@ -21730,6 +21835,15 @@ function controleerVelden(rauw) {
         cltG12Bovengrens: typeof p.cltG12Bovengrens === "boolean" ? p.cltG12Bovengrens : void 0
       });
       if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
+    }
+    if (p.klimaatklasse !== void 0) {
+      if (p.klimaatklasse !== 1 && p.klimaatklasse !== 2 && p.klimaatklasse !== 3) {
+        fouten.push(`${pad}.klimaatklasse: 1, 2 of 3 verwacht (NEN-EN 1995-1-1 2.3.1.3).`);
+      } else if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : void 0) !== "hout") {
+        fouten.push(
+          `${pad}.klimaatklasse: hoort alleen bij een houten plaat (massief of gelijmd gelamineerd); bij dit materiaal wordt hij geweigerd in plaats van stil genegeerd.`
+        );
+      }
     }
     keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);
     keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
@@ -22937,6 +23051,14 @@ function rekenDoor(payload) {
   });
   const clt = buildCltCheckInputs({ ...houtData, beams: staafSelectie });
   const metHout = gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null);
+  const plaat = buildPlaatCheckInputs({
+    plates: gelezen.model.plates ?? [],
+    combinations: combinaties,
+    combinationResults,
+    nationaleBijlage: gelezen.bijlageUitBestand ?? void 0,
+    loadCases: gelezen.model.loadCases,
+    gevallenMetLast: opgelost
+  });
   const waarschuwingen = [];
   if (houtklassen === null && metHout) {
     waarschuwingen.push(
@@ -22993,6 +23115,7 @@ function rekenDoor(payload) {
     staal,
     hout,
     clt,
+    plaat,
     onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion,
@@ -23099,6 +23222,11 @@ function opCheck(payload) {
       [...d.staal.skipped, ...d.hout.skipped, ...d.clt.skipped].map((s) => ({ beam_id: s.beamId, reason: s.reason })).concat(d.onbekendeIds.map((id) => ({ beam_id: id, reason: redenBestaatNiet(id) }))),
       new Set([...d.staal.inputs, ...d.hout.inputs, ...d.clt.inputs].map((i) => i.beam_id))
     ),
+    // Platen: elke plaat staat in de toetsinvoer of hier, met reden. Het
+    // bestaan van `plate_check_inputs` zegt de server dat deze bundel platen
+    // toetsbaar maakt.
+    plate_check_inputs: d.plaat.inputs,
+    skipped_plates: d.plaat.skipped.map((s) => ({ plate_id: s.plateId, reason: s.reason })),
     warnings: d.waarschuwingen
   };
 }
@@ -23410,6 +23538,7 @@ export {
   buildForcesEnvelope,
   buildMatrices,
   buildMesh,
+  buildPlaatCheckInputs,
   buildSteelCheckInputs,
   buildTimberCheckInputs,
   chordRelativeMaxMm,
@@ -23499,6 +23628,7 @@ export {
   overkappingCoefficienten,
   parseRechthoek,
   parseTimberRectMm,
+  plaatHeeftMateriaal,
   plaatMateriaalLabel,
   plaatMateriaalSoort,
   plaatMateriaalVoorbeelden,
