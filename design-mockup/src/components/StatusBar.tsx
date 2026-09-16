@@ -157,7 +157,7 @@ export default function StatusBar({
                 className={`status-snap-btn${snap[soort] ? " on" : ""}`}
                 aria-pressed={snap[soort]}
                 title={`${t(`snap.${soort}`, SNAP_LABELS[soort].kort)} — ${
-                  SNAP_LABELS[soort].uitleg
+                  t(`statusBar.snapExplain.${soort}`)
                 } ${snap[soort] ? t("snapClickOff", "Klik om uit te zetten.")
                                 : t("snapClickOn", "Klik om aan te zetten.")}`}
                 onClick={() => wisselSnap(soort)}

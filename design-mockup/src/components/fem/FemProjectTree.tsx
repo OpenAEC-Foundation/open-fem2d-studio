@@ -6,6 +6,7 @@
  * selection so the right Properties panel reacts.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./FemProjectTree.css";
 import type { Node, Beam, Plate, Support, Load, LoadCase, Selection } from "./femTypes";
 import type { LoadCombination, Envelope } from "./solver/combinations";
@@ -105,10 +106,11 @@ function ResultsTab({
   // bruikbaar is; het canvas zet dit vlaggetje bij elke solve (zie
   // resultaatInfoStore).
   const heeftSegmentStijfheid = useResultaatInfoStore((s) => s.heeftSegmentStijfheid);
+  const { t } = useTranslation("common");
   if (!displayFlags || !setDisplayFlags) {
     return (
       <div className="fem-results-empty">
-        Voer "Berekenen" uit om resultaten te zien.
+        {t("tree.runToSeeResults")}
       </div>
     );
   }
@@ -132,34 +134,34 @@ function ResultsTab({
     disabledReden?: string;
   };
   const ROWS: Row[] = [
-    { key: "deflection", label: "Verplaatsing", hint: "Vervormde stand — Hermite-curve van knoopverplaatsingen", swatch: "var(--theme-accent)", scaleKey: "scaleU" },
-    { key: "M",          label: "My",            hint: "Buigend moment om y-as (sagging+) loodrecht op balk",     swatch: "#2563eb",            scaleKey: "scaleM" },
-    { key: "V",          label: "Vz",            hint: "Dwarskracht in z-richting — lineair aflopend onder UDL",  swatch: "#10b981",            scaleKey: "scaleV" },
-    { key: "N",          label: "N",             hint: "Normaalkracht — constant per element",                    swatch: "#f59e0b",            scaleKey: "scaleN" },
-    { key: "rotation",   label: "φy",            hint: "Hoekverdraaiing θ(x) = dw/dx langs de staaf, in mrad — positief tegen de klok in; bij een stijve aansluiting gelijk aan de knooprotatie, bij een scharnier springt hij", swatch: "#8b5cf6", scaleKey: "scaleR" },
-    { key: "reactions",  label: "Reactie",       hint: "Reactiekrachten — Fx + Fz pijlen op opleggingen",         swatch: "var(--theme-text)" },
-    { key: "uc",         label: "Unity check",   hint: "Maatgevende UC per staaf uit de normtoetsing — groen ≤ 1,0, rood > 1,0; klik op een badge voor de toetsing", swatch: "#16a34a" },
+    { key: "deflection", label: t("tree.rowDeflection"), hint: t("tree.rowDeflectionHint"), swatch: "var(--theme-accent)", scaleKey: "scaleU" },
+    { key: "M",          label: "My",            hint: t("tree.rowMomentHint"), swatch: "#2563eb",            scaleKey: "scaleM" },
+    { key: "V",          label: "Vz",            hint: t("tree.rowShearHint"), swatch: "#10b981",            scaleKey: "scaleV" },
+    { key: "N",          label: "N",             hint: t("tree.rowAxialHint"), swatch: "#f59e0b",            scaleKey: "scaleN" },
+    { key: "rotation",   label: "φy",            hint: t("tree.rowRotationHint"), swatch: "#8b5cf6", scaleKey: "scaleR" },
+    { key: "reactions",  label: t("tree.rowReactions"), hint: t("tree.rowReactionsHint"), swatch: "var(--theme-text)" },
+    { key: "uc",         label: t("tree.rowUnityCheck"), hint: t("tree.rowUnityCheckHint"), swatch: "#16a34a" },
     // EI-verloop: alleen zinvol met segmentuitkomsten uit de fysisch
     // niet-lineaire (beton)berekening. Zonder die uitkomsten uitgegrijsd MET
     // reden — er is dan niets gescheurd gerekend, en dat is een geldige
     // toestand en geen fout.
     {
-      key: "EI", label: "EI (beton)",
-      hint: "Buigstijfheid EI per staafdeel uit de fysisch niet-lineaire tweede orde; de gestreepte lijn is de ongescheurde EI₀, zodat de terugval bij scheurvorming zichtbaar wordt",
+      key: "EI", label: t("tree.rowEI"),
+      hint: t("tree.rowEIHint"),
       swatch: "#0f766e", scaleKey: "scaleEI",
       disabledReden: heeftSegmentStijfheid
         ? undefined
-        : "Geen segmentstijfheden in dit resultaat — reken fysisch niet-lineair (beton) om het scheurverloop te zien.",
+        : t("tree.rowEIDisabled"),
     },
     // Modelweergave (geen resultaat), maar hij hoort in dezelfde lijst — dit
     // is de ene plek waar canvas-weergave aan en uit gaat.
-    { key: "profielLabels", label: "Profielnaam", hint: "Profielnaam klein langs elke staaf op het canvas", swatch: "var(--theme-text)" },
+    { key: "profielLabels", label: t("tree.rowProfileName"), hint: t("tree.rowProfileNameHint"), swatch: "var(--theme-text)" },
   ];
   // Contour-rij alleen wanneer het model platen bevat (P3.2).
   if (hasPlates) {
     ROWS.push({
-      key: "plaatContour", label: "Plaatspanning",
-      hint: "Spanningscontouren op de plaatelementen — component kiesbaar, legenda op het canvas",
+      key: "plaatContour", label: t("tree.rowPlateStress"),
+      hint: t("tree.rowPlateStressHint"),
       swatch: "#d97706",
     });
   }
@@ -181,32 +183,32 @@ function ResultsTab({
   return (
     <div className="fem-results-tab">
       {/* Scope picker — choose which case / combination / envelope is shown */}
-      <div className="fem-results-section-title">Toon resultaat voor</div>
+      <div className="fem-results-section-title">{t("tree.showResultFor")}</div>
       <select
         className="fem-results-scope-select"
         value={currentValue}
         onChange={(e) => handleScopeChange(e.target.value)}
       >
         {loadCases.length > 0 && (
-          <optgroup label="Belastinggevallen">
+          <optgroup label={t("tree.loadCases")}>
             {loadCases.map(lc => (
               <option key={`lc-${lc.id}`} value={`lc:${lc.id}`}>{lc.name}</option>
             ))}
           </optgroup>
         )}
         {combinations.length > 0 && (
-          <optgroup label="Combinaties">
+          <optgroup label={t("tree.combinations")}>
             {combinations.map(c => (
               <option key={`co-${c.id}`} value={`combo:${c.id}`}>{c.name}</option>
             ))}
           </optgroup>
         )}
-        <optgroup label="Overig">
-          <option value="envelope">Envelope (min/max alle combinaties)</option>
+        <optgroup label={t("tree.other")}>
+          <option value="envelope">{t("tree.envelopeOption")}</option>
         </optgroup>
       </select>
 
-      <div className="fem-results-section-title">Weergave op canvas</div>
+      <div className="fem-results-section-title">{t("tree.canvasDisplay")}</div>
       <div className="fem-results-toggle-list">
         {ROWS.map(row => {
           const uitgegrijsd = row.disabledReden !== undefined;
@@ -240,7 +242,7 @@ function ResultsTab({
                 </div>
               )}
               {row.scaleKey && active && (
-                <div className="fem-results-scale-row" title="Schaalfactor — pas de visuele grootte van dit diagram aan">
+                <div className="fem-results-scale-row" title={t("tree.scaleTitle")}>
                   <input
                     type="range"
                     className="fem-results-scale-slider"
@@ -257,14 +259,14 @@ function ResultsTab({
               {/* Knoopwaarden-subvinkje: per knoop een label met ux/uz in mm —
                   zelfde subrij-patroon als de reactie-componentkeuze. */}
               {row.key === "deflection" && active && (
-                <div className="fem-results-scale-row" title="Toon bij elke knoop de verplaatsing ux / uz in mm">
+                <div className="fem-results-scale-row" title={t("tree.nodeValuesTitle")}>
                   <label className="fem-results-subcheck">
                     <input
                       type="checkbox"
                       checked={displayFlags.knoopWaarden === true}
                       onChange={(e) => setDisplayFlags(f => ({ ...f, knoopWaarden: e.target.checked }))}
                     />
-                    <span>Knoopwaarden</span>
+                    <span>{t("tree.nodeValues")}</span>
                   </label>
                 </div>
               )}
@@ -280,14 +282,14 @@ function ResultsTab({
                   className="fem-results-scale-row"
                   title={
                     checkFout
-                      ? `De laatste toetsronde is mislukt: ${checkFout}`
-                      : "De badges verschijnen zodra de normtoetsing resultaten heeft"
+                      ? t("tree.checkRunFailedTitle", { fout: checkFout })
+                      : t("tree.badgesAppearTitle")
                   }
                 >
                   <span style={{ fontSize: 10, color: "var(--theme-text-faint)" }}>
                     {checkFout
-                      ? "De toetsing is mislukt — zie het tabblad Toetsing voor de reden."
-                      : "Voer eerst de toetsing uit (tabblad Toetsing)."}
+                      ? t("tree.checkFailed")
+                      : t("tree.runCheckFirst")}
                   </span>
                 </div>
               )}
@@ -297,7 +299,7 @@ function ResultsTab({
               {row.key === "plaatContour" && active && (
                 <div
                   className="fem-results-scale-row"
-                  title="Kies de spanningscomponent voor de contourvlakken; 'mesh' toont de elementranden"
+                  title={t("tree.plateComponentTitle")}
                 >
                   <select
                     className="fem-results-scope-select"
@@ -318,14 +320,14 @@ function ResultsTab({
                       checked={displayFlags.plaatMesh !== false}
                       onChange={(e) => setDisplayFlags(f => ({ ...f, plaatMesh: e.target.checked }))}
                     />
-                    <span>mesh</span>
+                    <span>{t("tree.mesh")}</span>
                   </label>
                 </div>
               )}
               {/* Reactie-componentkeuze: X- en Z-pijlen apart schakelbaar.
                   Bij omhullende-weergave tonen de labels min…max. */}
               {row.key === "reactions" && active && (
-                <div className="fem-results-scale-row" title="Kies welke reactiecomponenten getoond worden; bij Omhullende tonen de labels min…max over alle combinaties">
+                <div className="fem-results-scale-row" title={t("tree.reactionComponentsTitle")}>
                   {([["reactieX", "X"], ["reactieZ", "Z"]] as const).map(([k, lbl]) => (
                     <label key={k} className="fem-results-subcheck">
                       <input
@@ -344,15 +346,15 @@ function ResultsTab({
       </div>
 
       {/* Extra toggles: extreme waarden + snedetekens + omhullende */}
-      <div className="fem-results-section-title">Opties</div>
+      <div className="fem-results-section-title">{t("tree.options")}</div>
       <div className="fem-results-toggle-list">
         <button
           className={`fem-results-toggle${displayFlags.showExtremes ? " active" : ""}`}
           onClick={() => toggle("showExtremes")}
-          title="Toon Mmax/Vmax/Nmax labels per staaf"
+          title={t("tree.extremesTitle")}
         >
           <span className="fem-results-toggle-swatch" style={{ background: "#f59e0b" }} />
-          <span className="fem-results-toggle-label">Extreme waarden tonen</span>
+          <span className="fem-results-toggle-label">{t("tree.extremes")}</span>
           <span className={`fem-switch${displayFlags.showExtremes ? " on" : ""}`} aria-hidden="true">
             <span className="fem-switch-dot" />
           </span>
@@ -363,10 +365,10 @@ function ResultsTab({
         <button
           className={`fem-results-toggle${displayFlags.snedeTekens !== false ? " active" : ""}`}
           onClick={() => setDisplayFlags(f => ({ ...f, snedeTekens: f.snedeTekens === false }))}
-          title="Afschuiftekens in de dwarskrachtlijn en buigtekens in de momentenlijn — de boog bolt naar de trekzijde, de twee pijlen geven de afschuifzin"
+          title={t("tree.signConventionTitle")}
         >
           <span className="fem-results-toggle-swatch" style={{ background: "#1d4ed8" }} />
-          <span className="fem-results-toggle-label">Snedetekens</span>
+          <span className="fem-results-toggle-label">{t("tree.signConvention")}</span>
           <span className={`fem-switch${displayFlags.snedeTekens !== false ? " on" : ""}`} aria-hidden="true">
             <span className="fem-switch-dot" />
           </span>
@@ -376,10 +378,10 @@ function ResultsTab({
           onClick={() => onSelectScope?.(envelopeView
             ? (loadCases.length > 0 ? { kind: "lc", id: activeLoadCaseId ?? loadCases[0].id } : { kind: "envelope" })
             : { kind: "envelope" })}
-          title="Toon min/max over alle combinaties"
+          title={t("tree.envelopeToggleTitle")}
         >
           <span className="fem-results-toggle-swatch" style={{ background: "#9333ea" }} />
-          <span className="fem-results-toggle-label">Omhullende</span>
+          <span className="fem-results-toggle-label">{t("tree.envelopeToggle")}</span>
           <span className={`fem-switch${envelopeView ? " on" : ""}`} aria-hidden="true">
             <span className="fem-switch-dot" />
           </span>
@@ -388,7 +390,7 @@ function ResultsTab({
 
       {!hasResults && (
         <div className="fem-results-hint">
-          Klik op <strong>Berekenen</strong> in de Start-tab om diagrammen te tonen.
+          {t("tree.clickCalculateBefore")} <strong>{t("tree.calculate")}</strong> {t("tree.clickCalculateAfter")}
         </div>
       )}
     </div>
@@ -468,6 +470,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     displayFlags, setDisplayFlags, hasResults,
     activeTab, setActiveTab,
   } = props;
+  const { t } = useTranslation("common");
   /** Reden per overgeslagen combinatie-id; leeg = alles wordt doorgerekend. */
   const overgeslagenReden = new Map(
     overgeslagenCombinaties.map((o) => [o.id, o] as const),
@@ -484,9 +487,9 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     : new Set<number>();
 
   const supportTypeLabel: Record<string, string> = {
-    pinned: "Scharnier", fixed: "Inklemming",
-    xRoller: "X-Rol", zRoller: "Z-Rol",
-    zSpring: "Z-Veer", xSpring: "X-Veer", rotSpring: "Rot-Veer",
+    pinned: t("tree.support.pinned"), fixed: t("tree.support.fixed"),
+    xRoller: t("tree.support.xRoller"), zRoller: t("tree.support.zRoller"),
+    zSpring: t("tree.support.zSpring"), xSpring: t("tree.support.xSpring"), rotSpring: t("tree.support.rotSpring"),
   };
 
   // ── Materialen/profielen in gebruik — afgeleid uit de staven ────────────
@@ -534,103 +537,103 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     <div className="fem-project-tree">
       {/* Tabs */}
       <div className="fem-tree-tabs">
-        <button className={`fem-tree-tab${tab === "project" ? " active" : ""}`} onClick={() => setTab("project")}>Project</button>
-        <button className={`fem-tree-tab${tab === "results" ? " active" : ""}`} onClick={() => setTab("results")}>Resultaten</button>
+        <button className={`fem-tree-tab${tab === "project" ? " active" : ""}`} onClick={() => setTab("project")}>{t("tree.projectTab")}</button>
+        <button className={`fem-tree-tab${tab === "results" ? " active" : ""}`} onClick={() => setTab("results")}>{t("tree.resultsTab")}</button>
       </div>
 
       {/* Tree */}
       <div className="fem-tree-body">
         {tab === "project" ? (
           <>
-            <TreeNode label="Model" defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v12H2z" opacity="0.2"/><path d="M2 2h12v12H2zM2 8h12M8 2v12" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}>
-              <TreeNode label="Knopen" count={nodes.length} defaultOpen icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="5" cy="5" r="2.5" /></svg>}>
+            <TreeNode label={t("tree.model")} defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v12H2z" opacity="0.2"/><path d="M2 2h12v12H2zM2 8h12M8 2v12" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}>
+              <TreeNode label={t("tree.nodes")} count={nodes.length} defaultOpen icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="5" cy="5" r="2.5" /></svg>}>
                 {nodes.map(n => (
                   <Leaf
                     key={`tn${n.id}`}
-                    label={`Knoop ${n.id}`}
+                    label={t("tree.nodeLabel", { id: n.id })}
                     value={`X:${n.x} Z:${n.z}`}
                     active={selection?.type === "node" && selection.id === n.id}
                     onClick={() => setSelection({ type: "node", id: n.id })}
                   />
                 ))}
               </TreeNode>
-              <TreeNode label="Elementen" count={beams.length} defaultOpen icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="1" y1="5" x2="9" y2="5" /></svg>}>
+              <TreeNode label={t("tree.elements")} count={beams.length} defaultOpen icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="1" y1="5" x2="9" y2="5" /></svg>}>
                 {beams.map(b => (
                   <Leaf
                     key={`tb${b.id}`}
-                    label={`Staaf ${b.id}`}
+                    label={t("tree.barLabel", { id: b.id })}
                     value={`${b.from}-${b.to}`}
                     active={selection?.type === "beam" && selection.id === b.id}
                     onClick={() => setSelection({ type: "beam", id: b.id })}
                   />
                 ))}
               </TreeNode>
-              <TreeNode label="Opleggingen" count={supports.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,1 1,9 9,9" /></svg>}>
+              <TreeNode label={t("tree.supports")} count={supports.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,1 1,9 9,9" /></svg>}>
                 {supports.map(s => (
                   <Leaf
                     key={`ts${s.nodeId}`}
-                    label={`Knoop ${s.nodeId}`}
+                    label={t("tree.nodeLabel", { id: s.nodeId })}
                     value={supportTypeLabel[s.type] ?? s.type}
                     onClick={() => setSelection({ type: "node", id: s.nodeId })}
                   />
                 ))}
               </TreeNode>
               {plates.length > 0 && (
-                <TreeNode label="Platen" count={plates.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1.5" y="1.5" width="7" height="7" /></svg>}>
+                <TreeNode label={t("tree.plates")} count={plates.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1.5" y="1.5" width="7" height="7" /></svg>}>
                   {plates.map(p => (
                     <Leaf
                       key={`tp${p.id}`}
-                      label={`Plaat ${p.id}`}
-                      value={`${p.nodeIds.length} hoeken`}
+                      label={t("tree.plateLabel", { id: p.id })}
+                      value={t("tree.corners", { count: p.nodeIds.length })}
                       active={selection?.type === "plate" && selection.id === p.id}
                       onClick={() => setSelection({ type: "plate", id: p.id })}
                     />
                   ))}
                 </TreeNode>
               )}
-              <TreeNode label="Materialen" count={sortedMaterials.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>}>
+              <TreeNode label={t("tree.materials")} count={sortedMaterials.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>}>
                 {sortedMaterials.map(([mat, ids]) => (
                   <Leaf
                     key={`mat-${mat}`}
                     label={mat}
-                    value={`${ids.length} ${ids.length === 1 ? "staaf" : "staven"}`}
+                    value={t("tree.barCount", { count: ids.length })}
                     active={isBeamSetSelected(ids)}
                     onClick={() => selectBeamSet(ids)}
                   />
                 ))}
                 {sortedMaterials.length === 0 && (
                   <div className="fem-tree-leaf" style={{ fontStyle: "italic", opacity: 0.7 }}>
-                    <span className="fem-tree-leaf-label">Geen staven in het model</span>
+                    <span className="fem-tree-leaf-label">{t("tree.noBars")}</span>
                   </div>
                 )}
-                <TreeNode label="Beschikbare klassen" count={STEEL_GRADES.length + SUPPORTED_TIMBER_GRADES.length}>
+                <TreeNode label={t("tree.availableGrades")} count={STEEL_GRADES.length + SUPPORTED_TIMBER_GRADES.length}>
                   {STEEL_GRADES.map((g) => (
-                    <Leaf key={`avail-${g}`} label={g} value="staal" />
+                    <Leaf key={`avail-${g}`} label={g} value={t("tree.steel")} />
                   ))}
                   {SUPPORTED_TIMBER_GRADES.map((g) => (
-                    <Leaf key={`avail-${g}`} label={g} value="hout" />
+                    <Leaf key={`avail-${g}`} label={g} value={t("tree.timber")} />
                   ))}
                 </TreeNode>
               </TreeNode>
-              <TreeNode label="Profielen" count={sortedProfiles.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 1h6M5 1v8M2 9h6" /></svg>}>
+              <TreeNode label={t("tree.profiles")} count={sortedProfiles.length} icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 1h6M5 1v8M2 9h6" /></svg>}>
                 {sortedProfiles.map(([prof, ids]) => (
                   <Leaf
                     key={`prof-${prof}`}
                     label={prof}
-                    value={`${ids.length} ${ids.length === 1 ? "staaf" : "staven"}`}
+                    value={t("tree.barCount", { count: ids.length })}
                     active={isBeamSetSelected(ids)}
                     onClick={() => selectBeamSet(ids)}
                   />
                 ))}
                 {sortedProfiles.length === 0 && (
                   <div className="fem-tree-leaf" style={{ fontStyle: "italic", opacity: 0.7 }}>
-                    <span className="fem-tree-leaf-label">Geen staven in het model</span>
+                    <span className="fem-tree-leaf-label">{t("tree.noBars")}</span>
                   </div>
                 )}
               </TreeNode>
             </TreeNode>
 
-            <TreeNode label="Belastingen" defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l-3 3h2v8h2V4h2z"/></svg>}>
+            <TreeNode label={t("tree.loads")} defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l-3 3h2v8h2V4h2z"/></svg>}>
               {belastingMeldingen.filter((m) => m.caseId === null).map((m, i) => (
                 <div
                   key={`lcm${i}`}
@@ -660,9 +663,9 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                       {isActive && <span style={{ color: "var(--theme-accent)", marginRight: 4 }}>●</span>}
                       {(fout || waarschuwing) && <span style={{ marginRight: 4 }}>⚠</span>}
                       {lc.name}
-                      {fout && lc.type === "other" && " — kies een type"}
+                      {fout && lc.type === "other" && ` — ${t("tree.chooseType")}`}
                       {fout && lc.type !== "other" &&
-                        (/draagt factoren die niet/.test(fout.tekst) ? " — verkeerde factoren" : " — telt niet mee")}
+                        (/draagt factoren die niet/.test(fout.tekst) ? ` — ${t("tree.wrongFactors")}` : ` — ${t("tree.notCounted")}`)}
                     </span>
                     <span className="fem-tree-leaf-value">{count}</span>
                   </div>
@@ -671,13 +674,13 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
               <div
                 className="fem-tree-leaf clickable"
                 style={{ color: "var(--theme-accent)", fontStyle: "italic" }}
-                onClick={() => addLoadCase(`Geval ${loadCases.length + 1}`)}
+                onClick={() => addLoadCase(t("loadCases.defaultCaseName", { n: loadCases.length + 1 }))}
               >
-                <span className="fem-tree-leaf-label">+ Nieuw belastinggeval</span>
+                <span className="fem-tree-leaf-label">+ {t("tree.newLoadCase")}</span>
               </div>
             </TreeNode>
 
-            <TreeNode label="Combinaties" count={combinations.length} defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4h12M2 8h12M2 12h12" /></svg>}>
+            <TreeNode label={t("tree.combinations")} count={combinations.length} defaultOpen icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4h12M2 8h12M2 12h12" /></svg>}>
               {combinatieVervanging && (
                 <div
                   className="fem-tree-leaf clickable"
@@ -685,7 +688,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   onClick={() => onOpenCombinaties?.()}
                 >
                   <span className="fem-tree-leaf-label">
-                    ↻ Bij het openen vervangen — bekijken of ongedaan maken
+                    ↻ {t("tree.replacedOnOpen")}
                   </span>
                 </div>
               )}
@@ -696,7 +699,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   onClick={() => onOpenCombinaties?.()}
                 >
                   <span className="fem-tree-leaf-label">
-                    ⚠ Melding bij het openen — bekijken
+                    ⚠ {t("tree.noticeOnOpen")}
                   </span>
                 </div>
               )}
@@ -707,11 +710,11 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   setEnvelopeView(!envelopeView);
                   if (!envelopeView) setActiveCombinationId(null);
                 }}
-                title="Toon enveloppe (alle combinaties)"
+                title={t("tree.envelopeLeafTitle")}
               >
                 <span className="fem-tree-leaf-label" style={{ fontWeight: 600 }}>
                   {envelopeView && <span style={{ color: "var(--theme-accent)", marginRight: 4 }}>●</span>}
-                  Enveloppe
+                  {t("tree.envelopeLeaf")}
                 </span>
                 <span
                   className="fem-tree-leaf-value"
@@ -753,7 +756,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   >
                     <span className="fem-tree-leaf-label">
                       {isActive && <span style={{ color: "var(--theme-accent)", marginRight: 4 }}>●</span>}
-                      {isGoverning && <span style={{ color: "#ffb000", marginRight: 4 }} title="Maatgevend voor minstens 1 element">★</span>}
+                      {isGoverning && <span style={{ color: "#ffb000", marginRight: 4 }} title={t("tree.governingTitle")}>★</span>}
                       {overgeslagen ? <s>{c.name}</s> : c.name}
                     </span>
                     <span

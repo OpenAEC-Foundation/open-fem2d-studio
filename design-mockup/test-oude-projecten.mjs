@@ -472,7 +472,10 @@ for (const [naam, tellers] of [["zonder tellers", null], ["met tellers", { belas
   checkWaar("useFemStore: de knop Ongedaan maken herstelt met herstelCombinaties", /herstelCombinaties\(combiRef\.current, v\.voor\)/.test(store));
   const appBron = readFileSync(join(HIER, "src", "App.tsx"), "utf8");
   checkWaar("App: de melding bij het openen draagt de knop Ongedaan maken",
-    /label: "Ongedaan maken", onClick: fem\.maakCombinatieVervangingOngedaan/.test(appBron));
+    /label: i18next\.t\("common:undo"\), onClick: fem\.maakCombinatieVervangingOngedaan/.test(appBron) &&
+      // De knoptekst loopt via i18n: de bron noemt de sleutel, de
+      // Nederlandse locale de tekst die de gebruiker ziet.
+      JSON.parse(readFileSync(join(HIER, "src", "i18n", "locales", "nl", "common.json"), "utf8")).undo === "Ongedaan maken");
 }
 
 // ─────────────────────────────────────────────────────────────────────────

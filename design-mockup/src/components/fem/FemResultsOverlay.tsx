@@ -10,6 +10,7 @@
  * (so the curve actually bulges between nodes — matters most for the
  * uniformly-loaded top beam where the nodal disp is tiny but mid-span sags).
  */
+import { useTranslation } from "react-i18next";
 import type { SolverResult } from "./solver/types";
 import type { Node, Beam, Support, Load } from "./femTypes";
 import { resolveSection } from "../../lib/sectionResolver";
@@ -313,6 +314,7 @@ export default function FemResultsOverlay({
   // are no longer read here — diagrams come straight from the solver's
   // station arrays (which already account for all loads + combinations).
   void _loads; void _activeLoadCaseId;
+  const { t: tCommon } = useTranslation("common");
   const showDeflection = displayFlags.deflection;
   const showReactions  = displayFlags.reactions;
   const showN = displayFlags.N;
@@ -1058,7 +1060,7 @@ export default function FemResultsOverlay({
       {showDeflection && maxOffsetMm > 0 && (
         <g transform={`translate(${canvasW - 220}, ${canvasH - 90})`}>
           <rect width={210} height={36} rx={4} className="fem-result-label-bg" />
-          <text x={10} y={15} className="fem-scale-label">Deflection scale: {dispScale.toFixed(1)}×</text>
+          <text x={10} y={15} className="fem-scale-label">{tCommon("resultsOverlay.deflectionScale", { schaal: dispScale.toFixed(1) })}</text>
           <text x={10} y={28} className="fem-scale-label">max |u| = {maxOffsetMm.toFixed(2)} mm</text>
         </g>
       )}

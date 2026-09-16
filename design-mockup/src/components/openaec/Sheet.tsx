@@ -5,6 +5,7 @@
  * sight of the canvas while configuring.
  */
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import "./Sheet.css";
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function Sheet({ open, title, onClose, children }: Props) {
+  const { t } = useTranslation("common");
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -27,7 +29,7 @@ export default function Sheet({ open, title, onClose, children }: Props) {
     <div className="oa-sheet">
       <div className="oa-sheet-header">
         <span className="oa-sheet-title">{title}</span>
-        <button className="oa-sheet-close" onClick={onClose} aria-label="Close">×</button>
+        <button className="oa-sheet-close" onClick={onClose} aria-label={t("close")}>×</button>
       </div>
       <div className="oa-sheet-body">{children}</div>
     </div>

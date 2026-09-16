@@ -39,6 +39,9 @@
 //        of: node scripts/run-tests.mjs --filter=snedetekens
 
 import { renderToStaticMarkup } from "react-dom/server";
+// De tekening haalt haar teksten uit i18n; zonder initialisatie zou de test
+// sleutels meten in plaats van de Nederlandse teksten die hij verwacht.
+await import("./scripts/i18n-voor-tests.mjs");
 const React = (await import("react")).default;
 
 const overlay = await import("./src/components/fem/FemResultsOverlay.tsx");
