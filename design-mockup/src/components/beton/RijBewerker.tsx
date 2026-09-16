@@ -16,6 +16,7 @@
  * in — en bij A_s,max van §9.5.2(3) werkt dat naar de onveilige kant.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./beton.css";
 
 /** De gangbare staafdiameters van bijlage C, in mm. */
@@ -29,10 +30,11 @@ export interface Rij {
 /** De drie rijen van de korf, met de veldnaam van `ReinforcementCage`. */
 export type RijZijde = "top" | "bottom" | "sides";
 
+/** Vertaalsleutel van het opschrift per rij; vertaald bij het renderen. */
 const TITEL: Record<RijZijde, string> = {
-  bottom: "Onderwapening",
-  top: "Bovenwapening",
-  sides: "Zijstaven (per zijkant)",
+  bottom: "concrete.rows.titleBottom",
+  top: "concrete.rows.titleTop",
+  sides: "concrete.rows.titleSides",
 };
 
 export default function RijBewerker({
@@ -43,6 +45,8 @@ export default function RijBewerker({
   onOpslaan: (rij: Rij) => void;
   onSluiten: () => void;
 }) {
+  const { t } = useTranslation("check");
+  const { t: tCommon } = useTranslation("common");
   const [aantal, setAantal] = useState(String(rij.count));
   const [diameter, setDiameter] = useState(rij.diameter_mm);
   const n = Math.round(Number(aantal));
@@ -54,9 +58,9 @@ export default function RijBewerker({
       onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); opslaan(); }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onSluiten(); } }}
     >
-      <span className="beton-rijbewerker-titel">{TITEL[zijde]}</span>
+      <span className="beton-rijbewerker-titel">{t(TITEL[zijde])}</span>
       <label>
-        aantal
+        {t("concrete.rows.count")}
         <input
           type="number" min={1} max={40} step={1} value={aantal} autoFocus
           onChange={(e) => setAantal(e.target.value)}
@@ -70,12 +74,14 @@ export default function RijBewerker({
         </select>
         mm
       </label>
-      <button type="submit" disabled={!geldig}>OK</button>
-      <button type="button" onClick={onSluiten}>Annuleren</button>
-      {!geldig && <span className="beton-rijbewerker-fout">aantal 1–40</span>}
+      <button type="submit" disabled={!geldig}>{tCommon("ok")}</button>
+      <button type="button" onClick={onSluiten}>{tCommon("cancel")}</button>
+      {!geldig && <span className="beton-rijbewerker-fout">{t("concrete.rows.countRange")}</span>}
       {zijde === "sides" && (
         <span className="beton-rijbewerker-hint">
-          {n >= 1 ? `${n} per zijkant, dus ${2 * n} in de doorsnede` : "aantal per zijkant"}
+          {n >= 1
+            ? t("concrete.rows.sidesTotal", { n, totaal: 2 * n })
+            : t("concrete.rows.countPerSide")}
         </span>
       )}
     </form>

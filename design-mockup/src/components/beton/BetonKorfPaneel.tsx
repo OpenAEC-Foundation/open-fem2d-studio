@@ -20,6 +20,7 @@
  * `check_concrete_beam` al berekent.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
 import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
@@ -72,6 +73,7 @@ export default function BetonKorfPaneel({
   nEdKnInitieel = 0,
   berekenDiagram = berekenMnKappa,
 }: Props) {
+  const { t } = useTranslation("check");
   const [korf, setKorf] = useState<Wapeningskorf>({ ...STANDAARD_KORF, ...initieel });
   const [nEd, setNEd] = useState<number>(nEdKnInitieel);
   const [betonklassen, setBetonklassen] = useState<ConcreteClass[] | undefined>(undefined);
@@ -186,16 +188,16 @@ export default function BetonKorfPaneel({
         <div className="beton-tekening-blok">
           <DoorsnedeTekening korf={korf} className="beton-tekening" />
           <dl className="beton-kerngetallen">
-            <dt>Korf</dt>
+            <dt>{t("concrete.cagePanel.cage")}</dt>
             <dd>{korfSamenvatting(korf.korf)}</dd>
-            <dt>A<sub>s,onder</sub></dt>
+            <dt>A<sub>{t("concrete.cagePanel.asBottomSub")}</sub></dt>
             <dd>{nl(aOnder, 0)} mm² (ρ = {nl(rho, 2)} %)</dd>
-            <dt>A<sub>s,boven</sub></dt>
+            <dt>A<sub>{t("concrete.cagePanel.asTopSub")}</sub></dt>
             <dd>{nl(aBoven, 0)} mm²</dd>
             {heeftZij && (
               <>
-                <dt>A<sub>s,opzij</sub></dt>
-                <dd>{nl(aZij, 0)} mm² (beide zijkanten samen)</dd>
+                <dt>A<sub>{t("concrete.cagePanel.asSidesSub")}</sub></dt>
+                <dd>{t("concrete.cagePanel.bothSidesArea", { a: nl(aZij, 0) })}</dd>
                 <dt>A<sub>s,tot</sub></dt>
                 <dd>{nl(aTotaal, 0)} mm²</dd>
               </>
@@ -204,13 +206,13 @@ export default function BetonKorfPaneel({
             <dd>{nl(d, 0)} mm</dd>
             {vrijOnder !== null && (
               <>
-                <dt>vrije afstand onder</dt>
+                <dt>{t("concrete.cagePanel.clearSpacingBottom")}</dt>
                 <dd className={vrijOnder < 20 ? "beton-waarschuwing" : undefined}>{nl(vrijOnder, 0)} mm</dd>
               </>
             )}
             {vrijBoven !== null && (
               <>
-                <dt>vrije afstand boven</dt>
+                <dt>{t("concrete.cagePanel.clearSpacingTop")}</dt>
                 <dd className={vrijBoven < 20 ? "beton-waarschuwing" : undefined}>{nl(vrijBoven, 0)} mm</dd>
               </>
             )}
@@ -218,7 +220,7 @@ export default function BetonKorfPaneel({
               <>
                 <dt>f<sub>cd</sub> / f<sub>yd</sub></dt>
                 <dd>{nl(antwoord.f_cd_mpa, 1)} / {nl(antwoord.f_yd_mpa, 1)} N/mm²</dd>
-                <dt>N<sub>Rd</sub> druk / trek</dt>
+                <dt>N<sub>Rd</sub> {t("concrete.cagePanel.compressionTension")}</dt>
                 <dd>{nl(antwoord.n_rd_compression_kn, 0)} / {nl(antwoord.n_rd_tension_kn, 0)} kN</dd>
               </>
             )}
@@ -227,16 +229,16 @@ export default function BetonKorfPaneel({
 
         <div className="beton-grafiek-blok">
           <div className="beton-grafiek-kop">
-            <span>M-κ-diagram bij N<sub>Ed</sub> = {nl(nEd, 0)} kN</span>
-            {bezig && <span className="beton-bezig">berekenen…</span>}
+            <span>{t("concrete.cagePanel.diagramAt")}<sub>Ed</sub> = {nl(nEd, 0)} kN</span>
+            {bezig && <span className="beton-bezig">{t("concrete.cagePanel.calculating")}</span>}
           </div>
           <MNKappaGrafiek diagram={diagram} mEdKnm={mEdKnm} className="beton-grafiek" />
           {diagram && diagram.points.length > 1 && (
             <div className="beton-grafiek-samenvatting">
-              M<sub>Rd</sub> = <strong>{nl(diagram.m_max_knm, 1)} kNm</strong> bij κ<sub>u</sub> = {nl(diagram.kappa_u_per_m * 1e3, 2)}·10⁻³/m,
+              M<sub>Rd</sub> = <strong>{nl(diagram.m_max_knm, 1)} kNm</strong> {t("concrete.cagePanel.at")} κ<sub>u</sub> = {nl(diagram.kappa_u_per_m * 1e3, 2)}·10⁻³/m,
               x<sub>u</sub> = {nl(diagram.x_u_mm, 0)} mm, ε<sub>c</sub> = {nl(diagram.eps_c_u * 1e3, 2)} ‰, ε<sub>s</sub> = {nl(diagram.eps_s_u * 1e3, 1)} ‰
               {diagram.m_y_knm !== null && diagram.kappa_y_per_m !== null && (
-                <> · vloeien bij M<sub>y</sub> = {nl(diagram.m_y_knm, 1)} kNm, κ<sub>y</sub> = {nl(diagram.kappa_y_per_m * 1e3, 2)}·10⁻³/m</>
+                <> · {t("concrete.cagePanel.yieldingAt")}<sub>y</sub> = {nl(diagram.m_y_knm, 1)} kNm, κ<sub>y</sub> = {nl(diagram.kappa_y_per_m * 1e3, 2)}·10⁻³/m</>
               )}
               {mEdKnm !== undefined && Math.abs(mEdKnm) > 0 && diagram.m_max_knm > 0 && (
                 <> · UC = <strong>{nl(Math.abs(mEdKnm) / diagram.m_max_knm, 2)}</strong></>
@@ -246,19 +248,22 @@ export default function BetonKorfPaneel({
           {diagram && diagram.points.length <= 1 && (
             <div className="beton-fout" role="alert">
               {diagram.failure_mode === "AxialCapacityExceeded"
-                ? `Geen evenwicht bij κ = 0: |N_Ed| overschrijdt de normaalkrachtcapaciteit (N_Rd druk = ${nl(antwoord?.n_rd_compression_kn ?? 0, 0)} kN, trek = ${nl(antwoord?.n_rd_tension_kn ?? 0, 0)} kN).`
-                : "Geen evenwicht gevonden."}
+                ? t("concrete.cagePanel.noEquilibriumAxial", {
+                    druk: nl(antwoord?.n_rd_compression_kn ?? 0, 0),
+                    trek: nl(antwoord?.n_rd_tension_kn ?? 0, 0),
+                  })
+                : t("concrete.cagePanel.noEquilibrium")}
             </div>
           )}
-          {fout && <div className="beton-fout" role="alert">Rekenkern: {fout}</div>}
+          {fout && <div className="beton-fout" role="alert">{t("concrete.cagePanel.engineError", { fout })}</div>}
           {lijstFout && (
             <div className="beton-fout" role="alert">
-              Klassenlijsten niet geladen uit de rekenkern: {lijstFout}
+              {t("concrete.cagePanel.classListsNotLoaded", { fout: lijstFout })}
             </div>
           )}
           {diagram && diagram.points.length > 1 && (
             <details className="beton-tabel">
-              <summary>Waarden van het diagram</summary>
+              <summary>{t("concrete.cagePanel.diagramValues")}</summary>
               <table>
                 <thead>
                   <tr>

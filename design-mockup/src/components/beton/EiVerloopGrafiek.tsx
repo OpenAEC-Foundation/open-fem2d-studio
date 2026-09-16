@@ -18,6 +18,7 @@
  * figuur, met een merkteken op de as. Doortrekken zou een waarde suggereren
  * die er niet is.
  */
+import { useTranslation } from "react-i18next";
 import { ticks } from "./MNKappaGrafiek";
 import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import { nl } from "./wapeningskorf";
@@ -59,6 +60,7 @@ export default function EiVerloopGrafiek({
   className,
   titel,
 }: Props) {
+  const { t } = useTranslation("check");
   const plotW = BREEDTE - MARGE.links - MARGE.rechts;
   const plotH = HOOGTE - MARGE.boven - MARGE.onder;
   const lengteM = lengteMm / 1000;
@@ -88,7 +90,7 @@ export default function EiVerloopGrafiek({
       role="img"
       aria-label={
         titel ??
-        `Buigstijfheid EI langs de staaf; ongescheurd E_c·I_c = ${nl(eiOngescheurdKnm2, 0)} kNm²`
+        t("concrete.charts.ei.ariaLabel", { ei: nl(eiOngescheurdKnm2, 0) })
       }
     >
       {/* Raster en assen */}
@@ -134,7 +136,7 @@ export default function EiVerloopGrafiek({
         fontSize="8.5"
         textAnchor="middle"
       >
-        plaats langs de staaf x [m]
+        {t("concrete.charts.ei.xAxis")}
       </text>
       <text
         x={12}
@@ -144,7 +146,7 @@ export default function EiVerloopGrafiek({
         textAnchor="middle"
         transform={`rotate(-90 12 ${MARGE.boven + plotH / 2})`}
       >
-        buigstijfheid EI [kNm²]
+        {t("concrete.charts.ei.yAxis")}
       </text>
 
       {/* Per segment een staaf tot de eigen EI. Gescheurde segmenten donkerder
@@ -161,7 +163,7 @@ export default function EiVerloopGrafiek({
               fontSize="8"
               textAnchor="middle"
             >
-              geen EI
+              {t("concrete.charts.ei.noEi")}
             </text>
           );
         }
@@ -238,11 +240,11 @@ export default function EiVerloopGrafiek({
           bijschrift te lezen is. */}
       <g fontSize="7.5" fill={kleuren.tekstZwak}>
         <rect x={MARGE.links} y={7} width="9" height="9" fill={reeksKleur} fillOpacity="0.32" stroke={reeksKleur} strokeWidth="0.7" />
-        <text x={MARGE.links + 12} y={14.5}>gescheurd</text>
+        <text x={MARGE.links + 12} y={14.5}>{t("concrete.charts.ei.cracked")}</text>
         <rect x={MARGE.links + 72} y={7} width="9" height="9" fill={reeksKleur} fillOpacity="0.1" stroke={reeksKleur} strokeWidth="0.7" />
-        <text x={MARGE.links + 84} y={14.5}>ongescheurd</text>
+        <text x={MARGE.links + 84} y={14.5}>{t("concrete.charts.ei.uncracked")}</text>
         <line x1={MARGE.links + 156} y1={11.5} x2={MARGE.links + 174} y2={11.5} stroke={kleuren.lijn} strokeWidth="1" strokeDasharray="5 3" />
-        <text x={MARGE.links + 178} y={14.5}>E_c·I_c (vergelijkingswaarde)</text>
+        <text x={MARGE.links + 178} y={14.5}>{t("concrete.charts.ei.referenceLegend")}</text>
       </g>
     </svg>
   );

@@ -18,6 +18,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { omhullende, type Omhullende } from "../../lib/profieleditor/geometrie";
 import {
   VANG_NAAM,
@@ -127,6 +128,7 @@ export default function DoorsnedeTekenvlak({
   onModusMuis,
   onModusBevestig,
 }: Props) {
+  const { t } = useTranslation("check");
   const svgRef = useRef<SVGSVGElement>(null);
   /**
    * Lopende sleep. `basis` is het punt dat je vastpakte — al gevangen op een
@@ -170,7 +172,7 @@ export default function DoorsnedeTekenvlak({
   if (!kader || items.length === 0) {
     return (
       <div className="pe-tekenvlak-leeg">
-        Nog niets getekend. Kies links een startvorm of voeg een lamel toe.
+        {t("profileEditor.canvas.empty")}
       </div>
     );
   }
@@ -399,7 +401,7 @@ export default function DoorsnedeTekenvlak({
       onPointerCancel={opUp}
       onWheel={opWiel}
       role="img"
-      aria-label="Tekenvlak van de doorsnede"
+      aria-label={t("profileEditor.canvas.ariaLabel")}
     >
       {/* Raster */}
       <g>
@@ -415,19 +417,19 @@ export default function DoorsnedeTekenvlak({
         ))}
       </g>
       <text x={W - 6} y={H - 6} className="pe-tekst" textAnchor="end">
-        raster {stap} mm · snap op punten en raster (Shift = vrij)
+        {t("profileEditor.canvas.gridInfo", { stap })}
       </text>
 
       {/* Zoomregelaar linksonder: percentage en terug naar passend. */}
       <g className="pe-zoombalk">
         <text x={6} y={H - 6} className="pe-tekst">
-          zoom {Math.round(zoom * 100)}%
+          {t("profileEditor.canvas.zoom", { pct: Math.round(zoom * 100) })}
         </text>
         {zoom !== 1 && (
           <g onPointerDown={(e) => { e.stopPropagation(); passend(); }} style={{ cursor: "pointer" }}>
             <rect x={62} y={H - 18} width={54} height={15} rx={3} className="pe-knopvlak" />
             <text x={89} y={H - 6} className="pe-tekst" textAnchor="middle">
-              passend
+              {t("profileEditor.canvas.fit")}
             </text>
           </g>
         )}

@@ -5,8 +5,9 @@
  * zijn de schatting van A (en zwaartepunt) die getoond wordt zolang de
  * motor nog geen antwoord heeft gegeven — en die staat er nadrukkelijk als
  * schatting bij. Niet-bepaalde grootheden (Wpl bij catalogusdelen, Iw bij
- * gesloten of losse doorsneden) heten hier "niet bepaald", geen nul.
+ * gesloten of losse doorsneden) heten hier nb, geen nul.
  */
+import { useTranslation } from "react-i18next";
 import { fmtGroep, fmtMaat, fmtMacht } from "../../lib/profieleditor/format";
 import type { SnelleSchatting } from "../../lib/profieleditor/geometrie";
 import type { MotorUitvoer } from "../../lib/profieleditor/types";
@@ -20,7 +21,8 @@ interface Props {
 }
 
 function Rij({ label, waarde, eenheid, titel }: { label: string; waarde: string; eenheid?: string; titel?: string }) {
-  const nietBepaald = waarde === "niet bepaald";
+  const { t } = useTranslation("check");
+  const nietBepaald = waarde === t("profileEditor.properties.notDetermined");
   return (
     <tr title={titel}>
       <th scope="row">{label}</th>
@@ -41,29 +43,31 @@ function Groep({ titel }: { titel: string }) {
 }
 
 export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, schatting }: Props) {
+  const { t } = useTranslation("check");
+  const nb = t("profileEditor.properties.notDetermined");
   const status = fout
     ? null
     : bezig
-      ? "Motor rekent…"
+      ? t("profileEditor.properties.engineBusy")
       : verouderd
-        ? "Wordt herberekend…"
+        ? t("profileEditor.properties.recalculating")
         : uitvoer
-          ? `Berekend in ${fmtMaat(uitvoer.tijd_ms, 0)} ms`
+          ? t("profileEditor.properties.calculatedIn", { ms: fmtMaat(uitvoer.tijd_ms, 0) })
           : "";
 
   return (
     <>
-      <div className="pe-kop">Eigenschappen</div>
+      <div className="pe-kop">{t("profileEditor.properties.title")}</div>
       <div className="pe-status">{status}</div>
       {fout && <div className="pe-melding pe-melding-fout">{fout}</div>}
 
       {!uitvoer && (
         <table className="pe-eig-tabel">
           <tbody>
-            <Groep titel="Schatting (wacht op de motor)" />
+            <Groep titel={t("profileEditor.properties.estimateGroup")} />
             <Rij label="A" waarde={fmtGroep(schatting.a_mm2, 0)} eenheid="mm²" />
             {schatting.y_c_mm !== undefined && (
-              <Rij label="Zwaartepunt y, z" waarde={`${fmtMaat(schatting.y_c_mm)}; ${fmtMaat(schatting.z_c_mm ?? 0)}`} eenheid="mm" />
+              <Rij label={t("profileEditor.properties.centroidYZ")} waarde={`${fmtMaat(schatting.y_c_mm)}; ${fmtMaat(schatting.z_c_mm ?? 0)}`} eenheid="mm" />
             )}
           </tbody>
         </table>
@@ -72,99 +76,99 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
       {uitvoer && (
         <table className={`pe-eig-tabel${verouderd ? " pe-eig-verouderd" : ""}`}>
           <tbody>
-            <Groep titel="Doorsnede" />
+            <Groep titel={t("profileEditor.properties.sectionGroup")} />
             <Rij label="A" waarde={fmtGroep(uitvoer.area_mm2, 1)} eenheid="mm²" />
             {uitvoer.a_gaten_mm2 > 0 && (
-              <Rij label="waarvan gaten" waarde={`− ${fmtGroep(uitvoer.a_gaten_mm2, 1)}`} eenheid="mm²" />
+              <Rij label={t("profileEditor.properties.ofWhichHoles")} waarde={`− ${fmtGroep(uitvoer.a_gaten_mm2, 1)}`} eenheid="mm²" />
             )}
             <Rij
-              label="Buitenmaten b × h"
+              label={t("profileEditor.properties.outerDims")}
               waarde={`${fmtMaat(uitvoer.y_max_mm - uitvoer.y_min_mm)} × ${fmtMaat(uitvoer.z_max_mm - uitvoer.z_min_mm)}`}
               eenheid="mm"
             />
-            <Rij label="Zwaartepunt y_c, z_c" waarde={`${fmtMaat(uitvoer.y_c_mm, 2)}; ${fmtMaat(uitvoer.z_c_mm, 2)}`} eenheid="mm" />
+            <Rij label={t("profileEditor.properties.centroid")} waarde={`${fmtMaat(uitvoer.y_c_mm, 2)}; ${fmtMaat(uitvoer.z_c_mm, 2)}`} eenheid="mm" />
             <Rij
-              label="Schuifmiddelpunt y_s, z_s"
+              label={t("profileEditor.properties.shearCentre")}
               waarde={
                 uitvoer.schuifmiddelpunt_bepaald
                   ? `${fmtMaat(uitvoer.y_s_mm, 2)}; ${fmtMaat(uitvoer.z_s_mm, 2)}`
-                  : "niet bepaald"
+                  : nb
               }
               eenheid="mm"
             />
             <Rij
-              label="Omtrek"
-              waarde={uitvoer.omtrek_bepaald ? fmtMaat(uitvoer.omtrek_mm, 1) : "niet bepaald"}
+              label={t("profileEditor.properties.perimeter")}
+              waarde={uitvoer.omtrek_bepaald ? fmtMaat(uitvoer.omtrek_mm, 1) : nb}
               eenheid="mm"
               titel={
                 uitvoer.omtrek_bepaald
-                  ? `Buitenrand; conserveringsoppervlak ${fmtMaat(uitvoer.omtrek_mm / 1000, 3)} m²/m.${
+                  ? t("profileEditor.properties.perimeterTitle", { opp: fmtMaat(uitvoer.omtrek_mm / 1000, 3) }) + `${
                       uitvoer.omtrek_gaten_mm > 0
-                        ? ` Randen van gaten: ${fmtMaat(uitvoer.omtrek_gaten_mm, 1)} mm.`
+                        ? t("profileEditor.properties.holeEdges", { omtrek: fmtMaat(uitvoer.omtrek_gaten_mm, 1) })
                         : ""
                     }`
-                  : "Een samenstelling is een som van platen die bij de lasnaden overlappen; er is geen eenduidige buitenrand."
+                  : t("profileEditor.properties.perimeterAssembly")
               }
             />
             <Rij
-              label="Massa"
+              label={t("profileEditor.properties.mass")}
               waarde={fmtMaat(uitvoer.massa_kg_per_m, 2)}
               eenheid="kg/m"
-              titel={`Bij ρ = ${fmtGroep(uitvoer.dichtheid_kg_m3, 0)} kg/m³`}
+              titel={t("profileEditor.properties.densityTitle", { rho: fmtGroep(uitvoer.dichtheid_kg_m3, 0) })}
             />
 
-            <Groep titel="Buiging om y (sterke as)" />
+            <Groep titel={t("profileEditor.properties.bendingYGroup")} />
             <Rij label="I_y" waarde={fmtMacht(uitvoer.iy_mm4, 6, 3)} eenheid="mm⁴" />
             <Rij label="i_y" waarde={fmtMaat(uitvoer.iy_radius_mm, 1)} eenheid="mm" />
             <Rij
-              label="W_el,y (maatgevend)"
+              label={t("profileEditor.properties.welYGov")}
               waarde={fmtGroep(uitvoer.wel_y_mm3, 0)}
               eenheid="mm³"
-              titel={`Boven: ${fmtGroep(uitvoer.wel_y_top_mm3, 0)} mm³ · onder: ${fmtGroep(uitvoer.wel_y_bot_mm3, 0)} mm³`}
+              titel={t("profileEditor.properties.welYTitle", { boven: fmtGroep(uitvoer.wel_y_top_mm3, 0), onder: fmtGroep(uitvoer.wel_y_bot_mm3, 0) })}
             />
             {Math.abs(uitvoer.wel_y_top_mm3 - uitvoer.wel_y_bot_mm3) > 0.5 && (
               <Rij
-                label="  boven / onder"
+                label={t("profileEditor.properties.topBottom")}
                 waarde={`${fmtGroep(uitvoer.wel_y_top_mm3, 0)} / ${fmtGroep(uitvoer.wel_y_bot_mm3, 0)}`}
                 eenheid="mm³"
               />
             )}
-            <Rij label="W_pl,y" waarde={uitvoer.wpl_bepaald ? fmtGroep(uitvoer.wpl_y_mm3, 0) : "niet bepaald"} eenheid="mm³" />
+            <Rij label="W_pl,y" waarde={uitvoer.wpl_bepaald ? fmtGroep(uitvoer.wpl_y_mm3, 0) : nb} eenheid="mm³" />
             <Rij
-              label="  vormfactor"
-              waarde={uitvoer.plastisch_bepaald ? fmtMaat(uitvoer.vormfactor_y, 3) : "niet bepaald"}
-              titel="W_pl/W_el: hoeveel de doorsnede na intreden van vloeien nog bijdraagt. Rechthoek 1,5; gewalste I om de sterke as ongeveer 1,13."
+              label={t("profileEditor.properties.shapeFactor")}
+              waarde={uitvoer.plastisch_bepaald ? fmtMaat(uitvoer.vormfactor_y, 3) : nb}
+              titel={t("profileEditor.properties.shapeFactorYTitle")}
             />
             <Rij label="A_v,z" waarde={fmtGroep(uitvoer.av_z_mm2, 0)} eenheid="mm²" />
 
-            <Groep titel="Buiging om z (zwakke as)" />
+            <Groep titel={t("profileEditor.properties.bendingZGroup")} />
             <Rij label="I_z" waarde={fmtMacht(uitvoer.iz_mm4, 6, 3)} eenheid="mm⁴" />
             <Rij label="i_z" waarde={fmtMaat(uitvoer.iz_radius_mm, 1)} eenheid="mm" />
             <Rij
-              label="W_el,z (maatgevend)"
+              label={t("profileEditor.properties.welZGov")}
               waarde={fmtGroep(uitvoer.wel_z_mm3, 0)}
               eenheid="mm³"
-              titel={`Links: ${fmtGroep(uitvoer.wel_z_left_mm3, 0)} mm³ · rechts: ${fmtGroep(uitvoer.wel_z_right_mm3, 0)} mm³`}
+              titel={t("profileEditor.properties.welZTitle", { links: fmtGroep(uitvoer.wel_z_left_mm3, 0), rechts: fmtGroep(uitvoer.wel_z_right_mm3, 0) })}
             />
             {Math.abs(uitvoer.wel_z_left_mm3 - uitvoer.wel_z_right_mm3) > 0.5 && (
               <Rij
-                label="  links / rechts"
+                label={t("profileEditor.properties.leftRight")}
                 waarde={`${fmtGroep(uitvoer.wel_z_left_mm3, 0)} / ${fmtGroep(uitvoer.wel_z_right_mm3, 0)}`}
                 eenheid="mm³"
               />
             )}
-            <Rij label="W_pl,z" waarde={uitvoer.wpl_bepaald ? fmtGroep(uitvoer.wpl_z_mm3, 0) : "niet bepaald"} eenheid="mm³" />
+            <Rij label="W_pl,z" waarde={uitvoer.wpl_bepaald ? fmtGroep(uitvoer.wpl_z_mm3, 0) : nb} eenheid="mm³" />
             <Rij
-              label="  vormfactor"
-              waarde={uitvoer.plastisch_bepaald ? fmtMaat(uitvoer.vormfactor_z, 3) : "niet bepaald"}
-              titel="W_pl/W_el om de zwakke as."
+              label={t("profileEditor.properties.shapeFactor")}
+              waarde={uitvoer.plastisch_bepaald ? fmtMaat(uitvoer.vormfactor_z, 3) : nb}
+              titel={t("profileEditor.properties.shapeFactorZTitle")}
             />
             <Rij label="A_v,y" waarde={fmtGroep(uitvoer.av_y_mm2, 0)} eenheid="mm²" />
 
-            <Groep titel="Hoofdassen" />
+            <Groep titel={t("profileEditor.properties.principalAxesGroup")} />
             <Rij label="I_yz" waarde={fmtMacht(uitvoer.iyz_mm4, 6, 3)} eenheid="mm⁴" />
-            <Rij label="I_u (grootste)" waarde={fmtMacht(uitvoer.iu_mm4, 6, 3)} eenheid="mm⁴" />
-            <Rij label="I_v (kleinste)" waarde={fmtMacht(uitvoer.iv_mm4, 6, 3)} eenheid="mm⁴" />
+            <Rij label={t("profileEditor.properties.iuMax")} waarde={fmtMacht(uitvoer.iu_mm4, 6, 3)} eenheid="mm⁴" />
+            <Rij label={t("profileEditor.properties.ivMin")} waarde={fmtMacht(uitvoer.iv_mm4, 6, 3)} eenheid="mm⁴" />
             <Rij
               label="α (y → u)"
               waarde={
@@ -172,7 +176,7 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
                 // willekeurig en wordt niet als getal getoond.
                 Math.abs(uitvoer.iyz_mm4) <= 1e-9 * (uitvoer.iy_mm4 + uitvoer.iz_mm4) &&
                 Math.abs(uitvoer.iy_mm4 - uitvoer.iz_mm4) <= 1e-9 * (uitvoer.iy_mm4 + uitvoer.iz_mm4)
-                  ? "0 (elke as)"
+                  ? t("profileEditor.properties.anyAxis")
                   : fmtMaat((uitvoer.alpha_hoofdas_rad * 180) / Math.PI, 2)
               }
               eenheid="°"
@@ -182,73 +186,73 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
               label="W_el,u / W_el,v"
               waarde={`${fmtGroep(uitvoer.wel_u_mm3, 0)} / ${fmtGroep(uitvoer.wel_v_mm3, 0)}`}
               eenheid="mm³"
-              titel={`Maatgevend van beide vezels. u: ${fmtGroep(uitvoer.wel_u_plus_mm3, 0)} / ${fmtGroep(uitvoer.wel_u_min_mm3, 0)} · v: ${fmtGroep(uitvoer.wel_v_plus_mm3, 0)} / ${fmtGroep(uitvoer.wel_v_min_mm3, 0)} mm³`}
+              titel={t("profileEditor.properties.welUVTitle", { uPlus: fmtGroep(uitvoer.wel_u_plus_mm3, 0), uMin: fmtGroep(uitvoer.wel_u_min_mm3, 0), vPlus: fmtGroep(uitvoer.wel_v_plus_mm3, 0), vMin: fmtGroep(uitvoer.wel_v_min_mm3, 0) })}
             />
             <Rij
               label="W_pl,u / W_pl,v"
               waarde={
                 uitvoer.plastisch_bepaald
                   ? `${fmtGroep(uitvoer.wpl_u_mm3, 0)} / ${fmtGroep(uitvoer.wpl_v_mm3, 0)}`
-                  : "niet bepaald"
+                  : nb
               }
               eenheid="mm³"
             />
 
-            <Groep titel="Plastisch" />
+            <Groep titel={t("profileEditor.properties.plasticGroup")} />
             <Rij
-              label="Plastisch zwaartepunt"
+              label={t("profileEditor.properties.plasticCentroid")}
               waarde={
                 uitvoer.plastisch_bepaald
                   ? `${fmtMaat(uitvoer.y_pna_mm, 2)}; ${fmtMaat(uitvoer.z_pna_mm, 2)}`
-                  : "niet bepaald"
+                  : nb
               }
               eenheid="mm"
-              titel="De lijn die het oppervlak in tweeën deelt. Bij een symmetrische doorsnede valt hij samen met het elastische zwaartepunt; bij een T-profiel ligt hij hoger."
+              titel={t("profileEditor.properties.plasticCentroidTitle")}
             />
             {uitvoer.plastisch_bepaald && (
               <Rij
-                label="  t.o.v. hoofdassen u, v"
+                label={t("profileEditor.properties.relPrincipal")}
                 waarde={`${fmtMaat(uitvoer.u_pna_mm, 2)}; ${fmtMaat(uitvoer.v_pna_mm, 2)}`}
                 eenheid="mm"
               />
             )}
             <Rij
-              label="Vormfactor u / v"
+              label={t("profileEditor.properties.shapeFactorUV")}
               waarde={
                 uitvoer.plastisch_bepaald
                   ? `${fmtMaat(uitvoer.vormfactor_u, 3)} / ${fmtMaat(uitvoer.vormfactor_v, 3)}`
-                  : "niet bepaald"
+                  : nb
               }
             />
 
-            <Groep titel="Kip (monosymmetrie)" />
+            <Groep titel={t("profileEditor.properties.ltbGroup")} />
             <Rij
               label="z_j"
-              waarde={uitvoer.monosymmetrie_bepaald ? fmtMaat(uitvoer.z_j_mm, 3) : "niet bepaald"}
+              waarde={uitvoer.monosymmetrie_bepaald ? fmtMaat(uitvoer.z_j_mm, 3) : nb}
               eenheid="mm"
-              titel="z_j = z_s − ½·∬(y²+z²)z dA / I_y, de monosymmetrieterm uit de kiptoetsing. Nul bij een dubbelsymmetrische doorsnede; positief wanneer het meeste materiaal boven het zwaartepunt zit."
+              titel={t("profileEditor.properties.zjTitle")}
             />
             <Rij
               label="y_j"
-              waarde={uitvoer.monosymmetrie_bepaald ? fmtMaat(uitvoer.y_j_mm, 3) : "niet bepaald"}
+              waarde={uitvoer.monosymmetrie_bepaald ? fmtMaat(uitvoer.y_j_mm, 3) : nb}
               eenheid="mm"
-              titel="Het spiegelbeeld van z_j; maatgevend bij een U-profiel."
+              titel={t("profileEditor.properties.yjTitle")}
             />
             {uitvoer.monosymmetrie_bepaald && (
               <Rij
                 label="  β_y / β_z"
                 waarde={`${fmtMaat(uitvoer.beta_y_mm, 3)} / ${fmtMaat(uitvoer.beta_z_mm, 3)}`}
                 eenheid="mm"
-                titel="De monosymmetrieconstanten waaruit z_j en y_j volgen: z_j = −β_y/2."
+                titel={t("profileEditor.properties.betaTitle")}
               />
             )}
 
-            <Groep titel="Statische momenten (globale assen)" />
+            <Groep titel={t("profileEditor.properties.staticMomentsGroup")} />
             <Rij
               label="Q_y / Q_z"
               waarde={`${fmtGroep(uitvoer.qy_mm3, 0)} / ${fmtGroep(uitvoer.qz_mm3, 0)}`}
               eenheid="mm³"
-              titel="∬z dA en ∬y dA om de assen van het beschrijvingsstelsel. Om de zwaartepuntsassen zijn ze per definitie nul; Q_y = A·z_c is dus meteen een controle op de rekengang."
+              titel={t("profileEditor.properties.staticMomentsTitle")}
             />
             {uitvoer.av_hoofdas_bepaald && (
               <Rij
@@ -258,33 +262,33 @@ export default function EigenschappenPaneel({ uitvoer, verouderd, bezig, fout, s
               />
             )}
 
-            <Groep titel="Torsie en welving" />
+            <Groep titel={t("profileEditor.properties.torsionGroup")} />
             <Rij
               label="I_t"
               waarde={fmtGroep(uitvoer.it_mm4, 0)}
               eenheid="mm⁴"
               titel={
                 uitvoer.methode === "contour"
-                  ? `Numeriek, insluiting ${fmtGroep(uitvoer.it_ondergrens_mm4, 0)} – ${fmtGroep(uitvoer.it_bovengrens_mm4, 0)} mm⁴ (±${fmtMaat(uitvoer.it_onzekerheid * 100, 2)} %)`
-                  : "Dunwandig: ⅓·Σb·t³ plus Bredt voor gedeclareerde cellen"
+                  ? t("profileEditor.properties.itNumericTitle", { onder: fmtGroep(uitvoer.it_ondergrens_mm4, 0), boven: fmtGroep(uitvoer.it_bovengrens_mm4, 0), pct: fmtMaat(uitvoer.it_onzekerheid * 100, 2) })
+                  : t("profileEditor.properties.itThinWalledTitle")
               }
             />
             {uitvoer.methode === "contour" && (
-              <Rij label="  onzekerheid" waarde={`± ${fmtMaat(uitvoer.it_onzekerheid * 100, 2)}`} eenheid="%" />
+              <Rij label={t("profileEditor.properties.uncertainty")} waarde={`± ${fmtMaat(uitvoer.it_onzekerheid * 100, 2)}`} eenheid="%" />
             )}
-            <Rij label="I_w" waarde={uitvoer.iw_bepaald ? fmtMacht(uitvoer.iw_mm6, 9, 3) : "niet bepaald"} eenheid="mm⁶" />
+            <Rij label="I_w" waarde={uitvoer.iw_bepaald ? fmtMacht(uitvoer.iw_mm6, 9, 3) : nb} eenheid="mm⁶" />
 
-            <Groep titel="Berekening" />
+            <Groep titel={t("profileEditor.properties.calculationGroup")} />
             <Rij
-              label="Methode"
+              label={t("profileEditor.properties.method")}
               waarde={
                 uitvoer.methode === "contour"
-                  ? "exacte contour + numerieke torsie"
-                  : "dunwandige samenstelling"
+                  ? t("profileEditor.properties.methodContour")
+                  : t("profileEditor.properties.methodThinWalled")
               }
             />
             {uitvoer.methode === "contour" && (
-              <Rij label="Driehoeken" waarde={fmtGroep(uitvoer.driehoeken, 0)} />
+              <Rij label={t("profileEditor.properties.triangles")} waarde={fmtGroep(uitvoer.driehoeken, 0)} />
             )}
           </tbody>
         </table>

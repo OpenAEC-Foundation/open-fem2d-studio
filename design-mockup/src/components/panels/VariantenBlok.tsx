@@ -24,6 +24,8 @@
  * de tabel.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import { useVariantStore, type VariantRegel } from "../../stores/variantStore";
 import { governingInfo } from "../report/checkReportUtils";
 import CheckBlock from "./CheckBlock";
@@ -45,13 +47,14 @@ const nl2 = (v: number) => v.toLocaleString("nl-NL", { minimumFractionDigits: 2,
 function stapLabel(regel: VariantRegel): string {
   const stap = regel.voorstel.stap;
   const teken = stap > 0 ? `+${stap}` : String(stap);
-  if (regel.voorstel.soort === "wapeningAantal") return `${teken} st`;
+  if (regel.voorstel.soort === "wapeningAantal") return i18next.t("check:variants.stepBars", { stap: teken });
   if (regel.voorstel.soort === "wapeningDiameter") return `${teken} Ø`;
   return teken;
 }
 
 /** Eén variantregel als tabelrij, met uitklapbare afleiding. */
 function Rij({ regel }: { regel: VariantRegel }) {
+  const { t } = useTranslation("check");
   const [open, setOpen] = useState(false);
   const r = regel.resultaat;
 
@@ -70,7 +73,7 @@ function Rij({ regel }: { regel: VariantRegel }) {
           </>
         ) : (
           <td className="vb-geen" colSpan={2}>
-            {regel.reden ?? "geen resultaat"}
+            {regel.reden ?? t("variants.noResult")}
           </td>
         )}
         {/* Zonder getal valt er niets af te wijken; de afwijking hoort bij een
@@ -95,6 +98,7 @@ function Rij({ regel }: { regel: VariantRegel }) {
 }
 
 export default function VariantenBlok({ beamId }: { beamId: number }) {
+  const { t } = useTranslation("check");
   const tabel = useVariantStore((s) => s.tabellen[beamId]);
   const bezig = useVariantStore((s) => s.bezig.includes(beamId));
   const fout = useVariantStore((s) => s.fouten[beamId]);
@@ -104,18 +108,17 @@ export default function VariantenBlok({ beamId }: { beamId: number }) {
     return (
       <div className="varianten-blok">
         <button className="vb-knop" onClick={() => bereken(beamId)}>
-          Naburige doorsneden vergelijken
+          {t("variants.compareButton")}
         </button>
         <span className="vb-knop-hint">
-          Toetst dezelfde staaf nog eens met een profiel hoger en lager — alleen de
-          weerstand, met dezelfde krachtsverdeling.
+          {t("variants.compareHint")}
         </span>
       </div>
     );
   }
 
   if (bezig) {
-    return <div className="varianten-blok vb-bezig">Varianten worden getoetst…</div>;
+    return <div className="varianten-blok vb-bezig">{t("variants.running")}</div>;
   }
 
   if (fout) {
@@ -123,7 +126,7 @@ export default function VariantenBlok({ beamId }: { beamId: number }) {
       <div className="varianten-blok">
         <div className="vb-fout">{fout}</div>
         <button className="vb-knop" onClick={() => bereken(beamId)}>
-          Opnieuw proberen
+          {t("variants.retry")}
         </button>
       </div>
     );
@@ -142,14 +145,14 @@ export default function VariantenBlok({ beamId }: { beamId: number }) {
       {tabel.huidigUc !== null ? (
         <>
           <td className={`vb-uc ${ucClass(tabel.huidigUc)}`}>{nl2(tabel.huidigUc)}</td>
-          <td className="vb-gov">huidige doorsnede</td>
+          <td className="vb-gov">{t("variants.currentSection")}</td>
         </>
       ) : (
         <td className="vb-geen" colSpan={2}>
-          geen toetsresultaat voor de huidige doorsnede
+          {t("variants.noCurrentResult")}
         </td>
       )}
-      <td className="vb-afwijking">berekend</td>
+      <td className="vb-afwijking">{t("variants.computed")}</td>
     </tr>
   );
 
@@ -164,8 +167,8 @@ export default function VariantenBlok({ beamId }: { beamId: number }) {
             <th className="vb-stap">±</th>
             <th className="vb-label">{titel}</th>
             <th className="vb-uc">UC</th>
-            <th className="vb-gov">Maatgevend</th>
-            <th className="vb-afwijking">Afwijking</th>
+            <th className="vb-gov">{t("governing")}</th>
+            <th className="vb-afwijking">{t("variants.deviation")}</th>
           </tr>
         </thead>
         <tbody>
@@ -186,33 +189,31 @@ export default function VariantenBlok({ beamId }: { beamId: number }) {
   return (
     <div className="varianten-blok">
       <div className="vb-kop">
-        <span className="vb-titel">Naburige doorsneden</span>
+        <span className="vb-titel">{t("variants.title")}</span>
         <button className="vb-herbereken" onClick={() => bereken(beamId)}>
-          Opnieuw
+          {t("variants.recompute")}
         </button>
       </div>
 
       <div className={`vb-melding ${onb.statischBepaald ? "vb-melding-ok" : "vb-melding-let-op"}`}>
-        <strong>{onb.statischBepaald ? "Statisch bepaald" : "Let op"}</strong> — {onb.toelichting}{" "}
+        <strong>{onb.statischBepaald ? t("variants.determinate") : t("variants.attention")}</strong> — {onb.toelichting}{" "}
         {onb.statischBepaald
-          ? "De varianten hieronder toetsen alleen de weerstand opnieuw; dat is hier juist."
-          : "De varianten hieronder toetsen alléén de weerstand opnieuw. De werkelijke unity " +
-            "check van een variant wijkt daarvan af; de kolom “Afwijking” zegt per regel welke " +
-            "kant op."}
+          ? t("variants.determinateNote")
+          : t("variants.indeterminateNote")}
       </div>
 
-      {tabel.reden && <div className="vb-leeg">Geen varianten: {tabel.reden}.</div>}
+      {tabel.reden && <div className="vb-leeg">{t("variants.noVariants", { reden: tabel.reden })}</div>}
 
       {groep(
-        tabel.materiaal === "beton" ? "Hoogte" : "Doorsnede",
+        tabel.materiaal === "beton" ? t("variants.height") : t("variants.section"),
         maat,
         tabel.huidigLabel,
       )}
-      {groep("Onderwapening", wapening, "huidige korf")}
+      {groep(t("variants.bottomReinforcement"), wapening, t("variants.currentCage"))}
 
       {tabel.regels.length > 0 && (
         <div className="vb-voet">
-          Klik op een regel om de volledige afleiding van die variant te zien.
+          {t("variants.footer")}
         </div>
       )}
     </div>

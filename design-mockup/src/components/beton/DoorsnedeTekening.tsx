@@ -62,6 +62,7 @@
  * terug, in dezelfde tekening op dezelfde plaats.
  */
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import {
   asAfstandMm,
@@ -70,7 +71,6 @@ import {
   dekkingVanZijdeMm,
   hartXMm,
   heeftZijstaven,
-  KORFRIJ_LABEL,
   maat,
   nuttigeHoogteMm,
   omtrekPunten,
@@ -167,7 +167,7 @@ function RijLabel({
   onRij?: (zijde: KorfRij) => void;
   onRijAantal?: (zijde: KorfRij, delta: 1 | -1) => void;
 }) {
-  const naam = KORFRIJ_LABEL[zijde];
+  const { t } = useTranslation("check");
   // Halve labelbreedte, geschat op de tekenbreedte van de letters (7,5 px
   // hoog, gemiddeld ruim de helft breed), zodat de knopjes net naast het
   // label staan en er niet overheen vallen.
@@ -185,7 +185,7 @@ function RijLabel({
         style={onRij ? { cursor: "pointer" } : undefined}
         onClick={onRij ? () => onRij(zijde) : undefined}
       >
-        {onRij && <title>{`Klik om aantal en diameter van de ${naam} te wijzigen`}</title>}
+        {onRij && <title>{t(`concrete.sectionDrawing.editRow.${zijde}`)}</title>}
         {tekst}
       </text>
       {onRijAantal && (
@@ -201,7 +201,7 @@ function RijLabel({
             style={{ cursor: "pointer" }}
             onClick={() => onRijAantal(zijde, -1)}
           >
-            <title>{`Eén staaf minder in de ${naam}`}</title>
+            <title>{t(`concrete.sectionDrawing.oneBarLess.${zijde}`)}</title>
             −
           </text>
           <text
@@ -215,7 +215,7 @@ function RijLabel({
             style={{ cursor: "pointer" }}
             onClick={() => onRijAantal(zijde, 1)}
           >
-            <title>{`Eén staaf meer in de ${naam}`}</title>
+            <title>{t(`concrete.sectionDrawing.oneBarMore.${zijde}`)}</title>
             +
           </text>
         </>
@@ -245,6 +245,7 @@ export default function DoorsnedeTekening({
   titel,
   className,
 }: Props) {
+  const { t } = useTranslation("check");
   const d3 = korf.doorsnede;
   const bMm = d3.b_mm;
   const hMm = d3.h_mm;
@@ -326,10 +327,27 @@ export default function DoorsnedeTekening({
 
   const vormLabel =
     d3.shape === "Rectangle"
-      ? `Betondoorsnede ${maat(bMm)} × ${maat(hMm)} mm`
-      : `${d3.shape === "Tee" ? "T" : "L"}-doorsnede ${maat(bMm)} × ${maat(hMm)} mm, flens ${maat(
-          d3.h_f_mm ?? 0,
-        )} mm dik ${d3.flange_at_bottom ? "onder" : "boven"}, lijf ${maat(d3.b_w_mm ?? 0)} mm`;
+      ? t("concrete.sectionDrawing.rectangleLabel", { b: maat(bMm), h: maat(hMm) })
+      : t(
+          d3.flange_at_bottom
+            ? "concrete.sectionDrawing.flangedLabelBottom"
+            : "concrete.sectionDrawing.flangedLabelTop",
+          {
+            vorm: d3.shape === "Tee" ? "T" : "L",
+            b: maat(bMm),
+            h: maat(hMm),
+            hf: maat(d3.h_f_mm ?? 0),
+            bw: maat(d3.b_w_mm ?? 0),
+          },
+        );
+  // De rijen in woorden, voor het onderschrift en het aria-label.
+  const rijenTekst = t("concrete.sectionDrawing.rowsCaption", {
+    onder: rijLabel(korf.korf.bottom),
+    boven: rijLabel(korf.korf.top),
+  });
+  const zijTekst = heeftZij
+    ? t("concrete.sectionDrawing.sidesCaption", { zij: rijLabel(zijstaafRij(korf.korf)) })
+    : "";
 
   // Het onderschrift: alles wat er niet ín de tekening past. Dekking en beugel
   // zijn korfgegevens en horen er dus niet te staan als de korf niet getekend
@@ -345,9 +363,7 @@ export default function DoorsnedeTekening({
     // leesbaar passen; dan mogen ze niet wegvallen.
     ...(wapening && !labelsInDeDoorsnede
       ? [
-          `${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven${
-            heeftZij ? `, ${rijLabel(zijstaafRij(korf.korf))} per zijkant` : ""
-          }`,
+          `${rijenTekst}${heeftZij ? `, ${zijTekst}` : ""}`,
         ]
       : []),
     ...(d3.shape === "Rectangle" ? [] : [`h_f ${maat(d3.h_f_mm ?? 0)}`]),
@@ -357,11 +373,15 @@ export default function DoorsnedeTekening({
     ...(wapening
       ? [
           eenDekking
-            ? `dekking ${maat(cOnder)}`
-            : `dekking ↑${maat(cBoven)} ↓${maat(cOnder)} ↔${maat(cZij)}`,
+            ? t("concrete.sectionDrawing.cover", { c: maat(cOnder) })
+            : t("concrete.sectionDrawing.coverPerSide", {
+                boven: maat(cBoven),
+                onder: maat(cOnder),
+                zij: maat(cZij),
+              }),
         ]
       : []),
-    ...(wapening && dBgl > 0 ? [`beugel Ø${maat(dBgl)}`] : []),
+    ...(wapening && dBgl > 0 ? [t("concrete.sectionDrawing.stirrup", { d: maat(dBgl) })] : []),
   ];
 
   return (
@@ -376,10 +396,8 @@ export default function DoorsnedeTekening({
         // staat: zonder korf in beeld ook geen staven in de omschrijving.
         titel ??
         (wapening
-          ? `${vormLabel}, ${rijLabel(korf.korf.bottom)} onder, ${rijLabel(korf.korf.top)} boven${
-              heeftZij ? `, ${rijLabel(zijstaafRij(korf.korf))} per zijkant` : ""
-            }`
-          : `${vormLabel}, wapening niet getekend`)
+          ? `${vormLabel}, ${rijenTekst}${heeftZij ? `, ${zijTekst}` : ""}`
+          : t("concrete.sectionDrawing.notDrawn", { vorm: vormLabel }))
       }
     >
       {/* Beton — de werkelijke omtrek, dus ook de flens van een T of een L */}
@@ -420,7 +438,7 @@ export default function DoorsnedeTekening({
             strokeWidth={Math.max(0.8, dBgl * s)}
             strokeLinecap="round"
           >
-            <title>{`Beugelbeen ${k + 2} van ${n}`}</title>
+            <title>{t("concrete.sectionDrawing.stirrupLeg", { k: k + 2, n })}</title>
           </line>
         ));
       })()}
@@ -484,7 +502,7 @@ export default function DoorsnedeTekening({
             fontSize="6"
             textAnchor="middle"
           >
-            per zijde
+            {t("concrete.sectionDrawing.perSide")}
           </text>
         </>
       )}

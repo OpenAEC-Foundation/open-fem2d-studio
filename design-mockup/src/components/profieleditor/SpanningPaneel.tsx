@@ -16,6 +16,7 @@
  * de figuur, rechts de uitkomsten.
  */
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import SpanningDoorsnedeTekening from "../spanning/SpanningDoorsnedeTekening";
 import { fmtGroep, fmtMaat, fmtMacht } from "../../lib/profieleditor/format";
 import { doorsnedeVanOntwerp } from "../../lib/profieleditor/lagenmodel";
@@ -82,6 +83,7 @@ export default function SpanningPaneel({
   geselecteerd,
   onSelecteer,
 }: Props) {
+  const { t } = useTranslation("check");
   const zet = (patch: Partial<Belasting>) => onWijzig({ ...belasting, ...patch });
 
   // ── De doorsnede als lagenmodel ─────────────────────────────────────────
@@ -180,11 +182,11 @@ export default function SpanningPaneel({
   const status = res.fout
     ? null
     : res.bezig
-      ? "Rekent…"
+      ? t("profileEditor.stress.statusCalculating")
       : res.verouderd
-        ? "Wordt herberekend…"
+        ? t("profileEditor.stress.statusRecalculating")
         : res.uitvoer
-          ? "Berekend"
+          ? t("profileEditor.stress.statusDone")
           : "";
 
   return (
@@ -193,13 +195,9 @@ export default function SpanningPaneel({
       <div className="pe-kolom pe-kolom-links">
         <div
           className="pe-kop"
-          title={
-            "Snedekrachten op déze doorsnede. Trek positief; M_y positief geeft trek in de " +
-            "onderste vezel. Het verloop wordt met deze ene set gerekend — geen staaf, geen " +
-            "combinaties, alleen de doorsnede."
-          }
+          title={t("profileEditor.stress.forcesTitle")}
         >
-          Snedekrachten
+          {t("profileEditor.stress.forces")}
         </div>
         <div className="pe-velden pe-velden-3">
           <GetalVeld
@@ -207,7 +205,7 @@ export default function SpanningPaneel({
             eenheid="kN"
             waarde={belasting.n_kn}
             stap={10}
-            titel="Normaalkracht N_Ed; trek positief. Geeft σ = N/A over de hele doorsnede."
+            titel={t("profileEditor.stress.nTitle")}
             onWijzig={(v) => zet({ n_kn: v })}
           />
           <GetalVeld
@@ -215,7 +213,7 @@ export default function SpanningPaneel({
             eenheid="kN"
             waarde={belasting.vz_kn}
             stap={10}
-            titel="Dwarskracht V_z,Ed. Bepaalt τ = V·S(z)/(I_y·b(z)) én de schuifstroom door de lasnaden."
+            titel={t("profileEditor.stress.vzTitle")}
             onWijzig={(v) => zet({ vz_kn: v })}
           />
           <GetalVeld
@@ -223,7 +221,7 @@ export default function SpanningPaneel({
             eenheid="kNm"
             waarde={belasting.my_knm}
             stap={10}
-            titel="Moment M_y,Ed om de sterke as; positief geeft trek in de onderste vezel."
+            titel={t("profileEditor.stress.myTitle")}
             onWijzig={(v) => zet({ my_knm: v })}
           />
           <GetalVeld
@@ -231,20 +229,16 @@ export default function SpanningPaneel({
             eenheid="N/mm²"
             waarde={belasting.sigma_z_mpa}
             stap={5}
-            titel="Dwarsspanning, constant over de doorsnede aangenomen — bijvoorbeeld een oplegdruk. Een staafmodel rekent die niet zelf uit."
+            titel={t("profileEditor.stress.sigmaZTitle")}
             onWijzig={(v) => zet({ sigma_z_mpa: v })}
           />
         </div>
 
         <div
           className="pe-kop"
-          title={
-            "Dit is de VRIJE spanningstoets: geen doorsnedeklassificatie, geen plooi, geen knik " +
-            "of kip. De toelaatbare spanning geef je zelf op; f_d = f_toel/γ_M is de streeplijn " +
-            "in het σ_eq-paneel."
-          }
+          title={t("profileEditor.stress.materialTitle")}
         >
-          Materiaal
+          {t("profileEditor.stress.material")}
         </div>
         <div className="pe-velden pe-velden-3">
           <GetalVeld
@@ -253,7 +247,7 @@ export default function SpanningPaneel({
             waarde={belasting.f_toel_mpa}
             min={0.1}
             stap={5}
-            titel="Toelaatbare spanning. Voor staal doorgaans f_y."
+            titel={t("profileEditor.stress.fAllowTitle")}
             onWijzig={(v) => zet({ f_toel_mpa: v })}
           />
           <GetalVeld
@@ -261,14 +255,14 @@ export default function SpanningPaneel({
             waarde={belasting.gamma_m}
             min={0.1}
             stap={0.05}
-            titel="Materiaalfactor; f_d = f_toel/γ_M. 1,0 laat f_toel zelf de rekenwaarde zijn."
+            titel={t("profileEditor.stress.gammaMTitle")}
             onWijzig={(v) => zet({ gamma_m: v })}
           />
           <label
             className="pe-veld"
-            title="Staalsoort van het zwakste verbonden onderdeel — hieruit volgen f_u (EN 1993-1-1 tabel 3.1) en de correlatiefactor β_w (EN 1993-1-8 tabel 4.1) voor de lastoetsing."
+            title={t("profileEditor.stress.steelTitle")}
           >
-            <span>Staal (las)</span>
+            <span>{t("profileEditor.stress.steel")}</span>
             <select
               value={belasting.staalsoort}
               onChange={(e) => zet({ staalsoort: e.target.value })}
@@ -310,22 +304,22 @@ export default function SpanningPaneel({
         ) : (
           <div className="pe-tekenvlak-leeg">
             {typeof doorsnede === "string"
-              ? "Geen spanningsverloop: zie de melding links."
-              : "Vul links een moment of een dwarskracht in."}
+              ? t("profileEditor.stress.noDistribution")
+              : t("profileEditor.stress.enterForces")}
           </div>
         )}
       </div>
 
       {/* ── Rechts: de uitkomsten ─────────────────────────────────────── */}
       <div className="pe-kolom pe-kolom-rechts">
-        <div className="pe-kop">Uitkomst</div>
+        <div className="pe-kop">{t("profileEditor.stress.result")}</div>
         <div className="pe-status">{status}</div>
 
         {res.uitvoer && sectie && (
           <table className={`pe-eig-tabel${res.verouderd ? " pe-eig-verouderd" : ""}`}>
             <tbody>
               <tr className="pe-groep">
-                <th colSpan={2}>Toetsing</th>
+                <th colSpan={2}>{t("profileEditor.stress.check")}</th>
               </tr>
               {[
                 ["spanning_vergelijk", "σ_eq (von Mises)"],
@@ -342,7 +336,7 @@ export default function SpanningPaneel({
                           UC = {fmtMaat(u.uc, 2)}
                         </span>
                       ) : (
-                        <span className="pe-niet-bepaald">niet bepaald</span>
+                        <span className="pe-niet-bepaald">{t("profileEditor.stress.notDetermined")}</span>
                       )}
                     </td>
                   </tr>
@@ -357,10 +351,10 @@ export default function SpanningPaneel({
               </tr>
 
               <tr className="pe-groep">
-                <th colSpan={2}>Rekenmodel</th>
+                <th colSpan={2}>{t("profileEditor.stress.model")}</th>
               </tr>
-              <tr title="Uit hoeveel horizontale stroken de doorsnede is opgebouwd; uit die stroken volgen A, z_c, I_y en S(z).">
-                <th scope="row">Stroken</th>
+              <tr title={t("profileEditor.stress.stripsTitle")}>
+                <th scope="row">{t("profileEditor.stress.strips")}</th>
                 <td>{sectie.lagen.length}</td>
               </tr>
               <tr>
@@ -379,13 +373,9 @@ export default function SpanningPaneel({
               </tr>
               {afwijking && (
                 <tr
-                  title={
-                    "Verschil tussen het strokenmodel achter dit verloop en de exacte contour van " +
-                    "de doorsnedemotor. Bij losse platen hoort dit nul te zijn; een catalogusdeel " +
-                    "gaat als rechte platen mee en dan zit hier de walsuitronding in."
-                  }
+                  title={t("profileEditor.stress.deviationTitle")}
                 >
-                  <th scope="row">t.o.v. de motor</th>
+                  <th scope="row">{t("profileEditor.stress.deviation")}</th>
                   <td>
                     A {afwijking.a >= 0 ? "+" : "−"}
                     {fmtMaat(Math.abs(afwijking.a), 2)} %, I_y {afwijking.iy >= 0 ? "+" : "−"}
@@ -394,7 +384,7 @@ export default function SpanningPaneel({
                 </tr>
               )}
               <tr>
-                <th scope="row">Bron A, I_y</th>
+                <th scope="row">{t("profileEditor.stress.source")}</th>
                 <td>{sectie.bron}</td>
               </tr>
             </tbody>
@@ -405,9 +395,9 @@ export default function SpanningPaneel({
           <>
             <div
               className="pe-kop"
-              title="Per lasnaad de schuifstroom q = V_z·S/I_y en de toetsing volgens NEN-EN 1993-1-8 4.5.3.3 (vereenvoudigde methode)."
+              title={t("profileEditor.stress.weldsTitle")}
             >
-              Lassen
+              {t("profileEditor.stress.welds")}
             </div>
             <table className="pe-eig-tabel">
               <tbody>
@@ -423,8 +413,8 @@ export default function SpanningPaneel({
                       title={
                         reden ??
                         (stroom
-                          ? `Afgesneden deel: ${stroom.platen} plaat${stroom.platen === 1 ? "" : "en"}, ` +
-                            `S = ${fmtGroep(stroom.s_mm3, 0)} mm³. ` +
+                          ? t("profileEditor.stress.cutPart", { count: stroom.platen, s: fmtGroep(stroom.s_mm3, 0) }) +
+                            " " +
                             (r?.getoetst
                               ? `f_vw,d = ${fmtMaat(r.f_vw_d_mpa, 1)} N/mm² (f_u = ${fmtMaat(r.f_u_mpa, 0)}, ` +
                                 `β_w = ${fmtMaat(r.beta_w, 2)}, γ_M2 = ${fmtMaat(r.gamma_m2, 2)}); ` +
@@ -434,12 +424,12 @@ export default function SpanningPaneel({
                       }
                     >
                       <th scope="row">
-                        Las {n.nummer}
+                        {t("profileEditor.stress.weldN", { n: n.nummer })}
                         <span className="pe-item-sub"> a = {fmtMaat(n.las.a_mm, 1)} · {LASSOORT_KORT[n.las.soort]}</span>
                       </th>
                       <td>
                         {reden ? (
-                          <span className="pe-niet-bepaald">niet bepaald</span>
+                          <span className="pe-niet-bepaald">{t("profileEditor.stress.notDetermined")}</span>
                         ) : (
                           <>
                             q = {fmtMaat(stroom?.q_n_per_mm ?? 0, 0)}
@@ -452,7 +442,7 @@ export default function SpanningPaneel({
                             ) : (
                               <>
                                 {" · "}
-                                <span className="pe-niet-bepaald">geen toets</span>
+                                <span className="pe-niet-bepaald">{t("profileEditor.stress.noCheck")}</span>
                               </>
                             )}
                           </>
@@ -466,7 +456,7 @@ export default function SpanningPaneel({
             {naden.map((n) =>
               typeof n.stroom === "string" ? (
                 <div key={`m-${n.las.id}`} className="pe-melding">
-                  Las {n.nummer}: {n.stroom}
+                  {t("profileEditor.stress.weldMessage", { n: n.nummer, melding: n.stroom })}
                 </div>
               ) : null,
             )}

@@ -44,6 +44,7 @@ import {
 import { VANG_NAAM, type VangSoort } from "../../lib/profieleditor/snappunten";
 import type { DoorsnedeOntwerp, EigenDoorsnede } from "../../lib/profieleditor/types";
 import { useMotorBerekening } from "../../lib/profieleditor/useMotorBerekening";
+import { useTranslation } from "react-i18next";
 import Modal from "../Modal";
 import DoorsnedeTekenvlak, { type TekenvlakModus } from "./DoorsnedeTekenvlak";
 import EigenDoorsnedeTekening from "./EigenDoorsnedeTekening";
@@ -191,6 +192,7 @@ export default function ProfielEditor({
   inModal = true,
   startTab,
 }: ProfielEditorProps) {
+  const { t } = useTranslation("check");
   const items = useEigenDoorsneden((s) => s.items);
   const bewaar = useEigenDoorsneden((s) => s.bewaar);
   const verwijder = useEigenDoorsneden((s) => s.verwijder);
@@ -418,10 +420,10 @@ export default function ProfielEditor({
   const meldAnker = useCallback(() => {
     setTransformMelding(
       doelId === null && !motor.uitvoer
-        ? "Om de oorsprong (0, 0) — de motor had nog geen zwaartepunt."
+        ? t("profileEditor.main.aboutOriginNote")
         : null,
     );
-  }, [doelId, motor.uitvoer]);
+  }, [doelId, motor.uitvoer, t]);
 
   // Directe bewerkingen uit de gereedschapsbalk (geen muismodus).
   const verplaatsNu = useCallback(
@@ -546,31 +548,31 @@ export default function ProfielEditor({
   /** Wat de modus in het tekenvlak laat zien. */
   const tekenvlakModus: TekenvlakModus | null = useMemo(() => {
     if (!modus) return null;
-    const wat = modus.doelId ? (naamVanBouwsteen(samenstelling, modus.doelId) ?? "bouwsteen") : "hele ontwerp";
+    const wat = modus.doelId ? (naamVanBouwsteen(samenstelling, modus.doelId) ?? t("profileEditor.main.buildingBlock")) : t("profileEditor.main.wholeDesign");
     const getypt = modus.getypt ? `  ⌨ ${modus.getypt}` : "";
     const gemeen = {
       snapOntwerp: modus.origineel,
       snapZwaartepunt: modus.ankerZwaartepunt,
     };
     if (modus.soort === "verplaats") {
-      const slot = modus.asSlot ? `  [${modus.asSlot}-as]` : "";
+      const slot = modus.asSlot ? `  [${t("profileEditor.main.axisLock", { as: modus.asSlot })}]` : "";
       // Waar de aanwijzer nu op vastklikt; bij een getypte maat telt de muis
       // niet mee en heeft die aanduiding dus niets te zeggen.
       const op = modus.getypt === null ? `  ⊹ ${VANG_NAAM[modus.vang]}` : "";
       const punt = modus.muis
         ? `(${fmtMaat(modus.muis.y, 3)}, ${fmtMaat(modus.muis.z, 3)})`
-        : "wijs aan";
+        : t("profileEditor.main.pointAt");
       return {
         soort: "verplaats",
         regel:
           modus.fase === "basispunt" && modus.getypt === null
-            ? `Verplaatsen (${wat}) · 1/2 basispunt ${punt}${op}`
-            : `Verplaatsen (${wat}) · 2/2 doelpunt: Δy = ${fmtMaat(modus.dy, 3)} mm, ` +
-              `Δz = ${fmtMaat(modus.dz, 3)} mm${slot}${getypt}${op}`,
+            ? t("profileEditor.main.moveBasePoint", { wat, punt }) + op
+            : t("profileEditor.main.moveTargetPoint", { wat, dy: fmtMaat(modus.dy, 3), dz: fmtMaat(modus.dz, 3) }) +
+              `${slot}${getypt}${op}`,
         bediening:
           modus.fase === "basispunt" && modus.getypt === null
-            ? "klik het punt dat je vastpakt · snap op hoekpunt, midden, hart en zwaartepunt · Shift = vrij · Esc annuleert"
-            : "klik waar dat punt heen moet · cijfers typen = maat · Y of Z vergrendelt een as · Shift = vrij · Enter bevestigt · Esc annuleert",
+            ? t("profileEditor.main.moveBaseHelp")
+            : t("profileEditor.main.moveTargetHelp"),
         anker: modus.basis,
         asSlot: modus.asSlot,
         ...gemeen,
@@ -578,12 +580,12 @@ export default function ProfielEditor({
     }
     return {
       soort: "roteer",
-      regel: `Roteren (${wat}): φ = ${fmtMaat(modus.graden, 3)}°${getypt}`,
-      bediening: `muis draait om het ankerpunt · cijfers typen = hoek · Shift = vrij (anders stappen van ${HOEKSTAP_GRADEN}°) · Enter bevestigt · Esc annuleert`,
+      regel: t("profileEditor.main.rotateLine", { wat, hoek: fmtMaat(modus.graden, 3) }) + getypt,
+      bediening: t("profileEditor.main.rotateHelp", { stap: HOEKSTAP_GRADEN }),
       anker: modus.anker,
       ...gemeen,
     };
-  }, [modus, samenstelling]);
+  }, [modus, samenstelling, t]);
 
   // ── Wat de gereedschapsbalk laat zien en aanroept ───────────────────────
   // De twee tabbladen delen de balk maar niet de wiskunde: een samenstelling
@@ -594,56 +596,56 @@ export default function ProfielEditor({
     if (tab === "gat") {
       const n = gatOntwerp.gaten.length;
       const naam = gatDoelId ? naamVanGat(gatOntwerp, gatDoelId) : null;
-      const leegReden = n === 0 ? "Er is nog geen gat om te bewerken: voeg er links een toe." : null;
+      const leegReden = n === 0 ? t("profileEditor.main.noHoleYet") : null;
       return {
-        doelKort: n === 0 ? "geen gaten" : (naam ?? `alle gaten (${n})`),
+        doelKort: n === 0 ? t("profileEditor.main.noHoles") : (naam ?? t("profileEditor.main.allHolesShort", { n })),
         doelTitel:
           leegReden ??
           (naam
-            ? `Doel: ${naam}. Klik hier — of naast de doorsnede — om de selectie op te heffen en alle gaten tegelijk te bewerken.`
-            : `Doel: alle ${n} gaten. Klik een gat in de tekening of in de lijst aan om alleen dat gat te bewerken.`),
+            ? t("profileEditor.main.holeTargetOne", { naam })
+            : t("profileEditor.main.holeTargetAll", { n })),
         kanLoslaten: naam !== null,
         leegReden,
-        ankerKort: "profielhartlijn",
+        ankerKort: t("profileEditor.main.profileCentreline"),
         ankerUitleg:
-          "Spiegelen gaat om de verticale hartlijn van het profiel. Een gat blijft verder in zijn eigen plaat: verplaatsen schuift het langs die plaat, draaien verschuift een gat in de buiswand langs de omtrek en draait een rechthoekig langsgat mee.",
+          t("profileEditor.main.holeAnchorExplain"),
         roteerOm:
-          "elk gat volgt zijn eigen plaats — een gat in de buiswand schuift langs de omtrek, een rechthoekig langsgat draait mee, en wat niet kan meldt de balk",
-        spiegelOm: "de verticale hartlijn van het profiel",
-        spiegelExtra: "Een gat in het lijf ligt op die hartlijn en verandert daar niet van.",
+          t("profileEditor.main.holeRotateAbout"),
+        spiegelOm: t("profileEditor.main.holeMirrorAbout"),
+        spiegelExtra: t("profileEditor.main.holeMirrorExtra"),
         geenMuisModus:
-          "De muismodi G en R werken op een samenstelling; een gat versleep je rechtstreeks in het tekenvlak.",
+          t("profileEditor.main.holeNoMouseMode"),
         onVerplaats: verplaatsGatenNu,
         onRoteer: roteerGatenNu,
         onSpiegel: spiegelGatenNu,
       };
     }
     const leegReden =
-      aantal === 0 ? "Er is nog niets om te bewerken: kies eerst een startvorm of voeg een bouwsteen toe." : null;
+      aantal === 0 ? t("profileEditor.main.nothingYet") : null;
     const zwaartepuntBekend = !!motor.uitvoer;
     const om = doelId
-      ? "zijn eigen hart"
+      ? t("profileEditor.main.aboutOwnCentre")
       : zwaartepuntBekend
-        ? `het zwaartepunt Z (${fmtMaat(draaipunt.y)}, ${fmtMaat(draaipunt.z)})`
-        : "de oorsprong (0, 0)";
+        ? t("profileEditor.main.aboutCentroid", { y: fmtMaat(draaipunt.y), z: fmtMaat(draaipunt.z) })
+        : t("profileEditor.main.aboutOrigin");
     return {
-      doelKort: aantal === 0 ? "geen bouwstenen" : (doelNaam ?? `hele ontwerp (${aantal})`),
+      doelKort: aantal === 0 ? t("profileEditor.main.noBlocks") : (doelNaam ?? t("profileEditor.main.wholeDesignShort", { n: aantal })),
       doelTitel:
         leegReden ??
         (doelNaam
-          ? `Doel: ${doelNaam}. Klik hier — of naast de doorsnede — om de selectie op te heffen en weer het hele ontwerp te bewerken.`
-          : `Doel: alle ${aantal} bouwstenen. Klik een bouwsteen in de tekening of in de lijst aan om alleen die te bewerken.`),
+          ? t("profileEditor.main.blockTargetOne", { naam: doelNaam })
+          : t("profileEditor.main.blockTargetAll", { n: aantal })),
       kanLoslaten: doelNaam !== null,
       leegReden,
       ankerKort: doelId
-        ? "eigen hart"
+        ? t("profileEditor.main.ownCentreShort")
         : zwaartepuntBekend
           ? `Z (${fmtMaat(draaipunt.y)}, ${fmtMaat(draaipunt.z)})`
-          : "oorsprong",
-      ankerUitleg: `Roteren en spiegelen gaan om ${om}. Eén geselecteerde bouwsteen draait om zijn eigen hart; het hele ontwerp draait om het zwaartepunt uit de motor — of om de oorsprong zolang de motor nog niets heeft teruggegeven.`,
-      roteerOm: `het doel draait om ${om}`,
+          : t("profileEditor.main.originShort"),
+      ankerUitleg: t("profileEditor.main.blockAnchorExplain", { om }),
+      roteerOm: t("profileEditor.main.blockRotateAbout", { om }),
       spiegelOm: om,
-      spiegelExtra: "Een catalogusdeel klapt daarbij ook zelf om.",
+      spiegelExtra: t("profileEditor.main.blockMirrorExtra"),
       geenMuisModus: null,
       onVerplaats: verplaatsNu,
       onRoteer: roteerNu,
@@ -659,7 +661,7 @@ export default function ProfielEditor({
     const d = maakEigenDoorsnede(bewerkId ?? nieuwId(), schoon, ontwerp, motor.uitvoer, vorm);
     bewaar(d);
     setBewerkId(d.id);
-    setMelding(`Bewaard als "${profielnaamVan(d)}".`);
+    setMelding(t("profileEditor.main.savedAs", { naam: profielnaamVan(d) }));
     onOpslaan?.(d);
   };
 
@@ -689,26 +691,26 @@ export default function ProfielEditor({
     <div className="pe-wortel">
       <div className="pe-tabs">
         <button className={`pe-tab${tab === "samenstelling" ? " actief" : ""}`} onClick={() => { setTab("samenstelling"); setBron("samenstelling"); setGeselecteerd(null); }}>
-          Samenstellen
+          {t("profileEditor.main.tabAssemble")}
         </button>
         <button className={`pe-tab${tab === "gat" ? " actief" : ""}`} onClick={() => { setTab("gat"); setBron("gat"); setGeselecteerd(null); }}>
-          Gat in profiel
+          {t("profileEditor.main.tabHole")}
         </button>
         <button
           className={`pe-tab${tab === "spanning" ? " actief" : ""}`}
           onClick={() => setTab("spanning")}
-          title="Zet een moment, een normaalkracht en een dwarskracht op deze doorsnede en zie het spanningsverloop erover; de lasnaden worden er meteen op getoetst."
+          title={t("profileEditor.main.tabStressTitle")}
         >
-          Spanning
+          {t("profileEditor.main.tabStress")}
         </button>
         <button className={`pe-tab${tab === "bewaard" ? " actief" : ""}`} onClick={() => setTab("bewaard")}>
-          Bewaard ({items.length})
+          {t("profileEditor.main.tabSaved", { n: items.length })}
         </button>
       </div>
 
       {tab === "bewaard" ? (
         items.length === 0 ? (
-          <div className="pe-bewaard-leeg">Nog geen eigen doorsneden bewaard.</div>
+          <div className="pe-bewaard-leeg">{t("profileEditor.main.noneSaved")}</div>
         ) : (
           <div className="pe-bewaard">
             {items.map((d) => (
@@ -719,17 +721,17 @@ export default function ProfielEditor({
                   A = {fmtGroep(d.eigenschappen.area_mm2, 0)} mm² · I_y = {fmtMacht(d.eigenschappen.iy_mm4, 6, 2)} mm⁴
                   <br />
                   {d.ontwerp.soort === "gat"
-                    ? `${profielLabel(d.ontwerp.basis.naam)} met ${d.ontwerp.gaten.length} gat${d.ontwerp.gaten.length === 1 ? "" : "en"}`
-                    : `${d.ontwerp.lamellen.length} lamellen, ${d.ontwerp.catalogusdelen.length} catalogusdelen`}
+                    ? t("profileEditor.main.savedWithHoles", { profiel: profielLabel(d.ontwerp.basis.naam), count: d.ontwerp.gaten.length })
+                    : t("profileEditor.main.savedAssembly", { lamellen: d.ontwerp.lamellen.length, delen: d.ontwerp.catalogusdelen.length })}
                   {" · "}
-                  {gaatAlsLamellen(d.ontwerp) ? "toetsing uit geometrie" : VORM_LABEL[d.vorm].split(" — ")[0]}
+                  {gaatAlsLamellen(d.ontwerp) ? t("profileEditor.main.checkFromGeometry") : VORM_LABEL[d.vorm].split(" — ")[0]}
                 </div>
                 <div className="pe-knoppen">
                   {onKies && (
-                    <button className="pe-knop pe-knop-primair" onClick={() => onKies(d)}>Gebruiken</button>
+                    <button className="pe-knop pe-knop-primair" onClick={() => onKies(d)}>{t("profileEditor.main.use")}</button>
                   )}
-                  <button className="pe-knop" onClick={() => laad(d)}>Bewerken</button>
-                  <button className="pe-knop pe-knop-gevaar" onClick={() => verwijder(d.id)}>Verwijderen</button>
+                  <button className="pe-knop" onClick={() => laad(d)}>{t("common:edit")}</button>
+                  <button className="pe-knop pe-knop-gevaar" onClick={() => verwijder(d.id)}>{t("common:delete")}</button>
                 </div>
               </div>
             ))}
@@ -804,7 +806,7 @@ export default function ProfielEditor({
                 uitvoer={invoer ? motor.uitvoer : null}
                 verouderd={motor.verouderd}
                 bezig={motor.bezig}
-                fout={motor.fout ?? (gatFouten.length > 0 ? "Los eerst de gemelde gatfouten op." : null)}
+                fout={motor.fout ?? (gatFouten.length > 0 ? t("profileEditor.main.fixHoleErrorsFirst") : null)}
                 schatting={schatting}
               />
             </div>
@@ -818,13 +820,13 @@ export default function ProfielEditor({
               plaats van twee, en de uitleg zit in de tooltip. */}
           <label
             className="pe-voet-veld pe-voet-veld-breed"
-            title={bewerkId ? "Naam van de doorsnede die je nu bewerkt." : "Onder deze naam komt de doorsnede in de lijst en op de staaf."}
+            title={bewerkId ? t("profileEditor.main.nameTitleEdit") : t("profileEditor.main.nameTitleNew")}
           >
-            <span>Naam{bewerkId ? " (bewerken)" : ""}</span>
+            <span>{bewerkId ? t("profileEditor.main.nameEditing") : t("profileEditor.main.name")}</span>
             <input
               type="text"
               value={naam}
-              placeholder={ontwerp.soort === "gat" ? `${profielLabel(ontwerp.basis.naam)} met gat` : "Gelaste ligger"}
+              placeholder={ontwerp.soort === "gat" ? t("profileEditor.main.namePlaceholderHole", { profiel: profielLabel(ontwerp.basis.naam) }) : t("profileEditor.main.namePlaceholderWelded")}
               onChange={(e) => setNaam(e.target.value)}
             />
           </label>
@@ -832,35 +834,35 @@ export default function ProfielEditor({
             className="pe-voet-veld"
             title={
               alsLamellen
-                ? "De doorsnede gaat als geometrie naar de toetsing; die leidt de vorm zelf uit de lamellen af."
-                : "Welk blad van tabel 5.2 de toetsing gebruikt als de doorsnede als eigenschappen meegaat."
+                ? t("profileEditor.main.shapeTitlePlates")
+                : t("profileEditor.main.shapeTitleProps")
             }
           >
-            <span>Vorm{alsLamellen ? " (uit lamellen)" : ""}</span>
+            <span>{alsLamellen ? t("profileEditor.main.shapeFromPlates") : t("profileEditor.main.shape")}</span>
             <select
               value={vormKeuze}
               disabled={alsLamellen}
               onChange={(e) => setVormKeuze(e.target.value as CustomDoorsnedevorm | "auto")}
             >
-              <option value="auto">Automatisch: {VORM_LABEL[vormVoorstel]}</option>
+              <option value="auto">{t("profileEditor.main.shapeAuto", { vorm: VORM_LABEL[vormVoorstel] })}</option>
               {VORMEN.map((v) => <option key={v} value={v}>{VORM_LABEL[v]}</option>)}
             </select>
           </label>
           <div className="pe-voet-rechts">
             {melding && <span className="pe-voet-melding" title={melding}>{melding}</span>}
             {bewerkId && (
-              <button className="pe-knop" onClick={nieuw} title="Begin een nieuwe doorsnede; de bewaarde blijft staan">
-                Nieuw
+              <button className="pe-knop" onClick={nieuw} title={t("profileEditor.main.newTitle")}>
+                {t("profileEditor.main.new")}
               </button>
             )}
-            <button className="pe-knop" onClick={onClose} title="Sluit de profieleditor">Sluiten</button>
+            <button className="pe-knop" onClick={onClose} title={t("profileEditor.main.closeTitle")}>{t("common:close")}</button>
             <button
               className="pe-knop pe-knop-primair"
               disabled={!kanOpslaan}
               onClick={slaOp}
-              title={kanOpslaan ? "Bewaar de doorsnede met de berekende eigenschappen" : "Geef eerst een naam en wacht tot de motor klaar is"}
+              title={kanOpslaan ? t("profileEditor.main.saveTitle") : t("profileEditor.main.saveDisabledTitle")}
             >
-              {bewerkId ? "Opslaan" : "Bewaren"}
+              {bewerkId ? t("common:save") : t("profileEditor.main.store")}
             </button>
           </div>
         </div>
@@ -873,7 +875,7 @@ export default function ProfielEditor({
   // groeien met het aantal lamellen of met de tekening. Modal.css houdt hem
   // met max-height 90vh op een lage monitor binnen het scherm.
   return (
-    <Modal open={open} onClose={onClose} title="Profieleditor — eigen doorsnede" width={1160} height={760}>
+    <Modal open={open} onClose={onClose} title={t("profileEditor.main.modalTitle")} width={1160} height={760}>
       {inhoud}
     </Modal>
   );

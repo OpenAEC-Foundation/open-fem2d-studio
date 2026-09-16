@@ -6,6 +6,7 @@
  * staat niet hier maar op het tabblad Spanning, want daar staat de dwarskracht.
  */
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { nieuwId } from "../../lib/profieleditor/id";
 import {
   LASSOORT_LABEL,
@@ -28,14 +29,9 @@ interface Props {
 
 const SOORTEN: Lassoort[] = ["HoeklasDubbel", "HoeklasEnkel", "StompVolledig"];
 
-const PANEEL_UITLEG =
-  "Een lasnaad in een doorsnede is een langslas: hij loopt met de staaf mee en draagt de " +
-  "schuifstroom q = V·S/I_y tussen de platen over. Er hoort dus geen laslengte bij — de lengte " +
-  "is de staaflengte. Wat de naad moet doorstaan zie je op het tabblad Spanning. " +
-  "Het lasmateriaal telt NIET mee in A, I_y en de andere doorsnedegrootheden: de " +
-  "doorsnedemotor rekent met de platen, zoals gebruikelijk bij een gelaste doorsnede.";
-
 export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer }: Props) {
+  const { t } = useTranslation("check");
+  const PANEEL_UITLEG = t("profileEditor.welds.help");
   const lassen = lassenVan(ontwerp);
   const perId = useMemo(
     () => new Map(ontwerp.lamellen.map((l, i) => [l.id, { lamel: l, nummer: i + 1 }])),
@@ -93,7 +89,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
 
   const naam = (id: string) => {
     const p = perId.get(id);
-    return p ? `Lamel ${p.nummer}` : "verwijderd";
+    return p ? t("profileEditor.welds.plateN", { n: p.nummer }) : t("profileEditor.welds.deleted");
   };
 
   const geenPlaten = ontwerp.lamellen.length < 2;
@@ -101,7 +97,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
   return (
     <>
       <div className="pe-kop pe-kop-rij">
-        <span title={PANEEL_UITLEG}>Lassen{lassen.length > 0 ? ` (${lassen.length})` : ""}</span>
+        <span title={PANEEL_UITLEG}>{t("profileEditor.welds.welds")}{lassen.length > 0 ? ` (${lassen.length})` : ""}</span>
         <span className="pe-knoppen">
           <button
             type="button"
@@ -110,13 +106,13 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
             disabled={kandidaten.length === 0}
             title={
               geenPlaten
-                ? "Er zijn nog geen twee platen om een naad tussen te leggen."
+                ? t("profileEditor.welds.noPlatesTitle")
                 : kandidaten.length === 0
-                  ? "Elke naad tussen twee rakende platen heeft al een las."
-                  : `Las leggen op de eerste vrije naad (${kandidaten.length} beschikbaar). ${PANEEL_UITLEG}`
+                  ? t("profileEditor.welds.allWeldedTitle")
+                  : t("profileEditor.welds.addTitle", { count: kandidaten.length, help: PANEEL_UITLEG })
             }
           >
-            ＋ Las
+            {t("profileEditor.welds.add")}
           </button>
           <button
             type="button"
@@ -125,11 +121,11 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
             disabled={kandidaten.length < 2}
             title={
               kandidaten.length < 2
-                ? "Er is hoogstens één vrije naad; gebruik ＋ Las."
-                : `Op alle ${kandidaten.length} vrije naden een dubbelzijdige hoeklas leggen.`
+                ? t("profileEditor.welds.oneFreeTitle")
+                : t("profileEditor.welds.allTitle", { n: kandidaten.length })
             }
           >
-            ⧉ Alle
+            {t("profileEditor.welds.all")}
           </button>
         </span>
       </div>
@@ -137,10 +133,10 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
       {lassen.length === 0 && (
         <div className="pe-leeg" title={PANEEL_UITLEG}>
           {geenPlaten
-            ? "Twee platen die elkaar raken hebben een naad; leg daar een las."
+            ? t("profileEditor.welds.emptyNoPlates")
             : kandidaten.length === 0
-              ? "Geen twee platen raken elkaar, dus er is geen naad."
-              : `${kandidaten.length} naad${kandidaten.length === 1 ? "" : "en"} zonder las.`}
+              ? t("profileEditor.welds.emptyNoTouch")
+              : t("profileEditor.welds.emptyFree", { count: kandidaten.length })}
         </div>
       )}
 
@@ -154,7 +150,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
           >
             <div className="pe-item-kop">
               <span>
-                Las {i + 1}{" "}
+                {t("profileEditor.welds.weldN", { n: i + 1 })}{" "}
                 <span className="pe-item-sub">
                   {naam(las.aId)} – {naam(las.bId)}
                 </span>
@@ -166,7 +162,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
                   e.stopPropagation();
                   verwijder(las.id);
                 }}
-                title="Deze las verwijderen"
+                title={t("profileEditor.welds.deleteTitle")}
               >
                 ✕
               </button>
@@ -174,11 +170,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
             <div className="pe-profielkeuze" style={{ marginTop: 6 }}>
               <select
                 value={las.soort}
-                title={
-                  "Dubbelzijdig: aan weerszijden van de plaat een hoeklas — twee keeldoorsneden. " +
-                  "Enkelzijdig: één. Stomp volledig doorgelast: NEN-EN 1993-1-8 4.7.1 geeft de las " +
-                  "de weerstand van het zwakste verbonden onderdeel, dus geen aparte lastoets."
-                }
+                title={t("profileEditor.welds.typeTitle")}
                 onChange={(e) => wijzig(las.id, { soort: e.target.value as Lassoort })}
               >
                 {SOORTEN.map((s) => (
@@ -196,7 +188,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
                   waarde={las.a_mm}
                   min={0.1}
                   stap={0.5}
-                  titel="Keeldikte van één las. NEN-EN 1993-1-8 4.5.2(2): niet kleiner dan 3 mm."
+                  titel={t("profileEditor.welds.throatTitle")}
                   onWijzig={(v) => wijzig(las.id, { a_mm: v })}
                 />
               </div>

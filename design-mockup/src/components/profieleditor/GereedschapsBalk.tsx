@@ -15,6 +15,7 @@
  * muismodus in het tekenvlak. De getalvelden bewerken rechtstreeks.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { leesGetal } from "../../lib/profieleditor/format";
 
 export type TransformSoort = "verplaats" | "roteer";
@@ -170,6 +171,7 @@ export default function GereedschapsBalk({
   onStart,
   onLosLaten,
 }: Props) {
+  const { t } = useTranslation("check");
   const [dyTekst, setDyTekst] = useState("0");
   const [dzTekst, setDzTekst] = useState("0");
   const [hoekTekst, setHoekTekst] = useState("90");
@@ -186,7 +188,7 @@ export default function GereedschapsBalk({
   const muisReden = leegReden ?? geenMuisModus;
 
   return (
-    <div className="pe-balk" role="toolbar" aria-label="Verplaatsen, roteren en spiegelen">
+    <div className="pe-balk" role="toolbar" aria-label={t("profileEditor.toolbar.ariaLabel")}>
       <button
         type="button"
         className={`pe-doel${leeg ? " pe-doel-leeg" : ""}`}
@@ -207,11 +209,11 @@ export default function GereedschapsBalk({
         onClick={() => onStart("verplaats")}
         title={
           muisReden ??
-          "Verplaatsen in twee klikken: eerst het basispunt dat je vastpakt, dan het doelpunt waar het heen moet. De aanwijzer klikt onderweg vast op hoekpunten, zijdemiddens, harten en het zwaartepunt, en anders op het raster. Cijfers typen geeft een exacte maat, Y of Z vergrendelt een as, Shift laat alle snap los, Enter bevestigt en Esc zet alles terug."
+          t("profileEditor.toolbar.moveTitle")
         }
       >
         <Icoon naam="verplaats" />
-        Verplaats
+        {t("profileEditor.toolbar.move")}
         <kbd className="pe-kbd">G</kbd>
       </button>
 
@@ -222,11 +224,11 @@ export default function GereedschapsBalk({
         onClick={() => onStart("roteer")}
         title={
           muisReden ??
-          `Roteren met de muis: ${roteerOm}. Cijfers typen geeft een exacte hoek, Shift laat het raster van 15° los, Enter bevestigt en Esc zet alles terug.`
+          t("profileEditor.toolbar.rotateTitle", { om: roteerOm })
         }
       >
         <Icoon naam="roteer" />
-        Roteer
+        {t("profileEditor.toolbar.rotate")}
         <kbd className="pe-kbd">R</kbd>
       </button>
 
@@ -237,8 +239,8 @@ export default function GereedschapsBalk({
         className="pe-tknop pe-tknop-kwart"
         disabled={leeg}
         onClick={() => onRoteer(90)}
-        title={leegReden ?? `Een kwartslag tegen de klok in (+90°): ${roteerOm}.`}
-        aria-label="Een kwartslag tegen de klok in"
+        title={leegReden ?? t("profileEditor.toolbar.quarterCcwTitle", { om: roteerOm })}
+        aria-label={t("profileEditor.toolbar.quarterCcw")}
       >
         <Icoon naam="kwartLinks" />
         90°
@@ -249,8 +251,8 @@ export default function GereedschapsBalk({
         className="pe-tknop pe-tknop-kwart"
         disabled={leeg}
         onClick={() => onRoteer(-90)}
-        title={leegReden ?? `Een kwartslag met de klok mee (−90°): ${roteerOm}.`}
-        aria-label="Een kwartslag met de klok mee"
+        title={leegReden ?? t("profileEditor.toolbar.quarterCwTitle", { om: roteerOm })}
+        aria-label={t("profileEditor.toolbar.quarterCw")}
       >
         <Icoon naam="kwartRechts" />
         90°
@@ -261,10 +263,10 @@ export default function GereedschapsBalk({
         className="pe-tknop"
         disabled={leeg}
         onClick={onSpiegel}
-        title={leegReden ?? `Spiegelen om ${spiegelOm} (y → −y).${spiegelExtra ? ` ${spiegelExtra}` : ""}`}
+        title={leegReden ?? `${t("profileEditor.toolbar.mirrorTitle", { om: spiegelOm })}${spiegelExtra ? ` ${spiegelExtra}` : ""}`}
       >
         <Icoon naam="spiegel" />
-        Spiegel
+        {t("profileEditor.toolbar.mirror")}
       </button>
 
       <span className="pe-balk-streep" aria-hidden="true" />
@@ -274,14 +276,14 @@ export default function GereedschapsBalk({
         eenheid="mm"
         waarde={dyTekst}
         onWijzig={setDyTekst}
-        titel="Verplaatsing naar rechts, in millimeter. Negatief is naar links."
+        titel={t("profileEditor.toolbar.dyTitle")}
       />
       <MiniVeld
         teken="Δz"
         eenheid="mm"
         waarde={dzTekst}
         onWijzig={setDzTekst}
-        titel="Verplaatsing omhoog, in millimeter. Negatief is omlaag."
+        titel={t("profileEditor.toolbar.dzTitle")}
       />
       <button
         type="button"
@@ -290,9 +292,9 @@ export default function GereedschapsBalk({
         onClick={() => onVerplaats(dy, dz)}
         title={
           leegReden ??
-          (verschuivingGeldig ? "Verplaats het doel over Δy en Δz" : "Vul eerst een Δy of Δz in die niet nul is")
+          (verschuivingGeldig ? t("profileEditor.toolbar.applyMoveTitle") : t("profileEditor.toolbar.applyMoveInvalid"))
         }
-        aria-label="Verplaats over Δy en Δz"
+        aria-label={t("profileEditor.toolbar.applyMove")}
       >
         →
       </button>
@@ -302,7 +304,7 @@ export default function GereedschapsBalk({
         eenheid="°"
         waarde={hoekTekst}
         onWijzig={setHoekTekst}
-        titel="Draaiing in graden, tegen de klok in positief."
+        titel={t("profileEditor.toolbar.angleTitle")}
         breed={38}
       />
       <button
@@ -312,9 +314,9 @@ export default function GereedschapsBalk({
         onClick={() => onRoteer(hoek)}
         title={
           leegReden ??
-          (hoekGeldig ? `Draai over φ: ${roteerOm}` : "Vul eerst een hoek in die niet nul is")
+          (hoekGeldig ? t("profileEditor.toolbar.applyRotateTitle", { om: roteerOm }) : t("profileEditor.toolbar.applyRotateInvalid"))
         }
-        aria-label="Draai over φ"
+        aria-label={t("profileEditor.toolbar.applyRotate")}
       >
         →
       </button>

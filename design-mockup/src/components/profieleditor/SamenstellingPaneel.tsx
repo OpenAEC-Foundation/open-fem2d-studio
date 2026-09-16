@@ -8,6 +8,7 @@
  * gesloten cel zit in de tooltip van de knop of het veld waar hij bij hoort.
  */
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
 import { herkenGeslotenCel } from "../../lib/profieleditor/geometrie";
 import { nieuwId } from "../../lib/profieleditor/id";
@@ -25,14 +26,10 @@ interface Props {
   onSelecteer: (id: string | null) => void;
 }
 
-const LAMEL_UITLEG =
-  "Rechthoekige plaat. De positie is het zwaartepunt van de plaat, b is de maat langs de plaat en t de dikte; " +
-  "α = 0 is liggend, α = 90 staand. Slepen in het tekenvlak verplaatst een plaat.";
-const DEEL_UITLEG =
-  "Een catalogusprofiel als bouwsteen, geplaatst op het zwaartepunt van dat deel. Let op: met catalogusdelen " +
-  "is W_pl niet bepaald en gaat de doorsnede als eigenschappen — niet als geometrie — naar de toetsing.";
-
 export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer }: Props) {
+  const { t } = useTranslation("check");
+  const LAMEL_UITLEG = t("profileEditor.assembly.plateHelp");
+  const DEEL_UITLEG = t("profileEditor.assembly.partHelp");
   // Eén keer per paneel: de startvormen als tekenbare geometrie, voor de
   // silhouetten op de knoppen. `maak()` deelt bij elke aanroep nieuwe id's uit,
   // dus dit hoort niet elke render opnieuw te gebeuren.
@@ -89,15 +86,15 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
   // De hele celuitleg in één tooltip; in beeld blijft alleen de uitkomst.
   const celTitel = cel
     ? ontwerp.celMeenemen
-      ? `Gesloten cel herkend uit ${cel.lamellen.length} platen; de torsiestijfheid wordt met de formule van Bredt meegenomen. Zet het vinkje uit om alleen de open formule ⅓·Σb·t³ te gebruiken.`
-      : `Gesloten cel herkend uit ${cel.lamellen.length} platen, maar hij telt niet mee: I_t wordt met de open formule ⅓·Σb·t³ bepaald en onderschat de koker dan sterk.`
-    : "Geen gesloten cel herkend: de lamellen vormen geen enkelvoudige ring, dus de doorsnede is open. Het vinkje heeft dan geen effect.";
-  const celStatus = cel ? `${cel.lamellen.length} platen` : "geen";
+      ? t("profileEditor.assembly.cellIncluded", { count: cel.lamellen.length })
+      : t("profileEditor.assembly.cellExcluded", { count: cel.lamellen.length })
+    : t("profileEditor.assembly.cellNone");
+  const celStatus = cel ? t("profileEditor.assembly.cellPlates", { count: cel.lamellen.length }) : t("profileEditor.assembly.cellStatusNone");
 
   return (
     <>
-      <div className="pe-kop" title="Een startvorm vervangt de huidige samenstelling door een kant-en-klare set bouwstenen.">
-        Startvormen
+      <div className="pe-kop" title={t("profileEditor.assembly.presetsTitle")}>
+        {t("profileEditor.assembly.presets")}
       </div>
       <div className="pe-presets">
         {startvormen.map(({ preset, vorm }) => (
@@ -119,20 +116,20 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
       </div>
 
       <div className="pe-kop pe-kop-rij">
-        <span title="Alles waaruit de doorsnede is opgebouwd. Klik een bouwsteen aan om hem te selecteren; de gereedschapsbalk bewerkt dan alleen die.">
-          Bouwstenen{aantal > 0 ? ` (${aantal})` : ""}
+        <span title={t("profileEditor.assembly.blocksTitle")}>
+          {t("profileEditor.assembly.blocks")}{aantal > 0 ? ` (${aantal})` : ""}
         </span>
         <span className="pe-knoppen">
-          <button type="button" className="pe-tknop pe-tknop-mini" onClick={voegLamelToe} title={`Lamel toevoegen. ${LAMEL_UITLEG}`}>
-            ＋ Lamel
+          <button type="button" className="pe-tknop pe-tknop-mini" onClick={voegLamelToe} title={t("profileEditor.assembly.addPlateTitle", { help: LAMEL_UITLEG })}>
+            {t("profileEditor.assembly.addPlate")}
           </button>
-          <button type="button" className="pe-tknop pe-tknop-mini" onClick={voegDeelToe} title={`Catalogusdeel toevoegen. ${DEEL_UITLEG}`}>
-            ＋ Profiel
+          <button type="button" className="pe-tknop pe-tknop-mini" onClick={voegDeelToe} title={t("profileEditor.assembly.addPartTitle", { help: DEEL_UITLEG })}>
+            {t("profileEditor.assembly.addPart")}
           </button>
         </span>
       </div>
 
-      {aantal === 0 && <div className="pe-leeg">Kies hierboven een startvorm, of voeg een bouwsteen toe.</div>}
+      {aantal === 0 && <div className="pe-leeg">{t("profileEditor.assembly.empty")}</div>}
 
       <div className="pe-lijst">
         {ontwerp.lamellen.map((l, i) => (
@@ -144,23 +141,23 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
           >
             <div className="pe-item-kop">
               <span>
-                Lamel {i + 1} <span className="pe-item-sub">{l.b_mm} × {l.t_mm}</span>
+                {t("profileEditor.assembly.plateN", { n: i + 1 })} <span className="pe-item-sub">{l.b_mm} × {l.t_mm}</span>
               </span>
               <span className="pe-knoppen">
-                <button type="button" className="pe-tknop pe-tknop-mini" onClick={(e) => { e.stopPropagation(); dupliceer(l); }} title="Kopie erboven leggen">
+                <button type="button" className="pe-tknop pe-tknop-mini" onClick={(e) => { e.stopPropagation(); dupliceer(l); }} title={t("profileEditor.assembly.duplicateTitle")}>
                   ⧉
                 </button>
-                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(l.id); }} title="Deze lamel verwijderen">
+                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(l.id); }} title={t("profileEditor.assembly.deletePlateTitle")}>
                   ✕
                 </button>
               </span>
             </div>
             <div className="pe-velden pe-velden-3">
-              <GetalVeld label="b" eenheid="mm" waarde={l.b_mm} min={0.1} titel="Maat langs de plaat" onWijzig={(v) => zetLamel(l.id, { b_mm: v })} />
-              <GetalVeld label="t" eenheid="mm" waarde={l.t_mm} min={0.1} stap={0.5} titel="Dikte van de plaat" onWijzig={(v) => zetLamel(l.id, { t_mm: v })} />
-              <GetalVeld label="α" eenheid="°" waarde={l.alphaGraden} stap={15} titel="0 = liggend, 90 = staand" onWijzig={(v) => zetLamel(l.id, { alphaGraden: v })} />
-              <GetalVeld label="y" eenheid="mm" waarde={l.y_mm} titel="Zwaartepunt van de plaat, naar rechts" onWijzig={(v) => zetLamel(l.id, { y_mm: v })} />
-              <GetalVeld label="z" eenheid="mm" waarde={l.z_mm} titel="Zwaartepunt van de plaat, omhoog" onWijzig={(v) => zetLamel(l.id, { z_mm: v })} />
+              <GetalVeld label="b" eenheid="mm" waarde={l.b_mm} min={0.1} titel={t("profileEditor.assembly.bTitle")} onWijzig={(v) => zetLamel(l.id, { b_mm: v })} />
+              <GetalVeld label="t" eenheid="mm" waarde={l.t_mm} min={0.1} stap={0.5} titel={t("profileEditor.assembly.tTitle")} onWijzig={(v) => zetLamel(l.id, { t_mm: v })} />
+              <GetalVeld label="α" eenheid="°" waarde={l.alphaGraden} stap={15} titel={t("profileEditor.assembly.alphaTitle")} onWijzig={(v) => zetLamel(l.id, { alphaGraden: v })} />
+              <GetalVeld label="y" eenheid="mm" waarde={l.y_mm} titel={t("profileEditor.assembly.plateYTitle")} onWijzig={(v) => zetLamel(l.id, { y_mm: v })} />
+              <GetalVeld label="z" eenheid="mm" waarde={l.z_mm} titel={t("profileEditor.assembly.plateZTitle")} onWijzig={(v) => zetLamel(l.id, { z_mm: v })} />
             </div>
           </div>
         ))}
@@ -175,15 +172,15 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
               title={DEEL_UITLEG}
             >
               <div className="pe-item-kop">
-                <span>Deel {i + 1} <span className="pe-item-sub">{profielLabel(d.profiel.naam)}</span></span>
-                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(d.id); }} title="Dit deel verwijderen">
+                <span>{t("profileEditor.assembly.partN", { n: i + 1 })} <span className="pe-item-sub">{profielLabel(d.profiel.naam)}</span></span>
+                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(d.id); }} title={t("profileEditor.assembly.deletePartTitle")}>
                   ✕
                 </button>
               </div>
               <div className="pe-profielkeuze" style={{ marginTop: 6 }}>
                 <select
                   value={reeks}
-                  title="Profielreeks"
+                  title={t("profileEditor.assembly.seriesTitle")}
                   onChange={(e) => {
                     const eerste = profielenVanReeks(e.target.value)[0];
                     const p = eerste ? basisprofielVan(eerste) : undefined;
@@ -194,7 +191,7 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
                 </select>
                 <select
                   value={d.profiel.naam}
-                  title="Profielmaat"
+                  title={t("profileEditor.assembly.sizeTitle")}
                   onChange={(e) => {
                     const p = basisprofielVan(e.target.value);
                     if (p) zetDeel(d.id, { profiel: p });
@@ -204,12 +201,12 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
                 </select>
               </div>
               <div className="pe-velden pe-velden-3">
-                <GetalVeld label="y" eenheid="mm" waarde={d.y_mm} titel="Zwaartepunt van het deel, naar rechts" onWijzig={(v) => zetDeel(d.id, { y_mm: v })} />
-                <GetalVeld label="z" eenheid="mm" waarde={d.z_mm} titel="Zwaartepunt van het deel, omhoog" onWijzig={(v) => zetDeel(d.id, { z_mm: v })} />
-                <GetalVeld label="α" eenheid="°" waarde={d.alphaGraden} stap={15} titel="Draaiing van het deel, tegen de klok in positief" onWijzig={(v) => zetDeel(d.id, { alphaGraden: v })} />
-                <label className="pe-veld pe-veld-vink" title="Spiegelt het deel om zijn eigen verticale as (y → −y), bijvoorbeeld voor twee U-profielen rug aan rug.">
+                <GetalVeld label="y" eenheid="mm" waarde={d.y_mm} titel={t("profileEditor.assembly.partYTitle")} onWijzig={(v) => zetDeel(d.id, { y_mm: v })} />
+                <GetalVeld label="z" eenheid="mm" waarde={d.z_mm} titel={t("profileEditor.assembly.partZTitle")} onWijzig={(v) => zetDeel(d.id, { z_mm: v })} />
+                <GetalVeld label="α" eenheid="°" waarde={d.alphaGraden} stap={15} titel={t("profileEditor.assembly.partAlphaTitle")} onWijzig={(v) => zetDeel(d.id, { alphaGraden: v })} />
+                <label className="pe-veld pe-veld-vink" title={t("profileEditor.assembly.mirroredTitle")}>
                   <input type="checkbox" checked={d.gespiegeld} onChange={(e) => zetDeel(d.id, { gespiegeld: e.target.checked })} />
-                  gespiegeld
+                  {t("profileEditor.assembly.mirrored")}
                 </label>
               </div>
             </div>
@@ -223,7 +220,7 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
           checked={ontwerp.celMeenemen}
           onChange={(e) => onWijzig({ ...ontwerp, celMeenemen: e.target.checked })}
         />
-        <span>Gesloten cel (Bredt)</span>
+        <span>{t("profileEditor.assembly.closedCell")}</span>
         <span className={`pe-schakelaar-status${cel ? " pe-aan" : ""}`}>{celStatus}</span>
       </label>
     </>

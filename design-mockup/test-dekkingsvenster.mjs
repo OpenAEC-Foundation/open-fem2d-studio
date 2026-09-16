@@ -47,6 +47,9 @@ const TOETSBRUG = join(
   process.platform === "win32" ? "toetsbrug.exe" : "toetsbrug",
 );
 
+// De tekening haalt haar teksten uit i18n; zonder initialisatie zou de test
+// sleutels meten in plaats van de Nederlandse teksten die hij verwacht.
+await import("./scripts/i18n-voor-tests.mjs");
 const React = (await import("react")).default;
 const { renderToStaticMarkup } = await import("react-dom/server");
 

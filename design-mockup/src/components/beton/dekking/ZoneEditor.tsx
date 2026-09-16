@@ -31,6 +31,7 @@
  * weigeren, en een oude lijn naast een nieuwe indeling zetten is erger dan
  * geen lijn.
  */
+import { useTranslation } from "react-i18next";
 import type { ConcreteSectionInput } from "../../../lib/types/concrete/ConcreteSectionInput";
 import type { LongitudinalZone } from "../../../lib/types/concrete/LongitudinalZone";
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
@@ -40,7 +41,6 @@ import type { StirrupZone } from "../../../lib/types/concrete/StirrupZone";
 import type { Stortpositie } from "../../../lib/types/concrete/Stortpositie";
 import { STAAFDIAMETERS, BEUGELDIAMETERS, maat, type Wapeningskorf } from "../wapeningskorf";
 import {
-  ZIJDE_NAAM,
   controleerZones,
   splitsOpX,
   standaardZonesUitKorf,
@@ -52,20 +52,21 @@ import {
  * De uitvoeringsgegevens die §8.4 per staaf wil hebben en die uit geen enkel
  * modelgegeven volgen — zie de doc-tekst van `LongitudinalZone`.
  */
+// Label en hint zijn i18n-sleutels (naamruimte "check"); vertaald bij het tonen.
 const STAAFVORMEN: { id: Staafvorm; label: string; hint: string }[] = [
-  { id: "Recht", label: "recht", hint: "Rechte staafeinden — α₁ = 1,0 in tabel 8.2." },
+  { id: "Recht", label: "concrete.zones.shapeStraight", hint: "concrete.zones.shapeStraightHint" },
   {
     id: "AndersDanRecht",
-    label: "gebogen",
-    hint: "Ombuiging, haak of lus. Tabel 8.2 geeft α₁ = 0,7 bij c_d > 3Φ; is c_d niet opgegeven, dan blijft α₁ = 1,0 en verkort de ombuiging l_bd dus niet.",
+    label: "concrete.zones.shapeBent",
+    hint: "concrete.zones.shapeBentHint",
   },
 ];
 
 const STORTPOSITIES: { id: Stortpositie; label: string }[] = [
-  { id: "Onderzijde", label: "goede aanhechting" },
-  { id: "Bovenzijde", label: "matige aanhechting" },
-  { id: "Glijbekisting", label: "glijbekisting" },
-  { id: "GoedAangetoond", label: "aangetoond goed" },
+  { id: "Onderzijde", label: "concrete.zones.castingGood" },
+  { id: "Bovenzijde", label: "concrete.zones.castingPoor" },
+  { id: "Glijbekisting", label: "concrete.zones.castingSlipForm" },
+  { id: "GoedAangetoond", label: "concrete.zones.castingProvenGood" },
 ];
 
 interface Props {
@@ -90,6 +91,7 @@ export default function ZoneEditor({
   cursorXMm,
   onChange,
 }: Props) {
+  const { t } = useTranslation("check");
   const leeg = zonesZijnLeeg(zones);
   const fout = controleerZones(zones, korf, doorsnede, lengteMm, restKorf);
 
@@ -97,17 +99,15 @@ export default function ZoneEditor({
     return (
       <div className="dek-zones dek-zones-leeg">
         <p className="beton-hint">
-          Deze staaf heeft nog geen wapeningszones: de korf geldt over de hele lengte, en de
-          weerstandslijn is dus een rechte. Zet zones aan om de langswapening in te korten
-          (§9.2.1.3) of de beugels bij de steunpunten te verdichten (§9.2.2).
+          {t("concrete.zones.noZonesHint")}
         </p>
         <button
           type="button"
           className="dek-knop dek-knop-primair"
           onClick={() => onChange(standaardZonesUitKorf(korf, lengteMm))}
-          title="Zet één zone per zijde over de volle lengte neer. Dat rekent precies zoals nu; pas splitsen en staven weghalen verandert iets."
+          title={t("concrete.zones.createTitle")}
         >
-          Zones aanmaken uit de korf
+          {t("concrete.zones.create")}
         </button>
       </div>
     );
@@ -137,34 +137,40 @@ export default function ZoneEditor({
   const kanSplitsen = (k: { x_start_mm: number; x_end_mm: number }) =>
     cursorXMm !== null && cursorXMm > k.x_start_mm + 1 && cursorXMm < k.x_end_mm - 1;
 
-  const cursorTekst =
-    cursorXMm === null ? "" : ` op x = ${maat(Math.round(cursorXMm))} mm`;
+  const splitsTitel =
+    cursorXMm === null
+      ? t("concrete.zones.splitTitle")
+      : t("concrete.zones.splitTitleAt", { x: maat(Math.round(cursorXMm)) });
+  const splitsBeugelTitel =
+    cursorXMm === null
+      ? t("concrete.zones.splitStirrupTitle")
+      : t("concrete.zones.splitStirrupTitleAt", { x: maat(Math.round(cursorXMm)) });
 
   return (
     <div className="dek-zones">
       <div className="dek-zones-kop">
-        <span className="dek-zones-titel">Langswapening — §9.2.1.3</span>
+        <span className="dek-zones-titel">{t("concrete.zones.longitudinalTitle")}</span>
         <button
           type="button"
           className="dek-knop"
           onClick={() => onChange(undefined)}
-          title="Verwijder alle zones; de korf van de staaf geldt dan weer over de hele lengte."
+          title={t("concrete.zones.removeTitle")}
         >
-          Zones verwijderen
+          {t("concrete.zones.remove")}
         </button>
       </div>
 
       <table className="dek-zonetabel">
         <thead>
           <tr>
-            <th>zijde</th>
+            <th>{t("concrete.zones.colSide")}</th>
             <th>n</th>
             <th>Ø</th>
-            <th>van [mm]</th>
-            <th>tot [mm]</th>
-            <th>staafeinden</th>
-            <th>stortpositie</th>
-            <th aria-label="bewerkingen" />
+            <th>{t("concrete.zones.colFrom")}</th>
+            <th>{t("concrete.zones.colTo")}</th>
+            <th>{t("concrete.zones.colBarEnds")}</th>
+            <th>{t("concrete.zones.colCasting")}</th>
+            <th aria-label={t("concrete.zones.colActions")} />
           </tr>
         </thead>
         <tbody>
@@ -176,8 +182,8 @@ export default function ZoneEditor({
                   value={k.side}
                   onChange={(e) => zetLangs(i, { side: e.target.value as LongitudinalZone["side"] })}
                 >
-                  <option value="Bottom">{ZIJDE_NAAM.Bottom}</option>
-                  <option value="Top">{ZIJDE_NAAM.Top}</option>
+                  <option value="Bottom">{t("concrete.zones.sideBottom")}</option>
+                  <option value="Top">{t("concrete.zones.sideTop")}</option>
                 </select>
               </td>
               <td>
@@ -187,7 +193,7 @@ export default function ZoneEditor({
                   min={0}
                   step={1}
                   value={k.row.count}
-                  title="Aantal staven op dit stuk. Nul is geldig: dat betekent dat hier aan deze zijde geen langswapening ligt."
+                  title={t("concrete.zones.countTitle")}
                   onChange={(e) =>
                     zetLangs(i, { row: { ...k.row, count: Math.max(0, Math.round(Number(e.target.value))) } })
                   }
@@ -227,12 +233,15 @@ export default function ZoneEditor({
                   className="beton-invoer"
                   style={{ width: 92 }}
                   value={k.bar_shape}
-                  title={STAAFVORMEN.find((v) => v.id === k.bar_shape)?.hint}
+                  title={(() => {
+                    const vorm = STAAFVORMEN.find((v) => v.id === k.bar_shape);
+                    return vorm ? t(vorm.hint) : undefined;
+                  })()}
                   onChange={(e) => zetLangs(i, { bar_shape: e.target.value as Staafvorm })}
                 >
                   {STAAFVORMEN.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.label}
+                      {t(v.label)}
                     </option>
                   ))}
                 </select>
@@ -242,12 +251,12 @@ export default function ZoneEditor({
                   className="beton-invoer"
                   style={{ width: 132 }}
                   value={k.casting_position}
-                  title="Figuur 8.2 — bepaalt η₁ in (8.2). Dezelfde balk van bovenaf gestort of op zijn kant geprefabriceerd scheelt in l_bd een factor 1,43; het model kan het niet afleiden."
+                  title={t("concrete.zones.castingTitle")}
                   onChange={(e) => zetLangs(i, { casting_position: e.target.value as Stortpositie })}
                 >
                   {STORTPOSITIES.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.label}
+                      {t(v.label)}
                     </option>
                   ))}
                 </select>
@@ -258,17 +267,17 @@ export default function ZoneEditor({
                   className="dek-knop"
                   disabled={!kanSplitsen(k)}
                   onClick={() => splits("langs", i)}
-                  title={`Knip deze zone in tweeën${cursorTekst}. Beide helften houden dezelfde staven; verlaag daarna het aantal in één ervan.`}
+                  title={splitsTitel}
                 >
-                  splits
+                  {t("concrete.zones.split")}
                 </button>
                 <button
                   type="button"
                   className="dek-knop"
                   onClick={() => samen("langs", i)}
-                  title="Trek deze zone over haar rechterbuur heen; de wapening van DEZE zone blijft gelden."
+                  title={t("concrete.zones.mergeTitle")}
                 >
-                  samenvoegen
+                  {t("concrete.zones.merge")}
                 </button>
               </td>
             </tr>
@@ -277,7 +286,7 @@ export default function ZoneEditor({
       </table>
 
       <div className="dek-zones-kop">
-        <span className="dek-zones-titel">Beugels — §9.2.2</span>
+        <span className="dek-zones-titel">{t("concrete.zones.stirrupsTitle")}</span>
         <button
           type="button"
           className="dek-knop"
@@ -290,28 +299,28 @@ export default function ZoneEditor({
                   : standaardZonesUitKorf(korf, lengteMm).stirrups,
             })
           }
-          title="Beugelzones aan- of uitzetten. Zonder beugelzones gelden de beugelvelden van de korf over de hele lengte."
+          title={t("concrete.zones.stirrupToggleTitle")}
         >
-          {z.stirrups.length > 0 ? "beugelzones verwijderen" : "beugelzones uit de korf"}
+          {z.stirrups.length > 0
+            ? t("concrete.zones.stirrupZonesRemove")
+            : t("concrete.zones.stirrupZonesFromCage")}
         </button>
       </div>
 
       {z.stirrups.length === 0 ? (
         <p className="beton-hint">
-          Geen beugelzones: de beugelvelden van de korf gelden over de hele lengte. Dat mag —
-          §6.2.1(4) eist wel overal minimumwapening, maar een LEGE lijst betekent hier "niets
-          bijzonders", niet "geen beugels".
+          {t("concrete.zones.noStirrupZonesHint")}
         </p>
       ) : (
         <table className="dek-zonetabel">
           <thead>
             <tr>
-              <th>van [mm]</th>
-              <th>tot [mm]</th>
+              <th>{t("concrete.zones.colFrom")}</th>
+              <th>{t("concrete.zones.colTo")}</th>
               <th>s [mm]</th>
-              <th>benen</th>
+              <th>{t("concrete.zones.colLegs")}</th>
               <th>Ø</th>
-              <th aria-label="bewerkingen" />
+              <th aria-label={t("concrete.zones.colActions")} />
             </tr>
           </thead>
           <tbody>
@@ -342,7 +351,7 @@ export default function ZoneEditor({
                     step={10}
                     min={1}
                     value={afgerond(k.spacing_mm)}
-                    title="Hart-op-hartafstand langs de lengteas — symbool s in (9.4), begrensd door s_l,max in §9.2.2(6)."
+                    title={t("concrete.zones.spacingTitle")}
                     onChange={(e) => zetBeugel(i, { spacing_mm: Number(e.target.value) })}
                   />
                 </td>
@@ -353,7 +362,7 @@ export default function ZoneEditor({
                     min={1}
                     step={1}
                     value={k.legs}
-                    title="Aantal beugelbenen dat één verticale doorsnede kruist — §9.2.2(5)."
+                    title={t("concrete.zones.legsTitle")}
                     onChange={(e) => zetBeugel(i, { legs: Math.max(1, Math.round(Number(e.target.value))) })}
                   />
                 </td>
@@ -374,17 +383,17 @@ export default function ZoneEditor({
                     className="dek-knop"
                     disabled={!kanSplitsen(k)}
                     onClick={() => splits("beugel", i)}
-                    title={`Knip deze beugelzone in tweeën${cursorTekst}.`}
+                    title={splitsBeugelTitel}
                   >
-                    splits
+                    {t("concrete.zones.split")}
                   </button>
                   <button
                     type="button"
                     className="dek-knop"
                     onClick={() => samen("beugel", i)}
-                    title="Trek deze beugelzone over haar rechterbuur heen."
+                    title={t("concrete.zones.mergeStirrupTitle")}
                   >
-                    samenvoegen
+                    {t("concrete.zones.merge")}
                   </button>
                 </td>
               </tr>

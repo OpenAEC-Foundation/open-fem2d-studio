@@ -250,8 +250,8 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     const eigen = verzoeken.find((v) => v.beam.beam_id === beam.id);
     if (eigen) return { verzoek: eigen, reden: null as string | null };
     const over = skipped.find((s) => s.beamId === beam.id);
-    return { verzoek: null, reden: over?.reason ?? "deze staaf is niet als betonstaaf herkend" };
-  }, [lastRunData, klassen, beff, beam.id]);
+    return { verzoek: null, reden: over?.reason ?? t("concrete.memberWindow.notRecognised") };
+  }, [lastRunData, klassen, beff, beam.id, t]);
 
   // ── De dekkingslijn opvragen ─────────────────────────────────────────────
   useEffect(() => {
@@ -358,7 +358,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     };
     if (laanOnder) return { ...laanOnder, tweede };
     return {
-      titel: "Scheurwijdte",
+      titel: t("concrete.memberWindow.crackWidth"),
       eenheid: "mm",
       benodigdLabel: "w_k",
       aanwezigLabel: "w_max",
@@ -366,7 +366,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       richting: "omlaag",
       kleur: kleurVan("scheurwijdte"),
     };
-  }, [laanOnder, lagen.scheurwijdte, scheur]);
+  }, [laanOnder, lagen.scheurwijdte, scheur, t]);
 
   const lanenOnder = [laanOnderMetScheur, laanV].filter((l): l is Laan => l !== null);
   const lanenBoven = [laanBoven].filter((l): l is Laan => l !== null);
@@ -378,20 +378,20 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   const ucVakken = useMemo(() => {
     if (!lagen.uc || !antwoord) return [];
     const bronnen = [
-      { naam: "momentendekking onder", punten: momentLaan(antwoord.onder, "").punten },
-      { naam: "momentendekking boven", punten: momentLaan(antwoord.boven, "").punten },
+      { naam: t("concrete.memberWindow.sourceMomentBottom"), punten: momentLaan(antwoord.onder, "").punten },
+      { naam: t("concrete.memberWindow.sourceMomentTop"), punten: momentLaan(antwoord.boven, "").punten },
       {
-        naam: "dwarskrachtdekking",
+        naam: t("concrete.memberWindow.sourceShear"),
         punten: dwarskrachtLaan(antwoord.dwarskracht.punten, null, "").punten,
       },
       ...(scheur && scheur.punten.length > 0
-        ? [{ naam: "scheurwijdte", punten: scheur.punten }]
+        ? [{ naam: t("concrete.memberWindow.sourceCrack"), punten: scheur.punten }]
         : []),
     ];
     // Samengevoegd per kleurklasse: zie `voegUcVakkenSamen` voor waarom een
     // balk van tweehonderd losse vakjes als streepjescode leest.
     return voegUcVakkenSamen(ucVerloop(bronnen));
-  }, [lagen.uc, antwoord, scheur]);
+  }, [lagen.uc, antwoord, scheur, t]);
 
   // ── De aanwijzer ─────────────────────────────────────────────────────────
   //
@@ -530,21 +530,21 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     const rijen: { naam: string; punt: LijnPunt | null; eenheid: string; benodigd: string; aanwezig: string }[] = [];
     if (antwoord) {
       rijen.push({
-        naam: "Momentendekking onder",
+        naam: t("concrete.memberWindow.readMomentBottom"),
         punt: puntBijX(momentLaan(antwoord.onder, "").punten, cursorXMm),
         eenheid: "kN",
         benodigd: "F_s",
         aanwezig: "F_Rs",
       });
       rijen.push({
-        naam: "Momentendekking boven",
+        naam: t("concrete.memberWindow.readMomentTop"),
         punt: puntBijX(momentLaan(antwoord.boven, "").punten, cursorXMm),
         eenheid: "kN",
         benodigd: "F_s",
         aanwezig: "F_Rs",
       });
       rijen.push({
-        naam: "Dwarskracht",
+        naam: t("concrete.memberWindow.readShear"),
         punt: puntBijX(dwarskrachtLaan(antwoord.dwarskracht.punten, null, "").punten, cursorXMm),
         eenheid: "kN",
         benodigd: "|V_Ed|",
@@ -553,7 +553,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     }
     if (scheur && scheur.punten.length > 0) {
       rijen.push({
-        naam: "Scheurwijdte",
+        naam: t("concrete.memberWindow.crackWidth"),
         punt: puntBijX(scheur.punten, cursorXMm),
         eenheid: "mm",
         benodigd: "w_k",
@@ -561,7 +561,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       });
     }
     return rijen;
-  }, [antwoord, scheur, cursorXMm]);
+  }, [antwoord, scheur, cursorXMm, t]);
 
   const gemisteGrenzen = useMemo(() => {
     if (!verzoek?.verzoek) return [];
@@ -606,10 +606,16 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       {/* ── Werkbalk: de vier lagen, elk los aan en uit ─────────────────── */}
       <div className="dek-werkbalk">
         <span className="dek-staafnaam">
-          {`Staaf ${beam.id} · ${beam.profile ?? "—"} · ${beam.material ?? "—"} · L = ${nl(lengteMm / 1000, 2)} m · ` +
+          {t("concrete.memberWindow.header", {
+            id: beam.id,
+            profiel: beam.profile ?? "—",
+            materiaal: beam.material ?? "—",
+            lengte: nl(lengteMm / 1000, 2),
+          }) +
+            " · " +
             (referentie.staafstand === "Staand"
-              ? "staand, getoetst van voet naar kop: in de tekening links = voet; onder = rechterzijde, boven = linkerzijde"
-              : "getoetst van links naar rechts")}
+              ? t("concrete.memberWindow.orientationStanding")
+              : t("concrete.memberWindow.orientationLeftToRight"))}
         </span>
         <div className="dek-lagen">
           {LAGEN.map((laag) => {
@@ -637,19 +643,19 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
               type="button"
               className="dek-knop"
               onClick={() => setCursorXMm(maatgevendeX)}
-              title="Zet de aanwijzer op de plaats die de rekenkern als maatgevend heeft aangewezen — de hoogste unity check buiten de eindzones."
+              title={t("concrete.memberWindow.toGoverningTitle")}
             >
-              Naar de maatgevende snede
+              {t("concrete.memberWindow.toGoverning")}
             </button>
           )}
-          {(bezig || scheurBezig) && <span className="dek-bezig">rekenkern…</span>}
+          {(bezig || scheurBezig) && <span className="dek-bezig">{t("concrete.memberWindow.engineBusy")}</span>}
           {onSluiten && (
             <button
               type="button"
               className="dek-knop dek-sluit"
               onClick={onSluiten}
-              title="Venster sluiten"
-              aria-label="Venster sluiten"
+              title={t("concrete.memberWindow.closeWindow")}
+              aria-label={t("concrete.memberWindow.closeWindow")}
             >
               ✕
             </button>
@@ -677,7 +683,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                 breedtePx={breedtePx}
               />
             ) : (
-              <p className="beton-hint">Deze staaf heeft geen lengte; er valt niets te tekenen.</p>
+              <p className="beton-hint">{t("concrete.memberWindow.noLength")}</p>
             )}
           </div>
 
@@ -693,7 +699,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
 
           {klassenFout && (
             <div className="beton-fout">
-              Betonklassen niet geladen uit de rekenkern (de statische lijst wordt gebruikt): {klassenFout}
+              {t("concrete.memberWindow.classesNotLoaded", { fout: klassenFout })}
             </div>
           )}
           <Meldingen
@@ -723,8 +729,8 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
         <aside className="dek-rechts">
           <div className="dek-snedekop">
             {cursorXMm === null
-              ? "Klik in de aanzicht om een snede aan te wijzen"
-              : `Doorsnede op x = ${maat(Math.round(cursorXMm))} mm`}
+              ? t("concrete.memberWindow.clickToPick")
+              : t("concrete.memberWindow.sectionAt", { x: maat(Math.round(cursorXMm)) })}
           </div>
           {tekenKorf ? (
             <>
@@ -790,8 +796,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
             </>
           ) : (
             <p className="beton-hint">
-              De doorsnede is niet uit de profielnaam &ldquo;{beam.profile ?? "—"}&rdquo; te lezen;
-              vul haar in bij de staafeigenschappen.
+              {t("concrete.memberWindow.sectionUnreadable", { profiel: beam.profile ?? "—" })}
             </p>
           )}
 
@@ -822,8 +827,8 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                           </span>
                         )}
                         {r.punt.eindzone && (
-                          <span className="dek-eindzone-tag" title="Binnen l_bd van een staafeinde geldt §9.2.1.4/§9.2.1.5 en niet de vrije dekkingslijn; de kern sluit dit stuk uit bij het aanwijzen van de maatgevende plaats.">
-                            eindzone
+                          <span className="dek-eindzone-tag" title={t("concrete.memberWindow.endZoneTitle")}>
+                            {t("concrete.memberWindow.endZone")}
                           </span>
                         )}
                         {r.punt.reden && <span className="dek-reden">{r.punt.reden}</span>}
@@ -840,7 +845,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                       door" was daarom in twee van de drie gevallen onjuist. De
                       reden staat één keer, bij de meldingen onder de tekening. */}
                   <td className="beton-hint">
-                    Nog geen dekkingslijn — de reden staat bij de meldingen onder de tekening.
+                    {t("concrete.memberWindow.noCoverLineYet")}
                   </td>
                 </tr>
               )}
@@ -895,51 +900,52 @@ function Meldingen({
   toetsFout: string | null;
   lagen: LaagVlaggen;
 }) {
+  const { t } = useTranslation("check");
   return (
     <div className="dek-meldingen">
       {geenRun && !toetsFout && (
         <p className="beton-hint">
-          Er is nog niet gerekend. De dekkingslijn komt uit de rekenkern en heeft de
-          krachtsverdeling van de UGT-combinaties nodig; druk op Berekenen.
+          {t("concrete.memberWindow.notCalculated")}
         </p>
       )}
       {geenRun && toetsFout && (
         <p className="dek-let-op">
-          {"De laatste rekengang heeft de rekenkern niet bereikt, dus er is geen dekkingslijn. " +
-            "Nog eens op Berekenen drukken verandert daar niets aan. De kern meldde: "}
+          {t("concrete.memberWindow.engineUnreachable") + " "}
           <span className="dek-kernreden">{toetsFout}</span>
           {!isTauriApp() &&
-            " Deze weergave draait in een browser: de dekkingslijn komt uit de Rust-rekenkern, " +
-              "die hier alleen bereikbaar is via de dev-brug van de ontwikkelserver. Zonder die " +
-              "brug werkt zij uitsluitend in de desktop-app."}
+            " " + t("concrete.memberWindow.browserBridge")}
         </p>
       )}
       {looptAchter && (
         <p className="dek-let-op">
-          De zone-indeling is zojuist gewijzigd. De tekening toont nog de vorige berekening —
-          de zonegrenzen zijn rekenknopen, dus de lijn wacht op de nieuwe krachtsverdeling.
+          {t("concrete.memberWindow.zonesChanged")}
         </p>
       )}
       {gemisteGrenzen.length > 0 && (
         <p className="dek-let-op">
-          {`Op ${gemisteGrenzen.map((x) => `${maat(x)} mm`).join(", ")} ligt een zonegrens zonder rekenknoop. ` +
-            "Daar staat de benodigde kracht van een station ernaast naast de weerstand van hier; de sprong is op die plaats niet betrouwbaar."}
+          {t("concrete.memberWindow.missedBoundary", {
+            plaatsen: gemisteGrenzen.map((x) => `${maat(x)} mm`).join(", "),
+          })}
         </p>
       )}
       {fout && <div className="beton-fout">{fout}</div>}
       {scheurFout && <div className="beton-fout">{scheurFout}</div>}
       {lagen.scheurwijdte && scheurBezig && (
         <p className="beton-hint">
-          De scheurwijdte wordt per snede bij de rekenkern opgevraagd (§7.3.4 is geen lijn maar
-          een doorsnedetoets); dat duurt even.
+          {t("concrete.memberWindow.crackBusy")}
         </p>
       )}
       {scheur && scheur.toelichting.length > 0 && (
         <details className="beton-notities">
-          <summary>{`Scheurwijdte — ${scheur.punten.length} van ${scheur.aantalSneden} sneden leverden een w_k`}</summary>
+          <summary>
+            {t("concrete.memberWindow.crackSummary", {
+              aantal: scheur.punten.length,
+              totaal: scheur.aantalSneden,
+            })}
+          </summary>
           <ul>
-            {scheur.toelichting.map((t, i) => (
-              <li key={i}>{t}</li>
+            {scheur.toelichting.map((regel, i) => (
+              <li key={i}>{regel}</li>
             ))}
           </ul>
         </details>
@@ -947,27 +953,45 @@ function Meldingen({
       {antwoord && (
         <details className="beton-notities">
           <summary>
-            {`Kanttekeningen van de rekenkern (${antwoord.notes.length}) — a_l = ${maat(antwoord.a_l_mm)} mm volgens ${antwoord.a_l_artikel}`}
+            {t("concrete.memberWindow.notesSummary", {
+              aantal: antwoord.notes.length,
+              al: maat(antwoord.a_l_mm),
+              artikel: antwoord.a_l_artikel,
+            })}
           </summary>
           <ul>
             {antwoord.notes.map((n, i) => (
               <li key={i}>{n}</li>
             ))}
             {antwoord.onder.toelichting.map((n, i) => (
-              <li key={`o${i}`}>{`Onderwapening: ${n}`}</li>
+              <li key={`o${i}`}>{t("concrete.memberWindow.noteBottom", { tekst: n })}</li>
             ))}
             {antwoord.boven.toelichting.map((n, i) => (
-              <li key={`b${i}`}>{`Bovenwapening: ${n}`}</li>
+              <li key={`b${i}`}>{t("concrete.memberWindow.noteTop", { tekst: n })}</li>
             ))}
             {antwoord.dwarskracht.toelichting.map((n, i) => (
-              <li key={`v${i}`}>{`Dwarskracht: ${n}`}</li>
+              <li key={`v${i}`}>{t("concrete.memberWindow.noteShear", { tekst: n })}</li>
             ))}
             {antwoord.steunpunten.map((s, i) => (
               <li key={`s${i}`}>
-                {`Steunpunt ${s.uiteinde === "Begin" ? "begin" : "eind"} (x = ${maat(s.x_mm)} mm): ` +
-                  `A_s vereist ${maat(s.a_s_vereist_mm2)} mm², aanwezig ${maat(s.a_s_aanwezig_mm2)} mm², ` +
-                  `F_Ed = ${nl(s.f_ed_kn, 1)} kN, l_bd = ${s.l_bd_mm !== undefined && s.l_bd_mm !== null ? `${maat(s.l_bd_mm)} mm` : "niet bepaald"} — ` +
-                  `${s.voldoet_oppervlakte ? "de oppervlakte-eis is gehaald" : "de oppervlakte-eis is NIET gehaald"}.`}
+                {t(
+                  s.uiteinde === "Begin"
+                    ? "concrete.memberWindow.supportNoteBegin"
+                    : "concrete.memberWindow.supportNoteEnd",
+                  {
+                    x: maat(s.x_mm),
+                    vereist: maat(s.a_s_vereist_mm2),
+                    aanwezig: maat(s.a_s_aanwezig_mm2),
+                    fed: nl(s.f_ed_kn, 1),
+                    lbd:
+                      s.l_bd_mm !== undefined && s.l_bd_mm !== null
+                        ? `${maat(s.l_bd_mm)} mm`
+                        : t("concrete.memberWindow.notDetermined"),
+                    eis: s.voldoet_oppervlakte
+                      ? t("concrete.memberWindow.areaMet")
+                      : t("concrete.memberWindow.areaNotMet"),
+                  },
+                )}
               </li>
             ))}
           </ul>

@@ -26,6 +26,7 @@
  * thema) hetzelfde en leesbaar blijft — precies zoals de CLT-opbouwtekening.
  */
 import { useId, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { SpanningLaag } from "../../lib/types/spanning/SpanningLaag";
 import type { SpanningVezel } from "../../lib/types/spanning/SpanningVezel";
 import { shapePath, shapeVanProfiel, type SectionShape } from "../shared/profielVorm";
@@ -231,6 +232,7 @@ export default function SpanningDoorsnedeTekening({
   titel,
   className,
 }: SpanningTekeningProps) {
+  const { t } = useTranslation("check");
   const rawId = useId();
   const uid = `sp${rawId.replace(/[^A-Za-z0-9]/g, "")}`;
   const shape = useMemo(() => contourVan(naam), [naam]);
@@ -271,7 +273,7 @@ export default function SpanningDoorsnedeTekening({
       role="img"
       aria-label={
         titel ??
-        `Doorsnede ${naam} met spanningsverloop: normaalspanning, schuifspanning en vergelijkspanning over de hoogte`
+        t("stressDrawing.ariaLabel", { naam })
       }
     >
       <defs>
@@ -354,12 +356,12 @@ export default function SpanningDoorsnedeTekening({
         strokeDasharray="2 1.6"
       />
       <text x={XD + WD} y={yGov - 1.8} fill={LIMIET} fontSize="6.3" textAnchor="end">
-        maatgevend z = {maat(zMaatgevendMm)} mm
+        {t("stressDrawing.governingZ", { z: maat(zMaatgevendMm) })}
       </text>
 
       <DimV x={XA - 22} y1={Y0} y2={Y0 + DRAW_H} label={`h = ${maat(hoogteMm)}`} />
       <text x={xMid} y={Y0 + DRAW_H + 13} fill={TEXT_COLOR} fontSize="7" textAnchor="middle">
-        doorsnede{opSchaal ? "" : " (breedte niet op schaal)"}
+        {opSchaal ? t("stressDrawing.crossSection") : t("stressDrawing.crossSectionNotToScale")}
       </text>
 
       {/* ---- Panelen 2–4: de spanningen ---- */}

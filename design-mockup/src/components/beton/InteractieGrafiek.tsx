@@ -20,6 +20,7 @@
  * het ruitje daarop is M_Ed.
  */
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { InteractionPoint } from "../../lib/types/concrete/InteractionPoint";
 import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import { nl } from "./wapeningskorf";
@@ -87,6 +88,7 @@ export default function InteractieGrafiek({
   kleuren = THEMA_KLEUREN,
   className,
 }: Props) {
+  const { t } = useTranslation("check");
   const leeg = positief.length < 2 && negatief.length < 2;
 
   const { asM, asN, omtrek } = useMemo(() => {
@@ -153,11 +155,14 @@ export default function InteractieGrafiek({
       role="img"
       aria-label={
         leeg
-          ? "N-M-interactiediagram (leeg)"
-          : `N-M-interactiediagram; ${omtrek.length} punten op de bezwijkomhullende` +
-            (heeftPunt
-              ? `, rekenpunt N = ${nl(nEdKn, 1)} kN en M = ${nl(mEdKnm, 1)} kNm`
-              : "")
+          ? t("concrete.charts.interaction.ariaLabelEmpty")
+          : heeftPunt
+            ? t("concrete.charts.interaction.ariaLabelWithPoint", {
+                aantal: omtrek.length,
+                n: nl(nEdKn, 1),
+                m: nl(mEdKnm, 1),
+              })
+            : t("concrete.charts.interaction.ariaLabel", { aantal: omtrek.length })
       }
     >
       {/* Raster */}
@@ -190,7 +195,7 @@ export default function InteractieGrafiek({
         ))}
       </g>
       <text x={MARGE.links + plotW / 2} y={HOOGTE - 6} fill={kleuren.tekstMaat} fontSize="8.5" textAnchor="middle">
-        moment M [kNm] — positief: trek onder
+        {t("concrete.charts.interaction.momentAxis")}
       </text>
       <text
         x={12}
@@ -200,12 +205,12 @@ export default function InteractieGrafiek({
         textAnchor="middle"
         transform={`rotate(-90 12 ${MARGE.boven + plotH / 2})`}
       >
-        normaalkracht N [kN] — trek +, druk −
+        {t("concrete.charts.interaction.axialAxis")}
       </text>
 
       {leeg && (
         <text x={MARGE.links + plotW / 2} y={MARGE.boven + plotH / 2} fill={kleuren.tekstMaat} fontSize="9" textAnchor="middle">
-          Geen interactiediagram berekend
+          {t("concrete.charts.interaction.empty")}
         </text>
       )}
 
