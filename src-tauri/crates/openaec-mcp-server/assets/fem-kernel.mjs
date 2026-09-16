@@ -6388,8 +6388,17 @@ function solve(input) {
     ""
   );
 }
-function solveAllCases(input) {
-  const perCase = /* @__PURE__ */ new Map();
+var SCHEEFSTAND_ID_OFFSET = 1e6;
+var SCHEEFSTAND_KEY = "__femScheefstandRichtingen";
+function getScheefstandRichtingen(perCase) {
+  return perCase[SCHEEFSTAND_KEY];
+}
+function gevalResultaten(perCase) {
+  const sr = getScheefstandRichtingen(perCase);
+  if (!sr) return perCase;
+  return new Map([...perCase].filter(([id]) => id < sr.offset));
+}
+function losGevallenOp(input, perCase, idOffset) {
   for (const c of input.cases) {
     const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(input, (caseId) => caseId === c.id ? 1 : 0);
     if (!meshHeeftLasten(mesh)) continue;
@@ -6406,10 +6415,23 @@ function solveAllCases(input) {
       throw metKnoopnummer(e, nodeIdMap, plateInfo);
     }
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
-    perCase.set(c.id, eisEindigeUitkomst(
+    perCase.set(c.id + idOffset, eisEindigeUitkomst(
       convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer),
       ` in belastinggeval "${c.name}"`
     ));
+  }
+}
+function solveAllCases(input) {
+  const perCase = /* @__PURE__ */ new Map();
+  losGevallenOp(input, perCase, 0);
+  if (input.scheefstand) {
+    const tegen2 = {
+      ...input,
+      scheefstand: { ...input.scheefstand, richting: -input.scheefstand.richting }
+    };
+    losGevallenOp(tegen2, perCase, SCHEEFSTAND_ID_OFFSET);
+    const sr = { primair: input.scheefstand.richting, offset: SCHEEFSTAND_ID_OFFSET };
+    perCase[SCHEEFSTAND_KEY] = sr;
   }
   return { perCase };
 }
@@ -6445,8 +6467,9 @@ function getSecondOrderInput(perCase) {
   return getSecondOrderState(perCase)?.input;
 }
 function solveCombinationSecondOrder(input, combo) {
+  const invoer = input.scheefstand && combo.scheefstandRichting !== void 0 && combo.scheefstandRichting !== input.scheefstand.richting ? { ...input, scheefstand: { ...input.scheefstand, richting: combo.scheefstandRichting } } : input;
   const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(
-    input,
+    invoer,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0
   );
   if (!meshHeeftLasten(mesh)) return null;
@@ -6471,7 +6494,7 @@ function solveCombinationSecondOrder(input, combo) {
         engineResult,
         nodeIdMap,
         beamIdMap,
-        input.supports,
+        invoer.supports,
         heeftPlaten ? plateInfo : void 0,
         nodeIndex,
         beamSegments,
@@ -6859,6 +6882,33 @@ function begeleidendeOpstellingen(gevallen, leidendeSoort, factor) {
 }
 
 // src/components/fem/solver/combinations.ts
+var SCHEEFSTAND_COMBO_OFFSET = 1e6;
+function scheefstandRichtingLabel(richting2) {
+  return richting2 === 1 ? "+x" : "\u2212x";
+}
+function metScheefstandRichtingen(combinations, aan, primair = 1) {
+  if (!aan) return combinations;
+  const uit = [];
+  for (const c of combinations) {
+    if (c.scheefstandRichting !== void 0) {
+      uit.push(c);
+      continue;
+    }
+    const tegen2 = -primair;
+    uit.push({
+      ...c,
+      scheefstandRichting: primair,
+      name: `${c.name} (scheefstand ${scheefstandRichtingLabel(primair)})`
+    });
+    uit.push({
+      ...c,
+      id: c.id + SCHEEFSTAND_COMBO_OFFSET,
+      scheefstandRichting: tegen2,
+      name: `${c.name} (scheefstand ${scheefstandRichtingLabel(tegen2)})`
+    });
+  }
+  return uit;
+}
 var SOORTEN_BUITEN_STAAL = ["6.15b", "6.16b"];
 function defaultCombinations(loadCases = STANDAARD_BELASTINGGEVALLEN, gevolgklasse = STANDAARD_GEVOLGKLASSE) {
   return genereerStandaardCombinaties(loadCases, gevolgklasse).map((c, i) => ({
@@ -6896,11 +6946,14 @@ function combineResults(combo, perCase) {
       return res;
     }
   }
+  const sr = getScheefstandRichtingen(perCase);
+  const tegen2 = sr !== void 0 && combo.scheefstandRichting !== void 0 && combo.scheefstandRichting !== sr.primair;
+  const idVan = (caseId) => tegen2 ? caseId + sr.offset : caseId;
   const nodeIds = /* @__PURE__ */ new Set();
   const beamIds = /* @__PURE__ */ new Set();
   const reactionIds = /* @__PURE__ */ new Set();
   for (const [caseId] of combo.factors) {
-    const r = perCase.get(caseId);
+    const r = perCase.get(idVan(caseId));
     if (!r) continue;
     r.displacements.forEach((_, id) => nodeIds.add(id));
     r.elements.forEach((_, id) => beamIds.add(id));
@@ -6911,7 +6964,7 @@ function combineResults(combo, perCase) {
   for (const nid of nodeIds) {
     let ux = 0, uz = 0, ry = 0;
     for (const [caseId, factor] of combo.factors) {
-      const r = perCase.get(caseId);
+      const r = perCase.get(idVan(caseId));
       if (!r) continue;
       const d = r.displacements.get(nid);
       if (!d) continue;
@@ -6927,7 +6980,7 @@ function combineResults(combo, perCase) {
   for (const rid of reactionIds) {
     let fx = 0, fz = 0, my = 0;
     for (const [caseId, factor] of combo.factors) {
-      const r = perCase.get(caseId);
+      const r = perCase.get(idVan(caseId));
       if (!r) continue;
       const rxn = r.reactions.get(rid);
       if (!rxn) continue;
@@ -6949,7 +7002,7 @@ function combineResults(combo, perCase) {
     let axialDisp = [];
     let rotation = [];
     for (const [caseId, factor] of combo.factors) {
-      const r = perCase.get(caseId);
+      const r = perCase.get(idVan(caseId));
       if (!r) continue;
       const ef = r.elements.get(bid);
       if (!ef) continue;
@@ -6994,7 +7047,7 @@ function combineResults(combo, perCase) {
   }
   const plateIds = /* @__PURE__ */ new Set();
   for (const [caseId] of combo.factors) {
-    perCase.get(caseId)?.plateElements?.forEach((p) => plateIds.add(p.plateId));
+    perCase.get(idVan(caseId))?.plateElements?.forEach((p) => plateIds.add(p.plateId));
   }
   let plateElements;
   if (plateIds.size > 0) {
@@ -7002,7 +7055,7 @@ function combineResults(combo, perCase) {
     for (const pid of plateIds) {
       let referentie;
       for (const [caseId] of combo.factors) {
-        referentie = perCase.get(caseId)?.plateElements?.find((p) => p.plateId === pid);
+        referentie = perCase.get(idVan(caseId))?.plateElements?.find((p) => p.plateId === pid);
         if (referentie) break;
       }
       if (!referentie) continue;
@@ -7022,7 +7075,7 @@ function combineResults(combo, perCase) {
         nxy: 0
       }));
       for (const [caseId, factor] of combo.factors) {
-        const bron = perCase.get(caseId)?.plateElements?.find((p) => p.plateId === pid);
+        const bron = perCase.get(idVan(caseId))?.plateElements?.find((p) => p.plateId === pid);
         if (!bron) continue;
         for (let i = 0; i < n && i < bron.elements.length; i++) {
           const s = bron.elements[i];
@@ -7111,6 +7164,10 @@ function staafExtremen(ef) {
   return { N_min, N_max, V_min, V_max, M_min, M_max, mAbs, mPos_mm };
 }
 function computeEnvelope(combinations, perCase) {
+  const sr = getScheefstandRichtingen(perCase);
+  if (sr && combinations.every((c) => c.scheefstandRichting === void 0)) {
+    combinations = metScheefstandRichtingen(combinations, true, sr.primair);
+  }
   const elements = /* @__PURE__ */ new Map();
   const reactions = /* @__PURE__ */ new Map();
   let maxDisplacement = 0;
@@ -7545,6 +7602,479 @@ var SPIEGELREGELS_TOETSCONFIG = {
   betonZones: "zonesMm",
   spanningSigmaZ: "gelijk"
 };
+
+// src/lib/doorgaandeLijn.ts
+var nl2 = (v, d = 3) => v.toFixed(d).replace(".", ",");
+function richting(beam, nodes) {
+  const a = nodes.find((n) => n.id === beam.from);
+  const b = nodes.find((n) => n.id === beam.to);
+  if (!a || !b) return null;
+  const l = Math.hypot(b.x - a.x, b.z - a.z);
+  if (l <= 0) return null;
+  return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
+}
+function vindDoorgaandeLijnen(beams, nodes, alleBeams, supports) {
+  if (!supports) return [];
+  const perId = new Map(alleBeams.map((b) => [b.id, b]));
+  const teToetsen = new Set(beams.map((b) => b.id));
+  const gezien = /* @__PURE__ */ new Set();
+  const lijnen = [];
+  for (const start of beams) {
+    if (gezien.has(start.id)) continue;
+    const leden = [];
+    const wachtrij = [start];
+    gezien.add(start.id);
+    while (wachtrij.length > 0) {
+      const b = wachtrij.pop();
+      leden.push(b);
+      for (const id of collinearContinuations(b, nodes, alleBeams, supports)) {
+        if (gezien.has(id)) continue;
+        const other = perId.get(id);
+        if (!other) continue;
+        gezien.add(id);
+        wachtrij.push(other);
+      }
+    }
+    if (leden.length < 2) continue;
+    const dir = richting(start, nodes);
+    if (!dir) continue;
+    const proj = (id) => {
+      const n = nodes.find((k) => k.id === id);
+      return n.x * dir.x + n.z * dir.z;
+    };
+    const geordend = leden.map((beam) => {
+      const pa = proj(beam.from);
+      const pb = proj(beam.to);
+      return { beam, gespiegeld: pb < pa, pMin: Math.min(pa, pb) };
+    }).sort((a, b) => a.pMin - b.pMin);
+    const delen = [];
+    const tussenknopen = [];
+    let x = 0;
+    for (let i = 0; i < geordend.length; i++) {
+      const { beam, gespiegeld } = geordend[i];
+      const lengteMm = beamLengthMm(beam, nodes);
+      delen.push({ beam, gespiegeld, lengteMm, xStartMm: x });
+      x += lengteMm;
+      if (i > 0) tussenknopen.push(gespiegeld ? beam.to : beam.from);
+    }
+    const eerste = delen[0];
+    const laatste = delen[delen.length - 1];
+    const kandidaten = leden.filter((b) => teToetsen.has(b.id)).map((b) => b.id);
+    lijnen.push({
+      id: Math.min(...kandidaten.length > 0 ? kandidaten : leden.map((b) => b.id)),
+      delen,
+      tussenknopen,
+      from: eerste.gespiegeld ? eerste.beam.to : eerste.beam.from,
+      to: laatste.gespiegeld ? laatste.beam.from : laatste.beam.to,
+      lengteMm: x
+    });
+  }
+  return lijnen;
+}
+function eindVelden(obj, van, naar) {
+  if (!obj) return void 0;
+  const uit = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(obj)) {
+    if (!k.startsWith(van) || v === void 0) continue;
+    uit[`${naar}${k.slice(van.length)}`] = v;
+    n++;
+  }
+  return n > 0 ? uit : void 0;
+}
+function fractiesNaarLijn(fracties, deel, lengteMm) {
+  if (!Array.isArray(fracties) || lengteMm <= 0) return [];
+  const eigen = fracties.filter((f) => Number.isFinite(f) && f >= 0 && f <= 1);
+  const inLijnrichting = deel.gespiegeld ? spiegelFracties(eigen) : eigen;
+  return inLijnrichting.map((f) => Math.round((deel.xStartMm + f * deel.lengteMm) / lengteMm * 1e12) / 1e12);
+}
+function voegConfigSamen(lijn) {
+  const configs = lijn.delen.map((d) => d.beam.checkConfig ?? {});
+  const notities = [];
+  const uit = {};
+  const boven = /* @__PURE__ */ new Set();
+  const onder = /* @__PURE__ */ new Set();
+  for (const d of lijn.delen) {
+    for (const f of fractiesNaarLijn(d.beam.checkConfig?.lateralRestraints, d, lijn.lengteMm)) boven.add(f);
+    for (const f of fractiesNaarLijn(d.beam.checkConfig?.lateralRestraintsBottom, d, lijn.lengteMm)) onder.add(f);
+  }
+  if (boven.size > 0) uit.lateralRestraints = [...boven].sort((a, b) => a - b);
+  if (onder.size > 0) uit.lateralRestraintsBottom = [...onder].sort((a, b) => a - b);
+  const grootste = (sleutel, naam) => {
+    const waarden = configs.map((c) => c[sleutel]).filter((v) => Number.isFinite(v) && v > 0);
+    if (waarden.length === 0) return;
+    const max = Math.max(...waarden);
+    uit[sleutel] = max;
+    if (new Set(waarden).size > 1) {
+      notities.push(
+        `De delen geven verschillende waarden voor ${naam} (${waarden.map((v) => nl2(v)).join(", ")} m); aangehouden is de grootste, ${nl2(max)} m \u2014 de ongunstigste.`
+      );
+    }
+  };
+  grootste("bucklingLengthY_m", "de kniklengte om de y-as");
+  grootste("bucklingLengthZ_m", "de kniklengte om de z-as");
+  grootste("ltbSupportSpacing_m", "de kipsteunafstand");
+  const eerste = (sleutel, naam) => {
+    const waarden = configs.map((c) => c[sleutel]).filter((v) => v !== void 0 && v !== null);
+    if (waarden.length === 0) return;
+    uit[sleutel] = waarden[0];
+    if (new Set(waarden.map((v) => JSON.stringify(v))).size > 1) {
+      notities.push(
+        `De delen verschillen in ${naam}; aangehouden is de waarde van het eerste deel dat haar heeft gezet (${JSON.stringify(waarden[0])}).`
+      );
+    }
+  };
+  eerste("deflectionClass", "de doorbuigingsklasse");
+  eerste("deflectionLimitNumerator", "de doorbuigingsnoemer");
+  eerste("deflectionAddLimitNumerator", "de noemer van de bijkomende doorbuiging");
+  eerste("serviceClass", "de klimaatklasse");
+  eerste("loadDuration", "de belastingduurklasse");
+  eerste("spanningSigmaZ", "de dwarsspanning");
+  const zegen = configs.map((c) => c.preCamber_mm).filter((v) => Number.isFinite(v) && v !== 0);
+  if (zegen.length > 0) {
+    if (zegen.length === configs.length && new Set(zegen).size === 1) {
+      uit.preCamber_mm = zegen[0];
+    } else {
+      notities.push(
+        `Niet alle delen geven dezelfde zeeg (${zegen.map((v) => nl2(v, 1)).join(", ")} mm); de zeeg is voor de lijn op 0 gezet. Geef \xE9\xE9n zeeg op bij het deel waaronder de lijn wordt getoetst.`
+      );
+    }
+  }
+  return { config: Object.keys(uit).length > 0 ? uit : void 0, notities };
+}
+function voegElementKrachtenSamen(delen) {
+  const efs = delen.map((d) => d.gespiegeld ? spiegelElementKrachten(d.ef) : d.ef);
+  const stations_mm = [];
+  const normalForce = [];
+  const shearForce = [];
+  const bendingMoment = [];
+  const deflection = [];
+  const axialDisp = [];
+  const rotation = [];
+  const metRotatie = efs.every((ef) => Array.isArray(ef.rotation) && ef.rotation.length === ef.stations_mm.length);
+  let x0 = 0;
+  efs.forEach((ef, i) => {
+    const van = i > 0 ? 1 : 0;
+    for (let k = van; k < ef.stations_mm.length; k++) {
+      stations_mm.push(x0 + ef.stations_mm[k]);
+      normalForce.push(ef.normalForce[k] ?? 0);
+      shearForce.push(ef.shearForce[k] ?? 0);
+      bendingMoment.push(ef.bendingMoment[k] ?? 0);
+      deflection.push(ef.deflection[k] ?? 0);
+      axialDisp.push(ef.axialDisp[k] ?? 0);
+      if (metRotatie) rotation.push(ef.rotation[k]);
+    }
+    x0 += ef.L_mm;
+  });
+  const laatste = efs[efs.length - 1];
+  const uit = {
+    N: efs[0].N,
+    V: efs[0].V,
+    M_start: efs[0].M_start,
+    M_end: laatste.M_end,
+    L_mm: x0,
+    stations_mm,
+    normalForce,
+    shearForce,
+    bendingMoment,
+    deflection,
+    axialDisp
+  };
+  if (metRotatie) uit.rotation = rotation;
+  return uit;
+}
+function virtueleStaaf(lijn) {
+  const eerste = lijn.delen[0];
+  const laatste = lijn.delen[lijn.delen.length - 1];
+  const { config, notities } = voegConfigSamen(lijn);
+  const beam = {
+    ...eerste.beam,
+    id: lijn.id,
+    from: lijn.from,
+    to: lijn.to
+  };
+  delete beam.releases;
+  delete beam.veren;
+  delete beam.checkConfig;
+  const startRel = eindVelden(eerste.beam.releases, eerste.gespiegeld ? "end" : "start", "start");
+  const endRel = eindVelden(laatste.beam.releases, laatste.gespiegeld ? "start" : "end", "end");
+  if (startRel || endRel) beam.releases = { ...startRel ?? {}, ...endRel ?? {} };
+  const startVeren = eindVelden(eerste.beam.veren, eerste.gespiegeld ? "end" : "start", "start");
+  const endVeren = eindVelden(laatste.beam.veren, laatste.gespiegeld ? "start" : "end", "end");
+  if (startVeren || endVeren) beam.veren = { ...startVeren ?? {}, ...endVeren ?? {} };
+  if (config) beam.checkConfig = config;
+  return { beam, notities };
+}
+function voegDoorgaandeLijnenSamen(invoer) {
+  const alleBeams = invoer.alleBeams ?? invoer.beams;
+  const lijnen = vindDoorgaandeLijnen(invoer.beams, invoer.nodes, alleBeams, invoer.supports);
+  if (lijnen.length === 0) {
+    return { data: invoer, lijnen: /* @__PURE__ */ new Map(), notities: /* @__PURE__ */ new Map(), overgeslagen: [] };
+  }
+  const vervangen = /* @__PURE__ */ new Set();
+  const virtueel = [];
+  const notities = /* @__PURE__ */ new Map();
+  const lijnPerId = /* @__PURE__ */ new Map();
+  const overgeslagen = [];
+  const teToetsen = new Set(invoer.beams.map((b) => b.id));
+  for (const lijn of lijnen) {
+    const { beam, notities: configNotities } = virtueleStaaf(lijn);
+    virtueel.push(beam);
+    lijnPerId.set(lijn.id, lijn);
+    const ids = lijn.delen.map((d) => d.beam.id);
+    for (const id of ids) {
+      vervangen.add(id);
+      if (id !== lijn.id && teToetsen.has(id)) {
+        overgeslagen.push({
+          beamId: id,
+          reason: `maakt deel uit van de doorgaande lijn die als staaf ${lijn.id} is getoetst (staven ${ids.join(", ")}, samen ${nl2(lijn.lengteMm / 1e3)} m); zie staaf ${lijn.id}`
+        });
+      }
+    }
+    const tekst = [
+      `DOORGAANDE LIJN. Deze staaf is de doorgaande lijn van de staven ${ids.join(", ")} (${beam.profile ?? "\u2014"}, ${beam.material ?? "\u2014"}): zij liggen in elkaars verlengde, hebben dezelfde doorsnede en hetzelfde materiaal, en op de tussenknoop ${lijn.tussenknopen.join(", ")} staat geen oplegging. De toetsing beschouwt de lijn als \xC9\xC9N staaf van ${nl2(lijn.lengteMm / 1e3)} m: de terugval van de kniklengte, de kipvelden en de koorde van de doorbuiging gelden voor die hele lengte, en een tussenknoop telt niet als steun of als gaffel (basisaudit nr 29 en het kipgedrag bij een tussenknoop). Kipsteunen van de delen zijn omgerekend naar de lijn; een opgegeven kniklengte, kipsteunafstand, zeeg of klasse van een deel is voor de lijn overgenomen.`
+    ];
+    for (const knoop of lijn.tussenknopen) {
+      const aangesloten = alleBeams.filter((b) => !vervangen.has(b.id) && !ids.includes(b.id) && (b.from === knoop || b.to === knoop)).map((b) => b.id);
+      if (aangesloten.length > 0) {
+        tekst.push(
+          `Op tussenknoop ${knoop} sluit staaf ${aangesloten.join(", ")} aan. Die aansluiting is NIET als steun of gaffel meegeteld: een vlak model zegt niet of zij de lijn zijdelings of tegen torsie vasthoudt. Doet zij dat werkelijk, geef dan op die plaats een kipsteun (aan beide flenzen) of een kniklengte op.`
+        );
+      }
+    }
+    tekst.push(...configNotities);
+    notities.set(lijn.id, tekst);
+  }
+  const beams = invoer.beams.filter((b) => !vervangen.has(b.id)).concat(virtueel);
+  const combinationResults = /* @__PURE__ */ new Map();
+  for (const [comboId, result] of invoer.combinationResults) {
+    let elements = null;
+    for (const lijn of lijnen) {
+      const stukken = [];
+      for (const d of lijn.delen) {
+        const ef = result.elements.get(d.beam.id);
+        if (!ef || ef.stations_mm.length === 0) break;
+        stukken.push({ ef, gespiegeld: d.gespiegeld });
+      }
+      if (stukken.length !== lijn.delen.length) continue;
+      elements ??= new Map(result.elements);
+      elements.set(lijn.id, voegElementKrachtenSamen(stukken));
+    }
+    combinationResults.set(comboId, elements ? { ...result, elements } : result);
+  }
+  return {
+    data: { ...invoer, beams, combinationResults },
+    lijnen: lijnPerId,
+    notities,
+    overgeslagen
+  };
+}
+function bepaalStaafeinden(beam, nodes, alleBeams, supports, ledenVanLijn, plates) {
+  if (!supports) return { begin: "Gaffel", eind: "Gaffel" };
+  const dir = richting(beam, nodes);
+  const opgelegd = new Set(supports.map((s) => s.nodeId));
+  const inPlaat = new Set((plates ?? []).flatMap((p) => p.nodeIds));
+  const eind = (knoop) => {
+    if (opgelegd.has(knoop) || inPlaat.has(knoop)) return "Gaffel";
+    const anderen = alleBeams.filter(
+      (b) => b.id !== beam.id && !ledenVanLijn.has(b.id) && (b.from === knoop || b.to === knoop)
+    );
+    if (anderen.length === 0) return "Vrij";
+    const alleenInVerlengde = dir !== null && anderen.every((b) => {
+      const d2 = richting(b, nodes);
+      return d2 !== null && Math.abs(dir.x * d2.z - dir.z * d2.x) <= 1e-6;
+    });
+    return alleenInVerlengde ? "Doorlopend" : "Gaffel";
+  };
+  return { begin: eind(beam.from), eind: eind(beam.to) };
+}
+
+// src/components/fem/solver/alphaCr.ts
+var ALPHA_CR_GRENS_EERSTE_ORDE = 10;
+var ALPHA_CR_ZOEKGRENS = 100;
+var ALPHA_CR_MAX_DOFS = 1500;
+function normaalkrachtOp(ef, xMm) {
+  const xs = ef.stations_mm;
+  const ns = ef.normalForce;
+  if (xs.length === 0) return ef.N;
+  if (xMm <= xs[0]) return ns[0] ?? 0;
+  for (let i = 1; i < xs.length; i++) {
+    if (xMm <= xs[i]) {
+      const t = xs[i] === xs[i - 1] ? 0 : (xMm - xs[i - 1]) / (xs[i] - xs[i - 1]);
+      return (ns[i - 1] ?? 0) + t * ((ns[i] ?? 0) - (ns[i - 1] ?? 0));
+    }
+  }
+  return ns[ns.length - 1] ?? 0;
+}
+function bepaalAlphaCr(input, combinaties, combinationResults, opties = {}) {
+  const maxDofs = opties.maxDofs ?? ALPHA_CR_MAX_DOFS;
+  const uls = combinaties.filter((c) => c.type === "uls");
+  if (uls.length === 0) return [];
+  const nietBepaald = (reden) => uls.map((c) => ({ combinatieId: c.id, naam: c.name, alphaCr: null, status: "niet_bepaald", reden }));
+  if (input.plates && input.plates.length > 0) {
+    return nietBepaald(
+      "het model bevat wandschijven; de kritieke lastfactor van het gemengde staaf-schijfstelsel wordt hier niet bepaald"
+    );
+  }
+  const fijner = {
+    ...input,
+    beams: input.beams.map((b) => ({
+      ...b,
+      extraSneden: [.../* @__PURE__ */ new Set([...b.extraSneden ?? [], 0.5])]
+    }))
+  };
+  const gebouwd = buildMesh(fijner, () => 0);
+  const mesh = gebouwd.mesh;
+  const numDofs = mesh.getNodeCount() * 3;
+  if (numDofs > maxDofs) {
+    return nietBepaald(
+      `het model heeft na de verdeling in elementen ${numDofs} vrijheidsgraden, meer dan de ${maxDofs} waarvoor de directe bepaling van \u03B1_cr is bedoeld`
+    );
+  }
+  const nul = new Array(numDofs).fill(0);
+  const uit = [];
+  for (const combo of uls) {
+    const res = combinationResults.get(combo.id);
+    if (!res) {
+      uit.push({ combinatieId: combo.id, naam: combo.name, alphaCr: null, status: "niet_bepaald", reden: "geen combinatieresultaat" });
+      continue;
+    }
+    const axiaal = /* @__PURE__ */ new Map();
+    let druk = false;
+    for (const [uiId, eersteMeshId] of gebouwd.beamIdMap) {
+      const ef = res.elements.get(uiId);
+      if (!ef) continue;
+      const segs = gebouwd.beamSegments.get(uiId) ?? [{ meshId: eersteMeshId, t0: 0, t1: 1 }];
+      for (const seg of segs) {
+        const n = normaalkrachtOp(ef, (seg.t0 + seg.t1) / 2 * ef.L_mm);
+        if (n < -1e-9) druk = true;
+        axiaal.set(seg.meshId, -n);
+      }
+    }
+    if (!druk) {
+      uit.push({ combinatieId: combo.id, naam: combo.name, alphaCr: null, status: "geen_druk" });
+      continue;
+    }
+    const instabiel = (alpha) => {
+      const geschaald = /* @__PURE__ */ new Map();
+      for (const [id, n] of axiaal) geschaald.set(id, n * alpha);
+      const k = assembleGlobalStiffnessWithGeometric(mesh, geschaald, true);
+      const { K } = applyBoundaryConditions(k, nul, mesh);
+      return countNonPositivePivots(K) > 0;
+    };
+    if (instabiel(1e-9)) {
+      uit.push({
+        combinatieId: combo.id,
+        naam: combo.name,
+        alphaCr: null,
+        status: "niet_bepaald",
+        reden: "het stelsel is zonder normaalkracht al niet positief definiet (mechanisme of ontbrekende oplegging)"
+      });
+      continue;
+    }
+    let laag;
+    let hoog;
+    if (!instabiel(ALPHA_CR_GRENS_EERSTE_ORDE)) {
+      if (!instabiel(ALPHA_CR_ZOEKGRENS)) {
+        uit.push({ combinatieId: combo.id, naam: combo.name, alphaCr: null, status: "boven_grens", grens: ALPHA_CR_ZOEKGRENS });
+        continue;
+      }
+      laag = ALPHA_CR_GRENS_EERSTE_ORDE;
+      hoog = ALPHA_CR_ZOEKGRENS;
+    } else {
+      laag = 0;
+      hoog = ALPHA_CR_GRENS_EERSTE_ORDE;
+    }
+    for (let i = 0; i < 16; i++) {
+      const mid = (laag + hoog) / 2;
+      if (instabiel(mid)) hoog = mid;
+      else laag = mid;
+    }
+    uit.push({ combinatieId: combo.id, naam: combo.name, alphaCr: (laag + hoog) / 2, status: "bepaald" });
+  }
+  return uit;
+}
+var nl3 = (v, d = 2) => v.toFixed(d).replace(".", ",");
+function alphaCrLabel(u) {
+  switch (u.status) {
+    case "bepaald":
+      return `\u03B1_cr = ${nl3(u.alphaCr ?? NaN)}`;
+    case "boven_grens":
+      return `\u03B1_cr > ${u.grens ?? ALPHA_CR_ZOEKGRENS}`;
+    case "geen_druk":
+      return "geen staaf onder druk";
+    default:
+      return `\u03B1_cr niet bepaald (${u.reden ?? "onbekende reden"})`;
+  }
+}
+function stabiliteitsMeldingen(uitkomsten, analysetype, scheefstandAan) {
+  const meldingen = [];
+  const eersteOrde = analysetype === "eersteOrde";
+  const teLaag = uitkomsten.filter(
+    (u) => u.status === "bepaald" && (u.alphaCr ?? Infinity) < ALPHA_CR_GRENS_EERSTE_ORDE
+  );
+  if (teLaag.length > 0) {
+    const laagste = teLaag.reduce((a, b) => (b.alphaCr ?? Infinity) < (a.alphaCr ?? Infinity) ? b : a);
+    const lijst = teLaag.map((u) => `${nl3(u.alphaCr ?? NaN)} ("${u.naam}")`).join(", ");
+    if (eersteOrde) {
+      meldingen.push({
+        niveau: "fout",
+        tekst: `EERSTE ORDE NIET TOEGESTAAN: \u03B1_cr = ${nl3(laagste.alphaCr ?? NaN)} in combinatie "${laagste.naam}" is kleiner dan ${ALPHA_CR_GRENS_EERSTE_ORDE}` + (teLaag.length > 1 ? ` (alle combinaties onder de grens: ${lijst})` : "") + ". NEN-EN 1993-1-1 5.2.1(3) staat een eerste-orde-berekening dan niet toe: de tweede-orde-effecten (P-\u0394) zijn niet verwaarloosbaar, en de terugval van de kniklengte op de systeemlengte in de staaftoets veronderstelt juist krachten uit een tweede-orde-berekening met imperfecties (5.2.2(7)b). De krachten en de unity checks van deze berekening zijn daarom NIET bruikbaar als toetsing. Kies het analysetype tweede orde (P-\u0394) met de scheefstand aan, of geef per op druk belaste staaf de kniklengte uit de zijdelingse knikvorm op (5.2.2(8))."
+      });
+    } else if (!scheefstandAan) {
+      meldingen.push({
+        niveau: "waarschuwing",
+        tekst: `\u03B1_cr = ${nl3(laagste.alphaCr ?? NaN)} in combinatie "${laagste.naam}" (< ${ALPHA_CR_GRENS_EERSTE_ORDE}): de tweede-orde-berekening dekt de vergroting, maar zij rekent ZONDER scheefstand. NEN-EN 1993-1-1 5.2.2(3) en 5.3.2 eisen de imperfecties in de tweede-orde-berekening; zet de scheefstand aan.`
+      });
+    } else {
+      meldingen.push({
+        niveau: "info",
+        tekst: `\u03B1_cr = ${nl3(laagste.alphaCr ?? NaN)} in combinatie "${laagste.naam}" (< ${ALPHA_CR_GRENS_EERSTE_ORDE}): tweede orde met scheefstand \u2014 de route van NEN-EN 1993-1-1 5.2.2(3)a/5.2.2(7)b; de kniklengte-terugval op de systeemlengte in de staaftoets is dan toegestaan.`
+      });
+    }
+  }
+  const nietBepaald = uitkomsten.filter((u) => u.status === "niet_bepaald");
+  if (nietBepaald.length > 0 && eersteOrde) {
+    const redenen = [...new Set(nietBepaald.map((u) => u.reden ?? "onbekende reden"))].join("; ");
+    meldingen.push({
+      niveau: "waarschuwing",
+      tekst: `\u03B1_cr is voor ${nietBepaald.length} combinatie(s) niet bepaald (${redenen}). De voorwaarde \u03B1_cr \u2265 ${ALPHA_CR_GRENS_EERSTE_ORDE} voor een eerste-orde-berekening (NEN-EN 1993-1-1 5.2.1(3)) is daar dus niet gecontroleerd.`
+    });
+  }
+  return meldingen;
+}
+function analyseToelichting(analysetype, label, omschrijving, uitkomsten, scheefstandAan) {
+  const regels = [];
+  regels.push(`Analysetype: ${label}. ${omschrijving}`);
+  regels.push("");
+  if (uitkomsten.length === 0) {
+    regels.push("Kritieke lastfactor \u03B1_cr: geen UGT-combinaties doorgerekend.");
+  } else {
+    regels.push(
+      "Kritieke lastfactor \u03B1_cr per UGT-combinatie (NEN-EN 1993-1-1 5.2.1(3)): de factor op de belasting van de combinatie waarbij K_e + \u03B1\xB7K_g(N_Ed) singulier wordt \u2014 de laagste knikvorm van het vlakke raamwerk met de normaalkrachten van die combinatie, elke staaf in twee elementen. Alleen knik in het vlak; knik uit het vlak blijft de zaak van de staaftoets."
+    );
+    for (const u of uitkomsten) regels.push(`    ${alphaCrLabel(u)}   [${u.naam}]`);
+    regels.push(
+      `Eerste orde is toegestaan wanneer \u03B1_cr \u2265 ${ALPHA_CR_GRENS_EERSTE_ORDE} (5.2.1(3)); daaronder moeten de tweede-orde-effecten in de berekening zitten, met de imperfecties van 5.3.`
+    );
+  }
+  const meldingen = stabiliteitsMeldingen(uitkomsten, analysetype, scheefstandAan);
+  if (meldingen.length > 0) {
+    regels.push("");
+    for (const m of meldingen) regels.push(m.niveau === "info" ? m.tekst : `! ${m.tekst}`);
+  }
+  return regels.join("\n");
+}
+function alphaCrStaafNotitie(stabiliteit, nEdMinKn, kniklengteYOpgegeven) {
+  if (!stabiliteit || stabiliteit.analysetype !== "eersteOrde") return null;
+  if (!(nEdMinKn < 0) || kniklengteYOpgegeven) return null;
+  const teLaag = stabiliteit.alphaCr.filter(
+    (u) => u.status === "bepaald" && (u.alphaCr ?? Infinity) < ALPHA_CR_GRENS_EERSTE_ORDE
+  );
+  if (teLaag.length === 0) return null;
+  const laagste = teLaag.reduce((a, b) => (b.alphaCr ?? Infinity) < (a.alphaCr ?? Infinity) ? b : a);
+  return `EERSTE ORDE MET \u03B1_cr = ${nl3(laagste.alphaCr ?? NaN)} (combinatie "${laagste.naam}") < ${ALPHA_CR_GRENS_EERSTE_ORDE}: deze staaf staat onder druk en de kniklengte in het vlak valt terug op de systeemlengte. NEN-EN 1993-1-1 5.2.2(7)b staat die terugval alleen toe bij krachten uit een tweede-orde-berekening met imperfecties, en 5.2.1(3) staat eerste orde bij \u03B1_cr < 10 niet toe. De knikweerstand om de y-as hieronder is daarom NIET normconform bepaald: kies tweede orde (P-\u0394) met scheefstand, of geef L_cr,y uit de zijdelingse knikvorm op (5.2.2(8)).`;
+}
 
 // src/lib/steelSections.generated.ts
 var STEEL_SECTIONS = {
@@ -8336,7 +8866,7 @@ function nooitLeidend(karakteristiek) {
   }
   return [...begeleidend].filter((id) => !leidend.has(id)).sort((a, b) => a - b);
 }
-function nl2(x, cijfers = 1) {
+function nl4(x, cijfers = 1) {
   return x.toFixed(cijfers).replace(".", ",");
 }
 function wAddCombinatieVanKlasse(klasse) {
@@ -8382,8 +8912,8 @@ function zijdelingseEis(beam, data, slsCombos) {
   }
   const u = maatgevend ? maatgevend.u : null;
   const notes = [
-    `Deze staaf staat overwegend verticaal (${nl2(helling)}\xB0 met de horizontaal; vanaf ${VERTICAAL_VANAF_GRADEN}\xB0 geldt hij als kolom of gevelstijl). De doorbuigingseisen van NEN-EN 1990:2002/NB:2019 A1.4.3(3) en A1.4.3(4) gelden voor VLOEREN EN DAKEN \u2014 alle vier de gedachtestreepjes van A1.4.3(3) noemen een vloer, een dak of een vloerafscheiding, en A1.4.3(4) begrenst w_max "bij zowel vloeren als daken". Een kolom is geen van beide, dus die grenswaarden zijn hier NIET toegepast.`,
-    `Wat de norm voor een verticale staaf w\xE9l voorschrijft is A1.4.3(7): de horizontale verplaatsing over de hoogte (figuur A1.2), bij de KARAKTERISTIEKE belastingscombinatie (uitdrukking 6.14b), begrensd op h/300 voor andere gebouwen dan industriegebouwen; bij meer dan \xE9\xE9n bouwlaag geldt diezelfde h/300 per bouwlaag. Getoetst is daarom niet de kromming van de staaf maar u = u_x(boven) \u2212 u_x(onder), tegen h/300 = ${nl2(grensMm)} mm met h = ${nl2(hoogteMm, 0)} mm.`,
+    `Deze staaf staat overwegend verticaal (${nl4(helling)}\xB0 met de horizontaal; vanaf ${VERTICAAL_VANAF_GRADEN}\xB0 geldt hij als kolom of gevelstijl). De doorbuigingseisen van NEN-EN 1990:2002/NB:2019 A1.4.3(3) en A1.4.3(4) gelden voor VLOEREN EN DAKEN \u2014 alle vier de gedachtestreepjes van A1.4.3(3) noemen een vloer, een dak of een vloerafscheiding, en A1.4.3(4) begrenst w_max "bij zowel vloeren als daken". Een kolom is geen van beide, dus die grenswaarden zijn hier NIET toegepast.`,
+    `Wat de norm voor een verticale staaf w\xE9l voorschrijft is A1.4.3(7): de horizontale verplaatsing over de hoogte (figuur A1.2), bij de KARAKTERISTIEKE belastingscombinatie (uitdrukking 6.14b), begrensd op h/300 voor andere gebouwen dan industriegebouwen; bij meer dan \xE9\xE9n bouwlaag geldt diezelfde h/300 per bouwlaag. Getoetst is daarom niet de kromming van de staaf maar u = u_x(boven) \u2212 u_x(onder), tegen h/300 = ${nl4(grensMm)} mm met h = ${nl4(hoogteMm, 0)} mm.`,
     'AANNAMES bij die grens. (1) Het gebouw is niet als industriegebouw aangemerkt; daarvoor geeft de NB h/150, en h/300 is de strengere van de twee. (2) h is gelijkgesteld aan de hoogte van deze staaf, terwijl de NB "de kleinste gevelhoogte of de kleinste bouwlaaghoogte" bedoelt; overspant deze staaf meer dan \xE9\xE9n bouwlaag, dan is de grens hier te ruim. (3) De eis h/500 voor de TOTALE hoogte van een gebouw met meer dan \xE9\xE9n bouwlaag is een eigenschap van het gebouw en niet van deze staaf, en is hier dus niet getoetst.',
     "Voor de doorbuiging van de staaf tussen zijn eigen einden \u2014 de kromming vanaf de koorde \u2014 geeft A1.4.3 bij een verticale staaf geen grenswaarde; er is er dan ook geen verzonnen. Wie hier t\xF3ch een vloer- of dakeis wil toetsen, kiest bij de staaf expliciet een doorbuigingsklasse: die keuze gaat v\xF3\xF3r en laat deze zijdelingse toets vervallen.",
     "Beide doorbuigingsregels in dit rapport (w_fin en w_add) tonen dezelfde verplaatsing tegen dezelfde grens: de norm splitst de horizontale verplaatsing niet in een blijvend en een bijkomend deel, en de rekenkern levert de twee regels altijd als paar."
@@ -8394,12 +8924,12 @@ function zijdelingseEis(beam, data, slsCombos) {
     );
   } else if (karakteristiek.length === 0) {
     notes.push(
-      `u = ${nl2(u, 2)} mm, de grootste over alle BGT-combinaties; maatgevend is "${maatgevend.combo.name}". LET OP: het model kent GEEN karakteristieke combinatie (uitdrukking 6.14b). Dit is dus geen toetsing volgens A1.4.3(7), maar een vervanger \u2014 voeg de karakteristieke combinaties toe (of kies de standaardcombinaties) om de eis letterlijk uit te voeren.`
+      `u = ${nl4(u, 2)} mm, de grootste over alle BGT-combinaties; maatgevend is "${maatgevend.combo.name}". LET OP: het model kent GEEN karakteristieke combinatie (uitdrukking 6.14b). Dit is dus geen toetsing volgens A1.4.3(7), maar een vervanger \u2014 voeg de karakteristieke combinaties toe (of kies de standaardcombinaties) om de eis letterlijk uit te voeren.`
     );
   } else {
     const nietHerkendGemeten = gemeten.filter((g) => nietHerkend.includes(g.combo));
     notes.push(
-      `u = ${nl2(u, 2)} mm: de grootste horizontale verplaatsing over de ${gemeten.length - nietHerkendGemeten.length} karakteristieke BGT-combinaties (6.14b)` + (nietHerkendGemeten.length > 0 ? ` en ${nietHerkendGemeten.length} niet herkende BGT-combinatie(s)` : "") + " \u2014 " + gemeten.map((g) => `"${g.combo.name}" ${nl2(g.u, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.combo.name}".`
+      `u = ${nl4(u, 2)} mm: de grootste horizontale verplaatsing over de ${gemeten.length - nietHerkendGemeten.length} karakteristieke BGT-combinaties (6.14b)` + (nietHerkendGemeten.length > 0 ? ` en ${nietHerkendGemeten.length} niet herkende BGT-combinatie(s)` : "") + " \u2014 " + gemeten.map((g) => `"${g.combo.name}" ${nl4(g.u, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.combo.name}".`
     );
     if (nietHerkendGemeten.length > 0) {
       notes.push(
@@ -8469,7 +8999,7 @@ function vloerDakEis(beam, data, slsCombos) {
     );
   } else {
     notes.push(
-      "w is de grootste zakking over de BGT-combinaties die NEN-EN 1990 A1.4.3 aanwijst en die dit model kent: " + gewogen.map((g) => `"${g.naam}" (${g.uitdrukking}) ${nl2(g.w, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.naam}".`,
+      "w is de grootste zakking over de BGT-combinaties die NEN-EN 1990 A1.4.3 aanwijst en die dit model kent: " + gewogen.map((g) => `"${g.naam}" (${g.uitdrukking}) ${nl4(g.w, 2)} mm`).join("; ") + `. Maatgevend is "${maatgevend.naam}".`,
       `De rekenkern leidt w_fin \xE9n w_add uit \xE9\xE9n zakking af, terwijl de norm er twee combinaties voor aanwijst: w_max bij de QUASI-BLIJVENDE combinatie (uitdrukking 6.16b, A1.4.3(4)) en w2 + w3 bij ${wAddCombinatieVanKlasse(klasse)}. Door de grootste van de voorgeschreven combinaties te nemen is geen van beide toetsen lichter dan de norm vraagt; is de maatgevende combinatie zwaarder dan de voorgeschreven, dan valt de toets strenger uit.`
     );
     if (nietHerkend.length > 0) {
@@ -8503,9 +9033,11 @@ function vloerDakEis(beam, data, slsCombos) {
   };
 }
 function buildSteelCheckInputs(ruweData) {
-  const data = toetsdataInReferentierichting(ruweData);
+  const lijn = voegDoorgaandeLijnenSamen(ruweData);
+  const data = toetsdataInReferentierichting(lijn.data);
+  const alleBeams = ruweData.alleBeams ?? ruweData.beams;
   const inputs = [];
-  const skipped = [];
+  const skipped = [...lijn.overgeslagen];
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
   for (const beam of data.beams) {
     const profileName = beam.profile ?? "";
@@ -8577,6 +9109,15 @@ function buildSteelCheckInputs(ruweData) {
     const govPoints = forcesEnvelope.filter((p) => p.combination_id === govComboId);
     const cfg = zeegVoorToets(beam, data.nodes);
     const doorbuiging = bepaalDoorbuigingsInvoer(beam, data);
+    const ledenVanLijn = new Set(lijn.lijnen.get(beam.id)?.delen.map((d) => d.beam.id) ?? []);
+    const staafeinden = bepaalStaafeinden(beam, data.nodes, alleBeams, data.supports, ledenVanLijn, ruweData.plates);
+    const staafNotities = [...lijn.notities.get(beam.id) ?? []];
+    const alphaNotitie = alphaCrStaafNotitie(
+      ruweData.stabiliteit,
+      Math.min(...forcesEnvelope.map((p) => p.forces.n_ed)),
+      Number.isFinite(cfg.bucklingLengthY_m) && cfg.bucklingLengthY_m > 0
+    );
+    if (alphaNotitie) staafNotities.push(alphaNotitie);
     inputs.push({
       beam_id: beam.id,
       profile_name: eigen ? eigen.naam : profileName,
@@ -8599,6 +9140,11 @@ function buildSteelCheckInputs(ruweData) {
         const notities = richtingssprongNotities(beam, data.nodes, "staal");
         return notities.length > 0 ? { staafstand_notities: notities } : {};
       })(),
+      // Alleen meegeven als een staafeind géén gaffel is: zo blijft de invoer
+      // van elke gewone staaf byte-gelijk aan vroeger, en zegt een aanwezig
+      // veld de lezer meteen dat hier iets bijzonders is.
+      ...staafeinden.begin !== "Gaffel" || staafeinden.eind !== "Gaffel" ? { staafeinden } : {},
+      ...staafNotities.length > 0 ? { staaf_notities: staafNotities } : {},
       // Kniklengtes: een leeg veld gaat als 0 = "niet opgegeven" naar de kern.
       // De KERN kiest dan — om y de staaflengte, om z de grootste afstand
       // tussen plaatsen met een kipsteun aan beide flenzen, anders de
@@ -8913,9 +9459,10 @@ function grootsteZakking(beam, combos, results) {
   return { ...max, alle };
 }
 function buildTimberCheckInputs(ruweData) {
-  const data = toetsdataInReferentierichting(ruweData);
+  const lijn = voegDoorgaandeLijnenSamen(ruweData);
+  const data = toetsdataInReferentierichting(lijn.data);
   const inputs = [];
-  const skipped = [];
+  const skipped = [...lijn.overgeslagen];
   const grades = data.supportedGrades && data.supportedGrades.length > 0 ? data.supportedGrades : SUPPORTED_TIMBER_GRADES;
   const ulsCombos = data.combinations.filter((c) => c.type === "uls");
   const slsCombos = data.combinations.filter((c) => c.type === "sls");
@@ -9035,6 +9582,13 @@ function buildTimberCheckInputs(ruweData) {
       gevuld,
       ondergrens: cfg.loadDuration !== void 0 ? mapLoadDuration(cfg.loadDuration) : void 0
     }) : [];
+    const staafNotities = [...lijn.notities.get(beam.id) ?? []];
+    const alphaNotitie = alphaCrStaafNotitie(
+      ruweData.stabiliteit,
+      Math.min(...forcesEnvelope.map((p) => p.forces.n_ed)),
+      Number.isFinite(cfg.bucklingLengthY_m) && cfg.bucklingLengthY_m > 0
+    );
+    if (alphaNotitie) staafNotities.push(alphaNotitie);
     inputs.push({
       beam_id: beam.id,
       width_mm: bMm,
@@ -9161,7 +9715,10 @@ function buildTimberCheckInputs(ruweData) {
         ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
         ...instNotes,
         ...wQuasi.notes
-      ]
+      ],
+      // De toelichting bij een doorgaande lijn die als een staaf is getoetst;
+      // de kern zet hem bij de kolomtoets, de kiptoets en de eindzakking.
+      ...staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}
     });
   }
   return { inputs, skipped };
@@ -9191,10 +9748,10 @@ function parseCltProfiel(profileName, standaardKlasse) {
     if (!tm) return null;
     const dikte = parseFloat(tm[1].replace(",", "."));
     if (!(dikte > 0)) return null;
-    const richting = tm[2] ? tm[2].toUpperCase() === "L" ? "Longitudinal" : "Transverse" : standaardRichting(i);
+    const richting2 = tm[2] ? tm[2].toUpperCase() === "L" ? "Longitudinal" : "Transverse" : standaardRichting(i);
     layers.push({
       thickness_mm: dikte,
-      orientation: richting,
+      orientation: richting2,
       strength_class: tm[3] ?? standaardKlasse
     });
   }
@@ -9612,7 +10169,7 @@ var C_DIR = 1;
 var C_SEASON = 1;
 var K_I = 1;
 var C_O = 1;
-function nl3(v, dec) {
+function nl5(v, dec) {
   return v.toFixed(dec).replace(".", ",");
 }
 function berekenStuwdruk(gebied, terrein, ze_m) {
@@ -9630,17 +10187,17 @@ function berekenStuwdruk(gebied, terrein, ze_m) {
     ze_m,
     handmatig: false,
     afleiding: [
-      { symbool: "windgebied", waarde: `${gebied} \u2014 v_b,0 = ${nl3(g.vb0, 1)} m/s`, bron: g.bron },
-      { symbool: "terreincategorie", waarde: `${terrein} \u2014 z\u2080 = ${nl3(t.z0, 3)} m, z_min = ${nl3(t.zmin, 0)} m`, bron: t.bron },
-      { symbool: "v_b", waarde: `${nl3(C_DIR, 1)} \xB7 ${nl3(C_SEASON, 1)} \xB7 ${nl3(g.vb0, 1)} = ${nl3(vb, 2)} m/s`, bron: "EN 1991-1-4 (4.1)" },
-      { symbool: "z_e", waarde: `${nl3(ze_m, 2)} m${zGebruikt !== ze_m ? ` \u2192 gerekend met z_min = ${nl3(zGebruikt, 2)} m` : ""}`, bron: "EN 1991-1-4 \xA77.2.2 fig. 7.4" },
-      { symbool: "k_r", waarde: `0,19 \xB7 (${nl3(t.z0, 3)}/${nl3(Z0_II, 3)})^0,07 = ${nl3(kr, 4)}`, bron: "EN 1991-1-4 (4.5)" },
-      { symbool: "c_r(z_e)", waarde: `${nl3(kr, 4)} \xB7 ln(${nl3(zGebruikt, 2)}/${nl3(t.z0, 3)}) = ${nl3(cr, 4)}`, bron: "EN 1991-1-4 (4.4)" },
-      { symbool: "c_o(z_e)", waarde: `${nl3(C_O, 2)} (vlak terrein, orografie buiten beschouwing)`, bron: "EN 1991-1-4 \xA74.3.3" },
-      { symbool: "v_m(z_e)", waarde: `${nl3(cr, 4)} \xB7 ${nl3(C_O, 2)} \xB7 ${nl3(vb, 2)} = ${nl3(vm, 3)} m/s`, bron: "EN 1991-1-4 (4.3)" },
-      { symbool: "I_v(z_e)", waarde: `${nl3(K_I, 1)} / (${nl3(C_O, 2)} \xB7 ln(${nl3(zGebruikt, 2)}/${nl3(t.z0, 3)})) = ${nl3(iv, 4)}`, bron: "EN 1991-1-4 (4.7)" },
-      { symbool: "\u03C1", waarde: `${nl3(RHO_LUCHT, 2)} kg/m\xB3`, bron: "EN 1991-1-4 \xA74.5(1) opm. 2" },
-      { symbool: "q_p(z_e)", waarde: `[1 + 7\xB7${nl3(iv, 4)}] \xB7 \xBD \xB7 ${nl3(RHO_LUCHT, 2)} \xB7 ${nl3(vm, 3)}\xB2 = ${nl3(qp_Nm2 / 1e3, 4)} kN/m\xB2`, bron: "EN 1991-1-4 (4.8)" }
+      { symbool: "windgebied", waarde: `${gebied} \u2014 v_b,0 = ${nl5(g.vb0, 1)} m/s`, bron: g.bron },
+      { symbool: "terreincategorie", waarde: `${terrein} \u2014 z\u2080 = ${nl5(t.z0, 3)} m, z_min = ${nl5(t.zmin, 0)} m`, bron: t.bron },
+      { symbool: "v_b", waarde: `${nl5(C_DIR, 1)} \xB7 ${nl5(C_SEASON, 1)} \xB7 ${nl5(g.vb0, 1)} = ${nl5(vb, 2)} m/s`, bron: "EN 1991-1-4 (4.1)" },
+      { symbool: "z_e", waarde: `${nl5(ze_m, 2)} m${zGebruikt !== ze_m ? ` \u2192 gerekend met z_min = ${nl5(zGebruikt, 2)} m` : ""}`, bron: "EN 1991-1-4 \xA77.2.2 fig. 7.4" },
+      { symbool: "k_r", waarde: `0,19 \xB7 (${nl5(t.z0, 3)}/${nl5(Z0_II, 3)})^0,07 = ${nl5(kr, 4)}`, bron: "EN 1991-1-4 (4.5)" },
+      { symbool: "c_r(z_e)", waarde: `${nl5(kr, 4)} \xB7 ln(${nl5(zGebruikt, 2)}/${nl5(t.z0, 3)}) = ${nl5(cr, 4)}`, bron: "EN 1991-1-4 (4.4)" },
+      { symbool: "c_o(z_e)", waarde: `${nl5(C_O, 2)} (vlak terrein, orografie buiten beschouwing)`, bron: "EN 1991-1-4 \xA74.3.3" },
+      { symbool: "v_m(z_e)", waarde: `${nl5(cr, 4)} \xB7 ${nl5(C_O, 2)} \xB7 ${nl5(vb, 2)} = ${nl5(vm, 3)} m/s`, bron: "EN 1991-1-4 (4.3)" },
+      { symbool: "I_v(z_e)", waarde: `${nl5(K_I, 1)} / (${nl5(C_O, 2)} \xB7 ln(${nl5(zGebruikt, 2)}/${nl5(t.z0, 3)})) = ${nl5(iv, 4)}`, bron: "EN 1991-1-4 (4.7)" },
+      { symbool: "\u03C1", waarde: `${nl5(RHO_LUCHT, 2)} kg/m\xB3`, bron: "EN 1991-1-4 \xA74.5(1) opm. 2" },
+      { symbool: "q_p(z_e)", waarde: `[1 + 7\xB7${nl5(iv, 4)}] \xB7 \xBD \xB7 ${nl5(RHO_LUCHT, 2)} \xB7 ${nl5(vm, 3)}\xB2 = ${nl5(qp_Nm2 / 1e3, 4)} kN/m\xB2`, bron: "EN 1991-1-4 (4.8)" }
     ]
   };
 }
@@ -9652,7 +10209,7 @@ function handmatigeStuwdruk(qp_kNm2, ze_m) {
     afleiding: [
       {
         symbool: "q_p(z_e)",
-        waarde: `${nl3(qp_kNm2, 4)} kN/m\xB2 \u2014 handmatig ingevoerd op z_e = ${nl3(ze_m, 2)} m`,
+        waarde: `${nl5(qp_kNm2, 4)} kN/m\xB2 \u2014 handmatig ingevoerd op z_e = ${nl5(ze_m, 2)} m`,
         bron: "door de gebruiker opgegeven (bijv. NEN-EN 1991-1-4/NB stuwdruktabel)"
       }
     ]
@@ -9724,7 +10281,7 @@ var STANDAARD_WIND_INSTELLINGEN = {
   combinatiesGenereren: true,
   gevelhoogte_m: null
 };
-var nl4 = (v, d) => v.toFixed(d).replace(".", ",");
+var nl6 = (v, d) => v.toFixed(d).replace(".", ",");
 var RICHTING_LABEL = {
   links: "wind van links",
   rechts: "wind van rechts",
@@ -9822,7 +10379,7 @@ function genereerWindbelasting(model, inst) {
   if (kapZonderGevel) {
     meldingen.push({
       niveau: "info",
-      tekst: `Kap zonder gevel: de gevels staan niet in het model. Bouwhoogte h = ${nl4(inst.gevelhoogte_m, 2)} m (gevel) + ${nl4(modelhoogte_m, 2)} m (kap) = ${nl4(h_m, 2)} m. De windlast op de gevels zelf is niet gegenereerd; die valt op de wanden en niet op dit spant.`
+      tekst: `Kap zonder gevel: de gevels staan niet in het model. Bouwhoogte h = ${nl6(inst.gevelhoogte_m, 2)} m (gevel) + ${nl6(modelhoogte_m, 2)} m (kap) = ${nl6(h_m, 2)} m. De windlast op de gevels zelf is niet gegenereerd; die valt op de wanden en niet op dit spant.`
     });
   } else if (!heeftGevels) {
     meldingen.push({
@@ -9856,7 +10413,7 @@ function genereerWindbelasting(model, inst) {
   if (stuwdruk.handmatig) {
     meldingen.push({
       niveau: "info",
-      tekst: `De stuwdruk is handmatig opgegeven (${nl4(stuwdruk.qp_kNm2, 3)} kN/m\xB2); de generator heeft hem niet zelf afgeleid.`
+      tekst: `De stuwdruk is handmatig opgegeven (${nl6(stuwdruk.qp_kNm2, 3)} kN/m\xB2); de generator heeft hem niet zelf afgeleid.`
     });
   } else {
     meldingen.push({
@@ -9866,19 +10423,19 @@ function genereerWindbelasting(model, inst) {
   }
   meldingen.push({
     niveau: "info",
-    tekst: `Referentiehoogte z_e = ${nl4(ze_m, 2)} m (bouwhoogte) voor ALLE vlakken. Volgens NEN-EN 1991-1-4 \xA77.2.2 (figuur 7.4) mag dat wanneer h \u2264 b; bij een hoger gebouw is \xE9\xE9n strook op z_e = h de veilige kant, want de stuwdruk is daar het grootst.`
+    tekst: `Referentiehoogte z_e = ${nl6(ze_m, 2)} m (bouwhoogte) voor ALLE vlakken. Volgens NEN-EN 1991-1-4 \xA77.2.2 (figuur 7.4) mag dat wanneer h \u2264 b; bij een hoger gebouw is \xE9\xE9n strook op z_e = h de veilige kant, want de stuwdruk is daar het grootst.`
   });
   if (ze_m > ZMAX_M) {
     meldingen.push({
       niveau: "fout",
-      tekst: `De bouwhoogte (${nl4(ze_m, 1)} m) ligt boven z_max = ${ZMAX_M} m; de snelheidsprofielformules van \xA74.3.2 gelden daar niet meer.`
+      tekst: `De bouwhoogte (${nl6(ze_m, 1)} m) ligt boven z_max = ${ZMAX_M} m; de snelheidsprofielformules van \xA74.3.2 gelden daar niet meer.`
     });
     return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null, geometrie };
   }
   if (h_m >= CSCD_GRENSHOOGTE_M) {
     meldingen.push({
       niveau: "waarschuwing",
-      tekst: `De bouwhoogte is ${nl4(h_m, 1)} m. De generator rekent met c_s\xB7c_d = 1,0; dat mag zonder meer alleen onder ${CSCD_GRENSHOOGTE_M} m (${CSCD_BRON}). Bepaal c_s\xB7c_d volgens \xA76.3 en verhoog de lasten zo nodig zelf.`
+      tekst: `De bouwhoogte is ${nl6(h_m, 1)} m. De generator rekent met c_s\xB7c_d = 1,0; dat mag zonder meer alleen onder ${CSCD_GRENSHOOGTE_M} m (${CSCD_BRON}). Bepaal c_s\xB7c_d volgens \xA76.3 en verhoog de lasten zo nodig zelf.`
     });
   }
   if (h_m > inst.gebouwlengte_m) {
@@ -9906,7 +10463,7 @@ function genereerWindbelasting(model, inst) {
   } else if (inst.cpiKeuze === "handmatig") {
     meldingen.push({
       niveau: "waarschuwing",
-      tekst: `Inwendige druk handmatig op c_pi = ${nl4(inst.cpiHandmatig, 2)}. Dat is alleen juist wanneer de openingsverhouding \u03BC van het gebouw bekend is (\xA77.2.9); anders is \u201Cbeide (+0,2 en \u22120,3)\u201D de norm-conforme keuze.`
+      tekst: `Inwendige druk handmatig op c_pi = ${nl6(inst.cpiHandmatig, 2)}. Dat is alleen juist wanneer de openingsverhouding \u03BC van het gebouw bekend is (\xA77.2.9); anders is \u201Cbeide (+0,2 en \u22120,3)\u201D de norm-conforme keuze.`
     });
   }
   const richtingen = [
@@ -9925,11 +10482,11 @@ function genereerWindbelasting(model, inst) {
   const perGeval = [];
   let zoneIGebruikt = false;
   let kleinOppervlak = false;
-  for (const richting of richtingen) {
+  for (const richting2 of richtingen) {
     for (const cpi of cpiWaarden) {
-      const sleutel = `wind:${richting}:cpi${cpi >= 0 ? "+" : ""}${cpi.toFixed(2)}`;
-      const naam = `Wind ${RICHTING_LABEL[richting].replace("wind ", "")} (c_pi = ${nl4(cpi, 2)})`;
-      gevallen.push({ sleutel, naam, richting, cpi });
+      const sleutel = `wind:${richting2}:cpi${cpi >= 0 ? "+" : ""}${cpi.toFixed(2)}`;
+      const naam = `Wind ${RICHTING_LABEL[richting2].replace("wind ", "")} (c_pi = ${nl6(cpi, 2)})`;
+      gevallen.push({ sleutel, naam, richting: richting2, cpi });
       const regels = [];
       for (const g of geos) {
         const opp_m2 = breedte_m * (g.L_mm / 1e3);
@@ -9939,7 +10496,7 @@ function genereerWindbelasting(model, inst) {
         const push = (zone, cpe, bron, nx, nz, cpiHier, startFrac, endFrac) => {
           const w = stuwdruk.qp_kNm2 * (cpe - cpiHier);
           const q = drukNaarLokaleLijnlast(w, breedte_m, g, nx, nz);
-          const deel = startFrac !== void 0 ? ` (${nl4(startFrac, 2)}\u2013${nl4(endFrac ?? 1, 2)} van de staaf)` : "";
+          const deel = startFrac !== void 0 ? ` (${nl6(startFrac, 2)}\u2013${nl6(endFrac ?? 1, 2)} van de staaf)` : "";
           regels.push({
             beamId: g.beam.id,
             rol: g.rol,
@@ -9957,13 +10514,13 @@ function genereerWindbelasting(model, inst) {
             beamId: g.beam.id,
             q,
             ...startFrac !== void 0 ? { startFrac, endFrac } : {},
-            toelichting: `Staaf ${g.beam.id}, zone ${zone}${deel}: c_pe = ${nl4(cpe, 2)}, c_pi = ${nl4(cpiHier, 2)}, w = ${nl4(stuwdruk.qp_kNm2, 3)}\xB7(${nl4(cpe, 2)} \u2212 ${nl4(cpiHier, 2)}) = ${nl4(w, 3)} kN/m\xB2, q = w\xB7${nl4(breedte_m, 2)} m = ${nl4(Math.abs(q), 3)} kN/m`
+            toelichting: `Staaf ${g.beam.id}, zone ${zone}${deel}: c_pe = ${nl6(cpe, 2)}, c_pi = ${nl6(cpiHier, 2)}, w = ${nl6(stuwdruk.qp_kNm2, 3)}\xB7(${nl6(cpe, 2)} \u2212 ${nl6(cpiHier, 2)}) = ${nl6(w, 3)} kN/m\xB2, q = w\xB7${nl6(breedte_m, 2)} m = ${nl6(Math.abs(q), 3)} kN/m`
           });
         };
         if (g.rol === "gevelLinks" || g.rol === "gevelRechts") {
           const nx = g.rol === "gevelLinks" ? -1 : 1;
           let zone, cpe;
-          if (richting === "haaks") {
+          if (richting2 === "haaks") {
             const y = inst.afstandTotKopgevel_m;
             if (y < e_haaks / 5) {
               zone = "A";
@@ -9976,7 +10533,7 @@ function genereerWindbelasting(model, inst) {
               cpe = cpeW.C;
             }
           } else {
-            const loef = richting === "links" && g.rol === "gevelLinks" || richting === "rechts" && g.rol === "gevelRechts";
+            const loef = richting2 === "links" && g.rol === "gevelLinks" || richting2 === "rechts" && g.rol === "gevelRechts";
             zone = loef ? "D" : "E";
             cpe = loef ? cpeW.D : cpeW.E;
           }
@@ -9985,7 +10542,7 @@ function genereerWindbelasting(model, inst) {
         }
         if (g.rol === "dakPlat" || g.rol === "dakHellend") {
           const n = dakNormaal(g);
-          if (richting === "haaks") {
+          if (richting2 === "haaks") {
             if (g.rol === "dakHellend") {
               push("dak \u03B8=90\xB0", inst.cpeDakHaaks, "NEN-EN 1991-1-4 tabel 7.4b (door de gebruiker ingevuld)", n.nx, n.nz, cpi);
             } else {
@@ -9999,7 +10556,7 @@ function genereerWindbelasting(model, inst) {
           if (g.rol === "dakHellend") {
             const midX = (g.x1 + g.x2) / 2;
             const linkervlak = midX < xNok;
-            const loef = richting === "links" && linkervlak || richting === "rechts" && !linkervlak;
+            const loef = richting2 === "links" && linkervlak || richting2 === "rechts" && !linkervlak;
             const cpe = loef ? inst.cpeDakLoef : inst.cpeDakLij;
             push(
               loef ? "loefdakvlak" : "lijdakvlak",
@@ -10013,7 +10570,7 @@ function genereerWindbelasting(model, inst) {
           }
           const randzoneF = inst.positieSpant === "kopgevelspant" || inst.afstandTotKopgevel_m <= e_inVlak / 4;
           const banden = platDakBanden(e_inVlak, d_m, randzoneF);
-          const xAccent = (xMm) => richting === "links" ? (xMm - xLinks) / 1e3 : (xRechts - xMm) / 1e3;
+          const xAccent = (xMm) => richting2 === "links" ? (xMm - xLinks) / 1e3 : (xRechts - xMm) / 1e3;
           const p1 = xAccent(g.x1), p2 = xAccent(g.x2);
           const lo = Math.min(p1, p2), hi = Math.max(p1, p2);
           if (hi - lo < 1e-9) {
@@ -10051,12 +10608,12 @@ function genereerWindbelasting(model, inst) {
           let cpeBoven, zoneBoven, bronBoven;
           if (g.helling > 5 && heeftHellendDak) {
             const linkervlak = midX < xNok;
-            const loef = richting === "links" && linkervlak || richting === "rechts" && !linkervlak;
+            const loef = richting2 === "links" && linkervlak || richting2 === "rechts" && !linkervlak;
             cpeBoven = loef ? inst.cpeDakLoef : inst.cpeDakLij;
             zoneBoven = loef ? "loefdakvlak" : "lijdakvlak";
             bronBoven = "NEN-EN 1991-1-4 tabel 7.4a (door de gebruiker ingevuld)";
           } else {
-            const xAcc = richting === "rechts" ? (xRechts - midX) / 1e3 : (midX - xLinks) / 1e3;
+            const xAcc = richting2 === "rechts" ? (xRechts - midX) / 1e3 : (midX - xLinks) / 1e3;
             const randzoneF = inst.positieSpant === "kopgevelspant" || inst.afstandTotKopgevel_m <= e_inVlak / 4;
             const banden = platDakBanden(e_inVlak, d_m, randzoneF);
             const z = banden.find((b) => xAcc >= b.van_m && xAcc <= b.tot_m)?.zone ?? (xAcc < 0 ? randzoneF ? "F" : "G" : "I");
@@ -10067,7 +10624,7 @@ function genereerWindbelasting(model, inst) {
           }
           const aanLinkerzijde = midX < (xLinks + xRechts) / 2;
           let cpeOnder, zoneOnder;
-          if (richting === "haaks") {
+          if (richting2 === "haaks") {
             const y = inst.afstandTotKopgevel_m;
             if (y < e_haaks / 5) {
               zoneOnder = "A";
@@ -10080,7 +10637,7 @@ function genereerWindbelasting(model, inst) {
               cpeOnder = cpeW.C;
             }
           } else {
-            const loef = richting === "links" && aanLinkerzijde || richting === "rechts" && !aanLinkerzijde;
+            const loef = richting2 === "links" && aanLinkerzijde || richting2 === "rechts" && !aanLinkerzijde;
             zoneOnder = loef ? "D" : "E";
             cpeOnder = loef ? cpeW.D : cpeW.E;
           }
@@ -10158,7 +10715,7 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
         {
           naam: `UGT 6.10b \u2014 ${gv.naam} leidend`,
           type: "uls",
-          formule: `${nl4(f.gGsup610b, 2)}\xB7G + ${nl4(f.gQ, 2)}\xB7W + ${nl4(f.gQ, 2)}\xB7\u03C8\u2080,Q\xB7Q + ${nl4(f.gQ, 2)}\xB7\u03C8\u2080,S\xB7S`,
+          formule: `${nl6(f.gGsup610b, 2)}\xB7G + ${nl6(f.gQ, 2)}\xB7W + ${nl6(f.gQ, 2)}\xB7\u03C8\u2080,Q\xB7Q + ${nl6(f.gQ, 2)}\xB7\u03C8\u2080,S\xB7S`,
           g: f.gGsup610b,
           wind: f.gQ,
           begeleidend: (psi) => r(f.gQ * psi.psi0)
@@ -10172,7 +10729,7 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
           // begeleidende gevallen is precies die oude combinatie.
           naam: `UGT 6.10b \u2014 ${gv.naam} leidend, blijvend gunstig`,
           type: "uls",
-          formule: `${nl4(f.gGinf, 2)}\xB7G + ${nl4(f.gQ, 2)}\xB7W + ${nl4(f.gQ, 2)}\xB7\u03C8\u2080,Q\xB7Q + ${nl4(f.gQ, 2)}\xB7\u03C8\u2080,S\xB7S`,
+          formule: `${nl6(f.gGinf, 2)}\xB7G + ${nl6(f.gQ, 2)}\xB7W + ${nl6(f.gQ, 2)}\xB7\u03C8\u2080,Q\xB7Q + ${nl6(f.gQ, 2)}\xB7\u03C8\u2080,S\xB7S`,
           g: f.gGinf,
           wind: f.gQ,
           begeleidend: (psi) => r(f.gQ * psi.psi0)
@@ -10278,7 +10835,7 @@ function zonderOnbekendeGevallen(c, ids) {
 function perSleutel(set) {
   return new Map(set.map((c) => [c.standaard.sleutel, c]));
 }
-function nl5(x) {
+function nl7(x) {
   return String(Number(x.toFixed(3))).replace(".", ",");
 }
 function gelijk(a, b) {
@@ -10687,7 +11244,7 @@ function veranderlijkeFactorVerschillen(p) {
 }
 function tekstVerschil(v, naamVan) {
   const MAX = 6;
-  const regels = v.combinaties.slice(0, MAX).map((c) => `"${c.naam}" ${c.factoren.map(([id, f]) => `${nl5(f)} voor geval ${id}`).join(" en ")}`).join("; ") + (v.combinaties.length > MAX ? `; en nog ${v.combinaties.length - MAX}` : "");
+  const regels = v.combinaties.slice(0, MAX).map((c) => `"${c.naam}" ${c.factoren.map(([id, f]) => `${nl7(f)} voor geval ${id}`).join(" en ")}`).join("; ") + (v.combinaties.length > MAX ? `; en nog ${v.combinaties.length - MAX}` : "");
   return `De veranderlijke belastinggevallen ${v.caseIds.map(naamVan).join(", ")} (gebruikscategorie ${v.categorie}) hebben in ${v.combinaties.length} combinatie(s) verschillende factoren: ${regels}. Gevallen van dezelfde gebruikscategorie zijn delen van \xE9\xE9n veranderlijke belasting \u2014 zo stelt de app de standaardcombinaties op \u2014 en in \xE9\xE9n combinatie is die belasting de overheersende (\u03B3_Q) of een samengaande (\u03B3_Q\xB7\u03C8\u2080), NEN-EN 1990 6.4.3.2(2); elk aanwezig deel draagt dan dezelfde factor. Een combinatie waarin het ene deel overheerst en het andere samengaat, telt de belasting te laag, en de combinatie waarin alle delen samen overheersen ontbreekt dan mogelijk. Dit ontstaat als een geval van type of categorie verandert terwijl de combinaties eigen combinaties zijn (hernoemd of aangepast): die volgen de gevallen niet. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of pas de factoren van deze combinaties aan.`;
 }
 var GAMMA_Q_MIN = Math.min(...GEVOLGKLASSEN.map((k) => PARTIELE_FACTOREN[k].gQ));
@@ -10727,8 +11284,8 @@ function veranderlijkeBelastingenZonderLeiding(p) {
   return uit;
 }
 function tekstZonderLeiding(a) {
-  const \u03B3 = (k) => nl5(PARTIELE_FACTOREN[k].gQ);
-  return `Veranderlijke belasting ${a.label} (belastinggeval ${a.caseIds.join(", ")}) is in geen enkele UGT-combinatie de overheersende veranderlijke belasting: ze komt alleen voor met een factor van ten hoogste ${nl5(a.hoogste)}. Elke combinatie omvat een overheersende veranderlijke belasting (NEN-EN 1990 6.4.3.1(2)) en de rekenwaarden volgen uit elk kritiek belastingsgeval (6.4.3.1(1)P); in uitdrukking 6.10b (NB A1.3.1(1)) krijgt de overheersende belasting \u03B3_Q zonder \u03C8\u2080: ${\u03B3("CC1")} in CC1 (NB tabel NB.5), ${\u03B3("CC2")} in CC2 (NB.4), ${\u03B3("CC3")} in CC3 (NB.5). Zonder zo'n combinatie kan de omhullende te laag zijn. Kies "Vervang door standaardcombinaties", of voeg een combinatie toe waarin deze belasting overheerst.`;
+  const \u03B3 = (k) => nl7(PARTIELE_FACTOREN[k].gQ);
+  return `Veranderlijke belasting ${a.label} (belastinggeval ${a.caseIds.join(", ")}) is in geen enkele UGT-combinatie de overheersende veranderlijke belasting: ze komt alleen voor met een factor van ten hoogste ${nl7(a.hoogste)}. Elke combinatie omvat een overheersende veranderlijke belasting (NEN-EN 1990 6.4.3.1(2)) en de rekenwaarden volgen uit elk kritiek belastingsgeval (6.4.3.1(1)P); in uitdrukking 6.10b (NB A1.3.1(1)) krijgt de overheersende belasting \u03B3_Q zonder \u03C8\u2080: ${\u03B3("CC1")} in CC1 (NB tabel NB.5), ${\u03B3("CC2")} in CC2 (NB.4), ${\u03B3("CC3")} in CC3 (NB.5). Zonder zo'n combinatie kan de omhullende te laag zijn. Kies "Vervang door standaardcombinaties", of voeg een combinatie toe waarin deze belasting overheerst.`;
 }
 function gelijkeRekeninhoudSet(a, b) {
   if (a.length !== b.length) return false;
@@ -10783,13 +11340,13 @@ function blijvendeFactorAfwijkingen(p) {
       if (pastNiet) {
         waarom.push(c.type === "sls" ? "in de BGT telt een blijvende belasting met 1,0" : "geen \u03B3_G uit NB tabel NB.4/NB.5 en geen 1,0");
       }
-      if (ander) waarom.push(`blijvend geval ${ander.id} heeft daar ${nl5(c.factors.get(ander.id) ?? 0)}`);
+      if (ander) waarom.push(`blijvend geval ${ander.id} heeft daar ${nl7(c.factors.get(ander.id) ?? 0)}`);
       regels.push({
         combinatieId: c.id,
         combinatie: c.name,
         factor: f,
         pastNiet,
-        tekst: `"${c.name}" ${f === 0 ? "geen factor" : nl5(f)} (${waarom.join("; ")})`
+        tekst: `"${c.name}" ${f === 0 ? "geen factor" : nl7(f)} (${waarom.join("; ")})`
       });
     }
     if (regels.some((r) => r.pastNiet)) {
@@ -18869,9 +19426,9 @@ function valideerModel(rauw, opties = {}) {
     }
     gesteund.add(s.nodeId);
     const knoop = knoopById.get(s.nodeId);
-    for (const richting of VASTGEZET[s.type] ?? []) {
-      if (richting === "x") vastgezetteRichtingen.x.push(knoop.z);
-      else if (richting === "z") vastgezetteRichtingen.z.push(knoop.x);
+    for (const richting2 of VASTGEZET[s.type] ?? []) {
+      if (richting2 === "x") vastgezetteRichtingen.x.push(knoop.z);
+      else if (richting2 === "z") vastgezetteRichtingen.z.push(knoop.x);
       else vastgezetteRichtingen.ry++;
     }
   }
@@ -19584,7 +20141,11 @@ function rekenDoor(payload) {
     gelezen.model.plates,
     { loadCases: gelezen.model.loadCases, gevolgklasse }
   );
-  const combinaties = selectie.actief;
+  const combinaties = metScheefstandRichtingen(
+    selectie.actief,
+    gelezen.model.scheefstandEnabled,
+    gelezen.model.scheefstandRichting
+  );
   const profileDb = leesProfielen(payload);
   const nonlinear = gelezen.nonlinearUitBestand !== null ? gelezen.nonlinearUitBestand : payload.nonlinear === true;
   const detail = payload.detail ?? "samenvatting";
@@ -19614,8 +20175,15 @@ function rekenDoor(payload) {
     throw new ModelFout(String(err?.message ?? err));
   }
   const solveMs = Date.now() - start;
+  const analysetype = nonlinear ? "tweedeOrdeGeometrisch" : "eersteOrde";
+  const stabiliteit = bepaalAlphaCr(multiInput, combinaties, combinationResults);
+  const stabiliteitMeldingen = stabiliteitsMeldingen(
+    stabiliteit,
+    analysetype,
+    gelezen.model.scheefstandEnabled
+  );
   const gevraagd = gelezen.model.loadCases.map((lc) => lc.id);
-  const opgelost = [...perCase.keys()];
+  const opgelost = [...gevalResultaten(perCase).keys()];
   const legeGevallen = gevraagd.filter((id) => !perCase.has(id));
   const teToetsen = pasCheckConfigToe(gelezen.beams, payload);
   const gevraagdeIds = payload.beam_ids === void 0 ? [] : eisArray(payload.beam_ids, "beam_ids").map(Number);
@@ -19626,6 +20194,10 @@ function rekenDoor(payload) {
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
     beams: staafSelectie,
+    // Het hele model, ook buiten `beam_ids`: een doorgaande lijn en een vrij
+    // staafeind worden op alle staven herkend (`lib/doorgaandeLijn.ts`).
+    alleBeams: teToetsen,
+    plates: gelezen.model.plates,
     // Nodig om een tussensteunpunt te onderscheiden van een knoop waar een
     // ligger alleen is doorgeknipt; zonder deze lijst zou de doorbuigingstoets
     // dat verschil niet kunnen melden.
@@ -19633,7 +20205,8 @@ function rekenDoor(payload) {
     combinations: combinaties,
     combinationResults,
     profileDb,
-    gevolgklasse
+    gevolgklasse,
+    stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled }
   });
   const houtklassen = leesHoutklassen(payload);
   const houtData = {
@@ -19677,6 +20250,9 @@ function rekenDoor(payload) {
   );
   if (klasseMelding) waarschuwingen.push(klasseMelding);
   waarschuwingen.push(...gelezenCombinaties.openMeldingen);
+  for (const m of stabiliteitMeldingen) {
+    waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
+  }
   for (const m of meldingenBelastinggevallen({
     loadCases: gelezen.model.loadCases,
     combinations: combinaties,
@@ -19705,7 +20281,19 @@ function rekenDoor(payload) {
     clt,
     onbekendeIds,
     waarschuwingen,
-    formatVersion: gelezen.formatVersion
+    formatVersion: gelezen.formatVersion,
+    stabiliteit: {
+      analysis_type: analysetype,
+      alpha_cr: stabiliteit.map((u) => ({
+        combination_id: u.combinatieId,
+        name: u.naam,
+        alpha_cr: u.alphaCr,
+        status: u.status,
+        ...u.grens !== void 0 ? { bound: u.grens } : {},
+        ...u.reden !== void 0 ? { reason: u.reden } : {},
+        label: alphaCrLabel(u)
+      }))
+    }
   };
 }
 function redenBestaatNiet(id) {
@@ -19741,12 +20329,15 @@ function opSolve(payload) {
         reason: c.reden
       })
     ),
-    per_case: mapNaarObject(d.perCase, (r) => vormResultaat(r, d.metStations)),
+    per_case: mapNaarObject(gevalResultaten(d.perCase), (r) => vormResultaat(r, d.metStations)),
     combinations: mapNaarObject(
       d.combinationResults,
       (r) => vormResultaat(r, d.metStations)
     ),
     envelope: vormEnvelop(d.envelope),
+    // α_cr per UGT-combinatie; een waarde onder 10 bij eerste orde staat ook
+    // als FOUT in `warnings` (NEN-EN 1993-1-1 5.2.1(3)).
+    stability: d.stabiliteit,
     steel_check_inputs: d.staal.inputs,
     skipped_beams: d.staal.skipped.map((s) => ({
       beam_id: s.beamId,
@@ -19781,6 +20372,7 @@ function opCheck(payload) {
       solve_ms: d.solveMs
     },
     units: EENHEDEN,
+    stability: d.stabiliteit,
     steel_check_inputs: d.staal.inputs,
     // Het bestaan van deze twee sleutels zegt de server dat deze bundel hout
     // toetsbaar maakt; een oudere bundel heeft ze niet, en dan meldt de server
@@ -19979,6 +20571,9 @@ if (process.argv.includes("--sidecar") || draaitAlsHoofdmodule()) {
   startSidecar();
 }
 export {
+  ALPHA_CR_GRENS_EERSTE_ORDE,
+  ALPHA_CR_MAX_DOFS,
+  ALPHA_CR_ZOEKGRENS,
   ANALYSETYPEN,
   ANALYSETYPE_LABEL,
   ANALYSETYPE_OMSCHRIJVING,
@@ -20025,6 +20620,8 @@ export {
   RHO_BETON,
   RHO_LUCHT,
   RHO_STAAL,
+  SCHEEFSTAND_COMBO_OFFSET,
+  SCHEEFSTAND_ID_OFFSET,
   SOORTEN_BUITEN_STAAL,
   SPIEGELREGELS_ELEMENTKRACHTEN,
   SPIEGELREGELS_STAAF,
@@ -20048,6 +20645,9 @@ export {
   aantalAfbeeldingen,
   aantalGebruiksgevallen,
   aantalVerloopSegmenten,
+  alphaCrLabel,
+  alphaCrStaafNotitie,
+  analyseToelichting,
   analysetypeUitBestand,
   basisSleutel,
   beamLengthMm,
@@ -20055,6 +20655,7 @@ export {
   beeldKernfoutAf,
   begeleidendeOpstellingen,
   beoordeelCombinatiesBijOpenen,
+  bepaalAlphaCr,
   bepaalDoorbuigingsInvoer,
   bepaalPlaatRand,
   bepaalStandaardRol,
@@ -20066,6 +20667,7 @@ export {
   bouwMultiInput,
   buildForcesEnvelope,
   buildMatrices,
+  buildMesh,
   buildSteelCheckInputs,
   buildTimberCheckInputs,
   chordRelativeMaxMm,
@@ -20096,8 +20698,10 @@ export {
   genereerStandaardCombinaties,
   genereerWindCombinaties,
   genereerWindbelasting,
+  getScheefstandRichtingen,
   getSecondOrderInput,
   getSecondOrderState,
+  gevalResultaten,
   gevolgklasseBijOpenen,
   gradenTekst,
   handmatigeStuwdruk,
@@ -20123,6 +20727,7 @@ export {
   matchSupportedTimberGrade,
   matenOpPositie,
   meldingenBelastinggevallen,
+  metScheefstandRichtingen,
   nonlinearVoorBestand,
   onbekendeDoorsneden,
   ontbrekendeStandaardcombinaties,
@@ -20144,6 +20749,7 @@ export {
   richtingssprongNotities,
   rolVanStaaf,
   sanitizeRestraintFractions,
+  scheefstandRichtingLabel,
   segmentenVoorVerloop,
   selecteerCombinaties,
   serializeProject,
@@ -20157,6 +20763,7 @@ export {
   spiegelZones,
   staafInReferentierichting,
   staafLengteMm,
+  stabiliteitsMeldingen,
   startSidecar,
   synchroniseerStandaard,
   synchroniseerWindCombinaties,
