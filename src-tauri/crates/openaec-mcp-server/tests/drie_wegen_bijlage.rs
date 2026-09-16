@@ -570,3 +570,106 @@ async fn elke_kern_rekent_met_nl_en_zonder_veld_hetzelfde() {
     }
     let _ = child.kill().await;
 }
+
+// ── `check_fem_model`: een losse bijlage in het verzoek (issue #17) ─────────
+//
+// `check_fem_model` bestaat alleen als MCP-tool (zie de kruistabel: de solve en
+// de invoerbouw zitten in de bundel). De bijlage in het verzoek heeft voorrang
+// boven het projectbestand; de voorrang zelf bewijst `test-normnaad.mjs` op de
+// bundel, in beide standen. Hier: het schema, de weigering bij het lezen van de
+// argumenten, en dat "NL" doorloopt tot in elke toetsinvoer.
+
+fn ligger_c24() -> Value {
+    json!({
+        "nodes": [ { "id": 1, "x": 0, "z": 0 }, { "id": 2, "x": 5000, "z": 0 } ],
+        "beams": [ { "id": 1, "from": 1, "to": 2, "material": "C24", "profile": "96x450" } ],
+        "supports": [
+            { "nodeId": 1, "type": "pinned" },
+            { "nodeId": 2, "type": "zRoller" }
+        ],
+        "loadCases": [ { "id": 1, "name": "G", "type": "dead" } ],
+        "loads": [ { "id": 1, "type": "lineLoad", "caseId": 1, "beamId": 1, "q": -2 } ]
+    })
+}
+
+async fn check_fem_model_aanroep(
+    stdin: &mut ChildStdin,
+    reader: &mut BufReader<ChildStdout>,
+    id: u32,
+    argumenten: Value,
+) -> Value {
+    schrijf(
+        stdin,
+        json!({
+            "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": "check_fem_model", "arguments": argumenten }
+        }),
+    )
+    .await;
+    // De solve kan even duren; `lees_bericht` wacht tot 60 s.
+    let resp = lees_bericht(reader).await;
+    assert_eq!(resp["id"], id);
+    resp
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn check_fem_model_kent_bijlage_in_het_schema_en_weigert_een_niet_gevulde() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    schrijf(&mut stdin, json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })).await;
+    let lijst = lees_bericht(&mut reader).await;
+    let tool = lijst["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|t| t["name"] == "check_fem_model")
+        .expect("check_fem_model in tools/list")
+        .clone();
+    let veld = &tool["inputSchema"]["properties"]["bijlage"];
+    assert_eq!(veld["type"], "string", "bijlage ontbreekt in het schema: {tool}");
+    assert_eq!(veld["enum"], json!(nationale_bijlage::BIJLAGEN_GEVULD));
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+
+    let resp = check_fem_model_aanroep(
+        &mut stdin,
+        &mut reader,
+        3,
+        json!({ "model": ligger_c24(), "bijlage": NIET_GEVULD }),
+    )
+    .await;
+    let tekst = format!("{resp}");
+    assert!(
+        tekst.contains("nationale bijlage") && tekst.contains("is niet gevuld") && tekst.contains(NIET_GEVULD),
+        "check_fem_model hoort een niet-gevulde bijlage te weigeren met reden, kreeg: {tekst}"
+    );
+    let _ = child.kill().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn check_fem_model_met_bijlage_nl_rekent_als_zonder() {
+    let status = openaec_mcp_server::sidecar::status(&Default::default()).await;
+    assert!(status.available, "Deze test vereist Node.js: {:?}", status.reason);
+
+    let (mut child, mut stdin, mut reader) = start_server().await;
+    let zonder = check_fem_model_aanroep(&mut stdin, &mut reader, 4, json!({ "model": ligger_c24() })).await;
+    let met = check_fem_model_aanroep(
+        &mut stdin,
+        &mut reader,
+        5,
+        json!({ "model": ligger_c24(), "bijlage": "NL" }),
+    )
+    .await;
+    for (naam, r) in [("zonder", &zonder), ("met NL", &met)] {
+        assert_eq!(
+            r["result"]["isError"], false,
+            "check_fem_model {naam}: {}",
+            r["result"]["content"][0]["text"].as_str().unwrap_or("")
+        );
+    }
+    let (a, b) = (&zonder["result"]["structuredContent"], &met["result"]["structuredContent"]);
+    assert_eq!(a["timber_results"], b["timber_results"], "NL en weglaten horen dezelfde uitkomst te geven");
+    let invoer = b["timber_check_inputs"].as_array().expect("timber_check_inputs");
+    assert!(!invoer.is_empty(), "er is geen houtinvoer om iets aan te bewijzen: {b}");
+    assert!(invoer.iter().all(|i| i["bijlage"] == "NL"), "{invoer:?}");
+    let _ = child.kill().await;
+}

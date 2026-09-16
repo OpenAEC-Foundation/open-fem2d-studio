@@ -67,12 +67,12 @@ function projectMetBijlage(code) {
 }
 
 let id = 1;
-function toets(tekst) {
+function toets(tekst, extra = {}) {
   return verwerkVerzoek({
     v: 1,
     id: id++,
     op: "check",
-    payload: { project: { inhoud: tekst } },
+    payload: { project: { inhoud: tekst }, ...extra },
   });
 }
 
@@ -147,6 +147,41 @@ log("\n[4] Zonder het veld loopt een bestand van vóór de naad gewoon door");
       JSON.stringify(alle.map((i) => i.bijlage)),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Issue #17: `check_fem_model` kan een losse `bijlage` meegeven. Die heeft
+// VOORRANG boven het projectbestand (wie hem uitdrukkelijk meegeeft, bedoelt
+// deze), en wordt met dezelfde reden geweigerd als hij niet gevuld is.
+log("\n[5] Een bijlage in het verzoek gaat voor het projectbestand, met dezelfde weigering");
+{
+  const zonder = toets(projectMetBijlage(null));
+  const metNl = toets(projectMetBijlage(null), { bijlage: "NL" });
+  check("verzoek NL: de toetsing slaagt", metNl.ok === true, metNl.ok ? "" : JSON.stringify(metNl).slice(0, 300));
+  check("verzoek NL geeft exact dezelfde toetsinvoer als zonder verzoek",
+    metNl.ok && zonder.ok &&
+      JSON.stringify(metNl.result.steel_check_inputs) === JSON.stringify(zonder.result.steel_check_inputs) &&
+      JSON.stringify(metNl.result.timber_check_inputs) === JSON.stringify(zonder.result.timber_check_inputs));
+  check("en dezelfde combinatieresultaten",
+    metNl.ok && zonder.ok &&
+      JSON.stringify(metNl.result.combinations) === JSON.stringify(zonder.result.combinations));
+
+  const vreemdVerzoek = toets(projectMetBijlage("NL"), { bijlage: "DE" });
+  const tekst = JSON.stringify(vreemdVerzoek);
+  check("verzoek DE boven een NL-bestand: geweigerd, niet stil NL", vreemdVerzoek.ok !== true);
+  check("met de reden", /niet gevuld/.test(tekst) && tekst.includes("DE"), tekst.slice(0, 300));
+
+  const voorrang = toets(projectMetBijlage("DE"), { bijlage: "NL" });
+  check("verzoek NL boven een bestand met DE: het verzoek wint en de toetsing slaagt",
+    voorrang.ok === true, voorrang.ok ? "" : JSON.stringify(voorrang).slice(0, 300));
+  if (voorrang.ok) {
+    const alle = [...(voorrang.result.steel_check_inputs ?? []), ...(voorrang.result.timber_check_inputs ?? [])];
+    check("en elke toetsinvoer draagt de bijlage van het verzoek",
+      alle.length > 0 && alle.every((i) => i.bijlage === "NL"), JSON.stringify(alle.map((i) => i.bijlage)));
+  }
+  const leeg = toets(projectMetBijlage(null), { bijlage: "" });
+  check("een lege bijlage in het verzoek is een invoerfout, geen stille terugval",
+    leeg.ok !== true, JSON.stringify(leeg).slice(0, 200));
 }
 
 log("");

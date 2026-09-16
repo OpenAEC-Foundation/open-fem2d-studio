@@ -269,11 +269,13 @@ interface GelezenModel {
   /** Gevolgklasse uit de projectgegevens van het bestand, of `null`. */
   gevolgklasseUitBestand: Gevolgklasse | null;
   /**
-   * Nationale bijlage uit de projectgegevens van het bestand, of `null`
-   * (normnaad). Zij gaat als `bijlage` mee naar elke rekenkern. Een bijlage
-   * die deze uitgave niet kent, levert hier een fout op — niet stil "NL".
+   * Nationale bijlage uit de projectgegevens van het bestand, ZOALS GELEZEN
+   * (normnaad), of `undefined`. Nog niet gekeurd: een `bijlage` in het verzoek
+   * gaat voor (issue #17), en dan hoort een onbekende code in het bestand de
+   * aanroep niet te laten stranden. `leesBijlageVoorRekening` keurt de bijlage
+   * die werkelijk geldt, en weigert een onbekende code met reden.
    */
-  bijlageUitBestand: NationaleBijlageCode | null;
+  bijlageRauwUitBestand: unknown;
   /**
    * De id-tellers uit het projectbestand, of `undefined`. Alleen voor de
    * tellers zelf: of een combinatie verouderd is, herkent `openCombinatieStaat`
@@ -471,13 +473,10 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
           ?.uitgangspunten?.gevolgklasse,
       ),
       // De nationale bijlage stond al in het projectbestand maar werd door
-      // niemand gelezen (normnaad). Een code die deze uitgave niet kent, gooit
-      // hier — dat is de bedoeling: een model met een vreemde bijlage hoort
-      // niet met Nederlandse partiële factoren te worden doorgerekend.
-      bijlageUitBestand: leesBijlage(
-        (bestand.projectInfo as { uitgangspunten?: { nationaleBijlage?: unknown } } | undefined)
-          ?.uitgangspunten?.nationaleBijlage,
-      ),
+      // niemand gelezen (normnaad). Hier alleen gelezen; gekeurd wordt zij in
+      // `leesBijlageVoorRekening`, na de voorrang van het verzoek.
+      bijlageRauwUitBestand: (bestand.projectInfo as { uitgangspunten?: { nationaleBijlage?: unknown } } | undefined)
+        ?.uitgangspunten?.nationaleBijlage,
       idTellersUitBestand: bestand.idTellers,
     };
   }
@@ -535,7 +534,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     analysetypeUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
-    bijlageUitBestand: null,
+    bijlageRauwUitBestand: undefined,
     idTellersUitBestand: undefined,
     scheefstandMeldingen: scheef.meldingen,
     scheefstandKeuze: scheef.keuze,
@@ -559,16 +558,31 @@ function leesBijlage(waarde: unknown): NationaleBijlageCode | null {
 }
 
 /**
- * De nationale bijlage waarmee deze aanroep rekent (normnaad): die uit de
- * projectgegevens van het bestand, anders de enige gevulde bijlage. Eén plek,
- * zodat de standaardcombinaties (γ en ψ) en de rekenkernen dezelfde bijlage
- * krijgen.
+ * De nationale bijlage waarmee deze aanroep rekent (normnaad). Eén plek, zodat
+ * de standaardcombinaties (γ en ψ) en elke toetsinvoer dezelfde bijlage
+ * krijgen:
+ *  1. `bijlage` uit het VERZOEK (issue #17: `check_fem_model` met een losse
+ *     bijlage) — wie hem uitdrukkelijk meegeeft, bedoelt deze, ook boven het
+ *     projectbestand;
+ *  2. die uit de projectgegevens van het bestand;
+ *  3. de enige gevulde bijlage (bestand van vóór de naad, of een los model).
+ * Een code die deze uitgave niet kent, in het verzoek of in het geldende
+ * bestand, wordt een INVOERFOUT met reden — nooit stil NL.
  */
 function leesBijlageVoorRekening(
-  _payload: Record<string, unknown>,
+  payload: Record<string, unknown>,
   gelezen: GelezenModel,
 ): NationaleBijlageCode {
-  return gelezen.bijlageUitBestand ?? STANDAARD_BIJLAGE;
+  if (payload.bijlage !== undefined) {
+    const uitVerzoek = leesBijlage(payload.bijlage);
+    if (uitVerzoek === null) {
+      throw new InvoerFout(
+        "Veld `bijlage` is leeg. Laat het weg om de bijlage uit het projectbestand te gebruiken.",
+      );
+    }
+    return uitVerzoek;
+  }
+  return leesBijlage(gelezen.bijlageRauwUitBestand) ?? STANDAARD_BIJLAGE;
 }
 
 /**
@@ -1039,7 +1053,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     // lijst valt w_add terug op de volledige zakking, mét notitie.
     loadCases: gelezen.model.loadCases,
     // De nationale bijlage gaat als `bijlage` mee naar de rekenkern.
-    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    nationaleBijlage: bijlage,
     stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled },
   });
 
@@ -1059,7 +1073,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     supportedGrades: houtklassen ?? undefined,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost,
-    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    nationaleBijlage: bijlage,
   };
   const hout = buildTimberCheckInputs({
     ...houtData,
@@ -1074,7 +1088,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     plates: gelezen.model.plates ?? [],
     combinations: combinaties,
     combinationResults,
-    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    nationaleBijlage: bijlage,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost,
   });
