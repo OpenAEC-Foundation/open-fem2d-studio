@@ -122,7 +122,7 @@ import { PSI_GEBRUIK, PSI_SNEEUW, PSI_WIND, STANDAARD_CATEGORIE } from "../compo
 import type { GevalMelding } from "./combinatieBeheer";
 import { bepaalOnbepaaldheidVanModel, type OnbepaaldheidUitkomst } from "./statischeOnbepaaldheid";
 import { materiaalVanStaaf } from "./variantInvoer";
-import { bepaalPlaatStijfheid } from "./plaatMateriaal";
+import { plaatMateriaalSoort } from "./plaatMateriaal";
 
 // ── k_def ─────────────────────────────────────────────────────────────────
 
@@ -205,11 +205,14 @@ export function kruipgedragVanPlaat(p: Plate): Kruipgedrag {
       ? { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" }
       : { soort: "onbekend", kDef: null, sleutel: `plaat-E:${p.E}`, omschrijving: "wandschijf met een eigen E zonder materiaal (kruipgedrag onbekend)" };
   }
-  const uit = bepaalPlaatStijfheid(p);
-  if (!uit.ok) {
+  // Alleen de SOORT telt voor het kruipgedrag. Een kruislaaghouten wand
+  // waarvan de G₁₂-keuze nog ontbreekt (issue #14) is nog steeds hout en geen
+  // "niet herkend materiaal"; de weigering daarvan komt uit de berekening.
+  const soort = plaatMateriaalSoort(p.materiaal);
+  if (soort === "onbekend" || soort === null) {
     return { soort: "onbekend", kDef: null, sleutel: "onbekend", omschrijving: "wandschijf met een niet herkend materiaal" };
   }
-  switch (uit.stijfheid.soort) {
+  switch (soort) {
     case "staal":
       return { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" };
     case "beton":

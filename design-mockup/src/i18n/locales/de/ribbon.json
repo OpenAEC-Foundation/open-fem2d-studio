@@ -711,6 +711,8 @@
     "plateLoadNote": "Randlasten (auch Teil- und Trapezlasten) und Einzellasten auf einem Plattenrand werden über die linearen Formfunktionen der Randelemente in Knotenkräfte auf den Randknoten umgerechnet; ein Stabende, das zwischen zwei Randknoten auf einem Plattenrand liegt – dem Umriss oder dem Rand einer Öffnung –, wird kinematisch an diesen Rand gekoppelt (lineare Interpolation). Ein freies Stabende zwischen 1 und 50 mm von einem Plattenrand wird nicht gekoppelt, sondern abgelehnt.",
     "plateKindNoteMesh": "Platten wirken als Wandscheibe (Membran, in der Ebene); das Rechennetz wird bei jeder Berechnung neu aus der Netzgröße erzeugt. Vierecke sind bilineare Quad4-Elemente, Dreiecke CST-Elemente (konstante Dehnung); eine Polygonplatte mit Vierecken kann ein gemischtes Netz ergeben, wo das Zusammenfassen von Dreiecken nicht gelingt. Öffnungen bleiben frei von Elementen; das Netz legt Knoten auf den Öffnungsrand.",
     "plateMateriaalGeweigerd": "Werkstoff abgelehnt — {{reden}}",
+    "plateWaarschuwing": "WARNUNG — {{tekst}}",
+    "plateG12Bovengrens": "(Obergrenze)",
     "plateGeweigerd": "abgelehnt: {{reden}}",
     "plateBron_materiaal": "Werkstoff",
     "plateBron_handmatig": "manuell",

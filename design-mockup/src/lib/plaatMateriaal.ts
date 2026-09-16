@@ -66,16 +66,38 @@
  * de schijf in béide richtingen te slap maken, en dat is in een statisch
  * onbepaalde constructie geen kant op veilig.
  *
- * Voor G₁₂ wordt dezelfde uitsmering gebruikt (Σ t_i·G_mean,i / Σ t_i).
- * EXPLICIETE BEPERKING: NEN-EN 1995-1-1 kent kruislaaghout niet als apart
- * product (zie de kop van `clt.rs`), en de afschuiving in het VLAK van een
- * kruislaaghouten schijf wordt in de vakliteratuur met een reductie voor de
- * wringing in de kruisingsvlakken gerekend. Die reductiefactor staat niet in
- * de norm en wordt hier dus niet verzonnen: G₁₂ is de uitgesmeerde G_mean,
- * zonder reductie, en dat is een BOVENGRENS voor de schuifstijfheid. Het
- * rapport zegt dat erbij. Zolang platen niet getoetst worden raakt dit
- * alleen de stijfheidsverdeling; vóór er een plaattoets komt hoort hier een
- * onderbouwde waarde te staan.
+ * # G₁₂ VAN KRUISLAAGHOUT: VERPLICHTE INVOER MET BRON
+ *
+ * De glijdingsmodulus in het VLAK van een kruislaaghouten schijf is niet de
+ * uitgesmeerde G_mean van de lamellen. De lamellen zijn aan hun smalle zijden
+ * doorgaans niet verlijmd, zodat de afschuiving in het vlak via de
+ * kruisingsvlakken tussen de lagen loopt, en die vervormen daarbij ook door
+ * wringing. De werkelijke G₁₂ ligt dus LAGER dan Σ t_i·G_mean,i / Σ t_i.
+ *
+ * Er is GEEN bron voor die reductie beschikbaar die hier gelezen kon worden
+ * (gezocht in september 2026): NEN-EN 1995-1-1 kent kruislaaghout niet als
+ * product (zie de kop van `clt.rs`) en geeft ook voor schijven (9.2.4) geen
+ * G in het vlak voor een gekruiste opbouw; EN 338 en EN 14080 geven alleen
+ * G_mean van de lamel. De productnorm voor kruislaaghout, een technische
+ * goedkeuring (ETA) of een ontwerp-Eurocode met een regel voor kruislaaghout
+ * stond niet op schijf. Een reductiefactor uit het hoofd overnemen zou een
+ * verzonnen normwaarde zijn.
+ *
+ * Daarom — net als k_def van kruislaaghout (tabel 3.2 kent die rij niet) —
+ * is G₁₂ bij kruislaaghout VERPLICHTE INVOER, op één van twee manieren:
+ *
+ *  - `cltG12` (N/mm²) MET `cltG12Bron`: de waarde uit de productverklaring of
+ *    de ETA van de plaat. Zonder bron wordt hij geweigerd, want een waarde
+ *    zonder herkomst is in het rapport niet van een aanname te onderscheiden.
+ *  - `cltG12Bovengrens: true`: bewust rekenen met de uitgesmeerde G_mean,
+ *    ZONDER reductie. Dat is een bovengrens (de schijf is te stijf in
+ *    afschuiving) en komt als WAARSCHUWING in paneel en rapport. Dit is
+ *    precies de G₁₂ van vóór issue #14, dus een plaat met deze keuze rekent
+ *    bit-gelijk aan toen.
+ *
+ * Geen van beide, of beide tegelijk: WEIGERING met reden. Een kruislaaghouten
+ * plaat uit een ouder projectbestand weigert daardoor nu; de reden noemt de
+ * twee manieren om hem weer te laten rekenen.
  *
  * # DWARSCONTRACTIE VAN HOUT
  *
@@ -160,8 +182,20 @@ export interface PlaatStijfheid {
   bronE: PlaatBron;
   bronNu: PlaatBron;
   bronRho: PlaatBron;
+  /**
+   * Waar G₁₂ vandaan komt. "bovengrens" alleen bij kruislaaghout met de
+   * expliciete keuze `cltG12Bovengrens` (uitgesmeerde G_mean, niet
+   * gereduceerd); "handmatig" bij `cltG12` met bron.
+   */
+  bronG12: PlaatBron | "bovengrens";
   /** Eén zin met de herkomst en het normartikel — voor paneel en rapport. */
   herkomst: string;
+  /**
+   * Waarschuwingen die bij deze stijfheid horen en APART getoond moeten
+   * worden (paneel, rapport), bijvoorbeeld de niet-gereduceerde G₁₂ van
+   * kruislaaghout. Leeg als er niets te melden is.
+   */
+  waarschuwingen: string[];
 }
 
 /** Uitkomst van de materiaalbepaling: gelukt, of geweigerd met reden. */
@@ -176,6 +210,12 @@ export interface PlaatMateriaalInvoer {
   nu?: number;
   rho?: number;
   hoofdrichting?: number;
+  /** Kruislaaghout: G₁₂ in het vlak (N/mm²), alleen samen met `cltG12Bron`. */
+  cltG12?: number;
+  /** Kruislaaghout: herkomst van `cltG12` (productverklaring, ETA met tabel). */
+  cltG12Bron?: string;
+  /** Kruislaaghout: bewust de niet-gereduceerde G_mean als bovengrens gebruiken. */
+  cltG12Bovengrens?: boolean;
 }
 
 // De standaardwaarden zonder materiaal zijn die van staal, net als
@@ -291,6 +331,149 @@ export function cltVlakStijfheid(layup: CltLayup): {
   return { E1: tE1 / tTotaal, E2: tE2 / tTotaal, G12: tG / tTotaal, rho: tRho / tTotaal };
 }
 
+/** Wat een materiaalnaam oplevert vóór de losse velden en de G₁₂-keuze. */
+interface PlaatBasis {
+  soort: PlaatMateriaalSoort;
+  naam: string;
+  E1: number; E2: number; nu12: number; G12: number; rho: number;
+  orthotroop: boolean;
+  nuUitMateriaal: boolean;
+  herkomst: string;
+}
+
+/**
+ * Een materiaalnaam herkennen en de tabelgetallen erbij zoeken. Nog zonder de
+ * losse velden en zonder de G₁₂-plicht van kruislaaghout: die komen in
+ * `bepaalPlaatStijfheid`. `nu` is alleen nodig voor het vrije materiaal, dat
+ * geen eigen ν in de naam draagt.
+ */
+function herkenPlaatBasis(naam: string, nu: number | undefined): PlaatBasis | { fout: string } {
+  // Zelfde volgorde als `materiaalVanStaaf`: het vrije materiaal en de
+  // kruislaaghoutopbouw eerst, want hun naam zou anders bij de verkeerde
+  // tabel belanden.
+  if (isVrijMateriaal(naam)) {
+    const vrij = parseVrijMateriaal(naam);
+    if (!vrij) {
+      return {
+        fout:
+          `vrij materiaal "${naam}" is niet volledig. Vorm: ` +
+          `"VRIJ:<naam> E=<N/mm²> rho=<kg/m³> f=<N/mm²>[ gM=<γ_M>]", ` +
+          `bijvoorbeeld "VRIJ:Natuursteen E=60000 rho=2700 f=8".`,
+      };
+    }
+    const nuVrij = gegeven(nu) ? nu : nuStandaard();
+    return {
+      soort: "vrij", naam: vrij.naam,
+      E1: vrij.eMod, E2: vrij.eMod, nu12: nuVrij, G12: gIsotroop(vrij.eMod, nuVrij), rho: vrij.dichtheid,
+      orthotroop: false, nuUitMateriaal: false,
+      herkomst:
+        `Vrij materiaal "${vrij.naam}": E = ${vrij.eMod} N/mm² en ρ = ${vrij.dichtheid} kg/m³ ` +
+        `uit de materiaalnaam zelf (geen norm, geen tabel). Isotroop; ν is niet in de naam ` +
+        `opgenomen en komt daarom uit het ν-veld van de plaat.`,
+    };
+  }
+  if (isCltProfiel(naam)) {
+    const uit = ontleedPlaatClt(naam);
+    if ("fout" in uit) return { fout: uit.fout };
+    const v = cltVlakStijfheid(uit.layup);
+    const diktes = uit.layup.layers.map((l) => l.thickness_mm).join("/");
+    return {
+      soort: "clt", naam,
+      // G12 is hier de uitgesmeerde G_mean — de BOVENGRENS. Of hij zo
+      // gebruikt mag worden, beslist de G₁₂-plicht in `bepaalPlaatStijfheid`.
+      E1: v.E1, E2: v.E2, nu12: 0, G12: v.G12, rho: v.rho,
+      orthotroop: true, nuUitMateriaal: true,
+      herkomst:
+        `Kruislaaghout, opbouw ${diktes} mm: E₁ en E₂ zijn per laag over de dikte ` +
+        `uitgesmeerd (E_0,mean langs de vezel, E_90,mean dwars — EN 338 / EN 14080); ` +
+        `ρ eveneens. AANNAME ν₁₂ = 0: NEN-EN 1995-1-1 en EN 338 geven geen ` +
+        `dwarscontractie voor hout.`,
+    };
+  }
+  const beton = matchSupportedConcreteClass(naam);
+  if (beton !== null) {
+    const E = CONCRETE_E_CM[beton];
+    // De twee lijsten (toetsbare klassen en E_cm-tabel) lopen vandaag gelijk.
+    // Raken ze uit de pas, dan hoort dat op te vallen en niet als E = NaN de
+    // stijfheidsmatrix in te glijden.
+    if (!(E > 0)) {
+      return { fout: `betonklasse "${beton}" staat niet in de E_cm-tabel (NEN-EN 1992-1-1 tabel 3.1).` };
+    }
+    return {
+      soort: "beton", naam: beton,
+      E1: E, E2: E, nu12: NU_BETON, G12: gIsotroop(E, NU_BETON), rho: RHO_BETON,
+      orthotroop: false, nuUitMateriaal: true,
+      herkomst:
+        `Beton ${beton}: E = E_cm = ${E} N/mm² (NEN-EN 1992-1-1 tabel 3.1, ongescheurd), ` +
+        `ν = ${NU_BETON} (3.1.3(4), ongescheurd beton) en ρ = ${RHO_BETON} kg/m³ voor ` +
+        `gewapend beton (NEN-EN 1991-1-1 tabel A.1). Isotroop.`,
+    };
+  }
+  const klasse = matchSupportedTimberGrade(naam);
+  if (klasse !== null) {
+    const e0 = TIMBER_E_MEAN[klasse];
+    const e90 = TIMBER_E90_MEAN[klasse];
+    const g = TIMBER_G_MEAN[klasse];
+    // Zelfde reden als bij beton: een klasse die de toetslijst wél kent en
+    // deze tabellen niet, hoort te weigeren in plaats van NaN te leveren.
+    if (!(e0 > 0) || !(e90 > 0) || !(g > 0) || !(TIMBER_RHO_MEAN[klasse] > 0)) {
+      return { fout: `sterkteklasse "${klasse}" mist E_0,mean, E_90,mean, G_mean of ρ_mean in de houttabellen (EN 338 / EN 14080).` };
+    }
+    return {
+      soort: "hout", naam: klasse,
+      E1: e0, E2: e90, nu12: 0, G12: g, rho: TIMBER_RHO_MEAN[klasse],
+      orthotroop: true, nuUitMateriaal: true,
+      herkomst:
+        `Massief hout ${klasse}: E₁ = E_0,mean = ${e0} N/mm² langs de vezel, ` +
+        `E₂ = E_90,mean = ${e90} N/mm² dwars en G₁₂ = G_mean = ${g} N/mm² ` +
+        `(EN 338 / EN 14080, dezelfde getallen als de toetsingskern); ` +
+        `ρ = ρ_mean = ${TIMBER_RHO_MEAN[klasse]} kg/m³. AANNAME ν₁₂ = 0: ` +
+        `NEN-EN 1995-1-1 en EN 338 geven geen dwarscontractie voor hout.`,
+    };
+  }
+  if (STEEL_GRADES.includes(naam.toUpperCase())) {
+    return {
+      soort: "staal", naam: naam.toUpperCase(),
+      E1: E_STAAL, E2: E_STAAL, nu12: NU_STAAL,
+      G12: gIsotroop(E_STAAL, NU_STAAL), rho: RHO_STAAL,
+      orthotroop: false, nuUitMateriaal: true,
+      herkomst:
+        `Staal ${naam.toUpperCase()}: E = ${E_STAAL} N/mm² en ν = ${NU_STAAL} ` +
+        `(NEN-EN 1993-1-1 3.2.6(1)), ρ = ${RHO_STAAL} kg/m³ ` +
+        `(NEN-EN 1991-1-1 tabel A.4). Isotroop; de staalsoort bepaalt de sterkte, ` +
+        `niet de stijfheid.`,
+    };
+  }
+  return {
+    fout:
+      `materiaal "${naam}" wordt niet herkend. Bekend zijn: ${plaatMateriaalVoorbeelden()}. ` +
+      `Laat het veld leeg om met de losse E, ν en ρ te rekenen; er wordt geen ` +
+      `materiaal aangenomen.`,
+  };
+}
+
+/** Is er iets van de G₁₂-invoer van kruislaaghout ingevuld? */
+function heeftCltG12Invoer(p: PlaatMateriaalInvoer): boolean {
+  return p.cltG12 !== undefined
+    || (p.cltG12Bron !== undefined && p.cltG12Bron.trim() !== "")
+    || p.cltG12Bovengrens === true;
+}
+
+/**
+ * De materiaalsoort van een plaat zonder de rest van de bepaling: "clt" voor
+ * een leesbare kruislaaghoutopbouw, ook als de G₁₂-invoer nog ontbreekt.
+ * `null` zonder materiaal, "onbekend" als de naam niet herkend wordt. Voor
+ * wie alleen wil weten WAT voor plaat het is (kruipgedrag, paneel), zodat een
+ * ontbrekende G₁₂ een kruislaaghouten wand niet tot "onbekend materiaal"
+ * maakt.
+ */
+export function plaatMateriaalSoort(materiaal: string | undefined): PlaatMateriaalSoort | null | "onbekend" {
+  const naam = (materiaal ?? "").trim();
+  if (naam === "") return null;
+  const basis = herkenPlaatBasis(naam, undefined);
+  return "fout" in basis ? "onbekend" : basis.soort;
+}
+
 /**
  * De stijfheid en de volumieke massa waarmee een plaat rekent.
  *
@@ -298,7 +481,8 @@ export function cltVlakStijfheid(layup: CltLayup): {
  * E, ν en ρ van de plaat zelf (of de staaldefaults). Mét `materiaal` komen de
  * getallen uit de normtabellen, tenzij de plaat ze expliciet overschrijft.
  * Een materiaal dat niet herkend wordt levert een WEIGERING met reden op; er
- * wordt nooit stil op staal teruggevallen.
+ * wordt nooit stil op staal teruggevallen. Kruislaaghout weigert bovendien
+ * zonder G₁₂-keuze (zie de kop van dit bestand).
  */
 export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUitkomst {
   const hoekGraden = gegeven(p.hoofdrichting) ? p.hoofdrichting : 0;
@@ -306,6 +490,15 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
 
   // ── Geen materiaal: precies het oude gedrag ────────────────────────────
   if (naam === "") {
+    if (heeftCltG12Invoer(p)) {
+      return {
+        ok: false,
+        reden:
+          `cltG12, cltG12Bron en cltG12Bovengrens horen alleen bij kruislaaghout, maar deze ` +
+          `plaat heeft geen materiaal. Kies een kruislaaghoutopbouw ("CLT C24 40/20/40") of ` +
+          `laat de G₁₂-velden leeg; ze worden niet stil genegeerd.`,
+      };
+    }
     const E = gegeven(p.E) ? p.E : eStandaard();
     const nu = gegeven(p.nu) ? p.nu : nuStandaard();
     const rho = gegeven(p.rho) ? p.rho : rhoStandaard();
@@ -320,124 +513,18 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
         bronE: gegeven(p.E) ? "handmatig" : "standaard",
         bronNu: gegeven(p.nu) ? "handmatig" : "standaard",
         bronRho: gegeven(p.rho) ? "handmatig" : "standaard",
+        // Isotroop: G = E/(2(1+ν)) volgt uit E, dus ook de herkomst.
+        bronG12: gegeven(p.E) ? "handmatig" : "standaard",
         herkomst:
           "Geen materiaal gekozen: de plaat rekent isotroop met de ingevoerde " +
           "E, ν en ρ (standaard staal 210 000 N/mm², 0,3 en 7850 kg/m³).",
+        waarschuwingen: [],
       },
     };
   }
 
-  // ── Materiaal herkennen. Zelfde volgorde als `materiaalVanStaaf`: het
-  //    vrije materiaal en de kruislaaghoutopbouw eerst, want hun naam zou
-  //    anders bij de verkeerde tabel belanden. ─────────────────────────────
-  let basis: {
-    soort: PlaatMateriaalSoort;
-    naam: string;
-    E1: number; E2: number; nu12: number; G12: number; rho: number;
-    orthotroop: boolean;
-    nuUitMateriaal: boolean;
-    herkomst: string;
-  };
-
-  if (isVrijMateriaal(naam)) {
-    const vrij = parseVrijMateriaal(naam);
-    if (!vrij) {
-      return {
-        ok: false,
-        reden:
-          `vrij materiaal "${naam}" is niet volledig. Vorm: ` +
-          `"VRIJ:<naam> E=<N/mm²> rho=<kg/m³> f=<N/mm²>[ gM=<γ_M>]", ` +
-          `bijvoorbeeld "VRIJ:Natuursteen E=60000 rho=2700 f=8".`,
-      };
-    }
-    const nu = gegeven(p.nu) ? p.nu : nuStandaard();
-    basis = {
-      soort: "vrij", naam: vrij.naam,
-      E1: vrij.eMod, E2: vrij.eMod, nu12: nu, G12: gIsotroop(vrij.eMod, nu), rho: vrij.dichtheid,
-      orthotroop: false, nuUitMateriaal: false,
-      herkomst:
-        `Vrij materiaal "${vrij.naam}": E = ${vrij.eMod} N/mm² en ρ = ${vrij.dichtheid} kg/m³ ` +
-        `uit de materiaalnaam zelf (geen norm, geen tabel). Isotroop; ν is niet in de naam ` +
-        `opgenomen en komt daarom uit het ν-veld van de plaat.`,
-    };
-  } else if (isCltProfiel(naam)) {
-    const uit = ontleedPlaatClt(naam);
-    if ("fout" in uit) return { ok: false, reden: uit.fout };
-    const v = cltVlakStijfheid(uit.layup);
-    const diktes = uit.layup.layers.map((l) => l.thickness_mm).join("/");
-    basis = {
-      soort: "clt", naam,
-      E1: v.E1, E2: v.E2, nu12: 0, G12: v.G12, rho: v.rho,
-      orthotroop: true, nuUitMateriaal: true,
-      herkomst:
-        `Kruislaaghout, opbouw ${diktes} mm: E₁ en E₂ zijn per laag over de dikte ` +
-        `uitgesmeerd (E_0,mean langs de vezel, E_90,mean dwars — EN 338 / EN 14080), ` +
-        `G₁₂ eveneens (Σt·G_mean/Σt, ZONDER reductie voor de wringing in de ` +
-        `kruisingsvlakken: NEN-EN 1995-1-1 kent kruislaaghout niet als product en geeft ` +
-        `die reductie niet — G₁₂ is dus een bovengrens). ν₁₂ = 0, want de norm geeft ` +
-        `geen dwarscontractie voor hout.`,
-    };
-  } else if (matchSupportedConcreteClass(naam) !== null) {
-    const klasse = matchSupportedConcreteClass(naam)!;
-    const E = CONCRETE_E_CM[klasse];
-    // De twee lijsten (toetsbare klassen en E_cm-tabel) lopen vandaag gelijk.
-    // Raken ze uit de pas, dan hoort dat op te vallen en niet als E = NaN de
-    // stijfheidsmatrix in te glijden.
-    if (!(E > 0)) {
-      return { ok: false, reden: `betonklasse "${klasse}" staat niet in de E_cm-tabel (NEN-EN 1992-1-1 tabel 3.1).` };
-    }
-    const nu = NU_BETON;
-    basis = {
-      soort: "beton", naam: klasse,
-      E1: E, E2: E, nu12: nu, G12: gIsotroop(E, nu), rho: RHO_BETON,
-      orthotroop: false, nuUitMateriaal: true,
-      herkomst:
-        `Beton ${klasse}: E = E_cm = ${E} N/mm² (NEN-EN 1992-1-1 tabel 3.1, ongescheurd), ` +
-        `ν = ${NU_BETON} (3.1.3(4), ongescheurd beton) en ρ = ${RHO_BETON} kg/m³ voor ` +
-        `gewapend beton (NEN-EN 1991-1-1 tabel A.1). Isotroop.`,
-    };
-  } else if (matchSupportedTimberGrade(naam) !== null) {
-    const klasse = matchSupportedTimberGrade(naam)!;
-    const e0 = TIMBER_E_MEAN[klasse];
-    const e90 = TIMBER_E90_MEAN[klasse];
-    const g = TIMBER_G_MEAN[klasse];
-    // Zelfde reden als bij beton: een klasse die de toetslijst wél kent en
-    // deze tabellen niet, hoort te weigeren in plaats van NaN te leveren.
-    if (!(e0 > 0) || !(e90 > 0) || !(g > 0) || !(TIMBER_RHO_MEAN[klasse] > 0)) {
-      return { ok: false, reden: `sterkteklasse "${klasse}" mist E_0,mean, E_90,mean, G_mean of ρ_mean in de houttabellen (EN 338 / EN 14080).` };
-    }
-    basis = {
-      soort: "hout", naam: klasse,
-      E1: e0, E2: e90, nu12: 0, G12: g, rho: TIMBER_RHO_MEAN[klasse],
-      orthotroop: true, nuUitMateriaal: true,
-      herkomst:
-        `Massief hout ${klasse}: E₁ = E_0,mean = ${e0} N/mm² langs de vezel, ` +
-        `E₂ = E_90,mean = ${e90} N/mm² dwars en G₁₂ = G_mean = ${g} N/mm² ` +
-        `(EN 338 / EN 14080, dezelfde getallen als de toetsingskern); ` +
-        `ρ = ρ_mean = ${TIMBER_RHO_MEAN[klasse]} kg/m³. ν₁₂ = 0, want de norm geeft ` +
-        `geen dwarscontractie voor hout.`,
-    };
-  } else if (STEEL_GRADES.includes(naam.toUpperCase())) {
-    basis = {
-      soort: "staal", naam: naam.toUpperCase(),
-      E1: E_STAAL, E2: E_STAAL, nu12: NU_STAAL,
-      G12: gIsotroop(E_STAAL, NU_STAAL), rho: RHO_STAAL,
-      orthotroop: false, nuUitMateriaal: true,
-      herkomst:
-        `Staal ${naam.toUpperCase()}: E = ${E_STAAL} N/mm² en ν = ${NU_STAAL} ` +
-        `(NEN-EN 1993-1-1 3.2.6(1)), ρ = ${RHO_STAAL} kg/m³ ` +
-        `(NEN-EN 1991-1-1 tabel A.4). Isotroop; de staalsoort bepaalt de sterkte, ` +
-        `niet de stijfheid.`,
-    };
-  } else {
-    return {
-      ok: false,
-      reden:
-        `materiaal "${naam}" wordt niet herkend. Bekend zijn: ${plaatMateriaalVoorbeelden()}. ` +
-        `Laat het veld leeg om met de losse E, ν en ρ te rekenen; er wordt geen ` +
-        `materiaal aangenomen.`,
-    };
-  }
+  const basis = herkenPlaatBasis(naam, p.nu);
+  if ("fout" in basis) return { ok: false, reden: basis.fout };
 
   // ── Overschrijven met de losse velden ─────────────────────────────────
   const nuOverschreven = gegeven(p.nu);
@@ -450,12 +537,110 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
   const E1 = eOverschreven ? p.E! : basis.E1;
   const E2 = eOverschreven ? p.E! : basis.E2;
   const orthotroop = eOverschreven ? false : basis.orthotroop;
-  const G12 = eOverschreven || !basis.orthotroop
-    ? gIsotroop(E1, nu12)
-    : basis.G12;
   const rho = rhoOverschreven ? p.rho! : basis.rho;
 
-  const aanvullingen: string[] = [];
+  // ── G₁₂ ───────────────────────────────────────────────────────────────
+  const waarschuwingen: string[] = [];
+  const g12Aanvulling: string[] = [];
+  let G12: number;
+  let bronG12: PlaatStijfheid["bronG12"];
+  if (heeftCltG12Invoer(p) && basis.soort !== "clt") {
+    return {
+      ok: false,
+      reden:
+        `cltG12, cltG12Bron en cltG12Bovengrens horen alleen bij kruislaaghout; materiaal ` +
+        `"${naam}" is dat niet. Laat de G₁₂-velden leeg; ze worden niet stil genegeerd.`,
+    };
+  }
+  if (eOverschreven || !basis.orthotroop) {
+    if (heeftCltG12Invoer(p)) {
+      return {
+        ok: false,
+        reden:
+          `E is handmatig gezet, dus de plaat rekent isotroop met G = E/(2(1+ν)); de ` +
+          `G₁₂-invoer van kruislaaghout zou dan niets doen. Laat óf E óf de G₁₂-velden leeg.`,
+      };
+    }
+    G12 = gIsotroop(E1, nu12);
+    bronG12 = eOverschreven ? "handmatig" : "materiaal";
+  } else if (basis.soort === "clt") {
+    const heeftWaarde = p.cltG12 !== undefined;
+    const bron = (p.cltG12Bron ?? "").trim();
+    const bovengrens = p.cltG12Bovengrens === true;
+    const bovengrensTekst = Math.round(basis.G12 * 10) / 10;
+    if (heeftWaarde && bovengrens) {
+      return {
+        ok: false,
+        reden:
+          `kruislaaghout "${naam}": cltG12 en cltG12Bovengrens zijn allebei gezet. Kies één: ` +
+          `de G₁₂ uit de productverklaring met bron, óf bewust de niet-gereduceerde bovengrens.`,
+      };
+    }
+    if (heeftWaarde) {
+      if (!gegeven(p.cltG12) || !(p.cltG12 > 0)) {
+        return {
+          ok: false,
+          reden: `kruislaaghout "${naam}": cltG12 moet een positief getal in N/mm² zijn (kreeg ${String(p.cltG12)}).`,
+        };
+      }
+      if (bron === "") {
+        return {
+          ok: false,
+          reden:
+            `kruislaaghout "${naam}": cltG12 = ${p.cltG12} N/mm² is opgegeven zonder cltG12Bron. ` +
+            `Een waarde zonder herkomst is in het rapport niet van een aanname te onderscheiden; ` +
+            `noem de productverklaring of de ETA met tabel, bijvoorbeeld "ETA-00/0000, tabel 3".`,
+        };
+      }
+      G12 = p.cltG12;
+      bronG12 = "handmatig";
+      g12Aanvulling.push(
+        `G₁₂ = ${p.cltG12} N/mm² in het vlak, volgens ${bron}.`,
+      );
+      if (p.cltG12 > basis.G12) {
+        waarschuwingen.push(
+          `G₁₂ = ${p.cltG12} N/mm² is groter dan de uitgesmeerde G_mean van de lamellen ` +
+          `(${bovengrensTekst} N/mm²), terwijl de afschuiving in het vlak van kruislaaghout ` +
+          `daaronder hoort te liggen. Controleer de waarde in ${bron}.`,
+        );
+      }
+    } else if (bron !== "") {
+      return {
+        ok: false,
+        reden: `kruislaaghout "${naam}": cltG12Bron "${bron}" is opgegeven zonder cltG12.`,
+      };
+    } else if (bovengrens) {
+      G12 = basis.G12;
+      bronG12 = "bovengrens";
+      g12Aanvulling.push(
+        `G₁₂ = Σt·G_mean/Σt = ${bovengrensTekst} N/mm², op verzoek als BOVENGRENS gebruikt ` +
+        `(niet gereduceerd).`,
+      );
+      waarschuwingen.push(
+        `G₁₂ van kruislaaghout is de uitgesmeerde G_mean (${bovengrensTekst} N/mm²) ZONDER ` +
+        `reductie voor de niet-verlijmde smalle zijden en de wringing in de kruisingsvlakken: ` +
+        `een bovengrens, de schijf is in afschuiving te stijf. NEN-EN 1995-1-1 geeft die ` +
+        `reductie niet; vul voor een onderbouwde waarde cltG12 met bron in.`,
+      );
+    } else {
+      return {
+        ok: false,
+        reden:
+          `kruislaaghout "${naam}": G₁₂ in het vlak ontbreekt. NEN-EN 1995-1-1 en EN 338 geven ` +
+          `geen glijdingsmodulus in het vlak voor een gekruiste opbouw — de uitgesmeerde G_mean ` +
+          `(${bovengrensTekst} N/mm²) is zonder reductie voor de kruisingsvlakken een ` +
+          `bovengrens — en er wordt geen reductie aangenomen. Vul cltG12 (N/mm²) met cltG12Bron ` +
+          `in uit de productverklaring of de ETA, of kies bewust cltG12Bovengrens.`,
+      };
+    }
+  } else {
+    // Massief hout: G_mean uit EN 338 / EN 14080 is de glijdingsmodulus van
+    // het materiaal zelf, zonder kruisingsvlakken.
+    G12 = basis.G12;
+    bronG12 = "materiaal";
+  }
+
+  const aanvullingen: string[] = [...g12Aanvulling];
   if (eOverschreven) {
     aanvullingen.push(
       `E is handmatig op ${p.E} N/mm² gezet: die waarde geldt in BEIDE richtingen, ` +
@@ -480,19 +665,27 @@ export function bepaalPlaatStijfheid(p: PlaatMateriaalInvoer): PlaatMateriaalUit
       bronE: eOverschreven ? "handmatig" : "materiaal",
       bronNu: nuOverschreven ? "handmatig" : basis.nuUitMateriaal ? "materiaal" : "standaard",
       bronRho: rhoOverschreven ? "handmatig" : "materiaal",
+      bronG12,
       herkomst: [basis.herkomst, ...aanvullingen].join(" "),
+      waarschuwingen,
     },
   };
 }
 
 /**
- * De materiaalnaam van een plaat keuren zonder de stijfheid te willen: geeft
- * de reden terug waarom hij geweigerd wordt, of `null` als hij goed is. Voor
- * de modelvalidatie (`valideerModel`) en het eigenschappenpaneel, zodat die
- * niet elk hun eigen oordeel vellen.
+ * Het materiaal van een plaat keuren zonder de stijfheid te willen: geeft de
+ * reden terug waarom het geweigerd wordt, of `null` als het goed is. Voor de
+ * modelvalidatie (`valideerModel`, `modelControle`) en het
+ * eigenschappenpaneel, zodat die niet elk hun eigen oordeel vellen.
+ *
+ * Neemt de HELE plaat (of in elk geval de materiaalvelden): de G₁₂-plicht van
+ * kruislaaghout en de grens op ν₁₂ hangen van meer af dan de naam. Een losse
+ * naam mag nog, voor wie alleen die wil keuren — dan geldt de G₁₂-plicht
+ * gewoon, want een kruislaaghoutnaam zonder G₁₂-keuze rekent niet.
  */
-export function keurPlaatMateriaal(materiaal: string | undefined): string | null {
-  const uit = bepaalPlaatStijfheid({ materiaal });
+export function keurPlaatMateriaal(invoer: string | undefined | PlaatMateriaalInvoer): string | null {
+  const p = typeof invoer === "object" && invoer !== null ? invoer : { materiaal: invoer };
+  const uit = bepaalPlaatStijfheid(p);
   return uit.ok ? null : uit.reden;
 }
 

@@ -273,7 +273,9 @@ log("\n[5] Kruislaaghout in het vlak, uitgesmeerd over de dikte");
   checkRel("G₁₂ = 690 (alle lagen C24)", v.G12, 690, 1e-12);
   checkRel("ρ = 420 (alle lagen C24)", v.rho, 420, 1e-12);
   // En de schijf rekent er ook mee: verticale trek met richting 1 langs x.
-  const r = eenGeval(trekVerticaal({ materiaal: "CLT C24 40/20/40/20/40" }));
+  // Sinds issue #14 vraagt kruislaaghout een G₁₂-keuze; bij eenassige trek
+  // met ν₁₂ = 0 doet G₁₂ niet mee, dus de bovengrens verandert hier niets.
+  const r = eenGeval(trekVerticaal({ materiaal: "CLT C24 40/20/40/20/40", cltG12Bovengrens: true }));
   checkRel("verticale trek: u = σ·h/E₂", r.displacements.get(8).uz, SIGMA * H / (484400 / 160), 1e-9);
   // De staafgrammatica (klasse per laag) moet hetzelfde opleveren.
   const perLaag = ontleedPlaatClt("CLT 40:C24/20:C24/40:C24/20:C24/40:C24");

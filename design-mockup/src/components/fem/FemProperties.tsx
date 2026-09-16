@@ -30,7 +30,7 @@ import {
 // Het materiaal van een plaat: één bepaling voor paneel, solver, MCP-poort en
 // rapport, zodat het paneel geen eigen oordeel velt over wat een geldig
 // materiaal is.
-import { bepaalPlaatStijfheid } from "../../lib/plaatMateriaal";
+import { bepaalPlaatStijfheid, plaatMateriaalSoort } from "../../lib/plaatMateriaal";
 import { CLT_VOORINSTELLINGEN } from "../../lib/cltVoorinstellingen.generated";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -1808,6 +1808,32 @@ function PlateProperties({ plate, nodes, updatePlate }: {
   const stijfheid = stijfheidUit.ok ? stijfheidUit.stijfheid : null;
   const materiaalFout = stijfheidUit.ok ? null : stijfheidUit.reden;
   const heeftMateriaal = (plate.materiaal ?? "").trim() !== "";
+  // G₁₂ van kruislaaghout (issue #14): de velden staan er zodra de naam een
+  // kruislaaghoutopbouw is — óók als de plaat juist daarom geweigerd wordt,
+  // want hier vult de gebruiker de ontbrekende keuze in.
+  const isClt = plaatMateriaalSoort(plate.materiaal) === "clt";
+  const [g12Str, setG12Str] = useState(plate.cltG12 !== undefined ? String(plate.cltG12) : "");
+  const [g12BronStr, setG12BronStr] = useState(plate.cltG12Bron ?? "");
+  useEffect(() => {
+    setG12Str(plate.cltG12 !== undefined ? String(plate.cltG12) : "");
+    setG12BronStr(plate.cltG12Bron ?? "");
+  }, [plate.id, plate.cltG12, plate.cltG12Bron]);
+  const commitG12 = () => {
+    if (!updatePlate) return;
+    const leeg = g12Str.trim() === "";
+    const v = Number(g12Str);
+    if (!leeg && !(Number.isFinite(v) && v > 0)) {
+      setG12Str(plate.cltG12 !== undefined ? String(plate.cltG12) : "");
+      return;
+    }
+    const nieuw = leeg ? undefined : v;
+    if (nieuw !== plate.cltG12) updatePlate(plate.id, { cltG12: nieuw });
+  };
+  const commitG12Bron = () => {
+    if (!updatePlate) return;
+    const nieuw = g12BronStr.trim() === "" ? undefined : g12BronStr.trim();
+    if (nieuw !== plate.cltG12Bron) updatePlate(plate.id, { cltG12Bron: nieuw });
+  };
   // Keuzelijst: de klassen die de kern kent, plus de kruislaaghout-
   // voorinstellingen met C24 als lamelklasse. Vrije invoer blijft mogelijk —
   // "VRIJ:…" en een eigen opbouw typ je gewoon.
@@ -1923,6 +1949,47 @@ function PlateProperties({ plate, nodes, updatePlate }: {
                 g12: Math.round(stijfheid.G12),
                 nu12: stijfheid.nu12,
               })}
+            </div>
+          )}
+          {isClt && (
+            <>
+              <Row label={t("props.plate.cltG12")}>
+                <input
+                  {...inputProps} step="10" min="1" value={g12Str}
+                  disabled={plate.cltG12Bovengrens === true}
+                  onChange={(e) => setG12Str(e.target.value)}
+                  onBlur={commitG12}
+                  title={t("props.plate.cltG12Title")}
+                />
+              </Row>
+              <Row label={t("props.plate.cltG12Source")}>
+                <input
+                  type="text"
+                  className="fem-prop-input"
+                  value={g12BronStr}
+                  disabled={plate.cltG12Bovengrens === true}
+                  placeholder={t("props.plate.cltG12SourcePlaceholder")}
+                  onChange={(e) => setG12BronStr(e.target.value)}
+                  onBlur={commitG12Bron}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  title={t("props.plate.cltG12SourceTitle")}
+                />
+              </Row>
+              <Row label={t("props.plate.cltG12UpperBound")}>
+                <input
+                  type="checkbox"
+                  checked={plate.cltG12Bovengrens === true}
+                  onChange={(e) => updatePlate?.(plate.id, { cltG12Bovengrens: e.target.checked ? true : undefined })}
+                  title={t("props.plate.cltG12UpperBoundTitle")}
+                />
+              </Row>
+            </>
+          )}
+          {stijfheid && stijfheid.waarschuwingen.length > 0 && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-warning, #b45309)" }}>
+              {stijfheid.waarschuwingen.map((w, i) => (
+                <div key={i}><strong>{t("props.plate.warning")}</strong> {w}</div>
+              ))}
             </div>
           )}
           <Row label={t("props.plate.thickness")}>

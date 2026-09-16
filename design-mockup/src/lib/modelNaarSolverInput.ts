@@ -321,6 +321,12 @@ export function plaatNaarSolverInput(p: Plate): NonNullable<MultiInput["plates"]
     // Materiaal en hoofdrichting (stap 3): alleen mee als ze gezet zijn.
     ...(d.materiaal && d.materiaal.trim() !== "" ? { materiaal: d.materiaal } : {}),
     ...(d.hoofdrichting !== undefined ? { hoofdrichting: d.hoofdrichting } : {}),
+    // G₁₂ van kruislaaghout (issue #14): alleen mee als ze gezet zijn, zodat
+    // elke andere plaat een byte-gelijke solverinvoer houdt. De keuring (bron
+    // verplicht, alleen bij kruislaaghout) zit in `bepaalPlaatStijfheid`.
+    ...(d.cltG12 !== undefined ? { cltG12: d.cltG12 } : {}),
+    ...(d.cltG12Bron !== undefined ? { cltG12Bron: d.cltG12Bron } : {}),
+    ...(d.cltG12Bovengrens !== undefined ? { cltG12Bovengrens: d.cltG12Bovengrens } : {}),
     // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
     // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
     ...(d.meshCache ? { meshCache: d.meshCache } : {}),

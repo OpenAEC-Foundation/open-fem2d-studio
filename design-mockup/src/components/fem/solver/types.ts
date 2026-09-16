@@ -409,6 +409,12 @@ export interface SolverPlateInput {
    * klok in vanaf de globale x-as. Ontbreekt → 0°.
    */
   hoofdrichting?: number;
+  /** Kruislaaghout: G₁₂ in het vlak (N/mm²), alleen met `cltG12Bron`. Zie `Plate.cltG12`. */
+  cltG12?: number;
+  /** Herkomst van `cltG12`. */
+  cltG12Bron?: string;
+  /** Kruislaaghout: bewust de niet-gereduceerde G_mean als bovengrens. */
+  cltG12Bovengrens?: boolean;
   /**
    * Elasticiteitsmodulus (N/mm²). Verplicht zolang er geen `materiaal` is;
    * mét materiaal is het de expliciete overschrijving van E₁ én E₂ (en

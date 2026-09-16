@@ -711,6 +711,8 @@
     "plateLoadNote": "Les charges de bord (y compris les charges partielles et trapézoïdales) et les charges ponctuelles sur un bord de plaque sont converties en forces nodales sur les nœuds de bord selon les fonctions de forme linéaires des éléments de bord ; une extrémité de barre située entre deux nœuds de bord d'une plaque — le contour ou le bord d'une ouverture — est couplée cinématiquement à ce bord (interpolation linéaire). Une extrémité de barre libre située entre 1 et 50 mm d'un bord de plaque n'est pas couplée mais refusée.",
     "plateKindNoteMesh": "Les plaques sont prises en compte comme voiles (membrane, dans le plan) ; le maillage de calcul est régénéré à partir de la taille de maille à chaque calcul. Les quadrilatères sont des éléments bilinéaires Quad4, les triangles des éléments CST (déformation constante) ; une plaque polygonale à quadrilatères peut donner un maillage mixte là où l'appariement des triangles échoue. Les ouvertures restent libres d'éléments ; le maillage place des nœuds sur le bord de l'ouverture.",
     "plateMateriaalGeweigerd": "matériau refusé — {{reden}}",
+    "plateWaarschuwing": "AVERTISSEMENT — {{tekst}}",
+    "plateG12Bovengrens": "(borne supérieure)",
     "plateGeweigerd": "refusé : {{reden}}",
     "plateBron_materiaal": "matériau",
     "plateBron_handmatig": "manuel",

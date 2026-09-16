@@ -238,6 +238,10 @@ export interface IfcRekenmodelInput {
      */
     materiaal?: string;
     hoofdrichting?: number;
+    /** G₁₂-keuze van kruislaaghout (issue #14) — zie `Plate.cltG12`. */
+    cltG12?: number;
+    cltG12Bron?: string;
+    cltG12Bovengrens?: boolean;
   }[];
   /** Staat de eigen-gewichtsberekening aan? Alleen voor de beperkingenlijst. */
   eigenGewicht?: boolean;
@@ -854,6 +858,15 @@ export function bouwIfcRekenmodel(
       ...(st?.orthotroop ? [
         eMaat("ElasticiteitsmodulusDwars", "IFCMODULUSOFELASTICITYMEASURE", st.E2 * 1e6),
         eMaat("Glijdingsmodulus", "IFCMODULUSOFELASTICITYMEASURE", st.G12 * 1e6),
+        // Kruislaaghout: WAAR G₁₂ vandaan komt (bron of bewuste bovengrens),
+        // zodat de lezer van het IFC-bestand het getal niet voor een normwaarde
+        // aanziet. Andere platen krijgen het veld niet en blijven byte-gelijk.
+        ...(st.soort === "clt"
+          ? [eLabel("GlijdingsmodulusBron",
+              st.bronG12 === "bovengrens"
+                ? "bovengrens: uitgesmeerde G_mean, niet gereduceerd"
+                : (plaat.cltG12Bron ?? "").trim())]
+          : []),
         eMaat("Hoofdrichting", "IFCPLANEANGLEMEASURE", (st.hoekGraden * Math.PI) / 180),
       ] : []),
       // Elementkeuze en openingen (stap 2) — alleen als ze er zijn, zodat het
