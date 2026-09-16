@@ -93,6 +93,7 @@ import { isTauriApp } from "./lib/tauri";
 import { getSetting, setSetting } from "./store";
 import "./themes.css";
 import "./App.css";
+import { bijlageUitBestand, type NationaleBijlageCode } from "./lib/normAanduidingen";
 
 const ThreeViewer = lazy(() => import("./components/panels/ThreeViewer"));
 
@@ -199,6 +200,24 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
   );
 }
 
+/**
+ * De nationale bijlage van het project als code voor de rekenkernen.
+ *
+ * Een bestand uit een nieuwere uitgave kan een bijlage noemen die deze uitgave
+ * niet kent. Dan is er GEEN keuze te maken: `bijlageUitBestand` gooit, en dat
+ * hoort ook — stil op Nederland uitkomen zou een rapport opleveren met getallen
+ * die niet bij de genoemde bijlage horen. Hier wordt de melding in de console
+ * gezet en het veld weggelaten, zodat de kern zelf weigert met dezelfde reden.
+ */
+function bijlageVanProject(waarde: string | null): NationaleBijlageCode | undefined {
+  try {
+    return bijlageUitBestand(waarde) ?? undefined;
+  } catch (e) {
+    console.error("[Toetsing] nationale bijlage uit de projectgegevens:", e);
+    return undefined;
+  }
+}
+
 function App() {
   // Check if this is a detached window
   const detachedParams = getDetachedParams();
@@ -240,7 +259,12 @@ function App() {
   // combinaties (een onbekende of ontbrekende waarde laat hem ongemoeid) en
   // neemt de klasse waarmee hij werkelijk rekent op in de rekeninstellingen,
   // zodat een andere klasse de oude resultaten wist.
-  const fem = useFemStore({ gevolgklasse: projectInfo.uitgangspunten?.gevolgklasse ?? null });
+  const fem = useFemStore({
+    gevolgklasse: projectInfo.uitgangspunten?.gevolgklasse ?? null,
+    // De nationale bijlage bepaalt de nationaal bepaalde parameters van elke
+    // toetsing (normnaad); een wijziging laat de resultaten vervallen.
+    nationaleBijlage: projectInfo.uitgangspunten?.nationaleBijlage ?? null,
+  });
   // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
   // in de constructie (idempotent, zie windStore.ts). Staat hier boven de
   // snapshot-opbouw omdat zijn instellingen in het projectbestand gaan.
@@ -1381,6 +1405,9 @@ function App() {
       combinationResults,
       // Ter vermelding in de staalkern; de factoren zitten al in de combinaties.
       gevolgklasse: fem.gevolgklasse,
+      // De nationale bijlage gaat als `bijlage` mee naar elke rekenkern
+      // (normnaad); daar bepaalt zij de nationaal bepaalde parameters.
+      nationaleBijlage: bijlageVanProject(fem.nationaleBijlage),
       // De hout- en CLT-toetsing leiden hieruit de belastingduur PER
       // UGT-combinatie af (k_mod, EN 1995-1-1 3.1.3(2)).
       loadCases: fem.loadCases,

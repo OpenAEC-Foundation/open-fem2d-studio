@@ -95,6 +95,7 @@ import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import { version as PAKKET_VERSIE } from "../../package.json";
 import { beeldKernfoutAf } from "./fouten";
 import { controleerVelden, keurCheckConfig, valideerModel } from "./valideerModel";
+import { bijlageUitBestand, type NationaleBijlageCode } from "../lib/normAanduidingen";
 import {
   SIDECAR_OPS,
   SIDECAR_PROTOCOL,
@@ -248,6 +249,12 @@ interface GelezenModel {
   formatVersion: number | null;
   /** Gevolgklasse uit de projectgegevens van het bestand, of `null`. */
   gevolgklasseUitBestand: Gevolgklasse | null;
+  /**
+   * Nationale bijlage uit de projectgegevens van het bestand, of `null`
+   * (normnaad). Zij gaat als `bijlage` mee naar elke rekenkern. Een bijlage
+   * die deze uitgave niet kent, levert hier een fout op — niet stil "NL".
+   */
+  bijlageUitBestand: NationaleBijlageCode | null;
   /**
    * De id-tellers uit het projectbestand, of `undefined`. Alleen voor de
    * tellers zelf: of een combinatie verouderd is, herkent `openCombinatieStaat`
@@ -420,6 +427,14 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
         (bestand.projectInfo as { uitgangspunten?: { gevolgklasse?: unknown } } | undefined)
           ?.uitgangspunten?.gevolgklasse,
       ),
+      // De nationale bijlage stond al in het projectbestand maar werd door
+      // niemand gelezen (normnaad). Een code die deze uitgave niet kent, gooit
+      // hier — dat is de bedoeling: een model met een vreemde bijlage hoort
+      // niet met Nederlandse partiële factoren te worden doorgerekend.
+      bijlageUitBestand: leesBijlage(
+        (bestand.projectInfo as { uitgangspunten?: { nationaleBijlage?: unknown } } | undefined)
+          ?.uitgangspunten?.nationaleBijlage,
+      ),
       idTellersUitBestand: bestand.idTellers,
     };
   }
@@ -476,10 +491,27 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     nonlinearUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
+    bijlageUitBestand: null,
     idTellersUitBestand: undefined,
     scheefstandMeldingen: scheef.meldingen,
     scheefstandKeuze: scheef.keuze,
   };
+}
+
+/**
+ * De nationale bijlage uit de projectgegevens (normnaad).
+ *
+ * Een code die deze uitgave niet kent, wordt een INVOERFOUT met de reden erbij
+ * — niet stil "NL". Een model met een vreemde bijlage doorrekenen met
+ * Nederlandse partiële factoren zou een antwoord geven dat bij geen enkel land
+ * hoort, en niets in de getallen verraadt dat.
+ */
+function leesBijlage(waarde: unknown): NationaleBijlageCode | null {
+  try {
+    return bijlageUitBestand(waarde);
+  } catch (e) {
+    throw new InvoerFout((e as Error).message);
+  }
 }
 
 /**
@@ -897,6 +929,8 @@ function rekenDoor(payload: Record<string, unknown>) {
     combinationResults,
     profileDb,
     gevolgklasse,
+    // De nationale bijlage gaat als `bijlage` mee naar de rekenkern.
+    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
     stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled },
   });
 
@@ -916,6 +950,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     supportedGrades: houtklassen ?? undefined,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost,
+    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
   };
   const hout = buildTimberCheckInputs({
     ...houtData,

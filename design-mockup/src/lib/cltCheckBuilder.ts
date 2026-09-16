@@ -52,6 +52,7 @@ import {
   type TimberBuildData,
 } from "./timberCheckBuilder";
 import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 
 /** Standaard strookbreedte van een CLT-plaat in het 2D-model (per meter). */
 export const CLT_STROOKBREEDTE_MM = 1000;
@@ -506,6 +507,12 @@ export function cltSolverDoorsnede(
 // ── Invoer voor de kern ─────────────────────────────────────────────────────
 
 export interface CltBuildData {
+  /**
+   * De nationale bijlage van het project (normnaad). Zij gaat als `bijlage`
+   * mee naar de rekenkern en bepaalt daar de nationaal bepaalde parameters.
+   * Ontbreekt → de enige gevulde bijlage; zie `lib/normAanduidingen.ts`.
+   */
+  nationaleBijlage?: NationaleBijlageCode;
   nodes: Node[];
   beams: Beam[];
   combinations: LoadCombination[];
@@ -614,6 +621,9 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
         })
       : [];
     inputs.push({
+      // De nationale bijlage van het project reist mee naar de kern; daar
+      // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       beam_id: beam.id,
       layup,
       service_class: mapServiceClass(cfg.serviceClass),

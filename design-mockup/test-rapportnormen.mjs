@@ -437,19 +437,40 @@ log("\n[13] Scherm, CSV en PDF noemen dezelfde norm, of géén");
 {
   const { normLabel } = await import("./src/lib/checkTypes.ts");
 
-  // De rapportkern is de bron van deze aanduidingen; ze hier overtypen zou de
-  // twee kanten uit elkaar kunnen laten lopen zonder dat er iets omvalt.
+  // DE NORMNAAD IS DE BRON van deze aanduidingen. Ze stonden tot september 2026
+  // op acht plaatsen (drie in de rapportcrate, drie in checkReportUtils.ts, vier
+  // i18n-kopieën en een crate-doc) en hout en beton waren al uiteengelopen: het
+  // scherm noemde de houtuitgave van vóór A2:2014 en het PDF-omslag die van
+  // erna. Nu staat elke aanduiding in de NL-rij van `nationale-bijlage`, en
+  // leest deze test die rij als bronbestand.
+  const naad = readFileSync(
+    join(hier, "../src-tauri/crates/nationale-bijlage/src/aanduiding.rs"), "utf8");
+  const naadVeld = (naam) => {
+    const m = naad.match(new RegExp(`\n    ${naam}: "([^"]+)",`));
+    return m === null ? null : m[1];
+  };
+  // "geen norm" hoort NIET bij een bijlage: er is geen norm toegepast. Die
+  // blijft in de rapportcrate staan en wordt daar gelezen.
   const kern = readFileSync(
     join(hier, "../src-tauri/crates/report/src/lib.rs"), "utf8");
   const kernConstante = (naam) => {
     const m = kern.match(new RegExp(`const ${naam}: &str = "([^"]+)"`));
     return m === null ? null : m[1];
   };
-  const NORM_STEEL = kernConstante("NORM_STEEL");
-  const NORM_TIMBER = kernConstante("NORM_TIMBER");
-  const NORM_CONCRETE = kernConstante("NORM_CONCRETE");
+  const NORM_STEEL = naadVeld("norm_staal_kort");
+  const NORM_TIMBER = naadVeld("norm_hout_kort");
+  const NORM_CONCRETE = naadVeld("norm_beton_kort");
   const GEEN_NORM = kernConstante("GEEN_NORM");
-  checkWaar("de aanduidingen van de rapportkern zijn gevonden",
+
+  // En de volledige aanduidingen: de TS-kant leest ze uit dezelfde rij, dus
+  // de twee mogen niet uiteenlopen.
+  const {
+    STEEL_NORM_FULL, TIMBER_NORM_FULL, CONCRETE_NORM_FULL,
+  } = await import("./src/components/report/checkReportUtils.ts");
+  checkGelijk("volledige aanduiding staal = naad", STEEL_NORM_FULL, naadVeld("norm_staal_vol"));
+  checkGelijk("volledige aanduiding hout = naad", TIMBER_NORM_FULL, naadVeld("norm_hout_vol"));
+  checkGelijk("volledige aanduiding beton = naad", CONCRETE_NORM_FULL, naadVeld("norm_beton_vol"));
+  checkWaar("de aanduidingen van de normnaad zijn gevonden",
     [NORM_STEEL, NORM_TIMBER, NORM_CONCRETE, GEEN_NORM].every((s) => Boolean(s)),
     "zonder die bron zegt de rest van deze sectie niets");
 

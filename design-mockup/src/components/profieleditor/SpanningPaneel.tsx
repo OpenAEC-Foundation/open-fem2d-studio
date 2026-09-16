@@ -29,6 +29,7 @@ import type { LasInput } from "../../lib/types/las/LasInput";
 import type { SpanningBeamCheckInput } from "../../lib/types/spanning/SpanningBeamCheckInput";
 import type { DoorsnedeOntwerp, MotorUitvoer } from "../../lib/profieleditor/types";
 import GetalVeld from "./GetalVeld";
+import { STANDAARD_BIJLAGE } from "../../lib/normAanduidingen";
 
 /** De snedekrachten en materiaalgegevens die de gebruiker invult. */
 export interface Belasting {
@@ -114,6 +115,10 @@ export default function SpanningPaneel({
       naden
         .filter((n) => typeof n.stroom !== "string")
         .map((n) => ({
+          // De nationale bijlage waarmee de lastoets rekent (γ_M2). De
+          // profieleditor staat los van een project en houdt daarom de enige
+          // gevulde bijlage aan.
+          bijlage: STANDAARD_BIJLAGE,
           id: n.las.id,
           soort: n.las.soort,
           a_mm: n.las.a_mm,

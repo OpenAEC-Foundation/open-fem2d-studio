@@ -46,6 +46,7 @@ import {
 import { bepaalStaafeinden, voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
 import { alphaCrStaafNotitie, type StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
 import { STEEL_SECTIONS } from "./steelSections.generated";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -221,6 +222,12 @@ export function deflectionNotesFor(
 }
 
 export interface SteelBuildData {
+  /**
+   * De nationale bijlage van het project (normnaad). Zij gaat als `bijlage`
+   * mee naar de rekenkern en bepaalt daar de nationaal bepaalde parameters.
+   * Ontbreekt → de enige gevulde bijlage; zie `lib/normAanduidingen.ts`.
+   */
+  nationaleBijlage?: NationaleBijlageCode;
   nodes: Node[];
   beams: Beam[];
   /**
@@ -1121,6 +1128,9 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
     if (alphaNotitie) staafNotities.push(alphaNotitie);
 
     inputs.push({
+      // De nationale bijlage van het project reist mee naar de kern; daar
+      // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       beam_id: beam.id,
       profile_name: eigen ? eigen.naam : profileName,
       ...(eigen ? { custom_section: naarCustomSection(eigen) } : {}),

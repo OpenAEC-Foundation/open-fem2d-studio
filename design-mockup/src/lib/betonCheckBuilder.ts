@@ -83,6 +83,7 @@ import type { StructuralSystem } from "./types/concrete/StructuralSystem";
 import type { SteelBranch } from "./types/concrete/SteelBranch";
 import type { CheckSkip } from "./checkTypes";
 import { isSteelProfile, beamLengthMm, buildForcesEnvelope } from "./steelCheckBuilder";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 import {
   referentieVanStaaf,
   richtingssprongNotities,
@@ -447,6 +448,12 @@ export interface BetonStaafConfig {
 }
 
 export interface BetonBuildData {
+  /**
+   * De nationale bijlage van het project (normnaad). Zij gaat als `bijlage`
+   * mee naar de rekenkern en bepaalt daar de nationaal bepaalde parameters.
+   * Ontbreekt → de enige gevulde bijlage; zie `lib/normAanduidingen.ts`.
+   */
+  nationaleBijlage?: NationaleBijlageCode;
   nodes: Node[];
   beams: Beam[];
   combinations: LoadCombination[];
@@ -601,6 +608,9 @@ export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResul
     }
 
     inputs.push({
+      // De nationale bijlage van het project reist mee naar de kern; daar
+      // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       beam_id: beam.id,
       section: metBeff(vorm.doorsnede, data.bEffPerStaaf?.get(beam.id)),
       concrete_class: klasse,
