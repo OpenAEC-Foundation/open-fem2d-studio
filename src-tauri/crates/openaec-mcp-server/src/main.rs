@@ -374,7 +374,9 @@ fn tool_definitions() -> Value {
                         }
                     },
                     "staaf_notities": { "type": "array", "items": { "type": "string" }, "default": [],
-                        "description": "Toelichtingen bij de staaf als geheel; rekenen nergens mee en komen letterlijk in de 'notes' van de kniktoets (6.3.1), de kiptoets (6.3.2) en de eindzakking. `check_fem_model` en de app zetten hier dat een door tussenknopen geknipte staaf als één doorgaande lijn is getoetst, over welke lengte, en welke tussenknopen niet als steun tellen. Weglaten = niets te melden." }
+                        "description": "Toelichtingen bij de staaf als geheel; rekenen nergens mee en komen letterlijk in de 'notes' van de kniktoets (6.3.1), de kiptoets (6.3.2) en de eindzakking. `check_fem_model` en de app zetten hier dat een door tussenknopen geknipte staaf als één doorgaande lijn is getoetst, over welke lengte, en welke tussenknopen niet als steun tellen. Weglaten = niets te melden." },
+                    "profile_end": { "type": "string",
+                        "description": "Profiel aan het EIND van de staaf (x = L) van een VERLOPENDE staaf; 'profile_name' is dan het profiel aan het begin (x = 0). De maten h, b, t_w en t_f verlopen lineair en de doorsnede telt over de hele staaf als GELAST I-profiel zonder afrondingsstraal (knikkromme tabel 6.2 en kipkromme tabel 6.5 voor gelaste profielen). De kern toetst elke doorsnedetoets (6.2.x) op elk rekenpunt met de plaatselijke doorsnede en rekent de stabiliteitstoetsen (6.3.x) met de kleinste doorsnede in het veld; het resultaat krijgt dan een veld 'verloop' met de zes toetsdoorsneden en het maatgevende punt. Beide profielen moeten I/H-profielen uit de catalogus zijn; een koker, buis, hoeklijn, U-profiel, een I-profiel met toelopende flenzen of een eigen doorsnede wordt geweigerd met reden. Weglaten, leeg of gelijk aan 'profile_name' = prismatisch." }
                 },
                 "required": [
                     "beam_id", "profile_name", "steel_grade", "length_m",

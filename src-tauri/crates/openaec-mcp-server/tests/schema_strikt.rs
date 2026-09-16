@@ -218,6 +218,10 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         // vrij eind stil als gaffel.
         "staafeinden",
         "staaf_notities",
+        // Het eindprofiel van een verlopende staaf (ontwerp 15-09-2026, §5);
+        // zonder dit veld in het schema weigert `additionalProperties: false`
+        // een client die een verlopende staaf wil laten toetsen.
+        "profile_end",
     ] {
         assert!(
             props[veld].is_object(),
@@ -802,8 +806,8 @@ async fn schema_van_de_houttools_is_strikt_op_elk_niveau() {
     assert!(staaf["properties"]["custom_section"].is_object(), "custom_section ontbreekt");
     assert_eq!(
         staaf["properties"].as_object().unwrap().len(),
-        27,
-        "het schema van de houten staaf hoort precies de 27 velden van TimberBeamCheckInput te kennen \n         (25 + load_duration_per_combination + staaf_notities)"
+        29,
+        "het schema van de houten staaf hoort precies de 29 velden van TimberBeamCheckInput te kennen \n         (25 + load_duration_per_combination + staaf_notities + width_end_mm + height_end_mm)"
     );
 
     let clt = tooldefinitie(&mut stdin, &mut reader, 31, "check_clt_beams").await;
