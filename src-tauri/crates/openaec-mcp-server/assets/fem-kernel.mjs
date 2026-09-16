@@ -4649,98 +4649,343 @@ function solveWithAxialConstraints(mesh, F, opts) {
   };
 }
 
-// src/core/fem/PlateRegion.ts
-function generatePlateRegionMesh(mesh, config) {
-  const { x, y, width, height, divisionsX, divisionsY, materialId, thickness } = config;
-  const elementType = config.elementType ?? "triangle";
-  const nx = divisionsX;
-  const ny = divisionsY;
-  const nodeGrid = [];
-  const allNodeIds = [];
-  for (let j = 0; j <= ny; j++) {
-    nodeGrid[j] = [];
-    for (let i = 0; i <= nx; i++) {
-      const nodeX = x + i / nx * width;
-      const nodeY = y + j / ny * height;
-      const existing = mesh.findNodeAt(nodeX, nodeY, 1e-3);
-      if (existing) {
-        nodeGrid[j][i] = existing.id;
-      } else {
-        const newNode = mesh.addPlateNode(nodeX, nodeY);
-        nodeGrid[j][i] = newNode.id;
-      }
-      if (!allNodeIds.includes(nodeGrid[j][i])) {
-        allNodeIds.push(nodeGrid[j][i]);
-      }
-    }
+// src/core/mesher/TriToQuad.ts
+function angleBetween(ax, ay, bx, by, cx, cy) {
+  const v1x = ax - bx;
+  const v1y = ay - by;
+  const v2x = cx - bx;
+  const v2y = cy - by;
+  const dot = v1x * v2x + v1y * v2y;
+  const len1 = Math.sqrt(v1x * v1x + v1y * v1y);
+  const len2 = Math.sqrt(v2x * v2x + v2y * v2y);
+  if (len1 < 1e-12 || len2 < 1e-12) return 0;
+  const cosA = Math.max(-1, Math.min(1, dot / (len1 * len2)));
+  return Math.acos(cosA) * (180 / Math.PI);
+}
+function isConvexQuad(points, a, b, c, d) {
+  const pts = [points[a], points[b], points[c], points[d]];
+  for (let i = 0; i < 4; i++) {
+    const p0 = pts[i];
+    const p1 = pts[(i + 1) % 4];
+    const p2 = pts[(i + 2) % 4];
+    const cross = (p1.x - p0.x) * (p2.y - p1.y) - (p1.y - p0.y) * (p2.x - p1.x);
+    if (cross < 0) return false;
   }
-  const allElementIds = [];
-  if (elementType === "quad") {
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const n0 = nodeGrid[j][i];
-        const n1 = nodeGrid[j][i + 1];
-        const n2 = nodeGrid[j + 1][i + 1];
-        const n3 = nodeGrid[j + 1][i];
-        const q = mesh.addQuadElement([n0, n1, n2, n3], materialId, thickness);
-        if (q) allElementIds.push(q.id);
-      }
-    }
-  } else {
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const n0 = nodeGrid[j][i];
-        const n1 = nodeGrid[j][i + 1];
-        const n2 = nodeGrid[j + 1][i + 1];
-        const n3 = nodeGrid[j + 1][i];
-        const t1 = mesh.addTriangleElement([n0, n1, n2], materialId, thickness);
-        if (t1) allElementIds.push(t1.id);
-        const t2 = mesh.addTriangleElement([n0, n2, n3], materialId, thickness);
-        if (t2) allElementIds.push(t2.id);
-      }
-    }
+  return true;
+}
+function quadQuality(points, a, b, c, d) {
+  const ids = [a, b, c, d];
+  const angles = [];
+  for (let i = 0; i < 4; i++) {
+    const prev = ids[(i + 3) % 4];
+    const curr = ids[i];
+    const next = ids[(i + 1) % 4];
+    const angle = angleBetween(
+      points[prev].x,
+      points[prev].y,
+      points[curr].x,
+      points[curr].y,
+      points[next].x,
+      points[next].y
+    );
+    angles.push(angle);
   }
-  const bottomEdge = [];
-  for (let i = 0; i <= nx; i++) bottomEdge.push(nodeGrid[0][i]);
-  const topEdge = [];
-  for (let i = 0; i <= nx; i++) topEdge.push(nodeGrid[ny][i]);
-  const leftEdge = [];
-  for (let j = 0; j <= ny; j++) leftEdge.push(nodeGrid[j][0]);
-  const rightEdge = [];
-  for (let j = 0; j <= ny; j++) rightEdge.push(nodeGrid[j][nx]);
-  const cornerNodeIds = [
-    nodeGrid[0][0],
-    // BL
-    nodeGrid[0][nx],
-    // BR
-    nodeGrid[ny][nx],
-    // TR
-    nodeGrid[ny][0]
-    // TL
+  const maxAngle = Math.max(...angles);
+  const minAngle = Math.min(...angles);
+  if (maxAngle > 170 || minAngle < 10) return -1;
+  if (!isConvexQuad(points, a, b, c, d)) return -1;
+  return minAngle / 90;
+}
+function mergeTriangles(points, t1, t2, sharedEdge) {
+  const [s1, s2] = sharedEdge;
+  const opp1 = t1.find((v) => v !== s1 && v !== s2);
+  const opp2 = t2.find((v) => v !== s1 && v !== s2);
+  if (opp1 === void 0 || opp2 === void 0) return null;
+  const candidates = [
+    [opp1, s1, opp2, s2],
+    [opp1, s2, opp2, s1]
   ];
-  return {
-    id: 0,
-    // Will be assigned by Mesh.addPlateRegion
-    x,
-    y,
-    width,
-    height,
-    divisionsX,
-    divisionsY,
-    materialId,
-    thickness,
-    elementType,
-    nodeIds: allNodeIds,
-    cornerNodeIds,
-    elementIds: allElementIds,
-    edges: {
-      bottom: { nodeIds: bottomEdge },
-      top: { nodeIds: topEdge },
-      left: { nodeIds: leftEdge },
-      right: { nodeIds: rightEdge }
+  for (const quad of candidates) {
+    let signedArea = 0;
+    for (let i = 0; i < 4; i++) {
+      const curr = points[quad[i]];
+      const next = points[quad[(i + 1) % 4]];
+      signedArea += curr.x * next.y - next.x * curr.y;
     }
+    if (signedArea > 0 && isConvexQuad(points, quad[0], quad[1], quad[2], quad[3])) {
+      return quad;
+    }
+  }
+  return null;
+}
+function edgeKey(a, b) {
+  return a < b ? `${a}-${b}` : `${b}-${a}`;
+}
+function pairTrianglesToQuads(input) {
+  const { points, triangles } = input;
+  if (triangles.length === 0) {
+    return { quads: [], remainingTriangles: [] };
+  }
+  const edgeToTriangles = /* @__PURE__ */ new Map();
+  for (let ti = 0; ti < triangles.length; ti++) {
+    const tri = triangles[ti];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e];
+      const b = tri[(e + 1) % 3];
+      const key = edgeKey(a, b);
+      const list = edgeToTriangles.get(key);
+      if (list) {
+        list.push(ti);
+      } else {
+        edgeToTriangles.set(key, [ti]);
+      }
+    }
+  }
+  const pairs = [];
+  for (const [key, triIndices] of edgeToTriangles) {
+    if (triIndices.length !== 2) continue;
+    const [t1, t2] = triIndices;
+    const parts = key.split("-");
+    const s1 = parseInt(parts[0]);
+    const s2 = parseInt(parts[1]);
+    const merged = mergeTriangles(points, triangles[t1], triangles[t2], [s1, s2]);
+    if (!merged) continue;
+    const q = quadQuality(points, merged[0], merged[1], merged[2], merged[3]);
+    if (q <= 0) continue;
+    pairs.push({
+      t1,
+      t2,
+      sharedEdge: [s1, s2],
+      quality: q
+    });
+  }
+  pairs.sort((a, b) => b.quality - a.quality);
+  const used = /* @__PURE__ */ new Set();
+  const quads = [];
+  for (const pair of pairs) {
+    if (used.has(pair.t1) || used.has(pair.t2)) continue;
+    const merged = mergeTriangles(points, triangles[pair.t1], triangles[pair.t2], pair.sharedEdge);
+    if (!merged) continue;
+    quads.push(merged);
+    used.add(pair.t1);
+    used.add(pair.t2);
+  }
+  const remainingTriangles = [];
+  for (let ti = 0; ti < triangles.length; ti++) {
+    if (!used.has(ti)) {
+      remainingTriangles.push(triangles[ti]);
+    }
+  }
+  return { quads, remainingTriangles };
+}
+
+// src/core/fem/PlaatMesher.ts
+var PLAAT_OPENING_MIN_AFSTAND_MM = 10;
+function getekendeOppervlakte2(p) {
+  let s = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    s += p[j].x * p[i].z - p[i].x * p[j].z;
+  }
+  return s;
+}
+function puntInPolygoon(x, z, poly) {
+  let binnen = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, zi = poly[i].z, xj = poly[j].x, zj = poly[j].z;
+    if (zi > z !== zj > z && x < (xj - xi) * (z - zi) / (zj - zi) + xi) binnen = !binnen;
+  }
+  return binnen;
+}
+function afstandTotLijnstuk(p, a, b) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const l2 = dx * dx + dz * dz;
+  if (l2 === 0) return Math.hypot(p.x - a.x, p.z - a.z);
+  let t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.z - (a.z + t * dz));
+}
+function zoekPuntenOpLijnstuk(points, a, b, tolMm) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const L = Math.hypot(dx, dz);
+  if (L === 0) return [];
+  const rij = [];
+  for (let i = 0; i < points.length; i++) {
+    const q = points[i];
+    const t = ((q.x - a.x) * dx + (q.z - a.z) * dz) / L;
+    if (t < -tolMm || t > L + tolMm) continue;
+    const d = Math.abs((q.x - a.x) * dz - (q.z - a.z) * dx) / L;
+    if (d <= tolMm) rij.push({ i, t });
+  }
+  rij.sort((p, q) => p.t - q.t);
+  return rij.map((r) => r.i);
+}
+function dwingendeLijnenUitKnopen(knopen, r, tolMm) {
+  const x = [], z = [];
+  for (const k of knopen) {
+    if (k.x < r.minX - tolMm || k.x > r.maxX + tolMm || k.z < r.minZ - tolMm || k.z > r.maxZ + tolMm) continue;
+    x.push(k.x);
+    z.push(k.z);
+  }
+  return { x, z };
+}
+function rasterLijnen(lo, hi, dwingend, meshSize) {
+  const vast = [lo, hi, ...dwingend.filter((v) => v > lo && v < hi)].sort((a, b) => a - b).filter((v, i, arr) => i === 0 || v - arr[i - 1] > 1e-9);
+  const uit = [];
+  for (let k = 0; k + 1 < vast.length; k++) {
+    const a = vast[k], b = vast[k + 1];
+    const n = Math.max(1, Math.round((b - a) / meshSize));
+    for (let i = 0; i < n; i++) uit.push(a + i / n * (b - a));
+  }
+  uit.push(hi);
+  return uit;
+}
+function bbox(p) {
+  const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
+}
+function genereerRasterMesh(inv) {
+  const { minX, maxX, minZ, maxZ, meshSize, meshType } = inv;
+  const openingRects = inv.openingen.map(bbox);
+  const xs = rasterLijnen(minX, maxX, [...openingRects.flatMap((r) => [r.minX, r.maxX]), ...inv.dwingendX ?? []], meshSize);
+  const zs = rasterLijnen(minZ, maxZ, [...openingRects.flatMap((r) => [r.minZ, r.maxZ]), ...inv.dwingendZ ?? []], meshSize);
+  const nx = xs.length - 1, nz = zs.length - 1;
+  const vakBestaat = (i, j) => {
+    const xc = (xs[i] + xs[i + 1]) / 2, zc = (zs[j] + zs[j + 1]) / 2;
+    return !openingRects.some((r) => xc > r.minX && xc < r.maxX && zc > r.minZ && zc < r.maxZ);
+  };
+  const points = [];
+  const index = /* @__PURE__ */ new Map();
+  const sleutel = (i, j) => j * (nx + 1) + i;
+  for (let j = 0; j <= nz; j++) {
+    for (let i = 0; i <= nx; i++) {
+      const gebruikt = i > 0 && j > 0 && vakBestaat(i - 1, j - 1) || i < nx && j > 0 && vakBestaat(i, j - 1) || i > 0 && j < nz && vakBestaat(i - 1, j) || i < nx && j < nz && vakBestaat(i, j);
+      if (!gebruikt) continue;
+      index.set(sleutel(i, j), points.length);
+      points.push({ x: xs[i], z: zs[j] });
+    }
+  }
+  const idx = (i, j) => {
+    const v = index.get(sleutel(i, j));
+    if (v === void 0) throw new Error(`rastermesh: knoop (${i}, ${j}) ontbreekt`);
+    return v;
+  };
+  const triangles = [];
+  const quads = [];
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      if (!vakBestaat(i, j)) continue;
+      const lo = idx(i, j), ro = idx(i + 1, j), rb = idx(i + 1, j + 1), lb = idx(i, j + 1);
+      if (meshType === "vierhoeken") quads.push([lo, ro, rb, lb]);
+      else triangles.push([lo, ro, rb], [lo, rb, lb]);
+    }
+  }
+  const bottom = [], top = [], left = [], right = [];
+  for (let i = 0; i <= nx; i++) {
+    bottom.push(idx(i, 0));
+    top.push(idx(i, nz));
+  }
+  for (let j = 0; j <= nz; j++) {
+    left.push(idx(0, j));
+    right.push(idx(nx, j));
+  }
+  const openingEdgeNodeIndices = inv.openingen.map((op) => op.map((a, k) => zoekPuntenOpLijnstuk(points, a, op[(k + 1) % op.length], 1e-6)));
+  return {
+    points,
+    triangles,
+    quads,
+    // Omtrekranden per hoekpaar vult de engine zelf in uit `randen`, want die
+    // kent de hoekvolgorde van de gebruiker; hier alleen de benoemde zijden.
+    edgeNodeIndices: [],
+    openingEdgeNodeIndices,
+    meshSoort: meshType,
+    xs,
+    zs,
+    randen: { bottom, top, left, right }
   };
 }
+function koppelTotVierhoeken(points, triangles) {
+  const r = pairTrianglesToQuads({
+    points: points.map((p) => ({ x: p.x, y: p.z })),
+    triangles
+  });
+  const meshSoort = r.quads.length === 0 ? "driehoeken" : r.remainingTriangles.length === 0 ? "vierhoeken" : "gemengd";
+  return { triangles: r.remainingTriangles, quads: r.quads, meshSoort };
+}
+function splitsVierhoekenInDriehoeken(quads) {
+  const uit = [];
+  for (const [a, b, c, d] of quads) uit.push([a, b, c], [a, c, d]);
+  return uit;
+}
+function keurPlatMesh(points, triangles, quads) {
+  const n = points.length;
+  if (n < 3) throw new Error("het mesh heeft minder dan drie punten");
+  const geldigeIndex = (i) => Number.isInteger(i) && i >= 0 && i < n;
+  const tris = [];
+  if (triangles !== void 0) {
+    if (!Array.isArray(triangles)) throw new Error("`triangles` is geen lijst");
+    triangles.forEach((t, k) => {
+      if (!Array.isArray(t) || t.length !== 3 || !t.every(geldigeIndex)) {
+        throw new Error(`driehoek ${k + 1} verwijst naar punten die niet bestaan`);
+      }
+      const [a, b, c] = t;
+      if (a === b || b === c || a === c) throw new Error(`driehoek ${k + 1} heeft twee gelijke hoekpunten`);
+      const opp2 = getekendeOppervlakte2([points[a], points[b], points[c]]);
+      if (Math.abs(opp2) < 1e-9) throw new Error(`driehoek ${k + 1} heeft geen oppervlakte`);
+      tris.push(opp2 > 0 ? [a, b, c] : [a, c, b]);
+    });
+  }
+  const qs = [];
+  if (quads !== void 0) {
+    if (!Array.isArray(quads)) throw new Error("`quads` is geen lijst");
+    quads.forEach((q, k) => {
+      if (!Array.isArray(q) || q.length !== 4 || !q.every(geldigeIndex)) {
+        throw new Error(`vierhoek ${k + 1} verwijst naar punten die niet bestaan`);
+      }
+      const ids = q;
+      if (new Set(ids).size !== 4) throw new Error(`vierhoek ${k + 1} heeft twee gelijke hoekpunten`);
+      const p = ids.map((i) => points[i]);
+      let pos = 0, neg = 0;
+      for (let i = 0; i < 4; i++) {
+        const a = p[i], b = p[(i + 1) % 4], c = p[(i + 2) % 4];
+        const kr = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
+        if (kr > 1e-9) pos++;
+        else if (kr < -1e-9) neg++;
+      }
+      if (pos + neg < 4 || pos > 0 && neg > 0) {
+        throw new Error(
+          `vierhoek ${k + 1} is niet convex of gedegenereerd (de Jacobiaan van het Quad4-element wordt dan negatief)`
+        );
+      }
+      qs.push(neg === 4 ? [ids[0], ids[3], ids[2], ids[1]] : ids);
+    });
+  }
+  if (tris.length + qs.length === 0) throw new Error("het mesh bevat geen elementen");
+  const meshSoort = qs.length === 0 ? "driehoeken" : tris.length === 0 ? "vierhoeken" : "gemengd";
+  return { triangles: tris, quads: qs, meshSoort };
+}
+function keurRandKnopen(points, rand, a, b, tolMm, wat) {
+  const n = points.length;
+  if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => Number.isInteger(k) && k >= 0 && k < n)) {
+    throw new Error(`${wat} heeft geen geldige lijst randknopen (minstens de twee hoeken)`);
+  }
+  const L = Math.hypot(b.x - a.x, b.z - a.z);
+  let tMin = Infinity, tMax = -Infinity;
+  for (const k of rand) {
+    const q = points[k];
+    const t = ((q.x - a.x) * (b.x - a.x) + (q.z - a.z) * (b.z - a.z)) / L;
+    const d = Math.abs((q.x - a.x) * (b.z - a.z) - (q.z - a.z) * (b.x - a.x)) / L;
+    if (!(d <= tolMm) || t < -tolMm || t > L + tolMm) {
+      throw new Error(`punt ${k} van ${wat} ligt niet op die rand`);
+    }
+    tMin = Math.min(tMin, t);
+    tMax = Math.max(tMax, t);
+  }
+  if (tMin > tolMm || tMax < L - tolMm) {
+    throw new Error(`de randknopen van ${wat} reiken niet van hoek tot hoek`);
+  }
+}
+
+// src/core/fem/PlateRegion.ts
 function convertEdgeNodeIdsToNodalForces(mesh, nodeIds, px, py) {
   if (nodeIds.length < 2) return [];
   const nodes = nodeIds.map((id) => mesh.getNode(id)).filter((n) => n !== void 0);
@@ -4920,6 +5165,7 @@ function bepaalStandaardRol(beam, nodes) {
 function rolVanStaaf(beam, nodes) {
   return beam.loadRole ?? bepaalStandaardRol(beam, nodes);
 }
+var PLAAT_MESH_TYPEN = ["driehoeken", "vierhoeken"];
 var PLATE_DEFAULTS = {
   thickness: 20,
   // mm
@@ -5021,8 +5267,87 @@ function valideerPlaatPolygoon(punten, tolMm = 1) {
   }
   return null;
 }
-function berekenPlaatMeshSignatuur(punten, meshSizeMm) {
-  return `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
+function berekenPlaatMeshSignatuur(punten, meshSizeMm, opties) {
+  let s = `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
+  if (opties?.openingen && opties.openingen.length > 0) {
+    s += `|o${opties.openingen.map((o) => o.map((p) => `${p.x},${p.z}`).join(";")).join("/")}`;
+  }
+  if (opties?.meshType) s += `|t${opties.meshType}`;
+  return s;
+}
+function plaatMeshSignatuurVan(p, punten) {
+  const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize : PLATE_DEFAULTS.meshSize;
+  return berekenPlaatMeshSignatuur(punten, meshSize, {
+    openingen: (p.openingen ?? []).map((o) => o.punten),
+    meshType: p.meshType
+  });
+}
+function plaatRekentAlsRaster(punten, openingen = [], tolMm = 1) {
+  if (punten.length !== 4 || !isAsgelijndeRechthoek(punten, tolMm)) return false;
+  return openingen.every((o) => o.length === 4 && isAsgelijndeRechthoek(o, tolMm));
+}
+function effectiefPlaatMeshType(p, punten, tolMm = 1) {
+  if (p.meshType) return p.meshType;
+  return plaatRekentAlsRaster(punten, (p.openingen ?? []).map((o) => o.punten), tolMm) ? "vierhoeken" : "driehoeken";
+}
+function valideerPlaatOpeningen(omtrek, openingen, tolMm = 1) {
+  const minAfstand = PLAAT_OPENING_MIN_AFSTAND_MM;
+  const n = omtrek.length;
+  const randen = (poly) => poly.map((a, i) => [a, poly[(i + 1) % poly.length]]);
+  const omtrekRanden = randen(omtrek);
+  for (let k = 0; k < openingen.length; k++) {
+    const op = openingen[k];
+    const naam = `Opening ${k + 1}`;
+    const vormFout = valideerPlaatPolygoon(op, tolMm);
+    if (vormFout) return `${naam}: ${vormFout}`;
+    for (let h = 0; h < op.length; h++) {
+      const p = op[h];
+      if (!puntInPolygoon(p.x, p.z, omtrek)) {
+        return `${naam} ligt niet binnen de plaat: hoek ${h + 1} (${p.x}, ${p.z}) ligt buiten of op de omtrek.`;
+      }
+      for (let r = 0; r < n; r++) {
+        const d = afstandTotLijnstuk(p, omtrekRanden[r][0], omtrekRanden[r][1]);
+        if (d < minAfstand) {
+          return `${naam} raakt de omtrek van de plaat: hoek ${h + 1} ligt ${Math.round(d)} mm van rand ${r + 1}. Houd minstens ${minAfstand} mm afstand tot de rand.`;
+        }
+      }
+    }
+    for (let r = 0; r < n; r++) {
+      if (puntInPolygoon(omtrek[r].x, omtrek[r].z, op)) {
+        return `${naam} omsluit hoek ${r + 1} van de plaat \u2014 een opening moet binnen de omtrek liggen.`;
+      }
+    }
+    for (const [a, b] of randen(op)) {
+      for (let r = 0; r < n; r++) {
+        if (segmentenSnijden(a, b, omtrekRanden[r][0], omtrekRanden[r][1])) {
+          return `${naam} snijdt rand ${r + 1} van de plaat \u2014 een opening moet binnen de omtrek liggen.`;
+        }
+      }
+    }
+  }
+  for (let k = 0; k < openingen.length; k++) {
+    for (let m = k + 1; m < openingen.length; m++) {
+      const A = openingen[k], B = openingen[m];
+      const paar = `Opening ${k + 1} en opening ${m + 1}`;
+      if (A.some((p) => puntInPolygoon(p.x, p.z, B)) || B.some((p) => puntInPolygoon(p.x, p.z, A))) {
+        return `${paar} overlappen elkaar \u2014 voeg ze samen tot \xE9\xE9n opening of schuif ze uit elkaar.`;
+      }
+      for (const [a, b] of randen(A)) {
+        for (const [c, d] of randen(B)) {
+          if (segmentenSnijden(a, b, c, d)) {
+            return `${paar} snijden elkaar \u2014 voeg ze samen tot \xE9\xE9n opening of schuif ze uit elkaar.`;
+          }
+        }
+      }
+      let dMin = Infinity;
+      for (const p of A) for (const [c, d] of randen(B)) dMin = Math.min(dMin, afstandTotLijnstuk(p, c, d));
+      for (const p of B) for (const [a, b] of randen(A)) dMin = Math.min(dMin, afstandTotLijnstuk(p, a, b));
+      if (dMin < minAfstand) {
+        return `${paar} raken elkaar (${Math.round(dMin)} mm tussenruimte) \u2014 houd minstens ${minAfstand} mm afstand of voeg ze samen tot \xE9\xE9n opening.`;
+      }
+    }
+  }
+  return null;
 }
 var PLAAT_RAND_NAAM_NL = {
   bottom: "onderrand",
@@ -5255,22 +5580,20 @@ function normaliseerSegmenten(beamId, segmenten, L_mm) {
 function berekenPlaatrandSplitsFracties(nA, nB, plateRects, tolMm) {
   const ts = [];
   for (const r of plateRects) {
-    for (const randZ of [r.minZ, r.minZ + r.height]) {
+    for (const randZ of [r.minZ, r.maxZ]) {
       if (Math.abs(nA.z - randZ) <= tolMm && Math.abs(nB.z - randZ) <= tolMm && Math.abs(nB.x - nA.x) > tolMm) {
         const lo = Math.min(nA.x, nB.x), hi = Math.max(nA.x, nB.x);
-        for (let i = 0; i <= r.nx; i++) {
-          const pos = r.minX + i / r.nx * r.width;
+        for (const pos of r.xs) {
           if (pos > lo + tolMm && pos < hi - tolMm) {
             ts.push((pos - nA.x) / (nB.x - nA.x));
           }
         }
       }
     }
-    for (const randX of [r.minX, r.minX + r.width]) {
+    for (const randX of [r.minX, r.maxX]) {
       if (Math.abs(nA.x - randX) <= tolMm && Math.abs(nB.x - randX) <= tolMm && Math.abs(nB.z - nA.z) > tolMm) {
         const lo = Math.min(nA.z, nB.z), hi = Math.max(nA.z, nB.z);
-        for (let j = 0; j <= r.ny; j++) {
-          const pos = r.minZ + j / r.ny * r.height;
+        for (const pos of r.zs) {
           if (pos > lo + tolMm && pos < hi - tolMm) {
             ts.push((pos - nA.z) / (nB.z - nA.z));
           }
@@ -5355,6 +5678,13 @@ function buildMesh(input, loadFactor) {
   const plateInputs = input.plates;
   const plateRects = [];
   const plaatPolygonen = [];
+  const verwezenKnopen = /* @__PURE__ */ new Set();
+  for (const b of input.beams) {
+    verwezenKnopen.add(b.from);
+    verwezenKnopen.add(b.to);
+  }
+  for (const s of input.supports) verwezenKnopen.add(s.nodeId);
+  for (const pl of input.pointLoads ?? []) verwezenKnopen.add(pl.nodeId);
   if (plateInputs && plateInputs.length > 0) {
     for (const p of plateInputs) {
       if (!Array.isArray(p.nodeIds) || p.nodeIds.length < 3) {
@@ -5368,26 +5698,52 @@ function buildMesh(input, loadFactor) {
       }
       const punten = corners.map((c) => ({ x: c.x, z: c.z }));
       const meshSize = p.meshSize > 0 ? p.meshSize : 500;
-      if (punten.length === 4 && isAsgelijndeRechthoek(punten, TOL_MM)) {
-        const xs = punten.map((c) => c.x);
-        const zs = punten.map((c) => c.z);
-        const minX = Math.min(...xs), maxX = Math.max(...xs);
-        const minZ = Math.min(...zs), maxZ = Math.max(...zs);
-        const width = maxX - minX, height = maxZ - minZ;
-        const nx = Math.max(1, Math.round(width / meshSize));
-        const ny = Math.max(1, Math.round(height / meshSize));
-        plateRects.push({ p, minX, minZ, width, height, nx, ny, punten });
+      if (p.meshType !== void 0 && !PLAAT_MESH_TYPEN.includes(p.meshType)) {
+        throw new Error(
+          `Plaat ${p.id}: onbekende elementkeuze "${String(p.meshType)}" \u2014 toegestaan: ${PLAAT_MESH_TYPEN.join(", ")}.`
+        );
+      }
+      const openingen = (p.openingen ?? []).map((o) => o.punten);
+      const openingFout = valideerPlaatOpeningen(punten, openingen, TOL_MM);
+      if (openingFout) throw new Error(`Plaat ${p.id}: ${openingFout}`);
+      const meshType = effectiefPlaatMeshType(p, punten, TOL_MM);
+      if (plaatRekentAlsRaster(punten, openingen, TOL_MM)) {
+        const xsH = punten.map((c) => c.x);
+        const zsH = punten.map((c) => c.z);
+        const minX = Math.min(...xsH), maxX = Math.max(...xsH);
+        const minZ = Math.min(...zsH), maxZ = Math.max(...zsH);
+        const dwingend = openingen.length > 0 ? dwingendeLijnenUitKnopen(
+          [...verwezenKnopen].map((id) => nodeById.get(id)).filter((n) => !!n),
+          { minX, maxX, minZ, maxZ },
+          TOL_MM
+        ) : { x: [], z: [] };
+        const raster = genereerRasterMesh({
+          minX,
+          maxX,
+          minZ,
+          maxZ,
+          openingen,
+          meshSize,
+          meshType,
+          dwingendX: dwingend.x,
+          dwingendZ: dwingend.z
+        });
+        plateRects.push({ p, minX, maxX, minZ, maxZ, xs: raster.xs, zs: raster.zs, raster, punten });
         continue;
       }
       const vormFout = valideerPlaatPolygoon(punten, TOL_MM);
       if (vormFout) {
         throw new Error(`Plaat ${p.id}: ${vormFout}`);
       }
-      const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
+      const handtekening = berekenPlaatMeshSignatuur(punten, meshSize, {
+        openingen,
+        meshType: p.meshType
+      });
       const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : void 0;
       if (!cache) {
+        const waarom = openingen.length > 0 && punten.length === 4 ? "heeft een opening die geen asgelijnde rechthoek is en rekent daarom via de CDT" : "is geen asgelijnde rechthoek en rekent daarom als polygonplaat";
         throw new Error(
-          `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als polygonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. Open het canvas (het mesh wordt daar automatisch gegenereerd) en reken daarna opnieuw.`
+          `Plaat ${p.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. Open het canvas (het mesh wordt daar automatisch gegenereerd) en reken daarna opnieuw.`
         );
       }
       const beschadigd = (waarom) => {
@@ -5395,10 +5751,14 @@ function buildMesh(input, loadFactor) {
           `Plaat ${p.id}: de meshcache is beschadigd \u2014 ${waarom}. Wijzig de plaat (bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`
         );
       };
-      const nPts = cache.points.length;
-      const driehoekenOk = Array.isArray(cache.triangles) && cache.triangles.every((t) => Array.isArray(t) && t.length === 3 && t.every((i) => Number.isInteger(i) && i >= 0 && i < nPts));
-      if (!driehoekenOk || nPts < 3 || cache.triangles.length < 1) {
-        beschadigd("de driehoeken verwijzen naar punten die niet bestaan");
+      if (!Array.isArray(cache.points) || cache.points.length < 3) {
+        beschadigd("de puntenlijst ontbreekt of is te kort");
+      }
+      let gekeurd;
+      try {
+        gekeurd = keurPlatMesh(cache.points, cache.triangles, cache.quads);
+      } catch (e) {
+        beschadigd(e instanceof Error ? e.message : String(e));
       }
       if (!Array.isArray(cache.edgeNodeIndices)) {
         beschadigd("`edgeNodeIndices` ontbreekt");
@@ -5408,28 +5768,31 @@ function buildMesh(input, loadFactor) {
           `\`edgeNodeIndices\` beschrijft ${cache.edgeNodeIndices.length} randen, maar de plaat heeft ${punten.length} hoeken en dus ${punten.length} randen`
         );
       }
-      cache.edgeNodeIndices.forEach((rand, i) => {
-        if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => Number.isInteger(k) && k >= 0 && k < nPts)) {
-          beschadigd(`rand ${i + 1} heeft geen geldige lijst randknopen (minstens de twee hoeken)`);
-        }
-        const a = punten[i], b = punten[(i + 1) % punten.length];
-        const L = Math.hypot(b.x - a.x, b.z - a.z);
-        let tMin = Infinity, tMax = -Infinity;
-        for (const k of rand) {
-          const q = cache.points[k];
-          const t = ((q.x - a.x) * (b.x - a.x) + (q.z - a.z) * (b.z - a.z)) / L;
-          const d = Math.abs((q.x - a.x) * (b.z - a.z) - (q.z - a.z) * (b.x - a.x)) / L;
-          if (!(d <= TOL_MM) || t < -TOL_MM || t > L + TOL_MM) {
-            beschadigd(`punt ${k} van rand ${i + 1} ligt niet op die rand`);
+      try {
+        cache.edgeNodeIndices.forEach((rand, i) => {
+          keurRandKnopen(cache.points, rand, punten[i], punten[(i + 1) % punten.length], TOL_MM, `rand ${i + 1}`);
+        });
+        if (openingen.length > 0) {
+          const oe = cache.openingEdgeNodeIndices;
+          if (!Array.isArray(oe) || oe.length !== openingen.length) {
+            throw new Error(
+              `\`openingEdgeNodeIndices\` beschrijft ${Array.isArray(oe) ? oe.length : 0} openingen, maar de plaat heeft er ${openingen.length}`
+            );
           }
-          tMin = Math.min(tMin, t);
-          tMax = Math.max(tMax, t);
+          oe.forEach((randen, k) => {
+            const op = openingen[k];
+            if (!Array.isArray(randen) || randen.length !== op.length) {
+              throw new Error(`opening ${k + 1} heeft ${op.length} randen, maar de cache beschrijft er ${Array.isArray(randen) ? randen.length : 0}`);
+            }
+            randen.forEach((rand, j) => {
+              keurRandKnopen(cache.points, rand, op[j], op[(j + 1) % op.length], TOL_MM, `rand ${j + 1} van opening ${k + 1}`);
+            });
+          });
         }
-        if (tMin > TOL_MM || tMax < L - TOL_MM) {
-          beschadigd(`de randknopen van rand ${i + 1} reiken niet van hoek tot hoek`);
-        }
-      });
-      plaatPolygonen.push({ p, cache, punten });
+      } catch (e) {
+        beschadigd(e instanceof Error ? e.message : String(e));
+      }
+      plaatPolygonen.push({ p, cache, punten, gekeurd });
     }
   }
   const pasReleasesToe = (meshBeamId, b, metStartzijde, metEindzijde) => {
@@ -5664,98 +6027,101 @@ function buildMesh(input, loadFactor) {
       fy: kr.fy * f
     })));
   };
+  const zetPlatMeshInKern = (p, plat) => {
+    const mat = mesh.addMaterial({
+      name: `Plaat ${p.id}`,
+      E: p.E * 1e6,
+      nu: p.nu,
+      rho: p.rho,
+      color: matTemplate?.color ?? "#3b82f6",
+      alpha: matTemplate?.alpha ?? 12e-6
+    });
+    const dikte_m = p.thickness / 1e3;
+    const knoopIdPerPunt = plat.points.map((pt) => {
+      const mx = pt.x / 1e3, my = pt.z / 1e3;
+      const bestaand = mesh.findNodeAt(mx, my, 1e-3);
+      return bestaand ? bestaand.id : mesh.addPlateNode(mx, my).id;
+    });
+    const nodeIds = Array.from(new Set(knoopIdPerPunt));
+    const elementIds = [];
+    for (const [a, b, c] of plat.triangles) {
+      const t = mesh.addTriangleElement(
+        [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c]],
+        mat.id,
+        dikte_m
+      );
+      if (t) elementIds.push(t.id);
+    }
+    for (const [a, b, c, d] of plat.quads) {
+      const q = mesh.addQuadElement(
+        [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c], knoopIdPerPunt[d]],
+        mat.id,
+        dikte_m
+      );
+      if (q) elementIds.push(q.id);
+    }
+    return { knoopIdPerPunt, nodeIds, elementIds, materialId: mat.id };
+  };
+  const maakRegion = (p, plat, k, edges, isPolygon) => {
+    const xs = plat.points.map((pt) => pt.x);
+    const zs = plat.points.map((pt) => pt.z);
+    const minX = Math.min(...xs), minZ = Math.min(...zs);
+    return {
+      id: 0,
+      // wordt door addPlateRegion toegekend
+      x: minX / 1e3,
+      y: minZ / 1e3,
+      width: (Math.max(...xs) - minX) / 1e3,
+      height: (Math.max(...zs) - minZ) / 1e3,
+      divisionsX: 0,
+      divisionsY: 0,
+      materialId: k.materialId,
+      thickness: p.thickness / 1e3,
+      elementType: plat.quads.length > 0 ? "quad" : "triangle",
+      nodeIds: k.nodeIds,
+      // Niet gebruikt in het adapterpad (alleen door remesh-/edge-helpers
+      // van de core, die hier niet lopen) — bewust een neutrale vulling.
+      cornerNodeIds: [k.nodeIds[0], k.nodeIds[0], k.nodeIds[0], k.nodeIds[0]],
+      elementIds: k.elementIds,
+      edges: {
+        bottom: { nodeIds: edges.bottom },
+        top: { nodeIds: edges.top },
+        left: { nodeIds: edges.left },
+        right: { nodeIds: edges.right }
+      },
+      isPolygon,
+      meshSize: (p.meshSize > 0 ? p.meshSize : 500) / 1e3
+    };
+  };
   if (plateRects.length > 0) {
-    for (const { p, minX, minZ, width, height, nx, ny, punten } of plateRects) {
-      const mat = mesh.addMaterial({
-        name: `Plaat ${p.id}`,
-        E: p.E * 1e6,
-        nu: p.nu,
-        rho: p.rho,
-        color: matTemplate?.color ?? "#3b82f6",
-        alpha: matTemplate?.alpha ?? 12e-6
-      });
-      const region = generatePlateRegionMesh(mesh, {
-        x: minX / 1e3,
-        y: minZ / 1e3,
-        // mm → m
-        width: width / 1e3,
-        height: height / 1e3,
-        divisionsX: nx,
-        divisionsY: ny,
-        materialId: mat.id,
-        thickness: p.thickness / 1e3,
-        // mm → m
-        // Regelmatig grid → Quad4: geen detJ-problemen en beter buiggedrag
-        // dan CST (zie het platenplan, ontwerpbesluiten).
-        elementType: "quad"
-      });
+    for (const { p, raster, punten } of plateRects) {
+      const k = zetPlatMeshInKern(p, raster);
+      const naarIds = (lijst) => lijst.map((i) => k.knoopIdPerPunt[i]);
+      const region = maakRegion(p, raster, k, {
+        bottom: naarIds(raster.randen.bottom),
+        top: naarIds(raster.randen.top),
+        left: naarIds(raster.randen.left),
+        right: naarIds(raster.randen.right)
+      }, false);
       mesh.addPlateRegion(region);
       plateInfo.push({ plateId: p.id, region, hoeken: punten });
-      pasPlaatEigengewichtToe(p, region.elementIds);
+      pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
   if (plaatPolygonen.length > 0) {
-    for (const { p, cache, punten } of plaatPolygonen) {
-      const mat = mesh.addMaterial({
-        name: `Plaat ${p.id}`,
-        E: p.E * 1e6,
-        nu: p.nu,
-        rho: p.rho,
-        color: matTemplate?.color ?? "#3b82f6",
-        alpha: matTemplate?.alpha ?? 12e-6
-      });
-      const dikte_m = p.thickness / 1e3;
-      const knoopIdPerPunt = cache.points.map((pt) => {
-        const mx = pt.x / 1e3, my = pt.z / 1e3;
-        const bestaand = mesh.findNodeAt(mx, my, 1e-3);
-        return bestaand ? bestaand.id : mesh.addPlateNode(mx, my).id;
-      });
-      const nodeIds = Array.from(new Set(knoopIdPerPunt));
-      const elementIds = [];
-      for (const [a, b, c] of cache.triangles) {
-        const t = mesh.addTriangleElement(
-          [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c]],
-          mat.id,
-          dikte_m
-        );
-        if (t) elementIds.push(t.id);
-      }
-      const xs = cache.points.map((pt) => pt.x);
-      const zs = cache.points.map((pt) => pt.z);
-      const minX = Math.min(...xs), minZ = Math.min(...zs);
-      const region = {
-        id: 0,
-        // wordt door addPlateRegion toegekend
-        x: minX / 1e3,
-        y: minZ / 1e3,
-        width: (Math.max(...xs) - minX) / 1e3,
-        height: (Math.max(...zs) - minZ) / 1e3,
-        divisionsX: 0,
-        divisionsY: 0,
-        materialId: mat.id,
-        thickness: dikte_m,
-        elementType: "triangle",
-        nodeIds,
-        // Niet gebruikt in het adapterpad (alleen door remesh-/edge-helpers
-        // van de core, die hier niet lopen) — bewust een neutrale vulling.
-        cornerNodeIds: [nodeIds[0], nodeIds[0], nodeIds[0], nodeIds[0]],
-        elementIds,
-        // Polygonmesh heeft geen benoemde randen: randlasten lopen via de
-        // rand-index (edgeNodeIds hieronder); een benoemde rand op een
-        // polygonplaat wordt door `bepaalPlaatRand` geweigerd.
-        edges: {
-          bottom: { nodeIds: [] },
-          top: { nodeIds: [] },
-          left: { nodeIds: [] },
-          right: { nodeIds: [] }
-        },
-        isPolygon: true,
-        meshSize: (p.meshSize > 0 ? p.meshSize : 500) / 1e3
-      };
+    for (const { p, cache, punten, gekeurd } of plaatPolygonen) {
+      const k = zetPlatMeshInKern(p, { points: cache.points, triangles: gekeurd.triangles, quads: gekeurd.quads });
+      const region = maakRegion(
+        p,
+        { points: cache.points, quads: gekeurd.quads },
+        k,
+        { bottom: [], top: [], left: [], right: [] },
+        true
+      );
       mesh.addPlateRegion(region);
-      const edgeNodeIds = cache.edgeNodeIndices.map((rand) => rand.map((i) => knoopIdPerPunt[i]));
+      const edgeNodeIds = cache.edgeNodeIndices.map((rand) => rand.map((i) => k.knoopIdPerPunt[i]));
       plateInfo.push({ plateId: p.id, region, edgeNodeIds, hoeken: punten });
-      pasPlaatEigengewichtToe(p, elementIds);
+      pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
   const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
@@ -5768,7 +6134,22 @@ function buildMesh(input, loadFactor) {
     }
     const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
     if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} \u2014 ${rand.reden}`);
-    const kandidaten = rand.soort === "rechthoek" ? info.region.edges[rand.naam].nodeIds : info.edgeNodeIds[rand.edgeIndex];
+    let kandidaten;
+    if (info.edgeNodeIds) {
+      const n = info.hoeken.length;
+      let k = rand.edgeIndex;
+      if (k === void 0) {
+        k = info.hoeken.findIndex((_, i) => i === rand.hoekVan && (i + 1) % n === rand.hoekNaar || i === rand.hoekNaar && (i + 1) % n === rand.hoekVan);
+      }
+      if (k < 0 || !info.edgeNodeIds[k]) {
+        throw new Error(
+          `Plaat ${plateId}: ${wat} \u2014 de rand van hoek ${rand.hoekVan + 1} naar hoek ${rand.hoekNaar + 1} is geen rand van de omtrek in het rekenmesh.`
+        );
+      }
+      kandidaten = info.edgeNodeIds[k];
+    } else {
+      kandidaten = info.region.edges[rand.naam].nodeIds;
+    }
     const ax = rand.van.x / 1e3, az = rand.van.z / 1e3;
     const L = rand.lengte / 1e3;
     const ex = (rand.naar.x - rand.van.x) / rand.lengte;
@@ -17834,7 +18215,12 @@ function plaatNaarSolverInput(p) {
     meshSize: d.meshSize,
     // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
     // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
-    ...d.meshCache ? { meshCache: d.meshCache } : {}
+    ...d.meshCache ? { meshCache: d.meshCache } : {},
+    // Elementkeuze en openingen (stap 2): alleen mee als ze gezet zijn, om
+    // dezelfde reden — een plaat zonder keuze en zonder openingen levert
+    // exact dezelfde solverinvoer als vóór stap 2.
+    ...d.meshType ? { meshType: d.meshType } : {},
+    ...d.openingen && d.openingen.length > 0 ? { openingen: d.openingen } : {}
   };
 }
 function randlastNaarSolverInput(l) {
@@ -18762,14 +19148,21 @@ var PLATE_VELDEN = [
   "nu",
   "rho",
   "meshSize",
-  "meshCache"
+  "meshCache",
+  "meshType",
+  "openingen"
 ];
+var OPENING_VELDEN = ["id", "punten"];
 var MESHCACHE_VELDEN = [
   "signature",
   "points",
   "triangles",
-  "edgeNodeIndices"
+  "edgeNodeIndices",
+  "quads",
+  "meshSoort",
+  "openingEdgeNodeIndices"
 ];
+var MESHSOORTEN = ["driehoeken", "vierhoeken", "gemengd"];
 var LOAD_VELDEN = [
   "id",
   "type",
@@ -18833,6 +19226,7 @@ var VASTGEZET = {
 var isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isGetal = (v) => typeof v === "number" && Number.isFinite(v);
 var isGeheel = (v) => isGetal(v) && Number.isInteger(v);
+var isEindig = (v) => typeof v === "number" && Number.isFinite(v);
 function afstand(a, b) {
   const rij = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
@@ -19144,6 +19538,22 @@ function controleerVelden(rauw) {
     keurGetal(p.nu, `${pad}.nu`, fouten);
     keurGetal(p.rho, `${pad}.rho`, fouten, { positief: true });
     keurGetal(p.meshSize, `${pad}.meshSize`, fouten, { positief: true });
+    keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
+    if (p.openingen !== void 0) {
+      if (!Array.isArray(p.openingen)) {
+        fouten.push(`${pad}.openingen: moet een array van openingen zijn.`);
+      } else {
+        p.openingen.forEach((o, k) => {
+          const opad = `${pad}.openingen[${k}]`;
+          if (!isObject(o)) return void fouten.push(`${opad}: moet een object zijn.`);
+          keurVelden(o, OPENING_VELDEN, opad, fouten);
+          eisGeheel(o.id, `${opad}.id`, fouten);
+          if (!Array.isArray(o.punten) || o.punten.length < 3 || !o.punten.every((q) => isObject(q) && isEindig(q.x) && isEindig(q.z))) {
+            fouten.push(`${opad}.punten: verplichte array van minstens drie punten {x, z} in mm.`);
+          }
+        });
+      }
+    }
     if (p.meshCache !== void 0) {
       if (!isObject(p.meshCache)) {
         fouten.push(`${pad}.meshCache: moet een object zijn.`);
@@ -19154,6 +19564,19 @@ function controleerVelden(rauw) {
         }
         if (!Array.isArray(p.meshCache.points) || !Array.isArray(p.meshCache.triangles)) {
           fouten.push(`${pad}.meshCache: \`points\` en \`triangles\` zijn verplichte arrays.`);
+        }
+        if (p.meshCache.quads !== void 0) {
+          const qs = p.meshCache.quads;
+          if (!Array.isArray(qs) || !qs.every((q) => Array.isArray(q) && q.length === 4 && q.every((i2) => isGeheel(i2) && i2 >= 0))) {
+            fouten.push(`${pad}.meshCache.quads: moet een lijst van viertallen puntindices (gehele getallen \u2265 0) zijn.`);
+          }
+        }
+        keurEnum(p.meshCache.meshSoort, MESHSOORTEN, `${pad}.meshCache.meshSoort`, fouten);
+        if (p.meshCache.openingEdgeNodeIndices !== void 0) {
+          const oe = p.meshCache.openingEdgeNodeIndices;
+          if (!Array.isArray(oe) || !oe.every((randen2) => Array.isArray(randen2) && randen2.every((r) => Array.isArray(r) && r.every((i2) => isGeheel(i2) && i2 >= 0)))) {
+            fouten.push(`${pad}.meshCache.openingEdgeNodeIndices: moet per opening een lijst van randen (elk een lijst puntindices) zijn.`);
+          }
         }
         const randen = p.meshCache.edgeNodeIndices;
         if (!Array.isArray(randen)) {
@@ -19393,6 +19816,12 @@ function valideerModel(rauw, opties = {}) {
     actief2.add(b.to);
   }
   for (const p of plates) for (const id of p.nodeIds ?? []) actief2.add(id);
+  const plaatOmtrekken = plates.map((p) => {
+    const h = (p.nodeIds ?? []).map((id) => knoopById.get(id));
+    return h.every((q) => q !== void 0) && h.length >= 3 ? h : void 0;
+  });
+  const inOfOpPlaat = (n) => plaatOmtrekken.some((omtrek) => !!omtrek && (puntInPolygoon(n.x, n.z, omtrek) || omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1)));
+  for (const n of nodes) if (!actief2.has(n.id) && inOfOpPlaat(n)) actief2.add(n.id);
   for (const n of nodes) {
     if (!actief2.has(n.id)) {
       warnings.push(
@@ -19458,7 +19887,11 @@ function valideerModel(rauw, opties = {}) {
   if (actief2.size > 0) {
     const verbindingen = [
       ...beams.map((b) => [b.from, b.to]),
-      ...plates.map((p) => p.nodeIds ?? [])
+      ...plates.map((p, k) => {
+        const omtrek = plaatOmtrekken[k];
+        const erbij = omtrek ? nodes.filter((n) => puntInPolygoon(n.x, n.z, omtrek) || omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1)).map((n) => n.id) : [];
+        return [...p.nodeIds ?? [], ...erbij];
+      })
     ];
     for (const deel of samenhangendeDelen([...actief2], verbindingen)) {
       if (!deel.some((id) => gesteund.has(id))) {
@@ -19475,18 +19908,32 @@ function valideerModel(rauw, opties = {}) {
       continue;
     }
     const punten = hoeken.map((h) => ({ x: h.x, z: h.z }));
-    if (punten.length === 4 && isAsgelijndeRechthoek(punten, 1)) continue;
+    const openingen = (p.openingen ?? []).map((o) => o.punten);
+    const openingFout = valideerPlaatOpeningen(punten, openingen, 1);
+    if (openingFout) {
+      errors.push(`Plaat ${p.id}: ${openingFout}`);
+      continue;
+    }
+    const meldDubbeleOpeningIds = /* @__PURE__ */ new Set();
+    for (const o of p.openingen ?? []) {
+      if (meldDubbeleOpeningIds.has(o.id)) {
+        errors.push(`Plaat ${p.id}: opening-id ${o.id} komt meer dan \xE9\xE9n keer voor.`);
+        break;
+      }
+      meldDubbeleOpeningIds.add(o.id);
+    }
+    if (plaatRekentAlsRaster(punten, openingen, 1)) continue;
     const vormFout = valideerPlaatPolygoon(punten, 1);
     if (vormFout) {
       errors.push(`Plaat ${p.id}: ${vormFout}`);
       continue;
     }
-    const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize : 500;
-    const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
+    const handtekening = plaatMeshSignatuurVan(p, punten);
     const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : void 0;
     if (!cache) {
+      const waarom = openingen.length > 0 && punten.length === 4 ? "heeft een opening die geen asgelijnde rechthoek is en rekent daarom via de CDT" : "is geen asgelijnde rechthoek en rekent daarom als polygoonplaat";
       errors.push(
-        `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als polygoonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. Reken via een projectbestand waarin het mesh is opgeslagen; de MCP-server genereert zelf geen meshes.`
+        `Plaat ${p.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. Reken via een projectbestand waarin het mesh is opgeslagen; de MCP-server genereert zelf geen meshes.`
       );
     }
   }
@@ -20609,6 +21056,8 @@ export {
   MIN_SEGMENT_MM,
   OUDE_STANDAARDSET,
   PARTIELE_FACTOREN,
+  PLAAT_MESH_TYPEN,
+  PLAAT_OPENING_MIN_AFSTAND_MM,
   PLAAT_RAND_NAAM_NL,
   PLATE_DEFAULTS,
   PROJECT_FILE_EXT,
@@ -20645,6 +21094,7 @@ export {
   aantalAfbeeldingen,
   aantalGebruiksgevallen,
   aantalVerloopSegmenten,
+  afstandTotLijnstuk,
   alphaCrLabel,
   alphaCrStaafNotitie,
   analyseToelichting,
@@ -20688,6 +21138,8 @@ export {
   doorsnedeOpPositie,
   doorsnedeVeldenVoorSolver,
   doorsnedeVoorSolver,
+  dwingendeLijnenUitKnopen,
+  effectiefPlaatMeshType,
   eigenGewichtLasten,
   eigenGewichtPerMeter,
   eigenGewichtVanDoorsnede,
@@ -20695,12 +21147,14 @@ export {
   extractFieldDeflectionMm,
   gelijkeCombinatie,
   gelijkeInhoud,
+  genereerRasterMesh,
   genereerStandaardCombinaties,
   genereerWindCombinaties,
   genereerWindbelasting,
   getScheefstandRichtingen,
   getSecondOrderInput,
   getSecondOrderState,
+  getekendeOppervlakte2,
   gevalResultaten,
   gevolgklasseBijOpenen,
   gradenTekst,
@@ -20718,7 +21172,10 @@ export {
   isZuivereStaalconstructie,
   kCrUitConfig,
   keurCheckConfig,
+  keurPlatMesh,
+  keurRandKnopen,
   klasseUitKenmerk,
+  koppelTotVierhoeken,
   liftSpringK,
   mapDeflectionClass,
   mapLoadDuration,
@@ -20734,12 +21191,16 @@ export {
   openCombinatieStaat,
   parseRechthoek,
   parseTimberRectMm,
+  plaatMeshSignatuurVan,
   plaatNaarSolverInput,
   plaatRandLabel,
+  plaatRekentAlsRaster,
   profileLookupKey,
+  puntInPolygoon,
   quasiPermanentDeflection,
   randlastNaarSolverInput,
   randpuntlastNaarSolverInput,
+  rasterLijnen,
   redenZuiverStaal,
   referentieVanStaaf,
   registreerPlaatMeshCacheCommitter,
@@ -20761,6 +21222,7 @@ export {
   spiegelElementKrachten,
   spiegelFracties,
   spiegelZones,
+  splitsVierhoekenInDriehoeken,
   staafInReferentierichting,
   staafLengteMm,
   stabiliteitsMeldingen,
@@ -20770,6 +21232,7 @@ export {
   timberDeflectionNumerators,
   toetsdataInReferentierichting,
   valideerModel,
+  valideerPlaatOpeningen,
   valideerPlaatPolygoon,
   veranderlijkeBelastingenZonderLeiding,
   veranderlijkeFactorVerschillen,
@@ -20795,5 +21258,6 @@ export {
   zetGevolgklasse,
   zetSolverLogOpvanger,
   zijdelingseVerplaatsingMm,
-  zijdenInWereldtermen
+  zijdenInWereldtermen,
+  zoekPuntenOpLijnstuk
 };
