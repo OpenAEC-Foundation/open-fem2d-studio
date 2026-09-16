@@ -31,7 +31,7 @@
 //          of: node scripts/run-tests.mjs --filter=kolomtoets
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,6 +44,8 @@ const TOETSBRUG = join(
 
 const { buildBetonCheckInputs } = await import("./src/lib/betonCheckBuilder.ts");
 const { korvenUitStaven } = await import("./src/stores/checkStore.ts");
+const { betonStavenUitModel } = await import("./src/lib/betonStijfheid.ts");
+const { modelHeeftBetonstaaf, kruipveldZichtbaar } = await import("./src/lib/kruipcoefficient.ts");
 const { knikgevallenVoor, kniklengteVoorSchoring, KNIKGEVALLEN } =
   await import("./src/components/beton/kolomgegevens.ts");
 const { isOverwegendVerticaal } = await import("./src/lib/steelCheckBuilder.ts");
@@ -194,14 +196,14 @@ function rekenDoor() {
 const resultaten = rekenDoor();
 
 
-function bouw(kolom) {
+function bouw(kolom, projectPhi) {
   const m = model(kolom);
   return buildBetonCheckInputs({
     nodes: m.nodes,
     beams: m.beams,
     combinations: COMBOS,
     combinationResults: resultaten,
-    korven: korvenUitStaven(m.beams),
+    korven: korvenUitStaven(m.beams, projectPhi),
   });
 }
 
@@ -215,6 +217,74 @@ log("\n[3] korvenUitStaven en de bouwer dragen het §5.8-blok door");
 
   const zonder = korvenUitStaven(model(null).beams);
   ok("zonder blok blijft het veld leeg", zonder.get(1).kolom === undefined);
+}
+{
+  // φ(∞,t₀) ÉÉN KEER OPGEVEN. De projectwaarde (`betonKruipcoefficient`) en de
+  // waarde per staaf in het §5.8-blok voeden zowel de BGT-stijfheidslus als de
+  // kolomtoets, met dezelfde voorrangsregel (`lib/kruipcoefficient.ts`). Zonder
+  // deze doorvoer kreeg de kolomtoets de projectwaarde nooit te zien en rekende
+  // zij om de z-as stil zonder kruip (NEN-EN 1992-1-1 §5.8.4(1)P).
+  const metProject = korvenUitStaven(model(KOLOM_GESCHOORD).beams, 1.8);
+  eq("zonder eigen φ(∞,t₀) vult de projectwaarde het blok aan",
+    metProject.get(1).kolom, { ...KOLOM_GESCHOORD, phi_inf_t0: 1.8 });
+  const eigen = korvenUitStaven(model({ ...KOLOM_GESCHOORD, phi_inf_t0: 2.5 }).beams, 1.8);
+  eq("een eigen waarde per staaf gaat vóór de projectwaarde", eigen.get(1).kolom.phi_inf_t0, 2.5);
+  const nulEigen = korvenUitStaven(model({ ...KOLOM_GESCHOORD, phi_inf_t0: 0 }).beams, 1.8);
+  eq("een eigen 0 (geen kruip) is een waarde en gaat ook vóór", nulEigen.get(1).kolom.phi_inf_t0, 0);
+  ok("zonder §5.8-blok maakt de projectwaarde van de staaf geen kolom",
+    korvenUitStaven(model(null).beams, 1.8).get(1).kolom === undefined);
+  eq("zonder projectwaarde blijft het blok zoals het is",
+    korvenUitStaven(model(KOLOM_GESCHOORD).beams, null).get(1).kolom, KOLOM_GESCHOORD);
+
+  const { staven } = betonStavenUitModel({
+    nodes, beams: model(KOLOM_GESCHOORD).beams, standaardPhiInfT0: 1.8,
+  });
+  eq("de BGT-stijfheidslus krijgt dezelfde φ(∞,t₀) als de kolomtoets",
+    staven[0].phiInfT0, metProject.get(1).kolom.phi_inf_t0);
+  const { staven: stavenEigen } = betonStavenUitModel({
+    nodes, beams: model({ ...KOLOM_GESCHOORD, phi_inf_t0: 2.5 }).beams, standaardPhiInfT0: 1.8,
+  });
+  eq("… ook als de staaf een eigen waarde heeft", stavenEigen[0].phiInfT0, eigen.get(1).kolom.phi_inf_t0);
+  eq("de bouwer zet de aangevulde φ(∞,t₀) in `column`",
+    bouw(KOLOM_GESCHOORD, 1.8).inputs[0].column.phi_inf_t0, 1.8);
+
+  // De app geeft de projectwaarde aan de toetsing mee, uit DEZELFDE bron als
+  // aan de stijfheidslus. Een brontekstcontrole, omdat App.tsx React is.
+  const app = readFileSync(join(HIER, "src", "App.tsx"), "utf8");
+  ok("App.tsx geeft φ(∞,t₀) van het project aan de stijfheidslus én de toetsing",
+    (app.match(/standaardPhiInfT0:\s*fem\.betonKruipcoefficient/g) ?? []).length === 2);
+  // HET PROJECTVELD IS ZICHTBAAR ZODRA ER BETON IS, BIJ ELK ANALYSETYPE. De
+  // waarde voedt de kolomtoets, die altijd loopt; een veld dat alleen bij de
+  // fysisch niet-lineaire stand verschijnt, zou bij eerste of geometrisch
+  // tweede orde een meerekenende waarde verbergen.
+  eq("een betonstaaf zonder korf telt als beton",
+    modelHeeftBetonstaaf([{ material: "C30/37" }]), true);
+  eq("alleen staal en hout: geen beton",
+    modelHeeftBetonstaaf([{ material: "S235" }, { material: "C24" }, { material: "C30" }]), false);
+  eq("met beton en zonder waarde: zichtbaar", kruipveldZichtbaar(true, null), true);
+  eq("zonder beton en zonder waarde: verborgen", kruipveldZichtbaar(false, null), false);
+  eq("zonder beton maar mét waarde: zichtbaar, zodat hij te zien en te wissen is",
+    kruipveldZichtbaar(false, 2.0), true);
+  eq("een opgegeven 0 is ook een waarde", kruipveldZichtbaar(false, 0), true);
+  const balk = readFileSync(join(HIER, "src", "components", "fem", "LoadCaseTabBar.tsx"), "utf8");
+  const veldBlok = balk.slice(balk.indexOf("{setBetonKruipcoefficient &&"), balk.indexOf("lc-tab-phi-input", balk.indexOf("{setBetonKruipcoefficient &&")));
+  ok("de balk toont het φ-veld via kruipveldZichtbaar",
+    /\{setBetonKruipcoefficient && kruipveldZichtbaar\(heeftBetonstaaf, betonKruipcoefficient\) &&/.test(balk));
+  ok("en de zichtbaarheid hangt NIET meer van het analysetype af",
+    veldBlok.length > 0 && !/analysetype/.test(veldBlok.split("\n")[0]));
+  ok("de toelichting zegt dat het veld BGT-stijfheid én kolomtoets voedt",
+    veldBlok.includes('t("loadCases.creepFeedsBoth")'));
+  ok("App.tsx geeft heeftBetonstaaf uit modelHeeftBetonstaaf door",
+    /modelHeeftBetonstaaf\(fem\.beams\)/.test(app) && /heeftBetonstaaf=\{heeftBetonstaaf\}/.test(app));
+  for (const taal of ["nl", "en", "de", "fr"]) {
+    const common = JSON.parse(readFileSync(join(HIER, "src", "i18n", "locales", taal, "common.json"), "utf8"));
+    ok(`de toelichting bestaat in ${taal}`,
+      typeof common.loadCases?.creepFeedsBoth === "string" && common.loadCases.creepFeedsBoth.includes("5.8.3.1"));
+  }
+
+  const store = readFileSync(join(HIER, "src", "stores", "checkStore.ts"), "utf8");
+  ok("de toetsronde vult de korven met de projectwaarde",
+    /korvenUitStaven\(data\.beams,\s*data\.standaardPhiInfT0\)/.test(store));
 }
 {
   const { inputs, skipped } = bouw(KOLOM_GESCHOORD);
@@ -419,6 +489,33 @@ if (!existsSync(TOETSBRUG)) {
     dicht("φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed = 2,0 · 0,25", kruip.value, 0.5, 1e-6);
     ok("de afleiding noemt de quasi-blijvende combinatie",
       kruip.notes.join(" ").includes("QUASI-BLIJVENDE"));
+  }
+
+  // ── 5d2. Geen stille nul om z — en de projectwaarde komt aan ──────────
+  //
+  // Om de z-as is λ_z = 34,64 ≥ λ_lim,z = 20·0,7·1,1783571·0,7/√0,3333333 =
+  // 20,0015, dus e₂ om z telt. De norm geeft voor φ_ef in de algemene methode
+  // geen standaardwaarde (§5.8.4(1)P, §5.8.6(4)); zonder φ(∞,t₀) wordt het
+  // moment om z daarom niet goedgekeurd. Met de PROJECTWAARDE 2,0 (geen eigen
+  // waarde in het blok) rekent de kern (5.19) om beide assen, zoals in 5d.
+  {
+    const toetsVan = (r, id) => r.checks.find((c) => c.id === id)?.kind.data;
+    const [zonderPhi] = await kern("check_concrete_beams", bouw(KOLOM_GESCHOORD).inputs);
+    const mz = toetsVan(zonderPhi, "5.8.9_moment_z");
+    ok("zonder φ(∞,t₀) is het moment om z niet goedgekeurd",
+      mz && mz.status !== "Ok", mz?.status);
+    ok("en de toets zegt waarom (§5.8.4(1)P, ondergrens)",
+      mz && mz.notes.join(" ").includes("§5.8.4(1)P") && mz.notes.join(" ").includes("ONDERGRENS"));
+    ok("de poort waarschuwt dat A = 0,7 zonder kruipgegevens is genomen",
+      poortVan(zonderPhi).notes.join(" ").includes("WAARSCHUWING — A = 0,7 zonder kruipgegevens"));
+
+    const [metProject] = await kern("check_concrete_beams", bouw(KOLOM_GESCHOORD, 2.0).inputs);
+    dicht("met de projectwaarde: dezelfde λ_lim als met φ in het blok (5d)",
+      poortVan(metProject).uc.rd, 63.08466, 1e-6);
+    const mzP = toetsVan(metProject, "5.8.9_moment_z");
+    ok("en het moment om z is uitgevoerd, met φ_ef,z uit (5.19)",
+      mzP && mzP.status !== "NotApplicable" && mzP.notes.join(" ").includes("uit (5.19) om de z-as"),
+      mzP?.status);
   }
 
   // ── 5e. De §9.5-eisen die een keuze missen, melden dat ────────────────

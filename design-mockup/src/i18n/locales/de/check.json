@@ -845,7 +845,7 @@
       "l0Custom": "l₀ selbst angeben…",
       "l0Info": "l₀ = {{l0}} m bei einer freien Länge l = {{l}} m.",
       "casesFgHint": "Die Fälle f) und g) von Bild 5.7 — teilweise Einspannung — sind nicht aufgeführt: Sie erfordern die relative Nachgiebigkeit k = (θ/M)·(EI/l) jedes Stabendes, die sich aus einem Rahmenmodell nicht ablesen lässt. Rechnen Sie (5.15) oder (5.16) selbst und wählen Sie dann „l₀ selbst angeben“.",
-      "phiHint": "Endkriechzahl nach Abs. 3.1.4. Leer = nicht angegeben; Abs. 3.1.4 wird hier nicht gerechnet, denn dafür werden die relative Luftfeuchte, die wirksame Bauteildicke h₀, die Zementklasse und das Betonalter t₀ bei Erstbelastung benötigt. Ohne diesen Wert bleibt φ_ef unbekannt und 5.8.3.1(1) rechnet mit A = 0,7 — das ist nicht die sichere Seite, sondern der Wert bei φ_ef ≈ 2,14. Um die z-Achse wird e₂ dann ohne Kriechen ermittelt, und auch das vermerkt der Bericht.",
+      "phiHint": "Endkriechzahl nach Abs. 3.1.4. Leer = nicht angegeben; Abs. 3.1.4 wird hier nicht gerechnet, denn dafür werden die relative Luftfeuchte, die wirksame Bauteildicke h₀, die Zementklasse und das Betonalter t₀ bei Erstbelastung benötigt. Leer = der Projektwert von φ(∞,t₀) gilt. Fehlt auch dieser, bleibt φ_ef unbekannt: 5.8.3.1(1) rechnet dann mit A = 0,7 — nicht die sichere Seite, sondern der Wert bei φ_ef ≈ 2,14 — und um die z-Achse wird das Moment nicht freigegeben, solange e₂ zählt (5.8.4(1)P). Ist φ(∞,t₀) bekannt, fehlt aber die quasi-ständige Kombination, gilt φ(∞,t₀) als obere Grenze von φ_ef.",
       "zAxisHeader": "Um die z-Achse (senkrecht zur Ebene) — Abs. 5.8.9",
       "bracingZ": "Aussteifung um z",
       "sameAsPlaneWith": "— wie in der Ebene ({{schoring}}) —",

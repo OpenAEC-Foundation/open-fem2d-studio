@@ -543,6 +543,7 @@
     "segmentTitle": "Gewünschte Segmentlänge in mm. Jeder Betonstab wird in gleich lange Segmente geteilt, die jeweils ihre eigene Sekanten-EI erhalten (5.8.6(6)). Kürzer = genauer und langsamer; die Anwendung vergröbert nicht von selbst.",
     "segment": "Segment",
     "creepTitle": "Endwert der Kriechzahl φ(∞,t₀) nach Abs. 3.1.4, für jeden Betonstab ohne eigenen Wert bei den §5.8-Angaben. Der Kern verarbeitet sie nach 5.8.6(4) — alle Bemessungswerte mal (1 + φ_ef) — was für die Anfangssteigung E_c,eff = E_cm/(1 + φ) nach (7.20) entspricht. LEER = nicht angegeben: dann wird OHNE Kriechen gerechnet, die Durchbiegung fällt zu klein aus, und das liegt auf der unsicheren Seite. Abs. 3.1.4 wird hier nicht berechnet: dafür sind die relative Luftfeuchte, die wirksame Bauteildicke h₀, die Zementklasse und das Betonalter t₀ bei Belastungsbeginn nötig.",
+    "creepFeedsBoth": "Dieser Wert speist zwei Berechnungen: die GZG-Steifigkeit bei der physikalisch nichtlinearen Analyse (5.8.6(4)) und den Stützennachweis bei jedem Analysetyp (A in λ_lim nach 5.8.3.1(1), φ_ef nach (5.19)). Ein Stab mit eigenem φ(∞,t₀) in den §5.8-Angaben hat Vorrang.",
     "emptyPlaceholder": "leer",
     "noConcreteBarsTitle": "Physikalisch nichtlinear wirkt auf Betonstäbe mit Bewehrungskorb: Werkstoff eine Festigkeitsklasse (z. B. C30/37), Profil ein Rechteck (z. B. 300x500) und ein Korb in den Stabeigenschaften. Ohne solche Stäbe entspricht das Ergebnis Theorie II. Ordnung (P-Δ).",
     "noConcreteBars": "keine Betonstäbe mit Korb",

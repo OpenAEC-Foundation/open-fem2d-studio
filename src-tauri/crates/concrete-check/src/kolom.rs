@@ -67,7 +67,7 @@ use mechanics::{ForcePoint, ForceStateSnapshot};
 use nen_en_1992_1_1::checks::minimum_eccentricity_mm;
 use nen_en_1992_1_1::kolom::{
     as_max_9_5_2, as_min_9_5_2, dubbele_buiging_deelstappen, e_i_5_2_mm, exponent_a_5_39,
-    hoekstaven_9_5_2, interactie_5_39, kolom_deelstappen, kolom_deelstappen_om_as, kolomslankheid,
+    a_toelichting, hoekstaven_9_5_2, interactie_5_39, kolom_deelstappen, kolom_deelstappen_om_as, kolomslankheid,
     min_diameter_dwarswapening_9_5_3, min_diameter_langsstaaf_9_5_2, min_dwarsafmeting_9_5_1,
     moment_tweede_as_deelstappen, n_rd_5_39_n, opgesloten_staven_9_5_3, s_cl_tmax_9_5_3,
     scheefstand_5_1, toepassingsgebied_9_5_1, traagheidsstraal_mm, voorwaarde_5_38a,
@@ -193,7 +193,11 @@ pub struct ConcreteColumnInput {
     /// cementklasse en de ouderdom t₀ bij eerste belasting, geen van alle
     /// invoer van een raamwerkmodel. Zonder φ(∞,t₀) blijft φ_ef onbekend en
     /// staat §5.8.3.1(1) A = 0,7 toe; dat is GEEN veilige kant maar de waarde
-    /// bij φ_ef ≈ 2,14, en dat wordt gemeld.
+    /// bij φ_ef ≈ 2,14, en dat wordt gemeld. Om de z-as, waar deze toets e₂
+    /// zelf bepaalt, geeft de norm voor φ_ef geen standaardwaarde (§5.8.4(1)P,
+    /// §5.8.6(4)); telt e₂ daar mee, dan wordt het moment om z zonder φ(∞,t₀)
+    /// niet goedgekeurd. In de app vult de projectwaarde dit veld aan als de
+    /// staaf zelf geen waarde heeft (`lib/kruipcoefficient.ts`).
     #[serde(default)]
     #[ts(optional)]
     pub phi_inf_t0: Option<f64>,
@@ -322,6 +326,14 @@ pub struct ConcreteColumnCheckResponse {
     /// De effectieve kruipcoëfficiënt φ_ef uit (5.19), als hij te bepalen was.
     #[ts(optional)]
     pub phi_ef: Option<f64>,
+    /// φ_ef om de z-as zoals in de algemene methode voor e₂ gebruikt: 0 als
+    /// §5.8.4(4) dat toestaat, anders (5.19) of — zonder quasi-blijvende
+    /// combinatie — φ(∞,t₀) als bovengrens. `None` = onbekend omdat φ(∞,t₀)
+    /// niet is opgegeven; moet e₂ om z worden meegenomen, dan zijn ook
+    /// `e_2_z_mm`, `m_edz_knm` en `interactie_5_39` `None` en zeggen de
+    /// toetsen waarom.
+    #[ts(optional)]
+    pub phi_ef_z: Option<f64>,
     /// λ_z = l₀,z/i_z om de z-as. `None` als de tweede as niet kon.
     #[ts(optional)]
     pub lambda_z: Option<f64>,
@@ -991,32 +1003,44 @@ pub fn kolomtoetsen(
         (None, _, _) => {
             kruip.status = CheckStatus::NotApplicable;
             kruip.notes.push(
-                "φ(∞,t₀) is niet opgegeven, dus (5.19) kon niet worden ingevuld en de drie \
-                 voorwaarden van §5.8.4(4) konden niet worden nagegaan. §3.1.4 wordt in deze app \
-                 niet gerekend: die paragraaf vraagt de relatieve luchtvochtigheid, de fictieve \
-                 dikte h₀, de cementklasse en de ouderdom t₀ bij eerste belasting, en geen van \
-                 vieren is invoer van een raamwerkmodel. λ_lim hierboven is daarom met A = 0,7 \
-                 gerekend, de waarde die §5.8.3.1(1) toestaat als φ_ef onbekend is. LET OP: 0,7 is \
-                 geen veilige kant maar de waarde bij φ_ef ≈ 2,14; bij zwaardere kruip is de \
-                 werkelijke A kleiner en λ_lim dus lager dan hier staat."
+                "WAARSCHUWING — φ(∞,t₀) is niet opgegeven, dus (5.19) kon niet worden ingevuld en \
+                 de drie voorwaarden van §5.8.4(4) konden niet worden nagegaan. §3.1.4 wordt in \
+                 deze app niet gerekend: die paragraaf vraagt de relatieve luchtvochtigheid, de \
+                 fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij eerste belasting, en \
+                 geen van vieren is invoer van een raamwerkmodel. λ_lim hierboven — en λ_lim,z om \
+                 de z-as — is daarom met A = 0,7 gerekend, de waarde die §5.8.3.1(1) toestaat als \
+                 φ_ef onbekend is. LET OP: 0,7 is geen veilige kant maar de waarde bij \
+                 φ_ef ≈ 2,14; bij zwaardere kruip is de werkelijke A kleiner en λ_lim dus lager \
+                 dan hier staat. Om de z-as, waar deze toets e₂ zelf bepaalt, geeft de norm voor \
+                 φ_ef geen standaardwaarde (§5.8.4(1)P, §5.8.6(4)); moet e₂ daar worden \
+                 meegenomen, dan wordt het moment om z zonder φ(∞,t₀) niet goedgekeurd. Geef \
+                 φ(∞,t₀) op als projectwaarde of per staaf in het §5.8-blok."
                     .to_string(),
             );
         }
         (Some(phi), phi_ef, verwaarlozing) => {
-            kruip.value = phi_ef.unwrap_or(0.0);
-            kruip.variables = vec![
-                NamedValue {
-                    symbol: "φ(∞,t₀)".to_string(),
-                    value: phi,
-                    unit: "-".to_string(),
-                },
-                NamedValue {
+            // Geen φ_ef = 0 in de grootheden als (5.19) niet is ingevuld: een
+            // nul die er als rekenwaarde uitziet is precies de stille nul die
+            // hier niet mag staan. De toets is dan "niet uitgevoerd" (zie
+            // hieronder) en de waarde blijft de opgegeven φ(∞,t₀).
+            kruip.value = phi_ef.unwrap_or(phi);
+            kruip.variables = vec![NamedValue {
+                symbol: "φ(∞,t₀)".to_string(),
+                value: phi,
+                unit: "-".to_string(),
+            }];
+            if let Some(p) = phi_ef {
+                kruip.variables.push(NamedValue {
                     symbol: "φ_ef".to_string(),
-                    value: phi_ef.unwrap_or(0.0),
+                    value: p,
                     unit: "-".to_string(),
-                },
-                NamedValue { symbol: "A".to_string(), value: slank.a, unit: "-".to_string() },
-            ];
+                });
+            }
+            kruip.variables.push(NamedValue {
+                symbol: "A".to_string(),
+                value: slank.a,
+                unit: "-".to_string(),
+            });
             match verwaarlozing {
                 Some(v) => {
                     kruip.notes.push(format!(
@@ -1072,10 +1096,14 @@ pub fn kolomtoetsen(
                         "φ_ef zelf kon niet worden uitgerekend: (5.19) vraagt naast φ(∞,t₀) ook \
                          M₀Eqp uit de quasi-blijvende BGT-combinatie én een M₀Ed dat niet nul is. \
                          Stuur het krachtsverloop onder NEN-EN 1990 uitdrukking (6.16) mee in \
-                         `sls_quasi_permanent_envelope`. Zolang dat er niet is, is λ_lim met \
-                         A = 0,7 gerekend — toegestaan door §5.8.3.1(1), maar niet de veilige kant."
+                         `sls_quasi_permanent_envelope`."
                             .to_string(),
                     );
+                    if let Some(t) =
+                        a_toelichting(slank.a_grondslag, m0_eqp_knm, Some(gov.forces.my_ed))
+                    {
+                        kruip.notes.push(t);
+                    }
                 }
             }
         }
@@ -1248,6 +1276,7 @@ pub fn column_check(
             .as_ref()
             .map(|s| s.tweede_orde_verwaarloosbaar),
         phi_ef: uit.slankheid.as_ref().and_then(|s| s.phi_ef),
+        phi_ef_z: z.and_then(|t| t.phi_ef),
         lambda_z: slank_z.map(|s| s.lambda),
         lambda_lim_z: slank_z.map(|s| s.lambda_lim),
         l0_z_mm: slank_z.map(|s| s.l0_mm),
@@ -1320,6 +1349,10 @@ pub struct TweedeAsUitkomst {
     pub e_i_mm: Option<f64>,
     /// e₂ om z, mm; 0 als hij mocht vervallen, `None` bij instabiliteit.
     pub e_2_mm: Option<f64>,
+    /// φ_ef om z zoals in de algemene methode gebruikt: 0 als §5.8.4(4) dat
+    /// toestaat, anders (5.19) of φ(∞,t₀) als bovengrens. `None` = onbekend
+    /// (φ(∞,t₀) niet opgegeven).
+    pub phi_ef: Option<f64>,
     /// M_Edz op de maatgevende snede van de toets om z, kNm.
     pub m_edz_knm: Option<f64>,
     /// M_Rdz op die snede, kNm.
@@ -1778,9 +1811,26 @@ fn tweede_as_toetsen(
     checks.push(benoem(poort_z));
 
     // ── φ_ef om z voor de algemene methode ────────────────────────────────
-    let (phi_ef_z, phi_note) = match (&slank_z.kruip, slank_z.phi_ef) {
-        (Some(v), _) if v.toegestaan => (
-            0.0,
+    //
+    // §5.8.4(1)P: "In tweede-orde-berekeningen moet rekening zijn gehouden met
+    // het effect van kruip". §5.8.6(4) doet dat in de algemene methode door de
+    // rekken van de (3.14)-kromme met (1 + φ_ef) te vermenigvuldigen, met φ_ef
+    // uit (5.19) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed. Anders dan voor A in λ_lim geeft de
+    // norm hier GEEN standaardwaarde. Vroeger werd een onbekende φ_ef hier
+    // stilzwijgend nul: e₂ zonder kruip, de onveilige kant. Nu:
+    //
+    // * §5.8.4(4) vervuld → φ_ef = 0, zoals de norm toestaat;
+    // * (5.19) ingevuld → die φ_ef;
+    // * φ(∞,t₀) gegeven maar (5.19) niet in te vullen → φ(∞,t₀) als
+    //   BOVENGRENS van φ_ef (|M₀Eqp| ≤ |M₀Ed|), met een waarschuwing;
+    // * φ(∞,t₀) niet gegeven → er bestaat geen veilige aanname (φ(∞,t₀) kan
+    //   volgens figuur 3.1 ruim boven 3 liggen). e₂ wordt dan zonder kruip
+    //   bepaald als ONDERGRENS: kruip vergroot de kromming en dus e₂ en M_Edz.
+    //   Is de toets daarmee al overschreden, dan blijft dat staan; anders
+    //   WEIGEREN de toetsen om z met reden (`kruip_z_onbekend`).
+    let (kruip_z, phi_note) = match (&slank_z.kruip, slank_z.phi_ef, k.phi_inf_t0) {
+        (Some(v), _, _) if v.toegestaan => (
+            Some(0.0),
             format!(
                 "§5.8.4(4): φ(∞,t₀) ≤ 2, λ_z ≤ 75 en M₀Ed/N_Ed ≥ b zijn alle drie vervuld, dus \
                  φ_ef = 0 mag worden aangehouden; e₂ is zonder kruip bepaald (φ_ef,z = 0, \
@@ -1788,8 +1838,8 @@ fn tweede_as_toetsen(
                 slank_z.phi_ef.map(|p| nl(p, 3)).unwrap_or_else(|| "geen waarde".to_string())
             ),
         ),
-        (_, Some(p)) => (
-            p,
+        (_, Some(p), _) => (
+            Some(p),
             format!(
                 "Kruip in de algemene methode volgens §5.8.6(4): alle betonrekken van de \
                  (3.14)-kromme zijn met (1 + φ_ef,z) = {} vermenigvuldigd, met φ_ef,z = {} uit \
@@ -1798,15 +1848,39 @@ fn tweede_as_toetsen(
                 nl(p, 3)
             ),
         ),
-        (_, None) => (
-            0.0,
-            "LET OP: φ_ef om z is onbekend (φ(∞,t₀) niet opgegeven, of geen quasi-blijvende \
-             combinatie meegestuurd), dus e₂ is ZONDER kruip bepaald. Voor een blijvend belaste \
-             kolom is dat de onveilige kant: kruip vergroot de kromming en daarmee e₂. Geef \
-             φ(∞,t₀) op en stuur de quasi-blijvende combinatie mee om dit te verhelpen."
+        (_, None, Some(phi)) => (
+            Some(phi),
+            format!(
+                "WAARSCHUWING — φ_ef,z niet uit (5.19): φ(∞,t₀) = {} is gegeven, maar er is geen \
+                 quasi-blijvende combinatie met normaaldruk meegestuurd, dus M₀Eqp om z is \
+                 onbekend. §5.8.4(1)P eist dat kruip in de tweede-orde-berekening wordt \
+                 meegenomen en de norm geeft voor φ_ef geen standaardwaarde; daarom is φ(∞,t₀) als \
+                 BOVENGRENS van φ_ef genomen — (5.19) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed is niet groter \
+                 zolang |M₀Eqp| ≤ |M₀Ed|. Alle betonrekken van de (3.14)-kromme zijn met \
+                 (1 + φ_ef,z) = {} vermenigvuldigd (§5.8.6(4)). Stuur de quasi-blijvende \
+                 combinatie (NEN-EN 1990 (6.16)) mee voor de werkelijke φ_ef.",
+                nl(phi, 2),
+                nl(1.0 + phi, 3)
+            ),
+        ),
+        (_, None, None) => (
+            None,
+            "NIET UITGEVOERD ZONDER KRUIPCOËFFICIËNT — φ(∞,t₀) is niet opgegeven, dus φ_ef om z \
+             is onbekend. §5.8.4(1)P eist dat kruip in de tweede-orde-berekening wordt \
+             meegenomen, §5.8.6(4) doet dat met (1 + φ_ef), en de norm geeft voor φ_ef in de \
+             algemene methode geen standaardwaarde (de 0,7 voor A in λ_lim geldt alleen daar). \
+             e₂ om z is daarom ZONDER kruip bepaald, en dat is een ONDERGRENS: kruip vergroot de \
+             kromming, dus e₂ en M_Edz. Een overschrijding met die ondergrens blijft staan; een \
+             toets die ermee voldoet wordt niet goedgekeurd maar als niet uitgevoerd gemeld. Geef \
+             φ(∞,t₀) op (§3.1.4) — als projectwaarde of per staaf — en stuur de quasi-blijvende \
+             combinatie mee."
                 .to_string(),
         ),
     };
+    let phi_ef_z = kruip_z.unwrap_or(0.0);
+    // Alleen van belang als e₂ om z niet mag vervallen: anders telt de kruip
+    // alleen via A in λ_lim, en daar staat §5.8.3.1(1) 0,7 toe.
+    let kruip_z_onbekend = kruip_z.is_none() && !slank_z.tweede_orde_verwaarloosbaar;
 
     // ── e₂ om z ───────────────────────────────────────────────────────────
     //
@@ -1974,7 +2048,10 @@ fn tweede_as_toetsen(
     let mut uit = TweedeAsUitkomst {
         slankheid: Some(slank_z.clone()),
         e_i_mm: Some(e_i),
-        e_2_mm: if instabiel { None } else { Some(e_2) },
+        // Zonder bekende kruip is e₂ een ondergrens en geen rekenwaarde; het
+        // antwoord draagt dan geen getal (de toetsen zeggen waarom).
+        e_2_mm: if instabiel || kruip_z_onbekend { None } else { Some(e_2) },
+        phi_ef: kruip_z,
         m_edz_knm: None,
         m_rdz_knm: None,
         interactie_5_39: None,
@@ -2097,6 +2174,10 @@ fn tweede_as_toetsen(
                 "Er is geen snede met normaaldruk waarop M_Edz kon worden bepaald.".to_string(),
             );
         }
+    }
+    if kruip_z_onbekend {
+        weiger_zonder_kruip(&mut moment_z, "M_Edz");
+        uit.m_edz_knm = None;
     }
     checks.push(benoem(moment_z));
 
@@ -2269,7 +2350,46 @@ fn tweede_as_toetsen(
             }
         }
     }
+    if kruip_z_onbekend {
+        weiger_zonder_kruip(&mut db, "de som van (5.39)");
+        uit.interactie_5_39 = None;
+    }
     checks.push(benoem(db));
 
     (checks, uit)
+}
+
+/// Een toets om z waarvan e₂ zonder kruip is bepaald omdat φ(∞,t₀) ontbreekt.
+///
+/// e₂ zonder kruip is een ONDERGRENS (§5.8.4(1)P, §5.8.6(4): kruip vermenigvuldigt
+/// de betonrekken met 1 + φ_ef en vergroot zo de kromming). Een overschrijding
+/// blijft dus staan; een toets die met de ondergrens voldoet, bewijst niets en
+/// wordt als niet uitgevoerd gemeld, zonder unity check — een uc die niet
+/// aan de veilige kant ligt, hoort niet in uc_max mee te tellen.
+fn weiger_zonder_kruip(toets: &mut ResistanceCalc, grootheid: &str) {
+    match toets.status {
+        CheckStatus::NotOk => toets.notes.push(format!(
+            "Zonder kruip is {grootheid} een ONDERGRENS, en de toets is daarmee al overschreden. \
+             Met kruip wordt het alleen ongunstiger, dus deze afkeuring staat — ook zonder \
+             φ(∞,t₀)."
+        )),
+        CheckStatus::Ok => {
+            let uc = toets.uc.take();
+            toets.status = CheckStatus::NotApplicable;
+            toets.notes.push(match uc {
+                Some(u) => format!(
+                    "NIET UITGEVOERD: φ(∞,t₀) ontbreekt. Zonder kruip is {grootheid} een \
+                     ONDERGRENS en komt de verhouding uit op {} — dat bewijst niet dat de kolom \
+                     voldoet, want kruip vergroot e₂. Geef φ(∞,t₀) op om deze toets uit te voeren.",
+                    nl(u.uc, 3)
+                ),
+                None => format!(
+                    "NIET UITGEVOERD: φ(∞,t₀) ontbreekt. Zonder kruip is {grootheid} een \
+                     ONDERGRENS; dat de toets daarmee voldoet, bewijst niet dat de kolom voldoet. \
+                     Geef φ(∞,t₀) op om deze toets uit te voeren."
+                ),
+            });
+        }
+        CheckStatus::NotApplicable => {}
+    }
 }

@@ -113,10 +113,25 @@ fn verzoek_standaard() -> Value {
 /// Dat maakt het een geval van §5.8.9 waarin de interactie (5.39) vereist is —
 /// langs alle drie de wegen hetzelfde.
 fn verzoek_dubbele_buiging() -> Value {
+    met_kruip(verzoek_dubbele_buiging_zonder_kruip())
+}
+
+/// Dezelfde kolom met M_z = 35 kNm, maar ZONDER φ(∞,t₀). e₂ om z telt hier,
+/// en §5.8.4(1)P eist kruip in die tweede-orde-berekening; de toetsen om z
+/// worden dan niet goedgekeurd. Ook die weigering hoort langs de drie wegen
+/// gelijk te zijn.
+fn verzoek_dubbele_buiging_zonder_kruip() -> Value {
     let mut v = verzoek_standaard();
     for punt in v["forces_envelope"].as_array_mut().expect("omhullende") {
         punt["forces"]["mz_ed"] = json!(35.0);
     }
+    v
+}
+
+/// φ(∞,t₀) = 2,0 in het §5.8-blok. Zonder quasi-blijvende combinatie geldt
+/// φ(∞,t₀) als bovengrens van φ_ef om z.
+fn met_kruip(mut v: Value) -> Value {
+    v["column"]["phi_inf_t0"] = json!(2.0);
     v
 }
 
@@ -480,7 +495,7 @@ async fn de_drie_wegen_toetsen_dubbele_buiging_gelijk() {
     // druk, M_y aan het bovenste eind maar 20 kNm) is e_y = e_i + e₂ ≈ 10 mm
     // tegenover e_z = 22 mm, dus 0,45 > 0,2 en (5.39) blijft vereist. De toets
     // is dan UITGEVOERD, niet "niet van toepassing".
-    let standaard = weg_tauri(&verzoek_standaard()).expect("Tauri-weg");
+    let standaard = weg_tauri(&met_kruip(verzoek_standaard())).expect("Tauri-weg");
     for id in ["5.8.3.1_slankheidsgrens_z", "5.8.9_moment_z", "5.8.9_dubbele_buiging"] {
         let _ = zoek(&standaard, id);
     }
@@ -494,6 +509,23 @@ async fn de_drie_wegen_toetsen_dubbele_buiging_gelijk() {
         standaard["e_i_z_mm"].as_f64().unwrap_or(0.0) > 0.0,
         "en de imperfectie zelf staat in het antwoord"
     );
+
+    // ZONDER φ(∞,t₀): geen stille nul om z, en dat langs alle drie de wegen.
+    let inv = verzoek_dubbele_buiging_zonder_kruip();
+    let tauri = weg_tauri(&inv).expect("Tauri-weg");
+    let brug = weg_toetsbrug(inv.clone()).expect("toetsbrug-weg");
+    let mcp = weg_mcp(&mut stdin, &mut reader, 806, inv)
+        .await
+        .expect("MCP-weg");
+    eis_gelijk("Tauri-command", &tauri, "toetsbrug", &brug);
+    eis_gelijk("toetsbrug", &brug, "MCP-server", &mcp);
+    assert!(mcp["phi_ef_z"].is_null() && mcp["m_edz_knm"].is_null());
+    for id in ["5.8.9_moment_z", "5.8.9_dubbele_buiging"] {
+        let t = zoek(&mcp, id);
+        assert_ne!(t["kind"]["data"]["status"], json!("Ok"), "{id} mag zonder kruip niet groen");
+        let notities = t["kind"]["data"]["notes"].to_string();
+        assert!(notities.contains("ONDERGRENS"), "{id}: {notities}");
+    }
 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;

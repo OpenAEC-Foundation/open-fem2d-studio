@@ -845,7 +845,7 @@
       "l0Custom": "enter l₀ manually…",
       "l0Info": "l₀ = {{l0}} m for a clear length l = {{l}} m.",
       "casesFgHint": "Cases f) and g) of figure 5.7 — partial fixity — are not listed: they require the relative flexibility k = (θ/M)·(EI/l) of each member end, which cannot be read from a frame model. Work out (5.15) or (5.16) yourself and then choose \"enter l₀ manually\".",
-      "phiHint": "Final value of the creep coefficient according to cl. 3.1.4. Empty = not specified; cl. 3.1.4 is not calculated here, because it requires the relative humidity, the notional size h₀, the cement class and the age t₀ at first loading. Without this value φ_ef remains unknown and 5.8.3.1(1) uses A = 0.7 — that is not the safe side but the value for φ_ef ≈ 2.14. About the z-axis e₂ is then determined without creep, and the report states that as well.",
+      "phiHint": "Final value of the creep coefficient according to cl. 3.1.4. Empty = not specified; cl. 3.1.4 is not calculated here, because it requires the relative humidity, the notional size h₀, the cement class and the age t₀ at first loading. Empty = the project value of φ(∞,t₀) applies. If that is missing too, φ_ef remains unknown: 5.8.3.1(1) then uses A = 0.7 — not the safe side but the value for φ_ef ≈ 2.14 — and about the z-axis the moment is not approved while e₂ counts (5.8.4(1)P). If φ(∞,t₀) is known but the quasi-permanent combination is missing, φ(∞,t₀) is used as an upper bound of φ_ef.",
       "zAxisHeader": "About the z-axis (perpendicular to the plane) — cl. 5.8.9",
       "bracingZ": "Bracing about z",
       "sameAsPlaneWith": "— same as in the plane ({{schoring}}) —",

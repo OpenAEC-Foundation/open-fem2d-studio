@@ -60,6 +60,7 @@ import {
   schatVrijheidsgraden,
   segmentWaarschuwing,
 } from "./lib/betonStijfheid";
+import { modelHeeftBetonstaaf } from "./lib/kruipcoefficient";
 import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
@@ -812,6 +813,11 @@ function App() {
     };
   }, [fem.nodes, fem.beams, fem.betonSegmentLengteMm]);
 
+  // Het φ(∞,t₀)-veld van het project hoort zichtbaar te zijn zodra er beton in
+  // het model zit, ook zonder korf en bij elk analysetype: het voedt de
+  // kolomtoets (lib/kruipcoefficient.ts, `kruipveldZichtbaar`).
+  const heeftBetonstaaf = useMemo(() => modelHeeftBetonstaaf(fem.beams), [fem.beams]);
+
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
   // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
   const [solverStatus, setSolverStatus] = useState<SolverStatus>({ kind: "ready" });
@@ -1503,6 +1509,10 @@ function App() {
         alphaCr: opts?.outputs?.stabiliteit ?? fem.stabiliteit ?? [],
         scheefstandAan: fem.scheefstandEnabled,
       },
+      // φ(∞,t₀) van het project, dezelfde bron als `standaardPhiInfT0` van de
+      // fysisch niet-lineaire lus: de kolomtoets (§5.8.3.1 A, §5.8.4 (5.19))
+      // leest hem voor elke staaf zonder eigen waarde in het §5.8-blok.
+      standaardPhiInfT0: fem.betonKruipcoefficient ?? undefined,
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 
@@ -2418,6 +2428,7 @@ function App() {
           betonSegmentLengteMm={fem.betonSegmentLengteMm}
           betonKruipcoefficient={fem.betonKruipcoefficient}
           setBetonKruipcoefficient={fem.setBetonKruipcoefficient}
+          heeftBetonstaaf={heeftBetonstaaf}
           setBetonSegmentLengteMm={fem.setBetonSegmentLengteMm}
           aantalBetonstaven={betonSegmentInfo.aantalBetonstaven}
           segmentWaarschuwing={betonSegmentInfo.waarschuwing}

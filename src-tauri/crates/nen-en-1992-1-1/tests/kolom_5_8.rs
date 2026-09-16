@@ -1374,3 +1374,74 @@ mod tweede_as {
         assert_relative_eq!(stappen[4].value.unwrap(), 0.644);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.8.3.1(1) — de terugval voor A alleen waar zij aan de veilige kant ligt
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A MET GRONDSLAG. §5.8.3.1(1): A = 1/(1 + 0,2·φ_ef), "als φ_ef onbekend is
+/// mag A = 0,7 zijn gebruikt". 0,7 hoort bij φ_ef ≈ 2,142857.
+///
+/// ```text
+///   (5.19) bekend, φ_ef = 1,0            → A = 1/1,2 = 0,8333333   (formule)
+///   onbekend, φ(∞,t₀) niet opgegeven     → A = 0,7                  (standaard)
+///   onbekend, φ(∞,t₀) = 2,0              → 1/1,4 = 0,714 ≥ 0,7 → A = 0,7
+///   onbekend, φ(∞,t₀) = 3,0              → 1/1,6 = 0,625 < 0,7 → A = 0,625
+///   onbekend, φ(∞,t₀) = 2,142857 (grens) → 1/1,4285714 = 0,7 → A = 0,7
+/// ```
+#[test]
+fn factor_a_neemt_de_terugval_alleen_aan_de_veilige_kant() {
+    use nen_en_1992_1_1::kolom::{factor_a_met_grondslag, AGrondslag};
+
+    let (a, g) = factor_a_met_grondslag(Some(1.0), Some(2.0));
+    assert_relative_eq!(a, 1.0 / 1.2, max_relative = 1e-12);
+    assert_eq!(g, AGrondslag::UitPhiEf);
+
+    assert_eq!(
+        factor_a_met_grondslag(None, None),
+        (0.7, AGrondslag::Standaardwaarde { phi_inf_t0: None })
+    );
+    assert_eq!(
+        factor_a_met_grondslag(None, Some(2.0)),
+        (0.7, AGrondslag::Standaardwaarde { phi_inf_t0: Some(2.0) })
+    );
+    let (a, g) = factor_a_met_grondslag(None, Some(3.0));
+    assert_relative_eq!(a, 0.625, max_relative = 1e-12);
+    assert_eq!(g, AGrondslag::BovengrensKruip { phi_inf_t0: 3.0 });
+    let (a, _) = factor_a_met_grondslag(None, Some(1.0 / 0.7 / 0.2 - 5.0));
+    assert_relative_eq!(a, 0.7, max_relative = 1e-12);
+}
+
+/// KOLOMSLANKHEID met φ(∞,t₀) = 3,0 maar zonder M₀Eqp — de geschoorde
+/// handberekening van hierboven (λ_lim = 30,119 met A = 0,7), nu met
+/// A = 0,625:
+///
+/// ```text
+///   λ_lim = 30,119088 · 0,625/0,7 = 26,892043
+/// ```
+///
+/// De kanttekening zegt dat A NIET uit (5.19) komt en waarom 0,7 niet is
+/// genomen.
+#[test]
+fn kolomslankheid_met_kruipcoefficient_zonder_m0eqp_neemt_de_bovengrens() {
+    use nen_en_1992_1_1::kolom::AGrondslag;
+    let mut inv = kolom(
+        Schoring::Geschoord,
+        Kniklengtebepaling::Standaardgeval(Knikgeval::IngeklemdScharnierend),
+        -900.0,
+    );
+    inv.eindmomenten_knm = Some((30.0, 60.0));
+    inv.phi_inf_t0 = Some(3.0);
+    inv.m0_ed_knm = Some(60.0);
+    let k = kolomslankheid(&inv).unwrap();
+    assert!(k.phi_ef.is_none());
+    assert!(!k.a_standaard);
+    assert_eq!(k.a_grondslag, AGrondslag::BovengrensKruip { phi_inf_t0: 3.0 });
+    assert_relative_eq!(k.a, 0.625, max_relative = 1e-12);
+    assert_relative_eq!(k.lambda_lim, 30.119_088 * 0.625 / 0.7, max_relative = 1e-6);
+    let tekst = k.kanttekeningen.join(" ");
+    assert!(tekst.contains("WAARSCHUWING — A niet uit (5.19)"), "{tekst}");
+    assert!(tekst.contains("M₀Eqp uit de quasi-blijvende BGT-combinatie ontbreekt"), "{tekst}");
+    let abc = kolom_deelstappen(&k).into_iter().find(|s| s.id == "abc").unwrap();
+    assert!(abc.notes.iter().any(|n| n.contains("groter dan 2,14")), "{:?}", abc.notes);
+}

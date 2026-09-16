@@ -543,6 +543,7 @@
     "segmentTitle": "Target segment length in mm. Each concrete member is split into segments of equal length, each with its own secant EI (5.8.6(6)). Shorter = more accurate and slower; the application does not coarsen on its own.",
     "segment": "segment",
     "creepTitle": "Final value of the creep coefficient φ(∞,t₀) according to art. 3.1.4, for every concrete member without its own value in the §5.8 data. The engine applies it according to 5.8.6(4) — all design values times (1 + φ_ef) — which for the initial slope amounts to E_c,eff = E_cm/(1 + φ) of (7.20). EMPTY = not specified: the analysis then runs WITHOUT creep, the deflection comes out too small and that is the unsafe side. Art. 3.1.4 is not evaluated here: it requires the relative humidity, the notional size h₀, the cement class and the age t₀ at loading.",
+    "creepFeedsBoth": "This value feeds two calculations: the SLS stiffness in the physically non-linear analysis (5.8.6(4)) and the column check in every analysis type (A in λ_lim per 5.8.3.1(1), φ_ef per (5.19)). A member with its own φ(∞,t₀) in the §5.8 data takes precedence.",
     "emptyPlaceholder": "empty",
     "noConcreteBarsTitle": "Material non-linearity applies to concrete members with a reinforcement cage: material a strength class (e.g. C30/37), section a rectangle (e.g. 300x500) and a cage in the member properties. Without such members the result equals 2nd order (P-Δ).",
     "noConcreteBars": "no concrete members with cage",

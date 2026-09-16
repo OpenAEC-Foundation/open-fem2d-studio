@@ -554,6 +554,108 @@ pub fn factor_a(phi_ef: Option<f64>) -> (f64, bool) {
     }
 }
 
+/// Waar A in λ_lim vandaan komt.
+///
+/// §5.8.3.1(1) (5.13N), door de NB als eis gesteld: A = 1/(1 + 0,2·φ_ef),
+/// "als φ_ef onbekend is mag A = 0,7 zijn gebruikt". Die 0,7 hoort bij
+/// φ_ef ≈ 2,14 en ligt dus alleen aan de veilige kant zolang de werkelijke
+/// φ_ef niet groter is. Daarom maakt de gang onderscheid tussen een φ_ef die
+/// ONBEKEND is omdat er niets over de kruip bekend is, en een φ_ef die alleen
+/// in (5.19) niet kon worden ingevuld terwijl φ(∞,t₀) wél gegeven is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AGrondslag {
+    /// A = 1/(1 + 0,2·φ_ef) met φ_ef uit (5.19).
+    UitPhiEf,
+    /// φ_ef is niet uit (5.19) te bepalen (geen M₀Eqp, of M₀Ed = 0), maar
+    /// φ(∞,t₀) is gegeven en groter dan 2,14. Dan is 0,7 niet meer de veilige
+    /// kant en is A genomen met φ(∞,t₀) als bovengrens van φ_ef:
+    /// A = 1/(1 + 0,2·φ(∞,t₀)) < 0,7. De bovengrens volgt uit (5.19) zelf
+    /// zolang |M₀Eqp| ≤ |M₀Ed| — de quasi-blijvende combinatie is niet
+    /// zwaarder dan de UGT-combinatie.
+    BovengrensKruip { phi_inf_t0: f64 },
+    /// A = 0,7, de standaardwaarde die §5.8.3.1(1) toestaat als φ_ef onbekend
+    /// is. `phi_inf_t0` is `Some` als φ(∞,t₀) wel gegeven is maar niet groter
+    /// dan 2,14: dan is 0,7 de kleinste — veilige — van de twee.
+    Standaardwaarde { phi_inf_t0: Option<f64> },
+}
+
+/// A voor λ_lim, met de grondslag erbij. Zie [`AGrondslag`].
+///
+/// `phi_ef` is de uitkomst van (5.19) als die er is; `phi_inf_t0` de
+/// opgegeven eindkruipcoëfficiënt. A is nooit groter dan de waarde die de
+/// norm voor het geval toestaat: met (5.19) de formule, zonder (5.19) de
+/// kleinste van 0,7 en 1/(1 + 0,2·φ(∞,t₀)).
+pub fn factor_a_met_grondslag(phi_ef: Option<f64>, phi_inf_t0: Option<f64>) -> (f64, AGrondslag) {
+    match (phi_ef, phi_inf_t0) {
+        (Some(p), _) if p.is_finite() && p >= 0.0 => (1.0 / (1.0 + 0.2 * p), AGrondslag::UitPhiEf),
+        (_, Some(phi)) if phi.is_finite() && phi >= 0.0 => {
+            let a_bovengrens = 1.0 / (1.0 + 0.2 * phi);
+            if a_bovengrens < 0.7 {
+                (a_bovengrens, AGrondslag::BovengrensKruip { phi_inf_t0: phi })
+            } else {
+                (0.7, AGrondslag::Standaardwaarde { phi_inf_t0: Some(phi) })
+            }
+        }
+        _ => (0.7, AGrondslag::Standaardwaarde { phi_inf_t0: None }),
+    }
+}
+
+/// De kanttekening bij A als A NIET uit (5.19) komt: welke terugval, en onder
+/// welke voorwaarde de norm hem toestaat. `None` als A uit (5.19) komt.
+///
+/// `m0_eqp_knm` en `m0_ed_knm` bepalen alleen de reden in de tekst waarom
+/// (5.19) niet is ingevuld; het getal verandert er niet door.
+pub fn a_toelichting(
+    grondslag: AGrondslag,
+    m0_eqp_knm: Option<f64>,
+    m0_ed_knm: Option<f64>,
+) -> Option<String> {
+    let reden_519 = match (m0_ed_knm, m0_eqp_knm) {
+        (Some(ed), _) if !(ed.abs() > 1e-9) => {
+            "M₀Ed is nul, dus de verhouding M₀Eqp/M₀Ed van (5.19) is onbepaald"
+        }
+        (None, _) => "M₀Ed is niet bekend, dus (5.19) is niet in te vullen",
+        (_, None) => {
+            "M₀Eqp uit de quasi-blijvende BGT-combinatie ontbreekt, dus (5.19) is niet in te \
+             vullen"
+        }
+        _ => "(5.19) is niet ingevuld",
+    };
+    match grondslag {
+        AGrondslag::UitPhiEf => None,
+        AGrondslag::BovengrensKruip { phi_inf_t0 } => Some(format!(
+            "WAARSCHUWING — A niet uit (5.19): φ(∞,t₀) = {} is gegeven, maar {}. §5.8.3.1(1) \
+             staat bij een onbekende φ_ef A = 0,7 toe, maar 0,7 hoort bij φ_ef ≈ 2,14 en ligt bij \
+             deze kruipcoëfficiënt NIET aan de veilige kant. Daarom is φ(∞,t₀) als bovengrens van \
+             φ_ef genomen — (5.19) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed is niet groter zolang |M₀Eqp| ≤ \
+             |M₀Ed| — en A = 1/(1 + 0,2·{}) = {}.",
+            nl(phi_inf_t0, 2),
+            reden_519,
+            nl(phi_inf_t0, 2),
+            nl(1.0 / (1.0 + 0.2 * phi_inf_t0), 3)
+        )),
+        AGrondslag::Standaardwaarde { phi_inf_t0: Some(phi) } => Some(format!(
+            "A = 0,7 (§5.8.3.1(1): \"als φ_ef onbekend is mag A = 0,7 zijn gebruikt\"): φ(∞,t₀) = \
+             {} is gegeven, maar {}. De voorwaarde waaronder 0,7 aan de veilige kant ligt — \
+             φ_ef ≤ 2,14 — is hier vervuld: φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed is niet groter dan \
+             φ(∞,t₀) = {} zolang |M₀Eqp| ≤ |M₀Ed|, en 1/(1 + 0,2·{}) = {} ≥ 0,7.",
+            nl(phi, 2),
+            reden_519,
+            nl(phi, 2),
+            nl(phi, 2),
+            nl(1.0 / (1.0 + 0.2 * phi), 3)
+        )),
+        AGrondslag::Standaardwaarde { phi_inf_t0: None } => Some(
+            "WAARSCHUWING — A = 0,7 zonder kruipgegevens: φ(∞,t₀) is niet opgegeven, dus φ_ef \
+             is onbekend en §5.8.3.1(1) staat A = 0,7 toe (\"als φ_ef onbekend is mag A = 0,7 \
+             zijn gebruikt\"). Die 0,7 is GEEN veilige kant maar de waarde bij φ_ef ≈ 2,14: bij \
+             zwaardere kruip is de werkelijke A kleiner en λ_lim lager dan hier staat. Geef \
+             φ(∞,t₀) op (§3.1.4) — als projectwaarde of per staaf — om A uit (5.19) te bepalen."
+                .to_string(),
+        ),
+    }
+}
+
 /// B = √(1 + 2ω); "als ω onbekend is, mag B = 1,1 zijn gebruikt".
 ///
 /// Levert `(B, is_standaardwaarde)`. B = 1,1 hoort bij ω = 0,105.
@@ -943,7 +1045,10 @@ pub struct Kolomslankheid {
     /// Het antwoord van §5.8.4(4), als het te geven was.
     pub kruip: Option<KruipVerwaarlozing>,
     pub a: f64,
+    /// A = 0,7 als standaardwaarde van §5.8.3.1(1).
     pub a_standaard: bool,
+    /// Waar A vandaan komt; zie [`AGrondslag`].
+    pub a_grondslag: AGrondslag,
     pub b: f64,
     pub b_standaard: bool,
     pub c_grondslag: Cgrondslag,
@@ -1057,23 +1162,9 @@ pub fn kolomslankheid(inv: &KolomInvoer) -> Result<Kolomslankheid, String> {
     // ── φ_ef ──────────────────────────────────────────────────────────────
     let phi_ef = match (inv.phi_inf_t0, inv.m0_eqp_knm, inv.m0_ed_knm) {
         (Some(p), Some(eqp), Some(ed)) => Some(phi_ef_5_19(p, eqp, ed)?),
-        (Some(_), _, _) => {
-            kanttekeningen.push(
-                "φ(∞,t₀) is opgegeven maar M₀Eqp en/of M₀Ed niet, dus (5.19) kon niet worden \
-                 ingevuld. φ_ef blijft onbekend en §5.8.3.1(1) staat dan A = 0,7 toe."
-                    .to_string(),
-            );
-            None
-        }
-        _ => {
-            kanttekeningen.push(
-                "φ(∞,t₀) is niet opgegeven, dus (5.19) kon niet worden ingevuld. φ_ef blijft \
-                 onbekend en §5.8.3.1(1) staat dan A = 0,7 toe. Let op: 0,7 is geen veilige kant \
-                 maar de waarde bij φ_ef ≈ 2,14 — bij zwaardere kruip is de werkelijke A kleiner."
-                    .to_string(),
-            );
-            None
-        }
+        // Zonder φ(∞,t₀), M₀Eqp of M₀Ed is (5.19) niet in te vullen. Wat dat
+        // voor A betekent, staat bij A hieronder.
+        _ => None,
     };
 
     // ── §5.8.4(4): mag φ_ef = 0? ──────────────────────────────────────────
@@ -1093,7 +1184,14 @@ pub fn kolomslankheid(inv: &KolomInvoer) -> Result<Kolomslankheid, String> {
     };
 
     // ── A, B, C en λ_lim ──────────────────────────────────────────────────
-    let (a, a_standaard) = factor_a(phi_ef);
+    // §5.8.3.1(1): A = 1/(1 + 0,2·φ_ef), "als φ_ef onbekend is mag A = 0,7 zijn
+    // gebruikt". De terugval op 0,7 wordt alleen genomen waar hij aan de
+    // veilige kant ligt; zie `factor_a_met_grondslag` en de kanttekening.
+    let (a, a_grondslag) = factor_a_met_grondslag(phi_ef, inv.phi_inf_t0);
+    let a_standaard = matches!(a_grondslag, AGrondslag::Standaardwaarde { .. });
+    if let Some(t) = a_toelichting(a_grondslag, inv.m0_eqp_knm, inv.m0_ed_knm) {
+        kanttekeningen.push(t);
+    }
     let (b, b_standaard) = factor_b(Some(w));
     let c_grondslag = grondslag_c(
         inv.schoring,
@@ -1133,6 +1231,7 @@ pub fn kolomslankheid(inv: &KolomInvoer) -> Result<Kolomslankheid, String> {
         kruip,
         a,
         a_standaard,
+        a_grondslag,
         b,
         b_standaard,
         c_grondslag,
@@ -1383,8 +1482,9 @@ pub fn kolom_deelstappen(k: &Kolomslankheid) -> Vec<Deelstap> {
         ),
         None => {
             notes_phi.push(
-                "φ_ef is niet bepaald; §5.8.3.1(1) staat dan A = 0,7 toe. Die 0,7 is niet de \
-                 veilige kant maar de waarde bij φ_ef ≈ 2,14."
+                "φ_ef is niet uit (5.19) bepaald. Hoe A dan is genomen — de standaardwaarde 0,7 \
+                 van §5.8.3.1(1) of φ(∞,t₀) als bovengrens — en onder welke voorwaarde, staat bij \
+                 de factoren A, B en C."
                     .to_string(),
             );
             (
@@ -1428,11 +1528,30 @@ pub fn kolom_deelstappen(k: &Kolomslankheid) -> Vec<Deelstap> {
 
     // Stap 6 — A, B, C.
     let mut notes_abc = vec![k.c_grondslag.toelichting()];
-    if k.a_standaard {
-        notes_abc.push(
-            "A = 0,7 is de standaardwaarde die §5.8.3.1(1) toestaat als φ_ef onbekend is."
+    // De terugval voor A en de voorwaarde waaronder de norm hem toestaat
+    // (§5.8.3.1(1)). De reden waarom (5.19) niet is ingevuld staat al in de
+    // kanttekeningen van de hele gang.
+    match k.a_grondslag {
+        AGrondslag::UitPhiEf => {}
+        AGrondslag::BovengrensKruip { phi_inf_t0 } => notes_abc.push(format!(
+            "A = 1/(1 + 0,2·φ(∞,t₀)) = {}: φ_ef is niet uit (5.19) bepaald en φ(∞,t₀) = {} is \
+             groter dan 2,14, dus de standaardwaarde 0,7 van §5.8.3.1(1) ligt niet aan de veilige \
+             kant. φ(∞,t₀) is als bovengrens van φ_ef genomen (|M₀Eqp| ≤ |M₀Ed|).",
+            nl(k.a, 3),
+            nl(phi_inf_t0, 2)
+        )),
+        AGrondslag::Standaardwaarde { phi_inf_t0: Some(phi) } => notes_abc.push(format!(
+            "A = 0,7 is de standaardwaarde die §5.8.3.1(1) toestaat als φ_ef onbekend is. Zij ligt \
+             hier aan de veilige kant: φ(∞,t₀) = {} ≤ 2,14 en φ_ef is niet groter dan φ(∞,t₀) \
+             zolang |M₀Eqp| ≤ |M₀Ed|.",
+            nl(phi, 2)
+        )),
+        AGrondslag::Standaardwaarde { phi_inf_t0: None } => notes_abc.push(
+            "A = 0,7 is de standaardwaarde die §5.8.3.1(1) toestaat als φ_ef onbekend is. \
+             WAARSCHUWING: φ(∞,t₀) is niet opgegeven, dus niet na te gaan of 0,7 aan de veilige \
+             kant ligt — dat is alleen zo bij φ_ef ≤ 2,14."
                 .to_string(),
-        );
+        ),
     }
     if k.b_standaard {
         notes_abc.push(

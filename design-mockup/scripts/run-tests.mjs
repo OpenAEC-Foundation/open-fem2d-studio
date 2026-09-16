@@ -405,7 +405,7 @@ const ALLEEN_BRON = new Map([
   ],
   [
     "kolomtoets",
-    "de §5.8-invoer van een betonnen kolom: de gevallen van figuur 5.7 uit components/beton/kolomgegevens, de doorvoer via korvenUitStaven (een zustand-store) en betonCheckBuilder, en een blok dat de toetsbrug als apart proces aanroept. Twee van die drie modules staan buiten de barrel — het korfmodel en de store — en de Rust-kern hoort er sowieso niet in, dus tegen de sidecarbundel zou de test juist de laag overslaan die hij moet bewaken",
+    "de §5.8-invoer van een betonnen kolom: de gevallen van figuur 5.7 uit components/beton/kolomgegevens, de doorvoer via korvenUitStaven (een zustand-store) en betonCheckBuilder — inclusief de φ(∞,t₀) van het project uit lib/kruipcoefficient, vergeleken met lib/betonStijfheid en met App.tsx en checkStore als bronbestand gelezen — en een blok dat de toetsbrug als apart proces aanroept. Twee van die drie modules staan buiten de barrel — het korfmodel en de store — en de Rust-kern hoort er sowieso niet in, dus tegen de sidecarbundel zou de test juist de laag overslaan die hij moet bewaken",
   ],
   [
     "dubbele-buiging",

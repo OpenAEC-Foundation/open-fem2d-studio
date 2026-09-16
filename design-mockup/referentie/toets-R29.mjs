@@ -168,7 +168,17 @@ if (!existsSync(TOETSBRUG)) {
     kind.stdin.end(JSON.stringify({ opdracht, inputs }));
   });
 
-  const verzoek = (mz) => ({
+  // KRUIP. e₂ om z telt hier (λ_z = 69,3 ≥ λ_lim,z), en §5.8.4(1)P eist dat
+  // kruip in die tweede-orde-berekening zit. Vroeger rekende de kern zonder
+  // φ(∞,t₀) stil met φ_ef = 0 en was ② daarmee groen; nu weigert zij de
+  // toetsen om z dan met reden (zie ⑤). Daarom krijgt deze kolom een
+  // φ(∞,t₀) = 2,0 en een quasi-blijvende combinatie met 2/3 van de UGT-krachten
+  // (N_Eqp = 400 kN), zodat (5.19) om beide assen in te vullen is:
+  //   om z: φ_ef,z = φ(∞,t₀)·N_Eqp/N_Ed = 2,0·400/600 = 1,3333
+  // De handberekening van ① hangt niet van kruip af (zij gebruikt het kale
+  // model-M_z), dus haar getallen veranderen niet.
+  const PHI_INF_T0 = 2.0, QP_FACTOR = 2 / 3;
+  const verzoek = (mz, { metKruip = true } = {}) => ({
     beam_id: 1,
     section: {
       shape: "Rectangle", b_mm: B, h_mm: H,
@@ -186,11 +196,21 @@ if (!existsSync(TOETSBRUG)) {
     column: {
       bracing: "Geschoord",
       buckling_length: { soort: "Figuur57", geval: "ScharnierendScharnierend" },
+      ...(metKruip ? { phi_inf_t0: PHI_INF_T0 } : {}),
     },
     forces_envelope: [0, L_MM / 2, L_MM].map((x) => ({
       combination_id: 1, position_mm: x,
       forces: { n_ed: -N_ED_KN, vy_ed: 0, vz_ed: 0, mt_ed: 0, my_ed: M_Y_KNM, mz_ed: mz },
     })),
+    sls_quasi_permanent_envelope: metKruip
+      ? [0, L_MM / 2, L_MM].map((x) => ({
+        combination_id: 2, position_mm: x,
+        forces: {
+          n_ed: -N_ED_KN * QP_FACTOR, vy_ed: 0, vz_ed: 0, mt_ed: 0,
+          my_ed: M_Y_KNM * QP_FACTOR, mz_ed: mz * QP_FACTOR,
+        },
+      }))
+      : [],
   });
 
   const vind = (r, id) => r.checks.find((c) => c.kind?.data?.id === id)?.kind?.data;
@@ -257,6 +277,21 @@ if (!existsSync(TOETSBRUG)) {
     .map((c) => `${c.kind.data.id}:${c.kind.data.status}`).sort();
   eis("en de statussen buiten §5.8.9 ook",
     JSON.stringify(statusZonder) === JSON.stringify(statusMet));
+
+  log("\n─── ⑤ Kruip om z: (5.19), en zonder φ(∞,t₀) geen stille nul ──────────");
+  eis("φ_ef,z = φ(∞,t₀)·N_Eqp/N_Ed = 2,0·400/600 zoals met de hand",
+    dicht(met.phi_ef_z, PHI_INF_T0 * QP_FACTOR, 1e-12), `${met.phi_ef_z}`);
+  const kaal = await roepKern("concrete_column_check", verzoek(M_Z_KNM, { metKruip: false }));
+  const dbKaal = vind(kaal, "5.8.9_dubbele_buiging");
+  const mzKaal = vind(kaal, "5.8.9_moment_z");
+  eis("zonder φ(∞,t₀) is φ_ef,z onbekend en staat er geen e₂ of M_Edz als rekenwaarde",
+    kaal.phi_ef_z == null && kaal.e_2_z_mm == null && kaal.m_edz_knm == null);
+  eis("en worden de toetsen om z niet goedgekeurd (§5.8.4(1)P: e₂ zonder kruip is een ondergrens)",
+    [dbKaal, mzKaal].every((t) => t.status !== "Ok"
+      && t.notes.some((n) => n.includes("ONDERGRENS"))),
+    `${dbKaal.status} / ${mzKaal.status}`);
+  eis("de poort meldt A = 0,7 met waarschuwing",
+    vind(kaal, "5.8.3.1_slankheidsgrens").notes.some((n) => n.includes("WAARSCHUWING — A = 0,7")));
 }
 
 log("\n═══════════════════════════════════════════════════════════════════════");

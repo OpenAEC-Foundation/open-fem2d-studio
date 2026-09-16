@@ -726,6 +726,27 @@ fn var(c: &ResistanceCalc, symbool: &str) -> f64 {
         .value
 }
 
+/// φ(∞,t₀) voor de toetsen van §5.8.9 waarin e₂ om z meetelt.
+///
+/// WAAROM. e₂ om z werd vroeger zonder kruipcoëfficiënt stilzwijgend met
+/// φ_ef = 0 bepaald — de onveilige kant. §5.8.4(1)P eist kruip in de
+/// tweede-orde-berekening, dus zonder φ(∞,t₀) wordt een toets om z die e₂
+/// nodig heeft nu niet meer goedgekeurd. De tests hieronder gaan over de
+/// mechaniek van §5.8.9, niet over kruip, en hun getallen (e₂ > 0 maar klein
+/// genoeg voor (5.38b), evenwicht bij N_Ed = 0,7·N_Rd) zijn zonder kruip
+/// afgeleid. Zij krijgen daarom φ(∞,t₀) = 0 als UITDRUKKELIJK OPGEGEVEN waarde
+/// — "geen kruip" is een uitspraak over het beton, "niet opgegeven" is dat
+/// niet — zodat hun uitkomsten ongewijzigd blijven. Het gedrag zonder
+/// φ(∞,t₀) en met φ(∞,t₀) > 0 staat in de tests onder "Kruip om beide assen".
+const PHI_Z: f64 = 0.0;
+
+fn geschoord_met_kruip(phi: f64) -> ConcreteColumnInput {
+    ConcreteColumnInput {
+        phi_inf_t0: Some(phi),
+        ..kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend)
+    }
+}
+
 /// ZONDER NORMAALDRUK IS §5.8.9 NIET AAN DE ORDE — en dan staan de drie
 /// toetsen om de tweede as er ook niet. §5.8 als geheel gaat over op druk
 /// belaste elementen; de poort meldt dat, en verder niets.
@@ -770,7 +791,7 @@ fn zonder_normaaldruk_geen_tweede_as() {
 fn een_slanke_kolom_heeft_een_moment_om_z_door_imperfectie_en_tweede_orde() {
     let klein_my = column_check(verzoek_z(
         12.0,
-        kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend),
+        geschoord_met_kruip(PHI_Z),
         ugt_z(12_000.0, 400.0, 20.0, 0.0),
     ))
     .unwrap();
@@ -779,7 +800,7 @@ fn een_slanke_kolom_heeft_een_moment_om_z_door_imperfectie_en_tweede_orde() {
 
     let a = column_check(verzoek_z(
         12.0,
-        kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend),
+        geschoord_met_kruip(PHI_Z),
         ugt_z(12_000.0, 400.0, 60.0, 0.0),
     ))
     .unwrap();
@@ -815,7 +836,7 @@ fn een_slanke_kolom_heeft_een_moment_om_z_door_imperfectie_en_tweede_orde() {
 /// dus uitsluitend in (5.38a).
 #[test]
 fn voorwaarde_5_38a_net_wel_en_net_niet() {
-    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    let mut k = geschoord_met_kruip(PHI_Z);
     k.buckling_length_z = Some(Kniklengtekeuze::Opgegeven { l0_m: 6.0 });
     let wel = column_check(verzoek_z(3.0, k, ugt_z(3000.0, 600.0, 60.0, 0.0))).unwrap();
     assert_relative_eq!(wel.lambda_z.unwrap() / wel.lambda.unwrap(), 2.0, max_relative = 1e-12);
@@ -896,7 +917,7 @@ fn interactie_5_39_maatgevend_met_a_1_0() {
 /// om z wordt met de algemene methode gerekend en is groter dan nul.
 #[test]
 fn interactie_5_39_met_a_1_5() {
-    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    let mut k = geschoord_met_kruip(PHI_Z);
     k.m0_edz_knm = Some(30.0);
     let n = 0.7 * n_rd_hand_kn();
     let a = column_check(verzoek_z(3.0, k, ugt_z(3000.0, n, 30.0, 0.0))).unwrap();
@@ -921,7 +942,7 @@ fn interactie_5_39_met_a_1_5() {
 /// ```
 #[test]
 fn interactie_5_39_met_geinterpoleerde_a() {
-    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    let mut k = geschoord_met_kruip(PHI_Z);
     k.m0_edz_knm = Some(30.0);
     let a = column_check(verzoek_z(3.0, k, ugt_z(3000.0, 600.0, 30.0, 0.0))).unwrap();
     let db = toets(&a.checks, DUBBELE_BUIGING_ID);
@@ -1033,4 +1054,218 @@ fn de_staaftoetsing_en_het_losse_verzoek_geven_dezelfde_tweede_as() {
         assert_relative_eq!(a.value, b.value, max_relative = 1e-12);
         assert_eq!(a.uc.as_ref().map(|u| u.uc), b.uc.as_ref().map(|u| u.uc), "{id}");
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Kruip om beide assen — §5.8.3.1(1) (5.13N) en §5.8.4 (5.19)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// §5.8.3.1(1): A = 1/(1 + 0,2·φ_ef), "als φ_ef onbekend is mag A = 0,7 zijn
+// gebruikt". §5.8.4(2) (5.19): φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed. §5.8.4(1)P: in
+// tweede-orde-berekeningen MOET rekening zijn gehouden met kruip.
+//
+// Vroeger werd e₂ om z zonder φ(∞,t₀) stil met φ_ef = 0 bepaald, en viel A
+// zonder (5.19) altijd op 0,7 terug — ook als φ(∞,t₀) = 3 bekend was. Deze
+// tests leggen het gedrag vast dat daarvoor in de plaats kwam:
+//
+// * zonder φ(∞,t₀): A = 0,7 met waarschuwing; e₂ om z is een ondergrens en de
+//   toetsen om z worden niet goedgekeurd (wel afgekeurd als de ondergrens al
+//   faalt);
+// * met φ(∞,t₀) zonder quasi-blijvende combinatie: φ(∞,t₀) als bovengrens van
+//   φ_ef, A = min(0,7; 1/(1 + 0,2·φ(∞,t₀)));
+// * met beide: (5.19) om beide assen.
+
+/// ZONDER φ(∞,t₀), e₂ om z nodig. Kolom l = 3 m, N_Ed = 600 kN, M_y = 30 kNm,
+/// extern M₀Edz = 30 kNm (hetzelfde geval als de geïnterpoleerde a hierboven).
+///
+/// ```text
+///   λ_z = 34,64 ≥ λ_lim,z = 20·0,7·1,1783571·0,7/√0,3333333 = 20,00155
+///   → e₂ om z telt, en de norm geeft voor φ_ef daar geen standaardwaarde.
+/// ```
+///
+/// Met φ(∞,t₀) = 0 voldoet de kolom (zie `interactie_5_39_met_geinterpoleerde_a`);
+/// zonder φ(∞,t₀) is dat een ondergrens en mag hij dus NIET groen worden.
+#[test]
+fn zonder_kruipcoefficient_geen_stille_nul_om_z() {
+    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    k.m0_edz_knm = Some(30.0);
+    let a = column_check(verzoek_z(3.0, k, ugt_z(3000.0, 600.0, 30.0, 0.0))).unwrap();
+
+    // De poort om z: A = 0,7 is toegestaan, maar met waarschuwing en voorwaarde.
+    assert_relative_eq!(a.lambda_lim_z.unwrap(), 20.00155, max_relative = 1e-5);
+    assert_eq!(a.tweede_orde_verwaarloosbaar_z, Some(false));
+    for id in [SLANKHEIDSGRENS, SLANKHEIDSGRENS_Z_ID] {
+        let tekst = toets(&a.checks, id).notes.join(" ");
+        assert!(
+            tekst.contains("WAARSCHUWING — A = 0,7 zonder kruipgegevens"),
+            "{id}: de terugval op 0,7 hoort met waarschuwing te staan: {tekst}"
+        );
+        assert!(tekst.contains("φ_ef ≈ 2,14"), "{id}: de voorwaarde hoort erbij te staan");
+    }
+
+    // Om z: geen getal dat een rekenwaarde lijkt.
+    assert!(a.phi_ef_z.is_none());
+    assert!(a.e_2_z_mm.is_none(), "e₂ zonder kruip is een ondergrens, geen rekenwaarde");
+    assert!(a.m_edz_knm.is_none());
+    assert!(a.interactie_5_39.is_none());
+
+    for id in [MOMENT_Z_ID, DUBBELE_BUIGING_ID] {
+        let c = toets(&a.checks, id);
+        assert_eq!(c.status, CheckStatus::NotApplicable, "{id} mag zonder kruip niet groen");
+        assert!(c.uc.is_none(), "{id}: een ondergrens-uc hoort niet in uc_max");
+        let tekst = c.notes.join(" ");
+        assert!(tekst.contains("NIET UITGEVOERD"), "{id}: {tekst}");
+        assert!(tekst.contains("ONDERGRENS"), "{id}: {tekst}");
+    }
+    let mz = toets(&a.checks, MOMENT_Z_ID).notes.join(" ");
+    assert!(mz.contains("§5.8.4(1)P") && mz.contains("projectwaarde"), "{mz}");
+
+    // De kruiptoets om y noemt geen φ_ef = 0 als grootheid en waarschuwt.
+    let kruip = toets(&a.checks, KRUIP);
+    assert_eq!(kruip.status, CheckStatus::NotApplicable);
+    assert!(!kruip.variables.iter().any(|v| v.symbol == "φ_ef"));
+    assert!(kruip.notes.join(" ").contains("WAARSCHUWING"));
+
+    // Dezelfde uitkomst in de volledige staaftoetsing (app en rapport).
+    let staaftoets = check_concrete_beam(ConcreteBeamCheckInput {
+        length_m: 3.0,
+        ..staaf(Some(k), ugt_z(3000.0, 600.0, 30.0, 0.0))
+    });
+    for id in [MOMENT_Z_ID, DUBBELE_BUIGING_ID] {
+        let c = toets_van_staaf(&staaftoets, id);
+        assert_eq!(c.status, CheckStatus::NotApplicable, "{id}");
+        assert!(c.notes.join(" ").contains("NIET UITGEVOERD"), "{id}");
+    }
+    assert_ne!(staaftoets.governing_check_id, MOMENT_Z_ID);
+    assert_ne!(staaftoets.governing_check_id, DUBBELE_BUIGING_ID);
+}
+
+/// ZONDER φ(∞,t₀), MAAR DE ONDERGRENS FAALT AL: dan blijft de afkeuring staan.
+/// Kruip vergroot e₂ alleen (§5.8.6(4): rekken × (1 + φ_ef)), dus wat zonder
+/// kruip al niet voldoet, voldoet met kruip zeker niet.
+///
+/// Slanke kolom l = 12 m, N_Ed = 400 kN, M_y = 60 kNm, extern M₀Edz = 40 kNm:
+/// e_i = 13,33 mm, e₂ > 0, dus M_Edz > 45 kNm naast M_Edy = 60 kNm — de som van
+/// (5.39) ligt boven 1.
+#[test]
+fn zonder_kruipcoefficient_blijft_een_afkeuring_op_de_ondergrens_staan() {
+    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    k.m0_edz_knm = Some(40.0);
+    let a = column_check(verzoek_z(12.0, k, ugt_z(12_000.0, 400.0, 60.0, 0.0))).unwrap();
+    let db = toets(&a.checks, DUBBELE_BUIGING_ID);
+    let mz = toets(&a.checks, MOMENT_Z_ID);
+    let afgekeurd: Vec<&ResistanceCalc> =
+        [db, mz].into_iter().filter(|c| c.status == CheckStatus::NotOk).collect();
+    assert!(
+        !afgekeurd.is_empty(),
+        "dit geval hoort al zonder kruip te falen: {:?} {:?}",
+        db.status,
+        mz.status
+    );
+    for c in afgekeurd {
+        assert!(
+            c.notes.join(" ").contains("deze afkeuring staat"),
+            "{}: de afkeuring op de ondergrens hoort te zeggen waarom zij blijft",
+            c.id
+        );
+    }
+    let staaftoets = check_concrete_beam(ConcreteBeamCheckInput {
+        length_m: 12.0,
+        ..staaf(Some(k), ugt_z(12_000.0, 400.0, 60.0, 0.0))
+    });
+    assert_eq!(staaftoets.status, CheckStatus::NotOk);
+}
+
+/// φ(∞,t₀) = 3,0 ZONDER quasi-blijvende combinatie — HANDBEREKENING.
+///
+/// (5.19) is niet in te vullen. A = 0,7 hoort bij φ_ef ≈ 2,14 en ligt bij
+/// φ(∞,t₀) = 3,0 niet aan de veilige kant, dus φ(∞,t₀) als bovengrens:
+///
+/// ```text
+///   A       = 1/(1 + 0,2·3,0)                       = 0,625
+///   λ_lim   = 20·0,625·1,1783571·2,2/√0,3333333     = 56,12680   (om y, C = 2,2)
+///   λ_lim,z = 20·0,625·1,1783571·0,7/√0,3333333     = 17,85853   (om z, C = 0,7)
+///   λ_z     = 34,64 ≥ 17,86 → e₂ om z telt
+///   §5.8.4(4): φ(∞,t₀) = 3,0 > 2 → φ_ef = 0 mag niet → φ_ef,z = 3,0
+/// ```
+#[test]
+fn kruipcoefficient_zonder_quasi_blijvende_combinatie_als_bovengrens() {
+    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    k.phi_inf_t0 = Some(3.0);
+    let a = column_check(verzoek(k, ugt_geschoord())).unwrap();
+
+    assert!(a.phi_ef.is_none(), "(5.19) is niet ingevuld");
+    assert_relative_eq!(a.lambda_lim.unwrap(), 56.12680, max_relative = 1e-6);
+    assert_relative_eq!(a.lambda_lim_z.unwrap(), 17.85853, max_relative = 1e-6);
+    assert_relative_eq!(var(toets(&a.checks, SLANKHEIDSGRENS), "A"), 0.625, max_relative = 1e-12);
+    assert_relative_eq!(var(toets(&a.checks, SLANKHEIDSGRENS_Z_ID), "A"), 0.625, max_relative = 1e-12);
+    for id in [SLANKHEIDSGRENS, SLANKHEIDSGRENS_Z_ID] {
+        let tekst = toets(&a.checks, id).notes.join(" ");
+        assert!(tekst.contains("WAARSCHUWING — A niet uit (5.19)"), "{id}: {tekst}");
+    }
+
+    assert_eq!(a.tweede_orde_verwaarloosbaar_z, Some(false));
+    assert_relative_eq!(a.phi_ef_z.unwrap(), 3.0, max_relative = 1e-12);
+    assert!(a.e_2_z_mm.unwrap() > 0.0);
+    let mz = toets(&a.checks, MOMENT_Z_ID);
+    assert_ne!(mz.status, CheckStatus::NotApplicable);
+    assert!(mz.notes.join(" ").contains("BOVENGRENS"));
+
+    // Kruip maakt e₂ groter dan zonder kruip (φ(∞,t₀) = 0 uitdrukkelijk opgegeven).
+    let mut nul = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    nul.phi_inf_t0 = Some(0.0);
+    let zonder = column_check(verzoek(nul, ugt_geschoord())).unwrap();
+    assert!(a.e_2_z_mm.unwrap() > zonder.e_2_z_mm.unwrap());
+
+    // φ(∞,t₀) = 2,0 ≤ 2,14: dan is 0,7 de kleinste en blijft λ_lim ongewijzigd.
+    let mut twee = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    twee.phi_inf_t0 = Some(2.0);
+    let b = column_check(verzoek(twee, ugt_geschoord())).unwrap();
+    assert_relative_eq!(b.lambda_lim.unwrap(), 62.86201, max_relative = 1e-6);
+    let tekst = toets(&b.checks, SLANKHEIDSGRENS).notes.join(" ");
+    assert!(tekst.contains("A = 0,7 (§5.8.3.1(1)") && tekst.contains("is hier vervuld"), "{tekst}");
+}
+
+/// φ(∞,t₀) = 2,0 MET quasi-blijvende combinatie — (5.19) om BEIDE assen,
+/// HANDBEREKENING.
+///
+/// ```text
+///   om y (snede x = 0): M₀Ed = 40, M₀Eqp = 20
+///     φ_ef    = 2,0·20/40 = 1,0;  A = 1/1,2 = 0,8333333
+///     λ_lim   = 20·0,8333333·1,1783571·2,2/√0,3333333 = 74,83572
+///   om z: M₀Ed,z = N_Ed·e_i = 600·5,0 mm = 3,0 kNm (alleen imperfectie);
+///     M₀Eqp,z = M₀Ed,z·N_Eqp/N_Ed = 3,0·350/600 = 1,75 kNm
+///     φ_ef,z  = 2,0·1,75/3,0 = 1,1666667;  A_z = 1/(1 + 0,2·1,1666667) = 0,8108108
+///     λ_lim,z = 20·0,8108108·1,1783571·0,7/√0,3333333 = 23,16782
+///   §5.8.4(4) om z: φ ≤ 2 ja, λ_z = 34,6 ≤ 75 ja, e₀ = 5 mm < b = 300 nee
+///     → φ_ef,z = 1,1666667 in de algemene methode
+/// ```
+#[test]
+fn phi_ef_om_beide_assen_uit_5_19_handberekend() {
+    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    k.phi_inf_t0 = Some(2.0);
+    let mut v = verzoek(k, ugt_geschoord());
+    v.sls_quasi_permanent_envelope = vec![
+        punt(9, 0.0, -350.0, 20.0),
+        punt(9, 1500.0, -350.0, 5.0),
+        punt(9, 3000.0, -350.0, -10.0),
+    ];
+    let a = column_check(v).unwrap();
+    assert_relative_eq!(a.phi_ef.unwrap(), 1.0, max_relative = 1e-12);
+    assert_relative_eq!(a.lambda_lim.unwrap(), 74.83572, max_relative = 1e-6);
+    assert_relative_eq!(a.phi_ef_z.unwrap(), 2.0 * 350.0 / 600.0, max_relative = 1e-12);
+    assert_relative_eq!(
+        var(toets(&a.checks, SLANKHEIDSGRENS_Z_ID), "A"),
+        0.810_810_81,
+        max_relative = 1e-8
+    );
+    assert_relative_eq!(a.lambda_lim_z.unwrap(), 23.16782, max_relative = 1e-6);
+    assert_eq!(a.tweede_orde_verwaarloosbaar_z, Some(false));
+    for id in [SLANKHEIDSGRENS, SLANKHEIDSGRENS_Z_ID] {
+        let tekst = toets(&a.checks, id).notes.join(" ");
+        assert!(!tekst.contains("WAARSCHUWING — A"), "{id}: A komt uit (5.19): {tekst}");
+    }
+    let mz = toets(&a.checks, MOMENT_Z_ID);
+    assert!(mz.notes.join(" ").contains("uit (5.19) om de z-as"));
+    assert!(a.e_2_z_mm.unwrap() > 0.0 && a.m_edz_knm.is_some());
 }

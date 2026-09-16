@@ -243,7 +243,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       beams: lastRunData.beams,
       combinations: lastRunData.combinations,
       combinationResults: lastRunData.combinationResults,
-      korven: korvenUitStaven(lastRunData.beams),
+      korven: korvenUitStaven(lastRunData.beams, lastRunData.standaardPhiInfT0),
       supportedClasses: klassen,
       bEffPerStaaf: bEffWaardenPerStaaf(beff),
     });

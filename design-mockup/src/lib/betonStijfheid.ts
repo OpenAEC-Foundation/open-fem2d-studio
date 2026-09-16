@@ -80,6 +80,7 @@ import {
 } from "./betonCheckBuilder";
 import { beamLengthMm, isSteelProfile } from "./steelCheckBuilder";
 import { referentieVanStaaf } from "./referentierichting";
+import { kruipcoefficientVanStaaf } from "./kruipcoefficient";
 import { getLinearSolver, type LinearSolverId } from "../core/math/LinearSolver";
 
 // ── Vaste waarden ──────────────────────────────────────────────────────────
@@ -249,8 +250,9 @@ export function betonStavenUitModel(
       staaltak: cfg.betonStaaltak ?? "Horizontal",
       momentTeken: referentieVanStaaf(beam, data.nodes).gespiegeld ? -1 : 1,
       // Per staaf gaat vóór per project; allebei afwezig = niet opgegeven, en
-      // dat is een andere toestand dan nul (zie `phiInfT0`).
-      phiInfT0: cfg.betonKolom?.phi_inf_t0 ?? data.standaardPhiInfT0,
+      // dat is een andere toestand dan nul (zie `phiInfT0`). Dezelfde regel als
+      // de kolomtoets (`korvenUitStaven`), uit één module.
+      phiInfT0: kruipcoefficientVanStaaf(cfg.betonKolom?.phi_inf_t0, data.standaardPhiInfT0),
     });
   }
   return { staven, overgeslagen };

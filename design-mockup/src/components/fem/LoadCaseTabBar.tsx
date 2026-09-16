@@ -13,6 +13,7 @@ import { ANALYSETYPEN } from "./femTypes";
 import {
   SCHEEFSTAND_BRONNEN, SCHEEFSTAND_BRON_LABEL, type ScheefstandBron,
 } from "../../lib/scheefstandNorm";
+import { kruipveldZichtbaar } from "../../lib/kruipcoefficient";
 import "./LoadCaseTabBar.css";
 
 interface Props {
@@ -32,12 +33,15 @@ interface Props {
   betonSegmentLengteMm?: number;
   setBetonSegmentLengteMm?: (v: number) => void;
   /**
-   * φ(∞,t₀) van het project, art. 3.1.4; `null` = niet opgegeven. Alleen
-   * zichtbaar bij de fysisch niet-lineaire stand, want alleen daar rekent de
-   * kern met de effectieve elasticiteitsmodulus E_cm/(1 + φ_ef).
+   * φ(∞,t₀) van het project, art. 3.1.4; `null` = niet opgegeven. Zichtbaar
+   * zodra het model een betonstaaf bevat, bij ELK analysetype: de waarde voedt
+   * de BGT-stijfheid (fysisch niet-lineair) én de kolomtoets (altijd). Zie
+   * `kruipveldZichtbaar` in lib/kruipcoefficient.ts.
    */
   betonKruipcoefficient?: number | null;
   setBetonKruipcoefficient?: (v: number | null) => void;
+  /** Bevat het model een betonstaaf (met of zonder korf)? */
+  heeftBetonstaaf?: boolean;
   /**
    * Aantal betonstaven mét wapeningskorf. Nul betekent dat de fysisch
    * niet-lineaire stand niets te doen heeft; dat hoort de balk te zeggen in
@@ -107,7 +111,7 @@ export default function LoadCaseTabBar({
   selfWeightEnabled, setSelfWeightEnabled,
   analysetype = "eersteOrde", setAnalysetype,
   betonSegmentLengteMm = 400, setBetonSegmentLengteMm,
-  betonKruipcoefficient = null, setBetonKruipcoefficient,
+  betonKruipcoefficient = null, setBetonKruipcoefficient, heeftBetonstaaf = false,
   aantalBetonstaven = 0, segmentWaarschuwing = null,
   scheefstandEnabled, setScheefstandEnabled,
   scheefstandNoemer, setScheefstandNoemer,
@@ -276,11 +280,14 @@ export default function LoadCaseTabBar({
           zakking te klein — de onveilige kant. Art. 3.1.4 wordt niet gerekend
           (dat vraagt RV, h₀, de cementklasse en t₀ uit bijlage B), dus het
           blijft invoer. Een staaf met een eigen waarde in het §5.8-blok gaat
-          vóór deze projectwaarde. */}
-      {setAnalysetype && analysetype === "tweedeOrdeFysisch" && (
+          vóór deze projectwaarde.
+          ZICHTBAAR BIJ ELK ANALYSETYPE zodra er beton in het model zit: de
+          waarde voedt ook de kolomtoets (§5.8.3.1, §5.8.4), die altijd loopt.
+          Een verborgen veld dat meerekent is een stille invloed. */}
+      {setBetonKruipcoefficient && kruipveldZichtbaar(heeftBetonstaaf, betonKruipcoefficient) && (
         <span
           className={betonKruipcoefficient === null ? "lc-tab-phi lc-tab-phi-waarschuwing" : "lc-tab-phi"}
-          title={t("loadCases.creepTitle")}
+          title={`${t("loadCases.creepTitle")}\n\n${t("loadCases.creepFeedsBoth")}`}
         >
           <span className="lc-tab-phi-label">φ(∞,t₀)</span>
           <input

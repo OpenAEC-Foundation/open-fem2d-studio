@@ -295,7 +295,8 @@ export const useVariantStore = create<VariantState>((set, get) => ({
             beams: [variantBeam],
             combinations: data.combinations,
             combinationResults: data.combinationResults,
-            korven: korvenUitStaven([variantBeam]),
+            // Met de φ(∞,t₀) van het project, zoals de toetsing ernaast.
+            korven: korvenUitStaven([variantBeam], data.standaardPhiInfT0),
             supportedClasses: await getConcreteClasses(),
             // De meewerkende flensbreedte volgt uit de liggerlijn (de
             // overspanningen en de opleggingen) en niet uit de hoogte; de
