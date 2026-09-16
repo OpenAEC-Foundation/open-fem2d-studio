@@ -19,5 +19,11 @@
   "successTitle": "Thank you!",
   "successMessage": "Your feedback has been submitted successfully.",
   "sendAnother": "Send another",
-  "errorGeneric": "Failed to submit feedback. Please try again."
+  "errorGeneric": "Failed to submit feedback. Please try again.",
+  "submitToGithub": "Open GitHub issue",
+  "githubSuccessMessage": "Your browser has opened with a pre-filled issue. Paste the screenshot(s) with Ctrl+V into the GitHub editor and click 'Submit new issue'.",
+  "attachScreenshot": "Attach current screenshot",
+  "screenshotHint": "The screenshot is copied to your clipboard — paste it with Ctrl+V into the GitHub editor window.",
+  "issueScreenshotsNote_one": "**Screenshots:** {{count}} image is on your clipboard — paste it above with **Ctrl+V** before you submit the issue.",
+  "issueScreenshotsNote_other": "**Screenshots:** {{count}} images are on your clipboard — paste them above with **Ctrl+V** before you submit the issue."
 }

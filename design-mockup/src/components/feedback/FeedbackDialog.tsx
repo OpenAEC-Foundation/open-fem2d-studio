@@ -195,9 +195,7 @@ export default function FeedbackDialog({
     if (osInfo) lines.push(`**OS:** ${osInfo}`);
     if (extraImages.length > 0) {
       lines.push("");
-      lines.push(
-        `**Screenshots:** ${extraImages.length} afbeelding(en) staan op je klembord — plak ze hierboven met **Ctrl+V** voordat je het issue indient.`
-      );
+      lines.push(t("issueScreenshotsNote", { count: extraImages.length }));
     }
     return lines.join("\n");
   };

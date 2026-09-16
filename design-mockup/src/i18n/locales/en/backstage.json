@@ -53,6 +53,28 @@
     "clearAll": "Clear all",
     "noRecent": "No recent files yet",
     "remove": "Remove",
-    "justNow": "Just now"
+    "justNow": "Just now",
+    "minutesAgo_one": "{{count}} min ago",
+    "minutesAgo_other": "{{count}} min ago",
+    "hoursAgo_one": "{{count}} h ago",
+    "hoursAgo_other": "{{count}} h ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago"
+  },
+  "extensionManager": {
+    "desc": {
+      "ifc-importer": "Import IFC4 STEP files into the application",
+      "pdf-export": "Export reports as PDF using OpenAEC Report Generator",
+      "excel-importer": "Import data from Excel spreadsheets (.xlsx)",
+      "bonsai-sync": "Sync IFC models with Bonsai/Blender via WebSocket",
+      "calculation-engine": "Basic structural calculation blocks for reports"
+    },
+    "category": {
+      "importExport": "Import/Export",
+      "calculation": "Calculation",
+      "reporting": "Reporting",
+      "utility": "Utility",
+      "other": "Other"
+    }
   }
 }

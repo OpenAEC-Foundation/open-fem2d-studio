@@ -53,6 +53,28 @@
     "clearAll": "Alles wissen",
     "noRecent": "Nog geen recente bestanden",
     "remove": "Verwijderen",
-    "justNow": "Zojuist"
+    "justNow": "Zojuist",
+    "minutesAgo_one": "{{count}} min geleden",
+    "minutesAgo_other": "{{count}} min geleden",
+    "hoursAgo_one": "{{count}} uur geleden",
+    "hoursAgo_other": "{{count}} uur geleden",
+    "daysAgo_one": "{{count}} dag geleden",
+    "daysAgo_other": "{{count}} dagen geleden"
+  },
+  "extensionManager": {
+    "desc": {
+      "ifc-importer": "IFC4 STEP-bestanden in de applicatie importeren",
+      "pdf-export": "Rapporten als PDF exporteren met OpenAEC Report Generator",
+      "excel-importer": "Gegevens importeren uit Excel-werkbladen (.xlsx)",
+      "bonsai-sync": "IFC-modellen synchroniseren met Bonsai/Blender via WebSocket",
+      "calculation-engine": "Eenvoudige constructieve rekenblokken voor rapporten"
+    },
+    "category": {
+      "importExport": "Import/export",
+      "calculation": "Berekening",
+      "reporting": "Rapportage",
+      "utility": "Hulpmiddel",
+      "other": "Overig"
+    }
   }
 }

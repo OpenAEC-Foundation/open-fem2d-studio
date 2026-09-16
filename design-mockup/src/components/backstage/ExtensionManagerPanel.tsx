@@ -77,6 +77,15 @@ const CATEGORY_COLORS: Record<string, string> = {
   Other: "#71717a",
 };
 
+/** Categorie → i18n-sleutel onder extensionManager.category. */
+const CATEGORY_KEYS: Record<string, string> = {
+  "Import/Export": "importExport",
+  Calculation: "calculation",
+  Reporting: "reporting",
+  Utility: "utility",
+  Other: "other",
+};
+
 export default function ExtensionManagerPanel() {
   const { t } = useTranslation("backstage");
   const [tab, setTab] = useState<"installed" | "browse">("installed");
@@ -89,18 +98,24 @@ export default function ExtensionManagerPanel() {
     );
   };
 
+  // Omschrijving en categorie zoals ze in de gekozen taal getoond worden.
+  const descriptionOf = (ext: CatalogEntry) =>
+    t(`extensionManager.desc.${ext.id}`);
+  const categoryOf = (ext: CatalogEntry) =>
+    CATEGORY_KEYS[ext.category] ? t(`extensionManager.category.${CATEGORY_KEYS[ext.category]}`) : ext.category;
+
   const filteredInstalled = extensions.filter(
     (e) =>
       !search ||
       e.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.description.toLowerCase().includes(search.toLowerCase())
+      descriptionOf(e).toLowerCase().includes(search.toLowerCase())
   );
 
   const filteredCatalog = SAMPLE_CATALOG.filter(
     (e) =>
       !search ||
       e.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.description.toLowerCase().includes(search.toLowerCase())
+      descriptionOf(e).toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -144,13 +159,13 @@ export default function ExtensionManagerPanel() {
                   className="ext-category-badge"
                   style={{ background: CATEGORY_COLORS[ext.category] || "#71717a" }}
                 >
-                  {ext.category}
+                  {categoryOf(ext)}
                 </span>
                 <span className="ext-version">v{ext.version}</span>
               </div>
               <div className="ext-card-body">
                 <strong className="ext-name">{ext.name}</strong>
-                <p className="ext-desc">{ext.description}</p>
+                <p className="ext-desc">{descriptionOf(ext)}</p>
                 <span className="ext-author">{ext.author}</span>
               </div>
               <div className="ext-card-actions">
@@ -176,13 +191,13 @@ export default function ExtensionManagerPanel() {
                     className="ext-category-badge"
                     style={{ background: CATEGORY_COLORS[ext.category] || "#71717a" }}
                   >
-                    {ext.category}
+                    {categoryOf(ext)}
                   </span>
                   <span className="ext-version">v{ext.version}</span>
                 </div>
                 <div className="ext-card-body">
                   <strong className="ext-name">{ext.name}</strong>
-                  <p className="ext-desc">{ext.description}</p>
+                  <p className="ext-desc">{descriptionOf(ext)}</p>
                   <span className="ext-author">{ext.author}</span>
                 </div>
                 <div className="ext-card-actions">
