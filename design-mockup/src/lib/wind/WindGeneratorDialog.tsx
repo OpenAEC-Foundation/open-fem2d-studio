@@ -255,6 +255,52 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                 </div>
               )}
 
+              {vrijstaand && (
+                <div className="wgd-section">
+                  <div className="wgd-section-title">{t("wind.secCanopyExtra")}</div>
+                  <div className="wgd-row">
+                    <div className="wgd-field">
+                      <label>{t("wind.friction")}</label>
+                      <select value={i.wrijving ?? "geen"}
+                        onChange={(e) => set({ wrijving: e.target.value as NonNullable<typeof i.wrijving> })}>
+                        <option value="geen">{t("wind.frictionNone")}</option>
+                        <option value="glad">{t("wind.frictionSmooth")}</option>
+                        <option value="ruw">{t("wind.frictionRough")}</option>
+                        <option value="zeerRuw">{t("wind.frictionVeryRough")}</option>
+                      </select>
+                    </div>
+                    <div className="wgd-field">
+                      <label>{t("wind.columns")}</label>
+                      <select value={i.kolomDoorsnede ?? "geen"}
+                        onChange={(e) => set({ kolomDoorsnede: e.target.value as NonNullable<typeof i.kolomDoorsnede> })}>
+                        <option value="geen">{t("wind.columnsNone")}</option>
+                        <option value="scherphoekig">{t("wind.columnsSharp")}</option>
+                        <option value="rechthoekig">{t("wind.columnsRect")}</option>
+                      </select>
+                    </div>
+                  </div>
+                  {(i.kolomDoorsnede ?? "geen") !== "geen" && (
+                    <div className="wgd-getallen">
+                      <Getal label="b" value={i.kolomBreedte_mm ?? null} step={10} eenheid="mm"
+                        onChange={(v) => set({ kolomBreedte_mm: v ?? 0 })} />
+                      {i.kolomDoorsnede === "rechthoekig" && (
+                        <Getal label="d" value={i.kolomDiepte_mm ?? null} step={10} eenheid="mm"
+                          onChange={(v) => set({ kolomDiepte_mm: v ?? 0 })} />
+                      )}
+                    </div>
+                  )}
+                  <div className="wgd-getallen">
+                    <Getal label={t("wind.canopyCount")} value={i.aantalOverkappingen ?? 1} step={1} min={1} eenheid=""
+                      onChange={(v) => set({ aantalOverkappingen: v ?? 1 })} />
+                    {(i.aantalOverkappingen ?? 1) > 1 && (
+                      <Getal label={t("wind.canopyPosition")} value={i.positieOverkapping ?? 1} step={1} min={1} eenheid=""
+                        onChange={(v) => set({ positieOverkapping: v ?? 1 })} />
+                    )}
+                  </div>
+                  <div className="wgd-hint">{t("wind.canopyExtraHint")}</div>
+                </div>
+              )}
+
               {!vrijstaand && (
               <div className="wgd-section">
                 <div className="wgd-section-title">{t("wind.secDirections")}</div>
