@@ -43,6 +43,55 @@ export const BRON_DOORSNEDE = {
 };
 
 // ── Belastinggevallen ────────────────────────────────────────────────────
+/**
+ * Het profiel staat niet in de catalogus (414 Europese profielen). De bron
+ * schrijft voor het dan "als aangepaste doorsnede met de opgegeven waarden"
+ * in te voeren; in de app is dat een eigen doorsnede uit de profieleditor.
+ * Zo rekent de app met precies de grootheden van de bron, in plaats van te
+ * moeten terugvallen op een ander profiel.
+ *
+ * Iz, W_el,z, W_pl,z, I_t en I_w staan niet in de bron; ze spelen in dit
+ * geval geen rol (geen normaalkracht, en kip is door de kipsteunen niet
+ * maatgevend) en komen uit de gangbare catalogustabel voor dit profiel.
+ */
+export const EIGEN_NAAM = BRON_DOORSNEDE.naam;
+export const EIGEN_PROFIEL = `EIGEN:${EIGEN_NAAM}`;
+const IZ_MM4 = 2201e4;
+export const EIGEN_DOORSNEDE = {
+  id: "r13-533x210x92-ukb",
+  naam: EIGEN_NAAM,
+  ontwerp: { soort: "samenstelling", lamellen: [], catalogusdelen: [], celMeenemen: false, lassen: [] },
+  eigenschappen: {
+    area_mm2: BRON_DOORSNEDE.A,
+    iy_mm4: BRON_DOORSNEDE.Iy,
+    iz_mm4: IZ_MM4,
+    wel_y_mm3: (2 * BRON_DOORSNEDE.Iy) / BRON_DOORSNEDE.h,
+    wel_z_mm3: 2103e2,
+    wpl_y_mm3: BRON_DOORSNEDE.Wply,
+    wpl_z_mm3: 3286e2,
+    av_y_mm2: 2 * BRON_DOORSNEDE.b * BRON_DOORSNEDE.tf,
+    // A_v,z volgens 6.2.6(3)a: A − 2·b·t_f + (t_w + 2r)·t_f.
+    av_z_mm2:
+      BRON_DOORSNEDE.A -
+      2 * BRON_DOORSNEDE.b * BRON_DOORSNEDE.tf +
+      (BRON_DOORSNEDE.tw + 2 * BRON_DOORSNEDE.r) * BRON_DOORSNEDE.tf,
+    it_mm4: 758e3,
+    iw_mm6: 1.6e12,
+    iy_radius_mm: Math.sqrt(BRON_DOORSNEDE.Iy / BRON_DOORSNEDE.A),
+    iz_radius_mm: Math.sqrt(IZ_MM4 / BRON_DOORSNEDE.A),
+    h_mm: BRON_DOORSNEDE.h, b_mm: BRON_DOORSNEDE.b,
+    tw_mm: BRON_DOORSNEDE.tw, tf_mm: BRON_DOORSNEDE.tf, r_mm: BRON_DOORSNEDE.r,
+  },
+  vorm: "GelasteIDubbelsymmetrisch",
+  motor: {
+    methode: "lamellen", wpl_bepaald: false, iw_bepaald: false,
+    schuifmiddelpunt_bepaald: false, it_onzekerheid: 0, a_gaten_mm2: 0,
+    y_min_mm: -BRON_DOORSNEDE.b / 2, y_max_mm: BRON_DOORSNEDE.b / 2,
+    z_min_mm: -BRON_DOORSNEDE.h / 2, z_max_mm: BRON_DOORSNEDE.h / 2,
+    delen: [], meldingen: [],
+  },
+};
+
 export const GEVAL_G = 1;   // permanent
 export const GEVAL_Q = 2;   // veranderlijk
 
@@ -66,7 +115,7 @@ export function bouwModelR13() {
       {
         id: 1, from: 1, to: 2,
         material: BRON_DOORSNEDE.materiaal,
-        profile: BRON_DOORSNEDE.naam,
+        profile: EIGEN_PROFIEL,
         // Over de volle lengte zijdelings gesteund → geen kip. Dat leggen we
         // vast als een dichte reeks kipsteunen; de doorbuigingsklasse is
         // "custom" met noemer 360 omdat de Britse NB L/360 voorschrijft.
@@ -83,6 +132,7 @@ export function bouwModelR13() {
       { nodeId: 2, type: "zRoller" },
     ],
     plates: [],
+    eigenDoorsneden: [EIGEN_DOORSNEDE],
     loads: [
       // Permanent: lijnlast incl. eigen gewicht + puntlast in het midden.
       { id: 1, type: "lineLoad",   caseId: GEVAL_G, beamId: 1, q: -15 },

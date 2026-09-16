@@ -1,7 +1,7 @@
 {
   "format": "open-fem2d-studio-v2",
   "version": 2,
-  "savedAt": "2026-09-02T22:53:09.953Z",
+  "savedAt": "2026-09-16T07:00:20.809Z",
   "nodes": [
     {
       "id": 1,
@@ -20,7 +20,7 @@
       "from": 1,
       "to": 2,
       "material": "S275",
-      "profile": "533x210x92 UKB",
+      "profile": "EIGEN:533x210x92 UKB",
       "checkConfig": {
         "lateralRestraints": [
           0.1,
@@ -50,6 +50,54 @@
     }
   ],
   "plates": [],
+  "eigenDoorsneden": [
+    {
+      "id": "r13-533x210x92-ukb",
+      "naam": "533x210x92 UKB",
+      "ontwerp": {
+        "soort": "samenstelling",
+        "lamellen": [],
+        "catalogusdelen": [],
+        "celMeenemen": false,
+        "lassen": []
+      },
+      "eigenschappen": {
+        "area_mm2": 11700,
+        "iy_mm4": 552000000,
+        "iz_mm4": 22010000,
+        "wel_y_mm3": 2070906.0213843556,
+        "wel_z_mm3": 210300,
+        "wpl_y_mm3": 2360000,
+        "wpl_z_mm3": 328600,
+        "av_y_mm2": 6530.16,
+        "av_z_mm2": 5723.64,
+        "it_mm4": 758000,
+        "iw_mm6": 1600000000000,
+        "iy_radius_mm": 217.2083957389474,
+        "iz_radius_mm": 43.37276312614382,
+        "h_mm": 533.1,
+        "b_mm": 209.3,
+        "tw_mm": 10.1,
+        "tf_mm": 15.6,
+        "r_mm": 12.7
+      },
+      "vorm": "GelasteIDubbelsymmetrisch",
+      "motor": {
+        "methode": "lamellen",
+        "wpl_bepaald": false,
+        "iw_bepaald": false,
+        "schuifmiddelpunt_bepaald": false,
+        "it_onzekerheid": 0,
+        "a_gaten_mm2": 0,
+        "y_min_mm": -104.65,
+        "y_max_mm": 104.65,
+        "z_min_mm": -266.55,
+        "z_max_mm": 266.55,
+        "delen": [],
+        "meldingen": []
+      }
+    }
+  ],
   "loads": [
     {
       "id": 1,

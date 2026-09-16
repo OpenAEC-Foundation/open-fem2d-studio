@@ -1,11 +1,11 @@
 {
   "kenmerk": "R13",
-  "gedraaid": "2026-09-02T22:53:09.972Z",
-  "aanname": "doorsnede 533x210x92 UKB ontbreekt in de profieldatabase; A/Iy/Wpl,y/Av uit de bron opgegeven",
+  "gedraaid": "2026-09-16T07:00:20.842Z",
+  "aanname": "doorsnede 533x210x92 UKB ontbreekt in de profieldatabase; ingevoerd als eigen doorsnede met A/Iy/Wpl,y/Av uit de bron",
   "doorsnedeklasse": "Class1",
   "maatgevendeToets": "6.2.5_bending_y",
   "ucMax": 0.8314705917758101,
-  "grootsteAfwijkingPct": 1.108998861297561,
+  "grootsteAfwijkingPct": 1.1089988612975425,
   "rijen": [
     {
       "grootheid": "M_Ed in het midden",
@@ -21,8 +21,8 @@
       "grootheid": "V_Ed bij de oplegging",
       "eenheid": "kN",
       "referentie": 269.5,
-      "onze": 269.60156250000017,
-      "afwijkingPct": 0.0376855287570206,
+      "onze": 269.6015625000002,
+      "afwijkingPct": 0.037685528757041696,
       "tolerantiePct": 1,
       "herkomst": "solver",
       "binnenTolerantie": true
@@ -31,8 +31,8 @@
       "grootheid": "V_c,Ed bij max. moment",
       "eenheid": "kN",
       "referentie": 62.5,
-      "onze": 62.47500000000017,
-      "afwijkingPct": -0.03999999999972488,
+      "onze": 62.47500000000022,
+      "afwijkingPct": -0.0399999999996453,
       "tolerantiePct": 1,
       "herkomst": "solver",
       "binnenTolerantie": true
@@ -41,8 +41,8 @@
       "grootheid": "Oplegreactie A",
       "eenheid": "kN",
       "referentie": 269.5,
-      "onze": 269.60156250000017,
-      "afwijkingPct": 0.0376855287570206,
+      "onze": 269.6015625000002,
+      "afwijkingPct": 0.037685528757041696,
       "tolerantiePct": 1,
       "herkomst": "solver",
       "binnenTolerantie": true
@@ -51,8 +51,8 @@
       "grootheid": "Oplegreactie B",
       "eenheid": "kN",
       "referentie": 269.5,
-      "onze": 269.60156250000017,
-      "afwijkingPct": 0.0376855287570206,
+      "onze": 269.6015625000002,
+      "afwijkingPct": 0.037685528757041696,
       "tolerantiePct": 1,
       "herkomst": "solver",
       "binnenTolerantie": true
@@ -91,8 +91,8 @@
       "grootheid": "UC dwarskracht",
       "eenheid": "—",
       "referentie": 0.3,
-      "onze": 0.2966730034161073,
-      "afwijkingPct": -1.108998861297561,
+      "onze": 0.29667300341610736,
+      "afwijkingPct": -1.1089988612975425,
       "tolerantiePct": 6.7,
       "herkomst": "toets",
       "binnenTolerantie": true

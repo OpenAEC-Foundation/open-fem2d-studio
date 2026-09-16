@@ -17,17 +17,16 @@
 //
 // ── Eén aanname, expliciet ─────────────────────────────────────────────────
 // Het profiel 533 × 210 × 92 UKB staat NIET in onze profieldatabase (414
-// Europese profielen), en de app biedt geen handmatig in te voeren doorsnede.
-// `resolveSection` valt daardoor terug op HEA 160 / S235 en waarschuwt daarbij
-// hardop. Voor de vergelijking zetten we de doorsnedegrootheden daarom
-// expliciet op de waarden uit de bron — dat is precies wat het dossier
-// voorschrijft ("invoeren als aangepaste doorsnede met de opgegeven waarden
-// en dat noteren"):
-//   · voor de SOLVER : A en Iy worden na de app-mapping overschreven;
-//   · voor de TOETSING: de doorsnede gaat als `custom_section.eigenschappen`
-//     mee (het inline-doorsnedepad D4.3 van de Rust-kern).
-// Het script rekent de app-route (met terugval) er náást en drukt af wat de
-// terugval kost, zodat het verschil zichtbaar blijft in plaats van weggepoetst.
+// Europese profielen). Het dossier schrijft voor het dan "als aangepaste
+// doorsnede met de opgegeven waarden" in te voeren; in de app is dat een
+// EIGEN DOORSNEDE uit de profieleditor. Het model draagt hem in
+// `eigenDoorsneden` en de staaf verwijst ernaar met `EIGEN:…`:
+//   · voor de SOLVER : `resolveSection` leest A en I_y uit die doorsnede;
+//   · voor de TOETSING: dezelfde grootheden gaan als
+//     `custom_section.eigenschappen` mee (het inline-doorsnedepad D4.3).
+// Er wordt dus met de brongrootheden gerekend, zonder terugval op een ander
+// profiel. Tot september 2026 stond hier een terugval op HEA 160; die bestaat
+// niet meer: een onbekende doorsnede stopt de berekening (basisaudit nr 4).
 //
 // LET OP bij het lezen van de toetsuitkomsten: op het inline-pad zijn A, Iy,
 // Wpl,y én Av INVOER. Dat de toetsmodule Av = 5 723,6 mm² gebruikt, bewijst
@@ -52,8 +51,12 @@ const { solveAllCases } = await import("../src/components/fem/solver/engine.ts")
 const { combineResults } = await import("../src/components/fem/solver/combinations.ts");
 const { bouwMultiInput } = await import("../src/lib/modelNaarSolverInput.ts");
 const { deserializeProject } = await import("../src/io/projectFile.ts");
+// De eigen doorsnede in de opslag zetten — precies wat de app doet bij het
+// openen van een project. Zonder deze stap kent `resolveSection` het profiel
+// `EIGEN:…` niet en stopt de berekening met een melding.
+const { importeer } = await import("../src/lib/profieleditor/eigenDoorsnedenStore.ts");
 const {
-  bouwModelR13, schrijfModelR13, BRON_DOORSNEDE,
+  bouwModelR13, schrijfModelR13, BRON_DOORSNEDE, EIGEN_DOORSNEDE,
   GEVAL_G, GEVAL_Q, XI_GAMMA_G, GAMMA_Q, L_MM,
 } = await import("./model-R13.mjs");
 
@@ -106,6 +109,7 @@ for (const p of modelPaden) log(`  · ${p}`);
 // ═══════════════════════════════════════════════════════════════════════════
 //  2. Doorrekenen langs de app-route
 // ═══════════════════════════════════════════════════════════════════════════
+importeer([EIGEN_DOORSNEDE]);
 const model = bouwModelR13();
 
 const UGT = { id: 1, name: "UGT 6.10b", type: "uls", formula: "0,925·1,35·G + 1,5·Q",
@@ -113,28 +117,22 @@ const UGT = { id: 1, name: "UGT 6.10b", type: "uls", formula: "0,925·1,35·G + 
 const BGT = { id: 2, name: "BGT (alleen veranderlijk)", type: "sls", formula: "1,0·Q",
               factors: new Map([[GEVAL_G, 0], [GEVAL_Q, 1.0]]) };
 
-/** Reken het model door; `bronDoorsnede` = A/Iy op de waarden uit de bron zetten. */
-function rekenDoor(bronDoorsnede) {
+/** Reken het model door, precies zoals de app een geopend bestand doorrekent. */
+function rekenDoor() {
   const mi = bouwMultiInput(model);
-  if (bronDoorsnede) {
-    for (const b of mi.beams) {
-      b.E = BRON_DOORSNEDE.E;
-      b.A = BRON_DOORSNEDE.A;
-      b.I = BRON_DOORSNEDE.Iy;
-    }
-  }
   const perCase = solveAllCases(mi).perCase;
   return { doorsnede: mi.beams[0], ugt: combineResults(UGT, perCase), bgt: combineResults(BGT, perCase) };
 }
 
-log("\n[2] Doorrekenen (de solver-waarschuwing hierboven hoort erbij — zie kop)");
-const appRoute  = rekenDoor(false);   // zoals de app het bestand nu opent
-const bronRoute = rekenDoor(true);    // met de doorsnede uit de bron
+log("\n[2] Doorrekenen langs de app-route");
+const bronRoute = rekenDoor();
 
-log(`  · app-route  : A = ${toon(appRoute.doorsnede.A, 0)} mm², ` +
-    `Iy = ${toon(appRoute.doorsnede.I / 1e4, 0)} cm⁴  (terugval HEA 160)`);
-log(`  · bron-route : A = ${toon(bronRoute.doorsnede.A, 0)} mm², ` +
+log(`  · doorsnede uit de eigen-doorsnedenopslag: A = ${toon(bronRoute.doorsnede.A, 0)} mm², ` +
     `Iy = ${toon(bronRoute.doorsnede.I / 1e4, 0)} cm⁴  (533 × 210 × 92 UKB)`);
+// Dit is de controle die telt: de app rekent met de grootheden van de bron.
+const A_ok = Math.abs(bronRoute.doorsnede.A - BRON_DOORSNEDE.A) < 1e-6;
+const I_ok = Math.abs(bronRoute.doorsnede.I - BRON_DOORSNEDE.Iy) < 1e-6;
+log(`  · gelijk aan de bron: A ${A_ok ? "ja" : "NEE"} · Iy ${I_ok ? "ja" : "NEE"}`);
 
 const ef = bronRoute.ugt.elements.get(1);
 const efBgt = bronRoute.bgt.elements.get(1);
@@ -351,18 +349,15 @@ log("  · Lijfweerstand tegen dwarsbelasting F_Rd = 324 kN bij F_Ed = 269,5 kN")
 log("    (EN 1993-1-5 §6, oplegvlak 50 mm): niet in onze toetsmodule.");
 log("    Alleen geregistreerd, niet als afwijking gescoord.");
 
-// ── Wat de terugval op HEA 160 kost ────────────────────────────────────────
-const wApp = Math.abs(maxAbs(appRoute.bgt.elements.get(1).deflection));
-const MApp = appRoute.ugt.elements.get(1).bendingMoment[iMid] / 1e6;
-log("\n[6] Effect van de ontbrekende doorsnede in de bibliotheek");
-log("  Opent men R13.femp in de app zoals hij is, dan rekent de app met de");
-log("  terugvaldoorsnede HEA 160 / S235:");
-log(`    M_Ed midden : ${toon(MApp, 1)} kN·m  (statisch bepaald → ongewijzigd)`);
-log(`    w_BGT       : ${toon(wApp, 2)} mm in plaats van ${toon(Math.abs(w_bgt_mm), 2)} mm ` +
-    `→ factor ${toon(wApp / Math.abs(w_bgt_mm), 1)} te groot`);
-log("  De doorbuigingstoets zou daarmee onterecht afkeuren. Dit is een gat in");
-log("  de bibliotheek c.q. het ontbreken van een handmatig in te voeren");
-log("  doorsnede — geen rekenfout in de solver.");
+// ── Hoe de ontbrekende doorsnede is opgelost ───────────────────────────────
+log("\n[6] De doorsnede ontbreekt in de bibliotheek");
+log("  533 × 210 × 92 UKB staat niet in de profieldatabase. Het bestand draagt");
+log("  hem daarom als eigen doorsnede (`EIGEN:533x210x92 UKB`), met de");
+log("  grootheden uit de bron — wat het dossier ook voorschrijft.");
+log(`    A  = ${toon(bronRoute.doorsnede.A, 0)} mm²  (bron ${toon(BRON_DOORSNEDE.A, 0)})`);
+log(`    Iy = ${toon(bronRoute.doorsnede.I / 1e4, 0)} cm⁴  (bron ${toon(BRON_DOORSNEDE.Iy / 1e4, 0)})`);
+log("  Een onbekende doorsnede valt niet meer stil terug op een ander profiel;");
+log("  de berekening stopt dan met een melding (basisaudit nr 4).");
 
 // ── Eindoordeel ────────────────────────────────────────────────────────────
 const onsEigen = rijen.filter((r) => r.soort !== "bron" && Number.isFinite(r.onze));
@@ -379,7 +374,7 @@ writeFileSync(
   JSON.stringify({
     kenmerk: "R13",
     gedraaid: new Date().toISOString(),
-    aanname: "doorsnede 533x210x92 UKB ontbreekt in de profieldatabase; A/Iy/Wpl,y/Av uit de bron opgegeven",
+    aanname: "doorsnede 533x210x92 UKB ontbreekt in de profieldatabase; ingevoerd als eigen doorsnede met A/Iy/Wpl,y/Av uit de bron",
     doorsnedeklasse: toets?.classification ?? null,
     maatgevendeToets: toets?.governing_check_id ?? null,
     ucMax: toets?.uc_max ?? null,
