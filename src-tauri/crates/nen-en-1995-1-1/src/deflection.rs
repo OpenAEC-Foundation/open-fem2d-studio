@@ -30,6 +30,28 @@ pub fn w_add_mm(w_fin_mm: f64, w_perm_mm: f64) -> f64 {
 pub const NOEMER_W_FIN: f64 = crate::NDP.noemer_w_fin;
 pub const NOEMER_W_ADD: f64 = crate::NDP.noemer_w_add;
 
+/// Keurt de twee opgegeven noemers VOORDAT er getoetst wordt.
+///
+/// Een grenswaarde L/n bestaat alleen voor een eindige n > 0. Tot september
+/// 2026 maakte [`check_deflection_pair`] van n <= 0 een oneindige grens met
+/// UC 0 en status Ok: een toets die niets toetste maar slaagde. Hier is geen
+/// "0 = afleiden" zoals bij de staalkern — beide velden hebben een
+/// standaardwaarde (NB: L/250 en L/333) die geldt als het veld WEGBLIJFT; een
+/// opgegeven 0 of negatief getal is dus altijd een invoerfout. De hout- en de
+/// CLT-orkestratie weigeren de staaf dan met deze reden, zonder een noemer te
+/// raden.
+pub fn keur_noemers(noemer_fin: f64, noemer_add: f64) -> Result<(), String> {
+    for (naam, n) in [("w_fin", noemer_fin), ("w_add", noemer_add)] {
+        if !n.is_finite() || n <= 0.0 {
+            return Err(format!(
+                "noemer voor de doorbuiging {naam} is {n}: de grens L/n (art. 7.2 + NB) \
+                 bestaat alleen voor n > 0 — er is niet getoetst"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn doorbuigingstoets(
     id: &str,
     titel: &str,
@@ -39,8 +61,13 @@ fn doorbuigingstoets(
     formule: &str,
     extra: Vec<NamedValue>,
 ) -> ResistanceCalc {
-    let grens = if noemer > 0.0 { lengte_mm / noemer } else { f64::INFINITY };
-    let uc = if grens.is_finite() && grens > 0.0 { w_mm.abs() / grens } else { 0.0 };
+    let grens = if noemer.is_finite() && noemer > 0.0 { lengte_mm / noemer } else { f64::INFINITY };
+    // Zonder eindige, positieve grens is er niets getoetst: geen UC (een UC
+    // van 0 leest als "ruim voldaan") en geen status Ok. Via de orkestratie
+    // komt het zover niet — `keur_noemers` weigert de staaf eerder — maar een
+    // rechtstreekse aanroep mag evenmin een Ok zonder toets opleveren.
+    let getoetst = grens.is_finite() && grens > 0.0;
+    let uc = if getoetst { w_mm.abs() / grens } else { 0.0 };
     let mut variables = vec![
         NamedValue { symbol: "L".to_string(), value: lengte_mm, unit: "mm".to_string() },
         NamedValue { symbol: "w".to_string(), value: w_mm, unit: "mm".to_string() },
@@ -61,14 +88,26 @@ fn doorbuigingstoets(
         variables,
         value: grens,
         unit: "mm".to_string(),
-        uc: Some(UnityCheck {
+        uc: getoetst.then(|| UnityCheck {
             ed: w_mm.abs(),
             rd: grens,
             uc,
             formula_latex: r"|w| / w_{max}".to_string(),
         }),
-        status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
-        notes: vec![],
+        status: if !getoetst {
+            CheckStatus::NotApplicable
+        } else if uc <= 1.0 {
+            CheckStatus::Ok
+        } else {
+            CheckStatus::NotOk
+        },
+        notes: if getoetst {
+            vec![]
+        } else {
+            vec![format!(
+                "Niet getoetst: noemer n = {noemer} geeft geen grenswaarde L/n (n moet groter dan nul zijn)."
+            )]
+        },
     }
 }
 
@@ -148,5 +187,21 @@ mod tests {
         let w_fin = w_fin_mm(-10.0, 0.8, -6.0);
         assert_relative_eq!(w_fin, -14.8, max_relative = 1e-9);
         assert_relative_eq!(w_add_mm(w_fin, -6.0), -8.8, max_relative = 1e-9);
+    }
+
+    /// Issue #9: een noemer van 0, negatief of niet eindig geeft geen grens.
+    #[test]
+    fn noemer_zonder_grens_is_nooit_ok() {
+        for n in [0.0, -250.0, f64::NAN] {
+            assert!(keur_noemers(n, NOEMER_W_ADD).unwrap_err().contains("w_fin"));
+            assert!(keur_noemers(NOEMER_W_FIN, n).unwrap_err().contains("w_add"));
+            let (fin, add) = check_deflection_pair(-5.0, -5.0, -5.0, 0.6, 5000.0, n, n);
+            for c in [&fin, &add] {
+                assert_eq!(c.status, CheckStatus::NotApplicable, "{} bij n = {n}", c.id);
+                assert!(c.uc.is_none(), "{} bij n = {n}", c.id);
+                assert!(c.notes.iter().any(|t| t.starts_with("Niet getoetst")));
+            }
+        }
+        assert!(keur_noemers(NOEMER_W_FIN, NOEMER_W_ADD).is_ok());
     }
 }

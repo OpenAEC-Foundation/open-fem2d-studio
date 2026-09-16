@@ -142,7 +142,13 @@ pub struct BeamCheckInput {
     #[serde(default)]
     pub buckling_length_z_m: f64,
     pub deflection_limit_class: DeflectionClass,
-    pub deflection_limit_numerator: u32,
+    /// Noemer n in de eis L/n; alleen gelezen bij klasse `Custom`.
+    ///
+    /// `i32` en niet `u32`: een negatieve noemer is een invoerfout die de kern
+    /// per staaf met reden weigert ([`crate::deflection::keur_noemers`]). Met
+    /// `u32` liep zo'n getal al vast bij het inlezen, en dan viel de hele
+    /// aanroep met alle staven weg in plaats van alleen deze staaf.
+    pub deflection_limit_numerator: i32,
     pub deflection_actual_max_mm: f64,
     /// Is deze staaf een uitkraging?
     ///

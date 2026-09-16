@@ -470,6 +470,32 @@ fn toets_per_klasse(k: &Keten, groepen: &[Groep]) -> PerKlasse {
 }
 
 pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
+    // -2. DE DOORBUIGINGSNOEMERS. Een opgegeven noemer van 0 of kleiner gaf
+    //     tot september 2026 een oneindige grens, UC 0 en status Ok. Het is
+    //     een invoerfout (beide velden hebben een NB-standaardwaarde voor als
+    //     ze wegblijven), dus de staaf wordt geweigerd met de reden — dezelfde
+    //     vorm als een onbekende sterkteklasse hieronder. Vóór de
+    //     verloopafslag, zodat een verlopende staaf dezelfde keuring krijgt.
+    if let Err(reden) = nen_en_1995_1_1::deflection::keur_noemers(
+        input.deflection_limit_fin,
+        input.deflection_limit_add,
+    ) {
+        return TimberBeamCheckResult {
+            beam_id: input.beam_id,
+            section_name: format!("{} x {}", input.width_mm, input.height_mm),
+            strength_class: input.strength_class.clone(),
+            service_class: input.service_class,
+            load_duration: input.load_duration,
+            checks: vec![],
+            uc_max: 0.0,
+            status: CheckStatus::NotApplicable,
+            governing_check_id: format!("ERROR: {reden}"),
+            k_mod_per_load_duration: vec![],
+            governing_combination_id: None,
+            verloop: None,
+        };
+    }
+
     // -1. VERLOPENDE STAAF? Dan gaat hij langs een eigen weg
     //     (`crate::verlopend`), die deze functie per rekenpunt opnieuw
     //     aanroept met de PLAATSELIJKE rechthoek. Zonder eindmaten — en dat is

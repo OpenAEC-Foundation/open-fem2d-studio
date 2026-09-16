@@ -785,7 +785,7 @@ fn schema_checkconfig() -> Value {
             "deflectionClass": { "type": "string", "enum": ["floor", "floorBrittle", "roof", "cantilever", "custom"],
                 "description": "Doorbuigingsklasse volgens NEN-EN 1990:2002/NB:2019 A1.4.3(3); default \"floor\". \"floor\" = w_add ≤ 3/1000·ℓ_rep (overige vloeren en intensief gebruikte daken), \"floorBrittle\" = ℓ_rep/500 (vloeren met scheurgevoelige scheidingswanden), \"roof\" = ℓ_rep/250 (overige daken), \"cantilever\" = als vloer met ℓ_rep = 2 × de uitkraging, \"custom\" = de opgegeven n." },
             "deflectionLimitNumerator": { "type": "number", "exclusiveMinimum": 0,
-                "description": "De n in de eis L/n; telt alleen bij klasse \"custom\"." },
+                "description": "De n in de eis L/n; telt alleen bij klasse \"custom\". Moet groter dan nul zijn; 0 of negatief wordt geweigerd met reden." },
             "deflectionAddLimitNumerator": { "type": "number", "exclusiveMinimum": 0,
                 "description": "Losse noemer n voor de BIJKOMENDE doorbuiging w_add; alleen staal. Weglaten = de NB-waarde bij de klasse. Alleen bedoeld om een externe referentie-uitwerking met een vaste noemer na te rekenen; het rapport vermeldt dan dat de noemer is opgegeven." },
             "preCamber_mm": { "type": "number",
