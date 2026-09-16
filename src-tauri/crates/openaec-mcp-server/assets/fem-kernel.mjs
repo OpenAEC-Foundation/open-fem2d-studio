@@ -5416,6 +5416,12 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
   const soort = rechthoek ? "rechthoek" : "polygoon";
   const heeftNaam = adres.edge !== void 0;
   const heeftIndex = adres.edgeIndex !== void 0;
+  if (adres.openingId !== void 0) {
+    return {
+      ok: false,
+      reden: "de last staat op de rand van een opening (`openingId`), maar hij wordt hier gelezen door een route die alleen de omtrek van de plaat kent. Meld dit: het adres wordt bewust geweigerd in plaats van stil op de omtrek gelegd."
+    };
+  }
   if (heeftNaam && heeftIndex) {
     return {
       ok: false,
@@ -5493,7 +5499,87 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
     naam
   };
 }
+function bepaalPlaatlastRand(punten, openingen, adres, tolMm = 1) {
+  if (adres.openingId === void 0) return bepaalPlaatRand(punten, adres, tolMm);
+  if (adres.edge !== void 0) {
+    return {
+      ok: false,
+      reden: "de last noemt zowel een opening (`openingId`) als een benoemde rand (`edge`). Een opening heeft geen benoemde randen; kies de rand met `edgeIndex` (rand j loopt van openingshoek j naar hoek j+1)."
+    };
+  }
+  if (!Number.isInteger(adres.openingId)) {
+    return {
+      ok: false,
+      reden: `\`openingId\` ${adres.openingId} is geen geheel getal; geef het id van een opening van deze plaat.`
+    };
+  }
+  const lijst = openingen ?? [];
+  if (lijst.length === 0) {
+    return {
+      ok: false,
+      reden: `de last staat op opening ${adres.openingId}, maar deze plaat heeft geen openingen.`
+    };
+  }
+  const treffers = lijst.map((o, i2) => ({ o, i: i2 })).filter(({ o }) => o.id === adres.openingId);
+  if (treffers.length === 0) {
+    return {
+      ok: false,
+      reden: `opening ${adres.openingId} bestaat niet op deze plaat. Aanwezig: ${lijst.map((o) => o.id).join(", ")}.`
+    };
+  }
+  if (treffers.length > 1) {
+    return {
+      ok: false,
+      reden: `opening ${adres.openingId} komt ${treffers.length} keer voor op deze plaat; het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.`
+    };
+  }
+  const { o: opening, i: openingIndex } = treffers[0];
+  const n = opening.punten.length;
+  if (n < 3) {
+    return {
+      ok: false,
+      reden: `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`
+    };
+  }
+  if (adres.edgeIndex === void 0) {
+    return {
+      ok: false,
+      reden: `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef \`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`
+    };
+  }
+  const i = adres.edgeIndex;
+  if (!Number.isInteger(i) || i < 0 || i >= n) {
+    return {
+      ok: false,
+      reden: `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`
+    };
+  }
+  const j = (i + 1) % n;
+  const van = opening.punten[i], naar = opening.punten[j];
+  const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
+  if (!(lengte > tolMm)) {
+    return {
+      ok: false,
+      reden: `rand ${i + 1} van opening ${adres.openingId} heeft lengte ${lengte.toFixed(3)} mm en kan geen last dragen.`
+    };
+  }
+  return {
+    ok: true,
+    soort: "opening",
+    hoekVan: i,
+    hoekNaar: j,
+    van,
+    naar,
+    lengte,
+    edgeIndex: i,
+    openingIndex,
+    openingId: adres.openingId
+  };
+}
 function plaatRandLabel(adres) {
+  if (adres.openingId !== void 0) {
+    return adres.edgeIndex !== void 0 ? `rand ${adres.edgeIndex + 1} van opening ${adres.openingId}` : `opening ${adres.openingId} (rand onbekend)`;
+  }
   if (adres.edgeIndex !== void 0) return `rand ${adres.edgeIndex + 1}`;
   if (adres.edge !== void 0 && PLAAT_RAND_NAMEN.includes(adres.edge)) {
     return PLAAT_RAND_NAAM_NL[adres.edge];
@@ -16227,7 +16313,15 @@ function buildMesh(input, loadFactor) {
         right: naarIds(raster.randen.right)
       }, false);
       mesh.addPlateRegion(region);
-      plateInfo.push({ plateId: p.id, region, hoeken: punten });
+      plateInfo.push({
+        plateId: p.id,
+        region,
+        hoeken: punten,
+        openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
+        // Het raster levert de knopen per openingsrand zelf (gridlijnen lopen
+        // door elke openingsrand); omzetten naar mesh-knoop-ids.
+        openingEdgeNodeIds: raster.openingEdgeNodeIndices.map((randen) => randen.map((rand) => naarIds(rand)))
+      });
       pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
@@ -16243,7 +16337,16 @@ function buildMesh(input, loadFactor) {
       );
       mesh.addPlateRegion(region);
       const edgeNodeIds = cache.edgeNodeIndices.map((rand) => rand.map((i) => k.knoopIdPerPunt[i]));
-      plateInfo.push({ plateId: p.id, region, edgeNodeIds, hoeken: punten });
+      plateInfo.push({
+        plateId: p.id,
+        region,
+        edgeNodeIds,
+        hoeken: punten,
+        openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
+        // De cache is hierboven al gekeurd (één lijst per openingsrand, van
+        // hoek tot hoek); zonder openingen blijft de lijst leeg.
+        openingEdgeNodeIds: (cache.openingEdgeNodeIndices ?? []).map((randen) => randen.map((rand) => rand.map((i) => k.knoopIdPerPunt[i])))
+      });
       pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
@@ -16255,10 +16358,19 @@ function buildMesh(input, loadFactor) {
         `Plaat ${plateId} staat niet in het model, maar ${wat} verwijst ernaar. Een last zonder plaat overslaan zou een berekening geven zonder die last.`
       );
     }
-    const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
+    const rand = bepaalPlaatlastRand(info.hoeken, info.openingen, adres, TOL_MM);
     if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} \u2014 ${rand.reden}`);
     let kandidaten;
-    if (info.edgeNodeIds) {
+    if (rand.openingIndex !== void 0) {
+      const randen = info.openingEdgeNodeIds[rand.openingIndex];
+      const lijst = randen?.[rand.edgeIndex];
+      if (!lijst) {
+        throw new Error(
+          `Plaat ${plateId}: ${wat} \u2014 rand ${rand.edgeIndex + 1} van opening ${rand.openingId} heeft geen rekenknopen in het rekenmesh. Wijzig de plaat zodat het mesh opnieuw wordt gemaakt.`
+        );
+      }
+      kandidaten = lijst;
+    } else if (info.edgeNodeIds) {
       const n = info.hoeken.length;
       let k = rand.edgeIndex;
       if (k === void 0) {
@@ -18739,6 +18851,9 @@ function randlastNaarSolverInput(l) {
     plateId: l.plateId,
     ...l.edge !== void 0 ? { edge: l.edge } : {},
     ...l.edgeIndex !== void 0 ? { edgeIndex: l.edgeIndex } : {},
+    // Openingsrand: alleen mee als het veld er staat, zodat een randlast op de
+    // omtrek byte-gelijke solverinvoer houdt.
+    ...l.openingId !== void 0 ? { openingId: l.openingId } : {},
     p: l.q,
     // Deellast en trapezium: dezelfde velden en dezelfde betekenis als bij een
     // staaf, maar langs de rand vanaf de beginhoek. Alleen aanwezig als ze
@@ -18756,6 +18871,7 @@ function randpuntlastNaarSolverInput(l) {
     plateId: l.plateId,
     ...l.edge !== void 0 ? { edge: l.edge } : {},
     ...l.edgeIndex !== void 0 ? { edgeIndex: l.edgeIndex } : {},
+    ...l.openingId !== void 0 ? { openingId: l.openingId } : {},
     posFrac: l.posFrac,
     fx: (l.fx ?? 0) * 1e3,
     fz: (l.fz ?? 0) * 1e3
@@ -19804,6 +19920,7 @@ var LOAD_VELDEN = [
   "plateId",
   "edge",
   "edgeIndex",
+  "openingId",
   "gegenereerdDoor",
   "omschrijving"
 ];
@@ -20356,7 +20473,7 @@ function controleerVelden(rauw) {
     } else {
       keurEnum(l.type, LOAD_TYPES, `${pad}.type`, fouten);
     }
-    for (const veld of ["nodeId", "beamId", "plateId", "edgeIndex"]) {
+    for (const veld of ["nodeId", "beamId", "plateId", "edgeIndex", "openingId"]) {
       if (l[veld] !== void 0 && !isGeheel(l[veld])) {
         fouten.push(`${pad}.${veld}: moet een geheel getal zijn.`);
       }
@@ -20685,9 +20802,15 @@ function valideerModel(rauw, opties = {}) {
       const plaat = plates.find((p) => p.id === l.plateId);
       const hoeken = (plaat?.nodeIds ?? []).map((nid) => knoopById.get(nid));
       if (plaat && hoeken.every((h) => h !== void 0)) {
-        const rand = bepaalPlaatRand(
+        const openingen = (Array.isArray(plaat.openingen) ? plaat.openingen : []).filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten));
+        const rand = bepaalPlaatlastRand(
           hoeken,
-          { edge: l.edge, edgeIndex: l.edgeIndex },
+          openingen,
+          {
+            edge: l.edge,
+            edgeIndex: l.edgeIndex,
+            openingId: l.openingId
+          },
           1
         );
         if (!rand.ok) errors.push(`Last ${id} op plaat ${l.plateId}: ${rand.reden}`);
@@ -20702,7 +20825,7 @@ function valideerModel(rauw, opties = {}) {
         );
       }
     }
-    const heeftRandadres = l.edge !== void 0 || l.edgeIndex !== void 0;
+    const heeftRandadres = l.edge !== void 0 || l.edgeIndex !== void 0 || l.openingId !== void 0;
     if (l.plateId !== void 0 && l.type !== "edgeLoad" && l.type !== "pointForce") {
       errors.push(
         `Last ${id} (type "${String(l.type)}") noemt een plaat (\`plateId\`), maar op een plaat kan alleen een randlast (edgeLoad) of een puntlast op een plaatrand (pointForce) staan. Deze last wordt daar niet meegerekend.`
@@ -20710,7 +20833,7 @@ function valideerModel(rauw, opties = {}) {
     }
     if (heeftRandadres && l.plateId === void 0) {
       errors.push(
-        `Last ${id} noemt een plaatrand (\`edge\`/\`edgeIndex\`) maar geen plaat (\`plateId\`); die rand hoort bij niets en wordt niet meegerekend.`
+        `Last ${id} noemt een plaatrand (\`edge\`/\`edgeIndex\`/\`openingId\`) maar geen plaat (\`plateId\`); die rand hoort bij niets en wordt niet meegerekend.`
       );
     }
     if (l.type === "pointForce" && l.plateId !== void 0) {
@@ -21887,6 +22010,7 @@ export {
   bepaalDoorbuigingsInvoer,
   bepaalPlaatRand,
   bepaalPlaatStijfheid,
+  bepaalPlaatlastRand,
   bepaalStandaardRol,
   bepaalVerloop,
   berekenE,
