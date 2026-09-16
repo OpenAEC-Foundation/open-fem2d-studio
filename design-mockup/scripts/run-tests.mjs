@@ -219,6 +219,12 @@ const BUNDEL_TESTS = new Set([
   // de herschreven bundelkopie staat naast het origineel, dus dat pad blijft
   // kloppen.
   "plaat-materiaal",
+  // Plaatspanningen in de MATERIAALASSEN (issue #14): σ₁/σ₂/τ₁₂ per element
+  // en per combinatie uit `engine`, `combinations` en `plaatMateriaal` — alle
+  // drie in de barrel. Hoort óók tegen de bundel: de sidecar rekent met
+  // dezelfde engine, en een bundel die de omrekening laat vallen, levert
+  // straks een houttoets met spanningen in de verkeerde assen.
+  "plaat-materiaalassen",
   // Randlast en randpuntlast op een OPENINGSRAND: engine, mapping, poort,
   // sidecar (verwerkVerzoek), projectbestand en IFC-export — allemaal in de
   // barrel, en juist in de bundel van belang: de sidecar rekent de plaat met

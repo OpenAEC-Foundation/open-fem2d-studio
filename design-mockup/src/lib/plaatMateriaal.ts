@@ -505,3 +505,69 @@ export function plaatMateriaalLabel(s: PlaatStijfheid): string {
   };
   return `${s.naam} (${soortNaam[s.soort]})`;
 }
+
+/**
+ * Spanning van de globale assen (σx, σy, τxy) naar de MATERIAALASSEN
+ * (σ₁, σ₂, τ₁₂) van een plaat met hoofdrichting θ — de hoek van de globale
+ * x-as naar richting 1, tegen de klok in, dezelfde θ als in de materiaalmatrix
+ * van `core/fem/Triangle.ts`.
+ *
+ * WAAROM. Een houttoets kijkt naar de spanning LANGS en DWARS op de vezel
+ * (NEN-EN 1995-1-1 6.1.2 en 6.1.3 met f_t,0 en f_t,90, 6.1.7 met f_v): die
+ * sterktes horen bij de materiaalassen, niet bij de globale assen van het
+ * model. Bij hoofdrichting 0° vallen beide samen; bij elke andere hoek niet.
+ *
+ * De spanningstransformatie is Tσ(θ) · {σx, σy, τxy}, de tegenhanger van de
+ * rektransformatie Tε van de materiaalmatrix (Tσ⁻¹ = Tεᵀ). Met c = cos θ en
+ * s = sin θ:
+ *
+ *     σ₁  = σx·c² + σy·s² + 2·τxy·s·c
+ *     σ₂  = σx·s² + σy·c² − 2·τxy·s·c
+ *     τ₁₂ = (σy − σx)·s·c + τxy·(c² − s²)
+ *
+ * Twee invarianten volgen er direct uit en worden getest: σ₁ + σ₂ = σx + σy,
+ * en σ₁·σ₂ − τ₁₂² = σx·σy − τxy².
+ */
+export function spanningInMateriaalassen(
+  sigmaX: number,
+  sigmaY: number,
+  tauXY: number,
+  hoekGraden: number,
+): { sigma1: number; sigma2: number; tau12: number } {
+  const theta = (hoekGraden * Math.PI) / 180;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  return {
+    sigma1: sigmaX * c * c + sigmaY * s * s + 2 * tauXY * s * c,
+    sigma2: sigmaX * s * s + sigmaY * c * c - 2 * tauXY * s * c,
+    tau12: (sigmaY - sigmaX) * s * c + tauXY * (c * c - s * s),
+  };
+}
+
+/**
+ * Min/max van σ₁, σ₂ en τ₁₂ over de elementen van één plaat, plus de hoek
+ * waarin ze zijn uitgedrukt — het `materiaalassen`-blok van een plaatresultaat.
+ * Elementen zonder materiaalasspanning tellen niet mee; zonder elementen
+ * staan de grenzen op 0 (zelfde afspraak als de globale ranges).
+ */
+export function materiaalasRanges(
+  elementen: readonly { materiaalassen?: { sigma1: number; sigma2: number; tau12: number } }[],
+  hoekGraden: number,
+): {
+  hoekGraden: number;
+  ranges: Record<"sigma1" | "sigma2" | "tau12", { min: number; max: number }>;
+} {
+  const mk = () => ({ min: Infinity, max: -Infinity });
+  const ranges = { sigma1: mk(), sigma2: mk(), tau12: mk() };
+  for (const el of elementen) {
+    const m = el.materiaalassen;
+    if (!m) continue;
+    for (const k of ["sigma1", "sigma2", "tau12"] as const) {
+      if (m[k] < ranges[k].min) ranges[k].min = m[k];
+      if (m[k] > ranges[k].max) ranges[k].max = m[k];
+    }
+  }
+  for (const r of Object.values(ranges)) {
+    if (!Number.isFinite(r.min)) { r.min = 0; r.max = 0; }
+  }
+  return { hoekGraden, ranges };
+}

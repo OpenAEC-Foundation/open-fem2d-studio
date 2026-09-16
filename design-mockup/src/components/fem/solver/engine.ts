@@ -37,7 +37,9 @@ import {
   dichtstbijzijndePlaatrand, staafeindeBijPlaatrandTekst, STAAFEINDE_BIJ_RAND_MM,
 } from "../femTypes";
 import type { PlaatMeshCache, PlaatPunt } from "../femTypes";
-import { bepaalPlaatStijfheid, type PlaatStijfheid } from "../../../lib/plaatMateriaal";
+import {
+  bepaalPlaatStijfheid, materiaalasRanges, spanningInMateriaalassen, type PlaatStijfheid,
+} from "../../../lib/plaatMateriaal";
 import type {
   SolverInput,
   SolverResult,
@@ -85,6 +87,13 @@ type PlateRegionInfo = {
    * al gekeurd, zodat de lijst werkelijk van hoek tot hoek loopt.
    */
   openingEdgeNodeIds: number[][][];
+  /**
+   * Hoofdrichting (graden) van een RICHTINGSAFHANKELIJKE plaat — alleen dan
+   * gezet. Daarmee rekent `convertResult` de elementspanningen ook om naar de
+   * materiaalassen; een isotrope plaat krijgt dat veld niet en haar resultaat
+   * blijft ongewijzigd.
+   */
+  materiaalHoekGraden?: number;
 };
 
 /** Eén kinematische randkoppeling, zie `NonlinearSolverOptions.randKoppelingen`. */
@@ -458,6 +467,11 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
     if (!uit.ok) throw new Error(`Plaat ${p.id}: ${uit.reden}`);
     plaatStijfheden.set(p.id, uit.stijfheid);
     return uit.stijfheid;
+  };
+  /** `materiaalHoekGraden` voor `PlateRegionInfo` — alleen bij een richtingsafhankelijke plaat. */
+  const materiaalHoek = (p: SolverPlateInput): { materiaalHoekGraden?: number } => {
+    const st = plaatStijfheid(p);
+    return st.orthotroop ? { materiaalHoekGraden: st.hoekGraden } : {};
   };
   const verwezenKnopen = new Set<number>();
   for (const b of input.beams) { verwezenKnopen.add(b.from); verwezenKnopen.add(b.to); }
@@ -1163,7 +1177,7 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
       }, false);
       mesh.addPlateRegion(region);
       plateInfo.push({
-        plateId: p.id, region, hoeken: punten,
+        plateId: p.id, region, hoeken: punten, ...materiaalHoek(p),
         openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
         // Het raster levert de knopen per openingsrand zelf (gridlijnen lopen
         // door elke openingsrand); omzetten naar mesh-knoop-ids.
@@ -1189,7 +1203,7 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
       const edgeNodeIds = cache.edgeNodeIndices.map((rand) =>
         rand.map((i) => k.knoopIdPerPunt[i]));
       plateInfo.push({
-        plateId: p.id, region, edgeNodeIds, hoeken: punten,
+        plateId: p.id, region, edgeNodeIds, hoeken: punten, ...materiaalHoek(p),
         openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
         // De cache is hierboven al gekeurd (één lijst per openingsrand, van
         // hoek tot hoek); zonder openingen blijft de lijst leeg.
@@ -2085,6 +2099,10 @@ function convertResult(
           ny:  (st.ny  ?? 0) / 1000,
           nxy: (st.nxy ?? 0) / 1000,
         };
+        if (info.materiaalHoekGraden !== undefined) {
+          item.materiaalassen = spanningInMateriaalassen(
+            item.sigmaX, item.sigmaY, item.tauXY, info.materiaalHoekGraden);
+        }
         plaatElementen.push(item);
         bijwerken(ranges.sigmaX, item.sigmaX);
         bijwerken(ranges.sigmaY, item.sigmaY);
@@ -2098,7 +2116,12 @@ function convertResult(
       for (const r of Object.values(ranges)) {
         if (!Number.isFinite(r.min)) { r.min = 0; r.max = 0; }
       }
-      plateResults.push({ plateId: info.plateId, elements: plaatElementen, ranges });
+      plateResults.push({
+        plateId: info.plateId, elements: plaatElementen, ranges,
+        ...(info.materiaalHoekGraden !== undefined
+          ? { materiaalassen: materiaalasRanges(plaatElementen, info.materiaalHoekGraden) }
+          : {}),
+      });
     }
   }
 

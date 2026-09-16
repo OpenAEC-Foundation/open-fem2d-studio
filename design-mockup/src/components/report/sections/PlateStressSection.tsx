@@ -21,6 +21,12 @@
  * Voor het enkelgeval-equivalent (bijv. een combinatie met alleen factor 1,0
  * op één geval) zijn de waarden identiek aan de canvas-contourlegenda.
  *
+ * MATERIAALASSEN. Een richtingsafhankelijke plaat (hout, kruislaaghout) krijgt
+ * een derde en vierde tabel met σ₁, σ₂ en τ₁₂ in de hoofdrichting van het
+ * materiaal (`lib/plaatMateriaal.spanningInMateriaalassen`): de spanningen die
+ * een houttoets vraagt. Isotrope platen staan daar niet in; hun tabellen
+ * blijven zoals ze waren.
+ *
  * Eenheden: spanningen N/mm², elementgemiddeld (constante-rek-elementen).
  * Zonder (actuele) resultaten: de "Nog niet berekend"-melding; zonder platen
  * een eerlijke lege-modelmelding.
@@ -30,6 +36,7 @@ import type { LoadCombination } from "../../fem/solver/combinations";
 import type { PlateResult, SolverResult } from "../../fem/solver/types";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
+import { spanningInMateriaalassen } from "../../../lib/plaatMateriaal";
 import {
   NotComputedNote,
   ScopePrintLine,
@@ -50,6 +57,21 @@ interface PlateComboRow {
   vonMisesMax: number;
   /** Element-id waar de maximale von Mises-spanning optreedt. */
   governingElementId: number;
+  /** Alleen bij een richtingsafhankelijke plaat: σ₁/σ₂/τ₁₂ in de materiaalassen. */
+  materiaal?: MateriaalMinMax;
+}
+
+/** Min/max in de materiaalassen, met de hoofdrichting waarin ze gelden. */
+interface MateriaalMinMax {
+  hoekGraden: number;
+  sigma1: MinMax;
+  sigma2: MinMax;
+  tau12: MinMax;
+}
+
+/** Nieuwe min/max-grenzen of bestaande verruimen met één waarde. */
+function verruim(r: MinMax | undefined, v: number): MinMax {
+  return r ? { min: Math.min(r.min, v), max: Math.max(r.max, v) } : { min: v, max: v };
 }
 
 /** Rij voor de omhullende: extremen over alle combinaties. */
@@ -75,6 +97,16 @@ function rowFromPlateResult(pr: PlateResult): PlateComboRow | null {
     tauXY: { ...pr.ranges.tauXY },
     vonMisesMax: pr.ranges.vonMises.max,
     governingElementId: gov.elementId,
+    ...(pr.materiaalassen
+      ? {
+          materiaal: {
+            hoekGraden: pr.materiaalassen.hoekGraden,
+            sigma1: { ...pr.materiaalassen.ranges.sigma1 },
+            sigma2: { ...pr.materiaalassen.ranges.sigma2 },
+            tau12: { ...pr.materiaalassen.ranges.tau12 },
+          },
+        }
+      : {}),
   };
 }
 
@@ -97,10 +129,13 @@ function plateRowForCombo(
   //    combineResults voor staven).
   if (!caseResults) return null;
   const acc = new Map<number, { sx: number; sy: number; txy: number }>();
+  // De hoofdrichting hoort bij de plaat en is in elk geval dezelfde.
+  let hoekGraden: number | undefined;
   for (const [caseId, factor] of combo.factors) {
     if (factor === 0) continue;
     const pr = caseResults.get(caseId)?.plateElements?.find((r) => r.plateId === plateId);
     if (!pr) continue;
+    if (pr.materiaalassen) hoekGraden = pr.materiaalassen.hoekGraden;
     for (const el of pr.elements) {
       const a = acc.get(el.elementId) ?? { sx: 0, sy: 0, txy: 0 };
       a.sx += factor * el.sigmaX;
@@ -114,6 +149,9 @@ function plateRowForCombo(
   let row: PlateComboRow | null = null;
   for (const [elementId, a] of acc) {
     const vm = vonMises(a.sx, a.sy, a.txy);
+    const m = hoekGraden !== undefined
+      ? spanningInMateriaalassen(a.sx, a.sy, a.txy, hoekGraden)
+      : null;
     if (!row) {
       row = {
         sigmaX: { min: a.sx, max: a.sx },
@@ -133,6 +171,14 @@ function plateRowForCombo(
         row.vonMisesMax = vm;
         row.governingElementId = elementId;
       }
+    }
+    if (m && hoekGraden !== undefined) {
+      row.materiaal = {
+        hoekGraden,
+        sigma1: verruim(row.materiaal?.sigma1, m.sigma1),
+        sigma2: verruim(row.materiaal?.sigma2, m.sigma2),
+        tau12: verruim(row.materiaal?.tau12, m.tau12),
+      };
     }
   }
   return row;
@@ -191,6 +237,17 @@ export default function PlateStressSection() {
         row.tauXY.min = Math.min(row.tauXY.min, r.tauXY.min);
         row.tauXY.max = Math.max(row.tauXY.max, r.tauXY.max);
       }
+      if (r.materiaal) {
+        const m = row.materiaal;
+        const samen = (a: MinMax | undefined, b: MinMax): MinMax =>
+          a ? { min: Math.min(a.min, b.min), max: Math.max(a.max, b.max) } : { ...b };
+        row.materiaal = {
+          hoekGraden: r.materiaal.hoekGraden,
+          sigma1: samen(m === r.materiaal ? undefined : m?.sigma1, r.materiaal.sigma1),
+          sigma2: samen(m === r.materiaal ? undefined : m?.sigma2, r.materiaal.sigma2),
+          tau12: samen(m === r.materiaal ? undefined : m?.tau12, r.materiaal.tau12),
+        };
+      }
     }
     if (row) envRows.set(p.id, row);
   }
@@ -221,6 +278,40 @@ export default function PlateStressSection() {
       <td className="rpt-num">{fmtNum(r.vonMisesMax, 2)}</td>
     </>
   );
+
+  // Materiaalassen: alleen platen met een richtingsafhankelijk materiaal.
+  const matHeads = (
+    <>
+      <th className="rpt-num">{t("report.colMainDirection", "Hoofdrichting [°]")}</th>
+      <th className="rpt-num">σ₁,min [N/mm²]</th>
+      <th className="rpt-num">σ₁,max [N/mm²]</th>
+      <th className="rpt-num">σ₂,min [N/mm²]</th>
+      <th className="rpt-num">σ₂,max [N/mm²]</th>
+      <th className="rpt-num">τ₁₂,min [N/mm²]</th>
+      <th className="rpt-num">τ₁₂,max [N/mm²]</th>
+    </>
+  );
+  const matCells = (m: MateriaalMinMax) => (
+    <>
+      <td className="rpt-num">{fmtNum(m.hoekGraden, 1)}</td>
+      <td className="rpt-num">{fmtNum(m.sigma1.min, 2)}</td>
+      <td className="rpt-num">{fmtNum(m.sigma1.max, 2)}</td>
+      <td className="rpt-num">{fmtNum(m.sigma2.min, 2)}</td>
+      <td className="rpt-num">{fmtNum(m.sigma2.max, 2)}</td>
+      <td className="rpt-num">{fmtNum(m.tau12.min, 2)}</td>
+      <td className="rpt-num">{fmtNum(m.tau12.max, 2)}</td>
+    </>
+  );
+  const comboMatRows = rs.scope !== "envelope" && rs.combo
+    ? sortedPlates.flatMap((p) => {
+        const r = plateRowForCombo(rs.combo!, rs.result, caseResults, p.id);
+        return r?.materiaal ? [{ id: p.id, m: r.materiaal }] : [];
+      })
+    : [];
+  const envMatRows = sortedPlates.flatMap((p) => {
+    const m = envRows.get(p.id)?.materiaal;
+    return m ? [{ id: p.id, m }] : [];
+  });
 
   return (
     <div className="rpt-block">
@@ -285,6 +376,57 @@ export default function PlateStressSection() {
           })}
         </tbody>
       </table>
+
+      {/* ── Tabel 3 en 4: in de materiaalassen (hout, kruislaaghout) ── */}
+      {comboMatRows.length > 0 && rs.combo && (
+        <>
+          <h3 className="rpt-h3">
+            {t("report.plateStressMaterialTitle", "In de materiaalassen")}: {rs.combo.name}
+          </h3>
+          <table className="rpt-table">
+            <thead>
+              <tr>
+                <th>{t("report.colPlate", "Plaat")}</th>
+                {matHeads}
+              </tr>
+            </thead>
+            <tbody>
+              {comboMatRows.map(({ id, m }) => (
+                <tr key={id}>
+                  <td>{id}</td>
+                  {matCells(m)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {envMatRows.length > 0 && (
+        <>
+          <h3 className="rpt-h3">
+            {t("report.plateStressMaterialEnvelopeTitle", "In de materiaalassen — omhullende")}
+          </h3>
+          <table className="rpt-table">
+            <thead>
+              <tr>
+                <th>{t("report.colPlate", "Plaat")}</th>
+                {matHeads}
+              </tr>
+            </thead>
+            <tbody>
+              {envMatRows.map(({ id, m }) => (
+                <tr key={id}>
+                  <td>{id}</td>
+                  {matCells(m)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
+            {t("report.plateStressMaterialNote")}
+          </p>
+        </>
+      )}
       <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
         {t(
           "report.plateStressNote",
