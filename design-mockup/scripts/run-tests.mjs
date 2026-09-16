@@ -149,6 +149,14 @@ const BUNDEL_TESTS = new Set([
   // standaard (k_cr 1,0, kiptoets aan) terwijl de bron de keuze van de
   // gebruiker volgt, en dat verschil hoort luid op te vallen.
   "hout-checkconfig",
+  // De eindstijfheid E_mean,fin van hout in een gemengd, statisch onbepaald
+  // model (EN 1995-1-1 2.2.3(5), 2.3.2.2): de bepaling, de eindtoestandvarianten
+  // van de UGT-combinaties en de herverdeling tegen de handberekening. Praat met
+  // `engine`, `combinations`, `bouwMultiInput`, `houtEindstijfheid` en de
+  // in-proces sidecar — alles in de barrel. Hoort juist óók tegen de bundel:
+  // laat de bundel de varianten vallen, dan toetst de MCP-weg het staal naast
+  // weggekropen hout stil met de krachtsverdeling van E_mean.
+  "hout-eindstijfheid",
   "lastomschrijving",
   "leeg-geval",
   "n-teken",

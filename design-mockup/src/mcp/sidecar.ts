@@ -70,6 +70,11 @@ import {
   type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
+import {
+  bepaalEindstijfheidHout,
+  losEindtoestandOp,
+  metEindtoestandVarianten,
+} from "../lib/houtEindstijfheid";
 import { DoorsnedeOnbekendFout } from "../lib/sectionResolver";
 // De scheefstand φ: dezelfde afleiding als de app (App.tsx → bepaalScheefstand).
 import {
@@ -866,7 +871,7 @@ function rekenDoor(payload: Record<string, unknown>) {
   );
   // Met een scheefstand elke combinatie in twee varianten, één per richting —
   // dezelfde ontvouwing als de app (basisaudit nr 28).
-  const combinaties = metScheefstandRichtingen(
+  const combinatiesZonderEindtoestand = metScheefstandRichtingen(
     selectie.actief,
     gelezen.model.scheefstandEnabled,
     gelezen.model.scheefstandRichting,
@@ -900,6 +905,24 @@ function rekenDoor(payload: Record<string, unknown>) {
   }
   const nonlinear = analysetype !== "eersteOrde";
 
+  // De eindstijfheid van hout (NEN-EN 1995-1-1 2.3.2.2): in een statisch
+  // onbepaalde constructie met verschillend kruipgedrag krijgt elke
+  // UGT-combinatie eindtoestandvarianten met E_mean,fin — dezelfde bepaling en
+  // dezelfde varianten als de app (`lib/houtEindstijfheid.ts`). Geldt
+  // 2.2.3(5), dan is `combinaties` dezelfde lijst als zonder deze stap.
+  // Met de toetsconfiguratie uit `check_config` erbij: de klimaatklasse daarin
+  // bepaalt k_def (tabel 3.2), net als bij de toetsing zelf.
+  const eindstijfheid = bepaalEindstijfheidHout({
+    nodes: gelezen.model.nodes,
+    beams: pasCheckConfigToe(gelezen.beams, payload),
+    supports: gelezen.model.supports,
+    plates: gelezen.model.plates,
+    analysetype,
+  });
+  const combinaties = metEindtoestandVarianten(
+    combinatiesZonderEindtoestand, gelezen.model.loadCases, eindstijfheid,
+  );
+
   const detail = payload.detail ?? "samenvatting";
   if (detail !== "samenvatting" && detail !== "stations") {
     throw new InvoerFout(
@@ -920,6 +943,11 @@ function rekenDoor(payload: Record<string, unknown>) {
     throw new ModelFout(String((err as Error)?.message ?? err));
   }
   const { perCase } = perCaseResultaat;
+  try {
+    losEindtoestandOp(multiInput, perCase, combinaties, eindstijfheid);
+  } catch (err) {
+    throw new ModelFout(String((err as Error)?.message ?? err));
+  }
 
   let combinationResults: Map<number, SolverResult>;
   let envelope: ReturnType<typeof computeEnvelope>;
@@ -1036,6 +1064,8 @@ function rekenDoor(payload: Record<string, unknown>) {
   // die afleiding te melden had. Zo is in het antwoord te lezen waarom de
   // horizontale krachten niet bij de noemer uit het bestand horen.
   waarschuwingen.push(...gelezen.scheefstandMeldingen);
+  // Eindstijfheid hout: wat er is doorgerekend en wat niet (2.2.3(4), 2.2.3(5)).
+  waarschuwingen.push(...eindstijfheid.meldingen.map((m) => (m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst)));
   if (legeGevallen.length > 0) {
     waarschuwingen.push(
       `Belastinggeval(len) ${legeGevallen.join(", ")} zonder werkzame last ` +

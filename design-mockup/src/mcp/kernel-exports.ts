@@ -64,6 +64,9 @@ export * from "../lib/steelCheckBuilder";
 // bewezen te worden.
 export * from "../lib/referentierichting";
 export * from "../lib/timberCheckBuilder";
+// De eindstijfheid van hout (EN 1995-1-1 2.3.2.2): de sidecar maakt er de
+// eindtoestandvarianten mee, en de test hoort tegen de bundel te draaien.
+export * from "../lib/houtEindstijfheid";
 export * from "../lib/sectionResolver";
 // Het materiaal van een PLAAT (stap 3): pure rekencode die de bestaande
 // materiaaltabellen leest. Zit al in de bundel via `engine.ts` en

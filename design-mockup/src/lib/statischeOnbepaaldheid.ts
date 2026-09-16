@@ -121,7 +121,21 @@ export function bepaalOnbepaaldheid(
   opleggingen: Support[] | undefined,
   solverResultaten: Iterable<SolverResult> = [],
 ): OnbepaaldheidUitkomst {
-  const metPlaten = heeftPlaten(solverResultaten);
+  return bepaalOnbepaaldheidVanModel(knopen, staven, opleggingen, heeftPlaten(solverResultaten));
+}
+
+/**
+ * Dezelfde telling, met de platen uit het MODEL in plaats van uit de
+ * solverresultaten. Nodig waar de bepaling vóór het rekenen valt — de
+ * eindstijfheid van hout (`lib/houtEindstijfheid.ts`) beslist al bij het
+ * samenstellen van de combinaties of er een eindtoestand bij moet.
+ */
+export function bepaalOnbepaaldheidVanModel(
+  knopen: Node[],
+  staven: Beam[],
+  opleggingen: Support[] | undefined,
+  metPlaten: boolean,
+): OnbepaaldheidUitkomst {
 
   const m = staven.length;
 

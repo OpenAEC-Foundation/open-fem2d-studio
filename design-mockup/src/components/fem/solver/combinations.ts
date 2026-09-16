@@ -75,6 +75,47 @@ export interface LoadCombination {
    * draagt de ononvouwen lijst.
    */
   scheefstandRichting?: 1 | -1;
+  /**
+   * Aanwezig = een EINDTOESTANDVARIANT van een UGT-combinatie: dezelfde
+   * factoren, maar doorgerekend met de eindstijfheid van het hout
+   * E_mean,fin = E_mean/(1 + ψ₂·k_def) (NEN-EN 1995-1-1 2.3.2.2(2)). Gezet door
+   * `metEindtoestandVarianten` (lib/houtEindstijfheid.ts), alleen in een
+   * statisch onbepaalde constructie met verschillend kruipgedrag. Wordt niet
+   * opgeslagen, net als de scheefstandrichting.
+   */
+  eindtoestand?: { psi2: number };
+}
+
+/**
+ * Verschuiving van het id van een eindtoestandvariant, per honderdste ψ₂:
+ * id + EINDTOESTAND_COMBO_OFFSET · round(100·ψ₂). Zie `metEindtoestandVarianten`.
+ */
+export const EINDTOESTAND_COMBO_OFFSET = 10_000_000;
+
+const EINDTOESTAND_KEY = "__femEindtoestand";
+
+/**
+ * Hang de gevallen van de eindtoestand voor één ψ₂ aan de perCase-Map van de
+ * gewone doorrekening — hetzelfde patroon als de tweede-orde-status. Zo leest
+ * `combineResults` (en daarmee `computeEnvelope`) voor een variant de juiste
+ * set, zonder dat een aanroeper iets extra hoeft mee te geven.
+ */
+export function zetEindtoestandGevallen(
+  perCase: Map<number, SolverResult>,
+  psi2: number,
+  gevallen: Map<number, SolverResult>,
+): void {
+  const p = perCase as unknown as Record<string, Map<number, Map<number, SolverResult>> | undefined>;
+  (p[EINDTOESTAND_KEY] ??= new Map()).set(psi2, gevallen);
+}
+
+/** De gevallen van de eindtoestand voor ψ₂, of undefined als die niet is doorgerekend. */
+export function getEindtoestandGevallen(
+  perCase: Map<number, SolverResult>,
+  psi2: number,
+): Map<number, SolverResult> | undefined {
+  const p = perCase as unknown as Record<string, Map<number, Map<number, SolverResult>> | undefined>;
+  return p[EINDTOESTAND_KEY]?.get(psi2);
 }
 
 /**
@@ -262,6 +303,30 @@ export function combineResults(
   combo: LoadCombination,
   perCase: Map<number, SolverResult>,
 ): SolverResult {
+  // ── Eindtoestandvariant (EN 1995-1-1 2.3.2.2(2)) ─────────────────────────
+  // Dezelfde superpositie, maar over de gevallen die met E_mean,fin zijn
+  // doorgerekend. Ontbreken die, dan is dat een fout en geen terugval op de
+  // gewone gevallen: dan zou de variant stil gelijk zijn aan de combinatie.
+  if (combo.eindtoestand !== undefined) {
+    const fin = getEindtoestandGevallen(perCase, combo.eindtoestand.psi2);
+    if (fin === undefined) {
+      throw new Error(
+        `Combinatie "${combo.name}" is een eindtoestandvariant (E_mean,fin, ` +
+          "NEN-EN 1995-1-1 2.3.2.2(2)), maar de eindtoestand is niet doorgerekend. " +
+          "Er wordt niet stil met E_mean gerekend.",
+      );
+    }
+    if (getSecondOrderState(perCase)) {
+      throw new Error(
+        `Combinatie "${combo.name}": een eindtoestandvariant hoort bij een eerste-orde-` +
+          "berekening (NEN-EN 1995-1-1 2.2.2(1)P); bij tweede orde wordt hij niet gerekend.",
+      );
+    }
+    const basis: LoadCombination = { ...combo };
+    delete basis.eindtoestand;
+    return combineResults(basis, fin);
+  }
+
   // ── 2e-orde-pad ─────────────────────────────────────────────────────────
   // perCase uit solveAllCasesNonlinear draagt de model-input mee: los deze
   // combinatie dan echt niet-lineair op (géén superpositie). Station-arrays
