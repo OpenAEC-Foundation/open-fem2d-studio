@@ -201,6 +201,12 @@ const BUNDEL_TESTS = new Set([
   // de herschreven bundelkopie staat naast het origineel, dus dat pad blijft
   // kloppen.
   "plaat-materiaal",
+  // Randlast en randpuntlast op een OPENINGSRAND: engine, mapping, poort,
+  // sidecar (verwerkVerzoek), projectbestand en IFC-export — allemaal in de
+  // barrel, en juist in de bundel van belang: de sidecar rekent de plaat met
+  // opening zonder canvas, dus een adres dat daar stil op de omtrek zou
+  // vallen, moet ook in de bundel weigeren.
+  "plaat-opening-randlast",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",
@@ -360,6 +366,10 @@ const ALLEEN_BRON = new Map([
   [
     "plaat-openingen-store",
     "test de modelcontrole (lib/modelControle) en het meereizen van openingen bij verplaatsen, roteren, spiegelen en kopiëren in de zustand-store; geen van beide hoort in de barrel",
+  ],
+  [
+    "plaat-opening-randlast-doorvoer",
+    "test de doorvoer van een last op een openingsrand BUITEN de rekenkern: de modelcontrole van het canvas (lib/modelControle) en de IFC-export (io/ifcExport). Geen van beide staat in de barrel; de rekenkant van hetzelfde adres — evenwicht, weigeringen in engine en MCP-poort, bit-identiek zonder openingen — staat in `plaat-opening-randlast` en draait wél tegen de bundel",
   ],
   [
     "materiaal-dubbelzinnig",
