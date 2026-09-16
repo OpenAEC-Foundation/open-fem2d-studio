@@ -11940,7 +11940,7 @@ var STEEL_SECTION_DIMS = {
     tw: 9.5,
     tf: 16,
     r: 18,
-    props: { iz: 284e5, welY: 736e3, welZ: 258e3, wplY: 827e3, wplZ: 396e3, avZ: 2788, it: 766e3, iw: 289455e6, iRadY: 94.28737927267832, iRadZ: 55.86482901503522 }
+    props: { iz: 284e5, welY: 736e3, welZ: 258e3, wplY: 827e3, wplZ: 393881, avZ: 2788, it: 766e3, iw: 289455e6, iRadY: 94.28737927267832, iRadZ: 55.86482901503522 }
   },
   "HEB240": {
     kind: "ISection",
@@ -12030,7 +12030,7 @@ var STEEL_SECTION_DIMS = {
     tw: 12,
     tf: 20,
     r: 12,
-    props: { iz: 399e4, welY: 19e4, welZ: 75300, wplY: 235e3, wplZ: 117e3, avZ: 1800, it: 682100, iw: 941747e4, iRadY: 46.29100498862757, iRadZ: 27.386127875258307 }
+    props: { iz: 399e4, welY: 19e4, welZ: 75300, wplY: 235e3, wplZ: 116313, avZ: 1800, it: 682100, iw: 941747e4, iRadY: 46.29100498862757, iRadZ: 27.386127875258307 }
   },
   "HEM120": {
     kind: "ISection",
@@ -12070,7 +12070,7 @@ var STEEL_SECTION_DIMS = {
     tw: 14.5,
     tf: 24,
     r: 15,
-    props: { iz: 258e5, welY: 748e3, welZ: 277e3, wplY: 884e3, wplZ: 428e3, avZ: 3440, it: 2033e3, iw: 194181e6, iRadY: 81.36011938627347, iRadZ: 47.78269394569507 }
+    props: { iz: 258e5, welY: 748e3, welZ: 277e3, wplY: 884e3, wplZ: 425189, avZ: 3440, it: 2033e3, iw: 194181e6, iRadY: 81.36011938627347, iRadZ: 47.78269394569507 }
   },
   "HEM200": {
     kind: "ISection",
@@ -12080,7 +12080,7 @@ var STEEL_SECTION_DIMS = {
     tw: 15,
     tf: 25,
     r: 18,
-    props: { iz: 365e5, welY: 967e3, welZ: 354e3, wplY: 114e4, wplZ: 549e3, avZ: 4075, it: 2594e3, iw: 336686e6, iRadY: 90.12290166533784, iRadZ: 52.78503141975699 }
+    props: { iz: 365e5, welY: 967e3, welZ: 354e3, wplY: 114e4, wplZ: 543217, avZ: 4075, it: 2594e3, iw: 336686e6, iRadY: 90.12290166533784, iRadZ: 52.78503141975699 }
   },
   "HEM220": {
     kind: "ISection",
@@ -12090,7 +12090,7 @@ var STEEL_SECTION_DIMS = {
     tw: 15.5,
     tf: 26,
     r: 18,
-    props: { iz: 502e5, welY: 122e4, welZ: 444e3, wplY: 143e4, wplZ: 69e4, avZ: 4487, it: 3153e3, iw: 559281e6, iRadY: 98.9881695866774, iRadZ: 58.04418589986876 }
+    props: { iz: 502e5, welY: 122e4, welZ: 444e3, wplY: 1419450, wplZ: 678553, avZ: 4487, it: 3153e3, iw: 559281e6, iRadY: 98.9881695866774, iRadZ: 58.04418589986876 }
   },
   "HEM240": {
     kind: "ISection",
@@ -12100,7 +12100,7 @@ var STEEL_SECTION_DIMS = {
     tw: 18,
     tf: 32,
     r: 21,
-    props: { iz: 815e5, welY: 18e5, welZ: 657e3, wplY: 212e4, wplZ: 102e4, avZ: 6048, it: 6279e3, iw: 112285e7, iRadY: 110.20435563080073, iRadZ: 63.835726674018524 }
+    props: { iz: 815e5, welY: 18e5, welZ: 657e3, wplY: 212e4, wplZ: 1005930, avZ: 6048, it: 6279e3, iw: 112285e7, iRadY: 110.20435563080073, iRadZ: 63.835726674018524 }
   },
   "HEM260": {
     kind: "ISection",
@@ -12110,7 +12110,7 @@ var STEEL_SECTION_DIMS = {
     tw: 18,
     tf: 32.5,
     r: 24,
-    props: { iz: 1045e5, welY: 216e4, welZ: 78e4, wplY: 253e4, wplZ: 121e4, avZ: 6725, it: 719e4, iw: 168308e7, iRadY: 119.29718429962286, iRadZ: 68.92024376045111 }
+    props: { iz: 1045e5, welY: 216e4, welZ: 78e4, wplY: 253e4, wplZ: 1192470, avZ: 6725, it: 719e4, iw: 168308e7, iRadY: 119.29718429962286, iRadZ: 68.92024376045111 }
   },
   "HEM280": {
     kind: "ISection",
@@ -12120,7 +12120,7 @@ var STEEL_SECTION_DIMS = {
     tw: 18.5,
     tf: 33,
     r: 24,
-    props: { iz: 1316e5, welY: 255e4, welZ: 914e3, wplY: 297e4, wplZ: 142e4, avZ: 7186.5, it: 8073e3, iw: 246184e7, iRadY: 128.3712065327216, iRadZ: 74.04953297174353 }
+    props: { iz: 1316e5, welY: 255e4, welZ: 914e3, wplY: 297e4, wplZ: 1396680, avZ: 7186.5, it: 8073e3, iw: 246184e7, iRadY: 128.3712065327216, iRadZ: 74.04953297174353 }
   },
   "HEM300": {
     kind: "ISection",
@@ -12130,7 +12130,7 @@ var STEEL_SECTION_DIMS = {
     tw: 21,
     tf: 39,
     r: 27,
-    props: { iz: 194e6, welY: 348e4, welZ: 125e4, wplY: 408e4, wplZ: 195e4, avZ: 9045, it: 1408e4, iw: 427798e7, iRadY: 139.77823076351888, iRadZ: 80.01649994861312 }
+    props: { iz: 194e6, welY: 348e4, welZ: 125e4, wplY: 408e4, wplZ: 1913180, avZ: 9045, it: 1408e4, iw: 427798e7, iRadY: 139.77823076351888, iRadZ: 80.01649994861312 }
   },
   "SHS80X80X4": {
     kind: "Shs",
