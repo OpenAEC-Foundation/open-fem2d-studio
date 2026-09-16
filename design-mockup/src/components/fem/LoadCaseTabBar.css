@@ -188,6 +188,10 @@
    op zolang het leeg is, in dezelfde kleur als de andere waarschuwingen. */
 .lc-tab-phi-waarschuwing { color: var(--theme-warning, #c77700); }
 .lc-tab-phi-waarschuwing .lc-tab-phi-input { border-color: var(--theme-warning, #c77700); }
+/* Bijlage B aan terwijl er een φ is opgegeven: die opgegeven waarde gaat voor,
+   dus de bijlage-B-velden rekenen niet mee. Gedimd, niet verborgen — zo blijft
+   te zien wat er zou gelden als het φ-vakje leeg wordt gemaakt. */
+.lc-tab-phi-overstemd { opacity: 0.55; }
 .lc-tab-phi-input {
   width: 52px;
   height: 20px;

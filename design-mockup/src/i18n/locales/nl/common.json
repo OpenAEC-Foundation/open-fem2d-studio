@@ -542,7 +542,7 @@
     },
     "segmentTitle": "Gewenste segmentlengte in mm. Elke betonstaaf wordt in even lange segmenten geknipt die elk hun eigen secans-EI krijgen (5.8.6(6)). Korter = nauwkeuriger en trager; de applicatie vergroft niet uit zichzelf.",
     "segment": "segment",
-    "creepTitle": "Eindwaarde van de kruipcoëfficiënt φ(∞,t₀) volgens art. 3.1.4, voor elke betonstaaf zonder eigen waarde bij de §5.8-gegevens. De kern verwerkt hem volgens 5.8.6(4) — alle rekwaarden maal (1 + φ_ef) — wat voor de beginhelling neerkomt op E_c,eff = E_cm/(1 + φ) van (7.20). LEEG = niet opgegeven: er wordt dan ZONDER kruip gerekend, de zakking komt te klein uit en dat is de onveilige kant. Art. 3.1.4 wordt hier niet uitgerekend: dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten.",
+    "creepTitle": "Eindwaarde van de kruipcoëfficiënt φ(∞,t₀) volgens art. 3.1.4, voor elke betonstaaf zonder eigen waarde bij de §5.8-gegevens. De kern verwerkt hem volgens 5.8.6(4) — alle rekwaarden maal (1 + φ_ef) — wat voor de beginhelling neerkomt op E_c,eff = E_cm/(1 + φ) van (7.20). LEEG = niet opgegeven: er wordt dan ZONDER kruip gerekend, de zakking komt te klein uit en dat is de onveilige kant. Laat φ(∞,t₀) volgens bijlage B berekenen met het vinkje ernaast; een hier opgegeven waarde gaat voor.",
     "creepFeedsBoth": "Deze waarde voedt twee rekengangen: de BGT-stijfheid bij de fysisch niet-lineaire analyse (5.8.6(4)) én de kolomtoets bij elk analysetype (A in λ_lim volgens 5.8.3.1(1), φ_ef volgens (5.19)). Een staaf met een eigen φ(∞,t₀) in de §5.8-gegevens gaat vóór.",
     "emptyPlaceholder": "leeg",
     "noConcreteBarsTitle": "Fysisch niet-lineair werkt op betonstaven met een wapeningskorf: materiaal een sterkteklasse (bijv. C30/37), profiel een rechthoek (bijv. 300x500) en een korf bij de staafeigenschappen. Zonder die staven is de uitkomst gelijk aan 2e orde (P-Δ).",
@@ -600,7 +600,16 @@
     "deleteComboConfirm": "Verwijder combinatie \"{{naam}}\"?",
     "newComboPlaceholder": "Nieuwe combinatie (bijv. \"ULS eigen\")",
     "combosHint": "Standaardcombinaties worden afgeleid uit de belastinggevallen en gevolgklasse {{klasse}} (γ uit NEN-EN 1990 {{bron}}, ψ uit tabel NB.2–A1.1) en lopen mee als u gevallen toevoegt, van type verandert of verwijdert; de combinaties van de windgenerator lopen op dezelfde manier mee. Wijzigt u een factor, naam of type, dan wordt het een eigen combinatie: die past de app daarna niet meer aan, maar controleert haar wel na elke wijziging. Bij het openen van een project van versie 0.3.11 of ouder vervangt de app de oude standaardcombinaties door deze set, met een melding en Ongedaan maken; eigen combinaties blijven staan. Factor 0 (of leeg) = dat belastinggeval doet niet mee in deze combinatie. Negatieve factor mag — bijvoorbeeld",
-    "combosHintUplift": "voor uplift."
+    "combosHintUplift": "voor uplift.",
+    "creepAnnexB": "bijlage B",
+    "creepAnnexBTitle": "φ(∞,t₀) per betonstaaf laten berekenen volgens NEN-EN 1992-1-1 bijlage B (B.1–B.9), uit de relatieve vochtigheid RH, de ouderdom t₀ bij belasten en de cementklasse (S langzaam, N normaal, R snel verhardend). De fictieve dikte h₀ = 2·A_c/u volgt uit de doorsnede van elke staaf, met de hele omtrek als uitdrogend. Een opgegeven φ(∞,t₀) gaat voor, en de waarde in het §5.8-blok van een staaf gaat daar weer vóór. Niet gerekend: de temperatuurcorrectie (B.10) en de niet-lineaire kruip bij een drukspanning boven 0,45·f_ck(t₀) (3.1.4(4)). De afleiding staat in het rapport bij de betonstaaf.",
+    "creepAnnexBOverridden": "Er is een φ(∞,t₀) opgegeven; die gaat voor, en deze invoer volgens bijlage B rekent niet mee. Maak het φ-vakje leeg om de berekende waarde te gebruiken.",
+    "creepRh": "RH",
+    "creepT0": "t₀",
+    "creepDays": "d",
+    "creepCement": "cement",
+    "creepAnnexBFailedTitle": "Kruipcoëfficiënt volgens bijlage B niet bepaald",
+    "creepAnnexBFailedBody": "Staaf {{staaf}}: {{reden}} Deze staaf rekent zonder kruipcoëfficiënt."
   },
   "tree": {
     "runToSeeResults": "Voer \"Berekenen\" uit om resultaten te zien.",

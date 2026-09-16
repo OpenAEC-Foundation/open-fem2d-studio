@@ -13,7 +13,12 @@ import { ANALYSETYPEN } from "./femTypes";
 import {
   SCHEEFSTAND_BRONNEN, SCHEEFSTAND_BRON_LABEL, type ScheefstandBron,
 } from "../../lib/scheefstandNorm";
-import { kruipveldZichtbaar } from "../../lib/kruipcoefficient";
+import {
+  CEMENTKLASSEN,
+  kruipveldZichtbaar,
+  STANDAARD_KRUIPINVOER,
+  type KruipInvoerProject,
+} from "../../lib/kruipcoefficient";
 import "./LoadCaseTabBar.css";
 
 interface Props {
@@ -40,6 +45,12 @@ interface Props {
    */
   betonKruipcoefficient?: number | null;
   setBetonKruipcoefficient?: (v: number | null) => void;
+  /**
+   * De invoer om φ(∞,t₀) volgens bijlage B te laten berekenen (RH, t₀,
+   * cementklasse); `null` = bijlage B uit. Een opgegeven φ gaat voor.
+   */
+  betonKruipInvoer?: KruipInvoerProject | null;
+  setBetonKruipInvoer?: (v: KruipInvoerProject | null) => void;
   /** Bevat het model een betonstaaf (met of zonder korf)? */
   heeftBetonstaaf?: boolean;
   /**
@@ -112,6 +123,7 @@ export default function LoadCaseTabBar({
   analysetype = "eersteOrde", setAnalysetype,
   betonSegmentLengteMm = 400, setBetonSegmentLengteMm,
   betonKruipcoefficient = null, setBetonKruipcoefficient, heeftBetonstaaf = false,
+  betonKruipInvoer = null, setBetonKruipInvoer,
   aantalBetonstaven = 0, segmentWaarschuwing = null,
   scheefstandEnabled, setScheefstandEnabled,
   scheefstandNoemer, setScheefstandNoemer,
@@ -276,17 +288,22 @@ export default function LoadCaseTabBar({
 
       {/* DE KRUIPCOËFFICIËNT van het project, art. 3.1.4. Leeg = niet
           opgegeven, en dat is iets anders dan 0 ("geen kruip"): zonder waarde
-          rekent de kern met φ_ef = 0, en dan is de buigstijfheid te hoog en de
-          zakking te klein — de onveilige kant. Art. 3.1.4 wordt niet gerekend
-          (dat vraagt RV, h₀, de cementklasse en t₀ uit bijlage B), dus het
-          blijft invoer. Een staaf met een eigen waarde in het §5.8-blok gaat
-          vóór deze projectwaarde.
+          en zonder bijlage B rekent de kern met φ_ef = 0, en dan is de
+          buigstijfheid te hoog en de zakking te klein — de onveilige kant.
+          Met "bijlage B" aan berekent de kern φ(∞,t₀) per staaf uit RH, t₀ en
+          de cementklasse, met h₀ uit de doorsnede; een hier OPGEGEVEN waarde
+          gaat daar vóór. Een staaf met een eigen waarde in het §5.8-blok gaat
+          vóór allebei.
           ZICHTBAAR BIJ ELK ANALYSETYPE zodra er beton in het model zit: de
           waarde voedt ook de kolomtoets (§5.8.3.1, §5.8.4), die altijd loopt.
           Een verborgen veld dat meerekent is een stille invloed. */}
       {setBetonKruipcoefficient && kruipveldZichtbaar(heeftBetonstaaf, betonKruipcoefficient) && (
         <span
-          className={betonKruipcoefficient === null ? "lc-tab-phi lc-tab-phi-waarschuwing" : "lc-tab-phi"}
+          className={
+            betonKruipcoefficient === null && betonKruipInvoer === null
+              ? "lc-tab-phi lc-tab-phi-waarschuwing"
+              : "lc-tab-phi"
+          }
           title={`${t("loadCases.creepTitle")}\n\n${t("loadCases.creepFeedsBoth")}`}
         >
           <span className="lc-tab-phi-label">φ(∞,t₀)</span>
@@ -307,6 +324,79 @@ export default function LoadCaseTabBar({
               if (Number.isFinite(v) && v >= 0) setBetonKruipcoefficient?.(v);
             }}
           />
+          {setBetonKruipInvoer && (
+            <label className="lc-tab-phi-label" title={t("loadCases.creepAnnexBTitle")}>
+              <input
+                type="checkbox"
+                checked={betonKruipInvoer !== null}
+                onChange={(e) =>
+                  setBetonKruipInvoer(e.target.checked ? { ...STANDAARD_KRUIPINVOER } : null)
+                }
+              />{" "}
+              {t("loadCases.creepAnnexB")}
+            </label>
+          )}
+          {setBetonKruipInvoer && betonKruipInvoer !== null && (
+            <span
+              className={
+                betonKruipcoefficient !== null ? "lc-tab-phi lc-tab-phi-overstemd" : "lc-tab-phi"
+              }
+              title={
+                betonKruipcoefficient !== null
+                  ? t("loadCases.creepAnnexBOverridden")
+                  : t("loadCases.creepAnnexBTitle")
+              }
+            >
+              <span className="lc-tab-phi-label">{t("loadCases.creepRh")}</span>
+              <input
+                type="number"
+                className="lc-tab-phi-input"
+                min={1}
+                max={100}
+                step={5}
+                value={betonKruipInvoer.rhProcent}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v) && v > 0 && v <= 100) {
+                    setBetonKruipInvoer({ ...betonKruipInvoer, rhProcent: v });
+                  }
+                }}
+              />
+              <span className="lc-tab-phi-label">%</span>
+              <span className="lc-tab-phi-label">{t("loadCases.creepT0")}</span>
+              <input
+                type="number"
+                className="lc-tab-phi-input"
+                min={0.5}
+                step={1}
+                value={betonKruipInvoer.t0Dagen}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v) && v > 0) {
+                    setBetonKruipInvoer({ ...betonKruipInvoer, t0Dagen: v });
+                  }
+                }}
+              />
+              <span className="lc-tab-phi-label">{t("loadCases.creepDays")}</span>
+              <span className="lc-tab-phi-label">{t("loadCases.creepCement")}</span>
+              <select
+                className="lc-tab-phi-dir"
+                value={betonKruipInvoer.cementklasse}
+                onChange={(e) =>
+                  setBetonKruipInvoer({
+                    ...betonKruipInvoer,
+                    cementklasse: e.target.value as KruipInvoerProject["cementklasse"],
+                  })
+                }
+              >
+                {CEMENTKLASSEN.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </span>
+          )}
         </span>
       )}
 

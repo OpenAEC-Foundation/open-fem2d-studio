@@ -60,7 +60,7 @@ import {
   schatVrijheidsgraden,
   segmentWaarschuwing,
 } from "./lib/betonStijfheid";
-import { modelHeeftBetonstaaf } from "./lib/kruipcoefficient";
+import { bepaalKruipPerStaaf, kruipWaardenPerStaaf, modelHeeftBetonstaaf } from "./lib/kruipcoefficient";
 import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { losEindtoestandOp } from "./lib/houtEindstijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
@@ -466,6 +466,7 @@ function App() {
     analysetype: fem.analysetype,
     betonSegmentLengteMm: fem.betonSegmentLengteMm,
     betonKruipcoefficient: fem.betonKruipcoefficient,
+    betonKruipInvoer: fem.betonKruipInvoer,
     // v2: combinaties (Map-factoren → JSON-object) + stramien + scheefstand.
     combinations: combinationsToFile(fem.combinations),
     // De id-tellers reizen mee, zodat een verwijderd belastinggeval ook na
@@ -640,6 +641,7 @@ function App() {
         analysetype: parsed.analysetype,
         betonSegmentLengteMm: parsed.betonSegmentLengteMm,
         betonKruipcoefficient: parsed.betonKruipcoefficient,
+        betonKruipInvoer: parsed.betonKruipInvoer,
         // v2-velden; undefined bij v1-bestanden → store-defaults.
         combinations: combinationsFromFile(parsed.combinations),
         structuralGrid: parsed.structuralGrid,
@@ -1282,6 +1284,22 @@ function App() {
     envelope: ReturnType<typeof computeEnvelope>;
   }) => {
     const { notifyInfo, notifyWarning } = await import("./io/notify");
+    const kruipBerekening = await bepaalKruipPerStaaf(
+      fem.beams,
+      fem.betonKruipInvoer,
+      fem.betonKruipcoefficient,
+      roepKern,
+      bijlageVanProject(fem.nationaleBijlage),
+    );
+    // Een staaf waarvoor de kern bijlage B weigerde, rekent zonder
+    // kruipcoëfficiënt; dat wordt hieronder al als "zonder kruip" gemeld, maar
+    // de REDEN van de kern hoort er ook te staan.
+    for (const m of kruipBerekening.mislukt) {
+      notifyWarning(
+        i18next.t("common:loadCases.creepAnnexBFailedTitle"),
+        i18next.t("common:loadCases.creepAnnexBFailedBody", { staaf: m.beamId, reden: m.reden }),
+      );
+    }
     // Dezelfde b_eff als de toetsing gebruikt: de meewerkende flensbreedte
     // stuurt ook de ONGESCHEURDE stijfheid waarmee ronde 0 begint, dus twee
     // verschillende breedtes in dezelfde rekengang zou betekenen dat de
@@ -1293,6 +1311,10 @@ function App() {
       // zonder eigen waarde in het §5.8-blok. `null` = niet opgegeven; dan
       // gaat er niets mee en meldt de lus dat luid (`zonderKruipcoefficient`).
       standaardPhiInfT0: fem.betonKruipcoefficient ?? undefined,
+      // φ(∞,t₀) volgens bijlage B per staaf, uit de kern — dezelfde functie
+      // en dezelfde invoer als de kolomtoets in de toetsingsstore. Leeg als
+      // het project φ opgeeft of bijlage B uit staat.
+      berekendePhiPerStaaf: kruipWaardenPerStaaf(kruipBerekening),
       bEffPerStaaf: bEffWaardenPerStaaf(
         await bepaalBeffPerStaaf(
           { nodes: fem.nodes, beams: fem.beams, supports: fem.supports },
@@ -1526,6 +1548,9 @@ function App() {
       // fysisch niet-lineaire lus: de kolomtoets (§5.8.3.1 A, §5.8.4 (5.19))
       // leest hem voor elke staaf zonder eigen waarde in het §5.8-blok.
       standaardPhiInfT0: fem.betonKruipcoefficient ?? undefined,
+      // De invoer voor φ(∞,t₀) volgens bijlage B; de toetsingsstore rekent hem
+      // per staaf uit met dezelfde functie als de BGT-stijfheidslus.
+      kruipInvoer: fem.betonKruipInvoer,
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 
@@ -2441,6 +2466,8 @@ function App() {
           betonSegmentLengteMm={fem.betonSegmentLengteMm}
           betonKruipcoefficient={fem.betonKruipcoefficient}
           setBetonKruipcoefficient={fem.setBetonKruipcoefficient}
+          betonKruipInvoer={fem.betonKruipInvoer}
+          setBetonKruipInvoer={fem.setBetonKruipInvoer}
           heeftBetonstaaf={heeftBetonstaaf}
           setBetonSegmentLengteMm={fem.setBetonSegmentLengteMm}
           aantalBetonstaven={betonSegmentInfo.aantalBetonstaven}

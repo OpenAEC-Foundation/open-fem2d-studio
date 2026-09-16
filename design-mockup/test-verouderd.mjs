@@ -64,6 +64,7 @@ log("\n[1] Elke rekeninstelling verandert de versie");
     analysetype: "eersteOrde",
     betonSegmentLengteMm: 400,
     betonKruipcoefficient: null,
+    betonKruipInvoer: null,
     scheefstandEnabled: false,
     scheefstandNoemer: 200,
     scheefstandRichting: 1,
@@ -102,6 +103,9 @@ log("\n[1] Elke rekeninstelling verandert de versie");
     // elke betonstijfheid: van "niet opgegeven" naar 2,0 moet een nieuwe
     // versie geven, anders blijft de zakking zonder kruip op het scherm staan.
     betonKruipcoefficient: (m) => { m.betonKruipcoefficient = 2.0; },
+    // De invoer voor φ(∞,t₀) volgens bijlage B: van "uit" naar RH 50 %, t₀ 28 d,
+    // cement N bepaalt de kruip van elke betonstaaf zonder opgegeven φ.
+    betonKruipInvoer: (m) => { m.betonKruipInvoer = { rhProcent: 50, t0Dagen: 28, cementklasse: "N" }; },
     scheefstandEnabled: (m) => { m.scheefstandEnabled = true; },
     scheefstandNoemer: (m) => { m.scheefstandNoemer = 300; },
     scheefstandRichting: (m) => { m.scheefstandRichting = -1; },

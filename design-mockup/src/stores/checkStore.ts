@@ -63,7 +63,13 @@ import {
 import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
 import { isVrijMateriaal } from "../lib/vrijMateriaal";
 import type { NationaleBijlageCode } from "../lib/normAanduidingen";
-import { kolomMetKruipcoefficient } from "../lib/kruipcoefficient";
+import {
+  bepaalKruipPerStaaf,
+  kolomMetKruipcoefficient,
+  kruipWaardenPerStaaf,
+  type KruipInvoerProject,
+} from "../lib/kruipcoefficient";
+import type { CreepCoefficientResponse } from "../lib/types/concrete/CreepCoefficientResponse";
 
 /**
  * Roep de Rust-rekenkern aan, waar de app ook draait.
@@ -180,6 +186,13 @@ export interface CheckRunData {
    * `undefined` = niet opgegeven; de kern meldt dat dan.
    */
   standaardPhiInfT0?: number;
+  /**
+   * De projectinvoer voor φ(∞,t₀) volgens bijlage B (RH, t₀, cementklasse).
+   * Alleen gebruikt als `standaardPhiInfT0` ontbreekt: een opgegeven waarde
+   * gaat voor. De kern rekent per staaf met h₀ uit diens doorsnede
+   * (`bepaalKruipPerStaaf`); `null`/`undefined` = niet berekenen.
+   */
+  kruipInvoer?: KruipInvoerProject | null;
 }
 
 interface CheckState {
@@ -200,6 +213,16 @@ interface CheckState {
    * Een array en geen Map: het rapportsnapshot gaat als JSON over.
    */
   beff: BeffStaafUitkomst[];
+  /**
+   * φ(∞,t₀) volgens bijlage B per betonstaaf, zoals de kern hem uitschreef —
+   * alleen gevuld als het project geen φ opgeeft en bijlage B aan staat. Om
+   * dezelfde reden als `beff` in de store: het rapport toont de afleiding, en
+   * de dekkingslijn en de profielvarianten moeten dezelfde waarde gebruiken als
+   * de toetsing. Een array en geen Map, want het rapportsnapshot gaat als JSON.
+   */
+  kruip: CreepCoefficientResponse[];
+  /** Staven waarvoor de kern φ volgens bijlage B weigerde, met zijn reden. */
+  kruipMislukt: { beamId: number; reden: string }[];
   isRunning: boolean;
   error: string | null;
   lastRunAt: number | null;
@@ -295,6 +318,11 @@ export function korvenUitStaven(
    * BGT-stijfheidslus, uit `lib/kruipcoefficient.ts`.
    */
   standaardPhiInfT0?: number | null,
+  /**
+   * φ(∞,t₀) volgens bijlage B per staaf-id (`kruipWaardenPerStaaf`). Geldt
+   * alleen waar staaf en project niets opgeven.
+   */
+  berekendePhi?: ReadonlyMap<number, number>,
 ): Map<number, BetonStaafConfig> {
   const korven = new Map<number, BetonStaafConfig>();
   for (const b of beams) {
@@ -316,7 +344,7 @@ export function korvenUitStaven(
       // en zonder een aangenomen schoring of kniklengte. Alleen φ(∞,t₀) wordt
       // aangevuld met de projectwaarde als de staaf er zelf geen heeft; zonder
       // blok maakt de projectwaarde van de staaf geen kolom.
-      kolom: kolomMetKruipcoefficient(cfg.betonKolom, standaardPhiInfT0),
+      kolom: kolomMetKruipcoefficient(cfg.betonKolom, standaardPhiInfT0, berekendePhi?.get(b.id)),
     });
   }
   return korven;
@@ -326,6 +354,8 @@ export const useCheckStore = create<CheckState>((set) => ({
   results: [],
   skipped: [],
   beff: [],
+  kruip: [],
+  kruipMislukt: [],
   isRunning: false,
   error: null,
   lastRunAt: null,
@@ -374,9 +404,22 @@ export const useCheckStore = create<CheckState>((set) => ({
       // belandt in de doorsnede zelf, niet als losse correctie erna. De hele
       // afleiding wordt bewaard — zie het veld `beff` hierboven.
       const beffUitkomsten = await bepaalBeffPerStaaf(data, roepKern);
+      // φ(∞,t₀) volgens bijlage B, per staaf uit de kern — alleen als het
+      // project geen waarde opgeeft (die gaat voor). Dezelfde functie als de
+      // BGT-stijfheidslus in App.tsx gebruikt, dus dezelfde waarde.
+      const kruip = await bepaalKruipPerStaaf(
+        data.beams,
+        data.kruipInvoer,
+        data.standaardPhiInfT0,
+        roepKern,
+        data.nationaleBijlage,
+      );
+      for (const m of kruip.mislukt) {
+        console.info(`[Toetsing] staaf ${m.beamId}: φ(∞,t₀) volgens bijlage B niet bepaald — ${m.reden}`);
+      }
       const beton = buildBetonCheckInputs({
         ...data,
-        korven: korvenUitStaven(data.beams, data.standaardPhiInfT0),
+        korven: korvenUitStaven(data.beams, data.standaardPhiInfT0, kruipWaardenPerStaaf(kruip)),
         supportedClasses: concreteClasses,
         bEffPerStaaf: bEffWaardenPerStaaf(beffUitkomsten),
       });
@@ -437,6 +480,8 @@ export const useCheckStore = create<CheckState>((set) => ({
         results: merged,
         skipped: skipped.sort((a, b) => a.beamId - b.beamId),
         beff: beffUitkomsten,
+        kruip: [...kruip.perStaaf.values()],
+        kruipMislukt: kruip.mislukt,
         isRunning: false,
         error: null,
         lastRunAt: Date.now(),
@@ -466,6 +511,8 @@ export const useCheckStore = create<CheckState>((set) => ({
         results: [],
         skipped: [],
         beff: [],
+        kruip: [],
+        kruipMislukt: [],
         lastRunAt: null,
         lastRunData: null,
         lastRunInputs: null,
@@ -480,6 +527,8 @@ export const useCheckStore = create<CheckState>((set) => ({
       results: [],
       skipped: [],
       beff: [],
+      kruip: [],
+      kruipMislukt: [],
       error: null,
       lastRunAt: null,
       lastRunData: null,

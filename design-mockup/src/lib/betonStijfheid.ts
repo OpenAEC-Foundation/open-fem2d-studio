@@ -190,6 +190,13 @@ export interface BetonStavenInvoer {
    * §5.8.4 hangt φ_ef uitdrukkelijk aan het ELEMENT.
    */
   standaardPhiInfT0?: number;
+  /**
+   * φ(∞,t₀) volgens bijlage B per staaf-id, uit de kern
+   * (`bepaalKruipPerStaaf` in lib/kruipcoefficient.ts). Geldt alleen waar
+   * staaf en project niets opgeven — dezelfde regel en dezelfde waarden als de
+   * kolomtoets.
+   */
+  berekendePhiPerStaaf?: ReadonlyMap<number, number>;
 }
 
 /**
@@ -252,7 +259,11 @@ export function betonStavenUitModel(
       // Per staaf gaat vóór per project; allebei afwezig = niet opgegeven, en
       // dat is een andere toestand dan nul (zie `phiInfT0`). Dezelfde regel als
       // de kolomtoets (`korvenUitStaven`), uit één module.
-      phiInfT0: kruipcoefficientVanStaaf(cfg.betonKolom?.phi_inf_t0, data.standaardPhiInfT0),
+      phiInfT0: kruipcoefficientVanStaaf(
+        cfg.betonKolom?.phi_inf_t0,
+        data.standaardPhiInfT0,
+        data.berekendePhiPerStaaf?.get(beam.id),
+      ),
     });
   }
   return { staven, overgeslagen };

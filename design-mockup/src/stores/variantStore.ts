@@ -36,6 +36,7 @@ import { buildSteelCheckInputs } from "../lib/steelCheckBuilder";
 import { buildTimberCheckInputs } from "../lib/timberCheckBuilder";
 import { buildBetonCheckInputs, parseConcreteSection } from "../lib/betonCheckBuilder";
 import { bEffWaardenPerStaaf } from "../lib/beffLiggerlijn";
+import { bepaalKruipPerStaaf, kruipWaardenPerStaaf } from "../lib/kruipcoefficient";
 import {
   afwijkingTekst,
   materiaalVanStaaf,
@@ -290,13 +291,27 @@ export const useVariantStore = create<VariantState>((set, get) => ({
           );
           gebouwd.push(voorstel);
         } else {
+          // φ(∞,t₀) volgens bijlage B hangt via h₀ = 2·A_c/u (B.6) aan de
+          // doorsnede: de variant krijgt zijn EIGEN waarde uit de kern, met
+          // dezelfde projectinvoer als de toetsing ernaast.
+          const variantKruip = await bepaalKruipPerStaaf(
+            [variantBeam],
+            data.kruipInvoer,
+            data.standaardPhiInfT0,
+            roepKern,
+            data.nationaleBijlage,
+          );
           const bouw = buildBetonCheckInputs({
             nodes: data.nodes,
             beams: [variantBeam],
             combinations: data.combinations,
             combinationResults: data.combinationResults,
             // Met de φ(∞,t₀) van het project, zoals de toetsing ernaast.
-            korven: korvenUitStaven([variantBeam], data.standaardPhiInfT0),
+            korven: korvenUitStaven(
+              [variantBeam],
+              data.standaardPhiInfT0,
+              kruipWaardenPerStaaf(variantKruip),
+            ),
             supportedClasses: await getConcreteClasses(),
             // De meewerkende flensbreedte volgt uit de liggerlijn (de
             // overspanningen en de opleggingen) en niet uit de hoogte; de

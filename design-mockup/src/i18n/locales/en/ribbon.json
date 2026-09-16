@@ -485,7 +485,7 @@
     "eisKruip": "Creep",
     "eisBeta": "Load duration β (7.19)",
     "eisZonderKruipKop": "CALCULATED WITHOUT CREEP — member(s) {{ids}}: no creep coefficient φ(∞,t₀) was given (cl. 3.1.4), so φ_ef = 0.",
-    "eisZonderKruipUitleg": "Cl. 5.8.6(4) allows creep to be taken into account by multiplying all strain values of the stress-strain diagram by (1 + φ_ef); for the initial slope this amounts to the effective modulus of elasticity E_c,eff = E_cm/(1 + φ) of (7.20). Without that reduction the bending stiffness is too high: the calculated deflection is TOO SMALL, and in a statically indeterminate structure the overly stiff concrete members also attract too much moment. Both are on the unsafe side. Cl. 3.1.4 is not calculated — it requires the relative humidity, the notional size h₀, the cement class and the age t₀ at loading (Annex B) — and therefore remains an input.",
+    "eisZonderKruipUitleg": "Cl. 5.8.6(4) allows creep to be taken into account by multiplying all strain values of the stress-strain diagram by (1 + φ_ef); for the initial slope this amounts to the effective modulus of elasticity E_c,eff = E_cm/(1 + φ) of (7.20). Without that reduction the bending stiffness is too high: the calculated deflection is TOO SMALL, and in a statically indeterminate structure the overly stiff concrete members also attract too much moment. Both are on the unsafe side. Specify φ(∞,t₀), or have it calculated according to annex B from the relative humidity, the age t₀ at loading and the cement class (h₀ follows from the cross-section).",
     "eisSegmenten": "segments",
     "eisFiguurBijschrift": "Bending stiffness EI per segment along member {{staaf}}. The dashed line is the uncracked E_c·I_c = {{ei0}} kNm²; {{gescheurd}} of the {{totaal}} segments are cracked. Lowest value {{min}} kNm² ({{factor}}·E_c·I_c).",
     "eisToestand": "State",
@@ -730,7 +730,10 @@
     "levensduur_2": "10 to 25 years: replaceable structural parts",
     "levensduur_3": "15 to 30 years: agricultural and similar structures",
     "levensduur_4": "50 years: buildings and other common structures",
-    "levensduur_5": "100 years: monumental buildings, bridges and infrastructure"
+    "levensduur_5": "100 years: monumental buildings, bridges and infrastructure",
+    "kruipKop": "Creep coefficient φ(∞,t₀) according to annex B",
+    "kruipInleiding": "Calculated from RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} days and cement class {{cement}}: φ(∞,t₀) = {{phi}}. The SLS stiffness and the column check of this member use this value, because no φ(∞,t₀) has been specified.",
+    "kruipKetenKop": "Derivation according to annex B, step by step:"
   },
   "viewer": {
     "file": "File",

@@ -51,6 +51,7 @@ import {
 } from "../../stores/betonStijfheidStore";
 import type { MemberCheckResult, CheckSkip } from "../../lib/checkTypes";
 import type { BeffStaafUitkomst } from "../../lib/beffLiggerlijn";
+import type { CreepCoefficientResponse } from "../../lib/types/concrete/CreepCoefficientResponse";
 import type {
   NodalDisp,
   NodalReaction,
@@ -145,6 +146,11 @@ interface WireCheckState {
    * niet die van een vorig snapshot te tonen.
    */
   beff?: BeffStaafUitkomst[];
+  /**
+   * φ(∞,t₀) volgens bijlage B per betonstaaf. Ontbreekt in snapshots van een
+   * ouder hoofdvenster; dan is hij hier leeg, om dezelfde reden als `beff`.
+   */
+  kruip?: CreepCoefficientResponse[];
   lastRunAt: number | null;
   /**
    * De fout van de laatste toetsronde, of null. Reist mee zodat het losse
@@ -473,6 +479,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
         results: check.results,
         skipped: check.skipped,
         beff: check.beff,
+        kruip: check.kruip,
         lastRunAt: check.lastRunAt,
         error: check.error,
       },
@@ -612,6 +619,7 @@ export function useDetachedReportSync(): ReportData | null {
           // Een ouder hoofdvenster stuurt dit veld niet mee; dan hoort hier
           // LEEG te staan en niet de afleiding van een vorig snapshot.
           beff: msg.check.beff ?? [],
+          kruip: msg.check.kruip ?? [],
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
           // De fout van het hoofdvenster, niet stil `null`: een mislukte ronde

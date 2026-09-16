@@ -40,6 +40,8 @@ import type { ConcreteBeamCheckResult } from "../../../lib/types/concrete/Concre
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
 import type { BeffStaafUitkomst } from "../../../lib/beffLiggerlijn";
 import BeffAfleiding, { BEFF_REPORT_CSS } from "../BeffAfleiding";
+import KruipAfleiding from "../KruipAfleiding";
+import type { CreepCoefficientResponse } from "../../../lib/types/concrete/CreepCoefficientResponse";
 import DoorsnedeTekening from "../../beton/DoorsnedeTekening";
 import MNKappaGrafiek from "../../beton/MNKappaGrafiek";
 import InteractieGrafiek from "../../beton/InteractieGrafiek";
@@ -107,11 +109,17 @@ function BetonStaafBlok({
   r,
   korfUitModel,
   beff,
+  kruip,
 }: {
   r: ConcreteBeamCheckResult;
   korfUitModel: ReinforcementCage | undefined;
   /** De b_eff-afleiding van deze staaf, of `undefined` bij een rechthoek. */
   beff: BeffStaafUitkomst | undefined;
+  /**
+   * φ(∞,t₀) volgens bijlage B van deze staaf, of `undefined` als die niet is
+   * berekend (bijlage B uit, of een opgegeven φ).
+   */
+  kruip: CreepCoefficientResponse | undefined;
 }) {
   const { t } = useTranslation("ribbon");
   const fout = r.checks.length === 0 || r.governing_check_id.startsWith("ERROR:");
@@ -294,6 +302,10 @@ function BetonStaafBlok({
           {/* De afleiding van de gebruikte b_eff. Alleen bij een T of L: bij
               een rechthoek bestaat 5.3.2.1 niet en zou dit blok ruis zijn. */}
           {heeftFlens && <BeffAfleiding uitkomst={beff} />}
+
+          {/* φ(∞,t₀) volgens bijlage B, als de kern hem voor deze staaf
+              berekende. */}
+          <KruipAfleiding antwoord={kruip} />
 
           {/* De aannamen die bij de VORM horen, woordelijk uit de rekenkern.
               Ze staan óók vooraan in de notes van elke toets — daar horen ze,
@@ -721,6 +733,8 @@ export default function BetonSection() {
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
   // De b_eff-afleiding per staaf, uit dezelfde run als de toetsresultaten.
   const beffUitkomsten = useCheckStore((s) => s.beff);
+  // φ(∞,t₀) volgens bijlage B per staaf, uit dezelfde run.
+  const kruipAntwoorden = useCheckStore((s) => s.kruip);
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
   const { beams } = useReportData();
   // Is er fysisch niet-lineair gerekend? Zo ja, dan is 5.8 niet overgeslagen
@@ -784,6 +798,7 @@ export default function BetonSection() {
               r={r}
               korfUitModel={beams.find((b) => b.id === r.beam_id)?.checkConfig?.betonKorf}
               beff={beffUitkomsten.find((u) => u.beamId === r.beam_id)}
+              kruip={kruipAntwoorden.find((k) => k.beam_id === r.beam_id)}
             />
           ))}
 

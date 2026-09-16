@@ -542,7 +542,7 @@
     },
     "segmentTitle": "Longueur de segment souhaitée en mm. Chaque barre en béton est découpée en segments de même longueur, chacun avec sa propre EI sécante (5.8.6(6)). Plus court = plus précis et plus lent ; l'application ne grossit pas le découpage d'elle-même.",
     "segment": "segment",
-    "creepTitle": "Valeur finale du coefficient de fluage φ(∞,t₀) selon l'art. 3.1.4, pour chaque barre en béton sans valeur propre dans les données du §5.8. Le moteur l'applique selon 5.8.6(4) — toutes les valeurs de calcul multipliées par (1 + φ_ef) — ce qui, pour la pente initiale, revient à E_c,eff = E_cm/(1 + φ) de (7.20). VIDE = non renseigné : le calcul se fait alors SANS fluage, la flèche est sous-estimée et cela va dans le sens de l'insécurité. L'art. 3.1.4 n'est pas calculé ici : il requiert l'humidité relative, le rayon moyen h₀, la classe de ciment et l'âge t₀ au chargement.",
+    "creepTitle": "Valeur finale du coefficient de fluage φ(∞,t₀) selon l'art. 3.1.4, pour chaque barre en béton sans valeur propre dans les données du §5.8. Le moteur l'applique selon 5.8.6(4) — toutes les valeurs de calcul multipliées par (1 + φ_ef) — ce qui, pour la pente initiale, revient à E_c,eff = E_cm/(1 + φ) de (7.20). VIDE = non renseigné : le calcul se fait alors SANS fluage, la flèche est sous-estimée et cela va dans le sens de l'insécurité. Cochez la case voisine pour faire calculer φ(∞,t₀) selon l'annexe B ; une valeur renseignée ici a la priorité.",
     "creepFeedsBoth": "Cette valeur alimente deux calculs : la rigidité ELS dans l'analyse non linéaire matérielle (5.8.6(4)) et la vérification des colonnes pour tout type d'analyse (A dans λ_lim selon 5.8.3.1(1), φ_ef selon (5.19)). Une barre avec son propre φ(∞,t₀) dans les données §5.8 est prioritaire.",
     "emptyPlaceholder": "vide",
     "noConcreteBarsTitle": "Le calcul non linéaire matériel s'applique aux barres en béton avec cage d'armatures : matériau une classe de résistance (p. ex. C30/37), profilé un rectangle (p. ex. 300x500) et une cage dans les propriétés de la barre. Sans de telles barres, le résultat est identique au 2nd ordre (P-Δ).",
@@ -600,7 +600,16 @@
     "deleteComboConfirm": "Supprimer la combinaison « {{naam}} » ?",
     "newComboPlaceholder": "Nouvelle combinaison (p. ex. « ELU personnalisée »)",
     "combosHint": "Les combinaisons standard sont déduites des cas de charge et de la classe de conséquences {{klasse}} (γ selon NEN-EN 1990 {{bron}}, ψ selon le tableau NB.2–A1.1) et suivent lorsque vous ajoutez des cas, changez leur type ou les supprimez ; les combinaisons du générateur de vent suivent de la même manière. Si vous modifiez un coefficient, un nom ou un type, elle devient une combinaison personnalisée : l'application ne l'ajuste plus, mais la contrôle après chaque modification. À l'ouverture d'un projet de la version 0.3.11 ou antérieure, l'application remplace les anciennes combinaisons standard par ce jeu, avec un avertissement et Annuler ; les combinaisons personnalisées sont conservées. Coefficient 0 (ou vide) = ce cas de charge ne participe pas à cette combinaison. Un coefficient négatif est admis — par exemple",
-    "combosHintUplift": "pour le soulèvement."
+    "combosHintUplift": "pour le soulèvement.",
+    "creepAnnexB": "annexe B",
+    "creepAnnexBTitle": "Faire calculer φ(∞,t₀) par barre en béton selon l'EN 1992-1-1 annexe B (B.1–B.9), à partir de l'humidité relative RH, de l'âge t₀ au chargement et de la classe de ciment (S lent, N normal, R rapide). Le rayon moyen h₀ = 2·A_c/u découle de la section de chaque barre, tout le périmètre étant considéré comme exposé à la dessiccation. Un φ(∞,t₀) renseigné a la priorité, et la valeur dans les données du §5.8 d'une barre a elle-même priorité sur celui-ci. Non pris en compte : la correction de température (B.10) et le fluage non linéaire pour une contrainte de compression supérieure à 0,45·f_ck(t₀) (3.1.4(4)). La démarche figure dans le rapport, avec la barre en béton.",
+    "creepAnnexBOverridden": "Un φ(∞,t₀) est renseigné ; il a la priorité et cette saisie selon l'annexe B n'est pas utilisée. Videz la case φ pour utiliser la valeur calculée.",
+    "creepRh": "RH",
+    "creepT0": "t₀",
+    "creepDays": "j",
+    "creepCement": "ciment",
+    "creepAnnexBFailedTitle": "Coefficient de fluage selon l'annexe B non déterminé",
+    "creepAnnexBFailedBody": "Barre {{staaf}} : {{reden}} Cette barre est calculée sans coefficient de fluage."
   },
   "tree": {
     "runToSeeResults": "Lancez « Calculer » pour voir les résultats.",

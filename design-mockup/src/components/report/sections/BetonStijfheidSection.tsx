@@ -490,7 +490,7 @@ export default function BetonStijfheidSection() {
                 </span>{" "}
                 {t(
                   "report.eisZonderKruipUitleg",
-                  "Art. 5.8.6(4) laat kruip in rekening brengen door alle rekwaarden van het spanning-rekdiagram met (1 + φ_ef) te vermenigvuldigen, wat voor de beginhelling neerkomt op de effectieve elasticiteitsmodulus E_c,eff = E_cm/(1 + φ) van (7.20). Zonder die verlaging is de buigstijfheid te hoog: de berekende zakking is TE KLEIN, en in een statisch onbepaalde constructie trekken de te stijve betonstaven bovendien te veel moment naar zich toe. Beide staan aan de onveilige kant. Art. 3.1.4 wordt niet uitgerekend — dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten (bijlage B) — en blijft daarom invoer.",
+                  "Art. 5.8.6(4) laat kruip in rekening brengen door alle rekwaarden van het spanning-rekdiagram met (1 + φ_ef) te vermenigvuldigen, wat voor de beginhelling neerkomt op de effectieve elasticiteitsmodulus E_c,eff = E_cm/(1 + φ) van (7.20). Zonder die verlaging is de buigstijfheid te hoog: de berekende zakking is TE KLEIN, en in een statisch onbepaalde constructie trekken de te stijve betonstaven bovendien te veel moment naar zich toe. Beide staan aan de onveilige kant. Geef φ(∞,t₀) op, of laat hem volgens bijlage B berekenen uit de relatieve vochtigheid, de ouderdom t₀ bij belasten en de cementklasse (h₀ volgt uit de doorsnede).",
                 )}
               </p>
             </div>
