@@ -20,7 +20,36 @@
  * NIET OPGEGEVEN, en dat is iets anders dan 0 ("geen kruip"): de kern meldt het
  * dan en keurt een toets die kruip nodig heeft niet goed.
  */
+import type { Beam } from "../components/fem/femTypes";
 import type { ConcreteColumnInput } from "./types/concrete/ConcreteColumnInput";
+import { matchSupportedConcreteClass } from "./betonCheckBuilder";
+
+/**
+ * Bevat het model een betonstaaf (materiaal met een volledige sterkteklasse,
+ * "C30/37")? Met of zonder korf: een staaf zonder korf wordt vandaag
+ * overgeslagen, maar krijgt hij er een, dan rekent de projectwaarde meteen mee.
+ */
+export function modelHeeftBetonstaaf(beams: readonly Pick<Beam, "material">[]): boolean {
+  return beams.some((b) => matchSupportedConcreteClass(b.material?.trim()) !== null);
+}
+
+/**
+ * Wanneer het invoerveld voor de projectwaarde van φ(∞,t₀) zichtbaar is.
+ *
+ * WAAROM NIET ALLEEN BIJ DE FYSISCH NIET-LINEAIRE STAND. De projectwaarde
+ * voedt twee rekengangen: de BGT-stijfheid (§5.8.6(4), alleen in die stand) én
+ * de kolomtoets (§5.8.3.1 A, §5.8.4 (5.19)), die bij ELK analysetype loopt.
+ * Een veld dat verdwijnt terwijl zijn waarde meerekent, is een stille invloed
+ * op de uitkomst. Daarom: zichtbaar zodra het model een betonstaaf bevat, en
+ * ook zolang er een waarde staat — zodat een ingevulde waarde altijd te zien
+ * en te wissen is.
+ */
+export function kruipveldZichtbaar(
+  heeftBetonstaaf: boolean,
+  projectwaarde: number | null | undefined,
+): boolean {
+  return heeftBetonstaaf || (projectwaarde !== null && projectwaarde !== undefined);
+}
 
 /** De φ(∞,t₀) van een staaf: eigen waarde, anders die van het project. */
 export function kruipcoefficientVanStaaf(

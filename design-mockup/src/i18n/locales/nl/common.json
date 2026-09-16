@@ -543,6 +543,7 @@
     "segmentTitle": "Gewenste segmentlengte in mm. Elke betonstaaf wordt in even lange segmenten geknipt die elk hun eigen secans-EI krijgen (5.8.6(6)). Korter = nauwkeuriger en trager; de applicatie vergroft niet uit zichzelf.",
     "segment": "segment",
     "creepTitle": "Eindwaarde van de kruipcoëfficiënt φ(∞,t₀) volgens art. 3.1.4, voor elke betonstaaf zonder eigen waarde bij de §5.8-gegevens. De kern verwerkt hem volgens 5.8.6(4) — alle rekwaarden maal (1 + φ_ef) — wat voor de beginhelling neerkomt op E_c,eff = E_cm/(1 + φ) van (7.20). LEEG = niet opgegeven: er wordt dan ZONDER kruip gerekend, de zakking komt te klein uit en dat is de onveilige kant. Art. 3.1.4 wordt hier niet uitgerekend: dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten.",
+    "creepFeedsBoth": "Deze waarde voedt twee rekengangen: de BGT-stijfheid bij de fysisch niet-lineaire analyse (5.8.6(4)) én de kolomtoets bij elk analysetype (A in λ_lim volgens 5.8.3.1(1), φ_ef volgens (5.19)). Een staaf met een eigen φ(∞,t₀) in de §5.8-gegevens gaat vóór.",
     "emptyPlaceholder": "leeg",
     "noConcreteBarsTitle": "Fysisch niet-lineair werkt op betonstaven met een wapeningskorf: materiaal een sterkteklasse (bijv. C30/37), profiel een rechthoek (bijv. 300x500) en een korf bij de staafeigenschappen. Zonder die staven is de uitkomst gelijk aan 2e orde (P-Δ).",
     "noConcreteBars": "geen betonstaven met korf",

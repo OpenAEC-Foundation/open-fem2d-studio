@@ -45,6 +45,7 @@ const TOETSBRUG = join(
 const { buildBetonCheckInputs } = await import("./src/lib/betonCheckBuilder.ts");
 const { korvenUitStaven } = await import("./src/stores/checkStore.ts");
 const { betonStavenUitModel } = await import("./src/lib/betonStijfheid.ts");
+const { modelHeeftBetonstaaf, kruipveldZichtbaar } = await import("./src/lib/kruipcoefficient.ts");
 const { knikgevallenVoor, kniklengteVoorSchoring, KNIKGEVALLEN } =
   await import("./src/components/beton/kolomgegevens.ts");
 const { isOverwegendVerticaal } = await import("./src/lib/steelCheckBuilder.ts");
@@ -252,6 +253,35 @@ log("\n[3] korvenUitStaven en de bouwer dragen het §5.8-blok door");
   const app = readFileSync(join(HIER, "src", "App.tsx"), "utf8");
   ok("App.tsx geeft φ(∞,t₀) van het project aan de stijfheidslus én de toetsing",
     (app.match(/standaardPhiInfT0:\s*fem\.betonKruipcoefficient/g) ?? []).length === 2);
+  // HET PROJECTVELD IS ZICHTBAAR ZODRA ER BETON IS, BIJ ELK ANALYSETYPE. De
+  // waarde voedt de kolomtoets, die altijd loopt; een veld dat alleen bij de
+  // fysisch niet-lineaire stand verschijnt, zou bij eerste of geometrisch
+  // tweede orde een meerekenende waarde verbergen.
+  eq("een betonstaaf zonder korf telt als beton",
+    modelHeeftBetonstaaf([{ material: "C30/37" }]), true);
+  eq("alleen staal en hout: geen beton",
+    modelHeeftBetonstaaf([{ material: "S235" }, { material: "C24" }, { material: "C30" }]), false);
+  eq("met beton en zonder waarde: zichtbaar", kruipveldZichtbaar(true, null), true);
+  eq("zonder beton en zonder waarde: verborgen", kruipveldZichtbaar(false, null), false);
+  eq("zonder beton maar mét waarde: zichtbaar, zodat hij te zien en te wissen is",
+    kruipveldZichtbaar(false, 2.0), true);
+  eq("een opgegeven 0 is ook een waarde", kruipveldZichtbaar(false, 0), true);
+  const balk = readFileSync(join(HIER, "src", "components", "fem", "LoadCaseTabBar.tsx"), "utf8");
+  const veldBlok = balk.slice(balk.indexOf("{setBetonKruipcoefficient &&"), balk.indexOf("lc-tab-phi-input", balk.indexOf("{setBetonKruipcoefficient &&")));
+  ok("de balk toont het φ-veld via kruipveldZichtbaar",
+    /\{setBetonKruipcoefficient && kruipveldZichtbaar\(heeftBetonstaaf, betonKruipcoefficient\) &&/.test(balk));
+  ok("en de zichtbaarheid hangt NIET meer van het analysetype af",
+    veldBlok.length > 0 && !/analysetype/.test(veldBlok.split("\n")[0]));
+  ok("de toelichting zegt dat het veld BGT-stijfheid én kolomtoets voedt",
+    veldBlok.includes('t("loadCases.creepFeedsBoth")'));
+  ok("App.tsx geeft heeftBetonstaaf uit modelHeeftBetonstaaf door",
+    /modelHeeftBetonstaaf\(fem\.beams\)/.test(app) && /heeftBetonstaaf=\{heeftBetonstaaf\}/.test(app));
+  for (const taal of ["nl", "en", "de", "fr"]) {
+    const common = JSON.parse(readFileSync(join(HIER, "src", "i18n", "locales", taal, "common.json"), "utf8"));
+    ok(`de toelichting bestaat in ${taal}`,
+      typeof common.loadCases?.creepFeedsBoth === "string" && common.loadCases.creepFeedsBoth.includes("5.8.3.1"));
+  }
+
   const store = readFileSync(join(HIER, "src", "stores", "checkStore.ts"), "utf8");
   ok("de toetsronde vult de korven met de projectwaarde",
     /korvenUitStaven\(data\.beams,\s*data\.standaardPhiInfT0\)/.test(store));

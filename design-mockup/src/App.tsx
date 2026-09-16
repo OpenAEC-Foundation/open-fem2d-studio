@@ -60,6 +60,7 @@ import {
   schatVrijheidsgraden,
   segmentWaarschuwing,
 } from "./lib/betonStijfheid";
+import { modelHeeftBetonstaaf } from "./lib/kruipcoefficient";
 import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
@@ -811,6 +812,11 @@ function App() {
         staven.length > 0 ? segmentWaarschuwing(dof, fem.betonSegmentLengteMm) : null,
     };
   }, [fem.nodes, fem.beams, fem.betonSegmentLengteMm]);
+
+  // Het φ(∞,t₀)-veld van het project hoort zichtbaar te zijn zodra er beton in
+  // het model zit, ook zonder korf en bij elk analysetype: het voedt de
+  // kolomtoets (lib/kruipcoefficient.ts, `kruipveldZichtbaar`).
+  const heeftBetonstaaf = useMemo(() => modelHeeftBetonstaaf(fem.beams), [fem.beams]);
 
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
   // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
@@ -2422,6 +2428,7 @@ function App() {
           betonSegmentLengteMm={fem.betonSegmentLengteMm}
           betonKruipcoefficient={fem.betonKruipcoefficient}
           setBetonKruipcoefficient={fem.setBetonKruipcoefficient}
+          heeftBetonstaaf={heeftBetonstaaf}
           setBetonSegmentLengteMm={fem.setBetonSegmentLengteMm}
           aantalBetonstaven={betonSegmentInfo.aantalBetonstaven}
           segmentWaarschuwing={betonSegmentInfo.waarschuwing}
