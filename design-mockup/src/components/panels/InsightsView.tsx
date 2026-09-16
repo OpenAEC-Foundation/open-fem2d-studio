@@ -16,8 +16,9 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildMatricesOnly, type ExposedBeamCache } from "../fem/solver/solver";
-import { resolveSection } from "../../lib/sectionResolver";
-import { controleerDoorsneden } from "../../lib/modelNaarSolverInput";
+import {
+  controleerDoorsneden, doorsnedeVeldenVoorSolver, staafLengteMm,
+} from "../../lib/modelNaarSolverInput";
 import type { Node, Beam, Support } from "../fem/femTypes";
 import { useSolverLogStore } from "../../stores/solverLogStore";
 import type { SolverLogRegel } from "../../core/solver/NonlinearSolver";
@@ -148,10 +149,11 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
       return buildMatricesOnly({
         nodes,
         beams: beams.map((b) => {
-          const sec = resolveSection(b.material, b.profile);
           return {
             ...b,
-            E: sec.E, A: sec.A, I: sec.I,
+            // Zelfde doorsnedebepaling als het rekenpad, inclusief de
+            // segmenten van een verlopend profiel.
+            ...doorsnedeVeldenVoorSolver(b, staafLengteMm(b, nodes)),
             startConnection: b.releases?.startRy ? "hinge" : "fixed",
             endConnection: b.releases?.endRy ? "hinge" : "fixed",
             releases: b.releases,

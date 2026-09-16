@@ -312,6 +312,23 @@ export interface Beam {
   material?: string;
   /** Profile name (default: "HEA160"). */
   profile?: string;
+  /**
+   * Profiel aan het EINDE van de staaf (knoop `to`), voor een verlopend
+   * profiel; `profile` is dan het profiel aan het begin (knoop `from`). De
+   * maten verlopen lineair tussen begin en eind. ONTBREEKT het veld, is het
+   * leeg, of is het hetzelfde profiel als `profile` — alle bestaande
+   * projectbestanden — dan is de staaf prismatisch en verandert er geen
+   * enkel getal.
+   *
+   * Beide profielen moeten van dezelfde doorsnedesoort zijn: een rechthoek
+   * (hout, vrij materiaal) of een I/H-profiel uit de catalogus (staal, dan
+   * gerekend als gelast I-profiel zonder afrondingsstraal). Kokers, buizen,
+   * hoeklijnen, U-profielen, kruislaaghout, beton en eigen doorsneden kennen
+   * geen verloop; `lib/sectionResolver.bepaalVerloop` weigert die met reden.
+   * Wordt de staaf in zijn referentierichting gespiegeld, dan wisselen
+   * `profile` en `profileEnd` mee (lib/referentierichting).
+   */
+  profileEnd?: string;
   /** DOF releases per end (default: all rigid = no releases). */
   releases?: BeamReleases;
   /** Verende aansluitingen per end (kN/mm, kNm/rad); zie BeamEindVeren. */

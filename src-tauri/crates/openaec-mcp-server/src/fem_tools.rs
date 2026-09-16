@@ -843,7 +843,9 @@ fn schema_beams() -> Value {
                 "material": { "type": "string",
                     "description": "Staalsoort (S235, S275, S355, S420, S460) of houtsterkteklasse (C14..C35, GL24h..GL36h). Default \"S235\"." },
                 "profile": { "type": "string",
-                    "description": "Profielnaam uit de catalogus ('HEA160', 'IPE300') of een houtrechthoek ('96x450'). Default \"HEA160\"." },
+                    "description": "Profielnaam uit de catalogus ('HEA160', 'IPE300') of een houtrechthoek ('96x450'). Default \"HEA160\". Bij een verlopend profiel: het profiel aan het BEGIN (knoop `from`)." },
+                "profileEnd": { "type": "string",
+                    "description": "Optioneel: profiel aan het EINDE (knoop `to`) van een verlopende staaf; de maten verlopen lineair van `profile` naar `profileEnd`. Beide moeten van dezelfde doorsnedesoort zijn: rechthoek↔rechthoek (hout, '96x450' → '96x300') of I/H↔I/H uit de staalcatalogus ('IPE300' → 'IPE200', gerekend als gelast I-profiel). Kokers, buizen, hoeklijnen, U-profielen, kruislaaghout, beton en eigen doorsneden kennen geen verloop; een model met platen evenmin. Weggelaten of gelijk aan `profile` = prismatisch." },
                 "releases": schema_releases(),
                 "checkConfig": schema_checkconfig(),
                 "loadRole": { "type": "string",
@@ -1257,6 +1259,41 @@ mod tests {
             schema_checkconfig()["properties"]["deflectionClass"]["enum"],
             json!(["floor", "floorBrittle", "roof", "cantilever", "custom"])
         );
+    }
+
+    /// `schema_beams` is de spiegel van `BEAM_VELDEN`, de staafpoort van de
+    /// sidecar (`design-mockup/src/mcp/valideerModel.ts`). Dezelfde bewaking
+    /// als bij `schema_checkconfig`: een veld dat aan één kant bijkomt
+    /// (september 2026: `profileEnd` voor verlopende profielen) valt hier op,
+    /// zodat het schema nooit een veld belooft dat de poort weigert of
+    /// andersom.
+    #[test]
+    fn schema_beams_spiegelt_de_staafpoort_van_de_sidecar() {
+        let pad = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../design-mockup/src/mcp/valideerModel.ts");
+        let bron = std::fs::read_to_string(&pad)
+            .unwrap_or_else(|e| panic!("{} niet leesbaar: {e}", pad.display()));
+        let start = bron
+            .find("const BEAM_VELDEN = [")
+            .expect("BEAM_VELDEN staat niet (meer) in valideerModel.ts");
+        let rest = &bron[start..];
+        let blok = &rest[..rest.find("] as const;").expect("BEAM_VELDEN is niet gesloten")];
+        let poort: std::collections::BTreeSet<String> = blok
+            .lines()
+            .skip(1)
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .flat_map(|l| l.split('"').skip(1).step_by(2).map(str::to_owned).collect::<Vec<_>>())
+            .collect();
+        let items = &schema_beams()["items"];
+        let schema: std::collections::BTreeSet<String> = items["properties"]
+            .as_object()
+            .expect("properties")
+            .keys()
+            .cloned()
+            .collect();
+        assert!(poort.contains("profileEnd") && poort.contains("profile"), "{poort:?}");
+        assert_eq!(schema, poort, "schema_beams en BEAM_VELDEN lopen uiteen");
+        assert_eq!(items["additionalProperties"], json!(false));
     }
 
     /// E, A en I mogen niet los op een staaf: de doorsnede volgt uit

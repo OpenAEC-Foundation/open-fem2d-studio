@@ -37,9 +37,9 @@ import BarPropertiesDialog from "./BarPropertiesDialog";
 import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
-import { resolveSection } from "../../lib/sectionResolver";
 import {
-  controleerDoorsneden, plaatNaarSolverInput, randlastNaarSolverInput,
+  controleerDoorsneden, doorsnedeVeldenVoorSolver, plaatNaarSolverInput, randlastNaarSolverInput,
+  staafLengteMm,
   randpuntlastNaarSolverInput,
 } from "../../lib/modelNaarSolverInput";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
@@ -777,16 +777,16 @@ export default function FemCanvas(props: FemCanvasProps) {
       // (E = 210 000, A = 3877, I = 1,673e7) en een geslaagde berekening; nu
       // gooit `controleerDoorsneden` met staafnummer en reden, en de catch
       // hieronder zet die tekst in de banner in plaats van resultaten.
-      controleerDoorsneden(beams);
+      controleerDoorsneden(beams, { heeftPlaten: plates.length > 0 });
       const input: SolverInput = {
         nodes: nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
         beams: beams.map(b => {
-          // Stijfheid uit materiaal + profiel; na de controle hierboven is
-          // dit nooit de terugval.
-          const sec = resolveSection(b.material, b.profile);
+          // Stijfheid uit materiaal + profiel (+ eindprofiel: segmenten),
+          // dezelfde functie als het multi-LC-pad; na de controle hierboven
+          // is dit nooit de terugval.
           return {
             id: b.id, from: b.from, to: b.to,
-            E: sec.E, A: sec.A, I: sec.I,
+            ...doorsnedeVeldenVoorSolver(b, staafLengteMm(b, nodes)),
             startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
             endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
             // Volledige release-set (incl. Tx/Tz-hulzen, lokale assen).

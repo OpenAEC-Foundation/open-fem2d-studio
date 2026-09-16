@@ -76,6 +76,12 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      `combinatiesVervangenBijOpenen` — de tekst van die melding, zodat het
  *      rapport ook in een latere sessie vermeldt dat de combinaties bij het
  *      openen zijn vervangen. Puur bijschrift: er rekent niets mee.
+ *      Eveneens optioneel binnen v2 (september 2026, geen versie-bump):
+ *      `Beam.profileEnd` — het eindprofiel van een verlopende staaf; `profile`
+ *      is dan het beginprofiel. Reist automatisch mee met de beams-array.
+ *      Ontbreekt het veld, dan is de staaf prismatisch en rekent het bestand
+ *      exact zoals voorheen; een oudere versie van de app negeert het veld en
+ *      rekent de staaf prismatisch met het beginprofiel (zie femTypes.Beam).
  * v1-bestanden blijven leesbaar: de v2-velden zijn optioneel en ontbrekende
  * velden krijgen bij het laden de bestaande defaults (defaultCombinations()
  * en DEFAULT_STRUCTURAL_GRID in useFemStore.loadProjectState).

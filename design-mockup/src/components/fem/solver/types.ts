@@ -54,6 +54,15 @@ export interface SolverBeamSegmentInput {
   tEnd: number;
   /** Traagheidsmoment van dit segment (mm⁴). */
   I: number;
+  /**
+   * Doorsnede van dit segment (mm²), voor de rekstijfheid E·A. ONTBREEKT het
+   * veld, dan geldt de A van de staaf — het pad van de fysisch niet-lineaire
+   * betonlus, die alleen I per segment laat variëren. Een verlopend profiel
+   * (lib/modelNaarSolverInput) vult hem wél: daar verandert A mee met de
+   * maten, en een verlopende kolom of trekband hoort dat in E·A terug te
+   * zien.
+   */
+  A?: number;
 }
 
 export interface SolverBeamInput {
@@ -78,7 +87,8 @@ export interface SolverBeamInput {
    * vormen (oplopend, tStart[0] = 0, tEnd[n−1] = 1, tEnd[i] = tStart[i+1]);
    * de adapter weigert anders met een Nederlandse melding in plaats van stil
    * met een verkeerde I te rekenen. `I` overschrijft `SolverBeamInput.I` voor
-   * het betreffende stuk; `E` en `A` blijven van de staaf zelf.
+   * het betreffende stuk en een opgegeven `A` doet hetzelfde met
+   * `SolverBeamInput.A`; `E` blijft van de staaf zelf.
    */
   segmenten?: SolverBeamSegmentInput[];
   /**
@@ -465,6 +475,12 @@ export interface BeamSegmentForces {
   xEnd: number;
   /** Traagheidsmoment waarmee dit stuk gerekend heeft (mm⁴). */
   I: number;
+  /**
+   * Doorsnede waarmee dit stuk gerekend heeft (mm²) — alleen aanwezig als het
+   * invoersegment een eigen `A` droeg (verlopend profiel); anders gold de A
+   * van de staaf en blijft het veld weg.
+   */
+  A?: number;
   /** Index in `SolverBeamInput.segmenten` waarvan die I komt. */
   segmentIndex: number;
   /** Normaalkracht aan het begin resp. het eind van het stuk (N, trek positief). */
