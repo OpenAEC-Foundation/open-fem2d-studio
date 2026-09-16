@@ -704,7 +704,7 @@
     "colPlateMaterial": "Materiaal",
     "colPlateSource": "Bron E / ν / ρ",
     "colPlateAngle": "Hoofdrichting [°]",
-    "plateLoadNote": "Randlasten (ook deel- en trapeziumlasten) en puntlasten op een plaatrand worden volgens de lineaire vormfuncties van de randelementen omgezet in knoopkrachten op de randknopen; een staafeinde dat tussen twee randknopen op een plaatrand ligt, wordt kinematisch aan die rand gekoppeld (lineaire interpolatie).",
+    "plateLoadNote": "Randlasten (ook deel- en trapeziumlasten) en puntlasten op een plaatrand worden volgens de lineaire vormfuncties van de randelementen omgezet in knoopkrachten op de randknopen; een staafeinde dat tussen twee randknopen op een plaatrand ligt — de omtrek of de rand van een opening — wordt kinematisch aan die rand gekoppeld (lineaire interpolatie). Een vrij staafeinde tussen 1 en 50 mm van een plaatrand wordt niet gekoppeld maar geweigerd.",
     "plateKindNoteMesh": "Platen rekenen mee als wandschijf (membraan, in het vlak); het rekenmesh wordt bij elke berekening opnieuw uit de meshgrootte gegenereerd. Vierhoeken zijn bilineaire Quad4-elementen, driehoeken CST-elementen (constante rek); een polygoonplaat met vierhoeken kan een gemengd net geven waar de koppeling van driehoeken niet lukt. Openingen blijven vrij van elementen; het net legt knopen op de openingsrand.",
     "plateMateriaalGeweigerd": "materiaal geweigerd — {{reden}}",
     "plateGeweigerd": "geweigerd: {{reden}}",

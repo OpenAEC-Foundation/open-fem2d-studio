@@ -225,6 +225,12 @@ const BUNDEL_TESTS = new Set([
   // opening zonder canvas, dus een adres dat daar stil op de omtrek zou
   // vallen, moet ook in de bundel weigeren.
   "plaat-opening-randlast",
+  // Staafeinde op een OPENINGSRAND (issue #13): koppeling en evenwicht in
+  // engine, weigering bij bijna-op-de-rand in engine en MCP-droogloop,
+  // sidecar-solve en bit-identiek zonder zo'n staafeinde. De sidecar rekent
+  // zulke platen zonder canvas; een staaf die in de bundel stil los zou
+  // blijven, moet ook daar gekoppeld of geweigerd worden.
+  "plaat-opening-staafeinde",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",
@@ -401,6 +407,10 @@ const ALLEEN_BRON = new Map([
   [
     "plaat-opening-randlast-doorvoer",
     "test de doorvoer van een last op een openingsrand BUITEN de rekenkern: de modelcontrole van het canvas (lib/modelControle) en de IFC-export (io/ifcExport). Geen van beide staat in de barrel; de rekenkant van hetzelfde adres — evenwicht, weigeringen in engine en MCP-poort, bit-identiek zonder openingen — staat in `plaat-opening-randlast` en draait wél tegen de bundel",
+  ],
+  [
+    "plaat-opening-staafeinde-controle",
+    "test de modelcontrole van het canvas (lib/modelControle) voor een staafeinde op of bijna op een openingsrand: geen vals vrij uiteinde, en de fout of waarschuwing bij 1–50 mm. De module staat niet in de barrel (de MCP-droogloop gebruikt de regel alleen intern via valideerModel); de rekenkant en de droogloop staan in `plaat-opening-staafeinde` en draaien wél tegen de bundel",
   ],
   [
     "materiaal-dubbelzinnig",

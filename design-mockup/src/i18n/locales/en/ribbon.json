@@ -704,7 +704,7 @@
     "colPlateMaterial": "Material",
     "colPlateSource": "Source E / ν / ρ",
     "colPlateAngle": "Principal direction [°]",
-    "plateLoadNote": "Edge loads (including partial and trapezoidal loads) and point loads on a plate edge are converted into nodal forces on the edge nodes using the linear shape functions of the edge elements; a member end lying between two edge nodes on a plate edge is kinematically coupled to that edge (linear interpolation).",
+    "plateLoadNote": "Edge loads (including partial and trapezoidal loads) and point loads on a plate edge are converted into nodal forces on the edge nodes using the linear shape functions of the edge elements; a member end lying between two edge nodes on a plate edge — the outline or the edge of an opening — is kinematically coupled to that edge (linear interpolation). A free member end between 1 and 50 mm from a plate edge is not coupled but rejected.",
     "plateKindNoteMesh": "Plates act as shear walls (membrane, in-plane); the analysis mesh is regenerated from the mesh size at every analysis. Quadrilaterals are bilinear Quad4 elements, triangles are CST elements (constant strain); a polygonal plate with quadrilaterals may give a mixed mesh where pairing triangles fails. Openings remain free of elements; the mesh places nodes on the opening edge.",
     "plateMateriaalGeweigerd": "material rejected — {{reden}}",
     "plateGeweigerd": "rejected: {{reden}}",

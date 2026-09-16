@@ -59,7 +59,7 @@ import {
   type PlaatPunt,
 } from "../components/fem/femTypes";
 import { puntInPolygoon, afstandTotLijnstuk } from "../core/fem/PlaatMesher";
-import { zoekDubbeleKnopen } from "../lib/modelControle";
+import { zoekDubbeleKnopen, zoekStaafeindenBijPlaatrand } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
 import { keurPlaatMateriaal } from "../lib/plaatMateriaal";
@@ -1284,6 +1284,15 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     errors.push(bevinding.tekst);
   }
 
+  // Staafeinde BIJNA op een plaatrand (omtrek of opening, issue #13): tussen
+  // 1 en 50 mm wordt het niet gekoppeld. Dezelfde regel en tekst als de
+  // modelcontrole van het canvas en de weigering in de engine. De tolerantie
+  // is hier NIET exact maar 1 mm: dat is de koppeltolerantie van de engine
+  // zelf, en deze poort hoort precies te melden wat de engine weigert.
+  for (const bevinding of zoekStaafeindenBijPlaatrand({ nodes, beams, supports, plates })) {
+    (bevinding.ernst === "fout" ? errors : warnings).push(bevinding.tekst);
+  }
+
   // Staven: verwijzingen, lengte en doorsnede.
   for (const b of beams) {
     const van = knoopById.get(b.from);
@@ -1361,10 +1370,23 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     const h = (p.nodeIds ?? []).map((id) => knoopById.get(id));
     return h.every((q) => q !== undefined) && h.length >= 3 ? (h as { x: number; z: number }[]) : undefined;
   });
+  // Een knoop IN een opening (niet op de rand ervan) hoort NIET bij de plaat:
+  // daar is geen materiaal en geen rekenknoop. Tot issue #13 telde deze poort
+  // alleen de omtrek, en zag hij een staaf die in een sparing zweeft als
+  // verbonden met de plaat — het losse deel bleef dan ongemeld.
+  const opLus = (n: { x: number; z: number }, lus: { x: number; z: number }[]): boolean =>
+    lus.some((a, i) => afstandTotLijnstuk(n, a, lus[(i + 1) % lus.length]) <= 1);
+  const inOfOpPlaatK = (n: { x: number; z: number }, k: number): boolean => {
+    const omtrek = plaatOmtrekken[k];
+    if (!omtrek) return false;
+    if (opLus(n, omtrek)) return true;
+    if (!puntInPolygoon(n.x, n.z, omtrek)) return false;
+    const openingen = (Array.isArray(plates[k].openingen) ? plates[k].openingen! : [])
+      .filter((o) => o && Array.isArray(o.punten) && o.punten.length >= 3);
+    return openingen.every((o) => opLus(n, o.punten) || !puntInPolygoon(n.x, n.z, o.punten));
+  };
   const inOfOpPlaat = (n: { x: number; z: number }): boolean =>
-    plaatOmtrekken.some((omtrek) => !!omtrek && (
-      puntInPolygoon(n.x, n.z, omtrek) ||
-      omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1)));
+    plates.some((_, k) => inOfOpPlaatK(n, k));
   for (const n of nodes) if (!actief.has(n.id) && inOfOpPlaat(n)) actief.add(n.id);
 
   for (const n of nodes) {
@@ -1459,12 +1481,7 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     const verbindingen: number[][] = [
       ...beams.map((b) => [b.from, b.to]),
       ...plates.map((p, k) => {
-        const omtrek = plaatOmtrekken[k];
-        const erbij = omtrek
-          ? nodes.filter((n) => puntInPolygoon(n.x, n.z, omtrek)
-              || omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1))
-              .map((n) => n.id)
-          : [];
+        const erbij = nodes.filter((n) => inOfOpPlaatK(n, k)).map((n) => n.id);
         return [...(p.nodeIds ?? []), ...erbij];
       }),
     ];
