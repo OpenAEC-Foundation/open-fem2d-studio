@@ -13631,6 +13631,41 @@ function alphaCrStaafNotitie(stabiliteit, nEdMinKn, kniklengteYOpgegeven) {
   return `EERSTE ORDE MET \u03B1_cr = ${nl3(laagste.alphaCr ?? NaN)} (combinatie "${laagste.naam}") < ${ALPHA_CR_GRENS_EERSTE_ORDE}: deze staaf staat onder druk en de kniklengte in het vlak valt terug op de systeemlengte. NEN-EN 1993-1-1 5.2.2(7)b staat die terugval alleen toe bij krachten uit een tweede-orde-berekening met imperfecties, en 5.2.1(3) staat eerste orde bij \u03B1_cr < 10 niet toe. De knikweerstand om de y-as hieronder is daarom NIET normconform bepaald: kies tweede orde (P-\u0394) met scheefstand, of geef L_cr,y uit de zijdelingse knikvorm op (5.2.2(8)).`;
 }
 
+// src/lib/normAanduidingen.ts
+var BIJLAGEN_GEVULD = ["NL"];
+var STANDAARD_BIJLAGE = "NL";
+var NL = {
+  land: "Nederland",
+  bijlageNaam: "Nederlandse nationale bijlage",
+  keuzelabel: "Nederland (NB)",
+  staalKort: "EN 1993-1-1",
+  houtKort: "EN 1995-1-1",
+  betonKort: "EN 1992-1-1",
+  staalVol: "NEN-EN 1993-1-1+C2+A1/NB:2016",
+  houtVol: "NEN-EN 1995-1-1:2005+A2:2014+NB:2013",
+  betonVol: "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020"
+};
+var RIJEN = { NL };
+function aanduidingen(code) {
+  const rij = RIJEN[code];
+  if (!rij) {
+    throw new Error(
+      `nationale bijlage "${code}" is niet gevuld: deze uitgave kent alleen ${BIJLAGEN_GEVULD.join(", ")}. Er wordt niet teruggevallen op een andere bijlage, want dan zou het rapport getallen dragen die niet bij de genoemde bijlage horen.`
+    );
+  }
+  return rij;
+}
+function bijlageUitBestand(waarde) {
+  if (waarde === void 0 || waarde === null || waarde === "") return null;
+  const code = String(waarde);
+  if (BIJLAGEN_GEVULD.includes(code)) {
+    return code;
+  }
+  throw new Error(
+    `nationale bijlage "${code}" is niet gevuld: deze uitgave kent alleen ${BIJLAGEN_GEVULD.join(", ")}.`
+  );
+}
+
 // src/lib/steelCheckBuilder.ts
 function mapDeflectionClass(cls) {
   switch (cls) {
@@ -14102,6 +14137,9 @@ function buildSteelCheckInputs(ruweData) {
     );
     if (alphaNotitie) staafNotities.push(alphaNotitie);
     inputs.push({
+      // De nationale bijlage van het project reist mee naar de kern; daar
+      // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       beam_id: beam.id,
       profile_name: eigen ? eigen.naam : profileName,
       ...eigen ? { custom_section: naarCustomSection(eigen) } : {},
@@ -14463,6 +14501,9 @@ function buildTimberCheckInputs(ruweData) {
     );
     if (alphaNotitie) staafNotities.push(alphaNotitie);
     inputs.push({
+      // De nationale bijlage van het project reist mee naar de kern; daar
+      // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       beam_id: beam.id,
       width_mm: bMm,
       height_mm: hMm,
@@ -14745,6 +14786,9 @@ function buildCltCheckInputs(ruweData) {
       ondergrens: cfg.loadDuration !== void 0 ? mapLoadDuration(cfg.loadDuration) : void 0
     }) : [];
     inputs.push({
+      // De nationale bijlage van het project reist mee naar de kern; daar
+      // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
+      bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       beam_id: beam.id,
       layup,
       service_class: mapServiceClass(cfg.serviceClass),
@@ -20972,6 +21016,13 @@ function leesModel(payload) {
       gevolgklasseUitBestand: alsGevolgklasse(
         bestand.projectInfo?.uitgangspunten?.gevolgklasse
       ),
+      // De nationale bijlage stond al in het projectbestand maar werd door
+      // niemand gelezen (normnaad). Een code die deze uitgave niet kent, gooit
+      // hier — dat is de bedoeling: een model met een vreemde bijlage hoort
+      // niet met Nederlandse partiële factoren te worden doorgerekend.
+      bijlageUitBestand: leesBijlage(
+        bestand.projectInfo?.uitgangspunten?.nationaleBijlage
+      ),
       idTellersUitBestand: bestand.idTellers
     };
   }
@@ -21016,10 +21067,18 @@ function leesModel(payload) {
     analysetypeUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
+    bijlageUitBestand: null,
     idTellersUitBestand: void 0,
     scheefstandMeldingen: scheef.meldingen,
     scheefstandKeuze: scheef.keuze
   };
+}
+function leesBijlage(waarde) {
+  try {
+    return bijlageUitBestand(waarde);
+  } catch (e) {
+    throw new InvoerFout(e.message);
+  }
 }
 function leesGevolgklasse(payload, gelezen) {
   if (payload.gevolgklasse !== void 0 && alsGevolgklasse(payload.gevolgklasse) === null) {
@@ -21290,6 +21349,8 @@ function rekenDoor(payload) {
     combinationResults,
     profileDb,
     gevolgklasse,
+    // De nationale bijlage gaat als `bijlage` mee naar de rekenkern.
+    nationaleBijlage: gelezen.bijlageUitBestand ?? void 0,
     stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled }
   });
   const houtklassen = leesHoutklassen(payload);
@@ -21300,7 +21361,8 @@ function rekenDoor(payload) {
     combinationResults,
     supportedGrades: houtklassen ?? void 0,
     loadCases: gelezen.model.loadCases,
-    gevallenMetLast: opgelost
+    gevallenMetLast: opgelost,
+    nationaleBijlage: gelezen.bijlageUitBestand ?? void 0
   };
   const hout = buildTimberCheckInputs({
     ...houtData,
@@ -21667,6 +21729,7 @@ export {
   AnalysetypeOnbekendFout,
   BEAM_LOAD_ROLES,
   BEAM_LOAD_ROLE_LABEL,
+  BIJLAGEN_GEVULD,
   CONCRETE_E_CM,
   CPE10_BRON,
   CPE10_MIN_OPPERVLAK_M2,
@@ -21720,6 +21783,7 @@ export {
   SPIEGELREGELS_TOETSCONFIG,
   SPRONGBAND_GRADEN,
   STANDAARD_BELASTINGGEVALLEN,
+  STANDAARD_BIJLAGE,
   STANDAARD_CATEGORIE,
   STANDAARD_GEVOLGKLASSE,
   STANDAARD_WIND_INSTELLINGEN,
@@ -21737,6 +21801,7 @@ export {
   WIND_COMBI_PREFIX,
   Z0_II,
   ZMAX_M,
+  aanduidingen,
   aantalAfbeeldingen,
   aantalGebruiksgevallen,
   aantalVerloopSegmenten,
@@ -21760,6 +21825,7 @@ export {
   berekenE,
   berekenPlaatMeshSignatuur,
   berekenStuwdruk,
+  bijlageUitBestand,
   blijvendeFactorAfwijkingen,
   bouwMultiInput,
   buildForcesEnvelope,
